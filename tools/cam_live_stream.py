@@ -3446,14 +3446,17 @@ class Handler(BaseHTTPRequestHandler):
                                       % (_REPO_ROOT, _log)],
                                      start_new_session=True)
                     return self._send(200, "application/json", json.dumps(
-                        {"ok": True, "msg": "已启动后台自动跑点建图(空间1→7) —— 进度见本卡片", "log": _log}, ensure_ascii=False))
+                        {"ok": True, "msg": "已启动后台自动跑点建图(空间1→7)", "log": _log},
+                        ensure_ascii=False).encode("utf-8"))
             try:
                 _st = json.load(open(stf, encoding="utf-8"))
             except Exception:                                                         # noqa: BLE001
                 _st = {"running": False, "status_line": "还没有跑过建图", "step": "idle"}
             if _g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")):
                 _st["image_url"] = "/gs_render.png?t=__T__"
-            return self._send(200, "application/json", json.dumps(_st, ensure_ascii=False))
+            # 🐛 2026-10-01: _send 要的是 bytes, 原来这里传 str ⇒ 按钮点了必崩
+            #   (TypeError: a bytes-like object is required, not 'str') ⇒ 页面看到空白/无反应。
+            return self._send(200, "application/json", json.dumps(_st, ensure_ascii=False).encode("utf-8"))
         elif p == "/gs_render.png":
             import glob as _g
             _rend = sorted(_g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")))

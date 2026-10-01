@@ -51,6 +51,7 @@ STATUS = os.path.join(ROOT, "status.json")
 POSE = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
 SP = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
 SKILLS = os.path.join(REPO, "data/skills/l2_atomic/ctl_abs_skills.json")
+MIN_TRAIN_VIEWS = 30      # 真正不同视点少于这个数就别训(浪费 GPU 且出不来资产)
 
 
 def now():
@@ -361,11 +362,18 @@ def finish(sess, ds, st, args, train_only_ds=False):
              "--json", q1], timeout=1800)
     rep = read_json(q1) or {}
     v = rep.get("verdict", "?")
-    w(st, "  数据集判定: %s" % v.upper())
+    nv = int((rep.get("data") or {}).get("distinct_views") or 0)
+    w(st, "  数据集判定: %s · 真正不同视点 %d" % (v.upper(), nv))
     if v == "fail":
         st.update(running=False, step="stopped", status_line="数据集没过门 ⇒ 不训练(避免白烧 GPU)",
                   verdict=v, dataset=ds, quality=q1)
         w(st, "⛔ 数据集没过门, 停")
+        return 1
+    if nv < MIN_TRAIN_VIEWS:
+        st.update(running=False, step="stopped", verdict=v, dataset=ds, quality=q1,
+                  status_line="真正不同视点只有 %d 个(<%d) ⇒ 训也出不来, 不烧 GPU"
+                              "(要资产: 增加移动/采集轮数, 让相机真的换位置)" % (nv, MIN_TRAIN_VIEWS))
+        w(st, "⛔ " + st["status_line"])
         return 1
 
     if not args.train:

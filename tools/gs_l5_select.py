@@ -270,6 +270,17 @@ def main():
 
     t0 = time.time()
     src = args.dataset or args.session
+    if args.session and not os.path.exists(os.path.join(args.session, "frames.jsonl")):
+        # 第一轮常常是"会话刚建好、还没采到帧" ⇒ 别报错崩, 如实说清并退 0
+        # (调用方 gs_map_run 会据此走覆盖度兜底选点, 下一轮 L5 就有画面可看了)
+        msg = "会话里还没有帧(%s 没有 frames.jsonl) ⇒ L5 无画面可看" % args.session
+        print("⚠️ %s" % msg)
+        if args.out:
+            json.dump({"ts": time.strftime("%F %T"), "src": os.path.abspath(src), "n_frames": 0,
+                       "l5_used": False, "l5_err": msg, "l5_scene": "", "l5_regions": [],
+                       "l5_missing": [], "candidates": [], "note": "没有帧, 未产出候选"},
+                      open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        return 0
     frames, meta = (load_dataset(args.dataset) if args.dataset else load_session(args.session))
     if not frames:
         print("❌ 没有可用帧: %s" % src)
