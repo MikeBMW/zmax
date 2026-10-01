@@ -241,6 +241,9 @@ def inc_round(sess, tag, i, prev, steps, st):
     if rep.get("verdict") == "fail":
         w(st, "  ⚠️ 第 %d 轮数据集没过门(视点 %d) ⇒ 本轮不训" % (i, nv))
         return prev
+    if nv < MIN_TRAIN_VIEWS:
+        w(st, "  ⚠️ 第 %d 轮真正不同视点只有 %d(<%d) ⇒ 本轮不训(等相机真的换位置)" % (i, nv, MIN_TRAIN_VIEWS))
+        return prev
     mdl = os.path.join(GS, "map_%s_m%d" % (tag, i))
     cmd = ["bash", os.path.join(REPO, "tools/run_gs_train.sh"), "--data", ds, "--out", mdl,
            "--steps", str(steps), "--eval-every", str(max(500, steps // 2)), "--holdout", "20"]
@@ -248,6 +251,8 @@ def inc_round(sess, tag, i, prev, steps, st):
         cmd += ["--no-refine", "--init-ply", os.path.join(prev, "gs.ply")]
         w(st, "  第 %d 轮: 续训(接着上一轮资产, %d 步)" % (i, steps))
     else:
+        if prev:
+            w(st, "  ⚠️ 上一轮资产 %s 里没有 gs.ply ⇒ 本轮只能从零训(如实记录, 不假装续训)" % prev)
         cmd += ["--refine-stop", str(max(200, int(steps * 0.4)))]
         w(st, "  第 %d 轮: 首训(从零, %d 步)" % (i, steps))
     tl = os.path.join(mdl, "train.log")
