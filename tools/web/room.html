@@ -114,7 +114,7 @@
 </div>
 
 <!-- 📲 装 APP: 老倪「静静做的这个app, 我装不了」⇒ 把"怎么装"做成页面里点一下就能走的流程。
-     哈希由 build_room_apk.sh 每次打包自动写入(占位符 79cc3c7ac9e6e0a9a11fd74eb924d95c74d80a957e1d74d7d2ae806aafa6a39d), 保证页面不说谎 -->
+     哈希由 build_room_apk.sh 每次打包自动写入(占位符 3e387ef5d57eec6a3883db6f06cc8b5b99d02d036ace943e0c4ba0a9cca2db83), 保证页面不说谎 -->
 <div class="card" id="instCard" style="display:none">
   <p class="ttl"><b>📲 装 Z-MAX 现场 APP</b><span>安卓手机 · 与现有 Z-MAX App 并存, 不用先卸载</span></p>
   <a class="dl" id="dlBtn" href="/dl/ZMAX-Site.apk" download="ZMAX-Site.apk">⬇️ 下载安装包 (24.8KB)</a>
@@ -135,7 +135,7 @@
     <tr><td>提示"应用来源未知"</td><td>不是错误, 直接继续即可(本包已用 Z-MAX 正式签名)</td></tr>
   </table>
   <p class="hint">核对下载完整性 — 下面这串与文件一致就说明下全了:<br>
-    <code id="shaTxt">79cc3c7ac9e6e0a9a11fd74eb924d95c74d80a957e1d74d7d2ae806aafa6a39d</code><br>
+    <code id="shaTxt">3e387ef5d57eec6a3883db6f06cc8b5b99d02d036ace943e0c4ba0a9cca2db83</code><br>
     电脑上对比: <code>sha256sum ZMAX-Site.apk</code></p>
 </div>
 <script>
@@ -198,9 +198,16 @@
 
 <script>
 "use strict";
+/* ── 地址口径 (2026-10-01 老倪:「要实现手机远程操作」) ─────────────────────────────
+   局域网(http://<工位机>:8793/room): 直连 8791/8795 —— 最快, 手机在产线网时走这条。
+   公网(https://datadrive.world/st/room?k=zmax-live): 走**同源相对路径**(网关把 /st/X 映射到上游 X),
+     口令靠 ?k= 打开一次种下的 zmaxk cookie 跟着走; POST 只放行 /ctl/arm · /ctl/move · /ctl/gs_map。
+   公网下 HIL / AOI 触发不在放行白名单 ⇒ 这里如实置空 + 页面提示不可用(不假装能发)。*/
 const H   = location.hostname;                 // 手机从 LAN 打开 ⇒ 就是这台机的局域网 IP
-const API = "http://" + H + ":8791";           // 相机 + 控制
-const HIL = "http://" + H + ":8795";           // HIL 本地 API(与画布 n_hil 同一个大脑)
+const SECURE = location.protocol === "https:";
+const BASE = SECURE ? location.pathname.replace(/\/room(\.html)?$/, "") : "";   // 公网 = /st
+const API = SECURE ? BASE : ("http://" + H + ":8791");   // 相机 + 控制
+const HIL = SECURE ? ""   : ("http://" + H + ":8795");   // HIL 本地 API(公网下不开放)
 const CAMS = [
   {k:"arm",         n:"🤖 臂上相机"},
   {k:"local",       n:"💻 笔记本内置"},
@@ -348,6 +355,7 @@ async function move(btn){
 }
 async function shot(port){
   const b = port===10082 ? $("#btnShotG") : $("#btnShotS");
+  if(SECURE){ ctlMsg("⚠️ 公网下不开放(会触发产线相机拍照) —— 请在产线网内打开本页", "wa"); return; }
   b.disabled = true; ctlMsg("⏳ 正在让 " + port + " 拍一帧 …");
   try{ const j = await post("/api/aoi/capture?port=" + port, {}, 120000);
        ctlMsg((j.ok===false?"❌ ":"✅ ") + (j.msg || JSON.stringify(j).slice(0,240)), j.ok===false?"bad":"ok"); }
@@ -362,6 +370,7 @@ function dots(ly){
     return '<span><i class="dot '+cls+'"></i><b>'+k+'</b> '+(ly[k].name||"")+' · '+s+'</span>'; }).join(" ");
 }
 async function hil(){
+  if(!HIL){ $("#hilMeta").textContent = " · 公网下不开放(只放行控制)"; return; }
   try{
     const r = await fetch(HIL + "/hil/state?_=" + Date.now(), {cache:"no-store"});
     const j = await r.json(); const s = j.snapshot || {};
@@ -382,6 +391,8 @@ function bub(who, text, cls){
 }
 async function say(t){
   t = (t || $("#say").value || "").trim(); if(!t) return;
+  if(!HIL){ bub("me", t); const p = bub("ai", "⚠️ 公网下聊天通道未开放(只放行 授权/运动/建图 三个控制口);要发指令请在产线网内打开本页或走飞书。");
+            p.className = "bub ai red"; $("#say").value = ""; return; }
   $("#say").value = ""; bub("me", t);
   const p = bub("ai", "⏳ 正在交给状态空间 …");
   try{
@@ -419,6 +430,18 @@ $("#say").addEventListener("keydown", e=>{ if(e.key === "Enter") say(); });
 
 buildGrid(); buildStrip(); setMode(); status(); hil(); loop();
 setInterval(status, 2500); setInterval(hil, 4000);
+
+/* 公网远程模式提示(2026-10-01): 老倪在外面用手机操作时, 让他一眼看清"哪些能点/哪些不开放",
+   以及"真动仍要两步确认+10分钟失效" —— 不让他以为按钮坏了。 */
+if(SECURE){
+  const d = document.createElement("div");
+  d.className = "card";
+  d.innerHTML = "<p class=\"ttl\"><b>🌐 公网远程模式</b><span>手机在外网直接操作工位</span></p>" +
+    "<p class=\"hint\">· 已开放: <b>授权真动(两步) · 运动按钮 · 建模(L5指导选点)</b> —— 每次授权 POST 都进闸门日志<br>" +
+    "· 真动仍要 <b>两步确认</b> 且 <b>10 分钟自动失效</b>; 没授权时点运动只会“演练(未下发)”, 机械臂不动<br>" +
+    "· 公网下不开放: 聊天(say)、产线相机拍照(AOI) —— 这两项请在产线网内打开本页</p>";
+  document.body.insertBefore(d, document.body.children[1]);
+}
 </script>
 </body>
 </html>

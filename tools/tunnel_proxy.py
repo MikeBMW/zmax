@@ -71,6 +71,8 @@ ALLOW_STATION = [
     r"/aoi/status", r"/aoi_status",
     r"/dl/[A-Za-z0-9_.-]+", r"/lib/[A-Za-z0-9_./-]+",
     r"/live", r"/live\.html", r"/live\.json",
+    # 手机远程控制页(2026-10-01): 页面本身只读放行, POST 由 --allow-ctl 单独管
+    r"/room", r"/room\.html",
 ]
 ALLOW_STATION_RE = [re.compile("^" + p + "$") for p in ALLOW_STATION]
 DENY_STATION = [
@@ -80,6 +82,23 @@ DENY_STATION = [
 ]
 DENY_STATION_RE = [re.compile("^" + p + "$") for p in DENY_STATION]
 
+# ── 远程操作 (2026-10-01 老倪: 「远程控制app检查一下, 要实现手机远程操作」) ─────────────
+# 默认口径**不变**: POST 一律 403。只有给闸门加 `--allow-ctl` 才打开下面这张**极窄**的白名单:
+#   · 页面: /room(手机远程控制页) —— 只读放行, 与 /station 同等对待
+#   · POST: 只放行这三个端点, 其余(含 /gen 烧钱拍照、/api/aoi/*、/cmd、/skill、/teach、/api/*)
+#     依然永久 403, 连 --allow-ctl 也打不开
+# 安全不变量(**不因为开了远程就丢**):
+#   ① 必须有口令(无 ?k= 或 zmaxk cookie 一律 403);
+#   ② 真动仍要 8793 的**两步确认**且 10 分钟自动失效, 未授权时 /ctl/move 会被 8793 如实拒绝;
+#   ③ 每次放行的控制 POST 都打日志(/var/log/zmax-station-gate.log)留下审计痕迹;
+#   ④ 关掉远程: 从 unit 里去掉 --allow-ctl 并 restart 即可(不删代码)。
+ALLOW_POST_CTL = [r"/ctl/arm", r"/ctl/move", r"/ctl/gs_map"]
+ALLOW_POST_CTL_RE = [re.compile("^" + p + "$") for p in ALLOW_POST_CTL]
+# 无论开不开远程, 这些**永不外放**(放行清单在此之上做减法)
+DENY_ALWAYS = [r"/gen.*", r"/tap.*", r"/api/aoi/.*", r"/api/ctl/.*", r"/api/relay/.*",
+               r"/api/train.*", r"/cmd.*", r"/skill.*", r"/teach.*", r"/agent/.*", r"/hil/.*"]
+DENY_ALWAYS_RE = [re.compile("^" + p + "$") for p in DENY_ALWAYS]
+
 
 def _filters():
     """按模式取 (白名单, 黑名单)。"""
@@ -88,7 +107,8 @@ def _filters():
     return ALLOW_RE, DENY_RE
 
 
-STATE = {"token": "", "blocked": 0, "served": 0, "up": ("127.0.0.1", 8791), "mode": "overlay"}
+STATE = {"token": "", "blocked": 0, "served": 0, "up": ("127.0.0.1", 8791), "mode": "overlay",
+         "allow_ctl": False, "ctl": 0}
 
 
 def _up(path, timeout=6):
@@ -260,8 +280,55 @@ class H(http.server.BaseHTTPRequestHandler):
         return bool(STATE["token"]) and ("k=" + STATE["token"]) in (self.path or "")
 
     def do_POST(self):
-        STATE["blocked"] += 1
-        self._deny(403, "403: 公网通道只读 —— POST 一律拒绝(防止有人用它动机器人)")
+        path = (self.path or "/").split("?")[0]
+        # 默认(不加 --allow-ctl): 与原来完全一样 —— POST 一律拒绝
+        if not STATE.get("allow_ctl"):
+            STATE["blocked"] += 1
+            self._deny(403, "403: 公网通道只读 —— POST 一律拒绝(要手机远程操作: 给闸门加 --allow-ctl)")
+            return
+        if not self._token_ok():
+            STATE["blocked"] += 1
+            self._deny(403, "403: 需要口令 —— 用带 ?k=<token> 的链接打开一次即可")
+            return
+        for r in DENY_ALWAYS_RE:
+            if r.match(path):
+                STATE["blocked"] += 1
+                self._deny(403, "403: 该端点永久不对外(烧钱/厂家通道/教学类)")
+                return
+        if not any(r.match(path) for r in ALLOW_POST_CTL_RE):
+            STATE["blocked"] += 1
+            self._deny(403, "403: 不在远程操作白名单内(只放行 /ctl/arm · /ctl/move · /ctl/gs_map)")
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        body = self.rfile.read(n) if n > 0 else b""
+        STATE["ctl"] += 1
+        print("[proxy] 远程控制 POST %s · %s · %dB · from %s"
+              % (time.strftime("%F %T"), path, len(body), self.client_address[0]), flush=True)
+        try:
+            conn = http.client.HTTPConnection(self.upstream[0], self.upstream[1], timeout=self.timeout_s)
+            conn.request("POST", self.path, body=body,
+                         headers={"Host": "127.0.0.1", "User-Agent": "tunnel-proxy-ctl",
+                                  "Content-Type": self.headers.get("Content-Type") or "application/json"})
+            resp = conn.getresponse()
+            data = resp.read()
+            status = resp.status
+        except Exception as e:                                                # noqa: BLE001
+            self._deny(502, "502: 上游不可达 %s" % str(e)[:60])
+            return
+        self.send_response(status)
+        self.send_header("Content-Type", resp.getheader("Content-Type") or "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except Exception:                                                     # noqa: BLE001
+            pass
+        conn.close()
+        STATE["served"] += 1
 
     do_PUT = do_DELETE = do_PATCH = do_POST
 
@@ -437,12 +504,17 @@ def main():
     ap.add_argument("--mode", default="overlay", choices=("overlay", "station"),
                     help="overlay=叠加页闸门(默认, 上游 8791); station=工位总览闸门(上游 8793, "
                          "放行 /station 与 6 路只读画面, 控制类仍全挡)")
+    ap.add_argument("--allow-ctl", action="store_true",
+                    help="打开**手机远程操作**: 只额外放行 POST /ctl/arm(授权/撤销) · /ctl/move(动) · "
+                         "/ctl/gs_map(建图), 且必须带口令; 页面 /room 一并放行。"
+                         "默认关(公网只读)。真动仍要 8793 的两步确认+10分钟失效")
     a = ap.parse_args()
     H.upstream = tuple(a.upstream.split(":"))
     H.upstream = (H.upstream[0], int(H.upstream[1]))
     STATE["up"] = H.upstream
     STATE["token"] = a.token
     STATE["mode"] = a.mode
+    STATE["allow_ctl"] = bool(a.allow_ctl) and a.mode == "station"
     WALL["fps"] = float(a.wall_fps)
     srv = Srv((a.bind, a.port), H)
 
@@ -452,10 +524,12 @@ def main():
             print("[proxy] 60s: 放行 %d 次, 挡掉 %d 次" % (STATE["served"], STATE["blocked"]), flush=True)
 
     threading.Thread(target=beat, daemon=True).start()
-    print("[proxy] 只读闸门: %s:%d -> %s  口令=%s 模式=%s" % (
-        a.bind, a.port, a.upstream, "开" if a.token else "关(仅内网用)", a.mode), flush=True)
+    print("[proxy] 只读闸门: %s:%d -> %s  口令=%s 模式=%s 远程操作=%s" % (
+        a.bind, a.port, a.upstream, "开" if a.token else "关(仅内网用)", a.mode,
+        "开(仅 /ctl/arm · /ctl/move · /ctl/gs_map · /room)" if STATE["allow_ctl"] else "关(POST 全 403)"), flush=True)
     print("[proxy] 放行: %s" % ", ".join(ALLOW_STATION if a.mode == "station" else ALLOW), flush=True)
-    print("[proxy] 永不放行: %s" % ", ".join(DENY_STATION if a.mode == "station" else DENY), flush=True)
+    print("[proxy] 永不放行: %s" % ", ".join(DENY_ALWAYS if STATE["allow_ctl"] else
+                                              (DENY_STATION if a.mode == "station" else DENY)), flush=True)
     srv.serve_forever()
 
 
