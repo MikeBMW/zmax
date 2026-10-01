@@ -267,12 +267,12 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
          高度你自己适配, 生成场景的下面是原来的摄像头窗口」⇒ grid-column:1/-1 = 整行三格之和; 高度自适应(max-height)。
          跑点走号位同一条授权+收口链; 采集用 gs_capture, 训练用 gs_train(真值位姿, 不用 COLMAP)。 -->
     <div class="panel" id="p_gsmap" style="grid-column:1/-1">
-      <div class="cap"><span class="ttl">🧭 3DGS 建图 (自动跑点 空间1→7)</span>
+      <div class="cap"><span class="ttl">🧭 3DGS 建图 (L5 指导选点 自动跑点)</span>
         <span class="meta" id="m_gsmap">读状态…</span></div>
       <div class="row" style="padding:6px 10px 0;gap:10px;align-items:center">
         <button id="gsrunbtn" onclick="gsMapRun()" style="font-size:16px;font-weight:700"
-          title="机械臂按 空间1→7 顺序自动运行, 每点自动采画面, 跑完用真值位姿训 3DGS; 需先🔓授权真动, 走号位同一条链路">▶ 开始建图</button>
-        <span id="gs_msg" style="font-size:13px;opacity:.9">点「▶ 开始建图」= 自动跑 空间1→7 并采集建图</span>
+          title="L5(DeepSeek 视觉)看当前画面 → 给出环境理解 + 下一步看哪儿, 软件在已示教可达点里挑最贴合该方向且最没拍过的点 → 移动 → 每点自动采画面 → 按图像内容去重建数据集 → 训练 3DGS → 质量门(与「填常数」平凡基线比, 不过门不算成果); 需先🔓授权真动, 走号位同一条链路">▶ 开始建图</button>
+        <span id="gs_msg" style="font-size:13px;opacity:.9">点「▶ 开始建图」= L5 指导选点 + 自动跑点采集建图</span>
       </div>
       <div style="padding:8px 10px 10px">
         <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
@@ -1540,6 +1540,9 @@ async function loadSpaces(){
   }catch(e){}
 }
 loadSpaces(); setInterval(loadSpaces,10000);
+/* 🐛 2026-10-01: 建图卡片原来只在点过「▶ 开始建图」之后才取状态 ⇒ 开页面永远是"读状态…"。
+   现在开页面就取一次, 之后每 10s 刷一次(端点 /ctl/gs_map POST action=status 已修好)。*/
+try{ gsMapPoll(); setInterval(gsMapPoll, 10000); }catch(e){}
 </script>
 <script>
 /* ══ ⚙️ 状态条 (硬件 / 模型版本+推理中 / 训练进度 / 3DGS 版本) ═══════════════════════
