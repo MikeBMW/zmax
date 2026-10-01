@@ -26,11 +26,12 @@
       },
       {
         "name": "INTACT 世界模型 光模块插入 v6+LoRA",
-        "version": "v20261001-r200",
+        "version": "v20261001-r600",
         "state": "candidate",
-        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/weights_epoch_1.pt",
-        "source": "reports/joint_train_20261001_161938/stages.jsonl#L4",
-        "note": "200 步 LoRA (r8/α16) 续训, 基座冻结; 真机验证通过前不切在役指针",
+        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_600/weights_epoch_1.pt",
+        "source": "reports/joint_train_20261001_180413/stages.jsonl#L4",
+        "note": "600 步 LoRA (r8/α16) 续训, 基座冻结 (rc=0 / 403.4s / 18:10 落盘 / 88027492 B / md5 04253e02600abfc2016af12921437dd6); 权重级取证(动作头 16/18 非零 max|B|=9.863e-03, 世界模型 32/32 非零 2.603e-02, 语言塔 128/128 非零 7.586e-03; 200 步时为 5.72e-03/1.04e-02/4.85e-03) ⇒ 幅度随步数上涨 = 真训练; 未证明提升前不切在役指针",
+        "note_short": "r600 候选·未切在役",
         "probe": { "type": "none" }
       },
       {
@@ -64,11 +65,12 @@
       },
       {
         "name": "SmolVLA+LEW 长程规划 LoRA (7帧窗口)",
-        "version": "v20261001-r6",
+        "version": "v20261001-r600",
         "state": "candidate",
-        "artifact": "outputs/train/smolvla_lew_lora_200_r6/checkpoints/last/pretrained_model",
-        "source": "reports/joint_train_20261001_161938/stages.jsonl#L3",
-        "note": "200 步 / 537.8s · 7帧窗口 LoRA; 未切在役指针",
+        "artifact": "outputs/train/smolvla_lew_lora_600/checkpoints/000600/pretrained_model",
+        "source": "reports/joint_train_20261001_180413/stages.jsonl#L3",
+        "note": "600 步 / 1586.0s / 7帧窗口 LoRA (rc=0 / 18:37 落盘 / model.safetensors 1297848832 B); 未切在役指针",
+        "note_short": "r600 候选·未切在役",
         "probe": { "type": "none" }
       },
       {
@@ -99,6 +101,16 @@
         "source": "models/active_models.json#L2 + canvas:flows/state_space_obs.json#ssyolo",
         "note": "软链指针 → 真机域标定权重; 旁路服务 ss-yolo-bypass 逐帧出 yolo_detections.json",
         "probe": { "type": "file_fresh", "path": "/home/ubuntu/zmax_data/ss_bypass/yolo_detections.json", "max_age_s": 10 }
+      },
+      {
+        "name": "YOLO 真机域适应微调 (600 步联合轮产出)",
+        "version": "v20261001-annot_r600",
+        "state": "candidate",
+        "artifact": "runs/detect/outputs/yolo_annot/annot_lora_20261001_180413/weights/best.pt",
+        "source": "reports/joint_train_20261001_180413/stages.jsonl#L2",
+        "note": "本轮 L2 产物: 30 epoch / 139.2s / 基座=在役软链 models/yolo_peg_live.pt, 标注域 data/yolo_annot/dataset (rc=0 / 18:37 落盘 / 6234282 B / md5 4da14e38de92d26c573d673bcde17247); 沿用 yolo 域适应口径; 未证明提升前不切在役指针",
+        "note_short": "r600 候选·未切在役",
+        "probe": { "type": "none" }
       },
       {
         "name": "SAM3 开放词汇分割 (官方权重 09-29 落地 + 适配器)",
