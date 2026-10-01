@@ -74,6 +74,62 @@ metadata:
 
 **已知死区 (登记, 别当故障)**: `mask_decoder` 有 6 个参数 `grad is None` —— `pixel_decoder.conv_layers.2.*` / `norms.2.*` (最深一级上采样被 instance_projection 绕过) 与 `semantic_projection.*` (semantic_seg 不进损失)。其余 4 个头逐模块都有非零梯度。
 
+## 服务侧必踩的 dtype 坑 (框提示路径整条 500, 2026-10-01 实测)
+`segmenter.segment()` 里用 `getattr(torch, self.dtype_name)` 转 dtype —— **`torch.bf16` 这个属性不存在**
+⇒ 抛异常被 `except` 吞掉 ⇒ 处理器给的 **float32** 输入原样送上卡 ⇒ bf16 模型报
+`mat1 and mat2 must have the same dtype` ⇒ `POST /seg` 只要带 `boxes` 就 500 (纯文本提示不崩, 所以不测框就看不出来)。
+改法: 显式映射表 `{"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[self.dtype_name]`,
+与训练侧 `finetune.build_inputs` 同口径。**验收判据: POST /seg 带 boxes 必须 200 且 count≥1** (只测文本提示会漏掉这条)。
+
+## 适配器可选接入在役服务 (默认关)
+- 开关: `ZMAX_SAM3_ADAPTER=<目录|.safetensors>` 或 `--adapter`; **两者都不给 = 纯基座**。服务是 `--lazy`,
+  开关在**首次 /seg 触发加载**时读取 ⇒ 常驻服务起来时显存仍为 0。
+- 加载器 `lora_inject.load_lora_adapter(model, adapter, targets, prefix_filter, r, alpha)`: 注入 + 逐张量
+  `copy_`, **键不匹配/文件混入 `.base.` 键直接抛错** (不许静默退化成纯基座, 那会让"接了适配器"成为假象),
+  返回 sha256/张量数/非零 B 数供 /health 对账。`n_inj==0` 但模型已有 lora 参数 = **模型本身就是训练装配的**, 直接加载即可。
+- ⚠️ **`prefix_filter` 只能给视觉塔**: 训练口径是"视觉塔最后 N 个 block + 文本塔**全层**"。把 `i>=32-N`
+  也套到 `text_encoder...layers.` 上 ⇒ 文本塔 24 层 (索引 0..23) 全部被跳过 ⇒ 少注入 96 个 Linear ⇒
+  适配器 192 个键对不上直接抛错。文本塔 96 + 视觉塔 32 = 128 个 Linear / 256 张量才是对的。
+- 显存账 (4060 8GB, 实测): 纯基座 alloc 1.79GB / **前向峰值 2.10GB**; 加适配器 1.80GB / **2.11GB**
+  (适配器 8.4MB fp32 + 适配器 matmul 激活 ⇒ 增量 ~0.01GB)。默认关不是显存原因, 是产品口径。
+
+## A/B 判据 ("有没有提升"怎么证, 别拿单次数字当结论)
+脚本 `tools/sam3_ab_multiseed.py` (判据**先定后跑**写死在 docstring/输出 JSON 里)。方法要点:
+- **K 折 × S seed**: 3 折会让**全部 50 帧各被留出一次** (留出帧不参与该折训练) × 3 种子 × 2 抖动档 × 3 评估抖动种子。
+- **配对单位 = (帧, GT 框)**, 不是 query 下标 —— 基座与适配器 Hungarian 匹配可能落在不同 query 上。
+- **两套指标分开报, 口径写死**: 框 IoU 对**真标注 GT 框** (基座**不是**上界, 唯一可能真提升的一路);
+  掩膜 IoU 对**教师伪标签** (= 冻结基座自己的输出) ⇒ **基座在该指标上是上界**, 只能用来判"一致性有没有被弄坏"。
+- **平凡基线合法性自证**: 训练口径模型 (注入 LoRA, B 零初始化) 与纯净 HF 基座同帧前向必须**逐位一致**
+  (实测 `max|Δpred_masks| = 0.000e+00`) ⇒ "step0 基线 == 基座"这句话才有据。
+- **判定**: 主指标 Δ 的 95%CI 下界 > 0 **且** 掩膜 Δ 的 CI 下界 ≥ 0 才算"有提升"; **幅度 < run 间标准差、
+  有一折为负、逐单位胜率 <50% ⇒ 一律写"未证明提升"**, 保持 candidate。
+- 本轮实测 (annot_v1, 522 配对单位/档): 框 IoU 精确框 Δ**+0.0036** [0.0020,0.0052] / 抖动0.08 Δ**+0.0080**;
+  但**掩膜 IoU 精确框 Δ−0.0096 [−0.0144,−0.0048] 显著变差**、折1 三个种子框 Δ 全负、精确框胜率 45.9%
+  ⇒ **未证明提升, 不转 in_service**。交付产物在自己 5 帧留出 val 上看着更好 (+0.02) 是**低功效假象** (基座
+  自身换种子就跳 ±0.05~0.09)。
+
+## 适配器**可选接入**服务 + A/B 判据 (2026-10-01 实测, 两处真坑)
+- 接法: `ZMAX_SAM3_ADAPTER=<目录|.safetensors>` 或 `--adapter`; **默认关**。内核 `lora_inject.load_lora_adapter`
+  (注入+键严格匹配+sha256 取证), 服务侧在 `segmenter.ensure()` 一次性装入; `/health` 出 `adapter{…}` + `mem.forward_peak_gb`。
+  实测显存: 基座 1.79GB alloc / 前向峰值 2.10GB; 加适配器 1.80 / **2.11GB** (适配器 8.4MB fp32) ⇒ 增量 0.01GB。
+- ⚠️ **`prefix_filter` 只能挂视觉塔前缀**: "最后 N 个 block"的谓词若也套到文本塔, 文本塔 24 层索引 0..23 全不满足
+  `i>=32-N` ⇒ 静默少注入 96 个 Linear ⇒ 适配器键对不上 (`模型里找不到 …text_encoder…lora_A`)。
+  训练侧 `build_trainable_model` 本来就是只给视觉塔挂谓词 —— 部署侧照抄, 别"顺手统一"。
+- ⚠️ **服务侧框提示路径曾被 dtype 坑断**: `getattr(torch, self.dtype_name)` 里 `torch.bf16` **不存在** ⇒ 静默走 except
+  把 float32 送进 bf16 模型 ⇒ `mat1 and mat2 must have the same dtype` (带 `boxes` 的 `POST /seg` 必 500, 纯文本提示却能过
+  ⇒ 容易误判成"权重/适配器坏了")。用显式表 `{"bf16": torch.bfloat16, "fp16": …, "fp32": …}`。
+- **判据方法 (可复用)**: K 折交叉验证把全部标注帧各留出一次 × ≥3 训练 seed × 2 档提示框抖动 × ≥3 评估抖动 seed;
+  配对单位 = **(帧, GT 框)** 而非 query 下标 (两模型 Hungarian 匹配可能落在不同 query)。
+  · 主指标用 **框 IoU vs 真标注** (基座不是上界, 是唯一可能真提升的路);
+  · **掩膜 IoU vs 教师伪标签** 的对照方 = 基座自己的输出 ⇒ 基座=上界, "打平"是正常, **低于基座=真退步**;
+  · 平凡基线用**纯净 HF 基座** (完全不注入 LoRA), 并给等价性自证: 训练口径 step-0 (注入 LoRA、B≡0) 前向与纯净基座
+    逐位一致 (`max|Δ| = 0.000e+00`) —— 否则"step0 就是基座"只是口头禅。
+- 实测结论 (annot_v1, 3 折×3 seed, 522 配对单位/档): 框IoU Δ+0.0036 [+0.0020,+0.0052] @精确框 / +0.0080 [+0.0061,+0.0100]
+  @抖动0.08; 但**掩膜IoU @精确框 Δ-0.0096 [-0.0144,-0.0048] 显著变差**, 逐单位胜率 45.9% (<50%), 最低折 -0.0016
+  ⇒ **未证明提升 ⇒ 保持 candidate**。判绿规则先定后跑: 主指标 CI 下界>0 **且** 掩膜 CI 下界≥0。
+- ⚠️ 交付产物只有 5 帧留出 val 时, 逐单位 sd ≈0.03~0.09 ⇒ 均值标准误 ≈0.013~0.022, Δ+0.023 也**跨 0, 无功效**;
+  必须把"逐单位明细 + 按独立帧数算的 CI"摆出来 (`tools/sam3_ab_units.py`), 不能拿均值当结论。
+
 ## 集成到场景叠加
 - 规格元素 `{"origin":"seg","kind":"mask","polys":[[[x,y],…]],"area_px":…,"conf":…,"c3d":{…}}`; 渲染走 `scene_overlay.draw_overlay` 的 `elif b.get("polys")` 分支(**插在 box3d 之后、xyxy 之前** —— 否则带 xyxy 的掩膜会被矩形分支抢走)。
 - **标签放轮廓外**: 不透明底片贴上去会盖掉填充与轮廓。大掩膜填充按面积减淡。

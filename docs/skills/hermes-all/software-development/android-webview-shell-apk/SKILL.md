@@ -7,6 +7,19 @@ description: Use when 要把网页包成安卓 APK 装手机 (WebView 套壳), �
 
 把一个 URL (如 datadrive.world 的 3D 页面) 包成全屏安卓 App。用户场景: 老倪手机(华为 Mate30) 装「Z-MAX 状态空间3D」看 3D 模型。更新网页内容 = App 自动更新, 无需重装。
 
+## 两个必须知道的坑 (2026-10-01 实测)
+
+1. **打包脚本"把哈希写回页面"不能只认占位符**。第一版只在页面里替换 `__APK_SHA256__`:
+   首次打包就把占位符换掉了, 之后每次打包 step ⑩ 静默什么都没换 ⇒ 页面上的校验串永远停在
+   老包的哈希(**页面在说谎**, 而"残留占位符=0"那个检查照样通过)。改成直接覆盖页面里现有的
+   64 位十六进制串 + `下载安装包(NKB)`, 并加一句真断言: 页面哈希 == 本次产物哈希。
+2. **https 页面绝不要硬编码 `http://host:PORT` 当接口基址**。公网 https 页去拉工位机的
+   http 接口/MJPEG ⇒ 混合内容被内核拦死(页面能开、画面全黑或接口全失败)。正确姿势:
+   服务端把 `https://site/<前缀>/<页>` 映射到上游时, 页面里用**同源相对路径**
+   (`location.protocol==='https:' ? location.pathname.replace(/\/<页名>$/,'') : 'http://'+host+':PORT'`),
+   局域网仍走 http 直连。另: 靠 `?k=<token>` 种 cookie 放行时, WebView 必须
+   `CookieManager.getInstance().setAcceptCookie(true)`, 否则后续同源请求不带口令全 403。
+
 ## 环境准备 (一次性)
 ```bash
 sudo apt-get install -y openjdk-17-jdk-headless

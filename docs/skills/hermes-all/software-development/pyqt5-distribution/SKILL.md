@@ -302,9 +302,11 @@ Background check silently swallows exceptions (network down = no notification).
 - `tools/ci/integrity_check.py` → `EXPECTED_VERSION` (the gate's own constant goes stale silently)
 
 ⚠️ **别用单一记法的 `grep` 找同步点 —— 各文件前缀不一致, 而且会随版本演进变化**:
-`version_sync.py` 是 `zmax_ver = "5.16.35"`(**不带 `v`**); `studio.py` / `docs_sync.py` / `update_checker.py` /
-`tools/ci/integrity_check.py` 自 vv5.16.x 起是**双 v** `"vv5.16.35"`(更早是单 v `"v5.15.12"`)。
-按单 v 搜会**整批漏掉**, 结果"包打好、标题/同步器还是旧号"而且**全程不报错**。
+`version_sync.py` 是 `zmax_ver = "5.17.0"`(**不带 `v`**); `studio.py` / `docs_sync.py` / `update_checker.py` /
+`tools/ci/integrity_check.py` 自 **v5.17.0 起统一单 v** `"v5.17.0"`(vv5.16.x 时代曾是**双 v** `"vv5.16.35"`, 已按老倪裁定改回单 v
+—— 双 v 当时让 QLabel 与窗口标题/tag 三处互相打架)。工具一律"认版本号不认记法"(`v{1,2}<ver>` 正则), 写回单 v。
+**别只 grep 一种记法** —— 漏掉一处的结果是"包打好、标题/同步器还是旧号"且**全程不报错**;
+另外状态栏 `Z-MAX v1.0.4` / 「关于」框 `Z-MAX v1.0.1` 这类**不在同步清单里的旧号**也要顺手对齐。
 - 仓库里有 `tools/bump_version.py` 就用它: `--to X.Y.Z [--from A.B.C] --summary-file <一行摘要> [--dry]`,
   一次改完 5 处 + 给 `VERSION.md` 历史表插一行(**改版前先读 `VERSION.md`**, 它是位置与摘要规范的真源)。
 - **工具自己的打印就是判据**: 每处 `旧命中 N → 新命中 M`, **任一处 N=0 就是"一个都没改到"**

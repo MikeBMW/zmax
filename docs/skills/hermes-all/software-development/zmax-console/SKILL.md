@@ -245,6 +245,51 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 **备份纪律**: 改前 `cp flows/state_space_obs.json flows/…bak_pre_<改动>_<ts>` (回滚靠它, 不用 git 历史);
 过期快照别留在工作树 → 移 `~/zmax_data/canvas_baks_archive_<日期>` + `.gitignore` 覆盖 `.bak_/.bak./.bak-` 三种命名。
 
+## 🚦 发布/出包 (2026-10-01 实测: tag 打了却一个 CI 都没起)
+- **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。真源 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
+  ⇒ 打 tag 推上去**一个 run 都不会起**。判据: `git ls-tree -r --name-only <tag> | grep .github/workflows`
+  必须非空(空 = 那个 tag 永远不会出包); 佐证: `workflow_dispatch` 指定 `ref=tag` 会 422
+  "Workflow does not have 'workflow_dispatch' trigger"。修法: 把 `build-win-exe.yml` `git add -f` 入库,
+  或把 tag 推到**带 CI 的仓库** `MikeBMW/lerobot-smolvla-lew`(历史 Releases 的 `Z-MAX_Console.exe` /
+  `Z-MAX_Console-macOS.zip` 都在那儿)。
+- 本机**没有 `gh`**: 盯 CI 从 `~/.git-credentials` 取 token 后打 REST `/repos/<o>/<r>/actions/runs` 与
+  `/repos/<o>/<r>/actions/runs/<id>/jobs`(读 `jobs[].steps[].conclusion` 才有"哪一步挂了"的证据)。
+  **报告口径: "推送成功" ≠ "发布完成"** —— 必须报 Release URL + 资产文件名/大小, 或失败 step 名原文。
+- ⛔ 不用 `workflow_dispatch` 试探 API 通不通: 它**立刻起一次真构建**(按默认分支旧代码 + 产物挂到
+  你随手写的 tag 名上)。要探测只碰只读端点。
+
+## 🕳 三条当天踩到并已固化的坑
+1. **看板/面板空态不许留白** —— 没在训练时进度条留空 = 现场读不出"上一次是什么时候"。空态必须显示
+   **上次训练**(时间 + 结果/步数), 值来自状态真源, 不许前端自造。
+2. **重启控制台用独立方式; 判活不许 `pgrep` 自匹配** —— 正路
+   `systemctl --user restart zmax-studio.service`(ExecStart 指 worktree 的 launch_studio.sh);
+   自查式脚本里 `pgrep -f "<模式>"` 会命中**脚本自己的命令行文本** ⇒ 误判"已有实例"而 33ms 静默退出(假成功)。
+   判活用 `ps -eo pid,cmd | grep "[s]tudio.py"` 或剔除自身 pid; 判断训练在跑同理用
+   `ps -eo pid,cmd | grep "[j]oint_train_all"` / `nvidia-smi`, 别用 `pgrep -f`。
+3. **诊断/探针脚本本身必须先自验** —— 两次因探针写错下错结论: ①连线字段名靠猜 ⇒ 把好节点报成"孤岛"
+   (先看真 JSON 的键名); ②`grep -E "a\|b"` 里的 `\|` 被当**字面量** ⇒ 页面明明改了却报"没改"。
+   纪律: 探针先在**已知答案**的样本上验证再对目标跑, 结论前换第二种口径交叉核对。
+
+## 📊 状态看板 / 版本真源 (显示口径: 用户要"扫一眼就知道现在在役哪个模型")
+出现"给硬件/模型/训练状态做个看板""每个模型要有版本标记"这类需求时, 按这套口径落 (本机面板与手机页**同一套**):
+- **版本徽章必须带模型名** —— 只显示 `v20261001-r6` 用户读不出是哪个模型(他的原话: 「现在的 v1001 也不知道是哪个模型」)。
+  字段 = `层 + 短名 + 版本`; 短名**从真 `name` 字段派生**(不许手写死表), 且**同层多个模型必须互相可区分**
+  (两个 INTACT ⇒ `INTACT` / `INTACT-WM`; 两个 SmolVLA ⇒ `SmolVLA` / `SmolVLA-L`), 否则等于没写名字。
+  屏幕省面积: 短名 ≤9 字符 + 完整名/完整版本/step/eta **放 tooltip 或点按展开**(手机无 hover ⇒ 用点按)。
+- **颜色语义全局统一**: 绿=在役 · 黄=**候选** · 红=异常/未训练 · 灰=未知。**黄灯必须能说出原因**
+  (manifest 里每模型带一句 ≤16 字原因, 如「候选: 未证明提升」「候选: 未接入链路」) —— 用户必然问"为什么是黄灯",
+  让界面自己答, 别让他来问。
+- **`candidate` 是挣来的, 不许为了好看改标签**: 未做**同口径提升证明**(多 seed/留出集/平凡基线) 或适配器还没接进
+  在役服务 ⇒ 永远保持 candidate。**灯色的诚实性 > 界面好看**; 训完 ≠ 够格。
+- **未知就写 `unknown`, 不许编版本号**: 系统里没有版本证据的模型(画布上无 source/无产物的裸节点)一律标 unknown,
+  等它真有了训练版本再改。
+- **版本真源 = 一个 manifest 文件**(`src/lerobot/engineering/models_manifest.json`: 层/名/版本/state/产物路径/训练时间),
+  面板与页面**都从它派生**, 不许各自在代码里写死版本号。**契约只增不改**(多个看板/页面并行读它, 加字段别动老字段)。
+- **空态与"最近一次"**: 没有活任务时不留白(见上一条), 显示"上次训练: L4·L3·L2 <版本> ✓ <时间>"; 进行中才给进度条 + %
+  + eta。数据取自训练编排写的 `reports/<编排>_*/summary.json` 最新一个。
+- 数据源分档标注: 直接探针(有调用计数/帧龄)才能宣称"在推理/在训练"; 拿不到独立计数的层要标为**代理信号**,
+  不许把"引擎节拍在动"当成"这一层在推理"。
+
 ## 🐛 版本号迭代 (bump_version.py) — 6 处同步 + 1 行历史
 `gui-venv311/bin/python tools/bump_version.py --to X.Y.Z --summary-file /tmp/v.txt [--dry]` 自动改:
 studio.py 品牌 QLabel + 2 处窗口标题 + changelog 注释行 + `update_checker.CURRENT_VERSION` +
@@ -255,6 +300,15 @@ studio.py 品牌 QLabel + 2 处窗口标题 + changelog 注释行 + `update_chec
 - 工具**只改不提交**: 先 `--dry` 看逐处命中再去掉 --dry; 之后由调用方 `git add/commit` (打 tag 会触发
   Windows/macOS 桌面包 CI —— 小版本默认只 commit+push, 要出包再单独 tag)。
 - 归档照 `tools/archive_release_5_13_1.sh` 模式: 只放真实产物+改动文件+审计证据, 生成 MANIFEST(sha256)。
+- **别把 changelog 注释锚点当成版本号**: 版本检索会命中历史行(如 changelog 里的 `# v5.16.35:` 前缀、
+  注释里引用旧版的字符串)。"版本号混乱"的真身通常是**同一版本的三种记法不一致**(品牌 QLabel / 窗口标题 / git tag),
+  例如品牌位多写一个 `v` 变成 `vv5.x` ⇒ 先去 `grep -rn` 出**全部**出现处 + 列 tag, 再判谁是真的不一致, 别改历史注释。
+- **记法统一为单 `v`**(`v5.17.0`); `bump_version.py` 的匹配正则要能吃下老的双 `v`(`v{1,2}`)才能平滑升级存量。
+  bump 完必跑 `tools/ci/integrity_check.py`, 要看到"版本号/功能卡/页面字典/导航/类 五处一致"。
+- **界面上不许留第二处旧号**: 状态栏/关于框这类角落常有独立硬编码的陈旧版本(如仍写 `v1.0.4`/`v1.0.1`),
+  顺手一起对齐 —— 留一处就会出现"他截图问你这儿怎么还是旧版本"。
+- 版本号是**启动时读代码字面量**的 ⇒ 已跑的实例不会自更新: bump 完必须重启控制台, 验收看**窗口标题**里是否带新号
+  (不带 = 起的是旧码/旧 worktree)。
 
 ## 🧹 哨兵/任务清理判据 (2026-09-24: 18→9 条)
 删之前**逐条查终态证据**, 只删"目标已终态"的 (脚本留在 `~/.hermes/scripts/`, 需要时一行重建):

@@ -13,6 +13,21 @@ git log --oneline -6 | cat   # 找到 "release v5.11.2 / v5.11.3" 的提交
 ⇒ 任何"版本升了但没包"的报障, **第一步永远是 `git tag -l`**, 别先去翻 CI 日志。
 另外: 分支**领先 origin 的提交不会自己构建**, 必须 push 且 tag 必须推到远端。
 
+### A2. tag 打得又对又推上去了, 却**一个 run 都没起** (2026-10-01 实测, 最容易空等)
+`git tag -l` 有 tag、远端也有 tag, **不等于** CI 跑过 —— **GitHub 只执行"被推 ref 那一棵树里"的 workflow**。
+真源仓库 `.gitignore` 封了 `.github/` ⇒ tag 指向的那棵树里**没有 workflow 文件** ⇒ 静默零 run。
+```bash
+git ls-tree -r --name-only <tag> | grep .github/workflows   # 空 = 这个 tag 永远不会出包
+```
+佐证: 对 `ref=refs/tags/<tag>` 打 `workflow_dispatch` 会回 **422** "Workflow does not have 'workflow_dispatch' trigger"。
+修法: `git add -f .github/workflows/build-win-exe.yml`(只入库这一个, 别把上游那堆 lerobot CI 一起搬) → 提交 →
+```bash
+git tag -d <tag> && git tag <tag> <新提交> && git push -f origin <tag>   # 把 tag 移到带 workflow 的提交上
+```
+⇒ 两个远端各起一个 run 后, 再按 D 节核产物。
+⛔ **不要用 `workflow_dispatch` 试探 API 通不通**: 它**立刻起一次真构建**(按默认分支旧代码 + 产物挂到你随手写的 tag 名上)。
+要探测只碰**只读**端点。
+
 ## B. 版本号要改**多处** (以 VERSION.md 为准, 漏一处 = 版本面板/更新检查不一致)
 | 位置 | 字段 |
 |---|---|
