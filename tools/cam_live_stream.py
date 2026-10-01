@@ -3433,10 +3433,9 @@ class Handler(BaseHTTPRequestHandler):
             import glob as _g
             stf = os.path.expanduser("~/zmax_data/gs_map/status.json")
             if self.command == "POST":
-                try:
-                    _b = json.loads((self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}").decode("utf-8"))
-                except Exception:                                                     # noqa: BLE001
-                    _b = {}
+                # 🐛 2026-10-01: 原来这里又 self.rfile.read(...) 读一次 body —— 而通用前奏已经读过,
+                #   第二次读会**阻塞挂死**(页面点"开始建图"就没反应)。改成复用已读到的 body。
+                _b = body if isinstance(body, dict) else {}
                 if (_b.get("action") or "start") == "status":
                     pass                                    # 取状态 ⇒ 落到下面统一返回
                 else:

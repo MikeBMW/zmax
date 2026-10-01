@@ -55,6 +55,9 @@ def main() -> int:
     ap.add_argument("--init-points", type=int, default=100000)
     ap.add_argument("--smoke", type=int, default=0, help=">0 时只跑这么多步(冒烟测试)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--refine-stop", type=int, default=0,
+                    help="停止致密化的步数 (0=自动=min(steps, 15000)*0.5)。"
+                         "官方配方: 30k 步训练、15k 步停致密化; 跑满全程会过度致密化")
     a = ap.parse_args()
 
     torch.manual_seed(a.seed); np.random.seed(a.seed)
@@ -100,7 +103,9 @@ def main() -> int:
     # 初值点云: 相机前向 0.28m 之外的中位视点周围, 尺寸按相机跨度(无 COLMAP 点云时的常规替代)
     fwd = np.array([c["R"] @ np.array([0, 0, 1.0]) for c in cams])   # OpenCV 光学系 z 前
     look = centers + 0.28 * fwd
-    lc = look.mean(0) - center                                        # 归一化系里的场景中心
+    # 🔴 2026-10-01 修: 归一化系里 x' = S*(x - center) —— 初值点云中心也必须乘 S
+    #   (原 `look.mean(0) - center` 漏了 S ⇒ 初值偏 0.18m, 与 line 97 相机位姿的写法自相矛盾)
+    lc = S * (look.mean(0) - center)                                  # 归一化系里的场景中心
     sz = np.array([0.30, 0.30, 0.20]) * S
     N = a.init_points
     means = torch.tensor(np.random.uniform(-sz / 2, sz / 2, size=(N, 3)) + lc, dtype=torch.float32, device=dev)
@@ -119,11 +124,25 @@ def main() -> int:
         "sh0": torch.nn.Parameter(colors[:, :1, :].contiguous()),
         "shN": torch.nn.Parameter(colors[:, 1:, :].contiguous()),
     }).to(dev)
-    scene_scale = float(S * 0.5)
+    # 🔴 2026-10-01 修: scene_scale 是"归一化系里的场景尺度" (DefaultStrategy 用它归一化
+    #   grow/prune 阈值: scale/scene_scale)。本脚本的归一化是 x' = S*(x-center), S=1/spread
+    #   ⇒ 相机位姿落在 ±1 内, 场景尺度 ≈ 1。原来写 S*0.5≈2.13 把 grow 阈值放宽了一倍多。
+    scene_scale = 1.0
     lrs = {"means": 1.6e-4 * scene_scale, "scales": 5e-3, "quats": 1e-3,
            "opacities": 5e-2, "sh0": 2.5e-3, "shN": 2.5e-3 / 20}
     opts = {k: torch.optim.Adam([{"params": [params[k]], "lr": v}], betas=(0.9, 0.999)) for k, v in lrs.items()}
-    strategy = DefaultStrategy(verbose=True)
+    # 🔴 2026-10-01 修: 位置学习率必须**指数衰减**(官方配方 1.6e-4 → 1.6e-6, 走完全程)。
+    #   原实现是恒定 lr ⇒ 后期致密化叠加高 lr 会发散: 实测 15000 步后 loss 从 0.16 回升到 0.29、
+    #   高斯涨到 140 万、留出 PSNR 反而回落到 13dB(低于"填常数"平凡基线)。
+    _st_total = a.smoke or a.steps
+    means_lr0 = lrs["means"]
+    means_lr_min = means_lr0 * 0.01
+
+    def means_lr_at(step):
+        if step >= _st_total:
+            return means_lr_min
+        return float(np.exp(np.log(means_lr0) + (np.log(means_lr_min) - np.log(means_lr0)) * (step / _st_total)))
+    strategy = DefaultStrategy(verbose=True, refine_stop_iter=(a.refine_stop or int(min(_st_total, 15000) * 0.5)))
     strat_state = strategy.initialize_state(scene_scale=scene_scale)
 
     # 图像: 常驻内存(uint8), 每步搬一张上卡
@@ -134,8 +153,14 @@ def main() -> int:
     def render(camsub, sh_flag=True):
         vm = viewmat_of(camsub).unsqueeze(0)
         col = torch.cat([params["sh0"], params["shN"]], dim=1)
+        # 🔴 2026-10-01 修: gsplat.rasterization 要**线性尺度**, 而 params["scales"] 是 log 域
+        #   (初值 line 107 用 torch.log, 导出 line 181 用 .exp() —— 只有这里漏了 exp)。
+        #   漏 exp 的后果: 尺度被当线性读 = 0.043(而它本意是 4cm/场景 1 单位), 基元巨大 ⇒ 整帧被
+        #   盖满成恒色, 梯度饱和, 参数冻死 (实测 run3: 15000 步 PSNR 12.88→12.87 全平,
+        #   留出渲染唯一色=1, split/duplicate 全 0)。
         img, alpha, info = gsplat.rasterization(
-            params["means"], params["quats"], params["scales"], torch.sigmoid(params["opacities"]),
+            params["means"], params["quats"], torch.exp(params["scales"]),
+            torch.sigmoid(params["opacities"]),
             col, viewmats=vm, Ks=K, width=W, height=H, sh_degree=(a.sh_degree if sh_flag else None),
             # 🔧 2026-10-01: 不传 backgrounds —— gsplat 要求 (B,H,W,C), 传错会
             #   "assert backgrounds.shape == image_dims + (channels,)"。不传=按 alpha 在黑底合成,
@@ -150,12 +175,22 @@ def main() -> int:
             im = load(c).permute(2, 0, 1)
             out, _ = render(c)
             ps.append(psnr(out, im))
+        # 诊断用: 同一套权重在**训练视角**上的 PSNR —— 分开"没拟合上"与"过拟合/位姿不一致"
+        trs = []
+        for c in tr[:min(3, len(tr))]:
+            im = load(c).permute(2, 0, 1)
+            out, _ = render(c)
+            trs.append(psnr(out, im))
+        _last_train_psnr[0] = float(np.mean(trs)) if trs else 0.0
         return float(np.mean(ps)) if ps else 0.0
+
+    _last_train_psnr = [0.0]
 
     steps = a.smoke or a.steps
     os.makedirs(os.path.join(a.out, "renders"), exist_ok=True)
     t0 = time.time(); log = []
     for step in range(1, steps + 1):
+        opts["means"].param_groups[0]["lr"] = means_lr_at(step)   # 位置 lr 指数衰减(官方配方)
         c = tr[np.random.randint(len(tr))]
         gt = load(c).permute(2, 0, 1)
         out, info = render(c)
@@ -173,14 +208,19 @@ def main() -> int:
                 step, steps, float(loss), float(l1), params["means"].shape[0], time.time() - t0)
             print(msg, flush=True); log.append(msg)
         if a.eval_every and (step % a.eval_every == 0 or step == steps):
-            print("   ↳ 留出视角 PSNR = %.2f dB" % evaluate(), flush=True)
+            ev = evaluate()
+            print("   ↳ 留出视角 PSNR = %.2f dB (训练视角 %.2f dB)" % (ev, _last_train_psnr[0]), flush=True)
 
     # 导出: 反归一化回真尺度(base_link, 米)
+    # ⚠️ 2026-10-01 修(口径): .ply/.splat 的 scales 与 opacities 按**标准约定**存 **log 域 / logit 域**
+    #   (与 gsplat 官方 simple_trainer 一致: 它 rasterization 用 exp/sigmoid, export 传原始参数;
+    #    antimatter15 的 splat 查看器与多数 .ply 读取器都按 exp/logit 反解)。
+    #   原实现传的是已激活值(exp/sigmoid 后) ⇒ 标准查看器读出来尺度/透明度全错 ⇒ 资产对外不可用。
     with torch.no_grad():
         m = (params["means"] / S) + torch.tensor(center, dtype=torch.float32, device=dev)
-        sc = params["scales"].exp() / S
+        sc = params["scales"] - math.log(S)                    # 真尺度 · 保持 log 域
         q = F.normalize(params["quats"], dim=-1)
-        op = torch.sigmoid(params["opacities"])
+        op = params["opacities"].detach()                      # 保持 logit 域
         sh0 = params["sh0"].detach(); shN = params["shN"].detach()
     ply = os.path.join(a.out, "gs.ply"); splat = os.path.join(a.out, "gs.splat")
     gsplat.export_splats(means=m, scales=sc, quats=q, opacities=op, sh0=sh0, shN=shN, format="ply", save_to=ply)
@@ -193,11 +233,28 @@ def main() -> int:
             os.path.join(a.out, "renders", "holdout_%02d.png" % i))
         Image.open(os.path.join(a.data, "images", c["file"])).save(
             os.path.join(a.out, "renders", "holdout_%02d_gt.png" % i))
+    # 🔴 诊断(2026-10-01): 训练视角也存档, 并与训练循环**同口径**算一次 L1/PSNR。
+    #   目的: 分开"没拟合上"和"渲染/存档/评估口径不一致"(实测出现过 L1=8/255 但评估 PSNR 只有 13dB 的矛盾)
+    for i, c in enumerate(tr[:3]):
+        with torch.no_grad():
+            out, _ = render(c)
+        gt_t = load(c).permute(2, 0, 1)
+        l1_t = float((out - gt_t).abs().mean())
+        print("   ↳ 训练视角 %d: L1 %.4f (=%.1f/255) · PSNR %.2f dB" % (i, l1_t, l1_t * 255.0, psnr(out, gt_t)))
+        Image.fromarray((out.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)).save(
+            os.path.join(a.out, "renders", "train_%02d.png" % i))
+        Image.open(os.path.join(a.data, "images", c["file"])).save(
+            os.path.join(a.out, "renders", "train_%02d_gt.png" % i))
+    _ev_final = evaluate()
     rep = {"data": a.data, "steps": steps, "sh_degree": a.sh_degree, "n_gaussians": int(params["means"].shape[0]),
-           "psnr_holdout_db": evaluate(), "seconds": time.time() - t0, "normalize": {"center": list(center), "S": S},
+           "psnr_holdout_db": _ev_final, "psnr_train_db": _last_train_psnr[0],
+           "recipe": {"refine_stop_iter": int(strategy.refine_stop_iter), "refine_every": int(strategy.refine_every),
+                      "reset_every": int(strategy.reset_every), "scene_scale": scene_scale, "init_points": int(N)},
+           "seconds": time.time() - t0, "normalize": {"center": list(center), "S": S},
            "ply": ply, "splat": splat, "log_tail": log[-6:], "device": dev}
     json.dump(rep, open(os.path.join(a.out, "train_report.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("✅ 训练完成 · 高斯 %d · 留出 PSNR %.2f dB · %.1fs" % (rep["n_gaussians"], rep["psnr_holdout_db"], rep["seconds"]))
+    print("✅ 训练完成 · 高斯 %d · 留出 PSNR %.2f dB · 训练视角 %.2f dB · %.1fs"
+          % (rep["n_gaussians"], rep["psnr_holdout_db"], rep["psnr_train_db"], rep["seconds"]))
     print("   ply=%s\n   splat=%s" % (ply, splat))
     return 0
 

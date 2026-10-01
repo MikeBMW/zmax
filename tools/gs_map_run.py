@@ -1,16 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""gs_map_run.py — 自动跑点建图 (老倪 2026-10-01):
-「机械臂自动运行 空间的每个点, 可以顺序1到7点, 同时自主建图3DGS功能」。
+"""gs_map_run.py (v2) — **自动建图完整闭环**: L5 指导选点 → 移动 → 采集 → 建数据集 → 训练 → 质检
 
-- 跑点: POST /ctl/move {skill: L2.goto_spaceN, arm:1} —— 与号位按钮**同一条**授权+收口+执行器+安全裁决链, 不新开通道
-- 到位判据: rokae_sdk/tcp_out/latest.json 与空间点真值 <3mm 且连续 1.0s 稳定(不靠超时猜)
-- 采集: tools/gs_capture.py (与页面同源真值位姿)  建图: gs_dataset.py + gs_train.py (真值位姿, 不用 COLMAP)
-- 状态写 ~/zmax_data/gs_map/status.json (页面左上角建图窗口轮询 /ctl/gs_map)
-- 任何一步被拒/失败 ⇒ **如实写状态并停**, 绝不假装成功 (老倪: 链路须真实执行+可验证证据)
+老倪(2026-10-01): 「机械臂自动运行空间的每个点, 顺序 1 到 7 点, 同时自主建图 3DGS」
+               + 「建图是 L5 功能运行后, deepseek 给出环境理解, 指导 3DGS 建图,
+                  一边移动机器人, 一边自己学环境, 一边建立场景视图」
 
-环境变量: GS_DWELL_S=每点采集秒数(默认6) · GS_STEPS=训练步数(默认15000)
+链路(每一环都是既有真链路, 不新开通道):
+  选点  tools/gs_l5_select.py   —— L5(DeepSeek 视觉)看当前画面 → 环境理解 + 下一步方向
+                                  ⇒ 软件把"画面方向"翻成 base 系方向, 在**已示教可达点**里
+                                    挑最贴合该方向、且最没拍过的点(理由与打分写进日志/状态)
+  移动  POST 127.0.0.1:8793/ctl/move {skill:"L2.goto_spaceN"} —— 与页面按钮**同一条**
+        授权+收口+执行器+安全裁决链; 到位判据 = TCP 真值 <3mm 且连续 1s 稳定(不靠超时猜)
+  采集  tools/gs_capture.py     —— 臂上 D405 原始 JPEG + TCP 真值位姿逐帧配对(只读)
+  建库  tools/gs_dataset.py     —— 按**图像内容 md5 去重** + 位姿取该图首现时刻(关键, 见下)
+  训练  tools/run_gs_train.sh   —— 带 CUDA shim 环境(不然 gsplat 扩展载不到)
+  质检  tools/gs_quality.py     —— 数据集健康 + 与"平凡基线"比; 不过门就停, 不把废资产当成果
+
+⚠️ 实测教训(2026-10-01, 必须写进调用方认知):
+  · 采集端按 8Hz 取图, 而相机有效出帧率低得多 ⇒ 同一张图会被连取十几次, 每次记一个**不同**
+    TCP 位姿。不去重就是"同图配多位姿"的矛盾监督: 训练视角都拟合不上(实测训练视角 PSNR 16dB、
+    留出 11~13dB, **低于"填常数"平凡基线**), 但日志 loss 看着还在降。⇒ 建库必须去重, 且用
+    gs_quality 判定"是否真的建出东西"再来当真。
+  · 机械臂大部分时间可能是**静止**的(实测中位速度 0mm/s) ⇒ 扫场若蹲点不动, 视点/视差都不够,
+    3DGS 出不来。⇒ 本闭环按"多点移动 + 每点采集"跑, 并在质检里看"真正不同视点"数。
+
+模式:
+  --rounds N --targets l5      L5 指导选点(每轮重新看画面, 边移动边学)
+  --rounds N --targets spaces  固定顺序 space1..N(兼容旧行为, 也是 L5 不可用时的兜底)
+  --order fixed|novelty        spaces 模式下的顺序: 固定序 / 按"最没拍过"优先
+  --dry-run                    不移动: 用当前位姿当"到位", 走完 采集→建库→质检(验证链路)
+  --from-recording <会话目录>   用已有录像重跑 建库→质检(→训练), 完全不动臂
+状态文件 ~/zmax_data/gs_map/status.json(页面 /ctl/gs_map 轮询), 结束附 质量门 结果与资产路径。
 """
+from __future__ import annotations
+
+import argparse
 import json
 import os
 import subprocess
@@ -22,28 +47,44 @@ REPO = "/home/ubuntu/zmax"
 PY = "/home/ubuntu/gs-venv/bin/python"
 GS = os.path.expanduser("~/zmax_data/gs_assets")
 ROOT = os.path.expanduser("~/zmax_data/gs_map")
-SESS = os.path.join(GS, "map_run_%s" % time.strftime("%Y%m%d_%H%M%S"))
 STATUS = os.path.join(ROOT, "status.json")
 POSE = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
 SP = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
-DWELL_S = float(os.environ.get("GS_DWELL_S", "6"))
-TRAIN_STEPS = int(os.environ.get("GS_STEPS", "15000"))
+SKILLS = os.path.join(REPO, "data/skills/l2_atomic/ctl_abs_skills.json")
 
 
-def w(st, line):
+def now():
+    return time.strftime("%H:%M:%S")
+
+
+def w(st, line=""):
     os.makedirs(ROOT, exist_ok=True)
     st["ts"] = time.strftime("%F %T")
-    with open(STATUS + ".tmp", "w", encoding="utf-8") as f:
+    if line:
+        st.setdefault("log", []).append("[%s] %s" % (now(), line))
+        st["log"] = st["log"][-60:]
+        print("[%s] %s" % (now(), line), flush=True)
+    tmp = STATUS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f, ensure_ascii=False, indent=1)
-    os.replace(STATUS + ".tmp", STATUS)
-    print("[%s] %s" % (time.strftime("%H:%M:%S"), line), flush=True)
+    os.replace(tmp, STATUS)
+
+
+def read_json(p, timeout=None):
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def pose():
+    d = read_json(POSE)
+    if not d:
+        return None
     try:
-        d = json.load(open(POSE, encoding="utf-8"))
         return [float(d["x"]), float(d["y"]), float(d["z"])]
-    except Exception:                                                       # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -51,98 +92,324 @@ def dist(a, b):
     return sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
 
 
-def move(skill, speed=8):
-    req = urllib.request.Request(
-        "http://127.0.0.1:8793/ctl/move", method="POST",
-        data=json.dumps({"skill": skill, "arm": 1, "speed": speed, "by": "自动跑点建图"}).encode(),
-        headers={"Content-Type": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=30))
+def api_get(path, timeout=8):
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8793" + path, timeout=timeout) as r:
+            return json.loads(r.read().decode() or "{}")
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": str(e)[:120]}
 
 
-def wait_arrive(target, timeout=240):
+def api_post(path, body, timeout=30):
+    req = urllib.request.Request("http://127.0.0.1:8793" + path, method="POST",
+                                 data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode() or "{}")
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "msg": str(e)[:150]}
+
+
+def armed():
+    """真动授权真源(8793 /ctl/status)。读不到 ⇒ 如实当"未授权", 不猜。"""
+    s = api_get("/ctl/status")
+    if isinstance(s, dict):
+        for k in ("motion_armed", "armed"):
+            if k in s:
+                return bool(s[k]), s
+        for k in ("auth", "ctl"):
+            if isinstance(s.get(k), dict) and "armed" in s[k]:
+                return bool(s[k]["armed"]), s
+    return None, s
+
+
+# ----------------------------------------------------------------- 目标点目录
+
+def catalog():
+    """可执行目标点目录: {skill: {pos, quat, desc}} —— 来自空间点真源 + 绝对运动白名单"""
+    pts = read_json(SP) or {}
+    out = {}
+    for nm, v in (pts.get("points") or {}).items():
+        if isinstance(v, dict) and v.get("pos"):
+            out["L2.goto_" + nm] = {"pos": [float(x) for x in v["pos"]],
+                                    "quat": v.get("quat"), "desc": v.get("desc", "")}
+    sk = (read_json(SKILLS) or {}).get("skills") or {}
+    for nm in sk:
+        if nm in out or not nm.startswith("L2."):
+            continue
+        out.setdefault(nm, {"pos": None, "quat": None, "desc": sk[nm]})
+    return out
+
+
+def pick_by_direction(cat, cur, visited, dirs, min_align=0.30):
+    """L5 给方向 → 在可达点里挑最贴合方向 + 最没拍过的点。
+    dirs: L5 的方向向量列表(base 系, 已按优先级排序)。返回 (skill, info) 或 (None, 理由)。"""
+    best, best_s, best_info = None, -1e9, {}
+    for skill, meta in cat.items():
+        p = meta.get("pos")
+        if not p or skill in visited:
+            continue
+        v = [p[i] - cur[i] for i in range(3)]
+        n = sum(x * x for x in v) ** 0.5
+        if n < 1e-6:
+            continue
+        v = [x / n for x in v]
+        align = max(float(sum(v[i] * d[i] for i in range(3))) for d in dirs) if dirs else 0.0
+        if align < min_align:
+            continue
+        nov = min([dist(p, q) for q in visited.values()], default=9.9)
+        s = 1.5 * align + 0.5 * min(nov, 1.0)
+        if s > best_s:
+            best, best_s = skill, s
+            best_info = {"align": round(align, 3), "novelty_m": round(nov, 3), "score": round(s, 3),
+                         "pos": [round(x, 4) for x in p]}
+    return (best, best_info) if best else (None, {"reason": "没有可达点与该方向对齐(align<%.2f)" % min_align})
+
+
+def pick_novelty(cat, visited):
+    """覆盖度兜底: 挑离已访问视点最远的可达点"""
+    best, bd = None, -1
+    for skill, meta in cat.items():
+        p = meta.get("pos")
+        if not p or skill in visited:
+            continue
+        d = min([dist(p, q) for q in visited.values()], default=9.9)
+        if d > bd:
+            best, bd = skill, d
+    return best, {"novelty_m": round(bd, 3), "reason": "覆盖度兜底: 该点离已访问视点最远"}
+
+
+# ----------------------------------------------------------------- 各阶段
+
+def run(cmd, timeout=None, env=None):
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=e)
+
+
+def l5_select(sess_or_ds, st, k=3):
+    op = os.path.join(sess_or_ds, "l5_select.json")
+    p = run([PY, os.path.join(REPO, "tools/gs_l5_select.py"), "--session", sess_or_ds,
+             "--k", str(k), "--out", op], timeout=420)
+    d = read_json(op)
+    if not d:
+        w(st, "⚠️ L5 选点没出结果: %s" % ((p.stderr or p.stdout or "")[-140:]))
+    return d or {}, op
+
+
+def move_and_wait(skill, tgt, timeout=240):
+    j = api_post("/ctl/move", {"skill": skill, "arm": 1, "speed": 8, "by": "自动建图(L5选点)"})
+    if not j.get("ok"):
+        return False, 0.0, "下发被拒: %s" % str(j.get("msg") or j.get("err") or j)[:130]
     t0 = time.time()
     stable = None
     while time.time() - t0 < timeout:
         p = pose()
-        if p and dist(p, target) < 0.003:
+        if p and tgt and dist(p, tgt) < 0.003:
             stable = stable or time.time()
             if time.time() - stable >= 1.0:
-                return True, dist(p, target)
+                return True, dist(p, tgt), ""
         else:
             stable = None
         time.sleep(0.2)
     p = pose()
-    return False, (dist(p, target) if p else -1.0)
+    return False, (dist(p, tgt) if p else -1.0), "未到位(超时 %ds)" % timeout
 
 
-def run(cmd, timeout=None):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+def capture(sess, secs):
+    return run([PY, os.path.join(REPO, "tools/gs_capture.py"), "--out", sess, "--secs", str(secs)],
+               timeout=secs + 180)
 
 
 def main():
-    pts = json.load(open(SP, encoding="utf-8"))["points"]
-    names = ["space%d" % i for i in range(1, 8)]
-    st = {"running": True, "step": "start", "session": SESS}
-    missing = [n for n in names if n not in pts]
-    if missing:
-        st.update(running=False, status_line="空间点没记全: %s" % missing)
-        w(st, "⛔ 空间点没记全: %s" % missing)
-        return 1
-    # 🔧 2026-10-01: micromamba 那套 CUDA env 布局是混的(nvcc 私有头 legay + 12.4 API 头 targets,
-    #    且 legacy 里 cuda_fp16.h 是 13.3 版本 ⇒ gsplat JIT 编译失败)。改用合并好的 shim:
-    #    /home/ubuntu/cuda-shim = nvcc 全套工具 + 12.4 API 头(targets) + legacy 私有头(crt/fatbinary/nv)。
-    #    实证: 冒烟 .cu(fp16 + nv/target + runtime) 真编译真跑通过。
-    os.environ.setdefault("CUDA_HOME", "/home/ubuntu/cuda-shim")
-    os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "8.9")
-    os.environ["PATH"] = "/home/ubuntu/cuda-shim/bin:/home/ubuntu/gs-venv/bin:" + os.environ.get("PATH", "")
-    os.environ.setdefault("CC", "/home/ubuntu/cuda-shim/bin/gcc")
-    os.environ.setdefault("CXX", "/home/ubuntu/cuda-shim/bin/g++")
-    os.environ.setdefault("CUDAHOSTCXX", "/home/ubuntu/cuda-shim/bin/g++")
-    w(st, "开始: 顺序跑 7 个空间点, 每点采 %.0fs, 训练 %d 步" % (DWELL_S, TRAIN_STEPS))
-    for i, n in enumerate(names, 1):
-        tgt = [float(v) for v in pts[n]["pos"]]
-        st.update(step="move", status_line="(%d/7) 去 %s …" % (i, n))
-        w(st, "→ %s" % n)
-        try:
-            j = move("L2.goto_" + n)
-        except Exception as e:                                              # noqa: BLE001
-            st.update(running=False, status_line="下发异常: %s" % str(e)[:90])
-            w(st, "⛔ 下发异常: %s" % e)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rounds", type=int, default=7)
+    ap.add_argument("--targets", choices=["l5", "spaces"], default="l5")
+    ap.add_argument("--order", choices=["fixed", "novelty"], default="fixed")
+    ap.add_argument("--dwell", type=float, default=float(os.environ.get("GS_DWELL_S", "8")))
+    ap.add_argument("--steps", type=int, default=int(os.environ.get("GS_STEPS", "30000")))
+    ap.add_argument("--train", action="store_true", default=True)
+    ap.add_argument("--no-train", dest="train", action="store_false")
+    ap.add_argument("--dry-run", action="store_true", help="不移动(用当前位姿当到位), 验证链路")
+    ap.add_argument("--from-recording", default="", help="用已有会话重跑 建库→质检(不动臂)")
+    ap.add_argument("--tag", default="")
+    args = ap.parse_args()
+
+    tag = args.tag or time.strftime("%Y%m%d_%H%M%S")
+    st = {"running": True, "step": "start", "session": "", "mode":
+          ("recording" if args.from_recording else ("dry-run" if args.dry_run else "live")),
+          "targets": args.targets, "rounds": args.rounds, "log": []}
+
+    # ---------- 录制重跑模式: 只建库→质检(→训练) ----------
+    if args.from_recording:
+        sess = os.path.abspath(os.path.expanduser(args.from_recording))
+        st["session"] = sess
+        w(st, "录制重跑: %s" % sess)
+        return finish(sess, sess + "_ds", st, args, train_only_ds=True)
+
+    ds = os.path.join(GS, "map_%s" % tag)
+    sess = os.path.join(GS, "map_sess_%s" % tag)
+    st["session"] = sess
+    os.makedirs(sess, exist_ok=True)
+
+    # ---------- 真动前置: 授权真源 ----------
+    if not args.dry_run:
+        a, raw = armed()
+        if a is None:
+            st.update(running=False, status_line="读不到真动授权(8793 /ctl/status) ⇒ 不动作, 如实停")
+            w(st, "⛔ " + st["status_line"])
             return 1
-        if not j.get("ok"):
-            msg = str(j.get("msg") or "")[:130]
-            st.update(running=False, status_line="%s 被拒: %s" % (n, msg))
-            w(st, "⛔ %s 被拒: %s" % (n, msg))
+        if not a:
+            st.update(running=False, status_line="当前**未授权**真动(motion_armed=false) ⇒ 不发任何动作")
+            w(st, "⛔ " + st["status_line"])
             return 1
-        ok, d = wait_arrive(tgt)
+        w(st, "真动授权已确认(motion_armed=true)")
+
+    cat = catalog()
+    w(st, "可达目标点 %d 个(空间点真源 + 绝对运动白名单) · 模式=%s · %d 轮 × 采集 %.0fs"
+      % (len(cat), args.targets, args.rounds, args.dwell))
+
+    visited = {}
+    for i in range(1, args.rounds + 1):
+        st.update(step="select", status_line="(%d/%d) 选点…" % (i, args.rounds))
+        w(st)
+        skill = None
+        why = ""
+        if args.targets == "l5":
+            sel, sp = l5_select(sess, st, 3)
+            dirs = []
+            # L5 的"画面方向"在 gs_l5_select 里已翻成 base 系候选点 ⇒ 用候选点方向当方向
+            for c in (sel.get("candidates") or []):
+                p = c.get("pos")
+                if not p:
+                    continue
+                v = [p[k] - (pose() or p)[k] for k in range(3)]
+                n = sum(x * x for x in v) ** 0.5
+                if n > 1e-6:
+                    dirs.append([x / n for x in v])
+            if dirs:
+                skill, info = pick_by_direction(cat, pose() or [0, 0, 0], visited, dirs)
+                why = "L5 方向匹配 %s" % json.dumps(info, ensure_ascii=False)
+            else:
+                skill, info = pick_novelty(cat, visited)
+                why = "L5 无有效方向 ⇒ %s" % json.dumps(info, ensure_ascii=False)
+            w(st, "选点: %s (%s)" % (skill or "无", why))
+        if not skill and args.targets == "spaces":
+            order = sorted([k for k in cat if k.startswith("L2.goto_space")])
+            if args.order == "novelty":
+                skill, info = pick_novelty({k: cat[k] for k in order}, visited)
+                why = json.dumps(info, ensure_ascii=False)
+            else:
+                for k in sorted([k for k in cat if k.startswith("L2.goto_space")]):
+                    if k not in visited and cat[k].get("pos"):
+                        skill, why = k, "固定序"
+                        break
+                if not skill:
+                    why = "固定序里没有「有已知位姿且未访问」的点"
+        if not skill:
+            skill, info = pick_novelty(cat, visited)
+            why = "兜底: %s" % json.dumps(info, ensure_ascii=False)
+        if not skill:
+            st.update(running=False, status_line="没有可去的目标点(都访问过了?)")
+            w(st, "⛔ " + st["status_line"])
+            break
+        tgt = cat[skill].get("pos")
+
+        st.update(step="move", status_line="(%d/%d) 去 %s" % (i, args.rounds, skill))
+        if args.dry_run:
+            p = pose()
+            ok, dd, err = (p is not None), 0.0, ("dry-run: 不移动" if p else "读不到 TCP 位姿")
+            w(st, "  (dry-run) 不移动, 用当前位姿 %s" % (p,))
+        else:
+            ok, dd, err = move_and_wait(skill, tgt)
         if not ok:
-            st.update(running=False, status_line="%s 未到位(偏差 %.1fmm)" % (n, d * 1000))
-            w(st, "⛔ %s 未到位 %.1fmm" % (n, d * 1000))
+            st.update(running=False, status_line="%s 未成功: %s" % (skill, err))
+            w(st, "⛔ " + st["status_line"])
             return 1
-        w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (n, d * 1000))
-        st.update(step="capture", status_line="(%d/7) %s 采集中 %.0fs" % (i, n, DWELL_S))
-        p = run([PY, os.path.join(REPO, "tools/gs_capture.py"), "--out", SESS, "--secs", str(DWELL_S)],
-                timeout=DWELL_S + 120)
+        w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (skill, dd * 1000))
+        visited[skill] = pose() or tgt or [0, 0, 0]
+
+        st.update(step="capture", status_line="(%d/%d) 采集 %.0fs…" % (i, args.rounds, args.dwell))
+        p = capture(sess, args.dwell)
         if p.returncode != 0:
-            st.update(running=False, status_line="采集失败: %s" % ((p.stderr or p.stdout or "")[-110:]))
-            w(st, "⛔ 采集失败")
+            st.update(running=False, status_line="采集失败: %s" % ((p.stderr or p.stdout or "")[-120:]))
+            w(st, "⛔ " + st["status_line"])
             return 1
-    ds = SESS + "_ds"
-    for step, cmd in (("dataset", [PY, os.path.join(REPO, "tools/gs_dataset.py"), "--session", SESS, "--out", ds]),
-                      ("train", [PY, os.path.join(REPO, "tools/gs_train.py"), "--data", ds,
-                                 "--out", SESS + "_model", "--steps", str(TRAIN_STEPS)])):
-        st.update(step=step, status_line="%s 运行中(日志 run.log)…" % step)
-        w(st, "跑 %s" % step)
-        p = run(cmd)
-        if p.returncode != 0:
-            tail = ((p.stderr or "") + (p.stdout or ""))[-300:].replace("\n", " ")
-            st.update(running=False, status_line="%s 失败: %s" % (step, tail[-130:]))
-            w(st, "⛔ %s 失败: %s" % (step, tail[-200:]))
-            return 1
-    st.update(running=False, step="done", status_line="✅ 建图完成: %s" % os.path.basename(SESS + "_model"),
-              image_url="/gs_render.png?t=__T__")
-    w(st, "✅ 全部完成")
-    return 0
+        w(st, "  采集中…")
+
+    return finish(sess, ds, st, args)
+
+
+def finish(sess, ds, st, args, train_only_ds=False):
+    """建数据集(去重) → 质检门 → (过门才)训练 → 质检门 → 状态"""
+    st.update(step="dataset", status_line="建数据集(按图像内容去重)…")
+    w(st)
+    p = run([PY, os.path.join(REPO, "tools/gs_dataset.py"), "--session", sess, "--out", ds,
+             "--max-frames", "400"], timeout=1800)
+    if p.returncode != 0:
+        st.update(running=False, status_line="建数据集失败: %s" % ((p.stderr or p.stdout or "")[-160:]))
+        w(st, "⛔ " + st["status_line"])
+        return 1
+    w(st, "  数据集 → %s" % ds)
+
+    st.update(step="quality_data", status_line="数据集质检(门)…")
+    w(st)
+    q1 = os.path.join(ds, "quality_data.json")
+    p = run([PY, os.path.join(REPO, "tools/gs_quality.py"), "--dataset", ds, "--session", sess,
+             "--json", q1], timeout=1800)
+    rep = read_json(q1) or {}
+    v = rep.get("verdict", "?")
+    w(st, "  数据集判定: %s" % v.upper())
+    if v == "fail":
+        st.update(running=False, step="stopped", status_line="数据集没过门 ⇒ 不训练(避免白烧 GPU)",
+                  verdict=v, dataset=ds, quality=q1)
+        w(st, "⛔ 数据集没过门, 停")
+        return 1
+
+    if not args.train:
+        st.update(running=False, step="done_data", status_line="数据集就绪(未训练): %s" % os.path.basename(ds),
+                  verdict=v, dataset=ds, quality=q1)
+        w(st, "完成(未训练)")
+        return 0
+
+    model = sess + "_model"
+    st.update(step="train", status_line="训练 3DGS %d 步(日志 train.log)…" % args.steps)
+    w(st)
+    tl = os.path.join(model, "train.log")
+    os.makedirs(model, exist_ok=True)
+    with open(tl, "w", encoding="utf-8") as lf:
+        p = subprocess.run(["bash", os.path.join(REPO, "tools/run_gs_train.sh"), "--data", ds,
+                            "--out", model, "--steps", str(args.steps), "--eval-every",
+                            str(max(1500, args.steps // 10)), "--holdout", "20",
+                            "--refine-stop", str(int(min(args.steps, 30000) * 0.4))],
+                           stdout=lf, stderr=subprocess.STDOUT, text=True)
+    if p.returncode != 0:
+        st.update(running=False, status_line="训练失败, 见 %s" % tl)
+        w(st, "⛔ " + st["status_line"])
+        return 1
+
+    st.update(step="quality_model", status_line="训练产物质检(门)…")
+    w(st)
+    q2 = os.path.join(model, "quality_model.json")
+    run([PY, os.path.join(REPO, "tools/gs_quality.py"), "--dataset", ds, "--session", sess,
+         "--model", model, "--json", q2], timeout=1800)
+    rep2 = read_json(q2) or {}
+    v2 = rep2.get("verdict", "?")
+    m = rep2.get("model", {})
+    good = (v2 != "fail")
+    st.update(running=False, step="done", verdict=v2,
+              status_line=("✅ 建图完成(过门): %s" % os.path.basename(model)) if good else
+                           ("⚠️ 训练完成但**没过门**(不作成果): 留出 PSNR %s dB vs 平凡基线 %s dB"
+                            % (m.get("psnr_holdout_db"), m.get("trivial_baseline_db"))),
+              model=model, dataset=ds, quality=q2,
+              gs={"ply": os.path.join(model, "gs.ply"), "splat": os.path.join(model, "gs.splat")},
+              metrics={"psnr_holdout_db": m.get("psnr_holdout_db"), "psnr_train_db": m.get("psnr_train_db"),
+                       "trivial_baseline_db": m.get("trivial_baseline_db"),
+                       "n_gaussians": m.get("n_gaussians")})
+    w(st)
+    return 0 if good else 1
 
 
 if __name__ == "__main__":

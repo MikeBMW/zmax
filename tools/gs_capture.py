@@ -10,7 +10,7 @@
 
 用法: gs_capture.py --out ~/zmax_data/gs_scan/<会话名> [--hz 8] [--secs 0]
 """
-import argparse, json, os, shutil, sys, time, urllib.request
+import argparse, hashlib, json, os, shutil, sys, time, urllib.request
 
 ARM_URL = "http://192.168.23.66:8792/frame.jpg"
 POSE_F = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
@@ -69,6 +69,11 @@ def main():
     seq = 0
     n_ok = 0
     n_err = 0
+    n_dup = 0      # 内容与上一帧相同(不落盘)
+    n_uniq = 0     # 真正落盘的唯一画面数
+    last_md5 = None
+    last_file = None
+    last_seq = -1
     kb = 0.0
     poses = []
     print("[gs_capture] 起采 → %s (%.1fHz, 源 %s)" % (out, args.hz, args.url), flush=True)
@@ -92,10 +97,23 @@ def main():
                    "pose_before": pose_before, "pose_after": pose_after,
                    "pose_t_gap_ms": round((tc - tb) * 1000, 1)}
             if img:
-                fn = "frame_%06d.jpg" % seq
-                with open(os.path.join(fdir, fn), "wb") as f:
-                    f.write(img)
-                rec.update({"file": fn, "bytes": len(img)})
+                md5 = hashlib.md5(img).hexdigest()
+                # 🔴 2026-10-01: **内容没变就不重复落盘**(实测坑) —— 取图端点有效帧率远低于取图率时,
+                #   同一张图会被连取十几次, 每次还配一个不同的 TCP 位姿 ⇒ 数据集里"同图配多位姿"=
+                #   矛盾监督(训练视角都拟合不上, 留出 PSNR 低于"填常数"平凡基线)。原来每取必存,
+                #   118586 次取图存下 5,830 张唯一画面(77.7% 是废帧)。现在: 内容变才写文件,
+                #   重复的只在 frames.jsonl 里记一行(`dup=true` 指向那张图), 时间/位姿序列不丢。
+                if md5 == last_md5 and last_file:
+                    rec.update({"file": last_file, "bytes": len(img), "md5": md5,
+                                "dup": True, "dup_of": last_seq})
+                    n_dup += 1
+                else:
+                    fn = "frame_%06d.jpg" % seq
+                    with open(os.path.join(fdir, fn), "wb") as f:
+                        f.write(img)
+                    rec.update({"file": fn, "bytes": len(img), "md5": md5, "dup": False})
+                    last_md5, last_file, last_seq = md5, fn, seq
+                    n_uniq += 1
                 n_ok += 1
                 kb += len(img) / 1024.0
             else:
@@ -110,8 +128,8 @@ def main():
             seq += 1
             if seq % 40 == 0:
                 el = time.monotonic() - t_start
-                print("[gs_capture] %d 帧 · ok=%d err=%d · %.1fs · %.2f帧/s · 均%.0fKB"
-                      % (seq, n_ok, n_err, el, n_ok / max(el, 0.1), kb / max(n_ok, 1)), flush=True)
+                print("[gs_capture] %d 次取图 · 唯一画面 %d · 重复 %d · ok=%d err=%d · %.1fs · %.2f取图/s · 均%.0fKB"
+                      % (seq, n_uniq, n_dup, n_ok, n_err, el, n_ok / max(el, 0.1), kb / max(n_ok, 1)), flush=True)
             sl = period - (time.monotonic() - t_slot)
             if sl > 0:
                 time.sleep(sl)
@@ -129,6 +147,9 @@ def main():
                     if isinstance(xyz, (list, tuple)) and len(xyz) >= 3:
                         P.append([float(v) for v in xyz[:3]])
             meta = {"frames": seq, "ok": n_ok, "err": n_err,
+                    "unique_images": n_uniq, "dup_fetches": n_dup,
+                    "unique_ratio": round(n_uniq / max(1, n_ok), 4),
+                    "cam_eff_fps": round(n_uniq / max(1e-6, time.monotonic() - t_start), 3),
                     "elapsed_s": round(time.monotonic() - t_start, 1),
                     "avg_kb": round(kb / max(n_ok, 1), 1), "ended": time.strftime("%Y-%m-%d %H:%M:%S")}
             if P:

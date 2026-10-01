@@ -41,7 +41,47 @@ def T_of(pos, quat):
     return T
 
 
-def load_frames(session, min_gap_ms):
+def _slerp(q0, q1, a):
+    q0 = np.array(q0, float); q1 = np.array(q1, float)
+    d = float(np.dot(q0, q1))
+    if d < 0:
+        q1 = -q1; d = -d
+    if d > 0.9995:
+        q = q0 + a * (q1 - q0)
+    else:
+        th0 = math.acos(max(-1.0, min(1.0, d))); th = th0 * a
+        q2 = q1 - q0 * d; q2 /= max(np.linalg.norm(q2), 1e-12)
+        q = q0 * math.cos(th) + q2 * math.sin(th)
+    return (q / max(np.linalg.norm(q), 1e-12)).tolist()
+
+
+def _pose_at(rows, t):
+    """在 rows(按时间升序) 上取时刻 t 的位姿(位置线性、姿态 slerp)。t 超出范围时夹到端点。"""
+    if not rows:
+        return None
+    if t <= rows[0]["t"]:
+        return rows[0]
+    if t >= rows[-1]["t"]:
+        return rows[-1]
+    lo = 0
+    for i in range(1, len(rows)):
+        if rows[i]["t"] >= t:
+            lo = i - 1
+            break
+    a, b = rows[lo], rows[lo + 1]
+    w = 0.0 if b["t"] <= a["t"] else (t - a["t"]) / (b["t"] - a["t"])
+    pos = [a["pos"][k] + w * (b["pos"][k] - a["pos"][k]) for k in range(3)]
+    return {"file": a["file"], "t": t, "pos": pos, "quat": _slerp(a["quat"], b["quat"], w),
+            "gap_ms": round(a["gap_ms"] + w * (b["gap_ms"] - a["gap_ms"]), 2), "ts": a.get("ts")}
+
+
+def load_frames(session, min_gap_ms, hash_file=None, dedup=True, latency_ms=0.0):
+    """读会话帧表。dedup=True 时按**图像内容(md5)**去重:
+    🔴 本机采集实测的坑 —— 取图端点(/frame.jpg)的有效帧率远低于 8Hz 取图率, 同一张图会被
+    连续取到十几次, 而每次取图都记了一个**不同的 TCP 位姿**。若不去重, 数据集里会出现
+    "同一张图配十几个不同位姿"的矛盾监督 ⇒ 连训练视角都拟合不上(实测训练视角 PSNR 卡在 16dB,
+    留出 11~13dB, 低于"填常数"平凡基线)。去重后每张唯一图只保留一个位姿。
+    位姿取"该图首次出现的时刻 - latency_ms"(图像内容对应的时刻; 取图延迟用 --latency-ms 估)。"""
     fp = os.path.join(os.path.expanduser(session), "frames.jsonl")
     out = []
     for ln in open(fp, encoding="utf-8"):
@@ -62,8 +102,40 @@ def load_frames(session, min_gap_ms):
         out.append({"file": r["file"], "t": t_img,
                     "pos": [float(p["x"]), float(p["y"]), float(p["z"])],
                     "quat": [float(p[k]) for k in ("qx", "qy", "qz", "qw")],
-                    "gap_ms": round(gap_ms, 2), "ts": p.get("ts")})
-    return out
+                    "gap_ms": round(gap_ms, 2), "ts": p.get("ts"),
+                    "md5": r.get("md5"), "dup": bool(r.get("dup"))})
+    if not dedup:
+        return out
+
+    h = {}
+    if hash_file and os.path.exists(hash_file):
+        for ln in open(hash_file, encoding="utf-8"):
+            parts = ln.split()
+            if len(parts) >= 2:
+                h[os.path.basename(parts[-1])] = parts[0]
+    if not h:
+        print("⚠️ 没有图像 md5 表(--hash-file), 无法去重; 去重是质量的关键, 请先生成")
+        return out
+    groups, seen = [], {}
+    for e in out:
+        # 新采集器直接带 md5(内容没变不落盘); 老会话没有 ⇒ 退回外部 hash 表
+        k = e.get("md5") or h.get(e["file"], "?" + e["file"])
+        if k in seen:
+            groups[seen[k]].append(e)
+        else:
+            seen[k] = len(groups)
+            groups.append([e])
+    ded = []
+    for g in groups:
+        first = g[0]
+        if latency_ms:
+            p2 = _pose_at(out, first["t"] - latency_ms / 1000.0)
+            if p2:
+                first = dict(first, pos=p2["pos"], quat=p2["quat"])
+        ded.append(first)
+    print("去重: 取图 %d 次 → 唯一图像 %d 张 (重复率 %.1f%%)"
+          % (len(out), len(ded), 100.0 * (1 - len(ded) / max(1, len(out)))))
+    return ded
 
 
 def select(frames, T_tool_cam, max_frames):
@@ -100,6 +172,11 @@ def main():
     ap.add_argument("--max-frames", type=int, default=300)
     ap.add_argument("--min-gap-ms", type=float, default=40.0)
     ap.add_argument("--jpeg-quality", type=int, default=95)
+    ap.add_argument("--hash-file", default="/home/ubuntu/zmax_data/gs_assets/scan_hashes.txt",
+                    help="图像 md5 表(md5sum 输出), 用于按内容去重")
+    ap.add_argument("--no-dedup", action="store_true", help="关闭去重(只做对照, 不建议)")
+    ap.add_argument("--latency-ms", type=float, default=0.0,
+                    help="取图延迟补偿: 位姿取 t_first - latency (图像内容对应的时刻)")
     args = ap.parse_args()
 
     import cv2
@@ -112,7 +189,8 @@ def main():
     print("内参 K fx=%.2f fy=%.2f cx=%.2f cy=%.2f · dist=%s · %dx%d" % (K[0, 0], K[1, 1], K[0, 2], K[1, 2], list(np.round(dist, 5)), W, H))
     print("手眼 T_cam2tool 残差 %.3fmm / %.4f° (session %s)" % (he.get("resid_trans_mm_rms", -1), he.get("resid_rot_deg_rms", -1), he.get("session")))
 
-    frames = load_frames(args.session, args.min_gap_ms)
+    frames = load_frames(args.session, args.min_gap_ms, hash_file=args.hash_file,
+                         dedup=not args.no_dedup, latency_ms=args.latency_ms)
     if not frames:
         print("❌ 会话里没有可用帧"); return 2
     p = np.array([f["pos"] for f in frames])
@@ -161,6 +239,7 @@ def main():
     q = np.array([r["pos"] for r in recs])
     meta = {"session": os.path.abspath(os.path.expanduser(args.session)), "n_frames_used": len(recs),
             "n_bad_images": n_bad, "max_frames": args.max_frames, "K": [list(map(float, r)) for r in Knew],
+            "dedup": (not args.no_dedup), "latency_ms": args.latency_ms, "n_unique_images": len(frames),
             "handeye_session": he.get("session"), "resid_trans_mm_rms": he.get("resid_trans_mm_rms"),
             "bbox_min": [float(v) for v in q.min(0)], "bbox_max": [float(v) for v in q.max(0)],
             "spread_mm": [float(v) for v in ((q.max(0) - q.min(0)) * 1000)],
