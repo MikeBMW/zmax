@@ -104,6 +104,7 @@
   <button id="mFull" onclick="toggleFull()">⛶ 全屏</button>
   <button onclick="refresh(1)">↻ 刷新</button>
   <button onclick="apkToggle()">📲 装 APP</button>
+  <button onclick="openCtl()" style="border-color:#ffd98a;color:#ffd98a">🕹 手机远程操作</button>
   <span style="width:1px;height:22px;background:#30363d;margin:0 6px"></span>
   <button id="tjShow" onclick="trajShow(true)">▶ 显示轨迹</button>
   <button id="tjHide" onclick="trajShow(false)">⏸ 隐藏轨迹</button>
@@ -308,6 +309,14 @@ function ageNow(){
   return Number(s.age_s) + (Date.now() - STATS_TS) / 1000;
 }
 function stationUrl(){
+  /* 2026-10-01 修: 原来恒为 http://<host>:8793/station —— 产线网内对, **公网下必失败**
+     (公网只开 /st/(8793 闸门) 与 /ov/(8791 闸门) 两个前缀, 裸端口 8793 打不通)。
+     老倪在手机上点「工位总览 / 6 路同屏 + 手动控制」没反应就是这个原因。 */
+  if (location.protocol === 'https:') {
+    var k = 'zmax-live';
+    try { k = new URLSearchParams(location.search).get('k') || k; } catch (e) {}
+    return '/st/station?k=' + k;
+  }
   var h = (location.host || '').split(':')[0] || '127.0.0.1';
   return 'http://' + h + ':' + STATION_PORT + '/station';
 }
@@ -337,6 +346,15 @@ function apkToggle(){
   var c = $('apkCard');
   c.style.display = (c.style.display === 'none' || !c.style.display) ? 'block' : 'none';
   if (c.style.display === 'block') c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+/* 🕹 手机远程操作 (2026-10-01): 从这里直接进远程控制页。
+   公网(https://datadrive.world/ov/overlay) ⇒ /st/room?k=<口令>(闸门已放行 /room + 三个控制 POST);
+   产线网(http://<工位机>:8791/overlay)      ⇒ /room(同机直连)。
+   注意用 location.href 原地跳转: 壳 WebView 没接管 window.open, 开新窗口会没反应。 */
+function openCtl(){
+  var k = 'zmax-live';
+  try { k = new URLSearchParams(location.search).get('k') || k; } catch (e) {}
+  location.href = (location.protocol === 'https:') ? ('/st/room?k=' + k) : '/room';
 }
 // 手机上打开本页直接看到装包入口(桌面浏览器不弹)
 (function () {
@@ -717,8 +735,18 @@ $('jumpStation2').href = stationUrl();
 //  ⚠️ 跨端口 = 跨源 → AR 服务已放开 CORS, 否则浏览器直接把请求拦掉(表现为"点了没反应")。
 // ══════════════════════════════════════════════════════════════════════════════
 var AR_PORT = 8797;
-function arBase(){ return 'http://' + ((location.host || '').split(':')[0] || '127.0.0.1') + ':' + AR_PORT; }
-$('jumpAr').href = arBase() + '/';
+/* ⚠️ 2026-10-01: 公网只开 /ov(8791) 与 /st/(8793) 两个前缀, 轨迹台 :8797 **公网不可达**。
+   所以公网下把轨迹按钮标成"不可用", 别让老倪点了没反应还以为页面坏了。 */
+var AR_PUBLIC = (location.protocol === 'https:');
+function arBase(){ return AR_PUBLIC ? '' : ('http://' + ((location.host || '').split(':')[0] || '127.0.0.1') + ':' + AR_PORT); }
+if (AR_PUBLIC) {
+  $('jumpAr').href = '#';
+  $('jumpAr').title = '公网下不可用 —— 轨迹台(:' + AR_PORT + ') 只在产线网内开放';
+  $('jumpAr').style.opacity = '.5';
+  $('jumpAr').textContent = '🛰 AR/VR 轨迹台(需产线网)';
+} else {
+  $('jumpAr').href = arBase() + '/';
+}
 function tjPaint(st){
   var chip = $('tjState');
   var on = st.state && st.state.show;
@@ -734,10 +762,12 @@ function tjPaint(st){
   $('tjShow').className = on ? 'on' : '';
 }
 function tjAvail(ok){
+  if (AR_PUBLIC) ok = false;                       // 公网: 轨迹台不可达, 直接标不可用
   ['tjShow','tjHide','tjClear','tjAll'].forEach(function(id){
     var b = $(id); if (!b) return;
     b.disabled = !ok; b.style.opacity = ok ? '' : '.45';
-    b.title = ok ? '' : ('轨迹台(:' + AR_PORT + ') 没在跑 —— 先 sudo systemctl start zmax-traj-ar');
+    b.title = ok ? '' : (AR_PUBLIC ? ('公网下不可用 —— 轨迹台(:' + AR_PORT + ') 只在产线网内开放')
+                                   : ('轨迹台(:' + AR_PORT + ') 没在跑 —— 先 sudo systemctl start zmax-traj-ar'));
   });
 }
 async function tjState(){

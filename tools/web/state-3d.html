@@ -108,7 +108,11 @@ const LIVE_URL = "ss3d_live.json";
 //    ⚠️ 换网段/换机器只改这一行 (或打开时带 ?ov=http://新IP:8791/app 覆盖)
 const OVERLAY_URL = new URLSearchParams(location.search).get("ov")
                  || localStorage.getItem("zmax_overlay_url")
-                 || "http://10.163.146.78:8791/app";
+                 // ⚠️ 2026-10-01: 公网(https)下不能再用 10.163.146.78:8791(私网地址, 手机在外面打不通)
+                 //    ⇒ 走同源 /ov/app(闸门已放行 /app), 口令跟着 ?k=。
+                 || ((location.protocol === "https:")
+                      ? ("/ov/app?k=" + (new URLSearchParams(location.search).get("k") || "zmax-live"))
+                      : "http://10.163.146.78:8791/app");
 const DEVICE = new URLSearchParams(location.search).get("device") || "";
 const STAGES = ["接近","对位","下降","抓取","抬起","转移","插入","完成"];
 const STAGE_COLOR = { "接近":"#f0883e","对位":"#e3b341","下降":"#f47067","抓取":"#238636",

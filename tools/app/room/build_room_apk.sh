@@ -89,17 +89,18 @@ p, sha, sz = sys.argv[1], sys.argv[2], sys.argv[3]
 s = open(p, encoding="utf-8").read()
 # ⚠️ 2026-10-01 修: 第一版只在页面里替换 __APK_SHA256__ 占位符 —— 但首次打包后占位符就没了,
 #    之后每次打包 step ⑩ 静默什么都不换 ⇒ 页面上的校验串一直是**老包**的哈希(等于说谎)。
-#    改成: 直接认"页面里现有的 64 位十六进制串 / 下载安装包(NKB)"并覆盖成本次的真实值。
-before = (re.findall(r"[0-9a-f]{64}", s)[:1] or ["<无>"])[0]
-s = re.sub(r"[0-9a-f]{64}", sha, s)
-s = re.sub(r"下载安装包 \([0-9.]+KB\)", "下载安装包 (%s)" % sz, s)
-s = s.replace("__APK_SHA256__", sha).replace("__APK_SIZE__", sz)
+#    第二版改成"覆盖任意 64 位哈希", 但页面现在有**两个**包(<!--SITE--> 与 <!--CTL-->) ⇒ 会互相踩。
+#    终版: 按 <!--SITE--> 标记精确替换它后面那串哈希。
+m = re.search(r"<!--SITE-->([0-9a-f]{64}|__APK_SHA256__)", s)
+before = m.group(1) if m else "<无标记>"
+s = re.sub(r"<!--SITE-->(?:[0-9a-f]{64}|__APK_SHA256__)", "<!--SITE-->" + sha, s, count=1)
+s = re.sub(r"下载安装包 \([0-9.]+KB\)", "下载安装包 (%s)" % sz, s, count=1)
 open(p, "w", encoding="utf-8").write(s)
-print("  页面校验串 %s… → %s…  (%s)" % (before[:12], sha[:12], sz))
+print("  SITE 校验串 %s… → %s…  (%s)" % (before[:12], sha[:12], sz))
 PYEOF
 LEFT=$(grep -c "__APK_SHA256__\|__APK_SIZE__" "$PAGE" || true)
 echo "  页面残留占位符(应为 0): $LEFT"
 [ "$LEFT" = "0" ] || { echo "  ✗ 占位符没替换干净"; exit 1; }
-# 真校验: 页面里写的哈希必须 == 本次产物哈希(2026-10-01 加, 之前这步是空的)
-PAGE_SHA=$(grep -oE "[0-9a-f]{64}" "$PAGE" | sort -u | head -1)
-if [ "$PAGE_SHA" = "$SHA" ]; then echo "  ✓ 页面校验串与产物一致"; else echo "  ✗ 页面校验串(${PAGE_SHA:0:12}…) ≠ 产物(${SHA:0:12}…)"; exit 1; fi
+# 真校验: 页面里 <!--SITE--> 后那串必须 == 本次产物哈希
+PAGE_SHA=$(grep -oE "<!--SITE-->[0-9a-f]{64}" "$PAGE" | head -1 | sed 's/<!--SITE-->//')
+if [ "$PAGE_SHA" = "$SHA" ]; then echo "  ✓ 页面 SITE 校验串与产物一致"; else echo "  ✗ 页面 SITE(${PAGE_SHA:0:12}…) ≠ 产物(${SHA:0:12}…)"; exit 1; fi
