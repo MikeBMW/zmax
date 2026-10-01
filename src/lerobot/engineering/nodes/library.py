@@ -1516,6 +1516,10 @@ def _yolo_detect2d(aligner, img, conf=0.4):
     img_rot = np.rot90(img, k=2)
     img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
     res = aligner.model.predict(img_bgr, conf=conf, verbose=False)[0]
+    # 🧩 2026-10-01: 把 **YOLO 真正看过的那一帧** 存下来, 供 🧩 开放词汇分割(SAM3) 做**框提示**。
+    #    必须同帧同朝向: 框是在 rot90(k=2)+BGR 上检出的, 拿别的帧/别的朝向去分割 ⇒ 框与掩膜对不上。
+    _YOLO_CACHE["img_det_bgr"] = img_bgr
+    _YOLO_CACHE.setdefault("img_src", "sim")      # 帧来源标记 (sim / real:arm) — 3D 只对臂上相机成立
     out = {}
     for b in res.boxes:
         cls = res.names[int(b.cls)]
@@ -1534,7 +1538,8 @@ def _yolo_capture(log, aligner):
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
     det3d = aligner.detect_3d(img)
     det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
-    _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img})
+    _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img,
+                        "img_src": "sim"})   # 仿真渲染帧 (非臂上相机 ⇒ 掩膜3D 如实拒答)
     return det3d, obs39, img
 
 def node_yolo_3d(ctx):
@@ -3297,7 +3302,7 @@ _EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57
 # 🧩 开放词汇分割 (SAM3): 源码视图指向**算法内核**(包里, 与 policies/yolo_3d 同级), 不是 node_ss_seg 胶水
 #    老倪 2026-09-29 纠正: 模型算法归 src/lerobot/policies/, tools/ 只留调用方(CLI/服务/叠加胶水)。
 _EXTERNAL_LOC["ss_seg"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "sam3_seg", "segmenter.py"),
-                           99, "    def segment(self, img_bgr")
+                           148, "    def segment(self, img_bgr")     # 2026-10-01 同步 (适配器接入后行号 99→148)
 
 def node_ss_yolo(ctx):
     """🎯 YOLO 目标检测 — 真实执行: metaworld 渲染帧 → YOLO detect_3d → align() 替换 39D 段
@@ -3378,24 +3383,119 @@ _SEG_CACHE: dict = {}
 _SEG_DEFAULT_TEXTS = os.environ.get("ZMAX_SEG_TEXT", "green connector,slot,metal pin")
 
 
+def _seg_yolo_prompt():
+    """🎯→🧩 L2 内链: 取 YOLO 检测框 + **YOLO 真正看过的那一帧** 做分割提示
+
+    ⚠️ 必须同帧同朝向: 框是在 `rot90(k=2)+BGR` 上检出的, 换帧/换朝向 ⇒ 框与掩膜对不上
+    (实测这类"框掩膜错位"看不出来, 只是精度悄悄变差)。
+    返回 (boxes, labels, frame_b64, src_tag); 无 YOLO 检测缓存 → (None, None, None, None)
+    """
+    det = _YOLO_CACHE.get("det2d") or {}
+    img_bgr = _YOLO_CACHE.get("img_det_bgr")
+    if not det or img_bgr is None:
+        return None, None, None, None
+    import base64 as _b64
+    import cv2
+    boxes, labels = [], []
+    for k in sorted(det.keys()):
+        v = det.get(k) or {}
+        if v.get("box"):
+            boxes.append([float(x) for x in v["box"]])
+            labels.append(str(k))
+    if not boxes:
+        return None, None, None, None
+    ok, buf = cv2.imencode(".jpg", img_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+    if not ok:
+        return None, None, None, None
+    return boxes, labels, _b64.b64encode(buf.tobytes()).decode("ascii"), _YOLO_CACHE.get("img_src")
+
+
+def _seg_match_labels(insts: list, boxes: list, labels: list) -> list:
+    """把分割实例按 **IoU 最大** 贴回 YOLO 类名 (一次前向喂多个框 ⇒ 返回顺序不可信, 用几何配对)
+
+    ⚠️ 不用"第 i 个实例 = 第 i 个框"的假设: 同一组提示会返回**多个候选掩膜** (实测: 一个框在
+    threshold 0.5 下也可能返回 2 个候选, 0.3 下 10 个), 顺序/数量都不保证。
+    返回 [{"box_idx", "box_src", "iou_yolo"}] 与 instances 一一对应。
+    """
+    def iou(a, b):
+        x1, y1 = max(a[0], b[0]), max(a[1], b[1])
+        x2, y2 = min(a[2], b[2]), min(a[3], b[3])
+        iw, ih = max(0.0, x2 - x1), max(0.0, y2 - y1)
+        inter = iw * ih
+        ua = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1]) + max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1]) - inter
+        return (inter / ua) if ua > 0 else 0.0
+
+    out = []
+    for it in insts:
+        bb = it.get("box_xyxy") or [0, 0, 0, 0]
+        best, bj = 0.0, -1
+        for j, yb in enumerate(boxes):
+            v = iou(bb, yb)
+            if v > best:
+                best, bj = v, j
+        out.append({"box_idx": (bj if best >= 0.30 else -1),
+                    "box_src": (labels[bj] if (bj >= 0 and best >= 0.30) else "?"),
+                    "iou_yolo": round(best, 3)})
+    return out
+
+
+def _seg_pick_per_box(insts: list, pairs: list) -> dict:
+    """每个提示框挑一个**目标掩膜**: 在贴到该框的候选里取 **score 最高** 的那个 (余下的记成候选)
+
+    返回 {box_idx: (inst_idx, pair)}; 候选池大小一并由调用方统计 (不丢信息, 只是不当目标用)。
+    """
+    best = {}
+    for i, pr in enumerate(pairs):
+        j = pr["box_idx"]
+        if j < 0:
+            continue
+        s = insts[i].get("score") or 0.0
+        if j not in best or s > (insts[best[j][0]].get("score") or 0.0):
+            best[j] = (i, pr)
+    return best
+
+
 def node_ss_seg(ctx):
-    """🧩 开放词汇分割 (SAM3 分割anything) — 真实执行: 一帧 + 概念提示词 → 所有实例掩膜(像素级)
-    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 tools/sam3_seg.py,
-    权重=facebook/sam3 逐文件镜像, 本地 transformers Sam3Model)
-    返回: 每实例 掩膜多边形/面积/分数, 并写进叠加规格 origin='seg' (kind=mask) → 叠加页/画布可见
-    ⚠️ 概念提示词来自 L5(参数/环境变量), 本节点**不自造概念**; 服务没起/取不到帧 → 如实报, 不造数"""
+    """🧩 开放词汇分割 (SAM3 分割anything) — 真实执行: 一帧 + 提示 → 所有实例掩膜(像素级)
+
+    提示有两种来源 (**L2 内链两条, 都不自造数据**):
+      ① **YOLO 框提示 (默认, `prompt_src=yolo|auto`)**: 取 🎯 YOLO 目标检测缓存的框 + **同帧原图** →
+         每个目标出**像素级掩膜**(框只给"在哪", 掩膜才给"轮廓/边界/面积/质心") + 掩膜→base 3D。
+         ⇒ L2 基础感知: **YOLO 定位(快/固定类) → SAM3 分割细化(轮廓/开放词汇)**。
+      ② **文本概念提示 (`prompt_src=text`)**: 概念词由 L5 给 (本节点不自造概念); 实测真机域中文=0 实例、
+         英文只有部分词命中 ⇒ 兜底用。
+    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 tools/sam3_seg.py)
+    返回: 每实例 掩膜多边形/面积/分数, 写进叠加规格 origin='seg' (kind=mask) → 叠加页/画布可见
+    ⚠️ 掩膜→3D 只对**臂上相机**成立: 仿真渲染帧 ⇒ 如实拒答(不拿真机手眼套仿真); 服务没起 → 如实报"""
     log = ctx.get("log")
     try:
         import json as _json
         import urllib.request as _ur
         params = ctx.get("params") or {}
-        texts = params.get("texts") or params.get("prompt") or _SEG_DEFAULT_TEXTS
-        if isinstance(texts, str):
-            texts = [t.strip() for t in texts.split(",") if t.strip()]
+        src = str(params.get("prompt_src") or os.environ.get("ZMAX_SEG_PROMPT_SRC", "auto")).lower()
         cam = params.get("cam") or os.environ.get("ZMAX_SEG_CAM", "arm")
-        payload = _json.dumps({"cam": cam, "texts": texts, "three_d": bool(params.get("three_d", True)),
-                               "write_spec": True, "cam_name": cam,
-                               "note": "画布节点 node_ss_seg (L2 开放词汇分割)"}).encode()
+        boxes = labels = frame_b64 = ysrc = None
+        if src in ("auto", "yolo"):
+            boxes, labels, frame_b64, ysrc = _seg_yolo_prompt()
+        if boxes:
+            # ① YOLO 框提示: 一次前向喂多个框 (框 = 视觉提示; 文本用中性词 "object" 当占位标签,
+            #    实例再按 IoU 贴回 YOLO 类名)。3D 只看帧来源: 只对**臂上相机**解 (仿真帧如实拒答)。
+            #    ⚠️ 实测: 同一组框会返回**多个候选掩膜** (阈值 0.5 下也可能 >1 个), 逐框取分数最高者为目标。
+            real_arm = (ysrc == "real:arm")
+            payload_obj = {"image_b64": frame_b64, "boxes": boxes, "texts": ["object"],
+                           "threshold": float(params.get("seg_threshold", 0.5)),
+                           "three_d": bool(params.get("three_d", True)) and real_arm,
+                           "write_spec": True, "cam": (cam if real_arm else "local"),
+                           "cam_name": (cam if real_arm else "local"),
+                           "note": "L2 内链: 🎯YOLO框 → 🧩SAM3掩膜 (%s)" % (ysrc or "?")}
+        else:
+            texts = params.get("texts") or params.get("prompt") or _SEG_DEFAULT_TEXTS
+            if isinstance(texts, str):
+                texts = [t.strip() for t in texts.split(",") if t.strip()]
+            payload_obj = {"cam": cam, "texts": texts, "three_d": bool(params.get("three_d", True)),
+                           "write_spec": True, "cam_name": cam,
+                           "note": "画布节点 node_ss_seg (L2 开放词汇分割 · 文本概念)"}
+        payload = _json.dumps(payload_obj).encode()
         req = _ur.Request(_SEG_URL + "/seg", data=payload, headers={"Content-Type": "application/json"})
         t0 = time.time()
         with _ur.urlopen(req, timeout=float(params.get("timeout", 120))) as r:
@@ -3405,21 +3505,62 @@ def node_ss_seg(ctx):
             if log:
                 log(f"⚠️ 开放词汇分割: 服务返回失败 — {res.get('err') or res}")
             return False
-        _SEG_CACHE.update({"res": res, "at": time.time(), "texts": texts, "cam": cam})
-        if log:
-            log(f"🧩 开放词汇分割 (SAM3 真实推理): 概念={texts} · 帧={res.get('src')} · "
-                f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · 实例 {res.get('count')} 个")
-            for it in (res.get("instances") or [])[:8]:
+        if boxes:
+            # 贴回 YOLO 类名 (几何配对, 不假设返回顺序) + 逐框选目标掩膜 + 掩膜级 3D 落缓存供下游用
+            insts = res.get("instances") or []
+            pairs = _seg_match_labels(insts, boxes, labels)
+            picked = _seg_pick_per_box(insts, pairs)
+            for i, (it, pr) in enumerate(zip(insts, pairs)):
+                it["label"] = pr["box_src"]
+                it["iou_yolo"] = pr["iou_yolo"]
+                it["selected"] = any(i == pi for pi, _ in picked.values())
+            mask3d = {}
+            for j, (i, pr) in picked.items():
+                it = insts[i]
                 c3 = it.get("c3d") or {}
-                extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
-                         f"z={c3['z_mm']:.0f}mm 尺寸={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm"
-                         if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
-                log(f"   {it.get('label')}: score={it.get('score'):.3f} 面积={it.get('area_px')}px "
-                    f"轮廓={len(it.get('polys') or [])} 圈{extra}")
-            if res.get("count"):
+                if c3.get("ok"):
+                    mask3d[pr["box_src"]] = {"center_base": c3["center_base"], "z_mm": c3["z_mm"],
+                                             "xy_size_mm": c3["xy_size_mm"], "yaw_deg": c3["yaw_deg"],
+                                             "area_px": it.get("area_px"), "score": it.get("score"),
+                                             "iou_yolo": pr["iou_yolo"], "src": ysrc, "at": time.time()}
+            _SEG_CACHE.update({"res": res, "at": time.time(), "prompt": "yolo", "boxes": boxes,
+                               "labels": labels, "src": ysrc, "mask3d": mask3d, "dt_ms": dt,
+                               "n_candidates": len(insts), "n_selected": len(picked),
+                               "picked": {labels[j]: i for j, (i, _) in picked.items()}})
+            _YOLO_CACHE["seg_masks"] = {"instances": insts, "at": time.time(),
+                                        "n_yolo_boxes": len(boxes), "n_selected": len(picked), "src": ysrc}
+            _YOLO_CACHE["mask3d"] = mask3d
+        else:
+            _SEG_CACHE.update({"res": res, "at": time.time(), "prompt": "text",
+                               "texts": payload_obj.get("texts"), "cam": cam, "dt_ms": dt})
+        if log:
+            _n = res.get("count")
+            if boxes:
+                log(f"🧩 L2 内链 🎯YOLO框→🧩SAM3掩膜 (真实推理): 帧={res.get('src')} · "
+                    f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · YOLO 框 {len(boxes)} 个 → "
+                    f"候选掩膜 {_n} 个 → 选中目标 {_SEG_CACHE.get('n_selected')} 个 · 帧来源={ysrc}")
+                for it in (res.get("instances") or [])[:8]:
+                    c3 = it.get("c3d") or {}
+                    extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
+                             f"z={c3['z_mm']:.0f}mm 足印={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm "
+                             f"yaw={c3['yaw_deg']:.1f}°"
+                             if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
+                    log(f"   {'★' if it.get('selected') else '·'} [{it.get('label')}] (贴回YOLO IoU={it.get('iou_yolo')}) "
+                        f"score={it.get('score'):.3f} 面积={it.get('area_px')}px 轮廓={len(it.get('polys') or [])} 圈{extra}")
+            else:
+                log(f"🧩 开放词汇分割 (SAM3 真实推理 · 文本概念): 概念={payload_obj.get('texts')} · 帧={res.get('src')} · "
+                    f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · 实例 {_n} 个")
+                for it in (res.get("instances") or [])[:8]:
+                    c3 = it.get("c3d") or {}
+                    extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
+                             f"z={c3['z_mm']:.0f}mm 尺寸={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm"
+                             if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
+                    log(f"   {it.get('label')}: score={it.get('score'):.3f} 面积={it.get('area_px')}px "
+                        f"轮廓={len(it.get('polys') or [])} 圈{extra}")
+            if _n:
                 log("   → 已写入叠加规格 origin='seg' (kind=mask), 叠加页/工位总览刷新即见(品红轮廓+半透明填充)")
             else:
-                log("   ℹ️ 这一帧没找到该概念(不是执行失败) — 概念词要现场试(英文); 已把该相机的 seg 掩膜清空")
+                log("   ℹ️ 这一帧没找到目标(不是执行失败) — 文本概念要现场试(英文); 已把该相机的 seg 掩膜清空")
         # 口径: 链跑通(服务返回 ok) 就算成功 —— 0 个实例是**合法结果**, 不能当失败报(GUI 播放会误判)
         return True
     except Exception as e:
@@ -3432,8 +3573,9 @@ def node_ss_seg(ctx):
 
 
 _reg("ss_seg", ["开放词汇分割", "SAM3", "分割anything", "分割"],
-     "🧩 开放词汇分割 (SAM3 分割anything) — L2 感知原语: 一帧+概念提示词 → 所有实例掩膜(像素级) + 掩膜→base 3D; "
-     "写叠加规格 origin=seg (真执行件 tools/sam3_seg.py, 常驻服务 8796; 概念由 L5 给, 本节点不自造)",
+     "🧩 开放词汇分割 (SAM3 分割anything) — L2 基础感知(与 🎯YOLO 内链): 取 YOLO 框+同帧原图 → 像素级掩膜 + "
+     "掩膜→base 3D(中心/足印/朝向); 也支持 L5 给的文本概念 (prompt_src=text)。写叠加规格 origin=seg (真执行件 "
+     "tools/sam3_seg.py, 常驻服务 8796; 概念与框都不自造)",
      node_ss_seg)
 
 # 🧮 标定层 (2026-09-02 老倪: Drifting Models 思想 — 引力/斥力二分 + 平衡点; 回路外元层)
