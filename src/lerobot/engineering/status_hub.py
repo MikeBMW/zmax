@@ -263,6 +263,11 @@ def collect_models() -> list:
                     "version": m.get("version", "unknown"),
                     "state": m.get("state", "unknown"),
                     "inferring": bool(inf)}
+            # note_short: 黄灯(candidate)原因短句 (≤16 字, 页面/手机 tooltip 用; 缺省空串 ⇒ 向后兼容)
+            if m.get("note_short"):
+                item["note_short"] = str(m["note_short"])[:24]
+            if m.get("note"):
+                item["note"] = str(m["note"])[:300]
             if sub:
                 item["err"] = "; ".join(sub)[:180]
             out.append(item)

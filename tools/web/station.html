@@ -1663,7 +1663,8 @@ loadSpaces(); setInterval(loadSpaces,10000);
     });
     function full(m){
       return (m.layer || "") + " · " + (m.name || "") + " · " + (m.version || "")
-           + " · " + (m.state || "") + (m.inferring ? " · 推理中" : "");
+           + " · " + (m.state || "") + (m.inferring ? " · 推理中" : "")
+           + (m.note_short ? " · " + m.note_short : "");
     }
     keys.forEach(function(ly){
       var arr = by[ly], prim = null;
@@ -1733,6 +1734,7 @@ loadSpaces(); setInterval(loadSpaces,10000);
         return '<div class="zdrow"><b>' + esc(m.layer||"?") + '</b> <em>' + esc(sn(m.name)) + '</em> '
              + '<span class="zdv">' + esc(m.version || "—") + '</span> '
              + '<i style="color:' + dotc(m.state) + '">' + esc(m.state || "?") + '</i>'
+             + (m.note_short ? ' <span class="zdn" style="opacity:.85">' + esc(m.note_short) + '</span>' : '')
              + (m.inferring ? ' <i class="inf">⚡</i>' : '')
              + '<span class="zdn">' + esc(m.name || "") + '</span></div>';
       }).join("");

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -312,6 +313,8 @@ def cmd_serve(a) -> int:
         print("[sam3] --lazy: 暂不预载权重, 首次调用时加载 (显存 0 起步)")
     else:
         load_model(verbose=True)
+    _ad = os.environ.get("ZMAX_SAM3_ADAPTER", "").strip()
+    print("[sam3] 适配器模式: %s" % (_ad if _ad else "关闭 (纯基座; 默认口径)"))
 
     # ── GET /status/all 支撑 (状态聚合; 逻辑在 src/lerobot/engineering/status_hub.py) ──
     SERVED = {"n": 0, "last_ts": 0.0}                 # /seg 真实调用计数 (供 /health 与 inferring 探针读)
@@ -389,7 +392,12 @@ def cmd_serve(a) -> int:
                 self._send(200, {"ok": True, "model_dir": SAM3_DIR, "loaded": SEG.model is not None,
                                  "dtype": SEG.dtype_name, "size": SAM3_SIZE, "vram_gb": round(vram, 2),
                                  "load_s": SEG.load_s, "min_area_px": MIN_AREA_PX,
-                                 "served": SERVED["n"], "last_serve_ts": SERVED["last_ts"]})
+                                 "served": SERVED["n"], "last_serve_ts": SERVED["last_ts"],
+                                 # ── 适配器取证 (默认 null = 纯基座; 启用时给出路径/张量/hash/显存峰值) ──
+                                 "base_params_m": round(SEG.base_params / 1e6, 1),
+                                 "adapter": SEG.adapter,
+                                 "adapter_path": (SEG.adapter or {}).get("path"),
+                                 "mem": SEG.mem()})
             else:
                 self._send(404, {"ok": False, "err": "只有 GET /health, GET /status/all, GET /canvas.pdf, GET /canvas/version 与 POST /seg"})
 
@@ -468,7 +476,10 @@ def main() -> int:
     ap.add_argument("--bench", type=int, default=0, help="跑 N 次热推理并报实测(显存/延迟)")
     ap.add_argument("--serve", action="store_true", help="起常驻服务")
     ap.add_argument("--lazy", action="store_true", help="配合 --serve: 不预载权重(显存 0), 首次调用才加载")
+    ap.add_argument("--adapter", default="", help="可选: 微调适配器目录/文件 (等价 ZMAX_SAM3_ADAPTER; **默认不开**)")
     a = ap.parse_args()
+    if a.adapter:                                   # 显式参数优先于环境变量; 默认两者都没有 = 纯基座
+        os.environ["ZMAX_SAM3_ADAPTER"] = a.adapter
     if a.serve:
         return cmd_serve(a)
     if a.bench:

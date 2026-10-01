@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import math
+import os
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -88,6 +90,56 @@ def inject_lora(model: nn.Module, targets: dict[str, list[str]], r: int = 8, alp
             setattr(parent, parts[-1], LoRALinear(mod, r=r, alpha=alpha))
             n_inj += 1
     return n_inj, n_skip
+
+
+def load_lora_adapter(model: nn.Module, adapter: str | os.PathLike, targets: dict, r: int = 8,
+                      alpha: int | None = None, prefix_filter: dict | None = None,
+                      log=print) -> dict:
+    """**推理侧**把适配器装进模型 (服务可选加载用; 训练侧仍走 finetune.apply_adapter)。
+
+    步骤与取证 (部署自证三问: 键匹配 / 真的改前向 / 记 hash):
+      ① 注入 LoRA (**B 零初始化**) ⇒ 注入瞬间前向与基座逐位一致;
+      ② 逐张量 copy_ 适配器权重, **键必须完全匹配** (缺/多直接抛错, 不静默丢);
+      ③ 返回 adapter 文件 sha256 + 张量数 + 非零 lora_B 数 (便于 /health 取证对账)。
+    adapter 可为目录 (内含 adapter_model.safetensors) 或直接是 .safetensors 文件。
+    """
+    import hashlib
+    from safetensors.torch import load_file
+
+    p = Path(adapter)
+    f = p / "adapter_model.safetensors" if p.is_dir() else p
+    if not f.exists():
+        raise FileNotFoundError("适配器不在位: %s" % f)
+    sd = load_file(str(f))
+    bad = [k for k in sd if ".base." in k]
+    if bad:
+        raise RuntimeError("适配器文件混入基座权重 (键含 '.base.'): %s" % bad[:3])
+
+    n_inj, n_skip = inject_lora(model, targets, r=r, alpha=alpha, prefix_filter=prefix_filter)
+    own = dict(model.named_parameters())
+    n_lora = sum(1 for n in own if n.endswith((".lora_A", ".lora_B")))
+    if n_inj == 0 and n_lora == 0:
+        raise RuntimeError("LoRA 注入 0 个 Linear ⇒ 前缀/targets 不匹配 (适配器无处可挂)")
+    # n_inj==0 但已有 lora 参数 ⇒ 模型**本来就是训练装配出来的** (build_trainable_model 已注入),
+    # 直接用它的适配器槽位加载即可 (不重复注入)。键匹配检查在下面照做。
+
+    miss = [k for k in sd if k not in own]
+    extra = [n for n, _ in own.items() if (n.endswith(".lora_A") or n.endswith(".lora_B")) and n not in sd]
+    if miss or extra:
+        raise RuntimeError("适配器键不匹配: 模型里找不到 %s (共%d) · 产物未覆盖 %s (共%d)"
+                           % (miss[:5], len(miss), extra[:5], len(extra)))
+    with torch.no_grad():
+        for k, v in sd.items():
+            own[k].copy_(v.to(device=own[k].device, dtype=own[k].dtype))
+    nz = sum(1 for k, v in sd.items() if k.endswith(".lora_B") and float(v.abs().max()) > 0)
+    info = {"path": str(p), "file": str(f), "bytes": int(f.stat().st_size),
+            "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
+            "n_injected": n_inj, "n_skipped": n_skip, "n_lora_params_total": n_lora,
+            "already_injected": bool(n_inj == 0), "n_tensors": len(sd),
+            "nonzero_lora_B": nz, "r": int(r), "alpha": int(alpha if alpha is not None else r)}
+    log("[adapter] 加载 %s · %d 张量 (键完全匹配: 缺 0 / 多 0) · 非零 lora_B %d 条 · 注入 Linear %d 个 (跳过 %d) "
+        "· sha256 %s" % (f, len(sd), nz, n_inj, n_skip, info["sha256"][:12]))
+    return info
 
 
 def lora_named(model: nn.Module):

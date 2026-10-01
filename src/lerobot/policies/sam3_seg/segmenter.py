@@ -27,6 +27,9 @@ SAM3_DTYPE = os.environ.get("ZMAX_SAM3_DTYPE", "bf16")            # bf16 | fp16 
 SAM3_SIZE = int(os.environ.get("ZMAX_SAM3_SIZE", "1008"))         # 原生输入边长 1008
 MIN_AREA_PX = int(os.environ.get("ZMAX_SEG_MIN_AREA", "200"))     # 掩膜最小面积(滤碎块)
 POLY_EPS_PX = float(os.environ.get("ZMAX_SEG_POLY_EPS", "1.5"))   # 轮廓简化容差(px)
+# 可选微调适配器 (SAM3 框提示式 LoRA 微调产物)。**默认不开** —— 未证明提升的产物不进默认档。
+# 启用: ZMAX_SAM3_ADAPTER=/path/to/lora_adapter (目录) 或 .../adapter_model.safetensors (文件)
+SAM3_ADAPTER = os.environ.get("ZMAX_SAM3_ADAPTER", "").strip()
 
 
 class Sam3Segmenter:
@@ -45,6 +48,9 @@ class Sam3Segmenter:
         self.proc = None
         self.device = None
         self.load_s = None
+        self.adapter = None            # 可选适配器取证 dict (默认 None = 纯基座)
+        self.base_params = 0
+        self.vram_alloc_gb = 0.0
 
     # ── 加载/卸载 ────────────────────────────────────────────────────────
     def ensure(self, verbose: bool = False):
@@ -71,20 +77,60 @@ class Sam3Segmenter:
         model = Sam3Model.from_pretrained(str(self.model_dir), local_files_only=True, dtype=dt).to(dev)
         model.eval()
         self.model, self.proc, self.device = model, proc, dev
+        self.base_params = sum(p.numel() for p in model.parameters())
         self.load_s = time.time() - t0
+
+        # ── 可选适配器 (默认关; 见模块顶部 SAM3_ADAPTER) ─────────────────────
+        # 键不匹配一律抛错 (不静默降级成纯基座 —— 那会让"接了适配器"成为假象)。
+        ad = os.environ.get("ZMAX_SAM3_ADAPTER", SAM3_ADAPTER).strip()
+        if ad:
+            from . import finetune as _ft
+            from .lora_inject import load_lora_adapter
+            # ⚠️ prefix_filter **只对视觉塔**生效 (与训练侧 build_trainable_model 同口径):
+            # 文本塔 24 层全注入 (CLIP 序列极短, 不吃显存); 若把"最后 N 个 block"也套到文本塔,
+            # 索引 0..23 全部不满足 i>=24 ⇒ 静默少注入 96 个 Linear ⇒ 适配器键对不上直接抛错。
+            pf = {"vision_encoder.backbone.layers.":
+                  (lambda i, N=_ft.VIT_LORA_BLOCKS: i >= 32 - N)}
+            self.adapter = load_lora_adapter(model, ad, targets=dict(_ft.LORA_TARGETS), r=_ft.R,
+                                             alpha=_ft.ALPHA, prefix_filter=pf, log=print)
+            self.adapter["base_dir"] = str(self.model_dir)
+            self.adapter["base_dtype"] = self.dtype_name
+            model.eval()
+        else:
+            self.adapter = None
+        if dev == "cuda":
+            torch.cuda.reset_peak_memory_stats()          # 前向峰值从**加载完**起算 (含适配器)
+            self.vram_alloc_gb = torch.cuda.memory_allocated() / 1e9
         if verbose:
-            n = sum(p.numel() for p in model.parameters()) / 1e6
+            n = self.base_params / 1e6
             print("[sam3] 加载完成: %.1fs · %s · %s · %.1fM 参数 · 输入 %dpx"
                   % (self.load_s, dev, self.dtype_name, n, self.size))
+            print("[sam3] 适配器: %s" % ("未启用 (纯基座)" if not self.adapter
+                                         else "%s · %d 张量 · 非零 lora_B %d"
+                                         % (self.adapter["path"], self.adapter["n_tensors"],
+                                            self.adapter["nonzero_lora_B"])))
             if dev == "cuda":
                 print("[sam3] 显存: 已用 %.2f GB / 共 %.2f GB"
                       % (torch.cuda.memory_allocated() / 1e9,
                          torch.cuda.get_device_properties(0).total_memory / 1e9))
         return self
 
+    def mem(self) -> dict:
+        """加载后至今的显存: 已用 / **前向峰值** (服务 /health 取证用)。"""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return {"alloc_gb": round(torch.cuda.memory_allocated() / 1e9, 2),
+                        "forward_peak_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2),
+                        "total_gb": round(torch.cuda.get_device_properties(0).total_memory / 1e9, 2)}
+        except Exception:                                    # noqa: BLE001
+            pass
+        return {}
+
     def unload(self):
         import torch
         self.model = self.proc = None
+        self.adapter = None
         self.load_s = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -93,7 +139,10 @@ class Sam3Segmenter:
     def state(self) -> dict:
         return {"model_dir": str(self.model_dir), "loaded": self.model is not None,
                 "device": self.device, "dtype": self.dtype_name, "size": self.size,
-                "load_s": self.load_s, "min_area_px": MIN_AREA_PX}
+                "load_s": self.load_s, "min_area_px": MIN_AREA_PX,
+                "base_params_m": round(self.base_params / 1e6, 1),
+                "adapter": self.adapter,
+                "mem": self.mem()}
 
     # ── 推理 ────────────────────────────────────────────────────────────
     def segment(self, img_bgr: np.ndarray, texts: list[str] | None = None,
@@ -127,12 +176,17 @@ class Sam3Segmenter:
                     kw["input_boxes_labels"] = [box_labels]
 
             inputs = self.proc(**kw)
+            # 数值张量按**模型 dtype**搬上去 (处理器默认给 float32; 直接喂 bf16 模型会
+            # `mat1 and mat2 must have the same dtype` —— 2026-10-01 实测: 框提示路径因此整条 500)。
+            # 注意 `getattr(torch, "bf16")` 取的是 torch.bfloat16 的**别名不存在** ⇒ 会静默抛异常
+            # 走 except 分支把 float32 原样送上卡, 所以这里用显式映射表 (与训练侧 build_inputs 同一口径)。
+            _dt = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[self.dtype_name]
             for k, v in list(inputs.items()):
                 if not hasattr(v, "to"):
                     continue
                 try:
                     if v.dtype in (torch.float32, torch.float64) and k != "original_sizes":
-                        inputs[k] = v.to(self.device, getattr(torch, self.dtype_name))
+                        inputs[k] = v.to(self.device, _dt)
                     else:
                         inputs[k] = v.to(self.device)
                 except Exception:                                # noqa: BLE001
