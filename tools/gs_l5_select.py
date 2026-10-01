@@ -255,6 +255,32 @@ def call_l5(mont, w, h, cur_pos, nv, sp):
     return json.loads(txt[m:n + 1]), txt
 
 
+def call_l5_budgeted(mont, w, h, cur_pos, nv, sp, budget_s):
+    """给 L5 一个**硬墙钟预算**: 超时就放弃(退覆盖度), 不让一次网络卡顿把整轮扫描拖住。
+    ⚠️ 2026-10-01 踩到: 闸门化之后 L5 走云端(api.deepseek.com), 端点不通时 urllib 在
+    socket.create_connection 里**干等**(call_vlm 内部还有 4 次退避重试) ⇒ 实测卡 5m44s
+    (`timeout 300` 都没能兜住), 换成"线程 + join(budget)"才真的能按时收手。"""
+    import threading
+    box = {}
+
+    def _work():
+        try:
+            box["ok"] = call_l5(mont, w, h, cur_pos, nv, sp)
+        except Exception as e:                                   # noqa: BLE001
+            box["err"] = "%s: %s" % (type(e).__name__, str(e)[:150])
+
+    t = threading.Thread(target=_work, daemon=True)
+    t0 = time.time()
+    t.start()
+    t.join(max(5.0, float(budget_s)))
+    if t.is_alive():
+        raise TimeoutError("L5 超过 %.0fs 没返回(云端不通/限流) ⇒ 退覆盖度兜底" % budget_s)
+    if "err" in box:
+        raise RuntimeError(box["err"])
+    print("L5 用时 %.1fs" % (time.time() - t0))
+    return box["ok"]
+
+
 # ---------------------------------------------------------------- 主
 
 def main():
@@ -265,6 +291,8 @@ def main():
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--out", default="")
     ap.add_argument("--no-llm", action="store_true", help="不调大模型, 只用覆盖度兜底")
+    ap.add_argument("--l5-timeout", type=float, default=90.0,
+                    help="L5 硬墙钟预算(秒, 默认 90): 超时就退覆盖度兜底 —— 云端卡顿时不许拖住整轮扫描")
     ap.add_argument("--pose", default="", help="当前 TCP 位姿 x,y,z(米); 缺省用最后一帧")
     args = ap.parse_args()
 
@@ -305,8 +333,9 @@ def main():
         if not mont:
             raise ValueError("拼图失败(没有可读帧)")
         try:
-            l5_js, l5_raw = call_l5(mont, W, H, cur_pos, reg["distinct_views"],
-                                    int(max(reg["spread_mm"]) if reg["spread_mm"] else 0))
+            l5_js, l5_raw = call_l5_budgeted(mont, W, H, cur_pos, reg["distinct_views"],
+                                             int(max(reg["spread_mm"]) if reg["spread_mm"] else 0),
+                                             args.l5_timeout)
             print("L5 返回: %s" % json.dumps({k: l5_js.get(k) for k in ("scene", "next_views")},
                                              ensure_ascii=False)[:300])
         except Exception as e:                                       # noqa: BLE001
