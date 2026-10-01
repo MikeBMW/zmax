@@ -224,6 +224,46 @@ def capture(sess, secs):
                timeout=secs + 180)
 
 
+def inc_round(sess, tag, i, prev, steps, st):
+    """增量建图一轮: 重建数据集(去重) → 从上一轮资产续训(没有就从零训) → 出中间资产+质检行。
+    「边移动边自己学环境」就是靠这一步落地的: 每轮把新看到的画面并进去继续训, 而不是攒完再一次性训。"""
+    ds = os.path.join(GS, "map_%s_r%d" % (tag, i))
+    p = run([PY, os.path.join(REPO, "tools/gs_dataset.py"), "--session", sess, "--out", ds,
+             "--max-frames", "400"], timeout=1800)
+    if p.returncode != 0:
+        w(st, "  ⚠️ 第 %d 轮建库失败: %s" % (i, (p.stderr or p.stdout or "")[-120:]))
+        return prev
+    q = os.path.join(ds, "quality_data.json")
+    run([PY, os.path.join(REPO, "tools/gs_quality.py"), "--dataset", ds, "--session", sess,
+         "--json", q], timeout=1800)
+    rep = read_json(q) or {}
+    nv = int((rep.get("data") or {}).get("distinct_views") or 0)
+    if rep.get("verdict") == "fail":
+        w(st, "  ⚠️ 第 %d 轮数据集没过门(视点 %d) ⇒ 本轮不训" % (i, nv))
+        return prev
+    mdl = os.path.join(GS, "map_%s_m%d" % (tag, i))
+    cmd = ["bash", os.path.join(REPO, "tools/run_gs_train.sh"), "--data", ds, "--out", mdl,
+           "--steps", str(steps), "--eval-every", str(max(500, steps // 2)), "--holdout", "20"]
+    if prev and os.path.exists(os.path.join(prev, "gs.ply")):
+        cmd += ["--no-refine", "--init-ply", os.path.join(prev, "gs.ply")]
+        w(st, "  第 %d 轮: 续训(接着上一轮资产, %d 步)" % (i, steps))
+    else:
+        cmd += ["--refine-stop", str(max(200, int(steps * 0.4)))]
+        w(st, "  第 %d 轮: 首训(从零, %d 步)" % (i, steps))
+    tl = os.path.join(mdl, "train.log")
+    os.makedirs(mdl, exist_ok=True)
+    with open(tl, "w", encoding="utf-8") as lf:
+        subprocess.run(cmd, stdout=lf, stderr=subprocess.STDOUT, text=True)
+    tr = read_json(os.path.join(mdl, "train_report.json")) or {}
+    st.setdefault("rounds_log", []).append({"round": i, "views": nv, "dataset": ds, "model": mdl,
+                                            "psnr_holdout_db": tr.get("psnr_holdout_db"),
+                                            "psnr_train_db": tr.get("psnr_train_db"),
+                                            "n_gaussians": tr.get("n_gaussians")})
+    w(st, "  第 %d 轮资产: 留出 %s dB · 训练 %s dB · 高斯 %s"
+      % (i, tr.get("psnr_holdout_db"), tr.get("psnr_train_db"), tr.get("n_gaussians")))
+    return mdl
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rounds", type=int, default=7)
@@ -233,6 +273,9 @@ def main():
     ap.add_argument("--steps", type=int, default=int(os.environ.get("GS_STEPS", "30000")))
     ap.add_argument("--train", action="store_true", default=True)
     ap.add_argument("--no-train", dest="train", action="store_false")
+    ap.add_argument("--incremental", action="store_true",
+                    help="边移动边建: 每轮就把新画面并进数据集并**接着上一轮资产续训**, 出中间资产")
+    ap.add_argument("--inc-steps", type=int, default=3000, help="每轮续训步数(增量模式)")
     ap.add_argument("--dry-run", action="store_true", help="不移动(用当前位姿当到位), 验证链路")
     ap.add_argument("--from-recording", default="", help="用已有会话重跑 建库→质检(不动臂)")
     ap.add_argument("--tag", default="")
@@ -273,6 +316,7 @@ def main():
       % (len(cat), args.targets, args.rounds, args.dwell))
 
     visited = {}
+    prev_model = ""
     for i in range(1, args.rounds + 1):
         st.update(step="select", status_line="(%d/%d) 选点…" % (i, args.rounds))
         w(st)
@@ -339,12 +383,41 @@ def main():
             w(st, "⛔ " + st["status_line"])
             return 1
         w(st, "  采集中…")
+        if args.incremental:
+            st.update(step="inc_train", status_line="(%d/%d) 增量续训…" % (i, args.rounds))
+            prev_model = inc_round(sess, tag, i, prev_model, args.inc_steps, st)
 
-    return finish(sess, ds, st, args)
+    return finish(sess, ds, st, args,
+                  model=(prev_model if (args.incremental and prev_model) else ""),
+                  ds_last=(os.path.join(GS, "map_%s_r%d" % (tag, args.rounds)) if args.incremental else ""))
 
 
-def finish(sess, ds, st, args, train_only_ds=False):
-    """建数据集(去重) → 质检门 → (过门才)训练 → 质检门 → 状态"""
+def finish(sess, ds, st, args, train_only_ds=False, model="", ds_last=""):
+    """建数据集(去重) → 质检门 → (过门才)训练 → 质检门 → 状态。
+    model 非空 ⇒ 增量模式收尾: 直接对已有最终资产做门(不再重训)。"""
+    if model:
+        d = ds_last or ds
+        st.update(step="quality_model", status_line="最终资产质检(门)…")
+        w(st)
+        q2 = os.path.join(model, "quality_model.json")
+        run([PY, os.path.join(REPO, "tools/gs_quality.py"), "--dataset", d, "--session", sess,
+             "--model", model, "--json", q2], timeout=1800)
+        rep2 = read_json(q2) or {}
+        v2 = rep2.get("verdict", "?")
+        m = rep2.get("model", {})
+        good = (v2 != "fail")
+        st.update(running=False, step="done", verdict=v2,
+                  status_line=("✅ 建图完成(过门): %s" % os.path.basename(model)) if good else
+                              ("⚠️ 训练完成但**没过门**(不作成果): 留出 PSNR %s dB vs 平凡基线 %s dB"
+                               % (m.get("psnr_holdout_db"), m.get("trivial_baseline_db"))),
+                  model=model, dataset=d, quality=q2,
+                  gs={"ply": os.path.join(model, "gs.ply"), "splat": os.path.join(model, "gs.splat")},
+                  metrics={"psnr_holdout_db": m.get("psnr_holdout_db"),
+                           "psnr_train_db": m.get("psnr_train_db"),
+                           "trivial_baseline_db": m.get("trivial_baseline_db"),
+                           "n_gaussians": m.get("n_gaussians")})
+        w(st)
+        return 0 if good else 1
     st.update(step="dataset", status_line="建数据集(按图像内容去重)…")
     w(st)
     p = run([PY, os.path.join(REPO, "tools/gs_dataset.py"), "--session", sess, "--out", ds,

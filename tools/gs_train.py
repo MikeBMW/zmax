@@ -44,6 +44,39 @@ def psnr(a, b):
     return 99.0 if mse <= 1e-12 else -10.0 * math.log10(mse)
 
 
+def read_gs_ply(path):
+    """读 3DGS 标准 .ply(gsplat export_splats 写的那套: x y z | f_dc_(3) | f_rest_(K*3) |
+    opacity | scale_(3) | rot_(4), 全 float32 小端, 无 normal 属性)。
+    返回(世界系/米, 且 scales 仍是 log 域, opacity 仍是 logit 域 —— 与文件一致, 不做激活):
+      {"means":(N,3) 米, "scales_log":(N,3), "opac":(N,), "quats":(N,4), "sh0":(N,1,3), "shN":(N,K,3)}
+    """
+    import numpy as _np
+    with open(path, "rb") as f:
+        raw = f.read()
+    he = raw.find(b"end_header\n")
+    if he < 0:
+        raise ValueError("不是标准 ply: 找不到 end_header")
+    header = raw[:he].decode("ascii", "ignore")
+    props = [ln.split()[-1] for ln in header.splitlines() if ln.startswith("property float")]
+    n = int([ln for ln in header.splitlines() if ln.startswith("element vertex")][0].split()[-1])
+    body = _np.frombuffer(raw[he + len(b"end_header\n"):], dtype=_np.float32)
+    body = body[: n * len(props)].reshape(n, len(props))
+    ix = {p: i for i, p in enumerate(props)}
+    means = body[:, [ix["x"], ix["y"], ix["z"]]].astype(_np.float32)
+    sc = body[:, [ix["scale_0"], ix["scale_1"], ix["scale_2"]]].astype(_np.float32)
+    op = body[:, ix["opacity"]].astype(_np.float32)
+    q = body[:, [ix["rot_0"], ix["rot_1"], ix["rot_2"], ix["rot_3"]]].astype(_np.float32)
+    sh0 = body[:, [ix["f_dc_0"], ix["f_dc_1"], ix["f_dc_2"]]].astype(_np.float32)[:, None, :]
+    rest = sorted([p for p in props if p.startswith("f_rest_")], key=lambda s: int(s.split("_")[-1]))
+    if rest:
+        v = body[:, [ix[p] for p in rest]].astype(_np.float32)
+        K = len(rest) // 3
+        shN = v.reshape(n, 3, K).transpose(0, 2, 1).copy()      # 还原 (N,K,3): 文件里是通道优先
+    else:
+        shN = _np.zeros((n, 0, 3), _np.float32)
+    return {"means": means, "scales_log": sc, "opac": op, "quats": q, "sh0": sh0, "shN": shN}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="数据集目录(含 cameras.json 与 images/)")
@@ -53,6 +86,11 @@ def main() -> int:
     ap.add_argument("--eval-every", type=int, default=2000)
     ap.add_argument("--holdout", type=int, default=20, help="留出视角数(从数据里每隔 k 取一个)")
     ap.add_argument("--init-points", type=int, default=100000)
+    ap.add_argument("--init-ply", default="",
+                    help="增量建图: 从已有 gs.ply 续训(用它的高斯当起点), 而不是随机初值。"
+                         "归一化 center/S 会按新数据集重算, 脚本自动换算(尺度是纯缩放, 无旋转)")
+    ap.add_argument("--no-refine", action="store_true",
+                    help="增量续训时通常关掉致密化(新视角少, 致密化会过度膨胀)")
     ap.add_argument("--smoke", type=int, default=0, help=">0 时只跑这么多步(冒烟测试)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--refine-stop", type=int, default=0,
@@ -107,16 +145,34 @@ def main() -> int:
     #   (原 `look.mean(0) - center` 漏了 S ⇒ 初值偏 0.18m, 与 line 97 相机位姿的写法自相矛盾)
     lc = S * (look.mean(0) - center)                                  # 归一化系里的场景中心
     sz = np.array([0.30, 0.30, 0.20]) * S
-    N = a.init_points
-    means = torch.tensor(np.random.uniform(-sz / 2, sz / 2, size=(N, 3)) + lc, dtype=torch.float32, device=dev)
-    scales = torch.log(torch.full((N, 3), 0.01 * S, device=dev))
-    quats = torch.zeros((N, 4), device=dev); quats[:, 0] = 1.0
-    opac = torch.logit(torch.full((N,), 0.1, device=dev))
     sh_dim = (a.sh_degree + 1) ** 2
-    colors = torch.zeros((N, sh_dim, 3), device=dev)
     C0 = 0.28209479177387814
-    colors[:, 0, :] = (torch.tensor([0.5, 0.5, 0.5], device=dev) - 0.5) / C0
-    print("初值: %d 个高斯 · SH 阶 %d (dim %d)" % (N, a.sh_degree, sh_dim))
+    if a.init_ply:
+        # ── 增量建图: 用已有资产当起点(边移动边建) ──────────────────────────────
+        # 文件里是世界系(米): 位置真值、scales 是 log(米)、opacity 是 logit。
+        # 新 run 的归一化是 x' = S*(x-center), 尺度是纯缩放(无旋转) ⇒ 直接换算是安全的。
+        P = read_gs_ply(a.init_ply)
+        N = int(P["means"].shape[0])
+        means = torch.tensor(S * (P["means"].astype(np.float64) - center), dtype=torch.float32, device=dev)
+        scales = torch.tensor(P["scales_log"].astype(np.float64) + math.log(S), dtype=torch.float32, device=dev)
+        quats = torch.tensor(P["quats"], dtype=torch.float32, device=dev)
+        opac = torch.tensor(P["opac"], dtype=torch.float32, device=dev)
+        colors = torch.zeros((N, sh_dim, 3), device=dev)
+        colors[:, :1, :] = torch.tensor(P["sh0"], dtype=torch.float32, device=dev)
+        Kn = min(sh_dim - 1, int(P["shN"].shape[1]))
+        if Kn > 0:
+            colors[:, 1:1 + Kn, :] = torch.tensor(P["shN"][:, :Kn, :], dtype=torch.float32, device=dev)
+        print("增量续训: 从 %s 载入 %d 个高斯 (SH 档 %d: sh0 + %d 个高阶系数)"
+              % (os.path.basename(a.init_ply), N, a.sh_degree, Kn))
+    else:
+        N = a.init_points
+        means = torch.tensor(np.random.uniform(-sz / 2, sz / 2, size=(N, 3)) + lc, dtype=torch.float32, device=dev)
+        scales = torch.log(torch.full((N, 3), 0.01 * S, device=dev))
+        quats = torch.zeros((N, 4), device=dev); quats[:, 0] = 1.0
+        opac = torch.logit(torch.full((N,), 0.1, device=dev))
+        colors = torch.zeros((N, sh_dim, 3), device=dev)
+        colors[:, 0, :] = (torch.tensor([0.5, 0.5, 0.5], device=dev) - 0.5) / C0
+        print("初值: %d 个高斯 · SH 阶 %d (dim %d)" % (N, a.sh_degree, sh_dim))
 
     params = torch.nn.ParameterDict({
         "means": torch.nn.Parameter(means), "scales": torch.nn.Parameter(scales),
@@ -142,7 +198,9 @@ def main() -> int:
         if step >= _st_total:
             return means_lr_min
         return float(np.exp(np.log(means_lr0) + (np.log(means_lr_min) - np.log(means_lr0)) * (step / _st_total)))
-    strategy = DefaultStrategy(verbose=True, refine_stop_iter=(a.refine_stop or int(min(_st_total, 15000) * 0.5)))
+    strategy = DefaultStrategy(verbose=True,
+                               refine_stop_iter=(0 if a.no_refine else
+                                                 (a.refine_stop or int(min(_st_total, 15000) * 0.5))))
     strat_state = strategy.initialize_state(scene_scale=scene_scale)
 
     # 图像: 常驻内存(uint8), 每步搬一张上卡
