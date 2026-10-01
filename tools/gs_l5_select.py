@@ -32,6 +32,13 @@ import sys
 import time
 from pathlib import Path
 
+# ⚠️ 2026-10-01 实测(同一批图重跑 3 次, 2000 额度下 3/3 失败): DeepSeek 是**推理型**模型 ——
+#    max_tokens=2000 时 reasoning 常常把额度吃光, 表现为 content 空、或只吐半句思考
+#    ("We need answer JSON only…") ⇒ L5 只能退兜底。给 4000 实测 **19.1s 稳定出真 JSON**;
+#    给 6000 也成但要 162s(推理越多越慢)。这里只给**本工具**定 4000, 不动全局默认
+#    (叠加标注那条链另有延迟要求), 需要时用同名 env 覆盖。
+os.environ.setdefault("ZMAX_L5_VLM_MAXTOK", "4000")
+
 import numpy as np
 
 REPO = "/home/ubuntu/zmax"
@@ -291,8 +298,10 @@ def main():
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--out", default="")
     ap.add_argument("--no-llm", action="store_true", help="不调大模型, 只用覆盖度兜底")
-    ap.add_argument("--l5-timeout", type=float, default=90.0,
-                    help="L5 硬墙钟预算(秒, 默认 90): 超时就退覆盖度兜底 —— 云端卡顿时不许拖住整轮扫描")
+    ap.add_argument("--l5-timeout", type=float, default=180.0,
+                    help="L5 硬墙钟预算(秒, 默认 180): 超时才退覆盖度兜底。"
+                         "⚠️ 实测云端单次耗时会从 19s 摆到 149s(取决于端点负载), 预算给太紧会把"
+                         "\"慢但会成功\"的调用砍掉; 180s 既兜住实测最慢值, 又保证坏端点不无限拖")
     ap.add_argument("--pose", default="", help="当前 TCP 位姿 x,y,z(米); 缺省用最后一帧")
     args = ap.parse_args()
 
