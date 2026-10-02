@@ -17,6 +17,7 @@
 页面按钮(8793 /ctl/record_point → 本脚本), 现场点动到位后一键记住; 但"臂要站在那个
 物理位置上"仍需现场(或由几何外推候选 + 人眼确认)。
 """
+import glob
 import json
 import math
 import os
@@ -58,6 +59,25 @@ def sample(n=6, timeout=8):
     return rows
 
 
+def _newest_truth_jsonl() -> str:
+    """取**最新**的真值 jsonl —— 不按"今天"拼文件名。
+
+    🐛 2026-10-02 实测: `rokae_tcp_sampler` 容器**在启动那一刻**就定死了文件名
+       (`tcp_direct_<启动日>.jsonl`), 之后跨天也一直往那个文件里写(现场那个文件已 212MB、
+       还在长)。而这里原来用 `time.strftime("%Y%m%d")` 拼"今天"的名字 ⇒ 跨天后**找不到文件**
+       ⇒ 快路必抛 ⇒ 退回 SSH 慢路(十几秒) ⇒ 只采到 1 帧 ⇒
+       「✅ 记为该号位」在**任何**入口(本机页面/公网)都失败, 报"采样不足 (1 帧)"。
+    改成挑最新的那个文件, 新鲜度仍由帧龄守据(>2s 拒用)把关 ⇒ 既不依赖日期,
+    也不会拿陈旧的旧文件当数据。
+    """
+    try:
+        _c = sorted(glob.glob(os.path.join(_TCP_DIR, "tcp_direct_*.jsonl")),
+                    key=lambda p: os.path.getmtime(p), reverse=True)
+    except OSError:
+        _c = []
+    return _c[0] if _c else TCP_JSONL
+
+
 def sample_fast(n=6, span_s=1.0):
     """⚡ 本地直读真值文件采样(老倪 2026-10-01: 「局域网, 点完 500ms 内要有反应」)。
 
@@ -73,7 +93,7 @@ def sample_fast(n=6, span_s=1.0):
     """
     rows = []
     try:
-        with open(TCP_JSONL, "rb") as f:
+        with open(_newest_truth_jsonl(), "rb") as f:
             f.seek(0, os.SEEK_END)
             _sz = f.tell()
             f.seek(max(0, _sz - 65536))

@@ -92,7 +92,12 @@ DENY_STATION_RE = [re.compile("^" + p + "$") for p in DENY_STATION]
 #   ② 真动仍要 8793 的**两步确认**且 10 分钟自动失效, 未授权时 /ctl/move 会被 8793 如实拒绝;
 #   ③ 每次放行的控制 POST 都打日志(/var/log/zmax-station-gate.log)留下审计痕迹;
 #   ④ 关掉远程: 从 unit 里去掉 --allow-ctl 并 restart 即可(不删代码)。
-ALLOW_POST_CTL = [r"/ctl/arm", r"/ctl/move", r"/ctl/gs_map"]
+ALLOW_POST_CTL = [r"/ctl/arm", r"/ctl/move", r"/ctl/gs_map",
+                  r"/ctl/record_point", r"/ctl/clear_point"]
+# ↑ 2026-10-02 老倪「授权远程」: 现场页上「✅ 记为该号位 / 清点位」两个按钮原本走公网必 403
+#   (页面点了没反应)。它们**不下发任何运动**(record_point 只是把当前 TCP 真值写进示教点库,
+#   且服务端另有 slot1~7/space1~7 名字白名单 + 停稳判据), 所以放进远程放行清单是安全的;
+#   真正能动臂的仍然只有 /ctl/arm + /ctl/move, 且要 8793 的两步确认。
 ALLOW_POST_CTL_RE = [re.compile("^" + p + "$") for p in ALLOW_POST_CTL]
 # 无论开不开远程, 这些**永不外放**(放行清单在此之上做减法)
 DENY_ALWAYS = [r"/gen.*", r"/tap.*", r"/api/aoi/.*", r"/api/ctl/.*", r"/api/relay/.*",
@@ -279,6 +284,23 @@ class H(http.server.BaseHTTPRequestHandler):
         """这次请求是靠 URL 里的 ?k= 过闸的 ⇒ 回一个 cookie, 让页面内同源子请求自动带上。"""
         return bool(STATE["token"]) and ("k=" + STATE["token"]) in (self.path or "")
 
+    def _real_ip(self) -> str:
+        """真实来访 IP。
+
+        🐛 2026-10-02 老倪「授权远程」: 手机授权后页面显示「授权IP 127.0.0.1」——
+           因为手机 → ECS nginx → SSH 隧道 → 本机闸门 → 8793, 上游只看到 127.0.0.1,
+           审计/展示就丢了"谁授的权"。这里把 nginx 放进来的 X-Real-IP / X-Forwarded-For
+           透传给上游(8793 会用它在页面上显示真实手机 IP, 并写进审计日志)。
+        ⚠️ 只信**本机回环链路**(隧道是从 127.0.0.1 进来的): 其他来源能直连时忽略这两个头,
+           否则任何人都能伪造一个假 IP 来污染审计。
+        """
+        peer = (self.client_address or ("", 0))[0]
+        if peer not in ("127.0.0.1", "::1", "localhost"):
+            return peer
+        xr = (self.headers.get("X-Real-IP") or "").strip()
+        xf = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return xr or xf or peer
+
     def do_POST(self):
         path = (self.path or "/").split("?")[0]
         # 默认(不加 --allow-ctl): 与原来完全一样 —— POST 一律拒绝
@@ -297,7 +319,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 return
         if not any(r.match(path) for r in ALLOW_POST_CTL_RE):
             STATE["blocked"] += 1
-            self._deny(403, "403: 不在远程操作白名单内(只放行 /ctl/arm · /ctl/move · /ctl/gs_map)")
+            self._deny(403, "403: 不在远程操作白名单内(只放行 /ctl/arm · /ctl/move · /ctl/gs_map"
+                            " · /ctl/record_point · /ctl/clear_point)")
             return
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -311,7 +334,10 @@ class H(http.server.BaseHTTPRequestHandler):
             conn = http.client.HTTPConnection(self.upstream[0], self.upstream[1], timeout=self.timeout_s)
             conn.request("POST", self.path, body=body,
                          headers={"Host": "127.0.0.1", "User-Agent": "tunnel-proxy-ctl",
-                                  "Content-Type": self.headers.get("Content-Type") or "application/json"})
+                                  "Content-Type": self.headers.get("Content-Type") or "application/json",
+                                  # 真实来访 IP 透传: 上游据此记授权 IP + 写审计(见 _real_ip)
+                                  "X-Real-IP": self._real_ip(),
+                                  "X-Forwarded-For": self._real_ip()})
             resp = conn.getresponse()
             data = resp.read()
             status = resp.status
@@ -448,7 +474,9 @@ play();
 
         try:
             conn = http.client.HTTPConnection(self.upstream[0], self.upstream[1], timeout=self.timeout_s)
-            conn.request("GET", self.path, headers={"Host": "127.0.0.1", "User-Agent": "tunnel-proxy"})
+            conn.request("GET", self.path, headers={"Host": "127.0.0.1", "User-Agent": "tunnel-proxy",
+                                                    "X-Real-IP": self._real_ip(),
+                                                    "X-Forwarded-For": self._real_ip()})
             resp = conn.getresponse()
         except Exception as e:                                                # noqa: BLE001
             self._deny(502, "502: 上游不可达 %s" % str(e)[:60])

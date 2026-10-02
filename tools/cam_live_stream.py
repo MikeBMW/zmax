@@ -3400,6 +3400,22 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(404, "text/plain", b"not found")
 
+    def _real_ip(self) -> str:
+        """真实来访 IP(授权/审计用)。
+
+        🐛 2026-10-02: 手机 → ECS nginx → SSH 隧道 → 本机闸门 → 这里, 原来一律记成 127.0.0.1,
+           页面上就显示「授权IP 127.0.0.1」(老倪报的 bug) —— 等于不知道谁授的权。
+           闸门(tunnel_proxy._real_ip)已把 nginx 给的 X-Real-IP/X-Forwarded-For 透传下来, 这里取用。
+        ⚠️ 只在**本机回环链路**(peer=127.0.0.1/::1)上采信这两个头: 产线网里别的机器直连时,
+           头可伪造, 一律以真实 peer 为准。
+        """
+        peer = str((self.client_address or ("", 0))[0])
+        if peer not in ("127.0.0.1", "::1", "localhost"):
+            return peer
+        xr = (self.headers.get("X-Real-IP") or "").strip()
+        xf = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return xr or xf or peer
+
     def do_POST(self):
         """🕹 只有 POST 能触发动作(点动/拍帧) —— GET 一律不行。
 
@@ -3420,7 +3436,7 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/ctl/arm", "/api/ctl/arm"):
             # 🔐 授权真动 / 撤销(只有 POST 能改, 且记 IP+时刻审计)
             on = bool((body or {}).get("on"))
-            out = _auth_set(on, str(self.client_address[0]),
+            out = _auth_set(on, self._real_ip(),
                             str((body or {}).get("note") or ("页面授权" if on else "页面撤销")))
             out.update({"ok": True, "code": 200,
                         "msg": ("✅ 真动已授权: %.0f 分钟内可直接操作, 到期自动失效" % (out["left_s"] / 60.0))
