@@ -111,3 +111,16 @@ GET  /st/dl/ZMAX-Site.apk         → 200; sha256 == 页面校验串 == 3e387ef5
 ⇒ 找不到文件 ⇒ 快路必抛 ⇒ 退回 SSH 慢路(十几秒只采到 1 帧) ⇒ 记录失败。
 修: 新增 `_newest_truth_jsonl()` 挑**最新**的那个文件(新鲜度仍由"帧龄 >2s 拒用"把关)。
 实测: `record_l2_point.py space7 --dry` ⇒ **采样 6 帧 / 0 ms / 极差 1e-6 m**(之前 1 帧失败)。
+
+### 8.4 最要命的一个: 手机上「授权成功了, 方向键却是灰的点不动」
+**口径不一致**: `/station/status` 返回的授权状态**嵌在 `ctl.auth` 里**
+(`{armed, left_s, window_s, ip, ...}`), 而手机页 `room.html` 的 `applyCtl()` 只读顶层
+`a.armed` ⇒ 永远 `undefined` ⇒ `ARMED=false` ⇒ `button[data-sk]` 全部 `disabled`
+(顺带授权IP 也显示不出来)。
+实测对照: 服务端 `armed=true`、`/ctl/arm` 回 `{"armed": true, "left_s": 600, "ip": "221.224.165.74"}`,
+页面却仍显示"🔒 未授权/🔒 只看不动"。
+修: `applyCtl()` 改成 `const au = a.auth || a;` 再取 `au.armed/au.left_s/au.ip`
+(兼容两种口径, 老服务端平铺也认)。
+实测(公网页): 两步授权后 `ARMED=true` · 横幅「🔓 已授权真动 —— 剩 538s … · 授权IP 221.224.165.74」·
+`#ctlMeta`「✅ 可动 · 剩 538s」· 6 个方向键 `disabled` 全为 `false` ✓
+注: `station.html` 走的是 `applyAuth(s.auth)` ✅ 本来就对, 只有手机页错。

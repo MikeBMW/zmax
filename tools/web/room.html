@@ -327,11 +327,16 @@ async function status(){
 function applyCtl(a){
   if(!a) return;
   const was = ARMED;
-  ARMED = !!a.armed; ARMWIN = a.window_s || ARMWIN;
-  const left = Math.max(0, Math.round(a.left_s || 0));
+  // 🐛 2026-10-02 老倪「授权远程」: `/station/status` 把授权状态**嵌在 `ctl.auth` 里**
+  //   ({armed, left_s, window_s, ip}), 而这里原来只读顶层 `a.armed` ⇒ 永远 undefined ⇒
+  //   现象就是: 手机上两步授权明明成功(服务端 armed=true、方向键却一直灰着点不动)。
+  const au = a.auth || a;                       // 兼容两种口径: 嵌在 auth / 顶层平铺
+  ARMED = !!(au.armed !== undefined ? au.armed : a.armed);
+  ARMWIN = au.window_s || a.window_s || ARMWIN;
+  const left = Math.max(0, Math.round(au.left_s !== undefined ? au.left_s : (a.left_s || 0)));
   const bar = $("#authbar");
   if(ARMED){ bar.className = "authbar on";
-    bar.textContent = "🔓 已授权真动 —— 剩 " + left + "s 自动失效(服务端闸门) · 授权IP " + (a.ip||""); }
+    bar.textContent = "🔓 已授权真动 —— 剩 " + left + "s 自动失效(服务端闸门) · 授权IP " + (au.ip || a.ip || ""); }
   else{ bar.className = "authbar";
     bar.textContent = "🔒 未授权 —— 真机动作被服务端拦住(HTTP 403); 要动先两步授权"; }
   document.querySelectorAll("button[data-sk]").forEach(b=>b.disabled = !ARMED);
