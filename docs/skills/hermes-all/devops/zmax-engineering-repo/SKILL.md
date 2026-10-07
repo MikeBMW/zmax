@@ -42,6 +42,19 @@ metadata:
    ⇒ 要彻底收进 .zmax 得同时改 WorkingDirectory(本次没改, 保行为不变)。
 7. 验证服务活没活: 本机 `curl https://datadrive.world/api/relay/orin/status` 看 `ts` 是否继续前进(uplink 每 5s 推一次), 比翻本地日志靠谱。
 
+- 清理结果(2026-10-07): `~/.zmax` **1.8G → 19M**。删了老数据(act/ models/ lerobot/ shadow_reports/ orin_10s/)+15 个无引用的一次性 8月脚本,
+  凭据存 `~/.zmax/_deleted_<ts>.jsonl`(逐条 path/字节/文件数/原因)。**保留** 10 个文档里仍是 Orin 管线组件的脚本
+  (dds_writer / upload_data_v2 / simulink_hw_server / orin_gateway / orin_snapshot / orin_sys_status / orin_field_status /
+  orin_infer_service / orin_real_infer / orin_cam15) + `state_space/ yolo/ quarantine/ rs/ arm/ uplink/ logs/ rokae_log/`。
+- **mcap 采集录制(123 段/983M) 不存 Orin 了**: 整份同步到数据服务器 `/home/ubuntu/zmax_data/orin_mcap_archive_20261007/`
+  (核验: 两侧文件字节 1029292993 相同 + 内容指纹 `fb81efcd3bc9acc254ed898e71ae246b` 相同) 后才从 Orin 删。
+  ⇒ 要找 8月10–9月16 的 Orin 采集原始录制, 去数据服务器那个目录, 不在 Orin 上。
+- 未动(范围外, 厂商包): `0810/ 0810bak/ 0810.zip tashan0924/` —— 厂商包的上一版, 回滚用。
+- 迁移/删除核对的两个教训: `du -sb` 会把**目录 inode**也算进去(124 个目录 × 4096 = 507,904 字节),
+  跟 rsync `Total file size`/`find -printf %s` 对不上 ⇒ 比字节用 `find -type f -printf '%s
+' | awk`;
+  真同步判据 = 路径无关内容指纹 `(cd dir && find . -type f -print0 | sort -z | xargs -0 md5sum | md5sum)` 两侧相同。
+
 ## 基本事实 (2026-09-30 起)
 - **工程根 = `/home/ubuntu/zmax`**, 它是**独立 git 仓库**, origin = `https://github.com/MikeBMW/zmax` (public, main)。
   · 旧名 `/home/ubuntu/zmax_rel`、`/home/ubuntu/zmax_dds` 仍是软链(兼容), 但代码里不该再出现。
