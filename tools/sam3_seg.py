@@ -62,7 +62,14 @@ def segment(img_bgr, texts, threshold: float = 0.5, mask_threshold: float = 0.5,
 # ──────────────────────────────────────────────────────────────────────────
 # 叠加规格写入 (origin='seg' · kind='mask' · 按 origin 合并, 不动别家)
 # ──────────────────────────────────────────────────────────────────────────
-def write_spec_boxes(instances: list, cam: str, img_wh, texts: list, ms: float, meta_note: str = "") -> dict:
+def write_spec_boxes(instances: list, cam: str, img_wh, texts: list, ms: float, meta_note: str = "",
+                     frame=None) -> dict:
+    """写 origin='seg' 掩膜进叠加规格。
+
+    🧩 frame 必须给**做分割那一帧本身**(2026-10-07 起): 规格里每条掩膜会盖一个该帧的感知签名,
+    叠加渲染侧据此判"画面是否已经变了"(超阈就不画) ⇒ 历史分割图不会再一直贴在画面上。
+    ✗ 别在这一层重取一帧当签名 —— 签名与掩膜必须来自同一帧, 否则一写下来就是"过期"。
+    """
     from scene_overlay import load_spec, merge_origin, save_spec
     boxes = []
     for it in instances:
@@ -83,9 +90,13 @@ def write_spec_boxes(instances: list, cam: str, img_wh, texts: list, ms: float, 
         "model": "facebook/sam3 (镜像权重, transformers Sam3Model)",
         "texts": texts, "n": len(boxes), "ms": round(ms, 1),
         "at": time.strftime("%Y-%m-%d %H:%M:%S"), "note": meta_note,
-        "src": "src/lerobot/policies/sam3_seg (调用方 tools/sam3_seg.py)"})
+        "sig": ("已绑帧(渲染侧: 画面变了就不画)" if frame is not None else
+                "⚠️ 未绑帧(调用方没给 frame) —— 这条掩膜在渲染侧会被判为旧数据不画"),
+        "src": "src/lerobot/policies/sam3_seg (调用方 tools/sam3_seg.py)"},
+        frame=frame)
     save_spec(spec)
-    return {"n_written": len(boxes), "cam": cam, "spec": str(SPEC_PATH)}
+    return {"n_written": len(boxes), "cam": cam, "spec": str(SPEC_PATH),
+            "bound": bool(frame is not None)}
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -299,8 +310,10 @@ def cmd_segment(a) -> int:
         print("已存 JSON: %s" % a.json)
     if a.write_spec:
         r = write_spec_boxes([dict(it, polys=mask_to_polys(it["mask"])) for it in seg["instances"]],
-                             a.cam_name or a.cam, seg["size"], a.text, seg["ms"], a.note or "")
-        print("已写入叠加规格: origin=seg · %d 个掩膜元素 → %s" % (r["n_written"], r["spec"]))
+                             a.cam_name or a.cam, seg["size"], a.text, seg["ms"], a.note or "",
+                             frame=img)
+        print("已写入叠加规格: origin=seg · %d 个掩膜元素 (绑帧=%s) → %s"
+              % (r["n_written"], r["bound"], r["spec"]))
     return 0
 
 
@@ -437,7 +450,8 @@ def cmd_serve(a) -> int:
                                 "box_xyxy": it["box_xyxy"], "polys": mask_to_polys(it["mask"]), "c3d": d3})
                 if req.get("write_spec"):
                     write_spec_boxes(out, req.get("cam_name") or req.get("cam", "arm"), seg["size"],
-                                     req.get("texts") or [], seg["ms"], req.get("note", ""))
+                                     req.get("texts") or [], seg["ms"], req.get("note", ""),
+                                     frame=img)
                 self._send(200, {"ok": True, "src": src, "ms": round(seg["ms"], 1), "count": len(out),
                                  "instances": out, "size": seg["size"]})
             except Exception as e:                                            # noqa: BLE001

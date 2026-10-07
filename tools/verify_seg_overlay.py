@@ -163,7 +163,10 @@ def main() -> int:
     rep["evidence"]["mask3d"] = d3s
 
     # ── ③ 渲染 + 同帧 A/B ──
-    boxes = [{"origin": "seg", "label": it["label"], "kind": "mask",
+    #    🧩 掩膜要带**本帧签名**才会被画 (2026-10-07 掩膜绑帧): 这里手工拼规格, 必须自己盖,
+    #       否则会被渲染侧当"历史掩膜(无帧签名)"拦下 ⇒ 这个自测项会假失败。
+    _sig = hex(SO.frame_sig(img))
+    boxes = [{"origin": "seg", "label": it["label"], "kind": "mask", "sig": _sig,
               "polys": mask_to_polys(it["mask"]), "area_px": it["area_px"],
               "conf": round(float(it["score"]), 4) if it["score"] is not None else None,
               "c3d": (d3s[i] if d3s[i].get("ok") else None)}

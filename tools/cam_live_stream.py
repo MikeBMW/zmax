@@ -2221,6 +2221,8 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                         # 🖱 可交互 3D 框: 像素几何 + 稳定 id + 已删清单(页面选中/删除用)
                         "boxes": info.get("boxes") or [], "deleted": info.get("deleted") or [],
                         "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
+                        # 🧩 掩膜绑帧口径: 画面已变/无签名而没画的历史分割有几条(页面上要能说清)
+                        "seg_stale": info.get("seg_stale", 0), "seg_legacy": info.get("seg_legacy", 0),
                     }
         except Exception as e:
             with _LOCK:
@@ -2240,10 +2242,13 @@ def _boxes_payload(cam: str = "arm") -> dict:
     cam = cam or "arm"
     with _LOCK:
         inf = dict(_OV_INFO.get(cam) or {})
-    if inf.get("boxes"):
+    if inf.get("boxes") or inf.get("drawn") is not None:
         return {"ok": True, "cam": cam, "src": "live", "ts": inf.get("ts"),
                 "boxes": inf["boxes"], "deleted": inf.get("deleted") or [],
                 "drawn": inf.get("drawn"), "n_3d": inf.get("n_3d"), "n_2d": inf.get("n_2d"),
+                "skipped": inf.get("skipped"),
+                # 🧩 掩膜绑帧口径: 画面已变/无签名而没画的历史分割有几条
+                "seg_stale": inf.get("seg_stale"), "seg_legacy": inf.get("seg_legacy"),
                 "spec_age_s": inf.get("spec_age_s"), "mode": inf.get("mode")}
     if _SO is None:
         return {"ok": False, "cam": cam, "msg": "scene_overlay 未加载", "boxes": []}
@@ -2254,12 +2259,22 @@ def _boxes_payload(cam: str = "arm") -> dict:
             tcp = _TCP_LATEST.get("tcp")
         if tcp is None:
             tcp = _SO.read_tcp(timeout=8, allow_ssh=True)
-        blank = np.zeros((480, 640, 3), np.uint8)
-        _img, info = _SO.draw_overlay(blank, spec, cam, tcp, None)
+        # 🐛 2026-10-07: 原来这里拿**全黑图**当画布 ⇒ 掩膜绑帧闸一算签名就判"画面已变",
+        #   分割掩膜在框清单里永远不出现(页面就选不中/删不掉)。改成用该路**当前真帧**;
+        #   真帧也拿不到才退回黑图(此时分割本来也没有"当前画面"可比)。
+        _fj = _get(cam)[0]
+        _img0 = None
+        if _fj:
+            _img0 = cv2.imdecode(np.frombuffer(_fj, np.uint8), cv2.IMREAD_COLOR)
+        if _img0 is None:
+            _img0 = np.zeros((480, 640, 3), np.uint8)
+        _img, info = _SO.draw_overlay(_img0, spec, cam, tcp, None)
         return {"ok": True, "cam": cam, "src": "computed", "boxes": info.get("boxes") or [],
                 "deleted": info.get("deleted") or [], "drawn": len(info.get("drawn") or []),
                 "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
-                "skipped": info.get("skipped"), "tcp_ok": tcp is not None}
+                "skipped": info.get("skipped"),
+                "seg_stale": info.get("seg_stale"), "seg_legacy": info.get("seg_legacy"),
+                "frame": ("live" if _fj else "blank"), "tcp_ok": tcp is not None}
     except Exception as e:                                                        # noqa: BLE001
         return {"ok": False, "cam": cam, "msg": str(e)[:200], "boxes": []}
 

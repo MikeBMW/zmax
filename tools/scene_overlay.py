@@ -427,11 +427,62 @@ def load_spec() -> dict:
     return {"ts": 0, "mode": "empty", "cameras": {}}
 
 
-def merge_origin(spec: dict, cam: str, origin: str, boxes: list, meta: dict | None = None) -> dict:
+# ── 🧩 掩膜绑帧: 让"历史的分割图"不再一直贴在画面上 (2026-10-07 老倪: 「历史的分割图怎么一直在画布上?」) ──
+#   根因: 分割是**按需/一次性**跑的, 掩膜以 origin='seg' 写进 overlay_spec.json 后**没有任何过期机制**,
+#   而推流服务**每帧热读**这份规格照画 ⇒ 相机/机械臂早动了, 画面上还挂着"那一刻"的掩膜
+#   (实测 2026-10-01 20:07 写的 9 条掩膜, 到 10-07 18:5x 还在画, 坐标仍是当时那帧的 640x480)。
+#   口径: **写规格时给每条掩膜盖一个"当时那帧"的感知签名**(dHash 64bit) + 落盘时刻;
+#         **渲染时算当前帧签名**, 汉明距离超阈 ⇒ 不画并如实计数(真值带上写明"历史分割未画 N 条")。
+#   ✗ 不能拿 JPEG 字节 md5 当判据 —— 同一静止场景每帧字节都不同 ⇒ 所有掩膜当场全失效。
+#   ✗ 也不设 TTL —— 静止场景里掩膜本来就一直有效, 按时间淘汰会误杀。
+#   阈值实测标定 (2026-10-07, 640x480 真帧, 64bit dHash):
+#     同场景静态 0 · JPEG q40 1 · 亮度+25 1 · 强模糊 2 · 缩放0.9 0 · 旋转2° 1   ← 必须判"有效"
+#     平移 10px 5 · 平移 20px 7 · 平移 40px 15 · 平移 80px 23 · 跨相机视角 33~34  ← 该判"过期"
+#   ⇒ 默认阈 6: 静态/压缩/光照/轻微抖动的余量 ≥3 倍, 而 ≥20px 位移或换视角必被拦下。
+#   关掉这套闸(回旧行为): 环境变量 ZMAX_SEG_SIG=off
+SEG_SIG_TOL = int(os.environ.get("ZMAX_SEG_SIG_TOL", "6"))
+
+
+def frame_sig(img) -> int:
+    """画面感知签名 = dHash 64bit (9x8 灰度, 相邻列比较)。同场景稳定; 场景真变了才跳。"""
+    import cv2
+    try:
+        g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if getattr(img, "ndim", 2) == 3 else img
+        g = cv2.resize(g, (9, 8), interpolation=cv2.INTER_AREA)
+        v = 0
+        for bit in (g[:, 1:] > g[:, :-1]).flatten():
+            v = (v << 1) | int(bit)
+        return v
+    except Exception:                                                          # noqa: BLE001
+        return -1
+
+
+def sig_dist(a, b) -> int:
+    """两个签名的汉明距离。缺签名(-1/None/非法)一律返回 0 = 判"未变", 不拿它当过期理由。"""
+    if a in (None, -1) or b in (None, -1):
+        return 0
+    try:
+        ia = int(a, 16) if isinstance(a, str) else int(a)
+        ib = int(b, 16) if isinstance(b, str) else int(b)
+        return bin(ia ^ ib).count("1")
+    except Exception:                                                          # noqa: BLE001
+        return 0
+
+
+def merge_origin(spec: dict, cam: str, origin: str, boxes: list, meta: dict | None = None,
+                 frame=None) -> dict:
     """
     只替换 spec 里该 cam 下 origin 对应的框，其它来源原样保留。
     ⇒ 仿真投影 / 大模型 / 检测 三个来源互不覆盖，可同时显示（老倪要的"各种仿真场景的框"）。
+
+    frame 给了就**给掩膜盖帧签名**(origin='seg' 专用): 写规格的一方把"当时那帧"传进来即可,
+    渲染侧据此判过期 —— 见本文件顶部的"掩膜绑帧"说明。
     """
+    if frame is not None and origin == "seg" and boxes:
+        _s = hex(frame_sig(frame))
+        _t = time.time()
+        boxes = [dict(b, sig=_s, sig_at=_t) if (isinstance(b, dict) and not b.get("sig")) else b
+                 for b in boxes]
     cams = spec.setdefault("cameras", {})
     c = cams.setdefault(cam, {})
     keep = [b for b in (c.get("boxes") or []) if b.get("origin") != origin]
@@ -516,12 +567,28 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
         return base if k == 1 else "%s#%d" % (base, k)
 
     drawn, skipped, out_boxes = [], [], []
+    # 🧩 掩膜绑帧闸 (2026-10-07): 见本文件顶部"掩膜绑帧"说明 —— 历史分割图不再一直贴在画面上。
+    _fsig = frame_sig(img)
+    _sig_on = os.environ.get("ZMAX_SEG_SIG", "on").lower() not in ("0", "off", "false", "no")
+    _seg_stale, _seg_legacy = 0, 0
     for b in boxes:
         bid = _bid(b)
         label = b.get("label", "?")
         if bid in deleted:
             skipped.append((label, "用户删除"))
             continue
+        # 🧩 只对 origin=seg 的掩膜生效; 其它来源(sim/vlm/det/meas/plan/trace...)一律照旧
+        if _sig_on and b.get("origin") == "seg" and (b.get("polys") or b.get("kind") == "mask"):
+            if not b.get("sig"):
+                _seg_legacy += 1
+                skipped.append((label, "历史掩膜(写规格时没有帧签名, 属旧数据) — 清: "
+                                       "tools/scene_clear_origin.py --origin seg"))
+                continue
+            _d = sig_dist(_fsig, b.get("sig"))
+            if _d > SEG_SIG_TOL:
+                _seg_stale += 1
+                skipped.append((label, "掩膜已过期(画面已变: 签名距离 %d>%d) — 重跑分割即刷新" % (_d, SEG_SIG_TOL)))
+                continue
         col, _zname = ORIGIN_STYLE.get(b.get("origin", "det"), ((200, 200, 200), "?"))
         info = {"id": bid, "label": label, "origin": b.get("origin"), "conf": b.get("conf"),
                 "color": [int(c) for c in col]}
@@ -784,6 +851,10 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                    ("(点框选中 · Delete 删除 · Ctrl+Z 撤销)" if drawn else "")))
     if deleted:
         band.append("已删: " + ", ".join(sorted(x.split("|")[-1] for x in deleted))[:110])
+    # 🧩 历史分割被"掩膜绑帧"拦下的如实标在画面上(老倪把画面当结果看 ⇒ 不能静默不画)
+    if _seg_stale or _seg_legacy:
+        band.append("🧩 历史分割未画: 画面已变 %d 条%s — 重跑分割即刷新"
+                    % (_seg_stale, (" · 无签名旧数据 %d 条" % _seg_legacy) if _seg_legacy else ""))
     y = H - 8 - 16 * (len(band) - 1)
     cv2.rectangle(img, (0, max(0, y - 18)), (W, H), (16, 22, 30), -1)
     for i, t in enumerate(band):
@@ -810,7 +881,10 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                       (int(min(W - 1, gx2)), int(min(H - 1, gy2))), _gcol, 2)
     return img, {"drawn": drawn, "skipped": skipped, "intrinsics_est": K.get("est", False),
                  "boxes": out_boxes, "deleted": sorted(deleted),
-                 "n_3d": n3, "n_2d": len(drawn) - n3}
+                 "n_3d": n3, "n_2d": len(drawn) - n3,
+                 # 🧩 掩膜绑帧口径: 过期的(画面已变)与无签名的(旧数据)各几条, 供页面/取证读
+                 "seg_stale": _seg_stale, "seg_legacy": _seg_legacy,
+                 "seg_sig_tol": SEG_SIG_TOL, "seg_sig_on": _sig_on}
 
 
 # ══════════════════════ 规格生成 ══════════════════════
