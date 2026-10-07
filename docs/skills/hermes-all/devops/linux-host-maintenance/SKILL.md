@@ -274,6 +274,22 @@ cat /proc/swaps ; readlink -f /sys/block/loop*/loop/backing_file   # 同一个�
   **容量要补回就另建一个 `dd` 实块的独立文件**(实测: `/swapfile2` 8G + fstab `sw,pri=-3`, 两块 inode 不同 ⇒ 映射的是两份物理块;
   验证用 `swapoff -a` → `swapon -a` 走一遍开机路径), **千万别对同一个文件再来一次**。
 
+**要把"下次崩了有证据"变成事实**(Ubuntu 24.04 实测口径, 需**一次重启**生效):
+```bash
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y linux-crashdump
+  # ⇒ kdump-tools + kexec-tools + makedumpfile + crash; 包自带 /etc/default/grub.d/kdump-tools.cfg
+  #    (crashkernel=2G-4G:320M,4G-32G:512M,… 本机 31G ⇒ 512M)
+sudo tee /etc/default/grub.d/99-zmax-crash.cfg   # 卡死也走 panic(只靠 panic 关键字抓不到"卡死")
+  # GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT panic=10 softlockup_panic=1 hardlockup_panic=1"
+sudo sed -i 's|^#KDUMP_NUM_DUMPS=.*|KDUMP_NUM_DUMPS=2|' /etc/default/kdump-tools   # 不限份数会吃光盘
+sudo update-grub
+sudo /etc/kernel/postinst.d/kdump-tools $(uname -r)   # 预先建好迷你 initrd ⇒ /var/lib/kdump/ (免首启现建/失败)
+sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg | sort -u   # 生成物复核
+```
+重启后核验: `sudo kdump-config show` 要 `ready to kdump` + `cat /sys/kernel/kexec_crash_size` > 0。
+再配一条 `@reboot` 留痕(`tools/boot_crashcheck.sh`: 记 kdump 就绪状态, 发现 `/var/crash` 有转储就推一条通知)
+—— 否则崩后重启又是"什么都查不到"。注意 `nmi_watchdog` 要为 1, `hardlockup_panic` 才真能触发。
+
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。

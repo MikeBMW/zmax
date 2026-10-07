@@ -53,13 +53,35 @@ fstab 行仍在(重启后由 systemd-fstab-generator 自动恢复)。**回滚**:
 总量回到 **16G**, 但**两个设备映射的是两份不同的物理块** —— 这才是关键区别。
 代价: `/` 从 89% 到 **91%**(剩 37G)。回滚: 删 fstab 行 + `swapoff /swapfile2` + `rm /swapfile2`。
 
-## 5. 下次要抓到真凶(需重启，待老倪点头)
+## 5. 下次能抓到真凶了(2026-10-07 已按建议落地, 待一次重启生效)
 
-现在 `efi_pstore` 已加载但目录为空、内核命令行无 `crashkernel=` ⇒ 真 panic 也不会留证据。二选一/都做：
-1. `crashkernel=512M` + `kdump-tools`：panic 后落 `/var/crash/*/vmcore`(全量，最能定因，占内存)。
-2. `ramoops`/`pstore`：至少留最后一屏内核回溯(轻量)。
+原来 `crashkernel=` 未配置、pstore 空 ⇒ 真 panic 也留不下东西。现在:
+
+| 装了什么 | 实测 |
+|---|---|
+| 包 | `linux-crashdump`(拉来 kdump-tools 1:1.10.3ubuntu2 · kexec-tools · makedumpfile · crash) |
+| 预留内存 | `/etc/default/grub.d/kdump-tools.cfg`(包自带) `crashkernel=2G-4G:320M,4G-32G:512M,…` ⇒ 本机 31G 走 **512M** |
+| 卡死也当 panic | 新落 `/etc/default/grub.d/99-zmax-crash.cfg`: `panic=10 softlockup_panic=1 hardlockup_panic=1`(`nmi_watchdog` 已是 1) |
+| 自动回来 | `panic=10` = 崩后 10 秒自动重启(无人值守工位机要能自己起来; 起来后按既有自愈链恢复) |
+| 转储落点 | `/var/crash/<时间戳>/vmcore`(makedumpfile `-c -d 31` 压缩 + 只丢内核页; `KDUMP_NUM_DUMPS=2` 限份数, 不写死磁盘) |
+| 预建迷你 initrd | 手动跑了一次内核钩子 `/etc/kernel/postinst.d/kdump-tools $(uname -r)` ⇒ `/var/lib/kdump/initrd.img-6.17.0-14-generic` 252MB(解压 340MB), 免首启现建/失败 |
+| 开机留痕 | `tools/boot_crashcheck.sh` + crontab `@reboot sleep 120` ⇒ 每次开井记一行 kdump 就绪状态; **发现 `/var/crash` 有转储就推飞书**(静界群), 正常开机不打扰 |
+
+grub.cfg 已复核(default 与 advanced 两个菜单项都带上了 4 个参数)。**生效需要重启一次**; 重启后按 §7 核验。
 
 ## 6. 现场口述已确认(2026-10-07 老倪)
 
 **10-02 晚上是卡死了, 不是下班正常关机** —— 系统假死后只能长按电源强制断电, 之后国庆 5 天没开机。
 ⇒ 与日志证据一致(无关机序列 + 日志 21:05:01 断在同一秒)。**假死前的先兆 = §2 的 swap 写错误风暴, 已按 §4 修掉**。
+
+## 7. 重启后怎么核验(30 秒, 别只看"服务起没起")
+
+```bash
+sudo kdump-config show | grep -E "current state|crashkernel addr|kdump initrd"
+cat /sys/kernel/kexec_crash_size                      # 要 > 0 (本机 ≈ 512×1024×1024 字节)
+grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /proc/cmdline
+tail -2 /home/ubuntu/zmax_data/boot_selfcheck.log     # 开机留痕那一行(boot_crashcheck.sh 写的)
+```
+预期: `current state: ready to kdump` + 有 crashkernel 地址 + cmdline 四个参数齐 + selfcheck 记了一行。
+仍 `Not ready` ⇒ `journalctl -u kdump-tools -b`(常见: 预留偏小 / 迷你 initrd 缺 / 内核不支持)。
+**真崩过一次之后**: `/var/crash/<时间戳>/{vmcore,dmesg.txt}` 会在下次开机出现, 并且 `boot_crashcheck.sh` 自动推一条飞书(静界群)。
