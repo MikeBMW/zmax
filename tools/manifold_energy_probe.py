@@ -217,6 +217,12 @@ LORA_STAGE = {"L4": True, "L3": True, "L2": False, "L5": False}
 
 
 def level_from_parse(pr: dict) -> float:
+    # ⚠️ 2026-10-08: 各层解析器自带的 level_c **优先** (L5 = 同口径 A/B 的计划合法率, 是"水平";
+    #   loss 降幅只是"改善", 那是做功 τ 的事, 不能拿来当水平) —— 否则 L5 会用 0.98 顶掉 0.75。
+    _own = pr.get("level_c")
+    if _own is not None and float(_own) >= 0:
+        return float(_own)
+
     """能力水平 c ∈[0,1] (真实指标归一) —— 用于**存量能量**(基座在场就有)。
 
     · L2: c = mAP50 末值 (检测能力的绝对水平)
