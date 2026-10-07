@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=XSpace Studio 控制台
+Comment=Z-MAX 控制台 (PyQt5) — 双击打开
+Exec=/home/ubuntu/zmax/tools/gui/launch_studio.sh
+Icon=/home/ubuntu/zmax/tools/gui/logo.png
+Path=/home/ubuntu/zmax
+Terminal=false
+Categories=Development;
+StartupNotify=true

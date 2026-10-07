@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hermes (静静)
+Comment=Hermes Agent CLI (静静)
+Exec=/home/ubuntu/.local/bin/hermes
+Icon=utilities-terminal
+Path=/home/ubuntu
+Terminal=true
+Categories=Development;

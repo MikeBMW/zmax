@@ -128,9 +128,15 @@ def main() -> int:
     #   等于"改版本必同步"清单漏了一处。门自己就是判据, 必须一起改。
     INTEG = os.path.join(REPO, "tools/ci/integrity_check.py")
     ic = _read(INTEG)
-    _ev = re.compile(r'EXPECTED_VERSION = "v{1,2}%s"' % re.escape(old))
+    # 🐛 2026-10-08 实测补: 上面那版按"精确旧号"匹配 ⇒ 若这处**本来就落后**(如 v5.18.0 迭代漏改,
+    #   文件还停在 v5.17.0), 匹配数就是 0, 工具只报 ❌ 却改不动 ⇒ 门永远红/或整版漏同步。
+    #   改成"**认版本号不认记法**": 匹配任意 vX.Y.Z, 直接改写成本次新号 (顺带把落后的一起修回来)。
+    _ev = re.compile(r'EXPECTED_VERSION = "v{1,2}\d+\.\d+\.\d+"')
+    _ev_found = _ev.findall(ic)
     ic2 = _ev.sub('EXPECTED_VERSION = "%s"' % nv_brand, ic)
-    chk.append(("integrity_check EXPECTED_VERSION", len(_ev.findall(ic)),
+    if _ev_found and not any(o in f for f in _ev_found for o in (old,)):
+        print("  ℹ️ note: integrity_check 原值是 %s(落后于 %s), 已一并修正" % (_ev_found[0], old))
+    chk.append(("integrity_check EXPECTED_VERSION", len(_ev_found),
                 len(re.findall(r'EXPECTED_VERSION = "v{1,2}%s"' % re.escape(a.to), ic2))))
 
     vm = _read(VM)
