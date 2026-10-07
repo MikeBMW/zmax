@@ -43,6 +43,29 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
 
 ## 清理清单 (超红线时按此顺序, 2026-09-14 实测把 307G→295G)
 
+### 🆕 2026-10-07 实测: 347G → 299G (释放 48G, 一次把这套做成了 cron v5.0)
+
+四个阶段, **先零风险后旧代**, 全程 GUI 与 auto_loop 未挂 (台账 `reports/disk_cleanup_20261007_ledger.json`):
+
+| 阶段 | 释放 | 内容 |
+|---|---|---|
+| 1 | 12G | 追加型日志**截断**(zmax-dds-agg 3.8G + dds-pub 2.0G + syslog.1 705M)、apport 崩溃转储、~/.cache/uv、零引用 _probe_v5.h5 |
+| 2 | 21G | 被取代的旧代训练 run (同族留最新, **当天的全留**) |
+| 3 | 6G | 已判 FAIL 的 3DGS 扫描会话 4.6G、零引用旧仿真实例、旧备份 zip、HF 空仓库桩 |
+| 4 | 6G | chromium Service Worker/Cache/Code Cache、ss_bypass 旧轮转 2.6G、pip/torch/npm 缓存 |
+
+**三条新规矩 (已写进 disk_redline.sh 的 2b 段)**:
+1. **追加型日志只能 `truncate -s 0`, 绝不能 `rm`** —— 服务持着 fd, 删文件后它会继续往悬空 inode 写(空间不释放还查不到)。
+2. **同族旧 run 判定要用严格白名单式匹配**: `^…_l[0-9]{7}_[0-9]{6}$` 才对, 拆族用 `awk -F'_l'`
+   会把 `smolvla_lew_v10` / `v10_1h` / `d1` / `lora_200`(全是被 tools/ 引用的在役链) 也算成一族 ——
+   实测第一版 cron 空跑就要删 `v10_1h`。**删前必须 `--dry-run` 并确认"在役链一条都没匹配上"**。
+3. **删训练 run 前再 grep 一次活引用**做兜底; 被 reports/ 引用过不算活引用(run 记录了它的数字,
+   权重可由 joint_train_all.py 重训) —— 但要在台账里写明"哪个 report 曾引用它"。
+
+**仍在那里的大头 (需人工定夺)**: `datasets/cube_single_expert.h5` **95G** —— 只有 INTACT 论文复现脚本
+(`tools/intact/*`) 引用, 与当前在役光模块链无关; 删=立刻 95G 余量, 代价=重下 (HF quentinll/lewm-cube ~100G)。
+
+
 | 序 | 目标 | 判据 | 省 |
 |---|---|---|---|
 | 1 | INTACT 权重目录中间轮 `$CACHE/checkpoints/*/weights_epoch_*.pt` | 每目录留最后轮; **保护** train config `init_weights_path` 指向的轮 (暖启动源) | 百 MB/个 |
