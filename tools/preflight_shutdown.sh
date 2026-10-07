@@ -96,8 +96,14 @@ print(' | '.join(rows[:4]))
 PY
 )
     extra=$(ls -1 /home/ubuntu | grep -iE '^zmax_|^aoi_v4$|^lerobot|^INTACT' | tr '\n' ' ')
-    if [ "$(ls -1 /home/ubuntu | grep -icE '^zmax_|^aoi_v4$|^lerobot|^INTACT')" -le 1 ] && [ -n "$who" ]; then
-        warn "~ 顶层多出老目录($extra): **代码侧已修**, 但已在跑的老进程还揣着老路径在写(下面这些, 写的是日志不是数据) ⇒ 重启对应进程/重启机器后消失"
+    # 只有这两个是"老进程按老路径写回"的已知形态(zmax_data=日志, lerobot-smolvla-lew=训练产物);
+    # 且必须确实有进程还揣着老路径在写 ⇒ 判 ⚠️(不阻塞下电)。其余一律 ❌。
+    known=1
+    for e in $extra; do
+        case "$e" in zmax_data|lerobot-smolvla-lew) ;; *) known=0;; esac
+    done
+    if [ "$known" -eq 1 ] && [ -n "$who" ]; then
+        warn "~ 顶层多出老目录($extra): **代码侧已修**, 但已在跑的老进程还揣着老路径在写(下面这些, 写的是日志/产物不是真源) ⇒ 重启对应进程/重启机器后消失"
         echo "$who" | tr '|' '\n' | sed 's/^/       /' | head -4
     else
         bad "~ 顶层有 $n 个 zmax 相关项: $extra"
