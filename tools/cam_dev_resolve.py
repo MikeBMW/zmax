@@ -71,20 +71,37 @@ def pick(prefer_rgb_name: str, prefer_top_name: str):
     return local, top, rows
 
 
+def pick_usb(rows, prefer_usb_name: str, exclude: str = ""):
+    """🎛 USB 摄像头 (2026-10-07 老倪外接): 卡名匹配 **且有像素格式**。
+
+    坑: 很多 UVC 相机在同一物理设备上多暴露一个只有 metadata/无像素格式的节点 (实测 USB2.0 Camera
+    的 video3 列不出任何格式, `VIDIOC_G_FMT` 直接 Invalid argument) —— 认卡名不认格式就会挑到它,
+    打开后一帧都不出。所以这里必须要求 formats 里出现 MJPG/JPEG/YUYV。
+    """
+    def _cap(r):
+        return any(f in ("MJPG", "JPEG", "YUYV") for f in r["formats"])
+    return next((r["dev"] for r in rows
+                 if prefer_usb_name.lower() in r["name"].lower() and _cap(r)
+                 and r["dev"] != exclude), None)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rgb-name", default="Integrated RGB", help="笔记本彩色相机的卡名关键字")
     ap.add_argument("--top-name", default="MAXHUB", help="顶视相机的卡名关键字")
+    ap.add_argument("--usb-name", default="USB2.0 Camera", help="外接 USB 摄像头的卡名关键字")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     local, top, rows = pick(a.rgb_name, a.top_name)
+    usb = pick_usb(rows, a.usb_name, exclude=local)
     n = lambda d: int(re.sub(r"\D", "", d)) if d else -1                          # noqa: E731
     if a.json:
-        print(json.dumps({"local": n(local), "local2": n(top), "cands": rows},
+        print(json.dumps({"local": n(local), "local2": n(top), "usb": n(usb), "cands": rows},
                          ensure_ascii=False, indent=1))
     else:
         print("LOCAL=%d" % n(local))
         print("LOCAL2=%d" % n(top))
+        print("USB=%d" % n(usb))
     return 0 if local else 1
 
 

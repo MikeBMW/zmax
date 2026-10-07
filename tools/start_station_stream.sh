@@ -20,6 +20,7 @@ ORIN_HOST="${ZMAX_ORIN_HOST:-tashan@192.168.23.66}"; ORIN_HOST="${ORIN_HOST##*@}
 
 _ld=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
 _l2=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
+_lu=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');   [ -n "$_lu" ] || _lu=-1
 [ "$_l2" = "$_ld" ] && _l2=-1        # 绝不把两路指到同一台设备(独占会打不开)
 
 _pid_by_port() { ss -tlnp 2>/dev/null | sed -n "s/.*:${1} .*pid=\([0-9]*\).*/\1/p" | head -1; }
@@ -30,6 +31,9 @@ if [ "${1:-}" = "--check" ]; then
   [ -n "$p" ] && ps -o pid,etimes,cmd -p "$p" --no-headers | cut -c1-220 | sed 's/^/  /' || echo "  (8791 没在监听)"
   echo "=== 解析结果 (此刻硬件) ==="
   python3 "$ROOT/tools/cam_dev_resolve.py" --json 2>/dev/null | sed -n '1,12p' | sed 's/^/  /'
+  echo "=== 笔记本这一路当前源 (服务端真值) ==="
+  curl -s -m 6 "http://127.0.0.1:$PORT/cam/src" \
+    | python3 -c "import sys,json;d=json.load(sys.stdin);print('  · 当前: %s → /dev/video%s %s'%(d.get('kind'),d.get('dev'),d.get('name') or ''));[print('  · 可选: %s → /dev/video%s %s'%(o['kind'],o['dev'],o['name'])) for o in d.get('options',[])]" 2>/dev/null
   echo "=== 两格实测(真实取帧) ==="
   curl -s -m 12 "http://127.0.0.1:$PORT/stats" \
     | python3 -c "import sys,json;d=json.load(sys.stdin);[print('  %-8s %-40s frames=%s'%(k,d[k].get('label',''),d[k].get('frames_served'))) for k in ('local','local2') if k in d]" 2>/dev/null
@@ -41,6 +45,8 @@ if [ -n "$p" ]; then echo "  · 停旧推流 pid=$p (按端口找, 不用 pkill 
 
 cd "$ROOT" || exit 1
 echo "  · 相机映射: 笔记本彩色 /dev/video$_ld · MAXHUB 顶视 $([ "$_l2" -ge 0 ] && echo "/dev/video$_l2" || echo '(未找到)')"
+echo "  · 笔记本这一路可选: 内置 /dev/video$_ld · USB $([ "$_lu" -ge 0 ] && echo "/dev/video$_lu" || echo '(没插/不在位)')" \
+     "  ← 页面 [内置|USB] 按钮可随时切 (选择落盘, 重启后仍是它)"
 # ── 2026-09-29 根治: 先抬 fd 上限 + 清掉从父进程继承来的 fd 表 ────────────────
 # 事故: 22:47 那个实例"一出生 fd 表就是满的"(日志第 15 行即 Errno 24) —— 它继承了
 #       父进程的 1024 个 fd + 1024 的软上限, 于是连 accept 都做不了, 整个服务僵死 7 小时。

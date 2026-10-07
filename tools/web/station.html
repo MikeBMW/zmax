@@ -282,9 +282,17 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
       <img id="i_arm" data-mode="snap" data-src="/snapshot/overlay_arm.jpg" data-every="800"></div>
-    <div class="panel"><div class="cap"><span class="ttl">💻 笔记本内置相机</span>
+    <div class="panel"><div class="cap"><span class="ttl">💻 笔记本相机</span>
       <span class="meta" id="m_local">…</span></div>
-      <img id="i_local" data-mode="snap" data-src="/snapshot/overlay_local.jpg" data-every="400"></div>
+      <img id="i_local" data-mode="snap" data-src="/snapshot/overlay_local.jpg" data-every="400">
+      <!-- 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
+           —— 服务侧按**卡名**重解析设备(插拔后号变了也对), 选择落盘, 重启后仍是这台。
+           这一路同时是安全层「全局视角」的输入 ⇒ 换源会一起改变安全层看到的全局画面。 -->
+      <div class="row" style="padding:6px 10px 2px;align-items:center">
+        <span class="seg" id="lsrc">
+          <button data-kind="builtin">内置</button>
+          <button data-kind="usb">USB</button></span>
+        <span id="lsrc_msg" style="font-size:12px;opacity:.85"></span></div></div>
     <div class="panel"><div class="cap"><span class="ttl">📺 MAXHUB 顶摄</span>
       <span class="meta" id="m_local2">…</span></div>
       <img id="i_local2" data-mode="snap" data-src="/snapshot/overlay_local2.jpg" data-every="400"></div>
@@ -1073,6 +1081,8 @@ async function poll(){
     try{ window.__stats=st||{}; }catch(_e){}
     const a82=$('#auto82');
     if(a82){const want=((j.aoi_auto||{})['10082']!==false); if(a82.checked!==want) a82.checked=want;}
+    /* 🎛 笔记本这一路的当前源(服务端真值): 别人/别的页面切了, 这里 4s 内跟着变 */
+    if(j.cam_src){ try{ _lsrcPaint(j.cam_src.kind); window.__camSrc=j.cam_src; }catch(_e){} }
   }catch(e){}
   try{
     if(!s) throw 0;
@@ -1239,6 +1249,22 @@ document.querySelectorAll('#sview button').forEach(b=>b.onclick=()=>{   // 🔍 
   b.classList.add('on');
   const im=$('#i_aoi_surface');
   if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
+});
+/* 🎛 笔记本这一路 [内置 | USB] 换源 (2026-10-07 老倪: 「用户能选择内置摄像头, 或者是USB摄像头」)
+   —— POST /cam/src, 服务侧按卡名重开那一格采集设备(不动别的通道: 叠加/安全层读的还是 "local")。
+   切完这一格的快照会空一拍, 所以 2s 后主动刷一张, 不让它停在旧图上。 */
+function _lsrcPaint(kind){
+  document.querySelectorAll('#lsrc button').forEach(b=>b.classList.toggle('on', b.dataset.kind===kind));
+}
+document.querySelectorAll('#lsrc button').forEach(b=>b.onclick=async()=>{
+  const k=b.dataset.kind;
+  const m=$('#lsrc_msg'); if(m){ m.textContent='切换中…'; m.className=''; }
+  try{
+    const j=await post('/cam/src',{ch:'local',kind:k},15000);
+    _lsrcPaint(j.kind||k);
+    if(m){ m.textContent=(j.ok?'':"⛔ ")+(j.msg||''); m.className=(j.ok?'ok':'bad'); }
+  }catch(e){ if(m){ m.textContent='切换失败: '+e; m.className='bad'; } }
+  setTimeout(()=>{ const im=$('#i_local'); if(im) im.src=_u('/snapshot/overlay_local.jpg')+'?t='+Date.now(); },1800);
 });
 const _a82=$('#auto82');
 if(_a82) _a82.onchange=async()=>{

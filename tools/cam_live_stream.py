@@ -333,39 +333,208 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
             _STOP.wait(1.0 / fps_cap - dt)
 
 
-# ── ② 本机 V4L2 相机：驱动直读 (笔记本内置 / MAXHUB 电视顶摄 都是走这里) ────
+# ── 🎛 笔记本这一路「内置 ↔ USB」换源 (2026-10-07 老倪: 「笔记本摄像头要有切换功能,
+#     用户能选择内置摄像头, 或者是USB摄像头」) ─────────────────────────────────────────
+#   口径: 换源只改**这一格 (frame_name="local") 采的是哪台设备**, 不改通道名 —— 页面/叠加/VL 安全层
+#   都还是读 "local" 这一路, 所以换完自动全线跟随(不用改调用方)。
+#   · 设备号**每次实时按卡名重扫**(c插拔/换口/重启后 /dev/videoN 会变, 记死号本机已踩过串线/近黑的坑)
+#   · 选择**落盘**(~/zmax_data/cam_local_src.json) ⇒ 重启/换页仍是用户选的那台
+#   · ⚠️ 安全层耦合: tools/vl_safety_fast.py 的 CAMS/REQUIRED_CAMS 把 "local" 当「笔记本相机(全局视角)」
+#     ⇒ 换源会一起改变安全层看到的全局画面; 页面上如实标注, 不藏着。
+_SRC_FILE = os.path.expanduser("~/zmax_data/cam_local_src.json")
+_SRC_LOCK = threading.Lock()
+_USBCFG = {"name": "USB2.0 Camera", "dev": -1}   # USB 相机: 卡名匹配串 + 可选写死号(-1=自动)
+_LOCAL_SRC = {"kind": "builtin", "dev": -1, "builtin_dev": -1, "gen": 0}
+
+
+def _v4l_scan() -> list:
+    """列出所有 /dev/videoN: [{dev, name, fmt}] —— fmt 空 = 该节点不出图(纯 metadata), 换源时跳过。"""
+    import glob as _g
+    out = []
+    paths = []
+    for p in _g.glob("/sys/class/video4linux/video*"):
+        m = re.search(r"(\d+)$", p)
+        if m:
+            paths.append((int(m.group(1)), p))
+    for idx, p in sorted(paths):
+        try:
+            with open(os.path.join(p, "name"), encoding="utf-8") as f:
+                nm = f.read().strip()
+        except OSError:
+            continue
+        try:
+            r = subprocess.run(["v4l2-ctl", "-d", "/dev/video%d" % idx, "--list-formats"],
+                               capture_output=True, text=True, timeout=6)
+            fmt = re.findall(r"'([A-Z0-9 ]{3,8})'", r.stdout or "")
+        except Exception:                                                     # noqa: BLE001
+            fmt = []
+        out.append({"dev": idx, "name": nm, "fmt": fmt})
+    return out
+
+
+def _src_find(needle: str, exclude: int = -1) -> int:
+    """按卡名找**真能出图**的节点: 优先 MJPG(JPEG) 路, 其次任何有像素格式的路; 找不到 = -1。"""
+    fallback = -1
+    for d in _v4l_scan():
+        if d["dev"] == exclude or needle.lower() not in (d["name"] or "").lower():
+            continue
+        if any(f in ("MJPG", "JPEG") for f in d["fmt"]):
+            return d["dev"]
+        if d["fmt"] and fallback < 0:
+            fallback = d["dev"]
+    return fallback
+
+
+def _src_kinds() -> list:
+    """当前可选源 (实时扫硬件; dev<0 = 此刻不在位, 页面按钮照样显示但点了会如实说不在位)。"""
+    opts = []
+    bd = int(_LOCAL_SRC.get("builtin_dev", -1))
+    opts.append({"kind": "builtin", "dev": bd, "present": bd >= 0,
+                 "name": (_v4l_name(bd) if bd >= 0 else "") or "内置相机"})
+    ud = _src_find(_USBCFG["name"], exclude=bd)
+    opts.append({"kind": "usb", "dev": ud, "present": ud >= 0,
+                 "name": (_v4l_name(ud) if ud >= 0 else "") or "USB 摄像头"})
+    return opts
+
+
+def _src_dev(kind: str) -> int:
+    if kind == "usb":
+        preset = int(_USBCFG.get("dev", -1))
+        if preset >= 0:                       # 命令行写死了号就以它为准(不在了如实报 -1)
+            return preset if os.path.exists("/dev/video%d" % preset) else -1
+        return _src_find(_USBCFG["name"], exclude=int(_LOCAL_SRC.get("builtin_dev", -1)))
+    return int(_LOCAL_SRC.get("builtin_dev", -1))
+
+
+def _src_label(kind: str, dev: int) -> str:
+    nm = _v4l_name(dev) if dev >= 0 else ""
+    return "%s %s" % ("🔌 USB" if kind == "usb" else "💻 内置",
+                      nm or ("/dev/video%d" % dev if dev >= 0 else "未接"))
+
+
+def _src_load() -> str:
+    try:
+        with open(_SRC_FILE, encoding="utf-8") as f:
+            k = (json.load(f) or {}).get("kind")
+        return k if k in ("builtin", "usb") else "builtin"
+    except Exception:                                                          # noqa: BLE001
+        return "builtin"
+
+
+def _src_save(kind: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(_SRC_FILE), exist_ok=True)
+        with open(_SRC_FILE, "w", encoding="utf-8") as f:
+            json.dump({"kind": kind, "ts": time.time()}, f, ensure_ascii=False)
+    except Exception:                                                          # noqa: BLE001
+        pass
+
+
+def _src_apply(kind: str, persist: bool = True, why: str = "页面") -> dict:
+    """切到 kind: 重解析设备号 + 抬 gen 让采集线程释放重开 + 更新页面标签 + 落盘。"""
+    dev = _src_dev(kind)
+    if dev < 0:
+        return {"ok": False, "code": 409, "kind": _LOCAL_SRC["kind"],
+                "msg": "⛔ %s摄像头此刻不在位(按卡名 %r 没扫到能出图的节点), 仍用当前这一路"
+                       % ("USB " if kind == "usb" else "内置", _USBCFG["name"]
+                          if kind == "usb" else "cam_dev_resolve 解析结果")}
+    with _SRC_LOCK:
+        _LOCAL_SRC["kind"] = kind
+        _LOCAL_SRC["dev"] = int(dev)
+        _LOCAL_SRC["gen"] += 1
+        _CAM_LABEL["local"] = _src_label(kind, int(dev))
+        _gen = _LOCAL_SRC["gen"]
+    if persist:
+        _src_save(kind)
+    return {"ok": True, "code": 200, "kind": kind, "dev": int(dev), "gen": _gen,
+            "name": _v4l_name(int(dev)), "label": _CAM_LABEL["local"], "by": why,
+            "msg": "✅ 笔记本这一路已切到 %s (记住选择, 重启后仍是它)"
+                   % ("USB 摄像头" if kind == "usb" else "内置摄像头")}
+
+
+def _src_status() -> dict:
+    with _SRC_LOCK:
+        kind, dev = _LOCAL_SRC["kind"], int(_LOCAL_SRC["dev"])
+    return {"ok": True, "ch": "local", "kind": kind, "dev": dev,
+            "name": _v4l_name(dev) if dev >= 0 else "",
+            "label": _CAM_LABEL.get("local", ""), "options": _src_kinds(),
+            "file": _SRC_FILE,
+            "note": "这一路同时是 VL 安全层「全局视角」的输入 ⇒ 换源会一起改变安全层看到的全局画面"}
+
+
+def _src_cur() -> tuple:
+    with _SRC_LOCK:
+        return int(_LOCAL_SRC["gen"]), int(_LOCAL_SRC["dev"])
+
+
+def _src_wait_change(prev_gen: int, timeout: float) -> bool:
+    t0 = time.time()
+    while not _STOP.is_set() and time.time() - t0 < timeout:
+        if _LOCAL_SRC["gen"] != prev_gen:
+            return True
+        _STOP.wait(0.1)
+    return False
+
+
+# ── ② 本机 V4L2 相机：驱动直读 (笔记本内置 / USB / MAXHUB 电视顶摄 都是走这里) ────
 def local_worker(dev_index: int, quality: int, width: int, height: int,
-                 fps_cap: float, frame_name: str = "local") -> None:
-    cap = cv2.VideoCapture(dev_index)
-    if not cap.isOpened():
-        print(f"[{frame_name}] /dev/video{dev_index} 打不开", flush=True)
-        return
-    # 低延迟三件套：MJPG 采集 + 缓冲=1 + 固定分辨率
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    if width:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    if height:
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                 fps_cap: float, frame_name: str = "local",
+                 switchable: bool = False) -> None:
+    """switchable=True (= 笔记本这一路) 时支持**运行时换源**:
+    控制端 _src_apply() 抬 gen ⇒ 本线程 break 出读循环、release 旧设备、按新号重开。
+    先 release 再 open ⇒ 不会出现"两台一起占着/设备忙"。打不开时线程**不退出**, 每 3s 重试
+    (USB 可能刚插上), 这样用户点一次 [USB] 只要设备到位就一定能切过去。
+    """
+    if switchable:
+        gen, dev = _src_cur()
+        if dev < 0:
+            dev = dev_index
+    else:
+        gen, dev = 0, dev_index
     params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
     fails = 0
     while not _STOP.is_set():
-        t0 = time.time()
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            fails += 1
-            if fails % 30 == 1:
-                print(f"[{frame_name}] 读帧失败 x{fails}", flush=True)
-            _STOP.wait(0.05)
+        cap = cv2.VideoCapture(dev)
+        if not cap.isOpened():
+            cap.release()
+            print(f"[{frame_name}] /dev/video{dev} 打不开（{_v4l_name(dev) or '无名'}）", flush=True)
+            if not switchable:
+                return
+            if _src_wait_change(gen, 3.0):
+                gen, dev = _src_cur()
             continue
-        ok, buf = cv2.imencode(".jpg", frame, params)
-        if ok:
-            _put(frame_name, buf.tobytes(), time.time(),
-                 float(frame.nbytes) / 1024.0)
-        dt = time.time() - t0
-        if fps_cap > 0 and dt < 1.0 / fps_cap:
-            _STOP.wait(1.0 / fps_cap - dt)
-    cap.release()
+        # 低延迟三件套：MJPG 采集 + 缓冲=1 + 固定分辨率
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if width:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        if height:
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        print(f"[{frame_name}] 出图: /dev/video{dev} = {_v4l_name(dev) or '(无名)'}", flush=True)
+        while not _STOP.is_set():
+            if switchable and _LOCAL_SRC["gen"] != gen:
+                break                                          # 🔁 换源信号: 出去重开
+            t0 = time.time()
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                fails += 1
+                if fails % 30 == 1:
+                    print(f"[{frame_name}] 读帧失败 x{fails}", flush=True)
+                _STOP.wait(0.05)
+                continue
+            ok, buf = cv2.imencode(".jpg", frame, params)
+            if ok:
+                _put(frame_name, buf.tobytes(), time.time(),
+                     float(frame.nbytes) / 1024.0)
+            dt = time.time() - t0
+            if fps_cap > 0 and dt < 1.0 / fps_cap:
+                _STOP.wait(1.0 / fps_cap - dt)
+        cap.release()
+        if _STOP.is_set():
+            break
+        if switchable:
+            gen, dev = _src_cur()
+            print(f"[local] 换源 → /dev/video{dev} = {_v4l_name(dev) or '(无名)'}", flush=True)
 
 
 # ── ②b 网络相机：MAXHUB 等可联网相机 (HTTP-JPEG/MJPEG 直转 · RTSP 解码重压) ──
@@ -3369,10 +3538,15 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/station/status":
             # 🛰 页面只发**一条**状态请求 (3 条合并成 1) —— 见页面注释里的 HTTP/1.1 六连接坑
             payload = {"stats": self._stats(), "ctl": _ctl_status(),
-                       "aoi_auto": _aoi_auto_status()}
+                       "aoi_auto": _aoi_auto_status(),
+                       # 🎛 2026-10-07: 笔记本相机当前源 (内置/USB) 也塞进这条, 页面不再多发一条请求
+                       "cam_src": _src_status()}
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
             self._send(200, "application/json; charset=utf-8", _jbytes(payload))
+        elif p in ("/cam/src", "/api/cam/src"):
+            # 🎛 笔记本这一路换源状态 (只读; 换源必须 POST —— 与"只有 POST 能改状态"同一条规矩)
+            self._send(200, "application/json; charset=utf-8", _jbytes(_src_status()))
         elif p in ("/api/aoi/last_result", "/aoi/last_result"):
             # 🧾 2026-09-30: 页面「最后结果」按钮 → 工控机 GET /last_result(只读)
             _p = 10082
@@ -3537,6 +3711,19 @@ class Handler(BaseHTTPRequestHandler):
                    "aoi_auto": _aoi_auto_status(),
                    "note": "自动取景 %s" % ("开(工控机没照片时现拍一张, 最快30s一次)"
                                           if _AOI_AUTO.get(port) else "关(只在手动点「拍一帧」时拍)")}
+        elif p in ("/cam/src", "/api/cam/src"):
+            # 🎛 2026-10-07 老倪: 笔记本这一路换源 (内置 ↔ USB)。
+            #   只改"这一格采哪台设备" —— 通道名还是 "local" ⇒ 页面/叠加/VL 安全层自动跟随。
+            _b = body if isinstance(body, dict) else {}
+            _k = str(_b.get("kind") or "").strip().lower()
+            if _k not in ("builtin", "usb"):
+                out = {"ok": False, "code": 400, "msg": "kind 只能是 builtin 或 usb"}
+                out.update(_src_status())
+            else:
+                out = _src_apply(_k, persist=True, why="页面")
+                out.update(_src_status())
+                if not out.get("ok"):
+                    out["code"] = 409
         else:
             self._send(404, "text/plain", b"not found")
             return
@@ -3673,6 +3860,14 @@ def main():
                     help="手臂走高速通道: 从 Orin rs_fast_node 的 JPEG 端点取帧(如 http://192.168.23.66:8792/frame.jpg)")
     ap.add_argument("--arm-fps", type=float, default=30.0, help="手臂取帧上限 fps")
     ap.add_argument("--local-dev", type=int, default=0, help="相机①本机 /dev/videoN")
+    # 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
+    ap.add_argument("--local-src", default="auto", choices=["auto", "builtin", "usb"],
+                    help="笔记本这一路开机先出哪台: auto(默认)=沿用页面上次的选择"
+                         "(~/zmax_data/cam_local_src.json, 没有记录就是内置)")
+    ap.add_argument("--usb-dev", type=int, default=-1,
+                    help="USB 摄像头 /dev/videoN (-1=按卡名自动扫; 推荐自动 —— 插拔/换口后序号会变)")
+    ap.add_argument("--usb-name", default="USB2.0 Camera",
+                    help="USB 摄像头卡名匹配串 (取 v4l2 卡名, 默认 'USB2.0 Camera')")
     ap.add_argument("--no-local", action="store_true", help="不启第一路本机相机")
     # 🎥 2026-09-27 老倪: 三相机兼容 —— 第二路本机相机 (MAXHUB 电视顶摄) 或网络相机
     ap.add_argument("--local2-dev", type=int, default=-1,
@@ -3727,12 +3922,28 @@ def main():
                          daemon=True, name="arm").start()
     _CAM_LABEL["arm"] = "🦾 机器人臂上 D405 (Orin)"
     if not args.no_local:
-        _nm = _v4l_name(args.local_dev)
-        _CAM_LABEL["local"] = ("💻 " + (_nm or ("/dev/video%d" % args.local_dev)))
-        print(f"   相机① 本机: /dev/video{args.local_dev} = {_nm or '(无名)'}", flush=True)
+        # 🎛 笔记本这一路 = 「内置 ↔ USB」可换源 (页面 [内置|USB] 按钮 → POST /cam/src,
+        #   本进程内即时重开设备; 选择落盘 ⇒ 重启后仍是用户选的那台)
+        _USBCFG["name"] = args.usb_name
+        _USBCFG["dev"] = int(args.usb_dev)
+        _LOCAL_SRC["builtin_dev"] = int(args.local_dev)
+        want = args.local_src if args.local_src in ("builtin", "usb") else _src_load()
+        if _src_dev(want) < 0:                     # 选中的那台不在位 ⇒ 退回内置 (不空转/不黑屏)
+            if want == "usb":
+                print(f"   ⚠ 上次选的是 USB 摄像头, 但按卡名 '{args.usb_name}' 现在没扫到 ⇒ 先按内置起"
+                      f"（插上后在页面点 [USB] 即可切过去）", flush=True)
+            want = "builtin"
+        _LOCAL_SRC["kind"] = want
+        _LOCAL_SRC["dev"] = _src_dev(want)
+        _dev0 = _LOCAL_SRC["dev"] if _LOCAL_SRC["dev"] >= 0 else args.local_dev
+        _CAM_LABEL["local"] = _src_label(want, _dev0)
+        print(f"   相机① 笔记本: {_CAM_LABEL['local']}", flush=True)
+        print("      可换源(页面 [内置|USB]): " + " · ".join(
+            "%s→%s" % (o["kind"], ("/dev/video%d" % o["dev"]) if o["dev"] >= 0 else "未接")
+            for o in _src_kinds()), flush=True)
         threading.Thread(target=local_worker,
-                         args=(args.local_dev, args.quality, args.width,
-                               args.height, args.fps, "local"),
+                         args=(_dev0, args.quality, args.width, args.height,
+                               args.fps, "local", True),
                          daemon=True, name="local").start()
     # 🎥 三相机: 第二路 (MAXHUB 电视顶摄: 本机 USB 或网络流二选一)
     if not args.no_local2 and (args.local2_url or args.local2_dev >= 0):
