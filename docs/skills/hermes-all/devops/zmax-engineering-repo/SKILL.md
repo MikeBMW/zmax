@@ -17,6 +17,31 @@ metadata:
 - 要把代码里的绝对路径改成 `/home/ubuntu/zmax` 开头, 或怀疑改了路径后哪里断了。
 - 要把技能/记忆推上 GitHub, 或仓库里混进了权重/截图/交付件。
 
+## Orin home 唯一入口 = ~/.zmax (2026-10-07 整理落地)
+老倪口径: **Orin 的 home 只保留唯一 `.zmax` 隐藏目录**, 所有 zmax 相关代码/产物都在里面, 不得有其它路径(含 Desktop)。
+- 现结构: `~/.zmax/{arm,uplink,rs,yolo,state_space,quarantine,logs/{sdk,desktop},rokae_log/{home,desktop},data/{orin_10s,camera_frame.png}}`
+  + 原有 `act/ models/ mcap/ lerobot/ shadow_reports/` + 8月老脚本(orin_*.py/diag_*.py)。
+- 搬迁清单: `~/.zmax/CONSOLIDATE_MANIFEST.jsonl`(src→dst+指纹+verified); 日志 `~/.zmax/_consolidate_<ts>.log`;
+  旧物**归档而非删除**: `~/.zmax/_archive_units_<ts>/`、`_archive_junk_<ts>/`(可整目录回滚)。
+- 动过的单元(只改 ExecStart 里的绝对路径, User/WorkingDirectory/argv 全不变):
+  `zmax-arm-sdk-bridge.service` → `~/.zmax/arm/zmax_arm_sdk_bridge.py`;
+  `zmax-orin-uplink.service` → `~/.zmax/uplink/zmax_orin_uplink.py`。改完 `daemon-reload` + `restart`。
+
+### 坑(实战踩出来的)
+1. **`sudo` 包装函数 + heredoc 会抢 stdin**: `SUDO(){ echo pw | sudo -S -p '' "$@"; }` 后接 `<<'PY'` 时,
+   python 读到的是密码而不是脚本。⇒ 要 root 跑的脚本先 `scp` 成文件再 `sudo python3 /tmp/x.py`, 别用 `sudo python3 - <<EOF`。
+2. **归档/删除前必须断言服务真的指向新路径**: 只看 `systemctl is-active` 会骗人——单元还指着老路径时重启照样 active,
+   此时把老 .py 归档了, 服务就“跑在已不存在的文件上”(下次重启即挂)。断言 = `ps -eo cmd | grep <新路径>` 出现在 argv 里。
+3. **指纹校验不能用 `find|md5sum|md5sum`**(哈希含绝对路径, 一移动就变)⇒ 假警报。
+   正确: `(cd $dir && find . -type f -print0 | sort -z | xargs -0 md5sum | md5sum)`; 或直接依 `mv`(同盘 rename 数据不动)+文件数比对。
+4. 搬**在跑**的脚本(如 `~/zmax/rs_fast_node.py`, ssh 会话手工起的)可以搬, 进程靠 inode 继续活,
+   但之后重启必须用新路径; 手工起的进程没有单元/autostart, 动手前先 `grep -rn <名> /etc/systemd ~/.bashrc ~/.config/autostart`。
+5. 不属 zmax 的别碰: `~/mes/`(MES 桥, 2 单元+2 进程, ROS 安装路径硬编码)、`0810*/`/`0810.zip`/`tashan0924/`(厂商包)、
+   `Desktop/README_首次启动说明.md` + `put_points.yaml`(厂商/操作员文档)。
+6. `~/logs/`(global_logger_*.log)是 **xCoreSDK 按 cwd 生成的**日志, 不是代码; 单元 `WorkingDirectory=/home/tashan` 不变时它还会再生成
+   ⇒ 要彻底收进 .zmax 得同时改 WorkingDirectory(本次没改, 保行为不变)。
+7. 验证服务活没活: 本机 `curl https://datadrive.world/api/relay/orin/status` 看 `ts` 是否继续前进(uplink 每 5s 推一次), 比翻本地日志靠谱。
+
 ## 基本事实 (2026-09-30 起)
 - **工程根 = `/home/ubuntu/zmax`**, 它是**独立 git 仓库**, origin = `https://github.com/MikeBMW/zmax` (public, main)。
   · 旧名 `/home/ubuntu/zmax_rel`、`/home/ubuntu/zmax_dds` 仍是软链(兼容), 但代码里不该再出现。
