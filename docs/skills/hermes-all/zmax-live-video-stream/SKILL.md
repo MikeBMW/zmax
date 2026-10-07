@@ -20,8 +20,35 @@ metadata:
 后果(踩过): 把它当“笔记本相机(全局视角)”喂给 VL 安全闸 ⇒ 快层判『遮挡/糊化』⇒ **所有运动类原子技能被拒发**;
 老倪看到的却是“技能又不好使了”, 与相机看似无关。
 
-口径: 一律 `python3 tools/cam_dev_resolve.py` 解析(LOCAL=MJPG 彩色 / LOCAL2=MAXHUB),
+口径: 一律 `python3 tools/cam_dev_resolve.py` 解析(LOCAL=MJPG 彩色 / LOCAL2=MAXHUB / **USB=外接 USB 摄像头**),
 `tools/boot_restore.sh local` 已接线; 手起流时也只允许用它的输出。
+
+## 🎛 笔记本这一路要「内置 ↔ USB」可切换 (2026-10-07 老倪: 「用户能选择内置摄像头, 或者是USB摄像头」)
+
+实现口径(**换设备不换通道名**): 通道还是 `local` (`frame_name="local"`), 换的是它采哪台设备 ⇒
+页面/叠加/VL 安全层都不用改就自动跟随。落地在 `cam_live_stream.py`:
+- 采集线程 (`local_worker(..., switchable=True)`) 每个读循环先看一个 **gen 计数**; 控制端 `_src_apply()` 抬 gen
+  ⇒ 线程 break 出去 **先 release 旧设备再 open 新设备**(两台不会同时占着 ⇒ 不会"设备忙"), 然后按新号重开。
+- 设备号**每次实时按卡名重扫**(`_src_find`), 不记死号; 选择**落盘** `~/zmax_data/cam_local_src.json`,
+  开机 `--local-src auto`(默认) 读它 ⇒ **重启后仍是用户选的那台**; 选的那台不在位就退回内置并打印原因。
+- 路由: `GET /cam/src` 只读状态 · **`POST /cam/src {"kind":"builtin|usb"}` 才换**(沿用"只有 POST 能改状态"),
+  当前源同时塞进 `/station/status` 的 `cam_src` 里 ⇒ 页面零额外请求; 页面按钮 `[内置|USB]` 见 `tools/web/station.html#lsrc`。
+- `start_station_stream.sh` 会打印可选映射, `--check` 会打印**当前源 + 两个候选**。
+
+坑(都实测过):
+1. **UVC 常见"同一台相机多暴露一个无像素格式的节点"** —— 实测 `USB2.0 Camera` 的 video3 列不出任何格式、
+   `VIDIOC_G_FMT` 直接 `Invalid argument`; **认卡名不认格式就会挑到它, 打开后一帧都不出**。
+   判据必须带"有能力"这一条(`--list-formats` 里出现 MJPG/JPEG/YUYV 才算可采集节点)。
+2. **外接 USB 相机可能只有 YUYV、没有 MJPG** (实测那台只有 `YUYV 640x480@30`)。代码里仍设 MJPG 四cc,
+   驱动会忽略并回落 —— 不要因为"设了 MJPG 却没生效"当故障; 想看真格式用 `--list-formats-ext`。
+3. **别只看"切成功了"**: 三证才算真换源 —— ① `/stats.local.label` 变成新卡名 ② `frames_served` 持续递增
+   ③ 换源前后各抓一张 `/snapshot/local.jpg` 比 `mean/清晰度/两图像素差`, **两图必须明显不同**(实测 123.6/721 vs 163.5/42,
+   平均像素差 85) —— 只报 label 变化可能只是标签变了、画面还冻着。
+4. **耦合要提前说**: `tools/vl_safety_fast.py` / `vl_safety_monitor.py` 读的正是 `http://127.0.0.1:8791/snapshot/local.jpg`
+   并把它当「笔记本相机(全局视角)」(`REQUIRED_CAMS={"arm","local"}`) ⇒ **换源 = 同时换掉安全层看到的全局画面**。
+   页面上要把这句写出来(已写进页内注释 + `/cam/src` 的 `note`), 别让它变成暗耦合。
+5. **浏览器取证时, 元素在视口外 → a11y 点击会静默不生效**(表现为"点了没反应/没报错", 页面自身没毛病)。
+   先 `el.scrollIntoView({block:'center'})` 再点, 然后用 `#lsrc button.on` + `#lsrc_msg` + `#m_local` 三个值复核。
 
 ## 🌈 深度格(及任何"容器里生产、宿主读文件"的路)冻结 —— 看着像"没反映", 其实是生产者死了
 

@@ -205,7 +205,8 @@ for s in $(systemctl list-unit-files 'zmax-*' 'aoi-*' --no-pager | awk '/enabled
 ss -ltnp | grep -E '8791|8793|8790|8891|8893'      # 8793=工位总览=动作授权唯一入口, 不可省
 pgrep -af '<手工进程名>'                            # 自启单元管不到的手工进程(推流/采样/桥)
 python3 tools/cam_dev_resolve.py                    # 相机按卡名实测解析(重启后设备号会变)
-ls -l rokae_sdk/tcp_out/latest.json                 # 位姿真值(全 0/读不到=会话陈旧)
+ls -l /home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
+                                                    # ⚠️ 真实路径在 zmax_data 下, 不在工程根; 容器内 t 字段比宿主早 8h(NTP回拨), 只看文件龄不看 t
 ip -br a; ping -c1 -W2 <Orin>; curl -s -o /dev/null -w '%{http_code}' http://<工控机>:10082/last_result
 nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h /
 ```
@@ -215,6 +216,34 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 - **「有进程」≠「在役」**：端口没在监听就是没在服务。逐个 `ss -ltnp | grep <端口>` + 一次 HTTP 探活，双证后才敢说「起来了」。
 - `systemctl is-active` 给 `activating` + 反复计数 ⇒ `journalctl -u <unit> -n 20` 看真实原因，不要因为「单元存在」就报正常。
 - 汇报按「本机已起 / 本机还缺 / 外设缺失 / 资源(GPU·磁盘)」四行给，一眼能看完，不写「已恢复正常」。
+
+## 9a. 深度格(🌈 D405 深度图)长时间 stalled：先量落盘节拍, 再定上游还是本机
+
+实测(2026-10-07 重启后): 8793 深度格 `fps=0.0, age_s 35→49, stalled=true, dead=true`, 30s 只 +1 帧。
+判据链 (只读, 从下游往上游走):
+```bash
+# ① 落盘节拍 (真判据: 20s 内 mtime 变几次) —— 8793 的 age 有时来自上一次成功读取, 不能只用它
+python3 - <<'PY'
+import os,time
+p='/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy'; last=None; n=0; t0=time.time()
+while time.time()-t0<20:
+    m=os.path.getmtime(p)
+    if m!=last: n+=1; last=m
+    time.sleep(0.5)
+print('20s 更新次数', n)
+PY
+cat /home/ubuntu/zmax_ss_remote/zmax_scene/depth_meta.json   # 自带 frames/fps/w/h/depth_scale/valid_pct
+# ② 落盘进程在不在 / 有几份 (≥2 份=重复拉起, 见 §10)
+python3 -c "import os,time;print(time.time()-os.path.getmtime('/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy'))"
+sudo docker exec ss-remote-tap bash -lc 'pgrep -af ros_depth_stream; tail -3 /tmp/depth_stream.log'
+# ③ 上游发布者 (注意: 话题真名是 /realsense/depth/image_rect_raw, 不是 /camera/...)
+sudo docker exec ss-remote-tap bash -lc 'source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=0; ros2 topic info -v /realsense/depth/image_rect_raw | head -12'
+```
+坑: **`ros2 topic hz <话题>` 在本机/Orin/tap 里都打不出任何输出(连彩色 30Hz 的话题也是空的) ⇒ 它不是可信探针, 别据此报"话题没消息"**。
+改用三件套: 落盘 mtime 节拍 + `depth_meta.json` 的 frames/fps + `ros2 topic info -v` 的 Publisher count/节点名。
+判读: `Publisher count: 1 / Node name: realsense_source` 且**彩色同相机 30Hz 正常** ⇒ 是 **Orin 侧深度流降级**(上游), 本机 take 流/守护都不是根因;
+本机 `ros_depth_stream` 恰好 1 份且日志在写 ⇒ 不要按 §10 再拉起。修上游要在 Orin 上重启 `realsense_source`
+(Orin 只读政策: 重启相机源允许, **禁装包**)。
 
 ## 9b. 推流某一格「进程活着但不吐帧」= v4l2 卡死, 按官方启动器重启即可
 
@@ -245,7 +274,17 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
   #    /etc/ssh/sshd_config: ClientAliveInterval 30 / ClientAliveCountMax 3 / TCPKeepAlive yes → sshd -t && reload ssh
   ```
   口令取本机 `/etc/zmax-ecs-*.env` 里的 `SSHPASS`, 用 `sshpass -e` 别把它打进命令行/日志。
-- 复核三证: ECS 回环 `curl 127.0.0.1:18791/overlay` → 200 · 公网 `/ov/live.json` → 200 · **POST 仍 403**(只读闸门没被顺手放开)。
+- 复核三证 (**口径: 闸门要带口令, 不带 `?k=<token>` 一律 403 —— 403 不是故障, 是"你没带口令"**;
+  别再拿 `/overlay` 当探活路径, 它不是闸门的合法路径):
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8891/live.json?k=zmax-live'   # 本机闸门 200
+  curl -s -o /dev/null -w '%{http_code}\n' 'https://datadrive.world/ov/live.json?k=zmax-live'  # 公网 200
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST 'https://datadrive.world/ov/live.json?k=zmax-live'  # 403
+  ```
+  另: `systemctl show -p NRestarts --value` 要**隔 20s 采两次**确认不再涨 (=真自愈); 单次 active 可能是刚重启的假象。
+  2026-10-07 实测该故障复现: ECS 侧 `ss -ltnp | grep 1879` 只看到 18793 被一个 sshd 占着(18791 那路客户端已死但口没回收),
+  kill 后 + **补上 ECS sshd 保活** (`ClientAliveInterval 30`/`ClientAliveCountMax 3`/`TCPKeepAlive yes` → `sshd -t && systemctl reload ssh`),
+  复核本机闸门/公网 200 + POST 403, NRestarts 稳定在 4 不再涨。
 - 别自己另起端口写 nginx —— nginx 里 `proxy_pass` 的端口是固定的, 换口等于通道全废。
 
 ## 9d. "前几天是不是内核 panic 了?" — 硬停/死机取证 (先摆证据, 再下结论)
