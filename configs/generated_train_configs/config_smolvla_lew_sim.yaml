@@ -60,7 +60,7 @@ dataset:
 env: null
 policy:
   type: smolvla_lew
-  n_obs_steps: 1
+  n_obs_steps: 7
   input_features:
     observation.image:
       type: VISUAL
@@ -85,7 +85,7 @@ policy:
   private: null
   tags: null
   license: null
-  pretrained_path: /home/ubuntu/zmax/outputs/train/smolvla_lew_v10/checkpoints/last/pretrained_model
+  pretrained_path: /home/ubuntu/zmax/outputs/train/smolvla_lew_v10_win7/pretrained_model
   pretrained_revision: null
   chunk_size: 7
   n_action_steps: 7
@@ -126,7 +126,7 @@ policy:
   lew_dim_head: 24
   lew_mlp_dim: 768
   lew_dropout: 0.1
-  num_video_frames: 2
+  num_video_frames: 7
   resize_images_to:
   - 64
   - 64
@@ -156,9 +156,9 @@ job_name: smolvla_lew_sim
 resume: false
 seed: 1337
 cudnn_deterministic: false
-num_workers: 4
+num_workers: 12
 batch_size: 8
-prefetch_factor: 4
+prefetch_factor: 8
 persistent_workers: false
 steps: 300
 eval_freq: -1

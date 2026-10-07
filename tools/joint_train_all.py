@@ -38,6 +38,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
 CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
+MODELS_DIR = os.path.join(ROOT, "zmax_data", "models")
 # ⚠️ 2026-10-07 实测: 整合后 HF 家是**工程根的 zmax_data/hf_cache** (9.2G 真模型都在 hub/ 下),
 #   而 ~/.cache/huggingface 已空 ⇒ 不给 HF_HOME 时各阶段在 offline 模式下找不到缓存, 报
 #   "We couldn't connect to https://huggingface.co … couldn't find them in the cached files" (L2/L3 直接 rc=1)。
@@ -129,7 +130,12 @@ def build_stages(a) -> list:
     # L3: SmolVLA+LEW (+lerobot 原生 PEFT LoRA)
     #   ⚠️ PEFT 段**写进 YAML** 而不是走 `--peft.xxx` 命令行: draccus 对 `peft: PeftConfig|None=None`
     #   这种可空子配置的命令行覆盖不可靠 (父项 None 时子项无处挂) → 直接改生成的 yaml 最稳。
-    cfg3 = os.path.join(ROOT, f"config_smolvla_lew_lora_{a.steps}{a.l3_tag}.yaml")
+    # 2026-10-08: 生成物不再写仓库根(散落工作空间), 统一进 configs/generated_train_configs/
+    #   ⚠️ 配置里的 dataset.root 是 CWD 相对(lerobot: Path(cfg.dataset.root) 直通), 挪配置文件位置不改语义,
+    #      但训练必须仍在 ROOT 下启动(本脚本所有 subprocess 都用 ROOT 为 cwd)。
+    cfg3_dir = os.path.join(ROOT, "configs", "generated_train_configs")
+    os.makedirs(cfg3_dir, exist_ok=True)
+    cfg3 = os.path.join(cfg3_dir, f"config_smolvla_lew_lora_{a.steps}{a.l3_tag}.yaml")
     # ⚠️ LoRA 目标 all-linear 会给视觉塔也挂适配器 → 8GB 卡的激活额外开销把 batch8 顶爆
     #   (2026-09-22 实测 torch.OutOfMemoryError: 需 816MiB, 仅余 330MiB) → LoRA 轮降 batch 到 4
     #   并开 expandable_segments 抗碎片。2026-09-22 追加: autocast_adapter_dtype=False +
@@ -192,6 +198,24 @@ def build_stages(a) -> list:
         l2_cmd += ["--base", L2_BASE]
     l2_env = {"PATH": os.path.dirname(PY_GUI) + ":" + os.environ.get("PATH", ""), **HF_ENV}
 
+    # L5: 本地 VLM LoRA (Owen2.5-VL-3B) —— 教师蒸馏样本上的意图理解微调
+    #   GPU 协商: 前面 L4/L3 已释放; 这里再等一次空闲 (单模型进程, 8GB 卡硬约束)
+    l5_steps = int(getattr(a, "l5_steps", 60) or 0)
+    l5_tag = os.path.basename(mroot).replace("joint_train_", "")   # 与 --tag 同值 (evidence 目录要对得上)
+    l5_train = [PY_GUI, os.path.join(ROOT, "tools", "l5_vlm_lora_train.py"),
+                "--steps", str(l5_steps), "--max-pixels", str(getattr(a, "l5_max_pixels", 200704)),
+                "--tag", l5_tag]
+    if getattr(a, "l5_merge", False):
+        l5_train.append("--merge")
+    l5_env = {"PATH": os.path.dirname(PY_GUI) + ":" + os.environ.get("PATH", ""),
+              "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled", **HF_ENV}
+    l5_rows = 0
+    try:
+        _p = os.path.join(ROOT, "data/l5_vlm_sft/train.jsonl")
+        l5_rows = sum(1 for l in open(_p, encoding="utf-8") if l.strip()) if os.path.exists(_p) else 0
+    except Exception:                                                          # noqa: BLE001
+        l5_rows = 0
+
     stages = [
         {"id": "L4", "layer": "L4 INTACT (安全+物理导航)", "gpu_mb": 6000, "est_min": 8,
          "desc": ("INTACT 续训 + LoRA 适配 (基座冻结, 只训 lora_A/B)" if a.lora_l4
@@ -211,6 +235,12 @@ def build_stages(a) -> list:
          "cwd": ROOT, "cmd": l2_cmd, "env": l2_env, "log": os.path.join(mroot, "L2.log"),
          "evidence": [os.path.join(ROOT, "data/yolo_annot/dataset")],
          "note": f"基座 {os.path.relpath(L2_BASE, ROOT)} (软链)"},
+        {"id": "L5", "layer": "L5 意图层 (本地 Qwen2.5-VL-3B)", "gpu_mb": 7000, "est_min": 10,
+         "desc": (f"LoRA 微调 + 同口径对照 (教师蒸馏样本 {l5_rows} 条, {l5_steps} 步)" if l5_rows
+                  else "跳过: 无教师蒸馏样本 (先跑 tools/l5_vlm_dataset.py build)"),
+         "cwd": ROOT, "cmd": l5_train, "env": l5_env, "log": os.path.join(mroot, "L5.log"),
+         "evidence": [os.path.join(MODELS_DIR, f"l5_vlm_lora_{l5_tag}")], "skip_if": (l5_rows == 0),
+         "note": f"样本 {l5_rows} 条 · 8GB 卡单模型进程"},
         {"id": "LLM", "layer": "大模型层 (VLM/VLA 意图)", "gpu_mb": 0, "est_min": 0,
          "desc": "权重/接口就绪体检 (无训练; 上大模型须显存协商)",
          "cwd": ROOT, "cmd": [sys.executable, os.path.join(ROOT, "tools", "llm_layer_check.py")],
@@ -283,6 +313,11 @@ def main() -> int:
                          "'L3 一直没提升'的真因。视觉塔仍不挂(8GB 卡实测 OOM), 也排掉永不调用的 lm_expert。")
     ap.add_argument("--env-check", action="store_true")
     ap.add_argument("--gpu-wait", type=int, default=900, help="等 GPU 空闲的最长秒数")
+    ap.add_argument("--l5-steps", type=int, default=60,
+                    help="L5 本地 VLM(Qwen2.5-VL-3B) LoRA 微调步数。样本来自 tools/l5_vlm_dataset.py "
+                         "的教师蒸馏集; 无样本则本阶段**如实跳过**(不报成功)")
+    ap.add_argument("--l5-merge", action="store_true", help="L5 训完合并权重 (部署免带 adapter)")
+    ap.add_argument("--l5-max-pixels", type=int, default=200704, help="L5 视觉 token 预算 (8GB 卡)")
     ap.add_argument("--l4-epochs", type=int, default=1,
                     help="L4 INTACT 轮数 (默认 1 = 原行为)。>1 时日志里会出现 ≥2 个 validate/loss 点 ⇒ "
                          "流形引擎能量探针才能测到 L4 的扭矩 τ (单点无下降区间, τ 只能记 0)")
@@ -318,6 +353,14 @@ def main() -> int:
     for s in sel:
         print("\n" + "=" * 78)
         print(f"▶ [{s['id']}] {s['desc']}")
+        if s.get("skip_if"):
+            # 前置条件不满足 ⇒ **如实跳过** (rc 记 -2, 不算成功也不算失败; 老倪口径: 没跑就是没跑)
+            print(f"   ⏭ 跳过 [{s['id']}]: {s['note']}")
+            rows.append({"stage": s["id"], "layer": s["layer"], "desc": s["desc"], "cmd": s["cmd"],
+                         "rc": -2, "skipped": True, "secs": 0.0, "log": s["log"], "evidence": [],
+                         "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "t_start": time.time(),
+                         "note": s["note"]})
+            continue
         if s["gpu_mb"]:
             free = wait_gpu(s["gpu_mb"], timeout_s=a.gpu_wait)
             print(f"   GPU 空闲 {free} MB (需 {s['gpu_mb']} MB)")

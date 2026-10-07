@@ -5,7 +5,7 @@
 口径与 GUI「训练」节点一致: dataset=图像+state 数据集 · policy=smolvla_lew ·
   input_features {image[3,480,480], state[39]} → action[4] · 从 v10 ckpt 继续。
 本次为**有界验证跑**(steps 可控, save_freq 高): 先证明训练链真能跑起来出 loss, 再谈长跑。
-用法: gui-venv311/bin/python tools/mk_smolvla_sim_cfg.py --steps 300 --out config_smolvla_lew_sim.yaml
+用法: gui-venv311/bin/python tools/mk_smolvla_sim_cfg.py --steps 300 --out configs/generated_train_configs/config_smolvla_lew_sim.yaml
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=300)
     ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--out", default="config_smolvla_lew_sim.yaml")
+    ap.add_argument("--out", default="configs/generated_train_configs/config_smolvla_lew_sim.yaml")
     ap.add_argument("--outdir", default="outputs/train/smolvla_lew_sim")
     a = ap.parse_args()
     cfg = json.load(open(SRC, encoding="utf-8"))
@@ -78,6 +78,7 @@ def main():
     else:
         cfg["wandb"] = {"enable": False}
     p = os.path.join(REPO, a.out)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
     yaml.safe_dump(cfg, open(p, "w", encoding="utf-8"), allow_unicode=True, sort_keys=False)
     print("✅ 配置写出: %s  (steps=%d batch=%d dataset=%s device=%s)"
           % (p, a.steps, a.batch, DS, cfg["policy"]["device"]))
