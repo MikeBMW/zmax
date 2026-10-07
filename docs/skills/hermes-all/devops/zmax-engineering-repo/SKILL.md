@@ -55,10 +55,16 @@ metadata:
 ' | awk`;
   真同步判据 = 路径无关内容指纹 `(cd dir && find . -type f -print0 | sort -z | xargs -0 md5sum | md5sum)` 两侧相同。
 
-## 基本事实 (2026-09-30 起)
+## 基本事实 (2026-10-07 家目录整合后 —— 路径口径已变!)
 - **工程根 = `/home/ubuntu/zmax`**, 它是**独立 git 仓库**, origin = `https://github.com/MikeBMW/zmax` (public, main)。
-  · 旧名 `/home/ubuntu/zmax_rel`、`/home/ubuntu/zmax_dds` 仍是软链(兼容), 但代码里不该再出现。
-  · `/home/ubuntu/lerobot-smolvla-lew`(分支 mac-hw)是**另一仓库里的另一棵工作树**, 内容与 main 有差异。
+  · **`~` 顶层只剩 `zmax` 这一个 zmax 相关项**(2026-10-07 整合): 下面所有老名(软链/实体)全部消失。
+  · 代码里不该再出现 `/home/ubuntu/<老名>` 或 `~/<老名>` 或 `$HOME/<老名>` 三种写法中的任何一种。
+- **数据/仓库/环境现在都在工程根里面**:
+  · `zmax_data/`(180G: ss_live/ runtime/moveit_plan/ stable-wm-cache/ hf_cache/ aoi_v4/ backups/ models/weights/ secrets/600)
+  · `external/lerobot-smolvla-lew`(mac-hw 分支, 独立 clone 不是 worktree) · `external/INTACT-JEPA`
+  · `venvs/{gs,lerobot,dds,colmap,cuda-nvcc}-venv` · `toolchains/cuda-shim` · `hermes/install`
+  · 五个 `ZMAX_*` 环境变量默认值同步改成 `$ZMAX_DATA=/home/ubuntu/zmax/zmax_data`(见下表)。
+  · 软链目标也修过一轮: `zmax/models/*` → `zmax_data/models/*`, `gui-venv311/bin`(有 1121 条断链)
 - **数据全在 `/home/ubuntu/zmax_data/`**: `ss_live/`(Orin 状态流+深度源, 旧名 zmax_ss_remote)、
   `runtime/moveit_plan/`(旧名 zmax_moveit_plan)、`stable-wm-cache/`(训练缓存, 含政策保护的 95G 官方数据集)、
   `hf_cache/`(HF 缓存默认根, `~/.cache/huggingface` 是它的软链)、`aoi_v4/`(AOI 工具链 + agent-hub 静态目录)、
@@ -98,6 +104,32 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
 
 ## 基线自检 / 首次 clone 初始化 (老倪: 首 clone 就要识别出已下载的模型和数据)
 - 入口: `bash tools/zmax_bootstrap.sh [--apply|--download|--smoke|--secrets|--systemd]`
+
+## 家目录整合 playbook (2026-10-07 落地, 下次搬路径照这个走)
+工具: `tools/consolidate_home.py --dry|--apply --stage A|B|C|R|all` + `tools/fix_symlinks_homecons.py`
++ `tools/restart_vl_l2_homecons.sh`。清单 `zmax_data/backups/HOME_CONSOLIDATE_MANIFEST.jsonl`。
+
+阶段划分(每阶段自带核验段):
+- **A** 搬不涉及在跑服务的(第三方仓库/venv/toolchains) + 老路径留软链过渡。
+- **B** 搬 `zmax_data`(在跑服务在用) + 改 systemd/Hermes 脚本 + 重启活单元。
+- **C** 删老路径软链(引用改完才做)。
+- **R** 改**仓库内**老路径字面量(改前 `tar` 整树备份)。
+
+### 六个真坑(全是 2026-10-07 实测踩出来的, 每条都静默)
+1. **三种写法, 只改绝对路径必漏**: `os.path.expanduser("~/zmax_data")` 这类家目录相对写法照样能跑(家目录没变),
+   但老目录一删它**静默** mkdir 出新空目录继续往里写, 不报错。⇒ 绝对 / `~/` / `$HOME/` 三套一起换。
+2. **软链的目标字符串不在任何文件内容里** ⇒ 内容改写器扫不到。实测一次 `find ~ -xtype l` 报 **1121 条断链**
+   (`zmax/models/*` 全指老 zmax_data, `gui-venv311/bin` 指老 lerobot-venv —— 仓库自己的 venv 会一起断)。
+   ⇒ 搬完必跑 `find <根> -xtype l` + 按 `readlink` 重写目标, 不看内容。
+3. **改写器会改写它自己**: 替换表里写着 `old→new`, 第一遍就把自己那张表改成恒等映射, 第二遍开始静默失效。
+   ⇒ 改写器必须显式跳过自身文件(`"homecons" not in basename`)。
+4. **docker 绑定挂载靠 inode, 容器配置里的源路径字符串会过期**: 目录 rename 后容器照跑(同一 inode),
+   但容器**下次重启**时 docker 重新解析源路径 ⇒ 老路径没了就起不来。⇒ 用新路径重建容器(`docker run` 照原参数), 别只 `restart`。
+5. **长跑进程内存里揣着旧字面量**: 改完源码不算完, 必须重启那些进程(否则它们继续往老路径写, 表现为"老目录又冒出来")。
+   重启顺序无关; 但**只信落盘位置**——改完看新旧两侧的 mtime, 老侧停住、新侧每秒在动才算好。
+6. **看护脚本只会 `restart` 不等于能自愈**: `cam_stream_guard.start_tcp_sampler()` 原来只有 `docker restart`,
+   容器一旦被 `docker rm` 过就永远救不回来(TCP 真值停刷 ⇒ 整条臂链路看着"死了", 而守护每 5 分钟报一次"已处理")。
+   ⇒ 兜底补 `docker run`(照原参数重建)。检查任何守护时都问一句: 目标**不存在**时它会怎么办?
   (实现在 `tools/zmax_bootstrap.py`; 清单 `tools/zmax_assets.json`, 机器可读, 加资产只加一条)。
 - **识别顺序**(已下载的绝不重下): 默认路径 → `alt_paths`(老位置) → `alt_globs`(精确文件) → HF 老缓存 `~/.cache/huggingface`。
   命中即"可用/可采纳"; `--apply` 只建软链/建目录/写 `$ZMAX_DATA/zmax_paths.env`, **只增不改不删**。
@@ -108,7 +140,7 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
 ## 默认落盘路径约定 (模型下载默认落哪)
 | 变量 | 默认 | 放什么 |
 |---|---|---|
-| `ZMAX_DATA` | `/home/ubuntu/zmax_data` | 所有重东西的根 |
+| `ZMAX_DATA` | `/home/ubuntu/zmax/zmax_data` | 所有重东西的根 |
 | `ZMAX_MODELS` | `$ZMAX_DATA/models` | **模型默认下载根** |
 | `ZMAX_HF_HOME` | `$ZMAX_DATA/hf_cache` | **HF 缓存默认根**(布局同 `~/.cache/huggingface`: `hub/models--…`) |
 | `STABLEWM_HOME` | `$ZMAX_DATA/stable-wm-cache` | 数据集 + 训练产物 |
@@ -117,8 +149,8 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
 环境变量优先; `--apply` 生成 `$ZMAX_DATA/zmax_paths.env`, `source` 后全部脚本/服务同一套路径。
 
 ## 密钥出库 (公开仓库的硬红线)
-- 真值只放 `$ZMAX_DATA/secrets/zmax.env`(600); 代码/单元只留 `${VAR}` 占位;
-  systemd 用 `EnvironmentFile=-/home/ubuntu/zmax_data/secrets/zmax.env`。
+- 真值只放 `$ZMAX_DATA/secrets/zmax.env`(600, 即 `/home/ubuntu/zmax/zmax_data/secrets/zmax.env`); 代码/单元只留 `${VAR}` 占位;
+  systemd 用 `EnvironmentFile=-/home/ubuntu/zmax/zmax_data/secrets/zmax.env`。
 - `python3 tools/secret_scan.py [--staged]` 扫已跟踪/暂存区(值打码输出, 命中退 1); 与 `repo_guard.py` 一起当提交前双闸。
 - 已泄露的值: 上游 vendored 文档里的示例 key 不算(路径白名单 `docs/source/` `src/lerobot/`);
   **历史里的密钥清不掉**(force-push 后旧对象仍可按 SHA 取) ⇒ 要么删库重建(破坏性, 需老倪点头), 要么轮换密钥。
@@ -154,3 +186,7 @@ rm -rf /tmp/c && git clone --depth 1 https://github.com/MikeBMW/zmax.git /tmp/c 
 | 用 `du -sh` 判目录空不空 | 明明有文件却报 0 | 用 `ls -A`/`os.listdir` 判非空; du 受挂载/稀疏影响 |
 | 用 `ln -s 相对路径` 在**别的目录**里建软链 | 链指向 `<那个目录>/相对路径`, 直接断(如 `.cache/huggingface → zmax_data/hf_cache` 变成 `.cache/zmax_data/hf_cache`) | 跨目录一律用**绝对路径**; 建完立即 `python3 -c "import os;print(os.path.isdir(p))"` 验一次 |
 | 搬数据目录后没验活链路 | 服务/训练在报错, 半天后才发现 | 搬完立刻验: 软链目标存在 + `bash tools/zmax_bootstrap.sh` 仍 15/15 + 8793/8794 返回 200 |
+| 只改内容不看软链 | 服务全绿但 1121 条 `zmax/models/*` 断链, 检测器加载不到在役权重 | 搬完 `find <根> -xtype l` 修目标(见 playbook 坑 2) |
+| 改完源码不重启长跑进程 | 老路径目录被静默重建, 新路径文件不刷新 | 重启 VL 链/L2/站台, 再比对新旧两侧 mtime(见 playbook 坑 5) |
+| `pgrep -f <模式>` 里出现自己命令行里的名字 | 执行它的 shell 被自己杀掉(实测一晚 5 次; 用 `kee[p]alive` 括号技巧**不够**, 因为命令行别处还会原样出现这个名字) | 一律写脚本文件执行(脚本 cmdline 里没有这个名字), 或先取 pid 再 kill |
+| systemd 单元 exit 75 无限重启 | 网关"看着没起来", 其实野进程在服务, restart counter 涨到 2110 | `systemctl --user status` 看真身; 系统级重复单元 stop+disable(用户级 Linger=yes 已保证开机自启) |
