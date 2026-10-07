@@ -160,7 +160,44 @@ def parse_l2(log: str) -> dict:
     return out
 
 
-PARSERS = {"L4": parse_l4, "L3": parse_l3, "L2": parse_l2}
+def parse_l5(log: str) -> dict:
+    """L5 本地 VLM LoRA 微调: 日志给 `step i/N loss x …` 序列; 能力水平取同口径 A/B 的合法率。
+
+    判据口径 (2026-10-08):
+      · 势能 = SFT loss (越小越好) ⇒ 下降即做功
+      · 能力水平 c = **计划合法率** (val 帧上 JSON 可解析 + 必需字段齐) —— 来自
+        reports/l5_vlm_ab_<tag>.json 的 lora.json_ok_rate (没有就退回基座/训练报告, 全无则 -1 如实)
+    """
+    txt = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", log)
+    pot = [float(x) for x in re.findall(r"step\s+\d+/\d+\s+loss\s+([\d.]+)", txt)]
+    steps = 0
+    m = re.search(r"step\s+(\d+)/(\d+)\s+loss", txt)
+    if m:
+        steps = int(m.group(2))
+    lvl = -1.0
+    src_ab = ""
+    try:
+        cands = sorted(glob.glob(os.path.join(REPORTS, "l5_vlm_ab_*.json")), key=os.path.getmtime)
+        if cands:
+            ab = json.load(open(cands[-1], encoding="utf-8"))
+            lvl = float(((ab.get("lora") or {}).get("json_ok_rate")))
+            src_ab = os.path.basename(cands[-1])
+    except Exception:                                                          # noqa: BLE001
+        lvl = -1.0
+    secs_hint = -1.0
+    m2 = re.search(r"训练完成\s+(\d+)\s+步\s+用时\s+(\d+)s", txt)
+    if m2:
+        secs_hint = float(m2.group(2))
+    return {"potential": pot, "raw": pot, "metric": "SFT loss (Qwen2.5-VL-3B LoRA)",
+            "cycles": float(steps or max(len(pot), 1)),
+            "omega_hz_measured": (steps / secs_hint) if (steps and secs_hint > 0) else -1.0,
+            "level_c": lvl,
+            "src": f"L5 训练日志 ({len(pot)} 个 loss 点, {steps} 步)" +
+                   (f" + A/B 合法率 {lvl:.3f} ({src_ab})" if lvl >= 0 else " (无 A/B 报告 ⇒ 能力水平记缺)"),
+            "note": "能力水平=计划合法率(同口径 val 帧); τ=loss 下降/步"}
+
+
+PARSERS = {"L5": parse_l5, "L4": parse_l4, "L3": parse_l3, "L2": parse_l2}
 
 
 def parse_stage_log(path: str, stage: str) -> dict:

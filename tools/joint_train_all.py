@@ -202,9 +202,10 @@ def build_stages(a) -> list:
     #   GPU 协商: 前面 L4/L3 已释放; 这里再等一次空闲 (单模型进程, 8GB 卡硬约束)
     l5_steps = int(getattr(a, "l5_steps", 60) or 0)
     l5_tag = os.path.basename(mroot).replace("joint_train_", "")   # 与 --tag 同值 (evidence 目录要对得上)
+    l5_model = getattr(a, "l5_model", "smolvlm") or "smolvlm"
     l5_train = [PY_GUI, os.path.join(ROOT, "tools", "l5_vlm_lora_train.py"),
                 "--steps", str(l5_steps), "--max-pixels", str(getattr(a, "l5_max_pixels", 200704)),
-                "--tag", l5_tag]
+                "--model", l5_model, "--max-side", "448", "--tag", l5_tag]
     if getattr(a, "l5_merge", False):
         l5_train.append("--merge")
     l5_env = {"PATH": os.path.dirname(PY_GUI) + ":" + os.environ.get("PATH", ""),
@@ -239,6 +240,11 @@ def build_stages(a) -> list:
          "desc": (f"LoRA 微调 + 同口径对照 (教师蒸馏样本 {l5_rows} 条, {l5_steps} 步)" if l5_rows
                   else "跳过: 无教师蒸馏样本 (先跑 tools/l5_vlm_dataset.py build)"),
          "cwd": ROOT, "cmd": l5_train, "env": l5_env, "log": os.path.join(mroot, "L5.log"),
+         "post": [{"cmd": [PY_GUI, os.path.join(ROOT, "tools", "l5_vlm_lora_train.py"),
+                           "--model", l5_model, "--eval-only", "--eval-n", "12",
+                           "--adapter", os.path.join(MODELS_DIR, f"l5_vlm_lora_{l5_tag}"),
+                           "--tag", l5_tag],
+                   "cwd": ROOT, "env": None, "log": os.path.join(mroot, "L5_ab.log")}],
          "evidence": [os.path.join(MODELS_DIR, f"l5_vlm_lora_{l5_tag}")], "skip_if": (l5_rows == 0),
          "note": f"样本 {l5_rows} 条 · 8GB 卡单模型进程"},
         {"id": "LLM", "layer": "大模型层 (VLM/VLA 意图)", "gpu_mb": 0, "est_min": 0,
@@ -316,6 +322,9 @@ def main() -> int:
     ap.add_argument("--l5-steps", type=int, default=60,
                     help="L5 本地 VLM(Qwen2.5-VL-3B) LoRA 微调步数。样本来自 tools/l5_vlm_dataset.py "
                          "的教师蒸馏集; 无样本则本阶段**如实跳过**(不报成功)")
+    ap.add_argument("--l5-model", default="smolvlm",
+                    help="L5 学生模型关键字/目录 (默认 smolvlm=SmolVLM2-500M: 8GB 卡 bf16 直跑, 实测 60 步 96s; "
+                         "qwen=Qwen2.5-VL-3B, **必须** QLoRA 4-bit 才塞得下)")
     ap.add_argument("--l5-merge", action="store_true", help="L5 训完合并权重 (部署免带 adapter)")
     ap.add_argument("--l5-max-pixels", type=int, default=200704, help="L5 视觉 token 预算 (8GB 卡)")
     ap.add_argument("--l4-epochs", type=int, default=1,
@@ -375,7 +384,9 @@ def main() -> int:
         rc_post = 0
         for p in (s.get("post") or []):
             print(f"   后置: {' '.join(p['cmd'][:3])} …")
-            rc_post, _ = _run_stream(p["cmd"], p["cwd"], {**os.environ, **p.get("env", {})}, p["log"])
+            _pe = p.get("env")
+            rc_post, _ = _run_stream(p["cmd"], p["cwd"],
+                                     (s["env_full"] if _pe is None else {**os.environ, **_pe}), p["log"])
             if rc_post != 0:
                 break
         if rc == 0 and rc_post != 0:

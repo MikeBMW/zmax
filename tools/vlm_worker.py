@@ -35,11 +35,12 @@ def _reply(d):
 
 
 class VLM:
-    def __init__(self, model_id, device="cuda:0", max_pixels=None, dtype=None):
+    def __init__(self, model_id, device="cuda:0", max_pixels=None, dtype=None, adapter=None):
         self.model_id = model_id
         self.device = device
         self.max_pixels = max_pixels
         self.dtype = dtype
+        self.adapter = adapter          # 🧠 L5 LoRA adapter 目录 (默认 None=纯基座档; 未证明提升不进默认)
         self.model = None
         self.proc = None
         self.load_err = None
@@ -61,6 +62,13 @@ class VLM:
                 self.model = AutoVLM.from_pretrained(self.model_id, device_map=self.device, **kw)
             except Exception:                                              # noqa: BLE001
                 self.model = AutoVLM.from_pretrained(self.model_id, device_map="auto", **kw)
+            # 🧠 可选: 挂 L5 LoRA adapter (SS_VLM_ADAPTER / --adapter; 不传=纯基座)
+            if self.adapter and os.path.isdir(self.adapter):
+                from peft import PeftModel                                # noqa: PLC0415
+                self.model = PeftModel.from_pretrained(self.model, self.adapter)
+                sys.stderr.write(f"[vlm_worker] LoRA adapter 已挂: {self.adapter}\n")
+            elif self.adapter:
+                sys.stderr.write(f"[vlm_worker] ⚠️ adapter 目录不存在, 按纯基座跑: {self.adapter}\n")
             self.proc = AutoProcessor.from_pretrained(self.model_id)
             # 大幅限制视觉 token (标定场景只需"看得见目标/朝向/是否被夹"), 省显存与时间
             if self.max_pixels:
@@ -107,8 +115,10 @@ def main():
     ap.add_argument("--device", default=os.environ.get("SS_VLM_DEVICE", "cuda:0"))
     ap.add_argument("--dtype", default=os.environ.get("SS_VLM_DTYPE"))          # bf16/fp16/None
     ap.add_argument("--max-pixels", type=int, default=int(os.environ.get("SS_VLM_MAX_PIXELS", "501760")))
+    # 🧠 L5 LoRA adapter (默认空 = 纯基座档; 只有同口径证明过提升的 adapter 才配进默认)
+    ap.add_argument("--adapter", default=os.environ.get("SS_VLM_ADAPTER", ""))
     a = ap.parse_args()
-    v = VLM(a.model, a.device, a.max_pixels, a.dtype)
+    v = VLM(a.model, a.device, a.max_pixels, a.dtype, a.adapter or None)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -121,7 +131,7 @@ def main():
         if cmd == "hello":
             v.load()
             _reply({"ok": v.model is not None, "model": v.model_id, "device": a.device,
-                    "loaded": v.model is not None, "why": v.load_err})
+                    "loaded": v.model is not None, "adapter": v.adapter or "", "why": v.load_err})
         elif cmd == "ask":
             r = v.ask(req.get("image"), req.get("prompt", ""), req.get("system"),
                       req.get("max_tokens", 256))

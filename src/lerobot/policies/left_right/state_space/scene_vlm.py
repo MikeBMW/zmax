@@ -128,6 +128,14 @@ class SceneVLM:
         explicit_model = os.environ.get("SS_VLM_MODEL")
         self.url = os.environ.get("SS_VLM_URL") or None
         self.key = os.environ.get("SS_VLM_KEY") or None
+        if self.url and not self.key:
+            # ⚠️ 2026-10-08 实测坑: 显式通道(SS_VLM_URL)原来**只认环境变量** key, 没做 hermes env 兜底
+            #   ⇒ 在 shell 里 key 被安全层屏蔽/未 export 时表现为 src=rule「无可用 VLM 路径」, 看着像"没有 VLM 路径",
+            #   实际是 key 空。这里按 DeepSeek 分支同一套兜底 (~/.hermes/.env), 免得每次都要 export。
+            for _n in ("SS_VLM_KEY", "DASHSCOPE_API_KEY"):
+                self.key = _key_from_hermes_env(_n)
+                if self.key:
+                    break
         self.provider = "explicit" if self.url else None
         if not self.url:
             _force = (os.environ.get("SS_VLM_PROVIDER") or "").lower()
