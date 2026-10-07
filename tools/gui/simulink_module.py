@@ -1445,7 +1445,7 @@ def _flows_path(name):
     else:
         cands = [os.path.join(_repo_root_path(), "flows", name),
                  os.path.join("/home/ubuntu/zmax", "flows", name),
-                 os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows", name)]
+                 os.path.join(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"), "flows", name)]
     env = os.environ.get("ZMAX_FLOWS_DIR") or os.environ.get("ZMAX_FLOWS")
     if env:
         cands.insert(0, os.path.join(env, name))
@@ -2513,7 +2513,7 @@ class CICDPanel(QDialog):
                 "name": "cicd_workflow",
                 "sim": {"dt": self.module._sim_dt, "t_end": self.module._sim_t_end, "solver": "fixed-step"},
                 "nodes": self.module.nodes, "links": self.module.links}
-        path = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows",
+        path = os.path.join(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"), "flows",
                             "cicd_workflow.json")
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -2535,8 +2535,8 @@ class PipelinePanel(QDialog):
         2: ("Stage 2", "Sim-to-Real 零样本测试", "stage1 模型 → Orin 真实数据 · 量化 Reality Gap"),
         3: ("Stage 3", "Orin 真实数据微调", "stage1 权重初始化 · lr 1e-5 · backbone 1e-6 · ensemble 0.01"),
     }
-    _STATE = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "docs", "PIPELINE_STATE.json")
-    _PY = os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", ".venv", "bin", "python")
+    _STATE = os.path.join(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"), "docs", "PIPELINE_STATE.json")
+    _PY = os.path.join(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"), ".venv", "bin", "python")
     _STATUS_COLOR = {"pending": "#57606a", "running": "#00d4aa", "success": "#3fb950", "failed": "#ff4444"}
     _STATUS_ICON = {"pending": "○ 未开始", "running": "● 运行中", "success": "✓ 成功", "failed": "✕ 失败"}
 
@@ -14478,7 +14478,7 @@ class SimulinkModule(QWidget):
             root = self._repo_root()
         except Exception:                                                       # noqa: BLE001
             root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        work = os.path.join(os.path.expanduser("~"), "zmax_data", "l5_loop")
+        work = os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "l5_loop")
         return {"root": root, "py": os.path.join(root, "gui-venv311", "bin", "python"),
                 "script": os.path.join(root, "tools", "l5_annotate_train_loop.py"),
                 "work": work, "state": os.path.join(work, "state.json")}

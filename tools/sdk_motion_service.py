@@ -29,12 +29,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("ZMAX_ARM_PORT", "8798"))
 HOME = os.path.expanduser("~")
-SDK_DIR = os.path.join(HOME, "zmax_data", "rokae_sdk")
+# ⚠️ 2026-10-08 修正: 原写法 join(expanduser("~"), "zmax_data", ...) = **第 4 种老路径写法**
+#   (`~` 与 `zmax_data` 分开拼 ⇒ 三种写法(绝对/`~/x`/`$HOME/x`)的整合扫不到)。
+#   后果: 本服务(8798)与 L2 的 SDK 腿都去找 /home/ubuntu/zmax_data/rokae_sdk/cmd_arm.fifo ⇒
+#   **页面报「已下发(真动)」但机器人不动 / 页面报"代理未就绪"**。统一从工程根推, 留 env 口子。
+_REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+_DATA = os.environ.get("ZMAX_DATA", os.path.join(_REPO, "zmax_data"))
+SDK_DIR = os.path.join(_DATA, "rokae_sdk")
 FIFO = os.path.join(SDK_DIR, "cmd_arm.fifo")
 RESULT = os.path.join(SDK_DIR, "tcp_out", "agent_result.json")
 HEART = os.path.join(SDK_DIR, "tcp_out", "agent_heartbeat.json")
-AUTH = os.path.join(HOME, "zmax_data", "sdk_arm_auth.json")
-AUDIT = os.path.join(HOME, "zmax_data", "sdk_arm_audit.jsonl")
+AUTH = os.path.join(_DATA, "sdk_arm_auth.json")
+AUDIT = os.path.join(_DATA, "sdk_arm_audit.jsonl")
 
 MAX_STEP_MM = 20.0          # 单步上限(页面档位最大 20)
 MAX_SPEED = 60.0            # mm/s

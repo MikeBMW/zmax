@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """生成 Z-MAX 闭环模拟数据: 300帧 ≈ 10秒 @30fps → LeRobot npz (供 ACT 训练验证)"""
+import os
 import numpy as np, json, time
 from pathlib import Path
 
-OUT = Path.home() / "lerobot-smolvla-lew" / "data" / "closed_loop"
+OUT = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "data" / "closed_loop"
 OUT.mkdir(parents=True, exist_ok=True)
 
 N = 300          # 10秒 @30fps

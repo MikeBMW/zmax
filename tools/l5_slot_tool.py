@@ -39,7 +39,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 TAP_DIR = "/home/ubuntu/zmax/zmax_data/ss_live"
-WORK = os.path.join(os.path.expanduser("~"), "zmax_data", "l5_slots")
+WORK = os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "l5_slots")
 REG = os.path.join(ROOT, "models", "l5_slots.json")
 CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
 HANDEYE = os.path.join(ROOT, "models", "handeye_state.json")

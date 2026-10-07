@@ -23,7 +23,7 @@ import time
 
 HOME = os.path.expanduser("~")
 LIVE = "/home/ubuntu/zmax/zmax_data/dataspace/live.json"
-PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.join(HOME, "zmax_moveit_plan"))
+PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.expanduser("~/zmax/zmax_data/runtime/moveit_plan"))
 LATEST = os.path.join(PLAN_DIR, "live_plan_latest.json")
 JSONL = os.path.join(PLAN_DIR, "live_plan.jsonl")
 

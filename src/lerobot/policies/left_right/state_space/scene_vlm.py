@@ -209,7 +209,7 @@ class SceneVLM:
         try:
             self.proc = subprocess.Popen([_PY, _WORKER, "--model", self.model], cwd=_REPO, env=env,
                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=open(os.path.join(os.path.expanduser("~"), "zmax_data",
+                                         stderr=open(os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"),
                                                                   "vlm_worker.log"), "a"),
                                          text=True, bufsize=1)
             hello = self._rpc({"cmd": "hello"}, timeout=max(600.0, self.timeout))

@@ -29,7 +29,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIVE = os.path.join(ROOT, "models", "yolo_peg_live.pt")
-PROMOTE_LOG = os.path.join(os.path.expanduser("~"), "zmax_data", "l5_loop", "promote_l2.json")
+PROMOTE_LOG = os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "l5_loop", "promote_l2.json")
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 
 

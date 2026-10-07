@@ -36,7 +36,12 @@ import sys
 import time
 
 HOME = os.path.expanduser("~")
-SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.join(HOME, "zmax_ss_remote"))
+# ⚠️ 2026-10-08 修正(第4种写法): 原 join(HOME, "zmax_ss_remote") / join(HOME, "zmax_data", ...) /
+#   join(HOME, "lerobot-smolvla-lew", ...) 在家目录整合后全部指错(实测会让守护读写到不存在的老目录)。
+#   真实位置: ss_remote → <工程根>/zmax_data/ss_live ; fork → <工程根>/external/lerobot-smolvla-lew
+_ZMAX = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.join(_ZMAX, "zmax_data", "ss_live"))
+_FORK = os.environ.get("ZMAX_FORK", os.path.join(_ZMAX, "external", "lerobot-smolvla-lew"))
 REPO = "/home/ubuntu/zmax"
 MODELS = os.path.join(REPO, "models")
 REPORTS = os.path.join(REPO, "reports")
@@ -156,7 +161,7 @@ def read_calibs():
     out = []
     trees = [os.path.join("/home/ubuntu/zmax", "models"),
              MODELS,
-             os.path.join(HOME, "zmax_data", "calib")]
+             os.path.join(_ZMAX, "zmax_data", "calib")]
     seen = set()
     cands = []
     for t in trees:
@@ -183,7 +188,7 @@ def read_canvas_nodes():
     """
     cands = [os.path.join("/home/ubuntu/zmax", "flows", "state_space_obs.json"),
              os.path.join(REPO, "flows", "state_space_obs.json"),
-             os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
+             os.path.join(_FORK, "flows", "state_space_obs.json")]
     for c in cands:
         if not os.path.isfile(c):
             continue
@@ -214,7 +219,7 @@ def read_memory_layers():
     """五层记忆真源 (data/memory_layers.json)"""
     for c in (os.path.join("/home/ubuntu/zmax", "data", "memory_layers.json"),
               os.path.join(REPO, "data", "memory_layers.json"),
-              os.path.join(HOME, "lerobot-smolvla-lew", "data", "memory_layers.json")):
+              os.path.join(_FORK, "data", "memory_layers.json")):
         if not os.path.isfile(c):
             continue
         try:

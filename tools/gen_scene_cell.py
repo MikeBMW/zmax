@@ -35,7 +35,9 @@ import numpy as np                                                              
 import scene_overlay as SO                                                            # noqa: E402
 
 TAUGHT = REPO / "data" / "skills" / "l2_atomic" / "taught_points.json"
-CELLGEO = Path.home() / "zmax_data" / "real_cell_geometry.json"
+# ⚠️ 2026-10-08 修正: 原 Path(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data")) / ... = **第 5 种老路径写法**
+#   (整合后本工具会去找不存在的 /home/ubuntu/zmax_data/real_cell_geometry.json) ⇒ 统一从仓库根推。
+CELLGEO = Path(os.environ.get("ZMAX_DATA", str(REPO / "zmax_data"))) / "real_cell_geometry.json"
 OBJ3D = REPO / "data" / "scene" / "objects3d.json"
 DEPTH_NPY = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy")
 DEPTH_META = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_meta.json")

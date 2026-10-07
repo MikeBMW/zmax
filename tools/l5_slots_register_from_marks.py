@@ -32,12 +32,16 @@ import numpy as np                                                      # noqa: 
 
 REG = REPO / "models" / "l5_slots.json"
 DS_ROOT = REPO / "data" / "yolo_annot_l5slots"
-WORK = Path.home() / "zmax_data" / "l5_corners"
-FRAMES_DIRS = [Path.home() / "zmax_data" / "demo_20260928" / "frames", WORK]
+# ⚠️ 2026-10-08 修正: 原 Path(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data")) / ... = **第 5 种老路径写法**
+#   (整合后本工具会去找不存在的 /home/ubuntu/zmax_data/l5_corners 与 .../demo_20260928/frames)
+#   ⇒ 真实数据在 <仓库根>/zmax_data/... ⇒ 统一从仓库根推, 留 ZMAX_DATA 口子。
+_DATA = Path(os.environ.get("ZMAX_DATA", str(REPO / "zmax_data")))
+WORK = _DATA / "l5_corners"
+FRAMES_DIRS = [_DATA / "demo_20260928" / "frames", WORK]
 
 
 def latest_marks() -> Path:
-    c = sorted((Path.home() / "zmax_data" / "l5_corners").glob("marks_*/slots_marks.json"))
+    c = sorted((WORK).glob("marks_*/slots_marks.json"))
     if not c:
         raise SystemExit("✗ 先跑 tools/l5_corner_slots_mark.py")
     return c[-1]

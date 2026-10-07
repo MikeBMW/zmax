@@ -8,10 +8,11 @@
   python3 tools/auto_iterate.py                # 单轮迭代
   python3 tools/auto_iterate.py --max-rounds 3 # 最多3轮
 """
+import os
 import argparse, json, subprocess, sys, time
 from pathlib import Path
 
-HOME = Path.home() / "lerobot-smolvla-lew"
+HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 BASELINE = "outputs/train/act_metaworld/checkpoints/000300/pretrained_model"
 CANDIDATE = "outputs/train/act_mw_v111/checkpoints/002000/pretrained_model"
 DATASET = "data/metaworld_act"

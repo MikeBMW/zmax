@@ -12,13 +12,14 @@
 用法:
   python3 tools/auto_loop.py [--once] [--train-only]
 """
+import os
 import json, subprocess, sys, time, os, glob, threading
 from pathlib import Path
 import requests
 
 RELAY = "https://datadrive.world/api/relay"
 WS_URL = "wss://datadrive.world/ws"
-HOME = Path.home() / "lerobot-smolvla-lew"
+HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 LIVE = HOME / "data" / "orin_live"
 LOCK = HOME / "outputs" / "train" / ".loop_lock"   # 训练锁 (防并发重建数据集)
 CFG = "configs/policies/act/config_act_loop.yaml"   # 闭环训练配置 (真机6D数据)

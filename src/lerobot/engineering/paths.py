@@ -36,7 +36,7 @@ def _find_repo_root():
 REPO_ROOT = _find_repo_root()
 GUI_DIR = os.path.join(REPO_ROOT, "tools", "gui")          # 剩下还在 GUI 目录里的 Qt 视图
 LEGACY_FLOWS_DIR = os.path.join(REPO_ROOT, "flows")        # 历史位置 (保留软链兼容老工具)
-DATA_DIR = os.environ.get("ZMAX_DATA_DIR") or os.path.join(os.path.expanduser("~"), "zmax_data")
+DATA_DIR = os.environ.get("ZMAX_DATA_DIR") or os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"))
 
 
 def canvas_json(name=CANVAS_DEFAULT):

@@ -2,11 +2,12 @@
 """Z-MAX 联调自动监控 · 轮询 ECS 队列 → 新数据即拉取训练
 检测到 stage_act 打标数据(非IDLE) → 立即 pull → 训练 → 推送模型
 """
+import os
 import json, time, subprocess, sys, requests
 from pathlib import Path
 
 RELAY = "https://datadrive.world/api/relay"
-HOME = Path.home() / "lerobot-smolvla-lew"
+HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 SEEN = set()  # 已处理的包名
 
 

@@ -31,8 +31,8 @@ import sys
 import time
 
 HOME = os.path.expanduser("~")
-SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.join(HOME, "zmax_ss_remote"))
-PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.join(HOME, "zmax_moveit_plan"))
+SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss_live"))
+PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.expanduser("~/zmax/zmax_data/runtime/moveit_plan"))
 REQ = os.path.join(PLAN_DIR, "plan_req.json")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)

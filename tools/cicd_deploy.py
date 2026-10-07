@@ -12,7 +12,7 @@ import requests
 
 RELAY = "https://datadrive.world/api/relay"
 HOME = Path.home()
-OUT = HOME / "lerobot-smolvla-lew" / "outputs" / "train"
+OUT = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "outputs" / "train"
 
 
 def find_latest_model():

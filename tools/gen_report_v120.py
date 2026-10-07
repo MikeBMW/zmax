@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """生成 Z-MAX v1.2.0 中版本迭代报告"""
+import os
 import json, time, subprocess
 from pathlib import Path
 
-REPORT = Path.home() / "lerobot-smolvla-lew" / "docs" / "CICD_REPORT_v1.2.0.html"
+REPORT = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "docs" / "CICD_REPORT_v1.2.0.html"
 REPORT.parent.mkdir(parents=True, exist_ok=True)
 
 features = [

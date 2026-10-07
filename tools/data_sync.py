@@ -8,13 +8,14 @@
   python3 tools/data_sync.py             # 同步一次
   python3 tools/data_sync.py --loop      # 持续同步 (60s间隔)
 """
+import os
 import json, subprocess, sys, time, os, glob
 from pathlib import Path
 import requests
 
 ECS = "root@39.102.211.79"
 RELAY = "https://datadrive.world/api/relay"
-HOME = Path.home() / "lerobot-smolvla-lew"
+HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 ARCH_LOCAL = HOME / "data" / "orin_archive"
 LIVE_LOCAL = HOME / "data" / "orin_live"
 ARCH_LOCAL.mkdir(parents=True, exist_ok=True)

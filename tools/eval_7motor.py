@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """7电机模型单独评估: 用同数据(metaworld_joint_v2) 测试集验证泛化"""
+import os
 import json, sys, time
 from pathlib import Path
 import numpy as np
 import torch
 
-proj = Path.home() / "lerobot-smolvla-lew"
+proj = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 sys.path.insert(0, str(proj / "src"))
 
 def main():

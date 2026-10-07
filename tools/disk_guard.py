@@ -12,7 +12,7 @@
 import os, glob, time, sqlite3, shutil
 from pathlib import Path
 
-HOME = Path.home() / "lerobot-smolvla-lew"
+HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 DDS_DB = Path.home() / "zmax-website" / "dds.db"
 TRAIN = HOME / "outputs" / "train"
 LIVE = HOME / "data" / "orin_live"

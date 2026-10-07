@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Z-MAX 数据闭环 · Orin采集→LeRobot格式→4090训练→Orin部署"""
+import os
 import json, time, os, base64, subprocess, requests
 from pathlib import Path
 
@@ -15,7 +16,7 @@ print(f"  相机: {'✅' if sensors.get('camera_ok') else '❌'}")
 
 # ═══ Step 2: 保存为LeRobot格式 ═══
 print("\n=== Step 2: 转LeRobot格式 ===")
-OUT = Path.home() / "lerobot-smolvla-lew" / "data" / "orin_live"
+OUT = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "data" / "orin_live"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # 构建meta/info.json
@@ -83,7 +84,7 @@ for _ in range(60):  # 最多等5分钟
 
 # ═══ Step 5: 下载checkpoint回到4060 ═══
 print("\n=== Step 5: 下载checkpoint→4060 ===")
-CKPT = Path.home() / "lerobot-smolvla-lew" / "outputs" / "orin_act"
+CKPT = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "outputs" / "orin_act"
 CKPT.mkdir(parents=True, exist_ok=True)
 # 从4090拉取 (实际需要web提供下载接口)
 r = requests.get("http://39.102.211.79:50053/tasks", timeout=5).json()

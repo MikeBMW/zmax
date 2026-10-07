@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -23,7 +24,12 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import scene_overlay as SO                                              # noqa: E402
 
-OUTROOT = Path.home() / "zmax_data" / "l5_corners"
+# ⚠️ 2026-10-08 修正: 原写法 Path(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data")) / ... = **第 5 种老路径写法**
+#   (`Path.home()` 与 `zmax_data` 分开拼, 家目录整合时按三种写法扫不到) ⇒ 整合后本工具会去看
+#   /home/ubuntu/zmax_data/l5_corners(不存在; 真实数据在 <仓库根>/zmax_data/l5_corners) ⇒ 跑必失败。
+#   统一从仓库根推; 留 ZMAX_DATA 口子。
+_DATA = Path(os.environ.get("ZMAX_DATA", str(Path(__file__).resolve().parents[1] / "zmax_data")))
+OUTROOT = _DATA / "l5_corners"
 ORIGIN = "l5corners"
 CAM = "arm"
 

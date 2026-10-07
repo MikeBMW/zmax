@@ -4,12 +4,13 @@
 GUI操作: python3 tools/orin_pipeline.py
 步骤: 1.采集 2.处理 3.上传 4.等待 5.部署
 """
+import os
 import requests, json, time, os, numpy as np
 from pathlib import Path
 
 ORIN = "http://192.168.23.66:8765"
 GPU4090 = "http://39.102.211.79:50053"
-DATA = Path.home() / "lerobot-smolvla-lew" / "data" / "orin_tasks"
+DATA = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "data" / "orin_tasks"
 
 def step1_collect(frames=100):
     """从Orin采集zmax虚拟数据"""

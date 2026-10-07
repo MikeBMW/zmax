@@ -10,11 +10,14 @@
 import json, sys, time, base64, subprocess
 from pathlib import Path
 import requests
+import os
 import numpy as np
 
 RELAY = "https://datadrive.world/api/relay"
-HOME = Path.home()
-DATA_DIR = HOME / "lerobot-smolvla-lew" / "data" / "closed_loop"
+# ⚠️ 2026-10-08: 原写法 HOME = Path.home() 再拼 "lerobot-smolvla-lew"(第5种老写法)
+#   ⇒ 家目录整合后 fork 在 <工程根>/external/lerobot-smolvla-lew。统一改名 FORK 并带 env 口子。
+FORK = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
+DATA_DIR = FORK / "data" / "closed_loop"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -82,7 +85,7 @@ def train(npz: Path):
     """启动 ACT 训练 (SmolVLA-LEW 框架)"""
     cmd = [
         sys.executable, "-m", "lerobot.scripts.train",
-        "--config-path", str(HOME / "lerobot-smolvla-lew" / "configs/policies/smolvla/config_smolvla_mini.yaml"),
+        "--config-path", str(FORK / "configs/policies/smolvla/config_smolvla_mini.yaml"),
         "--dataset.root", str(npz.parent),
         "--dataset.name", npz.stem,
         "--policy.type", "act",
@@ -90,7 +93,7 @@ def train(npz: Path):
         "--train.num_epochs", "10",
     ]
     print(f"🚀 训练: {' '.join(cmd)}")
-    return subprocess.run(cmd, cwd=str(HOME / "lerobot-smolvla-lew"))
+    return subprocess.run(cmd, cwd=str(FORK))
 
 
 def loop():

@@ -37,7 +37,21 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("ZMAX_STREAM_PORT", "8791"))
 RGB_KEY = "Integrated RGB"          # 笔记本彩色相机的卡名关键字
+USB_KEY = "USB2.0 Camera"           # 笔记本那格「换源」选到的 USB 相机卡名关键字
 TOP_KEY = "MAXHUB"                  # 顶视相机
+# ⚠️ 2026-10-08 修: 站台有「笔记本内置 ↔ USB」换源功能, 用户选择会落盘到 cam_local_src.json。
+#   本守卫原先只认 "Integrated RGB" ⇒ 用户选了 USB 之后, 每 5 分钟把站台重启一次(实测 06:58/07:00
+#   连续发生), 页面反复掉线 —— 这是**守卫误判**, 不是串线。现在按用户落盘的选择来判。
+LOCAL_SRC_FILE = "/home/ubuntu/zmax/zmax_data/cam_local_src.json"
+
+
+def local_expected():
+    """按用户在页面上的「换源」选择, 返回 local 那格**应该**看到的卡名关键字。"""
+    try:
+        k = json.load(open(LOCAL_SRC_FILE, encoding="utf-8")).get("kind")
+    except Exception:                                                     # noqa: BLE001
+        k = "builtin"
+    return USB_KEY if k == "usb" else RGB_KEY
 # 🌈 深度源: 由**容器内常驻**的 ros_depth_stream.py 落盘 (宿主只读它的 npy)
 DEPTH_NPY = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy"
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
@@ -98,8 +112,11 @@ def stats(timeout=6):
         return None
 
 
-def judge(cmd_devs, expect, st):
-    """→ (ok, reason) 纯函数, 可用给定输入自测"""
+def judge(cmd_devs, expect, st, local_key=RGB_KEY):
+    """→ (ok, reason) 纯函数, 可用给定输入自测
+
+    local_key: local 那格**按用户换源选择**应有的卡名关键字(默认笔记本彩色; 换源选 USB 时传 USB_KEY)
+    """
     if cmd_devs is None and st is None:
         return False, "8791 不可达且没有推流进程(推流没跑)"
     if expect:
@@ -112,8 +129,8 @@ def judge(cmd_devs, expect, st):
     if st:
         lo = (st.get("local") or {}).get("label", "")
         l2 = (st.get("local2") or {}).get("label", "")
-        if lo and RGB_KEY.lower() not in lo.lower():
-            return False, "local 那一格不是笔记本彩色相机(实测 label=%r)" % lo
+        if lo and local_key.lower() not in lo.lower():
+            return False, "local 那一格不是用户选的那台相机(实测 label=%r, 期望含 %r)" % (lo, local_key)
         if l2 and TOP_KEY.lower() not in l2.lower():
             return False, "local2 那一格不是 MAXHUB(实测 label=%r) — 串线" % l2
     return True, "ok"
@@ -238,12 +255,12 @@ def main():
                 cd[tok.lstrip("-")] = int(a.cmdline.split()[i + 1])
         exp = tuple(int(x) for x in a.expect.split(",")) if a.expect else None
         stj = json.load(open(a.stats_json, encoding="utf-8")) if a.stats_json else None
-        ok, why = judge(cd or None, exp, stj)
+        ok, why = judge(cd or None, exp, stj, local_expected())
         print("判定: %s — %s" % ("✅ 映射正确(不需要动手)" if ok else "❌ 需要纠正", why))
         return 0 if ok else 3
 
     cd, exp, st = proc_cmdline(), resolve_devs(), stats()
-    ok, why = judge(cd, exp, st)
+    ok, why = judge(cd, exp, st, local_expected())
     notes, failed = [], False
 
     # ── 2026-09-30 修: 每一项自愈都必须跑完再汇总 ──────────────────────────────

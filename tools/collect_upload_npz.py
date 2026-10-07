@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Orin数据采集 → .npz格式 → 4090训练"""
+import os
 import numpy as np, requests, time, os
 from pathlib import Path
 
@@ -29,7 +30,7 @@ for i in range(FRAMES):
     time.sleep(1/FPS)
 
 # 保存
-out = Path.home() / "lerobot-smolvla-lew" / "data" / "orin_tasks"
+out = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "data" / "orin_tasks"
 out.mkdir(parents=True, exist_ok=True)
 filename = out / f"task_{time.strftime('%Y%m%d_%H%M%S')}.npz"
 

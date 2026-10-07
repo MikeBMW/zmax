@@ -29,11 +29,18 @@ import threading
 import time
 
 HOME = os.path.expanduser("~")
-FIFO = os.path.join(HOME, "zmax_data/rokae_sdk/cmd_arm.fifo")
-RES = os.path.join(HOME, "zmax_data/rokae_sdk/tcp_out/agent_result.json")
-POSE = os.path.join(HOME, "zmax_data/rokae_sdk/tcp_out/latest.json")
-SWITCH = os.path.join(HOME, "zmax_data/move_transport.json")
-EVID = os.path.join(HOME, "zmax_data/l2_sdk_leg.jsonl")
+# ⚠️ 2026-10-08 修正: 原写法是 join(expanduser("~"), "zmax_data/...")  —— 这是**第 4 种老路径写法**
+#   (`~` 与 `zmax_data` 分开拼, 前面按 绝对路径 / `~/x` / `$HOME/x` 三种写法做的家目录整合**扫不到**)。
+#   工程根搬到 `zmax/` 之后, 这里仍在找 /home/ubuntu/zmax_data/rokae_sdk/cmd_arm.fifo ⇒
+#   **SDK 腿永远判定"常驻 SDK 代理未就绪" ⇒ 页面报「已下发(真动)」但机器人不动**(每条都在最后一跳被拦)。
+#   统一从工程根推; 留 ZMAX_DATA / ZMAX_REPO 口子给容器/测试。
+_REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+_DATA = os.environ.get("ZMAX_DATA", os.path.join(_REPO, "zmax_data"))
+FIFO = os.path.join(_DATA, "rokae_sdk/cmd_arm.fifo")
+RES = os.path.join(_DATA, "rokae_sdk/tcp_out/agent_result.json")
+POSE = os.path.join(_DATA, "rokae_sdk/tcp_out/latest.json")
+SWITCH = os.path.join(_DATA, "move_transport.json")
+EVID = os.path.join(_DATA, "l2_sdk_leg.jsonl")
 
 MAX_SPEED_MM_S = 30.0          # 速度上限(现场慢速优先; 与页面档位同量级)
 MAX_ABS_MM = 800.0             # 单条绝对位移上限(空间点之间最远 ~470mm, 800 够且能拦住误目标)
