@@ -70,10 +70,10 @@ if [ $NO_TPUT = 0 ]; then
   TPUT=$(curl -sL -o /dev/null -m 8 -w "%{speed_download}" "https://codeload.github.com/git/git/tar.gz/refs/tags/v2.47.0" 2>/dev/null)
 fi
 mbps() { awk -v v="${1:-0}" 'BEGIN{ if(v>=1048576) printf "%.2fMB/s", v/1048576; else printf "%.0fKB/s", v/1024 }'; }
-say "④ 体检: 网关 ${R_GW}ms · DNS ${R_DNS}ms · 公网 ${R_PUB}ms · 工控机 ${R_IPC}ms · Orin ${R_ORIN}ms · TTFB feishu $(awk -v v=${T_FEISHU:-0} 'BEGIN{printf "%.0fms", v*1000}') github $(awk -v v=${T_GH:-0} 'BEGIN{printf "%.0fms", v*1000}') · 远端下载 $(mbps "${TPUT:-0}")"
+say "④ 体检: 网关 ${R_GW}ms · DNS ${R_DNS}ms · 公网 ${R_PUB}ms · 工控机 ${R_IPC}ms · Orin ${R_ORIN}ms · TTFB feishu $(awk -v v=${T_FEISHU:-0} 'BEGIN{printf "%.0fms", v*1000}') github $(awk -v v=${T_GH:-0} 'BEGIN{printf "%.0fms", v*1000}') · 远端下载 $([ $NO_TPUT = 0 ] && mbps "${TPUT:-0}" || echo '(跳过: --quick, 不是失败)')"
 
 # ── ⑤ 落台账 JSONL (一行一次开机, 便于跨天对比) ──
-python3 - "$JSON" "$TS" "$APPLIED" "$PS" "$R_GW" "$R_DNS" "$R_PUB" "$R_IPC" "$R_ORIN" "$T_FEISHU" "$T_GH" "$TPUT" "$prewarm_ok" <<'PY' 2>/dev/null || true
+python3 - "$JSON" "$TS" "$APPLIED" "$PS" "$R_GW" "$R_DNS" "$R_PUB" "$R_IPC" "$R_ORIN" "$T_FEISHU" "$T_GH" "${TPUT:-}" "$prewarm_ok" <<'PY' 2>/dev/null || true
 import json, sys
 (p, ts, applied, ps, rgw, rdns, rpub, ripc, rorin, tfs, tgh, tput, pre) = sys.argv[1:14]
 def f(x):
