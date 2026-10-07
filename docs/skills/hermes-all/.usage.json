@@ -443,7 +443,7 @@
     "patch_count": 73,
     "patch_generation": 4,
     "pinned": false,
-    "state": "stale",
+    "state": "active",
     "use_count": 90,
     "view_count": 90
   },
@@ -965,7 +965,7 @@
     "patch_count": 3,
     "patch_generation": 3,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 4,
     "view_count": 4
   },
@@ -1010,7 +1010,7 @@
     "patch_count": 13,
     "patch_generation": 13,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 24,
     "view_count": 24
   },
@@ -1025,7 +1025,7 @@
     "patch_count": 1,
     "patch_generation": 1,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 1,
     "view_count": 1
   },
@@ -1132,7 +1132,7 @@
     "patch_count": 3,
     "patch_generation": 3,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 3,
     "view_count": 3
   },
@@ -1140,16 +1140,16 @@
     "archived_at": null,
     "created_at": "2026-09-23T22:56:45.495766+00:00",
     "created_by": "agent",
-    "last_patched_at": "2026-09-30T10:38:40.574256+00:00",
-    "last_reused_patch_generation": 23,
-    "last_used_at": "2026-09-30T10:31:06.212306+00:00",
-    "last_viewed_at": "2026-09-30T10:31:06.210070+00:00",
-    "patch_count": 24,
-    "patch_generation": 24,
+    "last_patched_at": "2026-10-07T10:08:47.137139+00:00",
+    "last_reused_patch_generation": 24,
+    "last_used_at": "2026-10-07T09:46:20.000241+00:00",
+    "last_viewed_at": "2026-10-07T09:46:19.994742+00:00",
+    "patch_count": 27,
+    "patch_generation": 27,
     "pinned": false,
     "state": "active",
-    "use_count": 21,
-    "view_count": 21
+    "use_count": 22,
+    "view_count": 22
   },
   "linux-network-perf-boot": {
     "archived_at": null,
@@ -1177,7 +1177,7 @@
     "patch_count": 4,
     "patch_generation": 4,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 13,
     "view_count": 13
   },
@@ -1358,7 +1358,7 @@
     "view_count": 30
   },
   "model-capability-feature-dbc": {
-    "archived_at": null,
+    "archived_at": "2026-10-07T09:43:56.657528+00:00",
     "created_at": "2026-08-19T05:53:00.720027+00:00",
     "created_by": "agent",
     "last_patched_at": "2026-08-19T08:49:35.697879+00:00",
@@ -1368,7 +1368,7 @@
     "patch_count": 6,
     "patch_generation": 6,
     "pinned": false,
-    "state": "stale",
+    "state": "archived",
     "use_count": 20,
     "view_count": 20
   },
@@ -1435,7 +1435,7 @@
     "patch_count": 2,
     "patch_generation": 2,
     "pinned": false,
-    "state": "stale",
+    "state": "active",
     "use_count": 10,
     "view_count": 10
   },
@@ -1800,7 +1800,7 @@
     "patch_count": 2,
     "patch_generation": 2,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 7,
     "view_count": 7
   },
@@ -2258,7 +2258,7 @@
     "patch_count": 1,
     "patch_generation": 1,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 6,
     "view_count": 6
   },
@@ -2674,7 +2674,7 @@
     "patch_count": 29,
     "patch_generation": 0,
     "pinned": false,
-    "state": "active",
+    "state": "stale",
     "use_count": 32,
     "view_count": 32
   },

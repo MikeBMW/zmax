@@ -229,6 +229,50 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
 复核两格帧号**持续递增** + `8793/station=200`; 实测重启后 `local 15fps frames=3003`(重启前 14 帧冻结)。
 注意 `MAXHUB 顶视相机` 没枚举时 `local2=-1/frames=0` 属**硬件缺失**, 重启无用, 如实报缺。
 
+## 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
+
+实测(2026-10-07 重启后): `zmax-ecs-ov` / `zmax-ecs-station` 报 `activating` 且 `NRestarts` 每秒涨;
+`/var/log/zmax-ecs-*.log` 满屏 `Error: remote port forwarding failed for listen port 18791`;
+公网 `https://datadrive.world/ov/...` `/st/...` 全部无响应(curl 15s 超时 = nginx 反代挂在一个没人转发的端口上)。
+- 根因: ECS 侧 `18791/18793` 还被**上一次的 sshd 会话**占着(客户端已死, sshd 没回收), `-o ExitOnForwardFailure=yes`
+  让新隧道立刻退出 ⇒ systemd 无限重启。ECS 上 `ss -ltnp | grep 1879` 能看到持有者, `ss -tnp` 看对端 IP
+  (**对端 IP 可能就是本机上一次的出口, 别因为"不像自己的 IP"就以为是别人的隧道 —— 公网探活超时即证它已死**) 。
+- 处置(两步都要):
+  ```bash
+  # ① 放端口(在 ECS 上)
+  for pid in $(ss -ltnp | grep -E '1879[13]' | grep -oP 'pid=\K[0-9]+' | sort -u); do kill $pid; done
+  # ② 上保活(治本, 否则下次客户端猝死还会永久占口)
+  #    /etc/ssh/sshd_config: ClientAliveInterval 30 / ClientAliveCountMax 3 / TCPKeepAlive yes → sshd -t && reload ssh
+  ```
+  口令取本机 `/etc/zmax-ecs-*.env` 里的 `SSHPASS`, 用 `sshpass -e` 别把它打进命令行/日志。
+- 复核三证: ECS 回环 `curl 127.0.0.1:18791/overlay` → 200 · 公网 `/ov/live.json` → 200 · **POST 仍 403**(只读闸门没被顺手放开)。
+- 别自己另起端口写 nginx —— nginx 里 `proxy_pass` 的端口是固定的, 换口等于通道全废。
+
+## 9d. "前几天是不是内核 panic 了?" — 硬停/死机取证 (先摆证据, 再下结论)
+
+用户问"为什么 panic 了/为什么自己重启"时, 按下面顺序**只读**取证, **不要顺着他的话认"panic"**:
+```bash
+journalctl --list-boots --no-pager | tail -6      # 上一轮开机起止 + 中间空档
+last -x reboot | head -6
+sudo journalctl -b -1 -o short-iso --no-pager | tail -25            # 断在哪里
+sudo journalctl -b -1 --no-pager | grep -iE "Shutting down|systemd-shutdown|Reached target (Reboot|Power-Off)"  # 有=干净, 无=硬停
+sudo journalctl -b -1 --no-pager | grep -iE "Kernel panic|Oops|call trace|soft/hard lockup|Out of memory|oom-kill|mce"
+sudo journalctl -b -1 -o short-iso --no-pager | grep -c "Write-error on swap-device"   # 风暴判据
+sudo journalctl -b -1 -o short-iso --no-pager | grep "Write-error on swap-device" | cut -c1-13 | sort | uniq -c
+ls -l /sys/fs/pstore/ ; grep -o 'crashkernel=[^ ]*' /proc/cmdline ; lsmod | grep -E "pstore|ramoops"   # 有没有留下证据的能力
+cat /proc/swaps ; readlink -f /sys/block/loop*/loop/backing_file   # 同一个文件被启了两次?
+```
+判读口径:
+- **"日志里没有 panic" ≠ "没 panic"**: panic 现场内核来不及回盘, journald 也刷不下去; pstore 空 + 无 `crashkernel=` ⇒
+  **谁都抓不到**。只能说"没有留存证据", 并给出"下次怎么抓"(加 `crashkernel=512M` + kdump-tools, 或 ramoops)。
+- **硬停判据**: 日志戛然而止在同一秒 + 全无关机序列 + 无电源键/ACPI/热关机事件。笔记本有电池也只是"不会被拔电停",
+  **假死(死锁/OOM 式卡死)一样要靠长按电源** ⇒ 硬停常伴随"swap 写错误风暴"这类内核先兆。
+- **一个 swap 文件只许启用一次**(2026-10-02 工位机实测): `fstab` 的 `/swapfile none swap sw` + LiveUSB 遗留的
+  `zmax-swapfile.service`(`losetup -f --show /swapfile && swapon $LOOP`)会**对同一个文件的物理块启用两个 swap 设备**(未定义行为;
+  实测 12h 内 8872 条 `Write-error on swap-device`, **全部在 loop 那一路**, 直连那一路 0 条 ⇒ 强指向它)。
+  处置: `sudo swapoff /dev/loopN && sudo losetup -d /dev/loopN && sudo systemctl disable --now zmax-swapfile.service`
+  (容量从 16G 变 8G; 要补就另建**独立**文件, 千万别对同一个文件再来一次)。
+
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。
@@ -249,6 +293,11 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
 - **改完必须真跑一遍故障路径**：`kill <8791 pid>` → 跑守护 → 复核 `8793/station=200` + `/stats` 帧号递增，
   这才证明「深度分支不再吃掉了推流分支」（自测开关 `--cmdline/--expect/--stats-json` 只验 judge 纯函数，验不到分支顺序）。
 - **排查定式**：守护「确实每 N 分钟都在动、但目标服务就是不活」⇒ **先定位它从哪个分支返回的**，别先去怀疑被守护的服务本身。
+- **"源文件不新鲜"不等于"进程不在"**（2026-10-07 实测）：深度源分支原来把「文件龄 > 20s」也当成需要拉起 ⇒
+  上游相机一停，守护每 5 分钟再拉一个 `ros_depth_stream`，一夜堆到 **10 个进程**（都订阅同一话题互相抢，
+  Orin 的 `ros2 node list` 里都看得到重复节点）。判据要拆开：**只有"进程不在/查不到"才拉起**；
+  "进程在跑但文件旧" = 上游(相机/话题)问题，**只报告 + 指明上游节点名**，重复拉起治不了还会放大故障。
+  改完两条分支都要真跑：缺进程→必须拉起 1 个；进程在 + 人为 `touch -d '10 minutes ago' <源文件>` → 必须**不**再多起。
 
 ## Pitfalls
 | 坑 | 症状 | 修法 |

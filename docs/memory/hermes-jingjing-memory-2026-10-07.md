@@ -1,4 +1,4 @@
-Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(USB网卡); USB产线网卡不在位⇒.66/.23/.160全不可达, 执行器报'位姿读不到'拒发一切动作
+Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(USB网卡); 网卡不在位⇒.66/.23/.160不可达+'位姿读不到'拒发动作
 §
 NTP回拨8h(勿动RTC)→节拍用monotonic,负帧龄拒用
 §
@@ -6,7 +6,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic,负帧龄拒用
 §
 交付前自跑通; GPU不空转; 改文件必回读核验; 新脚本须真导入真跑
 §
-长命令/杀进程一律写脚本(内联模式串会杀掉自己shell, 已踩两次); sudo免密; 网络优化=zmax-net-optimize
+长命令/杀进程一律写脚本(内联会杀自己shell); sudo免密; 网络优化=zmax-net-optimize
 §
 L5=DeepSeek视觉:短提示+小JSON; timeout≥300
 §
@@ -56,7 +56,7 @@ GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers�
 §
 场景叠加: overlay_spec按origin存框; 手眼TSAI闭环1.74mm
 §
-我=主节点: 工控机+Orin全归我; AOI禁10084/10085用10082/10083; 更新=aoi_remote_deploy.py; 通道=zmax-agent-hub.service(8794,数据~/zmax_data/agent_hub禁/tmp)+station_cmd.py
+我=主节点: 工控机+Orin全归我; AOI(.23.23)禁10084/10085用10082/10083; 更新=aoi_remote_deploy.py; 通道=agent_hub(8794,数据~/zmax_data/agent_hub)+station_cmd.py
 §
 动作授权只从8793; 代发前先授权
 §
