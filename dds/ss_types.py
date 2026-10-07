@@ -212,3 +212,49 @@ class SSTest(IdlStruct, typename="zmax::SSTest"):
     total: int32 = -1
     failed: int32 = -1
     detail: str = ""
+
+
+# ─────────────────── 流形引擎 · 能量层 (2026-10-07 老倪) ───────────────────
+@dataclass
+class SSEnergyLayer(IdlStruct, typename="zmax::SSEnergyLayer"):
+    """单层能量读数（能级壳层里的一格）"""
+    layer: str = ""                   # L2/L3/L4/L5
+    shell_n: int32 = 0                # 壳层序号 (L2=1 … L5=4)
+    e_layer_cj: float64 = 0.0         # 层能量 = 存量 + 做功 (CJ)
+    e_cum_cj: float64 = 0.0           # 累积能量 (到本壳层为止, 单调不减)
+    e_work_cj: float64 = 0.0          # 本轮做功 (增量)
+    e_standing_cj: float64 = 0.0      # 存量能力 (能力水平×循环; 基座在场就有)
+    level_c: float64 = -1.0           # 能力水平 c∈[0,1] (-1=未测)
+    tau_cj: float64 = 0.0             # 扭矩 (CJ/循环)
+    omega_hz: float64 = -1.0          # 转速 (Hz)
+    p_out_cjs: float64 = -1.0         # 输出功率 = τ·ω
+    eta_cjj: float64 = -1.0           # 效率 (CJ/J)
+    feasible_r: float64 = -1.0        # 可行域半径 (向上收窄)
+    lora_r: int32 = -1                # LoRA rank (-1=未挂)
+    lora_boost_cj: float64 = 0.0      # 增压附加能量
+    share: float64 = -1.0             # 本轮占比
+    note: str = ""                    # 口径/缺项说明（必须能自证）
+
+
+@dataclass
+class SSEnergy(IdlStruct, typename="zmax::SSEnergy"):
+    """流形引擎能量层 —— 发动机类比的物理量（输入功率/转速/扭矩/能量/效率/能级壳层）"""
+    ts: float64 = 0.0
+    node: str = ""                    # 流形引擎节点名
+    state: str = ""                   # train / run / idle
+    e_total_cj: float64 = 0.0         # ★ 总能量 = Σ 各层能力总量 (CJ)
+    e_base_cj: float64 = 0.0          # 基础 L2 能量
+    e_boost_cj: float64 = 0.0         # LoRA 增压合计
+    e_worksum_cj: float64 = 0.0       # 做功合计 (增量)
+    e_standsum_cj: float64 = 0.0      # 存量能力合计
+    p_in_w: float64 = -1.0            # 输入功率 = GPU 电功率 (W)
+    w_in_j: float64 = -1.0            # 电功 (J)
+    eta_total_cjj: float64 = -1.0     # 整机效率 (CJ/J)
+    n_levels_active: int32 = -1       # 活跃能级数
+    shells: sequence[SSEnergyLayer] = field(default_factory=list)   # 能级壳层
+    shell_monotonic_ok: int32 = -1    # 壳层单调 (能量向上扩张)
+    feasible_narrowing_ok: int32 = -1 # 可行域收窄 (权限向上收窄)
+    sum_ok: int32 = -1                # 总量自检 Σ分层==总量
+    criterion: str = ""               # 能量口径 (CJ 定义)
+    source: str = ""                  # 数据来源 (日志/话题/tap)
+    note: str = ""

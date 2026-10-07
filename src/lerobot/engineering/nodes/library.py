@@ -4832,6 +4832,117 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
                                 457, "class ManifoldEngine")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ⚡ 流形引擎 · 能量层 (Energy Manifold) — 老倪 2026-10-07「类比发动机」
+#   公式/规格真源: src/lerobot/manifold/energy_manifold.py (τ/ω/P/E/η/能级壳层 + 物理自检)
+#   数据真源:      zmax_data/ss_live/energy_*.jsonl ← tools/manifold_energy_probe.py
+#                  (真跑一轮 pipeline 迭代: nvidia-smi 采样输入功率 + 各层日志真实指标)
+#   观测通道:      全局数据空间话题 zmax/ss_energy (dds/ss_types.py::SSEnergy, qos=state)
+#   纪律: 没有实测就**如实报缺**(τ/E 记 0 并写 note), 不画假曲线; 能量只增不减; Σ分层==总量
+# ══════════════════════════════════════════════════════════════════════════════
+def node_ss_energy(ctx):
+    """⚡ 流形引擎 · 能量层 — 总能量/各层能量 (存量能力+本轮做功) + 现场 trace 折算"""
+    log = ctx.get("log")
+    try:
+        import glob
+        import importlib.util as _ilu
+        import json as _json
+        import numpy as _np
+        path = os.path.join(_MANIFOLD_DIR, "energy_manifold.py")
+        spec = _ilu.spec_from_file_location("lerobot.manifold.energy_manifold", path)
+        m = _ilu.module_from_spec(spec)
+        # ⚠️ 必须先登记 sys.modules 再 exec_module: dataclasses 处理 @dataclass 时内部要
+        #     sys.modules.get(cls.__module__).__dict__ —— 没登记就 AttributeError:
+        #     'NoneType' object has no attribute '__dict__' (2026-10-07 实测踩过)。
+        sys.modules[spec.name] = m
+        spec.loader.exec_module(m)
+
+        # ① 训练/迭代口径: 读最新一轮的能量 tap (真跑出来的)
+        tap_dir = os.path.join(_REPO_ROOT, "zmax_data", "ss_live")
+        taps = sorted(glob.glob(os.path.join(tap_dir, "energy_*.jsonl")), key=os.path.getmtime)
+        payload, tap_name = None, ""
+        if taps:
+            tap_name = os.path.basename(taps[-1])
+            _lines = [l for l in open(taps[-1], encoding="utf-8") if l.strip()]
+            if _lines:
+                try:
+                    payload = _json.loads(_lines[-1])          # 最后一行 = 总量 payload
+                except Exception:                              # noqa: BLE001
+                    payload = None
+        if log:
+            log("⚡ 流形引擎 · 能量层 (发动机类比: 输入功率/转速/扭矩/能量/效率/能级壳层)")
+            log("   单位: " + m.CJ_DEFINITION)
+        if payload:
+            t = payload
+            if log:
+                log(f"   输入功率 P_in = {t.get('p_in_w')} W ({t.get('source')}) · 电功 {t.get('w_in_j')} J"
+                    f" · 整机效率 η = {t.get('eta_total_cjj')} CJ/J")
+                log("   壳 层   存量CJ(基座)  增量CJ(做功)  层能量CJ     累积CJ       τ(CJ/循环)   ω(Hz)  可行域  占比   主模型")
+                for s in (t.get("shells") or []):
+                    _mdl = ((m.LEVEL_STRUCT.get(s.get("layer"), {}) or {}).get("models") or ["—"])[0][:18]
+                    log(f"   {s.get('shell_n')} {str(s.get('layer')):<4} {float(s.get('e_standing_cj') or 0):>11.4f}  "
+                        f"{float(s.get('e_work_cj') or 0):>11.4f}  {float(s.get('e_layer_cj') or 0):>10.4f}  "
+                        f"{float(s.get('e_cum_cj') or 0):>10.4f}  {float(s.get('tau_cj') or 0):>12.8f}  "
+                        f"{float(s.get('omega_hz') if s.get('omega_hz') is not None else -1):>6.3f}  "
+                        f"{float(s.get('feasible_r') if s.get('feasible_r') is not None else -1):>5.2f}  "
+                        f"{float(s.get('share') if s.get('share') is not None else -1):>5.3f}  {_mdl}")
+                log(f"   ★ 总能量 E_total = {t.get('e_total_cj')} CJ = 存量 {t.get('e_standsum_cj')} + "
+                    f"做功 {t.get('e_worksum_cj')}")
+                log(f"     其中基础 L2 能量 {t.get('e_base_cj')} CJ · LoRA 增压 {t.get('e_boost_cj')} CJ"
+                    f" · 活跃能级 {t.get('n_levels_active')}/4")
+                log(f"   双律自检: 壳层单调(能量向上扩张) {bool(t.get('shell_monotonic_ok'))}"
+                    f" · 可行域收窄(权限向上收窄) {bool(t.get('feasible_narrowing_ok'))}"
+                    f" · Σ分层==总量 {bool(t.get('sum_ok'))}")
+                log(f"   数据源: {t.get('run') or tap_name} · 观测话题 zmax/ss_energy"
+                    f" (zmax::SSEnergy · qos=state · 守护 tools/dds/ss_daemon.py 转发)")
+        else:
+            if log:
+                log("   ⚠️ 尚无能量 tap ⇒ 训练口径无数据。跑一轮: "
+                    "`gui-venv311/bin/python tools/manifold_energy_probe.py run --steps 30`"
+                    " (不画假曲线; 下面只给现场 trace 折算)")
+
+        # ② 运行口径: 有引擎轨迹就**现场折算** (与训练同一套公式: P=τ·ω, E=τ·N)
+        mod = ctx.get("module")
+        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        if tr and tr.get("t"):
+            _t = _np.asarray(tr["t"], dtype=float)
+            fps = float(1.0 / (float(_np.mean(_np.diff(_t))) if _t.size > 1 else 0.0)) if _t.size > 1 else -1.0
+            em = m.EnergyManifold()
+            em.absorb_trace({k: tr.get(k) for k in ("mani_progress", "mani_dperp", "mani_rem",
+                                                    "u_sat", "contact_p", "mani_eta", "intent")},
+                            fps=fps if fps > 0 else -1.0, src="引擎 trace (现场)")
+            tl = em.total()
+            if log:
+                log(f"   现场折算 (trace {len(_t)} 帧 · 实测 {fps:.1f}Hz):")
+                for L in m.LEVELS:
+                    d = tl["layers"].get(L)
+                    if not d:
+                        continue
+                    log(f"     {L}: τ={d['tau_cj']:.8f}CJ/循环 · ω={d['omega_hz']:.3f}Hz · "
+                        f"做功 E={d['energy_cj']:.6f}CJ · {d['note'][:60]}")
+                log(f"     现场总做功 {tl['e_worksum_cj']:.6f}CJ (纯做功口径, 无存量——未测能力水平时如实不计)")
+            _SS_STATE["energy_live"] = tl
+        _SS_STATE["energy"] = payload or {}
+        if log:
+            log("   🔒 只读旁路: 只记账/上话题, 不改控制路径 (零回归)")
+        return bool(payload) or bool(tr and tr.get("t"))
+    except Exception as e:                                                          # noqa: BLE001
+        if log:
+            log(f"⚠️ 流形引擎能量层失败: {type(e).__name__}: {e}")
+        return False
+
+
+_reg("ss_energy", ["流形引擎能量", "引擎能量", "能量层", "能量流形", "发动机能量"],
+     "⚡ 流形引擎 · 能量层 — 发动机类比物理量: 输入功率 P_in(GPU 真瓦特) / 转速 ω / 扭矩 τ(每循环做功) / "
+     "能量 E=τ·N / 效率 η=E/W_in / 能级壳层(L2 基础 → L3/L4/L5 增强, 能量向上扩张+可行域向上收窄); "
+     "总能量 E_total=Σ各层能力总量, 经全局数据空间话题 zmax/ss_energy 观测/测量/记录 "
+     "(公式真源 src/lerobot/manifold/energy_manifold.py · 实测 tools/manifold_energy_probe.py)",
+     node_ss_energy)
+
+_EXTERNAL_LOC["ss_energy"] = (os.path.join(_MANIFOLD_DIR, "energy_manifold.py"),
+                              240, "class EnergyManifold")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 🧮 流形引擎标定 (Manifold Engine Calibration) — L4 标定层 · 主标定参数 M (2026-09-29 老倪)
 #   动机 (老倪原话): 「质量在神经网络类比里对应『惯性』, 但在标准梯度下降里被『过阻尼』近似掉了…

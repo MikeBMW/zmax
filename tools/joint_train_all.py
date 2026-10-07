@@ -38,6 +38,15 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
 CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
+# ⚠️ 2026-10-07 实测: 整合后 HF 家是**工程根的 zmax_data/hf_cache** (9.2G 真模型都在 hub/ 下),
+#   而 ~/.cache/huggingface 已空 ⇒ 不给 HF_HOME 时各阶段在 offline 模式下找不到缓存, 报
+#   "We couldn't connect to https://huggingface.co … couldn't find them in the cached files" (L2/L3 直接 rc=1)。
+#   口径与 tools/zmax_bootstrap.py 的 ZMAX_HF_HOME 一致。
+HF_HOME = (os.environ.get("ZMAX_HF_HOME") or os.environ.get("HF_HOME")
+           or os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "hf_cache"))
+HF_ENV = {"HF_HOME": HF_HOME, "HF_HUB_CACHE": os.path.join(HF_HOME, "hub")}
+if not os.path.isdir(HF_ENV["HF_HUB_CACHE"]):
+    HF_ENV = {}          # 目录不在就不瞎指 (宁可报缺, 也不让 transformers 找不到北)
 PY_GUI = os.path.join(ROOT, "gui-venv311", "bin", "python")
 PY_INTACT = os.path.join(INTACT, ".venv", "bin", "python")
 PY_LEROBOT = "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python"
@@ -102,7 +111,8 @@ def build_stages(a) -> list:
         "--config-name=intact_goal_optical_insert_v6", "data=zmax_v6",
         f"output_model_name={l4_name}",
         f"init_weights_path={L4_INIT}", "init_zero_skill_branch=false",
-        "trainer.max_epochs=1", f"+trainer.limit_train_batches={a.steps}",
+        "trainer.max_epochs=%d" % int(getattr(a, "l4_epochs", 1) or 1),
+        f"+trainer.limit_train_batches={a.steps}",
     ]
     l4_env = {
         "PATH": os.path.join(INTACT, ".venv", "bin") + ":" + os.environ.get("PATH", ""),
@@ -113,6 +123,7 @@ def build_stages(a) -> list:
         "ZMAX_LORA_TARGETS": "to_qkv,net.,predictor,action,encoder",
         "ZMAX_LORA_OUT": os.path.join(mroot, "lora_l4_init.pt"),
         "HF_HUB_OFFLINE": "1",
+        **HF_ENV,
     }
 
     # L3: SmolVLA+LEW (+lerobot 原生 PEFT LoRA)
@@ -144,7 +155,7 @@ def build_stages(a) -> list:
     l3_env = {"PATH": "/home/ubuntu/zmax/venvs/lerobot-venv/bin:" + os.environ.get("PATH", ""),
               "PYTHONPATH": os.path.join(ROOT, "src"),
               "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-              "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled"}
+              "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled", **HF_ENV}
     if a.lora_l3 and a.l3_lora_engine == "local":
         # 自研 lora_inject 通道: 不产生 fp32 大激活 ⇒ 8GB 卡可行 (peft 通道实测四档全 OOM)
         l3_env.update({"ZMAX_LORA_LOCAL": "1", "ZMAX_LORA_MOD": LORA_MOD,
@@ -179,7 +190,7 @@ def build_stages(a) -> list:
               "--name", f"annot_lora_{ts}"]
     if not a.yolo_no_base and os.path.exists(L2_BASE):
         l2_cmd += ["--base", L2_BASE]
-    l2_env = {"PATH": os.path.dirname(PY_GUI) + ":" + os.environ.get("PATH", "")}
+    l2_env = {"PATH": os.path.dirname(PY_GUI) + ":" + os.environ.get("PATH", ""), **HF_ENV}
 
     stages = [
         {"id": "L4", "layer": "L4 INTACT (安全+物理导航)", "gpu_mb": 6000, "est_min": 8,
@@ -272,6 +283,9 @@ def main() -> int:
                          "'L3 一直没提升'的真因。视觉塔仍不挂(8GB 卡实测 OOM), 也排掉永不调用的 lm_expert。")
     ap.add_argument("--env-check", action="store_true")
     ap.add_argument("--gpu-wait", type=int, default=900, help="等 GPU 空闲的最长秒数")
+    ap.add_argument("--l4-epochs", type=int, default=1,
+                    help="L4 INTACT 轮数 (默认 1 = 原行为)。>1 时日志里会出现 ≥2 个 validate/loss 点 ⇒ "
+                         "流形引擎能量探针才能测到 L4 的扭矩 τ (单点无下降区间, τ 只能记 0)")
     a = ap.parse_args()
 
     stages, mroot = build_stages(a)

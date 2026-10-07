@@ -36,7 +36,12 @@ import sys
 import time
 
 HOME = os.path.expanduser("~")
-SS_REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.join(HOME, "zmax_ss_remote"))
+# ⚠️ 2026-10-07 修正: 默认原来是 ~/zmax_ss_remote, 但**真实 tap 一直在工程根的 zmax_data/ss_live**
+#    (state_*/proposal_*/energy_* 都写那里) ⇒ 旧默认等于守护一个空目录(状态/动作/能量话题全静默)。
+#    现在: 显式 env > 规范路径(存在就用) > 旧默认 (保持向后兼容)。
+_TAP_CANON = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"), "zmax_data", "ss_live")
+_TAP_LEGACY = os.path.join(HOME, "zmax_ss_remote")
+SS_REMOTE = os.environ.get("SS_REMOTE_DIR") or (_TAP_CANON if os.path.isdir(_TAP_CANON) else _TAP_LEGACY)
 # 🧭 MoveIt plan-only 的 DDS 镜像 tap (老倪 2026-09-29「把 /plan_kinematic_path 返回的关节轨迹
 #    也镜像成 DDS 一条 ss_plan」): 容器 zmax-moveit 里 moveit_plan_live.py 逐轮规划追加一行,
 #    本守护读最新一行 → 发 ss_plan。只规划不执行(容器 allow_trajectory_execution=False)。
@@ -51,16 +56,19 @@ MODE_FILE = os.path.join(HOME, ".zmax_telemetry_mode")
 DDS_DIR = os.path.join(REPO, "dds")
 LOG = os.path.join("/tmp", "zmax_dds_ss.log")
 STALE_S = 5.0                     # 源帧龄超过它就只发 diag, 不发状态/动作 (老倪: 负帧龄拒用)
+# 能量层是**每轮聚合量**(跑一次 pipeline 迭代出一份), 不是 10Hz 流 ⇒ 单独的帧龄预算:
+#   900s 内算"本轮有效"; 超过就当没有 (宁可不发, 也不把上上轮的数当现在).
+STALE_ENERGY_S = float(os.environ.get("ZMAX_ENERGY_STALE_S", "900"))
 
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
 MODE_TOPICS = {
     "prod": [],
-    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
+    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan"],
+              "ss_plan", "ss_energy"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
-             "ss_plan"],
+             "ss_plan", "ss_energy"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -151,6 +159,14 @@ def read_plan():
         return None, None
     d = _last_line(p)
     return d, (os.path.getmtime(p) if p else None)
+
+
+def read_energy():
+    """流形引擎能量层 tap (tools/manifold_energy_probe.py 真跑一轮 pipeline 迭代写出)"""
+    p = _newest(os.path.join(SS_REMOTE, "energy_*.jsonl"))
+    if not p:
+        return None, None
+    return _last_line(p), os.path.getmtime(p)
 
 
 def read_infer():
@@ -362,6 +378,53 @@ class SSDaemon:
             return False
 
     # ── 各真实源 → DDS 消息 ──
+    def pub_energy(self):
+        """流形引擎能量层 → zmax/ss_energy (功率/转速/扭矩/能量/效率/能级壳层)"""
+        from ss_types import SSEnergy, SSEnergyLayer                 # noqa: PLC0415
+
+        def _f(v, dv=-1.0):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float(dv)
+
+        def _i(v, dv=-1):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return int(dv)
+
+        d, mt = read_energy()
+        age = (time.time() - mt) if mt else -1.0
+        if not d:
+            return False
+        if age > STALE_ENERGY_S:
+            log("⏸ 能量 tap 过期 %.0fs (>%.0fs) — 不伪装成在工作 (跑 tools/manifold_energy_probe.py run)" % (age, STALE_ENERGY_S))
+            return False
+        shells = [SSEnergyLayer(
+            layer=str(s.get("layer") or ""), shell_n=_i(s.get("shell_n"), 0),
+            e_layer_cj=_f(s.get("e_layer_cj"), 0.0), e_cum_cj=_f(s.get("e_cum_cj"), 0.0),
+            e_work_cj=_f(s.get("e_work_cj"), 0.0), e_standing_cj=_f(s.get("e_standing_cj"), 0.0),
+            level_c=_f(s.get("level_c")), tau_cj=_f(s.get("tau_cj"), 0.0), omega_hz=_f(s.get("omega_hz")),
+            p_out_cjs=_f(s.get("p_out_cjs")), eta_cjj=_f(s.get("eta_cjj")),
+            feasible_r=_f(s.get("feasible_r")), lora_r=_i(s.get("lora_r")),
+            lora_boost_cj=_f(s.get("lora_boost_cj"), 0.0), share=_f(s.get("share")),
+            note=str(s.get("note") or "")[:180]) for s in (d.get("shells") or [])]
+        self.publish("ss_energy", SSEnergy(
+            ts=float(d.get("ts") or time.time()), node=str(d.get("node") or "流形引擎"),
+            state=str(d.get("state") or ""), e_total_cj=_f(d.get("e_total_cj"), 0.0),
+            e_base_cj=_f(d.get("e_base_cj"), 0.0), e_boost_cj=_f(d.get("e_boost_cj"), 0.0),
+            e_worksum_cj=_f(d.get("e_worksum_cj"), 0.0), e_standsum_cj=_f(d.get("e_standsum_cj"), 0.0),
+            p_in_w=_f(d.get("p_in_w")), w_in_j=_f(d.get("w_in_j")), eta_total_cjj=_f(d.get("eta_total_cjj")),
+            n_levels_active=_i(d.get("n_levels_active")), shells=shells,
+            shell_monotonic_ok=_i(bool(d.get("shell_monotonic_ok")), -1),
+            feasible_narrowing_ok=_i(bool(d.get("feasible_narrowing_ok")), -1),
+            sum_ok=_i(bool(d.get("sum_ok")), -1),
+            criterion=str(d.get("criterion") or ""), source=str(d.get("source") or ""),
+            note="frame_age=%.1fs tap=%s" % (age, os.path.basename(_newest(
+                os.path.join(SS_REMOTE, "energy_*.jsonl")) or ""))))
+        return True
+
     def pub_state(self):
         from ss_types import SSState                                 # noqa: PLC0415
         d, mt = read_state()
@@ -624,6 +687,8 @@ class SSDaemon:
             self.pub_nodes()
         if allowed("ss_plan"):
             self.pub_plan()
+        if allowed("ss_energy"):
+            self.pub_energy()
 
     def run(self, seconds=0.0, once=False):
         t0 = time.time()
@@ -667,6 +732,9 @@ def main() -> int:
                                          "nodes": len(read_canvas_nodes()[0])},
                           "macro_src": {"file": read_memory_layers()[1],
                                         "layers": [k for k in read_memory_layers()[0] if k != "updated"]},
+                          "energy_src": {"file": read_energy()[1],
+                                        "e_total_cj": (read_energy()[0] or {}).get("e_total_cj"),
+                                        "n_levels": len((read_energy()[0] or {}).get("shells") or [])},
                           "dds_services": read_dds_services()},
                          ensure_ascii=False, indent=1))
         return 0

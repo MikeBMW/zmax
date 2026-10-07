@@ -187,6 +187,22 @@ TOPICS = {
         "quality": ["freshness", "hz_tol", "finite"],
         "provenance": "画布上真实连线求值",
     },
+    "ss_energy": {
+        "type": "zmax::SSEnergy", "src": TYPES_SRC, "rate_hz": 0.5, "qos": "state",
+        "producer": "流形引擎能量探针 tools/manifold_energy_probe.py → tap "
+                    "zmax_data/ss_live/energy_*.jsonl (真跑一轮 pipeline 迭代的实测)",
+        "consumers": ["流形引擎画布节点", "控制台 数据空间页/训练页", "备份端", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "node", "state", "e_total_cj", "e_base_cj", "e_boost_cj", "p_in_w", "w_in_j",
+                       "eta_total_cjj", "n_levels_active", "shells[].layer/shell_n/e_layer_cj/e_cum_cj/"
+                       "e_work_cj/e_standing_cj/tau_cj/omega_hz/eta_cjj/feasible_r/lora_r/lora_boost_cj",
+                       "shell_monotonic_ok", "feasible_narrowing_ok", "sum_ok", "criterion"],
+        "quality": ["freshness", "hz_tol", "energy_nonneg", "sum_consistent", "shell_monotonic",
+                    "feasible_narrowing", "eta_sign", "finite", "no_zero_fake"],
+        "provenance": ("nvidia-smi power.draw(真瓦特) + 各层训练日志真实指标(势能序列) + 步时实测 ⇒ "
+                       "发动机类比: 输入功率 P_in / 转速 ω / 扭矩 τ=P每循环做功 / 能量 E=τ·N / 效率 η=E/W_in。"
+                       "1 CJ ≜ 把归一化势能下降 1.0 的能力 (逐层同口径); 总能量 E_total = Σ(存量+做功)"),
+    },
 }
 
 # ─────────────────────── 遥测模式 → 允许话题 (口径与守护一致) ───────────────────────
@@ -194,12 +210,12 @@ TOPICS = {
 #    tools/gui/zmax_telemetry.py::MODE_TOPICS —— 两处手工同步, 收口后本表为准。
 MODE_TOPICS = {
     "prod":  [],
-    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
+    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan"],
+              "ss_plan", "ss_energy"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
-              "ss_diag", "ss_test", "ss_plan"],
+              "ss_diag", "ss_test", "ss_plan", "ss_energy"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 MODE_DESC = {
@@ -218,7 +234,11 @@ PRODUCERS = {
                         "publishes": ["hw_state", "train_prog"]},
     "状态空间数据空间守护": {"unit": "zmax-dds-ss.service", "path": "/home/ubuntu/zmax/dds_ss_daemon.py",
                         "publishes": ["ss_state", "ss_action", "ss_infer", "ss_calib", "ss_diag",
-                                      "ss_test", "ss_canvas", "ss_macro", "ss_nodes", "ss_plan"]},
+                                      "ss_test", "ss_canvas", "ss_macro", "ss_nodes", "ss_plan",
+                                      "ss_energy"]},
+    "流形引擎能量探针": {"unit": None, "path": "tools/manifold_energy_probe.py",
+                        "publishes": ["ss_energy"],
+                        "note": "写 tap zmax_data/ss_live/energy_*.jsonl; 由 ss_daemon 转发上 DDS"},
     "DDS→relay 汇聚器": {"unit": "zmax-dds-agg.service", "path": "/home/ubuntu/zmax/dds_aggregator.py",
                         "publishes": [], "subscribes": ["hw_state", "train_prog", "heartbeat"]},
     "画布连线总线": {"unit": None, "path": "tools/gui/dds_link_bus.py",
@@ -317,6 +337,12 @@ QUALITY_RULES = {
     "gate_audit":       "动作必须带闸门判定(gate_pass≠-1)与原因",
     "finite":           "数值必须有限",
     "name_primary":     "以 name 为主键(id 重生会变)",
+    # ── 流形引擎能量层 (2026-10-07) ──
+    "energy_nonneg":    "任何一层能量 E ≥ 0 (能量只增不减; 出现负值 = 口径/符号错)",
+    "sum_consistent":   "E_total == Σ 各层 (存量+做功), 容差 1e-9 (逐位可核 ⇒ 总量不靠估)",
+    "shell_monotonic":  "能级壳层 E_cum 单调不减 (能级越高总能量越大 = 壳层扩展律)",
+    "feasible_narrowing": "可行域半径逐层收窄 R_L2 ≥ R_L3 ≥ R_L4 ≥ R_L5 (权限向上收窄律)",
+    "eta_sign":         "效率 η = E_total/W_in ≥ 0; W_in ≤ 0 时必须报 -1(未测), 不许用 0 冒充",
 }
 
 
