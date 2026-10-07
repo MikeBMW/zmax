@@ -13712,7 +13712,11 @@ def main():
         _al_py = os.path.join(_repo_al, "gui-venv311", "bin", "python")
         _al_js = os.path.join(_repo_al, "tools", "model_autoload.py")
         if os.environ.get("ZMAX_AUTOLOAD", "1") != "0" and os.path.exists(_al_py) and os.path.exists(_al_js):
-            _al_dir = os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")
+            # ⚠️ 2026-10-08: 原先写 os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")
+            #   —— 这种"expanduser('~') + 'zmax_data' **分开拼**"是第 4 种写法, 前面按绝对路径/`~/x`/`$HOME/x`
+            #   三种写法做的家目录整合**扫不到它** ⇒ 家目录里又被 mkdir 出一个孤立的 zmax_data(代码修正后仍会复发)。
+            #   统一从仓库根推: _repo_al 就是工程根。
+            _al_dir = os.path.join(_repo_al, "zmax_data", "model_autoload")
             os.makedirs(_al_dir, exist_ok=True)
             _al_log = os.path.join(_al_dir, "startup_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
             _sp_al.Popen([_al_py, _al_js], cwd=_repo_al, start_new_session=True,
