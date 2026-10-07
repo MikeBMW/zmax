@@ -50,7 +50,7 @@ ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点根=/www/wwwroot
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers↑
 §
-工程根=/home/ubuntu/zmax=独立仓库(MikeBMW/zmax public); 10-07整合后~顶层只剩zmax, 数据/venv/外部仓库全在zmax内(zmax_data=模型+数据+HF+密钥secrets/zmax.env 600, external/, venvs/), 老名全删⇒代码三种写法(绝对/~/ /$HOME)都用新路径; 入库=代码+技能docs/skills/hermes-all+记忆docs/memory(守卫repo_guard+secret_scan)
+工程根~/zmax=独立仓库(MikeBMW/zmax public); 10-07整合后数据/venv/外部仓库都在zmax内(zmax_data=模型+数据+HF+secrets/zmax.env), 老名全删⇒三种写法都用新路径; 训练须带HF_HOME=zmax_data/hf_cache; ld.so.conf须指~/zmax/gui-venv311/.../nvidia/*/lib(否则torch报libcusparseLt); 入库=代码+docs/skills/hermes-all+docs/memory(守卫repo_guard+secret_scan)
 §
 控制台: 禁反复重启GUI(投诉过;改码攒批+先问); 字体一次到位
 §

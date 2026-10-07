@@ -126,6 +126,41 @@ os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")   # ❌ 三
   **按自己的参数**拉起(手搓命令行会换参数/串线) → 复核新实例命令行与旧实例**逐字节一致** + `/station/status` 的 `ctl.tcp`/`exec.online`/`auth.armed`。
 - 页面报错文字本身带路径 ⇒ **能直接区分新旧进程**: 报 `/home/ubuntu/zmax_data/...` = 旧进程还在当班; 报 `/home/ubuntu/zmax/zmax_data/...` = 已是新进程(那就只是浏览器缓存, 让用户刷新)。
 
+### 第 5 种写法(2026-10-08 补): `Path.home()` / `os.environ["HOME"]` 分开拼
+```python
+Path.home() / "zmax_data" / "l5_corners"          # ❌ 第5种
+Path.home() / "lerobot-smolvla-lew" / "runs"      # ❌ 第5种(老 fork)
+os.path.join(os.environ["HOME"], "zmax_data")    # ❌ 第5种
+HOME = os.path.expanduser("~"); OUT = HOME / "lerobot-smolvla-lew" / ...   # ❌ 改名也扫不到(变量再拼)
+```
+**实际后果(都是实测, 不是理论)**:
+- `tools/rokae/l2_transport_sdk.py` + `tools/sdk_motion_service.py` 这样写 ⇒ SDK 执行腿永远判"代理未就绪",
+  页面报「已下发(真动)」但**机器人不动**(每条在最后一跳被拦)。
+- `tools/auto_iterate.py`/`auto_loop.py`/`cicd_deploy.py`/`data_closed_loop.py`/`relay_train.py`/`disk_guard.py` 等 ~20 个 CICD/训练文件
+  ⇒ 产物写回家目录 ⇒ `~/lerobot-smolvla-lew` 反复被建回来(实测 YOLO 标注训练 06:41/06:56 各建一次)。
+- `src/lerobot/engineering/paths.py` 的 DATA_DIR 是全局数据根, 漏改影响面最大。
+
+**扫法(两种, 都要跑)**:
+```bash
+python3 tools/scan_oldpaths.py     # 只扫可执行代码区, 列 file:line + 类别(带 SUBS 映射建议)
+python3 tools/audit_paths.py       # 全仓扫(含 docs, 用于区分"历史留档"与"真代码")
+```
+命中分两类: **代码区必须改**(统一改成 `os.environ.get("ZMAX_DATA"|"ZMAX_FORK", "<工程根>/...")` +
+`tools/fix_oldpaths_code.py --apply` 可批量带清单); **docs/历史留档不能改**(那是当时的取证快照)。
+注意: 探测/判据脚本自身(preflight/audit/scan/fix)里的老路径字符串**是判据, 不能一起改** —— 要放进 SKIP 名单。
+
+### 改完代码不等于修好: 必查"老进程揣老路径"
+**已经在跑的进程, 内存里是改之前的字符串** ⇒ 代码全绿语法通过, 功能照样整体失效。判据:
+- 进程启动时间 **< ** 它依赖的代码文件 mtime ⇒ 可疑, 必须重启该进程(实测 L2/SDK 服务/站台全中过)。
+- 一键看全部: `bash tools/verify_functions.sh`(含该项探测 + 端口/FIFO/真值/容器/网关/家目录形态)。
+- 单服务重启工具: `tools/restart_sdk_motion_service.sh`(8798 会因"端口已在听"跳过重启, 必须强制)、
+  `restart_vl_l2_homecons.sh`(L2+VL)、`cam_stream_guard.sh`(站台, 按它自己的参数拉起, 别手搓命令行)。
+
+### 守卫误判要当故障修(2026-10-08 实测)
+站台加了「笔记本内置 ↔ USB」换源功能并落盘 `cam_local_src.json` 后, `cam_stream_guard.py` 仍只认
+`"Integrated RGB"` ⇒ 用户选了 USB 之后守卫**每 5 分钟重启一次站台**(页面反复掉线)。
+口径: **守卫的期望值必须来自用户的运行时选择, 不能写死** ⇒ `judge(..., local_key=local_expected())`。
+
 ## 路径命名空间统一 (老倪: 左右脑源码打开后都以 /home/ubuntu/zmax 开头)
 ```bash
 python3 tools/ns_unify_paths.py --dry   # 先看要改哪些、多少处
