@@ -180,8 +180,12 @@ def parse_l5(log: str) -> dict:
         cands = sorted(glob.glob(os.path.join(REPORTS, "l5_vlm_ab_*.json")), key=os.path.getmtime)
         if cands:
             ab = json.load(open(cands[-1], encoding="utf-8"))
-            lvl = float(((ab.get("lora") or {}).get("json_ok_rate")))
-            src_ab = os.path.basename(cands[-1])
+            # 🔴 口径: 计能力水平要按**默认档**(上线跑的那一档)算 —— adapter 未过判据就不进默认档,
+            #   所以 level_c 取 base; 只有在环境里显式挂了 adapter 才取 lora。
+            use_lora = bool(os.environ.get("SS_VLM_ADAPTER"))
+            _k = "lora" if use_lora else "base"
+            lvl = float(((ab.get(_k) or {}).get("json_ok_rate")))
+            src_ab = f"{os.path.basename(cands[-1])}:{_k}(n={(ab.get(_k) or {}).get('n')})"
     except Exception:                                                          # noqa: BLE001
         lvl = -1.0
     secs_hint = -1.0

@@ -32,6 +32,8 @@ REQUIRED_STATE = ["目标可见", "目标是什么", "在夹爪上吗", "画面�
 # ⚠️ 2026-10-08 踩坑: 训练集是 state 任务, 评测却按 describe 的字段表判 ⇒ 合法率恒 0 (自己把口径搞错)。
 #   判据字段必须**按每条样本的 task** 取, 与训练同源。
 FIELDS_BY_TASK = {"state": REQUIRED_STATE, "describe": REQUIRED}
+# 🔴 判据闸: val 帧少于这么多条 ⇒ 只报数不下结论 (12 帧差 2 条就"提升"是拿噪声当结论)
+MIN_VERDICT_N = 20
 
 
 SNAP_SMOL = os.path.join(ROOT, "zmax_data/hf_cache/hub/"
@@ -158,7 +160,11 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--lora-r", type=int, default=16)
     ap.add_argument("--max-pixels", type=int, default=200704, help="视觉 token 预算 (401408≈28*28*512)")
-    ap.add_argument("--max-len", type=int, default=1024)
+    ap.add_argument("--max-len", type=int, default=2048,
+                    help="序列长度上限。⚠️ 2026-10-08 实测: SmolVLM2 图片分块后单样本 token 中位 1400"
+                         "(839~1679) ⇒ 默认 1024 会把 **37/38 条静默丢掉**, 只剩 1 条反复训 = 只学会格式")
+    ap.add_argument("--split", action="store_true",
+                    help="开启图像分块 (SmolVLM 默认开, 会把小图上采样切成多块 512×512; 8GB 卡上会 OOM)")
     ap.add_argument("--max-side", type=int, default=448, help="输入图最长边上限 (省视觉 token; 0=不缩)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--merge", action="store_true", help="训完合并权重 (部署免带 adapter; 4-bit 档不支持)")
@@ -194,6 +200,16 @@ def main() -> int:
         proc = AutoProcessor.from_pretrained(ckpt, min_pixels=256 * 28 * 28, max_pixels=a.max_pixels)
     except Exception:                                                          # noqa: BLE001
         proc = AutoProcessor.from_pretrained(ckpt)
+    # 🔴 2026-10-08 实测 (8GB 卡 OOM 真凶): SmolVLM 默认 do_image_splitting=True, 会把一张
+    #    81×237 的裁剪图**上采样切成 9 块 512×512** ⇒ token 1111 且视觉塔计算量 ×9。
+    #    我们的输入本来就是"目标区域裁剪", 再分块没有额外信息 ⇒ 默认关分块 (token 1111→579)。
+    #    需要多尺度时用 --split 打开。
+    try:
+        if not getattr(a, "split", False):
+            proc.image_processor.do_image_splitting = False
+            print("   🖼  图像分块: 关 (小图上采样切块 ⇒ OOM; 裁剪图不需要)")
+    except Exception as e:                                                     # noqa: BLE001
+        print(f"   ⚠️ 关分块失败({e}), 继续用默认")
     if a.load_4bit:
         from peft import prepare_model_for_kbit_training
         from transformers import BitsAndBytesConfig
@@ -222,9 +238,21 @@ def main() -> int:
             print(f"   LoRA:  合法率 {ad['json_ok_rate']} 字段命中 {ad['field_hit_rate']} ({ad['secs']}s)")
             rep = {"ts": ts, "adapter": a.adapter, "base": base, "lora": ad,
                    "delta_json_ok": round(ad["json_ok_rate"] - base["json_ok_rate"], 4),
-                   "verdict": "提升" if ad["json_ok_rate"] > base["json_ok_rate"] else "未证明提升"}
+                   # 🔴 2026-10-08 判据收紧: **合法率 + 字段命中两个指标一起看**。
+                   #   只看合法率会被"学会吐 JSON 但内容更差"骗过 (实测 0.833→1.0 合法率, 字段却 0.833→0.80)。
+                   #   规则: 合法率提升 且 字段命中不倒退 (>-0.05) ⇒ 提升; 否则 未证明提升。
+                   "verdict": ("样本不足(n<%d)，不下结论" % MIN_VERDICT_N if base["n"] < MIN_VERDICT_N else
+                               "提升" if (ad["json_ok_rate"] > base["json_ok_rate"]
+                                       and ad["field_hit_rate"] >= base["field_hit_rate"] - 0.05)
+                               else "未证明提升(内容未改善)" if ad["json_ok_rate"] >= base["json_ok_rate"]
+                               else "未证明提升"),
+                   "delta": {"json_ok_rate": round(ad["json_ok_rate"] - base["json_ok_rate"], 4),
+                             "field_hit_rate": round(ad["field_hit_rate"] - base["field_hit_rate"], 4)},
+                   "n_val": base["n"]}
             p = os.path.join(REPORTS, f"l5_vlm_ab_{ts}.json")
             json.dump(rep, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            _d = rep["delta"]
+            print(f"   Δ合法率 {_d['json_ok_rate']:+.4f} · Δ字段命中 {_d['field_hit_rate']:+.4f} (n={rep['n_val']})")
             print(f"📄 A/B 报告 {os.path.relpath(p, ROOT)} → {rep['verdict']}")
         return 0
 
@@ -254,18 +282,29 @@ def main() -> int:
     print(f"⏳ 预编码 {len(tr_rows)} 条样本 (CPU 只做一次) …")
     tc0 = time.time()
     cache = []
+    n_long, n_err, lens = 0, 0, []
     for n_, row in enumerate(tr_rows, 1):
         try:
             enc = _prep(proc, row)
         except Exception as e:                                                 # noqa: BLE001
-            print(f"   ⚠️ 预编码跳过 ({type(e).__name__}: {str(e)[:60]})")
+            n_err += 1
+            print(f"   ⚠️ 预编码异常 ({type(e).__name__}: {str(e)[:60]})")
             continue
+        lens.append(enc["_n"])
         if enc["_n"] > a.max_len:
+            n_long += 1                                                        # 🔴 计数, 后面必须报出来
             continue
         cache.append({k: v for k, v in enc.items() if not k.startswith("_")})
         if n_ % 10 == 0:
             print(f"   {n_}/{len(tr_rows)} · {time.time()-tc0:.0f}s")
-    print(f"✅ 预编码完成 {len(cache)} 条 · 用时 {time.time()-tc0:.0f}s")
+    if lens:
+        print(f"   token 长度: min {min(lens)} / 中位 {sorted(lens)[len(lens)//2]} / max {max(lens)}")
+    # 🔴 静默丢样本是隐形杀手 (曾只剩 1 条还照样"训练完成"): 丢多少、为什么, 必须打在脸上
+    print(f"✅ 预编码完成 {len(cache)} 条 (超 max-len({a.max_len}) 跳过 {n_long} 条 · 异常 {n_err} 条)"
+          f" · 用时 {time.time()-tc0:.0f}s")
+    if n_long and len(cache) < max(4, int(0.5 * len(tr_rows))):
+        print(f"⚠️ 有 {n_long} 条因超长被跳过 —— 样本太少会让训练退化成『背一条』。"
+              f"加大 --max-len (建议 ≥{max(lens) if lens else 2048}) 或缩小输入图 (--max-side)")
     if not cache:
         print("❌ 没有可用样本 (全被跳过)")
         return 1
