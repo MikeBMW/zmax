@@ -242,22 +242,28 @@ def main():
     dep_state = container_state(DEPTH_CONTAINER)
     if healtable(dep_state):
         d_age, d_proc = depth_age(), depth_proc()
-        if (d_proc is False) or (d_age is None) or (d_age > DEPTH_DEAD_S):
+        if (d_proc is False) or (d_age is None):
             if a.dry_run:
                 notes.append("🌈 深度源守护(dry-run): 容器进程=%s · 源文件龄=%s → 需要拉起"
                              % (d_proc, ("%.0fs" % d_age) if d_age is not None else "读不到"))
             elif start_depth():
                 time.sleep(8)
                 d2 = depth_age()
-                notes.append("🌈 深度源守护: 容器内 ros_depth_stream 不在(进程=%s) 或源文件龄过大(%s) → 已按官方用法拉起"
+                notes.append("🌈 深度源守护: 容器内 ros_depth_stream 不在(进程=%s) → 已按官方用法拉起"
                              "\n   复核: 源文件龄 %s%s"
-                             % (d_proc, ("%.0fs" % d_age) if d_age is not None else "读不到",
-                                ("%.1fs" % d2) if d2 is not None else "读不到",
+                             % (d_proc, ("%.1fs" % d2) if d2 is not None else "读不到",
                                 " ✅" if (d2 is not None and d2 <= DEPTH_DEAD_S) else " ❌ 仍不新鲜, 需看容器日志 /tmp/depth_stream.log"))
                 failed |= not (d2 is not None and d2 <= DEPTH_DEAD_S)
             else:
                 notes.append("🌈 深度源守护: 拉起失败(sudo -n docker exec 返回非 0) — 需人工看容器 %s" % DEPTH_CONTAINER)
                 failed = True
+        elif d_age > DEPTH_DEAD_S:
+            # 2026-10-07 实测: 原来这条也走 start_depth() ⇒ 上游相机一停(话题无数据), 每 5 分钟就再拉一个,
+            # 一夜堆出 10 个进程(双方都订阅同一话题 + 互相抢带宽, Orin 的 ros2 node list 里都能看到这几个重复节点)。
+            # 进程在跑 = 自愈无事可做; 文件不新鲜的真因在上游(相机节点/话题), 再拉进程治不了, 只报告。
+            notes.append("🌈 深度源: 容器内 ros_depth_stream 在跑(进程=%s) 但源文件龄 %.0fs > %.0fs"
+                         " → 上游相机/话题无数据, 不再重复拉起 (查 Orin realsense_source / /realsense/depth/image_rect_raw)"
+                         % (d_proc, d_age, DEPTH_DEAD_S))
     elif dep_state == "absent" and a.dry_run:
         notes.append("🌈 深度源(dry-run): 容器 %s 不在位 — 环境缺失, 跳过(不挡推流自愈)" % DEPTH_CONTAINER)
 
