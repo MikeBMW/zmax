@@ -181,18 +181,47 @@ def deploy(vp, lines, W, H):
     spec = json.load(open(SPEC, encoding="utf-8"))
     bak = "/home/ubuntu/zmax_data/overlay_spec.bak_guide_%s.json" % time.strftime("%Y%m%d_%H%M%S")
     shutil.copy2(SPEC, bak)
+    # 🧭 2026-10-07: 辅助线是"在某台相机画面上量出来的像素几何" ⇒ 必须记住是哪台(源+设备+分辨率),
+    #   否则 local 路切到 USB 后这组线会挂在另一台相机的画面上(scene_overlay._guide_src_ok 会拦,
+    #   旧元素没写 src_* 按内置认)。这里量的是哪台就写哪台 —— 查不到就按内置。
+    src = {"kind": "builtin", "dev": None, "wh": [W, H]}
+    try:
+        st = json.loads(get(BASE + "/cam/src" + Q))
+        src = {"kind": st.get("kind") or "builtin", "dev": st.get("dev"), "wh": [W, H]}
+        print("   本次量线所依据的相机源: %s (dev=%s, %sx%s)"
+              % (src["kind"], src["dev"], W, H))
+    except Exception as e:                                                        # noqa: BLE001
+        print("   ⚠ 读 /cam/src 失败(%s) ⇒ 按内置相机记录源标签" % e)
     loc = spec.setdefault("cameras", {}).setdefault("local", {})
     old = [b for b in loc.get("boxes", []) if b.get("origin") == "guide"]
     loc["boxes"] = [b for b in loc.get("boxes", []) if b.get("origin") != "guide"]
+    new_lbls = []
     for L in lines:
-        loc["boxes"].append({"origin": "guide", "label": "世界水平·平行于横梁 | %s" % L["name"],
+        lbl = "世界水平·平行于横梁 | %s" % L["name"]
+        new_lbls.append(lbl)
+        loc["boxes"].append({"origin": "guide", "label": lbl,
                              "pts2d": [[round(p[0], 1), round(p[1], 1)] for p in L["pts2d"]],
-                             "width": 3, "no_label": True})
+                             "width": 3, "no_label": True,
+                             "src_kind": src["kind"], "src_dev": src["dev"], "src_wh": src["wh"]})
     dec = spec.setdefault("deleted", {}).setdefault("local", [])
     for b in old:
         k = "%s|%s" % (b.get("origin"), b.get("label", "")[:40])
         if k not in dec:
             dec.append(k)
+    # 🐛 2026-10-07 修的坑: 这一段原来还会把**本次刚重写的同名 id** 留在 deleted 里(旧元素和新元素
+    #   标签一样 ⇒ id 一样) ⇒ 主绘制通道永远跳过它, 只有"真值带之上补画"通道把它画出来 ——
+    #   表现就是"删了还在/一直挂着"。这里把本次要用的这些 id 从 deleted 里摘掉。
+    def _mk(lbl):
+        return "%s|%s" % ("guide", lbl)
+    keep_dec = []
+    for k in dec:
+        if k in [_mk(l) for l in new_lbls] or k in [_mk(l[:40]) for l in new_lbls]:
+            continue
+        keep_dec.append(k)
+    if len(keep_dec) != len(dec):
+        print("   · deleted 里摘掉本轮重写的 id %d 条(否则主通道会把它当已删, 只剩补画通道在画)"
+              % (len(dec) - len(keep_dec)))
+    spec["deleted"]["local"] = keep_dec
     loc["by_origin"] = {}
     for b in loc["boxes"]:
         loc["by_origin"][b.get("origin")] = loc["by_origin"].get(b.get("origin"), 0) + 1

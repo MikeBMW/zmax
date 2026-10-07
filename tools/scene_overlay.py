@@ -469,6 +469,38 @@ def sig_dist(a, b) -> int:
         return 0
 
 
+# ── 🧭 辅助线绑相机源 (2026-10-07 老倪: 「USB摄像头, 还残留这三条绿色的线, 怎么回事?」) ──
+#   辅助线(origin=guide)是**在某一台相机画面上量的像素几何** —— 笔记本那三条"世界水平线"是按
+#   **内置相机**的横梁消失点 VP≈(−750,167) + 该画面锚点算的(laptop_guide_lines.py)。
+#   `local` 这一路能切 内置↔USB ⇒ 切到 USB 后同一组像素线挂在**另一台相机**的画面上, 是错的几何
+#   (实测: 切成 USB 后叠加帧里仍有 4356 个亮青像素, 3 段, y≈148-169/332-364/400-479 = 内置那三条)。
+#   口径: 渲染时拿"当前源"(extra['cam_src'], 推流服务给)跟元素记录的 src_kind/src_dev/src_wh 比,
+#   不匹配 ⇒ 不画, 并在真值带里说明原因。拿不到 cam_src(如 arm/local2 没有换源概念) ⇒ 不拦。
+#   历史元素没写 src_* ⇒ 按"内置"认(laptop_guide_lines 一直是量内置画面), 别把该画的线画丢了。
+GUIDE_LEGACY_SRC_KIND = "builtin"
+
+
+def _guide_src_ok(b: dict, extra: dict | None) -> tuple:
+    """辅助线是否适用当前相机源。返回 (ok, 不适用原因)。"""
+    cs = (extra or {}).get("cam_src") or {}
+    kind_now = cs.get("kind")
+    if not kind_now:                     # 这一路没有"换源"概念 ⇒ 不拦, 保持原行为
+        return True, ""
+    kind_el = b.get("src_kind") or GUIDE_LEGACY_SRC_KIND
+    if kind_el != kind_now:
+        return False, ("辅助线是在【%s】相机画面上量的, 当前源是【%s】⇒ 不适用(要画就换回内置, "
+                       "或在这台相机上重跑 tools/laptop_guide_lines.py)" % (kind_el, kind_now))
+    dev_el, dev_now = b.get("src_dev"), cs.get("dev")
+    if dev_el not in (None, -1) and dev_now not in (None, -1) and int(dev_el) != int(dev_now):
+        return False, ("辅助线量的设备是 /dev/video%s, 当前源是 /dev/video%s ⇒ 不适用"
+                       % (dev_el, dev_now))
+    wh_el, wh_now = b.get("src_wh"), cs.get("wh")
+    if wh_el and wh_now and [int(x) for x in wh_el] != [int(x) for x in wh_now]:
+        return False, ("辅助线是 %sx%s 画面上量的, 当前画面 %sx%s ⇒ 不适用"
+                       % (wh_el[0], wh_el[1], wh_now[0], wh_now[1]))
+    return True, ""
+
+
 def merge_origin(spec: dict, cam: str, origin: str, boxes: list, meta: dict | None = None,
                  frame=None) -> dict:
     """
@@ -571,10 +603,13 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     _fsig = frame_sig(img)
     _sig_on = os.environ.get("ZMAX_SEG_SIG", "on").lower() not in ("0", "off", "false", "no")
     _seg_stale, _seg_legacy = 0, 0
+    _guide_off = 0          # 🧭 因"相机源不匹配"而没画的辅助线条数
+    _suppress = set()       # 本帧"确定不该画"的框对象(用户删除/源不匹配) ⇒ 补画通道也要听它的
     for b in boxes:
         bid = _bid(b)
         label = b.get("label", "?")
         if bid in deleted:
+            _suppress.add(id(b))
             skipped.append((label, "用户删除"))
             continue
         # 🧩 只对 origin=seg 的掩膜生效; 其它来源(sim/vlm/det/meas/plan/trace...)一律照旧
@@ -588,6 +623,16 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
             if _d > SEG_SIG_TOL:
                 _seg_stale += 1
                 skipped.append((label, "掩膜已过期(画面已变: 签名距离 %d>%d) — 重跑分割即刷新" % (_d, SEG_SIG_TOL)))
+                continue
+        # 🧭 辅助线绑相机源 (2026-10-07 老倪: 「USB摄像头, 还残留这三条绿色的线」):
+        #   辅助线是在**某一台相机的画面**上量的像素几何(内置相机 640x480 的横梁消失点),
+        #   换到另一台相机(USB)就是错的几何 ⇒ 源不匹配不画, 并在带里说明原因。
+        if b.get("origin") == "guide":
+            _ok_g, _why_g = _guide_src_ok(b, extra)
+            if not _ok_g:
+                _guide_off += 1
+                _suppress.add(id(b))
+                skipped.append((label, _why_g))
                 continue
         col, _zname = ORIGIN_STYLE.get(b.get("origin", "det"), ((200, 200, 200), "?"))
         info = {"id": bid, "label": label, "origin": b.get("origin"), "conf": b.get("conf"),
@@ -855,6 +900,9 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     if _seg_stale or _seg_legacy:
         band.append("🧩 历史分割未画: 画面已变 %d 条%s — 重跑分割即刷新"
                     % (_seg_stale, (" · 无签名旧数据 %d 条" % _seg_legacy) if _seg_legacy else ""))
+    if _guide_off:
+        band.append("🧭 辅助线不适用当前相机源 %d 条(没画) — 换回内置相机, 或在这台相机上重跑 "
+                    "tools/laptop_guide_lines.py" % _guide_off)
     y = H - 8 - 16 * (len(band) - 1)
     cv2.rectangle(img, (0, max(0, y - 18)), (W, H), (16, 22, 30), -1)
     for i, t in enumerate(band):
@@ -864,9 +912,19 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     #   真值带从 y≈358 一直铺到画面底, 落在带内的辅助线(如"空间底" y=415)在叠加帧里**一个像素都没有**。
     #   这类线是量测标注(标"横梁围成的内部空间"的层次), 压在状态带上也必须可读 ⇒ 带画完补一遍。
     #   只重画几何, 不重做标签, 不进 drawn(统计口径与删除语义保持不变)。
+    #   🐛 2026-10-07 补的两个真 bug: ① 这条通道原来**既不查 deleted 也不问当前是哪台相机** ⇒
+    #     页面上点 🗑 删掉的辅助线会在这里"复活"(删除看起来没用), 切到 USB 相机后内置相机量出来的线
+    #     也照画(老倪看到的"USB 摄像头残留三条绿线"就是这个)。
+    #     ② 更不能在这里用 `_bid(b)` 判删除 —— `_bid` 是**有状态**的 id 生成器(同一框第 2 次调用返回
+    #     `…#2`), 主通道已经调过一次 ⇒ 这里拿到的 id 永远不在 deleted 里, 判了等于没判。
+    #     正确做法: 主通道把"确定不该画"的框对象记进 _suppress, 这里只认对象身份。
     _gcol = ORIGIN_STYLE["guide"][0]
     for b in boxes:
         if b.get("origin") != "guide":
+            continue
+        if id(b) in _suppress:
+            continue
+        if not _guide_src_ok(b, extra)[0]:
             continue
         if b.get("pts2d"):
             P2 = np.array([[float(t[0]), float(t[1])] for t in b["pts2d"]], float)
@@ -884,7 +942,9 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
                  "n_3d": n3, "n_2d": len(drawn) - n3,
                  # 🧩 掩膜绑帧口径: 过期的(画面已变)与无签名的(旧数据)各几条, 供页面/取证读
                  "seg_stale": _seg_stale, "seg_legacy": _seg_legacy,
-                 "seg_sig_tol": SEG_SIG_TOL, "seg_sig_on": _sig_on}
+                 "seg_sig_tol": SEG_SIG_TOL, "seg_sig_on": _sig_on,
+                 # 🧭 辅助线: 有几条因为"不是这台相机上量的"没画
+                 "guide_off_src": _guide_off}
 
 
 # ══════════════════════ 规格生成 ══════════════════════

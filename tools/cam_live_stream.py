@@ -2197,7 +2197,7 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                     tcp_age = (time.time() - _TCP_LATEST["ts"]) if _TCP_LATEST["ts"] else None
             else:
                 tcp_age = None
-            extra = {
+            extra: dict = {
                 "frame_age": "帧龄 %.1fs · 源 %s" % (max(0.0, time.time() - src_ts),
                                                     time.strftime("%H:%M:%S", time.localtime(src_ts))),
                 "handeye": ("手眼 cam→tcp |t|=%.0fmm (%s/%s位姿)"
@@ -2206,6 +2206,15 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                 "tcp": (_tcp_label(tcp, tcp_age) if tcp is not None
                         else ("TCP 未读到（仿真投影将跳过）" if need_tcp else "本路无 3D 投影框（不需要 TCP）")),
             }
+            # 🧭 把"这一路当前是哪台相机"告诉渲染器 (辅助线只在它当初量的那台相机上画):
+            #   只有 local 路有换源概念; 其它路不给 cam_src ⇒ 渲染器不拦(保持原行为)。
+            if src_name == "local":
+                try:
+                    _st = _src_status()
+                    extra["cam_src"] = {"kind": _st.get("kind"), "dev": _st.get("dev"),
+                                        "name": _st.get("name"), "wh": [img.shape[1], img.shape[0]]}
+                except Exception:                                              # noqa: BLE001
+                    pass
             img2, info = _SO.draw_overlay(img, spec, src_name, tcp, extra)
             ok, buf = cv2.imencode(".jpg", img2, params)
             if ok:
@@ -2223,6 +2232,7 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                         "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
                         # 🧩 掩膜绑帧口径: 画面已变/无签名而没画的历史分割有几条(页面上要能说清)
                         "seg_stale": info.get("seg_stale", 0), "seg_legacy": info.get("seg_legacy", 0),
+                        "guide_off_src": info.get("guide_off_src", 0),
                     }
         except Exception as e:
             with _LOCK:
@@ -2249,6 +2259,7 @@ def _boxes_payload(cam: str = "arm") -> dict:
                 "skipped": inf.get("skipped"),
                 # 🧩 掩膜绑帧口径: 画面已变/无签名而没画的历史分割有几条
                 "seg_stale": inf.get("seg_stale"), "seg_legacy": inf.get("seg_legacy"),
+                "guide_off_src": inf.get("guide_off_src"),
                 "spec_age_s": inf.get("spec_age_s"), "mode": inf.get("mode")}
     if _SO is None:
         return {"ok": False, "cam": cam, "msg": "scene_overlay 未加载", "boxes": []}
@@ -2268,12 +2279,22 @@ def _boxes_payload(cam: str = "arm") -> dict:
             _img0 = cv2.imdecode(np.frombuffer(_fj, np.uint8), cv2.IMREAD_COLOR)
         if _img0 is None:
             _img0 = np.zeros((480, 640, 3), np.uint8)
-        _img, info = _SO.draw_overlay(_img0, spec, cam, tcp, None)
+        # 🧭 框清单也要用同一套"当前相机源"口径, 否则清单里会列出画面上其实没有的辅助线
+        _ex: dict = {}
+        if cam == "local":
+            try:
+                _st = _src_status()
+                _ex["cam_src"] = {"kind": _st.get("kind"), "dev": _st.get("dev"),
+                                  "name": _st.get("name"), "wh": [_img0.shape[1], _img0.shape[0]]}
+            except Exception:                                                  # noqa: BLE001
+                pass
+        _img, info = _SO.draw_overlay(_img0, spec, cam, tcp, _ex)
         return {"ok": True, "cam": cam, "src": "computed", "boxes": info.get("boxes") or [],
                 "deleted": info.get("deleted") or [], "drawn": len(info.get("drawn") or []),
                 "n_3d": info.get("n_3d", 0), "n_2d": info.get("n_2d", 0),
                 "skipped": info.get("skipped"),
                 "seg_stale": info.get("seg_stale"), "seg_legacy": info.get("seg_legacy"),
+                "guide_off_src": info.get("guide_off_src"),
                 "frame": ("live" if _fj else "blank"), "tcp_ok": tcp is not None}
     except Exception as e:                                                        # noqa: BLE001
         return {"ok": False, "cam": cam, "msg": str(e)[:200], "boxes": []}
