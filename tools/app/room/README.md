@@ -4,11 +4,11 @@
 
 ## 这里放什么
 本目录是 **归档快照**(便于追溯与复现)。**真正在用的工程**在 4060 上:
-`/home/ubuntu/state3d_app/room/`  —— 改代码/重打包请在那边改, 再把这三份同步过来。
+`/home/ubuntu/zmax/tools/web/state3d_app/room/`  —— 改代码/重打包请在那边改, 再把这三份同步过来。
 
 ## 重打包
 ```bash
-bash /home/ubuntu/state3d_app/room/build_room_apk.sh
+bash /home/ubuntu/zmax/tools/web/state3d_app/room/build_room_apk.sh
 ```
 脚本会自动: 编译 → zipalign → **v1+v2+v3 签名** → 验收(v1/v2/v3 + 对齐 + badging)
 → 投递到 `zmax_rel/tools/web/dl/ZMAX-Site.apk`(8791 `/dl/` 服务的唯一目录)

@@ -47,11 +47,11 @@ CALIB = os.path.join(REPO, "models", "real_cam_calib.json")
 STATE = os.path.join(REPO, "models", "handeye_state.json")
 PTS = os.path.join(REPO, "data/skills/l2_atomic/taught_points.json")
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
-DET = os.path.expanduser("~/zmax_data/ss_bypass/yolo_detections.json")
-FRAME = os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
-DAEMON_LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
-EVID_DIR = os.path.expanduser("~/zmax_data/vision_grasp")
+DET = os.path.expanduser("~/zmax/zmax_data/ss_bypass/yolo_detections.json")
+FRAME = os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
+DAEMON_LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
+EVID_DIR = os.path.expanduser("~/zmax/zmax_data/vision_grasp")
 ROBOT_IP = "192.168.23.160"
 TAP = "ss-remote-tap"
 SKILL_ID = "L2.grasp_vision"
@@ -103,7 +103,7 @@ def power_state(timeout: int = 40):
           "print('POWER',r.powerState({}));print('MODE',r.operateMode({}));"
           "print('OPST',r.operationState({}));r.disconnectFromRobot({})" % ROBOT_IP)
     out = _sh(["sudo", "docker", "run", "--rm", "--network", "host",
-               "-v", "/home/ubuntu/zmax_data/rokae_sdk:/sdk", "-w", "/sdk",
+               "-v", "/home/ubuntu/zmax/zmax_data/rokae_sdk:/sdk", "-w", "/sdk",
                "ros:humble-ros-base", "python3", "-c", py], timeout)
     d = {}
     for ln in out.splitlines():

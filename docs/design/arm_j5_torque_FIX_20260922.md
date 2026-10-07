@@ -20,7 +20,7 @@ J5 从「静止就贴死 22.000 Nm 门槛」变为 **+0.55 Nm(余量 21.35 Nm)**
 
 ```bash
 # 前置: 机器人静止 (jointVel 全 0) + 末端无外力 + setToolset 负载正确 (本机 mass 1.51kg / cog [16.2,12.9,31.2]mm)
-sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk \
+sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk \
     ros:humble-ros-base python3 /sdk/fix_torque_zero.py          # 加 --dry 则只读不标定
 ```
 内部就两步: `r.calibrateForceSensor(True, 0, ec)` → 等 3s → 复读六轴对照。
@@ -29,7 +29,7 @@ sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk \
 ## 三、为什么之前没找到 (自我更正)
 
 昨天的问题单里写「SDK 93 个接口中**没有任何力矩/碰撞力限位接口**」—— **是错的**。
-正确查法: 读 `~/zmax_data/rokae_sdk/xcoresdk_python/Release/linux/xCoreSDK_python/__init__.pyi`
+正确查法: 读 `~/zmax/zmax_data/rokae_sdk/xcoresdk_python/Release/linux/xCoreSDK_python/__init__.pyi`
 (带逐接口中文文档的权威声明文件)。`xMateRobot → Cobot_6` 上有:
 
 | 接口 | 用途 |
@@ -62,7 +62,7 @@ sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk \
 
 ## 六、取证文件
 
-- `~/zmax_data/rokae_sdk/torque_zero_0922_002605.json` (before/after 全量)
-- `~/zmax_data/rokae_sdk/torque_stability_0922_002634.json` (10s 稳定性)
-- `~/zmax_data/rokae_sdk/probe_state_repair.py` · `fix_torque_zero.py` · `probe_torque_stability.py`
-- 前置诊断: `~/zmax_data/arm_j5_torque_diagnosis_20260922.md` · `rokae_sdk/torque_BEFORE_restart.json`
+- `~/zmax/zmax_data/rokae_sdk/torque_zero_0922_002605.json` (before/after 全量)
+- `~/zmax/zmax_data/rokae_sdk/torque_stability_0922_002634.json` (10s 稳定性)
+- `~/zmax/zmax_data/rokae_sdk/probe_state_repair.py` · `fix_torque_zero.py` · `probe_torque_stability.py`
+- 前置诊断: `~/zmax/zmax_data/arm_j5_torque_diagnosis_20260922.md` · `rokae_sdk/torque_BEFORE_restart.json`

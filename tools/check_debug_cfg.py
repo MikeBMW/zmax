@@ -23,7 +23,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LJ = os.path.join(ROOT, ".vscode", "launch.json")
 TPL = os.path.join(ROOT, "tools", "gui", "simulink_module.py")
-CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 PTR_NAME = "intact_l4_current"
 PTR = os.path.join(CACHE, "checkpoints", PTR_NAME)
 fails = []

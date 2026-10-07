@@ -43,8 +43,8 @@ import torch.nn.functional as F
 from .lora_inject import LoRALinear, grad_stats, inject_lora, lora_named, nonzero_lora_b
 
 # ── 默认口径 ────────────────────────────────────────────────────────────────
-SAM3_DIR = os.environ.get("ZMAX_SAM3_DIR", "/home/ubuntu/zmax_data/models/sam3_hf")
-DATASET_DIR = os.environ.get("ZMAX_SAM3_DATASET", "/home/ubuntu/zmax_rel/data/yolo_annot/dataset")
+SAM3_DIR = os.environ.get("ZMAX_SAM3_DIR", "/home/ubuntu/zmax/zmax_data/models/sam3_hf")
+DATASET_DIR = os.environ.get("ZMAX_SAM3_DATASET", "/home/ubuntu/zmax/data/yolo_annot/dataset")
 SIZE = 1008
 VIT_LORA_BLOCKS = 8
 R, ALPHA = 8, 16

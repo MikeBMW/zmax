@@ -27,7 +27,7 @@ def load_model(ckpt=None):
     from joint_unified_backbone import Unified, MODEL
     full = AutoModel.from_pretrained(MODEL, dtype=torch.float32)
     net = Unified(full.vision_model, freeze=True)
-    ck = ckpt or "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
+    ck = ckpt or "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
     sd = torch.load(ck, map_location="cpu", weights_only=False)
     net.load_state_dict(sd, strict=False)
     dev = "cuda" if torch.cuda.is_available() else "cpu"

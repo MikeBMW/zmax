@@ -85,7 +85,7 @@ L2 (能力)   : 给定这一帧 + 这个条件 → 该概念所有实例掩膜  
 ## 5. 验收证据 (实测输出, 2026-09-29)
 
 **环境**: 4060 8GB · `gui-venv311` (transformers **5.16.1**, torch 2.7.1+cu128) · bf16 · 输入 1008²。
-**权重**: `/home/ubuntu/zmax_data/models/sam3_hf/model.safetensors` = **3,439,938,512 B** (与远端逐字节一致),
+**权重**: `/home/ubuntu/zmax/zmax_data/models/sam3_hf/model.safetensors` = **3,439,938,512 B** (与远端逐字节一致),
 `sha256 = 6d06f0a5f84e435071fe6603e61d0b4cc7b40e0d39d487cfd4d67d8cc11cc14a`, 1797 张量。
 用 meta 设备按本机 config 起空模型逐张量比对: 去掉 `detector_model.` 前缀后 **1468 个可比对张量, 形状不符 0 处** ⇒ 镜像权重与本机实现**架构一致**。
 

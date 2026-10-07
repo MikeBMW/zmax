@@ -14,7 +14,7 @@
    ],
    "tcp_src": "live",
    "frame_age_s": 0.09,
-   "frame": "/home/ubuntu/zmax_ss_remote/cam_rs.png",
+   "frame": "/home/ubuntu/zmax/zmax_data/ss_live/cam_rs.png",
    "proj": {
     "slot1": [
      404.4,

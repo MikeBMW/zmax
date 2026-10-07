@@ -3,7 +3,7 @@
 # 用法: tools/l5_live_mark_run.sh [额外参数...]
 set -u
 REPO=/home/ubuntu/zmax
-OUT=/home/ubuntu/zmax_data/l5live
+OUT=/home/ubuntu/zmax/zmax_data/l5live
 mkdir -p "$OUT"
 cd "$REPO" || exit 1
 exec >>"$OUT/l5_live_mark.out" 2>&1

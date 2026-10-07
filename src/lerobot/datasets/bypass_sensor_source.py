@@ -21,8 +21,8 @@ import json
 import os
 import time
 
-REMOTE_DIR = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
-BYPASS_DIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax_data/ss_bypass"))
+REMOTE_DIR = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss_live"))
+BYPASS_DIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax/zmax_data/ss_bypass"))
 STALE_S = float(os.environ.get("SS_SENSOR_STALE_S", "3.0"))   # 超过此秒数视为不新鲜
 IMG_FRESH_S = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))  # 图像帧新鲜窗口 (超时不显示, 防旧图冒充)
 

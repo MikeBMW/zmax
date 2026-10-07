@@ -10,8 +10,8 @@
 
 怎么跑 (SDK 是 cpython-310, 本机 3.12 不行 → 用 python3.10 容器):
   # SDK 从 Orin 拷一份 (含 arm 与 x86_64 两套 .so):
-  #   ssh tashan@192.168.23.66 "cd .../robot_driver/lib/python3.10/site-packages/robot_driver/rokae && tar -cf - xcoresdk_python" | tar -C ~/zmax_data/rokae_sdk -xf -
-  sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
+  #   ssh tashan@192.168.23.66 "cd .../robot_driver/lib/python3.10/site-packages/robot_driver/rokae && tar -cf - xcoresdk_python" | tar -C ~/zmax/zmax_data/rokae_sdk -xf -
+  sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
       python3 /sdk/rokae_direct_probe.py
 
 零运动: 只 connectToRobot / jointPos / cartPosture / jointVel / jointTorque / operateMode / disconnect。

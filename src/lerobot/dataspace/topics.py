@@ -82,7 +82,7 @@ TOPICS = {
     # ── 状态空间 ────────────────────────────────────────────────────────
     "ss_state": {
         "type": "zmax::SSState", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
-        "producer": "zmax_dds_ss_daemon.py ← 真机只读 tap ~/zmax_ss_remote/state_*.jsonl",
+        "producer": "zmax_dds_ss_daemon.py ← 真机只读 tap ~/zmax/zmax_data/ss_live/state_*.jsonl",
         "consumers": ["控制台 数据空间页/状态空间页", "备份端"],
         "modes": ["calib", "test"],
         "key_fields": ["ts", "layer", "stage", "vec/dim", "manifold_theta", "manifold_norm",
@@ -167,7 +167,7 @@ TOPICS = {
     },
     "ss_plan": {
         "type": "zmax::SSPlan", "src": TYPES_SRC, "rate_hz": 0.5, "qos": "state",
-        "producer": "zmax_dds_ss_daemon.py ← MoveIt plan-only 镜像 tap ~/zmax_moveit_plan/live_plan.jsonl",
+        "producer": "zmax_dds_ss_daemon.py ← MoveIt plan-only 镜像 tap ~/zmax/zmax_data/runtime/moveit_plan/live_plan.jsonl",
         "consumers": ["控制台 数据空间页/独立数据空间窗口", "叠加层(画规划折线)", "审计(轨迹必须可追同源闸)"],
         "modes": ["calib", "test"],
         "key_fields": ["ts", "source", "plan_code", "n_points", "joints_path(n×6)", "tcp_path(n×3,m)",

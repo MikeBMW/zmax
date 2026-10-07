@@ -26,8 +26,8 @@ import os
 import sys
 import time
 
-RT = "/home/ubuntu/INTACT-JEPA/paper_runtime"
-REPO = "/home/ubuntu/INTACT-JEPA"
+RT = "/home/ubuntu/zmax/external/INTACT-JEPA/paper_runtime"
+REPO = "/home/ubuntu/zmax/external/INTACT-JEPA"
 
 TASKS = {
     "cube": {
@@ -89,7 +89,7 @@ def main() -> int:
         pass
     os.chdir(RT)
     sys.path.insert(0, RT)
-    cache = os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     os.environ.setdefault("LOCAL_DATASET_DIR", cache)
     os.environ.setdefault("MUJOCO_GL", "egl")
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")

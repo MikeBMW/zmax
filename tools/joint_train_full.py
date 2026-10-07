@@ -34,8 +34,8 @@ import torch.nn.functional as F
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 ROOT = "/home/ubuntu/zmax"
-INTACT = "/home/ubuntu/INTACT-JEPA"
-SWM = os.environ.get("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+SWM = os.environ.get("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 CKPT = f"{SWM}/checkpoints/intact_l4_current"
 
 

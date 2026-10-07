@@ -4,8 +4,8 @@
 
 老倪 2026-09-16: 「旁路接到控制台做实时可视化 (当前阶段/残差/接触概率曲线)」
 
-数据源: 旁路运行器心跳 + 逐帧记录 (tools/ss_bypass_run.py → ~/zmax_data/ss_bypass/)
-        与 真机感知最新帧 (ss_remote_tap → ~/zmax_ss_remote/)
+数据源: 旁路运行器心跳 + 逐帧记录 (tools/ss_bypass_run.py → ~/zmax/zmax_data/ss_bypass/)
+        与 真机感知最新帧 (ss_remote_tap → ~/zmax/zmax_data/ss_live/)
 显示:   ① 数值面板: 当前阶段(13 段状态机) · 残差 · 接触概率 · 旁路步数/采样 · 六层调用数
                     · 零下行自证 (rclpy/publishers/sockets/writes_to_orin) · 缺口计数 · 数据源新鲜度
         ② 两条实时曲线: 残差 (米) 与 接触概率 (0~1), 取最近 N 帧逐帧记录
@@ -421,8 +421,8 @@ class SSBypassView(QtWidgets.QWidget):
 
             # 实时图像 (多话题状态如实显示) —— L2 YOLO 标注图优先 (旁路可视化唯一出口)
             import json as _json2
-            _ydp = os.path.join(os.path.expanduser("~/zmax_data/ss_bypass"), "yolo_detections.json")
-            _yimg = os.path.join(os.path.expanduser("~/zmax_data/ss_bypass"), "yolo_annotated.png")
+            _ydp = os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_bypass"), "yolo_detections.json")
+            _yimg = os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_bypass"), "yolo_annotated.png")
             try:
                 _yd = _json2.load(open(_ydp)) if os.path.exists(_ydp) else None
             except Exception:

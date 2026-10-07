@@ -17,7 +17,7 @@ import threading
 
 import numpy as np
 
-DEFAULT_REPO = os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+DEFAULT_REPO = os.environ.get("INTACT_REPO", "/home/ubuntu/zmax/external/INTACT-JEPA")
 
 
 class IntactRuntime:
@@ -95,7 +95,7 @@ class IntactRuntime:
         # 🐛 2026-09-13 迁移实测踩到: 未设 STABLEWM_HOME 时旧代码退回 <repo>/.cache → 本工程权重
         #   (stable-wm-cache/checkpoints/*) 全部找不到 (FileNotFoundError: Checkpoint not found)。
         #   修正: 优先用**共享权重缓存** (与引擎/桥同一处), 只有它不存在才退回 repo/.cache。
-        _shared = os.environ.get("INTACT_STABLEWM_HOME") or "/home/ubuntu/stable-wm-cache"
+        _shared = os.environ.get("INTACT_STABLEWM_HOME") or "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
         _home = (os.environ.get("STABLEWM_HOME")
                  or (_shared if os.path.isdir(_shared) else os.path.join(self.repo, ".cache")))
         env = {**os.environ, "PYTHONUNBUFFERED": "1",

@@ -36,11 +36,11 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INTACT = "/home/ubuntu/INTACT-JEPA"
-CACHE = "/home/ubuntu/stable-wm-cache"
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 PY_GUI = os.path.join(ROOT, "gui-venv311", "bin", "python")
 PY_INTACT = os.path.join(INTACT, ".venv", "bin", "python")
-PY_LEROBOT = "/home/ubuntu/lerobot-venv/bin/python"
+PY_LEROBOT = "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python"
 LORA_MOD = os.path.join(ROOT, "tools", "lora_inject.py")
 
 # 在役权重 (续训起点; 与 docs/design/handoff_*.md 口径一致)
@@ -141,7 +141,7 @@ def build_stages(a) -> list:
             "--steps", str(a.steps), "--batch", str(b3), "--out", cfg3,
             "--outdir", l3_outdir]
     l3_cmd = [PY_LEROBOT, "-m", "lerobot.scripts.lerobot_train", f"--config_path={cfg3}"]
-    l3_env = {"PATH": "/home/ubuntu/lerobot-venv/bin:" + os.environ.get("PATH", ""),
+    l3_env = {"PATH": "/home/ubuntu/zmax/venvs/lerobot-venv/bin:" + os.environ.get("PATH", ""),
               "PYTHONPATH": os.path.join(ROOT, "src"),
               "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
               "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled"}

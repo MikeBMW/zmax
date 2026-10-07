@@ -22,10 +22,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _p in (ROOT, os.path.join(ROOT, "tools")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("OMP_NUM_THREADS", "6")
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 
 
 def main() -> int:

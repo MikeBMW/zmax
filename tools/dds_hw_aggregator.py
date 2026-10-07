@@ -23,13 +23,13 @@ import time
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, "/home/ubuntu/zmax_dds")   # ★ 稳定路径（不随 git 分支变化）
-for _c in (os.path.join(REPO, "dds"), "/home/ubuntu/zmax_dds"):
+sys.path.insert(0, "/home/ubuntu/zmax/dds")   # ★ 稳定路径（不随 git 分支变化）
+for _c in (os.path.join(REPO, "dds"), "/home/ubuntu/zmax/dds"):
     if os.path.isdir(_c):
         sys.path.insert(0, _c)
 RELAY = "https://datadrive.world/api/relay/upload"
 CFG = next((p for p in (os.path.join(REPO, "dds", "cyclonedds_unicast.xml"),
-                         "/home/ubuntu/zmax_dds/cyclonedds_unicast.xml") if os.path.isfile(p)), "")
+                         "/home/ubuntu/zmax/dds/cyclonedds_unicast.xml") if os.path.isfile(p)), "")
 
 
 def sh(c, t=8):

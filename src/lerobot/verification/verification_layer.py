@@ -679,8 +679,8 @@ class VerificationLayer:
     def _real_tr(self, steps=400):
         """真物理引擎轨迹 (触觉/接触/法向偏离的唯一真源)。同 seed 缓存 → 两条用例共用一次真跑。"""
         if not hasattr(self, "_real_tr_cache"):
-            for _k, _v in (("MUJOCO_GL", "egl"), ("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-                           ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+            for _k, _v in (("MUJOCO_GL", "egl"), ("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+                           ("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
                            ("INTACT_RUNTIME", "root")):
                 os.environ.setdefault(_k, _v)
             sys.path.insert(0, os.path.join(self.root, "tools", "gui"))

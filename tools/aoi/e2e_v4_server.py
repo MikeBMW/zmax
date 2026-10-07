@@ -14,7 +14,7 @@ import urllib.request
 import glob
 import shutil
 
-WORK = "/home/ubuntu/aoi_v4"
+WORK = "/home/ubuntu/zmax/zmax_data/aoi_v4"
 TESTPORT = 10089
 OUTDIR = "/tmp/v4_e2e_out"
 shutil.rmtree(OUTDIR, ignore_errors=True)
@@ -113,7 +113,7 @@ runpy.run_path(os.path.join(WORK, "cam_finger_10082_work_v4.py"), run_name="__ma
 open(WRAP, "w", encoding="utf-8").write(wrapper)
 
 env = dict(os.environ)
-env["PYTHONPATH"] = "/home/ubuntu/lerobot-venv/lib/python3.12/site-packages"
+env["PYTHONPATH"] = "/home/ubuntu/zmax/venvs/lerobot-venv/lib/python3.12/site-packages"
 env["AOI_PORT"] = str(TESTPORT)
 p = subprocess.Popen(["/tmp/v4env/bin/python", WRAP], env=env,
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)

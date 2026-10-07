@@ -13,7 +13,7 @@
 ### 1.1 启动 Z-MAX
 
 ```bash
-cd ~/lerobot-smolvla-lew
+cd ~/zmax/external/lerobot-smolvla-lew
 bash start.sh
 ```
 

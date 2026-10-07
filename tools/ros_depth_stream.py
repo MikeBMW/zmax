@@ -9,7 +9,7 @@
   **容器一重启就没了**(ephemeral) ⇒ 容器只做"只读订阅 + 落原始数组", 彩色化交给宿主侧
   (cam_live_stream 的 depth 源, gui-venv311 有 cv2/numpy)。零新依赖、零脆弱性。
 
-产出 (容器 /out → 宿主 /home/ubuntu/zmax_ss_remote):
+产出 (容器 /out → 宿主 /home/ubuntu/zmax/zmax_data/ss_live):
   zmax_scene/depth_raw.npy   uint16 原始深度 (原子替换)
   zmax_scene/depth_meta.json {t, frames, fps, w, h, depth_scale, near/median/center_m, valid_pct, src_stamp_age_s}
   容器里恰好有 cv2 时**另外**再写 depth_live.jpg (伪彩+真值带); 没有就跳过, 宿主自己上色。

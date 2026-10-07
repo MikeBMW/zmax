@@ -7,7 +7,7 @@
   · fail    有证据但不满足门(要有人处理)
   · unknown **没有证据** —— 不猜、不美化(老倪: 没有实测就是 unknown, 不许写成"应该没问题")
 
-输出: /home/ubuntu/zmax_data/dataspace/loop.json (控制台「数据空间」页与网页读这一份)
+输出: /home/ubuntu/zmax/zmax_data/dataspace/loop.json (控制台「数据空间」页与网页读这一份)
 用法: python -m lerobot.dataspace.loop_state --json        # dds-venv/gui-venv 都能跑(纯 stdlib)
 """
 import argparse
@@ -23,8 +23,8 @@ if os.path.join(REPO, "src") not in sys.path:      # 允许 `python <本文件>`
     sys.path.insert(0, os.path.join(REPO, "src"))
 from lerobot.dataspace import topics as T          # noqa: E402
 
-OUT = os.environ.get("ZMAX_DATASPACE_LOOP", "/home/ubuntu/zmax_data/dataspace/loop.json")
-LIVE = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax_data/dataspace/live.json")
+OUT = os.environ.get("ZMAX_DATASPACE_LOOP", "/home/ubuntu/zmax/zmax_data/dataspace/loop.json")
+LIVE = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax/zmax_data/dataspace/live.json")
 ORIN = os.environ.get("ZMAX_ORIN", "192.168.23.66")
 
 
@@ -89,7 +89,7 @@ def s0_preflight():
         ev.append("未找到 models/handeye_state.json")
     tcp_c = [os.path.join(g, "latest.json") for g in
              ("/home/ubuntu/rokae_sdk/tcp_out", "/home/ubuntu/zmax/rokae_sdk/tcp_out",
-              "/home/ubuntu/zmax_ss_remote/rokae_sdk/tcp_out")]
+              "/home/ubuntu/zmax/zmax_data/ss_live/rokae_sdk/tcp_out")]
     tcp = _newest(tcp_c)
     if tcp:
         d = _read_json(tcp, {}) or {}
@@ -124,7 +124,7 @@ def s1_collect():
         reach = r.returncode == 0
     except Exception:                                                        # noqa: BLE001
         reach = False
-    pkgs = sorted(glob.glob("/home/ubuntu/zmax_data/orin_live/*.json") +
+    pkgs = sorted(glob.glob("/home/ubuntu/zmax/zmax_data/orin_live/*.json") +
                   glob.glob(os.path.join(REPO, "data/orin_live/*.json")), key=os.path.getmtime)
     newest = pkgs[-1] if pkgs else None
     m = {"orin_reachable": reach, "n_local_pkgs": len(pkgs),
@@ -175,7 +175,7 @@ def s4_train():
     """S4 训练: 进度文件或 DDS 话题(train_prog 由 live.json 反映)"""
     cands = []
     for pat in ("outputs/**/progress*.json", "outputs/*.json", "outputs/**/train_state.json",
-                "/home/ubuntu/zmax_data/**/progress*.json"):
+                "/home/ubuntu/zmax/zmax_data/**/progress*.json"):
         cands += glob.glob(os.path.join(REPO, pat), recursive=True)
         cands += glob.glob(pat, recursive=True)
     p = _newest(cands)

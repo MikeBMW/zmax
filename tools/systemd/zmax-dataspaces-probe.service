@@ -11,9 +11,9 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
 Environment=ZMAX_REPO=/home/ubuntu/zmax
-Environment=ZMAX_DATASPACE_LIVE=/home/ubuntu/zmax_data/dataspace/live.json
+Environment=ZMAX_DATASPACE_LIVE=/home/ubuntu/zmax/zmax_data/dataspace/live.json
 # 必须 dds-venv(cyclonedds 只装在这里; 主 venv 不许被污染) —— 「DDS → JSON 桥」
-ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/probe.py --watch --interval 2
+ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/probe.py --watch --interval 2
 Restart=always
 RestartSec=5
 

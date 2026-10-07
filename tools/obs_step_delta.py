@@ -16,7 +16,7 @@ import sys
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 DIMNAME = (["hand_x", "hand_y", "hand_z", "grip"] * 9)[:39]     # 仅打印前几维辅助解读
 
 

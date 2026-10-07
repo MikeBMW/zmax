@@ -9,8 +9,8 @@
 # 装法: crontab 里 `@reboot sleep 120 && bash /home/ubuntu/zmax/tools/boot_crashcheck.sh`
 # 口径: 正常开机只写日志不打扰; 只有真有 vmcore 才发消息。
 set -uo pipefail
-LOG=/home/ubuntu/zmax_data/boot_selfcheck.log
-NOTIFY_LOG=/home/ubuntu/zmax_data/boot_crashcheck_notify.log
+LOG=/home/ubuntu/zmax/zmax_data/boot_selfcheck.log
+NOTIFY_LOG=/home/ubuntu/zmax/zmax_data/boot_crashcheck_notify.log
 TS=$(date '+%F %T %Z')
 
 STATE=$(sudo -n /usr/sbin/kdump-config show 2>/dev/null | awk -F: '/current state/{print $2}' | xargs)

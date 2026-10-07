@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 归档 v5.15.36 产物 → ~/zmax_data/release_5.15.36_YYYYMMDD
+# 归档 v5.15.36 产物 → ~/zmax/zmax_data/release_5.15.36_YYYYMMDD
 #   本轮内容: ① HIL 人机在环接进手机 APP(现场页 + 本地 HIL API + 装包)
 #             ② 工位总览 10082/10083 改实时推流(有人看顶到 OPT 上限)
 #             ③ 场景叠加按钮"点了什么都没打开"的根因修复(DBUS=disabled ⇒ snap chromium 静默退出)
@@ -7,8 +7,8 @@
 # 约定沿用 archive_release_5_15_7.sh: 代码 + 装包 + 证据 + 文档 + 现场数据快照, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
-APP=/home/ubuntu/state3d_app
-DST=$HOME/zmax_data/release_5.15.36_$(date +%Y%m%d)
+APP=/home/ubuntu/zmax/tools/web/state3d_app
+DST=$HOME/zmax/zmax_data/release_5.15.36_$(date +%Y%m%d)
 mkdir -p "$DST"/{tools,app,evidence,docs,reports}
 cd "$REPO" || exit 1
 

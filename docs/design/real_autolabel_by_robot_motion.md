@@ -14,7 +14,7 @@
 
 | 事实 | 出处 / 实测 |
 |---|---|
-| 末端位姿是**真值**，≈50Hz | `/robot/tcp_pose`（base_link），实测 49.6Hz，落盘 `~/zmax_ss_remote/state_*.jsonl` |
+| 末端位姿是**真值**，≈50Hz | `/robot/tcp_pose`（base_link），实测 49.6Hz，落盘 `~/zmax/zmax_data/ss_live/state_*.jsonl` |
 | 相机画面已在**本机可取** | UVC `/dev/video2` 640×480@10fps → `live_frame.jpg`，实测 age<1s |
 | 模块**随夹爪运动** | 抓取成立时"模块中心 = TCP + R·offset"，几何上是刚体约束 |
 

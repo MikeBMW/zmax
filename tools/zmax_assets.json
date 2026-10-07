@@ -4,7 +4,7 @@
   "note": "zmax 基线仓库的资产清单。仓库只放代码/技能/记忆;模型与数据按本清单的约定路径落盘,首次 clone 时由 tools/zmax_bootstrap.sh 识别(已下载的绝不重下)。",
   "conventions": {
     "ZMAX_CODE": "/home/ubuntu/zmax",
-    "ZMAX_DATA": "/home/ubuntu/zmax_data",
+    "ZMAX_DATA": "/home/ubuntu/zmax/zmax_data",
     "ZMAX_MODELS": "${ZMAX_DATA}/models",
     "ZMAX_HF_HOME": "${ZMAX_DATA}/hf_cache",
     "STABLEWM_HOME": "${ZMAX_DATA}/stable-wm-cache",
@@ -21,7 +21,7 @@
       "desc": "SAM3 开放词汇分割权重(L5 视觉/场景叠加用)",
       "needed_by": ["L5视觉", "开放词汇分割", "场景叠加"],
       "path": "${ZMAX_MODELS}/sam3_hf",
-      "alt_paths": ["/home/ubuntu/zmax_data/models/sam3_hf"],
+      "alt_paths": ["/home/ubuntu/zmax/zmax_data/models/sam3_hf"],
       "size_gb": 3.28,
       "required": false,
       "fetch": {
@@ -85,8 +85,8 @@
       "kind": "model",
       "desc": "INTACT(LeWM) 世界模型权重 — L4 认知层的直驱方案",
       "needed_by": ["L4认知", "世界模型", "轨迹预测"],
-      "path": "/home/ubuntu/INTACT-JEPA/checkpoints_hf",
-      "alt_paths": ["/home/ubuntu/INTACT-JEPA/checkpoints-paper"],
+      "path": "/home/ubuntu/zmax/external/INTACT-JEPA/checkpoints_hf",
+      "alt_paths": ["/home/ubuntu/zmax/external/INTACT-JEPA/checkpoints-paper"],
       "size_gb": 2.5,
       "required": false,
       "fetch": {
@@ -198,7 +198,7 @@
       "desc": "三个 venv: gui-venv311(3.11, GUI/推流/状态空间主机侧, 在仓库目录内且已 gitignore) / lerobot-venv(3.12, 训练+自动循环) / dds-venv(3.11, DDS 中间件)",
       "needed_by": ["控制台GUI", "训练", "DDS遥测", "服务"],
       "path": "${ZMAX_CODE}/gui-venv311",
-      "alt_paths": ["/home/ubuntu/lerobot-venv", "/home/ubuntu/dds-venv", "/home/ubuntu/INTACT-JEPA/.venv(3.10)"],
+      "alt_paths": ["/home/ubuntu/zmax/venvs/lerobot-venv", "/home/ubuntu/zmax/venvs/dds-venv", "/home/ubuntu/zmax/external/INTACT-JEPA/.venv(3.10)"],
       "size_gb": 0.0,
       "required": true,
       "fetch": {"method": "venv", "note": "requirements 在仓库里(requirements*.txt / pyproject.toml); 缺 venv 时报里出安装命令, --venvs 才真建(建一次要几百 MB 下载)。"}

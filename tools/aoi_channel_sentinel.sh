@@ -15,12 +15,12 @@
 #
 # 报一次: 用标记文件, 修过/报过就不再重复(除非又出现不一致)。
 set -uo pipefail
-REPO=/home/ubuntu/zmax_rel
+REPO=/home/ubuntu/zmax
 PY=$REPO/gui-venv311/bin/python
 WANT="636AC7854C947943"                    # 已知在役 v13 的 SHA256 前 16 位(三处一致核过)
 DIR='D:\xspace\ultralytics_AOI'
 F=cam_surface_10083_work_v6.py
-MARK=/home/ubuntu/zmax_data/agent_hub/.sentinel_last
+MARK=/home/ubuntu/zmax/zmax_data/agent_hub/.sentinel_last
 
 probe=$(cd "$REPO" && timeout 100 $PY tools/station_cmd.py "echo awake" 70 2>&1 | tail -3)
 case "$probe" in

@@ -14,7 +14,7 @@
   # 纯数学自检 (不需要引擎/GPU, 立刻可跑)
   gui-venv311/bin/python tools/ss_yolo_geom_labels.py --selftest
   # 标注单条 episode → json (每帧 peg/槽 两类框)
-  gui-venv311/bin/python tools/ss_yolo_geom_labels.py --episode ~/zmax_data/ss_sim_20260921/ep_s1.npz \
+  gui-venv311/bin/python tools/ss_yolo_geom_labels.py --episode ~/zmax/zmax_data/ss_sim_20260921/ep_s1.npz \
       --img-w 640 --img-h 480 --out reports/yolo_labels_ep_s1.json
 """
 from __future__ import annotations

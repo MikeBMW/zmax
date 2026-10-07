@@ -30,7 +30,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 MODEL = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
 IMGSZ = 224
 

@@ -80,7 +80,7 @@ class PriorDynamicsPredictor:
                 self.loaded = True
             except Exception as e:
                 print(f"⚠️ PriorDynamicsPredictor: 右脑权重加载失败: {str(e)[:80]}"
-                      f"\n   → 线性回退 A·x+B·u; 重新导出: ~/lerobot-venv/bin/python "
+                      f"\n   → 线性回退 A·x+B·u; 重新导出: ~/zmax/venvs/lerobot-venv/bin/python "
                       f"tools/export_ss_right_brain.py")
                 self.wm = None
 

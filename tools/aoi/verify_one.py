@@ -4,12 +4,12 @@ import numpy as np
 import sys
 import os
 
-sys.path.insert(0, "/home/ubuntu/aoi_v4")
+sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
 from gf_template import build_template, measure_strip
 from gf_metric import gold_mask, centerline_slope, core_band_slope
 from gf_crop import GoldFingerCropper, annotate
 
-D = "/home/ubuntu/aoi_v4/imgs"
+D = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs"
 REF = os.path.join(D, "Finger_Image_W2448_H2048_No_8.png")
 tpl, meta = build_template(REF)
 crop = GoldFingerCropper(tpl, canonical_w=1600, canonical_h=220, margin_x=0.03, margin_y=0.04,
@@ -51,5 +51,5 @@ for name in ["Finger_Image_W2448_H2048_No_8.png", "Finger_Image_W2448_H2048_No_5
     print(f"逐行剖面 (行: 金像素/亮度):")
     for y in range(0, out.shape[0], 6):
         print(f"   y={y:4d} 金={rp[y]:5d} 亮度={lp[y]:6.1f} {'#'*int(rp[y]/out.shape[1]*40)}")
-    cv2.imwrite(f"/home/ubuntu/aoi_v4/out/v4crop_{name[-6:-4]}.png", out)
-    cv2.imwrite(f"/home/ubuntu/aoi_v4/out/anno_{name[-6:-4]}.png", annotate(im, info))
+    cv2.imwrite(f"/home/ubuntu/zmax/zmax_data/aoi_v4/out/v4crop_{name[-6:-4]}.png", out)
+    cv2.imwrite(f"/home/ubuntu/zmax/zmax_data/aoi_v4/out/anno_{name[-6:-4]}.png", annotate(im, info))

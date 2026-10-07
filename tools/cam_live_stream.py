@@ -160,7 +160,7 @@ def _get(name: str):
 
 
 # ── 动作同步：读 L2 执行器日志的最近一条运动（与相机同一时钟）──────────
-_L2_LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
+_L2_LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 _DIRMAP = {"lift": "抬升(+Z)", "lower": "下降(-Z)", "left": "向左(+Y)",
            "right": "向右(-Y)", "forward": "前进(+X)", "backward": "后退(-X)"}
 
@@ -338,10 +338,10 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
 #   口径: 换源只改**这一格 (frame_name="local") 采的是哪台设备**, 不改通道名 —— 页面/叠加/VL 安全层
 #   都还是读 "local" 这一路, 所以换完自动全线跟随(不用改调用方)。
 #   · 设备号**每次实时按卡名重扫**(c插拔/换口/重启后 /dev/videoN 会变, 记死号本机已踩过串线/近黑的坑)
-#   · 选择**落盘**(~/zmax_data/cam_local_src.json) ⇒ 重启/换页仍是用户选的那台
+#   · 选择**落盘**(~/zmax/zmax_data/cam_local_src.json) ⇒ 重启/换页仍是用户选的那台
 #   · ⚠️ 安全层耦合: tools/vl_safety_fast.py 的 CAMS/REQUIRED_CAMS 把 "local" 当「笔记本相机(全局视角)」
 #     ⇒ 换源会一起改变安全层看到的全局画面; 页面上如实标注, 不藏着。
-_SRC_FILE = os.path.expanduser("~/zmax_data/cam_local_src.json")
+_SRC_FILE = os.path.expanduser("~/zmax/zmax_data/cam_local_src.json")
 _SRC_LOCK = threading.Lock()
 _USBCFG = {"name": "USB2.0 Camera", "dev": -1}   # USB 相机: 卡名匹配串 + 可选写死号(-1=自动)
 _LOCAL_SRC = {"kind": "builtin", "dev": -1, "builtin_dev": -1, "gen": 0}
@@ -604,7 +604,7 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
 #   (2026-09-27 老倪: 「6 个窗口同时显示 + 留出控制区, 手动控制机器人 X Y Z 平动 / A B C 绕轴旋转」)
 # ══════════════════════════════════════════════════════════════════════════════
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 同目录工具互导 (tools/*.py)
-SCENE_DIR = "/home/ubuntu/zmax_ss_remote/zmax_scene"
+SCENE_DIR = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene"
 DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
 DEPTH_META = SCENE_DIR + "/depth_meta.json"
 TCP_JSON = SCENE_DIR + "/tcp_pose.json"          # 容器 ros_tcp_cache 20Hz 落盘
@@ -614,7 +614,7 @@ ROBOT_STATUS_JSON = SCENE_DIR + "/robot_status.json"   # 同上的 /robot_status
 #   tcp_pose.json 停了 15h+, 页面却照读它 ⇒ 显示的是 1 号位的旧位姿(骗人)。
 #   现改读 **ROKAE SDK 直采文件**(常驻采样器容器 rokae_tcp_sampler, 5Hz, 口径 endInRef)。
 #   文件龄 >10s 判失效(与 tools/l2_daemon.py 直读位姿同一门槛), 页面必须如实标「源已静止 Ns」。
-ROKAE_TCP_JSON = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+ROKAE_TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 ROKAE_TCP_MAX_AGE_S = 10.0
 _AOI_INFO = {}            # port → {ok, err, http, t, kb, verdict, kind, src}
 _AOI_LOCK = threading.Lock()
@@ -671,6 +671,46 @@ _CTL_LOG = "/tmp/zmax_ctl.log"
 #   授权**有时限**(默认 5 分钟, 到期自动失效, 不需要记得撤); 每次授权/撤销都记 IP+时刻(审计)。
 #   ⚠️ 这个闸门在**服务端**强制, 不是页面上的样子货 —— 别的程序直接 POST {"arm":1} 一样被拒(403)。
 _CTL_AUTH = {"until": 0.0, "since": 0.0, "ip": "", "window": 300.0, "events": []}
+# 🧭 建图窗口(2026-10-07 老倪现场): 整轮建图 = 7 点采集 + 15000 步训练 ≈ 30~40 分钟, 而真动授权窗口
+#   默认只有 10 分钟 ⇒ 中途到期, 后面每一步移动都会被"真动授权未开"拦下(现场表现: 走到一半不动了)。
+#   口径: **不自动授权**, 只在"已经在有效窗口内"时把窗口延长到覆盖整轮(照旧写审计)。
+_GS_MAP_WINDOW_S = float(os.environ.get("ZMAX_GS_MAP_WINDOW", "2700"))
+
+
+def _st_age_s(st: dict) -> float:
+    """建图状态文件里的 ts 取值口径 —— 可能是 'YYYY-mm-dd HH:MM:SS' 字符串, 也可能是 float 秒。
+
+    2026-10-07 踩到: 直接 float(ts) 遇到字符串抛 ValueError ⇒ do_POST 处理线程崩、
+    连接被掐断(页面看就是"点了没反应")。这里统一成"距现在多少秒", 认不出就当很久以前。
+    """
+    t = st.get("ts")
+    if isinstance(t, (int, float)):
+        return max(0.0, time.time() - float(t))
+    for _f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return max(0.0, time.time() - time.mktime(time.strptime(str(t), _f)))
+        except Exception:                                                       # noqa: BLE001
+            continue
+    return 1e9
+
+
+def _move_transport_info() -> dict:
+    """当前执行腿 —— 与 L2 执行器(l2_daemon._move_leg)同一个开关: env > 文件 > 默认 ros。"""
+    t, why = "ros", "默认(产线 ROS 腿)"
+    p = os.path.expanduser("~/zmax/zmax_data/move_transport.json")
+    e = (os.environ.get("ZMAX_MOVE_TRANSPORT") or "").strip().lower()
+    if e in ("ros", "sdk"):
+        t, why = e, "env ZMAX_MOVE_TRANSPORT"
+    else:
+        try:
+            j = json.loads(open(p, encoding="utf-8").read())
+            _t = str(j.get("transport") or "ros").strip().lower()
+            if _t in ("ros", "sdk"):
+                t, why = _t, (j.get("note") or j.get("by") or p)
+        except Exception:                                                   # noqa: BLE001
+            pass
+    return {"transport": t, "why": why, "file": p,
+            "label": "本机SDK直连" if t == "sdk" else "产线ROS(/move_line)"}
 
 
 def _auth_info() -> dict:
@@ -680,7 +720,7 @@ def _auth_info() -> dict:
                 "epoch": 0, "events": [], "err": "ctl_auth 不可用"}
     st = CA.info()
     try:                                        # 🛑 撤销时由 ctl_revoke_stop 写的"在途叫停"实况
-        _ls = json.loads(open(os.path.expanduser("~/zmax_data/ctl_last_stop.json"), encoding="utf-8").read())
+        _ls = json.loads(open(os.path.expanduser("~/zmax/zmax_data/ctl_last_stop.json"), encoding="utf-8").read())
     except Exception:                                                   # noqa: BLE001
         _ls = None
     return {"armed": bool(st["armed"]), "left_s": st["left_s"], "window_s": st["window"],
@@ -708,7 +748,7 @@ def _auth_set(on: bool, ip: str = "", note: str = "") -> dict:
         pass
     return _auth_info()
 
-_L2_FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+_L2_FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 # 允许的指令白名单: 技能 → (参数名, 最小, 最大)。**只认这些**, 别的技能(含点位/多阶段技能)
 # 一律拒绝 —— 手动控制区是给"点动"用的, 不是通用技能下发口。
 _CTL_SKILLS = {
@@ -931,7 +971,7 @@ def _ctl_clear_point(body: dict) -> dict:
     只允许空间点 ``space1..space7`` —— 号位点位被 ``L2.slotN`` 技能引用, 清掉会让在用的回点失效,
     不在页面上开这个口子(要清号位走 tools 显式操作)。
     零运动(不碰机械臂); 删前把原值备份到 ``/tmp/space_points.cleared_*.json`` +
-    追加一行到 ``~/zmax_data/space_points_removed.jsonl`` (可追溯/可恢复), 再原子替换库文件。
+    追加一行到 ``~/zmax/zmax_data/space_points_removed.jsonl`` (可追溯/可恢复), 再原子替换库文件。
     """
     name = str((body or {}).get("name") or "").strip()
     if name not in set(_SPACE_SLOTS.values()):
@@ -955,7 +995,7 @@ def _ctl_clear_point(body: dict) -> dict:
     try:
         _bak = "/tmp/space_points.cleared_%s_%s.json" % (name, time.strftime("%m%d_%H%M%S"))
         shutil.copy(_p, _bak)
-        with open(os.path.expanduser("~/zmax_data/space_points_removed.jsonl"), "a", encoding="utf-8") as _f:
+        with open(os.path.expanduser("~/zmax/zmax_data/space_points_removed.jsonl"), "a", encoding="utf-8") as _f:
             _f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "name": name,
                                  "removed": old, "by": str((body or {}).get("by") or ""), "backup": _bak},
                                 ensure_ascii=False) + "\n")
@@ -1860,7 +1900,7 @@ def _depth_src_dead(threshold: float = _DEPTH_DEAD_S):
 def _rokae_pose() -> dict:
     """🦾 手动控制台显示的机械臂位姿 —— **ROKAE SDK 直采** (绕开已死的 DDS 话题)。
 
-    源: ~/zmax_data/rokae_sdk/tcp_out/latest.json (常驻容器 rokae_tcp_sampler, 5Hz,
+    源: ~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json (常驻容器 rokae_tcp_sampler, 5Hz,
     frame=base_link, src=rokae_xcoresdk/endInRef)。字段 ts/t/x/y/z/rx/ry/rz/qx/qy/qz/qw。
 
     ⚠️ 判真口径: **文件龄 >10s 即判失效**(stale=True) —— 页面据此显示「源已静止 Ns」,
@@ -1896,7 +1936,7 @@ def _rokae_pose() -> dict:
     }
 
 
-COLLISION_LEDGER = os.path.expanduser("~/zmax_data/collision_points.json")
+COLLISION_LEDGER = os.path.expanduser("~/zmax/zmax_data/collision_points.json")
 
 
 def _collisions(limit: int = 80) -> list:
@@ -1917,7 +1957,7 @@ def _collisions(limit: int = 80) -> list:
     except Exception:
         led = []
     have = {x.get("ts") for x in led}
-    stj = _read_json(os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/state.json"), {}) or {}
+    stj = _read_json(os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/state.json"), {}) or {}
     now = time.time()
     new = []
     for r in (stj.get("recent") or []):
@@ -2000,6 +2040,8 @@ def _ctl_status() -> dict:
     return {
         "motion_armed": bool(_auth_info().get("armed")),   # 🔐 真源(窗口内且未撤销), 不再用启动时的静态标志
         "robot": _robot_status(st, now),
+        # 🚚 移动执行腿 (2026-10-07): 与 L2 执行器同一开关(env > 文件 > ros) —— 页面直接看得见
+        "move_transport": _move_transport_info(),
         # 🦾 位姿真值: 走 SDK 直采文件 (老的 tcp_pose.json 是死数据, 已不读)
         "tcp": _rokae_pose(),
         "motion": _motion_state(),
@@ -2069,7 +2111,7 @@ def _robot_status(st: dict, now: float) -> dict:
     """
     ds, dst = {}, 0.0
     try:
-        _p = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/state.json")
+        _p = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/state.json")
         if os.path.exists(_p):
             ds = _read_json(_p, {}) or {}
             dst = float(ds.get("ts") or 0.0)
@@ -3202,7 +3244,12 @@ async function poll(){
         ? '<span class="ok">已授权 · 剩 '+Math.floor((s.auth.left_s||0)/60)+'分'
           +String(Math.max(0,Math.floor((s.auth.left_s||0)%60))).padStart(2,'0')+'秒</span> · 授权IP '
           +(s.auth.ip||'—')+' · 授权时刻 '+hhmmss(Math.max(0,(s.server_time||0)-(s.auth.since||0)))
-        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)');
+        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)')
+      +'<br>🚚 移动执行腿: '+(s.move_transport
+        ? '<span class="'+(s.move_transport.transport==='sdk'?'ok':'')+'">'+s.move_transport.label+'</span>'
+          +(s.move_transport.transport==='sdk'
+             ? '（本机 SDK 直连 · 不经 Orin）' : '（Orin /move_line 那套栈没在跑时, 点按钮不会动）')
+        : '—');
     applyAuth(s.auth);
     /* 🌈 深度格 (2026-09-28 修): 深度源(容器 ros_depth_stream 落的 depth_raw.npy)早断更,
        原先显示「帧龄 57312s · 拍照 17:43:49 · 0.0fps」像"有一路在用" ⇒ 改成醒目「深度源已断 Ns」。 */
@@ -3212,7 +3259,7 @@ async function poll(){
       const _nd=$('#n_depth');
       if(_nd){
         _nd.style.display='block';
-        _nd.innerHTML='深度源 = <code>/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy</code>'
+        _nd.innerHTML='深度源 = <code>/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy</code>'
           +'(容器 ros_depth_stream 落盘)。该文件已 <b>'+fmt(d.dead_s,0)+'s</b> 没更新 ⇒ <b>源早断</b>。'
           +'这一格显示的是<b>最后一帧旧图</b>, 不是实时画面; 帧龄/拍照时刻一律按源停写那一刻算, 不伪造新鲜值。';
       }
@@ -3291,13 +3338,19 @@ const _q=[]; let _busy=false;
 function _pump(){ if(_busy||!_q.length) return; _busy=true;
   const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
 function _enq(f){_q.push(f);_pump();}
+/* 🛡 2026-10-07 老倪现场实测(必须修): 本页(8793)的媒体把**同源 6 条名额**占满
+   (ss 实测: 8793 已建立 6 条 / 8791 0 条) ⇒ 同一端口上的**控制请求排队/超时/迟到**,
+   现场表现: 「点了没反应」、`Failed to fetch`、甚至迟到的旧动作才执行。
+   修法: 本页**媒体**改走 8791(同一个进程 · 独立连接名额), 控制/状态请求独占 8793。
+   只在"站台跑在 8793 且从内网/本机访问"时生效 —— 手机走隧道的情况不受影响。 */
+const _mb=()=>((location.port==='8793'&&/^(10\.|192\.168\.|172\.|127\.|localhost)/.test(location.hostname))?('//'+location.hostname+':8791'):'');
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
-  im:im, url:_u(im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+  im:im, url:_u(_mb()+im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
 /* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接
    (各占 1 条连接; 加上 1 条状态轮询 + 1 条串行快照 = ≤4 条, 仍在本机 6 条名额内)。
    源侧本身是"每次检测才有一张", 所以看起来是"有新图就立刻推" + 帧龄如实标。 */
 document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
-  im.classList.add('live'); im.src=im.dataset.src+'?t='+Date.now();
+  im.classList.add('live'); im.src=_mb()+im.dataset.src+'?t='+Date.now();
 });
 /* 🔁 MJPEG 断线/停帧自愈 (2026-09-28 老倪: 「金手指和表面检测怎么没有图像」)
    根因: 推流进程一重启(换相机 / 守护纠正映射 / 控制台重新拉流), 这两格的长连接会**停在死连接**上
@@ -3305,7 +3358,7 @@ document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
    curl 取流有真帧, 页面却是空的 ⇒ 问题在**页面连接**这一层)。
    判据(不猜, 都有数): ① img.onerror 立刻重连 ② 每 6s 比对 /stats 的 frames_served:
    在涨=连接活着; 连续 2 轮不涨 ⇒ 换 src(新时间戳)强制重连。 */
-const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:_u(im.dataset.src), seen:-1, still:0}));
+const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:_u(_mb()+im.dataset.src), seen:-1, still:0}));
 MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
 setInterval(()=>{
   const st=window.__stats||{};
@@ -3657,7 +3710,7 @@ class Handler(BaseHTTPRequestHandler):
             # 🧭 3DGS 建图 (老倪 2026-10-01): GET=状态 / POST 一次=启动后台自动跑点建图(空间1→7)。
             #   跑点走既有授权+收口链; 采集/训练在 tools/gs_map_run.py; 状态文件让页面轮询。
             import glob as _g
-            stf = os.path.expanduser("~/zmax_data/gs_map/status.json")
+            stf = os.path.expanduser("~/zmax/zmax_data/gs_map/status.json")
             if self.command == "POST":
                 # 🐛 2026-10-01: 原来这里又 self.rfile.read(...) 读一次 body —— 而通用前奏已经读过,
                 #   第二次读会**阻塞挂死**(页面点"开始建图"就没反应)。改成复用已读到的 body。
@@ -3665,27 +3718,62 @@ class Handler(BaseHTTPRequestHandler):
                 if (_b.get("action") or "start") == "status":
                     pass                                    # 取状态 ⇒ 落到下面统一返回
                 else:
-                    _log = os.path.expanduser("~/zmax_data/gs_map/run.log")
+                    _ai = _auth_info()
+                    if not _ai.get("armed"):
+                        # 2026-10-07 现场: 点"开始建图"比点"授权真动"早 5 秒 ⇒ 后台任务启动瞬间读到
+                        # motion_armed=false, fail-closed 立刻退出且**不重试** ⇒ 页面毫无反应。
+                        # 现在当场拒 + 把原因返给页面(不再偷偷起一个必死的后台任务)。
+                        return self._send(200, "application/json", json.dumps(
+                            {"ok": False, "armed": False,
+                             "msg": "⛔ 未授权真动 ⇒ 建图第一步就会被拦(而且它不会自己重试)。"
+                                    "先点『🔓 授权真动』(二次确认), 再点『开始建图』。"},
+                            ensure_ascii=False).encode("utf-8"))
+                    try:
+                        _st0 = json.load(open(stf, encoding="utf-8"))
+                    except Exception:                                                 # noqa: BLE001
+                        _st0 = {}
+                    _run_age = _st_age_s(_st0)
+                    if _st0.get("running") and _run_age < 300:
+                        return self._send(200, "application/json", json.dumps(
+                            {"ok": False, "armed": True,
+                             "msg": "⚠️ 已有一轮建图在跑(%.0f 秒前开始, %s), 不重复启动。"
+                                    % (_run_age, _st0.get("step") or "?")},
+                            ensure_ascii=False).encode("utf-8"))
+                    _win_old = float(_ai.get("window_s") or 0)
+                    _win_msg = ""
+                    if CA is not None:
+                        try:
+                            CA.grant(ip=_ai.get("ip") or "", window=_GS_MAP_WINDOW_S,
+                                     note="自动建图 %s 起 · 窗口延长覆盖整轮(现场已在授权窗口内)"
+                                          % time.strftime("%H:%M:%S"))
+                            _win_msg = " · 真动授权窗口 %.0f→%.0f 分钟(覆盖整轮)" % (
+                                _win_old / 60.0, _GS_MAP_WINDOW_S / 60.0)
+                            print("[授权] 建图启动 ⇒ 窗口延长到 %.0fs (原 %.0fs)" % (_GS_MAP_WINDOW_S, _win_old), flush=True)
+                        except Exception as _e:                                       # noqa: BLE001
+                            print("[授权] 延长窗口失败(不影响启动): %s" % str(_e)[:80], flush=True)
+                    _log = os.path.expanduser("~/zmax/zmax_data/gs_map/run.log")
                     os.makedirs(os.path.dirname(_log), exist_ok=True)
                     subprocess.Popen(["bash", "-lc",
-                                      "cd %s && nohup /home/ubuntu/gs-venv/bin/python tools/gs_map_run.py >> %s 2>&1 &"
+                                      "cd %s && nohup /home/ubuntu/zmax/venvs/gs-venv/bin/python tools/gs_map_run.py >> %s 2>&1 &"
                                       % (_REPO_ROOT, _log)],
                                      start_new_session=True)
                     return self._send(200, "application/json", json.dumps(
-                        {"ok": True, "msg": "已启动后台自动跑点建图(空间1→7)", "log": _log},
-                        ensure_ascii=False).encode("utf-8"))
+                        {"ok": True, "armed": True,
+                         "msg": "已启动后台自动跑点建图(空间1→7)%s · 执行腿=%s"
+                                % (_win_msg, _move_transport_info()["label"]),
+                         "log": _log}, ensure_ascii=False).encode("utf-8"))
             try:
                 _st = json.load(open(stf, encoding="utf-8"))
             except Exception:                                                         # noqa: BLE001
                 _st = {"running": False, "status_line": "还没有跑过建图", "step": "idle"}
-            if _g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")):
+            if _g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")):
                 _st["image_url"] = "/gs_render.png?t=__T__"
             # 🐛 2026-10-01: _send 要的是 bytes, 原来这里传 str ⇒ 按钮点了必崩
             #   (TypeError: a bytes-like object is required, not 'str') ⇒ 页面看到空白/无反应。
             return self._send(200, "application/json", json.dumps(_st, ensure_ascii=False).encode("utf-8"))
         elif p == "/gs_render.png":
             import glob as _g
-            _rend = sorted(_g.glob(os.path.expanduser("~/zmax_data/gs_assets/*/renders/holdout_00.png")))
+            _rend = sorted(_g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")))
             if not _rend:
                 return self._send(404, "text/plain", "no render yet")
             with open(_rend[-1], "rb") as _f:
@@ -3886,7 +3974,7 @@ def main():
     ap.add_argument("--port", type=int, default=8791)
     ap.add_argument("--quality", type=int, default=70, help="JPEG 质量 (60-80 推荐)")
     ap.add_argument("--fps", type=float, default=15.0, help="推流上限 fps")
-    ap.add_argument("--arm-src", default="/home/ubuntu/zmax_ss_remote/cam_rs.png",
+    ap.add_argument("--arm-src", default="/home/ubuntu/zmax/zmax_data/ss_live/cam_rs.png",
                     help="手臂相机帧来源 (tap 落盘 PNG, 慢速模式)")
     ap.add_argument("--arm-raw", action="store_true",
                     help="手臂走全速模式: 读 ros_arm_tap_raw.py 落的 /dev/shm 原始帧")
@@ -3899,7 +3987,7 @@ def main():
     # 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
     ap.add_argument("--local-src", default="auto", choices=["auto", "builtin", "usb"],
                     help="笔记本这一路开机先出哪台: auto(默认)=沿用页面上次的选择"
-                         "(~/zmax_data/cam_local_src.json, 没有记录就是内置)")
+                         "(~/zmax/zmax_data/cam_local_src.json, 没有记录就是内置)")
     ap.add_argument("--usb-dev", type=int, default=-1,
                     help="USB 摄像头 /dev/videoN (-1=按卡名自动扫; 推荐自动 —— 插拔/换口后序号会变)")
     ap.add_argument("--usb-name", default="USB2.0 Camera",

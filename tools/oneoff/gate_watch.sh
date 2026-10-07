@@ -4,11 +4,11 @@
 #   判据: 必须显著赢"常数基线(教师均值)"; v1 失败口径 = 模型 xyz MAE 0.092 > 常数 0.086
 set -u
 LOG=/tmp/intact_gate.log
-CK=/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_zmax_v2_s3072
+CK=/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_goal_zmax_v2_s3072
 cd /home/ubuntu/zmax || exit 1
 export HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins
-export STABLEWM_HOME=/home/ubuntu/stable-wm-cache
-export LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache
+export STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache
+export LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 export HF_ENDPOINT=https://hf-mirror.com
 export INTACT_RUNTIME=root
 echo "=== 判闸守护启动 $(date '+%F %T') ===" >> "$LOG"
@@ -19,7 +19,7 @@ while pgrep -f 'config-name intact_goal_zmax' > /dev/null; do
     if grep -q "GATED $tag" "$LOG" 2>/dev/null; then continue; fi
     echo "--- $tag $(date '+%H:%M:%S') ---" >> "$LOG"
     INTACT_POLICY="$CK/$(basename "$f")" \
-      timeout 1800 /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_replay_check.py \
+      timeout 1800 /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_replay_check.py \
       --n 60 --stride 300 --device cpu --out "reports/intact_replay_${tag}.json" \
       >> "$LOG" 2>&1
     echo "GATED $tag" >> "$LOG"
@@ -33,7 +33,7 @@ for f in "$CK"/weights_epoch_*.pt; do
   grep -q "GATED $tag" "$LOG" 2>/dev/null && continue
   echo "--- $tag (补评) $(date '+%H:%M:%S') ---" >> "$LOG"
   INTACT_POLICY="$CK/$(basename "$f")" \
-    timeout 1800 /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_replay_check.py \
+    timeout 1800 /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_replay_check.py \
     --n 60 --stride 300 --device cpu --out "reports/intact_replay_${tag}.json" >> "$LOG" 2>&1
   echo "GATED $tag" >> "$LOG"
 done

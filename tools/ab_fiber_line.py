@@ -24,7 +24,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY = "/home/ubuntu/lerobot-venv/bin/python"
+PY = "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python"
 PROBE = os.path.join(ROOT, "tools", "probe_l4_callchain.py")
 
 

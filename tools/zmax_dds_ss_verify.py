@@ -8,7 +8,7 @@
   ③ calib:  收到 ss_calib, T/rms/valid 来自真实标定文件 (非空 T 或 valid≥0), 且含 ss_state/ss_action
   ④ test:   收到 ss_state(真机 tap: dim>0 且 pos≠-1) + ss_action(6 关节) + ss_test(取证结果)
   ⑤ 通道分离: 本守护不碰 hw_state (B 通道由 zmax-dds-pub 负责)
-用法: /home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/dds_ss_verify.py
+用法: /home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/dds_ss_verify.py
 """
 from __future__ import annotations
 

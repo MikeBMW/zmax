@@ -6,7 +6,7 @@
   在任何一次运动中, 学习你的环境, 理解安全边界」
 
 做三件事(都只读日志/点位库, 不动设备):
-  build  从**示教点库** + **执行器逐条真下发流水**重建模型 → ``~/zmax_data/env_model.json``
+  build  从**示教点库** + **执行器逐条真下发流水**重建模型 → ``~/zmax/zmax_data/env_model.json``
          · zones: 料盘槽位排 / 插入工位 / 观察位 / 标定区 (按点名与几何自动聚类, 附区域包络)
          · envelope: 已到过的工作范围(x/y/z), 之外一律算"未验证"
          · corridors: 每条**真实执行过**的运动段(起点→终点/高度/速度/技能) —— 这就是"学过"的证据
@@ -30,10 +30,10 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PTS = os.path.join(REPO, "data/skills/l2_atomic/taught_points.json")
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
-LOGS = [os.path.expanduser("~/zmax_data/l2_daemon_stdout.log"),
-        os.path.expanduser("~/zmax_data/l2_daemon.log")]
-OUT = os.path.expanduser("~/zmax_data/env_model.json")
-TRUTH = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+LOGS = [os.path.expanduser("~/zmax/zmax_data/l2_daemon_stdout.log"),
+        os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")]
+OUT = os.path.expanduser("~/zmax/zmax_data/env_model.json")
+TRUTH = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 
 RE_SEG = re.compile(r"\[(\d\d:\d\d:\d\d)\] 目标 (L2\.\S+): pos=\(([-\d.]+), ([-\d.]+), ([-\d.]+)\)"
                     r" · Δ=\(([-+\d.]+), ([-+\d.]+), ([-+\d.]+)\)mm ([^\s·]+)")

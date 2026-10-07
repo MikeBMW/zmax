@@ -202,5 +202,5 @@ def build_template(ref_png, name="gf_strip_template", mx_ratio=0.02, my_ratio=0.
 
 
 if __name__ == "__main__":
-    ref = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
+    ref = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
     build_template(ref)

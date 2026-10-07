@@ -5,7 +5,7 @@
 老倪 2026-09-16: 「状态空间，开始旁路运行」(红线: Orin 零程序, 只转发感知信号)
 
 位置与铁律:
-  · 跑在 **4060 本机** (~/lerobot-venv), Orin 侧不装不跑任何东西
+  · 跑在 **4060 本机** (~/zmax/venvs/lerobot-venv), Orin 侧不装不跑任何东西
   · **零下行**: 本进程不 import rclpy, 不建任何 socket, 不发布/不调用任何 Orin 侧话题或服务
     (输入 = ss_remote_tap 采集到的真机感知 jsonl; 输出 = 本机 jsonl + 心跳, 仅记录)
   · 每次采样真调 **状态空间六层真实源码**:
@@ -20,8 +20,8 @@
     → 状态机只能停在「接近」(记住 reason), z7 保持 null; ft/gripper 无发布者时同样记 gap 而不是填 0。
 
 用法:
-  ~/lerobot-venv/bin/python tools/ss_bypass_run.py                    # 常驻旁路
-  ~/lerobot-venv/bin/python tools/ss_bypass_run.py --duration 60      # 自检 60s 退出
+  ~/zmax/venvs/lerobot-venv/bin/python tools/ss_bypass_run.py                    # 常驻旁路
+  ~/zmax/venvs/lerobot-venv/bin/python tools/ss_bypass_run.py --duration 60      # 自检 60s 退出
 """
 import argparse
 import glob
@@ -35,8 +35,8 @@ import numpy as np
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SS_DIR = os.path.join(REPO, "src", "lerobot", "policies", "left_right", "state_space")
-IN_DIR = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
-OUT_DIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax_data/ss_bypass"))
+IN_DIR = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss_live"))
+OUT_DIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax/zmax_data/ss_bypass"))
 K_OBS = 1.0
 
 

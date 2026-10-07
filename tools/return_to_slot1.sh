@@ -3,8 +3,8 @@
 #   路径: 前进 +X 115 → 向左 +Y 267 → 分步下降 85/60/30 (≤85mm/步, 横梁上限)
 # 纪律: 每一步都带**动作意图**过 VL 安全闸; 任一步被拦 ⇒ 立即中止, 臂停在当前安全位, 绝不重发。
 set -u
-LOG=/home/ubuntu/zmax_data/l2_daemon.log
-FIFO=/home/ubuntu/zmax_data/l2_cmd.fifo
+LOG=/home/ubuntu/zmax/zmax_data/l2_daemon.log
+FIFO=/home/ubuntu/zmax/zmax_data/l2_cmd.fifo
 SLOT1="0.648836, 0.498292, 0.110378"
 
 TCP() {

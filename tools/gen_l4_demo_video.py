@@ -38,7 +38,7 @@ from metaworld.envs.sawyer_peg_insertion_side_v3 import SawyerPegInsertionSideEn
 
 def _mw_assets_sawyer():
     """metaworld 包 assets/sawyer_xyz 目录多候选探测 — 🐛 2026-09-11 根因修复:
-    原硬编码 ~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/... →
+    原硬编码 ~/zmax/external/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/... →
     Windows/macOS 打包版与 frozen 环境一律找不到 (L4 演示 env 建不起来 = 打包版 L4 无干扰可见)。"""
     cands = []
     try:
@@ -50,7 +50,7 @@ def _mw_assets_sawyer():
     if _mp:
         cands.append(os.path.join(_mp, "metaworld", "assets"))
     cands.append(os.path.expanduser(
-        "~/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
+        "~/zmax/external/lerobot-smolvla-lew/gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
     cands.append(os.path.join(ROOT, "gui-venv311/lib/python3.11/site-packages/metaworld/assets"))
     for c in cands:
         if os.path.isfile(os.path.join(c, "sawyer_xyz", "sawyer_peg_insertion_side.xml")):

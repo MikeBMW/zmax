@@ -7,7 +7,7 @@
   这里用**原始像素**独立判一次: 在 slot1/slot2 各自的手眼投影处取同尺寸 ROI, 量
   ①垂直边缘能量(模块金属棱边) ②竖直连续亮带高度(模块本体 vs 空槽底) ③对比度,
   谁显著高谁就有件 —— 与 YOLO 结论相互独立, 一致才认。
-输出: 终端对照表 + 证据图 ~/zmax_data/ss_slot_occupy_evidence.png (白框/十字/文字标注)
+输出: 终端对照表 + 证据图 ~/zmax/zmax_data/ss_slot_occupy_evidence.png (白框/十字/文字标注)
 只读, 不含任何运动指令。
 """
 from __future__ import annotations
@@ -20,8 +20,8 @@ import cv2
 import numpy as np
 
 REPO = "/home/ubuntu/zmax"
-IMG = os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
-OUT = os.path.expanduser("~/zmax_data/ss_slot_occupy_evidence.png")
+IMG = os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
+OUT = os.path.expanduser("~/zmax/zmax_data/ss_slot_occupy_evidence.png")
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 # 重打包 (新包名 com.zmax.state3d.aoi, 新应用名)
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-PROJ=/home/ubuntu/state3d_app
+PROJ=/home/ubuntu/zmax/tools/web/state3d_app
 OUT=$PROJ/build
 rm -rf $OUT && mkdir -p $OUT/gen $OUT/obj $OUT/dex $OUT/apk
 

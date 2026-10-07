@@ -13,7 +13,7 @@
 | 产线自带视觉 | ✅ 托盘 YOLO `models/托盘_yolo/best.pt` · 槽位路由 `slot_routes.yaml` (device slot 1..10 → manual_pose_1..10) · `device_relative_points.yaml` | 只读抄口径, 不改 |
 | 我方示教点 | ✅ slot1 (0.64711,0.50264,0.11355) · slot2 (0.64832,0.45241,0.11308) · insert_pose · aoi_gold_view | `data/skills/l2_atomic/taught_points.json` (6 帧极差 <1e-6 m) |
 | 模块位姿来源 | ❗**未定** | `/robot/tcp_pose` 现在 **0 发布者**(产线主程序未跑) |
-| L2 YOLO 检出 | ✅ peg conf 0.84 @ [326,188,371,336] (640x480) | `~/zmax_data/ss_bypass/yolo_detections.json` |
+| L2 YOLO 检出 | ✅ peg conf 0.84 @ [326,188,371,336] (640x480) | `~/zmax/zmax_data/ss_bypass/yolo_detections.json` |
 | L1 DeepSeek-VL 判读 | ✅ "两个带绿色拉环的光模块(SFP类), 竖直插在托盘槽内, 绿环朝上, 不在夹爪上" | 同帧真调用 |
 | L4 INTACT | ✅ 加载/零搜索通过 · ❗**本域成功率 0/2** (预测 std 塌到教师 7~22%) | `verify_l4_intact_zeroseach` ✅ · `verify_l4_optical_chain` 诚实口径 |
 | L3 SmolVLA | ✅ 权重在位 5.7G (LoRA/flow 参数齐) | `--policy.enable_lora_vlm/action_expert` |

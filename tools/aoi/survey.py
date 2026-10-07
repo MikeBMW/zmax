@@ -4,7 +4,7 @@ import numpy as np
 import glob
 import os
 
-D = "/home/ubuntu/aoi_v4/imgs"
+D = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs"
 
 def gold_mask(bgr):
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)

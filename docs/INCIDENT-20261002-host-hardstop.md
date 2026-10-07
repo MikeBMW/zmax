@@ -80,7 +80,7 @@ grub.cfg 已复核(default 与 advanced 两个菜单项都带上了 4 个参数)
 sudo kdump-config show | grep -E "current state|crashkernel addr|kdump initrd"
 cat /sys/kernel/kexec_crash_size                      # 要 > 0 (本机 ≈ 512×1024×1024 字节)
 grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /proc/cmdline
-tail -2 /home/ubuntu/zmax_data/boot_selfcheck.log     # 开机留痕那一行(boot_crashcheck.sh 写的)
+tail -2 /home/ubuntu/zmax/zmax_data/boot_selfcheck.log     # 开机留痕那一行(boot_crashcheck.sh 写的)
 ```
 预期: `current state: ready to kdump` + 有 crashkernel 地址 + cmdline 四个参数齐 + selfcheck 记了一行。
 仍 `Not ready` ⇒ `journalctl -u kdump-tools -b`(常见: 预留偏小 / 迷你 initrd 缺 / 内核不支持)。

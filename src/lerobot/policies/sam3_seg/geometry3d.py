@@ -19,8 +19,8 @@ from pathlib import Path
 
 import numpy as np
 
-DEPTH_NPY = Path(os.environ.get("ZMAX_DEPTH_NPY", "/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy"))
-DEPTH_META = Path(os.environ.get("ZMAX_DEPTH_META", "/home/ubuntu/zmax_ss_remote/zmax_scene/depth_meta.json"))
+DEPTH_NPY = Path(os.environ.get("ZMAX_DEPTH_NPY", "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy"))
+DEPTH_META = Path(os.environ.get("ZMAX_DEPTH_META", "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_meta.json"))
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
 Z_MIN, Z_MAX = 0.05, 3.0          # 有效深度带(m)
 MIN_DEPTH_PX = 30                 # 掩膜内至少这么多有效深度像素才解 3D

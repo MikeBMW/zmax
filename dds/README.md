@@ -5,7 +5,7 @@
 ## 技术选型
 **Eclipse Cyclone DDS**（OMG DDS 标准实现）· pip 可装 · Linux/Mac/Windows 通用。
 ```bash
-python3 -m venv ~/dds-venv && ~/dds-venv/bin/pip install cyclonedds
+python3 -m venv ~/zmax/venvs/dds-venv && ~/zmax/venvs/dds-venv/bin/pip install cyclonedds
 ```
 
 ## 四话题（QoS 按用途区分）
@@ -28,7 +28,7 @@ python3 -m venv ~/dds-venv && ~/dds-venv/bin/pip install cyclonedds
 ## 用法
 ```bash
 # 4060 端（持续发布）
-/home/ubuntu/dds-venv/bin/python tools/dds_node_4060.py --interval 5
+/home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_node_4060.py --interval 5
 
 # Mac 端（小芳）
 python3 tools/mac_hw_report.py --dds            # 用 DDS 上报（含 MPS 实际值）

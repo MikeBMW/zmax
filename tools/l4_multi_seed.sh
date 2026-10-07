@@ -23,7 +23,7 @@ python3 - <<'PY' | tee -a "$OUT/multi_seed.log"
 import json, glob, os
 print(f"{'seed':<8}{'解析链 done/插入mm':<22}{'直驱 done/插入mm':<22}{'直驱真推理':<10}{'skill非零':<10}")
 rows = []
-for p in sorted(glob.glob("/home/ubuntu/lerobot-smolvla-lew/reports/evidence_l4_fixed/seed*.json")):
+for p in sorted(glob.glob("/home/ubuntu/zmax/external/lerobot-smolvla-lew/reports/evidence_l4_fixed/seed*.json")):
     d = json.load(open(p))
     for r in d.get("rows", []):
         a, b = r.get("analytic", {}), r.get("direct", {})

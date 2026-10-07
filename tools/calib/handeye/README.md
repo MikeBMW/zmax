@@ -57,10 +57,10 @@
 python handeye_collect17.py         # 输出 /tmp/scene/he17/
 
 # 2) 解算（必须用 lerobot-venv：它有完整 OpenCV 的 calibrateHandEye）
-/home/ubuntu/lerobot-venv/bin/python handeye_solve3.py /tmp/scene/he_all 20.0
+/home/ubuntu/zmax/venvs/lerobot-venv/bin/python handeye_solve3.py /tmp/scene/he_all 20.0
 
 # 3) 独立物理检验
-/home/ubuntu/lerobot-venv/bin/python verify_board_normal.py
+/home/ubuntu/zmax/venvs/lerobot-venv/bin/python verify_board_normal.py
 ```
 
 ## 标定板档案

@@ -17,9 +17,9 @@
 
 ## 运行环境与路径约定
 
-- 工程根固定为 **`/home/ubuntu/zmax`**（旧名 `/home/ubuntu/zmax_rel`、`/home/ubuntu/zmax_dds` 是软链，兼容保留）。
+- 工程根固定为 **`/home/ubuntu/zmax`**（旧名 `/home/ubuntu/zmax`、`/home/ubuntu/zmax/dds` 是软链，兼容保留）。
 - 代码内所有绝对路径都以此前缀开头：`/home/ubuntu/zmax/tools/...`。批量统一脚本见 `tools/ns_unify_paths.py`。
-- 数据/运行产物不在本仓库：`/home/ubuntu/zmax_data/`（模型权重、数据集原料、备份、运行产物）。
+- 数据/运行产物不在本仓库：`/home/ubuntu/zmax/zmax_data/`（模型权重、数据集原料、备份、运行产物）。
 - **模型/数据默认落盘路径**（`ZMAX_DATA/models`、`zmax_data/hf_cache`、`zmax_data/stable-wm-cache`）见
   [`docs/notes/model-paths.md`](docs/notes/model-paths.md)；清单是机器可读的 `tools/zmax_assets.json`。
 
@@ -48,13 +48,13 @@ python3 tools/repo_guard.py     # 大文件/二进制守卫: 权重、交付件�
 python3 tools/secret_scan.py    # 密钥扫描: 真密钥形态命中即拒(值打码输出)
 ```
 
-密钥真值只放 `/home/ubuntu/zmax_data/secrets/zmax.env`（600，永不入库）；
-systemd 单元用 `EnvironmentFile=-/home/ubuntu/zmax_data/secrets/zmax.env` + `${VAR}` 引用。
+密钥真值只放 `/home/ubuntu/zmax/zmax_data/secrets/zmax.env`（600，永不入库）；
+systemd 单元用 `EnvironmentFile=-/home/ubuntu/zmax/zmax_data/secrets/zmax.env` + `${VAR}` 引用。
 
 ## 不进仓库的东西（有意为之）
 
 运行截图与状态快照（`reports/`，数百 MB）、模型权重（`*.pt`/`*.h5`）、交付件（`pdf`/`pptx`/`zip`）、
-视频、虚拟环境 —— 都留在本机 `/home/ubuntu/zmax_data/`，避免代码库被二进制拖大。
+视频、虚拟环境 —— 都留在本机 `/home/ubuntu/zmax/zmax_data/`，避免代码库被二进制拖大。
 
 ## 同步
 

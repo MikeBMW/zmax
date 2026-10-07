@@ -7,12 +7,12 @@
 #   例: bash tools/post_lora_merge.sh intact_goal_optical_insert_v6lora_200 intact_l4_v6lora_200 8 16
 set -u
 export ZMAX_REPO="${ZMAX_REPO:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
-SWM=/home/ubuntu/stable-wm-cache
+SWM=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 ART_DIR=$SWM/checkpoints/${1:?用法: post_lora_merge.sh <产物目录名> [指针名] [r] [alpha]}
 POLICY=${2:-intact_l4_${1}}
 R=${3:-8}
 ALPHA=${4:-16}
-IVENV=/home/ubuntu/INTACT-JEPA/.venv/bin/python
+IVENV=/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python
 # 🔴 2026-09-30: 原来写死 /home/ubuntu/zmax(改名前的路径, 里面没有这两个工具⇒退出码 3)
 #   工程根现在是 /home/ubuntu/zmax(main 真源) ⇒ 默认改为自动定位本脚本所在的仓库, 也可用 ZMAX_REPO 覆盖。
 REPO="${ZMAX_REPO:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
@@ -37,9 +37,9 @@ echo "== 自证 (引擎口径: task=pusht + INTACT_POLICY=$POLICY) =="
 STABLEWM_HOME=$SWM LOCAL_DATASET_DIR=$SWM INTACT_DEVICE=cpu INTACT_RUNTIME=root HF_HUB_OFFLINE=1 \
 MUJOCO_GL=egl INTACT_POLICY=$POLICY $IVENV - <<PY
 import json, subprocess, os
-p = subprocess.Popen(["/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+p = subprocess.Popen(["/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
                       "%s/tools/intact_worker.py" % os.environ["ZMAX_REPO"],
-                      "--repo", "/home/ubuntu/INTACT-JEPA", "--task", "pusht",
+                      "--repo", "/home/ubuntu/zmax/external/INTACT-JEPA", "--task", "pusht",
                       "--hf-repo", "INTACT-JEPA/INTACT", "--hf-rev", "paper-e5-goal-v1",
                       "--policy", "direct", "--policy-name", os.environ["INTACT_POLICY"],
                       "--device", "cpu", "--runtime", "root"],

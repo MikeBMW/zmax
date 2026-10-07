@@ -7,9 +7,9 @@ Wants=ss-remote-tap.service
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
-Environment=SS_REMOTE_DIR=/home/ubuntu/zmax_ss_remote
-Environment=SS_BYPASS_DIR=/home/ubuntu/zmax_data/ss_bypass
-ExecStart=/home/ubuntu/lerobot-venv/bin/python /home/ubuntu/zmax/tools/ss_bypass_run.py --rate 10
+Environment=SS_REMOTE_DIR=/home/ubuntu/zmax/zmax_data/ss_live
+Environment=SS_BYPASS_DIR=/home/ubuntu/zmax/zmax_data/ss_bypass
+ExecStart=/home/ubuntu/zmax/venvs/lerobot-venv/bin/python /home/ubuntu/zmax/tools/ss_bypass_run.py --rate 10
 Restart=always
 RestartSec=5
 StandardOutput=journal

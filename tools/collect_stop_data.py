@@ -25,8 +25,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
-for k, v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-             ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+for k, v in (("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+             ("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
              ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
              ("OMP_NUM_THREADS", "6")):
     os.environ.setdefault(k, v)

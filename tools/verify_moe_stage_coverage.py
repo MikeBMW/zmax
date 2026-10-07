@@ -22,7 +22,7 @@ import torch
 sys.path.insert(0, "/home/ubuntu/zmax/tools")
 from stage_moe_backbone import MODEL, STAGES, STAGES_ENGINE, STAGE_TO_EXPERT, StageMoE  # noqa: E402
 
-CKPT = "/home/ubuntu/stable-wm-cache/checkpoints/stage_moe/moe.pt"
+CKPT = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/stage_moe/moe.pt"
 ok = []
 
 

@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton, QScrollA
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))        # tools/gui
 ROOT = os.path.dirname(os.path.dirname(TOOLS))            # 仓库根 (tools/gui → tools → root)
-INTACT_PY = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+INTACT_PY = "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python"
 BACKEND = os.path.join(ROOT, "tools", "intact_native_robot.py")
 STATE_FILE = os.path.join(ROOT, "data", "intact_robot_state.json")
 VID_DIR = os.path.join(ROOT, "reports", "intact_native")
@@ -54,8 +54,8 @@ class _Runner(QThread):
 
     def run(self):
         env = dict(os.environ)
-        env.update({"STABLEWM_HOME": env.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-                    "LOCAL_DATASET_DIR": env.get("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")})
+        env.update({"STABLEWM_HOME": env.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+                    "LOCAL_DATASET_DIR": env.get("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")})
         try:
             p = subprocess.run([INTACT_PY, BACKEND, "--run", "--robot", self.robot,
                                 "--episodes", str(self.episodes), "--video-dir", VID_DIR],

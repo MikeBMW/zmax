@@ -19,7 +19,7 @@ import json
 import os
 import time
 
-OUT = os.path.expanduser("~/zmax_ss_remote")
+OUT = os.path.expanduser("~/zmax/zmax_data/ss_live")
 PNG = os.path.join(OUT, "cam_local.png")
 JSN = os.path.join(OUT, "cam_local.json")
 

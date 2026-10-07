@@ -6,8 +6,8 @@ After=ss-remote-tap.service
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
-Environment=SS_REMOTE_DIR=/home/ubuntu/zmax_ss_remote
-Environment=SS_BYPASS_DIR=/home/ubuntu/zmax_data/ss_bypass
+Environment=SS_REMOTE_DIR=/home/ubuntu/zmax/zmax_data/ss_live
+Environment=SS_BYPASS_DIR=/home/ubuntu/zmax/zmax_data/ss_bypass
 ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/ss_yolo_on_real.py --auto --loop --interval 0.5
 Restart=always
 RestartSec=5

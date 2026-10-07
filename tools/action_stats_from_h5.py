@@ -7,8 +7,8 @@
 口径: 只统计 finite 行, ddof=1 (与 INTACT get_column_stats 一致)。
 
 用法 (INTACT venv, 有 h5py):
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/action_stats_from_h5.py \
-      --h5 /home/ubuntu/stable-wm-cache/datasets/optical_insert_v4.h5 \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/action_stats_from_h5.py \
+      --h5 /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/optical_insert_v4.h5 \
       --action-space u --out reports/optical_insert_v4_action_stats.json
 
 action-space 记录进 json 的 "action_space" 字段, 供闭环侧选反变换约定:

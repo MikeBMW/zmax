@@ -9,8 +9,8 @@
   ③ 实例层 forward 被引擎调用了几次 (不管它现在指向谁)
   ④ 域判定逐帧真值: d_guard 与归一化 max|xn| → 看是 (a) 距离 还是 (b) 逐通道 σ 挡的
 用法:
-  /home/ubuntu/lerobot-venv/bin/python tools/diag_ff_entry.py 32              # = GUI 默认
-  SS_USE_MLP=1 /home/ubuntu/lerobot-venv/bin/python tools/diag_ff_entry.py 32
+  /home/ubuntu/zmax/venvs/lerobot-venv/bin/python tools/diag_ff_entry.py 32              # = GUI 默认
+  SS_USE_MLP=1 /home/ubuntu/zmax/venvs/lerobot-venv/bin/python tools/diag_ff_entry.py 32
 """
 from __future__ import annotations
 

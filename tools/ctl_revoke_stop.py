@@ -8,7 +8,7 @@
 
 本进程是**带外**(out-of-band)的看门人: 与执行器/网页都解耦, 只盯 ctl_auth.json 的 epoch 变化。
   · epoch+1 且未授权 = 有人**显式撤销** ⇒ 若最近 ZMAX_STOP_WINDOW 秒内执行器真下发过动作
-    (留痕 ~/zmax_data/l2_last_dispatch.json), 立刻对机器人调 `/robot_stop`(std_srvs/Trigger)
+    (留痕 ~/zmax/zmax_data/l2_last_dispatch.json), 立刻对机器人调 `/robot_stop`(std_srvs/Trigger)
     把在途运动停下; 全程写审计(谁能查"谁在几点几分撤销、当时停了没有")。
   · 授权**到期**自动失效不算撤销(epoch 不变)⇒ 不叫停, 只记录。
   · 停机/复位类动作由执行器的白名单放行, 不受本闸门影响。
@@ -26,8 +26,8 @@ import ctl_auth as CA
 
 HOST = os.environ.get("ZMAX_ROBOT_HOST", "tashan@192.168.23.66")
 WINDOW = float(os.environ.get("ZMAX_STOP_WINDOW", "180"))
-MARK = os.path.expanduser("~/zmax_data/l2_last_dispatch.json")
-STATE = os.path.expanduser("~/zmax_data/ctl_last_stop.json")
+MARK = os.path.expanduser("~/zmax/zmax_data/l2_last_dispatch.json")
+STATE = os.path.expanduser("~/zmax/zmax_data/ctl_last_stop.json")
 CTL_LOG = "/tmp/zmax_ctl.log"
 PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; "
        "do [ -f \"$ws\" ] && source \"$ws\" && break; done; export ROS_DOMAIN_ID=0; "
@@ -53,8 +53,32 @@ def _dispatch_recent():
     return (d, age) if age <= WINDOW else (None, age)
 
 
+def _sdk_stop():
+    """🚚 SDK 腿下的叫停 (2026-10-07): 执行腿=本机 SDK 直连时, 停止**必须直达 SDK 代理**。
+
+    为什么(实测): 下面 _robot_stop() 是 `ssh Orin → ros2 call /robot_stop`, 而产线 ROS 栈没在跑时
+    它**叫不停**(返回 success=False)。SDK 腿在动臂 ⇒ 撤销授权必须能真的停住, 所以先走 SDK(ms 级)。
+    返回 True=已投递停止(不代表控制器已确认, 但通道是活的); None=不是 SDK 腿, 走原路。
+    """
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "rokae"))
+        import l2_transport_sdk as _T                                       # noqa: PLC0415
+    except Exception as e:                                                  # noqa: BLE001
+        log("⚠️ SDK 腿停止模块不可用(%s) ⇒ 只能走产线 /robot_stop" % str(e)[:70])
+        return None
+    if _T.transport() != "sdk":
+        return None
+    try:
+        _T.stop("8793 撤销授权 ⇒ 立即叫停在途 SDK 动作", log)
+        return True
+    except Exception as e:                                                  # noqa: BLE001
+        log("⚠️ SDK 腿停止投递异常: %s" % str(e)[:90])
+        return False
+
+
 def _robot_stop():
     """/robot_stop (std_srvs/Trigger) —— 受控停止(不是断电急停)。"""
+    _sdk_ok = _sdk_stop()                     # 执行腿=sdk 时先走 SDK(不等 ssh 超时)
     cmd = PRE + 'timeout 20 ros2 service call /robot_stop std_srvs/srv/Trigger "{}"'
     t0 = time.time()
     try:
@@ -62,8 +86,12 @@ def _robot_stop():
                            capture_output=True, text=True, timeout=40)
         out = ((r.stdout or "") + (r.stderr or "")).strip()
     except Exception as e:                                              # noqa: BLE001
-        return False, "调用异常: %s" % e, time.time() - t0
+        return (bool(_sdk_ok) if _sdk_ok is not None else False), \
+               ("SDK 腿已投递停止(产线 /robot_stop 调用异常: %s)" % e if _sdk_ok
+                else "调用异常: %s" % e), time.time() - t0
     ok = "success=True" in out.replace(" ", "")
+    if _sdk_ok:
+        return True, "SDK 腿已投递停止 · 产线 /robot_stop: %s" % out[-200:], time.time() - t0
     return ok, (out[-300:] if out else "(无输出)"), time.time() - t0
 
 

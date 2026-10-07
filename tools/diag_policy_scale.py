@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """diag_policy_scale.py — state_space 0% 根因裁决: 归一化/尺度 vs 真弱
 
-数据: /home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v2.h5 (引擎同源: observation 39D + 专家动作 4D)
+数据: /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v2.h5 (引擎同源: observation 39D + 专家动作 4D)
 做法: 真实例化策略 → 对引擎 obs 出动作 → 与**专家动作**比: 尺度(mean/std/|abs|) + 逐维相关
 裁决:
   A) |策略动作| ≈ 0 或 std 远小于专家 → **归一化/尺度问题** (假0%)
@@ -35,7 +35,7 @@ try:
 except Exception as _e:               # noqa: BLE001
     print("  (pol.to 失败: %s)" % str(_e)[:80])
 
-DS = "/home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v2.h5"
+DS = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v2.h5"
 with h5py.File(DS, "r") as f:
     obs = np.asarray(f["observation"][:1200], dtype=np.float32)
     act = np.asarray(f["action"][:1200], dtype=np.float32)[:, :4]

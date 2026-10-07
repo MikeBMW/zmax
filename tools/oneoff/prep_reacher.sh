@@ -3,7 +3,7 @@
 #   为什么: 完整 dmc/reacher_random.h5 = 98.9GB, 撞磁盘余量; 评测/实况只需要少量回合 + 归一化统计。
 #   安全检查: 解压前要求可用空间 ≥ 105GB (99GB 完整 h5 峰值), 不够就中止并报错 (不把盘写满)。
 set -u
-DS=/home/ubuntu/stable-wm-cache/datasets
+DS=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
 ARC=${ARC:-$DS/reacher.tar.zst}
 EP=${EP:-100}                     # 子集回合数
 LOG=/tmp/reacher_prep.log
@@ -27,7 +27,7 @@ echo "完整 h5: $BIG ($(stat -c%s "$BIG") 字节)"
 
 # 切子集 (流式, 峰值内存有界)
 SUB=/tmp/reacher_subset.h5
-/usr/bin/env HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins /home/ubuntu/INTACT-JEPA/.venv/bin/python \
+/usr/bin/env HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python \
   /home/ubuntu/zmax/tools/make_h5_subset.py --src "$BIG" --out "$SUB" --episodes "$EP" 2>&1 | tail -6
 RC=$?
 if [ $RC -ne 0 ]; then echo "❌ 子集切分失败 rc=$RC (完整 h5 保留: $BIG)"; exit 4; fi
@@ -35,7 +35,7 @@ if [ $RC -ne 0 ]; then echo "❌ 子集切分失败 rc=$RC (完整 h5 保留: $B
 mkdir -p "$DS/dmc"
 cp -f "$SUB" "$DS/dmc/reacher_random.h5" && echo "→ 落位 $DS/dmc/reacher_random.h5 ($(stat -c%s "$DS/dmc/reacher_random.h5") 字节)"
 # 校验落位文件可用
-/usr/bin/env HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins /home/ubuntu/INTACT-JEPA/.venv/bin/python -c "
+/usr/bin/env HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python -c "
 import h5py,hdf5plugin,numpy as np
 f=h5py.File('$DS/dmc/reacher_random.h5','r'); n=len(f['ep_len'])
 std=float(np.asarray(f['pixels'][:5,::8,::8,:]).std()) if 'pixels' in f else None

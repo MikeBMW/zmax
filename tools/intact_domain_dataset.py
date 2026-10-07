@@ -15,7 +15,7 @@
 
 用法:
   gui-venv311/bin/python tools/intact_domain_dataset.py --seeds 0,1,2 --mode insert --max-steps 600 \
-      --out-name zmax_insert --dest /home/ubuntu/stable-wm-cache/datasets
+      --out-name zmax_insert --dest /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
 """
 import argparse
 import json
@@ -30,7 +30,7 @@ ROOT = os.path.dirname(TOOLS)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("MUJOCO_GL", os.environ.get("MUJOCO_GL", "egl"))
-_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 if os.path.isdir(_CACHE):
     os.environ.setdefault("STABLEWM_HOME", _CACHE)
     os.environ.setdefault("LOCAL_DATASET_DIR", _CACHE)
@@ -149,7 +149,7 @@ def main():
     print(f"   合计 回合 {len(done_flags)} · 帧 {tot} · done_rate={dr:.2f} · "
           f"用时 {time.time()-t0:.0f}s")
     print(f"   下一步: 合并转 h5 → "
-          f"/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
+          f"/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
           f"--parts 'reports/{a.out_name}_part*.npz' --out-name {a.out_name} "
           f"--dest {a.dest}")
     return 0

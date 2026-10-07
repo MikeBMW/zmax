@@ -51,7 +51,7 @@ def _set_gates(g):
 
 def _latest_ckpt():
     import glob
-    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     best = None
     for fam in ("intact_goal_optical_insert_v5", "intact_goal_optical_insert_v4"):
         for p in glob.glob(os.path.join(cache, "checkpoints", fam + "*_s3072", "weights_epoch_*.pt")):

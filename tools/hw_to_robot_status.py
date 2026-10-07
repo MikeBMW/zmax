@@ -23,7 +23,7 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 JSON_F = os.path.join(REPO, "docs", "web", "robot-status.json")
-DDS_F = "/home/ubuntu/stable-wm-cache/reports/dds_latest.json"
+DDS_F = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/dds_latest.json"
 
 
 def hardware_section():

@@ -71,7 +71,7 @@
 **根因**：09-29 把散落脚本收进仓库时按"只搬不删"在**根上留了软链**，但单元/cron/代码随后都改指仓库真路径了 ⇒ 那批软链**已经没人调用**，在文件管理器里却仍显示成一堆 `*.sh` / `*.py`（看着乱，实为死链）。
 **清掉 22 条死链**（逐条判过"有没有真调用"）: 10 个 oneoff 脚本链（`chain_v2.sh` `dl_aria.sh` `dl_dog.sh` `dl_intact_datasets.sh` `gate_watch.sh` `gw_fix.sh` `gw_restart.sh` `prep_reacher.sh` `run_official_eval.sh` `hermes-restore.sh`）· 5 个 DDS/上传链（`zmax_dds_{publisher,aggregator,ss_daemon,ss_verify}.py` `zmax_hw_uploader.py`，单元早已执行 `zmax/tools/dds/*` 与 `zmax/tools/hw_uploader.py`）· 6 条备份/杂链（`l4_snapshots` `lan_check_20260920` `netplan_backup_20260920_1657` `nvme-gpt-backup.bak` `safety-backup` `pkg`）· `安装Hermes.desktop`。**目标文件一件没删**（仓库/数据盘里都在）。
 **顺带修的真引用**：`tools/oneoff/prep_reacher.sh` 里 `bash /home/ubuntu/run_official_eval.sh` → 仓库路径（否则删链会断这条链）。
-**归文件夹（有用的）**：Hermes 安装/恢复对 → `~/hermes-install/`（两者必须同目录，`Exec` 用 `$(dirname %k)`）；10 个 oneoff 脚本的**真身**本就在 `zmax/tools/oneoff/`，5 个 DDS/上传脚本真身在 `zmax/tools/dds/` 与 `zmax/tools/`。
+**归文件夹（有用的）**：Hermes 安装/恢复对 → `~/zmax/hermes/install/`（两者必须同目录，`Exec` 用 `$(dirname %k)`）；10 个 oneoff 脚本的**真身**本就在 `zmax/tools/oneoff/`，5 个 DDS/上传脚本真身在 `zmax/tools/dds/` 与 `zmax/tools/`。
 **台账**：`zmax_data/artifacts_20260930/tidy_ledger_20260930.json`（含每条原指向）。验证: 顶层裸文件 **0**、DDS 三单元仍 active、`systemctl --failed` **0**。
 
 **同轮 · YOLO 权重归位**（老倪追问「怎么还有 yolo 模型呢?」）：顶层 `yolov8s.pt` 是**软链**（真身在数据盘），但它同时是代码的**默认权重路径**，所以还活着 —— 根因是 `yolo_perception.py` 按 `__file__` 上溯四级硬拼 `/home/ubuntu/yolov8s.pt`，且 `simulink_module.py` 双击 YOLO 节点时取仓库根那份 **22.5MB 重复实物**。

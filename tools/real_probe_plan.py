@@ -34,7 +34,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, _HERE)
 
-SS_REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+SS_REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
 
 # 默认工作域 (base_link, 米): x 前 y 左 z 上。**必须现场按实际可达空间改**, 越界即拒。
 SAFE_BOX = (0.10, 0.80, -0.45, 0.45, -0.05, 0.70)

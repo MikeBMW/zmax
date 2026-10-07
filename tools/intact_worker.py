@@ -15,7 +15,7 @@ venv 不兼容 → 用**子进程 + 行式 JSON 协议**封装, 节点侧只认�
 诚实原则: 依赖/权重缺失时**必须**回 ok=false + reason, 绝不返回假动作。
 
 用法 (调试):
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_worker.py --repo /home/ubuntu/INTACT-JEPA
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_worker.py --repo /home/ubuntu/zmax/external/INTACT-JEPA
 """
 from __future__ import annotations
 
@@ -364,7 +364,7 @@ def main() -> int:
     sys.stdout = sys.stderr
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default=os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA"))
+    ap.add_argument("--repo", default=os.environ.get("INTACT_REPO", "/home/ubuntu/zmax/external/INTACT-JEPA"))
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--task", default="pusht")
     ap.add_argument("--hf-repo", default="INTACT-JEPA/INTACT")

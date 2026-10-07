@@ -33,8 +33,8 @@ import sys
 import time
 import urllib.request
 
-REPO = "/home/ubuntu/lerobot-smolvla-lew"
-for _c in ("/home/ubuntu/zmax_dds", os.path.join(REPO, "dds"), os.path.join(REPO, "tools", "gui")):
+REPO = "/home/ubuntu/zmax/external/lerobot-smolvla-lew"
+for _c in ("/home/ubuntu/zmax/dds", os.path.join(REPO, "dds"), os.path.join(REPO, "tools", "gui")):
     if os.path.isdir(_c) and _c not in sys.path:
         sys.path.insert(0, _c)
 
@@ -247,7 +247,7 @@ def main():
     from zmax_node import Node
     import zmax_types as ZT
     import ss_types as ST
-    node = Node("ss-telemetry", config_xml="/home/ubuntu/zmax_dds/cyclonedds_unicast.xml")
+    node = Node("ss-telemetry", config_xml="/home/ubuntu/zmax/dds/cyclonedds_unicast.xml")
     cls_of = {"SSInfer": ST.SSInfer, "SSDiag": ST.SSDiag, "SSState": ST.SSState,
               "SSCanvasNode": ST.SSCanvasNode, "SSCalib": ST.SSCalib, "SSTest": ST.SSTest,
               "TrainProgress": ZT.TrainProgress, "HardwareState": ZT.HardwareState}

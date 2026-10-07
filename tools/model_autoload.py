@@ -41,7 +41,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG_PATH = os.path.join(ROOT, "models", "active_models.json")
 REPORT_DIR = os.path.join(ROOT, "reports")
-INTACT_CACHE = os.environ.get("ZMAX_INTACT_CACHE", "/home/ubuntu/stable-wm-cache")
+INTACT_CACHE = os.environ.get("ZMAX_INTACT_CACHE", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 STREAM = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
 
 

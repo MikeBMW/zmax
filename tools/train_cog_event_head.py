@@ -26,7 +26,7 @@ import numpy as np
 sys.path.insert(0, "/home/ubuntu/zmax/tools")
 from cog_retarget_experiment import build_event, load_episodes  # noqa: E402
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 REPORTS = "/home/ubuntu/zmax/reports"
 KEEP = 7                       # 只用 obs[0:7] (防返工: 不喂全 0 维)
 EVENTS = (("gripper_close", 5), ("gripper_close", 10), ("reach_z", 5),

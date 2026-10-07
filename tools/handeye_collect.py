@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 
 REPO = "/home/ubuntu/zmax"
-OUT = os.path.expanduser("~/zmax_data/handeye")
+OUT = os.path.expanduser("~/zmax/zmax_data/handeye")
 ORIN = "tashan@192.168.23.66"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", ORIN]
 ROS_PRE = ('source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; '
@@ -90,7 +90,7 @@ def main():
     imgdir = os.path.join(odir, "img")
     os.makedirs(imgdir, exist_ok=True)
     logp = os.path.join(odir, "poses.jsonl")
-    fp = os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
+    fp = os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
     print(f"📸 手眼采集 v7 (位姿6秒轨迹+同帧双锁) → {odir} · 目标 {a.target} · 上限 {a.seconds:.0f}s", flush=True)
 
     n = 0

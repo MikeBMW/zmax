@@ -9,7 +9,7 @@
         ③ GET /picture?kind=origin → 200 (原图 2448x2048)
         ④ GET /last_result → 200, verdict/count/defects 字段齐全 (桩检测器投 2 个缺陷 → NG)
         ⑤ GET /crop_info → 200, 含 mean/focus/imgsz_expected=1280
-用法: gui-venv311/bin/python /home/ubuntu/aoi_v4/test_surface_v4_offline.py
+用法: gui-venv311/bin/python /home/ubuntu/zmax/zmax_data/aoi_v4/test_surface_v4_offline.py
 """
 import os
 import sys

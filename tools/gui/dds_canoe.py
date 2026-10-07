@@ -33,7 +33,7 @@ C_GREEN, C_YELLOW, C_RED, C_PURPLE = "#3fb950", "#d29922", "#f85149", "#bc8cff"
 C_BAR = "#2f81f7"     # CANoe 的 Bar 是实心蓝 #0072C5, 深色主题里提亮
 C_SEL = "#243a52"     # CANoe 选中行浅蓝 #AFD7F1 的深色对应
 
-DS_DIR = os.environ.get("ZMAX_DATASPACE_DIR", "/home/ubuntu/zmax_data/dataspace")
+DS_DIR = os.environ.get("ZMAX_DATASPACE_DIR", "/home/ubuntu/zmax/zmax_data/dataspace")
 LIVE, TRACE = os.path.join(DS_DIR, "live.json"), os.path.join(DS_DIR, "trace.jsonl")
 LOOP, BUSDB = os.path.join(DS_DIR, "loop.json"), os.path.join(DS_DIR, "busdb.json")
 
@@ -639,7 +639,7 @@ class BusView(QWidget):
         from PyQt5.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getSaveFileName(
             self, "导出 Trace CSV",
-            os.path.expanduser("~/zmax_data/dataspace/trace_%s.csv" % time.strftime("%Y%m%d_%H%M%S")),
+            os.path.expanduser("~/zmax/zmax_data/dataspace/trace_%s.csv" % time.strftime("%Y%m%d_%H%M%S")),
             "CSV (*.csv)")
         if not path:
             return

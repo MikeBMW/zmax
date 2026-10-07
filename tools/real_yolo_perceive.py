@@ -60,7 +60,7 @@ def build_source(spec: str, args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="file:/home/ubuntu/zmax_data/real_cam/orin_d405")
+    ap.add_argument("--source", default="file:/home/ubuntu/zmax/zmax_data/real_cam/orin_d405")
     ap.add_argument("--frames", type=int, default=5)
     ap.add_argument("--conf", type=float, default=0.4)
     ap.add_argument("--weights", default=W_DEF)

@@ -25,8 +25,8 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, f"{ROOT}/src")
-BYPASS = os.path.expanduser("~/zmax_data/ss_bypass")
-REMOTE = os.path.expanduser("~/zmax_ss_remote")
+BYPASS = os.path.expanduser("~/zmax/zmax_data/ss_bypass")
+REMOTE = os.path.expanduser("~/zmax/zmax_data/ss_live")
 STATE = os.path.join(ROOT, "data", "scene_state.json")
 OUT_IMG = os.path.join(BYPASS, "vlm_crop_probe.png")
 

@@ -111,7 +111,7 @@ def dataset_checks(d):
     return out
 
 
-def session_checks(s, hash_file="/home/ubuntu/zmax_data/gs_assets/scan_hashes.txt"):
+def session_checks(s, hash_file="/home/ubuntu/zmax/zmax_data/gs_assets/scan_hashes.txt"):
     """采集会话(raw)体检 —— 这里能抓到"同一画面被存成多份、每份配不同位姿"这个致命坑:
     数据集里看不出(采样后重复对变少), 但 raw 层样本多、一眼可见。"""
     out = {"session": os.path.abspath(s), "checks": {}, "notes": []}

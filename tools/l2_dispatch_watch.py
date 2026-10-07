@@ -6,7 +6,7 @@ l2_dispatch_watch.py — **只读**镜像 L2 执行器的下发链(给现场调�
 为什么需要: 画布/L5 路径不经过 arm_control.arm_controller.move_pose, 真机下发是
   `l2_cmd.fifo → tools/l2_daemon.py → ros2 service call /move_pose` —— 在**另一个常驻进程**里,
   断点打不进(VSCode 调试会话 ≠ 那个进程)。这里用**追日志**的只读方式把每次下发镜像出来:
-     ~/zmax_data/l2_daemon.log  ──tail -F──►  reports/l2_dispatch.jsonl
+     ~/zmax/zmax_data/l2_daemon.log  ──tail -F──►  reports/l2_dispatch.jsonl
   顺带把「DRY-RUN(未下发)」与真发分清, 并把技能名/服务名/目标位姿摘出来。
 红线: 只读日志, 不写 FIFO、不碰 daemon 进程、不改任何判据。daemon 有 maybe_reload 热加载,
      直接改 l2_daemon.py 有现场风险 ⇒ 要镜像就用本工具。
@@ -23,7 +23,7 @@ import re
 import time
 
 REPO = os.environ.get("ZMAX_REPO") or "/home/ubuntu/zmax"
-LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
+LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 OUT = os.path.join(REPO, "reports", "l2_dispatch.jsonl")
 
 RE_TS = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]")

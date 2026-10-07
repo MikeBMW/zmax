@@ -729,7 +729,7 @@ class StageCalibrationWidget(QWidget):
             cfg["gain_schedule"][row["stage"]] = {
                 "Kp": round(row["Kp"] or 0, 2), "Kd": round(row["Kd"] or 0, 2)}
         import os as _os
-        out_dir = _os.path.expanduser("~/lerobot-smolvla-lew/configs/scenes")
+        out_dir = _os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/configs/scenes")
         _os.makedirs(out_dir, exist_ok=True)
         out_path = _os.path.join(out_dir, "scene_config.yaml")
         if _y is not None:
@@ -2085,7 +2085,7 @@ class EngineeringReqWidget(QWidget):
         md = "\n".join(L)
         # 写 markdown + 转 PDF
         import os as _os
-        out_dir = _os.path.expanduser("~/lerobot-smolvla-lew/reports")
+        out_dir = _os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/reports")
         _os.makedirs(out_dir, exist_ok=True)
         md_path = _os.path.join(out_dir, "dev_flow_report.md")
         pdf_path = _os.path.join(out_dir, "dev_flow_report.pdf")

@@ -62,7 +62,7 @@ def check() -> dict:
     # ①b 本机**实际在用**的权重位置 (2026-09-22 修: 只查 HF 缓存会把"我们在役的权重"误报成未下全 ——
     #    INTACT 权重一直在 stable-wm-cache/checkpoints, 不在 HF hub 缓存里 → 假警报)
     local = {}
-    CACHE = "/home/ubuntu/stable-wm-cache"
+    CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
     l4_dir = os.path.join(CACHE, "checkpoints", "intact_l4_current")
     cands = glob.glob(os.path.join(CACHE, "checkpoints", "intact_goal_optical_insert_v6*_s3072", "weights_*.pt"))
     local["L4_INTACT_in_service"] = {

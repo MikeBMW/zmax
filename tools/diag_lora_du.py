@@ -39,8 +39,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
-for _k, _v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-               ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+for _k, _v in (("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+               ("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
                ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
                ("OMP_NUM_THREADS", "6")):
     os.environ.setdefault(_k, _v)
@@ -66,7 +66,7 @@ def sha256_file(p: str) -> str:
 
 def policy_fingerprint(pol: str) -> dict:
     """取证: 本进程真正加载的权重文件 (路径 + sha256 + 大小) — 防「跑的不是它」。"""
-    d = os.path.join(os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
+    d = os.path.join(os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
                      "checkpoints", pol)
     out = {"policy": pol, "dir": d, "exists": os.path.isdir(d), "pt": {}}
     if not out["exists"]:

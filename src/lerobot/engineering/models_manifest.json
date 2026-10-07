@@ -11,8 +11,8 @@
         "note_short": "在役: 云端API主路",
         "artifact": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
         "source": "canvas:flows/state_space_obs.json#n_dsvl",
-        "note": "云端 API (deepseek-flash / V4.1-Flash Vision, 本机 key 已配); 输出 data/scene_state.json + ~/zmax_data/vl_safety.json",
-        "probe": { "type": "file_fresh", "path": "~/zmax_data/vl_safety.json", "max_age_s": 600 }
+        "note": "云端 API (deepseek-flash / V4.1-Flash Vision, 本机 key 已配); 输出 data/scene_state.json + ~/zmax/zmax_data/vl_safety.json",
+        "probe": { "type": "file_fresh", "path": "~/zmax/zmax_data/vl_safety.json", "max_age_s": 600 }
       }
     ],
     "L4": [
@@ -21,7 +21,7 @@
         "version": "intact_l4_current",
         "state": "in_service",
         "note_short": "在役: 稳定指针",
-        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_current",
+        "artifact": "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_l4_current",
         "source": "models/active_models.json#L4",
         "note": "官方加载器认文件夹(config.json + 恰好一个 weights.pt 软链); 4060 侧推理服务 127.0.0.1:8790 (l4_mani_predictor_v5 / l4_yaw_head_grasp_dz_v2)",
         "probe": { "type": "http_counter", "url": "http://127.0.0.1:8790/health", "field": "infer_count" }
@@ -30,7 +30,7 @@
         "name": "INTACT 世界模型 光模块插入 v6+LoRA",
         "version": "v20261001-r600",
         "state": "candidate",
-        "artifact": "/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_600/weights_epoch_1.pt",
+        "artifact": "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_600/weights_epoch_1.pt",
         "source": "reports/joint_train_20261001_180413/stages.jsonl#L4",
         "note": "600 步 LoRA (r8/α16) 续训, 基座冻结 (rc=0 / 403.4s / 18:10 落盘 / 88027492 B / md5 04253e02600abfc2016af12921437dd6); 权重级取证(动作头 16/18 非零 max|B|=9.863e-03, 世界模型 32/32 非零 2.603e-02, 语言塔 128/128 非零 7.586e-03; 200 步时为 5.72e-03/1.04e-02/4.85e-03) ⇒ 幅度随步数上涨 = 真训练; 未证明提升前不切在役指针",
         "note_short": "r600 候选·未切在役",
@@ -66,7 +66,7 @@
         "artifact": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
         "source": "models/active_models.json#L3",
         "note": "与 state_space_sim_real.py 的 SS_L3_CK 默认值同源 (引擎真跑的就是它)。inferring 为**代理信号** = 状态空间引擎动作节拍 (zmax/ss_action 主题 age_s), 非 L3 层独立推理计数 (系统中无该计数, 如实标注)",
-        "probe": { "type": "json_age", "path": "/home/ubuntu/zmax_data/dataspace/live.json", "pointer": "topics.ss_action.age_s", "max_age_s": 3 }
+        "probe": { "type": "json_age", "path": "/home/ubuntu/zmax/zmax_data/dataspace/live.json", "pointer": "topics.ss_action.age_s", "max_age_s": 3 }
       },
       {
         "name": "SmolVLA+LEW 长程规划 LoRA (7帧窗口)",
@@ -108,7 +108,7 @@
         "artifact": "models/yolo_peg_live.pt",
         "source": "models/active_models.json#L2 + canvas:flows/state_space_obs.json#ssyolo",
         "note": "软链指针 → 真机域标定权重; 旁路服务 ss-yolo-bypass 逐帧出 yolo_detections.json",
-        "probe": { "type": "file_fresh", "path": "/home/ubuntu/zmax_data/ss_bypass/yolo_detections.json", "max_age_s": 10 }
+        "probe": { "type": "file_fresh", "path": "/home/ubuntu/zmax/zmax_data/ss_bypass/yolo_detections.json", "max_age_s": 10 }
       },
       {
         "name": "YOLO 真机域适应微调 (600 步联合轮产出)",
@@ -138,7 +138,7 @@
         "artifact": "src/lerobot/policies/left_right/state_space/parallel.py",
         "source": "canvas:flows/state_space_obs.json#ssff+ssest+sspred+ssinnov",
         "note": "画布节点 ⚡前馈加速器 FeedforwardAccelerator / 🔮自适应状态估计器 AdaptiveStateEstimator / 📈先验动力学预测器 (dynamics.py) / 🧪状态校正器 (cognition.py); 无版本号 ⇒ unknown",
-        "probe": { "type": "json_counter", "path": "/home/ubuntu/zmax_data/ss_bypass/status.json", "pointer": "layer_calls.perception", "window_s": 6 }
+        "probe": { "type": "json_counter", "path": "/home/ubuntu/zmax/zmax_data/ss_bypass/status.json", "pointer": "layer_calls.perception", "window_s": 6 }
       },
       {
         "name": "外观质量检测 AOI (金手指/端面)",

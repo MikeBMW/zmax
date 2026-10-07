@@ -1,0 +1,1 @@
+/home/ubuntu/zmax/tools/host/dual_screen_setup.sh

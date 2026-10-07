@@ -27,8 +27,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("INTACT_RUNTIME", "root")
 os.environ.setdefault("INTACT_POLICY",
                       "intact_goal_optical_insert_v6r10_s3072/weights_epoch_1.pt")

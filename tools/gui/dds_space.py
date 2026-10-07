@@ -5,8 +5,8 @@
 设计口径(2026-09-29 老倪: 「全链路 topic 可视化 + 全面数据质量管理 + 数据闭环」):
   · **不做第 13 个模块卡**(老倪投诉过功能重复入口) ⇒ 作为「🌐 全局数据空间」页里的一个 Tab
   · 数据源全部是**已落盘的事实**, 本页不自己采数据(免得又一处口径):
-      /home/ubuntu/zmax_data/dataspace/live.json  ← DDS 全链路探针(频率/帧龄/配对/字段真值/质量裁决)
-      /home/ubuntu/zmax_data/dataspace/loop.json  ← 闭环九环节证据(pass/fail/unknown)
+      /home/ubuntu/zmax/zmax_data/dataspace/live.json  ← DDS 全链路探针(频率/帧龄/配对/字段真值/质量裁决)
+      /home/ubuntu/zmax/zmax_data/dataspace/loop.json  ← 闭环九环节证据(pass/fail/unknown)
       src/lerobot/dataspace/topics.py             ← 注册表(话题/类型/QoS/生产者/消费者/门)
   · 老倪要求: 内容可复制可导出(JSON/CSV)、字少不挤不截断、指标不夸大
   · prod 档是"静默正确"(不发=预期) ⇒ 页面必须显式标出当前档位与"本档不发"的原因, 别让人以为是坏了
@@ -17,8 +17,8 @@ import json
 import os
 import time
 
-LIVE = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax_data/dataspace/live.json")
-LOOP = os.environ.get("ZMAX_DATASPACE_LOOP", "/home/ubuntu/zmax_data/dataspace/loop.json")
+LIVE = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax/zmax_data/dataspace/live.json")
+LOOP = os.environ.get("ZMAX_DATASPACE_LOOP", "/home/ubuntu/zmax/zmax_data/dataspace/loop.json")
 MODE_FILE = os.path.join(os.path.expanduser("~"), ".zmax_telemetry_mode")
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 

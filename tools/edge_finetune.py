@@ -32,7 +32,7 @@
   · 小样本 (真机新数据 + 回放混合防遗忘), 分钟级
 
 用法:
-  V=/home/ubuntu/INTACT-JEPA/.venv/bin/python
+  V=/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python
   $V tools/edge_finetune.py --bench                              # 只测四层优化收益
   $V tools/edge_finetune.py --data new.h5 --replay v6.h5 --steps 200 --out out/
   $V tools/edge_finetune.py --data new.h5 --quant int8           # 量化+精度验证
@@ -50,7 +50,7 @@ import numpy as np
 sys.path.insert(0, "/home/ubuntu/zmax/tools")
 sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 BASE_CKPT = os.path.join(SWM, "checkpoints/backbone_cont/unified.pt")
 
 

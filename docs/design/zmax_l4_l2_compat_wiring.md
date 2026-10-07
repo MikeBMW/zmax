@@ -116,6 +116,6 @@ exec 加载后 跑 20 步: 实例覆盖 forward=False · forward 指向 Feedforw
 
 ## 八、附带发现 (环境)
 
-`ultralytics` 只在 **gui-venv311** (8.4.126), 不在 `~/lerobot-venv` → 任何带 vision=True 的引擎跑法
+`ultralytics` 只在 **gui-venv311** (8.4.126), 不在 `~/zmax/venvs/lerobot-venv` → 任何带 vision=True 的引擎跑法
 (含 on_infer/on_eval 里的 lerobot-venv 路径) 会 `ModuleNotFoundError: ultralytics`。GUI 本身跑
 gui-venv311 所以 L3 档一直没事; 跑 A/B 必须用 gui-venv311。

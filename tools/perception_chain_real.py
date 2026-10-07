@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(R, "tools"))
 sys.path.insert(0, os.path.join(R, "src"))
 import board_frame_module as B
 
-FR = os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
+FR = os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
 
 
 def run(with_vlm=True):
@@ -54,7 +54,7 @@ def write_out(out):
         json.dump(md, open(mp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     except Exception:                                                            # noqa: BLE001
         pass
-    lp = os.path.expanduser("~/zmax_data/perception_chain.jsonl")
+    lp = os.path.expanduser("~/zmax/zmax_data/perception_chain.jsonl")
     with open(lp, "a", encoding="utf-8") as f:
         f.write(json.dumps(out, ensure_ascii=False) + "\n")
     return p, lp

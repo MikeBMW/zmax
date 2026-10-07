@@ -20,7 +20,7 @@
   → 关键: λ_act 项对 z_pred 的梯度会经动作头回传到 JEPA 的 predictor/encoder = 真联合
 
 用法:
-  /home/ubuntu/lerobot-venv/bin/python tools/joint_train_real.py --steps 50 --device cuda
+  /home/ubuntu/zmax/venvs/lerobot-venv/bin/python tools/joint_train_real.py --steps 50 --device cuda
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ import sys
 import time
 
 ROOT = "/home/ubuntu/zmax"
-INTACT = "/home/ubuntu/INTACT-JEPA"
-CACHE = "/home/ubuntu/stable-wm-cache"
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, INTACT)                     # ← 直接 import 自研 JEPA (只依赖 torch+einops)
 os.chdir(ROOT)

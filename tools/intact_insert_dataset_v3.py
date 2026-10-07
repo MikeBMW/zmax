@@ -14,11 +14,11 @@ v3 做法 (只动数据, 不动 INTACT 任何代码/接口):
 用法 (gui-venv311, 引擎环境):
   ./gui-venv311/bin/python tools/intact_insert_dataset_v3.py \
       --seeds 0-299 --mode full --window 50 --n-per-ep 4 \
-      --out-name optical_insert_v3 --dest /home/ubuntu/stable-wm-cache/datasets
+      --out-name optical_insert_v3 --dest /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
   然后 (INTACT venv, 有 h5py) 转官方 h5:
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
       --parts 'reports/optical_insert_v3_part*.npz' --out-name optical_insert_v3 \
-      --dest /home/ubuntu/stable-wm-cache/datasets
+      --dest /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ ROOT = os.path.dirname(TOOLS)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("MUJOCO_GL", os.environ.get("MUJOCO_GL", "egl"))
-_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 if os.path.isdir(_CACHE):
     os.environ.setdefault("STABLEWM_HOME", _CACHE)
     os.environ.setdefault("LOCAL_DATASET_DIR", _CACHE)
@@ -204,7 +204,7 @@ def main():
     print(f"\n✅ 完成: seed {len(seeds)} 个 (成功 {n_ok} / 未完成 {n_fail} · 失败跳过 {n_skip}) · 短回合窗口 {n_win} 条 "
           f"· 总帧 {sum(ep_len)+0} (落盘 parts {len(parts)}) · 用时 {time.time()-t0:.0f}s", flush=True)
     print("下一步 (INTACT venv 转官方 h5):")
-    print(f"  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
+    print(f"  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
           f"--parts 'reports/{a.out_name}_part*.npz' --out-name {a.out_name} --dest {a.dest}")
 
 

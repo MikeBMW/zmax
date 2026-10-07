@@ -8,13 +8,13 @@
 - 采集期不动任何在役链路(只读 HTTP + 只读 json)
 - 结束落 session_meta.json: 手眼/内参快照 + 帧数 + 覆盖统计 + 提示
 
-用法: gs_capture.py --out ~/zmax_data/gs_scan/<会话名> [--hz 8] [--secs 0]
+用法: gs_capture.py --out ~/zmax/zmax_data/gs_scan/<会话名> [--hz 8] [--secs 0]
 """
 import argparse, hashlib, json, os, shutil, sys, time, urllib.request
 
 ARM_URL = "http://192.168.23.66:8792/frame.jpg"
-POSE_F = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
-HANDEYE_F = os.path.expanduser("~/zmax_data/handeye_state.json")
+POSE_F = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
+HANDEYE_F = os.path.expanduser("~/zmax/zmax_data/handeye_state.json")
 
 
 def _now():
@@ -66,7 +66,17 @@ def main():
 
     period = 1.0 / max(0.2, args.hz)
     t_start = time.monotonic()
+    # 🔁 续接帧号(2026-10-07 修): 原来每次都从 0 起 ⇒ 同一会话里第二轮采集会把第一轮的
+    #    frame_000001.jpg… **覆盖掉**(建图 7 轮 = 反复采进同一个会话, 老倪手动走位时尤其致命)。
     seq = 0
+    try:
+        _ex = [int(f[6:12]) for f in os.listdir(fdir)
+               if f.startswith("frame_") and f.endswith(".jpg") and f[6:12].isdigit()]
+        if _ex:
+            seq = max(_ex) + 1
+            print("[gs_capture] 续接帧号: 已有 %d 帧 ⇒ 从 %06d 开始" % (len(_ex), seq), flush=True)
+    except Exception:                                                          # noqa: BLE001
+        pass
     n_ok = 0
     n_err = 0
     n_dup = 0      # 内容与上一帧相同(不落盘)

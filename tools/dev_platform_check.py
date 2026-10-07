@@ -21,7 +21,7 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 REPORTS = os.path.join(ROOT, "reports")
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 
 
 def sh(cmd, timeout=12):
@@ -69,7 +69,7 @@ out["console"] = console
 
 # ── ② 数据 pipeline 五段 ──
 pipe = {}
-tap = sorted(glob.glob("/home/ubuntu/zmax_ss_remote/state_*.jsonl"), key=os.path.getmtime)
+tap = sorted(glob.glob("/home/ubuntu/zmax/zmax_data/ss_live/state_*.jsonl"), key=os.path.getmtime)
 if tap:
     p = tap[-1]
     pipe["collect_orin_tap"] = {"file": os.path.basename(p), "mb": round(os.path.getsize(p) / 1e6, 1),

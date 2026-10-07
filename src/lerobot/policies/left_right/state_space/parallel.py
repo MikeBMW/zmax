@@ -137,7 +137,7 @@ class FeedforwardAccelerator:
             # 不静默: 打印明确警告 (真实执行可追溯), forward 走 analytic_forward
             print(f"⚠️ FeedforwardAccelerator: MLP 权重加载失败 ({self.npz_path}): {str(e)[:80]}"
                   f"\n   → 解析回退 analytic_forward (Kp={1.2}); 重新导出: "
-                  f"~/lerobot-venv/bin/python tools/export_ss_left_brain.py")
+                  f"~/zmax/venvs/lerobot-venv/bin/python tools/export_ss_left_brain.py")
             self._ff = None
 
     def forward(self, obs):

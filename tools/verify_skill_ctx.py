@@ -21,7 +21,7 @@ def chk(n, c, d=""):
 
 
 NEW = "/tmp/l5_skill_probe.h5"
-OLD = "/home/ubuntu/stable-wm-cache/datasets/l5_gen_v6.h5"
+OLD = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_gen_v6.h5"
 NAMES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 
 

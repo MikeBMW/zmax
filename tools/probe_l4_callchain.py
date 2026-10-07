@@ -37,9 +37,9 @@ os.environ["MUJOCO_GL"] = "egl"
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.update({"SS_MUSCLE": "0", "SS_MOTOR_HUB": "0", "SS_INTENT": "0",
                    "SS_TDEC": "0", "SS_OBSERVE": "0", "SS_SHADOW": "0"})
-os.environ.update({"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache",
-                   "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache",
-                   "INTACT_REPO": "/home/ubuntu/INTACT-JEPA",
+os.environ.update({"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+                   "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+                   "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA",
                    "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu",
                    "INTACT_RUNTIME": "root"})
 

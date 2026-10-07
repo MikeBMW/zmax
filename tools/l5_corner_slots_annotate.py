@@ -17,7 +17,7 @@
 用法:
   python3 tools/l5_corner_slots_annotate.py                 # 自动取帧
   python3 tools/l5_corner_slots_annotate.py --img /path.jpg
-输出目录: ~/zmax_data/l5_corners/<ts>/{arm_raw.jpg, vlm_slots.json, arm_vlm_ann.jpg, log.txt}
+输出目录: ~/zmax/zmax_data/l5_corners/<ts>/{arm_raw.jpg, vlm_slots.json, arm_vlm_ann.jpg, log.txt}
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ import numpy as np                                                      # noqa: 
 
 ORIN = os.environ.get("ZMAX_ARM_URL", "http://192.168.23.66:8792/frame.jpg")
 LOCAL = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
-OUTROOT = Path(os.path.expanduser("~/zmax_data/l5_corners"))
+OUTROOT = Path(os.path.expanduser("~/zmax/zmax_data/l5_corners"))
 
 PROMPT = """你是 Z-MAX 具身智能平台的 L5 视觉理解层。这是**臂上相机(Intel RealSense D405)对真实工位的实拍帧**, 尺寸 {W}x{H} 像素。
 

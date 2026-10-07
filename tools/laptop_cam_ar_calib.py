@@ -36,8 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_overlay as SO                                                        # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCENE = "/home/ubuntu/zmax_ss_remote/zmax_scene"
-TCP_JSON = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+SCENE = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene"
+TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 OUT = os.path.join(REPO, "data", "scene", "laptop_cam_calib.json")
 BASE = "http://127.0.0.1:8791"
 IMG_W, IMG_H = 640, 480

@@ -5,9 +5,9 @@
 老倪 2026-09-25: "ecs 4060 mac 消息中间件用DDS技术实现"
 
 用法（用 dds-venv, 因为 cyclonedds 装在那里）:
-  /home/ubuntu/dds-venv/bin/python tools/dds_node_4060.py                 # 持续发布(默认 5s 间隔)
-  /home/ubuntu/dds-venv/bin/python tools/dds_node_4060.py --once          # 只发一次
-  /home/ubuntu/dds-venv/bin/python tools/dds_node_4060.py --cfg dds/cyclonedds_unicast.xml
+  /home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_node_4060.py                 # 持续发布(默认 5s 间隔)
+  /home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_node_4060.py --once          # 只发一次
+  /home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_node_4060.py --cfg dds/cyclonedds_unicast.xml
 
 发布:
   zmax/hw_state    ← 复用 tools/hardware_view.py (nvidia-smi/proc/disk/实测吞吐) 的真实值

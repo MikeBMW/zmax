@@ -4,12 +4,12 @@
 #   指标: done · steps · 末端插入 mm · 全程最小 peg头↔目标 mm  (全部取自引擎真跑)
 # 判据 (老倪): 新训权重**有提升**才允许切默认指针 intact_l4_current; 持平/回退一律不切
 cd /home/ubuntu/zmax || exit 9
-SWM=/home/ubuntu/stable-wm-cache
+SWM=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 OUT=reports/ab_l4_policy_ms_$(date +%Y%m%d_%H%M%S); mkdir -p "$OUT"
 for pol in intact_l4_current intact_l4_v6lora_200; do
   echo "===== INTACT_POLICY=$pol =====" | tee -a "$OUT/ab.log"
   INTACT_POLICY=$pol INTACT_DEVICE=cpu INTACT_RUNTIME=root INTACT_KEEP_INPUT=1 \
-  STABLEWM_HOME=$SWM LOCAL_DATASET_DIR=$SWM INTACT_REPO=/home/ubuntu/INTACT-JEPA MUJOCO_GL=egl \
+  STABLEWM_HOME=$SWM LOCAL_DATASET_DIR=$SWM INTACT_REPO=/home/ubuntu/zmax/external/INTACT-JEPA MUJOCO_GL=egl \
   ./gui-venv311/bin/python tools/ab_intent_line_closedloop.py --seeds 0,1,2 --steps 450 \
     > "$OUT/$pol.log" 2>&1
   echo "rc=$?" | tee -a "$OUT/ab.log"

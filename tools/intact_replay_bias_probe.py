@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--h5", default="/home/ubuntu/stable-wm-cache/datasets/optical_insert_v5_disturb.h5")
+    ap.add_argument("--h5", default="/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/optical_insert_v5_disturb.h5")
     ap.add_argument("--stats", default=os.path.join(ROOT, "reports", "optical_insert_v5_action_stats.json"))
     ap.add_argument("--n", type=int, default=120)
     ap.add_argument("--stride", type=int, default=120)

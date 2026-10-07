@@ -63,7 +63,7 @@ class InferenceEngine:
     SmolVLA 推理引擎
     
     注意: 此为占位实现。xspace需要集成实际的 lerobot 推理代码。
-    参考: ~/lerobot-smolvla-lew/hermes_gateway_mac/infer_realtime.py
+    参考: ~/zmax/external/lerobot-smolvla-lew/hermes_gateway_mac/infer_realtime.py
     """
     
     def __init__(self, policy_path: str = "lerobot/smolvla_base", device: str = "cuda"):

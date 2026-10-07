@@ -24,7 +24,7 @@
 | 内存 | 8GB 统一内存 |
 | GPU | Apple M1 GPU (Metal/MPS) |
 | 系统 | macOS 26.x (ARM64) |
-| Python | 3.12.13 (venv: ~/lerobot-smolvla-lew/.venv) |
+| Python | 3.12.13 (venv: ~/zmax/external/lerobot-smolvla-lew/.venv) |
 | 角色 | Gateway + SmolVLA/ACT推理 + Z-MAX GUI |
 
 ### 🤖 Orin — 机器人控制 (nvidia-desktop)
@@ -105,13 +105,13 @@ ssh nvidia@192.168.23.10 "source /opt/ros/humble/setup.bash && source $WS/instal
 
 ### 4. Mac 启动 Gateway
 ```bash
-cd ~/lerobot-smolvla-lew/hermes_gateway_mac
+cd ~/zmax/external/lerobot-smolvla-lew/hermes_gateway_mac
 ~/.venv/bin/python3 gateway_pure.py --orin-host 192.168.23.10 --port 8080 &
 ```
 
 ### 5. 离线时用仿真器
 ```bash
-cd ~/lerobot-smolvla-lew/hermes_gateway_mac
+cd ~/zmax/external/lerobot-smolvla-lew/hermes_gateway_mac
 ~/.venv/bin/python3 orin_simulator.py --port 8080
 # 73话题 + 24节点 + 6轴真实快照
 ```
@@ -131,7 +131,7 @@ cd ~/lerobot-smolvla-lew/hermes_gateway_mac
 
 ### 相机+关节 → SmolVLA (Mac MPS)
 ```bash
-cd ~/lerobot-smolvla-lew
+cd ~/zmax/external/lerobot-smolvla-lew
 ~/.venv/bin/python3 infer_camera.py
 # 输出: ~/vla_output.png (相机画面+关节+预测动作)
 ```
@@ -193,7 +193,7 @@ Mac公钥已写入Orin `/etc/ssh/global_authorized_keys`，设置**immutable(+i)
 
 ## Git 恢复命令
 ```bash
-cd ~/lerobot-smolvla-lew
+cd ~/zmax/external/lerobot-smolvla-lew
 git log --oneline -5          # 查看最近 commits
 git status                     # 确认分支状态
 # 推送需先配置 GitHub SSH: https://github.com/settings/keys

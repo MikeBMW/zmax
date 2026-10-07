@@ -33,7 +33,7 @@ sys.path.insert(0, _HERE)
 
 import real_autolabel as RAL                                                   # noqa: E402
 
-WORK = os.environ.get("ZMAX_PROBE_REHEARSAL", "/home/ubuntu/zmax_data/probe_rehearsal")
+WORK = os.environ.get("ZMAX_PROBE_REHEARSAL", "/home/ubuntu/zmax/zmax_data/probe_rehearsal")
 W, H = 640, 480
 FX, FY, CX, CY = 610.0, 607.0, 318.0, 242.0
 SIZE_MM = (40.0, 16.0, 12.0)

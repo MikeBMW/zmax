@@ -32,8 +32,8 @@ except Exception as e:                                                  # noqa: 
     print("需要 cv2:", e)
     sys.exit(2)
 
-DEPTH_NPY = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy")
-DEPTH_META = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/depth_meta.json")
+DEPTH_NPY = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy")
+DEPTH_META = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_meta.json")
 KEY_HINT = ("光模块", "peg", "module")
 MIN_D, MAX_D = 0.10, 1.20          # 工作距离(米), 之外的深度一律当无效
 

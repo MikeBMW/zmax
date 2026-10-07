@@ -52,6 +52,6 @@ cv2.imwrite(topview_file_param, top_img)
 curl -X POST http://127.0.0.1:10082/capture_detect && sleep 1
 curl -s "http://127.0.0.1:10082/picture?kind=topview&meta=1"     # 看 size/文件名 (应含 W1600_H500)
 # 4060
-cd ~/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/aoi_exposure_fix.py <origin.png> 2
+cd ~/zmax/external/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/aoi_exposure_fix.py <origin.png> 2
 #   期望打印: 短边高 XXX→2XXX (×2.0) · 长边不动
 ```

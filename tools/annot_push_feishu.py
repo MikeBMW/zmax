@@ -11,7 +11,7 @@
   python3 tools/annot_push_feishu.py --force        # 不管是否推过, 强推一次
   python3 tools/annot_push_feishu.py --text-only    # 只推文字(不发图)
 
-设计: 去重靠 ~/zmax_data/auto_annotate/.pushed 记最后推送的批次名 ⇒ 定时跑也不会重复刷屏。
+设计: 去重靠 ~/zmax/zmax_data/auto_annotate/.pushed 记最后推送的批次名 ⇒ 定时跑也不会重复刷屏。
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import cv2                                                             # noqa: E
 import numpy as np                                                     # noqa: E402
 import aoi_feishu_push as P                                            # noqa: E402
 
-ROOT = os.path.expanduser("~/zmax_data/auto_annotate")
+ROOT = os.path.expanduser("~/zmax/zmax_data/auto_annotate")
 MARK = os.path.join(ROOT, ".pushed")
 SHEET = "/tmp/annot_sheet_latest.jpg"
 CAMS = [("arm", "🤖臂上"), ("local", "💻笔记本"), ("local2", "📺MAXHUB"),
@@ -67,7 +67,7 @@ def caption(s: dict) -> str:
     for c in s.get("cams") or []:
         L.append("· %-12s %s (%s 个)" % (c["cam"], c.get("scene") or c.get("err") or "-", c.get("n_obj") or 0))
     L.append("")
-    L.append("数据: ~/zmax_data/auto_annotate/ (每路 json 标注 + _ann.jpg 标注图; annotations.jsonl 追加式数据集)")
+    L.append("数据: ~/zmax/zmax_data/auto_annotate/ (每路 json 标注 + _ann.jpg 标注图; annotations.jsonl 追加式数据集)")
     L.append("口径: L5 视觉语言层按左上原点像素给框, 已映回原图; 只看清才框, 看不清不猜。")
     return "\n".join(L)
 

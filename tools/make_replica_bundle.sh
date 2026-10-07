@@ -3,7 +3,7 @@
 # 产出: ~/zmax_replica_T1.tar.zst (或 .tar.gz 回退) + 内含 manifest/SOP/校验脚本
 set -euo pipefail
 REPO=/home/ubuntu/zmax
-SWM=/home/ubuntu/stable-wm-cache
+SWM=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 STAGE=/tmp/zmax_replica
 OUT=$HOME/zmax_replica_T1
 
@@ -49,7 +49,7 @@ echo "   校验: sha256sum 已存 ${OUT}.sha256"
 echo "═══ ④ 冒烟: 用打包内容自校验 ═══"
 # ★ 自动挑一个**有 numpy 的 python** (系统 python3 常缺 → 会误报冒烟失败)
 PYBIN=""
-for c in "$REPO/gui-venv311/bin/python" "$REPO/.venv/bin/python" /home/ubuntu/INTACT-JEPA/.venv/bin/python python3; do
+for c in "$REPO/gui-venv311/bin/python" "$REPO/.venv/bin/python" /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python python3; do
   if [ -x "$(command -v $c 2>/dev/null || echo $c)" ] && "$c" -c 'import numpy' 2>/dev/null; then
     PYBIN="$c"; break
   fi

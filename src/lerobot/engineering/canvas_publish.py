@@ -33,7 +33,7 @@ ECSE = "https://datadrive.world"
 ECS_PUSH = "/ss3d_push.php"
 ECS_TOKEN = "zmax-7ce74c7f"
 ECS_PHONE_URL = "https://datadrive.world/canvas_latest.pdf"
-SECRETS = Path("/home/ubuntu/zmax_data/secrets/zmax.env")
+SECRETS = Path("/home/ubuntu/zmax/zmax_data/secrets/zmax.env")
 
 
 # ───────────────────────── 真源 / 版本 ─────────────────────────

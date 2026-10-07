@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 
-OUT = "/home/ubuntu/stable-wm-cache/reports/gpu_load_samples.jsonl"
+OUT = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/gpu_load_samples.jsonl"
 THRESHOLD = 50.0          # ★ 下限：50%
 CONSEC = 3                # 连续 N 次低于阈值 → 记违规
 

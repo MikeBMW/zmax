@@ -7,13 +7,13 @@
 
 | 层 | 产物 | 路径 | 关键数字 |
 |---|---|---|---|
-| L5 生数据 | `l5_gen_v4.h5` (11.9 GB) | `/home/ubuntu/stable-wm-cache/datasets/l5_gen_v4.h5` | **78,992 帧 / 200 变体 / 2601s**（对位偏差 dy±20mm·dz±10mm · 阶段组合 · 夹紧力 30/40/50 · 速度 0.8/1.0/1.2） |
-| L4 意图 | `intact_goal_optical_insert_v6lora_200/` | `/home/ubuntu/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/` | 训练 243s；`weights_epoch_1.pt`=547 键(LoRA 包装) · **`weights_merged_clean.pt`=323 键(已 merge, 可部署)** |
-| L4 指针 | `intact_l4_v6lora_200/` | `/home/ubuntu/stable-wm-cache/checkpoints/intact_l4_v6lora_200/` | config.json + 唯一 `weights.pt`→merged_clean；worker 自证 **trained=True · action_dim=8** |
+| L5 生数据 | `l5_gen_v4.h5` (11.9 GB) | `/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_gen_v4.h5` | **78,992 帧 / 200 变体 / 2601s**（对位偏差 dy±20mm·dz±10mm · 阶段组合 · 夹紧力 30/40/50 · 速度 0.8/1.0/1.2） |
+| L4 意图 | `intact_goal_optical_insert_v6lora_200/` | `/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/` | 训练 243s；`weights_epoch_1.pt`=547 键(LoRA 包装) · **`weights_merged_clean.pt`=323 键(已 merge, 可部署)** |
+| L4 指针 | `intact_l4_v6lora_200/` | `/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_l4_v6lora_200/` | config.json + 唯一 `weights.pt`→merged_clean；worker 自证 **trained=True · action_dim=8** |
 | L3 流程 | `smolvla_lew_lora_200r4/checkpoints/000200` | `/home/ubuntu/zmax/outputs/train/smolvla_lew_lora_200r4/` | 200 步/3670s · **loss 0.192 · action_loss 0.2368 · lew_loss 0.0007 · 显存 3.75GB**（LoRA, batch2） |
 | L2 动作 | `annot_lora_20260923_222406/weights/best.pt` | `/home/ubuntu/zmax/runs/detect/outputs/yolo_annot/annot_lora_20260923_222406/` | 域适应 111s；**新权重 vs 在役 同为 peg 0/16 → 持平/回退 → 未上默认档**（软链未动） |
-| MoE 主干 | `stage_moe_s1/moe.pt` (351 MB) | `/home/ubuntu/stable-wm-cache/checkpoints/stage_moe_s1/` | **2500 步 / 1249s**；留出 best 观测 0.0106@1500（基线 0.0366）· 动作 0.0497（基线 0.0955） |
-| 表面 AOI v4 | `surface_10083_work_v4.py` | `/home/ubuntu/aoi_v4/`（副本 `/home/ubuntu/zmax_data/aoi_v4_20260920/10083_v4/`） | 离线 HTTP 契约 5/5 通过（见下） |
+| MoE 主干 | `stage_moe_s1/moe.pt` (351 MB) | `/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/stage_moe_s1/` | **2500 步 / 1249s**；留出 best 观测 0.0106@1500（基线 0.0366）· 动作 0.0497（基线 0.0955） |
+| 表面 AOI v4 | `surface_10083_work_v4.py` | `/home/ubuntu/zmax/zmax_data/aoi_v4/`（副本 `/home/ubuntu/zmax/zmax_data/aoi_v4_20260920/10083_v4/`） | 离线 HTTP 契约 5/5 通过（见下） |
 | 闭环验收 | `reports/fullpipe_20260923_214043/` + `flows/pipeline_closure.json` | 同左 | **done=True · 347 步 · 最小插入距 0.4mm · L4 真推理 33 次 · 融合 80 帧 · L2 否决 151 · 6/6 节点绿** |
 
 ## 2. L4 LoRA A/B 结论（口径: 3 seed × 4 臂，两边均真加载）

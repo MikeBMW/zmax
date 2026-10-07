@@ -159,7 +159,7 @@ def telemetry_bus():
         try:
             import sys
             _d = os.path.dirname(os.path.abspath(__file__))
-            for c in ("/home/ubuntu/zmax_dds", _d):
+            for c in ("/home/ubuntu/zmax/dds", _d):
                 if os.path.isdir(c) and c not in sys.path:
                     sys.path.insert(0, c)
             from dds_link_bus import get_bus

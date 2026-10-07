@@ -45,7 +45,7 @@ def collect() -> dict:
     st = _get("http://127.0.0.1:8791/stats") or {}           # 相机链路
     inf = _get("http://127.0.0.1:8790/health") or {}          # L4 本地推理
     pose = None
-    for p in ("/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json",  # 珞石 TCP 真值采样
+    for p in ("/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json",  # 珞石 TCP 真值采样
               "/home/ubuntu/zmax/rokae_sdk/tcp_out/latest.json"):
         try:
             with open(p, encoding="utf-8") as f:

@@ -24,7 +24,7 @@ import shutil
 import time
 
 REPO = "/home/ubuntu/zmax"
-SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
 DEFAULT_FRESH = os.path.join(SHARED, "cam_rs.png")
 
 
@@ -160,7 +160,7 @@ def main() -> int:
     os.chdir(REPO)
     # 2026-09-30: 默认落**永久**目录(原来 /tmp ⇒ 评测集事后不可复现, 无法复查那次 0/16)
     fdir = a.frames_dir or os.path.join(
-        os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax_data"), "eval_frames",
+        os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "eval_frames",
         "live_" + time.strftime("%m%d_%H%M%S"))
     frames = sorted(glob.glob(os.path.join(fdir, "live_*.png")))
     if not frames:

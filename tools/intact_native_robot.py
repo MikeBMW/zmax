@@ -30,7 +30,7 @@ import os
 import subprocess
 import sys
 
-REPO = "/home/ubuntu/INTACT-JEPA"
+REPO = "/home/ubuntu/zmax/external/INTACT-JEPA"
 RT = os.path.join(REPO, "paper_runtime")
 STATE_FILE = "/home/ubuntu/zmax/data/intact_robot_state.json"
 
@@ -57,7 +57,7 @@ def _state_dir():
 
 def list_robots() -> int:
     """列机器人 + 本地可用性 (数据集/权重/视频证据), 供切换 UI 显示。"""
-    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     out = []
     for name, m in ROBOTS.items():
         ds = os.path.join(cache, "datasets", m["dataset"])
@@ -96,8 +96,8 @@ def run_robot(robot: str, episodes: int, video_dir: str, extra: list[str]) -> in
     m = ROBOTS[robot]
     env = dict(os.environ)
     env.update({"INTACT_SKIP_PREFLIGHT": "1",
-                "STABLEWM_HOME": env.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-                "LOCAL_DATASET_DIR": env.get("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+                "STABLEWM_HOME": env.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+                "LOCAL_DATASET_DIR": env.get("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
                 "HF_ENDPOINT": "https://hf-mirror.com", "MUJOCO_GL": "egl",
                 "PYOPENGL_PLATFORM": "egl", "PYTHONPATH": RT,
                 "HDF5_PLUGIN_PATH": "/home/ubuntu/.h5plugins"})
@@ -146,7 +146,7 @@ def main() -> int:
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--robot", default="")
     ap.add_argument("--episodes", type=int, default=2)
-    ap.add_argument("--video-dir", default="/home/ubuntu/lerobot-smolvla-lew/reports/intact_native")
+    ap.add_argument("--video-dir", default="/home/ubuntu/zmax/external/lerobot-smolvla-lew/reports/intact_native")
     ap.add_argument("--set-current", default="", help="写 state 文件 (切换节点用)")
     a, extra = ap.parse_known_args()
     if a.set_current:

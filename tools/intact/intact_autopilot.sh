@@ -9,12 +9,12 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
-ROOT=/home/ubuntu/INTACT-JEPA
+ROOT=/home/ubuntu/zmax/external/INTACT-JEPA
 PR="$ROOT/paper_runtime"
-CACHE="${STABLEWM_HOME:-/home/ubuntu/stable-wm-cache}"
+CACHE="${STABLEWM_HOME:-/home/ubuntu/zmax/zmax_data/stable-wm-cache}"
 DS="$CACHE/datasets"
-OUT=/home/ubuntu/l4_ab/intact_results
-ASSET=/home/ubuntu/l4_ab/hf_asset.py
+OUT=/home/ubuntu/zmax/zmax_data/l4_ab/intact_results
+ASSET=/home/ubuntu/zmax/zmax_data/l4_ab/hf_asset.py
 LOG="$OUT/autopilot.log"
 TASKS="pusht tworoom reacher cube"
 SEEDS="0 1 42"
@@ -174,5 +174,5 @@ for T in $TASKS; do
 done
 
 say "═══ 汇总 ═══"
-python3 /home/ubuntu/l4_ab/intact_summary.py "$CACHE" "$OUT" 2>&1 | tee -a "$LOG"
+python3 /home/ubuntu/zmax/zmax_data/l4_ab/intact_summary.py "$CACHE" "$OUT" 2>&1 | tee -a "$LOG"
 say "═══ 流水线结束 ═══"

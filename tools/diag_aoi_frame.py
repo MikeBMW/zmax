@@ -9,10 +9,10 @@ import cv2
 import numpy as np
 
 CANDS = [
-    os.path.expanduser("~/zmax_data/aoi_last_frame.png"),
-    os.path.expanduser("~/zmax_data/aoi_v4_20260920/aoi_last_frame.png"),
-] + sorted(glob.glob(os.path.expanduser("~/zmax_data/aoi_live/*"))) + \
-    sorted(glob.glob(os.path.expanduser("~/lerobot-smolvla-lew/data/orin_live/*")))
+    os.path.expanduser("~/zmax/zmax_data/aoi_last_frame.png"),
+    os.path.expanduser("~/zmax/zmax_data/aoi_v4_20260920/aoi_last_frame.png"),
+] + sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/aoi_live/*"))) + \
+    sorted(glob.glob(os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/data/orin_live/*")))
 
 
 def stats(img):

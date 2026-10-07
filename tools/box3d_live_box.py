@@ -6,7 +6,7 @@
                  光模块 2D 检测, 推算出 3D 边界框。」
 
 链路 (每一环都是真数据, 没有仿真白送的几何):
-  Orin 只读落盘  ~/zmax_ss_remote/cam_rs.png   ← D405 彩色 640x480 (与 L2 旁路同源)
+  Orin 只读落盘  ~/zmax/zmax_data/ss_live/cam_rs.png   ← D405 彩色 640x480 (与 L2 旁路同源)
   Orin 只读落盘  state_YYYYMMDD.jsonl          ← 同一行的 tcp/tcp_quat (编码器 50Hz, base_link)
                   ↑ 用**同一行**取 (tcp, quat, image) → 天然同刻配对, 不是"读最新两文件"那种错配
   YOLO 在役权重  models/yolo_peg_live.pt       ← 真机域微调 (单类 peg = 光模块)
@@ -21,7 +21,7 @@
 用法:
   gui-venv311/bin/python tools/box3d_live_box.py                       # 单帧出一次 3D 框 (现场看一眼)
   ... --loop --interval 0.5 --collect                                  # 常驻: 攒数据 + 自监督标定 + 出框
-  ... --json ~/zmax_data/box3d_live_box.json --log                     # 落盘 + 逐帧打印
+  ... --json ~/zmax/zmax_data/box3d_live_box.json --log                     # 落盘 + 逐帧打印
   ... --min-conf 0.35 --imgsz 640
 """
 from __future__ import annotations
@@ -40,8 +40,8 @@ _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_REPO, "src", "lerobot", "policies", "yolo_3d"))
 from box3d_solver import Box3DSolver, iou_2d                                  # noqa: E402
 
-REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
-OUTDIR = os.path.expanduser(os.environ.get("ZMAX_BOX3D_DIR", "~/zmax_data"))
+REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss_live"))
+OUTDIR = os.path.expanduser(os.environ.get("ZMAX_BOX3D_DIR", "~/zmax/zmax_data"))
 STATE = os.path.join(_REPO, "models", "box3d_state.json")
 OBS_LOG = os.path.join(OUTDIR, "box3d_live_obs.jsonl")
 LIVE_JSON = os.path.join(OUTDIR, "box3d_live_box.json")

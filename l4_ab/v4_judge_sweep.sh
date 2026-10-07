@@ -3,7 +3,7 @@
 # 输出 reports/intact_v4_<fam>_epoch<ep>_skill_<mode>.json ; 日志 reports/v4_judge_sweep.log
 set -uo pipefail
 cd /home/ubuntu/zmax
-export INTACT_RUNTIME=root STABLEWM_HOME=/home/ubuntu/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache
+export INTACT_RUNTIME=root STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 NUMEXPR_NUM_THREADS=8
 PY=./gui-venv311/bin/python
 LOG=reports/v4_judge_sweep.log

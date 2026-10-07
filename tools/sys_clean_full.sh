@@ -26,7 +26,7 @@ BRE=$(df -m / | awk 'NR==2{print $3}'); FRB=$(df -m / | awk 'NR==2{print $4}')
 say "磁盘: used ${BRE}MB / free ${FRB}MB ($(df -h / | awk 'NR==2{print $5}'))"
 
 say "═══ ② 保护清单 (清理前) ═══"
-PROTECT="/home/ubuntu/zmax_ss_remote /home/ubuntu/stable-wm-cache /home/ubuntu/zmax /home/ubuntu/zmax_data /home/ubuntu/zmax/dds /home/ubuntu/zmax/models /home/ubuntu/zmax/flows"
+PROTECT="/home/ubuntu/zmax/zmax_data/ss_live /home/ubuntu/zmax/zmax_data/stable-wm-cache /home/ubuntu/zmax /home/ubuntu/zmax/zmax_data /home/ubuntu/zmax/dds /home/ubuntu/zmax/models /home/ubuntu/zmax/flows"
 for p in $PROTECT; do printf "  %-48s %s\n" "$p" "$([ -e "$p" ] && echo 在 || echo 缺)" | tee -a "$LOG"; done
 
 say "═══ ③ 清理 (每项前→后) ═══"

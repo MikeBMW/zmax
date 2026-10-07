@@ -16,8 +16,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scene_overlay as SO  # noqa: E402
 
-SCENE = "/home/ubuntu/zmax_ss_remote/zmax_scene"
-TCP_JSON = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+SCENE = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene"
+TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 
 
 def snap(name):

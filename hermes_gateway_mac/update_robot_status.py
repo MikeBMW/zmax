@@ -61,7 +61,7 @@ def collect_status():
         ] if not online else []
     }
 
-    path = os.path.expanduser("~/lerobot-smolvla-lew/docs/web/robot-status.json")
+    path = os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/docs/web/robot-status.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
         json.dump(status, f, indent=2, ensure_ascii=False)

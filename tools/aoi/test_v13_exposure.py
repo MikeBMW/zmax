@@ -18,7 +18,7 @@
   ⑧ 改参数会让内存帧失效(否则"新参数配旧帧", 看着改了其实没改)
   ⑨ 模型输入口径未变: CANONICAL_W 仍 1280(改"人看的/参数"绝不动"模型吃的")
   ⑩ GetFloatValue 不存在是本机事实 ⇒ 真值只能靠图像实测(测试里明写这句话, 别以后又去找)
-用法: cd ~/aoi_v4 && /home/ubuntu/zmax/gui-venv311/bin/python test_v13_exposure.py
+用法: cd ~/zmax/zmax_data/aoi_v4 && /home/ubuntu/zmax/gui-venv311/bin/python test_v13_exposure.py
 """
 import json
 import os

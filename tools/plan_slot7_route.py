@@ -17,7 +17,7 @@ plan_slot7_route.py — 观察位 → 7号位 的**优化航路**(只规划 · �
   · 叠加发布沿用 `scene_overlay.merge_origin(spec, "arm", "plan", [一个 kind=path3d 元素])`
     ⇒ 画的是一整条路线(管道), 只重写 plan 这一层, 不冲掉 sim/det/vlm/meas/trace。
 
-⚠️ 本工具**只写规划与叠加层**: 从不写 ~/zmax_data/l2_cmd.fifo, 不调任何运动服务。
+⚠️ 本工具**只写规划与叠加层**: 从不写 ~/zmax/zmax_data/l2_cmd.fifo, 不调任何运动服务。
 
 用法:
   # 只算不发布(默认): 打印逐段守卫结论 + 总长/绕行比
@@ -162,7 +162,7 @@ def live_tcp_sample():
     返回 (tcp7, 采样信息)。采样信息含: 来源 / 样本号 / 时刻 —— 供计划 JSON 追溯。
     """
     tcp, js, src = LPS.now_tcp()                       # 同源只读: 50Hz recorder 的 head(或 docker cp 一份)
-    sdk = "/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json"
+    sdk = "/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json"
     sdk_ts, sdk_t = None, None
     try:
         d = json.load(open(sdk, encoding="utf-8"))
@@ -281,7 +281,7 @@ def wait_observe_capture(pts, start, seconds, tol_mm=25.0, poll=5.0):
     判据: 直接读珞石 SDK 5Hz 真值文件(只读) → 距观察位 ≤tol_mm 就抓帧统计。
     """
     import cv2
-    sdk = "/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json"
+    sdk = "/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json"
     t0, best, n = time.time(), 9e9, 0
     p = None
     while time.time() - t0 < seconds:
@@ -555,7 +555,7 @@ def main():
         "kind": "plan_slot7_route(观察位→7号位: 抬离→高度横移→分步下落)",
         "created": t_created, "tool": "tools/plan_slot7_route.py",
         "motion_sent": False,
-        "no_motion_note": "本工具只写规划与叠加层: 未写 ~/zmax_data/l2_cmd.fifo, 未调任何运动服务",
+        "no_motion_note": "本工具只写规划与叠加层: 未写 ~/zmax/zmax_data/l2_cmd.fifo, 未调任何运动服务",
         "guard_source": "tools/live_plan_segment.py 的 segment() (同一函数, 单步 ≤%.0fmm · 向下 ≤%.0fmm 每段)"
                         % (a.max_step_mm, a.max_down_mm),
         "guard_registry_facts": {

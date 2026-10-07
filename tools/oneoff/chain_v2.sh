@@ -9,8 +9,8 @@ echo "=== 采集结束 $(date '+%F %T') ==="
 
 cd /home/ubuntu/zmax || exit 1
 export HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins
-export STABLEWM_HOME=/home/ubuntu/stable-wm-cache
-export LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache
+export STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache
+export LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 export HF_ENDPOINT=https://hf-mirror.com
 
 N=$(ls reports/zmax_insert_v2_part*.npz 2>/dev/null | wc -l)
@@ -20,17 +20,17 @@ if [ "$N" -lt 3 ]; then
   exit 2
 fi
 
-/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
+/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
   --parts 'reports/zmax_insert_v2_part*.npz' --out-name zmax_insert_v2 --validate || exit 3
 echo "=== h5 合并完成 → 开始重训 $(date '+%F %T') ==="
 
-cd /home/ubuntu/INTACT-JEPA || exit 1
+cd /home/ubuntu/zmax/external/INTACT-JEPA || exit 1
 # ⏱ 时间预算 (实测口径: 旧微调 1017 步/epoch · 0.77 s/步 @ batch16/4workers, 数据 18,635 帧)
 #   v2 = 151,364 帧 (8.1×) → batch 24 时 ≈6,300 步/epoch; 32 核 → workers 12 提吞吐。
 #   原计划 30 epoch 按实测速度要 ≈50 小时 (不可接受) → 砍到 6 epoch (≈3.5-4.5h),
 #   且**每个 epoch 的 ckpt 都会落盘** → 我可以在训练跑着的同时用离线回放闸逐个评, 过闸就提前用。
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-STABLEWM_HOME=/home/ubuntu/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache \
+STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache \
 .venv/bin/python train.py --config-name intact_goal_zmax \
   output_model_name=intact_goal_zmax_v2_s3072 \
   data.dataset.name=zmax_insert_v2.h5 \

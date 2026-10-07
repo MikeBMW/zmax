@@ -7,7 +7,7 @@
 """
 import json, math, os, sys, time
 
-P = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+P = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 DUR = float(sys.argv[1]) if len(sys.argv) > 1 else 120.0
 STEP = 0.28
 QUIET_S = 4.0          # 连续静止这么久 ⇒ 认为一段结束

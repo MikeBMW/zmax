@@ -11,7 +11,7 @@
    工具负载/报警/安全类接口, 为下一步定修法提供证据。**零运动**, 只 connect/读/disconnect。
 
 跑法:
-  sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
+  sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
       python3 /sdk/probe_torque_alarm.py
 """
 import json

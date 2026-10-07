@@ -38,11 +38,11 @@
 ## 点位/技能现状
 - `金手指点1` = pos [0.5973108, 0.1426172, 0.641565]，17:53:12 记录（旧值留痕 `reports/aoi_points/金手指点1.history.jsonl`，可回滚）
 - 技能 `L2.goto_gold_pt1`「🎯 回到金手指点1」在册（L2 技能库 30 条），已被「📚 工程记忆」节点收录
-- 回位：窗口「🎯 回到此点」（默认 dry-run）或 `echo '{"skill":"L2.goto_point","point":"金手指点1"}' > ~/zmax_data/l2_cmd.fifo`
+- 回位：窗口「🎯 回到此点」（默认 dry-run）或 `echo '{"skill":"L2.goto_point","point":"金手指点1"}' > ~/zmax/zmax_data/l2_cmd.fifo`
 
 ## 复现命令
 ```bash
-cd ~/lerobot-smolvla-lew
+cd ~/zmax/external/lerobot-smolvla-lew
 ./gui-venv311/bin/python tools/opt_camera_client.py --health --cam 1     # 只读体检
 ./gui-venv311/bin/python tools/verify_opt_camera.py                     # 40 项判据 (只读)
 ./gui-venv311/bin/python tools/verify_opt_camera.py --authorize         # 含真拍
@@ -53,4 +53,4 @@ DISPLAY=:0 ./gui-venv311/bin/python tools/verify_aoi_console_real.py
 ```
 
 ## 备份
-`~/zmax_data/release_20260924_aoi/` (25MB): 判据图/裁减图/对照证据/验证 JSON/圈选与点位快照/补丁文档/审计流水
+`~/zmax/zmax_data/release_20260924_aoi/` (25MB): 判据图/裁减图/对照证据/验证 JSON/圈选与点位快照/补丁文档/审计流水

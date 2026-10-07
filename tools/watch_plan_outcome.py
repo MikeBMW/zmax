@@ -11,7 +11,7 @@ import os
 import re
 import time
 
-LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
+LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 ap = argparse.ArgumentParser()
 ap.add_argument("--since", default=None, help="只看该时刻(日志里的 HH:MM:SS)之后的行; 默认=脚本启动时刻前 30s")
 ap.add_argument("--max-s", type=float, default=600)

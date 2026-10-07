@@ -21,7 +21,7 @@ L2 是全量训练 YOLO; L3 和 L4 是通过 LoRA 适配训练。」
                       · merge: 训完必 merge —— tools/merge_lora_ckpt.py 把包装键折叠回可部署命名
                         (不 merge 时官方加载器 Missing key → trained=False → **零动作伪装成"没提升"**)
   ④ 取证 (evidence)   每阶段: 子进程 pid + `ps -o lstart` + 日志前几行 + 产物路径/大小 + 判据;
-                      全过程状态落  ~/zmax_data/l5_loop/state.json (GUI 徽章/双击读它)
+                      全过程状态落  ~/zmax/zmax_data/l5_loop/state.json (GUI 徽章/双击读它)
 
 红线 (写死在代码里):
   · 8GB 卡同刻只跑一个模型进程 → 全部阶段**串行**; 每阶段前查 GPU 空闲并记录
@@ -49,11 +49,11 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
-PY_INTACT = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
-WORK = os.environ.get("ZMAX_L5_WORK", "/home/ubuntu/zmax_data/l5_loop")
+PY_INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python"
+WORK = os.environ.get("ZMAX_L5_WORK", "/home/ubuntu/zmax/zmax_data/l5_loop")
 STATE = os.path.join(WORK, "state.json")
-ANNOT_ROOT = os.path.join(os.path.expanduser("~/zmax_data/auto_annotate"))
-SUP_ROOT = os.environ.get("ZMAX_L5_SUP_ROOT", "/home/ubuntu/zmax_data/l5_supervision")
+ANNOT_ROOT = os.path.join(os.path.expanduser("~/zmax/zmax_data/auto_annotate"))
+SUP_ROOT = os.environ.get("ZMAX_L5_SUP_ROOT", "/home/ubuntu/zmax/zmax_data/l5_supervision")
 L2_ROOT = os.environ.get("ZMAX_L5_L2_ROOT", os.path.join(ROOT, "data", "yolo_annot_l5vlm"))        # L2 监督数据集根 (与在役根隔离)
 CLASSES_SRC = os.path.join(ROOT, "data", "yolo_annot", "classes.txt")
 STAGES = ("interact", "annotate", "supervision", "slots", "L2_full", "L3_lora", "L4_lora", "merge", "verify")
@@ -872,7 +872,7 @@ def stage_merge(st: dict, l4: dict, l3: dict, ts: str) -> dict:
     import importlib.util as _iu
 
     def _find_l4_ckpt() -> str | None:
-        cache = "/home/ubuntu/stable-wm-cache/checkpoints"
+        cache = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints"
         cands = [os.path.join(cache, d) for d in sorted(os.listdir(cache))
                  if d.startswith("intact_goal_optical_insert_v6lora")]
         cands = [d for d in cands if os.path.isdir(d)]

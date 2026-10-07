@@ -14,7 +14,7 @@
             供状态空间「旁路实时可视化」节点显示 = 唯一出口
 
 用法:
-  ~/lerobot-smolvla-lew/gui-venv311/bin/python tools/ss_yolo_on_real.py --auto          # 取最新真机帧
+  ~/zmax/external/lerobot-smolvla-lew/gui-venv311/bin/python tools/ss_yolo_on_real.py --auto          # 取最新真机帧
   ... --image data/yolo_peg/images/ep000_s000.png --source-kind sim                      # 指定图 (自检)
   ... --loop --interval 0.5                                                              # 常驻 (可视化跟帧)
 """
@@ -27,8 +27,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax_ss_remote"))
-OUTDIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax_data/ss_bypass"))
+REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss_live"))
+OUTDIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax/zmax_data/ss_bypass"))
 WEIGHTS = os.environ.get("SS_YOLO_WEIGHTS") or next(
     (p for p in (os.path.join(REPO, "models/yolo_peg_live.pt"),                                  # 🎯 真机在役权重 (指针, 升级只改它)
                  os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))      # 旧仿真域权重 (兜底)

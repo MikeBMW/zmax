@@ -1,10 +1,10 @@
 #!/bin/bash
 # 下载 INTACT 官方评测所需的 pusht / reacher 数据集 (HF 镜像), 解压到 STABLEWM_HOME/datasets
 set -u
-cd /home/ubuntu/INTACT-JEPA || exit 1
+cd /home/ubuntu/zmax/external/INTACT-JEPA || exit 1
 export HF_ENDPOINT=https://hf-mirror.com
-DL=/home/ubuntu/dl_intact
-DS=/home/ubuntu/stable-wm-cache/datasets
+DL=/home/ubuntu/zmax/tools/oneoff/dl_intact
+DS=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
 mkdir -p "$DL" "$DS/dmc"
 echo "=== 下载开始 $(date '+%F %T') ==="
 .venv/bin/python - <<'PY'
@@ -14,7 +14,7 @@ jobs = [("quentinll/lewm-pusht", "pusht_expert_train.h5.zst"),
 for repo, fn in jobs:
     try:
         p = hf_hub_download(repo_id=repo, filename=fn, repo_type="dataset",
-                            local_dir="/home/ubuntu/dl_intact")
+                            local_dir="/home/ubuntu/zmax/tools/oneoff/dl_intact")
         print("OK", repo, fn, p, flush=True)
     except Exception as e:
         print("FAIL", repo, fn, type(e).__name__, e, flush=True)

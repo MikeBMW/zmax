@@ -39,7 +39,7 @@ with ZMaxOrinRobot(config) as robot:
 ### Phase 2: Orin Nano 部署
 ```bash
 # 同步代码到 Orin
-rsync -avz ~/lerobot-smolvla-lew/ nvidia@192.168.23.10:~/xspace/lerobot-smolvla-lew/
+rsync -avz ~/zmax/external/lerobot-smolvla-lew/ nvidia@192.168.23.10:~/xspace/lerobot-smolvla-lew/
 
 # Orin上启动
 ssh nvidia@192.168.23.10 "

@@ -2,7 +2,7 @@
 # 建 3DGS 训练环境: 干净 venv + torch2.7.1/cu128 + gsplat 预编译轮(无需 nvcc)
 set -x
 export PATH="$HOME/.hermes/bin:$PATH"
-V=$HOME/gs-venv
+V=$HOME/zmax/venvs/gs-venv
 [ -x "$V/bin/python" ] || uv venv "$V" --python 3.12 || exit 1
 PY=$V/bin/python
 # 1) torch 与 gsplat 轮子必须同源(pt27cu128)

@@ -16,7 +16,7 @@
 建库  tools/gs_dataset.py     按图像内容 md5 去重 + 位姿取该图**首现时刻**(+取图延迟补偿)
 训练  tools/run_gs_train.sh   CUDA shim 环境 + gsplat 官方配方(30k 步 / 40% 停致密化)
 质检  tools/gs_quality.py     数据集健康 + 与「平凡基线」比; **不过门就停, 不把废资产当成果**
-状态  ~/zmax_data/gs_map/status.json  页面 /ctl/gs_map 轮询; 结束附判定与资产路径
+状态  ~/zmax/zmax_data/gs_map/status.json  页面 /ctl/gs_map 轮询; 结束附判定与资产路径
 ```
 
 一键闭环: `tools/gs_map_run.py`(见下)
@@ -25,17 +25,17 @@
 
 ```bash
 # 1) 全自动闭环(L5 指导选点 + 移动 + 采集 + 建图 + 质检)
-~/gs-venv/bin/python tools/gs_map_run.py --rounds 7 --targets l5 --dwell 8 --steps 30000
+~/zmax/venvs/gs-venv/bin/python tools/gs_map_run.py --rounds 7 --targets l5 --dwell 8 --steps 30000
 #    不移动的链路验证(不碰臂)          --dry-run
-#    用已有录像重跑 建库→质检(→训练)    --from-recording ~/zmax_data/gs_scan/scan_20261001_064113
+#    用已有录像重跑 建库→质检(→训练)    --from-recording ~/zmax/zmax_data/gs_scan/scan_20261001_064113
 #    兼容旧行为(固定 space1..7 顺序)     --targets spaces --order fixed|novelty
 
 # 2) 单步
-~/gs-venv/bin/python tools/gs_l5_select.py --session <会话>   --k 3   # 只出选点建议(+JSON)
-~/gs-venv/bin/python tools/gs_capture.py   --out <会话> --secs 30
-~/gs-venv/bin/python tools/gs_dataset.py   --session <会话> --out <数据集> [--max-frames 400]
+~/zmax/venvs/gs-venv/bin/python tools/gs_l5_select.py --session <会话>   --k 3   # 只出选点建议(+JSON)
+~/zmax/venvs/gs-venv/bin/python tools/gs_capture.py   --out <会话> --secs 30
+~/zmax/venvs/gs-venv/bin/python tools/gs_dataset.py   --session <会话> --out <数据集> [--max-frames 400]
 bash tools/run_gs_train.sh --data <数据集> --out <模型> --steps 30000 --refine-stop 12000
-~/gs-venv/bin/python tools/gs_quality.py   --session <会话> --dataset <数据集> --model <模型>
+~/zmax/venvs/gs-venv/bin/python tools/gs_quality.py   --session <会话> --dataset <数据集> --model <模型>
 
 # 3) 停训练(必须独立脚本, 内联 pkill 会把自己 shell 一起杀掉)
 bash tools/stop_gs_train.sh

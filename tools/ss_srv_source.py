@@ -25,7 +25,7 @@ import os
 import re
 import time
 
-OUT = os.environ.get("SS_SRV_OUT", os.path.expanduser("~/zmax_ss_remote"))
+OUT = os.environ.get("SS_SRV_OUT", os.path.expanduser("~/zmax/zmax_data/ss_live"))
 SNAP_TOPIC = os.environ.get("SS_SNAPSHOT_SERVICE", "/hmi/snapshot")
 IMGB64_KEYS = ("image_base64", "image_b64", "image", "jpeg_base64", "jpg_base64",
                "png_base64", "camera_image", "frame_base64")

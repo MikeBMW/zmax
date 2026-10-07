@@ -22,7 +22,7 @@ src/main/java/com/zmax/live/MainActivity.java     # WebView 壳(顶层 http) + �
 tools/app/live/build_live_apk.sh                  # 7 步纯 CLI 构建(无 Gradle) → 投递 /dl/ + 回写页面 sha256
 ```
 
-**真正的构建工程在 `/home/ubuntu/state3d_app/live/`**；本目录（`tools/app/live/`）是归档副本 + 构建脚本。
+**真正的构建工程在 `/home/ubuntu/zmax/tools/web/state3d_app/live/`**；本目录（`tools/app/live/`）是归档副本 + 构建脚本。
 脚本会自动：① 编译链接签名 ② apksigner(带 `--min-sdk-version 21`) 三方案校验 ③ zipalign 校验
 ④ 投递到 `tools/web/dl/` ⑤ 把 sha256/体积写回 `tools/web/scene-overlay.html`（页面校验串与产物强一致）。
 

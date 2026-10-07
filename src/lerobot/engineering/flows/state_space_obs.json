@@ -2139,7 +2139,7 @@
         "intent_from": "L5 (VLM/人/工单给概念; 本节点不自造概念)",
         "model": "facebook/sam3 (848M: 共享视觉编码 + DETR 检测器 + SAM2 式跟踪器)",
         "engine": "transformers Sam3Model / Sam3Processor (本机 transformers 5.16.1) + 权重=HF 逐文件镜像(官方 gated, 用镜像)",
-        "weights_dir": "/home/ubuntu/zmax_data/models/sam3_hf (model.safetensors 3.44GB fp32 → bf16 载入)",
+        "weights_dir": "/home/ubuntu/zmax/zmax_data/models/sam3_hf (model.safetensors 3.44GB fp32 → bf16 载入)",
         "api": "POST http://127.0.0.1:8796/seg {cam|image_path|image_b64, texts[], three_d, write_spec} · GET /health",
         "source": "tools/sam3_seg.py",
         "source_symbol": "def segment(img_bgr",

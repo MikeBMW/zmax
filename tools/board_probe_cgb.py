@@ -22,9 +22,9 @@ import numpy as np
 
 imgs = sys.argv[1:]
 if not imgs:
-    cands = [os.path.expanduser("~/zmax_ss_remote/cam_rs.png"),
-             os.path.expanduser("~/zmax_ss_remote/cam_fp.png")]
-    for d in sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/img")))[-2:]:
+    cands = [os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"),
+             os.path.expanduser("~/zmax/zmax_data/ss_live/cam_fp.png")]
+    for d in sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/img")))[-2:]:
         cands += sorted(glob.glob(os.path.join(d, "*.png")))[-3:]
     imgs = [p for p in cands if os.path.exists(p)]
 print(f"待检图 {len(imgs)} 张\n")
@@ -79,7 +79,7 @@ for p in imgs:
           + ("✅ " + "; ".join(hits) if hits else "— 无"))
     if hits:
         found[tag] = hits
-    cv2.imwrite(os.path.expanduser("~/zmax_data/board_probe_%s.png" % tag.replace("/", "_")), img)
+    cv2.imwrite(os.path.expanduser("~/zmax/zmax_data/board_probe_%s.png" % tag.replace("/", "_")), img)
 
 print("\n结论:", ("✅ 检出 → " + str(found)) if found else
       "仍未检出 → 请把相机正对板停 2 秒(说一声), 我立刻再探; 或板上不是标准棋盘/圆点(可拍照给我描述)")

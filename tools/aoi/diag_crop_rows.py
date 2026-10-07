@@ -5,12 +5,12 @@ import cv2
 import numpy as np
 import sys
 
-sys.path.insert(0, "/home/ubuntu/aoi_v4")
+sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
 from gf_template import build_template
 from gf_metric import gold_mask
 from gf_crop import GoldFingerCropper
 
-REF = "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
+REF = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
 tpl, meta = build_template(REF, verbose=False)
 cr = GoldFingerCropper(tpl, canonical_w=1600, canonical_h=220, margin_x=0.03, margin_y=0.04,
                        preserve_aspect=True)

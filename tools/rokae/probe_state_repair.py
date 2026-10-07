@@ -11,7 +11,7 @@
 本探针只做两件事: ① 读现状 ② 确认这三个接口在本机型实例上真实可调用。**零运动、零写入。**
 
 跑法:
-  sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
+  sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
       python3 /sdk/probe_state_repair.py
 """
 import json

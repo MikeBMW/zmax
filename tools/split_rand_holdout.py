@@ -5,8 +5,8 @@ import h5py
 import numpy as np
 import os
 
-SRC = "/home/ubuntu/stable-wm-cache/datasets/optical_insert_v6_disturb.h5"
-OUT = "/home/ubuntu/stable-wm-cache/datasets"
+SRC = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/optical_insert_v6_disturb.h5"
+OUT = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets"
 
 f = h5py.File(SRC, "r")
 N = int(f["observation"].shape[0])

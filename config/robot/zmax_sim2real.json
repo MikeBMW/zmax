@@ -117,7 +117,7 @@
  },
  "workspace_real": {
   "n_frames": 400,
-  "state_file": "/home/ubuntu/zmax_data/real_tap_20260922/state_20260922.jsonl",
+  "state_file": "/home/ubuntu/zmax/zmax_data/real_tap_20260922/state_20260922.jsonl",
   "tcp_x_range": [
    0.6639,
    0.6639

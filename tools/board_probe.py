@@ -19,7 +19,7 @@ import sys
 import cv2
 import numpy as np
 
-IMG = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
+IMG = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
 
 img = cv2.imread(IMG)
 if img is None:
@@ -84,7 +84,7 @@ mag = np.hypot(gx, gy)
 step = h // 6
 print("    六条横带梯度能量 (上→下, 找格子密度分布):",
       " ".join(f"{mag[i*step:(i+1)*step].mean():6.1f}" for i in range(6)))
-out = os.path.expanduser("~/zmax_data/board_probe_%" +
+out = os.path.expanduser("~/zmax/zmax_data/board_probe_%" +
                          os.path.basename(IMG).replace(".png", "") + "_marks.png")
 vis = img.copy()
 if found_ar:

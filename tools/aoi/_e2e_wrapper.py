@@ -1,7 +1,7 @@
 
 import sys, types, os, runpy, ctypes
 import cv2, numpy as np
-WORK = '/home/ubuntu/aoi_v4'
+WORK = '/home/ubuntu/zmax/zmax_data/aoi_v4'
 sys.path.insert(0, WORK)
 
 class _Pixel:
@@ -25,7 +25,7 @@ class _AT:
     def __init__(self):
         self.isComplete = 1; self.payloadMode = _PM.SciCam_PayloadMode_2D; self.imgAttr = _IA()
 class SciCamera:
-    _IMGS = ['/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_3.png', '/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_5.png', '/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_7.png', '/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png', '/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_9.png']
+    _IMGS = ['/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_3.png', '/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_5.png', '/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_7.png', '/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png', '/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_9.png']
     _i = 0
     @staticmethod
     def SciCam_DiscoveryDevices(d, tl):

@@ -14,7 +14,7 @@
 import time, json, os, sys, base64, argparse, subprocess
 from datetime import datetime
 
-STATUS_PATH = os.path.expanduser("~/lerobot-smolvla-lew/docs/web/robot-status.json")
+STATUS_PATH = os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/docs/web/robot-status.json")
 
 def try_ssh(cmd, timeout=5):
     """尝试SSH到Orin执行命令"""

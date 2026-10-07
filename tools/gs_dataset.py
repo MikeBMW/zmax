@@ -14,7 +14,7 @@
       + <out>/transforms.json(nerfstudio 风格, 供别的工具读) + <out>/meta.json
 
 用法:
-  python3 tools/gs_dataset.py --session ~/zmax_data/gs_scan/scan_XXXX --out ~/zmax_data/gs_data/scan_XXXX \
+  python3 tools/gs_dataset.py --session ~/zmax/zmax_data/gs_scan/scan_XXXX --out ~/zmax/zmax_data/gs_data/scan_XXXX \
       [--max-frames 300] [--min-gap-ms 40] [--undistort-keep-all]
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CALIB = os.path.join(ROOT, "models/real_cam_calib.json")
-HANDEYE = os.path.expanduser("~/zmax_data/handeye_state.json")
+HANDEYE = os.path.expanduser("~/zmax/zmax_data/handeye_state.json")
 
 
 def quat_to_R(x, y, z, w):
@@ -172,7 +172,7 @@ def main():
     ap.add_argument("--max-frames", type=int, default=300)
     ap.add_argument("--min-gap-ms", type=float, default=40.0)
     ap.add_argument("--jpeg-quality", type=int, default=95)
-    ap.add_argument("--hash-file", default="/home/ubuntu/zmax_data/gs_assets/scan_hashes.txt",
+    ap.add_argument("--hash-file", default="/home/ubuntu/zmax/zmax_data/gs_assets/scan_hashes.txt",
                     help="图像 md5 表(md5sum 输出), 用于按内容去重")
     ap.add_argument("--no-dedup", action="store_true", help="关闭去重(只做对照, 不建议)")
     ap.add_argument("--latency-ms", type=float, default=0.0,

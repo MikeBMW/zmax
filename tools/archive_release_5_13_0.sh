@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 归档 v5.13.0 当日产物到 ~/zmax_data (单一目录 + MANIFEST/sha256), 供离职/备份/复盘
+# 归档 v5.13.0 当日产物到 ~/zmax/zmax_data (单一目录 + MANIFEST/sha256), 供离职/备份/复盘
 set -u
 REPO=/home/ubuntu/zmax
-DST=$HOME/zmax_data/release_5.13.0_20260924
+DST=$HOME/zmax/zmax_data/release_5.13.0_20260924
 mkdir -p "$DST"/{models,reports,web,docs,canvas,tools}
 cd "$REPO" || exit 1
 

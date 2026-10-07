@@ -10,8 +10,8 @@
    · prod: **根本不 import cyclonedds**、不建参与者、不开线程 → 量产零开销 (只空转等模式变化)
    · diag/calib/test: 只发该档允许的话题 (见 zmax_telemetry.MODE_TOPICS)
 ② **只读真实数据源** (不触发任何动作, 不写任何业务文件):
-   ss_state  ← 真机 tap `~/zmax_ss_remote/state_*.jsonl` 最新行 (tcp / jpos / gripper / prod_stage / pubs)
-   ss_action ← 真机 tap `~/zmax_ss_remote/proposal_*.jsonl` 最新行 (action 6 维 / yaw / model_ms)
+   ss_state  ← 真机 tap `~/zmax/zmax_data/ss_live/state_*.jsonl` 最新行 (tcp / jpos / gripper / prod_stage / pubs)
+   ss_action ← 真机 tap `~/zmax/zmax_data/ss_live/proposal_*.jsonl` 最新行 (action 6 维 / yaw / model_ms)
    ss_infer  ← 本机推理服务 `http://127.0.0.1:8790/health` (models / infer_count / last_ms / device)
    ss_calib  ← 标定真源文件 (手眼 / 相机外参 / 对齐图 / 质量门) —— 有则实发, 无则 valid=0
    ss_diag   ← 诊断: 各话题发布计数 / 源帧龄 / 推理延时 / 服务健康度 (systemctl 每 10s)

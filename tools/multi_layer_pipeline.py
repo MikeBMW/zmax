@@ -206,7 +206,7 @@ class L4NodeLayer(Layer):
         if self.which == "unified":
             from unified_node import UnifiedNode
             self._node = UnifiedNode(ckpt=self.ckpt or
-                                     "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt",
+                                     "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/backbone_cont/unified.pt",
                                      horizon=self.horizon)
         elif self.which == "intact":
             from lerobot.manifold.intact_node import IntactNode

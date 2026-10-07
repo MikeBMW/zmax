@@ -2,8 +2,8 @@
 # 链式: 等跨域A/B结束 → 继续长训 backbone → 写完成标记 (供 cron 上报)
 set -u
 cd /home/ubuntu/zmax
-D=/home/ubuntu/stable-wm-cache/datasets
-V=/home/ubuntu/INTACT-JEPA/.venv/bin/python
+D=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
+V=/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python
 LOG=/tmp/backbone_cont.log
 MARK=/tmp/backbone_cont.done
 
@@ -19,7 +19,7 @@ timeout 20000 $V -u tools/joint_unified_backbone.py \
   --lr 5e-4 --wd 0.01 --pixel-cache 1 \
   --holdout "$D/l5_holdout.h5" \
   --files "$D/v6_train_rand.h5,$D/l5_train.h5" \
-  --save /home/ubuntu/stable-wm-cache/checkpoints/backbone_cont >> "$LOG" 2>&1
+  --save /home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/backbone_cont >> "$LOG" 2>&1
 RC=$?
 echo "exit=$RC" >> "$LOG"
 echo "rc=$RC" > "$MARK"

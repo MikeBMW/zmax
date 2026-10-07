@@ -6,7 +6,7 @@ import numpy as np
 import glob
 import os
 
-D = "/home/ubuntu/aoi_v4/imgs"
+D = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs"
 
 def strip_rect(im, kx=61, ky=5, th=(8, 60, 50)):
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)

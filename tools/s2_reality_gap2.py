@@ -3,7 +3,7 @@
 """s2_reality_gap2.py — S2 RealityGap 重测 (用真源 live tap, 修正文件与字段)
 
 上一轮无效原因(已自拦): 读的是 09-22 旧快照(TCP 为常数 std=0)且字段名不符。
-本轮: 真源 = /home/ubuntu/zmax_ss_remote/state_20260925.jsonl (正在写, 字段 tcp/jpos/robot_status/z7/geom)
+本轮: 真源 = /home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl (正在写, 字段 tcp/jpos/robot_status/z7/geom)
      只读文件尾部若干 MB (不改动文件, 不占用产线)
 输出: 真机 vs 仿真 的分布对照 + 漂移量 (报告而非改模型)
 """
@@ -15,8 +15,8 @@ import time
 
 import numpy as np
 
-LIVE = "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl"
-H5 = "/home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v3.h5"
+LIVE = "/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl"
+H5 = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v3.h5"
 OUT = "/home/ubuntu/zmax/data/selfcal/reality_gap2_%s.json" % time.strftime("%Y%m%d_%H%M%S")
 
 

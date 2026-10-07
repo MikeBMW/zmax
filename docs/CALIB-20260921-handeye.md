@@ -9,7 +9,7 @@
 | 解算质量（板在基座系一致性） | 平移 RMS **0.06mm** · 姿态 RMS **0.005°**（判据 ≤3mm/≤0.5°） |
 | **独立全链路重投影** | 中位 **0.117px** · 最差 **0.267px**（判据 ≤1.5px）→ ✅ 通过 |
 | 落盘 | `models/handeye_state.json`（`T_cam2tool` / 板位姿 / 残差 / 视图清单） |
-| 数据 | `~/zmax_data/handeye/20260921_214617/`（14 帧 + poses.jsonl + seq.log/seq2.log） |
+| 数据 | `~/zmax/zmax_data/handeye/20260921_214617/`（14 帧 + poses.jsonl + seq.log/seq2.log） |
 
 ## 怎么采的（16 分钟，全程不掉电）
 - 采集器 `tools/handeye_collect.py`（v7）：每个位姿要求**6s 位姿轨迹极差 ≤1.5mm/0.5°** + **画面差异 ≤2.0 灰阶/位移 ≤0.3px**（位姿与画面物理同刻，不靠时间戳）

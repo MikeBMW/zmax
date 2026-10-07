@@ -810,8 +810,8 @@ def _calibrate(out_path: str, steps: int = 120) -> int:
               os.path.join(root, "src")):
         if p not in sys.path:
             sys.path.insert(0, p)
-    os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
-    os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
+    os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+    os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     os.environ.setdefault("INTACT_RUNTIME", "root")
     import state_space_sim_real as SSR                                            # noqa: PLC0415
     sim = SSR.RealStateSpaceSim(seed=104, vision=False, mode="insert", log=lambda *x: None)

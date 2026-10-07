@@ -6,11 +6,11 @@
   「http://10.163.146.78:8793/station 我都取消授权了，手臂怎么还在动」
   根因两条, 都是**授权只活在 8793 进程的内存里**造成的:
     ① 其它会动臂的路径(GUI 原子技能 / 脚本 / 自动流程 / AOI 伺服)直接把命令写进
-       ~/zmax_data/l2_cmd.fifo, 完全不经过 8793 的授权检查 ⇒ 授权对它们形同虚设;
+       ~/zmax/zmax_data/l2_cmd.fifo, 完全不经过 8793 的授权检查 ⇒ 授权对它们形同虚设;
     ② 执行器(l2_daemon)在下发前也不校验授权 ⇒ 点下授权后**排队的动作**会在
        VL 慢层等 300s 之后才真正下发, 那时人早就点了「撤销」—— 表现就是"取消了授权还在动"。
 
-形态 (文件 ~/zmax_data/ctl_auth.json, 原子写):
+形态 (文件 ~/zmax/zmax_data/ctl_auth.json, 原子写):
   {until, since, window, epoch, ip, note, revoked_at, events:[{t,on,ip,note}]}
   · armed = (until > now)   —— 到期自动失效, 不需要任何人操作
   · epoch —— 单调递增: 每次**授权**或**撤销**都 +1。命令签发时把 epoch 带上;
@@ -20,7 +20,7 @@ import json
 import os
 import time
 
-PATH = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax_data/ctl_auth.json"))
+PATH = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax/zmax_data/ctl_auth.json"))
 DEFAULT_WINDOW = float(os.environ.get("ZMAX_CTL_WINDOW", "600"))   # 授权默认有效期(秒)
 # ↑ 2026-09-30 老倪现场定: 5 分钟 → **10 分钟**。理由: 号位技能是两阶段(先到正上方再下降),
 #   慢速档一个阶段就走 22~40s, 两次技能连不上窗口就到期 ⇒ 阶段2 被"真动授权未开"拦下中止,

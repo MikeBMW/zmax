@@ -49,7 +49,7 @@ import real_truth as rt                                   # noqa: E402  真机�
 
 ORIN = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66")
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
-SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
 LIVE_JPG = os.path.join(SHARED, "live_frame.jpg")
 LIVE_META = os.path.join(SHARED, "live_frame.json")
 # 🩹 2026-09-18 老倪: 「运行L2功能, 怎么输入图像没有了?」—— 真机源原来**只认 srv 落盘 live_frame.jpg**
@@ -405,7 +405,7 @@ class _CamGrabber(threading.Thread):
         """
         import os as _os
         import time as _tm
-        p = _os.path.join(_os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote"),
+        p = _os.path.join(_os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live"),
                           "cam_local.png")
         try:
             if not _os.path.isfile(p):
@@ -1846,7 +1846,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             return
         t = self._truth_snapshot()
         if not t or not t.get("tcp"):
-            self.lbl_truth.setText("📌 真机真值: 读不到 (采集容器 ss-remote-tap 没在跑? 见 ~/zmax_ss_remote)")
+            self.lbl_truth.setText("📌 真机真值: 读不到 (采集容器 ss-remote-tap 没在跑? 见 ~/zmax/zmax_data/ss_live)")
             return
         self._last_truth = t
         seg, dist, notes = t.get("obs39_segments", {}), t.get("dist", {}), t.get("notes", {})

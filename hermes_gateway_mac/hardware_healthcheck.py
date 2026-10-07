@@ -74,7 +74,7 @@ def main():
     print(json.dumps(results, indent=2, ensure_ascii=False))
 
     # 保存
-    path = os.path.expanduser("~/lerobot-smolvla-lew/docs/web/hardware-health.json")
+    path = os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/docs/web/hardware-health.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)

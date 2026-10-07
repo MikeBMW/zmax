@@ -3,7 +3,7 @@
 #   intact_goal_optical_insert_v6lora_200/ 里有 weights_epoch_1.pt + weights_merged.pt (+我加的软链) → Ambiguous → trained=False
 # 纪律: 不动训练产物本身; 另建**指针目录**(只有 config.json + weights.pt 软链), 与在役 intact_l4_current 同构
 set -e
-SWM=/home/ubuntu/stable-wm-cache/checkpoints
+SWM=/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints
 ART=$SWM/intact_goal_optical_insert_v6lora_200
 PTR=$SWM/intact_l4_v6lora_200
 
@@ -16,13 +16,13 @@ ls -l "$PTR"
 
 echo "== 用 worker 验证 trained/dims =="
 INTACT_POLICY=intact_l4_v6lora_200 INTACT_DEVICE=cpu INTACT_RUNTIME=root \
-STABLEWM_HOME=/home/ubuntu/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache \
-HF_HUB_OFFLINE=1 MUJOCO_GL=egl /home/ubuntu/INTACT-JEPA/.venv/bin/python - <<'PY'
+STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache \
+HF_HUB_OFFLINE=1 MUJOCO_GL=egl /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python - <<'PY'
 import json, subprocess, os
 env = {**os.environ}
-p = subprocess.Popen(["/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+p = subprocess.Popen(["/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
                       "/home/ubuntu/zmax/tools/intact_worker.py",
-                      "--repo", "/home/ubuntu/INTACT-JEPA", "--task", "optical_insert",
+                      "--repo", "/home/ubuntu/zmax/external/INTACT-JEPA", "--task", "optical_insert",
                       "--hf-repo", "INTACT-JEPA/INTACT", "--hf-rev", "paper-e5-goal-v1",
                       "--policy", "direct", "--policy-name", "intact_l4_v6lora_200",
                       "--device", "cpu", "--runtime", "root"],

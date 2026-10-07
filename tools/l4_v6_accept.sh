@@ -3,8 +3,8 @@
 # 2026-09-22
 set -u
 cd /home/ubuntu/zmax || exit 1
-LOG=$HOME/zmax_data/ss_sim_20260921/l4_v6_accept.log
-CACHE=/home/ubuntu/stable-wm-cache
+LOG=$HOME/zmax/zmax_data/ss_sim_20260921/l4_v6_accept.log
+CACHE=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 CKPT=$CACHE/checkpoints
 H5=$CACHE/datasets/optical_insert_v6_disturb.h5
 say(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
@@ -28,7 +28,7 @@ for s in on zero; do
 done
 
 say "汇总 ΔMAE (新数据/新权重)"
-/home/ubuntu/INTACT-JEPA/.venv/bin/python - <<'PY' 2>&1 | tee -a "$LOG"
+/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python - <<'PY' 2>&1 | tee -a "$LOG"
 import json, os
 R = "/home/ubuntu/zmax/reports"
 def mean_sel(j, slots=(0, 4, 8, 15)):

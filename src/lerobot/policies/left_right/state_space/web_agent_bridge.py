@@ -127,7 +127,7 @@ class WebAgentBridge:
             infd = json.loads(inf)
         except Exception:
             infd = {"raw": inf[:200]}
-        age = _sh("find /home/ubuntu/zmax_ss_remote -name '*.jsonl' -newermt '-10 minutes' 2>/dev/null | wc -l", 8)
+        age = _sh("find /home/ubuntu/zmax/zmax_data/ss_live -name '*.jsonl' -newermt '-10 minutes' 2>/dev/null | wc -l", 8)
         return {"services": svc, "infer_8790": infd, "tap_jsonl_fresh_10min": age.strip()}
 
     def f_canvas(self, arg: str = "") -> dict:
@@ -218,8 +218,8 @@ class WebAgentBridge:
     def f_skills(self, arg: str = "") -> dict:
         """技能库: Hermes 技能清单 + L2 可执行技能 (真源文件/计数)"""
         sk = _sh("ls -d ~/.hermes/skills/*/*/ 2>/dev/null | wc -l", 10)
-        l2 = _sh("grep -c '\"skill\"' ~/zmax_data/l2_daemon.log 2>/dev/null | head -1", 10)
-        last = _sh("grep -o 'L2\\.[a-z_0-9]*' ~/zmax_data/l2_daemon.log 2>/dev/null | tail -5", 10)
+        l2 = _sh("grep -c '\"skill\"' ~/zmax/zmax_data/l2_daemon.log 2>/dev/null | head -1", 10)
+        last = _sh("grep -o 'L2\\.[a-z_0-9]*' ~/zmax/zmax_data/l2_daemon.log 2>/dev/null | tail -5", 10)
         return {"hermes_skills_dirs": sk.strip(), "l2_log_skill_lines": l2.strip(),
                 "l2_recent_skills": last.splitlines()[-5:]}
 
@@ -251,7 +251,7 @@ class WebAgentBridge:
     def f_robot_read(self, arg: str = "") -> dict:
         """真机只读信号: Orin 可达性 + 中转 tap 最新帧时间 (不下发任何动作)"""
         ping = _sh("ping -c2 -W2 192.168.23.66 2>/dev/null | tail -1", 12)
-        tap = _sh("ls -lt /home/ubuntu/zmax_ss_remote/*.jsonl 2>/dev/null | head -3", 10)
+        tap = _sh("ls -lt /home/ubuntu/zmax/zmax_data/ss_live/*.jsonl 2>/dev/null | head -3", 10)
         return {"orin_ping": ping, "tap_files": tap.splitlines()[:3],
                 "readonly": True, "actuation": "禁止 (老倪红线)"}
 

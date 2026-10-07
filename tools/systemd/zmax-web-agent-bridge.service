@@ -1,6 +1,6 @@
 # 2026-09-30 由 tools/zmax_bootstrap.py 的 systemd 步骤装回本机;
 # 本文件从 /etc/systemd/system/zmax-web-agent-bridge.service 收回仓库。
-# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+# 密钥类值已替换为 ${ZMAX_AGENT_TOKEN}/${ZMAX_ECS_PW}, 真值放 /home/ubuntu/zmax/zmax_data/secrets/zmax.env (600)。
 [Unit]
 Description=Z-MAX L5 Web 智能体桥 (web agent 提示词 → 状态空间只读功能 → 回执)
 Documentation=file:/home/ubuntu/zmax/docs/TASK_LEDGER_20260925.md

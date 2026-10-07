@@ -7,7 +7,7 @@
   ② 手眼 X = T_cam2tool: models/handeye_state.json (2026-09-21 解, 全链路重投影中位 0.117px)
   ③ 当前工具位姿 G: /robot/tcp_pose (与 X 同源: endInRef 工具系)
   ④ 槽位示教点: data/skills/l2_atomic/taught_points.json (slot1/slot2)
-  ⑤ 检出: ~/zmax_data/ss_bypass/yolo_detections.json (YOLO peg 框, 与 cam_rs.png 同帧)
+  ⑤ 检出: ~/zmax/zmax_data/ss_bypass/yolo_detections.json (YOLO peg 框, 与 cam_rs.png 同帧)
 
 判据: 把 slot1/slot2 的位置按 T_cam_base = G·X 投到图像, 与 peg 框中心比距离 <15px 认账;
       否则报"对账失败, 不猜"。
@@ -28,7 +28,7 @@ REPO = "/home/ubuntu/zmax"
 CALIB = os.path.join(REPO, "models", "real_cam_calib.json")
 STATE = os.path.join(REPO, "models", "handeye_state.json")
 PTS = os.path.join(REPO, "data/skills/l2_atomic/taught_points.json")
-DET = os.path.expanduser("~/zmax_data/ss_bypass/yolo_detections.json")
+DET = os.path.expanduser("~/zmax/zmax_data/ss_bypass/yolo_detections.json")
 TOL_PX = 15.0
 NUM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
 

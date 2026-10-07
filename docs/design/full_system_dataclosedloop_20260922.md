@@ -110,7 +110,7 @@ gripper 语义两源相反 (09-07)、B 增益写错 (09-04)、归一化 stats �
 | ④ | merge 折回后推理路径一致 (可部署) | max\|Δ\| = 2.4e-07 ≤ 容差 2.2e-06 |
 | ⑤ | 适配器落盘/回读 | 4/4 张量, 0.004 MB |
 
-**L4 接入** (`/home/ubuntu/INTACT-JEPA/train.py`, 环境变量 `ZMAX_LORA=1` 才开, **默认关 = 零回退**):
+**L4 接入** (`/home/ubuntu/zmax/external/INTACT-JEPA/train.py`, 环境变量 `ZMAX_LORA=1` 才开, **默认关 = 零回退**):
 实跑 200 步 → **注入 112 层, 可训 967,616 / 总 21,944,408 = 4.41%**, 基座冻结;
 训练完成 rc=0 / 133.8s / ckpt 88,027,492 B; 日志 `fit/local_mae 0.024 · fit/goal_mae 0.025 ·
 skill_ctx_usage 1.000`。

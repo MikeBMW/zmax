@@ -32,8 +32,8 @@ os.chdir(GUI)
 #   AB_HOT_MEM=1 才用共享记忆。
 if os.environ.get("AB_HOT_MEM") != "1":
     os.environ.setdefault("SS_MUSCLE_PATH", "/tmp/ab_mem_%d.json" % os.getpid())
-for k, v in (("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"),
-             ("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache"),
+for k, v in (("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
+             ("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
              ("INTACT_RUNTIME", "root"), ("INTACT_POLICY", "intact_l4_current"),
              ("OMP_NUM_THREADS", "6")):
     os.environ.setdefault(k, v)

@@ -14,7 +14,7 @@
   ⑤ 实况模式: 规格 origin='seg' 条数 == 服务返回 count; 叠加快照与原始快照逐像素有差异
 
 用法:
-  xvfb-run -a ./gui-venv311/bin/python tools/verify_seg_overlay.py --saved /home/ubuntu/zmax_data/scene_survey/arm_now.jpg --texts "光模块,插孔,末端夹爪"
+  xvfb-run -a ./gui-venv311/bin/python tools/verify_seg_overlay.py --saved /home/ubuntu/zmax/zmax_data/scene_survey/arm_now.jpg --texts "光模块,插孔,末端夹爪"
   ./gui-venv311/bin/python tools/verify_seg_overlay.py --live --cam local --texts "笔记本电脑,手"
 """
 from __future__ import annotations

@@ -91,7 +91,7 @@ def main() -> int:
     R["real_readonly"]["orin_ping"] = run(f"ping -c3 -W2 {ORIN}")["tail"][-1]
     print(f"  Orin {ORIN}: {R['real_readonly']['orin_ping']}", flush=True)
 
-    tap = run("ls -lt /home/ubuntu/zmax_ss_remote/*.jsonl | head -2")["tail"]
+    tap = run("ls -lt /home/ubuntu/zmax/zmax_data/ss_live/*.jsonl | head -2")["tail"]
     R["real_readonly"]["tap_jsonl"] = tap
     print(f"  中转 tap 帧: {tap[0][:95] if tap else '无'}", flush=True)
 

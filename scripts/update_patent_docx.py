@@ -6,7 +6,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-doc_path = os.path.expanduser('~/lerobot-smolvla-lew/docs/patents/Z-MAX-专利交底书-实用新型.docx')
+doc_path = os.path.expanduser('~/zmax/external/lerobot-smolvla-lew/docs/patents/Z-MAX-专利交底书-实用新型.docx')
 doc = Document(doc_path)
 
 def add_heading_styled(text, level=1):

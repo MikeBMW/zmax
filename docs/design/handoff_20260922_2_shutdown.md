@@ -11,7 +11,7 @@
 | 3 | **离线自检隐患修复**：`test_slot_skills.py` 运动步曾走真通道（能真下发机械臂） | `evidence_20260922/test_slot_skills_hardened.log`(79 ✅/0 ❌) |
 | 4 | **L4 卡点定量归因：dy = 数据配方问题** | `docs/design/l4_dy_axis_attribution_20260922.md` · `evidence_20260922/ana_l4_dy.log` |
 | 5 | **小版本迭代 v5.11.5 已发** | commit `1d7aa4eb` + tag `v5.11.5`；CI「Build Desktop (Windows .exe + macOS .app)」当时 in_progress |
-| 6 | **真机只读 tap 数据归档** | `~/zmax_data/real_tap_20260922/`（22,572 行 · 39.4 min @ 9.55 Hz · 0 解析失败 · 硬链接同 inode 0 额外占用） |
+| 6 | **真机只读 tap 数据归档** | `~/zmax/zmax_data/real_tap_20260922/`（22,572 行 · 39.4 min @ 9.55 Hz · 0 解析失败 · 硬链接同 inode 0 额外占用） |
 
 ## 二、关键事实（下次开机直接用）
 
@@ -20,7 +20,7 @@
 根因 = 力矩传感器零点偏置（不是负载大）→ 修法 `calibrateForceSensor(all_axes=True, axis_index=0, ec)`
 一次调用: J5 -22.0031 → +0.5449 Nm（RSC 门槛 22.000，余量 +21.35）· J1 +29.08 → -0.258（竖直轴应≈0）
          10s 复读极差 0.109/0.391 Nm 稳定；随后现场真实点动（L2.forward 50mm）无任何报警
-脚本: ~/zmax_data/rokae_sdk/fix_torque_zero.py（--dry 只读）· probe_state_repair.py · probe_torque_stability.py
+脚本: ~/zmax/zmax_data/rokae_sdk/fix_torque_zero.py（--dry 只读）· probe_state_repair.py · probe_torque_stability.py
 纪律: 每次碰撞/急停/下电后**重标一次**（3 秒）；标定前 setToolset 负载必须正确（现 1.51kg / cog[16.2,12.9,31.2]mm）
 更正: v5.11.4 报告写「SDK 93 接口无任何力矩/碰撞力接口」是错的 —— 接口在 `Cobot_6`，权威清单看
       `xcoresdk_python/Release/linux/xCoreSDK_python/__init__.pyi`，别用 dir() 关键字筛
@@ -34,7 +34,7 @@
 执行 = 阶段1 槽正上方(+30mm) → 阶段2 下降到抓取位(禁下压) → 阶段3 合爪 force40 → 阶段4 抬升 50mm
 视觉门在执行器内 fail-closed（占位点 slot_vision 解析不出/两路冲突/帧不新鲜 → 拒发）
 调用: GUI 点「🎯 视觉引导抓取」（对话框开时实时读注册表, 不必重启界面）
-      逐段更稳: echo '{"skill":"L2.grasp_vision","stages":[1,2]}' > ~/zmax_data/l2_cmd.fifo
+      逐段更稳: echo '{"skill":"L2.grasp_vision","stages":[1,2]}' > ~/zmax/zmax_data/l2_cmd.fifo
       编排/零下发自检: gui-venv311/bin/python tools/vision_grasp_skill.py [--apply]
 验收只看真值: 夹爪回执 curr_pos ≈185(夹住模块)/≈21(空爪) · 完事复判该槽应变空
 ⚠️ 若 slot2 那颗是**已插到位锁住**状态 → 走 L2.pull_module（松开→退15mm钩绿环→合爪30→退120mm），别直接夹

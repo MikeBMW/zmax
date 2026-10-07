@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 
-P = "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
+P = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
 im = cv2.imread(P)
 X0, X1, Y0, Y1 = 380, 2020, 1080, 1340
 sub = im[Y0:Y1, X0:X1]

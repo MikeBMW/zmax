@@ -3,7 +3,7 @@
 # 口径: 正常**一个字都不打**(老倪: 不要刷屏); 有问题才输出(并被 cron 投递到群)。
 # 发现异常先自愈: 让工控机跑一次 ZMAX_AOI_KeepAlive 计划任务(它会缺哪个起哪个, 且能替掉没 /storage 面的冒充进程),
 # 等 45s 复验; 仍异常才把结论打出来(带 /last_result 便于定位)。
-LOG=/home/ubuntu/zmax_data/aoi_watch.log
+LOG=/home/ubuntu/zmax/zmax_data/aoi_watch.log
 cd /home/ubuntu/zmax || exit 0
 PY=./gui-venv311/bin/python
 probe() { curl -s -o /dev/null -m 8 -w '%{http_code}' "http://192.168.23.23:$1/storage"; }

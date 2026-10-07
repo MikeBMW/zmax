@@ -20,9 +20,9 @@ V3 → V4 的关键升级 (V3 的监督信号是**合成随机张量**, 只能�
   ★ 一次 backward ⇒ L3/L4 梯度回传到 L2 + L4 全部参数
 
 用法:
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/joint_train_real_v4.py --steps 200 \
-      --h5 /home/ubuntu/stable-wm-cache/datasets/optical_insert_v6_disturb.h5 \
-      --save /home/ubuntu/stable-wm-cache/checkpoints/joint_v4_real
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/joint_train_real_v4.py --steps 200 \
+      --h5 /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/optical_insert_v6_disturb.h5 \
+      --save /home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/joint_v4_real
 """
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ import sys
 import time
 
 ROOT = "/home/ubuntu/zmax"
-INTACT = "/home/ubuntu/INTACT-JEPA"
-CACHE = "/home/ubuntu/stable-wm-cache"
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 CKPT_DIR = f"{CACHE}/checkpoints/intact_l4_current"
 sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, INTACT)

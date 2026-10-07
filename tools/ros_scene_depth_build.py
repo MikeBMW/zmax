@@ -12,7 +12,7 @@ ros_scene_depth_build.py — 真实场景深度建图 [容器 ss-remote-tap 内�
       → p_base = R_g·p_tcp + t_g                         [实时 /robot/tcp_pose 真值]
       → 体素/占据栅格（X-Y 俯视）+ 语义物体 3D
 
-产出（写 /out，即宿主机 ~/zmax_ss_remote）:
+产出（写 /out，即宿主机 ~/zmax/zmax_data/ss_live）:
     depth_map/depth_raw.npy      原始深度帧 (16UC1)
     depth_map/depth_vis.png      深度伪彩可视化（含遮挡/无效区）
     depth_map/topview.png        base 系 X-Y 占据栅格俯视图（含刀尖位置）

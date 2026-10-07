@@ -8,12 +8,12 @@
 # 用法: bash tools/start_sdk_arm.sh [--check|--stop]
 set -uo pipefail
 REPO=/home/ubuntu/zmax
-SDK_DIR="/home/ubuntu/zmax_data/rokae_sdk"
+SDK_DIR="/home/ubuntu/zmax/zmax_data/rokae_sdk"
 IMAGE=ros:humble-ros-base
 NAME=zmax-sdk-arm-agent
 PORT="${ZMAX_ARM_PORT:-8798}"
 PY="$REPO/gui-venv311/bin/python"
-LOG="$HOME/zmax_data/sdk_motion_service.log"
+LOG="$HOME/zmax/zmax_data/sdk_motion_service.log"
 
 running() { sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$NAME"; }
 listening() { ss -ltn 2>/dev/null | grep -q ":$PORT "; }

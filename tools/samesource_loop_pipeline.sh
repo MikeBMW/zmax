@@ -3,7 +3,7 @@
 set -u
 cd /home/ubuntu/zmax || exit 1
 PY=./gui-venv311/bin/python
-DS=/home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v2.h5
+DS=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v2.h5
 F="/tmp/cog_samesource.log"
 : > "$F"
 flt() { grep -vE "^\[transformers\]|Loading weights|UNEXPECTED|^Notes:|^- +[a-z]|^Key " ; }

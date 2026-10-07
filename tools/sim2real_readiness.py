@@ -59,7 +59,7 @@ def main() -> int:
 
     # ⑤ DDS 全局数据空间 (20 判据)
     if not a.quick:
-        run("⑤ DDS 全局数据空间 (20 判据 · 四档模式)", ["/home/ubuntu/dds-venv/bin/python", "/home/ubuntu/zmax/dds_ss_verify.py"],
+        run("⑤ DDS 全局数据空间 (20 判据 · 四档模式)", ["/home/ubuntu/zmax/venvs/dds-venv/bin/python", "/home/ubuntu/zmax/dds_ss_verify.py"],
             timeout=400, judge=lambda rc, o: rc == 0 and "20/20" in o)
 
     # ⑥ 画布渲染

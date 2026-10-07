@@ -5,7 +5,7 @@
 你来重构代码」。所以**编排逻辑全部搬到 policy 层**, GUI (tools/gui/node_logic.py) 只留瘦调用。
 
 三层职责 (谁负责什么, 一眼看清):
-  · 桥    = runtime/model_adapter.IntactRuntime — 跨 venv 常驻子进程, 跑在 /home/ubuntu/INTACT-JEPA
+  · 桥    = runtime/model_adapter.IntactRuntime — 跨 venv 常驻子进程, 跑在 /home/ubuntu/zmax/external/INTACT-JEPA
             (外部仓库**一字不改**; 论文权重必须它自己的冻结运行时, 依赖也不兼容本工程 venv)
   · 节点  = runtime/node.IntactNode — 滑窗 + 动作历史滚动 + 诊断; modeling_intact.IntactPolicy 是 lerobot 外壳
   · 解码  = decoder.IntactIntentDecoder — u_ff 先验 (act×K_ACT, 无需标定) + L3 流形条件 (未标定诚实拒绝)

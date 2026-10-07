@@ -43,7 +43,7 @@ import numpy as np
 
 REPO = Path("/home/ubuntu/zmax")
 SPEC = REPO / "data" / "scene" / "overlay_spec.json"
-OUT = Path("/home/ubuntu/zmax_data/l5live")
+OUT = Path("/home/ubuntu/zmax/zmax_data/l5live")
 ORIGIN = "l5live"
 N_SLOT_PER_ROW = 7          # 治具固定 7+7 (领域常量, 位置逐帧实测)
 W_MIN, W_MAX = 8, 200       # 框合法性断言 (像素)

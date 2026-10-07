@@ -35,7 +35,7 @@ for s in ss-remote-tap ss-bypass ss-yolo-bypass zmax-net-optimize zmax-web-agent
   printf "  %-24s %s\n" "$s" "$(systemctl is-active $s)"
 done
 echo "=== ⑤ 采集链复核 (帧龄应 <10s) ==="
-for f in /home/ubuntu/zmax_ss_remote/state_*.jsonl /home/ubuntu/zmax_ss_remote/proposal_*.jsonl; do
+for f in /home/ubuntu/zmax/zmax_data/ss_live/state_*.jsonl /home/ubuntu/zmax/zmax_data/ss_live/proposal_*.jsonl; do
   [ -f "$f" ] || continue
   printf "  %-46s mtime=%s\n" "$(basename $f)" "$(date -r $f '+%T')"
 done

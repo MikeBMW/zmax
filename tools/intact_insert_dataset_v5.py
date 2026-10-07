@@ -27,11 +27,11 @@
   ./gui-venv311/bin/python tools/intact_insert_dataset_v5.py \
       --seeds 0-299 --mode full --window 50 --coverage all --stride 50 \
       --disturb mixed --cap l4 --success-only 1 \
-      --out-name optical_insert_v5_disturb --dest /home/ubuntu/stable-wm-cache/datasets
+      --out-name optical_insert_v5_disturb --dest /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
   然后 (INTACT venv, 有 h5py):
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
       --parts 'reports/optical_insert_v5_disturb_part*.npz' \
-      --out-name optical_insert_v5_disturb --dest /home/ubuntu/stable-wm-cache/datasets
+      --out-name optical_insert_v5_disturb --dest /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
   注意: 转 h5 时要带 --skill-ctx (把 npz 的 skill_ctx 一起写进 h5)。
 """
 from __future__ import annotations
@@ -49,7 +49,7 @@ ROOT = os.path.dirname(TOOLS)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("MUJOCO_GL", os.environ.get("MUJOCO_GL", "egl"))
-_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 if os.path.isdir(_CACHE):
     os.environ.setdefault("STABLEWM_HOME", _CACHE)
     os.environ.setdefault("LOCAL_DATASET_DIR", _CACHE)
@@ -316,7 +316,7 @@ def main():
     print(f"🧠 skill_ctx: {'✅ 已随 part 落盘' if _has_sk else '❌ 未落盘'} · "
           f"构造错误: {_SKERR[0] or '无'}")
     print("下一步 (INTACT venv 转官方 h5, 带 skill_ctx):")
-    print(f"  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
+    print(f"  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py "
           f"--parts 'reports/{a.out_name}_part*.npz' --out-name {a.out_name} --dest {a.dest} --skill-ctx")
 
 

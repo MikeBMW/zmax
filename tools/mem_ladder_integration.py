@@ -80,7 +80,7 @@ def _sha(p: str, n: int = 1 << 20) -> str:
 def latest_ckpt() -> str:
     """v5 优先 (新), 再比 epoch; 返回 checkpoints 下的相对路径 (policy 名)。"""
     import glob as _g
-    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     best = None
     for fam in ("intact_goal_optical_insert_v5", "intact_goal_optical_insert_v4"):
         for p in _g.glob(os.path.join(cache, "checkpoints", fam + "*_s3072", "weights_epoch_*.pt")):
@@ -101,7 +101,7 @@ def _rehash(m: dict) -> str:
 
 def build_manifest(policy: str, seeds, steps: int, mode: str, device: str,
                    state_hashes: dict | None = None) -> dict:
-    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     ck = os.path.join(cache, "checkpoints", policy) if policy else ""
     m = {"ts": time.strftime("%F %T"), "policy": policy,
          "ckpt_sha256_16": _sha(ck) if ck and os.path.isfile(ck) else None,

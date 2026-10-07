@@ -43,9 +43,9 @@
 ## 四、复现命令
 
 ```bash
-SWM=/home/ubuntu/stable-wm-cache
+SWM=/home/ubuntu/zmax/zmax_data/stable-wm-cache
 BASE="INTACT_POLICY=intact_l4_current INTACT_DEVICE=cpu INTACT_RUNTIME=root STABLEWM_HOME=$SWM \
-LOCAL_DATASET_DIR=$SWM INTACT_REPO=/home/ubuntu/INTACT-JEPA MUJOCO_GL=egl"
+LOCAL_DATASET_DIR=$SWM INTACT_REPO=/home/ubuntu/zmax/external/INTACT-JEPA MUJOCO_GL=egl"
 # 闸门内部量 (开对齐)
 env SS_L4_ALIGN=1 $BASE ./gui-venv311/bin/python tools/diag_lora_du.py --seeds 0,1 --steps 90 --arms analytic,direct
 # 闭环 A/B (关 / 开 各跑一次对比)

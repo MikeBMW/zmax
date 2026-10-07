@@ -39,7 +39,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--episodes", type=int, default=8)
     ap.add_argument("--steps", type=int, default=220)
-    ap.add_argument("--out", default="/home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v1.h5")
+    ap.add_argument("--out", default="/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v1.h5")
     ap.add_argument("--modes", default="insert,full")
     a = ap.parse_args()
 

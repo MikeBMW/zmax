@@ -23,7 +23,7 @@ R = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(R, "tools"))
 from selfcal_kinematic import JN, ROSX, ORIN, move_joint, sdk, status, wait_idle         # noqa: E402
 
-LIVE = "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl"
+LIVE = "/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl"
 OUTD = os.path.join(R, "data/selfcal")
 
 

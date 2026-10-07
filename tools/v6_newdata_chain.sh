@@ -9,10 +9,10 @@
 #   · 每轮独立目录名 v6d1..v6d3 → 与老 v6r* 链隔离, 可对比
 # 用法: bash tools/v6_newdata_chain.sh [轮数=3] [起始轮号=1]
 set -u
-CACHE=/home/ubuntu/stable-wm-cache/checkpoints
+CACHE=/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints
 ROOT=/home/ubuntu/zmax
 LOG=$ROOT/reports/v6_newdata_chain.log
-cd /home/ubuntu/INTACT-JEPA || exit 1
+cd /home/ubuntu/zmax/external/INTACT-JEPA || exit 1
 
 ROUNDS=${1:-3}
 START=${2:-1}
@@ -32,8 +32,8 @@ echo "[$(date +%H:%M:%S)] ▶ 起点 $PREV/$INIT" | tee -a "$LOG"
 for k in $(seq "$START" $((START + ROUNDS - 1))); do
   NAME=intact_goal_optical_insert_v6d${k}_s3072
   echo "[$(date +%H:%M:%S)] ▶ $NAME (1 epoch × 1000 步, data=zmax_v6, 续自 $PREV)" | tee -a "$LOG"
-  PATH=/home/ubuntu/INTACT-JEPA/.venv/bin:$PATH \
-  STABLEWM_HOME=/home/ubuntu/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/stable-wm-cache \
+  PATH=/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin:$PATH \
+  STABLEWM_HOME=/home/ubuntu/zmax/zmax_data/stable-wm-cache LOCAL_DATASET_DIR=/home/ubuntu/zmax/zmax_data/stable-wm-cache \
   nice -n 5 ./.venv/bin/python train.py --config-name=intact_goal_optical_insert_v6 \
       data=zmax_v6 \
       output_model_name="$NAME" init_weights_path="$INIT" init_zero_skill_branch=false \

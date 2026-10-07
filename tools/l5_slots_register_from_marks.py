@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """l5_slots_register_from_marks.py — 把「四角光模块+14槽位」的几何标注灌进 L5 槽位登记表 + 14 类 YOLO 数据集
 
-来源: ~/zmax_data/l5_corners/marks_*/slots_marks.json (tools/l5_corner_slots_mark.py 的产物)
+来源: ~/zmax/zmax_data/l5_corners/marks_*/slots_marks.json (tools/l5_corner_slots_mark.py 的产物)
 口径(红线, 逐条可查):
   · 登记表 models/l5_slots.json: 14 个槽位**全部**有记录; 被光模块盖住/外推的 4 个标 status=待确认,
     其余(暗区实测+视觉复核)也标 **待确认** —— 因为本批**没有 TCP 演示真值**(不许动机器人),

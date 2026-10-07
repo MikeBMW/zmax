@@ -13,7 +13,7 @@
   ④ 落盘前打印: 折叠层数 / 每层增量范数 / 与基座的最大绝对改动 (证明"真改了哪里")
 
 用法:
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/lora_merge_ckpt.py \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/lora_merge_ckpt.py \
       --ckpt <lora_ckpt.pt> --ref <起点ckpt.pt> --out <merged.pt> [--r 8 --alpha 16]
 """
 from __future__ import annotations

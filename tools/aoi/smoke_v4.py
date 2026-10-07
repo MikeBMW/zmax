@@ -10,7 +10,7 @@ import glob
 import cv2
 import numpy as np
 
-WORK = "/home/ubuntu/aoi_v4"
+WORK = "/home/ubuntu/zmax/zmax_data/aoi_v4"
 STUB = os.path.join(WORK, "_stubmods")
 OUTDIR = os.path.join(WORK, "smoke_out")
 os.makedirs(STUB, exist_ok=True)

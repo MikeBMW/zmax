@@ -33,7 +33,7 @@ except Exception as e:
 
 out = ["\U0001F3C1 **backbone 继续训练已完成**", f"退出码 rc={rc}", "```"]
 out += [l.strip()[:190] for l in lines] or ["(无 step 行, 请查 /tmp/backbone_cont.log)"]
-out += ["```", "产物: /home/ubuntu/stable-wm-cache/checkpoints/backbone_cont"]
+out += ["```", "产物: /home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/backbone_cont"]
 
 print("\n".join(out))
 open(SENT, "w").close()

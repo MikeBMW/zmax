@@ -4,7 +4,7 @@
 技能「进入金手指AOI检测区」的目标点被**做成了可编辑参数**，GUI 下拉把默认值判成无效后**静默停在第一项 `home`**，
 于是下发的是 home（z≈0.294，比当时位姿低约 375mm）→ 老倪看到"继续下降"按下急停。
 
-## 时间线（证据 = `~/zmax_data/l2_daemon.log` + `~/zmax_ss_remote/*.jsonl`）
+## 时间线（证据 = `~/zmax/zmax_data/l2_daemon.log` + `~/zmax/zmax_data/ss_live/*.jsonl`）
 | 时刻 | 事实 |
 |---|---|
 | 08:19:57–08:32:30 | 机械臂静止在 AOI 区（tcp z=0.6975~0.69868，极差 2.1e-7 m）；08:32:30 记录点位 `aoi_gold_view` |

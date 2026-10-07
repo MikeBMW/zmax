@@ -6,7 +6,7 @@
        加一个真实场景节点, 能叠加两个摄像头不同角度的图片; 图片/叠加场景发到飞书」
 
 功能设计:
-  ① 抓帧: A 本机内置 (/dev/videoN, V4L2) · B 臂上相机 (/home/ubuntu/zmax_ss_remote/cam_rs.png, 来自 tap 的
+  ① 抓帧: A 本机内置 (/dev/videoN, V4L2) · B 臂上相机 (/home/ubuntu/zmax/zmax_data/ss_live/cam_rs.png, 来自 tap 的
      /realsense/color/image_raw; 带帧龄)
   ② 叠加模式:
      - sbs   左右并排 (各带 视角/时间/帧龄 标签)
@@ -32,8 +32,8 @@ import cv2
 import numpy as np
 
 R = "/home/ubuntu/zmax"
-ARM_IMG = "/home/ubuntu/zmax_ss_remote/cam_rs.png"
-TAP = "/home/ubuntu/zmax_ss_remote/state_20260925.jsonl"
+ARM_IMG = "/home/ubuntu/zmax/zmax_data/ss_live/cam_rs.png"
+TAP = "/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl"
 OUTD = os.path.join(R, "data/scene")
 W = 640
 

@@ -73,7 +73,7 @@ def picture_api():
    `curl -o surface.png http://127.0.0.1:10083/picture?kind=topview` （文件应 >100KB 且不是 0 字节）。
 4. 4060 侧验收（一条命令，只读+取图各一）：
    ```bash
-   cd ~/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/opt_camera_client.py --health          # 路由表应变 True
+   cd ~/zmax/external/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/opt_camera_client.py --health          # 路由表应变 True
    ./gui-venv311/bin/python tools/opt_camera_client.py --cam 2 --grab --out /tmp/surface.png          # ⚠️ 真拍
    ```
    通过判据：`has_picture=True`、返回图 `shape` 正常、`mean_gray` 有内容（不是 <5 的黑帧）。
@@ -103,7 +103,7 @@ def picture_api():
 (或 config.yaml 的曝光项), 建议**降低曝光时间或增益**, 把金手指条内的饱和像素压下来。
 验收判据 (4060 侧一条命令即可量):
 ```bash
-cd ~/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/aoi_exposure_fix.py <origin.png>
+cd ~/zmax/external/lerobot-smolvla-lew && ./gui-venv311/bin/python tools/aoi_exposure_fix.py <origin.png>
 # 目标: 金手指条 sat ≤ 5%, 无任何列 sat > 60%, 且条内可分辨焊盘/间隙纹理
 ```
 > 为什么不是"越小越好": 金面镜反光本身会有少量 255 (实测条内 5.6%), 属正常; 当前 35% 才叫过曝。

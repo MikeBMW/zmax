@@ -2,7 +2,7 @@
 """🔬 INTACT 模型侧单步调试驱动器 (跑在 INTACT-JEPA 自己的 venv 里, 供 VSCode 断点用)。
 
 为什么需要它: 正式路径是「跨 venv 子进程桥」——GUI venv 起 worker, worker 跑在 INTACT venv 里。
-debugpy 只调停它 **launch 的那个进程**, 所以在 GUI 侧调试会话里, `/home/ubuntu/INTACT-JEPA/**` 的
+debugpy 只调停它 **launch 的那个进程**, 所以在 GUI 侧调试会话里, `/home/ubuntu/zmax/external/INTACT-JEPA/**` 的
 模型代码断点永远不命中。要单步模型侧, 就必须在 **INTACT venv 里 in-process 起同一个 Runtime 类**。
 
 真输入从哪来 (不造假数据): 正式跑一次时设 `INTACT_KEEP_INPUT=1` → 桥会把 worker 收到的**真实输入**
@@ -11,9 +11,9 @@ debugpy 只调停它 **launch 的那个进程**, 所以在 GUI 侧调试会话�
 
 用法 (VSCode 选「🔬 INTACT L4 · 模型侧单步」即可):
   INTACT_DEVICE=cpu INTACT_POLICY=intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt \\
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_worker_debug.py [输入npz] [输出npz]
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_worker_debug.py [输入npz] [输出npz]
 
-断点位置: /home/ubuntu/INTACT-JEPA/** (模型内部) + tools/intact_worker.py::Runtime.act / load
+断点位置: /home/ubuntu/zmax/external/INTACT-JEPA/** (模型内部) + tools/intact_worker.py::Runtime.act / load
 """
 import json
 import os
@@ -22,10 +22,10 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("LOCAL_DATASET_DIR", os.environ["STABLEWM_HOME"])
 os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+os.environ.setdefault("INTACT_REPO", "/home/ubuntu/zmax/external/INTACT-JEPA")
 
 import numpy as np                                  # noqa: E402
 import intact_worker as W                           # noqa: E402  (同 venv 里的 worker 实现)

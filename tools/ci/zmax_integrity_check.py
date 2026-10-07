@@ -2,7 +2,7 @@
 """Z-MAX simulink 工程完整性检查 (2026-08-28)"""
 import re, json, os, sys
 
-ROOT = os.path.expanduser("~/lerobot-smolvla-lew")
+ROOT = os.path.expanduser("~/zmax/external/lerobot-smolvla-lew")
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
 def extract_keys(path, varname="NODE_TYPES"):

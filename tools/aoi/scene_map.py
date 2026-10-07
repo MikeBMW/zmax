@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import sys
 
-P = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_7.png"
+P = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_7.png"
 im = cv2.imread(P)
 h, w = im.shape[:2]
 gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)

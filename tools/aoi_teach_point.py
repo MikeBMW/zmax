@@ -10,7 +10,7 @@
   · 点位库:   `data/skills/l2_atomic/taught_points.json` (与 aoi_gold_view/slot1/slot2/insert_pose 同一库,
              字段同名: pos/quat/desc/recorded_at/source/n_samples/spread_*)
              + `reports/aoi_points/<name>.json` 存 **AOI 上下文** (判据图裁切框 ROI / 框内指标 / 判据图快照路径 / 操作员)
-  · 回位:     **走 L2 收口** —— ① FIFO `~/zmax_data/l2_cmd.fifo` 写 {"skill":"L2.goto_point","point":<name>}
+  · 回位:     **走 L2 收口** —— ① FIFO `~/zmax/zmax_data/l2_cmd.fifo` 写 {"skill":"L2.goto_point","point":<name>}
              (由常驻 l2_daemon 执行: 自带闸门/限幅/日志) ② 直发 `ros2 service call /move_line …` (lite 兜底)
              ⚠️ 默认 **dry-run** (只算 Δ位置 mm + Δ姿态 角 + 打印将下发的命令), 真动必须显式 authorize=True
   · 判完成:   回读 /robot/tcp_pose 与目标比 (位置 mm / 姿态 deg) + operation_state, 不凭 service 返回码
@@ -38,7 +38,7 @@ if os.path.join(ROOT, "tools") not in sys.path:
 POINTS = os.environ.get("ZMAX_TAUGHT_POINTS",
                         os.path.join(ROOT, "data/skills/l2_atomic/taught_points.json"))
 CTX_DIR = os.path.join(ROOT, "reports/aoi_points")
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 MAX_SPREAD_M = 5e-4            # 位置抖动量上限 (0.5mm): 超过 = 还在动 → 拒绝记录
 
 

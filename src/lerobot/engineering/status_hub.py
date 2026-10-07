@@ -38,8 +38,8 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 MANIFEST = os.path.join(ROOT, "src", "lerobot", "engineering", "models_manifest.json")
-SS_BYPASS_STATUS = "/home/ubuntu/zmax_data/ss_bypass/status.json"
-GS_ASSETS_DIR = "/home/ubuntu/zmax_data/gs_assets"
+SS_BYPASS_STATUS = "/home/ubuntu/zmax/zmax_data/ss_bypass/status.json"
+GS_ASSETS_DIR = "/home/ubuntu/zmax/zmax_data/gs_assets"
 REPORTS_DIR = os.path.join(ROOT, "reports")
 TRAIN_MEM_MB = 1500                     # nvidia-smi 计算进程显存 > 此值 ⇒ 判为训练 (老倪口径)
 
@@ -486,7 +486,7 @@ def collect_training() -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ④ 3DGS 资产 (真源: ~/zmax_data/gs_assets/<scene>/gs.ply|gs.splat + train_report.json)
+# ④ 3DGS 资产 (真源: ~/zmax/zmax_data/gs_assets/<scene>/gs.ply|gs.splat + train_report.json)
 # ──────────────────────────────────────────────────────────────────────────────
 def _gs_version(d):
     """mtime + 大小 + 训练配置 → 短哈希 (内容/产物变了版本号才变)。"""

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # 打包 Z-MAX 硬件监控 APK（纯 CLI，无 Gradle）
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-PROJ=/home/ubuntu/state3d_app/hw
-SRC=/home/ubuntu/state3d_app
+PROJ=/home/ubuntu/zmax/tools/web/state3d_app/hw
+SRC=/home/ubuntu/zmax/tools/web/state3d_app
 BUILD=$PROJ/build
 cd "$PROJ"
 
@@ -13,7 +13,7 @@ echo "=== ① 准备资源目录 ==="
 mkdir -p src/main/res/values src/main/res/mipmap-mdpi src/main/res/mipmap-hdpi \
          src/main/res/mipmap-xhdpi src/main/res/mipmap-xxhdpi src/main/res/mipmap-xxxhdpi
 mkdir -p src/main/assets
-cp -f /home/ubuntu/state3d_app/app/src/main/assets/index.html src/main/assets/index.html
+cp -f /home/ubuntu/zmax/tools/web/state3d_app/app/src/main/assets/index.html src/main/assets/index.html
 [ -f src/main/res/values/strings.xml ] || printf '<resources>\n  <string name="app_name">Z-MAX 硬件</string>\n</resources>\n' > src/main/res/values/strings.xml
 
 echo "=== ② 图标（复用既有工程的 5 个密度）==="

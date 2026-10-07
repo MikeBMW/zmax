@@ -41,13 +41,13 @@ CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 REAL_CAM_CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
 # 🧮 流形引擎主标定参数 M 的**可写真源** (config/calib/zmax_manifold.json → 合并进 calib.json)
 MANIFOLD_P = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
-CALIB_REPORT_GLOB = os.path.expanduser("~/zmax_data/calib_report_*.json")
+CALIB_REPORT_GLOB = os.path.expanduser("~/zmax/zmax_data/calib_report_*.json")
 GEOM_CANDIDATES = [
-    os.path.expanduser("~/zmax_data/real_cell_geometry.json"),
+    os.path.expanduser("~/zmax/zmax_data/real_cell_geometry.json"),
     os.path.join(ROOT, "data", "real_cell_geometry.json"),
-    os.path.expanduser("~/zmax_data/ss_out/real_cell_geometry.json"),
+    os.path.expanduser("~/zmax/zmax_data/ss_out/real_cell_geometry.json"),
 ]
-_LIVE_TAP = os.path.expanduser("~/zmax_data/real_tap_*/state_*.jsonl")
+_LIVE_TAP = os.path.expanduser("~/zmax/zmax_data/real_tap_*/state_*.jsonl")
 
 
 # ───────────────────────── 机器人模型 (单一真源) ─────────────────────────

@@ -6,11 +6,11 @@
 set -uo pipefail
 TASK="${1:-pusht}"; POLICY="${2:-recovery_delta_full_${TASK}_s3072}"
 SEED="${3:-42}"; NUM="${4:-100}"
-ROOT=/home/ubuntu/INTACT-JEPA
+ROOT=/home/ubuntu/zmax/external/INTACT-JEPA
 PR="$ROOT/paper_runtime"
 export VIRTUAL_ENV="$ROOT/.venv"
 export PATH="$VIRTUAL_ENV/bin:$PATH"
-export STABLEWM_HOME="${STABLEWM_HOME:-/home/ubuntu/stable-wm-cache}"
+export STABLEWM_HOME="${STABLEWM_HOME:-/home/ubuntu/zmax/zmax_data/stable-wm-cache}"
 export LOCAL_DATASET_DIR="$STABLEWM_HOME"
 export MUJOCO_GL="${MUJOCO_GL:-egl}" PYOPENGL_PLATFORM="${PYOPENGL_PLATFORM:-egl}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"

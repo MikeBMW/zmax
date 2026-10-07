@@ -119,7 +119,7 @@ def main():
               f"R_rel {r['rrel_deg']}° (误差 {r['rrel_err_deg']}°) · 尺寸 {r['size_mm']}mm (误差 {r['size_err_mm']}mm)")
         print(f"   → 3D 边界框: 中心 中位 {r['center_mm_median']}mm · **8 角点** 中位 {r['corner_mm_median']}mm · "
               f"姿态误差 {r['R_err_deg_median']}° · 反投影 IoU {r['iou_median']}")
-    path = args.json or os.path.expanduser(f"~/zmax_data/box3d_identifiability_{stamp}.json")
+    path = args.json or os.path.expanduser(f"~/zmax/zmax_data/box3d_identifiability_{stamp}.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     json.dump({"stamp": stamp, "off_true_mm": OFF_TRUE_MM, "rrel_true_deg": list(RREL_TRUE_DEG),
                "size_true_mm": SIZE_TRUE_MM, "arms": rows},

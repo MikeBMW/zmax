@@ -36,13 +36,13 @@ from PyQt5.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QHe
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
-DS_DIR = os.environ.get("ZMAX_DATASPACE_DIR", "/home/ubuntu/zmax_data/dataspace")
+DS_DIR = os.environ.get("ZMAX_DATASPACE_DIR", "/home/ubuntu/zmax/zmax_data/dataspace")
 LIVE = os.path.join(DS_DIR, "live.json")
 TRACE = os.path.join(DS_DIR, "trace.jsonl")
 LOOP = os.path.join(DS_DIR, "loop.json")
 BUSDB = os.path.join(DS_DIR, "busdb.json")
 MODE_FILE = os.path.expanduser("~/.zmax_telemetry_mode")
-DDS_PY = os.path.expanduser("~/dds-venv/bin/python")
+DDS_PY = os.path.expanduser("~/zmax/venvs/dds-venv/bin/python")
 BUS_TOOL = os.path.join(REPO, "tools/dds_bus.py")
 
 BG, PANEL, LINE = "#14181e", "#1b2027", "#2b3340"

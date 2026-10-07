@@ -12,7 +12,7 @@
     基线 = 平凡基线(恒报"无事件")
   · 划分: 按 variant_id 留出 (80 训练 / 20 留出, 同源不跨集) —— 老倪口径: 口径=训练同源零回退
   · 判据: 模型必须**赢同源基线**, 否则如实写"无提升"
-数据: /home/ubuntu/stable-wm-cache/datasets/l5_v6_sub10k.h5 (100 段 × 100 帧, 引擎域, obs39/skill_ctx24)
+数据: /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_v6_sub10k.h5 (100 段 × 100 帧, 引擎域, obs39/skill_ctx24)
 用法: gui-venv311/bin/python tools/cog_retarget_experiment.py [--epochs 200] [--seeds 3]
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ import time
 import numpy as np
 
 ROOT = "/home/ubuntu/zmax"
-DATA = "/home/ubuntu/stable-wm-cache/datasets/l5_v6_sub10k.h5"
+DATA = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_v6_sub10k.h5"
 REPORTS = os.path.join(ROOT, "reports")
 
 

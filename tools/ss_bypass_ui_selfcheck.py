@@ -17,7 +17,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets      # noqa: E402
 
 import ss_bypass_view as V                       # noqa: E402
 
-OUT = os.path.expanduser("~/zmax_data/20260918_bypass_ui")
+OUT = os.path.expanduser("~/zmax/zmax_data/20260918_bypass_ui")
 os.makedirs(OUT, exist_ok=True)
 
 app = QtWidgets.QApplication(sys.argv)

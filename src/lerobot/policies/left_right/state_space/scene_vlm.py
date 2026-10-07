@@ -54,7 +54,7 @@ _PY = os.path.join(_REPO, "gui-venv311", "bin", "python")
 #   · 默认本地开源 Qwen2.5-VL-3B-Instruct (无需 key, 8GB 4060 可跑)
 #   · 可换 Qwen3-VL 系 (更强, 显存更大): SS_VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct 等
 #   · 或走 API: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max
-_LOCAL_SNAP = os.path.expanduser("~/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots")
+_LOCAL_SNAP = os.path.expanduser("~/zmax/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots")
 _LOCAL_DEF = next((os.path.join(_LOCAL_SNAP, d) for d in sorted(os.listdir(_LOCAL_SNAP))
                    if os.path.exists(os.path.join(_LOCAL_SNAP, d, "config.json"))), None) \
     if os.path.isdir(_LOCAL_SNAP) else None
@@ -92,7 +92,7 @@ def _key_from_hermes_env(name):
     return None
 
 
-CALLS_LOG = os.path.expanduser(os.environ.get("SS_VLM_CALLS_LOG", "~/zmax_data/vlm_calls.jsonl"))
+CALLS_LOG = os.path.expanduser(os.environ.get("SS_VLM_CALLS_LOG", "~/zmax/zmax_data/vlm_calls.jsonl"))
 
 
 def _log_call(mode, image, r, ctx=None):

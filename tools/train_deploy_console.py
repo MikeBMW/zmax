@@ -36,7 +36,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 CKPT = os.path.join(SWM, "checkpoints")
 STATE = os.path.join(REPO, "docs", "PIPELINE_STATE.json")
 AUDIT = os.path.join(REPO, "docs", "deploy_audit.jsonl")
@@ -350,7 +350,7 @@ async function tick(){
  } else {
   h+=`<div class="card"><div class="nm">Mac（小芳·备份端）<span class="role"> MPS</span> <span class="warn">● 未上报</span></div>
    <div class="role">在 Mac 上执行一次即可出现：</div>
-   <div class="role">~/dds-venv/bin/python tools/mac_hw_report.py --dds --watch 30</div></div>`;
+   <div class="role">~/zmax/venvs/dds-venv/bin/python tools/mac_hw_report.py --dds --watch 30</div></div>`;
  }
  document.getElementById('o').innerHTML=h;
 }

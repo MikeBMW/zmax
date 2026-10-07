@@ -159,7 +159,7 @@ def node_integrate(ctx):
         log("📦 集成: 打包最新 checkpoint → 上传 ECS 中转 (cicd_deploy.py push)")
     # 自定义前置检查 (真执行): 例如要求训练产物存在才允许集成
     # import os
-    # if not os.path.exists(os.path.expanduser("~/lerobot-smolvla-lew/outputs/train")):
+    # if not os.path.exists(os.path.expanduser("~/zmax/external/lerobot-smolvla-lew/outputs/train")):
     #     return False, "没有训练产物, 无法集成"
     # === ✏️ 可修改区 END ===
     # 🔒 框架动作: cicd_deploy.py push (勿改)
@@ -895,7 +895,7 @@ def _sw_python(root: str) -> str:
     仓库 .venv 里没有 numpy/torch → 绝不能用它跑桥 (2026-09-13 实测踩过:
     用错解释器 = ModuleNotFoundError: No module named 'numpy')。"""
     for c in (os.environ.get("INTACT_PY") or "",
-              "/home/ubuntu/INTACT-JEPA/.venv/bin/python"):
+              "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python"):
         if c and os.path.exists(c):
             return c
     return "python3"
@@ -932,7 +932,7 @@ def _sw_deploy(root: str) -> dict:
        (tools/action_stats_from_h5.py 现算), 闭环按引擎 u→act 约定还原。"""
     import json as _json
     import glob as _glob
-    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    cache = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
     d = {"task": "optical_insert", "policy": "", "stats": os.path.join(root, "reports",
                                                                       "optical_insert_v4_action_stats.json"),
          "mode": "insert", "max_steps": 900, "seeds": "0,1", "device": "cpu"}
@@ -1630,7 +1630,7 @@ def _box3d_pose(module, aligner=None):
     # ① 真机: 旁路落盘真值
     try:
         import glob as _glob
-        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
         fs = sorted(_glob.glob(os.path.join(_d, "state_*.jsonl")), key=os.path.getmtime)
         if fs and (time.time() - os.path.getmtime(fs[-1])) < 5.0:
             for ln in reversed(open(fs[-1], errors="ignore").read().strip().split("\n")[-40:]):
@@ -2940,7 +2940,7 @@ def _llm_context_text():
     except Exception:                                                          # noqa: BLE001
         pass
     try:
-        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
         sh = os.path.join(_REPO_ROOT, "data", "shared_memory.json")
         if os.path.exists(sh):
             s2 = json.load(open(sh, encoding="utf-8"))
@@ -3139,7 +3139,7 @@ def _vlm_frame():
        返回 (image_path, src, meta); meta 如实带帧龄/来源 (NTP 回拨时负帧龄拒用)"""
     meta = {}
     try:
-        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+        _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
         cands = [os.path.join(_d, n) for n in ("cam_rs.png", "cam_fp.png", "cam_latest.png")]
         cands = [c for c in cands if os.path.exists(c)]
         if cands:
@@ -4543,7 +4543,7 @@ def _resolve_python():
 # 三节点均为**真节点** (注册 + 真源码映射 + 真实磁盘现状 + 真实连线), 不是装饰。
 def _swm_home():
     import os as _o3
-    return _o3.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+    return _o3.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 def node_ss_moe(ctx):
     """🧬 阶段专家 MOE — 7 阶段专属专家 + 先验门控路由 (SigLIP 主干冻结)
@@ -4654,7 +4654,7 @@ _EXTERNAL_LOC["ss_lora_l3"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py
 def node_n_board_frame(ctx):
     """📐 板坐标系定位 (工序坐标系·免手眼) — 真机帧 → 板检测(20点/反色/排镜像) + YOLO
     → 模块在板坐标 (x,y)mm。真执行 tools/board_frame_module.py::run(实况帧);
-    帧源 = ~/zmax_ss_remote/cam_rs.png (产线相机直落)。无帧/帧缺 → 如实报, **不造数**。"""
+    帧源 = ~/zmax/zmax_data/ss_live/cam_rs.png (产线相机直落)。无帧/帧缺 → 如实报, **不造数**。"""
     log = ctx.get("log") or (lambda *a: None)
     try:
         import importlib.util as _ilu
@@ -4664,7 +4664,7 @@ def node_n_board_frame(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         img = str((ctx.get("params") or {}).get("img")
-                  or os.path.expanduser("~/zmax_ss_remote/cam_rs.png"))
+                  or os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"))
         if not os.path.isfile(img):
             log(f"⚠ 板坐标系定位: 无实况帧 {img} (产线相机未起/未落盘) → 不定位, 不造数")
             return False
@@ -4992,10 +4992,10 @@ def node_l5_loop(module=None, log=print, **kw):
     真源: 标注 tools/auto_annotate.py(6 路实拍→VLM) → 监督数据
           → 训练 tools/joint_train_all.py / tools/yolo_annot_train.py
           → LoRA 合并 tools/merge_lora_ckpt.py
-    状态: ~/zmax_data/l5_loop/state.json (CLI 与画布徽章同源)
+    状态: ~/zmax/zmax_data/l5_loop/state.json (CLI 与画布徽章同源)
     """
     import json
-    p = "/home/ubuntu/zmax_data/l5_loop/state.json"
+    p = "/home/ubuntu/zmax/zmax_data/l5_loop/state.json"
     try:
         st = json.load(open(p, encoding="utf-8"))
     except Exception as e:                                                      # noqa: BLE001

@@ -23,7 +23,7 @@
 - 它握着 6 个 /dev/video*（独占打开），硬件(RealSense D405, USB 8086:0b5b)本身正常。
 - 该节点在产线 launch 里是**普通 Node（无 respawn / 非 required）** → 杀掉不会自愈，
   也不会带崩线体；恢复=**产线侧重启相机节点或整条 launch**。
-- 我这侧无责且自愈：`tools/ss_remote_tap.py` 已订阅 raw 图像（1Hz 解码落 `~/zmax_ss_remote/cam_rs.png`），
+- 我这侧无责且自愈：`tools/ss_remote_tap.py` 已订阅 raw 图像（1Hz 解码落 `~/zmax/zmax_data/ss_live/cam_rs.png`），
   来帧即恢复；`SS_VLM` 帧龄闸门 10s。
 - 备选眼睛（无需动 Orin）：①本机 video0 相机；②工控机 10082 图片服务；③DeepSeek/Qwen 判读任一可用帧。
 
@@ -31,7 +31,7 @@
 验收：连续 60s 帧龄 ≤2s + 一张真帧经 VLM 判读「看到两个光模块」。
 
 ## P1 L1 大模型层（DeepSeek-Vision + Qwen 双路）
-- Qwen2.5-VL-3B-Instruct 权重**已就位**：`~/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct`(7.1G, 2 分片, 无残片)。
+- Qwen2.5-VL-3B-Instruct 权重**已就位**：`~/zmax/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct`(7.1G, 2 分片, 无残片)。
 - 现有管道：`src/lerobot/policies/left_right/state_space/scene_vlm.py`
   优先级 = SS_VLM_URL/KEY > DeepSeek(本机已配 key, deepseek-flash 支持 Vision) > 本地 worker(`tools/vlm_worker.py`)。
 - 要做：①本地 Qwen worker 加载验证(离线) ②一键切换推理模型(SS_VLM_PROVIDER/model) ③双路同帧对照
@@ -46,7 +46,7 @@
 验收：两模块 2D 框 + 3D 坐标，与一号位/二号位真值差 <2mm（标定合格时）。
 
 ## P3 L4 INTACT（意图导航）
-- 权重：`~/INTACT-JEPA/checkpoints_hf/INTACT-unified`；直驱口径 `install_direct_act→run_once`；
+- 权重：`~/zmax/external/INTACT-JEPA/checkpoints_hf/INTACT-unified`；直驱口径 `install_direct_act→run_once`；
   前馈 MLP 须 `SS_USE_MLP=1`。CPU 影子跑：`SS_L3_DEV=cpu`。
 - 要做：①离线加载验证 ②意图/潜空间导航输出接统一状态空间 ③安全闸门(否决/限幅)由 L2 收口。
 验收：真权重每帧被调用(日志逐帧计数) + 意图序列落盘可回放。
@@ -67,7 +67,7 @@
 验收：连续 N 帧日志证明五层每帧都被真实调用（无短路、无写死、无假值）。
 
 ## P7 交付
-- 证据留档 `~/zmax_data/<日期>_<主题>/`(MANIFEST+sha256) + docs/memory 同步 + commit/push + 技能沉淀。
+- 证据留档 `~/zmax/zmax_data/<日期>_<主题>/`(MANIFEST+sha256) + docs/memory 同步 + commit/push + 技能沉淀。
 
 ## 当前状态（开工基线）
 - 版本 v5.11.2 · git main 最新 6f50ef6d(pushed) · 工作树 clean

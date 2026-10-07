@@ -7,7 +7,7 @@ schema (对齐官方 formats/hdf5.py): 每个 key 一个 dataset + 必需的 ep_
 
 --validate: 直接用官方 swm.data.load_dataset 读回来 (真正的闸: 官方加载器认不认我们的文件)
 用法:
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_domain_to_h5.py \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_domain_to_h5.py \
      --npz reports/zmax_insert_raw.npz --out-name zmax_insert --validate
 """
 import argparse
@@ -24,7 +24,7 @@ def main():
     ap.add_argument("--npz", required=True)
     ap.add_argument("--out-name", default="zmax_insert")
     ap.add_argument("--dest", default=os.environ.get("LOCAL_DATASET_DIR",
-                                                     "/home/ubuntu/stable-wm-cache") + "/datasets")
+                                                     "/home/ubuntu/zmax/zmax_data/stable-wm-cache") + "/datasets")
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--delete-npz", action="store_true")
     a = ap.parse_args()

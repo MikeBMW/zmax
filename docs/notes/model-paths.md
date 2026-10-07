@@ -1,6 +1,6 @@
 # Z-MAX 模型 / 数据 的默认落盘路径（约定）
 
-> 一句话：**代码在 `/home/ubuntu/zmax`（git 仓库），一切"重"的东西在 `/home/ubuntu/zmax_data`，
+> 一句话：**代码在 `/home/ubuntu/zmax`（git 仓库），一切"重"的东西在 `/home/ubuntu/zmax/zmax_data`，
 > 模型下载默认落 `<数据盘>/models`，HF 下载默认走 `<数据盘>/hf_cache`。**
 > 仓库永远不含权重/数据集（大文件不进库），但仓库里带着**清单 + 识别器**：新机器 clone 下来跑一次
 > `bash tools/zmax_bootstrap.sh` 就知道哪些已经有了、哪些缺、缺的怎么取——**已经下载过的绝不重下**。
@@ -10,7 +10,7 @@
 | 变量 | 默认值 | 放什么 |
 |---|---|---|
 | `ZMAX_CODE` | `/home/ubuntu/zmax` | 代码/技能/记忆（git 仓库） |
-| `ZMAX_DATA` | `/home/ubuntu/zmax_data` | 所有"重"东西的根（数据盘；本机绑 E 盘） |
+| `ZMAX_DATA` | `/home/ubuntu/zmax/zmax_data` | 所有"重"东西的根（数据盘；本机绑 E 盘） |
 | `ZMAX_MODELS` | `$ZMAX_DATA/models` | **模型默认下载根**（权重、第三方模型目录） |
 | `ZMAX_HF_HOME` | `$ZMAX_DATA/hf_cache` | **HF 缓存默认根**（布局同 `~/.cache/huggingface`，即 `hub/models--…`） |
 | `STABLEWM_HOME` | `$ZMAX_DATA/stable-wm-cache` | 训练集 + 训练产物（世界模型/BC/LoRA） |
@@ -30,7 +30,7 @@
 | YOLO 默认路径解析 | — | — | 代码统一走 `tools/gui/yolo_perception.py:default_weights_path()`：环境变量(`ZMAX_YOLO_WEIGHTS`/`SS_YOLO_WEIGHTS`) → 数据盘 → 仓库根 → 家目录旧路径；**别再写死家目录绝对路径** |
 | SmolVLM2-500M | `$ZMAX_HF_HOME/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct` | 1.9G | `HF_HOME=$ZMAX_HF_HOME hf download HuggingFaceTB/SmolVLM2-500M-Video-Instruct --include 'model.safetensors' '*.json'` ← **必须带 include**，不带会连 `onnx/` 5.4G 一起下（总 7.4G） |
 | Qwen2.5-VL-3B | `$ZMAX_HF_HOME/hub/models--Qwen--Qwen2.5-VL-3B-Instruct` | 7.0G | `HF_HOME=$ZMAX_HF_HOME hf download Qwen/Qwen2.5-VL-3B-Instruct` |
-| INTACT/LeWM 权重 | `/home/ubuntu/INTACT-JEPA/checkpoints_hf` | 2.5G（hub 上 7G） | `hf download INTACT-JEPA/INTACT --include 'INTACT-unified/*' --local-dir <目标>` 再解压 |
+| INTACT/LeWM 权重 | `/home/ubuntu/zmax/external/INTACT-JEPA/checkpoints_hf` | 2.5G（hub 上 7G） | `hf download INTACT-JEPA/INTACT --include 'INTACT-unified/*' --local-dir <目标>` 再解压 |
 | L3 LoRA / hJEPA 头 | `$ZMAX_MODELS/`、`$ZMAX_DATA/lora_l3_init.pt` | 11M×4 / 11M | **训练产物**：从备份盘恢复，或按仓库里的训练脚本重做 |
 
 ## 3. 数据：只有一样要"下载"，其余都是自产

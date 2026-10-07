@@ -7,7 +7,7 @@
 """
 import json, math, os, subprocess, sys, time
 
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 TGT_Q = [float(x) for x in sys.argv[1:5]]
 MAXSTEP = float(os.environ.get("ROT_STEP", "9"))
 TOL = float(os.environ.get("ROT_TOL", "6"))

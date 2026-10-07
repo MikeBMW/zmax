@@ -159,7 +159,7 @@ def _intact_ready() -> str:
     """
     if "v" in _INTACT_READY_CACHE:
         return _INTACT_READY_CACHE["v"]
-    repo = os.environ.get("INTACT_REPO", "/home/ubuntu/INTACT-JEPA")
+    repo = os.environ.get("INTACT_REPO", "/home/ubuntu/zmax/external/INTACT-JEPA")
     venv = os.path.join(repo, ".venv", "bin", "python")
     if not os.path.isdir(repo):
         v = "False(仓库缺失)"

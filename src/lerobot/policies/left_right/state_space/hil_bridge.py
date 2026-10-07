@@ -27,7 +27,7 @@ import urllib.request
 ROOT = "/home/ubuntu/zmax"
 REPORTS = os.path.join(ROOT, "reports")
 RELAY = os.environ.get("ZMAX_RELAY_BASE", "https://datadrive.world/api/relay")
-TAP_DIR = "/home/ubuntu/zmax_ss_remote"
+TAP_DIR = "/home/ubuntu/zmax/zmax_data/ss_live"
 
 # 红线: 动作类关键词 → 拒答 (未授权不下发真机动作)
 MOTION_PAT = re.compile(r"(插入|抓取|夹爪|夹紧|移动|运动|下发|示教|拍照|启动产线|回位|抓|插|拔|推|拉|执行动作)")
@@ -124,7 +124,7 @@ def layer_health():
             infer = json.loads(r.read().decode() or "{}")
     except Exception:                                                        # noqa: BLE001
         pass
-    head = os.path.isfile("/home/ubuntu/stable-wm-cache/checkpoints/cog_event_head/head_H5_engine_v2.pt")
+    head = os.path.isfile("/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/cog_event_head/head_H5_engine_v2.pt")
     return {
         "L2": {"name": "L2 检测反馈/收口", "status": "active" if svc.get("ss-yolo-bypass") == "active" else "offline",
                "detail": "yolo 旁路 %s · 推理服务 %s" % (svc.get("ss-yolo-bypass"), svc.get("ss-local-infer"))},

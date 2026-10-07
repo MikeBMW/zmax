@@ -26,8 +26,8 @@ import torch
 import torch.nn.functional as F
 
 ROOT = "/home/ubuntu/zmax"
-INTACT = "/home/ubuntu/INTACT-JEPA"
-SWM = "/home/ubuntu/stable-wm-cache"
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 CKPT = f"{SWM}/checkpoints/intact_l4_current"
 sys.path.insert(0, INTACT)
 sys.path.insert(0, f"{ROOT}/tools")

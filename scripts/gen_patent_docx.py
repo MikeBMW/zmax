@@ -239,7 +239,7 @@ doc.add_paragraph(
 )
 
 # === 保存 ===
-output_dir = os.path.expanduser('~/lerobot-smolvla-lew/docs/patents')
+output_dir = os.path.expanduser('~/zmax/external/lerobot-smolvla-lew/docs/patents')
 os.makedirs(output_dir, exist_ok=True)
 output_path = os.path.join(output_dir, 'Z-MAX-专利交底书-实用新型.docx')
 doc.save(output_path)

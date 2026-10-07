@@ -2,13 +2,13 @@
 # 自主插孔: 从一号位反向上安全梯 → 孔边高度 → 交 L2.lissa_insert 力控插入
 # 每步带意图过闸(现场授权在场); 任一步被拦立即中止, 臂停在当前安全位, 绝不重发。
 set -u
-LOG=/home/ubuntu/zmax_data/l2_daemon.log
+LOG=/home/ubuntu/zmax/zmax_data/l2_daemon.log
 TCP(){ sudo -n timeout 25 docker exec ss-remote-tap bash -c "export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash; timeout 10 ros2 topic echo --once /robot/tcp_pose --field pose" 2>&1 | awk '/^  [xyz]:/{printf " %.4f", $2}'; echo; }
 
 leg(){ local sk=$1 d=$2 desc=$3 off out t0 v; off=$(stat -c%s "$LOG"); t0=$(date +%s); out=""; v=""
-  if [ "$sk" = "L2.lissa_insert" ]; then printf '{"skill":"L2.lissa_insert","allow_unlocked_retract":true}\n' > /home/ubuntu/zmax_data/l2_cmd.fifo
-  elif [ "$d" = "-" ]; then printf '{"skill":"%s"}\n' "$sk" > /home/ubuntu/zmax_data/l2_cmd.fifo
-  else printf '{"skill":"%s","d_mm":%s,"speed":50}\n' "$sk" "$d" > /home/ubuntu/zmax_data/l2_cmd.fifo; fi
+  if [ "$sk" = "L2.lissa_insert" ]; then printf '{"skill":"L2.lissa_insert","allow_unlocked_retract":true}\n' > /home/ubuntu/zmax/zmax_data/l2_cmd.fifo
+  elif [ "$d" = "-" ]; then printf '{"skill":"%s"}\n' "$sk" > /home/ubuntu/zmax/zmax_data/l2_cmd.fifo
+  else printf '{"skill":"%s","d_mm":%s,"speed":50}\n' "$sk" "$d" > /home/ubuntu/zmax/zmax_data/l2_cmd.fifo; fi
   while [ $(( $(date +%s) - t0 )) -lt 300 ]; do sleep 3
     out=$(tail -c +$((off+1)) "$LOG" 2>/dev/null)
     echo "$out" | grep -qE "受理:|回执:" && { echo "$out" | grep -qE "受理: 🛑|🛑 下发被拦|🛑 阶段|success=False|❌" && v="BLOCKED" || v="OK"; break; }

@@ -10,8 +10,8 @@
 
 用法:
   python tools/eval_sim2real_yolo.py --weights A.pt B.pt --tag peg_v1 dr \
-      --real-dir ~/zmax_data/real_cam/orin_d405_eval --sim-dir data/yolo_peg_holdout/images \
-      --conf 0.25 --out reports/sim2real_20260917/eval_arms.json --vis /home/ubuntu/zmax_data/real_cam/eval_vis
+      --real-dir ~/zmax/zmax_data/real_cam/orin_d405_eval --sim-dir data/yolo_peg_holdout/images \
+      --conf 0.25 --out reports/sim2real_20260917/eval_arms.json --vis /home/ubuntu/zmax/zmax_data/real_cam/eval_vis
 """
 import argparse, glob, hashlib, json, os
 import cv2
@@ -35,7 +35,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--weights", nargs="+", required=True)
     ap.add_argument("--tag", nargs="*", default=None)
-    ap.add_argument("--real-dir", default="/home/ubuntu/zmax_data/real_cam/orin_d405_eval")
+    ap.add_argument("--real-dir", default="/home/ubuntu/zmax/zmax_data/real_cam/orin_d405_eval")
     ap.add_argument("--sim-dir", default="data/yolo_peg_holdout/images")
     ap.add_argument("--conf", type=float, default=0.25)
     ap.add_argument("--conf-low", type=float, default=0.01, help="看原始峰值分布用的低阈值")

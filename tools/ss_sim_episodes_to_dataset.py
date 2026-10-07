@@ -20,7 +20,7 @@ import sys
 
 import numpy as np
 
-EP_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax_data/ss_sim_20260921")
+EP_DIR = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax/zmax_data/ss_sim_20260921")
 OUT = sys.argv[2] if len(sys.argv) > 2 else "/home/ubuntu/zmax/data/ss_insert"
 os.makedirs(OUT, exist_ok=True)
 

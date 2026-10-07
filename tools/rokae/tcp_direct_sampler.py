@@ -17,7 +17,7 @@
   * 只读: connectToRobot / posture / jointPos / disconnect —— 全程不发任何运动指令。
 
 用法 (SDK 是 cpython-310 → 必须用 python3.10 容器):
-  sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk \
+  sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk \
       ros:humble-ros-base python3 /sdk/tcp_direct_sampler.py --rate 5 --secs 600
 产出:
   /sdk/tcp_out/tcp_direct_YYYYMMDD.jsonl  每行一次采样

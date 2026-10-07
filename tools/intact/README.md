@@ -18,8 +18,8 @@ bash tools/intact/intact_autopilot.sh --tasks "pusht tworoom reacher cube" --see
 ## 环境前置（一次性）
 
 ```bash
-cd /home/ubuntu/INTACT-JEPA && bash scripts/install.sh cu124   # 若报需要 python3.10/uv 则用 uv 装
-# .env: STABLEWM_HOME / LOCAL_DATASET_DIR 指向缓存根 (本机 = /home/ubuntu/stable-wm-cache)
+cd /home/ubuntu/zmax/external/INTACT-JEPA && bash scripts/install.sh cu124   # 若报需要 python3.10/uv 则用 uv 装
+# .env: STABLEWM_HOME / LOCAL_DATASET_DIR 指向缓存根 (本机 = /home/ubuntu/zmax/zmax_data/stable-wm-cache)
 # 权重: HF INTACT-JEPA/INTACT@paper-e5-goal-v1 的 intact-goal-e5-seed3072.tar.gz (~315MB)
 #       解包到 $STABLEWM_HOME/checkpoints/recovery_delta_full_<task>_s3072/weights_epoch_5.pt
 ```

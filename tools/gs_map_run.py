@@ -31,7 +31,7 @@
   --order fixed|novelty        spaces 模式下的顺序: 固定序 / 按"最没拍过"优先
   --dry-run                    不移动: 用当前位姿当"到位", 走完 采集→建库→质检(验证链路)
   --from-recording <会话目录>   用已有录像重跑 建库→质检(→训练), 完全不动臂
-状态文件 ~/zmax_data/gs_map/status.json(页面 /ctl/gs_map 轮询), 结束附 质量门 结果与资产路径。
+状态文件 ~/zmax/zmax_data/gs_map/status.json(页面 /ctl/gs_map 轮询), 结束附 质量门 结果与资产路径。
 """
 from __future__ import annotations
 
@@ -44,11 +44,14 @@ import time
 import urllib.request
 
 REPO = "/home/ubuntu/zmax"
-PY = "/home/ubuntu/gs-venv/bin/python"
-GS = os.path.expanduser("~/zmax_data/gs_assets")
-ROOT = os.path.expanduser("~/zmax_data/gs_map")
+PY = "/home/ubuntu/zmax/venvs/gs-venv/bin/python"
+# 🚚 建图移动速度(L2 speed 相对量, ≈0.1mm/s 每单位; 技能 speed_max=200 收口): 默认 120 ≈ 11mm/s。
+#    为什么不是默认的 8: 那只有 0.75mm/s, 空间点之间 400~470mm 的转移要 10 分钟/次。
+MOVE_SPEED = float(os.environ.get("GS_MOVE_SPEED", "120"))
+GS = os.path.expanduser("~/zmax/zmax_data/gs_assets")
+ROOT = os.path.expanduser("~/zmax/zmax_data/gs_map")
 STATUS = os.path.join(ROOT, "status.json")
-POSE = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+POSE = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 SP = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
 SKILLS = os.path.join(REPO, "data/skills/l2_atomic/ctl_abs_skills.json")
 MIN_TRAIN_VIEWS = 30      # 真正不同视点少于这个数就别训(浪费 GPU 且出不来资产)
@@ -200,8 +203,12 @@ def l5_select(sess_or_ds, st, k=3):
     return d or {}, op
 
 
-def move_and_wait(skill, tgt, timeout=240):
-    j = api_post("/ctl/move", {"skill": skill, "arm": 1, "speed": 8, "by": "自动建图(L5选点)"})
+def move_and_wait(skill, tgt, timeout=240, speed=None):
+    # 🚚 车速口径 (2026-10-07 老倪选 A 落地时定): L2 的 speed 是"相对量", 实测 ≈0.1mm/s 每单位。
+    #    原来写死 8 ⇒ 0.75mm/s ⇒ 空间点之间 400~470mm 的转移要 10 分钟/次, 7 轮直接跑不完。
+    #    建图用 MOVE_SPEED(默认 120 ≈ 11mm/s, 仍受技能 speed_max=200 收口), 可用 --move-speed 调。
+    _sp = float(MOVE_SPEED if speed is None else speed)
+    j = api_post("/ctl/move", {"skill": skill, "arm": 1, "speed": _sp, "by": "自动建图(L5选点)"})
     if not j.get("ok"):
         return False, 0.0, "下发被拒: %s" % str(j.get("msg") or j.get("err") or j)[:130]
     t0 = time.time()
@@ -270,6 +277,7 @@ def inc_round(sess, tag, i, prev, steps, st):
 
 
 def main():
+    global MOVE_SPEED          # ⬆ 必须在使用之前声明(--move-speed 可覆盖车速)
     ap = argparse.ArgumentParser()
     ap.add_argument("--rounds", type=int, default=7)
     ap.add_argument("--targets", choices=["l5", "spaces"], default="l5")
@@ -282,9 +290,13 @@ def main():
                     help="边移动边建: 每轮就把新画面并进数据集并**接着上一轮资产续训**, 出中间资产")
     ap.add_argument("--inc-steps", type=int, default=3000, help="每轮续训步数(增量模式)")
     ap.add_argument("--dry-run", action="store_true", help="不移动(用当前位姿当到位), 验证链路")
+    ap.add_argument("--move-speed", type=float, default=None,
+                    help="建图移动速度(L2 speed 相对量; 默认 %s ≈ %.1fmm/s)" % (MOVE_SPEED, 0.0935 * MOVE_SPEED))
     ap.add_argument("--from-recording", default="", help="用已有会话重跑 建库→质检(不动臂)")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
+    if args.move_speed:
+        MOVE_SPEED = float(args.move_speed)
 
     tag = args.tag or time.strftime("%Y%m%d_%H%M%S")
     st = {"running": True, "step": "start", "session": "", "mode":

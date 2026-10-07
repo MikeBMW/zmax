@@ -9,7 +9,7 @@
 输出: <out>/gs.ply (真尺度) · <out>/gs.splat (网页查看器用) · <out>/renders/*.png (留出视角)
       <out>/train_report.json (步数/高斯数/PSNR/耗时/归一化参数)
 
-用法: ~/gs-venv/bin/python tools/gs_train.py --data <数据集目录> --out <输出目录> \
+用法: ~/zmax/venvs/gs-venv/bin/python tools/gs_train.py --data <数据集目录> --out <输出目录> \
         [--steps 15000] [--sh-degree 2] [--eval-every 2000] [--smoke 200]
 """
 from __future__ import annotations

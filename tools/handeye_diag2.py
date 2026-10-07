@@ -45,7 +45,7 @@ def main():
     ap.add_argument("--session", default=None)
     ap.add_argument("--spacing", type=float, default=20.0)
     a = ap.parse_args()
-    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
+    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
     rows = [json.loads(l) for l in open(os.path.join(sess, "poses.jsonl"), encoding="utf-8") if l.strip()]
     S = a.spacing
 

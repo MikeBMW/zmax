@@ -11,10 +11,10 @@
 #   这样老倪那个链接(http://<ip>:8791/dl/ZMAX-Site.apk)始终是最新的。
 # ============================================================================
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-SRC=/home/ubuntu/state3d_app
+SRC=/home/ubuntu/zmax/tools/web/state3d_app
 PROJ=$SRC/room
 BUILD=$PROJ/build
 OUT=$PROJ/ZMAX-Site.apk

@@ -45,7 +45,7 @@ sys.path.insert(0, os.path.join(_REPO, "src", "lerobot", "policies", "yolo_3d"))
 import box3d_live_box as LB                                                    # noqa: E402
 from box3d_solver import Box3DSolver                                           # noqa: E402
 
-OUT = os.path.expanduser("~/zmax_data/calib_copilot")
+OUT = os.path.expanduser("~/zmax/zmax_data/calib_copilot")
 STATE = os.path.join(_REPO, "models", "box3d_state.json")
 
 
@@ -231,7 +231,7 @@ def do_report():
            f"· 最近会话: {rep['最近会话']['目录']} → 判读 {rep['最近会话']['判读帧数']} 帧, "
            f"几何合格 {rep['最近会话']['几何合格帧']}, VLM 合格 {rep['最近会话']['VLM 判定合格帧']}")
     print(txt)
-    out = os.path.expanduser(f"~/zmax_data/calib_report_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    out = os.path.expanduser(f"~/zmax/zmax_data/calib_report_{time.strftime('%Y%m%d_%H%M%S')}.json")
     json.dump(rep, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"\n证据: {out}")
     return 0

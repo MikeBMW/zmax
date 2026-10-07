@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """归档远程采集数据 (4060 侧 ss_remote_tap 产物) → 可追溯数据包
 
-用途: 把 /home/ubuntu/zmax_ss_remote 里持续追加的感知/建议流, 做成**一致快照 + 清单**,
+用途: 把 /home/ubuntu/zmax/zmax_data/ss_live 里持续追加的感知/建议流, 做成**一致快照 + 清单**,
       数据不进 git (大文件纪律), 但每条都有 sha256 与来源指纹, 可回溯。
 
 用法:
-    python3 tools/ss_archive_remote_data.py                 # 默认 src=~/zmax_ss_remote
+    python3 tools/ss_archive_remote_data.py                 # 默认 src=~/zmax/zmax_data/ss_live
     python3 tools/ss_archive_remote_data.py --src ... --out ... --note "现场示教前基线"
 
-产出 (默认 ~/zmax_data/ss_remote/<YYYYmmdd_HHMM>/):
+产出 (默认 ~/zmax/zmax_data/ss_remote/<YYYYmmdd_HHMM>/):
     state.jsonl.gz / proposal.jsonl.gz   一致性快照 (坏行/半行被剔除并计数)
     status.json                          采集器自证 (端点/频率/几何状态)
     MANIFEST.md                          来源/条数/时间跨度/频率/几何口径/sha256/git 版本
@@ -54,11 +54,11 @@ def snap_jsonl(src, dst):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=os.path.expanduser("~/zmax_ss_remote"))
+    ap.add_argument("--src", default=os.path.expanduser("~/zmax/zmax_data/ss_live"))
     ap.add_argument("--out", default=None)
     ap.add_argument("--note", default="")
     a = ap.parse_args()
-    out = a.out or os.path.join(os.path.expanduser("~/zmax_data/ss_remote"),
+    out = a.out or os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_remote"),
                                 time.strftime("%Y%m%d_%H%M"))
     os.makedirs(out, exist_ok=True)
     files = sorted(f for f in os.listdir(a.src) if f.endswith(".jsonl"))

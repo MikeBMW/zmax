@@ -7,7 +7,7 @@ import sys
 import json
 import numpy as np
 
-sys.path.insert(0, "/home/ubuntu/lerobot-smolvla-lew/tools")
+sys.path.insert(0, "/home/ubuntu/zmax/external/lerobot-smolvla-lew/tools")
 import aoi_gold_servo as S
 
 PX_PER_MM = np.array([[-11.5, 0.8], [0.6, -12.2]])   # 图像 px / 臂 mm (带一点交叉耦合, 模拟斜视)

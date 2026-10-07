@@ -3,9 +3,9 @@
 """2026-09-30 Phase B: 把工程内绝对路径统一到 /home/ubuntu/zmax 命名空间
 
 规则:
-  1) /home/ubuntu/zmax_rel/...        → /home/ubuntu/zmax/...          (zmax_rel 本就是 zmax 的软链, 恒安全)
-  2) /home/ubuntu/zmax_dds/...        → /home/ubuntu/zmax/dds/...      (zmax_dds 是 zmax/dds 的软链)
-  3) /home/ubuntu/lerobot-smolvla-lew/... → /home/ubuntu/zmax/...      **仅当** zmax 下确实存在同一相对路径
+  1) /home/ubuntu/zmax/...        → /home/ubuntu/zmax/...          (zmax_rel 本就是 zmax 的软链, 恒安全)
+  2) /home/ubuntu/zmax/dds/...        → /home/ubuntu/zmax/dds/...      (zmax_dds 是 zmax/dds 的软链)
+  3) /home/ubuntu/zmax/external/lerobot-smolvla-lew/... → /home/ubuntu/zmax/...      **仅当** zmax 下确实存在同一相对路径
      (两个工作树分支不同、内容有差异 ⇒ 不能盲改; 存在才改, 不存在就保留并报出来)
   4) 数据类路径 (zmax_ss_remote / zmax_moveit_plan / stable-wm-cache ...) 不动 —— 旧路径已留软链, 改了没收益反增风险
 
@@ -16,9 +16,9 @@ import re
 import sys
 
 ROOT = "/home/ubuntu/zmax"
-OLD = {"/home/ubuntu/zmax_rel": "/home/ubuntu/zmax",
-       "/home/ubuntu/zmax_dds": "/home/ubuntu/zmax/dds"}
-FORK = "/home/ubuntu/lerobot-smolvla-lew"
+OLD = {"/home/ubuntu/zmax": "/home/ubuntu/zmax",
+       "/home/ubuntu/zmax/dds": "/home/ubuntu/zmax/dds"}
+FORK = "/home/ubuntu/zmax/external/lerobot-smolvla-lew"
 SKIP_DIR = {".git", "__pycache__", "node_modules", ".venv", "venv", "gui-venv311",
             "outputs", ".mypy_cache", ".pytest_cache", ".ruff_cache", "site-packages"}
 # 不动的地方: reports/ 是历史取证记录(改写等于篡改证据); docs/skills + docs/memory 是 ~/.hermes 的镜像
@@ -103,10 +103,10 @@ def main():
     left = 0
     for p in text_files():
         try:
-            left += open(p, encoding="utf-8").read().count("/home/ubuntu/zmax_rel")
+            left += open(p, encoding="utf-8").read().count("/home/ubuntu/zmax")
         except (OSError, UnicodeDecodeError):
             pass
-    print("  剩余 /home/ubuntu/zmax_rel 引用: %d 处" % left)
+    print("  剩余 /home/ubuntu/zmax 引用: %d 处" % left)
 
 
 if __name__ == "__main__":

@@ -2,10 +2,10 @@
 # 打包「Z-MAX 现场」(手机 APP · 人机在环) APK —— 纯 CLI, 无 Gradle
 # 与既有 Z-MAX APK **同一个签名 keystore**, 但包名不同(com.zmax.room) ⇒ 可与现有 App 并存, 不用先卸载。
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-SRC=/home/ubuntu/state3d_app
+SRC=/home/ubuntu/zmax/tools/web/state3d_app
 PROJ=$SRC/room
 BUILD=$PROJ/build
 OUT=$PROJ/ZMAX-Site.apk

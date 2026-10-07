@@ -11,7 +11,7 @@
   · 3x3 区带里"最物体化"的区带 → 物体实际落在画面哪个位置
   · 退化帧 (纯色/纯黑, std<5) 单独列出并从分母剔除
 
-用法: python tools/real_frame_selfcheck.py --src ~/zmax_data/real_cam/orin_d405_eval \
+用法: python tools/real_frame_selfcheck.py --src ~/zmax/zmax_data/real_cam/orin_d405_eval \
         --out reports/sim2real_20260917/real_frame_selfcheck.json --roi 0.30 0.60 0.70 1.00
 """
 import argparse, glob, json, os
@@ -21,7 +21,7 @@ import numpy as np
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default="/home/ubuntu/zmax_data/real_cam/orin_d405_eval")
+    ap.add_argument("--src", default="/home/ubuntu/zmax/zmax_data/real_cam/orin_d405_eval")
     ap.add_argument("--out", default="reports/sim2real_20260917/real_frame_selfcheck.json")
     ap.add_argument("--roi", nargs=4, type=float, default=[0.30, 0.60, 0.70, 1.00],
                     metavar=("X0", "Y0", "X1", "Y1"), help="ROI 归一化 (默认下方正中)")

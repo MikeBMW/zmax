@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stage_moe_backbone import STAGES, NS, StageMoE, stage_from_ctx  # noqa: E402
 from joint_unified_backbone import MODEL, Unified  # noqa: E402
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 CONTACT = [2, 3, 6]          # 下降/抓取/插入 = 接触段
 HOLDOUT = f"{SWM}/datasets/v6_holdout_rand.h5"
 

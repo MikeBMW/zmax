@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 ROOT = "/home/ubuntu/zmax"
-CACHE = "/home/ubuntu/stable-wm-cache"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 H5 = os.path.join(CACHE, "datasets", "optical_insert_v5_disturb.h5")
 OUT = os.path.join(ROOT, "reports", "optical_insert_v5_disturb_DATACARD.json")
 

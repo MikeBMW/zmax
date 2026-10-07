@@ -4644,7 +4644,7 @@ class LibraryPanel(QFrame):
                 self._elide_lib_text(btn)      # 超长模块名中间省略 (头名字+尾VEH编号都保留)
                 self.v.addWidget(btn)
         # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 光模块/套环/Orin)
-        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/lerobot-smolvla-lew")
+        root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/zmax/external/lerobot-smolvla-lew")
         _dset_cands = [
             ("metaworld_peg", "光模块插拔 (lerobot)", "metaworld"),
         ]
@@ -9918,13 +9918,13 @@ class SimulinkModule(QWidget):
                     out = _spr.check_output(
                         f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o Port={r['port']} "
                         f"{r['user']}@{r['host']} "
-                        f"'cd ~/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
+                        f"'cd ~/zmax/external/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
                         f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
                         f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{_odir}|\" {cfg_rel} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
                         f"else docker rm -f zmax_train 2>/dev/null; docker run -d --runtime nvidia --gpus all "
-                        f"-v ~/lerobot-smolvla-lew:/app -w /app --name zmax_train "
+                        f"-v ~/zmax/external/lerobot-smolvla-lew:/app -w /app --name zmax_train "
                         f"zmax-train:latest python experiments/train/remote_train_entry.py --config_path {cfg_rel} "
                         f"> /tmp/remote_train.log 2>&1; echo RUNNING; fi'",
                         shell=True, timeout=40).decode().strip()
@@ -10064,10 +10064,10 @@ class SimulinkModule(QWidget):
             elif policy == "state_space":
                 # 🧮 2026-08-20 静静: 状态空间蒸馏 — 本地 CPU 直训 (lerobot-venv)
                 #   GUI 原流程强制 docker (zmax-std:1.0) — 本容器无 docker/GPU → 15s 假完成
-                #   改: 直接调 ~/lerobot-venv 的 lerobot_train (与 CLI 闭环一致, 3000步≈1分钟)
-                py = os.path.expanduser("~/lerobot-venv/bin/python")
+                #   改: 直接调 ~/zmax/venvs/lerobot-venv 的 lerobot_train (与 CLI 闭环一致, 3000步≈1分钟)
+                py = os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python")
                 if not os.path.exists(py):
-                    self.log_signal.emit("❌ 本地 CPU 训练环境缺失 (~/lerobot-venv) — 参考 zmax-state-space-training 技能重建")
+                    self.log_signal.emit("❌ 本地 CPU 训练环境缺失 (~/zmax/venvs/lerobot-venv) — 参考 zmax-state-space-training 技能重建")
                     rc = 1
                 else:
                     self.log_signal.emit("🧮 state_space 本地 CPU 直训 (lerobot-venv · 无 docker/GPU 依赖 · 3000步≈1分钟)")
@@ -10131,7 +10131,7 @@ class SimulinkModule(QWidget):
         """YOLO 训练解释器: ①gui-venv311(带 ultralytics, 与视频流窗口「🚀训练YOLO」同源) ②lerobot-venv。
         都没有 → (None, 原因), 显式报错不静默失败。"""
         cands = [os.path.join(root, "gui-venv311", "bin", "python"),
-                 os.path.expanduser("~/lerobot-venv/bin/python")]
+                 os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python")]
         tried = []
         for py in cands:
             if not os.path.exists(py):
@@ -11619,12 +11619,12 @@ class SimulinkModule(QWidget):
         # 🚀 常驻未起则自动起 (老倪: "点击运行后即可根据真实数据进行训练")
         try:
             import json as _j
-            stt = _j.load(open("/home/ubuntu/zmax_data/l2_autolearn/state.json", encoding="utf-8"))
+            stt = _j.load(open("/home/ubuntu/zmax/zmax_data/l2_autolearn/state.json", encoding="utf-8"))
         except Exception:                                                      # noqa: BLE001
             stt = {}
         alive = False
         try:
-            pid = int(open("/home/ubuntu/zmax_data/l2_autolearn/daemon.pid", encoding="utf-8").read().strip())
+            pid = int(open("/home/ubuntu/zmax/zmax_data/l2_autolearn/daemon.pid", encoding="utf-8").read().strip())
             os.kill(pid, 0)
             alive = True
         except Exception:                                                      # noqa: BLE001
@@ -12474,13 +12474,13 @@ class SimulinkModule(QWidget):
             import subprocess as _sp
             root = self._repo_root()
             # 🐛 2026-08-30 老倪\"缺少 .venv/bin/python\": 项目无 .venv (GUI 用 gui-venv311,
-            # 推理/训练环境在 ~/lerobot-venv, torch 2.7.1+cu128 CUDA 可用) → 多候选探测
+            # 推理/训练环境在 ~/zmax/venvs/lerobot-venv, torch 2.7.1+cu128 CUDA 可用) → 多候选探测
             py = next((c for c in (os.path.join(root, ".venv", "bin", "python"),
-                                   os.path.expanduser("~/lerobot-venv/bin/python"),
+                                   os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
                                    os.path.join(root, "gui-venv311", "bin", "python"))
                        if os.path.exists(c)), None)
             if not py:
-                return False, "缺少推理 python 环境 (需 .venv 或 ~/lerobot-venv, 含 torch+CUDA)"
+                return False, "缺少推理 python 环境 (需 .venv 或 ~/zmax/venvs/lerobot-venv, 含 torch+CUDA)"
             r = _sp.run([py, os.path.join(root, "tools", "gen_insert_video.py")],
                         capture_output=True, text=True, timeout=600, cwd=root)
             out = (r.stdout or "").strip().splitlines()
@@ -12510,11 +12510,11 @@ class SimulinkModule(QWidget):
             root = self._repo_root()
             # 🐛 2026-08-30: 与 on_infer_rollout 对齐 — 多候选探测推理/评估 python
             py = next((c for c in (os.path.join(root, ".venv", "bin", "python"),
-                                   os.path.expanduser("~/lerobot-venv/bin/python"),
+                                   os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
                                    os.path.join(root, "gui-venv311", "bin", "python"))
                        if os.path.exists(c)), None)
             if not py:
-                return False, "缺少评估 python 环境 (需 .venv 或 ~/lerobot-venv, 含 torch+CUDA)"
+                return False, "缺少评估 python 环境 (需 .venv 或 ~/zmax/venvs/lerobot-venv, 含 torch+CUDA)"
             r = _sp.run([py, os.path.join(root, "tools", "eval_state_space.py"), "0", "1", "2", "3"],
                         capture_output=True, text=True, timeout=600, cwd=root)
             out = (r.stdout or "").strip().splitlines()
@@ -13517,7 +13517,7 @@ class SimulinkModule(QWidget):
                     #    bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]) —— 原来写死
                     #    `intact_goal_zmax_v2_s3072/weights_epoch_3.pt` 是上一代权重, 续训换名后必然过期。
                     #   标注也改**动态**: 指针实际指向哪个文件就报哪个, 判闸数字不写死在此处 (会变假话)。
-                    _ptr_root = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+                    _ptr_root = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
                     _ptr = os.path.join(_ptr_root, "checkpoints", str(_ckp))
                     _real = os.path.realpath(_ptr)
                     _sz = os.path.getsize(_real) if os.path.isfile(_real) else 0
@@ -13526,7 +13526,7 @@ class SimulinkModule(QWidget):
                                  f" ({_sz} B) · runtime={os.environ.get('INTACT_RUNTIME')}"
                                  f" · 节点 src/lerobot/policies/intact/")
                     _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ on<zero "
-                                 "∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ 的 json 为准, "
+                                 "∧ std比≥0.30); 结论以 /home/ubuntu/zmax/zmax_data/l4_ab/judged/ 的 json 为准, "
                                  "此处不写死数字")
                 elif not _demo_cap:
                     os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
@@ -13635,7 +13635,7 @@ class SimulinkModule(QWidget):
                                 _logs.append(f"   ├ 权重 {os.environ.get('INTACT_POLICY')} · "
                                              f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
                                 _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ "
-                                             "on<zero ∧ std比≥0.30); 结论以 /home/ubuntu/l4_ab/judged/ "
+                                             "on<zero ∧ std比≥0.30); 结论以 /home/ubuntu/zmax/zmax_data/l4_ab/judged/ "
                                              "的 json 为准, 此处不写死数字")
                     except Exception as _ei:
                         import traceback
@@ -14413,8 +14413,8 @@ class SimulinkModule(QWidget):
     # 「能力档位节点增加 L5 档位; 选 L5 + 点运行 → 大模型视觉语言自动标注 (为 L2/L3/L4
     #   提供监督标注数据) + 自动启动训练流程 (L2 YOLO 全量 / L3·L4 LoRA → merge)」
     # 编排真源 = tools/l5_annotate_train_loop.py (后台异步, GUI 不阻塞);
-    # 状态真源 = ~/zmax_data/l5_loop/state.json (CLI --status 与画布徽章读同一份, 不造第二套数字)
-    L5_STATE = "/home/ubuntu/zmax_data/l5_loop/state.json"
+    # 状态真源 = ~/zmax/zmax_data/l5_loop/state.json (CLI --status 与画布徽章读同一份, 不造第二套数字)
+    L5_STATE = "/home/ubuntu/zmax/zmax_data/l5_loop/state.json"
 
     def _cap_level_now(self):
         """当前能力档位 (以画布节点 params.cap_level 为准 — radio 持久/重启不丢; 兜底内存档位)"""
@@ -14753,7 +14753,7 @@ class SimulinkModule(QWidget):
                 self._log("   ├ ① 自动标注: 6 路实拍 → DeepSeek-V4-Flash 视觉语言理解 (每路 ~120s, 不阻塞 GUI)")
                 self._log("   ├ ② 监督数据: L2 YOLO 数据集(data/yolo_annot_l5vlm) + L3/L4 监督 manifest")
                 self._log("   └ ③ 自动训练(串行): L2 YOLO 全量 → L3 SmolVLA LoRA → L4 INTACT LoRA → merge")
-                self._log("   状态: ~/zmax_data/l5_loop/state.json · 日志 ~/zmax_data/l5_loop/*.log")
+                self._log("   状态: ~/zmax/zmax_data/l5_loop/state.json · 日志 ~/zmax/zmax_data/l5_loop/*.log")
             except Exception as e:                                              # noqa: BLE001
                 self._log(f"❌ L5 闭环启动失败: {type(e).__name__}: {e}")
         # 🔁 画布徽章轮询 (主线程 QTimer; 每 1s 把 state.json 画到 L5 节点 + 画布大横幅 + 标题 + 按钮)
@@ -14887,7 +14887,7 @@ class SimulinkModule(QWidget):
         """双击 L5 节点 → 画布刷新状态 + 日志打印闭环产物 (状态真源=state.json)"""
         st = self._l5_state()
         if not st:
-            self._log("🧿 L5 闭环: 尚无运行记录 (~/zmax_data/l5_loop/state.json 不存在) — "
+            self._log("🧿 L5 闭环: 尚无运行记录 (~/zmax/zmax_data/l5_loop/state.json 不存在) — "
                       "选 L5 档后点 ▶运行 启动")
             self._l5_badge(state="idle")
             return
@@ -15574,7 +15574,7 @@ class SimulinkModule(QWidget):
                  "justMyCode": False},
                 {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
                  "program": "${file}",
-                 "python": os.path.expanduser("~/lerobot-venv/bin/python"),
+                 "python": os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False},
                 # ── 🎯 INTACT L4 调试配置 (2026-09-13 老倪: "你来给出 INTACT L4 的调试配置") ──
                 #   ⚠️ 必须写在本模板里: 「右键 → 打开 VSCode」会重写 .vscode/launch.json,
@@ -15582,7 +15582,7 @@ class SimulinkModule(QWidget):
                 #   ① policy 层 (gui-venv311): 断点打 src/lerobot/policies/intact/**
                 #       (service.py / decoder.py / runtime/*.py), 不经过 GUI 也能单步
                 #   ② GUI 节点路径: 断点打 tools/gui/node_logic.py::node_intact_dec + policy 层
-                #   ③ 模型侧 (INTACT-JEPA/.venv = py3.10): 断点打 /home/ubuntu/INTACT-JEPA/**
+                #   ③ 模型侧 (INTACT-JEPA/.venv = py3.10): 断点打 /home/ubuntu/zmax/external/INTACT-JEPA/**
                 #       与 tools/intact_worker.py::Runtime.act —— 真输入来自 reports/intact_last_input.npz
                 #       (INTACT_KEEP_INPUT=1 时桥自动留档), 不是合成数据
                 #   ④ 光模块插拔链 (真物理, gui-venv311 + Z-MAX 引擎)
@@ -15590,23 +15590,23 @@ class SimulinkModule(QWidget):
                  "program": os.path.join(root, "tools/intact_service_e2e.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
                 {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_gui_node_check.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
                 {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_worker_debug.py"),
-                 "python": "/home/ubuntu/INTACT-JEPA/.venv/bin/python",
+                 "python": "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
                 {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
                  "program": os.path.join(root, "tools/intact_sw_optical_bridge.py"),
                  "python": os.path.join(root, "gui-venv311", "bin", "python"),
                  "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
                  "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
+                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
             ],
         }
         try:

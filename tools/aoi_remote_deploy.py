@@ -12,8 +12,8 @@
   ⑥ 任一失败 → 用 .bak 回滚 + 重启 + 复验, 并如实报失败
 
 用法:
-  python tools/aoi_remote_deploy.py --finger ~/aoi_v4/cam_finger_10082_work_v6.py \
-                                   --surface ~/aoi_v4/surface_10083_work_v5.py
+  python tools/aoi_remote_deploy.py --finger ~/zmax/zmax_data/aoi_v4/cam_finger_10082_work_v6.py \
+                                   --surface ~/zmax/zmax_data/aoi_v4/surface_10083_work_v5.py
   可选: --no-restart(只推文件不重启) · --dry(只做 ① ② 核对) · --pubdir <目录>
 """
 import argparse
@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 HUB = os.path.join(ROOT, "tools", "agent_hub.py")
 # 2026-09-29: 与 agent_hub.py 的 OUT_DIR 同步搬出 /tmp(见 agent_hub.py 顶部"fs.protected_regular"说明)
-OUT_DIR = "/home/ubuntu/zmax_data/agent_hub/out"
+OUT_DIR = "/home/ubuntu/zmax/zmax_data/agent_hub/out"
 HOST = "192.168.23.50"
 ILO = "192.168.23.23"
 FILENAME_10082 = "cam_finger_10082_work_v6.py"
@@ -195,9 +195,9 @@ def stop_pair():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--finger", default=os.path.expanduser("~/aoi_v4/cam_finger_10082_work_v6.py"))
-    ap.add_argument("--surface", default=os.path.expanduser("~/aoi_v4/cam_surface_10083_work_v6.py"))
-    ap.add_argument("--pubdir", default="/home/ubuntu/aoi_v4/deliver/v6")
+    ap.add_argument("--finger", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_finger_10082_work_v6.py"))
+    ap.add_argument("--surface", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_surface_10083_work_v6.py"))
+    ap.add_argument("--pubdir", default="/home/ubuntu/zmax/zmax_data/aoi_v4/deliver/v6")
     ap.add_argument("--only", default="both", choices=["both", "10082", "10083"],
                     help="哪一路当验收判据(另一路仅报状态, 不参与成败与回滚)")
     ap.add_argument("--no-restart", action="store_true", help="只推文件+核对, 不动服务")

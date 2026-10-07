@@ -10,7 +10,7 @@
   · 只报**真值形态**(固定前缀+长度), 不报变量名/占位符/文档里的 `***`;
   · 命中的值一律**打码输出**(前4位 + 长度), 避免扫描本身再泄露一遍;
   · 退出码: 有命中 1, 干净 0。
-真值该放哪: /home/ubuntu/zmax_data/secrets/*.env (600, 已在 .gitignore 之外, 永不入库)。
+真值该放哪: /home/ubuntu/zmax/zmax_data/secrets/*.env (600, 已在 .gitignore 之外, 永不入库)。
 """
 import os
 import re
@@ -64,7 +64,7 @@ def main():
     print("❌ 命中 %d 处 (值已打码):" % len(hits))
     for f, ln, name, pre, L in hits[:40]:
         print("   %-7s %s:%d  前缀=%s 长度=%d" % (name, f, ln, pre, L))
-    print("\n修法: 真值挪到 /home/ubuntu/zmax_data/secrets/zmax.env (600), 代码里用 env 或 secrets 文件读;")
+    print("\n修法: 真值挪到 /home/ubuntu/zmax/zmax_data/secrets/zmax.env (600), 代码里用 env 或 secrets 文件读;")
     print("      单元用 EnvironmentFile= + ${VAR}。改完还要清历史(旧提交里仍在) → 见 skill zmax-engineering-repo。")
     return 1
 

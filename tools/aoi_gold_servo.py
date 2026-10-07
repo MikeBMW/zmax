@@ -39,7 +39,7 @@ import time
 import urllib.request
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 TARGET_PATH = os.path.join(REPO, "data/skills/l2_atomic/aoi_gold_target.json")
 AOI_BASE = os.environ.get("AOI_BASE", "http://192.168.23.23:10082")
 

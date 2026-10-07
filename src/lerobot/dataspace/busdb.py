@@ -26,7 +26,7 @@ import time
 
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 CANVAS = os.path.join(REPO, "src/lerobot/engineering/flows/state_space_obs.json")
-OUT = os.environ.get("ZMAX_BUSDB", "/home/ubuntu/zmax_data/dataspace/busdb.json")
+OUT = os.environ.get("ZMAX_BUSDB", "/home/ubuntu/zmax/zmax_data/dataspace/busdb.json")
 
 # 画布上"不是数据节点"的类型(背景行/纯装饰) —— 它们不参与总线
 NON_NODE_TYPES = {"row_bg"}

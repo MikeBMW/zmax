@@ -15,6 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 
-# 规划用的 URDF/配置从宿主机挂进来: -v ~/zmax_rel/config/robot:/ws/robot:ro -v <moveit_config>:/ws/moveit_cfg:ro
+# 规划用的 URDF/配置从宿主机挂进来: -v ~/zmax/config/robot:/ws/robot:ro -v <moveit_config>:/ws/moveit_cfg:ro
 WORKDIR /ws
 CMD ["bash"]

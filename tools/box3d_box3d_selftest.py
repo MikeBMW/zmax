@@ -194,7 +194,7 @@ def main():
     print(f"\n⑤ 诚实性: 解算器类里出现的真值符号 = {leaked or '无'} (应为空)")
 
     out["ok"] = bool(not leaked and r0["mode"] == "fk_only")
-    path = args.json or os.path.expanduser(f"~/zmax_data/box3d_box3d_selftest_{stamp}.json")
+    path = args.json or os.path.expanduser(f"~/zmax/zmax_data/box3d_box3d_selftest_{stamp}.json")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     json.dump(out, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"\n证据: {path}")

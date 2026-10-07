@@ -6,7 +6,7 @@
   - enc: Linear(43,256)+ReLU + Linear(256,256)+ReLU   (obs+act 拼接输入, raw 量纲)
   - pred_next: Linear(256,39)     next_obs 预测
   - contact_head: Linear(256,1) + sigmoid  (抓取时机, acc 1.00)
-用法: ~/lerobot-venv/bin/python tools/export_ss_right_brain.py [ckpt_dir]
+用法: ~/zmax/venvs/lerobot-venv/bin/python tools/export_ss_right_brain.py [ckpt_dir]
      默认从 reports/train_curve_state_space.json 读最新 ckpt (同左脑)。
 """
 import os

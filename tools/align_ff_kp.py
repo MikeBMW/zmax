@@ -19,9 +19,9 @@
       按水平距离分层 (远/中/近) 校验写死值 1.2 是否成立, 输出建议。
 
 用法:
-  ~/lerobot-venv/bin/python tools/align_ff_kp.py                        # 自动选最新 state_space 产物
-  ~/lerobot-venv/bin/python tools/align_ff_kp.py --ckpt <model.pt>      # 手动指定
-  ~/lerobot-venv/bin/python tools/align_ff_kp.py --list                 # 列出候选产物
+  ~/zmax/venvs/lerobot-venv/bin/python tools/align_ff_kp.py                        # 自动选最新 state_space 产物
+  ~/zmax/venvs/lerobot-venv/bin/python tools/align_ff_kp.py --ckpt <model.pt>      # 手动指定
+  ~/zmax/venvs/lerobot-venv/bin/python tools/align_ff_kp.py --list                 # 列出候选产物
 """
 import os
 import sys

@@ -4,15 +4,15 @@
 
 干什么: 按当前遥测模式订阅**全空间话题**, 实测 频率/帧龄/发布者数/字段值, 逐帧跑质量规则,
         把结果写成一个 JSON —— 控制台(数据空间页)、网页、巡检脚本都读它。
-为什么这样做: cyclonedds 只装在独立 venv(~/dds-venv), 控制台/主应用不该被它污染依赖
+为什么这样做: cyclonedds 只装在独立 venv(~/zmax/venvs/dds-venv), 控制台/主应用不该被它污染依赖
         ⇒ 「DDS → JSON 桥」(见技能 dds-messaging)。
 
 用法(必须 dds-venv):
-    ~/dds-venv/bin/python -m lerobot.dataspace.probe --seconds 12          # 采 12 秒后打印+落盘
-    ~/dds-venv/bin/python -m lerobot.dataspace.probe --watch --interval 2  # 常驻, 每 2s 更新 JSON
-    ~/dds-venv/bin/python -m lerobot.dataspace.probe --once --json         # 只打 JSON
+    ~/zmax/venvs/dds-venv/bin/python -m lerobot.dataspace.probe --seconds 12          # 采 12 秒后打印+落盘
+    ~/zmax/venvs/dds-venv/bin/python -m lerobot.dataspace.probe --watch --interval 2  # 常驻, 每 2s 更新 JSON
+    ~/zmax/venvs/dds-venv/bin/python -m lerobot.dataspace.probe --once --json         # 只打 JSON
 
-输出: /home/ubuntu/zmax_data/dataspace/live.json
+输出: /home/ubuntu/zmax/zmax_data/dataspace/live.json
 """
 import argparse
 import json
@@ -36,7 +36,7 @@ for _p in (DDS_DIR, os.path.join(REPO, "tools", "gui")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 CFG = os.environ.get("ZMAX_DDS_CFG", "/home/ubuntu/zmax/dds/cyclonedds_unicast.xml")
-OUT = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax_data/dataspace/live.json")
+OUT = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax/zmax_data/dataspace/live.json")
 
 from lerobot.dataspace import quality, topics as T                      # noqa: E402
 

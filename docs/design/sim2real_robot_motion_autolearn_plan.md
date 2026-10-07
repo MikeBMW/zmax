@@ -48,7 +48,7 @@ S2 批量自动标注 (常驻, 随生产跑)
 
 ## 三、今天的离线实证 (真跑, 报告可查)
 
-报告: `/home/ubuntu/zmax_data/probe_rehearsal/run_20260918_160917/rehearsal_report.json` (复跑同结果)
+报告: `/home/ubuntu/zmax/zmax_data/probe_rehearsal/run_20260918_160917/rehearsal_report.json` (复跑同结果)
 
 | 场景 | 配对数 | 拟合 rms | 留出盲测 | S2 标签/IoU | 结论 |
 |---|---|---|---|---|---|
@@ -155,7 +155,7 @@ gui-venv311/bin/python tools/real_autolabel.py --label-session <会话> --size <
 |---|---|
 | `tools/real_autolabel.py` | +空间加权全域质心 / ROI 收口 / 实测偏移进配对 / slerp 中点姿态 / 可辨识性预检 / S2 批量标注(label_session) / 抓取门(预测位置随动) |
 | `tools/real_probe_plan.py` | **新**: S0 探针计划生成 + 安全与可辨识性预检 (不连机器人) |
-| `tools/real_probe_dryrun_selftest.py` | **新**: S0→S1→S2 离线端到端演练, 9 项断言 (合成场景, 报告落 `~/zmax_data/probe_rehearsal/`) |
+| `tools/real_probe_dryrun_selftest.py` | **新**: S0→S1→S2 离线端到端演练, 9 项断言 (合成场景, 报告落 `~/zmax/zmax_data/probe_rehearsal/`) |
 | `tools/ss_l2_autolearn.py` | 几何标注接**两条标定来源** (机器人动作自标定优先, 棋盘格次之); `--status` 增 `calib_route` 回显 |
 | `tools/make_roi_from_yolo.py` | **新**: 用**在役权重**给会话生成模块区域 ROI 侧车 (质量门: conf≥0.5 + 剔贴边框 + 缺帧留空) |
 | `docs/design/sim2real_robot_motion_autolearn_plan.md` | **新**: 本方案 |

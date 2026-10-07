@@ -13,7 +13,7 @@ import os
 import sys
 
 R = "/home/ubuntu/zmax"
-LP = os.path.expanduser("~/zmax_data/perception_chain.jsonl")
+LP = os.path.expanduser("~/zmax/zmax_data/perception_chain.jsonl")
 
 
 

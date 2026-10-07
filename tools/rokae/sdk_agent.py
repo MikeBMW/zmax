@@ -101,7 +101,18 @@ def handle(r, req):
             rpy = p0["rpy"] if req.get("rx") is None else [float(req["rx"]), float(req["ry"]), float(req["rz"])]
             out["target_req"] = tgt
         out["pre_sampler"] = C.sampler_pose()
-        rc, out = C.do_move(r, tgt, rpy, speed, out, 999.0, cmd)
+        _mv = str(req.get("motion") or "L").upper()
+        rc, out = C.do_move(r, tgt, rpy, speed, out, 999.0, cmd, motion=_mv, guard_box=req.get("guard_box"))
+        # 🧗 奇异点自愈 (2026-10-07 实测): 控制器对 MoveL 可能报 50102「轨迹前瞻过程中遇到奇异点」——
+        #    特征是 moveStart ec=0 但臂**一动不动**, 20s 后残差=全量位移。控制器手册给的修法②就是
+        #    "把笛卡尔运动指令改为关节空间运动指令" ⇒ 同一目标自动改用 MoveJ 再试一次(**只一次**)。
+        if rc != 0 and _mv != "J" and bool(req.get("allow_movej_retry", False)):
+            _first = {"rc": rc, "verdict": out.get("verdict"), "took_s": out.get("took_s"),
+                      "resid_mm": out.get("max_dev_mm")}
+            C.log("🧗 MoveL 被拒(rc=%s) ⇒ 按控制器手册修法②改用 MoveJ 重试一次" % rc)
+            rc2, out2 = C.do_move(r, tgt, rpy, speed, {}, 999.0, cmd, motion="J", guard_box=req.get("guard_box"))
+            out2["retry_after_moveL"] = _first
+            rc, out = rc2, out2
         out["took_s"] = round(time.time() - t0, 2)
         return rc, out
     return 1, {"cmd": cmd, "verdict": "未知命令: %s" % cmd}

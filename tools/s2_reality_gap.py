@@ -20,8 +20,8 @@ import numpy as np
 
 R = "/home/ubuntu/zmax"
 TAP = sorted(glob.glob("/home/ubuntu/zmax/data/**/state_*.jsonl", recursive=True) +
-             glob.glob("/home/ubuntu/tap/state_*.jsonl") + glob.glob("/home/ubuntu/zmax_data/**/state_*.jsonl", recursive=True))
-H5 = "/home/ubuntu/stable-wm-cache/datasets/cog_engine_trace_v3.h5"
+             glob.glob("/home/ubuntu/tap/state_*.jsonl") + glob.glob("/home/ubuntu/zmax/zmax_data/**/state_*.jsonl", recursive=True))
+H5 = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/cog_engine_trace_v3.h5"
 
 
 def load_real(n=4000):

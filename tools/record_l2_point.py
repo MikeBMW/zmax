@@ -38,7 +38,7 @@ def _store_path(store):
     return OUT_SPACE if str(store or "").strip().lower() == "space" else OUT_TAUGHT
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 # ⚡ 本地真值文件(rokae_tcp_sampler 写; 与 /robot/tcp_pose 同源, 5Hz)
-_TCP_DIR = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out")
+_TCP_DIR = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out")
 TCP_JSONL = os.path.join(_TCP_DIR, "tcp_direct_%s.jsonl" % time.strftime("%Y%m%d"))
 TCP_LATEST = os.path.join(_TCP_DIR, "latest.json")
 NUM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
@@ -82,7 +82,7 @@ def sample_fast(n=6, span_s=1.0):
     """⚡ 本地直读真值文件采样(老倪 2026-10-01: 「局域网, 点完 500ms 内要有反应」)。
 
     与执行器**同源**: rokae_tcp_sampler 订阅 /robot/tcp_pose 后写盘到
-    ~/zmax_data/rokae_sdk/tcp_out/tcp_direct_<日期>.jsonl(5Hz) + latest.json。
+    ~/zmax/zmax_data/rokae_sdk/tcp_out/tcp_direct_<日期>.jsonl(5Hz) + latest.json。
     这里**不建任何连接**(旧路是 SSH 到 Orin 跑 6 次 `ros2 topic echo`, 一次 1~2s ⇒ 十几秒),
     直接读 jsonl 末尾 ~span_s 秒的帧算均值/极差 ⇒ 整个记录 <100ms。
 

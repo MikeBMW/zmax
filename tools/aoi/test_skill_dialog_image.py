@@ -6,15 +6,15 @@
 做法: 起一个本地 http.server 冒充 10083 的 /picture, 把 surface v4 离线生成的 1280 方图喂进去,
       离屏构造 L2SkillDialog → _refresh_image(url=...) → 断言 pixmap 真加载、标签含 1280x1280。
       另测 _skill_image_url() 对各类技能的推断 (图像类用自身URL; 触发/判决类回落同通道 /picture?kind=crop)。
-用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python /home/ubuntu/aoi_v4/test_skill_dialog_image.py
+用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python /home/ubuntu/zmax/zmax_data/aoi_v4/test_skill_dialog_image.py
 """
 import os
 import sys
 import threading
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-REPO = "/home/ubuntu/lerobot-smolvla-lew"
-SURF_DIR = "/home/ubuntu/aoi_v4/surface_images"
+REPO = "/home/ubuntu/zmax/external/lerobot-smolvla-lew"
+SURF_DIR = "/home/ubuntu/zmax/zmax_data/aoi_v4/surface_images"
 sys.path.insert(0, os.path.join(REPO, "tools", "gui"))
 sys.path.insert(0, os.path.join(REPO, "src"))
 

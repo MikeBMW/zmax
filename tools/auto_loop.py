@@ -79,7 +79,7 @@ def train():
     r = subprocess.run([
         "bash", "-c",
         f"cd {HOME} && rm -rf outputs/train/act_loop && "
-        f"PYTHONPATH=src {os.path.expanduser('~/lerobot-venv')}/bin/python -m lerobot.scripts.lerobot_train "
+        f"PYTHONPATH=src {os.path.expanduser('~/zmax/venvs/lerobot-venv')}/bin/python -m lerobot.scripts.lerobot_train "
         f"--config_path {CFG} >> outputs/train/loop_train.log 2>&1"
     ], timeout=600)
     ckpts = sorted(glob.glob(str(HOME / "outputs/train/act_loop/checkpoints/*")))

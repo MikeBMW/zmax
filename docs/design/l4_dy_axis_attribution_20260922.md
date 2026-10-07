@@ -48,13 +48,13 @@
 ## 四、复现命令
 
 ```bash
-CACHE=/home/ubuntu/stable-wm-cache/datasets
+CACHE=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets
 # 逐轴判闸 (无 GPU 会自动回退 cpu)
 CUDA_VISIBLE_DEVICES= INTACT_POLICY=intact_goal_optical_insert_v6r11_s3072/weights_epoch_2.pt \
   ./gui-venv311/bin/python tools/intact_replay_check_v4.py --skill on --clips 60 --repeats 1 \
   --out reports/intact_v4_v6r11_peraxis_on.json
 # 数据侧归因 (两份 h5 一起看)
-/home/ubuntu/INTACT-JEPA/.venv/bin/python tools/ana_l4_dy.py
+/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/ana_l4_dy.py
 ```
 产物：`reports/intact_v4_v6r11_peraxis_on.json`（逐轴 pearson + 每槽 MAE/常数基线）·
 `reports/tmp_judge_autofallback_check.json`（回退自检）

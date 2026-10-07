@@ -1,0 +1,1 @@
+/home/ubuntu/zmax/tools/host/orin_lan_setup.sh

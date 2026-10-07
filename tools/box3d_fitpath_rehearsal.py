@@ -75,7 +75,7 @@ def main():
     K, (w, h) = real_K()
     print(f"═══ 拟合链路彩排 (真机内参 fx={K[0,0]:.2f}, {w}x{h}) ═══")
     # 落盘路径改到彩排目录 —— 绝不碰现场的 models/box3d_state.json
-    tmp_state = os.path.expanduser(f"~/zmax_data/rehearsal/box3d_state_{stamp}.json")
+    tmp_state = os.path.expanduser(f"~/zmax/zmax_data/rehearsal/box3d_state_{stamp}.json")
     os.makedirs(os.path.dirname(tmp_state), exist_ok=True)
     LB.STATE = tmp_state
     res = {}
@@ -128,7 +128,7 @@ def main():
     assert saved2 is False, "反例不许落盘 (夹持前提不成立时存状态 = 假标定)"
 
     out = {"stamp": stamp, "K": K.tolist(), "img_wh": [w, h], "checks": res, "ok": True}
-    path = os.path.expanduser(f"~/zmax_data/box3d_fitpath_rehearsal_{stamp}.json")
+    path = os.path.expanduser(f"~/zmax/zmax_data/box3d_fitpath_rehearsal_{stamp}.json")
     json.dump(out, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"\n✅ 彩排通过 (正例可信落盘 / 反例正确拒绝) · 证据: {path}")
     return 0

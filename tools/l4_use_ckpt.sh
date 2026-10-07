@@ -18,7 +18,7 @@
 #   bash tools/l4_use_ckpt.sh --pin intact_goal_optical_insert_v5_s3072/weights_epoch_4.pt
 #   bash tools/l4_use_ckpt.sh --status        # 只看当前指向
 set -u
-CACHE=${STABLEWM_HOME:-/home/ubuntu/stable-wm-cache}
+CACHE=${STABLEWM_HOME:-/home/ubuntu/zmax/zmax_data/stable-wm-cache}
 CK=$CACHE/checkpoints
 PTR=$CK/intact_l4_current
 LINK=$PTR/weights.pt

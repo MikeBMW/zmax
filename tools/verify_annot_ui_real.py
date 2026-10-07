@@ -13,7 +13,7 @@ ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("DISPLAY", ":0")
-OUT = "/home/ubuntu/zmax_data/annot_ui_real_192dpi.png"
+OUT = "/home/ubuntu/zmax/zmax_data/annot_ui_real_192dpi.png"
 
 import numpy as np                                                            # noqa: E402
 from PyQt5 import QtWidgets                                                   # noqa: E402

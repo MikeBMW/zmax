@@ -13,7 +13,7 @@ WorkingDirectory=/home/ubuntu/zmax
 Environment=ZMAX_REPO=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
 # 不带 --cfg: 默认多播发现(=当前实测可用状态)。跨机单播配置见 dds/cyclonedds_unicast.template.xml(现场填 peers 后再引)
-ExecStart=/home/ubuntu/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/publisher.py --interval 3
+ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/publisher.py --interval 3
 Restart=always
 RestartSec=5
 StandardOutput=append:/var/log/zmax-dds-pub.log

@@ -7,7 +7,7 @@
 工程约束(决定形态): VL 单次推理 **40~150s** ⇒ 不能"每步等它"。
 所以做成 **慢传感器 + 快闸门**:
   ① 本进程(常驻) 每 N 秒抓 3 相机 + 1 深度 → 拼一张 2x2 图 → 问 DeepSeek VL 一个**从严**的安全问题
-     → 写 ~/zmax_data/vl_safety.json (裁决 + 时间戳 + 各帧帧龄 + 证据图路径)
+     → 写 ~/zmax/zmax_data/vl_safety.json (裁决 + 时间戳 + 各帧帧龄 + 证据图路径)
   ② 执行层(l2_daemon) 每次下发**运动前**读这个 JSON: 裁决不安全 / 过期 / 缺失 ⇒ **一律拒发**(fail-closed)
      —— 上层只给意图, 执行由最下层收口; 视觉安全闸就是收口的一部分。
 
@@ -18,7 +18,7 @@
   ./gui-venv311/bin/python tools/vl_safety_monitor.py              # 常驻(默认每 75s 一轮)
   ./gui-venv311/bin/python tools/vl_safety_monitor.py --once       # 只跑一轮(取证用)
   ./gui-venv311/bin/python tools/vl_safety_monitor.py --once --feishu   # 不安全时推飞书
-输出: ~/zmax_data/vl_safety.json · 证据图 ~/zmax_data/vl_safety/<时刻>.jpg · 追加 ~/zmax_data/vl_safety_log.jsonl
+输出: ~/zmax/zmax_data/vl_safety.json · 证据图 ~/zmax/zmax_data/vl_safety/<时刻>.jpg · 追加 ~/zmax/zmax_data/vl_safety_log.jsonl
 """
 from __future__ import annotations
 
@@ -38,9 +38,9 @@ sys.path.insert(0, str(REPO / "tools"))
 import gen_overlay_from_vlm as G                                        # noqa: E402
 
 STREAM = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
-OUT = Path(os.path.expanduser("~/zmax_data/vl_safety.json"))
-IMGDIR = Path(os.path.expanduser("~/zmax_data/vl_safety"))
-LOG = Path(os.path.expanduser("~/zmax_data/vl_safety_log.jsonl"))
+OUT = Path(os.path.expanduser("~/zmax/zmax_data/vl_safety.json"))
+IMGDIR = Path(os.path.expanduser("~/zmax/zmax_data/vl_safety"))
+LOG = Path(os.path.expanduser("~/zmax/zmax_data/vl_safety_log.jsonl"))
 CAMS = [("arm", "臂上相机(随工具)"), ("local", "笔记本相机(全局)"),
         ("local2", "MAXHUB顶视"), ("depth", "深度图(伪彩,近=亮)")]
 # 🔧 2026-10-01 (老倪「L5自主安全打开」+「点了不动」根因): 可缺席视角在长时间无帧时**从拼图剔除**。
@@ -149,7 +149,7 @@ def run_once(feishu=False, save_img=True) -> dict:
     #    没有意图时退回泛判(安全侧不变, 只是判得粗)。
     _it_seq, _it_desc, prompt = 0, "", PROMPT
     try:
-        _it = json.loads(open(os.path.expanduser("~/zmax_data/vl_intent.json"), encoding="utf-8").read())
+        _it = json.loads(open(os.path.expanduser("~/zmax/zmax_data/vl_intent.json"), encoding="utf-8").read())
         _it_seq, _it_desc = int(_it.get("seq") or 0), str(_it.get("desc") or "")
     except Exception:                                                   # noqa: BLE001
         pass
@@ -300,7 +300,7 @@ def main() -> int:
 
     def _intent_now():
         try:
-            it = json.loads(open(os.path.expanduser("~/zmax_data/vl_intent.json"), encoding="utf-8").read())
+            it = json.loads(open(os.path.expanduser("~/zmax/zmax_data/vl_intent.json"), encoding="utf-8").read())
             return int(it.get("seq") or 0), str(it.get("desc") or "")
         except Exception:                                               # noqa: BLE001
             return 0, ""

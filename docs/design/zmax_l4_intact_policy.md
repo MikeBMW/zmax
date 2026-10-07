@@ -74,9 +74,9 @@ src/lerobot/manifold/intact_node/__init__.py    # 仅剩兼容转发 (旧引用�
 * **诚实边界**：`IntactPolicy.forward()` 显式 `NotImplementedError` —— INTACT 权重训练在
   INTACT-JEPA 的冻结运行时（`paper_runtime`）里做，本仓库不假装能训；`get_optimizer_preset()` 返回 `None` 同理。
 
-### 4.1 桥接 vs 抄代码（v5.5.43，老倪问「引用过来还是沿用 /home/ubuntu/INTACT-JEPA」）
+### 4.1 桥接 vs 抄代码（v5.5.43，老倪问「引用过来还是沿用 /home/ubuntu/zmax/external/INTACT-JEPA」）
 
-**结论：沿用 `/home/ubuntu/INTACT-JEPA`，一个字都不改，本仓库只经"桥"调用。**理由（都是实测踩出来的）：
+**结论：沿用 `/home/ubuntu/zmax/external/INTACT-JEPA`，一个字都不改，本仓库只经"桥"调用。**理由（都是实测踩出来的）：
 
 | 方案 | 结果 |
 |---|---|
@@ -157,7 +157,7 @@ src/lerobot/policies/intact/service.py   IntactIntentService.run_once(stage, dec
 ③ 解码器: u_ff 先验 [-0.0458, 0.2683, 0.266, 1.0] ← intact(chunk×K_ACT=0.5)
    L3 条件: 拒绝(未标定) → 证据落盘 reports/intact_l3_cond.json
 ④ 迁移期发现并修掉的真 bug: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到
-   (FileNotFoundError) → 改为优先共享缓存 /home/ubuntu/stable-wm-cache
+   (FileNotFoundError) → 改为优先共享缓存 /home/ubuntu/zmax/zmax_data/stable-wm-cache
 ```
 
 ### 7.1 A/B 首轮暴露的第二个真 bug（已修）：引擎直喂帧时没有 goal 帧

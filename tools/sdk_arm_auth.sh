@@ -6,7 +6,7 @@
 #   bash tools/sdk_arm_auth.sh --ttl 1800 --uses 30 --by "老倪(现场)" --note "现场确认安全"
 #   bash tools/sdk_arm_auth.sh --revoke
 set -euo pipefail
-AUTH="$HOME/zmax_data/sdk_arm_auth.json"
+AUTH="$HOME/zmax/zmax_data/sdk_arm_auth.json"
 
 case "${1:-}" in
   --status|"")

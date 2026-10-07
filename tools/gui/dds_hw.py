@@ -223,7 +223,7 @@ class DdsHwCollector:
 
     def _run_subproc_bridge(self):
         """② 读 dds-venv 子进程桥写的 JSON（数据仍经 DDS 传输）"""
-        p = "/home/ubuntu/stable-wm-cache/reports/dds_latest.json"
+        p = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/dds_latest.json"
         if not os.path.isfile(p):
             raise RuntimeError("桥 JSON 不存在: %s" % p)
         last = 0.0

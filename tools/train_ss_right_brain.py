@@ -9,7 +9,7 @@ left action loss) — contact acc 0.721 无区分度 (近peg 0.519 vs 远 0.511)
 - next_obs = 同 episode 下一帧 observation.state (输出训归一化空间, npz next_raw=False)
 - contact = 手(obs[0:3])-peg(obs[7:10]) 距离 < 0.05 (引擎 obs 结构; 该闭爪了吗)
 网络: RightBrainWM(39,4,256) 结构不变 (enc 2×256 + pred_next + contact_head) — npz 管道兼容。
-用法: ~/lerobot-venv/bin/python tools/train_ss_right_brain.py
+用法: ~/zmax/venvs/lerobot-venv/bin/python tools/train_ss_right_brain.py
 """
 import os
 import sys

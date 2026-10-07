@@ -11,8 +11,8 @@ import sys
 import numpy as np
 
 os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 R = "/home/ubuntu/zmax"
 sys.path.insert(0, R + "/src")
@@ -45,7 +45,7 @@ tr = sim.run(max_steps=400)
 eng = np.asarray([np.asarray(x, dtype=np.float64).ravel()[:39] for x in tr["obs"]])
 envn = np.asarray(env_rec)
 
-v6 = h5py.File("/home/ubuntu/stable-wm-cache/datasets/v6_train_rand.h5", "r")["observation"]
+v6 = h5py.File("/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/v6_train_rand.h5", "r")["observation"]
 v6s = np.asarray(v6[0:3000], dtype=np.float64)
 
 print(f"样本数: tr['obs']={len(eng)} · env._get_obs={len(envn)} · v6={len(v6s)}")

@@ -24,8 +24,8 @@ import os
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRAME_CANDS = [os.path.expanduser("~/zmax_ss_remote/cam_rs.png"),
-               os.path.expanduser("~/zmax_ss_remote/cam_fp.png")]
+FRAME_CANDS = [os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"),
+               os.path.expanduser("~/zmax/zmax_data/ss_live/cam_fp.png")]
 SCENE = os.path.join(REPO, "data", "scene_state.json")
 SHARED = os.path.join(REPO, "data", "shared_memory.json")
 MACRO = os.path.join(REPO, "data", "macro_memory.json")
@@ -99,7 +99,7 @@ def collect(vlm=False):
     else:
         try:
             last = None
-            p = os.path.expanduser("~/zmax_data/vlm_calls.jsonl")
+            p = os.path.expanduser("~/zmax/zmax_data/vlm_calls.jsonl")
             if os.path.exists(p):
                 for ln in open(p, encoding="utf-8"):
                     if ln.strip():

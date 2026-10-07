@@ -408,7 +408,7 @@ class DatasetViewer(QDialog):
         return sorted(results)
 
     # ── 🧠 h5 支持 (2026-09-12 老倪: 查看器要能翻 stable-wm-cache 的 h5) ──
-    _INTACT_PY = "/home/ubuntu/INTACT-JEPA/.venv/bin/python"
+    _INTACT_PY = "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python"
 
     def _h5_info(self) -> dict:
         """读 h5 信息 (每回合**真实**帧数等); 进程内缓存一次。"""

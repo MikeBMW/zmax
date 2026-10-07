@@ -16,7 +16,7 @@ import sys
 import h5py
 import numpy as np
 
-CACHE = "/home/ubuntu/stable-wm-cache/datasets"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets"
 AX = ["dx", "dy", "dz", "grip"]
 TOPK = 3
 

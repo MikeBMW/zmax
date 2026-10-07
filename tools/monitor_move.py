@@ -3,7 +3,7 @@
 """monitor_move.py — 只读监控一次真动, 量化"轨迹是否平滑"。
 
 用法: python tools/monitor_move.py <采样秒数> [--speed N]
-数据源: ~/zmax_data/rokae_sdk/tcp_out/latest.json (5Hz endInRef, 页面同源)
+数据源: ~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json (5Hz endInRef, 页面同源)
 输出:
   · 三段识别(按 z 单调性自动切: 抬升/横移/下落) + 每段 时长/行程/净Δ/方向
   · 平滑度: ①段内直线度(垂直弦最大偏差/弦长) ②速度均值·峰值·波动 ③加加速度(相邻速度变化)
@@ -12,7 +12,7 @@
 """
 import json, math, os, sys, time
 
-P = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+P = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 
 
 def rd():
@@ -69,7 +69,7 @@ def main():
         if c:
             S.append((time.time() - t0, c["p"], c["q"]))
         time.sleep(0.18)
-    _dump = os.path.expanduser("~/zmax_data/move_monitor_last.jsonl")
+    _dump = os.path.expanduser("~/zmax/zmax_data/move_monitor_last.jsonl")
     try:
         with open(_dump, "w", encoding="utf-8") as f:
             for t, p, q in S:

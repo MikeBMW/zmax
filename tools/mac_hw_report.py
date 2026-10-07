@@ -120,7 +120,7 @@ def dds_publish(payload, cfg=None):
         return True
     except ImportError as e:
         print("  ❌ DDS 发布失败(需 cyclonedds): %s" % e)
-        print("     安装: python3 -m venv ~/dds-venv && ~/dds-venv/bin/pip install cyclonedds")
+        print("     安装: python3 -m venv ~/zmax/venvs/dds-venv && ~/zmax/venvs/dds-venv/bin/pip install cyclonedds")
         return False
     except Exception as e:                                                      # noqa: BLE001
         print("  ❌ DDS 发布失败: %s: %s" % (type(e).__name__, str(e)[:90]))

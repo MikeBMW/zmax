@@ -7,7 +7,7 @@
 set -u
 ROOT=/home/ubuntu/zmax
 OUT=$ROOT/reports/evidence_l4_fixed
-CACHE=/home/ubuntu/stable-wm-cache/checkpoints
+CACHE=/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints
 LOG=$ROOT/reports/finish_20260914.log
 say() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 
@@ -51,7 +51,7 @@ STEPS = {"intact_goal_optical_insert_v6r2_s3072": "v6r2(17610 步, 死锁前)",
 print("=== A. 判闸趋势 (同权重同帧 on/zero 消融, 修好图像桥后) ===")
 print(f"{'家族':<10}{'额外步数':<12}{'MAE(on)':<10}{'MAE(zero)':<11}{'ΔMAE':<10}{'std比':<8}{'不塌缩':<7}{'过闸'}")
 rows = []
-for f in glob.glob("/home/ubuntu/l4_ab/judged/intact_goal_optical_insert_v6*_epoch*.json"):
+for f in glob.glob("/home/ubuntu/zmax/zmax_data/l4_ab/judged/intact_goal_optical_insert_v6*_epoch*.json"):
     if "__prefix" in f or "deadlock" in f:
         continue
     d = json.load(open(f))

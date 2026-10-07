@@ -7,7 +7,7 @@ import numpy as np
 SIM = {"pegGrasp": (0.0966, 0.5191, 0.0300), "hole": (-0.1685, 0.4623, 0.1309), "goal": (-0.2345, 0.4623, 0.1309)}
 REAL_KEY = {"pegGrasp": "peg_head", "hole": "hole", "goal": "goal"}
 
-g = json.load(open(os.path.expanduser("~/zmax_data/real_cell_geometry.json"), encoding="utf-8"))
+g = json.load(open(os.path.expanduser("~/zmax/zmax_data/real_cell_geometry.json"), encoding="utf-8"))
 keys = list(SIM)
 S = np.array([SIM[k] for k in keys])
 P = np.array([[g["points"][REAL_KEY[k]][c] for c in "xyz"] for k in keys])
@@ -32,7 +32,7 @@ for k, r_ in zip(keys, res):
     print("  残差 %-9s %5.1f mm" % (k, r_))
 print("  最大残差 %.1f mm ⇒ %s" % (res.max(), "✅ 三点自洽, 锚定可信" if res.max() < 8 else "⚠️ 偏大: 某点口径不一致"))
 
-out = os.path.expanduser("~/zmax_data/sim2base_anchor.json")
+out = os.path.expanduser("~/zmax/zmax_data/sim2base_anchor.json")
 a = json.load(open(out, encoding="utf-8")) if os.path.exists(out) else {}
 a.update({"sim_points": {k: list(SIM[k]) for k in keys},
           "real_points": {REAL_KEY[k]: list(P[i]) for i, k in enumerate(keys)},

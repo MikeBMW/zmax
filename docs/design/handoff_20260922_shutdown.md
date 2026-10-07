@@ -6,7 +6,7 @@
 
 | # | 事项 | 证据 |
 |---|---|---|
-| 1 | **数据已保存入库** | 真机 J5 取证 + 厂家问题单 + URDF + 只读探针 → `docs/design/` · `config/robot/` · `tools/rokae/`；真机 tap 数据 2.7GB 归档 `~/zmax_data/real_tap_20260921`(硬链接) |
+| 1 | **数据已保存入库** | 真机 J5 取证 + 厂家问题单 + URDF + 只读探针 → `docs/design/` · `config/robot/` · `tools/rokae/`；真机 tap 数据 2.7GB 归档 `~/zmax/zmax_data/real_tap_20260921`(硬链接) |
 | 2 | **小版本迭代 v5.11.4 已发 Windows/macOS** | tag v5.11.4 → CI 双平台 success；产物独立核验: `Z-MAX_Console.exe` 156.7MB(头 `4d5a`=MZ) · `Z-MAX_Console-macOS.zip` 122.7MB(头 `504b`=PK)，HTTP 206 可真下载 |
 | 3 | **模型节点 ↔ 加载代码 ↔ 权重 对照表** | `docs/design/space_model_nodes_load_map.md` (14 个模型节点两段式: 定义处 + 实际 load 点; 权重逐条在盘核实) |
 | 4 | **L4 运行时证据矩阵** | `docs/design/l4_runtime_evidence_matrix_20260922.md` (逐函数计数; 只认运行时, 不认"画布上有连线") |

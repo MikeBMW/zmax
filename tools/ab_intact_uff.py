@@ -27,7 +27,7 @@ ROOT = os.path.dirname(TOOLS)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("MUJOCO_GL", os.environ.get("MUJOCO_GL", "egl"))
-_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 if os.path.isdir(_CACHE):
     os.environ.setdefault("STABLEWM_HOME", _CACHE)
     os.environ.setdefault("LOCAL_DATASET_DIR", _CACHE)

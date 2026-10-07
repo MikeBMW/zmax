@@ -159,8 +159,45 @@ def cmd_reset(r, args):
     return 0
 
 
+# ---------------- 奇异点 / confdata (2026-10-07 实测两条控制器报警的修法) ----------------
+SING_LIMIT_RAD = float(os.environ.get("ZMAX_SING_LIMIT_RAD", "0.05"))   # 牺牲姿态允许的姿态误差 ≈2.9°
+
+
+def _sing_on(r, out):
+    """🧗 报警 50102 的修法: 控制器**默认关着**"牺牲姿态"奇异点规避 ⇒ MoveL 的轨迹前瞻一遇奇异点
+    就直接拒发(moveStart 返回 success 但臂一动不动)。这里临时打开(允许 limit 弧度内姿态误差绕行),
+    用完由 _sing_restore() 还原成进场前的值, 不给产线留下被动过的控制器参数。"""
+    orig = None
+    try:
+        ec = {}
+        orig = bool(r.getAvoidSingularity(x.AvoidSingularityMethod.wrist, ec))
+        if not orig:
+            ec2 = {}
+            r.setAvoidSingularity(x.AvoidSingularityMethod.wrist, True, SING_LIMIT_RAD, ec2)
+            out["avoid_singularity"] = {"orig": False, "set": True, "limit_rad": SING_LIMIT_RAD,
+                                        "ec": ec2.get("ec"), "msg": ec2.get("message")}
+            log("🧗 临时打开奇异点规避(牺牲姿态 · 允许 %.1f° 姿态误差) · 应对报警 50102" % (SING_LIMIT_RAD * 57.2957795))
+        else:
+            out["avoid_singularity"] = {"orig": True, "set": False}
+    except Exception as e:                                                    # noqa: BLE001
+        out["avoid_singularity"] = {"error": str(e)[:140]}
+    return orig
+
+
+def _sing_restore(r, orig, out):
+    if orig:
+        return
+    try:
+        ec = {}
+        r.setAvoidSingularity(x.AvoidSingularityMethod.wrist, False, SING_LIMIT_RAD, ec)
+        out.setdefault("avoid_singularity", {})["restored_off"] = True
+        log("🧗 奇异点规避已还原为关闭(与进场前一致 · ec=%s)" % ec.get("ec"))
+    except Exception as e:                                                    # noqa: BLE001
+        out.setdefault("avoid_singularity", {})["restore_error"] = str(e)[:120]
+
+
 # ---------------- 运动 ----------------
-def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
+def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag, motion="L", guard_box=None):
     p0 = read_pose(r)
     out["pre_pose"] = p0
     out["pre_alarms"] = alarms()
@@ -195,7 +232,47 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
     out["moveReset_ec"] = dict(ec)
     log("控制模式=NrtCommandMode · 速度=%.1fmm/s · moveReset ec=%s" % (speed, ec))
 
-    mc = x.MoveLCommand(cp, speed, -1)
+    # 🧗 预检(2026-10-07): 控制器自带 checkPath(start_joint, points, target_joint_calculated, ec) ——
+    #    下发**前**校验这条直线的可行性: 不动臂、不产生报警、返回第一个不可行点的下标(0=全通过)。
+    #    不通过 ⇒ 这段直线必被 50102/50120 拒(实测: moveStart 返 success 但臂一动不动), 直接改
+    #    关节空间 MoveJ(控制器手册修法②), 不再白等 6s 快速识别。
+    _chk = None
+    # ⚠️ 默认关: checkPath 的 Python 调用格式还没调对 —— 拿**已知可行**的 +1mm 做基准它同样报
+    #    ec=-50519 "move invalid target"(空表和 6 零预分配都试过), 说明不是目标点的问题而是参数口径问题。
+    #    宁可不用它: 下面的 MoveL→被拒→自动改 MoveJ 是**实测过**的反应式兜底。调对后再开(env ZMAX_CHECKPATH=1)。
+    if str(motion).upper() != "J" and os.environ.get("ZMAX_CHECKPATH") == "1":
+        try:
+            _sj = [float(v) for v in (p0.get("joints") or [])]
+            if len(_sj) >= 6:
+                ecp = {}
+                _cp0 = x.CartesianPosition(list(p0["tcp"]), list(p0["rpy"]))
+                _idx = r.checkPath(_sj, [_cp0, cp], [], ecp)
+                _chk = {"first_bad_idx": int(_idx), "ec": ecp.get("ec"), "msg": ecp.get("message")}
+                if _idx or ecp.get("ec"):
+                    motion = "J"
+                    _chk["verdict"] = "直线不可行 ⇒ 改 MoveJ"
+                    log("🧗 checkPath 预检: 第 %s 个点不可行(%s) ⇒ 本段改用 MoveJ" % (_idx, ecp.get("message")))
+                else:
+                    _chk["verdict"] = "直线可行"
+            else:
+                _chk = {"skipped": "无起始轴角"}
+        except Exception as e:                                                # noqa: BLE001
+            _chk = {"error": str(e)[:140]}
+    out["checkPath"] = _chk
+
+    # 🧗 运动类型 (2026-10-07 实测): 控制器会以 50102「[SDK MoveL] 轨迹前瞻过程中，遇到奇异点」拒发,
+    #    表现是 moveStart 返回 success 但臂**一动不动**(20s 后残差=全量)。控制器手册给的修法②就是
+    #    「把笛卡尔运动指令改为关节空间运动指令」⇒ 这里支持 J(轴运动 MoveJ, 仍是笛卡尔目标, 关节插值)。
+    if str(motion).upper() == "J":
+        mc = x.MoveJCommand(cp, speed, -1)
+        out["motion"] = "MoveJ"
+    else:
+        mc = x.MoveLCommand(cp, speed, -1)
+        out["motion"] = "MoveL"
+    ec = {}
+    r.setDefaultConfOpt(False, ec)     # 报警 50021 修法①: ConfJ off —— 不强制用 confData 求逆解, 取离当前轴角最近的解
+    out["setDefaultConfOpt_ec"] = dict(ec)
+    _sing_orig = _sing_on(r, out)      # 报警 50102 修法: 临时打开"牺牲姿态"奇异点规避(用完还原)
     cmd_id = "zmax_sdkctl_%d" % int(time.time())
     ec = {}
     r.moveAppend(mc, x.PyString(cmd_id), ec)      # cmdID 必须 PyString 包装
@@ -205,6 +282,7 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
     if ec.get("ec", 0) != 0:
         out["verdict"] = "ABORT moveAppend 报错"
         log("⛔ " + out["verdict"])
+        _sing_restore(r, _sing_orig, out)
         return 5, out
 
     ec = {}
@@ -214,7 +292,17 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
     log("moveStart() ec=%s · 开始盯真值" % ec)
 
     trace, stopped = [], None
-    while time.time() - t_send < 20.0:
+    # ⏱ 盯真值的预算必须跟着「距离 / 速度」走。旧实现写死 20s —— 在空间点之间的长转移上
+    #    (例: 460mm @18mm/s ≈ 26s) 会提前退出, 表现成代理报"未到位"而臂其实还在走。
+    _want_mm = max(abs(target_trans[i] - p0["tcp"][i]) * 1000.0 for i in range(3))
+    _is_j = (out.get("motion") == "MoveJ")
+    if _is_j:
+        # MoveJ 是关节插值, 实测等效速度远低于标称(≈3~5mm/s) ⇒ 预算按"位移/3 + 60s"给, 上限 1800s。
+        _budget = max(60.0, min(1800.0, _want_mm / 3.0 + 60.0))
+    else:
+        _budget = max(20.0, min(1200.0, _want_mm / max(float(speed), 0.5) * 3.0 + 20.0))
+    log("盯真值预算 %.0fs (位移 %.1fmm · speed=%.1fmm/s · %s)" % (_budget, _want_mm, float(speed), out.get("motion")))
+    while time.time() - t_send < _budget:
         time.sleep(0.15)
         try:
             cp_now = r.cartPosture(x.CoordinateType.endInRef, {})
@@ -223,6 +311,21 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
         except Exception as e:                                                # noqa: BLE001
             log("读真值异常: %s" % str(e)[:90])
             break
+        # 🛡 实时扫掠闸门 (2026-10-07 碰撞事故后加): 指令的目标点在包络内**不代表扫过的路径也在**。
+        #    上次事故就是 MoveJ 关节插值把 TCP 一路带到 z=0.064(低于包络下限 0.0848) 撞上去的。
+        #    这里每 ~0.15s 拿真值比一次包络盒, 出界立刻 stop() —— MoveL/MoveJ 都管。
+        if guard_box:
+            _bad = [a for i, a in enumerate("xyz")
+                    if not (guard_box[a][0] <= t_now[i] <= guard_box[a][1])]
+            if _bad:
+                ecx = {}
+                r.stop(ecx)
+                out["swept_guard"] = {"violated": _bad, "tcp": [round(v, 5) for v in t_now],
+                                      "t": round(time.time() - t_send, 2), "stop_ec": dict(ecx)}
+                stopped = "🛑 扫掠越界急停: %s 轴出包络(实测 %s) ⇒ stop()" % (_bad, [round(v, 4) for v in t_now])
+                out["verdict"] = stopped
+                log(stopped)
+                break
         d = [t_now[i] - p0["tcp"][i] for i in range(3)]
         want = [target_trans[i] - p0["tcp"][i] for i in range(3)]
         trace.append({"t": round(time.time() - t_send, 2), "tcp": [round(v, 6) for v in t_now],
@@ -238,6 +341,13 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
             log("🛑 %s ⇒ stop() ec=%s" % (stopped, ec))
             break
         if "idle" in op and all(abs(d[i] - want[i]) <= SETTLE_MM / 1000 for i in range(3)):
+            break
+        # 🧗 快速识别"控制器根本没执行"(实测 50102 奇异点被拒就是这个样子): moveStart ec=0 但
+        #    6s 内一动没动且状态仍是 idle ⇒ 立刻退出让上层改走 MoveJ, 不必干等满预算(建图 7 轮等不起)。
+        if time.time() - t_send > (12.0 if _is_j else 6.0) and "idle" in op and max(abs(v) for v in d) < 0.0002:
+            out["verdict"] = "ABORT 控制器未执行(6s 零位移且 idle · 疑似报警 50102 奇异点)"
+            stopped = "未执行(非越界 · 疑似 50102 奇异点)"      # 局部变量: 循环后统一写进 out
+            log("⛔ " + out["verdict"])
             break
     out["trace"] = trace
     out["stopped"] = stopped
@@ -271,6 +381,7 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag):
         out["setIdle_ec"] = dict(ec)
     except Exception as e:                                                    # noqa: BLE001
         out["setIdle_err"] = str(e)[:100]
+    _sing_restore(r, _sing_orig, out)      # 🧗 归还控制器参数(与进场前一致)
     return 0 if out["verdict"].startswith("PASS") else 6, out
 
 

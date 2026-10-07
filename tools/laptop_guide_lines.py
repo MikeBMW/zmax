@@ -179,7 +179,7 @@ def build(imgs):
 
 def deploy(vp, lines, W, H):
     spec = json.load(open(SPEC, encoding="utf-8"))
-    bak = "/home/ubuntu/zmax_data/overlay_spec.bak_guide_%s.json" % time.strftime("%Y%m%d_%H%M%S")
+    bak = "/home/ubuntu/zmax/zmax_data/overlay_spec.bak_guide_%s.json" % time.strftime("%Y%m%d_%H%M%S")
     shutil.copy2(SPEC, bak)
     # 🧭 2026-10-07: 辅助线是"在某台相机画面上量出来的像素几何" ⇒ 必须记住是哪台(源+设备+分辨率),
     #   否则 local 路切到 USB 后这组线会挂在另一台相机的画面上(scene_overlay._guide_src_ok 会拦,
@@ -271,7 +271,7 @@ def main():
     ap.add_argument("--deploy", action="store_true")
     ap.add_argument("--clear", action="store_true")
     ap.add_argument("--frames", type=int, default=8, help="拟合用帧数(取中位, 压制单帧噪声; 默认 8)")
-    ap.add_argument("--out", default="/home/ubuntu/zmax_data/feishu_send/laptop_guide_lines.jpg")
+    ap.add_argument("--out", default="/home/ubuntu/zmax/zmax_data/feishu_send/laptop_guide_lines.jpg")
     a = ap.parse_args()
     imgs = []
     for _ in range(max(1, a.frames)):

@@ -4,7 +4,7 @@
 
 为什么不用 tools/record_l2_point.py: 那个走本机 Docker tap 的 /robot/tcp_pose 只读订阅,
 新订阅者常收不到(会话陈旧时全 0), 录下去就是坏点位。本工具读**页面同源**的真值:
-`rokae_tcp_sampler` → `~/zmax_data/rokae_sdk/tcp_out/latest.json` (xcoreSDK endInRef, 5Hz)。
+`rokae_tcp_sampler` → `~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json` (xcoreSDK endInRef, 5Hz)。
 
 纪律 (与 record_l2_point.py 同口径, 另加两条):
   · 连续采样 ≥6 帧算均值 + 极差; pos 极差 >1e-4 m = 机械臂还在动 → 拒绝记录;

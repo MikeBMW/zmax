@@ -6,7 +6,7 @@
   技能记载验收口径: **v4 模板法 ≥0.95** / v3 固定窗 ≈0.29 ⇒ 工厂口径不合格 ⇒ 它的 OK/NG 判决不可信.
   本工具在 4060 侧对**同一批真图**跑我们的两种口径, 用数字决定该用哪个:
     ① 工厂口径   : GET /picture?kind=crop (960×960) + /crop_info.score
-    ② 本机 v4 模板: /home/ubuntu/aoi_v4/gf_crop.GoldFingerCropper → 960×960 (与模型 imgsz=960 对齐)
+    ② 本机 v4 模板: /home/ubuntu/zmax/zmax_data/aoi_v4/gf_crop.GoldFingerCropper → 960×960 (与模型 imgsz=960 对齐)
     ③ 本机 自裁   : tools/aoi_exposure_fix.clean_judge_frame → 无过曝带 (可另存原比例版)
 指标: 尺寸 · 均值/std · 饱和(≥250)占比 · 死白行 · Tenengrad(细节能量) · score/残余倾角/金覆盖
 产物: 每帧三口径图 + 判决 JSON 落到 data/yolo_aoi_annot/caliber_bench/ + 汇总 reports/aoi_caliber_bench_*.json
@@ -26,9 +26,9 @@ import cv2
 
 R = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(R, "tools"))
-sys.path.insert(0, "/home/ubuntu/aoi_v4")
+sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
 CAM = "http://192.168.23.23:10082"
-TPL = "/home/ubuntu/aoi_v4/templates/gf_strip_template.png"
+TPL = "/home/ubuntu/zmax/zmax_data/aoi_v4/templates/gf_strip_template.png"
 OUT = os.path.join(R, "data/yolo_aoi_annot/caliber_bench")
 
 

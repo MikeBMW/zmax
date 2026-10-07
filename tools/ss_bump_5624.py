@@ -30,7 +30,7 @@ SUMMARY = (
     "1px噪声→0.811px · 薄片绕光轴转90°框 14.5x37.5→37.7x14.4 正确互换); 诚实边界: 模块尺寸/夹具偏移/孔口点需现场量或示教, 自动标注**不得当 val**。"
     "⑥**模型引擎页一键训 YOLO**: 新增「🚀 YOLO 训练」节点 (policy=yolo · 步数=epoch · 与 🚀 ACT 训练 同列对齐) —— 原来 "
     "`_train_yolo_detector()` 写了却没有节点传 policy=\"yolo\", 从界面到不了; 同时修该函数: 解释器自动选带 ultralytics 的 gui-venv311"
-    "(旧写死 ~/lerobot-venv 实测没装 → 一点就报错), 数据源优先**真机标注** data/yolo_annot/dataset (走 yolo_annot_train.py --base auto 域适应微调, "
+    "(旧写死 ~/zmax/venvs/lerobot-venv 实测没装 → 一点就报错), 数据源优先**真机标注** data/yolo_annot/dataset (走 yolo_annot_train.py --base auto 域适应微调, "
     "imgsz640) 否则回退仿真 data/yolo_peg, 仿真分支真用 GPU; 踩坑: match_node 取最长关键字, 裸 \"YOLO\"(4字) 会抢走 \"训练\"(2字) → "
     "「🚀 YOLO 训练」被派去跑目标检测, 故单独注册 train_yolo(\"YOLO 训练\"); 另 edges 源索引是 3(YOLO检测)不是 2(共享🧩定义被跳过) 否则连线被静默丢弃。"
     "⑦**运维**: `zmax-studio` `Restart=on-failure→no` (journal 实证 11:51 X11 connection broke → 退出码1 → 5s 又拉起 = 反复重启, 老倪「别自动重启」); "

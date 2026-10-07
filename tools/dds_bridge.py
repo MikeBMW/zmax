@@ -9,7 +9,7 @@
 
 订阅: zmax/hw_state · zmax/train_prog · zmax/heartbeat
 落盘: <reports>/dds_latest.json  （按节点名索引, 每节点只留最新; 带 recv_ts/age 判新鲜度）
-用法: /home/ubuntu/dds-venv/bin/python tools/dds_bridge.py [--cfg dds/cyclonedds_unicast.xml]
+用法: /home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_bridge.py [--cfg dds/cyclonedds_unicast.xml]
 """
 import argparse
 import json
@@ -19,7 +19,7 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "dds"))
-OUT = "/home/ubuntu/stable-wm-cache/reports/dds_latest.json"
+OUT = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/dds_latest.json"
 
 
 def main():

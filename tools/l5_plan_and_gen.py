@@ -11,7 +11,7 @@
 与现有 collect_*.py 的区别: 这里用 **L5 规划器定方向** (不是穷举), 变体带语义标签。
 
 用法:
-  python tools/l5_plan_and_gen.py --n 200 --out /home/ubuntu/stable-wm-cache/datasets/l5_gen_v1.h5
+  python tools/l5_plan_and_gen.py --n 200 --out /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_gen_v1.h5
   nice -n 19 ... (GPU 训练繁忙时让路)
 """
 from __future__ import annotations
@@ -53,8 +53,8 @@ sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, f"{ROOT}/tools/gui")
 
 os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 
 # ───────── L5: 定方向 (规划器 → 任务变体) ─────────
@@ -131,7 +131,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200)
     ap.add_argument("--steps", type=int, default=400, help="每个变体跑多少步")
-    ap.add_argument("--out", default="/home/ubuntu/stable-wm-cache/datasets/l5_gen_v1.h5")
+    ap.add_argument("--out", default="/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_gen_v1.h5")
     ap.add_argument("--seed", type=int, default=104)
     ap.add_argument("--save-every", type=int, default=20)
     ap.add_argument("--vision", type=int, default=1, help="1=开渲染(才有关键帧, 真像素)")

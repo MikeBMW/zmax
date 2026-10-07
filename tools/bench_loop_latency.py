@@ -20,8 +20,8 @@ sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, f"{ROOT}/tools/gui")
 os.chdir(ROOT)
 os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 import numpy as np
 

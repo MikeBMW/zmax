@@ -32,7 +32,7 @@ import os
 import sys
 import time
 
-OUT_DEFAULT = os.environ.get("SS_OUT", os.path.expanduser("~/zmax_ss_remote"))
+OUT_DEFAULT = os.environ.get("SS_OUT", os.path.expanduser("~/zmax/zmax_data/ss_live"))
 GEOM_DEFAULT = os.environ.get("SS_GEOM_PATH", os.path.join(OUT_DEFAULT, "real_cell_geometry.json"))
 FRESH_S = 5.0            # 真值新鲜度窗口 (秒): 超了就当"无实时真值", 不拿旧值冒充
 

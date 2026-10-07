@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 官方 INTACT Direct 评测 (pusht) — 取 SR + 零搜索计时证据
-# 用法: bash /home/ubuntu/l4_ab/run_intact_eval.sh [MODE] [TASK] [POLICY] [SEED] [NUM_EVAL]
+# 用法: bash /home/ubuntu/zmax/zmax_data/l4_ab/run_intact_eval.sh [MODE] [TASK] [POLICY] [SEED] [NUM_EVAL]
 set -uo pipefail
 MODE="${1:-direct}"; TASK="${2:-pusht}"; POLICY="${3:-recovery_delta_full_pusht_s3072}"
 SEED="${4:-42}"; NUM="${5:-100}"
-cd /home/ubuntu/INTACT-JEPA
-export VIRTUAL_ENV=/home/ubuntu/INTACT-JEPA/.venv
+cd /home/ubuntu/zmax/external/INTACT-JEPA
+export VIRTUAL_ENV=/home/ubuntu/zmax/external/INTACT-JEPA/.venv
 export PATH="$VIRTUAL_ENV/bin:$PATH"
-export STABLEWM_HOME="${STABLEWM_HOME:-/home/ubuntu/stable-wm-cache}"
+export STABLEWM_HOME="${STABLEWM_HOME:-/home/ubuntu/zmax/zmax_data/stable-wm-cache}"
 export LOCAL_DATASET_DIR="$STABLEWM_HOME"
 export MUJOCO_GL="${MUJOCO_GL:-egl}" PYOPENGL_PLATFORM="${PYOPENGL_PLATFORM:-egl}"
 echo "=== 前置检查 (依赖/数据/权重) ==="

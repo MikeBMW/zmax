@@ -14,7 +14,7 @@
 | 6 | **L4 LoRA 同口径 A/B（200clips×3）** | `reports/lora_eval200_v6d9.json` / `..._v6lora.json`：MAE 0.03052→0.02859 = **−6.32%**，逐槽赢 **16/16** |
 | 7 | **全系统联合训练编排** | `tools/joint_train_all.py`（实跑：L4 rc=0/128.4s · L3 rc=0/471.3s · L2 rc=0/53.6s · LLM rc=1 诚实缺） |
 | 8 | **Sim-to-Real 六环闭环** | `tools/sim2real_loop.py`（归档 17/17 落地；硬链接被拒自动回退复制） |
-| 9 | **本轮证据归档** | `~/zmax_data/full_system_20260922/`（114 文件 + MANIFEST(sha256) + MODELS.json） |
+| 9 | **本轮证据归档** | `~/zmax/zmax_data/full_system_20260922/`（114 文件 + MANIFEST(sha256) + MODELS.json） |
 | 10 | 文档 · 技能 · 飞书 | `docs/design/full_system_dataclosedloop_20260922.md`（含 §5.2 判闸修正）· 技能 `mlops/zmax-full-system-loop` · 飞书两轮已推 |
 
 ## 二、关键事实（下次开机直接用）
@@ -67,11 +67,11 @@ $P tools/sim2real_bridge.py            # 仿↔真参数桥
 
 - **已优雅停止**（避免断电时写盘半行）：`ss-remote-tap` 容器（只读订阅）· `ss_yolo_on_real` ·
   `ss_bypass_run` · `auto_loop` · `box3d_live_box`。
-  停止时刻真机只读落盘 `~/zmax_ss_remote/state_20260922.jsonl` 定格在 **15:48**（累计 **1.93 GB**，
+  停止时刻真机只读落盘 `~/zmax/zmax_data/ss_live/state_20260922.jsonl` 定格在 **15:48**（累计 **1.93 GB**，
   下次开机建议归档/轮转）。
 - **仍在跑（关机自然停）**：`hermes gateway` · `ss_local_infer_server(8790)` · `l2_daemon` ·
   GUI `studio.py`。
-- **@reboot 会自动拉起**（crontab 已备份到 `~/zmax_data/shutdown_20260922/crontab_backup.txt`）：
+- **@reboot 会自动拉起**（crontab 已备份到 `~/zmax/zmax_data/shutdown_20260922/crontab_backup.txt`）：
   `auto_loop`（采集链）· `l2_daemon_keepalive`（+ 每 5 分钟保活）· `hermes_cron_reclock` ·
   `disk_redline`（每 2 小时）。
 - 训练/判闸/长任务：**本轮已全部结束**（无遗留进程）——下次若在日志里看到
@@ -86,8 +86,8 @@ cd /home/ubuntu/zmax && git log --oneline -1 && git status --short | wc -l   # �
 gui-venv311/bin/python tools/zmax_params.py --check                                         # 缺口 3 项 (待现场)
 # 3) 真机只读链路 (开机 1-2 分钟后)
 systemctl is-active ss-remote-tap        # 或 sudo docker ps | grep ss-remote-tap
-cat ~/zmax_ss_remote/status.json | head -20        # 看 recv.tcp 是否在涨、帧龄是否新鲜
-ls -l ~/zmax_ss_remote/cam_rs.png                  # 帧龄 = 是否有实时画面
+cat ~/zmax/zmax_data/ss_live/status.json | head -20        # 看 recv.tcp 是否在涨、帧龄是否新鲜
+ls -l ~/zmax/zmax_data/ss_live/cam_rs.png                  # 帧龄 = 是否有实时画面
 # 4) GPU / 磁盘
 nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader
 df -h / | tail -1                                  # 红线 300G, 当前 251G/396G

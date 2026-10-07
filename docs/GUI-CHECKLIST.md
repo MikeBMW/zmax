@@ -8,7 +8,7 @@
 ## 启动命令
 
 ```bash
-cd ~/lerobot-smolvla-lew/tools/gui
+cd ~/zmax/external/lerobot-smolvla-lew/tools/gui
 python3 studio.py
 ```
 

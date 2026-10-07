@@ -53,8 +53,8 @@ sys.path.insert(0, _HERE)
 import yolo_annot_dataset as yad                                              # noqa: E402
 
 DATA_ROOT = os.environ.get("ZMAX_YOLO_ANNOT_ROOT", os.path.join(REPO, "data", "yolo_annot"))
-SS_REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
-WORK = os.environ.get("ZMAX_L2_WORK", "/home/ubuntu/zmax_data/l2_autolearn")
+SS_REMOTE = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
+WORK = os.environ.get("ZMAX_L2_WORK", "/home/ubuntu/zmax/zmax_data/l2_autolearn")
 LIVE_PTR = os.path.join(REPO, "models", "yolo_peg_live.pt")
 CALIB = os.environ.get("ZMAX_REAL_CALIB", os.path.join(REPO, "models", "real_cam_calib.json"))
 # ② 机器人动作自标定产物 (S0→S1): 不用棋盘格, 由 tools/real_autolabel.py --probe 产出。

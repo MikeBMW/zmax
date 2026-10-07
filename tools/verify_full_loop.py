@@ -26,8 +26,8 @@ sys.path.insert(0, f"{ROOT}/tools/gui")
 os.chdir(ROOT)
 os.environ.setdefault("MUJOCO_GL", "egl")
 # INTACT 官方数据根 (cube_single_expert.h5 等; 不设则 root="" → FileNotFoundError)
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 import numpy as np
 

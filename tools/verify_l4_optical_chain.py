@@ -18,7 +18,7 @@ import time
 ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("LOCAL_DATADIR", os.environ["STABLEWM_HOME"])
 
 import node_logic as NL                                              # noqa: E402

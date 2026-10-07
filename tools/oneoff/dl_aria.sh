@@ -2,7 +2,7 @@
 # 用 aria2c (16 连接 + 断点续传) 重下 INTACT 官方数据集 —— hf_hub 单连接下载已卡死 (pusht 停在 7.5/13.1GB,
 # 半小时没动; reacher 归档也在别人那边卡在 22.67/23.75GB)。aria2c 多连接可绕开这种单流限速/卡死。
 set -u
-DL=/home/ubuntu/dl_intact
+DL=/home/ubuntu/zmax/tools/oneoff/dl_intact
 LOG=/tmp/dl_aria.log
 exec >>"$LOG" 2>&1
 mkdir -p "$DL"

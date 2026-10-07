@@ -18,7 +18,7 @@ import re
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 
 # 平凡基线（来自训练脚本实测输出: "平凡基线: 观测恒均 0.0366 · 动作恒均 0.0955"）
 BASELINE = {"obs": 0.0366, "act": 0.0955}

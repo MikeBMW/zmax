@@ -152,7 +152,7 @@ def main():
                                    "mono_mm_median": round(float(np.median(emono)), 2)},
            "convergence": conv, "checks": [{"name": n, "ok": bool(o), "detail": d} for n, o, d in checks],
            "off_true_mm": [round(float(v) * 1000, 1) for v in OFF_TRUE], "passed": bad == 0}
-    out = os.path.join("/home/ubuntu/zmax_data", f"box3d_selftest_{rep['stamp']}.json")
+    out = os.path.join("/home/ubuntu/zmax/zmax_data", f"box3d_selftest_{rep['stamp']}.json")
     json.dump(rep, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(f"\n{'✅ 全绿' if bad == 0 else f'❌ {bad} 项未过'} · 报告: {out}")
     return 0 if bad == 0 else 1

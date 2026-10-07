@@ -210,7 +210,7 @@ def main():
         print(f"{k:<36}{v['train_n']:>6}{v['rms_px']:>9.2f}{v['off_err_mm']:>8.1f}mm"
               f"{v['holdout_3d_mm_mean']:>8.1f}mm{v['holdout_px_mean']:>8.2f}px"
               f"{str(v['holdout_iou_median']):>11}{flag}")
-    out = os.path.join("/home/ubuntu/zmax_data", f"mono23d_experiment_{__import__('time').strftime('%Y%m%d_%H%M%S')}.json")
+    out = os.path.join("/home/ubuntu/zmax/zmax_data", f"mono23d_experiment_{__import__('time').strftime('%Y%m%d_%H%M%S')}.json")
     json.dump({"off_true_mm": [round(float(v) * 1000, 1) for v in OFF_TRUE], "size_mm": [s * 1000 for s in size],
                "noise_px": 0.5, "results": results}, open(out, "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)

@@ -597,7 +597,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 ## 2026-09-26 · S2 第一步: RealityGap 量化 (两次试错后定位到正确做法)
 
 **第一次 (无效, 已自拦)**: 读 `state_20260922.jsonl`(旧快照) → TCP std=0 且字段不符 ⇒ 判**无效, 不当结论**
-**第二次 (真源)**: live tap = `/home/ubuntu/zmax_ss_remote/state_20260925.jsonl` (478MB, **正在写**)
+**第二次 (真源)**: live tap = `/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl` (478MB, **正在写**)
   · 字段真源: `t/tcp/tcp_quat/tcp_frame/jnames/robot_status/image/images_by_topic/pubs/jpos/jvel/ft/gripper/prod_stage/z7/geom/scope`
   · 尾读 4589 行: TCP mean=[0.5973, 0.1422, 0.6416] 与实时一致 ✓ · 但 **std=[0,0,0]**
   ⇒ 原因: **臂一直静止**(我把窗口取在静止期) — 不是数据问题, 是"没有激励"
@@ -617,7 +617,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 加真实场景节点, 能叠加两个摄像头不同角度的图片; 图片发飞书; 先不要动机器人」
 
 - **发现两只眼睛**: 本机 `/dev/video{0,1,2}` 可抓帧 (640×480 / 1280×720 / 640×360);
-  臂上相机 = `/realsense/color/image_raw` 640×480 bgr8 (tap 落盘 `/home/ubuntu/zmax_ss_remote/cam_rs.png`, 带帧龄)
+  臂上相机 = `/realsense/color/image_raw` 640×480 bgr8 (tap 落盘 `/home/ubuntu/zmax/zmax_data/ss_live/cam_rs.png`, 带帧龄)
 - **功能** `tools/dual_cam_scene.py`: 四模式 (panel 并排+融合+真值带 / sbs / blend / edge 对齐检查)
   + **sim2real 参数映射** JSON (6 项: 已映射 3 = 关节/TCP/夹爪; 待映射 3 = 分辨率/碰撞几何/光照)
   + 一键发飞书 (走 aoi_feishu_push 的 image 通道)

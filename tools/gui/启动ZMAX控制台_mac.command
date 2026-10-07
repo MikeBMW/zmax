@@ -6,7 +6,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 # 仓库根 (改这里指向你的 clone 路径)
-REPO="$HOME/lerobot-smolvla-lew"
+REPO="$HOME/zmax/external/lerobot-smolvla-lew"
 export ZMAX_REPO_ROOT="$REPO"
 
 # 进入仓库

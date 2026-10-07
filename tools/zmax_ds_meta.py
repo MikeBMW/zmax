@@ -7,7 +7,7 @@
 
 台账每项: 名称/路径/大小/回合/帧/动作维/观测维/done率/帧std/来源/用途/时间
 用法 (INTACT venv):
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/zmax_ds_meta.py
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/zmax_ds_meta.py
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ import numpy as np
 
 def _cache_candidates():
     """stable_worldmodel 缓存位置 (与 swm.data.utils.get_cache_dir 同序, 再补本机实测路径)。
-    swm 官方: $STABLEWM_HOME → 默认 ~/.stable_worldmodel; 本机另用 ~/stable-wm-cache。"""
+    swm 官方: $STABLEWM_HOME → 默认 ~/.stable_worldmodel; 本机另用 ~/zmax/zmax_data/stable-wm-cache。"""
     cands = [os.environ.get("STABLEWM_HOME"), os.environ.get("LOCAL_DATASET_DIR"),
-             os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/stable-wm-cache")]
+             os.path.expanduser("~/.stable_worldmodel"), os.path.expanduser("~/zmax/zmax_data/stable-wm-cache")]
     out, seen = [], set()
     for c in cands:
         if not c:
@@ -34,7 +34,7 @@ def _cache_candidates():
     return out
 
 
-CACHE, DS_DIR = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache"), None
+CACHE, DS_DIR = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"), None
 
 # 用途/来源标注 (人工维护: 让面板上"这数据是干嘛的"一眼可见)
 PURPOSE = {
@@ -109,7 +109,7 @@ def main():
         print("⚠️ hdf5plugin 未装 → 官方 tworoom/cube 的 pixels 可能读不了")
     cands = _cache_candidates()
     if not cands:
-        print("❌ 找不到 stable_worldmodel 缓存 (STABLEWM_HOME / ~/.stable_worldmodel / ~/stable-wm-cache)")
+        print("❌ 找不到 stable_worldmodel 缓存 (STABLEWM_HOME / ~/.stable_worldmodel / ~/zmax/zmax_data/stable-wm-cache)")
         return 2
     print(f"缓存候选: {cands}")
     rows, outs = [], []
@@ -127,7 +127,7 @@ def main():
     payload = {"cache": cands[0], "caches": cands, "ds_dir": os.path.join(cands[0], "datasets"),
                "generated": time.strftime("%F %T"), "count": len(rows), "datasets": rows,
                "note": "由 tools/zmax_ds_meta.py (INTACT venv) 生成; 控制台数据集管理页只读此 json; "
-                       "缓存顺序 = swm 官方 ($STABLEWM_HOME → ~/.stable_worldmodel) + 本机 ~/stable-wm-cache"}
+                       "缓存顺序 = swm 官方 ($STABLEWM_HOME → ~/.stable_worldmodel) + 本机 ~/zmax/zmax_data/stable-wm-cache"}
     for o in outs:
         with open(o, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=1)

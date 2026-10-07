@@ -9,7 +9,7 @@ import numpy as np
 sys.path.insert(0, "/home/ubuntu/zmax/tools")
 import handeye_solve_ls as HS
 
-SESS = os.path.dirname(sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/poses.jsonl")))[-1])
+SESS = os.path.dirname(sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/poses.jsonl")))[-1])
 Km, _ = HS._K()
 VS = HS.load_views(SESS)
 obj = HS.obj_points((4, 5), 0.020, transpose=False)

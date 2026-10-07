@@ -7,7 +7,7 @@
   - contact  = **真实触觉 force_norm > 0.05** (mj_contactForce 真接触力, 非手-peg 距离代理)
 网络: RightBrainWM(39,4,256) 结构不变 → npz 管道兼容 (dynamics.rb_ff_forward 加载)
 归一化: sm/ss 从训练数据自算并内嵌 npz — 推理现场 (R0/R1 多布局) 同分布 → 域内生效
-用法: ~/lerobot-venv/bin/python tools/train_ss_right_brain_mw.py
+用法: ~/zmax/venvs/lerobot-venv/bin/python tools/train_ss_right_brain_mw.py
 """
 import glob
 import os

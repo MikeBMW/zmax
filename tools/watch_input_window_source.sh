@@ -29,8 +29,8 @@ echo
 SSH_ORIN=$(pgrep -af "ssh .*tashan@192.168.23.66" | wc -l)
 CLI=$(pgrep -af "ss_frame_srv_client" | wc -l)
 echo "ssh 到 Orin 的进程数: $SSH_ORIN     Docker 取帧客户端进程数: $CLI"
-if [ -f /home/ubuntu/zmax_ss_remote/live_frame.jpg ]; then
-  echo "真机帧文件 live_frame.jpg 时间: $(date -r /home/ubuntu/zmax_ss_remote/live_frame.jpg +%H:%M:%S)  现在 $(date +%H:%M:%S)"
+if [ -f /home/ubuntu/zmax/zmax_data/ss_live/live_frame.jpg ]; then
+  echo "真机帧文件 live_frame.jpg 时间: $(date -r /home/ubuntu/zmax/zmax_data/ss_live/live_frame.jpg +%H:%M:%S)  现在 $(date +%H:%M:%S)"
 else
   echo "真机帧文件 live_frame.jpg: 不存在"
 fi

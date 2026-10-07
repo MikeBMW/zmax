@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import time
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 WATCH_DIRS = [("数据集", SWM + "/datasets"), ("权重产物", SWM + "/checkpoints"),
               ("代码仓库", "/home/ubuntu/zmax")]
 
@@ -135,7 +135,7 @@ def throughput():
             "samples_per_s_b64": round(sps * 64, 1), "src": best["src"], "running": best.get("running")}
 
 
-REMOTE_F = "/home/ubuntu/stable-wm-cache/reports/remote_hw.json"
+REMOTE_F = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/remote_hw.json"
 
 
 def save_remote(payload):
@@ -163,7 +163,7 @@ def remote():
     return d
 
 
-DDS_F = "/home/ubuntu/stable-wm-cache/reports/dds_latest.json"
+DDS_F = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/dds_latest.json"
 
 
 def dds_nodes():
@@ -172,7 +172,7 @@ def dds_nodes():
     无数据时返回明确说明（不返回空对象, 避免前端显示 undefined）"""
     import json as _j
     if not os.path.isfile(DDS_F):
-        return {"ok": False, "note": "DDS 桥未运行 → 启动: /home/ubuntu/dds-venv/bin/python tools/dds_bridge.py",
+        return {"ok": False, "note": "DDS 桥未运行 → 启动: /home/ubuntu/zmax/venvs/dds-venv/bin/python tools/dds_bridge.py",
                 "nodes": {}}
     try:
         d = _j.load(open(DDS_F, encoding="utf-8"))

@@ -16,7 +16,7 @@ import time
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-WORK = os.environ.get("ZMAX_L2_WORK", "/home/ubuntu/zmax_data/l2_autolearn")
+WORK = os.environ.get("ZMAX_L2_WORK", "/home/ubuntu/zmax/zmax_data/l2_autolearn")
 REPO = os.environ.get("ZMAX_REPO_ROOT") or "/home/ubuntu/zmax"
 PY = os.path.join(REPO, "gui-venv311", "bin", "python")
 TOOL = os.path.join(REPO, "tools", "ss_l2_autolearn.py")
@@ -159,7 +159,7 @@ class L2AutoLearnPanel(QtWidgets.QDialog):
         n_p = sum(int(s.get("n_images", 0)) for s in sess
                   if str(s.get("annotator", "")) == "auto:pending")
         calib = _j(os.path.join(REPO, "models", "real_cam_calib.json"))
-        cam = os.path.join(os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote"), "cam_rs.png")
+        cam = os.path.join(os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live"), "cam_rs.png")
         age = (time.time() - os.stat(cam).st_mtime) if os.path.isfile(cam) else None
         pid_alive = False
         try:

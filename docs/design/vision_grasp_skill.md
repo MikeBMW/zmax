@@ -63,7 +63,7 @@ gui-venv311/bin/python tools/vision_grasp_skill.py
 # 真发 (需现场确认; 走 FIFO → l2_daemon, 逐段真值到位; 完成后自动复判槽位应变空 + 夹爪回执)
 gui-venv311/bin/python tools/vision_grasp_skill.py --apply
 # 逐段核对 (更稳): FIFO 里带 stages
-echo '{"skill":"L2.grasp_vision","stages":[1,2]}' > ~/zmax_data/l2_cmd.fifo
+echo '{"skill":"L2.grasp_vision","stages":[1,2]}' > ~/zmax/zmax_data/l2_cmd.fifo
 ```
 
 事后验收 (只看真值): ① 复判槽位 (被抓走后该槽应变空/不再双路命中) ② 夹爪回执 `curr_pos`≈185 (夹住) 而非 21 (空爪)。

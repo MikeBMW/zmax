@@ -44,9 +44,9 @@ QHeaderView::section { background: #232833; color: #eaeaea; border: 1px solid #3
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 DAEMON_NAME = "l2_" + "dae" + "mon.py"
-LOG = os.path.expanduser("~/zmax_data/l2_" + "dae" + "mon.log")
+LOG = os.path.expanduser("~/zmax/zmax_data/l2_" + "dae" + "mon.log")
 
 
 def alive():
@@ -365,8 +365,8 @@ class L2SkillDialog(QDialog):
             return "%s ✗拒发(%ds前): %s%s" % (lab, age, str(d.get("why") or "")[:48],
                                               (" ·" + _ex) if _ex else "")
 
-        return "安全闸 " + _one(_rd("~/zmax_data/vl_safety_fast.json"), "快层") + " · " \
-            + _one(_rd("~/zmax_data/vl_safety.json"), "慢层")
+        return "安全闸 " + _one(_rd("~/zmax/zmax_data/vl_safety_fast.json"), "快层") + " · " \
+            + _one(_rd("~/zmax/zmax_data/vl_safety.json"), "慢层")
 
     def _wait_reason(self):
         """等回执期间说清"在等什么" —— 老倪 2026-09-28: 点了要能看懂卡在哪, 不能静默等两分钟。
@@ -376,8 +376,8 @@ class L2SkillDialog(QDialog):
         """
         try:
             _rd = lambda p: json.loads(open(os.path.expanduser(p), encoding="utf-8").read())  # noqa: E731
-            it = _rd("~/zmax_data/vl_intent.json")
-            vd = _rd("~/zmax_data/vl_safety.json")
+            it = _rd("~/zmax/zmax_data/vl_intent.json")
+            vd = _rd("~/zmax/zmax_data/vl_safety.json")
             seq_i = int(it.get("seq") or 0)
             seq_v = int(vd.get("intent_seq") or 0)
             age = max(0, int(time.time() - float(vd.get("ts") or 0)))

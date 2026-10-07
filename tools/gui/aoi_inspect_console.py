@@ -38,7 +38,7 @@ import opt_camera_client as optc                                        # noqa: 
 import aoi_exposure_fix as aex                                          # noqa: E402  (过曝切除)
 import aoi_teach_point as tp                                            # noqa: E402  (📍 示教点/回位)
 
-SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax_ss_remote")
+SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
 REAL_CANDS = ("cam_rs.png", "cam_local.png", "cam_usb.png")
 TRAIN_PY = os.path.join(ROOT, "tools", "yolo_annot_train.py")
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")

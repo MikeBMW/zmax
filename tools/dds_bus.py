@@ -6,9 +6,9 @@
 这样在没有真机/量产不序列化的情况下, 工程上也能随时"看到"全图数据流、检查数据质量。
 
 用法(必须 dds-venv, 且**非 prod 档** —— 量产档按老倪要求零开销不发):
-  ~/dds-venv/bin/python tools/dds_bus.py --check                 # 只读: 总线库/档位/是否允许回灌
-  ~/dds-venv/bin/python tools/dds_bus.py --simulate --once       # 全图 182 条信号各发一次
-  ~/dds-venv/bin/python tools/dds_bus.py --simulate --watch --rate 1 --layer L2
+  ~/zmax/venvs/dds-venv/bin/python tools/dds_bus.py --check                 # 只读: 总线库/档位/是否允许回灌
+  ~/zmax/venvs/dds-venv/bin/python tools/dds_bus.py --simulate --once       # 全图 182 条信号各发一次
+  ~/zmax/venvs/dds-venv/bin/python tools/dds_bus.py --simulate --watch --rate 1 --layer L2
 
 诚实口径(不许含糊):
   · 回灌的消息 kind='bus-sim', text 里写明 "from canvas json (工程回灌·非实测)"
@@ -79,7 +79,7 @@ def check():
     print("%-22s %-18s %6s %8s %6s %s" % ("报文(topic)", "类型", "信号数", "设计Hz", "实测Hz", "实测配对"))
     live = {}
     try:
-        with open(os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax_data/dataspace/live.json"),
+        with open(os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax/zmax_data/dataspace/live.json"),
                   encoding="utf-8") as f:
             live = json.load(f)
     except Exception:                                                        # noqa: BLE001

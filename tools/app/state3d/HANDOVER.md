@@ -83,11 +83,11 @@ sha256sum ZMAX-State3D.apk                                              # 应等
 本目录（已入库，`git pull` 即可）：
 `AndroidManifest.xml`（双 LAUNCHER 入口）/ `OverlayActivity.java`（68 行）/ `MainActivity.java` / `build_aoi.sh`（45 行）
 
-真正在用的工程在 4060 的 `/home/ubuntu/state3d_app/app/`；本目录是**归档副本**，便于 web 侧评审与追溯。
+真正在用的工程在 4060 的 `/home/ubuntu/zmax/tools/web/state3d_app/app/`；本目录是**归档副本**，便于 web 侧评审与追溯。
 
 ## 7. 回执
 
 检查完 / 发布完，回一句到群里（或走 `agent_hub` 命令台 8794），我这边好对齐版本号与站点状态。
 
 > **ZMAX-Live.apk 的源码**在 `tools/app/live/`（`MainActivity.java` 双网自动切换 / manifest /
-> `build_live_apk.sh`）。真正在用的工程在 4060 的 `/home/ubuntu/state3d_app/live/`。
+> `build_live_apk.sh`）。真正在用的工程在 4060 的 `/home/ubuntu/zmax/tools/web/state3d_app/live/`。

@@ -23,7 +23,7 @@
 | 融合定位 | `left_right/state_space/perception.py` `fuse_sensors` | 39D 视觉 + 4D 触觉 = 43D obs (纯拼接) | **无抓取位姿输出** · 无感知质量通道 · 无修正引导 |
 | 手眼 | `models/handeye_state.json` (eye-in-hand) | 相机在臂上 → **臂动=相机动** | 未用于对焦补偿 |
 
-**🚨 真机实测缺口 (本轮新发现, 必须先解决)**: 现役 AOI 帧 `~/zmax_data/aoi_last_frame.png` (2448×2048)
+**🚨 真机实测缺口 (本轮新发现, 必须先解决)**: 现役 AOI 帧 `~/zmax/zmax_data/aoi_last_frame.png` (2448×2048)
 **mean=8.4/255 · std=2.38 · 全图 Tenengrad≈4 · 9 宫格全平** → 这是**黑帧/无结构帧**, 
 既不能判模糊也不能判缺陷。⇒ 方案第一道闸就是**有效帧闸**（`no_target`：不判不修，先查取图链路：相机选源/曝光/遮挡/镜头）。
 

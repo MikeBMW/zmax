@@ -108,12 +108,12 @@ def load_handeye() -> dict:
             "ifaces": "cam→tcp (cv2.calibrateHandEye 输出 X=T_cam2gripper)"}
 
 
-TCP_CACHE = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/tcp_pose.json")
+TCP_CACHE = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/tcp_pose.json")
 # 🦾 2026-09-28: 上面那份 tcp_pose.json 是**死数据**(最后一个写者 17:43 就没了, 页面照读会显示
 #   1 号位旧位姿)。真值现在走珞石 SDK 直采: 容器 rokae_tcp_sampler 里的 tcp_direct_sampler.py
-#   5Hz 写 /sdk/tcp_out/latest.json, 宿主挂载 = ~/zmax_data/rokae_sdk/tcp_out/latest.json
+#   5Hz 写 /sdk/tcp_out/latest.json, 宿主挂载 = ~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json
 #   (带 ts, 口径 endInRef = 与产线 /robot/tcp_pose 同口径)。所以这里**先读它**, 过龄即判失效。
-TCP_SDK_LATEST = Path("/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json")
+TCP_SDK_LATEST = Path("/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 TCP_SDK_MAX_AGE = 3.0        # 秒; 5Hz 采样 ⇒ 3s 已经很宽了
 TCP_CACHE_MAX_AGE = 1.5      # 秒; 超过就认为该缓存停了 → 回退下一级
 
@@ -958,7 +958,7 @@ def build_from_sim(tcp7=None, cam="arm") -> dict:
     objs, src = [], None
     # 容器 /repo 只读 ⇒ 深度建图的产物先落 /out，这里两处都找（避免漏拷贝就静默空框）
     for p3 in (REPO / "data" / "scene" / "objects3d.json",
-               Path("/home/ubuntu/zmax_ss_remote/zmax_scene/objects3d.json")):
+               Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/objects3d.json")):
         if p3.exists():
             try:
                 d = json.loads(p3.read_text(encoding="utf-8"))

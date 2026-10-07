@@ -35,7 +35,7 @@ import zmax_params as zp  # noqa: E402
 
 ROOT = zp.ROOT
 OUT = os.path.join(ROOT, "config", "robot", "zmax_sim2real.json")
-LIVE_TAP = os.path.expanduser("~/zmax_data/real_tap_*/state_*.jsonl")
+LIVE_TAP = os.path.expanduser("~/zmax/zmax_data/real_tap_*/state_*.jsonl")
 
 # 引擎侧口径常量 (来源 = 代码位置, 便于审计; 改动必须同步改代码)
 ENGINE = {

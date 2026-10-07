@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 归档 v5.15.7 产物 (DDS 全局数据空间 + 服务修复 + DeepSeek 确认) → ~/zmax_data
+# 归档 v5.15.7 产物 (DDS 全局数据空间 + 服务修复 + DeepSeek 确认) → ~/zmax/zmax_data
 set -u
 REPO=/home/ubuntu/zmax
-DST=$HOME/zmax_data/release_5.15.7_$(date +%Y%m%d)
+DST=$HOME/zmax/zmax_data/release_5.15.7_$(date +%Y%m%d)
 mkdir -p "$DST"/{tools,dds,docs,reports}
 cd "$REPO" || exit 1
 

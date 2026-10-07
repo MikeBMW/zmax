@@ -10,7 +10,7 @@ sys.path.insert(0, "/home/ubuntu/zmax/tools")
 import cv2
 import handeye_solve_ls as HS
 
-SESS = os.path.dirname(sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/poses.jsonl")))[-1])
+SESS = os.path.dirname(sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/poses.jsonl")))[-1])
 print("会话:", SESS)
 VS = HS.load_views(SESS)
 Km, _kpath = HS._K()

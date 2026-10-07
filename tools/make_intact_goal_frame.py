@@ -17,7 +17,7 @@ import sys
 
 import numpy as np
 
-CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

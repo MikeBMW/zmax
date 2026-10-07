@@ -44,8 +44,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), GUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 os.chdir(GUI)
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("INTACT_RUNTIME", "root")
 os.environ.setdefault("INTACT_POLICY", "intact_l4_current")
 os.environ.setdefault("OMP_NUM_THREADS", "6")
@@ -53,7 +53,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "6")
 if os.environ.get("AB_HOT_MEM") != "1":
     os.environ.setdefault("SS_MUSCLE_PATH", "/tmp/moe_bypass_mem_%d.json" % os.getpid())
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 TRAIN_STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 
 

@@ -7,7 +7,7 @@
 
 设计口径 (避免"画上去好看但没数"):
   · 3D 真值只取**现场示教/实测**：
-      光模块抓握位 & 孔口/插到底 ← ~/zmax_data/real_cell_geometry.json (2026-09-27 现场)
+      光模块抓握位 & 孔口/插到底 ← ~/zmax/zmax_data/real_cell_geometry.json (2026-09-27 现场)
       料盘槽位 1/2            ← data/skills/l2_atomic/taught_points.json (老倪现场示教 slot1/slot2)
       标定板                  ← 手眼闭环实测 (objects3d.json, std=1.74mm)
   · 尺寸没有实测的一律标"标称值", 不假装量过 → 每个元素带 source/note, 真值带与页面都能看到。
@@ -37,8 +37,8 @@ import scene_overlay as SO                                                      
 TAUGHT = REPO / "data" / "skills" / "l2_atomic" / "taught_points.json"
 CELLGEO = Path.home() / "zmax_data" / "real_cell_geometry.json"
 OBJ3D = REPO / "data" / "scene" / "objects3d.json"
-DEPTH_NPY = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy")
-DEPTH_META = Path("/home/ubuntu/zmax_ss_remote/zmax_scene/depth_meta.json")
+DEPTH_NPY = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy")
+DEPTH_META = Path("/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_meta.json")
 
 
 def _pos(rec):

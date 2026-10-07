@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 
 BASE = "http://127.0.0.1:8791"
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 OUTDIR = "/tmp/pairs"
 # argv[1] = 逗号分隔的技能序列(不带 L2. 前缀)；argv[2] = speed；argv[3] = 每步等待秒数
 SEQ = (sys.argv[1].split(",") if len(sys.argv) > 1

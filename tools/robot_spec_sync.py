@@ -37,8 +37,8 @@ import xml.etree.ElementTree as ET
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URDF_DEFAULT = os.path.join(ROOT, "config", "robot", "xms5_r800_w4g3b4c.urdf")
 SPEC_DEFAULT = os.path.join(ROOT, "config", "robot", "zmax_robot_spec.json")
-TAP_GLOB = os.path.expanduser("~/zmax_data/real_tap_*/state_*.jsonl")
-ROKAE_JSON_GLOB = os.path.expanduser("~/zmax_data/rokae_sdk/*.json")
+TAP_GLOB = os.path.expanduser("~/zmax/zmax_data/real_tap_*/state_*.jsonl")
+ROKAE_JSON_GLOB = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/*.json")
 
 
 # ───────────────────────── URDF 解析 ─────────────────────────

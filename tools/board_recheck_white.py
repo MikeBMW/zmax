@@ -20,7 +20,7 @@ import numpy as np
 
 imgs = sys.argv[1:]
 if not imgs:
-    sess = sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
+    sess = sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
     imgs = sorted(glob.glob(os.path.join(sess, "img", "*.png")))
 print(f"复核 {len(imgs)} 张 (数白点 + 反色找圆点阵列)\n")
 

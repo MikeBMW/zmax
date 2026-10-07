@@ -10,7 +10,7 @@ import sys
 
 from safetensors.torch import load_file
 
-os.chdir("/home/ubuntu/zmax_rel")
+os.chdir("/home/ubuntu/zmax")
 ckpt = sys.argv[1] if len(sys.argv) > 1 else "outputs/train/smolvla_lew_lora_200_r6/checkpoints/last/pretrained_model/model.safetensors"
 sd = load_file(ckpt)
 

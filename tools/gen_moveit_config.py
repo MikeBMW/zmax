@@ -12,7 +12,7 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 
-SRC_URDF = "/home/ubuntu/zmax_data/rokae_sdk/urdf/xms5_r800_w4g3b4c.urdf"
+SRC_URDF = "/home/ubuntu/zmax/zmax_data/rokae_sdk/urdf/xms5_r800_w4g3b4c.urdf"
 DST = "/home/ubuntu/zmax/config/moveit_xms5"
 ROBOT = "xms5_r800_w4g3b4c"
 JOINTS = ["XMS5-R800-W4G3B4C_joint_%d" % i for i in range(1, 7)]

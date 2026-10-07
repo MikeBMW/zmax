@@ -30,7 +30,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", default=None)
     a = ap.parse_args()
-    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
+    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
     raw = [json.loads(l) for l in open(os.path.join(sess, "poses.jsonl"), encoding="utf-8") if l.strip()]
     order = _quat_order([r["quat"] for r in raw if r.get("quat")])
     Km, _ = _K()

@@ -11,7 +11,7 @@
             严格 JSON + 左上原点像素口径, 复用它**已固化的坑**: max_tokens 给足(否则 content 空)
   · 画框  : cv2 矩形 + PIL 中文标签(缺 CJK 字体自动降级为编号)
 输出(每批一个目录):
-  ~/zmax_data/auto_annotate/<批次>/
+  ~/zmax/zmax_data/auto_annotate/<批次>/
       <cam>.jpg / <cam>_ann.jpg / <cam>.json    每路的原图 / 标注图 / 标注数据
       annotations.jsonl                         追加式数据集(自动标注的成品)
       summary.json                              本批汇总(路数/物体数/耗时/模型)
@@ -40,7 +40,7 @@ import cv2                                                              # noqa: 
 import numpy as np                                                      # noqa: E402
 
 STREAM = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
-OUTROOT = Path(os.path.expanduser("~/zmax_data/auto_annotate"))
+OUTROOT = Path(os.path.expanduser("~/zmax/zmax_data/auto_annotate"))
 CAMS = ["arm", "local", "local2", "depth", "aoi_gold", "aoi_surface"]
 LABELS = {"arm": "🤖 臂上相机", "local": "💻 笔记本内置", "local2": "📺 MAXHUB 顶视",
           "depth": "🟠 深度双目", "aoi_gold": "🟡 OPT金手指", "aoi_surface": "⚪ OPT表面"}

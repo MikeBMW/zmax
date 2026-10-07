@@ -32,7 +32,7 @@ import sys
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 VENV = os.path.join(REPO, "gui-venv311", "bin", "python")
 STATE = os.path.join(REPO, "docs", "PIPELINE_STATE.json")
 

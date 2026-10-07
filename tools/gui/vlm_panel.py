@@ -13,7 +13,7 @@ UI 设计 (单色为主, 不自造数据; 每条数字都能指到来源):
   底   人机在环提示: 模型只给"判读与建议", 动作/指令须由操作员确认后才执行 (红线)
   下   历史: 最近 20 次判读 (时间/模式/耗时/来源/摘要) —— 实时滚动, 5s 自动刷新
 按钮: [立即判读 describe] [标定向导 guide] [采集质检 quality] [刷新] [打开记录目录]
-数据来源: ~/zmax_data/vlm_calls.jsonl (scene_vlm 每次调用落盘) + 最新帧文件
+数据来源: ~/zmax/zmax_data/vlm_calls.jsonl (scene_vlm 每次调用落盘) + 最新帧文件
 """
 from __future__ import annotations
 
@@ -47,9 +47,9 @@ _DARK = ("QDialog { background:#0d1117; color:#e6edf3; } "
          "QToolTip { background:#161b22; color:#e6edf3; border:1px solid #30363d; }")
 
 
-CALLS = os.path.expanduser("~/zmax_data/vlm_calls.jsonl")
-FRAMES = [os.path.expanduser("~/zmax_ss_remote/cam_rs.png"),
-          os.path.expanduser("~/zmax_ss_remote/cam_fp.png")]
+CALLS = os.path.expanduser("~/zmax/zmax_data/vlm_calls.jsonl")
+FRAMES = [os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"),
+          os.path.expanduser("~/zmax/zmax_data/ss_live/cam_fp.png")]
 
 # 字段中文含义 (面板自解释: 标签 + 数值 + 物理含义)
 FIELD_HELP = {
@@ -352,7 +352,7 @@ class VlmPanel(QDialog):
         self.refresh()
 
     # ── 窗口几何记忆 (拖动/最大化后下次照旧) ──
-    GEOM = os.path.expanduser("~/zmax_data/vlm_panel_geom.txt")
+    GEOM = os.path.expanduser("~/zmax/zmax_data/vlm_panel_geom.txt")
 
     def _restore_geom(self):
         try:

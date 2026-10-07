@@ -39,7 +39,7 @@ def sh(cmd, **kw):
 
 def env_paths():
     """路径约定: 环境变量优先, 否则用 /home/ubuntu 下的标准位置。"""
-    data = os.environ.get("ZMAX_DATA") or "/home/ubuntu/zmax_data"
+    data = os.environ.get("ZMAX_DATA") or "/home/ubuntu/zmax/zmax_data"
     p = {
         "ZMAX_CODE": os.environ.get("ZMAX_CODE") or ROOT,
         "ZMAX_DATA": data,
@@ -74,8 +74,8 @@ def size_of(p):
 
 
 def hf_bin():
-    for c in (os.path.join(ROOT, "gui-venv311", "bin", "hf"), "/home/ubuntu/lerobot-venv/bin/hf",
-              "/home/ubuntu/dds-venv/bin/hf", shutil.which("hf") or ""):
+    for c in (os.path.join(ROOT, "gui-venv311", "bin", "hf"), "/home/ubuntu/zmax/venvs/lerobot-venv/bin/hf",
+              "/home/ubuntu/zmax/venvs/dds-venv/bin/hf", shutil.which("hf") or ""):
         if c and os.path.exists(c):
             return c
     return ""
@@ -109,7 +109,7 @@ def display(a, st, dest, src, P):
     k = a.get("kind")
     if k == "venv" or a["id"] == "venvs":
         vers = []
-        for p in [os.path.join(ROOT, "gui-venv311"), "/home/ubuntu/lerobot-venv", "/home/ubuntu/dds-venv"]:
+        for p in [os.path.join(ROOT, "gui-venv311"), "/home/ubuntu/zmax/venvs/lerobot-venv", "/home/ubuntu/zmax/venvs/dds-venv"]:
             b = os.path.join(p, "bin", "python")
             if os.path.exists(b):
                 vers.append(sh([b, "--version"]).stdout.strip().replace("Python ", "py"))
@@ -144,7 +144,7 @@ def fetch_cmd(a, P, dest):
     if m == "mkdir":
         return "mkdir -p " + " ".join(expand(os.path.join(P["ZMAX_DATA"], d), P) for d in f.get("dirs") or [])
     if m == "venv":
-        return "python3 -m venv --system-site-packages /home/ubuntu/lerobot-venv && /home/ubuntu/lerobot-venv/bin/pip install -r requirements-train.txt"
+        return "python3 -m venv --system-site-packages /home/ubuntu/zmax/venvs/lerobot-venv && /home/ubuntu/zmax/venvs/lerobot-venv/bin/pip install -r requirements-train.txt"
     if m == "systemd":
         return "sudo cp tools/systemd/*.service /etc/systemd/system/ && sudo systemctl daemon-reload"
     return ""
@@ -154,7 +154,7 @@ def smoke(P):
     """状态空间功能自检: 代码能不能导入、关键文件在不在、服务端口通不通。"""
     print("\n状态空间功能自检")
     cands = [os.path.join(P["ZMAX_CODE"], "gui-venv311", "bin", "python"),
-             os.environ.get("ZMAX_PY") or "", "/home/ubuntu/lerobot-venv/bin/python",
+             os.environ.get("ZMAX_PY") or "", "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python",
              "/home/ubuntu/gui-venv311/bin/python", sys.executable]
     py = next((c for c in cands if c and os.path.exists(c)), sys.executable)
     print("  解释器: %s" % py)

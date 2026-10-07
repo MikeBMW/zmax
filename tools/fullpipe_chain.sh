@@ -22,7 +22,7 @@ run() {
 
 # ① L5 定方向 + 造新数据 (规划器生成任务变体 → 引擎真跑 → h5)
 run L5_gen $PY tools/l5_plan_and_gen.py --n 200 --steps 400 \
-  --out /home/ubuntu/stable-wm-cache/datasets/l5_gen_v4.h5
+  --out /home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/l5_gen_v4.h5
 
 # ② 全系统联合训练: L4 INTACT + LoRA · L3 SmolVLA + LoRA · L2 检测域适应
 run JOINT $PY tools/joint_train_all.py --steps 200 --lora-l4 --lora-l3 \

@@ -51,7 +51,7 @@ MCALIB = os.path.join(REPO, "data", "scene", "cam_calib.json")                  
 # 每台固定相机的原生分辨率(标定点按像素存, 必须和分辨率绑定; 混用 = 投影全错)
 CAMS = {"local": {"w": 640, "h": 480, "label": "笔记本相机 640×480", "mjpg": "/local.mjpg"},
         "local2": {"w": 1280, "h": 720, "label": "MAXHUB 相机 1280×720", "mjpg": "/local2.mjpg"}}
-TCP_JSON = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 IMG_W, IMG_H = 640, 480
 
 

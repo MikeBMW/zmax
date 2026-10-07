@@ -10,7 +10,7 @@ schema 与 tools/intact_domain_to_h5.py 完全一致 (官方 formats/hdf5.py):
 差异: ep_idx/step_idx/ep_offset 在这里按**全局**重新编号 (各 part 内部是自包含的局部编号)。
 
 用法 (必须 INTACT venv, gui-venv 无 h5py):
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/intact_parts_to_h5.py \
      --parts 'reports/zmax_insert_v2_part*.npz' --out-name zmax_insert_v2 --validate
 """
 import argparse
@@ -28,7 +28,7 @@ def main():
     ap.add_argument("--parts", required=True, help="glob, 如 'reports/zmax_insert_v2_part*.npz'")
     ap.add_argument("--out-name", default="zmax_insert_v2")
     ap.add_argument("--dest", default=os.environ.get("LOCAL_DATASET_DIR",
-                                                     "/home/ubuntu/stable-wm-cache") + "/datasets")
+                                                     "/home/ubuntu/zmax/zmax_data/stable-wm-cache") + "/datasets")
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--skill-ctx", action="store_true",
                     help="把 part npz 里的 skill_ctx (L2 原子技能上下文) 一起写进 h5 "

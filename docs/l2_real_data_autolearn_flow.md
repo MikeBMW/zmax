@@ -85,7 +85,7 @@ python3 tools/ss_l2_autolearn.py --stop
 | `data/yolo_annot/dataset/` | 构建产物 (train/val 硬链接 + data.yaml + stats.json + truth.jsonl) |
 | `runs/detect/outputs/yolo_annot/<run>/` | 每轮训练产物 (weights/best.pt + results.csv) |
 | `reports/yolo_live_eval_<run>.json` | 同口径对照原始结果 (before/after 都在) |
-| `/home/ubuntu/zmax_data/l2_autolearn/` | 闭环工作区: `state.json` 心跳/计数 · `verdicts.jsonl` 每轮判定 · `runs/cycle_*/` 证据包 · `autolearn.log` |
+| `/home/ubuntu/zmax/zmax_data/l2_autolearn/` | 闭环工作区: `state.json` 心跳/计数 · `verdicts.jsonl` 每轮判定 · `runs/cycle_*/` 证据包 · `autolearn.log` |
 | `models/yolo_peg_live.pt` | **在役单点指针** (只读方: L2 旁路 / GUI 叠加 / 训练 `--base auto`) |
 | `models/yolo_peg_live.history.jsonl` | 上线历史 (from/to/sha256/actor) |
 
@@ -94,7 +94,7 @@ python3 tools/ss_l2_autolearn.py --stop
 - 建集: `train 24 / val 2` · 图 34 · 样本真值 18 · 体检 0 错误
 - 训练: 30 轮 → `runs/detect/outputs/yolo_annot/auto_0918_150616/weights/best.pt`
 - 同口径对照 (12 张训练后新采真机帧): 在役 12/12 conf 0.295 vs 新 12/12 conf 0.295 → **Δ=0 → 不上默认档** (纪律生效, 指针未动)
-- 证据包: `/home/ubuntu/zmax_data/l2_autolearn/runs/cycle_0918_150616/`
+- 证据包: `/home/ubuntu/zmax/zmax_data/l2_autolearn/runs/cycle_0918_150616/`
 
 ## 七、已知缺口 (要变强的唯一瓶颈 = 数据 + 标定)
 

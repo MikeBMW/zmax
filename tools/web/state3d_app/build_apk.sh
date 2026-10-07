@@ -2,10 +2,10 @@
 # 手动构建 WebView 壳 APK (无 gradle) — 改 PROJ/SDK 即用
 # 前置: openjdk-17 + android-sdk (cmdline-tools + platforms;android-34 + build-tools;34.0.0)
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-PROJ=/home/ubuntu/state3d_app          # ← 改成你的工程目录
+PROJ=/home/ubuntu/zmax/tools/web/state3d_app          # ← 改成你的工程目录
 OUT=$PROJ/build
 rm -rf $OUT && mkdir -p $OUT/gen $OUT/obj $OUT/dex $OUT/apk
 

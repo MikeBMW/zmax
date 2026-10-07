@@ -15,7 +15,7 @@ L2层要进行训练并更新。」
      的 quat_to_R/module_corners/project (同一套数学, 不重写)。
   ③ 大模型(VLM)复核投影框是否落在槽位/光模块边沿上; 不一致 ⇒ 标"待确认", **不默默改成对的**.
   ④ 只读: 本工具只读 TCP / 抓图 / 记录 / 标注 —— 任何真机动作都不在这里。
-  ⑤ 深度那一路: 判据=**源文件龄**(~/zmax_ss_remote/zmax_scene/depth_raw.npy, ss-remote-tap 里
+  ⑤ 深度那一路: 判据=**源文件龄**(~/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy, ss-remote-tap 里
      ros_depth_stream.py 落的)。2026-09-29 实测该链路**在流**(5Hz, 文件龄 ~2s) —— 旧版查容器名
      ros_depth_stream 是假离线, 已修。
 
@@ -38,7 +38,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-TAP_DIR = "/home/ubuntu/zmax_ss_remote"
+TAP_DIR = "/home/ubuntu/zmax/zmax_data/ss_live"
 WORK = os.path.join(os.path.expanduser("~"), "zmax_data", "l5_slots")
 REG = os.path.join(ROOT, "models", "l5_slots.json")
 CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
@@ -47,7 +47,7 @@ DS_ROOT = os.path.join(ROOT, "data", "yolo_annot_l5slots")
 N_SLOTS = 14
 CAMS3 = ("arm", "local", "local2")          # 三个场景相机 (arm=D405 / local=笔记本 / local2=MAXHUB)
 DEPTH_CAM = "depth"                          # 深度那一路
-SCENE_DIR = "/home/ubuntu/zmax_ss_remote/zmax_scene"      # = 容器 ss-remote-tap 的 /out/zmax_scene
+SCENE_DIR = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene"      # = 容器 ss-remote-tap 的 /out/zmax_scene
 DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
 DEPTH_META = SCENE_DIR + "/depth_meta.json"
 DEPTH_DEAD_S = 10.0                          # 源文件龄 >10s ⇒ 判「深度源已断」(与 cam_live_stream 同口径)
@@ -82,7 +82,7 @@ def depth_online(max_age_s: float = DEPTH_DEAD_S) -> dict:
 
     实测坑(2026-09-29): 旧实现去 `docker ps` 找名字含 depth 的**容器**, 但深度实际是
     **ss-remote-tap 容器里的一个进程**(`python3 /repo/tools/ros_depth_stream.py --hz 5`),
-    落的文件是 `/out/zmax_scene/depth_raw.npy` (= host `~/zmax_ss_remote/zmax_scene/`)
+    落的文件是 `/out/zmax_scene/depth_raw.npy` (= host `~/zmax/zmax_data/ss_live/zmax_scene/`)
     ⇒ 旧判据永远 false(假离线), 会把"深度其实在流"误报成"深度未上线"。
     现在按源文件龄判: 新鲜就是在线(带上 age), 停写就如实说停写。
     """

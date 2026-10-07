@@ -2,18 +2,18 @@
 import cv2
 import numpy as np
 import sys
-sys.path.insert(0, "/home/ubuntu/aoi_v4")
+sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
 from gf_template import build_template
 from gf_metric import gold_mask as gm_free, centerline_slope
 from gf_crop import GoldFingerCropper
 
-REF = "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
+REF = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
 tpl, meta = build_template(REF)
 cr = GoldFingerCropper(tpl, canonical_w=1600, canonical_h=220, margin_x=0.03, margin_y=0.04,
                        preserve_aspect=True)
 
 for name in ["No_3", "No_5", "No_7", "No_8", "No_9"]:
-    im = cv2.imread(f"/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_{name}.png")
+    im = cv2.imread(f"/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_{name}.png")
     crop, info = cr.crop(im)
     out = {}
     for tag, k in [("k41x5", (41, 5)), ("k5x5", (5, 5)), ("k1x1", None)]:

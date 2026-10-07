@@ -8,7 +8,7 @@
       写一行 JSON 进 FIFO → 代理执行 → 读回结果 JSON。全程不碰 Orin。
   · 授权只能从**命令行**给(tools/sdk_arm_auth.sh), 页面**只能看倒计时、不能自助授权**;
     便于撤销(POST /revoke 永远允许)。
-  · 每步动作都留证: ~/zmax_data/sdk_arm_audit.jsonl + ~/zmax_data/rokae_sdk/logs/sdk_ctl_*.json
+  · 每步动作都留证: ~/zmax/zmax_data/sdk_arm_audit.jsonl + ~/zmax/zmax_data/rokae_sdk/logs/sdk_ctl_*.json
 
 路由:
   GET  /            极简点动页(手机可用): 授权倒计时/实时位姿/方向按钮/步长/速度/停止/复位/日志

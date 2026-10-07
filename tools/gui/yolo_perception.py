@@ -62,7 +62,7 @@ def default_weights_path() -> str:
     注意: 在役的检测权重不是它 —— 是 `models/yolo_peg_live.pt` (真机域微调); 本函数只是"未指定 weights 时"的兜底。
     """
     env = os.environ.get("ZMAX_YOLO_WEIGHTS") or os.environ.get("SS_YOLO_WEIGHTS")
-    data = os.environ.get("ZMAX_DATA") or "/home/ubuntu/zmax_data"
+    data = os.environ.get("ZMAX_DATA") or "/home/ubuntu/zmax/zmax_data"
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # tools/gui → 仓库根
     for c in (env,
               os.path.join(data, "models", "weights", "yolov8s.pt"),

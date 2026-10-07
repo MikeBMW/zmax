@@ -14,8 +14,8 @@ import sys
 ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, f"{ROOT}/src")
 os.chdir(ROOT)
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 import numpy as np  # noqa: E402
 

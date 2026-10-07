@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 归档 v5.14.0 当日产物到 ~/zmax_data (单一目录 + MANIFEST/sha256), 供备份/复盘
+# 归档 v5.14.0 当日产物到 ~/zmax/zmax_data (单一目录 + MANIFEST/sha256), 供备份/复盘
 # 口径同 archive_release_5_13_*.sh: 只放**真实产物+改动文件**, 大文件(权重/整库)不进归档
 set -u
 REPO=/home/ubuntu/zmax
-DST=$HOME/zmax_data/release_5.14.0_$(date +%Y%m%d)
+DST=$HOME/zmax/zmax_data/release_5.14.0_$(date +%Y%m%d)
 mkdir -p "$DST"/{tools,src,docs,reports,capture,points}
 cd "$REPO" || exit 1
 

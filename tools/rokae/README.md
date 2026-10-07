@@ -3,9 +3,9 @@
 用途: 从 4060 本机**直连控制器 192.168.23.160** 读真实状态 —— 关节力矩/位姿/模式/工具负载/控制器报警原文。
 **全部只读**(connect → 读 → disconnect), 不含任何运动指令。用于真机故障取证与日常体检。
 
-跑法(SDK 是 cpython-310, 本机 3.12 不行 → 用 python3.10 容器; SDK 在 `~/zmax_data/rokae_sdk`):
+跑法(SDK 是 cpython-310, 本机 3.12 不行 → 用 python3.10 容器; SDK 在 `~/zmax/zmax_data/rokae_sdk`):
 ```bash
-cd ~/zmax_data/rokae_sdk
+cd ~/zmax/zmax_data/rokae_sdk
 sudo docker run --rm --network host -v $PWD:/sdk -w /sdk ros:humble-ros-base python3 /sdk/<脚本>.py
 ```
 

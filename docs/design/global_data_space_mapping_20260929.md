@@ -59,7 +59,7 @@ QoS 三档(按用途分级, 不一刀切): `state` = RELIABLE·KEEP_LAST(1)·TRA
    控制台/网页 ◄── 读 live.json(不直接依赖 cyclonedds)
 ```
 **规矩**: 控制台/主应用**不许**直接 import cyclonedds(依赖污染) ⇒ 一律走 `probe` 的
-「DDS → JSON 桥」(`/home/ubuntu/zmax_data/dataspace/live.json`)。
+「DDS → JSON 桥」(`/home/ubuntu/zmax/zmax_data/dataspace/live.json`)。
 
 ## 3. ③ 闭环层: 数据闭环流程 (9 环节, 每环都有门)
 
@@ -95,7 +95,7 @@ QoS 三档(按用途分级, 不一刀切): `state` = RELIABLE·KEEP_LAST(1)·TRA
    zmax/ss_diag    0.50Hz(设计0.5) 12 条  配对1  ok
    zmax/ss_infer   0.50Hz(设计0.5) 12 条  配对1  ok
    zmax/train_prog 0.26Hz(设计0.33) 6 条  配对1  ok
-   ⇒ 落盘 /home/ubuntu/zmax_data/dataspace/live.json (控制台/网页读这一份)
+   ⇒ 落盘 /home/ubuntu/zmax/zmax_data/dataspace/live.json (控制台/网页读这一份)
 ② 质量管理**抓到的真缺陷 3 个**(都已在本次修掉, 附根因):
    (a) 硬件话题整条链断了: 发布端 `--cfg` 指向 **0 字节**配置 ⇒ CYCLONEDDS_URI 解析失败、参与者掉出发现网
        (实测 配对=0、帧龄=None)。守护端早就有空文件保护, 发布端漏了 ⇒ 已按同口径修 + 空文件告警。

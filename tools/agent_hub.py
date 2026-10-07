@@ -9,7 +9,7 @@
 
 接口(都带 token):
   GET  /agent/cmd?t=TOKEN   取一条待执行命令(取走即出队; 没有则返回 NONE)
-  POST /agent/out?t=TOKEN   把命令的输出送回来(存 ~/zmax_data/agent_hub/out/<n>.txt 并打印)
+  POST /agent/out?t=TOKEN   把命令的输出送回来(存 ~/zmax/zmax_data/agent_hub/out/<n>.txt 并打印)
   GET  /agent/beat?t=TOKEN  心跳(看那边还活着)
   GET  /agent/log?t=TOKEN   看最近几条命令/输出(人在手机上也能瞄一眼)
 其余路径照旧当静态文件服务(交付包下载不受影响)。
@@ -30,7 +30,7 @@ from urllib.parse import urlparse, parse_qs
 #    PermissionError: '/tmp/zmax_agent_cmd.jsonl' ⇒ 队列取不走, 通道**看着断着其实是权限**
 #    (现象: 客户端每 5s 来 GET /agent/cmd 都 403/报错, served 恒为 0)
 #    ⇒ 运行态统一放数据目录(非 sticky 目录, 两个属主都能写)。
-HUB_DATA = os.environ.get("ZMAX_AGENT_DATA", "/home/ubuntu/zmax_data/agent_hub")
+HUB_DATA = os.environ.get("ZMAX_AGENT_DATA", "/home/ubuntu/zmax/zmax_data/agent_hub")
 OUT_DIR = os.path.join(HUB_DATA, "out")
 LOG_FILE = os.path.join(HUB_DATA, "hub.log")
 BEAT_FILE = os.path.join(HUB_DATA, "beat")
@@ -174,7 +174,7 @@ def _resolve_token(cli_token: str) -> str:
     """token 真值来源优先级: --token 参数 → 环境变量 ZMAX_AGENT_TOKEN → 本机 secrets 文件。
 
     2026-09-30: 以前真值直接写在这份代码和 systemd 单元里 ⇒ 公开仓库等于把通道密钥贴出去。
-    现在代码/单元里只有 `$ZMAX_AGENT_TOKEN` 占位, 真值只落在 /home/ubuntu/zmax_data/secrets/zmax.env (600)。
+    现在代码/单元里只有 `$ZMAX_AGENT_TOKEN` 占位, 真值只落在 /home/ubuntu/zmax/zmax_data/secrets/zmax.env (600)。
     找不到值就 fail-closed(拒绝启动), 不当成"没密钥也能跑"。
     """
     if cli_token:
@@ -182,7 +182,7 @@ def _resolve_token(cli_token: str) -> str:
     v = (os.environ.get("ZMAX_AGENT_TOKEN") or "").strip()
     if v:
         return v
-    for p in (os.environ.get("ZMAX_SECRETS_FILE") or "", "/home/ubuntu/zmax_data/secrets/zmax.env"):
+    for p in (os.environ.get("ZMAX_SECRETS_FILE") or "", "/home/ubuntu/zmax/zmax_data/secrets/zmax.env"):
         if not p or not os.path.isfile(p):
             continue
         try:
@@ -193,7 +193,7 @@ def _resolve_token(cli_token: str) -> str:
             continue
     raise SystemExit(
         "缺少 agent hub token: 给 --token、或设置环境变量 ZMAX_AGENT_TOKEN、\n"
-        "或写入 /home/ubuntu/zmax_data/secrets/zmax.env (键名 ZMAX_AGENT_TOKEN)。\n"
+        "或写入 /home/ubuntu/zmax/zmax_data/secrets/zmax.env (键名 ZMAX_AGENT_TOKEN)。\n"
         "首次部署: bash tools/zmax_bootstrap.sh --secrets  可生成占位文件。")
 
 

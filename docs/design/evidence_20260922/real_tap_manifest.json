@@ -1,8 +1,8 @@
 {
   "dataset": "真机 ROS 只读 tap (4060 侧 docker ss-remote-tap, ROS_DOMAIN_ID=0, 10Hz)",
   "collected_by": "tools/ss_remote_tap.py (容器) + tools/ss_yolo_on_real.py + tools/box3d_live_box.py + tools/ss_bypass_run.py",
-  "canonical_path": "/home/ubuntu/zmax_ss_remote",
-  "archive_path": "/home/ubuntu/zmax_data/real_tap_20260921 (硬链接, 同 inode, 不占额外空间)",
+  "canonical_path": "/home/ubuntu/zmax/zmax_data/ss_live",
+  "archive_path": "/home/ubuntu/zmax/zmax_data/real_tap_20260921 (硬链接, 同 inode, 不占额外空间)",
   "stopped_at": "2026-09-22 ~08:15 (优雅 SIGTERM; 机器人侧未动, 只读订阅)",
   "files": {
     "state_20260921.jsonl": {"bytes": 544674059, "lines": 287502, "parse_failures": 0,

@@ -10,9 +10,9 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
 Environment=ZMAX_REPO=/home/ubuntu/zmax
-Environment=ZMAX_DATASPACE_LOOP=/home/ubuntu/zmax_data/dataspace/loop.json
+Environment=ZMAX_DATASPACE_LOOP=/home/ubuntu/zmax/zmax_data/dataspace/loop.json
 # 不需要 cyclonedds(读文件/端点) ⇒ 用主 venv
-ExecStart=/home/ubuntu/lerobot-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/loop_state.py --watch --interval 15
+ExecStart=/home/ubuntu/zmax/venvs/lerobot-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/loop_state.py --watch --interval 15
 Restart=always
 RestartSec=5
 

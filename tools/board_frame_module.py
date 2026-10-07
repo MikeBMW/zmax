@@ -36,5 +36,5 @@ def run(img_path, conf=0.25):
             "conf": round(float(b.conf[0]), 3)}
 
 if __name__ == "__main__":
-    p = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax_ss_remote/cam_rs.png")
+    p = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png")
     print(p, "→", run(p))

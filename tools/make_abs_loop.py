@@ -114,7 +114,7 @@ def main():
         })
         print("  + %s" % sid)
     json.dump(rg, open(REG, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("\n  ✅ 完成。跑法: echo '{\"skill\":\"L2.loop20_p1\",\"speed\":19}' > ~/zmax_data/l2_cmd.fifo")
+    print("\n  ✅ 完成。跑法: echo '{\"skill\":\"L2.loop20_p1\",\"speed\":19}' > ~/zmax/zmax_data/l2_cmd.fifo")
 
 
 if __name__ == "__main__":

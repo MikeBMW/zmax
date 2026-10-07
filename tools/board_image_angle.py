@@ -32,7 +32,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", default=None)
     a = ap.parse_args()
-    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
+    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
     rows = [json.loads(l) for l in open(os.path.join(sess, "poses.jsonl"), encoding="utf-8") if l.strip()]
     print(f"会话 {os.path.basename(sess.rstrip('/'))}\n")
     print("样本 | 板朝向角(deg) | 尺度(px, 相邻点间距) | 板质心 | TCP")

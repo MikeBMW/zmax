@@ -9,7 +9,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-PLAN_DIR="${SS_PLAN_DIR:-$HOME/zmax_moveit_plan}"
+PLAN_DIR="${SS_PLAN_DIR:-$HOME/zmax/zmax_data/runtime/moveit_plan}"
 CFG="$REPO/config/moveit_xms5"
 CT=zmax-moveit
 IMG=zmax-moveit:humble
@@ -79,7 +79,7 @@ echo "═══ 现况 ═══"
 echo -n "ss_plan 在 live.json: "
 $PY - <<'PY' 2>/dev/null || echo "(读不到)"
 import json
-d = json.load(open('/home/ubuntu/zmax_data/dataspace/live.json'))
+d = json.load(open('/home/ubuntu/zmax/zmax_data/dataspace/live.json'))
 t = (d.get('topics') or {}).get('ss_plan') or {}
 print('hz=%s count=%s age=%s' % (t.get('hz_meas'), t.get('count'), t.get('frame_age_s')))
 PY

@@ -16,7 +16,7 @@
 输出: data/skills/l2_atomic/taught_paths.json (追加/覆盖同名路径) + 可选 --npz 存稠密轨迹
 
 用法:
-  python3 tools/extract_taught_path.py --session ~/zmax_data/gs_scan/scan_XXX --from 侧面点2 --to 侧面点3
+  python3 tools/extract_taught_path.py --session ~/zmax/zmax_data/gs_scan/scan_XXX --from 侧面点2 --to 侧面点3
   python3 tools/extract_taught_path.py --list
 """
 from __future__ import annotations

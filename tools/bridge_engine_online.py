@@ -13,11 +13,11 @@ ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, ROOT + "/src")
 sys.path.insert(0, ROOT + "/tools/gui")
 os.environ.setdefault("MUJOCO_GL", "egl")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 NPZ = "/tmp/bridge_engine_smpl.npz"
-CKPT = "/home/ubuntu/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
+CKPT = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/backbone_cont/unified.pt"
 IMGSZ, CHUNK = 224, 7
 
 

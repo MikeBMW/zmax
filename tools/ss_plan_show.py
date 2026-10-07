@@ -6,7 +6,7 @@ ss_plan_show.py — 命令行看 MoveIt plan-only 镜像的当前状态 (与数�
 给现场/审计用: 不开 GUI 也能核对 ss_plan 这一条到底在发什么。
 
   ① DDS 侧: zmax/ss_plan 的 hz/count/匹配发布者/帧龄/裁决/lamp (读 live.json)
-  ② 规划侧: 最新一条规划的摘要 + 起/终点 + 同源闸判据 (读 ~/zmax_moveit_plan/live_plan_latest.json)
+  ② 规划侧: 最新一条规划的摘要 + 起/终点 + 同源闸判据 (读 ~/zmax/zmax_data/runtime/moveit_plan/live_plan_latest.json)
   ③ 链路健康: 容器 / 请求器 / 规划器 三个进程与文件新鲜度
 
 用法:
@@ -22,7 +22,7 @@ import subprocess
 import time
 
 HOME = os.path.expanduser("~")
-LIVE = "/home/ubuntu/zmax_data/dataspace/live.json"
+LIVE = "/home/ubuntu/zmax/zmax_data/dataspace/live.json"
 PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.join(HOME, "zmax_moveit_plan"))
 LATEST = os.path.join(PLAN_DIR, "live_plan_latest.json")
 JSONL = os.path.join(PLAN_DIR, "live_plan.jsonl")

@@ -87,7 +87,7 @@ def main():
         rg["skills"].append(sk)
         print("  + %s 新增" % SID)
     json.dump(rg, open(REG, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("\n  ✅ 已保存。跑法: echo '{\"skill\":\"%s\",\"speed\":%.0f}' > ~/zmax_data/l2_cmd.fifo" % (SID, SP))
+    print("\n  ✅ 已保存。跑法: echo '{\"skill\":\"%s\",\"speed\":%.0f}' > ~/zmax/zmax_data/l2_cmd.fifo" % (SID, SP))
 
 
 if __name__ == "__main__":

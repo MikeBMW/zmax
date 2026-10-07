@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# 归档 v5.15.6 当日产物 → ~/zmax_data (单一目录 + MANIFEST + sha256)
+# 归档 v5.15.6 当日产物 → ~/zmax/zmax_data (单一目录 + MANIFEST + sha256)
 # ⚠️ 口径同 archive_release_5_13/5_14: 只放**真实产物+改动文件**, 大文件(权重/整库/rosbag)不进归档。
 # ⚠️ 本次源 = worktree /home/ubuntu/zmax (main 线); 另从共享检出的「活数据」补 live 审计文件。
 set -u
 REPO=/home/ubuntu/zmax
 LIVE=/home/ubuntu/zmax
-DST=$HOME/zmax_data/release_5.15.6_$(date +%Y%m%d)
+DST=$HOME/zmax/zmax_data/release_5.15.6_$(date +%Y%m%d)
 mkdir -p "$DST"/{tools,src,docs,reports,live}
 cd "$REPO" || exit 1
 

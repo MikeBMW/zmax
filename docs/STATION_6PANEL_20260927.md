@@ -297,7 +297,7 @@ Orin 192.168.23.66
         │  容器 ss-remote-tap (ROS_DOMAIN_ID=0, 只读订阅)
         ├─ tools/ros_depth_stream.py  → zmax_scene/depth_raw.npy + depth_meta.json   (numpy, 无 cv2)
         └─ tools/ros_tcp_cache.py     → zmax_scene/tcp_pose.json + robot_status.json (20Hz 落盘)
-        │  (宿主 /home/ubuntu/zmax_ss_remote 挂的是容器 /out)
+        │  (宿主 /home/ubuntu/zmax/zmax_data/ss_live 挂的是容器 /out)
 宿主 4060
   tools/depth_colorize.py          ← 彩色化口径**唯一真源**(容器/宿主共用, 不各写一份)
   tools/cam_live_stream.py (8791)

@@ -35,7 +35,7 @@ import torch.nn.functional as F
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from joint_unified_backbone import MODEL, RealH5, make_loader  # noqa: E402
 
-SWM = "/home/ubuntu/stable-wm-cache"
+SWM = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 NS = len(STAGES)
 

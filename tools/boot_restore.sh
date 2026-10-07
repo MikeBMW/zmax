@@ -32,7 +32,7 @@ check() {
   echo "=== ② docker 常驻 ==="
   sudo -n docker ps --format "  {{.Names}}\t{{.Status}}" 2>/dev/null || echo "  (读不到 docker，需 sudo)"
   echo "=== ②b 深度源 (容器 ros_depth_stream → 8791 深度格) ==="
-  _dage=$(python3 -c "import os,time;p='/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy';print('%.0f'%(time.time()-os.path.getmtime(p)) if os.path.exists(p) else 'NA')" 2>/dev/null)
+  _dage=$(python3 -c "import os,time;p='/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy';print('%.0f'%(time.time()-os.path.getmtime(p)) if os.path.exists(p) else 'NA')" 2>/dev/null)
   _dproc=$(sudo -n docker exec ss-remote-tap bash -lc "ps -eo cmd 2>/dev/null | grep -c '[r]os_depth_stream.py'" 2>/dev/null | tail -1)
   echo "  源文件龄 ${_dage}s (≤20s 新鲜) · 容器进程数 ${_dproc:-?} (需 ≥1)"
   echo "=== ③ systemd Z-MAX 服务 ==="
@@ -88,7 +88,7 @@ local_up() {
   # VL 安全监控(单轮上限 300s)
   if ! pgrep -f "[v]l_safety_monitor.py" >/dev/null; then
     ZMAX_VL_CYCLE_TIMEOUT_S=300 nohup $PY -u tools/vl_safety_monitor.py --every 20 \
-      > /home/ubuntu/zmax_data/vl_safety_monitor.log 2>&1 &
+      > /home/ubuntu/zmax/zmax_data/vl_safety_monitor.log 2>&1 &
     echo "  ✓ 起了 VL 安全监控"
   else echo "  · VL 安全监控已在跑"; fi
   # L2 执行器(位姿读 SDK 直采; 下发通道禁 SHM)

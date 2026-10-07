@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
-OUTROOT = Path(os.path.expanduser("~/zmax_data/l5_corners"))
+OUTROOT = Path(os.path.expanduser("~/zmax/zmax_data/l5_corners"))
 
 # ── 实测基准(原图 640x480 像素) ───────────────────────────────────────────────
 MODULES = {                                    # 四角光模块: AABB(含绿色卡扣)

@@ -26,7 +26,7 @@
                                                └→ L2 一致性损失
 
 用法:
-  /home/ubuntu/INTACT-JEPA/.venv/bin/python tools/joint_train_real_v5.py --steps 200
+  /home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python tools/joint_train_real_v5.py --steps 200
 """
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ import sys
 import time
 
 ROOT = "/home/ubuntu/zmax"
-INTACT = "/home/ubuntu/INTACT-JEPA"
-CACHE = "/home/ubuntu/stable-wm-cache"
+INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
 CKPT_DIR = f"{CACHE}/checkpoints/intact_l4_current"
 sys.path.insert(0, f"{ROOT}/src")
 sys.path.insert(0, INTACT)

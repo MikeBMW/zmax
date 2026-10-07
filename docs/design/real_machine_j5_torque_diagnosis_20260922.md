@@ -28,7 +28,7 @@ J6      +0.83           -0.12          +0.95       19          —      ← 吻�
 - 姿态 Q = [0.5660, 0.0369, -2.4006, 1.8320, 0.6250, -0.7194] rad
 - FK 自校: 脚本算出的末端 [0.6622, 0.1293, 0.2942] vs 控制器实测 [0.6623, 0.1262, 0.2928] → **差 3mm**, 模型可信
 - 计算含: 六连杆自身惯量(URDF `<inertial>`) + 控制器 toolset 负载 (mass 1.51 kg, cog [16.2,12.9,31.2] mm) + 工具偏移 258.7mm
-- 工具脚本: `~/zmax_data/rokae_sdk/gravity_torque_check.py` (纯离线, 可复算)
+- 工具脚本: `~/zmax/zmax_data/rokae_sdk/gravity_torque_check.py` (纯离线, 可复算)
 
 **两条一眼定性**:
 1. **J5 模型只该有 2.0 Nm 重力负载, 传感器读到 21.96 Nm (11 倍)** → 静态就吃掉 99.8% 的报警线,
@@ -98,13 +98,13 @@ J6      +0.83           -0.12          +0.95       19          —      ← 吻�
 
 ```bash
 # 六轴力矩/位姿/模式 (x86_64 SDK 在容器里跑, 3.12 不行)
-sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
+sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
     python3 /sdk/probe_torque_alarm.py
 # 工具负载/坐标系
-sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
+sudo docker run --rm --network host -v ~/zmax/zmax_data/rokae_sdk:/sdk -w /sdk ros:humble-ros-base \
     python3 /sdk/probe_toolset_fields.py
 # 重力模型对照 (离线, 不需要机器人)
-/home/ubuntu/INTACT-JEPA/.venv/bin/python ~/zmax_data/rokae_sdk/gravity_torque_check.py
+/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python ~/zmax/zmax_data/rokae_sdk/gravity_torque_check.py
 ```
 
 ---

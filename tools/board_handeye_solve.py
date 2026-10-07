@@ -107,8 +107,8 @@ def main():
     ap.add_argument("--min-views", type=int, default=8)
     ap.add_argument("--square-mm", type=float, default=20.0)
     a = ap.parse_args()
-    sess = a.session or (sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
-                         if glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")) else None)
+    sess = a.session or (sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
+                         if glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")) else None)
     if not sess:
         raise SystemExit("没有采集会话 (先跑 tools/handeye_collect.py)")
     poses = os.path.join(sess, "poses.jsonl")

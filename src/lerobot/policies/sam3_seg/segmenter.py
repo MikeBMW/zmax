@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 # ── 运行参数 (env 可覆盖: 换盘/换机/显存不够时降分辨率) ──────────────────────
-SAM3_DIR = os.environ.get("ZMAX_SAM3_DIR", "/home/ubuntu/zmax_data/models/sam3_hf")
+SAM3_DIR = os.environ.get("ZMAX_SAM3_DIR", "/home/ubuntu/zmax/zmax_data/models/sam3_hf")
 SAM3_DTYPE = os.environ.get("ZMAX_SAM3_DTYPE", "bf16")            # bf16 | fp16 | fp32
 SAM3_SIZE = int(os.environ.get("ZMAX_SAM3_SIZE", "1008"))         # 原生输入边长 1008
 MIN_AREA_PX = int(os.environ.get("ZMAX_SEG_MIN_AREA", "200"))     # 掩膜最小面积(滤碎块)

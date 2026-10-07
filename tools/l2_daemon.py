@@ -5,7 +5,7 @@
 架构: 两条常驻 ssh 通道
   A) 命令通道: bash 循环读 stdin -> 直接 eval ROS2 服务调用 (环境只 source 一次)
   B) 状态通道: 循环读 /robot/tcp_pose -> 维护当前位姿缓存 (供相对技能算目标)
-接口: FIFO ~/zmax_data/l2_cmd.fifo  (一行一条 JSON: {"skill":"L2.lift","d_mm":100})
+接口: FIFO ~/zmax/zmax_data/l2_cmd.fifo  (一行一条 JSON: {"skill":"L2.lift","d_mm":100})
 """
 import json, os, re, subprocess, sys, threading, time
 import urllib.request
@@ -23,8 +23,8 @@ except Exception as _e:                                                 # noqa: 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
-FIFO = os.path.expanduser("~/zmax_data/l2_cmd.fifo")
-LOG = os.path.expanduser("~/zmax_data/l2_daemon.log")
+FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
+LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 # 原子技能注册表路径 (v5.11.1 热加载引入 REG_PATH, 当时漏了这行定义 -> NameError 起不来)
 REG_PATH = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; "
@@ -32,6 +32,8 @@ PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install
       "export FASTDDS_BUILTIN_TRANSPORTS=UDPv4; export ROS_LOCALHOST_ONLY=0; ")
 
 _pose = {"p": None, "q": None, "t": 0.0}
+# 🚚 执行腿缓存(2026-10-07): 'ros' 产线 / 'sdk' 本机直连; 见 _move_leg()
+_MOVE_LEG = {"t": 0.0, "v": None}
 
 # 直读真值 (与 tools/record_l2_point.py 同一口径): 容器 + 数值解析
 CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
@@ -52,7 +54,7 @@ def _pose_direct(timeout=10):
     # 话题直读作兜底。文件龄 >10s 视为失效(不拿旧值当实时位姿)。
     try:
         import json as _json
-        _fp = os.path.expanduser("~/zmax_data/rokae_sdk/tcp_out/latest.json")
+        _fp = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
         if os.path.exists(_fp) and (time.time() - os.path.getmtime(_fp)) < 10.0:
             _d = _json.load(open(_fp, encoding="utf-8"))
             _v7 = [float(_d.get(k) or 0.0) for k in ("x", "y", "z", "qx", "qy", "qz", "qw")]
@@ -1042,7 +1044,7 @@ def run_stages(sk, spec, chan, pts):
     return "✅ 全部 %d 阶段完成" % n
 
 
-IMG_LAST = os.path.expanduser("~/zmax_data/aoi_last_frame.png")
+IMG_LAST = os.path.expanduser("~/zmax/zmax_data/aoi_last_frame.png")
 
 
 def _image_health(raw):
@@ -1331,11 +1333,11 @@ def _spawn_chan(force=False):
 # 老倪: 「你现在有三个相机，还有深度信号，你的大模型，要负责安全保护。把 deepseek VL 加入控制循环」
 # 形态: VL 单次 40~150s ⇒ 当**慢传感器**(vl_safety_monitor.py 常驻维持带时间戳的裁决),
 #       执行层每次运动下发前读最新裁决: 缺失/过期/不安全 ⇒ **一律拒发**(fail-closed, 看不清也拒)。
-#       关闸: env ZMAX_VL_GUARD=0, 或运行时文件 ~/zmax_data/vl_guard_off.json(带 until 到期即自动恢复) —— 见 _vl_disabled()。
+#       关闸: env ZMAX_VL_GUARD=0, 或运行时文件 ~/zmax/zmax_data/vl_guard_off.json(带 until 到期即自动恢复) —— 见 _vl_disabled()。
 #       停机/复位类**永远放行**(闸门不许挡急停)。
-VL_VERDICT_PATH = os.path.expanduser("~/zmax_data/vl_safety.json")
+VL_VERDICT_PATH = os.path.expanduser("~/zmax/zmax_data/vl_safety.json")
 VL_FRESH_S = float(os.environ.get("ZMAX_VL_FRESH_S", "600"))
-VL_INTENT_PATH = os.path.expanduser("~/zmax_data/vl_intent.json")
+VL_INTENT_PATH = os.path.expanduser("~/zmax/zmax_data/vl_intent.json")
 VL_INTENT_WAIT_S = float(os.environ.get("ZMAX_VL_INTENT_WAIT_S", "300"))
 # 🔁 同一动作的裁决在这么长时间内可直接复用(见 _vl_reuse_ok): 免去每次点击干等一轮慢层
 VL_REUSE_S = float(os.environ.get("ZMAX_VL_REUSE_S", "300"))
@@ -1343,7 +1345,27 @@ _VL_ALWAYS_ALLOW = ("robot_stop", "rokae_recover_estop", "estop", "recover")
 # 🔓 关闸的运行时开关 (2026-09-28 现场: 老倪「关闭安全」)
 #   除 env 外再给一个**带到期时间的文件**: 现场不重启就能开关, 且到期**自动恢复**安全(fail-closed),
 #   避免"关了忘了开"; 每次下发都把开关状态写进审计日志(可追是谁什么时候关的)。
-VL_GUARD_OFF_PATH = os.path.expanduser("~/zmax_data/vl_guard_off.json")
+VL_GUARD_OFF_PATH = os.path.expanduser("~/zmax/zmax_data/vl_guard_off.json")
+
+# 🐢⚡ 老倪 2026-10-07 现场指令(逐字): 「VL 慢层 注释掉这个功能, 太耽误事情了」
+#    慢层 = VL 语义判断(告知意图 → 等远端裁决 45~190s → 裁决复用) —— 默认**停用**;
+#    快层 = 本地 5Hz 反射(遮挡/糊化/裁决新鲜度, 亚秒级) —— **照旧强制**, 任何开关都不越过它。
+#    ⚠️ 与 _vl_disabled()(把**整个**安全闸关掉, 快层也没了) 是两回事, 别混用。
+#    恢复慢层: 起服务时带 ZMAX_VL_SLOW=1 即可 —— 代码没删, 一行的事。
+VL_SLOW_ENABLED = os.environ.get("ZMAX_VL_SLOW", "0").strip().lower() in ("1", "true", "yes", "on")
+_VL_SLOW_NOTE_N = [0]
+
+
+def _vl_slow_note():
+    """停用慢层时只提醒前 3 次、之后每 50 次一次, 免得刷屏; 每条都留痕可追。"""
+    _VL_SLOW_NOTE_N[0] += 1
+    n = _VL_SLOW_NOTE_N[0]
+    if n <= 3 or n % 50 == 0:
+        log("🐢 慢层已停用(老倪现场指令「VL 慢层太耽误事情」): 跳过 VL 语义裁决, 直接进快层(本地 5Hz 反射仍强制) · 第 %d 条" % n)
+
+
+def _vl_slow_status():
+    return "慢层=停用(老倪 2026-10-07 现场指令)" if not VL_SLOW_ENABLED else "慢层=启用"
 
 
 def _vl_disabled():
@@ -1428,7 +1450,7 @@ def _vl_reuse_ok(desc: str):
 #   口径: **凡是能让臂/夹爪动的下发, 一律要此刻有授权**(不是"签发时有"); 撤销 ⇒ 立刻失效。
 #   停/复位类永远放行(闸门不许挡急停)。
 _CUR = {"epoch": None, "skill": "", "t": 0.0}      # 当前正在处理的 FIFO 命令(签发时的授权 epoch)
-DISPATCH_MARK = os.path.expanduser("~/zmax_data/l2_last_dispatch.json")
+DISPATCH_MARK = os.path.expanduser("~/zmax/zmax_data/l2_last_dispatch.json")
 
 
 def _auth_guard(call: str, kind: str = "运动"):
@@ -1479,11 +1501,11 @@ def _vl_operator_auth(action: str, consume: bool = True):
 
     只越过**慢层(VL 判断)**: 现场人已确认安全、而远端 VL 因拥塞/限流给不出裁决时用。
     **快层(本地 0.2s 遮挡反射)永远有效, 任何授权都不能越过它** —— 手突然伸进来依然立刻拒发。
-    授权文件: ~/zmax_data/vl_operator_auth.json {enabled, ts, ttl_s, max_uses, used, scope[], by, note}
-    审计: 每用一次写 ~/zmax_data/vl_operator_auth_log.jsonl(带时刻/动作/授权人/第几次)。
+    授权文件: ~/zmax/zmax_data/vl_operator_auth.json {enabled, ts, ttl_s, max_uses, used, scope[], by, note}
+    审计: 每用一次写 ~/zmax/zmax_data/vl_operator_auth_log.jsonl(带时刻/动作/授权人/第几次)。
     """
     try:
-        p = os.path.expanduser("~/zmax_data/vl_operator_auth.json")
+        p = os.path.expanduser("~/zmax/zmax_data/vl_operator_auth.json")
         a = json.loads(open(p, encoding="utf-8").read())
     except Exception:                                                   # noqa: BLE001
         return None
@@ -1503,7 +1525,7 @@ def _vl_operator_auth(action: str, consume: bool = True):
     try:
         with open(p, "w", encoding="utf-8") as f:
             json.dump(a, f, ensure_ascii=False, indent=1)
-        with open(os.path.expanduser("~/zmax_data/vl_operator_auth_log.jsonl"), "a", encoding="utf-8") as f:
+        with open(os.path.expanduser("~/zmax/zmax_data/vl_operator_auth_log.jsonl"), "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "action": (action or "")[:160],
                                 "by": a.get("by"), "note": a.get("note"), "use": a["used"],
                                 "age_s": round(age, 1)}, ensure_ascii=False) + "\n")
@@ -1552,21 +1574,26 @@ def _vl_gate_blocks(call: str) -> bool:
         _note_block("慢层·VL 判断", why)
         return True
 
-    try:
-        d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
-    except Exception as e:                                              # noqa: BLE001
-        return _slow_block("🛡 VL 安全闸: 无安全裁决文件(%s) ⇒ 从严**拒发**(fail-closed)" % str(e)[:70])
-    age = time.time() - float(d.get("ts") or 0)
-    if age > VL_FRESH_S:
-        return _slow_block("🛡 VL 安全闸: 裁决过期 %.0fs > %.0fs (上次 %s) ⇒ 拒发; 确认 vl_safety_monitor 在跑"
-                           % (age, VL_FRESH_S, d.get("ts_str")))
-    if not d.get("safe"):
-        hz = "; ".join(("%s@%s" % (h.get("what"), h.get("where")))[:70] for h in (d.get("hazards") or []))
-        return _slow_block("🛡 VL 安全闸: **不安全**(risk=%s · %s 裁决): %s | 危害: %s ⇒ 拒发"
-                           % (d.get("risk_level"), d.get("ts_str"), d.get("why"), hz or "-"))
+    if VL_SLOW_ENABLED:
+        try:
+            d = json.loads(open(VL_VERDICT_PATH, encoding="utf-8").read())
+        except Exception as e:                                              # noqa: BLE001
+            return _slow_block("🛡 VL 安全闸: 无安全裁决文件(%s) ⇒ 从严**拒发**(fail-closed)" % str(e)[:70])
+        age = time.time() - float(d.get("ts") or 0)
+        if age > VL_FRESH_S:
+            return _slow_block("🛡 VL 安全闸: 裁决过期 %.0fs > %.0fs (上次 %s) ⇒ 拒发; 确认 vl_safety_monitor 在跑"
+                               % (age, VL_FRESH_S, d.get("ts_str")))
+        if not d.get("safe"):
+            hz = "; ".join(("%s@%s" % (h.get("what"), h.get("where")))[:70] for h in (d.get("hazards") or []))
+            return _slow_block("🛡 VL 安全闸: **不安全**(risk=%s · %s 裁决): %s | 危害: %s ⇒ 拒发"
+                               % (d.get("risk_level"), d.get("ts_str"), d.get("why"), hz or "-"))
+    else:
+        # 🐢 慢层停用(老倪现场指令) —— 只用快层; age/d 给末尾那行日志用占位
+        _vl_slow_note()
+        age, d = 0.0, {"risk_level": "slow-off", "image": "-"}
     # ⚡ 快反射层(本地 5Hz 遮挡检测, 亚秒级): 必须存在 + 安全 + 新鲜, 否则一律拒发
     try:
-        _fp = os.path.expanduser("~/zmax_data/vl_safety_fast.json")
+        _fp = os.path.expanduser("~/zmax/zmax_data/vl_safety_fast.json")
         _fresh = float(os.environ.get("ZMAX_VL_FAST_FRESH_S", "4"))
         f = json.loads(open(_fp, encoding="utf-8").read())
         fage = time.time() - float(f.get("ts") or 0)
@@ -1588,11 +1615,85 @@ def _vl_gate_blocks(call: str) -> bool:
     return False
 
 
+def _move_leg():
+    """执行腿: 'ros'(产线 ssh→Orin /move_line) | 'sdk'(本机 SDK 直连)。
+
+    2026-10-07 老倪选 A: 「不要改变 orin 原来的任何服务。你可以直接调用SDK，但要独立实现」
+      ⇒ Orin 那套 ROS 栈没在跑时, 只把**最后一段下发**换成本机 SDK 腿; L2 的授权/VL/包络/守卫全不动。
+    优先级 env ZMAX_MOVE_TRANSPORT > ~/zmax/zmax_data/move_transport.json > 默认 "ros"(与改前行为一致)。
+    """
+    _c = _MOVE_LEG
+    if _c["v"] and time.time() - _c["t"] < 1.0:
+        return _c["v"]
+    v = "ros"
+    try:
+        _e = (os.environ.get("ZMAX_MOVE_TRANSPORT") or "").strip().lower()
+        if _e in ("ros", "sdk"):
+            v = _e
+        else:
+            _p = os.path.expanduser("~/zmax/zmax_data/move_transport.json")
+            _j = json.loads(open(_p, encoding="utf-8").read())
+            _t = str(_j.get("transport") or "ros").strip().lower()
+            v = _t if _t in ("ros", "sdk") else "ros"
+    except Exception:                                                       # noqa: BLE001
+        v = "ros"
+    _c.update(t=time.time(), v=v)
+    return v
+
+
+def _is_motion_call(call):
+    c = call or ""
+    return ("/move_line" in c) or ("/move_pose" in c)
+
+
+def _sdk_leg_module():
+    """加载本机 SDK 直连腿模块(纯新增文件; 不读不写 Orin 任何东西)。失败 ⇒ None(调用方如实拒发)。"""
+    try:
+        _d = os.path.join(REPO, "tools", "rokae")
+        if _d not in sys.path:
+            sys.path.insert(0, _d)
+        import l2_transport_sdk as _T                                           # noqa: PLC0415
+        return _T
+    except Exception as _e:                                                     # noqa: BLE001
+        log("🚚 SDK 腿模块加载失败: %s" % str(_e)[:90])
+        return None
+
+
+def _send_via_sdk(call):
+    """走本机 SDK 直连腿。"""
+    _T = _sdk_leg_module()
+    if _T is None:
+        _m = "🚚 SDK 腿不可用 ⇒ 拒发(不回落 ROS: Orin 那套栈没在跑, 回落=静默不动)"
+        log(_m)
+        _note_block("执行腿·本机SDK", _m)
+        return False
+    _ok, _msg = _T.exec_call(call, log, _INTENT.get("desc") or (call or "")[-60:])
+    if not _ok:
+        log(_msg)
+        _note_block("执行腿·本机SDK", _msg)
+    return bool(_ok)
+
+
+def _stop_via_sdk(call):
+    """⏹ 叫停/复位类在 SDK 腿下**必须走 SDK**。
+
+    2026-10-07 发现的洞: 8793 撤销授权 ⇒ ctl_revoke_stop ⇒ `ssh Orin → ros2 call /robot_stop`,
+    而产线栈没在跑时那条路**叫不停**。SDK 腿在动臂 ⇒ 停止必须直达 SDK 代理(ms 级)。
+    """
+    _T = _sdk_leg_module()
+    if _T is None:
+        log("⏹ SDK 腿停止不可用(模块加载失败) ⇒ 只记日志; 停止通道绝不允许静默")
+        return False
+    _T.stop("L2 下发叫停类: %s" % (call or "")[:70], log)
+    return True
+
+
 def chan_send(call, intent_desc=None):
     """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。
 
     🛡 所有运动类下发在此**唯一收口**: 先过 VL 视觉安全闸(见上), 停机/复位白名单放行。
     🎯 带 intent_desc 时: 先把"这一步要做什么"告诉 VL, 再**等它针对该动作出裁决**, 等不到就拒发。
+    🚚 执行腿(2026-10-07): 闸门之后才换腿 —— ros(产线) / sdk(本机直连), 见 _move_leg()。
     """
     # 🩹 2026-09-27 老倪: 「技艺 合抓/松开 怎么不好使了」—— 根因: 夹爪类技能(ros=gripper, 无 steps)
     #   被当成"臂运动" ⇒ 走"告知VL+等针对该动作的裁决"分支 ⇒ 等不到就**挂住**;
@@ -1611,14 +1712,18 @@ def chan_send(call, intent_desc=None):
     if _is_grip:
         log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
     if intent_desc and not _is_grip:
-        _seq = set_intent(intent_desc)
         _d_off, _w_off = _vl_disabled()
         if _d_off:
             # 🔓 安全闸关了(现场调试) ⇒ 不审议、不等待, 直接下发; 下面 _vl_gate_blocks 同样整体放行
             log("🎯 安全闸已关闭 ⇒ 不进入本轮审议, 直接下发: %s (%s)" % (intent_desc, _w_off))
+        elif not VL_SLOW_ENABLED:
+            # 🐢 老倪 2026-10-07 现场指令「VL 慢层 注释掉这个功能」⇒ **不告知意图、不干等裁决**,
+            #    直接交闸门; 快层反射在下发那一刻照旧实测(慢层停用 ≠ 快层放行)。
+            _vl_slow_note()
         elif _vl_operator_auth(call + " " + intent_desc, consume=False):
             log("🎯 现场授权在场 ⇒ **不干等慢层裁决**, 直接交闸门(快层反射仍强制生效): %s" % intent_desc)
         else:
+            _seq = set_intent(intent_desc)
             _reuse, _rwhy = _vl_reuse_ok(intent_desc)
             if _reuse:
                 # 🔁 同一动作 + 裁决新鲜(≤VL_REUSE_S) ⇒ 不重跑慢层, 直接交闸门(快层仍实测当下场景)
@@ -1637,6 +1742,17 @@ def chan_send(call, intent_desc=None):
                     return False
     if _vl_gate_blocks(call):
         return False
+    # 🚚 执行腿切换 (2026-10-07 老倪选 A) —— 位置: **闸门之后, 下发之前**。
+    #    上面所有闸(真动授权 / 意图 / VL 双层 / 夹爪豁免)一个都不动, 只换最后一段运输:
+    #      ros = ssh → Orin `ros2 service call /move_line`(产线原路)
+    #      sdk = 本机 SDK 直连(tools/rokae/l2_transport_sdk.py → 常驻代理 → xCoreSDK → 控制器)
+    #    默认 ros ⇒ 不改开关时行为与改前逐字节一致; 热切见 ~/zmax/zmax_data/move_transport.json。
+    if _move_leg() == "sdk":
+        # ⏹ 叫停/复位类优先: 停止通道不能走已死的 ROS 栈(否则撤销授权叫不停臂)
+        if any(_k in (call or "") for _k in _VL_ALWAYS_ALLOW):
+            return _stop_via_sdk(call)
+        if _is_motion_call(call):
+            return _send_via_sdk(call)
     for attempt in (1, 2):
         if not _chan_alive():
             log("🩹 命令通道不可用 → 重建 (%s)" % ("首次" if attempt == 1 else "重试"))
@@ -1667,7 +1783,7 @@ def _single_instance():
     命令被某个已卡死的实例吃掉, 界面显示「已下发」而臂不动, 排查了一小时。
     规则: **新实例赢** —— 拿到锁的活着, 老实例礼貌退场(避免两个实例分食命令)。"""
     import fcntl, signal
-    lf = os.path.expanduser("~/zmax_data/l2_daemon.lock")
+    lf = os.path.expanduser("~/zmax/zmax_data/l2_daemon.lock")
     try:
         fd = os.open(lf, os.O_RDWR | os.O_CREAT, 0o644)
     except Exception as e:
@@ -1735,6 +1851,8 @@ def main():
     chan = _spawn_chan(force=True)
     threading.Thread(target=chan_watchdog, daemon=True).start()
     log("L2 常驻执行器启动 · FIFO=%s · 原子技能 %d 个" % (FIFO, len(reg["skills"])))
+    # 🛡 安全层口径(启动时明示, 免得事后说不清谁关了什么): 慢层可停用, 快层永远强制
+    log("🛡 安全层: %s · 快层(本地 5Hz 遮挡/糊化反射)=**强制**(任何开关都不越过它)" % _vl_slow_status())
     while True:
         reg = maybe_reload(reg)
         with open(FIFO, encoding="utf-8") as f:

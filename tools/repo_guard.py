@@ -64,7 +64,7 @@ def main():
     if not bad_ext and not bad_size:
         print("✅ 干净: 无权重/交付件, 无超限大文件")
         return 0
-    print("\n提示: 权重与交付件放 /home/ubuntu/zmax_data/ (或网盘), 库里只留清单; 运行产物走 .gitignore")
+    print("\n提示: 权重与交付件放 /home/ubuntu/zmax/zmax_data/ (或网盘), 库里只留清单; 运行产物走 .gitignore")
     return 1
 
 

@@ -14,7 +14,7 @@
   ./gui-venv311/bin/python tools/vl_safety_fast.py            # 常驻 5Hz
   ./gui-venv311/bin/python tools/vl_safety_fast.py --once     # 单次(取证)
   ./gui-venv311/bin/python tools/vl_safety_fast.py --hz 5 --show   # 打印指标
-输出: ~/zmax_data/vl_safety_fast.json · 事件图 ~/zmax_data/vl_safety_fast_evt/<时刻>.jpg
+输出: ~/zmax/zmax_data/vl_safety_fast.json · 事件图 ~/zmax/zmax_data/vl_safety_fast_evt/<时刻>.jpg
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ import cv2
 import numpy as np
 
 STREAM = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
-OUT = Path(os.path.expanduser("~/zmax_data/vl_safety_fast.json"))
-EVT = Path(os.path.expanduser("~/zmax_data/vl_safety_fast_evt"))
+OUT = Path(os.path.expanduser("~/zmax/zmax_data/vl_safety_fast.json"))
+EVT = Path(os.path.expanduser("~/zmax/zmax_data/vl_safety_fast_evt"))
 CAMS = ("arm", "local")          # 臂上(看工具/工件) + 笔记本(全局)
 MAX_FRAME_AGE = 3.0              # 帧太旧就没意义
 

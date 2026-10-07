@@ -39,12 +39,12 @@ PORT = int(os.environ.get("ZMAX_STREAM_PORT", "8791"))
 RGB_KEY = "Integrated RGB"          # 笔记本彩色相机的卡名关键字
 TOP_KEY = "MAXHUB"                  # 顶视相机
 # 🌈 深度源: 由**容器内常驻**的 ros_depth_stream.py 落盘 (宿主只读它的 npy)
-DEPTH_NPY = "/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy"
+DEPTH_NPY = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy"
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
 DEPTH_CONTAINER = os.environ.get("ZMAX_TAP_CONTAINER", "ss-remote-tap")
 # 🦾 TCP 真值源: 容器 rokae_tcp_sampler 里 tcp_direct_sampler.py 5Hz 写 latest.json (珞石 SDK 直采,
 #   口径 endInRef = 与产线 /robot/tcp_pose 同口径)。宿主挂载见下。
-TCP_LATEST = "/home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json"
+TCP_LATEST = "/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json"
 TCP_DEAD_S = float(os.environ.get("ZMAX_TCP_DEAD_S", "10"))
 TCP_CONTAINER = os.environ.get("ZMAX_TCP_CONTAINER", "rokae_tcp_sampler")
 
@@ -200,12 +200,26 @@ def tcp_stale():
 
 
 def start_tcp_sampler():
-    """重启 SDK 直采容器 (只读采样, 不发动作) —— 它自带 Restart=unless-stopped, 这是最后一道"""
+    """救 TCP 真值容器: 先 restart; 容器**不存在**(被 rm 过/首次)时按原样重建。
+
+    🐛 2026-10-07 实测教训: 原来只会 `docker restart` —— 容器一旦被删, restart 必然失败,
+    真值就永久停刷(现场表现: latest.json 帧龄一路涨, 整条臂链路看着"死了")。
+    """
     try:
         r = subprocess.run(["sudo", "-n", "docker", "restart", TCP_CONTAINER],
-                           capture_output=True, text=True, timeout=40)
-        return r.returncode == 0
-    except Exception:                                                             # noqa: BLE001
+                           capture_output=True, timeout=60)
+        if r.returncode == 0:
+            return True
+        # 容器不存在 ⇒ 用与原来一致的参数重建(挂载点走工程内新路径)
+        sdk_dir = os.path.dirname(os.path.dirname(TCP_LATEST))          # …/rokae_sdk
+        cmd = ["sudo", "-n", "docker", "run", "-d", "--name", TCP_CONTAINER,
+               "--restart", "unless-stopped", "--network", "host",
+               "-e", "ROKAE_IP=" + os.environ.get("ZMAX_ROBOT_IP", "192.168.23.160"),
+               "-v", sdk_dir + ":/sdk", "-w", "/sdk", "ros:humble-ros-base",
+               "python3", "-u", "/sdk/tcp_direct_sampler.py", "--rate", "5", "--secs", "0"]
+        r2 = subprocess.run(cmd, capture_output=True, timeout=120)
+        return r2.returncode == 0
+    except Exception:                                                       # noqa: BLE001
         return False
 
 

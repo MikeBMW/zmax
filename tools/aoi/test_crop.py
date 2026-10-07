@@ -8,13 +8,13 @@ import os
 import sys
 import time
 
-sys.path.insert(0, "/home/ubuntu/aoi_v4")
+sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
 from gf_template import build_template, measure_strip
 from gf_metric import gold_mask, centerline_slope, core_band_slope, top_edge_slope, core_band_slope
 from gf_crop import GoldFingerCropper, annotate
 
-D = "/home/ubuntu/aoi_v4/imgs"
-OUT = "/home/ubuntu/aoi_v4/out"
+D = "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs"
+OUT = "/home/ubuntu/zmax/zmax_data/aoi_v4/out"
 os.makedirs(OUT, exist_ok=True)
 REF = os.path.join(D, "Finger_Image_W2448_H2048_No_8.png")
 

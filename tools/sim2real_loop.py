@@ -8,7 +8,7 @@
 
 六环 (每环都有产物 + 取证, 任一环失败如实报, 不跳步):
   ① 感知采集体检  真机只读 tap 落盘新鲜度/发布者/帧率 (只读; 不碰产线)
-  ② 数据归档      快照到 ~/zmax_data/sim2real_loop_<ts>/ (硬链接, 零额外磁盘) + MANIFEST(sha256/行数/跨度)
+  ② 数据归档      快照到 ~/zmax/zmax_data/sim2real_loop_<ts>/ (硬链接, 零额外磁盘) + MANIFEST(sha256/行数/跨度)
   ③ 数据构建      真机真值 → 训练用 H5/数据集 的口径检查 (episodes/帧数/skill_ctx 维度)
   ④ 训练          调 tools/joint_train_all.py (L4/L3/L2, 支持 LoRA)
   ⑤ 评测          判闸 (INTACT 逐轴 corr/MAE) + YOLO 真机帧检出 (同权重同帧口径)
@@ -40,9 +40,9 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
-OUT_DEFAULT = os.path.expanduser("~/zmax_ss_remote")
-CACHE = "/home/ubuntu/stable-wm-cache"
-TAP_GLOB = os.path.expanduser("~/zmax_data/real_tap_*/*.jsonl")
+OUT_DEFAULT = os.path.expanduser("~/zmax/zmax_data/ss_live")
+CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
+TAP_GLOB = os.path.expanduser("~/zmax/zmax_data/real_tap_*/*.jsonl")
 
 REDLINE = ("只读红线: 未调用任何运动/控制接口 (move*/hmi/command/execute_external_task/"
            "gripper_driver/state_machine); 归档=硬链接读; 训练等空闲 GPU; 不 kill 他人进程")
@@ -82,7 +82,7 @@ def step2_archive(out_dir, keep_mb=400) -> dict:
     """② 归档 — 硬链接快照 (零额外磁盘) + MANIFEST。"""
     r = {"step": "2_归档", "ok": False}
     ts = time.strftime("%Y%m%d_%H%M%S")
-    dst = os.path.join(os.path.expanduser("~/zmax_data"), f"sim2real_loop_{ts}")
+    dst = os.path.join(os.path.expanduser("~/zmax/zmax_data"), f"sim2real_loop_{ts}")
     os.makedirs(dst, exist_ok=True)
     files = sorted(glob.glob(os.path.join(out_dir, "*.jsonl"))) + \
         [p for p in (os.path.join(out_dir, "status.json"),) if os.path.exists(p)] + \

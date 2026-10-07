@@ -90,7 +90,7 @@ p_cam   --(相机内参 K, 真机 camera_info 实测)-->  (u, v) 像素
 深度像素 (u,v) + z=值×0.1mm → p_cam → p_tcp → p_base → 点云/占据栅格 + 语义物体 3D
 ```
 
-- 容器 `ss-remote-tap`（`/repo` 只读挂载，产物写 `/out` = `~/zmax_ss_remote`）
+- 容器 `ss-remote-tap`（`/repo` 只读挂载，产物写 `/out` = `~/zmax/zmax_data/ss_live`）
 - 订阅：`/realsense/depth/image_rect_raw` + `/realsense/color/camera_info` + `/robot/tcp_pose`
 - 实测一帧：480×640 · 有效 83.7% · 量程 195~3567mm · 中位 373mm · 点云 7163 点
 - 产物：`depth_raw.npy` / `depth_vis.png` / `topview.png` / `stats.json` / `zmax_scene/objects3d.json`
@@ -152,7 +152,7 @@ p_cam   --(相机内参 K, 真机 camera_info 实测)-->  (u, v) 像素
 所以叠加页必须与视频流**同源**（都是 4060 的 http:8791）。手机需与 4060 在**同一局域网**。
 
 ### 入口一：APK 桌面图标（不依赖站点，装完即可用）
-`~/state3d_app` → `ZMAX-3D-AOI.apk` / `ZMAX-State3D.apk` 同一个包 `com.zmax.state3d.aoi`，
+`~/zmax/tools/web/state3d_app` → `ZMAX-3D-AOI.apk` / `ZMAX-State3D.apk` 同一个包 `com.zmax.state3d.aoi`，
 含**两个 LAUNCHER 入口**：
 
 | 图标 | Activity | 打开 |

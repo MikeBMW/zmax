@@ -293,7 +293,7 @@ def main():
     ap.add_argument("--spacing", type=float, default=SPACING_MM)
     ap.add_argument("--min-views", type=int, default=8)
     a = ap.parse_args()
-    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax_data/handeye/*/")))[-1]
+    sess = a.session or sorted(glob.glob(os.path.expanduser("~/zmax/zmax_data/handeye/*/")))[-1]
     Km, ksrc = _K()
     views = load_views(sess)
     print(f"会话: {sess}\n内参: {ksrc}\n板: 圆点阵列 {GRID[0]}x{GRID[1]} = {GRID[0]*GRID[1]} 点 · "

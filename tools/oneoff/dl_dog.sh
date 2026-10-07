@@ -3,7 +3,7 @@
 #   背景: HF 直连/hf-mirror 大文件现在基本不动 (30s 0 字节), 只有常驻 aria2 能吃到 ~300KB/s;
 #   两个数据集的下载必须能自愈, 否则过夜白等。
 set -u
-DL=/home/ubuntu/dl_intact
+DL=/home/ubuntu/zmax/tools/oneoff/dl_intact
 T=(
   "pusht_expert_train.h5.zst|https://hf-mirror.com/datasets/quentinll/lewm-pusht/resolve/main/pusht_expert_train.h5.zst|13140000000"
   "reacher.tar.zst|https://hf-mirror.com/datasets/quentinll/lewm-reacher/resolve/main/reacher.tar.zst|23750000000"
@@ -16,7 +16,7 @@ while :; do
   for ent in "${T[@]}"; do
     IFS='|' read -r name url want <<<"$ent"
     case "$name" in
-      reacher*) path=/home/ubuntu/stable-wm-cache/datasets/$name ;;
+      reacher*) path=/home/ubuntu/zmax/zmax_data/stable-wm-cache/datasets/$name ;;
       *)        path=$DL/$name ;;
     esac
     if [ -f "$path" ] && [ "$(stat -c%s "$path")" -ge "$want" ]; then continue; fi

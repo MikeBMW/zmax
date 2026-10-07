@@ -18,8 +18,8 @@
   · 候选点一律做可达性粗筛(已知空间点 bbox 外扩)/新颖度打分; 不可达的如实标 reachable=false。
 
 用法:
-  gs_l5_select.py --dataset ~/zmax_data/gs_assets/<scene> [--k 3] [--out sel.json]
-  gs_l5_select.py --session ~/zmax_data/gs_scan/<sess>  [--k 3]
+  gs_l5_select.py --dataset ~/zmax/zmax_data/gs_assets/<scene> [--k 3] [--out sel.json]
+  gs_l5_select.py --session ~/zmax/zmax_data/gs_scan/<sess>  [--k 3]
   gs_l5_select.py --dataset ... --no-llm        # 只用覆盖度兜底(不调大模型)
 输出: <out 或 输入目录>/l5_select_<ts>.json + 一行摘要(stdout)
 """
@@ -42,7 +42,7 @@ os.environ.setdefault("ZMAX_L5_VLM_MAXTOK", "4000")
 import numpy as np
 
 REPO = "/home/ubuntu/zmax"
-ZMAX_DATA = os.path.expanduser("~/zmax_data")
+ZMAX_DATA = os.path.expanduser("~/zmax/zmax_data")
 HANDEYE_F = os.path.join(ZMAX_DATA, "handeye_state.json")
 SPACE_F = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
 sys.path.insert(0, os.path.join(REPO, "tools"))

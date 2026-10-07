@@ -22,8 +22,8 @@ for _p in (ROOT, os.path.join(ROOT, "src"), os.path.join(ROOT, "tools"), os.path
         sys.path.insert(0, _p)
 os.environ.setdefault("MUJOCO_GL", "egl")
 os.environ.setdefault("DISPLAY", ":0")
-os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
-os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/stable-wm-cache")
+os.environ.setdefault("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
+os.environ.setdefault("LOCAL_DATASET_DIR", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 os.environ.setdefault("INTACT_RUNTIME", "root")
 
 

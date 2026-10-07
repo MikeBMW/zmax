@@ -46,7 +46,7 @@ def pick_real_frame(rep):
     cands = [("data/real_yolo_perception_104.mp4", "真机 D405 帧 (real_yolo_perception_104)"),
              ("data/real_yolo_perception_100.mp4", "真机 D405 帧 (real_yolo_perception_100)"),
              ("data/ss3d_l3_full_insert_pull_aoi_104.mp4", "引擎真渲染帧 (L3 全链 104)"),
-             (os.path.expanduser("~/zmax_data/aoi_last_frame.png"), "现役 AOI 帧 (aoi_last_frame)")]
+             (os.path.expanduser("~/zmax/zmax_data/aoi_last_frame.png"), "现役 AOI 帧 (aoi_last_frame)")]
     chosen, rejected = None, []
     for rel, tag in cands:
         p = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
@@ -178,7 +178,7 @@ def main():
     lp2 = fq.RefocusLoop(ref, lambda z: defocus(blank, K_PX_PER_MM * abs(z - Z_FOCUS)))
     ok2, r2, zf2, d2 = lp2.run(Z_FOCUS - 6.0)
     cs["invalid_blank"] = {"ok": ok2, "reason": r2, "n_probes": len(lp2.trace), "detail": d2}
-    aoi_p = os.path.expanduser("~/zmax_data/aoi_last_frame.png")
+    aoi_p = os.path.expanduser("~/zmax/zmax_data/aoi_last_frame.png")
     if os.path.isfile(aoi_p):
         mi = fq.blur_metrics(_load_img(aoi_p), None); okv, whyv = fq.frame_valid(mi)
         cs["invalid_real_aoi_frame"] = {"ok": bool(okv), "reason": "no_target" if not okv else "?",

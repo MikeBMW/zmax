@@ -3,7 +3,7 @@
 """aoi_caliber_offline_check.py — 离线自证: 10082 判据口径两模式 + 检测结果叠加(anno) 在本机就能验
 
 为什么要有它: 工控机程序改动不能靠"推上去再看"。本工具把
-`~/aoi_v4/cam_finger_10082_work_v6.py` **用桩模块 exec 进来**(不装 flask / 无相机 / 无权重),
+`~/zmax/zmax_data/aoi_v4/cam_finger_10082_work_v6.py` **用桩模块 exec 进来**(不装 flask / 无相机 / 无权重),
 在真原图上跑三种产物的**真实代码路径**, 给出: 尺寸/饱和/细节能量/空白占比/像素差。
 
 覆盖:
@@ -33,7 +33,7 @@ import cv2
 import numpy as np
 
 R = "/home/ubuntu/zmax"
-AOI = "/home/ubuntu/aoi_v4"
+AOI = "/home/ubuntu/zmax/zmax_data/aoi_v4"
 SRC = os.path.join(AOI, "cam_finger_10082_work_v6.py")
 OUT = os.path.join(R, "data/yolo_aoi_annot/caliber_offline")
 CAM = "http://192.168.23.23:10082"

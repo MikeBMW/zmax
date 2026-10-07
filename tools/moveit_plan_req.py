@@ -7,12 +7,12 @@ moveit_plan_req.py — 给容器里的 MoveIt plan-only 喂「真机当前状态
                  也镜像成 DDS 一条（ss_plan），能在独立窗口里逐帧对。」
 
 链路:
-  真机只读 tap  ~/zmax_ss_remote/state_*.jsonl  (jpos 6 关节 + tcp, 50Hz 真值)
+  真机只读 tap  ~/zmax/zmax_data/ss_live/state_*.jsonl  (jpos 6 关节 + tcp, 50Hz 真值)
         │  本脚本 (每 --interval 秒取最新一行)
         ▼
-  ~/zmax_moveit_plan/plan_req.json   → 容器内 moveit_plan_live.py 逐轮规划
+  ~/zmax/zmax_data/runtime/moveit_plan/plan_req.json   → 容器内 moveit_plan_live.py 逐轮规划
         ▼
-  ~/zmax_moveit_plan/live_plan.jsonl → zmax-dds-ss 守护 → DDS topic zmax/ss_plan
+  ~/zmax/zmax_data/runtime/moveit_plan/live_plan.jsonl → zmax-dds-ss 守护 → DDS topic zmax/ss_plan
 
 安全: 只读真机 tap, 不连机械臂、不下发; 目标点来自示教点文件(data/skills/l2_atomic/taught_points.json)。
 
@@ -128,7 +128,7 @@ def main():
                                                             [round(v, 3) for v in st["jpos"]],
                                                             [round(v, 3) for v in st["tcp"]]))
         else:
-            print("… 真机 tap 无数据 (等 ~/zmax_ss_remote/state_*.jsonl)")
+            print("… 真机 tap 无数据 (等 ~/zmax/zmax_data/ss_live/state_*.jsonl)")
         if a.once:
             return 0 if st else 3
         time.sleep(max(0.2, a.interval))

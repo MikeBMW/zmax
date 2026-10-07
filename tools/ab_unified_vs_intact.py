@@ -16,7 +16,7 @@ sys.path.insert(0, R + "/tools")
 
 import numpy as np  # noqa: E402
 
-CKPT_U = os.environ.get("AB_CKPT", "/home/ubuntu/stable-wm-cache/checkpoints/unified_v13/unified.pt")
+CKPT_U = os.environ.get("AB_CKPT", "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/unified_v13/unified.pt")
 SEEDS = [104, 7, 2024]
 MAX = 1200
 

@@ -29,7 +29,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("MUJOCO_GL", "glfw")
 # 权重/数据缓存指向本机已有目录 (跨会话共用, 避免 worker 走 HF 重新下载 GB 级资产)
-_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/stable-wm-cache")
+_CACHE = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 if os.path.isdir(_CACHE):
     os.environ.setdefault("STABLEWM_HOME", _CACHE)
     os.environ.setdefault("LOCAL_DATASET_DIR", _CACHE)

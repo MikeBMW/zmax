@@ -88,7 +88,7 @@ def main():
     for k, v in res.items():
         print(f"{k:<34}{str(v['rms_px']):>9}{str(v['holdout_rms_px']):>9}"
               f"{str(v['off_err_mm']):>10}{v['holdout_3d_mm_median']:>10.2f}mm{v['holdout_iou_median']:>10.3f}")
-    out = os.path.join("/home/ubuntu/zmax_data", f"frame_choice_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    out = os.path.join("/home/ubuntu/zmax/zmax_data", f"frame_choice_{time.strftime('%Y%m%d_%H%M%S')}.json")
     json.dump({"note": "A=世界系+偏移未知; B=世界系+工具零点示教(相对距离0); C=零点给错",
                "off_true_mm": [v * 1000 for v in OFF], "size_mm": [s * 1000 for s in SIZE],
                "results": res}, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)

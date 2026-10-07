@@ -10,10 +10,10 @@
 # ★ 打完自动投递 tools/web/dl/ , 并把哈希按 <!--CTL--> 标记写回 room.html
 # ============================================================================
 set -e
-SDK=/home/ubuntu/android-sdk
+SDK=/home/ubuntu/zmax/zmax_data/toolchains/android-sdk
 BT=$SDK/build-tools/34.0.0
 PLATFORM=$SDK/platforms/android-34/android.jar
-SRC=/home/ubuntu/state3d_app
+SRC=/home/ubuntu/zmax/tools/web/state3d_app
 PROJ=$SRC/room_ctl
 BUILD=$PROJ/build
 OUT=$PROJ/ZMAX-Control.apk

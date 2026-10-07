@@ -112,7 +112,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     skill = json.load(open(os.path.join(REPO, a.skill), encoding="utf-8"))
-    logp = os.path.expanduser("~/zmax_data/l2_muscle_run_%s.jsonl" % time.strftime("%Y%m%d_%H%M%S"))
+    logp = os.path.expanduser("~/zmax/zmax_data/l2_muscle_run_%s.jsonl" % time.strftime("%Y%m%d_%H%M%S"))
     logf = open(logp, "w", encoding="utf-8")
     print("L2 技能: %s | 步/轮 %d | 轮数 %d | dry=%s" % (skill["id"], len(skill["steps"]), a.cycles, a.dry_run))
     print("日志: %s" % logp)

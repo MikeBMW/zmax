@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import sys
 
-P = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
+P = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/zmax/zmax_data/aoi_v4/imgs/Finger_Image_W2448_H2048_No_8.png"
 X0, X1, Y0, Y1 = int(sys.argv[2]) if len(sys.argv) > 2 else 880, int(sys.argv[3]) if len(sys.argv) > 3 else 1420, 1075, 1285
 im = cv2.imread(P)
 sub = im[Y0:Y1, X0:X1]
