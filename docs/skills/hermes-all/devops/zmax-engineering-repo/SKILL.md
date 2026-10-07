@@ -101,6 +101,31 @@ metadata:
    `os.makedirs(cfg_dir, exist_ok=True)` + 路径常量; 改完 `python -m py_compile` 验证。
 4. **收编留清单**: `from → to` + "被哪些训练目录引用"写 JSONL 进 `zmax_data/backups/`, 并同目录放 `README.md` 说明它们是生成物不是手写配置。
 
+## 家目录整合/改路径: 第 4 种写法与"老进程还在写老路径"的取证 (2026-10-08 实测)
+
+**改引用只覆盖 绝对 `/home/ubuntu/x` · `~/x` · `$HOME/x` 三种写法是不够的 —— 第 4 种是分开拼:**
+```python
+os.path.join(os.path.expanduser("~"), "zmax_data", "model_autoload")   # ❌ 三种写法都扫不到
+```
+实测后果: 家目录 `~/zmax_data` 被反复建回来(里面是 `ctl_auth.json` 真动授权、`cam_local_src.json`、日志),
+一度盖过"~ 顶层只剩 zmax"的验收。扫法: `grep -rn 'expanduser("~")\|expanduser(\x27~\x27)'` 看它**后面跟的字符串字面量**, 别只搜拼接后的路径。
+同类还有 `Path.home() / "zmax_data"`、`os.path.join(os.environ["HOME"], "zmax_data")` —— 一并扫。
+
+**"代码已改干净 ≠ 老路径没人写": 老进程的内存里揣着改之前的字符串。**
+- 取证(只读, 一眼看出谁在写): 扫 `/proc/*/fd` 里 readlink 指向老目录的进程 ⇒ pid + cmdline + 具体文件:
+  ```bash
+  for p in $(ls /proc | grep -E '^[0-9]+$'); do ls -l /proc/$p/fd 2>/dev/null | grep -q '/home/ubuntu/zmax_data' && \
+    printf 'pid=%s %s\n' $p "$(tr '\0' ' ' < /proc/$p/cmdline | cut -c1-90)"; done
+  ```
+  实测定式: 长跑服务(站台 `cam_live_stream` / L2 / GUI 子进程)在**整合前**启动的, 会一直往老路径写。
+- **挨个分清写的是"数据"还是"日志"**再决定动不动: 实测那几笔全是 log(启动日志/GUI 重定向日志) ⇒ 无数据丢失风险, 不杀进程(里面可能有在飞训练),
+  写清楚"重启后消失"即可; 若是数据集/真值/授权状态 ⇒ 必须立刻处理(见下)。
+- **安全相关的必须当场修**: 8793 页的"真动授权"由站台写 `ctl_auth.json` —— 若站台是旧进程(写老路径)、L2 执行器是新进程(读新路径),
+  就在页上显示"已授权"而执行器看不见 ⇒ **授权形同虚设**(方向是 fail-closed 不会乱动, 但"点了没反应")。
+  处置: 按 **PID** 杀旧实例(**别用 `pkill -f`**, 会匹配执行它的 shell 自杀) → 跑官方守卫 `cam_stream_guard.sh` 让它
+  **按自己的参数**拉起(手搓命令行会换参数/串线) → 复核新实例命令行与旧实例**逐字节一致** + `/station/status` 的 `ctl.tcp`/`exec.online`/`auth.armed`。
+- 页面报错文字本身带路径 ⇒ **能直接区分新旧进程**: 报 `/home/ubuntu/zmax_data/...` = 旧进程还在当班; 报 `/home/ubuntu/zmax/zmax_data/...` = 已是新进程(那就只是浏览器缓存, 让用户刷新)。
+
 ## 路径命名空间统一 (老倪: 左右脑源码打开后都以 /home/ubuntu/zmax 开头)
 ```bash
 python3 tools/ns_unify_paths.py --dry   # 先看要改哪些、多少处

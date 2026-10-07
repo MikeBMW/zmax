@@ -25,6 +25,20 @@ Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersof
 - DING 在文件创建/变更时缓存 `_trusted=false`; 事后 `gio set metadata::trusted true` **只写 xattr, 不触发 inotify**, 扩展不会重读 → 叉号不退 (08-23 首犯, 09-06 克隆后复发)
 - 克隆/rsync 迁移后 xattr 丢失或缓存陈旧都会让叉号重现
 
+## 目录改名/家目录整合后: 快捷方式**静默失效**(零反应、不报错)
+
+2026-10-08 实测(老倪报"控制台怎么打不开了"): 家目录整合(仓库 `zmax_rel/` → `zmax/`)后,
+`~/Desktop/XSpace-Studio.desktop` 里 `Exec=/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`、
+`Icon=/home/ubuntu/lerobot-smolvla-lew/tools/gui/logo.png` —— 两个目录都已不存在 ⇒ **双击毫无反应, 不弹窗不报错**
+(不像"叉号"那样有视觉提示)。
+- 判据: 先看 `Exec=`/`Icon=` 指向是否**真实存在且可执行**(`[ -e ] && [ -x ]`), 再判信任。**路径失效与信任是两回事**。
+- 修法: 改成新绝对路径 → 重装 `~/Desktop/` + `~/.local/share/applications/` → `touch`+`gio set metadata::trusted true` →
+  重启 DING 扩展。脚本化:`install -m755` + `desktop-file-validate`(能抓到 `Exec=bash -lc '...$HOME...;'` 这类引号非法写法)。
+- **真源入库**: 把三个 .desktop 放进仓库 `tools/desktop/`, 附 `install_launchers.sh`(不带参数=安装修复,
+  `--check`=只核验) ⇒ 以后再改路径不会丢图标。
+- 别只修桌面那份: `~/.local/share/applications/` 里常有一份**同名副本**(应用菜单用), 两份都要改, 否则"菜单里点还是打不开"。
+- 修完的实测证据: 他双击后 `studio.py` 进程真的起来了(记录 pid/时间), 不是"应该能开"。
+
 ## 修复序列 (08-23 与 09-06 两次实测有效)
 ```
 touch ~/Desktop/X.desktop                       # 触发 IN_MODIFY 让扩展重载
