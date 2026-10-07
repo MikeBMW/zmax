@@ -60,3 +60,44 @@ sudo docker run --rm --network host -v ~/zmax_data/rokae_sdk:/sdk -w /sdk ros:hu
 3. **安全层要自兜**：直连绕开 MES/HMI/急停软件互锁 → Δ 守卫、向下限幅、势函数、急停必须挂在本机链路上。
 4. 首次实动一律走现场闸门（逐条请示、低速、有人看着），并用真值核对（不看 success）。
 5. 只读探针也别在产线节拍里高频连——控制器的 SDK 会话是共享资源。
+
+## 独立实现(2026-10-07 老倪现场指令:「不要改变 orin 原来的任何服务。你可以直接调用SDK，但要独立实现」)
+口径: 运动/读状态**全部由本机 SDK 会话直接完成, 与 Orin 零耦合** —— 不读不写 Orin 的文件/单元/服务,
+不依赖它的 ROS/DDS/驱动栈(产线栈起没起都与这条路无关)。**不要去启 Orin 上的栈来"恢复"控制**。
+
+仓库里的落地(单一入口, 本文件与脚本以只读方式挂进容器 ⇒ 无副本漂移):
+```bash
+bash tools/rokae_sdk_run.sh state                 # 只读: 电源/状态/模式/报警/位姿/关节
+bash tools/rokae_sdk_run.sh pose
+bash tools/rokae_sdk_run.sh move-rel --dz 1.0 --speed 5   # 相对运动(mm, 姿态不变)
+bash tools/rokae_sdk_run.sh stop | reset
+```
+包装脚本 `tools/rokae_sdk_run.sh`(docker run --rm --network host -v SDK:/sdk -v tools/rokae:/repo:ro **-w /sdk**),
+控制层 `tools/rokae/sdk_ctl.py`(守卫: 前置 on/idle/automatic → 构造回读校验 → moveReset → 越界立刻 stop → 证据 JSON → 收尾回 Idle)。
+
+首次实动(2026-10-07 实测)固化的四条:
+1. **API 顺序**: `setMotionControlMode(MotionControlMode.NrtCommandMode, ec)` → `setDefaultSpeed(mm_s, ec)` →
+   `moveReset(ec)` → `moveAppend(MoveLCommand(CartesianPosition([x,y,z],[rx,ry,rz]), speed, zone), x.PyString(cmdID), ec)`
+   → `moveStart(ec)`。**cmdID 必须是 `x.PyString(...)` 包装**, 传 python `str` 直接 `TypeError`(参数猜错=潜在意外运动, 动前务必先对签名)。
+2. **取数用 `.trans`/`.rpy`**: `CartesianPosition.pos` 是 16 元素矩阵(常读成全 0), 位置在 `.trans`(3 元素)。
+3. **工具系必须核对再动**: SDK 运动用的是 **SDK 自带 toolset**(`toolset(ec).end.trans` z≈0.2587m = 真 TCP);
+   `toolsInfo` 里 18 个工程工具全是零偏移 ⇒ 别拿它当运动工具。判据: 动后**法兰与 TCP 位移一致**(不一致就是 26cm 级工具偏移事故)。
+4. **容器工作目录必须可写**: SDK 要写 `logs/global_logger_<date>.log`, `-w` 挂到只读目录会 `RuntimeError: Failed opening file`。
+   容器钟比宿主**慢 8h** —— 证据 JSON 里同时记 `ZMAX_HOST_TS`(宿主) 与容器时间, 别把时间戳看错。
+
+实测证据(可引用): 端末 Z **+1.001mm** / Z **−1.000mm** @5mm/s, 逐帧真值单调到目标(0.023→1.002mm, 2.6s moving→idle),
+法兰同步 ±1.000mm, 横向漂移峰值 0.007mm, **控制器报警无新增**; 证据 JSON 在 `~/zmax_data/rokae_sdk/logs/sdk_ctl_*.json`。
+未通: 夹爪(DH 夹爪只有 aarch64 的 .so) ⇒ 直连只能控臂。
+
+## 常驻动作链(2026-10-07 落地, 纯新增件; 老服务/老页面一行未改)
+- 组成: 容器 `zmax-sdk-arm-agent`(`tools/rokae/sdk_agent.py`, 持一条 SDK 会话) + 主机服务
+  `tools/sdk_motion_service.py`(:8798 极简点动页 + JSON API) + 授权 CLI `tools/sdk_arm_auth.sh` + 起停 `tools/start_sdk_arm.sh`
+- 数据流: 页面/API → FIFO `~/zmax_data/rokae_sdk/cmd_arm.fifo`(每行一个 JSON) → 代理执行 →
+  `tcp_out/agent_result.json` + 每秒心跳 `tcp_out/agent_heartbeat.json` + 流水 `logs/agent_<date>.jsonl`(逐帧真值)
+- 授权铁律: **只能命令行给**(`--ttl/--uses/--by`), 页面只能看倒计时、**不能自助授权**; POST /revoke 永远允许;
+  未授权 → HTTP 403。硬上限: 单步 ≤20mm · 速度 ≤60mm/s · 间隔 ≥0.5s(代理侧另有 cap_mm 复核)
+- 坑1: 容器 root 造出的 FIFO 默认 0644 ⇒ 宿主写 PermissionError。代理里必须 `os.mkfifo(FIFO, 0o666)` + `os.chmod(FIFO, 0o666)`
+- 坑2: FIFO 写失败必须回 JSON 错误(不能抛异常把 HTTP 响应吞掉), 并把已核销的授权**退还**(refund), 否则白扣次数
+- 坑3: 后台起服务用 `setsid ... </dev/null >>log 2>&1 &`; 用工具调起停脚本时把输出**重定向到文件**
+  (否则后台进程持有的管道会把调用方拖住 ⇒ 假"卡死", 表现为 exit 124)
+- 实测: 页面 API 点动 Z **+1.001mm / −1.000mm** @5mm/s, 法兰同步, 最大偏差 0.001mm, 报警无新增; 未授权 403; 流水可导出
