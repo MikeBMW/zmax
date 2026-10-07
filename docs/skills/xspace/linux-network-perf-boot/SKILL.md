@@ -74,6 +74,8 @@ tail -1 <repo>/reports/net_boot_optimize_$(date +%Y%m%d).jsonl
 | oneshot 不重跑 | `systemctl start` 后无新日志 | 用 `restart` |
 | ping 汇总行解析 | 日志出现 `mdevms` | `awk -F'= '` 再 `split($2,a,"/")` 取 avg, 别用 `-F'[/ ]'` |
 | 内联长命令 | hardline blocked | 写 `/tmp/*.sh` 再执行 (见 memory: 长命令拆多段) |
+| **跳过项打印成 0** | `--quick` 跳过吞吐却打印 `远端下载 0KB/s`, 台账 `far_download_Bps: 0` ⇒ 下次读日志的人以为**下载挂了** | 跳过要显式写"(跳过: --quick, 不是失败)", 台账该字段写 **null** 而不是 0 —— ⚠️ 别把"没测"记成"测出来是 0"(实测 2026-10-08 踩) |
+| 体检脚本自带的下载 URL 挂了看不出来 | 体检行显示 0 时先分清"URL 404/超时"与"根本没测" | 单独 `curl -w '%{http_code} %{speed_download}'` 手测该 URL; 实测 codeload 单流 8.19MB/s 正常 ⇒ 0 是脚本逻辑不是网络 |
 | 改 sysctl 后不核验 | 以为生效 | 改完 `sysctl -n` 打印真值并落台账 |
 
 ## 交付格式

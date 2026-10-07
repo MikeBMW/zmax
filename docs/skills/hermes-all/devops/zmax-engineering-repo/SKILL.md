@@ -86,6 +86,21 @@ metadata:
   (白名单 `config/moveit_*/urdf/meshes/`); 文本/代码不设上限(studio.py 1MB、uv.lock 1.1MB 正常)。
 - `.gitignore` 已封 `reports/ media/ outputs/ models/ backups/ *.pt *.h5 *.pdf *.pptx *.zip ...`。
 
+## yaml/配置收编口径 (2026-10-08 实测)
+
+仓库根散落的 `config_smolvla_lew_lora_*.yaml`(= 每轮联合训练生成的配置)会越积越多。收编判据与做法:
+
+1. **先分三类再动手**(别删完才发现被引用):
+   - **生成物** — 只在 `reports/joint_train_*/{summary.json,L3_mkcfg.log}` 里被提到(留痕), **无任何 .py/.sh 引用**, 且已被 `.gitignore` 的
+     `config_smolvla_lew_lora_*.yaml` 覆盖 ⇒ **收进 `configs/generated_train_configs/`, 不要删**: 删了文件名还在报告里, "那轮用什么配置跑的"就回溯不了。
+   - **手写配置** — `git ls-files` 里**被跟踪**的 ⇒ 源文件, 收进 `configs/`(如 `configs/policies/{act,smolvla,smolvla_lew,hybrid}/`), 并改引用点。
+   - **不能动的** — `.github/workflows`(GitHub 要求路径) · `config/`(ROS 包布局: `config/moveit_xms5/launch/*.py`、`arm_control.py` 按包内相对路径读, 动就断) · `reports/`(生成区)。
+2. **查引用只查代码**: `grep -rl --include=*.py --include=*.sh <basename> .` 并排除 `reports/ docs/` —— 否则报告里的留痕会被当成"被引用"。
+3. **挪配置前必须确认相对路径基准**: lerobot 的 `dataset.root` 是 **CWD 相对**(`Path(cfg.dataset.root)` 直通, 不按配置文件目录拼)。
+   所以**必须仍在仓库根启动训练**, 配置文件放子目录不改语义; 但要顺手把生成器改成写新目录, 否则下轮又散落:
+   `os.makedirs(cfg_dir, exist_ok=True)` + 路径常量; 改完 `python -m py_compile` 验证。
+4. **收编留清单**: `from → to` + "被哪些训练目录引用"写 JSONL 进 `zmax_data/backups/`, 并同目录放 `README.md` 说明它们是生成物不是手写配置。
+
 ## 路径命名空间统一 (老倪: 左右脑源码打开后都以 /home/ubuntu/zmax 开头)
 ```bash
 python3 tools/ns_unify_paths.py --dry   # 先看要改哪些、多少处
