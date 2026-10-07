@@ -43,7 +43,15 @@ sudo systemctl disable --now zmax-swapfile.service
 ```
 复核: `/proc/swaps` 只剩 `/swapfile file 8388604`; 无 loop 指向 /swapfile; 单元 `disabled/inactive`;
 fstab 行仍在(重启后由 systemd-fstab-generator 自动恢复)。**回滚**: `sudo systemctl enable --now zmax-swapfile.service`
-代价: 可用 swap **16G → 8G**(磁盘 / 剩 45G，需要的话另建一个**独立**文件补回去，**绝不再对同一个文件启两次**)。
+
+**容量补回(同日, 老倪确认后)**: 另建**独立**第二块 `dd` 实块文件 + fstab 常态化, 不再用 loop:
+```
+/swapfile2  none  swap  sw,pri=-3  0  0     # 8G, inode 17 (与 /swapfile 的 inode 16 是两个文件)
+```
+验证(等价开机路径): `swapoff -a` → 0 条 → `swapon -a` → `/proc/swaps` 两条(file 8G prio -2 / file 8G prio -3),
+`losetup -l | grep -c swapfile` = 0, 内核 `Write-error on swap-device` = 0 条。
+总量回到 **16G**, 但**两个设备映射的是两份不同的物理块** —— 这才是关键区别。
+代价: `/` 从 89% 到 **91%**(剩 37G)。回滚: 删 fstab 行 + `swapoff /swapfile2` + `rm /swapfile2`。
 
 ## 5. 下次要抓到真凶(需重启，待老倪点头)
 
@@ -51,6 +59,7 @@ fstab 行仍在(重启后由 systemd-fstab-generator 自动恢复)。**回滚**:
 1. `crashkernel=512M` + `kdump-tools`：panic 后落 `/var/crash/*/vmcore`(全量，最能定因，占内存)。
 2. `ramoops`/`pstore`：至少留最后一屏内核回溯(轻量)。
 
-## 6. 待补充
+## 6. 现场口述已确认(2026-10-07 老倪)
 
-- 10-02 当晚是"下班关机"还是"假死后强制断电"，需老倪口述确认(日志到 21:05:01 就断了，无法自证)。
+**10-02 晚上是卡死了, 不是下班正常关机** —— 系统假死后只能长按电源强制断电, 之后国庆 5 天没开机。
+⇒ 与日志证据一致(无关机序列 + 日志 21:05:01 断在同一秒)。**假死前的先兆 = §2 的 swap 写错误风暴, 已按 §4 修掉**。
