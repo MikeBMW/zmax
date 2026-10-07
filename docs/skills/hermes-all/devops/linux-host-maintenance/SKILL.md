@@ -270,8 +270,9 @@ cat /proc/swaps ; readlink -f /sys/block/loop*/loop/backing_file   # 同一个�
 - **一个 swap 文件只许启用一次**(2026-10-02 工位机实测): `fstab` 的 `/swapfile none swap sw` + LiveUSB 遗留的
   `zmax-swapfile.service`(`losetup -f --show /swapfile && swapon $LOOP`)会**对同一个文件的物理块启用两个 swap 设备**(未定义行为;
   实测 12h 内 8872 条 `Write-error on swap-device`, **全部在 loop 那一路**, 直连那一路 0 条 ⇒ 强指向它)。
-  处置: `sudo swapoff /dev/loopN && sudo losetup -d /dev/loopN && sudo systemctl disable --now zmax-swapfile.service`
-  (容量从 16G 变 8G; 要补就另建**独立**文件, 千万别对同一个文件再来一次)。
+  处置: `sudo swapoff /dev/loopN && sudo losetup -d /dev/loopN && sudo systemctl disable --now zmax-swapfile.service`;
+  **容量要补回就另建一个 `dd` 实块的独立文件**(实测: `/swapfile2` 8G + fstab `sw,pri=-3`, 两块 inode 不同 ⇒ 映射的是两份物理块;
+  验证用 `swapoff -a` → `swapon -a` 走一遍开机路径), **千万别对同一个文件再来一次**。
 
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
