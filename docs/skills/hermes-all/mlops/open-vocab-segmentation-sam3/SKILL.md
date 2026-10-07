@@ -145,21 +145,32 @@ metadata:
 
 **清层要这样清**(只动自己 origin, 不碰 meas/plan/trace/l5live/det/vlm):
 ```bash
-cd /home/ubuntu/zmax && ./gui-venv311/bin/python -c "import sys;sys.path.insert(0,'tools');\
-import scene_overlay as SO;s=SO.load_spec();s=SO.merge_origin(s,'arm','seg',[]);SO.save_spec(s)"   # 先备份 spec
+cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/scene_clear_origin.py --origin seg           # 空跑
+cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/scene_clear_origin.py --origin seg --apply   # 真删(自带备份)
 ```
-清完复核 `GET /boxes?cam=arm` 的 drawn 里没有 `origin=seg`, 且 `meas` 条数不变。
+清完复核 `GET /boxes?cam=arm` 的 drawn 里没有 `origin=seg`, 且 `meas` 条数不变(工具会自己打 `其它 origin 未被动: True`)。
 
 ⚠️ **别用页面上的 🗑 去删分割框**: `_boxes_edit(mode='delete')` 会把 id(`origin|label`, 如 `seg|metal`)写进
 `spec.deleted`, 而 `draw_overlay` 对 deleted 里的 id **一律跳过** ⇒ 之后再跑分割拿到同名实例会被**静默吞掉**
 (表现又是"分割没出图")。deleted 语义是给 VLM 的"不要再给", 不是清层工具; 要清就清层或用 "恢复全部" 清空清单。
 
-**治本方向**(未做): 掩膜绑帧 —— 写规格时存一个帧签名(如 32x32 灰度 dHash), 渲染时帧差超阈就不画。
-注意**不能拿 JPEG 字节 md5 当判据**(同一静止场景每帧字节都不同, 会立刻全灭), 要用感知级阈值。
+## ✅ 治本已落地: 掩膜绑帧 (2026-10-07 老倪再问 "历史的分割图怎么一直在画布上?")
+
+口径: **写规格的一方把"做分割那一帧"传给 `merge_origin(..., frame=img)`**(只有 `origin='seg'` 会盖签名),
+规格里每条掩膜带 `sig`(dHash 64bit) + `sig_at`; **渲染侧 `draw_overlay` 算当前帧签名**, 汉明距离 > `SEG_SIG_TOL` 就不画,
+并在**画面底部真值带**如实写"🧩 历史分割未画: 画面已变 N 条";`/boxes` 与 `/station/status` 也带 `seg_stale`/`seg_legacy`。
+
+- 阈值实测标定(640x480 真帧, 64bit): 同场景静态 **0** · JPEG q40 **1** · 亮度+25 **1** · 强模糊 **2** · 缩放0.9 **0** · 旋转2° **1**
+  (必须判"有效") ｜ 平移10px **5** · 20px **7** · 40px **15** · 80px **23** · 跨相机 **33~34** (该判"过期") ⇒ 默认 **tol=6**(余量 3 倍)。
+  环境变量 `ZMAX_SEG_SIG_TOL` 可调, **`ZMAX_SEG_SIG=off` 整体关闸回旧行为**。
+- **缺 `sig` 的旧掩膜判"不画"**(如实计 `seg_legacy`): 新代码一上线, 老规格里那批残留立刻不再贴画面 —— 这就是本次的第一层效果。
+- 写方约定: `sam3_seg.write_spec_boxes(..., frame=img)` 必须给**分割那一帧本身**; 别在这一层重取一帧(签名与掩膜必须同帧)。
+  手工拼规格的自测(如 `verify_seg_overlay.py`)也要自己盖 `"sig": hex(SO.frame_sig(img))`, 否则会被当旧数据拦下 ⇒ **假失败**。
+- 坑: `/boxes` 的兜底分支原来拿**全黑图**当画布算签名 ⇒ 掩膜永远"过期", 页面框清单里看不到分割框(选不中/删不掉); 已改成用该路**当前真帧**。
 
 ## 预算与定位
 - 4060 8GB: bf16 载入 ≈1.7GB, 1008² 前向**峰值 2.1~2.4GB**, 加载 1.3s, 单概念 0.4s。
 - 定位**关键帧/触发式**(页面按钮、画布节点双击、标注批次), **不做逐帧**; YOLO 每帧(轻) + SAM3 按需(重) 互补。
 
 ## 验收证据 (缺一不算完成)
-1. 存档真帧 → 实例数/分数/面积/框。2. 同帧 A/B: 差异像素**落在多边形内**。3. 管道: 服务 → 规格 → `/boxes` 有 `origin=seg` → 叠加帧 vs 原始帧有差异 → 删除回退 → 恢复。4. 掩膜→3D: 缺深度/手眼/TCP **必须如实拒答**, 不许猜填。5. 目检: 让视觉模型看渲染图判贴合。**相机是黑帧时别拿实况当"贴合"证据**(先看 mean/std, 黑帧 mean≈5/std<1)。
+1. 存档真帧 → 实例数/分数/面积/框。2. 同帧 A/B: 差异像素**落在多边形内**。3. 管道: 服务 → 规格 → `/boxes` 有 `origin=seg` → 叠加帧 vs 原始帧有差异 → 删除回退 → 恢复。4. 掩膜→3D: 缺深度/手眼/TCP **必须如实拒答**, 不许猜填。5. 目检: 让视觉模型看渲染图判贴合。**相机是黑帧时别拿实况当"贴合"证据**(先看 mean/std, 黑帧 mean≈5/std<1)。6. **绑帧三证**: ① 带本帧 `sig` 必画 ② 带别的帧 `sig` 或没 `sig` 必不画(计数如实) ③ `ZMAX_SEG_SIG=off` 能回旧行为 —— 用同一帧 A/B 比像素差, 别只看返回值。
