@@ -144,6 +144,26 @@ gui-venv311/bin/python tools/station_cmd.py "powershell -NoProfile -EncodedComma
 - **更正**: `gold_judge_v21_exposure.json` **不是部署漏项**(此前我判断有误) —— 全仓 grep 只有独立渲染器
   `tools/aoi/gold_judge_rect_v21.py` 读它, **app 里没有任何引用**。
 
+### ⚠️⚠️ 页面看到的 ≠ 工控机判据图: 金手指格是「口径感知」的 (2026-10-08 晚 老倪「金手指也没变化啊」)
+
+- 本机 `tools/cam_live_stream.py` 的 `_aoi_gold_worker` 默认口径 **`canonical`** = 取工控机 **`kind=origin`**
+  原图 → **本机自己加工**(原比例 + 去倾角 + `vstretch=3.0` → 定尺 900x332)。这张**没有黑底**,
+  把金属外壳白块/背景一起带进画面 ⇒ 现场"右侧有方块区域, 不是金手指"。
+- 工控机的判据图是 **`kind=crop`**(纯黑底 + 等宽键, 黑底占比 ~0.76)。**只有口径 = `same` 时页面才直接显示它**(本地零加工)。
+- 实测(同一时刻): 页面 `/aoi_gold.mjpg` 900x332 `black=0.000 sat=0.183` vs 工控机 `kind=crop`
+  900x332 `black=0.760 sat=0.000`, 平均像素差 **144** ⇒ 两张完全不同的图。
+  ⇒ **结论: 只改工控机的判据程序, 页面不会有任何变化** —— 必须同时确认口径(否则现场说"改了没变化"时先查这个)。
+- 工控机 app **没有 `/caliber` 路由(实测 GET /caliber = 404)** ⇒ `_aoi_caliber()` 永远读失败 → 回落 `canonical`;
+  页面也没有口径切换按钮 ⇒ 那个"可切换"实际是死的。
+- 处置: `_aoi_gold_worker` 默认改成 **`same`**(直接用 `kind=crop`, 本机零加工);
+  环境变量 **`ZMAX_AOI_GOLD_CALIBER=canonical`** 可回老街口; 重启本服务前存证: 页面 `black 0.000→0.782`,
+  与 `kind=crop` 平均像素差 **5.65** = 同一张(残差只是 JPEG 质量差)。
+- cam_live_stream 是**手起进程**(gnome-terminal scope) ⇒ 重启必须走官方脚本
+  **`bash tools/start_station_stream.sh`**(按端口找 pid 杀、按卡名解析相机、抬 fd 上限、日志到 `/tmp/zmax_scene_overlay.log`);
+  **不要**内联 `pkill`/手动 setsid 重放(会杀自己 shell、还会走成另一份日志路径)。
+- 口径差异要知道: 工控机判据图**不拉伸短边**(键高仅 78/332 px, 上下留黑边), 老街口是 3× 纵向拉伸(看着更大)
+  ⇒ 切口径后现场可能说"怎么变小了"; 要放大就做**纯显示**放大(不动口径)。
+
 ## 端点（唯一路由, 无需参数/鉴权）
 
 | 端口 | 模型 | 相机 SN / 型号 |
