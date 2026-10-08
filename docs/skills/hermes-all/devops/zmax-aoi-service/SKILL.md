@@ -756,3 +756,12 @@ ExposureTime -> Gain -> Gamma    # 三个都用 SetFloatValue
   (`pull` 经反向通道把产线那份 base64 取回并与仓库副本比 sha256; 只在工控机上跑一次性 PowerShell 用 `tools/aoi_remote_run.py`)
 - 画布节点「🔍 外观质量检测」真执行时会把 **取像参数行 + 产线/调试关系行 + 取像体检** 打进终端日志;
   三类逻辑(取像参数 / 画面健康度 / 缺陷判据)全在 `AOIQualityChecker` 一个类里, 节点 params 里也存了同一份(`camera_params`/`architecture`/`production`/`debug`)。
+
+## 反向通道"死了"先分三类: 通道 / 服务 / **整机** (2026-10-08 新增判据)
+| 现象 | 判据 | 结论 |
+|---|---|---|
+| 回执不来, 但别的都没事 | `ls ~/zmax_data/agent_hub/in/` 有堆积 + 无 out | agent 没在轮询(计划任务/会话), **服务本身还活着** |
+| 10082/10083 也不通 | `ping 192.168.23.23` | 往下查 |
+| `ip neigh` 显示 `192.168.23.23 INCOMPLETE` + 同网段**别的设备可达**(如 Orin `192.168.23.66`、`.23.160`) | 二层 ARP 都不应答 | **工控机整机不在线**(关机/休眠/网线/网口) —— 别再去修本机网卡/通道 |
+一条命令取证: `ip -br addr; ip neigh show dev <产线网卡>; ping -c2 192.168.23.66; timeout 5 bash -c 'echo > /dev/tcp/192.168.23.23/10082'`
+本机 8793 流服务会刷 `[local] 读帧失败 xN` —— 那是**症状**(它取的是工控机的图), 不是它的故障。
