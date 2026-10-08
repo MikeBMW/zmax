@@ -335,7 +335,6 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span id="pt1_msg" style="font-size:13px;opacity:.85"></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
-        <button onclick="shot(10082)">📸 拍一帧</button>
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10082)" style="font-weight:600">🧾 最后结果</button>
         <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
@@ -461,7 +460,6 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span id="spt2_msg" style="font-size:13px;opacity:.85"></span>
         <span id="spt3_msg" style="font-size:13px;opacity:.85"></span></div>
       <div class="row" style="padding:4px 10px 4px">
-        <button onclick="shot(10083)">📸 拍帧 (真拍一次)</button>
         <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10083,'s')" style="font-weight:600">🧾 最后结果</button>
         <span id="aoi_lr_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
@@ -1202,7 +1200,7 @@ async function poll(){
       ng.innerHTML=(noPhoto
         ? '<b>工控机内存里当前没有照片</b> —— OPT 只在检测/拍照时留图, 它闲着的时候取就是 404「尚无照片」, '
           +'这就是这一格没画面的原因(不是我们链路断了)。<br>下面「自动取景」已默认打开: 发现没照片就替你现拍一张'
-          +'(最快 30s 一次); 不想让它自己拍就取消勾选, 改用手点「📸 拍一帧」。拍过之后即使它又闲着, 这一格也保留最后一张。'
+          +'(最快 30s 一次)。拍过之后即使它又闲着, 这一格也保留最后一张。'
         : '取图失败：'+g.err);
       ng.innerHTML+='<br><span class="dim">源: '+(g.url||'')+'</span>';
     }
@@ -1212,9 +1210,9 @@ async function poll(){
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
       $('#n_aoi_surface').innerHTML='<b>这一格没取到图</b> —— 10083 上的表面检测服务没应答, 或者它内存里当前没有照片(OPT 只在检测/拍照时留图, 闲着时取就是 404「尚无照片」)。<br>'
-        +'可点下面的「📸 拍帧 (真拍一次)」让它现拍一张; 若一直 404, 就查工控机 10083 服务还在不在。';
+        +'若一直 404, 就查工控机 10083 服务还在不在。(手动「拍帧」按钮已按老倪要求删除)';
       const lc=sf.last_capture;
-      if(lc) $('#n_aoi_surface').innerHTML+='<br>上次拍帧: HTTP '+lc.http+' '+(lc.msg||'')
+      if(lc) $('#n_aoi_surface').innerHTML+='<br>历史上最后一次手动拍帧: HTTP '+lc.http+' '+(lc.msg||'')
         +(lc.got_image?' · 已取到图':(lc.how?' · '+lc.how:''));
     } else { $('#n_aoi_surface').style.display='none'; }
   }

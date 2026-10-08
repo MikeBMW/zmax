@@ -1611,6 +1611,15 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         n += 1
         cal = _aoi_caliber(port)
         mode = cal["mode"]
+        # 🆕 2026-10-08 老倪「金手指也没变化啊」根因: 本机 canonical(取 kind=origin 本地加工)那张
+        #   **没有黑底**, 把金属外壳白块/背景一起带进画面 ⇒ 现场看到"右侧有方块区域, 不是金手指"。
+        #   工控机 v22 的判据图(kind=crop: 纯黑底 + 等宽键 + 右侧灰块已切)才是"只看金手指"那张,
+        #   而且它就是**落盘/送检的同一张** ⇒ 这里默认直接用它(本机零加工, 页面 == 判据图)。
+        #   要回到老街口: 环境变量 ZMAX_AOI_GOLD_CALIBER=canonical(重启本服务生效)。
+        if os.environ.get("ZMAX_AOI_GOLD_CALIBER", "same").strip().lower() == "canonical":
+            mode = "canonical"
+        else:
+            mode = "same"
         kind = "crop" if mode == "same" else "origin"
         url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
