@@ -590,11 +590,9 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <h2>🤏 夹爪 (关闭 / 打开)</h2>
       <div class="row" style="gap:10px">
         <button onclick="gripAct(this,'L2.grip_close','关闭夹爪(夹紧)')"
-          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#8b3a3a"
-          title="合爪/夹紧 (技能 L2.grip_close · 夹持力等参数由技能定义固定, 页面改不了) —— 与方向键同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🤏 关闭夹爪<br><span class="hint">合爪 · 夹紧</span></button>
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#8b3a3a" data-tip-old='合爪/夹紧 (技能 L2.grip_close · 夹持力等参数由技能定义固定, 页面改不了) —— 与方向键同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作'>🤏 关闭夹爪<br><span class="hint">合爪 · 夹紧</span></button>
         <button onclick="gripAct(this,'L2.grip_open','打开夹爪(松开)')"
-          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#2f6f3f"
-          title="张爪/松开 (技能 L2.grip_open · 无参数) —— 同一条闸门路; 未授权时只算目标不动作">🖐 打开夹爪<br><span class="hint">张爪 · 松开</span></button>
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#2f6f3f" data-tip-old='张爪/松开 (技能 L2.grip_open · 无参数) —— 同一条闸门路; 未授权时只算目标不动作'>🖐 打开夹爪<br><span class="hint">张爪 · 松开</span></button>
       </div>
       <div class="hint" id="grip_msg" style="font-size:13px;opacity:.9;margin-top:6px">未点之前没有下发。</div>
       <div class="hint" style="margin-top:4px">夹爪不动臂的位置; 力/行程由技能定义决定。速度取上面「速度」段。</div>

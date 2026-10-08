@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.18.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.6 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.7 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.6 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.7 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.18.7: 金手指点1 由命令自行到达(空间点真源更新 ⇒ 天花板 0.5666→0.6802, 残差 0.0mm) + 夹爪服务名修复(/gripper_driver→/gripper_srv, 真值 1000→0.0 闭合) + 点悬停卡片只显示位姿 + 夹爪按钮摘长提示 + 8793 标准启动脚本(防裸启动丢参数)
         # v5.18.6: 修 0.1mm 下压误判(现场 space1「点了不动」的真因) —— ① keep_z 横移高度不得低于参考点, 需贴就最多微抬 5mm(只补编码器/沉降的亚毫米噪声, 不算抬升)；② z_floor 容差 1e-6→5e-4(0.001mm→0.5mm)。
         # v5.18.5: 删掉自动抬升逻辑(现场三次碰撞的根因) —— ① l2_daemon.py `adapt_point` 由「抬到该点高度」改为「需上升⇒整单拒发」，必升豁免归零；② 空间点1~7 由老倪重记为**同一平面 z=0.1727** ⇒ 点间移动=纯横移, 零上升；③ SDK 腿速上限 60→150mm/s(实测≈15mm/s)。
         # v5.18.4: 运动安全三件套(2026-10-08 一天三起近失事故后收口) —— ① 安全区天花板闸: 老倪两次逐字「给你的空间点1～点7, 就是安全区域, 你要参考, 不要上升的太高」⇒ 天花板 = 7 点最高 z + 50mm(0.3885); 执行器每阶段硬拦(目标超则拒发, 单段也拦) + 代理扫掠闸门每 0.15s 真值比对(包络 z 上限 0.6987→0.3885); 已做故意违规实测(临时压到 0.20)确认拒发且臂零位移。 ② MoveJ 自愈默认关: 事故根因 = MoveL 判 50102 奇异点后被 MoveJ 接管, 关节插值不受 Δz 约束 ⇒ 臂自己往高处摆(老倪急停); 现只有显式 ZMAX_MOVEJ_RETRY=1 才开, 升高类永不许开(唯一出路 = 停 + 问人)。 ③ 回点配方改三段单轴: 斜线(space1→space7 Δ=(-11.5,+101.3,+86.0)mm)穿奇异构型被 50102 拒 ⇒ 拆成「竖直抬到 max(当前z, 目标点z)+5mm → 保持高度横移 → 竖直落到位」; 横移余量 40→5mm(第三次近失根因: 目标只高 66mm 却抬 106.5mm, 40mm 全是无谓上升, 老倪当场急停)。 另: 姿态差 ≥0.3° 一律走 abs(带 rx,ry,rz)[修「绕 XYZ 三轴旋转不动」+「J6 自转只平移」], 7 空间点姿态对齐 space1(旧姿态差 164° 会甩腕撞 50102), 建图移动速度 120→1000。 全部改动配事故档 docs/INCIDENT-20261008-*.md + 台账 + 碰撞库(8 条)。
