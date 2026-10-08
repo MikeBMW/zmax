@@ -92,6 +92,9 @@ systemctl --user status <job> ; journalctl --user -u <job> -f
 
 ## 参考
 
+- `references/offline-rehearsal-harness.md` —— 硬件/产线不可用时的**离线演练取证**（合成场景 + 调真函数 +
+  断言表），以及另一半：**复放产线程序本体**把多段判据流水线的失败定位到具体一段（桩 SDK 载入 → 全量读 meta →
+  从结果往上游对账）、度量窗口先校准、别猜内部函数签名。
 - 相关用户自有技能 (只读参考, 不要改): `yolo-3d-perception-chain` (仿真=真机同构链 / BGR 坑 /
   标定目录契约 / 深度头), `qt-gl-rendering-pitfalls` 的
   `references/crash-forensics-and-cross-thread.md` (GUI 硬崩与跨线程取证)。
