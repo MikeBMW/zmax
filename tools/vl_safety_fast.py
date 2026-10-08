@@ -105,7 +105,10 @@ def run_once(show=False, save_evt=True) -> dict:
     rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "per_cam": per,
            "safe": len(unsafe) == 0, "unsafe_cams": unsafe,
            "why": "；".join(reasons) if reasons else "臂上/笔记本画面纹理正常、无遮挡"}
-    OUT.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    _tmp = OUT.with_suffix(".tmp")
+    _tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(_tmp, OUT)   # 🔴 原子替换: 原 write_text 先清空再写 ⇒ 执行器快层闸偶尔读到空文件
+    #    ⇒ 「反射层裁决缺失」⇒ fail-closed 拒发正常动作(13:35 轨迹复现就因此拦停)。先写 .tmp 再原子换名。
     if not rec["safe"] and save_evt and frames:
         EVT.mkdir(parents=True, exist_ok=True)
         if "arm" in frames:
