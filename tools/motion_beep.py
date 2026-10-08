@@ -27,6 +27,12 @@ sys.path.insert(0, os.path.join(REPO, "tools", "rokae"))
 
 WAV_SLOW = os.path.join(REPO, "zmax_data", "motion_tick_slow.wav")
 WAV_FAST = os.path.join(REPO, "zmax_data", "motion_tick_fast.wav")
+# 🆕 2026-10-08 老倪: 「也可以抬升, 但要慢一些, 而且要发出警报声音」—— 抬升专用警报:
+#   判据 = TCP 真值 z 分量在涨(dz/dt > LIFT_UP_MM_S)。任何路径的抬升(8793 页面 / AOI 伺服 / GUI 原子技能)
+#   都会经过真值 ⇒ 都覆盖; 不动执行器, 只在监控侧发声。文件丢了会现场自愈重生成(安全件不能静默失效)。
+WAV_LIFT = os.path.join(REPO, "zmax_data", "lift_alarm.wav")
+LIFT_UP_MM_S    = 0.30      # 上升速度阈值(mm/s) —— 低于它算持平/噪声
+LIFT_ALARM_GAP_S = 1.60     # 抬升中警报间隔(每声 ~1.41s 长, 间隔 1.6s ⇒ 连续提醒且不叠音)
 LOG = os.path.join(REPO, "zmax_data", "motion_beep.log")
 
 MOVE_SPEED_MM_S = 0.8      # 判定"在动"的速度阈值(mm/s)
@@ -71,6 +77,27 @@ def make_tick(path, f0=660.0):
         w.writeframes(bytes(frames))
 
 
+def make_lift_alarm(path):
+    """抬升警报: 880Hz x3 短促脉冲 + 6Hz 颤音(比提示音更"扎耳", 一次 ~1.9s); 已存在则不覆盖。"""
+    if os.path.isfile(path):
+        return
+    sr = 44100
+    frames = bytearray()
+    for _k in range(3):
+        n = int(sr * 0.35)
+        for i in range(n):
+            t = i / sr
+            fade = min(1.0, i / (0.012 * sr), (n - i) / (0.012 * sr))
+            s = (math.sin(2 * math.pi * 880.0 * t) + 0.4 * math.sin(2 * math.pi * 1760.0 * t)) / 1.4
+            v = s * 0.95 * fade * (0.75 + 0.25 * math.sin(2 * math.pi * 6.0 * t))
+            frames += int(max(-1.0, min(1.0, v)) * 32767).to_bytes(2, "little", signed=True)
+        frames += b"\x00\x00" * int(sr * 0.18)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.writeframes(bytes(frames))
+
+
 def player():
     for c in ("paplay", "pw-play", "aplay"):
         if subprocess.run(["which", c], capture_output=True).returncode == 0:
@@ -81,6 +108,7 @@ def player():
 def main():
     make_tick(WAV_SLOW, 660.0)
     make_tick(WAV_FAST, 1050.0)
+    make_lift_alarm(WAV_LIFT)
     pl = player()
     if not pl:
         log("❌ 找不到放音程序(paplay/pw-play/aplay) ⇒ 退出")
@@ -92,10 +120,14 @@ def main():
 
     prev_pos, prev_t = None, None
     vema = 0.0
+    vz_ema = 0.0
     moving = False
+    lifting = False
     below_since = None
     last_tick = 0.0
+    last_alarm = 0.0
     proc = None
+    proc_alarm = None
     errs = 0
     dt = 1.0 / POLL_HZ
     while True:
@@ -116,6 +148,15 @@ def main():
             dt_real = max(1e-3, now - prev_t)
             v = d / dt_real
             vema = v if vema == 0.0 else (0.6 * v + 0.4 * vema)     # 平滑, 免抖动
+            # 🆕 抬升判定: 只看 z 分量在涨(与"水平移动"区分开, 抬升要专门的警报音)
+            vz = (pos[2] - prev_pos[2]) * 1000.0 / dt_real
+            vz_ema = vz if vz_ema == 0.0 else (0.6 * vz + 0.4 * vz_ema)
+            was_lifting = lifting
+            lifting = vz_ema > LIFT_UP_MM_S
+            if lifting and not was_lifting:
+                log("🚨 检测到抬升 (vz %.2fmm/s) —— 切抬升警报音" % vz_ema)
+            elif was_lifting and not lifting:
+                log("⬇️ 抬升结束 —— 回到常规提示音")
             if v > MOVE_SPEED_MM_S:
                 below_since = None
                 if not moving:
@@ -130,7 +171,17 @@ def main():
         if pos is not None:
             prev_pos, prev_t = pos, now
         gap = max(TICK_GAP_MIN_S, min(TICK_GAP_MAX_S, TICK_GAP_K / max(vema, 0.4)))
-        if moving and (now - last_tick) >= gap:
+        # 🆕 抬升中: 只响专用警报(不用常规提示音, 免得两种声音混在一起听不清)
+        if lifting and (now - last_alarm) >= LIFT_ALARM_GAP_S:
+            last_alarm = now
+            log("🚨 抬升警报 ♪ (vz %.2fmm/s)" % vz_ema)
+            try:
+                if proc_alarm is None or proc_alarm.poll() is not None:
+                    proc_alarm = subprocess.Popen([pl, WAV_LIFT],
+                                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                log("⚠️ 警报放不出声: %s" % e)
+        if (not lifting) and moving and (now - last_tick) >= gap:
             last_tick = now
             tone = WAV_FAST if vema >= FAST_TONE_MM_S else WAV_SLOW
             if proc is None or proc.poll() is not None:
