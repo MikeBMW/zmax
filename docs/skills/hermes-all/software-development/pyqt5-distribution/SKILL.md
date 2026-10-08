@@ -318,6 +318,11 @@ Background check silently swallows exceptions (network down = no notification).
   最后再跑一次 `tools/ci/integrity_check.py` 确认"五处一致"。
 
 **发布前先核分支与打包目录** (2026-09-27 实测事故): **tag 必须打在发布分支(通常 `main`)上**。
+
+⚠️ **`.github/` 若在 `.gitignore` 里, 改 workflow 后必须 `git add -f .github/workflows/xxx.yml`**
+(2026-10-08 实测): 该工作流通常是历史 `-f` 强加入库的, 普通 `git add` 会因忽略规则**整条 add 失败并中止**
+(`The following paths are ignored by one of your .gitignore files: .github`) —— 以为改好了, 实际没进提交,
+于是 tag 触发的是**旧 workflow**, 出包参数照旧缺包。判据: 提交后 `git show --stat HEAD | grep .github` 必须命中。
 打包命令引用的是**仓库根目录**的路径(`flows/` 等), 打在功能/工作分支上会直接死在 PyInstaller:
 `ERROR: Unable to find '<workspace>/flows' when adding binary and data files.`
 (实测: 工作分支 3771 文件 / `flows/`=0; `main` 8772 文件 / `flows/`=42)。
@@ -605,6 +610,32 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 | .exe crashes: `AttributeError: 'HomeWidget' has no '_check_updates'` | Button calls main window method directly | Use `pyqtSignal` pattern instead |
 | .exe 点「运行」即崩: `Failed to load dynlib/dll '...\mujoco\plugin\actuator.dll' ... not found when the application was frozen` | 插件目录里没有它依赖的 `mujoco.dll`(在上一级 `mujoco/`) + VC 运行时 | `--runtime-hook pyi_rth_mujoco_dlls.py` (把依赖复制进 `mujoco/plugin/` 做自足目录) + CI 冻结核验 `App.exe --engine-selftest`; 报错处打印 `e.__cause__` |
 | .exe crashes at startup: `FileNotFoundError [WinError 3] ...\AppData\Local\data` | PyInstaller **onefile** exe cwd ≠ repo (unpacked temp/AppData); relative-path `os.listdir("data")` throws | Guard EVERY filesystem probe with `os.path.exists/isdir` before listdir; build paths from an absolute `_repo_root()` (frozen-aware), never bare relative names; probe-only code must degrade to empty list on missing dirs |
+| .exe **双击即崩**: `studio.py:NNN → simulink_module.py:NN → node_logic.py:NN ModuleNotFoundError: No module named 'lerobot'` | GUI 的 compat shim 把节点逻辑迁进 `src/lerobot/engineering` 后, **打包没跟着带这个包**; 且 shim 用 `dirname(__file__)/../../src` 相对上溯 ⇒ 冻结时指到 `_MEIPASS` 的父级 | ① shim 改**冻结感知候选表**(`_MEIPASS/src` → `_MEIPASS` → 源码上溯 → env 兜底), 命中含 `lerobot/engineering` 的那条; ② 打包加 `--add-data src/lerobot/engineering:<dest>`(每个平台都要, 少了就是坏包); ③ 冻结核验必须覆盖 **GUI 启动导入链** (见下) |
+
+### 冻结包必须验「GUI 启动链」, 只验引擎 = 假绿 (2026-10-08 实测)
+
+**症状**: 引擎冻结核验 (`--engine-selftest`: import mujoco/metaworld + 建模型 + 步进) 一路全绿,
+**连发四个版本**的 exe 双击即崩 —— 崩在 `import node_logic → import lerobot.engineering`。
+根因是核验只覆盖了引擎, 没覆盖应用自己启动时必经的导入链。
+
+**规则**: 冻结核验里必须真跑一遍**应用启动路径上的每一个模块导入**, 再断言关键运行期不变量:
+
+```python
+# studio.py --engine-selftest 分支内 (Qt 导入之前)
+import node_logic as _nl            # 崩点本体 (compat shim)
+import simulink_module, project_file, node_logic_dialog   # 启动链的其余环
+assert len(_nl.NODE_LOGIC) >= 100, "工程包没进包/不完整"          # 注册表条数
+assert os.path.isfile(_nl.CANVAS_JSON), "画布真源 JSON 不在包内"   # package data
+```
+
+配套的"文件在不在包里"断言(archive_viewer / find)只是**前置守卫**, 不能替代真导入 ——
+一个漏进包的文件, 和一个进了包但路径解析不到的包, 只有真跑才能区分。
+
+**本地复现冻结语义**: 本机 venv 常带 torch/ultralytics, `--onefile` 归档会超 4GB 报
+`struct.error: 'I' format requires 0 <= number <= 4294967295` → 用 **onedir**
+(`sys._MEIPASS` = `<dist>/<name>/_internal`, 与 onefile 冻结语义一致) 跑最小探针即可;
+真 exe/.app 的端到端交给 CI。
+**A/B 必做**: 同参数构建"带包 / 不带包"两份, 断言不带包那份**复现现场报错** —— 证明根因 + 证明核验有牙。
 
 ### Qt GUI Patterns
 

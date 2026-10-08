@@ -98,6 +98,52 @@ gui-venv311/bin/python tools/station_cmd.py "powershell -NoProfile -EncodedComma
 - 离线复跑: `cd ~/zmax/zmax_data/aoi_v4 && ../../gui-venv311/bin/python test_v21_routes_offline.py`
   (路由级 E2E: 判据图口径 + 取图口 md5 == /last_result.model_input_md5, 直接硬证模型输入没变)
 
+### ⚠️ v21 会**静默回退成旧 960x960 口径** ⇒ 现场看到"右侧那块方块还在" (2026-10-08 晚实测)
+
+现象: 老倪说"金手指还是没改好, 右侧有方块区域, 不是金手指"。**版本其实上去了** (文件 sha 与交付件逐位一致 +
+日志是 v21 独有打印 + 现役页面确实出 900x332/黑占比 0.84~0.86) —— 但**每 ~20 帧有 1 帧判据渲染失败**, 那一刻
+`GrabAndSaveImage` 里 `if judge is None: judge = crop` 把 **960x960 旧口径**(右侧灰块没切) 端到页面上 ⇒ 看上去像"没改好"。
+
+- **失败判据必须用对**(我第一版判据踩坑): `/crop_info.judge` 里 `out` / `kept_rows` **永远是 null**(别名键名写错:
+  `met["out"]=met.get("out_size")` 而 v21 meta 里没有 `out_size`; `kept_rows=met.get("key_rows")` 实际叫 `n_key_rows`/`key_row_span`)
+  ⇒ **别拿它们判成败**。可靠判据: **`fix_hw`(或 `k` / `x_trim`) 为 None = 渲染失败**(render_judge 失败时提前 return, 整个 v20 别名块都没写)。
+- 工控机日志实测: 失败行 `⚠️ 判据图渲染失败(too few keys after detection (1)) ⇒ topview 回退为规整图口径` +
+  `【落盘】... Finger_TopView_W960_H960_No_375.png (960x960)`(成功那版是 `W900_H332`)。整份日志 98 次失败。
+- **失败帧指纹**: `judge.sat_before≈0.63`(正常帧 **0.21~0.38**) · `【金手指截取】` 的**残余倾角 7.5~8.0 px/1000**
+  (正常 0.2~0.7) ⇒ 键行带被过曝区撑开(`_v21_render` 里 `ky0=min(y0)/ky1=max(y1)` 把**所有命中窗合并成一条大带**,
+  多一个杂窗就把带子撑进过曝区) ⇒ 列方向门限整体通过 ⇒ 合成 **1 根键** ⇒ `<3` 放弃。
+- **复现前提(必须全满足, 否则测不出)**: ① 数值栈 = 工控机的 **py3.10/cv2 4.10.0/np 1.26.4**
+  (`uv pip install --python <v>/bin/python numpy==1.26.4 opencv-python==4.10.0.84 flask`;
+  本机 `gui-venv311` 是 **cv2 5.0.0**, 同一份代码/同一帧会给出不同命中的窗口 ⇒ 不能用来断言);
+  ② **`templates/gf_strip_template.png` 要在模块旁**(快照目录里没有 ⇒ 静默走 legacy 几何, 结果完全不同);
+  ③ 用 HTTP `?kind=origin&grab=1` 拿到的帧**测不出失败** —— 实测 39 帧(cv2 5.0)与 39 帧(cv2 4.10)全过,
+  sat_before 只到 0.383 ⇒ **失败帧从 HTTP 拿不到**, 只能给工控机加"失败时把输入帧+完整 meta 落固定文件"的**有界取证**。
+### ✅ v22 (2026-10-08 晚) 已上线并真机验收: 失败率 20.6% → 0
+
+- **真根因(实测, 非推测)**: 过曝的金属外壳区里会出现一个"命中窗"(y≈1200) → `ky1 = max(y1)` 把**合并键行带**
+  从 [690,819](130 行) 撑到 **[680,1249](≈570 行)** → 带内 63~67% 像素 ≥250 → 列方向亮度剖面整段通过
+  → 键列塌成 **1 根**(需 ≥3) → `too few keys after detection (1)` → 老代码 `if judge is None: judge = crop`
+  **静默回退旧的 960x960 拉伸图**(右侧灰块没切) = 现场"右侧有方块区域, 不是金手指"。
+- **频率/指纹**: 高频守帧(150s)实测 **131 帧 27 失败 = 20.6%**; 失败帧 `judge.sat_before` **0.635~0.668**
+  vs 正常帧 **0.221~0.338**(两簇完全分离, 可直接当判据用)。
+- **修法(v22)**: ① 失败时端**上一张好判据图 + 红条(帧龄/原因)**, 绝不再端 960x960;
+  ② 失败时**逐窗 + 放宽门限**重试(第 1 遍仍是 v21 原口径 ⇒ 成功帧像素逐位不变; 重试结果过验收闸
+  `sat≤0.55 / 键≥5 / 黑底≥0.45` 才采纳, 防"救回一张错的"); ③ 失败时**有界取证**
+  `debug_judge_fail_last.png/.json`(输入帧+完整 meta+命中窗, 覆盖式不增长);
+  ④ `/crop_info.judge` 补 `state/ver/why/err/n_keys/attempt` + 顶层 `judge_ver`(原来失败时 11 个别名全 null ⇒ 故障隐形)。
+- **真机验收口径**: `judge_ver=v22-gold-judge-20261008`; 100s/77 帧 ⇒ 第1遍 ok 48 + 重试救回 29 + **stale 0**,
+  页面那张(`/picture?kind=crop`)**77/77 = 900x332**; 改前约 20% 的帧是 960x960 旧口径。
+- **捞真失败帧的正确姿势(可复用)**: 轮询 `/crop_info`, 判据 `judge.out is None` ⇒ 立刻
+  `GET /picture?kind=origin`(**不要带 `grab=1`** —— 不带才返回内存里那一帧) 存盘。
+  注意下一次 grab 会覆盖内存帧 ⇒ 约只有 1/3 的尝试能捞到真失败帧(其余是好帧, 别当成矛盾)。
+- **离线复现/验收环境**: 必须用工控机的数值栈
+  (`uv pip install --python <v>/bin/python numpy==1.26.4 opencv-python==4.10.0.84 flask`) +
+  `_stub/`(SciCam 桩) + `templates/gf_strip_template.png` 在场; 本机 `gui-venv311` 是 cv2 **5.0.0**, 结论会不同。
+- **⚠️ 相机曝光/增益不要顺手改**: 程序里 `EXPOSURE_US=10000.0`/`GAIN_DB` 是固定的, 改它 = 改**模型吃的那张图**
+  (违反"模型输入绝不动"铁律)。v22 已在过曝帧上自愈; 真要根治过曝, 须带"模型召回前后对照"单独评估。
+- **更正**: `gold_judge_v21_exposure.json` **不是部署漏项**(此前我判断有误) —— 全仓 grep 只有独立渲染器
+  `tools/aoi/gold_judge_rect_v21.py` 读它, **app 里没有任何引用**。
+
 ## 端点（唯一路由, 无需参数/鉴权）
 
 | 端口 | 模型 | 相机 SN / 型号 |

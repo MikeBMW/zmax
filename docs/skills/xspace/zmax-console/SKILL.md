@@ -11,6 +11,15 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 ## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
 
+> ⚠️ **桌面版出包的两个硬教训 (2026-10-08, 坏包连发四版)**:
+> ① `.github/` 在 `.gitignore` 里, 改 workflow 后必须 `git add -f .github/workflows/build-win-exe.yml`,
+>    否则 add 整条失败、改动只在本机 → tag 触发的是旧打包参数(漏 `--add-data src/lerobot/engineering`)。
+> ② `node_logic.py` 是**兼容壳**, 内部 `import lerobot.engineering` 拿的是**仓库外**的 `src/` ——
+>    打包漏带这个包时整个控制台**双击即崩**(studio:258 → simulink_module:26 → node_logic:25),
+>    而冻结核验只 import 引擎 ⇒ 假绿。判据/做法见 skill `pyqt5-distribution`「冻结包必须验 GUI 启动链」。
+> ③ `gui-venv311` 是软链(`→ external/lerobot-smolvla-lew/gui-venv311`), 里面的 CLI shebang 是家目录整合前的
+>    老路径 ⇒ 直接执行报 `cannot execute` (`python -m` 不受影响, 所以长期没被发现)。修: `tools/fix_venv_shebangs.py`。
+
 细节与命令见 `references/version-iteration-checklist.md`; 一句话版:
 ①现场数据(`data/` 被 gitignore)先拷进 `docs/data_snapshots/<日期>_<主题>/` + README →
 ②**六处**版本号同步(`studio.py` · `tools/gui/update_checker.py` · `tools/gui/version_sync.py` · `docs_sync.py` ·

@@ -152,6 +152,20 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
 
 ## 8. 关机前存档 / 交接 (用户说"保存数据, 小版本迭代, 准备关机")
 
+**先跑一键判定**: `bash tools/preflight_shutdown.sh` —— 只读, 出 🟢「可以下电」/🔴 列出红项
+(判据: 臂 idle + 无真动授权(读 `ctl_auth.json` 的 `until`) + 无采集/训练在写 + `~` 顶层只剩 zmax + 仓库干净 + 资源正常 + 关键服务/端口)。
+红项先处理再往下走。
+
+**绿灯 ≠ 全知 —— 报告里必须补的三句**:
+- **「臂 idle」可能是个空判据**: 它读的是位姿真值的**新鲜度**; 产线网卡不在位 / 控制器不可达时真值早就过期,
+  这条只能写"真值帧龄 N 分钟, 臂状态**不可核实**, 最后已知位姿 (x,y,z)" —— **不许写"臂 idle"**。
+  真正支撑"下电无风险"的是: 无授权 + 无下发 + 真动链路未通(位姿真值停更恰恰是链路不通的副产品)。
+- **控制器 crash-loop 的容器在绿灯里只占一行 ✅**(采样器/SDK 代理连不上控制器时一直 `Restarting`) ⇒
+  要写清"上电插回网卡会自愈", 否则下轮被当成新故障重新排查。
+- **NTP 回拨 8h 仍在时**, 真值 `t` 字段与宿主时间不一致是已知现象, 别在交接里写成"时钟异常"。
+
+**「准备关机」≠ 授权 `poweroff`**: 绿灯后**问一句**再执行 —— 远端开不回来(得现场按电源键), 关之前确认一下成本极低。
+
 **顺序固定跑, 每步留证据**:
 
 1. **停 / 确认无在跑任务** (别在训练中途关机):
@@ -215,9 +229,23 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 判读口径：
 - **本机链路 与 外设/网络在不在位，分两层报**：产线网卡不在位 ⇒ Orin / AOI 端口 / 珞石位姿真值**全不可达是环境缺失，不是服务故障**
   （珞石采样容器会一直 `Restarting`，属预期）。但**不许拿它当挡箭牌** —— 本机该起的服务没起，必须单独列出来说。
+- **开机后头 1~2 分钟别下「产线网卡不在位」的结论**：USB 网卡(`enx*`)比 WiFi 晚枚举, `ip -br addr` 起初只有 `wlp*`、
+  `lsusb | grep -i ethernet` 也还看不到它, 此时 `ping Orin` 会经默认路由报 `No route to host` ⇒ 据此报
+  「环境缺失 ⇒ 拒发动作」是**假警报**(实测开机 1min 时判定缺失、90s 后网卡就位且 Orin/工控机全通)。
+  判据: `ip -br addr` 里真出现 `192.168.23.x` + `ping -c1 -W2 <Orin>` 通才算「网卡在位」;
+  一次不通就**隔 60~90s 复采一次**再下结论 —— 两次都在位才是真缺失。
 - **「有进程」≠「在役」**：端口没在监听就是没在服务。逐个 `ss -ltnp | grep <端口>` + 一次 HTTP 探活，双证后才敢说「起来了」。
 - `systemctl is-active` 给 `activating` + 反复计数 ⇒ `journalctl -u <unit> -n 20` 看真实原因，不要因为「单元存在」就报正常。
 - 汇报按「本机已起 / 本机还缺 / 外设缺失 / 资源(GPU·磁盘)」四行给，一眼能看完，不写「已恢复正常」。
+
+**重启后只中两条、且守门脚本一次能全修（2026-10-08 晚实测）**：① 深度格 `dead=true`(源文件停更 hours 级, 因为容器重启后 `ros_depth_stream` 没自起)；
+② 推流源错配（站台「换源」选了 USB，进程却跑默认内置 ⇒ local 出全黑帧 `uniform=1.0 lap=0`, 视觉安全闸 fail-closed 判 unsafe）。
+两者都**别手动杀/手搓命令行**，直接跑一次官方守卫即可双修：
+```bash
+bash ~/.hermes/scripts/cam_stream_guard.sh   # 退出码 0 = 全好; 深度分支会按官方用法在容器内拉起
+```
+复核口径（必须做）：`8793/stats` 逐格帧号**隔 10s 两采递增** + 深度源 `ss_live/zmax_scene/depth_raw.npy` 文件龄 <1s
++ `vl_safety_fast.json` `safe` 回 true。实测: 深度 0→2.0fps、local 内置黑帧→USB2.0 15fps、local2 MAXHUB 30fps、arm D405 29.8fps。
 
 ## 9a. 深度格(🌈 D405 深度图)长时间 stalled：先量落盘节拍, 再定上游还是本机
 
@@ -227,16 +255,16 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 # ① 落盘节拍 (真判据: 20s 内 mtime 变几次) —— 8793 的 age 有时来自上一次成功读取, 不能只用它
 python3 - <<'PY'
 import os,time
-p='/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy'; last=None; n=0; t0=time.time()
+p='/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy'; last=None; n=0; t0=time.time()
 while time.time()-t0<20:
     m=os.path.getmtime(p)
     if m!=last: n+=1; last=m
     time.sleep(0.5)
 print('20s 更新次数', n)
 PY
-cat /home/ubuntu/zmax_ss_remote/zmax_scene/depth_meta.json   # 自带 frames/fps/w/h/depth_scale/valid_pct
+cat /home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_meta.json   # 自带 frames/fps/w/h/depth_scale/valid_pct
 # ② 落盘进程在不在 / 有几份 (≥2 份=重复拉起, 见 §10)
-python3 -c "import os,time;print(time.time()-os.path.getmtime('/home/ubuntu/zmax_ss_remote/zmax_scene/depth_raw.npy'))"
+python3 -c "import os,time;print(time.time()-os.path.getmtime('/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy'))"
 sudo docker exec ss-remote-tap bash -lc 'pgrep -af ros_depth_stream; tail -3 /tmp/depth_stream.log'
 # ③ 上游发布者 (注意: 话题真名是 /realsense/depth/image_rect_raw, 不是 /camera/...)
 sudo docker exec ss-remote-tap bash -lc 'source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=0; ros2 topic info -v /realsense/depth/image_rect_raw | head -12'
@@ -404,5 +432,7 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
 | `sudo du` 挂在超大目录 | 命令超时/卡住 | 限定路径 + `timeout`, 别 `du /` 全盘 |
 | 汇报 governor"提升 X%" | 单轮先 A 后 B 的顺序效应 | 交错多轮取中位; 带宽瓶颈负载不能用来测频率 |
 | 顺手删备份件 | 用户其实还要那份镜像归档 | 备份/归档件**只列不删**, 让用户点头 |
+| `ls -l <真源> && python3 -c "解析" \|\| echo "无 <真源>"` | **解析器报错被当成"文件不存在"** —— 把在位的真源报成缺失(实测把在刷的位姿真值误报成"无 latest.json", 据此下了错结论) | 存在性探测与解析**分开写**: `[ -e f ] \|\| echo 缺 f;` 之后单独解析并让失败打印**真实异常**; 断言性结论只能由"读到的内容"下, 不能由 shell 的 `\|\|` 分支下 |
+| 老目录整理完又冒出来 | 代码扫干净了却仍重建 `~/<老名>` | 查**仓库外**工具的全局配置(`~/.config/Ultralytics/settings.json` 的 `runs_dir/weights_dir/datasets_dir` 等): 不在仓库里, 五种路径写法全扫不到, 但工具每次都按它落盘 ⇒ 备份后改到工程内 → 把已落错地方的产物**合并回来** → 空目录才 `rmdir`; 判据是"跑一次那个工具看产物落在哪", 不是 grep |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`
