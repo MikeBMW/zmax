@@ -1449,10 +1449,8 @@ loadSlots(); setInterval(loadSlots,10000);
     tip.innerHTML='<b>'+key+'</b><br>x <span class="v">'+_f(p[0],4)+'</span>  y <span class="v">'+_f(p[1],4)
       +'</span>  z <span class="v">'+_f(p[2],4)+'</span><br>a <span class="v">'+_f(a[0],3)+'°</span>  b <span class="v">'
       +_f(a[1],3)+'°</span>  c <span class="v">'+_f(a[2],3)+'°</span>'
-      +((a[0]===null)?' <span class="m">(该点无姿态记录)</span>':'')
-      +'<div class="m">记录于 '+(d.at||'—')+(d.n_samples?(' · '+d.n_samples+' 帧'):'')
-      +((d.spread_pos_m!=null)?(' · 极差 '+(Number(d.spread_pos_m)*1e6).toFixed(1)+'µm'):'')+'</div>';
-    const cp=document.createElement('span'); cp.className='cp'; cp.textContent='📋 复制 x y z a b c';
+      +((a[0]===null)?' <span class="m">(无姿态)</span>':'');
+    const cp=document.createElement('span'); cp.className='cp'; cp.textContent='📋 复制';
     cp.onclick=()=>{ try{ navigator.clipboard.writeText(txt); }catch(_e){} };
     tip.appendChild(cp);
     tip.style.display='block'; _move(e);
@@ -1470,6 +1468,9 @@ loadSlots(); setInterval(loadSlots,10000);
       if(b.dataset.ptipHooked) return;
       const k=_key(b); if(!k||!PMAP[k]) return;
       b.dataset.ptipHooked='1';
+      /* 🔴 2026-10-08 老倪「显示位姿，就不要显示其它文字了…这些文字互相遮挡，看不到位姿」:
+         原生 title 的浏览器气泡与卡片叠在一起 ⇒ 挂钩时摘掉 title(原文存进 dataset 备查, 不显示)。 */
+      if(b.hasAttribute('title')){ b.dataset.ptipTitle=b.getAttribute('title'); b.removeAttribute('title'); }
       b.addEventListener('mouseenter',e=>_show(e,k));
       b.addEventListener('mousemove',_move);
       b.addEventListener('mouseleave',_hide);
