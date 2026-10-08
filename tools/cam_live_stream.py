@@ -1253,6 +1253,56 @@ def _aoi_busy_release(port) -> None:
         pass
 
 
+# 🎛 按点位切曝光 (老倪 2026-10-08: 「按点位切曝光」)
+#   实测(2026-10-08 21:16, 零重启): 工控机 /param 的**实时写入是有效的** —— 自动曝光关掉之后,
+#   POST /param?exposure=40000 回 applied{ok:True} 且**下一帧 p50 33→67**(正中标定值 63 附近)。
+#   程序注释里"采集过程中写曝光必失败"是**自动曝光还开着**那天的旧观察(那时任何写入都 rv=100100010)
+#   ⇒ 不必重启服务、不必动产线程序, 本服务转发即可实现"按点位切曝光"。
+#   ⚠️ 档位只放**现场实测过**的值; 未知档位会被拒(不乱写相机参数)。
+AOI_EXPOSURE_PROFILES = {
+    "pt1": {"exposure": 20000, "gain": 8, "desc": "金手指点1(正面; 产线已验收的档, 前视 p50≈63)"},
+    "pt2": {"exposure": 40000, "gain": 8, "desc": "金手指点2(背面; 实测 20000 时 p50=33 太暗, 40000 → p50=67)"},
+}
+
+
+def _aoi_param(port: int = 10082, profile=None, exposure=None, gain=None, why: str = "页面") -> dict:
+    """把取像参数(曝光/增益)转发到工控机 `GET/POST /param`。
+
+    只动相机**采集参数**, 不动裁剪/判据/模型口径。profile 见 AOI_EXPOSURE_PROFILES;
+    也可直接给 exposure=/gain= 覆盖(自定义档)。**不假装成功**: 回执如实带 applied/now。
+    """
+    import json as _json
+    import urllib.request as _ur
+    _pf = str(profile or "").strip().lower()
+    prof = AOI_EXPOSURE_PROFILES.get(_pf)
+    if _pf and not prof and exposure in (None, "") and gain in (None, ""):
+        return {"ok": False, "code": 400, "msg": "未知曝光档 %r, 可选: %s"
+                % (_pf, ", ".join(sorted(AOI_EXPOSURE_PROFILES)))}
+    try:
+        ex = float(exposure) if exposure not in (None, "") else float((prof or {}).get("exposure") or 0)
+        gn = float(gain) if gain not in (None, "") else float((prof or {}).get("gain") or 0)
+    except (TypeError, ValueError):
+        return {"ok": False, "code": 400, "msg": "exposure/gain 不是数字"}
+    q = []
+    if ex:
+        q.append("exposure=%g" % ex)
+    if gn:
+        q.append("gain=%g" % gn)
+    if not q:
+        return {"ok": False, "code": 400, "msg": "没有要写的参数(给 profile 或 exposure/gain)"}
+    try:
+        with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
+            d = _json.loads(r.read().decode("utf-8", "ignore"))
+        ok = bool(d.get("ok"))
+        return {"ok": ok, "port": int(port), "profile": _pf, "src": why,
+                "want": {"exposure_us": ex, "gain_db": gn}, "applied": d.get("applied"), "now": d.get("now"),
+                "msg": ("切换曝光档 %s: 曝光 %gus · 增益 %.1fdB(%s) —— 实测实时生效, 不用重启"
+                        % (_pf or "自定义", ex, gn, (prof or {}).get("desc") or why)) if ok
+                       else ("工控机拒绝写入: %s" % str(d)[:150])}
+    except Exception as e:                                                          # noqa: BLE001
+        return {"ok": False, "port": int(port), "msg": "转发 /param 失败: %s" % str(e)[:150]}
+
+
 def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
     """触发工控机产线正常检测命令 POST /capture_detect, 并把判决取回来。
 
@@ -4054,6 +4104,18 @@ class Handler(BaseHTTPRequestHandler):
                    "aoi_auto": _aoi_auto_status(),
                    "note": "自动取景 %s" % ("开(工控机没照片时现拍一张, 最快30s一次)"
                                           if _AOI_AUTO.get(port) else "关(只在手动点「拍一帧」时拍)")}
+        elif p in ("/api/aoi/param", "/aoi/param"):
+            # 🎛 按点位切曝光(老倪 2026-10-08): ?profile=pt1|pt2 或 ?exposure=&gain= —— 转发工控机 /param。
+            #   实测实时生效(自动曝光关掉后写入被接受, 下一帧 p50 33→67) ⇒ **不用重启服务**。
+            _kv = dict(kv.split("=", 1) for kv in
+                       (self.path.split("?", 1)[1] if "?" in self.path else "").split("&") if "=" in kv)
+            _pt = _kv.get("port") or "10082"
+            try:
+                _pt = int(_pt)
+            except (TypeError, ValueError):
+                _pt = 10082
+            out = _aoi_param(port=_pt, profile=(_kv.get("profile") or "").strip() or None,
+                             exposure=(_kv.get("exposure") or None), gain=(_kv.get("gain") or None), why="页面")
         elif p in ("/cam/src", "/api/cam/src"):
             # 🎛 2026-10-07 老倪: 笔记本这一路换源 (内置 ↔ USB)。
             #   只改"这一格采哪台设备" —— 通道名还是 "local" ⇒ 页面/叠加/VL 安全层自动跟随。

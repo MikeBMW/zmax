@@ -895,7 +895,19 @@ let _pt1={t0:0,timer:null};
 let _spt1={t0:0,timer:null};
 /* 通用回点(『🎯 点1』『🎯 侧面点1』共用同一份实现 —— 不新开通道, 不复制一套闸门逻辑):
    页面只送**技能 id**: 目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位。 */
+/* 🎛 按点位切曝光 (2026-10-08 老倪: 「按点位切曝光」)
+   点1=正面用产线验收档(20000us×8, 前视 p50≈63); 点2=背面暗一倍 ⇒ 40000us×8(实测 p50 33→67 到标定值)。
+   经本服务 /api/aoi/param 转发工控机 /param —— **实测实时生效, 不用重启服务/不动产线程序**;
+   切档失败就如实打在点位提示里, 不假装成功。 */
+async function setAoiProfile(pf,msgSel){
+  const m=$(msgSel);
+  try{
+    const j=await post('/api/aoi/param?port=10082&profile='+pf,{},9000);
+    if(m) m.textContent=(m.textContent?m.textContent+' · ':'')+(j&&j.ok?'🎛 ':'⚠️ ')+((j&&j.msg)||'切曝光档无回执');
+  }catch(e){ if(m) m.textContent=(m.textContent?m.textContent+' · ':'')+'⚠️ 切曝光档请求失败: '+e; }
+}
 async function gotoPt1(btn){
+  setAoiProfile('pt1','#pt1_msg');
   return gotoTeachPoint(btn,_pt1,'L2.goto_gold_pt1','『🎯 点1』','#pt1_msg','回到金手指点1');
 }
 /* ═══ 🎯 点2: 回到示教点『金手指点2』(技能 L2.goto_gold_pt2) ═══
@@ -908,6 +920,7 @@ async function gotoPt1(btn){
    (现场铁律: ≥30° 的姿态变化必须单独成段, 不能和横移混一段) —— 点之前确认末端周围无遮挡。 */
 let _pt2={t0:0,timer:null};
 async function gotoPt2(btn){
+  setAoiProfile('pt2','#pt2_msg');      // 背面暗一倍 ⇒ 同步切 40000us 曝光档(先切再动, 到位时亮度已对)
   return gotoTeachPoint(btn,_pt2,'L2.goto_gold_pt2','『🎯 点2』','#pt2_msg','回到金手指点2');
 }
 /* ═══ 🎯 侧面点0: 回到示教点『侧面点0』(技能 L2.goto_surface_pt0) ═══
