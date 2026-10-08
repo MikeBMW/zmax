@@ -3528,6 +3528,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = self.path.split("?")[0]
+        # 🖼 2026-10-08 老倪「3DGS窗口白屏」: /gs_render.png 原来放在 elif 链尾部,
+        #   被后面的通用兜底分支截走 ⇒ 一律返回 not found ⇒ 面板图永远加载不出(白屏)。
+        #   这里提到链首优先处理; 且 _send 必须收 bytes(传 str 会 TypeError 崩)。
+        if p in ("/gs_render.png", "/api/gs_render.png"):
+            import glob as _g
+            _c = sorted(_g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")),
+                        key=os.path.getmtime, reverse=True)
+            if not _c:
+                self._send(404, "text/plain", b"no render yet")
+            else:
+                try:
+                    with open(_c[0], "rb") as _f:
+                        _d = _f.read()
+                    self._send(200, "image/png", _d, {"Cache-Control": "no-store"})
+                except Exception as _e:
+                    self._send(500, "text/plain", ("render err: %s" % _e).encode())
+            return
         if p in ("/", "/index.html"):
             body = PAGE.replace("__IDX__", str(self.server.local_dev)).encode("utf-8")
             self._send(200, "text/html; charset=utf-8", body)
