@@ -336,3 +336,8 @@ external/
 venvs/
 toolchains/
 hermes/
+
+# 改动前备份文件(只进 docs/data_snapshots/*/backups/, 不进代码库)
+*.bak
+*.bak_*
+*.bak-*
