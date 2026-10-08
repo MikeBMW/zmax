@@ -219,9 +219,15 @@ def start_pair(restart=True):
         '$sh=New-Object -ComObject WScript.Shell; '
         '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v20.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
         '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v20.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
-        'Start-Sleep -Seconds 40; '
+        # 2026-10-08 实测: "Sleep 40 后单次探测" 会把慢绑定的那一路误报成 DOWN —— 连续两条部署日志出现
+        #   "10082 -> up pid 7160 / 10083 -> DOWN", 而实际 20s 后 /storage 就 200 了(误判会误导现场排查)。
+        #   改成轮询到两路都监听(或 150s 超时)再报**稳态**, 真 DOWN 时给出下一步。
+        '$dl=(Get-Date).AddSeconds(150); $miss="x"; '
+        'do { Start-Sleep -Seconds 5; $miss=""; foreach($p in 10082,10083){ '
+        '$c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; if(-not $c){ $miss="y" } } } '
+        'while ($miss -ne "" -and (Get-Date) -lt $dl); '
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
-        '"$p -> " + $(if($c){"up pid " + $c.OwningProcess}else{"DOWN"}) }'
+        '"$p -> " + $(if($c){"up pid " + $c.OwningProcess}else{"DOWN(150s 未监听: 看 v5f/v5s.log, 10083 可等保活拉起)"}) }'
     ) % (d, d, py, d, d, py, d)
     return remote(ps, wait=200, label="start")
 
