@@ -345,3 +345,6 @@ hermes/
 # 3DGS 查看器同域 JS(vendored, 必须入库, 否则页面 404 白屏) —— 2026-10-08
 !tools/web/lib/
 !tools/web/lib/**
+
+# 快照证据图(实拍/渲染大图)不进代码库 —— 放 zmax_data/ 或网盘 (tools/repo_guard.py 会拦 >300KB)
+docs/data_snapshots/**/evidence/*.png

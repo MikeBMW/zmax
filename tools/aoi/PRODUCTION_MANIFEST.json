@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-10-08 19:53:45",
+  "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
+  "host": "192.168.23.23",
+  "items": [
+    {
+      "port": 10082,
+      "title": "金手指检测 (工控机 192.168.23.23:10082)",
+      "repo_copy": "tools/aoi/cam_finger_10082_work_v24.py",
+      "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v24.py",
+      "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
+      "sha256": "fc9105c778f5795eaae39b888ea5064c5b598c430f3095089ec11a82c3a6dfe4",
+      "bytes": 105115,
+      "src_sha256": "fc9105c778f5795eaae39b888ea5064c5b598c430f3095089ec11a82c3a6dfe4",
+      "src_mtime": "2026-10-08 19:45:58",
+      "copy_matches_source": true
+    },
+    {
+      "port": 10083,
+      "title": "表面/端面检测 (工控机 192.168.23.23:10083)",
+      "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py",
+      "local_source": "zmax_data/aoi_v4/cam_surface_10083_work_v20.py",
+      "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
+      "sha256": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
+      "bytes": 55909,
+      "src_sha256": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
+      "src_mtime": "2026-10-08 07:57:11",
+      "copy_matches_source": true
+    }
+  ]
+}

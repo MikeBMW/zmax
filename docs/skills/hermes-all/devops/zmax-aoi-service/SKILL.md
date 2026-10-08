@@ -714,3 +714,45 @@ Windows 端一行 `agent_start_ascii.ps1` 每 3s 来 `GET /agent/cmd` 取一条�
 - 它是**产线设备**的检测服务: 调用=真拍一张真机台照片 → **先问用户再打**, 不批量轮询
 - 想连这台工控机做别的(SSH/RDP/VNC)都是**关的** ✗; 只有 10081/10082/10083 三个 HTTP 口开着
 - 10081 是同族的第三个 Flask 服务(端口映射未在其中写明), 需要时用 `POST /capture_detect` 试
+
+## 🔴 真根因: 相机自动曝光/自动增益出厂就是开着的 (2026-10-08, 本条最值钱)
+
+**症状**: 画面发糊 + 判据图金手指根数 19/21/22 来回变 + "曝光改了没反应"。
+**根因链**(实测, 不是推测):
+1. 这台 OPT-LCRT1500 (SN D265250070) 出厂 `ExposureAuto`/`GainAuto` **开着**; 此状态下对
+   `ExposureTime`/`Gain` 的写入一律返回 `rv=100100010`(值非法) → 调用方只打印"设置失败"就过去了
+   ⇒ **文件里写的 10000us 从来没有生效过**。
+2. 相机自己拉 **~94ms 超长曝光**在亮金属上硬扛 ⇒ 恒定过曝(条带内 20%~32% 像素 ≥250)。
+3. 过曝 ⇒ 金手指之间的**暗缝被糊白桥接**成一条宽亮段 ⇒ 宽度归整把"两片粘成一片"判错 ⇒ **根数忽多忽少**。
+   ⇒ **根因不在认领/归整算法, 在相机取像参数**(别再去改归整逻辑)。
+**处方(顺序不可换, 逐条 rv=0 实测)**:
+```
+ExposureAuto->"Off"   # SetEnumValueByString, 大小写敏感: "off"/"Off " 都会被拒
+GainAuto->"Off"
+ExposureTime -> Gain -> Gamma    # 三个都用 SetFloatValue
+```
+- ⛔ **禁用「停采集→写→恢复采集」**: 实测 `StartGrabbing` 卡死不返回, 整路相机死掉(只能 kill 进程重开)。
+- 读值要用 SDK 的 `SCI_NODE_VAL_FLOAT` 结构(`ctypes.byref(struct)`); 传 `c_float/c_double` 会 TypeError。
+- 定值(扫档; p50=片亮度 / p10=缝亮度 / 对比度=p50-p10):
+  `20000us×8.0 → 206/49/157` ← 选它(曝光仅自动档 1/5 ⇒ 更锐) · `30000×8` 与 `60000×4 → 149/115/34`(等价 ⇒ 曝光×增益线性可换)
+  · `120000×2 → 146/113/33`。范围: 曝光 1~1e7us · 增益 1.33~16.38(写 1.0 会被拒) · Gamma 0~3.999。
+- 现场光源偏暗是客观事实(10000us 下整幅均值仅 16、最亮区 94, 要 ~9.4 倍补偿) ⇒ 先查灯; 程序侧用"高增益+短曝光"换锐度。
+- 一帧自检: `AOIQualityChecker().assess_frame(帧)` → `ok / too_dark / overexposed / gaps_washed` + `need_x`(还差几倍)。
+- 判据图正解仍是 **19 根**(674→1952 等距); 边缘那两块(左端亮条/右端过曝端壁)都不是金手指。
+
+## 判据渲染的隐藏崩溃: 别用参数名当局部变量 (2026-10-08)
+`_v21_render_core` 里 `gate = min(bg+25, 1.35*bg)` **覆盖了同名参数 dict** ⇒ 暗帧走到 fallback 分支必抛
+`AttributeError: 'float' object has no attribute 'get'` ⇒ **判据图整个报错**(表象: 判据图有时不对/空)。
+修法: 局部变量改名 `edge_gate`。⇒ 规矩: **函数参数名不许在本函数里复用为局部变量**。
+
+## 产线/调试分工 + 旁路对齐 (2026-10-08 老倪定)
+| 角色 | 在哪 | 怎么改 |
+|---|---|---|
+| **产线程序** | **工控机** `D:\xspace\ultralytics_AOI\cam_finger_10082_work_v20.py`(10082) / `cam_surface_10083_work_v20.py`(10083) | 只能经 `tools/aoi_remote_deploy.py`(哈希核对 + 失败回滚 + 合法404放行) |
+| **调试程序** | 本仓库 `tools/aoi/` 同名副本 + `src/lerobot/policies/yolo_3d/quality_check.py::AOIQualityChecker` | 直接改; 自检 `gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py` |
+
+- 清单(端口/远端文件名/仓库副本/sha256): `tools/aoi/PRODUCTION_MANIFEST.json`
+- 旁路对齐: `python3 tools/aoi/production_sync.py status|verify|diff|pull --port 10082`
+  (`pull` 经反向通道把产线那份 base64 取回并与仓库副本比 sha256; 只在工控机上跑一次性 PowerShell 用 `tools/aoi_remote_run.py`)
+- 画布节点「🔍 外观质量检测」真执行时会把 **取像参数行 + 产线/调试关系行 + 取像体检** 打进终端日志;
+  三类逻辑(取像参数 / 画面健康度 / 缺陷判据)全在 `AOIQualityChecker` 一个类里, 节点 params 里也存了同一份(`camera_params`/`architecture`/`production`/`debug`)。

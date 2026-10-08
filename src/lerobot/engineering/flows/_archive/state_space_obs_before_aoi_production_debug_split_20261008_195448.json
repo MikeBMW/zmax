@@ -672,7 +672,7 @@
       "params": {
         "target": "金手指/端面/外观",
         "state_space": true,
-        "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)。【2026-09-20 接线·v4.2 几何】原始图 → 状态空间区域检测/伺服引导: ①区域检测 GET /region?grab=1 = 原始图坐标系的**金手指区域**(只含焊盘排, 实测~1455x70; 不含下方实心金带与塑料亮边沿) + 对焦清晰度 focus ②触发检测 POST /capture_detect (异步, 判决只打工控机终端) ③规范化裁剪 GET /picture?kind=crop = **金手指纵向拉长到 960x960 方图**(与 imgsz=960 对齐, 喂 YOLO); GET /picture?kind=natural = 原比例 1455x70(目检); GET /crop_info = 指标(残余倾角/金覆盖/高亮占比) ④对准+对焦伺服 L2.aoi_gold_align → tools/aoi_gold_servo.py (区域偏差→L2小步进; 沿光轴退火找 focus 峰值; 默认 dry-run) 【2026-10-08 取像参数与「根数不稳」真根因 · 已并进 yolo_3d/quality_check.py::AOIQualityChecker】① 这台金手指相机(SN D265250070, OPT-LCRT1500)出厂**自动曝光/自动增益是开着的** ⇒ 对 ExposureTime/Gain 的写入一律 rv=100100010 **静默失败**, 文件里的 10000us 从未生效; ② 相机于是拉 ~94ms 超长曝光硬扛 ⇒ 恒定过曝(条带 20~32% 像素≥250) ⇒ 金手指之间的暗缝被糊白**桥接**成一条宽亮段 ⇒ 判据图上根数 19/21/22 反复; 画面发糊同源(**不是对焦** —— 该机手动定焦, 软件里没有对焦节点); ③ 处方(顺序不可换, 逐条 rv=0 实测): ExposureAuto→Off → GainAuto→Off → ExposureTime → Gain → Gamma; **禁用「停采集→写→恢复采集」**(实测 StartGrabbing 卡死, 整路相机死掉); ④ 定值: 曝光 20000us × 增益 8.0(扫档: 片p50=206 / 缝p10=49, 对比度157 vs 其它档 33~34; 曝光仅自动档 1/5 ⇒ 更锐); 范围 曝光1~1e7us · 增益1.33~16.38(写1.0会被拒) · Gamma 0~3.999; ⑤ 现场光源偏暗是客观事实(10000us 下整幅均值仅16, 最亮区94, 要~9倍补偿) ⇒ 先查灯, 程序侧用「高增益+短曝光」换锐度; ⑥ 同一次挖出的判据渲染 bug: 局部变量 `gate` 覆盖了同名参数 dict ⇒ 暗帧必抛 AttributeError, 判据图整个报错(已改名 edge_gate); ⑦ 用法: AOIQualityChecker().assess_frame(帧) → ok / too_dark / overexposed / gaps_washed + 还差几倍(need_x); 取像参数不健康时 check() **不报 PASS**(参数错的帧上谈缺陷判定没有意义)。自检: gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py 【产线/调试分工 (2026-10-08)】产线程序跑在工控机 192.168.23.23(10082 金手指/10083 表面), 改产线必须经 tools/aoi_remote_deploy.py(哈希核对+失败回滚); 调试程序跑在本节点: 本仓库 tools/aoi/ 里的同名副本 + quality_check.py::AOIQualityChecker(取像参数/画面健康度/缺陷判据三类逻辑都在这个类里); 两边对齐用 tools/aoi/production_sync.py status|verify|diff|pull。",
+        "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)。【2026-09-20 接线·v4.2 几何】原始图 → 状态空间区域检测/伺服引导: ①区域检测 GET /region?grab=1 = 原始图坐标系的**金手指区域**(只含焊盘排, 实测~1455x70; 不含下方实心金带与塑料亮边沿) + 对焦清晰度 focus ②触发检测 POST /capture_detect (异步, 判决只打工控机终端) ③规范化裁剪 GET /picture?kind=crop = **金手指纵向拉长到 960x960 方图**(与 imgsz=960 对齐, 喂 YOLO); GET /picture?kind=natural = 原比例 1455x70(目检); GET /crop_info = 指标(残余倾角/金覆盖/高亮占比) ④对准+对焦伺服 L2.aoi_gold_align → tools/aoi_gold_servo.py (区域偏差→L2小步进; 沿光轴退火找 focus 峰值; 默认 dry-run) 【2026-10-08 取像参数与「根数不稳」真根因 · 已并进 yolo_3d/quality_check.py::AOIQualityChecker】① 这台金手指相机(SN D265250070, OPT-LCRT1500)出厂**自动曝光/自动增益是开着的** ⇒ 对 ExposureTime/Gain 的写入一律 rv=100100010 **静默失败**, 文件里的 10000us 从未生效; ② 相机于是拉 ~94ms 超长曝光硬扛 ⇒ 恒定过曝(条带 20~32% 像素≥250) ⇒ 金手指之间的暗缝被糊白**桥接**成一条宽亮段 ⇒ 判据图上根数 19/21/22 反复; 画面发糊同源(**不是对焦** —— 该机手动定焦, 软件里没有对焦节点); ③ 处方(顺序不可换, 逐条 rv=0 实测): ExposureAuto→Off → GainAuto→Off → ExposureTime → Gain → Gamma; **禁用「停采集→写→恢复采集」**(实测 StartGrabbing 卡死, 整路相机死掉); ④ 定值: 曝光 20000us × 增益 8.0(扫档: 片p50=206 / 缝p10=49, 对比度157 vs 其它档 33~34; 曝光仅自动档 1/5 ⇒ 更锐); 范围 曝光1~1e7us · 增益1.33~16.38(写1.0会被拒) · Gamma 0~3.999; ⑤ 现场光源偏暗是客观事实(10000us 下整幅均值仅16, 最亮区94, 要~9倍补偿) ⇒ 先查灯, 程序侧用「高增益+短曝光」换锐度; ⑥ 同一次挖出的判据渲染 bug: 局部变量 `gate` 覆盖了同名参数 dict ⇒ 暗帧必抛 AttributeError, 判据图整个报错(已改名 edge_gate); ⑦ 用法: AOIQualityChecker().assess_frame(帧) → ok / too_dark / overexposed / gaps_washed + 还差几倍(need_x); 取像参数不健康时 check() **不报 PASS**(参数错的帧上谈缺陷判定没有意义)。自检: gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py",
         "aoi_interfaces": {
           "region": "http://192.168.23.23:10082/region?grab=1",
           "capture": "http://192.168.23.23:10082/capture_detect",
@@ -742,42 +742,7 @@
           "too_dark",
           "overexposed",
           "gaps_washed"
-        ],
-        "architecture": "产线程序运行在工控机 192.168.23.23 (10082 金手指 / 10083 表面); 调试程序运行在状态空间工程的这个 AOI 质量检查节点 (src/lerobot/policies/yolo_3d/quality_check.py::AOIQualityChecker + tools/aoi/ 副本)",
-        "production": {
-          "host": "192.168.23.23",
-          "finger": {
-            "port": 10082,
-            "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
-            "repo_copy": "tools/aoi/cam_finger_10082_work_v24.py",
-            "endpoints": {
-              "region": "/region?grab=1",
-              "capture_detect": "/capture_detect",
-              "picture": "/picture?kind=crop|natural|origin",
-              "crop_info": "/crop_info",
-              "param": "/param",
-              "last_result": "/last_result",
-              "storage": "/storage"
-            }
-          },
-          "surface": {
-            "port": 10083,
-            "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
-            "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py"
-          },
-          "sync_tool": "tools/aoi/production_sync.py",
-          "deploy_tool": "tools/aoi_remote_deploy.py",
-          "runtime_tool": "tools/aoi_remote_run.py",
-          "manifest": "tools/aoi/PRODUCTION_MANIFEST.json"
-        },
-        "debug": {
-          "class": "src/lerobot/policies/yolo_3d/quality_check.py :: AOIQualityChecker",
-          "params_source": "AOIQualityChecker.CAMERA (曝光/增益/Gamma + 下发顺序)",
-          "frame_health": "AOIQualityChecker.assess_frame() → ok/too_dark/overexposed/gaps_washed + need_x",
-          "defect_rules": "AOIQualityChecker.check() → DET-AOI-01~04",
-          "self_test": "gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py",
-          "align": "python3 tools/aoi/production_sync.py status|verify|diff|pull"
-        }
+        ]
       }
     },
     {

@@ -2007,7 +2007,7 @@ _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"),
 
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
 
-_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 40, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
+_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 61, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 
 def node_obs39(ctx):
     """📊 39D obs 输入 — metaworld peg-insertion 完整观测 (2026-08-10 实测确认)
@@ -3354,6 +3354,14 @@ def node_ss_aoi(ctx):
         checker = qc.AOIQualityChecker()
         res = checker.check(img)
         _YOLO_CACHE["aoi"] = res
+        # 取像参数 + 取像体检先上屏: 2026-10-08 实测教训 —— 参数不对(自动曝光开着)时谈缺陷判定没有意义
+        _q = res.get("quality") or {}
+        if log:
+            log(qc.AOIQualityChecker.camera_profile_line())
+            log(qc.AOIQualityChecker.production_profile_line())   # 产线在工控机 / 调试在本仓库(旁路关系)
+            if _q:
+                _mark = {"ok": "✅", "overexposed": "🔴", "too_dark": "🌑", "gaps_washed": "🌫️"}.get(_q.get("verdict"), "❔")
+                log(f"{_mark} 取像体检: {_q.get('verdict')} — {_q.get('why')}")
         if log:
             for it in res.get("items", []):
                 v = it["value"] if it["value"] is not None else it.get("note", "—")

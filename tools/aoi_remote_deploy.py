@@ -160,20 +160,39 @@ def verify(port, test_capture=True):
                   body[:80].decode("utf-8", "replace"))
         # /last_result 的两种合法形态: ①200+verdict/count ②404+「尚无检测结果」(后台推理还没跑完)
         # 表面(housing) 推理实测 ~8.9s ⇒ 轮询等, 别用固定短等待(会假失败)。2026-09-27 踩过。
-        t_end = time.time() + 45
+        #
+        # ⚠️ 2026-10-08 **第三次**踩同一个坑(v24 金手指部署就这么被滚掉过一次):
+        #    冷启动/推理忙时 /last_result 会**瞬时拒连**(urlopen Errno 111, st=0), 而原实现 45s 窗口
+        #    一到就判死 ⇒ ok_all=False ⇒ **自动回滚**, 把刚推上去的新程序换成旧的。同一次验收里
+        #    /storage 已 200、POST /capture_detect 已 code=200、grab=1 已出图(411KB) —— 服务明明是活的。
+        #    处置(缺一不可): ① 传输层错误(st==0)不算"判决失败", 继续轮询 ② 窗口 45s→120s
+        #    ③ 全程只有传输层错误时**降级为警告**, 不判死(其余判据已证明服务活着)。
+        _esc = "".join("\\u%04x" % ord(c) for c in "尚无检测结果")
+        t_end = time.time() + 120
         st, body = 0, b""
+        _seen_http = False
         while time.time() < t_end:
             st, body = http_get("http://%s:%d/last_result" % (ILO, port))
-            if st == 200:
+            if st != 0:
+                _seen_http = True          # 服务在 HTTP 层应答过 ⇒ 已经不是"连不上"
+            legal = (st == 404 and (not body or "尚无检测结果".encode() in body
+                                    or _esc.encode() in body))
+            if st == 200 or legal:
                 break
             time.sleep(3)
-        # ⚠️ 2026-09-30 踩坑: Flask jsonify 默认 ensure_ascii=True ⇒ 中文在 body 里是 \u5c1a\u65e0…,
-        #    只比对 UTF-8 原文会漏判"合法 404" ⇒ 首帧推理慢(要加载模型)时假失败 ⇒ **误触发自动回滚**。
-        #    这里把"还没出结果"的三种形态都当合法: 原始中文 / \u 转义 / 空 body(服务刚起来)。
-        _esc = "".join("\\u%04x" % ord(c) for c in "尚无检测结果")
-        legal404 = st == 404 and (not body or "尚无检测结果".encode() in body or _esc.encode() in body)
-        ok &= chk("/last_result 判决通道", st == 200 or legal404,
-                  ("200 " if st == 200 else "404-尚无(在等/推理慢) ") + body[:60].decode("utf-8", "replace"))
+        legal404 = (st == 404 and (not body or "尚无检测结果".encode() in body
+                                  or _esc.encode() in body))
+        if st == 200 or legal404:
+            ok &= chk("/last_result 判决通道", True,
+                      ("200 " if st == 200 else "404-尚无(在等/推理慢) ")
+                      + body[:60].decode("utf-8", "replace"))
+        elif not _seen_http:
+            # 全程只有传输层错误 ⇒ 不判死(见上面 2026-10-08 说明), 只留证据行
+            out.append("⚠️ /last_result 全程连不上(传输层错误, 非判决失败) —— 不判死: "
+                       "/storage 与 grab=1 已证明服务在跑")
+        else:
+            ok &= chk("/last_result 判决通道", False,
+                      ("%s " % st) + body[:60].decode("utf-8", "replace"))
     n_before = _stable_total()          # 取基准: 等检测线程落盘稳定(见 _stable_total 注释)
     st, img = 0, b""
     for _try in range(5):      # 2026-09-30 踩坑: 服务刚重启/相机未热身时**首抓会返回错误体**(实测 46B)
