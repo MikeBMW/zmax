@@ -332,7 +332,16 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <button id="b_pt1" onclick="gotoPt1(this)"
           style="font-size:19px;font-weight:700;border-color:#1f6feb"
           title="回到示教点『金手指点1』(技能 L2.goto_gold_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 点1</button>
-        <span id="pt1_msg" style="font-size:13px;opacity:.85"></span></div>
+        <span id="pt1_msg" style="font-size:13px;opacity:.85"></span>
+        <!-- 🎯 点2 (2026-10-08 老倪: 「记录当前点，增加 金手指点2 按钮」): 与 点1 完全同一份
+             gotoTeachPoint(不新开通道、不复制闸门); 点位真值 = 示教点库『金手指点2』
+             (2026-10-08 20:58:46 现场实录, 6 帧极差 pos 2e-06m / quat 1e-06)。
+             ⚠️ 本点与 点1 位置只差 2.00mm, 但**姿态差 56.0°** ⇒ 从别处回本点会带一次腕部大角度转身
+             (现场铁律: ≥30° 的姿态变化不能和横移塞进同一段) —— 按之前把这条写在按钮提示里。 -->
+        <button id="b_pt2" onclick="gotoPt2(this)"
+          style="font-size:19px;font-weight:700;border-color:#1f6feb"
+          title="回到示教点『金手指点2』(技能 L2.goto_gold_pt2 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作。注意: 本点与点1 位置仅差 2mm 但姿态差 56°, 从别处过来会带一次腕部大角度转身, 点之前确认末端周围无遮挡">🎯 点2</button>
+        <span id="pt2_msg" style="font-size:13px;opacity:.85"></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
@@ -888,6 +897,17 @@ let _spt1={t0:0,timer:null};
    页面只送**技能 id**: 目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位。 */
 async function gotoPt1(btn){
   return gotoTeachPoint(btn,_pt1,'L2.goto_gold_pt1','『🎯 点1』','#pt1_msg','回到金手指点1');
+}
+/* ═══ 🎯 点2: 回到示教点『金手指点2』(技能 L2.goto_gold_pt2) ═══
+   2026-10-08 老倪: 「记录当前点，增加 金手指点2 按钮」。与 点1 完全同一份 gotoTeachPoint
+   (不新开通道、不复制闸门), 页面只送技能 id。
+   点位真值 = 示教点库『金手指点2』(2026-10-08 20:58:46 现场实录, 源=ROKAE SDK 直读 endInRef,
+   6 帧极差 pos 2e-06m / quat 1e-06)。
+   ⚠️ 与 点1 位置差 2.00mm、**姿态差 56.0°** ⇒ 从别处回本点会带一次腕部大角度转身
+   (现场铁律: ≥30° 的姿态变化必须单独成段, 不能和横移混一段) —— 点之前确认末端周围无遮挡。 */
+let _pt2={t0:0,timer:null};
+async function gotoPt2(btn){
+  return gotoTeachPoint(btn,_pt2,'L2.goto_gold_pt2','『🎯 点2』','#pt2_msg','回到金手指点2');
 }
 /* ═══ 🎯 侧面点0: 回到示教点『侧面点0』(技能 L2.goto_surface_pt0) ═══
    2026-10-01 老倪: 「记录当前的侧面点0，增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0

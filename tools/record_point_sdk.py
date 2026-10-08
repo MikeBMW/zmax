@@ -28,7 +28,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.environ.get("ZMAX_TCP_SDK_SRC",
-                     os.path.join(os.path.expanduser("~"), "zmax_data/rokae_sdk/tcp_out/latest.json"))
+                     # 2026-10-08 修: 老名 ~/zmax_data 已删("老名全删") ⇒ 必须走工程内的 zmax/zmax_data,
+                     #   否则本工具永远读不到真值源、任何点位都录不了(文档写的对、代码写错了)。
+                     os.path.join(os.path.expanduser("~"), "zmax/zmax_data/rokae_sdk/tcp_out/latest.json"))
 STORE = os.environ.get("ZMAX_TAUGHT_POINTS",
                        os.path.join(ROOT, "data/skills/l2_atomic/taught_points.json"))
 HIST_DIR = os.path.join(ROOT, "reports/aoi_points")
