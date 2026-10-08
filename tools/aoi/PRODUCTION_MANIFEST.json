@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08 20:56:00",
+  "generated_at": "2026-10-08 21:58:00",
   "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
   "host": "192.168.23.23",
   "items": [
@@ -28,5 +28,14 @@
       "src_mtime": "2026-10-08 07:57:11",
       "copy_matches_source": true
     }
-  ]
+  ],
+  "files": {
+    "10082": {
+      "src": "zmax_data/aoi_v4/cam_finger_10082_work_v26.py",
+      "bytes": 120339,
+      "sha256_12": "3EB59BDB393B",
+      "judge_ver": "v26-gold-judge-20261008",
+      "note": "判据上一张好图按视角隔离(=判据图总变的正解); 补格/分桶实测证伪后关闭/退化"
+    }
+  }
 }
