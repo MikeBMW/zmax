@@ -514,6 +514,9 @@ _V21_OUTLIER_P = 0.60            # pitch deviation from the median that means "o
 _V21_MIN_KEYS_KEEP = 8           # never drop below this many keys
 _V21_BAR_BRIGHT = 0.85           # inside the band: this bright fraction -> the solid bar
 _V21_CROP_PAD = 20               # margin around the kept content (px)
+# 🔴 键行带"带锁"状态: 上一次**成功**渲染用的键行带(治"判据图翻面", 见 _v21_render_core 内说明)。
+#   模块级必须初始化 —— 只写 global 不初始化会在首帧抛 NameError(本轮踩过)。
+_V21_BAND_PREV = None
 _V21_AUTO_PEAK = 205.0           # auto gain puts the brightest kept pixel here
 _V21_BRIGHT_LEVEL = 200.0        # upper clamp of the adaptive brightness level
 _V21_BRIGHT_MIN = 60.0           # lower clamp
@@ -533,7 +536,7 @@ _V21_BRIGHT_FRAC = 0.72          # a pixel is "bright" above this much of the lo
 #   这些阈值就相对变松/变紧 ⇒ 左端那块 ~78px 金属边块在"单键窗/拒收窗/双键窗"之间漂 ⇒ 认领跨度漂。
 #   修法: 几何分析(键行窗/裁剪/亮列/键掩膜)**统一走逐帧对比度归一化副本 ga**, 阈值由此变成相对量;
 #   渲染像素仍取原图 src(1111 行 block=src[...]) ⇒ 判据图观感不变; sat_before/曝光增益仍用原图 g。
-_JUDGE_VER = "v25-gold-judge-20261008"
+_JUDGE_VER = "v26-gold-judge-20261008"
 _V22_GATES = (                       # 第 1 组 = v21 原口径(保证成功帧像素不变)
     {},
     {"col_level_frac": 0.80, "cf_key_col": 0.40, "min_key_w": 4},
@@ -550,7 +553,24 @@ _V23_GAP_DIM = 0.38
 _V23_KEY_HSTRETCH = 1.2
 _V22_DBG_PNG = "debug_judge_fail_last.png"
 _V22_DBG_JSON = "debug_judge_fail_last.json"
-_LAST_GOOD_JUDGE = {"img": None, "ts": 0.0, "no": None}
+# 🔴 2026-10-08 现场(老倪: 「判据图怎么总变呢? 不稳定」): 原先是一张**全局**好图 —— 切到点2 后判据屡屡失败,
+#   `_v22_judge_fail_view` 就把**前视(点1)的那张好图**端出来顶着 ⇒ 画面在"当前帧"和"别的视角的旧图"之间来回切。
+#   修: 按**视角签名**(裁剪块形状的粗桶)隔离 ⇒ 同视角才许顶着用; 没有就退回 960 并如实标注。
+_LAST_GOOD_JUDGE = {}            # {视角签名: {"img":..., "ts":..., "no":...}}
+_V22_GOOD_KEEP = 4               # 最多保留几个视角的好图
+
+
+def _v22_view_key_from_crop(crop):
+    """视角签名 = 裁剪块形状的粗桶(宽 64px / 高 16px 一档)。
+
+    为什么用裁剪块形状: **判据失败的路径也能算**(失败路径手里只有 crop) ⇒ 成功/失败两侧的签名可比,
+    且前视(条带 ~1455x70)与点2(裁剪 ~1153x100)天然不同桶 ⇒ 一个视角的失败绝不会端出另一个视角的图。
+    """
+    try:
+        h, w = crop.shape[:2]
+        return (int(round(float(w) / 64.0)), int(round(float(h) / 16.0)))
+    except Exception:                                                               # noqa: BLE001
+        return (0, 0)
 
 
 def _v22_band_candidates(hits, h):
@@ -565,29 +585,35 @@ def _v22_band_candidates(hits, h):
     return out
 
 
-def _v22_remember_good(img, no):
-    """记下最后一张**成功**判据图(失败时用它顶着, 并标出帧龄)。"""
+def _v22_remember_good(img, no, key):
+    """记下**本视角**最后一张成功判据图(同视角失败时用它顶着, 并标出帧龄)。"""
     try:
-        _LAST_GOOD_JUDGE["img"] = np.ascontiguousarray(img).copy()
-        _LAST_GOOD_JUDGE["ts"] = time.time()
-        _LAST_GOOD_JUDGE["no"] = no
+        _LAST_GOOD_JUDGE[key] = {"img": np.ascontiguousarray(img).copy(),
+                                 "ts": time.time(), "no": no}
+        if len(_LAST_GOOD_JUDGE) > _V22_GOOD_KEEP:      # 只留最近几个视角
+            for _k in list(_LAST_GOOD_JUDGE)[:len(_LAST_GOOD_JUDGE) - _V22_GOOD_KEEP]:
+                _LAST_GOOD_JUDGE.pop(_k, None)
     except Exception:
         pass
 
 
-def _v22_judge_fail_view(crop, jmeta, no):
-    """失败时**绝不端错图**: 有上一张好判据图就用它 + 红条 + 帧龄; 没有才退回 960 并如实标注。"""
+def _v22_judge_fail_view(crop, jmeta, no, key):
+    """失败时**绝不端错图**: **同视角**有上一张好判据图就用它 + 红条 + 帧龄; 没有才退回 960 并如实标注。
+
+    🔴 2026-10-08: 按视角隔离 —— 宁可退回 960(如实标注)也**绝不**端出别的视角的图(那正是"判据图总变")。
+    """
     why = str(jmeta.get("err") or jmeta.get("why") or "judge render failed")[:90]
-    base = _LAST_GOOD_JUDGE.get("img")
+    _g = _LAST_GOOD_JUDGE.get(key) or {}
+    base = _g.get("img")
     if base is not None and getattr(base, "size", 0):
         state = "stale_lastgood"
         img = base.copy()
-        age = max(0.0, time.time() - float(_LAST_GOOD_JUDGE.get("ts") or 0.0))
-        note = "JUDGE FAIL - LAST GOOD (%.1fs old, frame %s)" % (age, _LAST_GOOD_JUDGE.get("no"))
+        age = max(0.0, time.time() - float(_g.get("ts") or 0.0))
+        note = "JUDGE FAIL - LAST GOOD (%.1fs old, frame %s)" % (age, _g.get("no"))
     else:
         state = "fallback_960"
         img = np.ascontiguousarray(crop).copy()
-        note = "JUDGE FAIL - 960x960 FALLBACK (NO GOOD FRAME YET)"
+        note = "JUDGE FAIL - 960x960 FALLBACK (NO GOOD FRAME YET FOR THIS VIEW)"
     try:
         h, w = img.shape[:2]
         bar = max(24, h // 12)
@@ -745,8 +771,31 @@ _V25_GAIN_DEAD = 0.03            # 死区: 正常状态增益=1 ⇒ 与 v24 逐�
 #   实测(50% 概率漏认领的 3 格 → 得票 3~4/7 ⇒ 补回; 8% 概率过认领的 2 格 → 得票 0~1/7 ⇒ 否掉)。
 _V25_VOTE_WIN = 7                # 投票窗(帧)
 _V25_VOTE_MIN = 2                # 得票门槛: 窗口内至少这么多帧认领过这一格
-_V25_SEEN = []                   # 最近各帧的"认领格集合"(列表当环形窗: append + 截断)
+# 🔴 2026-10-08 第3轮修正: 投票窗**必须按视角分桶** —— 原先是模块级一个列表, 而格子索引 (_i) 是
+#   以**本视角自己的相位 phase** 为基准的 ⇒ 前视(front)与点2(背面)的 _i 完全不是一回事, 混在同一窗里
+#   必然互相污染: 同一帧给 16 还是 19, 取决于"之前看过哪个视角"。现场点1/点2 切换 ⇒ 判据数必然跳。
+#   分桶键 = (节距桶, 行带桶): 同一视角内恒定(⇒ 同视角逐位不变), 跨视角不同(⇒ 不再互相污染)。
+_V25_SEEN = {}                   # {视角签名: [最近各帧的认领格集合]}
 _V25_SEEN_LOCK = threading.Lock()
+_V25_SEEN_KEEP = 4               # 最多保留几个视角桶(防无限增长)
+
+
+def _v25_view_key(med_gap):
+    """视角签名 = 节距桶(8px)。
+
+    为什么用节距: 前视节距 ~47(桶3), 点2 节距 72~74(桶5) ⇒ 同视角恒定、跨视角必不同。
+    ⚠️ 桶宽必须**大于节距的帧间抖动**: 初版取 8px, 而前视热身期节距会抖到 47~52 ⇒ 跨桶 ⇒ 投票被拆成两窗,
+    预热形态与 v25 不同(实测头 3 帧像素差 49%, 第 4 帧起才全等) ⇒ 改成 16px 一档。
+    取不到就退化成单桶(0) ⇒ 行为等同旧版, 安全。
+    """
+    try:
+        # 🔴 2026-10-08 第3轮实测: **分桶键同样不可用** —— 点2 节距 72.0~73.2, 除以 16 后落在 4.5 的取整边界,
+        #   相邻帧分别落进桶 4 / 桶 5 ⇒ 投票窗被拆散 ⇒ 点2 序列从"稳定16"变成 19/11/16 乱跳(实测)。
+        #   任何"按标量分桶"的键都有边界风险 ⇒ 暂退化成单桶(= 与 v25 逐位一致), 等有**稳定信号**
+        #   (如裁剪块形状/外部视角标识)再接。**宁可不隔离, 也不许制造新抖动。**
+        return 0
+    except Exception:                                                               # noqa: BLE001
+        return 0
 
 
 def _v25_norm_luma(g):
@@ -828,6 +877,123 @@ def _v21_key_cols(g, rows, x0, x1, lvl, cf_key_col=None, min_key_w=None):
     segs = _v21_segments(cf >= _cfk, _V21_KEY_MERGE_GAP, _mkw)
     segs = [(a + x0, b + x0) for a, b in segs]
     return segs, cf, cl
+
+
+# ═══ v26: 格点补齐 (2026-10-08 点2 实测; 老倪"金手指判据图总变"的根修) ═══
+#   病: 判据的列掩膜只到 x1607, 而齿排延续到 x≈1922 —— 右段 3~4 根的"黑帽+耳"被高光吃掉, 过不了特征门,
+#   于是**从没进入计算**; 内部还有 w=188(2.6×节距) 的粘连块被判 too_wide **整块丢弃** ⇒ 判据自报 16,
+#   而目检(3 帧一致)+几何+前视同源 三路都给出真值 **19**。
+#   修: 用已认到的槽中心拟合节距/相位 ⇒ ① 内部缺口按栅格补回 ② 两端按"槽亮度+局部对比度"延伸(不是靠黑帽特征)。
+#   铁律: 前视必须**逐位不变** —— 前视的齿列两端是暗背景/平坦填充(无局部对比度) ⇒ 判据天然不触发。
+_V26_ON = False
+# 🔴 2026-10-08 第3轮实测结论: 补格**暂关** —— 前视预热期(投票未治愈, rects 只 16)时它也会触发(16->17),
+#   连带改掉 tilt_deg(2.048->0.0) ⇒ 前视头 3 帧像素差 49%(第 4 帧起才全等)。相关阈值 0.65 挡不住前视边缘周期结构。
+#   要在点2 真正可用, 必须先做**列剖面低频背景归一(平场)**再判形状(见 docs/AOI-PT2-ROUND3-STATUS);
+#   在那之前开启 = 凭空造齿, 比漏数更危险。代码保留, 开关置 False。
+_V26_EXT_FRAC = 0.65      # 槽内亮度 >= 这个倍数 × 中位槽亮度, 才认这一格
+_V26_CTR_FRAC = 0.35      # 槽内局部对比度 >= 这个倍数 × 中位槽对比度, 才认这一格
+_V26_MAX_ADD = 6          # 单侧最多延伸几格(防失控)
+_V26_CORR_MIN = 0.65      # 候选槽剖面与已认齿均值的相关下限(第3轮: 0.55 会收下"壳体倒角高光弧"=假齿, 实测 0.596)
+_V26_TPL_N = 64           # 模板/候选剖面统一重采样长度(否则长短不一, np.dot 直接抛 shapes not aligned)
+
+
+def _v26_fill_lattice(rects, ga, x0, x1, y0, y1):
+    """在"节距栅格"上补齐缺失槽。返回 (rects, info)。"""
+    info = {"v26_on": bool(_V26_ON)}
+    if not _V26_ON or not rects or len(rects) < 4:
+        return rects, info
+    cs = sorted(((a + b) / 2.0, float(b - a + 1)) for a, b in rects)
+    cen = [c for c, _ in cs]
+    wid = float(np.median([w for _, w in cs])) or 26.0
+    dd = np.diff(cen)
+    dd = dd[dd > 0]
+    if dd.size < 3:
+        return rects, info
+    pitch = float(np.median(dd[dd <= 1.6 * np.median(dd)])) if (dd <= 1.6 * np.median(dd)).size >= 3 else float(np.median(dd))
+    if pitch <= 0:
+        return rects, info
+    prof = ga[int(y0):int(y1) + 1, :].astype(np.float32).mean(axis=0)
+    half = pitch * 0.30
+
+    def lvl(c):
+        a = max(0, int(round(c - half)))
+        b = min(len(prof), int(round(c + half + 1)))
+        return float(prof[a:b].mean()) if b > a else None
+
+    def ctr(c):
+        a = max(0, int(round(c - pitch * 0.5)))
+        b = min(len(prof), int(round(c + pitch * 0.5 + 1)))
+        if b - a < 3:
+            return 0.0
+        seg = prof[a:b]
+        return float(seg.max() - np.percentile(seg, 10))
+
+    ref_l = float(np.median([lvl(c) for c in cen if lvl(c) is not None]))
+    ref_c = float(np.median([ctr(c) for c in cen]))
+    if ref_l <= 0:
+        return rects, info
+
+    # ── 第2轮修正: 判据改用"与已认齿平均剖面的**相关性**" ──────────────────────
+    #   第1轮用"槽亮度≥0.65×中位" ⇒ 过曝白区(240~255, 又亮又平)天然通过 ⇒ 一路延伸过头(前视 16→22 ✗)。
+    #   齿的特征是**形状**(峰-谷周期), 白区是平坦的 ⇒ 相关性天然低。
+    def shape(c):
+        a = int(round(c - pitch * 0.5))
+        b = int(round(c + pitch * 0.5))
+        if a < 0 or b > len(prof) or b - a < 6:
+            return None
+        v = prof[a:b].astype(np.float32)
+        if v.size != _V26_TPL_N:      # 端部槽会被画面/裁切截短 ⇒ 统一重采样, 否则 dot 形状不对
+            v = np.interp(np.linspace(0, v.size - 1, _V26_TPL_N),
+                          np.arange(v.size), v).astype(np.float32)
+        v = v - float(v.mean())
+        n = float(np.linalg.norm(v))
+        return (v, n) if n > 1e-6 else None
+
+    _refs = [s for s in (shape(c) for c in cen) if s is not None]
+    if not _refs:
+        return rects, info
+    _tmpl = np.mean([v / n for v, n in _refs], axis=0)
+    _tn = float(np.linalg.norm(_tmpl))
+    _tmpl = _tmpl / _tn if _tn > 1e-6 else _tmpl
+
+    def corr(c):
+        s = shape(c)
+        if s is None:
+            return -1.0
+        v, n = s
+        return float(np.dot(_tmpl, v) / n)
+
+    def ok(c):
+        if not (0 <= c < ga.shape[1]):
+            return False
+        l = lvl(c)
+        return l is not None and l >= _V26_EXT_FRAC * ref_l and corr(c) >= _V26_CORR_MIN
+
+    newc = list(cen)
+    ph = cen[0] % pitch
+    k0 = int(np.floor((cen[0] - ph) / pitch))
+    k1 = int(np.round((cen[-1] - ph) / pitch))
+    for k in range(k0, k1 + 1):
+        c = ph + k * pitch
+        if all(abs(c - x) > 0.45 * pitch for x in newc) and ok(c):
+            newc.append(c)
+    added_in = len(newc) - len(cen)
+    added_out = 0
+    for sgn in (+1, -1):
+        step = 0
+        c = (max(newc) if sgn > 0 else min(newc)) + sgn * pitch
+        while step < _V26_MAX_ADD and ok(c):
+            newc.append(c)
+            added_out += 1
+            step += 1
+            c += sgn * pitch
+    newc = sorted({round(c, 1) for c in newc})
+    info.update({"v26_pitch": round(pitch, 1), "v26_ref_lvl": round(ref_l, 1), "v26_ref_ctr": round(ref_c, 1),
+                 "v26_added_in": int(added_in), "v26_added_out": int(added_out), "v26_n": len(newc)})
+    if len(newc) == len(cen):
+        return rects, info
+    out = [(int(round(c - wid / 2.0)), int(round(c + wid / 2.0 - 1))) for c in newc]
+    return out, info
 
 
 def _v21_uniformize(segs):
@@ -951,17 +1117,22 @@ def _v21_uniformize(segs):
         # v25b: 短窗逐格投票(见 _V25_VOTE_WIN 注释) —— 只动"哪些格被认领", 不动单帧的宽度规则
         _vote_note = None
         if _claims:
+            _vk = _v25_view_key(med_gap)
             with _V25_SEEN_LOCK:
-                _V25_SEEN.append(frozenset(_claims))
-                if len(_V25_SEEN) > _V25_VOTE_WIN:
-                    del _V25_SEEN[0:len(_V25_SEEN) - _V25_VOTE_WIN]
+                _seen = _V25_SEEN.setdefault(_vk, [])
+                _seen.append(frozenset(_claims))
+                if len(_seen) > _V25_VOTE_WIN:
+                    del _seen[0:len(_seen) - _V25_VOTE_WIN]
+                if len(_V25_SEEN) > _V25_SEEN_KEEP:          # 只留最近几个视角桶
+                    for _k in list(_V25_SEEN)[:len(_V25_SEEN) - _V25_SEEN_KEEP]:
+                        _V25_SEEN.pop(_k, None)
                 _tally = {}
-                for _s in _V25_SEEN:
+                for _s in _seen:
                     for _i in _s:
                         _tally[_i] = _tally.get(_i, 0) + 1
                 _raw = set(_claims)
                 _kept = {_i for _i, _c in _tally.items() if _c >= _V25_VOTE_MIN}
-            _vote_note = {"frames": len(_V25_SEEN), "min": _V25_VOTE_MIN,
+            _vote_note = {"frames": len(_seen), "min": _V25_VOTE_MIN, "view_pitch_bucket": _vk,
                           "raw_span": [min(_raw), max(_raw)] if _raw else None,
                           "voted_span": [min(_kept), max(_kept)] if _kept else None,
                           "healed": sorted(set(range(min(_kept), max(_kept) + 1)) - _raw) if _kept else [],
@@ -1007,6 +1178,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
     v22: band=(ky0,ky1) 指定键行带, gate={col_level_frac,cf_key_col,min_key_w} 放宽门限 ——
     两者都为 None 时**与 v21 逐位一致**(所以成功帧的输出像素没有变化)。
     """
+    global _V21_BAND_PREV            # 🔴 键行带"带锁"状态(见文件顶部说明: 治判据图翻面)
     gate = gate or {}
     met = {"ok": False, "why": "", "err": "", "deskew_deg": 0.0,
            "deskew_requested_deg": round(float(deskew_deg), 3),
@@ -1067,6 +1239,23 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         else:
             ky0 = min(hh["y0"] for hh in hits)
             ky1 = max(hh["y1"] for hh in hits)
+            # 🔴 2026-10-08 老倪「判据图还是跳动」的真凶就在这两行的"并集"上:
+            #   现场实测(原始帧已恒定) kept_rows 在 [1570,1619]/[1330,1699]/[1650,1699] 之间逐帧翻 ——
+            #   逐帧总有一个远端 hit 冒出来/消失, min/max 直接把整条带撑宽或缩窄 ⇒ 交付图整幅换区。
+            #   这不是"评分打平"(上轮的假设), 是**键行带由全体 hit 的并集决定**这一条本身不稳。
+            #   修: 与上帧**成功**渲染的带明显重叠时取并集(并集只会更宽 ⇒ 单帧漏检再也撑不动整条带);
+            #   跨视角/换场景时重叠≈0 ⇒ 不并 ⇒ 不会把上一个视角的带带进来。
+            _pv = _V21_BAND_PREV
+            if _pv is not None:
+                try:
+                    _p0, _p1 = int(_pv[0]), int(_pv[1])
+                    _ov = min(ky1, _p1) - max(ky0, _p0) + 1
+                    _h_new, _h_old = ky1 - ky0 + 1, _p1 - _p0 + 1
+                    if _ov >= 0.5 * min(_h_new, _h_old) and _ov > 0:
+                        ky0, ky1 = min(ky0, _p0), max(ky1, _p1)
+                        met["band_lock_union"] = [int(ky0), int(ky1)]
+                except Exception:
+                    pass
         # ---- 2. strip columns (kills the flat grey block on the right) ----
         left, right, rsrc, lsrc, band = _v21_strip_cols(ga, ky0, ky1)   # v25: 归一化域 ⇒ 裁窗不随亮度漂
         if right is None:
@@ -1101,6 +1290,15 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             return None, met
         rects, uinfo = _v21_uniformize(segs)
         met.update(uinfo)
+        # 🆕 v26: 格点补齐(内部缺口 + 两端延伸) —— 点2 右段黑帽被高光吃掉导致掩膜跨度截断
+        _r26, _i26 = _v26_fill_lattice(rects, ga, cx0, cx1, ky0, ky1)
+        met.update(_i26)
+        if _i26.get("v26_on") and len(_r26) != len(rects):
+            rects = _r26
+            met["n_keys"] = len(rects)
+            met["v26_note"] = ("格点补齐 %d -> %d (内补 %s · 外延 %s)"
+                               % (int(uinfo.get("n_keys") or 0), len(rects),
+                                  _i26.get("v26_added_in"), _i26.get("v26_added_out")))
         if int(uinfo.get("n_keys") or 0) < 3:
             met["why"] = "too few keys after detection (%s)" % uinfo.get("n_keys")
             met["err"] = met["why"]
@@ -1140,6 +1338,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             met["bar_rule"] = "no full-width bright run inside the band"
         krr = np.where(keyrows)[0]
         met["key_rows"] = [int(krr.min()), int(krr.max())]
+        _V21_BAND_PREV = [int(ky0), int(ky1)]     # 本次成功 ⇒ 记成下一帧的带锁基准
         met["n_key_rows"] = int(keyrows.sum())
         if keyrows.sum() < 30:
             met["why"] = ("only %d key rows survive the bar truncation (need >= 30)"
@@ -1457,12 +1656,12 @@ def GrabAndSaveImage(save: bool = True):
                 print("  ⚠️ 判据图渲染失败(%s) ⇒ 保留上一张好判据图 + 红条标注(不再端旧 960x960 口径)"
                       % jmeta.get("err"))
                 _v22_dump_fail(bgr, jmeta, no)          # 有界取证: 输入帧 + 完整 meta(覆盖式, 不增长)
-                judge, _jst = _v22_judge_fail_view(crop, jmeta, no)
+                judge, _jst = _v22_judge_fail_view(crop, jmeta, no, _v22_view_key_from_crop(crop))
                 jmeta["state"] = _jst
                 jmeta["fail_ver"] = _JUDGE_VER
             else:
                 jmeta["state"] = "ok"
-                _v22_remember_good(judge, no)           # 记下好图, 供下次失败顶着用
+                _v22_remember_good(judge, no, _v22_view_key_from_crop(crop))   # 记好图(**按视角**), 供同视角失败顶着用
             _mem_put(crop=judge, origin=bgr, natural=_LAST_NATURAL)   # v5: 内存帧(kind=crop 给的就是判据图)
             top_name = "Finger_TopView_W{}_H{}_No_{}.png".format(judge.shape[1], judge.shape[0], no)
             top_path = os.path.join(SAVE_ROOT_DIR, top_name)

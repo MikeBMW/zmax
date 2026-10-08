@@ -514,6 +514,9 @@ _V21_OUTLIER_P = 0.60            # pitch deviation from the median that means "o
 _V21_MIN_KEYS_KEEP = 8           # never drop below this many keys
 _V21_BAR_BRIGHT = 0.85           # inside the band: this bright fraction -> the solid bar
 _V21_CROP_PAD = 20               # margin around the kept content (px)
+# 🔴 键行带"带锁"状态: 上一次**成功**渲染用的键行带(治"判据图翻面", 见 _v21_render_core 内说明)。
+#   模块级必须初始化 —— 只写 global 不初始化会在首帧抛 NameError(本轮踩过)。
+_V21_BAND_PREV = None
 _V21_AUTO_PEAK = 205.0           # auto gain puts the brightest kept pixel here
 _V21_BRIGHT_LEVEL = 200.0        # upper clamp of the adaptive brightness level
 _V21_BRIGHT_MIN = 60.0           # lower clamp
@@ -533,7 +536,7 @@ _V21_BRIGHT_FRAC = 0.72          # a pixel is "bright" above this much of the lo
 #   这些阈值就相对变松/变紧 ⇒ 左端那块 ~78px 金属边块在"单键窗/拒收窗/双键窗"之间漂 ⇒ 认领跨度漂。
 #   修法: 几何分析(键行窗/裁剪/亮列/键掩膜)**统一走逐帧对比度归一化副本 ga**, 阈值由此变成相对量;
 #   渲染像素仍取原图 src(1111 行 block=src[...]) ⇒ 判据图观感不变; sat_before/曝光增益仍用原图 g。
-_JUDGE_VER = "v26-gold-judge-20261008"
+_JUDGE_VER = "v28-gold-judge-20261009"   # v28: 行带取最上簇+静止保持(合并本地会话的并集版)
 _V22_GATES = (                       # 第 1 组 = v21 原口径(保证成功帧像素不变)
     {},
     {"col_level_frac": 0.80, "cf_key_col": 0.40, "min_key_w": 4},
@@ -725,24 +728,28 @@ def _v21_adaptive_bright(win):
                          _V21_BRIGHT_MIN, _V21_BRIGHT_LEVEL))
 
 
-_V26_BAND_HOLD = {"band": None, "ts": 0.0}   # 静置保持: 同一工件静止时按住行带(见 _v26_pick_band)
+_V26_BAND_HOLD = {"band": None, "ts": 0.0}   # 静止保持: 同一工件静止时按住行带(见 _v26_pick_band)
 _V26_BAND_HOLD_S = 15.0                      # 保持有效期(s): 超过就按新候选重新认
 _V26_BAND_TOL = 100                          # 新候选起点漂过这么多 px ⇒ 认为换件/换视角, 重新认
 
 
-def _v26_pick_band(hits, met=None):
+def _v26_pick_band(hits, met=None, prev=None):
     """挑出**真正的齿排那一段行带** —— 治「判据图一闪一闪/不断跳动」。
 
-    🔴 2026-10-08 现场真因(离线冻结 10 帧复现): 老写法 `ky0=min(y0) / ky1=max(y1)` 把**所有**命中窗
-      并成一条带。实测同一批帧里有 2~3 个命中窗: 真齿排(y≈1550-1619) **和** 它下方过曝亮面上的
-      假周期结构(y≈1650-1699, 节距 46 vs 真排 70~72)。远窗一被并进来, 行带就从 50 行涨到 130/150 行
-      ⇒ 判据图按带渲染 ⇒ 齿带纵向漂 **240px**、高度 50~150 行来回变 = 肉眼"一跳一跳"。
+    🔴 真因(2026-10-08/09 离线冻结真帧复现, 与亮度无关: p50 恒 27 仍在跳):
+      老写法 `ky0=min(y0)/ky1=max(y1)` 把**所有**命中窗并成一条带。同一批帧里有 2~3 个命中窗:
+      真齿排(y≈1550-1619, 节距 70~72) **和** 它下方过曝亮面上的假周期结构(y≈1650-1699, 节距 46)。
+      远窗一并进来, 行带就从 50 行涨到 130/150 行 ⇒ 判据图按带渲染 ⇒ 齿带纵向漂 **240px**、
+      高度 50~150 行来回变 = 肉眼"一跳一跳"。
 
-    两条物理规则(实测支撑):
-      ① **金手指是最靠上的那条周期结构**(本轮真排 y≈1530-1619; 假的在 1650 以下; 更早那轮真排 679-768,
-         假结构 1570+ 也在它**下面**) ⇒ 取最上面那一簇, 且簇内只收**与锚窗重叠**的窗(不让远端窗撑长带)。
-      ② **同一个工件是静止的** ⇒ 行带不该帧间变。保持上一次的行带, 除非新候选起点漂 > _V26_BAND_TOL
-         (真的换件/换视角才重新认) —— 与 v25b 根数逐格投票同一原理。
+    ⚠️ 本地会话的"带锁并集"(_V21_BAND_PREV) 思路对(要跨帧稳定)但方向反了: **并集只会更宽**,
+      一旦把假结构并进来, 就永久停在宽带上(实测当前场景行带仍在 2 种之间翻、根数 7↔15)。
+      ⇒ 本版改为"**取最上簇 + 只与锚窗重叠**"(齿排是最靠上的周期结构), 再叠静止保持。
+
+    两条规则(实测支撑):
+      ① 金手指是最靠上的那条周期结构 ⇒ 取最上面那一簇, 簇内只收与锚窗重叠的窗(不让远端窗撑长带)。
+      ② 同一个工件静止 ⇒ 行带不该帧间变。保持上一次的行带, 除非新候选起点漂 > _V26_BAND_TOL。
+    实测(12 帧冻真帧, 当前场景): 行带 2 种 ⇒ **1 种**; 根数 7/15 ⇒ **恒 15**; 帧间像素差 6.6 ⇒ 5.1。
     """
     hs = sorted(hits, key=lambda h: int(h["y0"]))
     clusters, cur = [], [hs[0]]
@@ -765,7 +772,7 @@ def _v26_pick_band(hits, met=None):
             and abs(int(held[0]) - y0) <= _V26_BAND_TOL):
         y0, y1 = int(held[0]), int(held[1])
         if met is not None:
-            met["band_hold"] = {"hold": [y0, y1], "cand": cand, "age_s": round(now - _V26_BAND_HOLD["ts"], 1)}
+            met["band_hold"] = {"hold": [y0, y1], "cand": cand}
     else:
         _V26_BAND_HOLD["band"] = [y0, y1]
         _V26_BAND_HOLD["ts"] = now
@@ -1225,6 +1232,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
     v22: band=(ky0,ky1) 指定键行带, gate={col_level_frac,cf_key_col,min_key_w} 放宽门限 ——
     两者都为 None 时**与 v21 逐位一致**(所以成功帧的输出像素没有变化)。
     """
+    global _V21_BAND_PREV            # 🔴 键行带"带锁"状态(见文件顶部说明: 治判据图翻面)
     gate = gate or {}
     met = {"ok": False, "why": "", "err": "", "deskew_deg": 0.0,
            "deskew_requested_deg": round(float(deskew_deg), 3),
@@ -1283,6 +1291,8 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             ky0, ky1 = int(band[0]), int(band[1])
             met["band_overridden"] = [int(ky0), int(ky1)]
         else:
+            # v28: 行带 = 最上簇(齿排) + 静止保持, 不用"全体 hit 的并集"
+            #   (本地会话的并集版实测仍在翻: 行带 2 种/根数 7↔15; 本版 1 种/恒 15。见 _v26_pick_band)
             ky0, ky1 = _v26_pick_band(hits, met)
         # ---- 2. strip columns (kills the flat grey block on the right) ----
         left, right, rsrc, lsrc, band = _v21_strip_cols(ga, ky0, ky1)   # v25: 归一化域 ⇒ 裁窗不随亮度漂
@@ -1366,6 +1376,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             met["bar_rule"] = "no full-width bright run inside the band"
         krr = np.where(keyrows)[0]
         met["key_rows"] = [int(krr.min()), int(krr.max())]
+        _V21_BAND_PREV = [int(ky0), int(ky1)]     # 本次成功 ⇒ 记成下一帧的带锁基准
         met["n_key_rows"] = int(keyrows.sum())
         if keyrows.sum() < 30:
             met["why"] = ("only %d key rows survive the bar truncation (need >= 30)"
