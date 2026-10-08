@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.18.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,10 +11284,9 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.18.5: 删掉自动抬升逻辑(现场三次碰撞的根因) —— ① l2_daemon.py `adapt_point` 由「抬到该点高度」改为「需上升⇒整单拒发」，必升豁免归零；② 空间点1~7 由老倪重记为**同一平面 z=0.1727** ⇒ 点间移动=纯横移, 零上升；③ SDK 腿速上限 60→150mm/s(实测≈15mm/s)。
         # v5.18.4: 运动安全三件套(2026-10-08 一天三起近失事故后收口) —— ① 安全区天花板闸: 老倪两次逐字「给你的空间点1～点7, 就是安全区域, 你要参考, 不要上升的太高」⇒ 天花板 = 7 点最高 z + 50mm(0.3885); 执行器每阶段硬拦(目标超则拒发, 单段也拦) + 代理扫掠闸门每 0.15s 真值比对(包络 z 上限 0.6987→0.3885); 已做故意违规实测(临时压到 0.20)确认拒发且臂零位移。 ② MoveJ 自愈默认关: 事故根因 = MoveL 判 50102 奇异点后被 MoveJ 接管, 关节插值不受 Δz 约束 ⇒ 臂自己往高处摆(老倪急停); 现只有显式 ZMAX_MOVEJ_RETRY=1 才开, 升高类永不许开(唯一出路 = 停 + 问人)。 ③ 回点配方改三段单轴: 斜线(space1→space7 Δ=(-11.5,+101.3,+86.0)mm)穿奇异构型被 50102 拒 ⇒ 拆成「竖直抬到 max(当前z, 目标点z)+5mm → 保持高度横移 → 竖直落到位」; 横移余量 40→5mm(第三次近失根因: 目标只高 66mm 却抬 106.5mm, 40mm 全是无谓上升, 老倪当场急停)。 另: 姿态差 ≥0.3° 一律走 abs(带 rx,ry,rz)[修「绕 XYZ 三轴旋转不动」+「J6 自转只平移」], 7 空间点姿态对齐 space1(旧姿态差 164° 会甩腕撞 50102), 建图移动速度 120→1000。 全部改动配事故档 docs/INCIDENT-20261008-*.md + 台账 + 碰撞库(8 条)。
                 # v5.18.3: 空间点回点提速+去绕远(实测) —— ① SDK 腿速度上限 30→60mm/s(8793 页 1000 档实测 3.0→5.8mm/s; 换算实测 1/10, 等待窗口按封顶后标称对齐, 根因=高档被腿内 min() 夹住导致等待上限高估 56%) ② goto_space1~7 去「盲抬 50mm」改单段直线到位(路径 533→284mm, 根因=固定 +50mm 与点位/上下无关, 2026-10-08 从 0.4096 盲抬到 0.4596 撞上方净空) ③ 8793 增 1000/2000 速档按钮 + 实测换算提示(旧写 0.0999 偏大 33 倍)
 # v5.18.2: 全局回归: 修掉家目录整合的 5 种老路径写法死角(SDK 执行腿整体失效→页面报已下发但机器人不动) + 相机守卫误判每5分钟重启站台 + 落功能回归/死角审计脚本

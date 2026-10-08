@@ -25,9 +25,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 SP = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
 
-LIFT_MARGIN_MM = 5.0    # 2026-10-08 第三次事故更正: 40mm 余量在「目标只高一点点」时就是无谓上升
-                        # (实测 +106.5mm 里 40mm 多余) ⇒ 压到 5mm。横移高度 = max(当前z, 目标点z)+5mm
-
+LIFT_MARGIN_MM = 0.0    # 🔴 2026-10-08 老倪第四次纠正: 「不要总先上升, 都好几次了, 记住」
+                        #    抬到"转移高度"这个配方本身就是错的 ⇒ 余量归零; 竖直只走到
+                        #    **该点自身的高度**(dz_mm 给一个大负数, 让 max(cur+dz, point+margin) 恒等于 point_z)
 
 def build_skill(n, pname):
     """四段: ①就地抬升(自适应) ②保持当前高度横移 ③降到正上方 30mm ④落到位(禁下压)"""
@@ -44,8 +44,8 @@ def build_skill(n, pname):
         "guard": {"max_lin_mm": 1500.0, "z_floor_point": pname, "z_floor_offset_mm": 0},
         "steps": [
             {
-                "stage": 1, "rel": True, "dz_mm": 5.0,
-                "adapt_point": True, "adapt_margin_mm": LIFT_MARGIN_MM,
+                "stage": 1, "rel": True, "dz_mm": -1000.0,
+                "adapt_point": True, "adapt_margin_mm": 0.0,
                 "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
                 "guard": {"dz_down_limit_mm": 400},
                 "tol_mm": 1.0, "timeout_s": 120, "dwell_s": 1.5,

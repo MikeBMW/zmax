@@ -1,0 +1,141 @@
+{
+ "version": "v1",
+ "note": "空间点 1~7 (老倪 2026-10-01: 与号位独立的 7 个空间点; 按真机 /robot/tcp_pose 实测记录)",
+ "frame": "base_link",
+ "points": {
+  "space1": {
+   "pos": [
+    0.601371,
+    0.0328683,
+    0.172671
+   ],
+   "quat": [
+    0.76589,
+    0.0758982,
+    0.615735,
+    0.1688858
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:33:11",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 6,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  },
+  "space2": {
+   "pos": [
+    0.601371,
+    -0.0740634,
+    0.1726716
+   ],
+   "quat": [
+    0.76589,
+    0.0758984,
+    0.615735,
+    0.1688862
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:33:22",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 2e-06,
+   "spread_quat": 1e-06
+  },
+  "space3": {
+   "pos": [
+    0.516219,
+    -0.0740628,
+    0.172671
+   ],
+   "quat": [
+    0.76589,
+    0.0758982,
+    0.6157348,
+    0.1688858
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:33:30",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  },
+  "space4": {
+   "pos": [
+    0.5162194,
+    -0.1417648,
+    0.1726712
+   ],
+   "quat": [
+    0.76589,
+    0.075898,
+    0.615735,
+    0.168886
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:33:38",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 0.0
+  },
+  "space5": {
+   "pos": [
+    0.5976262,
+    -0.1417656,
+    0.172672
+   ],
+   "quat": [
+    0.765889,
+    0.075898,
+    0.6157358,
+    0.168887
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:33:55",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  },
+  "space6": {
+   "pos": [
+    0.597626,
+    -0.048077,
+    0.1726715
+   ],
+   "quat": [
+    0.7658898,
+    0.0758987,
+    0.6157352,
+    0.1688863
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:34:12",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 6,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  },
+  "space7": {
+   "pos": [
+    0.5285605,
+    -0.0480768,
+    0.172671
+   ],
+   "quat": [
+    0.76589,
+    0.0758987,
+    0.615735,
+    0.168886
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 11:34:19",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 6,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  }
+ },
+ "updated_at": "2026-10-08 11:34:19"
+}

@@ -768,17 +768,17 @@ def plan_stage(sk, st, pts, spec, cur):
         _apz = (pts.get(_apn) or {}).get("pos", [None, None, None])[2]
         if _apz is None:
             return {"err": "自适应抬升(adapt_point): 参考点位 %s 不在点位库" % _apn}
-        _amg = float(st.get("adapt_margin_mm", 2.0))
+        _amg = float(st.get("adapt_margin_mm", 0.0))
         _aneed = float(_apz) + _amg / 1000.0
-        if t[2] < _aneed - 1e-9:
-            log("🧗 自适应抬升(adapt_point): z %.4f → %.4f (抬到 %s(z=%.4f)+%.0fmm; 单靠 dz_mm=%.0f 只到 %.4f, "
-                "会低于该点 %.1fmm 而被 z_floor 拒发)"
-                % (t[2], _aneed, _apn, float(_apz), _amg, float(st.get("dz_mm", 0.0)),
-                   float(cur[2]) + float(st.get("dz_mm", 0.0)) / 1000.0, (_aneed - t[2]) * 1000.0))
-            t[2] = _aneed
-        else:
-            log("🧗 自适应抬升(adapt_point): 当前 z=%.4f 已不低于 %s(z=%.4f)+%.0fmm ⇒ 走常规 dz_mm=%.0f"
-                % (t[2], _apn, float(_apz), _amg, float(st.get("dz_mm", 0.0))))
+        # 🔴🔴🔴 2026-10-08 现场指令「不要抬升, 不要抬升, 不要抬升 —— 马上删掉上升的逻辑」:
+        #   这里原是 t[2] = _aneed —— 自动把 z 抬到该点高度(今天三次碰撞全出在这一句)。
+        #   现已删除: 只要需要往上够到该点, **整单拒发**, 绝不自动抬升; 由人工抬升后再点。
+        if _aneed > float(cur[2]) + 0.005:
+            return {"err": "🚫 拒发(上升逻辑已删除): 去 %s 需要上升 %.0fmm (当前 z=%.4f < 该点 z=%.4f)"
+                           " —— 请人工把臂抬到该点高度以上, 再点这个点"
+                           % (_apn, (_aneed - float(cur[2])) * 1000.0, float(cur[2]), float(_apz))}
+        t[2] = _aneed       # 只允许 持平 或 下降, 永不上抬
+        log("🧭 只降不升(adapt_point): z %.4f → %.4f (到 %s 高度)" % (float(cur[2]), t[2], _apn))
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
     lm = st.get("local_mm")
@@ -1052,8 +1052,11 @@ def run_stages(sk, spec, chan, pts):
             try:
                 _climb = (float(pl["pos"][2]) - float(cur[2])) * 1000.0
                 _lim = float(spec.get("climb_limit_mm", st.get("climb_limit_mm", 100.0)))
-                # 🚀 加上本计划的「到该点位本身必升」豁免(见上面 _adapt_exempt_mm 注释)
-                _lim += _adapt_exempt_mm
+                # 🔴 2026-10-08 老倪第四次纠正「不要总先上升, 都好几次了, 记住」⇒
+                #   取消「到该点位本身必升」豁免(原: _lim += _adapt_exempt_mm):
+                #   任何净上升 > climb_limit_mm(现 5mm) 一律拒发; 只有调用方**显式**给
+                #   allow_climb_mm 才放行(= 上升必须先问人)。豁免量只留着打提示。
+                _lim += 0.0   # 🔴 2026-10-08 上升逻辑已删除: 不再给「到该点位本身必升」豁免
                 _allow = float(spec.get("allow_climb_mm", 0.0) or 0.0)
                 if _climb > max(_lim, _allow) + 1e-6:
                     log("🛡🛡 阶段 %d/%d 拒发: 相对计划起点抬升 %.0fmm > 上限 %.0fmm 「现场规矩: 升高不要超过 10cm」"
