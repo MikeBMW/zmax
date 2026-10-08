@@ -514,6 +514,9 @@ _V21_OUTLIER_P = 0.60            # pitch deviation from the median that means "o
 _V21_MIN_KEYS_KEEP = 8           # never drop below this many keys
 _V21_BAR_BRIGHT = 0.85           # inside the band: this bright fraction -> the solid bar
 _V21_CROP_PAD = 20               # margin around the kept content (px)
+# 🔴 键行带"带锁"状态: 上一次**成功**渲染用的键行带(治"判据图翻面", 见 _v21_render_core 内说明)。
+#   模块级必须初始化 —— 只写 global 不初始化会在首帧抛 NameError(本轮踩过)。
+_V21_BAND_PREV = None
 _V21_AUTO_PEAK = 205.0           # auto gain puts the brightest kept pixel here
 _V21_BRIGHT_LEVEL = 200.0        # upper clamp of the adaptive brightness level
 _V21_BRIGHT_MIN = 60.0           # lower clamp
@@ -1175,6 +1178,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
     v22: band=(ky0,ky1) 指定键行带, gate={col_level_frac,cf_key_col,min_key_w} 放宽门限 ——
     两者都为 None 时**与 v21 逐位一致**(所以成功帧的输出像素没有变化)。
     """
+    global _V21_BAND_PREV            # 🔴 键行带"带锁"状态(见文件顶部说明: 治判据图翻面)
     gate = gate or {}
     met = {"ok": False, "why": "", "err": "", "deskew_deg": 0.0,
            "deskew_requested_deg": round(float(deskew_deg), 3),
@@ -1235,6 +1239,23 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         else:
             ky0 = min(hh["y0"] for hh in hits)
             ky1 = max(hh["y1"] for hh in hits)
+            # 🔴 2026-10-08 老倪「判据图还是跳动」的真凶就在这两行的"并集"上:
+            #   现场实测(原始帧已恒定) kept_rows 在 [1570,1619]/[1330,1699]/[1650,1699] 之间逐帧翻 ——
+            #   逐帧总有一个远端 hit 冒出来/消失, min/max 直接把整条带撑宽或缩窄 ⇒ 交付图整幅换区。
+            #   这不是"评分打平"(上轮的假设), 是**键行带由全体 hit 的并集决定**这一条本身不稳。
+            #   修: 与上帧**成功**渲染的带明显重叠时取并集(并集只会更宽 ⇒ 单帧漏检再也撑不动整条带);
+            #   跨视角/换场景时重叠≈0 ⇒ 不并 ⇒ 不会把上一个视角的带带进来。
+            _pv = _V21_BAND_PREV
+            if _pv is not None:
+                try:
+                    _p0, _p1 = int(_pv[0]), int(_pv[1])
+                    _ov = min(ky1, _p1) - max(ky0, _p0) + 1
+                    _h_new, _h_old = ky1 - ky0 + 1, _p1 - _p0 + 1
+                    if _ov >= 0.5 * min(_h_new, _h_old) and _ov > 0:
+                        ky0, ky1 = min(ky0, _p0), max(ky1, _p1)
+                        met["band_lock_union"] = [int(ky0), int(ky1)]
+                except Exception:
+                    pass
         # ---- 2. strip columns (kills the flat grey block on the right) ----
         left, right, rsrc, lsrc, band = _v21_strip_cols(ga, ky0, ky1)   # v25: 归一化域 ⇒ 裁窗不随亮度漂
         if right is None:
@@ -1317,6 +1338,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             met["bar_rule"] = "no full-width bright run inside the band"
         krr = np.where(keyrows)[0]
         met["key_rows"] = [int(krr.min()), int(krr.max())]
+        _V21_BAND_PREV = [int(ky0), int(ky1)]     # 本次成功 ⇒ 记成下一帧的带锁基准
         met["n_key_rows"] = int(keyrows.sum())
         if keyrows.sum() < 30:
             met["why"] = ("only %d key rows survive the bar truncation (need >= 30)"
