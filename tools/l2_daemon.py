@@ -752,6 +752,14 @@ def plan_stage(sk, st, pts, spec, cur):
     #   ⚠️ 只有显式写 keep_z 的段走这条路 ⇒ 现有技能行为零变化。
     if st.get("keep_z"):
         _kz = float(cur[2]) + float(st.get("dz_mm", 0.0)) / 1000.0
+        # 🔴 2026-10-08 现场卡死根因: 参考点 z=0.1727, 而臂实际停在 0.1726(编码器/重力沉降 0.1mm)
+        #   ⇒ "保持当前高度"取到 0.1726 < z_floor(0.1727) ⇒ 整段横移被判"下压"拒发, 页面表现为"点了不动"。
+        #   修法: 横移高度不得低于参考点; 需要往上贴时**最多微抬 5mm**(只补亚毫米级噪声, 不做真抬升)。
+        _raw = _kz
+        if t[2] > _kz:
+            _kz = min(float(t[2]), float(cur[2]) + 0.005)
+            log("🧭 横移高度贴到参考点: %.4f → %.4f (仅 %.2fmm, 避免被 z_floor 判下压)"
+                % (_raw, _kz, (_kz - float(cur[2])) * 1000.0))
         log("🧭 横移保持当前高度(keep_z): 点位 z=%.4f → 采用当前 z=%.4f%+.0fmm" % (t[2], _kz, float(st.get("dz_mm", 0.0))))
         t[2] = _kz
     else:
@@ -806,7 +814,9 @@ def plan_stage(sk, st, pts, spec, cur):
             return {"err": "z_floor 参考点 %s 不在点位库" % zf, "pos": t}
         _off = float(g.get("z_floor_offset_mm", 0.0))
         floor = pts[zf]["pos"][2] + _off / 1000.0
-        if t[2] < floor - 1e-6:
+        # 🔴 2026-10-08: 容差 1e-6m(0.001mm) 太苛刻 —— 编码器/沉降 0.1mm 就会把正常横移判成"下压"而整段拒发。
+        #   放宽到 0.5mm(物理上等于没有下压), 真正的"攻进夹具"是毫米级以上, 红线不受影响。
+        if t[2] < floor - 5e-4:
             _bel = (floor - t[2]) * 1000.0
             _al = spec.get("allow_below_mm")
             # 🛡 2026-10-01 老倪现场(空间1~7 记在空中)"从下方进场"修正:
