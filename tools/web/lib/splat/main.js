@@ -990,11 +990,11 @@ async function main() {
                 );
                 // inv[13] = preY;
             } else {
-                let d = 4;
-                inv = translate4(inv, 0, 0, d);
-                inv = rotate4(inv, -(e.deltaX * scale) / innerWidth, 0, 1, 0);
-                inv = rotate4(inv, (e.deltaY * scale) / innerHeight, 1, 0, 0);
-                inv = translate4(inv, 0, 0, -d);
+                // 🖱 Z-MAX 2026-10-08 老倪: 「滚轮怎么不能放大或缩小?」—— 出厂这里把**滚轮**做成
+                //   轨道旋转(转角度), 缩放在 ctrl+滚轮 且方向/步长不适合本场景(一格飞出去)。
+                //   现改: 平滚 = 缩放(前/后), 步长 = 当前相机距离的 ~6%/格; 转角度仍用左键拖拽。
+                let _cur = Math.abs(inv[14]) || 1;
+                inv = translate4(inv, 0, 0, ((e.deltaY * scale) * 0.06 * _cur) / 100);
             }
 
             viewMatrix = invert4(inv);

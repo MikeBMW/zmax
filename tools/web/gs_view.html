@@ -79,7 +79,7 @@ function boot(name){
     setMeta('高斯 '+n.toLocaleString()+' · 已居中(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
             ' · 半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m · 相机距离 '+dist.toFixed(2)+'m)');
     var u=URL.createObjectURL(new Blob([ab],{type:'application/octet-stream'}));
-    try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u));}catch(e){}
+    try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u)+location.hash);  /* ⚠️ 必须带上 location.hash: 少了它查看器读不到视角矩阵 ⇒ 自动轮播开启 ⇒ 场景自己乱转 */}catch(e){}
     loadViewer();
   }).catch(function(e){ setMeta('资产拉取失败: '+e); loadViewer(); });
 }

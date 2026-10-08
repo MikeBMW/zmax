@@ -276,8 +276,23 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span id="gs_msg" style="font-size:13px;opacity:.9">点「▶ 开始建图」= L5 指导选点 + 自动跑点采集建图</span>
       </div>
       <div style="padding:8px 10px 10px">
-        <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
-        <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景 —— 点「▶ 开始建图」</div>
+        <!-- 🧊 2026-10-08 老倪: 「做到这个 3DGS 窗口里, 要可以用鼠标变化场景角度, 可以拖动」
+             ⇒ 该窗口默认就是**可交互的实景查看器**(内嵌 /gsview, 同域 so 鼠标事件直通拖拽/缩放/平移);
+             原来的静态渲染图退成可切换的「🖼 参考渲染图」对照。 -->
+        <div class="row" style="gap:8px;align-items:center;padding:0 0 6px">
+          <button id="gslivebtn" style="font-size:13px;font-weight:700"
+            onclick="document.getElementById('gs_live').style.display='block';document.getElementById('gs_imgwrap').style.display='none'">🎥 实景查看器</button>
+          <button id="gsimgbtn" style="font-size:13px"
+            onclick="document.getElementById('gs_live').style.display='none';document.getElementById('gs_imgwrap').style.display='block'">🖼 参考渲染图</button>
+          <a href="gsview" target="_blank" rel="noopener" style="font-size:12px;color:#8b949e">↗ 新窗口打开</a>
+          <span class="meta" id="gs_live_hint" style="font-size:11.5px;color:#8b949e">鼠标左键拖=转角度 · 滚轮=缩放 · 右键拖=平移</span>
+        </div>
+        <iframe id="gs_live" src="gsview" title="3DGS 实景查看器(可拖拽转角度)"
+          style="width:100%;height:56vh;min-height:420px;border:1px solid #30363d;border-radius:6px;background:#05070a"></iframe>
+        <div id="gs_imgwrap" style="display:none">
+          <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
+          <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景 —— 点「▶ 开始建图」</div>
+        </div>
       </div>
     </div>
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
