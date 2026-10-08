@@ -205,8 +205,10 @@ for s in $(systemctl list-unit-files 'zmax-*' 'aoi-*' --no-pager | awk '/enabled
 ss -ltnp | grep -E '8791|8793|8790|8891|8893'      # 8793=工位总览=动作授权唯一入口, 不可省
 pgrep -af '<手工进程名>'                            # 自启单元管不到的手工进程(推流/采样/桥)
 python3 tools/cam_dev_resolve.py                    # 相机按卡名实测解析(重启后设备号会变)
-ls -l /home/ubuntu/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
-                                                    # ⚠️ 真实路径在 zmax_data 下, 不在工程根; 容器内 t 字段比宿主早 8h(NTP回拨), 只看文件龄不看 t
+ls -l /home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
+                                                    # ⚠️ 家目录整合后的真实路径 = `~/zmax/zmax_data/...` (**不是** `~/zmax_data/...`):
+                                                    #   按老家目录路径探会得到"缺 latest.json" ⇒ 误报"真值没在刷"(实测踩过);
+                                                    #   容器内 t 字段比宿主早 8h(NTP回拨), 只看文件龄不看 t
 ip -br a; ping -c1 -W2 <Orin>; curl -s -o /dev/null -w '%{http_code}' http://<工控机>:10082/last_result
 nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h /
 ```
