@@ -18,11 +18,54 @@
 import os
 import sys
 
-_SRC = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+
+def _src_candidates():
+    """工程根 (`<repo>/src`) 的候选表 —— 冻结包与源码两种布局都要能命中。
+
+    🔴 2026-10-08 定因 (老倪 Windows 版起不来): 冻结包里 `__file__` = `_MEIPASS/node_logic.py`,
+       老写法 `dirname(__file__)/../../src` 指到**临时目录的父级** → `import lerobot` 抛
+       `ModuleNotFoundError: No module named 'lerobot'`, 而这条导入在 studio.py 启动第 258 行,
+       整个控制台**双击即崩**(不是某个按钮坏)。CI 已用 --add-data 把 `src/lerobot/engineering`
+       放进 `_MEIPASS/src/...`, 所以冻结时按候选表找, 不再靠相对上溯。
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    meipass = getattr(sys, "_MEIPASS", "") or ""
+    cands = []
+    if getattr(sys, "frozen", False):
+        cands += [os.path.join(here, "src"),                       # --add-data 与本地模块同级
+                  os.path.join(meipass, "src"),                    # 标准冻结布局
+                  os.path.join(meipass, "..", "src"),
+                  os.path.abspath(os.path.join(here, "..", "..", "src"))]
+    else:
+        cands.append(os.path.abspath(os.path.join(here, "..", "..", "src")))
+    env = os.environ.get("ZMAX_SRC_DIR")
+    if env:                                                        # 现场兜底: 手动指定工程根
+        cands.insert(0, env)
+    return cands
+
+
+def _pick_src():
+    for c in _src_candidates():
+        if c and os.path.isdir(os.path.join(c, "lerobot", "engineering")):
+            return c
+    return _src_candidates()[0]
+
+
+_SRC = _pick_src()
 if _SRC not in sys.path:
     sys.path.append(_SRC)        # 追加而非插最前: 不改动 tools/gui 既有的模块解析顺序
 
-import lerobot.engineering as _E  # noqa: E402
+try:
+    import lerobot.engineering as _E  # noqa: E402
+except ModuleNotFoundError as _e:
+    raise ModuleNotFoundError(
+        "控制台缺少工程包 lerobot.engineering (141 条节点逻辑 + 画布真源都在里面)。\n"
+        f"  尝试过的工程根: {_src_candidates()}\n"
+        "  · 源码运行: 确认仓库内存在 src/lerobot/engineering/\n"
+        "  · 打包版 (exe/.app): 当前包是用**旧打包配置**构建的 (未随包附带 src/lerobot/engineering)\n"
+        "    → 请升级到修复版 exe (打包已加 --add-data src/lerobot/engineering)\n"
+        f"  原始错误: {_e}"
+    ) from _e
 
 for _n in dir(_E):
     if not _n.startswith("__"):

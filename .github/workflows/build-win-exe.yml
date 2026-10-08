@@ -125,7 +125,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -135,16 +135,20 @@ jobs:
           NC=$(grep -c "sawyer_peg_insertion_side.xml" listing.txt || true)
           N4=$(grep -c "sawyer_peg_insertion_side_l4.xml" listing.txt || true)
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
+          # 🔴 2026-10-08: 工程包 (节点逻辑/画布真源) 必须在包里 —— 缺了表现为 exe 双击即崩
+          #   (studio→simulink_module→node_logic "No module named 'lerobot'"), 而旧核验只查引擎资产 ⇒ 漏放行。
+          NE=$(grep -c "lerobot.engineering.nodes.library.py" listing.txt || true)
+          NJ=$(grep -c "state_space_obs.json" listing.txt || true)
           NW=$(grep -c "l4_mani_predictor_v5.pt" listing.txt || true)
           NH=$(grep -c "l4_yaw_head_grasp_dz_v2.pt" listing.txt || true)
           # 🐛 2026-09-15: mujoco 运行时库 + 插件 DLL 必须都在 (缺了 owner 就是"点运行就崩");
           #   注意这只守卫"文件在不在包里"——真正能否 load 由下面的冻结核验判 (v5.6.4 就是文件齐全仍崩)
           MD=$(grep -c 'mujoco.mujoco.dll' listing.txt || true)
           PD=$(grep -c 'mujoco.plugin.actuator.dll' listing.txt || true)
-          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH · mujoco 运行时库: $MD · mujoco 插件: $PD"
+          echo "exe 内 metaworld 资产条目: $NM · stock peg XML: $NC · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 工程包(节点逻辑): $NE · 画布真源: $NJ · 流形预测权重: $NW · yaw 试抓头: $NH · mujoco 运行时库: $MD · mujoco 插件: $PD"
           grep -m3 "sawyer_peg_insertion_side" listing.txt || true
-          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ] || [ "$MD" -lt 1 ] || [ "$PD" -lt 1 ]; then
-            echo "::error::metaworld/mujoco 资产未打进 exe (--collect-all metaworld/mujoco 或 L4 场景 XML 预生成缺失)"
+          if [ "$NC" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NE" -lt 1 ] || [ "$NJ" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ] || [ "$MD" -lt 1 ] || [ "$PD" -lt 1 ]; then
+            echo "::error::metaworld/mujoco/工程包 资产未打进 exe (--collect-all metaworld/mujoco, --add-data src/lerobot/engineering, 或 L4 场景 XML 预生成缺失)"
             exit 1
           fi
           ls -la tools/gui/dist/Z-MAX_Console.exe
@@ -226,7 +230,7 @@ jobs:
       - name: "Build .exe 基线 (无 --runtime-hook; collect 参数与正式构建同口径, 只少一个钩子)"
         run: |
           cd tools\gui
-          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all pyqtgraph --collect-all OpenGL studio.py
+          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all pyqtgraph --collect-all OpenGL --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" studio.py
       - name: "冻结核验 (基线, 期望失败 = 复现 v5.6.4 崩)"
         shell: bash
         run: |
@@ -352,6 +356,7 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/tools/gen_l4_demo_video.py:." --add-data "docs_sync.py:." \
             --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/engineering:src/lerobot/engineering" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/calibration:src/lerobot/calibration" \
@@ -377,11 +382,14 @@ jobs:
           N=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side.xml" | wc -l)
           N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
           NG=$(find tools/gui/dist/Z-MAX_Console.app -name "gen_l4_demo_video.py" | wc -l)
+          # 🔴 2026-10-08: 工程包 (节点逻辑 library.py + 画布真源) 必须在 .app 内
+          NE=$(find tools/gui/dist/Z-MAX_Console.app -path "*lerobot/engineering/nodes/library.py" | wc -l)
+          NJ=$(find tools/gui/dist/Z-MAX_Console.app -name "state_space_obs.json" | wc -l)
           NW=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_mani_predictor_v5.pt" | wc -l)
           NH=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_yaw_head_grasp_dz_v2.pt" | wc -l)
-          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 流形预测权重: $NW · yaw 试抓头: $NH"
-          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ]; then
-            echo "::error::metaworld assets 未打进 .app (--collect-all metaworld 或 L4 场景 XML 预生成缺失)"
+          echo "app 内 metaworld stock XML: $N · L4 场景 XML: $N4 · L4 生成器脚本: $NG · 工程包(节点逻辑): $NE · 画布真源: $NJ · 流形预测权重: $NW · yaw 试抓头: $NH"
+          if [ "$N" -lt 1 ] || [ "$N4" -lt 1 ] || [ "$NG" -lt 1 ] || [ "$NE" -lt 1 ] || [ "$NJ" -lt 1 ] || [ "$NW" -lt 1 ] || [ "$NH" -lt 1 ]; then
+            echo "::error::metaworld assets / 工程包 未打进 .app (--collect-all metaworld 或 --add-data src/lerobot/engineering 缺失)"
             exit 1
           fi
 

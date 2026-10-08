@@ -78,6 +78,24 @@ if "--engine-selftest" in sys.argv:
         except Exception as _re:
             _sel["render_ok"] = False
             _sel["render_err"] = f"{type(_re).__name__}: {_re}"
+
+        # 🔴 2026-10-08 打包回归闸 (老倪 Windows exe 双击即崩):
+        #   studio.py:258 → simulink_module:26 → node_logic:25 `No module named 'lerobot'`
+        #   —— 09-28 节点逻辑迁进 src/lerobot/engineering 后, 打包配置没跟着带这个包,
+        #   而旧的冻结核验只 import mujoco/metaworld, **完全没覆盖 GUI 启动导入链** ⇒ 一路绿灯发出坏包。
+        #   这里真跑一遍启动必经的导入链: 缺包/路径不对 → 核验失败, 不允许发版。
+        import node_logic as _sel_nl
+        _sel["node_logic_keys"] = len(getattr(_sel_nl, "NODE_LOGIC", {}) or {})
+        _sel["logic_home"] = os.path.basename(getattr(_sel_nl, "LOGIC_HOME", "") or "")
+        _sel["canvas_json"] = os.path.basename(getattr(_sel_nl, "CANVAS_JSON", "") or "")
+        import simulink_module as _sel_sm  # noqa: F401  (崩溃链的中间环: PyQt 在冻结包里也要能 import)
+        import project_file as _sel_pf   # noqa: F401  (画布工程读写, 同样依赖工程包)
+        import node_logic_dialog as _sel_nd  # noqa: F401
+        _sel["gui_import_chain"] = True
+        if int(_sel["node_logic_keys"]) < 100:
+            raise RuntimeError("node_logic 注册的节点逻辑太少 (<100): 工程包没进包 / 进包不完整")
+        if not os.path.isfile(getattr(_sel_nl, "CANVAS_JSON", "") or ""):
+            raise RuntimeError("画布真源 JSON 不在包里 (src/lerobot/engineering/flows/state_space_obs.json)")
         _sel_rc = 0
     except Exception as _sel_e:
         _sel["error"] = f"{type(_sel_e).__name__}: {_sel_e}"
@@ -752,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.18.8")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11294,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.7 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.8 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11302,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.7 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.8 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.18.8: 修 **Windows / macOS 桌面版双击即崩** (老倪报错栈: `studio.py:258 → simulink_module.py:26 → node_logic.py:25 ModuleNotFoundError: No module named 'lerobot'`): 根因 = 09-28 把节点逻辑整体迁进 `src/lerobot/engineering` 后, 打包配置**没跟着带这个包**(win/mac 两个 job 都只 add-data 了 policies/calibration/manifold/... 却漏了 engineering), 而这条 import 在启动第 258 行 ⇒ 控制台**打不开**(不是某个按钮坏); 更关键的是**冻结核验只 import mujoco/metaworld**, 完全没覆盖 GUI 启动导入链 ⇒ 四天里每个 tag 都"绿灯"发出坏包。① `tools/gui/node_logic.py` 兼容壳改**冻结感知**: 工程根按候选表找(`_MEIPASS/src` 优先 → `ZMAX_SRC_DIR` 兜底 → 源码相对上溯), 缺包时抛可读中文提示(指向"旧包请升级")而不是裸 `No module named`。② 打包(win+mac)加 `--add-data src/lerobot/engineering` + 包内断言(节点逻辑 `library.py` 与画布真源 `state_space_obs.json` 必须在包里, 缺则 fail); ③ **冻结核验扩到 GUI 启动导入链**: `node_logic → simulink_module → project_file → node_logic_dialog` 真跑一遍 + 断言注册节点数 ≥100 + 画布 JSON 在位 ⇒ 这类"引擎绿、GUI 崩"的包从此进不了 Release; ④ 顺带修 `gui-venv311/bin` **56 个控制台脚本的破损 shebang**(家目录整合遗留老路径, 直接执行报 `cannot execute: required file not found` ⇒ `accelerate`/`pyinstaller`/`hf` 这类 CLI 静默失败), 工具 `tools/fix_venv_shebangs.py`(dry-run 默认, `--apply` 才改, 逐文件回读核验, 留 `.bak_shebang`)。
         # v5.18.7: 金手指点1 由命令自行到达(空间点真源更新 ⇒ 天花板 0.5666→0.6802, 残差 0.0mm) + 夹爪服务名修复(/gripper_driver→/gripper_srv, 真值 1000→0.0 闭合) + 点悬停卡片只显示位姿 + 夹爪按钮摘长提示 + 8793 标准启动脚本(防裸启动丢参数)
         # v5.18.6: 修 0.1mm 下压误判(现场 space1「点了不动」的真因) —— ① keep_z 横移高度不得低于参考点, 需贴就最多微抬 5mm(只补编码器/沉降的亚毫米噪声, 不算抬升)；② z_floor 容差 1e-6→5e-4(0.001mm→0.5mm)。
         # v5.18.5: 删掉自动抬升逻辑(现场三次碰撞的根因) —— ① l2_daemon.py `adapt_point` 由「抬到该点高度」改为「需上升⇒整单拒发」，必升豁免归零；② 空间点1~7 由老倪重记为**同一平面 z=0.1727** ⇒ 点间移动=纯横移, 零上升；③ SDK 腿速上限 60→150mm/s(实测≈15mm/s)。
