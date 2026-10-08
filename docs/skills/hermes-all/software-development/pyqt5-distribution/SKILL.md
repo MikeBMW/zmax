@@ -531,6 +531,27 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
    GUI 用 `subprocess(capture_output=True)` 调同一脚本时同样崩 = 静默"视频生成失败"。双保险:
    脚本顶部 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` + 父进程 env 传 `PYTHONIOENCODING=utf-8`。
 
+## 桌面包「刻意不内置」的依赖 → 功能必须能力闸降级, 不许整轮失败 (2026-10-08 实测)
+
+桌面包按设计不带 `ultralytics` (它拖 torch, 体积到 GB 级) ⇒ **任何默认开着、又依赖它的功能,
+在 exe 上就是整轮失败**: 实测 Windows 双击版点 ▶运行 (真实化) →
+`⚠️ 真实化运行失败: No module named 'ultralytics' ← 底层: ModuleNotFoundError`。
+用户看到的像「功能坏了」, 实际是「这个包没装这个能力」—— 差别必须在界面/日志里讲清楚。
+
+**铁律: 包内缺依赖 = 降级 + 说明, 不是整轮崩。**
+- 开跑前探一次: `importlib.util.find_spec("ultralytics")` / `("torch")` (frozen 同样适用),
+  **别真 import** (重量级模块首次 import 数秒); 结果进程内缓存。
+- 缺 → 把该功能**自动关掉**, 走不需要它的降级路径 (回到基线口径), 日志写明三件事:
+  缺什么 / 为什么桌面包没有 / 要开怎么办 (源码 venv `pip install X`, 或用 Linux 控制台)。
+- `except` 分支同样补可读提示 —— 只甩一句 `ModuleNotFoundError` 用户查不出路。
+- **只说「降级了」, 绝不说「跑过了」** (诚实红线: 用户会把日志当结果看)。
+
+**验证口径 (三步都要, 缺一步就是假绿)**:
+① 判据抽成纯函数跑四象限 (`want` × `cap_ok`);
+② 有依赖的环境里功能**照开** (零回退);
+③ 屏蔽依赖模拟桌面包 → **真跑一轮**, 确认它走完降级路径并出结果
+(实测: L2 insert 348 步 / done=True / 终点 65.4mm / 5.5s)。
+
 ## 坑: mujoco 自带插件 DLL 在 frozen 包里解析不到依赖 (2026-09-15 Windows 实锤修)
 
 **症状** (exe 里点「真实化运行」即失败):
@@ -580,6 +601,7 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 | workflow_dispatch uses wrong tag | `github.ref_name` is branch name, not tag input | Use dedicated `Determine release tag` step |
 | .exe crashes: `ModuleNotFoundError: grpc` | Missing grpcio in pip install | Add `grpcio protobuf` to deps |
 | .exe crashes: `ModuleNotFoundError: torch` | torch not bundled | Wrap in try/except with `_TORCH_AVAILABLE` flag |
+| .exe 点「真实化运行」整轮失败: `No module named 'ultralytics'` | 桌面包刻意不装 ultralytics(拖 torch), 而该功能默认开 | 能力闸: `find_spec` 探测 → 缺则**自动降级 + 把原因/怎么开写进日志**, 别整轮 raise (见「刻意不内置的依赖」节) |
 | .exe crashes: `AttributeError: 'HomeWidget' has no '_check_updates'` | Button calls main window method directly | Use `pyqtSignal` pattern instead |
 | .exe 点「运行」即崩: `Failed to load dynlib/dll '...\mujoco\plugin\actuator.dll' ... not found when the application was frozen` | 插件目录里没有它依赖的 `mujoco.dll`(在上一级 `mujoco/`) + VC 运行时 | `--runtime-hook pyi_rth_mujoco_dlls.py` (把依赖复制进 `mujoco/plugin/` 做自足目录) + CI 冻结核验 `App.exe --engine-selftest`; 报错处打印 `e.__cause__` |
 | .exe crashes at startup: `FileNotFoundError [WinError 3] ...\AppData\Local\data` | PyInstaller **onefile** exe cwd ≠ repo (unpacked temp/AppData); relative-path `os.listdir("data")` throws | Guard EVERY filesystem probe with `os.path.exists/isdir` before listdir; build paths from an absolute `_repo_root()` (frozen-aware), never bare relative names; probe-only code must degrade to empty list on missing dirs |

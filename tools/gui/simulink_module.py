@@ -65,6 +65,58 @@ _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
 #   thread-A 100% → thread-B 复用同 env 0%; glfw/egl 同)。单线程池 = env 首建线程 = 永久渲染线程。
 _REAL_SIM_EXECUTOR = _cfutures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="real-sim")
 
+# ── R1 真实视觉的能力闸 (2026-10-08) ────────────────────────────────────────────
+# 症状: Windows/macOS 桌面包点 ▶运行 (真实化) → `⚠️ 真实化运行失败: No module named
+#   'ultralytics' ← 底层: ModuleNotFoundError` (整轮不出结果)。
+# 根因: 桌面包**按设计**不内置 ultralytics (它拖 torch, 包体积会到 GB 级 —
+#   `pyqt5-distribution` 的打包口径), 而 L2/L3 档默认开 R1 视觉 (SS_L2_YOLO≠0) ⇒
+#   构造 RealStateSpaceSim(vision=True) 时 import 失败, 整轮挂掉。
+# 修法: 开跑前探一次能力 — 缺 ultralytics/torch 就把 R1 自动关掉 (退回 R0 真值 +
+#   解析前馈, 与显式 SS_L2_YOLO=0 同一条路径), 并把原因打给用户, **不整轮失败**。
+# 口径: 只"降级并说明", 绝不假装 R1 跑过 (诚实红线)。
+_R1_VISION_CAP = None
+
+
+def r1_vision_capability():
+    """当前解释器能否真跑 R1 视觉检测 (ultralytics + torch)。返回 (ok: bool, why: str)。
+
+    用 find_spec 探测 (不触发 import — ultralytics 首次 import 要数秒); 结果进程内缓存。
+    PyInstaller 冻结包同样适用 (frozen importer 支持 find_spec): 没打进包 = None。
+    """
+    global _R1_VISION_CAP
+    if _R1_VISION_CAP is None:
+        import importlib.util as _ilu
+        _miss = []
+        for _m in ("ultralytics", "torch"):
+            try:
+                if _ilu.find_spec(_m) is None:
+                    _miss.append(_m)
+            except Exception:                                    # noqa: BLE001
+                _miss.append(_m)
+        if _miss:
+            _R1_VISION_CAP = (False, "当前 Python 环境缺 " + "/".join(_miss) +
+                              " (Windows/macOS 桌面包按设计不内置: ultralytics 会拖 "
+                              "torch, 包体积到 GB 级)")
+        else:
+            _R1_VISION_CAP = (True, "ultralytics + torch 就位")
+    return _R1_VISION_CAP
+
+
+def resolve_r1_vision(want: bool, cap_ok: bool):
+    """能力闸 adjudication (纯函数, 可单测)。返回 (vision: bool, note: str|None)。
+
+    want=False  → 本来就没开, 无话可说 (note=None, 零噪音)
+    want=True ∧ cap_ok  → 照开 (note=None)
+    want=True ∧ ¬cap_ok → 关掉 + 给出可读说明 (调用方负责打日志)
+    """
+    if not want:
+        return False, None
+    if cap_ok:
+        return True, None
+    return False, ("⚠️ R1 真实视觉 (每步 metaworld 渲染 → YOLO detect_3d) 在本环境不可用 "
+                   "→ 本轮自动退回 R0 真值 + 解析前馈 (与 SS_L2_YOLO=0 同一路径)。")
+
+
 # ════════════════════════════════════════════════════════════════
 # 规范常量 (与 simulink-spec.md / web comfyui.html 完全一致)
 # ════════════════════════════════════════════════════════════════
@@ -13566,10 +13618,19 @@ class SimulinkModule(QWidget):
                     os.environ.pop("SS_USE_MLP", None)   # 非 L4/演示档: 原位不动 (零回退)
                 # 🎯 2026-09-17 老倪: L2 档也真跑 R1 视觉 → detect_3d 每步被调用, 断点可进。
                 _ss_vision = self._ss_vision_on(_cap, _model_exec, _l2_compat)
+                # 🛡 2026-10-08: 能力闸 —— 本环境没有 ultralytics/torch (Windows/macOS 桌面
+                #   包按设计不内置) 时, 把 R1 关掉照跑 R0, 而不是整轮 ModuleNotFoundError。
+                _cap_ok, _cap_why = r1_vision_capability()
+                _ss_vision, _vis_note = resolve_r1_vision(_ss_vision, _cap_ok)
+                if _vis_note:
+                    _logs.append(_vis_note)
+                    _logs.append(f"   └ 原因: {_cap_why}")
+                    _logs.append("   └ 要开 R1: 用源码 venv 跑 (pip install ultralytics torch) "
+                                 "或本机 Linux 控制台; 桌面包不带 torch")
                 if str(_cap or "").upper() == "L2" and not _model_exec:
                     _logs.append("🎯 L2 档 · R1 真实视觉 = " + ("✅ 开 (每步 metaworld 渲染 → YOLO detect_3d, "
                                  "断点可进; 代价: 每步真推理 ⇒ 一轮数分钟; 关: SS_L2_YOLO=0)"
-                                 if _ss_vision else "⬜ 关 (SS_L2_YOLO=0 → R0 真值 + 解析前馈)"))
+                                 if _ss_vision else "⬜ 关 (R0 真值 + 解析前馈)"))
                 sim = RealStateSpaceSim(seed=104,
                                         # 🎯 L3 档用 R1 视觉(原样, 老倪明确不动); 
                                         #   L4 改为引擎链路后用 R0 真值 — R1 每帧 YOLO 要 5-9 分钟/轮,
@@ -13694,6 +13755,15 @@ class SimulinkModule(QWidget):
             except Exception as _e:
                 import traceback as _tb2
                 _tb_txt = _tb2.format_exc()
+                # 🛡 2026-10-08: 缺 Python 模块 (桌面包不内置 ultralytics/torch 之类) 时,
+                #   把"怎么修"直接打给用户 —— 只甩一句 ModuleNotFoundError 查不出路
+                if isinstance(_e, ModuleNotFoundError) or isinstance(
+                        getattr(_e, "__cause__", None), ModuleNotFoundError):
+                    _mm = (getattr(_e, "name", None)
+                           or getattr(getattr(_e, "__cause__", None), "name", None) or "?")
+                    _logs.append(f"   └ 缺 Python 模块: {_mm} — Windows/macOS 桌面包按设计不内置 "
+                                 f"ultralytics/torch; 用源码 venv (`pip install {_mm}`) "
+                                 f"或本机 Linux 控制台跑 (R1 视觉关掉时走 R0 真值 + 解析前馈)")
                 # 🐛 2026-09-15: frozen(--windowed) 下 sys.stderr 为 None, 直接 print_exc 会再抛
                 #   AttributeError 把真错误盖掉 → 有 stderr 才打印
                 try:
