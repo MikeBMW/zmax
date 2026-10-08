@@ -80,6 +80,21 @@ function boot(name){
     for(var i=0;i<n;i++){o=i*8;
       f[o]*=k; f[o+1]*=k; f[o+2]*=k;          // 位置: 居中后再缩放
       f[o+3]+=add; f[o+4]+=add; f[o+5]+=add;}  // 尺度(log 域): 同步缩放, 否则高斯相对大小失真
+    /* 🖼 2026-10-08 老倪「页面卡死了」: 查看器每帧在 CPU 上排序**全部**高斯;
+       58.9 万个排序会占满主线程 ⇒ 站页假死。这里做**显示副本降采样**:
+       按不透明度(alpha 字节)保留最实的 K 个 —— 视觉几乎无损(半透明雾状粒子本来就看不见),
+       排序量降 5×。只改浏览器里的显示副本, 不动资产、不动训练。 */
+    var KMAX = 120000;
+    if(n > KMAX){
+      var u8 = new Uint8Array(ab), idx = new Array(n);
+      for(var i=0;i<n;i++) idx[i]=i;
+      idx.sort(function(a,b){ return u8[b*32+27] - u8[a*32+27]; });   // alpha 降序
+      var nb = new ArrayBuffer(KMAX*32), nd = new Float32Array(nb), sd = new Uint8Array(nb);
+      for(var j=0;j<KMAX;j++){ var src=idx[j]*32, dst=j*32;
+        for(var q=0;q<32;q++) sd[dst+q]=u8[src+q]; }
+      ab = nb; f = nd; n = KMAX;
+      setMeta('显示降采样 '+n.toLocaleString()+' / 原始 '+idx.length.toLocaleString()+' 高斯(保最实) · ');
+    }
     setMeta('高斯 '+n.toLocaleString()+' · 已居中缩放 ×'+k.toFixed(1)+'(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
             ' · 原半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m) · 左键拖转角度');
     var u=URL.createObjectURL(new Blob([ab],{type:'application/octet-stream'}));
