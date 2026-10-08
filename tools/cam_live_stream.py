@@ -2644,6 +2644,105 @@ def _station_page() -> bytes:
         return STATION_PAGE.encode("utf-8")
 
 
+
+def _web_lib_bytes(p: str):
+    """同域静态库: `/lib/...` → `tools/web/lib/...`(3DGS 查看器 JS 等)。
+
+    只认 `lib/` 前缀 + 扩展名白名单 + realpath 必须落在 web/ 内(防越界读文件)。
+    """
+    rel = p.lstrip("/")
+    if not rel.startswith("lib/") or ".." in rel:
+        return None
+    if not re.match(r"^lib/[A-Za-z0-9_./\-]{1,160}\.(js|css|png|jpg|svg|wasm|json)$", rel):
+        return None
+    root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
+    fp = os.path.realpath(os.path.join(root, rel))
+    if not fp.startswith(root + os.sep) or not os.path.isfile(fp):
+        return None
+    try:
+        with open(fp, "rb") as f:
+            return f.read()
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
+_GSVIEW_CACHE = {"t": 0, "b": b""}
+
+
+def _gs_assets():
+    """列 3DGS 资产(`~/zmax/zmax_data/gs_assets/<名>/gs.splat`), 按 mtime 新→旧。"""
+    root = os.path.expanduser("~/zmax/zmax_data/gs_assets")
+    out = []
+    try:
+        names = os.listdir(root)
+    except Exception:                                                            # noqa: BLE001
+        return out
+    for n in names:
+        sp = os.path.join(root, n, "gs.splat")
+        if not os.path.isfile(sp):
+            continue
+        rep = {}
+        try:
+            with open(os.path.join(root, n, "train_report.json"), encoding="utf-8") as f:
+                rep = json.load(f)
+        except Exception:                                                        # noqa: BLE001
+            rep = {}
+        out.append({"name": n, "splat": sp, "size": os.path.getsize(sp),
+                    "mtime": os.path.getmtime(sp), "psnr_holdout": rep.get("psnr_holdout_db"),
+                    "n_gaussians": rep.get("n_gaussians"), "steps": rep.get("steps")})
+    out.sort(key=lambda d: d["mtime"], reverse=True)
+    return out
+
+
+def _gs_list_json() -> bytes:
+    a = _gs_assets()
+    return json.dumps({"latest": (a[0]["name"] if a else ""), "assets": [
+        {"name": d["name"], "size": d["size"],
+         "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(d["mtime"])),
+         "psnr_holdout_db": (round(d["psnr_holdout"], 2) if d["psnr_holdout"] else None),
+         "n_gaussians": d["n_gaussians"], "steps": d["steps"],
+         "url": "gs/" + d["name"] + ".splat"} for d in a]}, ensure_ascii=False).encode("utf-8")
+
+
+def _gs_splat_bytes(p: str):
+    """`/gs/latest.splat` → 最新资产; `/gs/<名>.splat` → 指定资产; 白名单+存在性校验, 否则 None。"""
+    root = os.path.expanduser("~/zmax/zmax_data/gs_assets")
+    if p.rstrip("/").endswith("/latest.splat"):
+        a = _gs_assets()
+        if not a:
+            return None
+        fp = a[0]["splat"]
+    else:
+        nm = p.rsplit("/", 1)[-1][:-len(".splat")]
+        if not re.match(r"^[A-Za-z0-9_.\-]{1,80}$", nm):
+            return None
+        fp = os.path.join(root, nm, "gs.splat")
+        if not os.path.isfile(fp):
+            return None
+    try:
+        with open(fp, "rb") as f:
+            return f.read()
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
+def _gsview_page() -> bytes:
+    """🧊 3DGS 场景查看页真源 = `tools/web/gs_view.html`(按 mtime 热读, 改页面不用重启)。
+
+    资产走**同域** `/gs/latest.splat` ⇒ 本机 8793 与公网 `/st/` 反代都能看(手机可开),
+    查看器 JS 放在同域 lib/splat/, 不依赖 CDN。老倪 2026-10-08: "要在 3DGS 窗口看到场景"。
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "gs_view.html")
+    try:
+        m = os.path.getmtime(p)
+        if _GSVIEW_CACHE["t"] != m:
+            with open(p, "rb") as f:
+                _GSVIEW_CACHE["b"] = f.read()
+            _GSVIEW_CACHE["t"] = m
+        return _GSVIEW_CACHE["b"]
+    except Exception:                                                            # noqa: BLE001
+        return "<!doctype html><meta charset=utf-8><h1>gs_view.html 缺失</h1>".encode("utf-8")
+
 # ══════════════════════════════════════════════════════════════
 # 场景叠加页（老倪：把仿真场景的检测框嵌进真实视频流 + 按钮切换来源）
 # ══════════════════════════════════════════════════════════════
@@ -3463,6 +3562,28 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:                                          # noqa: BLE001
                 self._send(500, "text/plain; charset=utf-8",
                            ("room.html 读不到(%s): %s" % (_rp, e)).encode("utf-8"))
+        elif p.startswith("/lib/"):
+            # 📚 同域静态库(tools/web/lib/) —— 3DGS 查看器 JS 走这里, 不依赖 CDN
+            _lb = _web_lib_bytes(p)
+            if _lb is None:
+                self._send(404, "text/plain", b"not found")
+            else:
+                _ct = ("application/javascript; charset=utf-8" if p.endswith(".js")
+                       else ("text/css; charset=utf-8" if p.endswith(".css")
+                             else "application/octet-stream"))
+                self._send(200, _ct, _lb)
+        elif p in ("/gsview", "/gsview.html", "/3dgs", "/splat"):
+            # 🧊 3DGS 场景(高斯球)查看页 —— 真源 tools/web/gs_view.html 热读; 资产同域 /gs/*.splat
+            self._send(200, "text/html; charset=utf-8", _gsview_page())
+        elif p in ("/gs/list", "/api/gs/list"):
+            # 资产清单(页面下拉用; 手机可 curl 取证)
+            self._send(200, "application/json; charset=utf-8", _gs_list_json())
+        elif p in ("/gs/latest.splat", "/api/gs/latest.splat") or p.endswith(".splat"):
+            _b = _gs_splat_bytes(p)
+            if _b is None:
+                self._send(404, "text/plain; charset=utf-8", b"splat not found")
+            else:
+                self._send(200, "application/octet-stream", _b)
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
             # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒

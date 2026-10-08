@@ -1,0 +1,100 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Z-MAX 3DGS 场景 · 高斯球查看器</title>
+<style>
+ html,body{margin:0;height:100%;background:#05070a;color:#e6edf3;overflow:hidden;
+   font:13px/1.5 system-ui,-apple-system,"Noto Sans CJK SC","Microsoft YaHei",sans-serif}
+ canvas{display:block;width:100vw;height:100vh;touch-action:none}
+ #bar{position:fixed;left:0;right:0;top:0;z-index:50;display:flex;gap:8px;align-items:center;
+   flex-wrap:wrap;padding:7px 10px;background:rgba(13,17,23,.9);border-bottom:1px solid #21262d}
+ #bar .t{color:#7ee787;font-weight:600}
+ #meta{color:#8b949e}
+ select,button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;
+   padding:4px 8px;font-size:12px;max-width:52vw}
+ button:active{background:#21262d}
+ #hint{position:fixed;left:10px;bottom:8px;z-index:50;color:#8b949e;font-size:12px;text-shadow:0 0 3px #000}
+ #err{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;display:none;
+   max-width:88vw;background:#2d1315;border:1px solid #f85149;border-radius:8px;padding:12px 14px;
+   color:#ffd7d7;white-space:pre-wrap;font-size:12px}
+ /* 查看器自用节点(全部隐藏/移出视口) */
+ #info{position:fixed;left:10px;top:46px;z-index:40;text-shadow:0 0 3px #000;pointer-events:none}
+ #spinner{position:fixed;right:12px;top:46px;z-index:40;color:#7ee787}
+ #fps,#quality,#caminfo,#camid,#progress{position:fixed;left:-9999px;top:-9999px}
+</style></head><body>
+<canvas id="canvas"></canvas>
+<div id="bar">
+  <span class="t">🧊 Z-MAX 3DGS 场景</span>
+  <select id="pick" title="选择建图资产"></select>
+  <button onclick="location.reload()">🔄 重载</button>
+  <span id="meta">加载中…</span>
+</div>
+<div id="info"><div id="message"></div><div id="instructions"></div></div>
+<div id="spinner">加载中…</div>
+<div id="progress"></div>
+<div id="quality"><span id="fps"></span></div>
+<div id="caminfo"><span id="camid"></span></div>
+<div id="err"></div>
+<div id="hint">拖拽旋转 · 滚轮/双指缩放 · 右键或双指拖动平移</div>
+<script>
+/* ⚠️ 关键(Z-MAX 2026-10-08): 查看器默认相机对着**原点**、距离固定 ~6.55,
+   而我们的 .splat 是**真尺度世界坐标**(场景中心约 (0.57,-0.05,0.31)) ⇒ 直接用会全黑。
+   这里在浏览器里把位置整体平移到原点(尺度不动, 仍是真尺寸), 再以 blob 交给查看器。
+   不动训练链路、不动资产文件、不改服务端。 */
+var Q = new URLSearchParams(location.search);
+var SEL = Q.get('a') || '';
+function fail(t){var e=document.getElementById('err');e.style.display='block';e.textContent='❌ '+t;}
+window.addEventListener('error',function(ev){fail('JS 错误: '+(ev.message||ev.type));});
+window.addEventListener('unhandledrejection',function(ev){fail('加载失败: '+((ev.reason&&ev.reason.message)||ev.reason));});
+function setMeta(t){document.getElementById('meta').textContent=t;}
+function loadViewer(){
+  var s=document.createElement('script');
+  s.src='lib/splat/main.js';
+  s.onerror=function(){fail('查看器 JS 取不到(lib/splat/main.js)');};
+  document.body.appendChild(s);
+}
+function boot(name){
+  var src='gs/'+(name?name+'.splat':'latest.splat');
+  setMeta('拉取 '+src+' …');
+  fetch(src).then(function(r){
+    if(!r.ok) throw new Error('HTTP '+r.status+' '+src);
+    return r.arrayBuffer();
+  }).then(function(ab){
+    if(ab.byteLength % 32 !== 0) throw new Error('资产字节数不是 32 的整数倍: '+ab.byteLength);
+    var n=ab.byteLength/32, f=new Float32Array(ab), o;
+    var cx=0,cy=0,cz=0;
+    for(var i=0;i<n;i++){o=i*8; cx+=f[o]; cy+=f[o+1]; cz+=f[o+2];}
+    cx/=n; cy/=n; cz/=n;
+    var mx=0,my=0,mz=0;
+    for(var i=0;i<n;i++){o=i*8; f[o]-=cx; f[o+1]-=cy; f[o+2]-=cz;
+      if(Math.abs(f[o])>mx)mx=Math.abs(f[o]);
+      if(Math.abs(f[o+1])>my)my=Math.abs(f[o+1]);
+      if(Math.abs(f[o+2])>mz)mz=Math.abs(f[o+2]);}
+    /* 🔴 相机距离必须按场景实际大小给: 查看器出厂默认相机在 z≈6.55(为 ~10 单位的展示场景调的),
+       我们这套场景半跨度只有 ~0.4m ⇒ 直接用只占画面 3%、看起来全黑。
+       这里按半跨度给一个贴脸距离, 并用 location.hash 传视图矩阵(查看器读 hash ⇒ 自动关掉轮播)。 */
+    var half = Math.max(mx, my, mz, 0.05), dist = Math.max(half*2.6, 0.6);
+    var vm = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,dist,1];
+    try{ location.hash = '#' + encodeURIComponent(JSON.stringify(vm)); }catch(e){}
+    setMeta('高斯 '+n.toLocaleString()+' · 已居中(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
+            ' · 半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m · 相机距离 '+dist.toFixed(2)+'m)');
+    var u=URL.createObjectURL(new Blob([ab],{type:'application/octet-stream'}));
+    try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u));}catch(e){}
+    loadViewer();
+  }).catch(function(e){ setMeta('资产拉取失败: '+e); loadViewer(); });
+}
+fetch('gs/list').then(function(r){return r.json();}).then(function(d){
+  var sel=document.getElementById('pick'), a=d.assets||[];
+  if(!a.length){setMeta('还没有任何 3DGS 资产');return;}
+  a.forEach(function(x){
+    var o=document.createElement('option');
+    o.value=x.name; o.textContent=x.name+' · '+(x.mtime||'').slice(5);
+    if((SEL&&x.name===SEL)||(!SEL&&x.name===d.latest))o.selected=true;
+    sel.appendChild(o);});
+  var hit=a.filter(function(x){return x.name===(SEL||d.latest);})[0]||a[0];
+  if(hit.psnr_holdout_db) setMeta('留出 PSNR '+hit.psnr_holdout_db+' dB · 建图 '+hit.mtime+' · 加载中…');
+  sel.onchange=function(){location.search='?a='+encodeURIComponent(sel.value);};
+}).catch(function(){});
+boot(SEL);
+</script>
+</body></html>
