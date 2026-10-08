@@ -1,18 +1,19 @@
 {
-  "generated_at": "2026-10-08 19:53:45",
+  "generated_at": "2026-10-08 20:56:00",
   "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
   "host": "192.168.23.23",
   "items": [
     {
       "port": 10082,
       "title": "金手指检测 (工控机 192.168.23.23:10082)",
-      "repo_copy": "tools/aoi/cam_finger_10082_work_v24.py",
-      "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v24.py",
+      "repo_copy": "tools/aoi/cam_finger_10082_work_v25.py",
+      "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v25.py",
       "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
-      "sha256": "fc9105c778f5795eaae39b888ea5064c5b598c430f3095089ec11a82c3a6dfe4",
-      "bytes": 105115,
-      "src_sha256": "fc9105c778f5795eaae39b888ea5064c5b598c430f3095089ec11a82c3a6dfe4",
-      "src_mtime": "2026-10-08 19:45:58",
+      "sha256": "e1bac80e23c5f5f2a3a76dde514ad71e3cf160999b4b1b8d237ebbe3bcfc3ba6",
+      "bytes": 110276,
+      "src_sha256": "e1bac80e23c5f5f2a3a76dde514ad71e3cf160999b4b1b8d237ebbe3bcfc3ba6",
+      "src_mtime": "2026-10-08 20:44:10",
+      "why_v25": "修掉根数 19/18/16/21 跳: ①几何分析走逐帧增益归一化(中位灰度→63, 正常状态与 v24 逐位相同) ②端部认领改短窗逐格投票(7帧/≥2票): 补回偶发漏认、否掉偶发多认 —— 真帧复放 22 帧预热后恒 19(其中 13 帧原始为 16)",
       "copy_matches_source": true
     },
     {
