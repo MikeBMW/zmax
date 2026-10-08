@@ -24,6 +24,13 @@ import errno
 import json
 import math
 import os
+
+# ⛔ MoveJ 自愈闸门 (2026-10-08 事故 INCIDENT-20261008-gsmap-space7-movej-rise-estop.md):
+#    MoveL 被 50102 拒后改用 MoveJ = **换运动学**: 关节空间插值, 末端路径不再受目标 Δz 约束,
+#    实测在 go space7 时途中意外升高/摆动, 现场只能按急停 ⇒ 默认**关**。
+#    只在"下降/纯平移被拒"这类目标 z ≤ 当前 z + 30mm 的场景, 才用 env ZMAX_MOVEJ_RETRY=1 显式打开;
+#    升高类动作永远不许开这个闸。
+MOVEJ_RETRY = os.environ.get("ZMAX_MOVEJ_RETRY", "0").strip() in ("1", "true", "True", "yes")
 import re
 import sys
 import threading
@@ -169,6 +176,29 @@ def env_check(pos):
 
 
 # ───────────────────────── 与常驻 SDK 代理通信 ─────────────────────────
+
+# 🧱 安全区天花板 (2026-10-08 老倪: 「给你的空间点1~7, 就是安全区域, 你要参考, 不要上升的太高」)
+#    安全区由**已教点位**定义 ⇒ 天花板 = 所有空间点里最高那个 z + 余量。动态读, 改点位自动跟着变。
+TAUGHT_Z_MARGIN_M = 0.05        # 最高点位之上留 50mm 余量(点位本身都可直达, 高于此即出安全区)
+
+
+def taught_z_ceiling():
+    """安全区天花板(m): 空间点最高 z + TAUGHT_Z_MARGIN_M。读不到点位时退回 None(不拦)。"""
+    try:
+        _r = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(6):                       # 向上找仓库根(含 data/skills/l2_atomic), 不数目录层数
+            if os.path.isdir(os.path.join(_r, "data/skills/l2_atomic")):
+                break
+            _r = os.path.dirname(_r)
+        _p = os.path.join(_r, "data/skills/l2_atomic/space_points.json")
+        pts = (json.load(open(_p, encoding="utf-8")) or {}).get("points") or {}
+        zs = [float((v or {}).get("pos", [0, 0, 0])[2]) for v in pts.values() if (v or {}).get("pos")]
+        if not zs:
+            return None
+        return max(zs) + TAUGHT_Z_MARGIN_M
+    except Exception:                                                          # noqa: BLE001
+        return None
+
 def env_box():
     """🛡 实时扫掠闸门用的包络盒 —— 与 L2 同一真源(env_model 的 envelope)。
 
@@ -183,7 +213,12 @@ def env_box():
         import env_model                                                            # noqa: PLC0415
         m = json.load(open(env_model.OUT, encoding="utf-8"))
         env = m.get("envelope") or {}
-        return {a: [float(env[a][0]), float(env[a][1])] for a in ("x", "y", "z") if a in env}
+        box = {a: [float(env[a][0]), float(env[a][1])] for a in ("x", "y", "z") if a in env}
+        # 🧱 天花板收口: 扫掠闸门只认安全区高度(2026-10-08 老倪: 空间点1~7 就是安全区域)
+        _ceil = taught_z_ceiling()
+        if _ceil and "z" in box and box["z"][1] > _ceil:
+            box["z"] = [box["z"][0], _ceil]
+        return box
     except Exception:                                                               # noqa: BLE001
         return None
 
@@ -257,7 +292,7 @@ def parse_call(call):
 
 
 # ───────────────────────── 执行 ─────────────────────────
-def _run_abs(tgt, rpy, sp_mm, meta, logf):
+def _run_abs(tgt, rpy, sp_mm, meta, logf, ang=None):
     if _STOP["flag"]:
         logf("⏹ SDK 腿: 收到叫停(%s) ⇒ 不发这条动作" % _STOP["why"])
         return False, None, {"rc": -9, "err": "stopped"}
@@ -268,9 +303,18 @@ def _run_abs(tgt, rpy, sp_mm, meta, logf):
     #    原来按 sp_mm(标称)算等待窗口 ⇒ 低估 10 倍 ⇒ 200mm 横移只等 83s(实际要 180s),
     #    代理在这时候返回 rc=6/CHECK 被当成"失败"(其实控制器还在走, 臂后来**真的到位了**)。
     wait = max(90.0, min(2400.0, dist / max(sp_mm * 0.1, 0.35) * 1.6 + 60.0))
+    if ang is not None and ang >= 0.3:
+        # 🔄 2026-10-08: 纯旋转/带转姿态时, 位移≈0 ⇒ 只按位移算等待会太短(腕部慢转, 实测 10° 要数十秒);
+        #    按角度补一项(与 ROS 路 J6 的 max(90, 20+|deg|*6) 同口径), 否则会"没转完就判失败"。
+        wait = max(wait, min(2400.0, ang * 6.0 + 60.0))
     req = {"cmd": "move-abs", "tag": "l2", "x": tgt[0], "y": tgt[1], "z": tgt[2],
            "rx": rpy[0], "ry": rpy[1], "rz": rpy[2], "speed": sp_mm,
-           "guard_box": env_box()}      # 🛡 实时扫掠闸门(包络盒): 代理每 0.15s 真值比对, 出界即 stop()
+           "guard_box": env_box(),      # 🛡 实时扫掠闸门(包络盒): 代理每 0.15s 真值比对, 出界即 stop()
+           # 🧗 自愈(2026-10-08 现场): 控制器会以 50102「[SDK MoveL] 轨迹前瞻遇到奇异点」拒发 ——
+           #    特征是 moveStart ec=0 但臂**一动不动**(实测: 位移 411mm/姿态差 173.9° 的直线被拒,
+           #    Δ=0.001mm · 5~7s 后残差=全量)。代理里已有控制器手册修法②(MoveL→关节空间 MoveJ 重试一次),
+           #    但**一直没开闸**(主机侧没带这个键) ⇒ 现场表现就是"点了卡住不动"。现开闸; 重试仍带 guard_box。
+           "allow_movej_retry": MOVEJ_RETRY}
     r = send_agent(req, wait, logf)
     p1 = read_pose()
     err = [round((p1["pos"][i] - tgt[i]) * 1000.0, 2) for i in range(3)]
@@ -307,7 +351,8 @@ def _run_rel(dxyz, sp_mm, meta, logf):
         #    就报失败, 而控制器其实还在把这一片走完。
         wait = max(60.0, min(2400.0, max(abs(v) for v in step) / max(sp_mm * 0.1, 0.35) * 1.6 + 45.0))
         r = send_agent({"cmd": "move-rel", "tag": "l2", "dx": step[0], "dy": step[1], "dz": step[2],
-                        "speed": sp_mm, "cap_mm": 50.0}, wait, logf)
+                        "speed": sp_mm, "cap_mm": 50.0, "allow_movej_retry": MOVEJ_RETRY,   # 🧗 同上: 分片被 50102 拒也可改 MoveJ 重试
+                        "guard_box": env_box()}, wait, logf)
         if r.get("rc") != 0 or str(r.get("verdict") or "").startswith("ABORT"):
             evidence({"leg": "sdk", "cmd": "move-rel", "step": step, "meta": meta, "rc": r.get("rc"),
                       "verdict": r.get("verdict"), "err": r.get("err"), "done_before": done})
@@ -323,13 +368,13 @@ def _run_rel(dxyz, sp_mm, meta, logf):
     return True, done
 
 
-def _worker(kind, tgt, quat, sp_mm, meta, logf, p0):
+def _worker(kind, tgt, quat, sp_mm, meta, logf, p0, ang=None):
     try:
         rpy = quat2rpy(*quat) if quat else p0["rpy"]
         if kind == "rel":
             ok, done = _run_rel([(tgt[i] - p0["pos"][i]) * 1000.0 for i in range(3)], sp_mm, meta, logf)
         else:
-            ok, err, _r = _run_abs(tgt, rpy, sp_mm, meta, logf)
+            ok, err, _r = _run_abs(tgt, rpy, sp_mm, meta, logf, ang=ang)
         if ok:
             logf("🚚 SDK 腿完成: %s" % meta)
     except Exception as e:                                                          # noqa: BLE001
@@ -372,14 +417,20 @@ def exec_call(call, logf, meta=""):
     if not eok and ENV_BLOCK:
         return False, "🚚 SDK 腿: 目标出已验证包络 ⇒ 拒(ZMAX_SDK_LEG_ENV=1): %s" % emsg
 
-    kind = "rel" if dist_mm <= REL_STEP_MM else "abs"
+    # 🔄 2026-10-08 现场(老倪: 「绕轴旋转怎么不动」/「J6 自转 90° 怎么下降了」): rel 通道只做**平移分片**
+    #   (`_run_rel` 只吃 dxyz, 姿态被丢) ⇒ 纯旋转(位移≈0、姿态差 10°)走 rel 后 `while >0.2mm` 一次都不进
+    #   = **静默不动**(页面点 A/B/C 毫无反应); J6 那种「位移 34mm + 姿态差 90°」也走 rel ⇒ **只平移不转**
+    #   (现场看到的就是"没转、却降了 24mm" —— 降的是 J6 目标的**位置分量**)。凡姿态差 ≥0.3° 一律走 abs
+    #   (abs = 整位姿 MoveL, 被拒还有 MoveJ 兜底), 不再静默丢姿态。
+    _rot = (ang is not None) and (ang >= 0.3)
+    kind = "abs" if (dist_mm > REL_STEP_MM or _rot) else "rel"
     with _LOCK:
         _BUSY.update(in_flight=True, what=meta or mv["srv"], since=time.time())
     _STOP.update(flag=False, t=0.0, why="")      # 🔄 新动作开始 ⇒ 清叫停位(上一条的叫停不牵连这一条)
     logf("🚚 SDK 腿下发: %s → pos=(%.4f, %.4f, %.4f) · 位移 %.0fmm%s · speed=%.1fmm/s (%s)"
          % (meta or mv["srv"], mv["pos"][0], mv["pos"][1], mv["pos"][2], dist_mm, _a, sp_mm, kind))
     th = threading.Thread(target=_worker, args=(kind, mv["pos"], mv["quat"], sp_mm,
-                                                meta or mv["srv"], logf, p0), daemon=True)
+                                                meta or mv["srv"], logf, p0, ang), daemon=True)
     th.start()
     return True, ("🚚 SDK 腿已下发(本机 SDK 直连): %s · 位移 %.0fmm%s · speed=%.1fmm/s"
                   % (meta or mv["srv"], dist_mm, _a, sp_mm))

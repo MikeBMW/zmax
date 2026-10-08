@@ -1071,6 +1071,20 @@ def run_stages(sk, spec, chan, pts):
             except Exception:                                                    # noqa: BLE001
                 pass
         log("🌍 环境校验 阶段 %d/%d: %s" % (i, n, env_msg))
+        # 🧱 安全区天花板闸 (2026-10-08 老倪: 「给你的空间点1~7, 就是安全区域, 你要参考, 不要上升的太高」)
+        #    安全区 = 已教点位定义 ⇒ 天花板 = 最高点位 z + 50mm。单段/多段**都硬拦**
+        #    (旧爬升闸只对 >=2 段硬拦, 单段直发只吼 ⇒ 单段"去某个高点"能溜过去, 正是 10-22 事故的缝)
+        try:
+            import l2_transport_sdk as _TS                                          # noqa: PLC0415
+            _ceil = _TS.taught_z_ceiling()
+            if _ceil and pl.get("pos") and float(pl["pos"][2]) > _ceil + 1e-6:
+                log("🧱 阶段 %d/%d 拒发: 目标 z=%.4f 高于**安全区天花板** %.4f (最高空间点 z=%.4f + 50mm)"
+                    " —— 老倪 2026-10-08: 空间点1~7 就是安全区域, 不要上升太高" %
+                    (i, n, float(pl["pos"][2]), _ceil, _ceil - 0.05))
+                return "阶段 %d 拒发: z=%.4f 超安全区天花板 %.4f" % (i, float(pl["pos"][2]), _ceil)
+            log("🧱 阶段 %d/%d 高度检查: 目标 z=%.4f ≤ 安全区天花板 %.4f ✅" % (i, n, float(pl["pos"][2]), _ceil))
+        except Exception as _e:                                                  # noqa: BLE001
+            log("🧱 阶段 %d/%d 高度检查跳过(%s)" % (i, n, str(_e)[:40]))
         if not env_ok and os.environ.get("ZMAX_ENV_GUARD") == "1":
             log("🛡 阶段 %d/%d 拒绝: %s (ZMAX_ENV_GUARD=1)" % (i, n, env_msg))
             return "阶段 %d 拒绝: %s" % (i, env_msg)

@@ -1,0 +1,310 @@
+{
+ "taught_z": {
+  "space1": 0.2381392,
+  "space2": 0.3385452,
+  "space3": 0.3091802,
+  "space4": 0.1549945,
+  "space5": 0.1882328,
+  "space6": 0.1635592,
+  "space7": 0.324094
+ },
+ "ceiling_m": 0.3885,
+ "goto_space_stages": {
+  "L2.goto_space1": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space1",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space1",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space2": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space2",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space2",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space3": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space3",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space3",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space4": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space4",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space4",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space5": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space5",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space5",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space6": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space6",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space6",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ],
+  "L2.goto_space7": [
+   {
+    "stage": 1,
+    "rel": true,
+    "dz_mm": 5.0,
+    "adapt_point": true,
+    "adapt_margin_mm": 5.0,
+    "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 120,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 2,
+    "to": "space7",
+    "dz_mm": 0.0,
+    "keep_z": true,
+    "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
+    "guard": {
+     "dz_down_limit_mm": 400
+    },
+    "tol_mm": 1.0,
+    "timeout_s": 240,
+    "dwell_s": 1.5
+   },
+   {
+    "stage": 3,
+    "to": "space7",
+    "dz_mm": 0.0,
+    "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+    "guard": {
+     "dz_down_limit_mm": 260
+    },
+    "tol_mm": 0.5,
+    "timeout_s": 60,
+    "dwell_s": 1.0
+   }
+  ]
+ },
+ "speed_max": {
+  "L2.goto_space1": 1000,
+  "L2.goto_space2": 1000,
+  "L2.goto_space3": 1000,
+  "L2.goto_space4": 1000,
+  "L2.goto_space5": 1000,
+  "L2.goto_space6": 1000,
+  "L2.goto_space7": 1000
+ }
+}

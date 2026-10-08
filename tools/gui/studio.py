@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.18.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,9 +11284,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.18.4: 运动安全三件套(2026-10-08 一天三起近失事故后收口) —— ① 安全区天花板闸: 老倪两次逐字「给你的空间点1～点7, 就是安全区域, 你要参考, 不要上升的太高」⇒ 天花板 = 7 点最高 z + 50mm(0.3885); 执行器每阶段硬拦(目标超则拒发, 单段也拦) + 代理扫掠闸门每 0.15s 真值比对(包络 z 上限 0.6987→0.3885); 已做故意违规实测(临时压到 0.20)确认拒发且臂零位移。 ② MoveJ 自愈默认关: 事故根因 = MoveL 判 50102 奇异点后被 MoveJ 接管, 关节插值不受 Δz 约束 ⇒ 臂自己往高处摆(老倪急停); 现只有显式 ZMAX_MOVEJ_RETRY=1 才开, 升高类永不许开(唯一出路 = 停 + 问人)。 ③ 回点配方改三段单轴: 斜线(space1→space7 Δ=(-11.5,+101.3,+86.0)mm)穿奇异构型被 50102 拒 ⇒ 拆成「竖直抬到 max(当前z, 目标点z)+5mm → 保持高度横移 → 竖直落到位」; 横移余量 40→5mm(第三次近失根因: 目标只高 66mm 却抬 106.5mm, 40mm 全是无谓上升, 老倪当场急停)。 另: 姿态差 ≥0.3° 一律走 abs(带 rx,ry,rz)[修「绕 XYZ 三轴旋转不动」+「J6 自转只平移」], 7 空间点姿态对齐 space1(旧姿态差 164° 会甩腕撞 50102), 建图移动速度 120→1000。 全部改动配事故档 docs/INCIDENT-20261008-*.md + 台账 + 碰撞库(8 条)。
                 # v5.18.3: 空间点回点提速+去绕远(实测) —— ① SDK 腿速度上限 30→60mm/s(8793 页 1000 档实测 3.0→5.8mm/s; 换算实测 1/10, 等待窗口按封顶后标称对齐, 根因=高档被腿内 min() 夹住导致等待上限高估 56%) ② goto_space1~7 去「盲抬 50mm」改单段直线到位(路径 533→284mm, 根因=固定 +50mm 与点位/上下无关, 2026-10-08 从 0.4096 盲抬到 0.4596 撞上方净空) ③ 8793 增 1000/2000 速档按钮 + 实测换算提示(旧写 0.0999 偏大 33 倍)
 # v5.18.2: 全局回归: 修掉家目录整合的 5 种老路径写法死角(SDK 执行腿整体失效→页面报已下发但机器人不动) + 相机守卫误判每5分钟重启站台 + 落功能回归/死角审计脚本
         # v5.18.1: 桌面快捷方式修复 + 仓库根 yaml 收编 + 自检/DNS/网络收尾(家目录整合的收尾)。一、快捷方式(老倪报"控制台怎么打不开了"): 根因是家目录整合后 `~/Desktop/XSpace-Studio.desktop` 的 Exec 仍写 `/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`、Icon 指 `/home/ubuntu/lerobot-smolvla-lew/...`, 两个目录都已收进 `zmax/` 而不存在 ⇒ 双击零反应(不报错不弹窗)。修为新绝对路径, 真源入库 `tools/desktop/*.desktop` + 一键核验/安装脚本 `install_launchers.sh`(--check 只读), 顺带把 `安装Hermes.desktop` 不合法的 Exec 引号写法改合法(desktop-file-validate 三文件全绿); gio trusted + DING 扩展重载一并做。二、仓库根 yaml 收编: 166 个 yaml 逐个查引用(代码 grep + git 跟踪 + 生成器), 根目录 42 → 1(只留 .pre-commit-config.yaml): 39 个 `config_smolvla_lew_lora_*.yaml` 是训练生成物(仅 reports/joint_train_*/summary.json 留痕、.py/.sh 零引用、已被 .gitignore 覆盖) → 收进 `configs/generated_train_configs/`(留痕不删, from→to 清单在 zmax_data/backups/); `config_l3_b6.yaml`(被跟踪的手写配置) → `configs/`; sim 配置同为生成物。根因修掉: `tools/joint_train_all.py:133` 原来 `os.path.join(ROOT, 'config_...yaml')` 直写仓库根 → 写进新目录 + makedirs; `mk_smolvla_sim_cfg.py` 的 --out 默认值同步。挪前先证实 lerobot 的 dataset.root 是 CWD 相对(`Path(cfg.dataset.root)` 直通, 不按配置文件目录拼) ⇒ 放子目录不改语义, 但训练必须仍在仓库根启动。三、自检/DNS/网络: failed 单元 0 · 25/26 单元 active · 8 端口全在 · NTP 同步 yes; DNS 清掉两条长尾(hf-mirror 317→6ms、pypi 86→3ms), 其余清前就在 1~28ms ⇒ 不声称整体加速; 网关 1.88ms · 1.1.1.1 1.75ms · Orin 0.19ms · 工控机 0.26ms · 珞石 0.13ms 全 0 丢包 · WiFi -40dBm/573.5Mbit 满速档; 吞吐抽测 codeload 单流 8.19MB/s、体检口径 3.78MB/s 落在历史基线带内 ⇒ 不作增益声明; 修两处漂移(GPU persistence Disabled→Enabled、journal 443→188M) + 修 `zmax_net_optimize.sh` 在 --quick 下把"没测"打印成"远端下载 0KB/s"的误导输出。四、新增: `tools/desktop/`(三个 .desktop + install_launchers.sh) · `tools/preflight_shutdown.sh`(下电前预检: 臂 idle/无授权/无写入/仓库已保存 → 判"可以下电")。

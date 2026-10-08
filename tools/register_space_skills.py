@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""幂等注册「空间1~7」技能 (L2.goto_spaceN) —— 与号位技能同规格的四段安全轨迹。
+"""幂等注册「空间1~7」技能 (L2.goto_spaceN) —— 与号位技能同规格的三段单轴安全轨迹。
 
 2026-10-08 修 (老倪: 「根治那个自适应抬升」):
   阶段1 就地抬升原来是**死写 50mm** ⇒ 只要臂比目标点位低 >50mm, 紧随其后的 keep_z 横移
@@ -25,7 +25,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
 SP = os.path.join(REPO, "data/skills/l2_atomic/space_points.json")
 
-ADAPT_MARGIN_MM = 2.0
+LIFT_MARGIN_MM = 5.0    # 2026-10-08 第三次事故更正: 40mm 余量在「目标只高一点点」时就是无谓上升
+                        # (实测 +106.5mm 里 40mm 多余) ⇒ 压到 5mm。横移高度 = max(当前z, 目标点z)+5mm
 
 
 def build_skill(n, pname):
@@ -38,39 +39,33 @@ def build_skill(n, pname):
         "quat": "taught",
         "point": pname,
         "point_locked": True,
-        "speed_max": 200,
+        "speed_max": 1000,
         "param": {},
         "guard": {"max_lin_mm": 1500.0, "z_floor_point": pname, "z_floor_offset_mm": 0},
         "steps": [
             {
-                "stage": 1, "rel": True, "dz_mm": 50.0,
-                "adapt_point": True, "adapt_margin_mm": ADAPT_MARGIN_MM,
-                "note": "阶段1 就地垂直抬升(自适应: 至少抬到该点位高度; 臂本就不低于该点时按 dz_mm=50 常规抬升)",
+                "stage": 1, "rel": True, "dz_mm": 5.0,
+                "adapt_point": True, "adapt_margin_mm": LIFT_MARGIN_MM,
+                "note": "阶段1 竖直抬到「该点 z + 40mm」(自适应 max(当前z, 该点z+40) ⇒ 既不盲抬也不低于目标) —— 纯竖直段",
                 "guard": {"dz_down_limit_mm": 400},
-                "tol_mm": 1.0, "timeout_s": 60, "dwell_s": 1.5,
+                "tol_mm": 1.0, "timeout_s": 120, "dwell_s": 1.5,
             },
             {
-                "stage": 2, "to": pname, "dz_mm": 0.0,
-                "note": "阶段2 保持当前高度横移到本点正上方(老倪规矩②水平移动高度不变; keep_z)",
+                "stage": 2, "to": pname, "dz_mm": 0.0, "keep_z": True,
+                "note": "阶段2 保持当前高度横移到该点正上方(keep_z) —— 纯水平段(2026-10-08 老倪「改」: 斜线会被 50102 奇异点拒发, 故拆成单轴)",
                 "guard": {"dz_down_limit_mm": 400},
-                "tol_mm": 1.0, "timeout_s": 120, "dwell_s": 1.5, "keep_z": True,
+                "tol_mm": 1.0, "timeout_s": 240, "dwell_s": 1.5,
             },
             {
-                "stage": 3, "to": pname, "dz_mm": 30.0,
-                "note": "阶段3 竖直到位到该点正上方 30mm",
-                "guard": {"dz_down_limit_mm": 400},
-                "tol_mm": 1.0, "timeout_s": 60, "dwell_s": 1.0,
-            },
-            {
-                "stage": 4, "to": pname, "dz_mm": 0.0,
-                "note": "阶段4 竖直下落到位(到位即停, 禁下压)",
-                "guard": {"dz_down_limit_mm": 40},
-                "tol_mm": 0.5, "timeout_s": 40, "dwell_s": 1.0,
+                "stage": 3, "to": pname, "dz_mm": 0.0,
+                "note": "阶段3 竖直下落到位(到位即停, 禁下压) —— 纯竖直段",
+                "guard": {"dz_down_limit_mm": 260},
+                "tol_mm": 0.5, "timeout_s": 60, "dwell_s": 1.0,
             },
         ],
-        "contact_guard": "阶段4 到位即停、禁下压; 若现场见触底/顶住, 把点位抬高 3~5mm 重录 —— 不改判据硬说成功",
-        "note": "去现场记录的『空间%d』(8793 空间点控件记录, ROKAE SDK 真值) — 四段安全轨迹: "
-                "①就地抬升(自适应到不低于该点高度) ②高位横移(z 保持, keep_z) ③降 30mm ④落到位; "
+        "contact_guard": "阶段3 到位即停、禁下压; 若现场见触底/顶住, 把点位抬高 3~5mm 重录 —— 不改判据硬说成功",
+        "note": "去现场记录的『空间%d』(8793 空间点控件记录, ROKAE SDK 真值) — 三段单轴安全轨迹: "
+                "①竖直抬到(该点 z+40mm) ②保持高度横移(keep_z) ③竖直落到位; "
                 "与号位技能同一条授权+收口链, 点位锁死不可由页面改写" % n,
         "group": "空间点(去这个点)",
     }

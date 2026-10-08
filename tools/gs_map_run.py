@@ -47,7 +47,10 @@ REPO = "/home/ubuntu/zmax"
 PY = "/home/ubuntu/zmax/venvs/gs-venv/bin/python"
 # 🚚 建图移动速度(L2 speed 相对量, ≈0.1mm/s 每单位; 技能 speed_max=200 收口): 默认 120 ≈ 11mm/s。
 #    为什么不是默认的 8: 那只有 0.75mm/s, 空间点之间 400~470mm 的转移要 10 分钟/次。
-MOVE_SPEED = float(os.environ.get("GS_MOVE_SPEED", "120"))
+# ⬆ 2026-10-08: 默认 120(≈1.1mm/s) ⇒ 1000(≈5.8mm/s, 受腿上限 60 收口)。一轮 2~3m 从 40+ 分钟降到 ~8 分钟;
+#    边走边采约 1.9 张/秒 ⇒ 5.8mm/s 时每张相隔 ~3mm, 基线仍足够密(3DGS 要的是重叠, 不是慢)。
+#    回退: 改回 "120" 或设 env GS_MOVE_SPEED。
+MOVE_SPEED = float(os.environ.get("GS_MOVE_SPEED", "1000"))
 GS = os.path.expanduser("~/zmax/zmax_data/gs_assets")
 ROOT = os.path.expanduser("~/zmax/zmax_data/gs_map")
 STATUS = os.path.join(ROOT, "status.json")
