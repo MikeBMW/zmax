@@ -106,6 +106,13 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
    🐛 根因: 左栏是 CSS 网格(3 列), 号位面板有 grid-column:1/-1 横跨整行, 我漏给空间面板写这行 ⇒
    它只占 1/3 宽 ⇒ 按钮尺寸/宽度全不一样。**新增同行面板必须照抄这一行**。 */
 #p_spaces{grid-column:1 / -1}
+
+/* 🖱 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」—— 所有已记录点的悬停卡片 */
+#ptip{position:fixed;z-index:99999;display:none;background:#0d1117;border:1px solid #30363d;border-radius:10px;
+  padding:9px 11px;font:13px/1.6 ui-monospace,Menlo,Consolas,monospace;color:#c9d1d9;
+  box-shadow:0 8px 26px rgba(0,0,0,.6);max-width:330px;pointer-events:none}
+#ptip b{color:#7ee787}#ptip .v{color:#e6edf3}#ptip .m{color:#8b949e;font-size:12px}
+#ptip .cp{pointer-events:auto;cursor:pointer;color:#58a6ff;margin-top:5px;display:inline-block}
 .slotbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;padding:10px 10px 4px}
 .slotbar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center}
 .slotbar button.rec{background:#0f3d22;border-color:#2ea043;color:#7ee787}
@@ -1421,6 +1428,71 @@ poll(); setInterval(poll,1500);
   }, 250);
 })();
 loadSlots(); setInterval(loadSlots,10000);
+
+/* 🖱 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」:
+   覆盖**所有已记录的点** —— 号位1~7 / 空间1~7 / 页面上所有示教点技能按钮(🎯点1·侧面点0-3·准备点…)。
+   数值来自服务端 /ctl/points(slots/spaces/taught), 姿态 abc = 点位四元数按系统同一口径换算成度。
+   卡片内六个数可一键复制。 */
+(function(){
+  const tip=document.createElement('div'); tip.id='ptip'; document.body.appendChild(tip);
+  let PMAP={};
+  const _f=(v,n)=>(v===null||v===undefined)?'—':Number(v).toFixed(n);
+  function _move(e){ const w=tip.offsetWidth,h=tip.offsetHeight;
+    let x=e.clientX+14,y=e.clientY+14;
+    if(x+w>innerWidth-8) x=e.clientX-w-14;
+    if(y+h>innerHeight-8) y=e.clientY-h-14;
+    tip.style.left=x+'px'; tip.style.top=y+'px'; }
+  function _show(e,key){
+    const d=PMAP[key]; if(!d||!d.pos) return;
+    const p=d.pos, a=d.abc||[null,null,null];
+    const txt=[_f(p[0],4),_f(p[1],4),_f(p[2],4),_f(a[0],3),_f(a[1],3),_f(a[2],3)].join(' ');
+    tip.innerHTML='<b>'+key+'</b><br>x <span class="v">'+_f(p[0],4)+'</span>  y <span class="v">'+_f(p[1],4)
+      +'</span>  z <span class="v">'+_f(p[2],4)+'</span><br>a <span class="v">'+_f(a[0],3)+'°</span>  b <span class="v">'
+      +_f(a[1],3)+'°</span>  c <span class="v">'+_f(a[2],3)+'°</span>'
+      +((a[0]===null)?' <span class="m">(该点无姿态记录)</span>':'')
+      +'<div class="m">记录于 '+(d.at||'—')+(d.n_samples?(' · '+d.n_samples+' 帧'):'')
+      +((d.spread_pos_m!=null)?(' · 极差 '+(Number(d.spread_pos_m)*1e6).toFixed(1)+'µm'):'')+'</div>';
+    const cp=document.createElement('span'); cp.className='cp'; cp.textContent='📋 复制 x y z a b c';
+    cp.onclick=()=>{ try{ navigator.clipboard.writeText(txt); }catch(_e){} };
+    tip.appendChild(cp);
+    tip.style.display='block'; _move(e);
+  }
+  const _hide=()=>{ tip.style.display='none'; };
+  function _key(b){
+    const t=(b.getAttribute('title')||'')+' '+(b.textContent||'');
+    const m=t.match(/[『【]([^』】]+)[』】]/); if(m) return m[1];
+    if(b.dataset.slot) return b.dataset.slot+'号位';
+    const sp=(b.textContent||'').match(/空间\s*(\d)/); if(sp) return '空间'+sp[1];
+    return null;
+  }
+  function _attach(){
+    document.querySelectorAll('#slotbar button,#spacebar button,[data-skill]').forEach(b=>{
+      if(b.dataset.ptipHooked) return;
+      const k=_key(b); if(!k||!PMAP[k]) return;
+      b.dataset.ptipHooked='1';
+      b.addEventListener('mouseenter',e=>_show(e,k));
+      b.addEventListener('mousemove',_move);
+      b.addEventListener('mouseleave',_hide);
+    });
+  }
+  async function _load(){
+    try{
+      const r=await fetch('/ctl/points?t='+Date.now()); const j=await r.json();
+      if(!j||!j.ok) return;
+      PMAP={};
+      (j.slots||[]).forEach(s=>{ const d={pos:s.pos,abc:s.abc,at:s.at,n_samples:null,spread_pos_m:null};
+        PMAP[s.no+'号位']=d; if(s.point) PMAP[s.point]=d; });
+      (j.spaces||[]).forEach(s=>{ const d={pos:s.pos,abc:s.abc,at:s.at,spread_pos_m:s.spread_pos_m};
+        PMAP['空间'+s.no]=d; if(s.point) PMAP[s.point]=d; });
+      const T=j.taught||{}; Object.keys(T).forEach(k=>{ PMAP[k]=T[k]; });
+      document.querySelectorAll('[data-ptip-hooked]').forEach(b=>{ delete b.dataset.ptipHooked; });
+      _attach();
+    }catch(e){}
+  }
+  _load(); setInterval(_load,10000);
+  try{ new MutationObserver(()=>_attach()).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+})();
+
 
 /* ── 🧭 空间 1~7 (2026-10-01 老倪): 与号位**独立的** 7 个空间点, 互不影响 ──────────
    排布照抄号位(同一个 .slotbar 7 列网格); 绿=已记 / 灰=未记; 按钮点了不出动作, 只回显位姿。 */

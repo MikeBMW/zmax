@@ -840,6 +840,24 @@ _POINT_RECORD_ALLOW = set(_POINT_SLOTS.values()) | set(_SPACE_SLOTS.values())
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _pt_abc_deg(_q):
+    """🔴 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」:
+    点位库只存四元数 ⇒ 用系统现成口径 l2_transport_sdk.quat2rpy(返回弧度)换算成度。
+    读不到就返回 None(不编)。"""
+    try:
+        import math as _m
+        _x, _y, _z, _w = [float(v) for v in _q[:4]]
+        _n = _m.sqrt(_x*_x + _y*_y + _z*_z + _w*_w) or 1.0
+        _x, _y, _z, _w = _x/_n, _y/_n, _z/_n, _w/_n
+        _rx = _m.atan2(2.0*(_w*_x + _y*_z), 1.0 - 2.0*(_x*_x + _y*_y))
+        _sy = 2.0*(_w*_y - _z*_x)
+        _ry = _m.copysign(_m.pi/2.0, _sy) if abs(_sy) >= 1.0 else _m.asin(_sy)
+        _rz = _m.atan2(2.0*(_w*_z + _x*_y), 1.0 - 2.0*(_y*_y + _z*_z))
+        return [round(_m.degrees(v), 3) for v in (_rx, _ry, _rz)]
+    except Exception:                                                   # noqa: BLE001
+        return None
+
+
 def _taught_points() -> dict:
     """示教点库(与执行器 _load_points 同一口径: 演示学习轨迹点 + L2 传授点库, 同名以传授点库为准)。"""
     pts: dict = {}
@@ -888,6 +906,8 @@ def _ctl_points() -> dict:
             "recorded": bool(_rec), "has_skill": _sid in ids, "ready": bool(_rec and _sid in ids),
             "pos": [round(float(v), 4) for v in _pos] if (_rec and _pos) else None,
             "quat_taught": bool(_pd.get("quat")),
+            "quat": _pd.get("quat") if _rec else None,
+            "abc": _pt_abc_deg(_pd.get("quat")) if (_rec and _pd.get("quat")) else None,
             "at": str(_pd.get("at") or _pd.get("ts_str") or _pd.get("updated_at") or "") if _rec else "",
             "whitelisted": _sid in _abs_skills(),
         })
@@ -899,8 +919,22 @@ def _ctl_points() -> dict:
         _sout.append({"no": _no, "name": "空间%d" % _no, "point": _p, "recorded": bool(_rec2),
                       "pos": [round(float(v), 4) for v in _pos2] if (_rec2 and _pos2) else None,
                       "at": str(_pd2.get("recorded_at") or "") if _rec2 else "",
-                      "spread_pos_m": _pd2.get("spread_pos_m")})
+                      "spread_pos_m": _pd2.get("spread_pos_m"),
+                         "quat": _pd2.get("quat") if _rec2 else None,
+                         "abc": _pt_abc_deg(_pd2.get("quat")) if (_rec2 and _pd2.get("quat")) else None})
+    _tall = {}
+    for _nm, _d0 in (pts or {}).items():
+        if not isinstance(_d0, dict):
+            continue
+        _tall[str(_nm)] = {
+            "pos": [round(float(v), 4) for v in (_d0.get("pos") or _d0.get("position") or [])][:3] or None,
+            "abc": _pt_abc_deg(_d0.get("quat")) if _d0.get("quat") else None,
+            "at": str(_d0.get("recorded_at") or _d0.get("at") or ""),
+            "desc": str(_d0.get("desc") or "")[:120],
+            "n_samples": _d0.get("n_samples"),
+        }
     return {"ok": True, "slots": out, "green": sum(1 for _s in out if _s["ready"]), "n": len(out),
+            "taught": _tall,
             "points_file": "data/skills/l2_atomic/taught_points.json",
             "spaces": _sout, "n_spaces": len(_sout),
             "green_spaces": sum(1 for _s in _sout if _s["recorded"]),
