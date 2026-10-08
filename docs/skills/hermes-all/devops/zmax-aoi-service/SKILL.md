@@ -765,3 +765,26 @@ ExposureTime -> Gain -> Gamma    # 三个都用 SetFloatValue
 | `ip neigh` 显示 `192.168.23.23 INCOMPLETE` + 同网段**别的设备可达**(如 Orin `192.168.23.66`、`.23.160`) | 二层 ARP 都不应答 | **工控机整机不在线**(关机/休眠/网线/网口) —— 别再去修本机网卡/通道 |
 一条命令取证: `ip -br addr; ip neigh show dev <产线网卡>; ping -c2 192.168.23.66; timeout 5 bash -c 'echo > /dev/tcp/192.168.23.23/10082'`
 本机 8793 流服务会刷 `[local] 读帧失败 xN` —— 那是**症状**(它取的是工控机的图), 不是它的故障。
+
+
+## 🆕 页面「🔍 请求检测」回 500「图像抓取失败」= 推流端在抢相机 (2026-10-08 实测)
+
+症状: 页面上点「🔍 请求检测」→ `500 {"code":500,"msg":"图像抓取失败"}`; 但**直连工控机** `POST /capture_detect` 却 200。
+同一格的 `/picture?kind=...&grab=1`(推流取帧)一直 200 —— 相机没坏、产线程序也没坏, 别去动机器/程序。
+
+根因(实测): 8793 推流端"有人在看"那一格时每轮带 `&grab=1`(≈2 次/秒), 与 `/capture_detect` **抢同一台 OPT 相机**
+(该 SDK 不支持并发抓图) ⇒ **只要页面开着看画面, 检测就抓不到帧**。证据: `D:\xspace\ultralytics_AOI\v5s.log` 里
+`GET /picture?...&grab=1 200` 与 `POST /capture_detect 500` 逐秒交错, 且"关掉页面再看就成功"。
+
+修法(`tools/cam_live_stream.py`, **服务端收口, 零产线改动**): 新增 `_AOI_DETECT_BUSY`(port → 忙到时刻) +
+`_aoi_busy/_aoi_busy_enter/_aoi_busy_release`; `_aoi_detect()` **进门占住 30s**(覆盖 POST 往返含冷启重连)、
+**出门留 4s 尾巴**; 两处 `_watching` 计算 + 两处"自动现拍"分支统统加 `not _aoi_busy(port)` ⇒ 检测期间推流只读内存帧。
+实测(**观众在场**下点按钮): 10082 / 10083 `POST /api/aoi/detect` 均 `HTTP 200 + ok=True + fresh=True`
+(金手指 1495ms · 表面 8747ms, 各自回 `saved_incoming` 落盘路径)。顺带: 金手指等待窗 2.5 → 4.0s(拍照往返 + 1.6s 推理)。
+
+⚠️ 相机被抢后**表面程序会卡死掉线**(端口释放、后续请求 `000`): 这时 `ZMAX_AOI_KeepAlive` 会自己拉一份新的(新 pid),
+   等它绑上端口(实测 <90s)就恢复; **别手搓第二份**(会变成两份抢相机, 更坏)。
+
+⚠️ 判据语义(老倪会追问): 两路 `/last_result` 在**工件不在位**时也报 `verdict=OK · count=0` ⇒ **"0 缺陷"不等于"合格"**。
+   表面程序自带 `judge_ok` / `judge_why`(实测 `亮条上边缘点太少(0) —— 画面里没找到过曝条(没拍到位/曝光变了?)`)可当"在位"前置判据;
+   金手指侧没有这个字段时, 用 `AOIQualityChecker().assess_frame(帧)` 先体检再谈缺陷判定。

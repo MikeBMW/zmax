@@ -1218,9 +1218,39 @@ _AOI_AUTO_MIN_S = 60.0
 #   心跳(时刻)而不用引用计数: 客户端被强杀也不会泄漏计数 ⇒ 不会永久顶着重拍相机。
 _AOI_VIEW_TS = {}          # 帧槽名 → 最后一次被 MJPEG 客户端取帧的时刻
 _AOI_LIVE_WIN_S = 8.0      # 心跳在这么多秒内 ⇒ 认为"有人在看", 走实时触发模式
+# 🆕 2026-10-08 老倪: 「last_result 是不是调用 yolo 的结果? 在金手指和侧面检测的窗口增加这个按钮」
+#   现场实测的真因: 只要有人看着那一格, 本服务推流端每轮都带 `&grab=1`(≈2 次/秒) 去抓产线相机;
+#   而页面「🔍 请求检测」走 POST /capture_detect 也要独占同一台 OPT 相机(其 SDK 不支持并发抓图)
+#   ⇒ **一边看画面一边点请求检测, 必回 500「图像抓取失败」**(直连工控机则成功) —— 按钮没坏, 是抢相机。
+#   修法: 页面触发检测期间, 推流端只读内存帧、绝不 grab; 检测返回后再留一个收尾窗口才恢复。
+#   注意: 只闸"推流端的 grab", 不闸 _aoi_capture/其它取图 —— 检测本身照常跑。
+_AOI_DETECT_BUSY = {}      # port → 忙到什么时候(time.time() 秒)
+_AOI_DETECT_WIN_S = 30.0   # 进门就占住: 覆盖 POST 往返(含冷启重连相机)
+_AOI_DETECT_TAIL_S = 4.0   # 出门留的尾巴: 给相机 SDK 一个干净收尾窗口
 
 
-def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
+def _aoi_busy(port) -> bool:
+    try:
+        return float(_AOI_DETECT_BUSY.get(int(port), 0.0)) > time.time()
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
+def _aoi_busy_enter(port) -> None:
+    try:
+        _AOI_DETECT_BUSY[int(port)] = time.time() + _AOI_DETECT_WIN_S
+    except Exception:                                                        # noqa: BLE001
+        pass
+
+
+def _aoi_busy_release(port) -> None:
+    try:
+        _AOI_DETECT_BUSY[int(port)] = time.time() + _AOI_DETECT_TAIL_S
+    except Exception:                                                        # noqa: BLE001
+        pass
+
+
+def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
     """触发工控机产线正常检测命令 POST /capture_detect, 并把判决取回来。
 
     2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
@@ -1232,8 +1262,9 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
     import json as _json
     import urllib.request as _ur
     # 🆕 2026-09-30: 表面(housing)单帧推理实测 ~7.8s, 金手指 ~1.6s ⇒ 等待时间分开, 免得一上来就报"还没出结果"
-    if float(wait_s) == 2.5 and int(port) == 10083:
+    if float(wait_s) == 4.0 and int(port) == 10083:
         wait_s = 13.0
+    _aoi_busy_enter(port)      # 🔴 先占住: 本服务推流端在检测期间不许再 grab 相机(见 _aoi_busy 注释)
     out = {"ok": False, "port": port, "cmd": "POST /capture_detect"}
     # 🆕 2026-09-30 修「点了请求检测却报上一帧」: 先记下**点之前**的检测序号, POST 之后必须等到序号变了,
     #   才算"这一次"的结果。否则表面推理 8.9s、等待到点没等到 ⇒ 页面把上一次(可能几分钟前)的判决当本次报出来。
@@ -1251,6 +1282,7 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
         out["ok"] = True
     except Exception as e:                                                        # noqa: BLE001
         out["err"] = "触发检测失败: %s" % str(e)[:180]
+        _aoi_busy_release(port)
         return out
     try:
         _dl = time.monotonic() + max(0.0, float(wait_s))
@@ -1293,6 +1325,7 @@ def _aoi_detect(port: int = 10082, wait_s: float = 2.5) -> dict:
                           % (_last_code or "?"))
     except Exception as e:                                                        # noqa: BLE001
         out["err2"] = "取判决失败(检测可能仍在跑, 稍后看判决格): %s" % str(e)[:150]
+    _aoi_busy_release(port)
     return out
 
 
@@ -1497,8 +1530,9 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         n += 1
         # 🔴 2026-09-27 老倪: 有人看这一格 ⇒ 每轮都带 grab 触发一帧(顶到 OPT 上限 ~1.4/1.7fps);
         #   没人看 ⇒ 保持只读(不触发拍照, 不长时间占产线相机)。
-        _watching = ((time.time() - _AOI_VIEW_TS.get(name, 0.0)) < _AOI_LIVE_WIN_S
-                     or (full_name and (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S))
+        _watching = ((not _aoi_busy(port))           # 🔴 检测进行中 ⇒ 只读内存帧, 不抢相机
+                     and ((time.time() - _AOI_VIEW_TS.get(name, 0.0)) < _AOI_LIVE_WIN_S
+                          or (full_name and (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S)))
         _url_live = url + ("&grab=1" if "?" in url else "?grab=1")
         _req_url = _url_live if _watching else url
         code, raw, err = 0, b"", ""
@@ -1547,7 +1581,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             #    把一格里明明是新拍的图说成坏的 —— 老倪会照着字面理解。
             _no_photo = (code == 404 and ("grab=1" in err or "尚无" in err))
             _did_grab = False
-            if (_no_photo and _AOI_AUTO.get(port)
+            if (_no_photo and _AOI_AUTO.get(port) and (not _aoi_busy(port))
                     and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) >= _AOI_AUTO_MIN_S):
                 _AOI_AUTO_AT[port] = time.time()
                 g = _aoi_capture(port, name, timeout=60.0)
@@ -1623,8 +1657,9 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         kind = "crop" if mode == "same" else "origin"
         url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
-        _watching = any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
-                        for k in (name, full_name, anno_name))
+        _watching = ((not _aoi_busy(port))           # 🔴 同上: 检测期间不抢相机
+                     and any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
+                             for k in (name, full_name, anno_name)))
         _req_url = url + ("&grab=1" if _watching else "")
         code, raw, err, _src_age = 0, b"", "", None
         try:
@@ -1688,7 +1723,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         else:
             _no_photo = (code == 404 and ("grab=1" in err or "尚无" in err))
             _did_grab = False
-            if (_no_photo and _AOI_AUTO.get(port)
+            if (_no_photo and _AOI_AUTO.get(port) and (not _aoi_busy(port))
                     and (time.time() - _AOI_AUTO_AT.get(port, 0.0)) >= _AOI_AUTO_MIN_S):
                 _AOI_AUTO_AT[port] = time.time()
                 g = _aoi_capture(port, name, timeout=60.0)
