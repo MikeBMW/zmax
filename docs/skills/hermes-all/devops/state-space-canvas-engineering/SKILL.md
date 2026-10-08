@@ -197,13 +197,27 @@ metadata:
 ## 关键数字基线 (每次改画布前后都要对)
 | 指标 | 基线 | 怎么查 |
 |---|---|---|
-| 画布节点项 / 连线项 | **89 / 181** (2026-10-01 基线; 此前 88/177 · 迁移时 87/172) | `verify_canvas_render.py` |
-| 节点数 / 连线数 (JSON) | **89 / 182** | 直接数 `state_space_obs.json` |
+| 画布节点项 / 连线项 | **89 / 182** (2026-10-08 实测; 2026-10-01 为 89/181 · 迁移时 87/172) | `verify_canvas_render.py` |
+| 节点数 / 连线数 (JSON) | **89 / 183** (2026-10-08 实测) | 直接数 `state_space_obs.json` |
 | 档位审计 | R1 15 · R2 **36** · R3 13 · R4 7 · R5 3 · 真缺口 0 · 无执行注册 0 | `canvas_level_audit.py` |
 | 档位测试 | L2 275/275 · L3 94/94 · L4 178/178 | `xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py --level Lx` |
 
 加 L4 节点的落位判据: 别用"全域最大空档"硬套 —— 语义节点应在它的**上下游之间**的区间里取空档
 (如标定节点必须落在 `标定层(sscalib)` 与 `被标定引擎(ss_mani_eng)` 之间), 否则为凑空档会接出反向线被断言拦住。
+
+## 工程文件: 保存/加载整个「状态空间工程」(2026-10-08 老倪: 文件菜单)
+老倪: 「在控制台，文件下拉菜单，增加一个保存工程文件的功能，这样，我下次进入控制台，直接加载这个工程文件，就可以继续调试状态空间工程了。」
+- 实现: `tools/gui/project_file.py`(逻辑, 可命令行自检) + `studio.py` 文件菜单两项
+  (`💾 保存工程文件…` Ctrl+S · `📂 加载工程文件…` Ctrl+Shift+O; 默认目录 `reports/projects/`, 扩展名 `.zmaxproj`)。
+- 工程文件是**自包含** JSON 四段: `meta`(schema/时间/控制台版本/画布指纹 md5+统计) · `canvas`(画布真源全文) ·
+  `run_cfg`(画布页 6 个运行档位勾选: chk_engine_demo/chk_l3_full/chk_mani_yaw/chk_intact_exec/chk_l4_dit/chk_l2_compat) ·
+  `ui`(画布栈索引 —— 加载后自动切回画布页)。
+- 🔴 加载 = **写画布真源**, 所以三道闸: ①先 `read_summary()` 把"这文件里是什么"摆给用户看, 他点确定才动;
+  ②写盘只走 `flows.save_canvas()`(自带校验 + 备份到 `flows/_archive/`); ③坏文件(schema 不对/画布校验不过)拒载, 当前画布不动。
+- 保存前也要校验: 把有问题的画布存成"工程"比存不上更糟(下次加载会把它们写回来)。
+- 命令行自检 `gui-venv311/bin/python tools/gui/project_file.py`; 端到端自检(存→读摘要→载→画布 md5 不变 +
+  备份生成 + 软链未被替换 + 坏文件被拒)见 `/tmp/verify_project_feature.py`, 加 `--studio` 再验 studio.py 离屏 import。
+- ⚠️ `QFileDialog` 在 `studio.py` 里是**函数内局部导入**(不在顶部 import 块) —— 新写的 handler 里要自己 `from PyQt5.QtWidgets import QFileDialog`。
 
 ## 画布全图 PDF 导出 + 一条命令发布 (2026-10-01 起, 用户要"手机随时下载最新版全图")
 | 东西 | 位置 | 说明 |

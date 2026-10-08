@@ -9,6 +9,22 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
+## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
+
+细节与命令见 `references/version-iteration-checklist.md`; 一句话版:
+①现场数据(`data/` 被 gitignore)先拷进 `docs/data_snapshots/<日期>_<主题>/` + README →
+②**六处**版本号同步(`studio.py` · `tools/gui/update_checker.py` · `tools/gui/version_sync.py` · `docs_sync.py` ·
+**`tools/ci/integrity_check.py` 的 `EXPECTED_VERSION`**(硬编码常量, 漏改 = 下一版假报警) · `VERSION.md` 表行 + git tag),
+且**逐处定点替换、禁全文替换**(实测全文替换会把 `studio.py` 里历史 changelog 行一起改掉) →
+③`studio.py` changelog 注释置顶(**行首必须 `#`**, 漏了 = 非法 Python,
+`integrity_check` 的 `ast.parse` 会当场拦住) →④`VERSION.md` 表(**无分隔行**, 插在表头正下方) →
+⑤`integrity_check`+`repo_guard`+`secret_scan` →⑥`commit -F 消息文件` + `tag` + push + `ls-remote` 核远端。
+⚠️ 先自己提交再跑 6h 同步 job —— 它会 `git add -A` 把你的改动卷进 `sync:` 消息。
+⚠️ **改版本号前留下的 `*.bak_*` 会被一起提交**(版本迭代的固定回流): 提交前 `git status --short | grep -c '\.bak'` 必须为 0。
+护栏是 `.gitignore` 里的 `*.bak*` 规则, 而**加规则时必须用 `git check-ignore -v <一个真实文件名>` 实测**,
+不能只 `grep -q` 判"文件里已有这个模式"就跳过追加 —— 实测该模式可能只存在于另一条路径下(`flows/*.bak_*`),
+grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧进仓。
+
 ## 🧷 8793 页左栏新增面板(老倪 2026-10-01「大小、宽度一点都不一样」)
 
 **左栏是 CSS 网格(`.grid{grid-template-columns:repeat(3,minmax(0,1fr))}`)**, 面板默认只占 **1/3 宽**。
