@@ -1,0 +1,50 @@
+{
+ "windows": {
+  "argv": [
+   "D:\\a\\zmax\\zmax\\tools\\gui\\dist\\Z-MAX_Console.exe",
+   "--engine-selftest"
+  ],
+  "frozen": true,
+  "meipass": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\_MEI000002782",
+  "mujoco": "3.3.0",
+  "plugin_handles": 4,
+  "dll_fix": "stage=dirs_only,n=4",
+  "metaworld": "n/a",
+  "xml": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\_MEI000002782\\metaworld\\assets\\sawyer_xyz\\sawyer_peg_insertion_side_l4.xml",
+  "xml_exists": true,
+  "nq": 24,
+  "nbody": 39,
+  "qpos_sum": 3.707535,
+  "render_ok": false,
+  "render_err": "FatalError: gladLoadGL error",
+  "node_logic_keys": 151,
+  "logic_home": "library.py",
+  "canvas_json": "state_space_obs.json",
+  "gui_import_chain": true,
+  "rc": 0
+ },
+ "macos": {
+  "argv": [
+   "tools/gui/dist/Z-MAX_Console.app/Contents/MacOS/Z-MAX_Console",
+   "--engine-selftest"
+  ],
+  "frozen": true,
+  "meipass": "/Users/runner/work/zmax/zmax/tools/gui/dist/Z-MAX_Console.app/Contents/Frameworks",
+  "mujoco": "3.3.0",
+  "plugin_handles": 4,
+  "dll_fix": "",
+  "metaworld": "n/a",
+  "xml": "/Users/runner/work/zmax/zmax/tools/gui/dist/Z-MAX_Console.app/Contents/Frameworks/metaworld/assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml",
+  "xml_exists": true,
+  "nq": 24,
+  "nbody": 39,
+  "qpos_sum": 3.707535,
+  "render_ok": false,
+  "render_err": "CGLError: invalid pixel format",
+  "node_logic_keys": 151,
+  "logic_home": "library.py",
+  "canvas_json": "state_space_obs.json",
+  "gui_import_chain": true,
+  "rc": 0
+ }
+}

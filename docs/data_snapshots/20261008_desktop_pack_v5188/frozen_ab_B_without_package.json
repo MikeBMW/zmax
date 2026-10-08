@@ -1,0 +1,12 @@
+{
+ "frozen": true,
+ "meipass": "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal",
+ "sys_path_head": [
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal/base_library.zip",
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal/python3.11/lib-dynload",
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal"
+ ],
+ "error": "ModuleNotFoundError: 控制台缺少工程包 lerobot.engineering (141 条节点逻辑 + 画布真源都在里面)。\n  尝试过的工程根: ['/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal/src', '/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal/src', '/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/ZMAX_Probe_NoEng/_internal/../src', '/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_NoEng/src']\n  · 源码运行: 确认仓库内存在 src/lerobot/engineering/\n  · 打包版 (exe/.app): 当前包是用**旧打包配置**构建的 (未随包附带 src/lerobot/engineering)\n    → 请升级到修复版 exe (打包已加 --add-data src/lerobot/engineering)\n  原始错误: No module named 'lerobot'",
+ "cause": "ModuleNotFoundError(\"No module named 'lerobot'\")",
+ "rc": 1
+}

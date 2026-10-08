@@ -1,0 +1,14 @@
+{
+ "frozen": true,
+ "meipass": "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_Eng/ZMAX_Probe_Eng/_internal",
+ "sys_path_head": [
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_Eng/ZMAX_Probe_Eng/_internal/base_library.zip",
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_Eng/ZMAX_Probe_Eng/_internal/python3.11/lib-dynload",
+  "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_Eng/ZMAX_Probe_Eng/_internal"
+ ],
+ "node_logic_keys": 151,
+ "logic_home": "library.py",
+ "canvas_json": "/home/ubuntu/.hermes/cache/scratch/frozen_ab/dist_ZMAX_Probe_Eng/ZMAX_Probe_Eng/_internal/src/lerobot/engineering/flows/state_space_obs.json",
+ "canvas_exists": true,
+ "rc": 0
+}
