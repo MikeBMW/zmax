@@ -330,6 +330,7 @@ MJPEG（`multipart/x-mixed-replace`）天然免解码缓冲 → 低延迟；服�
 
 ## 支持文件
 - `references/arm-stream-restore.md` — arm 路帧龄上万时的恢复口径
+- `references/camera-device-renumber-recovery.md` — 相机没帧先查设备重枚举（by-id 建立时间）+ 必须带原始参数重启
 - `references/public-exposure-gate.md` — 公网暴露闸门的白名单/拒绝表、真值表用例、隧道选型与实测吞吐、`/live.json` 清单形状
 - 仓库内实现：`tools/tunnel_proxy.py`（只读闸门 + 拼图流 + 清单）· `tools/verify_tunnel_gate.py`（真值表）·
   `tools/wall_3cam.py`（离线拼图出图）· `tools/probe_ecs_upload.py`（探对方上传口语义）

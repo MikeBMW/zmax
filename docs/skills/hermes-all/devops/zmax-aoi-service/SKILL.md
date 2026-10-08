@@ -45,6 +45,59 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 - 根治方向(未做, 已问用户): 让**只有一个启动者**(给保活或 agent 侧去掉重复启动), 或程序启动时用
   `SO_EXCLUSIVEADDRUSE`/锁文件独占 ⇒ 第二份 bind 失败即自行退出。
 
+### ⚠️ 部署器的验收探针**必须带等待**(2026-10-08 实测: 两条误回滚)
+
+金手指 v21 上线时连续两次"部署成功→验收失败→自动回滚", **两次都不是新版本的问题**, 而是部署器的探针没有等待:
+1. `POST /capture_detect` 只打**一次** —— 撞上"冷启动首抓必失败"(该路由自己会重连重试, 但要几分钟才 200)
+2. `/storage` 在重启命令后 **~25s** 就查 —— 实测要 **~89s** 才 LISTEN ⇒ 拿到 `HTTP 0`
+⇒ 已入码修复(`tools/aoi_remote_deploy.py`): `/storage` readiness 轮询 **≤200s**、`capture_detect` 轮询 **≤180s**,
+与既有的 `/last_result`(≤45s) 同口径。**新写任何 AOI 验收断言前, 先问自己"服务这时起来了吗"**。
+判据: 只要出现"一部分接口 ✅ 另一部分 ❌"或"HTTP 0/500 但同一时刻别的口 200", 先怀疑**重复实例 + 探针过早**, 不要怀疑新版本。
+
+### 🔎 一条命令拿工控机 AOI 全貌(免引号坑, 2026-10-08 定稿)
+
+PowerShell 里裸写 `-match python` 会被 PS 解析成缺值表达式 ⇒ 把脚本 **UTF-16LE 转 base64** 用 `-EncodedCommand` 调, 彻底绕开嵌套引号:
+
+```bash
+B64=$(python3 - <<'PY'
+import base64
+ps = r'''
+$ErrorActionPreference='SilentlyContinue'
+$p='D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py'
+Write-Output ('FILE ' + (Get-FileHash $p -Algorithm SHA256).Hash + ' size=' + (Get-Item $p).Length)
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'cam_(finger_10082|surface_10083)_work' } | ForEach-Object { Write-Output ('RUN {0} :: {1}' -f $_.ProcessId, $_.CommandLine) }
+Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -in 10082,10083 } | ForEach-Object { Write-Output ('PORT {0} PID {1}' -f $_.LocalPort, $_.OwningProcess) }
+Get-Content 'D:\\xspace\\ultralytics_AOI\\v5f.log' -Tail 10
+'''
+print(base64.b64encode(ps.encode('utf-16-le')).decode())
+PY
+)
+gui-venv311/bin/python tools/station_cmd.py "powershell -NoProfile -EncodedCommand $B64" 130
+# 回执在 ~/zmax/zmax_data/agent_hub/out/<epoch>.txt, 用 grep -a 取
+```
+
+**"磁盘文件已是新版、跑起来还是旧行为"怎么判**: 比对 `FILE <hash>` 与 `RUN` 行的**启动方式** ——
+带 `cmd /c cd /d D:\xspace\ultralytics_AOI && venv\python` 的是保活那份(工作目录正确),
+只有裸 `Python310\python.exe cam_xxx_work_v20.py`(无 `cd`)的是 agent 侧那份,**它的工作目录可能是别处的旧副本** ⇒
+端口被它占住时, 产线跑的就是旧代码(判据图 meta 字段能直接看出来: v21 有 `n_keys/width_uniform_px/lattice_pitch_px`, v20 是 `kept_rows/x_trim/k`)。
+处置顺序: 杀全部匹配进程 → **立刻**只起保活那份 → **同一分钟内抓一帧占住相机**(否则另一机制的补起会抢走)。
+
+### 🆕 金手指判据图 v21 口径(2026-10-08 老倪现场逐字要求, 已交付)
+
+老倪原话串: 「不要歪斜 · 右侧那块不是金手指要去掉 · 只显示金手指且显示成矩形 · 其余全黑 · 不要曝光太亮」→
+「只是A, 但要剔除上边的一大横条; 金手指是跟钢琴按键一样, 一个小竖线, 没有一大横条」→
+「金手指为什么宽度不一样呢? 实际的金手指宽度很均匀啊」.
+
+落地口径(程序 `cam_finger_10082_work_v21.py`, 只改判据渲染, **模型输入零改动**):
+1. **按键 = 列方向周期性**: 行窗口内亮段 ≥6 且间距抖动 <25% 判为按键行; 行亮占比 ≥0.85 = 满宽横条 ⇒ 剔除
+2. **横条只截断键带起点, 不打洞**(中间挖行会把一排键切成上下两段)
+3. **等宽栅格**(宽度为什么不一样的正解): 由可靠键求出**一个间距 + 一个相位 + 一个中位宽度**, 按栅格铺,
+   落在栅格上的结构全部补回(被离群规则误删的暗键也回来) ⇒ 现场帧 **20 根键 × 42px 全等 · 间距 71px**
+4. 自动增益(饱和 0.0%, 原帧 25.9%) + 画布 **900x332** 纯黑居中
+- 键数别用亮阈值硬数(会数出 26 虚高): 键宽 × 根数 ≈ 条体宽度 才自洽
+- 离线复跑: `cd ~/zmax/zmax_data/aoi_v4 && ../../gui-venv311/bin/python test_v21_routes_offline.py`
+  (路由级 E2E: 判据图口径 + 取图口 md5 == /last_result.model_input_md5, 直接硬证模型输入没变)
+
 ## 端点（唯一路由, 无需参数/鉴权）
 
 | 端口 | 模型 | 相机 SN / 型号 |
