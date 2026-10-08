@@ -70,16 +70,22 @@ function boot(name){
       if(Math.abs(f[o])>mx)mx=Math.abs(f[o]);
       if(Math.abs(f[o+1])>my)my=Math.abs(f[o+1]);
       if(Math.abs(f[o+2])>mz)mz=Math.abs(f[o+2]);}
-    /* 🔴 相机距离必须按场景实际大小给: 查看器出厂默认相机在 z≈6.55(为 ~10 单位的展示场景调的),
-       我们这套场景半跨度只有 ~0.4m ⇒ 直接用只占画面 3%、看起来全黑。
-       这里按半跨度给一个贴脸距离, 并用 location.hash 传视图矩阵(查看器读 hash ⇒ 自动关掉轮播)。 */
-    var half = Math.max(mx, my, mz, 0.05), dist = Math.max(half*2.6, 0.6);
-    var vm = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,dist,1];
-    try{ location.hash = '#' + encodeURIComponent(JSON.stringify(vm)); }catch(e){}
-    setMeta('高斯 '+n.toLocaleString()+' · 已居中(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
-            ' · 半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m · 相机距离 '+dist.toFixed(2)+'m)');
+    /* 🔴 2026-10-08 老倪「场景图, 用鼠标左键, 要可以改变角度」:
+       查看器左键旋转 = 绕「相机前方 4 个单位处」的球面轨道(d=4, main.js mousemove down==1),
+       而我们的 .splat 是**真尺度**(半跨度仅 ~0.4m) ⇒ 轨道轴心落在场景外, 左键几乎转不动。
+       修法: 居中后**把场景缩放到默认相机合适的尺度**(位置 ×k; 尺度是 log 域 ⇒ +ln k),
+       之后完全不用改相机 = 查看器原厂行为: 左键拖=绕场景中心转, 滚轮=缩放, 右键拖=平移。
+       (只改浏览器里的显示副本, 不动资产文件、不动训练链路) */
+    var half = Math.max(mx, my, mz, 0.05), k = 4.5 / half, add = Math.log(k);
+    for(var i=0;i<n;i++){o=i*8;
+      f[o]*=k; f[o+1]*=k; f[o+2]*=k;          // 位置: 居中后再缩放
+      f[o+3]+=add; f[o+4]+=add; f[o+5]+=add;}  // 尺度(log 域): 同步缩放, 否则高斯相对大小失真
+    setMeta('高斯 '+n.toLocaleString()+' · 已居中缩放 ×'+k.toFixed(1)+'(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
+            ' · 原半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m) · 左键拖转角度');
     var u=URL.createObjectURL(new Blob([ab],{type:'application/octet-stream'}));
-    try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u)+location.hash);  /* ⚠️ 必须带上 location.hash: 少了它查看器读不到视角矩阵 ⇒ 自动轮播开启 ⇒ 场景自己乱转 */}catch(e){}
+    /* 2026-10-08: 不再用 hash 改相机(那样左键轨道轴心在场景外, 老倪「左键转不了角度」的根因)。
+       场景已按默认相机尺度缩放 ⇒ 交给查看器原厂相机与控件。 */
+    try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u));}catch(e){}
     loadViewer();
   }).catch(function(e){ setMeta('资产拉取失败: '+e); loadViewer(); });
 }
