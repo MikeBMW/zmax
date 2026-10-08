@@ -1466,7 +1466,7 @@ loadSlots(); setInterval(loadSlots,10000);
     return null;
   }
   function _attach(){
-    document.querySelectorAll('#slotbar button,#spacebar button,[data-skill]').forEach(b=>{
+    document.querySelectorAll('#slotbar button,#spacebar button,[data-skill],button[title*="『"],button[title*="【"]').forEach(b=>{
       if(b.dataset.ptipHooked) return;
       const k=_key(b); if(!k||!PMAP[k]) return;
       b.dataset.ptipHooked='1';
