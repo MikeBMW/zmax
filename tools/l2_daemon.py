@@ -639,7 +639,7 @@ def _gripper_cmd(st):
     加 `timeout N`(timeout_s+10) 硬上限: 超时即返回失败, 通道立刻放行。
     注意口径: 客户端超时 ≠ 动作没下发 —— 判完成仍只看真值/回执(绝不重发)。
     """
-    return ('timeout %d ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
+    return ('timeout %d ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
             'target_force: %.1f, target_acc: %.1f, target_push_length: %.1f, target_push_speed: %.1f}"'
             % (int(float(st.get("timeout_s", 30)) + 10),
                float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
@@ -1311,11 +1311,11 @@ def dispatch(reg, spec, chan):
         _dir = "夹爪"
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))
-            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
+            call = ('timeout 30 ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: 0.0, '
                     'target_speed: -1.0, target_force: %s, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"' % fo)
         else:
-            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 1000.0, '
+            call = ('timeout 30 ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: 1000.0, '
                     'target_speed: -1.0, target_force: -1.0, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"')
     else:
