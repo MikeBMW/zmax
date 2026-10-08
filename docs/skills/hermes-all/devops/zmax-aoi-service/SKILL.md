@@ -391,6 +391,32 @@ token **每次现取** → 不依赖 gateway 进程内缓存（gateway 报 99991
   看见两个别当重复副本杀错 —— 端口属主那个才是活的。
 - 该脚本本身只"动手时才写日志", 所以"日志没有新行"≠"任务没跑"; 判活要看任务 State/LastRunTime + 端口/`/storage`。
 
+### 🆕 `LastTaskResult=1` + 日志长期无新行 = **脚本自身解析失败(编码)**, 不是任务被禁 (2026-10-08 实测)
+
+症状: 两路 `10082/10083` 全 closed; `ZMAX_AOI_KeepAlive` 的 **State=Ready**(启用着) 但
+`LastTaskResult=**1**`, `zmax_keepalive.log` 停在 09-28(十天没一行), `v5f.log/v5s.log` 也不再长;
+`aoi_watch.sh` 每 5 分钟报一次"自愈失败"却永远救不回来; 反向通道**正常**(心跳 <5s, 工控机在接单跑 KeepAlive)。
+- 真因: **`D:\xspace\ultralytics_AOI\zmax_keepalive.ps1` 里有中文注释**。该文件头部自称 "ASCII only, PS 5.1 safe",
+  但 v6 版把一段中文说明塞进了第 100~103 行(UTF-8 无 BOM + 中文里的 `"` 引号) ⇒ **PS 5.1 按 ANSI/GBK 读**,
+  整脚本解析失败(`意外的标记")"`) ⇒ 任务 exit 1 ⇒ **一行日志都不写**(解析都过不去)、AOI 永远起不来。
+  实测 5852B / 333 个非 ASCII 字节 / sha CC8FEE97…; 三方(仓库 `docs/deliver/v6/` · 8794 发布目录 · 工控机现役)逐位一致。
+- 取证(只读, 走反向通道):
+  ```powershell
+  (Get-ScheduledTask -TaskName ZMAX_AOI_KeepAlive).State
+  (Get-ScheduledTaskInfo -TaskName ZMAX_AOI_KeepAlive) | Select LastRunTime,LastTaskResult   # 1 = 失败
+  (Get-ScheduledTask -TaskName ZMAX_AOI_KeepAlive).Actions                                    # 看它跑哪个 .ps1
+  & powershell -ExecutionPolicy Bypass -NoProfile -File D:\xspace\ultralytics_AOI\zmax_keepalive.ps1
+  #   ↑ 直接跑它, 报 `ParserError … 意外的标记")"` = 语法/编码坏, 与"任务被禁"是两码事
+  $b=[IO.File]::ReadAllBytes('D:\xspace\ultralytics_AOI\zmax_keepalive.ps1'); (@($b|?{$_ -gt 127})).Count   # >0 就是元凶
+  ```
+- 修法(只改注释, 代码零改动): 把非 ASCII 注释行改写成 ASCII 同义英文 → 本机 `sha256` 更新 → 拷进 8794 发布目录
+  (`~/zmax_data/aoi_v4/deliver/v6/`, 即 `http://<主节点>:8794/v6/`) → 工控机 `iwr` 下载 + `Get-FileHash` 核对
+  (不一致绝不执行) → 再跑一次保活。实测改后 5825B / nonascii=0 / sha 3396253B…, 一跑两路 **10082 pid 8696 · 10083 pid 18832**,
+  `/storage` 均 200, 8793 的 `aoi_gold`/`aoi_surface` 两格同时上线。
+- **铁律**: 给工控机的任何 `.ps1/.py` 一律**纯 ASCII 注释** (中文只留在 4060 侧的 .md/说明里), 提交前用
+  `python3 -c "print(sum(c>127 for c in open(p,'rb').read()))"` 自查 = 0。`aoi_watch.sh` 与 KeepAlive 都只会在
+  "动手时"写日志, 所以"日志无新行 + LastResult=1"这条组合要**先去查脚本能不能被解析**, 别浪费时间查通道/任务状态。
+
 ## ⚠️ 两个必踩的坑 (2026-09-27 现场踩过, 改 v5 代码/排障时先看)
 
 **① 取图路由缺"重连再抓" ⇒ 冷启/空闲后稳定 500「抓帧失败」**
@@ -441,6 +467,16 @@ curl -s http://192.168.23.23:10083/last_result
 curl -s -o /dev/null -w '%{http_code} %{size_download}\n' 'http://192.168.23.23:10082/picture?kind=origin&grab=1'
 ```
 v6 已在 10082/10083 跑(2026-09-27, = v5 + 取图两路由的重连重试修复 + 版本号统一), 日志 `D:\xspace\ultralytics_AOI\v5f.log` / `v5s.log`。
+
+**现役已换 v20 (2026-10-08)**: 两路统一版本号 v20 ——
+金手指 `cam_finger_10082_work_v20.py`(内容 = v12: 判据图 + 模型吃 960 同帧派生图) ·
+表面 `cam_surface_10083_work_v20.py`(内容 = v13: v12.1 判据图 / v12.2 台阶右界 / v13 曝光·增益可调)。
+`zmax_keepalive.ps1` 的 `$prog` 与 `tools/aoi_remote_deploy.py` 的 `FILENAME_*`/`start_pair`/默认路径均已同步到 v20。
+台账: `reports/aoi_v20_上线台账_20261008.md`。
+⚠️ **换版时推荐顺序: 先停保活 → 先下载+哈希核对(**在役服务不动**) → 再停现役 → 起新版 → 验收 → 重开保活**。
+把下载/核对放在停服之前, 产线中断窗口从"整段部署"压到只有停-起(~100s), 且哈希不符时能在停服前中止。
+⚠️ 冷启动首探陷阱(2026-10-08 实测): 启动后 100s 时 `POST /capture_detect` 在 10083 上仍会回 **500**
+(首抓失败→该路由靠自己重连重试), 数分钟后复测 200 ⇒ **别把冷启首探的 500 当成版本回归**。
 
 
 ## 升级到 v4 (表面 10083 / 金手指 10082) —— 历史/回滚参考 (已被 v5 取代)

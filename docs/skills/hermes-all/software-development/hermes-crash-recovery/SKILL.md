@@ -133,6 +133,32 @@ The user explicitly asked (2026-08-01, after a prior crash): monitor system perf
   - `deliver='all'` so alerts fan out to every connected gateway platform (e.g. Feishu).
   - no_agent semantics: non-empty stdout delivered verbatim; empty = silent; non-zero exit = error alert.
 
+### 「Another Hermes process is using this session」/ 发了消息没反应 —— 是会话回合租约, 不是入侵
+
+现象: 界面/CLI 打印「⏳ Another Hermes process is using this session; waiting for it to finish…」,
+或消息发出后回「kept this session busy too long. Your message was not processed」。
+
+机制: 任一 Hermes 进程要在**同一个会话**上跑一轮, 先得抢**会话回合租约**（`session_turn_leases` 表,
+writer 身份 = `pid:turn=…:<turn-nonce>:platform=`）; 抢不到就打印上面那句。
+
+诊断（全只读, 1 分钟, 别先怀疑野进程/入侵）:
+1. `ps -eo pid,ppid,etime,tty,cmd | grep -i hermes` —— 正常只有两类: ①**你自己的 CLI**（tty=pts/*, parent=终端）
+   ②**gateway**（parent=systemd --user 或 1）。只有出现第三方进程才需要继续查。
+2. 读 `~/.hermes/state.db` 的 `session_turn_leases`（`conversation_id, holder, acquired_at, expires_at`）——
+   `holder` 里的 `pid=` 就是答案: 若是**当前跑着的那个 CLI**, 占着它的就是**你自己**;
+   `expires_at` 已过 = 短租约未续, 新一轮随时能拿。
+3. `~/.hermes/runtime/active_sessions.json` —— 活会话登记（pid / session_id / surface）;
+   会话要查 `state.db` 的 `sessions` 表, 主键列是 **`id`（不是 `conversation_id`）**, `source=cli|feishu|cron…`。
+4. `grep -a 'Agent thread still alive after interrupt\|lease wait' ~/.hermes/logs/agent.log | tail` ——
+   `cli: Agent thread still alive after interrupt` + `session turn lease wait aborted by interrupt: <sid>`
+   这两行连在一起就是定论: **上一轮被中断后 agent 线程仍活着、没释放租约**, 新一轮（同进程、不同 turn-nonce）
+   把它判成"另一个进程"。
+
+处置: **别连点/别重发**（会再叠一条等待, 超时那条会说明"消息未被处理, 稍后重发"）;
+要立刻解 = 在 CLI 里 Ctrl-C 停掉**当前回合**再发, 或等上一轮收尾。**别去 kill gateway / 重建会话** —— 与它无关。
+伴生现象: 若同一时刻在跑**上下文压缩**（`agent.log` 的 `context compression done: messages=A->B`）,
+回合会长得多、等待更明显 —— 那是正常重活, 不是卡死。
+
 ## Live-USB Rescue: Restore from Windows Docker Desktop Backup
 
 Scenario: the old Windows machine holds the only Hermes backup (`D:\hermes-docker\workspace\hermes-backup\hermes_core_*.tar.gz` — a full `~/.hermes` snapshot) and you're continuing on a fresh box. Boot an Ubuntu live USB on the old machine, mount its NTFS drives **read-only**, extract selectively. (Full recipe: `references/2026-08-22-live-usb-windows-backup-restore.md`.)
@@ -500,3 +526,4 @@ After all context is re-established, snapshot Hermes memory to the project repo 
 | `git ls-remote` 是新 sha、`git fetch` 后 `origin/main` 还是旧的 | 镜像的 pack 缓存陈旧 | `git fetch --depth=1 origin main` 绕过；或 `git update-ref -d refs/remotes/origin/main` 后重取 |
 | `hermes update` 跑到一半中断 / gateway 重启把升级带走 | update 与 gateway 同进程树 | `setsid hermes update --backup --yes > /tmp/hermes_update.log 2>&1 &` 分离运行 |
 | 升级完行为没变 | 新代码要 gateway 重启才生效（update 先 drain，窗口可达 ~30 分钟） | 在**进程外**终端 `hermes gateway restart`；别在 gateway 内重启自己 |
+| 界面报 `Another Hermes process is using this session` / 消息没被处理 | 会话回合租约被**本进程上一轮**占着（中断后 agent 线程仍活、未释放） | 别重发；Ctrl-C 停当前回合或等收尾；查 `state.db` 的 `session_turn_leases` + `agent.log` 的 `lease wait`/`still alive after interrupt` |

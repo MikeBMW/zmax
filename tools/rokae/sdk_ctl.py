@@ -300,7 +300,11 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag, motion="L
         # MoveJ 是关节插值, 实测等效速度远低于标称(≈3~5mm/s) ⇒ 预算按"位移/3 + 60s"给, 上限 1800s。
         _budget = max(60.0, min(1800.0, _want_mm / 3.0 + 60.0))
     else:
-        _budget = max(20.0, min(1200.0, _want_mm / max(float(speed), 0.5) * 3.0 + 20.0))
+        # ⏱ 2026-10-08 实测修正: 现场 3 次独立测量一致 —— 下发 11.2mm/s ⇒ **实际 1.11mm/s**。
+        #    原式按 speed(标称)算 ⇒ 200mm 只给 73.6s(实际要 180s) ⇒ 预算到点判 CHECK/rc=6,
+        #    上层当成"失败"掐掉整条计划, 而控制器其实还在走(臂后来确实到位了)。按实测速率给。
+        _eff = max(float(speed) * 0.1, 0.35)
+        _budget = max(45.0, min(2400.0, _want_mm / _eff * 1.6 + 45.0))
     log("盯真值预算 %.0fs (位移 %.1fmm · speed=%.1fmm/s · %s)" % (_budget, _want_mm, float(speed), out.get("motion")))
     while time.time() - t_send < _budget:
         time.sleep(0.15)

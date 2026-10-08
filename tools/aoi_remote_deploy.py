@@ -33,8 +33,8 @@ HUB = os.path.join(ROOT, "tools", "agent_hub.py")
 OUT_DIR = "/home/ubuntu/zmax/zmax_data/agent_hub/out"
 HOST = "192.168.23.50"
 ILO = "192.168.23.23"
-FILENAME_10082 = "cam_finger_10082_work_v6.py"
-FILENAME_10083 = "cam_surface_10083_work_v6.py"
+FILENAME_10082 = "cam_finger_10082_work_v20.py"
+FILENAME_10083 = "cam_surface_10083_work_v20.py"
 
 
 def log(msg):
@@ -178,8 +178,8 @@ def start_pair(restart=True):
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
         'if($c){ Stop-Process -Id $c.OwningProcess -Force } }; Start-Sleep 4; '
         '$sh=New-Object -ComObject WScript.Shell; '
-        '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v6.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
-        '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v6.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
+        '$sh.Run("cmd /c cd /d %s && %s cam_finger_10082_work_v20.py > %s\\v5f.log 2>&1",0,$false) | Out-Null; '
+        '$sh.Run("cmd /c cd /d %s && %s cam_surface_10083_work_v20.py > %s\\v5s.log 2>&1",0,$false) | Out-Null; '
         'Start-Sleep -Seconds 40; '
         'foreach($p in 10082,10083){ $c=Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue; '
         '"$p -> " + $(if($c){"up pid " + $c.OwningProcess}else{"DOWN"}) }'
@@ -195,8 +195,8 @@ def stop_pair():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--finger", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_finger_10082_work_v6.py"))
-    ap.add_argument("--surface", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_surface_10083_work_v6.py"))
+    ap.add_argument("--finger", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_finger_10082_work_v20.py"))
+    ap.add_argument("--surface", default=os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_surface_10083_work_v20.py"))
     ap.add_argument("--pubdir", default="/home/ubuntu/zmax/zmax_data/aoi_v4/deliver/v6")
     ap.add_argument("--only", default="both", choices=["both", "10082", "10083"],
                     help="哪一路当验收判据(另一路仅报状态, 不参与成败与回滚)")

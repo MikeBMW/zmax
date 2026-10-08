@@ -10,7 +10,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $dir = 'D:\xspace\ultralytics_AOI'
 $log = Join-Path $dir 'zmax_keepalive.log'
 $py  = Join-Path $dir 'venv\Scripts\python.exe'
-$prog = @{ 10082 = 'cam_finger_10082_work_v6.py'; 10083 = 'cam_surface_10083_work_v6.py' }
+$prog = @{ 10082 = 'cam_finger_10082_work_v20.py'; 10083 = 'cam_surface_10083_work_v20.py' }
 
 function PortPid($p) {
   $c = Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue | Select-Object -First 1
@@ -97,10 +97,10 @@ if ($ag.Count -eq 0) {
     $acts += ('agent revive: via watchdog -> ok' + $err)
   }
 }
-# rev6 (2026-09-30): 反向通道自愈 —— agent 循环是"一问一答 + 串行 + **没有超时**"的,
-#   一条会挂住的命令就能把通道彻底堵死(实测: 一条清理临时文件的命令挂住 ⇒ 通道 13 分钟零回执,
-#   而 watchdog/keepalive 只看"agent 进程在不在", 所以永远不会自愈)。
-#   这里只杀"命令行含 zmax_cmd.ps1 **且已跑超过 10 分钟**"的子进程: 正常命令都是秒级, 不会误伤。
+# rev6 (2026-09-30): reverse-channel self-heal. The agent loop is "request/reply + serial + **NO timeout**",
+#   so ONE hung command can block the channel completely (measured: a tmp-cleanup command hung =>
+#   13 min with zero replies; watchdog/keepalive only check "is the agent alive", so they never self-heal).
+#   Fix: kill ONLY children whose cmdline contains zmax_cmd.ps1 **and ran over 10 minutes**; normal cmds are seconds.
 $stuck = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
            Where-Object { $_.CommandLine -and $_.CommandLine.Contains('zmax_cmd.ps1') })
 foreach ($s in $stuck) {

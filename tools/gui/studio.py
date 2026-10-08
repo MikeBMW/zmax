@@ -752,7 +752,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.18.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11276,7 +11276,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11284,10 +11284,11 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.18.2: 全局回归: 修掉家目录整合的 5 种老路径写法死角(SDK 执行腿整体失效→页面报已下发但机器人不动) + 相机守卫误判每5分钟重启站台 + 落功能回归/死角审计脚本
+                # v5.18.3: 空间点回点提速+去绕远(实测) —— ① SDK 腿速度上限 30→60mm/s(8793 页 1000 档实测 3.0→5.8mm/s; 换算实测 1/10, 等待窗口按封顶后标称对齐, 根因=高档被腿内 min() 夹住导致等待上限高估 56%) ② goto_space1~7 去「盲抬 50mm」改单段直线到位(路径 533→284mm, 根因=固定 +50mm 与点位/上下无关, 2026-10-08 从 0.4096 盲抬到 0.4596 撞上方净空) ③ 8793 增 1000/2000 速档按钮 + 实测换算提示(旧写 0.0999 偏大 33 倍)
+# v5.18.2: 全局回归: 修掉家目录整合的 5 种老路径写法死角(SDK 执行腿整体失效→页面报已下发但机器人不动) + 相机守卫误判每5分钟重启站台 + 落功能回归/死角审计脚本
         # v5.18.1: 桌面快捷方式修复 + 仓库根 yaml 收编 + 自检/DNS/网络收尾(家目录整合的收尾)。一、快捷方式(老倪报"控制台怎么打不开了"): 根因是家目录整合后 `~/Desktop/XSpace-Studio.desktop` 的 Exec 仍写 `/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`、Icon 指 `/home/ubuntu/lerobot-smolvla-lew/...`, 两个目录都已收进 `zmax/` 而不存在 ⇒ 双击零反应(不报错不弹窗)。修为新绝对路径, 真源入库 `tools/desktop/*.desktop` + 一键核验/安装脚本 `install_launchers.sh`(--check 只读), 顺带把 `安装Hermes.desktop` 不合法的 Exec 引号写法改合法(desktop-file-validate 三文件全绿); gio trusted + DING 扩展重载一并做。二、仓库根 yaml 收编: 166 个 yaml 逐个查引用(代码 grep + git 跟踪 + 生成器), 根目录 42 → 1(只留 .pre-commit-config.yaml): 39 个 `config_smolvla_lew_lora_*.yaml` 是训练生成物(仅 reports/joint_train_*/summary.json 留痕、.py/.sh 零引用、已被 .gitignore 覆盖) → 收进 `configs/generated_train_configs/`(留痕不删, from→to 清单在 zmax_data/backups/); `config_l3_b6.yaml`(被跟踪的手写配置) → `configs/`; sim 配置同为生成物。根因修掉: `tools/joint_train_all.py:133` 原来 `os.path.join(ROOT, 'config_...yaml')` 直写仓库根 → 写进新目录 + makedirs; `mk_smolvla_sim_cfg.py` 的 --out 默认值同步。挪前先证实 lerobot 的 dataset.root 是 CWD 相对(`Path(cfg.dataset.root)` 直通, 不按配置文件目录拼) ⇒ 放子目录不改语义, 但训练必须仍在仓库根启动。三、自检/DNS/网络: failed 单元 0 · 25/26 单元 active · 8 端口全在 · NTP 同步 yes; DNS 清掉两条长尾(hf-mirror 317→6ms、pypi 86→3ms), 其余清前就在 1~28ms ⇒ 不声称整体加速; 网关 1.88ms · 1.1.1.1 1.75ms · Orin 0.19ms · 工控机 0.26ms · 珞石 0.13ms 全 0 丢包 · WiFi -40dBm/573.5Mbit 满速档; 吞吐抽测 codeload 单流 8.19MB/s、体检口径 3.78MB/s 落在历史基线带内 ⇒ 不作增益声明; 修两处漂移(GPU persistence Disabled→Enabled、journal 443→188M) + 修 `zmax_net_optimize.sh` 在 --quick 下把"没测"打印成"远端下载 0KB/s"的误导输出。四、新增: `tools/desktop/`(三个 .desktop + install_launchers.sh) · `tools/preflight_shutdown.sh`(下电前预检: 臂 idle/无授权/无写入/仓库已保存 → 判"可以下电")。
         # v5.18.0: 节点执行链修复(runtime.py 补 import os + _YOLO_CACHE 改从 nodes.library 惰性取 —— 2026-09-28 拆包时漏搬, 任何节点经文档化入口都 NameError 被 GUI try/except 静默吞掉) + 真动撤销改读授权真源 _auth_info().armed(原来读启动时静态标志, 撤销后页面永远显示已授权) + VL 慢层 MAXTOK 9000→可配默认2000(9000 时 4 路拼图 >300s 超时⇒降级裁决⇒fail-closed 拒发) + VL 拼图剔除缺席/过期视角并如实标注 + 3DGS 自动跑点建图通道(/ctl/gs_map, 走既有授权+收口链) + 工位状态看板(无训练时显示上次训练) + 画布矢量 PDF 发布; 版本记法统一回单 v(原 vv 是笔误, 与 tag 打架)
         # vv5.16.35: 新增「运行所有模型」四档取证工具 + L4 档 INTACT 真推理装配口径修复(2026-09-30) 老倪: 「从zmax获取最新版代码开始，你先打开控制台，运行所有模型」  一、新工具 tools/run_all_models.py: 一条命令把 L2/L3/L4/L5 四档各真跑 N 步, 逐层落证据(步数/done/终点mm/YOLO 出帧数与检出数/前馈 MLP 真身次数/INTACT 真推理次数/墙钟), 报告 reports/run_all_models_<ts>.json; 档位开关与 GUI 勾选框逐条等价(L2=默认视觉 · L3=SS_L3=1 · L4=SS_USE_MLP=1+直驱装配 · L5=planner/认知头)。  二、修坑(根因): headless 跑 L4 档时只设 SS_INTACT=1 ⇒ sim._intact_node 为 None, u_ff 槽位静默回退 analytic, 计数 0 且无任何报错 ⇒ 会被误判成「模型没跑」。改为照 GUI 同一装配器接线: IntactRuntime(task='pusht', device='cpu') + IntactNode(horizon=8) + set_goal(reports/intact_goal_frame.npy) + intact_direct_rollout.install_direct_act(sim, nd, a_mean, a_std, infer_every=1) + sim.attach_intact(nd, None), 并 pop SS_INTACT(否则 u_ff 槽位重复注入, 历史实测 33mm 滑脱); 计数读直驱通道 sim._intact_drive['state']['calls'](u_ff 通道的 _intact_stats['intact_calls'] 是另一个桶, 读错桶恒为 0)。  三、实测证据(本轮真跑出来的): L4 档 150 帧 INTACT 真推理 150/150(每帧 模型动作→env.step) + 前馈 MLP 真身 150/150 · L2/L3/L5 各 150 帧/300 检出(每帧 2 目标 peg+OPT_Gold) · L3 档 SmolVLA+LEW(ckpt outputs/train/smolvla_lew_v10_1h/checkpoints/004000)真执行接入 · 本地推理服务 8790 两个头 infer_count 0→1(96.7ms, 6 维动作+yaw) · SAM3 开放词汇分割 1471ms(掩膜+分数) · L5 视觉 DeepSeek 真源 http:deepseek-flash 1253ms · 本地 VLM Qwen2.5-VL-3B 18.6s。  四、口径(诚实标注): L4 直驱 120 步插入 54.5mm(解析链对照 21.8mm)、L2 收口闸否决 113/采纳 7、任务未完成 —— 与离线判闸一致, 属模型能力问题非接线问题; YOLO 吃的是引擎渲染帧, 非真机画面(产线 USB 网卡不在位)。  五、技能沉淀: zmax-console/references/run-all-models.md(档位 env 对照表 / 读错计数桶等 6 条坑 / /tmp/zmax_nav_cmd 控制台命令通道用法:ss_canvas·ss_run·l5_status·l5_interact)。

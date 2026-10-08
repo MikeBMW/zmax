@@ -236,6 +236,9 @@ max_tokens=500  → 1.9s · 正常回答 ✓     (reasoning_tokens=225, completi
 - 🔴 **每步现做图像预处理 = GPU 饿死**: 实测单步 **54s**(ETA 53min)、`nvidia-smi` 利用率仅 5% ——
   纯 CPU 瓶颈(PIL 读图 + processor 编码)。改成**训练前一次性预编码**(缓存 token 张量, 只做一次),
   训练环只搬张量到 GPU; 再加 `--max-side 448` 限图。别去调 batch/lr, 那不是瓶颈。
+- **本机教师通道清单**: `~/.hermes/.env` 里只有 `DEEPSEEK_API_KEY`(+GitHub token), **没有 dashscope key**
+  ⇒ `qwen-vl-max` 通道在本机不可用(实测重试 60/60 全废, 全退化成 rule)。要用它必须先让用户把
+  `DASHSCOPE_API_KEY` 放进 `~/.hermes/.env` —— 不要在聊天里要值, 也不要自己编 key。
 - **显式通道的 key 只看环境变量** ⇒ 密钥在 shell 里被屏蔽/未 export 时, 症状是 `src=rule`
   「无可用 VLM 路径」(看着像"没有 VLM 路径", 实际是 key 空)。修法: 进程内注入
   (`os.environ['SS_VLM_KEY']=os.environ.get('DASHSCOPE_API_KEY','')`, 密钥不进命令行也不打印),

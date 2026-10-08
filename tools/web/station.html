@@ -593,9 +593,10 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
       <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~1000)</span>
         <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢</button>
-        <button data-v="60">60</button><button data-v="200">200</button><button data-v="500">500 快</button></span>
+        <button data-v="60">60</button><button data-v="200">200</button><button data-v="500">500 快</button>
+        <button data-v="1000">1000</button><button data-v="2000">2000 快</button></span>
         <input class="num" id="spd" value="8"></div>
-      <div class="hint" style="margin-top:6px">速度是相对量(线性实测 ≈0.0999mm/s 每单位 ⇒ 1000 ≈ 100mm/s; 可直接在右边框里填任意数, 上限 1000)。
+      <div class="hint" style="margin-top:6px">速度是相对量(1~2000, 可直接在右边框里填任意数)。<b>实测换算: 实际轴速 ≈ 0.0093×设定值 mm/s</b>(2026-10-08 三次独立实测一致; 原来写的 0.0999 偏大 10 倍) ⇒ 120→1.1mm/s、200→1.9mm/s、<b>1000/2000 都被腿上限 30mm/s 封顶 = 实测 3.0mm/s(当前最快)</b>。
         <b>实测基线: 60 → 腕部 10° 约 10s</b>, 想快 5 倍填 300。停下前
         驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动。
         键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>

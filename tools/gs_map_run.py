@@ -203,10 +203,13 @@ def l5_select(sess_or_ds, st, k=3):
     return d or {}, op
 
 
-def move_and_wait(skill, tgt, timeout=240, speed=None):
-    # 🚚 车速口径 (2026-10-07 老倪选 A 落地时定): L2 的 speed 是"相对量", 实测 ≈0.1mm/s 每单位。
-    #    原来写死 8 ⇒ 0.75mm/s ⇒ 空间点之间 400~470mm 的转移要 10 分钟/次, 7 轮直接跑不完。
-    #    建图用 MOVE_SPEED(默认 120 ≈ 11mm/s, 仍受技能 speed_max=200 收口), 可用 --move-speed 调。
+def move_and_wait(skill, tgt, timeout=900, speed=None):
+    # 🚚 车速口径 (2026-10-07 老倪选 A 落地时定): L2 的 speed 是"相对量"。
+    #    原来写死 8 ⇒ 空间点之间 400~470mm 的转移要 10 分钟/次, 7 轮直接跑不完。
+    #    建图用 MOVE_SPEED(默认 120, 标称≈11mm/s, 仍受技能 speed_max=200 收口)。
+    #    ⏱ 2026-10-08 实测: 标称 11.2mm/s 的**实际轴速只有 1.11mm/s**(3 次独立测量一致),
+    #    所以 200mm 横移要 ~180s ⇒ 原 timeout=240s 是在"动作还没走完"时就判超时
+    #    (2026-10-08 08:37 就是这样整轮退出的)。这里放宽到 900s; 到位判据一个字没动。
     _sp = float(MOVE_SPEED if speed is None else speed)
     j = api_post("/ctl/move", {"skill": skill, "arm": 1, "speed": _sp, "by": "自动建图(L5选点)"})
     if not j.get("ok"):
@@ -229,6 +232,30 @@ def move_and_wait(skill, tgt, timeout=240, speed=None):
 def capture(sess, secs):
     return run([PY, os.path.join(REPO, "tools/gs_capture.py"), "--out", sess, "--secs", str(secs)],
                timeout=secs + 180)
+
+
+def cap_start(sess):
+    """异步起采(--secs 0 ⇒ 一直采到收到 STOP 文件)。用于**覆盖移动过程**。"""
+    return subprocess.Popen([PY, os.path.join(REPO, "tools/gs_capture.py"), "--out", sess, "--secs", "0"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+
+def cap_stop(cap, sess, wait_s=120):
+    """收工: 落 STOP 文件让 gs_capture 自己收尾(写 capture_summary.json)。不用信号 —— 免得它来不及落盘。"""
+    if cap is None:
+        return
+    try:
+        with open(os.path.join(sess, "STOP"), "w", encoding="utf-8") as f:
+            f.write("stop\n")
+    except Exception:
+        pass
+    try:
+        cap.wait(timeout=wait_s)
+    except Exception:
+        try:
+            cap.terminate()
+        except Exception:
+            pass
 
 
 def inc_round(sess, tag, i, prev, steps, st):
@@ -379,27 +406,51 @@ def main():
             break
         tgt = cat[skill].get("pos")
 
-        st.update(step="move", status_line="(%d/%d) 去 %s" % (i, args.rounds, skill))
+        # 🎥 边走边采 (2026-10-08 根治"永远黑屏"):
+        #    原实现 = 走到点之后**静止采 8s** ⇒ 实测 distinct_views=1、视差跨度 1.3mm;
+        #    而训练门禁 MIN_TRAIN_VIEWS=30 ⇒ 7 轮最多攒 7 个视点 ⇒ **结构上一轮都不会训练**
+        #    (页面就永远显示"还没有训练好的场景")。视差是 3DGS 的命, 而位姿变化只发生在移动过程中。
+        #    改成: 移动**前**起采, 覆盖整段横移 + 到位后再采 dwell 秒。判据/门禁一个字没改。
+        st.update(step="move", status_line="(%d/%d) 去 %s(边走边采)…" % (i, args.rounds, skill))
+        cap = None
         if args.dry_run:
             p = pose()
             ok, dd, err = (p is not None), 0.0, ("dry-run: 不移动" if p else "读不到 TCP 位姿")
             w(st, "  (dry-run) 不移动, 用当前位姿 %s" % (p,))
         else:
+            cap = cap_start(sess)
+            w(st, "  🎥 起采(覆盖移动过程) → %s" % os.path.basename(sess))
             ok, dd, err = move_and_wait(skill, tgt)
         if not ok:
+            cap_stop(cap, sess)
             st.update(running=False, status_line="%s 未成功: %s" % (skill, err))
             w(st, "⛔ " + st["status_line"])
             return 1
         w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (skill, dd * 1000))
         visited[skill] = pose() or tgt or [0, 0, 0]
 
-        st.update(step="capture", status_line="(%d/%d) 采集 %.0fs…" % (i, args.rounds, args.dwell))
-        p = capture(sess, args.dwell)
-        if p.returncode != 0:
-            st.update(running=False, status_line="采集失败: %s" % ((p.stderr or p.stdout or "")[-120:]))
-            w(st, "⛔ " + st["status_line"])
-            return 1
-        w(st, "  采集中…")
+        st.update(step="capture", status_line="(%d/%d) 到位后补采 %.0fs…" % (i, args.rounds, args.dwell))
+        if cap is not None:
+            time.sleep(float(args.dwell))
+            cap_stop(cap, sess)
+            try:
+                _sm = read_json(os.path.join(sess, "capture_summary.json")) or {}
+            except Exception:
+                _sm = {}
+            w(st, "  采集收工(含移动段): %s 次取图 · 唯一画面 %s · 位姿跨度 x%s y%s z%s mm"
+              % (_sm.get("frames"), _sm.get("unique_images"), _sm.get("pose_x_range_mm"),
+                 _sm.get("pose_y_range_mm"), _sm.get("pose_z_range_mm")))
+            if not _sm:
+                st.update(running=False, status_line="采集没落盘(capture_summary.json 缺失) ⇒ 停")
+                w(st, "⛔ " + st["status_line"])
+                return 1
+        else:
+            p = capture(sess, args.dwell)
+            if p.returncode != 0:
+                st.update(running=False, status_line="采集失败: %s" % ((p.stderr or p.stdout or "")[-120:]))
+                w(st, "⛔ " + st["status_line"])
+                return 1
+            w(st, "  采集中…")
         if args.incremental:
             st.update(step="inc_train", status_line="(%d/%d) 增量续训…" % (i, args.rounds))
             prev_model = inc_round(sess, tag, i, prev_model, args.inc_steps, st)

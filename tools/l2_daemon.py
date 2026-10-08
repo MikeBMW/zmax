@@ -669,6 +669,43 @@ def _call_remote(cmd, timeout=40):
     return _ok, out
 
 
+LEG_IDLE_WAIT_S = float(os.environ.get("ZMAX_LEG_IDLE_WAIT_S", "150"))
+
+
+def _leg_busy_s():
+    """本机 SDK 执行腿当前"在飞"的秒数; None = 空闲(或本单不走 SDK 腿)。只读, 不改任何状态。"""
+    try:
+        _d = os.path.join(REPO, "tools", "rokae")        # 腿模块不在默认 path, 自己补(与下发处同口径)
+        if _d not in sys.path:
+            sys.path.insert(0, _d)
+        import l2_transport_sdk as _T                                        # noqa: PLC0415
+        b = (_T.leg_status() or {}).get("busy") or {}
+        return (time.time() - float(b.get("since") or 0.0)) if b.get("in_flight") else None
+    except Exception as _e:                                                  # noqa: BLE001
+        log("⚠️ 查执行腿忙闲失败(%s) ⇒ 不等, 按原口径发" % str(_e)[:60])
+        return None
+
+
+def _wait_leg_idle(what, i, n, max_s=None):
+    """发下一段之前等执行腿空闲(为什么必须等, 见 run_stages 里的调用处注释)。
+
+    有界等待; 等满仍忙就**照原口径发**, 由腿自己决定收不收 —— 不在这里悄悄放宽任何判据。
+    """
+    lim = LEG_IDLE_WAIT_S if max_s is None else float(max_s)
+    b = _leg_busy_s()
+    if b is None:
+        return
+    t0 = time.time()
+    log("🚚 等执行腿空闲再发 阶段 %d/%d(%s): 上一条已飞 %.0fs" % (i, n, what, b))
+    while b is not None and time.time() - t0 < lim:
+        time.sleep(0.4)
+        b = _leg_busy_s()
+    if b is None:
+        log("🚚 执行腿已空闲(等了 %.1fs) ⇒ 发 阶段 %d/%d" % (time.time() - t0, i, n))
+    else:
+        log("⚠️ 等满 %.0fs 执行腿仍在飞(%.0fs) ⇒ 照原口径发, 由腿决定收不收" % (lim, b))
+
+
 def plan_stage(sk, st, pts, spec, cur):
     """算单阶段 目标/Δ/方向/下发字节; 守卫不过 → 返回 {"err":...} (调用方一律不下发)
 
@@ -719,6 +756,29 @@ def plan_stage(sk, st, pts, spec, cur):
         t[2] = _kz
     else:
         t[2] += float(st.get("dz_mm", 0.0)) / 1000.0      # base 系竖直偏移(mm): 正=上, 负=下
+    # 🚀 自适应抬升 `adapt_point` (2026-10-08): 「就地抬升」段的 z 必须**不低于目标点位高度**。
+    #   前情: 空间1/2 记在空中 z=0.3596, 而臂在 0.2596 时"就地抬 50mm"只到 0.3096 ⇒ 紧随其后的
+    #   keep_z 横移(0.3096)低于目标点高度 50mm ⇒ 被 z_floor 拒发 ⇒ **整条计划零下发**,
+    #   现场现象 = 「点了开始建图, 机器人一动不动」, 而且每轮白等超时, 建图永远出不来。
+    #   口径: 目标 z = max(当前z + dz_mm, 参考点位 z + adapt_margin_mm)。
+    #   ⚠️ 臂不低于该点位时(日常情形)取 dz_mm 常规抬升 ⇒ **现有技能行为零变化**。
+    #   参考点 = 阶段 to > 技能锁点(point_locked) ⇒ 与 keep_z 段用的是同一个点, 不会指错。
+    if st.get("adapt_point"):
+        _apn = _point_name(sk, st, spec)
+        _apz = (pts.get(_apn) or {}).get("pos", [None, None, None])[2]
+        if _apz is None:
+            return {"err": "自适应抬升(adapt_point): 参考点位 %s 不在点位库" % _apn}
+        _amg = float(st.get("adapt_margin_mm", 2.0))
+        _aneed = float(_apz) + _amg / 1000.0
+        if t[2] < _aneed - 1e-9:
+            log("🧗 自适应抬升(adapt_point): z %.4f → %.4f (抬到 %s(z=%.4f)+%.0fmm; 单靠 dz_mm=%.0f 只到 %.4f, "
+                "会低于该点 %.1fmm 而被 z_floor 拒发)"
+                % (t[2], _aneed, _apn, float(_apz), _amg, float(st.get("dz_mm", 0.0)),
+                   float(cur[2]) + float(st.get("dz_mm", 0.0)) / 1000.0, (_aneed - t[2]) * 1000.0))
+            t[2] = _aneed
+        else:
+            log("🧗 自适应抬升(adapt_point): 当前 z=%.4f 已不低于 %s(z=%.4f)+%.0fmm ⇒ 走常规 dz_mm=%.0f"
+                % (t[2], _apn, float(_apz), _amg, float(st.get("dz_mm", 0.0))))
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
     lm = st.get("local_mm")
@@ -822,7 +882,23 @@ def _stage_timeout(st, lin_mm, speed):
     base = float(st.get("timeout_s", 40.0))
     if not st.get("timeout_dynamic", True):
         return base
-    eff = max(0.093 * float(speed or 30), 0.4)            # mm/s 估算
+    # ⏱ 2026-10-08 实测修正: 原来按 0.093×speed 估(=标称速率), 但现场 3 次独立测量一致:
+    #    下发 11.2mm/s ⇒ 实际 1.11mm/s(标称/实际 ≈10 倍) ⇒ 等待上限被低估 10 倍:
+    #    200mm 横移只给 120s 而实际要 180s ⇒ 动作没走完就判"未到位"并中止整条计划
+    #    (建图整轮因此 240s 超时)。改按**实测**速率 0.00935×speed 估, 真机速度一个字节没动。
+    # 2026-10-08(用户点头提速 30→60): 腿内换算 sp=min(MAX_SPEED_MM_S, 0.0935×speed) 会把**高档封顶**,
+    #   估算必须按"封顶后"的标称速率算 —— 否则 speed=1000 时高估实际 56%, 等待上限偏短,
+    #   又回到"动作没走完就判未到位并中止整条计划"的老坑(2026-10-08 上午踩过)。
+    try:
+        _d = os.path.join(REPO, "tools", "rokae")            # 腿模块不在默认 path, 自己补(与下发处同口径)
+        if _d not in sys.path:
+            sys.path.insert(0, _d)
+        import l2_transport_sdk as _T                        # noqa: PLC0415
+        _cap_nom = float(getattr(_T, "MAX_SPEED_MM_S", 30.0))
+    except Exception:                                        # noqa: BLE001
+        _cap_nom = 30.0
+    _v = min(float(speed or 30), _cap_nom / 0.0935)          # 先过腿的封顶, 再按实测速率估
+    eff = max(0.00935 * _v, 0.35)                            # mm/s 估算(按实测速率)
     return max(base, round(15.0 + lin_mm / eff * 1.6, 1))
 
 
@@ -920,6 +996,21 @@ def run_stages(sk, spec, chan, pts):
     plans, c = [], list(cur)
     # 🧗 运动段计数(2026-10-01 碰撞事故: 多段"设计出来的转移"才校验爬升; 单击回点位不动)
     _n_motion = sum(1 for _s in steps if _s.get("op") not in ("service", "gripper"))
+    # 🚀 计划级自适应抬升豁免 (2026-10-08): 本计划若含 adapt_point 段(= 「去某个空间点」型转移),
+    #   则「到该点位**本身**必须的升高」不算"自主多抬" —— 否则臂比该点低时该点永远去不了
+    #   (实测: space1 记在 z=0.3596、臂在 0.2596 时, 阶段2 因 102mm>100mm 被拒 ⇒ 整条计划零下发)。
+    #   ⚠️ 本计划的绝对最高点由**点位自身**决定(point_z + 阶段3 的 30mm), 与起点无关 ⇒ 豁免不会让臂抬更高。
+    #   ⚠️ 逐阶段声明不行: 豁免要覆盖同一计划的每段(横移段没写 adapt_point 就漏了)。
+    _adapt_exempt_mm = 0.0
+    if any(_s.get("adapt_point") for _s in steps):
+        for _s in steps:
+            if _s.get("adapt_point"):
+                _pz = (pts.get(_point_name(sk, _s, spec)) or {}).get("pos", [None, None, None])[2]
+                if _pz is not None:
+                    _adapt_exempt_mm = max(_adapt_exempt_mm, max(0.0, (float(_pz) - float(cur[2])) * 1000.0))
+        if _adapt_exempt_mm > 0:
+            log("🧗 计划级抬升豁免(adapt_point): 到该点位本身必升 %.0fmm 不计入「自主多抬 ≤100mm」"
+                % _adapt_exempt_mm)
     for i, st in enumerate(steps, 1):
         if st.get("op") == "service":
             # 服务步 (如里萨如力控搜索): 本机不下发运动, 由驱动自己动作 —— 计划阶段只做前置校验
@@ -961,6 +1052,8 @@ def run_stages(sk, spec, chan, pts):
             try:
                 _climb = (float(pl["pos"][2]) - float(cur[2])) * 1000.0
                 _lim = float(spec.get("climb_limit_mm", st.get("climb_limit_mm", 100.0)))
+                # 🚀 加上本计划的「到该点位本身必升」豁免(见上面 _adapt_exempt_mm 注释)
+                _lim += _adapt_exempt_mm
                 _allow = float(spec.get("allow_climb_mm", 0.0) or 0.0)
                 if _climb > max(_lim, _allow) + 1e-6:
                     log("🛡🛡 阶段 %d/%d 拒发: 相对计划起点抬升 %.0fmm > 上限 %.0fmm 「现场规矩: 升高不要超过 10cm」"
@@ -1024,6 +1117,12 @@ def run_stages(sk, spec, chan, pts):
                 return "🛡 阶段 %d 被守卫拒绝" % i
             pl = pl2
         _to = _stage_timeout(st, pl["lin"], pl.get("speed", spec.get("speed", 60)))
+        # 🚚 2026-10-08: 发下一段之前先**等执行腿把手上的动作做完**。
+        #   腿是异步的(exec_call 立刻回"已下发", 动作在 worker 线程里跑, _BUSY 到 worker 结束才清),
+        #   而本执行器用**真值**判到位 ⇒ 常常比腿清忙早几秒 ⇒ 下一段一进腿就撞 _BUSY 被"拒(不排队)"
+        #   ⇒ **整条计划中止**(实测 goto_space1 第4段 / goto_space3 第1段 全栽在这, 臂停在点上空 30mm 不落地)。
+        #   同一条计划的相邻段本来就该串行 ⇒ 等它; 跨计划的并发仍由腿那条"不排队"挡着(执行器本身也是串行收命令)。
+        _wait_leg_idle(pl.get("name", "阶段"), i, n)
         if not chan_send(pl["call"], _intent_desc(pl.get("name", "阶段"), pl.get("dx", 0.0), pl.get("dy", 0.0),
                                                   pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0))):
             # 🧭 把"被哪一层拦、为什么"原样带出去给界面(老倪: 点了必须出结果, 别只说"通道不可用或VL拒发")

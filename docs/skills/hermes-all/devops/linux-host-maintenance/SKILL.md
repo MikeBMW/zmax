@@ -354,6 +354,13 @@ sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg |
   Orin 的 `ros2 node list` 里都看得到重复节点）。判据要拆开：**只有"进程不在/查不到"才拉起**；
   "进程在跑但文件旧" = 上游(相机/话题)问题，**只报告 + 指明上游节点名**，重复拉起治不了还会放大故障。
   改完两条分支都要真跑：缺进程→必须拉起 1 个；进程在 + 人为 `touch -d '10 minutes ago' <源文件>` → 必须**不**再多起。
+- **复核与判定必须用同一组参数**（2026-10-08 实测）：`cam_stream_guard.py` 的 `restart()` 复核时调
+  `judge(proc_cmdline(), resolve_devs(), stats())` 而**漏传** `local_expected()` ⇒ 判定走的是"用户换源选择"
+  (站台有「内置 ↔ USB」换源, 选择落盘在 `zmax_data/cam_local_src.json`)、复核却回落到默认的 "Integrated RGB"。
+  后果: 用户选了 USB 之后, **每一次合法重启的复核都打出假 ❌ (exit 1)**，日志里看着"串线一直没治好"，
+  而实际服务是好的(主流程的 `judge(...)` 是传了的, 所以不会真循环重启)。
+  教训: 一个判据函数被两处调用时,**默认参数会在其中一处偷偷变口径** —— 复核路径要把与主路径**逐字相同**的参数传进去;
+  改完用自测口验**两个方向**: 期望 USB 且拿到 USB → ✅; 期望 USB 却拿到 Integrated → 仍 ❌(真串线照样抓得到)。
 
 ## 10b. 停/重启常驻进程: 用锚定的精确 `pgrep` + PID, 不要裸 `pkill -f <模式串>`
 

@@ -20,6 +20,7 @@
 开关(运行时, 不用重启): env ZMAX_MOVE_TRANSPORT > 文件 ~/zmax/zmax_data/move_transport.json > "ros"
 """
 
+import errno
 import json
 import math
 import os
@@ -42,7 +43,8 @@ POSE = os.path.join(_DATA, "rokae_sdk/tcp_out/latest.json")
 SWITCH = os.path.join(_DATA, "move_transport.json")
 EVID = os.path.join(_DATA, "l2_sdk_leg.jsonl")
 
-MAX_SPEED_MM_S = 30.0          # 速度上限(现场慢速优先; 与页面档位同量级)
+MAX_SPEED_MM_S = 60.0          # 速度上限(2026-10-08 用户点头 30→60: 1000 档原来被 30 封顶=实测 3mm/s,
+                               #  现 60 ⇒ 实测 ≈6mm/s; 代理侧 sdk_ctl.py 同为 60 ⇒ 两级一致, 不再互相夹)
 MAX_ABS_MM = 800.0             # 单条绝对位移上限(空间点之间最远 ~470mm, 800 够且能拦住误目标)
 REL_STEP_MM = 40.0             # rel 位移分片步长(代理硬上限 HARD_MAX_MM=50)
 POSE_FRESH_S = 3.0             # 真值文件新鲜度要求
@@ -190,11 +192,33 @@ def send_agent(req, wait_s, logf):
     req = dict(req, id=rid)
     line = json.dumps(req, ensure_ascii=False) + "\n"
     t0 = time.time()
+    # 🛑 2026-10-08 现场事故修法: 原来 `open(FIFO, "w")` 是**阻塞**的 —— FIFO 当前没有读者时
+    #    (代理刚重启 / 代理读的是被替换掉的旧 inode / 有第二个代理把 FIFO unlink 重建了),
+    #    这个 open 会**永远吊住 worker 线程**(_BUSY 永远清不掉) ⇒ 此后整个执行器一条动作都发不出去,
+    #    而表层日志只显示"等执行腿空闲"(实测: 线程 wchan=wait_for_partner, 建图第 1 段就此卡死)。
+    #    改成 O_NONBLOCK + 有界重试: 没读者就在 8s 内如实拒发, 绝不把自己吊死。
+    fd = None
+    deadline = t0 + 8.0
+    while time.time() < deadline:
+        try:
+            fd = os.open(FIFO, os.O_WRONLY | os.O_NONBLOCK)
+            break
+        except OSError as e:
+            if e.errno not in (errno.ENXIO, errno.EAGAIN):
+                return {"rc": -1, "err": "打开 SDK 代理 FIFO 失败: %s" % str(e)[:90], "id": rid}
+            time.sleep(0.2)
+    if fd is None:
+        return {"rc": -1, "err": "SDK 代理 FIFO **没有读者**(代理没在读?) ⇒ 拒发(不吊死)",
+                "id": rid}
     try:
-        with open(FIFO, "w", encoding="utf-8") as f:
-            f.write(line)
-    except Exception as e:                                                          # noqa: BLE001
+        os.write(fd, line.encode("utf-8"))
+    except OSError as e:
         return {"rc": -1, "err": "写 SDK 代理 FIFO 失败: %s" % str(e)[:90], "id": rid}
+    finally:
+        try:
+            os.close(fd)
+        except Exception:                                                           # noqa: BLE001
+            pass
     logf("🚚 SDK 腿: 已投递 %s (id=%s)" % (req.get("cmd"), rid))
     while time.time() - t0 < wait_s:
         try:
@@ -240,7 +264,10 @@ def _run_abs(tgt, rpy, sp_mm, meta, logf):
     p0 = read_pose()
     d = [tgt[i] - p0["pos"][i] for i in range(3)]
     dist = math.sqrt(sum(v * v for v in d)) * 1000.0
-    wait = max(60.0, min(1200.0, dist / max(sp_mm, 0.5) * 3.0 + 30.0))
+    # ⏱ 2026-10-08 实测修正: 现场 3 次独立测量一致 —— 下发 11.2mm/s ⇒ **实际 1.11mm/s**。
+    #    原来按 sp_mm(标称)算等待窗口 ⇒ 低估 10 倍 ⇒ 200mm 横移只等 83s(实际要 180s),
+    #    代理在这时候返回 rc=6/CHECK 被当成"失败"(其实控制器还在走, 臂后来**真的到位了**)。
+    wait = max(90.0, min(2400.0, dist / max(sp_mm * 0.1, 0.35) * 1.6 + 60.0))
     req = {"cmd": "move-abs", "tag": "l2", "x": tgt[0], "y": tgt[1], "z": tgt[2],
            "rx": rpy[0], "ry": rpy[1], "rz": rpy[2], "speed": sp_mm,
            "guard_box": env_box()}      # 🛡 实时扫掠闸门(包络盒): 代理每 0.15s 真值比对, 出界即 stop()
@@ -276,7 +303,9 @@ def _run_rel(dxyz, sp_mm, meta, logf):
             logf("⏹ SDK 腿分片中止(收到叫停: %s) · 已完成 %s" % (_STOP["why"], done))
             return False, done
         step = [max(-REL_STEP_MM, min(REL_STEP_MM, v)) for v in left]
-        wait = max(30.0, min(600.0, max(abs(v) for v in step) / max(sp_mm, 0.5) * 4.0 + 20.0))
+        # ⏱ 2026-10-08: 同 _run_abs —— 分片等待也按**实测速率**(标称的 1/10)给, 否则分片一超时
+        #    就报失败, 而控制器其实还在把这一片走完。
+        wait = max(60.0, min(2400.0, max(abs(v) for v in step) / max(sp_mm * 0.1, 0.35) * 1.6 + 45.0))
         r = send_agent({"cmd": "move-rel", "tag": "l2", "dx": step[0], "dy": step[1], "dz": step[2],
                         "speed": sp_mm, "cap_mm": 50.0}, wait, logf)
         if r.get("rc") != 0 or str(r.get("verdict") or "").startswith("ABORT"):

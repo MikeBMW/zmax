@@ -89,6 +89,34 @@ bash tools/rokae_sdk_run.sh stop | reset
 法兰同步 ±1.000mm, 横向漂移峰值 0.007mm, **控制器报警无新增**; 证据 JSON 在 `~/zmax_data/rokae_sdk/logs/sdk_ctl_*.json`。
 未通: 夹爪(DH 夹爪只有 aarch64 的 .so) ⇒ 直连只能控臂。
 
+## Orin 侧 SDK 直驱桥 (端口 39061) — 启动报 `ModuleNotFoundError: xcoresdk_python` = SDK 路径写死且已过期
+
+Orin 上常驻一条 **HTTP 桥**(`systemd` 单元 `zmax-arm-sdk-bridge.service`, `ExecStart=/usr/bin/python3 /home/tashan/.zmax/arm/zmax_arm_sdk_bridge.py`,
+`User=tashan`, 听 **0.0.0.0:39061**): `GET /health` · `GET /status`(关节/速度/力矩/`endInRef`/`flangeInBase`/模式/电源) ·
+`POST /reset|/stop|/move_pose`(默认 `dry=true` 只算不发)。4060 侧经 `http://192.168.23.66:39061` 读写，不依赖 Orin 的 ROS 栈。
+
+**故障(2026-10-08 实测)**: `/health` → `{"ok":true,"sdk":false,"err":"ModuleNotFoundError: No module named 'xcoresdk_python'"}`,
+`/status` → 503；同时 Orin 上 `ros2 topic info /robot/tcp_pose` 报 **`Publisher count: 0`**，
+4060 侧 tap 收包 `tcp=0/joint=0/ft=0` —— 看着像"机器人没连"，**其实控制器好的**(4060 采样器同时刻读到位姿、Orin `ping .23.160` 0.3ms)。
+- 真因: 桥代码里的默认 `ZMAX_SDK_PATH` 指向一个**已不存在的旧工作区**
+  (`.../tashan_robot_so_20260807_174920_6983506_aarch64/...`)，而 `0810/` 下现役的是带哈希的
+  `tashan_robot_so_**20260924_142706_0cabfde**_aarch64` **⇒ 每次重新部署工作区哈希都会变**。
+  那台单元里 **没有设 `ZMAX_SDK_PATH`** ⇒ 落到死默认 ⇒ import 挂 ⇒ 桥不连控制器 ⇒ ROS 侧也没有遥测。
+- 取证(在 Orin 上, 只读):
+  ```bash
+  curl -s http://127.0.0.1:39061/health                  # err 里就是真答案
+  ls -1 /home/tashan/0810/                               # 找当前工作区(带哈希那个)
+  find /home/tashan/0810/<ws>/install -name 'xcoresdk_python' -maxdepth 9   # ⚠️ 不加 -maxdepth 搜不到(它在第 10 层)
+  systemctl cat zmax-arm-sdk-bridge.service | grep Environment                # 看有没有 ZMAX_SDK_PATH
+  ```
+- 修法(最小、可回滚): 在单元里补 `Environment=ZMAX_SDK_PATH=<真实路径>`(路径到 `.../rokae` 这一层) →
+  `sudo systemctl daemon-reload && sudo systemctl restart zmax-arm-sdk-bridge` → 复核 `/health` 要 `sdk:true` 且
+  `/status` 返回真值(`operateMode: automatic` · `powerState: on` · `endInRef` 与 4060 `latest.json` 逐位一致)。
+  **改前先 `cp` 备份单元**(实测备份后注入, 未覆盖任何原设置)。
+- **铁律**: 工作区哈希变了就**同步改单元里的 `ZMAX_SDK_PATH`**; 判断"机器人到底连没连"要看
+  `.23.160` `ip` 可达 + **SDK 会话能不能读到真值**(桥 `/status` 或 4060 `latest.json`),
+  **不要拿 `ros2 topic list` 能列出话题当"机器人已连"** —— 相机话题有发布者、机器人话题 `Publisher count: 0` 是常态。
+
 ## 常驻动作链(2026-10-07 落地, 纯新增件; 老服务/老页面一行未改)
 - 组成: 容器 `zmax-sdk-arm-agent`(`tools/rokae/sdk_agent.py`, 持一条 SDK 会话) + 主机服务
   `tools/sdk_motion_service.py`(:8798 极简点动页 + JSON API) + 授权 CLI `tools/sdk_arm_auth.sh` + 起停 `tools/start_sdk_arm.sh`

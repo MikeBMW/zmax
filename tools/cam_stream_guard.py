@@ -141,7 +141,9 @@ def restart(reason):
     r = subprocess.run(["bash", s], capture_output=True, text=True, timeout=180)
     tail = "\n".join((r.stdout or "").strip().splitlines()[-4:])
     print("🛰 工位推流守护: %s → 已按解析结果重启\n%s" % (reason, tail))
-    ok, why = judge(proc_cmdline(), resolve_devs(), stats())
+    # ⚠️ 2026-10-08 修: 复核也必须带上**用户换源选择**。原来漏传 ⇒ 用户选 USB 后
+    #    每次合法重启的复核都按 Integrated 判, 打出假 ❌(exit 1), 让人以为串线没治好。
+    ok, why = judge(proc_cmdline(), resolve_devs(), stats(), local_expected())
     print("   复核: %s (%s)" % ("✅ 映射正确" if ok else "❌ 仍不对", why))
     return 0 if ok else 1
 
