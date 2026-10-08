@@ -33,9 +33,17 @@ WAV_FAST = os.path.join(REPO, "zmax_data", "motion_tick_fast.wav")
 WAV_LIFT = os.path.join(REPO, "zmax_data", "lift_alarm.wav")
 LIFT_UP_MM_S    = 0.30      # 上升速度阈值(mm/s) —— 低于它算持平/噪声
 LIFT_ALARM_GAP_S = 1.60     # 抬升中警报间隔(每声 ~1.41s 长, 间隔 1.6s ⇒ 连续提醒且不叠音)
+# 🆕 2026-10-08 老倪: 「移动的时候, 要发出警报声音」 —— 实验性移动(动臂试探视角)要求**只要是移动就响警报**,
+#    而不是常规提示音。用**文件开关**(不改代码即可现场热切): 存在 ~/zmax/zmax_data/beep_force_alarm ⇒
+#    移动期间一律播 lift_alarm.wav(与抬升警报同一个音, 间隔同上); 文件删掉即恢复"移动响提示音"。
+FORCE_ALARM_FLAG = os.path.join(REPO, "zmax_data", "beep_force_alarm")
 LOG = os.path.join(REPO, "zmax_data", "motion_beep.log")
 
-MOVE_SPEED_MM_S = 0.8      # 判定"在动"的速度阈值(mm/s)
+MOVE_SPEED_MM_S = 0.8      # 判定"在动"的**平移**速度阈值(mm/s)
+# 🆕 2026-10-08 实测踩坑: 只判平移 ⇒ **原地纯旋转(A/B/C/J6 姿态微调)位移 0mm, 一声不响**
+#    (现场实测: 执行器报"位移 0mm · 姿态差 3.0°", 警报脚本判"静止" ⇒ 老倪要求的"移动就响警报"落空)。
+#    姿态轴也必须有判据: 角速度 > 阈值就算在动。噪声实测 ~1e-6 rad 级 ⇒ 0.25°/s 有 50 倍余量。
+ANG_SPEED_DEG_S = 0.25     # 判定"在动"的**姿态**角速度阈值(deg/s)
 STOP_HOLD_S     = 2.5      # 速度低于阈值持续这么久 → 判"停"(迟滞; 段间小停顿不掐音)
 TICK_GAP_MAX_S  = 1.8      # 最慢(1mm/s 级)时的间隔
 TICK_GAP_MIN_S  = 0.12     # 最快时的间隔(蜂鸣式)
@@ -43,6 +51,12 @@ TICK_GAP_K      = 1.8      # 间隔 = K / 速度(mm/s) ⇒ **高频对应快速*
 FAST_TONE_MM_S  = 5.0      # ≥5mm/s 用高音(1050Hz), 否则低音(660Hz)
 AMP             = 0.78     # 幅度(78%) — 老倪「再音量大一些」
 POLL_HZ         = 8.0
+
+
+def _ang_deg(qa, qb):
+    """两个四元数之间的夹角(度) —— 与 l2_transport_sdk 同式: 2*acos(|dot|)。"""
+    d = abs(sum(float(a) * float(b) for a, b in zip(qa, qb)))
+    return math.degrees(2.0 * math.acos(min(1.0, d)))
 
 
 def log(msg):
@@ -118,7 +132,7 @@ def main():
 
     import l2_transport_sdk as T
 
-    prev_pos, prev_t = None, None
+    prev_pos, prev_t, prev_quat = None, None, None
     vema = 0.0
     vz_ema = 0.0
     moving = False
@@ -130,18 +144,22 @@ def main():
     proc_alarm = None
     errs = 0
     dt = 1.0 / POLL_HZ
+    _forced_log = None
     while True:
         t0 = time.time()
+        _forced = os.path.exists(FORCE_ALARM_FLAG)      # 文件开关: 移动即警报
         age = 99.0                      # 读失败时保持"不发声"(宁可不响, 不谎报在动)
         try:
             a = T.read_pose()
             pos = [float(v) for v in a["pos"]]
+            quat = [float(v) for v in (a.get("quat") or [0.0, 0.0, 0.0, 1.0])]
             age = float(a.get("age") or 0.0)
         except Exception as e:
             errs += 1
             if errs in (1, 50, 500):
                 log("⚠️ 位姿读失败(%d 次): %s ⇒ 保持静音" % (errs, e))
             pos = None
+            quat = None
         now = time.time()
         if pos is not None and prev_pos is not None and age < 1.0:
             d = math.dist(pos, prev_pos) * 1000.0
@@ -157,11 +175,13 @@ def main():
                 log("🚨 检测到抬升 (vz %.2fmm/s) —— 切抬升警报音" % vz_ema)
             elif was_lifting and not lifting:
                 log("⬇️ 抬升结束 —— 回到常规提示音")
-            if v > MOVE_SPEED_MM_S:
+            _ang_v = _ang_deg(quat, prev_quat) / dt_real if prev_quat else 0.0
+            if (v > MOVE_SPEED_MM_S) or (_ang_v > ANG_SPEED_DEG_S):
                 below_since = None
                 if not moving:
                     moving = True
-                    log("▶️ 检测到移动 (%.1fmm/s) —— 开始提示音" % v)
+                    log("▶️ 检测到移动 (%.2fmm/s · %.2f°/s%s) —— 开始提示音"
+                        % (v, _ang_v, " · 原地旋转" if v <= MOVE_SPEED_MM_S else ""))
             else:
                 if below_since is None:
                     below_since = now
@@ -170,18 +190,23 @@ def main():
                     log("⏸ 已静止 —— 停止提示音")
         if pos is not None:
             prev_pos, prev_t = pos, now
+            prev_quat = quat
         gap = max(TICK_GAP_MIN_S, min(TICK_GAP_MAX_S, TICK_GAP_K / max(vema, 0.4)))
-        # 🆕 抬升中: 只响专用警报(不用常规提示音, 免得两种声音混在一起听不清)
-        if lifting and (now - last_alarm) >= LIFT_ALARM_GAP_S:
+        # 🆕 抬升中 或 强制模式下的任何移动: 只响专用警报(不用常规提示音, 免得两种声音混在一起听不清)
+        _alarm_mode = bool(lifting or (_forced and moving))
+        if _forced != _forced_log:
+            _forced_log = _forced
+            log("🔔 强制警报开关 = %s (移动即播警报音 %s)" % (_forced, os.path.basename(WAV_LIFT)))
+        if _alarm_mode and (now - last_alarm) >= LIFT_ALARM_GAP_S:
             last_alarm = now
-            log("🚨 抬升警报 ♪ (vz %.2fmm/s)" % vz_ema)
+            log("🚨 警报 ♪ (%s, vz %.2fmm/s)" % ("抬升" if lifting else "强制-移动", vz_ema))
             try:
                 if proc_alarm is None or proc_alarm.poll() is not None:
                     proc_alarm = subprocess.Popen([pl, WAV_LIFT],
                                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as e:
                 log("⚠️ 警报放不出声: %s" % e)
-        if (not lifting) and moving and (now - last_tick) >= gap:
+        if (not _alarm_mode) and moving and (now - last_tick) >= gap:
             last_tick = now
             tone = WAV_FAST if vema >= FAST_TONE_MM_S else WAV_SLOW
             if proc is None or proc.poll() is not None:
