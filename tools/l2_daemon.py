@@ -732,18 +732,28 @@ def plan_stage(sk, st, pts, spec, cur):
         if _qsrc != "direct":
             log("⚠️ rel 段姿态取自 %s(%.1fs 前) —— 直读失败时的降级; 现场若见转动立即急停" % (_qsrc, _qage or 0.0))
     else:
-        name = _point_name(sk, st, spec)
-        if name not in pts:
-            return {"err": "点位 %s 不在点位库" % name}
-        t = [float(v) for v in pts[name]["pos"]]
-        if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
-            q, _qe = _quat4(pts[name]["quat"], name)       # 显式回示教姿态 → 纯平移, 不带旋转
-            if _qe:
-                return {"err": "点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe)}
+        _tp = st.get("to_pos")      # 🧭 2026-10-08 老倪「按照我拖动的轨迹走」: 内联绝对目标(不占点库)
+        if isinstance(_tp, (list, tuple)) and len(_tp) == 3:
+            name = str(st.get("to_label") or "path")
+            t = [float(v) for v in _tp]
+            _tq = st.get("quat")
+            if isinstance(_tq, (list, tuple)) and len(_tq) == 4:
+                q = [float(v) for v in _tq]
+            else:
+                q, _qsrc, _qage = _fresh_quat()   # 路径复现: 只走位置, 姿态保持当前(现读, 不吃缓存)
         else:
-            q, _qsrc, _qage = _fresh_quat()     # ⚠️ "姿态保持当前"也必须现读, 不吃陈旧缓存
-            if q and len(q) != 4:
-                return {"err": "当前姿态四元数有 %d 个分量(应为 4) ⇒ 拒发" % len(q)}
+            name = _point_name(sk, st, spec)
+            if name not in pts:
+                return {"err": "点位 %s 不在点位库" % name}
+            t = [float(v) for v in pts[name]["pos"]]
+            if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
+                q, _qe = _quat4(pts[name]["quat"], name)       # 显式回示教姿态 → 纯平移, 不带旋转
+                if _qe:
+                    return {"err": "点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe)}
+            else:
+                q, _qsrc, _qage = _fresh_quat()     # ⚠️ "姿态保持当前"也必须现读, 不吃陈旧缓存
+                if q and len(q) != 4:
+                    return {"err": "当前姿态四元数有 %d 个分量(应为 4) ⇒ 拒发" % len(q)}
         if not q:
             return {"err": "现读姿态不可用(源=%s) ⇒ 拒发; 不发陈旧姿态" % _qsrc}
     # 🛡 2026-10-01 老倪现场两条转移规矩: ①就地垂直抬升 ②水平移动(**高度不变**) ③到目标 XY 正上方 ④垂直下落。
