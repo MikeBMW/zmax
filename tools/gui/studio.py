@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.18.10")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.19.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11294,7 +11294,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.18.10 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.19.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11302,9 +11302,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.18.10 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.19.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.19.0: AOI 取像参数收口 AOIQualityChecker: 曝光 20000us×增益 8.0(先关 ExposureAuto/GainAuto) + 画面体检(ok/too_dark/overexposed/gaps_washed) + 产线↔调试旁路(tools/aoi 副本/PRODUCTION_MANIFEST/production_sync) + 判据渲染 gate 覆盖崩溃修复; 守卫整改(证据图出库)
         # v5.18.10: 修 **`cam_stream_guard` 每 5 分钟白重启一次推流** (现场表现: 工位总览页反复掉线): 根因 = 站台「换源」落盘选了 USB 相机 (`zmax_data/cam_local_src.json` = `{"kind":"usb"}`), 而 **USB2.0 Camera 不在位** (`tools/cam_dev_resolve.py` → `USB=-1`), 守卫判「local 那格不是用户选的那台相机」⇒ **每 5 分钟重启一次"纠正"**, 复核永远 ❌ —— 实测 10 分钟内推流换了 4 个 pid (9588→40886→61120→66477), 每次重启让 `8793/station` 短暂 000、公网 `/st/` 短暂 502, 而且**永远修不好**(相机没插回来就无解)。修法 = 新增「用户选的那路相机是否根本不在位」判据 `user_src_absent()`: 不在位 ⇒ 判**环境缺失**、跳过重启只报告一行(与深度源 / TCP 真值那两路的处置口径一致), 相机插回后自动切回正常判定; 同时把**判定与复核收口到同一个 `judge_now()`**(两处逐字同一组参数, 顺带治掉「复核漏传 `local_expected()` 打假 ❌」的老坑), `judge()` 的 `local_key` 支持传 `None` = 不校验 local 卡名。实测: 纯函数四向全绿(缺进程仍判失败 / 真串线仍抓得到 / 相机不在位不再误判) · 真跑守卫 = 一行说明 + 退出码 0 + 推流 **pid 未被动过** · 反向杀进程再跑 = 照样拉起(新 pid 84394 + `8793/station` 200 + 帧号递增)。
         # v5.18.9: 修 **Windows / macOS 桌面版点「▶运行 (真实化)」整轮失败** (老倪报错: `⚠️ 真实化运行失败: No module named 'ultralytics' ← 底层: ModuleNotFoundError`): 根因 = 桌面包**按设计不内置 ultralytics** (它会拖 torch, 包体积到 GB 级 —— 打包口径写死), 而 L2/L3 档默认开 R1 真实视觉 (`_ss_vision_on` 只读 `SS_L2_YOLO`) ⇒ 构造 `RealStateSpaceSim(vision=True)` 时 import 直接炸, **整轮不出结果**(不是某个按钮坏)。修法 = `simulink_module.py` 加**能力闸**: 开跑前 `r1_vision_capability()` 探一次 `ultralytics`+`torch` (`importlib.util.find_spec`, 不触发重量级 import, 冻结包同样适用), 缺则 `resolve_r1_vision()` 把 R1 **自动关掉**、退回 R0 真值 + 解析前馈 (= 显式 `SS_L2_YOLO=0` 同一条路径), 并把原因与「要开 R1 怎么办」打进日志 —— **只降级并说明, 绝不假装 R1 跑过**; 缺模块的 except 分支同补可读提示(`pip install <name>`)。口径 = 保持包小(老倪裁定), R1 真实视觉仍在 Linux 控制台与源码 venv 可用; 实测: 四象限纯函数全绿 · gui-venv311 探到 True 且 R1 照开(Linux 零回退) · 屏蔽 ultralytics 模拟桌面包 → 闸跳且真跑完 L2 insert(348 步 / done=True / 终点 65.4mm / 5.5s)。
         # v5.18.8: 修 **Windows / macOS 桌面版双击即崩** (老倪报错栈: `studio.py:258 → simulink_module.py:26 → node_logic.py:25 ModuleNotFoundError: No module named 'lerobot'`): 根因 = 09-28 把节点逻辑整体迁进 `src/lerobot/engineering` 后, 打包配置**没跟着带这个包**(win/mac 两个 job 都只 add-data 了 policies/calibration/manifold/... 却漏了 engineering), 而这条 import 在启动第 258 行 ⇒ 控制台**打不开**(不是某个按钮坏); 更关键的是**冻结核验只 import mujoco/metaworld**, 完全没覆盖 GUI 启动导入链 ⇒ 四天里每个 tag 都"绿灯"发出坏包。① `tools/gui/node_logic.py` 兼容壳改**冻结感知**: 工程根按候选表找(`_MEIPASS/src` 优先 → `ZMAX_SRC_DIR` 兜底 → 源码相对上溯), 缺包时抛可读中文提示(指向"旧包请升级")而不是裸 `No module named`。② 打包(win+mac)加 `--add-data src/lerobot/engineering` + 包内断言(节点逻辑 `library.py` 与画布真源 `state_space_obs.json` 必须在包里, 缺则 fail); ③ **冻结核验扩到 GUI 启动导入链**: `node_logic → simulink_module → project_file → node_logic_dialog` 真跑一遍 + 断言注册节点数 ≥100 + 画布 JSON 在位 ⇒ 这类"引擎绿、GUI 崩"的包从此进不了 Release; ④ 顺带修 `gui-venv311/bin` **56 个控制台脚本的破损 shebang**(家目录整合遗留老路径, 直接执行报 `cannot execute: required file not found` ⇒ `accelerate`/`pyinstaller`/`hf` 这类 CLI 静默失败), 工具 `tools/fix_venv_shebangs.py`(dry-run 默认, `--apply` 才改, 逐文件回读核验, 留 `.bak_shebang`)。
