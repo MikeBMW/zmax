@@ -326,6 +326,32 @@ def main():
     log("⑤ 验收结果: %s%s" % ("全部通过 ✅" if ok_all else "有失败 ❌",
                             "" if changed else " (本轮无文件变化, 无判据)"))
 
+    # ⑤b 🔴 2026-10-08: 重启会把取像参数打回程序默认 ⇒ "按点位切档"不持久, 点2 会因太暗(20000)而行带乱跳、
+    #     判据图整幅变(老倪现场「判据图还是总变」)。这里把上次**已生效并落盘**的档位补回去。
+    try:
+        import json as _json
+        import urllib.request as _ur
+        _pf = os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_param_persist.json")
+        _d = _json.load(open(_pf, encoding="utf-8")) or {}
+        for _pt in sorted({int(p) for p in pair_ports if a.only in ("both", str(p))}):
+            _e = _d.get(str(int(_pt))) or {}
+            _q = []
+            if _e.get("exposure_us"):
+                _q.append("exposure=%g" % _e["exposure_us"])
+            if _e.get("gain_db"):
+                _q.append("gain=%g" % _e["gain_db"])
+            if not _q:
+                log("⑤b %d 无落盘档位 ⇒ 跳过复原(相机保持程序默认)" % _pt)
+                continue
+            with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(_pt), "&".join(_q)), timeout=15) as _r:
+                _j = _json.loads(_r.read().decode("utf-8", "ignore"))
+            log("⑤b %d 复原取像档位 %s ⇒ applied=%s / now=%s"
+                % (_pt, _e.get("profile") or "自定义", _j.get("applied"), _j.get("now")))
+    except FileNotFoundError:
+        log("⑤b 无档位落盘文件 ⇒ 跳过复原")
+    except Exception as _e:
+        log("⑤b 档位复原跳过(不影响本轮验收): %r" % (_e,))
+
     # ⑥ 失败 → 回滚
     if not ok_all:
         log("⑥ 验收失败 → 回滚到本次部署前的备份 (.bak_%s)" % _BK)

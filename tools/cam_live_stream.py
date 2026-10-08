@@ -1265,6 +1265,52 @@ AOI_EXPOSURE_PROFILES = {
 }
 
 
+# 🔴 2026-10-08 现场「判据图还是总变」的根因(之一, 但是压死的那根): 按点位切档**不持久** ——
+#   10082 一重启(部署/异常/人工)取像参数就打回程序默认 20000, 而点2(背面)在 20000 下太暗 ⇒
+#   行带在"齿排 y≈990-1039"与"下方焊死亮面 y→1469"之间乱跳 ⇒ 判据图整幅换区域 = 老倪看到的"总变"。
+#   实测: 20000 下 10 帧 kept_rows 在 1039/1469/1199 跳、帧间差异 55.6%/30.3%; 切 40000 后恒 [990,1039]、差异 1~12%。
+#   ⇒ 档位落盘, 重启后自动复原(_restore_cam_param)。
+_AOI_PARAM_PERSIST = os.path.expanduser("~/zmax/zmax_data/aoi_v4/cam_param_persist.json")
+
+
+def _persist_cam_param(port, exposure, gain, profile, why):
+    """把**已生效**的取像档位落盘(供重启后复原)。落盘失败不影响本次生效。"""
+    try:
+        import json as _json
+        d = {}
+        if os.path.exists(_AOI_PARAM_PERSIST):
+            try:
+                d = _json.load(open(_AOI_PARAM_PERSIST, encoding="utf-8")) or {}
+            except Exception:
+                d = {}
+        d[str(int(port))] = {"exposure_us": exposure, "gain_db": gain, "profile": profile,
+                             "src": why, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+        os.makedirs(os.path.dirname(_AOI_PARAM_PERSIST), exist_ok=True)
+        _json.dump(d, open(_AOI_PARAM_PERSIST, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("[aoi] 档位落盘失败(不影响本次生效): %r" % (e,))
+
+
+def _restore_cam_param(port: int = 10082) -> dict:
+    """重启后把上次落盘的档位补回去(部署器 ⑤b / 启动时调用)。**不假装成功**, 如实回执。"""
+    try:
+        import json as _json
+        import urllib.request as _ur
+        e = (_json.load(open(_AOI_PARAM_PERSIST, encoding="utf-8")) or {}).get(str(int(port))) or {}
+        q = []
+        if e.get("exposure_us"):
+            q.append("exposure=%g" % e["exposure_us"])
+        if e.get("gain_db"):
+            q.append("gain=%g" % e["gain_db"])
+        if not q:
+            return {"ok": False, "msg": "没有落盘的档位(port=%d)" % int(port)}
+        with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
+            d = _json.loads(r.read().decode("utf-8", "ignore"))
+        return {"ok": bool(d.get("ok")), "port": int(port), "restored": e, "applied": d.get("applied"), "now": d.get("now")}
+    except Exception as e:
+        return {"ok": False, "msg": repr(e)}
+
+
 def _aoi_param(port: int = 10082, profile=None, exposure=None, gain=None, why: str = "页面") -> dict:
     """把取像参数(曝光/增益)转发到工控机 `GET/POST /param`。
 
@@ -1294,6 +1340,8 @@ def _aoi_param(port: int = 10082, profile=None, exposure=None, gain=None, why: s
         with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
             d = _json.loads(r.read().decode("utf-8", "ignore"))
         ok = bool(d.get("ok"))
+        if ok:
+            _persist_cam_param(int(port), ex, gn, _pf, why)      # 落盘 ⇒ 重启后能自动复原
         return {"ok": ok, "port": int(port), "profile": _pf, "src": why,
                 "want": {"exposure_us": ex, "gain_db": gn}, "applied": d.get("applied"), "now": d.get("now"),
                 "msg": ("切换曝光档 %s: 曝光 %gus · 增益 %.1fdB(%s) —— 实测实时生效, 不用重启"
