@@ -341,3 +341,7 @@ hermes/
 *.bak
 *.bak_*
 *.bak-*
+
+# 3DGS 查看器同域 JS(vendored, 必须入库, 否则页面 404 白屏) —— 2026-10-08
+!tools/web/lib/
+!tools/web/lib/**
