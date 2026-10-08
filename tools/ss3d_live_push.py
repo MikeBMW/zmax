@@ -15,9 +15,35 @@ import time
 import urllib.request
 
 PUSH = os.environ.get("SS3D_PUSH", "https://datadrive.world/ss3d_push.php")
-TOKEN = os.environ.get("ZMAX_PUSH_TOKEN", "zmax-7ce74c7f")
 INTERVAL = float(os.environ.get("SS3D_PUSH_INTERVAL", "1.0"))
 RUN_ID = os.environ.get("SS3D_RUN_ID", "live_real")   # ⚠️ 固定不变: run_id 一变页面会去拉(已过期的)轨迹
+SECRETS_FILE = os.environ.get("ZMAX_SECRETS_FILE", "/home/ubuntu/zmax/zmax_data/secrets/zmax.env")
+
+
+def _resolve_token():
+    """推送 token 真值来源: 环境变量 ZMAX_SS3D_TOKEN → 本机 secrets 文件 (600, 永不入库)。
+
+    2026-10-09 收口: 以前这里把明文 token 写死成 `os.environ.get("ZMAX_PUSH_TOKEN", <明文>)` 的默认值 ——
+    公开仓库等于把通道密钥贴出去。现在 **绝不允许回落到明文默认值**:
+      · systemd 单元 `EnvironmentFile=zmax_data/secrets/zmax.env` ⇒ 正常态从环境变量取到。
+      · 手动/无 env 起时退回读 secrets 文件这一条 (同一真值)。
+      · 两处都取不到 ⇒ 返回 None; main() fail-closed(报错退出), 绝不用空值去打端点。
+    """
+    v = (os.environ.get("ZMAX_SS3D_TOKEN") or "").strip()
+    if v:
+        return v
+    p = SECRETS_FILE
+    if p and os.path.isfile(p):
+        try:
+            for ln in open(p, encoding="utf-8"):
+                if ln.strip().startswith("ZMAX_SS3D_TOKEN="):
+                    return ln.split("=", 1)[1].strip()
+        except OSError:
+            pass
+    return None
+
+
+TOKEN = _resolve_token()
 
 
 def _get(url: str, t: float = 3.0):
@@ -75,6 +101,10 @@ def collect() -> dict:
 
 
 def main() -> None:
+    if not TOKEN:
+        print("❌ 缺少推送 token: 环境变量 ZMAX_SS3D_TOKEN 与 secrets 文件 %s (键名 ZMAX_SS3D_TOKEN) 均无值 "
+              "⇒ fail-closed, 不推送(拒绝空值/明文默认值)。" % SECRETS_FILE, flush=True)
+        raise SystemExit(1)
     print(f"📡 实况推送 → {PUSH} (每 {INTERVAL}s · run_id={RUN_ID})", flush=True)
     ok = fail = 0
     while True:

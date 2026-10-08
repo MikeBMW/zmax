@@ -1129,6 +1129,9 @@
       },
       "inputs": [
         "in2"
+      ],
+      "outputs": [
+        "bypass_out"
       ]
     },
     {
@@ -3700,6 +3703,14 @@
       "f_port": "out1",
       "t_port": "in3",
       "label": "检测框(框提示)"
+    },
+    {
+      "id": "lkbypv_net",
+      "f": "ssbypv",
+      "t": "ssact",
+      "f_port": "bypass_out",
+      "t_port": "in1",
+      "label": "上网通道状态 → 执行器 (借道 proxy 回显)"
     }
   ],
   "params_note": ""

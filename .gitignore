@@ -260,6 +260,11 @@ flows/*.json.bak
 flows/*.bak*
 flows/*.bak-*
 
+# 画布"改动前"备份快照目录 (save_canvas/手工改动自动生成, 不进库; 要单独留档时 git add -f <文件>)
+# 2026-10-09: state_space_obs_before_netchannel_* 等自动快照不再入库 (仓库已有历史快照仍保留)
+src/lerobot/engineering/flows/_archive/
+flows/_archive/
+
 # 📦 手机 APP 装包(交付件, 25KB, 可由 state3d_app/build_room_apk.sh 重新打出 ⇒ 不进代码库)
 tools/web/dl/
 

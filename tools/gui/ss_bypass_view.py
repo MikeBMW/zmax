@@ -11,7 +11,10 @@
         ② 两条实时曲线: 残差 (米) 与 接触概率 (0~1), 取最近 N 帧逐帧记录
 刷新:   500 ms (QTimer), 数据不新鲜 → 明确显示 "数据流过期 xx s" (不用旧帧冒充实时)
 """
+import json
 import os
+import re
+import subprocess
 import sys
 import time
 
@@ -217,6 +220,166 @@ class CurveWidget(QtWidgets.QWidget):
                              f" 纵轴各自自适应量程 · 缺通道显示等待, 不填假值")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 旁路调试 · 上网通道 (4060 借道 · 工控机 wifi 代理)            2026-10-09 老倪
+#   本机 4060 跑 tinyproxy 监听 192.168.23.50:8889 (白名单只放 192.168.23.23/.50),
+#   工控机(192.168.23.23) 只在【测试连通】这一条命令上加 -Proxy 借道出网。
+#   铁律: 工控机系统级代理 (WinHTTP) / 用户代理 (WinINET) / 默认路由 一字不动。
+#   外部动作全部非阻塞 (后台 QThread) 且 站侧等待 ≤15s; 失败把原始报错打到界面 + 落盘日志。
+#   最近一次结果写实例属性 self._net_last + 模块级 _NET_LAST, 由 net_channel_status_line()
+#   供执行层取用 (口径与画布其它节点一致: 用下面终端日志汇报成一行)。
+# ══════════════════════════════════════════════════════════════════════════════
+PROXY_HOST = "192.168.23.50"
+PROXY_PORT = 8889
+STATION_HOST = "192.168.23.23"
+NET_TINYPROXY_CONF = "/etc/tinyproxy/zmax.conf"
+NET_CHANNEL_LOG = os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_bypass"), "net_channel_status.json")
+
+
+def _net_repo_root():
+    r = os.environ.get("ZMAX_REPO_ROOT")
+    if r and os.path.isdir(r):
+        return r
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(6):
+        if os.path.isdir(os.path.join(d, "src", "lerobot")) and os.path.isdir(os.path.join(d, "tools")):
+            return d
+        d = os.path.dirname(d)
+    return os.path.dirname(os.path.dirname(d))
+
+
+def _net_station_cmd_path():
+    return os.path.join(_net_repo_root(), "tools", "station_cmd.py")
+
+
+def _net_py():
+    p = os.path.join(_net_repo_root(), "gui-venv311", "bin", "python")
+    return p if os.path.exists(p) else sys.executable
+
+
+_NET_LAST = {"ts": None, "action": None, "text": "尚未执行"}
+
+
+def net_channel_status_line():
+    """模块级: 最近一次上网通道结果的一行状态 (供执行层取用 → 下面终端日志汇报)。"""
+    t = str(_NET_LAST.get("text") or "无").replace("\n", " ").strip()
+    return "[上网通道] %s · %s" % (_NET_LAST.get("action") or "-", t[:200])
+
+
+def _net_proxy_listening(host=PROXY_HOST, port=PROXY_PORT):
+    """本机 tinyproxy 是否在听 host:port —— /proc/net/tcp LISTEN 命中 或 socket 探测连通。"""
+    try:
+        want_port = "%04X" % port
+        with open("/proc/net/tcp", encoding="utf-8") as f:
+            for ln in f:
+                p = ln.split()
+                if len(p) >= 4 and p[3] == "0A" and p[1].split(":")[-1] == want_port:
+                    return True, "LISTEN(/proc/net/tcp)"
+    except Exception:
+        pass
+    try:
+        import socket as _s
+        c = _s.socket()
+        c.settimeout(1.0)
+        rc = c.connect_ex((host, port))
+        c.close()
+        if rc == 0:
+            return True, "socket 连通"
+    except Exception:
+        pass
+    return False, "未监听"
+
+
+def _net_run_station(ps_cmd, wait=15):
+    """经反向通道 (tools/station_cmd.py) 让工控机跑一条 PowerShell 取回回显。阻塞, 调用方放线程里。"""
+    sc = _net_station_cmd_path()
+    if not os.path.exists(sc):
+        return "❌ 找不到反向通道脚本: %s" % sc
+    try:
+        r = subprocess.run([_net_py(), sc, ps_cmd, str(int(wait))],
+                           capture_output=True, text=True, timeout=int(wait) + 8)
+    except subprocess.TimeoutExpired:
+        return "❌ 反向通道超时 (>%ds)" % (int(wait) + 8)
+    except Exception as e:
+        return "❌ 反向通道异常: %s: %s" % (type(e).__name__, e)
+    out = (r.stdout or "").strip()
+    if out:
+        return out
+    return "❌ 无回执 (rc=%s): %s" % (r.returncode, ((r.stderr or "").strip() or "空")[:400])
+
+
+def _net_ps_probe():
+    """工控机只读回显: WinHTTP 系统代理 / WinINET 用户代理 / 10082·10083 监听 (单次往返)。"""
+    return ("$p=Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';"
+            " $w=((netsh winhttp show proxy | Out-String) -replace '\\s+',' ').Trim();"
+            " 'WinHTTP=' + $w + ' || WinINET ProxyEnable=' + $p.ProxyEnable + ' ProxyServer=[' + $p.ProxyServer + ']'"
+            " + ' || Port10082=' + (Test-NetConnection -ComputerName 127.0.0.1 -Port 10082 -InformationLevel Quiet)"
+            " + ' || Port10083=' + (Test-NetConnection -ComputerName 127.0.0.1 -Port 10083 -InformationLevel Quiet)")
+
+
+def _net_ps_test():
+    """工控机用 -Proxy 借道访问一次外网 (仅本条命令带 -Proxy, 不改任何系统设置)。"""
+    return ("try { $r=Invoke-WebRequest -Uri 'http://example.com' -Proxy 'http://%s:%d' "
+            "-UseBasicParsing -TimeoutSec 10; 'OK HTTP ' + $r.StatusCode } "
+            "catch { 'FAIL ' + $_.Exception.Message }") % (PROXY_HOST, PROXY_PORT)
+
+
+def _net_do_action(action):
+    """同步执行一个上网通道动作, 返回回显文本 (原始报错已捕获, 不静默)。"""
+    if action == "probe":
+        ok, how = _net_proxy_listening()
+        local = "本机 tinyproxy %s:%d → %s (%s)" % (PROXY_HOST, PROXY_PORT,
+                                                    "✅ 在听" if ok else "❌ 未听", how)
+        return local + "\n工控机(经反向通道): " + _net_run_station(_net_ps_probe(), wait=15)
+    if action == "test":
+        return "测试连通 → " + _net_run_station(_net_ps_test(), wait=15)
+    if action == "open":
+        ok, _ = _net_proxy_listening()
+        if ok:
+            return "开代理: ✅ 已在监听 %s:%d (未重复启动)" % (PROXY_HOST, PROXY_PORT)
+        try:
+            r = subprocess.run(["sudo", "-n", "/usr/bin/tinyproxy", "-c", NET_TINYPROXY_CONF],
+                               capture_output=True, text=True, timeout=15)
+        except Exception as e:
+            return "开代理: ❌ %s: %s" % (type(e).__name__, e)
+        time.sleep(1.0)
+        ok2, how = _net_proxy_listening()
+        msg = "开代理: %s (%s)" % ("✅ 已起 %s:%d" % (PROXY_HOST, PROXY_PORT) if ok2 else "❌ 未起", how)
+        if r.returncode != 0:
+            msg += " · rc=%s %s" % (r.returncode, ((r.stderr or r.stdout or "").strip())[:200])
+        return msg
+    if action == "close":
+        try:
+            r = subprocess.run(["sudo", "-n", "pkill", "-f", "tinyproxy -c " + NET_TINYPROXY_CONF],
+                               capture_output=True, text=True, timeout=15)
+        except Exception as e:
+            return "关代理: ❌ %s: %s" % (type(e).__name__, e)
+        time.sleep(0.6)
+        ok2, how = _net_proxy_listening()
+        msg = "关代理: %s (%s)" % ("❌ 仍在听" if ok2 else "✅ 已停", how)
+        if r.returncode not in (0, 1):
+            msg += " · rc=%s %s" % (r.returncode, ((r.stderr or r.stdout or "").strip())[:200])
+        return msg
+    return "❌ 未知动作: %r" % (action,)
+
+
+class _NetChannelWorker(QtCore.QThread):
+    """后台跑一个上网通道动作 (非阻塞 GUI), 完成后把回显文本发给主线程。"""
+    done = QtCore.pyqtSignal(str)
+
+    def __init__(self, action, parent=None):
+        super().__init__(parent)
+        self.action = action
+
+    def run(self):
+        try:
+            txt = _net_do_action(self.action)
+        except Exception as e:                        # 任何异常都要见到 (不静默)
+            import traceback as _tb
+            txt = "❌ %s: %s\n%s" % (type(e).__name__, e, _tb.format_exc()[-300:])
+        self.done.emit(txt)
+
+
 class SSBypassView(QtWidgets.QWidget):
     """旁路实时可视化窗口 (非模态, 可常开)"""
 
@@ -315,6 +478,133 @@ class SSBypassView(QtWidgets.QWidget):
         self.lab_foot.setStyleSheet(f"color:{DIM};font-size:14px;")
         self.lab_foot.setWordWrap(True)
         root.addWidget(self.lab_foot)
+
+        self._build_net_channel(root)          # 旁路调试 · 上网通道 区块 (新增, 不动上面现有功能)
+
+    # ── 旁路调试 · 上网通道 区块 (2026-10-09) ────────────────────────────────
+    def _build_net_channel(self, root):
+        """只读回显 (tinyproxy/WinHTTP/WinINET/端口) + 【测试连通】【开代理】【关代理】。"""
+        gb = QtWidgets.QGroupBox("旁路调试 · 上网通道 (4060 借道 · 工控机 wifi 代理)")
+        v = QtWidgets.QVBoxLayout(gb)
+        tip = QtWidgets.QLabel(
+            "🔒 工控机系统设置一字不动 — 仅在【测试连通】这一条命令上加 -Proxy http://%s:%d 借道出网, "
+            "WinHTTP / WinINET 用户代理 / 默认路由一律不改。本机 tinyproxy 白名单仅放工控机 %s。"
+            % (PROXY_HOST, PROXY_PORT, STATION_HOST))
+        tip.setWordWrap(True)
+        tip.setStyleSheet(f"color:{C_OK};font-size:13px;")
+        v.addWidget(tip)
+
+        self.net_labs = {}
+        grid = QtWidgets.QGridLayout()
+        for i, (t_, k) in enumerate([("本机 tinyproxy (%s:%d)" % (PROXY_HOST, PROXY_PORT), "proxy"),
+                                     ("工控机 WinHTTP 系统代理", "winhttp"),
+                                     ("工控机 WinINET 用户代理", "wininet"),
+                                     ("工控机 10082 / 10083 监听", "ports")]):
+            w, lab = self._row(t_)
+            lab.setStyleSheet(f"color:{FG};font-size:14px;")
+            self.net_labs[k] = lab
+            grid.addWidget(w, i // 2, i % 2)
+        v.addLayout(grid)
+
+        btns = QtWidgets.QHBoxLayout()
+        self.btn_net_probe = QtWidgets.QPushButton("🔄 刷新状态")
+        self.btn_net_test = QtWidgets.QPushButton("🌐 测试连通")
+        self.btn_net_open = QtWidgets.QPushButton("▶ 开代理")
+        self.btn_net_close = QtWidgets.QPushButton("■ 关代理")
+        for b in (self.btn_net_probe, self.btn_net_test, self.btn_net_open, self.btn_net_close):
+            b.setStyleSheet(f"color:{FG};font-size:14px;padding:4px 10px;")
+            btns.addWidget(b)
+        btns.addStretch(1)
+        v.addLayout(btns)
+
+        self.net_out = QtWidgets.QPlainTextEdit()
+        self.net_out.setReadOnly(True)
+        self.net_out.setMaximumHeight(120)
+        self.net_out.setStyleSheet(f"background:{PANEL};color:{FG};font-size:13px;border:1px solid #30363d;")
+        self.net_out.setPlainText("尚未执行")
+        v.addWidget(self.net_out)
+        root.addWidget(gb)
+
+        self._net_worker = None
+        self._net_last = "尚未执行"                      # 实例属性 (供后续节点读取)
+        self.btn_net_probe.clicked.connect(lambda: self._net_action("probe"))
+        self.btn_net_test.clicked.connect(lambda: self._net_action("test"))
+        self.btn_net_open.clicked.connect(lambda: self._net_action("open"))
+        self.btn_net_close.clicked.connect(lambda: self._net_action("close"))
+        # 打开即自动取一次只读回显 (非阻塞 · 后台线程)
+        QtCore.QTimer.singleShot(1500, lambda: self._net_action("probe"))
+
+    _NET_BTN_BASE = {"probe": "🔄 刷新状态", "test": "🌐 测试连通",
+                     "open": "▶ 开代理", "close": "■ 关代理"}
+
+    def _net_append(self, txt):
+        try:
+            self.net_out.appendPlainText("[%s] %s" % (time.strftime("%H:%M:%S"), txt))
+        except Exception:
+            pass
+
+    def _net_setbtn(self, action, busy):
+        b = getattr(self, {"probe": "btn_net_probe", "test": "btn_net_test",
+                           "open": "btn_net_open", "close": "btn_net_close"}.get(action, ""), None)
+        if b is None:
+            return
+        base = self._NET_BTN_BASE[action]
+        try:
+            b.setText(("⏳ " + base[2:]) if busy else base)
+            b.setEnabled(not busy)
+        except Exception:
+            pass
+
+    def _net_update_labels(self, action, txt):
+        try:
+            ok, how = _net_proxy_listening()
+            if "proxy" in self.net_labs:
+                self.net_labs["proxy"].setText(("✅ 在听 " if ok else "❌ 未听 ") + "%s:%d" % (PROXY_HOST, PROXY_PORT))
+                self.net_labs["proxy"].setStyleSheet(f"color:{C_OK if ok else C_BAD};font-size:14px;")
+            t = txt or ""
+            m = re.search(r"WinHTTP=([^|]*)", t)
+            if m and "winhttp" in self.net_labs:
+                self.net_labs["winhttp"].setText(m.group(1).strip()[:60] or "-")
+            m = re.search(r"WinINET\s+([^|]*)", t)
+            if m and "wininet" in self.net_labs:
+                self.net_labs["wininet"].setText(m.group(1).strip()[:60] or "-")
+            if "ports" in self.net_labs and "Port10082" in t:
+                self.net_labs["ports"].setText("10082 %s · 10083 %s"
+                                               % ("✅" if "10082=True" in t else "❌",
+                                                  "✅" if "10083=True" in t else "❌"))
+        except Exception as e:
+            self._net_append("⚠️ 回显解析异常: %s: %s" % (type(e).__name__, e))
+
+    def _net_action(self, action, blocking=False):
+        """执行一个上网通道动作。blocking=True 同步返回文本 (供自检/执行层调用); 否则后台线程非阻塞。"""
+        if self._net_worker is not None and self._net_worker.isRunning():
+            self._net_append("⏳ 上一个动作仍在进行, 请稍候…")
+            return None
+        self._net_append("⏳ 执行: %s …" % action)
+        if blocking:
+            txt = _net_do_action(action)
+            self._net_done(action, txt)
+            return txt
+        self._net_setbtn(action, True)
+        w = _NetChannelWorker(action, self)
+        w.done.connect(lambda t, a=action: self._net_done(a, t))
+        self._net_worker = w
+        w.start()
+        return None
+
+    def _net_done(self, action, txt):
+        txt = txt if txt is not None else "❌ 空结果"
+        self._net_last = txt                             # 实例属性 (供后续节点读取)
+        self._net_append(txt)
+        try:
+            _NET_LAST.update({"ts": time.time(), "action": action, "text": txt})
+            os.makedirs(os.path.dirname(NET_CHANNEL_LOG), exist_ok=True)
+            with open(NET_CHANNEL_LOG, "w", encoding="utf-8") as f:
+                json.dump(_NET_LAST, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self._net_append("⚠️ 状态落盘失败: %s: %s" % (type(e).__name__, e))
+        self._net_update_labels(action, txt)
+        self._net_setbtn(action, False)
 
     def _feed_curves(self):
         """把最近一段真实逐帧记录喂给两条波形 (旁路通道 + 真机位姿/插入力); 缺的通道留空, 不填假值"""

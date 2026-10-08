@@ -728,12 +728,14 @@ def _v21_adaptive_bright(win):
                          _V21_BRIGHT_MIN, _V21_BRIGHT_LEVEL))
 
 
-def _v21_key_windows(g, lvl):
+def _v21_key_windows(g, lvl, jitter_k=_V21_PITCH_JITTER_K):
     """Slide a window down the frame and keep the ones that look like a ROW OF KEYS.
 
     A full-width horizontal bar is ONE bright group, so it can never pass the
     '>= MIN_KEYS groups at a regular pitch' test -- that is what finds the keys and
-    not the bar."""
+    not the bar.
+    v26b: jitter_k 可放宽 —— 仅作为「严格口径一个窗都没命中」时的回退(VO_1 那种暗帧),
+          默认值 == _V21_PITCH_JITTER_K ⇒ 前视等正常帧逐位不变。"""
     h, w = g.shape
     mrows = g.mean(axis=1)
     bg = float(np.percentile(mrows, 20))
@@ -747,7 +749,7 @@ def _v21_key_windows(g, lvl):
             med, mad = _v21_pitch_stats(segs)
             if (len(segs) >= _V21_MIN_KEYS and med is not None
                     and _V21_PITCH_MIN <= med <= _V21_PITCH_MAX
-                    and mad < _V21_PITCH_JITTER_K * med):
+                    and mad < jitter_k * med):
                 hits.append({"y0": int(y), "y1": int(y + _V21_WIN_H - 1),
                              "n_seg": int(len(segs)), "pitch_px": round(med, 1),
                              "jitter_px": round(mad, 1)})
@@ -862,12 +864,180 @@ def _v21_strip_cols(g, ky0, ky1):
     return left, right, rsrc, lsrc, (b0, b1)
 
 
+# ═══ v26b: 点2「逐根宽度不固定 / 个数不断变化」的根修 (2026-10-09 本机离线复放) ═══
+#   病(实测, 原始帧 VO_*/XO_* 同一工件):
+#     _v21_key_cols 用「亮列掩膜(ga>=lvl)的闭运算列均值 >= 写死 frac」切齿。
+#     ① 该门限是**绝对/前视量级**的: lvl 逐帧在 200 与回退自适应 184 间跳 ⇒ 掩膜逐帧「并/裂」;
+#     ② 点2 是金手指**另一面**: 齿节距≈72px(前视 ≈70、历史注记 47), 右侧齿压在照度梯度/灰底上,
+#        掩膜跨度被截断 ⇒ 右段齿整段丢失。
+#     合起来: n_keys 8↔12↔16 乱跳、统一宽度在 64~123px 之间摆。
+#   修法(本改动):
+#     ① **列剖面低频背景归一(平场)**: 对大窗移动平均估出的低频背景相除 ⇒ 照度梯度被除掉,
+#        右侧被灰底冲掉的齿重新显现(齿/缝变成相对量, 不再依赖绝对 lvl);
+#     ② **节距/齿宽自适应**: 齿中心用「本帧实测」的峰节距中位数推, 再用节距栅格滤掉离格峰 ⇒
+#        齿数、根宽跨帧稳定(不写死前视 47/26)。
+#   铁律: 前视必须**逐位不变** ⇒ 新路径只在「老口径切分明显不规则」(reg < _V26_REG_GATE)时接管;
+#        前视老口径 reg≈0.90~0.95 ⇒ 永远走老路 ⇒ 交付像素零回退(见 front_only 对照)。
+_V26_FF_ON = True
+_V26_REG_GATE = 0.87        # 老口径分段「规则度」下限; 低于它 ⇒ 走平场自适应路径
+_V26_FF_BG_K = 201          # 平场低频背景窗(≈2.8×节距)
+_V26_FF_SM = 7              # 列剖面平滑窗
+_V26_FF_SUBH = 56           # 齿带子窗高
+_V26_FF_SEARCH = 140        # 子窗相对给定键行带的可搜索余量(上下)
+_V26_FF_PMIN, _V26_FF_PMAX = 45.0, 110.0   # 候选齿节距合理性区间(自适应, 仅作筛选)
+_V26_JITTER_RELAX = 0.50    # 键行窗「节距抖动」的放宽值: 仅当严格口径(0.25)一个窗都没命中时回退
+_V26_FF_THR_COEF = 0.12     # 平场剖面「亮run」门限系数(相对本帧本带中位~p90 的对比度)
+_V26_FF_MERGE = 40          # 平场峰合并间距(px): 比它近的峰视为同一根齿的裂峰, 取更高者
+_V26_REG_FALLBACK = False   # 仅用于测试: 强制走新路径(不进 HTTP meta)
+_V26_LAST_COLINFO = {"v26b": False}
+
+
+def _v26_reg_of(segs):
+    """分段「规则度」= 相邻中心间距落在 [0.65,1.5]×中位节距 的比例(前视≈0.9, 点2 老口径≈0.3~0.7)。"""
+    try:
+        if not segs or len(segs) < 3:
+            return None
+        c = np.array([(a + b) / 2.0 for a, b in segs], np.float64)
+        d = np.diff(c)
+        d = d[d > 0]
+        if d.size < 2:
+            return None
+        m = float(np.median(d))
+        if m <= 0:
+            return None
+        return float(np.mean((d >= 0.65 * m) & (d <= 1.5 * m)))
+    except Exception:                                                       # noqa: BLE001
+        return None
+
+
+def _v26_lattice(peaks, m, tol=0.35):
+    """把峰对齐到节距 m 的栅格, 丢掉离格峰(相位 = 残差中位数)。"""
+    if len(peaks) < 2 or m <= 0:
+        return list(peaks)
+    pk0 = float(peaks[0])
+    ph = float(np.median([p - round((p - pk0) / m) * m for p in peaks]))
+    return sorted(int(p) for p in peaks
+                  if abs((p - ph) - round((p - ph) / m) * m) <= tol * m)
+
+
+def _v26_flat_profile(g, y0, y1, x0, x1, sat=254, satfrac=0.30):
+    """列剖面(平场) —— 只用「非饱和行」求均值, 去掉齿排上方的过曝亮条, 让齿/缝对比凸显。
+
+    返回 (归一剖面 nrm, 保留行数)。低频背景用大窗移动平均估出并相除(平场) ⇒ 照度梯度被除掉。
+    """
+    sub = g[y0:y1 + 1, x0:x1].astype(np.float32)
+    if sub.size == 0:
+        return np.ones(max(1, x1 - x0), np.float32), 0
+    rf = (sub >= sat).mean(axis=1)
+    keep = rf < satfrac
+    if int(keep.sum()) < 10:
+        keep = rf <= float(np.percentile(rf, 50))
+    if int(keep.sum()) < 3:
+        keep = np.ones(sub.shape[0], bool)
+    prof = sub[keep].mean(axis=0)
+    bg = cv2.blur(prof.reshape(1, -1), (_V26_FF_BG_K, 1)).ravel()
+    nrm = prof / np.maximum(bg, 1.0)
+    nrm = cv2.blur(nrm.reshape(1, -1), (_V26_FF_SM, 1)).ravel()
+    return nrm, int(keep.sum())
+
+
+def _v26_teeth_cols(g, ky0, ky1, x0, x1):
+    """平场 + 自适应节距的齿列切分。返回 (segs 全局 x 坐标, info)。
+
+    ① 平场: 列剖面(只用非饱和行)除以其低频背景 ⇒ 右侧被照度梯度冲掉的齿重新显现;
+    ② 自适应: 齿中心由「本帧实测」峰节距的栅格推(不写死前视节距/齿宽), 离格峰丢掉, 缺格补上。
+    """
+    H = int(g.shape[0])
+    y0 = max(0, int(ky0))
+    y1 = min(H - 1, int(ky1))
+    if y1 - y0 < 8:
+        return [], {"v26b": False, "v26b_note": "band too short"}
+    nrm, _nkept = _v26_flat_profile(g, y0, y1, x0, x1)
+    W = len(nrm)
+    if W < 40:
+        return [], {"v26b": False, "v26b_note": "band too narrow"}
+    xa = int(0.15 * W)
+    xb = int(0.85 * W)
+    c0 = int(0.25 * W)
+    c1 = int(0.75 * W)
+    # 对比度自适应的门限(相对本帧本带, 量纲无关 ⇒ 亮度漂移不影响)
+    base = float(np.median(nrm[c0:c1]))
+    hi = float(np.percentile(nrm[c0:c1], 90))
+    thr = base + _V26_FF_THR_COEF * max(hi - base, 1e-3)
+    on = nrm >= thr
+    idx = np.where(on)[0]
+    if idx.size == 0:
+        return [], {"v26b": False, "v26b_note": "no column above the flat-field threshold"}
+    runs = []
+    s = idx[0]
+    p = idx[0]
+    for v in idx[1:]:
+        if v == p + 1:
+            p = v
+        else:
+            runs.append((int(s), int(p)))
+            s = v
+            p = v
+    runs.append((int(s), int(p)))
+    peaks = []
+    for a, b in runs:
+        seg = nrm[a:b + 1]
+        peaks.append(int(a + int(np.argmax(seg))))
+    # 合并过近的峰(取更高者), 再用节距栅格滤掉离格峰
+    peaks = [p for p in peaks if xa < p < xb]
+    if len(peaks) < 5:
+        return [], {"v26b": False, "v26b_note": "too few flat-field peaks (%d)" % len(peaks)}
+    peaks.sort()
+    merged = []
+    for p in peaks:
+        if merged and p - merged[-1] < _V26_FF_MERGE:
+            if nrm[p] > nrm[merged[-1]]:
+                merged[-1] = p
+        else:
+            merged.append(p)
+    peaks = merged
+    if len(peaks) < 5:
+        return [], {"v26b": False, "v26b_note": "too few flat-field peaks after merge"}
+    d = np.diff(peaks)
+    m = float(np.median(d))
+    if not (_V26_FF_PMIN <= m <= _V26_FF_PMAX):
+        return [], {"v26b": False, "v26b_note": "implausible pitch %.1f" % m}
+    lat = _v26_lattice(peaks, m)
+    if len(lat) < 5:
+        return [], {"v26b": False, "v26b_note": "lattice collapsed"}
+    dl = np.diff(lat)
+    reg = float(np.mean((dl >= 0.6 * m) & (dl <= 1.5 * m)))
+    # 缺格补齐: [首齿..末齿] 之间按实测节距/相位逐格补(细金手指连续, 中间不该空格)
+    pk0 = float(lat[0])
+    ph = float(np.median([p - round((p - pk0) / m) * m for p in lat]))
+    k0 = int(np.round((lat[0] - ph) / m))
+    k1 = int(np.round((lat[-1] - ph) / m))
+    centers = [ph + k * m for k in range(k0, k1 + 1)]
+    # 齿宽 = 本帧实测的「亮run宽」中位, 夹在 0.30~0.66×节距(防相邻粘连, 量纲自适应)
+    runs_w = [b - a + 1 for a, b in runs]
+    runs_w = [w for w in runs_w if w >= 3]
+    w_tooth = int(round(min(max(float(np.median(runs_w)) if runs_w else 0.5 * m, 0.30 * m), 0.66 * m)))
+    w_tooth = max(3, w_tooth)
+    segs = []
+    for c in centers:
+        a = int(round(c - w_tooth / 2.0))
+        segs.append((int(a + x0), int(a + w_tooth - 1 + x0)))
+    info = {"v26b": True, "v26b_pitch": round(m, 1), "v26b_reg": round(reg, 2),
+            "v26b_n": len(segs), "v26b_tooth_w": w_tooth, "v26b_bg_k": _V26_FF_BG_K,
+            "v26b_thr": round(float(thr), 4), "v26b_rows": _nkept,
+            "v26b_note": "flat-field(non-sat rows) + adaptive pitch lattice"}
+    return segs, info
+
+
 def _v21_key_cols(g, rows, x0, x1, lvl, cf_key_col=None, min_key_w=None):
     """Averaged bright-column profile over the band -> the key column segments.
 
     The mask is closed VERTICALLY first: a key whose middle is a dark notch shows up
     as two bright groups otherwise and would be counted twice.
-    v22: cf_key_col/min_key_w 可覆盖(None = 用 v21 常量, 保证正常帧逐位不变)。"""
+    v22: cf_key_col/min_key_w 可覆盖(None = 用 v21 常量, 保证正常帧逐位不变)。
+    v26b: 老口径分段不规则时, 改走「列剖面平场 + 自适应节距」路径(前视规则 ⇒ 不触发)。
+    """
+    global _V26_LAST_COLINFO
     m = (g[rows, x0:x1] >= lvl).astype(np.uint8)
     ker = np.ones((max(3, _V21_VCLOSE_K), 1), np.uint8)
     cl = cv2.morphologyEx(m, cv2.MORPH_CLOSE, ker)
@@ -876,6 +1046,22 @@ def _v21_key_cols(g, rows, x0, x1, lvl, cf_key_col=None, min_key_w=None):
     _mkw = _V21_MIN_KEY_W if min_key_w is None else int(min_key_w)
     segs = _v21_segments(cf >= _cfk, _V21_KEY_MERGE_GAP, _mkw)
     segs = [(a + x0, b + x0) for a, b in segs]
+    if _V26_FF_ON:
+        _reg = _v26_reg_of(segs)
+        if _V26_REG_FALLBACK or _reg is None or _reg < _V26_REG_GATE:
+            try:
+                k0 = int(rows[0])
+                k1 = int(rows[-1])
+            except Exception:                                               # noqa: BLE001
+                k0, k1 = 0, int(g.shape[0]) - 1
+            rsegs, rinfo = _v26_teeth_cols(g, k0, k1, x0, x1)
+            rinfo = dict(rinfo)
+            rinfo["v26b_old_reg"] = (None if _reg is None else round(_reg, 2))
+            _V26_LAST_COLINFO = rinfo
+            if rsegs:
+                return rsegs, cf, cl
+        else:
+            _V26_LAST_COLINFO = {"v26b": False, "v26b_old_reg": round(_reg, 2)}
     return segs, cf, cl
 
 
@@ -1115,8 +1301,10 @@ def _v21_uniformize(segs):
                     if _a - 0.25 * med_gap <= _c <= _b + 0.25 * med_gap:
                         _claims.add(int(_i))
         # v25b: 短窗逐格投票(见 _V25_VOTE_WIN 注释) —— 只动"哪些格被认领", 不动单帧的宽度规则
+        # v26b: 平场路径的 segs 本身已是「实测节距的干净栅格」, 再套投票只会引入 2 帧预热跳变
+        #   (实测: 同一帧 raw 24 段被投票砍成 20) ⇒ 平场路径下跳过投票(前视走老路, 投票照旧)。
         _vote_note = None
-        if _claims:
+        if _claims and not (_V26_LAST_COLINFO or {}).get("v26b"):
             _vk = _v25_view_key(med_gap)
             with _V25_SEEN_LOCK:
                 _seen = _V25_SEEN.setdefault(_vk, [])
@@ -1212,6 +1400,12 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         lvl = _V21_BRIGHT_LEVEL
         hits = _v21_key_windows(ga, lvl)
         if not hits:
+            # v26b: 严格口径一个窗都没命中 ⇒ 放宽 jitter 再试一次(治 VO_1 那类暗帧整帧失败)。
+            #   前视等正常帧严格口径必有命中 ⇒ 永不走到这里 ⇒ 逐位不变。
+            hits = _v21_key_windows(ga, lvl, jitter_k=_V26_JITTER_RELAX)
+            if hits:
+                met["jitter_relax"] = _V26_JITTER_RELAX
+        if not hits:
             mrows = ga.mean(axis=1)
             bg = float(np.percentile(mrows, 20))
             # ⚠️ 别叫 gate: 它是函数参数 gate(dict) 的名字, 复用它会让下面 gate.get() 崩
@@ -1224,6 +1418,10 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
                                        for y in cand]))
                 met["bright_level_fallback"] = True
                 hits = _v21_key_windows(ga, lvl)
+                if not hits:                             # v26b: 自适应级下仍空 ⇒ 再放宽 jitter
+                    hits = _v21_key_windows(ga, lvl, jitter_k=_V26_JITTER_RELAX)
+                    if hits:
+                        met["jitter_relax"] = _V26_JITTER_RELAX
         met["bright_level_used"] = round(lvl, 1)
         met["_hits"] = list(hits)        # v22: 私有, 供失败重试挑候选键行带(不进 HTTP)
         met["_lvl"] = float(lvl)
@@ -1284,6 +1482,8 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         segs, cf, cl = _v21_key_cols(ga, band_rows, cx0, cx1, lvl_col,
                                      cf_key_col=gate.get("cf_key_col"),
                                      min_key_w=gate.get("min_key_w"))
+        if _V26_LAST_COLINFO:
+            met.update(_V26_LAST_COLINFO)       # v26b: 平场自适应路径的诊断(是否接管/子带/实测节距)
         if not segs:
             met["why"] = "no key columns survived the bright-column gate"
             met["err"] = met["why"]

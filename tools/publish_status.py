@@ -33,9 +33,34 @@ import urllib.request
 
 SRC = os.environ.get("ZMAX_STATUS_SRC", "http://127.0.0.1:8796/status/all")
 PUSH = os.environ.get("SS3D_PUSH", "https://datadrive.world/ss3d_push.php")
-TOKEN = os.environ.get("SS3D_TOKEN", "zmax-7ce74c7f")
 FNAME = "zmax_status.json"
 STATE = "/home/ubuntu/.zmax_status_publish_state.json"
+SECRETS_FILE = os.environ.get("ZMAX_SECRETS_FILE", "/home/ubuntu/zmax/zmax_data/secrets/zmax.env")
+
+
+def _resolve_token():
+    """推送 token 真值来源: 环境变量 ZMAX_SS3D_TOKEN → 本机 secrets 文件 (600, 永不入库)。
+
+    2026-10-09 收口: 以前这里把明文 token 写死成 `os.environ.get("SS3D_TOKEN", <明文>)` 的默认值 ——
+    公开仓库等于把通道密钥贴出去。现在 **绝不允许回落到明文默认值**:
+      · 本脚本由 cron 每分钟拉起, 进程环境里没有该变量 ⇒ 走 secrets 文件这一条 (不是纯 os.environ)。
+      · 两处都取不到 ⇒ 返回 None; main() 在真正推送前 fail-closed(报错退出), 绝不用空值去打端点。
+    """
+    v = (os.environ.get("ZMAX_SS3D_TOKEN") or "").strip()
+    if v:
+        return v
+    p = SECRETS_FILE
+    if p and os.path.isfile(p):
+        try:
+            for ln in open(p, encoding="utf-8"):
+                if ln.strip().startswith("ZMAX_SS3D_TOKEN="):
+                    return ln.split("=", 1)[1].strip()
+        except OSError:
+            pass
+    return None
+
+
+TOKEN = _resolve_token()
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JT_GLOB = os.path.join(ROOT, "reports", "joint_train_*", "summary.json")
@@ -146,6 +171,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="只打印, 不推")
     ap.add_argument("--if-changed", action="store_true", help="内容 md5 未变则跳过")
     a = ap.parse_args()
+
+    if not a.dry_run and not TOKEN:
+        print("[ERR] 缺少推送 token: 设环境变量 ZMAX_SS3D_TOKEN, 或写入 %s (键名 ZMAX_SS3D_TOKEN)。"
+              " 拒绝用空值/明文默认值推送。" % SECRETS_FILE)
+        return 4
 
     st = read_state()
     try:

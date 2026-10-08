@@ -4478,6 +4478,12 @@ def node_ss_bypass_viz(ctx):
         if log:
             from_ = (win.labs["stage"].text(), win.labs["residual"].text(), win.labs["contact_p"].text())
             log(f"📈 旁路实时可视化: 已打开 (当前阶段={from_[0]} · 残差={from_[1]} · 接触概率={from_[2]})")
+        if log:
+            try:
+                # 上网通道最近一次结果 (旁路调试区块) — 取用并汇报成一行 (下面终端日志口径)
+                log("🛰 " + ss_bypass_view.net_channel_status_line())
+            except Exception:
+                pass
         return True, "旁路可视化窗口"
     except Exception as e:
         if log:
@@ -4527,9 +4533,9 @@ _reg("ss_z700_signals", ["Z700 真机信号", "真机信号"],
 _EXTERNAL_LOC["ss_bypass_sensor"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                                   "bypass_sensor_source.py"), 62, "def read_latest")
 
-_EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 220, "class SSBypassView")
+_EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 383, "class SSBypassView")  # 2026-10-09 行号同步: 220→383 (加「上网通道」区块)
 
-_EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 489, "class Z700SignalsView")
+_EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 779, "class Z700SignalsView")  # 2026-10-09 行号同步: 489→779
 
 # 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
 def _resolve_python():
