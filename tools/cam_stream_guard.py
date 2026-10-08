@@ -45,13 +45,17 @@ TOP_KEY = "MAXHUB"                  # 顶视相机
 LOCAL_SRC_FILE = "/home/ubuntu/zmax/zmax_data/cam_local_src.json"
 
 
+def local_src_kind():
+    """用户在页面「换源」选的是哪一路: 'usb' / 'builtin' (缺文件=builtin)"""
+    try:
+        return json.load(open(LOCAL_SRC_FILE, encoding="utf-8")).get("kind") or "builtin"
+    except Exception:                                                     # noqa: BLE001
+        return "builtin"
+
+
 def local_expected():
     """按用户在页面上的「换源」选择, 返回 local 那格**应该**看到的卡名关键字。"""
-    try:
-        k = json.load(open(LOCAL_SRC_FILE, encoding="utf-8")).get("kind")
-    except Exception:                                                     # noqa: BLE001
-        k = "builtin"
-    return USB_KEY if k == "usb" else RGB_KEY
+    return USB_KEY if local_src_kind() == "usb" else RGB_KEY
 # 🌈 深度源: 由**容器内常驻**的 ros_depth_stream.py 落盘 (宿主只读它的 npy)
 DEPTH_NPY = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy"
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
@@ -64,13 +68,14 @@ TCP_CONTAINER = os.environ.get("ZMAX_TCP_CONTAINER", "rokae_tcp_sampler")
 
 
 def resolve_devs():
-    """按卡名+能力解析本机两路相机 (与 tools/start_station_stream.sh / 控制台按钮同一个真源)"""
+    """按卡名+能力解析本机两路相机 (与 tools/start_station_stream.sh / 控制台按钮同一个真源)
+    → (LOCAL, LOCAL2, USB) 或 None (USB 未插到时报 -1, 这里照样带出来)"""
     try:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "cam_dev_resolve.py")],
                            capture_output=True, text=True, timeout=25)
     except Exception:                                                            # noqa: BLE001
         return None
-    lo, l2 = None, None
+    lo, l2, usb = None, None, None
     for ln in (r.stdout or "").splitlines():
         k, _, v = ln.partition("=")
         v = v.strip()
@@ -79,7 +84,38 @@ def resolve_devs():
                 lo = int(v)
             elif k == "LOCAL2":
                 l2 = int(v)
-    return (lo, l2) if lo is not None else None
+            elif k == "USB":
+                usb = int(v)
+    return (lo, l2, usb) if lo is not None else None
+
+
+def user_src_absent(devs):
+    """用户「换源」选的那路相机**是否根本不在位** → (absent, 说明)
+
+    实测 2026-10-08: 落盘 `{"kind": "usb"}` 但机器上没插 USB 相机 (cam_dev_resolve → USB=-1)
+    ⇒ 期望永远无法满足, 而守卫每 5 分钟就去"重启纠正"一次 (10 分钟内推流换了 4 个 pid,
+    `8793/station` 短暂 000、公网 `/st/` 短暂 502), **而且永远修不好** —— 相机没插回来就无解。
+    口径(与深度/TCP 那两路一致): 环境缺失 ≠ 服务故障 ⇒ 不重启, 只报告。
+    """
+    if not devs or len(devs) < 3:
+        return False, ""
+    usb = devs[2]
+    if local_src_kind() == "usb" and (usb is None or usb < 0):
+        return True, ("用户换源选的是 USB 相机, 但本机没解析到 (USB=%s — 相机不在位)"
+                      % ("?" if usb is None else usb))
+    return False, ""
+
+
+def judge_now():
+    """判定 与 复核 的**共用入口** —— 两处必须逐字同一组参数
+
+    (两次实测教训: ① 复核漏传 `local_expected()` ⇒ 用户选 USB 后每次合法重启都打假 ❌;
+     ② 用户选的相机不在位时, 按它判 label 会永远 ❌ ⇒ 交给 `user_src_absent` 判环境缺失。)
+    → ((ok, why), absent_note)
+    """
+    cd, exp, st = proc_cmdline(), resolve_devs(), stats()
+    absent, note = user_src_absent(exp)
+    return judge(cd, exp, st, None if absent else local_expected()), (note if absent else "")
 
 
 def proc_cmdline():
@@ -115,12 +151,14 @@ def stats(timeout=6):
 def judge(cmd_devs, expect, st, local_key=RGB_KEY):
     """→ (ok, reason) 纯函数, 可用给定输入自测
 
-    local_key: local 那格**按用户换源选择**应有的卡名关键字(默认笔记本彩色; 换源选 USB 时传 USB_KEY)
+    local_key: local 那格**按用户换源选择**应有的卡名关键字(默认笔记本彩色; 换源选 USB 时传 USB_KEY);
+               传 None = 不校验 local 那一格的卡名 (用户选的相机不在位时用 — 见 user_src_absent,
+               否则会永远 ❌ 并让守卫每 5 分钟白重启一次)
     """
     if cmd_devs is None and st is None:
         return False, "8791 不可达且没有推流进程(推流没跑)"
     if expect:
-        lo_e, l2_e = expect
+        lo_e, l2_e = expect[0], expect[1]
         if cmd_devs is None:
             return False, "进程不在(推流没跑)"
         if cmd_devs.get("local-dev") != lo_e or cmd_devs.get("local2-dev") != l2_e:
@@ -129,7 +167,7 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
     if st:
         lo = (st.get("local") or {}).get("label", "")
         l2 = (st.get("local2") or {}).get("label", "")
-        if lo and local_key.lower() not in lo.lower():
+        if lo and local_key and local_key.lower() not in lo.lower():
             return False, "local 那一格不是用户选的那台相机(实测 label=%r, 期望含 %r)" % (lo, local_key)
         if l2 and TOP_KEY.lower() not in l2.lower():
             return False, "local2 那一格不是 MAXHUB(实测 label=%r) — 串线" % l2
@@ -141,9 +179,10 @@ def restart(reason):
     r = subprocess.run(["bash", s], capture_output=True, text=True, timeout=180)
     tail = "\n".join((r.stdout or "").strip().splitlines()[-4:])
     print("🛰 工位推流守护: %s → 已按解析结果重启\n%s" % (reason, tail))
-    # ⚠️ 2026-10-08 修: 复核也必须带上**用户换源选择**。原来漏传 ⇒ 用户选 USB 后
-    #    每次合法重启的复核都按 Integrated 判, 打出假 ❌(exit 1), 让人以为串线没治好。
-    ok, why = judge(proc_cmdline(), resolve_devs(), stats(), local_expected())
+    # ⚠️ 2026-10-08 修: 复核必须与判定**逐字同一组参数** —— 原来漏传 `local_expected()`
+    #    ⇒ 用户选 USB 后每次合法重启的复核都按 Integrated 判, 打出假 ❌(exit 1), 让人以为串线没治好。
+    #    现在两处都走 judge_now() (顺带把"用户选的相机不在位"的环境缺失判据也带上)。
+    (ok, why), _note = judge_now()
     print("   复核: %s (%s)" % ("✅ 映射正确" if ok else "❌ 仍不对", why))
     return 0 if ok else 1
 
@@ -261,9 +300,14 @@ def main():
         print("判定: %s — %s" % ("✅ 映射正确(不需要动手)" if ok else "❌ 需要纠正", why))
         return 0 if ok else 3
 
-    cd, exp, st = proc_cmdline(), resolve_devs(), stats()
-    ok, why = judge(cd, exp, st, local_expected())
+    (ok, why), absent_note = judge_now()
     notes, failed = [], False
+    # 🛡 2026-10-08: 用户「换源」选的那路相机不在位 (实测: 选了 usb 但机器上没插 USB 相机)
+    #   ⇒ 判环境缺失: 不按它校验 local 卡名、不重启(保持当前源), 只报告一行。
+    #   相机插回来后下一次运行就自动回到正常判定。别学以前那样每 5 分钟白重启一次。
+    if absent_note:
+        notes.append("🛰 工位推流守护: %s → **环境缺失, 跳过重启**(保持当前源, 相机插回后自动切回)"
+                     % absent_note)
 
     # ── 2026-09-30 修: 每一项自愈都必须跑完再汇总 ──────────────────────────────
     # 以前深度分支/TCP 分支各自中途中 `return` ⇒ 排在后面的「8791 没跑就拉起」永远不执行:
