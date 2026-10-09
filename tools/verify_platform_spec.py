@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import subprocess
+import re
 import sys
 
 ROOT = "/home/ubuntu/zmax"
@@ -131,7 +132,26 @@ try:
 finally:
     os.path.exists(_tmp) and os.remove(_tmp)
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (6 项)" if not FAIL else
+# ⑦ 侧栏配色纪律 (老倪: 删黑色字体, 彩色不超过两种) + 卡上不留说明行
+from PyQt5.QtWidgets import QLabel as _QL, QWidget as _QW
+_cards_w = [w for w in win.sidebar.findChildren(_QW) if w.__class__.__name__ == "SystemLayerCard"]
+_bad, _pal = {}, set()
+for _l in win.sidebar.findChildren(_QL):
+    for _h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or ""):
+        _pal.add(_h.lower())
+for _c in _cards_w:
+    _cols = set()
+    for _l in _c.findChildren(_QL):
+        for _h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or ""):
+            _cols.add(_h.lower()); _pal.add(_h.lower())
+    if len(_cols) > 2:
+        _bad[_c.layer_id] = sorted(_cols)
+    if len(_c.findChildren(_QL)) > 4:
+        _bad.setdefault(_c.layer_id, []).append("labels=%d(说明行没删净?)" % len(_c.findChildren(_QL)))
+chk(_cards_w and not _bad, "每张卡 ≤2 色 且 无黑色说明行 (违规: %s)" % (_bad or "无"))
+chk(len(_pal) <= 2, "侧栏整体(卡+分组标题+页脚)配色 ≤2 种 (实际 %d 种: %s)" % (len(_pal), sorted(_pal)))
+
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (8 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

@@ -334,6 +334,7 @@ C_YELLOW    = "#e3b341"
 C_WHITE     = "#e6edf3"
 C_GRAY      = "#8b949e"
 C_DIM       = "#484f58"
+C_SIDE      = "#58a6ff"   # 2026-10-09 老倪: 左侧栏只用两种颜色 (白 + 这一个蓝), 不五颜六色
 C_BORDER    = "#30363d"
 
 
@@ -681,7 +682,7 @@ class SystemLayerCard(QFrame):
         layout = QVBoxLayout()
         layout.setSpacing(3)                      # 2026-10-09 老倪: 字号适配窗口, 不挤不挤
         layout.setContentsMargins(11, 6, 11, 6)
-        self.setMinimumHeight(78)                # 卡片给足高度, 不让布局压扁文字
+        self.setMinimumHeight(70)                # 卡片给足高度, 不让布局压扁文字
 
         # 层级标识
         head = QHBoxLayout()
@@ -708,27 +709,19 @@ class SystemLayerCard(QFrame):
         sub.setMinimumWidth(1)
         layout.addWidget(sub)
 
-        # MCD 三轴彩条 (测量 Measurement · 标定 Calibration · 诊断 Diagnosis) —— 用数据定义产品框架
+        # MCD 三轴 (测量/标定/诊断) —— 单色数字行, 详情走 tooltip
         if self.mcd:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            for key, cn, col in (("m", "测量", "#4da3ff"), ("c", "标定", "#ffc857"), ("d", "诊断", "#00d4aa")):
-                v = self.mcd.get(key)
-                if v in (None, 0, "0"):
-                    continue
-                chip = QLabel("%s %s %s" % (key.upper(), v, cn))
-                chip.setFont(QFont("Consolas", 10, QFont.Bold))
-                chip.setStyleSheet(f"color:{col}; background:transparent; border:none; margin:0; padding:0;")
-                row.addWidget(chip)
-            row.addStretch()
-            layout.addLayout(row)
+            seg = ["%s %s" % (k.upper(), self.mcd[k]) for k in ("m", "c", "d") if self.mcd.get(k)]
+            if seg:
+                mcd_lbl = QLabel(" · ".join(seg))
+                mcd_lbl.setFont(QFont("Consolas", 11, QFont.Bold))
+                mcd_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none;"
+                                      f" margin:0; padding:0;")
+                mcd_lbl.setToolTip("MCD 三轴: M 测量 · C 标定 · D 诊断 (数字取自单一工程库)")
+                layout.addWidget(mcd_lbl)
 
-        # 一行说明 (短)
-        comp = QLabel(components)
-        comp.setFont(QFont("Arial", 10))
-        comp.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:0;")
-        comp.setWordWrap(True)
-        layout.addWidget(comp)
+        # 黑色说明行已删 (老倪: 左侧字太多) —— 说明改挂 tooltip
+        self.setToolTip(components or "")
 
         self.setLayout(layout)
 
@@ -803,8 +796,8 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.31.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
-        ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
+        ver = QLabel("Z-MAX v5.32.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
         layout.addLayout(logo_row)
@@ -821,22 +814,24 @@ class SystemSidebar(QFrame):
 
         layout.addSpacing(8)
 
-        sep_label = QLabel("② 系统 · 支撑产品运行的架构 (子系统/模块)")
+        sep_label = QLabel("② 系统")
+        sep_label.setToolTip("系统: 支撑产品运行的整体架构, 由多个模块/子系统组成")
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
-        sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        sep_label.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
 
         # 🏭 Z-MAX 平台方框 (2026-10-09 老倪: 在 System 2 之上增加 Z-MAX 方框, 描述平台产品 —
         #   平台产品 Z700 精细操作 / Z100 通用操作, 由 系统2/1/0 组成的全系统实现; 点击开产品/功能清单)
         _MCD = _mcd_from_db()
         _mcd_prod = _MCD.get("product") or _MCD.get("plat") or {}
-        _zlab = QLabel("① 产品 · 面向客户的完整交付物")
+        _zlab = QLabel("① 产品")
+        _zlab.setToolTip("产品: 面向用户/客户的完整交付物, 解决某个业务问题")
         _zlab.setFont(QFont("Arial", 10, QFont.Bold))
-        _zlab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _zlab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_zlab)
         self.zmax = SystemLayerCard(
-            "zmax", "🏭 Z-MAX 平台", "产品 · Z700 精细操作 / Z100 通用操作",
-            C_GOLD if "C_GOLD" in globals() else "#ffc857",
+            "zmax", "🏭 Z-MAX 平台", "Z700 精细操作 · Z100 通用操作",
+            C_SIDE,
             "特征 18 → 系统 3 → 功能 74 · 点开看产品与功能清单",
             mcd=_mcd_prod
         )
@@ -844,8 +839,8 @@ class SystemSidebar(QFrame):
         layout.addWidget(self.zmax)
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
-            "sys2", "System 2", "L4/L5 认知决策 · 功能 30",
-            SYS2_COLOR, "云端智能体 · 任务拆解调度 · 流形世界模型",
+            "sys2", "System 2", "L4/L5 认知决策 · 30 功能",
+            C_SIDE, "云端智能体 · 任务拆解调度 · 流形世界模型",
             mcd=_MCD.get("sys2")
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
@@ -853,8 +848,8 @@ class SystemSidebar(QFrame):
 
         # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
         self.sys1 = SystemLayerCard(
-            "sys1", "System 1", "L3 动作执行 · 功能 4",
-            SYS11_COLOR, "VLA-T 动作 500M + Z-Flow 引导 15M",
+            "sys1", "System 1", "L3 动作执行 · 4 功能",
+            C_SIDE, "VLA-T 动作 500M + Z-Flow 引导 15M",
             mcd=_MCD.get("sys1")
         )
         self.sys1.clicked.connect(self.layer_clicked.emit)
@@ -862,20 +857,21 @@ class SystemSidebar(QFrame):
 
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
-            "sys0", "System 0", "L2 基石执行 · 功能 27",
-            SYS0_COLOR, "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆",
+            "sys0", "System 0", "L2 基石执行 · 27 功能",
+            C_SIDE, "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆",
             mcd=_MCD.get("sys0")
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys0)
 
-        _flab = QLabel("③ 产品配置 · 功能清单")
+        _flab = QLabel("③ 产品配置")
+        _flab.setToolTip("功能: 系统里可独立执行的最小能力单元 (功能清单 = 产品配置面)")
         _flab.setFont(QFont("Arial", 10, QFont.Bold))
-        _flab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _flab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_flab)
         self.fn_card = SystemLayerCard(
-            "spec", "📋 功能清单", "产品配置 · 74 条功能 (最小能力单元)",
-            "#00d4aa", "点开: 每个系统按 配置 / 标定 / 诊断 三轴配功能",
+            "spec", "📋 功能清单", "74 条功能 · 最小能力单元",
+            C_SIDE, "点开: 每个系统按 配置 / 标定 / 诊断 三轴配功能",
             mcd=_mcd_prod
         )
         self.fn_card.clicked.connect(self.layer_clicked.emit)
@@ -883,13 +879,14 @@ class SystemSidebar(QFrame):
 
         # ④ 数据配置面放最下面 (老倪: 参数中心放最下面 · 数据用参数中心改, 配置用功能清单改)
         layout.addStretch()
-        _plab = QLabel("④ 数据配置 · 改数字")
+        _plab = QLabel("④ 数据配置")
+        _plab.setToolTip("数据配置面: 参数中心改数字, 改数即链动 功能·性能·代码")
         _plab.setFont(QFont("Arial", 10, QFont.Bold))
-        _plab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _plab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_plab)
         self.params_card = SystemLayerCard(
-            "params", "🎛 参数中心", "数据配置 · 162 个可改数字",
-            "#ff9f43",
+            "params", "🎛 参数中心", "162 个可改数字",
+            C_SIDE,
             "双击改数 → 链动 功能·性能·代码 (先预览再落真源)",
             mcd=_mcd_prod
         )
@@ -901,7 +898,7 @@ class SystemSidebar(QFrame):
         # 底部信息
         info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
         info.setFont(QFont("Consolas", 11))
-        info.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+        info.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none;")
         info.setAlignment(Qt.AlignCenter)
         layout.addWidget(info)
 
@@ -11467,7 +11464,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.31.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.32.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11475,9 +11472,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.31.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.32.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.32.0: v5.32.0 — 左侧栏 UI 重做: 删黑字说明行 · 配色收敛到 2 种 · 每卡只留三行 (2026-10-09 老倪)  老倪: 「左侧的字太多了, 删除黑色字体; 彩色字体也不要五颜六色的, 不要超过两种颜色; 重新修改UI。」  ① 删黑色字体    · 卡片上的深灰说明行 (C_DIM #484f58) 整行删除 —— 之前 6 张卡各压一行小字, 是"字太多"的主因;      说明内容改挂 tooltip (鼠标悬停才看), 需要时不丢信息。    · 分组标题的长定义 ("① 产品 · 面向客户的完整交付物") 缩短为「① 产品」「② 系统」「③ 产品配置」      「④ 数据配置」, 定义搬进 tooltip。  ② 配色 ≤2 种 (原来是 7 种")    之前每张卡各有主色 + MCD 三轴彩条还各用一色 ⇒ 侧栏出现 7 种颜色。    现在统一为一个蓝 C_SIDE #58a6ff (卡边框/副标题/MCD/分组标题/页脚/logo) + 白 C_WHITE #e6edf3    (卡标题), 共 2 种; MCD 从"三色彩条"改成"单色数字行"(M 9 · C 41 · D 38), 不再五颜六色。  ③ 每张卡 = 三行 (标题 / 副标题 / MCD 数字), 字号适配    🏭 Z-MAX 平台 · Z700 精细操作 · Z100 通用操作 · M9 C45 D57    System 2 · L4/L5 认知决策 · 30 功能 · C4 D11    System 1 · L3 动作执行 · 4 功能 · D8    System 0 · L2 基石执行 · 27 功能 · M9 C41 D38    📋 功能清单 · 74 条功能 · 最小能力单元 · M9 C45 D57    🎛 参数中心(最下) · 162 个可改数字 · M9 C45 D57    字号: 标题 12pt 白粗 · 副标题 11pt · MCD 11pt 等宽; 卡最小高 70px、行距 3、边距 11/6。  ④ 判据固化 (verify_platform_spec 6 → 8 项, 防回退)    ⑦ 每张卡 ≤2 种颜色, 且卡内 QLabel ≤4 个 (= 说明行没被加回来)    ⑧ 侧栏整体 (卡 + 分组标题 + 页脚 + logo) 配色 ≤2 种 —— 实测 {#58a6ff, #e6edf3} = 2 种 ✅    实测: verify_platform_spec 8 项全绿 · verify_param_center 8 项全绿 · 实机 OCR 复核侧栏。
         # v5.31.0: v5.31.0 — 左侧栏整合: 平台支撑撤卡 · 参数中心移到底部(数据配置) · 功能清单=产品配置 · 字号适配 (2026-10-09)  老倪: 「左侧为什么多出了平台支撑和功能清单; 整合一下: 参数中心用于数据配置, 功能清单保留映射产品配置, 平台支撑删掉; 你来整合数据 —— 参数中心改数字, 功能清单改配置; 参数中心放到最下面; 其它方块字体调整 适配窗口, 不要挤。」  ① 侧栏最终形态 (6 张卡, 从上到下)    ① 产品 · 面向客户的完整交付物         🏭 Z-MAX 平台 | 产品 · Z700 精细操作 / Z100 通用操作 | M9 测量 C45 标定 D57 诊断    ② 系统 · 支撑产品运行的架构 (子系统/模块)         System 2 | L4/L5 认知决策 · 功能 30 | C4/D11         System 1 | L3 动作执行 · 功能 4    | D8         System 0 | L2 基石执行 · 功能 27   | M9/C41/D38    ③ 产品配置 · 功能清单         📋 功能清单 | 产品配置 · 74 条功能 (最小能力单元) | 点开: 每个系统按 配置/标定/诊断 三轴配功能    ④ 数据配置 · 改数字   ← 放最下面 (layout.addStretch() 之后)         🎛 参数中心 | 数据配置 · 162 个可改数字 | 双击改数 → 链动 功能·性能·代码    ❌ 🧩 平台支撑 卡**删除** (它是上一轮多加的第 4 张"系统"卡; 页面本身保留, 仍在功能清单页里作       「🧩 平台支撑」页签可看, 只是不再占左侧)  ② 两个数据面的分工被写进标题 (GUI 上就能看出各管什么)    · 🎛 参数中心 = **数据配置** (改数字: 162 个可改数字, 双击改 → 链动 功能/性能/代码; 页头      「🎛 参数中心 · 数据配置」)    · 📋 功能清单 = **产品配置** (改配置: 每个子系统按 配置/标定/诊断 三轴定义功能清单; 页头      「📋 产品配置 · 功能清单 (功能 = 系统里最小可执行能力单元)」)  ③ 字号适配窗口 (不再挤): 卡片最小高度 78px · 边距 11/6 · 行距 3 · 标题 11→12pt · 副标题 10→11pt ·    MCD 彩条 9→10pt · 说明 9→10pt。少了一张卡腾出空间, 字号同步上调。  判据: verify_platform_spec 6 项全绿 (新增卡序断言 = ['zmax','sys2','sys1','sys0','spec','params']) ·       verify_param_center 8 项全绿 (新增: 参数中心必须在最下面 · 侧栏不得再有平台支撑卡) · 实机 OCR 复核。
         # v5.30.1: v5.30.1 — 产品迭代 Roadmap Phase 0-4 描述按当前实际框架升级 (2026-10-09 老倪)  老倪: 「产品迭代 Roadmap Phase 0/1/2/3/4 这几个方块的描述, 也要根据现在的实际框架, 将描述升级优化。」  口径: 每条 Phase = 产品(交付物) → 系统(System 0/1/2) → 功能(最小能力单元), 并用 MCD 三轴表述;       卡上的「功能 N · MCD …」数字从单一工程库读 (_roadmap_facts, 库缺则兜底), 不再手写印象。  Phase 0 | System 0 · L2 基石执行 | 2026 Q3 | A 标准接口 | KPI τ=0.08s 速度伺服   原子技能 SK01-08 + 安全层/HAL/EtherCAT + 分段感知/控制小模型 + 肌肉记忆   功能 27 · MCD M9/C41/D38 · 一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口 Phase 1 | System 1 · L3 动作执行 · VLA-T 端到端 + Z-Flow 引导 | 2026 Q4 | M+A | KPI 对位残差 ≤0.5mm   VLA-T 动作 (SmolVLA 500M) 端到端 + Z-Flow 引导 (LeWM 15M)   功能 4 · MCD D8 · 长程规划与跨段技能序列 · 本地 GPU/边缘推理 Phase 2 | 双形态泛化 · Z100 通用操作 | 2026 Q4-2027 Q1 | M+A 泛化 | KPI 抓取成功率 ≥97%   一脑多能: 跨工位流转 · 工位精准对接 · 举升 0-80mm · Z100 产品特征 8 条 · 多品种小批量柔性产线 Phase 3 | System 2 · L4/L5 认知决策 | 2027 Q1-Q2 | X+Z 扩展 | KPI IntAct 稳态 101ms   流形世界模型预判/恢复 · 五层记忆筹划 · 任务拆解与调度 (MES/语言 → 技能序列)   功能 30 · MCD C4/D11 · L4 用 INTACT 直驱 Phase 4 | 全域认知 · 全系统闭环 | 2027+ | Z·M·A·X 全域 | KPI 7×24h · 插入成功率 ≥99%   L4 全自主闭环 + 多产线规模化复制 · 单一工程库(数据一体化): 产品 → 系统 → 功能 → 模块 → 代码 一份真源 · 功能 74  另: 顶部维度条加「Z-MAX 平台矩阵:」前缀 (Z 潜空间 · M 多模态 · A Action · X eXpert), 类说明由 「Sys-1 → Sys-11 → Sys-12 → Sys-2」改为「产品 → 系统(System 0/1/2) → 功能, 每级用 MCD 三轴定义」。 实测: 离屏建卡 5/5 读出上述文字 (数字与库一致); 实机 OCR 复核 Phase 1/2/3 卡片文字。
         # v5.30.0: v5.30.0 — 左侧栏按「产品 → 系统 → 功能」重构 + 引用 MCD 标准 (测量/标定/诊断) (2026-10-09 老倪)  老倪: 「左侧这几个方块再次精简, 现在很挤; 例如『162 个可改数字』显得没有内容 —— 应该引用 MCD 的标准: 测量、诊断、标定, 体现出用数据定义产品框架。核心思想: 产品=面向用户/客户的完整交付物, 解决某个业务问题; 系统=支撑产品运行的整体架构, 由多个模块/子系统组成; 功能=系统里可独立执行的最小能力单元。」  ① 左侧栏按三级定义重排 (每组标题就是定义本身)    ① 产品 · 面向客户的完整交付物        🏭 Z-MAX 平台 —— 产品 · Z700 精细操作 / Z100 通用操作        🎛 参数中心 —— MCD 数据面 · 162 个可改数字    ② 系统 · 支撑产品运行的架构 (子系统/模块)        System 2 | L4/L5 认知决策 · 功能 30        System 1 | L3 动作执行 · 功能 4        System 0 | L2 基石执行 · 功能 27        🧩 平台支撑 | 跨子系统 · 功能 13    ③ 功能 · 系统里最小可执行能力单元        📋 功能清单 | 74 条功能 · 每条含 配置/标定/诊断  ② MCD 标准落地 (用数据定义产品框架) —— 卡片上就是三轴彩条    🟦 M 测量 · 🟨 C 标定 · 🟩 D 诊断, 数字全部来自单一工程库 (mcd 表), 不写死:      产品级   M 9 测量 · C 45 标定 · D 57 诊断 (+ 故障码 MCD-E01…E05)      System 0 M 9 · C 41 · D 38   (L2 真正落数: 位姿/关节/深度/力)      System 2 C 4 · D 11 (L4)     System 1 D 8 (L3)      平台支撑 M 9 · C 45 · D 57    MCD 定义: M=工程 measure 视图的测量量 (帧龄<2s 判据) · C=标定参数 (zmax_calib.json 叶子) ·              D=诊断断言 (verification_layer FEATURES) + 故障码 MCD-E0x + 站点缺口 3 项。    库新增 mcd 表 (scope/scope_id/m/c/d/note) + 服务端点 /mcd; check 新增 ⑨ MCD 判据 (产品三轴必须非空)。  ③ 精简 (解决"很挤")    · 卡片从「标题 + 副标题 + 三行长描述」压成「标题 + 副标题 + MCD 彩条 + 一行短说明」;      边距 12/8 → 10/5, 行距 4 → 2, 字号 12 → 10/11, 说明灰色 12 → 9。    · 每张卡只说一件事: 产品说什么交付物 · 系统说哪一层/多少功能 · 功能说最小单元。    · 旧的 SYS11/SYS12 编号、500M/15M 之类细节从卡片撤走 (在功能清单页里看)。    · 「162 个可改数字」不再作为卖点出现, 改为「MCD 数据面 · 162 个可改数字」+ 三轴彩条, 有内容可看。  判据: engineering_db check ⑨ MCD 全绿 (M9/C45/D57) · verify_platform_spec / verify_param_center 复跑       (卡数量/顺序/点击接线随新卡片更新)
