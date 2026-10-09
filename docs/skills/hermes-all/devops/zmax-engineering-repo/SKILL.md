@@ -101,6 +101,54 @@ metadata:
    `os.makedirs(cfg_dir, exist_ok=True)` + 路径常量; 改完 `python -m py_compile` 验证。
 4. **收编留清单**: `from → to` + "被哪些训练目录引用"写 JSONL 进 `zmax_data/backups/`, 并同目录放 `README.md` 说明它们是生成物不是手写配置。
 
+## 单一工程库 (data/database/zmax/zmax_engineering.db) 铁律
+
+- **标准产品数据路径 = `data/database/<产品标识>/`** (本平台 `data/database/zmax/`; 老倪 2026-10-09 定版)。
+  一个目录 = 该产品的全部数据: `zmax_engineering.db` + `zmax_space.proj`(总工程) + `README.md`(对外产品手册) + `archive/`。
+  `data/database/` 下**只放产品目录**, 不再平铺文件 (verify_platform_spec 判据 ① 卡这条)。
+  改路径只需动两处: `project_file.project_dir()` (所有工程文件路径的根) 与 `engineering_db.DB_DEFAULT` / `PROJ_DIR`;
+
+- **是什么**: SQLite 3 单文件库 (~0.9MB, 24 张表)。**不是服务器**: 没装 MySQL/PG/Mongo, 无监听端口;
+  读写靠 Python 自带 `sqlite3` 模块 + 系统包 `libsqlite3-0` (`/usr/lib/x86_64-linux-gnu/libsqlite3.so.0`);
+  `sqlite3` CLI 未装 (不需要)。库文件跨 sqlite 版本可读 (写它的 3.53.1 / 系统 python 3.45.1 / gui-venv311 3.53.1 都能读)。
+- **真源 → 库**: 库是**生成物** (`engineering_db.py build`), 真源是人可编·进 git 的 JSON/源码 (config/*.json ·
+  feature.dbc · 画布 · verification_layer.py · param_spec.json)。改真源 → 重建库 → `check` 17 项。
+- **唯一例外 = 运行时表**: `param_events` (改数留痕) 由程序**直接写库**, `SCHEMA` 里用 `CREATE TABLE IF NOT EXISTS`,
+  **build 不清空它** (曾经是 param_events.jsonl + 库表投影两个家, 2026-10-09 老倪要求收口, jsonl 已退场)。
+  新增运行时表照这个模式: `IF NOT EXISTS` + 写口函数 + build 开头按唯一键去重并入旧文件。
+- 🔴 **`zmax-engdb.service` (8798) 启动时把库读进内存**: 重建库后不 restart, `/summary` 还报旧 `built_at`
+  (实测 21:03 vs 21:34) ⇒ 改完库一律 `sudo systemctl restart zmax-engdb.service` 再回读核对。
+- 事件 API: `log_param_event(ev)` / `read_param_events(limit)` / `count_param_events()`;
+  写口在 `param_registry._log_event`, 读口在 GUI 参数中心事件流页 + `verify_param_center` 判据。
+
+## data/ 布局 (2026-10-09 分区: 顶层 60 项 → 6 桶)
+
+```
+data/database/  🗄 工程文件 + 数据库: zmax_engineering.db · zmax_space.proj(总工程) · 其它 .proj · param_events.jsonl · archive/
+data/skills/    💪 技能库 (l2_atomic 注册表+示教点 · l2_muscle)
+data/scene/     🎬 场景状态: scene_state.json · overlay_spec.json · cam_calib.json
+data/memory/    🧠 memory_layers/shared/macro/assembly/muscle/intact_robot_state/macro_memory.json
+data/calib/     📐 handeye / selfcal / aoi_caliber_bench
+data/datasets/  📊 yolo_* · ss_* · metaworld_* · smolvla_* · orin_* · *.npz/*.mp4
+```
+
+- **工程文件默认目录 = `data/database/zmax`** (`project_file.project_dir` / `engineering_db.PROJ_DIR`); 总工程 =
+  `data/database/zmax/zmax_space.proj`。设计文档 `docs/notes/data_layout.md` + `data/database/zmax/README.md` (产品手册)。
+- 迁移/再加桶一律用 **`python3 tools/data_layout.py --dry|--apply`** (自带 tar 备份 + `DATA_LAYOUT_MANIFEST_*.jsonl`)。
+  它只改可执行代码区, 跳过 docs/reports/zmax_data/external 与 `_archive/`, 并**逐行排除** `lerobot-smolvla-lew/data/`
+  (那是别的仓库的 data, 实测 `tools/diag_aoi_frame.py` 就命中; 不排除就会改错)。
+- 🔴 **按名字动态拼路径必须走 `tools/gui/data_locate.py`** (`data_dir(root,name)` / `datasets_root(root)`):
+  写死 `os.path.join(root,"data",x)` 在分区后**不报错、只是找不到** (isdir 为 False ⇒ 静默跳过/枚举为空)。
+  已收口三处: `studio._local_datasets` · `data_space._scan_datasets` · `simulink_module` 数据集组。
+- 🔴 **改完画布必须重绑**: 画布 `state_space_obs.json` 一改 (`canvas_md5` 变) ⇒ `ss_task_bind.py --check` 报
+  "需重绑定", `engineering_db check` 报 `drift ['project'/'canvas']`。定式: `ss_task_bind.py --activate <task>` →
+  `engineering_db.py build` → 两个 check 走一遍。
+- 🔴 **`probe_open_space.py` / 控制台「打开总工程」会按存档回写现场**(集成式打开 = 真写盘): 改过画布后若
+  不刷新总工程, 下一次打开就把改动**回滚**到存档那一份 (实测踩过)。改完画布跑一次
+  `python3 tools/project_archive.py space-save` 刷新快照, 再跑 probe 验证"打开后画布 md5 不变"= 幂等。
+- `data/` 整体在 `.gitignore` 里 (父目录被排除 ⇒ `!data/xx` 的否定写法**无效**): 说明性文档放 `docs/notes/`,
+  `data/*.md` 只当盘上指引。
+
 ## 家目录整合/改路径: 第 4 种写法与"老进程还在写老路径"的取证 (2026-10-08 实测)
 
 **改引用只覆盖 绝对 `/home/ubuntu/x` · `~/x` · `$HOME/x` 三种写法是不够的 —— 第 4 种是分开拼:**

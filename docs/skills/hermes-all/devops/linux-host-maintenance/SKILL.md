@@ -401,6 +401,37 @@ sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg |
 Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有 `192.168.23.x` + `lsusb` 无 USB 网卡,
 **开机 5min 与 10min 两次复采都在** 才算真缺失(§9 的 1~2min 规矩)。网卡插回后这些会各自恢复, 不用手工拉。
 
+## 9f. 2026-10-09 重启后复采: 四个"看着像故障其实不是"的点
+
+**① 开机 2min 时 8791/8793 端口空 ⇒ 不要手搓拉起, 守护 5 分钟内会自己起。**
+实测: up 2min 时 `ss -ltnp` 无 8791/8793、`curl 8793/station` = 000; up 5min 再采, `cam_stream_guard`(cron)
+已在 21:10 拉起 pid 14240, `8793/station` 与 `8791/` 双 200。判据: 先看 `stat -c %y /tmp/cam_stream_guard.log`
+有没有刚写过, 再决定要不要 `boot_restore.sh local`。
+
+**② ECS 反向隧道的判活不能看日志 tail —— 日志里永远留着历史 `Error: remote port forwarding failed` 行。**
+实测重启后 `zmax-ecs-ov/station` 显示 `activating` + NRestarts 从 2→4, 但那是**开机头 90s 的短暂循环**;
+判据取三证: ①`ActiveEnterTimestamp` = 21:10:00 且 `NRestarts` 隔 20s 两次**不再涨**(冻在 4)
+②`stat -c %y /var/log/zmax-ecs-*.log` 停更(21:09:50) ③公网探活 `https://datadrive.world/ov/live.json?k=…` 与 `/st/station?k=…` 双 200。
+三证齐 = 隧道已通, **不要去 ECS 上 kill sshd**(那是 §9c 的处置, 只在真的长时间抢不到口时用)。
+若非要去 ECS 上看: 占口的 `sshd` 用 `ps -o etimes` 看**存活秒数**就能区分新旧 —— 97s = 自己刚起的活隧道, 不是僵死会话。
+
+**③ 8795 `hil_local_api.py` 是手工进程, 且工具层会拦 `nohup/setsid`。**
+写 `setsid nohup … &` 会被 Hermes 直接拒(`Foreground command uses shell-level background wrappers`) ⇒
+改用 `terminal(background=true, persist_on_release=true, command="cd <ROOT> && exec ./gui-venv311/bin/python tools/hil_local_api.py")`,
+再单独一条命令复核 `ss -ltnp | grep 8795` + `curl 127.0.0.1:8795/health` = 200。
+
+**④ 深度格慢是 Orin 上游的固有限制, 不是重启回归。**
+本机侧证据(`depth_raw.npy` 20s 更新 3 次 / `depth_meta.json` fps 0.5 / 8793 `depth.fps≈0.2`)只能说明"慢",
+要定责必须在 **Orin 上直接量话题节拍**: 传一个 rclpy 探针(12s 窗口, BEST_EFFORT 订阅)数消息,
+实测 **depth 0.17Hz / color 0.17Hz**(同一时刻 `rs_fast_node` 直读设备仍 30fps ⇒ 厂商节点是按需/低频发布, 不是掉线)。
+历史留档同样口径: 09-29 夜 0.24fps"慢但不死"、10-07 "源文件龄常 20s"、10-08 1.77fps ⇒ **属长期已知项**,
+别为此去重启 `realsense_source`(`ros2 topic hz` 依旧不可信, 用订阅计数)。Orin 侧只读探针可 `scp` 脚本到 `/tmp` 再跑, 不必装任何包。
+
+**⑤ 两个"假缺失"清单项**: `boot_restore.sh check` 里的 `demo_recorder` 早已不存在(全仓只有 boot_restore 自己提到它)
+⇒ 每次开机都报一行 ✗, 属陈旧项不用管; `local2`(MAXHUB 顶视)不在位时 `cam_dev_resolve.py` 给 `LOCAL2=-1`,
+是**硬件缺失**(`/dev/video*` 里根本没有它的卡名), 不是串线。
+另: 列"启用单元"别用 `awk '/enabled/'` —— 它会连 `disabled` 一起匹配(实测把 disabled 的 `zmax-moveit-plan`、`zmax-swapfile` 报成自启项); 要 `systemctl is-enabled` 逐个判。
+
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。

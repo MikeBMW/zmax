@@ -356,12 +356,24 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 ## 工程文件: 保存/加载整个「状态空间工程」(2026-10-08 老倪: 文件菜单)
 老倪: 「在控制台，文件下拉菜单，增加一个保存工程文件的功能，这样，我下次进入控制台，直接加载这个工程文件，就可以继续调试状态空间工程了。」
 - 实现: `tools/gui/project_file.py`(逻辑, 可命令行自检) + `studio.py` 文件菜单两项
-  (`💾 保存工程文件…` Ctrl+S · `📂 加载工程文件…` Ctrl+Shift+O; 默认目录 `reports/projects/`, 扩展名 `.zmaxproj`)。
+  (`💾 保存工程文件…` Ctrl+S · `📂 加载工程文件…` Ctrl+Shift+O)。
+  **默认目录 = `data/database/`**(`project_dir()`; 2026-10-09 从 `reports/projects/` 迁来, 与工程库同目录), 扩展名 `.zmaxproj`;
+  另有 v2「**总工程**」`data/database/zmax_space.proj`(七段: canvas/calibration/master_param/measure/tasks/panel/meta),
+  对应控制台「文件 → 🗂 打开/保存总工程」—— 集成式回填(画布+标定+主参数+任务+面板), 见下方写盘铁律。
 - 工程文件是**自包含** JSON 四段: `meta`(schema/时间/控制台版本/画布指纹 md5+统计) · `canvas`(画布真源全文) ·
   `run_cfg`(画布页 6 个运行档位勾选: chk_engine_demo/chk_l3_full/chk_mani_yaw/chk_intact_exec/chk_l4_dit/chk_l2_compat) ·
   `ui`(画布栈索引 —— 加载后自动切回画布页)。
 - 🔴 加载 = **写画布真源**, 所以三道闸: ①先 `read_summary()` 把"这文件里是什么"摆给用户看, 他点确定才动;
   ②写盘只走 `flows.save_canvas()`(自带校验 + 备份到 `flows/_archive/`); ③坏文件(schema 不对/画布校验不过)拒载, 当前画布不动。
+- 🔴 **「打开总工程」= 真写盘(集成式回填), 会把改动回滚**: 它按存档把 画布/标定/主参数/任务/面板 **写回现场**。
+  改过画布后**必须先刷新快照 `python3 tools/project_archive.py space-save`**, 否则下一次打开(包括 `tools/probe_open_space.py` 这种离屏探针)
+  就把你的改动**回滚**到存档那一份(实测: 改完画布跑一次打开探针, 改的注释被冲掉、库/绑定双双报漂移)。
+  收尾跑 `probe_open_space.py` 验"打开后画布 md5 不变"= 幂等, 再交。
+- 🔴 **改画布后的下游同步顺序 (不能换)**: ① 改画布 → ② `ss_node_sync.py`(节点配置段要同步时)
+  → ③ `ss_task_bind.py --activate <task>` → ④ `project_archive.py space-save`(刷新总工程快照)
+  → ⑤ `engineering_db.py build` → ⑥ `ss_task_bind.py --check` + `engineering_db.py check`(+ 工程库服务 restart)。
+  为什么卡这个序: ⑤必须在④之后 —— 先 build 再 save, 库就比总工程旧, `check` 每次都报 `drift ['project']`(实测反复中招);
+  ④必须在③之后 —— 快照里落的是任务绑定指纹, 早了存的是旧的。画布 md5 一变, `ss_task_bind --check` 就会报"需重绑定"。
 - 保存前也要校验: 把有问题的画布存成"工程"比存不上更糟(下次加载会把它们写回来)。
 - 命令行自检 `gui-venv311/bin/python tools/gui/project_file.py`; 端到端自检(存→读摘要→载→画布 md5 不变 +
   备份生成 + 软链未被替换 + 坏文件被拒)见 `/tmp/verify_project_feature.py`, 加 `--studio` 再验 studio.py 离屏 import。
