@@ -117,11 +117,15 @@ class ConfigCenterPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(6)
 
-        # ── 顶栏: 站点 / 描述 / 授权 ──
+        # ── 顶栏: 返回 + 站点 / 描述 / 授权 ──
         bar = QHBoxLayout()
         d = _j(MCD_J, {}) or {}
         meta = d.get("_meta", {})
         tk = _j(TASKS_J, {}) or {}
+        self.back_btn = _btn("← 返回主窗口", th)
+        self.back_btn.setToolTip("回到控制台主窗口 (等价于左侧栏「← 返回首页」)")
+        self.back_btn.clicked.connect(self._back_home)
+        bar.addWidget(self.back_btn)
         info = QLabel(f"站点 SITE-A.ST11   ·   描述 {meta.get('schema', '缺')} @ {meta.get('generated_at', '—')}"
                       f"   ·   任务 {len(tk.get('tasks', []))} 条   ·   授权: 无")
         info.setFont(QFont("Consolas", 10))
@@ -283,6 +287,29 @@ class ConfigCenterPage(QWidget):
             self.tabs.addTab(model_page, "🧠 模型配置")
 
     # ── 结果面板 ──
+    def _back_home(self):
+        """← 返回主窗口: 优先走控制台左侧栏的真实路径(「← 返回首页」按钮 → layer_clicked),
+        退路是直接调主窗口的 _on_nav('home')。两条都不通才提示, 不静默。"""
+        win = self.window()
+        try:
+            sb = getattr(win, "sidebar", None)
+            if sb is not None:
+                for b in sb.findChildren(QPushButton):
+                    t = (b.text() or "")
+                    if "首页" in t or "主窗口" in t:
+                        b.click()                      # 走真实 UI 路径 (同步侧栏高亮 + 切栈)
+                        return
+        except Exception:  # noqa: BLE001
+            pass
+        fn = getattr(win, "_on_nav", None)
+        if callable(fn):
+            try:
+                fn("home")
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        self.out.setPlainText("⛔ 找不到主窗口的导航入口 (sidebar/_on_nav 都不在)——请直接用左侧栏「← 返回首页」")
+
     def _selected_task(self):
         r = self.tasks_table.currentRow()
         if r < 0:
