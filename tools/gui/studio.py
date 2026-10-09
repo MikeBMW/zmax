@@ -334,7 +334,7 @@ C_YELLOW    = "#e3b341"
 C_WHITE     = "#e6edf3"
 C_GRAY      = "#8b949e"
 C_DIM       = "#484f58"
-C_SIDE      = "#d9a441"   # 2026-10-09 老倪: 边框不要蓝 → 暖金; 侧栏只用两种颜色 (白 + 这个金)
+C_SIDE      = "#d9a441"   # 2026-10-09 老倪: 边框暖金 (只给边框用) · 卡里的字一律白 ⇒ 边框色 ≠ 字色
 C_BORDER    = "#30363d"
 
 
@@ -684,23 +684,17 @@ class SystemLayerCard(QFrame):
         layout.setContentsMargins(11, 6, 11, 6)
         self.setMinimumHeight(70)                # 卡片给足高度, 不让布局压扁文字
 
-        # 层级标识
-        head = QHBoxLayout()
-        dot = QLabel("●")
-        dot.setFont(QFont("Arial", 10))
-        dot.setStyleSheet(f"color:{self.color}; background:transparent; border:none;")
-        head.addWidget(dot)
+        # 2026-10-09 老倪: 「边框和字体别用同一种颜色」—— 金色只留给边框, 卡里的字一律白;
+        #   原来的 ● 圆点也算"金色字体", 去掉, 卡面更干净。
         title = QLabel(label)
         title.setFont(QFont("Arial", 12, QFont.Bold))
         title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:0;")
-        head.addWidget(title)
-        head.addStretch()
-        layout.addLayout(head)
+        layout.addWidget(title)
 
         # 副标题
         sub = QLabel(subtitle)
         sub.setFont(QFont("Arial", 11))
-        sub.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        sub.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:0;")
         # 🐛 v5.16.14 老倪: 侧栏卡副标题被**硬裁**(实测「VLA-T + Z-Flow · 500M/15M」被切到
         #   「VLA-T + Z-Fk」、「L2基石 · EtherCAT」被切到「L2基石 · Ethe」) —— 240px 侧栏里
         #   12pt 单行放不下就直接截断, 没有省略号也不换行。开 wordWrap 让它换行(卡片高度本来
@@ -788,7 +782,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.32.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.32.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -809,7 +803,7 @@ class SystemSidebar(QFrame):
         sep_label = QLabel("② 系统")
         sep_label.setToolTip("系统: 支撑产品运行的整体架构, 由多个模块/子系统组成")
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
-        sep_label.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
+        sep_label.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
 
         # 🏭 Z-MAX 平台方框 (2026-10-09 老倪: 在 System 2 之上增加 Z-MAX 方框, 描述平台产品 —
@@ -819,7 +813,7 @@ class SystemSidebar(QFrame):
         _zlab = QLabel("① 产品")
         _zlab.setToolTip("产品: 面向用户/客户的完整交付物, 解决某个业务问题")
         _zlab.setFont(QFont("Arial", 10, QFont.Bold))
-        _zlab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _zlab.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_zlab)
         self.zmax = SystemLayerCard(
             "zmax", "🏭 Z-MAX 平台", "Z700 精细操作 · Z100 通用操作",
@@ -859,7 +853,7 @@ class SystemSidebar(QFrame):
         _flab = QLabel("③ 产品配置")
         _flab.setToolTip("功能: 系统里可独立执行的最小能力单元 (功能清单 = 产品配置面)")
         _flab.setFont(QFont("Arial", 10, QFont.Bold))
-        _flab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _flab.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_flab)
         self.fn_card = SystemLayerCard(
             "spec", "📋 功能清单", "74 条功能 · 最小能力单元",
@@ -874,7 +868,7 @@ class SystemSidebar(QFrame):
         _plab = QLabel("④ 数据配置")
         _plab.setToolTip("数据配置面: 参数中心改数字, 改数即链动 功能·性能·代码")
         _plab.setFont(QFont("Arial", 10, QFont.Bold))
-        _plab.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none; margin:0; padding:4px 0;")
+        _plab.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_plab)
         self.params_card = SystemLayerCard(
             "params", "🎛 参数中心", "162 个可改数字",
@@ -890,7 +884,7 @@ class SystemSidebar(QFrame):
         # 底部信息
         info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
         info.setFont(QFont("Consolas", 11))
-        info.setStyleSheet(f"color:{C_SIDE}; background:transparent; border:none;")
+        info.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
         info.setAlignment(Qt.AlignCenter)
         layout.addWidget(info)
 
@@ -11456,7 +11450,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.32.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.32.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11464,9 +11458,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.32.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.32.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.32.2: v5.32.2 — 边框色与字体色分离: 金只给边框, 字一律白 (2026-10-09 老倪)  老倪: 「边框和字体别用同一种颜色。」  ① 之前: 边框和副标题/分组标题/页脚都是同一个暖金 #d9a441 ⇒ 边框和字同色。    现在: 金色只出现在**卡片边框**; 卡里的字(标题/副标题) + 分组标题 + 页脚 + 侧栏 logo 全部白色    #e6edf3。标题 12pt 粗 / 副标题 11pt 常规, 靠字号字重分层, 不再靠颜色。 ② 顺手去掉标题前的 ● 圆点 —— 它本身就是"金颜色的字", 与新规则冲突, 去掉后卡面只剩「标题 + 一行副标题」。 ③ 判据 verify_platform_spec 8 → 9 项, 新增 ⑨「卡的边框色 ≠ 卡内字体色」(从卡样式表抽 border 色,    与卡内 QLabel 的 color 比对, 相同即红); ⑧ 侧栏整体配色实测 1 种字色 {#e6edf3} + 边框金 = 2 色 ✅。    像素取证: 侧栏区金 (217,164,65) 4550px = 边框, 白 (230,237,243) 1373px = 文字。
         # v5.32.1: v5.32.1 — 左侧栏去数字 + 边框由蓝改暖金 (2026-10-09 老倪)  老倪: 「把 M 9 / C 45 这样的数字都去掉, 不清楚啥意思; 边框别用蓝色了, 你选一个好看的颜色, 现在都是蓝色, 不好看。」  ① 卡上数字全去: 每张卡只剩两行 —— 标题 + 一行副标题。    🏭 Z-MAX 平台 / Z700 精细操作 · Z100 通用操作    System 2 / L4/L5 认知决策 · 30 功能      System 1 / L3 动作执行 · 4 功能    System 0 / L2 基石执行 · 27 功能          📋 功能清单 / 74 条功能 · 最小能力单元    🎛 参数中心 / 162 个可改数字 (仍在最下面)    MCD 数字没丢: 悬停卡片才显示 (tooltip 里写明 "M 9 测量 · C 45 标定 · D 57 诊断"),    想核对数据时悬停即可, 不占卡面。  ② 配色: 蓝 → 暖金 C_SIDE #d9a441 (深色卡面 #1c2333 上更耐看, 也贴工业机器人主题);    侧栏仍是 2 色纪律: 金 #d9a441 (边框/圆点/副标题/分组标题/页脚/logo) + 白 #e6edf3 (卡标题)。    像素取证: 侧栏区金色 (217,164,65) 5554 px 为主, 蓝已不在卡上。  ③ 判据: verify_platform_spec 8 项全绿 (⑦ 每卡 ≤2 色且卡内 QLabel ≤4 · ⑧ 侧栏整体 ≤2 色,    实测 {#d9a441, #e6edf3}); verify_param_center 8 项全绿; 实机 OCR 复核卡面只剩两行。
         # v5.32.0: v5.32.0 — 左侧栏 UI 重做: 删黑字说明行 · 配色收敛到 2 种 · 每卡只留三行 (2026-10-09 老倪)  老倪: 「左侧的字太多了, 删除黑色字体; 彩色字体也不要五颜六色的, 不要超过两种颜色; 重新修改UI。」  ① 删黑色字体    · 卡片上的深灰说明行 (C_DIM #484f58) 整行删除 —— 之前 6 张卡各压一行小字, 是"字太多"的主因;      说明内容改挂 tooltip (鼠标悬停才看), 需要时不丢信息。    · 分组标题的长定义 ("① 产品 · 面向客户的完整交付物") 缩短为「① 产品」「② 系统」「③ 产品配置」      「④ 数据配置」, 定义搬进 tooltip。  ② 配色 ≤2 种 (原来是 7 种")    之前每张卡各有主色 + MCD 三轴彩条还各用一色 ⇒ 侧栏出现 7 种颜色。    现在统一为一个蓝 C_SIDE #58a6ff (卡边框/副标题/MCD/分组标题/页脚/logo) + 白 C_WHITE #e6edf3    (卡标题), 共 2 种; MCD 从"三色彩条"改成"单色数字行"(M 9 · C 41 · D 38), 不再五颜六色。  ③ 每张卡 = 三行 (标题 / 副标题 / MCD 数字), 字号适配    🏭 Z-MAX 平台 · Z700 精细操作 · Z100 通用操作 · M9 C45 D57    System 2 · L4/L5 认知决策 · 30 功能 · C4 D11    System 1 · L3 动作执行 · 4 功能 · D8    System 0 · L2 基石执行 · 27 功能 · M9 C41 D38    📋 功能清单 · 74 条功能 · 最小能力单元 · M9 C45 D57    🎛 参数中心(最下) · 162 个可改数字 · M9 C45 D57    字号: 标题 12pt 白粗 · 副标题 11pt · MCD 11pt 等宽; 卡最小高 70px、行距 3、边距 11/6。  ④ 判据固化 (verify_platform_spec 6 → 8 项, 防回退)    ⑦ 每张卡 ≤2 种颜色, 且卡内 QLabel ≤4 个 (= 说明行没被加回来)    ⑧ 侧栏整体 (卡 + 分组标题 + 页脚 + logo) 配色 ≤2 种 —— 实测 {#58a6ff, #e6edf3} = 2 种 ✅    实测: verify_platform_spec 8 项全绿 · verify_param_center 8 项全绿 · 实机 OCR 复核侧栏。
         # v5.31.0: v5.31.0 — 左侧栏整合: 平台支撑撤卡 · 参数中心移到底部(数据配置) · 功能清单=产品配置 · 字号适配 (2026-10-09)  老倪: 「左侧为什么多出了平台支撑和功能清单; 整合一下: 参数中心用于数据配置, 功能清单保留映射产品配置, 平台支撑删掉; 你来整合数据 —— 参数中心改数字, 功能清单改配置; 参数中心放到最下面; 其它方块字体调整 适配窗口, 不要挤。」  ① 侧栏最终形态 (6 张卡, 从上到下)    ① 产品 · 面向客户的完整交付物         🏭 Z-MAX 平台 | 产品 · Z700 精细操作 / Z100 通用操作 | M9 测量 C45 标定 D57 诊断    ② 系统 · 支撑产品运行的架构 (子系统/模块)         System 2 | L4/L5 认知决策 · 功能 30 | C4/D11         System 1 | L3 动作执行 · 功能 4    | D8         System 0 | L2 基石执行 · 功能 27   | M9/C41/D38    ③ 产品配置 · 功能清单         📋 功能清单 | 产品配置 · 74 条功能 (最小能力单元) | 点开: 每个系统按 配置/标定/诊断 三轴配功能    ④ 数据配置 · 改数字   ← 放最下面 (layout.addStretch() 之后)         🎛 参数中心 | 数据配置 · 162 个可改数字 | 双击改数 → 链动 功能·性能·代码    ❌ 🧩 平台支撑 卡**删除** (它是上一轮多加的第 4 张"系统"卡; 页面本身保留, 仍在功能清单页里作       「🧩 平台支撑」页签可看, 只是不再占左侧)  ② 两个数据面的分工被写进标题 (GUI 上就能看出各管什么)    · 🎛 参数中心 = **数据配置** (改数字: 162 个可改数字, 双击改 → 链动 功能/性能/代码; 页头      「🎛 参数中心 · 数据配置」)    · 📋 功能清单 = **产品配置** (改配置: 每个子系统按 配置/标定/诊断 三轴定义功能清单; 页头      「📋 产品配置 · 功能清单 (功能 = 系统里最小可执行能力单元)」)  ③ 字号适配窗口 (不再挤): 卡片最小高度 78px · 边距 11/6 · 行距 3 · 标题 11→12pt · 副标题 10→11pt ·    MCD 彩条 9→10pt · 说明 9→10pt。少了一张卡腾出空间, 字号同步上调。  判据: verify_platform_spec 6 项全绿 (新增卡序断言 = ['zmax','sys2','sys1','sys0','spec','params']) ·       verify_param_center 8 项全绿 (新增: 参数中心必须在最下面 · 侧栏不得再有平台支撑卡) · 实机 OCR 复核。

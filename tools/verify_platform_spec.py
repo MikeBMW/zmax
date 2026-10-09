@@ -149,9 +149,20 @@ for _c in _cards_w:
     if len(_c.findChildren(_QL)) > 4:
         _bad.setdefault(_c.layer_id, []).append("labels=%d(说明行没删净?)" % len(_c.findChildren(_QL)))
 chk(_cards_w and not _bad, "每张卡 ≤2 色 且 无黑色说明行 (违规: %s)" % (_bad or "无"))
+_same = {}
+for _c in _cards_w:
+    _b = re.findall(r"border:\s*\d+px\s+solid\s+(#[0-9a-fA-F]{6})", _c.styleSheet() or "")
+    if not _b:
+        continue
+    _bc = _b[0].lower()
+    for _l in _c.findChildren(_QL):
+        if _bc in [h.lower() for h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or "")]:
+            _same[_c.layer_id] = _bc
+chk(not _same, "卡的边框色 ≠ 卡内字体色 (同色违规: %s)" % (_same or "无"))
+
 chk(len(_pal) <= 2, "侧栏整体(卡+分组标题+页脚)配色 ≤2 种 (实际 %d 种: %s)" % (len(_pal), sorted(_pal)))
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (8 项)" if not FAIL else
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (9 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)
