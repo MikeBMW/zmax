@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.20.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.21.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11303,7 +11303,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.20.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.21.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11311,9 +11311,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.20.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.21.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.21.0: **配置中心 VEH.6 + 任务/工单/配置三合一收口（一个状态空间工程承载全部任务）** ① MCD 描述真源 `tools/mcd_build.py` → `config/mcd/{zmax_mcd.json,param_registry.json}`（MEASUREMENT/CHARACTERISTIC/COMPU_METHOD/DIAGNOSTICS 四段；24 参数 · 就绪 10 · 缺口 14；`--check` 幂等）。② 模型×工程契约求交 `tools/model_site_match.py` → `match_matrix.json`（域×层×角色 + requires∩available 三态；可用 9/10，唯一受阻 L4.intact 缺 T_base_cam/plane_z/cell_geometry）。③ 工单 Build Sheet `tools/build_sheet.py` → `config/orders/BS_*.json`×5（上下料 8 段 25 条 + 三级粒度 L1 料盘/L2 治具/L3 单颗 + 防错校验链 7 步）。④ 任务配置 `tools/task_build.py` → `config/tasks/tasks.json`（5 任务，带工艺步骤与 desc/力/坐标 —— 上一版改表把「步骤」列替换掉过，本轮找回并加厚）。⑤ **一个工程承载全部任务** `tools/ss_task_bind.py` → `config/ss_task_binding.json`：段→节点机械推导 ⇒ 启用/禁用集（上下料 42 启用/11 禁用，关掉插入·流形·专家·SK5-8）+ 6 档位推导 + 活跃任务持久化；导出 `reports/projects/SS_主工程_任务配置.zmaxproj`（schema 与 project_file 一致，控制台「文件→📂 加载工程文件」可直接打开）。⑥ **配置落到画布节点**：`n_calib_mani` 改名「🧮 标定诊断测量 · 主参数 M」（`tools/ss_node_sync.py`，id/端口/5 条连线一律不动），params 挂 `cfg_entries`（9 项文件指针）+`cfg_snapshot`+测量/标定/诊断三视图+任务层；硬约束实测：除本节点外画布指纹逐位不变 · 89 节点/184 连线不变 · 写后 `--check` 幂等 · `flows.save_canvas` 自动备份。⑦ 修复坑：绑定/工程指纹改**结构指纹**（剔除 cfg_* 挂载键），否则「写节点 ⇒ 指纹变 ⇒ 绑定过期 ⇒ 再写」死循环（写后绑定 check 仍 ✅）。⑧ GUI：studio 挂新页 VEH.6 配置中心（6 页签，默认「📋 任务配置」）+ 顶栏「← 返回主窗口」（走侧栏真实路径 `layer_clicked("home")`，兜底 `_on_nav`）+ 任务表列含 工艺步骤/启用/禁用/档位/活跃 + 按钮 📥写入状态空间节点 · 🏷看节点配置 · 📦导出工程文件。⑨ 操作面 `tools/config_center.py`（overview/list/show/open/recipe/variants/orders/tasks/task/bind/activate/node/project/check）与 GUI 共一份逻辑。
         # v5.20.0: 金手指判据图收口到 19 根真值 —— 根因两条(实测): ①相位错半格 = pass1 锁到了
         #   **金属焊盘行带**(它同样是 ~71px 周期, 数量/节距全对、只差半格) ⇒ 改为无论 pass1 给什么都重算
         #   + 逐行带组合梳拟合选"窄脊连续段恰=19 且带内 ACF≥0.55"的带 + 相位吸附到局部亮脊 + 逐根

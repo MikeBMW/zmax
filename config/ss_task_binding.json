@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax.statespace.taskbinding/1",
-  "generated_at": "2026-10-09 15:11:38",
+  "generated_at": "2026-10-09 15:34:44",
   "doc": "任务 × 状态空间工程 绑定 (一个工程承载全部任务; 生成物, 勿手改)",
   "sources": {
    "config/tasks/tasks.json": "6dc356f6db5fd4a8",

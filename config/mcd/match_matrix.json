@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax-model-site-match/1.0",
-  "generated_at": "2026-10-09 14:18:39",
+  "generated_at": "2026-10-09 15:34:44",
   "doc": "模型 × 站点工程配置 兼容矩阵 (契约求交)。只读真源, 不改任何配置值。",
   "sources": {
    "models_manifest": "src/lerobot/engineering/models_manifest.json",
