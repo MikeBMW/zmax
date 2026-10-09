@@ -323,6 +323,28 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 3. **刷新钩子别用 `isVisible()` 判据** (窗口隐藏/离屏恒 False ⇒ 静默跳过): 用「当前页索引 →
    `VIEW_KEYS[idx]` 名」判断。
 
+### v5.24.1: 测量三行合一 + 新增「标定」页 (老倪「测量类三行太多只留一行 + 增加一个标定类」)
+下拉 4 行: 🧮 主参数 M (默认) / 📏 测量 / 🎛 标定 / 🔧 配置·运行开关。
+- **📏 测量 = `MeasureHub`**: 原 `tree`/`ss_tree`/`bus` 三个控件 `attach()` re-parent 进 3 个页签
+  (又是「搬不是复制」: 外部读 `dock.tree` / `_show_state_space()` 一字不改); 切签只刷当前签。
+- **🎛 标定 = `CalibTruthView`**: 逐行读真源 `config/calib/zmax_calib.json` (9 段同序同值), 未标定 3 项
+  (`T_base_cam`/`plane_z`/`cell_geometry`) 高亮 + 给**可执行**现场标定命令 (`ss_geom_calib.py` 零运动示教 /
+  `board_handeye_solve.py` 采板 / 夹爪量台面高度); **只读无写按钮** —— 唯一写口留给主参数 M 页。
+
+### 坑 4 🔴: 仓库根路径少一层 `dirname` + 判据打在「测试自己调脚本」上 = 假证据
+`os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` 在 `tools/gui/xxx.py` 里只到 `tools/`,
+要**三层**才到仓根 ⇒ 拼出 `tools/tools/ss_node_sync.py`、`tools/config/calib/...`,
+按钮静默走空路径。**更坑的是上一轮判据没抳到**: 测试自己 `subprocess` 跑脚本“通过”了,
+而那只是脚本能跑, **按钮那条路根本没验**。
+=> 铁律: 凡是面板按钮背后的路径 (子进程/写文件/调脚本), 判据必须**真点按钮 + 抳按钮自己的日志**
+(`v._log = lambda m: logs.append(m)`, 再断言日志里有成功句), 不能直接调脚本冒充。
+
+### v5.24.2 再收紧: 「测量」只挂数据总线 (老倪同日改主意)
+面板里 `📏 测量` 行只挂 `bus`; 数据字典 `tree` / 状态空间变量 `ss_tree` **对象与刷新逻辑没动**(不删),
+只是不 `addWidget` 进面板; `MeasureHub` 类保留停用 (`self.measure = None`), 一会话里就能复活。
+**副作用要如实报**: 「双击节点参数直接标定/调节」入口随树一块从面板消失 (编辑器代码还在)。
+→ 教训: 用户说「只保留 X」时, 把**同时失去的能力**(而不只是行数) 一并报出来, 别让人事后才发现。
+
 ### 面板 "没有用的都删掉" 怎么答才站得住
 1. **逐个视图切换实测** (offscreen 真建窗口 + `setCurrentIndex` + `processEvents` + 读 `isVisible()`/标签/树/表行数),
    不要凭代码猜: 面板里很多视图是 `paintEvent` 自绘 (无 QLabel) 或"未跑仿真=诚实空态", 看着空其实有数据源。
