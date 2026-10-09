@@ -31,4 +31,5 @@ run l2_compat         tools/verify_l2_compat_checkbox.py
 run engineering       tools/verify_engineering.py
 run canvas_render     tools/verify_canvas_render.py
 run node_impl_audit   tools/ss_node_impl_audit.py
+run console_text_sync tools/audit_console_consistency.py
 echo "══ 完 ══"

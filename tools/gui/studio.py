@@ -747,6 +747,59 @@ class SystemLayerCard(QFrame):
 # ============================================================
 # 侧边栏: Z-MAX 系统架构
 # ============================================================
+def _db_file():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "data", "database", "zmax", "zmax_engineering.db")
+
+
+_LIVE_CACHE = {}
+
+
+def _live_counts():
+    """🎛 控制台文案里的数字 = **从单一工程库实时算** (2026-10-10 老倪「要与全系统数据同步」)。
+
+    为什么: 这些数字以前是手写字符串 ('162 个可改数字' / '功能 30' …), 库里改成 645 个参数后
+    字符串没人改 ⇒ 界面说谎。现在一律 live 取, 库不在就回退到 0 并由调用方兜底文案。
+    进程内按 mtime 缓存: 库重建过 (mtime 变) 自动失效, 不用重启 GUI。
+    """
+    db = _db_file()
+    try:
+        mt = os.path.getmtime(db)
+    except OSError:
+        return {"ok": False, "特征": 0, "子系统": 0, "功能": 0, "参数": 0, "画布节点": 0, "画布连线": 0,
+                "参数分组": {}, "功能·sys0": 0, "功能·sys1": 0, "功能·sys2": 0, "功能·plat": 0}
+    if _LIVE_CACHE.get("mt") == mt:
+        return _LIVE_CACHE["v"]
+    import sqlite3
+    out = {"ok": False, "特征": 0, "子系统": 0, "功能": 0, "参数": 0, "画布节点": 0, "画布连线": 0,
+           "参数分组": {}, "功能·sys0": 0, "功能·sys1": 0, "功能·sys2": 0, "功能·plat": 0}
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        q = lambda s: con.execute(s).fetchone()[0]                          # noqa: E731
+        out["特征"] = q("select count(*) from product_features")
+        out["子系统"] = q("select count(*) from subsystems")
+        out["功能"] = q("select count(*) from functions")
+        out["参数"] = q("select count(*) from params")
+        out["画布连线"] = q("select count(*) from canvas_links")
+        for sid, n in con.execute("select system_id, count(*) from functions group by system_id"):
+            out["功能·%s" % sid] = n
+        for g, n in con.execute("select group_cn, count(*) from params group by group_cn"):
+            out["参数分组"][g] = n
+        # 画布节点以**画布真源**为准 (含 15 条 row_bg 背景带); 库里 canvas_nodes 只存非背景带
+        try:
+            _cj = json.load(open(os.path.join(os.path.dirname(db), "sources", "canvas",
+                                              "state_space_obs.json"), encoding="utf-8"))
+            out["画布节点"] = len(_cj.get("nodes") or [])
+        except Exception:                                                   # noqa: BLE001
+            out["画布节点"] = q("select count(*) from canvas_nodes")
+        con.close()
+        out["ok"] = True
+    except Exception:                                                       # noqa: BLE001
+        pass
+    _LIVE_CACHE.update({"mt": mt, "v": out})
+    return out
+
+
 def _mcd_from_db():
     """🎛 数据数字 (M 测量/C 标定/D 诊断) 取自单一工程库; 库不在就返回空, 卡片自动省略"""
     import sqlite3
@@ -814,12 +867,13 @@ class SystemSidebar(QFrame):
 
         # 🏭 Z-MAX 平台方框 (2026-10-09 老倪: 在 System 2 之上增加 Z-MAX 方框, 描述平台产品 —
         #   平台产品 Z700 精细操作 / Z100 通用操作, 由 系统2/1/0 组成的全系统实现; 点击开产品/功能清单)
+        _LC = _live_counts()          # 🎛 六卡文案里的数字全部 live 取自工程库
         _MCD = _mcd_from_db()
         _mcd_prod = _MCD.get("product") or _MCD.get("plat") or {}
         self.zmax = SystemLayerCard(
             "zmax", "🏭 Z-MAX 平台", "Z700 精细 · Z100 通用",
             CARD_BORDER["zmax"],
-            "特征 18 · 系统 3 · 功能 74 · 点开看产品与功能清单",
+            "特征 %d · 系统 %d · 功能 %d · 点开看产品与功能清单" % (_LC["特征"], _LC["子系统"], _LC["功能"]),
             mcd=_mcd_prod
         )
         self.zmax.clicked.connect(self.layer_clicked.emit)
@@ -827,7 +881,7 @@ class SystemSidebar(QFrame):
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
             "sys2", "System 2", "L4/L5 认知决策",
-            CARD_BORDER["sys2"], "云端智能体 · 任务拆解调度 · 流形世界模型 · 功能 30",
+            CARD_BORDER["sys2"], "云端智能体 · 任务拆解调度 · 流形世界模型 · 功能 %d" % _LC["功能·sys2"],
             mcd=_MCD.get("sys2")
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
@@ -836,7 +890,7 @@ class SystemSidebar(QFrame):
         # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
         self.sys1 = SystemLayerCard(
             "sys1", "System 1", "L3 动作执行",
-            CARD_BORDER["sys1"], "VLA-T 动作 500M + Z-Flow 引导 15M · 功能 4",
+            CARD_BORDER["sys1"], "VLA-T 动作 500M + Z-Flow 引导 15M · 功能 %d" % _LC["功能·sys1"],
             mcd=_MCD.get("sys1")
         )
         self.sys1.clicked.connect(self.layer_clicked.emit)
@@ -845,7 +899,7 @@ class SystemSidebar(QFrame):
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
             "sys0", "System 0", "L2 基石执行",
-            CARD_BORDER["sys0"], "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆 · 功能 27",
+            CARD_BORDER["sys0"], "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆 · 功能 %d" % _LC["功能·sys0"],
             mcd=_MCD.get("sys0")
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
@@ -853,7 +907,7 @@ class SystemSidebar(QFrame):
 
         self.fn_card = SystemLayerCard(
             "spec", "📋 功能清单", "配置 / 标定 / 诊断",
-            CARD_BORDER["spec"], "74 条功能 · 每个系统按 配置 / 标定 / 诊断 配功能",
+            CARD_BORDER["spec"], "%d 条功能 · 每个系统按 配置 / 标定 / 诊断 配功能" % _LC["功能"],
             mcd=_mcd_prod
         )
         self.fn_card.clicked.connect(self.layer_clicked.emit)
@@ -864,7 +918,7 @@ class SystemSidebar(QFrame):
         self.params_card = SystemLayerCard(
             "params", "🎛 参数中心", "数据库服务",
             CARD_BORDER["params"],
-            "162 个可改数字 · 双击改数, 先预览影响链再落真源",
+            "%d 个可改数字 · 双击改数, 先预览影响链再落真源" % _LC["参数"],
             mcd=_mcd_prod
         )
         self.params_card.clicked.connect(self.layer_clicked.emit)
