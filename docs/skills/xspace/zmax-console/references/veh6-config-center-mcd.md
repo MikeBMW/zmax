@@ -99,6 +99,18 @@
 - **改了 `studio.py` 要重跑 `tools/mcd_build.py`**：`studio.py::cfg_spec` 是模型域的真源，描述里的 sha16 立刻对不上（面板会报「真源同步 ❌」）——这是正确行为，不是故障。
 - `patch` 工具对 studio.py 这种超大文件匹配失败时，往往是**空白行差异**；从 read_file 的连续行直接取原文，不要在中间自己加空行。
 
+## 一个状态空间工程承载全部任务 (配置清单)
+- 口径: **不按任务分工程文件**。一个工程(.zmaxproj)里带全部任务清单；切任务 = 改 `active_task`，不换文件。
+- 真源: `config/ss_task_binding.json`（生成物: `tools/ss_task_bind.py`）。含 工程指纹(canvas md5 + 节点/连线数) + 5 任务 + 段→节点映射。
+- 机械推导（不手写映射）：①段→节点（关键词表匹配 节点 id+name+desc）②任务启用集=∪(applies 段的节点)、
+  禁用集=只被 excluded 段命中的节点 ③六档位由段推出（含段 4/5 ⇒ L3全链/流形yaw/L4 INTACT/L4→DiT；含 1/3 ⇒ L2 兼容；不含 4/5 ⇒ ⚡引擎快演）。
+- 实测：画布 **89 节点 / 184 连线**，段覆盖 53/89；上下料任务启用 42 / **禁用 11**（n_intent_bundle/n_intent_direct/ss_mani_eng/sslat/ssmani_c/ssmani_p/sssk5-8/ssvlm）。
+- 命令：`ss_task_bind.py [--check|--activate T|--export PATH]` · `config_center.py bind [TASK] | activate TASK | project`。
+- 导出 .zmaxproj: schema 与 `project_file.SCHEMA` 一致 ⇒ 控制台「文件→加载工程文件」可直接打开；
+  多出的 `task_binding` 段是扩展，`load_project` 只读 canvas/run_cfg/ui 所以不影响加载。导出后**必回读核验**。
+- 画布指纹不符 ⇒ 绑定过期，必须重绑（防拿旧清单配新画布）。
+- 铁律：**绝不按任务改画布**；画布只能走 `flows.save_canvas`（校验+备份）。
+
 ## 现状（改造起点的实测事实）
 - `ConfigModule` 在 `studio.py` 约 8634–9350 行（~700 行），**只覆盖"模型配置"**：
   9 组（架构模式/UI风格/基础/VLM骨干/Action Head/世界模型/预处理后处理/优化器调度器/配置预览）
