@@ -43,7 +43,7 @@ v5.28.0 — 平台产品/子系统功能清单 + 工程数据库 (单一文件) 
 
 ⑥ data/ 精简: 354 MB → 21 MB (删 333 MB: handeye 79 张标定采集截图; 7 个 json 结果与
    models/handeye_state.json 保留, 重跑 tools/a5_handeye_collect.py 可重现); 新建 data/database/ 统一管理
-   (库 + README + cleanup_manifest_20261009.txt 留痕)
+   (库 + README + docs/notes/cleanup_manifest_20261009.txt 留痕)
 
 ⑦ 修的真 bug: 行带归属重复计数(85→74) · 行带缝隙节点就近归属 · .proj 段名与 7 段语义映射 ·
    懒加载画布页导致下标漂移(改 setCurrentWidget) · current_payload 页签匹配

@@ -8,10 +8,9 @@
 ├── database/                           # 🗄 工程文件 + 数据库
 │   ├── zmax_engineering.db             #   单一工程数据库 (SQLite, 生成物)
 │   ├── zmax_space.proj                 #   🗂 总工程 (GUI 文件 → 打开总工程, 集成式回填 7 段)
-│   ├── SS_主工程_任务配置.zmaxproj       #   任务配置工程 (ss_task_bind 导出)
-│   ├── param_events.jsonl              #   改数留痕
-│   ├── README.md · cleanup_manifest_*.txt
-│   └── archive/                        #   历史工程快照 (只读留档)
+│   ├── param_events.jsonl              #   改数留痕 (活文件: GUI 事件流 + 库 param_events 表都读它)
+│   ├── README.md                       #   工程文件+库说明
+│   └── archive/                        #   历史工程快照 + 按需导出件 (只读留档)
 ├── skills/                             # 💪 技能库: l2_atomic/ (注册表+示教点) · l2_muscle/ · CHANGELOG
 ├── scene/                              # 🎬 场景·叠加·感知: scene_state.json · overlay_spec.json · cam_calib.json
 ├── memory/                             # 🧠 记忆层: memory_layers / shared / macro / assembly / muscle / intact

@@ -74,7 +74,7 @@
 
 `/home/ubuntu/zmax/data` **354 MB → 21 MB** (删 333 MB): 删的是 `data/handeye/` 79 张手眼标定
 **采集截图** (6 MB/张); 代码只读同目录 7 个 json 结果 (已保留), 数值另在 `models/handeye_state.json`,
-需要图重跑 `tools/a5_handeye_collect.py` 即可。留痕 `data/database/cleanup_manifest_20261009.txt`。
+需要图重跑 `tools/a5_handeye_collect.py` 即可。留痕 `docs/notes/docs/notes/cleanup_manifest_20261009.txt`。
 新建 `data/database/` 统一管理工程库 (库 + README + 清理清单)。
 
 ## 五、踩过的坑

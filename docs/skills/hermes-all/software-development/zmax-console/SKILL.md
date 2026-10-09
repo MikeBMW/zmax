@@ -129,7 +129,7 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * **懒加载页导致下标漂移**: 画布页 400ms 后才插进 stack(index 10) ⇒ 之后所有页下标 +1;
   `self.modules[页]` 记死的下标会指错页。切页一律 `self.stack.setCurrentWidget(w)` + 现场 `indexOf`。
 * **data/ 瘦身口径**: 只删「代码不读、可重跑重现」的大件 (实测: handeye 79 张标定采集截图 333 MB,
-  代码只读同目录 7 个 json)。动手前先写清单到 `data/database/cleanup_manifest_*.txt` (含重现命令), 再删。
+  代码只读同目录 7 个 json)。动手前先写清单到 `docs/notes/cleanup_manifest_*.txt` (含重现命令), 再删。
 
 ## 🧭 左侧栏排版口径: 产品 / 系统 / 功能 三级 + MCD 单色数字行
 
