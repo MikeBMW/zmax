@@ -70,6 +70,24 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * 未抱异常会 “QThread: Destroyed while thread is still running → Aborted” 假崩: 先看 traceback 第一行,
   别当环境问题 (真例: `QAction.title()` 不是 `text()`)。
 
+## 🗂 工程文件 (.proj) + 「打开」必须看得见画布 (2026-10-09)
+
+老倪: 「工程文件后缀应该是 proj」、「我点击 open 怎么没反应? 应该打开 simulink 的画布啊」。
+
+* 后缀 **`.proj`** (不是 .zmaxproj); 真源位置 `reports/projects/zmax_space.proj`;
+  读档**按内容识别**(schema/kind)不看后缀 — 老 .zmaxproj 照样能读; 对话框列 `*.proj *.zmaxproj`;
+  `find_space()`: 新名在就用它, 不在退回旧名。改名/换后缀**只动文件名, 不动格式**。
+* 🔴 **“点了没反应”的头号真因 = 打开后跑去别的页**: 原代码把存档里的 `canvas_stack_index`
+  当“切到哪一页” (`setCurrentIndex(idx)`) ⇒ 存档存在第 5 页就停在第 5 页, 画布没前置,
+  用户看着就是“没反应”(其实真源已写好、备份也做了)。
+  **规矩: 打开工程后一律切到 Simulink 画布 tab (`setCurrentWidget(sim)`); 存档里的页索引只当信息不当指令。**
+  画布是懒创建的 (启动 400ms) ⇒ `sim is None` 时先 `_init_simulink()` 建出来再切;
+  `_init_simulink` 必带幂等闸 (不然重复调用会往 stack 插第二份画布)。
+  状态栏/日志明写「已切到 🧮 Simulink 画布」—— 用户看不到变化就等于没干活。
+* 取证 `tools/probe_open_space.py` (真建主窗口 + 替身对话框): 判“当前页==画布” 且 “画布场景项 ≥ 250”
+  (SimCanvas **不存 self.nodes**: 节点体现在场景 items 上, 89 节点+184 连线 ≈ 272 项;
+  别用 `sim.canvas.nodes` 当判据, 永远是 0)。已入 `run_gui_verifiers.sh` 的 open_space 项。
+
 ## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
 
 > ⚠️ **桌面版出包的两个硬教训 (2026-10-08, 坏包连发四版)**:
