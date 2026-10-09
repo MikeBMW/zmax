@@ -1,0 +1,93 @@
+{
+  "captured_at": "2026-10-09T21:03:10",
+  "repo": "MikeBMW/zmax",
+  "runs": [
+    {
+      "tag": "v5.34.1",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "in_progress",
+      "conclusion": null,
+      "created_at": "2026-10-09T13:01:54Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37933990439"
+    },
+    {
+      "tag": "v5.34.0",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-09T12:56:38Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37933386527"
+    },
+    {
+      "tag": "v5.33.3",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-09T12:54:10Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37933106843"
+    },
+    {
+      "tag": "v5.33.2",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-09T12:49:40Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37932600090"
+    },
+    {
+      "tag": "v5.33.1",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-09T12:43:08Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37931878779"
+    },
+    {
+      "tag": "v5.33.0",
+      "name": "Build Desktop (Windows .exe + macOS .app)",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-09T12:41:37Z",
+      "url": "https://github.com/MikeBMW/zmax/actions/runs/37931711613"
+    }
+  ],
+  "releases": {
+    "v5.34.0": {
+      "url": "https://github.com/MikeBMW/zmax/releases/tag/v5.34.0",
+      "message": null,
+      "assets": [
+        {
+          "name": "Z-MAX_Console-macOS.zip",
+          "size_bytes": 134617206,
+          "downloads": 0
+        },
+        {
+          "name": "Z-MAX_Console.exe",
+          "size_bytes": 170958098,
+          "downloads": 0
+        }
+      ]
+    },
+    "v5.34.1": {
+      "url": null,
+      "message": "Not Found",
+      "assets": []
+    },
+    "v5.33.3": {
+      "url": "https://github.com/MikeBMW/zmax/releases/tag/v5.33.3",
+      "message": null,
+      "assets": [
+        {
+          "name": "Z-MAX_Console-macOS.zip",
+          "size_bytes": 134618128,
+          "downloads": 0
+        },
+        {
+          "name": "Z-MAX_Console.exe",
+          "size_bytes": 170958167,
+          "downloads": 0
+        }
+      ]
+    }
+  }
+}
