@@ -5315,6 +5315,20 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_restart)
         tl.addWidget(self.btn_step)
         tl.addWidget(self.btn_stop)      # 🗂 2026-10-09 老倪: 「停止」挪到「单步」右边 (运行/单步/停止 一组)
+
+        # 🗂 2026-10-09 老倪: 「simulink 画布上边的 状态空间 / 工位总览 这么重要的功能, 怎么给删除了?
+        #   找回来 —— 状态空间 和 工位总览 这两个按钮」→ 两个按钮回到工具栏第一排 (运行组右侧)。
+        #   (v5.26.0 那轮工具栏清理把 11 个按钮一起撤走, 这两个属于"重要功能", 老倪要求单独恢复;
+        #    入口只增不减: 原方法 open_state_space / open_station_page 一字未改, 只是重新挂上按钮)
+        tl.addWidget(self.btn_state_space)                     # 🧮 状态空间 (对象在 5306 行已建)
+        if not hasattr(self, "btn_station"):
+            self.btn_station = mk_btn(
+                "🛰 工位总览",
+                "6 路同屏工位总览页 (深度源 + 工控机金手指/表面检测 + 手动控制区):\n"
+                "  · 视频流没在跑会自动拉起 (最多等 12s), 然后开浏览器窗口\n"
+                "  · 页面地址 = 8793 站点 /station; 只读看画面 + 手动控制按钮走同一站点接口",
+                self.open_station_page, "#58a6ff")
+        tl.addWidget(self.btn_station)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
