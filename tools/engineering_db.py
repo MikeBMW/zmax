@@ -507,7 +507,8 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                            _j(p_["default"]), p_["min"], p_["max"], p_["unit"], p_["kind"], _j(p_["choices"]),
                            p_["source"], p_["ref"], 1 if p_["writable"] else 0, p_["status"], p_["color"],
                            sid, p_.get("fn_ref") or "", p_.get("impact") or ""))
-                c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "功能", p_["name"]))
+                _fn = p_.get("fn_ref") or ""
+                c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "功能", _fn or p_["name"]))
                 c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "模块", p_["name"]))
                 if sid:
                     c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "系统", sid))

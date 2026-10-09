@@ -38,6 +38,9 @@ CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_spa
 PLATFORM = os.path.join(ROOT, "config", "platform", "zmax_platform.json")
 SPEC = os.path.join(ROOT, "config", "platform", "param_spec.json")
 EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "zmax", "param_events.jsonl")   # 旧 jsonl, 仅供一次性并入库; 新事件直接写库 param_events 表
+# 🆕 2026-10-10 老倪: 「空间点的 7 个点已经标记了…我要改变空间点的位置, 如何在参数中心修改?」
+#    —— 点位此前只躺在 data/skills/l2_atomic/space_points.json 里, 参数中心里查不到 ⇒ 接进来 (可写+回写+留痕)
+SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
 
 # 代码常量扫描范围 (只扫与链路直接相关的实现文件, 不做全仓乱扫)
 CODE_FILES = [
@@ -87,9 +90,9 @@ CURATED = {
     "switch.flow_yaw": {"cn": "流形偏航 (仅 L4 90°档)", "unit": "deg", "min": -180, "max": 180},
 }
 CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff",
-             "platform": "#00d4aa", "switch": "#ff9f43"}
+             "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2"}
 CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量",
-          "platform": "产品/性能指标", "switch": "运行开关"}
+          "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点/示教点"}
 
 
 # ── 工具 ──────────────────────────────────────────────────────────────────
@@ -205,6 +208,34 @@ def scan_calib():
                     out.append(_mk("calib:%s" % ref, ref, val, rel, "json:%s" % ref, "calib"))
             elif isinstance(v, (int, float, bool)) or v is None:
                 out.append(_mk("calib:%s" % k, k, v, rel, "json:%s" % k, "calib"))
+    return out
+
+
+def scan_space():
+    """🆕 2026-10-10: 空间点 (8793 站台页标定出来的 空间1..N, 真源 space_points.json)。
+
+    每个点 7 个数: pos[0..2] (m, base_link) + quat[0..3] (x,y,z,w) —— 都能在参数中心在线改,
+    改完走 _write_json_path 回写真源 (带备份), 与号位/技能同源。
+    范围口径: 位置按工作包络 ±1.2m (抓取动作在 0.3~0.9m), 四元数 −1..1 (数学定义域)。
+    """
+    out = []
+    d = _load(SPACE, {})
+    rel = os.path.relpath(SPACE, ROOT)
+    for nm, v in (d.get("points") or {}).items():
+        if not isinstance(v, dict):
+            continue
+        for i, val in enumerate(v.get("pos") or []):
+            out.append(_mk("space:%s.pos[%d]" % (nm, i), "%s.pos[%d]" % (nm, i), float(val), rel,
+                           "json:points.%s.pos[%d]" % (nm, i), "space",
+                           extra={"cn": "%s · %s (m)" % (nm, "XYZ"[i]), "unit": "m",
+                                  "min": -1.2, "max": 1.2, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0",
+                                  "impact": "L2 MoveIt 运动规划起点 (号位/空间点移动)"}))
+        for i, val in enumerate(v.get("quat") or []):
+            out.append(_mk("space:%s.quat[%d]" % (nm, i), "%s.quat[%d]" % (nm, i), float(val), rel,
+                           "json:points.%s.quat[%d]" % (nm, i), "space",
+                           extra={"cn": "%s · 四元数%s" % (nm, "xyzw"[i]), "unit": "-",
+                                  "min": -1.0, "max": 1.0, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0",
+                                  "impact": "L2 MoveIt 运动规划起点 (号位/空间点移动)"}))
     return out
 
 
@@ -343,7 +374,7 @@ def _mk(pid, name, value, src, ref, group, extra=None, sys_hint=""):
 
 
 def scan():
-    ps = scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch()
+    ps = scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch() + scan_space()
     seen, out = set(), []
     for p in ps:
         if p["param_id"] in seen:
@@ -658,6 +689,9 @@ def set_param(pid, value, write=False, reg=None):
             ok, msg = _write_platform_kpi(pid, v)
         elif p["group"] == "canvas":
             ok, msg = _write_canvas_param(pid, v)
+        elif p["group"] == "space":
+            # 🆕 空间点: 回写真源 data/skills/l2_atomic/space_points.json (带备份 + 回读核对)
+            ok, msg = _write_json_path(SPACE, p["ref"], v)
         elif p["group"] == "code":
             ok, msg = (_write_code_default(pid, v) if ":" in pid.split("#", 1)[1]
                        else _write_code_const(pid, v))
