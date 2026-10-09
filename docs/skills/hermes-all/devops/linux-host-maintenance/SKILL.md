@@ -359,6 +359,29 @@ sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg |
 再配一条 `@reboot` 留痕(`tools/boot_crashcheck.sh`: 记 kdump 就绪状态, 发现 `/var/crash` 有转储就推一条通知)
 —— 否则崩后重启又是"什么都查不到"。注意 `nmi_watchdog` 要为 1, `hardlockup_panic` 才真能触发。
 
+## 9e. 开机自愈的两个"假好"陷阱 (2026-10-09 重启后实测)
+
+**① 把后台进程和耗时长的 `sudo systemctl start` 写进同一条 terminal 命令 ⇒ 超时被工具杀掉时, 后台子进程一起死。**
+实测: 一条命令里先 `setsid nohup` 起 8795 HIL API + 实时标注器(打印了"✓ 已拉起 pid …"), 紧接着
+`sudo systemctl start zmax-moveit-plan`(该 oneshot 要跑 ~3min), 命令在 300s 被工具超时终止 ⇒
+**两个 setsid 的进程全没了**, 端口 8795 也没在听 —— 而日志里那句"✓ 已拉起"还留着, 看着像成功。
+判据/做法: 起后台进程的那条命令要**立即返回**(脚本里 `setsid nohup … &` 后只 `sleep 3~5` 复核一次,
+不做任何长动作); 耗时的 `systemctl start` 单独一条命令跑(或 `background=true`)。
+复核实证用 `ss -ltnp | grep <端口>` + 一次 HTTP 探活, **不看"已拉起"的打印**。
+
+**② `boot_restore.sh` 的深度源自检在容器不可达时误报"已在跑"。**
+它的判据是 `[ "$(sudo -n docker exec ss-remote-tap … grep -c '[r]os_depth_stream.py')" != "0" ]`;
+容器处于 `activating`/不存在时 `docker exec` 返回**空串**, 而 `"" != "0"` 为真 ⇒ 打印"深度源已在跑",
+实测同一时刻 8793 深度格 `frames_served=1 / age 800+s / stalled=true`。
+⇒ 别信这一行: 先判容器状态(`systemctl is-active ss-remote-tap` 或 docker inspect), 只有 `running` 才继续判进程;
+**落盘节拍(§9a 的 20s mtime 计数)才是真判据**。
+
+**③ 产线网卡不在位时, 这一批会跟着"合理"地全倒** (不是独立故障, 别逐个当 bug 修):
+`ss-remote-tap` 单元 `start-pre` 超时→崩溃循环("No such container") ⇒ 深度格 stalled;
+`zmax-proxy`(tinyproxy `Listen 192.168.23.50`) 每 3s 一次 `Could not create listening sockets` 崩溃循环(NRestarts 分钟级+百);
+Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有 `192.168.23.x` + `lsusb` 无 USB 网卡,
+**开机 5min 与 10min 两次复采都在** 才算真缺失(§9 的 1~2min 规矩)。网卡插回后这些会各自恢复, 不用手工拉。
+
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。

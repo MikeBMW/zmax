@@ -6,7 +6,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic,负帧龄拒用
 §
 交付前自跑通; GPU不空转; 改文件必回读核验; 新脚本须真导入真跑
 §
-长命令/杀进程一律写脚本(内联会杀自己shell); sudo免密; 网络优化=zmax-net-optimize
+长命令/杀进程一律写脚本(内联会杀自己shell); sudo免密
 §
 L5=DeepSeek视觉:短提示+小JSON; timeout≥300
 §
@@ -19,8 +19,6 @@ L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5�
 守卫: 模型参与>30%掉分; insert_depth=0.002
 §
 🔴 工具内存≈8GB: 超则OOM杀; 同刻仅一模型进程
-§
-评估: 口径训练同源零回退; loss低≠有效→留出集+平凡基线
 §
 Orin: ROS=domain0, tcp_pose 50Hz真值, 几何须ss_geom_calib, 政策宽(只读遥测桥禁装包), 动作默认speed=8
 §
@@ -48,7 +46,7 @@ ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点根=/www/wwwroot
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers↑
 §
-工程根~/zmax=独立仓库(MikeBMW/zmax public); 数据/venv/外部仓库都在zmax内(zmax/zmax_data=模型+数据+HF+secrets/zmax.env), 老名全删; 训练带HF_HOME=zmax_data/hf_cache; ld.so.conf指~/zmax/gui-venv311/.../nvidia/*/lib(免libcusparseLt报错); 入库=代码+docs/skills/hermes-all+docs/memory(守卫repo_guard+secret_scan)
+工程根~/zmax=独立仓库(MikeBMW/zmax public); 数据/venv/外部仓库都在zmax内(zmax/zmax_data=模型+数据+HF+secrets/zmax.env); 训练带HF_HOME=zmax_data/hf_cache; ld.so.conf指gui-venv311的nvidia lib; 入库=代码+docs/skills/hermes-all+docs/memory(守卫repo_guard+secret_scan)
 §
 控制台: 禁反复重启GUI(投诉过;改码攒批+先问); 字体一次到位
 §
@@ -60,4 +58,8 @@ GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers�
 §
 位姿真源=zmax_data/rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器); 8793页真源=tools/web/station.html
 §
-运动安全: 抬升闸已放开(老倪10-09现场口授: 现场安全已检查过⇒取消"需要上升⇒整单拒发", 勿再拿10-08旧令限制; 仍须慢速+警报在先); 空间点1~7=同一平面 z=0.1727(11:34重记)⇒点间纯横移; 腿速上限150mm/s(页面2000档, 实测≈15mm/s); MoveJ自愈默认关; 危险点/新点位老倪先做; 台账INCIDENT-INDEX.md; 听"要碰撞"先agent_all_stop.py
+运动安全: 抬升闸已放开(10-09老倪现场口授: 取消'需上升⇒整单拒发'; 仍须慢速+警报在先); 点1~7同平面z=0.1727; 腿速名义0.0935×speed但实际≈名义/10(实测14→1.34mm/s,要快给1000); 危险点/新点位老倪先做; 台账INCIDENT-INDEX.md; 听'要碰撞'先agent_all_stop.py
+§
+金手指=19根(判据图已收口;档24000×8);HIL终端口/hil/term/*(8795)
+§
+MoveIt起点=SDK直采(latest.json.joint,tap发布者死);moveit_live_up.sh按名清进程⇒命令文本别带进程名
