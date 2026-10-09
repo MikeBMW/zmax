@@ -70,6 +70,35 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * 未抱异常会 “QThread: Destroyed while thread is still running → Aborted” 假崩: 先看 traceback 第一行,
   别当环境问题 (真例: `QAction.title()` 不是 `text()`)。
 
+## 🏭 工程数据库 (单一文件) + GUI↔工程解耦 (2026-10-09)
+
+老倪的硬要求: **一个数据库文件 = 一套工程**, GUI 不绑死工程, 换库 = 换工程。落地形态:
+
+```
+真源 (人可编·进 git)                       库 (生成物, 可随时重建)
+  config/platform/zmax_platform.json   ─┐
+  reports/projects/*.proj (7 段)        │
+  flows/state_space_obs.json            ├─→ data/database/zmax_engineering.db (0.82 MB SQLite)
+  config/calib/*.json + feature.dbc     │      tools/engineering_db.py build
+  verification_layer FEATURES + NODE_LOGIC ─┘     check 判据 11 项全绿才算同步
+```
+
+* **GUI 只认 .db**: `tools/gui/platform_spec.py` 的「📋 功能清单」页走 `engineering_db.load(db)` (纯 sqlite,
+  不 import 工程文件)。侧栏 System 2 之上是 🏭 Z-MAX 卡; 点 Z-MAX/System2/1/0 → 切页 + `select_system(sid)`。
+* **服务**: `systemd zmax-engdb.service` → 127.0.0.1:8798 只读 JSON (`/summary /system/<id> /product/<id> /graph /project` …)。
+  改库后 `systemctl restart zmax-engdb.service`; 手工起的服务会占端口把 systemd 卡在 activating。
+* **判据口径 (踩过的坑)**:
+  * 画布行带归属必须**全局唯一** —— 用「行名前缀」匹配会把 6 条同前缀的 L2 行都命中同一带 ⇒ 同一批节点数 6 遍
+    (85 功能 ≠ 74 节点)。正确做法: 行名按「`·` 后缀」唯一解析 + 节点按**中心**落在带内取最具体的行带。
+  * 行带**缝隙**里的节点(`🛡 安全执行边界`/`① 接近 SK01` 就落在两条带之间)要按**最近行**归属 + 标
+    `kind=行外节点(就近归属)`, 不能丢。
+  * `.proj` 真实键名 ≠ 7 段语义名 (canvas/panel/calibration/master_param/measure/tasks);
+    入库时**全量顶层键都存** + 另存一份 7 段语义别名, 判据按语义名校验。
+* **懒加载页导致下标漂移**: 画布页 400ms 后才插进 stack(index 10) ⇒ 之后所有页下标 +1;
+  `self.modules[页]` 记死的下标会指错页。切页一律 `self.stack.setCurrentWidget(w)` + 现场 `indexOf`。
+* **data/ 瘦身口径**: 只删「代码不读、可重跑重现」的大件 (实测: handeye 79 张标定采集截图 333 MB,
+  代码只读同目录 7 个 json)。动手前先写清单到 `data/database/cleanup_manifest_*.txt` (含重现命令), 再删。
+
 ## 📚 模块库 ↔ 画布: 同步 / 拖入 / 删除 / 存为新工程 (2026-10-09)
 
 左侧栏 `LibraryPanel` 的条目**不是**手写清单 —— 它 = 静态组 + 两个**生成组** + 一张**删除名单**。
