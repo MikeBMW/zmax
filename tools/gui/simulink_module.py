@@ -4121,6 +4121,52 @@ class SimCanvas(QGraphicsView):
             for y in range(top, int(rect.bottom()), grid):
                 painter.drawPoint(x, y)
 
+    # 🎯 2026-10-09 老倪: 单步跟随 —— 画布太大, "单步到底跑到哪个节点了"必须自动跳过去
+    def focus_node(self, node_id, min_scale=0.45, max_scale=1.6):
+        """把视口平移到指定节点 (必要时调缩放, 保证看得清)。返回 (ok, 说明)。"""
+        it = (getattr(self.module, "_items", None) or {}).get(node_id)
+        if it is None:
+            return False, f"节点项 {node_id} 不在画布上"
+        sc = float(self.transform().m11()) or 1.0
+        if sc < min_scale or sc > max_scale:
+            target = min_scale if sc < min_scale else max_scale
+            f = target / sc
+            self._scale = max(0.2, min(3.0, self._scale * f))
+            self.scale(f, f)
+            try:
+                self.module.on_zoom(self._scale)
+            except Exception:
+                pass
+        r = it.sceneBoundingRect()
+        self.centerOn(r.center())
+        try:
+            self.viewport().update()      # 滚动后强制重绘 (VcXsrv 搬运区残留、见 scrollContentsBy 注释)
+        except Exception:
+            pass
+        return True, "中心 x=%d y=%d · 缩放 %.2f" % (int(r.center().x()), int(r.center().y()), self._scale)
+
+    def fit_all(self, margin=240):
+        """🏠 全览: 缩放到能看见全部节点 (留边距)。返回 (ok, 说明)。"""
+        items = (getattr(self.module, "_items", None) or {})
+        rect = None
+        for it in items.values():
+            r = it.sceneBoundingRect()
+            rect = r if rect is None else rect.united(r)
+        if rect is None:
+            return False, "画布上没有节点"
+        rect = rect.adjusted(-margin, -margin, margin, margin)
+        self.fitInView(rect, Qt.KeepAspectRatio)
+        self._scale = max(0.2, min(3.0, float(self.transform().m11())))
+        try:
+            self.module.on_zoom(self._scale)
+        except Exception:
+            pass
+        try:
+            self.viewport().update()
+        except Exception:
+            pass
+        return True, "%d 节点全览 · 缩放 %.2f" % (len(items), self._scale)
+
     def wheelEvent(self, e):
         # Ctrl+滚轮 = 缩放 (对标 web)
         if e.modifiers() & Qt.ControlModifier:
@@ -5263,6 +5309,23 @@ class SimulinkModule(QWidget):
 
         self.btn_run = mk_btn("▶ 运行", "按拓扑执行仿真 (Simulink Run)", self.start_sim, "#00d4aa")
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
+        # 🎯 2026-10-09 老倪: 「单步运行, 运行到哪个节点哪个节点要高亮, 而且画布要跳到这个节点 ——
+        #   现在画布太大了, 我找不到单步节点到底在哪里」→ 跟随开关(默认开) + 定位 + 全览三件套
+        self.chk_follow_step = QCheckBox("🎯 跟随单步")
+        self.chk_follow_step.setChecked(True)
+        self.chk_follow_step.setToolTip("勾选 (默认) = ⏭单步/右键运行节点时, 画布自动平移到该节点并调到看得清的缩放;\n"
+                                        "取消勾选 = 画布不动, 只在终端报出当前节点 (想自己看全景时用)")
+        tl.addWidget(self.chk_follow_step)
+        self.btn_locate = mk_btn("📍 定位节点", "跳到当前单步/运行的节点 (跟随关闭时也能用)", self.locate_current_node, "#58a6ff")
+        self.btn_fit_all = mk_btn("🏠 全览", "缩放到能看见全部节点 (89 节点总览)", self.fit_all_nodes, "#8b949e")
+        tl.addWidget(self.btn_locate)
+        tl.addWidget(self.btn_fit_all)
+        # 🧾 2026-10-09 老倪: 全面检查每个节点的实现 (89 节点 → 实现 key/函数/文件:行 全表落盘)
+        self.btn_impl_audit = mk_btn("🧾 节点实现审计",
+                                     "逐节点查实现 (真实源文件:行号) + 单步序 → 终端汇总 + reports/node_impl_audit.txt\n约 5-10 秒",
+                                     self.audit_node_impls, "#d29922")
+        tl.addWidget(self.btn_impl_audit)
+        self._last_step_node = None      # 🎯 最近一次单步/高亮的节点 id (定位按钮用)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         # (2026-09-04 老倪: 「🔍 Z 分析」「⚙️ 前馈 PD」工具栏按钮没用 → 删除;
@@ -7305,6 +7368,8 @@ class SimulinkModule(QWidget):
             it.update()
         self.canvas._scene.update()
         self._log(f"⏭ 单步 [{self._step_idx + 1}/{len(self._step_order)}] {n['name']}")
+        self._log("   " + self._impl_line(n))     # 🎯 实现位置 (全面检查每个节点实现)
+        self._follow_to(n)                        # 🎯 画布跳到当前节点
         self._run_node_single(n, label=f"单步 {self._step_idx + 1}/{len(self._step_order)}",
                               keep_active=True)
         self._step_idx += 1
@@ -7371,6 +7436,8 @@ class SimulinkModule(QWidget):
         _snap_i = min(int(self._ss_step_idx / max(1, _nn - 1) * max(0, _trn - 1)), _trn - 1) if _trn else 0
         snap = io_trace[_snap_i][1] if io_trace else {}
         self._log(f"⏭ 单步 [{self._ss_step_idx + 1}/{len(self._ss_step_order)}] {n['name']}")
+        self._log("   " + self._impl_line(n))     # 🎯 实现位置 (全面检查每个节点实现)
+        self._follow_to(n)                        # 🎯 画布跳到当前节点
         # 🐛 2026-08-31 老倪: 节点逻辑真实执行 (断点可进) — 引擎轨迹只提供数值展示,
         #   节点行为走 execute_node_logic (node_metaworld_data 等注册函数真被调用)
         try:
@@ -9625,8 +9692,12 @@ class SimulinkModule(QWidget):
         else:
             self._log("⚠️ 搭建未完成, 请检查画布节点")
 
-    def _highlight_node(self, node, ms=6000):
-        """画布节点金框高亮 (paint 读 node['hl'] 画金色粗框), ms 后自动清除"""
+    def _highlight_node(self, node, ms=6000, follow=True):
+        """画布节点金框高亮 (paint 读 node['hl'] 画金色粗框), ms 后自动清除
+
+        🎯 2026-10-09 老倪: 「运行到哪个节点, 哪个节点要高亮, 而且画布要跳到这个节点」
+        → follow=True (默认) 时同时把画布视口跳到该节点; ☑「跟随单步」取消勾选即关。
+        """
         # 清掉其他节点的高亮, 保证只有一个金框
         for n in self.nodes:
             if n.get("hl"):
@@ -9639,6 +9710,8 @@ class SimulinkModule(QWidget):
         if it is not None:
             it.update()
         self.canvas._scene.update()
+        if follow:
+            self._follow_to(node)
 
         def _clear():
             if node.get("hl") and self._items.get(node["id"]) is it:
@@ -9647,6 +9720,118 @@ class SimulinkModule(QWidget):
                     it.update()
 
         _oneshot(self, ms, _clear)
+
+    # ══ 🎯 单步跟随 / 定位 / 实现位置 (2026-10-09 老倪: 全面检查每个节点实现 + 单步跳转) ══
+    def _follow_to(self, node, force=False):
+        """⏭ 单步跟随: 画布跳到当前节点 (画布太大, 找不到节点)。
+
+        force=True → 无视 ☑「跟随单步」复选框 (「📍 定位节点」按钮用)。"""
+        if node is None:
+            self._log("⚠️ 跟随单步: 没有可定位的节点 (先单步/运行一次)")
+            return False
+        nid = node.get("id")
+        now = time.time()
+        # 同一次单步会经两条路进来 (step_sim → _run_node_single → _highlight_node),
+        # 2 秒内对同一节点只跳一次, 免得终端刷两行、画布跳两次
+        if (not force and getattr(self, "_follow_last", None)
+                and self._follow_last[0] == nid and now - self._follow_last[1] < 2.0):
+            return True
+        self._follow_last = (nid, now)
+        self._last_step_node = nid      # 记下来, 「📍 定位节点」按钮回跳用
+        chk = getattr(self, "chk_follow_step", None)
+        if not force and chk is not None and not chk.isChecked():
+            # 关掉跟随时, 也报一次位置 (终端可读, 不铺画布文字 — 老倪定稿口径)
+            self._log("🎯 已关跟随单步 · 当前节点 %s (点「📍 定位节点」可跳过去)" % node.get("name", "?"))
+            return False
+        ok, info = self.canvas.focus_node(nid)
+        if ok:
+            self._log("📍 画布已跳到: %s  (%s)" % (node.get("name", "?"), info))
+        else:
+            self._log("⚠️ 画布跳转失败: %s" % info)
+        return ok
+
+    def _impl_line(self, node):
+        """节点的实现位置: 语义 key · 函数名 · 文件:行 (全面检查每个节点实现用)。
+
+        真源: engineering.registry (key→fn) + sourceview.get_node_location (含 _EXTERNAL_LOC 外部源)。"""
+        try:
+            from lerobot.engineering import registry, sourceview
+        except Exception:
+            try:
+                from node_logic import registry, sourceview      # 兼容壳
+            except Exception:
+                return "实现: (无法读取 registry)"
+        name = node.get("name", "")
+        key = registry.match_node(name)
+        if not key:
+            return "实现: ⚠️ 无匹配关键字 (双击会落兜底)"
+        info = registry.get(key) or {}
+        fn = info.get("fn")
+        fname = getattr(fn, "__name__", "?")
+        path, line, modified = sourceview.get_node_location(key)
+        if not path:
+            path, line = registry.home_file(key), registry.home_line(key)
+        if path:
+            try:
+                path = os.path.relpath(path, _repo_root_path())
+            except Exception:
+                pass
+            return "实现: %s → %s()  %s:%s%s" % (key, fname, path, line,
+                                              "  [已改版]" if modified else "")
+        return "实现: %s → %s()" % (key, fname)
+
+    def locate_current_node(self):
+        """📍 定位节点: 跳到当前单步/运行到的节点 (不论跟随开关)。"""
+        nid = getattr(self, "_last_step_node", None)
+        node = None
+        for n in self.nodes:
+            if n.get("status") == "step_active" or n.get("hl"):
+                node = n
+                break
+        if node is None and nid:
+            node = self._by_id(nid)
+        if node is None:
+            cur = getattr(self, "_ss_step_idx", None)
+            order = getattr(self, "_ss_step_order", None) or getattr(self, "_step_order", None)
+            if order and cur is not None and 0 <= cur < len(order):
+                node = self._by_id(order[cur]) if isinstance(order[cur], str) else order[cur]
+        if node is None:
+            self._log("⚠️ 还没有单步过 — 先点 ⏭ 单步 (或右键「运行节点」) 再定位")
+            return
+        ok, info = self.canvas.focus_node(node.get("id"))
+        self._log(("📍 " if ok else "⚠️ ") + "定位: %s  (%s)" % (node.get("name", "?"), info))
+
+    def fit_all_nodes(self):
+        """🏠 全览: 缩放到能看见全部节点。"""
+        ok, info = self.canvas.fit_all()
+        self._log(("🏠 " if ok else "⚠️ ") + info)
+
+    def audit_node_impls(self):
+        """🧾 全面检查每个节点的实现: 调 tools/ss_node_impl_audit.py (只读) → 终端汇总 + 全表落盘。
+
+        输出: 每个功能节点的 语义key → 函数() 真实源文件:行号 + 单步序 (哪些会被 ⏭单步 执行)。
+        真源: engineering.registry / sourceview (含 _EXTERNAL_LOC 外部源), 与双击看源码同源。"""
+        import subprocess
+        tool = os.path.join(_repo_root_path(), "tools", "ss_node_impl_audit.py")
+        if not os.path.exists(tool):
+            self._log("⚠️ 找不到 %s" % tool)
+            return
+        self._log("🧾 节点实现审计中… (89 节点逐条解析 registry + 源文件位置)")
+        try:
+            r = subprocess.run([sys.executable, tool, "--write"],
+                               capture_output=True, text=True, timeout=300,
+                               cwd=_repo_root_path())
+        except Exception as e:                                                # noqa: BLE001
+            self._log("⚠️ 审计失败: %s: %s" % (type(e).__name__, e))
+            return
+        out = (r.stdout or "").strip() or (r.stderr or "").strip()
+        head = out.splitlines()
+        for ln in head[:12]:
+            self._log(ln)
+        if len(head) > 12:
+            self._log("   … 其余 %d 行见 reports/node_impl_audit.txt" % (len(head) - 12))
+        self._log("🧾 审计完成 (exit=%s) · 全表: reports/node_impl_audit.txt · JSON: reports/node_impl_audit.json"
+                  % r.returncode)
 
     def _act_append_after_train(self):
         """🧠 ACT-Meta 引导: 训练完成 → 自动追加「✅ 模型验证」+「📦 集成打包」

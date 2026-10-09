@@ -147,6 +147,14 @@ def main():
         print("⛔ 画布校验不过, 拒绝写入: %s" % probs[:3]); return 2
     node = next((n for n in d["nodes"] if n.get("id") == NODE_ID), None)
     if node is None:
+        # id 兜底: 画布若经控制台「另存为」重写过 id (gen_id 会重编), 按语义标记找
+        node = next((n for n in d["nodes"]
+                     if (n.get("params") or {}).get("manifold_calib")
+                     or "标定诊断测量" in str(n.get("name", ""))
+                     or "主参数 M" in str(n.get("name", ""))), None)
+        if node is not None:
+            print("ℹ️ 节点 id 已变 (%s → %s), 按语义标记定位" % (NODE_ID, node.get("id")))
+    if node is None:
         print(f"⛔ 画布上没有节点 {NODE_ID}"); return 2
     snap = build_snapshot()
     before_fp = _fingerprint_excl(d)
