@@ -139,13 +139,25 @@ class LiveStrip(QFrame):
         except (RuntimeError, AttributeError):
             pass
         payload, err = None, None
+        txt = ""
         try:
             txt = self._buf.decode("utf-8", "replace").strip()
             payload = json.loads(txt) if txt else None
             if payload is None:
                 err = "工具没输出 JSON (exit=%s)" % code
-        except Exception as e:                                             # noqa: BLE001
-            err = "JSON 解析失败: %s" % e
+        except Exception:                                                       # noqa: BLE001
+            # 合并通道下 stderr 的告警/日志会混在 JSON 前后 (如 [redaction] 断言 ...) ⇒
+            # 退一步取"第一个 { 到最后一个 }" 之间的片段再解析; 仍失败才算真错。
+            payload, err = None, None
+            a, b = txt.find("{"), txt.rfind("}")
+            frag = txt[a:b + 1] if (a >= 0 and b > a) else ""
+            if frag:
+                try:
+                    payload = json.loads(frag)
+                except Exception as e2:                                        # noqa: BLE001
+                    err = "JSON 解析失败: %s" % e2
+            if payload is None and err is None:
+                err = "工具没输出 JSON (exit=%s)" % code
         try:
             summary, detail, ok = self._fmt(payload, err)
         except Exception as e:                                             # noqa: BLE001
@@ -240,6 +252,49 @@ def rows_models(p, err):
         rows.append([t.get("layer"), "▶ 正在训练 (pid %s)" % t.get("pid"), "—", "%ss" % t.get("elapsed_s"),
                      t.get("progress") or "", t.get("cmd") or ""])
     return cols, rows
+
+
+def fmt_remote(p, err):
+    """远程监控/大屏同源 一行摘要 → (摘要, 详情, ok)。"""
+    if err or not isinstance(p, dict):
+        return "采集失败: %s" % (err or "无数据"), "", False
+    eps = p.get("endpoints") or []
+    ok = sum(1 for e in eps if e.get("ok"))
+    stale = sum(1 for e in eps if e.get("stale"))
+    ss = p.get("same_source") or []
+    good = sum(1 for x in ss if x.get("consistent") is True)
+    bad = sum(1 for x in ss if x.get("consistent") is False)
+    nc = sum(1 for x in ss if x.get("consistent") is None)
+    s = ("端点 %d/%d 通 · 过期 %d · 同源 %d 条 (一致 %d / 不一致 %d / 不可比 %d)"
+         % (ok, len(eps), stale, len(ss), good, bad, nc))
+    det = "\n".join("%-28s %-12s %s  age=%s%s"
+                    % (e.get("name") or "", e.get("owner") or "",
+                       (e.get("status") if e.get("ok") else ("ERR " + str(e.get("err"))[:50])),
+                       e.get("data_age_s"), "  STALE" if e.get("stale") else "")
+                    for e in eps)
+    det += "\n\n同源判定:\n" + "\n".join(
+        "  [%s] %s  %s%s" % ("一致" if x.get("consistent") is True else
+                            ("不一致" if x.get("consistent") is False else "不可比"),
+                            x.get("fact"), "  ".join("%s=%s" % (s2.get("name"), s2.get("value"))
+                                                     for s2 in (x.get("sources") or [])),
+                            ("  " + x.get("note")) if x.get("note") else "")
+        for x in ss)
+    return s, det, True
+
+
+def rows_remote(p, err):
+    """端点明细: 端点 / 归属 / 状态 / 数据龄 / 标记。"""
+    if err or not isinstance(p, dict):
+        return [], []
+    cols = ["端点", "归属", "状态", "数据龄(s)", "标记"]
+    out = []
+    for e in p.get("endpoints") or []:
+        age = e.get("data_age_s")
+        out.append([e.get("name") or "", e.get("owner") or "",
+                    str(e.get("status") if e.get("ok") else ("ERR: " + str(e.get("err"))[:40])),
+                    ("%.2f" % age) if isinstance(age, (int, float)) else "—",
+                    ("⏸ STALE" if e.get("stale") else ("✅" if e.get("ok") else "❌"))])
+    return cols, out
 
 
 def _human(b):

@@ -275,10 +275,12 @@ from PyQt5.QtGui import (
 from version_sync import VersionSyncWidget
 try:                                    # 🆕 2026-10-10 实时数据条 (与全系统数据同步)
     from live_strip import LiveStrip, LiveTable, fmt_dataset, fmt_models, fmt_arch, \
+        fmt_remote, rows_remote, \
         rows_dataset, rows_models
 except Exception:                       # noqa: BLE001  缺模块只是没有实时条, 不该拖垮控制台
     LiveStrip = LiveTable = None
     fmt_dataset = fmt_models = fmt_arch = rows_dataset = rows_models = None
+    fmt_remote = rows_remote = None
 from simulink_module import SimulinkModule
 
 # 硬件仿真引擎 (Sys-0 硬件工具箱)
@@ -9532,7 +9534,17 @@ class MonitorModule(SubModuleWidget):
         bl = QVBoxLayout()
         bl.setSpacing(10)
         bl.setContentsMargins(8, 8, 8, 8)
-        
+
+        # 🌐 2026-10-10 老倪: 「产品大屏，你再同步 ECS端和手机APP端，现在有好多远程监控，要汇总，同源」
+        #   ⇒ 监控页置顶挂「远程/大屏 · 同源」实采表: 18 个端点(本机服务/Orin/工控机AOI/ECS公网)
+        #     逐项状态+帧龄+过期标记, 并对报告同一事实的多个端点做同源判定(过期源判"不可比")。
+        if LiveTable is not None:
+            self._live_rm = LiveTable("🌐 远程监控 · 同源 (实采)",
+                                      ["tools/remote_monitor_aggregate.py", "--json"],
+                                      fmt_remote, rows_remote, interval_s=60, max_rows=40)
+            bl.addWidget(self._live_rm)
+            self._live_rm_tbl = self._live_rm._build_table_into(bl)
+
         # ═══ 左右分栏: 信号源 | 引擎 ═══
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
