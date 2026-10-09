@@ -275,6 +275,9 @@ metadata:
 🎛标定 参数标定(pole_place+tree同屏)/现场标定(stage_calib)/数学分析(lbl_math+plot+response) ·
 🔧配置 工程需求(eng_req)/运行开关(run_cfg)。
 
+> ⚠️ 2026-10-09 晚 (v5.24.0) 已**收紧为 5 视图** —— 上表里 perf/scene_state/run_summary/
+> pole_place/stage_calib/math/eng_req 已停用 (挪 `_model_tree_ffpd_legacy.py`), 见下面 «v5.24.0 收紧»。
+
 ### 把工具栏开关「归位」到侧边页: 搬, 不是复制
 - 做法: `attach_run_switches({...})` 把 6 个 `QCheckBox` 从工具栏布局 `removeWidget` 后再 `addWidget` 进右页
   —— Qt 控件**只有一个父**, re-parent 后**是同一个对象** ⇒ 所有运行路径读 `self.chk_*` / `getattr(self,'chk_*')` **一字不改**。
@@ -284,6 +287,41 @@ metadata:
   档位 chip 按画布「能力档位」节点 `params.cap_level` 判定命中, 本档无效的开关显示 `(本档无效)` —— 一眼看出这个勾现在管不管用。
 - `_switch_view` 要**表驱动** (`VIEW_KEYS` 一处定义索引→控件), 否则每次重排视图都要改 10 个索引 if, 必错。
   重排时注意保留老行为 (例: 参数标定视图 = 极点配置器 **+ 数据字典树同屏**)。
+
+### v5.24.0 收紧: 11 视图 → 5, 右侧栏重点 = 配置 + 标定 + 主参数 M
+老倪: 「右边侧边栏, 重点是 配置 和 标定, 以及主参数 M; 其它功能要精简, 没联系的**全注释掉**, 确定没用的删掉」。
+
+**【核心判据】「这个页跟状态空间工程有没有真联系」= 画布真源里有没有它读的键** (不是"点了有没有反应"):
+```bash
+C=src/lerobot/engineering/flows/state_space_obs.json
+for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   # 都是 0
+```
+状态空间画布没这两个键 ⇒ `analyze_system()` 走 else 分支填**硬编码默认**(m=1.0/b=2.0/k=5.0),
+极点配置 `_write_back` 直接弹「当前画布无 Z700 内部模块」, 现场标定找不到状态机节点
+⇒ 性能指标/场景状态/运行汇总/数学分析/参数标定/现场标定/工程需求 7 页**看着有数、与画布无关**
+(= 工程师最恨的假数)。它们属于另一套「前馈 PD 顶层」画布 (带 `z700_internal`)。
+
+处置手法 (满足"注释掉"且让 4300 行文件瘦一半): **8 个部件类 + 5 个分析函数整体挪到
+`tools/gui/_model_tree_ffpd_legacy.py`** (带复活说明), 原位置留注记注释;
+面板侧: `cmb_view` 5 项 + `VIEW_KEYS` 表。留下的 5 项全有真连接:
+🧮 主参数 M(画布 M 节点 params) · 🔧 运行开关(`self.chk_*`→引擎分支) · 📏 数据字典(画布 params+feature.dbc) ·
+📏 状态空间变量/数据总线(引擎 `_ss_tr` io_trace)。
+
+**新页「🧮 主参数 M · 测量/标定/诊断/配置」** (`MasterParamMView`, 默认页): 数据源 = 画布 M 节点
+(`n_calib_mani`) 的 `cfg_entries/cfg_snapshot/measure_view/calib_view/diagnose_view/task_layer`
+(由 `ss_node_sync.py` 从真源同步进节点) ⇒ 页 ↔ 节点 ↔ 文件 同源。按钮: ✏️ 写 M (走
+`zmax_params.write_manifold_M`: 范围校验+只改 `manifold_engine` 键+回读) / 📥 同步 / 🔁 刷新 / 📋 复制;
+无节点时诚实空态 + 给补救命令。
+
+### 三个必踩的坑 (v5.24.0 实测)
+1. 🔴 **`load_flow_file` 给节点重编 id** (`n_calib_mani`→`n1791534…acq`) ⇒ 取节点必须
+   「语义标记 `params.manifold_calib` + 名字关键词」兜底; 按 id 写判据的 verifier 必假红。
+2. 🔴 **往方法里插代码块, `ast.parse` 抓不到插错位置**: 本次把懒刷新钩子插到**两个方法之间**
+   (8 空格缩进紧贴上一个方法体尾, 语法合法) ⇒ 钩子挂到了上一个方法, 现象=不生效。
+   定位法: 找 `    def X(self):` 后, 再找**下一个** `^    def ` 之前的一行插; 插完务必复核
+   「新块行号落在 [defX, 下一个 def) 区间」(脚本里 `assert`)。
+3. **刷新钩子别用 `isVisible()` 判据** (窗口隐藏/离屏恒 False ⇒ 静默跳过): 用「当前页索引 →
+   `VIEW_KEYS[idx]` 名」判断。
 
 ### 面板 "没有用的都删掉" 怎么答才站得住
 1. **逐个视图切换实测** (offscreen 真建窗口 + `setCurrentIndex` + `processEvents` + 读 `isVisible()`/标签/树/表行数),
