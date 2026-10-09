@@ -20,6 +20,7 @@ run mparam_page       tools/verify_mparam_page.py
 run calib_measure     tools/verify_calib_measure.py
 run project_archive   tools/verify_project_archive.py
 run ui_slim           tools/verify_ui_slim.py
+run shortcuts         tools/verify_shortcuts.py
 run open_space        tools/probe_open_space.py
 run run_cfg_panel     tools/verify_run_cfg_panel.py
 run step_follow       tools/verify_step_follow.py

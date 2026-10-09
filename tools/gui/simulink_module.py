@@ -6455,7 +6455,9 @@ class SimulinkModule(QWidget):
     CANVAS_MENU = [
         ("save_canvas", "💾 另存为 JSON…", "Ctrl+Shift+S",
          "把当前画布 (节点位置/连线/参数) 存成 JSON 文件 — 分享/备份/回滚都用它", False),
-        ("load_canvas", "📂 加载 JSON…", "Ctrl+Shift+O",
+        # 🔴 2026-10-09 快捷键去重: 原来也是 Ctrl+Shift+O, 和「文件→📂 加载工程文件…」撞车
+        #   → Qt 报 "Ambiguous shortcut overload" 且两个快捷键**都不会触发** (实测). 改 Ctrl+Shift+L
+        ("load_canvas", "📂 加载 JSON…", "Ctrl+Shift+L",
          "从 JSON 文件加载画布 (恢复节点位置与连线)", False),
         ("save_model", "💾 保存模型 (固化 ckpt)", "",
          "把当前已训练模型固化为「已保存模型」→ models/saved/, 推理服务下次可直接选", True),
@@ -6463,7 +6465,8 @@ class SimulinkModule(QWidget):
          "录屏: 定时截取本窗口 (画布+终端+模型结果), 全程记录工具链", True),
         ("stop_rec", "⏹ 停止录制", "",
          "停止录屏 → ffmpeg 合成 MP4 (2fps 采集, 总长<1 分钟)", False),
-        ("float", "⛶ 浮动画布 (独立窗口)", "Ctrl+Shift+F",
+        # 🔴 同上: Ctrl+Shift+F 和「视图→🖥 窗口适配屏幕」撞车 → 改 Ctrl+Alt+F
+        ("float", "⛶ 浮动画布 (独立窗口)", "Ctrl+Alt+F",
          "画布独立成可最大化窗口 (关闭自动还原回主窗口)", True),
     ]
 

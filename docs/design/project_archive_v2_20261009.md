@@ -110,3 +110,37 @@ python tools/project_archive.py upgrade <v1file> [--out]  # 老 v1 存档升 v2
   (并给 `_init_simulink` 加幂等闸, 防插第二份画布); 状态栏 + 日志明写"已切到 🧮 Simulink 画布"。
 * 取证 `tools/probe_open_space.py` (真建主窗口 + 替身对话框): 打开后 `当前页=画布=True`,
   `画布场景项=272` (89 节点 + 184 连线) ⇒ 已进判据集 (`run_gui_verifiers.sh` 的 `open_space`)。
+
+---
+
+## 8. 再补 (2026-10-09 老倪: 「加载工程文件后，还是没反应」) — 实机取证
+
+这次不看代码猜, 直接**在他正在跑的控制台 (v5.26.2, pid 1262666) 上取证**:
+
+**证据 1 (实机日志)**
+```
+$ grep 'Ambiguous' /tmp/studio_launch.log
+QAction::event: Ambiguous shortcut overload: Ctrl+Shift+O     ← 按 Ctrl+Shift+O 两次, 两次都被 Qt 拒绝
+```
+⇒ 画布菜单「📂 加载 JSON…」和文件菜单「📂 加载工程文件…」**都注册了 Ctrl+Shift+O**
+  → Qt 判冲突后 **两个快捷键都不触发** (按钮迁移到菜单时撞的, 我自己引入的回归)。
+  实机点测: `Ctrl+Alt+O` (打开总工程) 正常弹文件框 ✅ → 说明接线没坏, 坏的只是这条快捷键。
+
+**证据 2 (确认框默认按钮)**
+```
+def _msg(...): mb.setStandardButtons(Yes|No); mb.setDefaultButton(QMessageBox.No)
+```
+⇒ 打开/加载工程的确认框 **默认按钮是「否」**, 且按钮写「是/否」(不是「打开/取消」)。
+  回车 = 静默取消, 只剩状态栏 2.5s 一行「已取消: 未打开总工程」→ 用户看到的就是"点了没反应"。
+  实机验证: 文件框选好 `zmax_space.proj` → 确认框弹出 → 回车 → 画布真源 mtime **没变、备份也没新生成**
+  ⇒ 确实是在确认框那一步被取消掉了 (整条写盘链一步都没走)。
+
+**修法 (v5.26.3)**
+1. 快捷键去重: 画布「📂 加载 JSON…」→ **Ctrl+Shift+L**; 画布「⛶ 浮动画布」→ **Ctrl+Alt+F**
+   (它和「视图→🖥 窗口适配屏幕」撞了 Ctrl+Shift+F, 也是同类问题)。
+2. `_msg/_msg_ask` 增加 `default_yes` + `yes_text/no_text`; 两条打开路径都改成
+   **默认「🗂 打开工程 / 📂 加载工程」、回车=确认、取消按钮写「取消」** (危险操作仍旧默认「否」)。
+3. **留痕**: 打开/加载工程每一步写 `zmax_data/logs/open_project.log` (入口/选了哪个文件/确认结果/
+   写盘异常/界面回填+画布场景项数) —— 以后"没反应"直接看这个文件, 不用再靠猜。
+4. 判据: 新增 `tools/verify_shortcuts.py` (枚举主窗口全部 QAction → **任何重复快捷键直接判失败**;
+   另查默认按钮/动作名按钮/留痕可写), 已入 `run_gui_verifiers.sh` 的 `shortcuts` 项。

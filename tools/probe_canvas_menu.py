@@ -31,8 +31,8 @@ chk(any("画布" in t for t in menu_titles), f"主窗口一级菜单含「画布
 acts = getattr(win, "_canvas_menu_acts", {})
 chk(set(acts) == {"save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float"},
     f"菜单 6 项齐全: {sorted(acts)}")
-for k, sc in (("save_canvas", "Ctrl+Shift+S"), ("load_canvas", "Ctrl+Shift+O"),
-              ("record", "Ctrl+Shift+R"), ("float", "Ctrl+Shift+F")):
+for k, sc in (("save_canvas", "Ctrl+Shift+S"), ("load_canvas", "Ctrl+Shift+L"),
+              ("record", "Ctrl+Shift+R"), ("float", "Ctrl+Alt+F")):
     got = acts[k].shortcut().toString() if acts.get(k) else "—"
     chk(got == sc, f"{k} 快捷键 {got} (期望 {sc})")
 chk(all(a.toolTip() for a in acts.values()), "6 项都有悬停说明")
