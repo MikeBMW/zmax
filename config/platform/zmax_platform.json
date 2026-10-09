@@ -1,5 +1,5 @@
 {
- "_doc": "Z-MAX 平台产品真源 — 产品/产品特征/子系统/功能三轴/接口 的唯一人工真源 (人可编·进 git·可评审)。运行时由 tools/engineering_db.py 与状态空间工程 (.proj 7 段) 一起装进单一数据库文件 data/database/zmax_engineering.db。改这里 = 改工程; 别改数据库 (库是生成物)。",
+ "_doc": "Z-MAX 平台产品真源 — 产品/产品特征/子系统/功能三轴/接口 的唯一人工真源 (人可编·进 git·可评审)。运行时由 tools/engineering_db.py 与状态空间工程 (.proj 7 段) 一起装进单一数据库文件 data/database/zmax/zmax_engineering.db (标准产品数据路径)。改这里 = 改工程; 别改数据库 (库是生成物)。",
  "version": "1.0",
  "generated_by": "Z-MAX 平台产品经理设计 (2026-10-09)",
  "platform": {
@@ -523,6 +523,6 @@
   "cal": "config/calib/zmax_calib.json 9 段 + config/calib/zmax_manifold.json (主参数 M)",
   "dia": "src/lerobot/verification/verification_layer.py FEATURES (A-H 域) + 节点实现审计 + 真机只读采集判据",
   "modules": "tools/gui/simulink_module.py LIBRARY (含 curation 名单)",
-  "project": "data/database/zmax_space.proj (7 段: canvas/pane/calib/measure/mparam/task/meta)"
+  "project": "data/database/zmax/zmax_space.proj (7 段: canvas/pane/calib/measure/mparam/task/meta)"
  }
 }

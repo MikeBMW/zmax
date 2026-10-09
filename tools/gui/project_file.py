@@ -624,9 +624,9 @@ def upgrade_v1(path, out=None):
 
 
 def project_dir(root=None):
-    """工程文件默认目录: <仓库根>/data/database (老倪 2026-10-09: 工程文件与数据库统一放这里, 一眼找到)"""
+    """工程文件默认目录: <仓库根>/data/database/zmax (标准产品数据路径: data/database/<产品>/)"""
     root = root or os.path.expanduser("~/zmax")
-    d = os.path.join(root, "data", "database")
+    d = os.path.join(root, "data", "database", "zmax")
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -662,7 +662,7 @@ def find_space(root=None):
 
 
 def space_path(root=None):
-    """总工程文件路径 (默认 data/database/zmax_space.proj, 稳定不变)"""
+    """总工程文件路径 (默认 data/database/zmax/zmax_space.proj, 稳定不变)"""
     return os.path.join(project_dir(root), SPACE_NAME)
 
 

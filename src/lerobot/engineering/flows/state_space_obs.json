@@ -2208,7 +2208,7 @@
           "任务配置": "config/tasks/tasks.json",
           "任务绑定": "config/ss_task_binding.json",
           "工单目录": "config/orders/ (BS_*.json)",
-          "工程文件": "data/database/zmax_space.proj",
+          "工程文件": "data/database/zmax/zmax_space.proj",
           "站点标定": "config/calib/zmax_calib.json",
           "流形标定": "config/calib/zmax_manifold.json"
         },
@@ -2260,7 +2260,7 @@
             "cell_geometry.points"
           ],
           "project": {
-            "file": "data/database/zmax_space.proj",
+            "file": "data/database/zmax/zmax_space.proj",
             "canvas_md5": "7447a39e7dc58b622a522042ac1c077d",
             "nodes": 89,
             "links": 184

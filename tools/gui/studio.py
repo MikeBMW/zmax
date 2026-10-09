@@ -751,7 +751,7 @@ def _mcd_from_db():
     """🎛 数据数字 (M 测量/C 标定/D 诊断) 取自单一工程库; 库不在就返回空, 卡片自动省略"""
     import sqlite3
     db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                      "data", "database", "zmax_engineering.db")
+                      "data", "database", "zmax", "zmax_engineering.db")
     out = {}
     try:
         con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
@@ -1226,7 +1226,7 @@ def _roadmap_facts():
                 "product": {"fn": 74, "mcd": (9, 45, 57)}}
     import sqlite3
     db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                      "data", "database", "zmax_engineering.db")
+                      "data", "database", "zmax", "zmax_engineering.db")
     try:
         con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
         for sid, n in con.execute("SELECT system_id, COUNT(*) FROM functions GROUP BY system_id"):
@@ -12140,7 +12140,7 @@ class StudioMainWindow(QMainWindow):
             import project_file as _pj
             return _pj.project_dir(getattr(self, "repo_path", None))
         except Exception:                                                        # noqa: BLE001
-            d = os.path.join(os.path.expanduser("~/zmax"), "data", "database")
+            d = os.path.join(os.path.expanduser("~/zmax"), "data", "database", "zmax")
             os.makedirs(d, exist_ok=True)
             return d
 
@@ -12176,7 +12176,7 @@ class StudioMainWindow(QMainWindow):
         self.statusBar().showMessage("✅ 工程已保存: %s" % r["path"], 5000)
 
     def _save_space_file(self):
-        """🗂 文件 → 保存总工程 (zmax_space): 7 段全量 → data/database/zmax_space.proj"""
+        """🗂 文件 → 保存总工程 (zmax_space): 7 段全量 → data/database/zmax/zmax_space.proj"""
         _pj = self._proj_mod()
         if _pj is None:
             return
@@ -13078,7 +13078,7 @@ class StudioMainWindow(QMainWindow):
         act_space_save = QAction("🗂 保存总工程 (zmax_space)…  ", self)
         act_space_save.setShortcut("Ctrl+Alt+S")
         act_space_save.setToolTip("把**整个**状态空间工程存成一个总工程文件 "
-                                  "data/database/zmax_space.proj：画布模型 + 右侧栏配置 + 6 运行开关 + "
+                                  "data/database/zmax/zmax_space.proj：画布模型 + 右侧栏配置 + 6 运行开关 + "
                                   "标定 + 主参数 M + 测量 + 任务绑定。下次一次打开即全量回填。")
         act_space_save.triggered.connect(self._save_space_file)
         m_file.addAction(act_space_save)

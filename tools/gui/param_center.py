@@ -314,7 +314,7 @@ class ParamCenterPage(QWidget):
             evs = []
             self._log_to_main("读取改数事件失败: %r" % (e,))
         n = len(evs)
-        head = ("── 改数事件 (可观察: 每一步都留痕在唯一工程库 data/database/zmax_engineering.db 的 "
+        head = ("── 改数事件 (可观察: 每一步都留痕在唯一工程库 data/database/zmax/zmax_engineering.db 的 "
                 "param_events 表, 共 %d 条) ──\n" % n)
         tail = ["%s  %s  %s → %s  %s" % (e.get("ts"), e.get("cn"), e.get("old"), e.get("new"),
                                          e.get("msg") or "") for e in evs[-12:]]

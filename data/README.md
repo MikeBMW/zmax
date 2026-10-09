@@ -6,7 +6,7 @@
 
 | 分区 | 内容 | 关联模块 |
 |---|---|---|
-| `database/` | 工程文件与工程数据库：`zmax_engineering.db`（唯一工程数据库）、`zmax_space.proj`（状态空间总工程）、`archive/`（历史工程快照）；参数变更事件记录于库内 `param_events` 表 | `tools/engineering_db.py`、`tools/gui/project_file.py`、`platform_spec.py`、`param_center.py` |
+| `database/` | 产品数据目录，按产品分子目录：`zmax/` = Z-MAX 平台标准产品数据路径，内含 `zmax_engineering.db`（唯一工程数据库）、`zmax_space.proj`（状态空间总工程）、`README.md`（产品手册）、`archive/`（历史工程快照）；参数变更事件记录于库内 `param_events` 表 | `tools/engineering_db.py`、`tools/gui/project_file.py`、`platform_spec.py`、`param_center.py` |
 | `skills/` | 技能库：`l2_atomic/`（原子技能注册表与示教点）、`l2_muscle/`、变更记录 | `l2_daemon`、`l2_skill_dialog`、`l2_skill_learn` |
 | `scene/` | 场景、叠加与感知：`scene_state.json`（感知链单一数据源）、`overlay_spec.json`、`cam_calib.json`、`traj_display.json` | `sync_scene_state`、`scene_overlay`、`traj_display`、视频推流与叠加 |
 | `memory/` | 记忆层：`memory_layers.json`（分层开关）、`shared_memory.json`、`macro_memory.json`、`assembly_memory.json`、`muscle_memory.json`、`intact_robot_state.json` | `src/lerobot/memory/*`、画布记忆层节点 |
@@ -32,8 +32,8 @@
 
 | 数据 | 真源（纳入版本管理） | 本目录内 |
 |---|---|---|
-| 状态空间工程七段 | `config/**` 与 `flows/state_space_obs.json` | `database/*.proj`（快照，由控制台或 `project_archive.py` 写入） |
-| 工程数据库 | 上述真源 | `database/zmax_engineering.db`（生成物） |
+| 状态空间工程七段 | `config/**` 与 `flows/state_space_obs.json` | `database/zmax/*.proj`（快照，由控制台或 `project_archive.py` 写入） |
+| 工程数据库 | 上述真源 | `database/zmax/zmax_engineering.db`（生成物） |
 | 标定 | `config/calib/zmax_calib.json` | `calib/`（采集数据与结果） |
 | 能力数据库 | `feature.dbc` | — |
 

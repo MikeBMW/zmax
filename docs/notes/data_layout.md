@@ -5,12 +5,12 @@
 ```
 /home/ubuntu/zmax/data/                 # 📦 数据根 (顶层只此 6 桶 + 本说明)
 ├── README.md                           # 顶层说明 (每桶是什么/谁在用/真源在哪)
-├── database/                           # 🗄 工程文件 + 数据库
-│   ├── zmax_engineering.db             #   单一工程数据库 (SQLite, 生成物)
-│   ├── zmax_space.proj                 #   🗂 总工程 (GUI 文件 → 打开总工程, 集成式回填 7 段)
-│   ├── (无 jsonl)                       #   改数留痕已在库里: param_events 表 (build 不清空)
-│   ├── README.md                       #   工程文件+库说明
-│   └── archive/                        #   历史工程快照 + 按需导出件 (只读留档)
+├── database/                           # 🗄 产品数据根 (每产品一子目录)
+│   └── zmax/                           #   ← 标准产品数据路径 data/database/<产品>/
+│       ├── zmax_engineering.db         #   单一工程数据库 (SQLite, 生成物)
+│       ├── zmax_space.proj             #   🗂 总工程 (GUI 文件 → 打开总工程, 集成式回填 7 段)
+│       ├── README.md                   #   产品手册 (交付/销售用)
+│       └── archive/                    #   历史工程快照 + 按需导出件 (只读留档)
 ├── skills/                             # 💪 技能库: l2_atomic/ (注册表+示教点) · l2_muscle/ · CHANGELOG
 ├── scene/                              # 🎬 场景·叠加·感知: scene_state.json · overlay_spec.json · cam_calib.json
 ├── memory/                             # 🧠 记忆层: memory_layers / shared / macro / assembly / muscle / intact

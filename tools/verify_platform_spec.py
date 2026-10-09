@@ -3,7 +3,7 @@
 """verify_platform_spec.py — 📋 工程数据库 + 功能清单页 判据 (2026-10-09 老倪)
 
 判据 (全绿才算交付):
-  ① 单一数据库文件: data/database/zmax_engineering.db 存在, 且 data/database 只有库 + 说明/清单
+  ① 单一数据库文件: data/database/zmax/zmax_engineering.db 存在, 且 data/database 只放产品数据目录
   ② 库内容: 平台/产品/产品特征/子系统/功能/三轴/标定/模块/模块代码/能力/验证项 全部非空且数目对得上真源
   ③ 同步判据: engineering_db.py check rc=0 (特征→子系统·功能→模块·三轴覆盖·段齐·真源一致)
   ④ 功能清单页 (离屏真建): 页签齐 (Z-MAX 平台 / System 2 / System 1 / System 0 / 平台支撑),
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-DB = os.path.join(ROOT, "data", "database", "zmax_engineering.db")
+DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 FAIL = []
 
 
@@ -36,12 +36,16 @@ def chk(c, msg):
 
 
 print("① 单一数据库文件", flush=True)
-chk(os.path.exists(DB), "库在: %s (%.2f MB)" % (DB, (os.path.getsize(DB) / 1048576) if os.path.exists(DB) else 0))
-_dd = os.path.join(ROOT, "data", "database")
+_db_root = os.path.join(ROOT, "data", "database")
+_entries = sorted(os.listdir(_db_root)) if os.path.isdir(_db_root) else []
+chk(_entries == ["zmax"] and all(os.path.isdir(os.path.join(_db_root, x)) for x in _entries),
+    "data/database/ 只放产品数据目录 (每产品一子目录, 本平台 = zmax/): %s" % _entries)
+chk(os.path.exists(DB), "标准产品数据路径: %s (%.2f MB)" % (DB, (os.path.getsize(DB) / 1048576) if os.path.exists(DB) else 0))
+_dd = os.path.join(ROOT, "data", "database", "zmax")
 _files = sorted(os.listdir(_dd)) if os.path.isdir(_dd) else []
 chk(all(os.path.isdir(os.path.join(_dd, x)) or x.endswith((".db", ".md", ".txt", ".json", ".jsonl", ".proj", ".zmaxproj"))
         for x in _files),
-    "data/database/ 内容 (库 + 工程文件 + 说明/清单; 允许 archive/ 子目录): %s" % _files)
+    "data/database/zmax/ 内容 (库 + 工程文件 + 说明; 允许 archive/ 子目录): %s" % _files)
 
 print("② 库内容 (真源 ↔ 库 数目)", flush=True)
 import engineering_db as ED                                                     # noqa: E402

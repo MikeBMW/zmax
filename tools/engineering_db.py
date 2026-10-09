@@ -7,12 +7,13 @@
     一起形成一个统一的数据结构, 可以通过加载工程, 一起将所有 特性 配置 参数 功能 模块代码
     都链接出来; 最好只用一个数据库文件, 承载所有工程数据; 这样控制台的 GUI 就与整个工程解耦;
     我可以随时迁移数据库工程文件, 用统一的 GUI 加载我的工程数据。总数据库放在 data/database。」
+  2026-10-09 路径定版: 产品数据统一放 data/database/<产品>/ (本平台 = data/database/zmax/)。
 
-单一文件: data/database/zmax_engineering.db (SQLite)
+单一文件: data/database/zmax/zmax_engineering.db (SQLite)   ← 标准产品数据路径
   真源 (人可编·进 git)                    →  表
   ─────────────────────────────────────────────────────────────────────────
   config/platform/zmax_platform.json      →  platform / products / product_features / subsystems / subsystem_axes
-  data/database/*.proj    (7 段)         →  projects / project_sections
+  data/database/zmax/*.proj (7 段)       →  projects / project_sections
   <project>.canvas.nodes/links            →  canvas_nodes / canvas_links / functions / fn_axes
   config/calib/zmax_calib.json + manifold →  calib_params
   feature.dbc (能力数据库)                 →  capability_dbc / interfaces(输入输出)
@@ -42,7 +43,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_DEFAULT = os.path.join(ROOT, "data", "database", "zmax_engineering.db")
+DB_DEFAULT = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 PLATFORM_SRC = os.path.join(ROOT, "config", "platform", "zmax_platform.json")
 CALIB_SRC = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 MANIFOLD_SRC = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
@@ -51,7 +52,7 @@ VERIF_SRC = os.path.join(ROOT, "src", "lerobot", "verification", "verification_l
 NODES_SRC = os.path.join(ROOT, "src", "lerobot", "engineering", "nodes", "library.py")
 CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
 CURATION = os.path.join(ROOT, "config", "library_curation.json")
-PROJ_DIR = os.path.join(ROOT, "data", "database")
+PROJ_DIR = os.path.join(ROOT, "data", "database", "zmax")   # 标准产品数据路径: data/database/<产品>/
 
 SCHEMA = """
 DROP TABLE IF EXISTS meta;                    CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);
@@ -235,7 +236,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
 
     # 改数事件: 唯一留痕处 = 本库 param_events 表 (build 不清空)。
     # 若还留着老的 param_events.jsonl (2026-10-09 之前的历史), 一次性并入去重; 之后该文件可删。
-    _legacy_ev = os.path.join(ROOT, "data", "database", "param_events.jsonl")
+    _legacy_ev = os.path.join(ROOT, "data", "database", "zmax", "param_events.jsonl")
     if os.path.exists(_legacy_ev):
         n_new = 0
         for _ln in open(_legacy_ev, encoding="utf-8"):
@@ -943,7 +944,7 @@ def main():
     if a.cmd == "query":
         return query(a.arg, a.db)
     if a.cmd == "load":
-        return export_json(a.arg or os.path.join(ROOT, "data", "database", "zmax_engineering.json"), a.db)
+        return export_json(a.arg or os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.json"), a.db)
     if a.cmd == "serve":
         return serve(a.port, a.db)
     if a.cmd == "migrate":

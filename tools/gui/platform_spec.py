@@ -8,7 +8,7 @@
     这样控制台的 GUI 就与整个工程解耦, 我可以随时迁移数据库工程文件, 用统一的 GUI 加载我的工程数据。」
 
 设计要点 (GUI ↔ 工程数据解耦):
-  · 本页**不认识任何工程文件**, 只认一个数据库文件 (默认 data/database/zmax_engineering.db)。
+  · 本页**不认识任何工程文件**, 只认一个数据库文件 (默认 data/database/zmax/zmax_engineering.db)。
   · 数据全部走 tools/engineering_db.py 的 load() (纯 sqlite 读取, 不 import GUI 依赖) ⇒ 换库 = 换工程。
   · 顶部: 库路径 + 📂 打开工程数据库(文件框) + 🔁 重建(真源→库) + 📋 复制/导出(老倪: 内容要可复制可导出)。
   · 四个页签: 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0
@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (QApplication, QFileDialog, QFrame, QHBoxLayout, QLa
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if os.path.join(ROOT, "tools") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "tools"))
-DB_DEFAULT = os.path.join(ROOT, "data", "database", "zmax_engineering.db")
+DB_DEFAULT = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 
 C_BG, C_BG2, C_CARD = "#0f1318", "#131823", "#1a2230"
 C_WHITE, C_GRAY, C_DIM, C_BORDER = "#e6edf3", "#9aa7b4", "#6e7b8a", "#2a3441"

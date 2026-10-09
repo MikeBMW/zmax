@@ -150,7 +150,7 @@ chk(m.chk_engine_demo.isChecked() == before, "apply_run_cfg 把开关拨回存�
 app.processEvents()
 
 print("\n⑦ v1 老存档仍能读 + 升级 v2")
-v1 = os.path.join(ROOT, "data", "database/archive/状态空间工程_20261008_1101.zmaxproj")
+v1 = os.path.join(ROOT, "data", "database", "zmax", "archive", "状态空间工程_20261008_1101.zmaxproj")
 if os.path.exists(v1):
     s = PF.read_summary(v1)
     chk(s["schema"] == PF.SCHEMA_V1 and s["canvas_ok"], "v1 老文件 read_summary 能读 (schema %s)" % s["schema"])

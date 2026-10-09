@@ -1,6 +1,6 @@
 # Z-MAX 具身智能机器人平台 · 工程数据手册
 
-本文件是 Z-MAX 平台工程数据包（`data/database/`）的产品说明与使用手册，面向平台集成方、产线工程方与二次开发方。
+本文件是 Z-MAX 平台工程数据包（`data/database/zmax/`）的产品说明与使用手册，面向平台集成方、产线工程方与二次开发方。
 
 ---
 
@@ -174,7 +174,7 @@ python3 tools/engineering_db.py migrate <目标路径>/zmax_engineering.db
 
 ### 5.3 工程迁移
 
-工程数据包与代码解耦：复制 `data/database/` 目录即可将整套工程带到另一台机器，由同一控制台加载。工程文件默认目录由 `tools/gui/project_file.py::project_dir` 定义，数据库默认路径由 `tools/engineering_db.py::DB_DEFAULT` 定义。
+工程数据包与代码解耦：复制 `data/database/zmax/` 目录即可将整套工程带到另一台机器，由同一控制台加载。工程文件默认目录由 `tools/gui/project_file.py::project_dir` 定义，数据库默认路径由 `tools/engineering_db.py::DB_DEFAULT` 定义。
 
 ---
 
@@ -191,12 +191,16 @@ python3 tools/engineering_db.py migrate <目标路径>/zmax_engineering.db
 ## 7. 本目录内容
 
 ```
-data/database/
-├── zmax_engineering.db     唯一工程数据库（SQLite 单文件）
-├── zmax_space.proj         状态空间总工程（v2，七段）
-├── README.md               本文件
-└── archive/                历史工程快照（只读留档）
+data/database/                产品数据根目录（每个产品一个子目录）
+└── zmax/                     Z-MAX 平台标准产品数据路径
+    ├── zmax_engineering.db   唯一工程数据库（SQLite 单文件）
+    ├── zmax_space.proj       状态空间总工程（v2，七段）
+    ├── README.md             本文件
+    └── archive/              历史工程快照（只读留档）
 ```
+
+产品数据路径规范：`data/database/<产品标识>/`，本平台为 `data/database/zmax/`。工程文件默认目录由
+`tools/gui/project_file.py::project_dir` 返回，数据库默认路径由 `tools/engineering_db.py::DB_DEFAULT` 返回。
 
 工程数据包在版本发布时可整体归档，用于交付、回滚与现场复现。
 

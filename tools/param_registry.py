@@ -37,7 +37,7 @@ MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
 PLATFORM = os.path.join(ROOT, "config", "platform", "zmax_platform.json")
 SPEC = os.path.join(ROOT, "config", "platform", "param_spec.json")
-EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "param_events.jsonl")   # 旧 jsonl, 仅供一次性并入库; 新事件直接写库 param_events 表
+EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "zmax", "param_events.jsonl")   # 旧 jsonl, 仅供一次性并入库; 新事件直接写库 param_events 表
 
 # 代码常量扫描范围 (只扫与链路直接相关的实现文件, 不做全仓乱扫)
 CODE_FILES = [
@@ -448,7 +448,7 @@ def effect_chain(pid, reg=None):
     try:
         import importlib.util as _iu
         spec = _iu.spec_from_file_location("_edb", os.path.join(ROOT, "tools", "engineering_db.py"))
-        if spec and spec.loader and os.path.exists(os.path.join(ROOT, "data/database/zmax_engineering.db")):
+        if spec and spec.loader and os.path.exists(os.path.join(ROOT, "data/database/zmax/zmax_engineering.db")):
             edb = _iu.module_from_spec(spec)
             spec.loader.exec_module(edb)                                       # type: ignore[union-attr]
             D = edb.load()

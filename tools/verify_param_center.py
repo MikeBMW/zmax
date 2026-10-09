@@ -137,7 +137,7 @@ try:
     _m.build(quiet=True)          # 重建库, 让刚才的改数事件也进库 (可观察性)
 except Exception as _e:
     print("     (重建库失败: %r)" % (_e,), flush=True)
-db = os.path.join(ROOT, "data", "database", "zmax_engineering.db")
+db = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 if os.path.exists(db):
     con = sqlite3.connect(db)
     n_db = con.execute("SELECT COUNT(*) FROM params").fetchone()[0]
