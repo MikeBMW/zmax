@@ -234,7 +234,14 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
   「环境缺失 ⇒ 拒发动作」是**假警报**(实测开机 1min 时判定缺失、90s 后网卡就位且 Orin/工控机全通)。
   判据: `ip -br addr` 里真出现 `192.168.23.x` + `ping -c1 -W2 <Orin>` 通才算「网卡在位」;
   一次不通就**隔 60~90s 复采一次**再下结论 —— 两次都在位才是真缺失。
+- **本机那 5 个手工进程一律走官方复原脚本，别手敲命令行**（幂等，已在跑的不重拉）：
+  `bash tools/boot_restore.sh check` 先看清点 → `bash tools/boot_restore.sh local` 补齐
+  （cam_live_stream 8791+8793 / l5_live_mark / vl_safety_monitor / l2_daemon / studio）；它自己按
+  `tools/cam_dev_resolve.py` 解析相机设备号并在末尾复核 `8793/station→200`。手搓 `cam_live_stream.py` 会写死设备号串线/近黑。
+  ⚠️ 它**管不到** `tools/hil_local_api.py`(8795, 手起) 和 MoveIt 单元(`systemctl start zmax-moveit-plan`, oneshot ~3min) ——
+  这两个要单独拉，且按 §9e① **单独一条短命令**（跟长动作串在同一条里会被超时一起带走）。
 - **「有进程」≠「在役」**：端口没在监听就是没在服务。逐个 `ss -ltnp | grep <端口>` + 一次 HTTP 探活，双证后才敢说「起来了」。
+  探活判据要认得**合法拒绝**：闸门不带 `?k=<token>` 给 403、HIL 终端口不带 token 给 403 —— 有响应码就是「在役」，不是故障。
 - `systemctl is-active` 给 `activating` + 反复计数 ⇒ `journalctl -u <unit> -n 20` 看真实原因，不要因为「单元存在」就报正常。
 - 汇报按「本机已起 / 本机还缺 / 外设缺失 / 资源(GPU·磁盘)」四行给，一眼能看完，不写「已恢复正常」。
 
