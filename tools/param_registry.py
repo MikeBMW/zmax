@@ -37,7 +37,7 @@ MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
 PLATFORM = os.path.join(ROOT, "config", "platform", "zmax_platform.json")
 SPEC = os.path.join(ROOT, "config", "platform", "param_spec.json")
-EVENTS = os.path.join(ROOT, "data", "database", "param_events.jsonl")
+EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "param_events.jsonl")   # 旧 jsonl, 仅供一次性并入库; 新事件直接写库 param_events 表
 
 # 代码常量扫描范围 (只扫与链路直接相关的实现文件, 不做全仓乱扫)
 CODE_FILES = [
@@ -616,9 +616,25 @@ def _write_code_const(pid, value):
 
 
 def _log_event(ev):
-    os.makedirs(os.path.dirname(EVENTS), exist_ok=True)
-    with open(EVENTS, "a", encoding="utf-8") as f:
-        f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    """改数留痕 → 唯一工程库 (param_events 表)。2026-10-09 起不再写 jsonl (老倪: 所有数据整合进统一数据库)。"""
+    ev = dict(ev)
+    ev.setdefault("ts", time.strftime("%Y-%m-%d %H:%M:%S"))
+    return _edb().log_param_event(ev)
+
+
+_EDB_CACHE = {}
+
+
+def _edb():
+    """懒加载 tools/engineering_db.py (事件/参数的唯一落库口径都在那边)。"""
+    if "m" in _EDB_CACHE:
+        return _EDB_CACHE["m"]
+    import importlib.util as _iu
+    sp = _iu.spec_from_file_location("_edb_pr", os.path.join(ROOT, "tools", "engineering_db.py"))
+    m = _iu.module_from_spec(sp)
+    sp.loader.exec_module(m)
+    _EDB_CACHE["m"] = m
+    return m
 
 
 def set_param(pid, value, write=False, reg=None):
@@ -664,8 +680,7 @@ def stats():
     g = {k: {"n": len(v), "writable": sum(1 for x in v if x["writable"]),
              "定义范围": sum(1 for x in v if x["status"] == "已定义"),
              "范围未定义": sum(1 for x in v if x["status"] == "范围未定义")} for k, v in reg["groups"].items()}
-    return {"total": len(reg["params"]), "groups": g, "events": (sum(1 for _ in open(EVENTS, encoding="utf-8"))
-                                                                if os.path.exists(EVENTS) else 0)}
+    return {"total": len(reg["params"]), "groups": g, "events": _edb().count_param_events()}
 
 
 def verify():

@@ -3,7 +3,7 @@
 """data/ 分区定位器 (2026-10-09 老倪: 「继续整合所有数据文件, 现在的数据太杂乱了」)
 
 data/ 顶层只留 6 个桶:
-    database/  工程文件 + 数据库 (.proj / .db / param_events.jsonl / archive)
+    database/  工程文件 + 数据库 (.proj / .db / archive) —— 改数事件也在库里的 param_events 表
     skills/    技能库 (L2 原子技能注册表 / 示教点 / 肌肉记忆)
     scene/     场景 · 叠加 · 感知 (overlay_spec / cam_calib / traj_display / scene_state.json)
     memory/    记忆层 (memory_layers / shared / macro / assembly / muscle / intact)

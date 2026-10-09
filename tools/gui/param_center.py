@@ -133,7 +133,7 @@ class ParamCenterPage(QWidget):
         root.addWidget(split, 1)
 
         hint = QLabel("双击一行 = 改这个数字 (先预览影响链, 再落真源) · 数字落盘前一律备份 · "
-                      "代码常量写坏语法立即回滚 · 所有改动记入 data/database/param_events.jsonl")
+                      "代码常量写坏语法立即回滚 · 所有改动直接记入唯一工程库的 param_events 表")
         hint.setStyleSheet("color:%s; font-size:9.5pt;" % C_DIM)
         root.addWidget(hint)
 
@@ -303,15 +303,22 @@ class ParamCenterPage(QWidget):
                                                           p["unit"], "已写回真源" if res.get("ok") else "失败"))
 
     def _show_log(self):
-        ev = os.path.join(ROOT, "data", "database", "param_events.jsonl")
-        n = 0
-        tail = []
-        if os.path.exists(ev):
-            for ln in open(ev, encoding="utf-8"):
-                n += 1
-                tail.append(ln.strip())
-        head = "── 改数事件 (可观察: 每一步都留痕 data/database/param_events.jsonl, 共 %d 条) ──\n" % n
-        self.txt.setPlainText(head + "\n".join(tail[-12:]) if tail else head + "(还没有改数记录)")
+        # 改数事件 = 唯一工程库 param_events 表 (2026-10-09 起不再有 param_events.jsonl)
+        try:
+            import importlib.util as iu
+            sp = iu.spec_from_file_location("_edb_ev", os.path.join(ROOT, "tools", "engineering_db.py"))
+            m = iu.module_from_spec(sp)
+            sp.loader.exec_module(m)
+            evs = m.read_param_events()
+        except Exception as e:                                                  # noqa: BLE001
+            evs = []
+            self._log_to_main("读取改数事件失败: %r" % (e,))
+        n = len(evs)
+        head = ("── 改数事件 (可观察: 每一步都留痕在唯一工程库 data/database/zmax_engineering.db 的 "
+                "param_events 表, 共 %d 条) ──\n" % n)
+        tail = ["%s  %s  %s → %s  %s" % (e.get("ts"), e.get("cn"), e.get("old"), e.get("new"),
+                                         e.get("msg") or "") for e in evs[-12:]]
+        self.txt.setPlainText(head + "\n".join(tail) if tail else head + "(还没有改数记录)")
 
     # ── 顶部动作 ──────────────────────────────────────────────────────────
     def rebuild_db(self):

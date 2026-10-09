@@ -46,7 +46,8 @@
   ① 校验: 类型 · 范围(min/max) · 档位枚举 · 只读
   ② 预览影响链 (dry-run): 子系统 → 功能 → 模块 → 代码文件:行 → 产品 KPI
   ③ 落真源: 备份(.<file>.bak_<ts>) → 写 → 回读核对 (代码类再跑 ast 语法校验, 坏则回滚)
-  ④ 留痕: data/database/param_events.jsonl + 工程库 param_events 表 (时间/参数/旧值/新值/真源/结果)
+  ④ 留痕: 唯一工程库 `data/database/zmax_engineering.db` 的 `param_events` 表 (时间/参数/旧值/新值/真源/结果)
+     —— 2026-10-09 收口: 不再写 param_events.jsonl (老倪「所有数据都要整合进统一的数据库」), build 不清空该表
 ```
 
 实测链路样例:

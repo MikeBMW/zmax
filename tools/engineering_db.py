@@ -66,7 +66,7 @@ DROP TABLE IF EXISTS calib_params;            CREATE TABLE calib_params(path TEX
 DROP TABLE IF EXISTS modules;                 CREATE TABLE modules(name TEXT PRIMARY KEY, kind TEXT, group_name TEXT, params TEXT, verif_layer INTEGER, source TEXT);
 DROP TABLE IF EXISTS library_removed;         CREATE TABLE library_removed(group_name TEXT, name TEXT, why TEXT, ts TEXT);
 DROP TABLE IF EXISTS params;                  CREATE TABLE params(param_id TEXT PRIMARY KEY, group_cn TEXT, cat TEXT, name TEXT, cn TEXT, value TEXT, default_val TEXT, min REAL, max REAL, unit TEXT, kind TEXT, choices TEXT, source TEXT, ref TEXT, writable INT, status TEXT, color TEXT, sys_id TEXT, module_ref TEXT, impact TEXT);
-DROP TABLE IF EXISTS param_events;            CREATE TABLE param_events(ts TEXT, param_id TEXT, cn TEXT, old_val TEXT, new_val TEXT, cat TEXT, source TEXT, written INT, msg TEXT);
+CREATE TABLE IF NOT EXISTS param_events(ts TEXT, param_id TEXT, cn TEXT, old_val TEXT, new_val TEXT, cat TEXT, source TEXT, written INT, msg TEXT);   -- ⚠️ 运行时表: 改数事件由程序直接写入, build 不清空 (唯一留痕处, 不再有 param_events.jsonl)
 DROP TABLE IF EXISTS param_links;             CREATE TABLE param_links(param_id TEXT, kind TEXT, target TEXT);
 DROP TABLE IF EXISTS mcd;                     CREATE TABLE mcd(scope TEXT, scope_id TEXT, scope_cn TEXT, m INTEGER, c INTEGER, d INTEGER, note TEXT, PRIMARY KEY(scope, scope_id));
 CREATE INDEX IF NOT EXISTS ix_prm_grp ON params(group_cn);
@@ -233,10 +233,32 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
     c = con.cursor()
     cnt = {}
 
+    # 改数事件: 唯一留痕处 = 本库 param_events 表 (build 不清空)。
+    # 若还留着老的 param_events.jsonl (2026-10-09 之前的历史), 一次性并入去重; 之后该文件可删。
+    _legacy_ev = os.path.join(ROOT, "data", "database", "param_events.jsonl")
+    if os.path.exists(_legacy_ev):
+        n_new = 0
+        for _ln in open(_legacy_ev, encoding="utf-8"):
+            try:
+                _e = json.loads(_ln)
+            except Exception:                                                       # noqa: BLE001
+                continue
+            _row = (_e.get("ts"), _e.get("param"), _j(_e.get("old")), _j(_e.get("new")))
+            if c.execute("SELECT 1 FROM param_events WHERE ts=? AND param_id=? AND old_val=? AND new_val=?",
+                         _row).fetchone():
+                continue
+            c.execute("INSERT INTO param_events VALUES (?,?,?,?,?,?,?,?,?)",
+                      (_e.get("ts"), _e.get("param"), _e.get("cn"), _j(_e.get("old")), _j(_e.get("new")),
+                       _e.get("cat"), _e.get("source"), 1 if _e.get("written") else 0, _e.get("msg", "")))
+            n_new += 1
+        if n_new:
+            print("  ↪ 旧 param_events.jsonl 并入 %d 条 (库内事件唯一留痕, 该文件已可删)" % n_new)
+
     # meta
     meta = {
         "schema": "zmax-engineering-db/1.0",
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "runtime_tables": "param_events — 改数事件由程序直接写入本表, build 不清空 (唯一留痕处, 不再有 param_events.jsonl)",
         "sources": _j({
             "platform": [PLATFORM_SRC, os.path.exists(PLATFORM_SRC) and _sha(_read(PLATFORM_SRC) or "")],
             "project": [prj["path"] if prj else None, prj["sha"] if prj else None],
@@ -488,16 +510,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                 c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "模块", p_["name"]))
                 if sid:
                     c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "系统", sid))
-            ev = os.path.join(ROOT, "data", "database", "param_events.jsonl")
-            if os.path.exists(ev):
-                for ln in open(ev, encoding="utf-8"):
-                    try:
-                        e = json.loads(ln)
-                        c.execute("INSERT INTO param_events VALUES (?,?,?,?,?,?,?,?,?)",
-                                  (e.get("ts"), e.get("param"), e.get("cn"), _j(e.get("old")), _j(e.get("new")),
-                                   e.get("cat"), e.get("source"), 1 if e.get("written") else 0, e.get("msg", "")))
-                    except Exception:                                               # noqa: BLE001
-                        pass
+            # 改数事件不在这里读 —— param_events 是运行时表, 由 build() 开头的旧 jsonl 并入 + 程序直接写入
     except Exception as _e:                                                    # noqa: BLE001
         print("[engineering_db] 参数注册表摄取失败: %r" % (_e,))
 
@@ -550,6 +563,56 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         for k, v in cnt.items():
             print("   %-22s %d" % (k, v))
     return cnt
+
+
+# ── 改数事件 (运行时唯一留痕处 = 本库 param_events 表; 没有 param_events.jsonl) ──
+def log_param_event(ev, db=DB_DEFAULT):
+    """把一条改数事件写进唯一工程库的 param_events 表 (运行时唯一留痕处, 没有 jsonl)。
+
+    ev: {param, cn, old, new, unit, cat, source, written, msg} —— 由 param_registry._log_event 调用。
+    返回 True/False (库不可写时不抛, 只报错 —— 改数本身已经落真源, 留痕失败不该让改数看起来失败)。
+    """
+    try:
+        os.makedirs(os.path.dirname(db), exist_ok=True)
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE IF NOT EXISTS param_events(ts TEXT, param_id TEXT, cn TEXT, "
+                    "old_val TEXT, new_val TEXT, cat TEXT, source TEXT, written INT, msg TEXT)")
+        con.execute("INSERT INTO param_events VALUES (?,?,?,?,?,?,?,?,?)",
+                    (ev.get("ts") or time.strftime("%Y-%m-%d %H:%M:%S"), ev.get("param"), ev.get("cn"),
+                     _j(ev.get("old")), _j(ev.get("new")), ev.get("cat"), ev.get("source"),
+                     1 if ev.get("written") else 0, ev.get("msg", "")))
+        con.commit()
+        con.close()
+        return True
+    except Exception as e:                                                          # noqa: BLE001
+        print("[engineering_db] 事件留痕失败: %r" % (e,))
+        return False
+
+
+def read_param_events(limit=None, db=DB_DEFAULT):
+    """读改数事件 (新→旧)。limit=None 读全部。库不存在/表不存在 ⇒ 空表。"""
+    try:
+        con = sqlite3.connect(db)
+        sql = "SELECT ts, param_id, cn, old_val, new_val, cat, source, written, msg FROM param_events"
+        if limit:
+            sql += " ORDER BY rowid DESC LIMIT %d" % int(limit)
+            rows = con.execute(sql).fetchall()
+        else:
+            rows = con.execute(sql + " ORDER BY rowid").fetchall()
+        con.close()
+        return [dict(zip(("ts", "param", "cn", "old", "new", "cat", "source", "written", "msg"), r)) for r in rows]
+    except Exception:                                                               # noqa: BLE001
+        return []
+
+
+def count_param_events(db=DB_DEFAULT):
+    try:
+        con = sqlite3.connect(db)
+        n = con.execute("SELECT COUNT(*) FROM param_events").fetchone()[0]
+        con.close()
+        return n
+    except Exception:                                                               # noqa: BLE001
+        return 0
 
 
 # ── 判据 ──────────────────────────────────────────────────────────────────

@@ -202,7 +202,7 @@ effect_chain(id) → 子系统·功能·模块·代码 file:line·KPI
 * **画布 params 大多是元数据**: `state_space/row_bg/bg/status` 不是旋钮, 过滤后 149 → 78。
 * **代码数字不只在模块级**: `insert_depth=0.0005` 在函数默认参数里 → `ast` 要扫签名 default (3 → 25 条)。
 * **顶层 KPI 的数字也在真源里**: 正则从 KPI 文本抽量化目标(≥99% / <4mm), 写回原地替换数字、保留比较符与单位。
-* 写代码类数字**必过 ast 语法校验, 坏则从备份回滚**; 所有改数进 `data/database/param_events.jsonl` 留痕。
+* 写代码类数字**必过 ast 语法校验, 坏则从备份回滚**; 所有改数直接写唯一工程库 `param_events` 表留痕 (没有 jsonl; build 不清空该表)。
 * 判据: `tools/param_registry.py verify` + `tools/verify_param_center.py`(8 项, 含真改数→回读→还原/越界必拒/非法档位必拒)
   + `engineering_db.py check` ⑧ 参数面。
 

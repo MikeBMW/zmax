@@ -5,7 +5,7 @@
   你可以设计一下路径结构；继续整合所有数据文件，现在的数据太杂乱了。」
 
 设计: data/ 顶层的 ~60 个条目收成 6 个桶 + README
-  data/database/  🗄 工程文件 + 数据库 (唯一; .proj / .db / param_events.jsonl / archive/)
+  data/database/  🗄 工程文件 + 数据库 (唯一; .proj / .db / archive/; 改数事件=库 param_events 表)
   data/skills/    💪 技能库 (L2 原子技能注册表 / 示教点 / 肌肉记忆 / 变更日志)   [原地, 名字已达标]
   data/scene/     🎬 场景 · 叠加 · 感知 (overlay_spec / cam_calib / traj_display / scene_state.json)
   data/memory/    🧠 记忆层 (memory_layers / shared / macro / assembly / muscle / intact / insert_position)
