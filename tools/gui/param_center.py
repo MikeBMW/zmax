@@ -7,7 +7,7 @@
     功能·性能·代码逻辑; 从顶层产品性能的数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构。」
 
 本页 = 数字的**唯一交互面** (数据面在 tools/param_registry.py, 真源在 config/… + 源码):
-  · 左: 分类树 (🟡标定 / 🔵画布 / 🟣代码 / 🟢产品性能 / 🟠运行开关) + 搜索 + 「只看可写/只看缺口」过滤
+  · 左: 分类树 (🟡标定 / 🔵画布 / 🟣代码 / 🟢产品性能 / 🟠运行开关 / 🩷空间点) + 搜索 + 「只看可写/只看缺口」过滤
   · 右: 数字表 —— 当前值·默认·最小·最大·单位·状态·真源位置·归属, 用颜色区分用途与状态
   · 双击一行 = 改数: 弹校验框 (范围/档位) → 先**预览影响链** (功能/模块/系统/KPI/代码位置) → 点「应用」才落真源
   · 落真源走 param_registry.set_param(write=True): 备份 → 写 → 回读核对; 代码常量写坏语法立即回滚
@@ -31,7 +31,8 @@ if os.path.join(ROOT, "tools") not in sys.path:
 C_BG, C_BG2, C_CARD = "#0f1318", "#131823", "#1a2230"
 C_WHITE, C_GRAY, C_DIM, C_BORDER = "#e6edf3", "#9aa7b4", "#6e7b8a", "#2a3441"
 C_BLUE, C_GREEN, C_GOLD, C_RED = "#4da3ff", "#00d4aa", "#ffc857", "#ff6b6b"
-CAT_ICON = {"calib": "🟡", "canvas": "🔵", "code": "🟣", "platform": "🟢", "switch": "🟠"}
+CAT_ICON = {"calib": "🟡", "canvas": "🔵", "code": "🟣", "platform": "🟢", "switch": "🟠",
+            "space": "🩷"}          # 🩷 空间点/示教点 (2026-10-10: 7 个空间点的 XYZ+四元数 接到参数中心)
 
 
 def _pr():
