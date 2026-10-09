@@ -91,3 +91,22 @@ python tools/project_archive.py upgrade <v1file> [--out]  # 老 v1 存档升 v2
   在控制台里存才会带上。
 * 标定里 `T_base_cam`/`plane_z`/`cell_geometry` 仍是**未标定**（存档不改这个事实，只如实带着缺口 +
   现场标定命令）。
+
+---
+
+## 7. 补 (2026-10-09 老倪两处反馈)
+
+**① 后缀改成 `.proj`** — 「zmax_space.zmaxproj 工程文件后缀应该是 proj」
+* `project_file.EXT = ".proj"`; 总工程默认名 `reports/projects/zmax_space.proj` (已改名迁移)。
+* **老档案不作废**: 读档按**内容**识别 (schema/kind), 不看后缀; 文件对话框同时列 `*.proj *.zmaxproj`;
+  另有 `find_space()` — 新后缀在就用它, 不在就退回老的 `zmax_space.zmaxproj`。
+
+**② 「点击 open 没反应? 应该打开 simulink 的画布啊」** — 真因 + 修法:
+* 真因: 打开后那行代码把存档里的 `canvas_stack_index` 当成"要切到哪一页"(`setCurrentIndex(idx)`),
+  而那份总工程是 5 号页存的 ⇒ 打开后停在**第 5 页**, 画布 tab (10) 没被前置 —— 看着就像"没反应"
+  (其实真源全写好了, 备份也做了)。
+* 修法: 打开(集成式/普通加载)后**一律切到 Simulink 画布 tab** (`setCurrentWidget(sim)`), 存档里的
+  页索引只当信息不再当指令; 画布是懒创建的 → `sim is None` 时直接 `_init_simulink()` 建出来再切
+  (并给 `_init_simulink` 加幂等闸, 防插第二份画布); 状态栏 + 日志明写"已切到 🧮 Simulink 画布"。
+* 取证 `tools/probe_open_space.py` (真建主窗口 + 替身对话框): 打开后 `当前页=画布=True`,
+  `画布场景项=272` (89 节点 + 184 连线) ⇒ 已进判据集 (`run_gui_verifiers.sh` 的 `open_space`)。

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""状态空间工程存档文件 (.zmaxproj) —— v2 全量存档 (2026-10-09)
+"""状态空间工程存档文件 (.proj; 旧 .zmaxproj 仍可读) —— v2 全量存档 (2026-10-09)
 
 老倪: 「需要保存 状态空间工程的所有配置，包括画布的模型，右侧侧面栏的所有配置，标定，测量，
        以及主参数，都要有相应的文件，你来设计一下工程存档文件」
@@ -39,7 +39,8 @@ import time
 SCHEMA = "zmax.statespace.project/2"
 SCHEMA_V1 = "zmax.statespace.project/1"
 COMPAT = (SCHEMA, SCHEMA_V1)
-EXT = ".zmaxproj"
+EXT = ".proj"                       # 🗂 2026-10-09 老倪: 工程文件后缀就该是 .proj
+LEGACY_EXTS = (".zmaxproj",)        # 老档案照旧能读 (内容识别, 不看后缀)
 
 # 画布页工具栏那 6 个运行档位 (属性名, 界面文字) —— 与 simulink_module.py 逐字对应
 RUN_CHECKS = (
@@ -635,18 +636,33 @@ def project_dir(root=None):
 #   将所有状态空间工程文件、标定、配置、主参数等, 都整合进这个总工程文件, 通过主窗口的
 #   文件 → 打开/加载工程 的方式, 集成式打开; 不像现在, 还得手动加载, 太散乱了。」
 #
-# 设计: 总工程 = 同一个 .zmaxproj 格式 + kind="zmax_space" 标记。区别只在**打开时的语义**:
+# 设计: 总工程 = 同一个 .proj 格式 + kind="zmax_space" 标记。区别只在**打开时的语义**:
 #   · 普通存档 (snapshot): 默认只回填画布+面板, 标定/主参数只核对不覆盖 (安全)
 #   · 总工程 (zmax_space): **集成式打开** —— 画布/标定/主参数/任务/面板一次全回填,
 #     每一步都先备份再写再回读 (三段纪律), 并给一页"恢复了什么"的报告。
 KIND_SPACE = "zmax_space"
 KIND_SNAPSHOT = "snapshot"
-SPACE_NAME = "zmax_space.zmaxproj"
+SPACE_NAME = "zmax_space.proj"
 INTEGRATED_SECTIONS = ("canvas", "calibration", "master_param", "tasks", "panel")
 
 
+def space_path_legacy(root=None):
+    """旧的 .zmaxproj 总工程 (没迁名时兜底找到它)"""
+    root = root or os.path.expanduser("~/zmax")
+    return os.path.join(project_dir(root), "zmax_space.zmaxproj")
+
+
+def find_space(root=None):
+    """总工程文件: 优先新后缀 .proj, 退回旧 .zmaxproj, 都没有则返回新路径 (供保存用)"""
+    n = space_path(root)
+    if os.path.exists(n):
+        return n
+    o = space_path_legacy(root)
+    return o if os.path.exists(o) else n
+
+
 def space_path(root=None):
-    """总工程文件路径 (默认 reports/projects/zmax_space.zmaxproj, 稳定不变)"""
+    """总工程文件路径 (默认 reports/projects/zmax_space.proj, 稳定不变)"""
     return os.path.join(project_dir(root), SPACE_NAME)
 
 

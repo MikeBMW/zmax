@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.26.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.26.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11303,7 +11303,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.26.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.26.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11311,9 +11311,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.26.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.26.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.26.2: v5.26.2 — 工程文件后缀 .proj + 打开工程真的切到 Simulink 画布 (2026-10-09)  老倪: 「zmax_space.zmaxproj 工程文件 后缀应该是 proj」+「我点击 open 怎么没反应? 应该打开 simulink 的画布啊」  · 后缀: EXT .zmaxproj → .proj; 总工程默认 reports/projects/zmax_space.proj (已改名迁移);   老档案不作废 (按内容识别不看后缀; 对话框列 *.proj *.zmaxproj; find_space() 新名不在就退回旧名)。 · 🔴 修「打开没反应」真因: 打开后原代码把存档里的 canvas_stack_index 当"切到哪一页" → 总工程存在第 5 页   ⇒ 打开后停在第 5 页, 画布没前置, 看着像没反应 (其实真源已写好+已备份)。   现在集成式打开 / 普通加载**都一律切到 Simulink 画布 tab**, 存档页索引只当信息不当指令;   画布懒创建 → sim 为空时直接建出来再切; _init_simulink 加幂等闸 (防插第二份画布);   状态栏 + 日志明写「已切到 🧮 Simulink 画布」。 · 判据: 新增 tools/probe_open_space.py (真建主窗口+替身对话框: 打开后当前页=画布, 画布场景项 272 ≥ 250),   已入 run_gui_verifiers.sh 的 open_space 项; verify_project_archive 加后缀判据 (含"旧 .zmaxproj 照样能读")。   GUI 判据集 12 项全绿。
         # v5.26.1: v5.26.1 — 画布工具栏: 删「⚙️ 运行开关」按钮 + 「⏹ 停止」挪到「⏭ 单步」右边 (2026-10-09)  老倪: 「画布 的 运行开关 删掉 还有个 停止，移动到 单步 按钮 右边」  · 工具栏「⚙️ 运行开关」按钮删除 —— 能力页照旧: 右侧栏下拉第 4 项「🔧 运行开关」   (ModelTreeDock.VIEW_KEYS[-1]) 即它, 6 个开关 + 作用/生效位置/实测代价都在; _show_run_cfg() 方法保留。 · 「⏹ 停止」从旧位置搬到「⏭ 单步」右边。工具栏顺序 (真读布局布局验证):   ▶ 运行 · 🔄 重启 · ⏭ 单步 · ⏹ 停止 · 🌐 数据空间窗口 …   运行中的启用/禁用逻辑读 self.btn_stop, 零改动。 · 判据: verify_run_cfg_panel ② 段改「按钮已删 + 工具栏无此文字 + 下拉 index=3 直达」;   verify_ui_slim 加「⚙️ 运行开关」进工具栏扫描 + 新增「单步右边必须是停止」顺序判据。两判据全绿 (ui_slim 50 项)。
         # v5.26.0: v5.26.0 — 控制台 UI 三次精简 + 「画布」菜单; 存档漂移判定修正 (2026-10-09)  老倪 (依次实现):  「画布上边 定位节点/全览/节点实现审计/INTACT机器人/数据闭环控制台 这些按钮都删掉; 如果状态空间工程需要, 则在代码上增加」  「右面的侧边栏, 字数太多了, 都有用么? 看着很多, 也很乱, 精简」  「保存模型/录制/停止/浮动/另存为/加载 这些不常用的按钮, 迁移到菜单栏里面, 你来设计 UI, 看如何显示」  · 工具栏 11 个按钮全部离开工具条 —— 能力一条没丢, 换入口:   定位节点 Ctrl+L · 全览 Ctrl+0 · 节点实现审计 Ctrl+Shift+A(+CLI) · 数据闭环控制台 Ctrl+Alt+P ·   INTACT机器人 = 画布节点双击 · 另存为/加载/保存模型/开始录制/停止录制/浮动画布 = 新菜单「画布(C)」。 · 新菜单 UI: 主窗口 文件(F)·画布(C)·视图(V)·编辑(E)·帮助文档(H)·关于(A);   「画布」按 文件/模型/录屏/窗口 四段分组, 每项带悬停说明 + 快捷键 (Ctrl+Shift+S/O/R/F)。   单一真源 = SimulinkModule.CANVAS_MENU (表) + attach_canvas_actions() 接管; 属性名沿用   btn_save/btn_load/btn_save_model/btn_record/btn_stop_rec/btn_float ⇒ 录制状态机等既有代码零改动。   QAction 两处适配: 无 rect() ⇒ 新增 _action_anchor() 定位气泡; 无 setStyleSheet() ⇒   录制中改画布横幅「⏺ 录制中 N 帧 ●/○」(比按钮变色更显眼)。 · 侧边栏精简 (数据一条没删): 长文案→短句+全文进 tooltip; 表格截断+tooltip (📋复制仍全文);   重复文案合并; 显示层压掉 "python3 tools/" 前缀。   标定真源 1815→1037 字 (−43%, camera 行 384→106: 浮点 4 位有效) · 运行开关 1570→722 字 (−54%,   卡面 ≤42 字) · 主参数 M 1609 字 · 下拉 4 条去冗长后缀 · M 页节点行 119→96 · 命令行 151→95 ·   真源路径改相对路径。 · 存档 (v5.25.0) 漂移判定修正: 比画布时剔除 M 节点那类「配置快照派生字段」(cfg_*/…_view/task_layer),   canvas_md5 这类派生值不再假报画布漂移; 总工程已按新口径刷新。 · 判据: 新增 tools/verify_ui_slim.py (49 项全绿) + tools/probe_canvas_menu.py (子进程真建主窗口,   规避离屏 DDS 退出 core dump); 同步改 verify_entries_cleanup / verify_step_follow / verify_run_cfg_panel   判据。GUI 判据集 11 项全绿 (含: 6 项菜单真触发到画布方法、三页字数真降且数据条数不变)。 · 老倪那台控制台 (pid 767026) 没动 (他在用) —— 重启一次即生效。
         # v5.25.0: v5.25.0 — 🗂 工程存档 v2 + 总工程 zmax_space (集成式打开) (2026-10-09)  老倪: 「需要保存 状态空间工程的所有配置… 都要有相应的文件, 你来设计一下工程存档文件」      +「定义一个 zmax_space 工程, 把所有状态空间工程文件/标定/配置/主参数整合进这个总工程文件,        通过主窗口 文件→打开/加载工程 集成式打开; 不像现在还得手动加载, 太散乱了」  · 存档格式 v2 (schema zmax.statespace.project/2, 自包含 JSON, 7 段):   ① canvas 画布模型 ② panel 右侧栏配置(视图/页签+6 运行开关+画布栈索引) ③ calibration 标定真源全文   +sha256/mtime+未标定项+现场标定命令 ④ master_param 主参数 M/inertia/范围/含义+M 节点快照   ⑤ measure measure_view/diagnose_view+数据总线配置 ⑥ tasks 任务绑定全文 ⑦ fingerprints 真源指纹表 · 🔴 真源唯一: 存档=快照+指纹; 写盘只走各工具自己的写口 (画布 flows.save_canvas / 标定 逐文件   .bak_<ts>→写→回读 sha256 / 任务 ss_task_bind --activate); 漂移比对剥掉 _meta/generated_at。 · 🗂 总工程 zmax_space: reports/projects/zmax_space.zmaxproj (kind=zmax_space)。   普通存档默认只回填画布+面板 (标定只核对); 总工程=**集成式打开**: 标定→主参数(回读)→任务→画布→面板   一次全回填, 每步先备份再写再回读, 给一页恢复报告。主窗口 文件 增「🗂 保存/打开总工程」(Ctrl+Alt+S/O);   老「📂 加载工程文件」选中总工程自动识别 kind 走集成式。 · 新工具 tools/project_archive.py: space-save/space-open/space-show/save/inspect/diff/verify/restore/   explode(拆成人能看的文件+MANIFEST.md)/list/upgrade(v1→v2)。 · 判据 tools/verify_project_archive.py ⑨ 段全绿 (含: 现场搅乱三处后 space-open 全量回填、   restore 默认不动标定、--with-calib --yes 回读 sha256、主窗口菜单两项、v1 兼容)。 · 已生成首份总工程 (含 6 开关 + 视图 mparam): reports/projects/zmax_space.zmaxproj (140.9 KB)。
@@ -12023,10 +12024,10 @@ class StudioMainWindow(QMainWindow):
             return
         from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
         if not path:
-            d = _pj.space_path(getattr(self, "repo_path", None))
+            d = _pj.find_space(getattr(self, "repo_path", None))
             path, _ = QFileDialog.getOpenFileName(self, "🗂 打开总工程 (zmax_space)",
                                                   os.path.dirname(d) or self._proj_dir(),
-                                                  "Z-MAX 总工程 (*%s);;所有文件 (*)" % _pj.EXT)
+                                                  "Z-MAX 总工程 (*%s *.zmaxproj);;所有文件 (*)" % _pj.EXT)
         if not path:
             self.statusBar().showMessage("已取消: 未打开总工程", 2500)
             return
@@ -12075,11 +12076,20 @@ class StudioMainWindow(QMainWindow):
         # 界面侧: 切回画布页 + 重载画布 + 写回 6 个运行开关 + 切到存档里的视图
         detail = "画布还没打开过 —— 已写入真源, 打开画布即生效"
         sim = getattr(self, "simulink", None)
+        if sim is None:
+            try:      # 画布是懒创建的 → 直接建出来, 别让"打开工程"看着没反应
+                self._init_simulink()
+                sim = getattr(self, "simulink", None)
+            except Exception as _e:                                             # noqa: BLE001
+                detail = "⚠️ 画布创建失败(真源已写好): %s" % _e
         if sim is not None:
             try:
-                idx = (r.get("ui") or {}).get("canvas_stack_index") or getattr(self, "_simulink_index", None)
-                if isinstance(idx, int):
-                    self.stack.setCurrentIndex(idx)
+                # 🐛 2026-10-09 老倪「点击 open 没反应? 应该打开 simulink 画布啊」:
+                #   原先把存档里的 canvas_stack_index 当"切到哪一页" → 存档时存了 5
+                #   ⇒ 打开后停在第 5 页 (不是画布), 看着像没反应。现在一律切到**画布 tab**。
+                _ci = getattr(self, "_simulink_index", None)
+                if isinstance(_ci, int) and 0 <= _ci < self.stack.count():
+                    self.stack.setCurrentWidget(sim)
                 sim.open_state_space()
                 n_apply, skip = _pj.apply_run_cfg(sim, r.get("run_cfg") or {})
                 _view = (r.get("panel") or {}).get("view")
@@ -12095,7 +12105,8 @@ class StudioMainWindow(QMainWindow):
             + "\n".join("   " + x for x in (r.get("lines") or []))
             + "\n\n界面: %s\n\n存档存于 %s · 控制台 %s"
             % (detail, r.get("saved_at"), r.get("version"))))
-        self.statusBar().showMessage("✅ 总工程已打开: %s" % os.path.basename(path), 8000)
+        self.statusBar().showMessage("✅ 总工程已打开并切到画布: %s" % os.path.basename(path), 8000)
+        self._ui_msg("🗂 总工程已打开 → 已切到 🧮 Simulink 画布 (%s)" % os.path.basename(path))
 
     def _load_project_file(self):
         """📂 文件 → 加载工程文件… (先给摘要让用户确认, 再写画布真源 + 重载界面)"""
@@ -12104,7 +12115,7 @@ class StudioMainWindow(QMainWindow):
             return
         from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
         path, _ = QFileDialog.getOpenFileName(self, "📂 加载状态空间工程文件 (接着上次调试)", self._proj_dir(),
-                                              "Z-MAX 工程文件 (*%s);;JSON (*.json);;所有文件 (*)" % _pj.EXT)
+                                              "Z-MAX 工程文件 (*%s *.zmaxproj);;JSON (*.json);;所有文件 (*)" % _pj.EXT)
         if not path:
             self.statusBar().showMessage("已取消: 未加载工程文件", 2500)
             return
@@ -12139,11 +12150,20 @@ class StudioMainWindow(QMainWindow):
         # ① 界面切回画布页 ② 重新加载画布(幂等: clear + 读真源) ③ 写回运行档位勾选
         sim = getattr(self, "simulink", None)
         detail = "画布还没打开过 —— 已写入真源, 打开画布(或重启控制台)即生效"
+        if sim is None:
+            try:      # 同上: 懒创建的画布在这里直接建出来
+                self._init_simulink()
+                sim = getattr(self, "simulink", None)
+            except Exception as _e:                                             # noqa: BLE001
+                detail = "⚠️ 画布创建失败(真源已写好): %s" % _e
         if sim is not None:
             try:
-                idx = (r.get("ui") or {}).get("canvas_stack_index") or getattr(self, "_simulink_index", None)
-                if isinstance(idx, int):
-                    self.stack.setCurrentIndex(idx)
+                # 🐛 2026-10-09 老倪「点击 open 没反应? 应该打开 simulink 画布啊」:
+                #   原先把存档里的 canvas_stack_index 当"切到哪一页" → 存档时存了 5
+                #   ⇒ 打开后停在第 5 页 (不是画布), 看着像没反应。现在一律切到**画布 tab**。
+                _ci = getattr(self, "_simulink_index", None)
+                if isinstance(_ci, int) and 0 <= _ci < self.stack.count():
+                    self.stack.setCurrentWidget(sim)
                 sim.open_state_space()
                 n_apply, skip = _pj.apply_run_cfg(sim, r.get("run_cfg") or {})
                 detail = "画布已重新加载 · 运行档位写回 %d 项%s" % (
@@ -12608,7 +12628,12 @@ class StudioMainWindow(QMainWindow):
         super().closeEvent(ev)
 
     def _init_simulink(self):
-        """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)"""
+        """🚀 延迟创建 SimulinkModule (2026-08-12 老倪: 主窗口先显示, 画布后台建)
+
+        🛡 2026-10-09: 加幂等闸 —— 「打开工程」会主动调用它 (画布懒创建), 启动定时器也会调,
+        重复调用会往 stack 里插第二份画布 ⇒ 直接返回既有实例。"""
+        if getattr(self, "simulink", None) is not None:
+            return
         # 🐛 2026-08-26: Mac 黑屏诊断 — 构造阶段打点日志 (写文件, 不依赖 GUI)
         # 🐛 2026-08-28: Windows exe 无 /tmp 目录 → 修复打点路径 (tempfile.gettempdir())
         #   根因: 3.3.0 起此处 open("/tmp/...") 在 Windows 抛 FileNotFoundError,

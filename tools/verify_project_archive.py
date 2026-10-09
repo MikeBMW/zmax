@@ -45,7 +45,7 @@ def run(*args, expect=0):
 
 import project_file as PF     # noqa: E402
 
-ARCH = os.path.join(TMP, "verify.zmaxproj")
+ARCH = os.path.join(TMP, "verify.proj")
 MANIFOLD = os.path.join(ROOT, "config/calib/zmax_manifold.json")
 _calib_bytes = open(MANIFOLD, "rb").read()          # 原始字节, 判据跑完复原
 
@@ -137,7 +137,7 @@ chk(len(panel["run_switches"]) == 6, "panel.run_switches 真读到 6 个开关")
 chk(panel.get("view") == "mparam" and panel.get("view_index") == 0,
     "panel 记下当前视图 = %s (index %s)" % (panel.get("view"), panel.get("view_index")))
 chk(panel.get("canvas_stack_index") == 7, "panel 记下画布栈索引 (加载后切回画布页用)")
-ARCH2 = os.path.join(TMP, "with_gui.zmaxproj")
+ARCH2 = os.path.join(TMP, "with_gui.proj")
 r2 = PF.save_project(ARCH2, sim=m, page=7, note="带控制台")
 p2 = json.load(open(ARCH2, encoding="utf-8"))
 chk(len(p2["panel"]["run_switches"]) == 6 and p2["panel"]["view"] == "mparam",
@@ -154,7 +154,7 @@ v1 = os.path.join(ROOT, "reports/projects/状态空间工程_20261008_1101.zmaxp
 if os.path.exists(v1):
     s = PF.read_summary(v1)
     chk(s["schema"] == PF.SCHEMA_V1 and s["canvas_ok"], "v1 老文件 read_summary 能读 (schema %s)" % s["schema"])
-    up = os.path.join(TMP, "upgraded.zmaxproj")
+    up = os.path.join(TMP, "upgraded.proj")
     r = run("upgrade", v1, "--out", up)
     chk(os.path.exists(up), "升级写出: %s" % up)
     p3 = json.load(open(up, encoding="utf-8"))
@@ -167,12 +167,20 @@ else:
 print("\n⑧ 🗂 总工程 (zmax_space): 集成式打开一次全回填")
 CANVAS_J = os.path.join(ROOT, "src/lerobot/engineering/flows/state_space_obs.json")
 _canvas_bytes = open(CANVAS_J, "rb").read()
-SPACE = os.path.join(TMP, "zmax_space.zmaxproj")
+SPACE = os.path.join(TMP, "zmax_space.proj")
 r = run("space-save", "--out", SPACE)
 chk(r.returncode == 0 and "kind=zmax_space" in r.stdout, "space-save 写出总工程 (kind 标记 + 集成段)")
 sp = json.load(open(SPACE, encoding="utf-8"))
 chk(sp.get("kind") == PF.KIND_SPACE and sp.get("integrated") == list(PF.INTEGRATED_SECTIONS),
     "总工程 kind=%s · 集成段 %s" % (sp.get("kind"), sp.get("integrated")))
+# 🗂 后缀: 默认 .proj; 老 .zmaxproj 仍能读 (内容识别, 不看后缀)
+chk(PF.EXT == ".proj", f"工程文件后缀 = {PF.EXT} (老倪: 后缀就该是 proj)")
+chk(os.path.basename(PF.SPACE_NAME) == "zmax_space.proj", f"总工程默认名 {PF.SPACE_NAME}")
+_old = os.path.join(TMP, "legacy_name.zmaxproj")
+shutil.copy(SPACE, _old)
+chk(PF.read_summary(_old)["kind"] == PF.KIND_SPACE and PF.is_space(_old),
+    "旧后缀 .zmaxproj 的档案照样能读/认得出 (rename 前的老文件不作废)")
+
 chk(PF.is_space(SPACE) and PF.read_summary(SPACE)["kind"] == PF.KIND_SPACE,
     "read_summary 能认出总工程 (老「加载工程文件」据此走集成式)")
 # 搅乱三处: 标定 M, 活跃任务, 画布 (改一个节点坐标)
@@ -214,7 +222,7 @@ chk(any("保存总工程" in t for t in menu_txt), "主窗口 文件菜单有「
 chk(any("打开总工程" in t for t in menu_txt), "主窗口 文件菜单有「🗂 打开总工程」")
 chk(callable(getattr(win, "_save_space_file", None)) and callable(getattr(win, "_open_space_file", None)),
     "两个处理函数已绑上菜单")
-SPACE2 = os.path.join(TMP, "zmax_space_gui.zmaxproj")
+SPACE2 = os.path.join(TMP, "zmax_space_gui.proj")
 r2 = PF.save_space(SPACE2, sim=m, page=7, note="GUI 存总工程")
 p2s = json.load(open(SPACE2, encoding="utf-8"))
 chk(len(p2s["panel"]["run_switches"]) == 6 and p2s["panel"].get("view") == "mparam",
