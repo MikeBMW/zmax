@@ -11,6 +11,31 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
+## 🗂 工程存档 (.zmaxproj v2) + 总工程 zmax_space (2026-10-09)
+
+老倪: 「保存状态空间工程所有配置(画布/右侧栏/标定/测量/主参数)…都要有相应的文件」+「定义一个
+zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不像现在还得手动加载」。
+
+* 格式 = 一个自包含 JSON, **7 段**: ①canvas ②panel(视图/页签+6 运行开关+画布栈索引)
+  ③calibration(真源全文+sha256/mtime+未标定项+现场标定命令) ④master_param(M/inertia/范围+M 节点快照)
+  ⑤measure(measure_view/diagnose_view+总线配置) ⑥tasks ⑦fingerprints(每个真源 sha256)。
+  代码: `tools/gui/project_file.py`(采集/比对/写入) + `tools/project_archive.py`(CLI: space-save/
+  space-open/space-show/save/inspect/diff/verify/restore/explode/list/upgrade)。
+* 🔴 **真源唯一**: 存档=快照+指纹; 写盘只走各自写口 —— 画布 `flows.save_canvas()`(校验+备份到
+  `flows/_archive/`)、标定 逐文件 `*.bak_<ts>`→写→**回读 sha256**、任务 `ss_task_bind.py --activate`。
+  普通存档默认**只回填画布+面板**; 标定/主参数只看不动 (要覆盖: `--with-calib --yes`)。
+* **总工程** = 同一格式 + `kind="zmax_space"` (固定 `reports/projects/zmax_space.zmaxproj`);
+  打开语义=**集成式**: 标定→主参数(回读)→任务→画布→面板 一次全回填, 每步先备份再写, 给一页报告。
+  入口: 主窗口 文件→ `🗂 保存/打开总工程` (Ctrl+Alt+S/O); 老的 `📂 加载工程文件` 选到总工程时
+  **自动识别 kind** 走集成式 (同一个菜单, 不用记两条路)。
+* 坑 1: **漂移比对必须先剥时间戳** (`_meta`/`generated_at`/`updated_at`) —— 否则每次写都会假报
+  「tasks 漂移」(值一样, 只因 generated_at 变了)。
+* 坑 2: 集成式打开**顺序**: 内容(标定/主参数/任务)先写, **画布最后** (画布里的 M 节点快照与标定同源);
+  面板态要由调用方回填 (`apply_run_cfg` + 切视图), 不在库里写。
+* 坑 3: 命令行存档读不到界面态 (运行开关/视图) —— 要如实标注「控制台没打开」, 别静默存空。
+* 交付配套: `verify_project_archive.py` ⑨ 段判据 (含: 现场摸乱三处后 space-open 全量回填、
+  restore 默认不动标定、主窗口菜单两项、v1 老存档兼容+升级)。
+
 ## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
 
 > ⚠️ **桌面版出包的两个硬教训 (2026-10-08, 坏包连发四版)**:
