@@ -70,6 +70,34 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * 未抱异常会 “QThread: Destroyed while thread is still running → Aborted” 假崩: 先看 traceback 第一行,
   别当环境问题 (真例: `QAction.title()` 不是 `text()`)。
 
+## 📚 模块库 ↔ 画布: 同步 / 拖入 / 删除 / 存为新工程 (2026-10-09)
+
+左侧栏 `LibraryPanel` 的条目**不是**手写清单 —— 它 = 静态组 + 两个**生成组** + 一张**删除名单**。
+改这块前先记住这个合成公式, 否则会去改错地方:
+
+```
+LIBRARY = LIBRARY_STATIC(源码里的手写组)
+        + _load_skill_library_groups()          # flows/atomic_skill_tokens.json (原子技能注册表)
+        + _load_state_space_library_group(nodes) # 画布节点: 给 nodes 就用内存(刚拖进来也算), 同 JSON 兜底
+        − _apply_library_curation(LIBRARY)        # config/library_curation.json 的 removed 名单
+```
+
+* **同步是活的**: `SimulinkModule.refresh_library(force=False)` → `_rebuild_library_globals(nodes)` +
+  `LibraryPanel._rebuild()`; 用「画布节点名集合 + curation mtime」签名做快路, 没变不重建 (495 个按钮
+  全建要几百 ms)。`load_flow_file()` 收尾自动调一次 → 换画布 = 库跟着换。
+* **拖进画布**: `LibButton`(库按钮子类) 拖 ≥8px → `QDrag` + MIME `LIB_MIME="application/x-zmax-lib-item"`
+  (载荷 `{type,name,params,group}`); 画布侧 `SimCanvas.setAcceptDrops(True)` + `dragEnter/dragMove/dropEvent`
+  → `add_node_from_lib(payload, mapToScene(落点))`。拖 = 落鼠标处, 单击 = 老行为 (画布中心)。
+  * **坑**: `QDropEvent` **不接管** `QMimeData` 所有权 —— `QDropEvent(pos,act,btn.drag_mime(),...)`
+    这种内联写法 Python 侧无引用 → GC → **段错误**。先 `mime = btn.drag_mime()` 接住再传。
+* **删除条目**: 库按钮右键 → `_remove_entry` → `remove_library_entry()` 写 curation 名单 → `refresh_library(force=True)`。
+  删条目**不动画布节点**; `lib_sync.py restore` 整表还原。别再把删/改写成直接改源码。
+* **判据口径**: `lib_sync.py verify` 的「画布节点都得在库里」**只认状态空间画布**
+  (`state_space_obs.json`) —— 库不是所有 flow 的并集 (别的 side canvas 只报覆盖率)。
+  判据 `tools/verify_library_sync.py` 已入 `run_gui_verifiers.sh`; 体检/清理走 `tools/lib_sync.py check|dead|prune|restore`。
+* **离屏测保存类功能**: 代码里若真建 `QFileDialog(...)+dlg.exec_()` (如 `export_flow`), 替身要替 `QFileDialog.exec_`
+  → `Accepted` + `QFileDialog.selectedFiles` → 临时路径 (替 `getSaveFileName` 没用, 代码根本没调它)。
+
 ## 🔴 GUI「点了没反应」实机取证三步 (2026-10-09)
 
 ### ⛔ 重启控制台前必查 (我自己踩过, 比 bug 更致命)

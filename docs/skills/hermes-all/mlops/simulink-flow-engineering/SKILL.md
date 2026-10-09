@@ -5,6 +5,25 @@ description: "Use when 生成/改 simulink flow JSON、模块库LIBRARY加删按
 
 # Simulink Flow 工程化
 
+## 📚 模块库 (LIBRARY) 不是一份手写清单 — 先看合成公式 (2026-10-09)
+
+要删/加模块库按钮时, **别只改那一大堆 `LIBRARY_STATIC`**:
+
+```
+LIBRARY = LIBRARY_STATIC                        # 源码里手写的组
+        + _load_skill_library_groups()          # flows/atomic_skill_tokens.json (原子技能注册表)
+        + _load_state_space_library_group(nodes) # 状态空间画布节点 (传内存 nodes 优先, JSON 兜底)
+        − _apply_library_curation(...)            # config/library_curation.json 的 removed 名单
+```
+
+* 状态空间那一组是**自动生成**的 → 画布加了节点忘了改库? 先查 `state_space_obs.json` 有没有真的存盘,
+  再看 `SimulinkModule.refresh_library()` 被没被调 (它把内存里的节点也算进去; 签名没变则跳过重建)。
+* 库条目**删/减全走 curation 名单** (`tools/lib_sync.py prune|restore|check|dead|verify`), 删条目**不动画布节点**。
+* 库按钮拖进画布 = `LibButton`(QDrag + MIME `application/x-zmax-lib-item`) → 画布 `dropEvent`
+  → `add_node_from_lib`; 拖=落鼠标处, 单击=画布中心。`QDropEvent` 不接管 QMimeData 所有权
+  (内联造 mime 不持引用 → 段错误)。
+* 判据: `tools/verify_library_sync.py` (7 项, 含真拖一次 + 真存盘); 设计文档 `docs/design/library_sync_20261009.md`。
+
 > refs: wsl-display-xlaunch.md (XLaunch/vcxsrv 假死重启 + DISPLAY=<宿主IP>:0 + xdotool wayland 限制 + pkill 自匹配坑), modelzoo-std-project.md (Model Zoo 标准 lerobot 工程脚手架: 容器挂载 /modelzoo+/app、DOCKER_BIN 假docker验证、LeRobot v3.0 chunk 数据集格式), solution-page-and-deploy.md (方案分页与画布对齐 + ECS scp 部署: git push 不自动部署, sshpass Nix19789 root@39.102.211.79, PDF 下载按钮), insert-video-and-docker-perms.md (插拔视频生成链路: docker root 600 权限崩GUI + gen_insert_video 模型加载4连坑 + force 自动生成 + cmd start 打开视频), model-tree-mathematization.md (数据字典 Model Tree + 数学化: 4视图下拉/参数标定/传递函数→状态空间→复数稳定性/状态空间设计), state-space-analysis.md (状态空间九指标评估脚本 + 三张工程图 + matplotlib 中文字体修复 + 节点id重映射坑 + 右脑MLP无GRU), **canvas-topology-and-dataflow-layout-2026-09-19.md** (画布连接拓扑设计: 悬空节点点名法 + 环境→节点必须有真读写 + **x 按数据流层级定列 (DFS 反馈边→DAG 最长路) 消掉右→左连线** + 双向关系标 ↩ + 自适应行高 + 同名函数覆盖/行背景名决定档位 两坑)
 
 ## 触发条件
