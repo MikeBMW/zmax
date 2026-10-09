@@ -164,11 +164,20 @@ for _c in _cards_w:
 _light = {k: v for k, v in _faces.items() if "亮" in str(v)}
 chk(not _light, "卡面必须是深色 (老倪: 不改白底) — 违规: %s" % (_light or "无"))
 
+_subs, _cnt = {}, []
+for _c in _cards_w:
+    _ls = [l.text() for l in _c.findChildren(_QL)]
+    _subs[_c.layer_id] = _ls[1] if len(_ls) > 1 else ""
+    if re.search(r"\d+\s*(条)?\s*功能|\d+\s*个可改数字|\d+\s*条", _subs[_c.layer_id]):
+        _cnt.append("%s: %s" % (_c.layer_id, _subs[_c.layer_id]))
+chk(not _cnt, "卡面副标题不含计数 (N 功能 / N 条功能 / N 个可改数字) — 违规: %s" % (_cnt or "无"))
+chk(all(_subs.values()), "每张卡都有副标题 (%s)" % _subs)
+
 _labs = [l.text() for l in win.sidebar.findChildren(_QL)]
 chk(not [x for x in _labs if x.strip() in ("① 产品", "② 系统", "③ 产品配置", "④ 数据配置")],
     "分组小字已删净 (产品/系统/产品配置/数据配置 4 个标题)")
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (11 项)" if not FAIL else
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (13 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

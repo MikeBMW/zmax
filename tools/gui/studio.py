@@ -793,7 +793,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.33.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.33.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -819,15 +819,15 @@ class SystemSidebar(QFrame):
         self.zmax = SystemLayerCard(
             "zmax", "🏭 Z-MAX 平台", "Z700 精细 · Z100 通用",
             CARD_BORDER["zmax"],
-            "特征 18 → 系统 3 → 功能 74 · 点开看产品与功能清单",
+            "特征 18 · 系统 3 · 功能 74 · 点开看产品与功能清单",
             mcd=_mcd_prod
         )
         self.zmax.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.zmax)
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
-            "sys2", "System 2", "L4/L5 认知决策 · 30 功能",
-            CARD_BORDER["sys2"], "云端智能体 · 任务拆解调度 · 流形世界模型",
+            "sys2", "System 2", "L4/L5 认知决策",
+            CARD_BORDER["sys2"], "云端智能体 · 任务拆解调度 · 流形世界模型 · 功能 30",
             mcd=_MCD.get("sys2")
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
@@ -835,8 +835,8 @@ class SystemSidebar(QFrame):
 
         # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
         self.sys1 = SystemLayerCard(
-            "sys1", "System 1", "L3 动作执行 · 4 功能",
-            CARD_BORDER["sys1"], "VLA-T 动作 500M + Z-Flow 引导 15M",
+            "sys1", "System 1", "L3 动作执行",
+            CARD_BORDER["sys1"], "VLA-T 动作 500M + Z-Flow 引导 15M · 功能 4",
             mcd=_MCD.get("sys1")
         )
         self.sys1.clicked.connect(self.layer_clicked.emit)
@@ -844,16 +844,16 @@ class SystemSidebar(QFrame):
 
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
-            "sys0", "System 0", "L2 基石执行 · 27 功能",
-            CARD_BORDER["sys0"], "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆",
+            "sys0", "System 0", "L2 基石执行",
+            CARD_BORDER["sys0"], "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆 · 功能 27",
             mcd=_MCD.get("sys0")
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys0)
 
         self.fn_card = SystemLayerCard(
-            "spec", "📋 功能清单", "74 条功能 · 最小能力单元",
-            CARD_BORDER["spec"], "点开: 每个系统按 配置 / 标定 / 诊断 三轴配功能",
+            "spec", "📋 功能清单", "配置 / 标定 / 诊断 三轴",
+            CARD_BORDER["spec"], "74 条功能 · 每个系统按 配置 / 标定 / 诊断 三轴配功能",
             mcd=_mcd_prod
         )
         self.fn_card.clicked.connect(self.layer_clicked.emit)
@@ -862,9 +862,9 @@ class SystemSidebar(QFrame):
         # ④ 数据配置面放最下面 (老倪: 参数中心放最下面 · 数据用参数中心改, 配置用功能清单改)
         layout.addStretch()
         self.params_card = SystemLayerCard(
-            "params", "🎛 参数中心", "162 个可改数字",
+            "params", "🎛 参数中心", "改数 → 链动 功能·性能·代码",
             CARD_BORDER["params"],
-            "双击改数 → 链动 功能·性能·代码 (先预览再落真源)",
+            "162 个可改数字 · 双击改数, 先预览影响链再落真源",
             mcd=_mcd_prod
         )
         self.params_card.clicked.connect(self.layer_clicked.emit)
@@ -11441,7 +11441,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.33.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.33.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11449,9 +11449,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.33.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.33.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.33.2: v5.33.2 — 侧栏卡面去掉计数字样 (2026-10-09 老倪)  老倪: 「把 30功能 4功能 74条功能 这样的字样去掉。」  卡面副标题去计数 (计数移进 tooltip, 悬停可见):   🏭 Z-MAX 平台    Z700 精细 · Z100 通用   System 2         L4/L5 认知决策   System 1         L3 动作执行   System 0         L2 基石执行   📋 功能清单      配置 / 标定 / 诊断 三轴   🎛 参数中心      改数 → 链动 功能·性能·代码 tooltip 保留全量信息: Z-MAX 卡 "特征 18 · 系统 3 · 功能 74 · 点开看产品与功能清单"; System 2 "…· 功能 30"; System 1 "…· 功能 4"; System 0 "…· 功能 27"; 功能清单 "74 条功能 · 每个系统按 配置/标定/诊断 三轴配功能"; 参数中心 "162 个可改数字 · 双击改数…"。  判据 verify_platform_spec 11 → 13 项, 新增:   ⑪ 卡面副标题不得出现 计数 (N 功能 / N 条功能 / N 个可改数字) —— 正则拦, 违规即红   ⑫ 每张卡都必须有副标题 (防止为了"去计数"把副标题整行删空) 实测: 13 项全绿 (副标题实测 = 上述六条; 无计数) · verify_param_center 8 项全绿 · 实机 OCR 复核。
         # v5.33.1: v5.33.1 — 卡面回深色 (去掉白底), 小字改灰 (2026-10-09 老倪)  老倪: 「怎么改成白色背景了? 对比度太大了, 不用白色背景。」  · 卡面: 浅灰 #eef0f4 → 深灰蓝 #1f2733 (悬停 #27313f)。比侧栏底 #161b22 略亮一档, 块的边界靠   彩色边框区分, 不用白底也不用跟底同色。 · 卡里的字: 标题 #e6edf3 (浅) · 小字 #8b949e (灰) —— 深底上灰字看得见, 也压得住对比度;   之前为了配灰黑字才把卡面改浅, 白底被否后连字一起回深底方案。 · 边框仍多彩 (金/紫/青玉/珊瑚/草绿/银 6 种), 未动。 · 判据新增第 ⑩ 条「卡面必须是深色 (亮度 ≤120), 不用白底」, 把这次的方向固化, 免得再被翻回白底;   verify_platform_spec 10 → 11 项全绿 (卡内文字 2 色 {#e6edf3, #8b949e} · 边框 6 色 · 卡面深色 · 分组小字已删)。   像素取证: 侧栏卡面 #1f2733 (31,39,51) 57277px 为主, 无白色块。
         # v5.33.0: v5.33.0 — 左侧栏: 删分组小标题 · 边框改多彩 · 卡面浅灰+灰黑字 (2026-10-09 老倪)  老倪: 「删掉小字 系统 产品 数据配置; 边框可以用不同颜色; 方块里的字小字用灰黑吧。」  ① 删掉 4 个分组小标题 (① 产品 / ② 系统 / ③ 产品配置 / ④ 数据配置) —— 侧栏不再有分组小字,    直接 6 张卡从上到下; 原来挂在标题上的定义 (产品/系统/功能) 已无界面载体, 语义移到 tooltip 与    功能清单页页头。 ② 边框改多彩 (之前统一暖金): 每张卡一个边框色, 都避开蓝色 ——    🏭 Z-MAX 平台 #d9a441 金 · System 2 #a78bfa 紫 · System 1 #2fbf9f 青玉 ·    System 0 #e06c75 珊瑚 · 📋 功能清单 #7fa650 草绿 · 🎛 参数中心 #b0b7c3 银。 ③ 方块里的字改灰黑: 卡面由深色 #1c2333 改浅灰 #eef0f4 (悬停 #f8fafc), 于是字可以压成深色 ——    标题 #1c2024 近黑 (12pt 粗) · 小字 #5b6472 灰黑 (11pt)。深底上灰黑字看不见, 所以连卡面一起改浅。    侧栏底仍是深色, 卡变成浅底彩色边框的"标签块", 对比清楚。 ④ 副标题缩到单行不折行: 「Z700 精细 · Z100 通用」(原来「Z700 精细操作 · Z100 通用操作」会折成两行)。  判据 verify_platform_spec 9 → 10 项, 全部按新规则改写:   · 每卡 ≤2 字色 且 边框色 ≠ 卡内任一字色 且 卡内 QLabel ≤4 (说明行没被加回来)   · 卡内文字整体 ≤2 色 (实测 ['#1c2024','#5b6472'] = 标题近黑 + 小字灰黑)   · 边框允许不同颜色 (实测 6 种: 金/紫/青玉/珊瑚/草绿/银)   · 分组小字已删净 (① 产品 / ② 系统 / ③ 产品配置 / ④ 数据配置 均不存在) 实测: verify_platform_spec 10 项全绿 · verify_param_center 8 项全绿 · 实机 OCR 复核 (卡面只剩标题+单行副标题, 分组小字已消失); 像素取证: 侧栏卡面 #eef0f4 (238,240,244) 64313px 为主, 边框金 (217,164,65) 与草绿 (127,166,80) 并存。
         # v5.32.2: v5.32.2 — 边框色与字体色分离: 金只给边框, 字一律白 (2026-10-09 老倪)  老倪: 「边框和字体别用同一种颜色。」  ① 之前: 边框和副标题/分组标题/页脚都是同一个暖金 #d9a441 ⇒ 边框和字同色。    现在: 金色只出现在**卡片边框**; 卡里的字(标题/副标题) + 分组标题 + 页脚 + 侧栏 logo 全部白色    #e6edf3。标题 12pt 粗 / 副标题 11pt 常规, 靠字号字重分层, 不再靠颜色。 ② 顺手去掉标题前的 ● 圆点 —— 它本身就是"金颜色的字", 与新规则冲突, 去掉后卡面只剩「标题 + 一行副标题」。 ③ 判据 verify_platform_spec 8 → 9 项, 新增 ⑨「卡的边框色 ≠ 卡内字体色」(从卡样式表抽 border 色,    与卡内 QLabel 的 color 比对, 相同即红); ⑧ 侧栏整体配色实测 1 种字色 {#e6edf3} + 边框金 = 2 色 ✅。    像素取证: 侧栏区金 (217,164,65) 4550px = 边框, 白 (230,237,243) 1373px = 文字。
