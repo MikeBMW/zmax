@@ -22,7 +22,7 @@
 
 # ─────────────────────── 元信息 ───────────────────────
 VERSION = "1.0.0"
-UPDATED = "2026-09-29"
+UPDATED = "2026-10-10"
 DDS_PREFIX = "zmax/"          # 实际话题名 = DDS_PREFIX + key  (见 zmax_dds/zmax_node.py:95)
 
 # 类型定义真源(当前在仓库外, 见 "收口计划")
@@ -203,6 +203,86 @@ TOPICS = {
                        "发动机类比: 输入功率 P_in / 转速 ω / 扭矩 τ=P每循环做功 / 能量 E=τ·N / 效率 η=E/W_in。"
                        "1 CJ ≜ 把归一化势能下降 1.0 的能力 (逐层同口径); 总能量 E_total = Σ(存量+做功)"),
     },
+    "ds_dataset": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "数据集", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/dataset_inventory.py --json",
+        "consumers": ['控制台 数据集页/数据空间页', '大屏 dashboard_source.py'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['real_path', 'category', 'size_bytes', 'file_count', 'latest_mtime'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_model": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "模型引擎", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/model_inventory.py --json",
+        "consumers": ['控制台 模型引擎页/数据空间页', '大屏 dashboard_source.py'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['layer', 'name', 'active', 'size_h', 'mtime', 'gpu.util', 'mem_used_mb', 'temp_c'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_scene": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "场景", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/scene_edit.py list --json",
+        "consumers": ['控制台 Sim&Real 页', '8793 叠加服务', '建图同步 map_marker_sync.py'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['objects[]', 'markers[]', 'fences[]', 'trajectories[]', 'visibility.deleted/traj_show'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_endpoint": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "监控", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/remote_monitor_aggregate.py --json",
+        "consumers": ['控制台 监控页/数据空间页', '大屏', '飞书卡片'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['endpoints[].name/url/ok/status/data_age_s/stale', 'same_source[].fact/consistent/tol'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_version": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "版本", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/verify_version_sync.py --json",
+        "consumers": ['控制台 版本同步页/数据空间页', '大屏'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['canonical', 'ok', 'remote_has_tag', 'release_tag', 'deviations[]'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_aoi": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "AOI", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "工控机 AOI 10082/10083 (/last_result)",
+        "consumers": ['控制台 工控机页', 'remote_monitor_aggregate'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['verdict', 'count', 'ms', 'n'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_hil": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "HIL", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/hil_local_api.py (8795 /hil/state)",
+        "consumers": ['控制台 数据空间页', '手机现场页'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['stage', 'frame_age_s', 'layers', 'events', 'canvas_nodes'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
+    "ds_arch": {
+        "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
+        "area": "架构", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
+        "producer": "tools/arch_graph.py --json",
+        "consumers": ['控制台 系统架构页/数据空间页', '工程库'],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ['nodes', 'links', 'layers[]', 'edges[]'],
+        "quality": ["freshness", "no_zero_fake", "source_on_disk"],
+        "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
+    },
 }
 
 # ─────────────────────── 遥测模式 → 允许话题 (口径与守护一致) ───────────────────────
@@ -218,11 +298,17 @@ MODE_TOPICS = {
               "ss_diag", "ss_test", "ss_plan", "ss_energy"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
+
+# 8 个功能区切面 (ds_*) 的**登记状态**: 话题/生产者/消费者/质量已在 TOPICS 里定好, 但守护会按
+# MODE_TOPICS 预建 DDS 类型, 而 `zmax::SliceJSON` 类型还没落地 ⇒ 现在放进 MODE_TOPICS 会让
+# diag 档直接起不来。故单列此处, 落地 SliceJSON(IDL) + 通用 JSON 生产者后并入各档。
+MODE_TOPICS_PENDING = {m: [k for k in TOPICS if k.startswith("ds_")] for m in ("diag", "calib", "test")}
+DS_SLICES_NEED = "dds/ss_types.py 增 zmax::SliceJSON (string key, string json, double ts) + tools/dds_slice_publish.py"
 MODE_DESC = {
     "prod":  "量产: 零开销 —— 不建 DDS 参与者、不开口、不 import cyclonedds",
     "diag":  "诊断: 只取性能/硬件类(不碰状态与标定)",
     "calib": "标定: 状态+动作+连线+标定量(现场核对用)",
-    "test":  "测试: 全量 14 话题(取证/回归)",
+    "test":  "测试: 全量 22 话题(取证/回归, 含 8 个功能区切面 ds_*)",
     "dev":   "同 test",
 }
 

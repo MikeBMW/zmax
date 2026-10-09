@@ -55,10 +55,12 @@ STALE_S = 5.0                     # 源帧龄超过它就只发 diag, 不发状�
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
 MODE_TOPICS = {
     "prod": [],
-    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag"],
-    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag"],
+    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
+    "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
+              "ss_plan", "ss_energy"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
-             "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test"],
+             "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
+             "ss_plan", "ss_energy"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
