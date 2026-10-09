@@ -150,13 +150,25 @@ for _c in _cards_w:
     if len(_c.findChildren(_QL)) > 4:
         _bad.setdefault(_c.layer_id, []).append("labels=%d(说明行没删净?)" % len(_c.findChildren(_QL)))
 chk(len(_cards_w) == 6 and not _bad, "每卡 ≤2 字色 · 边框色≠字色 · 无多余说明行 (违规: %s)" % (_bad or "无"))
-chk(len(_txt_cols) <= 2, "卡内文字整体 ≤2 色 (灰黑小字 + 近黑标题; 实际 %d 种: %s)" % (len(_txt_cols), sorted(_txt_cols)))
+chk(len(_txt_cols) <= 2, "卡内文字整体 ≤2 色 (浅标题 + 灰小字; 实际 %d 种: %s)" % (len(_txt_cols), sorted(_txt_cols)))
 chk(len(set(b for b in _borders.values() if b)) >= 3, "边框允许不同颜色 (实际 %d 种: %s)" % (len(set(_borders.values())), _borders))
+_faces = {}
+for _c in _cards_w:
+    _bg = re.findall(r"background:\s*(#[0-9a-fA-F]{6})", _c.styleSheet() or "")
+    if _bg:
+        _h = _bg[0].lstrip("#")
+        _faces[_c.layer_id] = _bg[0]
+        _lum = (int(_h[0:2], 16) + int(_h[2:4], 16) + int(_h[4:6], 16)) / 3
+        if _lum > 120:
+            _faces[_c.layer_id] = "%s 亮点=%.0f(白底?)" % (_bg[0], _lum)
+_light = {k: v for k, v in _faces.items() if "亮" in str(v)}
+chk(not _light, "卡面必须是深色 (老倪: 不改白底) — 违规: %s" % (_light or "无"))
+
 _labs = [l.text() for l in win.sidebar.findChildren(_QL)]
 chk(not [x for x in _labs if x.strip() in ("① 产品", "② 系统", "③ 产品配置", "④ 数据配置")],
     "分组小字已删净 (产品/系统/产品配置/数据配置 4 个标题)")
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (10 项)" if not FAIL else
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (11 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)
