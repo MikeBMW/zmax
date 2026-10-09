@@ -72,16 +72,26 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 
 ## 🔴 GUI「点了没反应」实机取证三步 (2026-10-09)
 
+### ⛔ 重启控制台前必查 (我自己踩过, 比 bug 更致命)
+本会话跑过离屏判据后, shell 里会残留 **`QT_QPA_PLATFORM=offscreen`**; 接着 `studio_ctl.sh restart`
+就把它**继承**进 GUI ⇒ 进程活着、日志正常、窗口 `visible=True` 、可用区 800x600, **但根本没有窗口**
+(无 X 连接, `xdotool search --pid` 空, `/proc/PID/fd` 无 X11 socket)。
+⇒ 重启前 `unset QT_QPA_PLATFORM`; `launch_studio.sh` 已强制 `export QT_QPA_PLATFORM=xcb`。
+排查一个正在跑的 GUI 是不是真的在 X 上: `xdotool search --pid <pid>` + `ls /proc/<pid>/fd | grep X11`。
+
 老倪报「点击 open 没反应」时, **别只看代码**: 他跑的就是本机窗口, 取证要直接上 :0。
 
 1. **先看应用自己的 stderr 日志** (`/tmp/studio_launch.log` 这类启动重定向文件; 它运行期也在写)。
    实例: 里面赫然是 `QAction::event: Ambiguous shortcut overload: Ctrl+Shift+O`
    ⇒ **两个 QAction 注册了同一个快捷键 = 两个都不触发** (按钮迁菜单/新加菜单最容易撞)。
    全窗口扫一遍: `for a in win.findChildren(QAction): a.shortcut().toString()` 建桶找重复。
-2. **确认框默认按钮**: 本项目 `_msg/yes_no` 原本一律 `setDefaultButton(No)` + 按钮写「是/否」
+2. **确认框默认按钮 / 初始焦点**: 本项目 `_msg/yes_no` 原本一律 `setDefaultButton(No)` + 按钮写「是/否」
    ⇒ 用户回车/点默认按钮 = **静默取消**, 只剩 2.5s 状态栏一行字 = “没反应”。
-   打开/加载/导入类确认框一律 `default_yes=True` + `yes_text="🗂 打开工程"/no_text="取消"`;
-   危险操作 (删节点/覆盖) 仍旧默认「否」。
+   **光 `setDefaultButton(Yes)` 还不够**: 实机初始焦点仍会落在「取消」上, 回车/空格打的是**有焦点的按钮**
+   ⇒ 必须 `default + focus + escape` 三个一起钉 (`_yes.setDefault(True); _yes.setFocus(); setEscapeButton(_no)`)。
+   Qt 在 Linux 把肯定按钮放**右边** (与 GTK 同), 靠边框色 `#00d4aa` 能定位默认按钮 (PIL 抽像素比 OCR 准)。
+3. **一步到位比确认框强**: 打开工程类操作**直接去掉二次确认** —— 在文件对话框选中文件即确认
+   (写盘前已全量备份, 漂移对照搬到完成后的报告里)。少一道模态框 = 少一类“静默取消”的坑。
 3. **驱动实机看真相**: `xdotool` 可用 (`DISPLAY=:0`, scrot 截图 + tesseract -l chi_sim OCR;
    多显示器时 `wmctrl -lG` 拿窗口几何再 PIL 裁右半屏)。已验证: 点击/按键能进 app (对比截图差异/日得确认),
    `Ctrl+Alt+O` 这类**唯一**快捷键一按就弹文件框 —— 用它区分“接线坏了”vs“快捷键撞了”。
