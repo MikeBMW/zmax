@@ -15,6 +15,13 @@ LOG="/tmp/studio_launch.log"
 # 本机 Xorg 显示 (桌面会话一般已设, 兜底 :0)
 export DISPLAY="${DISPLAY:-:0}"
 
+# 🔴 2026-10-09 老倪: 「重启后控制台不见了」——真根因: agent 在同一个 shell 里跑过
+#   `export QT_QPA_PLATFORM=offscreen` 的离屏判据, 于是重启控制台时**继承了这个变量**:
+#   GUI 起在 offscreen 平台 → 进程活着、日志正常、窗口"visible=True", 但**根本没有窗口** (没有 X 连接)。
+#   ⇒ 这里强制回到真 X11 平台, 免得测试环境把线上界面弄没。
+unset QT_QPA_PLATFORM
+export QT_QPA_PLATFORM=xcb
+
 # 🔴 2026-09-27 老倪: 「点了场景叠加什么都没打开」的真根因 —— 控制台从终端/服务启动时会带
 #   DBUS_SESSION_BUS_ADDRESS=disabled:(本机实测就是这样), 于是 snap 版 chromium 连不上 snapd,
 #   报 "…is not a snap cgroup for tag snap.chromium.chromium" 后静默退出(exit 1, 零窗口)。

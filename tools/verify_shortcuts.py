@@ -12,6 +12,7 @@
 """
 import os
 import sys
+import inspect
 
 ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(ROOT, "tools/gui"))
@@ -58,17 +59,17 @@ chk(buckets.get("Ctrl+Shift+L") == ["📂 加载 JSON…"],
 chk(buckets.get("Ctrl+Alt+F") == ["⛶ 浮动画布 (独立窗口)"],
     "画布「⛶ 浮动画布」已改到 Ctrl+Alt+F → %s" % buckets.get("Ctrl+Alt+F"))
 
-# ③ 「打开工程」确认框: 默认按钮必须是「是」+ 按钮文字是动作名 (不是「是/否」)
-print("③ 确认框默认按钮 (老倪「点了没反应」根因之一: 默认=否 ⇒ 回车静默取消)", flush=True)
-import inspect                                                                    # noqa: E402
-p = inspect.signature(ST._msg_ask).parameters
-chk("default_yes" in p, "_msg_ask 支持 default_yes (默认按钮可指定)")
-chk(p.get("default_yes").default is False, "默认仍是「否」(危险操作不擅自确认)")
-chk("yes_text" in p and "no_text" in p, "_msg_ask 支持把按钮写成动作名 (打开工程/取消)")
+# ③ 「打开工程」不再有二次确认框 (实机踩坑: 确认框默认/焦点落在「否」⇒ 回车静默取消 = 用户嘴里"点了没反应")
+#    选中文件即确认; 写盘前全量备份, 完成后报告里给漂移对照。_msg 的 default_yes/动作名按钮能力保留给别的场景。
+print("③ 打开工程 = 一步 (选文件即确认, 无二次确认框)", flush=True)
 src = open(os.path.join(ROOT, "tools/gui/studio.py"), encoding="utf-8").read()
-chk(src.count('yes_text="🗂 打开工程"') == 1 and src.count('yes_text="📂 加载工程"') == 1,
-    "两条打开路径都用了动作名按钮 (🗂 打开工程 / 📂 加载工程)")
-chk(src.count("default_yes=True") >= 2, "两条打开路径都设了 default_yes=True (回车=打开)")
+chk('_msg_ask(self, "🗂 集成式打开总工程"' not in src, "打开总工程 不再弹确认框")
+chk('_msg_ask(self, "📂 加载工程文件"' not in src, "加载工程文件 不再弹确认框")
+chk(src.count('跳过确认框 (选文件即确认)') == 2, "两条打开路径都留痕「跳过确认框」(可追溯)")
+chk("当前现场 vs 这个总工程 (打开前核对)" in src, "漂移对照没丢 —— 挪到打开完成后的报告里")
+p = inspect.signature(ST._msg_ask).parameters
+chk("default_yes" in p and "yes_text" in p, "_msg_ask 仍支持 default_yes/动作名按钮 (别的确认框可用)")
+chk(p.get("default_yes").default is False, "危险操作默认仍是「否」(不擅自确认)")
 
 # ④ 留痕: 打开/加载 全链写 zmax_data/logs/open_project.log
 print("④ 失败可取证: 打开工程留痕", flush=True)

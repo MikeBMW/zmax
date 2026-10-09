@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.26.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.26.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11295,14 +11295,24 @@ def _msg(parent, title, text, kind="info", yes_no=False, yes_text=None, no_text=
     mb.setStyleSheet(_MSG_SS)
     if yes_no:
         mb.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        _yes, _no = mb.button(QMessageBox.Yes), mb.button(QMessageBox.No)
         try:      # 动作名比「是/否」自解释 —— 用户才不会一按回车把自己取消掉
             if yes_text:
-                mb.button(QMessageBox.Yes).setText(yes_text)
+                _yes.setText(yes_text)
             if no_text:
-                mb.button(QMessageBox.No).setText(no_text)
+                _no.setText(no_text)
         except Exception:                                                        # noqa: BLE001
             pass
-        mb.setDefaultButton(QMessageBox.Yes if default_yes else QMessageBox.No)
+        # 🐛 2026-10-09 实机: 只 setDefaultButton(Yes) 还不够 —— 实机焦点仍落在「取消」上,
+        #   回车/空格打到的是**有焦点的那个按钮** ⇒ 照样静默取消 (老倪「点了没反应」)。
+        #   必须把 default / 初始焦点 / Esc 三个都钉死。
+        if default_yes:
+            _yes.setDefault(True)
+            _yes.setFocus()
+        else:
+            _no.setDefault(True)
+            _no.setFocus()
+        mb.setEscapeButton(_no)          # Esc/关窗 一律=否 (不擅自确认)
     else:
         mb.setStandardButtons(QMessageBox.Ok)
     ic = {"warning": QMessageBox.Warning, "critical": QMessageBox.Critical}.get(kind, QMessageBox.Information)
@@ -11333,7 +11343,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.26.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.26.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11341,9 +11351,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.26.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.26.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.26.4: v5.26.4 — 打开工程: 去掉二次确认框 (选文件即确认) + 确认框默认/焦点钉死 (2026-10-09)  老倪: 「加载工程文件后，还是没反应」—— 在实机上继续追, 又抓出两条:  🔴 真因3 (实机验证): 「打开/加载工程」的二次确认框纯属多余摩擦, 且默认按钮/初始焦点都落在「否」上    ⇒ 用户回车 (或点高亮按钮) = 静默取消, 只剩状态栏 2.5s 一行字 = "点了没反应"。    实机复现: 选好 zmax_space.proj → 确认框 → 回车 → 画布真源 mtime 未变、无新备份 (写盘链一步没走)。    实测还发现: 即便 setDefaultButton(Yes), 实机**初始焦点**仍在「取消」上 (回车/空格打到有焦点的按钮) ⇒    必须 default + focus + escape 三个都钉死才行。 🔴 真因4 (我自己踩的坑): 用 studio_ctl.sh restart 重启控制台时, 我的 shell 里还开着    QT_QPA_PLATFORM=offscreen (离屏判据用), 被 launch_studio.sh 继承 → 控制台起在 offscreen 平台:    进程活着/日志正常/窗口"visible=True", 但**根本没有窗口** (无 X 连接, 可用区 800x600)。    已在 launch_studio.sh 里 unset 并强制 QT_QPA_PLATFORM=xcb。  修法:  · 「🗂 打开总工程」/「📂 加载工程文件」**不再弹二次确认框** —— 在文件对话框里选中文件即确认;    写盘前照样全量自动备份 (画布→flows/_archive, 标定→*.bak_<ts>), 漂移对照挪到完成后的报告里。  · _msg/_msg_ask 能力保留 (default_yes / yes_text / no_text) 并新增: default+focus+escape 三个一起钉,    别的确认框 (危险操作) 仍旧默认「否」。  · launch_studio.sh 强制 xcb 平台 (防测试环境污染线上界面)。  · 判据: verify_shortcuts 改判「打开=一步, 无二次确认框」+ 漂移对照没丢; probe_open_space 加    「确认框调用 0 次」判据 (替身把确认框一律返回取消, 打开仍必须成功); 判据集 13 项全绿。
         # v5.26.3: v5.26.3 — 打开工程「没反应」实机取证 + 三处真修 (2026-10-09)  老倪: 「加载工程文件后，还是没反应」— 在他正在跑的控制台 (v5.26.2) 上实时取证, 不看代码猜:  🔴 真因1 (实机日志实锤): /tmp/studio_launch.log 里 "QAction::event: Ambiguous shortcut overload: Ctrl+Shift+O"    画布菜单「📂 加载 JSON…」和文件菜单「📂 加载工程文件…」都注册 Ctrl+Shift+O (按钮迁菜单时撞的)    → Qt 判冲突, 两个快捷键**都不触发**。实机 Ctrl+Alt+O (打开总工程) 正常弹框 ⇒ 接线没坏, 是快捷键撞了。 🔴 真因2: 打开/加载工程的确认框 `setDefaultButton(QMessageBox.No)` + 按钮写「是/否」    ⇒ 回车/点默认按钮 = 静默取消, 只剩状态栏 2.5s 一行小字 → 看着就是"点了没反应"。    实机复现: 选好 zmax_space.proj → 确认框 → 回车 → 画布真源 mtime 未变、无新备份 ⇒ 卡在确认那步。  修法:  · 快捷键去重: 画布「📂 加载 JSON…」→ Ctrl+Shift+L; 「⛶ 浮动画布」→ Ctrl+Alt+F (同类撞车一起修)  · _msg/_msg_ask 加 default_yes + yes_text/no_text; 两条打开路径改「🗂 打开工程 / 📂 加载工程」+ 回车=确认    (危险操作仍旧默认「否」, 不擅自确认)  · 留痕: 打开/加载全链写 zmax_data/logs/open_project.log (入口/选了什么/确认结果/写盘异常/界面回填+画布场景项)    —— 以后"没反应"有现场可查  · 判据: 新增 tools/verify_shortcuts.py (枚举主窗口 QAction → 任何重复快捷键判失败 + 默认按钮/动作名/留痕),    入 run_gui_verifiers.sh 的 shortcuts 项; 判据集 13 项全绿
         # v5.26.2: v5.26.2 — 工程文件后缀 .proj + 打开工程真的切到 Simulink 画布 (2026-10-09)  老倪: 「zmax_space.zmaxproj 工程文件 后缀应该是 proj」+「我点击 open 怎么没反应? 应该打开 simulink 的画布啊」  · 后缀: EXT .zmaxproj → .proj; 总工程默认 reports/projects/zmax_space.proj (已改名迁移);   老档案不作废 (按内容识别不看后缀; 对话框列 *.proj *.zmaxproj; find_space() 新名不在就退回旧名)。 · 🔴 修「打开没反应」真因: 打开后原代码把存档里的 canvas_stack_index 当"切到哪一页" → 总工程存在第 5 页   ⇒ 打开后停在第 5 页, 画布没前置, 看着像没反应 (其实真源已写好+已备份)。   现在集成式打开 / 普通加载**都一律切到 Simulink 画布 tab**, 存档页索引只当信息不当指令;   画布懒创建 → sim 为空时直接建出来再切; _init_simulink 加幂等闸 (防插第二份画布);   状态栏 + 日志明写「已切到 🧮 Simulink 画布」。 · 判据: 新增 tools/probe_open_space.py (真建主窗口+替身对话框: 打开后当前页=画布, 画布场景项 272 ≥ 250),   已入 run_gui_verifiers.sh 的 open_space 项; verify_project_archive 加后缀判据 (含"旧 .zmaxproj 照样能读")。   GUI 判据集 12 项全绿。
         # v5.26.1: v5.26.1 — 画布工具栏: 删「⚙️ 运行开关」按钮 + 「⏹ 停止」挪到「⏭ 单步」右边 (2026-10-09)  老倪: 「画布 的 运行开关 删掉 还有个 停止，移动到 单步 按钮 右边」  · 工具栏「⚙️ 运行开关」按钮删除 —— 能力页照旧: 右侧栏下拉第 4 项「🔧 运行开关」   (ModelTreeDock.VIEW_KEYS[-1]) 即它, 6 个开关 + 作用/生效位置/实测代价都在; _show_run_cfg() 方法保留。 · 「⏹ 停止」从旧位置搬到「⏭ 单步」右边。工具栏顺序 (真读布局布局验证):   ▶ 运行 · 🔄 重启 · ⏭ 单步 · ⏹ 停止 · 🌐 数据空间窗口 …   运行中的启用/禁用逻辑读 self.btn_stop, 零改动。 · 判据: verify_run_cfg_panel ② 段改「按钮已删 + 工具栏无此文字 + 下拉 index=3 直达」;   verify_ui_slim 加「⚙️ 运行开关」进工具栏扫描 + 新增「单步右边必须是停止」顺序判据。两判据全绿 (ui_slim 50 项)。
@@ -12081,28 +12092,11 @@ class StudioMainWindow(QMainWindow):
         tk = (proj.get("tasks") or {}).get("content") or {}
         drift_txt = "\n".join("   %s %s: %s" % ({"一致": "✅", "漂移": "⚠️"}.get(v.get("status"), "◻︎"),
                                                 k, v.get("status")) for k, v in rep.items())
-        if _msg_ask(self, "🗂 集成式打开总工程", (
-                "总工程: %s\n存于 %s (控制台 %s)\n备注: %s\n\n"
-                "将**一次全量回填**:\n"
-                "  ① 画布 %s 节点 / %s 连线  (原件自动备份到 flows/_archive/)\n"
-                "  ② 标定 %d 个真源文件 · 未标定 %s  (每个文件先备份成 *.bak_<ts> 再写, 写完回读 sha256)\n"
-                "  ③ 主参数 M=%s inertia=%s\n"
-                "  ④ 任务: 活跃 %s\n"
-                "  ⑤ 面板: 视图 %s · 运行开关 %d 项\n\n"
-                "当前现场 vs 这个总工程:\n%s\n\n确定集成式打开吗？"
-        ) % (os.path.basename(path), proj.get("saved_at"), proj.get("zmax_version"),
-             proj.get("note") or "-",
-             (proj.get("canvas_fingerprint") or {}).get("stats", {}).get("nodes"),
-             (proj.get("canvas_fingerprint") or {}).get("stats", {}).get("links"),
-             len(cal.get("files") or {}), cal.get("uncalibrated") or [],
-             mp.get("M"), mp.get("inertia"), tk.get("active_task") or tk.get("active"),
-             pn.get("view") or pn.get("view_label") or "?", len(pn.get("run_switches") or {}),
-             drift_txt), yes_text="🗂 打开工程", no_text="取消",
-            default_yes=True) != QMessageBox.Yes:
-            _proj_trace("打开总工程: ⚠️ 用户在确认框点了「取消」")
-            self.statusBar().showMessage("已取消: 未打开总工程", 2500)
-            return
-        _proj_trace("打开总工程: 确认「打开工程」→ 写盘…")
+        # 🔴 2026-10-09 老倪「点了 open 没反应」第二次: 这个确认框是**纯多余的摩擦** ——
+        #   ① 默认按钮/焦点曾落在「否」上, 回车=静默取消, 用户看到的就是"没反应";
+        #   ② 写盘前每一步都已自动备份 (画布→flows/_archive, 标定→*.bak_<ts>), 报告里也会写清。
+        #   ⇒ 直接取消这一道确认: **在文件对话框里选中文件 = 确认**。漂移报告改在完成后给。
+        _proj_trace("打开总工程: 跳过确认框 (选文件即确认) → 写盘…")
         try:
             r = _pj.open_space(path, sim=getattr(self, "simulink", None),
                                page=getattr(self, "_simulink_index", None), yes=True)
@@ -12144,6 +12138,7 @@ class StudioMainWindow(QMainWindow):
         _msg_ok(self, "🗂 总工程已集成式打开", (
             "✅ 集成式打开完成 (ok=%s)\n\n" % r.get("ok")
             + "\n".join("   " + x for x in (r.get("lines") or []))
+            + "\n\n当前现场 vs 这个总工程 (打开前核对):\n" + drift_txt
             + "\n\n界面: %s\n\n存档存于 %s · 控制台 %s"
             % (detail, r.get("saved_at"), r.get("version"))))
         self.statusBar().showMessage("✅ 总工程已打开并切到画布: %s" % os.path.basename(path), 8000)
@@ -12179,18 +12174,8 @@ class StudioMainWindow(QMainWindow):
         fp = s.get("fingerprint") or {}
         checked = [v.get("label") for v in (s.get("run_cfg") or {}).values()
                    if isinstance(v, dict) and v.get("checked")]
-        if _msg_ask(self, "📂 加载工程文件", (
-                "工程: %s\n保存时间: %s\n存入时控制台版本: %s\n内容: 画布 %s · md5 %s\n运行档位勾选中: %s\n\n"
-                "⚠️ 加载会用**工程里的画布替换当前画布** —— 当前这份会自动备份到 flows/_archive/（可还原）。\n\n"
-                "🔴 标定 / 主参数 / 测量 / 任务：**只核对不覆盖**（加载后给漂移报告；要按存档恢复标定，"
-                "用命令行 python tools/project_archive.py restore \"档案\" --with-calib --yes）。\n\n确定加载吗？"
-        ) % (os.path.basename(path), s.get("saved_at"), s.get("version"),
-             json.dumps(fp.get("stats") or {}, ensure_ascii=False), (fp.get("md5") or "")[:12],
-             "、".join(checked) if checked else "（无）"), yes_text="📂 加载工程",
-            no_text="取消", default_yes=True) != QMessageBox.Yes:
-            self.statusBar().showMessage("已取消: 未加载工程文件", 2500)
-            return
-        # (留痕在下一行)
+        # 🔴 同上: 画布工程也不再二次确认 (选中文件即确认; 画布原件自动备份到 flows/_archive/)
+        _proj_trace("加载工程文件: 跳过确认框 (选文件即确认) → 写盘…")
         try:
             r = _pj.load_project(path)
         except Exception as e:                                                   # noqa: BLE001

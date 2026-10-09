@@ -31,9 +31,13 @@ for _ in range(60):
     _t.sleep(0.2)
 print("simulink 模块:", type(getattr(win, "simulink", None)).__name__, flush=True)
 
-# 替身: 确认框一律"确定", 提示框只记录文字
-msgs = []
-ST._msg_ask = lambda *a, **k: 16384            # QMessageBox.Yes
+# 替身: 确认框**一律返回"取消"** (若代码还要问, 打开就会被取消 → 用来证明"打开=一步, 没有二次确认")
+#       提示框只记录文字
+msgs, asks = [], []
+def _deny_ask(*a, **k):
+    asks.append(a[1] if len(a) > 1 else "?")
+    return 0                                   # 0 = 用户点了取消
+ST._msg_ask = _deny_ask
 ST._msg_ok = lambda *a, **k: (msgs.append((a[1] if len(a) > 1 else "", a[2] if len(a) > 2 else "")), 0)[1]
 
 idx_before = win.stack.currentIndex()
@@ -65,9 +69,13 @@ for t, b in msgs:
     print((b or "")[:900], flush=True)
 _front = (sim is not None) and (win.stack.currentWidget() is sim)
 _items = len(sim.canvas.items()) if (sim is not None and getattr(sim, "canvas", None)) else 0
-_ok = bool(_front and _items >= 250)
+_noask = (len(asks) == 0)
+_ok = bool(_front and _items >= 250 and _noask)
 print(("  ✅ " if _front else "  ❌ ") + "打开工程后停在 Simulink 画布页 (当前页是画布=%s)" % _front, flush=True)
 print(("  ✅ " if _items >= 250 else "  ❌ ") + "画布真装上 (%d 场景项 ≥ 250)" % _items, flush=True)
-print(("🎉 全部通过: 2 项" if _ok else "❌ 失败"), flush=True)
+print(("  ✅ " if _noask else "  ❌ ") +
+      "打开=一步: 没有二次确认框 (确认框调用 %d 次%s)" % (
+          len(asks), "" if not asks else " → " + "、".join(asks)), flush=True)
+print(("🎉 全部通过: 3 项" if _ok else "❌ 失败"), flush=True)
 print("DONE", flush=True)
 os._exit(0 if _ok else 1)
