@@ -9,11 +9,33 @@
 |---|---|
 | `src/` | 引擎与策略源码（含左右脑 `src/lerobot/policies/left_right/`，状态空间 `.../left_right/state_space/`） |
 | `tools/` | 全部工具：控制台 GUI、L2 守护、相机/推流、DDS、AOI、训练与评测脚本、装机脚本 |
-| `configs/` `config/` `flows/` | 模型/训练/状态空间画布配置；`feature.dbc` 能力特征库 |
-| `docs/skills/hermes-all/` | Hermes 技能全量镜像（每 6h 由 cron 同步） |
-| `docs/memory/` | 记忆备份（MEMORY.md / USER.md 每日快照 + latest） |
-| `docs/` | 设计文档、协议、笔记（文本） |
+| `configs/` | 模型/训练/场景配置（平台侧） |
+| `defaults/` | **出厂骨架**：全新安装用的空骨架（结构同构、数值为空），见 `defaults/README.md` |
+| `docs/` | 平台文档：`design/` `notes/` `ops/` `release/` `incidents/` + `skills/`（技能镜像）`memory/`（记忆快照） |
 | `scripts/` `docker/` `dds/` `ros_*_ws/` `launch/` | 运行/部署脚手架 |
+
+## 平台 / 实例 分层（2026-10-09 定版）
+
+本仓库 = **平台**（代码 + 平台文档 + 出厂骨架，可公开）；**你的数据** = 实例数据包（可迁移、可自定义、可另行托管）：
+
+```
+data/database/zmax/          ← 实例数据包（一个产品一个目录）
+├── zmax_engineering.db        工程库（由真源 build）
+├── zmax_space.proj            总工程（GUI「打开总工程」）
+├── archive/                   历史工程快照
+└── sources/                   真源：config/ · feature.dbc · canvas/
+```
+
+平台仓库内 `config/`、`feature.dbc`、`src/lerobot/engineering/flows/state_space_obs.json` 是**指向实例包的符号链接**，
+因此代码里的字面路径零改动；换一套数据只需替换实例包：
+
+```bash
+tar xzf zmax_instance_*.tgz -C data/database          # 迁入你的数据
+python3 tools/instance_init.py --link data/database/zmax
+python3 tools/engineering_db.py build && python3 tools/instance_init.py --check
+```
+
+规范全文见 [`docs/notes/platform_vs_instance.md`](docs/notes/platform_vs_instance.md)。
 
 ## 运行环境与路径约定
 
