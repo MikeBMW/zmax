@@ -60,7 +60,7 @@ btn = getattr(m, "btn_run_cfg", None)
 chk(btn is not None, f"btn_run_cfg 存在 (文字={btn.text() if btn else None})")
 btn.click()
 app.processEvents()
-chk(d.cmb_view.currentIndex() == len(d.VIEW_KEYS) - 1, f"点击后切到最后一页 (index={d.cmb_view.currentIndex()})")
+chk(d.cmb_view.currentIndex() == d.VIEW_KEYS.index("run_cfg"), f"点击后切到「配置·运行开关」页 (index={d.cmb_view.currentIndex()})")
 chk(d.run_cfg.isVisible(), "运行开关页可见")
 
 print("\n③ 页面内容 (作用/生效位置/代价/档位/诊断行)")
@@ -87,32 +87,34 @@ chk(all(d.run_cfg._cks[k].isChecked() == v for k, v in D.items()), "「↺ 恢�
 d.run_cfg._copy()
 chk("Z-MAX 运行开关" in QApplication.clipboard().text(), "「📋 复制当前配置」写进剪贴板")
 
-print("\n⑤ 四轴 11 视图 映射 (索引→控件)")
-EXP = {0: ("tree",), 1: ("ss_tree",), 2: ("perf",), 3: ("bus",), 4: ("run_summary",),
-       5: ("scene_state",), 6: ("pole_place", "tree"), 7: ("stage_calib",), 8: ("math",),
-       9: ("eng_req",), 10: ("run_cfg",)}
-OBJ = {"tree": d.tree, "ss_tree": d.ss_tree, "perf": d.perf, "bus": d.bus,
-       "run_summary": d.run_summary, "scene_state": d.scene_state,
-       "pole_place": d.pole_place, "stage_calib": d.stage_calib,
-       "eng_req": d.eng_req, "run_cfg": d.run_cfg}
+print("\n⑤ 精简后 5 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
+EXP = {0: ("mparam",), 1: ("run_cfg",), 2: ("tree",), 3: ("ss_tree",), 4: ("bus",)}
+OBJ = {"mparam": d.mparam, "run_cfg": d.run_cfg, "tree": d.tree, "ss_tree": d.ss_tree, "bus": d.bus}
+chk(d.cmb_view.count() == 5, f"视图数 = {d.cmb_view.count()} (精简前 11)")
 for i in range(d.cmb_view.count()):
     d.cmb_view.setCurrentIndex(i)
     app.processEvents()
     want = set(EXP.get(i, ()))
     vis = {k for k, w in OBJ.items() if w.isVisible()}
-    math_ok = (i != 8) or (d.lbl_math.isVisible() and d.plot.isVisible() and d.response.isVisible())
-    ok = (vis == (want - {"math"})) and math_ok
-    chk(ok, f"[{i}] {d.cmb_view.itemText(i)} → 可见={sorted(vis)} 期望={sorted(want)}"
-            + ("" if math_ok else " (数学分析控件缺失)"))
+    chk(vis == want, f"[{i}] {d.cmb_view.itemText(i)} → 可见={sorted(vis)} 期望={sorted(want)}")
+d.cmb_view.setCurrentIndex(0)
+app.processEvents()
+chk(d.mparam.isVisible() and not d.run_cfg.isVisible(), "默认停在「🧮 主参数 M」页")
 
-print("\n⑥ 死函数已删")
+print("\n⑥ 无联系部件已不在面板 (挪到 legacy) + 死函数已删")
+for dead_cls in ("StageCalibrationWidget", "PolePlacementWidget", "FreeResponsePlot", "PoleZeroPlot",
+                 "PerformanceWidget", "SceneStateWidget", "EngineeringReqWidget", "RunSummaryWidget",
+                 "analyze_system", "main_chain", "tf_to_ss", "node_transfer"):
+    chk(not hasattr(MT, dead_cls), f"model_tree 不再有 {dead_cls}")
+chk(os.path.exists(os.path.join(os.path.dirname(os.path.abspath(MT.__file__)),
+                                "_model_tree_ffpd_legacy.py")), "legacy 文件在 (代码没删, 可复活)")
 for dead in ("_fmt_sig", "_project_3d_to_2d"):
     chk(not hasattr(MT, dead), f"模块级 {dead} 已删")
 chk(not hasattr(MT.ModelTreeDock, "skill_markdown"), "ModelTreeDock.skill_markdown 已删")
-chk(not any(hasattr(c, "_open_url") for c in
-            [MT.StageCalibrationWidget, MT.PolePlacementWidget, MT.PerformanceWidget,
-             MT.SceneStateWidget, MT.EngineeringReqWidget, MT.RunSummaryWidget,
-             MT.DataBusTrace, MT.ModelTreeDock]), "_open_url 已删")
+chk(not hasattr(MT.ModelTreeDock, "_show_math"), "ModelTreeDock._show_math 已停用 (整段注释)")
+chk("_open_url" not in open(os.path.join(os.path.dirname(os.path.abspath(MT.__file__)),
+                                        "_model_tree_ffpd_legacy.py"), encoding="utf-8").read().split("def _open_url")[0],
+    "_open_url 已删 (legacy 文件里也没留实现)")
 
 print("\n" + ("═" * 60))
 print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过")

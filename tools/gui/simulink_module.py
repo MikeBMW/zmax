@@ -2296,284 +2296,13 @@ class CICDWorker(QThread):
         except Exception as ex:
             self.log.emit(f"❌ 后台任务异常: {ex}")
             self.finished_ok.emit(False, str(ex))
-
-
-# ════════════════════════════════════════════════════════════════
-# CI/CD 全链路面板: 可视化流水线 (4环节节点+箭头连线, 运行中脉冲,
-# 状态色与 Simulink 画布一致: 灰=未开始 青=运行中 绿=成功 红=失败)
-# ════════════════════════════════════════════════════════════════
-class CICDStageItem(QGraphicsObject):
-    """流水线环节节点 (可点击执行)"""
-    clicked = pyqtSignal(str)
-
-    def __init__(self, sid, title, desc, state=0):
-        super().__init__()
-        self.sid = sid
-        self.title = title
-        self.desc = desc
-        self.state = state
-        self.w, self.h = 240, 92
-        self.setFlags(QGraphicsItem.ItemIsSelectable)
-        self.setAcceptHoverEvents(True)
-        self.setZValue(10)
-        self._hover = False
-
-    def boundingRect(self):
-        return QRectF(-8, -8, self.w + 16, self.h + 16)
-
-    def paint(self, painter, opt, widget=None):
-        c = QColor(["#9aa4b2", "#00d4aa", "#3fb950", "#ff4444"][self.state])
-        painter.setRenderHint(QPainter.Antialiasing)
-        pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
-        # 主体
-        grad = QLinearGradient(0, 0, 0, self.h)
-        grad.setColorAt(0, QColor(pal["node_top"]))
-        grad.setColorAt(1, QColor(pal["node_bot"]))
-        painter.setBrush(grad)
-        pen = QPen(c, 2.2 if (self._hover or self.state == 1) else 1.6)
-        painter.setPen(pen)
-        painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 8, 8)
-        # 标题 (🎨 主题色 — 硬编码 #1f2328 深色主题下黑字黑底看不见)
-        painter.setPen(QColor(pal["title"]))
-        painter.setFont(_node_font(13, bold=True))
-        # 🐛 2026-08-12 老倪: 训练/推理开关节点 — title 带当前模式 (🔀 训练模式/🔀 推理模式)
-        if self.node.get("type") == "switch" and self.node.get("params", {}).get("mode"):
-            _m = self.node["params"]["mode"]
-            painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft,
-                             f"🔀 {'训练' if _m == 'train' else '推理'}模式")
-        else:
-            painter.drawText(QRectF(8, 8, self.w - 16, 22), Qt.AlignVCenter | Qt.AlignLeft, self.title)
-        # 描述 (🐛 2026-08-22 老倪: 灰色小字太乱且挤不下 — 删除, 只留白色名称+状态徽章)
-        painter.setPen(QColor(pal["label"]))
-        painter.setFont(_node_font(10))
-        # 状态徽章
-        icon = {1: "● 运行中", 2: "✓ 成功", 3: "✕ 失败", 0: "○ 未开始"}[self.state]
-        painter.setPen(c)
-        painter.setFont(_node_font(11, bold=True))
-        painter.drawText(QRectF(8, 32, self.w - 16, 18), Qt.AlignVCenter | Qt.AlignLeft, icon)
-        # 🌐 2026-08-08 老倪: 节点全局 ID — 🐛 2026-08-09 老倪: 仅悬停显示 (左下角小字青色)
-        try:
-            # 🐛 2026-08-09 老倪: CICD 环节 ID 常显
-            painter.setPen(QColor("#8b949e"))
-            painter.setFont(_node_font(10))
-            nid = getattr(self, "nid", None) or (
-                f"VEH.5.{lib_seq_of(self.title):03d}" if lib_seq_of(self.title) else
-                f"VEH.5.CICD.{self.sid}")  # 🐛 sid 字符串不能 % 100
-            painter.drawText(QRectF(6, self.h - 13, self.w - 12, 12), Qt.AlignLeft | Qt.AlignVCenter, nid)
-        except Exception:
-            pass
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            self.clicked.emit(self.sid)
-            e.accept()
-
-    def hoverEnterEvent(self, e):
-        self._hover = True; self.update(); e.accept()
-
-    def hoverLeaveEvent(self, e):
-        self._hover = False; self.update(); e.accept()
-
-
-class CICDLinkItem(QGraphicsObject):
-    """环节间箭头连线 (数据流方向)"""
-    def __init__(self, a, b, src_item, dst_item):
-        super().__init__()
-        self.a, self.b = a, b
-        self.src_item, self.dst_item = src_item, dst_item
-        self.setZValue(5)
-        self._flow = 0.0
-        self._t = _tq(self)   # 🐛 2026-08-18 挂 parent 防悬挂崩溃
-        self._t.timeout.connect(self._tick)
-        # 🐛 2026-08-15: 不启动 — dash 动画已改静态高亮 (VcXsrv 黑条根治)
-        # self._t.start(90)
-
-    def _tick(self):
-        # 🐛 2026-08-15: 不再推进 dash 偏移 — 静态高亮表达运行状态
-        if self.src_item.state in (1, 2):
-            self.update()
-
-    def boundingRect(self):
-        return QRectF(min(self.a.x(), self.b.x()) - 6, min(self.a.y(), self.b.y()) - 6,
-                      abs(self.b.x() - self.a.x()) + 12, abs(self.b.y() - self.a.y()) + 12)
-
-    def paint(self, painter, opt, widget=None):
-        active = self.src_item.state in (1, 2)
-        c = QColor("#00d4aa" if active else "#9aa4b2")
-        painter.setRenderHint(QPainter.Antialiasing)
-        pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
-        # 🐛 2026-08-15: dash 流动改静态高亮 (加粗+提亮) — VcXsrv 下 dash 动画=黑条
-        pen = QPen(c, 3.2 if active else 2.2)
-        if active:
-            c = c.lighter(135)
-            pen.setColor(c)
-        painter.setPen(pen)
-        painter.drawLine(self.a, self.b)
-        # 箭头
-        ang = math.atan2(self.b.y() - self.a.y(), self.b.x() - self.a.x())
-        painter.setBrush(c)
-        painter.setPen(Qt.NoPen)
-        for da in (0.35, -0.35):
-            painter.drawPolygon(QPolygonF([
-                QPointF(self.b.x(), self.b.y()),
-                QPointF(self.b.x() - 10 * math.cos(ang - da), self.b.y() - 10 * math.sin(ang - da)),
-                QPointF(self.b.x() - 10 * math.cos(ang + da), self.b.y() - 10 * math.sin(ang + da)),
-            ]))
-
-
-class CICDPanel(QDialog):
-    def __init__(self, module, parent=None):
-        super().__init__(parent)
-        self.module = module
-        self.setWindowTitle("CI/CD 全链路 · Z-MAX")
-        self.setMinimumSize(980, 460)
-        # 🎨 2026-08-06 老倪: CICD 面板改回深色背景 (与整体暗色调统一)
-        self.setStyleSheet("QDialog { background:#0d1117; }")
-        self._stage_items = {}
-        self._pulse_timer = _tq(self)
-        self._pulse_timer.timeout.connect(self._pulse)
-        self._pulse_timer.start(500)
-        self._build()
-        self._refresh()
-
-    def _build(self):
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(10)
-        # 标题
-        t = QLabel("🔗 CI/CD 全链路流水线 · 采集 → 训练 → 验证 → 集成 → 部署 → 推理")
-        t.setStyleSheet("color:#ffd700; font-size:8.5pt; font-weight:700; background:transparent; border:none;")
-        lay.addWidget(t)
-        tip = QLabel("点击环节节点执行该环节 · ▶ 全流程 = 依次自动流转 · 运行中青色脉冲 · 完成后状态回显")
-        tip.setStyleSheet("color:#57606a; font-size:11pt; background:transparent; border:none;")
-        lay.addWidget(tip)
-
-        # 流水线画布 (QGraphicsView)
-        self._view = QGraphicsView()
-        self._view.setRenderHints(QPainter.Antialiasing)
-        self._view.setStyleSheet("background:#0d1117; border:1px solid #1e2740; border-radius:8px;")
-        self._view.setDragMode(QGraphicsView.NoDrag)
-        self._scene = QGraphicsScene(self)
-        self._view.setScene(self._scene)
-        self._view.setFixedHeight(180)
-        lay.addWidget(self._view)
-
-        # 6 环节定义 (数据闭环全链路: 采集→训练→验证→集成→部署→推理)
-        self._stages = [
-            ("collect",  "① 采集", "拉取 Orin 真实数据\nrelay → 修复 action → 落地", self.module.on_collect),
-            ("train",    "② 训练", "ACT 训练 lerobot_train\n优先 Orin 真实数据", self.module.on_train),
-            ("validate", "③ 验证", "模型标准合规校验\nModel Advisor 对标", self.module.on_validate),
-            ("integrate","④ 集成", "打包 checkpoint → ECS\ncicd_deploy push", self.module.on_integrate),
-            ("deploy",   "⑤ 部署", "推送模型 → Orin\n心跳验证", self.module.on_deploy),
-            ("infer",    "⑥ 推理", "Orin 推理状态\ninfer_count / 延迟", self.module.on_infer),
-        ]
-        # 放置节点 (横排, 带箭头)
-        x0, y0 = 30, 40
-        gap = 140
-        prev_item = None
-        for i, (sid, title, desc, fn) in enumerate(self._stages):
-            it = CICDStageItem(sid, title, desc, 0)
-            it.setPos(x0 + i * gap, y0)
-            it.clicked.connect(self._on_stage_clicked)
-            self._scene.addItem(it)
-            self._stage_items[sid] = it
-            if prev_item is not None:
-                a = QPointF(prev_item.x() + prev_item.w, prev_item.y() + prev_item.h / 2)
-                b = QPointF(it.x(), it.y() + it.h / 2)
-                self._scene.addItem(CICDLinkItem(a, b, prev_item, it))
-            prev_item = it
-        self._scene.setSceneRect(-20, 0, x0 + 3 * gap + 160 + 40, 180)
-
-        # 日志行 (显示当前环节输出)
-        self._stage_log = QLabel("就绪 · 点击环节节点开始")
-        self._stage_log.setStyleSheet("color:#8b949e; font-size:11pt; font-family:Consolas; background:#161b22; border:1px solid #1e2740; border-radius:6px; padding:8px;")
-        self._stage_log.setWordWrap(True)
-        lay.addWidget(self._stage_log)
-
-        # 底部: 全流程 + 保存工作流 + 刷新 + 关闭
-        bl = QHBoxLayout()
-        self.btn_full = QPushButton("▶ 全流程 (采集→训练→验证→集成→部署→推理)")
-        self.btn_full.setStyleSheet("""
-            QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
-            border-radius:4px; padding:5px 14px; font-size:11pt; font-weight:700; }
-            QPushButton:hover { background:#ffd70044; }
-        """)
-        self.btn_full.clicked.connect(self.module._run_full_flow)
-        bl.addWidget(self.btn_full)
-        bl.addStretch()
-        self.btn_save_flow = QPushButton("💾 保存工作流 JSON")
-        self.btn_save_flow.setStyleSheet("""
-            QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;
-            border-radius:4px; padding:5px 14px; font-size:11pt; font-weight:600; }
-            QPushButton:hover { background:#ffd70044; }
-        """)
-        self.btn_save_flow.clicked.connect(self._save_flow)
-        bl.addWidget(self.btn_save_flow)
-        self.btn_refresh = QPushButton("🔄 刷新状态")
-        self.btn_refresh.setStyleSheet("""
-            QPushButton { background:#21262d; color:#c9d1d9; border:1px solid #1e2740;
-            border-radius:4px; padding:5px 14px; font-size:11pt; }
-            QPushButton:hover { border-color:#ffd700; color:#ffd700; }
-        """)
-        self.btn_refresh.clicked.connect(self._refresh)
-        bl.addWidget(self.btn_refresh)
-        self.btn_close = QPushButton("✕ 关闭")
-        self.btn_close.setStyleSheet(self.btn_refresh.styleSheet())
-        self.btn_close.clicked.connect(self.accept)
-        bl.addWidget(self.btn_close)
-        lay.addLayout(bl)
-
-    def _stage_state(self, sid):
-        return self.module._cicd_state.get(sid, 0)
-
-    def _refresh(self):
-        """刷新环节节点状态 + 日志"""
-        for sid, _, _, fn in self._stages:
-            it = self._stage_items[sid]
-            s = self._stage_state(sid)
-            it.state = s
-            it.update()
-        self._view.viewport().update()
-
-    def _pulse(self):
-        """运行中环节脉冲动画 (青色边框呼吸)"""
-        self._pulse_on = not getattr(self, "_pulse_on", False)
-        for sid, it in self._stage_items.items():
-            if self._stage_state(sid) == 1:
-                it.setScale(1.0 + (0.03 if self._pulse_on else -0.03))
-                it.update()
-
-    def _on_stage_clicked(self, sid):
-        """点击环节节点 → 执行该环节"""
-        fn = dict((s[0], s[3]) for s in self._stages).get(sid)
-        if fn is None:
-            return
-        title = dict((s[0], s[1]) for s in self._stages).get(sid, sid)
-        self.module._cicd_state[sid] = 1
-        self._stage_log.setText(f"▶ 执行 {title} …")
-        self._refresh()
-        fn()
-
-    def _run_stage(self, fn):
-        """兼容旧调用: 直接执行"""
-        fn()
-
-    def _save_flow(self):
-        """保存主画布工作流 DAG 为 JSON (与 web simulink-spec 一致)"""
-        import json as _json
-        flow = {"format": "zmax-simulink", "version": "1.0",
-                "name": "cicd_workflow",
-                "sim": {"dt": self.module._sim_dt, "t_end": self.module._sim_t_end, "solver": "fixed-step"},
-                "nodes": self.module.nodes, "links": self.module.links}
-        path = os.path.join(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"), "flows",
-                            "cicd_workflow.json")
-        try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                _json.dump(flow, f, ensure_ascii=False, indent=2)
-            self._stage_log.setText(f"💾 工作流已保存: {path} ({len(flow['nodes'])}节点 {len(flow['links'])}连线)")
-        except Exception as ex:
-            self._stage_log.setText(f"❌ 保存失败: {ex}")
+# ══════════════════════════════════════════════════════════════════
+# 🗑 2026-10-09 老倪「没用就删掉」: 「🔗 CI/CD 全链路面板」整块删除
+#   (CICDStageItem + CICDLinkItem + CICDPanel, 全仓零调用 — 入口按钮 2026-08-06 就已删)。
+#   6 环节能力没丢: 「🎯 数据闭环控制台」(PipelinePanel) + 画布「🎛 CICD 主控台」节点双击
+#   (on_collect/on_train/on_validate/on_integrate/on_deploy/on_infer) 才是在役入口。
+#   CICDWorker 保留 (PipelinePanel/训练/节点执行仍在用)。
+# ══════════════════════════════════════════════════════════════════
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2668,9 +2397,20 @@ class PipelinePanel(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.setSpacing(10)
+        _h = QHBoxLayout()
         t = QLabel("🎯 数据闭环 CICD 控制台 · 采集 → 训练 → 模型 → 部署 → 推理 → 迭代")
         t.setStyleSheet("color:#00d4aa; font-size:8.5pt; font-weight:700; background:transparent; border:none;")
-        lay.addWidget(t)
+        _h.addWidget(t)
+        _h.addStretch(1)
+        # 🧭 2026-10-09 老倪: 「数据闭环引导」原在画布工具栏 —— 挪进被它引导的本面板, 工具栏少一个按钮
+        self.btn_guide = QPushButton("🧭 引导 (分步高亮)")
+        self.btn_guide.setToolTip("一步一步带你走完数据闭环: 高亮下一步该点的按钮 (采集→训练→验证→集成→部署→推理)")
+        self.btn_guide.setStyleSheet("QPushButton { background:#ffd70022; color:#ffd700; border:1px solid #ffd70066;"
+                                     " border-radius:6px; padding:4px 10px; font-size:11pt; }"
+                                     "QPushButton:hover { background:#ffd70033; }")
+        self.btn_guide.clicked.connect(lambda: self.module.start_tutorial())
+        _h.addWidget(self.btn_guide)
+        lay.addLayout(_h)
         tip = QLabel("三阶段自动流转 · steps 可配置 · 闭环状态每 10s 刷新 (Orin 心跳/推理/数据量)")
         tip.setStyleSheet("color:#57606a; font-size:11pt; background:transparent; border:none;")
         lay.addWidget(tip)
@@ -5335,7 +5075,7 @@ class SimulinkModule(QWidget):
         # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮曾删除 → 恢复 (用户要求保留工具栏入口;
         #   画布 🔭可视化层 也有 🧭 3D 视图 节点, 双入口同开 open_ss_3d)
         self.btn_ss_3d = mk_btn("🧭 3D 视图", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
-        self.btn_tutorial = mk_btn("🧭 数据闭环引导", "引导程序: 一步一步带你走通数据闭环 (采集→训练→验证→集成→部署→推理), 全程鼠标", self.start_tutorial, "#d4a800")
+        # 🗑 2026-10-09 老倪: 工具栏「🧭 数据闭环引导」按钮已挪进「🎯 数据闭环控制台」面板 (btn_guide)
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
         # 🔄 重启 (2026-09-04 老倪: 运行/单步之间加大空隙不好看 → 插入重启, 三键连排)
@@ -5477,7 +5217,6 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_ds_win)
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
-        tl.addWidget(self.btn_tutorial)
         # (2026-08-06 老倪: Scope 移到 node 库, 工具栏按钮已删; btn_scope 移除)
         self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
         tl.addWidget(self.btn_float)
@@ -9486,9 +9225,7 @@ class SimulinkModule(QWidget):
                 self._log("📤 正在发送报告到飞书 dataworld 群…")
                 self._send_report_to_feishu_async(summary)
             self._flow_next()  # 全流程流转钩子 (无队列时无操作)
-            # 若有打开的全链路面板, 自动刷新
-            if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
-                self._cicd_panel._refresh()
+            # 🗑 2026-10-09: 原「有打开的全链路面板则自动刷新」(CICDPanel) — 面板已删, 钩子去掉
 
         worker = CICDWorker(fn)
         worker.log.connect(_emit_log)
@@ -9519,22 +9256,6 @@ class SimulinkModule(QWidget):
             self._busy_info["policy"] = m.group(1)
         worker.start()
 
-    def open_cicd_panel(self):
-        """打开 CI/CD 全链路面板:
-        1) 若主画布为空 → 自动加载默认流水线 DAG (输入数据→ACT模型→输出action)
-        2) 打开可视化流水线面板
-        """
-        # 画布空 → 加载 CICD 主控台模板 (2026-08-06: 旧「CI/CD 默认流水线」模板已删,
-        # 改用 REFERENCE_APPS[0] CICD 主控台 — 全链路主要节点)
-        if not self.nodes:
-            self.load_reference_app(REFERENCE_APPS[0][0],
-                                    REFERENCE_APPS[0][1], REFERENCE_APPS[0][2])
-        if not getattr(self, "_cicd_panel", None):
-            self._cicd_panel = CICDPanel(self)
-        self._cicd_panel._refresh()
-        self._cicd_panel.show()
-        self._cicd_panel.raise_()
-        self._cicd_panel.activateWindow()
 
     def open_pipeline_panel(self):
         """打开三阶段渐进式训练管线面板 (仿真→零样本测试→真机微调)"""
@@ -9757,7 +9478,8 @@ class SimulinkModule(QWidget):
             self._log("⚠️ 右侧面板未就绪, 打不开运行开关页")
             return
         try:
-            d.cmb_view.setCurrentIndex(len(getattr(d, "VIEW_KEYS", ())) - 1)
+            _k = list(getattr(d, "VIEW_KEYS", ()))
+            d.cmb_view.setCurrentIndex(_k.index("run_cfg") if "run_cfg" in _k else 0)
             d.run_cfg.setVisible(True)
             d.run_cfg.refresh()
             self._log("⚙️ 右侧 → 🔧 配置 · 运行开关 (6 个档位/策略开关; "
@@ -16127,8 +15849,7 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
                 self._worker = None
-            if getattr(self, "_cicd_panel", None) and self._cicd_panel.isVisible():
-                self._cicd_panel._refresh()
+            # 🗑 2026-10-09: CICDPanel 已删 → 原自动刷新钩子去掉
             self._flow_next()  # 全流程流转
 
         worker = CICDWorker(fn)
