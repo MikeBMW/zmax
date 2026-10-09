@@ -41,7 +41,7 @@ def r2(p, g):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=os.path.join(ROOT, "data", "manifold_geo_v1.npz"))
+    ap.add_argument("--data", default=os.path.join(ROOT, "data", "datasets", "manifold_geo_v1.npz"))
     ap.add_argument("--epochs", type=int, default=220)
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--hidden", type=int, default=192)

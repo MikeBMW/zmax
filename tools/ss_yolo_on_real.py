@@ -15,7 +15,7 @@
 
 用法:
   ~/zmax/external/lerobot-smolvla-lew/gui-venv311/bin/python tools/ss_yolo_on_real.py --auto          # 取最新真机帧
-  ... --image data/yolo_peg/images/ep000_s000.png --source-kind sim                      # 指定图 (自检)
+  ... --image data/datasets/yolo_peg/images/ep000_s000.png --source-kind sim                      # 指定图 (自检)
   ... --loop --interval 0.5                                                              # 常驻 (可视化跟帧)
 """
 import argparse

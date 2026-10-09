@@ -37,7 +37,7 @@ seeds = [int(s) for s in sys.argv[1:] if s.isdigit()] or [104, 101, 102, 103]
 #   但实际落盘的 parquet 不是 → 硬编码易错, 改成动态读)。
 def _task_from_data():
     import pandas as pd
-    for _p in ('data/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/smolvla_peg_v8/meta/tasks.parquet'):
+    for _p in ('data/datasets/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/datasets/smolvla_peg_v8/meta/tasks.parquet'):
         if os.path.exists(_p):
             return str(pd.read_parquet(_p)['task'].iloc[0])
     return 'metaworld 光模块插拔'

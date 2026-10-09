@@ -2,7 +2,7 @@
 """Z-MAX 数据同步 + 新数据即训练 · 4060端
 功能:
   1. 从 ECS 增量拉取快照归档 → 本地 data/orin_archive/
-  2. 拉取训练数据队列 (orin 数据包) → 本地 data/orin_live/
+  2. 拉取训练数据队列 (orin 数据包) → 本地 data/datasets/orin_live/
   3. 检测到可训练数据 (frames>0) → 触发训练
 用法:
   python3 tools/data_sync.py             # 同步一次

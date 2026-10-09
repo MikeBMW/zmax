@@ -42,7 +42,7 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 OUTDIR = os.path.join(ROOT, "reports", "mem_ladder")
-GATES = os.path.join(ROOT, "data", "memory_layers.json")
+GATES = os.path.join(ROOT, "data", "memory", "memory_layers.json")
 RUNS = os.path.join(OUTDIR, "runs.jsonl")
 HIST = os.path.join(OUTDIR, "ladder_history.csv")
 STATS = os.path.join(ROOT, "reports", "optical_insert_v4_action_stats.json")
@@ -56,13 +56,13 @@ DISTURBS = [("none", "l3"), ("disturb", "l4")]      # cap=l3 无注入 / cap=l4 
 
 # ── 🐛 2026-09-14 数据一致性修复 (实测抓到的真问题) ──
 #   同一 seed / 同 cap / 同权重 / 同代码, 解析链结果却从 65.26mm(done) 漂到 58.02mm(not done) ——
-#   原因是**记忆状态文件是可变状态**: 引擎每跑一局都可能把成功轨迹固化进 data/muscle_memory.json
+#   原因是**记忆状态文件是可变状态**: 引擎每跑一局都可能把成功轨迹固化进 data/memory/muscle_memory.json
 #   (还有 assembly_memory.json 台账 / shared_memory.json), 而这些文件既不在 manifest 里, 也不会在
 #   格与格之间复位 → 后面的格看到的"记忆"和前面的格不一样 ⇒ 同口径被悄悄破坏。
 #   修法: ① 把记忆状态文件 + 引擎读的 models/*.pt 纳入 manifest sha256 ② 每格开跑前把记忆状态
 #   **复位到本 manifest 的快照** (所有格起点一致), 跑完把该格产生的状态另存为 artifact (不丢证据)。
-STATE_FILES = ["data/muscle_memory.json", "data/assembly_memory.json", "data/shared_memory.json",
-               "data/memory_layers.json"]
+STATE_FILES = ["data/memory/muscle_memory.json", "data/memory/assembly_memory.json", "data/memory/shared_memory.json",
+               "data/memory/memory_layers.json"]
 
 
 # ─────────────── ① 数据一致性 ───────────────

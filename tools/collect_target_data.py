@@ -9,7 +9,7 @@
 特征 (16D): stage one-hot(8) + 手 xyz(3) + 光模块 xyz(3) + 孔位置 xyz(2 相对) …
   —— 实际: onehot8 + hand3 + peg3 + hole3 = 17D (孔位置每场景常值)
 
-产物: data/target_decoder_data.npz
+产物: data/datasets/target_decoder_data.npz
 用法: cd repo && gui-venv311/bin/python tools/collect_target_data.py [seed_start] [seed_end]
 """
 import os
@@ -67,7 +67,7 @@ for seed in range(a, b + 1):
 
 if not X:
     print("❌ 无成功轨迹"); sys.exit(1)
-out = os.path.join(ROOT, "data", "target_decoder_data.npz")
+out = os.path.join(ROOT, "data", "datasets", "target_decoder_data.npz")
 np.savez_compressed(out, X=np.concatenate(X), Y_target=np.concatenate(YT),
                     Y_next=np.concatenate(YN), episode=np.concatenate(EP), stages=np.array(STAGES))
 print(f"\n✅ {n_ok} 轨迹 / {len(np.concatenate(X))} 帧 → {out}")

@@ -58,7 +58,7 @@ def build_dataset():
     """用 orin_live 数据重建 6D 数据集
 
     判据必须是**产物**: data/chunk-000/*.parquet 存在。
-    旧判据 `(data/orin_6d).exists()` 恒为 True(空壳目录也在) → 数据集无 parquet 时
+    旧判据 `(data/datasets/orin_6d).exists()` 恒为 True(空壳目录也在) → 数据集无 parquet 时
     照跑训练, 8 秒后崩在 FileNotFoundError, 日志只写"训练失败"把真因藏了。
     """
     r = subprocess.run([sys.executable, str(HOME / "tools/build_orin6d_dataset.py")],

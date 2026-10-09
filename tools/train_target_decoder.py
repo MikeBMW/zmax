@@ -23,7 +23,7 @@ os.chdir(ROOT)
 EPOCHS = int(sys.argv[1]) if len(sys.argv) > 1 else 150
 DEV = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-d = np.load(os.path.join(ROOT, 'data', 'target_decoder_data.npz'))
+d = np.load(os.path.join(ROOT, 'data', 'datasets', 'target_decoder_data.npz'))
 X, Yt, Yn, ep = d['X'], d['Y_target'], d['Y_next'], d['episode']
 print(f"① 数据: {X.shape[0]} 帧 / {len(set(ep.tolist()))} 轨迹 · 特征 {X.shape[1]}D · device={DEV}")
 

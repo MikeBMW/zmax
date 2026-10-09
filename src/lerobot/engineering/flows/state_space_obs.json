@@ -1577,7 +1577,7 @@
       "params": {
         "state_space": true,
         "mem_field": true,
-        "desc": "[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field",
+        "desc": "[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field",
         "source": "src/lerobot/memory/potential_field.py"
       }
     },
@@ -1843,7 +1843,7 @@
         "state_space": true,
         "vlm_llm": true,
         "model": "deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)",
-        "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
+        "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
         "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
         "source_symbol": "class SceneVLM (provider=deepseek)",
         "provider": "deepseek-v4-flash",
@@ -2208,7 +2208,7 @@
           "任务配置": "config/tasks/tasks.json",
           "任务绑定": "config/ss_task_binding.json",
           "工单目录": "config/orders/ (BS_*.json)",
-          "工程文件": "reports/projects/SS_主工程_任务配置.zmaxproj",
+          "工程文件": "data/database/SS_主工程_任务配置.zmaxproj",
           "站点标定": "config/calib/zmax_calib.json",
           "流形标定": "config/calib/zmax_manifold.json"
         },
@@ -2260,7 +2260,7 @@
             "cell_geometry.points"
           ],
           "project": {
-            "file": "reports/projects/SS_主工程_任务配置.zmaxproj",
+            "file": "data/database/SS_主工程_任务配置.zmaxproj",
             "canvas_md5": "e79bdab56b9a80f63eb1fe8857559dc2",
             "nodes": 89,
             "links": 184

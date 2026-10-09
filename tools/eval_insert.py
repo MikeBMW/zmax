@@ -126,7 +126,7 @@ def _load_stats(policy_hint=None):
                 pass
     # fallback: 数据 stats.json (2026-08-08: seg 数据 45D)
     import json as _j2
-    for root in ["data/metaworld_peg_seg", "data/metaworld_peg_long", "data/metaworld_peg_v7", "data/metaworld_peg_v6",
+    for root in ["data/metaworld_peg_seg", "data/metaworld_peg_long", "data/datasets/metaworld_peg_v7", "data/metaworld_peg_v6",
                  "data/metaworld_peg_v5", "data/metaworld_peg_v4", "data/metaworld_peg_v3",
                  "data/metaworld_peg_v2", "data/metaworld_peg_lerobot", "data/metaworld_act"]:
         p = os.path.join(ROOT, root, "meta", "stats.json")

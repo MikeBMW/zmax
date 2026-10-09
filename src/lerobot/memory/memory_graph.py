@@ -16,7 +16,7 @@
 
 诚实边界: 意图向量(Δz)相似度检索待 S2/S3 真意图向量接入; 当前检索键 = 阶段序列 + 布局邻近,
           无数据一律返回空 + reason, 不伪造命中。
-真源: data/shared_memory.json (memory_store) + data/muscle_memory.json (L2 标杆库)
+真源: data/memory/shared_memory.json (memory_store) + data/memory/muscle_memory.json (L2 标杆库)
 """
 import json
 import os
@@ -40,9 +40,9 @@ def _ms():
 
 
 def _muscle():
-    """读 L2 标杆库 data/muscle_memory.json"""
+    """读 L2 标杆库 data/memory/muscle_memory.json"""
     try:
-        with open(os.path.join(_ROOT, "data", "muscle_memory.json"), encoding="utf-8") as f:
+        with open(os.path.join(_ROOT, "data", "memory", "muscle_memory.json"), encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}

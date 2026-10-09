@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(R, "tools"))
 import a5_handeye_collect as A5                                                   # noqa: E402
 
 CAM = "http://192.168.23.23:10082"
-OUT = os.path.join(R, "data/handeye")
+OUT = os.path.join(R, "data/calib/handeye")
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -117,7 +117,7 @@ def main() -> int:
     vis = np.hstack([cv2.resize(imgs["A"], (816, 683)), cv2.resize(imgs["B"], (816, 683)),
                      cv2.applyColorMap(cv2.resize(mask * 255, (816, 683)), cv2.COLORMAP_JET)])
     cv2.imwrite(os.path.join(OUT, "v2_compare.jpg"), vis)
-    print("\n  可视化: data/handeye/v2_compare.jpg (左=A 中=B 右=差异热图)")
+    print("\n  可视化: data/calib/handeye/v2_compare.jpg (左=A 中=B 右=差异热图)")
     ok = bool(clusters) and clusters[0]["pct_of_frame"] < 25
     print("  判读: %s" % ("✅ 变化**局部集中** ⇒ 臂在视野里且可追踪 (差异簇=臂的像)" if ok
                           else ("⚠️ 变化过于全局 (%.1f%%) ⇒ 仍是曝光/场景整体变化" % (mask.mean() * 100))))

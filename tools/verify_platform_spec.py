@@ -39,8 +39,9 @@ print("① 单一数据库文件", flush=True)
 chk(os.path.exists(DB), "库在: %s (%.2f MB)" % (DB, (os.path.getsize(DB) / 1048576) if os.path.exists(DB) else 0))
 _dd = os.path.join(ROOT, "data", "database")
 _files = sorted(os.listdir(_dd)) if os.path.isdir(_dd) else []
-chk(all(x.endswith((".db", ".md", ".txt", ".json", ".jsonl")) for x in _files),
-    "data/database/ 内容: %s" % _files)
+chk(all(os.path.isdir(os.path.join(_dd, x)) or x.endswith((".db", ".md", ".txt", ".json", ".jsonl", ".proj", ".zmaxproj"))
+        for x in _files),
+    "data/database/ 内容 (库 + 工程文件 + 说明/清单; 允许 archive/ 子目录): %s" % _files)
 
 print("② 库内容 (真源 ↔ 库 数目)", flush=True)
 import engineering_db as ED                                                     # noqa: E402

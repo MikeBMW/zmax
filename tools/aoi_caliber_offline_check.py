@@ -15,7 +15,7 @@
 用法:
   ./gui-venv311/bin/python tools/aoi_caliber_offline_check.py                 # 用本机历史真图
   ./gui-venv311/bin/python tools/aoi_caliber_offline_check.py --live 3        # 从 10082 取 3 张真原图
-产物: data/yolo_aoi_annot/caliber_offline/ 里的 png + 一份 JSON 汇总
+产物: data/datasets/yolo_aoi_annot/caliber_offline/ 里的 png + 一份 JSON 汇总
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ import numpy as np
 R = "/home/ubuntu/zmax"
 AOI = "/home/ubuntu/zmax/zmax_data/aoi_v4"
 SRC = os.path.join(AOI, "cam_finger_10082_work_v6.py")
-OUT = os.path.join(R, "data/yolo_aoi_annot/caliber_offline")
+OUT = os.path.join(R, "data/datasets/yolo_aoi_annot/caliber_offline")
 CAM = "http://192.168.23.23:10082"
 
 

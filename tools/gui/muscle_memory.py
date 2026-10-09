@@ -14,7 +14,7 @@
      (安全链 decide/反馈/饱和限幅全保留 — 异常时反馈仍可修正)
   5. 持续更新: 每次成功新轨迹与标杆指数融合 → 渐进优化 (练得越多越顺)
 
-存储: data/muscle_memory.json (每 seed+stage 一桶: 样本数/标杆)
+存储: data/memory/muscle_memory.json (每 seed+stage 一桶: 样本数/标杆)
 """
 import json
 import os

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """convert_mw_raw_to_ss.py — metaworld raw trace → 状态空间训练 npz (2026-09-06)
 
-输入: data/ss_mw_raw/s*.npz (collect_mw_teacher_data.py 产物, obs43/u_ff_vec/stage/force 全量)
-输出: data/ss_mw_ss/s*.npz — {states: obs[:,:39], actions: u_ff_vec(教师建议), stages, success}
-      对齐 build_ss_dataset.py 输入格式 (39D/4D) → data/ss_mw_lerobot 标准 LeRobot 数据集。
+输入: data/datasets/ss_mw_raw/s*.npz (collect_mw_teacher_data.py 产物, obs43/u_ff_vec/stage/force 全量)
+输出: data/datasets/ss_mw_ss/s*.npz — {states: obs[:,:39], actions: u_ff_vec(教师建议), stages, success}
+      对齐 build_ss_dataset.py 输入格式 (39D/4D) → data/datasets/ss_mw_lerobot 标准 LeRobot 数据集。
 
 说明: action = 教师 u_ff 建议 (解析律输出, 蒸馏目标, 与引擎 export_dataset 同语义);
       obs43 后 4D 触觉仅供右脑/接触标签, 左脑输入取前 39D 视觉。
@@ -14,8 +14,8 @@ import os
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW = os.path.join(ROOT, "data", "ss_mw_raw")
-OUT = os.path.join(ROOT, "data", "ss_mw_ss")
+RAW = os.path.join(ROOT, "data", "datasets", "ss_mw_raw")
+OUT = os.path.join(ROOT, "data", "datasets", "ss_mw_ss")
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -48,7 +48,7 @@ def main():
               f"止于{meta.get('stage_final')} · analytic={meta.get('analytic')}")
     print(f"\n=== 转换完成: {n_ep} episode ({n_ok} 成功) {total} 帧 → {OUT} ===")
     print(f"下一步: python3 tools/build_ss_dataset.py {OUT} "
-          f"{os.path.join(ROOT, 'data', 'ss_mw_lerobot')}")
+          f"{os.path.join(ROOT, 'data', 'datasets', 'ss_mw_lerobot')}")
 
 
 if __name__ == "__main__":

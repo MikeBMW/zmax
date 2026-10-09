@@ -2941,7 +2941,7 @@ def _llm_context_text():
         pass
     try:
         _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
-        sh = os.path.join(_REPO_ROOT, "data", "shared_memory.json")
+        sh = os.path.join(_REPO_ROOT, "data", "memory", "shared_memory.json")
         if os.path.exists(sh):
             s2 = json.load(open(sh, encoding="utf-8"))
             m2 = s2.get("meta") or {}
@@ -4229,7 +4229,7 @@ def node_ss_dec(ctx):
         return False
 
 # 🧠 记忆节点注册 (2026-09-09 老倪红线: 实现真源 src/lerobot/memory/mem_nodes.py — def 不进 GUI)
-#   画布/引擎/CLI 共享 data/shared_memory.json; 此处仅 import 转发 + 关键词绑定
+#   画布/引擎/CLI 共享 data/memory/shared_memory.json; 此处仅 import 转发 + 关键词绑定
 try:
     if os.path.join(_REPO_ROOT, "src") not in sys.path:
         sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))

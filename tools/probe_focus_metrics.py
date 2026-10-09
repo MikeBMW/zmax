@@ -65,7 +65,7 @@ def aniso_band(g, frac):
     return float((np.percentile(p, 90) - np.percentile(p, 10)) / (p.mean() + 1e-9))
 
 
-sharp = load(os.path.join(ROOT, "data/real_yolo_perception_104.mp4"))
+sharp = load(os.path.join(ROOT, "data/datasets/real_yolo_perception_104.mp4"))
 g0 = gray(sharp)
 lap0, hf0 = lapv(g0), hf_ratio(g0)
 print(f"参考帧: lap={lap0:.1f} hf={hf0:.5f}")

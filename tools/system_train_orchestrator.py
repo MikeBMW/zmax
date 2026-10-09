@@ -70,7 +70,7 @@ LAYERS = {
     },
     "MEM": {
         "desc": "记忆层: 五层记忆联络（已建成 16 条/31 链接）",
-        "data": "data/memory_layers.json",
+        "data": "data/memory/memory_layers.json",
         "cmd": "%s tools/memory_link_build.py" % sys.executable,
         "gate": "零孤儿 + 跨层链接 100%",
     },

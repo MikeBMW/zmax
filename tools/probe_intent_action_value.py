@@ -4,7 +4,7 @@
 背景 (2026-09-14 夜, 接 ①):
   · z_t(192)+δ → 流形 6 维: LOSO R² 全负 (不可辨识, 与 decoder 早先结论一致) ⇒ 该输入选择作废;
   · 几何 z7 路线成立 (数据里 z7 与 predictor 同构口径);
-  · data/intent_pairs_v1.npz 有 1799 帧 **(z7, m_local, m_goal, a_expert, stage)** —— 这正是"意图→专家动作"的监督对。
+  · data/datasets/intent_pairs_v1.npz 有 1799 帧 **(z7, m_local, m_goal, a_expert, stage)** —— 这正是"意图→专家动作"的监督对。
 
 本探针 = 意图口价值的**唯一硬口径**: 同一 z7、同一初始化、同一划分, 只差"喂不喂二态意图":
   off:  z7            → a_expert(3)
@@ -26,7 +26,7 @@ import numpy as np
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(TOOLS)
-DATA = os.path.join(ROOT, "data", "intent_pairs_v1.npz")
+DATA = os.path.join(ROOT, "data", "datasets", "intent_pairs_v1.npz")
 
 
 def r2(p, g):

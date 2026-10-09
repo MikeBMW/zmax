@@ -523,6 +523,6 @@
   "cal": "config/calib/zmax_calib.json 9 段 + config/calib/zmax_manifold.json (主参数 M)",
   "dia": "src/lerobot/verification/verification_layer.py FEATURES (A-H 域) + 节点实现审计 + 真机只读采集判据",
   "modules": "tools/gui/simulink_module.py LIBRARY (含 curation 名单)",
-  "project": "reports/projects/zmax_space.proj (7 段: canvas/pane/calib/measure/mparam/task/meta)"
+  "project": "data/database/zmax_space.proj (7 段: canvas/pane/calib/measure/mparam/task/meta)"
  }
 }

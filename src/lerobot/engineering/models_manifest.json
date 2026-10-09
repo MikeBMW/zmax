@@ -11,7 +11,7 @@
         "note_short": "在役: 云端API主路",
         "artifact": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
         "source": "canvas:flows/state_space_obs.json#n_dsvl",
-        "note": "云端 API (deepseek-flash / V4.1-Flash Vision, 本机 key 已配); 输出 data/scene_state.json + ~/zmax/zmax_data/vl_safety.json",
+        "note": "云端 API (deepseek-flash / V4.1-Flash Vision, 本机 key 已配); 输出 data/scene/scene_state.json + ~/zmax/zmax_data/vl_safety.json",
         "probe": { "type": "file_fresh", "path": "~/zmax/zmax_data/vl_safety.json", "max_age_s": 600 }
       }
     ],
@@ -116,7 +116,7 @@
         "state": "candidate",
         "artifact": "runs/detect/outputs/yolo_annot/annot_lora_20261001_180413/weights/best.pt",
         "source": "reports/joint_train_20261001_180413/stages.jsonl#L2",
-        "note": "本轮 L2 产物: 30 epoch / 139.2s / 基座=在役软链 models/yolo_peg_live.pt, 标注域 data/yolo_annot/dataset (rc=0 / 18:37 落盘 / 6234282 B / md5 4da14e38de92d26c573d673bcde17247); 沿用 yolo 域适应口径; 未证明提升前不切在役指针",
+        "note": "本轮 L2 产物: 30 epoch / 139.2s / 基座=在役软链 models/yolo_peg_live.pt, 标注域 data/datasets/yolo_annot/dataset (rc=0 / 18:37 落盘 / 6234282 B / md5 4da14e38de92d26c573d673bcde17247); 沿用 yolo 域适应口径; 未证明提升前不切在役指针",
         "note_short": "r600 候选·未切在役",
         "probe": { "type": "none" }
       },

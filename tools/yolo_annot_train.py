@@ -5,7 +5,7 @@
 老倪 2026-09-17: 「yolo 模型可以通过保存的图片进行模型训练」
 
 流程 (先体检再训练, 拒绝脏数据):
-  1. 读 data/yolo_annot/dataset/data.yaml → 校验 (图片/标注配对, 类别范围, 坐标范围) —— 有错直接退出 2
+  1. 读 data/datasets/yolo_annot/dataset/data.yaml → 校验 (图片/标注配对, 类别范围, 坐标范围) —— 有错直接退出 2
   2. 选基座权重: `--base auto` 优先找**现有仿真权重**做域适应微调 (仿真权重在真机 0 检出, 微调是正路);
      找不到就用 --model (默认 yolov8n.pt)
   3. ultralytics 训练 (device 自动: cuda 可用就用 GPU)

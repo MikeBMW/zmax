@@ -14,7 +14,7 @@ ROI 只用来"选区域", **不产生标签** (标签仍来自几何真值) → 
   · 检不到 / 贴边 → **不写该帧** (缺口如实留空, 下游按"该帧无 ROI → 保守不发标签"处理)
 
 用法:
-  gui-venv311/bin/python tools/make_roi_from_yolo.py --session data/yolo_annot/sessions/<会话>
+  gui-venv311/bin/python tools/make_roi_from_yolo.py --session data/datasets/yolo_annot/sessions/<会话>
   gui-venv311/bin/python tools/make_roi_from_yolo.py --frames <目录> --out <roi.jsonl> --conf 0.2
 """
 from __future__ import annotations

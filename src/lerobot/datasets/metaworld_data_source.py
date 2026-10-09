@@ -23,8 +23,8 @@ import os
 DATA_ROOTS = (
     ("orin",      "data/closed_loop",        "Orin 真实产线"),
     ("metaworld", "data/metaworld_peg_long", "metaworld 长轨迹"),
-    ("metaworld", "data/metaworld_peg",      "metaworld 标准 peg"),
-    ("metaworld", "data/ss_insert_lerobot",  "状态空间 insert"),
+    ("metaworld", "data/datasets/metaworld_peg",      "metaworld 标准 peg"),
+    ("metaworld", "data/datasets/ss_insert_lerobot",  "状态空间 insert"),
 )
 
 # 数据源切换语义 (画布节点 params.source 取值)

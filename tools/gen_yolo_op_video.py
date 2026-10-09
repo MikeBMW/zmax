@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """YOLO 感知操作视频 — BC policy + 真实 YOLO 检测 (2026-08-23 老倪)
 视频画面叠加 YOLO 检测框 (hand/光模块/hole), state 用 detect_3d 解算喂 BC → 真机同构操作视频
-与训练(data/metaworld_peg --yolo)、评估(eval_yolo_bc.py)同一套 YOLO 感知链
+与训练(data/datasets/metaworld_peg --yolo)、评估(eval_yolo_bc.py)同一套 YOLO 感知链
 用法:
   DISPLAY=:0 MUJOCO_GL=glfw gui-venv311/bin/python tools/gen_yolo_op_video.py --seed 0
 """
@@ -43,7 +43,7 @@ class BCMLP(nn.Module):
 
 
 def load_stats():
-    s = json.load(open(os.path.join(ROOT, "data", "metaworld_peg", "meta", "stats.json")))
+    s = json.load(open(os.path.join(ROOT, "data", "datasets", "metaworld_peg", "meta", "stats.json")))
     return (np.array(s["observation.state"]["mean"], dtype=np.float32),
             np.array(s["observation.state"]["std"], dtype=np.float32) + 1e-6,
             np.array(s["action"]["mean"], dtype=np.float32),
@@ -73,7 +73,7 @@ def main():
     args = ap.parse_args()
 
     print("🎥 YOLO 感知操作视频 · BC policy · 真实 YOLO 检测 (真机同构)")
-    # 加载 BC 模型 (data/metaworld_peg YOLO噪声state 训练)
+    # 加载 BC 模型 (data/datasets/metaworld_peg YOLO噪声state 训练)
     ck = torch.load(CKPT, map_location=DEVICE, weights_only=False)
     model = BCMLP().to(DEVICE)
     model.load_state_dict(ck["state_dict"])

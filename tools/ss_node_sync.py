@@ -42,7 +42,7 @@ MATCH = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 BIND = os.path.join(ROOT, "config", "ss_task_binding.json")
 ORDERS = os.path.join(ROOT, "config", "orders")
-PROJ = os.path.join(ROOT, "reports", "projects", "SS_主工程_任务配置.zmaxproj")
+PROJ = os.path.join(ROOT, "data", "database", "SS_主工程_任务配置.zmaxproj")
 
 
 def _j(p, d=None):
@@ -100,7 +100,7 @@ def build_snapshot():
             "任务配置": "config/tasks/tasks.json",
             "任务绑定": "config/ss_task_binding.json",
             "工单目录": "config/orders/ (BS_*.json)",
-            "工程文件": "reports/projects/SS_主工程_任务配置.zmaxproj",
+            "工程文件": "data/database/SS_主工程_任务配置.zmaxproj",
             "站点标定": "config/calib/zmax_calib.json",
             "流形标定": "config/calib/zmax_manifold.json",
         },

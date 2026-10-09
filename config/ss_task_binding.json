@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax.statespace.taskbinding/1",
-  "generated_at": "2026-10-09 19:07:52",
+  "generated_at": "2026-10-09 21:23:29",
   "doc": "任务 × 状态空间工程 绑定 (一个工程承载全部任务; 生成物, 勿手改)",
   "sources": {
    "config/tasks/tasks.json": "6dc356f6db5fd4a8",
@@ -11,7 +11,7 @@
  "project": {
   "name": "状态空间工程 · 主工程",
   "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
-  "canvas_md5": "e79bdab56b9a80f63eb1fe8857559dc2",
+  "canvas_md5": "7447a39e7dc58b622a522042ac1c077d",
   "nodes": 89,
   "links": 184
  },

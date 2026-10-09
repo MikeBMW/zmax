@@ -13,7 +13,7 @@
   peg/tgt : 光模块头位置 + 阶段目标点 (几何意图监督用)         [tr["peg_head"], tr["target"]]
   stage   : 阶段名 · split: clean/jitter · seed: 回合组标识
 
-产物: data/manifold_geo_v1.npz  (含 split/seed/stage, 供 LOSO 按回合组留出)
+产物: data/datasets/manifold_geo_v1.npz  (含 split/seed/stage, 供 LOSO 按回合组留出)
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/collect_mani_geo_data.py [--clean 4] [--jitter 2]
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clean", type=int, default=4, help="干净布局跑几个 seed")
     ap.add_argument("--jitter", type=int, default=2, help="干扰布局跑几个 seed (每 seed 4 档扰动)")
-    ap.add_argument("--out", default=os.path.join(ROOT, "data", "manifold_geo_v1.npz"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "datasets", "manifold_geo_v1.npz"))
     a = ap.parse_args()
     os.chdir(_GUI)                                  # 引擎按相对路径加载六层模块
     from state_space_sim_real import RealStateSpaceSim   # noqa: PLC0415

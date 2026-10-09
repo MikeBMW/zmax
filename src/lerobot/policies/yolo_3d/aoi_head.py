@@ -62,7 +62,7 @@ class AoiQualityHead:
         self.imgsz = int(imgsz)
         self.zoom = float(zoom)
         self.root = root or os.environ.get("ZMAX_ANNOT_ROOT_AOI",
-                                           os.path.join(ROOT, "data", "yolo_aoi_annot"))
+                                           os.path.join(ROOT, "data", "datasets", "yolo_aoi_annot"))
         self._model = None
         self._load_err = ""
         self.load_ms = 0.0

@@ -39,7 +39,7 @@ os.environ.setdefault("INTACT_RUNTIME", "root")
 os.environ.setdefault("INTACT_POLICY", "intact_l4_current")      # 指针 = r11 ep1
 os.environ.setdefault("OMP_NUM_THREADS", "6")
 
-# 🧊 评估纪律 (2026-09-15 实证): 引擎肌肉记忆默认开且**跨 run 持久化** (data/muscle_memory.json),
+# 🧊 评估纪律 (2026-09-15 实证): 引擎肌肉记忆默认开且**跨 run 持久化** (data/memory/muscle_memory.json),
 #   热记忆会让同一 seed 的结果随历史漂移 (实测 seed0 从稳定成功 → 6/6 确定性失败; 冷/热 = 3/8 vs 4/8),
 #   且热记忆下 30~65% 的执行帧是**记忆回放**而非实时计算。A/B 默认隔离成空记忆 (冷口径),
 #   AB_HOT_MEM=1 才用共享记忆 (用于量化"越练越顺"的热态效果)。

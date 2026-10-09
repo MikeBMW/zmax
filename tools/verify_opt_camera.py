@@ -26,7 +26,7 @@ for _p in (os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui"),
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-os.environ.setdefault("ZMAX_ANNOT_ROOT_AOI", os.path.join(ROOT, "data", "yolo_aoi_annot"))
+os.environ.setdefault("ZMAX_ANNOT_ROOT_AOI", os.path.join(ROOT, "data", "datasets", "yolo_aoi_annot"))
 import opt_camera_client as optc                                          # noqa: E402
 from aoi_head import AoiQualityHead                                       # noqa: E402
 import yolo_annot_dataset as yad                                          # noqa: E402

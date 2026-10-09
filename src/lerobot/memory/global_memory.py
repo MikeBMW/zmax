@@ -39,8 +39,8 @@ import os
 import numpy as np
 
 ROOT = os.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")
-SHARED = os.path.join(ROOT, "data", "shared_memory.json")
-MUSCLE = os.path.join(ROOT, "data", "muscle_memory.json")
+SHARED = os.path.join(ROOT, "data", "memory", "shared_memory.json")
+MUSCLE = os.path.join(ROOT, "data", "memory", "muscle_memory.json")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 # 39D 引擎观测布局 (实测): [0:3]手 [3]gripper [4:7]速度v [7:10]peg [10:13]goal ...
 O_HAND, O_GRIP, O_VEL, O_PEG, O_GOAL = slice(0, 3), 3, slice(4, 7), slice(7, 10), slice(10, 13)

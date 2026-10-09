@@ -16,7 +16,7 @@ L2 肌肉记忆   SkillPotentialField
     性质: ①轨迹上 d⊥=0 → Φ 最小 (老倪要求"轨迹上的点势能低")
           ②离开轨迹越远 Φ 越高 ("轨迹外的地方势能高")
           ③全局极小在 x_g → 沿 −∇Φ 积分必收敛到终点 (李雅普诺夫: Φ̇ = ∇Φ·ẋ = −‖∇Φ‖² ≤ 0)
-    数据 = data/muscle_memory.json 的 champ_x (真机真跑冠军轨迹) + io.exit (真终点)
+    数据 = data/memory/muscle_memory.json 的 champ_x (真机真跑冠军轨迹) + io.exit (真终点)
 
 L3 工艺流程记忆 ProcessPotentialField
     Φ_process(x,t) = Σ_k w_k(t)·Φ_SK_k(x),  Σ w_k ≡ 1
@@ -30,7 +30,7 @@ L4 物理工作空间记忆 GlobalPotentialField
 
 总装机记忆 AssemblyMemory / MemoryLayerBridge
     四层**联络策略**: L2 向上交势场参数(谷底/谷宽/触发), L3 组合成流程势场, L4 叠加障碍/预测,
-    顶层做跨层仲裁 + 台账。**逐层开关** (data/memory_layers.json, 默认全关)
+    顶层做跨层仲裁 + 台账。**逐层开关** (data/memory/memory_layers.json, 默认全关)
     → 老倪逐步打开: 每开一层, compose()/intent()/blend_action() 的贡献随之增加;
       全关时 compose() 返回 None、blend_action 恒等返回入参 (零回退, 可断言)
 ════════════════════════════════════════════════════════════════════════
@@ -48,8 +48,8 @@ SIGMA_FLOOR = 0.004          # 谷宽下限 4mm (窄谷=精细对位段)
 SIGMA_SCALE = 1.6            # σ = 1.6 × 相邻轨迹点中位间距
 LAMBDA_RATIO = 4.0           # 管壁惩罚高度 λ = LAMBDA_RATIO·k_att·σ² (与吸引项同量级 → 谷底唯一)
 LIN_RATIO = 3.0              # 近谷锥形吸引 k_lin = LIN_RATIO·k_att·σ (保证谷底是唯一极小/必收敛)
-LAYERS_FILE = "data/memory_layers.json"
-LEDGER_FILE = "data/assembly_memory.json"
+LAYERS_FILE = "data/memory/memory_layers.json"
+LEDGER_FILE = "data/memory/assembly_memory.json"
 STAGE_ORDER = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 STAGE_TO_SK = {"接近": "SK01", "对位": "SK02", "下降": "SK03", "抓取": "SK04",
                "抬起": "SK05", "转移": "SK06", "插入": "SK07", "完成": "SK08"}
@@ -277,7 +277,7 @@ class SkillPotentialField:
     # ── 构造器 (只从真实数据; 缺数据就报错/置空, 不编) ──
     @classmethod
     def from_muscle(cls, code, stage, rec, sk_meta=None, sigma=None):
-        """从 data/muscle_memory.json 的一条 <seed>|<stage> 记录建场"""
+        """从 data/memory/muscle_memory.json 的一条 <seed>|<stage> 记录建场"""
         X = np.asarray(rec.get("champ_x") or [], float).reshape(-1, 3)
         if X.shape[0] < 2:
             raise ValueError(f"{stage}: champ_x 不足 ({X.shape[0]})")
@@ -287,7 +287,7 @@ class SkillPotentialField:
                    sigma=sigma, n_ok=rec.get("n_ok", 0), u_points=rec.get("champ_u"),
                    v_cap=(m.get("ctrl") or {}).get("v_cap"), v_min=(m.get("ctrl") or {}).get("v_min"),
                    name=m.get("name", ""), desc=m.get("desc", ""), evidence=m.get("evidence", ""),
-                   source="data/muscle_memory.json champ_x (真机真跑冠军轨迹) + io.exit/goal",
+                   source="data/memory/muscle_memory.json champ_x (真机真跑冠军轨迹) + io.exit/goal",
                    meta={"frames": io.get("frames"), "entry_u": io.get("entry_u")})
 
     @classmethod
@@ -664,7 +664,7 @@ class MemoryLayerBridge:
             "L2 肌肉记忆": {"gate": self._gates["L2"], "载体": "skill_potential_fields",
                             "向上传": ["Φ_SK 函数", "−∇Φ_SK 梯度场", "谷底 x_g", "谷宽 σ",
                                        "触发条件 (evidence)", "速度上限 v_cap"],
-                            "数据": "data/muscle_memory.json champ_x/io (真跑冠军轨迹)",
+                            "数据": "data/memory/muscle_memory.json champ_x/io (真跑冠军轨迹)",
                             "本层技能": [f.code for f in self.fields]},
             "L3 工艺流程记忆": {"gate": self._gates["L3"], "载体": "process_potential_field",
                                 "向上传": ["技能序列", "权重 w_k(t)", "谷底时变轨迹", "切换边界"],
@@ -859,12 +859,12 @@ class MemoryLayerBridge:
     @classmethod
     def from_real_data(cls, root="/home/ubuntu/zmax", seed=104, use_engine_geom=True,
                        geom=None):
-        """用 data/muscle_memory.json 的冠军轨迹建 L2, 按时序建 L3, 引擎几何建 L4。缺数据不编。
+        """用 data/memory/muscle_memory.json 的冠军轨迹建 L2, 按时序建 L3, 引擎几何建 L4。缺数据不编。
 
         geom: 调用方 (引擎) 现成的现场几何 → 透传给 ObstacleField.from_engine, **避免新建第二个
         引擎实例污染正在运行的场景** (2026-09-15 实测 bug, 见 ObstacleField.from_engine 注释)。
         """
-        mpath = os.path.join(root, "data", "muscle_memory.json")
+        mpath = os.path.join(root, "data", "memory", "muscle_memory.json")
         if not os.path.isfile(mpath):
             return cls(root=root, reason=f"缺 {mpath}")
         mm = json.load(open(mpath, encoding="utf-8"))

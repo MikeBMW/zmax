@@ -59,7 +59,7 @@ def main(ckpt_dir=None):
     # 输入输出语义自测定 (pred_next 输出量纲): 喂训练数据对比 next 真值
     #   右脑输入 = raw obs + raw act (select_action 官方推理语义)
     import pandas as pd
-    parquet = os.path.join(ROOT, "data", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
+    parquet = os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
     df = pd.read_parquet(parquet)
     S = np.stack(df["observation.state"].values[:64]).astype(np.float32)
     A = np.stack(df["action"].values[:64]).astype(np.float32)
@@ -78,7 +78,7 @@ def main(ckpt_dir=None):
         pred_next_t, pred_cont_t = rb(torch.from_numpy(obs_in), torch.from_numpy(act_in))
     pred_next_t = pred_next_t.numpy()
     # 语义判断: raw 误差 vs 归一化反算误差
-    stats_path = os.path.join(ROOT, "data", "ss_insert_lerobot", "meta", "stats.json")
+    stats_path = os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot", "meta", "stats.json")
     st = json.load(open(stats_path, encoding="utf-8"))
     m = np.array(st["observation.state"]["mean"], dtype=np.float32)
     s = np.array(st["observation.state"]["std"], dtype=np.float32) + 1e-8

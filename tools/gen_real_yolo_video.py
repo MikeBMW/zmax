@@ -95,7 +95,7 @@ def main():
         cv2.imwrite(os.path.join(tmpdir, f"f{i:05d}.png"), fr)
         if i % 60 == 0:
             print(f"  帧 {i}/{len(sel)}", flush=True)
-    out = os.path.join(ROOT, "data", f"real_yolo_perception_{a.seed}.mp4")
+    out = os.path.join(ROOT, "data", "datasets", f"real_yolo_perception_{a.seed}.mp4")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     subprocess.run(["ffmpeg", "-y", "-framerate", "8", "-i",
                     os.path.join(tmpdir, "f%05d.png"), "-pix_fmt", "yuv420p", out],

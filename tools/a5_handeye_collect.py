@@ -9,7 +9,7 @@
   ① probe  : 先动 ±10mm 两步, 看图像里目标**是否跟着动** —— 不动 ⇒ 相机看到的是静止台面,
              采集无意义 ⇒ 直接停, 请现场把模块夹进夹爪 / 确认相机朝向 (省一轮白采)
   ② collect: 探针通过后走 12 个位姿 (±15mm 网格, 每位姿读 tcp_pose + 触发一次 AOI 取图),
-             产出 data/handeye/pose_*.json + 图像, 供 A6 解算
+             产出 data/calib/handeye/pose_*.json + 图像, 供 A6 解算
 
 安全: 只用 /move_pose (不切伺服下电) · speed=30 (驱动 rt_speed_ratio=0.05 ⇒ 慢) ·
       每步前只读核 operation_state=idle · 幅度 ≤15mm · 结束回起始位姿
@@ -35,7 +35,7 @@ CAM = "http://192.168.23.23:10082"
 ORIN = ["sshpass", "-p", "ts123", "ssh", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=no",
         "tashan@192.168.23.66"]
 JN = ["XMS5-R800-W4G3B4C_joint_%d" % i for i in range(1, 7)]
-OUT = os.path.join(R, "data/handeye")
+OUT = os.path.join(R, "data/calib/handeye")
 ROSX = ('source /opt/ros/humble/setup.bash 2>/dev/null; '
         'for ws in /home/tashan/0810/*/install/setup.bash; do [ -f "$ws" ] && source "$ws" && break; done; '
         'export ROS_DOMAIN_ID=0; ')

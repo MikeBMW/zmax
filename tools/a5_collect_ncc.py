@@ -6,7 +6,7 @@
   (实测 Δu 比值 2.69≈2 · NCC 0.84/1.00/0.84)。故:
    ① 模板 = 用 +40mm 位姿图里"差异簇"位置的 96×96 块 (臂的像)
    ② 每个位姿: 移到位 → 连拍 3 帧取中值(压噪) → NCC 定位模板 → 记录 (u,v,score) + TCP 真值
-   ③ 结束回起始位姿; 产出 data/handeye/collect_ncc_*.json (供手眼解算)
+   ③ 结束回起始位姿; 产出 data/calib/handeye/collect_ncc_*.json (供手眼解算)
 安全: 每步只读三查 · 网格 ±15mm (x/y) · speed=30 (驱动 5% 限速) · 结束回原位
 用法: ./gui-venv311/bin/python tools/a5_collect_ncc.py --amp 15 --n 12 --tpl-center 564,288
 """
@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(R, "tools"))
 import a5_handeye_collect as A5                                                   # noqa: E402
 from a5_probe_v2 import grab                                                      # noqa: E402
 
-OUT = os.path.join(R, "data/handeye")
+OUT = os.path.join(R, "data/calib/handeye")
 K = 48
 
 
@@ -65,7 +65,7 @@ def main() -> int:
         cx, cy = 564, 288
     tpl = src[max(0, cy - K):cy + K, max(0, cx - K):cx + K]
     cv2.imwrite(os.path.join(OUT, "c_tpl.png"), tpl)
-    print("模板: 中心(%d,%d) 尺寸 %dx%d → data/handeye/c_tpl.png" % (cx, cy, tpl.shape[1], tpl.shape[0]))
+    print("模板: 中心(%d,%d) 尺寸 %dx%d → data/calib/handeye/c_tpl.png" % (cx, cy, tpl.shape[1], tpl.shape[0]))
 
     t0 = A5.tcp()
     print("起始 TCP=(%.6f, %.6f, %.6f)\n" % tuple(t0["p"]))

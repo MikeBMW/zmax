@@ -7,7 +7,7 @@
 
 本脚本: RealStateSpaceSim(seed, 解析教师默认) 跑成功轮 → 存 raw npz
 (字段对齐 collect_mw_teacher_data.py: obs43/u_ff_vec/u_exec_vec/stage/force/
-grasped/contact_p + meta), 可直接落入 data/ss_mw_raw 走 convert/build 管道。
+grasped/contact_p + meta), 可直接落入 data/datasets/ss_mw_raw 走 convert/build 管道。
 
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/collect_simreal_teacher_data.py 100 8
 """
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 import numpy as np  # noqa: E402
 from state_space_sim_real import RealStateSpaceSim  # noqa: E402
 
-OUT = os.path.join(ROOT, "data", "ss_simreal_raw")
+OUT = os.path.join(ROOT, "data", "datasets", "ss_simreal_raw")
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -68,7 +68,7 @@ def main():
             fail.append(sd)
             print(f"seed {sd:3d}: ❌ {len(tr['t']):>4d}步 止于{stages[-1]} [{chain}]", flush=True)
     print(f"\n=== sim_real 教师采集: {len(ok)} 成功 / {len(ok)+len(fail)} · 成功 seed {ok}")
-    print(f"数据目录: {OUT}  (下一步: 复制进 data/ss_mw_raw 融合或单独走 convert/build)")
+    print(f"数据目录: {OUT}  (下一步: 复制进 data/datasets/ss_mw_raw 融合或单独走 convert/build)")
 
 
 if __name__ == "__main__":

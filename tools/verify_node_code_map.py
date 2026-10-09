@@ -42,7 +42,7 @@ KEY = [
     ("obs", "src/lerobot/policies/left_right/state_space/"),
     ("intact", "src/lerobot/policies/left_right/state_space/intact"),
     ("流形", "src/lerobot/policies/left_right/state_space/manifold"),
-    ("校准", "tools/real_handeye_calib.py / data/handeye/"),
+    ("校准", "tools/real_handeye_calib.py / data/calib/handeye/"),
     ("相机", "tools/perception_chain_real.py (tap cam_rs.png)"),
     ("标定", "tools/board_frame_module.py"),
     ("aoi", "tools/aoi_call.py -> 192.168.23.23:10082/10083"),

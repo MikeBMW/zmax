@@ -243,10 +243,10 @@ def read_canvas_nodes():
 
 
 def read_memory_layers():
-    """五层记忆真源 (data/memory_layers.json)"""
-    for c in (os.path.join(REPO, "data", "memory_layers.json"),
-              os.path.join(REPO, "data", "memory_layers.json"),
-              os.path.join(HOME, "lerobot-smolvla-lew", "data", "memory_layers.json")):
+    """五层记忆真源 (data/memory/memory_layers.json)"""
+    for c in (os.path.join(REPO, "data", "memory", "memory_layers.json"),
+              os.path.join(REPO, "data", "memory", "memory_layers.json"),
+              os.path.join(HOME, "lerobot-smolvla-lew", "data", "memory", "memory_layers.json")):
         if not os.path.isfile(c):
             continue
         try:
@@ -588,7 +588,7 @@ class SSDaemon:
         return True
 
     def pub_macro(self):
-        """ss_macro ← 五层记忆真源 (data/memory_layers.json): 每层一条"""
+        """ss_macro ← 五层记忆真源 (data/memory/memory_layers.json): 每层一条"""
         from ss_types import SSMacro                                    # noqa: PLC0415
         d, src = read_memory_layers()
         if not d:

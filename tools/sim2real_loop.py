@@ -159,9 +159,9 @@ def step3_data(h5=None) -> dict:
     except Exception as e:  # noqa: BLE001
         r["reason"] = f"读取失败 {type(e).__name__}: {e}"
     # YOLO 真机标注数据
-    dy = os.path.join(ROOT, "data/yolo_annot/dataset/data.yaml")
+    dy = os.path.join(ROOT, "data/datasets/yolo_annot/dataset/data.yaml")
     r["yolo_annot"] = {"data_yaml": os.path.relpath(dy, ROOT), "ok": os.path.exists(dy),
-                       "labels": len(glob.glob(os.path.join(ROOT, "data/yolo_annot/dataset/*/*/*.txt")))}
+                       "labels": len(glob.glob(os.path.join(ROOT, "data/datasets/yolo_annot/dataset/*/*/*.txt")))}
     return r
 
 

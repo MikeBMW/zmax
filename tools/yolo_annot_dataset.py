@@ -6,9 +6,9 @@
 让标定工程师根据图像圈选光模块、输入类别、保存当前图片, 而且 YOLO 模型可以通过保存的图片进行模型训练。
 做好标定工程、数据保存、数据文件夹路径的设计」
 
-目录规范 (全部在 data/yolo_annot, data/ 已被 .gitignore → 数据不进代码库):
+目录规范 (全部在 data/datasets/yolo_annot, data/ 已被 .gitignore → 数据不进代码库):
 
-    data/yolo_annot/
+    data/datasets/yolo_annot/
     ├── README.md                        目录说明 (--init 生成, 自解释)
     ├── classes.txt                      类别表: **行号 = YOLO class id** (第 1 行 = 0)
     ├── meta.json                        数据集版本 / 全部会话索引 / 张数
@@ -47,19 +47,19 @@ import time
 
 import numpy as np
 
-ROOT_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot")
-ROOT_SIM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "yolo_annot_sim")
+ROOT_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "datasets", "yolo_annot")
+ROOT_SIM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "datasets", "yolo_annot_sim")
 # 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (无 Orin 也能采真像素) → 数据根独立,
 #    避免和真机 D405 帧/仿真渲染帧混在一个类别表里 (口径打结)
 ROOT_USBCAM_DEFAULT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                  "data", "yolo_annot_usbcam")
+                                  "data", "datasets", "yolo_annot_usbcam")
 # 🐛 2026-09-17 口径纠正: 真机类别名必须用 `peg` (不是 optical_module)。
 #   依据 = src/lerobot/policies/yolo_3d/frame_source.py:40 的唯一口径源
 #   CLASS_MAP = {"hand": "hand", "peg": "光模块", "hole": "hole"} (注释: peg→光模块, id 顺序不许改),
 #   下游 tools/real_yolo_perceive.py 按业务名取 det3d.get("hand") / det3d["光模块"] / det3d["hole"]。
 #   旧默认 "optical_module" 在 CLASS_MAP 里没有条目 → 真机权重训出来接不进感知链 (光模块那一路恒空)。
 DEFAULT_CLASSES = ["peg"]                   # 光模块 (现场一端入镜; 画面若能看到孔口再加 "hole")
-DEFAULT_SIM_CLASSES = ["peg", "hole", "hand"]   # 仿真 metaworld 三类 (与 data/yolo_peg 现有口径一致)
+DEFAULT_SIM_CLASSES = ["peg", "hole", "hand"]   # 仿真 metaworld 三类 (与 data/datasets/yolo_peg 现有口径一致)
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp")
 
 
@@ -85,7 +85,7 @@ def session_tag_for(source: str) -> str:
     if s.startswith("usbcam"):
         return "usbcam"
     return "d405"
-README_TMPL = """# YOLO 真机标定数据 (data/yolo_annot)
+README_TMPL = """# YOLO 真机标定数据 (data/datasets/yolo_annot)
 
 > 由 `tools/yolo_annot_dataset.py --init` 生成 / `--build` 更新。**目录即契约, 别手改结构。**
 
@@ -551,7 +551,7 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
     with open(os.path.join(ds, "data.yaml"), "w", encoding="utf-8") as f:
         f.write("\n".join(yml) + "\n")
     # 📌 真值聚合 (老倪 2026-09-17: 「训练要有光模块位置/距离」): 各会话 truth.jsonl → dataset/truth.jsonl
-    #    训练/标定只读这一个文件就能拿到每张图的 3D 真值 (与仿真 data/yolo_peg 的真值投影标签同口径)
+    #    训练/标定只读这一个文件就能拿到每张图的 3D 真值 (与仿真 data/datasets/yolo_peg 的真值投影标签同口径)
     stems = {s["stem"] for s in samples}
     trows = []
     for tp in sorted(glob.glob(os.path.join(P["sessions"], "*", "truth.jsonl"))):

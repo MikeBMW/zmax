@@ -125,7 +125,7 @@ def s1_collect():
     except Exception:                                                        # noqa: BLE001
         reach = False
     pkgs = sorted(glob.glob("/home/ubuntu/zmax/zmax_data/orin_live/*.json") +
-                  glob.glob(os.path.join(REPO, "data/orin_live/*.json")), key=os.path.getmtime)
+                  glob.glob(os.path.join(REPO, "data/datasets/orin_live/*.json")), key=os.path.getmtime)
     newest = pkgs[-1] if pkgs else None
     m = {"orin_reachable": reach, "n_local_pkgs": len(pkgs),
          "newest_pkg_age_s": _age(newest) if newest else None,
@@ -160,15 +160,15 @@ def s2_upload():
 
 def s3_dataset():
     """S3 入库质量门: 数据集存在 + 帧数/维度"""
-    info = os.path.join(REPO, "data/orin_6d/meta/info.json")
+    info = os.path.join(REPO, "data/datasets/orin_6d/meta/info.json")
     d = _read_json(info)
     if not d:
-        return _res("unknown", "未找到 data/orin_6d/meta/info.json")
+        return _res("unknown", "未找到 data/datasets/orin_6d/meta/info.json")
     tot = d.get("total_frames")
     eps = d.get("total_episodes")
     st = "pass" if isinstance(tot, int) and tot >= 20 else ("fail" if isinstance(tot, int) else "unknown")
     return _res(st, "orin_6d 就有 %s 帧 / %s 轨迹(门: 单包≥20 帧且维度一致)" % (tot, eps),
-                total_frames=tot, total_episodes=eps, path="data/orin_6d")
+                total_frames=tot, total_episodes=eps, path="data/datasets/orin_6d")
 
 
 def s4_train():

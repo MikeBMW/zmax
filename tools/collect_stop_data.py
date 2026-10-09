@@ -40,7 +40,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="0,1,2,3,4,5,6,7,8,9,10,11")
     ap.add_argument("--steps", type=int, default=900)
-    ap.add_argument("--out", default=os.path.join(ROOT, "data", "stop_signal_v1.npz"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "datasets", "stop_signal_v1.npz"))
     a = ap.parse_args()
     Feat, Lab, Sid, Stg = [], [], [], []
     meta = []

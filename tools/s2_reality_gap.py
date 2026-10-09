@@ -76,7 +76,7 @@ def main() -> int:
               % (i, rm, rs, sm, ss, z, "  ⚠️ 漂移大" if z > 1.0 else ""))
     print("\n判读: |Δmean|/σ_sim > 1 的维度 = 真机与仿真**不同源**, 是策略上真机失败的首因候选")
     print("  下一步(自进化): 对这些维做输入重标定(用真机分布的 mean/std) 或域随机化, 再回引擎闭环复测成功率")
-    out = os.path.join(R, "data/selfcal/reality_gap_%s.json" % __import__("time").strftime("%Y%m%d_%H%M%S"))
+    out = os.path.join(R, "data/calib/selfcal/reality_gap_%s.json" % __import__("time").strftime("%Y%m%d_%H%M%S"))
     json.dump({"tap_file": fname, "n_real": int(n), "real_mean4": np.round(np.nanmean(Rr, 0), 6).tolist()[:4],
                "real_std4": np.round(np.nanstd(Rr, 0), 6).tolist()[:4],
                "sim_shape": list(S.shape), "sim_mean4": np.round(S.mean(0), 6).tolist()[:4],

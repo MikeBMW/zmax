@@ -7,10 +7,10 @@
    与状态空间工程的记忆保持同步。你来整体优化记忆系统"
 
 分层语义 (本模块 = 最顶层):
-  L2 肌肉记忆  → 原子技能冠军轨迹 (动作准确性)   data/muscle_memory.json
+  L2 肌肉记忆  → 原子技能冠军轨迹 (动作准确性)   data/memory/muscle_memory.json
   L3 流程记忆  → 阶段时序调度 (调度能力)         shared_memory.json#l3
   L4 工作记忆  → 现场几何 + 抗干扰 (工作记忆)     shared_memory.json#l4
-  总装记忆     → 跨层仲裁 + 台账                  data/assembly_memory.json
+  总装记忆     → 跨层仲裁 + 台账                  data/memory/assembly_memory.json
   **宏观记忆** → 跨任务/跨会话的语义知识 + 能力画像 + 失败归因 + 策略建议
                 (本模块; 有 LLM 走 Qwen 归纳, 无则确定性规则 —— 两条路都可用)
 
@@ -37,10 +37,10 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-MACRO = os.path.join(ROOT, "data", "macro_memory.json")
-ASSEMBLY = os.path.join(ROOT, "data", "assembly_memory.json")
-SHARED = os.path.join(ROOT, "data", "shared_memory.json")
-MUSCLE = os.path.join(ROOT, "data", "muscle_memory.json")
+MACRO = os.path.join(ROOT, "data", "memory", "macro_memory.json")
+ASSEMBLY = os.path.join(ROOT, "data", "memory", "assembly_memory.json")
+SHARED = os.path.join(ROOT, "data", "memory", "shared_memory.json")
+MUSCLE = os.path.join(ROOT, "data", "memory", "muscle_memory.json")
 
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 

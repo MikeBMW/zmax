@@ -23,7 +23,7 @@ from selfcal_kinematic import sdk, status                                       
 from s2_excite_collect import tap_last                                                 # noqa: E402
 from a5_handeye_collect import move_pose, wait_idle, joints                             # noqa: E402
 
-OUT = os.path.join(R, "data/selfcal")
+OUT = os.path.join(R, "data/calib/selfcal")
 
 
 def gate():

@@ -151,8 +151,8 @@ class L2AutoLearnPanel(QtWidgets.QDialog):
         hb = _j(os.path.join(WORK, "heartbeat.json"))
         ptr = os.path.join(REPO, "models", "yolo_peg_live.pt")
         tgt = os.path.realpath(ptr) if os.path.exists(ptr) else None
-        stats = _j(os.path.join(REPO, "data", "yolo_annot", "dataset", "stats.json"))
-        meta = _j(os.path.join(REPO, "data", "yolo_annot", "meta.json"))
+        stats = _j(os.path.join(REPO, "data", "datasets", "yolo_annot", "dataset", "stats.json"))
+        meta = _j(os.path.join(REPO, "data", "datasets", "yolo_annot", "meta.json"))
         sess = meta.get("sessions") or []
         n_h = len([s for s in sess if not str(s.get("annotator", "")).startswith("auto")])
         n_a = len([s for s in sess if str(s.get("annotator", "")).startswith("auto")])

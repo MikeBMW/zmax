@@ -11,7 +11,7 @@
   mag   : 意图幅值 (下游按时长标定)
 
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/collect_intent_data.py [seed ...]
-输出: data/intent_pairs_v1.npz
+输出: data/datasets/intent_pairs_v1.npz
 """
 import os
 import sys
@@ -80,4 +80,4 @@ if __name__ == '__main__':
     seeds = [int(a) for a in sys.argv[1:] if a.isdigit()] or [104, 7, 9, 0, 6]
     print(f'=== 采集二态意图→专家动作 (seeds={seeds}) ===')
     os.makedirs('data', exist_ok=True)
-    collect(seeds, os.path.join('data', 'intent_pairs_v1.npz'))
+    collect(seeds, os.path.join('data', 'datasets', 'intent_pairs_v1.npz'))

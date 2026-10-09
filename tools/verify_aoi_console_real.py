@@ -21,7 +21,7 @@ for _p in (os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui"),
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-os.environ.setdefault("ZMAX_ANNOT_ROOT_AOI", os.path.join(ROOT, "data", "yolo_aoi_annot"))
+os.environ.setdefault("ZMAX_ANNOT_ROOT_AOI", os.path.join(ROOT, "data", "datasets", "yolo_aoi_annot"))
 
 from PyQt5 import QtWidgets, QtGui, QtCore                                  # noqa: E402
 import aoi_inspect_console as aic                                        # noqa: E402

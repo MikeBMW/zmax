@@ -212,7 +212,7 @@ def build_stages(a) -> list:
               "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled", **HF_ENV}
     l5_rows = 0
     try:
-        _p = os.path.join(ROOT, "data/l5_vlm_sft/train.jsonl")
+        _p = os.path.join(ROOT, "data/datasets/l5_vlm_sft/train.jsonl")
         l5_rows = sum(1 for l in open(_p, encoding="utf-8") if l.strip()) if os.path.exists(_p) else 0
     except Exception:                                                          # noqa: BLE001
         l5_rows = 0
@@ -234,7 +234,7 @@ def build_stages(a) -> list:
         {"id": "L2", "layer": "L2 YOLO (检测) + 2D→3D", "gpu_mb": 4000, "est_min": 5,
          "desc": "真机标注帧域适应微调 (基座=在役软链)",
          "cwd": ROOT, "cmd": l2_cmd, "env": l2_env, "log": os.path.join(mroot, "L2.log"),
-         "evidence": [os.path.join(ROOT, "data/yolo_annot/dataset")],
+         "evidence": [os.path.join(ROOT, "data/datasets/yolo_annot/dataset")],
          "note": f"基座 {os.path.relpath(L2_BASE, ROOT)} (软链)"},
         {"id": "L5", "layer": "L5 意图层 (本地 Qwen2.5-VL-3B)", "gpu_mb": 7000, "est_min": 10,
          "desc": (f"LoRA 微调 + 同口径对照 (教师蒸馏样本 {l5_rows} 条, {l5_steps} 步)" if l5_rows
@@ -270,7 +270,7 @@ def env_check(stages) -> int:
                (os.path.join(ROOT, "tools/mk_smolvla_sim_cfg.py"), "L3 配置生成器"),
                (os.path.join(ROOT, "outputs/train/smolvla_lew_v10/resume_cfg.json"), "v10 配置模板")],
         "L2": [(PY_GUI, "gui venv python"), (L2_BASE, "YOLO 基座软链"),
-               (os.path.join(ROOT, "data/yolo_annot/dataset/data.yaml"), "真机标注数据集")],
+               (os.path.join(ROOT, "data/datasets/yolo_annot/dataset/data.yaml"), "真机标注数据集")],
     }
     for s in stages:
         if s["id"] not in checks:

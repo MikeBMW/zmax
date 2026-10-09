@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """YOLO 深度估计训练 — peg-insert 场景 (2026-08-23 老倪: YOLO 加 depth head)
-数据: data/yolo_peg_depth (RGB+depth 对齐, depth_scale=256)
+数据: data/datasets/yolo_peg_depth (RGB+depth 对齐, depth_scale=256)
 模型: yolo26n-depth (YOLO backbone + DPT-style depth head, Depth Anything 风格)
 用法: python train_depth.py [--epochs 50] [--batch 8] [--imgsz 480] [--device cpu] [--name peg_depth_v1]
 """
@@ -12,7 +12,7 @@ sys.path.insert(0, ROOT)
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default="data/yolo_peg_depth")
+    ap.add_argument("--data", default="data/datasets/yolo_peg_depth")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--imgsz", type=int, default=480)
     ap.add_argument("--batch", type=int, default=8)

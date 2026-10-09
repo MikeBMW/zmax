@@ -27,7 +27,7 @@ T1 = [
     ("src/lerobot/manifold", "流形/节点实现"),
     ("flows", "画布拓扑 (pipeline_closure / calib_closure 等)"),
     ("config", "标定注册表/机器人规格 (禁硬编码的来源)"),
-    ("data/memory_layers.json", "五层记忆 (16条/31链接)"),
+    ("data/memory/memory_layers.json", "五层记忆 (16条/31链接)"),
     ("docs/PIPELINE_STATE.json", "闭环运行状态 (画布/控制台读这个)"),
     ("zmax_robot_spec", "机器人规格/URDF 引用"),
 ]

@@ -3,7 +3,7 @@
 用**真机 D405 实时帧** → 走真标定保存路径 (yolo_annot_dataset.save_sample) → 构建数据集 → 体检。
 ⚠️ 这里的框是**程序化占位框** (覆盖画面下方正中区域, 老倪说光模块就在那儿), 不是人工精标 →
    只证明"真机帧 → 标定 → 数据集 → 能训练"这条管线通, 精度必须靠人工标定。
-数据根: /home/ubuntu/zmax/zmax_data/annot_smoke (独立于用户的 data/yolo_annot, 不污染)
+数据根: /home/ubuntu/zmax/zmax_data/annot_smoke (独立于用户的 data/datasets/yolo_annot, 不污染)
 """
 import json
 import os

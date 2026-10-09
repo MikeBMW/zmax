@@ -62,7 +62,7 @@ class EngMemory:
     def __init__(self, repo: str | None = None, hermes_dir: str | None = None, macro_path: str | None = None):
         self.repo = repo or _repo_root()
         self.hermes = hermes_dir or os.path.expanduser("~/.hermes")
-        self.macro_path = macro_path or os.path.join(self.repo, "data", "macro_memory.json")
+        self.macro_path = macro_path or os.path.join(self.repo, "data", "memory", "macro_memory.json")
 
     # ── ① 收集 (真读文件) ──
     def collect(self) -> dict:

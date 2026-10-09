@@ -5,7 +5,7 @@
 真实 metaworld 多 seed 布局跑完整插拔 → 采集 (43D obs, u_ff 教师建议, stage, force,
 grasped, contact_p) → 学生(左脑 MLP / 右脑 WM)重训覆盖多布局域 → 解除 R0 强解析。
 
-输出: data/ss_mw_raw/s{seed:03d}.npz — 每成功 seed 一个 (obs43/act4/力/阶段全量)
+输出: data/datasets/ss_mw_raw/s{seed:03d}.npz — 每成功 seed 一个 (obs43/act4/力/阶段全量)
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/collect_mw_teacher_data.py [n_seeds]
 """
 import argparse
@@ -27,7 +27,7 @@ spec = importlib.util.spec_from_file_location("gen_mw", _gen_path)
 gen = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gen)
 
-OUT = os.path.join(ROOT, "data", "ss_mw_raw")
+OUT = os.path.join(ROOT, "data", "datasets", "ss_mw_raw")
 os.makedirs(OUT, exist_ok=True)
 
 

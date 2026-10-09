@@ -952,7 +952,7 @@ def build_from_sim(tcp7=None, cam="arm") -> dict:
     """
     仿真/引擎侧物体 → 真机画面框。
     3D 来源优先级: data/scene/objects3d.json (引擎导出的 base 系物体) >
-                   data/scene_state.json 的 box3d.center
+                   data/scene/scene_state.json 的 box3d.center
     """
     he = load_handeye()
     objs, src = [], None
@@ -988,7 +988,7 @@ def build_from_sim(tcp7=None, cam="arm") -> dict:
 
 
 def build_from_scene_state(cam="arm") -> dict:
-    """把 data/scene_state.json 里已有的像素检测框转成叠加规格（det 源）"""
+    """把 data/scene/scene_state.json 里已有的像素检测框转成叠加规格（det 源）"""
     if not SCENE_STATE.exists():
         return {"mode": "empty", "cameras": {}}
     ss = json.loads(SCENE_STATE.read_text(encoding="utf-8"))

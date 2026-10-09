@@ -26,6 +26,7 @@ _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _GUI_DIR not in sys.path:
     sys.path.insert(0, _GUI_DIR)
 import node_logic
+from data_locate import data_dir as _data_dir   # data/ 分区定位 (2026-10-09)
 from node_logic_dialog import NodeLogicDialog
 
 
@@ -825,9 +826,9 @@ REFERENCE_APPS = [
                                                "desc": "🧩 AWE 结构条件: latent += proj(state)×gate — 结构坐标叠加进视触觉潜状态 (双击改 gate/state_dim)"}),
         # 🎯 2026-09-17 老倪: 「加 → 引擎页一键训」— YOLO 感知前端自己的训练节点。
         #   之前引擎里 _train_yolo_detector() 写了但**没有节点传 policy="yolo"** ⇒ 从界面到不了那段代码。
-        #   policy="yolo" → on_train 走 YOLO 分支: 优先真机标注 data/yolo_annot/dataset
+        #   policy="yolo" → on_train 走 YOLO 分支: 优先真机标注 data/datasets/yolo_annot/dataset
         #   (视频流窗口「✏️标定模式」产出) → tools/yolo_annot_train.py --base auto(仿真权重域适应微调);
-        #   无真机数据时才回退仿真 data/yolo_peg。训练步数 steps = YOLO 的 epoch 数 (双击节点可改)。
+        #   无真机数据时才回退仿真 data/datasets/yolo_peg。训练步数 steps = YOLO 的 epoch 数 (双击节点可改)。
         ("system", "🚀 YOLO 训练", {"policy": "yolo", "steps": 100,
                                     "desc": "YOLO 检测训练 (感知前端): 真机标注数据 → ultralytics 微调 → outputs/yolo_annot/<name>; 步数=epoch (双击节点改参数 · 右键/双击执行)"}),
     ], [
@@ -4724,7 +4725,7 @@ class LibraryPanel(QFrame):
         _dset_cands = [
             ("metaworld_peg", "光模块插拔 (lerobot)", "metaworld"),
         ]
-        _exists = [c for c in _dset_cands if os.path.isdir(os.path.join(root, "data", c[0]))]
+        _exists = [c for c in _dset_cands if os.path.isdir(_data_dir(root, c[0]))]
         if _exists:
             lab = QLabel(f"▾ 📦 数据集 (已有 {len(_exists)})")
             lab.setStyleSheet("color:#d29922; font-size:13pt; font-weight:700; padding:6px 2px 2px;")
@@ -9980,12 +9981,12 @@ class SimulinkModule(QWidget):
         # 🐛 2026-08-19: left_right 训练配置用 data/metaworld_peg_long (39D 12集3600帧)
         placeholder = os.path.join(root, "data", "metaworld_peg_long") \
             if os.path.isdir(os.path.join(root, "data", "metaworld_peg_long")) \
-            else os.path.join(root, "data", "metaworld_peg")
+            else os.path.join(root, "data", "datasets", "metaworld_peg")
 
         # 0. 节点逻辑可修改区强制数据源 (node_logic.py ✏️) — 优先于画布 switch
         if data_source == "ss_sim":
             # 🧮 状态空间仿真数据集 (2026-08-20 老倪: 状态空间接入训练流程)
-            ss_dir = os.path.join(root, "data", "ss_insert_lerobot")
+            ss_dir = os.path.join(root, "data", "datasets", "ss_insert_lerobot")
             if not os.path.isfile(os.path.join(ss_dir, "meta", "info.json")):
                 self.log_signal.emit("🧮 状态空间数据集不存在 → 自动生成 (仿真 8 轮 + 转换 LeRobot)…")
                 try:
@@ -10013,7 +10014,7 @@ class SimulinkModule(QWidget):
             if os.path.isdir(placeholder):
                 self.log_signal.emit("📦 节点逻辑强制 [metaworld] → 使用占位集 (不拉 relay)")
                 return placeholder, "metaworld 占位集 (节点逻辑)", False
-            self.log_signal.emit("⚠️ 强制 metaworld 但 data/metaworld_peg 不存在 → 回退自动选择")
+            self.log_signal.emit("⚠️ 强制 metaworld 但 data/datasets/metaworld_peg 不存在 → 回退自动选择")
         elif data_source == "orin":
             self.log_signal.emit("📥 节点逻辑强制 [Orin] → 只拉 relay 真实数据")
             src = "orin"
@@ -10028,7 +10029,7 @@ class SimulinkModule(QWidget):
                 if os.path.isdir(placeholder):
                     self.log_signal.emit("📦 数据源 [metaworld] → 使用 metaworld 占位集 (不拉 relay)")
                     return placeholder, "metaworld 占位集", False
-                self.log_signal.emit("⚠️ 选了 metaworld, 但 data/metaworld_peg 不存在 → 回退自动选择")
+                self.log_signal.emit("⚠️ 选了 metaworld, 但 data/datasets/metaworld_peg 不存在 → 回退自动选择")
             elif src == "orin":
                 self.log_signal.emit("📥 数据源 [Orin] → 强制拉取 relay 真实数据")
             else:
@@ -10186,7 +10187,7 @@ class SimulinkModule(QWidget):
                     self.log_signal.emit(f"❌ 配置生成失败: {ex}")
                     tmp_cfg = cfg_path
             # 🧮 2026-08-20 静静: state_space 本地直训 — 上面的 root 被改成容器路径 /app/...,
-            #   本机不存在 → 改回相对路径 (与 CLI 闭环一致, 数据在 data/ss_insert_lerobot)
+            #   本机不存在 → 改回相对路径 (与 CLI 闭环一致, 数据在 data/datasets/ss_insert_lerobot)
             if policy == "state_space":
                 try:
                     with open(tmp_cfg, encoding="utf-8") as f:
@@ -10225,7 +10226,7 @@ class SimulinkModule(QWidget):
                         f"sshpass -p '{r['pwd']}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o Port={r['port']} "
                         f"{r['user']}@{r['host']} "
                         f"'cd ~/zmax/external/lerobot-smolvla-lew && git pull -q 2>/dev/null; "
-                        f"sed -i \"s|^  root: .*|  root: data/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
+                        f"sed -i \"s|^  root: .*|  root: data/datasets/metaworld_peg|\" {cfg_rel} 2>/dev/null; "
                         f"sed -i \"s|^output_dir: .*|output_dir: outputs/train/{_odir}|\" {cfg_rel} 2>/dev/null; "
                         f"if ! docker images -q zmax-train:latest >/dev/null 2>&1; then "
                         f"nohup docker build -t zmax-train:latest . > /tmp/docker_build.log 2>&1 & echo BUILDING; "
@@ -10453,9 +10454,9 @@ class SimulinkModule(QWidget):
         """🎯 YOLO检测训练 (ultralytics) — 感知前端, 独立于 lerobot 策略训练
 
         数据二选一 (2026-09-17 老倪:「标号的数据在哪里? 怎么组织 yolo 训练」):
-          · 真机标注 data/yolo_annot/dataset —— 视频流窗口「✏️标定模式」产出的正路 (现场唯一真数据)
+          · 真机标注 data/datasets/yolo_annot/dataset —— 视频流窗口「✏️标定模式」产出的正路 (现场唯一真数据)
             走 tools/yolo_annot_train.py: --base auto(=拿现有仿真权重做域适应微调, 因为仿真权重在真机 0 检出) imgsz 640
-          · 仿真自动标注 data/yolo_peg —— gen_yolo_data.py 生成 (3类 hand/peg/hole)
+          · 仿真自动标注 data/datasets/yolo_peg —— gen_yolo_data.py 生成 (3类 hand/peg/hole)
             走 src/lerobot/policies/yolo_3d/train_yolo.py imgsz 480
         有真机标注数据时**默认用真机数据**; 想指定: 环境变量 SS_YOLO_DATA=<数据集目录>。
         ⚠️ 数据脚本/口径变了必须改这里, 别处不许另起一套。
@@ -10466,8 +10467,8 @@ class SimulinkModule(QWidget):
         py, why = self._yolo_training_env(root)
         if py is None:
             return False, f"YOLO检测 训练失败: {why} (gui-venv311 里 pip install ultralytics 后重试)"
-        real_dir = os.path.join(root, "data", "yolo_annot", "dataset")
-        sim_dir = os.path.join(root, "data", "yolo_peg")
+        real_dir = os.path.join(root, "data", "datasets", "yolo_annot", "dataset")
+        sim_dir = os.path.join(root, "data", "datasets", "yolo_peg")
         want = os.environ.get("SS_YOLO_DATA", "").strip()
         if want:
             data_dir, src_tag = want, "SS_YOLO_DATA 指定"
@@ -10478,8 +10479,8 @@ class SimulinkModule(QWidget):
         if not os.path.exists(os.path.join(data_dir, "data.yaml")):
             return False, (f"YOLO检测 训练失败: 数据缺失 {data_dir}/data.yaml — "
                            "真机数据请先去视频流窗口点「📦 构建数据集」; "
-                           "仿真数据先跑 gen_yolo_data.py --eps 200 --out data/yolo_peg")
-        is_real = os.path.abspath(data_dir).startswith(os.path.abspath(os.path.join(root, "data", "yolo_annot")))
+                           "仿真数据先跑 gen_yolo_data.py --eps 200 --out data/datasets/yolo_peg")
+        is_real = os.path.abspath(data_dir).startswith(os.path.abspath(os.path.join(root, "data", "datasets", "yolo_annot")))
         ts = time.strftime("%Y%m%d_%H%M%S")
         if is_real:
             script = os.path.join(root, "tools", "yolo_annot_train.py")
@@ -11949,7 +11950,7 @@ class SimulinkModule(QWidget):
             pass
 
     def _open_intact_robot_live(self):
-        """🖥 画布上的 INTACT 机器人实况窗 (当前机器人 = data/intact_robot_state.json)。
+        """🖥 画布上的 INTACT 机器人实况窗 (当前机器人 = data/memory/intact_robot_state.json)。
         真帧来源: 常驻 worker 的实时帧 / 本面板刚跑的 rollout / 官方评测视频。"""
         try:
             from intact_robot_panel import LiveViewWindow, read_state
@@ -12096,7 +12097,7 @@ class SimulinkModule(QWidget):
             self.on_bypass_sensor_node(node)
             return
         # 🤖 2026-09-12 老倪: INTACT 标准机器人 / 机器人切换节点 → 打开「机器人切换」面板
-        #   (数据源层: 选原项目原生机器人 → 写 data/intact_robot_state.json → 下游节点按它取数据)
+        #   (数据源层: 选原项目原生机器人 → 写 data/memory/intact_robot_state.json → 下游节点按它取数据)
         if node.get("type") in ("intact_robot", "robot_switch") \
                 or "INTACT机器人" in node.get("name", "") or "机器人切换" in node.get("name", ""):
             self._open_intact_robot_panel()
@@ -15075,7 +15076,7 @@ class SimulinkModule(QWidget):
                               stderr=_sp.STDOUT)
                 self._log(f"🧿 L5 标注→训练闭环已启动 (后台异步 · 编排 pid {p.pid})")
                 self._log("   ├ ① 自动标注: 6 路实拍 → DeepSeek-V4-Flash 视觉语言理解 (每路 ~120s, 不阻塞 GUI)")
-                self._log("   ├ ② 监督数据: L2 YOLO 数据集(data/yolo_annot_l5vlm) + L3/L4 监督 manifest")
+                self._log("   ├ ② 监督数据: L2 YOLO 数据集(data/datasets/yolo_annot_l5vlm) + L3/L4 监督 manifest")
                 self._log("   └ ③ 自动训练(串行): L2 YOLO 全量 → L3 SmolVLA LoRA → L4 INTACT LoRA → merge")
                 self._log("   状态: ~/zmax/zmax_data/l5_loop/state.json · 日志 ~/zmax/zmax_data/l5_loop/*.log")
             except Exception as e:                                              # noqa: BLE001
@@ -16005,12 +16006,12 @@ class SimulinkModule(QWidget):
             dp = os.path.join(root, "data", "closed_loop")
             label = "Orin 真实产线数据"
         elif src == "ss_sim" or "状态空间" in node.get("name", ""):
-            dp = os.path.join(root, "data", "ss_insert_lerobot")
+            dp = os.path.join(root, "data", "datasets", "ss_insert_lerobot")
             label = "状态空间仿真数据"
         else:
             dp = os.path.join(root, "data", "metaworld_peg_long")
             if not os.path.isdir(dp):
-                dp = os.path.join(root, "data", "metaworld_peg")
+                dp = os.path.join(root, "data", "datasets", "metaworld_peg")
             label = "metaworld 占位集"
         if os.path.isdir(dp):
             info = self._probe_dataset(dp)
@@ -16030,7 +16031,7 @@ class SimulinkModule(QWidget):
         info = {}
         try:
             ij = os.path.join(dp, "info.json")
-            # 🐛 2026-08-30: LeRobot 标准布局 info.json 在 meta/ 子目录 (data/metaworld_peg/meta/info.json)
+            # 🐛 2026-08-30: LeRobot 标准布局 info.json 在 meta/ 子目录 (data/datasets/metaworld_peg/meta/info.json)
             if not os.path.exists(ij):
                 ij = os.path.join(dp, "meta", "info.json")
             if os.path.exists(ij):
@@ -16064,9 +16065,9 @@ class SimulinkModule(QWidget):
         src = node["params"].get("source", "metaworld")
         root = self._repo_root()
         cands = {
-            "metaworld": ["data/metaworld_peg"],
+            "metaworld": ["data/datasets/metaworld_peg"],
             # 2026-08-07 老倪: orin/closed_loop 数据已删 — orin 候选移除
-        }.get(src, ["data/metaworld_peg"])
+        }.get(src, ["data/datasets/metaworld_peg"])
         dlg = QDialog(self.window() or self)
         dlg.setWindowTitle(f"📦 数据源: {node['name']}")
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)

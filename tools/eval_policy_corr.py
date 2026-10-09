@@ -42,7 +42,7 @@ def _task_from_data():
     """🗣 语言指令 = 数据集 tasks.parquet 真实原串 (2026-09-10 实测: v8/v8_d1 均为
     'metaworld 光模块插拔'; 硬编码易错 → 动态读)。"""
     import pandas as pd
-    for _p in ('data/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/smolvla_peg_v8/meta/tasks.parquet'):
+    for _p in ('data/datasets/smolvla_peg_v8_d1/meta/tasks.parquet', 'data/datasets/smolvla_peg_v8/meta/tasks.parquet'):
         if os.path.exists(_p):
             return str(pd.read_parquet(_p)['task'].iloc[0])
     return 'metaworld 光模块插拔'

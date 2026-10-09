@@ -876,7 +876,7 @@ def main():
         except ValueError as e:
             print(f"❌ --size 解析失败: {e}")
             return 1
-        out_root = a.out_root or os.path.join(_REPO, "data", "yolo_annot")
+        out_root = a.out_root or os.path.join(_REPO, "data", "datasets", "yolo_annot")
         sess = a.session_out or ("auto_" + time.strftime("%y%m%d_%H%M%S") + "_kin")
         rule = "off" if a.no_grasp_gate else a.grasp_rule
         P, meta = load_proj(a.proj)

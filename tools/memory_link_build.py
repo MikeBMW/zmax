@@ -4,7 +4,7 @@
 
 老倪 2026-09-23: "保证所有记忆层的信息有效联络"
 
-问题: data/memory_layers.json 原为 {"L2":0,"L3":0,"L4":0,"assembly":0} — 全 0
+问题: data/memory/memory_layers.json 原为 {"L2":0,"L3":0,"L4":0,"assembly":0} — 全 0
      ⇒ 记忆向量退化(zero) ⇒ L4 的 mem_cond 恒零 ⇒ **记忆对控制零贡献**（假联络）
 
 方案: 五层各自写入**真实条目**(来自本仓真实资产) + 每条带 links 指向相关层
@@ -15,7 +15,7 @@ import os
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PATH = os.path.join(REPO, "data", "memory_layers.json")
+PATH = os.path.join(REPO, "data", "memory", "memory_layers.json")
 
 
 def build():

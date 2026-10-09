@@ -368,7 +368,7 @@ def cmd_node(a):
 
 def cmd_project(a):
     sb = _ssbind()
-    path = a.arg or os.path.join(ROOT, "reports", "projects", "SS_主工程_任务配置.zmaxproj")
+    path = a.arg or os.path.join(ROOT, "data", "database", "SS_主工程_任务配置.zmaxproj")
     doc = sb.build()
     if not os.path.isfile(sb.OUT):
         open(sb.OUT, "w", encoding="utf-8").write(json.dumps(doc, ensure_ascii=False, indent=1))

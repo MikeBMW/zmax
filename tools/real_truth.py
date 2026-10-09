@@ -20,7 +20,7 @@ metaworld 39D 段位口径 (权威 = src/lerobot/policies/yolo_3d/yolo_state_ali
   peg_quat  = /robot/tcp_pose 四元数 (x,y,z,w)
   hole      = 现场几何示教的 goal 点 (未示教 → null + 原因)
 
-为什么这样就能"复用仿真 YOLO 模型": 仿真数据集 data/yolo_peg 的标签是**真值 3D 投影**自动生成的;
+为什么这样就能"复用仿真 YOLO 模型": 仿真数据集 data/datasets/yolo_peg 的标签是**真值 3D 投影**自动生成的;
 真机只要也逐帧记下 3D 真值, 就有同口径的 (图, 3D真值, 2D框) 三元组 → 要么拿真值投影做自动标注
 (需 K + 手眼外参), 要么直接做域适应微调 (tools/yolo_annot_train.py --base auto)。
 """
@@ -211,7 +211,7 @@ def snapshot(out=None, geom_path=None, fresh_s=FRESH_S) -> dict:
 
 
 def as_train_record(rec: dict, stem: str, box_px=None) -> dict:
-    """给训练用的一条 (图 stem, 2D框, 3D真值) 三元组 —— 与仿真 data/yolo_peg 同口径"""
+    """给训练用的一条 (图 stem, 2D框, 3D真值) 三元组 —— 与仿真 data/datasets/yolo_peg 同口径"""
     return {"stem": stem, "box_px": box_px,
             "hand_xyz": rec.get("obs39_segments", {}).get("hand"),
             "peg_xyz": rec.get("obs39_segments", {}).get("peg"),

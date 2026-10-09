@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """Z-MAX 光模块数据集生成器 · peg-insert-side-v3 官方专家采样 (2026-08-07 老倪: 不是光模块的数据)
 用 metaworld 官方专家策略 SawyerPegInsertionSideV3Policy 采样成功轨迹,
-输出: data/metaworld_peg/train.npz + val.npz (图像 128x128 + state 39D + action 4D)
-用法: ./.venv/bin/python tools/gen_peg_data.py --eps 60 --out data/metaworld_peg
+输出: data/datasets/metaworld_peg/train.npz + val.npz (图像 128x128 + state 39D + action 4D)
+用法: ./.venv/bin/python tools/gen_peg_data.py --eps 60 --out data/datasets/metaworld_peg
 """
 import os, sys, json, argparse
 import numpy as np
@@ -11,7 +11,7 @@ import numpy as np
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--eps", type=int, default=60, help="采样 episode 数 (只保留插入成功)")
-    ap.add_argument("--out", default="data/metaworld_peg")
+    ap.add_argument("--out", default="data/datasets/metaworld_peg")
     ap.add_argument("--img", type=int, default=128, help="图像尺寸")
     ap.add_argument("--camera", default="corner2", help="相机视角 (与视频一致)")
     args = ap.parse_args()

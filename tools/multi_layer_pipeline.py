@@ -363,7 +363,7 @@ class MemoryLayer(Layer):
     name = "MEM"
     provides = ["mem_vec"]
 
-    def __init__(self, path: str = "data/memory_layers.json", dim: int = 13):
+    def __init__(self, path: str = "data/memory/memory_layers.json", dim: int = 13):
         self.path = path
         self.dim = dim
 

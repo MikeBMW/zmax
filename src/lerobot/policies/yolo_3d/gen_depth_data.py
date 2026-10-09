@@ -46,7 +46,7 @@ def depth_to_meters(depth_buf):
 
 def main():
     eps = int(sys.argv[sys.argv.index("--eps") + 1]) if "--eps" in sys.argv else 12
-    out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "data", "yolo_peg_depth")
+    out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "data", "datasets", "yolo_peg_depth")
     os.makedirs(f"{out}/images", exist_ok=True)
     os.makedirs(f"{out}/depth", exist_ok=True)
 

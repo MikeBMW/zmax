@@ -3,13 +3,13 @@
 """ss_sim_episodes_to_dataset.py — 仿真 episode(npz) → 蒸馏训练集(ss_insert/*.npz) → LeRobot
 
 背景 (2026-09-21): 三级能力测试里 16 条 t_ff_* 全挂 = "训练域 0 帧"。
-根因: 前馈/肌肉记忆断言从 `data/ss_insert_lerobot/data/chunk-*/file-*.parquet` 随机取真实 43D 帧,
+根因: 前馈/肌肉记忆断言从 `data/datasets/ss_insert_lerobot/data/chunk-*/file-*.parquet` 随机取真实 43D 帧,
 而该数据集不存在(引擎口径: 训练域由 export_dataset 决定)。
 本脚本把 gen_ss_metaworld_episode.py 产出的 episode 转成 build_ss_dataset.py 认的格式:
   states  = obs[:, :39]     (39D: [0:3]末端 [3]夹爪 [36:39]目标; 43D 只是多 4 维触觉尾巴, MLP 只吃 [:39])
   actions = u_ff_vec        (4D 前馈建议动作 = 蒸馏 MLP 的学习目标)
   success = meta.success
-用法: gui-venv311/bin/python tools/ss_sim_episodes_to_dataset.py <episodes目录> [输出目录=data/ss_insert]
+用法: gui-venv311/bin/python tools/ss_sim_episodes_to_dataset.py <episodes目录> [输出目录=data/datasets/ss_insert]
 """
 from __future__ import annotations
 

@@ -57,7 +57,7 @@ def main():
     print(f"   归档快照: {len(snap_idx)} 帧")
 
     # 读取所有采集包
-    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")), key=os.path.getmtime)
+    srcs = sorted(glob.glob(str(proj / "data/datasets/orin_live/*.json")), key=os.path.getmtime)
     frames_all = []
     eps_all = []
     total = 0

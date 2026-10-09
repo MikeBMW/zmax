@@ -13,8 +13,8 @@
       降采样-回采样 (UVC 软) · 暗角 · 随机遮挡块 · 缩放裁切 (框同步) · 小角度旋转 ±8° (框同步) ·
       灰底(114)补边到 4:3 —— 复刻 ultralytics 对 640x480 真机帧 letterbox 后的版式
 用法:
-  python gen_yolo_data.py --eps 200 --out data/yolo_peg                 # 原行为 (默认)
-  python gen_yolo_data.py --eps 30 --out data/yolo_peg_dr --dr --dr-scene  # 域随机化
+  python gen_yolo_data.py --eps 200 --out data/datasets/yolo_peg                 # 原行为 (默认)
+  python gen_yolo_data.py --eps 30 --out data/datasets/yolo_peg_dr --dr --dr-scene  # 域随机化
 """
 import os, sys, json, numpy as np
 os.environ.setdefault("DISPLAY", ":0")
@@ -217,7 +217,7 @@ def augment_image(img, boxes, rng):
 
 def main():
     eps = int(sys.argv[sys.argv.index("--eps") + 1]) if "--eps" in sys.argv else 200
-    out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "data", "yolo_peg")
+    out = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else os.path.join(ROOT, "data", "datasets", "yolo_peg")
     dr = "--dr" in sys.argv
     dr_scene = "--dr-scene" in sys.argv
     dr_rep = int(sys.argv[sys.argv.index("--dr-rep") + 1]) if "--dr-rep" in sys.argv else 1

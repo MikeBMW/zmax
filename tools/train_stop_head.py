@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧠 train_stop_head.py — 训练"交权/停"判据 (⑤ m_stop) + LOSO 验证 (2026-09-15)
 
-数据: data/stop_signal_v1.npz (collect_stop_data.py, 每帧 32 维 / 标签=该局最终失败)
+数据: data/datasets/stop_signal_v1.npz (collect_stop_data.py, 每帧 32 维 / 标签=该局最终失败)
 口径: **留一 seed 交叉验证** (LOSO) — 不许用同一 seed 的帧同时训练与评估;
      报 AUC + 准确率, 并给"恒预测失败"的平凡基线对照 (失败帧占比 0.85 → 准确率不可信, 看 AUC)。
 门槛: LOSO AUC ≥ 0.75 才认为判据有信息量; 否则如实报负结果, 不接线。
@@ -17,7 +17,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-D = os.path.join(ROOT, "data", "stop_signal_v1.npz")
+D = os.path.join(ROOT, "data", "datasets", "stop_signal_v1.npz")
 OUT = os.path.join(ROOT, "models", "stop_head_v1.pt")
 REP = os.path.join(ROOT, "reports", "stop_head_train_20260915.json")
 

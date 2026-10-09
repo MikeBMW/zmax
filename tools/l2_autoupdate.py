@@ -6,7 +6,7 @@
       → 人工确认(--apply) → 调 l2_skill_learn 热更新 → 执行器下一帧即用(无需重启)
 
 用法:
-  python3 tools/l2_autoupdate.py --scene data/scene_state.json --skill L2.MUSCLE.OPEG_DEMO_LEARNED.v1
+  python3 tools/l2_autoupdate.py --scene data/scene/scene_state.json --skill L2.MUSCLE.OPEG_DEMO_LEARNED.v1
   python3 tools/l2_autoupdate.py --scene ... --skill ... --apply     # 应用提案
 """
 import argparse, json, os, re, subprocess, sys, urllib.request
@@ -37,7 +37,7 @@ def ask_llm(prompt, key, timeout=90):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scene", default="data/scene_state.json")
+    ap.add_argument("--scene", default="data/scene/scene_state.json")
     ap.add_argument("--skill", required=True)
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args()

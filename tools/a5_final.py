@@ -5,7 +5,7 @@
 流程:
  ① 曝光稳定性: 位姿A 连拍3帧 std, 位移+40mm 再连拍3帧 std → 跨位姿 std 差异 <15% 判"曝光已固定"
  ② 稳定 → 12 位姿 (±15mm 网格): 每位姿连拍3帧中值 → 与参考中值图做 CLAHE 差分 → 最大簇质心当 2D 观测
- ③ 结束回起始位姿; 落 data/handeye/final_*.json (TCP + uv + 各档指标)
+ ③ 结束回起始位姿; 落 data/calib/handeye/final_*.json (TCP + uv + 各档指标)
 安全: 每步只读三查 · ±15mm · speed=30 · 回原位
 用法: ./gui-venv311/bin/python tools/a5_final.py [--amp 15] [--n 12]
 """
@@ -26,7 +26,7 @@ import a5_handeye_collect as A5                                                 
 from a5_probe_v2 import grab, clahe_gray                                          # noqa: E402
 from a5_coherence import biggest_cluster                                          # noqa: E402
 
-OUT = os.path.join(R, "data/handeye")
+OUT = os.path.join(R, "data/calib/handeye")
 
 
 def med3(tag):

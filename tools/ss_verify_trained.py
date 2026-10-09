@@ -26,7 +26,7 @@ def load_left_brain(ckpt_dir):
     # 归一化参数: 训练时 preprocessor 从数据集算 (MEAN_STD), 未存 checkpoint → 重算
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     import pandas as pd
-    df = pd.read_parquet(os.path.join(root, "data", "ss_insert_lerobot",
+    df = pd.read_parquet(os.path.join(root, "data", "datasets", "ss_insert_lerobot",
                                       "data", "chunk-000", "file-000.parquet"))
     S = np.stack(df["observation.state"].values).astype(np.float32)
     A = np.stack(df["action"].values).astype(np.float32)

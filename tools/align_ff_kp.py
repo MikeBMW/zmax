@@ -38,7 +38,7 @@ KP_WRITTEN = 1.2          # parallel.py:35 写死的比例增益
 CLIP = 0.5                # parallel.py:36/40 限幅
 D_NEAR = 0.03             # parallel.py:38 近距阈值 (最小趋近推力 + 夹爪闭合判据)
 THRUST = 0.03             # parallel.py:40 最小趋近推力
-DATA_DEF = os.path.join(ROOT, "data", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
+DATA_DEF = os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
 CKPT_GLOB = os.path.join(ROOT, "outputs", "train", "state_space_*", "checkpoints", "*",
                          "pretrained_model", "model.pt")
 AMP_INSANE = 2.0          # 3D 动作幅值中位数超过此值 = norm/数据不匹配 (量纲爆表)

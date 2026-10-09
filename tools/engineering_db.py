@@ -12,7 +12,7 @@
   真源 (人可编·进 git)                    →  表
   ─────────────────────────────────────────────────────────────────────────
   config/platform/zmax_platform.json      →  platform / products / product_features / subsystems / subsystem_axes
-  reports/projects/*.proj  (7 段)         →  projects / project_sections
+  data/database/*.proj    (7 段)         →  projects / project_sections
   <project>.canvas.nodes/links            →  canvas_nodes / canvas_links / functions / fn_axes
   config/calib/zmax_calib.json + manifold →  calib_params
   feature.dbc (能力数据库)                 →  capability_dbc / interfaces(输入输出)
@@ -51,7 +51,7 @@ VERIF_SRC = os.path.join(ROOT, "src", "lerobot", "verification", "verification_l
 NODES_SRC = os.path.join(ROOT, "src", "lerobot", "engineering", "nodes", "library.py")
 CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
 CURATION = os.path.join(ROOT, "config", "library_curation.json")
-PROJ_DIR = os.path.join(ROOT, "reports", "projects")
+PROJ_DIR = os.path.join(ROOT, "data", "database")
 
 SCHEMA = """
 DROP TABLE IF EXISTS meta;                    CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);

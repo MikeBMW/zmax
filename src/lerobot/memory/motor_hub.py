@@ -23,7 +23,7 @@
    压缩比可达 20~30×, 而且新场景只需匹配基元, 不必重放整段死轨迹。
 
 ──────────────────────────────────────────────────────────
-产出 (写入 data/shared_memory.json 的 motor 层, 全局可查)
+产出 (写入 data/memory/shared_memory.json 的 motor 层, 全局可查)
 ──────────────────────────────────────────────────────────
   motor.primitives : [ {id, name, n_member, stages, template_u, template_v, feat, spread} ]
   motor.mapping    : { stage: {primitive, dur_scale, amp_scale, n_src} }
@@ -36,8 +36,8 @@ import os
 import numpy as np
 
 ROOT = os.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")
-MUSCLE = os.path.join(ROOT, "data", "muscle_memory.json")
-SHARED = os.path.join(ROOT, "data", "shared_memory.json")
+MUSCLE = os.path.join(ROOT, "data", "memory", "muscle_memory.json")
+SHARED = os.path.join(ROOT, "data", "memory", "shared_memory.json")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 T = 32          # 基元模板统一帧数 (重采样基准, 刻画"发力曲线形状")
 FEATS = ["dur", "dx", "dy", "dz", "disp", "v_peak", "v_mean", "a_peak", "f_peak", "f_mean", "grip_sw"]
@@ -464,4 +464,4 @@ if __name__ == "__main__":
     hub = MotorHub().build(k=4)
     print(hub.report())
     ok = hub.save()
-    print(f"\n{'✅ 已写入 data/shared_memory.json 的 motor 层' if ok else '❌ 写入失败'}")
+    print(f"\n{'✅ 已写入 data/memory/shared_memory.json 的 motor 层' if ok else '❌ 写入失败'}")

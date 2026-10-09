@@ -12,7 +12,7 @@ L2 是全量训练 YOLO; L3 和 L4 是通过 LoRA 适配训练。」
                       场景描述 + 边界框 + 标注图; 单次 ~120s ⇒ **后台异步**跑, 不占 GUI 线程)
   ② 监督 (supervision) 标注结果 → L2/L3/L4 三份监督口径产物:
                       · L2: YOLO 格式数据集 (复用 tools/yolo_annot_dataset.py 的会话契约 +
-                        build_dataset 的**红线** "自动标注样本绝不进 val"), 根 = data/yolo_annot_l5vlm
+                        build_dataset 的**红线** "自动标注样本绝不进 val"), 根 = data/datasets/yolo_annot_l5vlm
                       · L3/L4: 逐帧监督 manifest (jsonl) —— 场景文本 + 框 + 图像; 训练进程通过
                         env ZMAX_L5_SUPERVISION 拿到它 (作为监督/条件侧车, 可追溯)
   ③ 训练 (serial)     · L2 = **全量训练** YOLO: tools/yolo_annot_train.py --base none (从 COCO 重训)
@@ -54,8 +54,8 @@ WORK = os.environ.get("ZMAX_L5_WORK", "/home/ubuntu/zmax/zmax_data/l5_loop")
 STATE = os.path.join(WORK, "state.json")
 ANNOT_ROOT = os.path.join(os.path.expanduser("~/zmax/zmax_data/auto_annotate"))
 SUP_ROOT = os.environ.get("ZMAX_L5_SUP_ROOT", "/home/ubuntu/zmax/zmax_data/l5_supervision")
-L2_ROOT = os.environ.get("ZMAX_L5_L2_ROOT", os.path.join(ROOT, "data", "yolo_annot_l5vlm"))        # L2 监督数据集根 (与在役根隔离)
-CLASSES_SRC = os.path.join(ROOT, "data", "yolo_annot", "classes.txt")
+L2_ROOT = os.environ.get("ZMAX_L5_L2_ROOT", os.path.join(ROOT, "data", "datasets", "yolo_annot_l5vlm"))        # L2 监督数据集根 (与在役根隔离)
+CLASSES_SRC = os.path.join(ROOT, "data", "datasets", "yolo_annot", "classes.txt")
 STAGES = ("interact", "annotate", "supervision", "slots", "L2_full", "L3_lora", "L4_lora", "merge", "verify")
 
 # VLM 自由文本标签 → 本工程类别名 (关键词映射; 未命中一律**跳过并计数**, 不硬塞类别)
@@ -303,7 +303,7 @@ def env_extra_demo_prompt() -> str:
 # ─────────────────── ④ 槽位数据集 (TCP 真值 + 标定链角点投影 → 14 类) ───────────────────
 SLOT_REG = os.path.join(ROOT, "models", "l5_slots.json")
 SLOT_TOOL = os.path.join(ROOT, "tools", "l5_slot_tool.py")
-SLOT_DS = os.environ.get("ZMAX_L5_SLOT_DS", os.path.join(ROOT, "data", "yolo_annot_l5slots"))
+SLOT_DS = os.environ.get("ZMAX_L5_SLOT_DS", os.path.join(ROOT, "data", "datasets", "yolo_annot_l5slots"))
 
 
 def stage_slots(st: dict, ts: str) -> dict:
@@ -363,7 +363,7 @@ TARGET_PROMPT = """你是产线视觉标注工程师。图中**需要标注的�
 
 
 def _targeted_sources():
-    """目标类别 = data/yolo_annot/classes.txt (与 L2 训练类别表同源, 不另立口径)。"""
+    """目标类别 = data/datasets/yolo_annot/classes.txt (与 L2 训练类别表同源, 不另立口径)。"""
     try:
         return [ln.strip() for ln in open(CLASSES_SRC, encoding="utf-8")
                 if ln.strip() and not ln.strip().startswith("#")]
@@ -668,7 +668,7 @@ def stage_supervision(st: dict, batch_dir: str) -> dict:
 def _ensure_val_split(data: str) -> dict:
     """val 拆分为空时补上 val —— ultralytics 硬要求, 且不破「自动标注样本绝不进 val」红线。
 
-    ① 优先: 既有**真机人工留出集** data/yolo_annot/dataset/{images,labels}/val → 软链过来
+    ① 优先: 既有**真机人工留出集** data/datasets/yolo_annot/dataset/{images,labels}/val → 软链过来
        (单一真源; 样本是人工标注, 不是 L5 自动样本 ⇒ 红线不破、指标口径诚实)
     ② 都没有: 退化为 val=train, 并**如实标注"指标偏乐观"** (不静默假报)
     """
@@ -688,7 +688,7 @@ def _ensure_val_split(data: str) -> dict:
     # ⚠️ 两个都要有才算"已有 val": 图像有、标签没有 = val 全是背景图 (评估失效), 必须补标签。
     if n_img > 0 and n_lab0 > 0:
         return {"need": False, "n_img": n_img, "n_label": n_lab0, "source": "已有 val"}
-    src_root = os.path.join(ROOT, "data", "yolo_annot", "dataset")
+    src_root = os.path.join(ROOT, "data", "datasets", "yolo_annot", "dataset")
     src_img, src_lab = os.path.join(src_root, "images", "val"), os.path.join(src_root, "labels", "val")
     cands = [f for f in glob.glob(os.path.join(src_img, "*")) if os.path.isfile(f)]
     if cands:
@@ -712,7 +712,7 @@ def _ensure_val_split(data: str) -> dict:
                 else:
                     n_lab += 1
         return {"need": True, "n_img": n_img, "n_label": n_lab, "n_src": len(cands),
-                "source": "真机人工留出集 data/yolo_annot/dataset/{images,labels}/val (软链)",
+                "source": "真机人工留出集 data/datasets/yolo_annot/dataset/{images,labels}/val (软链)",
                 "honest": "L5 自动标注样本仍不进 val"}
     n2 = 0
     for f in glob.glob(os.path.join(data, "images", "train", "*")):
@@ -739,7 +739,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     """L2 = **全量训练** YOLO (从 COCO 预训练重训, --base none)。
 
     数据集选择 (老倪 2026-09-28 L5 定义: "14 个槽位 = 14 类; L2 层要进行训练并更新"):
-      ① 有已记录槽位 (models/l5_slots.json + data/yolo_annot_l5slots 有框) → 用**槽位 14 类数据集**
+      ① 有已记录槽位 (models/l5_slots.json + data/datasets/yolo_annot_l5slots 有框) → 用**槽位 14 类数据集**
          (位置来自 TCP 真值, 角点来自标定链投影);
       ② 没有 → 退回 L5 监督标注数据集 (VLM 场景理解 → L2 监督), 如实写 mode 说明。
     """
@@ -756,7 +756,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     # 🐛 2026-09-29 修 (编排"模型拉不通"的第三个卡点): val 空 → ultralytics 直接
     #   `AssertionError: val: No images found` → L2 全量训练起不来 (实测 l5vlm 集 val=0 张:
     #   红线要求自动标注样本**绝不进 val**, 所以新集天然没有 val 拆分)。
-    #   正解: 训练用 L5 自动标注集, **val 用既有真机留出集**(data/yolo_annot/dataset/images/val,
+    #   正解: 训练用 L5 自动标注集, **val 用既有真机留出集**(data/datasets/yolo_annot/dataset/images/val,
     #   人工标注、非自动样本) —— 红线不破且指标口径诚实。软链而非拷贝 (单一真源)。
     #   若真机留出集也不存在 → 退化为 val=train 并**如实标注指标偏乐观** (不静默)。
     #   ⚠️ 必须在下面的 labels_assert 之前做: 断言/日志要报**补完之后**的真实拆分。

@@ -3,7 +3,7 @@
 
 背景 (2026-09-06 实测): state_space_20260904 ckpt 的右脑未训好 (lerobot 标准训练只优化
 left action loss) — contact acc 0.721 无区分度 (近peg 0.519 vs 远 0.511), pred_next 位置
-误差 6cm。重训: 引擎仿真数据 (data/ss_insert_lerobot, 与引擎/画布同域同 obs 结构)。
+误差 6cm。重训: 引擎仿真数据 (data/datasets/ss_insert_lerobot, 与引擎/画布同域同 obs 结构)。
 
 数据/标签:
 - next_obs = 同 episode 下一帧 observation.state (输出训归一化空间, npz next_raw=False)
@@ -31,7 +31,7 @@ LR = 1e-3
 
 def load_data():
     import pandas as pd
-    parquet = os.path.join(ROOT, "data", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
+    parquet = os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot", "data", "chunk-000", "file-000.parquet")
     df = pd.read_parquet(parquet)
     S = np.stack(df["observation.state"].values).astype(np.float32)
     A = np.stack(df["action"].values).astype(np.float32)
@@ -43,7 +43,7 @@ def load_data():
     idx = np.where(keep)[0]
     S, A, Sn = S[idx], A[idx], S[idx + 1]
     # 归一化参数 (obs/next 同统计; 输出归一化空间)
-    st = json.load(open(os.path.join(ROOT, "data", "ss_insert_lerobot", "meta", "stats.json"), encoding="utf-8"))
+    st = json.load(open(os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot", "meta", "stats.json"), encoding="utf-8"))
     sm = np.array(st["observation.state"]["mean"], dtype=np.float32)
     ss = np.array(st["observation.state"]["std"], dtype=np.float32) + 1e-8
     lab = (np.linalg.norm(S[:, 0:3] - S[:, 7:10], axis=1) < CONTACT_D).astype(np.float32)

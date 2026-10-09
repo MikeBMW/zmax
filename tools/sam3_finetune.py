@@ -167,7 +167,7 @@ def main():
     ap.add_argument("--model-dir", default=FT.SAM3_DIR)
     ap.add_argument("--dataset", default=FT.DATASET_DIR)
     ap.add_argument("--cache-dir", default=str(_REPO / "data" / "sam3_finetune_cache"),
-                    help="教师伪标签落盘处 (默认 data/sam3_finetune_cache)")
+                    help="教师伪标签落盘处 (默认 data/datasets/sam3_finetune_cache)")
     ap.add_argument("--out", default=str(_REPO / "outputs" / "sam3_finetune" / "annot_v1"))
     ap.add_argument("--adapter", default=None, help="verify 用: 适配器目录")
     ap.add_argument("--size", type=int, default=FT.SIZE)

@@ -5,7 +5,7 @@
 调用方 (CLI) 在 tools/sam3_finetune.py。
 
 ## 训练任务 (为什么这样设计)
-数据只有 **检测框** (data/yolo_annot/dataset: 52 帧 / 58 框 / 2 类 peg·OPT_Gold), **没有掩膜**。
+数据只有 **检测框** (data/datasets/yolo_annot/dataset: 52 帧 / 58 框 / 2 类 peg·OPT_Gold), **没有掩膜**。
 所以监督分两路, 各自说清来源 (不许把伪标签说成真标注):
 
   A. **文本提示 → 框** (真标注监督, 非退化): 提示词 = 类名, 用 Hungarian 匹配把 200 个 query

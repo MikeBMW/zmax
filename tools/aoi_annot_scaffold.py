@@ -3,7 +3,7 @@
 """aoi_annot_scaffold.py — 🎯 AOI 标注脚手架 (等 A2 授权即可现场采第一批, 全程只读)
 
 老倪: 现场开发 AOI 视觉 (连工控机 + Orin), 我为主节点。
-现状: data/yolo_aoi_annot/ 里 4 张 960×960 **boxes 全空** → 无法训质量检测头。
+现状: data/datasets/yolo_aoi_annot/ 里 4 张 960×960 **boxes 全空** → 无法训质量检测头。
 
 本脚本做三件事 (只读, 零动作下发):
   ① 从 10082 取一帧判决图 (POST /capture_detect, 只读触发), 存原图 + 时间戳
@@ -28,7 +28,7 @@ import time
 import urllib.request
 
 ROOT = "/home/ubuntu/zmax"
-ANN = os.path.join(ROOT, "data/yolo_aoi_annot")
+ANN = os.path.join(ROOT, "data/datasets/yolo_aoi_annot")
 CAM = os.environ.get("ZMAX_AOI_CAM", "http://192.168.23.23:10082")     # 工控机金手指相机
 CTX = ssl.create_default_context()
 CTX.check_hostname = False

@@ -8,7 +8,7 @@
   tactile[3] 接触方向z = (peg_z−hole_z)/d
 
 输出: LeRobot 格式 data/metaworld_peg_tac/ (parquet 加列 + meta 更新 + videos 软链, 磁盘铁律)
-用法: .venv/bin/python src/lerobot/policies/yolo_3d/gen_tactile.py [--src data/metaworld_peg] [--out data/metaworld_peg_tac]
+用法: .venv/bin/python src/lerobot/policies/yolo_3d/gen_tactile.py [--src data/datasets/metaworld_peg] [--out data/metaworld_peg_tac]
 """
 import argparse, json, os, shutil, sys
 import numpy as np
@@ -34,7 +34,7 @@ def synth_tactile(states):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=os.path.join(ROOT, "data", "metaworld_peg"))
+    ap.add_argument("--src", default=os.path.join(ROOT, "data", "datasets", "metaworld_peg"))
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "metaworld_peg_tac"))
     args = ap.parse_args()
     src, out = args.src, args.out

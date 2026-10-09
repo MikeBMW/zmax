@@ -5,7 +5,7 @@ echo "[$(date +%H:%M)] ① 等 AWE-zFlow 训练完成..."
 while pgrep -f train_awe_zflow >/dev/null; do sleep 10; done
 sleep 3
 echo "[$(date +%H:%M)] ② 跑 VLA-Touch (2000 步, metaworld_peg_v7)..."
-.venv/bin/python tools/train_vla_touch.py --steps 2000 --data-root data/metaworld_peg_v7 2>&1 | tail -5
+.venv/bin/python tools/train_vla_touch.py --steps 2000 --data-root data/datasets/metaworld_peg_v7 2>&1 | tail -5
 echo "[$(date +%H:%M)] ③ 跑 MLP 蒸馏 (distill_expert, 300 episodes)..."
 .venv/bin/python tools/distill_expert.py 2>&1 | tail -5
 echo "[$(date +%H:%M)] ④ 曲线盘点:"

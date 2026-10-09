@@ -5,7 +5,7 @@
 --check yolo_live     : 最新感知记录里 YOLO 检出模块 conf ≥0.5 且框有效
 --check board_frame   : 板点 =20 且输出"模块在板坐标(x,y)mm" 且 |离板面| ≤2mm
 --check vlm_scene     : 最新记录里 VL 结构化判读含 目标/画面质量/背景线索
---check single_source : data/scene_state.json 含感知链段; 追加记录可回放(行数>0)
+--check single_source : data/scene/scene_state.json 含感知链段; 追加记录可回放(行数>0)
 --check canvas_wired  : 画布 n_board_frame 入≥3出≥3, 且功能节点孤立=0
 """
 import json
@@ -82,7 +82,7 @@ def c_vlm():
 
 
 def c_single():
-    p = os.path.join(R, "data", "scene_state.json")
+    p = os.path.join(R, "data", "scene", "scene_state.json")
     if not os.path.exists(p):
         return False, "无 scene_state"
     d = json.load(open(p, encoding="utf-8"))

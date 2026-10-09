@@ -510,7 +510,7 @@ class VerificationLayer:
 
     def t_muscle_cfg(self, np):
         import json as _json
-        p = os.path.join(self.root, "data", "muscle_memory.json")
+        p = os.path.join(self.root, "data", "memory", "muscle_memory.json")
         try:
             d = _json.load(open(p, encoding="utf-8"))
             n = len(d) if isinstance(d, (dict, list)) else -1
@@ -550,7 +550,7 @@ class VerificationLayer:
         if not hasattr(self, "_ff_frames_cache"):
             import glob as _g
             import pandas as _pd
-            pf = sorted(_g.glob(os.path.join(self.root, "data", "ss_insert_lerobot",
+            pf = sorted(_g.glob(os.path.join(self.root, "data", "datasets", "ss_insert_lerobot",
                                              "data", "chunk-*", "file-*.parquet")))
             self._ff_frames_cache = None
             if pf:
@@ -3139,7 +3139,7 @@ class VerificationLayer:
         """AOI 真实图像验证/批量统计: 真实图像喂质检器"""
         import glob as _g
         imgs = _g.glob(os.path.join(self.root, "outputs", "yolo_peg_depth", "*", "train", "images", "*.jpg"))[:3] or \
-               _g.glob(os.path.join(self.root, "data", "yolo_peg_depth", "images", "*.png"))[:3] or \
+               _g.glob(os.path.join(self.root, "data", "datasets", "yolo_peg_depth", "images", "*.png"))[:3] or \
                _g.glob(os.path.join(self.root, "data", "**", "*.jpg"), recursive=True)[:3]
         q = _load(os.path.join("src", "lerobot", "policies", "yolo_3d", "quality_check.py"))
         if not imgs:

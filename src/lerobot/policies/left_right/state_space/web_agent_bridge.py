@@ -161,9 +161,9 @@ class WebAgentBridge:
             out["memory_chars"] = len(open(p, encoding="utf-8").read())
         except Exception:
             pass
-        # 机器人分层记忆 (data/memory_layers.json) —— @xspace 势场侧消费的真源
+        # 机器人分层记忆 (data/memory/memory_layers.json) —— @xspace 势场侧消费的真源
         try:
-            ml = json.load(open(os.path.join(REPO, "data", "memory_layers.json"), encoding="utf-8"))
+            ml = json.load(open(os.path.join(REPO, "data", "memory", "memory_layers.json"), encoding="utf-8"))
             out["robot_memory_layers"] = {k: (v.get("count") if isinstance(v, dict) else v)
                                           for k, v in ml.items()}
             out["robot_memory_updated"] = ml.get("updated")

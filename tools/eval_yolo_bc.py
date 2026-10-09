@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """YOLO 同构评估 — BC policy + 真实 YOLO 感知插拔评估 (2026-08-23 老倪)
 完整同构闭环:
-  训练: data/metaworld_peg (gen_metaworld_data --yolo 生成, YOLO检测→解算→39D带噪声state)
+  训练: data/datasets/metaworld_peg (gen_metaworld_data --yolo 生成, YOLO检测→解算→39D带噪声state)
   评估: 真实 YOLO 权重 best.pt 检测 → 2D→3D 解算 → 替换 hand/光模块/hole 段 → 39D state → BC policy
 指标: ①peg抬起率(>5cm) ②插入率(peg距hole<5cm) ③平均距孔
 用法:
@@ -46,7 +46,7 @@ class BCMLP(nn.Module):
 
 
 def load_stats():
-    s = json.load(open(os.path.join(ROOT, "data", "metaworld_peg", "meta", "stats.json")))
+    s = json.load(open(os.path.join(ROOT, "data", "datasets", "metaworld_peg", "meta", "stats.json")))
     sm = np.array(s["observation.state"]["mean"], dtype=np.float32)
     ss = np.array(s["observation.state"]["std"], dtype=np.float32) + 1e-6
     am = np.array(s["action"]["mean"], dtype=np.float32)
@@ -56,7 +56,7 @@ def load_stats():
 
 def train_bc(epochs=400, lr=1e-3):
     import pandas as pd
-    df = pd.read_parquet(os.path.join(ROOT, "data", "metaworld_peg", "data",
+    df = pd.read_parquet(os.path.join(ROOT, "data", "datasets", "metaworld_peg", "data",
                                       "chunk-000", "file-000.parquet"))
     X = np.stack(df["observation.state"].values).astype(np.float32)   # (N,39)
     Y = np.stack(df["action"].values).astype(np.float32)              # (N,4)

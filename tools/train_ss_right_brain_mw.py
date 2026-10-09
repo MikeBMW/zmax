@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """train_ss_right_brain_mw.py — 真实 metaworld 多布局重训右脑 WorldModel (2026-09-06)
 
-数据: data/ss_mw_raw/*.npz (collect_mw_teacher_data.py, 解析教师 × 真实 metaworld 多布局)
+数据: data/datasets/ss_mw_raw/*.npz (collect_mw_teacher_data.py, 解析教师 × 真实 metaworld 多布局)
 标签真实性升级 (对比引擎域版):
   - next_obs = 同 episode 下一帧 obs[:,:39] (真 mujoco 物理转移)
   - contact  = **真实触觉 force_norm > 0.05** (mj_contactForce 真接触力, 非手-peg 距离代理)
@@ -22,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 OUT = os.path.join(ROOT, "models", "ss_right_brain.npz")
 CKPT = os.path.join(ROOT, "outputs", "rl_peg", "ss_right_brain_best.pt")
-RAW = os.path.join(ROOT, "data", "ss_mw_raw")
+RAW = os.path.join(ROOT, "data", "datasets", "ss_mw_raw")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 FORCE_D = 0.05          # 真实触觉标签: 环境接触力归一化 > 0.05 (mj_contactForce/F_REF)
 EPOCHS = 400

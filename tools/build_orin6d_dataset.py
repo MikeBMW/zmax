@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Orin 真机数据 → LeRobot 数据集 (6D state / 6D action)
-从 data/orin_live/*.json (小芳采集) 构建标准数据集
+从 data/datasets/orin_live/*.json (小芳采集) 构建标准数据集
 """
 import json, glob, sys, os
 import numpy as np
@@ -19,7 +19,7 @@ VID.mkdir(parents=True, exist_ok=True)
 
 
 def main():
-    srcs = sorted(glob.glob(str(proj / "data/orin_live/*.json")), key=os.path.getmtime)
+    srcs = sorted(glob.glob(str(proj / "data/datasets/orin_live/*.json")), key=os.path.getmtime)
     frames_all = []
     eps_all = []
     total = 0

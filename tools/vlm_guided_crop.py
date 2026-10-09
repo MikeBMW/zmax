@@ -4,7 +4,7 @@
 问题: 工位相机离得远, 光模块在整幅画面里只有几十像素 → 通用 VLM 认不出 ("目标可见=false"), 
      而我们自己的 YOLO (L2) 在同一帧里能检出 peg。
 做法: 取 L2 最新检测记录 (yolo_detections.json) 的框 → 带边距裁剪 → 放大 (最近邻+双三次) 
-     → 送 SceneVLM (DeepSeek-Vision 或本地 Qwen) 判读 → 结果并入 data/scene_state.json。
+     → 送 SceneVLM (DeepSeek-Vision 或本地 Qwen) 判读 → 结果并入 data/scene/scene_state.json。
 
 纪律: 
   · 只读 L2 记录 + 帧; 不改任何产线/控制路径;
@@ -27,7 +27,7 @@ ROOT = "/home/ubuntu/zmax"
 sys.path.insert(0, f"{ROOT}/src")
 BYPASS = os.path.expanduser("~/zmax/zmax_data/ss_bypass")
 REMOTE = os.path.expanduser("~/zmax/zmax_data/ss_live")
-STATE = os.path.join(ROOT, "data", "scene_state.json")
+STATE = os.path.join(ROOT, "data", "scene", "scene_state.json")
 OUT_IMG = os.path.join(BYPASS, "vlm_crop_probe.png")
 
 PROMPT = ("这是从产线工位相机画面里裁出的一个局部(已放大)。请只回答这是什么零件、"

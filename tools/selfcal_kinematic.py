@@ -31,7 +31,7 @@ ROSX = ('source /opt/ros/humble/setup.bash 2>/dev/null; '
         'export ROS_DOMAIN_ID=0; ')
 JN = ["XMS5-R800-W4G3B4C_joint_%d" % i for i in range(1, 7)]
 BR = "http://192.168.23.66:39061"
-OUT = os.path.join(R, "data/selfcal")
+OUT = os.path.join(R, "data/calib/selfcal")
 
 
 def sdk(path, body=None, timeout=25):

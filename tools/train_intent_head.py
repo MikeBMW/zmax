@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """阶段2 训练: 恰当动作似然头 (INTACT ①) + 非对称梯度(②) + 行为对齐(③)
 
-数据: data/intent_pairs_v1.npz (引擎真跑, 只收成功轨迹 = 专家演示)
+数据: data/datasets/intent_pairs_v1.npz (引擎真跑, 只收成功轨迹 = 专家演示)
 用法: cd repo && gui-venv311/bin/python tools/train_intent_head.py [--cpu]
 
 损失(严格按论文三要素, 禁止任何坐标/动作逐点 L2):
@@ -35,7 +35,7 @@ import torch.nn.functional as F  # noqa: E402
 from lerobot.manifold.likelihood_head import (  # noqa: E402
     ActionLikelihoodHead, behavior_align_loss, manifold_consistency_loss)
 
-DATA = os.path.join(ROOT, 'data', 'intent_pairs_v1.npz')
+DATA = os.path.join(ROOT, 'data', 'datasets', 'intent_pairs_v1.npz')
 
 
 def load_data():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""S2 技能词典离线生成 — data/muscle_memory.json → models/skill_dict.json
+"""S2 技能词典离线生成 — data/memory/muscle_memory.json → models/skill_dict.json
 
 词典 = L4 动作基: {skill → Δz / 帧长 / 练习次数 / 桶(种子) / io 契约}
 用途: L4 预测意图 Δz 后在此词典上 kNN 直读技能 (无需连续动作空间搜索)
@@ -28,7 +28,7 @@ def build():
                       "io": io.get("io"), "io_reason": io.get("io_reason")}
     return {"format": "zmax-skill-dict", "version": "1.0",
             "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "data/muscle_memory.json (L2 标杆库)",
+            "source": "data/memory/muscle_memory.json (L2 标杆库)",
             "note": "L4 动作基 — Δz 由标杆 champ_x 首末差算出; io 契约 S2 采集(旧数据可能为空)",
             "n_skills": len(skills), "skills": skills}
 

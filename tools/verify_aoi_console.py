@@ -50,7 +50,7 @@ def ck(name, cond, detail=""):
 
 
 def real_frame():
-    for p in ("data/real_yolo_perception_104.mp4", "data/real_yolo_perception_100.mp4"):
+    for p in ("data/datasets/real_yolo_perception_104.mp4", "data/datasets/real_yolo_perception_100.mp4"):
         fp = os.path.join(ROOT, p)
         if os.path.isfile(fp):
             cap = cv2.VideoCapture(fp); ok, fr = cap.read(); cap.release()

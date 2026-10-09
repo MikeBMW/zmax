@@ -40,7 +40,7 @@ def main():
 
     from state_space_sim_real import RealStateSpaceSim
 
-    gates_p = os.path.join(ROOT, "data", "memory_layers.json")
+    gates_p = os.path.join(ROOT, "data", "memory", "memory_layers.json")
     gates = json.load(open(gates_p, encoding="utf-8")) if os.path.isfile(gates_p) else {}
     print(f"① 记忆层开关文件 {os.path.basename(gates_p)}: {gates}  (每层独立开关 = 可单独跑/可逐层加)")
     print(f"   SS_MUSCLE={os.environ.get('SS_MUSCLE', '(未设=默认开)')} · "

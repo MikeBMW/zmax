@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """✅ 分层记忆势场 · 真数据验证 (L2 肌肉 / L3 工艺 / L4 工作空间 / 总装机联络)
 
-用的是**真数据**: data/muscle_memory.json 的 champ_x (真机真跑冠军轨迹) + io.exit (真终点)
+用的是**真数据**: data/memory/muscle_memory.json 的 champ_x (真机真跑冠军轨迹) + io.exit (真终点)
 + 引擎现场几何 (RealStateSpaceSim._reset 采样的 hole/goal)。全部判据都是数值断言, 无文字空转。
 
 用法: MUJOCO_GL=egl ./gui-venv311/bin/python tools/verify_memory_potential_fields.py

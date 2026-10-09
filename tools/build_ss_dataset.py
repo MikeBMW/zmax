@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """build_ss_dataset.py — 🧮 状态空间仿真 npz → LeRobot 数据集 (39D state / 4D action)
 
-输入: data/ss_insert/*.npz (state_space_sim.export_dataset 产物, 每 npz 一个 episode)
-输出: data/ss_insert_lerobot/ — 标准 LeRobot 数据集 (state-only, 无视频)
+输入: data/datasets/ss_insert/*.npz (state_space_sim.export_dataset 产物, 每 npz 一个 episode)
+输出: data/datasets/ss_insert_lerobot/ — 标准 LeRobot 数据集 (state-only, 无视频)
   features: observation.state (39, float32) + action (4, float32)
 对齐 left_right 训练 (config_left_right.yaml: 39D obs / 4D action, n_obs_steps=1)。
 

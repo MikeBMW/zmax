@@ -17,7 +17,7 @@ import sys
 import time
 
 ROOT = "/home/ubuntu/zmax"
-GATES = os.path.join(ROOT, "data", "memory_layers.json")
+GATES = os.path.join(ROOT, "data", "memory", "memory_layers.json")
 
 
 def main() -> int:

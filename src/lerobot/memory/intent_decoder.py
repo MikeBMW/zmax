@@ -10,7 +10,7 @@
     段的可比表征 = (阶段 stage, 段入口状态 entry_3d)
     —— io 契约 (S2, memory_graph.skill_io) 已断言 entry → u 的映射, 本模块即其查表实现。
 
-库来源: data/muscle_memory.json 的 42 条标杆 (6 seed × 7 阶段)
+库来源: data/memory/muscle_memory.json 的 42 条标杆 (6 seed × 7 阶段)
     每条: champ_u(n×4 动作序列) / champ_x(n×3) / io{entry, exit, entry_u, exit_u, frames}
 
 与"按 seed 查"(muscle.get_champ(seed, stage))的区别:
@@ -34,7 +34,7 @@ def _norm_stage(stage):
 class IntentDecoder:
     """意图 → 动作基 查表 (零训练)。接口与 muscle.get_champ 同形, 可直接替换前馈槽位来源。"""
 
-    def __init__(self, path="data/muscle_memory.json", w_pos=1.0, w_dir=0.0):
+    def __init__(self, path="data/memory/muscle_memory.json", w_pos=1.0, w_dir=0.0):
         self.path = path
         self.w_pos = float(w_pos)      # 入口状态距离权重
         self.w_dir = float(w_dir)      # 意图方向一致性权重 (0=关闭, >0 需传 goal_pos)
@@ -112,7 +112,7 @@ class IntentDecoder:
 
 if __name__ == "__main__":  # 自检
     dec = IntentDecoder(path=os.path.join(os.path.dirname(__file__), "..", "..", "..",
-                                          "data", "muscle_memory.json"))
+                                          "data", "memory", "muscle_memory.json"))
     print("库:", dec.summary())
     for st in ("接近", "下降"):
         u, meta = dec.query(st, [0.004, 0.60, 0.19])

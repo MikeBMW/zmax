@@ -31,8 +31,8 @@ def run(with_vlm=True):
 
 
 def write_out(out):
-    """写单一真源 data/scene_state.json (合并语义) + 追加式记录 (可回放)"""
-    p = os.path.join(R, "data", "scene_state.json")
+    """写单一真源 data/scene/scene_state.json (合并语义) + 追加式记录 (可回放)"""
+    p = os.path.join(R, "data", "scene", "scene_state.json")
     d = {}
     if os.path.exists(p):
         try:
@@ -43,7 +43,7 @@ def write_out(out):
     d["updated_at"] = out["t"]
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     # 多层记忆: 感知/场景理解 → L4 宏观记忆 (追加式, 其它键原样保留)
-    mp = os.path.join(R, "data", "macro_memory.json")
+    mp = os.path.join(R, "data", "memory", "macro_memory.json")
     try:
         md = json.load(open(mp, encoding="utf-8")) if os.path.exists(mp) else {}
         md.setdefault("perception", []).append({

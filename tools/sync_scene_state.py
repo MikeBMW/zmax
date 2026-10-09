@@ -6,9 +6,9 @@
 L2 功能负责操作」
 
 产出 (一次写三处, 全部读真实来源, 不造数):
-  ① data/scene_state.json        单一真源: 帧(来源/帧龄) + 几何(YOLO 框/TCP/阶段) + VLM 判读 + 层责任
-  ② data/shared_memory.json meta.context   总装上下文 (任务规划器/异常推理器节点实时读它)
-  ③ data/macro_memory.json  scene          顶层宏观记忆的"当前场景"段 (追加式, 不碰其它键)
+  ① data/scene/scene_state.json        单一真源: 帧(来源/帧龄) + 几何(YOLO 框/TCP/阶段) + VLM 判读 + 层责任
+  ② data/memory/shared_memory.json meta.context   总装上下文 (任务规划器/异常推理器节点实时读它)
+  ③ data/memory/macro_memory.json  scene          顶层宏观记忆的"当前场景"段 (追加式, 不碰其它键)
 
 层责任划分 (系统级约定, 与画布/引擎一致):
   L4 = 安全:  否决权 + 限幅 + 恢复预算 (谁都不许绕过; 动作最后一道闸门)
@@ -26,9 +26,9 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAME_CANDS = [os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"),
                os.path.expanduser("~/zmax/zmax_data/ss_live/cam_fp.png")]
-SCENE = os.path.join(REPO, "data", "scene_state.json")
-SHARED = os.path.join(REPO, "data", "shared_memory.json")
-MACRO = os.path.join(REPO, "data", "macro_memory.json")
+SCENE = os.path.join(REPO, "data", "scene", "scene_state.json")
+SHARED = os.path.join(REPO, "data", "memory", "shared_memory.json")
+MACRO = os.path.join(REPO, "data", "memory", "macro_memory.json")
 
 
 def _load(p, default=None):

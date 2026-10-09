@@ -43,7 +43,7 @@ WORK = os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), 
 REG = os.path.join(ROOT, "models", "l5_slots.json")
 CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
 HANDEYE = os.path.join(ROOT, "models", "handeye_state.json")
-DS_ROOT = os.path.join(ROOT, "data", "yolo_annot_l5slots")
+DS_ROOT = os.path.join(ROOT, "data", "datasets", "yolo_annot_l5slots")
 N_SLOTS = 14
 CAMS3 = ("arm", "local", "local2")          # 三个场景相机 (arm=D405 / local=笔记本 / local2=MAXHUB)
 DEPTH_CAM = "depth"                          # 深度那一路

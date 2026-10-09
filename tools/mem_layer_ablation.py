@@ -2,7 +2,7 @@
 """🧲➡️📊 记忆层逐层打开 · 同口径对照 (AB, 老倪口径: 每条杆杆出同口径对照)
 
 目的: 回答"逐步打开每层记忆, 性能到底变了没有" —— 同一组 seed / 同一 ckpt / 同一引擎口径, 只改
-data/memory_layers.json 的开关, 跑四臂:
+data/memory/memory_layers.json 的开关, 跑四臂:
 
     arm   L2 L3 L4   含义
     off   0  0  0    纯模型直驱 (与现有 L4 链完全一致 = 基线)
@@ -31,7 +31,7 @@ ARMS = [("off", {"L2": 0, "L3": 0, "L4": 0}),
         ("L2", {"L2": 1, "L3": 0, "L4": 0}),
         ("L23", {"L2": 1, "L3": 1, "L4": 0}),
         ("L234", {"L2": 1, "L3": 1, "L4": 1})]
-GATES = os.path.join(ROOT, "data", "memory_layers.json")
+GATES = os.path.join(ROOT, "data", "memory", "memory_layers.json")
 
 
 def _set_gates(g):

@@ -29,11 +29,11 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-OUT_DIR = os.path.join(ROOT, "data/l5_vlm_sft")
+OUT_DIR = os.path.join(ROOT, "data/datasets/l5_vlm_sft")
 ALL_JSONL = os.path.join(OUT_DIR, "all.jsonl")
 MANIFEST = os.path.join(OUT_DIR, "manifest.json")
 # 默认帧池: 真机标注帧(已去重) + 实时抽帧 (都是**真机画面**, 不是渲染图)
-POOL_DEFAULT = os.path.join(ROOT, "data/yolo_annot/dataset/images")
+POOL_DEFAULT = os.path.join(ROOT, "data/datasets/yolo_annot/dataset/images")
 POOL_EXTRA = os.path.join(ROOT, "zmax_data/ss_live")
 
 # 训练用的任务契约 —— 与 scene_vlm.SceneVLM.describe 的提示词**同源**

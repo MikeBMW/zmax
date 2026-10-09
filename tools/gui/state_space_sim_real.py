@@ -612,7 +612,7 @@ class RealStateSpaceSim:
             try:
                 from lerobot.memory.intent_decoder import IntentDecoder
                 self._intent_dec = IntentDecoder(
-                    path=os.path.join(os.getcwd(), "data", "muscle_memory.json"))
+                    path=os.path.join(os.getcwd(), "data", "memory", "muscle_memory.json"))
             except Exception:
                 self._intent_dec = None
                 self._intent_on = False
@@ -1228,8 +1228,8 @@ class RealStateSpaceSim:
                 _t = ""
                 try:
                     import pandas as _pd
-                    for _dp in (os.path.join(_repo, "data", "smolvla_peg_v8_d1", "meta", "tasks.parquet"),
-                                os.path.join(_repo, "data", "smolvla_peg_v8", "meta", "tasks.parquet")):
+                    for _dp in (os.path.join(_repo, "data", "datasets", "smolvla_peg_v8_d1", "meta", "tasks.parquet"),
+                                os.path.join(_repo, "data", "datasets", "smolvla_peg_v8", "meta", "tasks.parquet")):
                         if os.path.exists(_dp):
                             _t = str(_pd.read_parquet(_dp)["task"].iloc[0])
                             break
@@ -4023,7 +4023,7 @@ class RealStateSpaceSim:
         return tr
 
     def _write_shared_memory(self, tr):
-        """🧠 分层记忆入库 (真源 src/lerobot/memory/memory_store.py → data/shared_memory.json):
+        """🧠 分层记忆入库 (真源 src/lerobot/memory/memory_store.py → data/memory/shared_memory.json):
         L3.flows 长程流程经验 (段路径/成败/步数) · L4.predict 筹划 (mani 预测残差) · meta"""
         import sys as _s, os as _o
         _rp = _o.path.dirname(_o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))

@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(R, "tools"))
 import a5_handeye_collect as A5                                                   # noqa: E402
 from a5_probe_v2 import grab, clahe_gray                                          # noqa: E402
 
-OUT = os.path.join(R, "data/handeye")
+OUT = os.path.join(R, "data/calib/handeye")
 
 
 def biggest_cluster(d, min_area=600):

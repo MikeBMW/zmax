@@ -82,8 +82,8 @@ def _probe_data_root():
     优先级与 _ensure_training_data 一致: Orin真实(closed_loop) → metaworld_peg_long → metaworld_peg → ss_insert_lerobot"""
     import json as _j, os as _os
     root = _paths.REPO_ROOT
-    for cand in ("data/closed_loop", "data/metaworld_peg_long", "data/metaworld_peg",
-                 "data/ss_insert_lerobot"):
+    for cand in ("data/closed_loop", "data/metaworld_peg_long", "data/datasets/metaworld_peg",
+                 "data/datasets/ss_insert_lerobot"):
         d = _os.path.join(root, cand)
         ij = _os.path.join(d, "meta", "info.json")
         if not _os.path.isfile(ij):

@@ -24,7 +24,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("WANDB_MODE", "disabled")
 
 SNAP = os.path.join(ROOT, "zmax_data/hf_cache/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots")
-DATA = os.path.join(ROOT, "data/l5_vlm_sft")
+DATA = os.path.join(ROOT, "data/datasets/l5_vlm_sft")
 MODELS = os.path.join(ROOT, "zmax_data/models")
 REPORTS = os.path.join(ROOT, "reports")
 REQUIRED = ["目标可见", "目标是什么", "目标位置", "在夹爪上吗", "画面质量", "标定建议"]     # describe 任务

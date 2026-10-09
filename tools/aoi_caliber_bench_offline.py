@@ -19,7 +19,7 @@ import cv2
 R = "/home/ubuntu/zmax"
 sys.path.insert(0, os.path.join(R, "tools"))
 sys.path.insert(0, "/home/ubuntu/zmax/zmax_data/aoi_v4")
-BENCH = os.path.join(R, "data/yolo_aoi_annot/caliber_bench")
+BENCH = os.path.join(R, "data/datasets/yolo_aoi_annot/caliber_bench")
 TPL = "/home/ubuntu/zmax/zmax_data/aoi_v4/templates/gf_strip_template.png"
 
 

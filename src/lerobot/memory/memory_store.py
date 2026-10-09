@@ -4,12 +4,12 @@
 🧠 共享记忆存储 — Z-MAX 分层记忆 (2026-09-09 老倪: L2/L3/L4 记忆 + 大模型层共享)
 ══════════════════════════════════════════════════════════════════
 三层记忆 (信息半衰期递增) + 共享中枢:
-  · L2 肌肉记忆: 固化标杆/命中统计 (引擎 muscle_memory 快通道, 同 data/muscle_memory.json)
+  · L2 肌肉记忆: 固化标杆/命中统计 (引擎 muscle_memory 快通道, 同 data/memory/muscle_memory.json)
   · L3 长程规划: 每轮走通的跨段技能序列/步数/成败 (流程经验, 规划器可检索)
   · L4 筹划: 世界模型预测质量/恢复策略选择 (专家筹划输入)
   · 共享中枢 (大模型层): 三层条目汇总 + 任务/质量门上下文 — LLM 注入用
 
-存储: data/shared_memory.json (画布/引擎/CLI 跨进程桥; 写失败不打断主流程)
+存储: data/memory/shared_memory.json (画布/引擎/CLI 跨进程桥; 写失败不打断主流程)
 """
 import json
 import os
@@ -18,7 +18,7 @@ import threading
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 # 本文件: src/lerobot/memory/memory_store.py → 上溯 4 级 = 仓库根
 #   dirname(文件)=src/lerobot/memory → 1 src/lerobot 2 src 3 仓库? 实际 4 次到根
-_PATH = os.path.join(_REPO_ROOT, "data", "shared_memory.json")
+_PATH = os.path.join(_REPO_ROOT, "data", "memory", "shared_memory.json")
 
 _LOCK = threading.Lock()
 _DEFAULT = {
@@ -117,8 +117,8 @@ def get_links(n=20):
 
 
 def muscle_lib():
-    """读真实肌肉记忆库 data/muscle_memory.json (引擎 muscle_memory 持久化)"""
-    p = os.path.join(_REPO_ROOT, "data", "muscle_memory.json")
+    """读真实肌肉记忆库 data/memory/muscle_memory.json (引擎 muscle_memory 持久化)"""
+    p = os.path.join(_REPO_ROOT, "data", "memory", "muscle_memory.json")
     try:
         with open(p, encoding="utf-8") as f:
             return json.load(f)

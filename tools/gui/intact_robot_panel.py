@@ -8,7 +8,7 @@
     ① 注册表 (后端): tools/intact_native_robot.py 里的 ROBOTS = 4 个 INTACT **原生标准**机器人
        (reacher / pusht / cube / tworoom) —— 原项目权重 + 原项目环境 + zero-search direct。
        每个都带: 环境名 / 类型 / 动作空间 / 官方成绩 / 数据集是否就位 / 权重是否就位 / 视频数。
-    ② 切换节点 (状态层): 当前选中的机器人写到 data/intact_robot_state.json ——
+    ② 切换节点 (状态层): 当前选中的机器人写到 data/memory/intact_robot_state.json ——
        下游数据源节点 (画布上的「🤖 INTACT机器人」/「🔀 机器人切换」节点) 读这个文件决定用谁。
     ③ 本面板 (UI): 表格看全部机器人 → 一键「切换为当前」→ 「跑一轮」后台出官方渲染视频 → 播放。
 
@@ -32,7 +32,7 @@ TOOLS = os.path.dirname(os.path.abspath(__file__))        # tools/gui
 ROOT = os.path.dirname(os.path.dirname(TOOLS))            # 仓库根 (tools/gui → tools → root)
 INTACT_PY = "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python"
 BACKEND = os.path.join(ROOT, "tools", "intact_native_robot.py")
-STATE_FILE = os.path.join(ROOT, "data", "intact_robot_state.json")
+STATE_FILE = os.path.join(ROOT, "data", "memory", "intact_robot_state.json")
 VID_DIR = os.path.join(ROOT, "reports", "intact_native")
 
 try:
@@ -108,7 +108,7 @@ class IntactRobotPanel(QDialog):
         head.addWidget(t)
         head.addStretch()
         for txt, tip, fn in (("🔄 刷新注册表", "重扫数据集/权重/视频就位情况", self.refresh),
-                             ("✅ 切换为当前", "写 data/intact_robot_state.json (切换节点读它)", self.switch_to_current),
+                             ("✅ 切换为当前", "写 data/memory/intact_robot_state.json (切换节点读它)", self.switch_to_current),
                              ("▶️ 跑一轮出视频", "用原项目权重在该机器人原生环境跑 rollout", self.run_rollout),
                              ("🎬 播放最近视频", "打开最近一次 rollout 的视频", self.play_video),
                              ("📂 视频目录", "打开视频所在目录", self.open_vid_dir)):
@@ -143,7 +143,7 @@ class IntactRobotPanel(QDialog):
                                f" border:1px solid {C_BORDER}; border-radius:6px; font-family:Consolas; font-size:11px;")
         lay.addWidget(self.log)
         note = QLabel("说明: 本表机器人 = 原项目论文权重在**其原生环境**里零搜索直接驱动 (get_cost_calls=0)。"
-                      "切换后写 data/intact_robot_state.json —— 画布数据源层的「🔀 机器人切换」节点读它决定下游用哪个机器人。"
+                      "切换后写 data/memory/intact_robot_state.json —— 画布数据源层的「🔀 机器人切换」节点读它决定下游用哪个机器人。"
                       "我们域内微调的 Sawyer 插拔不在此表 (走 INTACT 域内微调 v2)。")
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{C_DIM}; background:transparent; font-size:11px;")

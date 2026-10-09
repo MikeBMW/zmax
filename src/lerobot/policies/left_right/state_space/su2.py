@@ -51,7 +51,7 @@ I2 = np.eye(2, dtype=complex)
 # 仓库根: .../src/lerobot/policies/left_right/state_space/su2.py → 上溯 5 层
 REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                           *([".."] * 5)))
-MAPPING_JSON = os.path.join(REPO_ROOT, "data", "su2_mapping.json")
+MAPPING_JSON = os.path.join(REPO_ROOT, "data", "datasets", "su2_mapping.json")
 
 
 # ════════════════════════════════════════════════════════════════════════════

@@ -652,7 +652,7 @@ def quick_run():
 _DATASET_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.dirname(_SS_DIR))))),
-    "data", "ss_insert")
+    "data", "datasets", "ss_insert")
 
 
 def export_dataset(n_episodes=8, seed_base=100, out_dir=None, log=None, perturb=0.01):

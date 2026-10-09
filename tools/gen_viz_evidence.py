@@ -90,7 +90,7 @@ def _main_inner():
     w_hist = getattr(m, "_ff_hist_win", None)
     w_attr = getattr(m, "_ff_attr_win", None)
 
-    # 多帧激活数据: 真实 obs 回放 (data/ss_insert_lerobot parquet, MLP 真实 forward)
+    # 多帧激活数据: 真实 obs 回放 (data/datasets/ss_insert_lerobot parquet, MLP 真实 forward)
     sim = getattr(m, "_ss_last_sim", None)
     acc = getattr(sim, "accel", None) if sim else None
     n_feed = 0
@@ -98,7 +98,7 @@ def _main_inner():
         try:
             import numpy as np, pandas as pd
             import glob
-            pf = sorted(glob.glob(os.path.join(ROOT, "data", "ss_insert_lerobot",
+            pf = sorted(glob.glob(os.path.join(ROOT, "data", "datasets", "ss_insert_lerobot",
                                                "data", "chunk-*", "file-*.parquet")))
             if pf:
                 S = np.stack(pd.read_parquet(pf[0])["observation.state"].values).astype(np.float32)

@@ -43,9 +43,9 @@ def _load_img(p):
 
 def pick_real_frame(rep):
     """按优先级取真图, **逐帧过有效帧闸**, 无效的如实记录 (不静默换掉)。"""
-    cands = [("data/real_yolo_perception_104.mp4", "真机 D405 帧 (real_yolo_perception_104)"),
-             ("data/real_yolo_perception_100.mp4", "真机 D405 帧 (real_yolo_perception_100)"),
-             ("data/ss3d_l3_full_insert_pull_aoi_104.mp4", "引擎真渲染帧 (L3 全链 104)"),
+    cands = [("data/datasets/real_yolo_perception_104.mp4", "真机 D405 帧 (real_yolo_perception_104)"),
+             ("data/datasets/real_yolo_perception_100.mp4", "真机 D405 帧 (real_yolo_perception_100)"),
+             ("data/datasets/ss3d_l3_full_insert_pull_aoi_104.mp4", "引擎真渲染帧 (L3 全链 104)"),
              (os.path.expanduser("~/zmax/zmax_data/aoi_last_frame.png"), "现役 AOI 帧 (aoi_last_frame)")]
     chosen, rejected = None, []
     for rel, tag in cands:

@@ -18,7 +18,7 @@ import yaml
 
 REPO = "/home/ubuntu/zmax"
 SRC = os.path.join(REPO, "outputs", "train", "smolvla_lew_v10", "resume_cfg.json")
-DS = "data/smolvla_peg_v8_d1"
+DS = "data/datasets/smolvla_peg_v8_d1"
 
 
 def main():

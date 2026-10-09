@@ -21,6 +21,8 @@ node 映射 (simulink 节点类型 → 关联数据对象):
 """
 import os, glob, json, time
 
+from data_locate import data_dir as _data_dir   # data/ 分区定位 (2026-10-09)
+
 
 class GlobalDataSpace:
     def __init__(self, root=None):
@@ -78,10 +80,10 @@ class GlobalDataSpace:
             ("orin_archive", "Orin 归档", "orin"),
         ]
         for d, desc, tag in cands:
-            dp = os.path.join(self.root, "data", d)
+            dp = _data_dir(self.root, d)
             if not os.path.isdir(dp):
                 continue
-            info = {"id": d, "path": f"data/{d}", "type": tag, "desc": desc,
+            info = {"id": d, "path": dp.replace(self.root + os.sep, ""), "type": tag, "desc": desc,
                     "frames": "?", "eps": "?", "state_dim": "?", "action_dim": "?", "ts": "?"}
             try:
                 ij = os.path.join(dp, "meta", "info.json")

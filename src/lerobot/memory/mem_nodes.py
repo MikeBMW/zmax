@@ -5,7 +5,7 @@
 ══════════════════════════════════════════════════════════════════
 2026-09-09 老倪红线: L2/L3/L4 记忆节点 def 必须在此 (src), GUI 只薄注册转发。
 生物映射: L2 小脑·肌肉记忆(DMP式标杆) / L3 海马体·情景记忆 / L4 前额叶·工作记忆(SSM)
-数据: memory_store (data/shared_memory.json) + muscle_memory.json
+数据: memory_store (data/memory/shared_memory.json) + muscle_memory.json
 """
 import time
 import sys
@@ -328,7 +328,7 @@ def node_ss_motor_hub(ctx):
         import json as _j
         import os as _o
         _root = _o.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")
-        _sh = _j.load(open(_o.path.join(_root, "data", "shared_memory.json")))
+        _sh = _j.load(open(_o.path.join(_root, "data", "memory", "shared_memory.json")))
         m = _sh.get("motor") or {}
         prim = m.get("primitives") or []
         s = m.get("sharing") or {}
@@ -385,7 +385,7 @@ def node_ss_mem_field(ctx):
     ②用真数据 (muscle_memory 冠军轨迹 + 引擎现场几何) 现场构造势场并打印谷底/谷宽
     ③在引擎当前状态处算 Φ 与 −∇Φ (真值, 有引擎就取真实末端位置, 没有就用当前激活技能的入口)
     ④输出意图 (方向/速率/技能/置信) 并写入共享记忆 (l2/l3/l4 out + 总装机台账)
-    逐层打开: data/memory_layers.json (或本节点日志里给出的命令), 全关时**零干预**。
+    逐层打开: data/memory/memory_layers.json (或本节点日志里给出的命令), 全关时**零干预**。
     """
     log = ctx.get("log")
     root = str(ctx.get("root") or os.getcwd())
@@ -452,7 +452,7 @@ def node_ss_mem_field(ctx):
                     f"技能 {it['skill']}({it['stage']}) · 置信 {it['conf']} · 离谷底 {it['d_goal_m']*1000:.1f}mm")
                 ab = br.arbitrate(it["stage"], contact_p=0.5 if it["stage"] in ("下降", "抓取", "插入") else 0.0)
                 log(f"   总装机仲裁: 主层 {ab['primary_layer']} (接触={ab['contact']}) — {ab['note']}")
-            log("   逐层打开: 写 data/memory_layers.json {\"L2\":1} → 再加 \"L3\":1 → 再加 \"L4\":1, "
+            log("   逐层打开: 写 data/memory/memory_layers.json {\"L2\":1} → 再加 \"L3\":1 → 再加 \"L4\":1, "
                 "然后跑 L4 INTACT 链即按层叠加介入 (blend_action)")
         # 写共享记忆 (三层 out + 总装机台账)
         try:

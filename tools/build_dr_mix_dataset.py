@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """组装混合训练集 (仿真原集 + DR 集), 硬链接不重复占盘。
 
-训练集: 原仿真 1800 张 (data/yolo_peg) + DR 集去掉 3 个整 episode (ep000-002, 共 900 张)
+训练集: 原仿真 1800 张 (data/datasets/yolo_peg) + DR 集去掉 3 个整 episode (ep000-002, 共 900 张)
 验证集: DR 的 ep000-002 (900 张, 整场景留出) + 仿真 hold-out 600 张
 口径: 三类 hand/peg/hole; 同一 data.yaml; 训练/评测集分离 (原集 train=val=images 的 mAP 虚高问题不继承)
 """
