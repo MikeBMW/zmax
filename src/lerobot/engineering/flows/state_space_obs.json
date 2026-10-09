@@ -2172,7 +2172,7 @@
     {
       "id": "n_calib_mani",
       "type": "model",
-      "name": "🧮 流形引擎标定 · 主参数 M (状态空间结构参数 · 等效惯量)",
+      "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
       "x": 6000,
       "y": 1546,
       "w": 340,
@@ -2199,7 +2199,119 @@
         "zero_regression": "inertia=false 或 M≤0 ⇒ 引擎行为与旧版一阶过阻尼逐位相同 (零回归)",
         "source": "src/lerobot/manifold/manifold_engine.py (ManifoldEngine.manifold_M / inertia · manifold_M_spec())",
         "calib_source": "config/calib/zmax_manifold.json → tools/zmax_params.py::manifold_M()/write_manifold_M()",
-        "desc": "流形引擎向标定层暴露的唯一主标定标量 M; 双击/右键真跑: 同一起点同一场, 有惯性(M>0) vs 过阻尼(M→0) 两臂对比"
+        "desc": "配置中心(测量/标定/诊断) ←→ 状态空间工程 的唯一收口口; 主参数 M 为唯一主标定标量; 双击/右键真跑两臂对比 (M>0 有惯性 vs M→0 过阻尼)",
+        "cfg_role": "配置中心 ←→ 状态空间工程 的唯一收口口 (测量/标定/诊断 三视图 + 主参数 M)",
+        "cfg_entries": {
+          "mcd_描述": "config/mcd/zmax_mcd.json",
+          "参数注册表": "config/mcd/param_registry.json",
+          "模型×工程匹配": "config/mcd/match_matrix.json",
+          "任务配置": "config/tasks/tasks.json",
+          "任务绑定": "config/ss_task_binding.json",
+          "工单目录": "config/orders/ (BS_*.json)",
+          "工程文件": "reports/projects/SS_主工程_任务配置.zmaxproj",
+          "站点标定": "config/calib/zmax_calib.json",
+          "流形标定": "config/calib/zmax_manifold.json"
+        },
+        "cfg_snapshot": {
+          "mcd_schema": "zmax-mcd/1.0",
+          "mcd_generated_at": "2026-10-09 14:30:56",
+          "params_total": 24,
+          "params_ready": 10,
+          "params_gap": 14,
+          "by_domain": {
+            "工程配置": 9,
+            "性能配置": 6,
+            "功能配置": 3,
+            "模型配置": 6
+          },
+          "gaps": [
+            "T_base_cam",
+            "plane_z",
+            "cell_geometry.points",
+            "safety.saturate",
+            "safety.veto_th",
+            "perf.D_INSERT_mm",
+            "perf.cycle_s",
+            "feature.cap_level",
+            "feature.dbc_version",
+            "model.arch_mode",
+            "model.ckpt_l2",
+            "model.ckpt_l3",
+            "model.ckpt_l4",
+            "model.third_party"
+          ],
+          "tasks": 5,
+          "active_task": "TASK-01-FW",
+          "orders": 5,
+          "assertions": 57,
+          "assertions_auto": 47,
+          "by_level": {
+            "L2": 38,
+            "L3": 8,
+            "L4": 11
+          },
+          "models_matched": "9/10",
+          "models_blocked": [
+            "L4.intact"
+          ],
+          "site_missing": [
+            "T_base_cam",
+            "plane_z",
+            "cell_geometry.points"
+          ],
+          "project": {
+            "file": "reports/projects/SS_主工程_任务配置.zmaxproj",
+            "canvas_md5": "aba90b5a24991b22d09ccd54db37cfaf",
+            "nodes": 89,
+            "links": 184
+          },
+          "node_readback_at": null
+        },
+        "measure_view": {
+          "视图": "测量 Measurement (只读)",
+          "测量量": 9,
+          "源": [
+            "zmax_data/rokae_sdk/tcp_out/latest.json",
+            "zmax_data/rokae_sdk/tcp_out/latest.json#joint",
+            "io_trace (ssinnov)",
+            "cognition (contact)",
+            "io_trace",
+            "energy_manifold"
+          ],
+          "判据": "帧龄 <2s · 真源在且值非空",
+          "命令": "python3 tools/config_center.py list 工程配置"
+        },
+        "calib_view": {
+          "视图": "标定 Calibration (可写)",
+          "可标参数": 14,
+          "主参数M": "M (G0 结构参数, 非自由拟合) · 范围 [0,8] · inertia 开关",
+          "真源": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
+          "命令": "python3 tools/config_center.py show M"
+        },
+        "diagnose_view": {
+          "视图": "诊断 Diagnosis (判得了)",
+          "断言": 57,
+          "故障码": [
+            "MCD-E01",
+            "MCD-E02",
+            "MCD-E03",
+            "MCD-E04",
+            "MCD-E05"
+          ],
+          "站点缺口": [
+            "T_base_cam",
+            "plane_z",
+            "cell_geometry.points"
+          ],
+          "命令": "python3 tools/config_center.py check"
+        },
+        "task_layer": {
+          "任务数": 5,
+          "活跃": "TASK-01-FW",
+          "段覆盖": 52,
+          "命令": "python3 tools/ss_task_bind.py",
+          "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
+        }
       },
       "inputs": [
         "in1",

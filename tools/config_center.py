@@ -318,6 +318,54 @@ def cmd_activate(a):
     return 0
 
 
+def cmd_node(a):
+    """『🧮 标定诊断测量 · 主参数 M』节点 —— 看它挂着的配置 / 写入同步。
+
+    这是**唯一一条把配置清单落到状态空间工程**的路: 配置中心(读) ←→ 画布节点(挂载点)。
+    """
+    import json as _json
+    p = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    try:
+        from lerobot.engineering import flows
+        d, probs = flows.load_canvas()
+    except Exception as e:  # noqa: BLE001
+        print(f"⛔ 读画布失败: {type(e).__name__}: {e}"); return 1
+    n = next((x for x in d["nodes"] if x.get("id") == "n_calib_mani"), None)
+    if n is None:
+        print("⛔ 画布上没有 n_calib_mani 节点"); return 1
+    pp = n.get("params") or {}
+    if a.arg in ("write", "sync", "--write"):
+        import subprocess
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ss_node_sync.py")],
+                           capture_output=True, text=True, timeout=300)
+        print(r.stdout.strip() or r.stderr.strip())
+        return r.returncode
+    snap = pp.get("cfg_snapshot") or {}
+    print(f"状态空间工程 · 节点 {n['id']}  ({os.path.relpath(p, ROOT)})")
+    print(f"  名称   : {n.get('name')}")
+    print(f"  角色   : {pp.get('cfg_role') or '—(未写入配置, 跑: config_center.py node write)'}")
+    print(f"  校验   : {'✅ 通过' if not probs else probs[:2]}")
+    if snap:
+        s = snap
+        print(f"  快照   : 参数 {s.get('params_ready')}/{s.get('params_total')} (缺 {s.get('params_gap')})"
+              f" · 任务 {s.get('tasks')} · 活跃 {s.get('active_task')} · 工单 {s.get('orders')}"
+              f" · 断言 {s.get('assertions')}")
+    ent = pp.get("cfg_entries") or {}
+    if ent:
+        print(f"  配置项 ({len(ent)}):")
+        for k, v in ent.items():
+            print(f"      · {k:<8} {v}")
+    for key, title in (("measure_view", "测量"), ("calib_view", "标定"), ("diagnose_view", "诊断"),
+                       ("task_layer", "任务层")):
+        v = pp.get(key)
+        if v:
+            print(f"  {title}视图: " + _json.dumps(v, ensure_ascii=False)[:260])
+    print("\n写入/刷新: python3 tools/config_center.py node write    (只改这一个节点, 自动备份)")
+    print("只比对   : python3 tools/ss_node_sync.py --check")
+    return 0
+
+
 def cmd_project(a):
     sb = _ssbind()
     path = a.arg or os.path.join(ROOT, "reports", "projects", "SS_主工程_任务配置.zmaxproj")
@@ -442,7 +490,7 @@ def cmd_check(a):
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
-        "project": cmd_project,
+        "node": cmd_node, "project": cmd_project,
         "order": cmd_order, "check": cmd_check}
 
 

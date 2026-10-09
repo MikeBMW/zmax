@@ -5072,11 +5072,13 @@ def node_ss_calib_mani(ctx):
         return False
 
 
-_reg("n_calib_mani", ["流形引擎标定", "流形标定", "主标定参数 M", "Manifold Calibration"],
-     "🧮 流形引擎标定 — L4 标定层 主标定参数 M (状态空间结构参数/等效惯量): 流形引擎向标定层暴露的唯一"
-     "主标定量; 读 config/calib/zmax_manifold.json (经 tools/zmax_params.py; 默认 M=1.0, 范围 0~8, "
-     "inertia 默认关 ⇒ 零回归), 在同一场跑 有惯性(M>0, a=F/M 带动量) vs 过阻尼(M→0, 速度∝力=旧 GD) 两臂对比 "
-     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine._evolve / manifold_M_spec)",
+_reg("n_calib_mani", ["标定诊断测量", "主参数 M", "流形引擎标定", "流形标定", "主标定参数 M", "MCD", "配置收口", "Manifold Calibration"],
+     "🧮 标定诊断测量 — L4 标定/诊断/测量层 **主参数 M** (状态空间结构参数/等效惯量) + 配置中心 ←→ 状态空间工程的唯一收口口:"
+     "params 里挂 MCD 描述/参数注册表/任务清单/工单/工程文件等配置项指针与快照 (cfg_role/cfg_entries/cfg_snapshot/"
+     "measure_view/calib_view/diagnose_view/task_layer); 主标定量读 config/calib/zmax_manifold.json (经 tools/zmax_params.py; "
+     "默认 M=1.0, 范围 0~8, inertia 默认关 ⇒ 零回归), 在同一场跑 有惯性(M>0, a=F/M 带动量) vs 过阻尼(M→0, 速度∝力=旧 GD) 两臂对比 "
+     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine._evolve / manifold_M_spec); "
+     "配置同步: python3 tools/ss_node_sync.py [--check]",
      node_ss_calib_mani)
 
 _EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),

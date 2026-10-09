@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax.statespace.taskbinding/1",
-  "generated_at": "2026-10-09 15:01:49",
+  "generated_at": "2026-10-09 15:11:38",
   "doc": "任务 × 状态空间工程 绑定 (一个工程承载全部任务; 生成物, 勿手改)",
   "sources": {
    "config/tasks/tasks.json": "6dc356f6db5fd4a8",
@@ -11,7 +11,7 @@
  "project": {
   "name": "状态空间工程 · 主工程",
   "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
-  "canvas_md5": "33c2729ce175d11eb3a3885524504196",
+  "canvas_md5": "aba90b5a24991b22d09ccd54db37cfaf",
   "nodes": 89,
   "links": 184
  },
@@ -59,8 +59,7 @@
    "ssintact",
    "n_board_frame",
    "ss_moe",
-   "ss_lora_l4",
-   "n_calib_mani"
+   "ss_lora_l4"
   ],
   "4 放置/插入": [
    "sssched",
@@ -83,8 +82,7 @@
    "swvideo",
    "ss_moe",
    "ss_lora_l4",
-   "ss_mani_eng",
-   "n_calib_mani"
+   "ss_mani_eng"
   ],
   "5 拔出/取回": [
    "sssk5",
@@ -123,8 +121,9 @@
  },
  "coverage": {
   "nodes": 89,
-  "covered_by_segments": 53,
+  "covered_by_segments": 52,
   "uncovered": [
+   "n_calib_mani",
    "n_hil",
    "n_moveit",
    "n_realscene",
@@ -233,7 +232,6 @@
    "excluded_segments": [],
    "enabled_nodes": [
     "n_board_frame",
-    "n_calib_mani",
     "n_dsvl",
     "n_eng_mem",
     "n_intent_bundle",
@@ -384,7 +382,6 @@
    ],
    "enabled_nodes": [
     "n_board_frame",
-    "n_calib_mani",
     "n_dsvl",
     "n_eng_mem",
     "n_l2_muscle",
@@ -556,7 +553,6 @@
    "excluded_segments": [],
    "enabled_nodes": [
     "n_board_frame",
-    "n_calib_mani",
     "n_dsvl",
     "n_eng_mem",
     "n_intent_bundle",
@@ -732,7 +728,6 @@
    "excluded_segments": [],
    "enabled_nodes": [
     "n_board_frame",
-    "n_calib_mani",
     "n_dsvl",
     "n_eng_mem",
     "n_intent_bundle",
@@ -914,7 +909,6 @@
    "excluded_segments": [],
    "enabled_nodes": [
     "n_board_frame",
-    "n_calib_mani",
     "n_dsvl",
     "n_eng_mem",
     "n_intent_bundle",

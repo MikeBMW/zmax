@@ -32,7 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLOW = os.path.realpath(os.path.join(ROOT, "flows", "state_space_obs.json"))
 
 NID = "n_calib_mani"
-NAME = "🧮 流形引擎标定 · 主参数 M (状态空间结构参数 · 等效惯量)"
+NAME = "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)"
 X, Y, W, H = 6000, 1546, 340, 130          # L4 行带内; 落在 ss_moe(5020) 与 ss_mani_eng(7500) 之间的最大空档
 INPUTS = [("sscalib", "标定层单一真源 → M 注册口 (引力/斥力/潜空间三域)"),
           ("sslat", "潜空间几何 → 曲率/维度尺度 (M 的结构来源)")]

@@ -105,6 +105,27 @@ def derive_run_cfg(applies):
     }
 
 
+def _structural_md5(d):
+    """**结构指纹**: 只取结构 (id/type/name/位置/端口/连线), 剔除配置挂载键 (cfg_*/..._view/task_layer)。
+
+    为什么: 「标定诊断测量 · 主参数 M」节点自己挂着配置快照 (含工程指纹), 若指纹算上这些挂载键,
+    写一次节点 ⇒ 指纹变 ⇒ 绑定过期 ⇒ 再写 ⇒ 死循环。结构指纹让"写配置进节点"不影响工程身份。
+    """
+    cfg_keys = ("cfg_role", "cfg_entries", "cfg_snapshot", "measure_view", "calib_view",
+                "diagnose_view", "task_layer")
+    nodes = []
+    for n in d.get("nodes") or []:
+        nn = dict(n)
+        p = dict(nn.get("params") or {})
+        for k in cfg_keys:
+            p.pop(k, None)
+        nn["params"] = p
+        nodes.append(nn)
+    blob = json.dumps({"nodes": nodes, "links": d.get("links") or []},
+                      ensure_ascii=False, sort_keys=True)
+    return hashlib.md5(blob.encode()).hexdigest()
+
+
 def build(activate=None):
     tk = _j(TASKS, {})
     if not tk:
@@ -143,7 +164,7 @@ def build(activate=None):
     default_active = activate or persisted or tk.get("active_task") or task_ids[0]
     if default_active not in task_ids:
         default_active = task_ids[0]
-    md5 = hashlib.md5(json.dumps(d, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    md5 = _structural_md5(d)
     doc = {
         "_meta": {"schema": "zmax.statespace.taskbinding/1",
                   "generated_at": time.strftime("%F %T"),

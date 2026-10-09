@@ -1,6 +1,10 @@
-# 流形引擎标定 · 主参数 M —— 配置/标定/诊断 三合一接口 (ASAM-MCD 类比)
+# 标定诊断测量 · 主参数 M —— 配置/标定/诊断 三合一接口 (ASAM-MCD 类比)
 
-> 2026-10-09 · 设计：静静 · 画布节点 `n_calib_mani`（🧮 流形引擎标定 · 主参数 M）
+> 2026-10-09 · 设计：静静 · 画布节点 `n_calib_mani`
+> **节点已改名**：「🧮 流形引擎标定 · 主参数 M」 → **「🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)」**
+> 改名 + 配置挂载由 `tools/ss_node_sync.py` 落地（只动这一个节点，`flows.save_canvas` 自动备份，除本节点外指纹逐位不变）。
+> 该节点现在是 **配置中心 ←→ 状态空间工程 的唯一收口口**：`params.cfg_entries` 挂全部配置文件指针，
+> `params.cfg_snapshot` 挂当前配置状态快照，`params.{measure_view,calib_view,diagnose_view,task_layer}` 是三视图 + 任务层摘要。
 > 现状：已有单标量 M 的读/写/两臂对比（`library.py::node_ss_calib_mani`，接线 in1←sscalib.out3、
 > in2←sslat.out3；out1→ss_mani_eng.in6、out2→ssmani_c.in3、out3→ssmani_exp.in6）。
 > 本文把它从「一个标量」升级成**整个工程的整车配置接口**（配置 / 标定 / 诊断 三件事收口在这一个节点）。
@@ -287,3 +291,37 @@ HIL 节点已 `out1 → ssllm`（人工指示 → 规划）。新增口 `out2 �
 - 断言/指标：**已有** `verification_layer.FEATURES`（57 条）与 `energy_manifold`（η）；诊断页只做汇总与分级。
 - 旁路窗口：**已有** 4 个区块 + `CurveWidget` + 数据源区块；M 区块按同款加，不动既有区块。
 - 远程：**已有** 8795 `/hil/term/*`（state/pose/say/record_point）；MCD 路由按同款加。
+
+---
+
+## 附: 配置清单落到节点 (2026-10-09 实施)
+
+老倪: 「这些配置文件，需要写到状态空间工程的标定诊断测量节点 …… 要改名：标定诊断测量 主参数M」
+
+工具: `tools/ss_node_sync.py`  (`--check` 只比对 / `--json` 导出)
+节点: `n_calib_mani` · 名称 → **🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)**
+
+挂进 `params` 的 7 段 (文件本身仍是真源, 节点只挂指针 + 快照):
+| 段 | 内容 |
+|---|---|
+| `cfg_role` | 配置中心 ←→ 状态空间工程 的唯一收口口 (测量/标定/诊断 三视图 + 主参数 M) |
+| `cfg_entries` | 9 条配置项路径: MCD 描述 / 参数注册表 / 模型×工程匹配 / 任务配置 / 任务绑定 / 工单目录 / 工程文件 / 站点标定 / 流形标定 |
+| `cfg_snapshot` | 参数 10/24(缺14) · 五域分布 · 缺口清单 · 任务 5 · 活跃 TASK-01-FW · 工单 5 · 断言 57 · 模型匹配 9/10 · 站点缺 3 · 工程指纹(结构md5/节点/连线) |
+| `measure_view` | 测量视图: 9 个测量量 + 源 (tcp latest.json / io_trace / cognition / energy_manifold) + 判据 (帧龄<2s) |
+| `calib_view` | 标定视图: 14 个可写参数 + 主参数 M (G0 结构参数, [0,8], inertia 开关) + 真源 |
+| `diagnose_view` | 诊断视图: 57 断言 (自动 47) + 故障码 MCD-E01..E05 + 站点缺口 3 项 |
+| `task_layer` | 任务层: 5 任务 / 活跃 / 段覆盖 52 节点 / 口径「一个工程承载全部任务」 |
+
+🔴 两条硬约束 (都实测):
+1. **只动这一个节点**: 写盘前后比对"除该节点外整幅画布"的 md5, 必须逐位相同 ✅；节点/连线数 89/184 不变 ✅；`flows.save_canvas` 自动备份到 `flows/_archive/`。
+2. **结构指纹 ≠ 全量指纹**: 绑定/工程文件里的工程指纹改为**结构指纹**(剔除 `cfg_*`/`*_view`/`task_layer` 挂载键)。
+   否则「写节点 ⇒ 指纹变 ⇒ 绑定过期 ⇒ 再写」死循环。实测: 写节点后 `ss_node_sync --check` ✅ 且 `ss_task_bind --check` ✅。
+
+命令:
+```
+python3 tools/ss_node_sync.py            # 写入 + 回读核验 (默认)
+python3 tools/ss_node_sync.py --check     # 只比对 (幂等, 0=一致 / 2=需更新)
+python3 tools/config_center.py node       # 看节点挂了什么
+python3 tools/config_center.py node write # GUI『📥 写入状态空间节点』的等价物
+```
+GUI: 任务配置页新增 **📥 写入状态空间节点** / **🏷 看节点配置** 两个按钮 (结果写进底部面板, 可复制)。
