@@ -75,3 +75,20 @@ python3 tools/instance_init.py --check                       # 边界体检
 `zmax_data/`（数据盘：模型/HF/密钥/备份）、`external/`（lerobot fork 等第三方仓库）、`venvs/`、
 `reports/`（训练评测产物）、`models/`、`media/`、`out/`、`toolchains/` —— 均为本机环境与产物，
 既不进平台仓库，也不属实例数据包；换机器时按 `system-replication-twin` 的清单单独处理。
+
+## 6. 遗留项去向（2026-10-09 清理，规则：有用的进备份，无关联的移出仓库）
+
+**统一备份区 = `zmax_data/backups/`（只搬不删）**
+
+| 遗留项 | 判定 | 去向 |
+|---|---|---|
+| `flows/flow_{x,xyx,yy,zz,zzzz}.json` | 早期实验流，0 引用（与在役状态空间无关联） | `zmax_data/backups/flows_legacy_experiments/` |
+| `flows/_archive/`（10 个旧画布快照） | 历史备份件 | `zmax_data/backups/flows_canvas_archive/` |
+| `data/docs/`（pptx/pdf/zip/供应链/专利/调研/交付/培训，115 MB） | 商务交付资产，不进开源仓库 | `zmax_data/backups/商务交付/` |
+| `docs/archive/`（产品介绍 v1/v2/v2.1 pptx） | 历史商务材料 | `zmax_data/backups/商务交付/历史存档/` |
+| `docs/mm_video/`（演示视频 2.1 MB） | 演示素材 | `zmax_data/backups/demo_videos/` |
+| `docs/hermes_backup/`（3 个记忆备份） | 属记忆留档 | `docs/memory/archive/` |
+
+**保留在平台**：`flows/` 中与状态空间有关联的数据与生成器（原子技能/场景/模型库/工具库/闭环等
+28 项 + 6 个 `gen_*.py` + `scene*.html`）；`l4_ab/`（被 v6 判闸哨兵脚本引用）；
+`hermes/install/`（Hermes 安装/恢复对）；`docs/data_snapshots/`（逐版本发布证据）；`docs/{web,source,diagrams,test-reports,screenshots}`。
