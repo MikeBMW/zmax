@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax-param-registry/1.0",
-  "generated_at": "2026-10-09 14:15:56",
+  "generated_at": "2026-10-09 14:30:56",
   "doc": "参数注册表 (扁平): 域×级×权限×就绪度。真源只读, 本表由 tools/mcd_build.py 生成。"
  },
  "params": [

@@ -1,0 +1,519 @@
+{
+ "schema": "zmax-tasks/1.0",
+ "note": "任务配置真源 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
+ "sources": {
+  "flows/scenes_5jobs.json": "fa262c4647ebaf8b",
+  "config/calib/zmax_calib.json": "38592726272d455b",
+  "recipe": "tools/build_sheet.py#RECIPE_STEPS (8 段)"
+ },
+ "counts": {
+  "tasks": 5,
+  "segments_total": 8
+ },
+ "tasks": [
+  {
+   "task_id": "TASK-01-FW",
+   "name": "FW Loading + EEPROM 写/读校验",
+   "recipe_type": "插拔+固件校验",
+   "scene_ref": "SCN-01-FW",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.6,
+     "name": "取料"
+    },
+    {
+     "t": 0.6,
+     "dur": 1.0,
+     "name": "扫码"
+    },
+    {
+     "t": 1.6,
+     "dur": 0.8,
+     "name": "翻转"
+    },
+    {
+     "t": 2.4,
+     "dur": 0.5,
+     "name": "对位"
+    },
+    {
+     "t": 2.9,
+     "dur": 0.7,
+     "name": "插入"
+    },
+    {
+     "t": 3.6,
+     "dur": 50.0,
+     "name": "异步测试"
+    },
+    {
+     "t": 53.6,
+     "dur": 0.8,
+     "name": "拔出"
+    },
+    {
+     "t": 54.4,
+     "dur": 3.0,
+     "name": "AOI飞拍"
+    },
+    {
+     "t": 57.4,
+     "dur": 0.8,
+     "name": "分拣"
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "来料吸塑盒",
+     "role": "台面左侧·20穴位",
+     "size_mm": [
+      300,
+      200,
+      30
+     ],
+     "pos": [
+      2.5,
+      -0.4,
+      1.24
+     ]
+    },
+    {
+     "level": "L2 治具级",
+     "name": "EVB测试子板",
+     "role": "台面中央·QSFP插座",
+     "size_mm": [
+      200,
+      150,
+      2
+     ],
+     "pos": [
+      2.5,
+      0,
+      1.25
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": 35.0,
+    "ins.force_ctrl": "Fz>1kHz, 力峰≤5N",
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "pick.close_force": 3.0,
+    "sort.rule": "AOI 各站失败累计→NG"
+   },
+   "trigger": "来料盒就位 / 上游工位放行信号",
+   "loop": "单件循环; 连续 2 次抓取失败停机",
+   "targets": {
+    "合格率": "≥99%"
+   },
+   "orders_rule": "1 批 = 1 工单; 1 件 = 1 条记录",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "插入深度 35mm 判到位 end_pose.x>0.750 (实测判据)"
+  },
+  {
+   "task_id": "TASK-02-HANDLE",
+   "name": "料盘/治具上下料搬运",
+   "recipe_type": "上下料搬运",
+   "scene_ref": "SCN-02-HANDLE",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "4 放置/插入",
+    "5 拔出/取回"
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "取盘"
+    },
+    {
+     "t": 3.0,
+     "dur": 3.0,
+     "name": "配送"
+    },
+    {
+     "t": 6.0,
+     "dur": 6.0,
+     "name": "精密对接"
+    },
+    {
+     "t": 12.0,
+     "dur": 8.0,
+     "name": "检测"
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "缓存架",
+     "role": "料盘缓存·多层",
+     "size_mm": [
+      600,
+      400,
+      1800
+     ],
+     "pos": [
+      0.5,
+      -0.6,
+      1.0
+     ]
+    },
+    {
+     "level": "L2 治具级",
+     "name": "治具",
+     "role": "4定位孔·L2治具级",
+     "size_mm": [
+      200,
+      200,
+      15
+     ],
+     "pos": [
+      0.8,
+      0,
+      1.1
+     ]
+    },
+    {
+     "level": "L3 单颗级",
+     "name": "单颗物料",
+     "role": "光模块单颗·L3治具内",
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "pos": [
+      0.8,
+      0,
+      1.12
+     ]
+    }
+   ],
+   "overrides": {
+    "pick.close_force": 3.0,
+    "pick.lift_h": 30,
+    "pick.retry": 2,
+    "src.orient": "料盘/治具按定位孔朝向",
+    "sort.pass_tray": "不适用(不涉及分拣)",
+    "cyc.dual_arm": "协作(一臂取盘一臂对接)"
+   },
+   "trigger": "料盘到位信号 / 手动按钮",
+   "loop": "整盘连续(12 件/盘); 满盘→空盘切换",
+   "targets": {
+    "配送准时率": "≥99.5%"
+   },
+   "orders_rule": "1 盘 = 1 工单; 1 件 = 1 条记录",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "上下料: 取盘→配送→对接→回位; 不涉及插入/拔出 ⇒ 配方段 4/5 不适用"
+  },
+  {
+   "task_id": "TASK-03-BI",
+   "name": "BI老化箱模块插拔",
+   "recipe_type": "老化箱插拔",
+   "scene_ref": "SCN-03-BI",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 5.0,
+     "name": "导航就位"
+    },
+    {
+     "t": 5.0,
+     "dur": 3.0,
+     "name": "升降就位"
+    },
+    {
+     "t": 8.0,
+     "dur": 2.0,
+     "name": "拉出抽屉"
+    },
+    {
+     "t": 10.0,
+     "dur": 60.0,
+     "name": "批量插入"
+    },
+    {
+     "t": 72.0,
+     "dur": 2.0,
+     "name": "关闭"
+    },
+    {
+     "t": 74.0,
+     "dur": 14400.0,
+     "name": "老化"
+    },
+    {
+     "t": 14474.0,
+     "dur": 13.0,
+     "name": "批量拔出+分拣"
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "料盘",
+     "role": "待测模块料盘",
+     "size_mm": [
+      330,
+      330,
+      20
+     ],
+     "pos": [
+      0.6,
+      -0.4,
+      1.1
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false,
+    "cyc.takt": "见场景性能目标"
+   },
+   "trigger": "老化箱槽位放行信号",
+   "loop": "按槽位序列循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "插入深度按老化箱规格 (待现场确认)"
+  },
+  {
+   "task_id": "TASK-04-THERMAL",
+   "name": "热海柜体电口+光口插拔",
+   "recipe_type": "热海柜体插拔(电口+光口)",
+   "scene_ref": "SCN-04-THERMAL",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "导航"
+    },
+    {
+     "t": 3.0,
+     "dur": 2.0,
+     "name": "取料"
+    },
+    {
+     "t": 5.0,
+     "dur": 2.0,
+     "name": "插电口"
+    },
+    {
+     "t": 7.0,
+     "dur": 1.5,
+     "name": "光口检测"
+    },
+    {
+     "t": 8.5,
+     "dur": 4.0,
+     "name": "插光口×2"
+    },
+    {
+     "t": 12.5,
+     "dur": 2.0,
+     "name": "清洁"
+    },
+    {
+     "t": 14.5,
+     "dur": 1800.0,
+     "name": "测试"
+    },
+    {
+     "t": 1814.5,
+     "dur": 5.5,
+     "name": "拉出+拔光口+分拣"
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "料盘",
+     "role": "躯干A区料盘",
+     "size_mm": [
+      330,
+      330,
+      20
+     ],
+     "pos": [
+      0.5,
+      0.4,
+      1.15
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false
+   },
+   "trigger": "柜体门开信号",
+   "loop": "电口→光口 顺序循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "电口/光口两套插拔参数 (待现场确认)"
+  },
+  {
+   "task_id": "TASK-05-ATS",
+   "name": "ATS/线外检测插接 (核心挑战场景)",
+   "recipe_type": "检测插接",
+   "scene_ref": "SCN-05-ATS",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.2,
+     "name": "导航"
+    },
+    {
+     "t": 2.2,
+     "dur": 1.0,
+     "name": "扫码"
+    },
+    {
+     "t": 3.2,
+     "dur": 1.5,
+     "name": "插光口检测"
+    },
+    {
+     "t": 4.7,
+     "dur": 1.0,
+     "name": "清洁度检测"
+    },
+    {
+     "t": 5.7,
+     "dur": 2.0,
+     "name": "清洁"
+    },
+    {
+     "t": 6.7,
+     "dur": 1.2,
+     "name": "插电口"
+    },
+    {
+     "t": 7.9,
+     "dur": 1.5,
+     "name": "插光纤"
+    },
+    {
+     "t": 9.4,
+     "dur": 120.0,
+     "name": "测试"
+    },
+    {
+     "t": 129.4,
+     "dur": 3.6,
+     "name": "拔光纤+拔模块+目检+分拣"
+    }
+   ],
+   "variants": [],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "sort.rule": "测试结果 PASS/FAIL 分拣"
+   },
+   "trigger": "测试台就绪信号",
+   "loop": "到货即测",
+   "targets": {
+    "成功率": "≥99%",
+    "测试读取": "≥99.9%"
+   },
+   "orders_rule": "1 批 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "核心挑战场景: 测试读取成功率 ≥99.9%"
+  }
+ ]
+}

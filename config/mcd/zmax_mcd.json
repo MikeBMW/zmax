@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax-mcd/1.0",
-  "generated_at": "2026-10-09 14:15:56",
+  "generated_at": "2026-10-09 14:30:56",
   "doc": "流形引擎标定·主参数 M 节点的 MCD 描述 (对标 ASAM MCD-2MC/A2L)。只描述, 不改在役值。",
   "sources": {
    "config/calib/zmax_calib.json": "38592726272d455b",
@@ -9,7 +9,7 @@
    "feature.dbc": "8674dedc7212646a",
    "src/lerobot/engineering/levels.py": "597f13f5b2b85e71",
    "src/lerobot/verification/verification_layer.py": "88bd08fda6063107",
-   "tools/gui/studio.py": "1c9a22135dc99637"
+   "tools/gui/studio.py": "ceb492bb95a34e98"
   },
   "counts": {
    "MEASUREMENT": 9,

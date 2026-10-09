@@ -9140,7 +9140,16 @@ class ConfigModule(SubModuleWidget):
         
         container = QWidget()
         container.setLayout(outer)
-        self._build_shell(container)
+        # 🆕 2026-10-09 老倪「主要工程配置, 例如 上下料的任务配置」:
+        #   配置中心 = 左五域树 + 右工作区; **任务配置为首屏**, 原模型配置整块搬进「🧠 模型配置」页(不重写)。
+        #   兜底: 新页构建失败 → 回退原模型配置页, 保证控制台一定能启动。
+        try:
+            import veh6_config_page
+            _th = {k: v for k, v in globals().items() if k.startswith("C_")}
+            self._build_shell(veh6_config_page.build_config_center(container, _th))
+        except Exception as _e:
+            print(f"[配置中心] 新页构建失败, 已回退模型配置页: {_e}")
+            self._build_shell(container)
     def _on_style_changed(self, idx):
         """🎨 风格切换 → Simulink 功能区即时生效 (light/dark)"""
         name = "light" if idx == 0 else "dark"

@@ -35,6 +35,7 @@ MCD = os.path.join(ROOT, "config", "mcd", "zmax_mcd.json")
 REG = os.path.join(ROOT, "config", "mcd", "param_registry.json")
 MATCH = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 ORDERS = os.path.join(ROOT, "config", "orders")
+TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 DOMAINS = ["模型配置", "工程配置", "功能配置", "性能配置", "工艺·工单"]
 
 
@@ -103,12 +104,15 @@ def cmd_overview(a):
         print(f"模型×工程配置匹配: 可用 {s.get('usable_now')}/{s.get('models')}"
               f"  ⛔ 受阻: {', '.join(blocked) or '无'}")
     ords = sorted(glob.glob(os.path.join(ORDERS, "BS_*.json")))
-    print(f"工单: {len(ords)} 份  ({', '.join(os.path.basename(x)[3:-5] for x in ords)})")
+    tk = _j(TASKS, {})
+    print(f"任务配置: {len(tk.get('tasks', []))} 条   ·   工单: {len(ords)} 份"
+          f"  ({', '.join(os.path.basename(x)[3:-5] for x in ords)})")
     print()
     print("下一步(可复制):")
+    print("  python3 tools/config_center.py tasks            # 任务配置(主要内容)")
+    print("  python3 tools/config_center.py task TASK-02-HANDLE")
     print("  python3 tools/config_center.py list 工程配置")
-    print("  python3 tools/config_center.py recipe")
-    print("  python3 tools/config_center.py order --scene SCN-02-HANDLE")
+    print("  python3 tools/config_center.py order --task TASK-02-HANDLE")
     print("  python3 tools/config_center.py check")
     return 0
 
@@ -190,6 +194,52 @@ def cmd_recipe(a):
     return 0
 
 
+def cmd_tasks(a):
+    d = _j(TASKS)
+    if not d:
+        print("⛔ 还没有任务配置 —— 生成: python3 tools/task_build.py"); return 2
+    ts = d["tasks"]
+    if a.json:
+        print(json.dumps(d, ensure_ascii=False, indent=1)); return 0
+    print(f"工艺域 · 任务配置 ({len(ts)} 条, 真源 config/tasks/tasks.json)")
+    hdr = f"{'任务ID':<20}{'类型':<16}{'适用段':>5}{'粒度':>4}  {'触发':<22}目标"
+    print(hdr); print("-" * len(hdr))
+    for t in ts:
+        print(f"{t['task_id']:<20}{t['recipe_type']:<16}{len(t['applies_segments']):>5}"
+              f"{len(t['variants']):>4}  {t['trigger'][:20]:<22}{t['targets']}")
+    print("\n看一条详情: python3 tools/config_center.py task TASK-02-HANDLE")
+    return 0
+
+
+def cmd_task(a):
+    d = _j(TASKS)
+    if not d:
+        print("⛔ 无任务配置 —— 先跑 python3 tools/task_build.py"); return 2
+    t = next((x for x in d["tasks"] if x["task_id"] == a.arg), None)
+    if not t:
+        print(f"⛔ 无此任务: {a.arg} (可选: {', '.join(x['task_id'] for x in d['tasks'])})"); return 2
+    if a.json:
+        print(json.dumps(t, ensure_ascii=False, indent=1)); return 0
+    print(f"【{t['task_id']}】{t['name']}")
+    print(f"  任务类型 : {t['recipe_type']}    场景: {t['scene_ref']}    站点: {t['site']}")
+    print(f"  适用配方段: {len(t['applies_segments'])}/{len(t['applies_segments'])+len(t['excluded_segments'])}"
+          f"  " + " · ".join(x[:6] for x in t["applies_segments"]))
+    if t["excluded_segments"]:
+        print(f"  不适用段 : " + " · ".join(t["excluded_segments"]) + "   ← " + t["_note"])
+    print(f"  步骤     : " + " → ".join(s["name"] for s in t["steps"]))
+    print(f"  物料粒度 : " + " · ".join(f"{v['level']}({v['name']} {v.get('size_mm')})" for v in t["variants"]))
+    print(f"  参数覆盖 : {json.dumps(t['overrides'], ensure_ascii=False)}")
+    print(f"  触发/循环: {t['trigger']} · {t['loop']}")
+    print(f"  验收判据 : {t['targets']}")
+    print(f"  工单规则 : {t['orders_rule']}")
+    print(f"  组配建议 : {t['binding_hint']}")
+    print(f"  安全     : {t['safety']}")
+    if t["blocked_by_site"]:
+        print(f"  ⛔ 阻塞   : 站点几何未标定 {t['blocked_by_site']} ⇒ 坐标类参数不可信, 任务不可下发")
+    print(f"  生成工单 : python3 tools/config_center.py order --scene {t['scene_ref']}")
+    return 0
+
+
 def cmd_variants(a):
     sc = _j(os.path.join(ROOT, "flows", "scenes_5jobs.json"), {}).get("scenes", [])
     if a.json:
@@ -225,8 +275,15 @@ def cmd_orders(a):
 
 def cmd_order(a):
     import build_sheet as BS
+    ref = a.scene
+    if a.task:  # 支持按任务生成工单 (任务 → 场景)
+        d = _j(TASKS, {})
+        t = next((x for x in d.get("tasks", []) if x["task_id"] == a.task), None)
+        if not t:
+            print(f"⛔ 无此任务: {a.task}"); return 2
+        ref = t["scene_ref"]
     sc = _j(os.path.join(ROOT, "flows", "scenes_5jobs.json"), {}).get("scenes", [])
-    sel = [s for s in sc if not a.scene or s["scene_id"] == a.scene]
+    sel = [s for s in sc if not ref or s["scene_id"] == ref]
     if not sel:
         print(f"⛔ 无此场景: {a.scene}"); return 2
     calib = BS.read_site()
@@ -291,6 +348,7 @@ def cmd_check(a):
 
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
+        "tasks": cmd_tasks, "task": cmd_task,
         "order": cmd_order, "check": cmd_check}
 
 
@@ -298,6 +356,7 @@ def main():
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--scene", default=None)
+    ap.add_argument("--task", default=None)
     ap.add_argument("cmd", nargs="?", default="overview")
     ap.add_argument("arg", nargs="?")
     a = ap.parse_args()
