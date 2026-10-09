@@ -70,6 +70,28 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * 未抱异常会 “QThread: Destroyed while thread is still running → Aborted” 假崩: 先看 traceback 第一行,
   别当环境问题 (真例: `QAction.title()` 不是 `text()`)。
 
+## 🔴 GUI「点了没反应」实机取证三步 (2026-10-09)
+
+老倪报「点击 open 没反应」时, **别只看代码**: 他跑的就是本机窗口, 取证要直接上 :0。
+
+1. **先看应用自己的 stderr 日志** (`/tmp/studio_launch.log` 这类启动重定向文件; 它运行期也在写)。
+   实例: 里面赫然是 `QAction::event: Ambiguous shortcut overload: Ctrl+Shift+O`
+   ⇒ **两个 QAction 注册了同一个快捷键 = 两个都不触发** (按钮迁菜单/新加菜单最容易撞)。
+   全窗口扫一遍: `for a in win.findChildren(QAction): a.shortcut().toString()` 建桶找重复。
+2. **确认框默认按钮**: 本项目 `_msg/yes_no` 原本一律 `setDefaultButton(No)` + 按钮写「是/否」
+   ⇒ 用户回车/点默认按钮 = **静默取消**, 只剩 2.5s 状态栏一行字 = “没反应”。
+   打开/加载/导入类确认框一律 `default_yes=True` + `yes_text="🗂 打开工程"/no_text="取消"`;
+   危险操作 (删节点/覆盖) 仍旧默认「否」。
+3. **驱动实机看真相**: `xdotool` 可用 (`DISPLAY=:0`, scrot 截图 + tesseract -l chi_sim OCR;
+   多显示器时 `wmctrl -lG` 拿窗口几何再 PIL 裁右半屏)。已验证: 点击/按键能进 app (对比截图差异/日得确认),
+   `Ctrl+Alt+O` 这类**唯一**快捷键一按就弹文件框 —— 用它区分“接线坏了”vs“快捷键撞了”。
+   **写盘类操作看文件时间戳就算成功**: 打开总工程成功 ⇒ `flows/_archive/*_before_space_open_<ts>.json`
+   与 `config/calib/*.bak_<ts>` 必然新生; 没新文件 = 压根没走到写盘 (卡在确认那步)。
+4. **留痕兜底**: 打开/加载工程全链写 `zmax_data/logs/open_project.log` (入口/选了哪个文件/确认结果/
+   写盘异常/界面回填+画布场景项数) —— 以后“没反应”直接看文件, 不用再猜。
+5. 守门: `tools/verify_shortcuts.py` (枚举全 QAction, **任何重复快捷键判失败** + 默认按钮/动作名/留痕可写)
+   已入 `run_gui_verifiers.sh`。
+
 ## 🗂 工程文件 (.proj) + 「打开」必须看得见画布 (2026-10-09)
 
 老倪: 「工程文件后缀应该是 proj」、「我点击 open 怎么没反应? 应该打开 simulink 的画布啊」。
