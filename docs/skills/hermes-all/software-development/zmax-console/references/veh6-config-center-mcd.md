@@ -125,6 +125,17 @@
 - 画布指纹不符 ⇒ 绑定过期，必须重绑（防拿旧清单配新画布）。
 - 铁律：**绝不按任务改画布**；画布只能走 `flows.save_canvas`（校验+备份）。
 
+## 配置落到画布节点 (『🧮 标定诊断测量 · 主参数 M』)
+- 命令: `config_center.py node`(看) / `node write`(写) · 工具 `tools/ss_node_sync.py [--check|--json]`(0=一致/2=需更新)。
+  GUI 任务配置页按钮: 「📥 写入状态空间节点」「🏷 看节点配置」。
+- 节点 `params` 挂 7 段: `cfg_role` / `cfg_entries`(9 条配置文件指针) / `cfg_snapshot`(就绪度/任务/工单/断言/站点缺口/工程指纹)
+  / `measure_view` / `calib_view` / `diagnose_view` / `task_layer`。**文件仍是真源, 节点只挂指针+快照**。
+- 写盘只碰 `name` + 那几个 `cfg_*` 键: **id/端口/连线一律不动**; 验证三件套 =
+  除本节点外整幅画布指纹**逐位相同** + 节点/连线数不变 + 再跑 `--check` **幂等**。
+- 🔴 指纹必须用**结构指纹**(算 md5 前剔除 `cfg_*`/各 `_view`/`task_layer` 挂载键):
+  否则"写节点 ⇒ 全量 md5 变 ⇒ 绑定被判过期 ⇒ 再写"死循环。定义见 `ss_task_bind._structural_md5`，绑定与节点同步共用同一个函数。
+- 画布侧细节(改名口径、改名后段覆盖 53→52 的副作用)见 skill `state-space-canvas-engineering` → `references/mcd-param-node-design.md` §8。
+
 ## 现状（改造起点的实测事实）
 - `ConfigModule` 在 `studio.py` 约 8634–9350 行（~700 行），**只覆盖"模型配置"**：
   9 组（架构模式/UI风格/基础/VLM骨干/Action Head/世界模型/预处理后处理/优化器调度器/配置预览）

@@ -234,6 +234,36 @@ metadata:
 加 L4 节点的落位判据: 别用"全域最大空档"硬套 —— 语义节点应在它的**上下游之间**的区间里取空档
 (如标定节点必须落在 `标定层(sscalib)` 与 `被标定引擎(ss_mani_eng)` 之间), 否则为凑空档会接出反向线被断言拦住。
 
+## 单步跟随 / 定位 / 逐节点实现审计 (2026-10-09, v5.22.0)
+老倪: 「我要全面检查状态空间工程的每个节点的实现; 单步运行, 运行到哪个节点哪个节点高亮,
+**而且画布要跳到这个节点** —— 画布太大了, 我找不到单步节点到底在哪里」。
+
+**高亮本来就有** (`node["status"]="step_active"` → 金框 2.8px, 或 `node["hl"]`), 缺的是**跳转**。落法:
+- `SimCanvas.focus_node(node_id, min_scale=0.45, max_scale=1.6)`: 缩放夹到看得清区间 → `centerOn(节点包围盒中心)` →
+  `viewport().update()`。**必须夹缩放**: 用户在全览缩放(0.05)时直接 centerOn 依然看不到东西。
+- `SimCanvas.fit_all(margin=240)`: 所有节点 `united` → `fitInView` → **回来同步 `self._scale`** (Ctrl+滚轮的 `_scale` 是真源)。
+- 挂钩点选在 `_highlight_node(node, ms, follow=True)` (它是所有节点级高亮的公共入口) ⇒ 单步/右键运行节点/全局运行
+  都自动获得跳转; 开关用工具栏 `☑ 🎯 跟随单步` (默认开), 关掉时**仍要在终端报一行位置**。
+- **同一节点 2 秒内只跳一次**: 一次单步会经 `step_sim → _run_node_single → _highlight_node` 两条路进来,
+  不去重就跳两次、终端刷两行。
+- 反馈口径不变: **画布上不铺文字**, 位置/进度只进下面终端; 画布留给金框与状态色。
+
+**逐节点实现审计** (`tools/ss_node_impl_audit.py`, 只读): 每行 = 序号/id/名称/层级/实现 key/是否在单步序/**文件:行**。
+- 实现真源: `registry.match_node(名) → key → fn`; 位置用 `sourceview.get_node_location(key)`
+  (自动处理 `_EXTERNAL_LOC`, 真实现在 `left_right/state_space/*.py` 等外部文件, 并按符号名现搜行号)。
+- 单步序判据 **直接调用 GUI 的 `_ss_node_cap_level` / `_ss_is_observer`** (不是抄一份), 再用内联副本**逐节点交叉核对**
+  —— 两份不同步时立刻暴露。实测 89 节点(功能 74/背景 15) · **实现命中 74/74** · 判据核对 74/74 ✅。
+
+配套验证: `tools/verify_step_follow.py` (离屏真建 SimulinkModule + 真加载画布, 9 组交互级断言:
+渲染回归 / 控件在位 / 实现位置 / 真跳偏差 / 跟随开-关 / 定位 / 全览 / 金框)。
+
+### 两个必踩的坑
+1. 🔴 **`load_flow_file` 会给每个节点重新 `gen_id()`** ⇒ 文件里的 id (`sssensor`/`n_calib_mani`) 在 GUI 内存里**查不到**,
+   只有运行时生成的 id 有效。**任何"按 id 找画布节点"的代码必须带名字/语义标记兜底**
+   (既有 `_ov_live_target_item` 就是这么写的)。写盘的 `ss_node_sync.py` 之类也要补兜底,
+   否则用户从控制台「另存为」重写过 id 后就再也找不到节点。
+2. `_follow_to` / `_highlight_node` 必须能吃 `node is None` (画布为空/名字没匹配) —— 否则点一下就 Traceback。
+
 ## 工程文件: 保存/加载整个「状态空间工程」(2026-10-08 老倪: 文件菜单)
 老倪: 「在控制台，文件下拉菜单，增加一个保存工程文件的功能，这样，我下次进入控制台，直接加载这个工程文件，就可以继续调试状态空间工程了。」
 - 实现: `tools/gui/project_file.py`(逻辑, 可命令行自检) + `studio.py` 文件菜单两项

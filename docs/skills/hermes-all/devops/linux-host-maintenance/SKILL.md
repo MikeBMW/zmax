@@ -17,6 +17,7 @@ metadata:
 - 用户说"**重启了 / 机器回来了 / 元气恢复 / 静静**"(开机后) ⇒ 走 §9 的链路自愈核验, 四行给最简现状; 本机没自愈起来的按 §10 恢复。
 - 跑长任务前想把机器状态摸一遍(服务在不在、盘够不够、GPU 有没有空转)。
 - 磁盘吃紧 → **磁盘红线部分走 skill `disk-redline-guard`**, 本文管"系统层缓存/服务/性能"。
+- 用户说"**帮我装个 X / 一会开会要用 / 一会演示要用**" ⇒ 先按 §11 查"是不是早就装了"，再做**就绪核查**(外设实测 + 设备占用 + 界面状态)，别直接下安装包。
 
 ## 0. 铁律 (先立规矩再动手)
 1. **保护清单先写出来**, 清理脚本里逐条核对: 训练数据盘、模型缓存根、在役仓库、数据中转目录、在役权重
@@ -187,12 +188,23 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    先把工具的匹配改成"**认版本号不认记法**"的正则(`v{1,2}<ver>`、从 `QLabel("Z-MAX …")` 取当前号)再跑;
    改完逐文件回读 `grep -c <新串>` ≥1, 最后 `tools/ci/integrity_check.py` 要报"五处一致"。
    五处完整清单 + 文件间记法差异 + `VERSION.md` 历史行规范: 见 `pyqt5-distribution` 的 Version Bump Checklist。
+4b. **归档本轮产物** (本仓既有约定: 照上一版 `tools/archive_release_<x_y_z>.sh` 抄结构):
+   `bash tools/archive_release_<x_y_z>.sh` → `~/zmax/zmax_data/release_<ver>_<YYYYMMDD>/`, 分区固定
+   `{tools,gui,src,config,canvas,docs,evidence,reports}`, 末尾出 `MANIFEST.md` + `sha256sums.txt`。
+   **“保存数据”不等于“提交代码”**: 归档必须带**生成物真源**(本轮产出的 `config/{mcd,tasks,orders,ss_task_binding.json,calib}` 这类)
+   + **画布真源**(`flows/state_space_obs.json`) **及其 `_archive/` 里那份改动前备份**(回滚面) + 用户要加载的工程文件(.zmaxproj)
+   + 实测证据。权重/大件不进归档, 只留清单(见本节步骤 2)。
+   ⚠️ `reports/` 被 `.gitignore` 排除 ⇒ 证据文件**只存在于归档里**, 别以为 push 过就留档了。
 5. **提交纪律**: `git add <显式列文件>`, **默认别用 `git add -A`** (会吸进运行态 churn + 别人的未完成改动)。
    要用 `-A` 得先**三证**: `git status --short` 只剩本轮自己的改动 + 双闸全绿(`repo_guard.py --staged` /
    `secret_scan.py`) + `.gitignore` 已封 `reports/ outputs/ 权重/交付件`。
    暂存后必看 `git diff --cached --stat`, 并对每个文件核大小 (最大应 <1MB; 出现 .pt/.safetensors/视频 → 漏加了 ignore, 先修 .gitignore)。
 6. **push + tag**: `git commit` → `git tag vv<X.Y.Z>` (**每版新 tag, 已发布过的 tag 不许移动**) →
    `git push origin <分支>` + `git push origin <tag>` (tag 触发云端 CI 出包, 与本地关机无关, 可以放心打)。
+6b. **tag 之后复核"CI 真跑起来了"** —— 本地没装 gh 也能查(公开仓库只读 REST):
+   `curl -s 'https://api.github.com/repos/<owner>/<repo>/actions/runs?per_page=3'` 交给 `python3 -c` 打印
+   `name/head_branch/status/conclusion`; 刚推的 tag 应出现 `in_progress`, 上一版应是 `completed/success`。
+   判据是这条 run 的存在与结论 —— 写"已发布"前面必须看过它。
 7. **写交接/留档** (两份都要, 都在库里):
    · `reports/关机交接_<日期>.md` — ①关机前状态 (终态/缺口/产物路径/GPU 空闲) ②**开机后需手动恢复的**
      (自启单元里没有的手工进程 —— 如取流服务完整命令行; 远端取流/相机/工控机接口) ③待办优先级 ④本轮代码改动清单。
@@ -457,6 +469,46 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
   收尾复核"再跑一次应为空 + 端口/探活为准"。
 - 同一类坑还有: 内联的长命令会被工具层拦或截断 —— 脚本化写到 `/tmp/*.sh` 再跑。
 
+## 11. 「帮我装个 X / 一会要用」⇒ 先查已装, 再做就绪核查
+
+**先查, 别先下载**:
+```bash
+dpkg -s <pkg> | grep -E "^Version|^Status"     # 已装会直接给版本
+which <bin>; ls /usr/share/applications | grep -i <名>
+apt-cache policy <pkg>                         # 只有 dpkg 来源(无 repo) ⇒ 升级只能下官网 deb
+```
+国产桌面客户端(会议/微信/飞书这类)在本机**往往早就装过** ⇒ 这类请求的真实内容通常是「启动 + 就绪核查」，不是安装。
+起 GUI 应用: `background=true` + `persist_on_release=true`(前景 + `nohup/setsid/&` 会被工具拦)；
+复核看**窗口**不看进程: `wmctrl -l` / `xdotool search --name "<标题>"` —— 进程在而窗口没起 = 没成功。
+
+**就绪核查（开会/演示前逐项实测, 每项给数字）**:
+
+| 项 | 命令 | 判据 |
+|---|---|---|
+| 音频服务 | `pactl info` · `pactl list short sinks` | Server=PulseAudio/PipeWire; 空闲 sink `SUSPENDED` 属正常 |
+| 麦克风 | `arecord -D default -f S16_LE -r 16000 -c 1 -d 3 /tmp/mic.wav` + python `wave` 算 peak/RMS | **RMS>60 才算通**; 峰值贴 32767 = 环境太吵, 不是故障 |
+| 扬声器 | `speaker-test -t sine -f 440 -l 1 -p 1`(自己结束) · `pactl get-sink-mute @DEFAULT_SINK@` | 能跑完 + 未静音; 别用 `&` 后台(工具会拦) |
+| 摄像头 | `v4l2-ctl -d /dev/videoN --all`(看 Card type) · `ffmpeg -f v4l2 -i /dev/videoN -frames:v 1 out.jpg` | 抽到帧 ≥ 十几 KB; 同模组常给多个 `/dev/videoN`(RGB/IR/metadata) |
+| 网络 | `curl -s -o /dev/null -w '%{http_code}' https://<服务域>/` | 200 即可达 |
+
+**设备占用冲突（本机最容易误判成"硬件坏了"的一条）**:
+生产服务会长期占着 `/dev/video*`(推流/取流), 会议软件再打开同一台 UVC 时**内核允许 open, 但同时只有一个能真正推流**
+⇒ 表现就是"会议里摄像头黑屏/打不开"。先取证再下结论:
+```bash
+sudo fuser -v /dev/video*          # 谁占着
+sudo lsof /dev/video*              # 占用者的完整命令行(能看出是哪个工具/哪一路)
+```
+处置: **报告冲突 + 给让出方案**(在页面里关掉那一格 / 停那一路), 由用户点头 ——
+生产推流正被用户盯着看, 不要自己停; 停一路正在推流的相机还会连带让视觉安全闸 fail-closed。
+
+**没有看图工具时可读界面状态**: 截图(`import -window <id> out.png` / `gnome-screenshot -f`) +
+`tesseract out.png - -l chi_sim+eng` 抓关键字(登录/扫码/失败/会议号)判断卡在哪一步。
+OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字样", **不要据此断言确切界面状态**;
+截图尺寸 = 整屏分辨率 ⇒ 那个窗口已最大化。
+
+**赶时间时的兜底**: 会议类软件基本都有网页版(浏览器打开 → 加入会议, 输会议号+昵称), 不用装也不用登录 ——
+客户端起不来或登录态坏了先给这条, 别让对方卡在安装上。
+
 ## Pitfalls
 | 坑 | 症状 | 修法 |
 |---|---|---|
@@ -467,6 +519,9 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
 | 汇报 governor"提升 X%" | 单轮先 A 后 B 的顺序效应 | 交错多轮取中位; 带宽瓶颈负载不能用来测频率 |
 | 顺手删备份件 | 用户其实还要那份镜像归档 | 备份/归档件**只列不删**, 让用户点头 |
 | `ls -l <真源> && python3 -c "解析" \|\| echo "无 <真源>"` | **解析器报错被当成"文件不存在"** —— 把在位的真源报成缺失(实测把在刷的位姿真值误报成"无 latest.json", 据此下了错结论) | 存在性探测与解析**分开写**: `[ -e f ] \|\| echo 缺 f;` 之后单独解析并让失败打印**真实异常**; 断言性结论只能由"读到的内容"下, 不能由 shell 的 `\|\|` 分支下 |
+| 用户说"帮我装 X"就直接下安装包 | 装了第二份/版本冲突, 其实早就装过 | 先 `dpkg -s` + `which` + 桌面入口查; 已装 ⇒ 直接启动 + 就绪核查 |
+| 拿"进程在"当"应用可用" | 报成功但窗口根本没起 | 复核窗口(`wmctrl -l` / `xdotool search --name`), 不是 `pgrep` |
+| 设备被生产服务占着却报"硬件坏了" | 误判摄像头/串口故障 | `sudo fuser -v /dev/*` + `lsof` 找占用者; 报冲突并请示, 不擅停生产服务 |
 | 老目录整理完又冒出来 | 代码扫干净了却仍重建 `~/<老名>` | 查**仓库外**工具的全局配置(`~/.config/Ultralytics/settings.json` 的 `runs_dir/weights_dir/datasets_dir` 等): 不在仓库里, 五种路径写法全扫不到, 但工具每次都按它落盘 ⇒ 备份后改到工程内 → 把已落错地方的产物**合并回来** → 空目录才 `rmdir`; 判据是"跑一次那个工具看产物落在哪", 不是 grep |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`
