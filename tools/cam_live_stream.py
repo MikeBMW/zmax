@@ -954,9 +954,12 @@ def _ctl_record_point(body: dict) -> dict:
     页面路径: 点动到位 → 号位面板「📝 记住此点」→ POST /ctl/record_point → 按钮变绿。
     """
     name = str((body or {}).get("name") or "").strip()
-    if name not in _POINT_RECORD_ALLOW:
+    # 🔴 2026-10-09 老倪: 「当前位置记录，安全点，增加安全点 按钮」(8793 金手指窗口 点2 旁边)。
+    #   「安全点N」与号位点同样只是"读真值 + 落盘"(零运动, 不需要真动授权), 所以放进同一道白名单;
+    #   但仍按正则严格限定形状(只允许 安全点 + 1~2 位数字), 防手误写坏别名点。
+    if (name not in _POINT_RECORD_ALLOW) and (not re.fullmatch(r"安全点\d{1,2}", name)):
         return {"ok": False, "code": 400,
-                "msg": "只允许号位/空间点位 %s (收到 %r)" % ("/".join(sorted(_POINT_RECORD_ALLOW)), name)}
+                "msg": "只允许号位/空间点位/安全点N %s (收到 %r)" % ("/".join(sorted(_POINT_RECORD_ALLOW)), name)}
     dry = bool((body or {}).get("dry"))
     try:
         _ns = max(4, min(12, int((body or {}).get("samples") or 6)))

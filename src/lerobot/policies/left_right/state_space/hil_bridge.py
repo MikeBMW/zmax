@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -33,6 +34,12 @@ SS_BYPASS = os.path.join(ROOT, "zmax_data", "ss_bypass")
 PEERS_FILE = os.path.join(SS_BYPASS, "hil_peers.json")
 PEER_TTL = 30.0
 _PEERS_LOCK = threading.Lock()
+
+# 🖐 拖动示教只读源 (build_snapshot.links.drag 用; 只读, 零下发)
+TCP_SRC = os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+TAUGHT_STORE = os.path.join(ROOT, "data/skills/l2_atomic/taught_points.json")
+BASE_PT_NAME = "金手指点1"
+CTL_STATUS_URL = "http://127.0.0.1:8793/ctl/status"
 
 # 红线: 动作类关键词 → 拒答 (未授权不下发真机动作)
 MOTION_PAT = re.compile(r"(插入|抓取|夹爪|夹紧|移动|运动|下发|示教|拍照|启动产线|回位|抓|插|拔|推|拉|执行动作)")
@@ -159,6 +166,48 @@ def core_idea(stage, ev, obs7):
     }
 
 
+def drag_brief():
+    """🖐 拖动示教只读摘要 → links.drag = {operation,mode,frame_age_s,base_pt_d_mm}。
+
+    只读, 零下发 (不 enableDrag/disableDrag/不改控制器模式)。任一子项拿不到 → 该项 None;
+    全都拿不到 → 整体 None (不编造)。"""
+    op = mo = None
+    got = False
+    try:
+        req = urllib.request.Request(CTL_STATUS_URL, headers={"User-Agent": "zmax-hil-bridge/1.0"})
+        with urllib.request.urlopen(req, timeout=2.0) as r:
+            rb = (json.loads(r.read().decode("utf-8", "replace")) or {}).get("robot") or {}
+        op, mo = rb.get("operation"), rb.get("mode")
+        got = True
+    except Exception:                                                        # noqa: BLE001
+        pass
+    age = None
+    pos = None
+    try:
+        with open(TCP_SRC, encoding="utf-8") as f:
+            d = json.load(f)
+        ts = float(d.get("ts") or 0.0)
+        pos = [float(d["x"]), float(d["y"]), float(d["z"])]
+        if ts:
+            age = round(time.time() - ts, 3)
+        got = True
+    except Exception:                                                        # noqa: BLE001
+        pass
+    base_d = None
+    if pos:
+        try:
+            with open(TAUGHT_STORE, encoding="utf-8") as f:
+                bp = ((json.load(f).get("points") or {}).get(BASE_PT_NAME) or {}).get("pos")
+            if bp and len(bp) >= 3:
+                base_d = round(math.sqrt(sum((float(a) - float(b)) ** 2
+                                             for a, b in zip(pos, bp[:3]))) * 1000.0, 1)
+        except Exception:                                                    # noqa: BLE001
+            pass
+    if not got:
+        return None
+    return {"operation": op, "mode": mo, "frame_age_s": age, "base_pt_d_mm": base_d}
+
+
 def build_snapshot():
     obs7, stage, ts, age = real_obs()
     ev = event_pred(obs7)
@@ -181,7 +230,7 @@ def build_snapshot():
             "events": ev, "layers": layer_health(), "resources": resources(),
             "idea": core_idea(stage, ev, obs7),
             "canvas": _canvas_brief(),
-            "links": {"peers": peers_alive()},
+            "links": {"peers": peers_alive(), "drag": drag_brief()},
             "evidence": _latest_evidence(),
         },
     }

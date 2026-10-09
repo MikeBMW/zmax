@@ -505,6 +505,98 @@ class _StationPollWorker(QtCore.QThread):
         self.done.emit(status, serr, hil_ok, hil_err)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🤲 拖动示教捕捉带 (实时位姿 + 起点距离 + 拖动态 + 录点命令)     2026-10-09 老倪
+#   老倪: 「从状态空间人机交互接口, 从金手指点1, 去到一个安全点, 手动拖拽」。
+#   只读位姿真值 (rokae_tcp_sampler → latest.json) + 读控制器 operation/mode (8793) +
+#   读示教点库里的起点 (金手指点1)。**绝不下发任何动作** (不 enableDrag/disableDrag)。
+#   不可达/陈旧 ⇒ 红字 + 原始错误/帧龄 (不静默, 也不拿旧值冒充实时)。
+# ══════════════════════════════════════════════════════════════════════════════
+DRAG_TCP_SRC = os.path.join(os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out"), "latest.json")
+DRAG_TAUGHT_STORE = os.path.join(os.path.expanduser("~/zmax"), "data/skills/l2_atomic/taught_points.json")
+DRAG_BASE_PT_NAME = "金手指点1"
+DRAG_MAX_AGE_S = 2.0
+DRAG_CTL_URL = "http://127.0.0.1:8793/ctl/status"
+DRAG_RECORD_CMD = ('curl -s -H "X-Zmax-Term: $(cat zmax_data/secrets/hil_term.token)" '
+                   '-X POST http://127.0.0.1:8795/hil/term/record_point '
+                   '-d \'{"name":"安全点1","note":"拖动示教捕捉"}\'')
+
+
+def drag_read_pose():
+    """读位姿真值 → dict; 陈旧/全 0/读不到 ⇒ stale=True + stale_why (pos=None, 不编造)。"""
+    out = {"ok": False, "pos": None, "quat": None, "frame_age_s": None, "stale": True, "stale_why": ""}
+    try:
+        with open(DRAG_TCP_SRC, encoding="utf-8") as f:
+            d = json.load(f)
+        pos = [float(d["x"]), float(d["y"]), float(d["z"])]
+        quat = [float(d["qx"]), float(d["qy"]), float(d["qz"]), float(d["qw"])]
+        ts = float(d.get("ts") or 0.0)
+    except Exception as e:
+        out["stale_why"] = "读位姿真值失败: %s: %s (%s)" % (type(e).__name__, e, DRAG_TCP_SRC)
+        return out
+    age = (time.time() - ts) if ts else 999.0
+    norm = sum(v * v for v in pos) ** 0.5
+    out["frame_age_s"] = round(age, 3)
+    why = []
+    if age > DRAG_MAX_AGE_S:
+        why.append("帧龄 %.2fs > %.1fs" % (age, DRAG_MAX_AGE_S))
+    if norm < 1e-3:
+        why.append("位置范数 %.2e m ≈ 0 (会话陈旧全 0)" % norm)
+    if why:
+        out["stale_why"] = " · ".join(why)
+        return out
+    out.update({"ok": True, "pos": pos, "quat": quat, "stale": False, "stale_why": ""})
+    return out
+
+
+def drag_read_base_point(name=DRAG_BASE_PT_NAME):
+    """读示教点库里起点位姿 → {"name","pos"(或 None)}; 读不到 ⇒ pos=None。"""
+    try:
+        with open(DRAG_TAUGHT_STORE, encoding="utf-8") as f:
+            p = ((json.load(f).get("points") or {}).get(name) or {}).get("pos")
+        if p and len(p) >= 3:
+            return {"name": name, "pos": [float(v) for v in p[:3]]}
+    except Exception:
+        pass
+    return {"name": name, "pos": None}
+
+
+def drag_read_ctl(timeout=2.5):
+    """读 8793 控制器 operation/mode/power; 拿不到 ⇒ 字段 None + err (不编)。"""
+    out = {"operation": None, "mode": None, "power": None, "err": ""}
+    try:
+        import urllib.request
+        req = urllib.request.Request(DRAG_CTL_URL, headers={"User-Agent": "zmax-ss-bypass/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            rb = (json.loads(r.read().decode("utf-8", "replace")) or {}).get("robot") or {}
+        out.update({"operation": rb.get("operation"), "mode": rb.get("mode"), "power": rb.get("power")})
+    except Exception as e:
+        out["err"] = "%s: %s" % (type(e).__name__, e)
+    return out
+
+
+def drag_dist_mm(a, b):
+    """两点欧氏距离 (mm); 任一缺 ⇒ None。"""
+    if not a or not b or len(a) < 3 or len(b) < 3:
+        return None
+    return sum((float(x) - float(y)) ** 2 for x, y in zip(a[:3], b[:3])) ** 0.5 * 1000.0
+
+
+class _DragPollWorker(QtCore.QThread):
+    """后台只读拉一次 位姿真值 + 起点 + 控制器状态 (非阻塞 GUI)。"""
+    done = QtCore.pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def run(self):
+        try:
+            payload = {"pose": drag_read_pose(), "base": drag_read_base_point(), "ctl": drag_read_ctl()}
+        except Exception as e:                      # 任何异常都要见到 (不静默)
+            payload = {"err": "%s: %s" % (type(e).__name__, e)}
+        self.done.emit(payload)
+
+
 class SSBypassView(QtWidgets.QWidget):
     """旁路实时可视化窗口 (非模态, 可常开)"""
 
@@ -530,6 +622,13 @@ class SSBypassView(QtWidgets.QWidget):
         self.station_timer.timeout.connect(self._station_tick)
         self.station_timer.start(1500)
         QtCore.QTimer.singleShot(800, self._station_tick)
+        # 🤲 拖动示教带: 1.5s 后台线程轮询 (只读; 不阻塞 GUI)
+        self._drag_worker = None
+        self._drag_last = None
+        self.drag_timer = QtCore.QTimer(self)
+        self.drag_timer.timeout.connect(self._drag_tick)
+        self.drag_timer.start(1500)
+        QtCore.QTimer.singleShot(1100, self._drag_tick)
 
     def _row(self, k):
         lab = QtWidgets.QLabel("-")
@@ -616,6 +715,7 @@ class SSBypassView(QtWidgets.QWidget):
 
         self._build_net_channel(root)          # 旁路调试 · 上网通道 区块 (新增, 不动上面现有功能)
         self._build_station_band(root)         # 🛰 工位总览 station 带 (新增, 不动上面现有功能)
+        self._build_drag_teach_band(root)      # 🤲 拖动示教捕捉带 (新增, 不动上面现有功能)
 
     # ── 🛰 工位总览 station 带 (2026-10-09) ───────────────────────────────────
     def _station_row(self, title):
@@ -676,6 +776,112 @@ class SSBypassView(QtWidgets.QWidget):
             self.station_labs[k] = lab
             g.addWidget(w, 2 + i // 2, i % 2)
         root.addWidget(gb)
+
+    # ── 🤲 拖动示教捕捉带 (2026-10-09) ───────────────────────────────────────
+    def _build_drag_teach_band(self, root):
+        """只读: 实时 x/y/z + 帧龄 + 采样时刻 · 起点「金手指点1」+ 距起点 mm · 拖动中/静止 · 可复制录点命令。"""
+        gb = QtWidgets.QGroupBox("🤲 拖动示教捕捉 (只读位姿 + 起点距离 + 录点命令 · 1.5s 后台轮询 · 零下发)")
+        g = QtWidgets.QGridLayout(gb)
+        tip = QtWidgets.QLabel(
+            "位姿真值 rokae_tcp_out/latest.json (页面同源) · 起点 = taught_points.json 的「%s」· "
+            "operation/mode 来自 8793/ctl/status · 绝不 enableDrag/disableDrag/不改控制器模式 · "
+            "不可达/陈旧 ⇒ 红字报原始错误/帧龄 (不静默)" % DRAG_BASE_PT_NAME)
+        tip.setWordWrap(True)
+        tip.setStyleSheet(f"color:{DIM};font-size:12px;")
+        g.addWidget(tip, 0, 0, 1, 2)
+
+        self.drag_labs = {}
+        for i, (t_, k) in enumerate([("① 实时末端位姿 x/y/z + 帧龄 + 采样时刻", "pos"),
+                                     ("② 拖动状态 operation/mode", "state")]):
+            w, lab = self._station_row(t_)                 # 复用同一字体/泳道写法
+            self.drag_labs[k] = lab
+            g.addWidget(w, 1, i)
+        for i, (t_, k) in enumerate([("③ 起点「%s」(base_link)" % DRAG_BASE_PT_NAME, "base"),
+                                     ("④ 录点命令 (可复制)", "cmd")]):
+            w, lab = self._station_row(t_)
+            if k == "cmd":
+                lab.setStyleSheet("color:#7ee787;font-size:14px;font-family:monospace;")
+            self.drag_labs[k] = lab
+            g.addWidget(w, 2 + i, 0, 1, 2)                 # ③④ 各占整行 (命令一行放得下)
+        self.drag_err = QtWidgets.QLabel("")
+        self.drag_err.setWordWrap(True)
+        self.drag_err.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.drag_err.setStyleSheet(f"color:{C_BAD};font-size:13px;")
+        g.addWidget(self.drag_err, 4, 0, 1, 2)
+        root.addWidget(gb)
+
+    def _drag_tick(self):
+        """每 1.5s: 后台线程只读拉一次 (位姿/起点/控制器); 上一轮没跑完就跳过。"""
+        if self._drag_worker is not None and self._drag_worker.isRunning():
+            return
+        w = _DragPollWorker(self)
+        w.done.connect(self._drag_on_done)
+        self._drag_worker = w
+        w.start()
+
+    def _drag_on_done(self, payload):
+        self._drag_last = payload
+        self._render_drag(payload)
+
+    def _drag_refresh_blocking(self):
+        """同步拉一轮并渲染 (供离屏自测/冒烟调用, 不依赖事件循环)。"""
+        try:
+            payload = {"pose": drag_read_pose(), "base": drag_read_base_point(), "ctl": drag_read_ctl()}
+        except Exception as e:
+            payload = {"err": "%s: %s" % (type(e).__name__, e)}
+        self._drag_last = payload
+        self._render_drag(payload)
+        return payload
+
+    def _render_drag(self, payload):
+        now = time.time()
+        errs = []
+        if payload.get("err"):
+            errs.append("轮询异常: " + str(payload["err"]))
+        pose = payload.get("pose") or {}
+        base = payload.get("base") or {}
+        ctl = payload.get("ctl") or {}
+        if ctl.get("err"):
+            errs.append("控制器读取失败: " + str(ctl["err"]))
+
+        pos = pose.get("pos")
+        if pos:
+            st = self._stamp(now - (pose.get("frame_age_s") or 0))
+            self.drag_labs["pos"].setText("x=%.3f y=%.3f z=%.3f m · 帧龄 %.2fs · 采样 %s"
+                                          % (pos[0], pos[1], pos[2], pose.get("frame_age_s") or -1, st))
+            self.drag_labs["pos"].setStyleSheet(f"color:{FG};font-size:15px;")
+        else:
+            self.drag_labs["pos"].setText("🔴 位姿不可用 · " + (pose.get("stale_why") or "读不到"))
+            self.drag_labs["pos"].setStyleSheet(f"color:{C_BAD};font-size:15px;")
+            if pose.get("stale_why"):
+                errs.append(str(pose["stale_why"]))
+
+        bp = base.get("pos")
+        if bp and pos:
+            d = drag_dist_mm(pos, bp)
+            self.drag_labs["base"].setText("起点 %s (%.4f, %.4f, %.4f) · 距起点 %.1f mm"
+                                           % (base.get("name"), bp[0], bp[1], bp[2], d))
+            self.drag_labs["base"].setStyleSheet(f"color:{C_OK};font-size:15px;")
+        else:
+            self.drag_labs["base"].setText("起点 %s · 距离不可用 (位姿缺 或 起点缺)" % base.get("name"))
+            self.drag_labs["base"].setStyleSheet(f"color:{C_BAD};font-size:15px;")
+            if not bp:
+                errs.append("起点「%s」读不到: %s" % (base.get("name"), DRAG_TAUGHT_STORE))
+
+        op = ctl.get("operation")
+        if op is None:
+            self.drag_labs["state"].setText("⏸ 状态未知 · operation=None mode=None (8793 不可达)")
+            self.drag_labs["state"].setStyleSheet(f"color:{C_BAD};font-size:15px;")
+        else:
+            moving = (str(op) == "drag")
+            self.drag_labs["state"].setText("%s · operation=%s mode=%s power=%s"
+                                            % ("🖐 拖动中" if moving else "⏸ 静止/非拖动",
+                                               op, ctl.get("mode"), ctl.get("power")))
+            self.drag_labs["state"].setStyleSheet(
+                f"color:{C_OK if moving else FG};font-size:15px;")
+
+        self.drag_labs["cmd"].setText(DRAG_RECORD_CMD)
+        self.drag_err.setText(("🔴 " + " | ".join(errs)) if errs else "")
 
     @staticmethod
     def _stamp(t):

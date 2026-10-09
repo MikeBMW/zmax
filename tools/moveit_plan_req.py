@@ -44,8 +44,38 @@ def newest(pat):
     return max(fs, key=os.path.getmtime) if fs else None
 
 
+def _sdk_frame():
+    """SDK 50Hz 采样器(rokae_tcp_sampler)的当前真值: joint[:6] 真关节 + tcp + quat。
+
+    🔴 2026-10-09 为什么必须走这条: ROS tap(state_*.jsonl) 依赖 Orin 的 ROS 发布者,
+    实测 /robot/tcp_pose 的 Publisher count=0(没人发) ⇒ tap 里 tcp/jpos 恒为空 ⇒
+    规划器拿假起点规划(FK起点差 399.6mm, 计划不可用)。SDK 采样器一直在采, joint 就是真 6 关节。
+    """
+    p = "/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json"
+    try:
+        if time.time() - os.path.getmtime(p) > 2.0:
+            return None
+        with open(p, encoding="utf-8") as f:
+            d = json.load(f)
+        jp = [float(x) for x in (d.get("joint") or [])][:6]
+        tcp = [float(d[k]) for k in ("x", "y", "z")]
+        if len(jp) != 6 or len(tcp) != 3:
+            return None
+        return {"jpos": jp, "tcp": tcp,
+                "tcp_quat": [float(d[k]) for k in ("qx", "qy", "qz", "qw")],
+                "t": d.get("t"), "src_file": p + " (SDK 50Hz 直采)"}
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
 def real_state():
-    """真机最新一帧: jpos(6) / tcp(3) / tcp_quat(4) / t"""
+    """真机最新一帧: jpos(6) / tcp(3) / tcp_quat(4) / t
+
+    优先 SDK 直采(活的); 拿不到才退回只读 tap(依赖 ROS, 常空)。
+    """
+    f = _sdk_frame()
+    if f:
+        return f
     p = newest(os.path.join(SS_REMOTE, "state_*.jsonl"))
     if not p:
         return None

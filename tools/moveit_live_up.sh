@@ -9,7 +9,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-PLAN_DIR="${SS_PLAN_DIR:-$HOME/zmax/zmax_data/runtime/moveit_plan}"
+PLAN_DIR="${SS_PLAN_DIR:-${HOME:-/home/ubuntu}/zmax/zmax_data/runtime/moveit_plan}"
 CFG="$REPO/config/moveit_xms5"
 CT=zmax-moveit
 IMG=zmax-moveit:humble

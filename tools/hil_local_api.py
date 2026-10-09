@@ -23,16 +23,23 @@
   POST /hil/term/say   {"text","from","seq"} → 原样走 HB.handle_instruction; 动作类 refused_motion
   GET  /hil/term/log?n=20       → 最近 N 条指示 (读 reports/hil_instructions.jsonl)
   POST /hil/term/peer  {"name","kind","pid","note"}  ·  GET /hil/term/peers → 在线 peer(TTL 30s)
+  GET  /hil/term/pose          → 实时位姿真值 + 距「金手指点1」mm + 控制器拖动态 (帧龄>2s/全0 ⇒ stale, 不编造)
+  POST /hil/term/record_point  {"name","note"} → 复用 record_point_sdk 三道闸真采样 6 帧 → 过闸写示教点库
+  (动词扩展: 「位置/在哪里/当前位姿」「记住安全点/记下来/标记这里」「拖动状态」; 动作类仍 refused_motion)
 """
 import importlib.util
 import hmac
 import json
+import math
 import os
+import re
 import secrets
+import shutil
 import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = "/home/ubuntu/zmax"
@@ -171,6 +178,254 @@ def _recent_instructions(n=20):
     return out
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🤲 拖动示教捕捉 (只读位姿 + 记点)                     2026-10-09 老倪
+#   老倪: 「从状态空间人机交互接口, 从金手指点1, 去到一个安全点, 手动拖拽」—
+#   本段只做 看+记点, **绝不下发任何运动** (不 enableDrag/disableDrag/不改控制器模式)。
+#   位姿真值同 pages 同源: rokae_tcp_sampler → zmax_data/rokae_sdk/tcp_out/latest.json。
+#   记点复用 record_point_sdk 的**同一份三道闸** (帧龄 / 全 0 / 还在动), 不另造判据。
+# ══════════════════════════════════════════════════════════════════════════════
+TCP_SRC = os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+TAUGHT_STORE = os.path.join(ROOT, "data/skills/l2_atomic/taught_points.json")
+BASE_PT_NAME = "金手指点1"
+POSE_MAX_AGE_S = 2.0        # 帧龄上限: 超过 ⇒ stale (与 record_point_sdk 同口径)
+POSE_MIN_NORM_M = 1e-3     # 位置范数下限: 低于 ⇒ 典型"会话陈旧全 0"
+CTL_STATUS_URL = "http://127.0.0.1:8793/ctl/status"
+
+# 复用 record_point_sdk 的采样/判据 (按路径加载, 不复制一份判据出来)
+_RPS_PATH = os.path.join(ROOT, "tools", "record_point_sdk.py")
+_rps_spec = importlib.util.spec_from_file_location("zmax_record_point_sdk", _RPS_PATH)
+RPS = importlib.util.module_from_spec(_rps_spec)
+sys.modules["zmax_record_point_sdk"] = RPS
+_rps_spec.loader.exec_module(RPS)
+
+
+def _read_pose():
+    """读位姿真值 → dict; 读不到/帧龄>2s/全 0 ⇒ stale=True + stale_why, pos/quat=None (**不编造**)。"""
+    out = {"ok": False, "ts": None, "frame_age_s": None, "pos": None, "quat": None,
+           "stale": True, "stale_why": "", "src": TCP_SRC}
+    try:
+        with open(TCP_SRC, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception as e:                                              # noqa: BLE001
+        out["stale_why"] = "读位姿真值失败: %s: %s (%s)" % (type(e).__name__, e, TCP_SRC)
+        return out
+    try:
+        ts = float(d.get("ts") or 0.0)
+        pos = [float(d["x"]), float(d["y"]), float(d["z"])]
+        quat = [float(d["qx"]), float(d["qy"]), float(d["qz"]), float(d["qw"])]
+    except Exception as e:                                             # noqa: BLE001
+        out["stale_why"] = "位姿字段解析失败: %s: %s" % (type(e).__name__, e)
+        return out
+    age = (time.time() - ts) if ts else 999.0
+    norm = math.sqrt(sum(v * v for v in pos))
+    out["ts"] = ts
+    out["frame_age_s"] = round(age, 3)
+    why = []
+    if age > POSE_MAX_AGE_S:
+        why.append("帧龄 %.2fs > %.1fs (采样器没在更新/陈旧)" % (age, POSE_MAX_AGE_S))
+    if norm < POSE_MIN_NORM_M:
+        why.append("位置范数 %.2e m ≈ 0 (会话陈旧全 0 坏值)" % norm)
+    if why:
+        out["stale_why"] = " · ".join(why)
+        return out
+    out.update({"ok": True, "pos": pos, "quat": quat, "stale": False, "stale_why": ""})
+    return out
+
+
+def _base_point(name=BASE_PT_NAME):
+    """读示教点库里某个点位的 pos (只读) → {"name","pos"(或 None)}。"""
+    try:
+        with open(TAUGHT_STORE, encoding="utf-8") as f:
+            d = json.load(f)
+        p = (d.get("points") or {}).get(name) or {}
+        pos = p.get("pos")
+        if pos and len(pos) >= 3:
+            return {"name": name, "pos": [float(v) for v in pos[:3]]}
+    except Exception:                                                   # noqa: BLE001
+        pass
+    return {"name": name, "pos": None}
+
+
+def _dist_mm(a, b):
+    """两点欧氏距离 (mm); 任一缺 ⇒ None (不编)。"""
+    if not a or not b or len(a) < 3 or len(b) < 3:
+        return None
+    return math.sqrt(sum((float(x) - float(y)) ** 2 for x, y in zip(a[:3], b[:3]))) * 1000.0
+
+
+def _ctl_drag(timeout=2.5):
+    """从 8793/ctl/status 读控制器 operation/mode/power; 拿不到 ⇒ 字段 None (不编)。"""
+    out = {"operation": None, "mode": None, "power": None, "src": CTL_STATUS_URL}
+    try:
+        req = urllib.request.Request(CTL_STATUS_URL, headers={"User-Agent": "zmax-hil-local/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8", "replace"))
+        rb = d.get("robot") or {}
+        out["operation"] = rb.get("operation")
+        out["mode"] = rb.get("mode")
+        out["power"] = rb.get("power")
+    except Exception as e:                                              # noqa: BLE001
+        out["err"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+    return out
+
+
+def _which_gate(rows, mean, spread_pos):
+    """指出不过的是哪道闸 (与 record_point_sdk.vet 同判据)。"""
+    age = (time.time() - (rows[-1].get("ts") or 0)) if rows else 999.0
+    norm = math.sqrt(sum(v * v for v in mean[:3]))
+    if age > RPS.MAX_AGE_S:
+        return "帧龄(>2s)"
+    if norm < RPS.MIN_NORM_M:
+        return "全0坏值(范数≈0)"
+    if spread_pos > RPS.MAX_SPREAD_M:
+        return "还在动(pos极差>1e-4)"
+    return "unknown"
+
+
+def _do_record_point(name, note=""):
+    """复用 record_point_sdk 三道闸真采样 6 帧; 过闸写示范教点库 (带 prev + 写前备份)。只读+写库, 零运动。"""
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "name": name, "reason": "no_name", "why": "缺 name"}
+    if not os.path.exists(RPS.SRC):
+        return {"ok": False, "name": name, "reason": "no_src",
+                "why": "读不到位姿真值源: %s (rokae_tcp_sampler 在跑吗?)" % RPS.SRC}
+    try:
+        rows = RPS.sample(6)                        # ← 真采样 6 帧 (record_point_sdk 本体)
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "name": name, "reason": "sample_exc",
+                "why": "%s: %s" % (type(e).__name__, e)}
+    mean, sp, sq = RPS.analyse(rows)
+    ok, why = RPS.vet(rows, mean, sp, sq)           # ← record_point_sdk 的三道闸
+    if not ok:
+        return {"ok": False, "name": name, "reason": "gate", "gate": _which_gate(rows, mean, sp),
+                "why": why,
+                "measured": {"pos": [round(v, 7) for v in mean[:3]],
+                             "spread_pos_m": sp, "spread_quat": sq,
+                             "frame_age_s": round(time.time() - (rows[-1].get("ts") or 0), 2)}}
+    try:
+        with open(RPS.STORE, encoding="utf-8") as f:
+            store = json.load(f)
+    except Exception:                                                   # noqa: BLE001
+        store = {"version": "v1", "note": "L2 示教绝对点位", "frame": "base_link", "points": {}}
+    store.setdefault("points", {})
+    old = store["points"].get(name)
+    backed_up_to = None
+    if old:                                        # 写前备份 (回滚 = 反向 cp)
+        try:
+            os.makedirs(os.path.dirname(RPS.STORE), exist_ok=True)
+            bak = "%s.bak_hilrec_%s_%s" % (RPS.STORE, name, time.strftime("%Y%m%d_%H%M%S"))
+            shutil.copy2(RPS.STORE, bak)
+            backed_up_to = bak
+        except Exception:                                               # noqa: BLE001
+            backed_up_to = None
+    rec = {
+        "pos": [round(v, 7) for v in mean[:3]],
+        "quat": [round(v, 7) for v in mean[3:7]],
+        "desc": str(note or ""),
+        "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "HIL 拖动示教捕捉 (record_point_sdk 三道闸 → ROKAE SDK 直读 endInRef, 页面同源)",
+        "frame": rows[-1].get("frame") or "base_link",
+        "n_samples": len(rows),
+        "spread_pos_m": round(sp, 8),
+        "spread_quat": round(sq, 8),
+        "via": "hil/term/record_point",
+    }
+    if old:
+        rec["prev"] = old                          # 保旧值
+    store["points"][name] = rec
+    try:                                           # 原子写: 临时文件 + os.replace (半截 JSON 不会被读到)
+        tmp = "%s.tmp.%d" % (RPS.STORE, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(store, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, RPS.STORE)
+        with open(RPS.STORE, encoding="utf-8") as f:      # 回读断言 (写没落地就报错)
+            back = json.load(f)
+        assert name in (back.get("points") or {}), "回读缺少点位 %s" % name
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "name": name, "reason": "write_failed",
+                "why": "%s: %s" % (type(e).__name__, e)}
+    return {"ok": True, "name": name, "pos": rec["pos"], "quat": rec["quat"],
+            "n_samples": len(rows), "spread_pos_m": rec["spread_pos_m"],
+            "recorded_at": rec["recorded_at"], "backed_up_to": backed_up_to}
+
+
+def _next_safe_point_name(prefix="安全点"):
+    """下一个安全点编号 (N 自增, 绝不覆盖已有)。"""
+    try:
+        with open(TAUGHT_STORE, encoding="utf-8") as f:
+            pts = (json.load(f).get("points") or {})
+    except Exception:                                                   # noqa: BLE001
+        pts = {}
+    n = 0
+    for k in pts:
+        m = re.match(r"^%s(\d+)$" % re.escape(prefix), str(k))
+        if m:
+            n = max(n, int(m.group(1)))
+    return "%s%d" % (prefix, n + 1)
+
+
+# ── 终端动词 (只读/记点; 动作类仍由 HB.handle_instruction 判 refused_motion) ──
+_VERB_DRAG = ("拖动状态", "拖动态")
+_VERB_RECORD = ("记住安全点", "记下来", "标记这里")
+_VERB_POSE = ("位置", "在哪里", "当前位姿")
+
+
+def _verb_pose_reply():
+    pose, bp, drag = _read_pose(), _base_point(), _ctl_drag()
+    if pose["stale"]:
+        return ("⚠️ 位姿不可用 (陈旧/坏值): %s · 控制器 operation=%s mode=%s (未编造位姿)"
+                % (pose["stale_why"] or "—", drag.get("operation"), drag.get("mode")), {})
+    d = _dist_mm(pose["pos"], bp["pos"])
+    p = pose["pos"]
+    is_drag = (str(drag.get("operation")) == "drag")
+    txt = ("📍 当前位姿 x=%.3f y=%.3f z=%.3f m · 距起点「%s」%s · 拖动模式: %s (operation=%s mode=%s) · 帧龄 %.2fs"
+           % (p[0], p[1], p[2], bp["name"], ("%.1f mm" % d if d is not None else "—"),
+              ("是" if is_drag else "否"), drag.get("operation"), drag.get("mode"),
+              pose["frame_age_s"]))
+    return txt, {"pos": pose["pos"], "d_mm": (round(d, 1) if d is not None else None)}
+
+
+def _verb_record_reply():
+    name = _next_safe_point_name()
+    res = _do_record_point(name, "HIL 终端动词「记住安全点」")
+    if res.get("ok"):
+        bp = _base_point()
+        d = _dist_mm(res["pos"], bp["pos"])
+        txt = ("✅ 已记住 %s pos=(%.4f, %.4f, %.4f) · 距起点%s · 采样 %d 帧 (spread %.1e m)"
+               % (name, res["pos"][0], res["pos"][1], res["pos"][2],
+                  ("%.1f mm" % d if d is not None else "—"), res["n_samples"], res["spread_pos_m"]))
+        return txt, {"name": name, "pos": res["pos"], "n_samples": res["n_samples"]}
+    return ("❌ 未记住 %s: %s (闸=%s · 实测 %s)"
+            % (name, res.get("why"), res.get("gate"),
+               res.get("measured") or res.get("reason"))), {"name": name, "ok": False}
+
+
+def _verb_drag_reply():
+    pose, drag = _read_pose(), _ctl_drag()
+    op = str(drag.get("operation"))
+    state = "🖐 拖动中" if op == "drag" else ("⏸ 静止/非拖动" if drag.get("operation") else "未知")
+    return ("🤲 拖动状态: %s · operation=%s mode=%s power=%s · 帧龄 %s s"
+            % (state, drag.get("operation"), drag.get("mode"), drag.get("power"),
+               pose["frame_age_s"])), {}
+
+
+def _term_verb(text):
+    """把只读/记点动词在本地答掉 (不下发任何动作)。返回 (handled, reply, verdict, extra)。"""
+    t = (text or "").strip()
+    if any(k in t for k in _VERB_DRAG):
+        rep, extra = _verb_drag_reply()
+        return True, rep, "drag_status", extra
+    if any(k in t for k in _VERB_RECORD):
+        rep, extra = _verb_record_reply()
+        return True, rep, "record_point", extra
+    if any(k in t for k in _VERB_POSE):
+        rep, extra = _verb_pose_reply()
+        return True, rep, "pose_read", extra
+    return False, "", "", {}
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-hil-local/1.0"
@@ -260,6 +515,24 @@ class H(BaseHTTPRequestHandler):
             if not self._term_guard():
                 return
             return self._send({"ok": True, "ttl": TERM_TTL, "peers": HB.peers_alive(TERM_TTL)})
+        if p == "/hil/term/pose":
+            if not self._term_guard():
+                return
+            pose = _read_pose()
+            bp = _base_point()
+            drag = _ctl_drag()
+            d = _dist_mm(pose["pos"], bp["pos"])
+            return self._send({
+                "ok": True, "ts": time.strftime("%F %T"),
+                "frame_age_s": pose["frame_age_s"], "pos": pose["pos"], "quat": pose["quat"],
+                "stale": pose["stale"], "stale_why": pose["stale_why"],
+                "base_pt": {"name": bp["name"], "pos": bp["pos"],
+                            "d_mm": (round(d, 1) if d is not None else None),
+                            "d_str": ("%.1f mm" % d if d is not None else "—")},
+                "drag": {"operation": drag.get("operation"), "mode": drag.get("mode"),
+                         "power": drag.get("power")},
+                "src": {"pose": TCP_SRC, "base_pt": BASE_PT_NAME, "ctl": CTL_STATUS_URL},
+            })
         return self._send({"ok": 0, "err": "no route %s" % p}, 404)
 
     def do_POST(self):                                               # noqa: N802
@@ -289,6 +562,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send({"ok": 0, "err": "空指示"}, 400)
             seq = body.get("seq", 0)
             frm = str(body.get("from") or "hermes")
+            # ① 只读/记点动词: 本地答掉 (绝不下发任何动作; 记点只用 record_point_sdk 三道闸)
+            handled, vreply, vverdict, vextra = _term_verb(text)
+            if handled:
+                app = getattr(HB, "_append_instruction", None)
+                if callable(app):
+                    app({"ts": time.strftime("%F %T"), "text": text, "verdict": vverdict,
+                         "from": frm, "seq": seq, "via": "term"})
+                out = {"ok": True, "verdict": vverdict, "reply": vreply, "seq": seq,
+                       "wrote_to": os.path.relpath(INSTR_LOG, ROOT)}
+                if vextra:
+                    out.update(vextra)
+                return self._send(out)
             snap = _snapshot()
             before = _instr_size()
             try:
@@ -313,6 +598,14 @@ class H(BaseHTTPRequestHandler):
             rec = HB.register_peer(name, body.get("kind") or "", pid=body.get("pid"),
                                    note=body.get("note") or "", ttl=TERM_TTL)
             return self._send({"ok": True, "peer": rec, "peers": HB.peers_alive(TERM_TTL)})
+        if p == "/hil/term/record_point":
+            if not self._term_guard():
+                return
+            nm = (body.get("name") or "").strip()
+            if not nm:
+                return self._send({"ok": False, "err": "缺 name"}, 400)
+            res = _do_record_point(nm, str(body.get("note") or ""))     # 只读+写库, 零运动
+            return self._send(res)
         return self._send({"ok": 0, "err": "no route %s" % p}, 404)
 
 
