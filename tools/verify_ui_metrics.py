@@ -240,6 +240,23 @@ def _measure_widget(w, page):
                 continue
         except Exception:                                                      # noqa: BLE001
             continue
+        # 🎨 2026-10-10: 祖先只要有一层是隐藏的 (未打开的 dock/收起的面板), 子控件拿到的是**布局前的
+        # 陈旧几何**(实测: Simulink 的 主参数M/inertia 在隐藏 dock 里量到 51px, 实际 640px) ⇒ 必须跳过,
+        # 否则报出来的是假截断 —— 真缺陷会淹没在噪声里。
+        _hid = False
+        _p = x.parentWidget()
+        while _p is not None:
+            try:
+                if not _p.isVisible():
+                    _hid = True
+                    break
+            except Exception:                                                  # noqa: BLE001
+                break
+            _p = _p.parentWidget()
+        if _hid:
+            continue
+        if x.width() < 60 and cn in ("QPushButton", "QToolButton", "QCheckBox", "QRadioButton"):
+            continue          # 布局前的窄条 (真实按钮不会只有 60px 以下的可用宽)
         text = ""
         try:
             text = x.text() or ""

@@ -4538,7 +4538,8 @@ class LibraryPanel(QFrame):
         self._btn_save_new.setMinimumWidth(self._btn_save_new.sizeHint().width() + 6)
         self._btn_save_new.clicked.connect(lambda: self.module.export_flow())
         head.addWidget(self._btn_save_new)
-        self._btn_collapse = QPushButton("◀ 收起")
+        self._btn_collapse = QPushButton("◀")
+        self._btn_collapse.setToolTip("收起模块库")
         self._btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
         # 🎨 用浅底样式 (switch_theme 会正确转深色; 之前 #1f6feb 蓝底白字被
         # switch_theme 把白字替换成深色 → 蓝底深字看不清, 老倪反馈找不到)
@@ -4585,6 +4586,7 @@ class LibraryPanel(QFrame):
         lay.addWidget(self.scroll)
 
         self._hint_lbl = QLabel("🖱 拖进画布 (落点即位置) · 单击=加在画布中心\n右键=加入画布/移除 · 输出→输入连线 · 点线删除")
+        self._hint_lbl.setWordWrap(True)
         self._hint_lbl.setStyleSheet("color:#57606a; font-size:11pt; padding:4px;")
         lay.addWidget(self._hint_lbl)
 
@@ -5605,7 +5607,8 @@ class SimulinkModule(QWidget):
         log_title.setStyleSheet("color:#57606a; font-size:11pt; font-weight:700; background:transparent; border:none;")
         log_head.addWidget(log_title)
         log_head.addStretch()
-        self.btn_log_toggle = QPushButton("◀ 收起")
+        self.btn_log_toggle = QPushButton("◀")
+        self.btn_log_toggle.setToolTip("收起日志面板")
         self.btn_log_toggle.setFixedWidth(64)
         self.btn_log_toggle.setToolTip("隐藏底部日志区")
         self.btn_log_toggle.setStyleSheet("""
@@ -8416,7 +8419,7 @@ class SimulinkModule(QWidget):
             self.btn_log_toggle.setToolTip("展开底部日志区")
         else:
             self.log_box.setVisible(True)
-            self.btn_log_toggle.setText("◀ 收起")
+            self.btn_log_toggle.setText("◀")
             self.btn_log_toggle.setToolTip("隐藏底部日志区")
 
     # ── 📡 实时采集轮询 (后台线程, 不卡 UI) ──

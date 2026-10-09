@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0e1116">
+<title>Z-MAX 大屏</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#0e1116;color:#e8edf3;
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",sans-serif}
+  body{padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 18px)}
+  header{position:sticky;top:0;background:#0e1116;padding-bottom:8px;z-index:5}
+  .brand{font-size:19px;font-weight:800;letter-spacing:.5px}
+  .brand #ver{color:#4ea1ff;font-weight:800}
+  .sub{color:#93a1b0;font-size:12.5px;margin-top:3px}
+  .sub b{color:#e8edf3;font-weight:600}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .card{background:#171b22;border:1px solid #232a33;border-radius:13px;padding:11px 12px;margin-top:9px}
+  .card.full{grid-column:1 / -1}
+  .k{color:#93a1b0;font-size:12px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .v{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+  .v.sm{font-size:15px;font-weight:600;line-height:1.5}
+  .unit{font-size:12.5px;color:#93a1b0;font-weight:500;margin-left:4px}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #232a33}
+  .row:first-child{border-top:0}
+  .row .rk{color:#93a1b0;font-size:13.5px}
+  .row .rv{font-weight:650;font-variant-numeric:tabular-nums}
+  .ok{color:#35c46b}.bad{color:#ff7a45}.dim{color:#93a1b0}
+  .chip{display:inline-block;background:#1d2530;border-radius:8px;padding:2px 8px;margin:2px 4px 0 0;font-size:12.5px}
+  .warnbox{background:#241a13;border:1px solid #5a3a22;border-radius:11px;padding:10px 12px;margin-top:9px}
+  .warnbox .wt{color:#ffb27a;font-weight:700;font-size:13px;margin-bottom:5px}
+  .warnbox li{color:#ffd0b0;font-size:13px;margin:3px 0}
+  .warnbox ul{margin:0;padding-left:18px}
+  .tap{cursor:pointer}
+  .tap:active{opacity:.6}
+  footer{color:#6b7683;font-size:11.5px;margin-top:14px;text-align:center;line-height:1.7}
+  #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+    background:#2b3542;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;
+    transition:.22s;pointer-events:none;z-index:9}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Z-MAX 大屏 <span id="ver">–</span></div>
+  <div class="sub">数据时间 <b id="gen" class="tap">–</b> · 帧龄 <b id="age" class="tap">–</b></div>
+</header>
+<main id="root">加载中…</main>
+<footer>点任意数字可复制 · 数据源 dashboard.json<br>单文件离线可开 · 无外部依赖</footer>
+<div id="toast"></div>
+
+<script>
+/*DASHBOARD_SNAPSHOT_START*/window.__DASHBOARD__ = {"schema":"zmax-dashboard/1","generated_at":"2026-10-10 07:18:25","generated_at_epoch":1791587905.46,"version":"5.36.0","gpu":{"name":"NVIDIA GeForce RTX 4060 Laptop GPU","util":40.0,"mem_used":1207.0,"mem_total":8188.0,"mem_pct":14.7,"temp":58.0,"power":22.42,"procs":4,"error":null},"datasets":{"items":234,"size_human":"74.8GB","size_bytes":80275674550,"file_count":156719,"categories":{"downloaded":{"count":8,"size_human":"12.7GB"},"generated":{"count":153,"size_human":"58.4GB"},"map":{"count":73,"size_human":"3.7GB"}},"reports_files":777,"map_items_with_ply":18},"models":{"count":8,"layers":[{"layer":"L5","name":"L5 · L5 最新 merged (可部署)","active":true,"ready":true,"size_h":"968.0MB","mtime":"2026-10-09 23:15:04"},{"layer":"L5","name":"L5 · L5 最新 LoRA adapter","active":false,"ready":true,"size_h":"36.6MB","mtime":"2026-10-09 23:15:04"},{"layer":"L4","name":"L4 · L4 在役 (稳定指针)","active":true,"ready":true,"size_h":"80.2MB","mtime":"2026-09-15 00:27:02"},{"layer":"L4","name":"L4 · L4 最新续训/LoRA 产物","active":false,"ready":true,"size_h":"80.2MB","mtime":"2026-10-10 06:26:38"},{"layer":"L3","name":"L3 · L3 在役 (运行时 ckpt)","active":true,"ready":true,"size_h":"4.0KB","mtime":"2026-09-10 20:45:04"},{"layer":"L3","name":"L3 · L3 最新 LoRA-merged 产物","active":false,"ready":true,"size_h":"1.2GB","mtime":"2026-10-10 06:26:40"},{"layer":"L2","name":"L2 · L2 在役 (指针)","active":true,"ready":true,"size_h":"5.9MB","mtime":"2026-09-19 18:14:44"},{"layer":"L2","name":"L2 · L2 最新训练产物","active":false,"ready":true,"size_h":"5.9MB","mtime":"2026-10-10 06:24:50"}],"active_ready":4,"training_active":0,"all_ready":true},"scene":{"objects":8,"markers":0,"fences":0,"trajectories":0,"deleted":20,"traj_show":true,"fences_valid":true,"fence_invalid":[],"out_of_range":[]},"remote":{"endpoints_total":18,"endpoints_ok":18,"endpoints_err":0,"stale":["ECS状态总线(zmax_status.json)","本机agent_hub(8794/agent/log)","工控机AOI金手指(10082/last_result)","工控机AOI表面(10083/last_result)"],"stale_count":4,"frame_age_s":0.01,"same_source":[{"fact":"臂相机帧率 fps","consistent":true,"tol":4.0,"note":"","sources":[{"name":"本机推流stats(8791)","value":29.88},{"name":"本机工位状态(8793/station/status)","value":29.93},{"name":"ECS工位状态(station/status)","value":29.9},{"name":"ECS-3D实况(ss3d_live.json)","value":29.87}]},{"fact":"臂相机帧龄 age_s","consistent":true,"tol":2.0,"note":"","sources":[{"name":"本机推流stats(8791)","value":0.01},{"name":"本机工位状态(8793/station/status)","value":0.02},{"name":"ECS-3D实况(ss3d_live.json)","value":0.0}]},{"fact":"臂相机在线","consistent":true,"tol":"bool","note":"","sources":[{"name":"本机推流stats(8791)","value":true},{"name":"本机工位状态(8793/station/status)","value":true}]},{"fact":"臂相机设备名(同一设备?)","consistent":true,"tol":null,"note":"","sources":[{"name":"本机推流stats(8791)","value":"🦾 机器人臂上 D405 (Orin)"},{"name":"本机工位状态(8793/station/status)","value":"🦾 机器人臂上 D405 (Orin)"}]},{"fact":"工位机GPU利用率","consistent":false,"tol":15.0,"note":"","sources":[{"name":"本机硬件状态(8796/status/all)","value":40},{"name":"ECS状态总线(zmax_status.json)","value":21}]}],"mismatch":["工位机GPU利用率"],"unreachable":[],"error":null},"version_sync":{"ok":true,"canonical":"5.36.0","canonical_source":"studio.py 品牌 QLabel","remote_has_tag":true,"release_tag":"v5.36.0","deviations":[]}};/*DASHBOARD_SNAPSHOT_END*/
+
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s==null?'–':s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const n1 = v => (v==null ? '–' : (typeof v==='number' ? (Math.round(v*10)/10) : v));
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1200); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('.tap');
+  if(!el) return;
+  const txt = el.getAttribute('data-copy') || el.textContent.trim();
+  const done = () => toast('已复制 ' + txt);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));
+  } else fallbackCopy(txt, done);
+});
+function fallbackCopy(txt, cb){ const a=document.createElement('textarea'); a.value=txt;
+  a.style.position='fixed'; a.style.opacity=0; document.body.appendChild(a); a.select();
+  try{ document.execCommand('copy'); cb(); }catch(_){ toast('复制失败'); } document.body.removeChild(a); }
+
+function card(k, v, unit, opt={}){
+  const cls = opt.sm ? 'v sm' : 'v';
+  const copy = (opt.copy!=null?opt.copy:v);
+  return `<div class="card ${opt.full?'full':''}"><div class="k"><span>${esc(k)}</span>${opt.tag?`<span class="${opt.tagCls||'dim'}">${esc(opt.tag)}</span>`:''}</div>`
+       + `<div class="${cls} tap" data-copy="${esc(copy)}">${esc(v)}${unit?`<span class="unit">${esc(unit)}</span>`:''}</div></div>`;
+}
+function row(k, v, cls=''){ return `<div class="row"><span class="rk">${esc(k)}</span><span class="rv tap ${cls}" data-copy="${esc(v)}">${esc(v)}</span></div>`; }
+
+function render(d){
+  if(!d){ $('#root').innerHTML = '<div class="warnbox"><div class="wt">⚠️ 无数据</div>未取到 dashboard.json（页面内快照也为空）。先跑 tools/dashboard_source.py。</div>'; return; }
+  const g = d.gpu||{}, ds = d.datasets||{}, m = d.models||{}, sc = d.scene||{}, rm = d.remote||{}, vs = d.version_sync||{};
+  $('#ver').textContent = 'v' + (d.version||'?');
+  $('#ver').classList.add('tap'); $('#ver').setAttribute('data-copy', d.version||'');
+  $('#gen').textContent = d.generated_at||'–'; $('#gen').setAttribute('data-copy', d.generated_at||'');
+  const age = rm.frame_age_s; $('#age').textContent = (age==null?'–':age+'s');
+  $('#age').setAttribute('data-copy', age==null?'':String(age));
+
+  let html = '';
+  // 关键指标
+  html += '<div class="grid">';
+  html += g.error ? card('GPU', '采集失败', '', {sm:true, tag:'err', tagCls:'bad'})
+                  : card('GPU 利用率', n1(g.util), '%', {tag:(g.name||'').replace(/.*(RTX.*)/,'$1')});
+  html += card('显存', n1(g.mem_used)+' / '+n1(g.mem_total), 'MiB');
+  html += '</div>';
+
+  // 数据资产
+  html += '<div class="card"><div class="k">数据资产</div>'
+        + row('总量', ds.size_human||'–') + row('条目 / 文件', `${ds.items} / ${ds.file_count}`)
+        + row('评测报告', (ds.reports_files||0) + ' 个') + row('建图含 ply', (ds.map_items_with_ply||0) + ' 条') + '</div>';
+
+  // 模型
+  const active = (m.layers||[]).filter(l=>l.active).map(l=>`<span class="chip">${esc(l.layer)} ● ${l.ready?'就绪':'缺'}</span>`).join('');
+  html += `<div class="card"><div class="k"><span>模型</span><span class="${m.all_ready?'ok':'bad'}">${m.all_ready?'全就绪':'有缺'}</span></div>`
+        + `<div class="v tap" data-copy="${m.active_ready}/${m.count}">${m.active_ready}<span class="unit">/${m.count} 在役就绪</span></div>`
+        + `<div style="margin-top:6px">${active||'–'}</div>`
+        + `<div class="row"><span class="rk">训练中</span><span class="rv">${m.training_active||0} 进程</span></div></div>`;
+
+  // 场景
+  html += `<div class="card"><div class="k"><span>场景</span><span class="${sc.fences_valid===false?'bad':'ok'}">${sc.fences_valid===false?'围栏非法':'围栏合法'}</span></div>`
+        + row('3D 对象', sc.objects) + row('围栏 / 轨迹', `${sc.fences} / ${sc.trajectories}`)
+        + row('隐藏 / 越界', `${sc.deleted} / ${(sc.out_of_range||[]).length}`)
+        + row('轨迹显示', sc.traj_show?'开':'关') + '</div>';
+
+  // 远程端点
+  const okCls = (rm.endpoints_err||0)>0 ? 'bad' : 'ok';
+  html += `<div class="card"><div class="k"><span>远程端点</span><span class="${okCls}">${rm.error?'离线':((rm.endpoints_err||0)>0?(rm.endpoints_err+' 不可达'):'全通')}</span></div>`;
+  if(rm.error){ html += `<div class="v sm dim">${esc(rm.error)}</div>`; }
+  else{
+    html += `<div class="v tap" data-copy="${rm.endpoints_ok}/${rm.endpoints_total}">${rm.endpoints_ok}<span class="unit">/${rm.endpoints_total} OK</span></div>`;
+    html += row('stale', (rm.stale_count||0)+' 个', (rm.stale_count||0)>0?'bad':'ok');
+    html += row('臂相机帧龄', (rm.frame_age_s==null?'–':rm.frame_age_s+'s'));
+    (rm.stale||[]).forEach(s => html += `<div class="chip">⏸ ${esc(s)}</div>`);
+  }
+  html += '</div>';
+
+  // 同源判定
+  const ss = rm.same_source||[];
+  if(ss.length){
+    html += '<div class="card"><div class="k">同源判定</div>';
+    ss.forEach(f=>{
+      const tag = f.consistent===true?'一致 ✓':(f.consistent===false?'不一致 ✗':(f.note?'不可比 ⏸':'样本不足'));
+      const cls = f.consistent===true?'ok':(f.consistent===false?'bad':'dim');
+      html += row(f.fact, tag, cls);
+    });
+    html += '</div>';
+  }
+
+  // 版本同源
+  html += `<div class="card"><div class="k"><span>版本同源</span><span class="${vs.ok?'ok':'bad'}">${vs.ok?'一致':'有偏差'}</span></div>`
+        + row('权威版本', vs.canonical||'–') + row('远端 tag', vs.remote_has_tag?'有 ✓':(vs.remote_has_tag===false?'缺 ✗':'未知'))
+        + row('最新 Release', vs.release_tag||'–') + row('偏差', (vs.deviations||[]).length + ' 项', (vs.deviations||[]).length?'bad':'ok') + '</div>';
+
+  // 异常高亮
+  const anom = [];
+  if(g.error) anom.push('GPU 采集失败: '+g.error);
+  (rm.unreachable||[]).forEach(x=>anom.push('端点不可达: '+x));
+  (rm.stale||[]).forEach(x=>anom.push('端点 stale: '+x));
+  (rm.mismatch||[]).forEach(x=>anom.push('同源不一致: '+x));
+  (vs.deviations||[]).forEach(x=>anom.push('版本偏差: '+x));
+  if(sc.fences_valid===false) anom.push('围栏非法');
+  if((sc.out_of_range||[]).length) anom.push('场景坐标越界 '+sc.out_of_range.length+' 处');
+  if(m.training_active) anom.push('训练进行中 '+m.training_active+' 进程');
+  if(anom.length){
+    html += `<div class="warnbox"><div class="wt">⚠️ 异常 ${anom.length} 项</div><ul>`
+          + anom.slice(0,14).map(a=>`<li>${esc(a)}</li>`).join('') + '</ul></div>';
+  } else {
+    html += '<div class="card full"><div class="v sm ok" style="font-size:14px">✅ 无异常项</div></div>';
+  }
+  $('#root').innerHTML = html;
+}
+
+// ① 先用页内快照(离线可开) ② 再尝试拉同目录 dashboard.json 刷新
+render(window.__DASHBOARD__);
+(async () => {
+  try{
+    const r = await fetch('./dashboard.json?_=' + Date.now(), {cache:'no-store'});
+    if(r.ok){ const d = await r.json(); render(d); }
+  }catch(_){ /* 离线/跨源: 保留快照 */ }
+})();
+</script>
+</body>
+</html>

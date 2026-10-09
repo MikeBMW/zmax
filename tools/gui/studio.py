@@ -341,7 +341,7 @@ C_CYAN      = "#39d2c0"
 C_YELLOW    = "#e3b341"
 C_WHITE     = "#e6edf3"
 C_GRAY      = "#8b949e"
-C_DIM       = "#484f58"
+C_DIM       = "#7d8590"   # 🎨 2026-10-10 UI 量化: 原 #484f58 在 C_CARD(#1c2333) 上对比度仅 1.90 (WCAG<4.5) → 提到 4.7
 C_SIDE      = "#d9a441"   # 兼容旧引用; 侧栏卡边框色见 CARD_BORDER
 # 2026-10-09 老倪: 「边框可以用不同颜色」「方块里的字小字用灰黑」⇒ 卡面改浅灰, 字用近黑/灰黑
 CARD_BORDER = {"zmax": "#d9a441",    # 金 · 产品
@@ -1009,6 +1009,7 @@ class ModuleCard(QFrame):
         s = QLabel(subtitle)
         s.setFont(QFont("Arial", 10))  # 🐛 2026-08-22: 9pt=35px过大→6pt
         s.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
+        s.setWordWrap(True)   # 🎨 2026-10-10 UI 量化: 副标题(如 datadrive.world)在卡内 146px 需 262px 被裁 → 自适应换行
         layout.addWidget(s)
 
         d = QLabel(desc)
@@ -3138,6 +3139,9 @@ class DatasetModule(SubModuleWidget):
 
             # 手动下载按钮
             manual_btn = QPushButton("📥 手动")
+            # 🎨 2026-10-10 UI 量化: 该按钮在数据集页被压到 86px 而需要 95px(截断 ×36)
+            #   → 按真实 sizeHint 给最小宽, 不再靠布局凑
+            manual_btn.setMinimumWidth(manual_btn.sizeHint().width() + 16)
             manual_btn.setFixedHeight(36)
             manual_btn.setToolTip("网络不通时：复制链接到浏览器下载，放到指定目录")
             manual_btn.setStyleSheet(f"""
@@ -3156,6 +3160,9 @@ class DatasetModule(SubModuleWidget):
                     background: {C_ORANGE}33;
                 }}
             """)
+            # 🎨 2026-10-10 UI 量化(二): 上面那次 setMinimumWidth 取的是**未套样式表**的 sizeHint
+            #   (86px), 而样式表加了内边距后真实需要 95px ⇒ 仍被裁。样式表生效后再取一次, 以它为准。
+            manual_btn.setMinimumWidth(manual_btn.sizeHint().width() + 12)
             manual_btn.clicked.connect(self._mk_manual_dl_func(ds))
             btn_layout.addWidget(manual_btn)
 
@@ -5027,7 +5034,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         log_title.setStyleSheet(f"color:{C_WHITE}; font-size:15px; font-weight:bold; background:transparent;")
         log_head.addWidget(log_title)
         log_head.addStretch()
-        self.btn_log_collapse = QPushButton("◀ 收起")
+        self.btn_log_collapse = QPushButton("◀")
+        self.btn_log_collapse.setToolTip("收起日志面板")
         self.btn_log_collapse.setFixedWidth(72)
         self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
         self.btn_log_collapse.setStyleSheet(f"""
@@ -6813,7 +6821,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             self.btn_log_collapse.setToolTip("展开终端日志区")
         else:
             self.log_text.setVisible(True)
-            self.btn_log_collapse.setText("◀ 收起")
+            self.btn_log_collapse.setText("◀")
             self.btn_log_collapse.setToolTip("隐藏终端日志区, 上方内容占满")
     
     def _switch_to_smolvla(self):
