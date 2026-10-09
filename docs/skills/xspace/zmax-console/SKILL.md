@@ -99,6 +99,33 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * **data/ 瘦身口径**: 只删「代码不读、可重跑重现」的大件 (实测: handeye 79 张标定采集截图 333 MB,
   代码只读同目录 7 个 json)。动手前先写清单到 `data/database/cleanup_manifest_*.txt` (含重现命令), 再删。
 
+## 🎛 全局可改数字 (参数注册表 / 改数即链动, 2026-10-09)
+
+老倪的硬要求: **改任意一个数字都要能说清它动了什么** (功能·性能·代码), 且数字只有一份真源。
+
+```
+tools/param_registry.py  scan→registry()  162 个数字五类:
+  calib(45) JSON 叶子 / canvas(78) 节点 params / code(25) 常量+函数默认参数
+  platform(8) KPI 文本里的数 / switch(6) 档位
+set_param(id, v, write=False) 校验→预览链 ;  write=True 备份→写真源→回读核对
+  写口五路: calib JSON 路径 / canvas params / KPI 文本原地替换 / 代码常量行 / 函数默认参数行
+effect_chain(id) → 子系统·功能·模块·代码 file:line·KPI
+```
+
+**踩过的坑 (改注册表/加数字前必读)**:
+* **路径解析要支持列表下标**: `camera.K[0][0]`; 平面 split('.') 会取不到 → `_path_tokens/_get_path/_set_path`。
+* **null ≠ 读不到**: `plane_z.value: null` 是现场缺口(未标定), 判据必须区分「路径不存在」与「值就是空」,
+  否则要么误报要么把缺口洗成正常值。
+* **范围口径分三态**: `已定义(人工)` / `范围自动推断(未确认)` / `未标定(缺口)`。自动推断的界**不许**冒充人工定义,
+  否则用户以为 0..1 是权威界 (实测 w_ff=0.3 推成 0..1, 改 1.3 被拦是**对的**, 但界本身是猜的)。
+* **负值要能推范围** (畸变系数是负的), 写死 `0..max` 会让自校验全红。
+* **画布 params 大多是元数据**: `state_space/row_bg/bg/status` 不是旋钮, 过滤后 149 → 78。
+* **代码数字不只在模块级**: `insert_depth=0.0005` 在函数默认参数里 → `ast` 要扫签名 default (3 → 25 条)。
+* **顶层 KPI 的数字也在真源里**: 正则从 KPI 文本抽量化目标(≥99% / <4mm), 写回原地替换数字、保留比较符与单位。
+* 写代码类数字**必过 ast 语法校验, 坏则从备份回滚**; 所有改数进 `data/database/param_events.jsonl` 留痕。
+* 判据: `tools/param_registry.py verify` + `tools/verify_param_center.py`(8 项, 含真改数→回读→还原/越界必拒/非法档位必拒)
+  + `engineering_db.py check` ⑧ 参数面。
+
 ## 📚 模块库 ↔ 画布: 同步 / 拖入 / 删除 / 存为新工程 (2026-10-09)
 
 左侧栏 `LibraryPanel` 的条目**不是**手写清单 —— 它 = 静态组 + 两个**生成组** + 一张**删除名单**。
