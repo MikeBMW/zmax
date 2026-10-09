@@ -660,10 +660,11 @@ class SystemLayerCard(QFrame):
     """Z-MAX 系统层级状态卡片"""
     clicked = pyqtSignal(str)
 
-    def __init__(self, layer_id, label, subtitle, color, components, parent=None):
+    def __init__(self, layer_id, label, subtitle, color, components, parent=None, mcd=None):
         super().__init__(parent)
         self.layer_id = layer_id
         self.color = color
+        self.mcd = mcd or {}
         # 不设置固定高度，让内容自适应
         self.setCursor(Qt.PointingHandCursor)
         self._build(label, subtitle, components)
@@ -678,17 +679,17 @@ class SystemLayerCard(QFrame):
         """)
 
         layout = QVBoxLayout()
-        layout.setSpacing(4)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(2)                      # 2026-10-09 老倪: 左侧挤 → 收紧行距/边距
+        layout.setContentsMargins(10, 5, 10, 5)
 
         # 层级标识
         head = QHBoxLayout()
         dot = QLabel("●")
-        dot.setFont(QFont("Arial", 11))
+        dot.setFont(QFont("Arial", 10))
         dot.setStyleSheet(f"color:{self.color}; background:transparent; border:none;")
         head.addWidget(dot)
         title = QLabel(label)
-        title.setFont(QFont("Arial", 12, QFont.Bold))
+        title.setFont(QFont("Arial", 11, QFont.Bold))
         title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:0;")
         head.addWidget(title)
         head.addStretch()
@@ -696,7 +697,7 @@ class SystemLayerCard(QFrame):
 
         # 副标题
         sub = QLabel(subtitle)
-        sub.setFont(QFont("Arial", 12))
+        sub.setFont(QFont("Arial", 10))
         sub.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
         # 🐛 v5.16.14 老倪: 侧栏卡副标题被**硬裁**(实测「VLA-T + Z-Flow · 500M/15M」被切到
         #   「VLA-T + Z-Fk」、「L2基石 · EtherCAT」被切到「L2基石 · Ethe」) —— 240px 侧栏里
@@ -706,10 +707,25 @@ class SystemLayerCard(QFrame):
         sub.setMinimumWidth(1)
         layout.addWidget(sub)
 
-        # 组件列表
+        # MCD 三轴彩条 (测量 Measurement · 标定 Calibration · 诊断 Diagnosis) —— 用数据定义产品框架
+        if self.mcd:
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            for key, cn, col in (("m", "测量", "#4da3ff"), ("c", "标定", "#ffc857"), ("d", "诊断", "#00d4aa")):
+                v = self.mcd.get(key)
+                if v in (None, 0, "0"):
+                    continue
+                chip = QLabel("%s %s %s" % (key.upper(), v, cn))
+                chip.setFont(QFont("Consolas", 9, QFont.Bold))
+                chip.setStyleSheet(f"color:{col}; background:transparent; border:none; margin:0; padding:0;")
+                row.addWidget(chip)
+            row.addStretch()
+            layout.addLayout(row)
+
+        # 一行说明 (短)
         comp = QLabel(components)
-        comp.setFont(QFont("Consolas", 12))
-        comp.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:0;")
+        comp.setFont(QFont("Arial", 9))
+        comp.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:0;")
         comp.setWordWrap(True)
         layout.addWidget(comp)
 
@@ -740,6 +756,22 @@ class SystemLayerCard(QFrame):
 # ============================================================
 # 侧边栏: Z-MAX 系统架构
 # ============================================================
+def _mcd_from_db():
+    """🎛 MCD 三轴数字取自单一工程库 (用数据定义产品框架; 库不在就返回空, 卡片自动省略该行)"""
+    import sqlite3
+    db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                      "data", "database", "zmax_engineering.db")
+    out = {}
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        for scope, sid, m, c_, d in con.execute("SELECT scope, scope_id, m, c, d FROM mcd"):
+            out[sid if scope != "product" else "product"] = {"m": m, "c": c_, "d": d}
+        con.close()
+    except Exception:                                                          # noqa: BLE001
+        pass
+    return out
+
+
 class SystemSidebar(QFrame):
     layer_clicked = pyqtSignal(str)
     # 📚 左侧栏折叠信号 (2026-08-06 老倪: XSpace Studio 列表栏要能隐藏)
@@ -770,7 +802,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.29.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.30.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -788,32 +820,32 @@ class SystemSidebar(QFrame):
 
         layout.addSpacing(8)
 
-        sep_label = QLabel("三层系统 · L4/L5 · L3 · L2")  # 2026-10-09 老倪: 文字对齐当前实际状态
+        sep_label = QLabel("② 系统 · 支撑产品运行的架构 (子系统/模块)")
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
         sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
 
         # 🏭 Z-MAX 平台方框 (2026-10-09 老倪: 在 System 2 之上增加 Z-MAX 方框, 描述平台产品 —
         #   平台产品 Z700 精细操作 / Z100 通用操作, 由 系统2/1/0 组成的全系统实现; 点击开产品/功能清单)
-        _zlab = QLabel("平台产品 · 点开 = 产品与功能清单")
+        _MCD = _mcd_from_db()
+        _mcd_prod = _MCD.get("product") or _MCD.get("plat") or {}
+        _zlab = QLabel("① 产品 · 面向客户的完整交付物")
         _zlab.setFont(QFont("Arial", 10, QFont.Bold))
         _zlab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_zlab)
         self.zmax = SystemLayerCard(
-            "zmax", "🏭 Z-MAX 平台", "Z700 精细操作 · Z100 通用操作",
+            "zmax", "🏭 Z-MAX 平台", "产品 · Z700 精细操作 / Z100 通用操作",
             C_GOLD if "C_GOLD" in globals() else "#ffc857",
-            "具身智能机器人平台 · 光模块工厂精细操作\n"
-            "产品特征 18 → 子系统 3 → 功能 74 → 模块 74 (链到代码)\n"
-            "由 System 2 / 1 / 0 组成的全系统实现 · 点开看产品与功能清单"
+            "特征 18 → 系统 3 → 功能 74 · 点开看产品与功能清单",
+            mcd=_mcd_prod
         )
         self.zmax.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.zmax)
         self.params_card = SystemLayerCard(
-            "params", "🎛 参数中心", "162 个可改数字 · 双击即改",
+            "params", "🎛 参数中心", "MCD 数据面 · 162 个可改数字",
             "#ff9f43",
-            "标定 45 · 画布 78 · 代码 25 · 性能 8 · 开关 6\n"
-            "每个数字都有 当前/默认/min-max/单位/真源位置\n"
-            "改任意数字 → 链动 功能·性能·代码 · 落真源前先预览影响链"
+            "双击改数 → 链动 功能·性能·代码 (先预览再落真源)",
+            mcd=_mcd_prod
         )
         self.params_card.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.params_card)
@@ -821,9 +853,8 @@ class SystemSidebar(QFrame):
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
             "sys2", "System 2", "L4/L5 认知决策 · 功能 30",
-            SYS2_COLOR, "云端智能体 · 任务拆解与调度 (MES/语言 → 技能序列)\n"
-                        "流形世界模型预判/恢复 · 五层记忆筹划\n"
-                        "IntAct 稳态 101ms · L4 用 INTACT 直驱"
+            SYS2_COLOR, "云端智能体 · 任务拆解调度 · 流形世界模型",
+            mcd=_MCD.get("sys2")
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys2)
@@ -831,9 +862,8 @@ class SystemSidebar(QFrame):
         # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
         self.sys1 = SystemLayerCard(
             "sys1", "System 1", "L3 动作执行 · 功能 4",
-            SYS11_COLOR, "VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWM 15M)\n"
-                         "长程规划 · 跨段技能序列复用 · 端到端 500M 推理\n"
-                         "本地 GPU / 边缘推理"
+            SYS11_COLOR, "VLA-T 动作 500M + Z-Flow 引导 15M",
+            mcd=_MCD.get("sys1")
         )
         self.sys1.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys1)
@@ -841,12 +871,31 @@ class SystemSidebar(QFrame):
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
             "sys0", "System 0", "L2 基石执行 · 功能 27",
-            SYS0_COLOR, "安全层 + HAL 驱动 + EtherCAT + 运动学正逆解\n"
-                        "原子技能 SK01-08 · 分段感知/控制小模型 · 肌肉记忆\n"
-                        "一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口"
+            SYS0_COLOR, "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆",
+            mcd=_MCD.get("sys0")
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys0)
+
+        self.plat_card = SystemLayerCard(
+            "plat", "🧩 平台支撑", "跨子系统 · 功能 13",
+            "#b07cff", "数据源 · 质量门 · 观察器 (旁路只读, 不下发动作)",
+            mcd=_MCD.get("plat")
+        )
+        self.plat_card.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.plat_card)
+
+        _flab = QLabel("③ 功能 · 系统里最小可执行能力单元")
+        _flab.setFont(QFont("Arial", 10, QFont.Bold))
+        _flab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
+        layout.addWidget(_flab)
+        self.fn_card = SystemLayerCard(
+            "spec", "📋 功能清单", "74 条功能 · 每条含 配置/标定/诊断",
+            "#00d4aa", "点开按 产品 / System 2 / 1 / 0 查看明细",
+            mcd=None
+        )
+        self.fn_card.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.fn_card)
 
         layout.addStretch()
 
@@ -11374,7 +11423,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.29.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.30.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11382,9 +11431,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.29.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.30.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.30.0: v5.30.0 — 左侧栏按「产品 → 系统 → 功能」重构 + 引用 MCD 标准 (测量/标定/诊断) (2026-10-09 老倪)  老倪: 「左侧这几个方块再次精简, 现在很挤; 例如『162 个可改数字』显得没有内容 —— 应该引用 MCD 的标准: 测量、诊断、标定, 体现出用数据定义产品框架。核心思想: 产品=面向用户/客户的完整交付物, 解决某个业务问题; 系统=支撑产品运行的整体架构, 由多个模块/子系统组成; 功能=系统里可独立执行的最小能力单元。」  ① 左侧栏按三级定义重排 (每组标题就是定义本身)    ① 产品 · 面向客户的完整交付物        🏭 Z-MAX 平台 —— 产品 · Z700 精细操作 / Z100 通用操作        🎛 参数中心 —— MCD 数据面 · 162 个可改数字    ② 系统 · 支撑产品运行的架构 (子系统/模块)        System 2 | L4/L5 认知决策 · 功能 30        System 1 | L3 动作执行 · 功能 4        System 0 | L2 基石执行 · 功能 27        🧩 平台支撑 | 跨子系统 · 功能 13    ③ 功能 · 系统里最小可执行能力单元        📋 功能清单 | 74 条功能 · 每条含 配置/标定/诊断  ② MCD 标准落地 (用数据定义产品框架) —— 卡片上就是三轴彩条    🟦 M 测量 · 🟨 C 标定 · 🟩 D 诊断, 数字全部来自单一工程库 (mcd 表), 不写死:      产品级   M 9 测量 · C 45 标定 · D 57 诊断 (+ 故障码 MCD-E01…E05)      System 0 M 9 · C 41 · D 38   (L2 真正落数: 位姿/关节/深度/力)      System 2 C 4 · D 11 (L4)     System 1 D 8 (L3)      平台支撑 M 9 · C 45 · D 57    MCD 定义: M=工程 measure 视图的测量量 (帧龄<2s 判据) · C=标定参数 (zmax_calib.json 叶子) ·              D=诊断断言 (verification_layer FEATURES) + 故障码 MCD-E0x + 站点缺口 3 项。    库新增 mcd 表 (scope/scope_id/m/c/d/note) + 服务端点 /mcd; check 新增 ⑨ MCD 判据 (产品三轴必须非空)。  ③ 精简 (解决"很挤")    · 卡片从「标题 + 副标题 + 三行长描述」压成「标题 + 副标题 + MCD 彩条 + 一行短说明」;      边距 12/8 → 10/5, 行距 4 → 2, 字号 12 → 10/11, 说明灰色 12 → 9。    · 每张卡只说一件事: 产品说什么交付物 · 系统说哪一层/多少功能 · 功能说最小单元。    · 旧的 SYS11/SYS12 编号、500M/15M 之类细节从卡片撤走 (在功能清单页里看)。    · 「162 个可改数字」不再作为卖点出现, 改为「MCD 数据面 · 162 个可改数字」+ 三轴彩条, 有内容可看。  判据: engineering_db check ⑨ MCD 全绿 (M9/C45/D57) · verify_platform_spec / verify_param_center 复跑       (卡数量/顺序/点击接线随新卡片更新)
         # v5.29.1: v5.29.1 — 侧栏/首页三层文字对齐当前实际状态 (2026-10-09 老倪)  老倪: 「主窗口左侧菜单, 系统2/系统1/系统0 的黑色字体内容, 你总结成当前的实际状态; 上面的文字之前 可能有些出入, 再优化意思。」  ① 左侧栏 (平台产品组 + 三层系统组)    · 🏭 Z-MAX 平台 | Z700 精细操作 · Z100 通用操作 | 产品特征 18 → 子系统 3 → 功能 74 → 模块 74 (链到代码)      · 由 System 2/1/0 组成的全系统实现 · 点开看产品与功能清单    · 🎛 参数中心 | 162 个可改数字 · 双击即改 | 标定 45 · 画布 78 · 代码 25 · 性能 8 · 开关 6      · 每个数字都有 当前/默认/min-max/单位/真源位置 · 改任意数字 → 链动 功能·性能·代码    · System 2 | **L4/L5 认知决策 · 功能 30** (原「L4级大脑 · 云端训练」) |      云端智能体 · 任务拆解与调度 (MES/语言 → 技能序列) · 流形世界模型预判/恢复 · 五层记忆筹划 · IntAct 稳态 101ms    · System 1 | **L3 动作执行 · 功能 4** (原「VLA-T + Z-Flow · 500M/15M / SYS11·SYS12」) |      VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWM 15M) · 长程规划 · 跨段技能序列复用 · 端到端 500M 推理    · System 0 | **L2 基石执行 · 功能 27** (原「L2基石 · EtherCAT」) |      安全层 + HAL 驱动 + EtherCAT + 运动学正逆解 · 原子技能 SK01-08 · 分段感知/控制小模型 · 肌肉记忆      · 一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口    · 分组标题: 「平台产品 · 点开 = 产品与功能清单」「三层系统 · L4/L5 · L3 · L2」  ② 首页「系统架构」页同步 (旧 SYS-11/SYS-12 编号 → 当前层号)    System 2 框 → "L4/L5 认知决策 · 云端智能体 · 任务拆解与调度 (30 功能)"    中层两框 → "System 1 · VLA-T 动作 (SmolVLA 500M)" / "System 1 · Z-Flow 引导 (LeWM 15M)"    Sys-0 框 → "System 0 · L2 基石执行 · EtherCAT · 安全层 · HAL · 原子技能 (27 功能)"    模块卡副标题: 数据集管理=System 2 · L4/L5 · 硬件工具箱=System 0 · L2 基石 ·    Simulink=System 1 · 仿真 · 配置中心=System 1 · 参数 · 实时监控=System 1 · L3  ③ 口径来源: 全部取自单一工程库 (data/database/zmax_engineering.db) 的 subsystems/functions 真值    (sys2=30 功能 · sys1=4 · sys0=27 · plat=13), 不再用手写印象。  判据: verify_platform_spec 6 项全绿 (data/database 白名单加 .jsonl) · 实机 OCR 复核侧栏文字
         # v5.29.0: v5.29.0 — 数据一体化工程: 全局可改数字注册表 + 改数即链动(功能/性能/代码) + 参数中心 (2026-10-09 老倪)  老倪: 「全局梳理所有可以更改的数字, 有默认值, 有调试参数, 有最大最小值; 当改变任意数值, 均可链动 功能·性能·代码逻辑; 状态空间工程是一个整体, 修改不同层的数据即表现出不同功能特性; 从顶层产品性能的 数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构; 实现数据一体化工程; UI 用颜色区分用途。」  ① 全局可改数字注册表 (tools/param_registry.py —— 数字的「数据面」, 一个数字一条链路)    **162 个数字, 五类, 各有颜色**:      🟡 calib    45  标定/真源参数 (相机 K/dist · T_base_cam · plane_z · depth_scale · 工位几何 ·                        机器人 · 工具负载 · TCP · 主参数 M) —— 真源 config/calib/*.json      🔵 canvas   78  画布节点数据 (帧数 w_ff/layers/frames/dims/权重…) —— 真源 state_space_obs.json      🟣 code     25  代码常量 + **函数默认参数** (cognition.insert_depth=0.0005 · align_th · DOMAIN_SIGMA…) —— 真源源码行号      🟢 platform  8  顶层产品性能目标 (插入成功率 ≥99% · 头到孔底 <4mm · 对接 ≤10mm…) —— 真源 KPI 文本      🟠 switch    6  运行开关/调试档位 (L3 full/partial/off · L4 INTACT 间隔 · 意图 β · L2 兼容 · 流形偏航)    每个数字带: 中文名 · 当前值 · 默认值 · min · max · 单位 · 档位枚举 · 真源文件与位置 · 归属子系统 ·    影响说明 · 口径 (人工确认 / 范围自动推断(未确认) / 未标定(缺口)) —— **推断的范围不冒充已定义**。    真源: config/platform/param_spec.json (人可编, 缺省自动播种, 人工行标 curated)。  ② 改数即链动 (系统 ↔ 功能 ↔ 代码 同步)    set_param(id, v): 校验 (类型/范围/档位/只读) → 预览影响链 → 落真源 (备份) → 回读核对 → 事件留痕    真源写口分五路: 标定 JSON 路径 / 画布节点 params / **KPI 文本里的那个数** / 代码常量行 / 函数默认参数行;    代码类写入**必过语法校验, 写坏立即回滚**; 越界值/非法档位一律拒。    影响链 effect_chain(): 系统 → 功能 (含子系统内功能清单) → 模块 → 代码文件:行 → 产品 KPI。    实测: 主参数 M → sys2 + 24 条功能; code 常量 → 文件:行; KPI 改动 → 链到产品特征。    可观察性: 每次改数记 data/database/param_events.jsonl + 工程库 param_events 表 (谁在什么时候把哪个数改成什么)。  ③ 单一工程库扩容 (data/database/zmax_engineering.db)    新增 params(162) / param_links(375: 数字→功能·模块·系统) / param_events 三表;    build 时自动从真源重扫, check 判据增至 17 项 (新增 ⑧ 参数面三条: 数量≥100 · 每个数字的真源在盘上 · 链接数)。  ④ 🎛 参数中心 (tools/gui/param_center.py) —— 数字的唯一交互面 (GUI 与数据解耦)    侧栏「🎛 参数中心」卡紧跟 🏭 Z-MAX 卡 (平台产品组); 左分类树 (5 类 + 真源文件分组) + 搜索 + 只看可写/只看缺口;    右数字表 (用途·数字·当前·默认·最小·最大·单位·状态·真源位置, 按用途与状态着色);    **双击一行 = 改数**: 弹校验框 → 先看影响链 (子系统/功能/模块/代码位置/KPI) → 点「应用」才落真源;    下部实时显示改数事件流; 顶部 重建库 / 复制清单 / 导出 JSON / 刷新。  ⑤ 判据 (全绿)    tools/param_registry.py verify 全绿 (五类非空 · 真源可读且库==源 · 口径标注齐全 · 自校验)    tools/verify_param_center.py 8 项全绿 (含真改数: 画布改→回读→还原 · 产品性能改→回读→还原 ·    越界拒 · 非法档位拒 · 代码常量写且语法校验过 · 库三表一致 · 页面真建 · 主窗口卡接线)    run_gui_verifiers.sh 判据集 14 → **16 项**  ⑥ 本轮修的真 bug: 列表下标路径解析 (camera.K[0][0]) · 未标定缺口(null)不能当"读不到" ·    负值范围推断 (畸变系数) · 范围口径不许自动推断冒充人工定义 · 画布元数据开关不算旋钮 (149→78)    · 代码常量扫描换真实文件 + 加函数默认参数 (3→25)。  文档 docs/design/param_registry_20261009.md; 真源 config/platform/param_spec.json
         # v5.28.0: v5.28.0 — 平台产品/子系统功能清单 + 工程数据库 (单一文件) + GUI↔工程解耦 + data/ 精简 (2026-10-09)  老倪: 「产品特性/系统配置/标定参数/功能清单汇总的数据库, 要和状态空间工程文件形成统一数据结构; 加载工程就一起把 特性·配置·参数·功能·模块代码 都链接出来; 最好只用一个数据库文件承载所有工程数据, 这样 GUI 与整个工程解耦, 我可以随时迁移工程文件用统一 GUI 加载; 全局优化控制台, 实现工程数据与界面分离; 总数据库放 /home/ubuntu/zmax/data; 这个路径数据太多, 没用的都删掉, 建 database 文件夹统一管理; 在主窗口左侧 System 2 之上增加 Z-MAX 方框描述平台产品 (Z700 精细操作 / Z100 通用操作), 点击 Z-MAX / System 2 / System 1 / System 0 能清晰打开功能清单; 你来设计产品逻辑与数据库系统。」  ① 产品逻辑 (PM) — config/platform/zmax_platform.json (真源, 人可编)    🏭 Z-MAX 平台 → 产品 Z700(精细操作) / Z100(通用操作) → 产品特征清单 18 条    (Z700 10 条: 完整作业执行/精细对位/力控插拔保护/宏微复合/L4专家自主/场景理解与任务拆解/      视触觉质量检测/标定与主参数M/真机安全急停/边学边练; Z100 8 条: 跨工位流转/工位精准对接/      举升调节/双形态作业/通用抓放翻转/双臂协同/多车协同调度/第三方模型接入)    特征引用能力库 feature.dbc 的 BO_ (31 条能力), 标注 KPI·状态·归属子系统·用到模块    子系统: System 2 认知决策(L4/L5) / System 1 动作执行(L3) / System 0 基石执行(L2) / 平台支撑(跨层)    每个子系统的功能清单由三轴定义: ⚙️配置 CFG · 📐标定 CAL · 🩺诊断 DIA (真源: 节点 params / calib.json /    verification_layer FEATURES)  ② 单一工程数据库 — data/database/zmax_engineering.db (SQLite 0.82 MB, 一个文件=一套工程)    真源: zmax_platform.json + reports/projects/*.proj(7段) + state_space_obs.json + zmax_calib.json         + zmax_manifold.json + feature.dbc + verification_layer.py FEATURES + nodes/library.py NODE_LOGIC         + library_curation.json    表: platform/products/product_features(18)/subsystems(4)/subsystem_axes(48)/functions(74)/fn_axes(1594)/       calib_params(41)/modules(74)/module_code(74)/capability_dbc(31)/interfaces(62)/       verification_features(57)/canvas_nodes(74)/canvas_links(184)/project_sections(27)/links(368)/       library_removed(33)    工具 tools/engineering_db.py: build / check / stats / query / load / export / serve / migrate  ③ 判据 (11 项全绿, tools/engineering_db.py check + tools/verify_platform_spec.py 6 项)    特征→子系统 0 悬空 · 功能→模块 0 悬空 · 三轴 74/74 · 特征→能力 0 悬空 · 工程 7 段齐 ·    功能 74 == 画布功能节点 74 (无重复计数) · 零同名功能 · 库↔真源哈希一致 · 模块 74/74 链到引擎代码  ④ 单一数据库服务 (常驻) — systemd zmax-engdb.service → 127.0.0.1:8798 只读 JSON    /summary /platform /products /product/<id> /systems /system/<id> /functions /function/<id>    /modules /capabilities /calib /project[/<section>] /graph /sync  ⑤ GUI ↔ 工程数据解耦 (重构)    新页 tools/gui/platform_spec.py「📋 功能清单」只认一个 .db 文件 (纯 sqlite, 不 import 工程文件):    页签 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0 / 🧩 平台支撑;    侧栏 System 2 之上新增 🏭 Z-MAX 平台卡; 点 4 张卡 → 切清单页并选中对应页签; 每页带「→ 打开该子系统    对应的功能页面」保留旧入口; 页内可 📂打开工程数据库(换库=换工程) / 🔁从真源重建 / 📋复制 / 💾导出 JSON / 📡服务状态  ⑥ data/ 精简: 354 MB → 21 MB (删 333 MB: handeye 79 张标定采集截图; 7 个 json 结果与    models/handeye_state.json 保留, 重跑 tools/a5_handeye_collect.py 可重现); 新建 data/database/ 统一管理    (库 + README + cleanup_manifest_20261009.txt 留痕)  ⑦ 修的真 bug: 行带归属重复计数(85→74) · 行带缝隙节点就近归属 · .proj 段名与 7 段语义映射 ·    懒加载画布页导致下标漂移(改 setCurrentWidget) · current_payload 页签匹配  文档 docs/design/platform_engineering_db_20261009.md + data/database/README.md

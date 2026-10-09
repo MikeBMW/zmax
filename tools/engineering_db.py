@@ -68,6 +68,7 @@ DROP TABLE IF EXISTS library_removed;         CREATE TABLE library_removed(group
 DROP TABLE IF EXISTS params;                  CREATE TABLE params(param_id TEXT PRIMARY KEY, group_cn TEXT, cat TEXT, name TEXT, cn TEXT, value TEXT, default_val TEXT, min REAL, max REAL, unit TEXT, kind TEXT, choices TEXT, source TEXT, ref TEXT, writable INT, status TEXT, color TEXT, sys_id TEXT, module_ref TEXT, impact TEXT);
 DROP TABLE IF EXISTS param_events;            CREATE TABLE param_events(ts TEXT, param_id TEXT, cn TEXT, old_val TEXT, new_val TEXT, cat TEXT, source TEXT, written INT, msg TEXT);
 DROP TABLE IF EXISTS param_links;             CREATE TABLE param_links(param_id TEXT, kind TEXT, target TEXT);
+DROP TABLE IF EXISTS mcd;                     CREATE TABLE mcd(scope TEXT, scope_id TEXT, scope_cn TEXT, m INTEGER, c INTEGER, d INTEGER, note TEXT, PRIMARY KEY(scope, scope_id));
 CREATE INDEX IF NOT EXISTS ix_prm_grp ON params(group_cn);
 DROP TABLE IF EXISTS module_code;             CREATE TABLE module_code(module_name TEXT, logic_key TEXT, file TEXT, line INTEGER, doc TEXT, match TEXT);
 DROP TABLE IF EXISTS capability_dbc;          CREATE TABLE capability_dbc(bo_id TEXT PRIMARY KEY, grp TEXT, name TEXT, dirs TEXT, brief TEXT, explain TEXT, iface TEXT, inputs TEXT, outputs TEXT, scenes TEXT, engineering TEXT, owner TEXT);
@@ -500,11 +501,48 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
     except Exception as _e:                                                    # noqa: BLE001
         print("[engineering_db] 参数注册表摄取失败: %r" % (_e,))
 
+    # ── MCD 三轴 (测量 Measurement · 标定 Calibration · 诊断 Diagnosis) — 「用数据定义产品框架」 ──
+    try:
+        _mv = {}
+        _row = c.execute("SELECT json FROM project_sections WHERE section='measure'").fetchone()
+        if _row:
+            _mv = json.loads(_row[0]) or {}
+        _m_view = _mv.get("measure_view") or {}
+        _d_view = _mv.get("diagnose_view") or {}
+        n_m = int(_m_view.get("测量量") or 0)
+        n_d = int(_d_view.get("断言") or 0) or c.execute("SELECT COUNT(*) FROM verification_features").fetchone()[0]
+        n_c = c.execute("SELECT COUNT(*) FROM params WHERE cat='calib'").fetchone()[0]
+        lv = {r[0]: r[1] for r in c.execute("SELECT level, COUNT(*) FROM verification_features GROUP BY level")}
+        sadm = {r[0]: r[1] for r in c.execute("SELECT sys_id, COUNT(*) FROM params WHERE cat='calib' GROUP BY sys_id")}
+        sys_rows = []
+        for sid, name, level in c.execute("SELECT system_id, name, level FROM subsystems ORDER BY ord"):
+            if sid == "plat":
+                continue
+            sys_rows.append((sid, name, level))
+        # 每系统: D=该层断言数 (L2/L3/L4), C=该系统的标定参数, M=按层摊 (L2 承担感知/取流 → 平台层计入)
+        for sid, name, level in sys_rows:
+            _lv = {"sys0": "L2", "sys1": "L3", "sys2": "L4"}.get(sid, "")
+            d_ = lv.get(_lv, 0)
+            c_ = sadm.get(sid, 0)
+            m_ = 0
+            if sid == "sys0":
+                m_ = n_m          # 测量量: 位姿/关节/深度/力/触觉 由 L2 基石执行真正落数
+            c.execute("INSERT OR REPLACE INTO mcd VALUES (?,?,?,?,?,?,?)",
+                      ("system", sid, name, m_, c_, d_, "%s · 断言 %s 条 · 标定参数取自 zmax_calib.json" % (level, _lv)))
+        c.execute("INSERT OR REPLACE INTO mcd VALUES (?,?,?,?,?,?,?)",
+                  ("product", "Z-MAX", "Z-MAX 平台产品", n_m, n_c, n_d,
+                   "产品级 MCD: 测量 %d 项(帧龄<2s) · 标定 %d 项 · 诊断 %d 断言 + 故障码 MCD-E0x"
+                   % (n_m, n_c, n_d)))
+        c.execute("INSERT OR REPLACE INTO mcd VALUES (?,?,?,?,?,?,?)",
+                  ("platform", "plat", "平台支撑 (跨子系统)", n_m, n_c, n_d, "数据源/质量门/观察器 — 平台统一治理"))
+    except Exception as _e:                                                    # noqa: BLE001
+        print("[engineering_db] MCD 计算失败: %r" % (_e,))
+
     con.commit()
     for t in ("platform", "products", "product_features", "subsystems", "subsystem_axes", "functions",
               "fn_axes", "calib_params", "modules", "module_code", "capability_dbc",
               "verification_features", "interfaces", "links", "canvas_nodes", "canvas_links",
-              "project_sections", "library_removed", "params", "param_events", "param_links"):
+              "project_sections", "library_removed", "params", "param_events", "param_links", "mcd"):
         cnt[t] = c.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
     con.close()
     if not quiet:
@@ -606,6 +644,21 @@ def check(db=DB_DEFAULT):
     except Exception as _e:                                                   # noqa: BLE001
         print("  ❌ ⑧ 参数面判据异常: %r" % (_e,), flush=True)
         bad.append("param_judge")
+
+    # ⑨ MCD 三轴 (测量/标定/诊断) 用数据定义产品框架
+    try:
+        rows = c.execute("SELECT scope, scope_id, scope_cn, m, c, d FROM mcd ORDER BY scope, scope_id").fetchall()
+        pr_row = next((r for r in rows if r[0] == "product"), None)
+        ok9 = bool(pr_row) and pr_row[3] > 0 and pr_row[4] > 0 and pr_row[5] > 0
+        print("  %s ⑨ MCD 三轴 %d 层: 产品 M%d/C%d/D%d · 系统 %s" %
+              ("✅" if ok9 else "❌", len(rows), pr_row[3] if pr_row else -1, pr_row[4] if pr_row else -1,
+               pr_row[5] if pr_row else -1,
+               " ".join("%s M%d/C%d/D%d" % (r[1], r[3], r[4], r[5]) for r in rows if r[0] == "system")), flush=True)
+        if not ok9:
+            bad.append("mcd")
+    except Exception as _e:                                                   # noqa: BLE001
+        print("  ❌ ⑨ MCD 判据异常: %r" % (_e,), flush=True)
+        bad.append("mcd_judge")
 
     print("  📦 单文件: %s (%.2f MB)" % (db, os.path.getsize(db) / 1048576), flush=True)
     con.close()
