@@ -132,37 +132,31 @@ try:
 finally:
     os.path.exists(_tmp) and os.remove(_tmp)
 
-# ⑦ 侧栏配色纪律 (老倪: 删黑色字体, 彩色不超过两种) + 卡上不留说明行
+# ⑦⑧⑨ 侧栏视觉纪律 (老倪 2026-10-09): 删分组小字 · 边框可多彩 · 卡里小字灰黑
 from PyQt5.QtWidgets import QLabel as _QL, QWidget as _QW
 _cards_w = [w for w in win.sidebar.findChildren(_QW) if w.__class__.__name__ == "SystemLayerCard"]
-_bad, _pal = {}, set()
-for _l in win.sidebar.findChildren(_QL):
-    for _h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or ""):
-        _pal.add(_h.lower())
+_txt_cols, _borders, _bad = set(), {}, {}
 for _c in _cards_w:
     _cols = set()
     for _l in _c.findChildren(_QL):
         for _h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or ""):
-            _cols.add(_h.lower()); _pal.add(_h.lower())
+            _cols.add(_h.lower()); _txt_cols.add(_h.lower())
+    _b = re.findall(r"border:\s*\d+px\s+solid\s+(#[0-9a-fA-F]{6})", _c.styleSheet() or "")
+    _borders[_c.layer_id] = _b[0].lower() if _b else None
     if len(_cols) > 2:
         _bad[_c.layer_id] = sorted(_cols)
+    if _b and _b[0].lower() in _cols:
+        _bad.setdefault(_c.layer_id, []).append("边框色=字色 %s" % _b[0])
     if len(_c.findChildren(_QL)) > 4:
         _bad.setdefault(_c.layer_id, []).append("labels=%d(说明行没删净?)" % len(_c.findChildren(_QL)))
-chk(_cards_w and not _bad, "每张卡 ≤2 色 且 无黑色说明行 (违规: %s)" % (_bad or "无"))
-_same = {}
-for _c in _cards_w:
-    _b = re.findall(r"border:\s*\d+px\s+solid\s+(#[0-9a-fA-F]{6})", _c.styleSheet() or "")
-    if not _b:
-        continue
-    _bc = _b[0].lower()
-    for _l in _c.findChildren(_QL):
-        if _bc in [h.lower() for h in re.findall(r"color:\s*(#[0-9a-fA-F]{6})", _l.styleSheet() or "")]:
-            _same[_c.layer_id] = _bc
-chk(not _same, "卡的边框色 ≠ 卡内字体色 (同色违规: %s)" % (_same or "无"))
+chk(len(_cards_w) == 6 and not _bad, "每卡 ≤2 字色 · 边框色≠字色 · 无多余说明行 (违规: %s)" % (_bad or "无"))
+chk(len(_txt_cols) <= 2, "卡内文字整体 ≤2 色 (灰黑小字 + 近黑标题; 实际 %d 种: %s)" % (len(_txt_cols), sorted(_txt_cols)))
+chk(len(set(b for b in _borders.values() if b)) >= 3, "边框允许不同颜色 (实际 %d 种: %s)" % (len(set(_borders.values())), _borders))
+_labs = [l.text() for l in win.sidebar.findChildren(_QL)]
+chk(not [x for x in _labs if x.strip() in ("① 产品", "② 系统", "③ 产品配置", "④ 数据配置")],
+    "分组小字已删净 (产品/系统/产品配置/数据配置 4 个标题)")
 
-chk(len(_pal) <= 2, "侧栏整体(卡+分组标题+页脚)配色 ≤2 种 (实际 %d 种: %s)" % (len(_pal), sorted(_pal)))
-
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (9 项)" if not FAIL else
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (10 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)
