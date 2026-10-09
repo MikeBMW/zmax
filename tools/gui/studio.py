@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.24.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.24.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11303,7 +11303,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.24.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.24.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11311,9 +11311,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.24.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.24.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.24.1: v5.24.1 — 右侧栏: 测量三行合一 + 新增「标定」页 + 修两个按钮的仓库根路径 (2026-10-09)  老倪: 「右侧的侧边栏, 测量类的有三行, 太多了, 只保留一行; 增加一个标定类」  · 下拉由 5 行 → 4 行:   🧮 主参数 M · 测量/标定/诊断/配置 (默认) / 📏 测量 · 数据字典 / 状态空间变量 / 数据总线 /   🎛 标定 · 真源参数与缺口 / 🔧 配置 · 运行开关 · 「📏 测量」= 新 MeasureHub: 数据字典 tree / 状态空间变量 ss_tree / 数据总线 bus 三个**原对象**   re-parent 进 3 个页签 (搬不是复制 ⇒ 外部读 dock.tree 一字不改, 零回退); 切签只刷当前签。 · 「🎛 标定」= 新 CalibTruthView: 逐行读真源 config/calib/zmax_calib.json (9 个参数段, 与文件同序同值),   未标定 3 项 (T_base_cam / plane_z / cell_geometry) 橙色高亮 + 给**可执行**现场标定命令   (ss_geom_calib.py 零运动示教 / board_handeye_solve.py 采板 / 夹爪量台面高度); 只读 (无写按钮),   唯一写口仍是「主参数 M」页的 M (三段纪律)。 · 修 bug: MasterParamMView._root / CalibTruthView.CALIB 仓库根路径少了一层 dirname   (拼成 tools/tools/... ⇒「✏️写 M」「📥同步」两个按钮实际会走空), 已修; 判据改成**真点按钮 + 抓日志**,   不再直接调脚本 (原来那两条 = 假证据)。 · 判据: tools/run_gui_verifiers.sh 9 项全绿 (新增 calib_measure; mparam 判据已加真点按钮)。
         # v5.24.0: v5.24.0 — 右侧侧边栏精简 + 「主参数 M」页 + 死面板清理 (2026-10-09)  老倪: 「右边的侧边栏，重点是 配置 和 标定，以及主参数 M；其它的功能要精简，如果没有联系， 全都注释掉，如果确定没用，都删掉」  · 新页「🧮 主参数 M · 测量/标定/诊断/配置」= 右侧栏默认页/重点：数据源 = 画布 M 节点   (n_calib_mani) 的 cfg_entries/cfg_snapshot/measure_view/calib_view/diagnose_view/task_layer   (由 ss_node_sync.py 从真源同步)；含「✏️ 写 M」(三段纪律: 只改 manifold_engine 键 + 回读)、   「📥 从真源同步到节点」、「🔁 刷新」、「📋 复制摘要」、无节点诚实空态。 · 判据取证: 状态空间画布 z700_internal=0/gain_schedule=0 ⇒ 极点配置/现场标定/性能指标/场景状态/   运行汇总/数学分析/工程需求 7 视图读的是 analyze_system() 硬编码默认值 = 与工程无实质联系   ⇒ 8 个部件类 + 5 个分析函数**整体挪到** tools/gui/_model_tree_ffpd_legacy.py (注释掉, 不删)；   面板 cmb_view 11 项 → 5 项 (M页/运行开关/数据字典/状态空间变量/数据总线)。 · 清死面板: CICDPanel/CICDStageItem/CICDLinkItem/open_cicd_panel/_cicd_panel (零引用, 删 295 行);   「数据闭环引导」按钮搬进数据闭环面板表头。 · 判据: tools/run_gui_verifiers.sh 8 项全绿 (mparam_page/run_cfg_panel/entries_cleanup/   step_follow/canvas_render/engineering/l2_compat/node_impl_audit)。
         # v5.23.0: **6 个运行开关 → 右侧「参数标定」侧边页 (测量/诊断/标定/配置) + 侧边页体检** 老倪: 「①⚡引擎快演 ②🚀L3全链 ③🧠流形yaw ④🤖L4 INTACT ⑤🎯L4意图 ⑥🧩L2兼容 —— 再次检查是否有功能, 将这些功能整合进画布右侧的参数标定侧边页面 (对应工程的 测量 诊断 标定 配置); 这个侧边页面其它功能没有用的都删掉」。① **复检结论: 6/6 全部有真功能** (每个都设 env/标志且被引擎真读, 逐个给行号: 7150 分流快演/真实化 · 13601 _l3_mode · 13680→引擎407/2511 mani_yaw · SS_INTACT→引擎435 · SS_L4_DIT→引擎1316/1479 · SS_USE_MLP→引擎546); 边界也说清: ④⑤⑥ 权重/条件通道未训练 (代码自标), ⑥ 实测拖精度 0.42→6.82mm。② **整合落法 = 同一个 QCheckBox 对象 re-parent** 进右侧新页「🔧 配置 · 运行开关」⇒ 引擎与全部运行路径读 self.chk_* **一字未改 (零回退)**; 工具栏留一个「⚙️ 运行开关」入口按钮一键跳过去。③ 新页按 4 组排 (运行方式/任务链/策略/模型接管), 每行给 开关·适用档位chip·作用·**生效位置(文件:行)**·实测代价(风险行橙色), 底部诊断行(可复制)+↺恢复默认+📋复制当前配置; 档位 chip 按画布 cap_level 判定命中, L2 档下 L4-only 行显示「(本档无效)」。④ **侧边页按四轴重排**: 下拉 10→11 项, 标签带轴名 (📏测量 数据字典/状态空间变量/性能指标/数据总线 · 🔍诊断 运行汇总/场景状态 · 🎛标定 参数标定/现场标定/数学分析 · 🔧配置 工程需求/运行开关); `_switch_view` 改**表驱动** (VIEW_KEYS 一处定义, 不再 10 个索引 if; 老行为"参数标定=极点配置器+树同屏"显式保留)。⑤ **"没有用的都删掉"体检** (11 视图逐个切换实测): 全部有真实数据源或诚实空态 ⇒ 无空壳视图可删; 真删 **4 个全仓零引用死函数** `_fmt_sig`/`_open_url`/`_project_3d_to_2d`/`ModelTreeDock.skill_markdown`; 另把 1 处"接了没人消费"如实标注 (工程需求 8 输入框写 module._eng_req, 全仓只有本面板读 → 页头加诚实说明, 不删以免丢需求基线)。⑥ 新增 `tools/verify_run_cfg_panel.py` 6 组判据离屏真跑全 ✅ (同一对象/入口按钮/页面内容/拨开关·恢复默认·复制/11 视图映射/死函数已删); 回归全绿 verify_engineering · verify_canvas_render 89/183 · verify_step_follow · verify_l2_compat_checkbox (其"同一工具栏"判据按新事实改为"同一页面容器+同一对象")。
         # v5.22.0: **状态空间画布: ⏭单步跟随 (高亮 + 画布自动跳转) + 逐节点实现审计** 老倪: 「我要全面检查状态空间工程的每个节点的实现; 单步运行, 运行到哪个节点哪个节点高亮, **而且画布要跳到这个节点** —— 画布太大, 我找不到单步节点在哪了」。① 补的是"跳转" (高亮本来就有): 新增工具栏 **🎯跟随单步**(复选框·默认开) · **📍定位节点** · **🏠全览** · **🧾节点实现审计**。`SimCanvas.focus_node()` 缩放夹到 0.45~1.6 (太远放大/太近缩小) 再 `centerOn(节点包围盒)`; `fit_all()` 全图 `fitInView`。② 挂钩点收口在 `_highlight_node(follow=True)` + 状态空间/老单步两条路径各加 `_impl_line`+`_follow_to`, 于是 ⏭单步/右键运行节点/全局运行的节点高亮都会跳; 同节点 2 秒内只跳一次 (一次单步会经两条路进来, 否则连跳两次刷两行)。③ 每步多打一行 **实现位置**: `实现: <语义key> → <函数>() <文件>:<行>` (registry + sourceview, 自动处理 _EXTERNAL_LOC 外部源并按符号名现搜行号)。④ 新增 `tools/ss_node_impl_audit.py`: 逐节点实现全表 (序号/id/名称/层级/实现key/单步/实现位置) + 单步序 (判据**直接调用** GUI `_ss_*` 并与内联副本逐节点交叉核对) → `reports/node_impl_audit.{txt,json}`。实测: 节点 89 (功能 74/背景 15) · 实现命中 **74/74** · 未命中 0 · 判据交叉核对 74/74 ✅ · 单步序 L2 档 45 节点 · 同 key 多节点 2 (ss_world×2, n_dsvl×2)。⑤ 新增 `tools/verify_step_follow.py` 交互级验证 (离屏真建 SimulinkModule+真加载): 渲染 89/183 · 控件在位 · 真跳偏差 1~13px (跨到 x=15806 也跳得到) · 跟随开位移 1578px/缩放 1.97 · 跟随关位移 **0.0px** 只报位置 · 📍定位 4px · 🏠全览 0.45→0.05 · _highlight_node 金框+跳 → 全 ✅。⑥ 坑: `load_flow_file` 会给节点**重新 gen_id()** ⇒ 文件里的 id 在 GUI 内存查不到, 按 id 找节点必须带名字兜底 (ss_node_sync 已补语义兜底); `_follow_to/_highlight_node` 接受 node=None 不再 Traceback。⑦ 反馈纪律沿用老倪定稿: 画布上不铺文字, 位置/进度只进下面终端。

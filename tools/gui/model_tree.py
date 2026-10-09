@@ -11,6 +11,7 @@
 import os
 import math
 import sys
+import json
 import numpy as np
 
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -801,7 +802,8 @@ class MasterParamMView(QWidget):
     def __init__(self, module=None, parent=None):
         super().__init__(parent)
         self.module = module
-        self._root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把真源/工具路径拼错, 体检真踩到过)
+        self._root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         lay = QVBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
@@ -1017,6 +1019,221 @@ class MasterParamMView(QWidget):
             pass
 
 
+class MeasureHub(QWidget):
+    """📏 测量 · 数据字典 / 状态空间变量 / 数据总线 —— 三个测量视图收进**一行一个页签**
+    (2026-10-09 老倪: 「测量类的有三行, 太多了, 只保留一行」)。
+
+    实现是「搬, 不是复制」: 三个控件对象 (`tree` / `ss_tree` / `bus`) 由 dock 创建后被
+    `attach()` **re-parent** 进本组件的 QTabWidget ⇒ 外部代码读 `dock.tree` 等一字不改, 零回退。
+    """
+    TABS = (("tree", "📚 数据字典"), ("ss_tree", "🎛 状态空间变量"), ("bus", "🔌 数据总线"))
+
+    def __init__(self, dock=None, parent=None):
+        super().__init__(parent)
+        self.dock = dock
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabWidget::pane{border:1px solid #30363d;background:transparent;}"
+                                "QTabBar::tab{background:#161b22;color:#8b949e;padding:3px 9px;font-size:12px;}"
+                                "QTabBar::tab:selected{background:#0d1117;color:#e6edf3;}")
+        lay.addWidget(self.tabs, 1)
+        self._w = {}
+        self.tabs.currentChanged.connect(self._on_tab)
+
+    def attach(self, tree, ss_tree, bus):
+        self._w = {"tree": tree, "ss_tree": ss_tree, "bus": bus}
+        for key, name in self.TABS:
+            w = self._w[key]
+            w.setParent(None)          # 从 dock 的布局里摘出来
+            w.setVisible(True)
+            self.tabs.addTab(w, name)  # 同一个对象, 换了父
+        return self
+
+    def _cur_key(self):
+        i = self.tabs.currentIndex()
+        return self.TABS[i][0] if 0 <= i < len(self.TABS) else "tree"
+
+    def _on_tab(self, _i):
+        self.refresh_current()
+
+    def refresh_current(self):
+        """只刷当前页签 (省算力); 失败不抛, 记日志。"""
+        k = self._cur_key()
+        try:
+            if k == "tree":
+                self.dock.refresh()
+            elif k == "ss_tree":
+                self.dock._show_state_space()
+            else:
+                self._w["bus"].refresh()
+        except Exception as ex:
+            try:
+                self.dock.module._log(f"⚠️ 测量页({k})刷新失败: {ex}")
+            except Exception:
+                pass
+
+    def show_tab(self, key):
+        for i, (k, _n) in enumerate(self.TABS):
+            if k == key:
+                self.tabs.setCurrentIndex(i)   # 触发 _on_tab → 刷该签
+                return True
+        return False
+
+
+class CalibTruthView(QWidget):
+    """🎛 标定 · 真源标定注册表 (只读) + 未标定项的**可执行**补救命令 (2026-10-09 老倪: 「增加一个标定类」)。
+
+    真源 = `config/calib/zmax_calib.json` (由 `tools/zmax_params.py --sync` 合并生成; 所有层读它,
+    禁止硬编码内外参)。本页与状态空间工程真连接: 引擎/视觉读的就是这些键, 而 `T_base_cam` /
+    `plane_z` / `cell_geometry` 三项 **未标定** —— 正是阻塞 5 条工单与真机域模型的共同根因。
+    本页**只读展示 + 给命令**; 唯一的写口 = 主参数 M (在「🧮 主参数 M」页, 走 write_manifold_M
+    的范围校验 + 只改目标键 + 回读三段纪律), 避免在面板上开第二个写口。
+    """
+    # 仓库根 = tools/gui/model_tree.py 往上三层 (本文件在 tools/gui/ 下)
+    CALIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                         "config", "calib", "zmax_calib.json")
+    # 未标定项 → 现场标定命令 (零运动/只读采集, 人工确认)
+    FIX = {
+        "cell_geometry": "gui-venv311/bin/python tools/ss_geom_calib.py --record peg_head|goal|aoi"
+                         "   # 零运动示教: 人工拖到位后确认",
+        "T_base_cam": "gui-venv311/bin/python tools/board_handeye_solve.py"
+                      "   # 零运动人工拖动 10+ 位姿采板 → 解外参",
+        "plane_z": "# 现场用夹爪或塞尺量一次台面高度 → 写 config/calib/zmax_calib.json 的 plane_z.value",
+        "depth_scale": "gui-venv311/bin/python tools/probe_r1_yolo_calib.py   # 仿真单目深度专用, 真机走米制",
+    }
+
+    def __init__(self, module=None, parent=None):
+        super().__init__(parent)
+        self.module = module
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(6)
+        self.lbl_hd = QLabel("🎛 标定 · 真源参数与缺口")
+        self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
+        lay.addWidget(self.lbl_hd)
+        self.lbl_src = QLabel("…")
+        self.lbl_src.setWordWrap(True)
+        self.lbl_src.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;"
+                                   "background:transparent;")
+        lay.addWidget(self.lbl_src)
+        bar = QHBoxLayout()
+        bar.setSpacing(8)
+        self.btn_refresh = QPushButton("🔁 刷新")
+        self.btn_refresh.clicked.connect(self.refresh)
+        self.btn_copy = QPushButton("📋 复制全部")
+        self.btn_copy.setToolTip("把标定注册表逐行复制到剪贴板 (含未标定项与补救命令)")
+        self.btn_copy.clicked.connect(self._copy)
+        self.btn_path = QPushButton("📂 复制真源路径")
+        self.btn_path.clicked.connect(lambda: self._clip(self.CALIB))
+        for b in (self.btn_refresh, self.btn_copy, self.btn_path):
+            b.setStyleSheet("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                            "border-radius:4px;padding:3px 8px;font-size:12px;}"
+                            "QPushButton:hover{background:#30363d;}")
+            bar.addWidget(b)
+        bar.addStretch(1)
+        lay.addLayout(bar)
+        self.tbl = QTableWidget(0, 4)
+        self.tbl.setHorizontalHeaderLabels(["参数", "值", "状态", "真源 / 补救"])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setWordWrap(True)
+        self.tbl.setColumnWidth(0, 108)
+        self.tbl.setColumnWidth(1, 190)
+        self.tbl.setColumnWidth(2, 62)
+        self.tbl.setStyleSheet("QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
+                               "font-size:12px;font-family:Consolas,monospace;border:none;}"
+                               "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:3px;}")
+        lay.addWidget(self.tbl, 1)
+        self.lbl_cmd = QLabel("")
+        self.lbl_cmd.setWordWrap(True)
+        self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_cmd.setStyleSheet("color:#ffa657;font-size:11px;font-family:Consolas,monospace;"
+                                   "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
+        lay.addWidget(self.lbl_cmd)
+        self.refresh()
+
+    # ── 值 → 一行摘要 ──
+    @staticmethod
+    def _brief(k, d):
+        v = d.get("value", d)
+        if isinstance(v, list):
+            return "[" + ", ".join(f"{x:.4g}" if isinstance(x, float) else str(x) for x in v[:6]) + \
+                   (" …]" if len(v) > 6 else "]")
+        if isinstance(v, dict):
+            return " · ".join(f"{a}={b if not isinstance(b, float) else round(b, 4)}"
+                              for a, b in list(v.items())[:4] if not a.startswith("_"))
+        if isinstance(v, float):
+            return f"{v:.4g}"
+        return str(v)
+
+    def _rows(self):
+        try:
+            d = json.load(open(self.CALIB, encoding="utf-8"))
+        except Exception as ex:
+            return None, {}, f"⚠️ 读不到真源 {self.CALIB}: {ex}"
+        rows = []
+        for k, v in d.items():
+            if k.startswith("_"):
+                continue
+            v = v if isinstance(v, dict) else {"value": v}
+            raw = v.get("value", v.get("points", v))
+            uncal = (raw is None)
+            src = v.get("_src") or ""
+            why = v.get("_reason") or ""
+            rows.append({
+                "k": k,
+                "val": "—" if uncal else self._brief(k, v),
+                "st": "⚠️ 未标定" if uncal else "✅ 有值",
+                "note": (f"补救: {self.FIX.get(k, '')}" if uncal else src),
+                "why": why,
+                "uncal": uncal,
+            })
+        return rows, d, ""
+
+    def refresh(self):
+        rows, d, err = self._rows()
+        if rows is None:
+            self.lbl_src.setText(err)
+            self.tbl.setRowCount(0)
+            return
+        miss = [r["k"] for r in rows if r["uncal"]]
+        self.lbl_src.setText(
+            f"真源 {self.CALIB}\n  _generated_at {d.get('_generated_at', '—')} · "
+            f"{len(rows)} 个参数段 · 未标定 {len(miss)} 项 {miss or ''}\n"
+            f"  所有层读本文件 (禁硬编码内外参); 唯一写口 = 「🧮 主参数 M」页的 M (三段纪律)")
+        self.tbl.setRowCount(0)
+        for r in rows:
+            i = self.tbl.rowCount()
+            self.tbl.insertRow(i)
+            for c, txt in enumerate((r["k"], r["val"], r["st"], r["note"] or r["why"])):
+                it = QTableWidgetItem(str(txt))
+                it.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                if r["uncal"]:
+                    it.setForeground(QColor("#ffa657"))
+                self.tbl.setItem(i, c, it)
+        self.tbl.resizeRowsToContents()
+        cmds = "\n".join(self.FIX[k] for k in miss if k in self.FIX)
+        self.lbl_cmd.setText(("⚠️ " + " / ".join(miss) + " 未标定 —— 现场标定命令:\n" + cmds)
+                             if cmds else "✅ 真源无未标定缺口")
+
+    def _text(self):
+        out = [self.lbl_src.text(), ""]
+        for r in range(self.tbl.rowCount()):
+            out.append(" | ".join(self.tbl.item(r, c).text() for c in range(4)))
+        return "\n".join(out) + "\n\n" + self.lbl_cmd.text()
+
+    def _copy(self):
+        self._clip(self._text())
+
+    @staticmethod
+    def _clip(t):
+        try:
+            QApplication.clipboard().setText(t)
+        except Exception:
+            pass
+
+
 class ModelTreeDock(QWidget):
     export_done = pyqtSignal(str)  # 🐛 2026-08-19: 导出上传走后台线程, 完成信号回主线程
     """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析
@@ -1040,11 +1257,11 @@ class ModelTreeDock(QWidget):
         hdr.setSpacing(4)
         self.cmb_view = QComboBox()
         # 🧭 2026-10-09 老倪「重点 = 配置 + 标定 + 主参数 M」: 只剩 5 项, 全部与工程有真连接
+        # 🧭 2026-10-09 老倪: 「测量类只保留一行 + 增加一个标定类」→ 4 行, 全部真连接
         self.cmb_view.addItems(["🧮 主参数 M · 测量/标定/诊断/配置",
-                                "🔧 配置 · 运行开关",
-                                "📏 测量 · 数据字典",
-                                "📏 测量 · 状态空间变量",
-                                "📏 测量 · 数据总线"])
+                                "📏 测量 · 数据字典 / 状态空间变量 / 数据总线",
+                                "🎛 标定 · 真源参数与缺口",
+                                "🔧 配置 · 运行开关"])
 
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)
@@ -1130,6 +1347,12 @@ class ModelTreeDock(QWidget):
         self.mparam.setVisible(False)
         lay.addWidget(self.mparam, 1)
 
+        # 🎛 2026-10-09 老倪: 「增加一个标定类」→ 真源标定注册表 (config/calib/zmax_calib.json 只读)
+        #   + 未标定项 (T_base_cam/plane_z/cell_geometry) 的可执行现场标定命令
+        self.calib = CalibTruthView(module)
+        self.calib.setVisible(False)
+        lay.addWidget(self.calib, 1)
+
         self.lbl_hint = QLabel("")
         self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:14px; background:transparent; border:none;")
         self.lbl_hint.setWordWrap(True)
@@ -1151,18 +1374,24 @@ class ModelTreeDock(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.itemDoubleClicked.connect(self._on_item_dbl)
-        lay.addWidget(self.tree, 1)
+        # lay.addWidget(self.tree, 1)   # 🧊 已收进 MeasureHub (一行一个页签)
         # 🎛 状态空间 · 信号监控树 (2026-08-20 老倪: Simulink 风格全量变量监控)
         self.ss_tree = QTreeWidget()
         self.ss_tree.setHeaderHidden(True)
         self.ss_tree.setVisible(False)
         # 🎯 选中变量 → 高亮画布对应连线 (2026-08-20 老倪: 变量↔连线对应)
         self.ss_tree.currentItemChanged.connect(self._on_ss_select)
-        lay.addWidget(self.ss_tree, 1)
+        # lay.addWidget(self.ss_tree, 1)   # 🧊 已收进 MeasureHub (一行一个页签)
         # 🔌 数据总线 (CANoe Trace 风格, 2026-08-22 老倪: 状态空间接口数据时间顺序监视)
         self.bus = DataBusTrace(module)
         self.bus.setVisible(False)
-        lay.addWidget(self.bus, 1)
+        # lay.addWidget(self.bus, 1)   # 🧊 已收进 MeasureHub (一行一个页签)
+
+        # 📏 2026-10-09 老倪: 「测量类的有三行, 太多了, 只保留一行」→ 收进一个「测量」页 (3 页签,
+        #   控件还是 tree/ss_tree/bus 这**三个原对象**, re-parent 进 hub ⇒ 外部读 self.tree 不受影响)
+        self.measure = MeasureHub(self).attach(self.tree, self.ss_tree, self.bus)
+        self.measure.setVisible(False)
+        lay.addWidget(self.measure, 1)
         # ────────────────────────────────────────────────────────────────────────────────────────────
         # 🧊 已停用: 上面两处对停用部件的引用
         # ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1286,9 +1515,8 @@ class ModelTreeDock(QWidget):
                 pass
             return 0
 
-    # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪「重点是 配置 和 标定, 以及主参数 M」+
-    #   「没有联系的全注释掉」后只剩 5 项 —— 全部与状态空间工程有真连接)
-    VIEW_KEYS = ("mparam", "run_cfg", "tree", "ss_tree", "bus")
+    # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪: 测量收 1 行 + 加标定页 ⇒ 4 行)
+    VIEW_KEYS = ("mparam", "measure", "calib", "run_cfg")
 
     def _switch_view(self, idx):
         """视图切换 (表驱动: 以后加视图只改 VIEW_KEYS + cmb_view 两处)。
@@ -1300,21 +1528,18 @@ class ModelTreeDock(QWidget):
         k = self.VIEW_KEYS[idx] if 0 <= idx < len(self.VIEW_KEYS) else "mparam"
         v = {name: (name == k) for name in self.VIEW_KEYS}
         self.mparam.setVisible(v["mparam"])
+        self.measure.setVisible(v["measure"])
+        self.calib.setVisible(v["calib"])
         self.run_cfg.setVisible(v["run_cfg"])
-        self.tree.setVisible(v["tree"])
-        self.ss_tree.setVisible(v["ss_tree"])
-        self.bus.setVisible(v["bus"])
         # 懒刷新 (只在切到的视图刷新, 省算力)
         if v["mparam"]:
             self.mparam.refresh()
+        elif v["measure"]:
+            self.measure.refresh_current()
+        elif v["calib"]:
+            self.calib.refresh()
         elif v["run_cfg"]:
             self.run_cfg.refresh()
-        elif v["ss_tree"]:
-            self._show_state_space()
-        elif v["bus"]:
-            self.bus.refresh()
-        else:
-            self.refresh()
 
     # ── 数据字典树 (系统参数 + 节点 + 参数) ──
 
@@ -1385,8 +1610,12 @@ class ModelTreeDock(QWidget):
         try:
             _k = list(getattr(self, "VIEW_KEYS", ()))
             _i = self.cmb_view.currentIndex()
-            if getattr(self, "mparam", None) is not None and 0 <= _i < len(_k) and _k[_i] == "mparam":
-                self.mparam.refresh()      # 不依赖 isVisible (窗口隐藏时也要刷新, 体检踩到过)
+            _cur = _k[_i] if 0 <= _i < len(_k) else "mparam"
+            _wname = {"mparam": "mparam", "measure": "measure", "calib": "calib",
+                      "run_cfg": "run_cfg"}.get(_cur, "")
+            _w = getattr(self, _wname, None) if _wname else None
+            if _w is not None and hasattr(_w, "refresh"):
+                _w.refresh()               # 不依赖 isVisible (窗口隐藏/离屏也要刷新, 体检踩到过)
         except Exception:
             pass
     def _on_item_dbl(self, item, col):

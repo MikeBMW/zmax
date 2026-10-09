@@ -86,18 +86,24 @@ def _vals(d):
     return {k: v for k, v in d.items() if not k.startswith("_")}   # 忽略 _updated_at 时间戳
 _raw_before = open(TK, encoding="utf-8").read()
 before = _vals(json.load(open(TK, encoding="utf-8")))
+_logs = []
+v._log = lambda msg: _logs.append(msg)          # 抓按钮自己的日志 (证「按钮这条路」真跑通)
 v.sp_M.setValue(float(NODE_PARAMS.get("M", 1.0)))
 v._write_M()
 app.processEvents()
+chk(any("✏️ 主参数 M 已写入真源" in x for x in _logs), f"按钮路径走通: {[x[:60] for x in _logs]}")
 after = _vals(json.load(open(TK, encoding="utf-8")))
 chk(before == after, f"真源 config/calib/zmax_manifold.json 数值不变 (幂等写): {after}")
 open(TK, "w", encoding="utf-8").write(_raw_before)   # 只差 _updated_at 时间戳 → 复原, 别弄脏工作区
 chk(open(TK, encoding="utf-8").read() == _raw_before, "真源文件已复原 (判据跑完不留脏改动)")
 
 print("\n⑤ 📥 同步按钮真跑 ss_node_sync.py")
-r = subprocess.run([sys.executable, os.path.join(ROOT, "tools/ss_node_sync.py")],
-                   capture_output=True, text=True, cwd=ROOT, timeout=300)
-chk(r.returncode == 0, f"ss_node_sync.py exit={r.returncode} · 末行 {(r.stdout or '').strip().splitlines()[-1:] }")
+_logs2 = []
+v._log = lambda msg: _logs2.append(msg)
+v.btn_sync.click()                              # 真点「📥 从真源同步到节点」按钮
+app.processEvents()
+chk(any(("📥 节点同步" in x) and ("✅" in x) for x in _logs2), f"同步按钮路径走通: {[x[:70] for x in _logs2]}")
+chk("tools/tools" not in " ".join(_logs2), "路径没拼错 (无 tools/tools)")
 
 print("\n⑥ 没有 M 节点的画布 → 诚实空态")
 class _Stub:

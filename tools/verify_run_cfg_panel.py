@@ -87,10 +87,10 @@ chk(all(d.run_cfg._cks[k].isChecked() == v for k, v in D.items()), "「↺ 恢�
 d.run_cfg._copy()
 chk("Z-MAX 运行开关" in QApplication.clipboard().text(), "「📋 复制当前配置」写进剪贴板")
 
-print("\n⑤ 精简后 5 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
-EXP = {0: ("mparam",), 1: ("run_cfg",), 2: ("tree",), 3: ("ss_tree",), 4: ("bus",)}
-OBJ = {"mparam": d.mparam, "run_cfg": d.run_cfg, "tree": d.tree, "ss_tree": d.ss_tree, "bus": d.bus}
-chk(d.cmb_view.count() == 5, f"视图数 = {d.cmb_view.count()} (精简前 11)")
+print("\n⑤ 精简后 4 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
+EXP = {0: ("mparam",), 1: ("measure",), 2: ("calib",), 3: ("run_cfg",)}
+OBJ = {"mparam": d.mparam, "measure": d.measure, "calib": d.calib, "run_cfg": d.run_cfg}
+chk(d.cmb_view.count() == 4, f"视图数 = {d.cmb_view.count()} (精简前 11 → 5 → 4: 测量三行合一 + 加标定页)")
 for i in range(d.cmb_view.count()):
     d.cmb_view.setCurrentIndex(i)
     app.processEvents()
