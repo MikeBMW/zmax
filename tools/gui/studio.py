@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.24.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.25.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11303,7 +11303,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.24.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.25.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11311,9 +11311,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.24.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.25.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.25.0: v5.25.0 — 🗂 工程存档 v2 + 总工程 zmax_space (集成式打开) (2026-10-09)  老倪: 「需要保存 状态空间工程的所有配置… 都要有相应的文件, 你来设计一下工程存档文件」      +「定义一个 zmax_space 工程, 把所有状态空间工程文件/标定/配置/主参数整合进这个总工程文件,        通过主窗口 文件→打开/加载工程 集成式打开; 不像现在还得手动加载, 太散乱了」  · 存档格式 v2 (schema zmax.statespace.project/2, 自包含 JSON, 7 段):   ① canvas 画布模型 ② panel 右侧栏配置(视图/页签+6 运行开关+画布栈索引) ③ calibration 标定真源全文   +sha256/mtime+未标定项+现场标定命令 ④ master_param 主参数 M/inertia/范围/含义+M 节点快照   ⑤ measure measure_view/diagnose_view+数据总线配置 ⑥ tasks 任务绑定全文 ⑦ fingerprints 真源指纹表 · 🔴 真源唯一: 存档=快照+指纹; 写盘只走各工具自己的写口 (画布 flows.save_canvas / 标定 逐文件   .bak_<ts>→写→回读 sha256 / 任务 ss_task_bind --activate); 漂移比对剥掉 _meta/generated_at。 · 🗂 总工程 zmax_space: reports/projects/zmax_space.zmaxproj (kind=zmax_space)。   普通存档默认只回填画布+面板 (标定只核对); 总工程=**集成式打开**: 标定→主参数(回读)→任务→画布→面板   一次全回填, 每步先备份再写再回读, 给一页恢复报告。主窗口 文件 增「🗂 保存/打开总工程」(Ctrl+Alt+S/O);   老「📂 加载工程文件」选中总工程自动识别 kind 走集成式。 · 新工具 tools/project_archive.py: space-save/space-open/space-show/save/inspect/diff/verify/restore/   explode(拆成人能看的文件+MANIFEST.md)/list/upgrade(v1→v2)。 · 判据 tools/verify_project_archive.py ⑨ 段全绿 (含: 现场搅乱三处后 space-open 全量回填、   restore 默认不动标定、--with-calib --yes 回读 sha256、主窗口菜单两项、v1 兼容)。 · 已生成首份总工程 (含 6 开关 + 视图 mparam): reports/projects/zmax_space.zmaxproj (140.9 KB)。
         # v5.24.2: v5.24.2 — 右侧栏「测量」只留数据总线 (2026-10-09)  老倪: 「测量, 只保留数据总线」  · 下拉 4 行不变, 测量行内容收紧为单视图:   🧮 主参数 M · 测量/标定/诊断/配置 (默认) / 📏 测量 · 数据总线 / 🎛 标定 · 真源参数与缺口 /   🔧 配置 · 运行开关 · 数据字典 (tree) / 状态空间变量 (ss_tree) 不再挂面板 —— **对象与刷新逻辑一律没动**(不删),   面板里只挂 bus; MeasureHub 类保留停用 (一行即可复活三合一)。   ⚠️ 副作用如实记: 「双击节点参数直接标定/调节」的入口随之从面板消失 (编辑器代码仍在)。 · 判据: tools/run_gui_verifiers.sh 9 项全绿; calib_measure 新增「另两个对象仍在但不上面板」+   「测量↔M 来回切不抛异常」两条。
         # v5.24.1: v5.24.1 — 右侧栏: 测量三行合一 + 新增「标定」页 + 修两个按钮的仓库根路径 (2026-10-09)  老倪: 「右侧的侧边栏, 测量类的有三行, 太多了, 只保留一行; 增加一个标定类」  · 下拉由 5 行 → 4 行:   🧮 主参数 M · 测量/标定/诊断/配置 (默认) / 📏 测量 · 数据字典 / 状态空间变量 / 数据总线 /   🎛 标定 · 真源参数与缺口 / 🔧 配置 · 运行开关 · 「📏 测量」= 新 MeasureHub: 数据字典 tree / 状态空间变量 ss_tree / 数据总线 bus 三个**原对象**   re-parent 进 3 个页签 (搬不是复制 ⇒ 外部读 dock.tree 一字不改, 零回退); 切签只刷当前签。 · 「🎛 标定」= 新 CalibTruthView: 逐行读真源 config/calib/zmax_calib.json (9 个参数段, 与文件同序同值),   未标定 3 项 (T_base_cam / plane_z / cell_geometry) 橙色高亮 + 给**可执行**现场标定命令   (ss_geom_calib.py 零运动示教 / board_handeye_solve.py 采板 / 夹爪量台面高度); 只读 (无写按钮),   唯一写口仍是「主参数 M」页的 M (三段纪律)。 · 修 bug: MasterParamMView._root / CalibTruthView.CALIB 仓库根路径少了一层 dirname   (拼成 tools/tools/... ⇒「✏️写 M」「📥同步」两个按钮实际会走空), 已修; 判据改成**真点按钮 + 抓日志**,   不再直接调脚本 (原来那两条 = 假证据)。 · 判据: tools/run_gui_verifiers.sh 9 项全绿 (新增 calib_measure; mparam 判据已加真点按钮)。
         # v5.24.0: v5.24.0 — 右侧侧边栏精简 + 「主参数 M」页 + 死面板清理 (2026-10-09)  老倪: 「右边的侧边栏，重点是 配置 和 标定，以及主参数 M；其它的功能要精简，如果没有联系， 全都注释掉，如果确定没用，都删掉」  · 新页「🧮 主参数 M · 测量/标定/诊断/配置」= 右侧栏默认页/重点：数据源 = 画布 M 节点   (n_calib_mani) 的 cfg_entries/cfg_snapshot/measure_view/calib_view/diagnose_view/task_layer   (由 ss_node_sync.py 从真源同步)；含「✏️ 写 M」(三段纪律: 只改 manifold_engine 键 + 回读)、   「📥 从真源同步到节点」、「🔁 刷新」、「📋 复制摘要」、无节点诚实空态。 · 判据取证: 状态空间画布 z700_internal=0/gain_schedule=0 ⇒ 极点配置/现场标定/性能指标/场景状态/   运行汇总/数学分析/工程需求 7 视图读的是 analyze_system() 硬编码默认值 = 与工程无实质联系   ⇒ 8 个部件类 + 5 个分析函数**整体挪到** tools/gui/_model_tree_ffpd_legacy.py (注释掉, 不删)；   面板 cmb_view 11 项 → 5 项 (M页/运行开关/数据字典/状态空间变量/数据总线)。 · 清死面板: CICDPanel/CICDStageItem/CICDLinkItem/open_cicd_panel/_cicd_panel (零引用, 删 295 行);   「数据闭环引导」按钮搬进数据闭环面板表头。 · 判据: tools/run_gui_verifiers.sh 8 项全绿 (mparam_page/run_cfg_panel/entries_cleanup/   step_follow/canvas_render/engineering/l2_compat/node_impl_audit)。
@@ -11993,6 +11994,107 @@ class StudioMainWindow(QMainWindow):
         _msg_ok(self, "💾 保存工程文件", msg)
         self.statusBar().showMessage("✅ 工程已保存: %s" % r["path"], 5000)
 
+    def _save_space_file(self):
+        """🗂 文件 → 保存总工程 (zmax_space): 7 段全量 → reports/projects/zmax_space.zmaxproj"""
+        _pj = self._proj_mod()
+        if _pj is None:
+            return
+        path = _pj.space_path(getattr(self, "repo_path", None))
+        try:
+            r = _pj.save_space(path, sim=getattr(self, "simulink", None),
+                               page=getattr(self, "_simulink_index", None))
+        except Exception as e:                                                   # noqa: BLE001
+            _msg_ok(self, "🗂 保存总工程", "❌ 保存失败\n\n%s: %s" % (type(e).__name__, e), "warning")
+            return
+        sec = r.get("sections") or {}
+        msg = ("✅ 总工程已保存 (一个文件承载整个状态空间工程)\n\n%s\n\n" % r["path"]
+               + "\n".join("  · %s: %s" % (k, v) for k, v in sec.items())
+               + "\n\n下次: 文件 → 🗂 打开总工程 (或 📂 加载工程文件选它) → 画布/标定/主参数/任务/面板"
+                 "一次全回填。\n🔴 真源没被改: 这是快照+指纹; 打开时会先备份再写再回读。")
+        _msg_ok(self, "🗂 保存总工程", msg)
+        self.statusBar().showMessage("✅ 总工程已保存: %s" % r["path"], 6000)
+
+    def _open_space_file(self, path=None):
+        """🗂 文件 → 打开总工程 (zmax_space): 集成式回填 (画布/标定/主参数/任务/面板)"""
+        _pj = self._proj_mod()
+        if _pj is None:
+            return
+        from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
+        if not path:
+            d = _pj.space_path(getattr(self, "repo_path", None))
+            path, _ = QFileDialog.getOpenFileName(self, "🗂 打开总工程 (zmax_space)",
+                                                  os.path.dirname(d) or self._proj_dir(),
+                                                  "Z-MAX 总工程 (*%s);;所有文件 (*)" % _pj.EXT)
+        if not path:
+            self.statusBar().showMessage("已取消: 未打开总工程", 2500)
+            return
+        if not os.path.exists(path):
+            _msg_ok(self, "🗂 打开总工程", "❌ 没有这个文件:\n%s\n\n先在控制台里 🗂 保存总工程。" % path,
+                    "warning")
+            return
+        try:
+            proj = _pj._read(path)
+            rep = _pj.drift_report(proj)
+        except Exception as e:                                                   # noqa: BLE001
+            _msg_ok(self, "🗂 打开总工程", "❌ 打不开:\n\n%s: %s" % (type(e).__name__, e), "warning")
+            return
+        mp = proj.get("master_param") or {}
+        cal = proj.get("calibration") or {}
+        pn = proj.get("panel") or {}
+        tk = (proj.get("tasks") or {}).get("content") or {}
+        drift_txt = "\n".join("   %s %s: %s" % ({"一致": "✅", "漂移": "⚠️"}.get(v.get("status"), "◻︎"),
+                                                k, v.get("status")) for k, v in rep.items())
+        if _msg_ask(self, "🗂 集成式打开总工程", (
+                "总工程: %s\n存于 %s (控制台 %s)\n备注: %s\n\n"
+                "将**一次全量回填**:\n"
+                "  ① 画布 %s 节点 / %s 连线  (原件自动备份到 flows/_archive/)\n"
+                "  ② 标定 %d 个真源文件 · 未标定 %s  (每个文件先备份成 *.bak_<ts> 再写, 写完回读 sha256)\n"
+                "  ③ 主参数 M=%s inertia=%s\n"
+                "  ④ 任务: 活跃 %s\n"
+                "  ⑤ 面板: 视图 %s · 运行开关 %d 项\n\n"
+                "当前现场 vs 这个总工程:\n%s\n\n确定集成式打开吗？"
+        ) % (os.path.basename(path), proj.get("saved_at"), proj.get("zmax_version"),
+             proj.get("note") or "-",
+             (proj.get("canvas_fingerprint") or {}).get("stats", {}).get("nodes"),
+             (proj.get("canvas_fingerprint") or {}).get("stats", {}).get("links"),
+             len(cal.get("files") or {}), cal.get("uncalibrated") or [],
+             mp.get("M"), mp.get("inertia"), tk.get("active_task") or tk.get("active"),
+             pn.get("view") or pn.get("view_label") or "?", len(pn.get("run_switches") or {}),
+             drift_txt)) != QMessageBox.Yes:
+            self.statusBar().showMessage("已取消: 未打开总工程", 2500)
+            return
+        try:
+            r = _pj.open_space(path, sim=getattr(self, "simulink", None),
+                               page=getattr(self, "_simulink_index", None), yes=True)
+        except Exception as e:                                                   # noqa: BLE001
+            _msg_ok(self, "🗂 打开总工程", "❌ 集成式打开失败\n\n%s: %s" % (type(e).__name__, e),
+                    "warning")
+            return
+        # 界面侧: 切回画布页 + 重载画布 + 写回 6 个运行开关 + 切到存档里的视图
+        detail = "画布还没打开过 —— 已写入真源, 打开画布即生效"
+        sim = getattr(self, "simulink", None)
+        if sim is not None:
+            try:
+                idx = (r.get("ui") or {}).get("canvas_stack_index") or getattr(self, "_simulink_index", None)
+                if isinstance(idx, int):
+                    self.stack.setCurrentIndex(idx)
+                sim.open_state_space()
+                n_apply, skip = _pj.apply_run_cfg(sim, r.get("run_cfg") or {})
+                _view = (r.get("panel") or {}).get("view")
+                dock = getattr(sim, "model_tree", None)
+                if dock is not None and _view in list(getattr(dock, "VIEW_KEYS", ())):
+                    dock.cmb_view.setCurrentIndex(list(dock.VIEW_KEYS).index(_view))
+                detail = "画布已重载 · 运行开关写回 %d 项%s · 右侧栏切到 %s" % (
+                    n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "", _view or "-")
+            except Exception as e:                                               # noqa: BLE001
+                detail = "⚠️ 界面回填异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
+        _msg_ok(self, "🗂 总工程已集成式打开", (
+            "✅ 集成式打开完成 (ok=%s)\n\n" % r.get("ok")
+            + "\n".join("   " + x for x in (r.get("lines") or []))
+            + "\n\n界面: %s\n\n存档存于 %s · 控制台 %s"
+            % (detail, r.get("saved_at"), r.get("version"))))
+        self.statusBar().showMessage("✅ 总工程已打开: %s" % os.path.basename(path), 8000)
+
     def _load_project_file(self):
         """📂 文件 → 加载工程文件… (先给摘要让用户确认, 再写画布真源 + 重载界面)"""
         _pj = self._proj_mod()
@@ -12009,12 +12111,19 @@ class StudioMainWindow(QMainWindow):
         except Exception as e:                                                   # noqa: BLE001
             _msg_ok(self, "📂 加载工程文件", "❌ 打不开这个工程文件\n\n%s: %s" % (type(e).__name__, e), "warning")
             return
+        # 🗂 2026-10-09: 选中的若是「总工程」(kind=zmax_space) → 直接走集成式打开 (同一个菜单, 不用分两处)
+        if s.get("kind") == _pj.KIND_SPACE:
+            self.statusBar().showMessage("🗂 识别到总工程 → 集成式打开…", 3000)
+            self._open_space_file(path)
+            return
         fp = s.get("fingerprint") or {}
         checked = [v.get("label") for v in (s.get("run_cfg") or {}).values()
                    if isinstance(v, dict) and v.get("checked")]
         if _msg_ask(self, "📂 加载工程文件", (
                 "工程: %s\n保存时间: %s\n存入时控制台版本: %s\n内容: 画布 %s · md5 %s\n运行档位勾选中: %s\n\n"
-                "⚠️ 加载会用**工程里的画布替换当前画布** —— 当前这份会自动备份到 flows/_archive/（可还原）。\n\n确定加载吗？"
+                "⚠️ 加载会用**工程里的画布替换当前画布** —— 当前这份会自动备份到 flows/_archive/（可还原）。\n\n"
+                "🔴 标定 / 主参数 / 测量 / 任务：**只核对不覆盖**（加载后给漂移报告；要按存档恢复标定，"
+                "用命令行 python tools/project_archive.py restore \"档案\" --with-calib --yes）。\n\n确定加载吗？"
         ) % (os.path.basename(path), s.get("saved_at"), s.get("version"),
              json.dumps(fp.get("stats") or {}, ensure_ascii=False), (fp.get("md5") or "")[:12],
              "、".join(checked) if checked else "（无）")) != QMessageBox.Yes:
@@ -12039,11 +12148,16 @@ class StudioMainWindow(QMainWindow):
                     n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "")
             except Exception as e:                                               # noqa: BLE001
                 detail = "⚠️ 画布重载异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
+        _dr = r.get("drift") or {}
+        _drift_txt = "\n".join("%s %s: %s" % (
+            {"一致": "✅", "漂移": "⚠️"}.get(v.get("status"), "◻︎"), k, v.get("status"))
+            for k, v in _dr.items()) or "(无漂移段)"
         _msg_ok(self, "📂 加载工程文件", (
-            "✅ 工程已加载\n\n%s\n\n画布: %s\n%s\n%s\n备份: %s\n真源: %s") % (
+            "✅ 工程已加载\n\n%s\n\n画布: %s\n%s\n%s\n备份: %s\n真源: %s\n\n"
+            "── 存档 vs 当时现场 (标定/主参数只核对, 没覆盖) ──\n%s") % (
             os.path.basename(path), json.dumps(r.get("stats") or {}, ensure_ascii=False),
             "与加载前完全一致（等于只做了备份）" if r.get("same_as_before") else "已替换为工程里的画布",
-            detail, r.get("backup") or "无", r.get("written") or ""))
+            detail, r.get("backup") or "无", r.get("written") or "", _drift_txt))
         self.statusBar().showMessage("✅ 工程已加载: %s" % os.path.basename(path), 6000)
 
     def _open_ss_canvas_cmd(self):
@@ -12705,6 +12819,24 @@ class StudioMainWindow(QMainWindow):
 
         # ====== 文件菜单 ======
         m_file = mb.addMenu("文件(&F)")
+
+        # 🗂 2026-10-09 老倪: 「每次打开工程, 要从工程文件打开… 定义一个 zmax_space 工程, 把所有状态空间
+        #   工程文件/标定/配置/主参数都整合进这个总工程文件, 通过 文件→打开/加载工程 集成式打开」
+        act_space_save = QAction("🗂 保存总工程 (zmax_space)…  ", self)
+        act_space_save.setShortcut("Ctrl+Alt+S")
+        act_space_save.setToolTip("把**整个**状态空间工程存成一个总工程文件 "
+                                  "reports/projects/zmax_space.zmaxproj：画布模型 + 右侧栏配置 + 6 运行开关 + "
+                                  "标定 + 主参数 M + 测量 + 任务绑定。下次一次打开即全量回填。")
+        act_space_save.triggered.connect(self._save_space_file)
+        m_file.addAction(act_space_save)
+
+        act_space_open = QAction("🗂 打开总工程 (zmax_space)…  ", self)
+        act_space_open.setShortcut("Ctrl+Alt+O")
+        act_space_open.setToolTip("集成式打开总工程：画布 / 标定 / 主参数 / 任务 / 面板一次全回填。"
+                                  "写盘前都会先备份 (画布→flows/_archive, 标定→*.bak_<ts>)，并给一页恢复报告。")
+        act_space_open.triggered.connect(self._open_space_file)
+        m_file.addAction(act_space_open)
+        m_file.addSeparator()
 
         # 📁 2026-10-08 老倪: 「文件下拉菜单增加一个保存工程文件的功能, 下次进控制台直接加载它继续调试状态空间工程」
         act_proj_save = QAction("💾 保存工程文件…  (状态空间工程)", self)

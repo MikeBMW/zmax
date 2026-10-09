@@ -18,6 +18,7 @@ echo "══ GUI 判据集 $(date '+%F %T') ══"
 run entries_cleanup   tools/verify_entries_cleanup.py
 run mparam_page       tools/verify_mparam_page.py
 run calib_measure     tools/verify_calib_measure.py
+run project_archive   tools/verify_project_archive.py
 run run_cfg_panel     tools/verify_run_cfg_panel.py
 run step_follow       tools/verify_step_follow.py
 run l2_compat         tools/verify_l2_compat_checkbox.py
