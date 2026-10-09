@@ -36,6 +36,40 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 * 交付配套: `verify_project_archive.py` ⑨ 段判据 (含: 现场摸乱三处后 space-open 全量回填、
   restore 默认不动标定、主窗口菜单两项、v1 老存档兼容+升级)。
 
+## 🧹 UI 精简三招 + 工具栏→菜单 迁移 (2026-10-09)
+
+老倪: 「按钮都删掉」「侧边栏字数太多, 精简」「不常用的按钮迁到菜单栏, 你来设计UI」。
+
+**一、删按钮不改行为 (能力换入口, 别直接删功能)**
+* 删前逐个列“能力去哪了”: 定位/全览/审计/闭环台 → 快捷键 (Ctrl+L / Ctrl+0 / Ctrl+Shift+A / Ctrl+Alt+P);
+  INTACT机器人 → 画布节点双击; 另存为/加载/保存模型/录制/停止/浮动 → 新菜单「画布(C)」。
+* 快捷键注册: `QShortcut(QKeySequence(k), canvas)` + `setContext(Qt.WidgetWithChildrenShortcut)`。
+
+**二、菜单设计模式 (单一真源)**
+* 菜单表放模块类属性 `SimulinkModule.CANVAS_MENU = [(key,文字,快捷键,tip,sep), …]`; 主窗口按表建 QAction,
+  画布模块建好后 `attach_canvas_actions(acts)` 接管, 并**把属性名沿用 btn_save/btn_record/…** ⇒ 旧代码零改动。
+  (主窗口菜单在 `_build_menubar()` 建, 早于懒创建的画布模块 → 点击转发里必须 `sim is None` 时给实话提示。)
+* 主窗口**没有** `_log()` (那是别的类)! 加 `_ui_msg()` 兜底: model_engine._log → self._log → print。
+
+**三、QAction 替换 QPushButton 的两个必踩坑**
+* `QAction` 无 `rect()` → 气泡定位 `mapToGlobal(btn.rect().center())` 直接炸; 用 `_action_anchor(act)`
+  (act.associatedWidgets() → mapToGlobal, 拿不到就用窗口中心)。
+* `QAction` 无 `setStyleSheet()` → 录制中的按钮变色/呼吸会炸; 改**画布横幅报进度** (set_banner)。
+* 0 点击高亮类代码 (教程/新手引导) 接到菜单项时必须 `isinstance(w, QWidget)` 兜底退到画布。
+
+**四、侧边栏“字数太多”的四招 (数据一条不删)**
+1. 长文案→短句卡面, **全文进 tooltip** (含引擎行号/实测代价), 判据改为“卡面短 + tooltip 含全文”。
+2. 表格单元格截断 (`_cut(t, n)` + `setToolTip(全文)`), **📋复制/导出仍给全文** (老倪要可复制)。
+3. 重复文案合并 (同一句写两遍 85 字→39); 显示层压掉 `python3 tools/` 前缀 (真源原串不动)。
+4. 长值紧凑格式化: 列表/字典嵌套也要走 `_fmt` (只格式化顶层 → 嵌套 list 会把 384 字完整 K/dist 呼出来)。
+* 共用小工具要放**模块级** (`_cut`/`_fmt`), 多个视图各自 `@staticmethod` 会 `self._cut` 直接 AttributeError。
+
+**五、离屏建主窗口的取证套路 (必用)**
+* 离屏 `StudioMainWindow()` 退出时 DDS 线程 core dump (已知) ⇒ 把“建主窗口”的判据写成**子进程**
+  (`tools/probe_canvas_menu.py`), 每行 `flush=True`, 父进程只读 stdout 的 ✅/❌ 行 ⇒ 崩了也不丢结果。
+* 未抱异常会 “QThread: Destroyed while thread is still running → Aborted” 假崩: 先看 traceback 第一行,
+  别当环境问题 (真例: `QAction.title()` 不是 `text()`)。
+
 ## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
 
 > ⚠️ **桌面版出包的两个硬教训 (2026-10-08, 坏包连发四版)**:
