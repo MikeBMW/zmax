@@ -101,6 +101,17 @@ metadata:
    `os.makedirs(cfg_dir, exist_ok=True)` + 路径常量; 改完 `python -m py_compile` 验证。
 4. **收编留清单**: `from → to` + "被哪些训练目录引用"写 JSONL 进 `zmax_data/backups/`, 并同目录放 `README.md` 说明它们是生成物不是手写配置。
 
+## 平台/实例 解耦 (数据可迁移 · 代码可开源)
+
+- **平台仓库** = 代码 + 平台文档 + `defaults/` 出厂骨架(结构同构·数值空); **你的数据** = 实例包 `data/database/<产品>/`。
+- 实例包结构: `zmax_engineering.db` + `zmax_space.proj` + `README.md` + `archive/` + `sources/{config, feature.dbc, canvas/state_space_obs.json}`。
+- 仓库内 `config` · `feature.dbc` · `src/lerobot/engineering/flows/state_space_obs.json` 是**相对符号链接**指向实例包 → 110 处 `config/xx` 字面路径零改动仍可用。
+- 🔴 **原子写(`os.replace`)会顶掉符号链接** → 写实例真源前必须 `os.path.realpath`(已修 `flows.save_canvas`)。加新的原子写点必须照此办。
+- 换实例: `tools/instance_init.py --new <dir>`(骨架铺开) / `--link <dir>`(平台指向) / `--check`(四段边界体检)。
+- 判据: `verify_platform_spec` 含 4 条解耦判据(共 18 项); 边界失守报红。
+- 商务/交付/供应链/PPT 资产归实例侧 `data/docs/`(不进开源仓库)。
+- ⚠️ git 坑: 已跟踪文件 `git mv` 进被 ignore 的 `data/` **仍会被跟踪** → 移出仓库必须 `git rm --cached`。
+
 ## 单一工程库 (data/database/zmax/zmax_engineering.db) 铁律
 
 - **标准产品数据路径 = `data/database/<产品标识>/`** (本平台 `data/database/zmax/`; 老倪 2026-10-09 定版)。

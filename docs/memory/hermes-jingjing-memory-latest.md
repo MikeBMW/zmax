@@ -34,7 +34,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 真源calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
 §
-L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
+L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级吞阶段; 判据=单射性
 §
@@ -42,7 +42,7 @@ LoRA需merge(否则零动作伪装没提升):merge_lora_ckpt.py
 §
 ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点=/www/wwwroot/datadrive.world; 新页挂首页; 免密不通→ZMAX_ECS_PW; 公网只读/ov+/st;nginx须^~
 §
-遥测DDS仅测试/标定用(量产关; 开关env>文件~/.zmax_telemetry_mode; 守护zmax-dds-ss.service)
+遥测DDS仅测试/标定用(量产关; 开关env>文件~/.zmax_telemetry_mode)
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers↑
 §
@@ -52,7 +52,7 @@ GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers�
 §
 场景叠加: overlay_spec按origin存框; 手眼TSAI闭环1.74mm
 §
-工程库=data/database/zmax_engineering.db(单文件=一套工程; tools/engineering_db.py build|check; 服务8798=zmax-engdb.service; GUI只认.db)
+工程库=data/database/zmax/zmax_engineering.db(单文件=一套工程; engineering_db.py build|check; 8798; GUI只认.db); 真源=zmax/sources/(config/feature.dbc/画布=符号链接)
 §
 我=主节点: 工控机+Orin全归我; AOI(.23.23)=10082/10083(禁10084/85); 更新=aoi_remote_deploy.py; 通道=agent_hub+station_cmd.py
 §
