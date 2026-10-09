@@ -240,6 +240,86 @@ def cmd_task(a):
     return 0
 
 
+def _ssbind():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import ss_task_bind as sb
+    return sb
+
+
+def cmd_bind(a):
+    """任务 × 状态空间工程 绑定 (一个工程承载全部任务)。"""
+    sb = _ssbind()
+    try:
+        doc = sb.build()
+    except SystemExit as e:
+        print(f"⛔ {e}"); return 2
+    if a.arg:  # 看单个任务的配置清单
+        t = next((x for x in doc["tasks"] if x["task_id"] == a.arg), None)
+        if not t:
+            print(f"⛔ 无此任务: {a.arg}"); return 2
+        print(f"【{t['task_id']}】{t['name']}  ← 状态空间工程里的配置清单")
+        print(f"  工程     : {doc['project']['name']}  {doc['project']['canvas_file']}")
+        print(f"      {doc['project']['nodes']} 节点 / {doc['project']['links']} 连线 · "
+              f"md5 {doc['project']['canvas_md5'][:12]} · 活跃 {doc['active_task']}")
+        print(f"  适用段   : {len(t['applies_segments'])}/{len(sb.SEG_ALL)}  " + " · ".join(t['applies_segments']))
+        if t["excluded_segments"]:
+            print(f"  不适用段 : " + " · ".join(t["excluded_segments"]))
+        print(f"  启用节点 : {len(t['enabled_nodes'])}  " + ", ".join(t["enabled_nodes"][:12])
+              + (" …" if len(t["enabled_nodes"]) > 12 else ""))
+        print(f"  禁用节点 : {len(t['disabled_nodes'])}  " + (", ".join(t["disabled_nodes"]) or "无"))
+        print(f"  六档位   : " + " · ".join(f"{v['label']}={'开' if v['checked'] else '关'}"
+                                            for v in t["run_cfg"].values()))
+        print(f"  参数覆盖 : {json.dumps(t['overrides'], ensure_ascii=False)}")
+        print(f"  触发/循环: {t['trigger']} · {t['loop']}      判据: {t['targets']}")
+        if t["blocked_by_site"]:
+            print(f"  ⛔ 阻塞  : 站点几何未标定 {t['blocked_by_site']} ⇒ 任务不可下发")
+        return 0
+    if a.json:
+        print(json.dumps(doc, ensure_ascii=False, indent=1)); return 0
+    p, cov = doc["project"], doc["coverage"]
+    print(f"状态空间工程: {p['name']} · {p['canvas_file']}")
+    print(f"  {p['nodes']} 节点 / {p['links']} 连线 · md5 {p['canvas_md5'][:12]} · 活跃任务 {doc['active_task']}")
+    print(f"  段覆盖 {cov['covered_by_segments']}/{cov['nodes']} 节点 (未覆盖 {len(cov['uncovered'])})")
+    print(f"  一个工程承载 {len(doc['tasks'])} 个任务:")
+    hdr = f"  {'任务ID':<18}{'启用':>5}{'禁用':>5}  档位(开)"
+    print(hdr); print("  " + "-" * 90)
+    for t in doc["tasks"]:
+        on = [v["label"] for v in t["run_cfg"].values() if v["checked"]]
+        print(f"  {t['task_id']:<18}{len(t['enabled_nodes']):>5}{len(t['disabled_nodes']):>5}  "
+              f"{' · '.join(on)}")
+    print("\n看某任务的配置清单: python3 tools/config_center.py bind TASK-01-FW")
+    return 0
+
+
+def cmd_activate(a):
+    sb = _ssbind()
+    if not a.arg:
+        print("⛔ 用法: config_center.py activate <TASK_ID>"); return 2
+    doc = sb.build(a.arg)
+    if not any(t["task_id"] == a.arg for t in doc["tasks"]):
+        print(f"⛔ 无此任务: {a.arg}"); return 2
+    txt = json.dumps(doc, ensure_ascii=False, indent=1)
+    open(sb.OUT, "w", encoding="utf-8").write(txt)
+    print(f"✅ 已把状态空间工程(主工程)的活跃任务切到 {a.arg}")
+    print(f"   写盘 config/ss_task_binding.json · 工程文件导出: python3 tools/config_center.py project")
+    return 0
+
+
+def cmd_project(a):
+    sb = _ssbind()
+    path = a.arg or os.path.join(ROOT, "reports", "projects", "SS_主工程_任务配置.zmaxproj")
+    doc = sb.build()
+    if not os.path.isfile(sb.OUT):
+        open(sb.OUT, "w", encoding="utf-8").write(json.dumps(doc, ensure_ascii=False, indent=1))
+    r = sb.export_project(doc, path)
+    print(f"{'✅' if r['verified'] else '❌'} 状态空间工程文件: {r['path']}  ({r['bytes']} B)")
+    print(f"   schema {r['schema']} · 画布 {r['nodes']} 节点 · 任务 {r['tasks']} 条 · 活跃 {r['active_task']}")
+    print(f"   档位(开): {' · '.join(r['run_cfg_on'])}")
+    print(f"   回读核验: {'✅ 一致' if r['verified'] else '❌ 不一致'}")
+    print(f"   用控制台: 文件 → 📂 加载工程文件 → 选这个文件 (自动备份画布)")
+    return 0 if r["verified"] else 2
+
+
 def cmd_variants(a):
     sc = _j(os.path.join(ROOT, "flows", "scenes_5jobs.json"), {}).get("scenes", [])
     if a.json:
@@ -348,7 +428,8 @@ def cmd_check(a):
 
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
-        "tasks": cmd_tasks, "task": cmd_task,
+        "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
+        "project": cmd_project,
         "order": cmd_order, "check": cmd_check}
 
 

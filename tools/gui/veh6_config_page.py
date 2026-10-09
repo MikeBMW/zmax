@@ -32,6 +32,7 @@ TASKS_J = os.path.join(ROOT, "config", "tasks", "tasks.json")
 MCD_J = os.path.join(ROOT, "config", "mcd", "zmax_mcd.json")
 MATCH_J = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 ORDERS_D = os.path.join(ROOT, "config", "orders")
+BIND_J = os.path.join(ROOT, "config", "ss_task_binding.json")
 
 DEFAULT_THEME = {"C_BG": "#11151c", "C_BG2": "#161b24", "C_CARD": "#1b222c", "C_BORDER": "#2a3340",
                  "C_WHITE": "#e8edf4", "C_GRAY": "#8b98a8", "C_GREEN": "#3fbf7f", "C_RED": "#e05a5a",
@@ -194,23 +195,39 @@ class ConfigCenterPage(QWidget):
     # ── 右侧页签 ──
     def _build_tabs(self, d, tk, model_page):
         th = self.th
-        # 1) 任务配置 (首屏)
+        bind = _j(BIND_J, {}) or {}
+        bmap = {t["task_id"]: t for t in bind.get("tasks", [])}
+        act = bind.get("active_task")
+        proj = bind.get("project", {})
+        # 1) 任务配置 (首屏) —— 含"状态空间工程"配置清单列
         self.tasks_table = _mk_table(
-            ["任务ID", "类型", "适用段", "粒度", "步骤", "触发", "目标", "状态"],
+            ["任务ID", "类型", "适用段", "粒度", "启用节点", "禁用节点", "档位(开)", "活跃", "状态"],
             [[t["task_id"], t["recipe_type"], f"{len(t['applies_segments'])}/8",
-              len(t.get("variants", [])), " → ".join(s["name"] for s in t.get("steps", [])),
-              t["trigger"], json.dumps(t.get("targets", {}), ensure_ascii=False),
+              len(t.get("variants", [])),
+              (len(bmap[t["task_id"]]["enabled_nodes"]) if t["task_id"] in bmap else "—"),
+              (len(bmap[t["task_id"]]["disabled_nodes"]) if t["task_id"] in bmap else "—"),
+              (sum(1 for v in bmap[t["task_id"]]["run_cfg"].values() if v["checked"])
+               if t["task_id"] in bmap else "—"),
+              ("★ 活跃" if act == t["task_id"] else ""),
               ("⛔ 缺站点几何" + str(len(t["blocked_by_site"]))) if t.get("blocked_by_site") else "✅"]
              for t in tk.get("tasks", [])], th)
         w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(6, 6, 6, 6)
+        head = QLabel(f"状态空间工程(主工程): {proj.get('nodes', '?')} 节点 / {proj.get('links', '?')} 连线"
+                      f"  ·  md5 {str(proj.get('canvas_md5', ''))[:12]}  ·  承载 {len(bind.get('tasks', []))} 个任务"
+                      f"  ·  活跃 {act or '—'}")
+        head.setFont(QFont("Consolas", 10))
+        head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l.addWidget(head)
         row = QHBoxLayout()
-        for txt, fn, kw in (("✅ 生成工单", "order", {"scene": "SCN-02-HANDLE"}),
+        for txt, fn, kw in (("🧩 刷新绑定", "bind", {}),
+                            ("📋 配置清单(选中)", "bind", {"use_sel": True}),
+                            ("✅ 激活选中任务", "activate", {"use_sel": True}),
+                            ("📦 导出工程文件", "project", {}),
                             ("🔍 全链校验", "check", {}),
                             ("📄 配方", "recipe", {}),
-                            ("🧱 变体", "variants", {}),
                             ("📋 导出 JSON", "tasks", {})):
             b = _btn(txt, th)
-            b.clicked.connect(lambda _, f=fn, k=kw: self._run_into(f, **k))
+            b.clicked.connect(lambda _, f=fn, k=kw: self._run_selected(f, **k))
             row.addWidget(b)
         row.addStretch()
         l.addLayout(row); l.addWidget(self.tasks_table, 1)
@@ -266,11 +283,25 @@ class ConfigCenterPage(QWidget):
             self.tabs.addTab(model_page, "🧠 模型配置")
 
     # ── 结果面板 ──
+    def _selected_task(self):
+        r = self.tasks_table.currentRow()
+        if r < 0:
+            return None
+        it = self.tasks_table.item(r, 0)
+        return it.text() if it else None
+
+    def _run_selected(self, fn, use_sel=False, **kw):
+        """按钮入口: use_sel=True 时取表格选中行的任务ID传进去。"""
+        if use_sel:
+            tid = self._selected_task()
+            if not tid:
+                self.out.setPlainText("⛔ 先在任务表里选一行 (点一下任务ID那个格子)")
+                return
+            kw["arg"] = tid
+        self._run_into(fn, **kw)
+
     def _run_into(self, fn, **kw):
         self.out.setPlainText(_run(fn, **kw))
-
-    def _run_noop(self):
-        pass
 
 
 def build_config_center(model_page=None, theme=None):
