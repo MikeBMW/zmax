@@ -177,7 +177,8 @@ for _ in range(60):
 chk(getattr(win, "pc", None) is not None and "params" in win.modules, "主窗口已挂参数中心页")
 chk(hasattr(win.sidebar, "params_card"), "侧栏有参数中心卡")
 _cards = [c.layer_id for c in win.sidebar.findChildren(ST.SystemLayerCard)]
-chk(_cards.index("params") == _cards.index("zmax") + 1, "参数中心卡紧跟 Z-MAX 卡 (%s)" % _cards[:4])
+chk(_cards.index("params") == len(_cards) - 1, "参数中心卡在侧栏最下面 (%s)" % _cards)
+chk("plat" not in _cards, "侧栏没有平台支撑卡 (整合掉了; 平台支撑页签仍在功能清单里)")
 win.sidebar.layer_clicked.emit("params")
 app.processEvents()
 chk(win.stack.currentWidget() is win.pc, "点参数中心卡 → 切到参数中心页")

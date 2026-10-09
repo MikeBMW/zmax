@@ -69,7 +69,7 @@ class PlatformSpecPage(QWidget):
         root.setSpacing(6)
 
         head = QHBoxLayout()
-        t = QLabel("📋 工程功能清单 · Z-MAX 平台 / 三层系统")
+        t = QLabel("📋 产品配置 · 功能清单 (功能 = 系统里最小可执行能力单元)")
         t.setStyleSheet("color:%s; font-size:15pt; font-weight:700;" % C_WHITE)
         head.addWidget(t)
         head.addStretch()

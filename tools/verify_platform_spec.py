@@ -111,7 +111,9 @@ sb = win.sidebar
 chk(hasattr(sb, "zmax") and hasattr(sb, "sys2"), "侧栏有 Z-MAX 卡与 System 2 卡")
 _cards = [c.layer_id for c in sb.findChildren(ST.SystemLayerCard)] if hasattr(ST, "SystemLayerCard") else []
 if _cards:
-    chk(_cards.index("zmax") < _cards.index("sys2"), "Z-MAX 卡排在 System 2 之上 (%s)" % _cards[:4])
+    chk(_cards.index("zmax") < _cards.index("sys2"), "Z-MAX 卡排在 System 2 之上 (%s)" % _cards)
+    chk(_cards == ["zmax", "sys2", "sys1", "sys0", "spec", "params"],
+        "侧栏卡序 = 产品/系统 2·1·0/功能清单/参数中心(最下) (%s)" % _cards)
 chk(getattr(win, "spec", None) is not None and "spec" in win.modules, "主窗口已挂「功能清单」页")
 for tgt, want in (("zmax", "Z-MAX"), ("sys2", "System 2"), ("sys1", "System 1"), ("sys0", "System 0")):
     sb.layer_clicked.emit(tgt)               # 等价于点那张卡 (卡 clicked → layer_clicked)
