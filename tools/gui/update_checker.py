@@ -5,7 +5,7 @@ Z-MAX 更新检查模块
 
 import os, sys, json, urllib.request, threading, time
 
-REPO = "MikeBMW/lerobot-smolvla-lew"
+REPO = "MikeBMW/zmax"   # 2026-10-10 修正: 原指向 external 历史仓 ⇒ 自动更新会误报另一条版本线(v5.17.0)
 API_RELEASES = f"https://api.github.com/repos/{REPO}/releases/latest"
 CURRENT_VERSION = "v5.36.0"
 

@@ -15,6 +15,9 @@ run () {
   return $rc
 }
 echo "══ GUI 判据集 $(date '+%F %T') ══"
+run scenesim         tools/tests/test_scene_edit.py
+run version_sync     tools/verify_version_sync.py
+run remote_monitor   tools/remote_monitor_aggregate.py
 run entries_cleanup   tools/verify_entries_cleanup.py
 run platform_spec     tools/verify_platform_spec.py
 run param_center      tools/verify_param_center.py

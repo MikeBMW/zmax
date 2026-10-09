@@ -2313,7 +2313,7 @@ class HomeWidget(QWidget):
         grid.setSpacing(12)
         # 2026-08-08 老倪: 功能模块顺序 — 第一行: 数据集管理/训练控制台/硬件工具箱;
         #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
-        #   最后一行: 插拔场景/版本同步
+        #   最后一行: Sim&Real/版本同步
         modules = [
             ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
@@ -2324,7 +2324,7 @@ class HomeWidget(QWidget):
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
             ("monitor",  "📈", "实时监控",     "System 1 · L3",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
-            ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
+            ("plugging", "🧩", "Sim&Real",     "仿真 · 真机 同一场景",  "对象·标记·轨迹·保护围栏 可编辑\n建图/AR 标记 · 地图同步",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             ("website",  "🌍", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线\nhttps://datadrive.world/factory-dashboard.html", "#1f6feb"),
         ]
@@ -11077,10 +11077,10 @@ class ArchitectureModule(QWidget):
 
 
 class PluggingSceneModule(SubModuleWidget):
-    """Z700插拔场景 — L2基线/L3增强/L4旗舰 三级场景"""
+    """Sim&Real — 仿真与真机**同一场景**的查看与编辑 (对象/标记/轨迹/保护围栏; 建图·AR·地图同步)"""
 
     def __init__(self):
-        super().__init__("插拔场景 · Z700", [("Z700", ROI_ACCENT), ("Sys-0", SYS0_COLOR)])
+        super().__init__("Sim&Real · 仿真与真机场景", [("Sim", ROI_ACCENT), ("Real", SYS0_COLOR)])
         body = QWidget()
         bl = QVBoxLayout(); bl.setSpacing(12)
         
@@ -11099,6 +11099,18 @@ class PluggingSceneModule(SubModuleWidget):
         # Tab切换时更新积木面板高亮
         self.scene_tabs.currentChanged.connect(self._update_brick_highlight)
         
+        # 🆕 2026-10-10 老倪: 「现在的显示功能不对，要能够编辑真实的已经在运行的仿真场景和真机场景」
+        #   ⇒ 真实场景**编辑器**置顶 (对象/标记/围栏/轨迹), 原来的 L2/L3/L4 产品形态对比下移为参考。
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from sim_real_page import build_body as _sr_build
+            bl.addWidget(_sr_build())
+        except Exception as _e:                                            # noqa: BLE001
+            _w = QLabel("场景编辑器加载失败: %r" % (_e,))
+            _w.setStyleSheet("color:%s; font-size:12px;" % C_RED)
+            bl.addWidget(_w)
         bl.addWidget(self.scene_tabs)
         
         # ── 🧱 功能积木 · 阶梯进化图 ──
@@ -12132,7 +12144,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.18.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.36.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13047,7 +13059,7 @@ class StudioMainWindow(QMainWindow):
         self.stack.setCurrentIndex(idx)
 
         # 更新状态栏
-        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "插拔场景", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
+        names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "Sim&Real", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
 
     def _open_l2_skills(self):
@@ -13247,7 +13259,7 @@ class StudioMainWindow(QMainWindow):
             ("硬件工具箱", "hardware"),
             ("配置中心", "config"),
             ("实时监控", "monitor"),
-            ("插拔场景", "plugging"),
+            ("Sim&Real", "plugging"),
             ("版本同步", "version"),
         ]
         for label, target in view_targets:
@@ -13866,7 +13878,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.18.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.36.0</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
