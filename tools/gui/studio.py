@@ -793,7 +793,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.33.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.34.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11439,7 +11439,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.33.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.34.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11447,9 +11447,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.33.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.34.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.34.0: v5.34.0 — 控制台界面定版 (产品/系统/功能 三层 + MCD 数据 + 侧栏极简) · Z-MAX 平台数据库服务 (2026-10-09 老倪)  老倪: 「定版, 小版本升级, 发布 windows mac 版本, 保存数据, 推送代码, 准备关机。」  ## 本轮定的是什么 (v5.28.0 → v5.34.0 一条线)  ① **产品逻辑 (PM 三级)**: 产品 (面向客户的完整交付物) → 系统 (支撑产品运行的架构: System 2 / System 1 / System 0)    → 功能 (系统里可独立执行的最小能力单元)。左侧栏与首页架构图、迭代 Roadmap 全部按此三级改写,    文案一律取自单一工程库 `data/database/zmax_engineering.db`, 不再用手写印象。 ② **单一工程数据库**: 一个 `.db` = 一套工程 (平台/产品/产品特征 18/子系统 4/子系统三轴/功能 74/模块 74 链到代码/    能力 31/接口 62/诊断 57/画布 74 节点 184 连线/工程 7 段/params 162/param_links 375)。    GUI 只认这个文件 ⇒ 控制台与工程解耦; 换库 = 换工程 (`engineering_db.py migrate`)。    只读服务 `zmax-engdb.service` → 127.0.0.1:8798。 ③ **MCD 数据面 (测量/标定/诊断)**: 172 → 库 `mcd` 表 (产品 M9/C45/D57 · sys0 M9/C41/D38 · sys2 C4/D11 · sys1 D8 · 平台支撑 M9/C45/D57),    卡片上不显示数字 (老倪: 「不清楚啥意思」), 悬停才给。 ④ **参数中心 = 数据库服务**: 162 个可改数字五类 (🟡标定 45 / 🔵画布 78 / 🟣代码 25 / 🟢产品性能 8 / 🟠运行开关 6),    改数 = 校验 → 预览影响链 (系统→功能→模块→代码 file:line→KPI) → 落真源 (先备份) → 回读 → 留痕。    代码类必过 ast 校验, 写坏回滚; 越界/非法档位拒。 ⑤ **左侧栏 UI 定版 (老倪逐条验收 8 轮)**: 删黑色说明行 (改 tooltip) · 删 4 个分组小字 · 删计数字样 ·    每卡只剩「标题 + 一行副标题」· 卡面深色 #1f2733 (不用白底) · 边框 6 色各不相同 (金/紫/青玉/珊瑚/草绿/银,    避开蓝色) · 边框色 ≠ 字色 · 六卡连续排列间距统一 12px (去掉顶底两根 addStretch)。 ⑥ **判据固化 (防回退)**: `verify_platform_spec.py` 14 项 (含 每卡 ≤2 字色 · 边框色≠字色 · 卡面必须深色 ·    副标题不含计数 · 分组小字已删 · 六卡连续无弹簧 spacing=8) · `verify_param_center.py` 8 项 ·    `engineering_db.py check` 17 项 · `run_gui_verifiers.sh` 全套。  ## 定版内容  - 版本: v5.34.0 (小版本升级, 六处版本号同步 + VERSION.md 历史表 + studio.py changelog 置顶) - 桌面版: Windows `Z-MAX_Console.exe` + macOS `Z-MAX_Console-macOS.zip`, 由 tag 触发的   `.github/workflows/build-win-exe.yml` (双平台并行构建, 产物挂同一 Release) - 数据: `data/database/zmax_engineering.db` (单一工程库) + `param_events.jsonl` (改数留痕) 已入   `docs/data_snapshots/2026-10-09_v5.34.0_侧栏UI定版/`; 现场归档另存 `zmax_data/release_5.34.0_<日期>/` - 代码: MikeBMW/zmax main + tag v5.34.0  ## 实测证据 (本轮)  - verify_platform_spec 14 项全绿 · verify_param_center 8 项全绿 · engineering_db check 17 项全绿 - 实机 OCR: 侧栏六卡 (🏭 Z-MAX 平台 / System 2 / System 1 / System 0 / 📋 功能清单 / 🎛 参数中心)   只留标题 + 单行副标题; 分组小字与计数字样均无 - 像素取证: 卡面 #1f2733 (31,39,51) 57277px 为主 (无白底) · 边框金 (217,164,65) 与草绿 (127,166,80) 并存 - 间距取证: 相邻卡间隙实测 12/12/12/12/12 px (改前 功能清单→参数中心 ~100px)
         # v5.33.3: v5.33.3 — 侧栏文案改「数据库服务」· 去「三轴」· 卡片间距改均匀 (2026-10-09 老倪)  老倪: 「把 改数 链动 功能 性能 代码 改成 数据库服务; 把三轴 去掉; 参数中心和功能清单之间为什么有很大空隙? 距离改均匀。」  ① 文案    🎛 参数中心: 副标题「改数 → 链动 功能·性能·代码」→「数据库服务」; 参数中心页页头同步改       「🎛 参数中心 · 数据库服务」(原「…· 数据配置 (改数字 → 链动 功能·性能·代码)」)。    📋 功能清单: 副标题「配置 / 标定 / 诊断 三轴」→「配置 / 标定 / 诊断」(去掉"三轴");       tooltip 里"三轴配功能"也改成"配功能"。MCD 说明里的"三轴"字样一并清掉。 ② 间距 (根因): 参数中心卡前面原来插了一根 layout.addStretch() 把它顶到侧栏底部 —— 那就是    「功能清单 ↔ 参数中心」之间的大空隙来源; 页脚前还有第二根弹簧。两根都删掉, 六张卡按    layout.spacing=8 连续排列, 页脚紧跟最后一张卡。    实机量测 (截图像素判卡面行组): 六张卡间隙 = 12 / 12 / 12 / 12 / 12 px (完全一致);    改前是 功能清单→参数中心 一段 ~100px 的大空隙。 ③ 判据 verify_platform_spec 13 → 14 项, 新增:    · 六张卡连续排列, 中间无弹簧/无别的控件, spacing=8 (结构判定, 不 show/不 processEvents —— 离屏      建窗口后 show+processEvents 会触发 DDS 线程 core dump, 改判布局结构)    · 卡间距统一 spacing=8    实测 14 项全绿 · verify_param_center 8 项全绿 · 实机 OCR 复核 (Z-MAX 平台 / System 2 / System 1 /    System 0 / 功能清单 / 参数中心 六卡连续, 页脚紧跟其后)。
         # v5.33.2: v5.33.2 — 侧栏卡面去掉计数字样 (2026-10-09 老倪)  老倪: 「把 30功能 4功能 74条功能 这样的字样去掉。」  卡面副标题去计数 (计数移进 tooltip, 悬停可见):   🏭 Z-MAX 平台    Z700 精细 · Z100 通用   System 2         L4/L5 认知决策   System 1         L3 动作执行   System 0         L2 基石执行   📋 功能清单      配置 / 标定 / 诊断 三轴   🎛 参数中心      改数 → 链动 功能·性能·代码 tooltip 保留全量信息: Z-MAX 卡 "特征 18 · 系统 3 · 功能 74 · 点开看产品与功能清单"; System 2 "…· 功能 30"; System 1 "…· 功能 4"; System 0 "…· 功能 27"; 功能清单 "74 条功能 · 每个系统按 配置/标定/诊断 三轴配功能"; 参数中心 "162 个可改数字 · 双击改数…"。  判据 verify_platform_spec 11 → 13 项, 新增:   ⑪ 卡面副标题不得出现 计数 (N 功能 / N 条功能 / N 个可改数字) —— 正则拦, 违规即红   ⑫ 每张卡都必须有副标题 (防止为了"去计数"把副标题整行删空) 实测: 13 项全绿 (副标题实测 = 上述六条; 无计数) · verify_param_center 8 项全绿 · 实机 OCR 复核。
         # v5.33.1: v5.33.1 — 卡面回深色 (去掉白底), 小字改灰 (2026-10-09 老倪)  老倪: 「怎么改成白色背景了? 对比度太大了, 不用白色背景。」  · 卡面: 浅灰 #eef0f4 → 深灰蓝 #1f2733 (悬停 #27313f)。比侧栏底 #161b22 略亮一档, 块的边界靠   彩色边框区分, 不用白底也不用跟底同色。 · 卡里的字: 标题 #e6edf3 (浅) · 小字 #8b949e (灰) —— 深底上灰字看得见, 也压得住对比度;   之前为了配灰黑字才把卡面改浅, 白底被否后连字一起回深底方案。 · 边框仍多彩 (金/紫/青玉/珊瑚/草绿/银 6 种), 未动。 · 判据新增第 ⑩ 条「卡面必须是深色 (亮度 ≤120), 不用白底」, 把这次的方向固化, 免得再被翻回白底;   verify_platform_spec 10 → 11 项全绿 (卡内文字 2 色 {#e6edf3, #8b949e} · 边框 6 色 · 卡面深色 · 分组小字已删)。   像素取证: 侧栏卡面 #1f2733 (31,39,51) 57277px 为主, 无白色块。
