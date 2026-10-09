@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.25.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.26.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11303,7 +11303,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.25.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.26.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11311,9 +11311,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.25.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.26.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.26.0: v5.26.0 — 控制台 UI 三次精简 + 「画布」菜单; 存档漂移判定修正 (2026-10-09)  老倪 (依次实现):  「画布上边 定位节点/全览/节点实现审计/INTACT机器人/数据闭环控制台 这些按钮都删掉; 如果状态空间工程需要, 则在代码上增加」  「右面的侧边栏, 字数太多了, 都有用么? 看着很多, 也很乱, 精简」  「保存模型/录制/停止/浮动/另存为/加载 这些不常用的按钮, 迁移到菜单栏里面, 你来设计 UI, 看如何显示」  · 工具栏 11 个按钮全部离开工具条 —— 能力一条没丢, 换入口:   定位节点 Ctrl+L · 全览 Ctrl+0 · 节点实现审计 Ctrl+Shift+A(+CLI) · 数据闭环控制台 Ctrl+Alt+P ·   INTACT机器人 = 画布节点双击 · 另存为/加载/保存模型/开始录制/停止录制/浮动画布 = 新菜单「画布(C)」。 · 新菜单 UI: 主窗口 文件(F)·画布(C)·视图(V)·编辑(E)·帮助文档(H)·关于(A);   「画布」按 文件/模型/录屏/窗口 四段分组, 每项带悬停说明 + 快捷键 (Ctrl+Shift+S/O/R/F)。   单一真源 = SimulinkModule.CANVAS_MENU (表) + attach_canvas_actions() 接管; 属性名沿用   btn_save/btn_load/btn_save_model/btn_record/btn_stop_rec/btn_float ⇒ 录制状态机等既有代码零改动。   QAction 两处适配: 无 rect() ⇒ 新增 _action_anchor() 定位气泡; 无 setStyleSheet() ⇒   录制中改画布横幅「⏺ 录制中 N 帧 ●/○」(比按钮变色更显眼)。 · 侧边栏精简 (数据一条没删): 长文案→短句+全文进 tooltip; 表格截断+tooltip (📋复制仍全文);   重复文案合并; 显示层压掉 "python3 tools/" 前缀。   标定真源 1815→1037 字 (−43%, camera 行 384→106: 浮点 4 位有效) · 运行开关 1570→722 字 (−54%,   卡面 ≤42 字) · 主参数 M 1609 字 · 下拉 4 条去冗长后缀 · M 页节点行 119→96 · 命令行 151→95 ·   真源路径改相对路径。 · 存档 (v5.25.0) 漂移判定修正: 比画布时剔除 M 节点那类「配置快照派生字段」(cfg_*/…_view/task_layer),   canvas_md5 这类派生值不再假报画布漂移; 总工程已按新口径刷新。 · 判据: 新增 tools/verify_ui_slim.py (49 项全绿) + tools/probe_canvas_menu.py (子进程真建主窗口,   规避离屏 DDS 退出 core dump); 同步改 verify_entries_cleanup / verify_step_follow / verify_run_cfg_panel   判据。GUI 判据集 11 项全绿 (含: 6 项菜单真触发到画布方法、三页字数真降且数据条数不变)。 · 老倪那台控制台 (pid 767026) 没动 (他在用) —— 重启一次即生效。
         # v5.25.0: v5.25.0 — 🗂 工程存档 v2 + 总工程 zmax_space (集成式打开) (2026-10-09)  老倪: 「需要保存 状态空间工程的所有配置… 都要有相应的文件, 你来设计一下工程存档文件」      +「定义一个 zmax_space 工程, 把所有状态空间工程文件/标定/配置/主参数整合进这个总工程文件,        通过主窗口 文件→打开/加载工程 集成式打开; 不像现在还得手动加载, 太散乱了」  · 存档格式 v2 (schema zmax.statespace.project/2, 自包含 JSON, 7 段):   ① canvas 画布模型 ② panel 右侧栏配置(视图/页签+6 运行开关+画布栈索引) ③ calibration 标定真源全文   +sha256/mtime+未标定项+现场标定命令 ④ master_param 主参数 M/inertia/范围/含义+M 节点快照   ⑤ measure measure_view/diagnose_view+数据总线配置 ⑥ tasks 任务绑定全文 ⑦ fingerprints 真源指纹表 · 🔴 真源唯一: 存档=快照+指纹; 写盘只走各工具自己的写口 (画布 flows.save_canvas / 标定 逐文件   .bak_<ts>→写→回读 sha256 / 任务 ss_task_bind --activate); 漂移比对剥掉 _meta/generated_at。 · 🗂 总工程 zmax_space: reports/projects/zmax_space.zmaxproj (kind=zmax_space)。   普通存档默认只回填画布+面板 (标定只核对); 总工程=**集成式打开**: 标定→主参数(回读)→任务→画布→面板   一次全回填, 每步先备份再写再回读, 给一页恢复报告。主窗口 文件 增「🗂 保存/打开总工程」(Ctrl+Alt+S/O);   老「📂 加载工程文件」选中总工程自动识别 kind 走集成式。 · 新工具 tools/project_archive.py: space-save/space-open/space-show/save/inspect/diff/verify/restore/   explode(拆成人能看的文件+MANIFEST.md)/list/upgrade(v1→v2)。 · 判据 tools/verify_project_archive.py ⑨ 段全绿 (含: 现场搅乱三处后 space-open 全量回填、   restore 默认不动标定、--with-calib --yes 回读 sha256、主窗口菜单两项、v1 兼容)。 · 已生成首份总工程 (含 6 开关 + 视图 mparam): reports/projects/zmax_space.zmaxproj (140.9 KB)。
         # v5.24.2: v5.24.2 — 右侧栏「测量」只留数据总线 (2026-10-09)  老倪: 「测量, 只保留数据总线」  · 下拉 4 行不变, 测量行内容收紧为单视图:   🧮 主参数 M · 测量/标定/诊断/配置 (默认) / 📏 测量 · 数据总线 / 🎛 标定 · 真源参数与缺口 /   🔧 配置 · 运行开关 · 数据字典 (tree) / 状态空间变量 (ss_tree) 不再挂面板 —— **对象与刷新逻辑一律没动**(不删),   面板里只挂 bus; MeasureHub 类保留停用 (一行即可复活三合一)。   ⚠️ 副作用如实记: 「双击节点参数直接标定/调节」的入口随之从面板消失 (编辑器代码仍在)。 · 判据: tools/run_gui_verifiers.sh 9 项全绿; calib_measure 新增「另两个对象仍在但不上面板」+   「测量↔M 来回切不抛异常」两条。
         # v5.24.1: v5.24.1 — 右侧栏: 测量三行合一 + 新增「标定」页 + 修两个按钮的仓库根路径 (2026-10-09)  老倪: 「右侧的侧边栏, 测量类的有三行, 太多了, 只保留一行; 增加一个标定类」  · 下拉由 5 行 → 4 行:   🧮 主参数 M · 测量/标定/诊断/配置 (默认) / 📏 测量 · 数据字典 / 状态空间变量 / 数据总线 /   🎛 标定 · 真源参数与缺口 / 🔧 配置 · 运行开关 · 「📏 测量」= 新 MeasureHub: 数据字典 tree / 状态空间变量 ss_tree / 数据总线 bus 三个**原对象**   re-parent 进 3 个页签 (搬不是复制 ⇒ 外部读 dock.tree 一字不改, 零回退); 切签只刷当前签。 · 「🎛 标定」= 新 CalibTruthView: 逐行读真源 config/calib/zmax_calib.json (9 个参数段, 与文件同序同值),   未标定 3 项 (T_base_cam / plane_z / cell_geometry) 橙色高亮 + 给**可执行**现场标定命令   (ss_geom_calib.py 零运动示教 / board_handeye_solve.py 采板 / 夹爪量台面高度); 只读 (无写按钮),   唯一写口仍是「主参数 M」页的 M (三段纪律)。 · 修 bug: MasterParamMView._root / CalibTruthView.CALIB 仓库根路径少了一层 dirname   (拼成 tools/tools/... ⇒「✏️写 M」「📥同步」两个按钮实际会走空), 已修; 判据改成**真点按钮 + 抓日志**,   不再直接调脚本 (原来那两条 = 假证据)。 · 判据: tools/run_gui_verifiers.sh 9 项全绿 (新增 calib_measure; mparam 判据已加真点按钮)。
@@ -12629,6 +12630,11 @@ class StudioMainWindow(QMainWindow):
             sim.progress_signal.connect(self.model_engine._update_progress)  # 🆕 训练进度→进度条
             self.stack.insertWidget(self._simulink_index, sim)  # 插回原 tab 位
             self.simulink = sim
+            try:      # 🗂 把「画布」菜单项交给画布模块 (属性名 btn_save/btn_record/... 沿用)
+                _r = sim.attach_canvas_actions(getattr(self, "_canvas_menu_acts", {}) or {})
+                self._ui_msg(f"🗂 画布菜单就绪: {_r.get('n', 0)} 项 (另存为/加载/保存模型/录制/停止/浮动)")
+            except Exception as _ex:
+                self._ui_msg(f"⚠️ 画布菜单接管失败: {_ex}")
             # 🎨 2026-08-16 老倪: Simulink 延迟创建 → 补挂当前全局主题/字体
             #   (若用户在画布就绪前切过主题, 新创建的画布要继承当前选择)
             try:
@@ -12787,6 +12793,38 @@ class StudioMainWindow(QMainWindow):
         except Exception:
             pass
 
+    # 🗂 2026-10-09 画布菜单 → 转发到 SimulinkModule 的既有方法 (画布懒创建, 未就绪时如实提示)
+    CANVAS_MENU_METHOD = {"save_canvas": "export_flow", "load_canvas": "import_flow",
+                          "save_model": "save_trained_model", "record": "start_recording",
+                          "stop_rec": "stop_recording", "float": "toggle_float_canvas"}
+
+    def _ui_msg(self, msg):
+        """给用户看的一句话: 主窗口自己没 _log → 走模型引擎日志区 (都没有就 stdout)"""
+        for cand in (getattr(getattr(self, "model_engine", None), "_log", None),
+                     getattr(self, "_log", None)):
+            if callable(cand):
+                try:
+                    cand(str(msg))
+                    return
+                except Exception:
+                    pass
+        print(str(msg))
+
+    def _canvas_menu_click(self, key):
+        sim = getattr(self, "simulink", None)
+        meth = self.CANVAS_MENU_METHOD.get(key)
+        if sim is None or not meth:
+            self._ui_msg("🎨 画布还在后台创建中 — 稍等几秒再点 (画布就绪后本项自动可用)")
+            return
+        fn = getattr(sim, meth, None)
+        if fn is None:
+            self._ui_msg(f"⚠️ 画布不支持 {meth} (版本不匹配?)")
+            return
+        try:
+            fn()
+        except Exception as ex:
+            self._ui_msg(f"⚠️ 画布菜单「{key}」执行失败: {ex}")
+
     def _build_menubar(self):
         """构建专业开发环境菜单栏"""
         self.repo_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12882,6 +12920,25 @@ class StudioMainWindow(QMainWindow):
         m_file.addAction(act_exit)
 
         # ====== 视图菜单 ======
+        # 🗂 2026-10-09 老倪: 「保存模型 / 录制 / 停止 / 浮动 / 另存为 / 加载 这些不常用的按钮,
+        #   迁移到菜单栏里面, 你来设计 UI」→ 新开一级菜单「画布(C)」, 按"文件 / 模型 / 录屏 / 窗口"
+        #   四段分组 + 快捷键; 工具条只留高频按钮 (运行/单步/档位)。
+        #   表在 SimulinkModule.CANVAS_MENU (单一真源), 画布模块建好后用 attach_canvas_actions 接管。
+        m_canvas = mb.addMenu("画布(&C)")
+        self.m_canvas = m_canvas
+        self._canvas_menu_acts = {}
+        for _k, _text, _sc, _tip, _sep in SimulinkModule.CANVAS_MENU:
+            if _sep:
+                m_canvas.addSeparator()
+            _a = QAction(_text + "  ", self)
+            if _sc:
+                _a.setShortcut(_sc)
+            _a.setToolTip(_tip)
+            _a.setStatusTip(_tip.split("\n")[0])
+            _a.triggered.connect(lambda _=False, k=_k: self._canvas_menu_click(k))
+            m_canvas.addAction(_a)
+            self._canvas_menu_acts[_k] = _a
+
         m_view = mb.addMenu("视图(&V)")
 
         view_targets = [

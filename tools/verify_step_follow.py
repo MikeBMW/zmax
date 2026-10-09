@@ -64,8 +64,8 @@ chk(err is None, "加载无异常")
 print("\n② 新增控件")
 chk(getattr(m, "chk_follow_step", None) is not None and m.chk_follow_step.isChecked(),
     "🎯 跟随单步 复选框存在且默认勾选")
-chk(getattr(m, "btn_locate", None) is not None, "📍 定位节点 按钮存在")
-chk(getattr(m, "btn_fit_all", None) is not None, "🏠 全览 按钮存在")
+chk(not isinstance(getattr(m, "btn_locate", None), QtWidgets.QWidget), "📍 定位节点 按钮已删 → 改 Ctrl+L (能力仍在)")
+chk(not isinstance(getattr(m, "btn_fit_all", None), QtWidgets.QWidget), "🏠 全览 按钮已删 → 改 Ctrl+0 (能力仍在)")
 
 canvas = m.canvas
 vp = canvas.viewport()

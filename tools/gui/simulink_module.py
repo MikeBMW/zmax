@@ -2299,7 +2299,7 @@ class CICDWorker(QThread):
 # ══════════════════════════════════════════════════════════════════
 # 🗑 2026-10-09 老倪「没用就删掉」: 「🔗 CI/CD 全链路面板」整块删除
 #   (CICDStageItem + CICDLinkItem + CICDPanel, 全仓零调用 — 入口按钮 2026-08-06 就已删)。
-#   6 环节能力没丢: 「🎯 数据闭环控制台」(PipelinePanel) + 画布「🎛 CICD 主控台」节点双击
+#   6 环节能力没丢: 「🎯 数据闭环控制台」(PipelinePanel, 2026-10-09 起入口=Ctrl+Alt+P) + 画布节点双击
 #   (on_collect/on_train/on_validate/on_integrate/on_deploy/on_infer) 才是在役入口。
 #   CICDWorker 保留 (PipelinePanel/训练/节点执行仍在用)。
 # ══════════════════════════════════════════════════════════════════
@@ -3782,6 +3782,15 @@ class SimCanvas(QGraphicsView):
         self._sc_undo = QShortcut(QKeySequence("Ctrl+Z"), self)
         self._sc_undo.setContext(Qt.WidgetWithChildrenShortcut)
         self._sc_undo.activated.connect(self.module.undo)
+        # 🗑 2026-10-09 老倪: 工具栏删掉的 4 个能力 → 快捷键保留 (状态空间工程直接键盘调, 不占按钮)
+        for _key, _cb, _what in (("Ctrl+L", self.module.locate_current_node, "📍 跳到当前单步节点"),
+                                 ("Ctrl+0", self.module.fit_all_nodes, "🏠 全览 (缩到看得见 89 节点)"),
+                                 ("Ctrl+Shift+A", self.module.audit_node_impls, "🧾 节点实现审计 (5-10s)"),
+                                 ("Ctrl+Alt+P", self.module.open_pipeline_panel, "🎯 数据闭环控制台")):
+            _sc = QShortcut(QKeySequence(_key), self)
+            _sc.setContext(Qt.WidgetWithChildrenShortcut)
+            _sc.setWhatsThis(_what)
+            _sc.activated.connect(_cb)
         # ── 🟡🟢🔴 「L5 运行状态」通栏横幅 (2026-09-28 老倪现场实锤) ──────────────
         #   起因: 「选 L5 后点运行没反应」。功能其实在跑 (闭环 pid 真起来了), 但状态只画在
         #   87 节点密集画布里的**节点小字**上 —— 老倪自己看截图都读不出来 ⇒ 小字方案不成立。
@@ -5056,16 +5065,10 @@ class SimulinkModule(QWidget):
         self.chk_follow_step.setToolTip("勾选 (默认) = ⏭单步/右键运行节点时, 画布自动平移到该节点并调到看得清的缩放;\n"
                                         "取消勾选 = 画布不动, 只在终端报出当前节点 (想自己看全景时用)")
         tl.addWidget(self.chk_follow_step)
-        self.btn_locate = mk_btn("📍 定位节点", "跳到当前单步/运行的节点 (跟随关闭时也能用)", self.locate_current_node, "#58a6ff")
-        self.btn_fit_all = mk_btn("🏠 全览", "缩放到能看见全部节点 (89 节点总览)", self.fit_all_nodes, "#8b949e")
-        tl.addWidget(self.btn_locate)
-        tl.addWidget(self.btn_fit_all)
-        # 🧾 2026-10-09 老倪: 全面检查每个节点的实现 (89 节点 → 实现 key/函数/文件:行 全表落盘)
-        self.btn_impl_audit = mk_btn("🧾 节点实现审计",
-                                     "逐节点查实现 (真实源文件:行号) + 单步序 → 终端汇总 + reports/node_impl_audit.txt\n约 5-10 秒",
-                                     self.audit_node_impls, "#d29922")
-        tl.addWidget(self.btn_impl_audit)
-        self._last_step_node = None      # 🎯 最近一次单步/高亮的节点 id (定位按钮用)
+        # 🗑 2026-10-09 老倪: 工具栏「📍定位节点 / 🏠全览 / 🧾节点实现审计」按钮删除。
+        #   状态空间工程需要这三件事 → **在代码里给快捷键** (不占按钮):
+        #   Ctrl+L 跳到当前单步节点 · Ctrl+0 全览 · Ctrl+Shift+A 节点实现审计
+        self._last_step_node = None      # 🎯 最近一次单步/高亮的节点 id (Ctrl+L 用)
         self.btn_stop = mk_btn("⏹ 停止", "停止仿真", self.stop_sim, "#ff4444")
         self.btn_stop.setEnabled(False)
         # (2026-09-04 老倪: 「🔍 Z 分析」「⚙️ 前馈 PD」工具栏按钮没用 → 删除;
@@ -5218,8 +5221,7 @@ class SimulinkModule(QWidget):
         tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         # (2026-08-06 老倪: Scope 移到 node 库, 工具栏按钮已删; btn_scope 移除)
-        self.btn_float = mk_btn("⛶ 浮动", "画布独立成浮动窗口, 鼠标拖边/最大化扩大视野 (关闭自动还原)", self.toggle_float_canvas, "#58a6ff")
-        tl.addWidget(self.btn_float)
+        # 🗂 2026-10-09 老倪: 工具栏「⛶ 浮动」删 → 菜单「画布 → 浮动画布」 (Ctrl+Shift+F)
         # (2026-08-06 老倪: 「🪟 画布窗口」按钮没用 → 删除; 画布子窗口已不可
         #  最小化/关闭 (be1ba44a), show_canvas_win 恢复逻辑无存在必要)
 
@@ -5227,30 +5229,15 @@ class SimulinkModule(QWidget):
         # (2026-08-06 老倪: 「时间 10.0s / dt」仿真参数控件没用 → 删除;
         #  仿真用内部 _sim_t_end/_sim_dt 默认值, 无逻辑引用)
 
-        btn_save = mk_btn("💾 另存为", "保存当前画布 (含节点位置/连线) 为 JSON 文件, 可下次加载回来", self.export_flow, "#3fb950")
-        btn_load = mk_btn("📂 加载", "从 JSON 文件加载工作流 (恢复节点位置与连线)", self.import_flow, "#58a6ff")
-        self.btn_save = btn_save
-        self.btn_load = btn_load
-        tl.addWidget(btn_save)
-        tl.addWidget(btn_load)
+        # 🗂 2026-10-09 老倪: 工具栏「💾 另存为 / 📂 加载」删 → 菜单「画布」 (Ctrl+Shift+S / Ctrl+Shift+O)
+        #   属性名 btn_save / btn_load 仍在 (attach_canvas_actions 里挂成 QAction, 气泡定位走 _action_anchor)
 
-        # 🤖 2026-09-12 老倪: 数据源层「机器人切换」入口 — 原项目原生机器人 + 原项目权重 (零搜索)
-        self.btn_intact_robot = mk_btn(
-            "🤖 INTACT机器人",
-            "机器人切换面板: reacher / pusht / cube / tworoom 四个原项目原生机器人 (原项目权重直接驱动, "
-            "零搜索)。切换后写 data/intact_robot_state.json — 画布上的「🤖 INTACT机器人」/「🔀 机器人切换」"
-            "节点双击也会打开本面板",
-            self._open_intact_robot_panel, "#00b4d8")
-        tl.addWidget(self.btn_intact_robot)
+        # 🗑 2026-10-09 老倪: 工具栏「🤖 INTACT机器人」按钮删除 → 能力留在代码里:
+        #   画布节点「🤖 INTACT机器人」/「🔀 机器人切换」双击 → self._open_intact_robot_panel() (11718/11798)
 
-        # 🎥 录屏 + 💾 保存模型 (工具类, 2026-08-06 老倪: 归类一行)
-        self.btn_save_model = mk_btn("💾 保存模型", "把当前已训练的模型 checkpoint 固化为「已保存模型」, 推理服务下次可直接选择加载 (复制到 models/saved/)", self.save_trained_model, "#3fb950")
-        tl.addWidget(self.btn_save_model)
-        self.btn_record = mk_btn("🔴 录制", "开始录屏: 定时截取本窗口 (画布+终端输出+模型结果), 训练→推理→部署全程记录", self.start_recording, "#ff4444")
-        tl.addWidget(self.btn_record)
-        self.btn_stop_rec = mk_btn("⏹ 停止", "停止录屏: ffmpeg 合成 MP4 (2fps采集, 可加速, 总长<1分钟)", self.stop_recording, "#f0883e")
-        self.btn_stop_rec.setEnabled(False)
-        tl.addWidget(self.btn_stop_rec)
+        # 🗂 2026-10-09 老倪「保存模型/录制/停止/浮动/另存为/加载 迁到菜单栏」:
+        #   这 6 个不常用按钮 → 菜单「画布」; 属性名保留 (attach_canvas_actions 挂 QAction),
+        #   录制状态机 (setText/setEnabled) 与气泡定位 (_action_anchor) 照旧可用。
 
         # ┃ 分割线: 工具类 | 数据典型应用 (2026-08-06 老倪: 归类, 中间分割线分开)
         sep = QFrame()
@@ -5260,10 +5247,8 @@ class SimulinkModule(QWidget):
         tl.addWidget(sep)
 
         # ── 数据典型应用按钮 (第二行并入第一行, 2026-08-06 老倪: 放工具按钮右侧) ──
-        # 全链路入口 (最醒目, 打开 CI/CD 全景面板)
-        self.btn_pipeline = mk_btn("🎯 数据闭环控制台", "数据闭环 CICD 控制台: 6环节流水线 + 三阶段训练 + 闭环状态 (自动流转, steps可配)",
-                                   self.open_pipeline_panel, "#00d4aa")
-        tl.addWidget(self.btn_pipeline)
+        # 🗑 2026-10-09 老倪: 工具栏「🎯 数据闭环控制台」按钮删除 → 能力留在代码里:
+        #   **Ctrl+Alt+P** 打开控制台 (self.open_pipeline_panel); 6 环节仍可点画布节点执行
         self.btn_compare5 = mk_btn("🔬 Model Zoo", "ACT + SmolVLA + SmolVLA+LEW + VLA-Touch + AWE + MLP + 专家 七模型纵向对比: 同构模块同列对齐 (视觉编码列/世界模型列/Action Head列/训练列) · ▶运行依次训练 → 双击 Scope 出对比图表", self.open_compare5, "#d4a800")
         # (🗑 2026-08-14 老倪: 工具栏「🧿 AWE」按钮已删 — 画布 AWE 入口保留在 Model Zoo)
         tl.addWidget(self.btn_compare5)
@@ -5474,7 +5459,7 @@ class SimulinkModule(QWidget):
     # ════════════════════════════════════════════════════════════
     TUTORIAL_STEPS = [
         ("pipeline", None,
-         "① 点击工具栏「🎯 数据闭环控制台」\n打开闭环控制台 (6环节: 采集→训练→验证→集成→部署→推理)"),
+         "① 按 Ctrl+Alt+P 打开「🎯 数据闭环控制台」\n(工具栏按钮已删) 6环节: 采集→训练→验证→集成→部署→推理"),
         ("collect", None,
          "② 点击「① 采集」→ 从 ECS 中转拉取 Orin 真实数据,\naction 恒等自动修复并落地 (队列空则提示无新包)"),
         ("train", None,
@@ -5511,14 +5496,14 @@ class SimulinkModule(QWidget):
         kind, target, msg = self.TUTORIAL_STEPS[self._tutorial_step]
 
         if kind == "pipeline":
-            widget = self.btn_pipeline
+            widget = getattr(self, "btn_pipeline", None) or self.canvas   # 🗑 按钮已删 → 高亮画布
         elif kind in ("collect", "train", "validate", "integrate", "deploy", "infer"):
             # 6 环节引导: 高亮控制台面板内的环节按钮
             panel = getattr(self, "_pipeline_panel", None)
             if panel is not None and hasattr(panel, "_pipe_btns") and kind in panel._pipe_btns:
                 widget = panel._pipe_btns[kind]
             else:
-                widget = self.btn_pipeline  # 面板未打开 → 高亮入口按钮
+                widget = getattr(self, "btn_pipeline", None)  # 入口按钮已删 → None 时退到画布
         elif kind in ("btn_run", "btn_step", "btn_stop", "btn_save"):
             widget = getattr(self, {"btn_run": "btn_run", "btn_step": "btn_step",
                                     "btn_stop": "btn_stop", "btn_save": "btn_save"}[kind])
@@ -5526,7 +5511,7 @@ class SimulinkModule(QWidget):
             self._tutorial_show_bubble("🎉 完成!", msg)
             return
 
-        if widget is None:
+        if widget is None or not isinstance(widget, QWidget):   # 🗂 菜单项(QAction)不可高亮 → 退画布
             widget = self.canvas
         self._tutorial_highlight(widget)
         self._tutorial_show_bubble(f"📖 第{self._tutorial_step + 1}/{len(self.TUTORIAL_STEPS)}步", msg)
@@ -5608,7 +5593,7 @@ class SimulinkModule(QWidget):
 
     def _tutorial_hint_mismatch(self, action, expected_kind):
         """点错目标时给明确提示: 该点哪个高亮按钮"""
-        kind_labels = {"pipeline": "工具栏「🎯 数据闭环控制台」按钮(金色高亮)",
+        kind_labels = {"pipeline": "快捷键 Ctrl+Alt+P 开的「🎯 数据闭环控制台」",
                        "collect": "控制台「① 采集」按钮(金色高亮)",
                        "train": "控制台「② 训练」按钮(金色高亮)",
                        "validate": "控制台「③ 验证」按钮(金色高亮)",
@@ -6497,6 +6482,51 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+    # 🗂 2026-10-09 老倪: 「这些不常用的按钮迁移到菜单栏里面」—— 单一真源:
+    #   (key, 菜单文字, 快捷键, 悬停说明, 前一条分割线) · studio 按本表建菜单, 本模块 attach 接管
+    CANVAS_MENU = [
+        ("save_canvas", "💾 另存为 JSON…", "Ctrl+Shift+S",
+         "把当前画布 (节点位置/连线/参数) 存成 JSON 文件 — 分享/备份/回滚都用它", False),
+        ("load_canvas", "📂 加载 JSON…", "Ctrl+Shift+O",
+         "从 JSON 文件加载画布 (恢复节点位置与连线)", False),
+        ("save_model", "💾 保存模型 (固化 ckpt)", "",
+         "把当前已训练模型固化为「已保存模型」→ models/saved/, 推理服务下次可直接选", True),
+        ("record", "🔴 开始录制", "Ctrl+Shift+R",
+         "录屏: 定时截取本窗口 (画布+终端+模型结果), 全程记录工具链", True),
+        ("stop_rec", "⏹ 停止录制", "",
+         "停止录屏 → ffmpeg 合成 MP4 (2fps 采集, 总长<1 分钟)", False),
+        ("float", "⛶ 浮动画布 (独立窗口)", "Ctrl+Shift+F",
+         "画布独立成可最大化窗口 (关闭自动还原回主窗口)", True),
+    ]
+
+    def attach_canvas_actions(self, acts):
+        """🗂 接管 studio 建好的菜单项 (画布工具栏 6 个不常用按钮的替身)。
+
+        属性名沿用 btn_save / btn_load / btn_save_model / btn_record / btn_stop_rec / btn_float
+        ⇒ 既有代码 (录制状态机 setText/setEnabled、气泡定位) 零改动。"""
+        for key, attr in (("save_canvas", "btn_save"), ("load_canvas", "btn_load"),
+                          ("save_model", "btn_save_model"), ("record", "btn_record"),
+                          ("stop_rec", "btn_stop_rec"), ("float", "btn_float")):
+            a = (acts or {}).get(key)
+            if a is None:
+                continue
+            setattr(self, attr, a)
+            a.setEnabled(True)
+        sr = getattr(self, "btn_stop_rec", None)
+        if sr is not None:
+            sr.setEnabled(False)          # 没在录 → 停止项不可点
+        return {"ok": True, "n": len(acts or {})}
+
+    def _action_anchor(self, act):
+        """QAction 没有 rect() → 拿它所在菜单栏的位置做气泡锚点; 拿不到就用本窗口中心"""
+        try:
+            for w in act.associatedWidgets():
+                if w.isVisible() and w.rect().isValid():
+                    return w.mapToGlobal(w.rect().center())
+        except Exception:
+            pass
+        return self.mapToGlobal(self.rect().center())
+
     def toggle_float_canvas(self):
         """⛶ 浮动画布: 画布从 MDI 子窗口取出 → 独立可最大化窗口 (非模态, 日志栏仍可见)
         再点按钮或关闭浮动窗口 → 自动还原回 MDI"""
@@ -6626,18 +6656,21 @@ class SimulinkModule(QWidget):
         self._rec_blink.timeout.connect(self._rec_blink_tick)
         self._rec_blink.start(500)
         self._rec_blink_on = True
-        self._rec_style_normal = self.btn_record.styleSheet()
+        self._rec_style_normal = ""       # 🗂 QAction 无样式表 → 录制中反馈改画布横幅 (见 _rec_blink_tick)
+        try:
+            self.canvas.set_banner("⏺ 录制中 · 1fps 采集 (停止后合成 MP4)", "error")
+        except Exception:
+            pass
         self.btn_stop_rec.setEnabled(True)
         self._log(f"🔴 录屏开始 → {os.path.relpath(self._rec_dir, root)} (1fps 采集, 停止后合成 MP4)")
 
     def _rec_blink_tick(self):
         """呼吸闪烁: 交替按钮背景红/深红"""
         try:
+            # 🗂 2026-10-09: 菜单项不能染色 → 画布横幅报帧数 (老倪看录制进度更直接)
             self._rec_blink_on = not self._rec_blink_on
-            bg = "#b32424" if self._rec_blink_on else "#7a1a1a"
-            self.btn_record.setStyleSheet(
-                f"QPushButton {{ background:{bg}; color:white; border:2px solid #ff5555; "
-                f"border-radius:5px; padding:5px 14px; font-size:11pt; font-weight:800; }}")
+            _n = int(getattr(self, "_rec_idx", 0) or 0)
+            self.canvas.set_banner("⏺ 录制中 %d 帧%s" % (_n, " ●" if self._rec_blink_on else " ○"), "error")
         except Exception:
             pass
 
@@ -6670,9 +6703,9 @@ class SimulinkModule(QWidget):
         blink = getattr(self, "_rec_blink", None)
         if blink is not None:
             blink.stop()
-        self.btn_record.setText("🔴 录制")
+        self.btn_record.setText("🔴 开始录制")
         try:
-            self.btn_record.setStyleSheet(getattr(self, "_rec_style_normal", ""))
+            self.canvas.set_banner("", "note")      # 录制结束 → 收起横幅
         except Exception:
             pass
         self.btn_record.setEnabled(True)
@@ -6765,7 +6798,7 @@ class SimulinkModule(QWidget):
         self._log(f"💾 已更新模型注册表: {os.path.relpath(reg_path, root)} ({len(saved_names)} 个新模型)")
         # 4) 气泡提示
         try:
-            gp = self.mapToGlobal(self.btn_save_model.rect().center())
+            gp = self._action_anchor(self.btn_save_model)
             self._show_bubble(gp, f"✅ 已保存 {len(saved_names)} 个模型\n"
                                   f"推理服务 → 推理页「已保存模型」下拉直接选\n"
                                   f"路径: models/saved/", ms=5000)
@@ -7801,7 +7834,7 @@ class SimulinkModule(QWidget):
             self._tutorial_on_action("save")
             # 🆕 保存成功气泡提示 (深色主题白字, 2026-08-05)
             try:
-                gp = self.mapToGlobal(self.btn_save.rect().center())
+                gp = self._action_anchor(self.btn_save)
                 self._show_bubble(gp, f"✅ 已保存: {os.path.basename(path)}\n"
                                       f"{len(flow['nodes'])} 节点 · {len(flow['links'])} 连线 · 位置已记录\n"
                                       f"随时点「📂 加载」恢复此布局", ms=5000)
@@ -7824,7 +7857,7 @@ class SimulinkModule(QWidget):
                 self._log(f"📂 已加载: {path} ({len(flow.get('nodes', []))}节点 {len(flow.get('links', []))}连线)")
                 # 🆕 加载成功气泡提示 (深色主题白字)
                 try:
-                    gp = self.mapToGlobal(self.btn_load.rect().center())
+                    gp = self._action_anchor(self.btn_load)
                     self._show_bubble(gp, f"✅ 已加载: {os.path.basename(path)}\n"
                                           f"{len(flow.get('nodes', []))} 节点 · {len(flow.get('links', []))} 连线\n"
                                           f"节点位置与连线已恢复", ms=5000)
@@ -9490,7 +9523,7 @@ class SimulinkModule(QWidget):
     def _follow_to(self, node, force=False):
         """⏭ 单步跟随: 画布跳到当前节点 (画布太大, 找不到节点)。
 
-        force=True → 无视 ☑「跟随单步」复选框 (「📍 定位节点」按钮用)。"""
+        force=True → 无视 ☑「跟随单步」复选框 (Ctrl+L 用)。"""
         if node is None:
             self._log("⚠️ 跟随单步: 没有可定位的节点 (先单步/运行一次)")
             return False
@@ -9502,11 +9535,11 @@ class SimulinkModule(QWidget):
                 and self._follow_last[0] == nid and now - self._follow_last[1] < 2.0):
             return True
         self._follow_last = (nid, now)
-        self._last_step_node = nid      # 记下来, 「📍 定位节点」按钮回跳用
+        self._last_step_node = nid      # 记下来, Ctrl+L 回跳用
         chk = getattr(self, "chk_follow_step", None)
         if not force and chk is not None and not chk.isChecked():
             # 关掉跟随时, 也报一次位置 (终端可读, 不铺画布文字 — 老倪定稿口径)
-            self._log("🎯 已关跟随单步 · 当前节点 %s (点「📍 定位节点」可跳过去)" % node.get("name", "?"))
+            self._log("🎯 已关跟随单步 · 当前节点 %s (按 Ctrl+L 可跳过去)" % node.get("name", "?"))
             return False
         ok, info = self.canvas.focus_node(nid)
         if ok:
@@ -9546,7 +9579,7 @@ class SimulinkModule(QWidget):
         return "实现: %s → %s()" % (key, fname)
 
     def locate_current_node(self):
-        """📍 定位节点: 跳到当前单步/运行到的节点 (不论跟随开关)。"""
+        """📍 定位节点 (Ctrl+L): 跳到当前单步/运行到的节点 (不论跟随开关)。"""
         nid = getattr(self, "_last_step_node", None)
         node = None
         for n in self.nodes:
@@ -9567,7 +9600,7 @@ class SimulinkModule(QWidget):
         self._log(("📍 " if ok else "⚠️ ") + "定位: %s  (%s)" % (node.get("name", "?"), info))
 
     def fit_all_nodes(self):
-        """🏠 全览: 缩放到能看见全部节点。"""
+        """🏠 全览 (Ctrl+0): 缩放到能看见全部节点。"""
         ok, info = self.canvas.fit_all()
         self._log(("🏠 " if ok else "⚠️ ") + info)
 

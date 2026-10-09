@@ -628,11 +628,11 @@ class RunConfigWidget(QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(8)
 
-        self.lbl_hd = QLabel("⚙️ 配置 · 运行开关 (档位 / 策略)")
+        self.lbl_hd = QLabel("🔧 运行开关")
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
-        self.lbl_sub = QLabel("本页 = 工程的「配置」面 (对应 测量 / 诊断 / 标定 / 配置 四轴)。"
-                              "开关只服务状态空间画布的 ▶运行 / ⏭单步; 改完**下一次运行即生效**, 不用重启。")
+        # 🧹 2026-10-09: 原文案重复两遍 (85 字) → 一句说完
+        self.lbl_sub = QLabel("工程「配置」面 · 只影响画布 ▶运行 / ⏭单步, 改完下次运行生效 (不用重启)")
         self.lbl_sub.setWordWrap(True)
         self.lbl_sub.setStyleSheet("color:#9aa4b2;font-size:12px;background:transparent;")
         lay.addWidget(self.lbl_sub)
@@ -684,6 +684,31 @@ class RunConfigWidget(QWidget):
         lay.addStretch(1)
 
     # ── 单行: 开关槽 + 适用档位 + 作用 + 生效位置 + 代价 ──
+    # 🧹 短句表 (2026-10-09 老倪「字数太多」): 卡面短句, 长文案+引擎行号进 tooltip —— 证据一条没删
+    SHORT = {
+        "chk_engine_demo": ("勾=快演(<0.1s) / 不勾=真跑(5-9min)",
+                            "simulink_module.py:7150", "不勾≈5-9min/轮 · 判精度必须不勾"),
+        "chk_l3_full": ("勾=13段(含AOI) / 不勾=8段插装即完",
+                        "simulink_module.py:13601", "L3/L4 档自动 full · 20-40s/轮"),
+        "chk_mani_yaw": ("勾=流形预测器定 90° / 不勾=脚本开环",
+                         "engine:407/2511", "拿它做 A/B 对照"),
+        "chk_intact_exec": ("勾=u_ff 交 INTACT 真推理 / 不勾=L4Demo",
+                            "engine:435", "⚠️ 域内 ckpt 离线判闸未过 ⇒ 可能失败"),
+        "chk_l4_dit": ("勾=DiT β=0.5 每16步融合 / 不勾=纯 INTACT",
+                       "engine:1316/1479", "⚠️ 条件投影未训练 · 不可标定"),
+        "chk_l2_compat": ("勾=L2 真跑(MLP+YOLO) / 不勾=R0 真值",
+                          "engine:546", "⚠️ 0.42→6.82mm · 2.1× 耗时 ⇒ 要精度取消勾"),
+    }
+
+    @classmethod
+    def _short(cls, key, use, where, cost):
+        s = cls.SHORT.get(key)
+        return s if s else (use, where.replace("state_space_sim_real.py", "engine"), cost)
+
+    # 状态行用的短名 (2026-10-09: 别用 split 切文字, 之前把 "🧩 L2 兼容 (…+ YOLO)" 切成了 "YOLO)")
+    NAMES = {"chk_engine_demo": "⚡快演", "chk_l3_full": "🚀全链", "chk_mani_yaw": "🧠yaw",
+             "chk_intact_exec": "🤖INTACT", "chk_l4_dit": "🎯DiT", "chk_l2_compat": "🧩L2"}
+
     def _mk_row(self, key, cap, use, where, cost, risk):
         f = QFrame()
         f.setStyleSheet("QFrame{background:#0d1117;border:1px solid #21262d;border-radius:5px;}")
@@ -702,12 +727,16 @@ class RunConfigWidget(QWidget):
                            "border:1px solid #30363d;border-radius:8px;padding:1px 6px;")
         top.addWidget(chip, 0)
         v.addLayout(top)
-        for text, color, size in ((use, "#c9d1d9", 12),
-                                  ("生效: " + where, "#8b949e", 11),
-                                  (("代价: " if risk else "") + cost,
-                                   ("#f0883e" if risk else "#8b949e"), 11)):
+        # 🧹 2026-10-09 老倪「字数太多, 精简」: 卡面只留短句, 全文进 tooltip (悬停即见, 信息不丢)
+        us, wh, cs = self._short(key, use, where, cost)
+        for text, full, color, size in ((us, "作用: " + use + "\n生效: " + where + "\n代价: " + cost,
+                                         "#c9d1d9", 12),
+                                        ("生效: " + wh, "生效: " + where, "#8b949e", 11),
+                                        (("代价: " if risk else "") + cs, "代价: " + cost,
+                                         ("#f0883e" if risk else "#8b949e"), 11)):
             lb = QLabel(text)
             lb.setWordWrap(True)
+            lb.setToolTip(full)
             lb.setStyleSheet(f"color:{color};font-size:{size}px;background:transparent;border:none;")
             v.addWidget(lb)
         self._slots[key] = hl
@@ -764,8 +793,10 @@ class RunConfigWidget(QWidget):
                 continue
             nm = (chk.text() or key).strip()
             hit = ("全部档位" in capuse) or (cap in capuse)
-            parts.append(f"{nm}={'开' if chk.isChecked() else '关'}{'' if hit else '(本档无效)'}")
-        self.lbl_state.setText(" · ".join(parts) if parts else "⚠️ 开关未接入")
+            _nm = self.NAMES.get(key) or nm
+            parts.append(f"{_nm}{'✓' if chk.isChecked() else '✗'}{'' if hit else '*'}")
+        self.lbl_state.setText((" · ".join(parts) + "    (* 本档无效)") if parts
+                               else "⚠️ 开关未接入")
 
     def _restore(self):
         for key, val in self.DEFAULTS.items():
@@ -808,7 +839,7 @@ class MasterParamMView(QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
 
-        self.lbl_hd = QLabel("🧮 主参数 M · 测量 / 标定 / 诊断 / 配置")
+        self.lbl_hd = QLabel("🧮 主参数 M  (测量 · 标定 · 诊断 · 配置)")
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
         self.lbl_node = QLabel("…")
@@ -923,10 +954,11 @@ class MasterParamMView(QWidget):
         p = n.get("params", {}) or {}
         snap = p.get("cfg_snapshot", {}) or {}
         prj = snap.get("project", {}) or {}
+        _at = str(snap.get("mcd_generated_at", "—"))
         self.lbl_node.setText(
-            f"节点: {n.get('name', '?')}\n"
-            f"  id={n.get('id')} · 快照 {snap.get('mcd_generated_at', '—')} · 画布 {prj.get('nodes', '?')} 节点 "
-            f"/ {prj.get('links', '?')} 连线 · 节点回读 {snap.get('node_readback_at') or '(未回读)'}")
+            f"{n.get('name', '?')}  ·  id {n.get('id')}\n"
+            f"快照 {_at[5:16] if len(_at) > 16 else _at} · {prj.get('nodes', '?')} 节点/{prj.get('links', '?')} 连线"
+            f" · 回读 {snap.get('node_readback_at') or '✗'}")
         try:
             self.sp_M.setValue(float(p.get("M", 1.0)))
             self.chk_inertia.setChecked(bool(p.get("inertia", False)))
@@ -945,10 +977,10 @@ class MasterParamMView(QWidget):
             ("视图", cv.get("视图", "—")),
             ("可标参数", cv.get("可标参数", "—")),
             ("主参数 M", cv.get("主参数M", f"M={p.get('M')} · 范围 {p.get('M_range')} · inertia={p.get('inertia')}")),
-            ("M 含义", p.get("M_meaning", "—")),
-            ("M 非自由", p.get("M_not_free", "—")),
-            ("零回归", p.get("zero_regression", "—")),
-            ("真源", cv.get("真源", "—")),
+            ("M 含义", _cut(p.get("M_meaning", "—"), 46)),
+            ("M 非自由", _cut(p.get("M_not_free", "—"), 46)),
+            ("零回归", _cut(p.get("zero_regression", "—"), 46)),
+            ("真源", _cut(cv.get("真源", "—"), 46)),
             ("命令", cv.get("命令", "—")),
         ])
         self._fill(self.tbl["diag"], [
@@ -968,10 +1000,19 @@ class MasterParamMView(QWidget):
                      f"· 段覆盖 {tl.get('段覆盖', '—')} 节点"),
             ("工单", snap.get("orders", "—")),
         ] + [("真源 " + k, v) for k, v in ent.items()])
-        self.lbl_cmd.setText(" · ".join(x for x in (
+        # 🧹 2026-10-09 老倪「字数太多」: 命令行的 "python3 tools/" 前缀在**显示层**压掉 (节点/真源原串不动)
+        self.lbl_cmd.setText(" · ".join(self._cmd_short(x) for x in (
             mv.get("命令"), cv.get("命令"), dv.get("命令"), tl.get("命令")) if x))
 
     # ── ✏️ 写 M (真源 + 范围校验 + 只改 manifold_engine 键; 回来立刻回读) ──
+    @staticmethod
+    def _cmd_short(t):
+        """命令行显示缩写: 去掉重复前缀 (数据本身一字不改)"""
+        s = str(t or "")
+        for pre in ("python3 tools/", "gui-venv311/bin/python tools/", "/home/ubuntu/zmax/"):
+            s = s.replace(pre, "")
+        return s.replace(" · ", " | ")
+
     def _write_M(self):
         import subprocess
         v = float(self.sp_M.value())
@@ -1082,6 +1123,26 @@ class MeasureHub(QWidget):
         return False
 
 
+# ── 表格/文案紧凑化共用小工具 (2026-10-09 精简: M 页与标定页共用) ──
+def _cut(txt, n=52):
+    """只显前 n 字 (完整值放 tooltip; 📋复制/导出 仍给全文)"""
+    t = "" if txt is None else str(txt)
+    return t if len(t) <= n else t[:n - 1] + "…"
+
+
+def _fmt(x, n=4):
+    """紧凑格式化: 浮点 4 位有效 · 列表最多 n 项 (嵌套也走这里)"""
+    if isinstance(x, bool):
+        return str(x)
+    if isinstance(x, float):
+        return f"{x:.4g}"
+    if isinstance(x, (list, tuple)):
+        return "[" + ", ".join(_fmt(y, n) for y in list(x)[:n]) + ("…]" if len(x) > n else "]")
+    if isinstance(x, dict):
+        return " ".join(f"{a}={_fmt(b, n)}" for a, b in list(x.items())[:4] if not a.startswith("_"))
+    return str(x)
+
+
 class CalibTruthView(QWidget):
     """🎛 标定 · 真源标定注册表 (只读) + 未标定项的**可执行**补救命令 (2026-10-09 老倪: 「增加一个标定类」)。
 
@@ -1092,16 +1153,14 @@ class CalibTruthView(QWidget):
     的范围校验 + 只改目标键 + 回读三段纪律), 避免在面板上开第二个写口。
     """
     # 仓库根 = tools/gui/model_tree.py 往上三层 (本文件在 tools/gui/ 下)
-    CALIB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                         "config", "calib", "zmax_calib.json")
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # 仓库根
+    CALIB = os.path.join(_root, "config", "calib", "zmax_calib.json")
     # 未标定项 → 现场标定命令 (零运动/只读采集, 人工确认)
     FIX = {
-        "cell_geometry": "gui-venv311/bin/python tools/ss_geom_calib.py --record peg_head|goal|aoi"
-                         "   # 零运动示教: 人工拖到位后确认",
-        "T_base_cam": "gui-venv311/bin/python tools/board_handeye_solve.py"
-                      "   # 零运动人工拖动 10+ 位姿采板 → 解外参",
-        "plane_z": "# 现场用夹爪或塞尺量一次台面高度 → 写 config/calib/zmax_calib.json 的 plane_z.value",
-        "depth_scale": "gui-venv311/bin/python tools/probe_r1_yolo_calib.py   # 仿真单目深度专用, 真机走米制",
+        "cell_geometry": "ss_geom_calib.py --record peg_head|goal|aoi (零运动示教三点位)",
+        "T_base_cam": "board_handeye_solve.py (人工拖 10+ 位姿采板 → 解外参)",
+        "plane_z": "量一次台面高 → 写 zmax_calib.json 的 plane_z.value",
+        "depth_scale": "probe_r1_yolo_calib.py (仿真深度专用; 真机走米制)",
     }
 
     def __init__(self, module=None, parent=None):
@@ -1110,7 +1169,7 @@ class CalibTruthView(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
-        self.lbl_hd = QLabel("🎛 标定 · 真源参数与缺口")
+        self.lbl_hd = QLabel("🎛 标定真源 (只读)")
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
         self.lbl_src = QLabel("…")
@@ -1154,18 +1213,12 @@ class CalibTruthView(QWidget):
         self.refresh()
 
     # ── 值 → 一行摘要 ──
+    _fmt = staticmethod(_fmt)      # 委托到模块级 (M 页也用同一套格式)
+    _cut = staticmethod(_cut)
+
     @staticmethod
     def _brief(k, d):
-        v = d.get("value", d)
-        if isinstance(v, list):
-            return "[" + ", ".join(f"{x:.4g}" if isinstance(x, float) else str(x) for x in v[:6]) + \
-                   (" …]" if len(v) > 6 else "]")
-        if isinstance(v, dict):
-            return " · ".join(f"{a}={b if not isinstance(b, float) else round(b, 4)}"
-                              for a, b in list(v.items())[:4] if not a.startswith("_"))
-        if isinstance(v, float):
-            return f"{v:.4g}"
-        return str(v)
+        return _fmt(d.get("value", d))
 
     def _rows(self):
         try:
@@ -1198,23 +1251,25 @@ class CalibTruthView(QWidget):
             self.tbl.setRowCount(0)
             return
         miss = [r["k"] for r in rows if r["uncal"]]
+        _rel = os.path.relpath(self.CALIB, self._root) if hasattr(self, "_root") else self.CALIB
         self.lbl_src.setText(
-            f"真源 {self.CALIB}\n  _generated_at {d.get('_generated_at', '—')} · "
-            f"{len(rows)} 个参数段 · 未标定 {len(miss)} 项 {miss or ''}\n"
-            f"  所有层读本文件 (禁硬编码内外参); 唯一写口 = 「🧮 主参数 M」页的 M (三段纪律)")
+            f"真源 {_rel} · {len(rows)} 段 · 未标定 {len(miss)}: {', '.join(miss) or '—'}\n"
+            f"更新 {d.get('_generated_at', '—')} · 各层都读它 (禁硬编码); 写口只有「主参数 M」页")
         self.tbl.setRowCount(0)
         for r in rows:
             i = self.tbl.rowCount()
             self.tbl.insertRow(i)
             for c, txt in enumerate((r["k"], r["val"], r["st"], r["note"] or r["why"])):
-                it = QTableWidgetItem(str(txt))
+                full = str(txt or "")
+                it = QTableWidgetItem(_cut(full, 44 if c == 3 else 52))
                 it.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                it.setToolTip(full)                     # 完整值悬停可见
                 if r["uncal"]:
                     it.setForeground(QColor("#ffa657"))
                 self.tbl.setItem(i, c, it)
         self.tbl.resizeRowsToContents()
-        cmds = "\n".join(self.FIX[k] for k in miss if k in self.FIX)
-        self.lbl_cmd.setText(("⚠️ " + " / ".join(miss) + " 未标定 —— 现场标定命令:\n" + cmds)
+        cmds = "\n".join("· " + self.FIX[k] for k in miss if k in self.FIX)
+        self.lbl_cmd.setText(("⚠️ 未标定 %d 项 → 现场命令:\n%s" % (len(miss), cmds))
                              if cmds else "✅ 真源无未标定缺口")
 
     def _text(self):
@@ -1258,10 +1313,10 @@ class ModelTreeDock(QWidget):
         self.cmb_view = QComboBox()
         # 🧭 2026-10-09 老倪「重点 = 配置 + 标定 + 主参数 M」: 只剩 5 项, 全部与工程有真连接
         # 🧭 2026-10-09 老倪: 「测量类只保留一行 + 增加一个标定类」→ 4 行, 全部真连接
-        self.cmb_view.addItems(["🧮 主参数 M · 测量/标定/诊断/配置",
-                                "📏 测量 · 数据总线",
-                                "🎛 标定 · 真源参数与缺口",
-                                "🔧 配置 · 运行开关"])
+        self.cmb_view.addItems(["🧮 主参数 M",
+                                "📏 数据总线",
+                                "🎛 标定真源",
+                                "🔧 运行开关"])
 
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)

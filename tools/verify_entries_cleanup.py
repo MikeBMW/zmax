@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt5.QtWidgets import QApplication, QDialog, QLabel  # noqa: E402
+from PyQt5.QtWidgets import QApplication, QDialog, QLabel, QWidget  # noqa: E402
 
 app = QApplication(sys.argv)
 import simulink_module as SM  # noqa: E402
@@ -35,8 +35,8 @@ m.show()
 app.processEvents()
 
 print("① 三个入口按钮")
-chk(getattr(m, "btn_intact_robot", None) is not None, "🤖 INTACT机器人 按钮在")
-chk(getattr(m, "btn_pipeline", None) is not None, "🎯 数据闭环控制台 按钮在")
+chk(not isinstance(getattr(m, "btn_intact_robot", None), QWidget), "🤖 INTACT机器人 按钮已删 (能力在画布节点双击 11798)")
+chk(not isinstance(getattr(m, "btn_pipeline", None), QWidget), "🎯 数据闭环控制台 按钮已删 (入口改 Ctrl+Alt+P)")
 chk(not hasattr(m, "btn_tutorial"), "🧭 数据闭环引导 已从工具栏摘除")
 
 print("\n② 死块已删")
@@ -52,7 +52,7 @@ for fn in ("on_collect", "on_train", "on_validate", "on_integrate", "on_deploy",
     chk(callable(getattr(m, fn, None)), f"module.{fn} 存在")
 
 print("\n④ 🎯 控制台真能开 + 引导在面板里")
-m.btn_pipeline.click()
+m.open_pipeline_panel()   # 按钮已删 → 直调 (菜单/快捷键走它)
 app.processEvents()
 p = getattr(m, "_pipeline_panel", None)
 chk(isinstance(p, QDialog), f"面板打开: {type(p).__name__ if p else None} · {p.windowTitle() if p else ''}")
@@ -72,7 +72,7 @@ chk(getattr(m, "_tutorial_hl", None) is None, "cleanup 后高亮清除")
 p.close()
 
 print("\n⑤ 🤖 INTACT机器人 切换面板真能开")
-m.btn_intact_robot.click()
+m._open_intact_robot_panel()   # 按钮已删 → 直调 (画布节点双击走它)
 app.processEvents()
 dlg = getattr(m, "_intact_robot_dlg", None)
 chk(dlg is not None, f"面板对象: {type(dlg).__name__ if dlg else None}")
@@ -84,7 +84,7 @@ if dlg is not None:
     dlg.close()
 
 print("\n⑥ 工具栏回归")
-for a in ("btn_run", "btn_step", "btn_restart", "btn_run_cfg", "btn_intact_robot", "btn_pipeline"):
+for a in ("btn_run", "btn_step", "btn_restart", "btn_run_cfg"):
     w = getattr(m, a, None)
     chk(w is not None and (not hasattr(w, "isVisible") or w.parent() is not None), f"{a} 在位")
 for a in ("chk_engine_demo", "chk_l3_full", "chk_mani_yaw", "chk_intact_exec", "chk_l4_dit", "chk_l2_compat"):

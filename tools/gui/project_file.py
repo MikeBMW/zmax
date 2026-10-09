@@ -381,6 +381,19 @@ def read_summary(path):
 
 # ══════════════ 漂移报告 (核心: 存档 vs 现场) ══════════════
 VOLATILE_KEYS = ("_meta", "generated_at", "updated_at", "saved_at", "_generated_at")
+# 画布节点上"由工具从真源同步进来的配置快照"字段 (含 canvas_md5 等派生值, 会随写盘次数漂)
+CFG_SNAPSHOT_KEYS = ("cfg_role", "cfg_entries", "cfg_snapshot", "measure_view", "calib_view",
+                     "diagnose_view", "task_layer")
+
+
+def _strip_cfg(node):
+    """节点去配置快照字段后的**结构+参数**表示 (用于画布漂移判定: 只看真结构/真参数)"""
+    nn = dict(node)
+    pr = dict(nn.get("params") or {})
+    for k in CFG_SNAPSHOT_KEYS:
+        pr.pop(k, None)
+    nn["params"] = pr
+    return json.dumps(nn, sort_keys=True, ensure_ascii=False)
 
 
 def _semantic(obj):
@@ -411,8 +424,12 @@ def drift_report(proj):
             sn = {n.get("id"): n for n in saved.get("nodes", []) or []}
             cn = {n.get("id"): n for n in cur.get("nodes", []) or []}
             added, gone = [k for k in cn if k not in sn], [k for k in sn if k not in cn]
-            changed = [k for k in cn if k in sn and json.dumps(sn[k], sort_keys=True, ensure_ascii=False)
-                       != json.dumps(cn[k], sort_keys=True, ensure_ascii=False)]
+            # 比结构/参数时**剔除 M 节点那类「配置快照派生字段」** (cfg_*/…_view/task_layer):
+            # 它们由工具从真源同步进来, 含 canvas_md5 等派生值, 会随写盘次数漂 —— 不算画布结构漂移。
+            changed = [k for k in cn if k in sn and _strip_cfg(sn[k]) != _strip_cfg(cn[k])]
+            snap_only = [k for k in cn if k in sn and _strip_cfg(sn[k]) == _strip_cfg(cn[k])
+                         and json.dumps(sn[k], sort_keys=True, ensure_ascii=False)
+                         != json.dumps(cn[k], sort_keys=True, ensure_ascii=False)]
             det.append("节点 %s→%s · 新增 %d / 删除 %d / 改动 %d" % (
                 (proj.get("canvas_fingerprint") or {}).get("stats", {}).get("nodes"),
                 stats.get("nodes"), len(added), len(gone), len(changed)))
@@ -422,7 +439,11 @@ def drift_report(proj):
                 det.append("删除: %s" % [sn[k].get("name") for k in gone[:5]])
             if changed:
                 det.append("改动: %s" % [cn[k].get("name") for k in changed[:5]])
-        out["canvas"] = {"status": "一致" if smd5 == md5 else "漂移", "detail": det or ["md5 与现场相同"]}
+            if snap_only:
+                det.append("仅配置快照派生字段变(不算结构漂移): %s"
+                           % [cn[k].get("name") for k in snap_only[:3]])
+        out["canvas"] = {"status": "一致" if (smd5 == md5 or not changed) else "漂移",
+                         "detail": det or ["md5 与现场相同"]}
     except Exception as e:                                                       # noqa: BLE001
         out["canvas"] = {"status": "无法比对", "detail": ["%s: %s" % (type(e).__name__, e)]}
 

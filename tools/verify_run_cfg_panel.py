@@ -67,18 +67,24 @@ print("\n③ 页面内容 (作用/生效位置/代价/档位/诊断行)")
 cap = d.run_cfg._cap()
 chk(cap == "L2", f"读到画布档位 = {cap}")
 alltxt = " ".join(l.text() for l in d.run_cfg.findChildren(MT.QLabel))
-for must in ("引擎快演", "L3 全链", "流形 yaw", "INTACT", "DiT", "L2 兼容"):
-    chk(must in alltxt, f"页内有「{must}」行")
-chk("生效: " in alltxt and "simulink_module.py" in alltxt, "每行标了『生效: 文件:行』")
-chk("6.82mm" in alltxt and "0.42mm" in alltxt, "L2 兼容行写明实测代价 0.42→6.82mm")
+# 🧹 2026-10-09 精简后: 卡面是短句, 全文挪 tooltip ⇒ 判据改"短句在卡面 + 长文案在 tooltip"
+for must in ("快演", "13段", "流形预测器", "INTACT", "DiT", "L2 真跑"):
+    chk(must in alltxt, f"卡面有短句「{must}」")
+_tips = " ".join((w.toolTip() or "") for w in d.run_cfg.findChildren(MT.QLabel))
+for must in ("引擎简化世界快速演示", "simulink_module.py:7150", "13 段", "0.42mm → 6.82mm"):
+    chk(must in _tips, f"tooltip 里全文没丢: 含「{must}」")
+chk("生效: " in alltxt and ("simulink_module.py:" in alltxt or "engine:" in alltxt),
+    "每行卡面标了『生效: 文件:行』")
+chk("6.82mm" in alltxt and "0.42" in alltxt, "L2 兼容卡面写明实测代价 0.42→6.82mm")
 st = d.run_cfg.lbl_state.text()
-chk(st.count("=") == 6, f"诊断行列全 6 个开关: {st[:96]}")
+chk(all(nm in st for nm in ("⚡快演", "🚀全链", "🧠yaw", "🤖INTACT", "🎯DiT", "🧩L2")) and st.count("✓") + st.count("✗") == 6,
+    f"状态行列全 6 个开关 (短名, 不是乱切): {st[:110]}")
 chk("本档无效" in st, "L2 档下 L4-only 开关被标『本档无效』")
 
 print("\n④ 面板内操作")
 d.run_cfg._cks["chk_intact_exec"].setChecked(False)
 app.processEvents()
-chk("INTACT 节点执行=关" in d.run_cfg.lbl_state.text(), "拨开关 → 诊断行即时刷新")
+chk("🤖INTACT✗" in d.run_cfg.lbl_state.text(), "拨开关 → 诊断行即时刷新 (短名+✓/✗ 口径)")
 d.run_cfg._cks["chk_intact_exec"].setChecked(True)
 d.run_cfg._restore()
 app.processEvents()
