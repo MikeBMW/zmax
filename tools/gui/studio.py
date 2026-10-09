@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.29.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.29.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -788,52 +788,62 @@ class SystemSidebar(QFrame):
 
         layout.addSpacing(8)
 
-        sep_label = QLabel("三层系统")  # 2026-08-08 老倪: 模块库 → 三层系统
+        sep_label = QLabel("三层系统 · L4/L5 · L3 · L2")  # 2026-10-09 老倪: 文字对齐当前实际状态
         sep_label.setFont(QFont("Arial", 10, QFont.Bold))
         sep_label.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(sep_label)
 
         # 🏭 Z-MAX 平台方框 (2026-10-09 老倪: 在 System 2 之上增加 Z-MAX 方框, 描述平台产品 —
         #   平台产品 Z700 精细操作 / Z100 通用操作, 由 系统2/1/0 组成的全系统实现; 点击开产品/功能清单)
-        _zlab = QLabel("平台产品")
+        _zlab = QLabel("平台产品 · 点开 = 产品与功能清单")
         _zlab.setFont(QFont("Arial", 10, QFont.Bold))
         _zlab.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0; padding:4px 0;")
         layout.addWidget(_zlab)
         self.zmax = SystemLayerCard(
             "zmax", "🏭 Z-MAX 平台", "Z700 精细操作 · Z100 通用操作",
             C_GOLD if "C_GOLD" in globals() else "#ffc857",
-            "具身智能机器人平台\n产品特征清单 → 子系统 → 功能清单\n由 系统2/1/0 组成的全系统实现"
+            "具身智能机器人平台 · 光模块工厂精细操作\n"
+            "产品特征 18 → 子系统 3 → 功能 74 → 模块 74 (链到代码)\n"
+            "由 System 2 / 1 / 0 组成的全系统实现 · 点开看产品与功能清单"
         )
         self.zmax.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.zmax)
         self.params_card = SystemLayerCard(
-            "params", "🎛 参数中心", "全局可改数字 · 双击即改",
+            "params", "🎛 参数中心", "162 个可改数字 · 双击即改",
             "#ff9f43",
-            "默认值 / 范围 min-max / 调试参数\n改任意数字 → 链动 功能·性能·代码\n落真源前先预览影响链"
+            "标定 45 · 画布 78 · 代码 25 · 性能 8 · 开关 6\n"
+            "每个数字都有 当前/默认/min-max/单位/真源位置\n"
+            "改任意数字 → 链动 功能·性能·代码 · 落真源前先预览影响链"
         )
         self.params_card.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.params_card)
 
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
-            "sys2", "System 2", "L4级大脑 · 云端训练",
-            SYS2_COLOR, "云端智能体 · 任务拆解\n大模型训练 · 4090 · 动态调度 Sys-1"
+            "sys2", "System 2", "L4/L5 认知决策 · 功能 30",
+            SYS2_COLOR, "云端智能体 · 任务拆解与调度 (MES/语言 → 技能序列)\n"
+                        "流形世界模型预判/恢复 · 五层记忆筹划\n"
+                        "IntAct 稳态 101ms · L4 用 INTACT 直驱"
         )
         self.sys2.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys2)
 
         # System 1 (中 — 含 SYS11 VLA-T + SYS12 Z-Flow)  2026-08-08 老倪: 模块库改三层系统
         self.sys1 = SystemLayerCard(
-            "sys1", "System 1", "VLA-T + Z-Flow · 500M/15M",
-            SYS11_COLOR, "SYS11 VLA-T 动作 · SmolVLA 500M\nSYS12 Z-Flow 引导 · LeWorldModel 15M"
+            "sys1", "System 1", "L3 动作执行 · 功能 4",
+            SYS11_COLOR, "VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWM 15M)\n"
+                         "长程规划 · 跨段技能序列复用 · 端到端 500M 推理\n"
+                         "本地 GPU / 边缘推理"
         )
         self.sys1.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys1)
 
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
-            "sys0", "System 0", "L2基石 · EtherCAT",
-            SYS0_COLOR, "安全层 · HAL驱动层\n运动学正逆解 · 急停"
+            "sys0", "System 0", "L2 基石执行 · 功能 27",
+            SYS0_COLOR, "安全层 + HAL 驱动 + EtherCAT + 运动学正逆解\n"
+                        "原子技能 SK01-08 · 分段感知/控制小模型 · 肌肉记忆\n"
+                        "一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口"
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.sys0)
@@ -980,7 +990,7 @@ class ArchFlowBar(QFrame):
         root.addWidget(caption)
 
         # ---- Layer 3: System 2 (顶层) ----
-        self._add_layer_box(root, "☁️", "System 2", "L4大脑 · 云端智能体 · 任务拆解与调度", SYS2_COLOR)
+        self._add_layer_box(root, "☁️", "System 2", "L4/L5 认知决策 · 云端智能体 · 任务拆解与调度 (30 功能)", SYS2_COLOR)
 
         # ---- 箭头 ↓ 到中间层 ----
         self._add_arrow(root, "↕")
@@ -991,7 +1001,7 @@ class ArchFlowBar(QFrame):
 
         # Sys-11 左（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🧠", "SYS-11 动作系统", "", SYS11_COLOR), 1)
+            "🧠", "System 1 · VLA-T 动作 (SmolVLA 500M)", "", SYS11_COLOR), 1)
         # 双向箭头
         link = QLabel("⟷")
         link.setFont(QFont("Arial", 18))
@@ -1000,7 +1010,7 @@ class ArchFlowBar(QFrame):
         mid_row.addWidget(link)
         # Sys-12 右（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🌐", "SYS-12 引导系统", "", SYS12_COLOR), 1)
+            "🌐", "System 1 · Z-Flow 引导 (LeWM 15M)", "", SYS12_COLOR), 1)
 
         mid_container = QWidget()
         mid_container.setStyleSheet("background:transparent; border:none;")
@@ -1012,7 +1022,7 @@ class ArchFlowBar(QFrame):
         self._add_arrow(root, "↕")
 
         # ---- Layer 1: Sys-0 (底层) ----
-        self._add_layer_box(root, "⚙️", "Sys-0", "L2基石 · EtherCAT · 安全层 · HAL驱动", SYS0_COLOR)
+        self._add_layer_box(root, "⚙️", "System 0", "L2 基石执行 · EtherCAT · 安全层 · HAL · 原子技能 (27 功能)", SYS0_COLOR)
 
         self.setLayout(root)
 
@@ -2180,14 +2190,14 @@ class HomeWidget(QWidget):
         #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
         #   最后一行: 插拔场景/版本同步
         modules = [
-            ("dataset",  "📊", "数据集管理",   "System 2 · L4大脑",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
+            ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
-            ("hardware", "🔧", "硬件工具箱",   "System 0 · L2基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
+            ("hardware", "🔧", "硬件工具箱",   "System 0 · L2 基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),  # 🐛 恢复三层架构功能卡 (页面在, 卡列表漏加)
-            ("simulink", "🎛️", "Simulink模式",  "Sys-11+12 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
-            ("config",   "⚙️", "配置中心",     "Sys-11 + Sys-12",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
+            ("simulink", "🎛️", "Simulink模式",  "System 1 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
+            ("config",   "⚙️", "配置中心",     "System 1 · 参数",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
-            ("monitor",  "📈", "实时监控",     "Sys-11 + Sys-12",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
+            ("monitor",  "📈", "实时监控",     "System 1 · L3",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
             ("plugging", "🤖", "插拔场景",     "Z700 · 双臂协同",     "Z700轮式双臂 · VTLA插拔\nROI量化 · 力控闭环",     ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
@@ -11364,7 +11374,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.29.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.29.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11372,9 +11382,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.29.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.29.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.29.1: v5.29.1 — 侧栏/首页三层文字对齐当前实际状态 (2026-10-09 老倪)  老倪: 「主窗口左侧菜单, 系统2/系统1/系统0 的黑色字体内容, 你总结成当前的实际状态; 上面的文字之前 可能有些出入, 再优化意思。」  ① 左侧栏 (平台产品组 + 三层系统组)    · 🏭 Z-MAX 平台 | Z700 精细操作 · Z100 通用操作 | 产品特征 18 → 子系统 3 → 功能 74 → 模块 74 (链到代码)      · 由 System 2/1/0 组成的全系统实现 · 点开看产品与功能清单    · 🎛 参数中心 | 162 个可改数字 · 双击即改 | 标定 45 · 画布 78 · 代码 25 · 性能 8 · 开关 6      · 每个数字都有 当前/默认/min-max/单位/真源位置 · 改任意数字 → 链动 功能·性能·代码    · System 2 | **L4/L5 认知决策 · 功能 30** (原「L4级大脑 · 云端训练」) |      云端智能体 · 任务拆解与调度 (MES/语言 → 技能序列) · 流形世界模型预判/恢复 · 五层记忆筹划 · IntAct 稳态 101ms    · System 1 | **L3 动作执行 · 功能 4** (原「VLA-T + Z-Flow · 500M/15M / SYS11·SYS12」) |      VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWM 15M) · 长程规划 · 跨段技能序列复用 · 端到端 500M 推理    · System 0 | **L2 基石执行 · 功能 27** (原「L2基石 · EtherCAT」) |      安全层 + HAL 驱动 + EtherCAT + 运动学正逆解 · 原子技能 SK01-08 · 分段感知/控制小模型 · 肌肉记忆      · 一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口    · 分组标题: 「平台产品 · 点开 = 产品与功能清单」「三层系统 · L4/L5 · L3 · L2」  ② 首页「系统架构」页同步 (旧 SYS-11/SYS-12 编号 → 当前层号)    System 2 框 → "L4/L5 认知决策 · 云端智能体 · 任务拆解与调度 (30 功能)"    中层两框 → "System 1 · VLA-T 动作 (SmolVLA 500M)" / "System 1 · Z-Flow 引导 (LeWM 15M)"    Sys-0 框 → "System 0 · L2 基石执行 · EtherCAT · 安全层 · HAL · 原子技能 (27 功能)"    模块卡副标题: 数据集管理=System 2 · L4/L5 · 硬件工具箱=System 0 · L2 基石 ·    Simulink=System 1 · 仿真 · 配置中心=System 1 · 参数 · 实时监控=System 1 · L3  ③ 口径来源: 全部取自单一工程库 (data/database/zmax_engineering.db) 的 subsystems/functions 真值    (sys2=30 功能 · sys1=4 · sys0=27 · plat=13), 不再用手写印象。  判据: verify_platform_spec 6 项全绿 (data/database 白名单加 .jsonl) · 实机 OCR 复核侧栏文字
         # v5.29.0: v5.29.0 — 数据一体化工程: 全局可改数字注册表 + 改数即链动(功能/性能/代码) + 参数中心 (2026-10-09 老倪)  老倪: 「全局梳理所有可以更改的数字, 有默认值, 有调试参数, 有最大最小值; 当改变任意数值, 均可链动 功能·性能·代码逻辑; 状态空间工程是一个整体, 修改不同层的数据即表现出不同功能特性; 从顶层产品性能的 数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构; 实现数据一体化工程; UI 用颜色区分用途。」  ① 全局可改数字注册表 (tools/param_registry.py —— 数字的「数据面」, 一个数字一条链路)    **162 个数字, 五类, 各有颜色**:      🟡 calib    45  标定/真源参数 (相机 K/dist · T_base_cam · plane_z · depth_scale · 工位几何 ·                        机器人 · 工具负载 · TCP · 主参数 M) —— 真源 config/calib/*.json      🔵 canvas   78  画布节点数据 (帧数 w_ff/layers/frames/dims/权重…) —— 真源 state_space_obs.json      🟣 code     25  代码常量 + **函数默认参数** (cognition.insert_depth=0.0005 · align_th · DOMAIN_SIGMA…) —— 真源源码行号      🟢 platform  8  顶层产品性能目标 (插入成功率 ≥99% · 头到孔底 <4mm · 对接 ≤10mm…) —— 真源 KPI 文本      🟠 switch    6  运行开关/调试档位 (L3 full/partial/off · L4 INTACT 间隔 · 意图 β · L2 兼容 · 流形偏航)    每个数字带: 中文名 · 当前值 · 默认值 · min · max · 单位 · 档位枚举 · 真源文件与位置 · 归属子系统 ·    影响说明 · 口径 (人工确认 / 范围自动推断(未确认) / 未标定(缺口)) —— **推断的范围不冒充已定义**。    真源: config/platform/param_spec.json (人可编, 缺省自动播种, 人工行标 curated)。  ② 改数即链动 (系统 ↔ 功能 ↔ 代码 同步)    set_param(id, v): 校验 (类型/范围/档位/只读) → 预览影响链 → 落真源 (备份) → 回读核对 → 事件留痕    真源写口分五路: 标定 JSON 路径 / 画布节点 params / **KPI 文本里的那个数** / 代码常量行 / 函数默认参数行;    代码类写入**必过语法校验, 写坏立即回滚**; 越界值/非法档位一律拒。    影响链 effect_chain(): 系统 → 功能 (含子系统内功能清单) → 模块 → 代码文件:行 → 产品 KPI。    实测: 主参数 M → sys2 + 24 条功能; code 常量 → 文件:行; KPI 改动 → 链到产品特征。    可观察性: 每次改数记 data/database/param_events.jsonl + 工程库 param_events 表 (谁在什么时候把哪个数改成什么)。  ③ 单一工程库扩容 (data/database/zmax_engineering.db)    新增 params(162) / param_links(375: 数字→功能·模块·系统) / param_events 三表;    build 时自动从真源重扫, check 判据增至 17 项 (新增 ⑧ 参数面三条: 数量≥100 · 每个数字的真源在盘上 · 链接数)。  ④ 🎛 参数中心 (tools/gui/param_center.py) —— 数字的唯一交互面 (GUI 与数据解耦)    侧栏「🎛 参数中心」卡紧跟 🏭 Z-MAX 卡 (平台产品组); 左分类树 (5 类 + 真源文件分组) + 搜索 + 只看可写/只看缺口;    右数字表 (用途·数字·当前·默认·最小·最大·单位·状态·真源位置, 按用途与状态着色);    **双击一行 = 改数**: 弹校验框 → 先看影响链 (子系统/功能/模块/代码位置/KPI) → 点「应用」才落真源;    下部实时显示改数事件流; 顶部 重建库 / 复制清单 / 导出 JSON / 刷新。  ⑤ 判据 (全绿)    tools/param_registry.py verify 全绿 (五类非空 · 真源可读且库==源 · 口径标注齐全 · 自校验)    tools/verify_param_center.py 8 项全绿 (含真改数: 画布改→回读→还原 · 产品性能改→回读→还原 ·    越界拒 · 非法档位拒 · 代码常量写且语法校验过 · 库三表一致 · 页面真建 · 主窗口卡接线)    run_gui_verifiers.sh 判据集 14 → **16 项**  ⑥ 本轮修的真 bug: 列表下标路径解析 (camera.K[0][0]) · 未标定缺口(null)不能当"读不到" ·    负值范围推断 (畸变系数) · 范围口径不许自动推断冒充人工定义 · 画布元数据开关不算旋钮 (149→78)    · 代码常量扫描换真实文件 + 加函数默认参数 (3→25)。  文档 docs/design/param_registry_20261009.md; 真源 config/platform/param_spec.json
         # v5.28.0: v5.28.0 — 平台产品/子系统功能清单 + 工程数据库 (单一文件) + GUI↔工程解耦 + data/ 精简 (2026-10-09)  老倪: 「产品特性/系统配置/标定参数/功能清单汇总的数据库, 要和状态空间工程文件形成统一数据结构; 加载工程就一起把 特性·配置·参数·功能·模块代码 都链接出来; 最好只用一个数据库文件承载所有工程数据, 这样 GUI 与整个工程解耦, 我可以随时迁移工程文件用统一 GUI 加载; 全局优化控制台, 实现工程数据与界面分离; 总数据库放 /home/ubuntu/zmax/data; 这个路径数据太多, 没用的都删掉, 建 database 文件夹统一管理; 在主窗口左侧 System 2 之上增加 Z-MAX 方框描述平台产品 (Z700 精细操作 / Z100 通用操作), 点击 Z-MAX / System 2 / System 1 / System 0 能清晰打开功能清单; 你来设计产品逻辑与数据库系统。」  ① 产品逻辑 (PM) — config/platform/zmax_platform.json (真源, 人可编)    🏭 Z-MAX 平台 → 产品 Z700(精细操作) / Z100(通用操作) → 产品特征清单 18 条    (Z700 10 条: 完整作业执行/精细对位/力控插拔保护/宏微复合/L4专家自主/场景理解与任务拆解/      视触觉质量检测/标定与主参数M/真机安全急停/边学边练; Z100 8 条: 跨工位流转/工位精准对接/      举升调节/双形态作业/通用抓放翻转/双臂协同/多车协同调度/第三方模型接入)    特征引用能力库 feature.dbc 的 BO_ (31 条能力), 标注 KPI·状态·归属子系统·用到模块    子系统: System 2 认知决策(L4/L5) / System 1 动作执行(L3) / System 0 基石执行(L2) / 平台支撑(跨层)    每个子系统的功能清单由三轴定义: ⚙️配置 CFG · 📐标定 CAL · 🩺诊断 DIA (真源: 节点 params / calib.json /    verification_layer FEATURES)  ② 单一工程数据库 — data/database/zmax_engineering.db (SQLite 0.82 MB, 一个文件=一套工程)    真源: zmax_platform.json + reports/projects/*.proj(7段) + state_space_obs.json + zmax_calib.json         + zmax_manifold.json + feature.dbc + verification_layer.py FEATURES + nodes/library.py NODE_LOGIC         + library_curation.json    表: platform/products/product_features(18)/subsystems(4)/subsystem_axes(48)/functions(74)/fn_axes(1594)/       calib_params(41)/modules(74)/module_code(74)/capability_dbc(31)/interfaces(62)/       verification_features(57)/canvas_nodes(74)/canvas_links(184)/project_sections(27)/links(368)/       library_removed(33)    工具 tools/engineering_db.py: build / check / stats / query / load / export / serve / migrate  ③ 判据 (11 项全绿, tools/engineering_db.py check + tools/verify_platform_spec.py 6 项)    特征→子系统 0 悬空 · 功能→模块 0 悬空 · 三轴 74/74 · 特征→能力 0 悬空 · 工程 7 段齐 ·    功能 74 == 画布功能节点 74 (无重复计数) · 零同名功能 · 库↔真源哈希一致 · 模块 74/74 链到引擎代码  ④ 单一数据库服务 (常驻) — systemd zmax-engdb.service → 127.0.0.1:8798 只读 JSON    /summary /platform /products /product/<id> /systems /system/<id> /functions /function/<id>    /modules /capabilities /calib /project[/<section>] /graph /sync  ⑤ GUI ↔ 工程数据解耦 (重构)    新页 tools/gui/platform_spec.py「📋 功能清单」只认一个 .db 文件 (纯 sqlite, 不 import 工程文件):    页签 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0 / 🧩 平台支撑;    侧栏 System 2 之上新增 🏭 Z-MAX 平台卡; 点 4 张卡 → 切清单页并选中对应页签; 每页带「→ 打开该子系统    对应的功能页面」保留旧入口; 页内可 📂打开工程数据库(换库=换工程) / 🔁从真源重建 / 📋复制 / 💾导出 JSON / 📡服务状态  ⑥ data/ 精简: 354 MB → 21 MB (删 333 MB: handeye 79 张标定采集截图; 7 个 json 结果与    models/handeye_state.json 保留, 重跑 tools/a5_handeye_collect.py 可重现); 新建 data/database/ 统一管理    (库 + README + cleanup_manifest_20261009.txt 留痕)  ⑦ 修的真 bug: 行带归属重复计数(85→74) · 行带缝隙节点就近归属 · .proj 段名与 7 段语义映射 ·    懒加载画布页导致下标漂移(改 setCurrentWidget) · current_payload 页签匹配  文档 docs/design/platform_engineering_db_20261009.md + data/database/README.md
         # v5.27.0: v5.27.0 — 模块库 ↔ 画布: 全局同步 + 每个模块可拖进画布 / 可删除 / 可存为新工程 (2026-10-09)  老倪: 「全面检查 simulink 画布左侧的模块库, 现在状态空间的节点, 所有节点, 都要与模块库同步; 模块库的每个模块节点, 可以交互式拖进画布, 或者删除, 可以保存为新的工程文件; 你来全局检查同步功能; 没有联系的模块, 或者没有关联的, 都删掉」  ① 全面体检 (改前)    库 495 条 (35 组) · 状态空间画布 89 节点 → 库里缺 0 个 (🧮 那组本来就从画布 JSON 自动生成)    ⛔ 但 33 条「无联系/无关联」旧条目在库里挂着 (2026-08 的 C/A/S/H/M 老编号体系 + 5 条 LEW 子模块)    判定「有关联」= 同名画布节点 / 模板应用 / 原子技能注册表 / match_node 命中引擎逻辑 / 自带 flow·模板·场景·闸  ② 同步是活的 (refresh_library)    · 库 = 静态组 + 原子技能组(注册表) + 状态空间组(画布节点, 内存优先) − curation 删除名单    · 状态空间组改成「画布内存优先」⇒ 刚拖进来没存盘的节点, 库里立刻就有 (以前只读 JSON, 同步是假的)    · 载入画布自动同步一次; 用「节点名集合+curation mtime」签名做快路 (495 按钮全建要几百 ms)  ③ 每个模块可以拖进画布    · LibButton: 拖动 ≥8px 起 QDrag, MIME application/x-zmax-lib-item (载荷 type/name/params/group)    · 画布 SimCanvas: setAcceptDrops + dragEnter/dragMove/dropEvent → add_node_from_lib(payload, mapToScene(落点))    · 拖 = 落在鼠标处 (节点左上 = 落点 −(120,42)); 单击 = 老行为 (画布中心); 非库拖拽不建节点  ④ 可以删除    · 库按钮右键 → 「⛔ 从模块库移除」 (另加「➕ 加入画布」) → 写 config/library_curation.json 名单 → 立刻重建    · 删条目不动画布节点; tools/lib_sync.py restore 一句整表还原; 已按①删掉那 33 条  ⑤ 可以保存为新的工程文件    · 模块库面板新增「💾 存为新工程」按钮 (同一 export_flow, = 画布菜单 Ctrl+Shift+S)    · 判据里真替掉文件框跑 export_flow() → 新 JSON 落盘 + 节点数一致  ⑥ 判据 (已入 run_gui_verifiers.sh, 14 项全绿)    tools/verify_library_sync.py 7 项: 同步子进程 rc=0 · 拖拽通道齐备 · 真拖一次(落点=位置·换落点位置跟着变·    纯文本拖拽不建节点) · 同步是活的 · 删除(curation+1/库−1/画布不变) · 真落盘 · 删除名单在册 → 全绿 0 失败    tools/lib_sync.py check|dead|prune|restore|list|verify → verify rc=0 (89/89 缺 0 · 462 条 · 0 死条目 · 0 重名)  ⑦ 踩坑    · QDropEvent 不接管 QMimeData 所有权 → 内联造 mime 被 GC = 段错误 (判据跑一半崩) → 先持引用再传    · export_flow 里的 QFileDialog.exec_() 离屏会卡死 → 替 QFileDialog.exec_/selectedFiles, 不是 getSaveFileName    · 判据口径: 「画布节点都得在库里」只认状态空间画布 (库不是所有 flow 的并集)  文档 docs/design/library_sync_20261009.md; 技能 zmax-console / simulink-flow-engineering 已沉淀。
