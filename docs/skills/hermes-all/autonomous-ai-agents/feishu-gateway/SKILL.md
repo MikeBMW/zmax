@@ -257,6 +257,24 @@ curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type
   -d '{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"🤖 Gateway test: bot is online\"}"}'
 ```
 
+### 直推要**回读服务端**才算发出去 (message_id 回读)
+
+`code=0` / `success` 只证明开放平台受理了, **不证明消息进群且还在**。发完立刻回读一条:
+```bash
+curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Authorization: Bearer $TOKEN"
+# 判据: code=0 · deleted:false · body 文本与发出的一致
+```
+- 交付结果给用户时, 以"回读到的 `message_id` + 发送时刻"当证据, **不要拿自己的"已发送"当证据**。
+- 本机仓库另有支支脚本 `tools/feishu_send.py`(同样每次自换 token ⇒ 免疫 gateway 进程内 token
+  缓存过期的 99991663), 支持 `"文本"` 与 `--image <图> --text <说明>` 两种, `--chat <oc_…>` 换会话,
+  `--dry-run` 只自检不发; 输出 `{ok, code, message_id, http, attempts}`, 失败自动换新 token 重试一次。
+  图片要两跳(先 `POST /im/v1/images` 拿 `image_key`, 再发 `msg_type=image`)。
+- 目标会话标识从 gateway 维护的 `~/.hermes/channel_directory.json` 取(群与私聊都在里面), **别写死在脚本里**;
+  凭据只存 `~/.hermes/.env` 的 `FEISHU_APP_ID/FEISHU_APP_SECRET`, **不进仓库**。
+- 已踩过的开放平台侧限制: 频率限制 `9499` 要退避重试 · 图片上限约 10MB(`image_type=message`) ·
+  **视频必须 `msg_type=media`**(用 `file` 会回 `230055`)。
+- 从 gateway 自身会话里发重启类命令会被 SIGTERM 传播杀掉进程 —— 生命周期命令要另开 shell 发。
+
 ### When user says "你怎么不回答？" / "你得回复啊"
 
 1. Check group membership (chat list API)

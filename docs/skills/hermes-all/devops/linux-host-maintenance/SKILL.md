@@ -421,6 +421,10 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
 - 复核口径: 再跑一次那条锚定 `pgrep -af` 应为空; 服务是否回来**以端口/HTTP 探活为准**(`ss -ltnp` / 探活码),
   不看“脚本退出码 0”。
 - 更稳的做法: 常驻进程启动时写 pid 文件, 之后一律按 pid 文件杀。
+- **守护进程名唯一时, 最简安全形式是 `pgrep -x <可执行名>`**(只按可执行名精确匹配, 不含参数与路径 ⇒
+  不可能命中调用它的那条 shell; `pgrep -f` 才需要 `^...$` 锚定)。实测
+  `pgrep -x tinyproxy | while read p; do sudo kill "$p"; done` 一次干净停掉、不再自杀;
+  收尾复核"再跑一次应为空 + 端口/探活为准"。
 - 同一类坑还有: 内联的长命令会被工具层拦或截断 —— 脚本化写到 `/tmp/*.sh` 再跑。
 
 ## Pitfalls
