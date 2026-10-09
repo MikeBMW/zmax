@@ -65,6 +65,10 @@ DROP TABLE IF EXISTS fn_axes;                 CREATE TABLE fn_axes(fn_id TEXT, a
 DROP TABLE IF EXISTS calib_params;            CREATE TABLE calib_params(path TEXT, key TEXT, value TEXT, unit TEXT, src TEXT, status TEXT, PRIMARY KEY(path, key));
 DROP TABLE IF EXISTS modules;                 CREATE TABLE modules(name TEXT PRIMARY KEY, kind TEXT, group_name TEXT, params TEXT, verif_layer INTEGER, source TEXT);
 DROP TABLE IF EXISTS library_removed;         CREATE TABLE library_removed(group_name TEXT, name TEXT, why TEXT, ts TEXT);
+DROP TABLE IF EXISTS params;                  CREATE TABLE params(param_id TEXT PRIMARY KEY, group_cn TEXT, cat TEXT, name TEXT, cn TEXT, value TEXT, default_val TEXT, min REAL, max REAL, unit TEXT, kind TEXT, choices TEXT, source TEXT, ref TEXT, writable INT, status TEXT, color TEXT, sys_id TEXT, module_ref TEXT, impact TEXT);
+DROP TABLE IF EXISTS param_events;            CREATE TABLE param_events(ts TEXT, param_id TEXT, cn TEXT, old_val TEXT, new_val TEXT, cat TEXT, source TEXT, written INT, msg TEXT);
+DROP TABLE IF EXISTS param_links;             CREATE TABLE param_links(param_id TEXT, kind TEXT, target TEXT);
+CREATE INDEX IF NOT EXISTS ix_prm_grp ON params(group_cn);
 DROP TABLE IF EXISTS module_code;             CREATE TABLE module_code(module_name TEXT, logic_key TEXT, file TEXT, line INTEGER, doc TEXT, match TEXT);
 DROP TABLE IF EXISTS capability_dbc;          CREATE TABLE capability_dbc(bo_id TEXT PRIMARY KEY, grp TEXT, name TEXT, dirs TEXT, brief TEXT, explain TEXT, iface TEXT, inputs TEXT, outputs TEXT, scenes TEXT, engineering TEXT, owner TEXT);
 DROP TABLE IF EXISTS verification_features;   CREATE TABLE verification_features(f_id TEXT PRIMARY KEY, domain TEXT, name TEXT, where_ TEXT, how TEXT, case_id TEXT, level TEXT);
@@ -458,11 +462,49 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                   (os.path.basename(prj["path"]), "meta", _j({k: d[k] for k in META_KEYS}), _sha(_j(META_KEYS))))
         c.execute("UPDATE meta SET v=? WHERE k=?", (_j(SECMAP), "section_map"))
 
+    # ── 参数注册表: 全局可改数字 (产品性能/配置/标定/代码常量/运行开关) ──
+    try:
+        import importlib.util as _iu
+        _pf = os.path.join(ROOT, "tools", "param_registry.py")
+        if os.path.exists(_pf):
+            _spec = _iu.spec_from_file_location("_pr", _pf)
+            _pr = _iu.module_from_spec(_spec)
+            _spec.loader.exec_module(_pr)                                       # type: ignore[union-attr]
+            _reg = _pr.registry()
+            for p_ in _reg["params"]:
+                sid = ""
+                if p_["group"] == "calib":
+                    seg = p_["param_id"].split(":", 1)[1].split(".")[0]
+                    sid = "sys2" if seg == "manifold_engine" else "sys0"
+                elif p_["group"] == "switch":
+                    sid = p_.get("sys_hint") or "sys1"
+                c.execute("INSERT OR REPLACE INTO params VALUES (" + ",".join(["?"] * 20) + ")",
+                          (p_["param_id"], p_["cat_cn"], p_["group"], p_["name"], p_["cn"], _j(p_["value"]),
+                           _j(p_["default"]), p_["min"], p_["max"], p_["unit"], p_["kind"], _j(p_["choices"]),
+                           p_["source"], p_["ref"], 1 if p_["writable"] else 0, p_["status"], p_["color"],
+                           sid, p_.get("fn_ref") or "", p_.get("impact") or ""))
+                c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "功能", p_["name"]))
+                c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "模块", p_["name"]))
+                if sid:
+                    c.execute("INSERT INTO param_links VALUES (?,?,?)", (p_["param_id"], "系统", sid))
+            ev = os.path.join(ROOT, "data", "database", "param_events.jsonl")
+            if os.path.exists(ev):
+                for ln in open(ev, encoding="utf-8"):
+                    try:
+                        e = json.loads(ln)
+                        c.execute("INSERT INTO param_events VALUES (?,?,?,?,?,?,?,?,?)",
+                                  (e.get("ts"), e.get("param"), e.get("cn"), _j(e.get("old")), _j(e.get("new")),
+                                   e.get("cat"), e.get("source"), 1 if e.get("written") else 0, e.get("msg", "")))
+                    except Exception:                                               # noqa: BLE001
+                        pass
+    except Exception as _e:                                                    # noqa: BLE001
+        print("[engineering_db] 参数注册表摄取失败: %r" % (_e,))
+
     con.commit()
     for t in ("platform", "products", "product_features", "subsystems", "subsystem_axes", "functions",
               "fn_axes", "calib_params", "modules", "module_code", "capability_dbc",
               "verification_features", "interfaces", "links", "canvas_nodes", "canvas_links",
-              "project_sections", "library_removed"):
+              "project_sections", "library_removed", "params", "param_events", "param_links"):
         cnt[t] = c.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
     con.close()
     if not quiet:
@@ -543,6 +585,28 @@ def check(db=DB_DEFAULT):
     ncode = q1("SELECT COUNT(DISTINCT module_name) FROM module_code")
     print("  ✅ ⑦ 模块 %d 个, 其中 %d 个链到引擎代码真源 (%s)" %
           (nmod, ncode, q1("SELECT COUNT(*) FROM module_code") and "nodes/library.py"), flush=True)
+    # ⑧ 参数面: 全局可改数字 (系统 ↔ 功能 ↔ 代码 同步的数据面)
+    try:
+        n_par = q1("SELECT COUNT(*) FROM params")
+        n_wr = q1("SELECT COUNT(*) FROM params WHERE writable=1")
+        n_gap = q1("SELECT COUNT(*) FROM params WHERE status LIKE '%缺口%' OR status LIKE '%未定义%'")
+        n_def = q1("SELECT COUNT(*) FROM params WHERE min IS NOT NULL AND status NOT LIKE '%未定义%'")
+        print("  %s ⑧ 全局可改数字 %d 个 (可写 %d · 明确范围 %d · 未定/缺口 %d)" %
+              ("✅" if n_par >= 100 else "❌", n_par, n_wr, n_def, n_gap), flush=True)
+        if n_par < 100:
+            bad.append("params<100")
+        srcs_p = [r[0] for r in con.execute("SELECT DISTINCT source FROM params").fetchall()]
+        miss_p = [s_ for s_ in srcs_p if not os.path.exists(os.path.join(ROOT, s_))]
+        print("  %s ⑧b 每个数字的真源都在盘上 (%d 个来源%s)" %
+              ("✅" if not miss_p else "❌", len(srcs_p), "" if not miss_p else " 缺:" + str(miss_p)), flush=True)
+        if miss_p:
+            bad.append("param_src_missing %s" % miss_p)
+        n_link = q1("SELECT COUNT(*) FROM param_links")
+        print("  %s ⑧c 数字→功能/模块/系统 链接 %d 条" % ("✅" if n_link >= n_par * 2 else "❌", n_link), flush=True)
+    except Exception as _e:                                                   # noqa: BLE001
+        print("  ❌ ⑧ 参数面判据异常: %r" % (_e,), flush=True)
+        bad.append("param_judge")
+
     print("  📦 单文件: %s (%.2f MB)" % (db, os.path.getsize(db) / 1048576), flush=True)
     con.close()
     print(("✅ 判据全绿" if not bad else "❌ 判据失败: %s" % bad), flush=True)

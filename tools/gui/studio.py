@@ -770,7 +770,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.28.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.29.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -806,6 +806,13 @@ class SystemSidebar(QFrame):
         )
         self.zmax.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.zmax)
+        self.params_card = SystemLayerCard(
+            "params", "🎛 参数中心", "全局可改数字 · 双击即改",
+            "#ff9f43",
+            "默认值 / 范围 min-max / 调试参数\n改任意数字 → 链动 功能·性能·代码\n落真源前先预览影响链"
+        )
+        self.params_card.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.params_card)
 
         # System 2 (顶 — 云端训练)
         self.sys2 = SystemLayerCard(
@@ -11357,7 +11364,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.28.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.29.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11365,9 +11372,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.28.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.29.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.29.0: v5.29.0 — 数据一体化工程: 全局可改数字注册表 + 改数即链动(功能/性能/代码) + 参数中心 (2026-10-09 老倪)  老倪: 「全局梳理所有可以更改的数字, 有默认值, 有调试参数, 有最大最小值; 当改变任意数值, 均可链动 功能·性能·代码逻辑; 状态空间工程是一个整体, 修改不同层的数据即表现出不同功能特性; 从顶层产品性能的 数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构; 实现数据一体化工程; UI 用颜色区分用途。」  ① 全局可改数字注册表 (tools/param_registry.py —— 数字的「数据面」, 一个数字一条链路)    **162 个数字, 五类, 各有颜色**:      🟡 calib    45  标定/真源参数 (相机 K/dist · T_base_cam · plane_z · depth_scale · 工位几何 ·                        机器人 · 工具负载 · TCP · 主参数 M) —— 真源 config/calib/*.json      🔵 canvas   78  画布节点数据 (帧数 w_ff/layers/frames/dims/权重…) —— 真源 state_space_obs.json      🟣 code     25  代码常量 + **函数默认参数** (cognition.insert_depth=0.0005 · align_th · DOMAIN_SIGMA…) —— 真源源码行号      🟢 platform  8  顶层产品性能目标 (插入成功率 ≥99% · 头到孔底 <4mm · 对接 ≤10mm…) —— 真源 KPI 文本      🟠 switch    6  运行开关/调试档位 (L3 full/partial/off · L4 INTACT 间隔 · 意图 β · L2 兼容 · 流形偏航)    每个数字带: 中文名 · 当前值 · 默认值 · min · max · 单位 · 档位枚举 · 真源文件与位置 · 归属子系统 ·    影响说明 · 口径 (人工确认 / 范围自动推断(未确认) / 未标定(缺口)) —— **推断的范围不冒充已定义**。    真源: config/platform/param_spec.json (人可编, 缺省自动播种, 人工行标 curated)。  ② 改数即链动 (系统 ↔ 功能 ↔ 代码 同步)    set_param(id, v): 校验 (类型/范围/档位/只读) → 预览影响链 → 落真源 (备份) → 回读核对 → 事件留痕    真源写口分五路: 标定 JSON 路径 / 画布节点 params / **KPI 文本里的那个数** / 代码常量行 / 函数默认参数行;    代码类写入**必过语法校验, 写坏立即回滚**; 越界值/非法档位一律拒。    影响链 effect_chain(): 系统 → 功能 (含子系统内功能清单) → 模块 → 代码文件:行 → 产品 KPI。    实测: 主参数 M → sys2 + 24 条功能; code 常量 → 文件:行; KPI 改动 → 链到产品特征。    可观察性: 每次改数记 data/database/param_events.jsonl + 工程库 param_events 表 (谁在什么时候把哪个数改成什么)。  ③ 单一工程库扩容 (data/database/zmax_engineering.db)    新增 params(162) / param_links(375: 数字→功能·模块·系统) / param_events 三表;    build 时自动从真源重扫, check 判据增至 17 项 (新增 ⑧ 参数面三条: 数量≥100 · 每个数字的真源在盘上 · 链接数)。  ④ 🎛 参数中心 (tools/gui/param_center.py) —— 数字的唯一交互面 (GUI 与数据解耦)    侧栏「🎛 参数中心」卡紧跟 🏭 Z-MAX 卡 (平台产品组); 左分类树 (5 类 + 真源文件分组) + 搜索 + 只看可写/只看缺口;    右数字表 (用途·数字·当前·默认·最小·最大·单位·状态·真源位置, 按用途与状态着色);    **双击一行 = 改数**: 弹校验框 → 先看影响链 (子系统/功能/模块/代码位置/KPI) → 点「应用」才落真源;    下部实时显示改数事件流; 顶部 重建库 / 复制清单 / 导出 JSON / 刷新。  ⑤ 判据 (全绿)    tools/param_registry.py verify 全绿 (五类非空 · 真源可读且库==源 · 口径标注齐全 · 自校验)    tools/verify_param_center.py 8 项全绿 (含真改数: 画布改→回读→还原 · 产品性能改→回读→还原 ·    越界拒 · 非法档位拒 · 代码常量写且语法校验过 · 库三表一致 · 页面真建 · 主窗口卡接线)    run_gui_verifiers.sh 判据集 14 → **16 项**  ⑥ 本轮修的真 bug: 列表下标路径解析 (camera.K[0][0]) · 未标定缺口(null)不能当"读不到" ·    负值范围推断 (畸变系数) · 范围口径不许自动推断冒充人工定义 · 画布元数据开关不算旋钮 (149→78)    · 代码常量扫描换真实文件 + 加函数默认参数 (3→25)。  文档 docs/design/param_registry_20261009.md; 真源 config/platform/param_spec.json
         # v5.28.0: v5.28.0 — 平台产品/子系统功能清单 + 工程数据库 (单一文件) + GUI↔工程解耦 + data/ 精简 (2026-10-09)  老倪: 「产品特性/系统配置/标定参数/功能清单汇总的数据库, 要和状态空间工程文件形成统一数据结构; 加载工程就一起把 特性·配置·参数·功能·模块代码 都链接出来; 最好只用一个数据库文件承载所有工程数据, 这样 GUI 与整个工程解耦, 我可以随时迁移工程文件用统一 GUI 加载; 全局优化控制台, 实现工程数据与界面分离; 总数据库放 /home/ubuntu/zmax/data; 这个路径数据太多, 没用的都删掉, 建 database 文件夹统一管理; 在主窗口左侧 System 2 之上增加 Z-MAX 方框描述平台产品 (Z700 精细操作 / Z100 通用操作), 点击 Z-MAX / System 2 / System 1 / System 0 能清晰打开功能清单; 你来设计产品逻辑与数据库系统。」  ① 产品逻辑 (PM) — config/platform/zmax_platform.json (真源, 人可编)    🏭 Z-MAX 平台 → 产品 Z700(精细操作) / Z100(通用操作) → 产品特征清单 18 条    (Z700 10 条: 完整作业执行/精细对位/力控插拔保护/宏微复合/L4专家自主/场景理解与任务拆解/      视触觉质量检测/标定与主参数M/真机安全急停/边学边练; Z100 8 条: 跨工位流转/工位精准对接/      举升调节/双形态作业/通用抓放翻转/双臂协同/多车协同调度/第三方模型接入)    特征引用能力库 feature.dbc 的 BO_ (31 条能力), 标注 KPI·状态·归属子系统·用到模块    子系统: System 2 认知决策(L4/L5) / System 1 动作执行(L3) / System 0 基石执行(L2) / 平台支撑(跨层)    每个子系统的功能清单由三轴定义: ⚙️配置 CFG · 📐标定 CAL · 🩺诊断 DIA (真源: 节点 params / calib.json /    verification_layer FEATURES)  ② 单一工程数据库 — data/database/zmax_engineering.db (SQLite 0.82 MB, 一个文件=一套工程)    真源: zmax_platform.json + reports/projects/*.proj(7段) + state_space_obs.json + zmax_calib.json         + zmax_manifold.json + feature.dbc + verification_layer.py FEATURES + nodes/library.py NODE_LOGIC         + library_curation.json    表: platform/products/product_features(18)/subsystems(4)/subsystem_axes(48)/functions(74)/fn_axes(1594)/       calib_params(41)/modules(74)/module_code(74)/capability_dbc(31)/interfaces(62)/       verification_features(57)/canvas_nodes(74)/canvas_links(184)/project_sections(27)/links(368)/       library_removed(33)    工具 tools/engineering_db.py: build / check / stats / query / load / export / serve / migrate  ③ 判据 (11 项全绿, tools/engineering_db.py check + tools/verify_platform_spec.py 6 项)    特征→子系统 0 悬空 · 功能→模块 0 悬空 · 三轴 74/74 · 特征→能力 0 悬空 · 工程 7 段齐 ·    功能 74 == 画布功能节点 74 (无重复计数) · 零同名功能 · 库↔真源哈希一致 · 模块 74/74 链到引擎代码  ④ 单一数据库服务 (常驻) — systemd zmax-engdb.service → 127.0.0.1:8798 只读 JSON    /summary /platform /products /product/<id> /systems /system/<id> /functions /function/<id>    /modules /capabilities /calib /project[/<section>] /graph /sync  ⑤ GUI ↔ 工程数据解耦 (重构)    新页 tools/gui/platform_spec.py「📋 功能清单」只认一个 .db 文件 (纯 sqlite, 不 import 工程文件):    页签 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0 / 🧩 平台支撑;    侧栏 System 2 之上新增 🏭 Z-MAX 平台卡; 点 4 张卡 → 切清单页并选中对应页签; 每页带「→ 打开该子系统    对应的功能页面」保留旧入口; 页内可 📂打开工程数据库(换库=换工程) / 🔁从真源重建 / 📋复制 / 💾导出 JSON / 📡服务状态  ⑥ data/ 精简: 354 MB → 21 MB (删 333 MB: handeye 79 张标定采集截图; 7 个 json 结果与    models/handeye_state.json 保留, 重跑 tools/a5_handeye_collect.py 可重现); 新建 data/database/ 统一管理    (库 + README + cleanup_manifest_20261009.txt 留痕)  ⑦ 修的真 bug: 行带归属重复计数(85→74) · 行带缝隙节点就近归属 · .proj 段名与 7 段语义映射 ·    懒加载画布页导致下标漂移(改 setCurrentWidget) · current_payload 页签匹配  文档 docs/design/platform_engineering_db_20261009.md + data/database/README.md
         # v5.27.0: v5.27.0 — 模块库 ↔ 画布: 全局同步 + 每个模块可拖进画布 / 可删除 / 可存为新工程 (2026-10-09)  老倪: 「全面检查 simulink 画布左侧的模块库, 现在状态空间的节点, 所有节点, 都要与模块库同步; 模块库的每个模块节点, 可以交互式拖进画布, 或者删除, 可以保存为新的工程文件; 你来全局检查同步功能; 没有联系的模块, 或者没有关联的, 都删掉」  ① 全面体检 (改前)    库 495 条 (35 组) · 状态空间画布 89 节点 → 库里缺 0 个 (🧮 那组本来就从画布 JSON 自动生成)    ⛔ 但 33 条「无联系/无关联」旧条目在库里挂着 (2026-08 的 C/A/S/H/M 老编号体系 + 5 条 LEW 子模块)    判定「有关联」= 同名画布节点 / 模板应用 / 原子技能注册表 / match_node 命中引擎逻辑 / 自带 flow·模板·场景·闸  ② 同步是活的 (refresh_library)    · 库 = 静态组 + 原子技能组(注册表) + 状态空间组(画布节点, 内存优先) − curation 删除名单    · 状态空间组改成「画布内存优先」⇒ 刚拖进来没存盘的节点, 库里立刻就有 (以前只读 JSON, 同步是假的)    · 载入画布自动同步一次; 用「节点名集合+curation mtime」签名做快路 (495 按钮全建要几百 ms)  ③ 每个模块可以拖进画布    · LibButton: 拖动 ≥8px 起 QDrag, MIME application/x-zmax-lib-item (载荷 type/name/params/group)    · 画布 SimCanvas: setAcceptDrops + dragEnter/dragMove/dropEvent → add_node_from_lib(payload, mapToScene(落点))    · 拖 = 落在鼠标处 (节点左上 = 落点 −(120,42)); 单击 = 老行为 (画布中心); 非库拖拽不建节点  ④ 可以删除    · 库按钮右键 → 「⛔ 从模块库移除」 (另加「➕ 加入画布」) → 写 config/library_curation.json 名单 → 立刻重建    · 删条目不动画布节点; tools/lib_sync.py restore 一句整表还原; 已按①删掉那 33 条  ⑤ 可以保存为新的工程文件    · 模块库面板新增「💾 存为新工程」按钮 (同一 export_flow, = 画布菜单 Ctrl+Shift+S)    · 判据里真替掉文件框跑 export_flow() → 新 JSON 落盘 + 节点数一致  ⑥ 判据 (已入 run_gui_verifiers.sh, 14 项全绿)    tools/verify_library_sync.py 7 项: 同步子进程 rc=0 · 拖拽通道齐备 · 真拖一次(落点=位置·换落点位置跟着变·    纯文本拖拽不建节点) · 同步是活的 · 删除(curation+1/库−1/画布不变) · 真落盘 · 删除名单在册 → 全绿 0 失败    tools/lib_sync.py check|dead|prune|restore|list|verify → verify rc=0 (89/89 缺 0 · 462 条 · 0 死条目 · 0 重名)  ⑦ 踩坑    · QDropEvent 不接管 QMimeData 所有权 → 内联造 mime 被 GC = 段错误 (判据跑一半崩) → 先持引用再传    · export_flow 里的 QFileDialog.exec_() 离屏会卡死 → 替 QFileDialog.exec_/selectedFiles, 不是 getSaveFileName    · 判据口径: 「画布节点都得在库里」只认状态空间画布 (库不是所有 flow 的并集)  文档 docs/design/library_sync_20261009.md; 技能 zmax-console / simulink-flow-engineering 已沉淀。
         # v5.26.4: v5.26.4 — 打开工程: 去掉二次确认框 (选文件即确认) + 确认框默认/焦点钉死 (2026-10-09)  老倪: 「加载工程文件后，还是没反应」—— 在实机上继续追, 又抓出两条:  🔴 真因3 (实机验证): 「打开/加载工程」的二次确认框纯属多余摩擦, 且默认按钮/初始焦点都落在「否」上    ⇒ 用户回车 (或点高亮按钮) = 静默取消, 只剩状态栏 2.5s 一行字 = "点了没反应"。    实机复现: 选好 zmax_space.proj → 确认框 → 回车 → 画布真源 mtime 未变、无新备份 (写盘链一步没走)。    实测还发现: 即便 setDefaultButton(Yes), 实机**初始焦点**仍在「取消」上 (回车/空格打到有焦点的按钮) ⇒    必须 default + focus + escape 三个都钉死才行。 🔴 真因4 (我自己踩的坑): 用 studio_ctl.sh restart 重启控制台时, 我的 shell 里还开着    QT_QPA_PLATFORM=offscreen (离屏判据用), 被 launch_studio.sh 继承 → 控制台起在 offscreen 平台:    进程活着/日志正常/窗口"visible=True", 但**根本没有窗口** (无 X 连接, 可用区 800x600)。    已在 launch_studio.sh 里 unset 并强制 QT_QPA_PLATFORM=xcb。  修法:  · 「🗂 打开总工程」/「📂 加载工程文件」**不再弹二次确认框** —— 在文件对话框里选中文件即确认;    写盘前照样全量自动备份 (画布→flows/_archive, 标定→*.bak_<ts>), 漂移对照挪到完成后的报告里。  · _msg/_msg_ask 能力保留 (default_yes / yes_text / no_text) 并新增: default+focus+escape 三个一起钉,    别的确认框 (危险操作) 仍旧默认「否」。  · launch_studio.sh 强制 xcb 平台 (防测试环境污染线上界面)。  · 判据: verify_shortcuts 改判「打开=一步, 无二次确认框」+ 漂移对照没丢; probe_open_space 加    「确认框调用 0 次」判据 (替身把确认框一律返回取消, 打开仍必须成功); 判据集 13 项全绿。
@@ -11880,6 +11888,16 @@ class StudioMainWindow(QMainWindow):
         except Exception as _e:
             print("[platform_spec] 功能清单页挂载失败: %r" % (_e,))
             self.spec = None
+
+        # 🎛 2026-10-09 老倪: 「参数中心」页 — 全局可改数字 (默认/最大最小/调试参数), 双击改数即链动
+        try:
+            from param_center import ParamCenterPage as _PC
+            self.pc = _PC()
+            self.stack.addWidget(self.pc)
+            self.modules["params"] = self.stack.count() - 1
+        except Exception as _e2:
+            print("[param_center] 参数中心页挂载失败: %r" % (_e2,))
+            self.pc = None
 
         root.addWidget(self.stack, 1)
         # 📊 vv5.16.36 (2026-10-01 老倪「硬件/在役模型版本/推理训练状态/3DGS 资产都推到 8796 服务,
@@ -12830,6 +12848,13 @@ class StudioMainWindow(QMainWindow):
 
         # 📋 2026-10-09 老倪: 「点击 Z-MAX / System 2 / System 1 / System 0 方块 → 清晰打开功能清单」
         #   ⇒ 四张卡统一进「功能清单」页并选中对应页签 (旧功能页从清单页里一键进, 能力不丢)
+        if target in ("params", "pc") and getattr(self, "pc", None):
+            self.modules["params"] = self.stack.indexOf(self.pc)
+            self.stack.setCurrentWidget(self.pc)
+            self.statusBar().showMessage("● 参数中心  |  全局可改数字 %s  |  改数先预览影响链, 落真源前备份"
+                                         % (len(self.pc.rows) if hasattr(self.pc, "rows") else "?"))
+            return
+
         if target in ("zmax", "sys2", "sys1", "sys0", "plat", "spec") and getattr(self, "spec", None):
             # 🐛 2026-10-09: 画布页是懒建(400ms 后插在 index 10) ⇒ 之后所有页下标会漂,
             #   所以这里按 widget 切页 + 现场刷新 self.modules["spec"], 不认启动时记死的下标
