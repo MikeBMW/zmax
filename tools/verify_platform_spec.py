@@ -164,6 +164,20 @@ for _c in _cards_w:
 _light = {k: v for k, v in _faces.items() if "亮" in str(v)}
 chk(not _light, "卡面必须是深色 (老倪: 不改白底) — 违规: %s" % (_light or "无"))
 
+# ① 间距均匀: 六张卡之间不得插弹簧/别的控件 (老倪: 功能清单↔参数中心之间不能有大空隙)
+_lay = win.sidebar.layout()
+_items = [_lay.itemAt(_i) for _i in range(_lay.count())]
+_cidx = [_i for _i, _it in enumerate(_items)
+         if _it.widget() is not None and _it.widget().__class__.__name__ == "SystemLayerCard"]
+_spidx = [_i for _i, _it in enumerate(_items) if _it.spacerItem() is not None]
+_between = [_i for _i in _spidx if _cidx and min(_cidx) < _i < max(_cidx)]
+_mid = [_i for _i in range(min(_cidx) + 1, max(_cidx)) if _items[_i].widget() is not None
+        and _items[_i].widget().__class__.__name__ != "SystemLayerCard"]
+chk(len(_cidx) == 6 and not _between and not _mid,
+    "六张卡连续排列, 中间无弹簧/无别的控件 (弹簧位置 %s, 夹在中间的其它控件 %s), spacing=%d"
+    % (_between or "无", _mid or "无", _lay.spacing()))
+chk(_lay.spacing() == 8, "卡间距统一 spacing=8 (实际 %d)" % _lay.spacing())
+
 _subs, _cnt = {}, []
 for _c in _cards_w:
     _ls = [l.text() for l in _c.findChildren(_QL)]
@@ -177,7 +191,7 @@ _labs = [l.text() for l in win.sidebar.findChildren(_QL)]
 chk(not [x for x in _labs if x.strip() in ("① 产品", "② 系统", "③ 产品配置", "④ 数据配置")],
     "分组小字已删净 (产品/系统/产品配置/数据配置 4 个标题)")
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (13 项)" if not FAIL else
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (14 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

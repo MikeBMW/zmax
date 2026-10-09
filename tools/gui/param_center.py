@@ -58,7 +58,7 @@ class ParamCenterPage(QWidget):
         root.setSpacing(6)
 
         head = QHBoxLayout()
-        t = QLabel("🎛 参数中心 · 数据配置 (改数字 → 链动 功能·性能·代码)")
+        t = QLabel("🎛 参数中心 · 数据库服务")
         t.setStyleSheet("color:%s; font-size:15pt; font-weight:700;" % C_WHITE)
         head.addWidget(t)
         head.addStretch()
