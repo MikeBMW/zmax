@@ -545,6 +545,25 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
 **备份纪律**: 改前 `cp flows/state_space_obs.json flows/…bak_pre_<改动>_<ts>` (回滚靠它, 不用 git 历史);
 过期快照别留在工作树 → 移 `~/zmax_data/canvas_baks_archive_<日期>` + `.gitignore` 覆盖 `.bak_/.bak./.bak-` 三种命名。
 
+## 🧰 画布工具栏: 只移不删, 重要功能必须留可见按钮 (2026-10-09 老倪)
+
+老倪: 「simulink 画布上边的 **状态空间 / 工位总览** 这么重要的功能, 怎么给删除了? 找回来 —— 这两个按钮」。
+根因: v5.26.0 那轮「工具栏 11 个按钮全撤到菜单/快捷键」时把这两个也一起撤了 —— **方法都还在**
+(`open_state_space` / `open_station_page`), 但画布上没了可见入口 ⇒ 在现场就等于功能没了。
+
+* 纪律: 老倪说「按钮删掉, 需要就在代码里加」时, 把入口分两档 ——
+  **① 重要功能 (必须留工具栏按钮)**: ▶运行/⏭单步/⏹停止/🔄重启 · 🧮状态空间 · 🛰工位总览;
+  **② 工具类 (可撤到菜单/快捷键)**: 另存为/加载/保存模型/录制/浮动/定位节点/全览/审计/Model Zoo…。
+  撤之前逐条问自己「现场找不找得到」; 撤完在报告里**明说撤了什么、现在去哪找**。
+* 找回来的正确写法 (只加不减): 在 `SimulinkModule` 工具栏 `tl.addWidget(self.btn_stop)` 之后
+  插 `tl.addWidget(self.btn_state_space)` + 新建 `btn_station = mk_btn("🛰 工位总览", …, self.open_station_page, "#58a6ff")`;
+  实测工具栏顺序 = 🎯跟随单步 | ▶运行 | 🔄重启 | ⏭单步 | ⏹停止 | 🧮状态空间 | 🛰工位总览 | 🌐数据空间窗口 | ─ | 🔬Model Zoo | 🚀Z700 | 🧩原子 | ⬅返回总系统。
+* 判据模板 (tools/probe_canvas_menu.py ④ 段, 6 条, 这套写法可复用到任何按钮):
+  ① 按钮对象存在且文本含关键词 ② `isVisibleTo(parent)` 为真 (证明**真挂进布局**、没被 setVisible(False) 藏掉)
+  ③ **在类上**替换目标方法 → 新建实例 → `btn.click()` ⇒ 证明「点击真转发到该方法」
+  (实例上替换方法无效: `clicked` 在构造时就绑定了旧 bound method, 实测 hit={} = 假绿)
+  ④ `btn.receivers(btn.clicked) >= 1` (不是摆设按钮) ⑤ `toolbar.grab().save(png)` 出工具栏渲染图作视觉证据。
+
 ## 🚦 发布/出包 (2026-10-01 实测: tag 打了却一个 CI 都没起)
 - **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。真源 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
   ⇒ 打 tag 推上去**一个 run 都不会起**。判据: `git ls-tree -r --name-only <tag> | grep .github/workflows`
