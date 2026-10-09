@@ -13607,6 +13607,16 @@ class SimulinkModule(QWidget):
                 w.activateWindow()
                 return
         dv = DreamView3D(tr, on_top=on_top, module=self, level=level)   # 🧭 level=L2/L3/L4 → 档位预设+标题
+        # 🆕 2026-10-10 老倪: 「3D 视图…你要管理和编辑这个场景」⇒ 给 3D 视图挂场景编辑
+        #   (对象列出/选中编辑/显隐/新增; 写库走 scene_edit.py 单一写路径; 幂等, 失败不拖垮 3D)
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from dreamview_scene_edit import attach_scene_edit
+            attach_scene_edit(dv)
+        except Exception as _e:                                            # noqa: BLE001
+            print("[3D场景编辑] 挂载失败(不影响 3D 视图): %r" % (_e,))
         if not hasattr(self, "_ss_3d_windows"):
             self._ss_3d_windows = []
         # 只清理真正被销毁的对象 (isVisible 过滤会误删已关闭但可复用的窗口)

@@ -2646,6 +2646,7 @@ class DatasetModule(SubModuleWidget):
         self.setObjectName("dataset")  # 🌐 2026-08-09 老倪: 页识别 (VEH-1 功能卡编号 — 数据集 VEH.1.xx)
         body = QWidget()
         bl = QVBoxLayout()
+
         bl.setSpacing(10)
 
         # === 顶部信息栏 ===
@@ -8934,6 +8935,21 @@ class ConfigModule(SubModuleWidget):
         mode_layout.addWidget(self.mode_desc)
         
         mode_group.setLayout(mode_layout)
+        # 🧬 2026-10-10 老倪: 「所有功能，要通过功能模块的 配置中心 修改，要可以配置所有的功能」
+        #   ⇒ 配置中心置顶挂「功能元数据」面板: 左树(子系统→功能) / 右表单(字段·范围·单位·默认值)
+        #     + 参数当前值 + 影响链; 元数据真源 data/database/zmax/config_meta.json (74 功能覆盖 64)。
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from config_meta_panel import ConfigMetaPanel
+            self._meta_panel = ConfigMetaPanel()
+            self._meta_panel.setMinimumHeight(320)
+            bl.addWidget(self._meta_panel)
+        except Exception as _e:                                            # noqa: BLE001
+            _w = QLabel("功能元数据面板加载失败: %r" % (_e,))
+            _w.setStyleSheet("color:%s; font-size:12px;" % C_RED)
+            bl.addWidget(_w)
         bl.addWidget(mode_group)
 
         # ===== 🎨 UI 风格 (2026-08-05 老倪: "增加风格切换功能, UI操作你设计, 放在哪里你根据软件惯例, 在配置setting里改") =====

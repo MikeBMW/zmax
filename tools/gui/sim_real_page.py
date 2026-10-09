@@ -51,6 +51,22 @@ FIELDS = {
 }
 
 
+def _run_tool(tool, args, timeout=60):
+    """调任意只读/受控工具, 返回 (ok, 文本或 dict)。"""
+    cmd = [PY, tool] + [str(x) for x in args]
+    try:
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    except Exception as e:                                                 # noqa: BLE001
+        return False, "调用失败: %r" % e
+    out = (r.stdout or "").strip()
+    if "--json" in args:
+        try:
+            return True, json.loads(out)
+        except Exception:                                                  # noqa: BLE001
+            pass
+    return (r.returncode == 0), (out or (r.stderr or "").strip())
+
+
 def _run(*args, timeout=25):
     """调数据层 scene_edit.py, 返回 (ok, payload|err)。"""
     cmd = [PY, TOOL] + [str(a) for a in args]
@@ -252,6 +268,55 @@ def build_body(parent=None):
     top.setStyleSheet("background:%s; color:%s; border:1px solid %s; border-radius:8px;"
                       " padding:8px 12px; font-size:12px;" % (C_BG2, C_GRAY, C_BORDER))
     bl.addWidget(top)
+
+    # 🗺 2026-10-10: 场景变体 (生成器) + 建图资产/地图同步 (map_marker_sync) —— 同源切面, 只读展示 + 显式 apply
+    row = QHBoxLayout()
+    lbl_var = QLabel("🎬 场景变体: 读取中…")
+    lbl_var.setStyleSheet("color:%s; font-size:12px;" % C_GRAY)
+    row.addWidget(lbl_var, 1)
+    lbl_map = QLabel("🗺 建图资产: 读取中…")
+    lbl_map.setStyleSheet("color:%s; font-size:12px;" % C_GRAY)
+    row.addWidget(lbl_map, 1)
+    btn_sync = QPushButton("🔗 同步 标记↔建图")
+    btn_sync.setStyleSheet("QPushButton{background:#1f2733; color:%s; border:1px solid %s;"
+                           " border-radius:4px; padding:4px 10px; font-size:12px;}"
+                           "QPushButton:hover{border-color:%s;}" % (C_GOLD, C_BORDER, C_GOLD))
+    row.addWidget(btn_sync)
+    bl.addLayout(row)
+
+    def _refresh_side():
+        _ok, _d = _run_tool("tools/scene_generate.py", ["--list", "--json"])
+        try:
+            _n = len((_d or {}).get("scenes") or [])
+            lbl_var.setText("🎬 场景变体: %d 个 (data/scene/scenes)" % _n)
+        except Exception:                                                  # noqa: BLE001
+            lbl_var.setText("🎬 场景变体: 读取失败")
+        _ok2, _d2 = _run_tool("tools/map_marker_sync.py", ["--json"])
+        try:
+            _a = (_d2 or {}).get("assets") or []
+            _b = (_d2 or {}).get("bindings") or []
+            lbl_map.setText("🗺 建图资产: %d 个 · 绑定 %d 条" % (len(_a), len(_b)))
+        except Exception:                                                  # noqa: BLE001
+            lbl_map.setText("🗺 建图资产: 读取失败")
+
+    def _do_sync():
+        ok, d = _run_tool("tools/map_marker_sync.py", ["sync", "--dry", "--json"])
+        if not ok:
+            QMessageBox.warning(body, "同步预演失败", str(d)[:400]); return
+        txt = json.dumps(d, ensure_ascii=False, indent=1)[:1500]
+        if QMessageBox.question(body, "确认写入?",
+                                "将写入的绑定 (--dry 预演):\n%s\n\n确认执行 --apply ?" % txt) != QMessageBox.Yes:
+            return
+        ok2, d2 = _run_tool("tools/map_marker_sync.py", ["sync", "--apply", "--json"], timeout=90)
+        if ok2:
+            QMessageBox.information(body, "同步完成", "已写入 (scene_edit 写路径, 带备份+回读):\n%s"
+                                    % json.dumps(d2, ensure_ascii=False)[:800])
+        else:
+            QMessageBox.warning(body, "同步失败", str(d2)[:400])
+        _refresh_side()
+
+    btn_sync.clicked.connect(_do_sync)
+    _refresh_side()
 
     tabs = QTabWidget()
     bl.addWidget(tabs, 1)
