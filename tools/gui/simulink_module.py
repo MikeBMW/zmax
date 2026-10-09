@@ -5085,6 +5085,7 @@ class SimulinkModule(QWidget):
         self.btn_restart = mk_btn("🔄 重启", "停止当前仿真 → 清引擎缓存 → 复位待命 (不自动运行; 点 ▶ 运行 开始新仿真)", self.restart_sim, "#f0883e")
         tl.addWidget(self.btn_restart)
         tl.addWidget(self.btn_step)
+        tl.addWidget(self.btn_stop)      # 🗂 2026-10-09 老倪: 「停止」挪到「单步」右边 (运行/单步/停止 一组)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -5175,40 +5176,8 @@ class SimulinkModule(QWidget):
         for _c in (self.chk_engine_demo, self.chk_l3_full, self.chk_mani_yaw,
                    self.chk_intact_exec, self.chk_l4_dit, self.chk_l2_compat):
             _style_chk(_c)
-        # ⚙️ 2026-10-09 老倪: 6 个运行开关归位到右侧页后, 工具栏只留一个入口按钮 (一键跳过去)
-        self.btn_run_cfg = mk_btn("⚙️ 运行开关", "6 个档位/策略开关 (⚡快演 · 🚀全链 · 🧠流形yaw · "
-                                 "🤖INTACT · 🎯DiT · 🧩L2兼容) 已在右侧『🔧 配置 · 运行开关』页 — "
-                                 "点此跳过去 (含 作用/生效位置/实测代价/适用档位)", self._show_run_cfg, "#8b949e")
-        tl.addWidget(self.btn_run_cfg)
-        tl.addWidget(self.btn_state_space)
-        tl.addWidget(self.btn_ss_3d)
-        # 🧩 2026-09-27 老倪: 「场景叠加」按钮 — 真实视频流上叠加仿真场景检测框
-        self.btn_scene_overlay = mk_btn(
-            "🧩 场景叠加",
-            "打开【真实视频流 + 仿真场景边界框】叠加页:\n"
-            "  · 左=原始真实画面, 右=叠加后(仿真投影框/L5大模型理解框/真机检测框, 颜色区分)\n"
-            "  · 页面自带四个来源按钮: 🎯仿真场景投影 / 🧠L5大模型理解 / 📋场景契约框 / 🔍真机检测\n"
-            "  · 仿真框走真几何: 物体3D → 手眼 T_base_cam → 实时 TCP 真值 → 投影像素\n"
-            "    (投影链已用 8 个真实位姿端到端验证: 误差中位 5.2px ≈ 3.1mm)\n"
-            "  · 视频流没在跑会自动带 --overlay 启动; 画面里自带真值带(帧龄/TCP/手眼)可核对",
-            self.open_scene_overlay, "#00d4aa")
-        tl.addWidget(self.btn_scene_overlay)
-        # 🛰 2026-09-27 老倪: 「之前那个 6 个窗口一起打开的网页怎么搞丢了?」——
-        #   页面一直在(8793/station: 6 路同屏 + 右侧控制区), 但控制台上**没有入口**
-        #   (只能从叠加页顶部那个绿链接跳过去)。这里给它一个自己的按钮, 和场景叠加并列。
-        self.btn_station = mk_btn(
-            "🛰 工位总览",
-            "打开【工位总览】网页 — 6 路同屏 + 右侧手动控制区:\n"
-            "  · 机器人手臂相机(臂上 D405, 来自 Orin) / 笔记本内置相机 / MAXHUB 电视摄像头\n"
-            "  · realsense 深度双目 / OPT 金手指检测(10082) / OPT 表面检测(10083)\n"
-            "  · 右侧控制区: 默认未授权 → 两步授权(300s 自动失效) → 点动/拍帧 (只有 POST 触发动作)\n"
-            "  · 与「🧩 场景叠加」各用各的浏览器窗口 ⇒ 两个页面可以同时开着\n"
-            "  · 地址: http://<本机IP>:8793/station (日志里给出可复制的完整地址)",
-            self.open_station_page, "#f0883e")
-        tl.addWidget(self.btn_station)
-        # 🌐 2026-09-29 老倪: 「现在我运行 L5 的状态空间画布, 我还想同时看到全局数据空间;
-        #   在上边我可以打开一个独立的全局数据空间的窗口, 可以同时看到状态空间的场景和数据空间的 topic」
-        #   ⇒ 独立顶层窗口(QDialog, 非模态)承载 DdsCanoeView: 画布放左边/它放右边, 两边同时刷新。
+# 🗑 2026-10-09 老倪: 工具栏「⚙️ 运行开关」按钮删掉 → 能力页仍在:
+#   右侧栏下拉「🔧 运行开关」(ModelTreeDock.VIEW_KEYS[-1]) 就是它, 6 个开关 + 作用/生效/代价都在。
         self.btn_ds_win = mk_btn(
             "🌐 数据空间窗口",
             "打开【独立窗口】的全局数据空间 (CANoe 范式: 测量组 + 信号表 + Trace + 详情 + 闭环/告警):\n"
@@ -5218,7 +5187,6 @@ class SimulinkModule(QWidget):
             "  · 仅读取, 不下发任何动作",
             self.open_dataspace_window, "#58a6ff")
         tl.addWidget(self.btn_ds_win)
-        tl.addWidget(self.btn_stop)
         tl.addSpacing(8)
         # (2026-08-06 老倪: Scope 移到 node 库, 工具栏按钮已删; btn_scope 移除)
         # 🗂 2026-10-09 老倪: 工具栏「⛶ 浮动」删 → 菜单「画布 → 浮动画布」 (Ctrl+Shift+F)

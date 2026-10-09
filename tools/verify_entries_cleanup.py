@@ -8,7 +8,8 @@
  ② 死块确已删: CICDPanel/CICDStageItem/CICDLinkItem/open_cicd_panel 全没了, 且 `_cicd_panel` 引用清零
  ③ 6 环节能力没丢: module.on_collect/on_train/on_validate/on_integrate/on_deploy/on_infer 六个真处理函数都在
  ④ 引导按钮在面板里, 点击 → 教程真起来 (金色高亮 + 日志), 能 cleanup
- ⑤ 工具栏回归: btn_run/btn_step/btn_run_cfg/6 个开关(已归右侧页) 都还在
+ ⑤ 工具栏回归: btn_run/btn_step/btn_restart 还在; btn_run_cfg 按钮已删 (2026-10-09)
+    → 6 个开关改判"右侧栏「🔧 运行开关」页内"
 """
 import os
 import sys
@@ -84,7 +85,9 @@ if dlg is not None:
     dlg.close()
 
 print("\n⑥ 工具栏回归")
-for a in ("btn_run", "btn_step", "btn_restart", "btn_run_cfg"):
+chk(not isinstance(getattr(m, "btn_run_cfg", None), QWidget),
+    "⚙️ 运行开关 工具栏按钮已删 (能力=右侧栏「🔧 运行开关」页)")
+for a in ("btn_run", "btn_step", "btn_restart"):
     w = getattr(m, a, None)
     chk(w is not None and (not hasattr(w, "isVisible") or w.parent() is not None), f"{a} 在位")
 for a in ("chk_engine_demo", "chk_l3_full", "chk_mani_yaw", "chk_intact_exec", "chk_l4_dit", "chk_l2_compat"):

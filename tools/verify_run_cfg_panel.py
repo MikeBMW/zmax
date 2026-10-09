@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtWidgets import QApplication, QPushButton, QWidget  # noqa: E402
 
 app = QApplication(sys.argv)
 import simulink_module as SM  # noqa: E402
@@ -55,12 +55,14 @@ for k in KEYS:
         depth += 1
     chk(same and inpanel, f"{k}: 同一对象={same} · 已在「配置·运行开关」页内={inpanel}")
 
-print("\n② 工具栏入口按钮")
+print("\n② 入口: 工具栏按钮已删 → 右侧栏下拉直达 (2026-10-09 老倪「运行开关按钮删掉」)")
 btn = getattr(m, "btn_run_cfg", None)
-chk(btn is not None, f"btn_run_cfg 存在 (文字={btn.text() if btn else None})")
-btn.click()
+chk(not isinstance(btn, QWidget), f"⚙️ 运行开关 工具栏按钮已删 (属性={type(btn).__name__})")
+tl_txt = [b.text() for b in m.findChildren(QPushButton)]
+chk("⚙️ 运行开关" not in tl_txt and "运行开关" not in tl_txt, "工具栏文字里也没有它")
+d.cmb_view.setCurrentIndex(d.VIEW_KEYS.index("run_cfg"))     # 下拉第 4 项 = 同一个页
 app.processEvents()
-chk(d.cmb_view.currentIndex() == d.VIEW_KEYS.index("run_cfg"), f"点击后切到「配置·运行开关」页 (index={d.cmb_view.currentIndex()})")
+chk(d.cmb_view.currentIndex() == d.VIEW_KEYS.index("run_cfg"), f"下拉切到「🔧 运行开关」页 (index={d.cmb_view.currentIndex()})")
 chk(d.run_cfg.isVisible(), "运行开关页可见")
 
 print("\n③ 页面内容 (作用/生效位置/代价/档位/诊断行)")

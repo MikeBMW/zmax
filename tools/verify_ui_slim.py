@@ -49,8 +49,19 @@ for attr, txt in Moved.items():
     chk(w is None or not isinstance(w, QWidget), f"{txt} 已不在工具栏 (等菜单接管)")
 tl_texts = [b.text() for b in m.findChildren(QPushButton)]
 chk(not any(t in ("📍 定位节点", "🏠 全览", "🧾 节点实现审计", "🤖 INTACT机器人", "🎯 数据闭环控制台",
-                  "💾 另存为", "📂 加载", "💾 保存模型", "🔴 录制", "⛶ 浮动") for t in tl_texts),
+                  "💾 另存为", "📂 加载", "💾 保存模型", "🔴 录制", "⛶ 浮动", "⚙️ 运行开关") for t in tl_texts),
     f"工具栏文字扫描: 11 个按钮文字一个都不在了 (工具栏现有 {len(tl_texts)} 个按钮)")
+
+# 顺序: 「⏹ 停止」紧贴「⏭ 单步」右边 (老倪: 停止挪到单步右边)
+_lay = m.btn_step.parentWidget().layout()
+_order = [(w.text() if hasattr(w, "text") else "")
+          for w in (_lay.itemAt(i).widget() for i in range(_lay.count())) if w is not None]
+if "⏭ 单步" in _order and "⏹ 停止" in _order:
+    _i = _order.index("⏭ 单步")
+    chk(_i + 1 < len(_order) and _order[_i + 1] == "⏹ 停止",
+        f"「⏹ 停止」就在「⏭ 单步」右边 (顺序: {_order[max(0,_i-2):_i+3]})")
+else:
+    chk(False, f"工具栏顺序读不到 单步/停止: {_order[:8]}")
 
 print("② 删掉的能力: 快捷键 / 画布节点入口仍在代码里")
 keys = [s.key().toString() for s in m.canvas.findChildren(QShortcut)]
