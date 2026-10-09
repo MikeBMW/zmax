@@ -273,6 +273,12 @@ from PyQt5.QtGui import (
 
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
+try:                                    # 🆕 2026-10-10 实时数据条 (与全系统数据同步)
+    from live_strip import LiveStrip, LiveTable, fmt_dataset, fmt_models, fmt_arch, \
+        rows_dataset, rows_models
+except Exception:                       # noqa: BLE001  缺模块只是没有实时条, 不该拖垮控制台
+    LiveStrip = LiveTable = None
+    fmt_dataset = fmt_models = fmt_arch = rows_dataset = rows_models = None
 from simulink_module import SimulinkModule
 
 # 硬件仿真引擎 (Sys-0 硬件工具箱)
@@ -2670,6 +2676,14 @@ class DatasetModule(SubModuleWidget):
         top_bar.setLayout(top_layout)
         bl.addWidget(top_bar)
 
+        # 🆕 2026-10-10 老倪「数据集管理要看到已下载和生成的数据，包括建图数据」——
+        #   全部来自 tools/dataset_inventory.py 的真实扫盘 (类别/大小/最新时间都现算, 不写死)。
+        if LiveTable is not None:
+            self._live_ds = LiveTable("📊 数据资产 (真实扫盘)", ["tools/dataset_inventory.py", "--json"],
+                                      fmt_dataset, rows_dataset, interval_s=60, max_rows=300)
+            bl.addWidget(self._live_ds)
+            self._live_ds_tbl = self._live_ds._build_table_into(bl)   # 明细表挂在实时条下面
+
         # 📌 当前训练数据集卡片 (2026-08-07 老倪: 数据集管理页要能看到当前训练的数据集)
         cur_card = QFrame()
         cur_card.setStyleSheet(f"background:{C_CARD}; border:1px solid {C_GREEN}66; border-radius:8px;")
@@ -4052,6 +4066,13 @@ class TrainingModule(QWidget):
         # 创建主布局
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 🆕 2026-10-10 老倪「模型引擎要能详细观察所有模型的训练和推理状态，要与真正的GPU训练同步」
+        #   数据来自 tools/model_inventory.py: nvidia-smi 实时 + 训练进程/进度 + 四层模型清单+报告
+        if LiveTable is not None:
+            self._live_md = LiveTable("🏋️ 模型引擎 (GPU 实时)", ["tools/model_inventory.py", "--json"],
+                                      fmt_models, rows_models, interval_s=8, max_rows=200)
+            main_layout.addWidget(self._live_md)
         
         # 创建滚动区域包裹整个内容
         scroll_area = QScrollArea()
@@ -10920,6 +10941,12 @@ class ArchitectureModule(QWidget):
         s = QLabel("Z700F → Z700 三级能力递进  ·  云-边-端三层架构")
         s.setStyleSheet(f"color:{C_GRAY}; font-size:19px;")
         main.addWidget(s)
+
+        # 🆕 2026-10-10 老倪「系统架构是平台级别的…要表现出系统层即功能配置、参数数值的关系」
+        #   实时条把库里的真实层级/条数贴在这里 (点不到假数据); 下面的关系图将接 arch_graph.py
+        if LiveStrip is not None:
+            main.addWidget(LiveStrip("🏗️ 架构数据 (工程库实时)", ["tools/arch_graph.py", "--json"],
+                                     fmt_arch, interval_s=60))
 
         # Three columns: L2 | L3 | L4
         cols = QHBoxLayout()
