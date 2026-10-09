@@ -16,6 +16,7 @@ run () {
 }
 echo "══ GUI 判据集 $(date '+%F %T') ══"
 run entries_cleanup   tools/verify_entries_cleanup.py
+run library_sync      tools/verify_library_sync.py
 run mparam_page       tools/verify_mparam_page.py
 run calib_measure     tools/verify_calib_measure.py
 run project_archive   tools/verify_project_archive.py

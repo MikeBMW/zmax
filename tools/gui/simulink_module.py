@@ -6,7 +6,9 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 与 Web comfyui.html 共用 simulink-spec.md v1.0 节点规范 (JSON 完全一致)
 """
 import json, math, random, re, time, os, sys, glob, tempfile
-from PyQt5.QtCore import Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread
+from PyQt5.QtCore import (Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread,
+                        QMimeData, QByteArray)   # 📚 模块库拖拽 (2026-10-09)
+from PyQt5.QtGui import QDrag                     # 📚 模块库拖拽
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
                          QPolygonF, QLinearGradient, QRadialGradient, QKeySequence,
@@ -1014,7 +1016,8 @@ REFERENCE_APPS = [
 ]
 
 # 模块库 (左侧拖拽面板) — 与 web comfyui.html 的模块组一致
-LIBRARY = [
+# 📚 静态条目 (老倪: 模块库要能跟画布同步 + 能删没关联的 ⇒ 生成物与静态分开, 见 _compose_library)
+LIBRARY_STATIC = [
     # 🆕 2026-09-16 老倪: 旁路接控制台 (真机信号源 + 两个观察器)
     ("hardware", "📡 旁路真机感知", [
         {"name": "📡 旁路真机传感器", "params": {"bypass_sensor": True, "source": "bypass_real",
@@ -1475,10 +1478,7 @@ def _load_skill_library_groups():
     return groups
 
 # 🧩 2026-08-09 老倪: 原子技能组件区 — 从 atomic_skill_tokens.json 动态加载 (W²-VLA Token)
-try:
-    LIBRARY += _load_skill_library_groups()
-except Exception:
-    pass  # 技能库缺失不影响模块库其余部分
+# (原 `LIBRARY += ...` 已改为组合函数 _compose_library, 见下方)
 
 
 # 🧮 状态空间模型组件区 (2026-08-18 老倪: 画布全部节点 → 库中一一对应,
@@ -1507,15 +1507,20 @@ def _flows_path(name):
     return cands[0]
 
 
-def _load_state_space_library_group():
-    """状态空间画布 14 节点 → LIBRARY 一组 (与画布 JSON 同一数据源)"""
-    import os as _os, json as _j
-    p = _flows_path("state_space_obs.json")
-    try:
-        data = _j.load(open(p, encoding="utf-8"))
-        nodes = data.get("nodes", [])
-    except Exception:
-        return []
+def _load_state_space_library_group(nodes=None):
+    """状态空间画布节点 → LIBRARY 一组
+
+    数据源: nodes 给了就用**画布内存里的节点** (老倪 2026-10-09: 「所有节点都要与模块库同步」→
+    画布上刚拖进来的节点也得在库里, 不能等存盘); 没给才回落到画布 JSON。
+    """
+    if nodes is None:
+        import os as _os, json as _j
+        p = _flows_path("state_space_obs.json")
+        try:
+            data = _j.load(open(p, encoding="utf-8"))
+            nodes = data.get("nodes", [])
+        except Exception:
+            return []
     entries = []
     for n in nodes:
         params = dict(n.get("params", {}))
@@ -1527,18 +1532,98 @@ def _load_state_space_library_group():
     return [("model", f"🧮 状态空间模型 ({len(nodes)}节点)", entries)]
 
 
-try:
-    LIBRARY += _load_state_space_library_group()
-except Exception:
-    pass  # 状态空间库缺失不影响模块库其余部分
+# 📚 2026-10-09 老倪: 「没有联系的模块, 或者没有关联的, 都删掉」
+#   模块库 = 静态条目 + 原子技能(注册表驱动) + 状态空间画布(JSON 驱动), 再按 curation 名单剔除。
+def _library_curation_path():
+    return os.path.join(_repo_root_path(), "config", "library_curation.json")
+
+
+def _load_library_curation():
+    """{'removed': [{'group','name','why','ts'}]} —— 删掉的模块库条目 (删 = 写这里, 可还原)"""
+    try:
+        d = json.load(open(_library_curation_path(), encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:                                                            # noqa: BLE001
+        return {}
+
+
+def _save_library_curation(d):
+    p = _library_curation_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+    return p
+
+
+def remove_library_entry(group, name, why="用户从模块库移除"):
+    """⛔ 从模块库移除一条 (写 curation 文件) —— 返回 True/False"""
+    d = _load_library_curation()
+    rm = d.setdefault("removed", [])
+    if not any(x.get("group") == group and x.get("name") == name for x in rm):
+        rm.append({"group": group, "name": name, "why": why,
+                   "ts": time.strftime("%Y-%m-%d %H:%M:%S")})
+        _save_library_curation(d)
+    return True
+
+
+def _apply_library_curation(lib):
+    d = _load_library_curation()
+    rm = {(x.get("group"), x.get("name")) for x in (d.get("removed") or [])}
+    if not rm:
+        return lib
+    out = []
+    for t, g, items in lib:
+        keep = [it for it in items if (g, it.get("name")) not in rm]
+        if keep:
+            out.append((t, g, keep))
+    return out
+
+
+def _compose_library(nodes=None):
+    """📚 模块库 = 静态 + 原子技能(注册表) + 状态空间画布(内存优先/JSON 兜底) − curation 删除名单"""
+    lib = list(LIBRARY_STATIC)
+    try:
+        lib += _load_skill_library_groups()
+    except Exception:                                                            # noqa: BLE001
+        pass      # 技能库缺失不影响模块库其余部分
+    try:
+        lib += _load_state_space_library_group(nodes)
+    except Exception:                                                            # noqa: BLE001
+        pass      # 状态空间库缺失不影响模块库其余部分
+    return _apply_library_curation(lib)
+
+
+LIBRARY = _compose_library()
 
 # 🌐 2026-08-09 老倪: LIBRARY 模块 → 稳定序号 (模块库按钮与画布节点 ID 一致)
 LIBRARY_SEQ = {}
-_lib_seq = 0
-for _gtype, _gname, _items in LIBRARY:
-    for _it in _items:
-        _lib_seq += 1
-        LIBRARY_SEQ[_it["name"]] = _lib_seq
+
+
+def _recompute_lib_seq():
+    """模块库条目 → 稳定序号 (与画布节点 ID 同源; 库变了要重算)"""
+    global LIBRARY_SEQ, _lib_seq
+    LIBRARY_SEQ = {}
+    _lib_seq = 0
+    for _gtype, _gname, _items in LIBRARY:
+        for _it in _items:
+            _lib_seq += 1
+            LIBRARY_SEQ[_it["name"]] = _lib_seq
+_recompute_lib_seq()
+
+
+def _rebuild_library_globals(nodes=None):
+    """📚 画布/注册表变了 → 重算 LIBRARY + LIBRARY_SEQ (面板再 _rebuild 就同步了)
+
+    nodes: 传画布内存节点 ⇒ 没存盘的节点也同步进库 (老倪: 所有节点都要与模块库同步)
+    """
+    global LIBRARY
+    LIBRARY = _compose_library(nodes)
+    _recompute_lib_seq()
+    return len(LIBRARY)
+
+
 # 🐛 2026-08-09 老倪: 模板节点名也注册 (总系统 SYS1动作系统/数据集合 等在 LIBRARY 无对应 → 画布回退随机撞号)
 for _app in REFERENCE_APPS:
     for _n in _app[1]:
@@ -3735,6 +3820,8 @@ class SimCanvas(QGraphicsView):
         self.module = module
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
+        # 📚 2026-10-09: 接模块库拖拽 (模块库条目拖进来 → 在鼠标落点建节点)
+        self.setAcceptDrops(True)
         self.setRenderHint(QPainter.Antialiasing)
         self.setBackgroundBrush(QColor(THEMES[_CUR_THEME]["canvas"]))
         # 🐛 2026-08-12 老倪: 必须开 mouseTracking — 否则无按键时 QGraphicsView
@@ -4252,6 +4339,33 @@ class SimCanvas(QGraphicsView):
             node_item.update()
         self._hover_items = {node_item} if node_item is not None else set()
 
+    # 📚 2026-10-09 老倪: 「模块库的每个模块节点可以交互式拖进画布」 —— 落点即节点位置
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasFormat(LIB_MIME):
+            e.acceptProposedAction()
+        else:
+            super().dragEnterEvent(e)
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasFormat(LIB_MIME):
+            e.acceptProposedAction()
+        else:
+            super().dragMoveEvent(e)
+
+    def dropEvent(self, e):
+        if not e.mimeData().hasFormat(LIB_MIME):
+            super().dropEvent(e)
+            return
+        try:
+            d = json.loads(bytes(e.mimeData().data(LIB_MIME)).decode("utf-8"))
+            self.module.add_node_from_lib(d, self.mapToScene(e.pos()))
+            e.acceptProposedAction()
+        except Exception as _ex:                                                  # noqa: BLE001
+            try:
+                self.module._log(f"❌ 拖入节点失败: {type(_ex).__name__}: {_ex}")
+            except Exception:                                                     # noqa: BLE001
+                pass
+
     def mouseMoveEvent(self, e):
         # 🐛 2026-08-12 老倪: hover 状态由鼠标位置直接驱动 (QGraphicsItem hover 事件
         # 在 VcXsrv 下迟钝/不触发 → ID 显示异常; itemAt 实时检测, 反应即时)
@@ -4316,6 +4430,73 @@ class SimCanvas(QGraphicsView):
 # ════════════════════════════════════════════════════════════════
 # 模块库面板 (左侧, 对标 Simulink Library Browser)
 # ════════════════════════════════════════════════════════════════
+# 📚 2026-10-09 老倪: 「模块库的每个模块节点, 可以交互式拖进画布, 或者删除, 可以保存为新的工程文件」
+#   → 模块库按钮支持拖拽 (QDrag + 自定义 MIME), 画布 SimCanvas 接 drop 落点建节点。
+LIB_MIME = "application/x-zmax-lib-item"
+
+
+class LibButton(QToolButton):
+    """📚 模块库条目按钮 — 可拖进画布 (拖 = 落在鼠标处; 单击 = 落在画布中心, 老行为不变)
+
+    拖拽载荷: {type, name, params, group} (JSON, MIME=LIB_MIME)
+    """
+
+    def __init__(self, item, ntype, group, panel):
+        super().__init__()
+        self._item = dict(item)
+        self._ntype = item.get("type", ntype)
+        self._group = group
+        self._panel = panel
+        self._press = None
+        self.setCursor(Qt.OpenHandCursor)
+        self.setToolTip((self.toolTip() + "\n🖱 拖到画布 = 落在鼠标处 · 单击 = 落在画布中心").strip())
+
+    def mousePressEvent(self, e):
+        self._press = e.pos()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if (e.buttons() & Qt.LeftButton) and self._press is not None:
+            if (e.pos() - self._press).manhattanLength() >= 8:
+                self._press = None
+                self._start_drag()
+                return
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._press = None
+        super().mouseReleaseEvent(e)
+
+    def drag_payload(self):
+        """📚 拖拽载荷 (判据用: 不跑 QDrag 循环也能验证按钮这一端的语义)"""
+        return {"type": self._ntype, "name": self._item.get("name"),
+                "params": self._item.get("params") or {}, "group": self._group}
+
+    def drag_mime(self):
+        mime = QMimeData()
+        mime.setData(LIB_MIME, QByteArray(json.dumps(self.drag_payload(), ensure_ascii=False).encode("utf-8")))
+        mime.setText(self._item.get("name") or "")
+        return mime
+
+    def _start_drag(self):
+        try:
+            payload = self.drag_payload()
+            mime = QMimeData()
+            mime.setData(LIB_MIME, QByteArray(json.dumps(payload, ensure_ascii=False).encode("utf-8")))
+            mime.setText(self._item.get("name") or "")
+            drag = QDrag(self)
+            drag.setMimeData(mime)
+            self.setCursor(Qt.ClosedHandCursor)
+            drag.exec_(Qt.CopyAction)
+        except Exception as _e:                                                   # noqa: BLE001
+            try:
+                self._panel.module._log(f"❌ 拖拽失败: {type(_e).__name__}: {_e}")
+            except Exception:                                                    # noqa: BLE001
+                pass
+        finally:
+            self.setCursor(Qt.OpenHandCursor)
+
+
 class LibraryPanel(QFrame):
     # 📚 模块库左侧栏折叠信号 (2026-08-06 老倪: 太占地方, 可缩到左边)
     collapse_requested = pyqtSignal()
@@ -4342,6 +4523,20 @@ class LibraryPanel(QFrame):
         self._title_lbl.setStyleSheet("color:#1f2328; font-size:14pt; font-weight:700; padding:4px;")
         head.addWidget(self._title_lbl)
         head.addStretch()
+        # 💾 2026-10-09 老倪: 「模块库的每个模块节点...可以保存为新的工程文件」
+        #    在库面板里直接给一个出口 (拖/删/存 三件事都在模块库这一栏里闭环)
+        self._btn_save_new = QPushButton("💾 存为新工程")
+        self._btn_save_new.setToolTip("把当前画布另存为一个新的工程文件 (JSON, 含节点/连线/位置)\n"
+                                      "= 菜单「画布(C) → 💾 另存为 JSON…」(Ctrl+Shift+S)")
+        self._btn_save_new.setStyleSheet("""
+            QPushButton{background:#e9edf2; color:#1f6feb; border:1px solid #d0d7de;
+                        border-radius:4px; font-size:12pt; font-weight:700; padding:4px 8px;}
+            QPushButton:hover{border-color:#1f6feb; background:#dbe9ff;}
+        """)
+        self._btn_save_new.ensurePolished()
+        self._btn_save_new.setMinimumWidth(self._btn_save_new.sizeHint().width() + 6)
+        self._btn_save_new.clicked.connect(lambda: self.module.export_flow())
+        head.addWidget(self._btn_save_new)
         self._btn_collapse = QPushButton("◀ 收起")
         self._btn_collapse.setToolTip("隐藏模块库左侧栏, 画布占满 (再点左缘 ▶ 展开)")
         # 🎨 用浅底样式 (switch_theme 会正确转深色; 之前 #1f6feb 蓝底白字被
@@ -4388,9 +4583,35 @@ class LibraryPanel(QFrame):
         self.scroll.setWidget(self.inner)
         lay.addWidget(self.scroll)
 
-        self._hint_lbl = QLabel("点击添加 · 双击改参 · 输出→输入连线\n点线删除 · Ctrl+滚轮缩放")
+        self._hint_lbl = QLabel("🖱 拖进画布 (落点即位置) · 单击=加在画布中心\n右键=加入画布/移除 · 输出→输入连线 · 点线删除")
         self._hint_lbl.setStyleSheet("color:#57606a; font-size:11pt; padding:4px;")
         lay.addWidget(self._hint_lbl)
+
+    def _lib_button_menu(self, btn, it, gname, special=False):
+        """📚 模块库条目右键菜单: 加入画布 / 从模块库移除 (写入 config/library_curation.json, 可还原)"""
+        try:
+            m = QMenu(self)
+            if not special:
+                m.addAction("➕ 加入画布 (画布中心)", lambda: self.module.add_node_at_center(
+                    it.get("type", "model"), it["name"], dict(it.get("params") or {})))
+            m.addAction("🖱 拖到画布 = 落在鼠标处")
+            m.addSeparator()
+            m.addAction("⛔ 从模块库移除 (写 curation 名单, 可还原)", lambda: self._remove_entry(gname, it))
+            m.exec_(btn.mapToGlobal(btn.rect().bottomLeft()))
+        except Exception as _e:                                                   # noqa: BLE001
+            try:
+                self.module._log(f"⚠️ 模块库菜单异常: {type(_e).__name__}: {_e}")
+            except Exception:                                                     # noqa: BLE001
+                pass
+
+    def _remove_entry(self, gname, it):
+        """⛔ 移除库条目 → 重建面板 (画布节点不受影响)"""
+        try:
+            remove_library_entry(gname, it["name"], "用户从模块库右键移除")
+            self.module.refresh_library(force=True)
+            self.module._log(f"⛔ 已从模块库移除: {it['name']}  (分组 {gname}) — 名单 config/library_curation.json")
+        except Exception as _e:                                                   # noqa: BLE001
+            self.module._log(f"❌ 移除失败: {type(_e).__name__}: {_e}")
 
     def _title_clicked(self, ev):
         """双击标题 → 折叠左侧栏 (2026-08-06 v2: 用户反馈找不到 ◀ 按钮)"""
@@ -4461,7 +4682,11 @@ class LibraryPanel(QFrame):
             lab.mousePressEvent = lambda ev, gn=gname, lbl=lab: self._toggle_group(gn, lbl)
             self.v.addWidget(lab)
             for it in items:
-                btn = QToolButton()
+                # 📚 2026-10-09 老倪: 能建节点的条目 = LibButton (可拖进画布); 载 flow/模板/场景/原子入口保持 QToolButton
+                _ps = it.get("params") or {}
+                _special = bool(_ps.get("scene_id") or _ps.get("atomic_gate")
+                                or it.get("flow") or it.get("template"))
+                btn = QToolButton() if _special else LibButton(it, ntype, gname, self)
                 _seq = lib_seq_of(it['name'])
                 btn.setText(f"⬡  {it['name']}" + (f"  ·  VEH.5.{_seq:03d}" if _seq else ""))
                 btn.setToolTip((f"VEH.5.{_seq:03d} — " if _seq else "") + f"{it['name']} (与画布节点 ID 一致)")
@@ -4489,6 +4714,10 @@ class LibraryPanel(QFrame):
                 self._lib_btns[it["name"]] = btn
                 btn.setVisible(not collapsed)  # 分组折叠时隐藏组内按钮
                 self._elide_lib_text(btn)      # 超长模块名中间省略 (头名字+尾VEH编号都保留)
+                # 右键: 加入画布 / 从模块库移除 (老倪: 可以删除)
+                btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                btn.customContextMenuRequested.connect(
+                    lambda _pos, b=btn, i=it, g=gname, sp=_special: self._lib_button_menu(b, i, g, sp))
                 self.v.addWidget(btn)
         # 📦 数据集组 (2026-08-07 老倪: 功能块同步显示已有数据集 — 光模块/套环/Orin)
         root = self.module._repo_root() if hasattr(self.module, "_repo_root") else os.path.expanduser("~/zmax/external/lerobot-smolvla-lew")
@@ -5832,6 +6061,11 @@ class SimulinkModule(QWidget):
                 self.model_tree.refresh()
         except Exception:
             pass
+        # 📚 2026-10-09 老倪: 「所有节点都要与模块库同步」 — 画布载入后就地同步模块库
+        try:
+            self.refresh_library()
+        except Exception:
+            pass
         return True
 
     def load_reference_app(self, name, node_specs, link_specs, layout=None):
@@ -5907,6 +6141,52 @@ class SimulinkModule(QWidget):
             pass
 
     # ── 节点操作 ──
+    def add_node_from_lib(self, payload, scene_pos):
+        """📚 模块库拖拽落点建节点 (payload = {type,name,params,group}) → 返回新节点"""
+        ntype = payload.get("type") or "model"
+        name = payload.get("name") or "新节点"
+        params = payload.get("params") or {}
+        n = self.add_node(ntype, name, int(scene_pos.x() - 120), int(scene_pos.y() - 42), dict(params))
+        try:
+            self._log(f"🖱 从模块库拖入: {name}"
+                      + (f"  (分组: {payload.get('group')})" if payload.get("group") else ""))
+        except Exception:                                                         # noqa: BLE001
+            pass
+        return n
+
+    def refresh_library(self, force=False):
+        """📚 模块库 ↔ 画布 同步: 重读画布 JSON → 重建库面板 (老倪: 所有节点都要与模块库同步)
+
+        库里 495 条按钮全重建要几百毫秒 → 用「画布节点名集合 + curation 文件 mtime」做签名,
+        没变化就跳过重建 (只是载入画布时不必每次都重建)。
+        """
+        try:
+            _rebuild_library_globals(list(getattr(self, "nodes", []) or []))
+        except Exception as _e:                                                   # noqa: BLE001
+            try:
+                self._log(f"⚠️ 模块库重载失败(界面继续): {type(_e).__name__}: {_e}")
+            except Exception:                                                     # noqa: BLE001
+                pass
+        try:
+            import hashlib as _hl
+            _names = "|".join(sorted(n.get("name", "") for n in self.nodes if n.get("type") != "row_bg"))
+            _cp = _library_curation_path()
+            _cm = os.path.getmtime(_cp) if os.path.exists(_cp) else 0
+            _sig = _hl.md5(("%s#%s" % (_names, _cm)).encode("utf-8")).hexdigest()
+        except Exception:                                                         # noqa: BLE001
+            _sig = None
+        lib = getattr(self, "library", None)
+        if lib is None or not hasattr(lib, "_rebuild"):
+            return
+        if (not force) and _sig and _sig == getattr(self, "_lib_sig", None):
+            return
+        try:
+            lib._rebuild()
+            self._lib_sig = _sig
+            self._log("📚 模块库已与画布同步 (共 %d 条)" % len(getattr(lib, "_lib_btns", {})))
+        except Exception as _e:                                                   # noqa: BLE001
+            self._log(f"⚠️ 模块库面板重建失败: {type(_e).__name__}: {_e}")
+
     def add_node_at_center(self, ntype, name, params=None):
         c = self.canvas.mapToScene(self.canvas.viewport().rect().center())
         n = self.add_node(ntype, name, int(c.x() - 120 + random.uniform(-30, 30)),
