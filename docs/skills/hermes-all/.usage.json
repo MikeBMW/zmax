@@ -2731,15 +2731,15 @@
     "created_at": "2026-07-30T00:19:10.879390+00:00",
     "created_by": "agent",
     "last_patched_at": "2026-10-09T12:26:31.208355+00:00",
-    "last_reused_patch_generation": 397,
-    "last_used_at": "2026-10-09T12:25:54.768125+00:00",
-    "last_viewed_at": "2026-10-09T12:25:54.760802+00:00",
+    "last_reused_patch_generation": 405,
+    "last_used_at": "2026-10-09T12:41:44.315959+00:00",
+    "last_viewed_at": "2026-10-09T12:41:44.307514+00:00",
     "patch_count": 1055,
     "patch_generation": 405,
     "pinned": false,
     "state": "active",
-    "use_count": 1382,
-    "view_count": 1382
+    "use_count": 1383,
+    "view_count": 1383
   },
   "zmax-data-closed-loop": {
     "archived_at": null,
