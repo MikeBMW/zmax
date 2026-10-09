@@ -121,6 +121,16 @@ jobs:
           python tools/gen_l4_demo_scene.py --peg-real-inertia
           python -c "import metaworld,os; p=os.path.join(os.path.dirname(metaworld.__file__),'assets','sawyer_xyz','sawyer_peg_insertion_side_l4.xml'); print('L4 XML:', p, os.path.isfile(p)); assert os.path.isfile(p)"
 
+      - name: "Materialize canvas from factory skeleton (平台/实例解耦: 真源不在仓库里, 打包用出厂骨架)"
+        shell: bash
+        run: |
+          # 平台只带代码 + defaults/ 出厂骨架; 实例画布 (data/database/<产品>/sources/canvas/) 不随仓库走。
+          # 打包必须有一个真实文件, 否则 --add-data src/lerobot/engineering 里没有 state_space_obs.json
+          # (v5.35.0 首轮就是这么挂的: 资产核验 "画布真源: 0" → exit 1)。
+          mkdir -p src/lerobot/engineering/flows
+          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('打包用画布:',len(d.get('nodes',[])),'节点 (出厂骨架)')"
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
@@ -347,6 +357,13 @@ jobs:
           curl -fsSL -o models/l4_yaw_head_grasp_dz_v2.pt https://github.com/MikeBMW/lerobot-smolvla-lew/releases/download/weights-v1/l4_yaw_head_grasp_dz_v2.pt
           python -c "import hashlib; h=hashlib.md5(open('models/l4_mani_predictor_v5.pt','rb').read()).hexdigest(); print('mani md5:', h); assert h=='4acf227db32b7af6e7f9d3d1f6cf3245', h"
           python -c "import hashlib; h=hashlib.md5(open('models/l4_yaw_head_grasp_dz_v2.pt','rb').read()).hexdigest(); print('yaw head md5:', h); assert h=='6a6915b3a0fdcf7a09728b4ac3a9d348', h"
+      - name: "Materialize canvas from factory skeleton (平台/实例解耦: 真源不在仓库里, 打包用出厂骨架)"
+        run: |
+          # 见 Windows job 同名步骤: 实例画布不随仓库走, 打包必须有真实文件, 否则 .app 里没有画布真源
+          mkdir -p src/lerobot/engineering/flows
+          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('打包用画布:',len(d.get('nodes',[])),'节点 (出厂骨架)')"
+
       - name: Build .app with PyInstaller
         run: |
           cd tools/gui

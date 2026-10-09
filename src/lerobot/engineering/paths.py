@@ -40,9 +40,17 @@ DATA_DIR = os.environ.get("ZMAX_DATA_DIR") or os.path.join(os.environ.get("ZMAX_
 
 
 def canvas_json(name=CANVAS_DEFAULT):
-    """画布/工程 JSON 真源: 包内优先 (canonical), 找不到才回落到历史位置"""
-    p = os.path.join(FLOWS_DIR, name)
-    return p if os.path.exists(p) else os.path.join(LEGACY_FLOWS_DIR, name)
+    """画布/工程 JSON 真源: 包内优先 (canonical, 通常是指向实例包的软链) →
+    历史位置 (仓库根 flows/) → **平台出厂骨架** defaults/canvas/ (无实例的全新安装/CI 打包时用);
+    三处都没有就返回包内路径 (让写口建出来)。
+    平台/实例解耦 (2026-10-09): 真源可迁走, 平台靠出厂骨架仍可独立起。
+    """
+    for p in (os.path.join(FLOWS_DIR, name),
+              os.path.join(LEGACY_FLOWS_DIR, name),
+              os.path.join(REPO_ROOT, "defaults", "canvas", name)):
+        if os.path.exists(p):
+            return p
+    return os.path.join(FLOWS_DIR, name)
 
 
 def ensure_dirs():
