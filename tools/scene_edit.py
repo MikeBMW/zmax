@@ -177,7 +177,9 @@ def _unique_id(items: list, base: str) -> str:
 
 
 # ── 校验/规范化: objects ──
-def norm_object(data: dict, existing: dict | None = None) -> dict:
+def norm_object(data: dict, existing: dict | None = None, items: list | None = None) -> dict:
+    """objects 归一化。items 与本函数无关(名字唯一即可), 仅为与 markers/fences/trajectories
+    在 NORM 派发表里**同一签名**而保留 —— 缺它会 TypeError: 3 positional args given (2026-10-10 修)。"""
     d = dict(existing or {})
     d.update(data or {})
     errs = []

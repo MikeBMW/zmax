@@ -44,6 +44,10 @@ EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "zmax", "param_events.jso
 #    —— 点位此前只躺在 data/skills/l2_atomic/space_points.json 里, 参数中心里查不到 ⇒ 接进来 (可写+回写+留痕)
 SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
 TAUGHT = os.path.join(ROOT, "data", "skills", "l2_atomic", "taught_points.json")   # 号位/示教点 (61 个点)
+SCENE_DIR = os.path.join(ROOT, "data", "scene")
+OBJECTS3D = os.path.join(SCENE_DIR, "objects3d.json")      # 场景对象 (真源)
+OVERLAY_SPEC = os.path.join(SCENE_DIR, "overlay_spec.json")  # AR 规格: 标记/围栏/轨迹
+SCENE_EDIT = os.path.join(ROOT, "tools", "scene_edit.py")  # 场景唯一写路径
 
 # 代码常量扫描范围 (只扫与链路直接相关的实现文件, 不做全仓乱扫)
 CODE_FILES = [
@@ -92,9 +96,9 @@ CURATED = {
     "switch.l2_compat": {"cn": "L2 兼容模式", "unit": "-", "choices": ["on", "off"], "default": "on"},
     "switch.flow_yaw": {"cn": "流形偏航 (仅 L4 90°档)", "unit": "deg", "min": -180, "max": 180},
 }
-CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff",
+CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff", "scene": "#2ec4b6",
              "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2", "teach": "#c084fc"}
-CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量",
+CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量", "scene": "场景数据(对象/标记)",
           "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点", "teach": "号位/示教点"}
 
 
@@ -255,6 +259,91 @@ def scan_teach():
 
 
 
+def scan_scene():
+    """🆕 2026-10-10 老倪: 「依据已有的仿真场景，同步所有元数据，同步所有功能」⇒ 场景实体
+    (对象中心/尺寸 · 现场标记位置) 也进参数中心, 与其它功能区**同源** (同一真源文件的切面)。
+    写入一律走 tools/scene_edit.py (单一写路径: 备份+原子写+回读+围栏校验), 本文件不自己写 JSON。"""
+    out = []
+    REL_OBJ = os.path.relpath(OBJECTS3D, ROOT)
+    REL_OV = os.path.relpath(OVERLAY_SPEC, ROOT)
+    d = _load(OBJECTS3D, {})
+    for o in (d.get("objects") or []):
+        nm = str(o.get("name") or "")
+        if not nm:
+            continue
+        for i, ax in enumerate("xyz"):
+            c = o.get("center") or []
+            if i < len(c) and isinstance(c[i], (int, float)):
+                out.append(_mk("scene:%s.center[%d]" % (nm, i), "%s · center[%s]" % (nm, ax), float(c[i]),
+                               REL_OBJ, ("scene_edit.py objects %s center[%d]" % (nm, i)), "scene",
+                               extra={"cn": "%s · 中心%s" % (nm, ax), "unit": "m", "step": 0.0001,
+                                      "min": -3.0, "max": 3.0, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0"}))
+        for i, ax in enumerate("xyz"):
+            z = o.get("size") or []
+            if i < len(z) and isinstance(z[i], (int, float)):
+                out.append(_mk("scene:%s.size[%d]" % (nm, i), "%s · size[%s]" % (nm, ax), float(z[i]),
+                               REL_OBJ, ("scene_edit.py objects %s size[%d]" % (nm, i)), "scene",
+                               extra={"cn": "%s · 尺寸%s" % (nm, ax), "unit": "mm", "step": 0.1,
+                                      "min": 0.1, "max": 2000.0, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0"}))
+    ov = _load(OVERLAY_SPEC, {})
+    for m in (ov.get("markers") or []):
+        mid = str(m.get("id") or m.get("name") or "")
+        nm = str(m.get("name") or mid)
+        if not mid:
+            continue
+        for i, ax in enumerate("xyz"):
+            pos = m.get("pos") or []
+            if i < len(pos) and isinstance(pos[i], (int, float)):
+                out.append(_mk("scene:marker.%s.pos[%d]" % (mid, i), "%s · pos[%s]" % (nm, ax), float(pos[i]),
+                               REL_OV, ("scene_edit.py markers %s pos[%d]" % (mid, i)), "scene",
+                               extra={"cn": "标记 %s · 位置%s" % (nm, ax), "unit": "m", "step": 0.0001,
+                                      "min": -3.0, "max": 3.0, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0"}))
+    return out
+
+
+def _write_scene(pid, value):
+    """场景实体写回 —— 经 tools/scene_edit.py 的既有写路径 (备份/原子写/回读/校验)。"""
+    import subprocess
+    core = pid.split("scene:", 1)[-1]
+    # marker.<id>.pos[i]  或  <name>.center[i] / <name>.size[i]
+    if core.startswith("marker."):
+        kind, rest = "markers", core[len("marker."):]
+        eid, field = rest.rsplit(".", 1) if False else (rest.split(".pos")[0], "pos")
+    else:
+        kind = "objects"
+        eid, field = core.split(".", 1) if False else (core.rsplit(".", 1)[0], core.rsplit(".", 1)[-1].split("[")[0])
+    idx = int(core.rsplit("[", 1)[-1].rstrip("]"))
+    py = os.path.join(ROOT, "gui-venv311", "bin", "python")
+    py = py if os.path.exists(py) else sys.executable
+    try:
+        r = subprocess.run([py, SCENE_EDIT, "list", "--json"], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        d = json.loads(r.stdout)
+    except Exception as e:                                                 # noqa: BLE001
+        return False, "读场景失败: %r" % (e,)
+    ent = None
+    for it in (d.get(kind) or []):
+        if str(it.get("id")) == eid or str(it.get("name")) == eid:
+            ent = it
+            break
+    if ent is None:
+        return False, "找不到 %s %s" % (kind, eid)
+    arr = list(ent.get(field) or [])
+    while len(arr) <= idx:
+        arr.append(0.0)
+    arr[idx] = float(value)
+    data = json.dumps({field: arr}, ensure_ascii=False)
+    r = subprocess.run([py, SCENE_EDIT, "update", "--kind", kind, "--id", eid, "--data", data, "--json"],
+                       cwd=ROOT, capture_output=True, text=True, timeout=30)
+    try:
+        res = json.loads(r.stdout)
+    except Exception:                                                       # noqa: BLE001
+        res = {"ok": r.returncode == 0, "msg": (r.stdout or r.stderr)[-200:]}
+    if not res.get("ok"):
+        return False, str(res.get("msg") or res)[:200]
+    return True, "scene_edit: %s %s.%s[%d] = %s (回读 %s)" % (
+        kind, eid, field, idx, value, res.get("readback_ok"))
+
+
 def _walk(v, pre):
     if isinstance(v, dict):
         for k2, v2 in v.items():
@@ -390,7 +479,8 @@ def _mk(pid, name, value, src, ref, group, extra=None, sys_hint=""):
 
 
 def scan():
-    ps = scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch() + scan_space() + scan_teach()
+    ps = (scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch()
+          + scan_space() + scan_teach() + scan_scene())
     seen, out = set(), []
     for p in ps:
         if p["param_id"] in seen:
@@ -743,6 +833,9 @@ def set_param(pid, value, write=False, reg=None):
             ok, msg = _guard_point(SPACE, p["ref"], v)
             if ok:
                 ok, msg = _write_json_path(SPACE, p["ref"], v)
+        elif p["group"] == "scene":
+            # 🆕 场景实体 (对象/标记): 经 scene_edit.py 写 (单一写路径)
+            ok, msg = _write_scene(p["param_id"], v)
         elif p["group"] == "teach":
             # 🆕 号位/示教点: 回写真源 taught_points.json (同样带写前哨)
             ok, msg = _guard_point(TAUGHT, p["ref"], v)
