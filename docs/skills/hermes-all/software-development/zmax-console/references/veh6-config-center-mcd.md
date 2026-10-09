@@ -28,6 +28,22 @@
 - 缺口分三类（诊断列要分开显示）：**现场未标定**(T_base_cam/plane_z/cell_geometry) ·
   **真源非文件**(saturate/veto_th 在源码常量里) · **未接线**(权重/第三方/档位)。
 
+## 模型多时如何区分配置 / 如何匹配工程配置
+- **区分的不是名字，是三件正交的事**：`域(domain)` × `层(layer L2/L3/L4/L5)` × `角色(检测/策略/意图/肌肉)`。
+  配置差异全来自这三者；同层可并挂多个候选（在役/候选）。
+- **匹配 = 契约求交**：模型声明 `requires`（要哪些现场事实）∩ 站点 `available` ⇒ **OK / 缺项 / 不适用** 三态。
+  “不适用”必须与“缺项”分开（没声明 vs 声明了没有），否则矩阵一片红看不出真问题。
+- **工程配置不进模型包**：`T_base_cam` 同时服务 L2/L3/L4，复制进三个包 = 三份真相。
+  模型包只放 `requires` + 容差；真值永远在 `config/calib/*`。
+- **域是第一判据**：仿真域(`metaworld`)模型对站点几何几乎无依赖；真机域(`real`)一缺几何就红。
+  实测：10 模型可用 9/10，**唯一受阻的是唯一真机域在役模型 L4.intact**（缺 T_base_cam/plane_z/cell_geometry）。
+- **已有真源不能绕过**（不要新建第二套）：`models/active_models.json`(在役指针) ·
+  `engineering/models_manifest.json`(版本+probe) · `docs/third_party_model_spec.md`(模型包 manifest v1) ·
+  `tools/model_autoload.py`。该补的是 manifest 的 **契约段**(domain/requires/normalization/io)，不是新体系。
+- 匹配器 `tools/model_site_match.py` → `config/mcd/match_matrix.json`（纯只读，可复算）。
+- 冲解规则：G1/G3 **站点永远赢**（模型只能要求）；G2 组配覆盖可可回溯；归一化 stats 谁都不可覆盖（不同源=拒绝加载）。
+- 命名：模型 ID `<层>.<家族>.<版本>#<sha16>`；组配 `binding_id = sha16(逐层模型+站点+档位+覆盖)` → 事后能还原“当时哪套”。
+
 ## 现状（改造起点的实测事实）
 - `ConfigModule` 在 `studio.py` 约 8634–9350 行（~700 行），**只覆盖"模型配置"**：
   9 组（架构模式/UI风格/基础/VLM骨干/Action Head/世界模型/预处理后处理/优化器调度器/配置预览）
