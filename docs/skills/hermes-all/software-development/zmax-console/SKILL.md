@@ -7,7 +7,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
-> 📄 VEH.6 配置中心 (MCD 测量/标定/诊断): `references/veh6-config-center-mcd.md` — 一张参数表+三个视角列; 真源唯一/G1 无编辑口/只改本节/写后回读。
+> 📄 VEH.6 配置中心 (MCD 测量/标定/诊断): `references/veh6-config-center-mcd.md` — 一张参数表+三个视角列; 四层配置(站点/配方/变体/工单); 操作面 CLI(config_center.py); 真源唯一/G1 无编辑口/只改本节/写后回读/生成物不手改。
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 

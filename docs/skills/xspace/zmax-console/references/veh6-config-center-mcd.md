@@ -44,6 +44,61 @@
 - 冲解规则：G1/G3 **站点永远赢**（模型只能要求）；G2 组配覆盖可可回溯；归一化 stats 谁都不可覆盖（不同源=拒绝加载）。
 - 命名：模型 ID `<层>.<家族>.<版本>#<sha16>`；组配 `binding_id = sha16(逐层模型+站点+档位+覆盖)` → 事后能还原“当时哪套”。
 
+## 第五域「工艺·工单」(Build Sheet) —— 工艺流程怎么配
+- 汽车总装 Build Sheet(单车身份+装配指令+零件清单) → 机器人产线: 工单身份+工序配方+物料清单;
+  再加一节汽车表上不写的: **安全(Sys-0)**(急停/力阈值/关节限位/光幕), 它不在配方里、在站点里。
+- **四层配置 + 优先级(谁说了算, 写死)**:
+  `L1 站点 config/calib/*`(现场事实, 永远最高, 只读) > `L2 工序配方`(工艺定型, 参数化) >
+  `L3 工件变体`(scenes_5jobs.json: 物料/穴位/朝向) > `L4 工单实例`(生成物)。
+  取值优先: 安全(G1) > 站点几何(G3) > 工单覆盖(G2) > 变体 > 配方默认。
+- **上下料是坐标驱动工序**: 站点几何(T_base_cam/plane_z/cell_geometry)未标定 ⇒ 穴位/工位坐标不可信
+  ⇒ **工单不允许下发(拦截, 不是警告)**。实测 5 份工单全被这同一处阻塞。
+  能力早就在库里(feature.dbc A1 自主流转/A2 工位对接±10mm/C4 翻转取放/C5 双臂协同, 场景字段明写"上下料")
+  ⇒ 上下料是**配置问题, 不是能力缺失问题**。
+- **上下料特有三级粒度**(写进变体, 差的是夹具与判据不是重写程序):
+  料盘级 330×330·12槽 / 治具级 200×200·4定位孔 / 单颗级 18×9×4。
+- **防错校验链(Poka-yoke)逐件 7 步**: 扫工件码→查工单→选程序(配方+变体)→校验资源→参数下发→
+  安全自检→记录(判据快照+binding_id)。任一不过 = 停线, **不许"跳过校验先干"**。
+
+## 操作面 CLI：GUI 每个按钮 = 一条命令(一份逻辑两处用)
+- `tools/config_center.py` 读 `config/mcd/zmax_mcd.json` 描述后提供: 总览 / `list 域` / `show id` /
+  `open id`(真源绝对路径+键) / `recipe` / `variants` / `orders` / `order --scene` / `check`。
+- 规则: **GUI 只做外壳** —— 命令函数抽成可导入模块给 GUI 直接调, **不写第二份实现**。
+  每个按钮 = 纯函数 + 结果面板 + 可导出 JSON; 失败给**根因行**("站点几何未标定 ⇒ 坐标类参数不可信"),
+  不给"操作失败"这种空话。
+- 改造方向: `ConfigModule` 从"卡片页"换成「左域树(QTreeWidget, 五域) + 右工作区
+  (QStackedWidget + 三列表)」, 现有 9 组模型卡片**整块搬进**"模型配置"栈页, 不重写; 工艺域三子页 = 配方/变体/工单。
+- GUI 冻结纪律照旧: 一次改完再重启, 不在演示/准备重启时动。
+
+## 生成物三条硬规矩(工单与描述文件都是生成物)
+1. **不手改生成物**: 改真源 → 重生成。工单的真源 = 场景 + 配方 + 站点配置。
+2. **ID 由真源决定, 不由遍历序号决定**: 工单号取场景编号(SCN-02→0002)而非 `enumerate` 下标 ——
+   否则加一个 `--scene` 筛选就换号, 追溯就断了。
+3. **只读取证 = 真源 mtime 不变**: 生成器跑完 `stat -c %y` 比对真源文件, 把结果贴进交付说明 ——
+   这是"未触碰在役值"最简单可信的证据。
+
+## 已落工具(VEH.6 相关, 全部只读真源/可复算)
+`tools/mcd_build.py`(MCD 描述) · `tools/model_site_match.py`(模型×站点矩阵) ·
+`tools/build_sheet.py`(工单/配方) · `tools/config_center.py`(操作面 CLI)。
+
+## 任务配置 (主要工程配置) + 配置中心新页
+- **层级**: 能力(feature.dbc) → 工序配方(8 段 25 条, **全集**) → **任务配置(子集+参数覆盖)** → 工单(一次执行) → 单件记录。
+  任务 = 「这台设备在这个工位干哪件活」：选哪些配方段 + 覆盖哪些参数 + 触发/循环。**换产品只改任务，不动机器人与模型。**
+- 真源: `config/tasks/tasks.json`（生成物: `tools/task_build.py` ← scenes_5jobs + 配方 + 站点配置）。
+  实测 5 条；上下料 `TASK-02-HANDLE` = 6/8 段（排除「4 放置/插入」「5 拔出/取回」）+ 3 级物料粒度(L1 料盘/L2 治具/L3 单颗) + 6 条参数覆盖。
+- 命令: `config_center.py tasks | task <ID> | order --task <ID>`。
+
+### GUI 接入点 (studio.py)
+- 挂载点: `ConfigModule.__init__` 末尾 **`self._build_shell(container)` 这一行**（在 `container.setLayout(outer)` 之后）。
+  包成 try/except + `veh6_config_page.build_config_center(container, {C_*})`，**失败回退原页**。原模型配置整块保留为「🧠 模型配置」页，不重写。
+- 新页 `tools/gui/veh6_config_page.py` 只依赖 PyQt5+json，**不 import studio**（颜色由 studio 传），所以可离屏单测：
+  `QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python` → ast.parse → import studio → `studio.ConfigModule()` → 断言页签/行数/按钮出结果。
+- 按钮 = `config_center.py` 的**同一份函数**（redirect_stdout 抓到面板）—— 一份逻辑两处用，不要写第二份实现。
+
+### 坑 (已踩)
+- **改了 `studio.py` 要重跑 `tools/mcd_build.py`**：`studio.py::cfg_spec` 是模型域的真源，描述里的 sha16 立刻对不上（面板会报「真源同步 ❌」）——这是正确行为，不是故障。
+- `patch` 工具对 studio.py 这种超大文件匹配失败时，往往是**空白行差异**；从 read_file 的连续行直接取原文，不要在中间自己加空行。
+
 ## 现状（改造起点的实测事实）
 - `ConfigModule` 在 `studio.py` 约 8634–9350 行（~700 行），**只覆盖"模型配置"**：
   9 组（架构模式/UI风格/基础/VLM骨干/Action Head/世界模型/预处理后处理/优化器调度器/配置预览）
