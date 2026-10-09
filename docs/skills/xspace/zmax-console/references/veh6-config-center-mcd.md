@@ -96,6 +96,12 @@
 - 按钮 = `config_center.py` 的**同一份函数**（redirect_stdout 抓到面板）—— 一份逻辑两处用，不要写第二份实现。
 
 ### 坑 (已踩)
+- **返回主窗口按钮**: 顶栏最左。实现走真实路径 —— 在 `win.sidebar` 里找 text 含「首页」的 `QPushButton` 并 `.click()`
+  （它会 `layer_clicked.emit("home")`，能同步侧栏高亮 + 切栈）；兜底才 `win._on_nav("home")`；都不通必须提示，不静默。
+- **离屏测整个主窗口可行**：`StudioMainWindow` 可直接构造（stack 12 页；`_on_nav("config")` → index 5），
+  但**解释器退出时会 core dump**（DDS 线程）—— 属正常，用 `grep -E "^[①-⑥]"` 抓自己的标记行，不要看 tail。
+- **终端会话导出的 PYTHONPATH 会污染后续测试**：先 `export PYTHONPATH=<lerobot site-packages>` 再用 gui-venv311 跑 GUI 会报
+  “import numpy from its source directory”；GUI 测试一律 `env -u PYTHONPATH`。
 - **改了 `studio.py` 要重跑 `tools/mcd_build.py`**：`studio.py::cfg_spec` 是模型域的真源，描述里的 sha16 立刻对不上（面板会报「真源同步 ❌」）——这是正确行为，不是故障。
 - `patch` 工具对 studio.py 这种超大文件匹配失败时，往往是**空白行差异**；从 read_file 的连续行直接取原文，不要在中间自己加空行。
 
