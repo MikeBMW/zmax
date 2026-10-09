@@ -1,0 +1,194 @@
+{
+  "_doc": "Z-MAX 平台产品真源 — 产品/产品特征/子系统/功能三轴/接口 的唯一人工真源 (人可编·进 git·可评审)。运行时由 tools/engineering_db.py 与状态空间工程 (.proj 7 段) 一起装进单一数据库文件 data/database/zmax_engineering.db。改这里 = 改工程; 别改数据库 (库是生成物)。",
+  "version": "1.0",
+  "generated_by": "Z-MAX 平台产品经理设计 (2026-10-09)",
+
+  "platform": {
+    "platform_id": "Z-MAX",
+    "name": "Z-MAX 具身智能机器人平台",
+    "positioning": "面向光模块工厂精细操作的具身智能机器人平台: 三子系统解耦 (认知决策 / 动作执行 / 基石执行), 从看到做到插进去全链自闭环",
+    "architecture": "System 2 认知决策 (L4/L5 大脑·云端智能体·任务拆解与调度) + System 1 动作执行 (L3·VLA-T 动作 + Z-Flow 引导) + System 0 基石执行 (L2·安全层/HAL/EtherCAT/运动学) 组成全系统; 各子系统功能由 配置·标定·诊断 三轴定义",
+    "data_contract": "平台产品 → 产品特征 → 子系统 → 功能(配置/标定/诊断) → 模块库模块(+ 代码位置) → 接口; 全部落在单一数据库文件, 与工程文件同源同载"
+  },
+
+  "products": [
+    {
+      "product_id": "Z700",
+      "name": "Z700 精细操作机器人",
+      "category": "精细操作",
+      "positioning": "光模块/精密件的抓取—对位—插拔作业; 精细力控 + 宏微复合, 面向 100G/400G 光模块产线",
+      "subsystems": ["sys2", "sys1", "sys0"],
+      "kpi": {
+        "插入成功率": "≥99%",
+        "插入精度": "光模块头到孔底 <4mm (D_INSERT)",
+        "节拍": "<70ms 决策级 / 单次插拔 <12s",
+        "力控保护": "插拔力上限可配, 超限即退",
+        "连续作业": "≥8h 无人值守"
+      },
+      "differentiators": ["接触流形 + 力控插拔保护", "免手眼板坐标系定位", "L4 专家自主 (世界模型预判)"]
+    },
+    {
+      "product_id": "Z100",
+      "name": "Z100 通用操作机器人",
+      "category": "通用操作",
+      "positioning": "跨工位通用上下料/流转/抓放; 移动即工位, 一台上装适配多工序, 面向柔性产线与多品种小批量",
+      "subsystems": ["sys2", "sys1", "sys0"],
+      "kpi": {
+        "抓取成功率": "≥97%",
+        "对接精度": "工位对接 ±10mm 级",
+        "举升范围": "0~800mm",
+        "形态切换": "固定式/移动式, 切换 <30s",
+        "换型时间": "≤2h (新工件靠示教/边学边练)"
+      },
+      "differentiators": ["跨工位自主流转", "双臂协同 + 宏微复合", "边学边练 (E2 训练闭环)"]
+    }
+  ],
+
+  "product_features": [
+    { "pf_id": "PF-Z700-01", "product_id": "Z700", "title": "光模块抓取插入 (完整作业执行)",
+      "capability_ref": "BO_ C1 完整作业执行", "subsys": ["sys0", "sys1"],
+      "kpi": "插入成功率 ≥99% · 头到孔底 <4mm", "status": "在役",
+      "desc": "八阶段 (接近→对位→下降→抓取→抬起→转移→插入→完成) 全链跑通, 状态空间引擎逐帧 io_trace 可查",
+      "module_refs": ["⑦ 插入 · SK07", "🤖 机器人执行器", "⚡ 前馈加速器", "🧭 动作调制器"] },
+    { "pf_id": "PF-Z700-02", "product_id": "Z700", "title": "精细对位 (头-孔亚毫米对位)",
+      "capability_ref": "BO_ C2 精细对位", "subsys": ["sys0", "sys1"],
+      "kpi": "对位残差 ≤0.5mm · 重投影 rmse 合格", "status": "在役",
+      "desc": "板坐标系定位 + 2D→3D 解算 + 视觉伺服; 免手眼板坐标系口径, 不依赖 T_base_cam",
+      "module_refs": ["📐 2D→3D 解算", "📐 板坐标系定位 (工序坐标系·免手眼)", "② 对位 · SK02"] },
+    { "pf_id": "PF-Z700-03", "product_id": "Z700", "title": "力控插拔保护",
+      "capability_ref": "BO_ C3 力控插拔保护", "subsys": ["sys0"],
+      "kpi": "插拔力上限可配 · 超限即退 (MON)", "status": "在役",
+      "desc": "接触流形 + 触觉感知判接触态, 力超限立刻回退并报诊断, 保护模块与孔壁",
+      "module_refs": ["🖐 触觉感知", "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)", "⑦ 插入 · SK07"] },
+    { "pf_id": "PF-Z700-04", "product_id": "Z700", "title": "宏微复合作业",
+      "capability_ref": "BO_ C6 宏微复合作业", "subsys": ["sys0", "sys1"],
+      "kpi": "宏动定位 + 微调收敛, 末端重复性 ≤0.05mm", "status": "在役",
+      "desc": "MoveIt 宏动规划 + SDK 直驱微调, 宏微分工, 兼顾行程与精度",
+      "module_refs": ["🧭 MoveIt 运动规划", "SDK 直驱桥", "🧭 动作调制器"] },
+    { "pf_id": "PF-Z700-05", "product_id": "Z700", "title": "L4 专家自主 (世界模型预判/恢复)",
+      "capability_ref": "BO_ D1 过程预判 / D2 运动规律建模", "subsys": ["sys2"],
+      "kpi": "IntAct 稳态 101ms · 冷启 6.7s (常驻)", "status": "在役",
+      "desc": "INTACT 直驱 + 流形专家预测器 (JEPA): 潜空间→流形→动作; 异常可恢复",
+      "module_refs": ["🎯 INTACT (L4)", "🧠 流形专家预测器 (JEPA)", "🔮 意图直读 · Direct", "🎯 INTACT 意图解码器 (L4 → L3 桥)"] },
+    { "pf_id": "PF-Z700-06", "product_id": "Z700", "title": "场景理解与任务拆解 (VLM)",
+      "capability_ref": "BO_ G4 产线系统对接", "subsys": ["sys2"],
+      "kpi": "短提示 + 小 JSON 输出, timeout ≥300s", "status": "在役",
+      "desc": "Qwen2.5-VL 场景理解 + L3 长程序列规划器 (场景理解驱动), 自然语言/MES 任务入口",
+      "module_refs": ["👁 视觉语言大模型 · 场景理解 (Qwen2.5-VL)", "📝 任务指令 · MES/自然语言", "🧠 L3 长程序列规划器 (场景理解驱动)"] },
+    { "pf_id": "PF-Z700-07", "product_id": "Z700", "title": "视触觉质量检测", "capability_ref": "BO_ B5 外观质量检测",
+      "subsys": ["sys0"], "kpi": "外观缺陷检出率按 AOI 口径", "status": "在役",
+      "desc": "插拔前后外观质量检测, 与产线 AOI (10082/10083) 同口径比对",
+      "module_refs": ["🔍 外观质量检测", "🖐 触觉感知"] },
+    { "pf_id": "PF-Z700-08", "product_id": "Z700", "title": "标定与主参数 M 现场可配",
+      "capability_ref": "BO_ H1 现场参数可调", "subsys": ["sys2", "sys0"],
+      "kpi": "写 M 幂等 · 范围校验 · 回读确认", "status": "在役",
+      "desc": "标定真源 9 段 + 流形引擎主参数 M, 只走「配置/标定/主参数」写口, 改完回读核验",
+      "module_refs": ["🧮 标定层 · 引力-斥力-动作", "🧮 标定诊断测量 · 主参数 M (状态空间结构)"] },
+    { "pf_id": "PF-Z700-09", "product_id": "Z700", "title": "真机安全与急停 (平台级)",
+      "capability_ref": "BO_ G2 运行状态上报", "subsys": ["sys0"],
+      "kpi": "抬升闸放开仍须慢速+警报在先 · 听「要碰撞」立即全停", "status": "在役",
+      "desc": "安全层 + HAL 驱动层 + 运动学正逆解; 动作授权只从 8793 出, 代发前先授权",
+      "module_refs": ["🔌 State Adapter", "🌍 物理世界", "🤖 机器人执行器"] },
+    { "pf_id": "PF-Z700-10", "product_id": "Z700", "title": "边学边练 (数据闭环自升级)",
+      "capability_ref": "BO_ E2 边学边练 / E3 上岗考核", "subsys": ["sys2"],
+      "kpi": "采集→训练→部署闭环可无人值守", "status": "在役",
+      "desc": "Orin 采集 → ECS 中转 → 训练 → 静态 URL 部署 → 推理, 新能力须有提升证据才进默认档",
+      "module_refs": ["📚 工程记忆 · 技能与经验库", "🏆 L4 工作安全 + 物理世界导航 (记忆)", "💪 L2 肌肉记忆技能库 (光模块抓放循环)"] },
+
+    { "pf_id": "PF-Z100-01", "product_id": "Z100", "title": "跨工位自主流转 (移动即工位)",
+      "capability_ref": "BO_ A1 自主导航流转", "subsys": ["sys0", "sys2"],
+      "kpi": "跨工位流转成功率 ≥97%", "status": "规划",
+      "desc": "自主规划路径在工位间流转, 一台车串联整条产线工序",
+      "module_refs": ["🧭 3D 视图", "📡 融合定位"] },
+    { "pf_id": "PF-Z100-02", "product_id": "Z100", "title": "工位精准对接 (±10mm 级)",
+      "capability_ref": "BO_ A2 工位精准对接", "subsys": ["sys0"],
+      "kpi": "对接精度 ±10mm", "status": "规划",
+      "desc": "视觉定位定位销/对接标记, 保证后续作业坐标系基准正确",
+      "module_refs": ["📐 2D→3D 解算", "📐 板坐标系定位 (工序坐标系·免手眼)"] },
+    { "pf_id": "PF-Z100-03", "product_id": "Z100", "title": "举升高度调节 (0~800mm)",
+      "capability_ref": "BO_ A3 举升高度调节", "subsys": ["sys0"], "kpi": "0~800mm 覆盖多层工位", "status": "规划",
+      "desc": "举升机构把上装调到目标高度, 覆盖料架底层到老化箱高层",
+      "module_refs": ["🤖 机器人执行器", "🧭 动作调制器"] },
+    { "pf_id": "PF-Z100-04", "product_id": "Z100", "title": "双形态作业 (固定/移动按需切换)",
+      "capability_ref": "BO_ A4 双形态作业", "subsys": ["sys0"], "kpi": "切换 <30s", "status": "规划",
+      "desc": "固定式精度最优 / 移动式柔性最优, 同一台车适配不同产线布局",
+      "module_refs": ["🌍 物理世界", "🔌 State Adapter"] },
+    { "pf_id": "PF-Z100-05", "product_id": "Z100", "title": "通用抓放与灵活翻转",
+      "capability_ref": "BO_ C1 完整作业执行 / C4 灵活翻转取放", "subsys": ["sys0", "sys1"],
+      "kpi": "抓取成功率 ≥97%", "status": "规划",
+      "desc": "任意姿态取放 + 翻转; 由原子技能库 SK01-08 组合",
+      "module_refs": ["④ 抓取 · SK04", "⑥ 转移 · SK06", "⑧ 完成 · SK08"] },
+    { "pf_id": "PF-Z100-06", "product_id": "Z100", "title": "双臂协同作业",
+      "capability_ref": "BO_ C5 双臂协同作业", "subsys": ["sys0"], "kpi": "双臂干涉检测 + 协同节拍", "status": "规划",
+      "desc": "双臂分工协同 (一端夹持一端作业), 需干涉检测与协同调度",
+      "module_refs": ["🧭 MoveIt 运动规划", "🧭 动作调制器"] },
+    { "pf_id": "PF-Z100-07", "product_id": "Z100", "title": "多车协同调度",
+      "capability_ref": "BO_ F3 多车协同调度", "subsys": ["sys2"], "kpi": "多机台/多车协同, 场景编排", "status": "规划",
+      "desc": "云端智能体任务拆解与调度 (Sys-1 动态调度), 多车协同不撞",
+      "module_refs": ["🧠 总装记忆中枢 (前额叶总装 · 三层协同)", "🌐 Web 智能体桥 · 远程提示词"] },
+    { "pf_id": "PF-Z100-08", "product_id": "Z100", "title": "第三方模型/设备标准接入",
+      "capability_ref": "BO_ G1 标准模型接入 / G3 事件自动通知", "subsys": ["sys2", "sys1"],
+      "kpi": "按 Manifest + 适配器接入, 能力契约不变", "status": "规划",
+      "desc": "第三方模型按文件接入 (BU_ 契约), 运行状态上报 + 事件通知",
+      "module_refs": ["🧩 SU(2) 统一状态空间 (二阶特殊酉群)", "🧩 开放词汇分割 (SAM3 分割anything)"] }
+  ],
+
+  "subsystems": [
+    {
+      "system_id": "sys2", "name": "System 2 认知决策", "level": "L4/L5",
+      "role": "L4 大脑: 云端智能体·任务拆解与调度; 世界模型预判/恢复; 记忆筹划",
+      "hardware": "云端 4090 (RTX 4060 本地兜底)",
+      "rows": ["🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)", "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)", "🏆 L4 专家自主功能 · 标定与流形世界模型"],
+      "kpi": {"决策级": "IntAct 稳态 101ms", "任务拆解": "自然语言/MES → 技能序列", "记忆": "五层记忆 (肌肉/流程/工作/宏观/总装)"},
+      "axes": {
+        "cfg": ["大模型选择与超参 (L5 规划器 timeout≥300s)", "记忆层层数与容量 (肌肉/流程/工作/宏观)", "能力档位 (0-4 档)", "阶段专家 MOE 门控 (硬先验路由)", "危险动作授权阈值"],
+        "cal": ["manifold_engine.M 主参数 M (流形引擎等效惯量尺度)", "TCP 口径 control_tcp.offset_xyz_m", "意图直读阈值/置信门限"],
+        "dia": ["L3/L4 节点实现审计 (ss_node_impl_audit)", "INTACT 常驻与冷启时长", "记忆写入/读取一致性", "Feature/Test 质量门 (57 条断言)"]
+      }
+    },
+    {
+      "system_id": "sys1", "name": "System 1 动作执行", "level": "L3",
+      "role": "L3 动作系统: VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWorldModel 15M); 长程规划与技能序列",
+      "hardware": "本地 GPU / 边缘推理",
+      "rows": ["🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)", "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching"],
+      "kpi": {"动作推理": "端到端 VLA 500M", "引导": "Z-Flow 15M 流匹配", "序列": "跨段技能序列可复用"},
+      "axes": {
+        "cfg": ["VLA-T/Z-Flow 权重与档位 (在役软链)", "图像尺寸/归一化 stats (逐维)", "动作头与夹爪头分离", "推理步频 (每 N 步真推理)", "LoRA 注入 (r/alpha/target)"],
+        "cal": ["相机内参 camera.K/dist (真机出厂内参)", "深度口径 depth_scale / plane_z", "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)"],
+        "dia": ["策略 rollout 成功率 (同源口径)", "反归一化/长轨迹平均化陷阱自检", "VLM 编码器一致性", "模型在役哈希与版本比对"]
+      }
+    },
+    {
+      "system_id": "sys0", "name": "System 0 基石执行", "level": "L2",
+      "role": "L2 基石: 安全层 + HAL 驱动层 + EtherCAT + 运动学正逆解 + 原子技能 + 分段感知/控制小模型 + 肌肉记忆",
+      "hardware": "工控机 + 珞石 Z-MAX 机械臂 (6 DOF) + D405/D435 相机 + 力传感",
+      "rows": ["🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)", "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)", "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)", "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)", "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)", "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子", "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)"],
+      "kpi": {"控制": "一阶速度伺服 τ=0.08s, max‖v‖≤0.5m/s", "精度": "TCP 刚体一致 (std ≤2mm)", "安全": "L2 势函数兜底 + 逐轴 corr<0.5 veto"},
+      "axes": {
+        "cfg": ["关节速度 speed (默认 8; 腿速名义 0.0935×speed, 实测 ≈名义/10)", "碰撞检测 collision_detection", "夹爪开合/力上限", "L2 兼容开关 (默认勾)", "T_base_cam (未标定)/plane_z (未标定)"],
+        "cal": ["camera.K/dist/image_size (真机出厂内参 plumb_bob)", "robot.dof / urdf_sha256 / link_mass_sum_kg", "tool_payload.mass_kg/cog_m", "control_tcp (n_frames/offset/verdict)", "plane_z 台面高度 / cell_geometry 示教几何", "depth_scale (仿真单目 0.9616)"],
+        "dia": ["TCP 反解刚体一致性 (FK vs tcp_pose)", "重投影残差 (标定验收)", "逐帧 io_trace 与状态总线一致性", "夹持锁存/台面约束断言 (F-A05)", "GPU/相机帧龄与掉帧"]
+      }
+    },
+    {
+      "system_id": "plat", "name": "平台支撑 (跨子系统)", "level": "PLAT",
+      "role": "数据源供给 · Feature/Test 质量门 · 观察器/可视化 — 不归单一层次, 由 Z-MAX 平台统一治理",
+      "hardware": "仿真 metaworld + 真机信号旁路 + 3DGS 场景资产",
+      "rows": ["📦 数据源 (metaworld 环境 + 真机信号 · 供给全部层级)", "🧩 验证层 · Feature/Test 质量门 (回路外元层)", "🔭 可视化层 · 观察器 (旁路/3D/视频/直方图)"],
+      "kpi": {"数据": "仿真/真机同源口径", "质量门": "57 条断言 / 113 功能树", "可视化": "旁路只读, 不下发动作"},
+      "axes": {
+        "cfg": ["数据源切换 (metaworld / 真机信号 / 3DGS 资产)", "录制与抽帧参数", "旁路可视化开关 (公网只读)"],
+        "cal": ["场景数据源标定 (cell_geometry/plane_z 共用)", "相机内外参与仿真对齐"],
+        "dia": ["Feature/Test 断言结果 (verification_layer)", "数据集完整性/时间戳单调", "旁路流帧率与帧龄"]
+      }
+    }
+  ],
+
+  "axis_sources": {
+    "cfg": "画布节点 params (真实配置键) + 子系统 axes.cfg",
+    "cal": "config/calib/zmax_calib.json 9 段 + config/calib/zmax_manifold.json (主参数 M)",
+    "dia": "src/lerobot/verification/verification_layer.py FEATURES (A-H 域) + 节点实现审计 + 真机只读采集判据",
+    "modules": "tools/gui/simulink_module.py LIBRARY (含 curation 名单)",
+    "project": "reports/projects/zmax_space.proj (7 段: canvas/pane/calib/measure/mparam/task/meta)"
+  }
+}

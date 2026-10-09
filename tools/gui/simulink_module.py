@@ -5535,6 +5535,12 @@ class SimulinkModule(QWidget):
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
         self._canvas_win.showMaximized()
         self.library = LibraryPanel(self)
+        # 📚 2026-10-09 老倪: 「全面检查模块库」 ⇒ 画布起来时模块库必须是**展开可看见**的默认态
+        #   (之前有过遗留的收起态 → 打开画布看不到模块库, 得自己找左缘 ▶)
+        try:
+            self.library.set_collapsed(False)
+        except Exception:                                                         # noqa: BLE001
+            pass
         # 📚 左侧栏折叠/展开 (2026-08-22 老倪: 去掉独立 16px 空扩展条 → library 自收窄 20px)
         self.library.collapse_requested.connect(self._collapse_library)
         self.library.expand_requested.connect(self._expand_library)

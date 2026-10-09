@@ -79,6 +79,16 @@ _btns = getattr(mod.library, "_lib_btns", {}) or {}
 _lib_btns = [b for b in _btns.values() if isinstance(b, SM.LibButton)]
 chk(len(_btns) > 300 and len(_lib_btns) > 300,
     "库按钮 %d 个 (可拖 %d 个 LibButton)" % (len(_btns), len(_lib_btns)))
+# 离屏窗口 isVisible() 恒 False → 判「展开态」看 _collapsed + 宽度 (展开宽 = LIB_W)
+chk((not getattr(mod.library, "_collapsed", True)) and mod.library.width() == SM.LibraryPanel.LIB_W,
+    "模块库默认展开 (宽 %d = LIB_W, 收起态是 %d)"
+    % (mod.library.width(), SM.LibraryPanel.LIB_W_COLLAPSED))
+_saveb = getattr(mod.library, "_btn_save_new", None)
+chk(_saveb is not None and "存为新工程" in (_saveb.text() or ""),
+    "库面板有「💾 存为新工程」按钮: %s" % (getattr(_saveb, "text", lambda: "—")()))
+_hint = getattr(mod.library, "_hint_lbl", None)
+chk(_hint is not None and "拖进画布" in (_hint.text() or ""),
+    "库面板提示语已写拖拽: %s" % ((_hint.text() or "").splitlines()[0] if _hint else "—"))
 
 print("③ 真拖一次 (造 QDropEvent 打真 dropEvent, 落点 = 节点位置)", flush=True)
 _pick = None
@@ -193,6 +203,23 @@ _cur = json.loads(open(_cur_path, encoding="utf-8").read()) if os.path.exists(_c
 rm = _cur.get("removed") or []
 chk(len(rm) > 0, "删除名单在册 %d 条 (config/library_curation.json)" % len(rm))
 chk(not any("🧪" in (x.get("name") or "") for x in rm), "判据用的临时条目已从真名单还原")
+_gone = [x.get("name") for x in rm]
+_still = [it.get("name") for _t, _gn, its in SM.LIBRARY for it in its if it.get("name") in _gone]
+chk(not _still, "名单里的 %d 条已真的从库条目里消失 (残留 %s)" % (len(_gone), _still[:4]))
+import re as _re
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import lib_sync as LS                                                            # noqa: E402
+_cv, _alive, _dead = LS.analyze()      # 与 lib_sync 同一口径 (谁算「有关联」由它说了算)
+_alive_names = {n for _g, n, _w in _alive}
+_why = {n: w for _g, n, w in _alive}
+_old = [it.get("name") for _t, _gn, its in SM.LIBRARY for it in its
+        if _re.match(r"^[CASHLM]\d\d ", it.get("name") or "")]
+_orphan = [n for n in _old if n not in _alive_names]
+chk(not _orphan,
+    "老 C·A·S·H·M 编号条目: 还剩 %d 条, 全部命中「有关联」判定 ⇒ 不该删 (%s …); "
+    "无关联的已删, 残留无关联 %s"
+    % (len(_old), [(_n, _why.get(_n, "?")) for _n in _old[:3]], _orphan[:5]))
+chk(len(_dead) == 0, "lib_sync 口径: 库里 0 条「无联系/无关联」")
 
 _tail = ("✅ 全部通过 — 模块库↔画布 同步/拖入/删除/存为新工程 (7 项)"
          if not FAIL else "❌ 失败 %d 项" % len(FAIL))

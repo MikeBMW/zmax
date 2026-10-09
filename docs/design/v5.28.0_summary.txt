@@ -1,0 +1,51 @@
+v5.28.0 — 平台产品/子系统功能清单 + 工程数据库 (单一文件) + GUI↔工程解耦 + data/ 精简 (2026-10-09)
+
+老倪: 「产品特性/系统配置/标定参数/功能清单汇总的数据库, 要和状态空间工程文件形成统一数据结构;
+加载工程就一起把 特性·配置·参数·功能·模块代码 都链接出来; 最好只用一个数据库文件承载所有工程数据,
+这样 GUI 与整个工程解耦, 我可以随时迁移工程文件用统一 GUI 加载; 全局优化控制台, 实现工程数据与界面分离;
+总数据库放 /home/ubuntu/zmax/data; 这个路径数据太多, 没用的都删掉, 建 database 文件夹统一管理;
+在主窗口左侧 System 2 之上增加 Z-MAX 方框描述平台产品 (Z700 精细操作 / Z100 通用操作),
+点击 Z-MAX / System 2 / System 1 / System 0 能清晰打开功能清单; 你来设计产品逻辑与数据库系统。」
+
+① 产品逻辑 (PM) — config/platform/zmax_platform.json (真源, 人可编)
+   🏭 Z-MAX 平台 → 产品 Z700(精细操作) / Z100(通用操作) → 产品特征清单 18 条
+   (Z700 10 条: 完整作业执行/精细对位/力控插拔保护/宏微复合/L4专家自主/场景理解与任务拆解/
+     视触觉质量检测/标定与主参数M/真机安全急停/边学边练; Z100 8 条: 跨工位流转/工位精准对接/
+     举升调节/双形态作业/通用抓放翻转/双臂协同/多车协同调度/第三方模型接入)
+   特征引用能力库 feature.dbc 的 BO_ (31 条能力), 标注 KPI·状态·归属子系统·用到模块
+   子系统: System 2 认知决策(L4/L5) / System 1 动作执行(L3) / System 0 基石执行(L2) / 平台支撑(跨层)
+   每个子系统的功能清单由三轴定义: ⚙️配置 CFG · 📐标定 CAL · 🩺诊断 DIA (真源: 节点 params / calib.json /
+   verification_layer FEATURES)
+
+② 单一工程数据库 — data/database/zmax_engineering.db (SQLite 0.82 MB, 一个文件=一套工程)
+   真源: zmax_platform.json + reports/projects/*.proj(7段) + state_space_obs.json + zmax_calib.json
+        + zmax_manifold.json + feature.dbc + verification_layer.py FEATURES + nodes/library.py NODE_LOGIC
+        + library_curation.json
+   表: platform/products/product_features(18)/subsystems(4)/subsystem_axes(48)/functions(74)/fn_axes(1594)/
+      calib_params(41)/modules(74)/module_code(74)/capability_dbc(31)/interfaces(62)/
+      verification_features(57)/canvas_nodes(74)/canvas_links(184)/project_sections(27)/links(368)/
+      library_removed(33)
+   工具 tools/engineering_db.py: build / check / stats / query / load / export / serve / migrate
+
+③ 判据 (11 项全绿, tools/engineering_db.py check + tools/verify_platform_spec.py 6 项)
+   特征→子系统 0 悬空 · 功能→模块 0 悬空 · 三轴 74/74 · 特征→能力 0 悬空 · 工程 7 段齐 ·
+   功能 74 == 画布功能节点 74 (无重复计数) · 零同名功能 · 库↔真源哈希一致 · 模块 74/74 链到引擎代码
+
+④ 单一数据库服务 (常驻) — systemd zmax-engdb.service → 127.0.0.1:8798 只读 JSON
+   /summary /platform /products /product/<id> /systems /system/<id> /functions /function/<id>
+   /modules /capabilities /calib /project[/<section>] /graph /sync
+
+⑤ GUI ↔ 工程数据解耦 (重构)
+   新页 tools/gui/platform_spec.py「📋 功能清单」只认一个 .db 文件 (纯 sqlite, 不 import 工程文件):
+   页签 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0 / 🧩 平台支撑;
+   侧栏 System 2 之上新增 🏭 Z-MAX 平台卡; 点 4 张卡 → 切清单页并选中对应页签; 每页带「→ 打开该子系统
+   对应的功能页面」保留旧入口; 页内可 📂打开工程数据库(换库=换工程) / 🔁从真源重建 / 📋复制 / 💾导出 JSON / 📡服务状态
+
+⑥ data/ 精简: 354 MB → 21 MB (删 333 MB: handeye 79 张标定采集截图; 7 个 json 结果与
+   models/handeye_state.json 保留, 重跑 tools/a5_handeye_collect.py 可重现); 新建 data/database/ 统一管理
+   (库 + README + cleanup_manifest_20261009.txt 留痕)
+
+⑦ 修的真 bug: 行带归属重复计数(85→74) · 行带缝隙节点就近归属 · .proj 段名与 7 段语义映射 ·
+   懒加载画布页导致下标漂移(改 setCurrentWidget) · current_payload 页签匹配
+
+文档 docs/design/platform_engineering_db_20261009.md + data/database/README.md
