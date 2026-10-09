@@ -1,0 +1,73 @@
+{
+  "_doc": "Z-MAX 仿真↔真机参数桥 — 由 tools/sim2real_bridge.py 生成。引擎口径 ↔ 真机物理量逐条对照 (含来源与就绪度), sim→real 迁移前先读本表。",
+  "_generated_at": "",
+  "robot": {
+    "engine_side": "",
+    "real_side": "",
+    "urdf_sha256_16": "",
+    "link_mass_sum_kg": 0,
+    "payload_kg": 0,
+    "payload_cog_m": [],
+    "_mass_inertia_src": ""
+  },
+  "frames": {
+    "engine_hand": {
+      "obs": "",
+      "real": "",
+      "real_fk_residual_mm": 0,
+      "_src": ""
+    },
+    "engine_peg": {
+      "obs": "",
+      "real": "",
+      "tool_offset_m": null,
+      "_reason": ""
+    },
+    "engine_target": {
+      "obs": "",
+      "real": "",
+      "ready": 0,
+      "_reason": ""
+    },
+    "control_tcp_offset_m": [],
+    "nominal_tool_offset_m": [],
+    "_tcp_note": ""
+  },
+  "scale_action": {
+    "engine": {
+      "u_unit": "",
+      "act1_eq_mps": 0,
+      "_src": ""
+    },
+    "real": {
+      "unit": "",
+      "servo": ""
+    },
+    "act_to_mps": 0,
+    "u_sat_mps": 0,
+    "one_step_mm": 0,
+    "_verify": ""
+  },
+  "joint_limits": {
+    "n": 0,
+    "items": [],
+    "_src": "",
+    "used_by": ""
+  },
+  "workspace_real": {
+    "n_frames": 0,
+    "state_file": "",
+    "tcp_x_range": [],
+    "tcp_y_range": [],
+    "tcp_z_range": [],
+    "static": 0
+  },
+  "calib_refs": {
+    "camera_K": [],
+    "T_base_cam": null,
+    "plane_z": null,
+    "depth_scale_sim_only": 0
+  },
+  "gaps": [],
+  "_redline": ""
+}

@@ -1,0 +1,60 @@
+{
+  "_doc": "Z-MAX 真机机器人模型参数 单一真源 — 由 tools/robot_spec_sync.py 生成。所有层 (状态空间引擎 / 3D 视图 / L2 安全闸 / 感知反投影 / 训练配置) 一律读本文件, 禁止再各自硬编码几何/限位/质量。真机只读采集, 零运动指令。",
+  "_generated_at": "",
+  "robot": {
+    "name": "XMS5-R800-W4G3B4C",
+    "dof": 0,
+    "urdf": "",
+    "urdf_sha256_16": "",
+    "mover_joints": []
+  },
+  "joints": [],
+  "links": [],
+  "tool": {
+    "frame": "",
+    "xyz": [],
+    "rpy": []
+  },
+  "control_tcp": {
+    "ok": 0,
+    "n_frames": 0,
+    "frame": "",
+    "offset_xyz_m": [],
+    "offset_std_mm": [],
+    "rot_dev_deg_max": 0,
+    "verdict": "",
+    "_src": ""
+  },
+  "payload": {
+    "mass_kg": 0,
+    "cog_m": [],
+    "_src": "",
+    "_reason": null
+  },
+  "totals": {
+    "link_mass_sum_kg": 0,
+    "n_links_with_inertia": 0,
+    "n_links_missing_inertial": []
+  },
+  "live_check": {
+    "state_file": "",
+    "age_s": 0,
+    "tcp": [],
+    "jpos": [],
+    "jvel": [],
+    "ft": [],
+    "fk": {
+      "ok": 0,
+      "tcp_fk": [],
+      "tcp_real": [],
+      "err_mm": 0,
+      "verdict": "",
+      "jpos_used": []
+    }
+  },
+  "_provenance": {
+    "kinematics/mass/inertia": "",
+    "payload": "",
+    "live_truth": ""
+  }
+}

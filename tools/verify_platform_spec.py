@@ -196,7 +196,29 @@ _labs = [l.text() for l in win.sidebar.findChildren(_QL)]
 chk(not [x for x in _labs if x.strip() in ("① 产品", "② 系统", "③ 产品配置", "④ 数据配置")],
     "分组小字已删净 (产品/系统/产品配置/数据配置 4 个标题)")
 
-print(("✅ 全部通过 — 工程数据库 + 功能清单页 (14 项)" if not FAIL else
+# ⑦ 平台/实例 解耦: 你的真值必须落在实例数据包里, 不随平台仓库公开
+_LINKS = [("config", "sources/config"), ("feature.dbc", "sources/feature.dbc"),
+          ("src/lerobot/engineering/flows/state_space_obs.json", "sources/canvas/state_space_obs.json")]
+_inst = os.path.realpath(os.path.join(ROOT, "data", "database", "zmax"))
+_bad = []
+for _r, _sub in _LINKS:
+    _p = os.path.join(ROOT, _r)
+    if os.path.islink(_p):
+        if not os.path.realpath(_p).startswith(_inst + os.sep):
+            _bad.append("%s → 指向实例包外" % _r)
+    elif os.path.exists(_p):
+        _bad.append("%s 是平台仓库内的真实文件 (未解耦)" % _r)
+chk(not _bad, "平台/实例 解耦: 真源落在 data/database/<产品>/sources/ — 违规: %s" % (_bad or "无"))
+_inst_src = os.path.join(_inst, "sources")
+chk(all(os.path.exists(os.path.join(_inst_src, _s)) for _s in ("config", "feature.dbc", "canvas/state_space_obs.json")),
+    "实例数据包完整: sources/{config,feature.dbc,canvas} 都在")
+_dirty = subprocess.run(["git", "ls-files"] + [_r for _r, _ in _LINKS], cwd=ROOT,
+                        capture_output=True, text=True).stdout.split()
+chk(not _dirty, "公开仓库不含你的真值 (config/feature.dbc/画布 未跟踪) — 违规: %s" % (_dirty[:3] or "无"))
+_nsf = sum(len(f) for _, _, f in os.walk(os.path.join(ROOT, "defaults")))
+chk(_nsf >= 10, "出厂骨架 defaults/ 就位 (%d 个骨架文件, 供全新实例)" % _nsf)
+
+print(("✅ 全部通过 — 工程数据库 + 功能清单页 (18 项)" if not FAIL else
        "❌ 失败 %d 项: %s" % (len(FAIL), FAIL[:6])), flush=True)
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

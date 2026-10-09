@@ -1,0 +1,38 @@
+VERSION "1.0"
+// ═══════════════════════════════════════════════════
+// feature.dbc — 能力数据库 (参考 Vector CANoe DBC)
+// 同一平台/容器内配置不同模型的能力接入, 第三方模型按文件接入
+// ═══════════════════════════════════════════════════
+
+// 模型节点 (平台内可配置的模型/第三方接入点)
+BU_: JOB_MODEL GUIDE_MODEL SCHED_MODEL PERCEPT_MODEL THIRD_PARTY
+
+// 数据流形态 (状态空间=形态之一)
+FLOW_: L0 "L0" "多机台·多车协同调度 · 场景编排"
+FLOW_: L1 "L1" "作业阶段编排 · 原子技能库 (200项)"
+FLOW_: L2 "L2" "作业执行 + 预判引导 (模型可替换)"
+FLOW_: L3 "L3" "感知认知 · 作业执行 · 移动流转"
+FLOW_: JOB_MODEL "L2 模型决策 · 从看到做 (70ms 级)" "作业执行模型" JOB_MODEL
+FLOW_: GUIDE_MODEL "L2 模型决策 · 预判过程走向" "预判引导模型" GUIDE_MODEL
+FLOW_: SCHED_MODEL "L1 技能编排 · 阶段调度与说明" "作业编排模型" SCHED_MODEL
+FLOW_: PERCEPT_MODEL "L3 感知执行 · 识别定位检测" "感知模型" PERCEPT_MODEL
+FLOW_: THIRD_PARTY "按需注册 Manifest + 适配器" "第三方模型" THIRD_PARTY
+
+// 能力 (BO_) 与 输入输出信号 (SG_), 接口取值: IN/OUT/CFG/TRAIN/DEPLOY/EVAL/MON/SCHED
+// ── A 移动流转能力 ──
+// ── B 感知认知能力 ──
+// ── C 作业执行能力 ──
+// ── D 决策引导能力 ──
+// ── E 数据学习能力 ──
+// ── F 部署运行能力 ──
+// ── G 对外协作能力 ──
+// ── H 工程交付能力 ──
+
+// 模型能力组合 (节点: 选用能力)
+CM_ JOB_MODEL: A1 A2 A4 B1 B2 B3 B4 C1 C2 C3 C4 C5 C6 D1 D3 E1 E2 E3 F1 F2 G1 G2 G3 G4 H1 H3
+CM_ GUIDE_MODEL: B1 B2 B4 D1 D2 G1
+CM_ SCHED_MODEL: C1 D3 G2 G4 H1
+CM_ PERCEPT_MODEL: B1 B2 B4 B5 G1
+CM_ THIRD_PARTY:
+
+// ── 能力 (BO_/SG_) 为实例数据, 出厂骨架为空; 在实例包 sources/feature.dbc 内定义 ──

@@ -1,0 +1,76 @@
+{
+  "_meta": {
+    "schema": "zmax-model-site-match/1.0",
+    "generated_at": "",
+    "doc": "",
+    "sources": {
+      "models_manifest": "",
+      "active_models": "",
+      "site_calib": "",
+      "capability_lib": ""
+    },
+    "site_keys": []
+  },
+  "SITE": {
+    "cam.K": {
+      "value": [],
+      "available": 0,
+      "reason": null
+    },
+    "cam.dist": {
+      "value": [],
+      "available": 0,
+      "reason": null
+    },
+    "T_base_cam": {
+      "value": null,
+      "available": 0,
+      "reason": ""
+    },
+    "plane_z": {
+      "value": null,
+      "available": 0,
+      "reason": ""
+    },
+    "depth_scale": {
+      "value": 0,
+      "available": 0,
+      "reason": null
+    },
+    "cell_geometry.points": {
+      "value": null,
+      "available": 0,
+      "reason": ""
+    },
+    "robot.dof": {
+      "value": 0,
+      "available": 0,
+      "reason": null
+    },
+    "tool_payload.mass_kg": {
+      "value": 0,
+      "available": 0,
+      "reason": null
+    },
+    "control_tcp.offset_xyz_m": {
+      "value": [],
+      "available": 0,
+      "reason": null
+    }
+  },
+  "SITE_MISSING": [],
+  "MODELS": [],
+  "SUMMARY": {
+    "models": 0,
+    "usable_now": 0,
+    "blocked": 0,
+    "by_layer": {
+      "L2": 0,
+      "L3": 0,
+      "L4": 0,
+      "L5": 0,
+      "—": 0
+    },
+    "site_missing": []
+  }
+}

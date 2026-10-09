@@ -1,0 +1,41 @@
+{
+  "_note": "",
+  "identity": {
+    "order_no": "",
+    "scene_id": "",
+    "scene_type": "",
+    "name": "BI老化箱模块插拔",
+    "goal": "",
+    "batch": "",
+    "station": "",
+    "robot": ""
+  },
+  "variant": {
+    "desc": "",
+    "objects": [],
+    "derived_from": ""
+  },
+  "options": {
+    "selected": [],
+    "_derived": ""
+  },
+  "bom": [],
+  "process": [],
+  "recipe": [],
+  "targets": {
+    "成功率": ""
+  },
+  "safety": [],
+  "poka_yoke": [],
+  "trace": {
+    "per_unit": [],
+    "binding_id": ""
+  },
+  "readiness": {
+    "params": 0,
+    "site_ok": 0,
+    "site_missing": [],
+    "blocked_by_site": [],
+    "note": ""
+  }
+}

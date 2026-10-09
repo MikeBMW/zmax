@@ -94,8 +94,12 @@ def stats(d=None, name=paths.CANVAS_DEFAULT):
 
 
 def save_canvas(d, name=paths.CANVAS_DEFAULT, reason="edit", backup=True):
-    """写盘 (原子 + 备份)。返回 (path, backup_path)"""
-    p = canvas_path(name)
+    """写盘 (原子 + 备份)。返回 (path, backup_path)
+
+    写前解析真实路径: 画布真源可能放在实例数据包里(原位是符号链接),
+    原子写(os.replace)会顶掉符号链接本身 → 必须先 realpath, 保证写的是真身。
+    """
+    p = os.path.realpath(canvas_path(name))
     probs = validate_canvas(d)
     if probs:
         raise ValueError("画布校验不过, 拒绝写盘 (前 3 条): %s" % probs[:3])

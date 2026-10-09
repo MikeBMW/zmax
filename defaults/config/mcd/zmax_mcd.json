@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "schema": "zmax-mcd/1.0",
+    "generated_at": "",
+    "doc": "",
+    "sources": {
+      "config/calib/zmax_calib.json": "",
+      "config/calib/zmax_manifold.json": "",
+      "feature.dbc": "",
+      "src/lerobot/engineering/levels.py": "",
+      "src/lerobot/verification/verification_layer.py": "",
+      "tools/gui/studio.py": ""
+    },
+    "counts": {
+      "MEASUREMENT": 0,
+      "CHARACTERISTIC": 0,
+      "COMPU_METHOD": 0,
+      "DOMAINS": 0,
+      "ready": 0,
+      "gaps": 0
+    }
+  },
+  "MEASUREMENT": [],
+  "CHARACTERISTIC": [],
+  "COMPU_METHOD": [],
+  "GROUPS": {
+    "工程配置": [],
+    "性能配置": [],
+    "功能配置": [],
+    "模型配置": []
+  },
+  "DIAGNOSTICS": {
+    "assertions_total": 0,
+    "assertions_auto": 0,
+    "by_level": {
+      "L2": 0,
+      "L3": 0,
+      "L4": 0
+    },
+    "codes": []
+  },
+  "LEVELS": {
+    "L2": {
+      "name": "基础功能 (分段感知 · 融合 · 小模型控制 · 状态机 · 原子技能 · 执行)",
+      "must": []
+    },
+    "L3": {
+      "name": "连续功能 (长程序列规划 · 技能编排 · 海马体记忆 · VLM+Flow-Matching)",
+      "must": []
+    },
+    "L4": {
+      "name": "自主安全功能 (工作安全 + 物理世界导航 · 档位 · 流形世界模型 · 筹划)",
+      "must": []
+    },
+    "L5": {
+      "name": "场景理解 + 自动标注 (大模型层 · 任务/编排/记忆中枢)",
+      "must": []
+    }
+  }
+}

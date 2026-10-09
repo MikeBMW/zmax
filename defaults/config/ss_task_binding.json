@@ -1,0 +1,35 @@
+{
+  "_meta": {
+    "schema": "zmax.statespace.taskbinding/1",
+    "generated_at": "",
+    "doc": "",
+    "sources": {
+      "config/tasks/tasks.json": "",
+      "canvas": ""
+    }
+  },
+  "project": {
+    "name": "状态空间工程 · 主工程",
+    "canvas_file": "",
+    "canvas_md5": "",
+    "nodes": 0,
+    "links": 0
+  },
+  "active_task": "",
+  "segment_node_map": {
+    "0 料源与来料状态": [],
+    "1 取件": [],
+    "2 姿态准备": [],
+    "3 识别与工位对接": [],
+    "4 放置/插入": [],
+    "5 拔出/取回": [],
+    "6 分拣与回位": [],
+    "7 节拍与循环": []
+  },
+  "coverage": {
+    "nodes": 0,
+    "covered_by_segments": 0,
+    "uncovered": []
+  },
+  "tasks": []
+}

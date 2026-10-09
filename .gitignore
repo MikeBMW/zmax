@@ -353,3 +353,10 @@ hermes/
 
 # 快照证据图(实拍/渲染大图)不进代码库 —— 放 zmax_data/ 或网盘 (tools/repo_guard.py 会拦 >300KB)
 docs/data_snapshots/**/evidence/*.png
+
+### Z-MAX 平台/实例 解耦 (2026-10-09) ###
+# 平台仓库只放代码 + 平台文档 + 出厂骨架 defaults/
+# 你的实例数据 (真源/库/工程) 在 data/database/<产品>/ —— 不随平台公开
+/config
+/feature.dbc
+/src/lerobot/engineering/flows/state_space_obs.json

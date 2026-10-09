@@ -1,0 +1,67 @@
+{
+  "_doc": "Z-MAX 标定参数注册表 — 由 tools/zmax_params.py --sync 合并生成。所有层读本文件, 禁止硬编码内外参。",
+  "_generated_at": "",
+  "camera": {
+    "K": [],
+    "dist": [],
+    "image_size": [],
+    "fx": 0,
+    "fy": 0,
+    "cx": 0,
+    "cy": 0,
+    "distortion_model": "",
+    "_src": ""
+  },
+  "T_base_cam": {
+    "value": null,
+    "_src": "",
+    "_reason": ""
+  },
+  "plane_z": {
+    "value": null,
+    "_src": "",
+    "_reason": ""
+  },
+  "depth_scale": {
+    "value": 0,
+    "_src": "",
+    "_scope": ""
+  },
+  "cell_geometry": {
+    "points": null,
+    "_reason": ""
+  },
+  "robot": {
+    "spec": "",
+    "dof": 0,
+    "urdf_sha256_16": "",
+    "link_mass_sum_kg": 0
+  },
+  "tool_payload": {
+    "mass_kg": 0,
+    "cog_m": [],
+    "_src": "",
+    "_reason": null
+  },
+  "control_tcp": {
+    "ok": 0,
+    "n_frames": 0,
+    "frame": "",
+    "offset_xyz_m": [],
+    "offset_std_mm": [],
+    "rot_dev_deg_max": 0,
+    "verdict": "",
+    "_src": "",
+    "_reason": null
+  },
+  "manifold_engine": {
+    "M": 0,
+    "inertia": 0,
+    "range": [],
+    "unit": "",
+    "flow": "",
+    "struct_src": "",
+    "zero_regression": "",
+    "_src": ""
+  }
+}

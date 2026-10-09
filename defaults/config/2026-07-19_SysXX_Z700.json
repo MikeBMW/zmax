@@ -1,0 +1,27 @@
+{
+  "timestamp": "",
+  "filename": "",
+  "system": "",
+  "machine": "",
+  "canvas": {
+    "px": 0,
+    "py": 0,
+    "zoom": 0
+  },
+  "ui_hints": {
+    "title": "",
+    "subtitle": "",
+    "theme": "",
+    "grid_size": 0,
+    "status_bar": 0,
+    "auto_save_interval_s": 0
+  },
+  "nodes": [],
+  "links": [],
+  "pipeline": {
+    "current_cycle": 0,
+    "auto_repeat": 0,
+    "interval_s": 0,
+    "phases": []
+  }
+}

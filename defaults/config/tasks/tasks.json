@@ -1,0 +1,14 @@
+{
+  "schema": "zmax-tasks/1.0",
+  "note": "",
+  "sources": {
+    "flows/scenes_5jobs.json": "",
+    "config/calib/zmax_calib.json": "",
+    "recipe": ""
+  },
+  "counts": {
+    "tasks": 0,
+    "segments_total": 0
+  },
+  "tasks": []
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp": "",
+  "filename": "",
+  "system": "",
+  "machine": "",
+  "canvas": {
+    "px": 0,
+    "py": 0,
+    "zoom": 0
+  },
+  "toolbar": {
+    "buttons": []
+  },
+  "execution": {
+    "orin_endpoint": "",
+    "mac_endpoint": "",
+    "poll_ms": 0
+  },
+  "nodes": [],
+  "links": [],
+  "styles": {
+    "online": "",
+    "offline": "",
+    "running": "",
+    "connected": ""
+  }
+}

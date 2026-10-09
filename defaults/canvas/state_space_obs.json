@@ -1,0 +1,7 @@
+{
+  "schema": "zmax.statespace.canvas/1",
+  "_doc": "出厂空画布骨架 (实例画布在实例包 sources/canvas/)",
+  "nodes": [],
+  "links": [],
+  "viewport": {}
+}
