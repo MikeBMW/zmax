@@ -9,6 +9,7 @@
 用法: gui-venv311/bin/python tools/verify_l4_zero_regression.py
 """
 import json
+import os
 import subprocess
 import sys
 
@@ -28,10 +29,29 @@ def cap_of(node, nodes):
     return 0
 
 
+def _prev_canvas():
+    """取「改之前」的画布。
+
+    🐛 2026-10-09: 原来直接 `git show HEAD:flows/state_space_obs.json` —— 解耦后这条是**符号链接**
+    (真源在实例数据包里, 不进公开仓库) ⇒ git 吐出来的是软链文本, json.loads 直接 JSONDecodeError。
+    口径: ① 优先 git 里真画布路径 (万一哪天又跟踪了) ② 退回最近一次 data_snapshot 的画布存档。
+    """
+    import glob
+    for ref in ("HEAD:src/lerobot/engineering/flows/state_space_obs.json",
+                "HEAD:flows/state_space_obs.json"):
+        r = subprocess.run(["git", "-C", ROOT, "show", ref], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.lstrip().startswith("{"):
+            return json.loads(r.stdout)
+    snaps = sorted(glob.glob(os.path.join(ROOT, "docs", "data_snapshots", "*", "canvas_state_space_obs.json")),
+                   key=os.path.getmtime)          # 按时间取最新一次存档 (不是字典序)
+    if snaps:
+        print("ℹ️ '改之前' 取自存档: %s" % os.path.relpath(snaps[-1], ROOT))
+        return json.load(open(snaps[-1], encoding="utf-8"))
+    raise SystemExit("❌ 拿不到『改之前』的画布 (git 里没有, 也没有 data_snapshot 存档)")
+
+
 def main() -> int:
-    before = json.loads(subprocess.run(
-        ["git", "-C", ROOT, "show", "HEAD:flows/state_space_obs.json"],
-        capture_output=True, text=True, check=True).stdout)
+    before = _prev_canvas()
     after = json.load(open(P, encoding="utf-8"))
     nb = {n["id"]: n for n in before["nodes"]}
     na = {n["id"]: n for n in after["nodes"]}
