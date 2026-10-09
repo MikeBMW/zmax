@@ -23,7 +23,9 @@
 CLI: python3 tools/param_registry.py scan|stats|list|show <id>|set <id> <value> [--write]|verify|chain <id>|seed
 """
 import ast
+import itertools
 import json
+import math
 import os
 import re
 import shutil
@@ -41,6 +43,7 @@ EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "zmax", "param_events.jso
 # 🆕 2026-10-10 老倪: 「空间点的 7 个点已经标记了…我要改变空间点的位置, 如何在参数中心修改?」
 #    —— 点位此前只躺在 data/skills/l2_atomic/space_points.json 里, 参数中心里查不到 ⇒ 接进来 (可写+回写+留痕)
 SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
+TAUGHT = os.path.join(ROOT, "data", "skills", "l2_atomic", "taught_points.json")   # 号位/示教点 (61 个点)
 
 # 代码常量扫描范围 (只扫与链路直接相关的实现文件, 不做全仓乱扫)
 CODE_FILES = [
@@ -90,9 +93,9 @@ CURATED = {
     "switch.flow_yaw": {"cn": "流形偏航 (仅 L4 90°档)", "unit": "deg", "min": -180, "max": 180},
 }
 CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff",
-             "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2"}
+             "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2", "teach": "#c084fc"}
 CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量",
-          "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点/示教点"}
+          "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点", "teach": "号位/示教点"}
 
 
 # ── 工具 ──────────────────────────────────────────────────────────────────
@@ -211,32 +214,45 @@ def scan_calib():
     return out
 
 
-def scan_space():
-    """🆕 2026-10-10: 空间点 (8793 站台页标定出来的 空间1..N, 真源 space_points.json)。
+def _scan_pts_file(path, group, group_cn_label):
+    """通用: 把一个 *points.json (points.<点名>.pos[3]/quat[4]) 展开成可写参数。
 
-    每个点 7 个数: pos[0..2] (m, base_link) + quat[0..3] (x,y,z,w) —— 都能在参数中心在线改,
-    改完走 _write_json_path 回写真源 (带备份), 与号位/技能同源。
-    范围口径: 位置按工作包络 ±1.2m (抓取动作在 0.3~0.9m), 四元数 −1..1 (数学定义域)。
+    老倪 2026-10-10: 「所有点都要有参数, 可以修改」⇒ 空间点 + 号位示教点两套都按这个扫。
+    范围口径: 位置 ±1.2m (工作包络, 抓取动作在 0.3~0.9m), 四元数 −1..1 (数学定义域)。
     """
     out = []
-    d = _load(SPACE, {})
-    rel = os.path.relpath(SPACE, ROOT)
+    d = _load(path, {})
+    rel = os.path.relpath(path, ROOT)
     for nm, v in (d.get("points") or {}).items():
         if not isinstance(v, dict):
             continue
+        desc = str(v.get("desc") or "")
+        imp = desc[:70] if desc else "L2 MoveIt 运动规划起点 (%s)" % group_cn_label
         for i, val in enumerate(v.get("pos") or []):
-            out.append(_mk("space:%s.pos[%d]" % (nm, i), "%s.pos[%d]" % (nm, i), float(val), rel,
-                           "json:points.%s.pos[%d]" % (nm, i), "space",
+            out.append(_mk("%s:%s.pos[%d]" % (group, nm, i), "%s.pos[%d]" % (nm, i), float(val), rel,
+                           "json:points.%s.pos[%d]" % (nm, i), group,
                            extra={"cn": "%s · %s (m)" % (nm, "XYZ"[i]), "unit": "m",
                                   "min": -1.2, "max": 1.2, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0",
-                                  "impact": "L2 MoveIt 运动规划起点 (号位/空间点移动)"}))
+                                  "impact": imp}))
         for i, val in enumerate(v.get("quat") or []):
-            out.append(_mk("space:%s.quat[%d]" % (nm, i), "%s.quat[%d]" % (nm, i), float(val), rel,
-                           "json:points.%s.quat[%d]" % (nm, i), "space",
+            out.append(_mk("%s:%s.quat[%d]" % (group, nm, i), "%s.quat[%d]" % (nm, i), float(val), rel,
+                           "json:points.%s.quat[%d]" % (nm, i), group,
                            extra={"cn": "%s · 四元数%s" % (nm, "xyzw"[i]), "unit": "-",
                                   "min": -1.0, "max": 1.0, "fn_ref": "FN-SYS0-59", "sys_hint": "sys0",
-                                  "impact": "L2 MoveIt 运动规划起点 (号位/空间点移动)"}))
+                                  "impact": imp}))
     return out
+
+
+def scan_space():
+    """🆕 2026-10-10: 空间点 (8793 站台页标定的 空间1..N, 真源 space_points.json)。"""
+    return _scan_pts_file(SPACE, "space", "空间点")
+
+
+def scan_teach():
+    """🆕 2026-10-10: 号位/示教点 (真源 taught_points.json, 61 个点: slot1/2, insert_pose,
+    金手指点1/2, aoi_gold_view, loop20_*/afx*_* 循环路点 …) —— 同样全部可在线改。"""
+    return _scan_pts_file(TAUGHT, "teach", "号位/示教点")
+
 
 
 def _walk(v, pre):
@@ -374,7 +390,7 @@ def _mk(pid, name, value, src, ref, group, extra=None, sys_hint=""):
 
 
 def scan():
-    ps = scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch() + scan_space()
+    ps = scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch() + scan_space() + scan_teach()
     seen, out = set(), []
     for p in ps:
         if p["param_id"] in seen:
@@ -529,6 +545,38 @@ def _backup(path):
     return b
 
 
+def _guard_point(path, ref, value):
+    """点位写前哨 (2026-10-10): ① 包络 ±1.2m ② 互距 —— 防手误把点写进夹具/写到别的点身上。
+
+    只拦**新产生**的重合对: 老数据里本来就有点挨得近(循环路点差 0.2µm), 不能因此把整份文件锁死。
+    """
+    if ref.rstrip().endswith("]") and ".pos[" in ref:
+        try:
+            if abs(float(value)) > 1.2:
+                return False, "❌ pos 值 %.4f 超出工作包络 ±1.2m ⇒ 拒写" % float(value)
+        except (TypeError, ValueError):
+            return False, "❌ pos 值不是数字 ⇒ 拒写"
+    d = json.loads(json.dumps(_load(path, {})))
+    leaf = ref.split("json:", 1)[1]
+
+    def _pts(x):
+        return {k: [float(v) for v in vv.get("pos")]
+                for k, vv in (x.get("points") or {}).items() if isinstance(vv, dict) and vv.get("pos")}
+
+    before = _pts(d)
+    if not _set_path(d, leaf, value):
+        return False, "路径不可写: %s" % leaf
+    after = _pts(d)
+    b_pairs = {frozenset((a, b)) for a, b in itertools.combinations(before, 2)
+               if math.dist(before[a], before[b]) < 0.001}
+    new = [(a, b, math.dist(after[a], after[b])) for a, b in itertools.combinations(after, 2)
+           if math.dist(after[a], after[b]) < 0.001 and frozenset((a, b)) not in b_pairs]
+    if new:
+        a, b, dist = new[0]
+        return False, "❌ 改完 '%s' 与 '%s' 只差 %.2fmm (疑似手误写到别的点上) ⇒ 拒写" % (a, b, dist * 1000)
+    return True, "包络/互距 ✓"
+
+
 def _write_json_path(path, ref, value):
     ref = ref.split("json:", 1)[1]
     d = _load(path, {})
@@ -542,7 +590,8 @@ def _write_json_path(path, ref, value):
 
 
 def _read_json_path(path, ref):
-    return _get_path(_load(path, {}), ref.split("json:", 1)[1])
+    # ref 可能已带/不带 "json:" 前缀 ( _write_json_path 内部已剥一次, 回读时别再炸 —— 2026-10-10 修)
+    return _get_path(_load(path, {}), ref.split("json:", 1)[-1])
 
 
 def _write_canvas_param(pid, value):
@@ -691,7 +740,14 @@ def set_param(pid, value, write=False, reg=None):
             ok, msg = _write_canvas_param(pid, v)
         elif p["group"] == "space":
             # 🆕 空间点: 回写真源 data/skills/l2_atomic/space_points.json (带备份 + 回读核对)
-            ok, msg = _write_json_path(SPACE, p["ref"], v)
+            ok, msg = _guard_point(SPACE, p["ref"], v)
+            if ok:
+                ok, msg = _write_json_path(SPACE, p["ref"], v)
+        elif p["group"] == "teach":
+            # 🆕 号位/示教点: 回写真源 taught_points.json (同样带写前哨)
+            ok, msg = _guard_point(TAUGHT, p["ref"], v)
+            if ok:
+                ok, msg = _write_json_path(TAUGHT, p["ref"], v)
         elif p["group"] == "code":
             ok, msg = (_write_code_default(pid, v) if ":" in pid.split("#", 1)[1]
                        else _write_code_const(pid, v))
