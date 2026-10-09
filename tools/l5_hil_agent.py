@@ -27,6 +27,7 @@ l5_hil_agent.py — Hermes(我) 与老倪的 **HIL 人机在环互动 + 引擎 L
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -51,6 +52,70 @@ MOTION_PAT = re.compile(r"(插入|抓取|夹爪|夹紧|移动|运动|下发|示�
 MACHINE_FROM = {"web-hw-bridge", "L5 状态空间节点", "hil_bridge", "hermes-L5", "ss_web_agent", "L5 节点"}
 # 只过滤"整条就是一个裸探询词"(宁松勿严: 老倪真说的话不能被吃掉, 例如 "状态: 看光模块" 必须放行)
 PROBE_PAT = re.compile(r"^\s*(status|状态|状态空间|画布|节点数|仿真|aoi|net|help|能力清单|自检)\s*[?？。!！,，]*\s*$", re.I)
+
+# ─────────── 自动连接人机在环节点 (老倪: 运行 L5 时, 代码要明确写进去) ───────────
+# L5 = HIL 的一个 peer; 启动时 + 每轮循环向 HIL 本地 API 登记(刷新 TTL), 让终端/画布/手机页
+# 都能看到 "L5 在线". 8795 不可达时**不影响主流程**(只降级为直接写 peers 文件)。
+HIL_LOCAL = os.environ.get("ZMAX_HIL_LOCAL", "http://127.0.0.1:8795")
+HIL_TOKEN_FILE = os.path.join(ROOT, "zmax_data", "secrets", "hil_term.token")
+_HIL_BRIDGE = {"mod": None, "tried": False}
+
+
+def _hil_token() -> str:
+    """读终端 token (L5 与 HIL API 同一个 secrets 文件); 没有 → 空 (走文件兜底)"""
+    try:
+        with open(HIL_TOKEN_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:                                                        # noqa: BLE001
+        return ""
+
+
+def _hil_bridge_mod():
+    """按**文件路径**加载核心的大脑模块 (同 hil_local_api 的做法, 不拉 torch 包 import 链)"""
+    if _HIL_BRIDGE["mod"] is None and not _HIL_BRIDGE["tried"]:
+        _HIL_BRIDGE["tried"] = True
+        try:
+            p = os.path.join(ROOT, "src/lerobot/policies/left_right/state_space/hil_bridge.py")
+            spec = importlib.util.spec_from_file_location("zmax_hil_core_l5", p)
+            m = importlib.util.module_from_spec(spec)
+            sys.modules["zmax_hil_core_l5"] = m
+            spec.loader.exec_module(m)
+            _HIL_BRIDGE["mod"] = m
+        except Exception as e:                                               # noqa: BLE001
+            print("  ⚠️ 载入 hil_bridge 失败: %s: %s" % (type(e).__name__, e), flush=True)
+            _HIL_BRIDGE["mod"] = False
+    return _HIL_BRIDGE["mod"] or None
+
+
+def register_hil_peer(name: str = "L5", kind: str = "scene_vlm", note: str = "") -> dict:
+    """登记/刷新 L5 到人机在环节点。优先走 8795 的 /hil/term/peer; 不可达则直接写 peers 文件。
+    两路都写同一份 zmax_data/ss_bypass/hil_peers.json ⇒ 谁在线, 三处(画布/手机/终端)同时可见。
+    """
+    pid = os.getpid()
+    err = ""
+    tok = _hil_token()
+    if tok:
+        body = json.dumps({"name": name, "kind": kind, "pid": pid, "note": note}).encode()
+        req = urllib.request.Request(HIL_LOCAL + "/hil/term/peer", data=body,
+                                     headers={"Content-Type": "application/json", "X-Zmax-Term": tok},
+                                     method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                d = json.loads(r.read().decode() or "{}")
+            if d.get("ok"):
+                return {"ok": True, "via": "http:%s" % HIL_LOCAL, "peer": d.get("peer")}
+        except Exception as e:                                               # noqa: BLE001
+            err = "%s: %s" % (type(e).__name__, str(e)[:80])
+    else:
+        err = "no token file (HIL API 未启动?)"
+    m = _hil_bridge_mod()                                     # 兜底: 直接写同一份 peers 文件
+    if m is not None:
+        try:
+            return {"ok": True, "via": "file", "peer": m.register_peer(name, kind, pid=pid, note=note),
+                    "http_err": err}
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "via": "file", "err": "%s: %s" % (type(e).__name__, e)}
+    return {"ok": False, "via": "none", "err": err}
 
 
 # ───────────────────────────── 中转通道 (只读轮询 / 回执) ──────────────────
@@ -310,6 +375,10 @@ def main() -> int:
     ap.add_argument("--cam", default="arm")
     a = ap.parse_args()
 
+    # 🙋 自动连接人机在环节点 (老倪: 运行 L5 时自动连上; 启动即登记, 每轮再刷新 TTL)
+    _hp = register_hil_peer("L5", "scene_vlm", note="HIL↔L5 环 (只读帧/只写标注; pid=%d)" % os.getpid())
+    print("🙋 已连接人机在环节点 (HIL peers 已登记) · via=%s%s"
+          % (_hp.get("via"), "" if _hp.get("ok") else " ⚠️ %s" % str(_hp.get("err"))[:80]), flush=True)
     if a.say:
         r = reply(a.say)
         print("  回执: %s" % json.dumps(r, ensure_ascii=False)[:200])
@@ -335,6 +404,7 @@ def main() -> int:
           % (RELAY, st.get("cursor"), st.get("last_pause"), os.path.relpath(LOG, ROOT)), flush=True)
     t0 = time.time()
     while True:
+        register_hil_peer("L5", "scene_vlm", note="HIL↔L5 环 (只读帧/只写标注)")   # 每轮刷新在线
         st = load_state()
         # ① 人的指示
         _items = new_instructions(int(st.get("cursor") or 0))

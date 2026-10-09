@@ -31,9 +31,33 @@ PREVIEW_PNG = OUT_DIR / "canvas_latest_preview.png"
 
 ECSE = "https://datadrive.world"
 ECS_PUSH = "/ss3d_push.php"
-ECS_TOKEN = "zmax-7ce74c7f"
 ECS_PHONE_URL = "https://datadrive.world/canvas_latest.pdf"
 SECRETS = Path("/home/ubuntu/zmax/zmax_data/secrets/zmax.env")
+
+
+def _resolve_token():
+    """推送 token 真值来源: 环境变量 ZMAX_SS3D_TOKEN → 本机 secrets 文件 (600, 永不入库)。
+
+    2026-10-09 收口 (与 tools/publish_status.py · tools/ss3d_live_push.py 同一机制):
+    以前这里把明文 token 写死成 `ECS_TOKEN = "zmax-…"` —— 公开仓库等于把通道密钥贴出去。
+    现在 **绝不允许回落到明文默认值**: 两处都取不到 ⇒ 返回 None; ecs_push() 在真正推送前
+    fail-closed(报错退出), 绝不用空值去打端点(空 token 会被服务端 hash_equals 判过 ⇒ 静默鉴权绕过)。
+    """
+    v = (os.environ.get("ZMAX_SS3D_TOKEN") or "").strip()
+    if v:
+        return v
+    p = SECRETS
+    if p and p.is_file():
+        try:
+            for ln in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if ln.strip().startswith("ZMAX_SS3D_TOKEN="):
+                    return ln.split("=", 1)[1].strip()
+        except OSError:
+            pass
+    return None
+
+
+ECS_TOKEN = _resolve_token()
 
 
 # ───────────────────────── 真源 / 版本 ─────────────────────────
@@ -131,6 +155,10 @@ def _http(method: str, url: str, data: bytes | None = None, ctype: str | None = 
 
 def ecs_push(local: Path, remote_name: str, timeout: int = 120) -> dict:
     """把一个文件 POST 到 ECS 站点根 (只走 HTTP, 无需 SSH/密码)。"""
+    if not ECS_TOKEN:
+        raise SystemExit(
+            "缺少推送 token: 环境变量 ZMAX_SS3D_TOKEN 与 secrets 文件 %s (键名 ZMAX_SS3D_TOKEN) 均无值 "
+            "⇒ fail-closed, 拒绝空值推送 (空值会被服务端判过 ⇒ 静默鉴权绕过)。" % SECRETS)
     url = "%s%s?token=%s&f=%s" % (ECSE, ECS_PUSH, ECS_TOKEN, remote_name)
     st, body, _ = _http("POST", url, local.read_bytes(), "application/pdf", timeout=timeout)
     out = {"f": remote_name, "bytes": local.stat().st_size, "status": st,

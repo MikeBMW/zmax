@@ -170,6 +170,26 @@ body.locked .pad button[data-skill],body.locked .rot button[data-skill],body.loc
 #lines{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
   font:14px/1.5 ui-monospace,Consolas,monospace;color:#9fb0c0;white-space:pre-wrap;
   max-height:190px;overflow:auto}
+/* 🚨 2026-10-09 现场(老倪: 「点后退没反应」= 被包络/安全闸拒, 但页面几乎没说原因)。
+   新增两块, 都是**只加反馈区**, 不动任何按钮/走线:
+   ① #denybanner: 手动控制台顶部红横幅, 被拒时写明**具体原因**(如"出界: x=0.3348 < 下界 0.3368")。
+   ② #movefeed: 逐条下发台账 —— 每次下发无论成败各留一行(时间·技能·参数·结果·原因), 点一行复制。
+   注意: 放在 #execline **之外** —— poll() 每轮会把 #execline 清空(见 poll 里 '#robot2 … #execline … = \'\''),
+   反馈放里面会被下一轮冲掉, 现场就又变成"没反应"。 */
+#denybanner{display:none;background:#3d1618;border:1px solid #f85149;color:#ff9c9c;
+  border-radius:8px;padding:8px 10px;margin:4px 0 8px;font-size:17px;font-weight:700;
+  word-break:break-all;white-space:pre-wrap}
+#denybanner b{color:#fff}
+#movefeed{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
+  font:13px/1.55 ui-monospace,Consolas,monospace;color:#9fb0c0;
+  max-height:220px;overflow:auto}
+#movefeed .row{cursor:copy;padding:1px 0;border-bottom:1px dashed #21262d;word-break:break-all}
+#movefeed .row:last-child{border-bottom:none}
+#movefeed .row:hover{background:#161b22}
+#movefeed .r-bad{color:#ff9c9c}
+#movefeed .r-ok{color:#7ee787}
+#movefeed .r-wa{color:#f0c674}
+#movefeed .r-dim{color:#8b949e}
 label.arm{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
 input[type=checkbox]{width:22px;height:22px;margin-top:2px}
 input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8px;
@@ -556,6 +576,9 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <!-- 🛠 2026-10-01 老倪: 「上电 on 报警 无…要是不能动，你得显示信息」⇒ 手动控制台顶部
            固定显示执行器在不在 —— 它离线时所有按钮都发不出去(这才是"点了没反应"的真因)。 -->
       <div class="hint" id="execline" style="margin:2px 0 6px">执行器: 检查中…</div>
+      <!-- 🚨 被拒横幅 (2026-10-09): 被包络/安全闸拒时在此红字写明**具体原因**(页面顶部, 一眼可见)。
+           空着时 display:none 不占位; 独立于 #execline, 不会被 poll() 清空。 -->
+      <div id="denybanner"></div>
       <div id="armbar">
         <button id="armbtn" onclick="armClick()" style="font-size:19px;padding:14px 16px;min-width:230px"
           title="现场安全: 真动必须先显式授权"><span id="armtxt">🔓 授权真动</span></button>
@@ -586,7 +609,7 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span class="mid"></span>
         <button data-skill="L2.backward" data-p="d_mm">⏪ 后退<br><span class="hint">−X</span></button>
         <span class="mid"></span>
-        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">+Z</span></button>
+        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">抬升需授权 · 警报会响(vz&gt;0.3mm/s)</span></button>
         <span class="mid"></span>
         <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降<br><span class="hint">−Z</span></button>
         <span class="mid"></span>
@@ -653,6 +676,13 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button>
         <button id="mq" onclick="moveReal()" style="display:none">🔓 授权真动(现场确认无人)</button></div>
       <pre id="lines">(点上面的按钮，这里出执行器的原始回执)</pre>
+    </div>
+    <!-- 🧾 2026-10-09 逐条下发台账(老倪: 「每条下发无论成败都留一行可复制的」) —— 只读反馈区,
+         不新开通道/不改按钮。最新在最上, 点一行复制该行; 最多保留 60 行。 -->
+    <div class="card">
+      <h2>🧾 下发台账 (逐条 · 点一行复制)</h2>
+      <div class="hint">每次点方向键 / 回点 / 夹爪都记一行: 时间 · 技能 · 参数 · 结果 · 原因(被拒时写明, 如"出界: x=… &lt; 下界 …")。最新在最上。</div>
+      <div id="movefeed"><div class="r-dim">（还没有下发记录）</div></div>
     </div>
     <div class="card">
       <h2>🛡 安全</h2>
@@ -858,20 +888,87 @@ async function move(btn,force){
   clearTimeout(unlock); _btns(true);
   poll();
 }
+/* ═══ 🧾 下发反馈: 被拒原因变响 + 逐条台账 (2026-10-09 现场「点后退没反应」) ═══════════════════
+   背景: 有安全闸时 /ctl/move 的回执可能**先**拿到「受理: 已下发」(ok=true), 而真正被拒的那一行
+   (如「⛔ 目标出已验证包络: x=0.3348 越界[0.3368, …]」/「🛑 扫掠越界急停…」)还在 lines 里
+   ⇒ 只看 ok 会把"被拒"显示成"✅ 已下发", 现场就以为没反应。这里一律**扫 lines+msg 里的否决标记**。 */
+function _moveReason(j){
+  const txt=((j&&j.msg)||'')+'\n'+(((j&&j.lines)||[]).join('\n'));
+  const pats=[
+    /目标出已验证包络[：: ]*([^\n]*)/,        // 例: ⛔ 目标出已验证包络: x=0.3348 越界[0.3368, 0.7975]
+    /扫掠越界急停[：: ]*([^\n」]*)/,           // 例: 🛑 扫掠越界急停: ['x'] 轴出包络(实测 [0.3348, …]) ⇒ stop()
+    /出包络\s*\(([^\n]*)/,                     // 兜底: 任何"...出包络(...)"
+    /拒发[：: ]*([^\n]*)/,
+    /被拦[：: ]*([^\n]*)/,
+    /拒绝[：: ]*([^\n]*)/,
+    /不在手动控制白名单[^\n]*/,
+    /超出允许范围[^\n]*/,
+    /未授权真动[^\n]*/,
+    /太快了[^\n]*/,
+    /FIFO[^\n]*/,
+    /TCP 真值陈旧[^\n]*/,
+    /等 SDK 代理回执超时[^\n]*/
+  ];
+  for(const re of pats){ const m=txt.match(re); if(m) return String(m[1]||m[0]).trim().slice(0,220); }
+  return '';
+}
+let _feedInit=false;
+function _feedTime(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+/* 台账: 每次下发无论成败各留一行(时间·技能·参数·结果·原因); 最新在最上, 点一行复制该行。 */
+function moveFeed(skill,param,res,reason){
+  const box=$('#movefeed'); if(!box) return;
+  if(!_feedInit){ box.innerHTML=''; _feedInit=true; }
+  const cls=(res.indexOf('⛔')===0||res.indexOf('🛑')===0)?'r-bad'
+    :(res.indexOf('✅')===0?'r-ok':((res.indexOf('⏳')===0||res.indexOf('🧪')===0)?'r-wa':'r-dim'));
+  const line='['+_feedTime()+'] '+(skill||'(技能?)')+(param?(' '+param):'')
+    +' → '+res+(reason?(' · 原因: '+reason):'');
+  const div=document.createElement('div');
+  div.className='row '+cls; div.textContent=line; div.title='点一下复制这一行';
+  div.onclick=()=>{ try{ navigator.clipboard.writeText(line); }catch(_e){} };
+  box.insertBefore(div, box.firstChild);
+  while(box.children.length>60) box.removeChild(box.lastChild);
+}
+/* 顶部红横幅: 被拒时写明原因(空 reason = 收起)。 */
+function _showDeny(reason){
+  const b=$('#denybanner'); if(!b) return;
+  if(!reason){ b.style.display='none'; b.textContent=''; return; }
+  b.style.display='block'; b.textContent='⛔ 被拒: '+reason;   // 显式 block: CSS 默认是 none, 设 '' 会退回 none
+}
 /* 回执渲染: 方向键 / 『🎯 点1』 共用同一口径 —— 点了必须给可复制的原始行;
    未授权时给**授权入口**(不绕闸门), 绝不显示成"点了没反应"; 等安全裁决时明写"还没动"。 */
 function renderMoveOut(j,again){
   const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
-  $('#msg').textContent=(j.ok?(j.pending?'⏳ ':(j.dry?'🧪 ':'✅ '))+j.msg+_el:'⛔ '+j.msg+_el)
-    +'  (对上 X/Y/Z 看有没有变就知道动没动)';
-  $('#msg').className=(j.ok?((j.pending||j.dry)?'wa':'ok'):'bad');
+  const _reason=_moveReason(j);
+  const _isWait=!!(j.ok&&(j.dry||j.pending));      // 演练 / 等裁决: 都还没被"拒", 不算失败
+  const _rejected=(!j.ok)||(!_isWait&&!!_reason);    // ok=true 但 lines 里有否决行 ⇒ 也算被拒
+  let _res;
+  if(_rejected){
+    const _why=_reason||j.msg||'被拒(看下方日志原文)';
+    _res='⛔ 被拒';
+    $('#msg').textContent='⛔ 被拒 · '+_why+_el+'  (机械臂没动)';
+    $('#msg').className='bad';
+    _showDeny(_why);
+  }else{
+    _res=j.pending?'⏳ 等裁决':(j.dry?'🧪 演练(未下发)':'✅ 已下发');
+    $('#msg').textContent=(j.ok?(j.pending?'⏳ ':(j.dry?'🧪 ':'✅ '))+j.msg+_el:'⛔ '+j.msg+_el)
+      +'  (对上 X/Y/Z 看有没有变就知道动没动)';
+    $('#msg').className=(j.ok?((j.pending||j.dry)?'wa':'ok'):'bad');
+    _showDeny('');
+  }
   $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
+  // 🧾 台账: 每次下发无论成败各留一行(技能名+参数+结果+原因+时间)
+  try{
+    let _par='';
+    if(j.param&&typeof j.param==='object'){ _par=Object.keys(j.param).map(k=>k+'='+j.param[k]).join(' '); }
+    moveFeed(j.skill, _par, _res, _rejected?(_reason||j.msg||''):'');
+  }catch(_e){}
   /* 🛠 失败/未授权时, 在手动控制台顶部再摆一次真因(老倪只盯控制台, 不一定滚到底部卡片) */
   try{
     const _ex=document.getElementById('execline');
-    if(_ex&&!j.ok){
+    if(_ex&&_rejected){
       if(!_ex.dataset.base){ _ex.dataset.base=_ex.innerHTML; }
-      _ex.innerHTML=_ex.dataset.base+'<br><span class="bad">⛔ 最近一次下发被拒: '+(j.msg||'')+'</span>'
+      _ex.innerHTML=_ex.dataset.base+'<br><span class="bad">⛔ 最近一次下发被拒: '+(_reason||j.msg||'')+'</span>'
         +'<span class="hint"> · 用时 '+((j.elapsed_s||0).toFixed(1))+'s</span>';
     }
   }catch(_e){}

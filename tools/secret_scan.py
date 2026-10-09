@@ -29,7 +29,10 @@ PATTERNS = [
 # 允许出现的"假阳性"位置(占位符/示例/文档提到密钥名)
 ALLOW = re.compile(r"(PLACEHOLDER|example\.com|\*\*\*|<TOKEN>|\$\{?ZMAX_|\$env:|YourPassword|xxx+)")
 # 上游/厂商 vendored 代码与文档: 里面的示例 key 不是我们的密钥, 不参与判定
-ALLOWPATH = re.compile(r"^(docs/source/|src/lerobot/|docs/skills/hermes-all/.+/references/|node_modules/|gui-venv)")
+# 注意 (2026-10-09 收口): 白名单从整棵 `src/lerobot/` 改窄到**只跳过确有假阳性的那一个 vendored 子树**。
+#   整棵跳过会把本仓自有代码 (= src/lerobot/engineering/, 如 canvas_publish.py 的 ECS token) 一起漏掉 ⇒ 扫不到。
+#   实测 src/lerobot/ 下仅 policies/multi_task_dit 的两处 `sk-` 开头长串假阳性, 故只白名单它。
+ALLOWPATH = re.compile(r"^(docs/source/|src/lerobot/policies/multi_task_dit/|docs/skills/hermes-all/.+/references/|node_modules/|gui-venv)")
 
 
 def files(staged):

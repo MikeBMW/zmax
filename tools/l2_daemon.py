@@ -788,15 +788,15 @@ def plan_stage(sk, st, pts, spec, cur):
             return {"err": "自适应抬升(adapt_point): 参考点位 %s 不在点位库" % _apn}
         _amg = float(st.get("adapt_margin_mm", 0.0))
         _aneed = float(_apz) + _amg / 1000.0
-        # 🔴🔴🔴 2026-10-08 现场指令「不要抬升, 不要抬升, 不要抬升 —— 马上删掉上升的逻辑」:
-        #   这里原是 t[2] = _aneed —— 自动把 z 抬到该点高度(今天三次碰撞全出在这一句)。
-        #   现已删除: 只要需要往上够到该点, **整单拒发**, 绝不自动抬升; 由人工抬升后再点。
-        if _aneed > float(cur[2]) + 0.005:
-            return {"err": "🚫 拒发(上升逻辑已删除): 去 %s 需要上升 %.0fmm (当前 z=%.4f < 该点 z=%.4f)"
-                           " —— 请人工把臂抬到该点高度以上, 再点这个点"
-                           % (_apn, (_aneed - float(cur[2])) * 1000.0, float(cur[2]), float(_apz))}
-        t[2] = _aneed       # 只允许 持平 或 下降, 永不上抬
-        log("🧭 只降不升(adapt_point): z %.4f → %.4f (到 %s 高度)" % (float(cur[2]), t[2], _apn))
+        # 🟢 2026-10-09 老倪现场指令: 「取消这个(需要上升⇒整单拒发)……现在我在现场, 确定安全;
+        #    也可以抬升, 但要慢一些, 而且要发出警报声」⇒ 恢复自适应抬升: 目标 z 取该点高度,
+        #    **不再因"需要上升"整单拒发**(旧 10-08 口径「上升逻辑已删除」已按现场指令作废)。
+        #    慢速由调用方 speed / 技能 speed_max 收口; 抬升警报由 motion_beep(监控侧判 vz>阈值)发声 ——
+        #    本处**不引入任何限速/限幅**(最小改动: 只去掉"需要上升⇒拒发"这一条)。
+        _rise = (_aneed - float(cur[2])) * 1000.0
+        t[2] = _aneed
+        log("🧭 自适应抬升(adapt_point): z %.4f → %.4f (%s · %+.0fmm)%s"
+            % (float(cur[2]), t[2], _apn, _rise, " ⚠️需上升" if _rise > 5.0 else " 只降不升"))
     # 工具坐标系平移 (生产口径 PoseTranslateLocalOffset, 如插槽口 = 插入位沿工具 Z 退 60mm):
     #   沿**示教姿态自己的**局部 XYZ 轴平移 mm —— 这才对应"沿模块轴向退/进", 不是 base 竖直偏移。
     lm = st.get("local_mm")

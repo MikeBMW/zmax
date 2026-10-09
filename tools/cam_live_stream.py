@@ -1958,6 +1958,31 @@ def _tail(path: str, off: int, limit: int = 8192) -> str:
         return ""
 
 
+def _beep_alive() -> bool:
+    """🚨 移动/抬升警报服务(tools/motion_beep.py)是否在跑 —— **抬升的前置条件**判据。
+
+    口径(2026-10-09 现场): 抬升是现场授权动作, **警报是它的前置条件**(老倪: 「有警报就可以,
+    我授权了, 当然可以抬升」)。警报服务不在线 ⇒ 抬升一律拒发, 绝不放「无声抬升」过去。
+    判据 = 扫 /proc/<pid>/cmdline 里是否有进程在跑 motion_beep.py(与 motion_beep_start.sh 的
+    pgrep -f 同口径); 不在请求路径里 fork 子进程, 免得在 HTTP 处理里起进程/踩音频环境。
+    ⚠️ 只判进程存活, 不判其位姿通道是否新鲜(motion_beep 位姿读不到会自行静音) —— 见报告已知残留。
+    """
+    try:
+        pids = os.listdir("/proc")
+    except OSError:
+        return False
+    for _p in pids:
+        if not _p.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % _p, "rb") as f:
+                if "motion_beep.py" in f.read().decode("utf-8", "replace"):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
 def _ctl_move(req: dict) -> dict:
     """🕹 手动点动: 白名单校验 → 双重授权 → 限流 → 写执行器 FIFO → **等回执**。
 
@@ -2012,6 +2037,14 @@ def _ctl_move(req: dict) -> dict:
         cmd["auth_epoch"] = CA.epoch() if CA is not None else None
     except Exception:                                                   # noqa: BLE001
         cmd["auth_epoch"] = None
+    # 🚨 抬升前置条件(2026-10-09): 抬升是现场授权动作, **警报是它的前置条件**。警报服务
+    #    (tools/motion_beep.py, 判据 vz_ema > 0.30mm/s ⇒ 抬升警报音) 不在线 ⇒ 拒绝下发抬升,
+    #    绝不放「无声抬升」过去。选"拒绝"而非"请求里自动拉起": HTTP 处理路径 fork 常驻音频
+    #    进程不稳(音频环境/重复起/静默失败反倒更危险), 且失败朝安全侧(不放行)。恢复方式写在文案里。
+    if sid == "L2.lift" and want_real and not _beep_alive():
+        return {"ok": False, "denied": True, "code": 503, "auth": _auth_info(),
+                "msg": "🚫 抬升前置条件未满足: 警报服务(移动提示音 motion_beep.py)不在线 ⇒ 拒发抬升。"
+                       "请先在工控机执行 `bash tools/motion_beep_start.sh`, 再重试抬升"}
     try:
         fd = os.open(_L2_FIFO, os.O_WRONLY | os.O_NONBLOCK)
     except OSError as e:
@@ -2804,6 +2837,303 @@ def _mobile_page() -> bytes:
 _STATION_CACHE = {"t": None, "b": b""}
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 🧭 station 点位 → 状态空间规划 → 输出 L2  (§5 设计文档 · 只规划/执行分离)
+# ---------------------------------------------------------------------------
+# 老倪架构原则: 上层只给意图/条件; 执行永远由 L2 收口; 规划器永不执行, 执行器永不规划。
+#   中间唯一产物 = "段表(计划)" 这个数据。
+#   · POST /station/plan      意图 → moveit_plan_req 写请求 → 等 live_plan_latest.json
+#                             → plan_to_l2 段化 → 返回段表 + 落台账(event=planned)。**不动臂**。
+#   · GET  /station/plan/<id> 段表 + 状态
+#   · POST /station/exec_plan {plan_id,seg_ids,confirm} → 无 confirm/无授权窗 ⇒ 403;
+#                             有 ⇒ 逐段调 8793 /ctl/move, 每段等着停稳+读真值对账, 失败即停手。
+#   · GET  /station/ledger    最近规划/执行记录
+# 红线: 真机动作仍只走 l2_daemon(8793 /ctl/move); 规划器只用 allow_trajectory_execution=False
+#       的 plan-only move_group ⇒ 构造上不可能动臂。
+# ═══════════════════════════════════════════════════════════════════════════
+_PLAN_DIR = os.path.expanduser(os.environ.get("SS_PLAN_DIR", "~/zmax/zmax_data/runtime/moveit_plan"))
+_PLAN_LATEST = os.path.join(_PLAN_DIR, "live_plan_latest.json")
+_PLAN_REQ_TOOL = os.path.join(_REPO_ROOT, "tools", "moveit_plan_req.py")
+_PLAN_TO_L2 = os.path.join(_REPO_ROOT, "tools", "plan_to_l2.py")
+_TAUGHT_JSON = os.path.join(_REPO_ROOT, "data", "skills", "l2_atomic", "taught_points.json")
+_SPACE_JSON = os.path.join(_REPO_ROOT, "data", "skills", "l2_atomic", "space_points.json")
+STATION_LEDGER = os.path.join(_REPO_ROOT, "reports", "station_plan_ledger.jsonl")
+_PLAN_WAIT_S = float(os.environ.get("STATION_PLAN_WAIT_S", "15"))     # 等规划结果超时
+_SEG_SPEED = 200.0                                                    # 执行段速度(150~300 口径)
+_SEG_POS_TOL_MM = 5.0                                                 # 段残差容差(超 ⇒ 停手)
+_SEG_DEG_TOL = 3.0
+_PLAN_CACHE = {}                                                      # plan_id → 段表(进程内, 供 GET)
+
+
+def _ledger_append(rec: dict):
+    try:
+        os.makedirs(os.path.dirname(STATION_LEDGER), exist_ok=True)
+        with open(STATION_LEDGER, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError as _e:                                              # noqa: BLE001
+        print("[station-ledger] 写台账失败: %s" % _e, flush=True)
+
+
+def _ledger_read(n: int = 20) -> list:
+    try:
+        with open(STATION_LEDGER, encoding="utf-8") as f:
+            lines = f.readlines()[-max(1, min(int(n), 500)):]
+    except OSError:
+        return []
+    out = []
+    for ln in lines:
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            out.append(json.loads(ln))
+        except Exception:                                              # noqa: BLE001
+            pass
+    return out
+
+
+def _ledger_find_plan(plan_id: str):
+    """从台账里找某 plan_id 的段表(planned 事件里带了完整 segments)。"""
+    for rec in reversed(_ledger_read(500)):
+        if rec.get("plan_id") == plan_id and rec.get("event") == "planned" and rec.get("segments"):
+            return rec
+    return None
+
+
+def _ledger_status(plan_id: str) -> str:
+    evs = [r.get("event") for r in _ledger_read(500) if r.get("plan_id") == plan_id]
+    if not evs:
+        return "unknown"
+    if "exec_fail" in evs:
+        return "failed"
+    if evs.count("exec_ok") and evs[-1] == "exec_ok":
+        return "done" if "exec_done" in evs else "executing"
+    if "planned" in evs:
+        return "executing" if "exec_start" in evs else "planned"
+    return "unknown"
+
+
+def _resolve_target(target: str):
+    """目标名 → (goal_xyz[3], goal_quat[4], label)。空间点(spaceN)优先, 再示教点。
+    这是"校验就绪度"的一环: 点位不存在 ⇒ 不规划, 不编造。"""
+    for path, kind in ((_SPACE_JSON, "space_points"), (_TAUGHT_JSON, "taught_points")):
+        try:
+            pts = (json.load(open(path, encoding="utf-8")) or {}).get("points") or {}
+        except Exception:                                              # noqa: BLE001
+            continue
+        v = pts.get(target)
+        if not v:
+            continue
+        p = v.get("pos") or v.get("p") or v.get("xyz")
+        q = v.get("quat") or v.get("q")
+        if not p:
+            continue
+        q = [float(x) for x in (q or [])]
+        if len(q) == 3:                    # 示教点省略 w≈0 (与 moveit_plan_req 同口径)
+            q = q + [0.0]
+        if len(q) != 4:
+            return None, None, "%s 的 quat 非 3/4 维" % target
+        return [float(x) for x in p], q, "%s@%s" % (target, kind)
+    return None, None, "点位不存在: %s (space_points/taught_points 都没有)" % target
+
+
+def _station_plan(body: dict) -> dict:
+    """① 校验授权窗与就绪度 ② 写规划请求 ③ 等 live_plan_latest.json(带超时) ④ 段化 ⑤ 落台账。不动臂。"""
+    ai = _auth_info()
+    if not ai.get("armed"):
+        _ledger_append({"t": time.time(), "event": "plan_denied", "ok": False,
+                        "target": body.get("target"), "solver": body.get("solver") or "moveit",
+                        "reason": "未授权真动/授权窗不在"})
+        return {"ok": False, "code": 403, "denied": True, "event": "plan_denied",
+                "reason": "未授权真动/授权窗不在 ⇒ 拒绝规划(校验授权窗)", "auth": ai,
+                "msg": "⛔ 未授权真动: 先点页面上『🔓 授权真动』(二次确认) 再规划; 授权到时自动失效。"}
+    solver = str(body.get("solver") or "moveit").strip().lower()
+    if solver != "moveit":
+        return {"ok": False, "code": 400, "reason": "solver=%r 目前只支持 moveit(状态空间唯一规划源)" % solver}
+    goal_xyz, goal_quat = body.get("goal_xyz"), body.get("goal_quat")
+    if goal_xyz and goal_quat:
+        if len(goal_xyz) != 3 or len(goal_quat) != 4:
+            return {"ok": False, "code": 400, "reason": "goal_xyz 要 3 个数, goal_quat 要 4 个数(xyzw)"}
+        gx = [float(x) for x in goal_xyz]; gq = [float(x) for x in goal_quat]
+        label = "cli"
+    elif body.get("target"):
+        gx, gq, label = _resolve_target(str(body["target"]).strip())
+        if gx is None:
+            return {"ok": False, "code": 404, "reason": label}
+    else:
+        return {"ok": False, "code": 400, "reason": "缺 target 或 goal_xyz+goal_quat"}
+
+    # ② 写规划请求 (只写文件, 不动臂)
+    req_ts = time.time()
+    cmd = [sys.executable, _PLAN_REQ_TOOL, "--goal-xyz", *["%.6f" % v for v in gx],
+           "--goal-quat", *["%.6f" % v for v in gq], "--once"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except Exception as _e:                                            # noqa: BLE001
+        return {"ok": False, "code": 503, "reason": "写规划请求失败: %s" % str(_e)[:160]}
+    if r.returncode not in (0,):
+        # 真机 tap 无数据 ⇒ 规划请求器返回 3 ⇒ 就绪度不足(不编造)
+        out = {"ok": False, "code": 503, "event": "planned", "moved": False,
+               "reason": "规划请求器失败(rc=%s): %s" % (r.returncode, (r.stdout or r.stderr or "").strip()[-200:]),
+               "hint": "真机只读 tap(~/zmax/zmax_data/ss_live/state_*.jsonl) 是否有数据?",
+               "target": label}
+        out["plan_id"] = "pl_" + time.strftime("%Y%m%d_%H%M%S")
+        out["meta"] = {"solver": "moveit", "source": _PLAN_REQ_TOOL, "target": label, "req_ready": False}
+        _ledger_append({"t": time.time(), "event": "planned", "ok": False, "plan_id": out["plan_id"],
+                        "target": label, "solver": "moveit", "reason": out["reason"]})
+        return out
+
+    # ③ 等 live_plan_latest.json 刷新 (带超时; 容器离线 ⇒ 超时 ⇒ ok:false)
+    got, waited = None, 0.0
+    t0 = time.time()
+    while time.time() - t0 < _PLAN_WAIT_S:
+        try:
+            if os.path.getmtime(_PLAN_LATEST) >= req_ts - 1.0:
+                got = _read_json(_PLAN_LATEST, None)
+                if got:
+                    break
+        except OSError:
+            pass
+        time.sleep(0.5)
+        waited = time.time() - t0
+    if not got:
+        out = {"ok": False, "code": 503, "event": "planned",
+               "reason": "规划容器离线/超时: %.0fs 内 %s 未刷新 (moveit plan-only 容器是否在跑?)"
+                         % (_PLAN_WAIT_S, os.path.basename(_PLAN_LATEST)),
+               "target": label, "goal_xyz": gx, "waited_s": round(waited, 1), "moved": False}
+        out["plan_id"] = "pl_" + time.strftime("%Y%m%d_%H%M%S")
+        out["meta"] = {"solver": "moveit", "source": _PLAN_LATEST, "target": label}
+        _ledger_append({"t": time.time(), "event": "planned", "ok": False, "plan_id": out["plan_id"],
+                        "target": label, "solver": "moveit", "reason": out["reason"]})
+        return out
+
+    # ④ 段化 (plan_to_l2 是纯数据转换, 不连臂)
+    try:
+        p2 = subprocess.run([sys.executable, _PLAN_TO_L2, "--file", _PLAN_LATEST, "--json"],
+                            capture_output=True, text=True, timeout=30)
+        seg = json.loads((p2.stdout or "").strip().splitlines()[-1]) if p2.stdout.strip() else {}
+    except Exception as _e:                                            # noqa: BLE001
+        seg = {"ok": False, "reason": "段化器调用失败: %s" % str(_e)[:160]}
+    seg.setdefault("meta", {}).update({"target": label, "goal_xyz": gx, "goal_quat": gq,
+                                       "req_wait_s": round(waited, 2)})
+    seg["moved"] = False                     # 🔒 规划只规划: 此步之后机器人位置一字未变
+    # ⑤ 落台账(event=planned; 成功时带完整段表, 供 GET /station/plan/<id> 与逐段执行)
+    rec = {"t": time.time(), "event": "planned", "ok": bool(seg.get("ok")),
+           "plan_id": seg.get("plan_id"), "target": label, "solver": "moveit",
+           "n_segments": (seg.get("meta") or {}).get("n_segments"),
+           "meta": seg.get("meta"), "reason": seg.get("reason")}
+    if seg.get("ok"):
+        rec.pop("reason", None)
+        rec["segments"] = seg["segments"]
+        _PLAN_CACHE[seg["plan_id"]] = seg
+    _ledger_append(rec)
+    return seg
+
+
+def _wait_move_settle(prev_xyz, timeout=30.0):
+    """等本次动作停稳: 连续两次真值位移 <0.2mm 即认为停稳。返回 (pose, settled_bool)。"""
+    t0 = time.time()
+    last = None
+    while time.time() - t0 < timeout:
+        time.sleep(0.5)
+        pose = _rokae_pose()
+        xyz = pose.get("xyz")
+        if not xyz or pose.get("stale"):
+            continue
+        if last is not None:
+            d = math.dist(xyz, last)
+            if d < 0.2:
+                return pose, True
+        last = xyz
+    return _rokae_pose(), False
+
+
+def _station_exec_plan(body: dict) -> dict:
+    """逐段执行: 每段 下发 → 等停稳 → 读真值对账 → 下一段; 任一段失败/残差超限 ⇒ 停手(不重发/不补偿)。"""
+    if not body.get("confirm"):
+        _ledger_append({"t": time.time(), "event": "exec_denied", "ok": False,
+                        "plan_id": body.get("plan_id"), "reason": "缺 confirm:true"})
+        return {"ok": False, "code": 403, "denied": True,
+                "reason": "缺 confirm:true ⇒ 拒绝执行(不产生任何动作)",
+                "msg": "⛔ 未带 confirm:true: 段表只能看, 不能走。"}
+    ai = _auth_info()
+    if not ai.get("armed"):
+        _ledger_append({"t": time.time(), "event": "exec_denied", "ok": False,
+                        "plan_id": body.get("plan_id"), "reason": "未授权真动/授权窗不在"})
+        return {"ok": False, "code": 403, "denied": True, "auth": ai,
+                "reason": "未授权真动/授权窗不在 ⇒ 拒绝执行(不产生任何动作)",
+                "msg": "⛔ 未授权真动: 先点页面上『🔓 授权真动』(二次确认) 再执行。"}
+    plan_id = str(body.get("plan_id") or "").strip()
+    if not plan_id:
+        return {"ok": False, "code": 400, "reason": "缺 plan_id"}
+    plan = _PLAN_CACHE.get(plan_id) or _ledger_find_plan(plan_id)
+    if not plan or not plan.get("segments"):
+        return {"ok": False, "code": 404, "reason": "找不到段表: %s (先 POST /station/plan)" % plan_id}
+    segs = plan["segments"]
+    ids = body.get("seg_ids")
+    if ids:
+        want = set(int(x) for x in ids)
+        segs = [s for s in segs if s["seg_id"] in want]
+    if not segs:
+        return {"ok": False, "code": 400, "reason": "seg_ids 没选中任何段"}
+    try:
+        speed = float(body.get("speed", _SEG_SPEED))
+    except (TypeError, ValueError):
+        speed = _SEG_SPEED
+    speed = max(150.0, min(300.0, speed))                 # 规划执行段速度口径 150~300
+
+    _ledger_append({"t": time.time(), "event": "exec_start", "plan_id": plan_id,
+                    "n_seg": len(segs), "seg_ids": [s["seg_id"] for s in segs]})
+    results, stopped = [], False
+    for s in segs:
+        sid, skill = s["seg_id"], s["L2_skill"]
+        params = dict(s.get("params") or {})
+        if s.get("unsupported") or skill not in _CTL_SKILLS and _abs_skills().get(skill) is None:
+            stopped = True
+            reason = ("段不支持: %s (L2 无对应原子技能)" % skill) if s.get("unsupported") \
+                     else ("段技能 %s 不在下发白名单" % skill)
+            _ledger_append({"t": time.time(), "event": "exec_fail", "plan_id": plan_id,
+                            "seg_id": sid, "skill": skill, "reason": reason, "before_seg": True})
+            results.append({"seg_id": sid, "skill": skill, "ok": False, "reason": reason})
+            break
+        before = _rokae_pose()
+        req = {"skill": skill, "arm": 1, "speed": speed}
+        req.update(params)
+        mv = _ctl_move(req)
+        pred = s.get("pred_delta") or {}
+        if not mv.get("ok") or mv.get("pending"):
+            # pending = 等安全裁决; 本版: 视为未完成 ⇒ 停手(不重发)
+            stopped = True
+            _ledger_append({"t": time.time(), "event": "exec_fail", "plan_id": plan_id, "seg_id": sid,
+                            "skill": skill, "params": params, "reason": mv.get("msg"),
+                            "pending": bool(mv.get("pending"))})
+            results.append({"seg_id": sid, "skill": skill, "ok": False, "msg": mv.get("msg")})
+            break
+        pose, settled = _wait_move_settle(before.get("xyz"))
+        xyz = pose.get("xyz")
+        resid = None
+        if xyz and before.get("xyz"):
+            exp = [before["xyz"][i] + (pred.get(["", "dx", "dy", "dz"][i]) or 0) / 1000.0 for i in range(3)]
+            resid = round(math.dist(xyz, exp) * 1000.0, 2)
+        moved = round(math.dist(xyz, before["xyz"]) * 1000.0, 2) if (xyz and before.get("xyz")) else None
+        ok = bool(settled and (resid is None or resid <= _SEG_POS_TOL_MM))
+        rec = {"t": time.time(), "event": "exec_ok" if ok else "exec_fail", "plan_id": plan_id,
+               "seg_id": sid, "skill": skill, "params": params, "pred_delta": pred,
+               "moved_mm": moved, "residual_mm": resid, "settled": bool(settled),
+               "tcp": xyz, "lines": mv.get("lines")}
+        _ledger_append(rec)
+        results.append({"seg_id": sid, "skill": skill, "ok": ok, "moved_mm": moved,
+                        "residual_mm": resid, "settled": bool(settled)})
+        if not ok:
+            stopped = True
+            break
+    _ledger_append({"t": time.time(), "event": "exec_done" if not stopped else "exec_stopped",
+                    "plan_id": plan_id, "results": results})
+    return {"ok": not stopped, "code": 200, "plan_id": plan_id, "stopped": stopped,
+            "n_done": sum(1 for r in results if r.get("ok")), "results": results,
+            "msg": "✅ 逐段执行完成" if not stopped else "⛔ 执行中止(失败/残差超限) — 不重发、不自动补偿"}
+
+
 def _station_page() -> bytes:
     """🛰 工位总览页真源 = `tools/web/station.html`(按 mtime 热读)。
 
@@ -3268,7 +3598,7 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
         <span class="mid"></span>
         <button data-skill="L2.backward" data-p="d_mm">⏪ 后退<br><span class="hint">−X</span></button>
         <span class="mid"></span>
-        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">+Z</span></button>
+        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">抬升需授权 · 警报会响(vz&gt;0.3mm/s)</span></button>
         <span class="mid"></span>
         <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降<br><span class="hint">−Z</span></button>
         <span class="mid"></span>
@@ -3950,6 +4280,30 @@ class Handler(BaseHTTPRequestHandler):
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
             self._send(200, "application/json; charset=utf-8", _jbytes(payload))
+        elif p.startswith("/station/plan/"):
+            # 🧭 段表 + 状态 (只读; 不产生动作)
+            _id = p[len("/station/plan/"):].strip("/")
+            _p = _PLAN_CACHE.get(_id) or _ledger_find_plan(_id)
+            if not _p:
+                self._send(404, "application/json; charset=utf-8", _jbytes(
+                    {"ok": False, "plan_id": _id, "reason": "找不到段表(先 POST /station/plan)"}))
+            else:
+                out = dict(_p)
+                out["status"] = _ledger_status(_id)
+                out["ok"] = True
+                self._send(200, "application/json; charset=utf-8", _jbytes(out))
+        elif p == "/station/ledger":
+            # 🧾 最近规划/执行记录
+            _n = 20
+            for _kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if _kv.startswith("n="):
+                    try:
+                        _n = max(1, min(200, int(_kv.split("=", 1)[1])))
+                    except ValueError:
+                        pass
+            self._send(200, "application/json; charset=utf-8",
+                       _jbytes({"ok": True, "n": _n, "events": _ledger_read(_n),
+                                "ledger": STATION_LEDGER}))
         elif p in ("/cam/src", "/api/cam/src"):
             # 🎛 笔记本这一路换源状态 (只读; 换源必须 POST —— 与"只有 POST 能改状态"同一条规矩)
             self._send(200, "application/json; charset=utf-8", _jbytes(_src_status()))
@@ -4023,6 +4377,12 @@ class Handler(BaseHTTPRequestHandler):
                         if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
+        elif p in ("/station/plan", "/api/station/plan"):
+            # 🧭 点位 → 状态空间规划 → 段表 (只规划; 规划容器 plan-only ⇒ 构造上不动臂)
+            out = _station_plan(body if isinstance(body, dict) else {})
+        elif p in ("/station/exec_plan", "/api/station/exec_plan"):
+            # 🕹 段表 → 逐段走 L2 (确认 + 授权窗缺一不可 ⇒ 403)
+            out = _station_exec_plan(body if isinstance(body, dict) else {})
         elif p in ("/ctl/gs_map", "/api/ctl/gs_map"):
             # 🧭 3DGS 建图 (老倪 2026-10-01): GET=状态 / POST 一次=启动后台自动跑点建图(空间1→7)。
             #   跑点走既有授权+收口链; 采集/训练在 tools/gs_map_run.py; 状态文件让页面轮询。

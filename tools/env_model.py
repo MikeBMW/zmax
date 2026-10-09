@@ -39,6 +39,19 @@ RE_SEG = re.compile(r"\[(\d\d:\d\d:\d\d)\] 目标 (L2\.\S+): pos=\(([-\d.]+), ([
                     r" · Δ=\(([-+\d.]+), ([-+\d.]+), ([-+\d.]+)\)mm ([^\s·]+)")
 MAX_SEG = 2000
 
+# 🧭 包络"外扩余量"(米) —— **可配置常量**(不是散落各处的硬编码数字)。
+#   含义: 已验证包络只在"示教点 + 真实运动段"上取 min/max; 点位是**离散采样** —— 只在点上
+#   证明过能到, 但同一工作台面上点与点之间同样可达。故给**水平方向(x/y)各向外留一点余量**,
+#   让"贴在边界外 ≤ENV_MARGIN_M"的姿态仍算界内 —— 这正是"你能退/进多少"。
+#   由来(2026-10-09 现场): 当前姿态 x=0.3348 比包络下界 0.3368 小 2mm ⇒ 每段下发被判"出界":
+#     ① SDK 腿 env_check 拒发; ② SDK 代理**实时扫掠闸门**(guard_box, 每 0.15s 拿真值比)当场 stop()
+#     ⇒ 现场表现="点了卡死/没反应"。现场老倪已授权: 「现场安全, 包络你自己改」。
+#   ⚠️ **z(上下)方向不外扩**: 下界=床面/夹具高度、上界=安全区天花板, 任意外扩都可能进危险区
+#     (向下跌进夹具 / 向上顶到障碍)。**抬升上限与下向守卫一律不放宽** ⇒ z 用**单独**常量, 恒 0,
+#     分开放就是为了防止有人把水平余量顺手也套到 z 上。
+ENV_MARGIN_M = 0.010            # 水平 x/y 外扩余量(米): 默认 10mm, 可配置
+ENV_Z_MARGIN_M = 0.0            # 竖直 z 外扩余量(米): 恒 0(见上, 单独定义以防被一起改大)
+
 # 区域判据(按点名 + 几何, 口径写在模型里, 便于复核)
 def zone_of(name, p):
     x, y, z = p
@@ -122,9 +135,14 @@ def build(quiet=False):
     xs = [p["pos"][0] for p in pts.values()] + [s["to"][0] for s in segs] + [s["from"][0] for s in segs]
     ys = [p["pos"][1] for p in pts.values()] + [s["to"][1] for s in segs] + [s["from"][1] for s in segs]
     zs = [p["pos"][2] for p in pts.values()] + [s["to"][2] for s in segs] + [s["from"][2] for s in segs]
-    env = {"x": [round(min(xs), 4), round(max(xs), 4)],
-           "y": [round(min(ys), 4), round(max(ys), 4)],
-           "z": [round(min(zs), 4), round(max(zs), 4)]}
+    # 包络取整一律**向外**(floor/ceil): 拟合不得比数据更紧 —— 否则最边上的示教点会被
+    # 四舍五入挤到界外(实测: 新金手指点2 x=0.3368662 被 round(...,4)=0.3369 判越界 0.0034mm)。
+    _lo = lambda v: (v * 1e4 // 1) / 1e4
+    _hi = lambda v: -((-v * 1e4) // 1) / 1e4
+    # 🧭 水平(x/y)向外加 ENV_MARGIN_M 余量; z 单独用 ENV_Z_MARGIN_M(=0, 上下语义不放宽)。
+    env = {"x": [_lo(min(xs)) - ENV_MARGIN_M, _hi(max(xs)) + ENV_MARGIN_M],
+           "y": [_lo(min(ys)) - ENV_MARGIN_M, _hi(max(ys)) + ENV_MARGIN_M],
+           "z": [_lo(min(zs)) - ENV_Z_MARGIN_M, _hi(max(zs)) + ENV_Z_MARGIN_M]}
     # ③ 料盘: 平面 z / 节距
     slots = [(int(n[4:]), p["pos"]) for n, p in pts.items() if re.match(r"^slot[1-7]$", n)]
     slots.sort()
@@ -188,6 +206,8 @@ def build(quiet=False):
         "source": {"taught_points": len(pts), "motion_segments": len(segs), "dropped_junk_segments": n_junk,
                    "logs": [os.path.basename(x) for x in LOGS if os.path.exists(x)]},
         "envelope": env, "zones": zones, "tray": tray,
+        "envelope_margin_m": {"xy": ENV_MARGIN_M, "z": ENV_Z_MARGIN_M,
+                              "note": "水平外扩余量; z 恒 0(上下安全语义不放宽)"},
         "free_bands": {"按规矩转移高度_z": band, "证据": ev,
                        "历史最低横向_z": low_z, "低空横移(违规,不作基线)": low_ev},
         "rules": rules, "noncompliant_skills": noncompliant,

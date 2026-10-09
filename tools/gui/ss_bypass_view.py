@@ -380,6 +380,131 @@ class _NetChannelWorker(QtCore.QThread):
         self.done.emit(txt)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 旁路实时可视化 · 🛰 工位总览 station 带                       2026-10-09 老倪
+#   地址来自配置文件 (不硬编码): ~/zmax/zmax_data/ss_bypass/station_url.json
+#   只读轮询 station /station/status (1.5s), 与 8793 同源, 不做第二份真相。
+#   不把 6 路 MJPEG 嵌进画布 (会拖死页面) —— 只给可点链接 (外部浏览器, 文本可复制)。
+#   station 不可达 ⇒ 红色"离线" + 原始错误码 (不静默)。
+# ══════════════════════════════════════════════════════════════════════════════
+STATION_CFG_PATH = os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_bypass"), "station_url.json")
+STATION_CFG_DEFAULT = {
+    "url": "http://10.163.146.78:8793/station",
+    "status": "http://10.163.146.78:8793/station/status",
+    "hil": "http://127.0.0.1:8795",
+}
+STATION_HIL_PEERS_PATH = os.path.join(os.path.expanduser("~/zmax/zmax_data/ss_bypass"), "hil_peers.json")
+STATION_LEDGER_PATH = os.path.join(_net_repo_root(), "reports", "station_plan_ledger.jsonl")
+# 6 路同屏键名 (与 tools/cam_live_stream.py 页面 CAMS['arm','local','local2'] + depth/aoi_gold/aoi_surface 同口径)
+STATION_CAMS = [("arm", "臂上D405"), ("local", "笔记本"), ("local2", "MAXHUB顶摄"),
+                ("depth", "D405深度"), ("aoi_gold", "金手指"), ("aoi_surface", "表面检测")]
+STATION_PEER_TTL_S = 30.0
+
+
+def load_station_cfg():
+    """读 station 地址配置 → (cfg, created)。不存在则写默认并置 created=True (调用方 log)。"""
+    created = False
+    try:
+        if os.path.exists(STATION_CFG_PATH):
+            with open(STATION_CFG_PATH, encoding="utf-8") as f:
+                cfg = json.load(f)
+            out = dict(STATION_CFG_DEFAULT)
+            if isinstance(cfg, dict):
+                out.update({k: v for k, v in cfg.items() if isinstance(v, str) and v})
+            return out, created
+        os.makedirs(os.path.dirname(STATION_CFG_PATH), exist_ok=True)
+        with open(STATION_CFG_PATH, "w", encoding="utf-8") as f:
+            json.dump(STATION_CFG_DEFAULT, f, ensure_ascii=False, indent=2)
+        created = True
+    except Exception:
+        return dict(STATION_CFG_DEFAULT), created
+    return dict(STATION_CFG_DEFAULT), created
+
+
+def _station_http_get(url, timeout=2.5):
+    """只读 GET → (ok, obj_or_err_text)。错误文本带原始类型/HTTP 码, 不静默。"""
+    import urllib.error
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "zmax-ss-bypass/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            code, raw = r.getcode(), r.read()
+        try:
+            return True, json.loads(raw.decode("utf-8", "replace"))
+        except Exception as e:
+            return False, "HTTP %s 但 JSON 解析失败: %s: %s" % (code, type(e).__name__, e)
+    except urllib.error.HTTPError as e:
+        return False, "HTTPError %s %s" % (e.code, e.reason)
+    except urllib.error.URLError as e:
+        return False, "URLError %s" % (e.reason,)
+    except Exception as e:
+        return False, "%s: %s" % (type(e).__name__, e)
+
+
+def read_hil_peers():
+    """读 hil_peers.json (谁连着人机在环节点) → (ok, list_or_err_text)。"""
+    try:
+        if not os.path.exists(STATION_HIL_PEERS_PATH):
+            return False, "文件不存在: %s" % STATION_HIL_PEERS_PATH
+        with open(STATION_HIL_PEERS_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        peers = d.get("peers") if isinstance(d, dict) else d
+        if isinstance(peers, dict):
+            peers = [dict(v, name=k) for k, v in peers.items()]
+        return True, (peers if isinstance(peers, list) else [])
+    except Exception as e:
+        return False, "%s: %s" % (type(e).__name__, e)
+
+
+def read_last_station_ledger():
+    """读 reports/station_plan_ledger.jsonl 末行 → (ok, dict_or_err_text); 无则 ok=False。"""
+    try:
+        p = STATION_LEDGER_PATH
+        if not os.path.exists(p):
+            return False, "无台账文件: %s" % p
+        last = None
+        with open(p, encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if ln:
+                    last = ln
+        if not last:
+            return False, "台账为空: %s" % p
+        return True, json.loads(last)
+    except Exception as e:
+        return False, "%s: %s" % (type(e).__name__, e)
+
+
+class _StationPollWorker(QtCore.QThread):
+    """后台只读拉一次 station/status + hil 可达性探测 (非阻塞 GUI)。
+
+    done(status_dict_or_None, status_err, hil_ok, hil_err)
+    """
+    done = QtCore.pyqtSignal(object, str, bool, str)
+
+    def __init__(self, status_url, hil_url, parent=None):
+        super().__init__(parent)
+        self.status_url = status_url
+        self.hil_url = hil_url
+
+    def run(self):
+        try:
+            ok, obj = _station_http_get(self.status_url)
+        except Exception as e:                      # 任何异常都要见到 (不静默)
+            ok, obj = False, "%s: %s" % (type(e).__name__, e)
+        status = obj if ok else None
+        serr = "" if ok else str(obj)
+        hil_ok, hil_err = False, ""
+        if self.hil_url:
+            try:
+                hok, hobj = _station_http_get(self.hil_url, timeout=2.0)
+                hil_ok = bool(hok)
+                hil_err = "" if hok else str(hobj)
+            except Exception as e:
+                hil_ok, hil_err = False, "%s: %s" % (type(e).__name__, e)
+        self.done.emit(status, serr, hil_ok, hil_err)
+
+
 class SSBypassView(QtWidgets.QWidget):
     """旁路实时可视化窗口 (非模态, 可常开)"""
 
@@ -395,6 +520,16 @@ class SSBypassView(QtWidgets.QWidget):
         self.timer.timeout.connect(self.refresh)
         self.timer.start(500)
         self.refresh()
+        # 🛰 工位总览 station 带: 1.5s 轮询 (后台线程, 不阻塞 GUI)
+        self._station_worker = None
+        self._station_last_status = None
+        self._station_last_err = None
+        self._station_hil_ok = None
+        self._station_hil_err = ""
+        self.station_timer = QtCore.QTimer(self)
+        self.station_timer.timeout.connect(self._station_tick)
+        self.station_timer.start(1500)
+        QtCore.QTimer.singleShot(800, self._station_tick)
 
     def _row(self, k):
         lab = QtWidgets.QLabel("-")
@@ -480,8 +615,202 @@ class SSBypassView(QtWidgets.QWidget):
         root.addWidget(self.lab_foot)
 
         self._build_net_channel(root)          # 旁路调试 · 上网通道 区块 (新增, 不动上面现有功能)
+        self._build_station_band(root)         # 🛰 工位总览 station 带 (新增, 不动上面现有功能)
 
-    # ── 旁路调试 · 上网通道 区块 (2026-10-09) ────────────────────────────────
+    # ── 🛰 工位总览 station 带 (2026-10-09) ───────────────────────────────────
+    def _station_row(self, title):
+        lab = QtWidgets.QLabel("—")
+        lab.setStyleSheet(f"color:{FG};font-size:15px;")
+        lab.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)      # 可复制
+        lab.setWordWrap(True)
+        kk = QtWidgets.QLabel(title)
+        kk.setStyleSheet(f"color:{DIM};font-size:14px;")
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        v.setContentsMargins(2, 2, 2, 2)
+        v.setSpacing(2)
+        v.addWidget(kk)
+        v.addWidget(lab)
+        return w, lab
+
+    def _build_station_band(self, root):
+        """只读工位总览: 可点链接 + 六路相机/TCP/授权/机器人 + HIL peers + 台账。"""
+        gb = QtWidgets.QGroupBox("🛰 工位总览 station (旁路只读 · 与 8793 同源 · 不嵌 6 路 MJPEG)")
+        g = QtWidgets.QGridLayout(gb)
+        self.station_cfg, _created = load_station_cfg()
+        tip = QtWidgets.QLabel(
+            "读 station /station/status (1.5s 轮询) · 只读不动臂 · 地址来自 "
+            "zmax_data/ss_bypass/station_url.json" + ("  [本次新建默认]" if _created else ""))
+        tip.setWordWrap(True)
+        tip.setStyleSheet(f"color:{DIM};font-size:12px;")
+        g.addWidget(tip, 0, 0, 1, 2)
+        if _created:
+            print("[SSBypassView] station_url.json 不存在 → 已写默认: %s" % STATION_CFG_PATH, flush=True)
+
+        self.station_labs = {}
+        # 1) 可点链接 (外部浏览器) —— 文本可复制, 不内嵌 MJPEG
+        url = self.station_cfg["url"]
+        link = QtWidgets.QLabel(f'<a href="{url}" style="color:#7ee787;">{url}</a>')
+        link.setTextFormat(QtCore.Qt.RichText)
+        link.setOpenExternalLinks(True)
+        link.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse |
+                                     QtCore.Qt.LinksAccessibleByMouse)
+        link.setStyleSheet("font-size:15px;")
+        wl = QtWidgets.QWidget()
+        vl = QtWidgets.QVBoxLayout(wl)
+        vl.setContentsMargins(2, 2, 2, 2)
+        vl.setSpacing(2)
+        kl = QtWidgets.QLabel("工位总览页 (点击用外部浏览器打开 · 文本可复制)")
+        kl.setStyleSheet(f"color:{DIM};font-size:14px;")
+        vl.addWidget(kl)
+        vl.addWidget(link)
+        g.addWidget(wl, 1, 0, 1, 2)
+
+        for i, (t_, k) in enumerate([("六路相机 在线/最大帧龄", "cam"),
+                                     ("TCP 位姿 x/y/z", "tcp"),
+                                     ("授权剩余", "auth"),
+                                     ("机器人 operation/mode", "robot"),
+                                     ("HIL peers (人机在环)", "peers"),
+                                     ("最近 station→规划→L2 台账", "ledger")]):
+            w, lab = self._station_row(t_)
+            self.station_labs[k] = lab
+            g.addWidget(w, 2 + i // 2, i % 2)
+        root.addWidget(gb)
+
+    @staticmethod
+    def _stamp(t):
+        try:
+            return time.strftime("%H:%M:%S", time.localtime(t))
+        except Exception:
+            return "—"
+
+    def _station_tick(self):
+        """每 1.5s: 本地文件项 (peers/台账) 立即刷新; 远程 status+hil 丢后台线程。"""
+        self._station_render_peers()
+        self._station_render_ledger()
+        if self._station_worker is not None and self._station_worker.isRunning():
+            return
+        w = _StationPollWorker(self.station_cfg["status"], self.station_cfg.get("hil"), self)
+        w.done.connect(self._station_on_done)
+        self._station_worker = w
+        w.start()
+
+    def _station_on_done(self, status, err, hil_ok, hil_err):
+        self._station_last_status, self._station_last_err = status, err
+        self._station_hil_ok, self._station_hil_err = hil_ok, hil_err
+        self._station_render_status(status, err)
+        self._station_render_peers()
+
+    def _station_render_status(self, status, err):
+        """写 station 状态标签; status=None ⇒ 红色离线 + 原始错误码 (不静默)。"""
+        now = time.time()
+        if not status:
+            emsg = err or "无错误信息"
+            for k in ("cam", "tcp", "auth", "robot"):
+                self.station_labs[k].setText("🔴 离线 · " + emsg)
+                self.station_labs[k].setStyleSheet(f"color:{C_BAD};font-size:15px;")
+                self.station_labs[k].setToolTip(emsg)
+            return
+        st = status.get("stats") or {}
+        ctl = status.get("ctl") or {}
+
+        # 六路相机: 在线数 + 最大帧龄 (带秒) + 取样时间
+        on, age_max, worst = 0, -1.0, "—"
+        for key, nm in STATION_CAMS:
+            c = st.get(key) or {}
+            if c.get("online"):
+                on += 1
+            a = c.get("age_s")
+            if isinstance(a, (int, float)) and a > age_max:
+                age_max, worst = a, nm
+        samp = self._stamp(now - age_max) if age_max >= 0 else "—"
+        self.station_labs["cam"].setText(
+            "在线 %d/%d · 最大帧龄 %.0fs (%s) · 取样 %s" % (on, len(STATION_CAMS), age_max, worst, samp))
+        self.station_labs["cam"].setStyleSheet(
+            f"color:{C_OK if on == len(STATION_CAMS) else C_BAD};font-size:15px;")
+
+        # TCP 位姿 (x/y/z 三位小数) + 采样时间
+        tcp = ctl.get("tcp") or {}
+        xyz = tcp.get("xyz") or []
+        if len(xyz) >= 3:
+            txt = "x=%.3f y=%.3f z=%.3f m" % (xyz[0], xyz[1], xyz[2])
+            a = tcp.get("age_s")
+            txt += (" · 采样 %s (age %.2fs)" % (self._stamp(now - a), a)
+                    if isinstance(a, (int, float)) else " · 采样时间缺")
+        else:
+            txt = "缺 (无 TCP 真值)"
+        self.station_labs["tcp"].setText(txt)
+
+        # 授权剩余秒 + 读取时间
+        auth = ctl.get("auth") or {}
+        armed = bool(auth.get("armed"))
+        left = auth.get("left_s")
+        self.station_labs["auth"].setText(
+            ("✅ 已授权 剩余 %.0fs" % (left or 0.0) if armed else "⛔ 未授权 (剩余 %.0fs)" % (left or 0.0))
+            + " · 读取 %s" % self._stamp(now))
+        self.station_labs["auth"].setStyleSheet(f"color:{C_OK if armed else C_BAD};font-size:15px;")
+
+        # 机器人 operation / mode + 读取时间
+        rob = ctl.get("robot") or {}
+        self.station_labs["robot"].setText(
+            "%s / %s · 读取 %s" % (rob.get("operation", "缺"), rob.get("mode", "缺"), self._stamp(now)))
+        self.station_labs["robot"].setStyleSheet(f"color:{FG};font-size:15px;")
+
+    def _station_render_peers(self):
+        ok, peers = read_hil_peers()
+        now = time.time()
+        parts = []
+        if not ok:
+            self.station_labs["peers"].setToolTip(str(peers))     # 原始原因 (文件缺失/解析失败)
+        else:
+            for p in peers:
+                if not isinstance(p, dict):
+                    continue
+                nm = p.get("name") or p.get("kind") or "?"
+                a = p.get("age_s")
+                if a is None:
+                    t = p.get("ts") or p.get("t")
+                    if isinstance(t, (int, float)):
+                        a = now - t
+                if isinstance(a, (int, float)) and a > STATION_PEER_TTL_S:
+                    parts.append("🔴 %s 离线(%.0fs>%.0fs)" % (nm, a, STATION_PEER_TTL_S))
+                else:
+                    parts.append("🟢 %s%s" % (nm, ("(%.0fs)" % a) if isinstance(a, (int, float)) else ""))
+        ptxt = " · ".join(parts) if parts else "无 peers 登记"
+        # hil 端点可达性 (不可达 ⇒ 红色 + 原始错误)
+        hok = getattr(self, "_station_hil_ok", None)
+        if hok is None:
+            htxt, hbad = "hil …", False
+        elif hok:
+            htxt, hbad = "hil ✅ 在线", False
+        else:
+            htxt, hbad = "🔴 hil 离线 · " + (getattr(self, "_station_hil_err", "") or "—"), True
+        self.station_labs["peers"].setText(ptxt + "  |  " + htxt)
+        self.station_labs["peers"].setStyleSheet(
+            f"color:{C_BAD if hbad else FG};font-size:15px;")
+
+    def _station_render_ledger(self):
+        ok, d = read_last_station_ledger()
+        if not ok:
+            self.station_labs["ledger"].setText("—")
+            self.station_labs["ledger"].setStyleSheet(f"color:{DIM};font-size:15px;")
+            self.station_labs["ledger"].setToolTip(str(d))
+            return
+        try:
+            if isinstance(d, dict):
+                bits = []
+                for k in ("ts", "t", "kind", "stage", "status", "target", "plan_id", "segments", "ok"):
+                    if k in d:
+                        bits.append("%s=%s" % (k, d[k]))
+                txt = " · ".join(bits) or json.dumps(d, ensure_ascii=False)
+            else:
+                txt = str(d)
+        except Exception:
+            txt = str(d)
+        self.station_labs["ledger"].setText(txt[:220])
+        self.station_labs["ledger"].setStyleSheet(f"color:{FG};font-size:15px;")
+
+
     def _build_net_channel(self, root):
         """只读回显 (tinyproxy/WinHTTP/WinINET/端口) + 【测试连通】【开代理】【关代理】。"""
         gb = QtWidgets.QGroupBox("旁路调试 · 上网通道 (4060 借道 · 工控机 wifi 代理)")

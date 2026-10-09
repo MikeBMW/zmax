@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -28,6 +29,10 @@ ROOT = "/home/ubuntu/zmax"
 REPORTS = os.path.join(ROOT, "reports")
 RELAY = os.environ.get("ZMAX_RELAY_BASE", "https://datadrive.world/api/relay")
 TAP_DIR = "/home/ubuntu/zmax/zmax_data/ss_live"
+SS_BYPASS = os.path.join(ROOT, "zmax_data", "ss_bypass")
+PEERS_FILE = os.path.join(SS_BYPASS, "hil_peers.json")
+PEER_TTL = 30.0
+_PEERS_LOCK = threading.Lock()
 
 # 红线: 动作类关键词 → 拒答 (未授权不下发真机动作)
 MOTION_PAT = re.compile(r"(插入|抓取|夹爪|夹紧|移动|运动|下发|示教|拍照|启动产线|回位|抓|插|拔|推|拉|执行动作)")
@@ -176,6 +181,7 @@ def build_snapshot():
             "events": ev, "layers": layer_health(), "resources": resources(),
             "idea": core_idea(stage, ev, obs7),
             "canvas": _canvas_brief(),
+            "links": {"peers": peers_alive()},
             "evidence": _latest_evidence(),
         },
     }
@@ -201,6 +207,69 @@ def _latest_evidence():
                 break
     except Exception:                                                        # noqa: BLE001
         pass
+    return out
+
+
+# ───────────────────────── peer 登记 (谁连着我: L5 / 终端) ──────────────────
+# 老倪要求 (2026-10-09): L5 运行时要**自动连接**人机在环节点; 终端(静静/Hermes)也要能看到谁在线。
+# 落盘 zmax_data/ss_bypass/hil_peers.json (原子写; 文件被破坏时不崩)。TTL 内视为在线。
+def _load_peers():
+    """读 peer 表; 文件缺失/被破坏/非 dict → {} (绝不让读取把调用方带崩)"""
+    try:
+        with open(PEERS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:                                                        # noqa: BLE001
+        return {}
+
+
+def _peers_write(peers):
+    """原子写: 先写同目录临时文件再 os.replace, 避免半截 JSON 被读到"""
+    os.makedirs(SS_BYPASS, exist_ok=True)
+    tmp = "%s.tmp.%d" % (PEERS_FILE, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(peers, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, PEERS_FILE)
+
+
+def register_peer(name, kind, pid=None, note="", ttl=PEER_TTL):
+    """登记/刷新一个在线 peer (L5 / 终端 / 其它进程)。幂等: 同名覆盖刷新时间戳。
+
+    返回该 peer 记录 (失败也返回一份内存记录, 不抛 —— 调用方主流程不该被登记失败阻断)。
+    """
+    name = (name or "").strip() or "unknown"
+    now = time.time()
+    rec = {"name": name, "kind": str(kind or ""), "pid": pid, "note": str(note or ""),
+           "t": now, "ts": time.strftime("%F %T", time.localtime(now)), "ttl": float(ttl)}
+    try:
+        with _PEERS_LOCK:
+            peers = _load_peers()
+            peers[name] = rec
+            _peers_write(peers)
+        return {k: v for k, v in rec.items() if k != "t"}
+    except Exception:                                                        # noqa: BLE001
+        return {k: v for k, v in rec.items() if k != "t"}
+
+
+def peers_alive(ttl=PEER_TTL):
+    """返回 TTL 内的在线 peer 列表 (带 age_s, 升序); 过期的自动不出现。读取异常 → []"""
+    now = time.time()
+    out = []
+    try:
+        for p in _load_peers().values():
+            if not isinstance(p, dict):
+                continue
+            try:
+                age = now - float(p.get("t") or 0)
+            except Exception:                                                # noqa: BLE001
+                age = 1e9
+            if 0 <= age <= float(ttl):
+                q = {k: v for k, v in p.items() if k != "t"}
+                q["age_s"] = round(age, 1)
+                out.append(q)
+    except Exception:                                                        # noqa: BLE001
+        return []
+    out.sort(key=lambda x: x.get("age_s", 1e9))
     return out
 
 
