@@ -14,7 +14,10 @@ echo "══ 判据集② $(date '+%F %T') → $OUT ══"
 run () {
   local name="$1"; shift
   local f="$OUT/${name}.log"
-  timeout 300 env -u PYTHONPATH "$PY" "$@" >"$f" 2>&1
+  # ⏱ 2026-10-10: 重型判据 (每臂独立进程/多场景逐步真跑) 300s 不够 ⇒ 默认 1500s,
+  #   只有单点小判据才用短超时 (旧默认导致 fiber/annot_labeling 每轮都假 124)
+  local tmo="${ZMAX_JUDGE_TIMEOUT:-1500}"
+  timeout "$tmo" env -u PYTHONPATH "$PY" "$@" >"$f" 2>&1
   local rc=$?
   local bad
   bad=$(grep -ac "❌" "$f" 2>/dev/null || echo 0)
