@@ -4,7 +4,7 @@
 import os, sys, numpy as np, torch
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("MUJOCO_GL", "glfw")
-ROOT = "/home/xspace/lerobot-smolvla-lew"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 🐛 原写死 /home/xspace/lerobot-smolvla-lew (老机器路径) ⇒ 本机 import 就崩
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "src"))
 from lerobot.policies.left_right import LeftRightPolicy
 from importlib import util

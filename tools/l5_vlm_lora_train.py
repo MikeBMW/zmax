@@ -69,9 +69,24 @@ def load_rows(name: str) -> list[dict]:
     return [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
 
 
+def img_path(row: dict) -> str:
+    """样本图路径解析 (🐛 2026-10-09: 数据整合后 data/l5_vlm_sft → data/datasets/l5_vlm_sft,
+    老 jsonl 里写的是旧绝对路径, 38/38 条全成 FileNotFoundError ⇒ L5 训练直接空样本失败。
+    口径: 原路径在 → 用原路径; 不在 → 按 'l5_vlm_sft/' 之后的尾段重挂到 DATA 下; 再不行按文件名找 crops/。"""
+    p = row.get("image") or row.get("src_img") or ""
+    if p and os.path.exists(p):
+        return p
+    tail = p.split("l5_vlm_sft/", 1)[-1] if "l5_vlm_sft/" in p else os.path.basename(p)
+    cand = os.path.join(DATA, tail)
+    if os.path.exists(cand):
+        return cand
+    cand2 = os.path.join(DATA, "crops", os.path.basename(p))
+    return cand2 if os.path.exists(cand2) else p
+
+
 def build_msgs(row: dict, with_answer: bool) -> list[dict]:
     m = [{"role": "system", "content": [{"type": "text", "text": row["system"]}]},
-         {"role": "user", "content": [{"type": "image", "image": row["image"]},
+         {"role": "user", "content": [{"type": "image", "image": img_path(row)},
                                       {"type": "text", "text": row["user"]}]}]
     if with_answer:
         m.append({"role": "assistant", "content": [{"type": "text", "text": row["answer"]}]})
@@ -100,7 +115,7 @@ MAX_SIDE = 0        # >0 时把输入图等比缩到该边长 (省视觉 token)
 def _prep(processor, row, with_answer=True):
     """一条样本 → 模型输入 + labels (只在 answer 段算 loss)"""
     from PIL import Image
-    img = Image.open(row["image"]).convert("RGB")
+    img = Image.open(img_path(row)).convert("RGB")
     if MAX_SIDE and max(img.size) > MAX_SIDE:
         r = MAX_SIDE / max(img.size)
         img = img.resize((max(1, int(img.size[0] * r)), max(1, int(img.size[1] * r))))
@@ -124,11 +139,12 @@ def evaluate(model, processor, rows, tag: str, max_new=200) -> dict:
     import torch
     from PIL import Image
     ok_n, hit, miss = 0, 0, []
+    _req = REQUIRED          # 🐛 2026-10-09: 原来只在循环里赋值 ⇒ 样本全失败时 UnboundLocalError
     t0 = time.time()
     model.eval()
     for i, row in enumerate(rows, 1):
         try:
-            img = Image.open(row["image"]).convert("RGB")
+            img = Image.open(img_path(row)).convert("RGB")
             prompt = processor.apply_chat_template(build_msgs(row, False), tokenize=False,
                                                    add_generation_prompt=True)
             enc = processor(text=[prompt], images=[img], return_tensors="pt").to(model.device)

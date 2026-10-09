@@ -695,8 +695,10 @@ def save_space(path=None, sim=None, page=None, note=""):
     return r
 
 
-def _apply_tasks(proj, sim=None):
-    """集成式打开: 把总工程里的"活跃任务"写回绑定真源 (走 tools/ss_task_bind.py --activate)。"""
+def _apply_tasks(proj, sim=None, force=False):
+    """集成式打开: 把总工程里的"活跃任务"写回绑定真源 (走 tools/ss_task_bind.py --activate)。
+    force=True 时**即使活跃任务没变也重写一遍** —— 绑定真源里带 `project.canvas_md5`,
+    画布刚被回填后必须重绑, 否则文件里记的还是打开前的画布 md5 (diff 会报 tasks 漂移)。"""
     tk = ((proj.get("tasks") or {}).get("content") or {})
     want = tk.get("active_task") or tk.get("active")
     if not want:
@@ -706,7 +708,7 @@ def _apply_tasks(proj, sim=None):
         cur = (_load_json(cur_file).get("active_task")) if os.path.exists(cur_file) else None
     except Exception:                                                            # noqa: BLE001
         cur = None
-    if cur == want:
+    if cur == want and not force:
         return {"ok": True, "why": "活跃任务已是 %s, 无需改" % want, "active_task": want}
     tool = os.path.join(repo_root(), "tools", "ss_task_bind.py")
     if not os.path.exists(tool):
@@ -773,6 +775,16 @@ def integrated_apply(proj, sim=None, page=None, yes=False):
     lines.append("%s 画布: %s (备份 %s)" % ("✅" if cv.get("written") else "❌",
                                           json.dumps(cv.get("stats") or {}, ensure_ascii=False),
                                           os.path.basename(cv.get("backup") or "-")))
+
+    # ③b 任务重绑定 (必须在画布落地之后): 绑定真源里带 `project.canvas_md5`,
+    #     若只在画布前绑定, 文件里记的是"打开前那块画布"的 md5 ⇒ 总工程 diff 报 tasks 漂移 (2026-10-09 判据集实测)。
+    if cv.get("written"):
+        tr2 = _apply_tasks(proj, sim, force=True)
+        for s in steps:
+            if s.get("what") == "tasks":
+                s["ok"], s["detail"] = bool(tr2.get("ok")), str(tr2.get("why"))
+        if not tr2.get("ok"):
+            lines.append("❌ 任务重绑定(对齐新画布): %s" % tr2.get("why"))
 
     # ④ 面板 (界面态: 由调用方 apply_run_cfg + 切视图)
     pn = proj.get("panel") or {}

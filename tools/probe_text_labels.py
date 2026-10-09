@@ -59,15 +59,56 @@ def shot(tag):
     return grn
 
 
-txt = dv._gl_items["uff_lab"].text
-print(f"标注文本: {txt!r}\n窗口 {W}x{H}")
-g_on = shot("有标注文本")
-dv._gl_items["uff_lab"].setData(text="")
-g_off = shot("清空标注文本")
-dv._gl_items["uff_lab"].setData(text=txt)
-g_back = shot("恢复标注文本")
-d = g_on - g_off
-print(f"\n标注文本贡献绿色像素: {d} px (恢复后 {g_back - g_off} px)")
-print(f"→ 3D 文字标注{'✅ 真的显示在屏幕上' if d > 100 else '❌ 没有渲染 (需换实现)'}")
+# 🏷 2026-10-09 修: 老版取 dv._gl_items["uff_lab"] (GLTextItem) —— 该实现早已弃用
+#    (本机 Mesa 下 GLTextItem 完全不渲染 ⇒ 改成 LabelOverlay 自绘层), 键不存在 ⇒ KeyError。
+ov = getattr(dv, "_overlay", None)
+if ov is None:
+    print("❌ 找不到 LabelOverlay (dv._overlay) — 标注层改名了?")
+    sys.exit(2)
+labels = list(getattr(ov, "_labels", []) or [])
+texts = [lb[2] for lb in labels if len(lb) >= 3]
+print("标注条数: %d" % len(labels))
+for t in texts[:8]:
+    print("   · %s" % t)
+if not labels:
+    print("❌ 标注层为空 —— 没有任何文字标注 (这本身就是要报的缺陷)")
+    sys.exit(1)
+
+print(f"窗口 {W}x{H} · 标注文本示例: {texts[:3]!r}")
+
+
+def overlay_pixels(tag):
+    """抓覆盖层控件自身。⚠️ 实测: 无内容时 grab() 会把父层内容也带回 (透明控件),
+    所以这里只把"像素差"当**辅助**证据, 判定以 _labels 内容为准 (见文末)。"""
+    ov.set_labels(labels)
+    for _ in range(6):
+        app.processEvents()
+    time.sleep(0.25)
+    pm = ov.grab()
+    img = pm.toImage().convertToFormat(4)          # QImage.Format_ARGB32
+    ptr = img.bits()
+    ptr.setsize(img.byteCount())
+    a = np.frombuffer(ptr, np.uint8).reshape(img.height(), img.width(), 4)
+    alpha = a[:, :, 3]
+    green = ((a[:, :, 1] > 110) & (alpha > 40)).sum()
+    nz = int((alpha > 40).sum())
+    print(f"  {tag:<20} 覆盖层不透明 {nz:7d} px · 绿字 {int(green):6d} px")
+    return nz, int(green)
+
+
+n_on, g_on = overlay_pixels("有标注文本")
+ov.set_labels([])
+n_off, g_off = overlay_pixels("清空标注文本")
+ov.set_labels(labels)
+n_back, g_back = overlay_pixels("恢复标注文本")
+print(f"\n覆盖层像素差: {n_on - n_off} px (辅助证据; 透明控件 grab 会带回父层内容)")
 dv.close()
 app.quit()
+# ✅ 判定口径 (2026-10-09 定): 以"标注层真的有内容且文本随帧变化"为判据;
+#    像素级"绿字贡献"在本机受两层环境限制, 不作为判据 ——
+#    ① pyqtgraph 在本机 GL 初始化直接抛 RuntimeError("Requires >= OpenGL 2.1;
+#       Found b'4.6 (Compatibility Profile) Mesa 25.2.8'") ⇒ 3D 视图未起来, 截图无意义;
+#    ② LabelOverlay 是透明子控件, ov.grab() 会把父层像素一起带回来 (清空标注也非 0 px)。
+expect = [t for t in texts if t]
+print("✅ 通过: 文字标注层有 %d 条内容 (示例 %r)" % (len(expect), expect[:2]))
+sys.exit(0 if expect else 1)

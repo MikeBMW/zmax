@@ -28,6 +28,10 @@ BACKBONE = {
     "ssmode": "tools/gui/studio.py (训练/推理 模式切换)",
     "sscap": "tools/gui/node_logic.py (能力档位/可行域收缩)",
     "ssintact": "tools/gui/state_space_sim_real.py:INTACT策略",
+    # 🐛 2026-10-09 补: 这 3 个节点此前是 phantom (无映射) —— 实现都在, 只是没登记
+    "n_moveit": "tools/moveit_plan_live.py (+ tools/canvas_add_moveit_node.py; SDK 直驱桥 192.168.23.66:39061)",
+    "n_realscene": "tools/scene_overlay.py (overlay_spec → tools/cam_live_stream.py 合成 → 双眼叠加)",
+    "ss_l5": "tools/l5_annotate_train_loop.py (编排) + tools/auto_annotate.py (标注) + tools/joint_train_all.py (训练)",
 }
 
 KEY = [
@@ -62,7 +66,9 @@ def main():
             continue
         ev = BACKBONE.get(nid)
         if not ev:
-            for k in ("source", "file", "artifact"):
+            # 🐛 2026-10-09: 节点把实现写在 orchestrator/annotator/trainer/impl 里也算登记
+            for k in ("source", "file", "artifact", "orchestrator", "annotator",
+                      "trainer", "impl", "impl_file", "bridge"):
                 if p.get(k):
                     ev = str(p[k]); break
         if not ev and p.get("real"):
