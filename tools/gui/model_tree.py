@@ -1020,7 +1020,7 @@ class MasterParamMView(QWidget):
 
 
 class MeasureHub(QWidget):
-    """📏 测量 · 数据字典 / 状态空间变量 / 数据总线 —— 三个测量视图收进**一行一个页签**
+    """🧊 已停用备用 (老倪同日改主意: 「测量, 只保留数据总线」) —— 保留实现, 一行即可复活三合一。
     (2026-10-09 老倪: 「测量类的有三行, 太多了, 只保留一行」)。
 
     实现是「搬, 不是复制」: 三个控件对象 (`tree` / `ss_tree` / `bus`) 由 dock 创建后被
@@ -1259,7 +1259,7 @@ class ModelTreeDock(QWidget):
         # 🧭 2026-10-09 老倪「重点 = 配置 + 标定 + 主参数 M」: 只剩 5 项, 全部与工程有真连接
         # 🧭 2026-10-09 老倪: 「测量类只保留一行 + 增加一个标定类」→ 4 行, 全部真连接
         self.cmb_view.addItems(["🧮 主参数 M · 测量/标定/诊断/配置",
-                                "📏 测量 · 数据字典 / 状态空间变量 / 数据总线",
+                                "📏 测量 · 数据总线",
                                 "🎛 标定 · 真源参数与缺口",
                                 "🔧 配置 · 运行开关"])
 
@@ -1387,11 +1387,14 @@ class ModelTreeDock(QWidget):
         self.bus.setVisible(False)
         # lay.addWidget(self.bus, 1)   # 🧊 已收进 MeasureHub (一行一个页签)
 
-        # 📏 2026-10-09 老倪: 「测量类的有三行, 太多了, 只保留一行」→ 收进一个「测量」页 (3 页签,
-        #   控件还是 tree/ss_tree/bus 这**三个原对象**, re-parent 进 hub ⇒ 外部读 self.tree 不受影响)
-        self.measure = MeasureHub(self).attach(self.tree, self.ss_tree, self.bus)
-        self.measure.setVisible(False)
-        lay.addWidget(self.measure, 1)
+        # 📏 2026-10-09 老倪: 「测量, 只保留数据总线」⇒ 面板里只挂 bus。
+        #   数据字典 tree / 状态空间变量 ss_tree **对象与刷新逻辑一律没动**(不删), 只是不挂进面板;
+        #   要恢复三合一: 用 MeasureHub (类还在, 见上) ——
+        #     self.measure = MeasureHub(self).attach(self.tree, self.ss_tree, self.bus)
+        #     self.measure.setVisible(False); lay.addWidget(self.measure, 1)
+        self.bus.setVisible(False)
+        lay.addWidget(self.bus, 1)
+        self.measure = None
         # ────────────────────────────────────────────────────────────────────────────────────────────
         # 🧊 已停用: 上面两处对停用部件的引用
         # ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1516,7 +1519,7 @@ class ModelTreeDock(QWidget):
             return 0
 
     # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪: 测量收 1 行 + 加标定页 ⇒ 4 行)
-    VIEW_KEYS = ("mparam", "measure", "calib", "run_cfg")
+    VIEW_KEYS = ("mparam", "bus", "calib", "run_cfg")
 
     def _switch_view(self, idx):
         """视图切换 (表驱动: 以后加视图只改 VIEW_KEYS + cmb_view 两处)。
@@ -1528,14 +1531,14 @@ class ModelTreeDock(QWidget):
         k = self.VIEW_KEYS[idx] if 0 <= idx < len(self.VIEW_KEYS) else "mparam"
         v = {name: (name == k) for name in self.VIEW_KEYS}
         self.mparam.setVisible(v["mparam"])
-        self.measure.setVisible(v["measure"])
+        self.bus.setVisible(v["bus"])
         self.calib.setVisible(v["calib"])
         self.run_cfg.setVisible(v["run_cfg"])
         # 懒刷新 (只在切到的视图刷新, 省算力)
         if v["mparam"]:
             self.mparam.refresh()
-        elif v["measure"]:
-            self.measure.refresh_current()
+        elif v["bus"]:
+            self.bus.refresh()
         elif v["calib"]:
             self.calib.refresh()
         elif v["run_cfg"]:
@@ -1611,7 +1614,7 @@ class ModelTreeDock(QWidget):
             _k = list(getattr(self, "VIEW_KEYS", ()))
             _i = self.cmb_view.currentIndex()
             _cur = _k[_i] if 0 <= _i < len(_k) else "mparam"
-            _wname = {"mparam": "mparam", "measure": "measure", "calib": "calib",
+            _wname = {"mparam": "mparam", "bus": "bus", "calib": "calib",
                       "run_cfg": "run_cfg"}.get(_cur, "")
             _w = getattr(self, _wname, None) if _wname else None
             if _w is not None and hasattr(_w, "refresh"):
