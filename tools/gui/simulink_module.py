@@ -5348,7 +5348,9 @@ class SimulinkModule(QWidget):
         self.chk_engine_demo.setToolTip("勾选 = 引擎简化世界快速演示 (<0.1s, YOLO 仅末尾采样一次, 非逐帧);\n"
                                         "不勾 (默认) = 🎥 真实化运行: metaworld 物理 + 每帧渲染 → YOLO detect_3d\n"
                                         "(约 5-9 分钟/轮, detect_3d 断点每步可进, 不造假)")
-        tl.addWidget(self.chk_engine_demo)
+        # ⚙️ 2026-10-09 老倪「将这些功能整合进画布右侧的参数标定侧边页面」
+        #   → 本开关不再挂工具栏: 由 model_tree.attach_run_switches() re-parent 到
+        #     「🔧 配置 · 运行开关」页 (同一个 QCheckBox 对象, 引擎侧零改动)
         # 🚀 2026-09-08 L3 扩展: 「L3 全链」勾选 → 真实化跑 full 模式 (插→拔→AOI检测→放回
         #   13 段闭环, 3D 视图可见完整后续动作); 不勾=插装即完成 (原演示, 回归保底)
         self.chk_l3_full = QCheckBox("🚀 L3 全链(插拔+AOI)")
@@ -5356,7 +5358,9 @@ class SimulinkModule(QWidget):
             "勾选 = 🎥 真实化运行完整任务链: 插入光模块 → 拔出 → AOI 光学检测 → 放回\n"
             "(mode=full 13 段, 本机实测 ~20-40s/轮 — GPU YOLO 快; 3D 视图可见 AOI 设备与全部后续动作)\n"
             "不勾 (默认) = 插装即完成 (8 段演示, 回归保底)")
-        tl.addWidget(self.chk_l3_full)
+        # ⚙️ 2026-10-09 老倪「将这些功能整合进画布右侧的参数标定侧边页面」
+        #   → 本开关不再挂工具栏: 由 model_tree.attach_run_switches() re-parent 到
+        #     「🔧 配置 · 运行开关」页 (同一个 QCheckBox 对象, 引擎侧零改动)
         # 🧠 2026-09-11 老倪 (A): L4 演示档的夹爪 yaw 指令改由**流形预测器**决策
         #   勾选 (默认) = Arm B (预测器每帧真调 φ* → 下发角, 3D 面板标注来源);
         #   取消勾选 = Arm A 脚本开环 (仅作对照回退)
@@ -5385,8 +5389,9 @@ class SimulinkModule(QWidget):
             "⚠️ 现状诚实说明 (v5.5.21 实测): v5 预测器在候选编码下代价单调退化 (argmin 落候选边界),\n"
             "   且 ② 段 yaw 不 load-bearing (治具回正+刚性锁掩蔽) → 两臂任务结果相同 (6/6);\n"
             "   3D 面板显示「yaw 指令来源 + 下发角 + φ* + 前向次数 + trained」逐帧可核对")
-        tl.addWidget(self.chk_mani_yaw)
-        tl.addWidget(self.chk_intact_exec)      # 🤖 2026-09-12: L4 → INTACT 节点执行 (默认勾选)
+        # ⚙️ 2026-10-09 老倪「将这些功能整合进画布右侧的参数标定侧边页面」
+        #   → 本开关不再挂工具栏: 由 model_tree.attach_run_switches() re-parent 到
+        #     「🔧 配置 · 运行开关」页 (同一个 QCheckBox 对象, 引擎侧零改动)
         # 🎯 2026-09-14: L4 → DiT 条件通道 (画布 ssintact_dec → ssdec(DiT) 那条连线做成真接)
         self.chk_l4_dit = QCheckBox("🎯 L4 意图 → DiT 精炼")
         self.chk_l4_dit.setChecked(True)        # 老倪: "连线连的就是 DiT, 必须改" → 默认生效
@@ -5399,7 +5404,9 @@ class SimulinkModule(QWidget):
             "  · 诚实边界: 条件投影**未训练** (随机小初始化) ⇒ 通道真实参与前向, 但增益需后续训练;\n"
             "    且 |z_t→流形6维| 实测不可标定 (13 轮/1935 样本 LOSO 测试 R²≤0) → 不走标定映射。\n"
             "  · L3 档链路**一字未改** (l4_cond=None 时逐位相同); 取消勾选 = 回到纯 INTACT。")
-        tl.addWidget(self.chk_l4_dit)
+        # ⚙️ 2026-10-09 老倪「将这些功能整合进画布右侧的参数标定侧边页面」
+        #   → 本开关不再挂工具栏: 由 model_tree.attach_run_switches() re-parent 到
+        #     「🔧 配置 · 运行开关」页 (同一个 QCheckBox 对象, 引擎侧零改动)
         # 🧩 2026-09-16 老倪: "L4 档加一个勾选框「🧩 L2 兼容 (前馈 MLP + YOLO)」"
         #   勾选(默认) = L4 引擎路径 (勾「🤖 INTACT 节点执行」/「🧠 模型执行」) 里 **L2 也真跑**:
         #     ①前馈蒸馏 MLP 真身进 forward (SS_USE_MLP=1; 不设时装配期会被覆盖成 analytic_forward,
@@ -5417,12 +5424,19 @@ class SimulinkModule(QWidget):
             "   R0 真值 + MLP 在训练分布边缘), 墙钟 3.3s → 6.9s (2.1×) ⇒ **要精度优先请取消勾选**\n"
             "   (回到 R0 真值 + 解析前馈; 逐帧 MLP 的收益尚未证明)。\n"
             "取消勾选等效环境变量 SS_L4_L2_COMPAT=0; L2/L3 档不受本勾选框影响 (零回退)。")
-        tl.addWidget(self.chk_l2_compat)
+        # ⚙️ 2026-10-09 老倪「将这些功能整合进画布右侧的参数标定侧边页面」
+        #   → 本开关不再挂工具栏: 由 model_tree.attach_run_switches() re-parent 到
+        #     「🔧 配置 · 运行开关」页 (同一个 QCheckBox 对象, 引擎侧零改动)
         # 🌗 2026-09-29 老倪「中间有一大块空白」: 这 6 个勾选框一直在, 但黑字/深底 = 看不见
         #   (实测对比度 1.11:1) ⇒ 统一成深色 pill (与按钮同高同观感), 勾选态绿字
         for _c in (self.chk_engine_demo, self.chk_l3_full, self.chk_mani_yaw,
                    self.chk_intact_exec, self.chk_l4_dit, self.chk_l2_compat):
             _style_chk(_c)
+        # ⚙️ 2026-10-09 老倪: 6 个运行开关归位到右侧页后, 工具栏只留一个入口按钮 (一键跳过去)
+        self.btn_run_cfg = mk_btn("⚙️ 运行开关", "6 个档位/策略开关 (⚡快演 · 🚀全链 · 🧠流形yaw · "
+                                 "🤖INTACT · 🎯DiT · 🧩L2兼容) 已在右侧『🔧 配置 · 运行开关』页 — "
+                                 "点此跳过去 (含 作用/生效位置/实测代价/适用档位)", self._show_run_cfg, "#8b949e")
+        tl.addWidget(self.btn_run_cfg)
         tl.addWidget(self.btn_state_space)
         tl.addWidget(self.btn_ss_3d)
         # 🧩 2026-09-27 老倪: 「场景叠加」按钮 — 真实视频流上叠加仿真场景检测框
@@ -5694,6 +5708,20 @@ class SimulinkModule(QWidget):
             self.model_tree = ModelTreeDock(self)
             split.addWidget(self.model_tree)
             split.setStretchFactor(split.indexOf(self.model_tree), 0)
+            # ⚙️ 2026-10-09 老倪: 6 个运行开关搬进右侧「🔧 配置 · 运行开关」页
+            #   (同一个 QCheckBox 对象 re-parent ⇒ 所有运行路径读 self.chk_* 零改动)
+            try:
+                _n = self.model_tree.attach_run_switches({
+                    "chk_engine_demo": self.chk_engine_demo,
+                    "chk_l3_full": self.chk_l3_full,
+                    "chk_mani_yaw": self.chk_mani_yaw,
+                    "chk_intact_exec": self.chk_intact_exec,
+                    "chk_l4_dit": self.chk_l4_dit,
+                    "chk_l2_compat": self.chk_l2_compat})
+                if _n != 6:
+                    self._log(f"⚠️ 运行开关只搬进 {_n}/6 个 — 其余仍在原处")
+            except Exception as _ex2:
+                self._log(f"⚠️ 运行开关未搬进侧边页: {_ex2}")
         except Exception as _ex:
             self._log(f"⚠️ 数据字典面板加载失败: {_ex}")
             self.model_tree = None
@@ -9722,6 +9750,21 @@ class SimulinkModule(QWidget):
         _oneshot(self, ms, _clear)
 
     # ══ 🎯 单步跟随 / 定位 / 实现位置 (2026-10-09 老倪: 全面检查每个节点实现 + 单步跳转) ══
+    def _show_run_cfg(self):
+        """⚙️ 运行开关: 把右侧面板切到「🔧 配置 · 运行开关」页 (2026-10-09 老倪)"""
+        d = getattr(self, "model_tree", None)
+        if d is None:
+            self._log("⚠️ 右侧面板未就绪, 打不开运行开关页")
+            return
+        try:
+            d.cmb_view.setCurrentIndex(len(getattr(d, "VIEW_KEYS", ())) - 1)
+            d.run_cfg.setVisible(True)
+            d.run_cfg.refresh()
+            self._log("⚙️ 右侧 → 🔧 配置 · 运行开关 (6 个档位/策略开关; "
+                      "改完下一次 ▶运行 / ⏭单步 即生效, 不用重启)")
+        except Exception as ex:
+            self._log(f"⚠️ 打开运行开关页失败: {ex}")
+
     def _follow_to(self, node, force=False):
         """⏭ 单步跟随: 画布跳到当前节点 (画布太大, 找不到节点)。
 

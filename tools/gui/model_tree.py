@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
                              QScrollArea, QFileDialog,
                              QTableWidget, QTableWidgetItem, QHeaderView,
-                             QMenu, QDialog)
+                             QMenu, QDialog, QCheckBox, QApplication)
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage, QPixmap
 
 
@@ -1590,8 +1590,10 @@ class EngineeringReqWidget(QWidget):
         hd.setStyleSheet("color:#ffd700; font-size:16px; font-weight:700;")
         lay.addWidget(hd)
         tip = QLabel("开发流程: 📋工程需求 → 🧩原子技能 → 🎯场景状态\n"
-                     "→ 📊性能指标 → 🧮数学分析 → ✅稳定性报告")
-        tip.setStyleSheet("color:#8b949e; font-size:17px;")
+                     "→ 📊性能指标 → 🧮数学分析 → ✅稳定性报告\n"
+                     "ℹ️ 诚实标注 (2026-10-09 核): 这 8 个需求值目前只喂**本面板**的验收口径\n"
+                     "(运行汇总/场景状态/性能指标), 引擎与各工具暂不读 → 改了不会影响仿真结果。")
+        tip.setStyleSheet("color:#8b949e; font-size:15px;")
         tip.setWordWrap(True)
         lay.addWidget(tip)
         # 🧩 2026-08-15 老倪: 原子技能 (每个动作的口令/要领/约束 — 统一 token)
@@ -1691,14 +1693,8 @@ class EngineeringReqWidget(QWidget):
             _QTI(item, ["提示词", sk["提示词"]]).setForeground(1, QColor("#58a6ff"))
         self.skill_tree.expandAll()
 
-    def skill_markdown(self):
-        """原子技能 → markdown 表格 (PDF 报告用)"""
-        lines = ["| 动作 | Token | 口令 | 技术要领 | 约束条件 |",
-                 "|:---|:---|:---|:---|:---|"]
-        for sk in self.ATOMIC_SKILLS:
-            lines.append(f"| {sk['skill']} | `{sk['token']}` | {sk['口令']} | "
-                         f"{sk['要领']} | {sk['约束']} |")
-        return "\n".join(lines)
+    # 🗑 2026-10-09 老倪「没有用的都删掉」: 原 `skill_markdown()` (原子技能→markdown 表格,
+    #    注释写"PDF 报告用") 全仓零调用 —— PDF 报告链路并不调它 → 已删除。
 
     def save_req(self):
         req = {k: sp.value() for k, sp in self.spins.items()}
@@ -2269,15 +2265,6 @@ class EngineeringReqWidget(QWidget):
             return f"https://datadrive.world/reports/{name}"
         except Exception:
             return None
-
-    def _open_url(self, url):
-        """尝试容器内打开 URL (xdg-open); 无浏览器则静默 (Windows 手动开 URL)"""
-        try:
-            import subprocess as _sp
-            _sp.Popen(["xdg-open", url],
-                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-        except Exception:
-            pass
 
     def _log_msg(self, msg):
         try:
@@ -2972,6 +2959,226 @@ def _struct_fields(name, val):
 # ════════════════════════════════════════════════════════════════
 # 右侧数据字典面板
 # ════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# ⚙️ 配置 · 运行开关  (2026-10-09 老倪)
+# ══════════════════════════════════════════════════════════════════════════════
+class RunConfigWidget(QWidget):
+    """⚙️ 配置 · 运行开关 —— 画布工具栏上那 6 个档位/策略开关的**归位页**。
+
+    老倪 (2026-10-09): 「①⚡引擎快演 ②🚀L3全链 ③🧠流形yaw ④🤖L4 INTACT ⑤🎯L4意图 ⑥🧩L2兼容
+    —— 再次检查是否有功能, 将这些功能整合进画布右侧的『参数标定』侧边页面,
+    这个页面对应工程的 测量/诊断/标定/配置」。
+
+    做法: **开关对象本身不换** (同一个 QCheckBox 被 re-parent 到本页) ⇒ 引擎与全部运行路径
+    读 self.chk_* 一字不用改 (零回退); 本页只给每个开关配「作用 / 在引擎哪一行生效 /
+    实测代价 / 适用档位」, 让"这个勾到底改了啥"一眼可查、可复制。
+    """
+
+    # (属性名, 分组, 适用档位, 作用, 在引擎哪一行生效, 代价/边界, 是否风险)
+    ROWS = [
+        ("chk_engine_demo", "运行方式", "全部档位",
+         "勾 = 引擎简化世界快速演示 (<0.1s, YOLO 仅末尾采样 1 次)\n"
+         "不勾 = 真实化运行: metaworld 物理 + 每帧渲染 → YOLO detect_3d",
+         "simulink_module.py:7150 分流 _start_state_space_sim / _start_real_sim",
+         "不勾 ≈5-9 分钟/轮 · 快演只用来验「接线通不通」, 判精度必须不勾", False),
+        ("chk_l3_full", "任务链", "仅 L2 档有效",
+         "勾 = 跑满 13 段 (插入 → 拔出 → AOI 检测 → 放回)\n"
+         "不勾 = 插装即完成 (8 段演示)",
+         "simulink_module.py:13601 → _l3_mode=\"full\"",
+         "档位 L3/L4 自动 full (勾选框不起作用) · 实测 20-40s/轮", False),
+        ("chk_mani_yaw", "策略", "仅 L4 演示档",
+         "勾 = L4 演示 ② 段「夹爪绕 z 转 90°」由**流形预测器**决策 (Arm B)\n"
+         "不勾 = 脚本开环写死 (Arm A, 作对照)",
+         "simulink_module.py:13680 → 引擎 state_space_sim_real.py:407/2511 (mani_yaw=)",
+         "用途就是拿它做 A/B, 看流形预测器与脚本开环差多少", False),
+        ("chk_intact_exec", "模型接管", "仅 L4 档",
+         "勾 = SS_INTACT=1: L4 档 u_ff 槽位交给 INTACT 真推理 (每 8 步一次,\n"
+         "权重走软链指针 intact_l4_current) · 不勾 = 回 L4Demo 稳定演示",
+         "引擎 state_space_sim_real.py:435 (os.environ SS_INTACT)",
+         "⚠️ 域内微调 ckpt 离线判闸未过 (MAE≈常数基线) ⇒ 本档可能失败", True),
+        ("chk_l4_dit", "模型接管", "仅 L4 档",
+         "勾 = SS_L4_DIT=1, β=0.5, 每 16 步一次真前向, 与 INTACT 融合\n"
+         "u = (1−β)·u_L4 + β·u_DiT · 不勾 = 纯 INTACT (逐位零回退)",
+         "引擎 state_space_sim_real.py:1316 / 1479",
+         "⚠️ 条件投影未训练 (随机小初始化): 通道真参与前向, 增益待训练; "
+         "|z_t→流形6维| 实测不可标定 (R²≤0)", True),
+        ("chk_l2_compat", "模型接管", "仅 L4 档",
+         "勾 = SS_USE_MLP=1 + YOLO 每帧真检测 (L2 在 L4 档内**真跑**: 前馈蒸馏 MLP 真身 + 真实视觉)\n"
+         "不勾 = 回 R0 真值 + 解析前馈",
+         "引擎 state_space_sim_real.py:546 (os.environ SS_USE_MLP)",
+         "⚠️ 实测代价 (seed104/120 步): 终点距离 0.42mm → 6.82mm (16×), 耗时 2.1× "
+         "⇒ 要精度优先请取消勾选", True),
+    ]
+    # 原厂默认 (「↺ 恢复默认」按这个还原, 与既有实测口径一致)
+    DEFAULTS = {"chk_engine_demo": False, "chk_l3_full": False, "chk_mani_yaw": True,
+                "chk_intact_exec": True, "chk_l4_dit": True, "chk_l2_compat": True}
+
+    def __init__(self, module=None, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self._cks = {}       # 属性名 → 真开关控件 (从画布工具栏搬来的那一个)
+        self._slots = {}     # 属性名 → 放开关的横向布局
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(8)
+
+        self.lbl_hd = QLabel("⚙️ 配置 · 运行开关 (档位 / 策略)")
+        self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
+        lay.addWidget(self.lbl_hd)
+        self.lbl_sub = QLabel("本页 = 工程的「配置」面 (对应 测量 / 诊断 / 标定 / 配置 四轴)。"
+                              "开关只服务状态空间画布的 ▶运行 / ⏭单步; 改完**下一次运行即生效**, 不用重启。")
+        self.lbl_sub.setWordWrap(True)
+        self.lbl_sub.setStyleSheet("color:#9aa4b2;font-size:12px;background:transparent;")
+        lay.addWidget(self.lbl_sub)
+
+        self.lbl_cap = QLabel("当前档位: —")
+        self.lbl_cap.setStyleSheet("color:#ffd700;font-size:14px;font-weight:bold;background:transparent;")
+        lay.addWidget(self.lbl_cap)
+
+        for g in ("运行方式", "任务链", "策略", "模型接管"):
+            rows = [r for r in self.ROWS if r[1] == g]
+            if not rows:
+                continue
+            card = QFrame()
+            card.setStyleSheet("QFrame{background:#161b22;border:1px solid #30363d;border-radius:6px;}")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(8, 6, 8, 6)
+            cl.setSpacing(6)
+            t = QLabel(g)
+            t.setStyleSheet("color:#58a6ff;font-size:13px;font-weight:bold;background:transparent;"
+                            "border:none;")
+            cl.addWidget(t)
+            for (key, _g, cap, use, where, cost, risk) in rows:
+                cl.addWidget(self._mk_row(key, cap, use, where, cost, risk))
+            lay.addWidget(card)
+
+        # 诊断行 (可复制) + 两个按钮
+        self.lbl_state = QLabel("")
+        self.lbl_state.setWordWrap(True)
+        self.lbl_state.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_state.setStyleSheet("color:#7ee787;font-size:12px;font-family:Consolas,monospace;"
+                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;"
+                                     "padding:6px;")
+        lay.addWidget(self.lbl_state)
+        hb = QHBoxLayout()
+        hb.setSpacing(6)
+        b1 = QPushButton("↺ 恢复默认")
+        b1.setToolTip("恢复出厂默认: 快演✗ / 全链✗ / 流形yaw✓ / INTACT✓ / DiT✓ / L2兼容✓")
+        b1.clicked.connect(self._restore)
+        b2 = QPushButton("📋 复制当前配置")
+        b2.setToolTip("把这 6 个开关的当前状态复制到剪贴板 (可粘进工单/交接记录)")
+        b2.clicked.connect(self._copy)
+        for b in (b1, b2):
+            b.setStyleSheet("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                            "border-radius:4px;padding:3px 10px;font-size:13px;}"
+                            "QPushButton:hover{background:#30363d;}")
+            hb.addWidget(b)
+        hb.addStretch(1)
+        lay.addLayout(hb)
+        lay.addStretch(1)
+
+    # ── 单行: 开关槽 + 适用档位 + 作用 + 生效位置 + 代价 ──
+    def _mk_row(self, key, cap, use, where, cost, risk):
+        f = QFrame()
+        f.setStyleSheet("QFrame{background:#0d1117;border:1px solid #21262d;border-radius:5px;}")
+        v = QVBoxLayout(f)
+        v.setContentsMargins(8, 6, 8, 6)
+        v.setSpacing(3)
+        top = QHBoxLayout()
+        top.setSpacing(6)
+        holder = QWidget()
+        hl = QHBoxLayout(holder)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(4)
+        top.addWidget(holder, 1)
+        chip = QLabel(cap)
+        chip.setStyleSheet("color:#8b949e;font-size:11px;background:#21262d;"
+                           "border:1px solid #30363d;border-radius:8px;padding:1px 6px;")
+        top.addWidget(chip, 0)
+        v.addLayout(top)
+        for text, color, size in ((use, "#c9d1d9", 12),
+                                  ("生效: " + where, "#8b949e", 11),
+                                  (("代价: " if risk else "") + cost,
+                                   ("#f0883e" if risk else "#8b949e"), 11)):
+            lb = QLabel(text)
+            lb.setWordWrap(True)
+            lb.setStyleSheet(f"color:{color};font-size:{size}px;background:transparent;border:none;")
+            v.addWidget(lb)
+        self._slots[key] = hl
+        return f
+
+    # ── 把画布工具栏上的 6 个开关搬进来 (同一个控件对象, 行为零改变) ──
+    def attach_switches(self, mapping):
+        got = 0
+        for key, chk in (mapping or {}).items():
+            sl = self._slots.get(key)
+            if sl is None or chk is None:
+                continue
+            try:
+                chk.setStyleSheet(
+                    "QCheckBox{color:#c9d1d9;font-size:14px;background:transparent;padding:2px;}"
+                    "QCheckBox:checked{color:#3fb950;font-weight:bold;}")
+            except Exception:
+                pass
+            sl.addWidget(chk)          # 自动 re-parent (工具栏那边同时被移走)
+            try:
+                chk.stateChanged.connect(self._on_toggle)
+            except Exception:
+                pass
+            self._cks[key] = chk
+            got += 1
+        self.refresh()
+        return got
+
+    def _on_toggle(self, *_a):
+        self.refresh()
+
+    # ── 档位 (能力档位节点 cap_level) ──
+    def _cap(self):
+        lvl = None
+        try:
+            for n in getattr(self.module, "nodes", []) or []:
+                p = n.get("params", {}) or {}
+                if p.get("cap_switch"):
+                    lvl = p.get("cap_level") or lvl
+        except Exception:
+            pass
+        if lvl is None:
+            lvl = getattr(self.module, "_cap_level", None)
+        lvl = str(lvl or "L2").upper()
+        return {"L4D": "L4"}.get(lvl, lvl)
+
+    def refresh(self):
+        cap = self._cap()
+        self.lbl_cap.setText(f"当前档位: {cap}   (画布「能力档位」节点 cap_level)")
+        parts = []
+        for (key, _g, capuse, _u, _w, _c, _r) in self.ROWS:
+            chk = self._cks.get(key)
+            if chk is None:
+                continue
+            nm = (chk.text() or key).strip()
+            hit = ("全部档位" in capuse) or (cap in capuse)
+            parts.append(f"{nm}={'开' if chk.isChecked() else '关'}{'' if hit else '(本档无效)'}")
+        self.lbl_state.setText(" · ".join(parts) if parts else "⚠️ 开关未接入")
+
+    def _restore(self):
+        for key, val in self.DEFAULTS.items():
+            c = self._cks.get(key)
+            if c is not None:
+                try:
+                    c.setChecked(bool(val))
+                except Exception:
+                    pass
+        self.refresh()
+
+    def _copy(self):
+        try:
+            QApplication.clipboard().setText(
+                f"Z-MAX 运行开关 · 档位 {self._cap()} · " + self.lbl_state.text())
+        except Exception:
+            pass
+
+
 class ModelTreeDock(QWidget):
     export_done = pyqtSignal(str)  # 🐛 2026-08-19: 导出上传走后台线程, 完成信号回主线程
     """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析
@@ -2989,14 +3196,22 @@ class ModelTreeDock(QWidget):
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
 
-        # 下拉菜单: 视图切换 (参考 MATLAB Workspace 数据字典)
+        # 下拉菜单: 视图切换 —— 🧭 2026-10-09 老倪: 「这个页面对应工程的 测量 诊断 标定 配置」
+        #   ⇒ 视图**按四轴分组命名** (顺序=轴序), 索引→视图的映射改成表驱动 (见 _switch_view)
         hdr = QHBoxLayout()
         hdr.setSpacing(4)
         self.cmb_view = QComboBox()
-        self.cmb_view.addItems(["📚 数据字典", "⚙️ 参数标定", "🧮 数学分析",
-                                "🎛 状态空间设计", "📐 现场标定", "📊 性能指标",
-                                "🎯 场景状态", "🚀 运行汇总", "📋 工程需求",
-                                "🔌 数据总线"])
+        self.cmb_view.addItems(["📏 测量 · 数据字典",
+                                "📏 测量 · 状态空间变量",
+                                "📏 测量 · 性能指标",
+                                "📏 测量 · 数据总线",
+                                "🔍 诊断 · 运行汇总",
+                                "🔍 诊断 · 场景状态",
+                                "🎛 标定 · 参数标定",
+                                "🎛 标定 · 现场标定",
+                                "🎛 标定 · 数学分析",
+                                "🔧 配置 · 工程需求",
+                                "🔧 配置 · 运行开关"])
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)
         # 🧩 导出能力库 Excel (2026-08-19 老倪: feature 导出 → datadrive.world 可下载)
@@ -3066,6 +3281,12 @@ class ModelTreeDock(QWidget):
         self.eng_req = EngineeringReqWidget(module)
         self.eng_req.setVisible(False)
         lay.addWidget(self.eng_req)
+
+        # ⚙️ 2026-10-09 老倪: 「将①~⑥这 6 个运行开关整合进右侧『参数标定』侧边页面」
+        #   (本页 = 工程的「配置」面; 开关对象由画布 re-parent 进来, 见 attach_run_switches)
+        self.run_cfg = RunConfigWidget(module)
+        self.run_cfg.setVisible(False)
+        lay.addWidget(self.run_cfg)
 
         self.lbl_hint = QLabel("")
         self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:14px; background:transparent; border:none;")
@@ -3202,49 +3423,57 @@ class ModelTreeDock(QWidget):
             pass
 
     # ── 视图切换 ──
+    def attach_run_switches(self, mapping):
+        """⚙️ 把画布工具栏上的 6 个运行开关搬进「🔧 配置 · 运行开关」页 (2026-10-09 老倪)。
+        开关对象不换 (re-parent) ⇒ 引擎/运行路径读 self.chk_* 不受影响。"""
+        try:
+            return self.run_cfg.attach_switches(mapping)
+        except Exception as ex:
+            try:
+                self.module._log(f"⚠️ 运行开关页接入失败: {ex}")
+            except Exception:
+                pass
+            return 0
+
+    # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪: 按 测量/诊断/标定/配置 四轴分组)
+    VIEW_KEYS = ("tree", "ss_tree", "perf", "bus", "run_summary", "scene_state",
+                 "pole_place", "stage_calib", "math", "eng_req", "run_cfg")
+
     def _switch_view(self, idx):
-        math = idx == 2
-        ss = idx == 3
-        calib = idx == 1
-        field = idx == 4          # 📐 现场标定
-        perf = idx == 5           # 📊 性能指标
-        scene = idx == 6          # 🎯 场景状态
-        rsum = idx == 7           # 🚀 运行汇总
-        eng = idx == 8            # 📋 工程需求
-        bus = idx == 9            # 🔌 数据总线
-        show = math or ss
-        self.tree.setVisible(not show and not field and not perf and not scene
-                             and not rsum and not eng and not bus)
-        self.ss_tree.setVisible(ss)
-        self.bus.setVisible(bus)
-        self.lbl_math.setVisible(math)
-        self.plot.setVisible(math)
-        self.response.setVisible(math)
-        # 🎯 2026-08-15 老倪: 参数标定视图 → 显示极点配置设计器 + 数据字典树
-        self.pole_place.setVisible(calib)
-        # 📐 2026-08-15 老倪: 现场标定视图 → 三步向导
-        self.stage_calib.setVisible(field)
-        # 📊 2026-08-15 老倪: 性能指标视图 → 动作分解表
-        self.perf.setVisible(perf)
-        if perf:
+        """视图切换 (表驱动 — 2026-10-09 加入「配置 · 运行开关」时按四轴重排,
+        不再手写 10 个 if/索引, 以后加视图只改 VIEW_KEYS + cmb_view 两处)"""
+        k = self.VIEW_KEYS[idx] if 0 <= idx < len(self.VIEW_KEYS) else "tree"
+        v = {name: (name == k) for name in self.VIEW_KEYS}
+        # 🎛 参数标定视图: 极点配置设计器 + 数据字典树同屏 (原有行为保留)
+        self.tree.setVisible(v["tree"] or v["pole_place"])
+        self.ss_tree.setVisible(v["ss_tree"])
+        self.bus.setVisible(v["bus"])
+        self.perf.setVisible(v["perf"])
+        self.run_summary.setVisible(v["run_summary"])
+        self.scene_state.setVisible(v["scene_state"])
+        self.pole_place.setVisible(v["pole_place"])
+        self.stage_calib.setVisible(v["stage_calib"])
+        self.eng_req.setVisible(v["eng_req"])
+        self.run_cfg.setVisible(v["run_cfg"])
+        self.lbl_math.setVisible(v["math"])
+        self.plot.setVisible(v["math"])
+        self.response.setVisible(v["math"])
+        # 懒刷新 (只在切到的视图刷新, 省算力)
+        if v["perf"]:
             self.perf.refresh_metrics()
-        # 🎯 2026-08-15 老倪: 场景状态视图 → PM 状态定义
-        self.scene_state.setVisible(scene)
-        if scene:
+        if v["scene_state"]:
             self.scene_state.refresh_states()
-        # 🚀 2026-08-15 老倪: 运行汇总视图
-        self.run_summary.setVisible(rsum)
-        if rsum:
+        if v["run_summary"]:
             self.run_summary.refresh_summary()
-        # 📋 2026-08-15 老倪: 工程需求视图 (总输入)
-        self.eng_req.setVisible(eng)
-        if ss:
+        if v["run_cfg"]:
+            self.run_cfg.refresh()
+        if v["ss_tree"]:
             self._show_state_space()
-        elif bus:
+        elif v["bus"]:
             self.bus.refresh()
-        elif math:
+        elif v["math"]:
             self._show_math()
-        else:
+        elif v["tree"] or v["pole_place"]:
             self.refresh()
 
     # ── 数据字典树 (系统参数 + 节点 + 参数) ──
@@ -3658,14 +3887,8 @@ def _get_metaworld_view(camera_name="corner2"):
         return cache or None
 
 
-def _project_3d_to_2d(p, cam):
-    """世界 3D → 相机 2D 像素 (原始未旋转帧坐标; mujoco 相机看向 -z)"""
-    pc = cam["mat"] @ (np.asarray(p, dtype=float) - cam["pos"])
-    d = -pc[2]
-    f = (cam["H"] / 2.0) / np.tan(np.radians(cam["fovy"]) / 2.0)
-    px = cam["W"] / 2.0 + pc[0] * f / d
-    py = cam["H"] / 2.0 - pc[1] * f / d
-    return px, py
+# 🗑 2026-10-09 老倪「没有用的都删掉」: 原 `_project_3d_to_2d(p, cam)` 全仓零调用 (仅定义无引用) → 已删除。
+#    3D→2D 投影现由画布 overlay 链路各自的实现负责 (simulink_module / state_space_sim_real)。
 
 
 _YOLO_MODEL = None
@@ -3839,6 +4062,6 @@ def _sig_val(v):
     return "[" + ", ".join(f"{x:.4f}" for x in flat) + "]"
 
 
-def _fmt_sig(v):
-    return _sig_val(v)
+# 🗑 2026-10-09 老倪「没有用的都删掉」: 原 `_fmt_sig(v)` (仅 `return _sig_val(v)`) 全仓零调用 → 已删除。
+#    (同文件 _sig_val 仍在用; 这个只是一层没人调的别名壳)
 

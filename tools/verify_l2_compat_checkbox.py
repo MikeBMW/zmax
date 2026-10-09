@@ -41,7 +41,30 @@ if cb is not None:
         repr(cb.text()))
     chk("② 已挂进布局 (parent 非空)", cb.parent() is not None,
         type(cb.parent()).__name__ if cb.parent() is not None else "None")
-    chk("③ 与 chk_intact_exec 同一工具栏", cb.parent() is getattr(m, "chk_intact_exec").parent())
+    # ⚙️ 2026-10-09 老倪: 6 个运行开关已从画布工具栏**搬进**右侧「🔧 配置 · 运行开关」页
+    #   ⇒ 判据改为: 两者仍落在**同一个页面容器** (每行有各自的行容器 ⇒ 不比较 parent 相等),
+    #      且确实是 re-parent 的同一个对象 (引擎读 self.chk_* 零改动)
+    def _page_of(w):
+        _p, _dep = w, 0
+        try:
+            import model_tree as _MT
+        except Exception:
+            return None
+        while _p is not None and _dep < 12:
+            if isinstance(_p, _MT.RunConfigWidget):
+                return _p
+            _p = _p.parent()
+            _dep += 1
+        return None
+
+    _pg1, _pg2 = _page_of(cb), _page_of(getattr(m, "chk_intact_exec"))
+    chk("③ 与 chk_intact_exec 同一页面容器", _pg1 is not None and _pg1 is _pg2,
+        type(_pg1).__name__ if _pg1 is not None else "None")
+    _d = getattr(m, "model_tree", None)
+    _in2 = _d is not None and _d.run_cfg is _pg1
+    chk("③b 已归位到右侧「配置 · 运行开关」页", _in2)
+    chk("③c 同一对象 (re-parent, 引擎读 self.chk_* 零改动)",
+        _d is not None and _d.run_cfg._cks.get("chk_l2_compat") is cb)
     chk("④ 默认勾选", cb.isChecked())
     tt = cb.toolTip() or ""
     chk("⑤ tooltip 写明实测代价", ("6.82" in tt) and ("0.42" in tt) and ("SS_L4_L2_COMPAT" in tt),
