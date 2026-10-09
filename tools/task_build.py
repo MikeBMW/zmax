@@ -127,7 +127,8 @@ def build(scene, calib, i):
         "name": scene["name"], "recipe_type": p["task_type"],
         "scene_ref": scene["scene_id"], "site": "SITE-A.ST11",
         "applies_segments": p["applies"], "excluded_segments": p["excluded"],
-        "steps": [{"t": s.get("t"), "dur": s.get("dur"), "name": s.get("name")}
+        "steps": [{"t": s.get("t"), "dur": s.get("dur"), "name": s.get("name"),
+                   "desc": s.get("desc"), "force": s.get("force")}
                   for s in scene.get("steps", [])],
         "variants": variants_of(scene),
         "overrides": p["overrides"],

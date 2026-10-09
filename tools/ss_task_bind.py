@@ -127,6 +127,9 @@ def build(activate=None):
         tasks.append({
             "task_id": t["task_id"], "name": t["name"], "recipe_type": t["recipe_type"],
             "scene_ref": t["scene_ref"], "site": t["site"],
+            "steps": [{"t": s.get("t"), "dur": s.get("dur"), "name": s.get("name"),
+                       "desc": s.get("desc"), "force": s.get("force")}
+                      for s in t.get("steps", [])],
             "applies_segments": t["applies_segments"],
             "excluded_segments": t.get("excluded_segments", []),
             "enabled_nodes": sorted(on), "disabled_nodes": disabled,
@@ -190,9 +193,9 @@ def export_project(doc, path):
             "project": doc["project"],
             "segment_node_map": doc["segment_node_map"],
             "tasks": [{k: t[k] for k in ("task_id", "name", "recipe_type", "scene_ref", "site",
-                                         "applies_segments", "excluded_segments", "enabled_nodes",
-                                         "disabled_nodes", "overrides", "trigger", "loop", "targets",
-                                         "orders_rule", "blocked_by_site")}
+                                         "steps", "applies_segments", "excluded_segments",
+                                         "enabled_nodes", "disabled_nodes", "overrides", "trigger",
+                                         "loop", "targets", "orders_rule", "blocked_by_site")}
                       for t in doc["tasks"]],
         },
     }

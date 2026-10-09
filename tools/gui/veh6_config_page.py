@@ -205,8 +205,10 @@ class ConfigCenterPage(QWidget):
         proj = bind.get("project", {})
         # 1) 任务配置 (首屏) —— 含"状态空间工程"配置清单列
         self.tasks_table = _mk_table(
-            ["任务ID", "类型", "适用段", "粒度", "启用节点", "禁用节点", "档位(开)", "活跃", "状态"],
-            [[t["task_id"], t["recipe_type"], f"{len(t['applies_segments'])}/8",
+            ["任务ID", "类型", "工艺步骤", "适用段", "粒度", "启用节点", "禁用节点", "档位(开)", "活跃", "状态"],
+            [[t["task_id"], t["recipe_type"],
+              " → ".join(s["name"] for s in t.get("steps", [])),
+              f"{len(t['applies_segments'])}/8",
               len(t.get("variants", [])),
               (len(bmap[t["task_id"]]["enabled_nodes"]) if t["task_id"] in bmap else "—"),
               (len(bmap[t["task_id"]]["disabled_nodes"]) if t["task_id"] in bmap else "—"),

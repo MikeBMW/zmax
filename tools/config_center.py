@@ -202,11 +202,14 @@ def cmd_tasks(a):
     if a.json:
         print(json.dumps(d, ensure_ascii=False, indent=1)); return 0
     print(f"工艺域 · 任务配置 ({len(ts)} 条, 真源 config/tasks/tasks.json)")
-    hdr = f"{'任务ID':<20}{'类型':<16}{'适用段':>5}{'粒度':>4}  {'触发':<22}目标"
+    hdr = f"{'任务ID':<20}{'类型':<16}{'工艺步骤':<34}{'段':>3}{'粒度':>4}  目标"
     print(hdr); print("-" * len(hdr))
     for t in ts:
-        print(f"{t['task_id']:<20}{t['recipe_type']:<16}{len(t['applies_segments']):>5}"
-              f"{len(t['variants']):>4}  {t['trigger'][:20]:<22}{t['targets']}")
+        steps = " → ".join(s["name"] for s in t.get("steps", []))
+        if len(steps) > 32:
+            steps = steps[:31] + "…"
+        print(f"{t['task_id']:<20}{t['recipe_type']:<16}{steps:<34}"
+              f"{len(t['applies_segments']):>3}{len(t['variants']):>4}  {t['targets']}")
     print("\n看一条详情: python3 tools/config_center.py task TASK-02-HANDLE")
     return 0
 
@@ -227,6 +230,10 @@ def cmd_task(a):
     if t["excluded_segments"]:
         print(f"  不适用段 : " + " · ".join(t["excluded_segments"]) + "   ← " + t["_note"])
     print(f"  步骤     : " + " → ".join(s["name"] for s in t["steps"]))
+    for s in t["steps"]:
+        d = str(s.get("desc") or "")
+        print(f"      · {s['name']}({s.get('dur', '?')}s): {d[:76]}"
+              + (f"   力: {s['force']}" if s.get("force") else ""))
     print(f"  物料粒度 : " + " · ".join(f"{v['level']}({v['name']} {v.get('size_mm')})" for v in t["variants"]))
     print(f"  参数覆盖 : {json.dumps(t['overrides'], ensure_ascii=False)}")
     print(f"  触发/循环: {t['trigger']} · {t['loop']}")
@@ -261,6 +268,12 @@ def cmd_bind(a):
         print(f"  工程     : {doc['project']['name']}  {doc['project']['canvas_file']}")
         print(f"      {doc['project']['nodes']} 节点 / {doc['project']['links']} 连线 · "
               f"md5 {doc['project']['canvas_md5'][:12]} · 活跃 {doc['active_task']}")
+        print(f"  工艺步骤 : " + " → ".join(
+            f"{s['name']}({s.get('dur', '?')}s)" for s in t.get("steps", [])))
+        for s in t.get("steps", []):
+            d = str(s.get("desc") or "")
+            if d:
+                print(f"      · {s['name']}: {d[:78]}" + (f"   力: {s['force']}" if s.get("force") else ""))
         print(f"  适用段   : {len(t['applies_segments'])}/{len(sb.SEG_ALL)}  " + " · ".join(t['applies_segments']))
         if t["excluded_segments"]:
             print(f"  不适用段 : " + " · ".join(t["excluded_segments"]))
