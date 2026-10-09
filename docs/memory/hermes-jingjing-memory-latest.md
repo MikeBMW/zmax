@@ -40,25 +40,27 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms
 §
 LoRA需merge(否则零动作伪装没提升):merge_lora_ckpt.py
 §
-ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点根=/www/wwwroot/datadrive.world; 新网页挂首页入口; 免密不通→ZMAX_ECS_PW; 公网只读/ov+/st, nginx须^~
+ECS relay: /agent/{prompt,reply}+/hil/state+/orin/status; 站点=/www/wwwroot/datadrive.world; 新页挂首页; 免密不通→ZMAX_ECS_PW; 公网只读/ov+/st;nginx须^~
 §
 遥测DDS仅测试/标定用(量产关; 开关env>文件~/.zmax_telemetry_mode; 守护zmax-dds-ss.service)
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers↑
 §
-工程根~/zmax=独立仓库(MikeBMW/zmax public); 数据/venv/外部仓库都在zmax内(zmax/zmax_data=模型+数据+HF+secrets/zmax.env); 训练带HF_HOME=zmax_data/hf_cache; ld.so.conf指gui-venv311的nvidia lib; 入库=代码+docs/skills/hermes-all+docs/memory(守卫repo_guard+secret_scan)
+工程根~/zmax=独立仓库(MikeBMW/zmax); 数据/venv/外部仓库在其内(zmax_data=模型+数据+HF+secrets/zmax.env); 训练带HF_HOME=zmax_data/hf_cache; ld.so.conf指gui-venv311 nvidia lib; 入库=代码+docs/skills+docs/memory(repo_guard+secret_scan)
 §
 控制台: 禁反复重启GUI(投诉过;改码攒批+先问); 字体一次到位
 §
 场景叠加: overlay_spec按origin存框; 手眼TSAI闭环1.74mm
 §
-我=主节点: 工控机+Orin全归我; AOI(.23.23)用10082/10083(禁10084/10085); 更新=aoi_remote_deploy.py; 通道=agent_hub(8794,~/zmax_data/agent_hub)+station_cmd.py
+工程库=data/database/zmax_engineering.db(单文件=一套工程; tools/engineering_db.py build|check; 服务8798=zmax-engdb.service; GUI只认.db)
+§
+我=主节点: 工控机+Orin全归我; AOI(.23.23)=10082/10083(禁10084/85); 更新=aoi_remote_deploy.py; 通道=agent_hub+station_cmd.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=zmax_data/rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器); 8793页真源=tools/web/station.html
+位姿真源=zmax_data/rokae_sdk/tcp_out/latest.json(全0=陈旧⇒restart容器); 8793页=tools/web/station.html
 §
-运动安全: 抬升闸已放开(10-09老倪现场口授: 取消'需上升⇒整单拒发'; 仍须慢速+警报在先); 点1~7同平面z=0.1727; 腿速名义0.0935×speed但实际≈名义/10(实测14→1.34mm/s,要快给1000); 危险点/新点位老倪先做; 台账INCIDENT-INDEX.md; 听'要碰撞'先agent_all_stop.py
+运动安全: 抬升闸已放开(10-09口授;仍需慢速+警报在先); 点1~7同平面z=0.1727; 腿速实际≈名义/10(要快给1000); 危险/新点位老倪先做; 台账INCIDENT-INDEX.md; 听'要碰撞'先agent_all_stop.py
 §
 金手指=19根(判据图已收口;档24000×8);HIL终端口/hil/term/*(8795)
 §
