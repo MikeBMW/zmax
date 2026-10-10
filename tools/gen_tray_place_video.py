@@ -122,6 +122,7 @@ def task_spec(task_id=TASK_ID):
 MODULES = (("peg", "", 0), ("peg2", "2", 1), ("peg3", "3", 2))
 MODULE_NAMES = tuple(x[0] for x in MODULES)
 TR_KEYS = ("t", "x", "peg", "peg_head", "gripper", "stage", "done", "dist", "u_ff", "u_sat",
+           "l4_du", "l4_veto", "l4_f",
            "residual", "contact_p", "force", "force_grasp", "target", "grasped", "obs",
            "u_ff_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec", "u_exec_vec", "latent_vec",
            "corrected_vec", "residual_vec", "z_k_vec", "v_vec", "prior_vec", "grip_lock")
@@ -434,8 +435,10 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
         u[3] = 0.0
         # 🛡 L4 保安全 (每帧): L5 节拍→速度指令 + 限速 + 力上限否决 + z 下限 + DiT 精炼
         u[:3] *= l45.plan.speed_scale          # 默认 ×1.0 (节拍达不到就不硬来)
+        _u_pre_l4 = np.asarray(u[:3], dtype=float).copy()          # L4 输入 (留逐帧证据)
         u_sat, _l4info = l45.l4_check(u, stage=st, force_env=f_env,
                                       z=float(hand[2]), u_prev=u_prev)   # ⚠️ z 下限口径 = **手位** (HAND_MIN_Z), 不是 TCP
+        _l4_du = float(np.linalg.norm(np.asarray(u_sat[:3], dtype=float) - _u_pre_l4))   # L4 本帧改了多大
         u_exec = np.asarray(ss.execr.execute(u_sat), dtype=float)
         if u_exec.ndim == 0:
             u_exec = np.zeros(4)
@@ -509,6 +512,9 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
             tr["dist"].append(dist_h)
             tr["u_ff"].append(float(np.linalg.norm(u_ff[:3])))
             tr["u_sat"].append(float(np.linalg.norm(u_sat[:3])))
+            tr["l4_du"].append(round(_l4_du, 6))                     # 🛡 L4 逐帧介入量 (0 = 本帧未动)
+            tr["l4_veto"].append(bool(_l4info.get("force_veto")))
+            tr["l4_f"].append(round(float(f_env), 4))
             tr["residual"].append(r_scalar)
             tr["contact_p"].append(contact_p)
             tr["force"].append(force_norm)

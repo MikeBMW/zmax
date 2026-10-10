@@ -184,7 +184,7 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
     res_ema = None            # 残差 EMA (反馈前滤波, 去掉观测噪声)
     prev18 = None
     tr = {k: [] for k in ("t", "x", "peg", "peg_head", "gripper", "stage", "done",
-                          "dist", "u_ff", "u_sat", "residual", "contact_p", "force",
+                          "dist", "u_ff", "u_sat", "l4_du", "l4_veto", "l4_f", "residual", "contact_p", "force",
                           "force_grasp", "target", "grasped", "obs",
                           "u_ff_vec", "u_fb_vec", "u_fuse_vec", "u_limit_vec", "u_exec_vec",
                           "latent_vec", "corrected_vec", "residual_vec", "z_k_vec", "v_vec",
@@ -281,8 +281,10 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
         u[3] = sched.gripper_cmd(u_ff[3])
         # 🛡 L4 保安全 (每帧): L5 节拍→速度指令 + 限速 + 力两层口径 + z 下限 + 档位(INTACT 平滑/DiT 精炼)
         u[:3] *= l45.plan.speed_scale              # 默认 ×1.0 (节拍达不到就不硬来)
+        _u_pre_l4 = np.asarray(u[:3], dtype=float).copy()          # L4 输入 (留逐帧证据)
         u_sat, _l4info = l45.l4_check(u, stage=st, force_env=float(f_env),
                                       z=None, u_prev=u_prev)
+        _l4_du = float(np.linalg.norm(np.asarray(u_sat[:3], dtype=float) - _u_pre_l4))   # L4 本帧改了多大
         u_exec = np.asarray(ss.execr.execute(u_sat), dtype=float)
         if u_exec.ndim == 0:
             u_exec = np.zeros(4)
@@ -326,6 +328,9 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
         tr["dist"].append(dist_h if grasped else d_xy)
         tr["u_ff"].append(float(np.linalg.norm(u_ff[:3])))
         tr["u_sat"].append(float(np.linalg.norm(u_exec[:3])))
+        tr["l4_du"].append(round(_l4_du, 6))                     # 🛡 L4 逐帧介入量
+        tr["l4_veto"].append(bool(_l4info.get("force_veto")))
+        tr["l4_f"].append(round(float(f_env), 4))
         tr["residual"].append(r_scalar)
         tr["contact_p"].append(contact_p)
         tr["force"].append(force_norm)

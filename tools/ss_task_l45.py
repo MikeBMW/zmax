@@ -251,6 +251,8 @@ class TaskL45:
 
 def evidence_line(ev):
     """一行 L4 证据 (两链共用)。ev = TaskL45.evidence()。"""
+    if not isinstance(ev, dict):
+        return None
     l4, l5 = ev.get("L4", {}), ev.get("L5", {})
     sw = l5.get("switches", {})
     tags = " ".join("%s=%s" % (k.replace("chk_", ""), "开" if sw.get(k) else "关")

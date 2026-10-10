@@ -132,6 +132,12 @@ def run_chain(mode: str, extra: list) -> dict:
 def parse_result(mode: str, run: dict) -> dict:
     """从生成器输出/产物里提判据 (不重算, 只搬运真凭据)"""
     lines = run["lines"]
+    try:
+        from ss_task_l45 import evidence_line as _evidence_line      # L4/L5 逐层证据行 (两链共用)
+    except Exception:                                                # noqa: BLE001
+        def _evidence_line(_ev):
+            return None
+
     out = {"per_module": [], "summary": None, "npz_meta": None}
     if mode == "tray":
         for ln in lines:
@@ -156,7 +162,23 @@ def parse_result(mode: str, run: dict) -> dict:
             z = np.load(npz, allow_pickle=True)
             if "meta" in z.files:
                 m = z["meta"]
-                out["npz_meta"] = json.loads(str(m.item() if hasattr(m, "item") else m))
+                s = str(m.item() if hasattr(m, "item") else m)
+                # 链侧 meta 存的是 Python repr (非严格 JSON) → 两层解析, 别丢 L4/L5 证据
+                try:
+                    out["npz_meta"] = json.loads(s)
+                except Exception:                                    # noqa: BLE001
+                    import ast
+                    try:
+                        out["npz_meta"] = ast.literal_eval(s)
+                    except Exception:                                # noqa: BLE001
+                        out["npz_meta"] = {"raw": s[:400]}
+                # 逐层证据上提到顶层 (切换报告里直接可查)
+                if isinstance(out["npz_meta"], dict):
+                    out["l45"] = out["npz_meta"].get("l45")
+                    out["l45_line"] = _evidence_line(out["l45"])
+                    out["success"] = out["npz_meta"].get("success")
+                    out["steps"] = out["npz_meta"].get("steps")
+                    out["stage_final"] = out["npz_meta"].get("stage_final")
             out["npz"] = npz
         except Exception as e:  # noqa: BLE001
             out["npz_meta"] = {"read_error": f"{type(e).__name__}: {e}"}
