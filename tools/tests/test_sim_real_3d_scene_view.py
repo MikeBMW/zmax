@@ -242,9 +242,13 @@ def main():
     check(abs([o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if "转台" in o["name"]][0]["center"][0]
               - float(_old[0])) < 1e-6, "已还原 %s" % _old)
     # 可运行: 入口存在 + 真能被调用
-    tool, args, eta, prod = SSD.run_cmd()
+    tool, args, eta, prod, cwd, renv = SSD.run_cmd()
     check(os.path.exists(os.path.join(ROOT, tool)), "运行入口存在: %s %s (约 %ss)" % (tool, args, eta))
-    hr = subprocess.run([sys.executable, os.path.join(ROOT, tool), "--help"], cwd=ROOT,
+    # 必须与画布 L4 档同一条调用: cwd=tools + MUJOCO_GL=egl (+ EGL device 0), 否则 headless 渲染起不来
+    check(cwd.rstrip("/").endswith("/tools"), "运行 cwd 与画布一致 (=tools): %s" % cwd)
+    check(renv.get("MUJOCO_GL") == "egl" and renv.get("MUJOCO_EGL_DEVICE") == "0",
+          "运行 env 与画布一致: %s" % renv)
+    hr = subprocess.run([sys.executable, os.path.join(ROOT, tool), "--help"], cwd=cwd,
                         capture_output=True, text=True, timeout=240)
     check(hr.returncode == 0 and "--seed" in hr.stdout, "入口真可调用 (--help rc=%s)" % hr.returncode)
     uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()

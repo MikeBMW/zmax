@@ -49,8 +49,14 @@ def default() -> dict:
                 "kind": "sim", "level": "L4",
                 "env": "sawyer_peg_insertion_side_l4",
                 "desc": "①来料转台→②姿态适配抓取→③治具校直回正→④标准抓取→⑤插入 49mm→⑥拔出→⑦AOI 检测→⑧光耦合",
-                "runner": {"tool": "tools/gen_l4_demo_video.py", "args": ["--seed", "104"],
+                # 与画布 L4 档的导出调用**逐字对齐** (simulink_module.py:14728 那段):
+                #   python tools/gen_l4_demo_video.py --also-latest, cwd=tools, env MUJOCO_GL=egl +
+                #   MUJOCO_EGL_DEVICE=0 + PYTHONIOENCODING + ZMAX_L4_ROOT
+                "runner": {"tool": "tools/gen_l4_demo_video.py", "args": ["--also-latest"],
                            "alt": "tools/gui/state_space_sim_real.py (画布 ▶运行, 同引擎)",
+                           "cwd": "tools", "env": {"MUJOCO_GL": "egl", "MUJOCO_EGL_DEVICE": "0",
+                                                   "PYTHONIOENCODING": "utf-8", "ZMAX_L4_ROOT": "<ROOT>"},
+                           "note": "--seed 默认 (与画布 L4 档同一条 episode); --tt-deg 60~120 可改转台角做泛化",
                            "eta_s": 180, "product": "reports/ss_episode_latest.mp4"},
                 "objects": [
                     {"name": "工作台面", "center": [0.0, 0.0, -0.027], "size": [0.8, 0.8, 0.054],
@@ -416,7 +422,10 @@ def is_sim_scene(scene_id) -> bool:
 
 
 def run_cmd(scene_id: str = "SIM-PEG-L4"):
-    """⇒ (tool, args, eta_s, product) 运行这条仿真场景。"""
+    """⇒ (tool, args, eta_s, product, cwd, env) 运行这条仿真场景。"""
     sc = load()["scenes"][scene_id]
     r = sc.get("runner") or {}
-    return (r.get("tool"), list(r.get("args") or []), int(r.get("eta_s") or 180), r.get("product"))
+    cwd = r.get("cwd") or "."
+    env = {k: (ROOT if v == "<ROOT>" else v) for k, v in (r.get("env") or {}).items()}
+    return (r.get("tool"), list(r.get("args") or []), int(r.get("eta_s") or 180),
+            r.get("product"), os.path.join(ROOT, cwd), env)

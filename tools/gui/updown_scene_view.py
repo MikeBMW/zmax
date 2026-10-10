@@ -198,16 +198,16 @@ class RunThread(QThread):
     line = pyqtSignal(str)
     done = pyqtSignal(int)
 
-    def __init__(self, cmd, cwd, parent=None):
+    def __init__(self, cmd, cwd, env=None, parent=None):
         super().__init__(parent)
-        self.cmd, self.cwd = list(cmd), cwd
+        self.cmd, self.cwd, self.env = list(cmd), cwd, env
 
     def run(self):                                                             # noqa: D102
         rc = -1
         try:
             p = subprocess.Popen(self.cmd, cwd=self.cwd, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                 env={**os.environ, "PYTHONUNBUFFERED": "1"})
+                                 env={**(self.env or os.environ), "PYTHONUNBUFFERED": "1"})
             for ln in p.stdout:                                                # type: ignore[union-attr]
                 self.line.emit(ln.rstrip())
             rc = p.wait()
@@ -987,9 +987,19 @@ def build_card(parent=None):
             return
         tool = str(run.get("tool") or "")
         args = [str(a) for a in (run.get("args") or [])]
-        if not tool or not os.path.exists(os.path.join(ROOT, tool)):
+        script = os.path.join(ROOT, tool)
+        if not tool or not os.path.exists(script):
             st.setText("⛔ 运行入口不存在: %s" % tool)
             return
+        # 与画布 L4 档同一条调用 (cwd=tools + MUJOCO_GL=egl/MUJOCO_EGL_DEVICE=0, 否则 headless 渲染起不来)
+        _S = _sim_mod()
+        _cwd, _env = os.path.dirname(script), {}
+        if _S is not None:
+            try:
+                _t, _a, _eta, _prod, _cwd, _env = _S.run_cmd()
+            except Exception:                                                  # noqa: BLE001
+                pass
+        _env = {**os.environ, **(_env or {})}
         b_run.setEnabled(False)
         _tail = []
         if getattr(card, "_th", None) is not None and card._th.isRunning():
@@ -997,7 +1007,7 @@ def build_card(parent=None):
             b_run.setEnabled(True)
             return
         st.setText("▶ 正在运行 %s %s … (约 %ss; 日志实时刷新)" % (tool, " ".join(args), run.get("eta_s")))
-        th = RunThread([sys.executable, os.path.join(ROOT, tool)] + args, ROOT)
+        th = RunThread([sys.executable, script] + args, _cwd, env=_env)
         card._th = th
 
         def _on_line(t):
