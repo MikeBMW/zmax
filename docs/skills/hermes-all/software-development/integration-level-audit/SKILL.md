@@ -155,6 +155,20 @@ L2/L3 过了(确实每帧被调用)之后, 还有一层常被追问: **它吃的
 | 真没注册 | 写 `node_xxx(ctx)` 真执行函数 + `_reg` + `_EXTERNAL_LOC` 三件套 | n_board_frame (board_frame_module.run); n_l2_muscle (技能 JSON + ROS2 桥只读) |
 ⚠ 加关键词时必须查**最长匹配**冲突: 别加"长程序列规划"(会抢 🚀 L3 · 长程序列规划), 用更长的独特串。
 
+10. **"配置驱动"只驱动名不驱动行为 (配置只被打印)**: 任务/配方配置读进来当成 `cfg` 传了一圈, 但执行函数里
+   一次都没用 ⇒ 改配置只改了日志。实测: 摆盘链 `run_module(env, ss, i, cfg, ...)` 内 `cfg` 出现 **1 次 (仅形参)**,
+   判据阈值写死 `max(|dx|,|dy|)<=0.001 and yaw<=1.0`。
+   判定法 = **同一条 episode 换配置跑两遍**: 该配置项真生效 ⇒ 判决/轨迹变; 只被打印 ⇒ 两遍逐字相同。
+   实测 A/B: 阈值从配置读 `≤1.000mm` ⇒ 3/3 合格; CLI 覆盖 `≤0.300mm` ⇒ 0/3 不合格 (Δxy 物理量两组完全一致 0.34/0.43/0.47mm)
+   ⇒ 阈值确由配置驱动。**修法**: 写 `task_spec()` 真读配置中心 (targets/overrides) 并在报告里逐条报"判据来源",
+   让"配置→判决"可追溯; 留 CLI 覆盖口做 A/B。顺带把配置里没量纲意义的项 (字符串"配方上限") 跳过而不是硬转 float。
+
+🔴 **体检脚本的"假断点"比没体检更糟**: 路径写死会产出不存在的缺口, 用户按它去修就白干。
+实测两例: 记忆开关真源是 `data/memory/memory_layers.json`, 脚本写成 `data/memory_layers.json` ⇒ 恒 FileNotFoundError;
+世界模型权重在 `models/l4_mani_predictor_v*.pt`, 脚本只 glob `checkpoints/**` ⇒ 恒报"无预测器权重 (世界模型项可能恒0)"。
+判据: 报"缺 X"之前先 `find`/`ls` 那个东西的**真实落点**, 拿不准就报"未在此路径找到"而非"不存在";
+读数也要按消费方口径 (引擎 `d[k]=int(bool(j[k]))`) 解释 —— 注册表形态的文件按扁平开关读会得出反结论。
+
 - `references/orchestrator-model-chain-not-running-2026-09-29.md` — **点了一个档位+▶运行但"模型一条都没跑到"的审计法**:
   编排首阶段崩 (只在分支里赋值的局部变量 → UnboundLocalError) / fatal vs non_fatal (槽位未演示·val 空·训练零检出
   都是可选输入缺口, 不该掐断整链) / 终态三档 done·**done_with_gaps**·failed / 软链补 val 的 jpg-vs-txt 坑 /
