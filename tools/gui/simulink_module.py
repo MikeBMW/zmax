@@ -1814,14 +1814,14 @@ class StateSpaceScopeDialog(QDialog):
         # 🚀 09-08: 前 6 格传**全量**信号 (时间轴光标用); 后 2 格 (插深放大) 仍截断到播放帧
         _t_all = self._t
         plots = [
-            ("距离孔位 (m)", np.asarray(self._tr["dist"]), "#58a6ff", {}),
+            ("距离孔位 (m) ↓ 越小越好", np.asarray(self._tr["dist"]), "#58a6ff", {}),
             ("前馈指令 |u_ff|", np.asarray(self._tr["u_ff"]), "#d29922", {}),
             ("残差 |r|", np.asarray(self._tr["residual"]), "#f0883e", {}),
-            ("接触概率", np.asarray(self._tr["contact_p"]), "#3fb950", {}),
+            ("接触概率 ↑ 越高越贴住", np.asarray(self._tr["contact_p"]), "#3fb950", {}),
             ("接触流形 · 法向偏离", np.asarray(self._tr.get("mani_risk", []), dtype=float), "#ff7b72", {}),
             ("性能流形 · 耦合效率 η", np.asarray(self._tr.get("mani_eta", []), dtype=float), "#a371f7", {}),
-            ("插深剩余 (mm) · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
-            ("横向错位 (mm) · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
+            ("插深剩余 (mm) ↓ 到 0 才算插到位 · 阈 0.5", _rem, "#00d4aa", {"mm": True, "thr": 0.0005, "ins": True}),
+            ("横向错位 (mm) · 0=正对中线 · 阈 0.5", _dperp, "#ffd700", {"mm": True, "thr": 0.0005, "ins": True}),
         ]
         gw, gh = r.width() / 4, r.height() / 2
         for i, (title, y, color, opt) in enumerate(plots):
@@ -1857,9 +1857,15 @@ class StateSpaceScopeDialog(QDialog):
                 continue
             ymin, ymax = float(np.min(_y)), float(np.max(_y))
             if opt.get("mm"):
-                ymin = 0.0
-                ymax = max(float(np.percentile(_y, 100)) * 1000 * 1.2, 2.0)  # mm, 至少 2mm 视窗
-                _y = _y * 1000.0
+                # 🐛 2026-10-10: 原写死 ymin=0 + ymax=percentile*1.2 —— 对**带符号**信号 (横向错位可为负)
+                #   会算出 ymax<ymin ⇒ Y(v) 映射整体翻转, 曲线画到框外/看着"颠倒了"。
+                #   改: 视窗覆盖 0 与数据两端, 且强制 ymax>ymin。
+                _mm = _y * 1000.0
+                ymin = min(0.0, float(np.min(_mm)) * 1.2)
+                ymax = max(0.0, float(np.max(_mm)) * 1.2)
+                if ymax - ymin < 2.0:
+                    ymax = ymin + 2.0                 # 至少 2mm 视窗, 保证分量非退化
+                _y = _mm
             else:
                 if ymax - ymin < 1e-9:
                     ymax = ymin + 1.0
@@ -1955,6 +1961,11 @@ class StateSpaceScopeDialog(QDialog):
                 _sum = (f"{_verdict} · 总用时 {_tv[-1]:.2f}s · 插入段 {_T_ins:.2f}s (<0.5s) · "
                         f"末横向错位 {_dperp_end:.2f}mm (<0.5mm) · 插深剩余 {_rem_end:.2f}mm")
             p.drawText(int(r.left() + 16), int(r.bottom() + 30), _sum)
+        # 🧭 2026-10-10: 轴方向自证 — 免得"距离/插深 从大到小画"被误读成图颠倒了
+        p.setPen(QColor("#8b949e"))
+        p.setFont(QFont("WenQuanYi Micro Hei", 12))
+        p.drawText(int(r.right() - 560), int(r.bottom() + 30),
+                   "轴约定: Y 向上 = 值增大 · 距离/插深剩余/横向错位 都是「越小越到位」· 接触概率「越大越贴住」")
         p.end()
 
 
