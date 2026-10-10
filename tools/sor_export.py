@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""SOR 导出器 — 由「配置中心」的配置生成 Word 需求规格说明书 (2026-10-10)
+
+设计原则
+  · 数据全部取自**单一工程库** + 平台真源, 不在文档里写死数字 (要与配置一致, 不能第二份真相)
+  · 配置里没有的项, 显式写「待确认」并汇总到附录 C —— 不编造
+  · 性能参数 (第 5 章 + 附录 B) 与 功能配置 (第 4 章 + 附录 A) 是两张主表, 给供应商逐条报价/验收
+  · 附录 D 记录导出所用的真源路径与 sha256, 使文档可复现、可追责
+
+用法:
+  python3 tools/sor_export.py                 # 默认: System 1 / 摆盘任务
+  python3 tools/sor_export.py --system all    # 整单元口径 (Sys-2/1/0 全列)
+  python3 tools/sor_export.py --task TASK-06-TRAY
+"""
+import argparse
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sys1_delivery import (CONTRACT, GAPS, METRICS, PROD, PROJ, SCOPE_IN,  # noqa: E402
+                           SCOPE_OUT, SYS_ID, load)
+
+from docx import Document  # noqa: E402
+from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
+from docx.oxml import OxmlElement  # noqa: E402
+from docx.oxml.ns import qn  # noqa: E402
+from docx.shared import Cm, Pt  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
+OUT_ROOT = os.path.join(ROOT, "outputs", "sor")
+DOC_NO = "SOR-OM-ROBOT-" + time.strftime("%Y%m%d")
+VERSION = "V1.0"
+CN_FONT = "微软雅黑"
+
+# ── 模板静态段 (供应商要求, 与配置无关的采购条款) ─────────────────────
+SUPPLY_SCOPE = [
+    ("系统类型", "光模块自动上下料单元 (取放 + 摆盘)"),
+    ("供料方式", "料盘供料 (周转盘 → 上料 Tray 盘)"),
+    ("机器人类型", "双臂协作机器人 (Z100 平台) / 供应商方案待确认"),
+    ("末端执行器", "真空吸嘴 (带真空检测与断气保护) + 可选夹爪"),
+    ("是否含视觉定位", "是 —— 腕部相机 (0.1–0.6m, ±1mm/±1°) + 全局定位相机 + 胸部相机"),
+    ("是否含料盘供料机构", "是 (需料盘到位检测 / 空满三态检测)"),
+    ("是否含下料收料机构", "是 (满盘移出 / 空盘回收, 人工或自动换盘)"),
+    ("是否含输送线/对接机构", "待确认 (与现有产线对接方式见第 9 章)"),
+    ("交付地点", "待确认"),
+    ("交付周期", "待确认"),
+    ("是否需现场安装调试", "是"),
+]
+PRODUCT_SPEC_STATIC = [
+    ("光模块外形尺寸", "待确认 (12+ 型号: 100G/400G/800G · QSFP-DD/OSFP)"),
+    ("光模块重量", "待确认 (单位 g)"),
+    ("光模块材质", "金属外壳 + 塑料件 (待确认)"),
+    ("光模块敏感面", "金手指、光口端面、标签面 —— 抓取不得压伤"),
+    ("料盘规格", "上料 Tray 盘 30 槽 / 4# 周转盘 (槽距与盘尺寸待确认)"),
+    ("单盘装载数量", "上料 Tray 盘 30 槽; 周转盘待确认"),
+    ("料盘材质", "待确认"),
+    ("料盘定位方式", "视觉识别 + 盘面槽位标定 (定位销/边定位待确认)"),
+]
+ROBOT_REQ = [
+    "机器人负载需满足光模块、治具及末端执行器总重量要求, 并预留安全余量。",
+    "机器人重复定位精度需满足插测试座、料位放置的工艺要求 (摆盘取放: 单边 ≤1mm · 角 ≤1°)。",
+    "末端执行器需适配光模块外形, 抓取时不得压伤金手指、光口端面、标签及外壳。",
+    "真空吸嘴需提供真空检测 (吸附建立 ≤200ms 判据) 及断气保护。",
+    "夹爪需控制夹持力, 避免光模块变形或表面损伤。",
+    "末端执行器应具备快换或易维护设计。",
+]
+VISION_REQ = [
+    "识别料盘位置、料位位置、光模块姿态及缺料状态 (空/满/异常三态)。",
+    "适应现场光照变化与堆叠遮挡; 极端情况回退预设轨迹与固定逻辑, 保证产线不中断。",
+    "相机安装位置、光源类型及标定方式需在方案中明确。",
+    "视觉结果需与机器人坐标系完成标定 —— 盘面槽位几何为坐标类参数的唯一真源。",
+    "腕部相机工作距离 0.1–0.6m 内保证 ±1mm/±1°; 头部双目 @1m、胸部 @0.5m 为 ±5mm 级, 不得混用口径。",
+]
+TRAY_REQ = [
+    "料盘供料机构需保证料盘定位稳定, 重复精度满足抓取要求。",
+    "供料机构需具备料盘到位检测、空盘/满盘/异常三态检测功能。",
+    "料盘流转过程中不得造成光模块磕碰、划伤或掉落。",
+    "多规格料盘切换方式及定位适配方案需明确 (换型 ≤30min)。",
+]
+ELEC_REQ = [
+    "控制系统需支持与现有设备通信, 协议: Modbus TCP / TCP-IP / IO 硬接线 (Ethernet-IP 待确认)。",
+    "需提供完整 IO 点位表、通信协议说明及操作手册。",
+    "系统需具备急停 (PLd · Cat.3, ISO 13849-1)、安全门、光栅等安全防护 —— 安全由底层独立收口, 上层无否决权。",
+    "机器人程序、视觉程序及 PLC 程序需开放或提供备份, 具体方式待确认。",
+    "HMI 需显示运行状态、报警、产量、节拍, 并标注数据时间戳与帧龄。",
+]
+ENV_TABLE = [
+    ("安装方式", "台式 / 集成到产线 (待确认)"),
+    ("工作温度", "待确认 (℃)"),
+    ("工作湿度", "待确认"),
+    ("电源要求", "待确认 (如 AC 220V/380V)"),
+    ("气源要求", "待确认 (如 0.4~0.6 MPa)"),
+    ("洁净度要求", "洁净室 Class 10000 / ISO 7 (与光模块产线一致) · 是否防静电待确认"),
+    ("占地面积", "待确认 (mm)"),
+]
+QUALITY_REQ = [
+    "光模块接触部位需采用防划伤材料 (PEEK、POM、橡胶、软质吸嘴等)。",
+    "系统运行不得产生金属屑、油污或其他污染物 (洁净室 Class 10000 / ISO 7)。",
+    "关键运动部件需具备防护罩, 防止人员误触。",
+    "设备外观整洁, 线束布置规范, 标识清晰。",
+    "供应商需提供关键部件清单: 机器人品牌型号、相机、光源、夹爪、真空发生器、PLC 等。",
+]
+DELIVERABLES = [
+    "机器人上下料系统整机", "末端执行器", "料盘供料/收料机构", "控制系统及软件",
+    "电气原理图、气路图、机械图纸", "IO 点位表及通信协议说明", "操作手册、维护手册",
+    "备件清单", "出厂验收报告", "现场安装调试记录", "培训资料", "质保承诺书",
+    "System 1 配置包 (功能清单 / 配置项 / 性能指标 / 接口契约, 机器可读 JSON + sha256)",
+]
+ACCEPTANCE = [
+    ("FAT 工厂验收", "供应商现场按本规格书做功能、节拍、成功率、安全性测试; 节拍以 CT 起止口径 (吸取离盘 → 下一位就位) 计量。"),
+    ("SAT 现场验收", "我方现场连续运行 ≥20h / ≥12 盘周转盘, 节拍/成功率/损伤率/稳定性达标。"),
+    ("外观验收", "设备无损伤, 标识齐全, 布线规范。"),
+    ("功能验收", "上料→取件→转运对位→放入→判态循环→下料收料→报警→急停 全链正常; 断点续作可恢复。"),
+    ("性能验收", "按第 5 章性能参数逐条验收, 分 EVT / DVT / PVT 三阶段取值。"),
+    ("兼容性验收", "稳定处理指定光模块型号 (12+ 型号) 及料盘规格 (≥6 种摆放方式)。"),
+    ("不合格处理", "验收不合格时, 供应商需在 X 个工作日内提供整改方案并免费整改。"),
+]
+WARRANTY = [
+    "质保期: 12/24 个月 (待确认), 自 SAT 通过之日起算。",
+    "质保期内设备故障, 供应商需提供远程或现场支持。",
+    "供应商需提供操作培训和维护培训。",
+    "关键备件需提供推荐清单及供货周期。",
+]
+CHANGE_MGMT = [
+    "任何影响节拍、精度、兼容性、安全性、控制接口、关键部件品牌型号的变更, 供应商必须提前书面确认, 不得擅自更改。",
+    "变更须同步更新 System 1 配置 (配置中心) 并重新导出交付包, 保持文档与配置一致。",
+]
+
+
+# ── docx 基础工具 ─────────────────────────────────────────────
+def _font(run, size=10.5, bold=False, color=None):
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.name = CN_FONT
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), CN_FONT)
+    if color:
+        run.font.color.rgb = color
+
+
+def h(doc, text, level=1):
+    p = doc.add_heading(level=level)
+    r = p.add_run(text)
+    _font(r, size={0: 20, 1: 14, 2: 12}.get(level, 11), bold=True)
+    return p
+
+
+def para(doc, text, size=10.5, bold=False, italic=False):
+    p = doc.add_paragraph()
+    r = p.add_run(text)
+    _font(r, size=size, bold=bold)
+    r.font.italic = italic
+    return p
+
+
+def table(doc, headers, rows, widths=None):
+    t = doc.add_table(rows=1, cols=len(headers))
+    t.style = "Table Grid"
+    for i, htxt in enumerate(headers):
+        c = t.rows[0].cells[i]
+        c.text = ""
+        _font(c.paragraphs[0].add_run(str(htxt)), size=10, bold=True)
+    for row in rows:
+        cells = t.add_row().cells
+        for i, v in enumerate(row):
+            cells[i].text = ""
+            _font(cells[i].paragraphs[0].add_run("" if v is None else str(v)), size=10)
+    if widths:
+        for r_ in t.rows:
+            for i, w in enumerate(widths):
+                r_.cells[i].width = Cm(w)
+    return t
+
+
+def footer_pagenum(doc, text):
+    p = doc.sections[0].footer.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _font(p.add_run(text + "    第 "), size=8)
+    fld = OxmlElement("w:fldSimple")
+    fld.set(qn("w:instr"), "PAGE")
+    p._p.append(fld)
+    _font(p.add_run(" 页"), size=8)
+
+
+def sha(p):
+    hh = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            hh.update(b)
+    return hh.hexdigest()
+
+
+def load_all_systems():
+    c = sqlite3.connect(DB)
+    c.row_factory = sqlite3.Row
+    out = {}
+    for r in c.execute("select system_id,name,level,role,hardware,kpi,rows from subsystems order by ord"):
+        d = dict(r)
+        for k in ("kpi", "rows"):
+            try:
+                d[k] = json.loads(d[k]) if d[k] else (
+                    {} if k == "kpi" else [])
+            except Exception:
+                pass
+        out[d["system_id"]] = d
+    return out
+
+
+def load_task(task_id):
+    p = os.path.join(ROOT, "config", "tasks", "tasks.json")
+    if not os.path.isfile(p):
+        return None
+    for t in json.load(open(p, encoding="utf-8"))["tasks"]:
+        if t["task_id"] == task_id:
+            return t
+    return None
+
+
+def build(system="sys1", task_id="TASK-06-TRAY"):
+    sys1, feats, fns, axes, params, axes_node = load()
+    systems = load_all_systems()
+    task = load_task(task_id)
+    doc = Document()
+    st = doc.styles["Normal"]
+    st.font.name = CN_FONT
+    st.font.size = Pt(10.5)
+    st.element.rPr.rFonts.set(qn("w:eastAsia"), CN_FONT)
+    for s in doc.sections:
+        s.left_margin = s.right_margin = Cm(2.2)
+        s.top_margin = s.bottom_margin = Cm(2.0)
+    footer_pagenum(doc, "%s · %s            " % (DOC_NO, VERSION))
+
+    # 封面
+    t = doc.add_paragraph()
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _font(t.add_run("机器人光模块上下料系统\n需求规格说明书 (SOR)"), size=22, bold=True)
+    para(doc, "文件编号: %s" % DOC_NO, size=11)
+    para(doc, "版本号: %s" % VERSION, size=11)
+    para(doc, "项目名称: %s" % PROJ, size=11)
+    para(doc, "适用对象: 供应商技术、质量、交付团队", size=11)
+    para(doc, "导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台真源)", size=11)
+    para(doc, "导出时间: %s" % time.strftime("%Y-%m-%d %H:%M:%S"), size=11)
+    para(doc, "说明: 文中「待确认」项为配置中尚无真值的项, 已在附录 C 汇总。", size=10, italic=True)
+
+    # 1 背景
+    h(doc, "1. 项目背景与用途", 1)
+    para(doc, "本需求用于采购/定制一套机器人光模块自动上下料系统。系统通过机器人从料盘 (周转盘) 抓取光模块, "
+              "放入上料 Tray 盘或目标工位, 完成上料/下料或工位间搬运, 并与现有产线设备对接。")
+    para(doc, "供应商应确保系统满足本规格书规定的功能、性能、接口、质量、安全及验收要求。"
+              "本规格书由配置中心按当前 System 1 配置导出, 任何配置变更后须重新导出并对齐版本。")
+
+    # 2 采购范围
+    h(doc, "2. 采购范围", 1)
+    table(doc, ["项目", "要求"], SUPPLY_SCOPE, widths=[4.5, 11.5])
+
+    # 3 产品规格
+    h(doc, "3. 光模块与料盘产品规格", 1)
+    table(doc, ["参数", "要求"], PRODUCT_SPEC_STATIC, widths=[4.5, 11.5])
+
+    # 4 功能需求 + 功能配置
+    h(doc, "4. 功能需求与功能配置", 1)
+    para(doc, "4.1 功能需求 (供应商系统需实现)", bold=True)
+    fnum = 1
+    for x in SCOPE_IN:
+        para(doc, "%d) %s" % (fnum, x))
+        fnum += 1
+    para(doc, "4.2 System 1 功能清单 (在役功能节点)", bold=True)
+    table(doc, ["功能 ID", "名称", "层", "类型", "引擎模块"],
+          [[f["fn_id"], f["name"], f["layer"], f["kind"], f["module_ref"]] for f in fns],
+          widths=[2.4, 5.6, 1.6, 2.2, 4.2])
+    para(doc, "4.3 摆盘产品功能条目 (可逐条报价/逐条验收)", bold=True)
+    table(doc, ["条目 ID", "名称", "适用子系统", "关联平台能力", "指标"],
+          [[f["pf_id"], f["title"], "·".join(f.get("subsys") or []),
+            f.get("capability_ref") or "", f.get("kpi") or ""] for f in feats],
+          widths=[2.2, 4.2, 2.4, 4.0, 3.2])
+    para(doc, "4.4 任务工艺步骤 (配置中心任务配置)", bold=True)
+    if task:
+        para(doc, "任务 %s · %s · 类型 %s · 适用段 %d 段 · 排除段 %s"
+             % (task["task_id"], task["name"], task["recipe_type"],
+                len(task["applies_segments"]), "、".join(task["excluded_segments"]) or "无"))
+        table(doc, ["#", "步骤", "描述"],
+              [[i + 1, s.get("name"), s.get("desc")] for i, s in enumerate(task.get("steps", []))],
+              widths=[1.0, 3.0, 12.0])
+        para(doc, "循环: %s" % task.get("loop", ""), size=10)
+        para(doc, "触发: %s" % task.get("trigger", ""), size=10)
+        para(doc, "工单: %s" % task.get("orders_rule", ""), size=10)
+    else:
+        para(doc, "任务 %s 未在配置中找到 —— 待确认。" % task_id)
+
+    # 5 性能指标 (性能参数主表)
+    h(doc, "5. 性能指标 (性能参数)", 1)
+    para(doc, "以下指标已按配置中心口径统一; 「阶段」列区分 EVT/DVT/PVT, 验收按阶段取值。", size=10)
+    table(doc, ["指标", "目标值", "口径 / 判据", "来源条目", "处理"],
+          [list(m) for m in METRICS],
+          widths=[2.2, 4.2, 5.6, 2.4, 1.8])
+    para(doc, "5.1 System 1 子系统指标 (配置真源)", bold=True)
+    table(doc, ["指标", "值"], sorted(sys1.get("kpi", {}).items()), widths=[4.0, 12.0])
+
+    # 6 机器人末端
+    h(doc, "6. 机器人与末端执行器要求", 1)
+    for x in ROBOT_REQ:
+        para(doc, "· " + x)
+
+    # 7 视觉
+    h(doc, "7. 视觉与定位要求", 1)
+    for x in VISION_REQ:
+        para(doc, "· " + x)
+
+    # 8 料盘供料
+    h(doc, "8. 料盘与供料机构要求", 1)
+    for x in TRAY_REQ:
+        para(doc, "· " + x)
+
+    # 9 电气与控制接口 (接口契约)
+    h(doc, "9. 电气、控制与接口要求", 1)
+    for x in ELEC_REQ:
+        para(doc, "· " + x)
+    para(doc, "9.1 接口契约 (上游给意图不给轨迹; 坐标真值由底层提供)", bold=True)
+    for k, rows in CONTRACT.items():
+        para(doc, "【%s】" % k, bold=True)
+        for r in rows:
+            src = r.get("from") or r.get("to") or "—"
+            extra = ("  → %s" % r["value"]) if r.get("value") else ""
+            para(doc, "   - %s: %s%s" % (src, r.get("item", ""), extra), size=10)
+
+    # 10 环境
+    h(doc, "10. 环境与安装要求", 1)
+    table(doc, ["项目", "要求"], ENV_TABLE, widths=[4.5, 11.5])
+
+    # 11 质量与防护
+    h(doc, "11. 质量与防护要求", 1)
+    for x in QUALITY_REQ:
+        para(doc, "· " + x)
+
+    # 12 交付物
+    h(doc, "12. 交付物清单", 1)
+    for i, x in enumerate(DELIVERABLES, 1):
+        para(doc, "%d. %s" % (i, x))
+
+    # 13 验收
+    h(doc, "13. 验收标准", 1)
+    table(doc, ["验收项", "要求"], ACCEPTANCE, widths=[4.0, 12.0])
+
+    # 14 质保
+    h(doc, "14. 质保与售后", 1)
+    for x in WARRANTY:
+        para(doc, "· " + x)
+
+    # 15 变更管理
+    h(doc, "15. 变更管理", 1)
+    for x in CHANGE_MGMT:
+        para(doc, "· " + x)
+
+    # 附录 A 功能配置明细
+    doc.add_page_break()
+    h(doc, "附录 A. 功能配置明细 (配置中心 cfg/cal/dia 轴)", 1)
+    para(doc, "以下为 System 1 每个功能节点持有的配置项, 可在配置中心逐项修改; 供应商按此实现可配置化。", size=10)
+    for axis, label in (("cfg", "A.1 可配置项 (cfg)"), ("cal", "A.2 标定项 (cal)"), ("dia", "A.3 诊断项 (dia)")):
+        items = axes.get(axis, [])
+        para(doc, "%s — %d 项 (每节点各持一份)" % (label, len(items)), bold=True)
+        for i, it in enumerate(items, 1):
+            para(doc, "   %d. %s" % (i, it), size=10)
+    para(doc, "A.4 在役开关参数", bold=True)
+    table(doc, ["参数 ID", "中文", "当前值", "单位", "状态"],
+          [[p["param_id"], p["cn"], p["value"], p["unit"] or "-", p["status"]] for p in params],
+          widths=[4.0, 3.6, 2.4, 1.6, 3.4])
+    if axes_node:
+        para(doc, "A.5 节点实现参数 (引擎侧, 仅供追溯 — 不属于供应商配置项)", bold=True)
+        n = 0
+        for _axis, items in axes_node.items():
+            for it in items:
+                n += 1
+                para(doc, "   %d. %s" % (n, it), size=9)
+
+    # 附录 B 系统清单 (整单元口径)
+    h(doc, "附录 B. 系统组成 (Sys-2 / Sys-1 / Sys-0)", 1)
+    table(doc, ["系统", "层", "名称", "角色", "硬件"],
+          [[s["system_id"], s["level"], s["name"], (s["role"] or "")[:60], s["hardware"]] for s in systems.values()],
+          widths=[1.8, 1.4, 3.4, 7.0, 2.4])
+
+    # 附录 C 待确认
+    h(doc, "附录 C. 待确认项与缺口 (发放前须闭环)", 1)
+    table(doc, ["项", "现状", "处置"],
+          [list(g) for g in GAPS], widths=[2.6, 7.4, 6.0])
+    para(doc, "另: 本文件中凡标注「待确认」的静态采购条款 (交付地点/交付周期/电源/气源/温湿度等) 需我方填入后再发版。", size=10)
+
+    # 附录 D 可复现信息
+    h(doc, "附录 D. 导出可复现信息", 1)
+    table(doc, ["项", "值"], [
+        ["导出工具", "tools/sor_export.py (配置中心 sys1 导出)"],
+        ["数据源 (单一工程库)", os.path.relpath(DB, ROOT) + "  sha256=" + sha(DB)[:16] + "…"],
+        ["平台真源", "config/platform/zmax_platform.json"],
+        ["任务真源", "config/tasks/tasks.json (flows/scenes_5jobs.json → task_build.py)"],
+        ["子系统口径", "%s (%s)" % (sys1.get("name"), sys1.get("level"))],
+        ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
+    ], widths=[4.5, 11.5])
+    return doc
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--system", default="sys1")
+    ap.add_argument("--task", default="TASK-06-TRAY")
+    ap.add_argument("--json", action="store_true", help="同时导出结构化 JSON")
+    a = ap.parse_args()
+    doc = build(a.system, a.task)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    out = os.path.join(OUT_ROOT, ts)
+    os.makedirs(out, exist_ok=True)
+    base = "%s_%s" % (DOC_NO, VERSION)          # 文件名 = 文件编号 + 版本 (对外稳定命名)
+    fp = os.path.join(out, base + ".docx")
+    doc.save(fp)
+    files = {os.path.basename(fp): fp}
+    if a.json:
+        sys1, feats, fns, axes, params, _ = load()
+        jp = os.path.join(out, base + ".json")
+        json.dump({"doc_no": DOC_NO, "version": VERSION, "project": PROJ,
+                   "system": sys1, "functions": fns, "features": feats, "axes": axes,
+                   "params": params, "contract": CONTRACT,
+                   "metrics": [dict(zip(("指标", "目标", "口径", "来源条目", "处理"), m)) for m in METRICS],
+                   "gaps": [dict(zip(("项", "现状", "处置"), g)) for g in GAPS],
+                   "scope_in": SCOPE_IN, "scope_out": SCOPE_OUT},
+                  open(jp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        files[os.path.basename(jp)] = jp
+    man = {"doc_no": DOC_NO, "version": VERSION, "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+           "source_db": os.path.relpath(DB, ROOT), "source_db_sha256": sha(DB), "files": {}}
+    for n, p in sorted(files.items()):
+        man["files"][n] = {"bytes": os.path.getsize(p), "sha256": sha(p)}
+    with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(man, f, ensure_ascii=False, indent=1)
+    print("✅ SOR (Word): %s" % fp)
+    print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)" % (os.path.getsize(fp) / 1024.0))
+    print("   目录: %s" % out)
+    for n in man["files"]:
+        print("   - %s" % n)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

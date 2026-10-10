@@ -125,14 +125,16 @@ def load():
     fns = [dict(r) for r in c.execute(
         "select fn_id,name,layer,kind,module_ref from functions where system_id=?", (SYS_ID,))]
     axes = {}
+    axes_node = {}
     for r in c.execute("select axis,idx,item,src from fn_axes where fn_id like 'FN-SYS1%' order by axis,idx"):
-        axes.setdefault(r["axis"], [])
-        if r["item"] not in axes[r["axis"]]:
-            axes[r["axis"]].append(r["item"])
+        bucket = axes_node if "画布节点" in (r["src"] or "") else axes
+        bucket.setdefault(r["axis"], [])
+        if r["item"] not in bucket[r["axis"]]:
+            bucket[r["axis"]].append(r["item"])
     params = [dict(r) for r in c.execute(
         "select param_id,name,cn,value,\"default\",unit,status,module_ref,impact "
         "from params where sys_id=? order by param_id", (SYS_ID,))]
-    return sys1, feats, fns, axes, params
+    return sys1, feats, fns, axes, params, axes_node
 
 
 def build_doc(sys1, feats, fns, axes, params):
@@ -251,7 +253,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--show", action="store_true", help="只打印, 不落盘")
     a = ap.parse_args()
-    sys1, feats, fns, axes, params = load()
+    sys1, feats, fns, axes, params, axes_node = load()
     if a.show:
         print(json.dumps({"system": sys1.get("name"), "rows": sys1.get("rows"),
                           "kpi": sys1.get("kpi"), "functions": [f["fn_id"] for f in fns],

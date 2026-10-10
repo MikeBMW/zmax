@@ -502,11 +502,26 @@ def cmd_sys1(a):
     return subprocess.call(argv)
 
 
+def cmd_sor(a):
+    """SOR 导出 — 按当前配置生成 Word 版需求规格说明书 (含性能参数 + 功能配置)
+
+    用法: python3 tools/config_center.py sor             # 生成 .docx (+ JSON/manifest)
+          python3 tools/config_center.py sor json        # 同时导出结构化 JSON
+    数据源: 单一工程库 + 平台真源; 配置里没有的项在文档中显式标「待确认」。
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    argv = [sys.executable, os.path.join(root, "tools", "sor_export.py")]
+    if (a.arg or "") == "json":
+        argv.append("--json")
+    return subprocess.call(argv)
+
+
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
         "node": cmd_node, "project": cmd_project,
-        "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1}
+        "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor}
 
 
 def main():
