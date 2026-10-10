@@ -90,6 +90,23 @@ def main() -> int:
     s2 = _ti.sub("XSpace Studio — Z-MAX %s" % nv_brand, s2)
     chk.append(("studio.py 窗口标题", n_t,
                 len(re.findall(r"XSpace Studio — Z-MAX v{1,2}%s" % re.escape(a.to), s2))))
+    # 2b) 🐛 2026-10-10 (第二次踩): 上面两条只认「QLabel("Z-MAX vX")」和窗口标题这两种**死串**,
+    #     状态栏 sb.showMessage("Z-MAX vX  |  Sys-1 …") 和关于框 "<b>Z-MAX vX</b> · …" 都漏掉
+    #     ⇒ 每次 bump 完 verify_version_sync 都报「显示陈旧」再手改。这里做一次**代码行**通扫
+    #     (跳过 # 注释行, 免得把历史 changelog 里的版本号改花)。
+    _lines = s2.split("\n")
+    n_gen = 0
+    for _i, _ln in enumerate(_lines):
+        if _ln.lstrip().startswith("#"):
+            continue
+        if re.search(r"Z-MAX v{1,2}%s" % re.escape(old), _ln):
+            _lines[_i] = re.sub(r"Z-MAX v{1,2}%s" % re.escape(old), "Z-MAX %s" % nv_brand, _ln)
+            n_gen += 1
+    s2 = "\n".join(_lines)
+    chk.append(("studio.py 其它显示位 (状态栏/关于框)",
+                n_gen, len([x for x in s2.split("\n")
+                            if not x.lstrip().startswith("#")
+                            and re.search(r"Z-MAX v{1,2}%s" % re.escape(a.to), x)])))
     # 3) changelog 前缀 (插在旧版本注释行之前)
     #   🐛 2026-09-27: 原锚点是死串 "# v5.15.13:" —— 但真源里的 changelog 行长这样
     #     "# v5.15.13 (2026-09-27): **手眼标定 T_base_cam 首次解出…**"

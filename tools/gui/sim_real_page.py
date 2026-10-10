@@ -262,6 +262,103 @@ def build_body(parent=None):
     bl = QVBoxLayout(body)
     bl.setSpacing(10)
 
+    # ── 🧭 主视图: 3D 场景编辑器 (与状态空间画布「3D 视图」同源) ────────────────
+    # 2026-10-10 老倪: 「场景 Sim&Real 功能区应该有个主要的可视化编辑界面, 跟 simulink
+    #   画布的 3D 视图同源, 可以编辑 3D 场景」⇒ 本页第一个控件就是它, 不再只是表格。
+    #   🔴 单一 GL 上下文 (pyqtgraph shader 全局缓存坑): 页内**不新建**第二个 GL 视图,
+    #      只复用画布那一个 3D 窗口 (open_ss_3d 单例 _ss_3d_windows); 页内预览 = 对同一窗口抓帧。
+    card = QWidget(body)
+    card.setStyleSheet("background:%s; border:1px solid %s; border-radius:8px;" % (C_BG2, C_BORDER))
+    cl = QVBoxLayout(card)
+    cl.setSpacing(6)
+    _hd = QLabel("🧭 3D 场景编辑器 · 主视图")
+    _hd.setStyleSheet("color:%s; border:none; font-size:13px; font-weight:600;" % C_GOLD)
+    cl.addWidget(_hd)
+    _sub = QLabel("与状态空间画布「🧭 3D 视图」同一个窗口、同一份场景真源（对象 / 标记 / 围栏 / 轨迹）；"
+                  "视图内可选中编辑，写库走 scene_edit.py 单一写路径。")
+    _sub.setWordWrap(True)
+    _sub.setStyleSheet("color:%s; border:none; font-size:11px;" % C_DIM)
+    cl.addWidget(_sub)
+
+    def _find_canvas():
+        """画布模块是后台懒创建的 ⇒ 每次点击现找 (studio.simulink)，找不到如实提示。"""
+        x = parent
+        for _ in range(8):
+            if x is None:
+                return None
+            m = getattr(x, "simulink", None)
+            if m is not None and hasattr(m, "open_ss_3d"):
+                return m
+            x = x.parent() if callable(getattr(x, "parent", None)) else None
+        return None
+
+    _pv = QLabel("3D 主视图预览：点「📷 抓取快照」把当前 3D 视图抓进本页\n"
+                 "（复用同一 GL 上下文，不新开第二个 3D 视图）")
+    _pv.setAlignment(Qt.AlignCenter)
+    _pv.setMinimumHeight(190)
+    _pv.setStyleSheet("background:#0a0e14; color:%s; border:1px dashed %s; border-radius:6px;"
+                      " font-size:11px;" % (C_DIM, C_BORDER))
+    _st = QLabel("—")
+    _st.setWordWrap(True)
+    _st.setStyleSheet("color:%s; border:none; font-size:11px;" % C_GRAY)
+
+    def _open3d(level=None):
+        m = _find_canvas()
+        if m is None:
+            _st.setText("⚠️ 画布还没就绪（后台懒创建中）— 稍等几秒再点")
+            return
+        try:
+            m.open_ss_3d(on_top=True, level=level)
+            _st.setText("🧭 已打开 3D 场景编辑器（%s）— 与画布「3D 视图」同一个窗口；"
+                        "视图内可选中对象编辑，改完立即被仿真/AR 叠加读到" % (level or "全部层"))
+        except Exception as _e:                                            # noqa: BLE001
+            _st.setText("⚠️ 打开 3D 视图失败: %r" % (_e,))
+
+    def _snap():
+        m = _find_canvas()
+        ws = [w for w in (getattr(m, "_ss_3d_windows", None) or []) if w is not None] if m else []
+        if not ws:
+            _st.setText("⚠️ 3D 视图还没打开 — 先点「🧭 打开 3D 场景编辑器」")
+            return
+        try:
+            from PyQt5.QtWidgets import QApplication
+            pm = QApplication.primaryScreen().grabWindow(int(ws[0].winId()))
+            if pm.isNull() or pm.width() < 8:
+                _st.setText("⚠️ 抓帧为空（窗口被遮挡/最小化）— 先把 3D 窗口置顶再抓")
+                return
+            _d = "/home/ubuntu/.hermes/cache/scratch/shots"
+            os.makedirs(_d, exist_ok=True)
+            _p = os.path.join(_d, "ss3d_simreal_%s.png" % time.strftime("%H%M%S"))
+            pm.save(_p)
+            _pv.setPixmap(pm.scaledToWidth(700, Qt.SmoothTransformation))
+            _st.setText("📷 %s · %dx%d · 拍照 %s · 帧龄 ≈0s（实时抓帧）"
+                        % (_p, pm.width(), pm.height(), time.strftime("%H:%M:%S")))
+        except Exception as _e:                                            # noqa: BLE001
+            _st.setText("⚠️ 抓帧失败: %r" % (_e,))
+
+    r3 = QHBoxLayout()
+    # 🔴 2026-10-10 实测坑: QPushButton.clicked 会带 checked=False 当第一个位置参数 ⇒
+    #   直接连 `_open3d` 会变成 level=False (档位判据当场红)。一律用 lambda 包一层。
+    for _txt, _tip, _slot in (
+            ("🧭 打开 3D 场景编辑器", "与画布工具栏「🧭 3D 视图」同一个方法/同一个窗口 — 视图内管理+编辑 3D 场景",
+             lambda: _open3d()),
+            ("🎯 L2", "按 L2 档位预设图层打开 3D 视图", lambda: _open3d("L2")),
+            ("🎯 L3", "按 L3 档位预设图层打开 3D 视图", lambda: _open3d("L3")),
+            ("🎯 L4", "按 L4 档位预设图层打开 3D 视图", lambda: _open3d("L4")),
+            ("📷 抓取快照", "抓当前 3D 视图到本页预览 (同一窗口, 不开第二个 GL 视图)", lambda: _snap())):
+        _b = QPushButton(_txt)
+        _b.setToolTip(_tip)
+        _b.setStyleSheet("QPushButton{background:#1f2733; color:%s; border:1px solid %s;"
+                         " border-radius:4px; padding:4px 10px; font-size:12px;}"
+                         "QPushButton:hover{border-color:%s;}" % (C_GOLD, C_BORDER, C_GOLD))
+        _b.clicked.connect(_slot)
+        r3.addWidget(_b)
+    r3.addStretch(1)
+    cl.addLayout(r3)
+    cl.addWidget(_pv)
+    cl.addWidget(_st)
+    bl.addWidget(card)
+
     # ── 顶部: 真源 + 条数 + 采集时间 ─────────────────────────────────────────
     top = QLabel("读取中…")
     top.setWordWrap(True)

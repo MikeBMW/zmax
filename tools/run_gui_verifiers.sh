@@ -17,6 +17,7 @@ run () {
 echo "══ GUI 判据集 $(date '+%F %T') ══"
 run scenesim         tools/tests/test_scene_edit.py
 run core_node_ui     tools/tests/test_core_node_ui.py
+run sim_real_3d      tools/tests/test_sim_real_3d.py
 run version_sync     tools/verify_version_sync.py
 run remote_monitor   tools/remote_monitor_aggregate.py
 run entries_cleanup   tools/verify_entries_cleanup.py

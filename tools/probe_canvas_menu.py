@@ -23,19 +23,19 @@ def chk(cond, msg):
     print(("  ✅ " if cond else "  ❌ ") + str(msg), flush=True)
 
 
-print("probe ③ 菜单「画布(C)」6 项 + 点击真转发", flush=True)
+print("probe ③ 菜单「画布(C)」7 项 + 点击真转发", flush=True)
 win = ST.StudioMainWindow()
 app.processEvents()
 menu_titles = [a.text() for a in win.menuBar().actions()]
 chk(any("画布" in t for t in menu_titles), f"主窗口一级菜单含「画布」 (共 {len(menu_titles)} 个: {menu_titles})")
 acts = getattr(win, "_canvas_menu_acts", {})
-chk(set(acts) == {"save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float"},
-    f"菜单 6 项齐全: {sorted(acts)}")
+chk(set(acts) == {"save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d"},
+    f"菜单 7 项齐全: {sorted(acts)}")
 for k, sc in (("save_canvas", "Ctrl+Shift+S"), ("load_canvas", "Ctrl+Shift+L"),
-              ("record", "Ctrl+Shift+R"), ("float", "Ctrl+Alt+F")):
+              ("record", "Ctrl+Shift+R"), ("float", "Ctrl+Alt+F"), ("ss_3d", "Ctrl+Shift+D")):
     got = acts[k].shortcut().toString() if acts.get(k) else "—"
     chk(got == sc, f"{k} 快捷键 {got} (期望 {sc})")
-chk(all(a.toolTip() for a in acts.values()), "6 项都有悬停说明")
+chk(all(a.toolTip() for a in acts.values()), "7 项都有悬停说明")
 win.simulink = None
 try:
     win._canvas_menu_click("save_model")
@@ -47,16 +47,16 @@ print("probe ④ 画布接管 + 真触发 + QAction 兼容", flush=True)
 m = SM.SimulinkModule()
 called = []
 for meth in ("export_flow", "import_flow", "save_trained_model", "start_recording",
-             "stop_recording", "toggle_float_canvas"):
+             "stop_recording", "toggle_float_canvas", "open_ss_3d"):
     setattr(m, meth, (lambda n: (lambda *a, **k: called.append(n)))(meth))
 r = m.attach_canvas_actions(acts)
-chk(r.get("ok") and r.get("n") == 6, f"attach_canvas_actions 接管 6 项 ({r})")
+chk(r.get("ok") and r.get("n") == 7, f"attach_canvas_actions 接管 7 项 ({r})")
 win.simulink = m
-for k in ("save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float"):
+for k in ("save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d"):
     acts[k].trigger()
 chk(sorted(called) == sorted(["export_flow", "import_flow", "save_trained_model",
-                              "start_recording", "stop_recording", "toggle_float_canvas"]),
-    f"6 项菜单真触发到画布方法: {sorted(called)}")
+                              "start_recording", "stop_recording", "toggle_float_canvas", "open_ss_3d"]),
+    f"7 项菜单真触发到画布方法: {sorted(called)}")
 chk(isinstance(getattr(m, "btn_record", None), QAction), "btn_record 现在是菜单项 (QAction)")
 chk(getattr(m, "btn_stop_rec", None) is not None and m.btn_stop_rec.isEnabled() is False,
     "接管后「停止录制」初始不可点 (没在录)")
@@ -76,7 +76,8 @@ print("probe ④ 画布工具栏: 🧮 状态空间 + 🛰 工位总览 两个�
 try:
     m = SM.SimulinkModule()
     app.processEvents()
-    for attr, txt in (("btn_state_space", "状态空间"), ("btn_station", "工位总览")):
+    for attr, txt in (("btn_state_space", "状态空间"), ("btn_station", "工位总览"),
+                      ("btn_ss_3d", "3D 视图")):
         b = getattr(m, attr, None)
         chk(b is not None and txt in b.text(), f"工具栏有「{txt}」按钮 (attr={attr}, 文本={getattr(b, 'text', lambda: '—')() if b else '无'})")
         chk(bool(b) and b.isVisibleTo(m), f"「{txt}」按钮已挂进工具栏布局 (isVisibleTo=True, 没被 setVisible(False) 藏掉)")
@@ -84,13 +85,15 @@ try:
     hit = {}
     SM.SimulinkModule.open_state_space = lambda self, *a, **k: hit.setdefault("ss", True)
     SM.SimulinkModule.open_station_page = lambda self, *a, **k: hit.setdefault("station", True)
+    SM.SimulinkModule.open_ss_3d = lambda self, *a, **k: hit.setdefault("v3d", True)
     m2 = SM.SimulinkModule()
     app.processEvents()
     m2.btn_state_space.click()
     m2.btn_station.click()
+    m2.btn_ss_3d.click()
     app.processEvents()
-    chk(hit.get("ss") and hit.get("station"),
-        f"两个按钮点击真转发到 open_state_space / open_station_page (实测 {hit})")
+    chk(hit.get("ss") and hit.get("station") and hit.get("v3d"),
+        f"三个按钮点击真转发到 open_state_space / open_station_page / open_ss_3d (实测 {hit})")
     # 视觉证据: 把工具栏这一行真渲染成 PNG (老倪要"看得到", 不只看打印)
     try:
         _tb = m2.btn_state_space.parentWidget()

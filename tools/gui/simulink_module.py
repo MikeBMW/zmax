@@ -5386,6 +5386,10 @@ class SimulinkModule(QWidget):
                 "  · 页面地址 = 8793 站点 /station; 只读看画面 + 手动控制按钮走同一站点接口",
                 self.open_station_page, "#58a6ff")
         tl.addWidget(self.btn_station)
+        # 🧭 2026-10-10 老倪「simulink 画布的 3D 视图那个按钮哪里去了？找回来。仿真可视化很重要」
+        #   🔴 根因: btn_ss_3d 在 5366 行建了对象, 但 43b233d (v5.26.1 工具栏精简) 把 addWidget 删了
+        #   ⇒ 按钮在、点击能通, 只是没挂进布局 = 用户看不到 (工具栏可见性判据缺失才漏到今天)。
+        tl.addWidget(self.btn_ss_3d)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -6835,6 +6839,12 @@ class SimulinkModule(QWidget):
         # 🔴 同上: Ctrl+Shift+F 和「视图→🖥 窗口适配屏幕」撞车 → 改 Ctrl+Alt+F
         ("float", "⛶ 浮动画布 (独立窗口)", "Ctrl+Alt+F",
          "画布独立成可最大化窗口 (关闭自动还原回主窗口)", True),
+        # 🧭 2026-10-10 老倪「3D 视图按钮找回来」: 除工具栏常驻外, 菜单里也给固定入口
+        #   (工具栏在窄屏会被压掉, 菜单永远点得到) — 与工具栏 btn_ss_3d 同一个方法
+        ("ss_3d", "🧭 3D 视图 (场景可视化 + 编辑)", "Ctrl+Shift+D",
+         "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层"
+         " (YOLO 检测框/末端轨迹/前馈 u_ff/融合指令 u/限幅 u_sat/状态估计/接触), 每层可开关;"
+         " 视图内可直接管理/编辑 3D 场景 (对象列出·选中编辑·显隐·新增, 写库走 scene_edit.py 单一写路径)", True),
     ]
 
     def attach_canvas_actions(self, acts):
@@ -6853,6 +6863,16 @@ class SimulinkModule(QWidget):
         sr = getattr(self, "btn_stop_rec", None)
         if sr is not None:
             sr.setEnabled(False)          # 没在录 → 停止项不可点
+        # 🧭 2026-10-10: 「3D 视图」菜单项 ≠ 按钮替身 (工具栏常驻按钮不能被子菜单 QAction 顶掉)
+        #   ⇒ 只把菜单项的 triggered 接到既有按钮的 click (同一个方法, 单一实现)
+        a3 = (acts or {}).get("ss_3d")
+        _b3 = getattr(self, "btn_ss_3d", None)
+        if a3 is not None and _b3 is not None:
+            try:
+                a3.setEnabled(True)
+                a3.triggered.connect(lambda _=False: _b3.click())
+            except Exception:
+                pass
         return {"ok": True, "n": len(acts or {})}
 
     def _action_anchor(self, act):
@@ -13706,9 +13726,13 @@ class SimulinkModule(QWidget):
         # 🆕 2026-10-10 老倪: 「3D 视图…你要管理和编辑这个场景」⇒ 给 3D 视图挂场景编辑
         #   (对象列出/选中编辑/显隐/新增; 写库走 scene_edit.py 单一写路径; 幂等, 失败不拖垮 3D)
         try:
+            # 🔴 2026-10-10: 本函数下面 except 里有一句 `import sys` ⇒ `sys` 在此函数内是**局部名**,
+            #   这里再写 `sys.path` 会 UnboundLocalError (实测: 场景编辑面板从来没挂上, 只打了失败日志)。
+            #   ⇒ 用 `import sys as _sys`, 不撞局部名。
+            import sys as _sys
             _d = os.path.dirname(os.path.abspath(__file__))
-            if _d not in sys.path:
-                sys.path.insert(0, _d)
+            if _d not in _sys.path:
+                _sys.path.insert(0, _d)
             from dreamview_scene_edit import attach_scene_edit
             attach_scene_edit(dv)
         except Exception as _e:                                            # noqa: BLE001
