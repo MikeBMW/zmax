@@ -89,6 +89,27 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - 场景库 (tools/scene_registry.py) 现应含 8 个: 5 作业场景 + SCN-07-UP 上下料 + SCN-01-PEG 插拔副本 + SIM-PEG-L4 仿真场景;
   带 `run` 元数据的场景在下拉里标「▶可运行」。
 
+## 场景管理只做两条 + 几何对齐 metaworld 真模型 (2026-10-10)
+
+老倪: 「现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」+「需要对齐 metaworld 的场景渲染」。
+
+- **手写几何必然跟模型跑偏 — 一律从 MuJoCo 模型导出** (`sim_scene_def.export_mujoco_truth`):
+  载入 ▶运行 用的同一份 `sawyer_peg_insertion_side_l4.xml` → `mj_forward` → 遍历 geom 取
+  **世界系** AABB (`d.geom_xpos` + `d.geom_xmat`; mesh 用 `m.mesh_vert` 顶点算), 滤掉机械臂/底座/屏/地面,
+  每个对象标 `source=MuJoCo 模型实测 (body=.. geom=..)`。
+  ⚠️ 两个实测真错 (手写版): 台面写成 0.8×0.8 实为 **1.4×0.8×0.054, 中心在 y=0.6**;
+  光模块按 stock 写方截面实为 **侧插平放 长 0.24 沿 x · 截面 0.04×0.016**。
+  site 真值 (`d.site_xpos`) 才是孔口/抓取点/目标点 (site:hole/pegGrasp/goal) —— 不要用推算值。
+- **geom_size 语义**: sphere=[r]; capsule/cylinder=[r, half-length] (全长得×2, 别只拿来当长度); box=[hx,hy,hz]。
+- **两种写路径别搞混**: 类方法 (`SceneView3D._write`) 用 `self.scene_id`; 页内闭包 (build_card 里的 add/del/toggle)
+  用 `view.scene_id`。写成 `view.scene_id` 放在类方法里 ⇒ 拖动即 NameError, 启动阶段直接 core dump
+  (实测把控制台崩掉一次; 判据盲区: 判据当时没直调类方法写路径)。
+  判据要同时有「源码断言 (类方法不得出现 view.scene_id)」+「行为断言 (真建视图直调 _write 不崩)」。
+- 场景清单白名单 `SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP")` + `SCENE_LABEL` 中文名;
+  其余场景的定义/文件都留着, 只是不露脸 ⇒ 要恢复只是改白名单, 不是重构。
+- `data/` 在 .gitignore 里 ⇒ 真源/场景库 (data/scene/**) 不进仓库; 出厂能力由代码里的 `default()` / `ensure_episode_scene()`
+  兜底, 提交只 `git add -A tools/ VERSION.md`。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
