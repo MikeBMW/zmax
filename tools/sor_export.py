@@ -29,7 +29,8 @@ from docx import Document  # noqa: E402
 from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
 from docx.oxml import OxmlElement  # noqa: E402
 from docx.oxml.ns import qn  # noqa: E402
-from docx.shared import Cm, Pt  # noqa: E402
+from docx.enum.table import WD_ALIGN_VERTICAL  # noqa: E402
+from docx.shared import Cm, Pt, RGBColor  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
@@ -150,6 +151,20 @@ def h(doc, text, level=1):
     return p
 
 
+def page_setup(doc, margins=(2.2, 2.0)):
+    """A4 纵向 + 统一页边距 + 中文字体 —— 供应商要打印, python-docx 默认 Letter 会错版 (实测 pdftoppm 出 612x792pt)。"""
+    st = doc.styles["Normal"]
+    st.font.name = CN_FONT
+    st.font.size = Pt(10.5)
+    st.element.rPr.rFonts.set(qn("w:eastAsia"), CN_FONT)
+    for s in doc.sections:
+        s.page_width = Cm(21.0)
+        s.page_height = Cm(29.7)
+        s.left_margin = s.right_margin = Cm(margins[0])
+        s.top_margin = s.bottom_margin = Cm(margins[1])
+    return doc
+
+
 def para(doc, text, size=10.5, bold=False, italic=False):
     p = doc.add_paragraph()
     r = p.add_run(text)
@@ -158,22 +173,114 @@ def para(doc, text, size=10.5, bold=False, italic=False):
     return p
 
 
-def table(doc, headers, rows, widths=None):
-    t = doc.add_table(rows=1, cols=len(headers))
+# ── 表格视觉规范 (2026-10-10 老倪: 「表格显示的非常不友好, 用眼睛看非常费劲」⇒ 全部走这个函数) ──
+TBL_HEAD_FILL = "1F3864"   # 表头深蓝底 + 白字 (视线锚点)
+TBL_BAND_FILL = "EEF3FA"   # 隔行浅蓝 (长表眼睛有落脚点, 不会串行)
+TBL_BORDER = "9DB2CE"      # 细灰蓝边框 (不用黑粗线压字)
+TBL_TOTAL_CM = 16.0        # A4 纵向可用宽度
+
+
+def _shade(cell, fill):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+    tcPr.append(shd)
+
+
+def _cell_margins(t, top=60, bottom=60, left=120, right=120):
+    """单元格留白 (dxa): 默认值太挤, 文字贴着边框很难读。"""
+    mar = OxmlElement("w:tblCellMar")
+    for tag, val in (("top", top), ("left", left), ("bottom", bottom), ("right", right)):
+        e = OxmlElement("w:" + tag)
+        e.set(qn("w:w"), str(val))
+        e.set(qn("w:type"), "dxa")
+        mar.append(e)
+    t._tbl.tblPr.append(mar)
+
+
+def _borders(t, color=TBL_BORDER, sz=6):
+    b = OxmlElement("w:tblBorders")
+    for tag in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        e = OxmlElement("w:" + tag)
+        e.set(qn("w:val"), "single")
+        e.set(qn("w:sz"), str(sz))
+        e.set(qn("w:space"), "0")
+        e.set(qn("w:color"), color)
+        b.append(e)
+    t._tbl.tblPr.append(b)
+
+
+def _repeat_header(row):
+    """跨页时表头自动重复 —— 长表翻页后不用回头找列名。"""
+    e = OxmlElement("w:tblHeader")
+    e.set(qn("w:val"), "true")
+    row._tr.get_or_add_trPr().append(e)
+
+
+def _auto_widths(headers, rows, total_cm=TBL_TOTAL_CM):
+    """没给列宽时按内容长度分配: 长的宽、短的窄 —— 避免某列被挤成一字一行。"""
+    n = len(headers)
+    if n == 0:
+        return []
+    w = []
+    for i in range(n):
+        vals = [len(str(headers[i]))] + [len(str(r[i])) if i < len(r) else 0 for r in rows[:40]]
+        avg = sum(vals) / max(1, len(vals))
+        w.append(max(2.5, min(avg, 45.0)))
+    s = sum(w)
+    return [round(total_cm * x / s, 2) for x in w]
+
+
+def table(doc, headers, rows, widths=None, size=9.5, band=True, first_col_bold=True, center_cols=None):
+    """一个**给人看**的表: 深色表头(白字) + 隔行浅底 + 细边框 + 固定列宽 + 留白 + 跨页重复表头。
+
+    center_cols=None ⇒ 自动: 内容短的列居中(编号/数量/状态一类), 长的列左对齐(说明/口径一类)。
+    以后所有文档表格一律走这个入口, 不要再手写 doc.add_table (否则又回到'费劲'的表)。
+    """
+    n = len(headers)
+    t = doc.add_table(rows=1, cols=n)
     t.style = "Table Grid"
-    for i, htxt in enumerate(headers):
-        c = t.rows[0].cells[i]
-        c.text = ""
-        _font(c.paragraphs[0].add_run(str(htxt)), size=10, bold=True)
-    for row in rows:
-        cells = t.add_row().cells
-        for i, v in enumerate(row):
-            cells[i].text = ""
-            _font(cells[i].paragraphs[0].add_run("" if v is None else str(v)), size=10)
-    if widths:
-        for r_ in t.rows:
-            for i, w in enumerate(widths):
+    t.autofit = False
+    for r_ in t.rows:
+        for i, w in enumerate(widths or _auto_widths(headers, rows)):
+            if i < len(r_.cells):
                 r_.cells[i].width = Cm(w)
+    _cell_margins(t)
+    _borders(t)
+
+    hr = t.rows[0]
+    _repeat_header(hr)
+    for i, htxt in enumerate(headers):
+        c = hr.cells[i]
+        c.text = ""
+        p = c.paragraphs[0]
+        p.paragraph_format.space_before = Pt(1)
+        p.paragraph_format.space_after = Pt(1)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _font(p.add_run(str(htxt)), size=size + 0.5, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
+        _shade(c, TBL_HEAD_FILL)
+        c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+    for ri, row in enumerate(rows):
+        cells = t.add_row().cells
+        for i in range(n):
+            v = row[i] if i < len(row) else ""
+            c = cells[i]
+            c.text = ""
+            p = c.paragraphs[0]
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after = Pt(1)
+            txt = "" if v is None else str(v)
+            short = len(txt) <= 8
+            p.alignment = (WD_ALIGN_PARAGRAPH.CENTER
+                           if ((center_cols and i in center_cols) or (center_cols is None and short))
+                           else WD_ALIGN_PARAGRAPH.LEFT)
+            _font(p.add_run(txt), size=size, bold=bool(first_col_bold and i == 0))
+            if band and ri % 2 == 1:
+                _shade(c, TBL_BAND_FILL)
+            c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     return t
 
 
@@ -225,14 +332,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     sys1, feats, fns, axes, params, axes_node = load()
     systems = load_all_systems()
     task = load_task(task_id)
-    doc = Document()
-    st = doc.styles["Normal"]
-    st.font.name = CN_FONT
-    st.font.size = Pt(10.5)
-    st.element.rPr.rFonts.set(qn("w:eastAsia"), CN_FONT)
-    for s in doc.sections:
-        s.left_margin = s.right_margin = Cm(2.2)
-        s.top_margin = s.bottom_margin = Cm(2.0)
+    doc = page_setup(Document())
     footer_pagenum(doc, "%s · %s            " % (DOC_NO, VERSION))
 
     # 封面

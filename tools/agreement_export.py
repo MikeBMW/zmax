@@ -16,7 +16,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sor_export import footer_pagenum, h, para, sha, table  # noqa: E402
+from sor_export import footer_pagenum, h, page_setup, para, sha, table  # noqa: E402
 
 from docx import Document  # noqa: E402
 from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
@@ -123,14 +123,7 @@ SECTIONS = [
 def build():
     g = json.load(open(GOV, encoding="utf-8"))
     mt, ps, cp, sla = g["model_terms"], g["platform_scope"], g["compliance"], g["sla"]
-    doc = Document()
-    st = doc.styles["Normal"]
-    st.font.name = CN_FONT
-    st.font.size = Pt(10.5)
-    st.element.rPr.rFonts.set(qn("w:eastAsia"), CN_FONT)
-    for s in doc.sections:
-        s.left_margin = s.right_margin = Cm(2.2)
-        s.top_margin = s.bottom_margin = Cm(2.0)
+    doc = page_setup(Document())
     footer_pagenum(doc, "%s · %s            " % (DOC_NO, VERSION))
 
     p = doc.add_paragraph()

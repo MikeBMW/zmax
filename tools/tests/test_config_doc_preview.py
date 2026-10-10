@@ -143,6 +143,21 @@ def main():
     check("文档配置那行写明『文档 n/3』(不让人误以为子项数)", any("文档配置" in l and "文档 " in l for l in labels),
           [l for l in labels if "文档配置" in l])
 
+    print("\n═══ 7) 内置预览是真表格 (不是 `| a | b |` 竖线文本) ═══")
+    page._show_doc("sor")
+    app.processEvents()
+    html = page.preview.toHtml()
+    plain = page.preview.toPlainText()
+    ntab = html.count("<table")
+    print(f"      预览 HTML 里 <table> x{ntab} · 纯文本 {len(plain)} 字符")
+    check("预览是 HTML 表格", ntab >= 3, ntab)
+    check("表头带深底填充色", "#1f3864" in html.lower() or "1f3864" in html.lower())
+    check("表格有单元格色带(隔行)", ("1b222c" in html.lower() and "161b24" in html.lower()))
+    check("不再用竖线拼表格", "| 项目 |" not in plain and "| 要求 |" not in plain,
+          [l for l in plain.splitlines() if l.strip().startswith("|")][:2])
+    # 采购范围那张 2 列表: 右侧长文本必须在同一行内 (竖线文本时代它是独立行)
+    check("采购范围表在预览里成对出现", "系统类型" in plain and "光模块自动上下料单元" in plain)
+
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0
 

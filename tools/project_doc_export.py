@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sor_export import _font, footer_pagenum, h, para, sha, table  # noqa: E402
+from sor_export import _font, footer_pagenum, h, page_setup, para, sha, table  # noqa: E402
 
 from docx import Document  # noqa: E402
 from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
@@ -162,14 +162,7 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
     prj, db_fns = bom["project"], db_facts()[0]
     bs_factor = bom["bom"]["mass_production_factor"]
     bm = bom["bom"]
-    doc = Document()
-    st = doc.styles["Normal"]
-    st.font.name = CN
-    st.font.size = Pt(10.5)
-    st.element.rPr.rFonts.set(qn("w:eastAsia"), CN)
-    for s in doc.sections:
-        s.left_margin = s.right_margin = Cm(2.0)
-        s.top_margin = s.bottom_margin = Cm(1.8)
+    doc = page_setup(Document(), margins=(2.0, 1.8))
     footer_pagenum(doc, "%s · %s            " % (DOC_NO, VERSION))
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER

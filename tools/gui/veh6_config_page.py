@@ -207,6 +207,73 @@ def _render_docx(path, limit=300000):
     return txt[:limit] + ("\n\n… (面板截断, 完整内容见 docx)" if len(txt) > limit else "")
 
 
+def _esc(t):
+    return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+
+
+def _render_doc_html(path):
+    """把 .docx 渲染成**可读的 HTML**: 表格是真表格 (深底白字表头 + 隔行底色 + 列宽按 docx 实际比例)。
+
+    老倪 2026-10-10: 「表格显示的非常不友好, 用眼睛看非常费劲」⇒ 预览不再用 `| a | b |` 竖线文本。
+    Qt 富文本不支持 border-collapse, 用 table 的 border/cellpadding 属性 + 单元格内联色实现。
+    """
+    C_HEAD, C_ROW1, C_ROW2, C_TXT, C_HEAD_TXT, C_LINE = "#1F3864", "#1b222c", "#161b24", "#e8edf4", "#ffffff", "#2a3340"
+    try:
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+    except Exception as e:  # noqa: BLE001
+        return "<p>⛔ 读不了 docx (python-docx 缺失?): %s</p>" % _esc(e)
+    try:
+        d = Document(path)
+    except Exception as e:  # noqa: BLE001
+        return "<p>⛔ 打不开 %s: %s</p>" % (_esc(path), _esc(e))
+
+    out = []
+    for child in d.element.body.iterchildren():
+        tag = child.tag.split("}")[-1]
+        if tag == "p":
+            p = Paragraph(child, d)
+            txt = p.text.strip()
+            if not txt:
+                continue
+            sty = p.style.name or ""
+            if sty.startswith("Heading 1") or sty.startswith("Title"):
+                out.append('<p style="font-size:14pt;font-weight:700;color:#9fc3f0;margin:16px 0 6px 0;">%s</p>' % _esc(txt))
+            elif sty.startswith("Heading 2"):
+                out.append('<p style="font-size:12pt;font-weight:700;color:#cfe0f5;margin:12px 0 4px 0;">%s</p>' % _esc(txt))
+            elif sty.startswith("Heading"):
+                out.append('<p style="font-size:11pt;font-weight:700;color:#cfe0f5;margin:10px 0 3px 0;">%s</p>' % _esc(txt))
+            else:
+                out.append('<p style="font-size:10pt;color:%s;margin:3px 0;">%s</p>' % (C_TXT, _esc(txt)))
+        elif tag == "tbl":
+            t = Table(child, d)
+            ncol = len(t.rows[0].cells) if len(t.rows) else 0
+            pcts = [""] * ncol
+            try:
+                ws = [c.width.cm if c.width else None for c in t.rows[0].cells]
+                tot = sum(w for w in ws if w)
+                if tot:
+                    pcts = [' width="%d%%"' % max(6, int(100.0 * w / tot)) if w else "" for w in ws]
+            except Exception:  # noqa: BLE001
+                pass
+            h = ['<table border="1" cellspacing="0" cellpadding="6" style="border-color:%s;margin:8px 0;">' % C_LINE]
+            for ri, row in enumerate(t.rows):
+                bg = C_HEAD if ri == 0 else (C_ROW1 if ri % 2 == 1 else C_ROW2)
+                fg = C_HEAD_TXT if ri == 0 else C_TXT
+                h.append("<tr>")
+                for ci, c in enumerate(row.cells):
+                    w = pcts[ci] if (ri == 0 and ci < len(pcts)) else ""
+                    txt = _esc(c.text.strip())
+                    if ri == 0 or ci == 0:
+                        txt = "<b>%s</b>" % txt
+                    h.append('<td%s style="color:%s;background-color:%s;">%s</td>' % (w, fg, bg, txt))
+                h.append("</tr>")
+            h.append("</table>")
+            out.append("".join(h))
+    return "".join(out) or "<p>（文档正文为空）</p>"
+
+
 def _run_script(script, args=None, timeout=900):
     """真跑 tools/ 下的脚本, stdout+stderr 全抓回面板 (点了必出结果, 失败不静默)。"""
     import subprocess
@@ -601,12 +668,12 @@ class ConfigCenterPage(QWidget):
             f" · 生成 {time.strftime('%m-%d %H:%M', time.localtime(st['doc']['mtime']))} · {mark} · {st['why']}\n"
             + "   ".join(f"{v} {l}: {r}→{c}" for l, r, c, v in st["rows"])
             + f"\ndocx 绝对路径: {st['doc']['docx']}")
-        body = _render_docx(st["doc"]["docx"])
+        html = _render_doc_html(st["doc"]["docx"])
         if st["stale"]:
-            body = (f"⛔ 一致性告警: {st['why']}\n"
-                    "   这份文档是用**旧真源**生成的 —— 不能当交付件, 点「♻️ 重新生成并预览」\n"
-                    + "─" * 78 + "\n\n") + body
-        self.preview.setPlainText(body)
+            html = ('<p style="color:#ff8a8a;font-size:11pt;font-weight:700;margin:6px 0;">'
+                    '⛔ 一致性告警: %s —— 这份文档是用旧真源生成的, 不能当交付件, 点「♻️ 重新生成并预览」</p>'
+                    '<hr style="border:1px solid #7a2b2b;">' % _esc(st["why"])) + html
+        self.preview.setHtml(html)
 
     def _show_consistency(self):
         """三份文档 × 当前真源 一致性核对 (数据统一/一致性的判据视图)。"""
