@@ -176,7 +176,111 @@ def geometry() -> dict:
     }
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 🧩 摆盘场景 SS-TRAY-PLACE (老倪 2026-10-10):
+#   「将摆盘的场景，AOI相机，换成料盘，料盘是装光模块的黑色塑料盒子，没有盖，就是个托盘，
+#     里面放着3个光模块；将插孔换成另一个 tray盘，tray盘与料盘的区别是，tray盘里面有固定的
+#     槽位，正好可以对应3个光模块，光模块可以正好落进这三个槽子里」
+#   ⇒ 料盘落在原 AOI 相机工位 (0.12, 0.62); tray盘落在原插孔 (带孔盒) 位置 (-0.2645, 0.4623)。
+# ══════════════════════════════════════════════════════════════════════════════════════════
+TRAY_SCENE = "SS-TRAY-PLACE"
+_TRAY_BLACK = [0.10, 0.10, 0.11]          # 黑色塑料 (料盘/tray盘)
+_TRAY_GOLD = [0.92, 0.74, 0.24]           # 光模块 (金色)
+
+# 光模块 + 盘几何 (m): 光模块 52×20×12mm; 槽位间距 30mm; 盘壁 6mm
+_TRAY_MW, _TRAY_MD, _TRAY_MH = 0.052, 0.020, 0.012
+_TRAY_GAP = 0.030
+_TRAY_WW, _TRAY_WH, _TRAY_BH = 0.006, 0.014, 0.006
+_TRAY_PW = _TRAY_MW + 4 * _TRAY_WW + 0.010                 # 盘外廓 x
+_TRAY_PH = 3 * _TRAY_GAP + 2 * _TRAY_WW                    # 盘外廓 y
+_TRAY_LP = (0.12, 0.62)          # 料盘中心 (原 AOI 相机工位)
+_TRAY_TP = (-0.2645, 0.4623)     # tray盘中心 (原插孔/带孔盒位置)
+
+
+def _tray_layout() -> dict:
+    """摆盘工位: 料盘 (黑塑料托盘, 无盖无槽位, 装 3 个光模块) + tray盘 (3 个固定槽位)。"""
+    LX, LY = _TRAY_LP
+    TX, TY = _TRAY_TP
+    PW, PH, WW, WH, BH = _TRAY_PW, _TRAY_PH, _TRAY_WW, _TRAY_WH, _TRAY_BH
+    objs, marks = [], []
+
+    def _o(nm, c, sz, col, src=""):
+        objs.append({"name": nm, "center": [float(x) for x in c], "size": [float(v) for v in sz],
+                     "color": list(col), "source": src, "editable": True, "sim": True})
+
+    def _walls(prefix, cx, cy, src):
+        _o(prefix + "·底板", (cx, cy, BH / 2), (PW, PH, BH), _TRAY_BLACK, src)
+        _o(prefix + "·壁X-", (cx - PW / 2 + WW / 2, cy, BH + WH / 2), (WW, PH, WH), _TRAY_BLACK, src)
+        _o(prefix + "·壁X+", (cx + PW / 2 - WW / 2, cy, BH + WH / 2), (WW, PH, WH), _TRAY_BLACK, src)
+        _o(prefix + "·壁Y-", (cx, cy - PH / 2 + WW / 2, BH + WH / 2), (PW, WW, WH), _TRAY_BLACK, src)
+        _o(prefix + "·壁Y+", (cx, cy + PH / 2 - WW / 2, BH + WH / 2), (PW, WW, WH), _TRAY_BLACK, src)
+
+    _walls("料盘", LX, LY, "摆盘: 装光模块的黑色塑料托盘 (没有盖, 就是个托盘)")
+    for _i, _dy in enumerate((-_TRAY_GAP, 0.0, _TRAY_GAP)):
+        _o("光模块 %d (在料盘里)" % (_i + 1), (LX, LY + _dy, BH + _TRAY_MH / 2),
+           (_TRAY_MW, _TRAY_MD, _TRAY_MH), _TRAY_GOLD, "摆盘: 料盘里的 3 个光模块")
+    marks.append({"id": "tray_mk_01", "name": "料盘 (装光模块的黑色塑料托盘)", "pos": [LX, LY, BH + WH],
+                  "type": "工位", "radius_m": 0.02,
+                  "source": "原 AOI 相机工位 → 料盘 (老倪 2026-10-10)"})
+
+    _walls("tray盘", TX, TY, "摆盘: 带 3 个固定槽位的 tray盘 (光模块正好落进槽里)")
+    for _i, _dy in enumerate((-_TRAY_GAP / 2, _TRAY_GAP / 2)):
+        _o("tray盘·隔板 %d" % (_i + 1), (TX, TY + _dy, BH + WH / 2),
+           (PW - 2 * WW, WW, WH), _TRAY_BLACK, "摆盘: 槽位隔板 (3 槽 = 3 个光模块位)")
+    for _i, _dy in enumerate((-_TRAY_GAP, 0.0, _TRAY_GAP)):
+        marks.append({"id": "tray_mk_%02d" % (_i + 2), "name": "tray盘 槽位 %d (光模块落位)" % (_i + 1),
+                      "pos": [TX, TY + _dy, BH + WH], "type": "检查点", "radius_m": 0.012,
+                      "source": "摆盘: 固定槽位 ↔ 光模块 (正好落进)"})
+    return {"objects": objs, "markers": marks}
+
+
+def _tray_objects3d() -> dict:
+    """摆盘场景对象: 台面/护栏/机器人 (沿用) + 料盘 + tray盘 + 3 个光模块; 不含插拔夹具。"""
+    t = episode_truth()
+    _sc = load()["scenes"].get(TRAY_SCENE) or {}
+    objs = []
+    for i, o in enumerate(_sc.get("objects") or []):
+        nm = str(o.get("name") or "")
+        if any(k in nm for k in ("光模块", "夹具", "孔座", "peg")):
+            continue                                   # 插拔的孔座/夹具/单根光模块 → 换成摆盘盘件
+        d = {"id": o.get("id") or ("tr_ob_%02d" % (i + 1)), "name": nm,
+             "center": [float(x) for x in o["center"]], "size": [float(x) for x in o["size"]],
+             "source": o.get("source", ""), "editable": True}
+        for k in ("color", "part"):
+            if o.get(k) is not None:
+                d[k] = o[k]
+        objs.append(d)
+    L = _tray_layout()
+    for j, o in enumerate(L["objects"]):
+        d = dict(o)
+        d["id"] = "tray_ob_%02d" % (j + 1)
+        objs.append(d)
+    return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": TRAY_SCENE,
+            "coord": "世界系 m (metaworld sawyer_xyz)", "sim": True, "kind": "tray",
+            "source": "摆盘工位: 料盘(装 3 个光模块, 无盖) + tray盘(3 个固定槽位) — 机器人/台面沿用 episode 真值",
+            "scene_name": _sc.get("name"), "truth": _sc.get("truth"),
+            "episode": ({"npz": os.path.relpath(t["npz"], ROOT), "step_count": t["steps"]} if t.get("ok") else None),
+            "objects": objs, "markers": L["markers"], "fences": _sc.get("fences") or [],
+            "trajectories": []}
+
+
+def _tray_overlay() -> dict:
+    """摆盘场景叠加层: 标记 = 料盘 + 3 个槽位; 没有插拔的孔口/插入终点 (那是插拔的语义)。"""
+    _sc = load()["scenes"].get(TRAY_SCENE) or {}
+    L = _tray_layout()
+    fens = [{"id": "tray_fn_01", "kind": "box", "shape": {"center": [0.0, 0.6, 0.12], "size": [1.4, 0.8, 0.24]},
+             "name": "作业区 (台面上方)", "source": "场景台面 1.4×0.8"}]
+    return {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": TRAY_SCENE,
+            "sim": True, "kind": "tray", "scene_name": _sc.get("name"),
+            "run": _sc.get("runner"), "seed": _sc.get("seed"), "edit": _sc.get("edit"),
+            "source": "摆盘工位几何 (料盘 + 带槽位 tray盘)", "markers": L["markers"],
+            "fences": fens, "trajectories": []}
+
+
 def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
+    if scene_id == TRAY_SCENE:
+        return _tray_objects3d()
     if scene_id == EPI_SCENE:
         return _epi_objects3d()
     sc = load()["scenes"][scene_id]
@@ -196,6 +300,8 @@ def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
 
 def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
     import copy as _copy
+    if scene_id == TRAY_SCENE:
+        return _tray_overlay()
     if scene_id == EPI_SCENE:
         return _epi_overlay()
     sc = load()["scenes"].get(scene_id)

@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dreamview, 2026-08-25 老倪)
@@ -263,6 +264,14 @@ _CAM_DIST = 1.05
 _TABLE_COLOR_GREEN = (0.20, 0.52, 0.30, 1.0)      # 防静电胶皮桌面 (绿, 老倪 10-10 口径)
 _TABLE_COLOR_CREAM = (0.96, 0.94, 0.90, 1.0)      # 办公桌乳白
 _TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 兜底深灰 (未知场景)
+
+
+def scene_mode(scene_id=None):
+    """场景形态: 'tray' = 摆盘场景 (料盘 + 带槽位 tray盘, 不画插拔几何); 'plug' = 插拔/虚拟现实。"""
+    _sid = (scene_id or "").strip() or \
+        (os.environ.get("ZMAX_SCENE_DIR") or "").rstrip("/").split("/")[-1]
+    _u = str(_sid).upper()
+    return "tray" if ("TRAY" in _u or "PLACE" in _u) else "plug"
 
 
 def table_color(scene_id=None):
@@ -1478,51 +1487,55 @@ class DreamView3D(QWidget):
         self.view.addItem(table)
         self._table_item = table      # 🧩 切场景时改色 (插拔=绿防静电 / 摆盘=办公桌乳白)
         scene.append(table)
-        # 带孔盒 (红, 醒目 — 侧插目标件)
-        box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
-                            color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(box)
-        scene.append(box)
-        # 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 (底座+立柱+横臂+镜头筒, 亮青)
-        #   镜头筒口朝下, 光模块头悬停在筒口下对焦点 (_aoi_c) 检测
-        _ax, _ay = float(self._aoi_c[0]), float(self._aoi_c[1])
-        aoi_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.015]),
-                                                   (0.22, 0.14, 0.03)),
-                                 color=(0.25, 0.30, 0.36, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(aoi_base)
-        scene.append(aoi_base)
-        aoi_post = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.10]),
-                                                    (0.05, 0.05, 0.13)),
-                                 color=(0.20, 0.26, 0.32, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(aoi_post)
-        scene.append(aoi_post)
-        aoi_arm = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.01, 0.15]),
-                                                   (0.05, 0.04, 0.05)),
-                                color=(0.30, 0.55, 0.65, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(aoi_arm)
-        scene.append(aoi_arm)
-        aoi_lens = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay, 0.1375]),
-                                                    (0.09, 0.05, 0.045)),
-                                 color=(0.15, 0.85, 0.95, 1.0), smooth=False, shader='shaded')
-        self.view.addItem(aoi_lens)
-        scene.append(aoi_lens)
-        # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
-        mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
-                                                 (0.012, 0.05, 0.05)),
-                              color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
-        self.view.addItem(mouth)
-        scene.append(mouth)
-        # 插入终点标记 (goal, 半透明绿点线框)
-        gv, ge = _bbox_lines(self._hole, (0.03, 0.05, 0.05))
-        gpts = []
-        for e in ge:
-            gpts.append(gv[e[0]])
-            gpts.append(gv[e[1]])
-        goal = gl.GLLinePlotItem(pos=np.array(gpts), color=(0.20, 0.95, 0.55, 0.7),
-                                 width=2, mode='lines')
-        self.view.addItem(goal)
-        scene.append(goal)
-
+        if scene_mode(getattr(self, "scene_id", None)) == "tray":
+            # 🧩 摆盘场景 (老倪 2026-10-10): 插孔(带孔盒)+孔口+AOI 相机 全不要 ——
+            #    料盘(装光模块的黑塑料托盘) + tray盘(带 3 个固定槽位) 由场景数据层画。
+            scene.append(None)
+        else:
+            # 带孔盒 (红, 醒目 — 侧插目标件)
+            box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
+                                color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(box)
+            scene.append(box)
+            # 🚀 2026-09-08 L3 扩展: AOI 光学检测设备 (底座+立柱+横臂+镜头筒, 亮青)
+            #   镜头筒口朝下, 光模块头悬停在筒口下对焦点 (_aoi_c) 检测
+            _ax, _ay = float(self._aoi_c[0]), float(self._aoi_c[1])
+            aoi_base = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.015]),
+                                                       (0.22, 0.14, 0.03)),
+                                     color=(0.25, 0.30, 0.36, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(aoi_base)
+            scene.append(aoi_base)
+            aoi_post = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.04, 0.10]),
+                                                        (0.05, 0.05, 0.13)),
+                                     color=(0.20, 0.26, 0.32, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(aoi_post)
+            scene.append(aoi_post)
+            aoi_arm = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay + 0.01, 0.15]),
+                                                       (0.05, 0.04, 0.05)),
+                                    color=(0.30, 0.55, 0.65, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(aoi_arm)
+            scene.append(aoi_arm)
+            aoi_lens = gl.GLMeshItem(meshdata=_box_mesh(np.array([_ax, _ay, 0.1375]),
+                                                        (0.09, 0.05, 0.045)),
+                                     color=(0.15, 0.85, 0.95, 1.0), smooth=False, shader='shaded')
+            self.view.addItem(aoi_lens)
+            scene.append(aoi_lens)
+            # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
+            mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
+                                                     (0.012, 0.05, 0.05)),
+                                  color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
+            self.view.addItem(mouth)
+            scene.append(mouth)
+            # 插入终点标记 (goal, 半透明绿点线框)
+            gv, ge = _bbox_lines(self._hole, (0.03, 0.05, 0.05))
+            gpts = []
+            for e in ge:
+                gpts.append(gv[e[0]])
+                gpts.append(gv[e[1]])
+            goal = gl.GLLinePlotItem(pos=np.array(gpts), color=(0.20, 0.95, 0.55, 0.7),
+                                     width=2, mode='lines')
+            self.view.addItem(goal)
+            scene.append(goal)
         # 🎯 2026-09-09 L4 演示场景设备 (物理 XML 注入, 3D 必须同呈现 — 老倪: 看不到转台/光耦合台):
         dg = self._demo_geom or {}
         if dg.get("turntable"):
@@ -1627,6 +1640,8 @@ class DreamView3D(QWidget):
         self._gl_items["arm"] = arm
         self._arm_idx = {"upper": 1, "fore": 2, "shoulder": 3, "elbow": 4,
                          "wrist": 5, "jaw_l": 6, "jaw_r": 7, "peg": 8}
+        if scene_mode(getattr(self, "scene_id", None)) == "tray":
+            arm[8].setVisible(False)      # 摆盘: 光模块由场景数据 (料盘里 3 个) 提供
 
         # 动态层占位 (创建空 item, 更新时 setData)
         # 轨迹线 — ⚠️ 2026-08-25 实测: 末端轨迹恰好走在机械臂/夹爪实体位置, 默认深度测试下
