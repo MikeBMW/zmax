@@ -258,6 +258,24 @@ _CAM_DIST = 1.05
 # ────────────────────────────────────────────────────────────
 # 3D 几何 helper
 # ────────────────────────────────────────────────────────────
+# 🧩 桌面配色 (老倪 2026-10-10): 「插拔场景 和 摆盘场景 的桌子颜色不一样…插拔的桌子是绿色,
+#    类似防静电经典桌面; 摆盘的桌面是办公桌的乳白色」 ⇒ 桌面颜色按场景取, 不再全局一个色。
+_TABLE_COLOR_GREEN = (0.20, 0.52, 0.30, 1.0)      # 防静电胶皮桌面 (绿, 老倪 10-10 口径)
+_TABLE_COLOR_CREAM = (0.96, 0.94, 0.90, 1.0)      # 办公桌乳白
+_TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 兜底深灰 (未知场景)
+
+
+def table_color(scene_id=None):
+    """按场景 id (或 ZMAX_SCENE_DIR) 返回桌面颜色 —— 插拔=绿防静电, 摆盘=乳白办公桌。"""
+    _sid = (scene_id or "").strip() or \
+        (os.environ.get("ZMAX_SCENE_DIR") or "").rstrip("/").split("/")[-1]
+    if "TRAY" in _sid or "PLACE" in _sid:
+        return _TABLE_COLOR_CREAM
+    if _sid in ("SS-EPI-CORNER", "SIM-PEG-L4") or "PEG" in _sid or "PLUG" in _sid:
+        return _TABLE_COLOR_GREEN
+    return _TABLE_COLOR_PLAIN
+
+
 def _box_mesh(center, size):
     """生成长方体 meshdata (12 三角形) — 用于场景几何体"""
     x0, y0, z0 = center
@@ -1453,9 +1471,12 @@ class DreamView3D(QWidget):
             _tw = (1.40, 0.62, 0.024)
             _tc = np.array([0.10, 0.58, -0.012])
         # 老倪 2026-10-10: 「你先把桌子的颜色改成乳白色」 (原深灰 0.16/0.18/0.22)
+        # 桌面用**无光照**平涂 (shader=None): 'shaded' 下乳白 0.96 会被渲成深灰 (实测中位色
+        # 49,48,46), 桌面颜色就认不出来了; 平涂让 绿防静电胶皮 / 乳白办公桌 一眼可辨。
         table = gl.GLMeshItem(meshdata=_box_mesh(_tc, _tw),
-                              color=(0.96, 0.94, 0.90, 1.0), smooth=False, shader='shaded')
+                              color=table_color(getattr(self, "scene_id", None)), smooth=False, shader=None)
         self.view.addItem(table)
+        self._table_item = table      # 🧩 切场景时改色 (插拔=绿防静电 / 摆盘=办公桌乳白)
         scene.append(table)
         # 带孔盒 (红, 醒目 — 侧插目标件)
         box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
@@ -1888,6 +1909,13 @@ class DreamView3D(QWidget):
         _os.environ["ZMAX_SCENE_DIR"] = _d
         _att = (getattr(self, "_scene_edit_attacher", None) or getattr(self, "scene_edit", None))
         _lab = {"SS-EPI-CORNER": "插拔场景", "SS-TRAY-PLACE": "摆盘场景"}.get(scene_id, scene_id)
+        try:      # 🧩 桌面换色: 插拔=绿防静电 / 摆盘=办公桌乳白 (同一个视图, 只改 GL 材质色)
+            _ti = getattr(self, "_table_item", None)
+            if _ti is not None:
+                _ti.setColor(table_color(scene_id))
+                self.view.update()
+        except Exception:                                                       # noqa: BLE001
+            pass
         ok = False
         if _att is not None and hasattr(_att, "switch_to_dir"):
             try:
