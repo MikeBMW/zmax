@@ -138,6 +138,18 @@ def _color_of(o):
 
 
 # ══════════════════════ 挂载器 ══════════════════════
+
+def _unit_scale(view):
+    """对象尺寸量纲自动判定: 该文件最大尺寸 >10 → mm (÷1000), 否则按米。
+
+    2026-10-10 实测: 仿真/派生场景 (SS-EPI-CORNER/SS-TRAY-PLACE/SIM-PEG-L4) 是**米**,
+    老的 SCN-* 是**毫米** —— 写死一种单位会让米制场景的对象缩 1000 倍 (画面上什么都看不到)。
+    """
+    dims = [abs(float(v)) for o in (view.get("objects") or [])
+            for v in (o.get("size") or []) if isinstance(v, (int, float))]
+    return (1.0 / 1000.0) if (dims and max(dims) > 10.0) else 1.0
+
+
 class SceneEditAttacher(QObject):
     """DreamView3D 的场景编辑挂载器: 侧边面板 + 右键菜单 + 对象叠加层。"""
 
@@ -152,7 +164,12 @@ class SceneEditAttacher(QObject):
     # ── 安装 ──
     def install(self):
         self._build_panel()
-        self.dv.view.installEventFilter(self)     # 右键菜单
+        self.dv.view.installEventFilter(self)     # 右键菜单 + 左键点选 (双向联动)
+        self._orig_style = {}     # 线框原样式 → 高亮后可还原
+        self._overlay_names = getattr(self, "_overlay_names", {}) or {}
+        self._hl_name = None      # 当前高亮对象
+        self._hl_item = None      # 高亮框 (对视图没画的对象也可见)
+        self._press = None        # 左键按下位置 (拖动转视角时不算点选)
         self.refresh_list()
         self.refresh_overlay()
 
@@ -193,6 +210,7 @@ class SceneEditAttacher(QObject):
             "QListWidget{background:#0f1318; color:#e6edf3; border:1px solid #30363d;"
             " border-radius:6px; font-size:12px;}")
         self.lst.itemDoubleClicked.connect(lambda _i: self.edit_selected())
+        self.lst.currentItemChanged.connect(self._on_list_sel)   # 清单 → 3D 高亮
         v.addWidget(self.lst, 1)
 
         def _b(txt, tip, fn, col):
@@ -339,9 +357,7 @@ class SceneEditAttacher(QObject):
         #   而仿真/派生场景 (SS-EPI-CORNER / SS-TRAY-PLACE / SIM-PEG-L4) 的 objects3d 单位是**米**
         #   ⇒ 叠加盒被缩了 1000 倍 (0.086m → 0.000086m), 肉眼完全看不见 = 两个场景看起来一样。
         #   修: 按文件量纲自动判定 (最大尺寸 > 10 → 该文件是 mm)。
-        _dims = [abs(float(v)) for _o in (view.get("objects") or [])
-                 for v in (_o.get("size") or []) if isinstance(v, (int, float))]
-        _scale = (1.0 / 1000.0) if (_dims and max(_dims) > 10.0) else 1.0
+        _scale = _unit_scale(view)
         # 🎨 3D 视图自己已经画的实体 (台面/护栏/机器人/摆盘的两只盘) 不再叠线框: 同一几何叠一起会
         #   z-fighting + 糊色 (实测台面绿色 114k px 被压到 5k)。叠加层只标"视图没画的那些对象"。
         _SKIP = ("工作台面", "台面护栏", "机器人", "料盘", "tray盘")
@@ -376,6 +392,7 @@ class SceneEditAttacher(QObject):
                 self.dv.view.addItem(item)
                 self.overlay_items.append(item)
                 self._overlay_names[name] = item
+                self._orig_style[name] = ((col[0], col[1], col[2], 1.0), 1.6)
                 n += 1
             except Exception:                                                  # noqa: BLE001
                 pass
@@ -498,12 +515,227 @@ class SceneEditAttacher(QObject):
     # ── 右键菜单 ──
     def eventFilter(self, obj, ev):
         try:
-            if obj is self.dv.view and ev.type() == QEvent.ContextMenu:
-                self._context_menu(ev)
-                return True
+            if obj is self.dv.view:
+                if ev.type() == QEvent.ContextMenu:
+                    self._context_menu(ev)
+                    return True
+                if ev.type() == QEvent.MouseButtonPress:
+                    self._press = (ev.x(), ev.y())
+                elif ev.type() == QEvent.MouseButtonRelease and self._press is not None:
+                    _p = self._press
+                    self._press = None
+                    if (abs(ev.x() - _p[0]) <= 3 and abs(ev.y() - _p[1]) <= 3):
+                        self._pick_here(ev.x(), ev.y())
         except Exception:                                                      # noqa: BLE001
             pass
         return super().eventFilter(obj, ev)
+
+
+    # ══════════════════════════════════════════════════════════════════════════════════════
+    # 🖱 3D 视口 ↔ 清单 双向联动
+    #   老倪 2026-10-10: 「对象与场景的元素很难用眼睛区分对应上，增加功能，用鼠标点选场景的
+    #   元素后，能对应场景编辑的文字条目，或者选择场景的文字，场景的对应元素也高亮显示」
+    #   实现: ① 视口左键点选 → 世界坐标投影到屏幕做命中判定 (对象盒 8 角投屏取最贴身者)
+    #         ② 命中即高亮: 清单行选中并滚动到位 + 视口画亮黄高亮框 (对视图没自己画的对象同样可见)
+    #         ③ 清单行切换 → 反向点亮视口
+    # ══════════════════════════════════════════════════════════════════════════════════════
+    def _matrices(self):
+        """按 GLViewWidget 的相机参数自建 proj@view (pyqtgraph 0.14 的 projectionMatrix(region,viewport)
+        签名带参, 不能直接调; 公式与 GLViewWidget 本体逐字一致)。失败返回 None。"""
+        import numpy as np
+        from PyQt5 import QtGui
+        v = self.dv.view
+        try:
+            w, h = max(1, int(v.width())), max(1, int(v.height()))
+            dist = float(v.opts.get("distance", 10.0))
+            fov = float(v.opts.get("fov", 60.0))
+            near, far = dist * 0.001, dist * 1000.0
+            r = near * np.tan(np.radians(fov * 0.5))
+            t = r * h / w
+            P = np.zeros((4, 4))
+            P[0, 0] = near / r
+            P[1, 1] = near / t
+            P[2, 2] = -(far + near) / (far - near)
+            P[2, 3] = -2.0 * far * near / (far - near)
+            P[3, 2] = -1.0
+            tr = QtGui.QMatrix4x4()
+            tr.translate(0.0, 0.0, -dist)
+            tr.rotate(float(v.opts.get("elevation", 30.0)) - 90.0, 1, 0, 0)
+            tr.rotate(float(v.opts.get("azimuth", 45.0)) + 90.0, 0, 0, -1)
+            c = v.opts.get("center")
+            cx, cy, cz = (float(c.x()), float(c.y()), float(c.z())) if c is not None else (0.0, 0.0, 0.0)
+            tr.translate(-cx, -cy, -cz)
+            V = np.array(tr.copyDataTo(), float).reshape((4, 4))     # copyDataTo 为行主序
+            return P @ V
+        except Exception:                                                       # noqa: BLE001
+            return None
+
+    def _project(self, cz):
+        """世界坐标 → 视口逻辑像素。失败返回 None。"""
+        import numpy as np
+        M = self._matrices()
+        if M is None:
+            return None
+        v = self.dv.view
+        p = M @ np.array([float(cz[0]), float(cz[1]), float(cz[2]), 1.0], float)
+        if abs(float(p[3])) < 1e-9:
+            return None
+        ndc = p[:3] / p[3]
+        w, h = max(1, int(v.width())), max(1, int(v.height()))
+        return ((float(ndc[0]) + 1.0) * 0.5 * w, (1.0 - float(ndc[1])) * 0.5 * h, float(p[3]))
+
+    def _obj_boxes(self):
+        """按当前场景真源列出 (名字, 中心, 尺寸m) —— 供点选/高亮共用。"""
+        view = _list_view()
+        k = _unit_scale(view)
+        out = []
+        for o in view.get("objects") or []:
+            c, sz = o.get("center") or [], o.get("size") or []
+            if len(c) != 3 or len(sz) != 3:
+                continue
+            out.append((o.get("name"), [float(x) for x in c], [float(x) * k for x in sz]))
+        return out
+
+    def pick_at(self, px, py, tol=30.0):
+        """点选: 对象盒 8 角投屏 → 命中屏幕框者取**投影面积最小 (最贴身)**, 再按远近破平;
+        都没命中则取投影中心离点击最近且在 tol 内者。返回对象名 / None。"""
+        cand, near = [], None
+        for name, cz, sz in self._obj_boxes():
+            hx, hy, hz = sz[0] / 2.0, sz[1] / 2.0, sz[2] / 2.0
+            pts = []
+            for dx in (-hx, hx):
+                for dy in (-hy, hy):
+                    for dz in (-hz, hz):
+                        q = self._project((cz[0] + dx, cz[1] + dy, cz[2] + dz))
+                        if q is not None:
+                            pts.append(q)
+            if len(pts) < 8:
+                continue
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+            area = max(1.0, (x1 - x0) * (y1 - y0))
+            depth = sum(q[2] for q in pts) / len(pts)
+            if (x0 - 6.0) <= px <= (x1 + 6.0) and (y0 - 6.0) <= py <= (y1 + 6.0):
+                # 命中优先: 投影中心离点击**最近** (相邻同类件/小件叠在大件上时最稳),
+                # 平手再取离相机近的 (被挡住的先排除: 投影面积小 + 中心近)。
+                d = (((x0 + x1) / 2.0 - px) ** 2 + ((y0 + y1) / 2.0 - py) ** 2) ** 0.5
+                cand.append((d, depth, area, name))
+            d2 = (((x0 + x1) / 2.0 - px) ** 2 + ((y0 + y1) / 2.0 - py) ** 2) ** 0.5
+            if d2 <= tol and (near is None or d2 < near[0]):
+                near = (d2, name)
+        if cand:
+            cand.sort()
+            return cand[0][3]
+        return near[1] if near else None
+
+    def _apply_hl_box(self, name):
+        """在视口里画/更新亮黄高亮框 (对视图自己画的对象 —— 盘件/机器人 —— 也一样可见)。"""
+        import numpy as np
+        import pyqtgraph.opengl as gl
+        from ss_dreamview import _bbox_lines
+        hit = [b for b in self._obj_boxes() if b[0] == name]
+        if not hit:
+            return False
+        _n, cz, sz = hit[0]
+        v, e = _bbox_lines(np.asarray(cz, float), np.asarray(sz, float))
+        pts = []
+        for a, b in e:
+            pts.append(v[a])
+            pts.append(v[b])
+        if self._hl_item is None:
+            self._hl_item = gl.GLLinePlotItem(pos=np.array(pts), mode="lines", width=5.0,
+                                              color=(1.0, 0.87, 0.25, 1.0))
+            self._hl_item.setGLOptions("additive")
+            self.dv.view.addItem(self._hl_item)
+        else:
+            self._hl_item.setData(pos=np.array(pts))
+            try:
+                self._hl_item.setVisible(True)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        return True
+
+    def highlight(self, name, from_3d=False):
+        """点亮一个对象: 清单行选中 + 视口亮黄框。from_3d=True 时状态行给"点中了谁 + 它的数值"。"""
+        if not name:
+            return self.clear_highlight()
+        self._hl_name = name
+        try:
+            self.lst.blockSignals(True)
+            hit = False
+            for i in range(self.lst.count()):
+                it = self.lst.item(i)
+                if it.data(Qt.UserRole) == name:
+                    self.lst.setCurrentRow(i)
+                    self.lst.scrollToItem(it)
+                    hit = True
+                    break
+            self.lst.blockSignals(False)
+            if not hit:
+                self.lst.blockSignals(False)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        ok3d = False
+        it = (self._overlay_names or {}).get(name)
+        if it is not None:                       # 叠层里的线框一起点亮
+            try:
+                it.setData(color=(1.0, 0.87, 0.25, 1.0), width=4.0)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        try:
+            ok3d = self._apply_hl_box(name)
+        except Exception:                                                       # noqa: BLE001
+            ok3d = False
+        try:
+            self.dv.view.update()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        _o = [b for b in self._obj_boxes() if b[0] == name]
+        _c = [round(x, 3) for x in _o[0][1]] if _o else []
+        _s = [round(x, 3) for x in _o[0][2]] if _o else []
+        self._set_status("%s %s   中心 %s · 尺寸 %s %s"
+                         % ("🖱 点中:" if from_3d else "🔗 已联动:",
+                            name, _c, _s, "" if ok3d else "(视口高亮框未生成)"))
+        return True
+
+    def clear_highlight(self):
+        prev = getattr(self, "_hl_name", None)
+        self._hl_name = None
+        if prev:                                 # 还原叠层线框原样式
+            st = (self._orig_style or {}).get(prev)
+            it = (self._overlay_names or {}).get(prev)
+            if st and it is not None:
+                try:
+                    it.setData(color=st[0], width=st[1])
+                except Exception:                                               # noqa: BLE001
+                    pass
+        if self._hl_item is not None:
+            try:
+                self._hl_item.setVisible(False)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        try:
+            self.dv.view.update()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return True
+
+    def _on_list_sel(self, cur, _prev):
+        """清单行切换 → 视口高亮 (与 3D 点选同一条路径, 保证两边永远一致)。"""
+        if cur is None:
+            return
+        nm = cur.data(Qt.UserRole)
+        if nm and nm != getattr(self, "_hl_name", None):
+            self.highlight(nm, from_3d=False)
+
+    def _pick_here(self, px, py):
+        """视口左键点选 (事件过滤器调用)。"""
+        nm = self.pick_at(px, py)
+        if nm:
+            self.highlight(nm, from_3d=True)
+        else:
+            self._set_status("🖱 点空了 — 点在台面/空白处; 试试点对象 (盘件/机械臂/工件) 上")
 
     def _context_menu(self, ev):
         m = QMenu(self.dv.view)
