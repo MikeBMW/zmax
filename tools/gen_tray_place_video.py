@@ -52,6 +52,8 @@ import mujoco  # noqa: E402
 
 from train_full_pipeline import get_obs  # noqa: E402
 from state_space_sim import StateSpaceSim  # noqa: E402
+from ss_task_l45 import BINDING, TaskL45  # noqa: E402  (L5 下指令 + L4 保安全: 配置中心驱动)
+from ss_task_l45 import evidence_line  # noqa: E402
 
 A_LIMIT = 0.6          # 安全限幅 (m/s)
 F_REF = 25.0           # 接触力归一化 (N)
@@ -332,6 +334,10 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
     ctrl_dt = float(m.opt.timestep) * int(env.frame_skip)
     a_gain = ctrl_dt / float(env.action_scale)
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH, mode="tray")
+    # 🧠🛡 L4/L5 进控制逻辑: 真源=配置中心 (档位/公差/力上限/节拍)
+    l45 = TaskL45(TASK_ID, ss=ss, limit=A_LIMIT, z_floor=HAND_MIN_Z,
+                  binding=os.environ.get("ZMAX_L45_BINDING") or BINDING)   # A/B: 可用副本配置
+    log(l45.describe())
     ss.sched = sched
     o = get_obs(env)
     hand = np.array(o[0:3], dtype=float)
@@ -426,8 +432,10 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
         u = np.asarray(u, dtype=float).copy()
         # 真空工具: 夹爪全程张开 (u[3]=0), "夹持"由吸附证据 grip_ev 表达 (见上)
         u[3] = 0.0
-        u_sat = np.asarray(ss.safety.saturate(u, limit=A_LIMIT), dtype=float).copy()
-        u_sat[3] = u[3]
+        # 🛡 L4 保安全 (每帧): L5 节拍→速度指令 + 限速 + 力上限否决 + z 下限 + DiT 精炼
+        u[:3] *= l45.plan.speed_scale          # 默认 ×1.0 (节拍达不到就不硬来)
+        u_sat, _l4info = l45.l4_check(u, stage=st, force_env=f_env,
+                                      z=float(hand[2]), u_prev=u_prev)   # ⚠️ z 下限口径 = **手位** (HAND_MIN_Z), 不是 TCP
         u_exec = np.asarray(ss.execr.execute(u_sat), dtype=float)
         if u_exec.ndim == 0:
             u_exec = np.zeros(4)
@@ -550,6 +558,7 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
                  vac_establish_ms=vac_ms_actual, vac_limit_ms=float(cfg.get("vac_establish_ms", 200.0)),
                  vac_ok=vac_ok, hold_s=hold_s_actual, hold_s_cfg=float(cfg.get("hold_s", 5.0)),
                  spec_src=cfg.get("src", "?"),
+                 l45=l45.evidence(),
                  stages=list(dict.fromkeys(tr["stage"])),
                  history=[f"{s}: {r}" for s, r in sched.history])
     return tr, judge
@@ -615,6 +624,8 @@ def main():
     dt = time.time() - t0
     ok_n = sum(1 for j in judges if j["ok"])
     log(f"\n📊 摆盘汇总: {ok_n}/{len(judges)} 颗合格 · 合计 {len(tr_all['t'])} 步 · {dt:.1f}s")
+    if judges and judges[0].get("l45"):
+        log("  " + evidence_line(judges[0]["l45"]).replace("\n", "\n  "))
     _cts = [j["ct_s"] for j in judges]
     _vacs = [j["vac_establish_ms"] for j in judges if j["vac_establish_ms"] is not None]
     log(f"   判据真源 {spec['src']} · 目标: 成功率 {spec['targets'].get('成功率', '—')} / "

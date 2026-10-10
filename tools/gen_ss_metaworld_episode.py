@@ -41,6 +41,8 @@ import mujoco  # noqa: E402
 
 from train_full_pipeline import make_env, get_obs  # noqa: E402
 from state_space_sim import StateSpaceSim  # noqa: E402
+from ss_task_l45 import BINDING, TaskL45  # noqa: E402  (L5 下指令 + L4 保安全: 配置中心驱动)
+from ss_task_l45 import evidence_line  # noqa: E402
 
 A_LIMIT = 0.6        # 安全限幅上限 (m/s)
 F_REF = 25.0         # 接触力归一化参考 (N)
@@ -129,6 +131,10 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
     # ⚠️ 2026-09-06 实测: align_th 收紧到 0.008 会破坏前段推进 (教师 97%→0/6, 疑与
     #   状态机耦合) — 保持默认 0.02, 插入对准问题改由转移段预对准子状态解决
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH)
+    # 🧠🛡 L4/L5 进控制逻辑: 真源=配置中心 (档位/公差/力上限/节拍)
+    l45 = TaskL45("TASK-01-FW", ss=ss, limit=A_LIMIT, z_floor=None,
+                  binding=os.environ.get("ZMAX_L45_BINDING") or BINDING)   # A/B: 可用副本配置
+    log(l45.describe())
     ss.sched = sched
     # 🧠 教师/学生模式 (2026-09-06 静静): analytic=True = 解析律教师 (域外全局稳定,
     #   蒸馏范式教师, 与 sim_real R0 同思路); 默认 False = 蒸馏 MLP 学生主执行 (训练域内)
@@ -141,6 +147,18 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
     peg_head = site(m, d, "pegHead")
     hole_mouth = site(m, d, "hole")
     goal = site(m, d, "goal")
+
+    # 🧠 L5 下指令 (配置中心): 插入深度目标 = TASK-01-FW.overrides.ins.depth
+    #    深度口径 = |goal - hole_mouth| (peg 头从孔口推到 goal); 浅于仿真可用 → 按配置收口。
+    #    ⚠️ 必须在此处收口: goal 同时喂 obs(给 L2 的目标) / 判据(depth=|head-goal|) / 插入 target,
+    #       只在 target 处改会让判据永远差 (仿真可用 - 配置) 那么多 ⇒ 卡在"插入"到超时 (实测踩过)。
+    _avail = float(abs(goal[0] - hole_mouth[0]))
+    _use, _why = l45.plan.depth_target(_avail)
+    if _use < _avail:
+        goal = goal.copy()
+        goal[0] = float(hole_mouth[0]) + (1.0 if goal[0] > hole_mouth[0] else -1.0) * _use
+    l45.l5_note(stage="插入", depth_cfg_m=l45.plan.ins_depth_m, avail_m=round(_avail, 5),
+                use_m=round(_use, 5), why=_why)
     peg_z0 = float(peg[2])
     peg_body = {int(m.body("peg").id)}
     # ⚠️ 2026-08-25 实测 (tools/probe_contacts.py): 真正夹住光模块的是**指垫** rightpad/leftpad,
@@ -261,8 +279,10 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
             u = np.zeros(4)
         u = np.asarray(u, dtype=float).copy()
         u[3] = sched.gripper_cmd(u_ff[3])
-        u_sat = np.asarray(ss.safety.saturate(u, limit=A_LIMIT), dtype=float).copy()
-        u_sat[3] = u[3]
+        # 🛡 L4 保安全 (每帧): L5 节拍→速度指令 + 限速 + 力两层口径 + z 下限 + 档位(INTACT 平滑/DiT 精炼)
+        u[:3] *= l45.plan.speed_scale              # 默认 ×1.0 (节拍达不到就不硬来)
+        u_sat, _l4info = l45.l4_check(u, stage=st, force_env=float(f_env),
+                                      z=None, u_prev=u_prev)
         u_exec = np.asarray(ss.execr.execute(u_sat), dtype=float)
         if u_exec.ndim == 0:
             u_exec = np.zeros(4)
@@ -344,6 +364,7 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
                 cam_fovy=float(m.cam_fovy[m.camera("corner2").id]),
                 peg0=site(m, d, "pegGrasp") * 0 + np.asarray(tr["peg"][0]),
                 hole_mouth=hole_mouth, goal=goal,
+                l45=l45.evidence(),
                 box_center=np.array(d.xpos[m.body("box").id], dtype=float),
                 table_center=np.array(d.xpos[m.body("tablelink").id], dtype=float),
                 peg_head_off=np.asarray(tr["peg_head"][0]) - np.asarray(tr["peg"][0]),
@@ -417,6 +438,8 @@ def main():
                 uniq.append(s)
         print(f"seed {seed}: {meta['steps']} 步 · 终态 {meta['stage_final']} · "
               f"success={meta['success']} · 阶段链 {'→'.join(dict.fromkeys(stages))}", flush=True)
+        if meta.get("l45"):
+            print("  " + evidence_line(meta["l45"]).replace("\n", "\n  "), flush=True)
         if best is None or len(set(stages)) > len(set(best[3])):
             best = (tr, meta, frames, stages)
         if meta["success"]:
