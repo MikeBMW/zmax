@@ -59,6 +59,58 @@ flows/scenes_5jobs.json              # 场景真源 (+ tools/task_build.py 的 P
 - **一致性做成硬判据**: manifest 里所有 `*_sha256` 递归拍平, 与当前真源 sha 逐条比; 对不上 = 过期 → 预览顶部红字 + 拒当交付件。未被 manifest 记录的真源(平台配置)用 mtime 兜底判 ⚠️。三份文档记录的工程库 sha 相同 = “数据统一”的可验证口径。
 - 按钮跑外部脚本用 `subprocess.run(capture_output=True, text=True)` (子进程 stdout 不被 `redirect_stdout` 抓); 退出码非 0 必须把原因显出来, 不静默失败。
 
+## 项目档案 (配置适配不同项目) 与场景/指标验证 (2026-10-10)
+
+- **项目档案 = 覆盖, 不是复制**: `config/platform/projects/<PID>.json` 逐键深合并到基线 `zmax_project_bom.json`;
+  项目特有 BOM 项用 `_append_bom_items` 追加 (别在档案里整份抄 items —— 抄了就会漂移)。
+  返回 provenance (base/overlay/merged 三个 sha), 改任一档案 ⇒ merged sha 变 ⇒ 文档一致性判据抓得到。
+- **覆盖必须保持基线的结构, 否则导出器 TypeError**: `project.milestones` 是 **list of {no,name,owner,due,metrics}**
+  (不是 dict), `project.risks` 是 {risk,action,owner}, `project.team` 是 {role,who}。
+  本项目未知的值写成「待确认」字符串而**不是**改结构 —— 老倪零容忍: 不编数字, 缺口要能枚举出来。
+- **未定价 BOM 项 (price=None) 要容错**: `sum(qty*price)` 与 `money(qty*price)` 都会炸 →
+  加 `line_total()`, `money()` 对非数值原样返回「待确认」, 并把未定价项汇总打印 ⇒ 合计里不按 0 计。
+- **新增 BOM 项的 links 必须真存在**: 我第一次随手写了 `BO_ F1 安全` ⇒ 判据当场报悬空 (`B21 → BO_ F1 安全`)。
+  feature.dbc 里只有 `BO_ A1..E2`; 安全类真源是 `PF-Z700-09 真机安全与急停` / `FN-SYS1-31` (且**只接受当前 system 的 FN-***,
+  写 FN-SYS0-50 也算悬空)。
+- **文档编号/文件名要随项目**: 否则两个项目都产出 `PRJ-TH-TRAY-*.docx`。
+- **真源在 data/ 下 (config/ 是符号链接!)**: `config -> data/database/zmax/sources/config`。
+  ⇒ 改 `config/...` 的文件 git **看不见** (data/ 被忽略), 所以只有**代码 + defaults/ 出厂骨架**能入库;
+  新真源要同步一份到 `defaults/config/<...>` 才随代码交付。
+
+### 场景功能区可视化编辑 (命名场景)
+
+- 「场景功能区里能可视化编辑某场景」= 把该场景做成**独立目录** `data/scene/scenes/<SCENE_ID>/`
+  (objects3d.json + overlay_spec.json), 登记进 `data/scene/scenes/index.json` 的 `named_scenes`,
+  并让 `scene_edit.py --scene <ID>` 把 SCENE_DIR 指向它 —— 目录不同 ⇒ 对它的增删改对在役场景零影响
+  (实测在役 objects3d/overlay sha 不变)。GUI 侧 `dreamview_scene_edit.py` 加一个下拉 (在役 + 命名场景),
+  切换即 `os.environ["ZMAX_SCENE_DIR"]=...` 后刷新。
+- `scene_edit.py` 的子命令是 **`rm` 不是 `remove`** (写测试时踩到: remove 会 invalid choice, 测试会误判成"删除无效")。
+- 从父场景派生新场景时, 位姿要**优先取现场示教/实测真源** (taught_points、space_points), 未示教的位姿
+  source 明写「推导(待现场示教)」—— 别写成"实测", 老倪会追。
+
+### 性能指标在仿真场景验证 (口径必须分开)
+
+- 引擎 = `tools/gui/state_space_sim.py` 的 StateSpaceSim (与画布 ▶运行 / L5 回路**同一个**)。
+  N 轮 (不同 seed + 起始扰动) 跑完可从 tr 量: 流程完成/阶段完整性 · 节拍 t[完成] · 终态 X/Y 残差 ±3σ ·
+  姿态倾角 (peg_head−peg 轴) · 力超调 (force_norm 峰值/稳态) · 终到残差。
+- 🔴 **仿真口径 ≠ 真机口径**: 仿真残差是模型尺度的量 (0.066), 与真机 mm 级 (≤0.30mm) 不同源。
+  报告里逐条标「通道: 仿真 / 真机待验」, 仿真值**不写入**指标实测值, 绝不拿仿真值冒充实测值。
+- 场景/验证器引用的 `perf.*` id 必须是真源里存在的 (加 `--check-ids` 判据; 我一开始编了 `perf.face_gap_mm`,
+  真源里其实是 `perf.face_gap`)。
+
+### 主参数 M 的能量标定 (「主参数要有值, 类比能量/能级」)
+
+- M 的物理身份是**等效惯量尺度** (进二阶演化 v ← v + (F/M)·dt) ⇒ 用能量定它是有量纲依据的:
+  `M = 1 + (½·m_eff·v² + m_eff·g·h)/E_ref`, 归一化到 [0,8]; 能级 E1~E4 是 M 的离散档。
+  同一份真源里每个输入标来源或「假设(可标定)」, 推导存进 `_energy_derivation`。
+- **不自动开 inertia**: 开二阶须先有 ΔV<0 证据 (零回归), 工具只标 M, 不代开开关。
+
+### 节点快照的幂等铁律
+
+- 🔴 **别往 cfg_snapshot 里塞 tuple**: 存盘经 JSON 往返 tuple→list, `cur == want` 永远不成立 ⇒
+  `--check` 永远报「需更新」而写入却"成功" (静默不幂等)。用 `[[gid, n]]` 而不是 `[(gid, n)]`。
+  同类: 别把易变字段 (生成时间/回读时间) 放进快照, 否则每次都"需更新"。
+
 ## Word 文档的表格/版面 (交付件可读性)
 - **列宽要真生效必须四件套**: `w:tblLayout=fixed` + `w:tblW(dxa)` + `w:tblGrid` 每个 `gridCol` + 每格 tcW。
   只设 `cell.width`(tcW) 时 Word/LibreOffice 会按**等分**排 ⇒ “五列表一律 20%”“两列表 50:50”“逐行末字孤行”。
