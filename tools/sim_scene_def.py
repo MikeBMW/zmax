@@ -191,11 +191,14 @@ _TRAY_GOLD = [0.92, 0.74, 0.24]           # 光模块 (金色)
 # 光模块 + 盘几何 (m): 光模块 52×20×12mm; 槽位间距 30mm; 盘壁 6mm
 _TRAY_MW, _TRAY_MD, _TRAY_MH = 0.052, 0.020, 0.012
 _TRAY_GAP = 0.030
-_TRAY_WW, _TRAY_WH, _TRAY_BH = 0.006, 0.014, 0.006
+_TRAY_WW, _TRAY_WH, _TRAY_BH = 0.010, 0.024, 0.008     # 🩹 2026-10-10: 6→10mm 壁厚, 14→24mm 壁高, 底 6→8mm
+                                                       #   (原尺寸太小: 视觉核对只能认出"一片深色", 第二个盘/槽位认不出)
+_TRAY_FLOOR = [0.30, 0.30, 0.33]           # 盘内底 (中灰) —— 黑壁+灰底 才看得出"槽位是凹下去的"
 _TRAY_PW = _TRAY_MW + 4 * _TRAY_WW + 0.010                 # 盘外廓 x
 _TRAY_PH = 3 * _TRAY_GAP + 2 * _TRAY_WW                    # 盘外廓 y
-_TRAY_LP = (0.12, 0.62)          # 料盘中心 (原 AOI 相机工位)
-_TRAY_TP = (-0.2645, 0.4623)     # tray盘中心 (原插孔/带孔盒位置)
+_TRAY_LP = (0.058, 0.560)        # 料盘中心 (原 AOI 相机工位) —— y 0.62→0.56: 往台面里挪, 完整入画
+_TRAY_TP = (-0.235, 0.560)       # tray盘中心 (原插孔/带孔盒位置) —— 与料盘同排, x 间距 0.35m 不叠
+                                 #   (实测原 (0.12,0.62)/(-0.2645,0.4623): 后者被台沿遮, 前者大半出画)
 
 
 def _tray_layout() -> dict:
@@ -215,6 +218,8 @@ def _tray_layout() -> dict:
         _o(prefix + "·壁X+", (cx + PW / 2 - WW / 2, cy, BH + WH / 2), (WW, PH, WH), _TRAY_BLACK, src)
         _o(prefix + "·壁Y-", (cx, cy - PH / 2 + WW / 2, BH + WH / 2), (PW, WW, WH), _TRAY_BLACK, src)
         _o(prefix + "·壁Y+", (cx, cy + PH / 2 - WW / 2, BH + WH / 2), (PW, WW, WH), _TRAY_BLACK, src)
+        # 🔎 内底: 中灰面 (比黑壁亮) —— 黑壁围出的"凹槽"才看得出来; 光模块/隔板都落在这面上
+        _o(prefix + "·内底", (cx, cy, BH + 0.001), (PW - 2 * WW, PH - 2 * WW, 0.002), _TRAY_FLOOR, src)
 
     _walls("料盘", LX, LY, "摆盘: 装光模块的黑色塑料托盘 (没有盖, 就是个托盘)")
     for _i, _dy in enumerate((-_TRAY_GAP, 0.0, _TRAY_GAP)):
