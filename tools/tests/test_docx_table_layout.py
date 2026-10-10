@@ -186,53 +186,31 @@ def main():
     if checked:
         print("      最宽一条: %r = 估 %.2fcm (列宽 %.2fcm)" % (worst[0][:30], worst[1], worst[2]))
 
-    print("\n═══ 8) 「目标值(规格)」列折行像话 (不许拦腰断词/甩小尾巴) ═══")
-    # 复核第二轮: 目标值列在 4.2cm 时大量折 2-3 行且断在词中间 ("工艺容|差 1mm")。
-    # 判据: 模拟 CJK 折行 (可在空格//;, 处优先断) ⇒ 最多 2 行, 且末行不得短于列宽 30% (小尾巴)。
-    def _wrap(txt, usable):
-        lines, cur, st, i = [], 0.0, 0, 0
-        txt = str(txt)
-        while i < len(txt):
-            w = 3.35 if ord(txt[i]) > 0x2000 else 1.7
-            if cur + w > usable * 10 and i > st:
-                seg = txt[st:i]
-                cut = max(seg.rfind(" "), seg.rfind("/"), seg.rfind(";"), seg.rfind(","), seg.rfind("("))
-                if cut > len(seg) * 0.4:
-                    brk = st + cut + 1
-                    lines.append(txt[st:brk])
-                    st, cur = brk, _est(txt[brk:i + 1])
-                else:
-                    lines.append(seg)
-                    st, cur = i, w
-            else:
-                cur += w
-            i += 1
-        lines.append(txt[st:])
-        return [x for x in lines if x.strip()]
-
-    tgt_tables = [t for t in doc.tables if [c.text.strip() for c in t.rows[0].cells][:4] == ["指标", "单位", "目标值 (规格)", "阶段"]]
-    n_t, n_bad, worst2 = 0, 0, ("", 0.0, 0.0)
+    print("\n═══ 8) 「目标值(规格)」列必须单行 (不许拦腰断词/甩小尾巴) ═══")
+    # 复核第三轮实证: LibreOffice 断行是"填满就断"(不做'优先断在空格'的回退), 所以模拟折行不可靠 ——
+    #   改成硬判据: 目标值**估计单行宽必须放进列内** (CJK 3.35mm + ASCII 1.7mm/字, 列宽 - 0.60cm 边距/填充)。
+    #   超宽的收短, 解释性文字进 how —— 信息不丢, 只是不在表里挤成半行+孤尾。
+    tgt_tables = [t for t in doc.tables
+                  if [c.text.strip() for c in t.rows[0].cells][:4] == ["指标", "单位", "目标值 (规格)", "阶段"]]
+    n_t, n_bad, widest = 0, 0, ("", 0.0, 0.0)
     for t in tgt_tables:
         gw = [int(g.get(qn("w:w")) or 0) / 567.0 for g in t._tbl.find(qn("w:tblGrid"))]
         col = gw[2] if len(gw) > 2 else 0.0
-        usable = col - 0.30
         for r in t.rows[1:]:
             txt = r.cells[2].text.strip()
             if not txt:
                 continue
             n_t += 1
-            ls = _wrap(txt, usable)
-            if len(ls) > 1 and _est(ls[-1]) > worst2[1]:
-                worst2 = (ls[-1], _est(ls[-1]), usable)
-            if len(ls) > 2 or (len(ls) > 1 and _est(ls[-1]) < 0.30 * usable):
+            if _est(txt) > widest[1]:
+                widest = (txt, _est(txt), col)
+            if _est(txt) > col - 0.60:
                 n_bad += 1
-                check("目标值折行像话: %r" % txt[:26], False,
-                      "%d 行, 末行 %r 估 %.2fcm (列可用 %.2fcm)" % (len(ls), ls[-1][:14], _est(ls[-1]), usable))
+                check("目标值单行放得下: %r" % txt[:26], False, "估 %.2fcm > 列 %.2f-0.60" % (_est(txt), col))
     check("第 5.2 表已改成 4 列 (口径并入说明行, 宽度还给目标值)", len(tgt_tables) >= 6, "%d 张" % len(tgt_tables))
     check("抽检目标值够多 (判据没空跑)", n_t >= 50, n_t)
     if n_t:
-        print("      两行里最短的末行: %r = %.2fcm (可用 %.2fcm, 下限 %.2f)"
-              % (worst2[0][:26], worst2[1], worst2[2], 0.30 * worst2[2]))
+        print("      最宽一条: %r = 估 %.2fcm (列宽 %.2fcm, 可用 %.2fcm)"
+              % (widest[0][:34], widest[1], widest[2], widest[2] - 0.60))
 
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0

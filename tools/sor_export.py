@@ -464,8 +464,9 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
                for m in _g["metrics"]],
               widths=[5.3, 1.7, 7.5, 1.5])        # 5.3+1.7+7.5+1.5 = 16.0 (A4 可用宽)
         for _m in _g["metrics"]:
-            para(doc, "· %s · 口径 %s — 测量/实测入口: %s"
-                 % (_m["id"], _m.get("std", "-") if _m.get("std") != "-" else "工艺口径", _m.get("how", "")),
+            _std = _m.get("std") or "-"
+            para(doc, "· %s%s · 测法: %s"
+                 % (_m["id"], ("  [%s]" % _std) if _std != "-" else "", _m.get("how", "")),
                  size=9.0, space_before=2, keep_lines=True)
 
     # 6 机器人末端
