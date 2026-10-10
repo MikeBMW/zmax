@@ -35,13 +35,17 @@ TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 OUT = os.path.join(ROOT, "config", "ss_task_binding.json")
 
 # ① 配方段 → 节点关键词 (在 节点 id+name+desc 上匹配; 关键词来自画布真实节点文本)
+# 🧩 2026-10-10 摆盘任务修复: 原来 "抬起/转移/完成" 只挂在段 5(拔出/取回) ⇒ 摆盘任务(不含段5)
+#    反而把**取放链必需的** SK05抬升/SK06转移/SK08完成 关掉了 (配置出来的功能是错的)。
+#    取放链与插拔链共用 接近→…→抬起→转移→(插入|放入)→完成 —— 抬起/转移 归"取件"(段1),
+#    完成 归"放置"(段4); 段5 只留真的拔取相关节点。
 SEG_NODES = {
     "0 料源与来料状态": ["数据源", "环境渲染", "metaworld 数据源", "真机信号", "任务指令"],
-    "1 取件": ["YOLO 目标检测", "2D→3D", "触觉感知", "抓取", "下降", "融合定位"],
+    "1 取件": ["YOLO 目标检测", "2D→3D", "触觉感知", "抓取", "下降", "融合定位", "抬起", "转移"],
     "2 姿态准备": ["意图解码", "动作头", "Flow-Matching", "姿态", "翻转"],
     "3 识别与工位对接": ["融合", "定位", "标定层", "目标识别", "对位"],
-    "4 放置/插入": ["插入", "流形", "INTACT", "专家预测", "潜空"],
-    "5 拔出/取回": ["抬起", "转移", "完成", "拔出", "取回"],
+    "4 放置/插入": ["插入", "放入", "流形", "INTACT", "专家预测", "潜空", "完成"],
+    "5 拔出/取回": ["拔出", "取回", "回程"],
     "6 分拣与回位": ["外观质量", "Feature 功能清单", "质量门", "AOI"],
     "7 节拍与循环": ["动作调制", "安全执行边界", "能力档位", "技能库", "记忆", "序列编排"],
 }
@@ -90,14 +94,36 @@ def seg_node_map(nodes):
     return m
 
 
-def derive_run_cfg(applies):
-    """③ 六档位由段机械推出 (属性名与 project_file.RUN_CHECKS 逐字一致)"""
-    has_ins = ("4 放置/插入" in applies) or ("5 拔出/取回" in applies)
+def derive_ss_mode(t):
+    """④ 状态空间**功能模式**由任务工艺机械推出 —— 「这个工程, 是通过配置改变功能」的核心。
+
+    插入类 (工艺含 插入/孔口/拔出) → 'insert': 第 7 段 = SK07Insert (带孔口对位 + 接触推入 + 保持力);
+    取放类 (工艺含 摆盘/取放/吸附/真空) → 'tray': 第 7 段 = SK07Place (直接放入, 无孔口/无推入)。
+    **同一工程、同一八阶段状态机**, 只由任务配置切换语义 (cognition.ActionModulator(mode=...)).
+    """
+    txt = " ".join([str(t.get("name") or ""), str(t.get("recipe_type") or "")]
+                   + [f"{s.get('name')} {s.get('desc')}" for s in (t.get("steps") or [])])
+    if any(k in txt for k in ("插入", "孔口", "拔出")):
+        return "insert"
+    if any(k in txt for k in ("摆盘", "取放", "吸附", "真空")):
+        return "tray"
+    return "insert"
+
+
+def derive_run_cfg(applies, mode="insert"):
+    """③ 六档位由段 + **功能模式** 机械推出 (属性名与 project_file.RUN_CHECKS 逐字一致)
+
+    摆盘链 (mode=tray) 不走 插入/孔口/INTACT/DiT/流形 —— 对应的档位必须关掉,
+    否则「配置出来的功能」和真实执行链不一致 (摆盘档位却勾着"插拔+AOI 全链")。
+    """
+    has_ins = (("4 放置/插入" in applies) or ("5 拔出/取回" in applies)) and mode != "tray"
     has_perc = ("1 取件" in applies) or ("3 识别与工位对接" in applies)
     has_aoi = "6 分拣与回位" in applies
     return {
         "chk_engine_demo": {"label": "⚡引擎快演", "checked": not has_ins},
-        "chk_l3_full": {"label": "🚀 L3 全链(插拔+AOI)", "checked": has_ins or has_aoi},
+        # 摆盘链 (tray) 不走「插拔+AOI 全链」⇒ 该档位关, 功能由 ⚡引擎快演 承载
+        "chk_l3_full": {"label": "🚀 L3 全链(插拔+AOI)",
+                        "checked": (has_ins or has_aoi) and mode != "tray"},
         "chk_mani_yaw": {"label": "🧠 流形 yaw 执行", "checked": has_ins},
         "chk_intact_exec": {"label": "🤖 L4 用 INTACT 节点执行", "checked": has_ins},
         "chk_l4_dit": {"label": "🎯 L4 意图 → DiT 精炼", "checked": has_ins},
@@ -157,7 +183,8 @@ def build(activate=None):
             "overrides": t["overrides"], "trigger": t["trigger"], "loop": t["loop"],
             "targets": t["targets"], "orders_rule": t["orders_rule"],
             "safety": t["safety"], "blocked_by_site": t.get("blocked_by_site", []),
-            "run_cfg": derive_run_cfg(t["applies_segments"]),
+            "run_cfg": derive_run_cfg(t["applies_segments"], derive_ss_mode(t)),
+            "ss_mode": derive_ss_mode(t),          # 功能模式: insert | tray (由任务工艺推出)
         })
     # 活跃任务的持久化真源: ① 命令行 --activate ② 已有绑定文件里的 active_task ③ tasks.json ④ 第一条
     persisted = (_j(OUT, {}) or {}).get("active_task")
@@ -216,7 +243,8 @@ def export_project(doc, path):
             "tasks": [{k: t[k] for k in ("task_id", "name", "recipe_type", "scene_ref", "site",
                                          "steps", "applies_segments", "excluded_segments",
                                          "enabled_nodes", "disabled_nodes", "overrides", "trigger",
-                                         "loop", "targets", "orders_rule", "blocked_by_site")}
+                                         "loop", "targets", "orders_rule", "blocked_by_site",
+                                         "run_cfg", "ss_mode")}
                       for t in doc["tasks"]],
         },
     }

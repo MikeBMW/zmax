@@ -139,6 +139,26 @@ class SK07Insert(AtomicSkill):
     source = "sim_real insert_depth=0.006 / cognition.STAGE_V_MIN 插入"
 
 
+class SK07Place(AtomicSkill):
+    """⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)
+
+    摆盘 = 取放, 不是插入: 无孔口/无接触推入, 终点 = 件底贴槽底面 (内底顶面 + 件半高)。
+    与 SK07Insert 同编号同"决策层选定第 7 段"语义 —— **由任务配置选哪一支** (配置改变功能)。
+    """
+    code = "SK07"
+    stage = "放入"          # 摆盘链里对应状态机的「放下」段 (ActionModulator.PLACE_IDX)
+    name = "⑦ 放入"
+    desc = "件吊到目标槽位上方 → 垂直下放到槽底 → 开爪释放 (低速触底, 不压伤)"
+    goal = "光模块中心 → tray 槽位中心 (z = 内底顶面 + 件半高 0.016m)"
+    params = {"place_z": 0.016,             # 槽底落座高度 (真源: 内底 0.010 + 半高 0.006)
+              "angle_tol_deg": 1.0,         # 姿态容差 (TASK-06-TRAY 判据 ≤1°)
+              "xy_tol_m": 0.001,            # 单边 ≤1mm (TASK-06-TRAY 判据)
+              "release_h": 0.004}           # 距槽底 4mm 内即开爪释放
+    evidence = "件落进槽位 (|Δxy| ≤ 1mm, |Δyaw| ≤ 1°) + 已开爪 → 完成"
+    ctrl = {"gripper": "闭合保持 → 触底开爪释放", "v_cap": 0.06, "v_min": 0.015}
+    source = "cognition.ActionModulator TRAY_MODE/PLACE_IDX + sim_scene_def tray 槽位真源"
+
+
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
     code = "SK08"
@@ -156,19 +176,32 @@ class SK08Complete(AtomicSkill):
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]
 
+# 🧩 摆盘链 (mode="tray", 2026-10-10): 第 7 段 = 「放入」而不是「插入」。
+#    两条链共用 SK01-06/SK08, 只有第 7 段分叉 ⇒ **同一工程按任务配置选哪条链** (配置改变功能)。
+#    SKILL_BY_CODE 保持插拔链语义 (SK07=插入), 摆盘查询请用 skills_for_mode("tray")。
+SKILLS_TRAY = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
+               SK05Lift, SK06Transfer, SK07Place, SK08Complete]
+
 # stage → 技能 (状态机当前阶段 → 当前技能模板)
 SKILL_BY_STAGE = {cls.stage: cls for cls in SKILLS}
+SKILL_BY_STAGE.update({cls.stage: cls for cls in SKILLS_TRAY})   # 追加「放入」(键不冲突)
 # code → 技能
 SKILL_BY_CODE = {cls.code: cls for cls in SKILLS}
+SKILL_BY_CODE_TRAY = {cls.code: cls for cls in SKILLS_TRAY}
 
 
-def list_skills():
+def skills_for_mode(mode="insert"):
+    """按任务模式取技能链: tray(摆盘) → SK07 是「放入」; 其它 → SK07 是「插入」"""
+    return list(SKILLS_TRAY if str(mode).lower() == "tray" else SKILLS)
+
+
+def list_skills(mode="insert"):
     """技能清单 (GUI/文档/测试复用)"""
     return [{"code": cls.code, "name": cls.name, "stage": cls.stage,
              "desc": cls.desc, "params": dict(cls.params),
              "evidence": cls.evidence, "ctrl": dict(cls.ctrl),
              "source": cls.source}
-            for cls in SKILLS]
+            for cls in skills_for_mode(mode)]
 
 
 if __name__ == "__main__":

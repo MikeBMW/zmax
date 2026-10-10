@@ -56,6 +56,14 @@ class ActionModulator:
     #   mode="full"   (插拔+AOI 闭环): 插入 → 拔出 → AOI转移 → AOI检测 → 回程 → 放下 → 完成
     STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入",
               "拔出", "AOI转移", "AOI检测", "回程", "放下", "完成"]
+    # 🧩 2026-10-10 老倪「配置中心配摆盘任务 → 通过配置改变状态空间的功能」:
+    #   mode="tray" = **摆盘链** (8 段): 接近 → 对位 → 下降 → 抓取 → 抬起 → 转移 → 放入 → 完成。
+    #   实现方式 = 复用「放下」段当「放入」(它本来就是"主动开爪放件"语义):
+    #     转移 段到位证据通过后进 **「放下」(索引 11)**, 不是「插入」(6) —— 不经过 插入/拔出/AOI;
+    #     「放下」→「完成」的推进证据 = placed (件已落进槽底 + 已开爪, 由 runner 计算)。
+    #   与插拔链共用同一套 感知/估计/安全/执行 层, 只换阶段语义与目标点 ⇒ 功能由配置切换, 不改代码路径。
+    TRAY_MODE = "tray"
+    PLACE_IDX = 11         # 「放下」= 摆盘链的「放入」
     GRASP_IDX = 3          # 「抓取」阶段序号 (≥ 此阶段夹爪锁存闭合)
     DONE_IDX = len(STAGES) - 1
     # 🔧 夹持丢失回退只在 抬起~回程 (4..10) 生效 — 「放下」(11) 主动开爪放件,
@@ -199,6 +207,10 @@ class ActionModulator:
             self._confirm(4, f"夹持建立 gripper={gripper:.2f}")
         elif st == "抬起" and lifted is not None and lifted > self.lift_h:
             self._confirm(5, f"光模块已提起 {lifted:.4f}m > {self.lift_h}m")
+        elif st == "转移" and self.mode == self.TRAY_MODE and dist_h is not None \
+                and dist_h < self.align_th:
+            # 🧩 摆盘链: 件已吊到目标槽位上方 (水平到位) → 进「放入」(放下段), 不经过插入/孔口
+            self._confirm(self.PLACE_IDX, f"对准槽位 dist_h={dist_h:.4f} → 放入")
         elif st == "转移" and dist_h is not None and dist_h < self.align_th and (
                 hole_z is None or (peg_z is not None and
                                    abs(peg_z - hole_z - self.INSERT_HOVER) <= self.INSERT_Z_TOL)):
