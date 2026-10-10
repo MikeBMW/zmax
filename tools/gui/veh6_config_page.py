@@ -421,13 +421,17 @@ class ConfigCenterPage(QWidget):
         # ── 底部结果面板 (点了必出结果) ──
         self.out = QTextEdit()
         self.out.setReadOnly(True)
-        self.out.setFixedHeight(168)
+        # 2026-10-10: 原来写死 168px ⇒ 总览表第 5 行被半行切掉 (真机截图复核发现)。改成按内容自适应 (120~320px),
+        # 超过上限才靠滚动 —— 半行被切不是"可滚动", 是看不清。
+        self.out.setFixedHeight(200)
         self.out.setFont(QFont("Consolas", 9))
         self.out.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
                                f"border:1px solid {th['C_BORDER']};")
         self.out.setPlainText(_run("overview"))
         root.addWidget(self.out)
         self.setLayout(root)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(0, self._fit_out)      # 首次布局完成后按内容定高
 
     # ── 左侧域树 ──
     def _fill_tree(self, d, tk):
@@ -440,6 +444,10 @@ class ConfigCenterPage(QWidget):
                          [c["id"] for c in cs if not c.get("ready")]))
         # 文档配置 (2026-10-10): 三份外发/立项文档 + 一致性核对
         dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
+        # 计数是"文档份数", 第 4 项是一致性核对视图 ⇒ 提示里写清, 免得看成"子项数对不上"
+        self._doc_group_tip = ("文档 3/3 = 三份文档 (供应商外发 SOR / 项目立项文档 / 合作协议) 全部就绪且与当前真源一致;\n"
+                               "第 4 项『一致性核对』是核对视图, 不计入份数。")
+        self._doc_group_tip_on = True
         doms.append((f"文档配置  文档 {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
                      ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
         doms.append((f"工艺·工单  任务 {len(tk.get('tasks', []))}",
@@ -448,6 +456,8 @@ class ConfigCenterPage(QWidget):
         self.tree.clear()
         for label, mark, kids in doms:
             it = QTreeWidgetItem([f"{mark} {label}"])
+            if label.startswith("文档") and getattr(self, "_doc_group_tip_on", False):
+                it.setToolTip(0, self._doc_group_tip)
             for k in kids:
                 QTreeWidgetItem(it, [f"   {k}"])
             self.tree.addTopLevelItem(it)
@@ -723,6 +733,7 @@ class ConfigCenterPage(QWidget):
         self.out.setPlainText(f"▶ {label} 运行中… (数据源: 工程库 + 平台真源)")
         QApplication.processEvents()
         self.out.setPlainText(_run_script(script, args))
+        self._fit_out()
         QApplication.processEvents()
         inv = _doc_inventory()
         if hasattr(self, "docs_out"):
@@ -789,8 +800,20 @@ class ConfigCenterPage(QWidget):
             kw["arg"] = tid
         self._run_into(fn, **kw)
 
+    def _fit_out(self):
+        """底部面板按内容自适应高度 (老倪口径: 界面不许挤/不许截断); 超过 320px 才交给滚动条。"""
+        try:
+            d = self.out.document()
+            d.setTextWidth(max(200, self.out.viewport().width()))
+            h = int(d.size().height()) + 16
+            cap = int(min(420, max(200, self.height() * 0.45)))   # 小窗口别把上方表格挤没
+            self.out.setFixedHeight(max(130, min(h, cap)))
+        except Exception:  # noqa: BLE001
+            pass
+
     def _run_into(self, fn, **kw):
         self.out.setPlainText(_run(fn, **kw))
+        self._fit_out()
 
 
 def build_config_center(model_page=None, theme=None):

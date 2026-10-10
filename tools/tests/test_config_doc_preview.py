@@ -158,6 +158,25 @@ def main():
     # 采购范围那张 2 列表: 右侧长文本必须在同一行内 (竖线文本时代它是独立行)
     check("采购范围表在预览里成对出现", "系统类型" in plain and "光模块自动上下料单元" in plain)
 
+    print("\n═══ 8) 底部面板不留半行 + 计数口径有提示 ═══")
+    page.resize(1600, 950)
+    page._run_into("overview")          # 默认总览 (含 4 域 + 协同/工艺 行)
+    app.processEvents()
+    d = page.out.document()
+    d.setTextWidth(max(200, page.out.viewport().width()))
+    need, have = d.size().height(), page.out.viewport().height()
+    capped = page.out.height() >= 320 - 1
+    print(f"      内容高 {need:.0f}px · 视口高 {have:.0f}px · 面板高 {page.out.height()}px · 触顶={capped}")
+    check("总览不被半行切掉 (未触顶时内容应装得下)", need <= have + 2 or capped,
+          f"内容 {need:.0f} / 视口 {have:.0f}")
+    tip = ""
+    for i in range(page.tree.topLevelItemCount()):
+        it = page.tree.topLevelItem(i)
+        if "文档配置" in it.text(0):
+            tip = it.toolTip(0)
+    print("      悬停: " + (tip.replace("\n", " ") if tip else "(无)"))
+    check("『文档配置』行悬停写清计数口径", ("3/3" in tip) and ("不计入" in tip))
+
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0
 

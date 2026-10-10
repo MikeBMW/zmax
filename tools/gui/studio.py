@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.37.8")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.37.9")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11583,7 +11583,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.37.8 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.37.9 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11591,9 +11591,13 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.37.8 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.37.9 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.37.9: 按第二轮真机截图复核修两处 (老倪口径: 界面不许挤/不许截断)
+        #   ① 底部面板写死 168px ⇒ 总览表第 5 行被半行切掉 (复核实测: 面板滑块在顶部=确有隐藏行) ⇒ 改 _fit_out() 按内容自适应
+        #      (130 ~ min(420, 45%页面高); 实测 1600x950 下内容 384px / 视口 398px, 不再切行; 小窗口自动降上限, 不挤上方表格)
+        #   ② 『文档配置 文档 3/3』与 4 个子项仍被复核标为口径疑点 ⇒ 该行加悬停: 『3/3 = 三份文档全部就绪且与真源一致; 第 4 项一致性核对是核对视图, 不计入份数』
         # v5.37.8: 表格可读性重做 (老倪 2026-10-10: 「表格显示的非常不友好，用眼睛看非常费劲」「要用文档的优秀的表格工具来体现，重新设计UI」)
         #   ① Word 侧 (tools/sor_export.py::table, 三份文档共用): 深蓝底白字表头 + 隔行浅蓝底 + 细灰蓝边框(不用黑粗线) + 固定列宽(_auto_widths 按内容长度) + 单元格留白 + 跨页自动重复表头 + 首列加粗
         #   ② 页面: 新增 page_setup() = A4 纵向 (原来默认 Letter 595? 实测 pdftoppm 出 612x792pt, 供应商打印会错版), 三份文档统一走它
@@ -12218,7 +12222,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.37.8  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.37.9  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13953,7 +13957,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.37.8</b> · 多模态动作专家<br>
+<b>Z-MAX v5.37.9</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
