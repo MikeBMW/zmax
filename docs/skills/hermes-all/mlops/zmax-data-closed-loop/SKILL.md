@@ -28,8 +28,8 @@ description: Z-MAX 边学边练闭环 — Orin采集→ECS→4060训练→静态
 **正确方式: 静态URL**:
 ```bash
 # 推模型 (scp 到 ECS 网站目录 + chmod 644)
-sshpass -p 'Nix19789' scp model.safetensors root@39.102.211.79:/www/wwwroot/datadrive.world/models/
-sshpass -p 'Nix19789' ssh root@39.102.211.79 "chmod 644 /www/wwwroot/datadrive.world/models/*.safetensors"
+sshpass -p '${ZMAX_ECS_PW}' scp model.safetensors root@39.102.211.79:/www/wwwroot/datadrive.world/models/
+sshpass -p '${ZMAX_ECS_PW}' ssh root@39.102.211.79 "chmod 644 /www/wwwroot/datadrive.world/models/*.safetensors"
 # 小芳拉取
 curl -o /tmp/model.safetensors https://datadrive.world/models/act_cartesian.safetensors
 ```

@@ -63,6 +63,22 @@ import os as _os_mod
 import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
 
+
+def _ecs_pw_from_secrets():
+    """兜底: 从 zmax_data/secrets/zmax.env 读 ZMAX_ECS_PW。
+    2026-10-10: 仓库为 public, 代码内不再保留任何明文口令 (原兜底明文已删)。"""
+    try:
+        _root = _os_mod.path.dirname(_os_mod.path.dirname(_os_mod.path.dirname(_os_mod.path.abspath(__file__))))
+        _f = _os_mod.path.join(_root, "zmax_data", "secrets", "zmax.env")
+        if _os_mod.path.isfile(_f):
+            for _l in open(_f, encoding="utf-8", errors="ignore"):
+                _l = _l.strip()
+                if _l.startswith("ZMAX_ECS_PW"):
+                    return _l.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
 # 🐛 2026-09-09: 真实化引擎单线程池 — mujoco renderer 绑定创建线程 (metaworld env 进程级
 #   单例 _ENV 跨轮复用): 每轮新建 worker 线程渲染 → 黑帧 → YOLO 0% 检出实锤 (probe 复现:
 #   thread-A 100% → thread-B 复用同 env 0%; glfw/egl 同)。单线程池 = env 首建线程 = 永久渲染线程。
@@ -14738,9 +14754,12 @@ class SimulinkModule(QWidget):
                     self._safe_log(f"🎬 {_ln}")
                 self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
                 try:
-                    # 🐛 2026-09-10: GUI 启动未带 ZMAX_ECS_PW → sshpass -p '' 必失败
-                    #   (用户: 视频已生成 (上传失败)); 回退仓库私有工具同款密码 (data_sync.py 同源)
-                    _pw = _os.environ.get("ZMAX_ECS_PW") or "Nix19789"
+                    # 🔐 2026-10-10: 仓库为 public, 明文口令已从代码全部移除
+                    #   只从环境变量或 zmax_data/secrets/zmax.env 取 (缺则明确报错, 不再兜底明文)
+                    _pw = _ECS_PW_SM or _ecs_pw_from_secrets()
+                    if not _pw:
+                        self._safe_log("⛔ 缺 ZMAX_ECS_PW (环境变量或 zmax_data/secrets/zmax.env) — 上传跳过")
+                        return
                     r2 = _sp.run(["sshpass", "-p", _pw, "scp", "-o", "StrictHostKeyChecking=no",
                                   out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
                                  capture_output=True, timeout=60)

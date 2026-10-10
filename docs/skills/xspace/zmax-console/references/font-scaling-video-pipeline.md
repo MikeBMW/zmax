@@ -59,11 +59,11 @@ grep -oE 'QFont\("[^"]*", [0-9]+[^)]*\)' simulink_module.py | sort | uniq -c
 3. **ffmpeg** — `sudo apt-get install -y ffmpeg`，合成 mp4 必需，报错在最后一步才暴露。
 
 ### 上传链路 (sshpass + scp → ECS)
-`sshpass -p Nix19789 scp ... root@39.102.211.79:/www/wwwroot/datadrive.world/`
+`sshpass -p ***REDACTED***(原值见 zmax_data/secrets/zmax.env) scp ... root@39.102.211.79:/www/wwwroot/datadrive.world/`
 - **sshpass 需 apt 安装**（本机不预装），否则报 `No such file or directory: 'sshpass'`。
 - 上传后 `chmod 644`，公网 `https://datadrive.world/state_space_sim.mp4` 可访问。
 - 验证：`curl -sS -o /dev/null -w '%{http_code} %{size_download}' <url>`。
-- ⚠️ ECS 密码 Nix19789 **有效**（08-22 实测 AUTH_OK）；08-13 记录"失效"是网络被墙的误判，非密码错。
+- ⚠️ ECS 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) **有效**（08-22 实测 AUTH_OK）；08-13 记录"失效"是网络被墙的误判，非密码错。
 
 ### 杀 studio.py 实例 (勿用 pkill -f 自杀)
 `pkill -9 -f "gui-venv311/bin/python studio.py"` 会匹配到**命令自身** → 连 shell 一起 SIGKILL。

@@ -64,7 +64,7 @@
 | 资源 | 凭据 |
 |:--|:--|
 | GitHub | MikeBMW, token: ghp_XXjG |
-| ECS SSH | root@39.102.211.79, Nix19789 |
+| ECS SSH | root@39.102.211.79, ***REDACTED***(原值见 zmax_data/secrets/zmax.env) |
 | ECS MySQL | xSpace / Nix2.7@1 |
 | Mac SSH | Mike-Mac-mini @ 10.163.148.52 |
 | Orin SSH | nvidia@192.168.23.10 |

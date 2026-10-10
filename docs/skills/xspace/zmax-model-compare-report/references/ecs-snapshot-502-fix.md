@@ -17,7 +17,7 @@ archive 目录每秒写 1 张快照 (Orin 推流) → 累积 1170 万个文件 (
 ## 排查步骤 (按序)
 1. `curl -s -m 8 https://datadrive.world/api/relay/cam/status` → 502 (先确认全链路还是单端点)
 2. `curl -s https://datadrive.world/api/relay/orin/status` → 200 → **不是 relay 整体挂**
-3. `sshpass -p 'Nix19789' ssh root@39.102.211.79 "ps aux | grep zmax_relay | grep -v grep | wc -l; ss -tln | grep 39053"` → 进程在
+3. `sshpass -p '${ZMAX_ECS_PW}' ssh root@39.102.211.79 "ps aux | grep zmax_relay | grep -v grep | wc -l; ss -tln | grep 39053"` → 进程在
 4. ECS 本机 `curl http://127.0.0.1:39053/api/snapshot/latest` → 也 000 → 端点内部阻塞 (非网络)
 5. `ls /root/zmax-relay/archive | wc -l` → 1170 万 → 实锤 glob 卡死
 

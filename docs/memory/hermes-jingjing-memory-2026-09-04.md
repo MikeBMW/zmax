@@ -2,7 +2,7 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，我是总工(4060/GitHub/GUI)，小
 §
 链路: Orin(.66)→Mac→ECS→4060; WSL↔Orin直连不通→relay_middleware(HTTP+WS wss://datadrive.world/ws)→Mac守护→ssh Orin; scp>100MB断→base64+echo写文件; 模型chmod644
 §
-ECS SSH密码=Nix19789(08-22实测有效); git push不自动部署; 网页新功能放分页不动主页
+ECS SSH密码=***REDACTED***(原值见 zmax_data/secrets/zmax.env)(08-22实测有效); git push不自动部署; 网页新功能放分页不动主页
 §
 架构(08-08): 坐标=逻辑主线,图像=背景; state叠进latent; 🧩结构条件(每模型行); 45D=39+相对向量; 58D=45+触觉4+CoT9(08-10); 39D结构=node_logic.node_obs39
 §

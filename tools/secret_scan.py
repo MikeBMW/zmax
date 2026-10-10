@@ -25,9 +25,12 @@ PATTERNS = [
     ("AWS key",         r"AKIA[0-9A-Z]{16}"),
     ("私钥",            r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     ("Slack token",     r"xox[baprs]-[A-Za-z0-9\-]{10,}"),
+    # 2026-10-10 新增: 明文口令 (起因: public 仓库里存了 ECS root 口令 —— sshpass -p '<明文>' 与文档里的"密码=xxx")
+    ("明文口令(sshpass)", r"sshpass\s+-p\s+['\"]?(?!\$)([A-Za-z0-9@#_.\-]{6,})"),
+    ("明文口令(赋值)",    r"(?:密码|口令|password|passwd|pwd)\s*[:=]\s*['\"]([^'\"\s]{6,})['\"]"),
 ]
 # 允许出现的"假阳性"位置(占位符/示例/文档提到密钥名)
-ALLOW = re.compile(r"(PLACEHOLDER|example\.com|\*\*\*|<TOKEN>|\$\{?ZMAX_|\$env:|YourPassword|xxx+)")
+ALLOW = re.compile(r"(PLACEHOLDER|example\.com|\*\*\*|<TOKEN>|\$\{?ZMAX_|\$env:|YourPassword|xxx+|REDACTED|_PW\b|_pw\b|os\.environ|环境变量)")
 # 上游/厂商 vendored 代码与文档: 里面的示例 key 不是我们的密钥, 不参与判定
 # 注意 (2026-10-09 收口): 白名单从整棵 `src/lerobot/` 改窄到**只跳过确有假阳性的那一个 vendored 子树**。
 #   整棵跳过会把本仓自有代码 (= src/lerobot/engineering/, 如 canvas_publish.py 的 ECS token) 一起漏掉 ⇒ 扫不到。

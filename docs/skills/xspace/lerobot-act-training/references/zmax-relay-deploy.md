@@ -46,9 +46,9 @@ Orin 采集 → MAC → ECS 中转 → 4060 训练 → 模型回传 ECS → MAC 
 - MAC 侧: `hermes_gateway_mac/cicd_pull_deploy.py` (拉取+部署 Orin, 用 `.content` 落盘), `collect_upload.py` (Orin 采集→推 ECS), `orin_infer_service.py`, `orin_sys_status.py`.
 - **注意区分**: `relay_train.py pull` (JSON 数据) ≠ `cicd_pull_deploy.py pull` (二进制模型)。中继弹栈一次成功, 不保存即丢。
 - **小芳守护进程每 5s 轮询 /latest** → 模型上传后几秒内被自动拉走部署。看到队列空别慌, 查 relay.log `已转发二进制并删除` 即确认被消费。
-- **模型被消费≠已部署 (2026-08-02 实测)**: 小芳拉取可能中断 (84MB 传输 41MB 超时), 弹栈队列取走即删 → 重试时队列已空, 模型丢失且未部署。对策: ①上传后立即 `curl /status` 确认在队列; ②若被消费但对方说没部署, **重新 `tools/upload_model.py` 推一次** (文件名带新时间戳, 对方守护自动再拉); ③给大文件提供 scp 直连通道 (`sshpass -p Nix19789 scp root@ECS:/root/zmax-relay/data/<pkg>.npz .`) 绕过弹栈时序。
+- **模型被消费≠已部署 (2026-08-02 实测)**: 小芳拉取可能中断 (84MB 传输 41MB 超时), 弹栈队列取走即删 → 重试时队列已空, 模型丢失且未部署。对策: ①上传后立即 `curl /status` 确认在队列; ②若被消费但对方说没部署, **重新 `tools/upload_model.py` 推一次** (文件名带新时间戳, 对方守护自动再拉); ③给大文件提供 scp 直连通道 (`sshpass -p ***REDACTED***(原值见 zmax_data/secrets/zmax.env) scp root@ECS:/root/zmax-relay/data/<pkg>.npz .`) 绕过弹栈时序。
 - **闭环判断标准**: 采集✅→训练✅→模型推回✅ 只算前 3 步; 部署 Orin + 推理 + 再采集才算闭合。Orin `/orin/status` 的 `infer_count` 长期为 0 = 推理服务没被调用, 闭环未闭合。
-- ECS 部署: `sshpass -p Nix19789 scp ... root@39.102.211.79:/root/zmax-relay/` + sed 端口 + `bash start.sh`。
+- ECS 部署: `sshpass -p ***REDACTED***(原值见 zmax_data/secrets/zmax.env) scp ... root@39.102.211.79:/root/zmax-relay/` + sed 端口 + `bash start.sh`。
 
 ## 快照归档 + 视频流端点 (2026-08-02 下午-晚上迭代)
 - **快照自动归档**: `POST /upload` 收到的包若 `meta.source=="orin_snapshot"` 或含 `snapshot_b64` → 不占训练队列, 直接解码落盘 `/root/zmax-relay/archive/snap_<ts>_<action>.jpg` + `.json` (元数据: current_state/all_states/action/timestamp)。队列只留可训练数据包。

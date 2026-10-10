@@ -12,7 +12,7 @@ root fs 为 overlay, 无 systemd, 无 /mnt 挂载, 无 GPU/docker/gh), 非原 WS
 5. cat ~/.hermes/gateway_state.json → 显示旧家 pid/hermes_home, 是 stale 数据, 忽略
 6. curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user → 200 MikeBMW ✅
 7. 重建机器本地凭据: git config + ~/.git-credentials (从 GITHUB_TOKEN 写),
-   ~/.zmax_ssh.json (ECS root@39.102.211.79 密码 Nix19789 从记忆恢复),
+   ~/.zmax_ssh.json (ECS root@39.102.211.79 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 从记忆恢复),
    apt install -y sshpass jq wget
 8. sshpass ssh ECS 验证 → hostname + ls webroot 通 ✅
 9. 飞书端到端: tenant_access_token → POST 测试消息到 dataworld chat_id → code:0 ✅

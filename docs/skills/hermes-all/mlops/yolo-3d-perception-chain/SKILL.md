@@ -273,7 +273,7 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 
 ### 5 模型权重不在本机 (关键认知)
 - eval_insert.py 的 act/smolvla/smolvla_lew/vla_touch/awe_zflow 权重在远程 GPU `223.109.239.36:24424`, LiveUSB 重启后 ~/.zmax_ssh.json 丢失, 密码已失效 → 本机拿不到。
-- ECS `39.102.211.79` (密码 Nix19789, 端口22) 可达但上面只有 smolvla_lew_10step, 无 5 模型完整权重。
+- ECS `39.102.211.79` (密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env), 端口22) 可达但上面只有 smolvla_lew_10step, 无 5 模型完整权重。
 - 本机同构闭环改走 BC: `tools/eval_yolo_bc.py` 用 data/metaworld_peg (YOLO噪声state) 训练 BC MLP (39D→4D, 512 hidden), 再用真实 best.pt 感知评估插拔。
 
 ### eval_yolo_bc.py 用法 + 实测结果

@@ -6,7 +6,7 @@ Session-specific deployment details for the Z-MAX data closed-loop relay.
 Orin (采集) → 小芳Mac (转发) → ECS relay → 4060 (训练) / 4090 (推理) → Orin (部署)
 
 ## ECS Relay Service
-- Location: `/root/zmax-relay/zmax_relay.py` (root@39.102.211.79, sshpass pw Nix19789)
+- Location: `/root/zmax-relay/zmax_relay.py` (root@39.102.211.79, sshpass pw ***REDACTED***(原值见 zmax_data/secrets/zmax.env))
 - Binds: `0.0.0.0:39053` (NOT 50053 — nginx proxies 39053)
 - Data dir: `/root/zmax-relay/data/` (≤100MB auto-cleanup via enforce_buf_limit, pop-on-GET)
 - Start: `bash /root/zmax-relay/start.sh` (setsid nohup + pkill inside)

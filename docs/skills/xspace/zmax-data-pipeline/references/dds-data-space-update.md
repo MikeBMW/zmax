@@ -11,7 +11,7 @@
 ## 更新步骤 (实测)
 1. 写脚本 `update_dds_loop.py`: DELETE 目标表 + executemany INSERT (幂等)
 2. `python3 update_dds_loop.py` 本地跑
-3. `sshpass -p 'Nix19789' scp dds.db root@39.102.211.79:/www/wwwroot/datadrive.world/dds.db`
+3. `sshpass -p '${ZMAX_ECS_PW}' scp dds.db root@39.102.211.79:/www/wwwroot/datadrive.world/dds.db`
 4. 验证 API: `curl https://datadrive.world/api/dds-all.php | python3 -c "import sys,json; d=json.load(sys.stdin); ..."`
    - 注意: pipeline 在 API 里是 **list**, kpi 是 **dict** (key=id) — 遍历方式不同
 

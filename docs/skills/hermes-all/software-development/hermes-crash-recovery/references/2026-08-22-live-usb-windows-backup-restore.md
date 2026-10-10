@@ -44,7 +44,7 @@ find ~/.hermes/skills -type f | wc -l                   # 验证
 覆盖前对比版本：包内 `tar tvzf <pkg> | grep '<skill>/SKILL.md'` vs 本地 `ls -la`（mtime/大小），文件数 `tar tzf | grep -c` vs `find | wc -l`。备份更新才覆盖。
 
 ## 记忆对比坑（本次实测）
-备份（08-19）的 MEMORY.md 可能比当前环境旧：备份仍写"ECS 密码 Nix19789 有效"，当前记忆已有"08-13 实测密码失效"的更新结论。**恢复记忆前必须 diff**（`tar xzf 到 /tmp` 后 diff，用后清理 `rm -rf /tmp/.hermes`），保留新事实。技能/代码可整目录覆盖，记忆要逐条合并——把已证伪的凭据当有效会直接坏事。
+备份（08-19）的 MEMORY.md 可能比当前环境旧：备份仍写"ECS 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 有效"，当前记忆已有"08-13 实测密码失效"的更新结论。**恢复记忆前必须 diff**（`tar xzf 到 /tmp` 后 diff，用后清理 `rm -rf /tmp/.hermes`），保留新事实。技能/代码可整目录覆盖，记忆要逐条合并——把已证伪的凭据当有效会直接坏事。
 
 ## 恢复后 bring-up（新机到全功能，用户 CICD 仪式）
 用户标准流程：保存数据 → 小版本迭代 → 代码推送 → 系统保护 → 自检 → 可靠性维护。

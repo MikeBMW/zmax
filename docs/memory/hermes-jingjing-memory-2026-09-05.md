@@ -2,7 +2,7 @@ web=4090训练+ComfyUI+前端+ECS部署+PM，总工(4060/GitHub/GUI)，小芳=�
 §
 链路: Orin→Mac→ECS→4060; WSL↔Orin直连不通→relay_middleware(HTTP+WS datadrive.world/ws)+Mac守护; scp>100MB断→base64+echo写文件; 模型chmod644
 §
-ECS SSH密码=Nix19789(08-22实测有效); git push不自动部署; 网页新功能放分页不动主页
+ECS SSH密码=***REDACTED***(原值见 zmax_data/secrets/zmax.env)(08-22实测有效); git push不自动部署; 网页新功能放分页不动主页
 §
 架构: 坐标=逻辑主线,图像=背景; state叠进latent; 45D=39+相对; 58D=45+触觉4+CoT9
 §

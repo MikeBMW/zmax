@@ -49,7 +49,7 @@
 - 飞书approve通道已通
 
 ### ECS隧道
-- ECS: 39.102.211.79, root/Nix19789
+- ECS: 39.102.211.79, root/***REDACTED***(原值见 zmax_data/secrets/zmax.env)
 - 隧道端口: ECS:18080 → Mac:8080
 
 ---

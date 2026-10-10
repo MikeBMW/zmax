@@ -16,7 +16,7 @@
 1. 本机起 x11vnc (取 XAUTHORITY, 见 remote-desktop-x11vnc-novnc.md)。
 2. 反向隧道 (ECS 的 5900 → 本机 5900):
    ```bash
-   nohup sshpass -p '<ECS密码>' ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
+   nohup sshpass -p '${ZMAX_ECS_PW}' ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
      -o ExitOnForwardFailure=yes -N -R 5900:localhost:5900 root@datadrive.world \
      > /tmp/vnc_tunnel.log 2>&1 &
    ```

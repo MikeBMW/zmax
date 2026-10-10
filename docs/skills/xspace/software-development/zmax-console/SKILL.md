@@ -259,7 +259,7 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **上传通道 (实测)**: datadrive.world = ECS 39.102.211.79 nginx,
   **站点根 = /www/wwwroot/datadrive.world/** (宝塔路径, /var/www/html 是默认页不算);
   zmax-website 仓库在 ECS /root/zmax-website。上传:
-  `sshpass -p '<ECS密码>' scp reports/web/*.html root@39.102.211.79:/www/wwwroot/datadrive.world/`
+  `sshpass -p '${ZMAX_ECS_PW}' scp reports/web/*.html root@39.102.211.79:/www/wwwroot/datadrive.world/`
   → curl https://datadrive.world/function-list.html 验证 (grep 新章节锚点)。
 - 版本中迭代 v4.2.0 同步点同 v4.1.0 五处 + VERSION.md 历史表两行 (v4.2.0+v4.1.0 补录)。
 

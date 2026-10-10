@@ -3,6 +3,19 @@
 import os
 import numpy as np, requests, time, os
 from pathlib import Path
+def _ecs_pw():
+    """ECS/4090 SSH 口令: 环境变量或 zmax_data/secrets/zmax.env —— 仓库不存明文 (2026-10-10)。"""
+    pw = os.environ.get("ZMAX_ECS_PW")
+    if pw:
+        return pw
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "zmax_data", "secrets", "zmax.env")
+    if os.path.isfile(p):
+        for ln in open(p, encoding="utf-8", errors="ignore"):
+            ln = ln.strip()
+            if ln.startswith("ZMAX_ECS_PW"):
+                return ln.split("=", 1)[1].strip().strip('"').strip("'")
+    raise SystemExit("⛔ 缺 ZMAX_ECS_PW: 设环境变量或写入 zmax_data/secrets/zmax.env")
 
 ORIN = "http://192.168.23.66:8765"
 FRAMES = 50
@@ -51,7 +64,7 @@ print(f"   格式: observations={np.stack(observations).shape} states={np.stack(
 # 上传4090
 print(f"\n=== 上传4090 ===")
 # scp方式
-os.system(f"sshpass -p '32K78m954g0yjUZz' scp -o StrictHostKeyChecking=no -P 23 {filename} root@39.102.211.79:/root/datasets/metaworld/tasks/")
+os.system(f"sshpass -p '{_ecs_pw()}' scp -o StrictHostKeyChecking=no -P 23 {filename} root@39.102.211.79:/root/datasets/metaworld/tasks/")
 print("✅ 已上传4090 → 触发训练")
 requests.post("http://39.102.211.79:50053/task", json={
     "task": "train",

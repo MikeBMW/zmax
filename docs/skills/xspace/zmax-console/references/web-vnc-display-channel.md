@@ -23,7 +23,7 @@
 
 2. **SSH 反向隧道 (容器→ECS)**:
    ```bash
-   sshpass -p '<ECS密码>' ssh -o StrictHostKeyChecking=no \
+   sshpass -p '${ZMAX_ECS_PW}' ssh -o StrictHostKeyChecking=no \
      -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
      -o ExitOnForwardFailure=yes -N \
      -R 127.0.0.1:5900:127.0.0.1:5900 root@39.102.211.79

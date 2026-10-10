@@ -1184,9 +1184,9 @@ scripts/ws_probe.py):
   (零技术词, 面向产线规划/工艺工程/采购验收口径)。
 
 ## zmax-website 部署与 web3d 场景仿真 (2026-08-10 实测, scene-3d.html 工艺仿真引擎)
-- **ECS 部署 (datadrive.world)**: 阿里云 ECS `root@39.102.211.79` **默认 22 端口 + 密码 Nix19789**
+- **ECS 部署 (datadrive.world)**: 阿里云 ECS `root@39.102.211.79` **默认 22 端口 + 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env)**
   (23 反而不通 — 记忆已修正; 旧笔记"22被封"是错的)。web 根 `/www/wwwroot/datadrive.world/`。
-  单文件部署: `sshpass -p Nix19789 scp -o StrictHostKeyChecking=no <file> root@39.102.211.79:/www/wwwroot/datadrive.world/`
+  单文件部署: `sshpass -p ***REDACTED***(原值见 zmax_data/secrets/zmax.env) scp -o StrictHostKeyChecking=no <file> root@39.102.211.79:/www/wwwroot/datadrive.world/`
   + `chmod 644`。仓库 `deploy/deploy.sh` (export ECS_PASS/DB_PASS 一键全量)。
 - **scene-3d.html 工艺仿真引擎模式 (协议 v3 第 11 章)**: 三场景 (insert/handle/aoi) 动态仿真 =
   `SIM_PLANS` 技能计划 (每技能 {name, dur, to, spin, pick}) + `simUpdate(dt)` (物体 lerp 移动 +

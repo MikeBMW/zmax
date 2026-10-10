@@ -17,6 +17,9 @@
     生成工单          →  config_center.py order --scene SCN-02-HANDLE
     诊断带·全链校验    →  config_center.py check
     System 1 交付包   →  config_center.py sys1   (摆盘项目: 功能清单/配置项/指标/接口契约/缺口)
+    SOR (Word)       →  config_center.py sor    (需求规格说明书: 性能参数 + 功能配置)
+    协议 (Word)      →  config_center.py agreement (数据平台合作与模型授权协议)
+    数据治理         →  config_center.py data   (下发计划/清单/台账/审计, 禁导出类别拒发)
 
 三列的含义 (MCD): 测量=当前值/真源/时间戳 · 标定=权限/写入 · 诊断=判据
     python3 tools/config_center.py [--json] <命令> [参数]
@@ -517,11 +520,38 @@ def cmd_sor(a):
     return subprocess.call(argv)
 
 
+def cmd_data(a):
+    """数据治理闸 — 权属判定 / 下发计划 / 同步(禁导出类别物理拒发) / 模型台账 / 审计
+
+    用法: python3 tools/config_center.py data              # 下发计划(允许/拦截)
+          python3 tools/config_center.py data manifest    # 生成带权属标签与哈希的清单
+          python3 tools/config_center.py data ledger      # 供应商回传模型台账
+          python3 tools/config_center.py data audit       # 同步审计
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    argv = [sys.executable, os.path.join(root, "tools", "data_governance.py")]
+    if a.arg:
+        argv += a.arg.split()
+    return subprocess.call(argv)
+
+
+def cmd_agreement(a):
+    """协议导出 — 《机器人数据平台合作与模型授权协议》Word (与治理真源同源)
+
+    用法: python3 tools/config_center.py agreement
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return subprocess.call([sys.executable, os.path.join(root, "tools", "agreement_export.py")])
+
+
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
         "node": cmd_node, "project": cmd_project,
-        "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor}
+        "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor,
+        "data": cmd_data, "agreement": cmd_agreement}
 
 
 def main():
@@ -531,7 +561,9 @@ def main():
     ap.add_argument("--task", default=None)
     ap.add_argument("cmd", nargs="?", default="overview")
     ap.add_argument("arg", nargs="?")
-    a = ap.parse_args()
+    a, extra = ap.parse_known_args()
+    if extra:
+        a.arg = ((a.arg + " ") if a.arg else "") + " ".join(extra)
     fn = CMDS.get(a.cmd)
     if not fn:
         print(__doc__)

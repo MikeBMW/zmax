@@ -7,7 +7,12 @@
 set -u
 
 ECS_HOST="root@39.102.211.79"
-ECS_PW="Nix19789"
+# 🔐 2026-10-10: 明文口令已移出仓库 (public repo) —— 优先环境变量, 其次密钥文件
+ECS_PW="${ZMAX_ECS_PW:-}"
+if [ -z "$ECS_PW" ] && [ -f "$HOME/zmax_data/secrets/zmax.env" ]; then
+  ECS_PW="$(grep -m1 '^ZMAX_ECS_PW' "$HOME/zmax_data/secrets/zmax.env" | cut -d= -f2- | tr -d '"')'"
+fi
+if [ -z "$ECS_PW" ]; then echo "⛔ 缺 ZMAX_ECS_PW (环境变量或 ~/zmax_data/secrets/zmax.env)"; exit 1; fi
 ECS_DIR="/www/wwwroot/datadrive.world"
 TMP="/tmp/zmax_cam"
 mkdir -p "$TMP"

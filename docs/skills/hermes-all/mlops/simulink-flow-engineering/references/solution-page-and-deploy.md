@@ -35,11 +35,11 @@
 **git push 到 GitHub 不会自动上线(线上 404)** — 必须手动 scp:
 
 ```bash
-# 凭据在 zmax-website/orin_stream.sh 与 deploy/deploy.sh: ECS_PASS=Nix19789
+# 凭据在 zmax-website/orin_stream.sh 与 deploy/deploy.sh: ECS_PASS=***REDACTED***(原值见 zmax_data/secrets/zmax.env)
 cd /home/xspace/zmax-website
-sshpass -p 'Nix19789' scp -o StrictHostKeyChecking=no solution.html "Z700-方案介绍.pdf" \
+sshpass -p '${ZMAX_ECS_PW}' scp -o StrictHostKeyChecking=no solution.html "Z700-方案介绍.pdf" \
   root@39.102.211.79:/www/wwwroot/datadrive.world/
-sshpass -p 'Nix19789' ssh -o StrictHostKeyChecking=no root@39.102.211.79 \
+sshpass -p '${ZMAX_ECS_PW}' ssh -o StrictHostKeyChecking=no root@39.102.211.79 \
   "chmod 644 /www/wwwroot/datadrive.world/solution.html '/www/wwwroot/datadrive.world/Z700-方案介绍.pdf'"
 ```
 

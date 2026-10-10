@@ -34,7 +34,7 @@ Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &          # 无 WM 虚拟屏
 cd ~/lerobot-smolvla-lew && DISPLAY=:99 ./gui-venv311/bin/python tools/gui/studio.py &
 x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -nopw &
 # SSH 反向隧道 → ECS (ECS 侧 websockify 6080 + noVNC 目录早已就绪, 见 remote-web-vnc-2026-08-19.md)
-sshpass -p '<ECS密码>' ssh -N -R 127.0.0.1:5900:127.0.0.1:5900 root@39.102.211.79
+sshpass -p '${ZMAX_ECS_PW}' ssh -N -R 127.0.0.1:5900:127.0.0.1:5900 root@39.102.211.79
 ```
 URL: `https://datadrive.world/novnc/vnc.html?host=datadrive.world&port=443&path=novnc/websockify&autoconnect=1&reconnect=1`
 验证链: ECS `ss -tln | grep 5900`(隧道入口) → 页面带认证 200/无认证 401 → python socket 发

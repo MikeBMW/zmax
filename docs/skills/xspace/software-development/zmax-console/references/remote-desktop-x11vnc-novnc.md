@@ -16,7 +16,7 @@ x11vnc -display :0 -rfbauth ~/.vnc/zmax.pass -forever -shared -noxdamage -ncache
 #    nginx 已配 /novnc/ 路径 + basic auth (账号 zmax)
 
 # 3. 反向隧道 (本机→ECS): ECS 5900 转发回本机 5900
-sshpass -p '<ECS密码>' ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
+sshpass -p '${ZMAX_ECS_PW}' ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -N \
   -R 5900:localhost:5900 root@datadrive.world
 ```

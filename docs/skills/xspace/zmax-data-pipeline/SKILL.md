@@ -39,8 +39,8 @@ Orin(192.168.23.10:8765 采集) → 小芳Mac(192.168.23.1:8769 中转) → ECS�
 - **弹栈队列 + 拉取中断 = 模型永久丢失 (2026-08-02 实测)**: `/latest` 拉取即删——小芳 84MB 模型下载 41MB 超时中断, 重试时队列已空, 模型没了, 必须重新上传。**推模型后若对端说"队列空/下载中断", 第一反应是重推同一 checkpoint**（`tools/upload_model.py <path>` 直接传路径, 不要怀疑链路挂了）。大模型拉取端也应避免超时中断（后台/流式 + 足够 timeout）。
 - **模型传递别再依赖弹栈队列 → 用静态路径 (2026-08-02 最终方案)**: 弹栈队列 + 两端同时消费（小芳监听器 peek + 手动 curl /latest）会竞争抢包, 模型 404 丢失。终极解法: **scp 模型到 ECS 网站目录做静态文件**, 对端直接 GET 一次到位, 永不竞争:
   ```bash
-  sshpass -p 'Nix19789' scp model.safetensors root@39.102.211.79:/www/wwwroot/datadrive.world/models/act_cartesian.safetensors
-  sshpass -p 'Nix19789' ssh ... "chmod 644 /www/wwwroot/datadrive.world/models/*.safetensors"
+  sshpass -p '${ZMAX_ECS_PW}' scp model.safetensors root@39.102.211.79:/www/wwwroot/datadrive.world/models/act_cartesian.safetensors
+  sshpass -p '${ZMAX_ECS_PW}' ssh ... "chmod 644 /www/wwwroot/datadrive.world/models/*.safetensors"
   # 对端: curl -o model.bin https://datadrive.world/models/act_cartesian.safetensors
   ```
   **权限坑**: scp 默认 600 (root only) → nginx(www-data) 读不了 → HTTP 403。必须 `chmod 644`。safetensors 不在 nginx 静态后缀规则里也能直接下发（无 location 匹配时走默认 static）。
@@ -284,7 +284,7 @@ rollout 视频全黑 (var=0.0, 60帧全零) 的根因:
 2. **SSH 挂起**：`setsid nohup ... &` 直接写在 ssh 命令里会阻塞 60s 超时 → 写 start.sh 落盘，ssh 只执行 `bash start.sh`
 3. **阿里云安全组**：ufw allow 不够！新端口(50053/39053)公网不通，ECS 本机走公网 IP 也超时 → 唯一绕过：nginx 反代已有域名 443（`/api/relay/` 模式），别再开新端口
 4. **nginx 配置**：sed 插行易破坏 location 块结构 → 先 `cp .bak` + python 精确字符串替换 + `nginx -t` 再 reload
-5. **sshpass 变体**：xspace 的 `~/.local/bin/sshpass` 是包装脚本，只支持 `-p`，不支持 `-e`/`-V` → 用 `sshpass -p 'Nix19789' ssh root@39.102.211.79`
+5. **sshpass 变体**：xspace 的 `~/.local/bin/sshpass` 是包装脚本，只支持 `-p`，不支持 `-e`/`-V` → 用 `sshpass -p '${ZMAX_ECS_PW}' ssh root@39.102.211.79`
 6. **本地训练环境**：系统 python3.14 无 torch，必须 `uv sync --python 3.12`（pyproject requires-python >=3.12）
 7. **uv sync 慢/镜像缺包**：Fastly CDN 80min+ 下不完 → 试 `UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`，但 aliyun 可能缺包 (num2words → lerobot[all] 无法解析) → 回官方源 `uv sync --python 3.12 --no-default-groups` 装核心, 再 `uv sync --python 3.12 --extra dataset --extra training` 补训练依赖 (缓存命中后很快)。缺 `datasets` 时训练报 `ImportError: 'datasets' is required... pip install 'lerobot[dataset]'`
 8. **relay `/ci/validate` 端点别用 subprocess 传 bytes**：`subprocess.run(input=raw_bytes, text=True)` 报 `'bytes' object has no attribute 'encode'` → 端点内直接 `sys.path.insert(0, '/root/zmax-relay')` + `from simulink_ci import run_checks` 内嵌调用, 返回 `rep.to_json()`

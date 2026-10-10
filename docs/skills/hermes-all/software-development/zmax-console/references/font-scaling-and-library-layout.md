@@ -51,7 +51,7 @@ re.subn(r'QFont\("Arial", 13, QFont\.Bold\)', '...15...', s)
 - 装 Pillow: `~/.hermes/bin/uv pip install --python <gui-venv311>/bin/python Pillow`
 - ffmpeg: `sudo apt-get install -y ffmpeg`; sshpass: `sudo apt-get install -y sshpass`
 - 🐛 中文字体路径 `_FONT` 原硬编码 wqy-microhei.ttc (本机无此字体) → 已改成候选列表 `next(f for f in _FONT_CANDIDATES if os.path.isfile(f), _FONT_CANDIDATES[0])`, 落到 NotoSansCJK-Regular.ttc。`ImageFont.load_default()` 不支持中文, 会渲染成方块 — 别依赖它当回退。
-- 上传 ECS: `sshpass -p Nix19789 scp ... root@39.102.211.79:/www/wwwroot/datadrive.world/` + `chmod 644`。密码 Nix19789 实测有效 (08-22)。
+- 上传 ECS: `sshpass -p ***REDACTED***(原值见 zmax_data/secrets/zmax.env) scp ... root@39.102.211.79:/www/wwwroot/datadrive.world/` + `chmod 644`。密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 实测有效 (08-22)。
 
 ## 修完验证
 

@@ -8,7 +8,7 @@
 - `sys.executable` = 当前 GUI 解释器 = **gui-venv311** (Py3.11), 不是系统 python3。
   → 依赖必须装在 gui-venv311, 不是系统 python3 (系统 python3 无 numpy 且无 PyQt5)。
 - 输出 `reports/state_space_sim.mp4`, 上传 ECS datadrive.world 用 sshpass scp
-  (密码 Nix19789 已失效 → 上传失败只打日志, 本地 mp4 仍在, 有兜底, 不影响使用)。
+  (密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 已失效 → 上传失败只打日志, 本地 mp4 仍在, 有兜底, 不影响使用)。
 
 ## 依赖链 (三件套)
 1. **Pillow (PIL)** — 渲染帧。gui-venv311 默认只装 PyQt5+numpy+grpcio+protobuf, 没 Pillow。

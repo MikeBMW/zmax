@@ -39,11 +39,11 @@ nginx -t && /etc/init.d/nginx reload
 ## 部署命令（踩过的坑）
 ```bash
 # ❌ 错误: pkill 和启动塞一条 ssh 命令 → pkill -f 匹配到整条命令行, 新进程一起被杀
-sshpass -p 'Nix19789' ssh root@39.102.211.79 "pkill -f zmax_relay.py; ... nohup python3 zmax_relay.py &"
+sshpass -p '${ZMAX_ECS_PW}' ssh root@39.102.211.79 "pkill -f zmax_relay.py; ... nohup python3 zmax_relay.py &"
 # ❌ 错误: setsid nohup 直接写在 ssh 命令里 → ssh 阻塞 60s 超时
 # ✅ 正确: 启动逻辑落盘成 start.sh, ssh 只执行 bash
-sshpass -p 'Nix19789' scp /tmp/start_relay.sh root@39.102.211.79:/root/zmax-relay/start.sh
-sshpass -p 'Nix19789' ssh root@39.102.211.79 "bash /root/zmax-relay/start.sh"
+sshpass -p '${ZMAX_ECS_PW}' scp /tmp/start_relay.sh root@39.102.211.79:/root/zmax-relay/start.sh
+sshpass -p '${ZMAX_ECS_PW}' ssh root@39.102.211.79 "bash /root/zmax-relay/start.sh"
 ```
 
 ## 验证

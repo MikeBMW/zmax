@@ -22,12 +22,26 @@ ARCH_LOCAL.mkdir(parents=True, exist_ok=True)
 LIVE_LOCAL.mkdir(parents=True, exist_ok=True)
 
 
+def _ecs_pw():
+    """ECS SSH 口令: 只用环境变量或 zmax_data/secrets/zmax.env —— 仓库内不再内置明文口令。"""
+    pw = os.environ.get("ZMAX_ECS_PW")
+    if pw:
+        return pw
+    env = Path(__file__).resolve().parents[1] / "zmax_data" / "secrets" / "zmax.env"
+    if env.is_file():
+        for ln in env.read_text(encoding="utf-8", errors="ignore").splitlines():
+            ln = ln.strip()
+            if ln.startswith("ZMAX_ECS_PW"):
+                return ln.split("=", 1)[1].strip().strip('"').strip("'")
+    raise SystemExit("⛔ 缺 ZMAX_ECS_PW: 请设环境变量或写入 zmax_data/secrets/zmax.env (仓库不再存明文口令)")
+
+
 def sync_archive():
     """增量拉取快照归档 (tar 流式)"""
     # 本地已有数量
     local_count = len(list(ARCH_LOCAL.glob("snap_*.jpg")))
     cmd = f"cd /root/zmax-relay && tar cf - archive/ 2>/dev/null"
-    r = subprocess.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+    r = subprocess.run(["sshpass", "-p", _ecs_pw(), "ssh", "-o", "StrictHostKeyChecking=no",
                         ECS, cmd], capture_output=True)
     if r.returncode != 0:
         print(f"⚠️ 同步失败: {r.stderr[:100]}")

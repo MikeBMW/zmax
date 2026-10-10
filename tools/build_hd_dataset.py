@@ -28,7 +28,7 @@ ARCHIVE = "/root/zmax-relay/archive"
 
 def fetch_snapshot_index():
     """拉取归档快照索引 (文件名→绝对时间戳)"""
-    r = subprocess.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+    r = subprocess.run(["sshpass", "-p", _ecs_pw(), "ssh", "-o", "StrictHostKeyChecking=no",
                         ECS, f"ls {ARCHIVE}/snap_*.jpg"], capture_output=True, text=True, timeout=30)
     idx = {}
     for line in r.stdout.strip().split("\n"):
@@ -45,9 +45,24 @@ def fetch_snapshot_index():
 
 def fetch_snapshot_image(ts):
     """从 ECS 拉取指定快照 (高清)"""
-    r = subprocess.run(["sshpass", "-p", "Nix19789", "ssh", "-o", "StrictHostKeyChecking=no",
+    r = subprocess.run(["sshpass", "-p", _ecs_pw(), "ssh", "-o", "StrictHostKeyChecking=no",
                         ECS, f"cat {ARCHIVE}/snap_{ts}_*.jpg"], capture_output=True, timeout=30)
     return r.stdout if r.returncode == 0 and r.stdout else None
+
+
+def _ecs_pw():
+    """ECS SSH 口令: 环境变量或 zmax_data/secrets/zmax.env —— 仓库不再内置明文口令 (2026-10-10)。"""
+    pw = os.environ.get("ZMAX_ECS_PW")
+    if pw:
+        return pw
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "zmax_data", "secrets", "zmax.env")
+    if os.path.isfile(p):
+        for ln in open(p, encoding="utf-8", errors="ignore"):
+            ln = ln.strip()
+            if ln.startswith("ZMAX_ECS_PW"):
+                return ln.split("=", 1)[1].strip().strip('"').strip("'")
+    raise SystemExit("⛔ 缺 ZMAX_ECS_PW: 设环境变量或写入 zmax_data/secrets/zmax.env")
 
 
 def main():

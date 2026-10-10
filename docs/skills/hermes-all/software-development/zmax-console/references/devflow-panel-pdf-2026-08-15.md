@@ -67,7 +67,7 @@ QTextBrowser HTML 表格):
    `/usr/share/fonts/truetype/wqy/wqy-microhei.ttc`, emoji 剥离)
 3. `_upload_pdf()`: sshpass scp → ECS `/www/wwwroot/datadrive.world/reports/`
    + chmod 644 → `https://datadrive.world/reports/dev_flow_report.pdf`
-   (ECS = root@39.102.211.79, 密码 Nix19789, 铁律见记忆)
+   (ECS = root@39.102.211.79, 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env), 铁律见记忆)
 4. `_open_url()`: xdg-open 尝试 (容器无浏览器则静默), 弹窗给 URL 用户 Windows 打开
 
 **坑**: gui-venv 默认无 reportlab → `~/.hermes/bin/uv pip install reportlab -p

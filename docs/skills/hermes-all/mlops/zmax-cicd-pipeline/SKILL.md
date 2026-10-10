@@ -56,7 +56,7 @@ PYTHONPATH=src .venv/bin/python tools/act_compare.py \
 6. **ECS 仅 3.5GB 内存**：84MB 上传易 OOM 崩 relay。已改流式分块写盘(64KB chunks)，仍偶发——上传用 background 进程 + 崩后 `bash /root/zmax-relay/start.sh` 重启。
 7. **nginx 反代**：ECS 安全组只开 80/443，内部端口(39053/8765)必须走 nginx 反代 (`/api/relay/`、`/api/orin/`、`/ws`)；大文件加 `proxy_read_timeout 300s`；HTTP handler 未知端点必须有 else 兜底否则 nginx 502。
 8. **SSH 后台进程**：`nohup ... &` 随 SSH 会话退出被杀，必须 `setsid nohup ... < /dev/null &` 或写 start.sh。
-9. **sshpass**: `sshpass -p 'Nix19789' ssh -o StrictHostKeyChecking=no root@39.102.211.79`（本机可用；resolute 装不上）。
+9. **sshpass**: `sshpass -p '${ZMAX_ECS_PW}' ssh -o StrictHostKeyChecking=no root@39.102.211.79`（本机可用；resolute 装不上）。
 10. **relay JSON/二进制判定 (2026-08-02 修复)**：旧版只读前4KB尝试 json.loads 判 JSON → 大 JSON 采集包(>4KB)误判为二进制存成 .npz。新版：Content-Type 含 `json` 或完整解析成功(≤64MB 才尝试, 防OOM) → 存 .json；否则流式写盘二进制。**坑**: `ctype` 含 json 时若直接 `is_json=True` 但 obj 未定义 → NameError，判定和解析必须同一分支。safetensors 头是合法 JSON 但 84MB>64MB 限制 → 正确走二进制流式。
 11. **快照自动归档 (2026-08-02)**：Orin 快照包 (`source=orin_snapshot` / 含 `snapshot_b64`，frames=0) 每 30s~1s 一个，会污染训练队列堆积数千包。relay /upload 收到即解码归档到 `/root/zmax-relay/archive/snap_<ts>_<action>.jpg` + 同名 .json 元数据(current_state/all_states/action)，不进 data/ 队列。**peek 归档兜底**：队列空时 peek 返回最新归档快照(current_state+snapshot_b64)，页面状态机/图像靠它实时更新。清理残留：遍历 data/*.json 删 source==orin_snapshot。
 12. **cam 视频流端点**：`GET /cam/latest.jpg`（归档快照优先, 非 cam/ 实时推帧优先——cam/ 里可能是模拟推帧残留）、`GET /cam/status`、`POST /cam/upload`（Orin 推帧）。**nginx `^~ /api/relay/cam/` 必须放 .jpg 静态正则之前或用 `^~`**（`location ~ .*\.jpg$` 会先拦截带 .jpg 的请求导致 404）。实时帧加 `Cache-Control: no-store` 防浏览器缓存旧图。
@@ -145,7 +145,7 @@ PYTHONPATH=src .venv/bin/python tools/act_compare.py \
 cd ~/lerobot-smolvla-lew && git log --oneline -1
 git ls-remote origin main | cut -c1-7   # GitHub 最新 commit
 # ② 远程服务器对比
-sshpass -p 'da9eo7yo' ssh -o Port=24424 root@223.109.239.36 \
+sshpass -p '${ZMAX_ECS_PW}' ssh -o Port=24424 root@223.109.239.36 \
   'cd ~/lerobot-smolvla-lew && git log --oneline -1'
 ```
 

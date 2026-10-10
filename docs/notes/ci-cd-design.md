@@ -72,7 +72,7 @@
 | pytest | Actions runner | fast_tests.yml 自动装 ✓ |
 | PyQt5 | 4060 本地 | 已装 (pip3 --break-system-packages) ✓ |
 | torch + deps | 4060 本地 .venv | 安装中 (阿里云镜像) ⏳ |
-| sshpass/scp | ECS 部署侧 | web 已有 (记忆: ECS密码 Nix19789) ✓ |
+| sshpass/scp | ECS 部署侧 | web 已有 (记忆: ECS密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env)) ✓ |
 
 **结论: 无需新增任何依赖。** CI/CD 全部复用现有 Actions workflow +
 stdlib 验证器 + 现有节点工具。
