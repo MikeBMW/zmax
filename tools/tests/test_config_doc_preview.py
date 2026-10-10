@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtWidgets import QApplication, QPushButton  # noqa: E402
 import veh6_config_page as vp  # noqa: E402
 
 FAIL = []
@@ -122,6 +122,26 @@ def main():
     finally:
         os.utime(plat, (st0.st_atime, st0.st_mtime))
     check("mtime 还原后判定恢复一致", not vp._doc_state("project")["stale"], vp._doc_state("project")["why"])
+
+    print("\n═══ 5) 顶栏不截断 (窗口 1280 宽实测几何) ═══")
+    from PyQt5.QtCore import QPoint
+    page.resize(1280, 800)
+    page.show()
+    app.processEvents()
+    top_txt = ("🔍 全链校验", "📋 任务配置", "⚙️ 工程配置", "📄 文档导出")
+    tops = [b for b in page.findChildren(QPushButton)
+            if b.text().strip() in top_txt and b.mapTo(page, QPoint(0, 0)).y() < 60]   # 只算顶栏那一排
+    check("顶栏 4 个按钮都在", len(tops) == 4, [b.text() for b in tops])
+    for b in tops:
+        right = b.mapTo(page, QPoint(b.width(), 0)).x()
+        print(f"      {b.text().strip():<14} x={b.mapTo(page, QPoint(0, 0)).x():>5} w={b.width():>4} 右缘={right:>5} / 窗口 {page.width()}")
+        check(f"『{b.text().strip()}』右缘在窗口内", 0 < right <= page.width(), right)
+
+    print("\n═══ 6) 左树计数口径写清 ═══")
+    labels = [page.tree.topLevelItem(i).text(0) for i in range(page.tree.topLevelItemCount())]
+    print("  " + " | ".join(labels))
+    check("文档配置那行写明『文档 n/3』(不让人误以为子项数)", any("文档配置" in l and "文档 " in l for l in labels),
+          [l for l in labels if "文档配置" in l])
 
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0

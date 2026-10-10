@@ -102,7 +102,7 @@ def cmd_overview(a):
         ready = [c for c in cs if c.get("ready")]
         gaps = [c["id"] for c in cs if not c.get("ready")]
         print(f"{dom:<12}{len(cs):>4}{f'{len(ready)}/{len(cs)}':>7}  "
-              f"{', '.join(gaps[:4])}{' …' if len(gaps) > 4 else ''}")
+              f"{', '.join(gaps[:12])}{' …' if len(gaps) > 12 else ''}")
     m = _j(MATCH, {})
     if m:
         s = m.get("SUMMARY", {})

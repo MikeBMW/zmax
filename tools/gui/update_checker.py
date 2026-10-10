@@ -7,7 +7,7 @@ import os, sys, json, urllib.request, threading, time
 
 REPO = "MikeBMW/zmax"   # 2026-10-10 修正: 原指向 external 历史仓 ⇒ 自动更新会误报另一条版本线(v5.17.0)
 API_RELEASES = f"https://api.github.com/repos/{REPO}/releases/latest"
-CURRENT_VERSION = "v5.37.6"
+CURRENT_VERSION = "v5.37.7"
 
 
 def get_current_version():

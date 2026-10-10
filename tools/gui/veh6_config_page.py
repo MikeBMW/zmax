@@ -25,7 +25,7 @@ if TOOLS not in sys.path:
 from PyQt5.QtCore import Qt  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLabel,  # noqa: E402
-                             QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
+                             QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem,
                              QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
 
@@ -309,9 +309,13 @@ class ConfigCenterPage(QWidget):
         self.back_btn.setToolTip("回到控制台主窗口 (等价于左侧栏「← 返回首页」)")
         self.back_btn.clicked.connect(self._back_home)
         bar.addWidget(self.back_btn)
-        info = QLabel(f"站点 SITE-A.ST11   ·   描述 {meta.get('schema', '缺')} @ {meta.get('generated_at', '—')}"
-                      f"   ·   任务 {len(tk.get('tasks', []))} 条   ·   授权: 无")
+        info = QLabel(f"站点 SITE-A.ST11 · {meta.get('schema', '缺')} @ {meta.get('generated_at', '—')}"
+                      f" · 任务 {len(tk.get('tasks', []))} 条")
         info.setFont(QFont("Consolas", 10))
+        # 2026-10-10: QLabel 默认按全文撑宽, 顶栏按钮会被挤出窗口右缘 (真机截图实测被截) ⇒ 允许压缩
+        info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        info.setMinimumWidth(0)
+        info.setToolTip(info.text())
         info.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         bar.addWidget(info)
         bar.addStretch()
@@ -323,6 +327,7 @@ class ConfigCenterPage(QWidget):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn: self._run_into(f))
             bar.addWidget(b)
+        bar.addSpacing(10)          # 2026-10-10: 右侧留边, 最后一个按钮不贴窗缘 (窄窗实测会顶到边)
         root.addLayout(bar)
 
         # ── 左树 + 右页签 ──
@@ -368,7 +373,7 @@ class ConfigCenterPage(QWidget):
                          [c["id"] for c in cs if not c.get("ready")]))
         # 文档配置 (2026-10-10): 三份外发/立项文档 + 一致性核对
         dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
-        doms.append((f"文档配置  {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
+        doms.append((f"文档配置  文档 {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
                      ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
         doms.append((f"工艺·工单  任务 {len(tk.get('tasks', []))}",
                      "⛔" if (tk.get("tasks") and any(t.get("blocked_by_site") for t in tk["tasks"])) else "✅",
