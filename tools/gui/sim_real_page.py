@@ -366,35 +366,15 @@ def build_body(parent=None):
                       " padding:8px 12px; font-size:12px;" % (C_BG2, C_GRAY, C_BORDER))
     bl.addWidget(top)
 
-    # 🗺 2026-10-10: 场景变体 (生成器) + 建图资产/地图同步 (map_marker_sync) —— 同源切面, 只读展示 + 显式 apply
+    # 2026-10-10 老倪: 「场景变体 建图资产 这行字删掉，没啥意思」⇒ 两个统计标签整行删除。
+    # 建图↔标记同步这个**功能**保留 (按钮自带说明, 不再配无意义计数文案)。
     row = QHBoxLayout()
-    lbl_var = QLabel("🎬 场景变体: 读取中…")
-    lbl_var.setStyleSheet("color:%s; font-size:12px;" % C_GRAY)
-    row.addWidget(lbl_var, 1)
-    lbl_map = QLabel("🗺 建图资产: 读取中…")
-    lbl_map.setStyleSheet("color:%s; font-size:12px;" % C_GRAY)
-    row.addWidget(lbl_map, 1)
-    btn_sync = QPushButton("🔗 同步 标记↔建图")
+    btn_sync = QPushButton("🔗 同步 标记↔建图资产")
     btn_sync.setStyleSheet("QPushButton{background:#1f2733; color:%s; border:1px solid %s;"
                            " border-radius:4px; padding:4px 10px; font-size:12px;}"
                            "QPushButton:hover{border-color:%s;}" % (C_GOLD, C_BORDER, C_GOLD))
     row.addWidget(btn_sync)
     bl.addLayout(row)
-
-    def _refresh_side():
-        _ok, _d = _run_tool("tools/scene_generate.py", ["--list", "--json"])
-        try:
-            _n = len((_d or {}).get("scenes") or [])
-            lbl_var.setText("🎬 场景变体: %d 个 (data/scene/scenes)" % _n)
-        except Exception:                                                  # noqa: BLE001
-            lbl_var.setText("🎬 场景变体: 读取失败")
-        _ok2, _d2 = _run_tool("tools/map_marker_sync.py", ["--json"])
-        try:
-            _a = (_d2 or {}).get("assets") or []
-            _b = (_d2 or {}).get("bindings") or []
-            lbl_map.setText("🗺 建图资产: %d 个 · 绑定 %d 条" % (len(_a), len(_b)))
-        except Exception:                                                  # noqa: BLE001
-            lbl_map.setText("🗺 建图资产: 读取失败")
 
     def _do_sync():
         ok, d = _run_tool("tools/map_marker_sync.py", ["sync", "--dry", "--json"])
@@ -410,7 +390,6 @@ def build_body(parent=None):
                                     % json.dumps(d2, ensure_ascii=False)[:800])
         else:
             QMessageBox.warning(body, "同步失败", str(d2)[:400])
-        _refresh_side()
 
     btn_sync.clicked.connect(_do_sync)
     _refresh_side()

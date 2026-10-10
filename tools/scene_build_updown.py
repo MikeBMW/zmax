@@ -128,15 +128,15 @@ def build(scene_id="SCN-07-UP"):
          "note": "上下料作业时禁止人工进入 (安全红线只读)"},
     ]
     fences = [{"id": "fn_updown", "name": "上下料工位保护围栏", "kind": "box",
-               "center": [round((c_feed[0] + c_load[0]) / 2, 5), round((c_feed[1] + c_load[1]) / 2, 5), 0.2],
-               "size_m": [0.62, 0.52, 0.40], "source": "推导: 覆盖取料位与上料位的外包络 +100mm 余量",
+               "shape": {"center": [round((c_feed[0] + c_load[0]) / 2, 5), round((c_feed[1] + c_load[1]) / 2, 5), 0.2],
+                         "size": [0.62, 0.52, 0.40]}, "source": "推导: 覆盖取料位与上料位的外包络 +100mm 余量",
                "note": "保护围栏 (scene_edit 会做合法性校验)"}]
     trajectories = [
-        {"id": "tr_load", "name": "上料轨迹 (取料位 → 上料位)", "kind": "规划轨迹",
+        {"id": "tr_load", "name": "上料轨迹 (取料位 → 上料位)", "kind": "规划",
          "waypoints": [[round(v, 5) for v in c_home], [round(v, 5) for v in c_feed],
                        [round(v, 5) for v in c_load]], "source": "由场景位姿派生 (waypoints 可引用空间点)",
          "note": "取件 → 上位 → 插入夹具"},
-        {"id": "tr_unload", "name": "下料轨迹 (上料位 → 下料位 → 回收位)", "kind": "规划轨迹",
+        {"id": "tr_unload", "name": "下料轨迹 (上料位 → 下料位 → 回收位)", "kind": "规划",
          "waypoints": [[round(v, 5) for v in c_load], [round(v, 5) for v in c_unload],
                        [round(v, 5) for v in c_recycle], [round(v, 5) for v in c_home]],
          "source": "由场景位姿派生", "note": "取出 → 让位 → 回收 → 回待机"},

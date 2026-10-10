@@ -64,7 +64,14 @@ def main():
     uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
     check("setMinimumHeight(560)" in uvs, "3D 视图最小高度 560")
     check("def fit_view" in uvs and "resizeEvent" in uvs, "自适应取景 + 尺寸变化自动重取景")
-    check(seg.find("_upv_build") < seg.find("_sr_build"), "3D 场景视图卡在表格编辑器之前 (置顶)")
+    check("_sr_build" not in seg and "from sim_real_page import" not in seg,
+          "只挂一个场景编辑器 (旧表格编辑器 build_body 已摘除)")
+    check("QSplitter" in open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"),
+                              encoding="utf-8").read(), "视图/元素面板之间有 QSplitter (拖分隔条放大)")
+    _uv = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
+    check("视图全屏" in _uv and "setHandleWidth" in _uv, "有「⛶ 视图全屏」+ 可拖分隔条 (handleWidth)")
+    check("场景变体" not in open(os.path.join(ROOT, "tools", "gui", "sim_real_page.py"),
+                              encoding="utf-8").read().split("老倪")[0], "「🎬 场景变体 / 🗺 建图资产」统计行已删除")
     try:
         import studio                                                              # noqa: PLC0415
         page = studio.PluggingSceneModule()
@@ -129,7 +136,7 @@ def main():
     s_v = _sem(parent_v)
     v = U.SceneView3D(SDIR, SID, status_cb=lambda s: None)
     o0 = [float(x) for x in v.data["objects"][0]["center"]]
-    v.sel = 0
+    v._set_sel({"kind": "objects", "i": 0, "wp": None})
     ok = v._write({"center": [round(o0[0] + 0.02, 5), o0[1], o0[2]]}, "回归测试平移")
     now = [float(x) for x in U.load_scene(SDIR)["objects"][0]["center"]]
     check(ok and abs(now[0] - (o0[0] + 0.02)) < 1e-6, "写回生效: %s → %s" % (o0, now))
@@ -137,11 +144,74 @@ def main():
     check(len(baks) >= 1, "写前有备份 (%d 个)" % len(baks))
     check(sha(parent_o) == s_o, "在役场景 objects3d.json sha 未变")
     check(_sem(parent_v) == s_v, "在役场景 overlay_spec 语义内容未变 (忽略发布器刷新的 ts/updated_at)")
-    v.sel = 0
+    v._set_sel({"kind": "objects", "i": 0, "wp": None})
     v._write({"center": o0}, "回归测试还原")
     back = [float(x) for x in U.load_scene(SDIR)["objects"][0]["center"]]
     check(abs(back[0] - o0[0]) < 1e-6, "已还原 %s" % back)
     for f in baks:
+        try:
+            os.remove(os.path.join(SDIR, f))
+        except OSError:
+            pass
+
+    print("7) 多场景库 + 四类元素都能选/改 (位置·轨迹)")
+    opts = U.scene_options()
+    ids = [o[2] for o in opts]
+    check(len([i for i in ids if i]) >= 7, "场景库有 %d 个命名场景 (可切换)" % len([i for i in ids if i]))
+    check("SCN-07-UP" in ids and "SCN-01-PEG" in ids, "含 上下料 SCN-07-UP + 插拔场景 SCN-01-PEG")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_registry.py"), "--check"],
+                       cwd=ROOT, capture_output=True, text=True)
+    check(r.returncode == 0, "scene_registry --check 全绿 (%s)" % (r.stdout or "").strip().splitlines()[-1][:60])
+    sv = U.SceneView3D(SDIR, SID, status_cb=lambda s: None)
+    # ① 四类元素各自可命中 (模拟点选)
+    hitn = {}
+    for k in U.KINDS:
+        sv.kind_filter = k
+        for i, it in enumerate(sv.data.get(k) or []):
+            a = U.anchor_of(it, k) if k != "trajectories" else next(
+                ([float(x) for x in w] for w in (it.get("waypoints") or []) if isinstance(w, list) and len(w) == 3), None)
+            if not a:
+                continue
+            q, _ = sv._proj(a)
+            from PyQt5.QtCore import QPoint
+            h = sv._hit(QPoint(int(q.x()), int(q.y())))
+            if h and h["kind"] == k:
+                hitn[k] = i
+                break
+    check(set(hitn) == set(U.KINDS), "四类元素都能在 3D 里点中: %s" % hitn)
+    # ② 四类元素各自真写回 + 还原 (标记/围栏/轨迹 = 老倪要的"位置、轨迹")
+    from PyQt5.QtCore import QPoint  # noqa: F401
+    for k, key in (("markers", "pos"), ("fences", "shape"), ("trajectories", "waypoints")):
+        lst = sv.data.get(k) or []
+        if not lst:
+            check(False, "%s 场景里没有可测元素" % k)
+            continue
+        i = hitn.get(k, 0)
+        sv.kind_filter = k
+        it = lst[i]
+        if k == "trajectories":
+            wp = 0
+            base = [float(x) for x in it["waypoints"][wp]]
+            sv._set_sel({"kind": k, "i": i, "wp": wp})
+            patch = U.move_patch(it, k, [base[0] + 0.02, base[1], base[2]], wp)
+            ok = sv._write(patch, "回归 轨迹航点", k)
+            now = [float(x) for x in U.load_scene(SDIR)[k][i]["waypoints"][wp]]
+            check(ok and abs(now[0] - (base[0] + 0.02)) < 1e-6, "轨迹航点写回 %s → %s" % (base, now))
+            sv._set_sel({"kind": k, "i": i, "wp": wp})
+            sv._write(U.move_patch(it, k, base, wp), "回归 轨迹还原", k)
+        else:
+            a = U.anchor_of(it, k)
+            sv._set_sel({"kind": k, "i": i, "wp": None})
+            patch = U.move_patch(it, k, [a[0] + 0.02, a[1], a[2]])
+            ok = sv._write(patch, "回归 %s 平移" % k, k)
+            now = U.anchor_of(U.load_scene(SDIR)[k][i], k)
+            check(ok and abs(now[0] - (a[0] + 0.02)) < 1e-6, "%s 写回 %s → %s" % (U.KIND_CN[k], a, now))
+            sv._set_sel({"kind": k, "i": i, "wp": None})
+            sv._write(U.move_patch(it, k, a), "回归 %s 还原" % k, k)
+        back = (U.anchor_of(U.load_scene(SDIR)[k][i], k) if k != "trajectories"
+                else [float(x) for x in U.load_scene(SDIR)[k][i]["waypoints"][wp]])
+        check(abs(back[0] - (base[0] if k == "trajectories" else a[0])) < 1e-6, "%s 已还原 %s" % (U.KIND_CN[k], back))
+    for f in [x for x in os.listdir(SDIR) if ".bak_edit_" in x]:
         try:
             os.remove(os.path.join(SDIR, f))
         except OSError:
@@ -152,7 +222,7 @@ def main():
                        cwd=ROOT, capture_output=True, text=True)
     check("SCN-07-UP" in r.stdout, "scene_edit --scenes 列出上下料场景")
     v2 = U.SceneView3D(os.path.join(ROOT, "data", "scene"), None, status_cb=lambda s: None)
-    v2.sel = 0 if v2.data["objects"] else None
+    v2._set_sel({"kind": "objects", "i": 0, "wp": None} if v2.data["objects"] else None)
     if v2.sel is not None:
         before = sha(parent_o)
         v2._write({"center": [0.5, 0.5, 0.2]}, "在役写测试")

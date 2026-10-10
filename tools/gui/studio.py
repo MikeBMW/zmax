@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.38.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.38.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11144,16 +11144,10 @@ class PluggingSceneModule(SubModuleWidget):
             _w2 = QLabel("3D 场景视图加载失败: %r" % (_e2,))
             _w2.setStyleSheet("color:%s; font-size:12px;" % C_RED)
             bl.addWidget(_w2)
-        try:
-            _d = os.path.dirname(os.path.abspath(__file__))
-            if _d not in sys.path:
-                sys.path.insert(0, _d)
-            from sim_real_page import build_body as _sr_build
-            bl.addWidget(_sr_build(self))       # 🧭 传主窗口 → 页内 3D 主视图可拿到画布模块 (同源)
-        except Exception as _e:                                            # noqa: BLE001
-            _w = QLabel("场景编辑器加载失败: %r" % (_e,))
-            _w.setStyleSheet("color:%s; font-size:12px;" % C_RED)
-            bl.addWidget(_w)
+        # 🆕 2026-10-10 老倪: 「只需要一个场景编辑器即可，你怎么还搞两个？要大一点的窗口，边沿可以拖拽放大」
+        # ⇒ 旧的表格编辑器 (sim_real_page.build_body: 3D 主视图卡 + 快照 + 对象/标记/围栏/轨迹 四张表) 不再挂到本页。
+        #    唯一场景编辑器 = 页顶那块 3D 可编辑视图 (四类元素都能选/改位置/改轨迹; 拖中间分隔条放大)。
+        #    sim_real_page.py 文件保留 —— dreamview_scene_edit.py 与回归测试仍复用它的 _run/_EditDialog。
         # 🆕 2026-10-10 老倪: 「删掉下面的 L2 L3 L4，只保留可编辑窗口」⇒ 产品形态对比页签整块移除。
         body.setLayout(bl)
         self._build_shell(body)
@@ -11252,7 +11246,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11260,10 +11254,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.38.2: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
+        # v5.38.3: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
         # v5.37.10: 修「点域右侧没内容」(老倪 2026-10-10: 「性能配置 功能配置 工程配置 模型配置, 怎么无法显示呢? 主窗口没有内容」)
         #   根因: _on_tree 对域节点只 _run_into('overview') ⇒ **只刷底部面板, 右侧工作区根本不动**, 看着就像点了没反应
         #   修: 点域 → 切到对应页签 + 只筛该域的行 (_filter_eng/_filter_fpm); 点参数 ID 子项 → 定位并高亮该行; 未知参数明说; 另接 itemClicked 让单击也生效
@@ -11896,7 +11890,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.38.2  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.38.3  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13631,7 +13625,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.38.2</b> · 多模态动作专家<br>
+<b>Z-MAX v5.38.3</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
