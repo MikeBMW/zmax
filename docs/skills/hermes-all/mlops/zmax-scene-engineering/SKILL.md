@@ -110,6 +110,21 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - `data/` 在 .gitignore 里 ⇒ 真源/场景库 (data/scene/**) 不进仓库; 出厂能力由代码里的 `default()` / `ensure_episode_scene()`
   兜底, 提交只 `git add -A tools/ VERSION.md`。
 
+## 把"正在跑的那条 episode"一模一样复制进场景 (2026-10-10)
+
+老倪: 「你先把当前我运行的场景，先复制过来，一模一样的」「为什么没有机器人? metaworld 的场景都是有机器人」。
+
+- **"一模一样"只能是同一帧, 不能是同一个 seed**。metaworld 的随机化布局吃**全局 np.random**
+  ⇒ 另起进程 `make_env(seed)` 得到的是**另一个布局** (实测同一 seed 下 peg 差 5~7cm, 肉眼看像同一个场景但物理不是)。
+  正确做法: episode 生成器把**首帧 `d.qpos`** 写进 npz `meta`; 复刻时 `d.qpos[:]=meta['qpos']; d.qvel[:]=0; mj_forward` 再导出。
+  判据: `site pegGrasp == meta.peg0` 且 `body hand == tr['x'][0]` (1e-3 内) —— 两者都得核, 只核一个会漏。
+- **机器人本体别过滤**。导出 metaworld 场景时只滤 `world/floor/mocap`; `pedestal/base/right_l0..l6/hand/rightclaw/rightpad/leftclaw/leftpad`
+  全部保留, 给中文构件名 (机器人·大臂/小臂/腕1..3/夹爪垫左…) + `color` 浅灰 + `part="robot"`, 3D 视图里按 `obj["color"]` 上色。
+  老倪会直接看画面问"怎么没有机器人" —— 元数据里 `objects3d.json` 必须真的带这些对象 (透传 `color`/`part`, 否则丢了白做)。
+- **对象名必须唯一** (按**名字**计数打 `#2/#3` 后缀): 编辑器按 name 查找, 重名会让拖动改到别的构件身上。
+- 导出时跳掉 `max(size)>1.0 且 z<-0.1` 的台体大块 (台面以下), 场景里看不见且压得视图发黑。
+- 页内视图看小 = 三个数都不够: 最小高度 (现 780)、`fit_view()` 自适应缩放 (别写死 px/m)、以及"独立窗口"按钮 (直接最大化)。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
