@@ -346,6 +346,58 @@ def scan_datasets(root: str, max_depth: int) -> list[dict]:
     return items
 
 
+def scan_manifest_supplements(root: str, max_depth: int = DEFAULT_MAX_DEPTH) -> list[dict]:
+    """扫 data/datasets/*/manifest.json —— **只读补充清单**, 把"生成数据"登记进数据集管理。
+
+    为什么需要它 (2026-10-10 老倪: 「生成的数据要可以在数据集管理功能里面集中管理」):
+      L5 自主进化生成的 h5 落在 zmax_data/stable-wm-cache/datasets/ (数据盘), 而本工具的扫描根是
+      data/datasets/* 的**一级子目录** ⇒ 生成物扫不到 = 用户看不到。与其把扫描根乱扩(会把权重/缓存
+      一起卷进数据集), 不如让生成器写一份清单到 data/datasets/<组>/manifest.json, 本函数按清单条目
+      **逐条真去 stat 目标 path** 再组记录。
+    铁律: 清单只是"索引", 数字一律以磁盘实况为准; 清单指向的文件不存在 ⇒ 如实标 missing=True,
+      绝不照抄清单里写的 size (否则清单写错就变成假数据)。
+    """
+    items: list[dict] = []
+    base = os.path.join(root, "data/datasets")
+    for child in list_children(base):
+        mp = os.path.join(child, "manifest.json")
+        if not os.path.isfile(mp):
+            continue
+        try:
+            with open(mp, encoding="utf-8") as fh:
+                man = json.load(fh)
+        except Exception as exc:                                               # noqa: BLE001
+            items.append(make_record(
+                "generated", os.path.basename(child), child, "manifest_broken",
+                f"清单无法解析: {exc}", max_depth=1,
+            ))
+            continue
+        group = man.get("group") or os.path.basename(child)
+        for e in (man.get("items") or []):
+            if not isinstance(e, dict):
+                continue
+            rel = e.get("path") or ""
+            if not rel:
+                continue
+            ap = rel if os.path.isabs(rel) else os.path.join(root, rel)
+            nm = e.get("name") or os.path.basename(ap)
+            src = "补充清单 %s/%s" % (group, os.path.basename(mp))
+            if e.get("generator"):
+                src += " · 生成器 %s" % e["generator"]
+            base_extra = {k: e[k] for k in ("frames", "variants", "seed", "note") if k in e}
+            if not os.path.exists(ap):
+                items.append(make_record(
+                    "generated", nm, ap, "generated_supplement",
+                    src + " · ⚠️ 清单指向的文件不存在", max_depth=1, extra=dict(base_extra, missing=True),
+                ))
+                continue
+            items.append(make_record(
+                "generated", nm, ap, "generated_supplement", src,
+                max_depth=max_depth, extra=base_extra,
+            ))
+    return items
+
+
 def scan_train_outputs(root: str, max_depth: int) -> list[dict]:
     """扫训练产物: outputs/train/*, YOLO 训练输出, 世界模型 ckpt, 模型工件。"""
     items: list[dict] = []
@@ -512,6 +564,7 @@ def build_inventory(root: str, max_depth: int) -> dict:
     items += dl
     errors += e
     items += scan_datasets(root, max_depth)
+    items += scan_manifest_supplements(root, max_depth)   # 生成数据补充清单 (只读)
     items += scan_train_outputs(root, max_depth)
     m, e = scan_map(root, max_depth)
     items += m

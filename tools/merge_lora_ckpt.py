@@ -59,12 +59,26 @@ def main():
     ap.add_argument("--r", type=int, default=8)
     ap.add_argument("--alpha", type=float, default=16.0)
     a = ap.parse_args()
-    sd = torch.load(a.src, map_location="cpu", weights_only=False)
-    if isinstance(sd, dict) and isinstance(sd.get("state_dict"), dict):
-        sd = sd["state_dict"]
+    # 🎨 2026-10-10: 支持 safetensors —— 原脚本只认 torch.load(旧 .pt 打包格式), 拿 L3 SmolVLA 的
+    #   LoRA 产物 (lerobot 保存的 model.safetensors) 直接 UnpicklingError: invalid load key。
+    #   教训: LoRA 包装键 (pre.lora_A/B + pre.base.weight) 的约定是**跨模型通用**的, 合并逻辑不用改;
+    #   只有序列化格式要按扩展名分流。
+    if a.src.endswith(".safetensors"):
+        from safetensors.torch import load_file as _sl, save_file as _ss
+        sd = _sl(a.src, device="cpu")
+    else:
+        sd = torch.load(a.src, map_location="cpu", weights_only=False)
+        if isinstance(sd, dict) and isinstance(sd.get("state_dict"), dict):
+            sd = sd["state_dict"]
     print("输入: %s · 键数 %d" % (os.path.basename(a.src), len(sd)))
     merged, st = merge(sd, a.r, a.alpha)
-    torch.save(merged, a.dst)
+    if a.dst.endswith(".safetensors"):
+        from safetensors.torch import save_file as _ss2
+        _ss2({k: v.contiguous() for k, v in merged.items()}, a.dst,
+             metadata={"format": "pt", "merged_from": os.path.basename(a.src),
+                       "lora_r": str(a.r), "lora_alpha": str(a.alpha)})
+    else:
+        torch.save(merged, a.dst)
     print("输出: %s · 键数 %d" % (a.dst, len(merged)))
     print("merge 统计:", json.dumps(st, ensure_ascii=False))
     bad = [k for k in merged if "lora" in k.lower() or ".base." in k]
