@@ -335,8 +335,20 @@ class SceneEditAttacher(QObject):
         view = _list_view()
         deleted = _deleted_flat(view)
         n = 0
+        # 🐛 2026-10-10 老倪实测「两个场景看着没区别」根因: 这里原把对象尺寸一律按 **mm→m (÷1000)**,
+        #   而仿真/派生场景 (SS-EPI-CORNER / SS-TRAY-PLACE / SIM-PEG-L4) 的 objects3d 单位是**米**
+        #   ⇒ 叠加盒被缩了 1000 倍 (0.086m → 0.000086m), 肉眼完全看不见 = 两个场景看起来一样。
+        #   修: 按文件量纲自动判定 (最大尺寸 > 10 → 该文件是 mm)。
+        _dims = [abs(float(v)) for _o in (view.get("objects") or [])
+                 for v in (_o.get("size") or []) if isinstance(v, (int, float))]
+        _scale = (1.0 / 1000.0) if (_dims and max(_dims) > 10.0) else 1.0
+        # 🎨 3D 视图自己已经画的实体 (台面/护栏/机器人/摆盘的两只盘) 不再叠线框: 同一几何叠一起会
+        #   z-fighting + 糊色 (实测台面绿色 114k px 被压到 5k)。叠加层只标"视图没画的那些对象"。
+        _SKIP = ("工作台面", "台面护栏", "机器人", "料盘", "tray盘")
         for o in view.get("objects") or []:
             name = o.get("name")
+            if str(name or "").startswith(_SKIP):
+                continue
             center = o.get("center")
             size = o.get("size")
             if not (isinstance(center, list) and len(center) == 3
@@ -345,13 +357,22 @@ class SceneEditAttacher(QObject):
             hid = _is_hidden(name, deleted)
             col = _C_HIDDEN if hid else _color_of(o)
             cz = [float(x) for x in center]
-            sz = [float(x) / 1000.0 for x in size]          # mm → m
+            sz = [float(x) * _scale for x in size]           # 量纲自动判定 (mm 文件 ÷1000, 米文件不变)
             try:
-                mesh = _box_mesh(cz, sz)
-                item = gl.GLMeshItem(meshdata=mesh, color=col, smooth=False,
-                                     shader='shaded' if not hid else None, drawEdges=True,
-                                     edgeColor=(0.9, 0.9, 0.95, 0.5 if not hid else 0.12))
-                item.setGLOptions("translucent")
+                # 🎨 2026-10-10: 叠加层改**纯线框** (12 条棱, additive 穿透, 不参与遮挡):
+                #   实体几何由 3D 视图自己画 (台面/盘件/机器人), 叠加层只标"对象在哪、多大"。
+                #   原来实心半透明盒与实体同几何 → z-fighting + 糊色 (实测台面绿 114k px 压到 5k),
+                #   老倪才会说「两个场景看着没区别」。
+                from ss_dreamview import _bbox_lines as _bl
+                _v, _e = _bl(np.asarray(cz, float), np.asarray(sz, float))
+                _pts = []
+                for _a, _b in _e:
+                    _pts.append(_v[_a])
+                    _pts.append(_v[_b])
+                item = gl.GLLinePlotItem(pos=np.array(_pts), mode="lines", width=1.6,
+                                         color=(col[0], col[1], col[2], 1.0) if not hid
+                                         else (0.55, 0.58, 0.62, 0.25))
+                item.setGLOptions("additive")
                 self.dv.view.addItem(item)
                 self.overlay_items.append(item)
                 self._overlay_names[name] = item

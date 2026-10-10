@@ -1488,9 +1488,19 @@ class DreamView3D(QWidget):
         self._table_item = table      # 🧩 切场景时改色 (插拔=绿防静电 / 摆盘=办公桌乳白)
         scene.append(table)
         if scene_mode(getattr(self, "scene_id", None)) == "tray":
-            # 🧩 摆盘场景 (老倪 2026-10-10): 插孔(带孔盒)+孔口+AOI 相机 全不要 ——
-            #    料盘(装光模块的黑塑料托盘) + tray盘(带 3 个固定槽位) 由场景数据层画。
-            scene.append(None)
+            # 🧩 摆盘场景 (老倪 2026-10-10): 插孔(带孔盒)+孔口+AOI 相机 全不要;
+            #    料盘 (装 3 个光模块的黑塑料托盘) + tray盘 (3 个固定槽位) 按**场景真源**画成实体
+            #    (sim_scene_def._tray_layout 是唯一真源, 这里只渲不定义) — 平涂无光照, 颜色一眼可辨。
+            try:
+                import sim_scene_def as _SSD
+                for _o in _SSD._tray_layout()["objects"]:
+                    _it = gl.GLMeshItem(meshdata=_box_mesh(np.asarray(_o["center"], float),
+                                                           tuple(float(v) for v in _o["size"])),
+                                        color=tuple(_o["color"]) + (1.0,), smooth=False, shader=None)
+                    self.view.addItem(_it)
+                    scene.append(_it)
+            except Exception as _e:                                             # noqa: BLE001
+                print("摆盘盘件渲染失败:", _e)
         else:
             # 带孔盒 (红, 醒目 — 侧插目标件)
             box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
