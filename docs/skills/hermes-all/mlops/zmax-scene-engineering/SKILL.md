@@ -68,6 +68,27 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - 🔴 在役 `data/scene/overlay_spec.json` 有**实时发布器**每轮刷 `ts/updated_at/l5live` ⇒ "在役场景未被改动"
   的判据**不能比文件 sha** (会假红), 要比语义内容 (排除这三个易变字段)。
 
+## 仿真场景进场景管理 (画布 3D 视图那条「插拔光模块」, 2026-10-10)
+
+- **仿真场景几何原本散在三处**、靠人工同步 (改一处不同步=物理与视觉不一致): ① `tools/gen_l4_demo_video.py` 的
+  `TURNTABLE_XY/TURNTABLE_Z/COUPLER_XY/AOI_FOCUS` ② `tools/gen_l4_demo_scene.py` 注入 XML 的
+  `<body turntable/coupler/cp_stage_b>` 坐标 ③ metaworld XML 的台面/光模块/夹具尺寸。
+  ⇒ 收成真源 `data/scene/sim/sim_scenes.json` (工具 `tools/sim_scene_def.py`; 场景 id `SIM-PEG-L4`),
+  两个生成器都改读它 (读不到回退老常量), 场景管理编辑 = 改这份真源 ⇒ 物理与 3D 同时变。
+- ⚠️ 语义容易搞混的两个量: `TURNTABLE_Z` = "peg 坐盘面"(= 标记「来料位」z, 不是盘顶 z);
+  XML 里 `cp_stage_b` 的 Z 是 **body 原点** (= 台面中心 − 局部偏移 0.004), 真源记的是台面中心。
+- **判据 `sim_scene_def.py --check`**: 真源 ↔ 两个生成器 ↔ XML 注入**四处一致**; 已接真源后字面常量只作回退值
+  (只提示不报错)。坑: 同一进程内多次校验必须 `importlib.reload(gen_l4_demo_scene)`, 否则拿缓存旧 EXTRA 假报错。
+- **运行入口与环境必须与画布同一条** (否则 headless 渲染起不来或行为不同):
+  `python tools/gen_l4_demo_video.py --also-latest`, **cwd = tools/**, env `MUJOCO_GL=egl` + `MUJOCO_EGL_DEVICE=0`
+  + `PYTHONIOENCODING=utf-8` + `ZMAX_L4_ROOT=<repo root>`; 约 180s, 产物 `reports/ss_episode_latest.mp4`
+  (+ 带时间戳的 `l4_demo_*.mp4` 与 `.npz` trace)。GUI 里跑要用 QThread, 否则卡界面。
+- 实测已知结果 (2026-10-10): ①~⑥ 全过 (插入 48.7mm 真推入 / 拔出 54mm), ⑦ AOI 悬停时 **peg 滑脱** ⇒ success=False;
+  这是 2026-09-10 已记的**旧问题** (悬停 60 帧 `step(zeros)` act[3]=0 不维持闭合力, 见
+  `zmax-state-space-architecture/references/l4-demo-chain-debug-2026-09-10.md`), 不是新回归。
+- 场景库 (tools/scene_registry.py) 现应含 8 个: 5 作业场景 + SCN-07-UP 上下料 + SCN-01-PEG 插拔副本 + SIM-PEG-L4 仿真场景;
+  带 `run` 元数据的场景在下拉里标「▶可运行」。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
