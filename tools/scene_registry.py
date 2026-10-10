@@ -219,7 +219,7 @@ def collect() -> list[tuple[str, str, dict, dict, str]]:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         import sim_scene_def as _SSD
         for sid, sc in (_SSD.load().get("scenes") or {}).items():
-            out.append((sid, sc.get("name") or sid, _SSD.to_objects3d(), _SSD.to_overlay(),
+            out.append((sid, sc.get("name") or sid, _SSD.to_objects3d(sid), _SSD.to_overlay(sid),
                         "仿真场景真源 data/scene/sim/sim_scenes.json · 运行 %s"
                         % (sc.get("runner", {}).get("tool", ""))))
     except Exception as e:                                                      # noqa: BLE001

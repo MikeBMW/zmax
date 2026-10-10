@@ -21,8 +21,10 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
   dv = DreamView3D(tr)   # tr = state_space_sim.run() 的返回
   dv.show()
 """
+import glob
 import os
 import math
+import time
 import numpy as np
 
 from PyQt5.QtCore import Qt, QTimer, QPointF
@@ -67,13 +69,50 @@ EPISODE_NPZ = os.path.join(
     "reports", "ss_episode_latest.npz")
 
 
+def _pair_age(p):
+    return abs(os.path.getmtime(p) - os.path.getmtime(os.path.splitext(p)[0] + ".mp4"))
+
+
+def resolve_episode_npz(path=EPISODE_NPZ):
+    """挑一对**自洽**的 npz/mp4 (2026-10-10 老倪「你能看到我正在运行的这个场景么」时发现的真坑)。
+
+    坑: `reports/ss_episode_latest.mp4` 这个别名名是**两个跑法共用**的 —
+    `gen_ss_metaworld_episode.py` 写同源对, 而 `gen_l4_demo_video.py --also-latest`
+    (画布 L4 档每次 ▶运行 都走它!) 也会覆盖同一个 mp4 ⇒ 最新别名对必然错位
+    (实测 npz 09:05 vs mp4 13:39, 差 4.6 小时) ⇒ 3D 视图明明在同一条 episode 上,
+    却挂 `pair_warn` 说"不是同一条 episode"。
+
+    修法: 先认 latest 别名对; 它错位就退到**带时间戳的自洽对** `ss_episode_<ts>.npz`
+    (两者同一次运行写出, mtime 差 0s), 取最新那一对; 再把实际用的是哪对写进 meta。
+    """
+    if path and os.path.isfile(path):
+        mp4 = os.path.splitext(path)[0] + ".mp4"
+        if os.path.isfile(mp4) and _pair_age(path) <= 30:
+            return path, "latest"
+    rep = os.path.dirname(path) or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "reports")
+    cand = []
+    for p in sorted(glob.glob(os.path.join(rep, "ss_episode_*.npz"))):
+        if os.path.basename(p) == os.path.basename(path):
+            continue
+        if os.path.isfile(os.path.splitext(p)[0] + ".mp4") and _pair_age(p) <= 30:
+            cand.append(p)
+    if cand:
+        best = max(cand, key=os.path.getmtime)
+        return best, ("自动改用自洽对 (latest 别名被别的跑法覆盖: %s)" % os.path.basename(path or ""))
+    return path, "latest"
+
+
 def load_episode(path=EPISODE_NPZ):
     """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)
 
     同源自检 (2026-08-25): npz 与同名 mp4 必须是同一次运行的产物 —
     只写 npz 的跑法 (--no-video) 一旦覆盖 latest, 3D 视图与操作视频就会悄悄错位。
     这里比对 npz/mp4 的修改时间, 差 >30s 就在 meta 里挂 `pair_warn` 供 GUI 打印警告。"""
-    if not os.path.isfile(path):
+    if not path:
+        return None, None
+    path, _why = resolve_episode_npz(path)
+    if not path or not os.path.isfile(path):
         return None, None
     try:
         z = np.load(path, allow_pickle=True)
@@ -92,6 +131,10 @@ def load_episode(path=EPISODE_NPZ):
             if dt > 30:
                 meta["pair_warn"] = (f"npz 与 mp4 修改时间差 {dt:.0f}s (>30s) — "
                                      f"可能不是同一条 episode, 重跑 gen_ss_metaworld_episode.py")
+        meta["pair_path"] = path                          # 实际用的 npz (页脚/标题要能看见)
+        meta["pair_video"] = os.path.splitext(path)[0] + ".mp4"
+        meta["pair_age_s"] = max(0.0, time.time() - os.path.getmtime(path))   # 帧龄 (老倪要标)
+        meta["pair_why"] = _why
         tr["_meta"] = meta
         return tr, meta
     except Exception:
@@ -2830,6 +2873,7 @@ class _BowlCanvas(QWidget):
 # ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys
+    import time
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from state_space_sim import StateSpaceSim
     from PyQt5.QtWidgets import QApplication

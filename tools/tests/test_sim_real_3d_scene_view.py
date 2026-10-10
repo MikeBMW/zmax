@@ -267,6 +267,50 @@ def main():
         br = [b for b in card2.findChildren(_QPB) if "运行仿真" in b.text()]
         check(bool(br) and br[0].isEnabled(), "「▶ 运行仿真」按钮已启用")
 
+    print("9) 状态空间 3D 分层视图场景 (与操作视频同源 · metaworld corner2 视角) 进场景管理")
+    opts = U.scene_options()
+    epi = [o for o in opts if o[2] == "SS-EPI-CORNER"]
+    check(bool(epi), "场景下拉含 SS-EPI-CORNER (与操作视频同源)")
+    check(bool(epi and epi[0][3]), "带运行元数据 (重跑同源 episode): %s" % ((epi[0][3] or {}).get("tool") if epi else None))
+    _tt = SSD.episode_truth()
+    check(bool(_tt.get("ok")), "同源 episode 对可读: %s (%s)" % (os.path.basename(_tt.get("npz") or "?"), _tt.get("why")))
+    check("自洽" in str(_tt.get("why")), "同源对自洽 (npz/mp4 同一次运行, 不是被别的跑法覆盖的别名)")
+    _o = SSD.to_objects3d("SS-EPI-CORNER")
+    _objs = {x["name"]: x for x in _o["objects"]}
+    _peg = [v for k, v in _objs.items() if "光模块" in k]
+    check(bool(_peg) and max(abs(a - b) for a, b in zip(_peg[0]["center"], [float(v) for v in _tt["peg0"]])) < 1e-6,
+          "光模块初始位 == episode 真值 peg0 %s" % [round(float(v), 3) for v in _tt["peg0"]])
+    _ov = SSD.to_overlay("SS-EPI-CORNER")
+    _mk = {m["name"]: m for m in _ov["markers"]}
+    _hh = [v for k, v in _mk.items() if "孔口" in k][0]["pos"]
+    check(max(abs(a - b) for a, b in zip(_hh, [float(v) for v in _tt["hole_mouth"]])) < 1e-6,
+          "孔口标记 == episode 真值 hole_mouth %s" % [round(float(v), 3) for v in _tt["hole_mouth"]])
+    _cc = [v for k, v in _mk.items() if "corner2" in k][0]["pos"]
+    check(max(abs(a - b) for a, b in zip(_cc, [float(v) for v in _tt["cam_pos"]])) < 1e-6,
+          "corner2 机位标记 == episode 真值 cam_pos (与 mp4 同源视角)")
+    _nw = sum(len(x.get("waypoints") or []) for x in _ov["trajectories"])
+    check(_nw >= 20, "末端轨迹来自 episode tr['x'] (抽稀 %d 点 / 共 %d 帧)" % (_nw, _tt["steps"]))
+    check(SSD.check() == 0, "真源判据含 episode 场景 (几何必须是 episode 真值的派生)")
+    # 可编辑: 布局 seed 是真旋钮 (改它 → 下一轮 episode 布局真的变)
+    _s0 = int(SSD.load()["scenes"]["SS-EPI-CORNER"].get("seed", 0))
+    _r = SSD.set_seed(_s0)
+    check(_r.get("ok") and _r["new"] == _s0 and ("--seed %d" % _s0) in _r["cmd"],
+          "布局 seed 可写且运行命令随之: %s" % _r.get("cmd"))
+    # 页内: 切到该场景 → 🎲 换布局 可见 + ▶按钮文案改成重跑
+    from PyQt5.QtWidgets import QComboBox as _QCB2, QPushButton as _QPB2
+    _card = U.build_card(None)
+    _cb = _card.findChildren(_QCB2)[0]
+    _ei = next((i for i in range(_cb.count()) if (_cb.itemData(i) or {}).get("sid") == "SS-EPI-CORNER"), None)
+    check(_ei is not None, "页内下拉能定位到该场景 (index=%s)" % _ei)
+    if _ei is not None:
+        _cb.setCurrentIndex(_ei)
+        app.processEvents()
+        _bs = [b for b in _card.findChildren(_QPB2) if "换布局" in b.text()]
+        _br = [b for b in _card.findChildren(_QPB2) if "同源 episode" in b.text() or "运行" in b.text()]
+        check(bool(_bs) and _bs[0].isVisibleTo(_bs[0].parentWidget()), "🎲 换布局 按钮在该场景可见 (其余场景隐藏)")
+        check(len(_card.view.data["objects"]) == len(_o["objects"]),
+              "切到该场景后 3D 视图载入 %d 对象 (含派生几何)" % len(_card.view.data["objects"]))
+
     print("6) 在役场景只读保护")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_edit.py"), "--scenes"],
                        cwd=ROOT, capture_output=True, text=True)

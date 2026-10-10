@@ -666,7 +666,7 @@ class SceneView3D(QWidget):
         #    否则改了产物目录但物理/视觉仍按真源 → 就是"假接入" (老倪零容忍)
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(self.scene_id):
-            r = _S.apply_patch(kind, str(_id), patch)
+            r = _S.apply_patch(kind, str(_id), patch, scene_id=view.scene_id)
             if r.get("ok"):
                 self.status_cb("✅ %s · %s · 已写仿真场景真源 (备份 %s) · 物理与视觉同步"
                                % (what, str(_id)[:26], str(r.get("backup"))))
@@ -920,14 +920,31 @@ def build_card(parent=None):
         view.kind_filter = kc.currentData()
         view.set_scene(d, sid)
         _repop()
+        _is_epi = str(sid or "") == "SS-EPI-CORNER"
         b_run.setEnabled(bool(run))
-        b_run.setToolTip(("▶ 运行该仿真场景: %s %s (约 %ss)" % (run.get("tool"), " ".join(run.get("args") or []),
-                                                        run.get("eta_s"))) if run else
-                         "该场景没有运行入口 (只有仿真场景可运行)")
-        st.setText("已切到 %s%s · 对象 %d / 标记 %d / 围栏 %d / 轨迹 %d   (写操作只落该场景目录; 在役场景只读)"
+        b_run.setText("▶ 重跑同源 episode" if _is_epi else "▶ 运行仿真")
+        b_run.setToolTip(("▶ 运行该场景: %s %s (约 %ss)" % (run.get("tool"), " ".join(str(a) for a in (run.get("args") or [])),
+                                                       run.get("eta_s"))) if run else
+                         "该场景没有运行入口 (只有仿真/回放场景可运行)")
+        b_seed.setVisible(_is_epi)
+        b_seed.setEnabled(_is_epi)
+        _epi_info = ""
+        if _is_epi:
+            _S = _sim_mod()
+            try:
+                _t = _S.episode_truth()
+                if _t.get("ok"):
+                    _epi_info = ("\n   🎬 同源对 %s · %d 帧 · seed=%s · 成功率 %s · 帧龄 %.1fh · 视频 %s"
+                                 % (os.path.basename(_t["npz"]), _t["steps"], _t.get("seed"), _t.get("success"),
+                                    _t["age_s"] / 3600, os.path.basename(_t["mp4"])))
+                    if "自洽" not in str(_t.get("why")):
+                        _epi_info += "\n   ⚠️ " + str(_t.get("why"))
+            except Exception:                                                   # noqa: BLE001
+                pass
+        st.setText("已切到 %s%s · 对象 %d / 标记 %d / 围栏 %d / 轨迹 %d   (写操作只落该场景目录; 在役场景只读)%s"
                    % (cmb.currentText(), "" if sid else "  ⚠️只读",
                       len(view.data["objects"]), len(view.data["markers"]),
-                      len(view.data["fences"]), len(view.data["trajectories"])))
+                      len(view.data["fences"]), len(view.data["trajectories"]), _epi_info))
 
     cmb.currentIndexChanged.connect(lambda _i: _switch())
     kc.currentIndexChanged.connect(lambda *_: (setattr(view, "kind_filter", kc.currentData()), _repop()))
@@ -942,9 +959,30 @@ def build_card(parent=None):
     top = QHBoxLayout()
     top.addWidget(QLabel("场景:"))
     top.addWidget(cmb, 3)
-    b_run = _b("▶ 运行仿真", "运行该仿真场景 (画布 3D 视图同源的引擎入口)", lambda: _run_sim(), "#3fb950")
+    b_run = _b("▶ 运行仿真", "运行该场景 (画布 3D 视图同源的引擎入口)", lambda: _run_sim(), "#3fb950")
     b_run.setEnabled(False)
     top.addWidget(b_run)
+
+    def _bump_seed():
+        """🎲 换布局: 改 episode 场景的 seed (metaworld 随机化布局的唯一真旋钮) → 立刻重跑出新的同源对。"""
+        _S = _sim_mod()
+        _sid = (cmb.currentData() or {}).get("sid")
+        if _S is None or str(_sid) != "SS-EPI-CORNER":
+            st.setText("🎲 换布局 只对「与操作视频同源」的 episode 场景有效")
+            return
+        try:
+            _cur = int((_S.load()["scenes"].get("SS-EPI-CORNER") or {}).get("seed", 0))
+            r = _S.set_seed(_cur + 1)
+        except Exception as e:                                                  # noqa: BLE001
+            st.setText("⛔ 换 seed 失败: %r" % e)
+            return
+        st.setText("🎲 %s\n   正在重跑 episode (新布局)… 日志在下面刷新" % r["msg"])
+        _run_sim()
+
+    b_seed = _b("🎲 换布局 (seed+1)", "改 metaworld 随机化布局的 seed 并立刻重跑 episode (点了必出结果)",
+                lambda: _bump_seed(), "#d29922")
+    b_seed.setVisible(False)
+    top.addWidget(b_seed)
     top.addWidget(_b("🔄 刷新", "重读场景真源并重绘", lambda: (view.reload(), _repop()), "#9aa7b4"))
     top.addWidget(_b("⛶ 视图全屏", "隐藏元素面板, 3D 视图占满整页", lambda: _full(True), "#00d4aa"))
     top.addWidget(_b("⤡ 还原", "恢复 3D 视图 + 元素面板", lambda: _full(False), "#9aa7b4"))
@@ -980,7 +1018,8 @@ def build_card(parent=None):
     pl.addLayout(r2)
 
     def _run_sim():
-        """▶ 运行仿真场景: 真起子进程跑入口, 日志实时回吐, 完了报产物+时间 (老倪要看真跑)。"""
+        """▶ 运行场景: 真起子进程跑入口, 日志实时回吐, 完了报产物+时间 (老倪要看真跑)。"""
+        _sid = (cmb.currentData() or {}).get("sid")
         run = (cmb.currentData() or {}).get("run")
         if not run:
             st.setText("该场景没有运行入口 (只有仿真场景可运行: 如 SIM-PEG-L4 插拔光模块)")
@@ -996,7 +1035,7 @@ def build_card(parent=None):
         _cwd, _env = os.path.dirname(script), {}
         if _S is not None:
             try:
-                _t, _a, _eta, _prod, _cwd, _env = _S.run_cmd()
+                _t, _a, _eta, _prod, _cwd, _env = _S.run_cmd(_sid)
             except Exception:                                                  # noqa: BLE001
                 pass
         _env = {**os.environ, **(_env or {})}
@@ -1006,7 +1045,7 @@ def build_card(parent=None):
             st.setText("⛔ 上一次运行还没结束 (等待或重启控制台)")
             b_run.setEnabled(True)
             return
-        st.setText("▶ 正在运行 %s %s … (约 %ss; 日志实时刷新)" % (tool, " ".join(args), run.get("eta_s")))
+        st.setText("▶ 正在运行 %s %s … (约 %ss; 日志实时刷新)" % (tool, " ".join(str(a) for a in args), run.get("eta_s")))
         th = RunThread([sys.executable, script] + args, _cwd, env=_env)
         card._th = th
 
@@ -1081,7 +1120,7 @@ def build_card(parent=None):
         pl_["name"] = nm.strip()
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(view.scene_id):
-            r = _S.add_item(k, pl_)
+            r = _S.add_item(k, pl_, scene_id=view.scene_id)
             st.setText(("✅ 已新增%s %s (写仿真场景真源)" % (KIND_CN[k], nm.strip()))
                        if r.get("ok") else ("⛔ 新增失败: %s" % r.get("msg")))
             view.reload()
@@ -1128,7 +1167,7 @@ def build_card(parent=None):
         k = s["kind"]
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(view.scene_id):
-            r = _S.del_item(k, str(ent_id(it, k)))
+            r = _S.del_item(k, str(ent_id(it, k)), scene_id=view.scene_id)
             st.setText(("✅ 已删除%s %s (写仿真场景真源)" % (KIND_CN[k], str(it.get("name"))[:24]))
                        if r.get("ok") else ("⛔ 删除失败: %s" % r.get("msg")))
             view.reload()

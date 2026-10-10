@@ -22,9 +22,11 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import re
+import numpy as np
 import shutil
 import sys
 import time
@@ -163,20 +165,24 @@ def geometry() -> dict:
     }
 
 
-def to_objects3d() -> dict:
-    sc = load()["scenes"]["SIM-PEG-L4"]
+def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
+    if scene_id == EPI_SCENE:
+        return _epi_objects3d()
+    sc = load()["scenes"][scene_id]
     objs = []
     for i, o in enumerate(sc["objects"]):
         objs.append({"id": "sim_ob_%02d" % (i + 1), "name": o["name"], "center": [float(x) for x in o["center"]],
                      "size": [float(x) for x in o["size"]], "source": o.get("source", ""), "editable": True})
-    return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": "SIM-PEG-L4",
+    return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": scene_id,
             "coord": "世界系 m (metaworld sawyer_xyz)", "source": "data/scene/sim/sim_scenes.json (仿真场景真源)",
             "scene_name": sc["name"], "sim": True, "env": sc.get("env"), "level": sc.get("level"),
             "objects": objs}
 
 
-def to_overlay() -> dict:
-    sc = load()["scenes"]["SIM-PEG-L4"]
+def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
+    if scene_id == EPI_SCENE:
+        return _epi_overlay()
+    sc = load()["scenes"][scene_id]
     mk = []
     for i, m in enumerate(sc["markers"]):
         mk.append({"id": "sim_mk_%02d" % (i + 1), "name": m["name"], "type": m.get("type", "自定义"),
@@ -266,8 +272,48 @@ def check() -> int:
                     else [g["coupler"]["xy"][0], g["coupler"]["xy"][1], g["coupler"]["stage_z"]])
             if [round(x, 4) for x in got] != [round(x, 4) for x in want]:
                 bad.append("XML 注入 %s pos=%s ≠ 真源 %s" % (nm, got, want))
+    _check_episode(bad, _notes)
     return _rep(bad, "✅ 仿真场景真源 ↔ 生成器 ↔ XML 注入 三处一致 (%s)"
                 % os.path.relpath(PATH, ROOT))
+
+
+def _check_episode(bad, notes) -> None:
+    """SS-EPI-CORNER 判据: 场景几何必须是 episode 真值的派生 (改一处不同步立刻报错)。"""
+    t = episode_truth()
+    if not t.get("ok"):
+        bad.append("同源 episode 读不到: %s" % t.get("msg"))
+        return
+    if "自洽" not in str(t.get("why")):
+        bad.append("同源对不自洽 (npz/mp4 不是同一次运行): %s" % t.get("why"))
+    o = to_objects3d(EPI_SCENE)
+    ov = to_overlay(EPI_SCENE)
+    objs = {x["name"]: x for x in o.get("objects", [])}
+    peg = [v for k, v in objs.items() if "光模块" in k]
+    if not peg:
+        bad.append("派生对象里没有 光模块")
+    else:
+        p0 = [float(v) for v in t["peg0"]]
+        if max(abs(a - b) for a, b in zip(peg[0]["center"], p0)) > 1e-6:
+            bad.append("光模块初始位 %s ≠ episode 真值 peg0 %s" % (peg[0]["center"], p0))
+    mks = {m["name"]: m for m in ov.get("markers", [])}
+    mm = [v for k, v in mks.items() if "孔口" in k]
+    gg = [v for k, v in mks.items() if "插入终点" in k]
+    cc = [v for k, v in mks.items() if "corner2" in k]
+    for nm, arr, key in (("孔口", mm, "hole_mouth"), ("插入终点", gg, "goal"), ("corner2 机位", cc, "cam_pos")):
+        if not arr:
+            bad.append("派生标记缺 %s" % nm)
+            continue
+        want = [float(v) for v in t[key]]
+        if max(abs(a - b) for a, b in zip(arr[0]["pos"], want)) > 1e-6:
+            bad.append("标记 %s %s ≠ episode 真值 %s %s" % (nm, arr[0]["pos"], key, want))
+    n_wps = sum(len(x.get("waypoints") or []) for x in ov.get("trajectories", []))
+    if n_wps < 20:
+        bad.append("末端轨迹抽稀点太少 (%d)" % n_wps)
+    if abs(float(o["episode"].get("cam_fovy", 0)) - float(t.get("cam_fovy", 0))) > 1e-6:
+        bad.append("相机 fovy 与 episode 真值不一致")
+    notes.append("episode 场景: %s · %d 帧 · seed=%s · success=%s · 相机 fovy=%s · 轨迹 %d 点 (帧龄 %.1fh)"
+                 % (os.path.basename(t["npz"]), t["steps"], t.get("seed"), t.get("success"),
+                    t.get("cam_fovy"), n_wps, t["age_s"] / 3600))
 
 
 def _rep(bad, ok_msg="") -> int:
@@ -285,7 +331,13 @@ def main() -> int:
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--set", nargs=2, metavar=("KEY", "JSON"))
+    ap.add_argument("--set-seed", type=int, metavar="N", help="episode 场景 (SS-EPI-CORNER) 的布局 seed")
     a = ap.parse_args()
+    ensure_episode_scene()
+    if a.set_seed is not None:
+        r = set_seed(a.set_seed)
+        print("✅ %s\n   重跑: %s" % (r["msg"], r["cmd"]))
+        return check()
     if a.set:
         key, val = a.set
         d = load()
@@ -319,8 +371,6 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())
 
 # ─────────────── 场景管理器的写路径: 改的就是这份真源 (不是只改产物目录) ───────────────
 _LIST = {"objects": "objects", "markers": "markers", "fences": "fences", "trajectories": "trajectories"}
@@ -336,7 +386,8 @@ def _find(sc: dict, kind: str, ident: str):
 def regen_scene_dir(scene_dir: str) -> None:
     """用真源重写场景目录文件 (供场景管理/3D 视图读)。"""
     os.makedirs(scene_dir, exist_ok=True)
-    for fn, obj in (("objects3d.json", to_objects3d()), ("overlay_spec.json", to_overlay())):
+    sid = os.path.basename(os.path.normpath(scene_dir))
+    for fn, obj in (("objects3d.json", to_objects3d(sid)), ("overlay_spec.json", to_overlay(sid))):
         tmp = os.path.join(scene_dir, fn + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
@@ -429,3 +480,188 @@ def run_cmd(scene_id: str = "SIM-PEG-L4"):
     env = {k: (ROOT if v == "<ROOT>" else v) for k, v in (r.get("env") or {}).items()}
     return (r.get("tool"), list(r.get("args") or []), int(r.get("eta_s") or 180),
             r.get("product"), os.path.join(ROOT, cwd), env)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 第二条仿真/回放场景: 状态空间 3D 分层视图 —— 与操作视频同源 (metaworld corner2 视角)
+#   老倪 2026-10-10: 「状态空间3D分层视图 与操作视频同源 metaworld corner 视角, 这个场景哪去了?
+#                     你能看到我正在运行的这个场景么? 把这个场景做进可编辑场景」
+#   这条场景的几何**不另存一份**, 而是从同源 episode 对 (npz+mp4) 的真值派生 ——
+#   派生即同源: episode 一换 (重跑/换 seed), 场景跟着变, 不存在"画的和跑的不是一条"。
+#   `reports/ss_episode_latest.mp4` 这个别名是**两个跑法共用**的 (同源生成器 + L4 演示 --also-latest),
+#   所以挑对时先认 latest, 错位 (>30s) 就退到自洽的带时间戳对 (与 ss_dreamview.resolve_episode_npz 同一口径)。
+# ══════════════════════════════════════════════════════════════════════════════
+EPI_SCENE = "SS-EPI-CORNER"
+EPI_TOOL = "tools/gen_ss_metaworld_episode.py"
+EPI_CAM = "corner2"
+# metaworld 夹具 (peg_block.xml) 外廓: x ±0.095 / y ±0.1 / z 0~0.2 ⇒ 中心 (0,0,0.1)
+BLOCK_HALF = (0.095, 0.10, 0.10)
+
+
+def episode_scene_def() -> dict:
+    """SS-EPI-CORNER 的场景定义 (真源里的第二条; 几何 from episode)。"""
+    return {
+        "name": "状态空间 3D 分层视图 · 与操作视频同源 (metaworld corner2 视角)",
+        "kind": "episode",
+        "level": "L3/L4",
+        "env": "metaworld peg-insert-side-v3 · 状态空间六层直驱 (同源 episode)",
+        "camera": {"name": EPI_CAM, "source": "episode meta 真值 (cam_pos/fwd/right/up/fovy; 视频相机外参精确对齐)",
+                   "yaw_deg": 328.4, "elev_deg": 28.9,
+                   "note": "视频相机 = metaworld corner2 (probe_video_view.py 实测换算)"},
+        "derive": {"from": "reports/ss_episode_*.npz (同源对, 自动挑自洽的一对)",
+                   "objects": "台面/光模块/夹具 由 episode 真值 (peg0/hole_mouth/goal) + metaworld 几何推得",
+                   "trajectory": "episode 末端轨迹 tr['x'] 抽稀 (每 20 帧 → 约 42 点)",
+                   "why": "派生即同源: 不另存一份几何, episode 换 → 场景跟着变"},
+        "runner": {"tool": EPI_TOOL, "args": ["--seed", 0],
+                   "alt": "画布(C) → 🧭 3D 视图 (同一个窗口实时看这条 episode)",
+                   "cwd": "tools",
+                   "env": {"MUJOCO_GL": "egl", "MUJOCO_EGL_DEVICE": "0", "PYTHONIOENCODING": "utf-8",
+                           "ZMAX_L4_ROOT": "<ROOT>"},
+                   "note": "重跑同源对 (npz+mp4 同一次运行写出) ⇒ 3D 分层视图与操作视频永远同源",
+                   "eta_s": 120, "product": "reports/ss_episode_latest.npz"},
+        "edit": {"seed": {"label": "布局 seed (metaworld 随机化布局的唯一真旋钮)",
+                          "effect": "改它 → 下一轮 episode 的 peg/孔位真的变 (实测 seed 0/1 的 peg0 不同)"},
+                 "objects": {"effect": "只改回放视图的显示位置; 下一轮由 episode 真值覆盖 (不谎报生效)"}},
+        "seed": 0,
+        "source": "tools/gen_ss_metaworld_episode.py (状态空间六层直驱 metaworld, 一条 episode 出 trace+mp4)",
+        "objects": [], "markers": [], "fences": [], "trajectories": [],   # 几何是派生的, 不存这里
+    }
+
+
+def ensure_episode_scene() -> bool:
+    """把 SS-EPI-CORNER 补进真源 (幂等); ⇒ 是否新写入。"""
+    d = load()
+    if EPI_SCENE in d["scenes"]:
+        return False
+    d["scenes"][EPI_SCENE] = episode_scene_def()
+    save_raw(d)
+    return True
+
+
+def _pair_age(p: str) -> float:
+    m = os.path.splitext(p)[0] + ".mp4"
+    return abs(os.path.getmtime(p) - os.path.getmtime(m)) if os.path.isfile(m) else 1e9
+
+
+def resolve_episode_pair() -> tuple:
+    """同源 episode 对 (与 ss_dreamview.resolve_episode_npz 同口径, 但不 import Qt)
+    ⇒ (npz 路径, 说明); 找不到返回 (None, 原因)。"""
+    rep = os.path.join(ROOT, "reports")
+    lat = os.path.join(rep, "ss_episode_latest.npz")
+    if os.path.isfile(lat) and _pair_age(lat) <= 30:
+        return lat, "latest 别名对 (自洽)"
+    cand = [p for p in sorted(glob.glob(os.path.join(rep, "ss_episode_*.npz")))
+            if os.path.basename(p) != "ss_episode_latest.npz" and _pair_age(p) <= 30]
+    if cand:
+        return max(cand, key=os.path.getmtime), "自洽的带时间戳对 (latest 别名被别的跑法覆盖了)"
+    return (lat if os.path.isfile(lat) else None), "没有自洽的 npz+mp4 对"
+
+
+def episode_truth() -> dict:
+    """读同源 pair 的真值 → dict(pair, npz, mp4, meta..., traj)。"""
+    npz, why = resolve_episode_pair()
+    if not npz or not os.path.isfile(npz):
+        return {"ok": False, "msg": why}
+    try:
+        z = np.load(npz, allow_pickle=True)
+        meta = dict(z["meta"][0])
+        traj = np.asarray(z["x"], float) if "x" in z.files else np.zeros((0, 3))
+        out = {"ok": True, "why": why, "npz": npz, "mp4": os.path.splitext(npz)[0] + ".mp4",
+               "steps": int(len(traj)), "traj": traj}
+        for k in ("seed", "success", "stage_final", "cam_pos", "cam_fwd", "cam_right", "cam_up", "cam_fovy",
+                  "peg0", "hole_mouth", "goal"):
+            if k in meta:
+                out[k] = meta[k]
+        out["age_s"] = max(0.0, time.time() - os.path.getmtime(npz))
+        return out
+    except Exception as e:                                                  # noqa: BLE001
+        return {"ok": False, "msg": "读 %s 失败: %r" % (os.path.basename(npz), e)}
+
+
+def _epi_layout(t: dict) -> dict:
+    """从 episode 真值派生几何: 光模块(初始位)/孔口/插入终点/夹具(由孔口+夹具外廓推得)。"""
+    peg0 = [float(v) for v in t.get("peg0", [0, 0, 0])]
+    mouth = [float(v) for v in t.get("hole_mouth", [0, 0, 0])]
+    goal = [float(v) for v in t.get("goal", [0, 0, 0])]
+    # 光模块 (metaworld peg 本体: box 0.03×0.03×0.24 半尺寸见 XML geom size="0.015 0.015 0.12")
+    # 插入沿 -x (goal.x < mouth.x) ⇒ 夹具近端面 = 孔口, 中心 = 孔口 ∓ 半宽
+    sgn = -1.0 if goal[0] <= mouth[0] else 1.0
+    blk = [mouth[0] - sgn * BLOCK_HALF[0], mouth[1], BLOCK_HALF[2]]
+    return {"peg0": peg0, "mouth": mouth, "goal": goal, "block": blk, "sgn": sgn}
+
+
+def _epi_objects3d() -> dict:
+    t = episode_truth()
+    if not t.get("ok"):
+        return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": EPI_SCENE,
+                "error": t.get("msg"), "objects": []}
+    L = _epi_layout(t)
+    objs = [
+        {"id": "epi_ob_01", "name": "工作台面 (metaworld table)", "center": [0.0, 0.0, -0.027],
+         "size": [0.8, 0.8, 0.054], "source": "metaworld table.xml (顶面 z=0)", "editable": True},
+        {"id": "epi_ob_02", "name": "光模块 (peg · 初始位)", "center": L["peg0"],
+         "size": [0.03, 0.03, 0.24], "source": "episode meta.peg0 (真值)", "editable": True},
+        {"id": "epi_ob_03", "name": "夹具/孔座 (peg_block)", "center": L["block"],
+         "size": [2 * BLOCK_HALF[0], 2 * BLOCK_HALF[1], 2 * BLOCK_HALF[2]],
+         "source": "孔口真值 hole_mouth − 夹具外廓半宽 0.095 (推得)", "editable": True},
+    ]
+    cam = [float(v) for v in t.get("cam_pos", [0, 0, 0])]
+    return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": EPI_SCENE,
+            "coord": "世界系 m (metaworld sawyer_xyz)", "sim": True, "kind": "episode",
+            "source": "同源 episode 真值派生: %s" % os.path.basename(t["npz"]),
+            "scene_name": load()["scenes"].get(EPI_SCENE, episode_scene_def())["name"],
+            "episode": {"npz": os.path.relpath(t["npz"], ROOT), "step_count": t["steps"], "seed": t.get("seed"),
+                        "success": bool(t.get("success")), "stage_final": t.get("stage_final"),
+                        "age_s": round(t["age_s"], 1), "why": t["why"], "camera": cam,
+                        "cam_fovy": float(t.get("cam_fovy", 60.0))},
+            "objects": objs}
+
+
+def _epi_overlay() -> dict:
+    t = episode_truth()
+    if not t.get("ok"):
+        return {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": EPI_SCENE, "markers": []}
+    L = _epi_layout(t)
+    cam = [float(v) for v in t.get("cam_pos", [0, 0, 0])]
+    mk = [
+        {"id": "epi_mk_01", "name": "孔口 (hole_mouth)", "pos": L["mouth"], "type": "检查点", "radius_m": 0.012,
+         "source": "episode meta 真值"},
+        {"id": "epi_mk_02", "name": "插入终点 (goal)", "pos": L["goal"], "type": "检查点", "radius_m": 0.010,
+         "source": "episode meta 真值 (孔深 0.066 ⇒ 终点比孔口深)"},
+        {"id": "epi_mk_03", "name": "corner2 相机机位 (操作视频视角)", "pos": cam, "type": "工位", "radius_m": 0.02,
+         "source": "episode meta.cam_pos (与 mp4 同源)"},
+    ]
+    tr = t["traj"]
+    wps = [{"pos": [float(x) for x in p]} for p in tr[::20]] if len(tr) else []
+    trajs = [{"id": "epi_tr_01", "name": "episode 末端轨迹 (抽稀 20×)", "kind": "示教",
+              "waypoints": wps, "source": "episode tr['x'] 每 20 帧取 1 (共 %d 帧 → %d 点)" % (len(tr), len(wps))}]
+    fens = [{"id": "epi_fn_01", "kind": "box",
+             "shape": {"center": [0.0, 0.0, 0.1], "size": [0.8, 0.8, 0.2]},
+             "name": "作业区 (台面上方)", "source": "metaworld 台面 0.8×0.8"}]
+    _sc = load()["scenes"].get(EPI_SCENE) or episode_scene_def()
+    return {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": EPI_SCENE,
+            "sim": True, "kind": "episode", "scene_name": _sc.get("name"),
+            "run": _sc.get("runner"),                      # 场景管理读它决定 ▶ 能不能点/跑什么
+            "seed": _sc.get("seed"), "edit": _sc.get("edit"),
+            "source": "同源 episode 真值派生", "markers": mk, "fences": fens, "trajectories": trajs}
+
+
+def set_seed(seed: int) -> dict:
+    """改 episode 场景的布局 seed (真旋钮: 下一轮 episode 的布局真的跟着变)。"""
+    d = load()
+    sc = d["scenes"].get(EPI_SCENE)
+    if sc is None:
+        d["scenes"][EPI_SCENE] = episode_scene_def()
+        sc = d["scenes"][EPI_SCENE]
+    old = sc.get("seed")
+    sc["seed"] = int(seed)
+    (sc.setdefault("runner", {}))["args"] = ["--seed", int(seed)]
+    sc["runner"]["note"] = ("重跑同源对 (npz+mp4 同一次运行写出); 布局由 seed=%d 决定" % int(seed))
+    save_raw(d)
+    regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", EPI_SCENE))
+    return {"ok": True, "old": old, "new": int(seed),
+            "cmd": "cd %s && %s %s" % (os.path.join(ROOT, "tools"), EPI_TOOL, "--seed %d" % int(seed)),
+            "msg": "seed %s → %d (下一轮 episode 布局随之改变)" % (old, int(seed))}
+
+
+if __name__ == "__main__":
+    sys.exit(main())
