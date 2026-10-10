@@ -18,6 +18,9 @@
     诊断带·全链校验    →  config_center.py check
     System 1 交付包   →  config_center.py sys1   (摆盘项目: 功能清单/配置项/指标/接口契约/缺口)
     SOR (Word)       →  config_center.py sor    (需求规格说明书: 性能参数 + 功能配置)
+    立项文档 (Word)  →  config_center.py project (BOM 挂功能/成本核算/ROI 由性能指标算)
+    三件套同源导出    →  config_center.py docs   (立项文档 + SOR + 协议, 同源断言)
+    BOM 算账         →  config_center.py bom    (关联校验/成本对账/ROI)
     协议 (Word)      →  config_center.py agreement (数据平台合作与模型授权协议)
     数据治理         →  config_center.py data   (下发计划/清单/台账/审计, 禁导出类别拒发)
 
@@ -546,12 +549,42 @@ def cmd_agreement(a):
     return subprocess.call([sys.executable, os.path.join(root, "tools", "agreement_export.py")])
 
 
+def cmd_project(a):
+    """项目立项文档 — BOM 挂功能 / 成本自动核算 / ROI 由性能指标算 (Word)
+
+    用法: python3 tools/config_center.py project        # 导出立项文档
+          python3 tools/config_center.py bom            # 只算账: 关联校验 + 成本对账 + ROI
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    argv = [sys.executable, os.path.join(root, "tools", "project_doc_export.py")]
+    if (a.arg or "") == "check":
+        argv.append("--check")
+    if a.cmd == "bom":
+        argv.append("--check")
+    return subprocess.call(argv)
+
+
+def cmd_docs(a):
+    """三件套同源导出 — 项目立项文档 + 供应商 SOR + 合作协议 (同一数据源 + 一致性断言)
+
+    用法: python3 tools/config_center.py docs [--check]
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    argv = [sys.executable, os.path.join(root, "tools", "docs_bundle.py")]
+    if (a.arg or "") == "check":
+        argv.append("--check")
+    return subprocess.call(argv)
+
+
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
         "node": cmd_node, "project": cmd_project,
         "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor,
-        "data": cmd_data, "agreement": cmd_agreement}
+        "data": cmd_data, "agreement": cmd_agreement,
+        "project": cmd_project, "bom": cmd_project, "docs": cmd_docs}
 
 
 def main():

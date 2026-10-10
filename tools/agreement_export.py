@@ -230,6 +230,8 @@ def main():
               open(jp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     man = {"doc_no": DOC_NO, "version": VERSION, "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
            "source_governance": os.path.relpath(GOV, ROOT), "governance_sha256": sha(GOV),
+           "source_db": "data/database/zmax/zmax_engineering.db",
+           "source_db_sha256": sha(os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")),
            "files": {os.path.basename(fp): {"bytes": os.path.getsize(fp), "sha256": sha(fp)},
                      os.path.basename(jp): {"bytes": os.path.getsize(jp), "sha256": sha(jp)}}}
     json.dump(man, open(os.path.join(out, "manifest.json"), "w", encoding="utf-8"),
