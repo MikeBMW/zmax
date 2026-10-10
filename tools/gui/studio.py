@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.38.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.38.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11133,26 +11133,13 @@ class PluggingSceneModule(SubModuleWidget):
         body = QWidget()
         bl = QVBoxLayout(); bl.setSpacing(12)
         
-        # ── 等级选择Tab ──
-        self.scene_tabs = QTabWidget()
-        self.scene_tabs.setStyleSheet(f"""
-            QTabWidget::pane{{background:{C_CARD}; border:1px solid {C_BORDER}; border-radius:8px;}}
-            QTabBar::tab{{background:{C_BG2}; color:{C_GRAY}; padding:8px 20px; font-size:15px; font-weight:bold; border:1px solid {C_BORDER}; border-bottom:none;}}
-            QTabBar::tab:selected{{background:{C_CARD}; color:{C_WHITE}; border-bottom:2px solid {ROI_ACCENT};}}
-        """)
-        
-        self.scene_tabs.addTab(self._build_l2_tab(), "🔧 L2 基线版 · 单工序插拔")
-        self.scene_tabs.addTab(self._build_l3_tab(), "🤖 L3 增强版 · 多模块自主")
-        self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
-        
-
         # 🆕 2026-10-10 老倪: 「现在的显示功能不对，要能够编辑真实的已经在运行的仿真场景和真机场景」
         #   ⇒ 真实场景**编辑器**置顶 (对象/标记/围栏/轨迹), 原来的 L2/L3/L4 产品形态对比下移为参考。
         # 🆕 2026-10-10 老倪: 「我要上下料的可编辑窗口，3D 渲染的场景，类似 dreamview 的 3D 场景」
         #   ⇒ 3D 可编辑视图**置顶** (页内第一块), 下面才是表格编辑器与产品形态对比。
         try:
             from updown_scene_view import build_card as _upv_build
-            bl.addWidget(_upv_build(self))
+            bl.addWidget(_upv_build(self), 1)      # ⬆ stretch=1 ⇒ 3D 视图占满剩余高度 (老倪: 要大, 现在看不到图)
         except Exception as _e2:                                            # noqa: BLE001
             _w2 = QLabel("3D 场景视图加载失败: %r" % (_e2,))
             _w2.setStyleSheet("color:%s; font-size:12px;" % C_RED)
@@ -11167,200 +11154,9 @@ class PluggingSceneModule(SubModuleWidget):
             _w = QLabel("场景编辑器加载失败: %r" % (_e,))
             _w.setStyleSheet("color:%s; font-size:12px;" % C_RED)
             bl.addWidget(_w)
-        bl.addWidget(self.scene_tabs)
-        
+        # 🆕 2026-10-10 老倪: 「删掉下面的 L2 L3 L4，只保留可编辑窗口」⇒ 产品形态对比页签整块移除。
         body.setLayout(bl)
         self._build_shell(body)
-
-    # ═══════ L2 基线版 · 单工序插拔 ═══════
-    def _build_l2_tab(self):
-        w = QWidget()
-        l = QVBoxLayout(); l.setSpacing(10)
-        
-        # L2 产品迭代策略 — 增高+滚动
-        hw = QGroupBox("🖥️ 产品迭代策略 · L2 基线版 — 人工编制流程，实现精细插拔操作")
-        hw.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        hw.setMinimumHeight(200)
-        hl = QVBoxLayout()
-        hw_info = QLabel(
-            "<b>系统 0 · 分段式 · 标准原子功能库 · 动作(标准接口) · 真实环境</b><br><br>"
-            "固定式精密操作具身机器人 · 精密制造智能技工<br><br>"
-            "基于 Phase 0 交付物: SR5-C 6轴机械臂 · AGX Orin NX · 双3D相机 · DH夹爪 · TS-T-15触觉<br>"
-            "双路急停 · 安全光栅 · 三色塔灯 · 力控闭环 1kHz"
-        )
-        hw_info.setFont(QFont("Arial", 12)); hw_info.setStyleSheet(f"color:{C_WHITE}; padding:12px;")
-        hw_info.setWordWrap(True)
-        hl.addWidget(hw_info)
-        hw.setLayout(hl); l.addWidget(hw)
-        
-        # L2工作流程 — 6步对应产品发布PPT
-        flow = QGroupBox("📋 L2 基线版 · 人工编制流程 — 6步分段式精细插拔")
-        flow.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_GREEN, 8, 12)}}}")
-        fl = QHBoxLayout(); fl.setSpacing(4)
-        for num, title, desc, color in [
-            ("1", "人工流程编排", "人工设定\n工序参数", ROI_ACCENT),
-            ("2", "标准原子功能", "取料·扫码\n·定位·插入", C_GREEN),
-            ("3", "动作执行", "标准接口\n精准到位", SYS11_COLOR),
-            ("4", "力控反馈", "六维力传感器\n力控闭环", SYS12_COLOR),
-            ("5", "AOI验证", "逐步确认\n异常停机", C_ORANGE),
-            ("6", "成品下料", "取出完成品\n数据记录", SYS2_COLOR),
-        ]:
-            card = self._make_step_card(num, title, desc, color)
-            fl.addWidget(card, 1)
-            if num != "6":
-                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:15px;"); arr.setFixedWidth(12)
-                fl.addWidget(arr)
-        flow.setLayout(fl); l.addWidget(flow)
-        
-        # 特性
-        feat = QGroupBox("✅ L2 基线版 · 已实现特性")
-        feat.setStyleSheet(f"QGroupBox{{color:{C_GREEN}; font-weight:bold; {card_style(C_CARD, C_BORDER, 8, 12)}}}")
-        fe = QVBoxLayout()
-        ft = QLabel(
-            "◈ <b>人工流程编排</b>: 操作员在 XSpace Studio 中设定工序参数，选择标准原子功能<br>"
-            "◈ <b>标准原子功能库</b>: 取料、扫码、定位、对准、插入、拔出、检测、分类<br>"
-            "◈ <b>动作执行 (标准接口)</b>: 基于 ROS2 Service 接口，点到点精确运动 ±0.05mm<br>"
-            "◈ <b>力控反馈</b>: 六维力传感器 1kHz 采样，夹持力自适应<br>"
-            "◈ <b>分段式验证</b>: 每个步骤完成确认后才进入下一步 · 异常自动停机<br>"
-            "◈ <b>真实环境运行</b>: 苏州实验室 Phase 0 验收通过 · 关键工序良率 >99%"
-        )
-        ft.setFont(QFont("Arial", 10)); ft.setStyleSheet(f"color:{C_WHITE}; padding:6px;"); ft.setWordWrap(True)
-        fe.addWidget(ft); feat.setLayout(fe); l.addWidget(feat)
-        
-        w.setLayout(l)
-        
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
-        return outer
-    
-    # ═══════ L3 增强版 · 多模块自主 ═══════
-    def _build_l3_tab(self):
-        w = QWidget()
-        l = QVBoxLayout(); l.setSpacing(10)
-        
-        hw = QGroupBox("🤖 L3 增强版 · 多模块自主闭环")
-        hw.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; padding-top:28px; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
-        hl = QVBoxLayout(); hl.setContentsMargins(8,0,8,8)
-        info = QLabel(
-            "<b>在 L2 硬件基础上，通过 OTA 软件升级实现:</b><br><br>"
-            "◈ <b>多模块自主识别</b>: 视觉识别400G/100G/不同封装 · 自动切换夹爪工装<br>"
-            "◈ <b>自主闭环工作</b>: 全程无人干预 · 自动上下料+取放+插拔+测试+分类<br>"
-            "◈ <b>换线自主换配方</b>: 扫码识别模块SN → 自动加载对应工序配方<br>"
-            "◈ <b>异常自恢复</b>: 卡料/偏移/测试失败 → 自动诊断+重试+分类<br>"
-            "◈ <b>全工序良率 ≥99.5%</b>"
-        )
-        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:0 12px 12px 12px;"); info.setWordWrap(True)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
-        
-        # L3 流程 8步
-        flow = QGroupBox("L3 增强版 · 8步全自动流程")
-        flow.setStyleSheet(f"QGroupBox{{color:{SYS11_COLOR}; font-weight:bold; {card_style(C_CARD, SYS11_COLOR, 8, 12)}}}")
-        fl = QHBoxLayout(); fl.setSpacing(4)
-        for num, title, desc, color in [
-            ("1", "视觉取料", "3D定位\n无序抓取", ROI_ACCENT),
-            ("2", "自动扫码", "模块SN\n配方匹配", C_GRAY),
-            ("3", "中转定位", "标准姿态\n二次校准", C_GRAY),
-            ("4", "力控插拔", "对准插入\n力控闭环", SYS11_COLOR),
-            ("5", "并行测试", "双工位\n并行执行", C_ORANGE),
-            ("6", "AOI检测", "拔出\n视觉检查", SYS12_COLOR),
-            ("7", "P/F分类", "根据结果\n自动分类", SYS2_COLOR),
-            ("8", "连续循环", "自动上料\n无人值守", C_GREEN),
-        ]:
-            card = self._make_step_card(num, title, desc, color)
-            fl.addWidget(card, 1)
-            if num != "8":
-                arr = QLabel("→"); arr.setStyleSheet(f"color:{C_DIM}; font-size:15px;"); arr.setFixedWidth(12)
-                fl.addWidget(arr)
-        flow.setLayout(fl); l.addWidget(flow)
-        
-        w.setLayout(l)
-        
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
-        return outer
-    
-    # ═══════ L4 旗舰版 · 安全全自主 ═══════
-    def _build_l4_tab(self):
-        w = QWidget()
-        l = QVBoxLayout(); l.setSpacing(10)
-        
-        hw = QGroupBox("🛡️ L4 旗舰版 · AI全自主 + 安全主动保护")
-        hw.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
-        hw.setMinimumHeight(350)
-        hl = QVBoxLayout(); hl.setContentsMargins(0,0,0,0)
-        info = QLabel(
-            "<b>在 L3 基础上，增加 VLA 智能决策 + 主动安全:</b><br><br>"
-            "◈ <b>VLA 视觉语言动作模型</b>: 新模块从未见过 → AI自动适配 · 零编程<br>"
-            "◈ <b>主动安全保护</b>: 力传感器超阈值预判 · 碰撞前0.05s自动停机<br>"
-            "◈ <b>触觉闭环</b>: TS-T-15实时接触力反馈 · 插入力超2N自动松夹<br>"
-            "◈ <b>光幕联动</b>: 人员靠近→自动降速 · 进入危险区→立即停止<br>"
-            "◈ <b>自诊断系统</b>: 预测性维护 · 部件寿命预估 · 故障前预警<br>"
-            "◈ <b>7×24 无人值守</b> · 零人工干预 · <b>良率 ≥99.9%</b>"
-        )
-        info.setFont(QFont("Arial", 11)); info.setStyleSheet(f"color:{C_WHITE}; padding:12px;"); info.setWordWrap(True)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(info)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        hl.addWidget(scroll); hw.setLayout(hl); l.addWidget(hw)
-        
-        # 安全层级
-        safe = QGroupBox("🛡️ 安全架构 · 五层主动保护")
-        safe.setStyleSheet(f"QGroupBox{{color:{C_RED}; font-weight:bold; {card_style(C_CARD, C_RED, 8, 12)}}}")
-        sl = QVBoxLayout()
-        for level, name, desc, color in [
-            ("L1", "力控预判",      "力传感器1kHz采样 → 接触力超阈值0.05s内停机", SYS11_COLOR),
-            ("L2", "触觉闭环",      "TS-T-15实时反馈 → 夹持力>2N自动释放", C_GREEN),
-            ("L3", "光幕联动",      "安全光栅检测人员 → 自动降速/分区停机", C_ORANGE),
-            ("L4", "自诊断预警",    "电机温度/电流/振动异常 → 提前48h通知维护", ROI_ACCENT),
-            ("L5", "AI行为预测",    "LeWorldModel预测未来0.2s状态 → 主动避让", SYS12_COLOR),
-        ]:
-            row = QHBoxLayout()
-            badge = QLabel(level); badge.setFixedSize(30,30)
-            badge.setStyleSheet(f"background:{color}; color:white; border-radius:15px; font-weight:bold; font-size:19px;")
-            badge.setAlignment(Qt.AlignCenter)
-            row.addWidget(badge)
-            nl = QLabel(f"<b>{name}</b>")
-            nl.setStyleSheet(f"color:{color}; font-size:20px;"); nl.setFixedWidth(100)
-            row.addWidget(nl)
-            nd = QLabel(desc); nd.setStyleSheet(f"color:{C_GRAY}; font-size:19px;"); nd.setWordWrap(True)
-            row.addWidget(nd, 1)
-            sl.addLayout(row)
-        safe.setLayout(sl); l.addWidget(safe)
-        
-        w.setLayout(l)
-        
-        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(w)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        outer = QWidget(); ol = QVBoxLayout(); ol.addWidget(scroll); outer.setLayout(ol)
-        return outer
-    
-    def _make_step_card(self, num, title, desc, color):
-        card = QFrame()
-        card.setStyleSheet(f"background:{C_BG2}; border:1px solid {color}88; border-radius:6px;")
-        cl = QVBoxLayout(); cl.setSpacing(2); cl.setContentsMargins(6, 4, 6, 4)
-        num_lbl = QLabel(num); num_lbl.setFont(QFont("Consolas", 10, QFont.Bold))
-        num_lbl.setStyleSheet(f"color:{color}; background:{color}22; border-radius:3px; padding:1px 4px;")
-        num_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(num_lbl)
-        title_lbl = QLabel(title); title_lbl.setFont(QFont("Arial", 11, QFont.Bold))
-        title_lbl.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        title_lbl.setAlignment(Qt.AlignCenter); cl.addWidget(title_lbl)
-        desc_lbl = QLabel(desc); desc_lbl.setFont(QFont("Arial", 10))
-        desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-        desc_lbl.setAlignment(Qt.AlignCenter); desc_lbl.setWordWrap(True); cl.addWidget(desc_lbl)
-        card.setLayout(cl); return card
-    
-    def _spin_style(self):
-        return ""  # 已移除ROI计算器
-    
-    def _make_input_group(self, label_text, widget):
-        return QLabel(label_text)  # 已移除ROI
-    
-    def _calc_roi(self):
-        pass  # 已移除ROI计算器
-
 
 # ============================================================
 # 主窗口: 侧边栏 + 堆叠页面
@@ -11456,7 +11252,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11464,10 +11260,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.38.1: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
+        # v5.38.2: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
         # v5.37.10: 修「点域右侧没内容」(老倪 2026-10-10: 「性能配置 功能配置 工程配置 模型配置, 怎么无法显示呢? 主窗口没有内容」)
         #   根因: _on_tree 对域节点只 _run_into('overview') ⇒ **只刷底部面板, 右侧工作区根本不动**, 看着就像点了没反应
         #   修: 点域 → 切到对应页签 + 只筛该域的行 (_filter_eng/_filter_fpm); 点参数 ID 子项 → 定位并高亮该行; 未知参数明说; 另接 itemClicked 让单击也生效
@@ -12100,7 +11896,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.38.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.38.2  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13835,7 +13631,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.38.1</b> · 多模态动作专家<br>
+<b>Z-MAX v5.38.2</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

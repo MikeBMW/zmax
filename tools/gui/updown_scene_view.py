@@ -26,8 +26,8 @@ import sys
 from PyQt5.QtCore import Qt, QPointF, QRectF
 from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt5.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
-                             QGroupBox, QHBoxLayout, QInputDialog, QLabel, QPushButton, QVBoxLayout,
-                             QWidget)
+                             QGroupBox, QHBoxLayout, QInputDialog, QLabel, QPushButton, QSizePolicy,
+                             QVBoxLayout, QWidget)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -111,8 +111,10 @@ class SceneView3D(QWidget):
         self._dragging_obj = False
         self._press = None
         self._preview = None
+        self._manual_scale = False          # 用户手动缩放过就不再自动取景
         self.center = self._centroid()
-        self.setMinimumHeight(430)
+        self.setMinimumHeight(560)           # 老倪: 「大一些，现在太小了，图像都看不到」
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -120,6 +122,58 @@ class SceneView3D(QWidget):
     def set_scene(self, scene_dir, scene_id=None):
         self.scene_dir, self.scene_id = scene_dir, scene_id
         self.reload()
+
+    def _all_points(self):
+        """场景里所有可投影点 (对象盒 8 角 + 标记 + 围栏 8 角 + 轨迹航点)。"""
+        pts = []
+        for o in self.data["objects"]:
+            if not isinstance(o.get("center"), list):
+                continue
+            try:
+                c, sz = self._obj_box(o)
+            except Exception:                                                   # noqa: BLE001
+                continue
+            pts += self._box_edges(c, sz)[0]
+        for m in self.data["markers"]:
+            if isinstance(m.get("pos"), list):
+                pts.append([float(x) for x in m["pos"]])
+        for f in self.data["fences"]:
+            c, sz = f.get("center"), f.get("size_m")
+            if isinstance(c, list) and len(c) == 3:
+                sz = sz if (isinstance(sz, list) and len(sz) == 3) else [0.3, 0.3, 0.3]
+                pts += self._box_edges([float(x) for x in c], [float(x) for x in sz])[0]
+        for t in self.data["trajectories"]:
+            for w in (t.get("waypoints") or []):
+                if isinstance(w, list) and len(w) == 3:
+                    pts.append([float(x) for x in w])
+        return pts
+
+    def fit_view(self):
+        """自适应取景: 让整个场景投到视口里 (约占 90% 宽 / 70% 高), 并居中。
+
+        老倪: 「大一些，现在太小了，图像都看不到」—— 之前 scale 固定 620px/m,
+        大场景撑出画面、小场景只有一小撮 ⇒ 改成按投影包围盒真算。
+        """
+        pts = self._all_points()
+        if not pts or self.width() < 50:
+            return
+        self.center = [(min(p[i] for p in pts) + max(p[i] for p in pts)) / 2.0 for i in range(3)]
+        self.pan = [0.0, 0.0]
+        _, right, upv = self._basis()
+        s0 = 1.0
+        mx = my = 1e-6
+        for p in pts:
+            d = [p[i] - self.center[i] for i in range(3)]
+            mx = max(mx, abs(sum(d[i] * right[i] for i in range(3)) * s0))
+            my = max(my, abs(sum(d[i] * upv[i] for i in range(3)) * s0))
+        self.scale = max(60.0, min(6000.0, min(self.width() * 0.45 / mx, self.height() * 0.35 / my)))
+        self._manual_scale = False
+        self.update()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if not self._manual_scale:
+            self.fit_view()
 
     def reload(self, keep_sel=True):
         """重读真源。keep_sel: 按名字找回原选中项 (写一次就丢选中 = 连续拖动会失效)。"""
@@ -134,6 +188,7 @@ class SceneView3D(QWidget):
                 if o.get("name") == _keep:
                     self.sel = i
                     break
+        self.fit_view()
         self.update()
 
     def _centroid(self):
@@ -245,8 +300,8 @@ class SceneView3D(QWidget):
                 p.drawLine(pa, pb)
             pc, _ = self._proj([c[0], c[1], c[2] + sz[2] / 2], basis)
             p.setPen(QPen(QColor(col if not hid else C_DIM)))
-            p.setFont(QFont("Arial", 9, QFont.Bold if i == self.sel else QFont.Normal))
-            nm = str(o.get("name"))[:22]
+            p.setFont(QFont("Arial", 10, QFont.Bold if i == self.sel else QFont.Normal))
+            nm = str(o.get("name"))[:26]
             p.drawText(QRectF(pc.x() - 110, pc.y() - 24, 220, 16), Qt.AlignCenter, nm)
             if i == self.sel:
                 p.setFont(QFont("Arial", 8))
@@ -386,7 +441,8 @@ class SceneView3D(QWidget):
 
     def wheelEvent(self, ev):
         f = 1.1 if ev.angleDelta().y() > 0 else 1 / 1.1
-        self.scale = max(120.0, min(4000.0, self.scale * f))
+        self.scale = max(60.0, min(6000.0, self.scale * f))
+        self._manual_scale = True
         self.update()
 
     def mouseDoubleClickEvent(self, ev):
@@ -438,10 +494,14 @@ class SceneView3D(QWidget):
 
     # ── 视角 ──
     def view(self, az, el, scale=None):
+        """切视角。scale=None ⇒ 切完自动重新取景 (老倪: 要能看清整场)。"""
         self.az, self.el = az, el
-        if scale:
-            self.scale = scale
         self.pan = [0.0, 0.0]
+        if scale:
+            self.scale, self._manual_scale = scale, True
+        else:
+            self._manual_scale = False
+            self.fit_view()
         self.update()
 
 
@@ -449,6 +509,7 @@ class SceneView3D(QWidget):
 def build_card(parent=None):
     """Sim&Real 页内卡片: 上下料场景 3D 可编辑视图 (+ 真 GL 3D 视图入口)。"""
     card = QGroupBox("🧭 场景 3D 视图 · 上下料 (可编辑)")
+    card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)   # 老倪: 要大
     card.setStyleSheet("QGroupBox{color:#00d4aa; font-weight:bold; background:#161b22;"
                        " border:1px solid #30363d; border-radius:8px; margin-top:8px;} "
                        "QGroupBox::title{subcontrol-origin:margin; left:12px; padding:0 4px;}")
@@ -492,10 +553,13 @@ def build_card(parent=None):
 
     cmb.currentIndexChanged.connect(lambda _i: _switch())
     top.addWidget(_b("🔄 刷新", "重读场景真源并重绘", lambda: (view.reload(), _switch()), "#9aa7b4"))
-    top.addWidget(_b("⌂ 复位视角", "等轴视角复位", lambda: view.view(35, 32, 620.0), "#9aa7b4"))
-    top.addWidget(_b("⬇ 俯视", "俯视图 (看工位布局)", lambda: view.view(0, 89, 620.0), "#9aa7b4"))
-    top.addWidget(_b("➖", "缩小", lambda: (setattr(view, "scale", max(120.0, view.scale / 1.25)), view.update()), "#9aa7b4"))
-    top.addWidget(_b("➕", "放大", lambda: (setattr(view, "scale", min(4000.0, view.scale * 1.25)), view.update()), "#9aa7b4"))
+    top.addWidget(_b("⤢ 自适应", "整场自动取景 (把整个场景撑满视口)", lambda: view.fit_view(), "#00d4aa"))
+    top.addWidget(_b("⌂ 复位视角", "等轴视角 + 自动取景", lambda: view.view(35, 32), "#9aa7b4"))
+    top.addWidget(_b("⬇ 俯视", "俯视图 (看工位布局)", lambda: view.view(0, 89), "#9aa7b4"))
+    top.addWidget(_b("➖", "缩小", lambda: (setattr(view, "scale", max(60.0, view.scale / 1.25)),
+                                        setattr(view, "_manual_scale", True), view.update()), "#9aa7b4"))
+    top.addWidget(_b("➕", "放大", lambda: (setattr(view, "scale", min(6000.0, view.scale * 1.25)),
+                                        setattr(view, "_manual_scale", True), view.update()), "#9aa7b4"))
     v.addLayout(top)
 
     row2 = QHBoxLayout()

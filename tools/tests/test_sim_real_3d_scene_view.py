@@ -50,13 +50,20 @@ def main():
     print("1) 功能积木已删除")
     src = open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8").read()
     seg = src[src.find("class PluggingSceneModule"):]
-    seg = seg[:seg.find("def _build_l2_tab")]
+    seg = seg[:seg.find("\nclass ", 10) + 1]        # 页类整段 (L2/L3/L4 已删除)
     check("brick" not in seg.lower(), "Sim&Real 页段内 brick 相关代码 0 处")
     check("功能积木" not in seg, "页段内无「功能积木」字样")
     check("brick" not in src.lower(), "全 studio.py 无 brick 残留 (定义也删了)")
 
     print("2) Sim&Real 页真建 + 3D 视图卡置顶")
     check("updown_scene_view" in seg and "_upv_build" in seg, "页内已挂 updown_scene_view.build_card")
+    print("2b) L2/L3/L4 页签已删除 + 3D 视图占满")
+    for k in ("scene_tabs", "_build_l2_tab", "_build_l3_tab", "_build_l4_tab", "_make_step_card"):
+        check(k not in src, "studio.py 无 %s 残留" % k)
+    check("bl.addWidget(_upv_build(self), 1)" in seg, "3D 卡以 stretch=1 占满剩余高度")
+    uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
+    check("setMinimumHeight(560)" in uvs, "3D 视图最小高度 560")
+    check("def fit_view" in uvs and "resizeEvent" in uvs, "自适应取景 + 尺寸变化自动重取景")
     check(seg.find("_upv_build") < seg.find("_sr_build"), "3D 场景视图卡在表格编辑器之前 (置顶)")
     try:
         import studio                                                              # noqa: PLC0415
@@ -86,6 +93,11 @@ def main():
         teal = sum(1 for p in px if p[1] > 140 and p[0] < 120 and p[2] > 90)
         blue = sum(1 for p in px if p[2] > 180 and p[0] < 110)
         check(nonbg > 8000, "非背景像素 %d (>8000)" % nonbg)
+        # 自适应取景判据: 画面内容要铺开 (横向跨度占视口 >45%), 不能缩成一小撮
+        xs = [i % im.size[0] for i, p in enumerate(px)
+              if not (abs(p[0] - 11) < 8 and abs(p[1] - 15) < 8 and abs(p[2] - 20) < 8)]
+        span = (max(xs) - min(xs)) / float(im.size[0]) if xs else 0.0
+        check(span > 0.45, "自适应取景: 画面横向跨度占视口 %.0f%% (>45%%)" % (span * 100))
         check(teal > 300, "对象盒青绿像素 %d (>300)" % teal)
         check(blue > 300, "轨迹蓝像素 %d (>300)" % blue)
         print("     取证图: %s" % out)
