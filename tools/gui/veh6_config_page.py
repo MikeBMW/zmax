@@ -14,6 +14,7 @@ import io
 import json
 import os
 import sys
+import time
 from contextlib import redirect_stdout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -76,6 +77,134 @@ DOC_SCRIPTS = {
     "bom":       ("BOM / 成本 / ROI 算账 (不出文档)", "project_doc_export.py", ["--check"]),
 }
 DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements"]
+
+
+# ── 文档配置 (2026-10-10 老倪: 左侧栏增加文档配置, 内置窗口直接看生成的文档, 数据统一保证一致性) ──
+DOCS = {
+    "sor":       {"name": "供应商外发 SOR", "script": "sor_export.py", "rel": "outputs/sor"},
+    "project":   {"name": "项目立项文档", "script": "project_doc_export.py", "rel": "outputs/project_docs"},
+    "agreement": {"name": "合作协议", "script": "agreement_export.py", "rel": "outputs/agreements"},
+}
+# 文档 manifest 里记录过的真源 (键名来自各导出器); 有的用 source_db, 有的用 engineering_db
+SRC_DEFS = [
+    ("source_db",      "工程库 (单一真源)",       ["data/database/zmax/zmax_engineering.db"]),
+    ("engineering_db", "工程库 (单一真源)",       ["data/database/zmax/zmax_engineering.db"]),
+    ("bom",            "BOM/成本/ROI 真源",       ["config/platform/zmax_project_bom.json"]),
+    ("feature_dbc",    "功能能力清单 feature.dbc", ["data/database/zmax/sources/feature.dbc", "feature.dbc"]),
+    ("governance",     "数据治理真源",             ["config/platform/zmax_data_governance.json"]),
+]
+PLATFORM_SRC = ("平台配置真源", "config/platform/zmax_platform.json")   # manifest 未记录 ⇒ 用时间戳兜底
+
+
+def _sha256(p):
+    import hashlib
+    try:
+        return hashlib.sha256(open(p, "rb").read()).hexdigest()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _find_src(paths):
+    for p in paths:
+        fp = os.path.join(ROOT, p)
+        if os.path.exists(fp):
+            return p, fp
+    return None, None
+
+
+def _manifest_shas(mp):
+    """拍平 manifest 里所有 *_sha256 (三种文档 manifest 结构不同, 递归找最稳; 60 位以上才算 sha)。"""
+    j = _j(mp, {}) or {}
+    out = {}
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if isinstance(v, str) and k.endswith("sha256") and len(v) == 64:
+                    out[k[:-7]] = v
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(j)
+    return out
+
+
+def _latest_doc(kind):
+    d = _newest_out_dir(DOCS[kind]["rel"])
+    if not d:
+        return None
+    dx = glob.glob(os.path.join(d, "*.docx"))
+    if not dx:
+        return None
+    dx = max(dx, key=os.path.getmtime)
+    mp = os.path.join(d, "manifest.json")
+    return {"dir": d, "docx": dx, "manifest": mp if os.path.exists(mp) else None, "mtime": os.path.getmtime(dx)}
+
+
+def _doc_state(kind):
+    """文档 × 真源一致性: 逐条比对 manifest 记录的 sha 与当前真源实际 sha (对不上=过期, 不能当交付件)。"""
+    st = _latest_doc(kind)
+    info = {"kind": kind, "name": DOCS[kind]["name"], "doc": st, "rows": []}
+    if not st:
+        info.update({"stale": True, "why": "还没生成过"})
+        return info
+    rec = _manifest_shas(st["manifest"]) if st["manifest"] else {}
+    bad = []
+    for key, label, cands in SRC_DEFS:
+        if key not in rec:
+            continue
+        rel, fp = _find_src(cands)
+        if not fp:
+            info["rows"].append((label, rec[key][:12], "路径未找到", "⚠️"))
+            bad.append(label + "(路径缺失)")
+            continue
+        cur = _sha256(fp)
+        ok = (cur == rec[key])
+        info["rows"].append((label, rec[key][:12], cur[:12], "✅" if ok else "⛔"))
+        if not ok:
+            bad.append(label)
+    rel, fp = _find_src([PLATFORM_SRC[1]])
+    if fp and os.path.getmtime(fp) > st["mtime"] + 1:
+        info["rows"].append((PLATFORM_SRC[0] + " (时间戳)", "—",
+                             time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fp))), "⚠️"))
+        bad.append(PLATFORM_SRC[0])
+    info["stale"] = bool(bad)
+    info["why"] = ("真源已变: " + ", ".join(bad)) if bad else "与当前真源一致"
+    return info
+
+
+def _doc_mark(kind):
+    st = _doc_state(kind)
+    return "✅" if (st["doc"] and not st["stale"]) else "⛔"
+
+
+def _render_docx(path, limit=300000):
+    """把生成的 .docx 按正文顺序读回文本 (段落 + 表格), 让内置窗口看到**实际交付内容**。"""
+    try:
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+    except Exception as e:  # noqa: BLE001
+        return f"⛔ 读不了 docx (python-docx 缺失?): {e}"
+    try:
+        d = Document(path)
+    except Exception as e:  # noqa: BLE001
+        return f"⛔ 打不开 {path}: {e}"
+    out = []
+    for child in d.element.body.iterchildren():
+        tag = child.tag.split("}")[-1]
+        if tag == "p":
+            t = Paragraph(child, d).text.strip()
+            if t:
+                out.append(t)
+        elif tag == "tbl":
+            tb = Table(child, d)
+            for r in tb.rows:
+                out.append("  | " + " | ".join(c.text.strip().replace("\n", " ") for c in r.cells) + " |")
+            out.append("")
+    txt = "\n".join(out)
+    return txt[:limit] + ("\n\n… (面板截断, 完整内容见 docx)" if len(txt) > limit else "")
 
 
 def _run_script(script, args=None, timeout=900):
@@ -237,6 +366,10 @@ class ConfigCenterPage(QWidget):
             rd = sum(1 for c in cs if c.get("ready"))
             doms.append((f"{dom}  {rd}/{len(cs)}", "⛔" if rd < len(cs) else "✅",
                          [c["id"] for c in cs if not c.get("ready")]))
+        # 文档配置 (2026-10-10): 三份外发/立项文档 + 一致性核对
+        dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
+        doms.append((f"文档配置  {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
+                     ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
         doms.append((f"工艺·工单  任务 {len(tk.get('tasks', []))}",
                      "⛔" if (tk.get("tasks") and any(t.get("blocked_by_site") for t in tk["tasks"])) else "✅",
                      [t["task_id"] for t in tk.get("tasks", [])]))
@@ -246,10 +379,20 @@ class ConfigCenterPage(QWidget):
             for k in kids:
                 QTreeWidgetItem(it, [f"   {k}"])
             self.tree.addTopLevelItem(it)
-            it.setExpanded(label.startswith("工艺"))
+            it.setExpanded(label.startswith("工艺") or label.startswith("文档"))
 
     def _on_tree(self, item, _col):
         txt = item.text(0)
+        if "文档" in txt or "SOR" in txt or "立项" in txt or "协议" in txt or "一致性" in txt:
+            if "一致性" in txt or "文档配置" in txt:
+                self._show_consistency()
+            elif "SOR" in txt:
+                self._show_doc("sor")
+            elif "立项" in txt:
+                self._show_doc("project")
+            else:
+                self._show_doc("agreement")
+            return
         if "任务配置" in txt or "工艺" in txt:
             self.tabs.setCurrentIndex(0)
         self._run_into("tasks" if "TASK" in txt.upper() else "overview")
@@ -386,6 +529,111 @@ class ConfigCenterPage(QWidget):
         self.docs_out.setPlainText(_doc_inventory())
         l7.addWidget(self.docs_out, 1)
         self.tabs.addTab(w7, "📄 文档交付")
+
+        # 8) 文档预览 (2026-10-10 老倪: 内置窗口直接看根据配置生成的文档, 数据统一/一致性)
+        w8 = QWidget()
+        l8 = QVBoxLayout(w8)
+        l8.setContentsMargins(6, 6, 6, 6)
+        self.pv_head = QLabel("文档预览 — 左侧栏「📄 文档配置」点一份文档即可在这里看到它的**实际内容**")
+        self.pv_head.setWordWrap(True)
+        self.pv_head.setFont(QFont("Consolas", 10))
+        self.pv_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l8.addWidget(self.pv_head)
+        row8 = QHBoxLayout()
+        for key, lab in (("sor", "📋 看 SOR"), ("project", "📄 看立项文档"), ("agreement", "🤝 看合作协议")):
+            b8 = _btn(lab, th)
+            b8.clicked.connect(lambda _, k=key: self._show_doc(k))
+            row8.addWidget(b8)
+        b_con8 = _btn("🔍 一致性核对", th)
+        b_con8.setToolTip("三份文档记录的 工程库/BOM/能力清单/治理 真源 sha 与当前真源逐一比对")
+        b_con8.clicked.connect(self._show_consistency)
+        row8.addWidget(b_con8)
+        b_re8 = _btn("♻️ 重新生成并预览", th)
+        b_re8.setToolTip("真源改过之后必须重新生成 —— 过期文档不能当交付件")
+        b_re8.clicked.connect(lambda: self._show_doc(getattr(self, "_pv_kind", "sor"), force=True))
+        row8.addWidget(b_re8)
+        row8.addStretch()
+        l8.addLayout(row8)
+        self.preview = QTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setFont(QFont("Consolas", 9))
+        self.preview.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
+                                   f"border:1px solid {th['C_BORDER']};")
+        self.preview.setPlainText(
+            "判据: 文档 manifest 里记录的 工程库/BOM/能力清单/治理 真源 sha 与当前真源**逐一比对** ——\n"
+            "  对不上 = ⛔ 已过期 (老倪口径: 过期文档不能当交付件), 顶部会红字告警, 点「♻️ 重新生成并预览」。\n"
+            "  三份文档同源: 都读 data/database/zmax/zmax_engineering.db + config/platform/*.json, 不手抄数字。")
+        l8.addWidget(self.preview, 1)
+        self.tabs.addTab(w8, "📄 文档预览")
+
+    # ── 文档配置: 预览 + 一致性 (2026-10-10 老倪) ──
+    def _pv_tab_index(self):
+        for i in range(self.tabs.count()):
+            if "文档预览" in self.tabs.tabText(i):
+                return i
+        return -1
+
+    def _show_doc(self, kind, force=False):
+        """内置窗口看文档: 没有产物就先真跑生成, 再读回 .docx 实际内容; 过期给红字告警。"""
+        from PyQt5.QtWidgets import QApplication
+        self._pv_kind = kind
+        i = self._pv_tab_index()
+        if i >= 0:
+            self.tabs.setCurrentIndex(i)
+        if force or not _latest_doc(kind):
+            self.out.setPlainText(f"▶ 生成 {DOCS[kind]['name']} … (数据源: 工程库 + 平台真源)")
+            QApplication.processEvents()
+            self.out.setPlainText(_run_script(DOCS[kind]["script"]))
+            QApplication.processEvents()
+        st = _doc_state(kind)
+        if not st["doc"]:
+            self.pv_head.setText(f"⛔ {st['name']}: 取不到产物 ({st['why']})")
+            self.preview.setPlainText("生成失败 —— 看底部结果面板的日志 (退出码非 0 时那里有真原因)。")
+            return
+        mark = "⛔ 已过期" if st["stale"] else "✅ 与当前真源一致"
+        self.pv_head.setText(
+            f"{st['name']} · {os.path.basename(st['doc']['docx'])}"
+            f" · 生成 {time.strftime('%m-%d %H:%M', time.localtime(st['doc']['mtime']))} · {mark} · {st['why']}\n"
+            + "   ".join(f"{v} {l}: {r}→{c}" for l, r, c, v in st["rows"])
+            + f"\ndocx 绝对路径: {st['doc']['docx']}")
+        body = _render_docx(st["doc"]["docx"])
+        if st["stale"]:
+            body = (f"⛔ 一致性告警: {st['why']}\n"
+                    "   这份文档是用**旧真源**生成的 —— 不能当交付件, 点「♻️ 重新生成并预览」\n"
+                    + "─" * 78 + "\n\n") + body
+        self.preview.setPlainText(body)
+
+    def _show_consistency(self):
+        """三份文档 × 当前真源 一致性核对 (数据统一/一致性的判据视图)。"""
+        i = self._pv_tab_index()
+        if i >= 0:
+            self.tabs.setCurrentIndex(i)
+        dbp = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
+        L = ["═══ 三份交付文档 × 真源 一致性核对 ═══",
+             f"真源: 工程库 data/database/zmax/zmax_engineering.db  (当前 sha256 {_sha256(dbp)[:16] or '?'})", ""]
+        for kind in ("project", "sor", "agreement"):
+            st = _doc_state(kind)
+            ok = st["doc"] and not st["stale"]
+            L.append(f"[{'✅' if ok else '⛔'}] {st['name']}: " + (st["why"] if st["doc"] else "还没生成 (点下面按钮或左侧栏点它)"))
+            if st["doc"]:
+                L.append(f"      docx: {st['doc']['docx']}")
+                for l, r, c, v in st["rows"]:
+                    L.append(f"      {v} {l}: 文档记录 {r} · 当前 {c}")
+            L.append("")
+        L.append("── 当前真源文件 (时间 · sha256 前12 · 路径) ──")
+        for key, label, cands in SRC_DEFS:
+            rel, fp = _find_src(cands)
+            if fp:
+                L.append(f"  {time.strftime('%m-%d %H:%M', time.localtime(os.path.getmtime(fp)))}  "
+                         f"{_sha256(fp)[:12]}  {rel}   ({label})")
+        rel, fp = _find_src([PLATFORM_SRC[1]])
+        if fp:
+            L.append(f"  {time.strftime('%m-%d %H:%M', time.localtime(os.path.getmtime(fp)))}  "
+                     f"{_sha256(fp)[:12]}  {rel}   ({PLATFORM_SRC[0]} · manifest 未记录, 按时间戳判)")
+        L += ["", "判据: 三份文档 manifest 记录的 sha 必须 = 当前真源 sha; 任一不符即 ⛔ 过期,",
+              "      重新生成后三份的 工程库 sha 必然相同 (同源) —— 这就是『数据统一』的可验证口径。"]
+        self.pv_head.setText("一致性核对: 三份文档记录的 sha vs 当前真源 (对不上 = 过期, 需重新生成)")
+        self.preview.setPlainText("\n".join(L))
 
     # ── 文档交付 (2026-10-10) ──
     def _goto_docs(self):

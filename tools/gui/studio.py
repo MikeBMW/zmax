@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.37.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.37.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11583,7 +11583,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.37.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.37.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11591,9 +11591,14 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.37.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.37.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.37.6: 配置中心左侧栏加「📄 文档配置」+ 内置「📄 文档预览」页 (老倪 2026-10-10: 「在配置中心，左侧栏增加文档配置，能在配置中心的内置窗口，看到根据配置生成的 供应商外发SOR, 项目立项，以及合作协议文档；要数据统一，保证一致性」)
+        #   左树: 📄 文档配置 n/3 + 四个子项 (供应商外发 SOR / 项目立项文档 / 合作协议 / 一致性核对); 点任一子项 → 内置窗口直接读回该 docx 的实际内容 (段落+表格)
+        #   一致性 = 硬判据: 逐条比对文档 manifest 记录的 工程库/BOM/能力清单/治理 sha 与当前真源实际 sha (对不上 ⛔ 已过期, 预览顶部红字告警并拒绝当交付件)
+        #   + 未被 manifest 记录的真源(平台配置) 用 mtime 兜底 ⚠️; 三份文档记录的工程库 sha 必然相同 = 『数据统一』的可验证口径
+        #   取证: tools/tests/test_config_doc_preview.py 25 项全绿 (含两条过期路径: 真源内容变 · 时间戳变, 且复原后判定回绿)
         # v5.37.5: 配置中心新增「📄 文档交付」页 —— 三份交付文档做成按钮 (老倪 2026-10-10: 「把这三份文档导出做成配置中心页面上的按钮」)
         #   页签: 📄 文档交付 = 5 个导出按钮 (📦 三件套 / 📄 项目立项文档 / 📋 供应商 SOR / 🤝 合作协议 / 🧮 BOM·成本·ROI 算账)
         #   + 产物清单 (绝对路径, 可复制) + 📋 复制产物路径 + 📂 打开产物目录; 顶栏加「📄 文档导出」直达入口
@@ -12203,7 +12208,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.37.5  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.37.6  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13938,7 +13943,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.37.5</b> · 多模态动作专家<br>
+<b>Z-MAX v5.37.6</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
