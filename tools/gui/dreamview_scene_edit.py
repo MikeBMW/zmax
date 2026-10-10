@@ -73,7 +73,7 @@ SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE", "SIM-PEG-L4", "SCN-07-UP") 
 
 
 def _scene_options():
-    """可选场景: 虚拟现实 · 插拔场景 · 摆盘场景 · 上下料场景 (+ 在役现场场景, 只读收尾)。
+    """可选场景: 插拔场景 · 摆盘场景 (+ metaworld 真模型版插拔 / 上下料 / 在役现场场景, 只读收尾)。
 
     老倪 2026-10-10: 「其它场景先不用搞」+「Sim&Real 改成 3D场景，就是一个程序」⇒ 这里只列 3 条,
     且 3D场景 排第一 (进页默认就是它)。
@@ -83,9 +83,11 @@ def _scene_options():
         d = os.path.join(ROOT, "data", "scene", "scenes", sid)
         if not os.path.isdir(d):
             continue
-        label = {"SS-EPI-CORNER": "🧭 虚拟现实",
-                 "SS-TRAY-PLACE": "🧩 摆盘场景 (复制自 3D场景)",
-                 "SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
+        # 老倪 2026-10-10: 「虚拟现实 42对象 改成 插拔场景，对应插拔按钮;
+        #   摆盘场景 47对象 改成 摆盘场景 对应 摆盘按钮」⇒ 下拉名 = 按钮名 (一一对应)
+        label = {"SS-EPI-CORNER": "🧩 插拔场景",
+                 "SS-TRAY-PLACE": "🧩 摆盘场景",
+                 "SIM-PEG-L4": "🔧 插拔场景 (metaworld 真模型版)",
                  "SCN-07-UP": "📦 上下料场景"}.get(sid, sid)
         n = 0
         try:
