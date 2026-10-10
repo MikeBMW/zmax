@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -113,7 +114,7 @@ def main():
     opts = U.scene_options()
     labels = [o[0] for o in opts]
     # 老倪 2026-10-10 收敛: 下拉只两条 (标签改中文, sid 在 itemData 里)
-    check([o[2] for o in opts] == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉 = 插拔 + 上下料 + 3D 分层视图: %s" % labels)
+    check([o[2] for o in opts] == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔 + 上下料 + 3D 分层视图: %s" % labels)
     d = U.load_scene(SDIR)
     check(len(d["objects"]) == 6 and len(d["markers"]) == 4 and len(d["fences"]) == 1 and len(d["trajectories"]) == 2,
           "场景真源 6 对象/4 标记/1 围栏/2 轨迹")
@@ -159,7 +160,7 @@ def main():
     opts = U.scene_options()
     ids = [o[2] for o in opts]
     check(len([i for i in ids if i]) == 3, "场景库露脸 %d 条 (插拔 + 上下料 + 3D 分层视图)" % len([i for i in ids if i]))
-    check(ids == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉 = 插拔场景 + 上下料场景 + 3D 分层视图场景: %s" % ids)
+    check(ids == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔场景 + 上下料场景 + 3D 分层视图场景: %s" % ids)
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_registry.py"), "--check"],
                        cwd=ROOT, capture_output=True, text=True)
     check(r.returncode == 0, "scene_registry --check 全绿 (%s)" % (r.stdout or "").strip().splitlines()[-1][:60])
@@ -274,9 +275,10 @@ def main():
     print("9) 场景清单收敛 + 插拔场景几何对齐 metaworld 真模型")
     _opts = U.scene_options()
     _sids = [o[2] for o in _opts]
-    check(_sids == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉三条: 插拔场景 + 上下料场景 + 3D 分层视图场景 → %s" % _sids)
-    check(all(("插拔场景" in _opts[0][0]) and ("上下料场景" in _opts[1][0]) for _ in [0]),
-          "中文名: %s | %s" % (_opts[0][0][:22], _opts[1][0][:22]))
+    check(_sids == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"],
+          "下拉三条 (3D场景 在首位): 3D场景 + 插拔场景 + 上下料场景 → %s" % _sids)
+    check(all(("3D场景" in _opts[0][0]) and ("插拔场景" in _opts[1][0]) and ("上下料场景" in _opts[2][0]) for _ in [0]),
+          "中文名: %s | %s | %s" % (_opts[0][0][:22], _opts[1][0][:22], _opts[2][0][:22]))
     _r1 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
     _r2 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
     check(_r1.get("ok") and len(_r1["objects"]) >= 20,
@@ -333,6 +335,37 @@ def main():
     _gsrc = open(os.path.join(ROOT, "tools", "gen_ss_metaworld_episode.py"), encoding="utf-8").read()
     check("qpos=[float(v) for v in qpos0]" in _gsrc and "qpos0 = np.asarray(d.qpos" in _gsrc,
           "episode 生成器记录首帧 qpos (回放靠它, 不是靠 seed)")
+    check(_sids[0] == "SS-EPI-CORNER", "3D场景 排在首位 = 进 Sim&Real 默认就是它 (迁移落位): %s" % _sids[0])
+    # 进这条场景自动套 corner2 机位 (编辑器视角 == 3D场景窗口视角)
+    _sv3 = U.SceneView3D(os.path.join(ROOT, "data", "scene", "scenes", "SS-EPI-CORNER"), "SS-EPI-CORNER",
+                         status_cb=lambda s: None)
+    _sv3.resize(1200, 800)
+    _sv3.set_scene(os.path.join(ROOT, "data", "scene", "scenes", "SS-EPI-CORNER"), "SS-EPI-CORNER")
+    _t2 = SSD.episode_truth()
+    _cam = [float(v) for v in _t2["cam_pos"]]
+    _tv = [_cam[i] - [0.0, 0.6, 0.13][i] for i in range(3)]
+    _n = (sum(x * x for x in _tv) ** 0.5) or 1.0
+    _e = [x / _n for x in _tv]
+    _want_az = math.degrees(math.atan2(_e[0], _e[1]))
+    _want_el = math.degrees(math.asin(max(-1.0, min(1.0, _e[2]))))
+    check(abs(_sv3.az - _want_az) < 1e-6 and abs(_sv3.el - _want_el) < 1e-6,
+          "进 3D场景 自动 = corner2 机位 (az=%.1f el=%.1f, 与视频同源)" % (_sv3.az, _sv3.el))
+    # 手工编辑 → 模型重导不得静默覆盖
+    _o0 = SSD.load()["scenes"]["SS-EPI-CORNER"]["objects"][0]
+    _nm0, _c0 = _o0["name"], list(_o0["center"])
+    SSD.apply_patch("objects", _nm0, {"center": [_c0[0] + 0.02, _c0[1], _c0[2]]}, scene_id="SS-EPI-CORNER")
+    _re = SSD.export_episode_truth()
+    _after = SSD.load()["scenes"]["SS-EPI-CORNER"]["objects"]
+    check(_re.get("ok") is False and abs(_after[0]["center"][0] - (_c0[0] + 0.02)) < 1e-9,
+          "手工编辑后按模型重导被拒且改动保留 (%s)" % str(_re.get("msg"))[:46])
+    SSD.apply_patch("objects", _nm0, {"center": _c0}, scene_id="SS-EPI-CORNER")     # 还原
+    _d3 = SSD.load()
+    _s3 = _d3["scenes"]["SS-EPI-CORNER"]
+    _s3.pop("user_edited", None)
+    _s3.pop("user_edited_at", None)
+    SSD.save_raw(_d3)
+    check(abs(SSD.load()["scenes"]["SS-EPI-CORNER"]["objects"][0]["center"][0] - _c0[0]) < 1e-9 and
+          not SSD.load()["scenes"]["SS-EPI-CORNER"].get("user_edited"), "判据自身不留痕 (真源已还原)")
     _mk = [m for m in _oe.get("markers", []) if "corner2" in m["name"]]
     check(bool(_mk) and max(abs(float(a) - float(b)) for a, b in zip(_mk[0]["pos"], [float(v) for v in _t["cam_pos"]])) < 1e-6,
           "含 corner2 相机机位标记 == episode meta.cam_pos")

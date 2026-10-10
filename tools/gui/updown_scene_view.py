@@ -57,7 +57,7 @@ C_MARK, C_FENCE, C_TRAJ = "#ff8a3d", "#8b6cf0", "#4da3ff"
 # ─────────────────────────── 数据层 ───────────────────────────
 # 老倪 2026-10-10: 「现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」
 #   ⇒ 只把这俩放进下拉 (其余场景的定义/文件都不动, 只是不露脸, 可随时加回来)
-SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER")
+SCENE_WHITELIST = ("SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP")   # 3D场景 排首位 = 默认打开
 SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
                "SCN-07-UP": "📦 上下料场景",
                # 老倪 2026-10-10: 「先把这个场景复制到你的场景编辑窗口里」— 就是画布 3D 分层视图正在跑的那条
@@ -120,6 +120,8 @@ def load_scene(scene_dir, scene_id=None):
             "fences": [x for x in (v.get("fences") or []) if isinstance(x, dict)],
             "trajectories": [x for x in (v.get("trajectories") or []) if isinstance(x, dict)],
             "deleted": (v.get("deleted") or {}), "fence_note": v.get("fence_note"),
+            "kind": o.get("kind") or v.get("kind"),        # episode / sim: 决定要不要自动套 corner2 机位
+            "sim": bool(o.get("sim")),
             "meta": {"id": scene_id, "dir": scene_dir, "read_only": scene_id is None,
                      "name": (o.get("scene_name") or (o.get("meta") or {}).get("name")
                               or o.get("scene_id") or scene_id or "现场场景"),
@@ -276,6 +278,8 @@ class SceneView3D(QWidget):
         self._preview = None
         self._manual_scale = False
         self.fit_view()
+        if (self.data or {}).get("kind") == "episode":      # 3D场景: 进场景即用操作视频同一机位
+            self.apply_corner2_view()
         self.update()
         if self.on_select:
             self.on_select(None)
@@ -351,6 +355,31 @@ class SceneView3D(QWidget):
         return self.data
 
     # ── 投影 ──
+    def apply_corner2_view(self):
+        """切到 corner2 机位 —— 与操作视频 / 3D场景窗口**同一个相机** (外参取自 episode meta 真值)。
+
+        老倪 2026-10-10: 「把现在的3D场景迁移到主界面 Sim&Real 的场景里, 一会在这个场景上编辑」
+        ⇒ 编辑器里看到的这条场景, 视角也得是他在窗口里看的那个, 不然"编辑的"和"看到的"对不上。
+        """
+        try:
+            import sim_scene_def as _S
+            _t = _S.episode_truth()
+            cam = [float(v) for v in _t["cam_pos"]]
+        except Exception:                                                       # noqa: BLE001
+            return False
+        self.fit_view()
+        tgt = [0.0, 0.6, 0.13]                       # 桌心 / 孔口高度 (与 3D场景窗口同锚点)
+        self.center = list(tgt)
+        v = [cam[i] - tgt[i] for i in range(3)]
+        n = (sum(x * x for x in v) ** 0.5) or 1.0
+        e = [x / n for x in v]
+        self.az = math.degrees(math.atan2(e[0], e[1]))
+        self.el = math.degrees(math.asin(max(-1.0, min(1.0, e[2]))))
+        self.pan = [0.0, 0.0]
+        self._manual_scale = False
+        self.update()
+        return True
+
     def _basis(self):
         a, e = math.radians(self.az), math.radians(self.el)
         eye = [math.cos(e) * math.sin(a), math.cos(e) * math.cos(a), math.sin(e)]
@@ -1009,27 +1038,17 @@ def build_card(parent=None):
         _run_sim()
 
     def _cam_corner2():
-        """🎥 切到 corner2 机位: 与操作视频 / 3D 分层视图**同一个相机** (外参取自 episode meta)。"""
-        _S = _sim_mod()
-        try:
-            _t = _S.episode_truth()
-            _cam = [float(v) for v in _t["cam_pos"]]
-        except Exception as e:                                                  # noqa: BLE001
-            st.setText("⛔ 取 corner2 外参失败: %r" % e)
-            return
-        view.fit_view()
-        _tgt = [0.0, 0.6, 0.13]                     # 桌心/孔口高度 (与 3D 分层视图同锚点)
-        view.center = list(_tgt)
-        _v = [_cam[i] - _tgt[i] for i in range(3)]
-        _n = (sum(x * x for x in _v) ** 0.5) or 1.0
-        _eye = [x / _n for x in _v]
-        view.az = math.degrees(math.atan2(_eye[0], _eye[1]))
-        view.el = math.degrees(math.asin(max(-1.0, min(1.0, _eye[2]))))
-        view.pan = [0.0, 0.0]
-        view._manual_scale = False
-        view.update()
-        st.setText("🎥 已切到 corner2 视角 (与操作视频/3D 分层视图同一机位: pos=%s fovy=%s)"
-                   % ([round(x, 2) for x in _cam], _t.get("cam_fovy")))
+        """🎥 切到 corner2 机位 (与操作视频/3D场景窗口同一相机)。"""
+        if view.apply_corner2_view():
+            try:
+                import sim_scene_def as _S
+                _t = _S.episode_truth()
+                st.setText("🎥 已切到 corner2 视角 (与操作视频/3D场景同一机位: pos=%s fovy=%s)"
+                           % ([round(float(x), 2) for x in _t["cam_pos"]], _t.get("cam_fovy")))
+            except Exception:                                                   # noqa: BLE001
+                st.setText("🎥 已切到 corner2 视角 (与操作视频同一机位)")
+        else:
+            st.setText("⛔ 取 corner2 外参失败 (episode 真值不可用)")
 
     b_cam = _b("🎥 corner2 视角", "切到操作视频/3D 分层视图的同一机位 (cad 外参取自 episode 真值)",
                lambda: _cam_corner2(), "#00d4aa")

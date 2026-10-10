@@ -372,10 +372,11 @@ def main() -> int:
     ap.add_argument("--set", nargs=2, metavar=("KEY", "JSON"))
     ap.add_argument("--set-seed", type=int, metavar="N", help="episode 场景 (SS-EPI-CORNER) 的布局 seed")
     ap.add_argument("--export-episode", action="store_true", help="按 episode 自己的 metaworld 模型导出该场景 (含机器人)")
+    ap.add_argument("--force", action="store_true", help="连同手工编辑一起覆盖 (配 --export-episode)")
     a = ap.parse_args()
     ensure_episode_scene()
     if a.export_episode:
-        r = export_episode_truth()
+        r = export_episode_truth(force=bool(a.force))
         print(("✅ " if r.get("ok") else "⛔ ") + str(r.get("msg")))
         return 0 if r.get("ok") else 1
     if a.set_seed is not None:
@@ -463,6 +464,10 @@ def apply_patch(kind: str, ident: str, patch: dict, scene_id: str = "SIM-PEG-L4"
             it[k] = v
     save_raw(d)
     regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", scene_id))
+    if scene_id == EPI_SCENE:            # 手工改过就留痕: 之后再按模型重导不得静默覆盖
+        sc["user_edited"] = True
+        sc["user_edited_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        save_raw(d)
     return {"ok": True, "msg": "已写仿真场景真源 %s[%s]" % (kind, ident),
             "backup": os.path.relpath(BACKUP, ROOT), "entity": it}
 
@@ -764,7 +769,7 @@ _MJ_TIP = ("对齐 metaworld 真模型: 从 MuJoCo 模型 (sawyer_peg_insertion_
            "位置/尺寸 (单位 m, size=2×geom_size); 与 ▶运行 时物理世界逐字同源")
 
 
-def export_episode_truth(scene_id: str = EPI_SCENE, seed=None, write: bool = True) -> dict:
+def export_episode_truth(scene_id: str = EPI_SCENE, seed=None, write: bool = True, force: bool = False) -> dict:
     """把「3D 分层视图 / 与操作视频同源」那条场景**按它自己的物理模型**导出 (含机器人本体)。
 
     老倪 2026-10-10: 「你先把当前我运行的场景，先复制过来，一模一样的」+「为什么没有机器人? metaworld 的
@@ -866,6 +871,10 @@ def export_episode_truth(scene_id: str = EPI_SCENE, seed=None, write: bool = Tru
     if write:
         d2 = load()
         sc = d2["scenes"].setdefault(scene_id, episode_scene_def())
+        if sc.get("user_edited") and not force:
+            # ⚠️ 手工编辑过的对象不允许被"模型重导"静默覆盖 (否则老倪改完一重建就没了)
+            return {"ok": False, "msg": "3D场景已被手工编辑过 (%s), 未覆盖 —— 要按模型重导请加 --force"
+                                        % str(sc.get("user_edited_at") or "")[:19]}
         sc["objects"], sc["markers"], sc["fences"], sc["trajectories"] = objs, mk, fens, trajs
         _aux = {}
         for _bn in ("peg", "hand", "box"):
