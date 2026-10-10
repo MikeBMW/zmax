@@ -233,6 +233,51 @@ def _auto_widths(headers, rows, total_cm=TBL_TOTAL_CM):
     return [round(total_cm * x / s, 2) for x in w]
 
 
+def _set_col_widths(t, widths_cm):
+    """把列宽**真正写进表格**: tblLayout=fixed + tblGrid(gridCol) + 每格 tcW。
+
+    2026-10-10 实测坑: 只设 cell.width(=tcW) 不写 tblLayout/tblGrid, Word 与 LibreOffice 都按**等分**排,
+    于是 "五列表一律 20%" "两列表 50:50" —— 复核看到的『逐行孤字换行』就是这么来的。
+    """
+    dxa = [int(round(w * 567)) for w in widths_cm]      # 1cm = 567 twips
+    tblPr = t._tbl.tblPr
+    for tag in ("w:tblLayout",):
+        for e in tblPr.findall(qn(tag)):
+            tblPr.remove(e)
+    lay = OxmlElement("w:tblLayout")
+    lay.set(qn("w:type"), "fixed")
+    tblPr.append(lay)
+    w = OxmlElement("w:tblW")
+    w.set(qn("w:w"), str(sum(dxa)))
+    w.set(qn("w:type"), "dxa")
+    tblPr.append(w)
+    grid = t._tbl.find(qn("w:tblGrid"))
+    if grid is not None:
+        cols = grid.findall(qn("w:gridCol"))
+        for i, gc in enumerate(cols):
+            if i < len(dxa):
+                gc.set(qn("w:w"), str(dxa[i]))
+    for r_ in t.rows:
+        for i, c in enumerate(r_.cells):
+            if i < len(widths_cm):
+                c.width = Cm(widths_cm[i])
+
+
+def _cant_split(t):
+    """行内不允许跨页断开 —— 否则会出现半页的孤儿碎片 (复核: PF-Z100-11 跨页后只剩『与选槽』孤行)。"""
+    for r_ in t.rows:
+        trPr = r_._tr.get_or_add_trPr()
+        e = OxmlElement("w:cantSplit")
+        e.set(qn("w:val"), "true")
+        trPr.append(e)
+
+
+def _col_is_short(headers, rows, i):
+    """整列都短才居中 (原来逐格判短, 同一列里有的居中有的左对齐, 多行时更乱)。"""
+    vals = [str(headers[i])] + [str(r[i]) if i < len(r) else "" for r in rows]
+    return all(len(v) <= 6 for v in vals)
+
+
 def table(doc, headers, rows, widths=None, size=9.5, band=True, first_col_bold=True, center_cols=None):
     """一个**给人看**的表: 深色表头(白字) + 隔行浅底 + 细边框 + 固定列宽 + 留白 + 跨页重复表头。
 
@@ -243,10 +288,7 @@ def table(doc, headers, rows, widths=None, size=9.5, band=True, first_col_bold=T
     t = doc.add_table(rows=1, cols=n)
     t.style = "Table Grid"
     t.autofit = False
-    for r_ in t.rows:
-        for i, w in enumerate(widths or _auto_widths(headers, rows)):
-            if i < len(r_.cells):
-                r_.cells[i].width = Cm(w)
+    _set_col_widths(t, widths or _auto_widths(headers, rows))
     _cell_margins(t)
     _borders(t)
 
@@ -273,14 +315,15 @@ def table(doc, headers, rows, widths=None, size=9.5, band=True, first_col_bold=T
             p.paragraph_format.space_before = Pt(1)
             p.paragraph_format.space_after = Pt(1)
             txt = "" if v is None else str(v)
-            short = len(txt) <= 8
             p.alignment = (WD_ALIGN_PARAGRAPH.CENTER
-                           if ((center_cols and i in center_cols) or (center_cols is None and short))
+                           if ((center_cols and i in center_cols)
+                               or (center_cols is None and _col_is_short(headers, rows, i) and len(headers) > 2))
                            else WD_ALIGN_PARAGRAPH.LEFT)
             _font(p.add_run(txt), size=size, bold=bool(first_col_bold and i == 0))
             if band and ri % 2 == 1:
                 _shade(c, TBL_BAND_FILL)
             c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    _cant_split(t)          # 必须等数据行都加完再打 —— 行内不跨页 (否则出现孤儿碎片)
     return t
 
 
@@ -370,14 +413,14 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
         para(doc, "%d) %s" % (fnum, x))
         fnum += 1
     para(doc, "4.2 System 1 功能清单 (在役功能节点)", bold=True)
-    table(doc, ["功能 ID", "名称", "层", "类型", "引擎模块"],
-          [[f["fn_id"], f["name"], f["layer"], f["kind"], f["module_ref"]] for f in fns],
-          widths=[2.4, 5.6, 1.6, 2.2, 4.2])
+    table(doc, ["功能 ID", "名称", "层", "类型"],
+          [[f["fn_id"], f["name"], f["layer"], f["kind"]] for f in fns],
+          widths=[2.8, 9.6, 1.6, 2.0])
     para(doc, "4.3 摆盘产品功能条目 (可逐条报价/逐条验收)", bold=True)
     table(doc, ["条目 ID", "名称", "适用子系统", "关联平台能力", "指标"],
           [[f["pf_id"], f["title"], "·".join(f.get("subsys") or []),
             f.get("capability_ref") or "", f.get("kpi") or ""] for f in feats],
-          widths=[2.2, 4.2, 2.4, 4.0, 3.2])
+          widths=[1.9, 3.8, 1.9, 4.2, 4.2])          # 复核建议 12/24/12/26/26
     para(doc, "4.4 任务工艺步骤 (配置中心任务配置)", bold=True)
     if task:
         para(doc, "任务 %s · %s · 类型 %s · 适用段 %d 段 · 排除段 %s"
@@ -385,7 +428,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
                 len(task["applies_segments"]), "、".join(task["excluded_segments"]) or "无"))
         table(doc, ["#", "步骤", "描述"],
               [[i + 1, s.get("name"), s.get("desc")] for i, s in enumerate(task.get("steps", []))],
-              widths=[1.0, 3.0, 12.0])
+              widths=[1.3, 3.2, 11.5])          # 复核建议 # 8% / 步骤 20% / 描述 72%
         para(doc, "循环: %s" % task.get("loop", ""), size=10)
         para(doc, "触发: %s" % task.get("trigger", ""), size=10)
         para(doc, "工单: %s" % task.get("orders_rule", ""), size=10)
