@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.38.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.38.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11145,11 +11145,18 @@ class PluggingSceneModule(SubModuleWidget):
         self.scene_tabs.addTab(self._build_l3_tab(), "🤖 L3 增强版 · 多模块自主")
         self.scene_tabs.addTab(self._build_l4_tab(), "🛡️ L4 旗舰版 · 安全全自主")
         
-        # Tab切换时更新积木面板高亮
-        self.scene_tabs.currentChanged.connect(self._update_brick_highlight)
-        
+
         # 🆕 2026-10-10 老倪: 「现在的显示功能不对，要能够编辑真实的已经在运行的仿真场景和真机场景」
         #   ⇒ 真实场景**编辑器**置顶 (对象/标记/围栏/轨迹), 原来的 L2/L3/L4 产品形态对比下移为参考。
+        # 🆕 2026-10-10 老倪: 「我要上下料的可编辑窗口，3D 渲染的场景，类似 dreamview 的 3D 场景」
+        #   ⇒ 3D 可编辑视图**置顶** (页内第一块), 下面才是表格编辑器与产品形态对比。
+        try:
+            from updown_scene_view import build_card as _upv_build
+            bl.addWidget(_upv_build(self))
+        except Exception as _e2:                                            # noqa: BLE001
+            _w2 = QLabel("3D 场景视图加载失败: %r" % (_e2,))
+            _w2.setStyleSheet("color:%s; font-size:12px;" % C_RED)
+            bl.addWidget(_w2)
         try:
             _d = os.path.dirname(os.path.abspath(__file__))
             if _d not in sys.path:
@@ -11161,10 +11168,6 @@ class PluggingSceneModule(SubModuleWidget):
             _w.setStyleSheet("color:%s; font-size:12px;" % C_RED)
             bl.addWidget(_w)
         bl.addWidget(self.scene_tabs)
-        
-        # ── 🧱 功能积木 · 阶梯进化图 ──
-        self.brick_panel, self._brick_rows = self._build_brick_panel()
-        bl.addWidget(self.brick_panel)
         
         body.setLayout(bl)
         self._build_shell(body)
@@ -11349,136 +11352,6 @@ class PluggingSceneModule(SubModuleWidget):
         desc_lbl.setAlignment(Qt.AlignCenter); desc_lbl.setWordWrap(True); cl.addWidget(desc_lbl)
         card.setLayout(cl); return card
     
-    # ═══════ 🧱 功能积木 · 阶梯进化 ═══════
-    def _build_brick_panel(self):
-        """乐高积木风格: L2基础 → L3增强 → L4旗舰 功能阶梯"""
-        panel = QGroupBox("🧱 功能积木 · 阶梯进化")
-        panel.setStyleSheet(f"QGroupBox{{color:{ROI_ACCENT}; font-weight:bold; {card_style(C_CARD, ROI_ACCENT, 8, 12)}}}")
-        
-        # 内层内容
-        inner = QWidget()
-        outer = QHBoxLayout(); outer.setSpacing(60)
-        
-        # 功能模块定义: (名称, L2状态, L3状态, L4状态, 固定颜色)
-        # 状态: 'active'=实色 'new'=新增虚线 'keep'=保留暗色
-        # 同一功能在三列中用相同颜色
-        modules = [
-            ("人工流程编排",  'active','keep','keep', ROI_ACCENT),
-            ("标准原子功能库", 'active','keep','keep', C_GREEN),
-            ("动作执行(ROS2)", 'active','keep','keep', SYS11_COLOR),
-            ("力控反馈闭环",   'active','keep','keep', SYS12_COLOR),
-            ("AOI验证检测",    'active','keep','keep', C_ORANGE),
-            ("成品下料分类",   'active','keep','keep', SYS2_COLOR),
-            (None, None, None, None, None),  # 分隔
-            ("多模块自主识别",  None,  'new',  'keep', C_GREEN),
-            ("自主闭环工作",    None,  'new',  'keep', SYS11_COLOR),
-            ("换线自主换配方",  None,  'new',  'keep', C_ORANGE),
-            ("异常诊断自恢复",  None,  'new',  'keep', SYS12_COLOR),
-            (None, None, None, None, None),  # 分隔
-            ("力控预判保护",    None,  None,   'new', C_RED),
-            ("触觉闭环反馈",    None,  None,   'new', C_RED),
-            ("光幕联动安全",    None,  None,   'new', C_RED),
-            ("自诊断预警维护",  None,  None,   'new', C_RED),
-            ("AI行为预测避让",  None,  None,   'new', C_RED),
-        ]
-        
-        levels = [
-            ("🔧 L2 基线版", ">99%", C_GREEN),
-            ("🤖 L3 增强版", "≥99.5%", SYS11_COLOR),
-            ("🛡️ L4 旗舰版", "≥99.9%", C_RED),
-        ]
-        
-        brick_rows = []  # [(col, row_idx, brick_widget, state)]
-        
-        for col_idx, (lvl_name, lvl_yield, lvl_color) in enumerate(levels):
-            col = QVBoxLayout(); col.setSpacing(15)
-            
-            # 列标题
-            hdr = QFrame()
-            hdr.setStyleSheet(f"background:{lvl_color}22; border:2px solid {lvl_color}; border-radius:8px;")
-            hdr.setFixedHeight(70)
-            hl = QVBoxLayout(); hl.setContentsMargins(4,2,4,2); hl.setSpacing(0)
-            t1 = QLabel(lvl_name); t1.setFont(QFont("Arial", 10, QFont.Bold))
-            t1.setStyleSheet(f"color:{lvl_color};"); t1.setAlignment(Qt.AlignCenter)
-            t2 = QLabel(lvl_yield); t2.setFont(QFont("Arial", 11))
-            t2.setStyleSheet(f"color:white;"); t2.setAlignment(Qt.AlignCenter)
-            hl.addWidget(t1); hl.addWidget(t2)
-            hdr.setLayout(hl); col.addWidget(hdr)
-            
-            row_idx = 0
-            for name, l2, l3, l4, mod_color in modules:
-                if name is None:  # 分隔线
-                    sep = QFrame()
-                    sep.setFrameShape(QFrame.HLine)
-                    sep.setStyleSheet(f"color:{C_BORDER};")
-                    sep.setFixedHeight(6)
-                    col.addWidget(sep)
-                    row_idx += 1
-                    continue
-                
-                status = [l2, l3, l4][col_idx]
-                if status is None:
-                    col.addSpacing(24)  # 占位
-                    row_idx += 1
-                    continue
-                
-                brick = QFrame()
-                brick.setFixedHeight(48)
-                
-                if status == 'active':
-                    brick.setStyleSheet(f"background:{mod_color}; border:3px solid {mod_color}; border-radius:6px; margin:3px 0;")
-                    txt = QLabel(f"● {name}")
-                    txt.setStyleSheet("color:white; font-size:20px; font-weight:bold;")
-                    state = 'active'
-                elif status == 'new':
-                    brick.setStyleSheet(f"background:{mod_color}33; border:2px dashed {mod_color}; border-radius:6px; margin:2px 0;")
-                    txt = QLabel(f"✦ {name}")
-                    txt.setStyleSheet(f"color:{mod_color}; font-size:20px; font-weight:bold;")
-                    state = 'new'
-                else:  # keep — 完全无填充，仅文字占位
-                    brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:6px; margin:2px 0;")
-                    txt = QLabel(f"  {name}")
-                    txt.setStyleSheet(f"color:{mod_color}55; font-size:18px;")
-                    state = 'keep'
-                
-                txt.setAlignment(Qt.AlignCenter)
-                bl = QVBoxLayout(); bl.setContentsMargins(3,1,3,1); bl.addWidget(txt)
-                brick.setLayout(bl)
-                col.addWidget(brick)
-                brick_rows.append((col_idx, row_idx, brick, state, mod_color))
-                row_idx += 1
-            
-            col.addStretch()
-            outer.addLayout(col, 1)
-        
-        inner.setLayout(outer)
-        
-        # 滚动区域
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(inner)
-        scroll.setMinimumHeight(400)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;} QScrollBar:vertical{width:10px;}")
-        
-        outer_wrap = QVBoxLayout()
-        outer_wrap.addWidget(scroll)
-        panel.setLayout(outer_wrap)
-        return panel, brick_rows
-    
-    def _update_brick_highlight(self, tab_idx):
-        """Tab切换时高亮对应列"""
-        if not hasattr(self, '_brick_rows'):
-            return
-        for col_idx, row_idx, brick, state, mod_color in self._brick_rows:
-            if col_idx == tab_idx and state == 'keep':
-                brick.setStyleSheet(f"background:{mod_color}18; border:2px solid {mod_color}88; border-radius:5px;")
-                txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{mod_color}; font-size:19px; font-weight:bold;")
-            elif state == 'keep':
-                brick.setStyleSheet(f"background:transparent; border:1px solid transparent; border-radius:5px;")
-                txt = brick.findChild(QLabel)
-                if txt: txt.setStyleSheet(f"color:{mod_color}44; font-size:11px;")
-
     def _spin_style(self):
         return ""  # 已移除ROI计算器
     
@@ -11583,7 +11456,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.38.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11591,10 +11464,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.38.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.38.0: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
+        # v5.38.1: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
         # v5.37.10: 修「点域右侧没内容」(老倪 2026-10-10: 「性能配置 功能配置 工程配置 模型配置, 怎么无法显示呢? 主窗口没有内容」)
         #   根因: _on_tree 对域节点只 _run_into('overview') ⇒ **只刷底部面板, 右侧工作区根本不动**, 看着就像点了没反应
         #   修: 点域 → 切到对应页签 + 只筛该域的行 (_filter_eng/_filter_fpm); 点参数 ID 子项 → 定位并高亮该行; 未知参数明说; 另接 itemClicked 让单击也生效
@@ -12227,7 +12100,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.38.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.38.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13962,7 +13835,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.38.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.38.1</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
