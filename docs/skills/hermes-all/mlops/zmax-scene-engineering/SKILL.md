@@ -45,6 +45,29 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - **3D 呈现**: tr 通道 peg_yaw/hand_yaw/tt_yaw (0→90→0 旋转可见) + meta.demo_geom {turntable pos/r, coupler pos} → ss_dreamview 按此画转台/压电台
 - **夹爪角度通道轴坑 (2026-09-10)**: hand_yaw 必须取手局部 **Z 轴** (col2, yaw0≈世界+X, 随绕z指令线性); 取局部 X 轴 (col0≈世界−Z=旋转轴自身) → XY 投影≈0 → atan2 噪声 ±180° 单帧跳变 (用户"夹爪乱动"实锤, 143 处 169°→−176°, 物理无此运动) — 旋转体朝向角永远别用与旋转轴平行的轴投影
 
+## 场景库 + 页内 3D 场景编辑器 (2026-10-10, 老倪要"多个场景管理/一个编辑器/大窗口")
+
+- **多场景管理**: `tools/scene_registry.py --build|--list|--check` 把真源落成**可编辑**场景目录
+  `data/scene/scenes/<ID>/{objects3d,overlay_spec}.json` 并登记 `data/scene/scenes/index.json` 的 named_scenes:
+  源 = `flows/scenes_5jobs.json` 6 作业场景 + 在役现场机位派生副本 (SCN-01-PEG 插拔场景)。
+  现场场景只读 (派生副本才可编辑, 写后自检现场 sha 未变); 自带生成器的场景 (SCN-07-UP ← scene_build_updown.py)
+  列 PROTECTED, --force 也不覆盖。轨迹航点从 steps 描述的显式坐标派生 (只给单轴 X=1.0 的写法: 缺轴沿用前一点并标 partial)。
+- **元素 schema 必须过 scene_edit 的 NORM, 否则一编辑就报错**: 围栏 = `kind: box|polygon` + `shape{center,size}`
+  (**不是** center/size_m — 写成后者 validate_fence 直接拒); 轨迹 `kind` 只认 `自定义/示教/规划` ("规划轨迹"无效);
+  标记要有 `name`+`type`(工位/危险区/检查点/自定义)+pos。`scene_registry --check` 会拿 scene_edit.NORM 逐个元素验
+  ⇒ 这才是"真可编辑性"判据 (本次就靠它抓出 5 个场景的围栏 schema 错 + 轨迹 kind 错)。
+- **页内 3D 场景编辑器** `tools/gui/updown_scene_view.py` (QPainter 正交投影自绘, **不开第二个 GL 窗口**):
+  四类元素通用选中模型 `sel = {"kind","i","wp"}`, 拖动改位置 (轨迹拖单个航点方块), 双击改数值/航点表,
+  类型过滤 + 元素列表 ↔ 3D 双向联动 + 新增/复制/删除。**一个页面只挂一个编辑器** ——
+  Sim&Real 页只挂它, 旧表格编辑器 `sim_real_page.build_body` 不再挂载 (该文件保留: dreamview_scene_edit 与测试
+  仍复用它的 `_run`/`_EditDialog`)。
+- **窗口要大 + 边沿可拖**: 视图与元素面板之间 `QSplitter(Qt.Vertical)` (handleWidth 9, 悬停变绿) —— 拖分隔条放大/缩小;
+  视图 min 高 560 + Expanding; 另配「⛶ 视图全屏 / ⤡ 还原」。页内自绘视图字体/线宽: 选中 2px + 金 #ffc857 高亮。
+- 🔴 **写回必须显式传 kind**: `view._write(patch, what, kind)` 默认 `kind="objects"` ⇒ 标记/围栏/轨迹的写入会**静默打到对象上**
+  (回读"成功"但值没变)。回归测试里就吃过这个假绿, 已修。
+- 🔴 在役 `data/scene/overlay_spec.json` 有**实时发布器**每轮刷 `ts/updated_at/l5live` ⇒ "在役场景未被改动"
+  的判据**不能比文件 sha** (会假红), 要比语义内容 (排除这三个易变字段)。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
