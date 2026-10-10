@@ -77,6 +77,46 @@ VIEW = {"size": (960, 720), "lookat": (0.0, 0.56, 0.02), "distance": 0.92,
         "azimuth": 90.0, "elevation": -89.5}
 MAX_STEPS_MODULE = 2600
 SETTLE_STEPS = 55      # 释放后退避 + 件落定
+
+# ══════════════════════════════════════════════════════════════════
+# 🔴 判据/参数真源 = **配置中心** (老倪: 「这个工程, 是通过配置改变功能」)
+#    config/ss_task_binding.json → tasks[TASK-06-TRAY].targets + .overrides
+#    配置改了 → 本次运行的判据/行为随之改; 读不到 → 配方默认并**显式标注来源**(不静默当已生效)
+# ══════════════════════════════════════════════════════════════════
+TASK_ID = "TASK-06-TRAY"
+BINDING = os.path.join(ROOT, "config", "ss_task_binding.json")
+
+
+def task_spec(task_id=TASK_ID):
+    """读配置中心真源 → 判据阈值 + 参数覆盖 (含 src 标注, 供报告追溯)。"""
+    import re
+    spec = dict(src="配方默认(未读配置)", task_id=task_id, xy_tol_m=0.001, yaw_tol_deg=1.0,
+                dz_tol_m=0.004, vac_establish_ms=200.0, hold_s=5.0, takt_s=3.15, targets={})
+    try:
+        d = json.load(open(BINDING, encoding="utf-8"))
+        t = next(x for x in d["tasks"] if x.get("task_id") == task_id)
+    except Exception as e:                                              # noqa: BLE001
+        spec["src"] = f"配方默认(读配置失败: {e.__class__.__name__})"
+        return spec
+    tg = t.get("targets") or {}
+    spec["src"] = task_id
+    spec["targets"] = tg
+    prec = str(tg.get("取放精度", ""))
+    m = re.search(r"≤\s*([\d.]+)\s*mm", prec)
+    y = re.search(r"≤\s*([\d.]+)\s*°", prec)
+    if m:
+        spec["xy_tol_m"] = float(m.group(1)) / 1000.0
+    if y:
+        spec["yaw_tol_deg"] = float(y.group(1))
+    c = re.search(r"([\d.]+)\s*s", str(tg.get("单颗CT", "")))
+    if c:
+        spec["takt_s"] = float(c.group(1))
+    ov = t.get("overrides") or {}
+    for key, dst in (("pick.vac_establish_ms", "vac_establish_ms"), ("pick.hold_s", "hold_s")):
+        v = ov.get(key)
+        if isinstance(v, (int, float)):
+            spec[dst] = float(v)
+    return spec
 MODULES = (("peg", "", 0), ("peg2", "2", 1), ("peg3", "3", 2))
 MODULE_NAMES = tuple(x[0] for x in MODULES)
 TR_KEYS = ("t", "x", "peg", "peg_head", "gripper", "stage", "done", "dist", "u_ff", "u_sat",
@@ -310,6 +350,12 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
     tr = {k: [] for k in TR_KEYS}
     settle_n = 0
     t_module = 0
+    # ── 配置驱动计时/判据 (真源: 配置中心 → 见 task_spec()) ──
+    t_grasp0 = None            # 抓取阶段起点 → 真空建立计时起点
+    vac_ms_actual = None       # 实测真空建立耗时 (ms)
+    vac_ok = None              # 是否在配置上限 (pick.vac_establish_ms) 内建立
+    vac_step = None            # 真空建立帧号
+    hold_s_actual = None       # 实测真空保持时长 (s) → 与 pick.hold_s 对照
 
     for step in range(MAX_STEPS_MODULE + SETTLE_STEPS):
         st = sched.stage()
@@ -408,18 +454,30 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
         dist_h = float(np.linalg.norm(peg_now[:2] - slot[:2]))
         lifted = float(peg_now[2] - mod_z0)
         # 真空建立: 吸嘴尖到达件顶面之上 VAC_TOL_Z 内 且 xy 对准 → 吸附
+        # 真空建立计时起点 = 吸嘴尖**触碰件顶面**那一刻 (|Δz| 进 6mm 带; 配方 "真空建立 ≤200ms" 指的是
+        # 触碰后抽真空到锁的时长, **不含机械下降**) — 起点取下降过程会把 1s 行程算成"建立超时", 是假报警
+        if t_grasp0 is None and d_tcp < 0.006 and abs(tcp[2] - top_now[2]) < 0.006:
+            t_grasp0 = step
         if (not vac) and (not released) and st in ("下降", "抓取") \
                 and d_tcp < VAC_TOL_XY and abs(tcp[2] - top_now[2]) < VAC_TOL_Z:
             vac = True
+            vac_step = step
+            vac_ms_actual = 0.0 if t_grasp0 is None else (step - t_grasp0) * ctrl_dt * 1000.0
+            _lim = float(cfg.get("vac_establish_ms", 200.0))
+            vac_ok = bool(vac_ms_actual <= _lim)
             top0 = top_now.copy()
             mod_yaw0 = body_yaw_deg(m, d, body)
             hand_yaw_ref = hand_yaw_deg(m, d)
             log(f"    🧲 真空建立 (吸嘴尖 z={tcp[2]:.4f} ← 件顶面 z={top_now[2]:.4f}, "
-                f"xy 偏差 {d_tcp*1000:.2f}mm, ≤200ms) → 吸附锁")
+                f"xy 偏差 {d_tcp*1000:.2f}mm, 进带→锁 {vac_ms_actual:.0f}ms / 配方上限 {_lim:.0f}ms "
+                f"(仿真含下降末段, 真机 200ms 指触碰后抽真空) "
+                f"{'✅' if vac_ok else '⚠️超时'}) → 吸附锁")
         placed_now = bool(released and abs(peg_now[2] - rest_z) < 0.004
                           and float(np.linalg.norm(peg_now[:2] - slot[:2])) < 0.004)
         if (not released) and vac and st in ("放入", "放下") and abs(peg_now[2] - rest_z) < RELEASE_H:
             released = True
+            if vac_step is not None:
+                hold_s_actual = (step - vac_step) * ctrl_dt      # 真空保持时长 (配置 pick.hold_s 对照)
             log(f"    🔓 断真空释放 (件心 z={peg_now[2]:.4f} → 落座 {rest_z:.4f})")
         sched.advance(contact_p=contact_p, dist_h=dist_h, gripper=grip_ev, d_xy=d_tcp,
                       lifted=lifted, at_grasp_pose=bool(
@@ -473,15 +531,25 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
             if settle_n >= SETTLE_STEPS:
                 break
 
-    # ── 判据 (TASK-06-TRAY): 单边 ≤1mm / 姿态 ≤1° ──
+    # ── 判据: 阈值真源 = 配置中心 tasks[TASK-06-TRAY].targets「取放精度: 单边 ≤1mm / ≤1°」
+    #    (改配置 → 本条判据随之变; CLI --params-json 可临时覆盖, 见 main) ──
     peg_f = body_xyz(m, d, body)
     yaw_f = body_yaw_deg(m, d, body)
     dx, dy, dz = (float(peg_f[0] - slot[0]), float(peg_f[1] - slot[1]), float(peg_f[2] - slot[2]))
     yaw_e = abs(((yaw_f + 180.0) % 360.0) - 180.0)
-    ok = bool(placed and max(abs(dx), abs(dy)) <= 0.001 and yaw_e <= 1.0 and abs(dz) <= 0.004)
+    tol_xy = float(cfg.get("xy_tol_m", 0.001))
+    tol_yaw = float(cfg.get("yaw_tol_deg", 1.0))
+    tol_dz = float(cfg.get("dz_tol_m", 0.004))
+    ct_s = float(tr["t"][-1]) if tr["t"] else 0.0
+    ok = bool(placed and max(abs(dx), abs(dy)) <= tol_xy and yaw_e <= tol_yaw and abs(dz) <= tol_dz)
     judge = dict(module=body, slot=slot_i + 1, placed=bool(placed), released=bool(released),
                  dx_mm=dx * 1000, dy_mm=dy * 1000, dz_mm=dz * 1000, yaw_err_deg=yaw_e,
                  steps=len(tr["t"]), ok=ok,
+                 tol_xy_mm=tol_xy * 1000, tol_yaw_deg=tol_yaw, tol_dz_mm=tol_dz * 1000,
+                 ct_s=ct_s, takt_s=float(cfg.get("takt_s", 3.15)),
+                 vac_establish_ms=vac_ms_actual, vac_limit_ms=float(cfg.get("vac_establish_ms", 200.0)),
+                 vac_ok=vac_ok, hold_s=hold_s_actual, hold_s_cfg=float(cfg.get("hold_s", 5.0)),
+                 spec_src=cfg.get("src", "?"),
                  stages=list(dict.fromkeys(tr["stage"])),
                  history=[f"{s}: {r}" for s, r in sched.history])
     return tr, judge
@@ -495,7 +563,18 @@ def main():
     ap.add_argument("--params-json", default="")
     ap.add_argument("--push", action="store_true")
     a = ap.parse_args()
-    cfg = json.loads(a.params_json) if a.params_json.strip() else {}
+    cli = json.loads(a.params_json) if a.params_json.strip() else {}
+    # 🔴 判据/参数 = 配置中心真源 (task_spec) ← CLI --params-json 临时覆盖 (A/B 用)
+    spec = task_spec()
+    _alias = {"place.angle_tol_deg": "yaw_tol_deg", "place.xy_tol_mm": "xy_tol_m",
+              "place.dz_tol_mm": "dz_tol_m", "pick.vac_establish_ms": "vac_establish_ms",
+              "pick.hold_s": "hold_s"}
+    for k, v in cli.items():
+        dst = _alias.get(k, k)
+        if dst in spec:
+            fv = float(v)
+            spec[dst] = fv / 1000.0 if k.endswith("_mm") else fv
+    cfg = spec
     if not os.path.isfile(XML):
         raise SystemExit("⛔ 摆盘场景 XML 不存在: %s\n   先跑 tools/gen_tray_place_scene.py" % XML)
     mods, slots, rest_z = scene_truth()
@@ -506,7 +585,10 @@ def main():
     log("🎯 摆盘 episode · 状态空间六层直接驱动 metaworld (mode=tray)")
     log(f"   场景 {os.path.basename(XML)} · 料盘 {len(mods)} 颗 → tray 盘 {len(slots)} 槽 · "
         f"落座 z={rest_z:.4f}")
-    log(f"   任务配置覆盖: {json.dumps(cfg, ensure_ascii=False) if cfg else '—(无)'}")
+    log(f"   判据真源: {spec['src']} · 取放精度 单边 ≤{spec['xy_tol_m']*1000:.3f}mm / ≤{spec['yaw_tol_deg']:.2f}°"
+        f" · Δz ≤{spec['dz_tol_m']*1000:.1f}mm · 真空建立 ≤{spec['vac_establish_ms']:.0f}ms"
+        f" · 保持 {spec['hold_s']:.1f}s · 单颗CT ≤{spec['takt_s']:.2f}s"
+        + (f" · ⚙️CLI覆盖 {list(cli)}" if cli else ""))
     for i, (body, _sfx, _s) in enumerate(MODULES):
         pin_module(env, body, np.array([mods[i][0], mods[i][1], rest_z]))
     mujoco.mj_forward(m, d)
@@ -522,13 +604,24 @@ def main():
             tr_all[k].extend(tr[k])
         judges.append(judge)
         log(f"    → 槽{judge['slot']}: Δxy=({judge['dx_mm']:+.2f},{judge['dy_mm']:+.2f})mm "
-            f"Δz={judge['dz_mm']:+.2f}mm · 姿态 {judge['yaw_err_deg']:.2f}° · "
+            f"Δz={judge['dz_mm']:+.2f}mm · 姿态 {judge['yaw_err_deg']:.2f}° "
+            f"(判据 ≤{judge['tol_xy_mm']:.3f}mm/≤{judge['tol_yaw_deg']:.2f}°) · "
+            f"CT {judge['ct_s']:.2f}s/≤{judge['takt_s']:.2f}s · "
+            f"真空(进带→锁) {0.0 if judge['vac_establish_ms'] is None else judge['vac_establish_ms']:.0f}ms"
+            f"{'✅' if judge['vac_ok'] else '⚠️超时'} · "
             f"{'✅ 合格' if judge['ok'] else '⚠️ 不合格'} ({judge['steps']} 步)")
         for h in judge["history"]:
             log(f"      {h}")
     dt = time.time() - t0
     ok_n = sum(1 for j in judges if j["ok"])
     log(f"\n📊 摆盘汇总: {ok_n}/{len(judges)} 颗合格 · 合计 {len(tr_all['t'])} 步 · {dt:.1f}s")
+    _cts = [j["ct_s"] for j in judges]
+    _vacs = [j["vac_establish_ms"] for j in judges if j["vac_establish_ms"] is not None]
+    log(f"   判据真源 {spec['src']} · 目标: 成功率 {spec['targets'].get('成功率', '—')} / "
+        f"取放精度 {spec['targets'].get('取放精度', '—')} / 单颗CT {spec['targets'].get('单颗CT', '—')}")
+    log(f"   实测: 单颗CT max {max(_cts):.2f}s (目标 ≤{spec['takt_s']:.2f}s) · "
+        f"真空(进带→锁) max {max(_vacs):.0f}ms (配方上限 {spec['vac_establish_ms']:.0f}ms, 仿真口径含下降末段)" if _vacs
+        else f"   实测: 单颗CT max {max(_cts):.2f}s (目标 ≤{spec['takt_s']:.2f}s) · 真空未建立")
     meta = dict(seed=a.seed, scene=os.path.basename(XML), mode="tray", params=cfg,
                 placed=ok_n, total=len(judges), steps=len(tr_all["t"]), rest_z=rest_z,
                 judges=[{k: (round(v, 5) if isinstance(v, float) else v)

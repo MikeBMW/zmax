@@ -110,11 +110,17 @@ probe("L4", "安全闸门在位", _l4_gate)
 
 
 def _l4_world_model():
-    """世界模型 (流形预测器) 权重"""
+    """世界模型 (流形预测器) 权重 — 真源 models/l4_mani_predictor_v*.pt (旧路径 checkpoints/ 仍兼容)"""
     import glob
-    c = glob.glob(f"{ROOT}/checkpoints/manifold_predictor/*.pt") + \
-        glob.glob(f"{ROOT}/checkpoints/**/*predictor*.pt", recursive=True)
-    return (len(c) > 0), f"{len(c)} 个预测器权重" if c else "无预测器权重 (世界模型项可能恒0)"
+    import os
+    c = sorted(glob.glob(f"{ROOT}/checkpoints/manifold_predictor/*.pt") +
+               glob.glob(f"{ROOT}/checkpoints/**/*predictor*.pt", recursive=True) +
+               glob.glob(f"{ROOT}/models/**/*predictor*.pt", recursive=True) +
+               glob.glob(f"{ROOT}/zmax_data/models/**/*predictor*.pt", recursive=True))
+    c = [x for x in c if "/_archive/" not in x and "/external/" not in x]
+    if c:
+        return True, f"{len(c)} 个预测器权重 (在役 {os.path.basename(c[-1])})"
+    return False, "无预测器权重 (世界模型项可能恒0)"
 
 
 probe("L4", "世界模型权重", _l4_world_model)
@@ -207,9 +213,17 @@ probe("MEM", "顶层宏观记忆", _mem_macro)
 
 def _mem_layers():
     import json
-    g = json.load(open(f"{ROOT}/data/memory_layers.json"))
-    on = [k for k, v in g.items() if v == 1]
-    return True, f"开关: 开={on or '无(全关)'} · L2/L3/L4/assembly={[g.get(k) for k in ('L2','L3','L4','assembly')]}"
+    import os
+    # 真源 data/memory/memory_layers.json (旧写法漏了 memory/ 子目录 ⇒ 恒报 FileNotFoundError 假断点)
+    p = f"{ROOT}/data/memory/memory_layers.json"
+    if not os.path.isfile(p):
+        return True, f"未设置开关文件 ({os.path.relpath(p, ROOT)}) → 引擎默认全关 (compose=None, 零回退)"
+    j = json.load(open(p, encoding="utf-8")) or {}
+    # 引擎读法 (potential_field._load_gates): d[k] = int(bool(j[k])) ⇒ 本文件是**注册表**(counts+items),
+    # 每层是 dict ⇒ bool=True. 真值是否介入, 还取决于是否注册了势场/预测器 (不静默当"已生效")。
+    reg = {k: (v.get("count") if isinstance(v, dict) else v) for k, v in j.items() if k != "updated"}
+    on = [k for k in ("L2", "L3", "L4", "assembly") if k in j and bool(j[k])]
+    return True, f"注册表 {reg} · 按引擎读法(bool) 真值={on or '无'} · 实际介入另需注册势场/预测器 · 更新 {j.get('updated')}"
 
 
 probe("MEM", "记忆层开关状态", _mem_layers)

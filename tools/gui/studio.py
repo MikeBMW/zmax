@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.42.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.43.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11251,7 +11251,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.42.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.43.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11259,9 +11259,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.42.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.43.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.43.0: v5.43.0 — 配置真源驱动状态空间功能 (2026-10-10 老倪)  老倪: 「这个工程, 是通过配置改变功能」  ① 插拔/摆盘两条链的判据与参数改为真读 config/ss_task_binding.json 的 targets(取放精度/单颗CT) 与 overrides(真空建立/保持) —— 改前硬编码 ok<=0.001 且 cfg 在 run_module 里一次都没被使用(只被打印)  ② 逐颗报「判据来源 + CT/真空实测」  ③ 同一 episode A/B: 判据 ≤1mm → 3/3 合格, ≤0.3mm → 0/3 不合格(物理量不变, 只有阈值变)  ④ tools/audit_full_chain.py 修两个假断点: 记忆层开关路径 data/memory/memory_layers.json、世界模型权重补 models/l4_mani_predictor_v*.pt ⇒ 16/17(仅剩 L5 LLM 端点未配置)  实测: 插拔 695 步 success=True · 摆盘 3/3 颗合格 Δxy≤0.47mm 姿态≤0.04° · 六层每帧覆盖 100%; 诚实项: L5=配置驱动目标(非在线LLM) · 插入 depth 实为到目标残距 · 仿真 CT 11s>PVT 3.15s 非同口径 · Δz+1.78mm 系统偏置待修 rest_z
         # v5.42.0: v5.42.0 — 配置驱动功能切换落地: 同一状态空间工程 双功能 (插拔 / 摆盘) 真跑 (2026-10-10 老倪) ①新增 tools/ss_task_runner.py: 读任务配置 (config/ss_task_binding.json) → 功能模式 insert|tray → 选执行链 → 真跑 → 判据报告 (+可发飞书), 一条命令换任务即换功能; ②tools/ss_task_bind.py 新增 ss_mode (由任务工艺机械推出: 含 插入/孔口/拔出 = insert, 含 摆盘/取放/吸附/真空 = tray), 六档位随 mode 变 (摆盘不勾「插拔+AOI 全链」); **修段→节点映射真 bug**: 抬起/转移/完成 原来只挂在「5 拔出/取回」段 ⇒ 摆盘任务(不含该段)反而把取放链必需的 SK05抬升/SK06转移/SK08完成 关掉了 (配出来的功能是错的); ③cognition 的 TRAY_MODE + skills 的 SK07Place: 同一套八阶段状态机, 第 7 段按配置 = 插入 (SK07Insert: 孔口对位+接触推入+保持力) 或 放入 (SK07Place: 直接放入, 无孔口/无推入), 代码路径不变; ④**tray 盘真源几何修复**: 凹槽开口只有 10~15mm 而光模块宽 20mm ⇒ 件物理上放不进去 (实测只能骑在隔板棱上: 落座高 +3.6mm、单边偏 2.5mm); 节距 30→38mm、隔板厚 10→5mm (开口 28mm, 单边留 4mm), 3D 视图与仿真同源自动跟; ⑤新增 tools/gen_tray_place_video.py (状态空间六层源码直驱 metaworld 摆盘 episode: 真空吸附按真机工艺建模为工具坐标 TCP, 吸嘴尖=手位−75mm) + tools/gen_tray_place_scene.py: 3 颗光模块 料盘 → 3 槽, 判据 单边≤1mm/姿态≤1° 实测 **3/3 合格** (单边 0.06/0.34/0.47mm · 姿态 ≤0.04° · 落座高 1.78mm); ⑥**视频机位修复**: env.render 用构造时锁死的 corner2 斜视, 件落进深盘后只剩 ~9px (老倪要把画面当结果 ⇒ 等于看不清) → 换 MuJoCo 原生近俯视 960×720 (件 ~950px/颗, 实测末帧盘内 3 颗金色像素 2846); 插拔链 (TASK-01-FW) 同 runner 复跑 686 步 终态完成 success=True; 夹爪诊断新增 tools/gripper_open_sentinel.py (只读等闸哨兵: 快层相机闸一放行自动走授权通道发一次开爪)。
         # v5.41.0: 3D 场景页: 台面几何改用场景真源 (选中「工作台面」的高亮框不再比绿桌大一圈) · 「图层 / 场景编辑」两个侧栏可向左折叠 (折叠条 ◂/▶, 折叠状态记忆) · 八阶段状态机面板可折叠成一行 (14 行 306px → 1 行 33px) · 删掉两处说明文字 (勾选要观察的处理层 / 列出 objects3d.json…) · 修「点 🧩 插拔 看着跟摆盘一样」(切场景原来只换数据源不重建几何, 现在真重建)
         # v5.40.2: 性能指标定义 — 光模块精细操作 58 条指标 (机器人学口径 + 电口/光口/光耦合工艺口径) 进真源+工程库+配置中心+SOR 5.2
@@ -11897,7 +11898,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.42.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.43.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13632,7 +13633,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.42.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.43.0</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
