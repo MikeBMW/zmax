@@ -111,6 +111,20 @@ flows/scenes_5jobs.json              # 场景真源 (+ tools/task_build.py 的 P
   `--check` 永远报「需更新」而写入却"成功" (静默不幂等)。用 `[[gid, n]]` 而不是 `[(gid, n)]`。
   同类: 别把易变字段 (生成时间/回读时间) 放进快照, 否则每次都"需更新"。
 
+### 页内 3D 可编辑视图 (页里嵌第二块 3D 怎么做)
+
+- **页内第二块 3D 一律用 QPainter 正交投影自绘, 不开第二个 GLViewWidget**: pyqtgraph 的 shader
+  句柄绑第一个 GL 上下文, 第二窗口全画不出来 (qt-gl-rendering-pitfalls 坑 1)。实现要点:
+  正交基 (az/el → fwd/right/upv) · 屏幕↔世界反算 (屏幕位移→地面 XY 平移用 2×2 逆: det = right.x·upv.y − right.y·upv.x) ·
+  远→近深度排序后画面+边+标签 · QPen/QBrush/QPolygonF 都要显式 import (QPolygonF 在 QtGui)。
+  实测取证: `view.grab().save(png)` → PIL 数非背景像素/对象色/轨迹色 (非背景 4.4 万 = 真画出来了)。
+- 编辑写回仍然只走 `scene_edit.py` (备份+原子写+回读): 拖动→`update --kind objects --id <name>`。
+  🔴 回读成功的字段名是 **`readback_ok`** (不是 `readback`); 另外写完后**不能把选中清掉**
+  (reload 里 reset self.sel ⇒ 连续拖动第二次就 "找不到 id/name=None") — 要按 name 找回选中。
+- 在役场景 `overlay_spec.json` 有**实时发布器** (定时刷 ts/updated_at/l5live) ⇒ "在役场景未被改动"
+  的判据**不能比文件 sha** (会假红), 要比语义内容 (排除这三个易变字段)。
+- QPainter 3D 页内视图的证据图存 `outputs/ui_shots/`。
+
 ## Word 文档的表格/版面 (交付件可读性)
 - **列宽要真生效必须四件套**: `w:tblLayout=fixed` + `w:tblW(dxa)` + `w:tblGrid` 每个 `gridCol` + 每格 tcW。
   只设 `cell.width`(tcW) 时 Word/LibreOffice 会按**等分**排 ⇒ “五列表一律 20%”“两列表 50:50”“逐行末字孤行”。
