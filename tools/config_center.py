@@ -584,6 +584,9 @@ def cmd_docs(a):
     argv = [sys.executable, os.path.join(root, "tools", "docs_bundle.py")]
     if (a.arg or "") == "check":
         argv.append("--check")
+    _p = getattr(a, "arg2", None) or os.environ.get("ZMAX_PROJECT")
+    if _p:
+        argv += ["--project", _p]
     return subprocess.call(argv)
 
 

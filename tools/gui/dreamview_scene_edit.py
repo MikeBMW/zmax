@@ -27,7 +27,7 @@ import sys
 
 from PyQt5.QtCore import Qt, QEvent, QObject
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
+from PyQt5.QtWidgets import (QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QListWidget,
                              QListWidgetItem, QMenu, QMessageBox, QPushButton, QVBoxLayout)
 
 # 本文件与 ss_dreamview / sim_real_page / scene_edit 同处 tools/gui / tools 体系
@@ -67,6 +67,23 @@ def _se_run(*args):
     """调 tools/scene_edit.py (复用 sim_real_page._run 同一条路径; 尊重 ZMAX_SCENE_DIR)。"""
     from sim_real_page import _run
     return _run(*args)
+
+
+def _scene_options():
+    """场景功能区可选场景 = 在役父场景 + scenes/index.json 里登记的命名场景 (如 SCN-07-UP 上下料)。
+
+    老倪 2026-10-10「上下料场景，在场景功能区可以可视化编辑」: 下拉选场景 ⇒ 面板对**那个场景目录**
+    做增删改; 在役场景目录不同 ⇒ 零影响。
+    """
+    out = [("(在役) 现场场景", os.path.join(ROOT, "data", "scene"))]
+    try:
+        idx = json.load(open(os.path.join(ROOT, "data", "scene", "scenes", "index.json"), encoding="utf-8"))
+    except Exception:                                                          # noqa: BLE001
+        return out
+    for sid, v in (idx.get("named_scenes") or {}).items():
+        d = v.get("dir") or ("data/scene/scenes/" + sid)
+        out.append(("%s %s" % (sid, str(v.get("name") or "")[:22],), os.path.join(ROOT, d)))
+    return out
 
 
 def _list_view():
@@ -142,6 +159,22 @@ class SceneEditAttacher(QObject):
         hint.setStyleSheet("color:#8b949e; font-size:10px;")
         hint.setWordWrap(True)
         v.addWidget(hint)
+        # 场景选择 (含「SCN-07-UP 上下料」) — 切换即对该场景目录编辑
+        self.cmb_scene = QComboBox()
+        for label, d in _scene_options():
+            self.cmb_scene.addItem(label, d)
+        # 当前 ZMAX_SCENE_DIR 若已指向某命名场景, 选中它
+        _cur = os.path.abspath(SCENE_DIR)
+        for i in range(self.cmb_scene.count()):
+            if os.path.abspath(self.cmb_scene.itemData(i)) == _cur:
+                self.cmb_scene.setCurrentIndex(i)
+                break
+        self.cmb_scene.setStyleSheet(
+            "QComboBox{background:#0f1318; color:#e6edf3; border:1px solid #30363d; border-radius:4px;"
+            " font-size:11px; padding:3px;} QComboBox QAbstractItemView{background:#0f1318; color:#e6edf3;}")
+        self.cmb_scene.setToolTip("选场景后在它上面编辑 (命名场景与在役场景目录隔离, 互不影响)")
+        self.cmb_scene.currentIndexChanged.connect(lambda _i: self.switch_scene())
+        v.addWidget(self.cmb_scene)
         self.lst = QListWidget()
         self.lst.setStyleSheet(
             "QListWidget{background:#0f1318; color:#e6edf3; border:1px solid #30363d;"
@@ -212,6 +245,21 @@ class SceneEditAttacher(QObject):
         self._set_status("对象 %d 个 (隐藏 %d) · 真源 %s"
                          % (len(objs), sum(1 for o in objs if _is_hidden(o.get("name"), deleted)),
                             OBJECTS3D))
+
+    def switch_scene(self):
+        """切到下拉选中的场景目录 (设 ZMAX_SCENE_DIR ⇒ 后续 scene_edit 调用都作用于该目录)。"""
+        d = self.cmb_scene.currentData()
+        if not d:
+            return
+        os.environ["ZMAX_SCENE_DIR"] = d
+        globals()["SCENE_DIR"] = d
+        name = self.cmb_scene.currentText()
+        self._set_status("已切到场景: %s\n目录: %s\n(写操作只影响该目录; 在役场景不动)" % (name, d))
+        try:
+            self.refresh_list()
+            self.refresh_overlay()
+        except Exception as e:                                                  # noqa: BLE001
+            self._set_status("切换后刷新失败: %s" % e)
 
     def selected_name(self):
         it = self.lst.currentItem()

@@ -33,6 +33,9 @@ from docx.enum.table import WD_ALIGN_VERTICAL  # noqa: E402
 from docx.shared import Cm, Pt, RGBColor  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import project_profile  # noqa: E402  项目档案: 根据配置适配不同项目
+
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 OUT_ROOT = os.path.join(ROOT, "outputs", "sor")
 DOC_NO = "SOR-OM-ROBOT-" + time.strftime("%Y%m%d")
@@ -572,10 +575,19 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--project", default=None, help="项目档案 pid ⇒ 项目名/采购范围/manifest 随项目变")
     ap.add_argument("--system", default="sys1")
     ap.add_argument("--task", default="TASK-06-TRAY")
     ap.add_argument("--json", action="store_true", help="同时导出结构化 JSON")
     a = ap.parse_args()
+    _prov = {}
+    if a.project:
+        _bom, _prov = project_profile.load(a.project)
+        globals()["PROJ"] = _bom["project"]["name"]                 # 项目名随档案变
+        _sc = (_bom.get("scope") or {}).get("采购范围") or []
+        if _sc:
+            globals()["SCOPE_IN"] = list(SCOPE_IN) + list(_sc)      # 采购范围追加本项目特有项
+        print("📁 项目档案 %s (合并 sha %s)" % (a.project, _prov.get("merged_sha256")))
     doc = build(a.system, a.task)
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = os.path.join(OUT_ROOT, ts)
@@ -596,7 +608,8 @@ def main():
                   open(jp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         files[os.path.basename(jp)] = jp
     man = {"doc_no": DOC_NO, "version": VERSION, "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-           "source_db": os.path.relpath(DB, ROOT), "source_db_sha256": sha(DB), "files": {}}
+           "source_db": os.path.relpath(DB, ROOT), "source_db_sha256": sha(DB), "files": {},
+           "project": PROJ, "project_profile": _prov or None}
     for n, p in sorted(files.items()):
         man["files"][n] = {"bytes": os.path.getsize(p), "sha256": sha(p)}
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:

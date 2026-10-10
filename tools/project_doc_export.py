@@ -28,10 +28,22 @@ from docx.shared import Cm, Pt  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOM = os.path.join(ROOT, "config", "platform", "zmax_project_bom.json")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import project_profile  # noqa: E402  项目档案 (根据配置适配不同项目)
+
+
+_BOM_PROV = {}
+
+
+def load_bom(pid=None):
+    """按项目档案载入 BOM (合并基线 + overlay); pid=None ⇒ 当前生效项目。"""
+    bom, prov = project_profile.load(pid)
+    globals()["_BOM_PROV"] = prov
+    return bom
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 DBC = os.path.join(ROOT, "feature.dbc")
 OUT_ROOT = os.path.join(ROOT, "outputs", "project_docs")
-DOC_NO = "PRJ-TH-TRAY-" + time.strftime("%Y%m%d")
+DOC_NO = "PRJ-TH-TRAY-" + time.strftime("%Y%m%d")   # 默认 (泰国摆盘); --project 时按项目档案改写
 VERSION = "v1.0"
 CN = "微软雅黑"
 
@@ -55,7 +67,16 @@ ABBR = [
 
 
 def money(x):
+    """未定价项 (配置里取不到 ⇒ '待确认'/'') 原样显示, 不编造成 0。"""
+    if not isinstance(x, (int, float)):
+        return "待确认" if x in (None, "",) or str(x).startswith("待确认") else str(x)
     return "%.2f 万" % (x / 10000.0) if abs(x) >= 10000 else "%.0f 元" % x
+
+
+def line_total(it):
+    """单项小计: 未定价项 (price=None/'待确认') 返回 None ⇒ 表格显示「待确认」, 不按 0 计。"""
+    p = it.get("price")
+    return it["qty"] * p if isinstance(p, (int, float)) else None
 
 
 def db_facts():
@@ -91,7 +112,8 @@ def compute(root):
     """成本/收益/ROI 计算 —— 输入是整份 BOM 真源 (含 bom/labor/commercial/roi 各段)。"""
     bom, labor_s, com, roi = root["bom"], root["labor"], root["commercial"], root["roi"]
     items = bom["items"]
-    base = sum(i["qty"] * i["price"] for i in items)
+    unpriced = [i for i in items if not isinstance(i.get("price"), (int, float))]
+    base = sum(i["qty"] * i["price"] for i in items if isinstance(i.get("price"), (int, float)))
     cd = sum(c["save"] for c in bom["costdown"])
     disc = bom["bulk_discount"]
     prod = base * bom["mass_production_factor"]          # 生产期: 行业通用件替代
@@ -108,13 +130,15 @@ def compute(root):
     net = annual - maint
     payback = price["2027"] / net
     be = net * roi["target_payback_years"]
-    return dict(base=base, costdown=cd, prod=prod, mass=mass, cd_scenario=cd_scenario, labor=labor, rev=rev,
+    return dict(base=base, unpriced=unpriced, costdown=cd, prod=prod, mass=mass, cd_scenario=cd_scenario, labor=labor, rev=rev,
                 gross=gross, total_volume=tot_vol, annual=annual, maint=maint, net=net,
                 payback=payback, breakeven=be, targets=tgt, price=price)
 
 
 def cmd_check(bom=None):
-    bom = bom or json.load(open(BOM, encoding="utf-8"))
+    bom = bom or load_bom()
+    _p2 = ((_BOM_PROV or {}).get("pid")) or "PROJ"
+    globals()["DOC_NO"] = "PRJ-%s-%s" % (_p2.replace("PROJ-", ""), time.strftime("%Y%m%d"))
     bs, bl, ro, cm = bom["bom"], bom["labor"], bom["roi"], bom["commercial"]
     fns, pfs, caps, params = db_facts()
     ok, dangling, covered, uncovered = check_links(bom["bom"], fns, pfs, caps, params)
@@ -134,6 +158,9 @@ def cmd_check(bom=None):
     print("  量产期 (再叠批量价 %.0f%%) %9s  (文档口径 %s)"
           % (bs["bulk_discount"] * 100, money(r["mass"]), money(r["targets"]["量产期"])))
     print("  降本路径(建议, %s) 若全落地 → 量产期 %s" % (money(r["costdown"]), money(r["cd_scenario"])))
+    if r.get("unpriced"):
+        print("  ⚠️ 未定价 BOM 项 %d: %s ⇒ 标「待确认」, 未计入合计 (不按 0 计)"
+              % (len(r["unpriced"]), ", ".join("%s %s" % (i["id"], i["name"]) for i in r["unpriced"])))
     print("  开发人力 (内部 %d 人月 × %s) %s"
           % (sum(x["pm"] for x in bl["internal"]), money(bl["cost_per_pm"]), money(r["labor"])))
     print("  合同额(3 年 %d 台)   %10s   毛利粗算(=收入−量产成本−人力) %s"
@@ -166,7 +193,7 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
     footer_pagenum(doc, "%s · %s            " % (DOC_NO, VERSION))
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _font(t.add_run("泰国模块摆料项目 · 立项文档"), size=22, bold=True)
+    _font(t.add_run("%s · 立项文档" % (prj.get("doc_title") or prj.get("name") or "项目")), size=22, bold=True)
     para(doc, "项目: %s" % prj["name"], size=11)
     para(doc, "客户: %s · 现场: %s" % (prj["customer_block"], prj["site"]), size=11)
     para(doc, "文档编号: %s · 版本 %s · 数据源: 单一工程库 + BOM 真源 (配置中心导出, %s)"
@@ -224,7 +251,7 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
     para(doc, "4.1 BOM 明细 (每项都挂到功能/能力 —— 改功能清单即知 BOM 影响面)", bold=True)
     table(doc, ["编号", "名称", "数量", "单价", "小计", "关联功能/能力", "备注"],
           [[i["id"], i["name"], "%s%s" % (i["qty"], i["unit"]), money(i["price"]),
-            money(i["qty"] * i["price"]), " · ".join(i["links"]), i["note"]] for i in bm["items"]],
+            money(line_total(i)), " · ".join(i["links"]), i["note"]] for i in bm["items"]],
           widths=[1.2, 3.4, 1.2, 1.6, 1.6, 4.2, 3.6])
     para(doc, "单价口径: %s" % bom["bom"]["price_status"], size=9)
     para(doc, "4.1.1 成本汇总与文档口径对账", bold=True)
@@ -285,9 +312,12 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--project", default=None, help="项目档案 pid (config/platform/projects/<pid>.json); 默认当前生效项目")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args()
-    bom = json.load(open(BOM, encoding="utf-8"))
+    bom = load_bom(a.project)
+    _pid = ((_BOM_PROV or {}).get("pid")) or "PROJ"
+    globals()["DOC_NO"] = "PRJ-%s-%s" % (_pid.replace("PROJ-", ""), time.strftime("%Y%m%d"))
     if a.check:
         return cmd_check(bom)
     fns, pfs, caps, params = db_facts()

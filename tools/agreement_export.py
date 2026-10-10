@@ -210,6 +210,16 @@ def build():
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--project", default=None, help="项目档案 pid (记录进交付物, 便于按项目归档)")
+    a = ap.parse_args()
+    _prov = None
+    if a.project:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import project_profile                                                        # noqa: PLC0415
+        _bom, _prov = project_profile.load(a.project)
+        print("📁 项目档案 %s (%s)" % (a.project, _bom["project"]["name"]))
     doc, g = build()
     ts = time.strftime("%Y%m%d_%H%M%S")
     out = os.path.join(OUT_ROOT, ts)
@@ -218,7 +228,7 @@ def main():
     fp = os.path.join(out, base + ".docx")
     doc.save(fp)
     jp = os.path.join(out, base + ".json")
-    json.dump({"doc_no": DOC_NO, "version": VERSION, "title": TITLE,
+    json.dump({"doc_no": DOC_NO, "version": VERSION, "title": TITLE, "project_profile": _prov,
                "governance": g, "sections": [{"title": t, "clauses": i} for t, i in SECTIONS]},
               open(jp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     man = {"doc_no": DOC_NO, "version": VERSION, "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),

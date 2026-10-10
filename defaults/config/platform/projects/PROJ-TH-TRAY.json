@@ -1,0 +1,24 @@
+{
+ "pid": "PROJ-TH-TRAY",
+ "version": "1.0",
+ "note": "泰国摆盘 POC — 身份显式化; BOM/人力/商务/ROI 沿平台基线 (真源 zmax_project_bom.json)",
+ "name": "泰国模块摆料场景 (泰国摆盘 POC)",
+ "project": {
+  "name": "泰国模块摆料场景 (Z100LFd 固定上肢形态)",
+  "customer_block": "多模自动化组",
+  "site": "旭创霞胜路工厂 (试跑)",
+  "product_trial": "Z100L (对内 Demo) → Z100LFd (对外 POC)",
+  "doc_title": "泰国模块摆料项目"
+ },
+ "scene": {
+  "scene_id": "SCN-06-TRAY",
+  "name": "摆盘 (周转盘 → 上料 Tray 盘)"
+ },
+ "perf_targets": {
+  "perf.mate_align_repeat": "≤0.05 (3σ)",
+  "perf.D_INSERT_mm": "≤0.30",
+  "perf.cycle_s": "≤3.15 (PVT)",
+  "perf.success_rate": "≥99% (PVT)"
+ },
+ "待确认": []
+}

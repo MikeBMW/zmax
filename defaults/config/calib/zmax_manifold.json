@@ -1,9 +1,32 @@
 {
-  "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
-  "M": 0,
-  "inertia": 0,
-  "_range": [],
-  "_unit": "",
-  "_flow": "",
-  "_updated_at": ""
+ "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
+ "M": 4.423,
+ "inertia": false,
+ "_range": [
+  0.0,
+  8.0
+ ],
+ "_unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
+ "_flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt)   (M→0 ⇒ 一阶过阻尼 = 旧 GD)",
+ "_updated_at": "2026-10-10 12:50:46",
+ "_energy_derivation": {
+  "project": "PROJ-TH-TRAY",
+  "name": "泰国摆盘 (光模块 周转盘 → 上料 Tray 盘)",
+  "formula": "M = 1 + (½·m_eff·v² + m_eff·g·h) / E_ref",
+  "m_eff_kg": 1.535,
+  "E_kin_J": 0.0691,
+  "E_pot_J": 6.7763,
+  "E_task_J": 6.8453,
+  "E_ref_J": 2.0,
+  "energy_level": "E3 带夹具/高速",
+  "sources": {
+   "夹具/吸嘴": "真源: config/calib/zmax_calib.json#tool_payload.mass_kg",
+   "工件": "真源: 光模块 100G/400G QSFP 级 ≈25g",
+   "峰值速度": "假设(可标定): 宏微复合转运峰值 ≈0.3 m/s",
+   "行程": "真源: 升降行程 0~450mm (zmax_project_bom/结构参数)"
+  },
+  "updated_at": "2026-10-10 12:50:46",
+  "inertia_note": "inertia=false 保持零回归; 要开二阶需现场标定证据 ΔV<0 (本工具不代开)",
+  "by": "tools/master_param_m.py (老倪: 主参数要有值, 类比能量/能级)"
+ }
 }

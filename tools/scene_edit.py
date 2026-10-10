@@ -58,6 +58,40 @@ KIND_KEY = {"objects": "objects", "markers": "markers", "fences": "fences", "tra
 KINDS = ("objects", "markers", "fences", "trajectories")
 
 LIMIT = 3.0                      # 坐标 ±3m 内
+
+
+def use_scene(scene_id):
+    """切到命名场景目录 (data/scene/scenes/<id>/) —— 场景功能区下拉选场景后就在它上面编辑。
+
+    老倪 2026-10-10「上下料场景，在场景功能区可以可视化编辑」: 命名场景 = 一个独立目录,
+    与在役父场景 (data/scene/) 同结构 (objects3d.json + overlay_spec.json), 但因目录不同
+    ⇒ 对它的一切增删改**不会碰到在役场景** (备份/回读/回滚纪律照旧)。
+    """
+    global SCENE_DIR, OBJECTS3D, OVERLAY, TRAJDISPLAY, SCENE_STATE, KIND_FILE
+    SCENE_DIR = REPO / "data" / "scene" / "scenes" / scene_id
+    OBJECTS3D = SCENE_DIR / "objects3d.json"
+    OVERLAY = SCENE_DIR / "overlay_spec.json"
+    TRAJDISPLAY = SCENE_DIR / "traj_display.json"
+    SCENE_STATE = SCENE_DIR / "scene_state.json"
+    KIND_FILE = {"objects": OBJECTS3D, "markers": OVERLAY, "fences": OVERLAY, "trajectories": OVERLAY}
+    return SCENE_DIR
+
+
+def list_scenes():
+    """可选场景 = 在役父场景 + scenes/index.json 里登记的命名场景。"""
+    out = [{"scene": "(在役)", "dir": str(REPO / "data" / "scene"),
+            "name": "在役父场景 (objects3d.json)", "objects": None}]
+    idx_p = REPO / "data" / "scene" / "scenes" / "index.json"
+    try:
+        idx = json.loads(idx_p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return out
+    for sid, v in (idx.get("named_scenes") or {}).items():
+        out.append({"scene": sid, "dir": v.get("dir"), "name": v.get("name"),
+                    "objects": v.get("objects"), "markers": v.get("markers"),
+                    "fences": v.get("fences"), "trajectories": v.get("trajectories"),
+                    "edit": v.get("edit")})
+    return out
 MARKER_TYPES = ("工位", "危险区", "检查点", "自定义")
 TRAJ_KINDS = ("自定义", "示教", "规划")
 
@@ -805,6 +839,9 @@ def cmd_path(a) -> int:
 # ══════════════════════ CLI ══════════════════════
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="scene_edit.py", description="场景编辑器后端 (数据层)")
+    ap.add_argument("--scene", default=None,
+                    help="命名场景 id (如 SCN-07-UP) ⇒ 编辑 data/scene/scenes/<id>/, 不碰在役场景")
+    ap.add_argument("--scenes", action="store_true", help="列出可选场景 (在役 + 命名场景)")
     ap.add_argument("--json", action="store_true", help="机器可读 JSON 输出")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="机器可读 JSON 输出")
@@ -857,6 +894,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    _argv = list(sys.argv[1:] if argv is None else argv)
+    if "--scenes" in _argv:
+        print("可选场景 (场景功能区下拉):")
+        for r in list_scenes():
+            print("  %-12s %-34s 对象 %-4s 标记 %-4s 围栏 %-4s 轨迹 %-4s"
+                  % (r["scene"], (r["name"] or "")[:34], r.get("objects", "—"), r.get("markers", "—"),
+                     r.get("fences", "—"), r.get("trajectories", "—")))
+            print("       %s" % (r.get("edit") or r["dir"]))
+        return 0
+    if "--scene" in _argv:
+        _sid = _argv[_argv.index("--scene") + 1]
+        d = use_scene(_sid)
+        if not (d / "objects3d.json").exists():
+            print("⛔ 场景不存在: %s (看 python3 tools/scene_edit.py --scenes)" % d)
+            return 2
+        print("🗂 编辑目标: %s (在役场景未受影响)" % d.relative_to(REPO))
+        _argv = [x for i, x in enumerate(_argv) if i not in (_argv.index("--scene"), _argv.index("--scene") + 1)]
     a = build_parser().parse_args(argv)
     try:
         return a.fn(a)

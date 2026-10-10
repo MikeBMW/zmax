@@ -60,11 +60,20 @@ def collect():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--project", default=None, help="项目档案 pid ⇒ 三件套按该项目配置导出 (同源断言照旧)")
     a = ap.parse_args()
+    _prov = None
+    if a.project:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import project_profile                                                       # noqa: PLC0415
+        _bom, _prov = project_profile.load(a.project)
+        print("📁 项目档案 %s · %s (合并 sha %s)"
+              % (a.project, _bom["project"]["name"], _prov.get("merged_sha256")))
     if not a.check:
         for name, tool, *_ in EXPORTERS:
             print("▶ 导出 %s (%s)" % (name, tool))
-            r = subprocess.run([PY, tool], cwd=ROOT, capture_output=True, text=True)
+            _cmd = [PY, tool] + (["--project", a.project] if a.project else [])
+            r = subprocess.run(_cmd, cwd=ROOT, capture_output=True, text=True)
             for ln in (r.stdout or "").strip().splitlines()[:1]:
                 print("   " + ln)
             if r.returncode != 0:
@@ -77,7 +86,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     same = [r for r in rows if r["src_sha"]]
     consistent = all(r["src_sha"] == db_sha for r in same) if same else False
-    bundle = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    bundle = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "project_profile": _prov,
               "data_source": {"engineering_db": os.path.relpath(DB, ROOT), "engineering_db_sha256": db_sha,
                               "platform_sources": ["config/platform/zmax_platform.json",
                                                    "config/platform/zmax_project_bom.json",

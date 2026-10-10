@@ -1,0 +1,127 @@
+{
+ "pid": "PROJ-LOAD-UNLOAD",
+ "version": "0.1",
+ "note": "上下料工位项目 — 与泰国摆盘的区别: 场景=SCN-07-UP(工位级上下料), 采购范围含料仓+工位夹具; 平台基线(BOM/人力/商务/ROI)沿用以避免编造, 本项目特有项一律标待确认",
+ "name": "上下料工位项目 (光模块上下料: 取料 → 上料 → 卸料 → 回收)",
+ "project": {
+  "name": "光模块上下料工位 (Z100LFd 上下料形态)",
+  "customer_block": "待确认 (本项目客户未定)",
+  "site": "待确认 (现场未定)",
+  "product_trial": "Z100LFd 上下料工位形态 — 待确认",
+  "milestones": [
+   {
+    "no": 1,
+    "name": "EVT · 上下料工位样机 (本项目未排定)",
+    "owner": "待确认",
+    "due": "待确认",
+    "metrics": "待确认 (目标: perf.success_rate ≥90%)"
+   },
+   {
+    "no": 2,
+    "name": "DVT · 上下料节拍/精度收敛 (本项目未排定)",
+    "owner": "待确认",
+    "due": "待确认",
+    "metrics": "待确认 (目标: 对位 ≤0.05mm · CT ≤8s)"
+   },
+   {
+    "no": 3,
+    "name": "PVT · 产线验证 (本项目未排定)",
+    "owner": "待确认",
+    "due": "待确认",
+    "metrics": "待确认 (目标: CT ≤3.15s · ≥12 盘)"
+   }
+  ],
+  "risks": [
+   {
+    "risk": "工位夹具/料仓接口尺寸未定 ⇒ 上料位姿与插入方向待现场示教",
+    "action": "待现场确认接口后重新示教并更新场景 SCN-07-UP (场景功能区可编辑)",
+    "owner": "待确认"
+   }
+  ],
+  "milestones_status": "本项目 EVT/DVT/PVT 节点未排定 ⇒ 表中日期/指标一律待确认 (不沿用摆盘项目节点)",
+  "doc_title": "光模块上下料工位"
+ },
+ "scene": {
+  "scene_id": "SCN-07-UP",
+  "name": "上下料 (工位级: 取料 → 上料 → 卸料 → 回收)",
+  "editable": "data/scene/scenes/SCN-07-UP (场景功能区可视化编辑)",
+  "verify": "python3 tools/scene_metric_validate.py --scene SCN-07-UP"
+ },
+ "scope": {
+  "采购范围": [
+   "上下料单元 (取放+装夹)",
+   "料仓/料盘供料机构",
+   "工位夹具/治具 (带快换)",
+   "双臂协作机器人 Z100L",
+   "末端执行器 (真空吸嘴 + 真空检测/断气保护)",
+   "视觉定位 (腕部/全局/胸部)",
+   "安全围栏/光栅 (待确认)"
+  ],
+  "不含": [
+   "老化箱/热海柜 (本项目不含)",
+   "AOI 检测本体"
+  ],
+  "交付地点": "待确认",
+  "周期": "待确认"
+ },
+ "_append_bom_items": [
+  {
+   "id": "B19",
+   "name": "工位夹具/治具 (快换)",
+   "qty": 2,
+   "unit": "套",
+   "price": null,
+   "bulk_applies": false,
+   "links": [
+    "BO_ A2 工位精准对接",
+    "PF-Z100-09"
+   ],
+   "note": "上下料项目特有; 尺寸/接口未定 ⇒ 价格待确认"
+  },
+  {
+   "id": "B20",
+   "name": "料仓/料盘供料机构 (含到位/空满三态)",
+   "qty": 1,
+   "unit": "套",
+   "price": null,
+   "bulk_applies": false,
+   "links": [
+    "BO_ C1 完整作业执行",
+    "FN-SYS1-31"
+   ],
+   "note": "上下料项目特有; 规格待确认"
+  },
+  {
+   "id": "B21",
+   "name": "安全围栏/安全光栅",
+   "qty": 1,
+   "unit": "套",
+   "price": null,
+   "bulk_applies": false,
+   "links": [
+    "PF-Z700-09",
+    "FN-SYS1-31"
+   ],
+   "note": "安全配置待现场评估 ⇒ 价格待确认"
+  }
+ ],
+ "perf_targets": {
+  "perf.mate_align_repeat": "≤0.05 (3σ)",
+  "perf.mate_angle_repeat": "≤0.10°",
+  "perf.insert_depth_res": "≤0.02",
+  "perf.D_INSERT_mm": "≤0.30",
+  "perf.force_res": "≤0.5",
+  "perf.force_overshoot": "≤15%",
+  "perf.face_gap": "≥0.5 (端面禁止接触)",
+  "perf.success_rate": "≥95% (DVT) / ≥99% (PVT)",
+  "perf.cycle_s": "≤8 (DVT) / ≤3.15 (PVT)"
+ },
+ "待确认": [
+  "项目客户/现场",
+  "里程碑 (EVT/DVT/PVT)",
+  "工位夹具/料仓价格",
+  "安全配置",
+  "交付地点/周期",
+  "销量/售价 (商务条款)"
+ ]
+}

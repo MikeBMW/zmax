@@ -42,7 +42,8 @@ MATCH = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 BIND = os.path.join(ROOT, "config", "ss_task_binding.json")
 ORDERS = os.path.join(ROOT, "config", "orders")
-PROJ = os.path.join(ROOT, "data", "database", "zmax", "zmax_space.proj")   # 🗂 总工程 (v5.21 那份按任务导出的 v1 工程文件已废, 被 7 段总工程覆盖)
+PROJ = os.path.join(ROOT, "data", "database", "zmax", "zmax_space.proj")
+PERF = os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json")   # 光模块精细操作性能指标真源   # 🗂 总工程 (v5.21 那份按任务导出的 v1 工程文件已废, 被 7 段总工程覆盖)
 
 
 def _j(p, d=None):
@@ -92,8 +93,18 @@ def build_snapshot():
     ords = sorted(glob.glob(os.path.join(ORDERS, "BS_*.json")))
     meas = mcd.get("MEASUREMENT", [])
     diag = mcd.get("DIAGNOSTICS", {})
+    # ── 性能指标体系 (光模块精细操作) + 主参数 M 能量标定 (2026-10-10) ──
+    ps, mf = _j(PERF, {}) or {}, _j(os.path.join(ROOT, "config", "calib", "zmax_manifold.json"), {}) or {}
+    # ⚠️ 必须是 list 不是 tuple: 存盘经 JSON 往返后 tuple 变 list, `cur == want` 永远不等 ⇒ 幂等破
+    ps_rows = [[g.get("gid"), len(g.get("metrics", []))] for g in (ps.get("groups") or [])]
+    ps_n = sum(n for _, n in ps_rows)
+    ps_gap = sum(1 for g in (ps.get("groups") or []) for m in g.get("metrics", [])
+                 if str(m.get("target") or "").startswith("待"))
+    m_der = mf.get("_energy_derivation") or {}
     return {
         "entries": {
+            "性能指标真源": "config/platform/zmax_perf_spec.json",
+            "主参数M能量标定": "config/calib/zmax_manifold.json#_energy_derivation",
             "mcd_描述": "config/mcd/zmax_mcd.json",
             "参数注册表": "config/mcd/param_registry.json",
             "模型×工程匹配": "config/mcd/match_matrix.json",
@@ -117,13 +128,27 @@ def build_snapshot():
                         "nodes": (bd.get("project") or {}).get("nodes"),
                         "links": (bd.get("project") or {}).get("links")},
             "node_readback_at": None,  # 易变字段: 不写入 (保持 --check 幂等)
+            "perf_metrics": {"总条数": ps_n, "分组": ps_rows,
+                             "目标值待确认": ps_gap,
+                             "口径": "指标定义+目标值/规格; 实测值待验收阶段填入 (不以设计值冒充实测值)"},
+            "master_M": {"M": mf.get("M"), "inertia": mf.get("inertia"),
+                         "能级": m_der.get("energy_level"), "E_task_J": m_der.get("E_task_J"),
+                         "公式": m_der.get("formula"),
+                         "项目": m_der.get("name") or m_der.get("project") or "—"},
         },
         "measure": {"视图": "测量 Measurement (只读)", "测量量": len(meas),
                     "源": [m.get("src") for m in meas][:6],
                     "判据": "帧龄 <2s · 真源在且值非空",
                     "命令": "python3 tools/config_center.py list 工程配置"},
+        "measure_perf": {"视图": "测量 Measurement · 光模块精细操作指标 (老倪 2026-10-10)",
+                          "指标条数": ps_n, "分组": ["%s(%d)" % (a, b) for a, b in ps_rows],
+                          "真源": "config/platform/zmax_perf_spec.json",
+                          "导出": "python3 tools/perf_spec_export.py (CSV + Markdown)",
+                          "仿真验证": "python3 tools/scene_metric_validate.py --scene SCN-07-UP"},
         "calib": {"视图": "标定 Calibration (可写)", "可标参数": sum(1 for c in chars if c["perm"] in ("auth", "field")),
                   "主参数M": "M (G0 结构参数, 非自由拟合) · 范围 [0,8] · inertia 开关",
+                  "M当前值": mf.get("M"), "M能级": m_der.get("energy_level"),
+                  "M标定": "python3 tools/master_param_m.py --project PROJ-TH-TRAY --write (能量标定: M=1+E_task/E_ref)",
                   "真源": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
                   "命令": "python3 tools/config_center.py show M"},
         "diagnose": {"视图": "诊断 Diagnosis (判得了)", "断言": diag.get("assertions_total"),

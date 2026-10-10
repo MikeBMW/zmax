@@ -158,6 +158,49 @@ SCENES = [
     },
 ]
 
+# ── SCN-07-UP 上下料 (老倪 2026-10-10: 再做一个上下料场景验证指标) ────────────────────
+# 与 SCN-02-HANDLE (料盘级搬运) 的区别: 本场景是**工位级上下料** —— 取料→上料(插入夹具)→卸料→回收,
+# 验证的是"精细操作能不能复现"(对位/插入/力), 不是节拍吞吐。指标口径与 config/platform/zmax_perf_spec.json 同源。
+SCENES.append({
+    "scene_id": "SCN-07-UP",
+    "scene_type": "updown",
+    "name": "上下料 (工位级: 取料 → 上料 → 卸料 → 回收)",
+    "desc": "料仓/料盘取件 → 装入工位夹具(插入) → 取出 → 放回料盘; 工位级上下料循环, 指标验证主场景",
+    "goal": "上下料循环 + 精细指标验证",
+    "targets": {"上下料成功率": "≥95% (DVT) / ≥99% (PVT)", "单循环节拍": "≤8s (DVT) / ≤3.15s (PVT)",
+                "对位重复性": "≤0.05mm", "插深终到误差": "≤0.30mm", "端面非接触安全间隙": "≥0.05mm"},
+    "objects": [
+        {"name": "取料位/料盘", "pos": [0.64884, 0.49829, 0.11038], "size_mm": [140, 140, 40],
+         "role": "料仓/料盘取件位 (真源: 现场示教 slot1)"},
+        {"name": "上料工位夹具", "pos": [0.75751, 0.22787, 0.19008], "size_mm": [60, 60, 30],
+         "role": "工件装入位 (真源: 现场示教 real_cell_geometry.hole)"},
+        {"name": "下料位", "pos": [0.75751, 0.28787, 0.19008], "size_mm": [60, 60, 30],
+         "role": "卸料位 (推导: 上料位 +60mm 让位, 待现场示教)"},
+        {"name": "回收位/空盘", "pos": [0.64884, 0.49829, 0.11038], "size_mm": [140, 140, 40],
+         "role": "工件回收位 (空盘循环, 同取料位)"},
+        {"name": "光模块工件", "pos": [0.64884, 0.49829, 0.11308], "size_mm": [18, 9, 4],
+         "role": "工件 (100G/400G QSFP 级 ≈25g)"},
+    ],
+    "steps": [
+        {"t": 0.0, "dur": 1.6, "name": "取料", "desc": "左臂移至取料位→真空吸嘴吸取工件→真空确认",
+         "metric": "perf.success_rate", "force": "≥-60kPa 真空确认"},
+        {"t": 1.6, "dur": 0.5, "name": "转运", "desc": "抬起+水平转运至工位夹具上方 (macro 快速段)"},
+        {"t": 2.1, "dur": 1.4, "name": "上料/对位插入", "desc": "视觉对位→微动对准→力控插入至到位 (插入方向 +Z)",
+         "accuracy": "对位 ≤0.05mm · 插深 ≤0.30mm", "metric": "perf.mate_align_repeat / perf.D_INSERT_mm"},
+        {"t": 3.5, "dur": 0.6, "name": "松件/退出", "desc": "释放真空→末端沿插入反方向退出至安全高度 (端面非接触)",
+         "metric": "perf.face_gap"},
+        {"t": 4.1, "dur": 0.5, "name": "判态", "desc": "腕部相机复拍: 到位/端面/异物 → PASS/FAIL"},
+        {"t": 4.6, "dur": 1.5, "name": "卸料", "desc": "重新夹取→力控拉出 (≤2N)→移至下料位"},
+        {"t": 6.1, "dur": 1.4, "name": "回收", "desc": "送回料盘空位→真空释放→回待机位"},
+    ],
+    "performance": {"force_limit": 2.0, "tact_time": 8.0, "positioning_accuracy": 0.0001,
+                    "insert_depth": 0.035, "pull_force_max": 2.0, "cycle_s": 7.5},
+    "perf_metrics": ["perf.mate_align_repeat", "perf.mate_angle_repeat", "perf.insert_depth_res",
+                     "perf.D_INSERT_mm", "perf.force_res", "perf.force_overshoot", "perf.face_gap",
+                     "perf.success_rate", "perf.cycle_s"],
+    "editable_scene": "data/scene/scenes/SCN-07-UP (scene_edit.py --scene SCN-07-UP, 场景功能区可视化编辑)",
+})
+
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scenes_5jobs.json")
 flow = {
     "format": "zmax-scenes-5jobs",
