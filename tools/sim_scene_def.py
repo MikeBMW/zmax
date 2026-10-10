@@ -195,9 +195,23 @@ def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
 
 
 def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
+    import copy as _copy
     if scene_id == EPI_SCENE:
         return _epi_overlay()
-    sc = load()["scenes"][scene_id]
+    sc = load()["scenes"].get(scene_id)
+    if sc is None:
+        return {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": scene_id,
+                "source": "缺失", "markers": [], "fences": [], "trajectories": []}
+    # 回放/复刻场景 (含摆盘副本) 与 episode 同结构 ⇒ 直接复用它的 overlay 组装
+    if (sc.get("truth") or {}).get("episode") or sc.get("copied_from"):
+        _d = load()
+        _keep = _d["scenes"].get(EPI_SCENE)
+        try:
+            _d["scenes"][EPI_SCENE] = sc
+            return _epi_overlay()
+        finally:
+            if _keep is not None:
+                _d["scenes"][EPI_SCENE] = _keep
     mk = []
     for i, m in enumerate(sc["markers"]):
         mk.append({"id": "sim_mk_%02d" % (i + 1), "name": m["name"], "type": m.get("type", "自定义"),
@@ -205,8 +219,11 @@ def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
                    "source": m.get("source", ""), "editable": True})
     fn = []
     for i, f in enumerate(sc["fences"]):
-        c = [float(x) for x in f["center"]]
-        s = [float(x) for x in f["size"]]
+        _sh = f.get("shape") if isinstance(f.get("shape"), dict) else {}
+        _c = f.get("center") or _sh.get("center") or [0, 0, 0]
+        _s = f.get("size") or _sh.get("size") or [0.2, 0.2, 0.2]
+        c = [float(x) for x in _c]
+        s = [float(x) for x in _s]
         fn.append({"id": "sim_fn_%02d" % (i + 1), "name": f["name"], "kind": "box", "enabled": True,
                    "shape": {"center": c, "size": s}, "source": f.get("source", ""), "editable": True})
     tj = []

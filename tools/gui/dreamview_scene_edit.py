@@ -69,7 +69,7 @@ def _se_run(*args):
     return _run(*args)
 
 
-SCENE_WHITELIST = ("SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP")      # 3D场景 首位 (老倪口径)
+SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE", "SIM-PEG-L4", "SCN-07-UP")   # 3D场景 / 摆盘 优先
 
 
 def _scene_options():
@@ -84,6 +84,7 @@ def _scene_options():
         if not os.path.isdir(d):
             continue
         label = {"SS-EPI-CORNER": "🧭 3D场景 (与操作视频同源)",
+                 "SS-TRAY-PLACE": "🧩 摆盘场景 (复制自 3D场景)",
                  "SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
                  "SCN-07-UP": "📦 上下料场景"}.get(sid, sid)
         n = 0
@@ -270,6 +271,34 @@ class SceneEditAttacher(QObject):
             self.refresh_overlay()
         except Exception as e:                                                  # noqa: BLE001
             self._set_status("切换后刷新失败: %s" % e)
+
+    def switch_to_dir(self, d, label=None):
+        """按**目录**切场景 (供 3D 视图的 插拔/摆盘 切换按钮调用, 不依赖下拉是否选中)。
+
+        老倪 2026-10-10: 「改成切换按钮。第一个是插拔...第二个是摆盘，你先复制当前的场景，可以切换」
+        """
+        d = str(d)
+        if not os.path.isdir(d):
+            self._set_status("⛔ 场景目录不存在: %s" % d)
+            return False
+        os.environ["ZMAX_SCENE_DIR"] = d
+        globals()["SCENE_DIR"] = d
+        globals()["OBJECTS3D"] = os.path.join(d, "objects3d.json")
+        for i in range(self.cmb_scene.count()):          # 下拉同步选中 (有就同步, 没有不影响切换)
+            if str(self.cmb_scene.itemData(i) or "").rstrip("/") == d.rstrip("/"):
+                self.cmb_scene.blockSignals(True)
+                self.cmb_scene.setCurrentIndex(i)
+                self.cmb_scene.blockSignals(False)
+                break
+        try:
+            self.refresh_list()
+            self.refresh_overlay()
+        except Exception as e:                                                  # noqa: BLE001
+            self._set_status("切换后刷新失败: %s" % e)
+            return False
+        self._set_status("🧩 已切到 %s\n目录: %s\n(对象 %d 个 · 写操作只影响该场景)"
+                         % (label or os.path.basename(d), d, self.lst.count()))
+        return True
 
     def selected_name(self):
         it = self.lst.currentItem()

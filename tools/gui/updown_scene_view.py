@@ -57,7 +57,7 @@ C_MARK, C_FENCE, C_TRAJ = "#ff8a3d", "#8b6cf0", "#4da3ff"
 # ─────────────────────────── 数据层 ───────────────────────────
 # 老倪 2026-10-10: 「现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」
 #   ⇒ 只把这俩放进下拉 (其余场景的定义/文件都不动, 只是不露脸, 可随时加回来)
-SCENE_WHITELIST = ("SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP")   # 3D场景 排首位 = 默认打开
+SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE", "SIM-PEG-L4", "SCN-07-UP")   # 3D场景/摆盘 先
 SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
                "SCN-07-UP": "📦 上下料场景",
                # 老倪 2026-10-10: 「先把这个场景复制到你的场景编辑窗口里」— 就是画布 3D 分层视图正在跑的那条

@@ -869,17 +869,20 @@ class DreamView3D(QWidget):
         #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
         _row_lv = QHBoxLayout()
         _row_lv.setSpacing(4)
-        for _lvl, _txt, _tip, _col in (
-            ("L2", "🧭 L2 DreamView", "L2 档 3D 分层视图 (感知层 + 末端轨迹)", "#2e8b57"),
-            ("L3", "🧭 L3 DreamView", "L3 档 3D 分层视图 (加 前馈/状态估计/预测 层)", "#1f6feb"),
-            ("L4", "🌍 L4·SW DreamView", "L4·stable-world 实况 (逐帧真渲染 + 拖帧看信号)", "#8957e5"),
+        # 🧩 2026-10-10 老倪: 「L2 DreamView / L3 DreamView 这两个按钮干啥的？没啥用。改成切换按钮」
+        #   ⇒ 三个**场景切换**按钮: 插拔 (当前场景) / 摆盘 (复制自当前场景, 可切换) / 力控 (保持当前波形)
+        for _sid, _txt, _tip, _col in (
+            ("SS-EPI-CORNER", "🧩 插拔", "切到插拔场景 (= 当前打开的那条, 与操作视频同源)", "#2e8b57"),
+            ("SS-TRAY-PLACE", "🧩 摆盘", "切到摆盘场景 (由当前场景复制, 桌面粉白; 后续换成真摆盘)", "#1f6feb"),
+            (None,            "🧩 力控", "保持当前波形: 打开/置顶力控波形窗口 (接触概率·残差·前馈·末端距离)", "#8957e5"),
         ):
             _b = QPushButton(_txt)
-            _b.setToolTip(_tip + "\n(独立窗口, 可同时开; 不再有画中画)")
+            _b.setToolTip(_tip)
             _b.setStyleSheet(f"QPushButton{{background:{_col};color:#ffffff;font-weight:700;"
-                             f"border:none;border-radius:4px;padding:6px 4px;font-size:11px;}}"
+                             f"border:none;border-radius:4px;padding:6px 4px;font-size:12px;}}"
                              f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
-            _b.clicked.connect(lambda _=False, lv=_lvl: self._open_level(lv))
+            _b.clicked.connect(lambda _=False, sid=_sid: (self._open_force_scope() if sid is None
+                                                          else self._switch_scene(sid)))
             _row_lv.addWidget(_b)
         pl.addLayout(_row_lv)
         pl.addSpacing(6)
@@ -1449,8 +1452,9 @@ class DreamView3D(QWidget):
         if self._demo_geom:
             _tw = (1.40, 0.62, 0.024)
             _tc = np.array([0.10, 0.58, -0.012])
+        # 老倪 2026-10-10: 「你先把桌子的颜色改成乳白色」 (原深灰 0.16/0.18/0.22)
         table = gl.GLMeshItem(meshdata=_box_mesh(_tc, _tw),
-                              color=(0.16, 0.18, 0.22, 1.0), smooth=False, shader='shaded')
+                              color=(0.96, 0.94, 0.90, 1.0), smooth=False, shader='shaded')
         self.view.addItem(table)
         scene.append(table)
         # 带孔盒 (红, 醒目 — 侧插目标件)
@@ -1864,6 +1868,67 @@ class DreamView3D(QWidget):
         "L3": ["scene", "traj", "uff", "latent", "prior"],        # L3: 再加 前馈/状态估计/预测
         "L4": ["scene", "traj", "uff", "latent", "prior"],        # L4: 引擎真链全部执行层
     }
+
+    def _switch_scene(self, scene_id: str):
+        """🧩 场景切换 (插拔 / 摆盘): 把当前 3D 视图切到该场景真源 (同一个视图, 不新开窗口)。
+
+        老倪 2026-10-10: 「改成切换按钮。第一个是插拔, 就是当前打开的场景；第二个是摆盘，
+        你先复制当前的场景，可以切换」⇒ 只换数据源 (ZMAX_SCENE_DIR) + 重建对象叠加层。
+        """
+        import os as _os
+        _d = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+                           "data", "scene", "scenes", scene_id)
+        if not _os.path.isdir(_d):
+            try:
+                from PyQt5.QtWidgets import QMessageBox as _MB
+                _MB.information(self, "场景缺失", "场景目录不存在: %s" % _d)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            return False
+        _os.environ["ZMAX_SCENE_DIR"] = _d
+        _att = (getattr(self, "_scene_edit_attacher", None) or getattr(self, "scene_edit", None))
+        _lab = {"SS-EPI-CORNER": "插拔场景", "SS-TRAY-PLACE": "摆盘场景"}.get(scene_id, scene_id)
+        ok = False
+        if _att is not None and hasattr(_att, "switch_to_dir"):
+            try:
+                ok = bool(_att.switch_to_dir(_d, _lab))
+            except Exception as _e:                                             # noqa: BLE001
+                _att._set_status("切换失败: %r" % (_e,))
+        elif _att is not None:
+            try:
+                _att.refresh_list()
+                _att.refresh_overlay()
+                ok = True
+            except Exception:                                                   # noqa: BLE001
+                pass
+        self.setWindowTitle("3D场景 · %s" % _lab)
+        try:
+            if _att is not None:
+                _att._set_status("🧩 已切到 %s%s" % (_lab, "" if ok else " · 注意: 切换未完全生效"))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return True
+
+    def _open_force_scope(self):
+        """🧩 力控: 保持当前波形 —— 打开/置顶力控波形窗口 (同一份 tr, 不重算)。"""
+        try:
+            from simulink_module import StateSpaceScopeDialog
+        except Exception as _e:                                                 # noqa: BLE001
+            try:
+                _a = getattr(self, "_scene_edit_attacher", None)
+                if _a is not None:
+                    _a._set_status("力控波形窗口不可用: %r" % (_e,))
+            except Exception:                                                   # noqa: BLE001
+                pass
+            return None
+        w = getattr(self, "_force_scope", None)
+        if w is None:
+            w = StateSpaceScopeDialog(self.tr, self)
+            self._force_scope = w
+        w.show()
+        w.raise_()
+        w.activateWindow()
+        return w
 
     def apply_level_preset(self, level: str):
         """按档位开关图层 (L2 只留基础感知/轨迹; L3/L4 打开执行层) —— 找不到的键跳过, 不报错"""
