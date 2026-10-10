@@ -69,7 +69,8 @@ def _se_run(*args):
     return _run(*args)
 
 
-SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE", "SIM-PEG-L4", "SCN-07-UP")   # 3D场景 / 摆盘 优先
+# 老倪 2026-10-10: 「其它几个场景…先不要」⇒ 下拉只留 插拔场景 + 摆盘场景 (场景定义/文件都不动)
+SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE")   # 3D场景 / 摆盘 优先
 
 
 def _scene_options():
@@ -95,7 +96,6 @@ def _scene_options():
         except Exception:                                                      # noqa: BLE001
             pass
         out.append(("%s   %d 对象" % (label, n), d))
-    out.append(("(在役) 现场场景 (只读)", os.path.join(ROOT, "data", "scene")))
     return out
 
 
