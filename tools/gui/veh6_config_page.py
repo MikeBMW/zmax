@@ -67,6 +67,60 @@ def _run(fn, **kw):
     return buf.getvalue()
 
 
+# ── 三份交付文档 (2026-10-10): 与 config_center.py 同一份真源, 点了必出结果 ──
+DOC_SCRIPTS = {
+    "bundle":    ("三件套导出 (立项文档 + SOR + 协议)", "docs_bundle.py", []),
+    "project":   ("项目立项文档 (Word)", "project_doc_export.py", []),
+    "sor":       ("供应商 SOR 需求规格说明书 (Word)", "sor_export.py", []),
+    "agreement": ("机器人数据平台合作与模型授权协议 (Word)", "agreement_export.py", []),
+    "bom":       ("BOM / 成本 / ROI 算账 (不出文档)", "project_doc_export.py", ["--check"]),
+}
+DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements"]
+
+
+def _run_script(script, args=None, timeout=900):
+    """真跑 tools/ 下的脚本, stdout+stderr 全抓回面板 (点了必出结果, 失败不静默)。"""
+    import subprocess
+    cmd = [sys.executable, os.path.join(TOOLS, script)] + list(args or [])
+    try:
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return f"⛔ 超时 (>{timeout}s): {script} —— 没有结果就不要当成功"
+    except Exception as e:  # noqa: BLE001
+        return f"⛔ 执行异常: {type(e).__name__}: {e}"
+    out = (r.stdout or "").strip()
+    err = (r.stderr or "").strip()
+    if err:
+        out += "\n--- stderr ---\n" + err
+    if r.returncode != 0:
+        out += f"\n⛔ 退出码 {r.returncode} —— 上面就是原因, 不要把这次当成功"
+    return out or f"⚠️ 脚本无输出 (退出码 {r.returncode})"
+
+
+def _newest_out_dir(rel):
+    """最新产物目录 (按 mtime, 不能用字母序 —— 时间戳目录名字母序会排错)。"""
+    ds = [d for d in glob.glob(os.path.join(ROOT, rel, "*")) if os.path.isdir(d)]
+    return max(ds, key=os.path.getmtime) if ds else None
+
+
+def _doc_inventory():
+    """产物清单: 绝对路径 + 大小 + 时间 (老倪要可复制的绝对路径)。"""
+    lines = []
+    for rel in DOC_DIRS:
+        d = _newest_out_dir(rel)
+        if not d:
+            continue
+        import datetime
+        mt = datetime.datetime.fromtimestamp(os.path.getmtime(d)).strftime("%m-%d %H:%M")
+        lines.append(f"[{mt}] {rel}/  →  {os.path.basename(d)}")
+        for f in sorted(os.listdir(d)):
+            fp = os.path.join(d, f)
+            if os.path.isfile(fp):
+                kb = os.path.getsize(fp) / 1024.0
+                lines.append(f"    {kb:8.1f} KB  {fp}")
+    return "\n".join(lines) if lines else "⚠️ 还没有产物 —— 点上面任一按钮, 跑完这里就会出现绝对路径"
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -132,6 +186,10 @@ class ConfigCenterPage(QWidget):
         info.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         bar.addWidget(info)
         bar.addStretch()
+        b_doc = _btn("📄 文档导出", th)
+        b_doc.setToolTip("三份交付文档同源导出 (项目立项文档 / 供应商 SOR / 合作协议) —— 切到「文档交付」页")
+        b_doc.clicked.connect(self._goto_docs)
+        bar.addWidget(b_doc)
         for txt, fn in (("🔍 全链校验", "check"), ("📋 任务配置", "tasks"), ("⚙️ 工程配置", "list")):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn: self._run_into(f))
@@ -289,6 +347,86 @@ class ConfigCenterPage(QWidget):
         # 6) 现有模型配置页 (整块搬进来, 不重写)
         if model_page is not None:
             self.tabs.addTab(model_page, "🧠 模型配置")
+
+        # 7) 文档交付 (2026-10-10 老倪: 三份文档导出做成配置中心按钮)
+        w7 = QWidget()
+        l7 = QVBoxLayout(w7)
+        l7.setContentsMargins(6, 6, 6, 6)
+        src = QLabel("三份交付文档同一数据源: 工程库 data/database/zmax/zmax_engineering.db + 平台真源 config/platform/*.json"
+                     "   ·   BOM 每项挂功能/能力   ·   成本按阶段自动核算   ·   ROI 由性能指标(节拍/成功率/人效比)算出")
+        src.setWordWrap(True)
+        src.setFont(QFont("Consolas", 10))
+        src.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l7.addWidget(src)
+        row7 = QHBoxLayout()
+        for key in ("bundle", "project", "sor", "agreement", "bom"):
+            label, script, args = DOC_SCRIPTS[key]
+            b = _btn(("📦 " if key == "bundle" else ("🧮 " if key == "bom" else "📄 ")) + label.split(" (")[0], th)
+            b.setToolTip(f"{label}\n→ tools/{script} {' '.join(args)}\n产物落在 outputs/ 下 (跑完面板给出绝对路径)")
+            b.clicked.connect(lambda _, k=key: self._run_doc(k))
+            row7.addWidget(b)
+        row7.addStretch()
+        l7.addLayout(row7)
+        row7b = QHBoxLayout()
+        b_copy = _btn("📋 复制产物路径", th)
+        b_copy.clicked.connect(self._copy_docs)
+        b_open = _btn("📂 打开产物目录", th)
+        b_open.clicked.connect(self._open_docs)
+        b_ref = _btn("🔍 刷新产物列表", th)
+        b_ref.clicked.connect(self._copy_docs)
+        for b in (b_copy, b_open, b_ref):
+            row7b.addWidget(b)
+        row7b.addStretch()
+        l7.addLayout(row7b)
+        self.docs_out = QTextEdit()
+        self.docs_out.setReadOnly(True)
+        self.docs_out.setFont(QFont("Consolas", 9))
+        self.docs_out.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
+                                    f"border:1px solid {th['C_BORDER']};")
+        self.docs_out.setPlainText(_doc_inventory())
+        l7.addWidget(self.docs_out, 1)
+        self.tabs.addTab(w7, "📄 文档交付")
+
+    # ── 文档交付 (2026-10-10) ──
+    def _goto_docs(self):
+        for i in range(self.tabs.count()):
+            if "文档" in self.tabs.tabText(i):
+                self.tabs.setCurrentIndex(i)
+                self._copy_docs()
+                return
+        self.out.setPlainText("⛔ 文档交付页签缺失 (页面构建异常)")
+
+    def _run_doc(self, key):
+        """点按钮必出结果: 真跑导出器, 面板给日志, 右侧列出可复制的绝对路径。"""
+        from PyQt5.QtWidgets import QApplication
+        label, script, args = DOC_SCRIPTS[key]
+        self.out.setPlainText(f"▶ {label} 运行中… (数据源: 工程库 + 平台真源)")
+        QApplication.processEvents()
+        self.out.setPlainText(_run_script(script, args))
+        QApplication.processEvents()
+        inv = _doc_inventory()
+        if hasattr(self, "docs_out"):
+            self.docs_out.setPlainText(inv)
+
+    def _copy_docs(self):
+        from PyQt5.QtWidgets import QApplication
+        inv = _doc_inventory()
+        if hasattr(self, "docs_out"):
+            self.docs_out.setPlainText(inv)
+        QApplication.clipboard().setText(inv)
+        self.out.setPlainText("📋 产物路径已复制到剪贴板 (可直接粘到聊天/文档里):\n" + inv)
+
+    def _open_docs(self):
+        import subprocess
+        d = _newest_out_dir("outputs/docs_bundle") or _newest_out_dir("outputs/project_docs")
+        if not d:
+            self.out.setPlainText("⚠️ 还没有产物目录 —— 先点「📦 三件套导出」")
+            return
+        try:
+            subprocess.Popen(["xdg-open", d])
+            self.out.setPlainText(f"📂 已打开: {d}")
+        except Exception as e:  # noqa: BLE001
+            self.out.setPlainText(f"⛔ 打不开文件管理器: {e}\n路径 (可复制): {d}")
 
     # ── 结果面板 ──
     def _back_home(self):
