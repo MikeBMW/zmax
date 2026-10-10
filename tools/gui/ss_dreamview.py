@@ -23,6 +23,7 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
   dv.show()
 """
 import glob
+import json
 import os
 import math
 import time
@@ -285,6 +286,48 @@ def table_color(scene_id=None):
     return _TABLE_COLOR_PLAIN
 
 
+def scene_table_truth(scene_id=None):
+    """当前场景真源里的**台面**几何 (米) —— 高亮框与渲染必须同源 (老倪 2026-10-10)。
+
+    为什么需要: 高亮框一直读 `data/scene/scenes/<ID>/objects3d.json` (metaworld/MuJoCo 实测),
+    而 3D 视图的桌面是**遗留硬编码** `_TABLE_SIZE=(0.92,0.62,0.024)` (当年为插拔场景手搓)
+    ⇒ 仿真场景真源台面 1.4×0.8 时, 高亮框比实际画出来的绿桌**宽 52%/深 29%**,
+    肉眼看就是"选工作台面, 黄框比桌子大一圈"。
+
+    只对**米制**场景返回 (SIM-PEG-L4 / SS-EPI-CORNER / SS-TRAY-PLACE 等真源导出场景);
+    老 SCN-* 现场机位场景的台面是**毫米**深度数据且与真实机位投影对齐 ⇒ 返回 None, 视图沿用原常量。
+    返回 (center(3,) ndarray, size(tuple)) 或 None。
+    """
+    _sid = (scene_id or "").strip() or \
+        (os.environ.get("ZMAX_SCENE_DIR") or "").rstrip("/").split("/")[-1]
+    if not _sid:
+        return None
+    _env = (os.environ.get("ZMAX_SCENE_DIR") or "").rstrip("/")
+    if _env and os.path.basename(_env) == _sid:
+        _d = _env
+    else:                                     # ZMAX_SCENE_DIR 指向别的场景 → 按仓库布局找
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _d = os.path.join(_root, "data", "scene", "scenes", _sid)
+    try:
+        with open(os.path.join(_d, "objects3d.json"), encoding="utf-8") as _f:
+            _objs = json.load(_f).get("objects") or []
+    except Exception:                                                          # noqa: BLE001
+        return None
+    for _o in _objs:
+        if "工作台面" not in str(_o.get("name", "")):
+            continue
+        _c, _s = _o.get("center"), _o.get("size")
+        if not (isinstance(_c, (list, tuple)) and isinstance(_s, (list, tuple))):
+            continue
+        if len(_c) != 3 or len(_s) != 3:
+            continue
+        _s = [abs(float(v)) for v in _s]
+        if max(_s) > 10.0:            # 毫米 (现场机位深度数据) ⇒ 视图原几何才是对齐的, 不动
+            return None
+        return np.asarray(_c, dtype=float), tuple(_s)
+    return None
+
+
 def _box_mesh(center, size):
     """生成长方体 meshdata (12 三角形) — 用于场景几何体"""
     x0, y0, z0 = center
@@ -490,6 +533,28 @@ class LabelOverlay(QWidget):
         self.setStyleSheet("background:transparent;")
         self._labels = []      # [(x_px, y_px, text, QColor, bold)]
         self._panel = []       # 屏幕固定位置面板行 [(text, QColor, bold, indent)]
+        self._collapsible = False   # 🪗 面板可折叠 (画 ◂/▶ 并在 hit_toggle 里给命中区)
+        self._collapsed = False
+        self._panel_rect = None     # 最近一次绘制的面板矩形 (点击判定用)
+
+    def set_collapsible(self, on, collapsed=False):
+        self._collapsible = bool(on)
+        self._collapsed = bool(collapsed)
+        self.update()
+
+    def toggle_rect(self):
+        """折叠按钮命中区: 展开时 = 面板右上角 20×20; 折叠时 = 整条 (点哪都能展开)。"""
+        from PyQt5.QtCore import QRect
+        r = self._panel_rect
+        if r is None:
+            return None
+        if self._collapsed:
+            return QRect(r.left() - 8, r.top() - 8, r.width() + 16, r.height() + 16)
+        return QRect(r.right() - 22, r.top() + 2, 20, 20)
+
+    def hit_toggle(self, x, y):
+        r = self.toggle_rect()
+        return bool(r is not None and r.contains(int(x), int(y)))
 
     def set_labels(self, labels):
         self._labels = labels
@@ -502,7 +567,9 @@ class LabelOverlay(QWidget):
 
     def paintEvent(self, ev):
         from PyQt5.QtGui import QPainter, QPen, QBrush
+        from PyQt5.QtCore import QRect
         if not self._labels and not self._panel:
+            self._panel_rect = None
             return
         p = QPainter(self)
         if self._panel:      # 🧭 状态机阶梯 (屏幕固定, 不随相机走)
@@ -510,13 +577,20 @@ class LabelOverlay(QWidget):
             _f = QFont("Arial", 11, QFont.Bold)
             p.setFont(_f)
             fm = p.fontMetrics()
-            w = max(fm.horizontalAdvance(r[0]) for r in self._panel) + 22
+            _pad = 22 + (18 if self._collapsible else 0)    # 🪗 折叠按钮留位
+            w = max(fm.horizontalAdvance(r[0]) for r in self._panel) + _pad
             h = len(self._panel) * (fm.height() + 3) + 12
             p.setPen(Qt.NoPen)
             p.setBrush(QBrush(QColor(13, 17, 23, 215)))
             p.drawRoundedRect(8, 8, w, h, 6, 6)
             p.setPen(QPen(QColor(48, 54, 61)))
             p.drawRoundedRect(8, 8, w, h, 6, 6)
+            self._panel_rect = QRect(8, 8, int(w), int(h))
+            if self._collapsible:                            # 🪗 折叠/展开按钮 (画在面板右上角)
+                p.setPen(QPen(QColor(88, 166, 255)))
+                p.setFont(QFont("Arial", 11, QFont.Bold))
+                p.drawText(QRect(int(8 + w - 20), 8, 18, fm.height() + 4),
+                           Qt.AlignCenter, "▶" if self._collapsed else "◂")
             y = 8 + fm.height() + 2
             for text, col, bold, indent in self._panel:
                 p.setFont(QFont("Arial", 11, QFont.Bold if bold else QFont.Normal))
@@ -759,6 +833,100 @@ class SWLiveWindow(QWidget):
             pass
 
 
+class CollapsibleSide(QFrame):
+    """🪗 可**向左折叠**的侧栏 (老倪 2026-10-10: 「场景编辑 / 图层 这两个侧面栏也要能向左侧折叠隐藏,
+    不要遮挡视线」)。
+
+    结构: [22px 折叠条: ◂/▶ 按钮 + 竖排标题] [内容框 = 原来的面板]
+      · 展开 → 内容显示, 折叠条上是 ◂ (点一下向左收起)
+      · 折叠 → 内容 `setVisible(False)`, 只剩 22px 折叠条 (▶ 点开), 3D 视野不再被挡
+    折叠状态用 QSettings 记住 —— 收起一次, 之后打开控制台仍是收起的样子。
+    """
+
+    _STRIP_W = 22
+
+    def __init__(self, name, body, parent=None):
+        super().__init__(parent)
+        self._name = str(name)
+        self._body = body
+        self._folded = False
+        self._w_open = None
+        # 展开时的宽度 = 折叠条 + 内容框**自己的固定宽** (面板都是 setFixedWidth 建的);
+        # 别用 sizeHint —— 它是内容想要的宽 (实测 374px), 会把侧栏撑得比原来还宽。
+        _mw, _xw = int(body.minimumWidth()), int(body.maximumWidth())
+        self._bw = _mw if (_mw > 0 and _mw == _xw) else (int(body.sizeHint().width()) or 230)
+        self.setObjectName("zmaxPane")
+        self.setStyleSheet("QFrame#zmaxPane{background:transparent; border:none;}")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+        strip = QFrame()
+        strip.setObjectName("zmaxPaneStrip")
+        strip.setFixedWidth(self._STRIP_W)
+        strip.setStyleSheet("QFrame#zmaxPaneStrip{background:#161b22; border:1px solid #30363d;"
+                            " border-radius:6px;}")
+        sl = QVBoxLayout(strip)
+        sl.setContentsMargins(1, 6, 1, 6)
+        sl.setSpacing(4)
+        self._btn = QPushButton("◂")
+        self._btn.setFixedSize(18, 18)
+        self._btn.setCursor(Qt.PointingHandCursor)
+        self._btn.setStyleSheet(
+            "QPushButton{background:#21262d; color:#58a6ff; border:1px solid #30363d;"
+            " border-radius:3px; font-size:11px; padding:0;}"
+            "QPushButton:hover{background:#2d333b; border-color:#58a6ff;}")
+        self._btn.clicked.connect(self.toggle)
+        self._tab = QLabel("\n".join(self._name))
+        self._tab.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self._tab.setStyleSheet("color:#8b949e; font-size:11px;")
+        self._tab.setToolTip("点击上面 ◂ 折叠本栏 (向左收起, 不挡 3D 视线)")
+        sl.addWidget(self._btn, 0, Qt.AlignHCenter)
+        sl.addWidget(self._tab)
+        sl.addStretch(1)
+        lay.addWidget(strip)
+        self._body.setParent(self)
+        lay.addWidget(self._body, 1)
+        self.apply(self._saved_folded())
+
+    # ── 状态 ──
+    def is_folded(self):
+        return bool(self._folded)
+
+    def toggle(self):
+        self.apply(not self._folded)
+
+    def apply(self, folded, persist=True):
+        """折叠/展开。persist=False 时只改本次 (不写设置)。"""
+        self._folded = bool(folded)
+        self._body.setVisible(not self._folded)
+        self._btn.setText("▶" if self._folded else "◂")
+        _tip = ("展开 %s (向左折叠着, 不挡视线)" % self._name) if self._folded \
+            else ("折叠 %s (向左收起, 不挡 3D 视线)" % self._name)
+        self._btn.setToolTip(_tip)
+        # 宽度显式钉死: 只靠 setVisible 时布局不一定会把空间还给 3D 视图 (实测折叠后仍占 255px)
+        if self._folded:
+            self.setFixedWidth(self._STRIP_W + 3)
+        else:
+            self._w_open = self._STRIP_W + 3 + self._bw
+            self.setFixedWidth(self._w_open)
+        if persist:
+            try:
+                self._settings().setValue("ui/pane_%s_folded" % self._name, 1 if self._folded else 0)
+            except Exception:                                                  # noqa: BLE001
+                pass
+
+    # ── 记忆 ──
+    def _settings(self):
+        from PyQt5.QtCore import QSettings
+        return QSettings("ZMAX", "studio")
+
+    def _saved_folded(self):
+        try:
+            return int(self._settings().value("ui/pane_%s_folded" % self._name, 0) or 0) == 1
+        except Exception:                                                      # noqa: BLE001
+            return False
+
+
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
@@ -794,6 +962,10 @@ class DreamView3D(QWidget):
         self._cam_fovy = 60.0     # 视频相机垂直视场 (metaworld corner2 fovy)
         # 🎯 2026-09-09 L4 演示场景设备 (转台/压电耦合台) — meta.demo_geom 驱动, 3D 按此绘制
         self._demo_geom = None
+        # 🪗 2026-10-10 老倪: 「动作调制器 八阶段状态机 这个窗口影响观察, 做成可以向左折叠缩小的窗口」
+        #   ⇒ 面板右上角给 ◂/▶, 折叠后只剩一行 (阶段+进度条), 点它一下再展开。
+        self._fsm_folded = False
+        self._fsm_rows = []          # 最近一次算出的完整面板行 (折叠时按它压成一行)
 
         # ── 主布局: 左(图层面板) | 3D 视图 ──
         root = QHBoxLayout(self)
@@ -889,9 +1061,7 @@ class DreamView3D(QWidget):
         title = QLabel("🗂 图层 (Layers)")
         title.setStyleSheet("color:#58a6ff; font-size:15px; font-weight:700;")
         pl.addWidget(title)
-        hint = QLabel("勾选要观察的处理层")
-        hint.setStyleSheet("color:#8b949e; font-size:11px;")
-        pl.addWidget(hint)
+        # 🗑 2026-10-10 老倪: 「勾选要观察的处理层」这行删掉 (标题已够, 界面要极简)
         # 🧭 2026-09-13 老倪: 3D 视图不要画中画 —— 三个 dreamview 窗口 (L2 / L3 / L4·stable-world),
         #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
         _row_lv = QHBoxLayout()
@@ -1100,7 +1270,9 @@ class DreamView3D(QWidget):
             ctrl.addWidget(b)
         right.addLayout(ctrl)
 
-        root.addWidget(panel)
+        # 🪗 2026-10-10 老倪: 侧栏要能向左折叠 — 套一层折叠外壳 (panel 本体宽度/内容不变)
+        self._pane_layers = CollapsibleSide("图层", panel, parent=self)
+        root.addWidget(self._pane_layers)
         root.addLayout(right, 1)
 
         # 播放定时器
@@ -1381,11 +1553,59 @@ class DreamView3D(QWidget):
         except Exception:
             pass
 
+    def _fsm_compact_row(self, rows):
+        """把完整阶梯压成一行: 「🧭 动作调制器 4/8 下降  ████░░░░ 62%」"""
+        cur, bar = "", ""
+        for t, _c, _b, _i in rows:
+            s = str(t).strip()
+            if s.startswith("▶"):
+                cur = s[1:].split("←")[0].strip()
+            elif bar == "" and s[:1] in ("█", "░"):
+                bar = s
+        _n = ""
+        _fi = getattr(self, "_fsm_info", None)
+        if _fi:
+            try:
+                _n = "%d/8 " % (int(_fi[0]) + 1)
+            except Exception:                                                  # noqa: BLE001
+                _n = ""
+        return ("🧭 动作调制器 %s%s" % (_n, cur)).strip() + ("  " + bar if bar else ""), \
+            QColor(255, 217, 77), True, 0
+
+    def set_fsm_panel(self, rows):
+        """状态机面板交给标注层 —— 折叠时只给一行 (其余不画 ⇒ 不挡视线)。"""
+        _rows = list(rows or [])
+        if self._fsm_folded and _rows:
+            try:
+                _rows = [self._fsm_compact_row(_rows)]
+            except Exception:                                                  # noqa: BLE001
+                pass
+        try:
+            self._overlay.set_collapsible(bool(rows), self._fsm_folded)
+            self._overlay.set_panel(_rows)
+        except Exception:                                                      # noqa: BLE001
+            pass
+
+    def fsm_panel_toggle_at(self, x, y):
+        """点状态机面板右上角的 ◂/▶ (或折叠后的那一行) ⇒ 折叠/展开。返回 True = 已消费该点击。"""
+        if not self._fsm_rows:
+            return False
+        try:
+            if not self._overlay.hit_toggle(x, y):
+                return False
+        except Exception:                                                      # noqa: BLE001
+            return False
+        self._fsm_folded = not self._fsm_folded
+        self.set_fsm_panel(self._fsm_rows)
+        return True
+
     def eventFilter(self, obj, ev):
         # 🎯 v3.4.8: 用户鼠标旋转/平移视角 → 标记手动 (resize 不再自动重取景, 不打断)
         try:
             if obj is self.view and ev is not None and hasattr(ev, "type"):
                 _t = int(ev.type())
+                if _t == 4 and self.fsm_panel_toggle_at(ev.x(), ev.y()):
+                    return True          # 🪗 点的是状态机面板的折叠按钮 ⇒ 不转视角
                 if _t in (4, 5, 6):      # MouseButtonPress/Move/Release
                     if _t == 4 or (getattr(ev, "buttons", None) is not None and int(ev.buttons())):
                         self._user_cam = True
@@ -1479,6 +1699,14 @@ class DreamView3D(QWidget):
         if self._demo_geom:
             _tw = (1.40, 0.62, 0.024)
             _tc = np.array([0.10, 0.58, -0.012])
+        else:
+            # 🔴 2026-10-10 老倪: 「选了工作台面, 高亮的方框比实际的绿色桌子大很多」
+            #   根因: 高亮框读场景真源 (objects3d.json = metaworld/MuJoCo 实测台面 1.4×0.8×0.054),
+            #   而这里画的是**遗留硬编码** _TABLE_SIZE (0.92×0.62×0.024) ⇒ 框比桌子大一圈 (宽+52%/深+29%)。
+            #   收成单源: 真源有米制台面 ⇒ 就用它画 (高亮框与渲染从此同一个数)。
+            _truth = scene_table_truth(getattr(self, "scene_id", None))
+            if _truth is not None:
+                _tc, _tw = _truth
         # 老倪 2026-10-10: 「你先把桌子的颜色改成乳白色」 (原深灰 0.16/0.18/0.22)
         # 桌面用**无光照**平涂 (shader=None): 'shaded' 下乳白 0.96 会被渲成深灰 (实测中位色
         # 49,48,46), 桌面颜色就认不出来了; 平涂让 绿防静电胶皮 / 乳白办公桌 一眼可辨。
@@ -1934,6 +2162,22 @@ class DreamView3D(QWidget):
         _os.environ["ZMAX_SCENE_DIR"] = _d
         _att = (getattr(self, "_scene_edit_attacher", None) or getattr(self, "scene_edit", None))
         _lab = {"SS-EPI-CORNER": "插拔场景", "SS-TRAY-PLACE": "摆盘场景"}.get(scene_id, scene_id)
+        # 🔴 2026-10-10 老倪: 「原来的插拔场景, 你怎么给搞没了? 现在跟摆盘场景都一样了」
+        #   根因: 场景专属几何 (插拔 = 带孔盒/孔口/AOI 相机; 摆盘 = 料盘 + tray盘) 只在启动时建一次,
+        #   而切换只改了数据源 (`ZMAX_SCENE_DIR`) 和桌面色 ⇒ 点「🧩 插拔」画面里的几何**一点没变**
+        #   (看着就跟摆盘一模一样, 连桌面上那套盘件都还在)。
+        #   修法: 切换后显式重建场景层 —— `_build_scene()` 本来就是幂等重建 (先清空全部 GL item 再建,
+        #   收尾重贴图层开关), 也正是「🔁 重建 3D 视图」按钮调的那个钩子。
+        self.scene_id = scene_id
+        _rebuilt = False
+        try:
+            self._build_scene()
+            _rebuilt = True
+            if getattr(self, "_n", 0) > 0:
+                self._update_frame(int(self.slider.value()))     # 重建后把当前帧重画一遍
+            self.view.update()
+        except Exception as _e:                                                 # noqa: BLE001
+            print("⚠️ 切场景重建几何失败: %r" % (_e,))
         try:      # 🧩 桌面换色: 插拔=绿防静电 / 摆盘=办公桌乳白 (同一个视图, 只改 GL 材质色)
             _ti = getattr(self, "_table_item", None)
             if _ti is not None:
@@ -2614,7 +2858,9 @@ class DreamView3D(QWidget):
                 _rows.append((_txt3, QColor(139, 148, 158), False, 0))
             except Exception:
                 pass
-            self._overlay.set_panel(_rows)
+            # 🪗 折叠状态由本视图维护 (老倪 2026-10-10: 面板别挡视线)
+            self._fsm_rows = list(_rows)
+            self.set_fsm_panel(_rows)
         except Exception as _e:
             print(f"⚠️ 标注层更新失败: {_e}")
 

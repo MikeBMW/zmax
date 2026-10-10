@@ -96,8 +96,8 @@ def main():
               "场景编辑面板已挂在同一个 3D 视图上 (对象列表/场景下拉)")
         if _att is not None:
             _txt0 = _att.cmb_scene.currentText()
-            check("3D场景" in _txt0, "面板默认场景 = 3D场景: %s" % _txt0[:30])
-            check(_att.lst.count() >= 20, "面板列出 3D场景 的对象 (%d 个, 含机器人)" % _att.lst.count())
+            check("插拔场景" in _txt0, "面板默认场景 = 插拔场景: %s" % _txt0[:30])
+            check(_att.lst.count() >= 20, "面板列出默认场景的对象 (%d 个, 含机器人)" % _att.lst.count())
         view = _dvs[0] if _dvs else None
     except Exception as e:                                                          # noqa: BLE001
         check(False, "页面构建失败: %r" % (e,))
@@ -130,7 +130,7 @@ def main():
     opts = U.scene_options()
     labels = [o[0] for o in opts]
     # 老倪 2026-10-10 收敛: 下拉只两条 (标签改中文, sid 在 itemData 里)
-    check([o[2] for o in opts] == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔 + 上下料 + 3D 分层视图: %s" % labels)
+    check([o[2] for o in opts] == ["SS-EPI-CORNER", "SS-TRAY-PLACE"], "下拉 = 插拔场景 + 摆盘场景: %s" % labels)
     d = U.load_scene(SDIR)
     check(len(d["objects"]) == 6 and len(d["markers"]) == 4 and len(d["fences"]) == 1 and len(d["trajectories"]) == 2,
           "场景真源 6 对象/4 标记/1 围栏/2 轨迹")
@@ -175,8 +175,8 @@ def main():
     print("7) 多场景库 + 四类元素都能选/改 (位置·轨迹)")
     opts = U.scene_options()
     ids = [o[2] for o in opts]
-    check(len([i for i in ids if i]) == 3, "场景库露脸 %d 条 (插拔 + 上下料 + 3D 分层视图)" % len([i for i in ids if i]))
-    check(ids == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔场景 + 上下料场景 + 3D 分层视图场景: %s" % ids)
+    check(len([i for i in ids if i]) == 2, "场景库露脸 %d 条 (插拔场景 + 摆盘场景)" % len([i for i in ids if i]))
+    check(ids == ["SS-EPI-CORNER", "SS-TRAY-PLACE"], "下拉 = 插拔场景 + 摆盘场景: %s" % ids)
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_registry.py"), "--check"],
                        cwd=ROOT, capture_output=True, text=True)
     check(r.returncode == 0, "scene_registry --check 全绿 (%s)" % (r.stdout or "").strip().splitlines()[-1][:60])
@@ -240,8 +240,10 @@ def main():
     import sim_scene_def as SSD
     opts = U.scene_options()
     sim = [o for o in opts if o[2] == "SIM-PEG-L4"]
-    check(bool(sim), "场景下拉含仿真场景 SIM-PEG-L4: %s" % [o[0][:40] for o in sim][:1])
-    check(bool(sim and sim[0][3]), "带运行元数据: %s" % (sim[0][3] if sim else None))
+    # 🩹 2026-10-10: v5.39.7 起仿真场景按口径**收起** (老倪: 「其它场景先不用搞」) ⇒ 不在下拉里;
+    #   几何/真源判据仍直接读目录 (与是否露脸无关), 下面几条继续有效。
+    check(not sim, "仿真场景 SIM-PEG-L4 已按口径收起 (不在下拉露脸): %s" % [o[2] for o in opts])
+    check(all(bool(o[3]) for o in opts), "露脸场景都带 ▶运行元数据: %s" % [bool(o[3]) for o in opts])
     SIMDIR = os.path.join(ROOT, "data", "scene", "scenes", "SIM-PEG-L4")
     truth = SSD.load()["scenes"]["SIM-PEG-L4"]["objects"]
     ondisk = U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"]
@@ -280,21 +282,31 @@ def main():
     from PyQt5.QtWidgets import QComboBox as _QCB, QPushButton as _QPB
     cb = card2.findChildren(_QCB)[0]
     si = next((i for i in range(cb.count()) if (cb.itemData(i) or {}).get("sid") == "SIM-PEG-L4"), None)
-    check(si is not None, "页内下拉能定位到仿真场景 (index=%s)" % si)
+    _vis = [i for i in range(cb.count()) if (cb.itemData(i) or {}).get("sid")]
+    if si is None and _vis:      # 🩹 仿真场景已收起 ⇒ 用露脸的第一条验证「下拉能切 + 视图跟着换」
+        si = _vis[0]
+    check(si is not None, "页内下拉能定位到场景 (index=%s)" % si)
     if si is not None:
         cb.setCurrentIndex(si)
         app.processEvents()
-        check(len(card2.view.data["objects"]) == len(truth), "切到仿真场景后视图载入 %d 对象" % len(card2.view.data["objects"]))
-        br = [b for b in card2.findChildren(_QPB) if "运行仿真" in b.text()]
-        check(bool(br) and br[0].isEnabled(), "「▶ 运行仿真」按钮已启用")
+        _sid2 = (cb.itemData(si) or {}).get("sid")
+        _n_expect = len(U.load_scene(os.path.join(ROOT, "data", "scene", "scenes", _sid2), _sid2)["objects"])
+        check(len(card2.view.data["objects"]) == _n_expect,
+              "切到 %s 后视图载入 %d 对象" % (_sid2, len(card2.view.data["objects"])))
+        br = [b for b in card2.findChildren(_QPB)
+              if ("运行仿真" in b.text()) or ("重跑同源" in b.text())]
+        check(bool(br) and br[0].isEnabled(),
+              "「▶ 运行/重跑同源」按钮已启用 (%s)" % (br[0].text() if br else "没找到"))
 
     print("9) 场景清单收敛 + 插拔场景几何对齐 metaworld 真模型")
     _opts = U.scene_options()
     _sids = [o[2] for o in _opts]
-    check(_sids == ["SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP"],
-          "下拉三条 (3D场景 在首位): 3D场景 + 插拔场景 + 上下料场景 → %s" % _sids)
-    check(all(("3D场景" in _opts[0][0]) and ("插拔场景" in _opts[1][0]) and ("上下料场景" in _opts[2][0]) for _ in [0]),
-          "中文名: %s | %s | %s" % (_opts[0][0][:22], _opts[1][0][:22], _opts[2][0][:22]))
+    # 🩹 2026-10-10: 这里原来断言 3 条 (3D场景/插拔场景/上下料场景) —— 那是 v5.39.6 之前的旧口径;
+    #   v5.39.7 起下拉只留两条 (老倪: 「其它场景先不用搞」), 断言没跟着改 ⇒ 一直 IndexError。
+    check(_sids == ["SS-EPI-CORNER", "SS-TRAY-PLACE"],
+          "下拉两条 (插拔场景 + 摆盘场景) → %s" % _sids)
+    check(len(_opts) >= 2 and all(("插拔场景" in _opts[0][0]) and ("摆盘场景" in _opts[1][0]) for _ in [0]),
+          "中文名: %s | %s" % (_opts[0][0][:22], _opts[1][0][:22]))
     _r1 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
     _r2 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
     check(_r1.get("ok") and len(_r1["objects"]) >= 20,
@@ -329,7 +341,8 @@ def main():
     _sv2.reload()
 
     _epi = [o for o in _opts if o[2] == "SS-EPI-CORNER"]
-    check(bool(_epi) and "你正在跑的那条" in _epi[0][0], "你正在跑的 3D 分层视图场景已复制进编辑器: %s" % (_epi[0][0][:40] if _epi else None))
+    check(bool(_epi) and ("插拔场景" in _epi[0][0]) and bool(_epi[0][3]),
+          "你正在跑的那条 (插拔场景) 在编辑器里可选+可运行: %s" % (_epi[0][0][:40] if _epi else None))
     _t = SSD.episode_truth()
     _oe = SSD.to_objects3d("SS-EPI-CORNER")
     _nrob = len([o for o in (_oe.get("objects") or []) if o.get("part") == "robot"])

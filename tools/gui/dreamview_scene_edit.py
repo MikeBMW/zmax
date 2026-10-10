@@ -185,10 +185,8 @@ class SceneEditAttacher(QObject):
         t = QLabel("🗂 场景编辑")
         t.setStyleSheet("color:#00d4aa; font-size:14px; font-weight:700;")
         v.addWidget(t)
-        hint = QLabel("列出 objects3d.json 对象 → 选中编辑/隐藏/新增\n(写操作经 scene_edit.py · 备份+回读)")
-        hint.setStyleSheet("color:#8b949e; font-size:10px;")
-        hint.setWordWrap(True)
-        v.addWidget(hint)
+        # 🗑 2026-10-10 老倪: 「列出 objects3d.json 对象 → 选中编辑/隐藏/新增 (写操作经 scene_edit.py · 备份+回读)」
+        #   这行说明删掉 (标题已够, 界面要极简)
         # 场景选择 (含「SCN-07-UP 上下料」) — 切换即对该场景目录编辑
         self.cmb_scene = QComboBox()
         for label, d in _scene_options():
@@ -241,14 +239,22 @@ class SceneEditAttacher(QObject):
         v.addWidget(self.status)
 
         # 插入到主布局: 原「图层面板」之后 (index 1), 不动原面板
+        # 🪗 2026-10-10 老倪: 这个侧栏也要能向左折叠 (别挡 3D 视线) ⇒ 套折叠外壳
+        try:
+            from ss_dreamview import CollapsibleSide
+            self.pane = CollapsibleSide("场景编辑", p, parent=self.dv)
+            _host = self.pane
+        except Exception:                                                      # noqa: BLE001
+            self.pane = None
+            _host = p
         try:
             lay = self.dv.layout()
             if lay is not None:
-                lay.insertWidget(1, p)
+                lay.insertWidget(1, _host)
             else:
-                p.setParent(self.dv)
+                _host.setParent(self.dv)
         except Exception:                                                      # noqa: BLE001
-            p.setParent(self.dv)
+            _host.setParent(self.dv)
         self.panel = p
 
     # ── 列表 ──
@@ -520,6 +526,12 @@ class SceneEditAttacher(QObject):
                     self._context_menu(ev)
                     return True
                 if ev.type() == QEvent.MouseButtonPress:
+                    # 🪗 点在「八阶段状态机面板」的折叠按钮上 ⇒ 归它处理, 不做点选
+                    try:
+                        if self.dv.fsm_panel_toggle_at(ev.x(), ev.y()):
+                            return True
+                    except Exception:                                          # noqa: BLE001
+                        pass
                     self._press = (ev.x(), ev.y())
                 elif ev.type() == QEvent.MouseButtonRelease and self._press is not None:
                     _p = self._press
