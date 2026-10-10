@@ -61,6 +61,15 @@ def main():
     page._show_consistency()
     QApplication.processEvents()
     save(page, "2_一致性核对.png")
+
+    # 3) 点左树「性能配置」→ 右侧只剩该域的行 (老倪 2026-10-10: 点域右侧必须有内容)
+    for i in range(page.tree.topLevelItemCount()):
+        it = page.tree.topLevelItem(i)
+        if "性能配置" in it.text(0):
+            page._on_tree(it, 0)
+            break
+    QApplication.processEvents()
+    save(page, "3_点性能配置_右侧只筛该域.png")
     return 0
 
 

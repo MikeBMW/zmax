@@ -406,6 +406,7 @@ class ConfigCenterPage(QWidget):
                                 f"border:1px solid {th['C_BORDER']};}}")
         self._fill_tree(d, tk)
         self.tree.itemDoubleClicked.connect(self._on_tree)
+        self.tree.itemClicked.connect(self._on_tree)      # 单击即生效 (双击才响应会让人以为"点了没反应")
         sp.addWidget(self.tree)
 
         self.tabs = QTabWidget()
@@ -463,6 +464,74 @@ class ConfigCenterPage(QWidget):
             self.tree.addTopLevelItem(it)
             it.setExpanded(label.startswith("工艺") or label.startswith("文档"))
 
+    # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
+    def _tab_index_by_title(self, kw):
+        for i in range(self.tabs.count()):
+            if kw in self.tabs.tabText(i):
+                return i
+        return -1
+
+    def _filter_eng(self, param=None, keep_id=None):
+        """工程配置页: param=None 显示全部; 否则只留该参数行 (keep_id 用于精确高亮)。"""
+        idx = self._tab_index_by_title("工程配置")
+        if idx >= 0:
+            self.tabs.setCurrentIndex(idx)
+        t = self.tab2_table
+        for r in range(t.rowCount()):
+            pid = self.eng_rows[r] if r < len(self.eng_rows) else ""
+            t.setRowHidden(r, bool(param) and pid != param)
+        sel = -1
+        if param:
+            for r in range(t.rowCount()):
+                if self.eng_rows[r] == param:
+                    sel = r
+                    break
+        if sel >= 0:
+            t.selectRow(sel)
+            t.scrollToItem(t.item(sel, 0))
+        n = len(self.eng_rows) if not param else 1
+        self.tab2_head.setText(("仅显示: %s" % param) if param else "工程配置 · 全部 %d 项" % n)
+
+    def _filter_fpm(self, dom=None, param=None):
+        """功能/性能/模型三域合页: dom=None 显示全部; 否则只留该域; param 再精确定位到行。"""
+        idx = self._tab_index_by_title("功能·性能")
+        if idx >= 0:
+            self.tabs.setCurrentIndex(idx)
+        t = self.tab3_table
+        shown, sel = 0, -1
+        for r in range(t.rowCount()):
+            d, pid = self.fpm_rows[r] if r < len(self.fpm_rows) else ("", "")
+            ok = (dom is None or d == dom) and (param is None or pid == param)
+            t.setRowHidden(r, not ok)
+            if ok:
+                shown += 1
+                if param and pid == param:
+                    sel = r
+        if sel >= 0:
+            t.selectRow(sel)
+            t.scrollToItem(t.item(sel, 0))
+        self.tab3_head.setText(("仅显示: %s%s" % (dom or "全部", (" / " + param) if param else ""))
+                               + " · %d 项" % shown)
+
+    def _show_domain(self, dom, param=None):
+        """老倪 2026-10-10: 点『性能配置/功能配置/工程配置/模型配置』右侧必须有内容, 不能只是底部刷字。"""
+        if dom == "模型配置":
+            if param:
+                self._filter_fpm("模型配置", param)
+                return True
+            i = self._tab_index_by_title("模型配置")
+            if i >= 0:
+                self.tabs.setCurrentIndex(i)
+                return True
+            self._filter_fpm("模型配置", param)
+        elif dom == "工程配置":
+            self._filter_eng(param)
+        elif dom in ("功能配置", "性能配置", "模型配置"):
+            self._filter_fpm(dom, param)
+        else:
+            self._run_into("overview")
+        return True
+
     def _on_tree(self, item, _col):
         txt = item.text(0)
         if "文档" in txt or "SOR" in txt or "立项" in txt or "协议" in txt or "一致性" in txt:
@@ -474,6 +543,25 @@ class ConfigCenterPage(QWidget):
                 self._show_doc("project")
             else:
                 self._show_doc("agreement")
+            return
+        # 五个域: 切页 + 筛该域
+        for dom in ("模型配置", "工程配置", "功能配置", "性能配置"):
+            if dom in txt:
+                child = txt.strip()
+                self._show_domain(dom, child if (child and "." in child) else None)
+                return
+        # 参数 ID 子项 (树里显示成 "   model.ckpt_l2"): 按它在哪个域定位到那一行; 找不到就明说, 不静默
+        pid = txt.strip()
+        if "." in pid:
+            if pid in self.eng_rows:
+                self._show_domain("工程配置", pid)
+                return
+            for r in range(self.tab3_table.rowCount()):
+                if self.fpm_rows[r][1] == pid:
+                    self._show_domain(self.fpm_rows[r][0], pid)
+                    return
+            self.out.setPlainText("⛔ 配置中心里没有参数 %s (真源里没这一项)" % pid)
+            self._fit_out()
             return
         if "任务配置" in txt or "工艺" in txt:
             self.tabs.setCurrentIndex(0)
@@ -530,7 +618,18 @@ class ConfigCenterPage(QWidget):
                        [[c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
                          ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:22]),
                          str(c["judge"])[:60]] for c in cs], th)
-        w2 = QWidget(); l2 = QVBoxLayout(w2); l2.setContentsMargins(6, 6, 6, 6); l2.addWidget(t2)
+        self.tab2_table = t2
+        self.eng_rows = [c["id"] for c in cs]
+        w2 = QWidget(); l2 = QVBoxLayout(w2); l2.setContentsMargins(6, 6, 6, 6)
+        self.tab2_head = QLabel("点左侧「工程配置」只筛该域; 点具体参数名直接定位到行")
+        self.tab2_head.setFont(QFont("Consolas", 10))
+        self.tab2_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l2.addWidget(self.tab2_head)
+        r2b = QHBoxLayout()
+        b_all2 = _btn("🔎 显示全部", th)
+        b_all2.clicked.connect(lambda: self._filter_eng(None))
+        r2b.addWidget(b_all2); r2b.addStretch(); l2.addLayout(r2b)
+        l2.addWidget(t2, 1)
         self.tabs.addTab(w2, "⚙️ 工程配置")
 
         # 3) 功能·性能·模型 (参数表)
@@ -539,7 +638,24 @@ class ConfigCenterPage(QWidget):
                        [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
                          ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
                          str(c["judge"])[:48]] for c in cs3], th)
-        w3 = QWidget(); l3 = QVBoxLayout(w3); l3.setContentsMargins(6, 6, 6, 6); l3.addWidget(t3)
+        self.tab3_table = t3
+        self.fpm_rows = [(c["domain"], c["id"]) for c in cs3]
+        self.tab3_domains = ["功能配置", "性能配置", "模型配置"]
+        w3 = QWidget(); l3 = QVBoxLayout(w3); l3.setContentsMargins(6, 6, 6, 6)
+        self.tab3_head = QLabel("点左侧「功能配置 / 性能配置 / 模型配置」只筛该域; 点具体参数名直接定位到行")
+        self.tab3_head.setFont(QFont("Consolas", 10))
+        self.tab3_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l3.addWidget(self.tab3_head)
+        r3b = QHBoxLayout()
+        for dom in self.tab3_domains:
+            b = _btn("🔎 " + dom, th)
+            b.clicked.connect(lambda _, d=dom: self._filter_fpm(d))
+            r3b.addWidget(b)
+        b_all3 = _btn("显示全部", th)
+        b_all3.clicked.connect(lambda: self._filter_fpm(None))
+        r3b.addWidget(b_all3)
+        r3b.addStretch(); l3.addLayout(r3b)
+        l3.addWidget(t3, 1)
         self.tabs.addTab(w3, "🧩 功能·性能·模型")
 
         # 4) 工单
