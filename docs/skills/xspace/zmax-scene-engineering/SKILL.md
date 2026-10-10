@@ -125,6 +125,20 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - 导出时跳掉 `max(size)>1.0 且 z<-0.1` 的台体大块 (台面以下), 场景里看不见且压得视图发黑。
 - 页内视图看小 = 三个数都不够: 最小高度 (现 780)、`fit_view()` 自适应缩放 (别写死 px/m)、以及"独立窗口"按钮 (直接最大化)。
 
+## 页内"3D 场景"必须是真视图, 不能仿画 (2026-10-10)
+
+老倪: 「sim real场景的页面，与 3D场景的页面不一样，要改成一模一样，就是同一个东西」
+      「Sim&Real 改成 3D场景，就是一个程序」。
+
+- "像"不是"是": QPainter 自绘就算几何全对, 老倪一眼看出是两套东西。**把同一个类 (DreamView3D) 嵌进页里**,
+  再把编辑能力挂到它身上 (`dreamview_scene_edit.attach_scene_edit(dv)`: 场景下拉+对象列表+编辑/显隐/新增+右键+叠加层)。
+- 🔴 **全进程只允许一个 GL 视图** (qt-gl 坑 1): 页里内嵌一个 DreamView3D 后, 任何"再开一个 3D 窗口"的入口
+  (画布 `open_ss_3d`) 必须**复用**它 (拎成独立窗口 / setParent(None)+Qt.Window), 新建 = 第二个 GL 上下文 = 空白。
+  实现: `ss_dreamview._LIVE/live_dreamview()/get_or_create_dreamview()`; 先查 `live_dreamview()` 再决定是否 new。
+  先清点 `grep -rn "GLViewWidget(" tools/gui/*.py` 保证只有一处 GL 视图。
+- 嵌入式验证要**带 DISPLAY 真渲染**抓帧 (offscreen 下 GL 可能空白 ⇒ 假绿/假红):
+  `DISPLAY=:0 python 建页 → page.grab()` 数机器人浅灰/网格青绿像素; 结构判据 (实例数=1、is live_dreamview()) 可 offscreen 跑。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
