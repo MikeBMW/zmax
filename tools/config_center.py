@@ -16,6 +16,7 @@
     工艺域·工单列表    →  config_center.py orders
     生成工单          →  config_center.py order --scene SCN-02-HANDLE
     诊断带·全链校验    →  config_center.py check
+    System 1 交付包   →  config_center.py sys1   (摆盘项目: 功能清单/配置项/指标/接口契约/缺口)
 
 三列的含义 (MCD): 测量=当前值/真源/时间戳 · 标定=权限/写入 · 诊断=判据
     python3 tools/config_center.py [--json] <命令> [参数]
@@ -487,11 +488,25 @@ def cmd_check(a):
     return 0 if ok else 1
 
 
+def cmd_sys1(a):
+    """System 1 交付包 — 摆盘项目: 功能清单 / 配置项 / 性能指标 / 接口契约 / 缺口 (可发放供应商)
+
+    用法: python3 tools/config_center.py sys1          # 生成交付包
+          python3 tools/config_center.py sys1 show     # 只在终端打印 System 1 配置摘要
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    argv = [sys.executable, os.path.join(root, "tools", "sys1_delivery.py")]
+    if (a.arg or "") == "show":
+        argv.append("--show")
+    return subprocess.call(argv)
+
+
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
         "node": cmd_node, "project": cmd_project,
-        "order": cmd_order, "check": cmd_check}
+        "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1}
 
 
 def main():

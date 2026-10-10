@@ -72,6 +72,19 @@ PLAN = {
                    "sort.rule": "测试结果 PASS/FAIL 分拣"},
         trigger="测试台就绪信号", loop="到货即测", orders_rule="1 批 = 1 工单",
         note="核心挑战场景: 测试读取成功率 ≥99.9%"),
+    "tray_filling": dict(
+        task_type="摆盘取放",
+        applies=[s for s in SEG_ALL if s not in ("5 拔出/取回",)],
+        excluded=["5 拔出/取回"],
+        overrides={"pick.vac_establish_ms": 200, "pick.hold_s": 5, "pick.retry": 3,
+                   "place.down_force_max": "配方上限(防压伤)", "place.angle_tol_deg": 1.0,
+                   "src.orient": "周转盘槽位朝向", "cyc.takt": "单颗 ≤3.15s (PVT)",
+                   "sort.pass_tray": "不适用(摆盘不分拣)"},
+        trigger="满料周转盘到位 / Tray 盘满或周转盘空信号",
+        loop="单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
+        orders_rule="1 盘 = 1 工单; 1 颗 = 1 条记录",
+        note="摆盘: 周转盘→上料Tray盘取放; 不涉及插入/拔出 ⇒ 配方段 5 不适用; "
+             "CT 起止口径写死=从吸取离盘到下一位就位"),
 }
 
 TIER = {"12槽": "L1 料盘级", "12穴位": "L1 料盘级", "20穴位": "L1 料盘级",
