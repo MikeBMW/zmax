@@ -44,6 +44,28 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 - 端到端订阅：另起一个 DDS 订阅者收 `zmax/ss_energy`，**逐位核对** `e_total_cj` 与 tap 最后一行一致（不是"看起来像"）。
 - 报数必带：`P_in` 来源、采样点数、阶段窗口、η 符号（无采样就 `η=-1` 如实）。
 
+## 内稳态层 (身体/功能性感受/自我模型) — 2026-10-10 v5.37.1
+老倪给「流形引擎 · 内稳态与自主安全」规格 (能量/温度/磨损/姿态/对齐 → 偏差 → 紧迫度 → 行为 + 自我模型),
+要求「L5 功能的实际代码可运行/可观察/可用 vscode debug」。落地口径:
+- **代码**: `src/lerobot/manifold/homeostasis.py` — `HomeostasisState`(五路稳态量 + 自然衰减 `ds/dt=-decay` + 危险阈值 + `ingest(**真信号)`)
+  · `FunctionalFeeling`(紧迫度 `u = d·w·(1+d)` 非线性放大 → 行为权重) · `SelfModel`(记录/预测/后果/趋势) ·
+  `HomeostasisEngine`(`drive()` 出 mode/紧迫度/veto/动作增益 + `snapshot()` 可观察量 + 原子落盘)。
+  接入 `ManifoldEngine(step/query/rec)`: 危险 → 动作全零 (veto) · 紧迫度**软调制**动作幅度 · `query()` 带完整快照。
+- **边界如实写明**: 能做的 = 持续身体状态/稳态指标/失衡驱动行为/自主安全/自我模型; **不能**做的 = 主观感受(难受/愉悦)/欲望体验。
+  所有"感受"标注**功能性** —— 驱动行为, 不声称主观体验。
+- **可观察/可调试**: CLI `--selftest|--demo|--state|--watch N` (另有 `manifold_engine.py --hom-demo|--state`) +
+  `.vscode/launch.json` 四条; 观测量落 `zmax_data/ss_live/manifold_homeostasis.json`;
+  画布节点每次执行把快照真值打进日志 + 写 `_SS_STATE['mani_eng']['hom']`。
+- 🔴 **三个实测坑 (都写成断言)**:
+  1. **软闸(抢占)不能把所有量都算进去**: 5 路全进抢占 ⇒ energy=0.25 时 u=2.625 早已越阈 ⇒ 永远 safe_stop,
+     **轮不到 recharge** (自检⑥实测失败) ⇒ 抢占只看**没有专属行为**的瞬时安全量 (姿态/温度); 能量/磨损走各自行为(充电/维护)。
+  2. **对齐度不进硬闸/调制**: 流形置信度低 ⇒ alignment≈0 ⇒ 误判"危险"全零动作 ⇒ 硬闸/调制只认**身体量**
+     `BODY_KEYS=(energy,temperature,wear,balance)` (对齐差是任务级响应, 不是身体危险); 真信号过 `satisfy(x,lo,hi)` 换算 (置信 0.9 ⇒ 对齐 1.0)。
+  3. **零回归要有死区**: 自然衰减的 ε 级增益 (0.999994) 若照乘 ⇒ "健康身体动作逐位相同"被破坏 ⇒ `HOM_GAIN_DEADBAND=0.995`,
+     自检用 `np.array_equal` 钉住逐位相等。
+- 还没做 (如实报): 五路只有 alignment 是真信号 (其余 decay 外推 + `estimated=True`), 接口见 `SENSOR_MAP`;
+  对真机成功率的提升未做同口径对照 ⇒ 按纪律不进默认档, 定位=核心节点自带安全旁路。
+
 ## 整合后环境链路（2026-10-07 修，别再踩）
 - 工程根 `/home/ubuntu/zmax`，HF 家在 `zmax_data/hf_cache`（`~/.cache/huggingface` 已空）⇒ 各训练阶段必须带 `HF_HOME`/`HF_HUB_CACHE`。
 - `import torch` 报 `libcusparseLt.so.0` 找不到 = `/etc/ld.so.conf.d/nvidia-pip.conf` 还指整合前已删路径；改指 `~/zmax/gui-venv311/lib/python3.11/site-packages/nvidia/*/lib`（`cusparselt` 需补一个去 `nvidia/` 前缀的兼容软链，因为 torch RPATH 那一项没带 `nvidia/`）。

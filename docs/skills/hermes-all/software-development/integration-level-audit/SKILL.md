@@ -73,11 +73,39 @@ grep -rn '未接入\|S3 前\|占位' tools/gui/state_space_sim_real.py
    而 `Action clients` 均为 **0** ⇒ 这条出口是空跑的；真正的规划输出走的是 JSON 文件 + DDS 镜像。
    查法: `ros2 action list -t --include-hidden-topics` → `ros2 action info <名>` (看 clients/servers 计数)。
    ⇒ 报口径时三样都要给: **接口在哪 · 谁在真跑 · 哪条只是留着的出口**; 只说"action 有输出"就是把旁路当主线。
+9. **数字/参数的"假在线"**: 真源 JSON 在盘上、站台页/技能真在用, 但从没被参数注册表扫到 ⇒ 用户在参数中心
+   找不到那个数字, 得下的结论是"**没接**", 不是"没有这个参数"; 反之接进了注册表却不给 `fn_ref` ⇒
+   数字→功能链动自链成参数名, 看着链上了其实点开没信息。两者都是接入层缺陷, 不是数据缺失。
 
 🔴 **判"接口/节点不存在"之前先核 ROS 域**：域不对会让存在的实体**全部凭空消失** (假阴性)。
 实测同一个容器里 `ROS_DOMAIN_ID=42`，在默认域 0 下扫也是"空"，结论"没有 action"完全错。
 凡是要下"不存在/没接"的结论，先 `echo $ROS_DOMAIN_ID` 对齐域；**action 类话题还默认隐藏，
 必须加 `--include-hidden-topics`**，否则拿 `ros2 topic list` 的反面结论同样不可信。
+
+## 参数/数字在线性 (「这个数字/点位在参数中心里怎么改?」)
+
+判"某数字/点位能不能在线改"先分**真源**与**库表**, 再判接没接:
+
+1. **参数中心里能改的数字全部来自数据面 `tools/param_registry.py` 的 `scan_*()`**, 不是 SQLite 库表。
+   分组 = calib(标定/真源) · canvas(画布节点) · code(代码常量) · platform(产品/性能) · switch(运行开关) ·
+   space(空间点/示教点)。
+2. 🔴 **拿 `sqlite3 "select ... from params"` 查不到就断言"没这个参数"是错结论**: 点位类真源常在
+   `data/skills/l2_atomic/{space_points,taught_points}.json` 这类 JSON 里, 从来就没被注册过。
+   判"有没有"的正确入口 = `python3 tools/param_registry.py list | grep <关键词>` / `stats`。
+   站台页 `8793 /ctl/points` 列出的 slots(号位)+spaces(空间点) 是同一批数据的另一个面。
+3. **假接入的两个形态**: (a) 没给 `fn_ref`/`sys_hint` ⇒ `param_links` 把功能/模块自链成参数名;
+   (b) 没给显式 `min`/`max` ⇒ 范围按当前值推断出 "±10%" 之类假包络, 状态显示"已定义"其实没闸。
+4. **改数 ≠ 生效**: 消费方 (站台页 / L2 执行器 / 引擎) **启动时读一次**真源 ⇒ 写完必须重启对应服务再回读,
+   否则页面显示新值、动作还是旧值。
+5. **在线改数没有真机校验**, 只有范围包络 ⇒ 参数中心只配毫米级微调; 新点位/大改动一律回现场点动 + 页面示教
+   (走 `POST /ctl/record_point`)。对称地: `tools/adjust_point_offset.py` 只吃 `taught_points.json`(号位),
+   不吃 `space_points.json`(空间点) —— 别把它当通吃工具。
+6. **把新真源接进参数中心 = 五处编辑 + 三段验证** (缺一不可):
+   `param_registry.py` 加 常量 → `scan_x()` → `CAT_CN`+`CAT_COLOR` → `scan()` 串上 → `set_param()` 加
+   `_write_json_path(X, p["ref"], v)` 分支 (它自带备份+回读核对, 别另写写盘); GUI 只需在 `param_center.py` 的
+   `CAT_ICON` 添图标 (分类树按 registry 分组动态生成)。
+   验证链: `param_registry.py stats`(范围未定义=0) + `verify` → 干跑 `set <id> <v>` → 真写 `--write` →
+   **回读源文件** → 写回原值复原 → `engineering_db.py build|check` → `verify_param_center` + `verify_platform_spec`。
 
 ## 接入下一级前的硬约束 (先量化再动手)
 

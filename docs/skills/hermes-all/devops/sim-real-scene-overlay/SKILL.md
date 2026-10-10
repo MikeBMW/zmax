@@ -688,6 +688,21 @@ D405 的 1280×720 与 640×480 是**不同 FOV**（不是 2× binning）：
 - 核验口径: **逐条**取"落在该线 ±3px 内"的像素拟合倾角(按 y/x 窗口取会把邻线混进来, 本轮自己踩过),
   与目标比 ±1.5° 内为过(实测差 ≤0.14°)。
 
+## Sim&Real 页的「主视图」= 与画布 3D **同一个窗口**(不许开第二个 GL 视图) 2026-10-10
+
+老倪: 「场景 Sim&Real 功能区，应该有个主要的可视化编辑界面，跟 simulink 画布的 3D 视图同源，可以编辑 3D 场景」。
+- 定式: 页内第一块放「🧭 3D 场景编辑器 · 主视图」卡，按钮调**画布那条同一个方法**
+  (`SimulinkModule.open_ss_3d(on_top=True, level=None)`) ⇒ 同一个 3D 窗口、同一份场景真源
+  (objects3d.json/markers/fences/trajectories)，视图内编辑经 `scene_edit.py` 单一写路径。
+- 🔴 **不要在页内再嵌一个 GLViewWidget/第二个 DreamView3D**: pyqtgraph shader 句柄绑首个 GL 上下文
+  (见 `qt-gl-rendering-pitfalls` 坑 1) ⇒ 第二视图会集体 GLError/黑屏。页内"预览"取
+  `open_ss_3d` 单例窗口 `_ss_3d_windows[0]` 的 `grabWindow(winId)` 抓帧(带拍照时间/帧龄)，不开新上下文。
+- 「同源」要能被判据证明: 把页内按钮与画布工具栏按钮都打到**同一个方法**(判据: 两边 click 都进同一个 stub)。
+- `build_body(parent)` 拿不到画布时要**懒查**(沿 parent 往上找 `studio.simulink`)——画布是后台懒创建的，
+  构建时它还不存在；未就绪只提示不崩。
+- 画布 3D 入口丢失的根因与判据(`addWidget` 被删 / `isVisibleTo` 判据、
+  `import sys` 局部名陷阱、`clicked` 带 checked 参数) 见 `state-space-canvas-engineering`。
+
 ## 交付前自检（必做）
 1. `--verify` 投影链自检（手眼 det/正交性/闭环 std）
 2. 正投影 vs 实检逐位姿表（报中位 + max，不报单个最好）

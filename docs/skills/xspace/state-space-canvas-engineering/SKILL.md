@@ -409,7 +409,10 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 端口字典格式 | 断言/渲染随机踩坑 | 统一归一为字符串列表 |
 | 长命令内联被拦 | heredoc/巨型单行触发 hardline 拦截 | 写成 `/tmp/*.sh` 再 `bash` 执行（本环境惯例） |
 | 想靠重排消除交叉 | 改完交叉更多 | 量化后再判; 跨行长线只能靠正交布线 |
-| 对画布文件做 `tmp`+`os.replace` 原子写 | 仓库根 `flows/state_space_obs.json` 是**软链** → 被换成普通文件, 工程结构破坏 | 写前 `os.path.realpath()` 取真源路径再 replace; 备份放仓库根 `flows/_archive/` (既有约定) |
+| 对画布文件做 `tmp`+`os.replace` 原子写 | 仓库根 `flows/state_space_obs.json` **和** `src/lerobot/engineering/flows/state_space_obs.json` 都是**软链** ⇒ 被换成普通文件, 工程结构破坏 (`verify_platform_spec` ⑦ / `instance_init.py --check` 立刻变红) | 写前 `os.path.realpath()` 取真源路径再 replace; 备份放仓库根 `flows/_archive/` (既有约定) |
+| 以为画布真源只有一份 | 改了一份、GUI 读的是另一份 ⇒ 改了看不见 | **真源 = `data/database/<产品>/sources/canvas/state_space_obs.json`**; `src/lerobot/engineering/flows/state_space_obs.json` 是指向它的**软链** (GUI 经仓库根 `flows/` 软链读同一份)。判据: `bash`→`realpath flows/state_space_obs.json` 必须落在实例包内 + `tools/instance_init.py --check` ①全绿 |
+| 改完画布没重存总工程 | `verify_project_archive` 报「集成式打开后 diff: 总工程 == 现场」❌ | 改画布后按序: 画布 → `ss_node_sync.py`(需要时) → `ss_task_bind --activate` → **`project_archive.py space-save`** → `engineering_db.py build` → 两个 `--check` |
+| 画布真源被 GUI 保存**悄悄回滚** | 改了真源, 过几分钟内容又变回旧的 (实测 mtime 变、`params.core` 消失) | 控制台退出/另存为会把内存里的画布写回真源 ⇒ **① 改完立刻回读 + 记 mtime; ② 尽量在控制台没加载该画布时改; ③ 交付前再回读一次**, 别只看第一次写成功 |
 | 加节点后忘了同步 `_EXTERNAL_LOC` 行号 | `t_auto_srcmap`(L2/L4 在跑) 报「Lx无符号」 | 改真源后重算 `class X`/常量的行号并更新映射 (±3 行容错但别赌) |
 | 以为改 `capability_levels.py` 会改变断言数 | 只在 `groups` 里报真实 `t_*` 前缀才影响计数; 加 `groups: []` 的功能条目 (如 L4-C16) 计数不变 | 加能力条目用空 groups; 别写错前缀 |
 | 标定参数写盘顺手 `sync_calib(write=True)` | `calib.json` 其他域 (内参/几何/TCP) 被一起刷新成"当前源", 意外改变在役读值 | 只读写自己那一节 (读-改-写单键), 别整表重合并 |
@@ -431,6 +434,38 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 子代理起的控制台随它退出而死 | 交付验收时 GUI 是死的（用户那边"打不开"） | 常驻进程必须**脱离**启动（`setsid nohup … </dev/null &`，或 terminal `background=true, persist_on_release=true`）；父会话在子代理交付后**重验进程还在**，不在就自己重起 |
 | 用 `pgrep -f "tools/gui/studio.py"` 判活 | 会命中**自己的 shell 命令行**（命令串里就含这个模式）⇒ 假"在跑" | 用脚本自带的精确模式 `pgrep -f "gui-venv311/bin/python studio.py"`，或 `ps -eo pid,cmd \| grep "[s]tudio.py"` |
 | 用 `pkill -f <模式>` 杀进程（内联在命令里） | **连自己的 shell 一起杀**：模式匹配到当前命令行 ⇒ 命令输出戛然而止、后续步骤全没跑（比误判"在跑"更狠，本次实测把自己 shell 杀了，两条 `set -e` 脚本都断在半路） | 杀进程用 `pgrep -x <精确进程名> \| xargs -r sudo kill`（`-x` 只匹配进程名），或整段写成 `/tmp/*.sh` 再 `bash` 执行，别内联 `pkill -f` |
+
+## 工具栏按钮「建了没挂」类 bug (2026-10-10 老倪: 3D 视图按钮哪里去了)
+- 症状: 用户说按钮不见了; 代码里 `self.btn_xxx = mk_btn(...)` 明明在, 且 clicked 也接好了。
+- 真因: 按钮对象建了但 **`tl.addWidget(self.btn_xxx)` 被删**(工具栏精简/重构时只删了 addWidget 行)
+  ⇒ 对象在、信号在、**永远不会显示**。
+- 判据必须双重: ① 对象在 ② `.text()` 对 ③ **`isVisibleTo(m)` 真挂进布局**(删 addWidget 只有第③条能抓到)。
+  `tools/probe_canvas_menu.py` 的工具栏循环就是这条判据 — 新按钮一律加进去。
+- 入口丢失要先查 addWidget 所在层: `grep -n "addWidget(self.btn_" tools/gui/simulink_module.py`。
+- 恢复习惯: 工具条常驻 + 「画布(C)」菜单双入口(菜单项 `triggered` 接到**同一按钮**的 click,
+  不要把常驻按钮 `setattr` 成 QAction — `attach_canvas_actions` 里 6 个替身项是那个用法, 新按钮不是)。
+
+## 两个 Python 级陷阱 (都在 simulink_module.py 真踩过, 2026-10-10)
+1. **函数内某分支 `import sys` ⇒ `sys` 变局部名** ⇒ 同函数别处的 `sys.path` 抛
+   `UnboundLocalError: cannot access local variable 'sys'`。open_ss_3d 里就是这句 —— 后果是
+   `attach_scene_edit` 从来没执行, 被 `except Exception: print(...)` 吞成一行日志 ⇒ 界面看起来正常,
+   功能其实没接上。**规矩**: 同函数内要用就用 `import sys as _sys`; 更狠的是这类 except 只 print ⇒
+   判据必须**断言功能真挂上**(如 `getattr(win, "_scene_edit_attacher", None) is not None`), 不信日志。
+2. **`QPushButton.clicked` 会把 `checked=False` 当第一个位置参数** ⇒ `btn.clicked.connect(fn)` 里
+   若 `fn(level=None)` 就变成 `level=False` (静默错误参数)。一律 `lambda: fn()` 包一层。
+
+## 打开工程即居中 + 核心节点色 (v5.37.1)
+老倪: 「每次打开状态空间工程, 屏幕中心就是这个节点; 改变这个节点的背景颜色, 让人一下子就认出流形引擎是系统的核心」。
+- **配色 (已定稿)**: 核心 = 全画布**唯一暖色**「琥珀金 #FFC53D」—— 双层光晕 (`255,197,61` α17/38) + 金渐变体 (`#6B4A00`→`#2A1C00`) + 3px 金框 + 右上「◉ 核心」金底徽章。
+  其余节点一律冷色 (蓝灰/青/紫/绿) ⇒ 暖色即核心。**不要用金/橙做别的节点**, 否则标识失效。
+- **判据数据驱动**: `SimNodeItem.paint` 里 `is_core = params.core or params.manifold_engine or type/id=='ss_mani_eng'`。
+  ⚠️ 必须带 `params.manifold_engine` 兜底 —— `load_flow_file` 会**重编 id**, `type` 是 `model`, 只认 id/core 会在 GUI 里失效。
+- **打开工程即居中**: `load_flow_file` 成功后 `QTimer.singleShot(0/450, self.center_on_core_node)` (两次, 防被后续 fit 覆盖) +
+  工具栏「🧮 核心居中」开关 (默认勾选) + `Ctrl+Shift+C` 手动居中 + `showEvent` 兜底 (**只在 `canvas.viewport().width()>200` 即真布局时才算数**, 否则 centerOn 算到错位置)。
+  `core_node_id()` 找不到核心要**如实报缺**, 不假装居中过。
+- **取证 (无视觉工具时的口径)**: `tools/tests/test_core_node_ui.py` 真渲染成 QImage 数**暖色/纯金像素** (核心 975 采样值 vs 普通 0) +
+  真 `SimulinkModule` 加载真工程后量「视口中心 vs 核心中心」偏差 (实测 dx=dy=1.0); 已并入 `run_gui_verifiers.sh` (core_node_ui)。
+  活体复核: `DISPLAY=:0 scrot -o /tmp/x.png` + 像素统计 (画布不在前台时数不到暖色, 不要误判成"没生效")。
 
 ## 验证清单
 ```bash

@@ -41,6 +41,39 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
 批量删/移多 GB 文件时, 控制台后台的扫描线程(dataset/model 遍历)会撞到正在被删的文件 →
 原生库 abort(SIGABRT), 表现为“清理期间 GUI 连崩两次”。**先把 GUI 停掉或先不做扫描页**, 清完再起。
 
+## 2026-10-10 实测: 341G → 296G (释放 45G), 并把"每天长 1G+"的两处做成了自动轮转
+
+阶段化清理 (台账 `reports/disk_cleanup_20261010_ledger.json`), 全程控制台已停、清完复核保护区都在:
+
+| 阶段 | 释放 | 内容 |
+|---|---|---|
+| 1 | ~13.6G | /var/log 追加型日志 truncate · journal/crash/apt · `~/.cache/{pip,uv,LarkShell}` · `~/.config/LarkShell` 5.1G · `~/.hermes/cache` · Downloads 已装安装包 |
+| 2 | ~21.6G | 被取代的 12 个训练 run + 12 个 state_space_* 旧仿真 |
+| 3 | 4.0G | `zmax_data/raw_parts` (无任何 py/sh/glob 引用) |
+| 4 | ~7G | ss_live 历史状态流 6.7G→1.9G · L5 事件图 98,947→25,982 张 · HF 重复副本 1.9G · 旧采集 jsonl · reports>7天 |
+
+**新增自动轮转 (写进 disk_redline.sh 2b.7, 每 2h cron 生效)** —— 这两处一天长 1G+, 不轮转必再顶穿:
+- `zmax_data/ss_live/state_*.jsonl` + `proposal_*/energy_*`: 只留最近 **5 天** (按**文件名里的日期**比,
+  不能按 mtime —— 轮转/复制会改 mtime)
+- `zmax_data/vl_safety_fast_evt/*.jpg` (L5 视觉安全事件图): 只留最近 **3 天** (`find ! -newermt`)
+
+### ⛔ 坑 5 (本次真事故): `~/.local/share/uv` 里住着**共享 Python 解释器**, 整目录清 = 6 个 venv 当场全废
+- 踩法: 把 `~/.local/share/uv/*` 当普通缓存清掉。实际 `uv/python/cpython-3.11.15`、`cpython-3.12.13`、
+  `cpython-3.10.20` 都在里面, 而本机 **6 个 venv** (gui-venv311 · venvs/lerobot-venv · gs-venv · dds-venv ·
+  external/lerobot-smolvla-lew/gui-venv311 · external/INTACT-JEPA/.venv) 的 `bin/python` 全是软链指过去。
+- 现象: 控制台起不来; `joint_train_all.py --env-check` 报「INTACT venv python ❌ / 缺 1 项」;
+  `./gui-venv311/bin/python` 直接 ENOENT。**venv 本体 (site-packages) 完好, 只是解释器不见了。**
+- 恢复 (1~2 分钟): `UV_PYTHON_INSTALL_DIR=~/.local/share/uv/python ~/.hermes/bin/uv python install 3.11.15 3.12.13 3.10`
+  (版本号取自各 venv 的 `pyvenv.cfg` 的 `home=`), 装回即愈, 不用重建 venv。
+- **通用规矩**: 清任何 `~/.cache/*` 或 `~/.local/share/*` 子目录**之前**, 先
+  `for p in <所有 venv>; do readlink -f $p/bin/python; done` 看解释器在不在里面;
+  uv 只清 `~/.local/share/uv/{cache,archives}`。
+
+### 坑 6: 清理脚本会**自我匹配**, 把整个删除列表判成"活引用"
+- 踩法: 兜底 grep `grep -rl "$name" tools/` 里, 脚本自己 (数组里写着这些名字) 被命中 ⇒ 全部跳过 = 白跑。
+- 与 `pgrep -f "studio.py"` 把本 shell 杀了是同一类自匹配。**grep 必须 `| grep -v <本脚本名>`。**
+- 同理: 审计脚本要用 `--dry-run` 先验证"在役链一条都没匹配上", 再真跑。
+
 ## 清理清单 (超红线时按此顺序, 2026-09-14 实测把 307G→295G)
 
 ### 🆕 2026-10-07 实测: 347G → 299G (释放 48G, 一次把这套做成了 cron v5.0)
