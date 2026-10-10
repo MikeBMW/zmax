@@ -5205,11 +5205,16 @@ class SimulinkModule(QWidget):
                 self._veh5_done = True
         except Exception:
             pass
-        # 🧮 2026-10-10 兜底: 首次显示时若还没居中过核心 → 居中一次 (工程可能在工具栏建成前就加载了)
+        # 🧮 2026-10-10 兜底: 显示时若还没居中过核心 → 居中一次 (工程可能在工具栏建成前就加载了)。
+        #   ⚠️ 只在**视口已真正布局**(宽>200)时才算数: 早显示 (隐藏栈/未布局, 视口 0~几十 px) 时
+        #   centerOn 会算到错的位置 ⇒ 不置标志, 等真正可见那一次再居中 (切到画布页也能补上)。
         try:
             _cc = getattr(self, "chk_core_center", None)
-            if (_cc is None or _cc.isChecked()) and not getattr(self, "_core_centered_once", False):
+            _vw = self.canvas.viewport().width() if hasattr(self, "canvas") else 0
+            if (_cc is None or _cc.isChecked()) and _vw > 200 \
+                    and not getattr(self, "_core_centered_once", False):
                 self._core_centered_once = True
+                self._log(f"🧮 画布可见 (视口 {_vw}px) → 居中系统核心")
                 QTimer.singleShot(120, lambda: self.center_on_core_node(quiet=True))
         except Exception:
             pass

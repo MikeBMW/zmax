@@ -158,7 +158,8 @@ def main() -> int:
         check("模块级居中验证可运行", False, f"{type(e).__name__}: {e}")
 
     print("\n" + "=" * 78)
-    print("结果:", "全部通过 ✅" if not FAILS else f"失败 {len(FAILS)} 项 ❌ {FAILS}")
+    # 末行格式与判据集统一 (run_gui_verifiers.sh 用 ^(✅ 全部通过|❌ 失败) 认结果)
+    print("✅ 全部通过" if not FAILS else f"❌ 失败 {len(FAILS)} 项: {FAILS}")
     print("CORE_NODE_UI_TEST_DONE")
     return 0 if not FAILS else 1
 
