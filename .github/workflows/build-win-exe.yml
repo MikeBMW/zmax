@@ -178,6 +178,64 @@ jobs:
           fi
           echo "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用"
 
+      # ──────────── 免解包版 (onedir) ────────────
+      # 2026-10-10 老倪 Windows exe 双击即崩: pyimod01_archive.extract -> MemoryError: Unable to allocate output buffer
+      # = zlib 解包时**分配不到内存**。onefile 每次启动都要把 337MB 解包到 %TEMP%,
+      # 机器内存紧(或 TEMP 被指到 RAM 盘 / 系统盘满)时启动就死。onedir 不往 %TEMP% 解包, 启动内存峰值低得多。
+      # 两种制品都发: 老 exe 走自动更新,single-file 体验不变; 起不来的机器用 zip 版。
+      - name: "Build 免解包版 (onedir, 不往 %TEMP% 解包)"
+        run: |
+          cd tools\gui
+          pyinstaller --onedir --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --distpath dist_nounpack --workpath build_nounpack --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::onedir 构建失败"; exit 1 }
+          Get-ChildItem dist_nounpack\Z-MAX_Console | Select-Object -First 8 Name
+
+      - name: "资产核验 (免解包版): 引擎/工程包/权重 必须在 _internal 里"
+        shell: bash
+        run: |
+          D=tools/gui/dist_nounpack/Z-MAX_Console
+          for f in _internal/state_space_obs.json _internal/l4_mani_predictor_v5.pt _internal/sawyer_peg_insertion_side_l4.xml; do
+            find "$D/_internal" -name "$(basename $f)" | head -3
+          done
+          NM=$(find "$D" -name 'sawyer_peg_insertion_side_l4.xml' | wc -l)
+          NJ=$(find "$D" -name 'state_space_obs.json' | wc -l)
+          NW=$(find "$D" -name 'l4_mani_predictor_v5.pt' | wc -l)
+          echo "免解包版内: L4场景XML=$NM 画布真源=$NJ 流形权重=$NW"
+          if [ "$NM" -lt 1 ] || [ "$NJ" -lt 1 ] || [ "$NW" -lt 1 ]; then
+            echo "::error::免解包版资产缺失 (metaworld/工程包/权重)"
+            exit 1
+          fi
+
+      - name: "冻结核验 (免解包版): 真跑 onedir 里的 exe + 断言启动探测已落盘"
+        shell: bash
+        run: |
+          cd tools/gui/dist_nounpack/Z-MAX_Console
+          rm -f zmax_startup.log
+          OUT="$(pwd)/engine_selftest_nounpack.json"
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          echo "--- engine_selftest_nounpack.json ---"
+          cat "$OUT" 2>/dev/null || echo "(无输出文件)"
+          if [ "$RC" != "0" ]; then
+            echo "::error::免解包版冻结核验失败 (exit=$RC)"
+            exit 1
+          fi
+          # 🔬 启动探测必须真跑过 (证明 startup_probe 进包了 + 真在 import 重依赖之前执行)
+          if [ ! -f zmax_startup.log ]; then
+            echo "::error::启动探测日志没落盘 —— startup_probe 没进包 或 没在启动链上执行"
+            exit 1
+          fi
+          echo "--- zmax_startup.log (本机机器状态快照) ---"
+          cat zmax_startup.log
+          rm -f zmax_startup.log
+          echo "✅ 免解包版冻结核验通过"
+
+      - name: "Zip 免解包版"
+        run: |
+          cd tools\gui\dist_nounpack
+          Compress-Archive -Path "Z-MAX_Console\*" -DestinationPath "Z-MAX_Console-win64-nounpack.zip" -Force
+          Get-Item Z-MAX_Console-win64-nounpack.zip | Select-Object Name,Length
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -198,16 +256,44 @@ jobs:
             ## Z-MAX Console ${{ steps.release_tag.outputs.tag }}
 
             桌面版下载 (双平台):
-            - **Windows**: `Z-MAX_Console.exe` — 单文件免安装, 双击即用
+            - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用
+            - **Windows 免解包版**: `Z-MAX_Console-win64-nounpack.zip` — 解压到固定目录后双击里面的 `Z-MAX_Console.exe`
             - **macOS**: `Z-MAX_Console-macOS.zip` — 解压得到 `Z-MAX_Console.app`
               (未签名 → 首次打开: 右键 → 打开, 或 系统设置 → 隐私与安全性 → 仍要打开)
 
+            > **起不来就用免解包版**: 单文件版每次启动要把 ~337MB 解包到 `%TEMP%`;
+            > 机器可用内存紧 / TEMP 被指到 RAM 盘 / 系统盘满时, 会崩在
+            > `pyimod01_archive.extract → MemoryError: Unable to allocate output buffer` —— 这不是包坏,
+            > 是那台机器当时分配不到内存。zip 版不做运行时解包, 启动内存峰值低得多。
+            >
+            > **v5.37.4 新增启动探测**: 控制台启动时(在任何重依赖 import 之前)把
+            > 「可用内存 / 页面文件(提交量) / TEMP 在哪块盘还剩多少 / 一次实测能分到多少 MB」
+            > 写进 `zmax_startup.log` (exe 同目录, 或 `%LOCALAPPDATA%\zmax_startup.log`)。
+            > 再遇启动即崩, 这份日志就是根因证据 —— 请把它发回来。
+            >
             > macOS 版为 Apple Silicon (arm64) 构建; Intel Mac 请用 Windows 版或源码运行。
             >
             > **v5.6.5 修**: Windows 版点「🎥 真实化运行」崩 (`Failed to load dynlib/dll ...\mujoco\plugin\actuator.dll`)
             > —— 打包成 exe 后 mujoco 引擎插件 DLL 加载失败。现在打包时逐级补依赖 (注册搜索目录 → 把 mujoco.dll/VC 运行时复制进插件目录),
             > 仍加载不了就**显式停用**该插件 (本产品全部场景不使用 mujoco 引擎插件, 全库 grep `<plugin` 命中 0);
             > 并新增 **发版前冻结核验**: CI 里真跑 `exe --engine-selftest` (真 import mujoco/metaworld + 建 L4 场景 + 步进), 不过不发版。
+
+      - name: Upload artifact (免解包版)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Z-MAX_Console-windows-nounpack
+          path: tools\gui\dist_nounpack\Z-MAX_Console-win64-nounpack.zip
+          compression-level: 0
+
+      - name: Upload to Release (免解包版)
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: tools\gui\dist_nounpack\Z-MAX_Console-win64-nounpack.zip
+          asset_name: Z-MAX_Console-win64-nounpack.zip
+          tag: ${{ steps.release_tag.outputs.tag }}
+          overwrite: true
 
   # ──────────── A/B 对照 (只取证, 不发版): 不装修复钩子 → 冻结核验必须失败 ────────────
   # 触发: workflow_dispatch 勾 ab_baseline=true。
