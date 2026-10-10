@@ -767,6 +767,44 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 端到端取证口径(缺一不可): 动作前 TCP → POST 回执 + 受理时刻 → 动作后 TCP 差值 → 执行器原始日志三行。
 反向走一次(把臂退回原位)是最省事的「页面按钮真的能用」证明。
 
+- **速度口径(2026-10-10 二次实测, 与 10-08 结论一致)**: **腿速实际 ≈ 名义/10** ⇒ `speed=8` 只跑
+  **0.10 mm/s**(50mm 抬升 ~8 分钟, 231mm 横移 ~38 分钟, 现场体感"太慢"就是它)。**要 1~2mm/s 就给 100~120**。
+- **长距离慢速单条 `move_line` 会触发 SDK CHECK 残差判失败**: 实测抬升 50mm 在 +27.4mm 处
+  `MoveL rc=6 残差 22.6mm` 判"失败"(报警变化=False、保护停=None ⇒ **不是碰撞**, 是慢速超时/残差判据)。
+  ⇒ 长距离先提速或分段下发, 别把这条日志误读成撞了。
+- **`operation_state=drag` 硬闸门**(本日再确认): 拖动模式一律不下发; 要自动必须现场示教器关拖动→切自动(idle),
+  SDK 侧无切模式接口。收尾核查用 `tools/stop_check.py`(**别用 pkill 匹配模式, 会杀死自己 shell**)。
+
+## 📷 侧面(表面)检测 10083 的位置微调 — 目前**没有**伺服件, 参数已单独落盘 (2026-10-10)
+
+- **现状对比**: 10082 金手指有成熟视觉伺服 `tools/aoi_gold_servo.py`(`check`/`teach`/`calibrate`/`serve`
+  + 四级闸: 检测可靠/限幅/跳变/默认dry)。 **10083 侧面没有对应件** —— 要把工件调到侧面检测视野里,
+  得照 10082 那套同构补一个(单步 ≤2mm / 单轴总量 ≤15mm / 迭代 ≤25 / 收敛 12px / 跳变闸 3×)。
+- **判据真源 = 工控机自己的 judge, 不是我看图**: `POST /capture_detect`(≈9s) 后读
+  `GET /last_result` → `judge_ok` 必须 true 才算"拍到位"; `judge_why` 会直说原因
+  (实测: 「亮条上边沿点太少(0) —— 画面里没找到过曝条(没拍到位/曝光变了?)」)。judge_ok=false 时
+  `count/defects` 一律不可信; 曝光因素用 `tools/aoi_surface_exposure_sweep.py` 单独排查。
+- **坐标系**: 原图 **2448×2048**, 程序 ROI = 原图 (330,960)-(1815,1440); 模型输入是 letterbox 1280×1280。
+  2026-10-09 实测亮物 bbox=(634,1491)-(1648,1852) ⇒ **整体落在 ROI 下方 51~412px**(所以才判不出)。
+  ⇒ 微调目标是"把亮条移进 ROI", 方向/比例要用**标定**(真动 2 次 ≤2mm 量像素↔mm 雅可比), 别凭猜。
+- **侧面观察位真源** = 示教点 `侧面点0/1/2/3`(表面检测观察位) + `准备点`(安全退让位, 比观察位低 105mm/退 77mm);
+  任何侧面调整的目标 XY 都必须落在这些点附近 —— **不要自己发明侧面 XY**。
+- 🔴 **硬闸门: `operation_state=drag` 一律不下发**(实测当时 power=on/mode=manual/operation=drag,
+  臂静止 2s 漂移 0.000mm)。要自动微调必须请现场在示教器**关拖动→切自动(idle)**, SDK 侧没有切模式接口。
+  在 drag 状态下能做的只有: 只读真值 + 调 10083 拍照看 judge + 把参数/计划备好。
+- **曝光不是"判据图不对"的根因(2026-10-10 用真检测打表排除)**: 80000/50000/30000/20000µs(gain1.8)
+  四档全部 `judge_ok=False` · `judge_mode=fallback_letterbox` · `bbox=None` ⇒ 别再拿曝光当主因。
+  **`judge_mode=fallback_letterbox` = 程序没找到模块、判据图退化成整幅规范图** ——
+  页面上看到的"判据图不对/没了"就是它; 真因是工件不在侧面观察位。
+  验收线: 判据图 sat(>=250) ≤5% · mean 60~200(实测坏帧 mean=143.5/饱和 15.6%)。
+- **量曝光必须用真检测, 不能用实时帧**: `origin&grab=1` 的实时帧常在**灯灭**状态(实测 80ms 时判据图
+  mean 143, 而实时帧扫 40ms 只有 34.8) ⇒ 用 `tools/surface_exposure_verify.py`(真跑 capture_detect 打表),
+  不要单靠 `tools/aoi_surface_exposure_sweep.py`. 扫完**记得还原原值** `POST /exposure?us=80000&gain=1.8`。
+- **取图/抓拍本身也不稳**: `POST /capture_detect` 实测 6 次 4 次 `http=500 图像抓取失败`(1.3~7.5s 抖动),
+  `GET /picture?kind=...&grab=1` 间歇 500(46B 错误体) ⇒ 任何基于它的测量都要重试+有效性门。
+- **参数单一真源**: `data/config/aoi_surface_params.json`(安全区域/速度/侧面检测/伺服四段, 每项带
+  value·unit·range·说明·代码位置) —— 现场改这一个文件, 不用翻代码。
+
 ## 取证纪律（每次动作都要）
 1. 命令前：`/real_joint_states` 全 6 轴 + `/robot/tcp_pose`（Orin 的 header.stamp 比本机墙钟慢~26h，别当墙钟）
 2. 命令后：同样两项 + `/robot_status`(power/operation/has_error/controller_error_logs)
