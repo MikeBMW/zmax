@@ -62,7 +62,7 @@ def main():
         check(k not in src, "studio.py 无 %s 残留" % k)
     check("bl.addWidget(_upv_build(self), 1)" in seg, "3D 卡以 stretch=1 占满剩余高度")
     uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
-    check("setMinimumHeight(560)" in uvs, "3D 视图最小高度 560")
+    check("setMinimumHeight(780)" in uvs, "3D 视图最小高度 780 (老倪: 还是太小 → 放大一档)")
     check("def fit_view" in uvs and "resizeEvent" in uvs, "自适应取景 + 尺寸变化自动重取景")
     check("_sr_build" not in seg and "from sim_real_page import" not in seg,
           "只挂一个场景编辑器 (旧表格编辑器 build_body 已摘除)")
@@ -113,7 +113,7 @@ def main():
     opts = U.scene_options()
     labels = [o[0] for o in opts]
     # 老倪 2026-10-10 收敛: 下拉只两条 (标签改中文, sid 在 itemData 里)
-    check([o[2] for o in opts] == ["SIM-PEG-L4", SID], "下拉 = 插拔场景 + 上下料场景: %s" % labels)
+    check([o[2] for o in opts] == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉 = 插拔 + 上下料 + 3D 分层视图: %s" % labels)
     d = U.load_scene(SDIR)
     check(len(d["objects"]) == 6 and len(d["markers"]) == 4 and len(d["fences"]) == 1 and len(d["trajectories"]) == 2,
           "场景真源 6 对象/4 标记/1 围栏/2 轨迹")
@@ -158,8 +158,8 @@ def main():
     print("7) 多场景库 + 四类元素都能选/改 (位置·轨迹)")
     opts = U.scene_options()
     ids = [o[2] for o in opts]
-    check(len([i for i in ids if i]) == 2, "场景库露脸 %d 条 (插拔 + 上下料)" % len([i for i in ids if i]))
-    check(ids == ["SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔场景 + 上下料场景 (老倪 2026-10-10 收敛): %s" % ids)
+    check(len([i for i in ids if i]) == 3, "场景库露脸 %d 条 (插拔 + 上下料 + 3D 分层视图)" % len([i for i in ids if i]))
+    check(ids == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉 = 插拔场景 + 上下料场景 + 3D 分层视图场景: %s" % ids)
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_registry.py"), "--check"],
                        cwd=ROOT, capture_output=True, text=True)
     check(r.returncode == 0, "scene_registry --check 全绿 (%s)" % (r.stdout or "").strip().splitlines()[-1][:60])
@@ -274,7 +274,7 @@ def main():
     print("9) 场景清单收敛 + 插拔场景几何对齐 metaworld 真模型")
     _opts = U.scene_options()
     _sids = [o[2] for o in _opts]
-    check(_sids == ["SIM-PEG-L4", "SCN-07-UP"], "下拉只有两条: 插拔场景 + 上下料场景 → %s" % _sids)
+    check(_sids == ["SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER"], "下拉三条: 插拔场景 + 上下料场景 + 3D 分层视图场景 → %s" % _sids)
     check(all(("插拔场景" in _opts[0][0]) and ("上下料场景" in _opts[1][0]) for _ in [0]),
           "中文名: %s | %s" % (_opts[0][0][:22], _opts[1][0][:22]))
     _r1 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
@@ -309,6 +309,22 @@ def main():
     _ok2 = _sv2._write({"center": [_c2[0], _c2[1], _c2[2]]}, "判据直调拖动写路径", "objects", _nm2)
     check(_ok2 is not False, "类方法写路径真能跑 (不崩, 对象 %s): %s" % (_nm2, _ok2))
     _sv2.reload()
+
+    _epi = [o for o in _opts if o[2] == "SS-EPI-CORNER"]
+    check(bool(_epi) and "你正在跑的那条" in _epi[0][0], "你正在跑的 3D 分层视图场景已复制进编辑器: %s" % (_epi[0][0][:40] if _epi else None))
+    _t = SSD.episode_truth()
+    _oe = SSD.to_objects3d("SS-EPI-CORNER")
+    check(bool(_t.get("ok")) and len(_oe.get("objects") or []) >= 3,
+          "该场景几何 = 同源 episode 真值派生 (%d 对象 · %s · %d 帧 · success=%s)"
+          % (len(_oe.get("objects") or []), os.path.basename(_t.get("npz") or "?"), _t.get("steps"), _t.get("success")))
+    _eh = [o for o in _oe["objects"] if "光模块" in o["name"]]
+    check(bool(_eh) and max(abs(a - b) for a, b in zip(_eh[0]["center"], [float(v) for v in _t["peg0"]])) < 1e-6,
+          "光模块初始位 == episode 真值 peg0 %s" % [round(float(v), 3) for v in _t["peg0"]])
+    from PyQt5.QtWidgets import QPushButton as _QPB3
+    _c3 = U.build_card(None)
+    check(any("独立窗口" in b.text() for b in _c3.findChildren(_QPB3)), "有「🗗 独立窗口」按钮 (可放大到整屏)")
+    _src_u = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
+    check("setMinimumHeight(780)" in _src_u, "页内视图最小高度已放大到 780 (原 560)")
 
     print("6) 在役场景只读保护")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_edit.py"), "--scenes"],

@@ -57,9 +57,11 @@ C_MARK, C_FENCE, C_TRAJ = "#ff8a3d", "#8b6cf0", "#4da3ff"
 # ─────────────────────────── 数据层 ───────────────────────────
 # 老倪 2026-10-10: 「现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」
 #   ⇒ 只把这俩放进下拉 (其余场景的定义/文件都不动, 只是不露脸, 可随时加回来)
-SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP")
+SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER")
 SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
-               "SCN-07-UP": "📦 上下料场景"}
+               "SCN-07-UP": "📦 上下料场景",
+               # 老倪 2026-10-10: 「先把这个场景复制到你的场景编辑窗口里」— 就是画布 3D 分层视图正在跑的那条
+               "SS-EPI-CORNER": "🧭 3D 分层视图场景 (与操作视频同源 · 复制自你正在跑的那条)"}
 
 
 def scene_options():
@@ -246,7 +248,7 @@ class SceneView3D(QWidget):
         self._dragging = False
         self._manual_scale = False
         self.center = [0.6, 0.35, 0.15]
-        self.setMinimumHeight(560)          # 老倪: 「大一些，现在太小了，图像都看不到」(分隔条可再拉大)
+        self.setMinimumHeight(780)          # 老倪: 「还是太小，变大一些」(再放大一档; 分隔条/独立窗口还能更大)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
@@ -994,6 +996,36 @@ def build_card(parent=None):
     b_seed.setVisible(False)
     top.addWidget(b_seed)
     top.addWidget(_b("🔄 刷新", "重读场景真源并重绘", lambda: (view.reload(), _repop()), "#9aa7b4"))
+    def _popout():
+        """🗗 独立窗口: 把当前场景放进一个独立大窗口 (可最大化/拖边沿) — 老倪: 「窗口还是太小, 变大一些」"""
+        _d = cmb.currentData() or {}
+        _po = getattr(card, "_pop", None)
+        if _po is None or not _po.isVisible():
+            _po = QDialog(card.window())
+            _po.setWindowTitle("🧭 场景编辑器 · 独立窗口")
+            _po.setSizeGripEnabled(True)
+            _lay = QVBoxLayout(_po)
+            _lay.setContentsMargins(4, 4, 4, 4)
+            _v2 = SceneView3D(_d.get("dir"), _d.get("sid"),
+                              status_cb=lambda m: (st.setText(str(m)), None)[1])
+            _v2.setMinimumHeight(700)
+            _lay.addWidget(_v2)
+            card._pop, card._popview = _po, _v2
+            _po.resize(1600, 1050)
+            _po.showMaximized()          # 直接超大: 老倪要的"变大"
+        else:
+            _po.raise_()
+            _po.activateWindow()
+        card._popview.kind_filter = kc.currentData()
+        card._popview.set_scene(_d.get("dir"), _d.get("sid"))
+        card._popview.reload()
+        if getattr(card, "_pop", None) is not None:
+            card._pop.setWindowTitle("🧭 场景编辑器 · 独立窗口 — %s%s"
+                                     % (_d.get("sid") or "在役只读", "  (只读)" if not _d.get("sid") else ""))
+        st.setText("🗗 已在独立窗口打开当前场景 (可最大化/拖边沿放大; 编辑同样写真源)")
+
+    top.addWidget(_b("🗗 独立窗口", "把当前场景放进独立窗口 (可最大化, 比页内大得多)",
+                     lambda: _popout(), "#00d4aa"))
     top.addWidget(_b("⛶ 视图全屏", "隐藏元素面板, 3D 视图占满整页", lambda: _full(True), "#00d4aa"))
     top.addWidget(_b("⤡ 还原", "恢复 3D 视图 + 元素面板", lambda: _full(False), "#9aa7b4"))
     top.addWidget(_b("⤢ 自适应", "整场自动取景, 撑满视口", lambda: view.fit_view(), "#00d4aa"))
