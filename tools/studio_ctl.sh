@@ -45,6 +45,28 @@ print(" ".join(str(x) for x in out))
 PYEOF
 }
 
+# ── 🩺 启动 + 成活自检 + 崩溃留档 + 自动重试一次 (2026-10-10) ─────────────────────────────
+# 为什么: 实测**偶发**启动 abort (core dumped) —— 老倪 16:1x 那次 restart 就中招 (v5.39.9),
+#   且原写法日志全写 /tmp/studio_launch.log, 被下一次成功启动**覆盖** ⇒ 崩溃现场永远丢。
+#   现在: 每次启动日志按时间戳留档 + 起后 25s 自检 + 没成活就抓关键行 + 自动重起一次。
+_start_gui() {
+  _LOG="/tmp/studio_launch_$(date '+%Y%m%d_%H%M%S').log"
+  cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >"$_LOG" 2>&1 < /dev/null &
+  ln -sfn "$_LOG" /tmp/studio_launch.log            # 兼容旧习惯: 永远指向最新那次
+  sleep 25
+  if [ -z "$(pids)" ]; then
+    echo "⚠️ 第 1 次启动未成活 — 崩溃现场关键行:"
+    grep -nE "QThread|Aborted|Fatal|Segmentation|Traceback|error" "$_LOG" 2>/dev/null | tail -8
+    echo "   现场留存: $_LOG   (core: $(ls -t /var/lib/systemd/coredump/* ${HOME}/zmax/core* 2>/dev/null | head -1 || echo 无))"
+    echo "   → 自动重试一次"
+    _LOG="/tmp/studio_launch_$(date '+%Y%m%d_%H%M%S')_retry.log"
+    cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >"$_LOG" 2>&1 < /dev/null &
+    ln -sfn "$_LOG" /tmp/studio_launch.log
+    sleep 25
+  fi
+  echo "started: $(pids)"
+}
+
 case "${1:-status}" in
   status)
     P=$(pids); [ -n "$P" ] && echo "running: $P" || echo "stopped"
@@ -67,8 +89,7 @@ case "${1:-status}" in
     fi
     if [ "$1" = "restart" ]; then
       [ -n "$(pids)" ] && { echo "already running: $(pids)"; exit 0; }
-      cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >/tmp/studio_launch.log 2>&1 < /dev/null &
-      sleep 25; echo "started: $(pids)"
+      _start_gui
     else
       echo "stopped: ${P:-none}"
     fi
@@ -76,8 +97,7 @@ case "${1:-status}" in
   start)
     [ -n "$(pids)" ] && { echo "already running: $(pids)"; exit 0; }
     echo "$(date '+%F %T') start" >> /tmp/studio_ctl.log
-    cd "$GUI_DIR" && DISPLAY=:0 setsid bash launch_studio.sh >/tmp/studio_launch.log 2>&1 < /dev/null &
-    sleep 25; echo "started: $(pids)"
+    _start_gui
     ;;
   *) echo "用法: $0 {status|stop|start|restart} [--force]" ; exit 2 ;;
 esac
