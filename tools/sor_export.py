@@ -457,13 +457,15 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "引用标准: " + " · ".join("%s (%s)" % (k, v.split(":")[0]) for k, v in _ps["standards"].items()), size=9)
     for _i, _g in enumerate(_ps["groups"]):
         para(doc, "5.2.%d %s %s" % (_i + 1, _g["gid"], _g["name"]), bold=True)
-        table(doc, ["指标", "单位", "目标值 (规格)", "口径 / 标准", "阶段"],
-              [[m["cn"], m.get("unit") or "-", str(m.get("target") or "待确认"),
-                m.get("std", "-") if m.get("std") != "-" else "工艺口径", m.get("stage", "-")]
+        # 4 列 (2026-10-10 第二轮复核: 「口径/标准」列留白最多, 而「目标值」列最吃紧 ⇒
+        #   把口径并进下面每条指标的行首, 宽度让给目标值, 目标值就不必拦腰断词)
+        table(doc, ["指标", "单位", "目标值 (规格)", "阶段"],
+              [[m["cn"], m.get("unit") or "-", str(m.get("target") or "待确认"), m.get("stage", "-")]
                for m in _g["metrics"]],
-              widths=[5.4, 2.0, 4.2, 2.9, 1.5])   # 5.4+2.0+4.2+2.9+1.5 = 16.0 (A4 可用宽)
+              widths=[5.3, 1.7, 7.5, 1.5])        # 5.3+1.7+7.5+1.5 = 16.0 (A4 可用宽)
         for _m in _g["metrics"]:
-            para(doc, "· %s — 测量/实测入口: %s" % (_m["id"], _m.get("how", "")),
+            para(doc, "· %s · 口径 %s — 测量/实测入口: %s"
+                 % (_m["id"], _m.get("std", "-") if _m.get("std") != "-" else "工艺口径", _m.get("how", "")),
                  size=9.0, space_before=2, keep_lines=True)
 
     # 6 机器人末端
