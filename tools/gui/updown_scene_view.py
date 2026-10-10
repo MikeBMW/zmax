@@ -55,16 +55,26 @@ C_MARK, C_FENCE, C_TRAJ = "#ff8a3d", "#8b6cf0", "#4da3ff"
 
 
 # ─────────────────────────── 数据层 ───────────────────────────
+# 老倪 2026-10-10: 「现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」
+#   ⇒ 只把这俩放进下拉 (其余场景的定义/文件都不动, 只是不露脸, 可随时加回来)
+SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP")
+SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
+               "SCN-07-UP": "📦 上下料场景"}
+
+
 def scene_options():
     """可选场景: (标签, 场景目录, scene_id or None=在役只读)。"""
-    out = [("(在役) 现场场景 · 只读预览", LIVE_DIR, None, None)]
+    out = []      # 老倪 2026-10-10: 只要 插拔场景 + 上下料场景 (在役预览/其它场景都不露脸)
     try:
         with open(INDEX, encoding="utf-8") as f:
             idx = json.load(f)
-        for sid, v in sorted((idx.get("named_scenes") or {}).items()):
+        _sc = idx.get("named_scenes") or {}
+        for sid in [x for x in SCENE_WHITELIST if x in _sc]:
+            v = _sc[sid]
             _run = v.get("run") or None
-            out.append(("%s · %s%s (%d 对象/%d 标记/%d 围栏/%d 轨迹)"
-                        % (sid, str(v.get("name") or "")[:26], "  ▶可运行" if _run else "",
+            _label = SCENE_LABEL.get(sid) or (str(v.get("name") or "")[:26])
+            out.append(("%s%s   %d 对象/%d 标记/%d 围栏/%d 轨迹"
+                        % (_label, "   ▶可运行" if _run else "",
                            v.get("n_objects", 0), v.get("n_markers", 0),
                            v.get("n_fences", 0), v.get("n_trajectories", 0)),
                         os.path.join(SCENES_ROOT, sid), sid, _run))

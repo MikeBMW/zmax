@@ -112,7 +112,8 @@ def main():
     print("4) 场景下拉与数据源")
     opts = U.scene_options()
     labels = [o[0] for o in opts]
-    check(any(SID in x for x in labels), "下拉含 %s: %s" % (SID, labels))
+    # 老倪 2026-10-10 收敛: 下拉只两条 (标签改中文, sid 在 itemData 里)
+    check([o[2] for o in opts] == ["SIM-PEG-L4", SID], "下拉 = 插拔场景 + 上下料场景: %s" % labels)
     d = U.load_scene(SDIR)
     check(len(d["objects"]) == 6 and len(d["markers"]) == 4 and len(d["fences"]) == 1 and len(d["trajectories"]) == 2,
           "场景真源 6 对象/4 标记/1 围栏/2 轨迹")
@@ -157,8 +158,8 @@ def main():
     print("7) 多场景库 + 四类元素都能选/改 (位置·轨迹)")
     opts = U.scene_options()
     ids = [o[2] for o in opts]
-    check(len([i for i in ids if i]) >= 7, "场景库有 %d 个命名场景 (可切换)" % len([i for i in ids if i]))
-    check("SCN-07-UP" in ids and "SCN-01-PEG" in ids, "含 上下料 SCN-07-UP + 插拔场景 SCN-01-PEG")
+    check(len([i for i in ids if i]) == 2, "场景库露脸 %d 条 (插拔 + 上下料)" % len([i for i in ids if i]))
+    check(ids == ["SIM-PEG-L4", "SCN-07-UP"], "下拉 = 插拔场景 + 上下料场景 (老倪 2026-10-10 收敛): %s" % ids)
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_registry.py"), "--check"],
                        cwd=ROOT, capture_output=True, text=True)
     check(r.returncode == 0, "scene_registry --check 全绿 (%s)" % (r.stdout or "").strip().splitlines()[-1][:60])
@@ -232,15 +233,18 @@ def main():
     check(same and len(ondisk) == len(truth), "3D 视图读到的几何 == 仿真真源 (%d 对象)" % len(ondisk))
     check(SSD.check() == 0, "真源 ↔ 两个生成器 ↔ XML 注入 四处一致 (改一处不同步会报错)")
     # 可编辑: 改真源 ⇒ 目录同步 + 生成器仍一致 (编辑真生效, 不是只改产物)
-    _old = [o for o in SSD.load()["scenes"]["SIM-PEG-L4"]["objects"] if "转台" in o["name"]][0]["center"]
-    r = SSD.apply_patch("objects", "来料转台 (外力旋转90°)", {"center": [0.43, 0.60, 0.005]})
-    _now = [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if "转台" in o["name"]][0]["center"]
-    check(r.get("ok") and abs(_now[0] - 0.43) < 1e-6, "编辑落真源 + 目录同步: %s" % _now)
+    _tt = [o for o in truth if "geom=tt_disc" in str(o.get("source", ""))][0]
+    _old = list(_tt["center"])
+    _nm = _tt["name"]
+    r = SSD.apply_patch("objects", _nm, {"center": [_old[0] + 0.01, _old[1], _old[2]]})
+    _now = [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if o["name"] == _nm][0]["center"]
+    check(r.get("ok") and abs(_now[0] - (_old[0] + 0.01)) < 1e-6, "编辑落真源 + 目录同步: %s (%s)" % (_now, _nm))
     _rc = SSD.check()
-    SSD.apply_patch("objects", "来料转台 (外力旋转90°)", {"center": _old})
+    SSD.apply_patch("objects", _nm, {"center": _old})
     check(_rc == 0, "编辑后 真源/生成器/XML 仍一致 (rc=%s)" % _rc)
-    check(abs([o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if "转台" in o["name"]][0]["center"][0]
-              - float(_old[0])) < 1e-6, "已还原 %s" % _old)
+    check(all(abs(a - b) < 1e-6 for a, b in zip(
+        [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if o["name"] == _nm][0]["center"], _old)),
+        "已还原 %s (%s)" % (_old, _nm))
     # 可运行: 入口存在 + 真能被调用
     tool, args, eta, prod, cwd, renv = SSD.run_cmd()
     check(os.path.exists(os.path.join(ROOT, tool)), "运行入口存在: %s %s (约 %ss)" % (tool, args, eta))
@@ -267,50 +271,33 @@ def main():
         br = [b for b in card2.findChildren(_QPB) if "运行仿真" in b.text()]
         check(bool(br) and br[0].isEnabled(), "「▶ 运行仿真」按钮已启用")
 
-    print("9) 状态空间 3D 分层视图场景 (与操作视频同源 · metaworld corner2 视角) 进场景管理")
-    opts = U.scene_options()
-    epi = [o for o in opts if o[2] == "SS-EPI-CORNER"]
-    check(bool(epi), "场景下拉含 SS-EPI-CORNER (与操作视频同源)")
-    check(bool(epi and epi[0][3]), "带运行元数据 (重跑同源 episode): %s" % ((epi[0][3] or {}).get("tool") if epi else None))
-    _tt = SSD.episode_truth()
-    check(bool(_tt.get("ok")), "同源 episode 对可读: %s (%s)" % (os.path.basename(_tt.get("npz") or "?"), _tt.get("why")))
-    check("自洽" in str(_tt.get("why")), "同源对自洽 (npz/mp4 同一次运行, 不是被别的跑法覆盖的别名)")
-    _o = SSD.to_objects3d("SS-EPI-CORNER")
-    _objs = {x["name"]: x for x in _o["objects"]}
-    _peg = [v for k, v in _objs.items() if "光模块" in k]
-    check(bool(_peg) and max(abs(a - b) for a, b in zip(_peg[0]["center"], [float(v) for v in _tt["peg0"]])) < 1e-6,
-          "光模块初始位 == episode 真值 peg0 %s" % [round(float(v), 3) for v in _tt["peg0"]])
-    _ov = SSD.to_overlay("SS-EPI-CORNER")
-    _mk = {m["name"]: m for m in _ov["markers"]}
-    _hh = [v for k, v in _mk.items() if "孔口" in k][0]["pos"]
-    check(max(abs(a - b) for a, b in zip(_hh, [float(v) for v in _tt["hole_mouth"]])) < 1e-6,
-          "孔口标记 == episode 真值 hole_mouth %s" % [round(float(v), 3) for v in _tt["hole_mouth"]])
-    _cc = [v for k, v in _mk.items() if "corner2" in k][0]["pos"]
-    check(max(abs(a - b) for a, b in zip(_cc, [float(v) for v in _tt["cam_pos"]])) < 1e-6,
-          "corner2 机位标记 == episode 真值 cam_pos (与 mp4 同源视角)")
-    _nw = sum(len(x.get("waypoints") or []) for x in _ov["trajectories"])
-    check(_nw >= 20, "末端轨迹来自 episode tr['x'] (抽稀 %d 点 / 共 %d 帧)" % (_nw, _tt["steps"]))
-    check(SSD.check() == 0, "真源判据含 episode 场景 (几何必须是 episode 真值的派生)")
-    # 可编辑: 布局 seed 是真旋钮 (改它 → 下一轮 episode 布局真的变)
-    _s0 = int(SSD.load()["scenes"]["SS-EPI-CORNER"].get("seed", 0))
-    _r = SSD.set_seed(_s0)
-    check(_r.get("ok") and _r["new"] == _s0 and ("--seed %d" % _s0) in _r["cmd"],
-          "布局 seed 可写且运行命令随之: %s" % _r.get("cmd"))
-    # 页内: 切到该场景 → 🎲 换布局 可见 + ▶按钮文案改成重跑
-    from PyQt5.QtWidgets import QComboBox as _QCB2, QPushButton as _QPB2
-    _card = U.build_card(None)
-    _cb = _card.findChildren(_QCB2)[0]
-    _ei = next((i for i in range(_cb.count()) if (_cb.itemData(i) or {}).get("sid") == "SS-EPI-CORNER"), None)
-    check(_ei is not None, "页内下拉能定位到该场景 (index=%s)" % _ei)
-    if _ei is not None:
-        _cb.setCurrentIndex(_ei)
-        app.processEvents()
-        _bs = [b for b in _card.findChildren(_QPB2) if "换布局" in b.text()]
-        _br = [b for b in _card.findChildren(_QPB2) if "同源 episode" in b.text() or "运行" in b.text()]
-        check(bool(_bs) and _bs[0].isVisibleTo(_bs[0].parentWidget()), "🎲 换布局 按钮在该场景可见 (其余场景隐藏)")
-        check(len(_card.view.data["objects"]) == len(_o["objects"]),
-              "切到该场景后 3D 视图载入 %d 对象 (含派生几何)" % len(_card.view.data["objects"]))
-
+    print("9) 场景清单收敛 + 插拔场景几何对齐 metaworld 真模型")
+    _opts = U.scene_options()
+    _sids = [o[2] for o in _opts]
+    check(_sids == ["SIM-PEG-L4", "SCN-07-UP"], "下拉只有两条: 插拔场景 + 上下料场景 → %s" % _sids)
+    check(all(("插拔场景" in _opts[0][0]) and ("上下料场景" in _opts[1][0]) for _ in [0]),
+          "中文名: %s | %s" % (_opts[0][0][:22], _opts[1][0][:22]))
+    _r1 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
+    _r2 = SSD.export_mujoco_truth("SIM-PEG-L4", write=False)
+    check(_r1.get("ok") and len(_r1["objects"]) >= 20,
+          "从 MuJoCo 真模型导出几何: %s" % _r1.get("msg"))
+    _k = lambda r: [(o["name"], tuple(o["center"]), tuple(o["size"])) for o in r["objects"]]
+    check(_k(_r1) == _k(_r2), "导出幂等 (两次逐字一致, %d 对象)" % len(_r1["objects"]))
+    _disk = SSD.load()["scenes"]["SIM-PEG-L4"]["objects"]
+    check(len(_disk) == len(_r1["objects"]) and
+          all(any(o["name"] == d["name"] and [round(float(v), 4) for v in o["center"]] == d["center"]
+                  for d in _disk) for o in _r1["objects"]),
+          "真源几何 == MuJoCo 模型实测 (逐字, %d 对象)" % len(_disk))
+    _tbl = [o for o in _r1["objects"] if o["name"] == "工作台面"]
+    check(bool(_tbl) and _tbl[0]["size"] == [1.4, 0.8, 0.054],
+          "台面真值 1.4×0.8×0.054 m (手写版曾误写 0.8×0.8) → %s" % (_tbl[0]["size"] if _tbl else None))
+    _peg = [o for o in _r1["objects"] if o["name"] == "光模块 (peg)"]
+    check(bool(_peg) and _peg[0]["size"] == [0.24, 0.016, 0.0398],
+          "光模块真值 (侧插平放: 长 0.24 沿 x · 截面 0.04×0.016) → %s" % (_peg[0]["size"] if _peg else None))
+    check(any(m["name"] == "site:hole" for m in _r1["markers"]),
+          "孔口来自 MuJoCo site 真值: %s" % [m["name"] for m in _r1["markers"]])
+    check(all("MuJoCo 模型实测" in o.get("source", "") for o in _disk), "每个对象都标出处 (MuJoCo 模型实测)")
+    check(SSD.check() == 0, "真源判据 (含 MuJoCo 对齐) 全绿")
     print("6) 在役场景只读保护")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_edit.py"), "--scenes"],
                        cwd=ROOT, capture_output=True, text=True)

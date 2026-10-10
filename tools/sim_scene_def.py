@@ -135,33 +135,44 @@ def get(d: dict, key: str):
 
 
 def geometry() -> dict:
-    """给生成器用的几何 (与老常量同名, 便于最小改动接入)。"""
+    """给生成器用的几何 —— **以 MuJoCo 真模型为准** (2026-10-10 老倪: 场景要对齐 metaworld 渲染)。
+
+    取值口径: 转台/压电台/微动台从 MuJoCo 模型导出的 geom (转台盘面 tt_disc / 压电台基座 cp_base /
+    微动载物台面 cp_stage) 世界系中心与尺寸算出; 语义常量 (peg 坐盘面的 feed_z、插入深度) 仍走真源标量,
+    每个都带出处 —— 这样"生成器常量 == 真模型"由 check() 逐条核, 避免手写值与模型跑偏
+    (实测曾把台面写 0.8×0.8 实为 1.4×0.8、光模块按方截面写成 40×40 实为 40×16)。
+    """
     sc = load()["scenes"]["SIM-PEG-L4"]
-    by = {str(o["name"]): o for o in sc["objects"]}
     mk = {str(m["name"]): m for m in sc["markers"]}
+    exp = export_mujoco_truth("SIM-PEG-L4", write=False)
+    objs = exp["objects"] if exp.get("ok") else []
 
-    def _obj(sub):
-        return [o for o in sc["objects"] if sub in str(o["name"])][0]
+    def _g(nm):
+        for o in objs:
+            if nm in str(o.get("source", "")) or str(o.get("name")) == nm:
+                return o
+        raise KeyError("MuJoCo 导出里没有 %s" % nm)
 
-    tt, cp, st = _obj("转台"), _obj("压电台底座"), _obj("微动载物台")
+    tt, cp, st = _g("geom=tt_disc"), _g("geom=cp_base"), _g("geom=cp_stage")
+    site = {m["name"]: m for m in (exp.get("markers") or [])}
     return {
         "turntable": {"xy": [float(tt["center"][0]), float(tt["center"][1])],
-                      "pos": [float(tt["center"][0]), float(tt["center"][1]), float(tt["center"][2])],
+                      "pos": [float(v) for v in tt["center"]],
                       "r": float(tt["size"][0]) / 2.0,
                       "z_top": float(tt["center"][2]) + float(tt["size"][2]) / 2.0,
-                      # TURNTABLE_Z 语义 = peg 坐盘面 = 标记「来料位」的 z
-                      "feed_z": float(mk["来料位 (转台中心)"]["pos"][2])},
+                      # TURNTABLE_Z 语义 = peg 坐盘面 (生成器常量, 真源标量; 盘顶由 MuJoCo 真模型算)
+                      "feed_z": float(sc.get("const", {}).get("feed_z", 0.0255))},
         "coupler": {"xy": [float(cp["center"][0]), float(cp["center"][1])],
-                    "pos": [float(cp["center"][0]), float(cp["center"][1]), float(cp["center"][2])],
+                    "pos": [float(v) for v in cp["center"]],
                     # ⚠️ XML <body cp_stage_b pos="x y Z"> 的 Z 是 body 原点; 载物台盒在其内局部 z=+0.004,
-                    #    真源记的是台面中心 ⇒ body Z = 台面中心 − 0.004 (物理不变)
+                    #    MuJoCo 导出的是台面世界中心 ⇒ body Z = 台面中心 − 0.004 (物理不变)
                     "stage_z": round(float(st["center"][2]) - 0.004, 4),
                     "stage_center_z": float(st["center"][2]),
-                    "ref": mk["光纤头耦合基准"]["pos"]},
-        "aoi_focus": [float(x) for x in mk["AOI 镜头对焦点"]["pos"]],
-        "aoi_hover": float(mk["AOI 镜头对焦点"]["radius_m"]),
+                    "ref": site.get("site:cp_ref", {}).get("pos")},
+        "aoi_focus": [float(x) for x in sc.get("const", {}).get("aoi_focus", [0.12, 0.62, 0.10])],
+        "aoi_hover": float(sc.get("const", {}).get("aoi_hover_m", 0.08)),
         "insert_depth_m": float(sc["peg"]["insert_depth_m"]),
-        "objects_by_name": by, "markers_by_name": mk,
+        "objects_by_name": {str(o["name"]): o for o in sc["objects"]}, "markers_by_name": mk,
     }
 
 
@@ -240,10 +251,10 @@ def check() -> int:
             for _k in ("TURNTABLE_XY", "TURNTABLE_Z", "COUPLER_XY", "AOI_FOCUS", "INSERT_DEPTH"):
                 if not re.search(r"^%s = " % _k, src, re.M):
                     bad.append("override 块未接管 %s (运行时读不到真源)" % _k)
-        # TURNTABLE_Z 的语义是"peg 坐盘面"(盘顶 z + peg 半厚)，对应真源标记「来料位」的 z
-        _feed_z = g["markers_by_name"]["来料位 (转台中心)"]["pos"][2]
-        if _ttz is not None and abs(float(_ttz) - float(_feed_z)) > 1e-4:
-            bad.append("TURNTABLE_Z 生成器=%.4f ≠ 真源 来料位 z=%.4f" % (float(_ttz), float(_feed_z)))
+        # TURNTABLE_Z 的语义是"peg 坐盘面" (盘顶 z + peg 半厚) — 真源标量 const.feed_z
+        _feed_z = float(g["turntable"]["feed_z"])
+        if _ttz is not None and abs(float(_ttz) - _feed_z) > 1e-4:
+            bad.append("TURNTABLE_Z 生成器=%.4f ≠ 真源 const.feed_z=%.4f" % (float(_ttz), _feed_z))
         # 真源接入证据: 生成器里必须有 override 块 (否则上面的常量与真源只是"恰好相等", 编辑不生效)
         if "import sim_scene_def as _SSD" not in src:
             bad.append("gen_l4_demo_video.py 未接真源 (缺 import sim_scene_def override 块)")
@@ -661,6 +672,125 @@ def set_seed(seed: int) -> dict:
     return {"ok": True, "old": old, "new": int(seed),
             "cmd": "cd %s && %s %s" % (os.path.join(ROOT, "tools"), EPI_TOOL, "--seed %d" % int(seed)),
             "msg": "seed %s → %d (下一轮 episode 布局随之改变)" % (old, int(seed))}
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 真几何导出: 插拔场景对齐 metaworld 真模型 (2026-10-10 老倪: 「你的场景，需要对齐 metaworld 的
+# 场景渲染…做成可编辑的场景；现在已有的场景是插拔场景，和上下料场景；其它场景先不用搞」)
+#   手写几何会跟模型跑偏 (实测两处真错: 台面我写 0.8×0.8 实为 1.4×0.8 且中心在 y=0.6;
+#   光模块我按 metaworld stock 写 40×40 方截面, 实际模型是 40×16mm 矩形截面) ⇒
+#   改成**从 MuJoCo 模型直接导出**: 遍历 geom, 取 body_pos+geom_pos 与 2×geom_size, 单位 m。
+#   机械臂本体 (shoulder/upper_arm/forearm/wrist/hand/gripper/pedestal...) 不进场景对象;
+#   场景设备 (台面/护栏/光模块/夹具/转台/压电台/微动台) 全进, 名字用真实 body+geom 名, 标中文别名。
+# ══════════════════════════════════════════════════════════════════════════════
+_MJ_SKIP = ("shoulder", "upper_arm", "forearm", "wrist", "hand", "r_gripper", "l_gripper", "base",
+            "right", "left", "head", "track", "pedestal", "controller_box", "screen", "torso",
+            "mocap", "world", "floor")
+_MJ_ALIAS = {"tablelink": "工作台面", "RetainingWall": "台面护栏", "peg": "光模块 (peg)",
+             "box": "夹具/孔座 (peg_block)", "turntable": "来料转台 (外力旋转90°)",
+             "coupler": "光耦合压电台底座", "cp_stage_b": "x-y 压电微动载物台",
+             "tt_disc": "转台盘面", "tt_ring": "转台刻度环", "tt_mark1": "转台十字刻度",
+             "cp_base": "压电台基座", "cp_pzt_a": "压电陶瓷 A", "cp_pzt_b": "压电陶瓷 B",
+             "cp_fiber": "光纤头耦合基准", "cp_stage": "微动载物台面", "cp_scale": "位移标尺"}
+_MJ_TIP = ("对齐 metaworld 真模型: 从 MuJoCo 模型 (sawyer_peg_insertion_side_l4.xml) 导出 geom "
+           "位置/尺寸 (单位 m, size=2×geom_size); 与 ▶运行 时物理世界逐字同源")
+
+
+def l4_xml_path() -> str:
+    """找到 L4 场景 XML (画布 ▶运行 用的同一份; 先按 metaworld 包位置找, 再兜底常见路径)。"""
+    cands = []
+    try:
+        import metaworld
+        cands.append(os.path.join(os.path.dirname(metaworld.__file__), "assets", "sawyer_xyz",
+                                  "sawyer_peg_insertion_side_l4.xml"))
+    except Exception:                                                           # noqa: BLE001
+        pass
+    cands += [os.path.join(ROOT, "gui-venv311/lib/python3.11/site-packages/metaworld/assets/sawyer_xyz",
+                           "sawyer_peg_insertion_side_l4.xml")]
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return ""
+
+
+def export_mujoco_truth(scene_id: str = "SIM-PEG-L4", write: bool = True) -> dict:
+    """从 MuJoCo 真模型导出场景几何 → 真源 objects/markers; ⇒ dict(ok, xml, objects, markers, msg)。"""
+    xml = l4_xml_path()
+    if not xml:
+        return {"ok": False, "msg": "找不到 L4 场景 XML (先跑 tools/gen_l4_demo_scene.py 生成)"}
+    try:
+        os.environ.setdefault("MUJOCO_GL", "egl")
+        import mujoco
+    except Exception as e:                                                      # noqa: BLE001
+        return {"ok": False, "msg": "mujoco 不可用: %r" % e}
+    m = mujoco.MjModel.from_xml_path(xml)
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)                                  # 正运动学 ⇒ d.geom_xpos 是**世界系**坐标
+    objs, seen = [], {}
+    MESH = int(mujoco.mjtGeom.mjGEOM_MESH)
+    for g in range(m.ngeom):
+        b = int(m.geom_bodyid[g])
+        bn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, b) or ""
+        gn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_GEOM, g) or ""
+        if any(bn.startswith(x) for x in _MJ_SKIP):
+            continue
+        R = np.asarray(d.geom_xmat[g]).reshape(3, 3)
+        xp = np.asarray(d.geom_xpos[g], float)
+        if int(m.geom_type[g]) == MESH and int(m.geom_dataid[g]) >= 0:
+            mid = int(m.geom_dataid[g])
+            va, vn = int(m.mesh_vertadr[mid]), int(m.mesh_vertnum[mid])
+            V = np.asarray(m.mesh_vert[va:va + vn], float)
+            pts = (R @ V.T).T + xp
+        else:
+            sz = [float(v) for v in m.geom_size[g]]
+            t = int(m.geom_type[g])
+            if t == 2:                                       # sphere: size=[r]
+                hx = hy = hz = sz[0]
+            elif t in (3, 5):                                # capsule/cylinder: size=[r, half-length]
+                hx, hy, hz = sz[0], sz[0], sz[1]
+            else:                                            # box: size=[hx,hy,hz]
+                hx, hy, hz = sz[0], sz[1], sz[2]
+            sx = np.array([[-hx, -hy, -hz], [hx, hy, hz]])
+            pts = (R @ sx.T).T + xp
+        lo, hi = pts.min(0), pts.max(0)
+        pos = [float(v) for v in (lo + hi) / 2]
+        size = [float(v) for v in (hi - lo)]
+        key = (bn, gn)
+        seen[key] = seen.get(key, 0) + 1
+        nm = _MJ_ALIAS.get(gn) or _MJ_ALIAS.get(bn) or ("夹具/孔座 (peg_block)" if not bn else bn)
+        if seen[key] > 1:
+            nm = "%s #%d" % (nm, seen[key])
+        objs.append({"id": "mj_%02d" % (len(objs) + 1), "name": nm, "center": [round(v, 4) for v in pos],
+                     "size": [round(max(0.004, v), 4) for v in size],
+                     "source": "MuJoCo 模型实测 (body=%s geom=%s · 世界系 AABB)"
+                               % (bn or "(夹具内部无名体)", gn or "-"), "editable": True})
+    # site 真值 → 标记 (孔口/抓取点/目标) — 物理世界就在这些点上做插入
+    sites = []
+    for i in range(m.nsite):
+        sn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_SITE, i) or ""
+        if not sn:
+            continue
+        pos = [round(float(v), 4) for v in d.site_xpos[i]]
+        sites.append({"name": sn, "pos": pos})
+    keep = ("hole", "pegGrasp", "goal", "insert", "cp_ref", "cp_stage_top", "tt_top")
+    mk = []
+    for i, st in enumerate([x for x in sites if x["name"] in keep]):
+        mk.append({"id": "mj_mk_%02d" % (i + 1), "name": "site:%s" % st["name"], "type": "检查点",
+                   "pos": st["pos"], "radius_m": 0.012, "source": "MuJoCo site 真值"})
+    if write:
+        d = load()
+        sc = d["scenes"].setdefault(scene_id, default()["scenes"]["SIM-PEG-L4"])
+        sc["objects"] = objs
+        _keep = [m for m in (sc.get("markers") or []) if "AOI" in str(m.get("name", ""))]
+        sc["markers"] = mk + _keep
+        sc["truth"] = {"from": "MuJoCo 模型 %s" % os.path.basename(xml), "n_objects": len(objs),
+                       "tip": _MJ_TIP}
+        save_raw(d)
+        regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", scene_id))
+    return {"ok": True, "xml": xml, "objects": objs, "markers": mk,
+            "msg": "%d 个 geom → %d 个场景对象 · %d 个 site 标记 (从 %s)"
+                   % (m.ngeom, len(objs), len(mk), os.path.basename(xml))}
 
 
 if __name__ == "__main__":
