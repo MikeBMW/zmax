@@ -145,6 +145,35 @@ def read_cfg_spec_rows():
 # 级: G0 结构参数(非自由拟合) · G1 安全参数(红线, 只读) · G2 性能参数(可扫可写)
 #     G3 场景参数(现场零运动示教) · G4 模型权重/版本(不可标, 只版本)
 # 权限: readonly / field(现场) / auth(需真动授权) / version(只版本比对)
+PERF_SPEC = os.path.join(ROOT, "config/platform/zmax_perf_spec.json")
+
+
+def read_perf_spec():
+    """光模块精细操作性能指标体系 (机器人学口径 + 光模块工艺口径) —— 指标**定义**行。
+
+    语义: value = **目标值/规格** (来自真源文件, 不是实测值); 实测值待标定/验收阶段写入。
+    组/口径/阶段/测量方法/关联功能全带上, 配置中心里能直接看清单与判据。
+    """
+    d = _jload(PERF_SPEC)
+    rows, flat = [], {}
+    for g in d.get("groups", []):
+        for m in g.get("metrics", []):
+            tgt = m.get("target")
+            ok = bool(tgt) and not str(tgt).startswith("待")
+            flat[m["id"]] = tgt if ok else None
+            rows.append(dict(
+                id=m["id"], cn=m["cn"], domain="性能配置",
+                grade="G1" if ("安全" in g["name"] or "ESD" in g["name"] or "esd" in m["id"]) else "G2",
+                src="config/platform/zmax_perf_spec.json#%s" % m["id"], read=("perf_spec", m["id"]),
+                unit=m.get("unit") or "-", rng=None, dflt=None, perm="readonly",
+                affects=list(m.get("links") or []), feature=[], kind="spec",
+                group="%s %s" % (g["gid"], g["name"]), stage=m.get("stage", "-"),
+                std=m.get("std", "-"), how=m.get("how", ""), target=tgt,
+                judge="指标定义 (目标值即规格; 实测入口见 how) · 阶段 %s · 口径 %s · %s"
+                      % (m.get("stage", "-"), m.get("std", "-"), m.get("how", ""))))
+    return rows, flat
+
+
 PARAM_SPEC = [
     # ── 工程配置: 坐标系/几何/单位 (设备事实, 最底层约束) ──
     dict(id="cam.K", cn="相机内参矩阵", domain="工程配置", grade="G3",
@@ -305,6 +334,8 @@ def _cur(src_kind, key, sources):
         v = (sources.get("dbc") or {}).get(k)
     elif kind == "cfgspec":
         v = sources.get("cfgspec")
+    elif kind == "perf_spec":
+        v = (sources.get("perf_spec") or {}).get(k)
     else:
         v = None
     return v
@@ -314,17 +345,19 @@ def build():
     calib, manifold = _jload(CALIB), _jload(MANIFOLD)
     dbc, levels, feats = read_feature_dbc(), read_levels(), read_features()
     cfgspec = read_cfg_spec_rows()
+    perf_rows, perf_flat = read_perf_spec()
     src = {"calib": calib, "manifold": manifold, "dbc": dbc, "levels": levels,
-           "features": feats, "cfgspec": cfgspec}
+           "features": feats, "cfgspec": cfgspec, "perf_spec": perf_flat}
 
     chars, gaps, perms, grades = [], [], {}, {}
-    for spec in PARAM_SPEC:
+    for spec in PARAM_SPEC + perf_rows:
         rec = dict(spec)
         cur = _cur(spec["read"], None, src) if spec.get("read") else None
         rec["value"] = cur
         rec["ready"] = cur is not None
         if cur is None:
-            rec["reason"] = ("现场未标定/未示教" if spec["grade"] == "G3"
+            rec["reason"] = ("目标值待定 (需按工件/工艺规格确认)" if spec.get("kind") == "spec"
+                             else "现场未标定/未示教" if spec["grade"] == "G3"
                              else "真源非文件 (在役源码常量或权重) — 未做文件级描述"
                              if spec["perm"] == "readonly" else "未接线 (本项需实现期补真源)")
             gaps.append(spec["id"])
@@ -347,6 +380,7 @@ def build():
                 "src/lerobot/engineering/levels.py": _sha16(LEVELS_PY),
                 "src/lerobot/verification/verification_layer.py": _sha16(VERIF_PY),
                 "tools/gui/studio.py": _sha16(STUDIO_PY),
+                "config/platform/zmax_perf_spec.json": _sha16(PERF_SPEC),
             },
             "counts": {"MEASUREMENT": len(MEASUREMENT), "CHARACTERISTIC": len(chars),
                        "COMPU_METHOD": len(COMPU), "DOMAINS": len(groups),

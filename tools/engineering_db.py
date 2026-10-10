@@ -516,6 +516,39 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
     except Exception as _e:                                                    # noqa: BLE001
         print("[engineering_db] 参数注册表摄取失败: %r" % (_e,))
 
+    # ── 性能指标定义 (光模块精细操作: 机器人学口径 + 光模块工艺口径) ──
+    # 真源 config/platform/zmax_perf_spec.json。value = **目标值/规格** (不是实测值), 指标类记 kind='spec'。
+    # 入库理由: ① 单一工程库要能看到「性能指标清单」(配置中心/功能清单页取同一份)
+    #           ② 改指标 ⇒ 工程库 sha 变 ⇒ 文档 manifest 一致性判据能抓到 (否则会被漏掉)
+    try:
+        _pf = os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json")
+        if os.path.exists(_pf):
+            _d = json.load(open(_pf, encoding="utf-8"))
+            _n = 0
+            for _g in _d.get("groups", []):
+                for _m in _g.get("metrics", []):
+                    _tgt = _m.get("target")
+                    _ok = bool(_tgt) and not str(_tgt).startswith("待")
+                    _pid = "spec:" + _m["id"]
+                    c.execute("INSERT OR REPLACE INTO params VALUES (" + ",".join(["?"] * 20) + ")",
+                              (_pid, "性能指标定义", "spec", _m["id"], _m["cn"],
+                               _j(_tgt if _ok else "null"), "null", None, None,
+                               _m.get("unit") or "-", "spec", "null",
+                               "config/platform/zmax_perf_spec.json", "perf_spec:" + _m["id"], 0,
+                               ("指标定义(目标值=规格; 实测值待验收阶段填入)" if _ok
+                                else "目标值待确认 (需按工件/工艺规格定)"),
+                               "#7fb3ff", "sys1", "", " · ".join(_m.get("links") or [])))
+                    for _l, _v in (("指标组", "%s %s" % (_g["gid"], _g["name"])),
+                                   ("阶段", _m.get("stage", "-")),
+                                   ("标准", _m.get("std", "-"))):
+                        c.execute("INSERT INTO param_links VALUES (?,?,?)", (_pid, _l, _v))
+                    for _lk in (_m.get("links") or []):
+                        c.execute("INSERT INTO param_links VALUES (?,?,?)", (_pid, "功能", _lk))
+                    _n += 1
+            print("   性能指标定义 (spec)      %d" % _n)
+    except Exception as _e:                                                    # noqa: BLE001
+        print("[engineering_db] 性能指标体系摄取失败: %r" % (_e,))
+
     # ── MCD 三轴 (测量 Measurement · 标定 Calibration · 诊断 Diagnosis) — 「用数据定义产品框架」 ──
     try:
         _mv = {}

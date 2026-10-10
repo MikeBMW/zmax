@@ -70,9 +70,15 @@ def main():
               "任务配置" not in cur and (n is None or n > 0), f"{cur} 行={n}")
 
     print("\n═══ 2) 数值口径 (过滤才叫显示, 全显等于没筛) ═══")
-    check("工程配置筛出 9 行", seen.get("工程配置", ("", -1))[1] == 9, seen.get("工程配置"))
-    check("功能配置筛出 3 行", seen.get("功能配置", ("", -1))[1] == 3, seen.get("功能配置"))
-    check("性能配置筛出 6 行", seen.get("性能配置", ("", -1))[1] == 6, seen.get("性能配置"))
+    # 期望值 = 真源里该域的参数条数 (指标会长, 不写死)
+    import json as _js
+    _m = _js.load(open(os.path.join(ROOT, "config/mcd/zmax_mcd.json"), encoding="utf-8"))
+    _exp = {}
+    for _c in _m["CHARACTERISTIC"]:
+        _exp[_c["domain"]] = _exp.get(_c["domain"], 0) + 1
+    for _d in ("工程配置", "功能配置", "性能配置"):
+        check("%s 筛出行数 = 真源条数 %d" % (_d, _exp[_d]), seen.get(_d, ("", -1))[1] == _exp[_d], seen.get(_d))
+    check("性能配置含光模块精细操作指标 (≥50 条)", _exp["性能配置"] >= 50, _exp["性能配置"])
 
     print("\n═══ 3) 点参数 ID → 精确定位到那一行 ═══")
     c = page.tree.topLevelItem(2).child(0)          # 功能配置 → feature.cap_level
@@ -87,7 +93,7 @@ def main():
     page._filter_fpm(None)
     app.processEvents()
     n = sum(1 for r in range(tb.rowCount()) if not tb.isRowHidden(r))
-    check("恢复全部行", n == tb.rowCount(), f"{n}/{tb.rowCount()}")
+    check("恢复全部行", n == tb.rowCount(), f"{n}/{tb.rowCount()}")   # 三域合计 (指标会增长)
 
     print("\n═══ 5) 未知参数不静默 ═══")
     page.out.setPlainText("")

@@ -444,6 +444,23 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "5.1 System 1 子系统指标 (配置真源)", bold=True)
     table(doc, ["指标", "值"], sorted(sys1.get("kpi", {}).items()), widths=[4.0, 12.0])
 
+    # 5.2~ 光模块精细操作性能指标体系 (真源 config/platform/zmax_perf_spec.json, 6 组)
+    _ps = json.load(open(os.path.join(ROOT, "config/platform/zmax_perf_spec.json"), encoding="utf-8"))
+    _n_ps = sum(len(g["metrics"]) for g in _ps["groups"])
+    para(doc, "5.2 光模块精细操作性能指标体系 (6 组 · 机器人学口径 + 光模块工艺口径)", bold=True)
+    para(doc, "指标定义与目标值已进配置中心「性能配置」域 (共 %d 条)。表内为目标值(规格); 实测值在各阶段验收时"
+              "填入并由配置中心收口 —— 未实测的项不填数, 不以设计值冒充实测值。" % _n_ps, size=10)
+    para(doc, "引用标准: " + " · ".join("%s (%s)" % (k, v.split(":")[0]) for k, v in _ps["standards"].items()), size=9)
+    for _i, _g in enumerate(_ps["groups"]):
+        para(doc, "5.2.%d %s %s" % (_i + 1, _g["gid"], _g["name"]), bold=True)
+        table(doc, ["指标", "单位", "目标值 (规格)", "口径 / 标准", "阶段"],
+              [[m["cn"], m.get("unit") or "-", str(m.get("target") or "待确认"),
+                m.get("std", "-") if m.get("std") != "-" else "工艺口径", m.get("stage", "-")]
+               for m in _g["metrics"]],
+              widths=[4.4, 1.6, 4.8, 3.6, 1.4])
+        for _m in _g["metrics"]:
+            para(doc, "· %s — 测量/实测入口: %s" % (_m["id"], _m.get("how", "")), size=8.5)
+
     # 6 机器人末端
     h(doc, "6. 机器人与末端执行器要求", 1)
     for x in ROBOT_REQ:

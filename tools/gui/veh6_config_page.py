@@ -92,6 +92,7 @@ SRC_DEFS = [
     ("bom",            "BOM/成本/ROI 真源",       ["config/platform/zmax_project_bom.json"]),
     ("feature_dbc",    "功能能力清单 feature.dbc", ["data/database/zmax/sources/feature.dbc", "feature.dbc"]),
     ("governance",     "数据治理真源",             ["config/platform/zmax_data_governance.json"]),
+    ("perf_spec",      "性能指标真源",             ["config/platform/zmax_perf_spec.json"]),
 ]
 PLATFORM_SRC = ("平台配置真源", "config/platform/zmax_platform.json")   # manifest 未记录 ⇒ 用时间戳兜底
 
