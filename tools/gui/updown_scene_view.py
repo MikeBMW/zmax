@@ -61,7 +61,7 @@ SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP", "SS-EPI-CORNER")
 SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
                "SCN-07-UP": "📦 上下料场景",
                # 老倪 2026-10-10: 「先把这个场景复制到你的场景编辑窗口里」— 就是画布 3D 分层视图正在跑的那条
-               "SS-EPI-CORNER": "🧭 3D 分层视图场景 (与操作视频同源 · 复制自你正在跑的那条)"}
+               "SS-EPI-CORNER": "🧭 3D场景 (与操作视频同源 · 复制自你正在跑的那条)"}
 
 
 def scene_options():
@@ -87,6 +87,20 @@ def scene_options():
             if os.path.isdir(os.path.join(SCENES_ROOT, d)):
                 out.append((d, os.path.join(SCENES_ROOT, d), d, None))
     return out
+
+
+def _obj_color(o):
+    """对象自带颜色 → #rrggbb; scene_edit 的 color 支持 [r,g,b] 0~1 或 'rrggbb'/'#rrggbb'。"""
+    c = (o or {}).get("color")
+    try:
+        if isinstance(c, (list, tuple)) and len(c) == 3:
+            return "#%02x%02x%02x" % tuple(max(0, min(255, int(round(float(v) * 255)))) for v in c)
+        if isinstance(c, str) and c.strip():
+            t = c.strip().lstrip("#")
+            return t if len(t) == 6 else None
+    except Exception:                                                           # noqa: BLE001
+        return None
+    return None
 
 
 def _j(p, d):
@@ -427,7 +441,9 @@ class SceneView3D(QWidget):
         for _depth, i, o, c, sz in sorted(items, reverse=False):      # 远→近
             hid = self._hidden(str(o.get("name")))
             sel = self._selq("objects", i)
-            col = C_OBJ_SEL if sel else (C_DIM if hid else C_OBJ)
+            # 对象自带颜色 (如机器人本体 = 浅灰) 优先, 否则默认青绿 —— 老倪要看得出"哪是机器人"
+            _oc = _obj_color(o)
+            col = C_OBJ_SEL if sel else (C_DIM if hid else (_oc or C_OBJ))
             v, e = self._box_edges(c, sz)
             bottom = [v[0], v[1], v[3], v[2]]
             p.setBrush(QBrush(QColor(col + "33")))
@@ -940,6 +956,7 @@ def build_card(parent=None):
                          "该场景没有运行入口 (只有仿真/回放场景可运行)")
         b_seed.setVisible(_is_epi)
         b_seed.setEnabled(_is_epi)
+        b_cam.setVisible(_is_epi)
         _epi_info = ""
         if _is_epi:
             _S = _sim_mod()
@@ -991,6 +1008,33 @@ def build_card(parent=None):
         st.setText("🎲 %s\n   正在重跑 episode (新布局)… 日志在下面刷新" % r["msg"])
         _run_sim()
 
+    def _cam_corner2():
+        """🎥 切到 corner2 机位: 与操作视频 / 3D 分层视图**同一个相机** (外参取自 episode meta)。"""
+        _S = _sim_mod()
+        try:
+            _t = _S.episode_truth()
+            _cam = [float(v) for v in _t["cam_pos"]]
+        except Exception as e:                                                  # noqa: BLE001
+            st.setText("⛔ 取 corner2 外参失败: %r" % e)
+            return
+        view.fit_view()
+        _tgt = [0.0, 0.6, 0.13]                     # 桌心/孔口高度 (与 3D 分层视图同锚点)
+        view.center = list(_tgt)
+        _v = [_cam[i] - _tgt[i] for i in range(3)]
+        _n = (sum(x * x for x in _v) ** 0.5) or 1.0
+        _eye = [x / _n for x in _v]
+        view.az = math.degrees(math.atan2(_eye[0], _eye[1]))
+        view.el = math.degrees(math.asin(max(-1.0, min(1.0, _eye[2]))))
+        view.pan = [0.0, 0.0]
+        view._manual_scale = False
+        view.update()
+        st.setText("🎥 已切到 corner2 视角 (与操作视频/3D 分层视图同一机位: pos=%s fovy=%s)"
+                   % ([round(x, 2) for x in _cam], _t.get("cam_fovy")))
+
+    b_cam = _b("🎥 corner2 视角", "切到操作视频/3D 分层视图的同一机位 (cad 外参取自 episode 真值)",
+               lambda: _cam_corner2(), "#00d4aa")
+    b_cam.setVisible(False)
+    top.addWidget(b_cam)
     b_seed = _b("🎲 换布局 (seed+1)", "改 metaworld 随机化布局的 seed 并立刻重跑 episode (点了必出结果)",
                 lambda: _bump_seed(), "#d29922")
     b_seed.setVisible(False)

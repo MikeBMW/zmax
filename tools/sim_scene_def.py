@@ -182,8 +182,12 @@ def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
     sc = load()["scenes"][scene_id]
     objs = []
     for i, o in enumerate(sc["objects"]):
-        objs.append({"id": "sim_ob_%02d" % (i + 1), "name": o["name"], "center": [float(x) for x in o["center"]],
-                     "size": [float(x) for x in o["size"]], "source": o.get("source", ""), "editable": True})
+        _d = {"id": "sim_ob_%02d" % (i + 1), "name": o["name"], "center": [float(x) for x in o["center"]],
+              "size": [float(x) for x in o["size"]], "source": o.get("source", ""), "editable": True}
+        for _k in ("color", "part"):          # 机器人本体的颜色/类别要透传到场景目录文件
+            if o.get(_k) is not None:
+                _d[_k] = o[_k]
+        objs.append(_d)
     return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": scene_id,
             "coord": "世界系 m (metaworld sawyer_xyz)", "source": "data/scene/sim/sim_scenes.json (仿真场景真源)",
             "scene_name": sc["name"], "sim": True, "env": sc.get("env"), "level": sc.get("level"),
@@ -299,13 +303,37 @@ def _check_episode(bad, notes) -> None:
     o = to_objects3d(EPI_SCENE)
     ov = to_overlay(EPI_SCENE)
     objs = {x["name"]: x for x in o.get("objects", [])}
-    peg = [v for k, v in objs.items() if "光模块" in k]
-    if not peg:
-        bad.append("派生对象里没有 光模块")
+    _model = "metaworld 模型导出" in str(o.get("source", ""))
+    n_robot = len([x for x in o.get("objects", []) if x.get("part") == "robot"])
+    if _model:
+        # 按 episode 自己的模型导出的口径: 必须有机器人本体 + 台面 + 工件
+        if n_robot < 15:
+            bad.append("回放场景缺机器人本体 (只 %d 个构件)" % n_robot)
+        _tb = [v for k, v in objs.items() if "工作台面" in k]
+        if not _tb:
+            bad.append("回放场景缺工作台面")
+        peg = [v for k, v in objs.items() if "光模块" in k or "peg" in k.lower()]
+        if not peg:
+            bad.append("回放场景缺光模块")
+        # 严格同源: 导出的**模型状态**必须就是 episode 那一帧 (pegGrasp site == meta.peg0, hand == tr['x'][0])
+        _an = ((o.get("truth") or {}).get("anchors") or {})
+        for _k, _want, _lab in (("site_pegGrasp", [float(v) for v in t["peg0"]], "pegGrasp site vs meta.peg0"),
+                                ("body_hand", [float(v) for v in t["hand0"]], "hand body vs tr['x'][0]")):
+            _got = _an.get(_k)
+            if not _got:
+                bad.append("回放场景 truth 缺锚点 %s" % _k)
+                continue
+            _dd = max(abs(float(a) - float(b)) for a, b in zip(_got, _want))
+            if _dd > 1e-3:
+                bad.append("回放场景非同一帧: %s 差 %.4fm (%s vs %s)" % (_lab, _dd, _got, _want))
     else:
-        p0 = [float(v) for v in t["peg0"]]
-        if max(abs(a - b) for a, b in zip(peg[0]["center"], p0)) > 1e-6:
-            bad.append("光模块初始位 %s ≠ episode 真值 peg0 %s" % (peg[0]["center"], p0))
+        peg = [v for k, v in objs.items() if "光模块" in k]
+        if not peg:
+            bad.append("派生对象里没有 光模块")
+        else:
+            p0 = [float(v) for v in t["peg0"]]
+            if max(abs(a - b) for a, b in zip(peg[0]["center"], p0)) > 1e-6:
+                bad.append("光模块初始位 %s ≠ episode 真值 peg0 %s" % (peg[0]["center"], p0))
     mks = {m["name"]: m for m in ov.get("markers", [])}
     mm = [v for k, v in mks.items() if "孔口" in k]
     gg = [v for k, v in mks.items() if "插入终点" in k]
@@ -322,8 +350,8 @@ def _check_episode(bad, notes) -> None:
         bad.append("末端轨迹抽稀点太少 (%d)" % n_wps)
     if abs(float(o["episode"].get("cam_fovy", 0)) - float(t.get("cam_fovy", 0))) > 1e-6:
         bad.append("相机 fovy 与 episode 真值不一致")
-    notes.append("episode 场景: %s · %d 帧 · seed=%s · success=%s · 相机 fovy=%s · 轨迹 %d 点 (帧龄 %.1fh)"
-                 % (os.path.basename(t["npz"]), t["steps"], t.get("seed"), t.get("success"),
+    notes.append("episode 场景: %s · %d 帧 · seed=%s · success=%s · 机器人构件 %d · 相机 fovy=%s · 轨迹 %d 点 (帧龄 %.1fh)"
+                 % (os.path.basename(t["npz"]), t["steps"], t.get("seed"), t.get("success"), n_robot,
                     t.get("cam_fovy"), n_wps, t["age_s"] / 3600))
 
 
@@ -343,8 +371,13 @@ def main() -> int:
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--set", nargs=2, metavar=("KEY", "JSON"))
     ap.add_argument("--set-seed", type=int, metavar="N", help="episode 场景 (SS-EPI-CORNER) 的布局 seed")
+    ap.add_argument("--export-episode", action="store_true", help="按 episode 自己的 metaworld 模型导出该场景 (含机器人)")
     a = ap.parse_args()
     ensure_episode_scene()
+    if a.export_episode:
+        r = export_episode_truth()
+        print(("✅ " if r.get("ok") else "⛔ ") + str(r.get("msg")))
+        return 0 if r.get("ok") else 1
     if a.set_seed is not None:
         r = set_seed(a.set_seed)
         print("✅ %s\n   重跑: %s" % (r["msg"], r["cmd"]))
@@ -579,10 +612,11 @@ def episode_truth() -> dict:
         out = {"ok": True, "why": why, "npz": npz, "mp4": os.path.splitext(npz)[0] + ".mp4",
                "steps": int(len(traj)), "traj": traj}
         for k in ("seed", "success", "stage_final", "cam_pos", "cam_fwd", "cam_right", "cam_up", "cam_fovy",
-                  "peg0", "hole_mouth", "goal"):
+                  "peg0", "hole_mouth", "goal", "qpos", "box_center", "table_center"):
             if k in meta:
                 out[k] = meta[k]
         out["age_s"] = max(0.0, time.time() - os.path.getmtime(npz))
+        out["hand0"] = [float(v) for v in (traj[0] if len(traj) else (0, 0, 0))]   # tr['x'][0] = 手爪 body 位
         return out
     except Exception as e:                                                  # noqa: BLE001
         return {"ok": False, "msg": "读 %s 失败: %r" % (os.path.basename(npz), e)}
@@ -602,6 +636,29 @@ def _epi_layout(t: dict) -> dict:
 
 def _epi_objects3d() -> dict:
     t = episode_truth()
+    _sc = (load()["scenes"].get(EPI_SCENE) or {})
+    if t.get("ok") and (_sc.get("objects") or []):
+        # 已按 metaworld 模型导出过 (含机器人本体) ⇒ 直接透传, 不再用 meta 三件套
+        objs = []
+        for i, o in enumerate(_sc["objects"]):
+            d = {"id": o.get("id") or ("ep_ob_%02d" % (i + 1)), "name": o["name"],
+                 "center": [float(x) for x in o["center"]], "size": [float(x) for x in o["size"]],
+                 "source": o.get("source", ""), "editable": True}
+            for k in ("color", "part"):
+                if o.get(k) is not None:
+                    d[k] = o[k]
+            objs.append(d)
+        return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": EPI_SCENE,
+                "coord": "世界系 m (metaworld sawyer_xyz)", "sim": True, "kind": "episode",
+                "source": "按 episode 自己的 metaworld 模型导出 (与 3D 分层视图/操作视频同一模型)",
+                "scene_name": _sc.get("name"), "truth": _sc.get("truth"),
+                "episode": {"npz": os.path.relpath(t["npz"], ROOT), "step_count": t["steps"],
+                            "seed": t.get("seed"), "success": bool(t.get("success")),
+                            "stage_final": t.get("stage_final"), "age_s": round(t["age_s"], 1),
+                            "why": t["why"], "camera": [float(v) for v in t.get("cam_pos", [0, 0, 0])],
+                            "cam_fovy": float(t.get("cam_fovy", 60.0))},
+                "objects": objs, "markers": _sc.get("markers") or [],
+                "fences": _sc.get("fences") or [], "trajectories": _sc.get("trajectories") or []}
     if not t.get("ok"):
         return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": EPI_SCENE,
                 "error": t.get("msg"), "objects": []}
@@ -684,9 +741,19 @@ def set_seed(seed: int) -> dict:
 #   机械臂本体 (shoulder/upper_arm/forearm/wrist/hand/gripper/pedestal...) 不进场景对象;
 #   场景设备 (台面/护栏/光模块/夹具/转台/压电台/微动台) 全进, 名字用真实 body+geom 名, 标中文别名。
 # ══════════════════════════════════════════════════════════════════════════════
-_MJ_SKIP = ("shoulder", "upper_arm", "forearm", "wrist", "hand", "r_gripper", "l_gripper", "base",
-            "right", "left", "head", "track", "pedestal", "controller_box", "screen", "torso",
-            "mocap", "world", "floor")
+# 只滤掉"不是场景内容"的东西 (世界/地面/动作捕捉标记); **机器人本体一律保留** —— 老倪:
+# 「为什么你现在的场景，没有机器人呢？metaworld 的场景都是有机器人的，增加机器人」(2026-10-10)
+_MJ_SKIP = ("world", "floor", "mocap")
+_MJ_ROBOT = {                     # 机器人本体: body 名前缀 → 中文名 (Sawyer 7 自由度 + 平行夹爪)
+    "pedestal_feet": "机器人·底座脚", "pedestal": "机器人·立柱", "torso": "机器人·躯干",
+    "controller_box": "机器人·控制箱", "screen": "机器人·示教屏", "head": "机器人·头部",
+    "right_arm_base_link": "机器人·臂基座", "right_l0": "机器人·肩部", "right_l1": "机器人·大臂",
+    "right_l2": "机器人·肘/小臂", "right_l3": "机器人·腕1", "right_l4": "机器人·腕2",
+    "right_l5": "机器人·腕3", "right_l6": "机器人·手", "right_hand": "机器人·腕法兰",
+    "hand": "机器人·腕部导轨", "rightclaw": "机器人·夹爪右", "rightpad": "机器人·夹爪垫右",
+    "leftclaw": "机器人·夹爪左", "leftpad": "机器人·夹爪垫左",
+}
+_MJ_ROBOT_RGBA = [0.82, 0.84, 0.87]      # Sawyer 浅灰 (与台面/工件的青绿/金区分开)
 _MJ_ALIAS = {"tablelink": "工作台面", "RetainingWall": "台面护栏", "peg": "光模块 (peg)",
              "box": "夹具/孔座 (peg_block)", "turntable": "来料转台 (外力旋转90°)",
              "coupler": "光耦合压电台底座", "cp_stage_b": "x-y 压电微动载物台",
@@ -695,6 +762,133 @@ _MJ_ALIAS = {"tablelink": "工作台面", "RetainingWall": "台面护栏", "peg"
              "cp_fiber": "光纤头耦合基准", "cp_stage": "微动载物台面", "cp_scale": "位移标尺"}
 _MJ_TIP = ("对齐 metaworld 真模型: 从 MuJoCo 模型 (sawyer_peg_insertion_side_l4.xml) 导出 geom "
            "位置/尺寸 (单位 m, size=2×geom_size); 与 ▶运行 时物理世界逐字同源")
+
+
+def export_episode_truth(scene_id: str = EPI_SCENE, seed=None, write: bool = True) -> dict:
+    """把「3D 分层视图 / 与操作视频同源」那条场景**按它自己的物理模型**导出 (含机器人本体)。
+
+    老倪 2026-10-10: 「你先把当前我运行的场景，先复制过来，一模一样的」+「为什么没有机器人? metaworld 的
+    场景都是有机器人的」 ⇒ 不再只派生 3 个对象, 而是建**同一个 metaworld 环境** (同 seed ⇒ 同布局),
+    mj_forward 后遍历 geom 取世界系 AABB (机器人本体保留) —— 模型与 3D 视图/操作视频逐字同源。
+    """
+    t = episode_truth()
+    if not t.get("ok"):
+        return {"ok": False, "msg": "同源 episode 读不到: %s" % t.get("msg")}
+    if seed is None:
+        seed = int(t.get("seed", 0) or 0)
+    try:
+        os.environ.setdefault("MUJOCO_GL", "egl")
+        import metaworld
+        import mujoco
+    except Exception as e:                                                      # noqa: BLE001
+        return {"ok": False, "msg": "metaworld/mujoco 不可用: %r" % e}
+    try:
+        # ⚠️ 必须走 episode 生成器的**同一条建环境路径** (metaworld 的随机布局吃全局 np.random,
+        #    自建 env 会因 RNG 消耗顺序不同而给出**另一个布局** —— 实测差 5cm 以上)。
+        import train_full_pipeline as _TFP          # noqa: F401  (其 import 期就建了一次 env, 顺序要对齐)
+        from train_full_pipeline import make_env
+        env = make_env(seed)
+        m, d = env.model, env.data
+        # ⚠️ 回放 episode **首帧的模型状态** (meta.qpos): metaworld 的随机化布局吃全局 np.random,
+        #    重新 make_env 得到的是**另一个布局** (实测 peg 差 5~7cm) ⇒ 必须用存下来的 qpos 复原,
+        #    这样光模块/孔座/机器人位形与视频首帧逐字一致 ("一模一样"必须是同一帧, 不是"同一个 seed")。
+        _q = list(t.get("qpos") or [])
+        _replay = bool(_q) and len(_q) == int(m.nq)
+        if _replay:
+            d.qpos[:] = [float(v) for v in _q]
+            d.qvel[:] = 0.0
+        mujoco.mj_forward(m, d)
+    except Exception as e:                                                      # noqa: BLE001
+        return {"ok": False, "msg": "建 metaworld 环境失败: %r" % e}
+    objs, seen = [], {}
+    MESH = int(mujoco.mjtGeom.mjGEOM_MESH)
+    for g in range(m.ngeom):
+        b = int(m.geom_bodyid[g])
+        bn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, b) or ""
+        gn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_GEOM, g) or ""
+        if any(bn.startswith(x) for x in _MJ_SKIP):
+            continue
+        R = np.asarray(d.geom_xmat[g]).reshape(3, 3)
+        xp = np.asarray(d.geom_xpos[g], float)
+        if int(m.geom_type[g]) == MESH and int(m.geom_dataid[g]) >= 0:
+            mid = int(m.geom_dataid[g])
+            va, vn = int(m.mesh_vertadr[mid]), int(m.mesh_vertnum[mid])
+            pts = (R @ np.asarray(m.mesh_vert[va:va + vn], float).T).T + xp
+        else:
+            sz = [float(v) for v in m.geom_size[g]]
+            tt = int(m.geom_type[g])
+            if tt == 2:
+                hx = hy = hz = sz[0]
+            elif tt in (3, 5):
+                hx, hy, hz = sz[0], sz[0], sz[1]
+            else:
+                hx, hy, hz = sz[0], sz[1], sz[2]
+            pts = (R @ np.array([[-hx, -hy, -hz], [hx, hy, hz]], float).T).T + xp
+        lo, hi = pts.min(0), pts.max(0)
+        pos = [float(v) for v in (lo + hi) / 2]
+        size = [float(v) for v in (hi - lo)]
+        if max(size) > 1.0 and pos[2] < -0.1:
+            continue
+        _rb = next((v for k, v in _MJ_ROBOT.items() if bn.startswith(k)), None)
+        nm = _rb or _MJ_ALIAS.get(gn) or _MJ_ALIAS.get(bn) or ("夹具/孔座 (peg_block)" if not bn else bn)
+        _c = seen.get(nm, 0) + 1
+        seen[nm] = _c
+        if _c > 1:
+            nm = "%s #%d" % (nm, _c)
+        o = {"id": "ep_ob_%02d" % (len(objs) + 1), "name": nm, "center": [round(v, 4) for v in pos],
+             "size": [round(max(0.004, v), 4) for v in size], "editable": True,
+             "source": "metaworld 环境实测 (seed=%d body=%s geom=%s)" % (seed, bn or "(无名)", gn or "-")}
+        if _rb:
+            o["color"] = list(_MJ_ROBOT_RGBA)
+            o["part"] = "robot"
+            o["source"] = "metaworld 环境实测 · 机器人本体 (seed=%d body=%s)" % (seed, bn)
+        objs.append(o)
+    sites = []
+    for i in range(m.nsite):
+        sn = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_SITE, i) or ""
+        if sn:
+            sites.append({"name": sn, "pos": [round(float(v), 4) for v in d.site_xpos[i]]})
+    keep = ("hole", "pegGrasp", "goal", "cp_ref")
+    mk = [{"id": "ep_mk_%02d" % (i + 1), "name": "site:%s" % st["name"], "type": "检查点",
+           "pos": st["pos"], "radius_m": 0.012, "source": "metaworld 环境 site 真值 (seed=%d)" % seed}
+          for i, st in enumerate([x for x in sites if x["name"] in keep])]
+    cam = [float(v) for v in t.get("cam_pos", [0, 0, 0])]
+    if cam:
+        mk.append({"id": "ep_mk_cam", "name": "corner2 相机机位 (操作视频视角)", "type": "工位", "pos": cam,
+                   "radius_m": 0.02, "source": "episode meta.cam_pos (与 mp4 同源)"})
+    # 轨迹: episode 末端 tr['x'] 抽稀 (3D 视图里那条线的同源数据)
+    tr = t["traj"]
+    wps = [{"pos": [float(x) for x in p]} for p in tr[::20]] if len(tr) else []
+    trajs = [{"id": "ep_tr_01", "name": "episode 末端轨迹 (抽稀 20×)", "kind": "示教", "waypoints": wps,
+              "source": "episode tr['x'] %d 帧 → %d 点" % (len(tr), len(wps))}] if wps else []
+    fens = [{"id": "ep_fn_01", "kind": "box", "shape": {"center": [0.0, 0.6, 0.1], "size": [1.4, 0.8, 0.2]},
+             "name": "作业区 (台面上方)", "source": "metaworld 台面 1.4×0.8 (中心 y=0.6)"}]
+    if write:
+        d2 = load()
+        sc = d2["scenes"].setdefault(scene_id, episode_scene_def())
+        sc["objects"], sc["markers"], sc["fences"], sc["trajectories"] = objs, mk, fens, trajs
+        _aux = {}
+        for _bn in ("peg", "hand", "box"):
+            _i = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, _bn)
+            if _i >= 0:
+                _aux["body_" + _bn] = [round(float(v), 6) for v in d.xpos[_i]]
+        for _sn in ("pegGrasp", "hole", "goal", "pegHead", "pegEnd"):
+            _i = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_SITE, _sn)
+            if _i >= 0:
+                _aux["site_" + _sn] = [round(float(v), 6) for v in d.site_xpos[_i]]
+        sc["truth"] = {"from": "metaworld peg-insert-side-v3 环境 (seed=%d, 与 3D 分层视图/操作视频同一模型)" % seed,
+                       "episode": os.path.basename(t["npz"]), "n_objects": len(objs),
+                       "n_robot": len([o for o in objs if o.get("part") == "robot"]), "anchors": _aux,
+                       "qpos_replayed": bool(_replay),
+                       "camera": {"name": EPI_CAM, "fovy": float(t.get("cam_fovy", 60.0)), "pos": cam,
+                                  "note": "视频/3D 视图相机 = corner2 (外参取自 episode meta)"}}
+        sc["seed"] = seed
+        save_raw(d2)
+        regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", scene_id))
+    return {"ok": True, "seed": seed, "objects": objs, "markers": mk, "n_robot": len([o for o in objs if o.get("part") == "robot"]),
+            "msg": "%d geom → %d 对象 (机器人 %d) · %d 标记 · 轨迹 %d 点 (seed=%d, 首帧状态回放=%s)"
+                   % (m.ngeom, len(objs), len([o for o in objs if o.get("part") == "robot"]), len(mk), len(wps),
+                      seed, "✅" if _replay else "❌ (meta 无 qpos)")}
 
 
 def l4_xml_path() -> str:
@@ -756,15 +950,23 @@ def export_mujoco_truth(scene_id: str = "SIM-PEG-L4", write: bool = True) -> dic
         lo, hi = pts.min(0), pts.max(0)
         pos = [float(v) for v in (lo + hi) / 2]
         size = [float(v) for v in (hi - lo)]
-        key = (bn, gn)
-        seen[key] = seen.get(key, 0) + 1
-        nm = _MJ_ALIAS.get(gn) or _MJ_ALIAS.get(bn) or ("夹具/孔座 (peg_block)" if not bn else bn)
-        if seen[key] > 1:
-            nm = "%s #%d" % (nm, seen[key])
-        objs.append({"id": "mj_%02d" % (len(objs) + 1), "name": nm, "center": [round(v, 4) for v in pos],
-                     "size": [round(max(0.004, v), 4) for v in size],
-                     "source": "MuJoCo 模型实测 (body=%s geom=%s · 世界系 AABB)"
-                               % (bn or "(夹具内部无名体)", gn or "-"), "editable": True})
+        if max(size) > 1.0 and pos[2] < -0.1:      # 台面以下的台体大块 (从上看不见, 不必进场景)
+            continue
+        _rb = next((v for k, v in _MJ_ROBOT.items() if bn.startswith(k)), None)
+        nm = _rb or _MJ_ALIAS.get(gn) or _MJ_ALIAS.get(bn) or ("夹具/孔座 (peg_block)" if not bn else bn)
+        _c = seen.get(nm, 0) + 1              # ⚠️ 按**名字**去重: 同名会让编辑器按名查找打到别人身上
+        seen[nm] = _c
+        if _c > 1:
+            nm = "%s #%d" % (nm, _c)
+        o = {"id": "mj_%02d" % (len(objs) + 1), "name": nm, "center": [round(v, 4) for v in pos],
+             "size": [round(max(0.004, v), 4) for v in size],
+             "source": "MuJoCo 模型实测 (body=%s geom=%s · 世界系 AABB)" % (bn or "(夹具内部无名体)", gn or "-"),
+             "editable": True}
+        if _rb:
+            o["color"] = list(_MJ_ROBOT_RGBA)
+            o["part"] = "robot"
+            o["source"] = "MuJoCo 模型实测 · 机器人本体 (body=%s geom=%s)" % (bn, gn or "-")
+        objs.append(o)
     # site 真值 → 标记 (孔口/抓取点/目标) — 物理世界就在这些点上做插入
     sites = []
     for i in range(m.nsite):

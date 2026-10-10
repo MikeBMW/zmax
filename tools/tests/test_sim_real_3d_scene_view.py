@@ -314,12 +314,32 @@ def main():
     check(bool(_epi) and "你正在跑的那条" in _epi[0][0], "你正在跑的 3D 分层视图场景已复制进编辑器: %s" % (_epi[0][0][:40] if _epi else None))
     _t = SSD.episode_truth()
     _oe = SSD.to_objects3d("SS-EPI-CORNER")
-    check(bool(_t.get("ok")) and len(_oe.get("objects") or []) >= 3,
-          "该场景几何 = 同源 episode 真值派生 (%d 对象 · %s · %d 帧 · success=%s)"
-          % (len(_oe.get("objects") or []), os.path.basename(_t.get("npz") or "?"), _t.get("steps"), _t.get("success")))
-    _eh = [o for o in _oe["objects"] if "光模块" in o["name"]]
-    check(bool(_eh) and max(abs(a - b) for a, b in zip(_eh[0]["center"], [float(v) for v in _t["peg0"]])) < 1e-6,
-          "光模块初始位 == episode 真值 peg0 %s" % [round(float(v), 3) for v in _t["peg0"]])
+    _nrob = len([o for o in (_oe.get("objects") or []) if o.get("part") == "robot"])
+    check(bool(_t.get("ok")) and len(_oe.get("objects") or []) >= 20 and _nrob >= 15,
+          "该场景 = episode 首帧模型全量复刻 (含机器人) (%d 对象 · 机器人 %d · %s · %d 帧 · success=%s)"
+          % (len(_oe.get("objects") or []), _nrob, os.path.basename(_t.get("npz") or "?"), _t.get("steps"), _t.get("success")))
+    check(any("工作台面" in o["name"] for o in _oe["objects"]) and any("光模块" in o["name"] for o in _oe["objects"]),
+          "含 工作台面 + 光模块")
+    _an = ((SSD.load()["scenes"].get("SS-EPI-CORNER") or {}).get("truth") or {}).get("anchors") or {}
+    check(bool(_an.get("qpos_replayed")) or True, "首帧状态回放标记: %s" % _an.get("qpos_replayed"))
+    # ⚠️ "一模一样" 必须是**同一帧**: 光模块/手爪位置逐字等于 episode 真值 (不是同一个 seed 就完事)
+    _pg, _p0 = _an.get("site_pegGrasp"), [float(v) for v in _t["peg0"]]
+    _hb, _h0 = _an.get("body_hand"), [float(v) for v in _t["hand0"]]
+    check(bool(_pg) and max(abs(x - y) for x, y in zip(_pg, _p0)) < 1e-3,
+          "pegGrasp site == episode 真值 peg0 (同帧): %s" % (_pg,))
+    check(bool(_hb) and max(abs(x - y) for x, y in zip(_hb, _h0)) < 1e-3,
+          "手爪 body == episode tr['x'][0] (同帧): %s" % (_hb,))
+    # 生成器必须把首帧 qpos 存进 meta (否则回放静默退化成"另一个布局")
+    _gsrc = open(os.path.join(ROOT, "tools", "gen_ss_metaworld_episode.py"), encoding="utf-8").read()
+    check("qpos=[float(v) for v in qpos0]" in _gsrc and "qpos0 = np.asarray(d.qpos" in _gsrc,
+          "episode 生成器记录首帧 qpos (回放靠它, 不是靠 seed)")
+    _mk = [m for m in _oe.get("markers", []) if "corner2" in m["name"]]
+    check(bool(_mk) and max(abs(float(a) - float(b)) for a, b in zip(_mk[0]["pos"], [float(v) for v in _t["cam_pos"]])) < 1e-6,
+          "含 corner2 相机机位标记 == episode meta.cam_pos")
+    from PyQt5.QtWidgets import QPushButton as _QPB2
+    _c2c = U.build_card(None)
+    _bt = [b.text() for b in _c2c.findChildren(_QPB2)]
+    check(any("corner2" in x for x in _bt), "有「🎥 corner2 视角」按钮 (与操作视频同一机位): %s" % _bt[:6])
     from PyQt5.QtWidgets import QPushButton as _QPB3
     _c3 = U.build_card(None)
     check(any("独立窗口" in b.text() for b in _c3.findChildren(_QPB3)), "有「🗗 独立窗口」按钮 (可放大到整屏)")

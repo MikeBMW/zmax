@@ -176,6 +176,9 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
     grasped = False
     success = False
 
+    # 首帧模型状态 (场景编辑器回放用; 此后 d 被 step 推进, 必须在此之前抓)
+    qpos0 = np.asarray(d.qpos, float).copy()
+
     for step in range(MAX_STEPS):
         # ── 真实状态 (全部来自 env, 不是仿真编造) ──
         hand_new = o[0:3].astype(float)
@@ -330,7 +333,11 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
             break
 
     cam_pos, cam_fwd, cam_right, cam_up = camera_frame(m, "corner2")
+    # ⚠️ 把**首帧模型状态**存进 meta: 场景编辑器要"一模一样"复刻这条 episode (含机器人位形) 时,
+    #    不能靠重新 make_env 重建 (metaworld 随机布局吃全局 np.random ⇒ 重建出来是**另一个布局**),
+    #    只能回放这份 qpos。老倪 2026-10-10 要求"把当前运行的场景一模一样复制过来 + 加机器人"。
     meta = dict(seed=seed, ctrl_dt=ctrl_dt, success=bool(success),
+                qpos=[float(v) for v in qpos0],
                 analytic=bool(analytic),
                 stage_final=sched.stage(), steps=len(tr["t"]),
                 cam_pos=cam_pos, cam_fwd=cam_fwd, cam_right=cam_right, cam_up=cam_up,

@@ -699,7 +699,7 @@ class DreamView3D(QWidget):
         self.module = module
         self._level = str(level).upper() if level else None    # 🧭 L2/L3/L4 dreamview 档位
         super().__init__(parent)
-        self.setWindowTitle("🧭 状态空间 3D 分层视图 (Apollo 风格)")
+        self.setWindowTitle("3D场景")
         self.resize(1180, 820)
         # 🖥 2026-08-25 老倪: 置顶 — 不被「操作视频」窗口(InferenceVideoDialog/MLPRolloutDialog, 经 _show_nonmodal 均置顶)遮挡
         # 🐛 2026-08-26: 运行完自动弹出 3D 视图若置顶 → 盖住 simulink 画布(看起来黑屏)
@@ -981,7 +981,7 @@ class DreamView3D(QWidget):
         self._overlay.setGeometry(0, 0, self.view.width(), self.view.height())
         if self._level:                      # 按档位预设开关图层 + 标题标注
             try:
-                self.setWindowTitle(f"🧭 状态空间 {self._level} DreamView (3D 分层)")
+                self.setWindowTitle("3D场景")
                 self.apply_level_preset(self._level)
             except Exception:
                 pass
@@ -1063,9 +1063,9 @@ class DreamView3D(QWidget):
                 except Exception:
                     pass
             if _src == "run":
-                self.setWindowTitle("🧭 3D 视图 · 程序执行同步 (▶运行/⏭到哪步, 3D 到哪步)")
+                self.setWindowTitle("3D场景")
             elif _src == "episode":
-                self.setWindowTitle("🧭 3D 视图 · EPISODE 回放 (预录, 非本次运行 — 先 ▶运行 转同步)")
+                self.setWindowTitle("3D场景")
         except Exception:
             pass
         meta = tr.get("_meta") if isinstance(tr, dict) else None
@@ -1140,7 +1140,7 @@ class DreamView3D(QWidget):
                 # 记下"与视频 1:1 同框"的机位, 供视角切换用
                 self._cam_video = dict(center=center.copy(), dist=max(0.3, t),
                                        fwd=cf.copy(), right=cr.copy(), up=cu.copy())
-                self.setWindowTitle("🧭 状态空间 3D 分层视图 — 与操作视频同源 (metaworld corner2 视角)")
+                self.setWindowTitle("3D场景")
             except Exception:
                 pass   # demo/引擎 npz 无相机外参 → 保持默认视角 (几何覆盖已生效)
         except Exception as e:

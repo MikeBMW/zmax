@@ -218,6 +218,12 @@ def collect() -> list[tuple[str, str, dict, dict, str]]:
     try:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         import sim_scene_def as _SSD
+        try:                                    # 回放场景按 episode 自己的模型导出 (含机器人本体)
+            _r = _SSD.export_episode_truth()
+            if _r.get("ok"):
+                print("   ↳ 回放场景按 metaworld 模型导出: %s" % _r["msg"])
+        except Exception as _e:                                                 # noqa: BLE001
+            print("   ⚠️ 回放场景导出跳过: %r" % (_e,))
         for sid, sc in (_SSD.load().get("scenes") or {}).items():
             out.append((sid, sc.get("name") or sid, _SSD.to_objects3d(sid), _SSD.to_overlay(sid),
                         "仿真场景真源 data/scene/sim/sim_scenes.json · 运行 %s"
