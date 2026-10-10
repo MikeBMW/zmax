@@ -213,6 +213,17 @@ def collect() -> list[tuple[str, str, dict, dict, str]]:
         out.append((PEG_COPY, "插拔场景 (由现场机位派生)", o3d, ov, "现场场景副本"))
     except FileNotFoundError as e:
         print("⚠️  现场场景缺文件, 跳过派生副本: %s" % e)
+    # 🎯 2026-10-10 仿真场景 (老倪: 画布 3D 视图的插拔光模块场景也要能选/编辑/运行):
+    #   几何真源 = data/scene/sim/sim_scenes.json (sim_scene_def.py); 可编辑 + 可运行
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import sim_scene_def as _SSD
+        for sid, sc in (_SSD.load().get("scenes") or {}).items():
+            out.append((sid, sc.get("name") or sid, _SSD.to_objects3d(), _SSD.to_overlay(),
+                        "仿真场景真源 data/scene/sim/sim_scenes.json · 运行 %s"
+                        % (sc.get("runner", {}).get("tool", ""))))
+    except Exception as e:                                                      # noqa: BLE001
+        print("⚠️  仿真场景登记跳过: %r" % (e,))
     # 已经手工建好的场景 (如 scene_build_updown.py 生成的 SCN-07-UP) 优先, 不覆盖
     return out
 
@@ -253,7 +264,11 @@ def cmd_build(force: bool) -> int:
                 b = json.load(f)
         except FileNotFoundError:
             continue
+        _run = (b.get("run") or None) if isinstance(b, dict) else None
         named[sid] = {"name": a.get("scene_name") or name, "source": src,
+                      "kind": ("sim" if a.get("sim") else "scene"),
+                      "sim_truth": ("data/scene/sim/sim_scenes.json" if a.get("sim") else None),
+                      "run": _run,
                       "dir": "data/scene/scenes/%s" % sid,
                       "n_objects": len(a.get("objects") or []),
                       "n_markers": len(b.get("markers") or []),

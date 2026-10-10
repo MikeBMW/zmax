@@ -41,6 +41,19 @@ def _mw_assets_dir():
 
 
 MW_ASSETS = _mw_assets_dir()
+# 🎯 2026-10-10 单真源: 注入坐标从 data/scene/sim/sim_scenes.json 取 (读不到回退老值 0.42 0.60 / 0.55 0.42)
+def _sim_geom():
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import sim_scene_def as _SSD
+        g = _SSD.geometry()
+        return ("%.3f %.3f" % tuple(g["turntable"]["xy"]),
+                "%.3f %.3f" % tuple(g["coupler"]["xy"]),
+                "%.3f" % float(g["coupler"].get("stage_z", 0.044)))
+    except Exception:                                                      # noqa: BLE001
+        return ("0.420 0.600", "0.550 0.420", "0.044")
+
+
 SRC = os.path.join(MW_ASSETS, "sawyer_xyz", "sawyer_peg_insertion_side.xml")
 DST = os.path.join(MW_ASSETS, "sawyer_xyz", "sawyer_peg_insertion_side_l4.xml")
 
@@ -52,7 +65,7 @@ EXTRA = """
           ② 光耦合压电定位台 coupler — 参照芯明天压电陶瓷: 金属底座 + 黄色压电叠堆 +
           x/y 压电微动载物台 (slide ±2mm) + 光纤头基准 (cp_ref)。放桌面空白(右前),
           承载面摩擦 5 可稳定携带光模块微动; 光模块头(pegHead) 对准光纤头 = 耦合基准。 -->
-          <body name="turntable" pos="0.42 0.60 0">
+          <body name="turntable" pos="__TT_XY__ 0">
     <joint name="tt_yaw" type="hinge" axis="0 0 1" limited="false" damping="0.02"/>
     <inertial pos="0 0 0.005" mass="0.35" diaginertia="0.0005 0.0005 0.001"/>
     <geom name="tt_disc" type="cylinder" size="0.075 0.005" pos="0 0 0.005" rgba="0.30 0.32 0.38 1"
@@ -65,7 +78,7 @@ EXTRA = """
           contype="0" conaffinity="0"/>
   </body>
 
-  <body name="coupler" pos="0.55 0.42 0">
+  <body name="coupler" pos="__CP_XY__ 0">
     <geom name="cp_base" type="box" size="0.17 0.055 0.010" pos="0 0 0.010" rgba="0.42 0.44 0.50 1"
           contype="1" conaffinity="1"/>
     <geom name="cp_pzt_a" type="box" size="0.06 0.008 0.010" pos="-0.07 0 0.030" rgba="0.82 0.70 0.15 1"
@@ -80,7 +93,7 @@ EXTRA = """
 
   <!-- x/y 压电微动载物台 (free 须 worldbody 顶级实锤): 每步 qpos 强钉 = 压电位置闭环等效,
        与治具转台同机制实测稳定; 行程 ±2mm 由脚本限; 与 coupler 底座坐标对齐 (0.55,0.42) -->
-  <body name="cp_stage_b" pos="0.55 0.42 0.044">
+  <body name="cp_stage_b" pos="__CP_XY__ __STAGE_Z__">
     <joint type="free" damping="0.05"/>
     <inertial pos="0 0 0" mass="0.5" diaginertia="0.0002 0.0002 0.0002"/>
     <geom name="cp_stage" type="box" size="0.17 0.055 0.004" pos="0 0 0.004" rgba="0.22 0.25 0.32 1"
@@ -90,6 +103,11 @@ EXTRA = """
     <site name="cp_stage_top" pos="0 0 0.008" size="0.004"/>
   </body>
 """
+
+# 🎯 2026-10-10: 用真源数值填上占位符 (读不到时 _sim_geom() 已回退老值 ⇒ 物理不变)
+_TT_S, _CP_S, _STZ_S = _sim_geom()
+EXTRA = (EXTRA.replace("__TT_XY__", _TT_S).replace("__CP_XY__", _CP_S)
+              .replace("__STAGE_Z__", _STZ_S))
 
 def main():
     assert os.path.isfile(SRC), SRC

@@ -25,8 +25,9 @@ import math
 import os
 import subprocess
 import sys
+import time
 
-from PyQt5.QtCore import QRectF, Qt
+from PyQt5.QtCore import QRectF, Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt5.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
                              QGroupBox, QHBoxLayout, QInputDialog, QLabel, QListWidget,
@@ -56,21 +57,23 @@ C_MARK, C_FENCE, C_TRAJ = "#ff8a3d", "#8b6cf0", "#4da3ff"
 # ─────────────────────────── 数据层 ───────────────────────────
 def scene_options():
     """可选场景: (标签, 场景目录, scene_id or None=在役只读)。"""
-    out = [("(在役) 现场场景 · 只读预览", LIVE_DIR, None)]
+    out = [("(在役) 现场场景 · 只读预览", LIVE_DIR, None, None)]
     try:
         with open(INDEX, encoding="utf-8") as f:
             idx = json.load(f)
         for sid, v in sorted((idx.get("named_scenes") or {}).items()):
-            out.append(("%s · %s (%d 对象/%d 标记/%d 围栏/%d 轨迹)"
-                        % (sid, str(v.get("name") or "")[:26], v.get("n_objects", 0), v.get("n_markers", 0),
+            _run = v.get("run") or None
+            out.append(("%s · %s%s (%d 对象/%d 标记/%d 围栏/%d 轨迹)"
+                        % (sid, str(v.get("name") or "")[:26], "  ▶可运行" if _run else "",
+                           v.get("n_objects", 0), v.get("n_markers", 0),
                            v.get("n_fences", 0), v.get("n_trajectories", 0)),
-                        os.path.join(SCENES_ROOT, sid), sid))
+                        os.path.join(SCENES_ROOT, sid), sid, _run))
     except Exception:                                                          # noqa: BLE001
         pass
     if len(out) == 1 and os.path.isdir(SCENES_ROOT):
         for d in sorted(os.listdir(SCENES_ROOT)):
             if os.path.isdir(os.path.join(SCENES_ROOT, d)):
-                out.append((d, os.path.join(SCENES_ROOT, d), d))
+                out.append((d, os.path.join(SCENES_ROOT, d), d, None))
     return out
 
 
@@ -114,6 +117,18 @@ def _se(scene_id, *args):
     except Exception:                                                          # noqa: BLE001
         d = {}
     return (r.returncode == 0 and bool(d.get("ok", True))), d
+
+
+def _sim_mod():
+    """仿真场景真源模块 (失败=None ⇒ 退回普通场景写路径)。"""
+    try:
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import sim_scene_def as _S
+        return _S
+    except Exception:                                                          # noqa: BLE001
+        return None
 
 
 def ent_id(item, kind):
@@ -174,6 +189,31 @@ def move_patch(item, kind, xyz, wp=None):
             wps[wp] = [round(v, 5) for v in xyz]
         return {"waypoints": wps}
     return {}
+
+
+# ─────────────────────────── 运行线程 (GUI 不卡) ───────────────────────────
+class RunThread(QThread):
+    """在后台跑仿真入口 (如 tools/gen_l4_demo_video.py), 逐行回吐日志给 UI。"""
+
+    line = pyqtSignal(str)
+    done = pyqtSignal(int)
+
+    def __init__(self, cmd, cwd, parent=None):
+        super().__init__(parent)
+        self.cmd, self.cwd = list(cmd), cwd
+
+    def run(self):                                                             # noqa: D102
+        rc = -1
+        try:
+            p = subprocess.Popen(self.cmd, cwd=self.cwd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, bufsize=1,
+                                 env={**os.environ, "PYTHONUNBUFFERED": "1"})
+            for ln in p.stdout:                                                # type: ignore[union-attr]
+                self.line.emit(ln.rstrip())
+            rc = p.wait()
+        except Exception as e:                                                 # noqa: BLE001
+            self.line.emit("启动失败: %r" % (e,))
+        self.done.emit(rc)
 
 
 # ─────────────────────────── 3D 视图 ───────────────────────────
@@ -622,6 +662,18 @@ class SceneView3D(QWidget):
             return False
         it = self._item(self.sel) if (self.sel and self.sel.get("kind") == kind) else None
         _id = ent_id_ or (ent_id(it, kind) if it else None)
+        # 🎯 仿真场景 (SIM-*): 几何真源是 data/scene/sim/sim_scenes.json ⇒ 写它, 再重建场景目录;
+        #    否则改了产物目录但物理/视觉仍按真源 → 就是"假接入" (老倪零容忍)
+        _S = _sim_mod()
+        if _S is not None and _S.is_sim_scene(self.scene_id):
+            r = _S.apply_patch(kind, str(_id), patch)
+            if r.get("ok"):
+                self.status_cb("✅ %s · %s · 已写仿真场景真源 (备份 %s) · 物理与视觉同步"
+                               % (what, str(_id)[:26], str(r.get("backup"))))
+            else:
+                self.status_cb("⛔ %s 失败: %s" % (what, r.get("msg")))
+            self.reload()
+            return bool(r.get("ok"))
         ok, d = _se(self.scene_id, "update", "--kind", kind, "--id", str(_id),
                     "--data", json.dumps(patch, ensure_ascii=False))
         if ok and (d.get("readback") or d.get("readback_ok")):
@@ -799,10 +851,10 @@ def build_card(parent=None):
     opts = scene_options()
     cmb = QComboBox()
     cmb.setStyleSheet(CMB)
-    for label, d, sid in opts:
-        cmb.addItem(label, (d, sid))
+    for label, d, sid, run in opts:
+        cmb.addItem(label, {"dir": d, "sid": sid, "run": run})
     cmb.setCurrentIndex(next((i for i, o in enumerate(opts) if o[2]), 0))     # 默认第一个命名场景
-    d0, sid0 = cmb.currentData()
+    d0, sid0 = cmb.currentData()["dir"], cmb.currentData()["sid"]
     view = SceneView3D(d0, sid0, status_cb=lambda s: st.setText(s))
     card.view = view
     panel = QWidget()
@@ -863,10 +915,15 @@ def build_card(parent=None):
     lst.currentItemChanged.connect(lambda *_: _on_row())
 
     def _switch():
-        d, sid = cmb.currentData()
+        _d = cmb.currentData()
+        d, sid, run = _d["dir"], _d["sid"], _d.get("run")
         view.kind_filter = kc.currentData()
         view.set_scene(d, sid)
         _repop()
+        b_run.setEnabled(bool(run))
+        b_run.setToolTip(("▶ 运行该仿真场景: %s %s (约 %ss)" % (run.get("tool"), " ".join(run.get("args") or []),
+                                                        run.get("eta_s"))) if run else
+                         "该场景没有运行入口 (只有仿真场景可运行)")
         st.setText("已切到 %s%s · 对象 %d / 标记 %d / 围栏 %d / 轨迹 %d   (写操作只落该场景目录; 在役场景只读)"
                    % (cmb.currentText(), "" if sid else "  ⚠️只读",
                       len(view.data["objects"]), len(view.data["markers"]),
@@ -885,6 +942,9 @@ def build_card(parent=None):
     top = QHBoxLayout()
     top.addWidget(QLabel("场景:"))
     top.addWidget(cmb, 3)
+    b_run = _b("▶ 运行仿真", "运行该仿真场景 (画布 3D 视图同源的引擎入口)", lambda: _run_sim(), "#3fb950")
+    b_run.setEnabled(False)
+    top.addWidget(b_run)
     top.addWidget(_b("🔄 刷新", "重读场景真源并重绘", lambda: (view.reload(), _repop()), "#9aa7b4"))
     top.addWidget(_b("⛶ 视图全屏", "隐藏元素面板, 3D 视图占满整页", lambda: _full(True), "#00d4aa"))
     top.addWidget(_b("⤡ 还原", "恢复 3D 视图 + 元素面板", lambda: _full(False), "#9aa7b4"))
@@ -918,6 +978,47 @@ def build_card(parent=None):
     r2.addWidget(QLabel("元素:"))
     r2.addWidget(lst, 5)
     pl.addLayout(r2)
+
+    def _run_sim():
+        """▶ 运行仿真场景: 真起子进程跑入口, 日志实时回吐, 完了报产物+时间 (老倪要看真跑)。"""
+        run = (cmb.currentData() or {}).get("run")
+        if not run:
+            st.setText("该场景没有运行入口 (只有仿真场景可运行: 如 SIM-PEG-L4 插拔光模块)")
+            return
+        tool = str(run.get("tool") or "")
+        args = [str(a) for a in (run.get("args") or [])]
+        if not tool or not os.path.exists(os.path.join(ROOT, tool)):
+            st.setText("⛔ 运行入口不存在: %s" % tool)
+            return
+        b_run.setEnabled(False)
+        _tail = []
+        if getattr(card, "_th", None) is not None and card._th.isRunning():
+            st.setText("⛔ 上一次运行还没结束 (等待或重启控制台)")
+            b_run.setEnabled(True)
+            return
+        st.setText("▶ 正在运行 %s %s … (约 %ss; 日志实时刷新)" % (tool, " ".join(args), run.get("eta_s")))
+        th = RunThread([sys.executable, os.path.join(ROOT, tool)] + args, ROOT)
+        card._th = th
+
+        def _on_line(t):
+            _tail.append(t)
+            del _tail[:-40]
+            st.setText("▶ 运行中 …" + chr(10) + chr(10).join(_tail[-6:]))
+
+        def _on_done(rc):
+            b_run.setEnabled(True)
+            extra = ""
+            prod = run.get("product")
+            if prod:
+                p = os.path.join(ROOT, prod)
+                if os.path.exists(p):
+                    extra = "  产物 %s (%.1f MB · 更新于 %s)" % (
+                        prod, os.path.getsize(p) / 1e6, time.strftime("%H:%M:%S", time.localtime(os.path.getmtime(p))))
+            st.setText(("✅ 运行完成 (rc=%d)%s\n" % (rc, extra)) + "\n".join(_tail[-6:]))
+
+        th.line.connect(_on_line)
+        th.done.connect(_on_done)
+        th.start()
 
     def _edit():
         it, s = _cur()
@@ -968,6 +1069,14 @@ def build_card(parent=None):
             return
         pl_ = _template(k)
         pl_["name"] = nm.strip()
+        _S = _sim_mod()
+        if _S is not None and _S.is_sim_scene(view.scene_id):
+            r = _S.add_item(k, pl_)
+            st.setText(("✅ 已新增%s %s (写仿真场景真源)" % (KIND_CN[k], nm.strip()))
+                       if r.get("ok") else ("⛔ 新增失败: %s" % r.get("msg")))
+            view.reload()
+            _repop()
+            return
         ok2, d = _se(view.scene_id, "add", "--kind", k, "--data", json.dumps(pl_, ensure_ascii=False))
         st.setText(("✅ 已新增%s %s (回读一致)" % (KIND_CN[k], nm.strip()))
                    if (ok2 and (d.get("readback") or d.get("readback_ok")))
@@ -1007,6 +1116,14 @@ def build_card(parent=None):
             st.setText("⛔ 在役现场场景只读")
             return
         k = s["kind"]
+        _S = _sim_mod()
+        if _S is not None and _S.is_sim_scene(view.scene_id):
+            r = _S.del_item(k, str(ent_id(it, k)))
+            st.setText(("✅ 已删除%s %s (写仿真场景真源)" % (KIND_CN[k], str(it.get("name"))[:24]))
+                       if r.get("ok") else ("⛔ 删除失败: %s" % r.get("msg")))
+            view.reload()
+            _repop()
+            return
         ok, d = _se(view.scene_id, "rm", "--kind", k, "--id", str(ent_id(it, k)))
         st.setText(("✅ 已删除%s %s (备份在场景目录)" % (KIND_CN[k], str(it.get("name"))[:24])) if ok
                    else ("⛔ 删除失败: %s" % (d.get("msg") or "")))

@@ -184,6 +184,24 @@ TURNTABLE_Z = 0.0255                    # peg 坐盘面 (盘顶 z≈0.010 + peg 
 COUPLER_XY = np.array([0.55, 0.42])     # 光耦合压电台底座中心
 INSERT_DEPTH = 0.050                    # 插入目标深度 (m, 孔口→孔内; 孔深≈0.066 留安全余量)
 
+# 🎯 2026-10-10 单真源接入 (老倪: 画布 3D 视图的插拔光模块场景也要能在场景管理里编辑):
+#   几何统一从 data/scene/sim/sim_scenes.json 读 (场景管理功能区编辑 = 改这份真源)。
+#   读不到就回退上面的常量 —— 不影响任何既有流程/打包版。
+try:
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    import sim_scene_def as _SSD
+    _G = _SSD.geometry()
+    TURNTABLE_XY = np.array(_G["turntable"]["xy"], dtype=float)
+    TURNTABLE_Z = float(_G["feed_z"])
+    COUPLER_XY = np.array(_G["coupler"]["xy"], dtype=float)
+    AOI_FOCUS = np.array(_G["aoi_focus"], dtype=float)
+    INSERT_DEPTH = float(_G["insert_depth_m"])
+    _SSD_SRC = "data/scene/sim/sim_scenes.json"
+except Exception as _e:                                                     # noqa: BLE001
+    _SSD_SRC = "内置常量 (真源读取失败: %r)" % (_e,)
+
 
 class L4PegEnv(SawyerPegInsertionSideEnvV3):
     @property

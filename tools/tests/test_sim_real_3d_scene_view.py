@@ -217,6 +217,52 @@ def main():
         except OSError:
             pass
 
+    print("8) 仿真场景 (画布 3D 视图的插拔光模块) 进场景管理: 可选 / 可编辑 / 可运行")
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import sim_scene_def as SSD
+    opts = U.scene_options()
+    sim = [o for o in opts if o[2] == "SIM-PEG-L4"]
+    check(bool(sim), "场景下拉含仿真场景 SIM-PEG-L4: %s" % [o[0][:40] for o in sim][:1])
+    check(bool(sim and sim[0][3]), "带运行元数据: %s" % (sim[0][3] if sim else None))
+    SIMDIR = os.path.join(ROOT, "data", "scene", "scenes", "SIM-PEG-L4")
+    truth = SSD.load()["scenes"]["SIM-PEG-L4"]["objects"]
+    ondisk = U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"]
+    same = all(any(d["name"] == o["name"] and [round(float(x), 4) for x in d["center"]] == [round(float(x), 4) for x in o["center"]]
+                   for d in ondisk) for o in truth)
+    check(same and len(ondisk) == len(truth), "3D 视图读到的几何 == 仿真真源 (%d 对象)" % len(ondisk))
+    check(SSD.check() == 0, "真源 ↔ 两个生成器 ↔ XML 注入 四处一致 (改一处不同步会报错)")
+    # 可编辑: 改真源 ⇒ 目录同步 + 生成器仍一致 (编辑真生效, 不是只改产物)
+    _old = [o for o in SSD.load()["scenes"]["SIM-PEG-L4"]["objects"] if "转台" in o["name"]][0]["center"]
+    r = SSD.apply_patch("objects", "来料转台 (外力旋转90°)", {"center": [0.43, 0.60, 0.005]})
+    _now = [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if "转台" in o["name"]][0]["center"]
+    check(r.get("ok") and abs(_now[0] - 0.43) < 1e-6, "编辑落真源 + 目录同步: %s" % _now)
+    _rc = SSD.check()
+    SSD.apply_patch("objects", "来料转台 (外力旋转90°)", {"center": _old})
+    check(_rc == 0, "编辑后 真源/生成器/XML 仍一致 (rc=%s)" % _rc)
+    check(abs([o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if "转台" in o["name"]][0]["center"][0]
+              - float(_old[0])) < 1e-6, "已还原 %s" % _old)
+    # 可运行: 入口存在 + 真能被调用
+    tool, args, eta, prod = SSD.run_cmd()
+    check(os.path.exists(os.path.join(ROOT, tool)), "运行入口存在: %s %s (约 %ss)" % (tool, args, eta))
+    hr = subprocess.run([sys.executable, os.path.join(ROOT, tool), "--help"], cwd=ROOT,
+                        capture_output=True, text=True, timeout=240)
+    check(hr.returncode == 0 and "--seed" in hr.stdout, "入口真可调用 (--help rc=%s)" % hr.returncode)
+    uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
+    check("▶ 运行仿真" in uvs and "class RunThread" in uvs and "产物" in uvs,
+          "页内有「▶ 运行仿真」+ 后台线程 + 跑完报产物/时间")
+    card2 = U.build_card(None)
+    cmb2 = card2.findChildren(type(card2.view).__mro__[0]) or []
+    from PyQt5.QtWidgets import QComboBox as _QCB, QPushButton as _QPB
+    cb = card2.findChildren(_QCB)[0]
+    si = next((i for i in range(cb.count()) if (cb.itemData(i) or {}).get("sid") == "SIM-PEG-L4"), None)
+    check(si is not None, "页内下拉能定位到仿真场景 (index=%s)" % si)
+    if si is not None:
+        cb.setCurrentIndex(si)
+        app.processEvents()
+        check(len(card2.view.data["objects"]) == len(truth), "切到仿真场景后视图载入 %d 对象" % len(card2.view.data["objects"]))
+        br = [b for b in card2.findChildren(_QPB) if "运行仿真" in b.text()]
+        check(bool(br) and br[0].isEnabled(), "「▶ 运行仿真」按钮已启用")
+
     print("6) 在役场景只读保护")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_edit.py"), "--scenes"],
                        cwd=ROOT, capture_output=True, text=True)
