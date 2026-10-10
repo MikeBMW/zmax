@@ -139,6 +139,34 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - 嵌入式验证要**带 DISPLAY 真渲染**抓帧 (offscreen 下 GL 可能空白 ⇒ 假绿/假红):
   `DISPLAY=:0 python 建页 → page.grab()` 数机器人浅灰/网格青绿像素; 结构判据 (实例数=1、is live_dreamview()) 可 offscreen 跑。
 
+## 场景"看着没区别"排查顺序 + 单位/着色/叠加层三条铁律 (2026-10-10)
+
+老倪: 「现在的插拔场景，和 摆盘场景，也没有啥区别，为什么一个是42对象，一个是47对象？」
+
+排查顺序 (别先怀疑数据): ① 先在同一机位渲染两个场景, 量**帧差异像素** (真变了 → 差异百分比明显);
+② 差异百分比很小或只差一块颜色 → 查**叠加层 (overlay) 到底画没画**; ③ 最后才怀疑数据。
+
+- 🔴 **单位混用 (mm vs m) — 这次真祸根**: 同一套 `data/scene/scenes/<ID>/objects3d.json` 里,
+  仿真/派生场景 (SS-EPI-CORNER / SS-TRAY-PLACE / SIM-PEG-L4) 的 size 是**米** (台面 1.4×0.8),
+  而老的 SCN-* 场景是**毫米** (台面 140×140)。任何按尺寸画的地方若写死 `/1000.0`, 米制场景的对象
+  就被缩 1000 倍 = **数据/列表在变, 画面完全不变** (肉眼看就是"两个场景一样")。
+  正解: 按文件量纲自动判定 `_scale = 1/1000 if max(size) > 10 else 1`, 别写死一种单位。
+- 🔴 **叠加层别与实体同几何**: 3D 视图自己已经画的实体 (台面/护栏/机器人/摆盘两只盘) 再叠一层实心盒
+  → z-fighting + 糊色 (实测台面绿 114k px 被压到 5k), 颜色全认不出来。
+  正解: 叠加层 = **12 条棱的线框** (`_bbox_lines` + `GLLinePlotItem` + `setGLOptions("additive")`, 不参与遮挡),
+  且**跳过视图已画的那些对象**, 只标视图没画的对象 (夹具/孔座等)。
+- 🔴 **颜色要认得出就别用有光照着色**: `shader='shaded'` 下乳白 0.96 实测渲成中位色 (49,48,46) 深灰
+  ⇒ "乳白色桌面"根本看不出来。要按定义呈现颜色 (防静电胶皮绿 / 办公桌乳白) 就用 `shader=None` 平涂。
+- **桌面按场景配色**: `ss_dreamview.table_color(scene_id)` — 插拔系 (SS-EPI-CORNER / SIM-PEG-L4) = 防静电胶皮绿
+  (0.20,0.52,0.30); 摆盘 (SS-TRAY-PLACE) = 办公桌乳白 (0.96,0.94,0.90)。切场景时 `_table_item.setColor(...)` 即时换色。
+- **场景形态分叉用 `scene_mode(scene_id)`** (tray / plug), 而不是到处 `if "TRAY" in name`:
+  摆盘场景不画插拔几何 (带孔盒/孔口/插入终点/AOI 相机/动态光模块), 盘件按真源实体渲染。
+- **盘件几何单一真源** = `sim_scene_def._tray_layout()` (料盘 = 黑塑料托盘无盖无槽位 + 里面 3 个光模块;
+  tray盘 = 同外廓 + 2 块隔板分出 3 个固定槽位); 渲染侧只 import 它来画, 绝不各写一份坐标。
+- **数据存档**: `tools/scene_data_snapshot.py` 把 `data/scene` 打成带逐文件 sha256 的归档到
+  `zmax_data/snapshots/scene_<时间戳>.tar.gz` + `MANIFEST_*.json`, `--verify` 回读校验 (data/ 不入库,
+  现场编辑过的场景必须有可校验存档)。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读
