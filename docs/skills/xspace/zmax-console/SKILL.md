@@ -24,6 +24,19 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
   或改成开机从库读一次再填。
 * 左侧分组标题带用法提示 (如「平台产品 · 点开 = 产品与功能清单」) —— 老倪要点开才知道那卡去哪。
 
+## ⚙️ 启停 / 重启纪律 (studio_ctl.sh)
+
+* 一律走 `bash tools/studio_ctl.sh {status|stop|start|restart} [--force]`；**禁止** `pkill -f studio.py`（会杀到自己 shell）。
+* 起不到 300s 的实例 stop/restart 被硬闸拒（防窗口闪），确实要换代码才加 `--force`；每次动作记 `/tmp/studio_ctl.log`。
+* 🔴 **启动偶发 Aborted (core dumped)**（v5.39.0 / v5.39.9 各中一次，根因未挖）。现每次启动日志按时间戳留档
+  `/tmp/studio_launch_<ts>.log`（`/tmp/studio_launch.log` 是软链指向最新），起后 25s 自检 pids，没成活就打印
+  QThread/Aborted/Fatal/Segmentation 关键行 + 自动重试一次。**查崩溃现场只看时间戳日志** —— 旧写法固定写
+  同一个文件会被下次成功启动覆盖，两个崩溃现场都因此丢了。
+* 重启后除了 `status`，还要实核**窗口标题里的版本号**：
+  `DISPLAY=:0 xdotool search --onlyvisible --name "XSpace Studio" getwindowname %@` —— 只看 pid 会漏“起的是旧版本”。
+* 版本号同时散在 `VERSION.md` 与 `tools/gui/{docs_sync,studio,update_checker,version_sync}.py`、`tools/ci/integrity_check.py`，
+  升版要一并改（否则标题/自检不一致）；改完必须 restart 才会在标题生效。
+
 ## 🖼 实机取证纪律 (截图 / OCR / 真交互)
 
 * **截图前先把目标窗口置顶**: `wmctrl -i -a $(wmctrl -lGx | grep 'XSpace Studio' | awk '{print $1}')` → sleep 2~3 → `scrot`。

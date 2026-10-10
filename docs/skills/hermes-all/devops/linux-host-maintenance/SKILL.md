@@ -195,6 +195,8 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    + **画布真源**(`flows/state_space_obs.json`) **及其 `_archive/` 里那份改动前备份**(回滚面) + 用户要加载的工程文件(.zmaxproj)
    + 实测证据。权重/大件不进归档, 只留清单(见本节步骤 2)。
    ⚠️ `reports/` 被 `.gitignore` 排除 ⇒ 证据文件**只存在于归档里**, 别以为 push 过就留档了。
+   `git add reports/...` 会直接报 `The following paths are ignored` 并 exit 1 ⇒ 关机交接写进 reports/ 就**别试提交**,
+   入仓的那份放 `docs/notes/` (见步骤 7)。
 5. **提交纪律**: `git add <显式列文件>`, **默认别用 `git add -A`** (会吸进运行态 churn + 别人的未完成改动)。
    要用 `-A` 得先**三证**: `git status --short` 只剩本轮自己的改动 + 双闸全绿(`repo_guard.py --staged` /
    `secret_scan.py`) + `.gitignore` 已封 `reports/ outputs/ 权重/交付件`。
@@ -205,10 +207,15 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    `curl -s 'https://api.github.com/repos/<owner>/<repo>/actions/runs?per_page=3'` 交给 `python3 -c` 打印
    `name/head_branch/status/conclusion`; 刚推的 tag 应出现 `in_progress`, 上一版应是 `completed/success`。
    判据是这条 run 的存在与结论 —— 写"已发布"前面必须看过它。
+   ⚠️ **`gh` 本机没装** (2026-10-10 实测 `gh: command not found`) ⇒ 只能用 REST。库是**公开**的,
+   **匿名 curl 就能查** (实测 200); 需要 token 时从 `~/.git-credentials` (`credential.helper=store`) 取。
+   ⚠️ **别传空的 `Authorization: Bearer `** —— 会从 200 变 `{"message":"Bad credentials"}`, 看着像仓库私有/权限没了。
 7. **写交接/留档** (两份都要, 都在库里):
    · `reports/关机交接_<日期>.md` — ①关机前状态 (终态/缺口/产物路径/GPU 空闲) ②**开机后需手动恢复的**
      (自启单元里没有的手工进程 —— 如取流服务完整命令行; 远端取流/相机/工控机接口) ③待办优先级 ④本轮代码改动清单。
-   · `docs/关机前状态留档_<日期>.md` — 仓库里的**五节**版(**照上一版抄结构**): ①本轮做完的(每条带实证路径)
+   · **五节留档** — 放 `docs/notes/<YYYY-MM-DD>_handoff[_晚].md` (**本仓真实约定**, 可用
+     `git log --diff-filter=A --name-only --pretty=%h -- 'docs/*handoff*'` 自查; 文档里写的 `docs/关机前状态留档_<日期>.md`
+     是旧写法, 仓里一份都没有)。五节(**照上一版抄结构**): ①本轮做完的(每条带实证路径)
      ②没做完的(下轮第一件) ③数据清单(表格: 位置/内容, 大件在此登记) ④环境/机器状态(关机前核过的数字:
      磁盘/GPU/单元数/端口/时钟) ⑤**下轮启动顺序**(可直接照抄的 bash 块)。只写"做了什么+根因+证据在哪",
      不复述过程 —— 第④⑤节才是下轮"开机就知道干嘛"的原因。
