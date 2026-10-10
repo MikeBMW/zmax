@@ -4805,9 +4805,13 @@ def node_ss_mani_eng(ctx):
                                  O[idx, :r["p"].size])
         lat = eng.latency_report()
         meta = r["meta"]
+        hom = st.get("homeostasis")                              # ⚖ 内稳态 (2026-10-10)
         _SS_STATE["mani_eng"] = {"p": r["p"].tolist(), "phi": gf["phi"], "conf": r["confidence"],
                                  "anomaly": r["anomaly"], "action": st["action"].tolist(),
-                                 "residual": r["residual"], "drift": r["drift"], "idx": idx}
+                                 "residual": r["residual"], "drift": r["drift"], "idx": idx,
+                                 "hom": hom}
+        if hom:
+            eng.hom.write_state()                               # 快照落盘 → 画布/控制台/外部可读
         if log:
             reg = m.MANIFOLD_REGISTRY
             ready = [k for k, v in reg.items() if v["status"] == "ready"]
@@ -4831,6 +4835,20 @@ def node_ss_mani_eng(ctx):
             log(f"   ⏱ 延迟: 编码 {lat.get('encode', {}).get('mean_ms')}ms · 投影 {lat.get('project', {}).get('mean_ms')}ms"
                 f" · 梯度 {lat.get('metric', {}).get('mean_ms')}ms · 测地线 {lat.get('navigate', {}).get('mean_ms')}ms"
                 f" · 端到端 {lat.get('total_mean_ms')}ms (上限 ~{lat.get('implied_max_hz')}Hz)")
+            if hom:
+                sd = hom["state"]; est = [k for k, v in (hom.get("estimated") or {}).items() if v]
+                log(f"   ⚖ 内稳态: 生命力 {hom['vitality']:.3f} · 模式 {hom['mode']} · "
+                    f"主导驱动 {hom['dominant']}({hom['dominant_urgency']:.3f})"
+                    + ("  ⛔危险(动作全零)" if hom["kind"] == "veto" else "")
+                    + ("  ⚠抢占" if hom["kind"] == "interrupt" else ""))
+                log(f"      身体: 能量 {sd['energy']:.3f} · 温度 {sd['temperature']:.3f} · 磨损 {sd['wear']:.3f}"
+                    f" · 姿态 {sd['balance']:.3f} · 对齐 {sd['alignment']:.3f}"
+                    f"   (无传感器仅按衰减外推: {'/'.join(est) or '无'})")
+                log(f"      紧迫度→行为权重 {hom['urgency']} · 动作调制 ×{hom['action_gain']:.3f}"
+                    f"{' (已调制)' if hom.get('modulated') else ' (未调制/死区)'} · "
+                    f"硬闸 {'开' if hom['is_critical'] else '关'}"
+                    + (f" · ♻去充电" if hom["mode"] == "recharge" else ""))
+                log(f"      快照落盘 zmax_data/ss_live/manifold_homeostasis.json (可被画布/控制台/DDS 切面读)")
             log("   🔒 只读旁路: 结论进数据总线/日志, 不下发动作 (动作须人工授权)")
         return True
     except Exception as e:                                                      # noqa: BLE001
@@ -4839,12 +4857,17 @@ def node_ss_mani_eng(ctx):
         return False
 
 _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
-     "🧮 流形引擎 — L4 核心内核: 高维状态→低维流形, 流形上 表征/投影/度量/测地线导航/梯度流/有界反馈 "
-     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine)",
+     "🧮 流形引擎 【系统核心 · 画布上唯一琥珀金 ◉核心】— L4 核心内核: 高维状态→低维流形, "
+     "流形上 表征/投影/度量/测地线导航/梯度流/有界反馈; 并挂 ⚖ 内稳态层 (身体状态→紧迫度→行为/自主安全), "
+     "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine · "
+     "src/lerobot/manifold/homeostasis.py::HomeostasisEngine)",
      node_ss_mani_eng)
 
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
                                 457, "class ManifoldEngine")
+# ⚖ 内稳态层源码 (2026-10-10): 节点日志里的"生命力/紧迫度/自我模型"真源
+_EXTERNAL_LOC["ss_mani_eng_hom"] = (os.path.join(_MANIFOLD_DIR, "homeostasis.py"),
+                                    306, "class HomeostasisEngine")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

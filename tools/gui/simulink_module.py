@@ -3117,10 +3117,25 @@ class SimNodeItem(QGraphicsObject):
         mode_off = self.node.get("params", {}).get("mode_active") == "off"
         painter.setRenderHint(QPainter.Antialiasing)
         pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
+        # ══ 🧮 流形引擎 = 系统核心 (2026-10-10 老倪): 全画布**唯一暖色**「琥珀金」+ 双层光晕 + ◉核心徽章 ══
+        #   设计意图: 其他节点一律冷色 (蓝灰/青/紫/绿), 只有核心是暖金 ⇒ 打开工程一眼就认出它是中心。
+        #   数据驱动: params.core=True 或节点类型 ss_mani_eng 即生效 (不写死节点名, 换工程也不失效)。
+        _cp = self.node.get("params", {}) or {}
+        #   判据: params.core 或 params.manifold_engine (画布里该节点的既有语义标记) 或 type/id 直指
+        is_core = bool(_cp.get("core")) or bool(_cp.get("manifold_engine")) or t == "ss_mani_eng"
+        if is_core:
+            painter.setPen(Qt.NoPen)                       # 光晕画在身子底下 (外浅内深两层)
+            _ha = 38 if _CUR_THEME != "light" else 90
+            for _pad, _al in ((7.0, int(_ha * 0.45)), (3.5, _ha)):
+                painter.setBrush(QBrush(QColor(255, 197, 61, _al)))
+                painter.drawRoundedRect(QRectF(-_pad, -_pad, self.w + 2 * _pad, self.h + 2 * _pad), 12, 12)
         # 主体
         grad = QLinearGradient(0, 0, 0, self.h)
         grad.setColorAt(0, QColor(pal["node_top"]))
         grad.setColorAt(1, QColor(pal["node_bot"]))
+        if is_core:                        # 核心: 琥珀金渐变 (深棕金→近黑金), 与冷色节点强对比
+            grad.setColorAt(0, QColor("#6B4A00" if _CUR_THEME != "light" else "#FFE9A8"))
+            grad.setColorAt(1, QColor("#2A1C00" if _CUR_THEME != "light" else "#FFD979"))
         painter.setBrush(grad)
         pen = QPen(color, 2.8 if status == "step_active" else 1.6)
         # 训练/推理开关: 激活路径金色边框, 未激活灰显 (mode_off → 全灰)
@@ -3144,6 +3159,22 @@ class SimNodeItem(QGraphicsObject):
             pen = QPen(QColor("#a371f7"), 2.8)
         painter.setPen(pen)
         painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
+        if is_core:
+            # 核心金框: 只在"无状态/未选中/无引导"时加粗描金 (状态语义色优先, 不抢)
+            if status == "idle" and not mode_off and not is_active_src and not self.isSelected() \
+                    and not self.node.get("hl") and not shared:
+                painter.setPen(QPen(QColor("#FFC53D"), 3.0))
+                painter.drawRoundedRect(QRectF(0, 0, self.w, self.h), 6, 6)
+            # ◉核心 徽章 (右上角, 金底黑字) —— 一眼标识"这是系统的中心"
+            _bw, _bh2 = 54.0, 18.0
+            _bx, _by = self.w - _bw - 6.0, 4.0
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor("#FFC53D")))
+            painter.drawRoundedRect(QRectF(_bx, _by, _bw, _bh2), 9, 9)
+            painter.setPen(QColor("#1A1200"))
+            painter.setFont(_node_font(8, bold=True))
+            painter.drawText(QRectF(_bx, _by, _bw, _bh2), Qt.AlignCenter, "◉ 核心")
+            painter.setPen(pen)          # 还原, 别把金笔漏给后续分支
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
         # 🧿 2026-09-28 老倪: 增加 **L5 档** (大模型视觉语言自动标注 → L2/L3/L4 监督 + 自动训练)
@@ -3874,7 +3905,8 @@ class SimCanvas(QGraphicsView):
         for _key, _cb, _what in (("Ctrl+L", self.module.locate_current_node, "📍 跳到当前单步节点"),
                                  ("Ctrl+0", self.module.fit_all_nodes, "🏠 全览 (缩到看得见 89 节点)"),
                                  ("Ctrl+Shift+A", self.module.audit_node_impls, "🧾 节点实现审计 (5-10s)"),
-                                 ("Ctrl+Alt+P", self.module.open_pipeline_panel, "🎯 数据闭环控制台")):
+                                 ("Ctrl+Alt+P", self.module.open_pipeline_panel, "🎯 数据闭环控制台"),
+                                 ("Ctrl+Shift+C", self.module.center_on_core_node, "🧮 居中系统核心 (流形引擎)")):
             _sc = QShortcut(QKeySequence(_key), self)
             _sc.setContext(Qt.WidgetWithChildrenShortcut)
             _sc.setWhatsThis(_what)
@@ -5173,6 +5205,14 @@ class SimulinkModule(QWidget):
                 self._veh5_done = True
         except Exception:
             pass
+        # 🧮 2026-10-10 兜底: 首次显示时若还没居中过核心 → 居中一次 (工程可能在工具栏建成前就加载了)
+        try:
+            _cc = getattr(self, "chk_core_center", None)
+            if (_cc is None or _cc.isChecked()) and not getattr(self, "_core_centered_once", False):
+                self._core_centered_once = True
+                QTimer.singleShot(120, lambda: self.center_on_core_node(quiet=True))
+        except Exception:
+            pass
 
     def set_model_engine(self, engine):
         """🌐 绑定 Model Engine (studio 传入 — 训练节点双击 → 引擎选择/启动训练)"""
@@ -5297,6 +5337,15 @@ class SimulinkModule(QWidget):
         self.chk_follow_step.setToolTip("勾选 (默认) = ⏭单步/右键运行节点时, 画布自动平移到该节点并调到看得清的缩放;\n"
                                         "取消勾选 = 画布不动, 只在终端报出当前节点 (想自己看全景时用)")
         tl.addWidget(self.chk_follow_step)
+        # 🧮 2026-10-10 老倪: 「每次打开状态空间工程, 屏幕中心就是这个节点 (流形引擎)」
+        #   核心 = 流形引擎 → 打开/加载工程后自动居中它 (受本开关控制, 想看别处可关)
+        self.chk_core_center = QCheckBox("🧮 核心居中")
+        self.chk_core_center.setChecked(True)
+        self.chk_core_center.setToolTip("勾选 (默认) = 每次打开/加载状态空间工程, 视口自动居中到**系统核心节点**:"
+                                        "🧮 流形引擎 (琥珀金 · ◉核心);\n"
+                                        "取消勾选 = 打开后不动视口 (画布停在原处)\n"
+                                        "快捷键 Ctrl+Shift+C 随时手动居中核心")
+        tl.addWidget(self.chk_core_center)
         # 🗑 2026-10-09 老倪: 工具栏「📍定位节点 / 🏠全览 / 🧾节点实现审计」按钮删除。
         #   状态空间工程需要这三件事 → **在代码里给快捷键** (不占按钮):
         #   Ctrl+L 跳到当前单步节点 · Ctrl+0 全览 · Ctrl+Shift+A 节点实现审计
@@ -6066,6 +6115,15 @@ class SimulinkModule(QWidget):
                 pass
             self._log(f"💾 已加载工作流: {path} ({len(nodes)}节点 {len(links)}连线)")
             self._flow_path = path  # 🐛 2026-08-19: 记录画布文件 — 模式开关写回持久化
+            # ══ 🧮 2026-10-10 老倪「每次打开状态空间工程, 屏幕中心就是这个节点」══
+            #   核心节点 (流形引擎) 自动居中; 两次触发: 立即 + 450ms (等页面 show/尺寸确定, 免得被后续 fit 覆盖)
+            _cc = getattr(self, "chk_core_center", None)
+            if _cc is None or _cc.isChecked():
+                try:
+                    QTimer.singleShot(0, self.center_on_core_node)
+                    QTimer.singleShot(450, lambda: self.center_on_core_node(quiet=True))
+                except Exception:
+                    pass
         except Exception as e:
             self._log(f"⚠️ 工作流加载部分失败: {e}")
         finally:
@@ -9852,6 +9910,36 @@ class SimulinkModule(QWidget):
             return "实现: %s → %s()  %s:%s%s" % (key, fname, path, line,
                                               "  [已改版]" if modified else "")
         return "实现: %s → %s()" % (key, fname)
+
+    def core_node_id(self):
+        """系统核心节点的 id = 🧮 流形引擎 (params.core=True 或 type=ss_mani_eng); 没有就返回 None。"""
+        for n in (getattr(self, "nodes", None) or []):
+            if n.get("type") == "row_bg":
+                continue
+            _p = n.get("params") or {}
+            if _p.get("core") or _p.get("manifold_engine") or n.get("type") == "ss_mani_eng" \
+                    or n.get("id") == "ss_mani_eng":
+                return n.get("id")
+        return None
+
+    def center_on_core_node(self, quiet: bool = False) -> bool:
+        """🧮 把视口居中到**系统核心** (流形引擎) —— 打开工程/快捷键 Ctrl+Shift+C 用。
+
+        找不到就**如实报缺** (不假装居中过): 本工程没有核心节点时给出明确提示。
+        """
+        try:
+            nid = self.core_node_id()
+            if not nid:
+                if not quiet:
+                    self._log("⚠️ 核心居中: 本工程找不到核心节点 (params.core=True 或 type=ss_mani_eng) — 未居中")
+                return False
+            ok, info = self.canvas.focus_node(nid, min_scale=0.75, max_scale=1.6)
+            if not quiet:
+                self._log(("🧮 已居中系统核心: " if ok else "⚠️ 核心居中失败: ") + str(info))
+            return bool(ok)
+        except Exception as e:                                                 # noqa: BLE001
+            self._log(f"⚠️ 核心居中异常: {type(e).__name__}: {e}")
+            return False
 
     def locate_current_node(self):
         """📍 定位节点 (Ctrl+L): 跳到当前单步/运行到的节点 (不论跟随开关)。"""

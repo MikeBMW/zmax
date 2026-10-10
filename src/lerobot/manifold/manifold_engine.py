@@ -55,6 +55,28 @@ try:
 except Exception:                                                              # noqa: BLE001
     quat_slerp = quat_mul = quat_exp = quat_from_R = R_from_quat = None
 
+# ── 内稳态层 (2026-10-10 老倪: 身体状态/功能性感受/自我模型) ──
+#   ⚠️ hospitality 模块带 @dataclass ⇒ 动态加载时**必须先 sys.modules[spec.name]=m 再 exec_module**,
+#   否则 dataclasses 取 sys.modules.get(cls.__module__).__dict__ 报 'NoneType' has no attribute '__dict__'。
+try:
+    from lerobot.manifold.homeostasis import HomeostasisEngine, HomeostasisState      # noqa: PLC0415
+    from lerobot.manifold.homeostasis import satisfy as _satisfy_fn
+    from lerobot.manifold.homeostasis import sensor_map_note as _sensor_map_note
+except Exception:                                                              # noqa: BLE001
+    try:
+        import importlib.util as _ilu2
+        _hp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "homeostasis.py")
+        _sp2 = _ilu2.spec_from_file_location("lerobot.manifold.homeostasis", _hp)
+        _m2 = _ilu2.module_from_spec(_sp2)
+        sys.modules[_sp2.name] = _m2
+        _sp2.loader.exec_module(_m2)
+        HomeostasisEngine, HomeostasisState = _m2.HomeostasisEngine, _m2.HomeostasisState
+        _satisfy_fn = _m2.satisfy
+        _sensor_map_note = getattr(_m2, "sensor_map_note", None)
+    except Exception:                                                          # noqa: BLE001
+        HomeostasisEngine = HomeostasisState = None                            # 缺失不阻塞: 如实标注
+        _satisfy_fn = _sensor_map_note = None
+
 try:
     _SS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "policies", "left_right", "state_space")
@@ -89,6 +111,9 @@ MANIFOLD_REGISTRY: dict[str, dict] = {
     "hyperbolic": {"status": "planned", "dim": None, "constraint": "K<0 常负曲率",
                    "metric": "Poincaré 度量", "geodesic": "双曲测地线", "why": "未实现 (缺 exp/log 图卡)"},
 }
+
+# ⚖ 内稳态动作调制的死区: 增益 ≥ 此值视为"未调制" (零回归保证, 见 step 内注释)
+HOM_GAIN_DEADBAND = 0.995
 
 STAGE_KEYS = ("encode", "project", "metric", "navigate", "feedback")
 
@@ -460,7 +485,7 @@ class ManifoldEngine:
     def __init__(self, manifold_type: str = "sphere", latent_dim: int = 16,
                  state_dim: int = 43, action_dim: int = 4, gain: float = 0.3,
                  max_step: float = 0.05, manifold_M: float = MANIFOLD_M_DEFAULT,
-                 inertia: bool = False) -> None:
+                 inertia: bool = False, homeostasis: bool = True) -> None:
         self.manifold_type = manifold_type
         self.latent_dim = int(latent_dim)
         self.state_dim = int(state_dim)
@@ -488,6 +513,13 @@ class ManifoldEngine:
         self.lat: dict[str, list[float]] = {k: [] for k in STAGE_KEYS}
         self.calib: dict = {}
         self.fitted = False
+        # ── 内稳态层 (身体/功能性感受/自我模型): homeostasis=False 时整层不参与 (逐位回到旧行为) ──
+        self.hom_enabled = bool(homeostasis) and HomeostasisEngine is not None
+        self._satisfy = _satisfy_fn
+        self.hom = HomeostasisEngine() if self.hom_enabled else None
+
+    def _sat(self, x, lo, hi):
+        return float(max(0.0, min(1.0, (float(x) - lo) / (hi - lo)))) if hi > lo else 0.0
 
     # ── 主标定参数 M (可读可写) ──
     def set_M(self, value: float, inertia: bool | None = None) -> dict:
@@ -675,6 +707,27 @@ class ManifoldEngine:
         else:
             a = np.asarray(r["p"], float)[:self.action_dim]
             dec_src = "未标定 → 取流形坐标前 %d 维 (占位, 非学习)" % self.action_dim
+        # ── ⚖ 内稳态层 (2026-10-10 老倪): 身体/功能性感受/自我模型 → 该不该动·动多大·要不要停 ──
+        #   分工: 上层只给"意图/条件", 动作数值仍由流形链路解出并在此收口。
+        #   零回归: 身体全好 (urgency≈0) 时 gain=1.0 且不 veto ⇒ 动作与不开本层逐位相同 (自检 ⑩ 断言)。
+        hom = None
+        if self.hom_enabled and self.hom is not None:
+            _conf = r.get("confidence")
+            # 真信号必须先过 satisfy 换算 (置信 0.9 = "够用" = 对齐度 1.0, 否则健康状态也会被调制)
+            _sensor = ({"alignment": (self._satisfy or self._sat)(float(_conf), 0.20, 0.80)}
+                       if _conf is not None else None)
+            hom = self.hom.drive(dt=dt, action=a, sensor=_sensor, record=True)
+            self.hom.write_state(append_ledger=False)          # 可观察: 每步刷新快照 (画布/外部可读)
+            hom["modulated"] = False
+            if a.size:
+                if hom["kind"] == "veto":
+                    a = np.zeros_like(a)                       # 硬闸: 危险 → 动作全零
+                    hom["modulated"] = True
+                elif hom["action_gain"] < HOM_GAIN_DEADBAND:
+                    # 软调制带死区: 健康身体的自然衰减只带来 ε 级增益差 (1−1e-5),
+                    # 若照乘就破坏"健康⇒与不开本层逐位相同"的零回归保证 (自检 ⚖ 实测踩到)。
+                    a = a * float(hom["action_gain"])           # 越急动作越小 (有下界, 不急就原样)
+                    hom["modulated"] = True
         if a.size:
             a = np.clip(a, -1.0, 1.0)
         rec = {"state": np.asarray(state, float).ravel(), "p": r["p"], "p_next": p_new,
@@ -684,7 +737,15 @@ class ManifoldEngine:
                "M": self.M, "inertia": self.inertia,
                "momentum": (None if self.velocity is None else float(np.linalg.norm(self.velocity))),
                "t_encode_ms": r["t_encode_ms"], "t_project_ms": r["t_project_ms"],
-               "t_grad_ms": gf["t_ms"], "manifold": r["manifold"], "status": r["status"]}
+               "t_grad_ms": gf["t_ms"], "manifold": r["manifold"], "status": r["status"],
+               # ⚖ 内稳态 (身体状态 / 紧迫度 / 模式 / 自我模型) —— 可观察量, 供画布/控制台/数据总线
+               "homeostasis": (None if hom is None else {
+                   "mode": hom["mode"], "kind": hom["kind"], "vitality": hom["vitality"],
+                   "is_critical": hom["is_critical"], "dominant": hom["dominant"],
+                   "dominant_urgency": hom["dominant_urgency"], "action_gain": hom["action_gain"],
+                   "urgency": hom["urgency"], "state": self.hom.state.as_dict(),
+                   "estimated": dict(self.hom.state.estimated), "safety_override": hom["safety_override"]}),
+               "hom_enabled": self.hom_enabled}
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
         return rec
 
@@ -699,6 +760,7 @@ class ManifoldEngine:
                 "M": self.M, "inertia": self.inertia,
                 "momentum": (None if self.velocity is None else round(float(np.linalg.norm(self.velocity)), 6)),
                 "M_spec": manifold_M_spec(),
+                "homeostasis": (None if not self.hom_enabled else self.hom.snapshot()),
                 "history_n": len(self.history), "calib": self.calib, "what": what}
 
     def latency_report(self) -> dict:
@@ -795,6 +857,50 @@ def _selftest() -> int:
           f"(M=1 Δx={np.round(p_on, 6)} ≠ 关 Δx={np.round(p_off, 6)} → {eff}) · "
           f"默认 {_sp['default']} 范围 {_sp['range']} 单位「{_sp['unit'][:12]}…」")
 
+    # ── ⚖ 内稳态层集成 (2026-10-10 老倪): 零回归 / 硬闸 / 软调制 / 自我模型 ──
+    _rng = np.random.default_rng(1)
+    _X, _U = _rng.normal(size=(120, 43)), _rng.normal(size=(120, 4))
+    def _mk(hom):
+        e = ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4, homeostasis=hom)
+        e.fit(_X, _U)
+        e.goal_point = e.project(_X[-1])["p"]
+        return e
+    e_off, e_on = _mk(False), _mk(True)
+    rec_off = e_off.step(_X[5], dt=0.01)
+    rec_on = e_on.step(_X[5], dt=0.01)
+    zero_reg = bool(np.array_equal(np.asarray(rec_off["action"]), np.asarray(rec_on["action"])))
+    h_on = rec_on["homeostasis"]
+    print(f"  ⚖ 内稳态(健康): 置信换算→对齐 {h_on['state']['alignment']:.3f} · mode={h_on['mode']} "
+          f"增益={h_on['action_gain']:.3f} · 关/开动作逐位相同={zero_reg} {'✅' if zero_reg else '❌'}")
+    ok_all &= zero_reg
+
+    e_stop = _mk(True)
+    e_stop.hom.state.energy = 0.01                        # 造危险 (真信号路径: ingest 亦可)
+    e_stop.hom.state.estimated["energy"] = False
+    rs = e_stop.step(_X[6], dt=0.01)
+    veto_ok = bool(np.allclose(rs["action"], 0.0) and rs["homeostasis"]["kind"] == "veto")
+    print(f"  ⚖ 硬闸: energy=0.01 → kind={rs['homeostasis']['kind']} 动作={np.round(rs['action'], 4)} "
+          f"critical={rs['homeostasis']['is_critical']} {'✅' if veto_ok else '❌'}")
+    ok_all &= veto_ok
+
+    e_mod = _mk(True)
+    e_mod.hom.state.balance = 0.85                        # 姿态偏差 → 软调制 (未到硬闸)
+    rm = e_mod.step(_X[5], dt=0.01)
+    n0, n1 = float(np.linalg.norm(rec_off["action"])), float(np.linalg.norm(rm["action"]))
+    mod_ok = bool(rm["homeostasis"]["kind"] == "interrupt" or n1 < n0)
+    print(f"  ⚖ 软调制: balance=0.85 → kind={rm['homeostasis']['kind']} "
+          f"增益={rm['homeostasis']['action_gain']:.3f} ‖a‖ {n0:.4f}→{n1:.4f} {'✅' if mod_ok else '❌'}")
+    ok_all &= mod_ok
+
+    sm = e_on.hom.self_model.summary()
+    sim_ok = bool(sm.get("n_actions", 0) >= 1 and e_on.hom.snapshot().get("next_predicted"))
+    print(f"  ⚖ 自我模型: 记录 {sm.get('n_actions')} 次 · 趋势={sm.get('state_trend')} · "
+          f"预测下一步 {'在' if sim_ok else '缺'} {'✅' if sim_ok else '❌'}")
+    ok_all &= sim_ok
+    st_path = e_on.hom.write_state()
+    print(f"  ⚖ 可观察量: 已落盘 {st_path} "
+          f"· 阈值口径 {len((_sensor_map_note or (lambda: {}))())} 路")
+
     print("\n自检结果:", "全部通过 ✅" if ok_all else "有失败 ❌")
     print("MANIFOLD_SELFTEST_DONE")
     return 0 if ok_all else 1
@@ -831,9 +937,55 @@ def _calibrate(out_path: str, steps: int = 120) -> int:
     return 0
 
 
+def _hom_demo() -> int:
+    """⚖ 内稳态 + 流形链路 联合演示 (真跑: 同一条 obs 轨迹, 三种身体状态)。"""
+    import importlib.util as _ilu
+    hp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "homeostasis.py")
+    sp = _ilu.spec_from_file_location("lerobot.manifold.homeostasis", hp)
+    hm = _ilu.module_from_spec(sp)
+    sys.modules[sp.name] = hm                       # @dataclass 必须先注册
+    sp.loader.exec_module(hm)
+    rng = np.random.default_rng(7)
+    X, U = rng.normal(size=(80, 43)), rng.normal(size=(80, 4))
+    eng = ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4,
+                         homeostasis=True)
+    eng.fit(X, U)
+    eng.goal_point = eng.project(X[-1])["p"]
+    print("=" * 78)
+    print("⚖ 流形引擎 · 内稳态 + 流形链路 联合演示 (功能性内稳态, 不声称主观体验)")
+    print("=" * 78)
+    print("注: 本演示的流形在**随机数据**上拟合 → 投影置信度≈0 ⇒ 对齐度 0 (如实反映"
+          "'这条轨迹没结构', 不是 bug);")
+    print("    真跑用真轨迹时置信度 0.9+ ⇒ satisfy(0.9,0.2,0.8)=1.0 ⇒ 对齐度 1.0 (自检 ⚖ 健康项已证)。")
+    print("    故下面各阶段的增益/模式差异只由**身体量**(能量/姿态)驱动, 与对齐无关。")
+    for tag, setup in (("① 健康", None),
+                       ("② 能量低", lambda: eng.hom.state.ingest(energy=0.25)),
+                       ("③ 姿态危险", lambda: eng.hom.state.ingest(balance=0.10))):
+        if setup:
+            setup()
+        print(f"\n[{tag}]")
+        for i in range(6):
+            r = eng.step(X[i], dt=0.05)
+            h = r["homeostasis"]
+            if i % 2 == 0:
+                print(f"  帧{i}: 模式={h['mode']:11s} 生命力={h['vitality']:.3f} "
+                      f"主导={h['dominant']}({h['dominant_urgency']:.3f}) 增益={h['action_gain']:.3f} "
+                      f"‖a‖={float(np.linalg.norm(r['action'])):.4f} {'⛔危险' if h['is_critical'] else ''}")
+        print("  快照:", json.dumps(eng.hom.snapshot()["self_model"], ensure_ascii=False))
+    print("\nHEMOSTASIS_DEMO_DONE")
+    return 0
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if "--calibrate" in a:
         p = f"/home/ubuntu/zmax/models/manifold_engine.npz"
         raise SystemExit(_calibrate(p))
+    if "--hom-demo" in a:
+        raise SystemExit(_hom_demo())
+    if "--state" in a:
+        e = ManifoldEngine(homeostasis=True)
+        print(json.dumps(e.query("all"), ensure_ascii=False, indent=1))
+        print("MANIFOLD_STATE_DONE")
+        raise SystemExit(0)
     raise SystemExit(_selftest())

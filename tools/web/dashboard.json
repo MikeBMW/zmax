@@ -1,39 +1,39 @@
 {
   "schema": "zmax-dashboard/1",
-  "generated_at": "2026-10-10 07:18:25",
-  "generated_at_epoch": 1791587905.46,
-  "version": "5.36.0",
+  "generated_at": "2026-10-10 08:40:26",
+  "generated_at_epoch": 1791592826.09,
+  "version": "5.37.1",
   "gpu": {
     "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
-    "util": 40.0,
-    "mem_used": 1207.0,
+    "util": 5.0,
+    "mem_used": 604.0,
     "mem_total": 8188.0,
-    "mem_pct": 14.7,
-    "temp": 58.0,
-    "power": 22.42,
-    "procs": 4,
+    "mem_pct": 7.4,
+    "temp": 53.0,
+    "power": 13.6,
+    "procs": 3,
     "error": null
   },
   "datasets": {
-    "items": 234,
-    "size_human": "74.8GB",
-    "size_bytes": 80275674550,
-    "file_count": 156719,
+    "items": 215,
+    "size_human": "64.8GB",
+    "size_bytes": 69531921822,
+    "file_count": 156482,
     "categories": {
       "downloaded": {
         "count": 8,
         "size_human": "12.7GB"
       },
       "generated": {
-        "count": 153,
-        "size_human": "58.4GB"
+        "count": 134,
+        "size_human": "48.4GB"
       },
       "map": {
         "count": 73,
         "size_human": "3.7GB"
       }
     },
-    "reports_files": 777,
+    "reports_files": 783,
     "map_items_with_ply": 18
   },
   "models": {
@@ -68,8 +68,8 @@
         "name": "L4 · L4 最新续训/LoRA 产物",
         "active": false,
         "ready": true,
-        "size_h": "80.2MB",
-        "mtime": "2026-10-10 06:26:38"
+        "size_h": "83.9MB",
+        "mtime": "2026-10-10 07:38:31"
       },
       {
         "layer": "L3",
@@ -101,7 +101,7 @@
         "active": false,
         "ready": true,
         "size_h": "5.9MB",
-        "mtime": "2026-10-10 06:24:50"
+        "mtime": "2026-10-10 07:39:25"
       }
     ],
     "active_ready": 4,
@@ -125,12 +125,13 @@
     "endpoints_err": 0,
     "stale": [
       "ECS状态总线(zmax_status.json)",
+      "ECS-Orin上行(relay/orin/status)",
       "本机agent_hub(8794/agent/log)",
       "工控机AOI金手指(10082/last_result)",
       "工控机AOI表面(10083/last_result)"
     ],
-    "stale_count": 4,
-    "frame_age_s": 0.01,
+    "stale_count": 5,
+    "frame_age_s": 0.02,
     "same_source": [
       {
         "fact": "臂相机帧率 fps",
@@ -140,19 +141,19 @@
         "sources": [
           {
             "name": "本机推流stats(8791)",
-            "value": 29.88
+            "value": 29.85
           },
           {
             "name": "本机工位状态(8793/station/status)",
-            "value": 29.93
+            "value": 29.8
           },
           {
             "name": "ECS工位状态(station/status)",
-            "value": 29.9
+            "value": 29.84
           },
           {
             "name": "ECS-3D实况(ss3d_live.json)",
-            "value": 29.87
+            "value": 29.81
           }
         ]
       },
@@ -164,7 +165,7 @@
         "sources": [
           {
             "name": "本机推流stats(8791)",
-            "value": 0.01
+            "value": 0.02
           },
           {
             "name": "本机工位状态(8793/station/status)",
@@ -172,7 +173,7 @@
           },
           {
             "name": "ECS-3D实况(ss3d_live.json)",
-            "value": 0.0
+            "value": 0.03
           }
         ]
       },
@@ -210,33 +211,34 @@
       },
       {
         "fact": "工位机GPU利用率",
-        "consistent": false,
+        "consistent": true,
         "tol": 15.0,
         "note": "",
         "sources": [
           {
             "name": "本机硬件状态(8796/status/all)",
-            "value": 40
+            "value": 9
           },
           {
             "name": "ECS状态总线(zmax_status.json)",
-            "value": 21
+            "value": 0
           }
         ]
       }
     ],
-    "mismatch": [
-      "工位机GPU利用率"
-    ],
+    "mismatch": [],
     "unreachable": [],
     "error": null
   },
   "version_sync": {
-    "ok": true,
-    "canonical": "5.36.0",
+    "ok": false,
+    "canonical": "5.37.1",
     "canonical_source": "studio.py 品牌 QLabel",
-    "remote_has_tag": true,
-    "release_tag": "v5.36.0",
-    "deviations": []
+    "remote_has_tag": false,
+    "release_tag": "v5.37.0",
+    "deviations": [
+      "远端缺少 tag v5.37.1",
+      "最新 Release tag v5.37.0 ≠ v5.37.1"
+    ]
   }
 }
