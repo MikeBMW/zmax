@@ -103,6 +103,48 @@ def resolve_episode_npz(path=EPISODE_NPZ):
     return path, "latest"
 
 
+# ── 单实例注册表: 全进程只允许一个 DreamView3D (pyqtgraph GL 上下文全局缓存, 第二个窗口画不出) ──
+_LIVE: list = []
+
+
+def live_dreamview():
+    """返回当前活着的 DreamView3D (没有则 None)。"""
+    for w in list(_LIVE):
+        try:
+            if w is not None and not w.isHidden():
+                return w
+        except RuntimeError:
+            pass
+    return None
+
+
+def register_dreamview(w):
+    try:
+        if w not in _LIVE:
+            _LIVE.append(w)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return w
+
+
+def get_or_create_dreamview(tr=None, meta=None, parent=None):
+    """复用已存在的 3D 视图 (同一程序/同一 GL 上下文), 否则新建一个。
+
+    老倪 2026-10-10: 「Sim&Real 改成 3D场景，就是一个程序」⇒ Sim&Real 页内嵌的那个视图与
+    画布「🧭 3D 视图」按钮打开的**必须是同一个对象** (同一个 DreamView3D), 否则第二个 GL 视图空白。
+    """
+    w = live_dreamview()
+    if w is not None:
+        return w
+    if tr is None:
+        tr, meta = load_episode()
+    tr = dict(tr or {})
+    if meta and "_meta" not in tr:
+        tr["_meta"] = meta
+    w = DreamView3D(tr, parent)
+    return register_dreamview(w)
+
+
 def load_episode(path=EPISODE_NPZ):
     """读同源 episode trace → (tr dict, meta dict); 文件不存在返回 (None, None)
 

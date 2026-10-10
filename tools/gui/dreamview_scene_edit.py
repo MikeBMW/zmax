@@ -69,20 +69,30 @@ def _se_run(*args):
     return _run(*args)
 
 
-def _scene_options():
-    """场景功能区可选场景 = 在役父场景 + scenes/index.json 里登记的命名场景 (如 SCN-07-UP 上下料)。
+SCENE_WHITELIST = ("SS-EPI-CORNER", "SIM-PEG-L4", "SCN-07-UP")      # 3D场景 首位 (老倪口径)
 
-    老倪 2026-10-10「上下料场景，在场景功能区可以可视化编辑」: 下拉选场景 ⇒ 面板对**那个场景目录**
-    做增删改; 在役场景目录不同 ⇒ 零影响。
+
+def _scene_options():
+    """可选场景: 3D场景 (与操作视频同源) · 插拔场景 · 上下料场景 (+ 在役现场场景, 只读收尾)。
+
+    老倪 2026-10-10: 「其它场景先不用搞」+「Sim&Real 改成 3D场景，就是一个程序」⇒ 这里只列 3 条,
+    且 3D场景 排第一 (进页默认就是它)。
     """
-    out = [("(在役) 现场场景", os.path.join(ROOT, "data", "scene"))]
-    try:
-        idx = json.load(open(os.path.join(ROOT, "data", "scene", "scenes", "index.json"), encoding="utf-8"))
-    except Exception:                                                          # noqa: BLE001
-        return out
-    for sid, v in (idx.get("named_scenes") or {}).items():
-        d = v.get("dir") or ("data/scene/scenes/" + sid)
-        out.append(("%s %s" % (sid, str(v.get("name") or "")[:22],), os.path.join(ROOT, d)))
+    out = []
+    for sid in SCENE_WHITELIST:
+        d = os.path.join(ROOT, "data", "scene", "scenes", sid)
+        if not os.path.isdir(d):
+            continue
+        label = {"SS-EPI-CORNER": "🧭 3D场景 (与操作视频同源)",
+                 "SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
+                 "SCN-07-UP": "📦 上下料场景"}.get(sid, sid)
+        n = 0
+        try:
+            n = len((json.load(open(os.path.join(d, "objects3d.json"), encoding="utf-8")) or {}).get("objects") or [])
+        except Exception:                                                      # noqa: BLE001
+            pass
+        out.append(("%s   %d 对象" % (label, n), d))
+    out.append(("(在役) 现场场景 (只读)", os.path.join(ROOT, "data", "scene")))
     return out
 
 
@@ -501,3 +511,74 @@ def attach_scene_edit(dreamview):
     except Exception:                                                          # noqa: BLE001
         pass
     return att
+
+
+def build_embedded(parent=None, scene_id="SS-EPI-CORNER"):
+    """Sim&Real 页主视图 = **真的 DreamView3D** —— 与画布「🧭 3D 视图」/独立「3D场景」窗口同一个程序。
+
+    老倪 2026-10-10: 「sim real场景的页面，与 3D场景的页面不一样，要改成一模一样，就是同一个东西」
+    ⇒ 不再用 QPainter 仿画一个, 而是把**同一个 DreamView3D 实例**嵌进页里 (同一个 GL 上下文, 同一套图层),
+      并把场景编辑能力 (侧边面板 + 右键菜单 + 对象叠加层) 挂在它身上。
+    """
+    import ss_dreamview as DV
+    from PyQt5.QtWidgets import QWidget
+
+    d = os.path.join(ROOT, "data", "scene", "scenes", scene_id)
+    if os.path.isdir(d):                       # 默认就对着 3D场景 那条编辑
+        os.environ["ZMAX_SCENE_DIR"] = d
+        globals()["SCENE_DIR"] = d
+        globals()["OBJECTS3D"] = os.path.join(d, "objects3d.json")
+
+    card = QWidget(parent)
+    lay = QVBoxLayout(card)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(4)
+
+    tr, meta = DV.load_episode()
+    dv = DV.get_or_create_dreamview(tr=tr, meta=meta, parent=card)
+    dv.setParent(card)
+    dv.setWindowFlags(Qt.Widget)               # 内嵌: 去掉顶层窗口标志
+    dv.setWindowTitle("3D场景")
+    lay.addWidget(dv, 1)
+
+    att = attach_scene_edit(dv)
+
+    bar = QHBoxLayout()
+    bar.setSpacing(6)
+
+    def _mk(txt, tip, fn, col="#00d4aa"):
+        b = QPushButton(txt)
+        b.setToolTip(tip)
+        b.setStyleSheet("QPushButton{background:#1f2733; color:%s; border:1px solid #2a3441;"
+                        " border-radius:4px; padding:4px 10px; font-size:12px;}"
+                        "QPushButton:hover{border-color:%s;}" % (col, col))
+        b.clicked.connect(lambda: fn())
+        return b
+
+    def _detach():
+        """把这块视图拎出来做独立窗口 (还是同一个实例/同一个 GL 上下文, 不是新开)。"""
+        try:
+            dv.setParent(None)
+            dv.setWindowFlags(Qt.Window)
+            dv.setWindowTitle("3D场景")
+            dv.resize(1300, 900)
+            dv.show()
+        except Exception as e:                                                  # noqa: BLE001
+            pass
+        att._set_status("已拎出为独立窗口 (同一个视图实例)")
+
+    bar.addWidget(_mk("🗗 独立窗口", "把这块 3D 视图拎成独立窗口 (同一个实例)", _detach))
+    bar.addWidget(_mk("🔄 刷新", "重读真源 + 重建对象叠加层", lambda: (att.refresh_list(),
+                                                                      att.refresh_overlay()), "#9aa7b4"))
+    bar.addWidget(_mk("🔁 重建 3D", "调 DreamView3D 原生重建 (场景变体/图元变了时用)", lambda: att.rebuild_view(),
+                      "#9aa7b4"))
+    bar.addStretch(1)
+    lay.insertLayout(0, bar)
+    try:
+        att.refresh_list()
+        att.refresh_overlay()
+    except Exception:                                                           # noqa: BLE001
+        pass
+    card.attacher = att
+    card.dreamview = dv
+    return card

@@ -13668,6 +13668,7 @@ class SimulinkModule(QWidget):
         level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)"""
         try:
             from ss_dreamview import DreamView3D, load_episode
+            import ss_dreamview as _DV
         except Exception as e:
             try:
                 import sys
@@ -13682,6 +13683,24 @@ class SimulinkModule(QWidget):
             except Exception:
                 pass
             return
+        try:
+            # 🔴 qt-gl 坑 1: 全进程只允许一个 GL 视图。Sim&Real 页里已经内嵌了一个 DreamView3D
+            #    ⇒ 这里必须复用 (拎成独立窗口), 绝不能新建第二个 (新建 = 空白)。
+            _live = _DV.live_dreamview()
+            if _live is not None:
+                try:
+                    _live.setParent(None)
+                    _live.setWindowFlags(Qt.Window if hasattr(Qt, "Window") else _live.windowFlags())
+                    _live.setWindowTitle("3D场景")
+                    _live.resize(1300, 900)
+                    _live.show()
+                    _live.raise_()
+                    _live.activateWindow()
+                except Exception:                                               # noqa: BLE001
+                    pass
+                return _live
+        except Exception:                                                       # noqa: BLE001
+            pass
         # 🎯 2026-09-02 老倪「3D 显示状态与程序执行状态一致」: 优先用当前程序执行的轨迹
         #   (▶运行产生的 sim.run() tr) — 3D 逐帧跟随 GUI 播放, 不再独立播离线 episode。
         #   没运行过才退回操作视频同源 episode (保持 3D 与视频同源能力)。

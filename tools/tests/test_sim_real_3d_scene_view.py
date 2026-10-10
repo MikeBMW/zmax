@@ -43,7 +43,7 @@ def sha(p):
 
 
 def main():
-    from PyQt5.QtWidgets import QApplication, QGroupBox                            # noqa: PLC0415
+    from PyQt5.QtWidgets import QApplication, QGroupBox, QWidget                 # noqa: PLC0415
     app = QApplication.instance() or QApplication(sys.argv)
     import updown_scene_view as U                                                   # noqa: PLC0415
     from PIL import Image                                                           # noqa: PLC0415
@@ -56,15 +56,21 @@ def main():
     check("功能积木" not in seg, "页段内无「功能积木」字样")
     check("brick" not in src.lower(), "全 studio.py 无 brick 残留 (定义也删了)")
 
-    print("2) Sim&Real 页真建 + 3D 视图卡置顶")
-    check("updown_scene_view" in seg and "_upv_build" in seg, "页内已挂 updown_scene_view.build_card")
+    print("2) Sim&Real 页 = 真的 3D场景 (同一个程序, 不是一个仿画)")
+    check("dreamview_scene_edit" in seg and "_dv_build" in seg,
+          "页内挂 = dreamview_scene_edit.build_embedded (真 DreamView3D + 场景编辑)")
     print("2b) L2/L3/L4 页签已删除 + 3D 视图占满")
     for k in ("scene_tabs", "_build_l2_tab", "_build_l3_tab", "_build_l4_tab", "_make_step_card"):
         check(k not in src, "studio.py 无 %s 残留" % k)
-    check("bl.addWidget(_upv_build(self), 1)" in seg, "3D 卡以 stretch=1 占满剩余高度")
-    uvs = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
-    check("setMinimumHeight(780)" in uvs, "3D 视图最小高度 780 (老倪: 还是太小 → 放大一档)")
-    check("def fit_view" in uvs and "resizeEvent" in uvs, "自适应取景 + 尺寸变化自动重取景")
+    check("bl.addWidget(_dv_build(self), 1)" in seg, "3D 视图以 stretch=1 占满整页")
+    _dve = open(os.path.join(ROOT, "tools", "gui", "dreamview_scene_edit.py"), encoding="utf-8").read()
+    check("def build_embedded" in _dve and "get_or_create_dreamview" in _dve and "attach_scene_edit" in _dve,
+          "build_embedded = 真 DreamView3D + 场景编辑挂载 (单实例复用)")
+    _sm = open(os.path.join(ROOT, "tools", "gui", "simulink_module.py"), encoding="utf-8").read()
+    check("live_dreamview()" in _sm and "绝不能新建第二个" in _sm,
+          "画布「3D 视图」复用同一实例 (qt-gl 坑 1: 不新建第二个 GL 视图)")
+    _dvsrc = open(os.path.join(ROOT, "tools", "gui", "ss_dreamview.py"), encoding="utf-8").read()
+    check("def get_or_create_dreamview" in _dvsrc and "_LIVE" in _dvsrc, "ss_dreamview 单实例注册表在场")
     check("_sr_build" not in seg and "from sim_real_page import" not in seg,
           "只挂一个场景编辑器 (旧表格编辑器 build_body 已摘除)")
     check("QSplitter" in open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"),
@@ -79,10 +85,20 @@ def main():
         page.resize(1200, 900)
         page.show()
         app.processEvents()
-        cards = [g for g in page.findChildren(QGroupBox) if "3D" in (g.title() or "")]
-        check(len(cards) >= 1, "页内找到 3D 视图卡: %s" % [c.title() for c in cards][:2])
-        view = getattr(cards[0], "view", None) if cards else None
-        check(view is not None, "卡片里有 SceneView3D 实例")
+        import ss_dreamview as _DV2                                              # noqa: PLC0415
+        _dvs = page.findChildren(_DV2.DreamView3D)
+        check(len(_dvs) == 1, "页内 DreamView3D 实例数 = 1 (单 GL 上下文): %d" % len(_dvs))
+        check(bool(_dvs) and _dvs[0] is _DV2.live_dreamview(),
+              "页内那块就是 live_dreamview() 本身 (同一个程序/同一个实例)")
+        from dreamview_scene_edit import SceneEditAttacher as _SEA              # noqa: PLC0415
+        _att = page.findChild(_SEA)
+        check(_att is not None and _att.lst is not None,
+              "场景编辑面板已挂在同一个 3D 视图上 (对象列表/场景下拉)")
+        if _att is not None:
+            _txt0 = _att.cmb_scene.currentText()
+            check("3D场景" in _txt0, "面板默认场景 = 3D场景: %s" % _txt0[:30])
+            check(_att.lst.count() >= 20, "面板列出 3D场景 的对象 (%d 个, 含机器人)" % _att.lst.count())
+        view = _dvs[0] if _dvs else None
     except Exception as e:                                                          # noqa: BLE001
         check(False, "页面构建失败: %r" % (e,))
         view = None
