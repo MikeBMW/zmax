@@ -61,7 +61,7 @@ SCENE_WHITELIST = ("SS-EPI-CORNER", "SS-TRAY-PLACE", "SIM-PEG-L4", "SCN-07-UP") 
 SCENE_LABEL = {"SIM-PEG-L4": "🔧 插拔场景 (对齐 metaworld 真模型)",
                "SCN-07-UP": "📦 上下料场景",
                # 老倪 2026-10-10: 「先把这个场景复制到你的场景编辑窗口里」— 就是画布 3D 分层视图正在跑的那条
-               "SS-EPI-CORNER": "🧭 3D场景 (与操作视频同源 · 复制自你正在跑的那条)"}
+               "SS-EPI-CORNER": "🧭 虚拟现实 (复制自你正在跑的那条)"}
 
 
 def scene_options():
@@ -1026,7 +1026,7 @@ def build_card(parent=None):
         _S = _sim_mod()
         _sid = (cmb.currentData() or {}).get("sid")
         if _S is None or str(_sid) != "SS-EPI-CORNER":
-            st.setText("🎲 换布局 只对「与操作视频同源」的 episode 场景有效")
+            st.setText("🎲 换布局 只对「虚拟现实」的 episode 场景有效")
             return
         try:
             _cur = int((_S.load()["scenes"].get("SS-EPI-CORNER") or {}).get("seed", 0))
