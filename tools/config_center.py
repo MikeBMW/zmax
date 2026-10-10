@@ -565,6 +565,15 @@ def cmd_project(a):
     return subprocess.call(argv)
 
 
+def cmd_perf(a):
+    """性能指标清单导出 (光模块精细操作 6 组 · CSV + Markdown, 供应商可复制可对账)。"""
+    import subprocess
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "perf_spec_export.py")],
+                       capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip()[-400:])
+    return 0 if r.returncode == 0 else 1
+
+
 def cmd_docs(a):
     """三件套同源导出 — 项目立项文档 + 供应商 SOR + 合作协议 (同一数据源 + 一致性断言)
 
@@ -584,7 +593,7 @@ CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cm
         "node": cmd_node, "project": cmd_project,
         "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor,
         "data": cmd_data, "agreement": cmd_agreement,
-        "project": cmd_project, "bom": cmd_project, "docs": cmd_docs}
+        "project": cmd_project, "bom": cmd_project, "docs": cmd_docs, "perf": cmd_perf}
 
 
 def main():
