@@ -157,6 +157,35 @@ def main():
         # 反向: 判据不能空跑
         check("抽检行数够多(判据没空跑)", checked >= 40, checked)
 
+    print("\n═══ 7) 「指标」列不折行 (第 5.2 指标体系的孤字行根因) ═══")
+    # 复核实测: 指标列 4.4cm 时 "插深终到误差 (现有指标 F-A02)" 被折成 "...F-" + "A02)" 孤字行。
+    # 判据: 估计单行宽度 ≤ 列宽-边距 (CJK 9.5pt≈3.35mm/字, ASCII≈1.7mm/字, 单元格边距 0.15cm×2)。
+    def _est(txt):
+        w = 0.0
+        for ch in str(txt):
+            w += 3.35 if ord(ch) > 0x2000 else 1.7
+        return w / 10.0    # mm → cm
+
+    t52 = [t for t in doc.tables if [c.text.strip() for c in t.rows[0].cells][:1] == ["指标"]]
+    checked = 0
+    worst = ("", 0.0, 0.0)
+    for t in t52:
+        gw = [int(g.get(qn("w:w")) or 0) / 567.0 for g in t._tbl.find(qn("w:tblGrid"))]  # dxa → cm
+        col0 = gw[0] if gw else 0.0
+        for r in t.rows[1:]:
+            txt = r.cells[0].text.strip()
+            if not txt:
+                continue
+            checked += 1
+            if _est(txt) > worst[1]:
+                worst = (txt, _est(txt), col0)
+            if _est(txt) > col0 - 0.30:
+                check("指标列放得下: %r" % txt[:24], False, "估 %.2fcm > 列 %.2fcm-0.30" % (_est(txt), col0))
+    check("第 5.2 指标体系表全部检查", len(t52) >= 6, "%d 张" % len(t52))
+    check("抽检指标名够多 (判据没空跑)", checked >= 50, checked)
+    if checked:
+        print("      最宽一条: %r = 估 %.2fcm (列宽 %.2fcm)" % (worst[0][:30], worst[1], worst[2]))
+
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0
 

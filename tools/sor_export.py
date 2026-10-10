@@ -165,11 +165,15 @@ def page_setup(doc, margins=(2.2, 2.0)):
     return doc
 
 
-def para(doc, text, size=10.5, bold=False, italic=False):
+def para(doc, text, size=10.5, bold=False, italic=False, space_before=None, keep_lines=False):
     p = doc.add_paragraph()
     r = p.add_run(text)
     _font(r, size=size, bold=bold)
     r.font.italic = italic
+    if space_before is not None:
+        p.paragraph_format.space_before = Pt(space_before)
+    if keep_lines:                      # w:keepLines —— 单条不许被页切开
+        p.paragraph_format.keep_together = True
     return p
 
 
@@ -440,7 +444,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "以下指标已按配置中心口径统一; 「阶段」列区分 EVT/DVT/PVT, 验收按阶段取值。", size=10)
     table(doc, ["指标", "目标值", "口径 / 判据", "来源条目", "处理"],
           [list(m) for m in METRICS],
-          widths=[2.2, 4.2, 5.6, 2.4, 1.8])
+          widths=[2.6, 4.0, 5.4, 2.3, 1.7])   # 指标列 2.6: 最长'二值柔性退出'估 2.01+边距
     para(doc, "5.1 System 1 子系统指标 (配置真源)", bold=True)
     table(doc, ["指标", "值"], sorted(sys1.get("kpi", {}).items()), widths=[4.0, 12.0])
 
@@ -457,9 +461,10 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
               [[m["cn"], m.get("unit") or "-", str(m.get("target") or "待确认"),
                 m.get("std", "-") if m.get("std") != "-" else "工艺口径", m.get("stage", "-")]
                for m in _g["metrics"]],
-              widths=[4.4, 1.6, 4.8, 3.6, 1.4])
+              widths=[5.4, 2.0, 4.2, 2.9, 1.5])   # 5.4+2.0+4.2+2.9+1.5 = 16.0 (A4 可用宽)
         for _m in _g["metrics"]:
-            para(doc, "· %s — 测量/实测入口: %s" % (_m["id"], _m.get("how", "")), size=8.5)
+            para(doc, "· %s — 测量/实测入口: %s" % (_m["id"], _m.get("how", "")),
+                 size=9.0, space_before=2, keep_lines=True)
 
     # 6 机器人末端
     h(doc, "6. 机器人与末端执行器要求", 1)
