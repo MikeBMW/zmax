@@ -15,6 +15,7 @@
 """
 import glob
 import os
+import re
 import subprocess
 import sys
 
@@ -26,6 +27,27 @@ from docx.oxml.ns import qn  # noqa: E402
 
 HEAD_FILLS = ("1F3864",)
 FAIL = []
+
+
+def _has(x):
+    return subprocess.run(["bash", "-lc", "command -v %s" % x], capture_output=True).returncode == 0
+
+
+def _to_pdf(docx):
+    out = os.path.dirname(docx)
+    subprocess.run(["bash", "-lc",
+                    "rm -f '%s'/*.pdf; timeout 240 soffice --headless -env:UserInstallation=file:///tmp/lo_profile "
+                    "--convert-to pdf --outdir '%s' '%s' >/dev/null 2>&1" % (out, out, docx)])
+    p = glob.glob(os.path.join(out, "*.pdf"))
+    return p[0] if p else ""
+
+
+def _pdf_pages(pdf):
+    if not pdf:
+        return []
+    txt = subprocess.run(["pdftotext", pdf, "-"], capture_output=True, text=True).stdout
+    pages = txt.split("\f")
+    return [re.sub(r"\s+", "", p) for p in pages if p.strip()]
 
 
 def check(name, ok, detail=""):
@@ -107,6 +129,33 @@ def main():
         if fill not in HEAD_FILLS:
             nofill.append((i + 1, fill))
     check("每张表表头深色底", not nofill, nofill[:3])
+
+    print("\n═══ 6) 出图核验: 整行没被页切开 (真转 PDF 逐页找) ═══")
+    if not _has("soffice") or not _has("pdftotext"):
+        print("      (跳过: 本机没 soffice/pdftotext)")
+    else:
+        pdf = _to_pdf(f)
+        pages = _pdf_pages(pdf)
+        print(f"      PDF {len(pages)} 页 · 逐行检查 首格文本 与 末格文本 是否同页")
+        split = []
+        checked = 0
+        for ti, t in enumerate(doc.tables):
+            for ri, row in enumerate(t.rows[1:], start=2):
+                a = re.sub(r"\s+", "", row.cells[0].text)
+                b = re.sub(r"\s+", "", row.cells[-1].text)
+                if len(a) < 4 or len(b) < 4:
+                    continue
+                pa = [i for i, pg in enumerate(pages) if a in pg]
+                pb = [i for i, pg in enumerate(pages) if b in pg]
+                if not pa or not pb:
+                    continue
+                checked += 1
+                if not (set(pa) & set(pb)):
+                    split.append((ti + 1, ri, a[:18], "p%s" % [x + 1 for x in pa], "p%s" % [x + 1 for x in pb]))
+        print(f"      抽检 {checked} 行")
+        check("没有整行被页劈开", not split, split[:3])
+        # 反向: 判据不能空跑
+        check("抽检行数够多(判据没空跑)", checked >= 40, checked)
 
     print("\n" + ("✅ 全部通过" if not FAIL else "⛔ 失败 %d 项: %s" % (len(FAIL), FAIL)))
     return 1 if FAIL else 0
