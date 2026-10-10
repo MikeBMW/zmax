@@ -676,7 +676,7 @@ class SceneView3D(QWidget):
         #    否则改了产物目录但物理/视觉仍按真源 → 就是"假接入" (老倪零容忍)
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(self.scene_id):
-            r = _S.apply_patch(kind, str(_id), patch, scene_id=view.scene_id)
+            r = _S.apply_patch(kind, str(_id), patch, scene_id=self.scene_id)
             if r.get("ok"):
                 self.status_cb("✅ %s · %s · 已写仿真场景真源 (备份 %s) · 物理与视觉同步"
                                % (what, str(_id)[:26], str(r.get("backup"))))

@@ -298,6 +298,18 @@ def main():
           "孔口来自 MuJoCo site 真值: %s" % [m["name"] for m in _r1["markers"]])
     check(all("MuJoCo 模型实测" in o.get("source", "") for o in _disk), "每个对象都标出处 (MuJoCo 模型实测)")
     check(SSD.check() == 0, "真源判据 (含 MuJoCo 对齐) 全绿")
+    # ⚠️ 类方法走 self.scene_id (曾写成闭包里的 view.scene_id → GUI 一拖就 NameError 崩, 实测崩过)
+    _src = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
+    check("apply_patch(kind, str(_id), patch, scene_id=view.scene_id" not in _src,
+          "类方法 (SceneView3D._write) 必须用 self.scene_id, 不许引用闭包名 view")
+    _sv2 = U.SceneView3D(os.path.join(ROOT, "data", "scene", "scenes", "SIM-PEG-L4"), "SIM-PEG-L4",
+                         status_cb=lambda s: None)
+    _nm2 = _sv2.data["objects"][0]["name"]
+    _c2 = list(_sv2.data["objects"][0]["center"])
+    _ok2 = _sv2._write({"center": [_c2[0], _c2[1], _c2[2]]}, "判据直调拖动写路径", "objects", _nm2)
+    check(_ok2 is not False, "类方法写路径真能跑 (不崩, 对象 %s): %s" % (_nm2, _ok2))
+    _sv2.reload()
+
     print("6) 在役场景只读保护")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "scene_edit.py"), "--scenes"],
                        cwd=ROOT, capture_output=True, text=True)
