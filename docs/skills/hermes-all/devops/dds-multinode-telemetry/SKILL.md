@@ -97,3 +97,7 @@ if bus is not None:        # 唯一分支点
 - `tools/dds_bridge.py`（DDS→JSON 桥，给零依赖 Web 用）
 - `tools/dds_node_4060.py`（本机发布端）· `tools/mac_hw_report.py --dds`（Mac 端，含 MPS 实测）
 - `tools/gui/dds_hw.py`（APP 内采集器 + 自包含本机发布器）
+
+## 本项目 (Z-MAX) 口径: 遥测 DDS 默认关
+- **遥测走 DDS 只在测试/标定阶段开, 量产一律关**（避多机广播干扰与带宽占用）; 开关优先级 **环境变量 > 文件 `~/.zmax_telemetry_mode`**。
+- 现场报"收不到数据"先查这个档位, 再怀疑网络/防火墙。

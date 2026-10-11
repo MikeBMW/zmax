@@ -515,3 +515,31 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
 反假训练三道闸门与槽位标注工具: `references/l5-annotate-train-loop.md`。
 画布上「配置/标定/诊断」接口节点(参数注册表 → 描述文件 → 面板/远程/诊断)的设计约定与 ASAM-MCD 类比:
 `references/mcd-param-node-design.md`(完整方案: 仓库 `docs/design/manifold_mcd_master_param_M_20261009.md`)。
+
+## 节点改名 / 新增任务 = 真源三件套 + 生成器, 别手改生成物 (2026-10-12 实测)
+
+**① 改名必须同步的映射 (画布节点名 = 数据总线通道名, 漏一处即静默挂不上)**:
+`data_world.MODULE_ORDER` · `simulink_module.SS_MODULE_TO_NAME` + 右键分支 · `state_space_sim` io 发布表 ·
+`registry._reg` 注册关键字(**加新名时保留旧名**, 老工程/老 .proj 仍能开) · `gui/aoi_inspect_console.py` 标题 ·
+`src/lerobot/verification/node_func_tree.py`(网页功能清单真源) · `yolo_perception` · `status_panel` 大屏模型名 ·
+`model_feature`(能力特征库 B 条目) · **能力名的真正上游**: `config/platform/zmax_platform.json`(capability_ref/module_refs)
++ `config/platform/zmax_perf_spec.json`(+ `defaults/` 副本) + `data/database/<产品>/sources/feature.dbc`(`BO_ Bx …`) → 跑 `tools/mcd_build.py` 重生成。
+**验证不能只 grep 代码**: 改完 `mcd_build.py --check` 幂等 + `node_func_tree`/MCD 的旧名计数归零, 再用 `verify_canvas_render.py` 看渲染。
+
+**② 任务/场景配置别手改 `config/tasks/tasks.json`**(它头一行就写着「生成物, 勿手改」):
+链路 = `flows/scenes_5jobs.json`(场景真源) → `tools/task_build.py`(`PLAN[scene_type]` = 类型/适用段/覆盖参数/model_ref) → 生成 tasks.json。
+- 新增任务 = **加场景 + 加 PLAN 一条**, 然后跑生成器; 引号里的「任务N」= `SCN-0N-XXX` 的 N。
+- 场景文件与 tasks.json 会**漂移**(历史里场景被顶掉, 生成物里却还在) ⇒ 生成前先逐条比对, 发现生成物里多出的任务就**按现任务反向补回场景**, 否则一重生成任务就丢。
+- 🔴 `PLAN.get(type, PLAN["ats_test"])` 这种回落会**静默造出配方错误的任务**(实测 SCN-07-UP 被套成「检测插接」)
+  ⇒ 改成无 PLAN 就**跳过并打印**提示; 场景本身留在真源里不动(不猜测性删除)。
+- 生成后硬判据: 旧任务**逐字节不变**(json.dumps(sort_keys=True) 对比) + 新任务在 + `task_build.py --check` ✅。
+- 绑定/库的定式顺序: `ss_task_bind.py`(重算绑定, 不动 active_task) → `project_archive.py space-save`(刷新总工程) →
+  `engineering_db.py build` → `ss_task_bind.py --check` + `engineering_db.py check`(顺序反了会报 drift ['project'])。
+- 界面要看得见: 配置中心「📋 任务配置」表加列直接在 `veh6_config_page.py` 的 `_mk_table([...])` 里加值 +
+  给每行 `item.setToolTip()` 存完整口径(单元格只放短标签); 改完**一次性重启控制台**才生效。
+
+**③ 节点要「发出话题」= 建一条话题总线真源, 别让节点自己到处写文件**:
+模式(2026-10-12 实做, `tools/ar_aoi_bus.py`): 注册表 JSON(`config/topics/<域>_signals.json`, 含 组/单位/真源说明)
++ 单一写入器(原子写 + `.bak` + 回读, 键 → 组映射写进文件) + 生产者(节点执行时 `publish(部分信号)` 合并写入; 外部真源用 `pull()` 拉)
++ 常驻拉取器 `*_ctl.sh start|stop|status` + 消费端(信号分析页 `HOST_SOURCES` 加一条 + 去前缀显示 + 分组树取注册表的组名)。
+判据: 真跑节点后**回读 live 文件**数话题 ≥N 且自洽(如 缺陷数 = 划伤 + 污点); 演示值不许填 0 冒充, 缺的键不写。

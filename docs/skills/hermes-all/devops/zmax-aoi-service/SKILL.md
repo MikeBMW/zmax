@@ -1087,3 +1087,25 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
 
 🔎 **伴随观察(残留)**: 该现场算法持续报 **n_keys=20**(图上 20 根 ~29px 等宽键, 节距 71.5), 而真值定案 19 ⇒
 门会**长期处于 suppressed**、横幅常驻。真值是 19 还是算法多数 1 根属**层③逐根个数**问题(见上表), 未在本轮解决。
+
+## 画布侧 AOI: 能力名 / 节点名 / AOI 话题 (2026-10-12 实测)
+
+**① 能力名「光学质量检测」(老倪 10-11 定名, 原「外观质量检测」) 的上游是真源链, 不是 GUI 代码**:
+`config/platform/zmax_platform.json`(`capability_ref`/`desc`/`module_refs`) + `config/platform/zmax_perf_spec.json`
+(+ `defaults/` 副本, 里面有 5 处 `BO_B5 …`) + `data/database/<产品>/sources/feature.dbc`
+(`BO_ B5 <能力名>: IN/MON B`) → `tools/mcd_build.py` 重生成 `config/mcd/zmax_mcd.json`。
+**只改 py 里的显示名不够 —— `mcd_build --check` 会显示"内容一致"但文件里还是旧名**(实测)。
+判据: `zmax_mcd.json` 里新名 5 处 / 旧名 0 处 + `mcd_build.py --check` ✅。
+GUI 侧同步点见 `state-space-canvas-engineering` 技能「节点改名必须同步的映射」。
+
+**② 节点要「发出 AOI 相关的所有 topic」——总线模式 (tools/ar_aoi_bus.py)**:
+注册表 `config/topics/ar_aoi_signals.json`(组/单位/真源说明) + 单一写入器(原子写+回读+组映射落盘)
++ 生产者(画布节点每帧真调 `quality_check.AOIQualityChecker.check()` → 把真算量 `publish()` 合并进
+`zmax_data/ar_live/ar_aoi_live.json`; 缺的键**不写**, 绝不填 0 冒充) + 外部真源 `pull()`(TCP 真值/示教点位台账/
+空间点/RealSense 相机系/AOI 状态) + 常驻拉取器 `tools/ar_aoi_bus_ctl.sh start|stop|status`。
+信号分析页(`gui/canoe_graphic.py`)消费: `HOST_SOURCES` 加 `("ar", "zmax_data/ar_live/ar_aoi_live.json")` +
+显示名去 `ar.` 前缀 + 分组树用注册表的组名。
+🔴 坑: 示教点位台账有两种落盘格式 —— 新(`aoi_teach_point.py` 写**顶层** `point/pos/quat`)、旧(`{"pose":{"pos":…}}`);
+只读一种会**静默只拉到 1 个点**。两种都读。
+判据: 真跑节点后回读 live 数话题 ≥8 且自洽(判决 0/1 · **缺陷数 = 划伤 + 污点**); 点位信号 ≥20 条。
+实测样例(AR 帧 10-12): 判决=1(NG) · 缺陷数 70 = 划伤 57 + 污点 13 · 清晰度 446 · 取像体检 3(gaps_washed)。
