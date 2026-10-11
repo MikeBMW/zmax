@@ -26,7 +26,7 @@ from PyQt5.QtCore import Qt  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLabel,  # noqa: E402
                              QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem,
-                             QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem,
+                             QComboBox, QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
 
 TASKS_J = os.path.join(ROOT, "config", "tasks", "tasks.json")
@@ -318,6 +318,9 @@ def _doc_inventory():
     return "\n".join(lines) if lines else "⚠️ 还没有产物 —— 点上面任一按钮, 跑完这里就会出现绝对路径"
 
 
+_STATE_ITEMS = ("★ 活跃", "○ 未激活", "— 无配置")
+
+
 def _task_state_cell(tid, act=None):
     """🆕 2026-10-11 老倪: 任务「活跃属性」三态 —— ★ 活跃 / ○ 未激活 / — 无配置。
 
@@ -482,6 +485,84 @@ class ConfigCenterPage(QWidget):
             it.setExpanded(label.startswith("工艺") or label.startswith("文档"))
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
+    def _install_state_combos(self):
+        """活跃列 (第 9 列) 每行一个下拉: ★ 活跃 / ○ 未激活 / — 无配置。"""
+        t = getattr(self, "tasks_table", None)
+        ids = getattr(self, "_task_rows", None)
+        if t is None or not ids:
+            return
+        for r in range(min(t.rowCount(), len(ids))):
+            if r >= len(ids):
+                break
+            tid = ids[r]
+            cb = getattr(self, "_state_cbs", {}).get(tid) if hasattr(self, "_state_cbs") else None
+            if cb is None:
+                cb = QComboBox()
+                cb.setFont(QFont("Consolas", 10))
+                cb.addItems(list(_STATE_ITEMS))
+                cb.setStyleSheet(
+                    "QComboBox{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
+                    "border-radius:4px;padding:2px 6px;} QComboBox QAbstractItemView{background:#0d1117;"
+                    "color:#e6edf3;selection-background-color:#1f6feb;}")
+                cb.setToolTip("选择该任务的活跃属性:\n★ 活跃 = 真激活 (写绑定真源 + 台账, 活跃唯一)\n"
+                              "○ 未激活 = 配置就绪但不激活\n— 无配置 = 还没开始")
+                cb.currentTextChanged.connect(lambda s, _t=tid: self._on_task_state_changed(_t, s))
+                t.setCellWidget(r, 8, cb)
+                if not hasattr(self, "_state_cbs"):
+                    self._state_cbs = {}
+                self._state_cbs[tid] = cb
+            cur = _task_state_cell(tid, getattr(self, "_act_now", None))
+            cb.blockSignals(True)
+            cb.setCurrentText(cur if cur in _STATE_ITEMS else "— 无配置")
+            cb.blockSignals(False)
+
+    def _on_task_state_changed(self, tid, label):
+        """用户在下拉里改了活跃属性 → 落真源/台账 → 重算全表 + 计数 + 日志。"""
+        try:
+            _t = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            if _t not in sys.path:
+                sys.path.insert(0, _t)
+            import ss_task_state as _ts
+            ok, why, extra = _ts.set_state(tid, label, by="配置中心 UI 下拉")
+        except Exception as e:                                                  # noqa: BLE001
+            ok, why, extra = False, "%s: %s" % (type(e).__name__, e), {}
+        try:
+            self._log_cc(("✅ " if ok else "⛔ ") + "%s → %s: %s" % (tid, label, why))
+            if ok:
+                self._act_now = (extra or {}).get("active_task") or None
+                self._reload_task_states()
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _reload_task_states(self):
+        """重算全表活跃列 + 表头计数 (改一个状态, 全表跟着动: 旧活跃会自动变未激活)。"""
+        import ss_task_state as _ts
+        bind = _j(BIND_J, {}) or {}
+        self._act_now = bind.get("active_task")
+        ids = getattr(self, "_task_rows", None) or []
+        for tid in ids:
+            cb = (getattr(self, "_state_cbs", {}) or {}).get(tid)
+            if cb is None:
+                continue
+            cur = _ts.cell(tid, self._act_now)
+            cb.blockSignals(True)
+            cb.setCurrentText(cur if cur in _STATE_ITEMS else "— 无配置")
+            cb.blockSignals(False)
+        st = _ts.build(write=True)
+        self._log_cc("   ↻ 全表已重算: 活跃 %d / 未激活 %d / 无配置 %d · 绑定真源 active_task=%s"
+                     % (st["counts"]["活跃"], st["counts"]["未激活"], st["counts"]["无配置"], self._act_now))
+
+    def _log_cc(self, msg):
+        """配置中心页自己的日志 (打到页内日志框/状态栏; 没有就 stdout)。"""
+        for attr in ("_log", "log", "txt_log", "te_log"):
+            f = getattr(self, attr, None)
+            if callable(f):
+                try:
+                    return f(msg)
+                except Exception:                                               # noqa: BLE001
+                    pass
+        print(msg, flush=True)
+
     def _tab_index_by_title(self, kw):
         for i in range(self.tabs.count()):
             if kw in self.tabs.tabText(i):
@@ -605,6 +686,13 @@ class ConfigCenterPage(QWidget):
               _task_state_cell(t["task_id"], act),        # 🆕 活跃属性三态: ★ 活跃 / ○ 未激活 / — 无配置
               ("⛔ 缺站点几何" + str(len(t["blocked_by_site"]))) if t.get("blocked_by_site") else "✅"]
              for t in tk.get("tasks", [])], th)
+        # 🆕 2026-10-11 老倪: 「配置中心的活跃属性列, 增加新功能, 用户可以自主调整 活跃/未激活 等状态, 用下拉菜单」
+        #   设计: 活跃列每行一个下拉 (★ 活跃 / ○ 未激活 / — 无配置) —— 选「★ 活跃」= 真激活该任务 (走 ss_task_bind --activate,
+        #   写绑定真源 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
+        #   改完立刻重算全表 + 表头计数, 动作与结果都写进下方日志 (失败照实说, 不假成功)。
+        self._task_rows = [t["task_id"] for t in tk.get("tasks", [])]
+        self._act_now = act
+        self._install_state_combos()
         w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(6, 6, 6, 6)
         _st_n = {k: sum(1 for t in tk.get("tasks", []) if _task_state_cell(t["task_id"], act) == k)
                  for k in ("★ 活跃", "○ 未激活", "— 无配置")}
@@ -632,6 +720,10 @@ class ConfigCenterPage(QWidget):
         row.addStretch()
         l.addLayout(row); l.addWidget(self.tasks_table, 1)
         self.tabs.addTab(w, "📋 任务配置")
+        try:
+            self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
         # 2) 工程配置 (参数表三列)
         cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") == "工程配置"]

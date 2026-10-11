@@ -31,6 +31,7 @@ ROOT = os.environ.get("ZMAX_ROOT") or os.path.dirname(os.path.dirname(os.path.ab
 BIND = os.path.join(ROOT, "config", "ss_task_binding.json")
 OUT = os.path.join(ROOT, "config", "task_state.json")
 LEDGER = os.path.join(ROOT, "config", "task_state_ledger.json")
+MANUAL = os.path.join(ROOT, "config", "task_state_manual.json")   # 🆕 用户在下拉里手选的活跃属性 (覆盖证据推导)
 
 STATE_ACTIVE = "★ 活跃"
 STATE_INACTIVE = "○ 未激活"
@@ -76,13 +77,80 @@ def evidence(tid):
     return sorted(set(out), key=lambda s: os.path.getmtime(s) if os.path.exists(s) else 0, reverse=True)
 
 
+def manual():
+    """用户手选的状态 (config/task_state_manual.json: {tid: {state, ts, by}})。"""
+    return (_j(MANUAL, {}) or {}).get("states") or {}
+
+
+def set_state(tid, state, by="配置中心 UI"):
+    """🆕 2026-10-11 老倪: 配置中心活跃属性**用户自选** (下拉) → 落到真源/台账, 不装样子。
+
+    ★ 活跃   : 真激活 —— 走 tools/ss_task_bind.py --activate <tid> (写 config/ss_task_binding.json + 台账), 回读校验
+    ○ 未激活 : 被手标的「配置就绪但不激活」→ 记 manual (当前活跃任务不能标未激活 ⇒ 拒绝并说原因)
+    — 无配置 : 撤销手标 (有运行证据的任务拒绝降级 —— 证据不会因为点个下拉就消失)
+    → (ok, why, extra)
+    """
+    st = str(state or "").strip()
+    if st not in (STATE_ACTIVE, STATE_INACTIVE, STATE_NONE):
+        return False, "未知状态 %r (只认 %s)" % (state, " / ".join((STATE_ACTIVE, STATE_INACTIVE, STATE_NONE))), {}
+    _ts, act = tasks()
+    ev = evidence(tid)
+    if st == STATE_ACTIVE:
+        import subprocess
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ss_task_bind.py"), "--activate", tid],
+                           capture_output=True, text=True, timeout=300, cwd=ROOT)
+        _t2, act2 = tasks()
+        ok = r.returncode == 0 and act2 == tid
+        if ok:
+            m = manual(); m.pop(tid, None)                 # 活跃由绑定真源说了算 ⇒ 清掉手标
+            _write_manual(m)
+        why = ("已真激活 %s (绑定真源 active_task=%s)" % (tid, act2)) if ok else \
+              ("激活失败: %s" % ((r.stderr or r.stdout or "")[-200:]))
+        return ok, why, {"active_task": act2}
+    if st == STATE_INACTIVE and tid == act:
+        return False, "⛔ %s 是当前活跃任务 —— 不能直接标未激活; 先把别的任务选成「★ 活跃」(活跃唯一)" % tid, {"active_task": act}
+    if st == STATE_NONE and ev:
+        return False, "⛔ %s 有 %d 条真实证据 (%s) ⇒ 不能标无配置 (点下拉不会让证据消失)" % (
+            tid, len(ev), os.path.relpath(ev[0], ROOT) if os.path.exists(ev[0]) else ev[0]), {"evidence": ev[:3]}
+    m = manual()
+    if st == STATE_NONE:
+        m.pop(tid, None)
+    else:
+        m[tid] = {"state": st, "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by}
+    _write_manual(m)
+    return True, "%s → %s (已记 %s)" % (tid, st, os.path.relpath(MANUAL, ROOT)), {}
+
+
+def _write_manual(m):
+    try:
+        d = {"_meta": {"note": "配置中心活跃属性手选 (用户在下拉里定)", "updated": time.strftime("%Y-%m-%d %H:%M:%S")},
+             "states": m}
+        os.makedirs(os.path.dirname(MANUAL), exist_ok=True)
+        tmp = MANUAL + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, MANUAL)
+        return True
+    except Exception:                                                          # noqa: BLE001
+        return False
+
+
 def state_of(tid, active=None):
-    """→ (state, why, evidence[])"""
+    """→ (state, why, evidence[])
+
+    优先级: ① 绑定真源 active_task ⇒ ★ 活跃 (唯一) ② 用户手选 (manual) ③ 证据推导 ④ 无配置
+    """
     if active is None:
         _t, active = tasks()
     ev = evidence(tid)
     if tid == active:
         return STATE_ACTIVE, "绑定真源 active_task = %s" % active, ev
+    mn = (manual().get(tid) or {}).get("state")
+    if mn in (STATE_INACTIVE, STATE_NONE):
+        why = "用户在配置中心手选 %s" % mn
+        if mn == STATE_INACTIVE and ev:
+            why += " (且有 %d 条证据)" % len(ev)
+        return mn, why, ev
     if ev:
         return STATE_INACTIVE, "配置已切换/验证过 (%d 条证据) ⇒ 切过去即可工作" % len(ev), ev
     return STATE_NONE, "无激活台账也无运行产物 ⇒ 还没开始", []
@@ -124,6 +192,7 @@ def build(write=True):
     doc = {"_meta": {"note": "任务配置状态 (推导物: 活跃=绑定真源; 未激活=有激活台账/运行证据; 无配置=还没开始)",
                      "built": time.strftime("%Y-%m-%d %H:%M:%S"), "source": "tools/ss_task_state.py build"},
            "active_task": act, "counts": {"活跃": n[STATE_ACTIVE], "未激活": n[STATE_INACTIVE], "无配置": n[STATE_NONE]},
+ "manual": manual(),
            "tasks": rows}
     if write:
         try:
@@ -149,12 +218,17 @@ def _print(doc):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", nargs="?", default="build", choices=["build", "show", "cell"])
+    ap.add_argument("cmd", nargs="?", default="build", choices=["build", "show", "cell", "set"])
     ap.add_argument("arg", nargs="?", default=None)
     a = ap.parse_args()
     if a.cmd == "cell":
         print(cell(a.arg) if a.arg else "")
         return 0
+    if a.cmd == "set":
+        tid, st = (a.arg or ":").split(":", 1)
+        ok, why, extra = set_state(tid, st)
+        print(("✅ " if ok else "⛔ ") + why)
+        return 0 if ok else 2
     doc = build(write=(a.cmd == "build"))
     _print(doc)
     return 0
