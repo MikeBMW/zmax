@@ -3001,7 +3001,7 @@ class SimNodeItem(QGraphicsObject):
         try:
             p = self.node.get("params", {})
             if e.button() == Qt.LeftButton and p.get("src_switch"):
-                # 🔀 数据源拨钮 (仿真 ⇄ 真机)
+                # 🔀 数据源拨钮 (真机 → 插拔场景 → 摆盘场景)
                 if QRectF(8, self.h - 26, self.w - 16, 20).contains(QPointF(e.pos())):
                     self.scene_ref.on_toggle_src(self.node)
                     e.accept()
@@ -3456,10 +3456,10 @@ class SimNodeItem(QGraphicsObject):
             painter.drawLine(QPointF(px-6, py), QPointF(px+6, py))
             painter.drawLine(QPointF(px, py-6), QPointF(px, py+6))
         elif params.get("src_switch"):
-            # 🔀 数据源切换 (2026-09-16 老倪: 仿真 ⇄ 真机, 就做在 📦 数据源节点上, 不加连线)
-            _st = params.get("src_state", "仿真")
+            # 🔀 数据源切换 (2026-09-16 老倪: 真机 → 插拔场景 → 摆盘场景, 就做在 📦 数据源节点上, 不加连线)
+            _st = _src_norm(params.get("src_state"))
             _on = (_st == "真机")
-            _col = QColor("#3fb950" if _on else "#8b949e")
+            _col = QColor("#3fb950" if _on else "#d29922")     # 真机=绿, 插拔/摆盘场景=琥珀 (一眼看出在哪个源)
             _r = QRectF(8, self.h - 26, self.w - 16, 20)
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setBrush(QBrush(QColor("#0d1117")))
@@ -3853,8 +3853,85 @@ class SimLinkItem(QGraphicsObject):
 # ════════════════════════════════════════════════════════════════
 # 画布视图
 # ════════════════════════════════════════════════════════════════
+# 🔀 2026-10-11 老倪: 「状态空间的数据源, 原来是 真机/仿真; 现在改成 真机/插拔场景/摆盘场景」
+#   真机     = Orin 远程只读 (原样, _data_source="bypass_real"), 场景真源不动
+#   插拔场景 = 原来的「仿真」那条算路 (metaworld 前馈/演示数据) + 全局场景真源切 SS-EPI-CORNER
+#   摆盘场景 = 同一套仿真算路 + 全局场景真源切 SS-TRAY-PLACE
+SRC_CYCLE = ("真机", "插拔场景", "摆盘场景")
+SRC_SCENE_ID = {"插拔场景": "SS-EPI-CORNER", "摆盘场景": "SS-TRAY-PLACE"}
+SRC_DESC = {"真机": "📡 真机 (Orin 远程只读: TCP位姿/关节/力/夹爪/图像)",
+            "插拔场景": "🧩 插拔场景 (SS-EPI-CORNER)",
+            "摆盘场景": "🧩 摆盘场景 (SS-TRAY-PLACE)"}
+
+
+def _src_norm(v):
+    """数据源状态归一: 老工程里存的是 '仿真' ⇒ 插拔场景 (与原来那条仿真路一字不动, 不回退)。"""
+    v = str(v or "").strip()
+    if v in SRC_CYCLE:
+        return v
+    if v in ("仿真", "sim", "metaworld"):
+        return "插拔场景"
+    return "真机"
+
+
+def _src_scene_dir(state):
+    """插拔/摆盘 对应的场景目录 (真源 = data/scene/scenes/<ID>, 与 3D视图/场景编辑同一份)。"""
+    sid = SRC_SCENE_ID.get(_src_norm(state))
+    if not sid:
+        return None
+    try:
+        import dreamview_scene_edit as _dse
+        return os.path.join(getattr(_dse, "ROOT", "") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "scene", "scenes", sid)
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
+def _apply_src_scene(state):
+    """切数据源时把**全局场景真源**也切过去 (ZMAX_SCENE_DIR + 已开场景窗 + 已导入模块的全局)。
+
+    返回 (ok, 说明串) —— 照实说切到哪、场景几个对象; 切不动就说切不动, 不装。
+    """
+    st = _src_norm(state)
+    if st == "真机":
+        return True, "真机: 场景真源不动 (ZMAX_SCENE_DIR=%s)" % (os.environ.get("ZMAX_SCENE_DIR") or "默认")
+    d = _src_scene_dir(st)
+    if not d or not os.path.isdir(d):
+        return False, "%s: 场景目录不存在 (%s)" % (st, d)
+    os.environ["ZMAX_SCENE_DIR"] = d                 # ← 全局真源: 3D视图/场景编辑/上下料视图都读它
+    n = -1
+    try:
+        with open(os.path.join(d, "objects3d.json"), encoding="utf-8") as _f:
+            n = len((json.load(_f) or {}).get("objects") or [])
+    except Exception:                                                      # noqa: BLE001
+        n = -1
+    _win = None
+    try:                                             # 已导入过 → 连模块内全局一起更新 (后开的窗口才不会拿到旧场景)
+        import sys as _sys
+        _m = _sys.modules.get("dreamview_scene_edit")
+        if _m is not None:
+            _m.SCENE_DIR = d
+            _m.OBJECTS3D = os.path.join(d, "objects3d.json")
+            _wcls = getattr(_m, "SceneEditWindow", None)
+            for _attr in ("_cur", "_window", "instance", "_singleton"):
+                _w = getattr(_wcls, _attr, None) if _wcls is not None else None
+                if _w is not None and hasattr(_w, "switch_to_dir"):
+                    _win = _w
+                    break
+    except Exception:                                                      # noqa: BLE001
+        pass
+    ok, why = True, ""
+    if _win is not None:
+        try:
+            ok = bool(_win.switch_to_dir(d, label=st))
+        except Exception as _e:                                            # noqa: BLE001
+            ok, why = False, " switch_to_dir: %s" % _e
+    return ok, "%s: ZMAX_SCENE_DIR → %s (对象 %s)%s%s" % (
+        SRC_DESC[st], d, ("?" if n < 0 else n),
+        (" · 场景窗已跟随" if _win is not None else " · 场景窗未开, 下次打开即生效"), why)
+
+
 def _canvas_src_state(module):
-    """画布当前输入源状态 → '仿真' | '真机'
+    """画布当前输入源状态 → '真机' | '插拔场景' | '摆盘场景' (老工程的 '仿真' 归一成 '插拔场景')
 
     🎥 2026-09-17 老倪: 「调了仿真模式, 右键打开输入图像还是现场视频」的根因 ——
     打开窗口时 source 写死 "real", 没跟画布「🔀 数据源切换」(📦 数据源节点 params.src_state) 走。
@@ -3863,11 +3940,11 @@ def _canvas_src_state(module):
     try:
         for n in getattr(module, "nodes", None) or []:
             st = (n.get("params") or {}).get("src_state")
-            if st in ("仿真", "真机"):
-                return st
+            if st is not None:
+                return _src_norm(st)                                        # 真机 / 插拔场景 / 摆盘场景
     except Exception:                                                      # noqa: BLE001
         pass
-    return "真机" if getattr(module, "_data_source", "") == "bypass_real" else "仿真"
+    return "真机" if getattr(module, "_data_source", "") == "bypass_real" else "插拔场景"
 
 
 class SimCanvas(QGraphicsView):
@@ -4206,8 +4283,8 @@ class SimCanvas(QGraphicsView):
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
-            a_srcsw = menu.addAction("切换数据源: 仿真 ⇄ 真机 (当前 %s)"
-                                     % item.node["params"].get("src_state", "仿真"))
+            a_srcsw = menu.addAction("切换数据源: 真机 → 插拔场景 → 摆盘场景 (当前 %s)"
+                                     % _src_norm(item.node["params"].get("src_state")))
         # 🚀 打开 VSCode 调试 (2026-08-30 老倪: 工程 + 自动虚拟环境, 断点单步)
         a_vscode = menu.addAction("打开 VSCode 调试")
         # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
@@ -4300,7 +4377,7 @@ class SimCanvas(QGraphicsView):
             #   真机: Orin srv → Docker → 本地文件轮询 ‖ 仿真: metaworld corner2 渲染帧
             try:
                 from yolo_input_viewer import open_input_viewer
-                _src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"
+                _src = "real" if _canvas_src_state(self.module) == "真机" else "sim"
                 open_input_viewer(self, module=self.module, source=_src)
             except Exception as _e:                                        # noqa: BLE001
                 try:
@@ -4311,7 +4388,7 @@ class SimCanvas(QGraphicsView):
             # 🔍 2026-09-24 老倪: 质量检测汇总终端 (帧源同样跟随画布数据源切换)
             try:
                 from aoi_inspect_console import open_aoi_console
-                _src = "sim" if _canvas_src_state(self.module) == "仿真" else "real"
+                _src = "real" if _canvas_src_state(self.module) == "真机" else "sim"
                 open_aoi_console(self, module=self.module, source=_src)
             except Exception as _e:                                        # noqa: BLE001
                 try:
@@ -12786,31 +12863,37 @@ class SimulinkModule(QWidget):
         return None
 
     def on_toggle_src(self, node):
-        """🔀 数据源切换 (仿真 ⇄ 真机) — 做在 📦 metaworld 数据源节点上 (2026-09-16 老倪)
+        """🔀 数据源切换 (真机 → 插拔场景 → 摆盘场景 → 真机) — 做在 📦 数据源节点上
 
-        真机: 读 4060 远程只读采集的真机帧 (TCP 位姿+姿态四元数/六关节/六维力/夹爪/机器人状态/**图像**)
-              → module._bypass_obs, _data_source="bypass_real"; 缺通道与未示教几何显式报缺
-        仿真: 回到 metaworld 演示数据源
+        2026-09-16 老倪: 先做成 仿真 ⇄ 真机 两态, 就做在节点上不加连线;
+        2026-10-11 老倪: 「原来是 真机/仿真; 现在改成 真机/插拔场景/摆盘场景」⇒ 三态循环。
+        真机: 读 Orin 远程只读的真机帧 (TCP 位姿/关节/力/夹爪/图像) → _bypass_obs, _data_source="bypass_real"
+        插拔场景: 原来的「仿真」那条算路 (metaworld 演示/前馈数据) + 场景真源切 SS-EPI-CORNER
+        摆盘场景: 同一套算路 + 场景真源切 SS-TRAY-PLACE
         """
         p = node.setdefault("params", {})
-        p["src_state"] = "真机" if p.get("src_state", "仿真") == "仿真" else "仿真"
-        self._data_source = "bypass_real" if p["src_state"] == "真机" else "metaworld"
+        cur = _src_norm(p.get("src_state"))
+        nxt = SRC_CYCLE[(SRC_CYCLE.index(cur) + 1) % len(SRC_CYCLE)]     # 真机 → 插拔场景 → 摆盘场景 → 真机
+        p["src_state"] = nxt
+        self._data_source = "bypass_real" if nxt == "真机" else "metaworld"
+        _ok, _msg = _apply_src_scene(nxt)
         it = self._items.get(node.get("id"))
         if it:
             it.update()
         self._save_param_to_flow(node, "src_state")
-        self._log(f"🔀 数据源切换 → {'📡 真机 (Orin 远程只读)' if p['src_state'] == '真机' else '🧪 仿真 (metaworld)'}")
+        self._log("🔀 数据源切换 → %s   [_data_source=%s]" % (SRC_DESC[nxt], self._data_source))
+        self._log("   %s" % _msg + ("" if _ok else "   ⚠️ 场景真源没切成功, 照实报"))
         # 🎥 2026-09-17 老倪: 输入图像窗口若开着 → 窗口跟着切源
         #   (否则画布已经切到仿真, 窗口还端着一路现场视频; 手动在下拉里切也行, 但容易忘)
         try:
             import yolo_input_viewer as _yiv
             _w = getattr(_yiv.YoloInputViewer, "_cur", None)
             if _w is not None and _w.isVisible():
-                # 💻 窗口手动选了「本机摄像头」→ 不动它 (手动源优先, 图像跟画布只对 真机/仿真 两路)
+                # 💻 窗口手动选了「本机摄像头」→ 不动它 (手动源优先, 图像跟画布只对 真机/场景 两路)
                 if getattr(_w, "source", "") == "usbcam":
                     self._log("🎥 输入图像窗口当前是「💻 本机摄像头」源 → 不跟随画布数据源切换")
                 else:
-                    _want = 1 if p["src_state"] == "仿真" else 0
+                    _want = 0 if _src_norm(p.get("src_state")) == "真机" else 1
                     if _w.cb.currentIndex() != _want:
                         _w.cb.setCurrentIndex(_want)   # 触发 _switch: 停旧源 → 起新源 → 数据根跟着切
                         self._log("🎥 输入图像窗口跟随切源 → %s"

@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10952,7 +10952,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.4 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.5 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10960,9 +10960,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.4 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.5 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.5: v5.47.5 — 状态空间数据源: 真机/仿真 ⇒ 真机 / 插拔场景 / 摆盘场景 (三态循环) 老倪原话: 「状态空间的数据源，原来是 真机/仿真；现在改成 真机/插拔场景/摆盘场景」  一、📦 数据源节点上的拨钮改成三态循环 (点一下走一步): 真机 → 插拔场景 → 摆盘场景 → 真机    · 真机     : 原样 —— Orin 远程只读真机帧 (TCP 位姿/关节/六维力/夹爪/图像), _data_source="bypass_real", 场景真源不动    · 插拔场景 : 原来的「仿真」那条算路 (metaworld 演示/前馈数据, 39D 状态/4D 动作) + **全局场景真源**切 SS-EPI-CORNER    · 摆盘场景 : 同一套算路 + 全局场景真源切 SS-TRAY-PLACE    · 场景真源切法 = ZMAX_SCENE_DIR (+ 已导入模块的 SCENE_DIR/OBJECTS3D 全局 + 已开场景窗 switch_to_dir),      与 3D 视图 / 场景编辑 / 上下料视图同一份真源; 场景窗没开就只落 env, 下次打开即生效 (日志照实说)。    · 老工程兼容: 存档里 params.src_state='仿真' 一律归一到 '插拔场景' —— 行为与原来那条仿真路一字不动, 不回退。  二、跟随项同步: 输入图像窗口 / 质量检测终端的帧源跟随 (真机→real, 两个场景→sim); 拨钮颜色 真机=绿, 场景=琥珀;    右键菜单文案 → 「切换数据源: 真机 → 插拔场景 → 摆盘场景 (当前 X)」。  三、判据 verify_src_3mode.py **PASS (0 失败)**: 真执行 SimulinkModule.on_toggle_src 循环    ['插拔场景','摆盘场景','真机','插拔场景'] · _data_source 映射对 (场景→metaworld, 真机→bypass_real)    · 切场景真的切到真目录 (插拔 SS-EPI-CORNER 42 对象 / 摆盘 SS-TRAY-PLACE 49 对象, 从 objects3d.json 实读)    · 已导入模块的全局跟着切 · 真机时场景真源按约定不动 · 无残留两态文案。
         # v5.47.4: v5.47.4 — 撤掉「📈 信号分析」波形模式, 数据空间窗口 Trace 只保留「信号名称」列 (老倪 2026-10-11 纠正) 老倪原话: 「你怎么把 trace的表格全给改了？只是让你增加信号名称，没让你增加波形显示啊。改回去、」  一、撤掉 (v5.47.3 里我做多余的那部分)    · 删掉 Trace 面板的 QStackedWidget 双层页 + 「📈 信号分析」模式 + 内嵌实时监控控件 (CanoeGraphicWidget) 的懒加载;    · 显示模式回到**只有两态**: 📌 固定行 ⇄ ▶ 滚动 (与改之前一字不差);    · _fill_trace / 表头 / 布局都恢复原状, Trace 面板现在**只有这张表**。    · 与 v5.47.2 逐行 diff 复核: 除 import 折行外, 只剩「新列」相关差异 (表列数 10→11、列宽表多一项、cells 多一个值)。  二、保留 (老倪本轮真正要的)    · Trace 表新增「信号名称」列 (索引 2, 紧跟 Name 之后; 固定行/滚动 两种模式都有):      Name = 话题名, 信号名称 = 这一帧/这一话题**携带的信号名** (live.json fields 键名 / trace digest 键名),      digest 是截断存的 ⇒ 用正则抠键名 (不 json.loads); 取不到显式 '—', 不装。      真机行样例: zmax/heartbeat | key_sample, sample_info ; zmax/link_value | —  三、判据重跑 verify_trace_col_only.py **7/7 PASS**    ① 保留「信号名称」列在索引 2 且有真值  ② 无波形显示 (无堆叠页/无内嵌控件, 表直接挂面板)    ③ 模式只有两态 固定行⇄滚动 (实测序列 roll→fixed→roll) 且切模式不产生波形页
         # v5.47.3: v5.47.3 — 数据空间窗口 Trace: 新增「信号名称」列 + 新增「📈 信号分析」显示模式 (老倪 2026-10-11) 老倪指令: 「在数字空间窗口, 在 trace里, 增加 信号名称 列; 在 滚动/固定行 两种显示模式的基础上, 增加 信号分析 模式, 只是同步显示 实时监控的信号」  一、Trace 表新增「信号名称」列 (索引 2, 紧跟 Name 之后; 两种显示模式都有)    · Name = 话题名; 信号名称 = 这一帧/这一话题**携带的信号名** (live.json fields 键名 / trace digest 键名)。    · digest 在 trace.jsonl 里是截断存的 ⇒ 用正则抠键名 (不 json.loads); 取不到显式 '—', 不装。    · 实测 (真机 OCR): Time | Name | 信号名称 | 实时值 · 边跑边变 | 分类 | hz 实测/设计 | count | 帧龄 (s) | QoS | lamp | 备注      行样例: zmax/heartbeat | key_sample, sample_info ; zmax/link_value | — (未提供)  二、新增「📈 信号分析」显示模式 (第三态: 📌 固定行 ⇄ ▶ 滚动 ⇄ 📈 信号分析)    · 同一个位置用 QStackedWidget 放两页: 0) Trace 表  1) 内嵌「实时监控」的**同一个控件类** CanoeGraphicWidget (懒加载: 首次切入才建)。    · 内嵌控件与「实时监控」共用同一份真源 (3D 场景快照 / 本机真值流 / Orin ROS2 / 全局数据空间) ⇒ 信号集合与时间口径天然同步, 不另起一套。    · 信号分析模式下 Trace 表不再后台刷新 (省 CPU); 再点按钮回到 固定行 + 表页。  三、判据 verify_ds_signal_mode.py 7/7 PASS (offscreen 真建窗)    ① 表里有「信号名称」列在索引 2 且有真实信号名 (非空非 '—')    ② 滚动模式同样有该列并填值    ③ 第三态 = 信号分析, stack 切到内嵌页, 内嵌控件是 CanoeGraphicWidget    ④ **内嵌信号集合 == 实时监控默认信号集合 (逐条相同: sstrace.末端.0/1/2 · 光模块头到孔_mm · 接触概率 · 安全边界_mps)**    ⑤ 再点回到固定行 + 表页    真机: 重启控制台后打开数据空间窗口, OCR 实测表头已含「信号名称」列。
         # v5.47.2: v5.47.2 — 小版本迭代（2026-10-11 现场验收后收口）老倪本轮指令:   「两个入口走同一套"加载后归一"」「删除 Z700 按钮, 增加 实时监控 按钮」「工位总览 → 产品大屏」   「状态空间独立页删除, 恢复原样, 但要跟文件打开的工程保持一致」「为什么已加载 proj 再点状态空间按钮屏幕还闪? 不要闪烁」   「实时监控窗口删掉(CANoe式)」「同步时间轴不要消失: 我移动 3D 播放按钮, 刚停止, 时间轴就不见了」  一、画布「🧮 状态空间」: 撤掉独立页 + 同一套加载后归一 + 不闪烁    · 删 tools/gui/ss_page_window.py (老倪否掉独立页), 按钮恢复 open_state_space() 装进主画布。    · normalize_after_load(): 两条入口 (状态空间按钮 / 文件→加载工程文件) 同一套 —— 加载→尺寸规则(280x110)      →按行重排→几何落盘回画布真源 (只写 x/y/w/h)。⚠️ 必须按 name 配对 (load_flow_file 给画布节点分新 id)。    · 不闪烁: ① 记账 (文件 md5 + 画布几何指纹) ⇒ "已在显示该文件内容的归一后状态"直接 return, 零重绘;      ② 真要重建 ⇒ _frozen(True) 包住 clear+load+重排, 最后只刷一帧。判据 verify_no_flicker.py 12/12 PASS;      真机连拍 8 帧像素差 0.0000 (shutter_flicker_probe.py)。    · 改完真源跑 engineering_db.py build, 否则 check 报漂移 ['project','canvas'] (已重建, 全绿)。  二、工具栏按钮口径    · 删 🚀 Z700 按钮 (能力不丢: open_z700_flow + 画布菜单固定入口)。    · 增 📈 实时监控 → 独立功能页 (open_monitor_window → open_graphic_window.sh, 已有窗口只置顶)。    · 改名: 数据空间窗口→🌐 数据空间; 3D 视图→🧭 3D场景; 🛰 工位总览→🖥 产品大屏 (服务一字不动)。    · 修真 bug: 控制台 env 的 QT_QPA_PLATFORM=xcb 让 Qt 子进程去 cv2/qt/plugins 找 xcb ⇒ 整进程退出      (观感"点了没反应"); 子进程 env 清 QT_QPA_PLATFORM/QT_PLUGIN_PATH + 脚本 unset (双保险)。    · 判据 tools/probe_canvas_menu.py 全绿 (9 菜单项真触发 / 5 按钮 isVisibleTo / Z700 无父容器 / 4 按钮点击真转发)。  三、产品大屏链 (工位总览服务 → 单一数据源 → 飞书 → web → APP)    · tools/dashboard_source.py 新增 screen 段: 直拉 :8793 /station/status + /ctl/status (实测 10/10 通道在线,      逐通道 fps/帧龄/卡死/kbps, frame_age_max_s, motion_armed, 机械臂 power/operation), 不通如实记 err。    · tools/dashboard_server.py :8799 只读服务 (不动在役 8793): / 手机优先页 · /dashboard.json · /dl/<APK>。    · APK 候选地址改为 ①产线 LAN 192.168.23.50:8799 → ②办公室 WiFi → ③公网 → ④包内离线页      (原包只烧 WiFi IP, 换网白屏); 重建 sha256 5373173a…, 下载件与构建件逐字符相同。    · tools/feishu_dashboard_push.py --notify-web --send: 飞书卡片真发 code=0 message_id om_x100b638ca7aef8a4df95ffee272cb7d。    · 公网缺口如实记录: dashboard.json 与 /dl/*.apk 在 datadrive.world 仍 404 ⇒ 需 web 侧 (ECS nginx) 接管。  四、实时监控 (信号分析页)    · 窗口标题删掉 "(CANoe 式)": 📈 实时监控 · Graphic 信号分析 (console 内嵌 tab 同步改名)。    · ▶ 同步时间轴不消失: 加 _pb_last (播放/拖动期间记 {t_s,ts,frame,total}); 3D 停下 (fresh=False) 竖线      **留在停下的那一刻** 并写 "(3D 已停在这一帧)"; 所有分支显式 setVisible(True); 再加"被缩放挤出去就把      x 范围撑到含它"一层兜底。判据 verify_pin_persist.py 10/10 PASS; 真机 watch 日志: fresh=False 后      竖线 x 原地不动 (9.000) 且标签仍在。    · 回归: time_corr / playback_cursor / monitor_graphic / pin_persist 4/4 PASS (TIME-CORR 曾在 3D 回放中      假失败, 停下后重跑 PASS —— 测试与在役播放的竞态, 非回归)。  五、技能沉淀 (docs/skills 同步)    · zmax-console: 独立功能页四件套与归一 (含 Qt 子进程 env 坑 / 按 name 配对坑)      · 产品大屏链 · 画布闪烁根因与修法 · 3D 停止竖线保持。
@@ -11607,7 +11608,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.4  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.5  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13349,7 +13350,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.4</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.5</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
