@@ -161,6 +161,34 @@ def restore(path=None, log=None):
     else:
         out["applied"]["scene_dir"] = None
         out["scene_why"] = "场景目录不存在或存档没记: %s" % (d or "—")
+    # 📌 2026-10-11 实测: 控制台重启时会把画布 src_state 写成默认「真机」(22:39:24 那次), 老倪选的摆盘就丢了
+    #   ⇒ 自恢复时按存档把 src_state 写回画布真源 —— 字节级只改这一个值, 其余排版/字节一字不动 (留 .bak)
+    _want_src = ds.get("src_state")
+    if _want_src:
+        try:
+            _txt = open(CANVAS, encoding="utf-8").read()
+            _cur_src = ""
+            try:
+                for _n in ((_j(CANVAS, {}) or {}).get("nodes") or []):
+                    _p = _n.get("params") or {}
+                    if _p.get("src_state"):
+                        _cur_src = _p["src_state"]
+                        break
+            except Exception:                                                   # noqa: BLE001
+                _cur_src = ""
+            if _cur_src != _want_src:
+                import re as _re
+                _new = _re.sub(r'("src_state"\s*:\s*")[^"]*(")',
+                               lambda m: m.group(1) + _want_src + m.group(2), _txt, count=1)
+                if _new != _txt:
+                    shutil.copy2(CANVAS, CANVAS + ".bak_before_proj_restore")
+                    open(CANVAS, "w", encoding="utf-8").write(_new)
+                    print("📌 画布数据源按工程存档回写: %r → %r" % (_cur_src or "(空)", _want_src))
+                    out["applied"]["src_state_written"] = _want_src
+            else:
+                out["applied"]["src_state_written"] = None
+        except Exception as _e:                                                 # noqa: BLE001
+            print("画布数据源回写跳过: %r" % (_e,))
     want = ds.get("active_task")
     cur = (_j(BIND, {}) or {}).get("active_task")
     out["applied"]["active_task_saved"], out["applied"]["active_task_now"] = want, cur

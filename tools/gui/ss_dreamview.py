@@ -316,6 +316,39 @@ _TABLE_COLOR_CREAM = (0.96, 0.94, 0.90, 1.0)      # 办公桌乳白
 _TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 兜底深灰 (未知场景)
 
 
+SRC_STATE_SCENE = {"摆盘场景": "SS-TRAY-PLACE", "插拔场景": "SS-EPI-CORNER", "仿真": "SS-EPI-CORNER", "真机": ""}
+
+
+def canvas_src_scene_id():
+    """📌 画布数据源 → 场景 id (state_space_obs.json 里 ssdata 节点的 src_state) —— 开机自恢复用。
+
+    2026-10-11 老倪「你要自动保存这种状态到 proj 项目文件中, 下次我可以继续调试」:
+    场景真源原来只活在进程 env (ZMAX_SCENE_DIR), 控制台一重启就回默认 (=插拔场景), 画布上写着「摆盘场景」也没用
+    ⇒ 画布 src_state 是存盘的, 开机按它恢复; .proj 里的 debug_state 记同一件事, 两条路同源。
+    """
+    try:
+        _p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                          "src/lerobot/engineering/flows/state_space_obs.json")
+        _d = json.load(open(_p, encoding="utf-8"))
+        for _n in (_d.get("nodes") or []):
+            _s = (_n.get("params") or {}).get("src_state")
+            if _s:
+                return SRC_STATE_SCENE.get(str(_s).strip(), "")
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return ""
+
+
+# 📌 开机自恢复 (只在本模块 import 时做一次; 显式设过 env 就不动): 控制台重启后 3D 场景仍跟着画布数据源
+if not os.environ.get("ZMAX_SCENE_DIR"):
+    _sid0 = canvas_src_scene_id()
+    if _sid0:
+        os.environ["ZMAX_SCENE_DIR"] = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "data", "scene", "scenes", _sid0)
+        print("📌 场景真源按画布数据源自恢复: ZMAX_SCENE_DIR → .../%s" % _sid0)
+
+
 def scene_mode(scene_id=None):
     """场景形态: 'tray' = 摆盘场景 (料盘 + 带槽位 tray盘, 不画插拔几何); 'plug' = 插拔/虚拟现实。"""
     _sid = (scene_id or "").strip() or \

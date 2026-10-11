@@ -36,6 +36,24 @@ import time  # 硬件工具箱日志时间戳
 import threading  # ★ 2026-09-25: 硬件卡 DDS 采集器后台线程（必须模块级导入）
 import math  # 离线仿真正弦波
 
+# 📌 2026-10-11 老倪: 「你要自动保存这种状态到 proj 项目文件中, 下次我可以继续调试」
+#   开机自恢复工程状态: 场景真源 (ZMAX_SCENE_DIR) + 画布数据源 (src_state) + 存档里的活跃任务。
+#   实测: 控制台一重启, 画布 src_state 会被写成默认「真机」(22:39:24 那次), 老倪选的「摆盘场景」当场丢
+#   ⇒ 启动第一步从工程存档 (.proj 的 debug_state) 回填, 字节级只改那一个值 + 留 .bak, 后续 GUI 加载读到的就是对的。
+try:
+    import importlib.util as _ilu_boot
+    _bp = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "proj_state.py")
+    _bs = _ilu_boot.spec_from_file_location("proj_state_boot", os.path.abspath(_bp))
+    _bm = _ilu_boot.module_from_spec(_bs)
+    _bs.loader.exec_module(_bm)
+    _br = _bm.restore()
+    _ba = _br.get("applied") or {}
+    print("📌 工程状态自恢复: 场景 %s · 数据源回写 %s · 存档任务 %s / 当前 %s"
+          % (_ba.get("scene_dir") or "—", _ba.get("src_state_written") or "无需改",
+             _ba.get("active_task_saved") or "—", _ba.get("active_task_now") or "—"))
+except Exception as _be:                                                        # noqa: BLE001
+    print("工程状态自恢复跳过: %r" % (_be,))
+
 # 🔬 2026-10-10 启动探测 (老倪 Windows exe 双击报 `MemoryError: Unable to allocate output buffer`):
 #   实测那行字 = **zlib 解包时分配不到内存**(CPython `_BlocksOutputBuffer`), 即启动那几秒进程拿不到内存,
 #   不是包坏也不是代码 bug —— 是机器侧的事, 远端看不见。所以在任何重依赖 import 之前, 先把
@@ -867,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.10")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.11")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10952,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.10 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.11 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10960,9 +10978,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.10 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.11 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.11: 工程状态开机自恢复 — 控制台启动第一步从 .proj 的 debug_state 回填场景真源+画布数据源(src_state)+活跃任务; 根因: 重启会把画布 src_state 写成默认真机(22:39:24实测), 老倪选的摆盘当场丢; 只改那一个值+留 .bak。判据 verify_proj_boot PASS
         # v5.47.10: 摆盘场景末端工具改真空吸盘 — 3D 场景按数据源画末端 (摆盘=吸盘, 插拔=两指夹爪), 判定依据=场景真源+活跃任务工艺并打印来源; 根因: _build_scene 尾部按图层开关整层置可见, 覆盖了单件 setVisible ⇒ 收口到图层之后; scene_mode 实返回 tray/plug, 原按 'peg' 判定落空已修。判据 tools/verify_tray_vacuum.py PASS 0 失败
         # v5.47.9: v5.47.9 — 调试状态自动存档到 .proj 工程文件 (下次接着调) 老倪原话: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」  一、新模块 tools/proj_state.py: 抓当前调试状态 → 写进工程文件的 debug_state 段 (原子写 + 自动备份 + 回读校验)    内容: 活跃任务 (绑定真源) · 数据源 src_state (画布 📦 数据源节点) · 场景 ID/目录 (data/scene/scenes/<ID>)         · 画布真源 md5 · 任务三态快照 · 主参数 M · 版本/时间; 上一份状态留在 _prev_debug_state 备查    工程文件不存在时先用真生产者 tools/ss_task_bind.py --export 生成 (默认 reports/projects/SS_主工程_任务配置.zmaxproj)  二、三处自动钩子    · 画布切数据源 (simulink_module.on_toggle_src) → 自动存档 + 日志「💾 调试状态已自动存档」    · 配置中心活跃属性下拉 (veh6_config_page._on_task_state_changed) → 自动存档    · 打开工程文件 (project_file.load_project) → 自动恢复存档的调试状态 (ZMAX_SCENE_DIR 场景真源 + 活跃任务), 结果进返回摘要 debug_state  三、CLI: python tools/proj_state.py save|show|restore|capture [--path P]  四、判据 verify_proj_state.py (真跑存档/回滚/恢复; 收尾保持老倪当前配置: 摆盘场景 + TASK-06-TRAY)    ① capture == 现状 (TASK-06-TRAY · 摆盘场景 · SS-TRAY-PLACE) ② 存档回读一致且工程文件其他段一字未动    ③ 模拟现场改变 (清场景真源 + 任务切回 TASK-01-FW) ④ restore 后场景真源与活跃任务都回到存档值    ⑤ 三处钩子都在 ⑥ 收尾真源字节还原, 仍是 TASK-06-TRAY 活跃
         # v5.47.8: v5.47.8 — 配置中心「活跃属性」列改成用户可自选下拉 (★ 活跃 / ○ 未激活 / — 无配置), 选中即真动作 老倪原话: 「配置中心的 活跃属性列, 增加新功能, 用户可以自主调整 活跃 未激活 等状态, 用下拉菜单,           用户可以选择配置的 UI, 你设计一下, 一会我要实际来配置状态空间的模型」  设计 (veh6_config_page.py · ConfigCenterPage「📋 任务配置」表第 9 列):   · 每行一个下拉; 改一下立刻生效 → 重算全表 + 表头计数 + 页内日志 (✅/⛔ + 原因, 失败绝不假成功)   · ★ 活跃   = 真激活: 走 tools/ss_task_bind.py --activate <TID> (写绑定真源 config/ss_task_binding.json + 激活台账), 回读校验 active_task;                活跃唯一 ⇒ 旧活跃任务自动变「○ 未激活」; 手选台账里该任务的记录同时清掉   · ○ 未激活 = 配置就绪但不激活 → 记 config/task_state_manual.json; **当前活跃任务不能直接标未激活** ⇒ 拒绝并提示先激活别的任务   · — 无配置 = 撤销手选 → 有真实运行证据的任务**拒绝降级** (拒绝时把证据路径打出来, 点下拉不会让证据消失)   · 状态优先级: 绑定真源 active_task > 用户手选 manual > 证据推导 (台账/运行报告) > 无配置   · 产物: config/task_state_manual.json (手选) + config/task_state_ledger.json (激活台账) + config/task_state.json (导出快照)   · CLI 同源: python tools/ss_task_state.py set 'TASK-06-TRAY:★ 活跃'  判据 verify_state_dropdown.py **11/11 PASS** (真起 ConfigCenterPage):   ① 6 行每行都是下拉, 三项齐全, 当前值 == 推导状态   ② 选「★ 活跃」真激活: 绑定真源 active_task → TASK-06-TRAY; 旧活跃 TASK-01-FW 自动变未激活; UI 与真源逐行一致   ③ 拒绝非法: 活跃任务标未激活 (提示活跃唯一) / 有证据的标无配置 (列出证据路径); 无证据的可手选未激活   ④ 收尾还原: 绑定真源/台账/手选文件字节还原 ⇒ 改前状态复原 (活跃 TASK-01-FW · 未激活 TASK-06-TRAY · 4×无配置), 可直接用于实际配置
@@ -11613,7 +11632,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.10  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.11  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13355,7 +13374,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.10</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.11</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
