@@ -22,8 +22,8 @@ from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtGui import QColor, QFont, QGuiApplication, QPainter
 from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
                              QLineEdit, QPushButton, QSplitter, QStyledItemDelegate, QTableWidget,
-                             QStackedWidget, QTableWidget, QTableWidgetItem, QTextEdit, QTreeWidget,
-                             QTreeWidgetItem, QVBoxLayout, QWidget)
+                             QTableWidgetItem, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                             QWidget)
 
 # ── 调色板(与控制台主色一致) ──
 C_BG, C_BG2, C_CARD, C_BORDER = "#0d1117", "#161b22", "#1c2333", "#30363d"
@@ -521,44 +521,8 @@ class BusView(QWidget):
         self._col_user = set()
         th.sectionResized.connect(self._on_col_resized)      # 🖱 用户拖过 ⇒ 以后不再自动适配
         self.tb.itemClicked.connect(self._on_trace_click)
-        # 🆕 2026-10-11 老倪: 「在 滚动/固定行 两种显示模式的基础上, 增加 信号分析 模式, 只是同步显示 实时监控的信号」
-        #   ⇒ 同一个位置放两页: 0) Trace 表 (固定行/滚动) 1) 内嵌「实时监控」同一控件 (CanoeGraphicWidget, 懒加载)
-        #     内嵌的就是同一个控件类 + 同一份真源 ⇒ 信号集合/时间口径天然同步, 不另起一套。
-        self.trace_stack = QStackedWidget()
-        self.trace_stack.addWidget(self.tb)
-        self.an_box = QFrame()
-        self.an_box.setStyleSheet(f"QFrame {{ background:{C_BG}; border:none; }}")
-        self.an_lay = QVBoxLayout(self.an_box)
-        self.an_lay.setContentsMargins(0, 0, 0, 0)
-        self.an_note = QLabel("📈 信号分析模式: 与「实时监控」同一套信号 (同一份真源) —— 首次切入时加载")
-        self.an_note.setStyleSheet(f"color:{C_GRAY}; padding:8px;")
-        self.an_lay.addWidget(self.an_note)
-        self.trace_stack.addWidget(self.an_box)
-        self.trace_stack.setCurrentIndex(0)
-        self.an = None
-        lay.addWidget(self.trace_stack, 1)
+        lay.addWidget(self.tb, 1)
         return box
-
-    def _ensure_analysis(self):
-        """📈 信号分析模式的内嵌控件 (与「实时监控」同一个 CanoeGraphicWidget ⇒ 信号与真源完全同步)。"""
-        if getattr(self, "an", None) is not None:
-            return self.an
-        try:
-            import canoe_graphic as _cg
-            self.an = _cg.CanoeGraphicWidget()
-            try:
-                self.an.log.connect(lambda s: self._say("📈 " + str(s)[:180]))
-            except Exception:                                                   # noqa: BLE001
-                pass
-            self.an_lay.addWidget(self.an, 1)
-            try:
-                self.an_note.setVisible(False)
-            except Exception:                                                   # noqa: BLE001
-                pass
-            self._say("📈 信号分析: 已内嵌实时监控控件 (同一份真源: 3D 场景快照 / 本机真值流 / Orin ROS2 / 全局数据空间)")
-        except Exception as e:                                                  # noqa: BLE001
-            self._say("⚠️ 信号分析模式不可用: %s: %s" % (type(e).__name__, e))
-        return self.an
 
     def _bottom_tabs(self):
         """CANoe 底部标签栏 → 数据闭环 | 质量告警 (+ 右下计时/拍照)"""
@@ -955,16 +919,6 @@ class BusView(QWidget):
             return "—"
         return ", ".join(names[:limit]) + (" …(%d)" % len(names) if len(names) > limit else "")
 
-    def _say(self, msg):
-        """打日志: 有 _log 就用它, 没有就 stdout (两种宿主都吃)。"""
-        f = getattr(self, "_log", None)
-        if callable(f):
-            try:
-                return f(msg)
-            except Exception:                                                   # noqa: BLE001
-                pass
-        print(msg, flush=True)
-
     @staticmethod
     def _digest_vals(dg):
         """trace 帧 digest → 「键=数值」一行 (回退用)。
@@ -1093,30 +1047,18 @@ class BusView(QWidget):
         return " · ".join(out)[:150]
 
     def _toggle_mode(self, _checked=False):
-        """📌 固定行 ⇄ ▶ 滚动 ⇄ 📈 信号分析 (老倪 2026-10-01: 默认固定行, 滚动看着太累;
-        2026-10-11: 「在 滚动/固定行 基础上, 增加 信号分析 模式, 只是同步显示 实时监控的信号」)"""
-        order = ("fixed", "roll", "signal")
-        cur = getattr(self, "_mode", "fixed")
-        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "fixed"
-        self._mode = nxt
-        self.btn_mode.setText({"fixed": "📌 固定行", "roll": "▶ 滚动", "signal": "📈 信号分析"}[nxt])
-        self.btn_mode.setChecked(nxt == "fixed")
+        """📌 固定行 ⇄ ▶ 滚动 (老倪 2026-10-01: 默认固定行, 滚动看着太累)
+
+        🚫 2026-10-11 老倪: 「你怎么把 trace 的表格全给改了? 只是让你增加信号名称, 没让你增加波形显示啊。改回去」
+          ⇒ 撤掉「📈 信号分析」波形模式, Trace 面板恢复成**只有这张表**, 两种显示模式 (固定行/滚动) 不变;
+            本轮唯一保留的改动 = 表里新增的「信号名称」列。
+        """
+        self._mode = "roll" if getattr(self, "_mode", "fixed") == "fixed" else "fixed"
+        self.btn_mode.setText("📌 固定行" if self._mode == "fixed" else "▶ 滚动")
+        self.btn_mode.setChecked(self._mode == "fixed")
         self._trace_sig_last = None
         self._lv_last = {}
-        if nxt == "signal":
-            self._ensure_analysis()
-            try:
-                self.trace_stack.setCurrentIndex(1)
-            except Exception:                                                   # noqa: BLE001
-                pass
-            self._say("📈 显示模式 → 信号分析 (与「实时监控」同一套信号 + 同一份真源, 只同步显示)")
-        else:
-            try:
-                self.trace_stack.setCurrentIndex(0)
-            except Exception:                                                   # noqa: BLE001
-                pass
-            self._say("📋 显示模式 → %s" % ("📌 固定行" if nxt == "fixed" else "▶ 滚动"))
-            self._fill_trace(force=True)
+        self._fill_trace(force=True)
 
     def _set_trace_header(self, mode=None):
         """设置表头。🖱 2026-10-01: **表头没变就不要重设** —— setHorizontalHeaderLabels
@@ -1224,8 +1166,6 @@ class BusView(QWidget):
         self.tb.setUpdatesEnabled(True)
 
     def _fill_trace(self, force=False):
-        if getattr(self, "_mode", "fixed") == "signal":       # 📈 信号分析模式: 表在后台不刷 (内嵌控件自己刷)
-            return 0
         if getattr(self, "_mode", "fixed") == "fixed":         # 📌 默认固定行(不滚动)
             return self._fill_trace_fixed(force=force)
         self._set_trace_header("roll")
