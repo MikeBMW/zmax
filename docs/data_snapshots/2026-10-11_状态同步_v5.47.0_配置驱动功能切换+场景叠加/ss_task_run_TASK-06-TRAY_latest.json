@@ -1,0 +1,542 @@
+{
+ "schema": "zmax.statespace.taskrun/1",
+ "started_at": "2026-10-11 07:04:52",
+ "task": {
+  "task_id": "TASK-06-TRAY",
+  "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+  "recipe_type": "摆盘取放",
+  "scene_ref": "SCN-06-TRAY",
+  "site": "SITE-A.ST11",
+  "ss_mode": "tray",
+  "applies_segments": [
+   "0 料源与来料状态",
+   "1 取件",
+   "2 姿态准备",
+   "3 识别与工位对接",
+   "4 放置/插入",
+   "6 分拣与回位",
+   "7 节拍与循环"
+  ],
+  "excluded_segments": [
+   "5 拔出/取回"
+  ],
+  "trigger": "满料周转盘到位 / Tray 盘满或周转盘空信号",
+  "loop": "单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
+  "targets": {
+   "单颗CT": "≤3.15s (PVT)",
+   "成功率": "≥99% (PVT)",
+   "取放精度": "单边 ≤1mm / ≤1°",
+   "连续": "≥12 盘周转盘"
+  },
+  "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖"
+ },
+ "config_effect": {
+  "mode": "tray",
+  "chain": "tools/gen_tray_place_video.py",
+  "chain_why": "取放链 (SK07=放入): 真空吸附取件 → 槽位下放, 无孔口/无推入",
+  "enabled_nodes": 52,
+  "disabled_nodes": [],
+  "run_cfg_on": [
+   "⚡引擎快演",
+   "🧩 L2 兼容 (前馈 MLP + YOLO)"
+  ],
+  "overrides": {
+   "pick.vac_establish_ms": 200,
+   "pick.hold_s": 5,
+   "pick.retry": 3,
+   "place.down_force_max": "配方上限(防压伤)",
+   "place.angle_tol_deg": 1.0,
+   "src.orient": "周转盘槽位朝向",
+   "cyc.takt": "单颗 ≤3.15s (PVT)",
+   "sort.pass_tray": "不适用(摆盘不分拣)"
+  }
+ },
+ "layers": {
+  "L5": "下指令 (任务意图)",
+  "L4": "保安全 (安全闸/可行域)",
+  "L3": "编流程 (八阶段状态机)",
+  "L2": "操作 (原子技能)",
+  "moveit": "执行 (仿真: MuJoCo 物理; 真机: MoveIt/下位机)"
+ },
+ "l2_skills": [
+  {
+   "code": "SK01",
+   "stage": "接近",
+   "name": "① 接近",
+   "desc": "① 接近 — 从初始位移动到光模块抓握点正上方 (悬停, 不触碰)"
+  },
+  {
+   "code": "SK02",
+   "stage": "对位",
+   "name": "② 对位",
+   "desc": "② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"
+  },
+  {
+   "code": "SK03",
+   "stage": "下降",
+   "name": "③ 下降",
+   "desc": "③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"
+  },
+  {
+   "code": "SK04",
+   "stage": "抓取",
+   "name": "④ 抓取",
+   "desc": "④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"
+  },
+  {
+   "code": "SK05",
+   "stage": "抬起",
+   "name": "⑤ 抬起",
+   "desc": "⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"
+  },
+  {
+   "code": "SK06",
+   "stage": "转移",
+   "name": "⑥ 转移",
+   "desc": "⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"
+  },
+  {
+   "code": "SK07",
+   "stage": "放入",
+   "name": "⑦ 放入",
+   "desc": "⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)"
+  },
+  {
+   "code": "SK08",
+   "stage": "完成",
+   "name": "⑧ 完成",
+   "desc": "⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"
+  }
+ ],
+ "stages": [
+  "接近",
+  "对位",
+  "下降",
+  "抓取",
+  "抬起",
+  "转移",
+  "放入(=放下)",
+  "完成"
+ ],
+ "activate": {
+  "rc": 0,
+  "out": "✅ 已激活 TASK-06-TRAY (写盘 config/ss_task_binding.json)"
+ },
+ "run": {
+  "mode": "tray",
+  "chain": "tools/gen_tray_place_video.py",
+  "rc": 0,
+  "sec": 3.16,
+  "log": "/tmp/ss_task_tray_1791673495.log"
+ },
+ "result": {
+  "per_module": [
+   "→ 槽1: Δxy=(+0.06,+0.34)mm Δz=+1.78mm · 姿态 0.04° (判据 ≤1.000mm/≤1.00°) · CT 10.64s/≤3.15s · 真空(进带→锁) 425ms⚠️超时 · ✅ 合格 (852 步)",
+   "→ 槽2: Δxy=(-0.12,+0.43)mm Δz=+1.78mm · 姿态 0.02° (判据 ≤1.000mm/≤1.00°) · CT 11.55s/≤3.15s · 真空(进带→锁) 538ms⚠️超时 · ✅ 合格 (925 步)",
+   "→ 槽3: Δxy=(-0.13,+0.47)mm Δz=+1.78mm · 姿态 0.02° (判据 ≤1.000mm/≤1.00°) · CT 11.62s/≤3.15s · 真空(进带→锁) 525ms⚠️超时 · ✅ 合格 (931 步)"
+  ],
+  "summary": "📊 摆盘汇总: 3/3 颗合格 · 合计 2708 步 · 1.4s",
+  "npz_meta": {
+   "seed": 0,
+   "scene": "sawyer_tray_place.xml",
+   "mode": "tray",
+   "params": {
+    "src": "TASK-06-TRAY",
+    "task_id": "TASK-06-TRAY",
+    "xy_tol_m": 0.001,
+    "yaw_tol_deg": 1.0,
+    "dz_tol_m": 0.004,
+    "vac_establish_ms": 200.0,
+    "hold_s": 5.0,
+    "takt_s": 3.15,
+    "targets": {
+     "单颗CT": "≤3.15s (PVT)",
+     "成功率": "≥99% (PVT)",
+     "取放精度": "单边 ≤1mm / ≤1°",
+     "连续": "≥12 盘周转盘"
+    }
+   },
+   "placed": 3,
+   "total": 3,
+   "steps": 2708,
+   "rest_z": 0.016,
+   "judges": [
+    {
+     "module": "peg",
+     "slot": 1,
+     "placed": true,
+     "released": true,
+     "dx_mm": 0.06062,
+     "dy_mm": 0.33589,
+     "dz_mm": 1.78447,
+     "yaw_err_deg": 0.042,
+     "steps": 852,
+     "ok": true,
+     "tol_xy_mm": 1.0,
+     "tol_yaw_deg": 1.0,
+     "tol_dz_mm": 4.0,
+     "ct_s": 10.6375,
+     "takt_s": 3.15,
+     "vac_establish_ms": 425.0,
+     "vac_limit_ms": 200.0,
+     "vac_ok": false,
+     "hold_s": 5.4875,
+     "hold_s_cfg": 5.0,
+     "spec_src": "TASK-06-TRAY",
+     "l45": {
+      "L4": {
+       "layer": "L4",
+       "limit": 0.6,
+       "z_floor": 0.095,
+       "force_cap_n": 3.0,
+       "force_cap_src": "配方上限(文本) → 默认 3.0N",
+       "cap_sim_n": 25.0,
+       "frames": 852,
+       "speed_lim": 0,
+       "force_veto": 0,
+       "force_retreat": 0,
+       "z_veto": 0,
+       "dit_smooth": 0,
+       "intact_off": 852,
+       "intact_slew": 0,
+       "over_spec": 0,
+       "max_force": 1.3446
+      },
+      "L5": {
+       "task_id": "TASK-06-TRAY",
+       "src": "TASK-06-TRAY",
+       "mode": "tray",
+       "stages": [
+        "接近",
+        "对位",
+        "下降",
+        "抓取",
+        "抬起",
+        "转移",
+        "放入",
+        "完成"
+       ],
+       "steps": [
+        "定位识别",
+        "取件",
+        "转运对位",
+        "放入",
+        "判态循环"
+       ],
+       "tol": {
+        "xy_m": 0.001,
+        "yaw_deg": 1.0,
+        "dz_m": 0.004
+       },
+       "takt_s": 3.15,
+       "speed_scale": 1.0,
+       "force_cap_n": 3.0,
+       "ins_depth_m": null,
+       "switches": {
+        "chk_engine_demo": true,
+        "chk_l3_full": false,
+        "chk_mani_yaw": false,
+        "chk_intact_exec": false,
+        "chk_l4_dit": false,
+        "chk_l2_compat": true
+       },
+       "applied": {
+        "intact_exec": false,
+        "dit": false,
+        "mani_yaw": false,
+        "l3_full": false,
+        "engine_demo": true
+       }
+      },
+      "notes": []
+     },
+     "stages": [
+      "阶段 接近",
+      "阶段 对位",
+      "阶段 下降",
+      "阶段 抓取",
+      "阶段 抬起",
+      "阶段 转移",
+      "阶段 放下",
+      "阶段 放下 · 接触",
+      "阶段 完成"
+     ]
+    },
+    {
+     "module": "peg2",
+     "slot": 2,
+     "placed": true,
+     "released": true,
+     "dx_mm": -0.12489,
+     "dy_mm": 0.42689,
+     "dz_mm": 1.78447,
+     "yaw_err_deg": 0.01689,
+     "steps": 925,
+     "ok": true,
+     "tol_xy_mm": 1.0,
+     "tol_yaw_deg": 1.0,
+     "tol_dz_mm": 4.0,
+     "ct_s": 11.55,
+     "takt_s": 3.15,
+     "vac_establish_ms": 537.5,
+     "vac_limit_ms": 200.0,
+     "vac_ok": false,
+     "hold_s": 5.4875,
+     "hold_s_cfg": 5.0,
+     "spec_src": "TASK-06-TRAY",
+     "l45": {
+      "L4": {
+       "layer": "L4",
+       "limit": 0.6,
+       "z_floor": 0.095,
+       "force_cap_n": 3.0,
+       "force_cap_src": "配方上限(文本) → 默认 3.0N",
+       "cap_sim_n": 25.0,
+       "frames": 925,
+       "speed_lim": 0,
+       "force_veto": 0,
+       "force_retreat": 0,
+       "z_veto": 0,
+       "dit_smooth": 0,
+       "intact_off": 925,
+       "intact_slew": 0,
+       "over_spec": 0,
+       "max_force": 1.3476
+      },
+      "L5": {
+       "task_id": "TASK-06-TRAY",
+       "src": "TASK-06-TRAY",
+       "mode": "tray",
+       "stages": [
+        "接近",
+        "对位",
+        "下降",
+        "抓取",
+        "抬起",
+        "转移",
+        "放入",
+        "完成"
+       ],
+       "steps": [
+        "定位识别",
+        "取件",
+        "转运对位",
+        "放入",
+        "判态循环"
+       ],
+       "tol": {
+        "xy_m": 0.001,
+        "yaw_deg": 1.0,
+        "dz_m": 0.004
+       },
+       "takt_s": 3.15,
+       "speed_scale": 1.0,
+       "force_cap_n": 3.0,
+       "ins_depth_m": null,
+       "switches": {
+        "chk_engine_demo": true,
+        "chk_l3_full": false,
+        "chk_mani_yaw": false,
+        "chk_intact_exec": false,
+        "chk_l4_dit": false,
+        "chk_l2_compat": true
+       },
+       "applied": {
+        "intact_exec": false,
+        "dit": false,
+        "mani_yaw": false,
+        "l3_full": false,
+        "engine_demo": true
+       }
+      },
+      "notes": []
+     },
+     "stages": [
+      "阶段 接近",
+      "阶段 对位",
+      "阶段 下降",
+      "阶段 抓取",
+      "阶段 抬起",
+      "阶段 转移",
+      "阶段 放下",
+      "阶段 放下 · 接触",
+      "阶段 完成"
+     ]
+    },
+    {
+     "module": "peg3",
+     "slot": 3,
+     "placed": true,
+     "released": true,
+     "dx_mm": -0.13158,
+     "dy_mm": 0.4658,
+     "dz_mm": 1.78447,
+     "yaw_err_deg": 0.02285,
+     "steps": 931,
+     "ok": true,
+     "tol_xy_mm": 1.0,
+     "tol_yaw_deg": 1.0,
+     "tol_dz_mm": 4.0,
+     "ct_s": 11.625,
+     "takt_s": 3.15,
+     "vac_establish_ms": 525.0,
+     "vac_limit_ms": 200.0,
+     "vac_ok": false,
+     "hold_s": 5.4875,
+     "hold_s_cfg": 5.0,
+     "spec_src": "TASK-06-TRAY",
+     "l45": {
+      "L4": {
+       "layer": "L4",
+       "limit": 0.6,
+       "z_floor": 0.095,
+       "force_cap_n": 3.0,
+       "force_cap_src": "配方上限(文本) → 默认 3.0N",
+       "cap_sim_n": 25.0,
+       "frames": 931,
+       "speed_lim": 0,
+       "force_veto": 0,
+       "force_retreat": 0,
+       "z_veto": 0,
+       "dit_smooth": 0,
+       "intact_off": 931,
+       "intact_slew": 0,
+       "over_spec": 0,
+       "max_force": 1.3451
+      },
+      "L5": {
+       "task_id": "TASK-06-TRAY",
+       "src": "TASK-06-TRAY",
+       "mode": "tray",
+       "stages": [
+        "接近",
+        "对位",
+        "下降",
+        "抓取",
+        "抬起",
+        "转移",
+        "放入",
+        "完成"
+       ],
+       "steps": [
+        "定位识别",
+        "取件",
+        "转运对位",
+        "放入",
+        "判态循环"
+       ],
+       "tol": {
+        "xy_m": 0.001,
+        "yaw_deg": 1.0,
+        "dz_m": 0.004
+       },
+       "takt_s": 3.15,
+       "speed_scale": 1.0,
+       "force_cap_n": 3.0,
+       "ins_depth_m": null,
+       "switches": {
+        "chk_engine_demo": true,
+        "chk_l3_full": false,
+        "chk_mani_yaw": false,
+        "chk_intact_exec": false,
+        "chk_l4_dit": false,
+        "chk_l2_compat": true
+       },
+       "applied": {
+        "intact_exec": false,
+        "dit": false,
+        "mani_yaw": false,
+        "l3_full": false,
+        "engine_demo": true
+       }
+      },
+      "notes": []
+     },
+     "stages": [
+      "阶段 接近",
+      "阶段 对位",
+      "阶段 下降",
+      "阶段 抓取",
+      "阶段 抬起",
+      "阶段 转移",
+      "阶段 放下",
+      "阶段 放下 · 接触",
+      "阶段 完成"
+     ]
+    }
+   ],
+   "history": [
+    "对位: 粗到位 手-光模块水平距离 0.0583 < 0.06",
+    "下降: 精对位完成 0.0189 < 0.02 → 可下降",
+    "抓取: 到达抓握位姿 (几何证据)",
+    "抬起: 夹持建立 gripper=0.90",
+    "转移: 光模块已提起 0.0813m > 0.08m",
+    "放下: 对准槽位 dist_h=0.0171 → 放入",
+    "完成: 放回初始位完成 (peg 触台 → 开爪)",
+    "对位: 粗到位 手-光模块水平距离 0.0583 < 0.06",
+    "下降: 精对位完成 0.0189 < 0.02 → 可下降",
+    "抓取: 到达抓握位姿 (几何证据)",
+    "抬起: 夹持建立 gripper=0.90",
+    "转移: 光模块已提起 0.0813m > 0.08m",
+    "放下: 对准槽位 dist_h=0.0173 → 放入",
+    "完成: 放回初始位完成 (peg 触台 → 开爪)",
+    "对位: 粗到位 手-光模块水平距离 0.0581 < 0.06",
+    "下降: 精对位完成 0.0188 < 0.02 → 可下降",
+    "抓取: 到达抓握位姿 (几何证据)",
+    "抬起: 夹持建立 gripper=0.90",
+    "转移: 光模块已提起 0.0814m > 0.08m",
+    "放下: 对准槽位 dist_h=0.0174 → 放入",
+    "完成: 放回初始位完成 (peg 触台 → 开爪)"
+   ],
+   "episode_tag": "20261011_070250"
+  },
+  "l45": null,
+  "l45_line": null,
+  "success": null,
+  "steps": 2708,
+  "stage_final": null,
+  "npz": "/home/ubuntu/zmax/reports/tray_place_latest.npz"
+ },
+ "artifacts": [
+  {
+   "path": "reports/tray_place_20261010_181412.mp4",
+   "bytes": 1419459,
+   "mtime": "2026-10-10 18:14:27"
+  },
+  {
+   "path": "reports/tray_place_20261011_060745.mp4",
+   "bytes": 1418834,
+   "mtime": "2026-10-11 06:07:58"
+  },
+  {
+   "path": "reports/tray_place_20261011_070250.mp4",
+   "bytes": 1418248,
+   "mtime": "2026-10-11 07:03:03"
+  },
+  {
+   "path": "reports/tray_place_latest.mp4",
+   "bytes": 1418248,
+   "mtime": "2026-10-11 07:03:03"
+  },
+  {
+   "path": "reports/tray_place_20261011_070341.npz",
+   "bytes": 960489,
+   "mtime": "2026-10-11 07:03:41"
+  },
+  {
+   "path": "reports/tray_place_20261011_070435.npz",
+   "bytes": 960489,
+   "mtime": "2026-10-11 07:04:35"
+  },
+  {
+   "path": "reports/tray_place_20261011_070446.npz",
+   "bytes": 960489,
+   "mtime": "2026-10-11 07:04:46"
+  },
+  {
+   "path": "reports/tray_place_20261011_070458.npz",
+   "bytes": 960489,
+   "mtime": "2026-10-11 07:04:58"
+  }
+ ]
+}
