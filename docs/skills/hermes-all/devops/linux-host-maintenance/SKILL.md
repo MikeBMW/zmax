@@ -420,7 +420,20 @@ Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有
 判据取三证: ①`ActiveEnterTimestamp` = 21:10:00 且 `NRestarts` 隔 20s 两次**不再涨**(冻在 4)
 ②`stat -c %y /var/log/zmax-ecs-*.log` 停更(21:09:50) ③公网探活 `https://datadrive.world/ov/live.json?k=…` 与 `/st/station?k=…` 双 200。
 三证齐 = 隧道已通, **不要去 ECS 上 kill sshd**(那是 §9c 的处置, 只在真的长时间抢不到口时用)。
-若非要去 ECS 上看: 占口的 `sshd` 用 `ps -o etimes` 看**存活秒数**就能区分新旧 —— 97s = 自己刚起的活隧道, 不是僵死会话。
+若非要去 ECS 上看: 占口的 `sshd` 用 `ps -o etimes` 看**存活秒数**可作**辅助**, **但不能当唯一判据** ——
+见下面 2026-10-11 的反例。
+
+**⚠️ 反例: `etimes` 看着"很新"的占口 sshd 也可能是坏的那一段 (2026-10-11 重启后实测)。**
+现象: 开机 ~3min 时 `zmax-ecs-ov/station` 都是 `activating (auto-restart)`、`ExitOnForwardFailure` exit 255,
+日志刷 `remote port forwarding failed for listen port 18791/18793` + `Timeout, server … not responding`;
+ECS 侧占口的两个 `sshd: root` 的 etimes 只有 **196s / 20s** —— 按 §9f② 的"秒数小=自己人"会被误判成"活隧道, 别动",
+但公网 `https://datadrive.world/ov/live.json?k=…` 与 `/st/station?k=…` 全是 **000(curl 10s 超时, 已连上 TLS 但 nginx 那头等不到响应)**。
+判据修正: **判死活的唯一硬证据是"本机闸门 200 + 公网 200 + POST 403"三连**; `etimes`/日志 tail 都可能骗人
+(客户端在 `-R` 建口之后立刻死掉时, ECS 侧留下的 sshd 也是"刚建的")。
+处置与 §9c 同(ECS 上 `kill` 掉 1879x 的持有者 → 本机 `systemctl restart` 两个隧道单元), 实测 kill 后重启
+**公网 ov/st 双双回到 200、POST 403、NRestarts 冻在 4 不再涨**。注意 ECS 的 sshd 保活(`ClientAliveInterval 30` 等)
+必须生效 —— `ClientAliveInterval 30`/`ClientAliveCountMax 3`/`TCPKeepAlive yes` **前后各有一份**(该文件里被注释的那三行仍在),
+判断时要看**未注释**的那份。
 
 **③ 8795 `hil_local_api.py` 是手工进程, 且工具层会拦 `nohup/setsid`。**
 写 `setsid nohup … &` 会被 Hermes 直接拒(`Foreground command uses shell-level background wrappers`) ⇒

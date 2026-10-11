@@ -374,7 +374,37 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   → ⑤ `engineering_db.py build` → ⑥ `ss_task_bind.py --check` + `engineering_db.py check`(+ 工程库服务 restart)。
   为什么卡这个序: ⑤必须在④之后 —— 先 build 再 save, 库就比总工程旧, `check` 每次都报 `drift ['project']`(实测反复中招);
   ④必须在③之后 —— 快照里落的是任务绑定指纹, 早了存的是旧的。画布 md5 一变, `ss_task_bind --check` 就会报"需重绑定"。
-- 保存前也要校验: 把有问题的画布存成"工程"比存不上更糟(下次加载会把它们写回来)。
+- ### 两条入口打开"同一个工程"为什么看起来不一样 (先证内容同源, 再量加载后几何)
+用户报「画布的状态空间按钮打开的工程，和文件加载工程文件，打开的不一样」时, 默认**不是两个工程**, 而是同一份真源的两种加载姿势。
+
+排查顺序 (顺序不能换):
+1. **内容同源**: `os.path.samefile(flows.canvas_path(), SM._flows_path("state_space_obs.json"))` + 两份 canvas md5。
+   真源与 `.proj` 存档的 canvas 段通常**逐字节同源** ⇒ 差异不在内容。
+2. **再量加载后几何** (逐节点 x/y/w/h): 两条路各离屏加载一次再比。
+   实测同一份 JSON: 按钮路 **38/74** 个节点被挪, 工程加载路 **33/74**, 同一节点 x 差几十~几百 px (如某推理节点 9456 vs 9323)。
+3. 差异对不上就先看那张拓扑图 (下面第 3 条), 别去改 `flows.save_canvas` 的写盘链。
+
+机制 (为什么必然不同):
+- 🔴 **真源 JSON 里的 `x/w` 只是输入**: 画布加载会把普通节点统一画成 280×110 (真源里存的常是 160×68)
+  ⇒ "文件坐标 ≠ 屏幕坐标"是常态, **不能拿屏幕坐标判断两个入口是不是同一个工程**。
+- 🔴 **两条路的"加载后处理"不一致**: `open_state_space()` (工具栏「🧮 状态空间」) 在 `load_flow_file` 之后**额外调
+  `_relayout_row_gaps(min_gap=56)`** (按 `round(y/60)` 分桶把桶内节点推到"前一个右缘+56");
+  工程加载路 (`_write_canvas` → `flows.save_canvas` → 重载) **不调** ⇒ 同一份 JSON 摊出两套坐标。
+- **回填范围也不同**: 按钮只回填**画布**; 文件加载/打开总工程是 **7 段集成式回填**
+  (画布 + 面板/6 运行开关/画布栈 + 标定 + 主参数 + 测量 + 任务) ⇒ 右尸栏/档位/参数也会变。
+  交付时要把这层一并说清, 否则用户会把"右侧栏不一样"也归到"画布不一样"。
+
+统一口径的修法 (二选一, 别两边各改一半):
+- 让两路走**同一套加载后归一**, 并把归一后的坐标**写回真源** ⇒ 文件==屏幕, 下次谁打开都一样, 也不再累积漂移; 或
+- 两路都不做 relayout (但 `_relayout_row_gaps` 是当年为解决"放大后节点互贴"加的, 去掉要重验重叠)。
+
+工具: `scripts/canvas_entry_geometry_diff.py` (离屏, 只读真源) —— 一次跑出: 是否同源 · A/B 几何差哪些节点 · 各被界面改了多少。
+实测旁证: 工程加载留痕在 `zmax_data/logs/open_project.log`, 画布备份在
+`data/database/<产品>/sources/canvas/_archive/state_space_obs_before_space_open_*.json` ——
+**两者内容 md5 相同 ⇒ 加载只动了界面, 没改内容** (能当场排掉"工程被改坏"的怀疑)。
+工程库 `.db` 的 `canvas_nodes` 只有 74 条 (真源 89 节点) 是**设计口径** (只存与 `functions` 对齐的逻辑节点), `engineering_db.py check` 全绿即正常, 不是漂移。
+
+保存前也要校验: 把有问题的画布存成"工程"比存不上更糟(下次加载会把它们写回来)。
 - 命令行自检 `gui-venv311/bin/python tools/gui/project_file.py`; 端到端自检(存→读摘要→载→画布 md5 不变 +
   备份生成 + 软链未被替换 + 坏文件被拒)见 `/tmp/verify_project_feature.py`, 加 `--studio` 再验 studio.py 离屏 import。
 - ⚠️ `QFileDialog` 在 `studio.py` 里是**函数内局部导入**(不在顶部 import 块) —— 新写的 handler 里要自己 `from PyQt5.QtWidgets import QFileDialog`。
@@ -412,6 +442,8 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 对画布文件做 `tmp`+`os.replace` 原子写 | 仓库根 `flows/state_space_obs.json` **和** `src/lerobot/engineering/flows/state_space_obs.json` 都是**软链** ⇒ 被换成普通文件, 工程结构破坏 (`verify_platform_spec` ⑦ / `instance_init.py --check` 立刻变红) | 写前 `os.path.realpath()` 取真源路径再 replace; 备份放仓库根 `flows/_archive/` (既有约定) |
 | 以为画布真源只有一份 | 改了一份、GUI 读的是另一份 ⇒ 改了看不见 | **真源 = `data/database/<产品>/sources/canvas/state_space_obs.json`**; `src/lerobot/engineering/flows/state_space_obs.json` 是指向它的**软链** (GUI 经仓库根 `flows/` 软链读同一份)。判据: `bash`→`realpath flows/state_space_obs.json` 必须落在实例包内 + `tools/instance_init.py --check` ①全绿 |
 | 改完画布没重存总工程 | `verify_project_archive` 报「集成式打开后 diff: 总工程 == 现场」❌ | 改画布后按序: 画布 → `ss_node_sync.py`(需要时) → `ss_task_bind --activate` → **`project_archive.py space-save`** → `engineering_db.py build` → 两个 `--check` |
+| 以为两条入口打开的是**两个工程** | 同一个工程, 两入口画布摆位/右尸栏不一样 | 先证内容同源 (`samefile` + canvas md5), 再量"加载后几何" —— 差异多来自 `_relayout_row_gaps` 只在按钮路跑; 见«两条入口打开同一个工程» |
+| 逐项比对探针报"一致 0 / 不一致 0" | 看着像"完全没差异", 其实是**键集合不相交** (一边用 id 一边用 name) = 假绿 | 探针先 `assert set(a) & set(b)` 且断言交集条数 == 两边条数, 再比内容; 键一律用同一个 `key(n) = name or id` |
 | 画布真源被 GUI 保存**悄悄回滚** | 改了真源, 过几分钟内容又变回旧的 (实测 mtime 变、`params.core` 消失) | 控制台退出/另存为会把内存里的画布写回真源 ⇒ **① 改完立刻回读 + 记 mtime; ② 尽量在控制台没加载该画布时改; ③ 交付前再回读一次**, 别只看第一次写成功 |
 | 加节点后忘了同步 `_EXTERNAL_LOC` 行号 | `t_auto_srcmap`(L2/L4 在跑) 报「Lx无符号」 | 改真源后重算 `class X`/常量的行号并更新映射 (±3 行容错但别赌) |
 | 以为改 `capability_levels.py` 会改变断言数 | 只在 `groups` 里报真实 `t_*` 前缀才影响计数; 加 `groups: []` 的功能条目 (如 L4-C16) 计数不变 | 加能力条目用空 groups; 别写错前缀 |

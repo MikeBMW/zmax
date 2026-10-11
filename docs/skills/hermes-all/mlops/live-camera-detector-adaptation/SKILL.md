@@ -69,6 +69,14 @@ systemctl --user status <job> ; journalctl --user -u <job> -f
 脚本里加 `--detached` 做**自我重入** (主进程起完单元立即返回, 否则 GUI 阻塞等待)。
 判断独立性: `ps -o pid,ppid,args -p <pid>` —— 真独立的是 `systemd --user` 下的 `<unit>.service`。
 
+## 4·补、相机被服务独占时: 检测要做在**持有相机的那一侧** (2026-10-11 实测)
+
+RealSense D435(以及多数工业相机)是独占设备: 谁起了 pipeline, 别的进程再开就 `Device or resource busy`。
+实测症状: `tools/ar_calib_module.py detect` 单独跑报「没有帧 / xioctl(VIDIOC_S_FMT) failed, errno=16」,
+而在**持有相机的 AR 服务进程内**调同一个 `detect()` 立刻拿到结果。
+⇒ 规矩: 相机由常驻服务持有时, 检测/取帧**不要另起进程**, 而是在该服务里加端点(本项目 `GET /api/rs_detect`),
+把「在役权重 + 深度反投影」封装在同一进程里; 外部工具(标定脚本/CLI)只调端点。
+
 ## 5. GUI 交互坑 (检测器接入可视层时)
 
 - **叠加框绝不能污染存档**: 画框要在**显示副本**上; 保存训练样本必须用**原始帧**变量

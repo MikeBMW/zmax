@@ -177,6 +177,20 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 验收要**真机重启后看**: `kill -9 <显式PID>` → `bash tools/gui/launch_studio.sh`(自带防重复实例) →
   `xdotool search --name "XSpace Studio"` 取几何 → `scrot` 全屏 → 按窗口几何裁左下角 → 放大 3~4 倍读字。
 
+## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
+- 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
+  也会被判「你怎么把表格全给改了? 只是让你增加 X 列」并要求改回去: 白做一轮 + 多一次回退版本。
+  多余的想法写进**回复**里问, 不要先写进代码。
+- **交付前自证范围干净**: 与被改前的 rev 逐行 diff, 除目标改动外不该有别的 hunk ——
+  `git show <旧rev>:<file> > /tmp/before.py && diff -u /tmp/before.py <file>`; 连 import 折行这类无关差异也还原成原样。
+- **撤功能时判据要同步撤**: 旧判据脚本留在目录/后台跑会拿已删的功能报 ✗, 被当成回归。
+  改成「断言该功能不存在」(`not hasattr(w, "trace_stack")`) 或删脚本, 并在回复里点明那条 ✗ 是旧判据。
+- **回退不重写历史**: 新出一版并在摘要写清「撤掉 X, 保留 Y」, 让版本表读得出「加了又撤」的来龙去脉。
+- **判据手法: 用 stub 真跑控件处理方法, 不建整窗**。有些方法不在你以为的类上 (画布视图 vs 模块控制器) ⇒
+  逼历模块属性 `hasattr(cls, name)` 动态找拥有者, 然后用未绑定方法手传 self:
+  造一个 stub 只暴露方法用到的属性 (`_items/_data_source/_log/_save_param_to_flow`), 调 `Cls.on_toggle_src(stub, node)`;
+  断言副作用真发生 (点击序列/落盘/环境变量/磁盘上实读的对象数), 而不是只看代码里写了什么。
+
 ## 验证模式 (ad-hoc fresh 验证)
 - 环境: `QT_QPA_PLATFORM=offscreen` + 系统 python3（GUI 依赖 PyQt5/numpy/PIL/cv2 在系统 python，训练依赖在 .venv）
 - tempfile 脚本: `hermes-verify-<主题>-*.py` 写 /tmp → 运行 → 删除（不跑正式测试套件）

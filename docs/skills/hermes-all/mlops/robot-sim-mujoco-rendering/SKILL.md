@@ -38,6 +38,15 @@ peg 是 **free body** (qpos 7 维: 平移3+四元数4)。找它: 遍历 body 名
 → 之后**现场几何/obs 全部重读** (决策链靠现场几何自恢复, 不写死常量)。
 注入时机: env.reset 后、obs/geom 采样前。可控复现: 引擎加 `_jitter_override` dict 供回归矩阵。
 
+**钉/搬运一个 free body: 设 qpos 必须同时清 qvel** (否则速度继续累积, 每步掉 ~9.81×ctrl_dt):
+```python
+jid = m.body_jntadr[m.body(name).id]
+d.qpos[m.jnt_qposadr[jid]:+3] = pos          # 必要时再写 :+7 四元数
+d.qvel[m.jnt_dofadr[jid]:+6] = 0.0           # 漏这行 ⇒ 钉 0.35 读到 0.343, 且逐帧越掉越深
+mujoco.mj_forward(m, d)
+```
+漏清 qvel 的典型症状: 被"刚性夹持/吸附"的件读数持续低于指令位姿, 抬起段目标一旦锚在活件上就飞车 (见 §9)。
+
 ## 5. 死局早停判据必须排除夹持转移段
 
 "peg 漂移 >10cm → 布局死局换重试" 只在 **未夹持** 时判定 (抓起 peg 转移去孔位, peg 离初始
@@ -53,6 +62,40 @@ peg 是 **free body** (qpos 7 维: 平移3+四元数4)。找它: 遍历 body 名
 旁路模型 (如 WorldModelPredictor) 训练时 hidden_dim/num_layers 若与默认不同, 引擎实例化
 必须显式传同一架构, 否则 `load_state_dict` 报 Unexpected key → 静默回退随机权重。
 日志里 "predictor 注入失败: Unexpected key(s)" 即此。
+
+## 8. 出片机位: env.render() 的相机在构造时锁死, 想换要自己建 Renderer
+
+- `env.render()` 的相机 = **构造 env 时的 camera_name**, 之后设 `env.camera_name=...` 或传
+  `render(camera_name=...)` **都无效** (gymnasium 的 `MujocoEnv.render()` 不接受任何参数 →
+  `TypeError: unexpected keyword argument 'camera_name'`); 逐个相机试出来像素**逐位相同**即此症状。
+- 分辨率受模型的离屏缓冲限制 (metaworld 默认 `vis.global_.offwidth/offheight = 480`):
+  直接开 960×720 会 `ValueError: Image width 960 > framebuffer width 480`。
+  **先放大缓冲再建渲染器**:
+```python
+m.vis.global_.offwidth, m.vis.global_.offheight = 960, 720
+ren = mujoco.Renderer(m, height=720, width=960)
+cam = mujoco.MjvCamera(); mujoco.mjv_defaultCamera(cam)
+cam.lookat[:] = (0, 0.56, 0.02); cam.distance = 0.92; cam.azimuth = 90.0
+cam.elevation = -89.5          # 见下
+ren.update_scene(d, camera=cam); frame = ren.render()
+```
+- **elevation 选角要按遮挡算**: 斜视 (-78°) 时深盘/深槽的壁会把里面的件挡掉 (实测末帧金色
+  像素 0~8); 近正俯视 (-89.5°) 才看得见, 件像素可差 20 倍以上。
+- **腔体内件必须自己验可见性, 不能凭"我传了相机"就信**: 消融法 —— 把目标件移到视野外
+  (如 z=-5) 渲一帧, 与正常帧求差, 变化区的 bbox/像素数就是该件在画面里的真实占位
+  (件宽 52mm、视距 0.92m 时约 950px/颗)。数字太小 ⇒ 画面拍了等于没拍。
+
+## 9. 仿真控制三坑 (都是"判据全错但不报错"类)
+
+1. **目标不能锚在活件上**: 若 target = 活件当前位姿 + 偏置, 而活件又被钉在工具上, 目标会随件
+   自抬升 ⇒ 正反馈飞车 (手飞到台面外)。抓/吸成功那一刻把目标锚定 (`top0 = 当前件顶面`),
+   之后的抬起/转移/下放全部相对锚点算。
+2. **先验几何可行性, 再看控制**: 控制链路全绿却放不进去时, 先量**间隙** (槽位开口 vs 件外形)。
+   实测: 隔板 20mm 厚 + 节距 30mm ⇒ 开口 10~15mm < 件宽 20mm, 件物理上放不进去, 只能骑在
+   隔板棱上 (落座高 +3.6mm、单边偏 2.5mm) —— 看着像"控制精度不够", 实际是几何不可行。
+   夹具/槽位的尺寸与节距必须在真源里对得上, 仿真与 3D 视图同源改一次即同步。
+3. **释放时机决定横向残差**: 距落座 6mm 就断真空/开爪 ⇒ 件自由落体时横向漂 2.2mm 撞壁;
+   收到 1.5mm 内再放, 残差 ≤0.5mm。判据要按工艺配方定 (单边 ≤1mm / 姿态 ≤1°), 别自己放宽。
 
 ## 关联
 

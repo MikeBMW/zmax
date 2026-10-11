@@ -5,6 +5,22 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 
 # 产线 AOI 检测服务 (Z-MAX, 工控机 192.168.23.23)
 
+## 🆕 客户端 `tools/aoi_link.py` (2026-10-11): 缺陷判决 + 矩形搜索 + 侧边修正 一次拿全
+
+```bash
+gui-venv311/bin/python tools/aoi_link.py health 10082     # 只读(端口/路由/落盘张数)
+gui-venv311/bin/python tools/aoi_link.py inspect 10082    # 真拍 → 判决 + /region 矩形 + 侧边修正
+```
+- 语义照本技能: `POST /capture_detect` 200 只是受理, **判决必须轮询 `/last_result`**(本模块已内置 ≤45s 轮询);
+  `/region` 的 `quad` 用 `minAreaRect` 出矩形 + 倾角; 侧边修正给 **Δx(px) + 反旋角(°)**,
+  px→mm **要现场雅可比, 没校准时如实留空, 不编数**。
+- 实测(2026-10-11 夜, 10082): `verdict=OK · count=0 · 推理 1715ms` ·
+  `bbox=[1045,1439,365,29]` 倾角 `1.75°` · minAreaRect 中心 (1228.0,1453.9) 尺寸 **363.8×17.5px** · Δx=+4.0px ·
+  判据图 900×332 黑底 0.406(v36-gold19-cxwin, state=ok, **n_keys 8~13 在跳**)。
+  ⚠️ 该帧区域只有 363×17.5px(vs 前视真值 1455×70) ⇒ 位姿/工件不同; `state=ok` 只代表判据渲染成功, 不是 19 根定案。
+- AR 侧同源接口(8797 `tcp_ar_server.py`): `POST /api/aoi/inspect` · `GET /api/aoi/{state,read}` · `/api/aoi/gold.jpg`;
+  结果落 `zmax_data/ar_aoi_state.json`(AR 页面直接读, 不用重复拍照)。
+
 与 Orin 同网段(192.168.23.x)。跑两份 Flask 程序「Z-MAX 表面检测 AOI 程序 · 优化版 v3」,
 **端口→模型映射**决定检测类型。
 

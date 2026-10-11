@@ -84,6 +84,22 @@
   `w._default_done=True; w.scope_combo.setCurrentIndex(1); selected.clear()` 才能测通用能力
   (新默认断言归 `verify_signal_window.py`)。
 
+### topic 在哪 / 名字与「数据空间」对不对得上 (高频追问, 先说位置再谈对应)
+* **topic 就在左栏第 4 列「来源话题」** (表头 `["信号名称","当前值","帧龄","来源话题"]`, 内容由 `_src_hint(key)` 生成);
+  名称列是 `_disp_name(key)`: `ros.*` 保留话题全路径, `sstrace.`/`ds.` 前缀剥掉; tooltip 给完整 key + 来源 + 点数。
+* 四类来源列写法: `ros.*` → `Orin ROS2 · <话题>` · `ds.*` → `DDS · zmax/<话题名>` · `sstrace.*` → `SS_TRACE_SRC` 血缘表
+  (末端=`/robot/tcp_pose (Orin 50Hz)` · 夹爪=`/gripper_pos (Orin)` · 环境接触/夹持=`/robot/force_torque (Orin)` ·
+  光模块/光模块头=`YOLO 3D 检测 (旁路 JSON)` · 光模块头到孔=`L2 引擎 (孔口 objects3d.json)` · 其余=`L2 状态空间引擎 (无话题)`) ·
+  其余 → `本机真值流 (JSON)`。
+* **DDS 名字与「数据空间」页同源**: 键 = `ds.<登记话题名>.<字段>`, 名称列渲染成 `zmax/<话题名>.<字段>`,
+  来源列 `DDS · zmax/<话题名>` (真源同为 `zmax_data/dataspace/{trace.jsonl,live.json,busdb.json}`)。
+  实测 9/9 登记名都能命中; 但**有名字 ≠ 有帧** —— live.json 口径 `registered=24 / allowed=9 / alive=5`,
+  没在发的话题 0 条是如实为空, 不是 bug。DDS 行「帧龄」列是 `-` (未算话题级帧龄), 值 `-1` = DDS 未提供约定。
+* ⚠️ **「找不到 topic」先看数据范围下拉**: 默认 `3d` 只列 3D 场景数据 (`sstrace.*`); ROS/DDS/本机真值流要切
+  「🌐 数据范围: 全部来源」才出现 ⇒ 答这类问题前先 `scope_combo.setCurrentIndex(1)` 再 dump 树。
+* 取证: `probe_topic_names.py` —— 切全部来源 → 打印每行四列 + live.json 登记话题 → 逐条比对命中数
+  (`ds.<话题>.` 前缀)。比看截图快, 还能给出"对应上 N/M"的数。
+
 ## ▶ 播放游标: 3D 进度条 ⇄ 波形竖线 (2026-10-11 老倪: 「3D 场景播放状态条的实际点要和实时监控的时间戳一致;
 ## 我在 3D 场景调整播放时间进度条, 实时监控的时间轴竖线也要在屏幕上同步左右移动」)
 
