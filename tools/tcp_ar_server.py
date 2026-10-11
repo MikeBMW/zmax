@@ -54,13 +54,35 @@ PORT = int(os.environ.get("AR_PORT", "8797"))
 PAGE = os.path.join(REPO, "tools", "web", "tcp-ar.html")
 CALIB = os.path.join(REPO, "data", "scene", "laptop_cam_calib.json")            # 旧单相机文件(兼容保留)
 MCALIB = os.path.join(REPO, "data", "scene", "cam_calib.json")                   # 多相机: {"local":{...},"local2":{...}}
-# 每台固定相机的原生分辨率(标定点按像素存, 必须和分辨率绑定; 混用 = 投影全错)
-CAMS = {"local": {"w": 640, "h": 480, "label": "笔记本相机 640×480", "mjpg": "/local.mjpg"},
-        "local2": {"w": 1280, "h": 720, "label": "MAXHUB 相机 1280×720", "mjpg": "/local2.mjpg"},
-        # 🥽 2026-10-11 老倪新接的 Intel RealSense D435: 本机直连, **有深度 + 出厂内参**
-        #   ⇒ 标定只解 R,t(焦距/主点用出厂的), 深度还能直接量相机系 3D。
-        "rs": {"w": 640, "h": 480, "label": "Intel RealSense D435 640×480 (彩色+深度)",
-               "mjpg": "/rs.mjpg", "depth": True, "intrinsics": "device"}}
+# 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
+#   机器人手臂的 RealSense、金手指检测相机、表面检测相机 —— 这 4 个相机都照射着同一个场景, L5 层 deepseek VL 能理解它」
+#   ⇒ AR 底图来源分两类, 一律**登记真实分辨率**(标定点是像素量纲, 混用必错):
+#     ① src="sstate": 状态空间工程的视频数据源 —— 单一真源 = tools/cam_live_stream.py @8791(工位总览 8793 同源),
+#        这里只**订阅**, 不另起相机: 🦾 手臂 RealSense D405 / 🔍 金手指检测(10082) / 🧪 表面检测(10083) / 💻 USB 内置 / 📺 MAXHUB
+#     ② src="usb": 本机 USB RealSense D435(AR 服务自持 pipeline, 有深度+出厂内参 ⇒ 可反投影/3D 叠加)
+#   实测(2026-10-12 逐路拉快照): arm 640×480 · gold 900×332 · gold_raw 1400×1171 · surface 1280×1280 · local 640×480 · local2 1280×720
+CAMS = {
+    "arm":     {"w": 640,  "h": 480,  "label": "🦾 机器人手臂 RealSense D405 (Orin 臂上)", "mjpg": "/arm.mjpg",
+                "src": "sstate", "overlay": "2d", "depth": True},
+    "gold":    {"w": 900,  "h": 332,  "label": "🔍 金手指检测相机 (工控机 OPT 10082·判据图)", "mjpg": "/aoi_gold.mjpg",
+                "src": "sstate", "overlay": "2d", "stats_key": "aoi_gold"},
+    "gold_raw": {"w": 1400, "h": 1171, "label": "🔍 金手指检测·整板原图 (10082)", "mjpg": "/aoi_gold_raw.mjpg",
+                 "src": "sstate", "overlay": "2d", "stats_key": "aoi_gold_raw"},
+    "surface": {"w": 1280, "h": 1280, "label": "🧪 表面检测相机 (工控机 OPT 10083)", "mjpg": "/aoi_surface.mjpg",
+                "src": "sstate", "overlay": "2d", "stats_key": "aoi_surface"},
+    "local":   {"w": 640,  "h": 480,  "label": "💻 USB 内置相机 640×480", "mjpg": "/local.mjpg",
+                "src": "sstate", "overlay": "2d"},
+    "local2":  {"w": 1280, "h": 720,  "label": "📺 MAXHUB 顶摄 1280×720", "mjpg": "/local2.mjpg",
+                "src": "sstate", "overlay": "2d"},
+    "rs":      {"w": 640,  "h": 480,  "label": "🎥 USB RealSense D435 (彩色+深度·本机直连)", "mjpg": "/rs.mjpg",
+                "depth": True, "intrinsics": "device", "src": "usb", "overlay": "3d"},
+}
+# AR 底图默认 = 状态空间工程的视频数据源(手臂相机) —— 老倪: 「背景的真实图像应该是状态空间工程的视频数据源」
+DEFAULT_CAM = os.environ.get("AR_DEFAULT_CAM", "arm")
+# 🥽 老倪点名的 4 台相机(同一场景 4 视角): UI 首屏就把这 4 个摆出来
+FOUR_CAMS = ("arm", "gold", "surface", "rs")
+SRC_NOTE = {"sstate": "状态空间工程视频源 (8791 cam_live_stream · 工位总览 8793 同源)",
+            "usb": "本机 USB Intel RealSense D435 (AR 服务直连)"}
 TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 IMG_W, IMG_H = 640, 480
 
@@ -210,6 +232,117 @@ def save_calib(cam, obj):
     return MCALIB
 
 
+
+# ───────────────────────── 🥽 AR 底图来源 / L5 理解 (2026-10-12) ─────────────────────────
+def _ss_stats(timeout: float = 3.0) -> dict:
+    """状态空间工程视频源的每路实况(在线/fps/帧龄/上游 label) —— 真源在 8791, 这里只转发, 不重算。"""
+    try:
+        with urllib.request.urlopen(UP + "/stats", timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8", "ignore"))
+    except Exception as e:                                                        # noqa: BLE001
+        return {"_err": "%s: %s" % (type(e).__name__, e)}
+
+
+def _cams_payload() -> dict:
+    """底图来源清单: 每路带 来源/分辨率/是否已标定/在线/帧龄(从视频源真值读)。"""
+    st = _ss_stats()
+    out = {}
+    for k, v in CAMS.items():
+        d = dict(v)
+        d["stream"] = "/cam.mjpg?c=" + k
+        d["snapshot"] = "/snap/%s.jpg" % k
+        d["calibrated"] = bool(load_calib(k))
+        d["src_note"] = SRC_NOTE.get(d.get("src"), d.get("src") or "")
+        d["four"] = (k in FOUR_CAMS)
+        s = st.get(d.get("stats_key") or k) if isinstance(st, dict) else None
+        if isinstance(s, dict):
+            d["online"] = s.get("online")
+            d["age_s"] = s.get("age_s")
+            d["fps"] = s.get("fps")
+            d["stalled"] = s.get("stalled")
+            d["label_src"] = s.get("label")
+        elif k == "rs":                       # 本机 USB D435 不在 8791 stats 里 ⇒ 自己真抓一帧自证
+            try:
+                _b = _rs_jpeg(82)       # 真抓一帧(与 /snap/rs.jpg 同源) ⇒ 在线与否有实据, 不靠"以为"
+                d["online"] = bool(_b)
+                d["age_s"] = 0.0 if _b else None
+                d["label_src"] = SRC_NOTE["usb"]
+            except Exception as e:                                                # noqa: BLE001
+                d["online"] = False
+                d["label_src"] = "抓帧失败: %s" % type(e).__name__
+        out[k] = d
+    return {"ok": True, "cams": out, "default": DEFAULT_CAM, "four": list(FOUR_CAMS),
+            "calibrated": [c for c in CAMS if load_calib(c)],
+            "ss_stats_err": (st.get("_err") if isinstance(st, dict) else None),
+            "src_note": SRC_NOTE}
+
+
+def frame_bytes(cam: str):
+    """取**当前底图这一路**的一帧原始 JPEG(L5 理解/证据/快照都用它, 与页面看到的是同一路)。"""
+    if cam == "rs":
+        return _rs_jpeg(82), "rs(本机 USB RealSense D435)"
+    mj = (CAMS.get(cam) or CAMS[DEFAULT_CAM]).get("mjpg") or "/arm.mjpg"
+    snap = "/snapshot/%s.jpg" % mj.rsplit("/", 1)[-1][:-5]      # /arm.mjpg -> /snapshot/arm.jpg
+    return _get(snap, timeout=20.0), cam
+
+
+PY_EXE = os.path.join(REPO, "gui-venv311", "bin", "python")
+L5_BRIDGE = os.path.join(REPO, "tools", "ar_l5_understand.py")
+
+
+def l5_understand(cam: str = None, hint: str = "") -> dict:
+    """L5 层 deepseek VL 理解当前底图这一帧: 抓帧 → **子进程桥** → 引擎 L5(SceneVLM) → 文字 + 框。
+
+    为什么走子进程: 引擎要拉 torch(GB 级), AR 服务是常驻轻进程 —— 进程内 import 会顶到内存红线。
+    失败一律如实回报(不编造理解结果), 并带帧字节/来源/耗时, 便于现场分清"没帧"还是"模型没起"。
+    """
+    cam = cam or DEFAULT_CAM
+    t0 = time.time()
+    try:
+        jpg, src = frame_bytes(cam)
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "cam": cam, "err": "取帧失败: %s: %s" % (type(e).__name__, e)}
+    if not jpg or jpg[:2] != b"\xff\xd8":       # 必须是真 JPEG: 上游报错时别把错误页当图喂给模型
+        return {"ok": False, "cam": cam, "err": "该路这一帧不是有效 JPEG(相机没出图/上游报错)",
+                "frame_bytes": len(jpg or b"")}
+    if not os.path.isfile(L5_BRIDGE):
+        return {"ok": False, "cam": cam, "err": "缺桥脚本 %s" % L5_BRIDGE, "frame_bytes": len(jpg)}
+    w = int((CAMS.get(cam) or {}).get("w") or 640)
+    h = int((CAMS.get(cam) or {}).get("h") or 480)
+    import subprocess
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".jpg", prefix="arl5_")
+    os.write(fd, jpg)
+    os.close(fd)
+    try:
+        cmd = [PY_EXE if os.path.isfile(PY_EXE) else sys.executable,
+               L5_BRIDGE, "--jpg", tmp, "--w", str(w), "--h", str(h), "--cam", cam]
+        if hint:
+            cmd += ["--hint", hint]
+        pr = subprocess.run(cmd, capture_output=True, text=True,
+                            timeout=float(os.environ.get("AR_L5_TIMEOUT", "380")))
+        lines = [ln for ln in (pr.stdout or "").splitlines() if ln.strip().startswith("{")]
+        if not lines:
+            return {"ok": False, "cam": cam, "frame_bytes": len(jpg),
+                    "err": "桥脚本没给 JSON(rc=%s)" % pr.returncode, "stderr": (pr.stderr or "")[-300:]}
+        r = json.loads(lines[-1])
+        r.update({"cam": cam, "src": src, "w": w, "h": h, "frame_bytes": len(jpg),
+                  "latency_s": round(time.time() - t0, 1),
+                  "via": "engine:SceneVLM (L5 deepseek VL · 子进程桥)"})
+        return r
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "cam": cam, "frame_bytes": len(jpg),
+                "err": "L5 超时(>%ss): 引擎在跑但没及时返回" % os.environ.get("AR_L5_TIMEOUT", "380")}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "cam": cam, "frame_bytes": len(jpg),
+                "err": "L5 调用失败: %s: %s" % (type(e).__name__, e)}
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-tcp-ar/1.0"
@@ -255,8 +388,12 @@ class H(BaseHTTPRequestHandler):
             if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar"):
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
                     self._send(200, "text/html; charset=utf-8", f.read())
-            elif p == "/api/cams":
-                self._json({"ok": True, "cams": CAMS, "calibrated": [c for c in CAMS if load_calib(c)]})
+            elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)
+                self._json(_cams_payload())
+            elif p == "/api/ss_stats":          # 🥽 状态空间工程视频源(8791 cam_live_stream)原始实况
+                self._json({"ok": True, "stats": _ss_stats()})
+            elif p == "/api/l5/understand":     # 🥽 L5 层 deepseek VL 理解当前底图(抓帧→子进程桥→引擎 L5)
+                self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
             elif p == "/api/traj":
@@ -322,6 +459,9 @@ class H(BaseHTTPRequestHandler):
                 self._proxy_stream(p)
             elif p.startswith("/snapshot/") and p.endswith(".jpg"):
                 self._send(200, "image/jpeg", _get(p))
+            elif p.startswith("/snap/") and p.endswith(".jpg"):     # 🥽 按相机键取一帧(rs 走本机, 其余走状态空间视频源)
+                _b, _src = frame_bytes(p[len("/snap/"):-4])
+                self._send(200, "image/jpeg", _b)
             else:
                 self._send(404, "text/plain", b"not found")
         except Exception as e:                                                    # noqa: BLE001

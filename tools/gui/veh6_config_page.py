@@ -363,11 +363,28 @@ def _scenes_index():
 
 
 def _scene_cell(t):
-    """🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增「场景」列 (短标签 · 场景ID)。"""
+    """🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增「场景」列 (短标签 · 场景ID)。
+
+    🥽 2026-10-12 老倪: 「信号分析也用 绿色/蓝色/紫色 代表对应不同的场景」⇒ 配置中心这一列**同色**,
+    颜色/映射单一真源 = tools/ss_scene_switch.py(插拔#2e8b57 绿 · 摆盘#1f6feb 蓝 · AR#8957e5 紫), 一致到像素。
+    """
     sid = t.get("scene_ref") or "—"
     sc = _scenes_index().get(sid) or {}
     st = _SCENE_SHORT.get(sc.get("scene_type"), sc.get("scene_type") or "")
     return ("%s · %s" % (st, sid)) if st else str(sid)
+
+
+def _scene_color(t):
+    """该任务场景对应色 (给单元格上色用); 没映射 = 空串(不上色, 不猜)。"""
+    try:
+        import ss_scene_switch as _ssw
+        m = _ssw.TASK_SCENE.get(str(t.get("task_id")))
+        return (m or {}).get("color") or ""
+    except Exception:                                                             # noqa: BLE001
+        return ""
+
+
+_SCENE_COLOR_CACHE = {}
 
 
 def _scene_tip(t):
@@ -772,6 +789,13 @@ class ConfigCenterPage(QWidget):
                     _it = self.tasks_table.item(_i, _c)
                     if _it is not None:
                         _it.setToolTip(_tip)
+                # 🥽 2026-10-12: 场景列按三色上色 (插拔绿/摆盘蓝/AR紫) —— 与 3D 场景按钮、信号分析同色同源
+                _col = _scene_color(_t)
+                _it2 = self.tasks_table.item(_i, 2)
+                if _it2 is not None and _col:
+                    from PyQt5.QtGui import QColor as _QC, QBrush as _QB
+                    _it2.setForeground(_QB(_QC(_col)))
+                    _it2.setToolTip((_it2.toolTip() or "") + "\n场景色 %s (与 3D 场景按钮 / 信号分析 同一套色)" % _col)
         except Exception:                                                       # noqa: BLE001
             pass
         self._task_rows = [t["task_id"] for t in tk.get("tasks", [])]

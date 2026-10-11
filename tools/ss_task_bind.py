@@ -312,6 +312,15 @@ def main():
         except Exception:                                                       # noqa: BLE001
             pass
         print(f"✅ 已激活 {doc['active_task']} (写盘 config/ss_task_binding.json)")
+        # 🥽 2026-10-12 老倪: 「切换 任务1 FW-对应插拔场景; 任务6 TRAY 对应摆盘场景; 任务7 AOI 对应 AR场景」
+        #   ⇒ 活跃配置一变, **数据源/场景跟着变**(映射单一真源 = tools/ss_scene_switch.py)。
+        #   切不动只提示, 不拦激活(激活本身已成功), 免得把配置中心卡死。
+        try:
+            import ss_scene_switch as _ssw
+            _r = _ssw.switch(doc["active_task"])
+            print(f"  🧩 场景/数据源: {'✅' if _r.get('ok') else '⛔'} {_r.get('msg')}")
+        except Exception as _e:                                                 # noqa: BLE001
+            print(f"  ⚠️ 场景切换未生效 (激活已成功): {type(_e).__name__}: {_e}")
         return 0
     if a.task:
         t = next((x for x in doc["tasks"] if x["task_id"] == a.task), None)

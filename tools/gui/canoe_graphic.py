@@ -76,6 +76,30 @@ DS_LIVE = os.path.join(DS_DIR, "live.json")
 DS_BUSDB = os.path.join(DS_DIR, "busdb.json")
 
 # 本机真值流默认源 (存在才启)
+# 🥽 2026-10-12 老倪: 「每个场景对应不同的信号分析…信号分析主窗口的信号是有目标场景的, 你得标记出来;
+#   信号分析也用 绿色 蓝色 紫色 代表对应不同的场景; 要有排序功能, 按 绿/蓝/紫/白 排列, 白=所有颜色的信号都显示,
+#   没有分类的信号都是白色」 ⇒ 标签真源 = tools/sig_scene_tags.py(颜色/任务映射又来自 tools/ss_scene_switch.py, 不重写)。
+SCENE_SORT_WHITE = "#ffffff"
+SCENE_SORT_ITEMS = (("⚪ 全部(白)", "", SCENE_SORT_WHITE), ("🟢 插拔", "插拔场景", "#2e8b57"),
+                    ("🔵 摆盘", "摆盘场景", "#1f6feb"), ("🟣 AR", "AR场景", "#8957e5"))
+
+
+def _scene_tags_mod():
+    """加载 信号→场景 标签真源; 任何异常都返回 None(页面照常可用, 只是不标色)。"""
+    try:
+        import importlib.util
+        p = os.path.join(ROOT, "tools", "sig_scene_tags.py")
+        _spec = importlib.util.spec_from_file_location("zmax_sig_scene_tags", p)
+        _m = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
+        return _m
+    except Exception:                                                         # noqa: BLE001
+        return None
+
+
+SST = _scene_tags_mod()
+
+
 HOST_SOURCES = [
     ("pose",    "zmax_data/rokae_sdk/tcp_out/latest.json"),
     ("state",   "zmax_data/rokae_sdk/tcp_out/state.json"),
@@ -1304,6 +1328,22 @@ class CanoeGraphicWidget(QWidget):
         top.addWidget(self.filter, 1)
         top.addWidget(b_refresh)
         lv.addLayout(top)
+        # 🥽 2026-10-12 老倪: 「信号分析要有个排序的功能, 即按照 绿色/蓝色/紫色/白色 来排列;
+        #   白色就是所有颜色的信号都显示」⇒ 四个按钮 = 四色; 选色后该色**置顶**(其余压暗但仍显示), 白=全部不排序。
+        self._scene_sort = ""
+        sc_row = QHBoxLayout()
+        self._scene_btns = {}
+        for _lab, _val, _col in SCENE_SORT_ITEMS:
+            _b = self._btn(_lab, ("全部显示(不按场景排序)" if not _val else "按场景排序: %s 置顶(色 %s)" % (_val, _col)), _col)
+            _b.clicked.connect(lambda _=False, v=_val: self._set_scene_sort(v))
+            self._scene_btns[_val] = _b
+            sc_row.addWidget(_b)
+        sc_row.addStretch(1)
+        self._scene_lab = QLabel("")
+        self._scene_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px")
+        sc_row.addWidget(self._scene_lab)
+        lv.addLayout(sc_row)
+        self._scene_sync_lab()
 
         self.tree = QTreeWidget()
         self.tree.setColumnCount(4)
@@ -1707,7 +1747,7 @@ class CanoeGraphicWidget(QWidget):
                              if b.src not in ("ros", "ds", "file")
                              and not b.key.startswith("ar.")          # ar. 单独成组 (见下)
                              and (b.key.startswith("sstrace.") if only3d else True)],
-                            key=lambda x: x.key)
+                            key=lambda x: (self._scene_rank(x.key), x.key))
         if host_items:
             for b in host_items:
                 if filt and filt not in b.key.lower():
@@ -1726,7 +1766,7 @@ class CanoeGraphicWidget(QWidget):
         # 1b) 🥽 AR 场景 · 空间点位 / AOI 话题 (按注册表分组; 数据范围=全部来源时才列)
         if not only3d:
             ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
-                              key=lambda x: x.key)
+                              key=lambda x: (self._scene_rank(x.key), x.key))
             if ar_items:
                 grp = self._ar_groups()
                 ar_root = QTreeWidgetItem(["🥽 AR 场景 · 空间点位 / AOI 话题  (ar_aoi_live.json)", "", "", "", ""])
@@ -1882,6 +1922,45 @@ class CanoeGraphicWidget(QWidget):
             return "DDS · " + key[3:].split(".")[0]
         return "本机真值流 (JSON)"
 
+    def _scene_rank(self, key):
+        """排序秩: 当前选中色 = 0(置顶), 其余 = 1(仍显示, 不隐藏)。白(未选) ⇒ 全部同级(不排序)。"""
+        if not getattr(self, "_scene_sort", ""):
+            return 0
+        if SST is None:
+            return 0
+        try:
+            return 0 if SST.tag(key) == self._scene_sort else 1
+        except Exception:                                                     # noqa: BLE001
+            return 1
+
+    def _scene_sync_lab(self):
+        """标题行实况: 当前画布数据源/场景 + 各色信号计数(照实报, 不编)。"""
+        try:
+            import ss_scene_switch as _ssw
+            _cur = _ssw.now().get("src_state") or "?"
+        except Exception:                                                     # noqa: BLE001
+            _cur = "?"
+        _n = {}
+        if SST is not None:
+            try:
+                for _k in list(self.store.bufs.keys()):     # 快照键: 实时源线程同时在加键, 直接迭代会 RuntimeError
+                    _s = SST.tag(_k) or "未分类"
+                    _n[_s] = _n.get(_s, 0) + 1
+            except Exception:                                                 # noqa: BLE001
+                _n = {}
+        _sel = self._scene_sort or "全部(白)"
+        self._scene_lab.setText("场景排序: %s · 当前数据源场景: %s · 计数 %s"
+                                % (_sel, _cur, " ".join("%s=%d" % (k, v) for k, v in sorted(_n.items())) or "—"))
+
+    def _set_scene_sort(self, val):
+        self._scene_sort = val or ""
+        for _v, _b in getattr(self, "_scene_btns", {}).items():
+            _on = (_v == self._scene_sort)
+            _b.setStyleSheet("font-weight:%s" % ("700" if _on else "400"))
+        self._log("🎨 信号排序: %s" % (self._scene_sort or "全部(白) — 所有颜色的信号都显示"))
+        self._scene_sync_lab()
+        self._fill_tree()
+
     def _make_item(self, b, checked=False, label=None):
         name = label or self._disp_name(b.key)
         it = QTreeWidgetItem([name, "-", "-", self._src_hint(b.key)])
@@ -1890,6 +1969,20 @@ class CanoeGraphicWidget(QWidget):
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
         it.setForeground(0, QColor(b.color))
+        # 🥽 场景标记: 有目标场景的用场景色 + ●(绿/蓝/紫), 没分类的用白圈 ○(老倪: 没有分类的都是白色)
+        if SST is not None:
+            try:
+                _sc = SST.tag(b.key)
+                if _sc:
+                    it.setText(0, "● " + it.text(0))
+                    it.setForeground(0, QColor(SST.color(b.key)))
+                    it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 由 tools/sig_scene_tags.py 打标"
+                                  % (_sc, SST.color(b.key)))
+                else:
+                    it.setText(0, "○ " + it.text(0))
+                    it.setToolTip(0, it.toolTip(0) + "\n场景: 未分类 (白)")
+            except Exception:                                                 # noqa: BLE001
+                pass
         return it
 
     def _apply_col_widths(self):

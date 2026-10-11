@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""信号 → 目标场景 标签 (单一真源) —— 信号分析页按 绿/蓝/紫/白 标记与排序 (老倪 2026-10-12 逐字要求)。
+
+老倪: 「每个场景对应不同的信号分析…信号分析主窗口的信号是有目标场景的, 你得标记出来…
+       信号分析也用 绿色 蓝色 紫色 代表对应不同的场景; 信号分析要有个排序的功能, 即按照 绿色/蓝色/紫色/白色 来排列,
+       白色就是所有颜色的信号都显示, 没有分类的信号都是白色」
+
+颜色/任务 → 场景 的映射**不在这里重写**, 统一从 tools/ss_scene_switch.py 取(那才是唯一映射表):
+    插拔场景 #2e8b57 (绿 · TASK-01-FW) / 摆盘场景 #1f6feb (蓝 · TASK-06-TRAY) / AR场景 #8957e5 (紫 · TASK-07-AOI)
+
+信号→场景的证据来源(谁有证据就按谁, 没证据就是白/未分类, 不硬猜):
+  ① config/topics/ar_aoi_signals.json 的组 → AR场景(紫)   [AR/AOI 话题是真算出来的, 见组内 src]
+  ② zmax_data/task_runs/<TASK>/ 下的运行产物里真出现过的信号名 → 该任务对应场景(--from-runs)
+  ③ config/topics/scene_tags.json 的 overrides (人工/学习到的补充, 可编辑)
+
+用法:
+  ./gui-venv311/bin/python tools/sig_scene_tags.py --build [--from-runs]   # 生成/刷新注册表
+  ./gui-venv311/bin/python tools/sig_scene_tags.py --summary               # 各场景信号数
+  ./gui-venv311/bin/python tools/sig_scene_tags.py --tag "光学质量检测.判决"
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+
+OUT = os.path.join(ROOT, "config", "topics", "scene_tags.json")
+AR_REG = os.path.join(ROOT, "config", "topics", "ar_aoi_signals.json")
+RUNS = os.path.join(ROOT, "zmax_data", "task_runs")
+WHITE = "#ffffff"          # 未分类 = 白
+
+sys.path.insert(0, ROOT)
+try:
+    import ss_scene_switch as SSW                      # 颜色/任务映射的唯一真源
+    TASK_SCENE = dict(SSW.TASK_SCENE)
+    SCENE_COLOR = dict(SSW.SCENE_COLOR)
+except Exception:                                                             # noqa: BLE001
+    TASK_SCENE = {"TASK-01-FW": {"scene": "插拔场景", "color": "#2e8b57"},
+                  "TASK-06-TRAY": {"scene": "摆盘场景", "color": "#1f6feb"},
+                  "TASK-07-AOI": {"scene": "AR场景", "color": "#8957e5"}}
+    SCENE_COLOR = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5", "真机": "#c9d1d9"}
+SCENES = [v["scene"] for v in TASK_SCENE.values()]
+
+
+def scenes_payload() -> dict:
+    """给 UI 用的场景表(颜色+任务+scn, 顺序 = 绿 蓝 紫)。"""
+    out = []
+    for tid in ("TASK-01-FW", "TASK-06-TRAY", "TASK-07-AOI"):
+        m = TASK_SCENE.get(tid) or {}
+        if not m:
+            continue
+        out.append({"task": tid, "scene": m["scene"], "scn": m.get("scn", ""), "color": m["color"],
+                    "label": m.get("name") or m["scene"]})
+    return out
+
+
+def _registry() -> dict:
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:                                                         # noqa: BLE001
+        return {"signals": {}, "overrides": {}}
+
+
+def _ar_signals() -> dict:
+    """AR/AOI 注册表里的信号名(裸名, 不带 ar. 前缀) → 组名。"""
+    out = {}
+    try:
+        with open(AR_REG, encoding="utf-8") as f:
+            d = json.load(f)
+        for g, items in (d.get("groups") or {}).items():
+            for it in (items or []):
+                k = it.get("key") if isinstance(it, dict) else it
+                if k:
+                    out[str(k)] = g
+    except Exception:                                                         # noqa: BLE001
+        pass
+    return out
+
+
+def _run_signals() -> dict:
+    """扫描 zmax_data/task_runs/<TASK>/ 的运行产物, 取真出现过的信号名 → 该任务的场景 (有证据才标)。"""
+    out = {}
+    if not os.path.isdir(RUNS):
+        return out
+    for tid in os.listdir(RUNS):
+        scene = (TASK_SCENE.get(tid) or {}).get("scene")
+        if not scene:
+            continue
+        base = os.path.join(RUNS, tid)
+        for root, _d, files in os.walk(base):
+            for fn in files:
+                if not fn.endswith((".json", ".jsonl")):
+                    continue
+                p = os.path.join(root, fn)
+                try:
+                    if fn.endswith(".jsonl"):
+                        with open(p, encoding="utf-8", errors="ignore") as f:
+                            for ln in f:
+                                try:
+                                    _walk_keys(json.loads(ln), out, scene)
+                                except Exception:                             # noqa: BLE001
+                                    pass
+                    else:
+                        with open(p, encoding="utf-8", errors="ignore") as f:
+                            _walk_keys(json.load(f), out, scene)
+                except Exception:                                             # noqa: BLE001
+                    continue
+    return out
+
+
+def _walk_keys(obj, acc: dict, scene: str, depth: int = 0):
+    if depth > 4:
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            acc.setdefault(str(k), scene)
+            _walk_keys(v, acc, scene, depth + 1)
+    elif isinstance(obj, list) and obj:
+        _walk_keys(obj[0], acc, scene, depth + 1)
+
+
+def _node_signal_tags(universe) -> dict:
+    """按**任务启用的节点名**给信号打标 —— 信号名的既有约定是 `节点名.字段`(如 光学质量检测.判决)。
+
+    证据链: config/ss_task_binding.json 每任务的 enabled_nodes(真源) → 画布节点 id→name → 前缀匹配。
+    这样"每个场景对应不同的信号集合"是**按真实配置推出来的**, 不是我拍脑袋分类; 推不出来的一律白。
+    """
+    out = {}
+    try:
+        with open(os.path.join(ROOT, "config", "ss_task_binding.json"), encoding="utf-8") as f:
+            b = json.load(f)
+        sys.path.insert(0, os.path.join(ROOT, "src"))
+        from lerobot.engineering import flows
+        d, _e = flows.load_canvas()
+        id2name = {str(n.get("id")): str(n.get("name") or "") for n in (d.get("nodes") or [])}
+    except Exception:                                                         # noqa: BLE001
+        return out
+    for t in (b.get("tasks") or []):
+        scene = (TASK_SCENE.get(t.get("task_id")) or {}).get("scene")
+        if not scene:
+            continue
+        for nid in (t.get("enabled_nodes") or []):
+            nm = (id2name.get(str(nid)) or "").strip()
+            if not nm or len(nm) < 2:
+                continue
+            # 节点名常带 emoji/括号说明(如 "🔍 光学质量检测 (金手指…)"); 信号名只取主名 ⇒ 归一后再前缀匹配
+            import re as _re
+            core = nm.split("(")[0].split("（")[0].strip()
+            core = _re.sub(r"[^\w\u4e00-\u9fff]", "", core)
+            if len(core) < 2:
+                continue
+            for sig in universe:
+                bare = sig[3:] if sig.startswith("ar.") else sig
+                if bare.startswith(core + ".") and sig not in out:
+                    out[sig] = scene
+    return out
+
+
+def build(from_runs: bool = False) -> dict:
+    """生成注册表: AR/AOI(紫) + 运行证据 + overrides。返回统计。"""
+    reg = _registry()
+    overrides = dict(reg.get("overrides") or {})
+    sig = {}
+    universe = set(_ar_signals().keys()) | set("ar." + k for k in _ar_signals().keys())
+    try:                                    # sstrace 的通用信号名也进候选(推不出来就白)
+        with open(os.path.join(ROOT, "zmax_data", "ss_live", "trace_live.json"), encoding="utf-8") as f:
+            universe |= set((json.load(f).get("signals") or {}).keys())
+    except Exception:                                                         # noqa: BLE001
+        pass
+    try:
+        with open(OUT, encoding="utf-8") as f:      # 旧注册表里的名字也别丢
+            universe |= set((json.load(f).get("signals") or {}).keys())
+    except Exception:                                                         # noqa: BLE001
+        pass
+    for k, sc in _node_signal_tags(universe).items():
+        sig[k] = sc
+    for k in _ar_signals():
+        sig[k] = "AR场景"
+        sig["ar." + k] = "AR场景"          # 页面里 AR 信号带 ar. 前缀(来源前缀), 两种写法都认
+    n_runs = 0
+    if from_runs:
+        for k, sc in _run_signals().items():
+            if k not in sig:
+                sig[k] = sc
+                n_runs += 1
+    for k, sc in overrides.items():        # 人工补充优先级最高
+        sig[str(k)] = str(sc)
+    doc = {"schema": 1,
+           "note": "信号→目标场景 标签真源 (signal→scene)。颜色/任务映射见 tools/ss_scene_switch.py; 未列出的 = 白(未分类)。",
+           "scenes": scenes_payload(),
+           "colors": {"插拔场景": SCENE_COLOR.get("插拔场景"), "摆盘场景": SCENE_COLOR.get("摆盘场景"),
+                      "AR场景": SCENE_COLOR.get("AR场景"), "未分类": WHITE},
+           "rules": {"AR场景": ["ar.*", "AR/AOI 注册表组内信号 (config/topics/ar_aoi_signals.json)"],
+                     "插拔场景": ["TASK-01-FW 运行产物里出现过的信号"],
+                     "摆盘场景": ["TASK-06-TRAY 运行产物里出现过的信号"],
+                     "未分类": ["其余一律白; 排序选『白』= 全部显示"]},
+           "signals": dict(sorted(sig.items())),
+           "overrides": overrides,
+           "counts": _counts(sig)}
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    with open(OUT, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=1)
+    doc["_n_from_runs"] = n_runs
+    return doc
+
+
+def _counts(sig: dict) -> dict:
+    c = {s: 0 for s in SCENES}
+    c["未分类"] = 0
+    for _k, sc in sig.items():
+        c[sc if sc in c else "未分类"] = c.get(sc if sc in c else "未分类", 0) + 1
+    return c
+
+
+def tag(key: str) -> str:
+    """信号名(带或不带来源前缀) → 场景名; 没有分类的返回 '' (UI 按白处理)。"""
+    reg = _registry()
+    sig = reg.get("signals") or {}
+    k = str(key or "")
+    if k in sig:
+        return sig[k]
+    bare = k.split(".", 1)[1] if k.startswith("ar.") else k
+    if bare in sig:
+        return sig[bare]
+    if k.startswith("ar.") or bare.startswith("光学质量检测.") or bare.startswith("AOI."):
+        return "AR场景"                    # AR/AOI 前缀兜底: 注册表没刷也认得(照实标场景, 不丢颜色)
+    return ""
+
+
+def color(key: str) -> str:
+    sc = tag(key)
+    return SCENE_COLOR.get(sc, WHITE) if sc else WHITE
+
+
+def summary() -> dict:
+    reg = _registry()
+    sig = reg.get("signals") or {}
+    live = {}
+    try:
+        p = os.path.join(ROOT, "zmax_data", "ar_live", "ar_aoi_live.json")
+        with open(p, encoding="utf-8") as f:
+            live = json.load(f)
+    except Exception:                                                         # noqa: BLE001
+        live = {}
+    live_keys = [k for k in (live.get("signals") or live).keys()] if live else []
+    return {"scenes": scenes_payload(), "colors": reg.get("colors") or {},
+            "counts": reg.get("counts") or _counts(sig),
+            "registry_signals": len(sig), "live_keys": len(live_keys),
+            "registry": os.path.relpath(OUT, ROOT)}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--build", action="store_true")
+    ap.add_argument("--from-runs", action="store_true", help="同时扫 task_runs 的运行证据")
+    ap.add_argument("--summary", action="store_true")
+    ap.add_argument("--tag", default="")
+    a = ap.parse_args()
+    if a.build:
+        d = build(from_runs=a.from_runs)
+        print("✅ 写 %s · 信号标签 %d 条 · 各场景: %s (运行证据新增 %d)"
+              % (os.path.relpath(OUT, ROOT), len(d["signals"]), d["counts"], d.get("_n_from_runs", 0)))
+        for s in scenes_payload():
+            print("   %s %s → %s" % ("🟢🔵🟣"[["插拔场景", "摆盘场景", "AR场景"].index(s["scene"])], s["scene"], s["color"]))
+        return 0
+    if a.tag:
+        print("%s → %r (色 %s)" % (a.tag, tag(a.tag), color(a.tag)))
+        return 0
+    s = summary()
+    print("信号→场景 标签 (真源 %s)" % s["registry"])
+    for x in s["scenes"]:
+        print("   %-8s %-12s %s" % (x["scene"], x["label"], x["color"]))
+    print("   计数: %s" % s["counts"])
+    print("   注册表信号 %d 条 · AR live 文件键 %d 个" % (s["registry_signals"], s["live_keys"]))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

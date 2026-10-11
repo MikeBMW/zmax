@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.48.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.49.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.48.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,42 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.48.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.49.0: AR 场景改造(底图 = 状态空间工程的视频数据源 · 4 相机 · L5 deepseek VL 理解) + 活跃配置→场景切换 + 信号分析场景色标/排序 (老倪 10-12 逐字指令)
+        # 老倪原话: 「3D场景的 AR场景, 背景的真实图像应该是状态空间工程的视频数据源; 现在有 USB 相机(realsense)、机器人手臂的 realsense、金手指检测相机、
+        #   表面检测相机 —— 这 4 个相机都照射着同一个场景, L5 层的 deepseek VL 能理解么? 理解之后修改 AR 场景; 修改完检查配置中心的活跃配置,
+        #   切换 任务1 FW-对应插拔场景 / 任务6 TRAY 对应摆盘场景 / 任务7 AOI 对应 AR场景; 每个场景对应不同的信号分析, 要设计 UI 让用户感知到;
+        #   信号分析主窗口的信号是有目标场景的, 你得标记出来; 用 绿色/蓝色/紫色 代表不同场景, 要有排序功能(按 绿/蓝/紫/白), 白色=所有颜色的信号都显示,
+        #   没有分类的信号都是白色」
+        # ① **AR 底图 = 状态空间工程的视频数据源** (单一真源 = tools/cam_live_stream.py @8791, 工位总览 8793 同源): tools/tcp_ar_server.py CAMS 从 3 路扩到 7 路,
+        #    老倪点名的 4 台相机全部在册(实测分辨率: 🦾手臂 RealSense D405 640×480 · 🔍金手指检测 10082 判据图 900×332 · 🔧整板原图 1400×1171 ·
+        #    🧪表面检测 10083 1280×1280 · 💻USB内置 640×480 · 📺MAXHUB 1280×720 · 🎥本机USB RealSense D435 640×480); 新增字段 src=sstate|usb/stats_key/overlay;
+        #    新端点 GET /api/cams(每路带 来源/分辨率/在线/帧龄/fps/是否已标定 · 帧龄从 8791 /stats 真值读) · GET /api/ss_stats ·
+        #    GET /snap/<cam>.jpg(按相机键取一帧; rs 走本机 pipeline, 其余走状态空间视频源); AR 页(8797/ar?cam=arm) 默认底图 = 状态空间视频源(手臂相机),
+        #    页面上 4 台相机带 ★ 与帧龄徽标、来源徽标, 选中染 AR 紫 #8957e5; 3D 场景「🥽 AR」按钮改开 ?cam=<default>(不再写死 rs) 并如实报在线路数。
+        # ② **L5 层 deepseek VL 理解当前底图**: 新桥 tools/ar_l5_understand.py(子进程桥, 避免常驻服务拉 torch 顶内存红线) + 端点
+        #    GET /api/l5/understand?c=<cam>: 抓当前底图一帧 → 引擎 L5(left_right/state_space/scene_vlm.py :: SceneVLM) → 文字 + 框 +
+        #    模型/耗时/帧字节, 页面新增「🧠 L5 理解」卡(结果可选中复制)。实测(2026-10-12): arm 路 4.4~5.8s, http:deepseek-flash,
+        #    输出含 scene/topology/objects(光模块 bbox [250,130,390,230]) —— **4 台相机同一场景, L5 看得懂**。
+        # ③ **修 AR 页整段 JS 失效(真 bug, 非本次引入)**: tools/web/tcp-ar.html 里有一行孤立残片 `  $('pCal').textContent='点已清空。'; });`
+        #    ⇒ 整段内联 JS 语法错 ⇒ 页面上所有按钮(相机切换/标定/检测/L5)全不工作(浏览器只报一条空 exception, 很难看见)。
+        #    删残片后 node --check 通过, 相机选择器/L5 卡在真浏览器里逐项验过。
+        # ④ **活跃配置 → 场景/数据源 跟着切** (老倪: 任务1 FW↔插拔 / 任务6 TRAY↔摆盘 / 任务7 AOI↔AR): 新真源 tools/ss_scene_switch.py
+        #    (映射唯一表 + 颜色唯一表) 写画布数据源节点(ssdata)params.src_state(经 flows.save_canvas 真源, 不手改 .db); 数据源词汇表新增 **AR场景**
+        #    (simulink_module: SRC_CYCLE/SRC_DESC + 新判据 _src_is_real() —— 6 处 `== "真机"` 全部收口到它, 否则 AR 场景会偷偷去跑 metaworld 仿真);
+        #    激活路径 ss_task_bind.py --activate 里挂钩(切不动只提示, 不拦激活)。实测三连(真跑): TASK-07-AOI→AR场景(紫) / TASK-01-FW→插拔场景(绿) /
+        #    TASK-06-TRAY→摆盘场景(蓝), 每次回读校验一致, 末了还原成老倪原来的 TASK-06-TRAY+摆盘场景。
+        # ⑤ **信号分析: 场景标记 + 按色排序(白=全部)**: 新真源 tools/sig_scene_tags.py → config/topics/scene_tags.json(176 条已打标: AR/AOI 话题
+        #    与 AR 空间点位全归 AR场景(紫); 其余=白/未分类, 不硬猜); 颜色/任务映射从 ss_scene_switch 取(不重写); 打标证据 = AR/AOI 注册表
+        #    (config/topics/ar_aoi_signals.json) + 任务启用节点的 **节点名前缀**(信号名既有约定 `节点名.字段`) + zmax_data/task_runs 运行产物 + overrides。
+        #    canoe_graphic.py: 目录项加 ● (场景色) / ○ (未分类白) 标记 + 新排序行四个按钮 ⚪全部(白)/🟢插拔/🔵摆盘/🟣AR(选中=该色置顶, 其余压暗仍显示;
+        #    白 = 全部不排序) + 标题行实况(当前数据源场景 + 各色计数)。顺手修一个真 bug: 统计时直接迭代 store.bufs 而实时源线程在加键 ⇒
+        #    RuntimeError: dictionary changed size during iteration(改快照键)。
+        # ⑥ **配置中心场景列同色**: veh6_config_page.py 场景列按 插拔绿/摆盘蓝/AR紫 上色(色值仍来自 ss_scene_switch, 一致到像素)。
+        # ⑦ 判据 tools/verify_sig_scene_tags.py **23/23 PASS**(真起 CanoeGraphicWidget 验 ●/○ 标记与置顶秩; 真拉 /api/cams、4 路 /snap/*.jpg 魔数校验);
+        #    回归: engineering_db check 判据全绿 · ss_task_bind --check 一致 · task_build --check 一致 · 画布 89 节点/184 连线。
         # v5.48.0: 配置中心「任务7 = AOI」+ 节点改名「🔍 光学质量检测」+ AOI 话题/AR 空间点位进信号分析 (老倪 10-11 指令) —— ① **任务7 TASK-07-AOI**: 场景 SCN-07-AOI(=AR) · 类型 光学质量检测 · model_ref =「Automated Optical Inspection 自动光学检测 · L5 自主进化程序」; 链路全走真源: flows/scenes_5jobs.json 新增 SCN-07-AOI 场景 + **补回被 SCN-07-UP 顶掉的 SCN-06-TRAY**(否则一重生成任务6就丢) · tools/task_build.py PLAN 新增 ar_aoi + build() 支持 model_ref 落库 + **无配方计划的场景不再静默套 ATS 配方**(改: 跳过并打印提示 —— 原来 SCN-07-UP 会被静默套成「检测插接」) · config/tasks/tasks.json 交回真生成器重写(任务1..6 **逐字节不变** · 任务7 新增 · --check ✅) · 绑定 ss_task_bind.py 重算(任务7 = 32 启用/20 禁用/6 档位; 活跃任务 TASK-01-FW 一律不动) · 配置中心任务表**新增「场景」「模型」两列**(任务7 那行 = `AR · SCN-07-AOI` / `L5 自主进化程序`, tooltip 带全称与入口) ② **画布节点改名**: 「🔍 外观质量检测」→「🔍 光学质量检测」, 同步 10 处运行时映射(漏一处即挂不上): 画布真源(flows.save_canvas, 89 节点/184 连线不变) · registry 注册匹配(**留旧名兼容**) · data_world.MODULE_ORDER · simulink_module 映射+右键 · state_space_sim io 发布(出线列出 8 个 AOI 话题) · aoi_inspect_console · node_func_tree 功能清单 · yolo_perception · status_panel 大屏模型名 · model_feature B5 · config/platform/zmax_platform.json + zmax_perf_spec.json + defaults 副本 · feature.dbc「BO_ B5 光学质量检测」→ mcd_build 重生成(MCD 光学 5/外观 0) ③ **AOI 话题真发出 + 信号分析对应 AR 空间点位**: 新真源 tools/ar_aoi_bus.py(注册表 config/topics/ar_aoi_signals.json · 单一写入器 · 原子写+回读 · 组名齐全 6 组) —— 画布节点每帧**真算**的 8 个 AOI 话题(判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检) 与 **78 条 AR 空间点位信号**(TCP 真值 · 示教点位台账 金手指点1/2·侧面点0~3·准备点·安全点1 · 空间点 1..8 · RealSense 相机系 深度/有效比/平面RMS/曝光/帧龄) 进同一份 zmax_data/ar_live/ar_aoi_live.json; 信号分析页新增来源 `ar.` + 「🥽 AR 场景 · 空间点位 / AOI 话题」分组树(组名取自注册表) + 常驻拉取器 tools/ar_aoi_bus_ctl.sh start(2s 刷新, 实测 86 信号/48 点位在刷) ④ 判据 tools/verify_aoi_task7.py **37/37 PASS**(真起 ConfigCenterPage 实渲染任务7 行 · 真跑节点回读 live · 场景/生成器/改名全链逐项核) ⑤ 数据落库: 工程库重生成 + M 节点配置写入(89 节点/184 连线不变 · ss_node_sync --check ✅)
         # v5.47.14: AR 底图曝光实测+控制: 8797 /api/rs_exposure(读=设备回读)|/api/rs_options(全表) + tools/ar_exposure_sweep.py; 结论: 过曝团是顶部灯且在工作区外, 压曝光把工作区从104压到59(黑泡棉槽位糊掉) ⇒ 保持自动曝光, 灯靠改机位/柔光; 该固件无 AE 测光区
         # v5.47.13: AR 相机系 3D 位姿叠加: ar_calib_module.pose + 8797 /api/rs_pose + AR 页「📦 目标位姿(相机系)」(深度真值出中心/尺寸/主轴/平面RMS, 虚拟坐标架画回真实画面; 实测 2.16m 处大面 RMS 193mm, 检出 0 光模块⇒相机未对准工作区)
@@ -11636,7 +11669,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.48.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.49.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13378,7 +13411,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.48.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.49.0</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

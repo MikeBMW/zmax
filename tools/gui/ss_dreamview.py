@@ -316,7 +316,8 @@ _TABLE_COLOR_CREAM = (0.96, 0.94, 0.90, 1.0)      # 办公桌乳白
 _TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 兜底深灰 (未知场景)
 
 
-SRC_STATE_SCENE = {"摆盘场景": "SS-TRAY-PLACE", "插拔场景": "SS-EPI-CORNER", "仿真": "SS-EPI-CORNER", "真机": ""}
+SRC_STATE_SCENE = {"摆盘场景": "SS-TRAY-PLACE", "插拔场景": "SS-EPI-CORNER", "仿真": "SS-EPI-CORNER",
+                   "真机": "", "AR场景": ""}   # 🥽 AR场景: 底图=状态空间工程视频源(真相机), 没有仿真场景目录
 
 
 def canvas_src_scene_id():
@@ -2409,14 +2410,21 @@ class DreamView3D(QWidget):
         info = None
         try:
             import urllib.request as _u
-            with _u.urlopen("http://127.0.0.1:8797/api/rs_info", timeout=3) as _r:
+            with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=3) as _r:
                 info = json.loads(_r.read().decode("utf-8", "ignore"))
         except Exception as _e:                                                 # noqa: BLE001
-            _say("🥽 AR 服务(8797)没起或 RealSense 没就绪: %s: %s" % (type(_e).__name__, str(_e)[:80]))
+            _say("🥽 AR 服务(8797)没起: %s: %s" % (type(_e).__name__, str(_e)[:80]))
             return None
+        # 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
+        #   机器人手臂的 RealSense、金手指检测相机、表面检测相机 —— 4 个都照同一个场景」 ⇒ 默认开**状态空间视频源**(手臂相机),
+        #   页面上可切到另外 3 台(金手指/表面/本机 USB D435); 哪几路在线/帧龄多少在页面上照实写。
+        _cams = (info or {}).get("cams") or {}
+        _def = (info or {}).get("default") or "arm"
+        _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
+        _say("🥽 AR 底图 = 状态空间工程视频源 (%s) · 在线 %s/%s" % (_def, len(_live), 4))
         try:
             import webbrowser
-            webbrowser.open("http://127.0.0.1:8797/ar?cam=rs")
+            webbrowser.open("http://127.0.0.1:8797/ar?cam=" + _def)
         except Exception as _e:                                                 # noqa: BLE001
             _say("🥽 AR 页面打不开(浏览器): %r" % (_e,))
             return None

@@ -3458,7 +3458,7 @@ class SimNodeItem(QGraphicsObject):
         elif params.get("src_switch"):
             # 🔀 数据源切换 (2026-09-16 老倪: 真机 → 插拔场景 → 摆盘场景, 就做在 📦 数据源节点上, 不加连线)
             _st = _src_norm(params.get("src_state"))
-            _on = (_st == "真机")
+            _on = _src_is_real(_st)
             _col = QColor("#3fb950" if _on else "#d29922")     # 真机=绿, 插拔/摆盘场景=琥珀 (一眼看出在哪个源)
             _r = QRectF(8, self.h - 26, self.w - 16, 20)
             painter.setRenderHint(QPainter.Antialiasing)
@@ -3857,11 +3857,14 @@ class SimLinkItem(QGraphicsObject):
 #   真机     = Orin 远程只读 (原样, _data_source="bypass_real"), 场景真源不动
 #   插拔场景 = 原来的「仿真」那条算路 (metaworld 前馈/演示数据) + 全局场景真源切 SS-EPI-CORNER
 #   摆盘场景 = 同一套仿真算路 + 全局场景真源切 SS-TRAY-PLACE
-SRC_CYCLE = ("真机", "插拔场景", "摆盘场景")
+#   🥽 2026-10-12 老倪: 「任务1 FW 对应插拔场景; 任务6 TRAY 对应摆盘场景; 任务7 AOI 对应 AR场景」⇒ 数据源多一态:
+#     AR场景 = 底图就是**状态空间工程的视频数据源**(4 台相机实拍同一场景) + AOI/空间点位/TCP 叠加, 没有仿真场景目录。
+SRC_CYCLE = ("真机", "插拔场景", "摆盘场景", "AR场景")
 SRC_SCENE_ID = {"插拔场景": "SS-EPI-CORNER", "摆盘场景": "SS-TRAY-PLACE"}
 SRC_DESC = {"真机": "📡 真机 (Orin 远程只读: TCP位姿/关节/力/夹爪/图像)",
             "插拔场景": "🧩 插拔场景 (SS-EPI-CORNER)",
-            "摆盘场景": "🧩 摆盘场景 (SS-TRAY-PLACE)"}
+            "摆盘场景": "🧩 摆盘场景 (SS-TRAY-PLACE)",
+            "AR场景": "🥽 AR场景 (状态空间工程视频源实拍 + AOI/空间点位叠加) · 8797/ar"}
 
 
 def _src_norm(v):
@@ -3869,9 +3872,19 @@ def _src_norm(v):
     v = str(v or "").strip()
     if v in SRC_CYCLE:
         return v
+    if v in ("AR", "ar", "AR场景", "ar场景", "增强现实", "augmented"):
+        return "AR场景"
     if v in ("仿真", "sim", "metaworld"):
         return "插拔场景"
     return "真机"
+
+
+def _src_is_real(state):
+    """这一态走**真机算路**吗? 真机 = 真机; AR场景 底图也是真相机 ⇒ 同属真机侧(不吃 metaworld 演示数据)。
+
+    单一判据, 别再各处手写 `== "真机"`(漏一处就会让 AR 场景偷偷去跑仿真)。
+    """
+    return _src_norm(state) in ("真机", "AR场景")
 
 
 def _src_scene_dir(state):
@@ -3892,8 +3905,8 @@ def _apply_src_scene(state):
     返回 (ok, 说明串) —— 照实说切到哪、场景几个对象; 切不动就说切不动, 不装。
     """
     st = _src_norm(state)
-    if st == "真机":
-        return True, "真机: 场景真源不动 (ZMAX_SCENE_DIR=%s)" % (os.environ.get("ZMAX_SCENE_DIR") or "默认")
+    if _src_is_real(st):
+        return True, "%s: 场景真源不动 (ZMAX_SCENE_DIR=%s)" % (st, os.environ.get("ZMAX_SCENE_DIR") or "默认")
     d = _src_scene_dir(st)
     if not d or not os.path.isdir(d):
         return False, "%s: 场景目录不存在 (%s)" % (st, d)
@@ -4378,7 +4391,7 @@ class SimCanvas(QGraphicsView):
             #   真机: Orin srv → Docker → 本地文件轮询 ‖ 仿真: metaworld corner2 渲染帧
             try:
                 from yolo_input_viewer import open_input_viewer
-                _src = "real" if _canvas_src_state(self.module) == "真机" else "sim"
+                _src = "real" if _src_is_real(_canvas_src_state(self.module)) else "sim"
                 open_input_viewer(self, module=self.module, source=_src)
             except Exception as _e:                                        # noqa: BLE001
                 try:
@@ -4389,7 +4402,7 @@ class SimCanvas(QGraphicsView):
             # 🔍 2026-09-24 老倪: 质量检测汇总终端 (帧源同样跟随画布数据源切换)
             try:
                 from aoi_inspect_console import open_aoi_console
-                _src = "real" if _canvas_src_state(self.module) == "真机" else "sim"
+                _src = "real" if _src_is_real(_canvas_src_state(self.module)) else "sim"
                 open_aoi_console(self, module=self.module, source=_src)
             except Exception as _e:                                        # noqa: BLE001
                 try:
@@ -12876,7 +12889,7 @@ class SimulinkModule(QWidget):
         cur = _src_norm(p.get("src_state"))
         nxt = SRC_CYCLE[(SRC_CYCLE.index(cur) + 1) % len(SRC_CYCLE)]     # 真机 → 插拔场景 → 摆盘场景 → 真机
         p["src_state"] = nxt
-        self._data_source = "bypass_real" if nxt == "真机" else "metaworld"
+        self._data_source = "bypass_real" if _src_is_real(nxt) else "metaworld"
         _ok, _msg = _apply_src_scene(nxt)
         it = self._items.get(node.get("id"))
         if it:
@@ -12924,14 +12937,14 @@ class SimulinkModule(QWidget):
                 if getattr(_w, "source", "") == "usbcam":
                     self._log("🎥 输入图像窗口当前是「💻 本机摄像头」源 → 不跟随画布数据源切换")
                 else:
-                    _want = 0 if _src_norm(p.get("src_state")) == "真机" else 1
+                    _want = 0 if _src_is_real(p.get("src_state")) else 1
                     if _w.cb.currentIndex() != _want:
                         _w.cb.setCurrentIndex(_want)   # 触发 _switch: 停旧源 → 起新源 → 数据根跟着切
                         self._log("🎥 输入图像窗口跟随切源 → %s"
                                   % ("🧪 仿真 metaworld" if _want else "🎥 真机 RealSense"))
         except Exception:                                                  # noqa: BLE001
             pass
-        if p["src_state"] == "真机":
+        if _src_is_real(p["src_state"]):
             try:
                 import importlib.util as _iu
                 path = os.path.join(os.environ.get("ZMAX_REPO_ROOT") or os.path.dirname(os.path.dirname(
