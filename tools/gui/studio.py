@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.11")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.12")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.11 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.12 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.11 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.12 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.12: AR 场景落地: Intel RealSense D435 驱动+接入 8797(rs 流/内参/深度3D/YOLO检测/AOI 联合检查端点) · 3D场景「力控」→「🥽 AR」 · 工控机 AOI 联合检查(缺陷判决+金手指矩形+侧边修正, 实测 OK/0缺陷/1.7s, 矩形 363.8x17.5px 倾角1.75°, Δx=+4px) · 光模块 AR 标定能力(ar_calib_module, 出厂内参只解 R,t, 自检 rms 0.0px) · 摆盘仿真链 3/3 合格; 真机取放待 8793 运动授权(闸门实测未授权, 未发任何运动)
         # v5.47.11: 工程状态开机自恢复 — 控制台启动第一步从 .proj 的 debug_state 回填场景真源+画布数据源(src_state)+活跃任务; 根因: 重启会把画布 src_state 写成默认真机(22:39:24实测), 老倪选的摆盘当场丢; 只改那一个值+留 .bak。判据 verify_proj_boot PASS
         # v5.47.10: 摆盘场景末端工具改真空吸盘 — 3D 场景按数据源画末端 (摆盘=吸盘, 插拔=两指夹爪), 判定依据=场景真源+活跃任务工艺并打印来源; 根因: _build_scene 尾部按图层开关整层置可见, 覆盖了单件 setVisible ⇒ 收口到图层之后; scene_mode 实返回 tray/plug, 原按 'peg' 判定落空已修。判据 tools/verify_tray_vacuum.py PASS 0 失败
         # v5.47.9: v5.47.9 — 调试状态自动存档到 .proj 工程文件 (下次接着调) 老倪原话: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」  一、新模块 tools/proj_state.py: 抓当前调试状态 → 写进工程文件的 debug_state 段 (原子写 + 自动备份 + 回读校验)    内容: 活跃任务 (绑定真源) · 数据源 src_state (画布 📦 数据源节点) · 场景 ID/目录 (data/scene/scenes/<ID>)         · 画布真源 md5 · 任务三态快照 · 主参数 M · 版本/时间; 上一份状态留在 _prev_debug_state 备查    工程文件不存在时先用真生产者 tools/ss_task_bind.py --export 生成 (默认 reports/projects/SS_主工程_任务配置.zmaxproj)  二、三处自动钩子    · 画布切数据源 (simulink_module.on_toggle_src) → 自动存档 + 日志「💾 调试状态已自动存档」    · 配置中心活跃属性下拉 (veh6_config_page._on_task_state_changed) → 自动存档    · 打开工程文件 (project_file.load_project) → 自动恢复存档的调试状态 (ZMAX_SCENE_DIR 场景真源 + 活跃任务), 结果进返回摘要 debug_state  三、CLI: python tools/proj_state.py save|show|restore|capture [--path P]  四、判据 verify_proj_state.py (真跑存档/回滚/恢复; 收尾保持老倪当前配置: 摆盘场景 + TASK-06-TRAY)    ① capture == 现状 (TASK-06-TRAY · 摆盘场景 · SS-TRAY-PLACE) ② 存档回读一致且工程文件其他段一字未动    ③ 模拟现场改变 (清场景真源 + 任务切回 TASK-01-FW) ④ restore 后场景真源与活跃任务都回到存档值    ⑤ 三处钩子都在 ⑥ 收尾真源字节还原, 仍是 TASK-06-TRAY 活跃
@@ -11632,7 +11633,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.11  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.12  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13374,7 +13375,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.11</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.12</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

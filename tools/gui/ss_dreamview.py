@@ -1153,14 +1153,16 @@ class DreamView3D(QWidget):
         for _sid, _txt, _tip, _col in (
             ("SS-EPI-CORNER", "🧩 插拔", "切到插拔场景 (= 当前打开的那条, 虚拟现实)", "#2e8b57"),
             ("SS-TRAY-PLACE", "🧩 摆盘", "切到摆盘场景 (由当前场景复制, 桌面粉白; 后续换成真摆盘)", "#1f6feb"),
-            (None,            "🧩 力控", "保持当前波形: 打开/置顶力控波形窗口 (接触概率·残差·前馈·末端距离)", "#8957e5"),
+            (None,            "🥽 AR",
+             "增强现实场景: RealSense D435 实拍画面 + 金手指AOI点位/空间点位/TCP真值/录制轨迹 叠加 "
+             "(原「🧩 力控」位; 2026-10-11 老倪: 把 3D场景的力控改成 AR)", "#8957e5"),
         ):
             _b = QPushButton(_txt)
             _b.setToolTip(_tip)
             _b.setStyleSheet(f"QPushButton{{background:{_col};color:#ffffff;font-weight:700;"
                              f"border:none;border-radius:4px;padding:6px 4px;font-size:12px;}}"
                              f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
-            _b.clicked.connect(lambda _=False, sid=_sid: (self._open_force_scope() if sid is None
+            _b.clicked.connect(lambda _=False, sid=_sid: (self._open_ar_view() if sid is None
                                                           else self._switch_scene(sid)))
             _row_lv.addWidget(_b)
         pl.addLayout(_row_lv)
@@ -2383,6 +2385,47 @@ class DreamView3D(QWidget):
                 _att._set_status("🧩 已切到 %s%s" % (_lab, "" if ok else " · 注意: 切换未完全生效"))
         except Exception:                                                       # noqa: BLE001
             pass
+        return True
+
+    def _open_ar_view(self):
+        """🥽 AR 场景 (2026-10-11 老倪: 「把 3D场景的 力控, 改成 AR」)。
+
+        不是在仿真里再开一个 3D 窗, 而是**把虚拟信息叠到真实画面**上:
+        · 底图 = 本机 Intel RealSense D435 实拍彩色帧 (8797 `/rs.mjpg`, 带深度与出厂内参)
+        · 叠加 = base 系 3D 内容经相机外参投影上去 (金手指 AOI 点位/空间点位/TCP 真值/录制轨迹)
+        · 标定/开关/清除语义全在 8797 (AR 服务) 与页面里, 本方法只负责**打开并如实回报状态**
+        服务没起/相机没帧就照实说, 不弹空窗、不用旧帧冒充。
+        """
+        _st = getattr(self, "_scene_edit_attacher", None)
+
+        def _say(msg):
+            try:
+                if _st is not None:
+                    _st._set_status(msg)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            print(msg)
+
+        info = None
+        try:
+            import urllib.request as _u
+            with _u.urlopen("http://127.0.0.1:8797/api/rs_info", timeout=3) as _r:
+                info = json.loads(_r.read().decode("utf-8", "ignore"))
+        except Exception as _e:                                                 # noqa: BLE001
+            _say("🥽 AR 服务(8797)没起或 RealSense 没就绪: %s: %s" % (type(_e).__name__, str(_e)[:80]))
+            return None
+        try:
+            import webbrowser
+            webbrowser.open("http://127.0.0.1:8797/ar?cam=rs")
+        except Exception as _e:                                                 # noqa: BLE001
+            _say("🥽 AR 页面打不开(浏览器): %r" % (_e,))
+            return None
+        if info.get("ok"):
+            _say("🥽 AR 场景已打开: RealSense 实拍 + 叠加层 (帧 %s · 帧龄 %.2fs · 深度中位 %smm)"
+                 % (info.get("frames"), info.get("age_s") or -1,
+                    (info.get("depth") or {}).get("median_mm")))
+        else:
+            _say("🥽 AR 页面已开, 但 RealSense 还没出帧 (err=%s)" % (info.get("err") or "无"))
         return True
 
     def _open_force_scope(self):

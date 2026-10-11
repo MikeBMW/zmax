@@ -78,8 +78,12 @@ def decompose(P_mat, img_w, img_h):
     return f, R, t
 
 
-def solve(pts3d, uv, img_w=640, img_h=480, extra_starts=6, seed=0):
-    """多起点(DLT 初值 + 扰动)非线性收细。返回 None 或 dict。"""
+def solve(pts3d, uv, img_w=640, img_h=480, extra_starts=6, seed=0, f_fixed=None, cx=None, cy=None):
+    """多起点(DLT 初值 + 扰动)非线性收细。返回 None 或 dict。
+
+    🆕 2026-10-11: f_fixed/cx/cy —— 相机有**出厂内参**(如 Intel RealSense D435, fx=fy=603.4,
+    主点 320.1/258.2)时, 焦距不该再解: 参数从 7 降到 6(R,t), 欠定门槛从 6 点降到 4 点, 也更稳。
+    """
     from scipy.optimize import least_squares
     P = np.asarray(pts3d, float).reshape(-1, 3)
     O = np.asarray(uv, float).reshape(-1, 2)
@@ -87,11 +91,19 @@ def solve(pts3d, uv, img_w=640, img_h=480, extra_starts=6, seed=0):
     if n < 4 or n != len(O):
         return None
     cxp, cyp = img_w / 2.0, img_h / 2.0
+    if cx is not None and cy is not None:                                          # 出厂主点优先
+        cxp, cyp = float(cx), float(cy)
+    FF = None if (f_fixed is None or float(f_fixed) <= 0) else float(f_fixed)
+
+    def _unpack(p):
+        if FF is not None:
+            return FF, np.asarray(p[0:3], float), np.asarray(p[3:6], float)
+        return float(p[0]), np.asarray(p[1:4], float), np.asarray(p[4:7], float)
 
     def reproj(p, pts):
-        f = p[0]
-        R = cv2.Rodrigues(np.asarray(p[1:4], float))[0]
-        t = np.asarray(p[4:7], float)
+        f, _r, _t = _unpack(p)
+        R = cv2.Rodrigues(_r)[0]
+        t = _t
         pc = (R @ pts.T).T + t
         z = pc[:, 2]
         zz = np.where(np.abs(z) < 1e-6, 1e-6, z)
@@ -107,17 +119,29 @@ def solve(pts3d, uv, img_w=640, img_h=480, extra_starts=6, seed=0):
         try:
             f0, R0, t0 = decompose(Pm, img_w, img_h)
             if 50.0 < f0 < 20000.0 and np.isfinite(f0):
-                starts.append(np.concatenate([[f0], cv2.Rodrigues(R0)[0].ravel(), t0]))
+                _rt0 = np.concatenate([cv2.Rodrigues(R0)[0].ravel(), t0])
+                starts.append(_rt0 if FF is not None else np.concatenate([[f0], _rt0]))
         except Exception:                                                          # noqa: BLE001
             pass
     rng = np.random.default_rng(seed)
-    base = starts[0] if starts else np.concatenate([[600.0], [np.pi, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    if starts:
+        base = starts[0]
+    elif FF is not None:                                # 焦距已知 ⇒ 初值只需 R,t
+        base = np.concatenate([[np.pi, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    else:
+        base = np.concatenate([[600.0], [np.pi, 0.0, 0.0], [0.0, 1.0, 0.0]])
     for _ in range(extra_starts):                       # 在初值附近扰动 + 若干粗猜
         if starts:
             q = base.copy()
-            q[0] *= float(rng.uniform(0.6, 1.6))
-            q[1:4] += rng.normal(0, 0.25, 3)
-            q[4:7] += rng.normal(0, 0.15, 3)
+            if FF is not None:
+                q[0:3] += rng.normal(0, 0.25, 3)
+                q[3:6] += rng.normal(0, 0.15, 3)
+            else:
+                q[0] *= float(rng.uniform(0.6, 1.6))
+                q[1:4] += rng.normal(0, 0.25, 3)
+                q[4:7] += rng.normal(0, 0.15, 3)
+        elif FF is not None:
+            q = np.concatenate([rng.normal(0, np.pi, 3), rng.normal(0, 1.2, 3)])
         else:
             q = np.concatenate([[float(rng.uniform(250, 1500))], rng.normal(0, np.pi, 3),
                                 rng.normal(0, 1.2, 3)])
@@ -140,8 +164,10 @@ def solve(pts3d, uv, img_w=640, img_h=480, extra_starts=6, seed=0):
                     "reproj": uvp.tolist(), "z_m": z.tolist()}
     if best is None:
         return None
-    f, R, t = best["params"][0], cv2.Rodrigues(best["params"][1:4])[0], best["params"][4:7]
-    best.update({"f": float(f), "R": np.asarray(R, float).tolist(),
+    _f, _r, _t = _unpack(best["params"])
+    f, R, t = _f, cv2.Rodrigues(_r)[0], _t
+    best.update({"f": float(f), "f_fixed": (None if FF is None else FF),
+                 "R": np.asarray(R, float).tolist(),
                  "t": [float(v) for v in t], "cx": cxp, "cy": cyp,
                  "image_size": [int(img_w), int(img_h)], "n_starts": len(starts),
                  "dlt_used": bool(Pm is not None)})

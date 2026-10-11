@@ -374,6 +374,10 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10082)" style="font-weight:600">🧾 最后结果</button>
+        <!-- 🥽 2026-10-11 老倪「把 3D场景的力控改成 AR」: AR 场景页 = RealSense 实拍 + 金手指AOI/空间点位/TCP 叠加
+             (仅产线内网可达: 8797 是本机服务; 公网域名下点不开, 属预期) -->
+        <button onclick="window.open('http://'+location.hostname+':8797/ar?cam=rs','_blank')"
+                style="font-weight:700" title="AR 场景: Intel RealSense 实拍 + 金手指AOI点位/空间点位/TCP真值叠加 (产线内网)">🥽 AR 场景</button>
         <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <script>

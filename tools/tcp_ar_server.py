@@ -43,6 +43,12 @@ sys.path.insert(0, HERE)
 import laptop_cam_solve as LS                                                    # noqa: E402
 import traj_display as TD                                                        # noqa: E402
 
+try:                                      # 🔍 工控机 AOI 客户端 (10082 金手指 / 10083 表面)
+    import aoi_link as AOI
+except Exception:                                                                # noqa: BLE001
+    AOI = None
+AOI_STATE = os.path.join(os.path.expanduser("~/zmax/zmax_data"), "ar_aoi_state.json")
+
 UP = "http://127.0.0.1:8791"
 PORT = int(os.environ.get("AR_PORT", "8797"))
 PAGE = os.path.join(REPO, "tools", "web", "tcp-ar.html")
@@ -50,7 +56,11 @@ CALIB = os.path.join(REPO, "data", "scene", "laptop_cam_calib.json")            
 MCALIB = os.path.join(REPO, "data", "scene", "cam_calib.json")                   # 多相机: {"local":{...},"local2":{...}}
 # 每台固定相机的原生分辨率(标定点按像素存, 必须和分辨率绑定; 混用 = 投影全错)
 CAMS = {"local": {"w": 640, "h": 480, "label": "笔记本相机 640×480", "mjpg": "/local.mjpg"},
-        "local2": {"w": 1280, "h": 720, "label": "MAXHUB 相机 1280×720", "mjpg": "/local2.mjpg"}}
+        "local2": {"w": 1280, "h": 720, "label": "MAXHUB 相机 1280×720", "mjpg": "/local2.mjpg"},
+        # 🥽 2026-10-11 老倪新接的 Intel RealSense D435: 本机直连, **有深度 + 出厂内参**
+        #   ⇒ 标定只解 R,t(焦距/主点用出厂的), 深度还能直接量相机系 3D。
+        "rs": {"w": 640, "h": 480, "label": "Intel RealSense D435 640×480 (彩色+深度)",
+               "mjpg": "/rs.mjpg", "depth": True, "intrinsics": "device"}}
 TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 IMG_W, IMG_H = 640, 480
 
@@ -71,8 +81,46 @@ def read_tcp():
 
 
 def snap_cam(cam: str = "local"):
+    if cam == "rs":                                    # 本机 RealSense: 直接取帧(不经 8791)
+        import realsense_source as RS
+        return RS.snap()
     b = _get("/snapshot/%s.jpg" % cam)
     return cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
+
+
+def _rs_detect():
+    """🥽 光模块检测(AR 相机帧): 在**本进程**跑在役 YOLO —— 相机被本服务独占, 别的进程打不开设备。
+
+    返回 bbox/conf + 深度相机系 3D; 标注图落 zmax_data/ar_rs/rs_detect_last.png (AR 页面可直接看)。
+    """
+    try:
+        import ar_calib_module as ACM
+        return ACM.detect()
+    except SystemExit as e:
+        return {"ok": False, "err": str(e)}
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
+
+
+def _aoi_state_read():
+    """读最近一次 AOI 结果(没有就如实说没有)。"""
+    try:
+        with open(AOI_STATE, encoding="utf-8") as f:
+            d = json.load(f)
+        d["age_s"] = round(time.time() - os.path.getmtime(AOI_STATE), 1)
+        return d
+    except Exception:                                                            # noqa: BLE001
+        return {"ok": False, "err": "还没有 AOI 结果(点『📸 请求检测』跑一次)", "path": AOI_STATE}
+
+
+def _rs_jpeg(quality: int = 82) -> bytes:
+    """🥽 RealSense 单帧 JPEG(没帧就回空, 不拿旧帧冒充)。"""
+    import realsense_source as RS
+    f = RS.snap()
+    if f is None:
+        return b""
+    ok, buf = cv2.imencode(".jpg", f, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    return buf.tobytes() if ok else b""
 
 
 def motion_mask(gap: float = 0.8, thr: int = 18, cam: str = "local"):
@@ -182,12 +230,37 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": bool(c), "calib": c, "cam": cam, "cams": CAMS})
             elif p == "/api/traj/state":
                 self._json(self._traj_state())
+            elif p == "/api/aoi/state":            # 🔍 最近一次 AOI 结果(不拍照)
+                self._json(_aoi_state_read())
+            elif p == "/api/aoi/read":             # 🔍 只读体检(不拍照)
+                self._json((AOI.health(10082) if AOI else {"err": "aoi_link 不可用"}))
+            elif p == "/api/aoi/gold.jpg":         # 🔍 金手指判据图(工控机口径, 直传)
+                self._send(200, "image/png", (AOI._req("/picture?kind=crop", 10082)["raw"] if AOI else b""))
+            elif p == "/api/rs_stream_help":
+                self._json({"mjpg": "/rs.mjpg", "snapshot": "/snapshot/rs.jpg",
+                            "info": "/api/rs_info", "point": "/api/rs_point?u=&v="})
             elif p == "/api/verify":
                 self._json(self._verify(cam))
             elif p in ("/scene.json", "/stats", "/station/status"):
                 self._send(200, "application/json; charset=utf-8", _get(p))
+            elif p == "/rs.mjpg":                  # 🥽 RealSense 彩色流 (AR 底图)
+                self._rs_stream()
+            elif p == "/snapshot/rs.jpg":          # 🥽 RealSense 单帧
+                self._send(200, "image/jpeg", _rs_jpeg())
+            elif p == "/api/rs_info":              # 🥽 出厂内参 + 深度体检 + 帧龄
+                import realsense_source as RS
+                self._json(RS.info())
+            elif p == "/api/rs_detect":            # 🥽 在 AR 相机帧里跑在役 YOLO 找光模块(标定用)
+                self._json(_rs_detect())
+            elif p == "/api/rs_point":             # 🥽 像素→相机系 3D(用深度量, 不是猜)
+                import realsense_source as RS
+                self._json(RS.deproject(float(qs.get("u") or 0), float(qs.get("v") or 0)))
             elif p == "/cam.mjpg":
-                self._proxy_stream((CAMS.get(cam) or CAMS["local"])["mjpg"])
+                _mj = (CAMS.get(cam) or CAMS["local"]).get("mjpg")
+                if _mj == "/rs.mjpg":              # 🥽 RealSense 是本机源, 不能走 8791 代理
+                    self._rs_stream()
+                else:
+                    self._proxy_stream(_mj)
             elif p in ("/local.mjpg", "/local2.mjpg"):
                 self._proxy_stream(p)
             elif p.startswith("/snapshot/") and p.endswith(".jpg"):
@@ -286,7 +359,9 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n).decode("utf-8", "ignore") or "{}")
         except Exception:                                                         # noqa: BLE001
             body = {}
-        if p == "/api/calib":
+        if p == "/api/aoi/inspect":            # 🔍 真拍 + 缺陷检测 + 矩形搜索 + 侧边修正
+            self._json(self._aoi_inspect(port=int(body.get("port") or 10082)))
+        elif p == "/api/calib":
             self._json(self._do_calib(body))
         elif p == "/api/traj/show":
             show = bool(body.get("show"))
@@ -359,14 +434,62 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                                                    # noqa: BLE001
             return ["发布器单跑失败: %s" % str(e)[:120]]
 
+    def _aoi_inspect(self, port=10082):
+        """🔍 联合工控机 AOI: 真拍一张 → 缺陷判决(/last_result) + 金手指矩形搜索(/region) + 侧边修正。
+
+        口径照 aoi_link/zmax-aoi-service: 200 只是受理, 判决要轮询 /last_result;
+        结果落 zmax_data/ar_aoi_state.json (AR 页面/其他工具读同一份)。
+        """
+        if AOI is None:
+            return {"ok": False, "err": "aoi_link 不可用"}
+        try:
+            out = AOI.inspect(port)
+        except Exception as e:                                                   # noqa: BLE001
+            return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
+        out["ok"] = bool((out.get("detect") or {}).get("ok") or (out.get("region") or {}).get("ok"))
+        try:
+            tmp = AOI_STATE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(out, f, ensure_ascii=False, indent=1)
+            os.replace(tmp, AOI_STATE)
+        except Exception:                                                        # noqa: BLE001
+            pass
+        return out
+
+    def _rs_stream(self):
+        """🥽 RealSense 的 MJPEG 流: 由 realsense_source 提供(不走 8791 代理)。"""
+        import realsense_source as RS
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            for part in RS.mjpeg(fps=15, quality=78):
+                self.wfile.write(part)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:                                                   # noqa: BLE001
+            sys.stderr.write("[rs.mjpg] %s: %s\n" % (type(e).__name__, str(e)[:100]))
+
     def _do_calib(self, body):
         cam = str(body.get("cam") or "local")
         meta = CAMS.get(cam) or CAMS["local"]
         W, H = int(meta["w"]), int(meta["h"])
         pts = body.get("points") or []
-        if len(pts) < 6:
-            return {"ok": False, "err": "至少 6 个点(建议 6~8, 且**高低/左右都要变**): 少于 6 个时 "
-                                        "没有线性初值(DLT), 容易解飞 —— 现在 %d 个" % len(pts)}
+        # 🥽 相机有出厂内参(RealSense D435) ⇒ 焦距/主点不再解, 只解 R,t: 4 点就够(建议 5~8, 且高低左右都要变)
+        _ci, _need, _why = None, 6, "至少 6 个点(建议 6~8, 且**高低/左右都要变**): 少于 6 个时没有线性初值(DLT), 容易解飞"
+        if (CAMS.get(cam) or {}).get("intrinsics") == "device":
+            try:
+                import realsense_source as RS
+                _ci = RS.intrinsics() or None
+            except Exception:                                                    # noqa: BLE001
+                _ci = None
+            if _ci:
+                _need = 4
+                _why = "至少 4 个点(该相机有出厂内参, 只解 R,t —— 建议 5~8 个, 高低/左右都要变)"
+        if len(pts) < _need:
+            return {"ok": False, "err": "%s —— 现在 %d 个" % (_why, len(pts))}
         P3 = [q["tcp"] if isinstance(q.get("tcp"), list) else [q["tcp"]["x"], q["tcp"]["y"], q["tcp"]["z"]]
               for q in pts]
         P2 = [q["uv"] for q in pts]
@@ -375,12 +498,16 @@ class H(BaseHTTPRequestHandler):
         s = A.std(0) * 1000.0                                                     # mm
         spread_mm = float(np.linalg.norm(s))
         rng_mm = [float(v) for v in (A.max(0) - A.min(0)) * 1000.0]
-        sol = LS.solve(P3, P2, W, H)
+        sol = (LS.solve(P3, P2, W, H, f_fixed=_ci["fx"], cx=_ci["ppx"], cy=_ci["ppy"])
+               if _ci else LS.solve(P3, P2, W, H))
         if sol is None:
             return {"ok": False, "err": "解算失败(超定/退化) —— 点多散布一些再试"}
         calib = {
             "kind": "laptop_cam_calib", "cam": cam,
-            "model": "pinhole, fx=fy=f, 主点=图像中心",
+            "model": ("pinhole, 焦距/主点=**相机出厂内参**" if _ci else "pinhole, fx=fy=f, 主点=图像中心"),
+            "intrinsics_source": ("设备出厂内参 (只解 R,t)" if _ci else "页面标定 (解 f+R+t)"),
+            "device_intrinsics": (None if not _ci else {"fx": _ci["fx"], "fy": _ci["fy"],
+                                                        "ppx": _ci["ppx"], "ppy": _ci["ppy"]}),
             "f": sol["f"], "cx": sol["cx"], "cy": sol["cy"], "image_size": sol["image_size"],
             "R_base_to_cam": sol["R"], "t_base_to_cam": sol["t"],
             "rms_px": round(sol["rms_px"], 2), "err_px": [round(e, 2) for e in sol["err_px"]],

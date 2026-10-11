@@ -72,6 +72,20 @@
       <pre id="pTraj">—</pre>
     </div>
     <div class="card">
+      <h2>🔍 联合工控机 AOI (金手指 10082)</h2>
+      <div class="row">
+        <button id="bAoiRead">📋 只读体检</button>
+        <button id="bAoiGo" class="primary">📸 请求检测</button>
+      </div>
+      <pre id="pAoi">还没跑过 —— 点『📸 请求检测』真拍一张(工控机 10082): 缺陷判决 + 金手指矩形 + 侧边位置修正都回这里。</pre>
+      <img id="aoiImg" style="width:100%;border-radius:6px;margin-top:6px;display:none" alt="金手指判据图(工控机口径)">
+      <div class="row" style="margin-top:8px">
+        <button id="bRsDet" class="sm">🔎 找光模块(YOLO)</button>
+        <button id="bRsCal" class="sm">📐 标定信息</button>
+      </div>
+      <pre id="pRs">🥽 RealSense D435: 点『🔎 找光模块』在 AR 相机帧里跑**在役权重**(models/yolo_peg_live.pt) —— 这就是「光模块的标定能力」第一步: 检测框中心 + 深度 → 相机系 3D, 与 TCP/base 真值配对后即可解外参。</pre>
+    </div>
+    <div class="card">
       <h2>AR 叠加标定(所选固定相机的外参)</h2>
       <div class="row">
         <button id="bCal">🎯 进入标定(点夹爪尖)</button>
@@ -107,7 +121,10 @@
 <script>
 const $=(id)=>document.getElementById(id);
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
-let CAM='local2', CAMS={local:{w:640,h:480,label:'笔记本 640×480'}, local2:{w:1280,h:720,label:'MAXHUB 1280×720'}};
+// 🥽 2026-10-11: 默认底图改成本机 Intel RealSense D435 (可用 ?cam=local2 切回 MAXHUB)
+let CAM=(new URLSearchParams(location.search).get('cam')||'rs');
+let CAMS={local:{w:640,h:480,label:'笔记本 640×480'}, local2:{w:1280,h:720,label:'MAXHUB 1280×720'},
+          rs:{w:640,h:480,label:'Intel RealSense D435 (彩色+深度)'}};
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
     VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true};
 
@@ -354,7 +371,11 @@ $('bCal').addEventListener('click',()=>{ CAL_MODE=!CAL_MODE;
        ⚠️ 点的是"你看到工具尖的那个像素", 同刻的 TCP 真值由系统自动取。`
     : '标定已退出。';
 });
-$('bCalReset').addEventListener('click',()=>{ CAL_PTS=[]; $('bSolve').disabled=true; $('calBar').style.width='0%';
+$('bCalReset').onclick=()=>{ CAL_PTS=[]; SIG=''; $('bSolve').disabled=true; $('calBar').style.width='0%'; drawOv(); };
+if($('bAoiGo')) $('bAoiGo').onclick=aoiGo;
+if($('bAoiRead')) $('bAoiRead').onclick=aoiRead;
+if($('bRsDet')) $('bRsDet').onclick=rsDetect;
+if($('bRsCal')) $('bRsCal').onclick=rsCalInfo;
   $('pCal').textContent='点已清空。'; });
 $('bSolve').addEventListener('click',async ()=>{
   $('pCal').textContent='解算中…';
@@ -416,6 +437,9 @@ async function refresh(){
     TRAJ={trace:t.trace||[],plan:t.plan||[]}; }
   catch(e){}
   try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok) $('tAge').textContent='帧龄 '+TCP.age_s.toFixed(2)+'s'; }catch(e){}
+  if(CAM==='rs'){ try{ const ri=await fetch('/api/rs_info').then(r=>r.json());
+    $('tAge').textContent='RealSense 帧 '+(ri.frames||0)+' · 帧龄 '+(ri.age_s==null?'—':ri.age_s)+'s · 深度中位 '+(((ri.depth||{}).median_mm)||'—')+'mm';
+    $('tAge').className='tag'+(ri.ok?' on':''); }catch(e){} }
   try{ const s=await fetch('/api/traj/state').then(r=>r.json());
     if(s&&s.ok){ const inS=s.in_spec||{};
       SHOW=!!s.state.show;                              // 🔴 每次轮询都同步(原来只在 init 读一次: 后端开了、页面还是"隐藏", 看着就像没轨迹)
@@ -428,15 +452,62 @@ async function refresh(){
     } }catch(e){}
   drawIfChanged();
 }
+// ── 🔍 联合工控机 AOI (缺陷检测 / 金手指矩形搜索 / 侧边位置修正) ──
+function aoiRender(d){
+  const de=(d.detect||{}), rg=(d.region||{}), sf=(rg.side_fix||{}), j=(d.judge||{});
+  const v=de.verdict||'—', n=(de.count===0||de.count)?de.count:'—';
+  $('pAoi').textContent=
+    `判决 ${v} · 缺陷 ${n} · 推理 ${de.infer_ms||'—'}ms · 总 ${de.total_s||'—'}s\n`+
+    `金手指矩形: 中心 (${(rg.rect||{}).cx}, ${(rg.rect||{}).cy}) 尺寸 ${(rg.rect||{}).w}×${(rg.rect||{}).h}px `+
+    `倾角 ${(rg.rect||{}).angle_deg}° · bbox ${JSON.stringify(rg.bbox||[])} · 判据 ${j.ver||'—'} keys=${j.n_keys} state=${j.state}\n`+
+    `侧边位置修正: Δx = ${sf.dx_px}px${sf.px_per_mm?('  ('+(sf.dx_px/sf.px_per_mm).toFixed(2)+'mm)'):''} · 反旋 ${sf.angle_deg}°`+
+    (sf.px_per_mm?'':'  ※ px→mm 需现场雅可比')+`\n时间 ${d.ts||d.age_s||'—'}`;
+  if(d.ok!==false){ const im=$('aoiImg'); im.style.display='block'; im.src='/api/aoi/gold.jpg?t='+Date.now(); }
+}
+async function aoiGo(){
+  $('pAoi').textContent='已请求拍照, 等工控机判决…(真拍一张, 约 3~10s)';
+  try{ const d=await (await fetch('/api/aoi/inspect',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({port:10082})})).json(); aoiRender(d); }
+  catch(e){ $('pAoi').textContent='请求失败: '+e.message; }
+}
+async function aoiRead(){
+  try{ const d=await (await fetch('/api/aoi/read')).json();
+    const st=(d['/storage']||{}).body||{};
+    $('pAoi').textContent='只读体检(没拍照): /storage http='+((d['/storage']||{}).http)+' 文件数='+(st.files_total||'—')+
+      ' · /crop_info http='+((d['/crop_info']||{}).http)+' · /last_result http='+((d['/last_result']||{}).http);
+  }catch(e){ $('pAoi').textContent='只读体检失败: '+e.message; }
+}
+async function rsDetect(){
+  $('pRs').textContent='在 AR 相机帧里跑在役 YOLO…';
+  try{ const d=await (await fetch('/api/rs_detect')).json();
+    if(!d.ok){ $('pRs').textContent='检测不可用: '+(d.err||'')+' '+(d.err_rs||''); return; }
+    const lines=(d.dets||[]).map((x,i)=>`#${i+1} conf=${x.conf} uv=(${x.uv[0]},${x.uv[1]}) 相机系3D=${x.cam_xyz_m?('['+x.cam_xyz_m.map(v=>v.toFixed(3)).join(', ')+']m'):('无深度('+(x.depth_why||'')+')')}`);
+    $('pRs').textContent=`权重 ${d.model} · 检出 ${d.n} 个 · 帧龄 ${d.age_s}s\n`+(lines.join('\n')||'本帧没检出(光模块不在视野/被遮挡)');
+  }catch(e){ $('pRs').textContent='检测失败: '+e.message; }
+}
+async function rsCalInfo(){
+  try{ const d=await (await fetch('/api/calib?cam=rs')).json();
+    if(d.ok){ const c=d.calib; $('pRs').textContent=`🥽 rs 标定: ${c.model} · RMS ${c.rms_px}px · ${c.n_points} 点 · σ ${c.spread_sigma_mm}mm · 自检 ${c.solver_selftest}\n`+(c.intrinsics_source||''); }
+    else $('pRs').textContent='🥽 rs 还没标定 —— 用上面的『🎯 进入标定』点夹爪尖(该相机有出厂内参, 4 点即可, 建议 5~8 点)\n或命令行: tools/ar_calib_module.py detect|pair|solve';
+  }catch(e){ $('pRs').textContent='读标定失败: '+e.message; }
+}
+async function aoiState(){
+  try{ const d=await (await fetch('/api/aoi/state')).json(); if(d&&d.detect) aoiRender(d); }catch(e){}
+}
 (async function init(){
   await loadCams();
   READY=true; layout(); await refresh();
-  setInterval(refresh,1500);
+  await aoiState();
+  setInterval(refresh,1500); setInterval(aoiState,5000);
 })();
 async function loadCams(){
   try{ const r=await fetch('/api/cams').then(x=>x.json());
     if(r.ok&&r.cams){ CAMS=r.cams; }
   }catch(e){}
+  if(CAMS[CAM]){                       // 🔴 分辨率必须跟着初始相机走(标定点按像素存, 混用必然投影错)
+    IMG_W=CAMS[CAM].w||IMG_W; IMG_H=CAMS[CAM].h||IMG_H;
+    $('vid').src='/cam.mjpg?c='+CAM+'&t='+Date.now();
+  }
   buildCamPick();
   await loadCalib();
 }
