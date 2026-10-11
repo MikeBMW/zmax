@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.8")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.9")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10952,7 +10952,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.8 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.9 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10960,9 +10960,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.8 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.9 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.9: v5.47.9 — 调试状态自动存档到 .proj 工程文件 (下次接着调) 老倪原话: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」  一、新模块 tools/proj_state.py: 抓当前调试状态 → 写进工程文件的 debug_state 段 (原子写 + 自动备份 + 回读校验)    内容: 活跃任务 (绑定真源) · 数据源 src_state (画布 📦 数据源节点) · 场景 ID/目录 (data/scene/scenes/<ID>)         · 画布真源 md5 · 任务三态快照 · 主参数 M · 版本/时间; 上一份状态留在 _prev_debug_state 备查    工程文件不存在时先用真生产者 tools/ss_task_bind.py --export 生成 (默认 reports/projects/SS_主工程_任务配置.zmaxproj)  二、三处自动钩子    · 画布切数据源 (simulink_module.on_toggle_src) → 自动存档 + 日志「💾 调试状态已自动存档」    · 配置中心活跃属性下拉 (veh6_config_page._on_task_state_changed) → 自动存档    · 打开工程文件 (project_file.load_project) → 自动恢复存档的调试状态 (ZMAX_SCENE_DIR 场景真源 + 活跃任务), 结果进返回摘要 debug_state  三、CLI: python tools/proj_state.py save|show|restore|capture [--path P]  四、判据 verify_proj_state.py (真跑存档/回滚/恢复; 收尾保持老倪当前配置: 摆盘场景 + TASK-06-TRAY)    ① capture == 现状 (TASK-06-TRAY · 摆盘场景 · SS-TRAY-PLACE) ② 存档回读一致且工程文件其他段一字未动    ③ 模拟现场改变 (清场景真源 + 任务切回 TASK-01-FW) ④ restore 后场景真源与活跃任务都回到存档值    ⑤ 三处钩子都在 ⑥ 收尾真源字节还原, 仍是 TASK-06-TRAY 活跃
         # v5.47.8: v5.47.8 — 配置中心「活跃属性」列改成用户可自选下拉 (★ 活跃 / ○ 未激活 / — 无配置), 选中即真动作 老倪原话: 「配置中心的 活跃属性列, 增加新功能, 用户可以自主调整 活跃 未激活 等状态, 用下拉菜单,           用户可以选择配置的 UI, 你设计一下, 一会我要实际来配置状态空间的模型」  设计 (veh6_config_page.py · ConfigCenterPage「📋 任务配置」表第 9 列):   · 每行一个下拉; 改一下立刻生效 → 重算全表 + 表头计数 + 页内日志 (✅/⛔ + 原因, 失败绝不假成功)   · ★ 活跃   = 真激活: 走 tools/ss_task_bind.py --activate <TID> (写绑定真源 config/ss_task_binding.json + 激活台账), 回读校验 active_task;                活跃唯一 ⇒ 旧活跃任务自动变「○ 未激活」; 手选台账里该任务的记录同时清掉   · ○ 未激活 = 配置就绪但不激活 → 记 config/task_state_manual.json; **当前活跃任务不能直接标未激活** ⇒ 拒绝并提示先激活别的任务   · — 无配置 = 撤销手选 → 有真实运行证据的任务**拒绝降级** (拒绝时把证据路径打出来, 点下拉不会让证据消失)   · 状态优先级: 绑定真源 active_task > 用户手选 manual > 证据推导 (台账/运行报告) > 无配置   · 产物: config/task_state_manual.json (手选) + config/task_state_ledger.json (激活台账) + config/task_state.json (导出快照)   · CLI 同源: python tools/ss_task_state.py set 'TASK-06-TRAY:★ 活跃'  判据 verify_state_dropdown.py **11/11 PASS** (真起 ConfigCenterPage):   ① 6 行每行都是下拉, 三项齐全, 当前值 == 推导状态   ② 选「★ 活跃」真激活: 绑定真源 active_task → TASK-06-TRAY; 旧活跃 TASK-01-FW 自动变未激活; UI 与真源逐行一致   ③ 拒绝非法: 活跃任务标未激活 (提示活跃唯一) / 有证据的标无配置 (列出证据路径); 无证据的可手选未激活   ④ 收尾还原: 绑定真源/台账/手选文件字节还原 ⇒ 改前状态复原 (活跃 TASK-01-FW · 未激活 TASK-06-TRAY · 4×无配置), 可直接用于实际配置
         # v5.47.7: v5.47.7 — 主参数M 节点加载「配置中心全部配置」(json/yaml/数据库) 并直接指导模型 老倪原话: 「你要把配置中心的所有配置文件, 加载到 状态空间工程的 标定诊断测量 主参数M 节点,           这个节点的代码, 要加载配置中心的数据库文件, json文件, yaml文件等, 直接指导模型工作」  一、新装载器 tools/config_center_load.py (全量, 可审计)    · config/** 全部 JSON(27) + YAML(11) + 工程库 SQLite(data/database/zmax/zmax_engineering.db, 24 表/5213 行) = 48 文件 1 库    · .bak 历史件 151 个只登记不解析; >2MB 二进制(URDF mesh)只登记大小跳过 md5; 解析失败照实记 (当前 0)    · 导出「模型指导参数」guide: 主参数 M/惯性(与标定真源同源) · dt · 限值 · 活跃任务+档位开+启用/禁用节点 · 几何(内参/外参) · MCD 就绪度 · 工单/平台/机器人    · 产物 config/cc_snapshot.json (每文件 md5/字节/条目) ; CLI build|show|guide|check  二、节点真接线 (src/lerobot/engineering/nodes/library.py::node_ss_calib_mani)    · 执行时先全量装载配置中心 → M/惯性以装载值为准 (同一个数) · dt 跟配置(无则 0.01 如实标注)    · 限值直接约束本节点输出: 有速度上限就按 v_max·dt 钳制步长并报钳制次数; 力阈值/插入深度/夹持力进 limits    · 引导结果入引擎状态 _SS_STATE["cc_guide"] + calib_mani.cc_counts/limits (下游节点可读), 日志逐项打印    · 装载失败 ⇒ 退回单文件读 zmax_params (零回归), 日志如实说  三、判据 verify_cc_guide.py **0 失败** (①-⑦ 装载: 48 文件·24 表·0 失败·M 与真源同数·限值 3 项含文本力阈值·几何内参+外参;    ⑧-⑩ 真执行节点: 返回 True · 日志有「配置中心全量装载 → 本次模型执行」+ 指导项 · _SS_STATE 里 cc_guide/cc_counts(48))    如实: plane_z 未标定 (calib 原文: 需现场量一次台面高度) · 无速度上限配置 ⇒ 不钳制 · dt 配置中心没有 ⇒ 0.01
         # v5.47.6: v5.47.6 — 配置中心「任务配置」活跃属性改三态: ★ 活跃 / ○ 未激活 / — 无配置 (推到真源, 不手填) 老倪原话: 「在配置中心, 在工艺/工单/任务的配置界面, 有个 活跃属性, 当前 TASK-01-FW 的配置正在显示 活跃,           其它的任务状态, 都要标记出来; 例如 TASK-06, 你已经完成了任务配置切换后, 马上就可以工作, 对不?           TASK-06-TRAY 的活跃状态, 应该是 未激活; 其它的任务, 应该是无配置, 因为还没开始」  一、新真源 tools/ss_task_state.py (状态全部**推导**, 不手填任务清单)    ★ 活跃   = config/ss_task_binding.json 的 active_task (绑定真源, 唯一)    ○ 未激活 = 该任务**配置切换过 或 跑过验证** ⇒ 已就绪, 切过去就能干活               证据 = ① 激活台账 config/task_state_ledger.json  ② 运行报告 (docs/data_snapshots/*/任务运行报告_<TASK>*.json)                      ③ zmax_data/task_runs/<TASK>/* 产物    — 无配置 = 都没有 ⇒ 还没开始    产物: config/task_state.json (可审计: 每条带 state/why/evidence 路径) · CLI build|show|cell  二、界面 (tools/gui/veh6_config_page.py · ConfigCenterPage「📋 任务配置」表)    · 活跃列原来只有 `★ 活跃 or 空` ⇒ 现在三态齐全; 表头行加「状态 活跃 1 / 未激活 1 / 无配置 4」计数。    · 表里那一格 = 同一个 _task_state_cell() (无第二套口径)。  三、切换即记账 (让「以后新配好的任务」自动变未激活)    tools/ss_task_bind.py --activate 成功时追加一条台账 (幂等, 原子 tmp+rename); 配置中心走的就是这条激活路径。  四、判据 verify_task_state3.py **8/8 PASS** (含真界面)    ① TASK-01-FW = ★ 活跃  ② TASK-06-TRAY = ○ 未激活 (带真运行报告证据)  ③ 其余 4 个 = — 无配置    ④ 三态都出现  ⑤ config/task_state.json 计数 {活跃1,未激活1,无配置4}  ⑥ 源码接线对    ⑦ 真起 ConfigCenterPage, 任务表活跃列实渲染 = ['★ 活跃','— 无配置','— 无配置','— 无配置','— 无配置','○ 未激活']
@@ -11611,7 +11612,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.8  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.9  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13353,7 +13354,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.8</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.9</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

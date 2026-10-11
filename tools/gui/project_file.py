@@ -561,6 +561,15 @@ def load_project(path, with_calib=False, yes=False):
            "calib_restored": None}
     if with_calib:
         out["calib_restored"] = restore_calibration(proj, yes=yes)
+    # 💾 2026-10-11 老倪: 「下次我可以继续调试」⇒ 打开工程文件时把存档的调试状态也恢复 (场景真源 + 活跃任务)
+    try:
+        import importlib.util as _il7
+        _s7 = _il7.spec_from_file_location("proj_state", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "proj_state.py"))
+        _p7 = _il7.module_from_spec(_s7)
+        _s7.loader.exec_module(_p7)
+        out["debug_state"] = _p7.restore(path)
+    except Exception as _e7:                                                    # noqa: BLE001
+        out["debug_state"] = {"ok": False, "why": "%s: %s" % (type(_e7).__name__, _e7)}
     return out
 
 

@@ -531,6 +531,19 @@ class ConfigCenterPage(QWidget):
             if ok:
                 self._act_now = (extra or {}).get("active_task") or None
                 self._reload_task_states()
+                try:                                                            # 💾 活跃属性一变 → 自动存档到工程文件
+                    import importlib.util as _il8
+                    _s8 = _il8.spec_from_file_location("proj_state", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "proj_state.py"))
+                    _p8 = _il8.module_from_spec(_s8)
+                    _s8.loader.exec_module(_p8)
+                    _r8 = _p8.save(reason="活跃属性下拉: %s -> %s" % (tid, label))
+                    _t8 = _r8.get("state") or {}
+                    self._log_cc("💾 调试状态已自动存档 → 工程文件 (任务 %s · 数据源 %s)%s"
+                                 % (_t8.get("active_task"), _t8.get("src_state"),
+                                    "" if _r8.get("ok") else "  ⚠️ %s" % _r8.get("why")))
+                except Exception as _e8:                                        # noqa: BLE001
+                    self._log_cc("⚠️ 自动存档失败: %s: %s" % (type(_e8).__name__, _e8))
+
         except Exception:                                                       # noqa: BLE001
             pass
 

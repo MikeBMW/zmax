@@ -12883,6 +12883,36 @@ class SimulinkModule(QWidget):
         self._save_param_to_flow(node, "src_state")
         self._log("🔀 数据源切换 → %s   [_data_source=%s]" % (SRC_DESC[nxt], self._data_source))
         self._log("   %s" % _msg + ("" if _ok else "   ⚠️ 场景真源没切成功, 照实报"))
+        # 💾 2026-10-11 老倪: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」⇒ 状态一变就自动存档
+        try:
+            import importlib.util as _ilu9
+            _sp9 = _ilu9.spec_from_file_location("proj_state", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "proj_state.py"))
+            _ps9 = _ilu9.module_from_spec(_sp9)
+            _sp9.loader.exec_module(_ps9)
+            _r9 = _ps9.save(reason="数据源切换")
+            _st9 = _r9.get("state") or {}
+            self._log("💾 调试状态已自动存档 → 工程文件 %s (任务 %s · 数据源 %s · 场景 %s)%s"
+                      % (os.path.basename(_r9.get("path") or ""), _st9.get("active_task"), _st9.get("src_state"),
+                         os.path.basename(_st9.get("scene_dir") or ""),
+                         "" if _r9.get("ok") else "  ⚠️ %s" % _r9.get("why")))
+        except Exception as _e9:                                                # noqa: BLE001
+            self._log("⚠️ 调试状态自动存档失败: %s: %s" % (type(_e9).__name__, _e9))
+
+        # 💾 2026-10-11 老倪: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」⇒ 状态一变就自动存档
+        try:
+            import importlib.util as _ilu9
+            _sp9 = _ilu9.spec_from_file_location("proj_state", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "proj_state.py"))
+            _ps9 = _ilu9.module_from_spec(_sp9)
+            _sp9.loader.exec_module(_ps9)
+            _r9 = _ps9.save(reason="数据源切换")
+            _st9 = _r9.get("state") or {}
+            self._log("💾 调试状态已自动存档 → 工程文件 %s (任务 %s · 数据源 %s · 场景 %s)%s"
+                      % (os.path.basename(_r9.get("path") or ""), _st9.get("active_task"), _st9.get("src_state"),
+                         os.path.basename(_st9.get("scene_dir") or ""),
+                         "" if _r9.get("ok") else "  ⚠️ %s" % _r9.get("why")))
+        except Exception as _e9:                                                # noqa: BLE001
+            self._log("⚠️ 调试状态自动存档失败: %s: %s" % (type(_e9).__name__, _e9))
+
         # 🎥 2026-09-17 老倪: 输入图像窗口若开着 → 窗口跟着切源
         #   (否则画布已经切到仿真, 窗口还端着一路现场视频; 手动在下拉里切也行, 但容易忘)
         try:
