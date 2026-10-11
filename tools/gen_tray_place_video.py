@@ -53,7 +53,7 @@ import mujoco  # noqa: E402
 from train_full_pipeline import get_obs  # noqa: E402
 from state_space_sim import StateSpaceSim  # noqa: E402
 from ss_task_l45 import BINDING, TaskL45  # noqa: E402  (L5 下指令 + L4 保安全: 配置中心驱动)
-from ss_task_l45 import evidence_line  # noqa: E402
+from ss_task_l45 import evidence_line, model_line  # noqa: E402
 
 A_LIMIT = 0.6          # 安全限幅 (m/s)
 F_REF = 25.0           # 接触力归一化 (N)
@@ -632,6 +632,9 @@ def main():
     log(f"\n📊 摆盘汇总: {ok_n}/{len(judges)} 颗合格 · 合计 {len(tr_all['t'])} 步 · {dt:.1f}s")
     if judges and judges[0].get("l45"):
         log("  " + evidence_line(judges[0]["l45"]).replace("\n", "\n  "))
+        _ml = model_line(judges[0]["l45"])
+        if _ml:
+            log("  " + _ml)
     _cts = [j["ct_s"] for j in judges]
     _vacs = [j["vac_establish_ms"] for j in judges if j["vac_establish_ms"] is not None]
     log(f"   判据真源 {spec['src']} · 目标: 成功率 {spec['targets'].get('成功率', '—')} / "

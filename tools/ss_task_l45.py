@@ -237,8 +237,33 @@ class TaskL45:
         self.notes.append(dict(stage=stage, tol_xy_mm=round(tol["xy_m"] * 1000, 4),
                                tol_yaw_deg=tol["yaw_deg"], **kw))
 
+    def model_use(self):
+        """🧠 逐层『真模型 vs 解析回退』实数: 从各层对象自己的计数器读, 不猜。"""
+        ss = self.l4.ss
+        if ss is None:
+            return {}
+        acc = getattr(ss, "accel", None)
+        dyn = getattr(ss, "dyn", None)
+        est = getattr(ss, "est", None)
+        n_mlp = int(getattr(acc, "n_mlp", 0) or 0)
+        n_gd = int(getattr(acc, "n_guard", 0) or 0)
+        tot = n_mlp + n_gd
+        return dict(
+            L2=dict(impl="蒸馏 MLP (ss_left_brain.npz)", loaded=bool(getattr(acc, "loaded", False)),
+                    calls_mlp=n_mlp, calls_guard=n_gd,
+                    mlp_share=(round(n_mlp / tot, 4) if tot else None),
+                    trainable=False),
+            L3=dict(impl="世界模型 (ss_right_brain.npz)", loaded=bool(getattr(dyn, "wm", None) is not None),
+                    estimator="卡尔曼解析 (A=1.0, K=0.2 手设)", estimator_learned=False),
+            L4=dict(impl="解析安全闸 (saturate) + 平滑", model_in_loop=False,
+                    note="真 L4 模型 l4_mani_predictor_v5.pt 未接入两条 episode 链"),
+            L5=dict(impl="配置中心驱动的阶段链 (规则/配置, 非模型)", model_in_loop=False,
+                    planner_loaded=bool(getattr(ss, "planner", None)),
+                    note="LLM 端点未配置"),
+        )
+
     def evidence(self):
-        return dict(L4=self.l4.evidence(),
+        return dict(models=self.model_use(), L4=self.l4.evidence(),
                     L5=dict(task_id=self.plan.task_id, src=self.plan.src, mode=self.plan.mode,
                              stages=self.plan.stages, steps=self.plan.steps,
                              tol=self.plan.tol, takt_s=self.plan.takt_s,
@@ -247,6 +272,19 @@ class TaskL45:
                              ins_depth_m=self.plan.ins_depth_m,
                              switches=self.plan.sw, applied=getattr(self.plan, "applied", {})),
                     notes=self.notes[-8:])
+
+
+def model_line(ev):
+    """一行『逐层真模型/解析』证据 (两链共用)。"""
+    m = (ev or {}).get("models") or {}
+    if not m:
+        return None
+    l2, l3, l4, l5 = m.get("L2", {}), m.get("L3", {}), m.get("L4", {}), m.get("L5", {})
+    return ("🧠 逐层真模型: L2 %s loaded=%s 每帧调用 mlp=%s/守卫=%s (真模型占比 %s) | L3 %s loaded=%s (+%s) |"
+            " L4 %s 模型在回路=%s | L5 %s 模型在回路=%s"
+            % (l2.get("impl"), l2.get("loaded"), l2.get("calls_mlp"), l2.get("calls_guard"), l2.get("mlp_share"),
+               l3.get("impl"), l3.get("loaded"), l3.get("estimator"),
+               l4.get("impl"), l4.get("model_in_loop"), l5.get("impl"), l5.get("model_in_loop")))
 
 
 def evidence_line(ev):

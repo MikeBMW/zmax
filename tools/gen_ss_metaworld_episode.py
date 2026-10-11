@@ -42,7 +42,7 @@ import mujoco  # noqa: E402
 from train_full_pipeline import make_env, get_obs  # noqa: E402
 from state_space_sim import StateSpaceSim  # noqa: E402
 from ss_task_l45 import BINDING, TaskL45  # noqa: E402  (L5 下指令 + L4 保安全: 配置中心驱动)
-from ss_task_l45 import evidence_line  # noqa: E402
+from ss_task_l45 import evidence_line, model_line  # noqa: E402
 
 A_LIMIT = 0.6        # 安全限幅上限 (m/s)
 F_REF = 25.0         # 接触力归一化参考 (N)
@@ -445,6 +445,9 @@ def main():
               f"success={meta['success']} · 阶段链 {'→'.join(dict.fromkeys(stages))}", flush=True)
         if meta.get("l45"):
             print("  " + evidence_line(meta["l45"]).replace("\n", "\n  "), flush=True)
+            _ml = model_line(meta["l45"])
+            if _ml:
+                print("  " + _ml, flush=True)
         if best is None or len(set(stages)) > len(set(best[3])):
             best = (tr, meta, frames, stages)
         if meta["success"]:
