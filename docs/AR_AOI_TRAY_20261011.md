@@ -28,7 +28,7 @@ AR 相机真实标定点采集都在等它(见 §5)。
 
 ## 1. RealSense D435: 装驱动 → 接入 AR 服务
 
-- 设备: `Bus 002 Device 006: ID 8086:0b07 Intel Corp. RealSense D435` (v4l2 占 `/dev/video8..13`)
+- 设备: `Bus 002 Device 006: ID 8086:0b07 Intel Corp. RealSense D435` (v4l2 占 `/dev/video8..13`) · 自报型号 `RealSense D435` · **固件 5.15.1.55** · `pyrealsense2` 导入自检 OK
 - 驱动: `pyrealsense2 2.59.1` (装进 `gui-venv311`, 不动系统 python)
 - 实测(640×480): 彩色 `fx=603.45 fy=602.22 ppx=320.11 ppy=258.20`, 深度 `scale=1mm`,
   深度有效率 **76%** · 中位 **1.5m**; 帧率 ~30fps, `age_s≈0.02s`
