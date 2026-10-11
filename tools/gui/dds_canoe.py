@@ -22,8 +22,8 @@ from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtGui import QColor, QFont, QGuiApplication, QPainter
 from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
                              QLineEdit, QPushButton, QSplitter, QStyledItemDelegate, QTableWidget,
-                             QTableWidgetItem, QTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-                             QWidget)
+                             QStackedWidget, QTableWidget, QTableWidgetItem, QTextEdit, QTreeWidget,
+                             QTreeWidgetItem, QVBoxLayout, QWidget)
 
 # ── 调色板(与控制台主色一致) ──
 C_BG, C_BG2, C_CARD, C_BORDER = "#0d1117", "#161b22", "#1c2333", "#30363d"
@@ -492,7 +492,7 @@ class BusView(QWidget):
         head.addWidget(self._sm_btn("🗑 清屏", "只清 Trace 视图, 不动 trace.jsonl 原始记录", self._clear_trace))
         head.addWidget(self._sm_btn("📤 导出 CSV", "导出当前 Trace 表(Excel 可开)", self.export_trace))
 
-        self.tb = QTableWidget(0, 10)
+        self.tb = QTableWidget(0, 11)
         self.tb.setHorizontalHeaderLabels(
             # 🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据, 给我高亮显示出来」
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
@@ -513,16 +513,52 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 130), (1, 165), (2, 430), (3, 110), (4, 120), (5, 90),
-                     (6, 90), (7, 80), (8, 80), (9, 200)):
+        for i, w in ((0, 130), (1, 165), (2, 250), (3, 430), (4, 110), (5, 120), (6, 90),
+                     (7, 90), (8, 80), (9, 80), (10, 200)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
         th.setSectionsMovable(False)
         self._col_user = set()
         th.sectionResized.connect(self._on_col_resized)      # 🖱 用户拖过 ⇒ 以后不再自动适配
         self.tb.itemClicked.connect(self._on_trace_click)
-        lay.addWidget(self.tb, 1)
+        # 🆕 2026-10-11 老倪: 「在 滚动/固定行 两种显示模式的基础上, 增加 信号分析 模式, 只是同步显示 实时监控的信号」
+        #   ⇒ 同一个位置放两页: 0) Trace 表 (固定行/滚动) 1) 内嵌「实时监控」同一控件 (CanoeGraphicWidget, 懒加载)
+        #     内嵌的就是同一个控件类 + 同一份真源 ⇒ 信号集合/时间口径天然同步, 不另起一套。
+        self.trace_stack = QStackedWidget()
+        self.trace_stack.addWidget(self.tb)
+        self.an_box = QFrame()
+        self.an_box.setStyleSheet(f"QFrame {{ background:{C_BG}; border:none; }}")
+        self.an_lay = QVBoxLayout(self.an_box)
+        self.an_lay.setContentsMargins(0, 0, 0, 0)
+        self.an_note = QLabel("📈 信号分析模式: 与「实时监控」同一套信号 (同一份真源) —— 首次切入时加载")
+        self.an_note.setStyleSheet(f"color:{C_GRAY}; padding:8px;")
+        self.an_lay.addWidget(self.an_note)
+        self.trace_stack.addWidget(self.an_box)
+        self.trace_stack.setCurrentIndex(0)
+        self.an = None
+        lay.addWidget(self.trace_stack, 1)
         return box
+
+    def _ensure_analysis(self):
+        """📈 信号分析模式的内嵌控件 (与「实时监控」同一个 CanoeGraphicWidget ⇒ 信号与真源完全同步)。"""
+        if getattr(self, "an", None) is not None:
+            return self.an
+        try:
+            import canoe_graphic as _cg
+            self.an = _cg.CanoeGraphicWidget()
+            try:
+                self.an.log.connect(lambda s: self._say("📈 " + str(s)[:180]))
+            except Exception:                                                   # noqa: BLE001
+                pass
+            self.an_lay.addWidget(self.an, 1)
+            try:
+                self.an_note.setVisible(False)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            self._say("📈 信号分析: 已内嵌实时监控控件 (同一份真源: 3D 场景快照 / 本机真值流 / Orin ROS2 / 全局数据空间)")
+        except Exception as e:                                                  # noqa: BLE001
+            self._say("⚠️ 信号分析模式不可用: %s: %s" % (type(e).__name__, e))
+        return self.an
 
     def _bottom_tabs(self):
         """CANoe 底部标签栏 → 数据闭环 | 质量告警 (+ 右下计时/拍照)"""
@@ -898,6 +934,38 @@ class BusView(QWidget):
             return None
 
     @staticmethod
+    def _sig_names(src, limit=10):
+        """🆕 2026-10-11 老倪: 「在 trace 里, 增加 信号名称 列」——该行携带的**信号名**。
+
+        Name 列是话题名, 信号名称列是这一帧/这一话题里面的信号 (fields 键名 / digest 键名);
+        digest 在 trace.jsonl 里是**截断**存的, 所以用正则抠键名而不是 json.loads。
+        取不到就 '—' (不装)。
+        """
+        names = []
+        try:
+            if isinstance(src, dict):
+                names = [str(k) for k in src.keys()]
+            elif src:
+                import re as _re
+                names = [k for k, _v in _re.findall(
+                    r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', str(src))]
+        except Exception:                                                       # noqa: BLE001
+            names = []
+        if not names:
+            return "—"
+        return ", ".join(names[:limit]) + (" …(%d)" % len(names) if len(names) > limit else "")
+
+    def _say(self, msg):
+        """打日志: 有 _log 就用它, 没有就 stdout (两种宿主都吃)。"""
+        f = getattr(self, "_log", None)
+        if callable(f):
+            try:
+                return f(msg)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        print(msg, flush=True)
+
+    @staticmethod
     def _digest_vals(dg):
         """trace 帧 digest → 「键=数值」一行 (回退用)。
 
@@ -1025,21 +1093,39 @@ class BusView(QWidget):
         return " · ".join(out)[:150]
 
     def _toggle_mode(self, _checked=False):
-        """📌 固定行 ⇄ ▶ 滚动 (老倪 2026-10-01: 默认固定行, 滚动看着太累)"""
-        self._mode = "roll" if getattr(self, "_mode", "fixed") == "fixed" else "fixed"
-        self.btn_mode.setText("📌 固定行" if self._mode == "fixed" else "▶ 滚动")
-        self.btn_mode.setChecked(self._mode == "fixed")
+        """📌 固定行 ⇄ ▶ 滚动 ⇄ 📈 信号分析 (老倪 2026-10-01: 默认固定行, 滚动看着太累;
+        2026-10-11: 「在 滚动/固定行 基础上, 增加 信号分析 模式, 只是同步显示 实时监控的信号」)"""
+        order = ("fixed", "roll", "signal")
+        cur = getattr(self, "_mode", "fixed")
+        nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "fixed"
+        self._mode = nxt
+        self.btn_mode.setText({"fixed": "📌 固定行", "roll": "▶ 滚动", "signal": "📈 信号分析"}[nxt])
+        self.btn_mode.setChecked(nxt == "fixed")
         self._trace_sig_last = None
         self._lv_last = {}
-        self._fill_trace(force=True)
+        if nxt == "signal":
+            self._ensure_analysis()
+            try:
+                self.trace_stack.setCurrentIndex(1)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            self._say("📈 显示模式 → 信号分析 (与「实时监控」同一套信号 + 同一份真源, 只同步显示)")
+        else:
+            try:
+                self.trace_stack.setCurrentIndex(0)
+            except Exception:                                                   # noqa: BLE001
+                pass
+            self._say("📋 显示模式 → %s" % ("📌 固定行" if nxt == "fixed" else "▶ 滚动"))
+            self._fill_trace(force=True)
 
     def _set_trace_header(self, mode=None):
         """设置表头。🖱 2026-10-01: **表头没变就不要重设** —— setHorizontalHeaderLabels
         会把各列宽度复位 ⇒ 用户拖动过的列宽下一次刷新就被抹掉(表现=拖动不了)。"""
         mode = mode or getattr(self, "_mode", "fixed")
-        _labs = (["Time", "Name", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
+        # 🆕 2026-10-11 老倪: 「在 trace 里, 增加 信号名称 列」—— 该行这一帧/这个话题携带的信号名 (Name=topic, 信号名称=里面的信号)
+        _labs = (["Time", "Name", "信号名称", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
                   "帧龄 (s)", "QoS", "lamp", "备注"] if mode == "fixed" else
-                 ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification",
+                 ["Time", "Name", "信号名称", "实时值 · 边跑边变", "Object Type", "Classification",
                   "Probability [%]", "Sender Name", "Sender Id", "Tracking Id", "Group"])
         if _labs == getattr(self, "_hdr_last", None):
             return
@@ -1106,27 +1192,31 @@ class BusView(QWidget):
             _h = ("%s / %s" % (_f3(hz), _f3(hzd))) if (isinstance(hz, (int, float)) and hz >= 0) else "—"
             nm = str(t.get("topic") or k)
             _is_hit = bool(pin) and (pin in nm.lower() or pin in str(t.get("type") or "").lower())
-            cells = [tt, nm, vals or "—", str(t.get("verdict") or "—"), _h,
+            _sig = self._sig_names(f if isinstance(f, dict) and f else t.get("digest"))
+            cells = [tt, nm, _sig, vals or "—", str(t.get("verdict") or "—"), _h,
                      str(t.get("count", "—")),
                      (_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
                      str(t.get("qos") or "—"), str(t.get("lamp") or "—"), str(t.get("lamp_reason") or "")[:28]]
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 4, 5, 6) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 5, 6, 7) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:
                     item.setForeground(QColor("#7ee787" if _is_hit else C_WHITE))
                     item.setToolTip(str(t.get("type") or "") + "  ·  " + str(t.get("lamp_reason") or ""))
-                elif c == 2:
+                elif c == 2:                                           # 🆕 信号名称
+                    item.setForeground(QColor("#9db4d0"))
+                    item.setToolTip("这一话题此刻携带的信号名:\n%s" % str(txt))
+                elif c == 3:
                     item.setForeground(QColor("#7ee787" if (changed or _is_hit) else C_GRAY))
                     item.setToolTip("实时值 (live.json fields)\n"
                                     + ("★ 刚变化 ⇒ 动态数据在跑" if changed else "与上次相同"))
-                elif c == 3:
+                elif c == 4:
                     item.setForeground(QColor(C_GREEN if str(txt) == "ok" else
                                               C_RED if str(txt) in ("fail", "error") else C_YELLOW))
                 if _is_hit:
-                    item.setBackground(QColor("#1b2c1e") if c == 2 else QColor("#16202b"))
+                    item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
@@ -1134,6 +1224,8 @@ class BusView(QWidget):
         self.tb.setUpdatesEnabled(True)
 
     def _fill_trace(self, force=False):
+        if getattr(self, "_mode", "fixed") == "signal":       # 📈 信号分析模式: 表在后台不刷 (内嵌控件自己刷)
+            return 0
         if getattr(self, "_mode", "fixed") == "fixed":         # 📌 默认固定行(不滚动)
             return self._fill_trace_fixed(force=force)
         self._set_trace_header("roll")
@@ -1196,6 +1288,7 @@ class BusView(QWidget):
             cells = [
                 tt,
                 topic,
+                self._sig_names((live_t.get("fields") or {}) or rec.get("digest")),   # 🆕 信号名称
                 vals if vals else "—",
                 str(rec.get("type", "—")),
                 str(live_t.get("verdict", "—")),
@@ -1212,25 +1305,27 @@ class BusView(QWidget):
             _hitrow = bool(_pin) and (_pin in topic.lower() or _pin in str(rec.get("type", "")).lower())
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 3, 7, 9) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 8, 10) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:                                           # 话题名
                     item.setToolTip(topic)
                     item.setForeground(QColor(C_WHITE))
-                elif c == 2:                                           # 🆕 实时值列
+                elif c == 2:                                           # 🆕 信号名称
+                    item.setForeground(QColor("#9db4d0"))
+                elif c == 3:                                           # 实时值列
                     item.setForeground(QColor(C_GREEN if _changed else C_GRAY))
                     item.setToolTip("实时值(来自 live.json fields)\n"
                                     + ("本次刷新有变化 ⇒ 动态数据" if _changed else "与上一帧相同"))
-                elif c == 5:
+                elif c == 6:
                     try:
                         v = float(score) * 100
                         item.setForeground(QColor(C_GREEN if v >= 99 else C_YELLOW if v > 0 else C_GRAY))
                     except Exception:                                        # noqa: BLE001
                         pass
                 if _hitrow:                                            # 📌 置顶命中: 整行高亮
-                    item.setBackground(QColor("#1b2c1e") if c == 2 else QColor("#16202b"))
-                    if c == 2:
+                    item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
+                    if c == 3:
                         item.setForeground(QColor("#7ee787"))
                 elif r % 2:                                            # 质检: 斑马纹
                     item.setBackground(QColor("#12171e"))
