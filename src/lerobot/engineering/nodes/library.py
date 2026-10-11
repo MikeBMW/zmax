@@ -5013,6 +5013,25 @@ def node_ss_calib_mani(ctx):
         except Exception as _e:                                                 # noqa: BLE001
             M, inertia, rng, unit, src = 1.0, False, [0.0, 8.0], "等效惯量尺度", f"默认 (读 zmax_params 失败: {_e})"
 
+        # ①c 🆕 2026-10-11 老倪: 「这个节点的代码要加载配置中心的**数据库文件, json文件, yaml文件**等, 直接指导模型工作」
+        #     全量装载 → 一份主参数引导快照 (config/cc_snapshot.json 同源, 可审计); 失败则如实退回单文件读 (零回归)
+        cc, g, _ccmod, _ccspec = {}, {}, None, ""
+        try:
+            _s3 = _ilu.spec_from_file_location("config_center_load",
+                                               os.path.join(_REPO_ROOT, "tools", "config_center_load.py"))
+            _ccmod = _ilu.module_from_spec(_s3)
+            _s3.loader.exec_module(_ccmod)
+            cc = _ccmod.build(write=True)          # 48 配置文件 (json/yaml) + 工程库 SQLite
+            g = cc.get("guide") or {}
+            _ccspec = _ccmod.spec(cc)
+            if g.get("M") is not None:
+                M = float(g["M"])                   # 主参数以配置中心装载值为准 (与标定真源同源)
+            if g.get("inertia") is not None:
+                inertia = bool(g["inertia"])
+        except Exception as _e:                                                 # noqa: BLE001
+            if log:
+                log("⚠️ 配置中心全量装载失败 → 退回单文件读 zmax_params: %s: %s" % (type(_e).__name__, _e))
+
         # ①b 可写口 (可选): 画布节点 params 带数值 write_M 且 zmax_params 可用 → 真写盘并复读
         wrote = None
         _wv = (ctx.get("params") or {}).get("write_M")
@@ -5026,7 +5045,7 @@ def node_ss_calib_mani(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         msp = m.manifold_M_spec()
-        dt = 0.01
+        dt = float(g.get("dt") or 0.01)      # 控制周期: 配置中心有就按它, 没有就 0.01 (如实标注)
 
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
@@ -5075,10 +5094,33 @@ def node_ss_calib_mani(ctx):
                                    "dx_overdamped": d_od, "dx_inertial": d_in,
                                    "real_frame": real,
                                    "goal": None if goal is None else np.asarray(goal).ravel().tolist()}
+        # ④ 🆕 配置中心的**限值/档位/几何**直接指导本次执行 (老倪: 配置要直接指导模型工作)
+        import re as _re
+        _lim, _cap, _clip = dict(g.get("limits") or {}), None, 0
+        _vmax = next((float(v) for k2, v in _lim.items()
+                      if _re.search(r"v_max|速度", str(k2)) and isinstance(v, (int, float))), None)
+        if _vmax:
+            _cap = float(_vmax) * float(dt)
+            _clip = int(d_od > _cap) + int(d_in > _cap)
+            d_od, d_in = min(d_od, _cap), min(d_in, _cap)
+        _SS_STATE["cc_guide"] = g
+        _SS_STATE["calib_mani"].update({"limits": _lim, "cap": _cap, "clips": _clip,
+                                        "cc_counts": cc.get("counts"), "cc_spec": _ccspec})
         if log:
             log("🧮 流形引擎标定 · L4 标定层 主参数 M (状态空间结构参数 / 等效惯量)")
             log(f"   ① M = {M} (范围 {rng} · 单位「{str(unit)[:24]}…」· 真源 {src})"
                 + (f" · 本次真写盘 {wrote}" if wrote else ""))
+            if cc:
+                log("   📚 配置中心全量装载 → 本次模型执行: " + _ccspec)
+                _tk = g.get("task") or {}
+                log("      · 直接指导: 主参数 M=%s · 惯性 %s · dt=%ss · 限值 %s 项 %s · 档位开 %d (%s) · "
+                    "启用节点 %d · 几何 内参=%s 手眼=%s"
+                    % (g.get("M"), g.get("inertia"), dt, len(_lim), dict(list(_lim.items())[:3]),
+                       _tk.get("n_run_cfg_on", 0), ",".join(_tk.get("run_cfg_on") or [])[:60],
+                       _tk.get("n_enabled_nodes", 0), (g.get("geometry") or {}).get("has_K"),
+                       (g.get("geometry") or {}).get("has_handeye")))
+                log("      · 限值生效: %s" % (("步长按速度上限钳制 %d 次 (上限 %.6g/步)" % (_clip, _cap)) if _clip else
+                                              "本节点输出未触发限值 (无速度上限配置 ⇒ 不钳制, 力阈值见 limits)"))
             log(f"   ② 现场读 inertia = {inertia} ({'有惯性二阶 a=F/M' if inertia else '过阻尼一阶 = 旧行为, 零回归'})"
                 f" · 数据 {frame}")
             log(f"   ③ 同一起点/同一场两臂: 过阻尼 Δx={d_od:.6g} (速度∝力, 旧行为) vs "

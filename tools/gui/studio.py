@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10952,7 +10952,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.6 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.7 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10960,9 +10960,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.6 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.7 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.7: v5.47.7 — 主参数M 节点加载「配置中心全部配置」(json/yaml/数据库) 并直接指导模型 老倪原话: 「你要把配置中心的所有配置文件, 加载到 状态空间工程的 标定诊断测量 主参数M 节点,           这个节点的代码, 要加载配置中心的数据库文件, json文件, yaml文件等, 直接指导模型工作」  一、新装载器 tools/config_center_load.py (全量, 可审计)    · config/** 全部 JSON(27) + YAML(11) + 工程库 SQLite(data/database/zmax/zmax_engineering.db, 24 表/5213 行) = 48 文件 1 库    · .bak 历史件 151 个只登记不解析; >2MB 二进制(URDF mesh)只登记大小跳过 md5; 解析失败照实记 (当前 0)    · 导出「模型指导参数」guide: 主参数 M/惯性(与标定真源同源) · dt · 限值 · 活跃任务+档位开+启用/禁用节点 · 几何(内参/外参) · MCD 就绪度 · 工单/平台/机器人    · 产物 config/cc_snapshot.json (每文件 md5/字节/条目) ; CLI build|show|guide|check  二、节点真接线 (src/lerobot/engineering/nodes/library.py::node_ss_calib_mani)    · 执行时先全量装载配置中心 → M/惯性以装载值为准 (同一个数) · dt 跟配置(无则 0.01 如实标注)    · 限值直接约束本节点输出: 有速度上限就按 v_max·dt 钳制步长并报钳制次数; 力阈值/插入深度/夹持力进 limits    · 引导结果入引擎状态 _SS_STATE["cc_guide"] + calib_mani.cc_counts/limits (下游节点可读), 日志逐项打印    · 装载失败 ⇒ 退回单文件读 zmax_params (零回归), 日志如实说  三、判据 verify_cc_guide.py **0 失败** (①-⑦ 装载: 48 文件·24 表·0 失败·M 与真源同数·限值 3 项含文本力阈值·几何内参+外参;    ⑧-⑩ 真执行节点: 返回 True · 日志有「配置中心全量装载 → 本次模型执行」+ 指导项 · _SS_STATE 里 cc_guide/cc_counts(48))    如实: plane_z 未标定 (calib 原文: 需现场量一次台面高度) · 无速度上限配置 ⇒ 不钳制 · dt 配置中心没有 ⇒ 0.01
         # v5.47.6: v5.47.6 — 配置中心「任务配置」活跃属性改三态: ★ 活跃 / ○ 未激活 / — 无配置 (推到真源, 不手填) 老倪原话: 「在配置中心, 在工艺/工单/任务的配置界面, 有个 活跃属性, 当前 TASK-01-FW 的配置正在显示 活跃,           其它的任务状态, 都要标记出来; 例如 TASK-06, 你已经完成了任务配置切换后, 马上就可以工作, 对不?           TASK-06-TRAY 的活跃状态, 应该是 未激活; 其它的任务, 应该是无配置, 因为还没开始」  一、新真源 tools/ss_task_state.py (状态全部**推导**, 不手填任务清单)    ★ 活跃   = config/ss_task_binding.json 的 active_task (绑定真源, 唯一)    ○ 未激活 = 该任务**配置切换过 或 跑过验证** ⇒ 已就绪, 切过去就能干活               证据 = ① 激活台账 config/task_state_ledger.json  ② 运行报告 (docs/data_snapshots/*/任务运行报告_<TASK>*.json)                      ③ zmax_data/task_runs/<TASK>/* 产物    — 无配置 = 都没有 ⇒ 还没开始    产物: config/task_state.json (可审计: 每条带 state/why/evidence 路径) · CLI build|show|cell  二、界面 (tools/gui/veh6_config_page.py · ConfigCenterPage「📋 任务配置」表)    · 活跃列原来只有 `★ 活跃 or 空` ⇒ 现在三态齐全; 表头行加「状态 活跃 1 / 未激活 1 / 无配置 4」计数。    · 表里那一格 = 同一个 _task_state_cell() (无第二套口径)。  三、切换即记账 (让「以后新配好的任务」自动变未激活)    tools/ss_task_bind.py --activate 成功时追加一条台账 (幂等, 原子 tmp+rename); 配置中心走的就是这条激活路径。  四、判据 verify_task_state3.py **8/8 PASS** (含真界面)    ① TASK-01-FW = ★ 活跃  ② TASK-06-TRAY = ○ 未激活 (带真运行报告证据)  ③ 其余 4 个 = — 无配置    ④ 三态都出现  ⑤ config/task_state.json 计数 {活跃1,未激活1,无配置4}  ⑥ 源码接线对    ⑦ 真起 ConfigCenterPage, 任务表活跃列实渲染 = ['★ 活跃','— 无配置','— 无配置','— 无配置','— 无配置','○ 未激活']
         # v5.47.5: v5.47.5 — 状态空间数据源: 真机/仿真 ⇒ 真机 / 插拔场景 / 摆盘场景 (三态循环) 老倪原话: 「状态空间的数据源，原来是 真机/仿真；现在改成 真机/插拔场景/摆盘场景」  一、📦 数据源节点上的拨钮改成三态循环 (点一下走一步): 真机 → 插拔场景 → 摆盘场景 → 真机    · 真机     : 原样 —— Orin 远程只读真机帧 (TCP 位姿/关节/六维力/夹爪/图像), _data_source="bypass_real", 场景真源不动    · 插拔场景 : 原来的「仿真」那条算路 (metaworld 演示/前馈数据, 39D 状态/4D 动作) + **全局场景真源**切 SS-EPI-CORNER    · 摆盘场景 : 同一套算路 + 全局场景真源切 SS-TRAY-PLACE    · 场景真源切法 = ZMAX_SCENE_DIR (+ 已导入模块的 SCENE_DIR/OBJECTS3D 全局 + 已开场景窗 switch_to_dir),      与 3D 视图 / 场景编辑 / 上下料视图同一份真源; 场景窗没开就只落 env, 下次打开即生效 (日志照实说)。    · 老工程兼容: 存档里 params.src_state='仿真' 一律归一到 '插拔场景' —— 行为与原来那条仿真路一字不动, 不回退。  二、跟随项同步: 输入图像窗口 / 质量检测终端的帧源跟随 (真机→real, 两个场景→sim); 拨钮颜色 真机=绿, 场景=琥珀;    右键菜单文案 → 「切换数据源: 真机 → 插拔场景 → 摆盘场景 (当前 X)」。  三、判据 verify_src_3mode.py **PASS (0 失败)**: 真执行 SimulinkModule.on_toggle_src 循环    ['插拔场景','摆盘场景','真机','插拔场景'] · _data_source 映射对 (场景→metaworld, 真机→bypass_real)    · 切场景真的切到真目录 (插拔 SS-EPI-CORNER 42 对象 / 摆盘 SS-TRAY-PLACE 49 对象, 从 objects3d.json 实读)    · 已导入模块的全局跟着切 · 真机时场景真源按约定不动 · 无残留两态文案。
         # v5.47.4: v5.47.4 — 撤掉「📈 信号分析」波形模式, 数据空间窗口 Trace 只保留「信号名称」列 (老倪 2026-10-11 纠正) 老倪原话: 「你怎么把 trace的表格全给改了？只是让你增加信号名称，没让你增加波形显示啊。改回去、」  一、撤掉 (v5.47.3 里我做多余的那部分)    · 删掉 Trace 面板的 QStackedWidget 双层页 + 「📈 信号分析」模式 + 内嵌实时监控控件 (CanoeGraphicWidget) 的懒加载;    · 显示模式回到**只有两态**: 📌 固定行 ⇄ ▶ 滚动 (与改之前一字不差);    · _fill_trace / 表头 / 布局都恢复原状, Trace 面板现在**只有这张表**。    · 与 v5.47.2 逐行 diff 复核: 除 import 折行外, 只剩「新列」相关差异 (表列数 10→11、列宽表多一项、cells 多一个值)。  二、保留 (老倪本轮真正要的)    · Trace 表新增「信号名称」列 (索引 2, 紧跟 Name 之后; 固定行/滚动 两种模式都有):      Name = 话题名, 信号名称 = 这一帧/这一话题**携带的信号名** (live.json fields 键名 / trace digest 键名),      digest 是截断存的 ⇒ 用正则抠键名 (不 json.loads); 取不到显式 '—', 不装。      真机行样例: zmax/heartbeat | key_sample, sample_info ; zmax/link_value | —  三、判据重跑 verify_trace_col_only.py **7/7 PASS**    ① 保留「信号名称」列在索引 2 且有真值  ② 无波形显示 (无堆叠页/无内嵌控件, 表直接挂面板)    ③ 模式只有两态 固定行⇄滚动 (实测序列 roll→fixed→roll) 且切模式不产生波形页
@@ -11609,7 +11610,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.6  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.7  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13351,7 +13352,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.6</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.7</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
