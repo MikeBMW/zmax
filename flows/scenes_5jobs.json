@@ -709,6 +709,79 @@
    }
   },
   {
+   "scene_id": "SCN-06-TRAY",
+   "scene_type": "tray_filling",
+   "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+   "desc": "满料周转盘 → 上料 Tray 盘单颗取放 (真空吸盘); 与产线摆盘工艺同口径",
+   "goal": "摆盘取放 + 单颗 CT ≤3.15s (PVT)",
+   "targets": {
+    "单颗CT": "≤3.15s (PVT)",
+    "成功率": "≥99% (PVT)",
+    "取放精度": "单边 ≤1mm / ≤1°",
+    "连续": "≥12 盘周转盘"
+   },
+   "objects": [
+    {
+     "name": "光模块单颗",
+     "pos": [
+      0.9,
+      -0.3,
+      0.82
+     ],
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "role": "物料单颗·100G/400G/800G · 12+ 型号"
+    }
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.0,
+     "name": "定位识别",
+     "desc": "全局定位相机识别满料周转盘位置与堆叠层数、空 Tray 盘位置、工装位置; 取 1 盘周转盘到作业工装并二次拍照, 识别盘内光模块数量与坐标、Tray 空槽数量与坐标",
+     "force": null
+    },
+    {
+     "t": 2.0,
+     "dur": 0.6,
+     "name": "取件",
+     "desc": "腕部相机对准目标光模块, 末端下降至吸附位, 真空建立(≤200ms)后抬起离盘",
+     "force": null
+    },
+    {
+     "t": 2.6,
+     "dur": 1.0,
+     "name": "转运对位",
+     "desc": "沿安全轨迹转移至目标 Tray 槽位上方, 姿态对准槽口方向, 粗定位后 XYZ/姿态微调",
+     "force": null
+    },
+    {
+     "t": 3.6,
+     "dur": 0.8,
+     "name": "放入",
+     "desc": "下降到放置面, 断真空释放光模块; 放置下压不超过配方上限, 姿态偏差 ≤1°",
+     "force": null
+    },
+    {
+     "t": 4.4,
+     "dur": 0.3,
+     "name": "判态循环",
+     "desc": "判断周转盘是否空、Tray 盘是否满; 未满且盘未空则回到取件; 触发上报则暂停待人工补料/下料",
+     "force": null
+    }
+   ],
+   "performance": {
+    "force_limit": 2.0,
+    "tact_time": 3.15,
+    "positioning_accuracy": 0.001,
+    "vacuum_establish_ms": 200,
+    "place_angle_tol_deg": 1.0
+   }
+  },
+  {
    "scene_id": "SCN-07-UP",
    "scene_type": "updown",
    "name": "上下料 (工位级: 取料 → 上料 → 卸料 → 回收)",
@@ -862,6 +935,107 @@
     "perf.cycle_s"
    ],
    "editable_scene": "data/scene/scenes/SCN-07-UP (scene_edit.py --scene SCN-07-UP, 场景功能区可视化编辑)"
+  },
+  {
+   "scene_id": "SCN-07-AOI",
+   "scene_type": "ar_aoi",
+   "name": "AR 光学质量检测 (AOI 联合检查)",
+   "desc": "AR 场景: RealSense D435 实拍为底图, 叠加三层虚拟信息 (工控机 AOI 联合检查 10082/10083 · 光模块检测在役权重 · 相机系 3D 位姿); 判据图可导出",
+   "goal": "把 AOI 光学质量检测落到 AR 实拍画面上, 与产线 AOI (10082 金手指 / 10083 表面) 同口径",
+   "targets": {
+    "缺陷检出": "与产线 AOI 同口径 (10082 金手指 / 10083 表面)",
+    "判决": "PASS/FAIL + 缺陷数 (工控机 /capture_detect → GET /last_result)",
+    "金手指矩形": "位置/尺寸/倾角 (实测 363.8×17.5px · 倾角 1.75°)",
+    "侧边位置修正": "Δx = +4.0px (实测, 一次给全)",
+    "位置精修": "手眼 TSAI 闭环 1.74mm",
+    "判据图": "900×332 可导出 (reports/aoi_console_state.json 留痕)"
+   },
+   "objects": [
+    {
+     "name": "光模块单颗",
+     "pos": null,
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "role": "物料单颗·AR 实拍视野内 (基座系位置待标定; RealSense 工作区距离实测 1.000m · 有效深度 93.7%)"
+    },
+    {
+     "name": "金手指点1 (示教位姿)",
+     "pos": [
+      0.489774,
+      0.1473783,
+      0.4054162
+     ],
+     "size_mm": null,
+     "role": "示教点位·金手指 (真源 reports/aoi_points/金手指点1.json · ROKAE SDK 直读 endInRef)"
+    },
+    {
+     "name": "侧面点0 (表面检测观察位)",
+     "pos": [
+      0.3897588,
+      -0.4181877,
+      0.4869425
+     ],
+     "size_mm": null,
+     "role": "示教点位·侧面观察位 (真源 reports/aoi_points/侧面点0.json)"
+    },
+    {
+     "name": "安全点1",
+     "pos": [
+      0.377606,
+      0.0423738,
+      0.3621157
+     ],
+     "size_mm": null,
+     "role": "示教点位·安全 (真源 reports/aoi_points/安全点1.json · 距金手指点1 159.6mm)"
+    }
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.5,
+     "name": "AR 取像",
+     "desc": "RealSense D435 实拍 640×480 作 AR 底图 (深度 1mm 尺度 · 工作区有效深度 93.7% · 自动曝光)",
+     "force": null
+    },
+    {
+     "t": 0.5,
+     "dur": 1.8,
+     "name": "AOI 联合检查",
+     "desc": "工控机 AOI 10082 (金手指) 触发拍照检测 → 判据图 + 金手指矩形搜索 (位置/尺寸/倾角) + 侧边位置修正 Δx 一次拿全; 10083 (表面) 同口径",
+     "force": null
+    },
+    {
+     "t": 2.3,
+     "dur": 0.4,
+     "name": "光模块检测",
+     "desc": "在役权重 models/yolo_peg_live.pt 在 AR 帧上检测 (conf/imgsz 可调, 检出即给像素坐标)",
+     "force": null
+    },
+    {
+     "t": 2.7,
+     "dur": 0.3,
+     "name": "位姿叠加",
+     "desc": "相机系 3D 位姿: 深度反投影 + 平面拟合 (RMS 留痕), 虚拟坐标架画回实拍; 手眼 TSAI 闭环 1.74mm",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 0.3,
+     "name": "判决与上报",
+     "desc": "判决 PASS/FAIL + 缺陷数; 判据图导出; AOI 全部话题经 ar_aoi_bus 发到信号分析页 (来源 ar.)",
+     "force": null
+    }
+   ],
+   "performance": {
+    "tact_time": 3.6,
+    "positioning_accuracy": 0.001,
+    "depth_valid_ratio": 0.937,
+    "plane_rms_mm": 101.39,
+    "aoi_infer_ms": 1715
+   }
   }
  ]
 }

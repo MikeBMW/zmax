@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.14")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.48.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.14 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.48.0 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.14 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.48.0 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.48.0: 配置中心「任务7 = AOI」+ 节点改名「🔍 光学质量检测」+ AOI 话题/AR 空间点位进信号分析 (老倪 10-11 指令) —— ① **任务7 TASK-07-AOI**: 场景 SCN-07-AOI(=AR) · 类型 光学质量检测 · model_ref =「Automated Optical Inspection 自动光学检测 · L5 自主进化程序」; 链路全走真源: flows/scenes_5jobs.json 新增 SCN-07-AOI 场景 + **补回被 SCN-07-UP 顶掉的 SCN-06-TRAY**(否则一重生成任务6就丢) · tools/task_build.py PLAN 新增 ar_aoi + build() 支持 model_ref 落库 + **无配方计划的场景不再静默套 ATS 配方**(改: 跳过并打印提示 —— 原来 SCN-07-UP 会被静默套成「检测插接」) · config/tasks/tasks.json 交回真生成器重写(任务1..6 **逐字节不变** · 任务7 新增 · --check ✅) · 绑定 ss_task_bind.py 重算(任务7 = 32 启用/20 禁用/6 档位; 活跃任务 TASK-01-FW 一律不动) · 配置中心任务表**新增「场景」「模型」两列**(任务7 那行 = `AR · SCN-07-AOI` / `L5 自主进化程序`, tooltip 带全称与入口) ② **画布节点改名**: 「🔍 外观质量检测」→「🔍 光学质量检测」, 同步 10 处运行时映射(漏一处即挂不上): 画布真源(flows.save_canvas, 89 节点/184 连线不变) · registry 注册匹配(**留旧名兼容**) · data_world.MODULE_ORDER · simulink_module 映射+右键 · state_space_sim io 发布(出线列出 8 个 AOI 话题) · aoi_inspect_console · node_func_tree 功能清单 · yolo_perception · status_panel 大屏模型名 · model_feature B5 · config/platform/zmax_platform.json + zmax_perf_spec.json + defaults 副本 · feature.dbc「BO_ B5 光学质量检测」→ mcd_build 重生成(MCD 光学 5/外观 0) ③ **AOI 话题真发出 + 信号分析对应 AR 空间点位**: 新真源 tools/ar_aoi_bus.py(注册表 config/topics/ar_aoi_signals.json · 单一写入器 · 原子写+回读 · 组名齐全 6 组) —— 画布节点每帧**真算**的 8 个 AOI 话题(判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检) 与 **78 条 AR 空间点位信号**(TCP 真值 · 示教点位台账 金手指点1/2·侧面点0~3·准备点·安全点1 · 空间点 1..8 · RealSense 相机系 深度/有效比/平面RMS/曝光/帧龄) 进同一份 zmax_data/ar_live/ar_aoi_live.json; 信号分析页新增来源 `ar.` + 「🥽 AR 场景 · 空间点位 / AOI 话题」分组树(组名取自注册表) + 常驻拉取器 tools/ar_aoi_bus_ctl.sh start(2s 刷新, 实测 86 信号/48 点位在刷) ④ 判据 tools/verify_aoi_task7.py **37/37 PASS**(真起 ConfigCenterPage 实渲染任务7 行 · 真跑节点回读 live · 场景/生成器/改名全链逐项核) ⑤ 数据落库: 工程库重生成 + M 节点配置写入(89 节点/184 连线不变 · ss_node_sync --check ✅)
         # v5.47.14: AR 底图曝光实测+控制: 8797 /api/rs_exposure(读=设备回读)|/api/rs_options(全表) + tools/ar_exposure_sweep.py; 结论: 过曝团是顶部灯且在工作区外, 压曝光把工作区从104压到59(黑泡棉槽位糊掉) ⇒ 保持自动曝光, 灯靠改机位/柔光; 该固件无 AE 测光区
         # v5.47.13: AR 相机系 3D 位姿叠加: ar_calib_module.pose + 8797 /api/rs_pose + AR 页「📦 目标位姿(相机系)」(深度真值出中心/尺寸/主轴/平面RMS, 虚拟坐标架画回真实画面; 实测 2.16m 处大面 RMS 193mm, 检出 0 光模块⇒相机未对准工作区)
         # v5.47.12: AR 场景落地: Intel RealSense D435 驱动+接入 8797(rs 流/内参/深度3D/YOLO检测/AOI 联合检查端点) · 3D场景「力控」→「🥽 AR」 · 工控机 AOI 联合检查(缺陷判决+金手指矩形+侧边修正, 实测 OK/0缺陷/1.7s, 矩形 363.8x17.5px 倾角1.75°, Δx=+4px) · 光模块 AR 标定能力(ar_calib_module, 出厂内参只解 R,t, 自检 rms 0.0px) · 摆盘仿真链 3/3 合格; 真机取放待 8793 运动授权(闸门实测未授权, 未发任何运动)
@@ -11635,7 +11636,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.14  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.48.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13377,7 +13378,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.14</b> · 多模态动作专家<br>
+<b>Z-MAX v5.48.0</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

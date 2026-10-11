@@ -3335,10 +3335,35 @@ _reg("ss_yolo", ["YOLO", "目标检测"],
      "🎯 YOLO 目标检测 — 真实执行: YOLO detect_3d + align 替换 39D 段 (源码 yolo_state_aligner.py; 双击=清单, 📥按钮=Excel导出)",
      node_ss_yolo)
 
+def _ar_aoi_publish(sig, log=None):
+    """🔍 光学质量检测 → AR/AOI 信号总线 (信号分析页 来源前缀 ar.)。
+
+    2026-10-11 老倪: 「外观质量检测 节点改名成 光学质量检测, **发出 AOI 相关的所有 topic**」——
+    节点每帧**真算出来的量**直接进总线 (不另造一份, 也不填 0 冒充)。总线失败只写一行日志, 绝不打断节点。
+    真源: tools/ar_aoi_bus.py (注册表 config/topics/ar_aoi_signals.json → zmax_data/ar_live/ar_aoi_live.json)。
+    """
+    try:
+        import importlib.util as _ilu2
+        _p = os.path.join(_REPO_ROOT, "tools", "ar_aoi_bus.py")
+        _s = _ilu2.spec_from_file_location("ar_aoi_bus", _p)
+        _m = _ilu2.module_from_spec(_s)
+        _s.loader.exec_module(_m)
+        r = _m.publish(sig, meta={"by": "状态空间节点 🔍 光学质量检测"}, quiet=True)
+        if log and not r.get("ok"):
+            log("⚠️ AOI 信号总线写入失败: %s" % r.get("err"))
+        return r
+    except Exception as e:                                                        # noqa: BLE001
+        if log:
+            log("⚠️ AOI 信号总线不可用: %s: %s" % (type(e).__name__, e))
+        return {"ok": False}
+
+
 def node_ss_aoi(ctx):
-    """🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测
-    源码: yolo_3d/quality_check.py (AOIQualityChecker.check) — 右键源码与真实执行同源, 断点可进
-    🐛 2026-09-02: 原只加载 detection_targets.json 清单 (无实际检测) → 改为真实帧图像处理检测"""
+    """🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测,
+    并把 AOI 话题 (判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检) 发到 AR/AOI 信号总线。
+    源码: policies/yolo_3d/quality_check.py (AOIQualityChecker.check) — 右键源码与真实执行同源, 断点可进
+    🐛 2026-09-02: 原只加载 detection_targets.json 清单 (无实际检测) → 改为真实帧图像处理检测
+    🔁 2026-10-11: 「外观质量检测」→「光学质量检测」(老倪); 新增 AOI 话题发布 (信号分析页可看)"""
     log = ctx.get("log")
     try:
         import importlib.util as _ilu
@@ -3354,6 +3379,21 @@ def node_ss_aoi(ctx):
         checker = qc.AOIQualityChecker()
         res = checker.check(img)
         _YOLO_CACHE["aoi"] = res
+        # 🔍 发出 AOI 话题: 值全取自本轮真实检测结果 (quality_check.check 的字段), 缺的键不写
+        _sig = {"光学质量检测.判决": 0.0 if res.get("pass") else 1.0}
+        for _k, _f in (("光学质量检测.划伤数", "scratch"), ("光学质量检测.污点数", "blob"),
+                       ("光学质量检测.清晰度", "focus"), ("光学质量检测.灰度偏差", "gray_dev"),
+                       ("光学质量检测.边缘占比", "edge_frac")):
+            _v = res.get(_f)
+            if isinstance(_v, (int, float)):
+                _sig[_k] = float(_v)
+        if isinstance(res.get("scratch"), (int, float)) and isinstance(res.get("blob"), (int, float)):
+            _sig["光学质量检测.缺陷数"] = float(res["scratch"]) + float(res["blob"])
+        _qv = str(((res.get("quality") or {}).get("verdict") or "")).lower()
+        if _qv:
+            _sig["光学质量检测.取像体检"] = float({"ok": 0, "overexposed": 1, "too_dark": 2,
+                                                  "gaps_washed": 3}.get(_qv, 4))
+        _ar_aoi_publish(_sig, log)
         # 取像参数 + 取像体检先上屏: 2026-10-08 实测教训 —— 参数不对(自动曝光开着)时谈缺陷判定没有意义
         _q = res.get("quality") or {}
         if log:
@@ -3367,15 +3407,18 @@ def node_ss_aoi(ctx):
                 v = it["value"] if it["value"] is not None else it.get("note", "—")
                 log(f"🔍 {it['target_id']} {it['defect']}: {v} (判据 {it['threshold']}) → "
                     f"{'✅' if it['pass'] else '❌'}")
-            log(f"🔍 外观质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
+            log(f"🔍 光学质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
+            log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
+                                                                  for k, v in sorted(_sig.items())))
         return bool(res.get("pass"))
     except Exception as e:
         if log:
-            log(f"⚠️ 外观质量检测真实执行失败: {e}")
+            log(f"⚠️ 光学质量检测真实执行失败: {e}")
         return False
 
-_reg("ss_aoi", ["外观质量检测"],
-     "🔍 外观质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 (DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
+_reg("ss_aoi", ["光学质量检测", "外观质量检测"],
+     "🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 + **发出 AOI 话题** "
+     "(判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检 → AR/AOI 信号总线; DET-AOI-01~04; 双击=源码, 📥按钮=Excel导出清单)",
      node_ss_aoi)
 
 # 🧩 开放词汇分割 (2026-09-29 老倪: 状态空间缺分割能力) —— L2 感知原语, 与 🎯 YOLO 同级

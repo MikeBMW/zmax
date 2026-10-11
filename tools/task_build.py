@@ -85,6 +85,29 @@ PLAN = {
         orders_rule="1 盘 = 1 工单; 1 颗 = 1 条记录",
         note="摆盘: 周转盘→上料Tray盘取放; 不涉及插入/拔出 ⇒ 配方段 5 不适用; "
              "CT 起止口径写死=从吸取离盘到下一位就位"),
+    "ar_aoi": dict(
+        task_type="光学质量检测",
+        # 检测型任务: 只用到 来料状态/识别对接/分拣回位/节拍 四段 (取件/姿态/插拔不适用)
+        applies=["0 料源与来料状态", "3 识别与工位对接", "6 分拣与回位", "7 节拍与循环"],
+        excluded=["1 取件", "2 姿态准备", "4 放置/插入", "5 拔出/取回"],
+        overrides={"aoi.port_gold": 10082, "aoi.port_surface": 10083,
+                   "aoi.cam": "RealSense D435 (AR 底图 · 独占 :8797)",
+                   "aoi.weights": "models/yolo_peg_live.pt (在役软链)",
+                   "aoi.side_fix": "侧边位置修正 Delta x 一次给全",
+                   "aoi.judge_png": "判据图 900x332 可导出",
+                   "sort.rule": "AOI 判决 PASS/FAIL 累计→NG"},
+        trigger="AR 场景就位 (RealSense 有帧) / 工控机 AOI 就绪信号",
+        loop="单件循环; 判决 + 判据图落盘后进入下一件",
+        orders_rule="1 件 = 1 条记录 (判据图 + 判决 + 时间戳)",
+        # 老倪: 「模型对应 Automated Optical Inspection 自动光学检测 的 L5 自主进化程序」
+        model_ref={"layer": "L5",
+                   "program": "Automated Optical Inspection 自动光学检测 · L5 自主进化程序",
+                   "entry": "tools/l5_plan_and_gen.py + tools/aoi_link.py (工控机 10082/10083 客户端)",
+                   "charter": "docs/L5_AUTONOMOUS_EVOLUTION.md",
+                   "node": "🔍 光学质量检测 (画布节点 · 发出 AOI 全部话题)",
+                   "capability": "BO_ B5 光学质量检测"},
+        note="AOI: AR 实拍底图 + 工控机 AOI 联合检查 (金手指 10082 / 表面 10083) + 光模块检测 + 相机系 3D 位姿; "
+             "不涉及取件/姿态/放置/拔出 ⇒ 配方段 1/2/4/5 不适用; 模型 = L5 自主进化程序"),
 }
 
 TIER = {"12槽": "L1 料盘级", "12穴位": "L1 料盘级", "20穴位": "L1 料盘级",
@@ -131,11 +154,15 @@ def variants_of(scene):
 
 
 def build(scene, calib, i):
-    p = PLAN.get(scene["scene_type"], PLAN["ats_test"])
+    p = PLAN.get(scene["scene_type"])
+    if p is None:
+        # 🚫 无配方计划(PLAN)的场景**不再静默套 ATS 配方** —— 那会造出一条"类型/段/覆盖全错"的任务。
+        #    场景照旧留在 scenes_5jobs.json (只读真源), 只是不入任务清单; 要建任务 = 在 PLAN 里加一条。
+        return None
     gaps = [k for k, v in (("T_base_cam", "T_base_cam.value"), ("plane_z", "plane_z.value"),
                            ("cell_geometry.points", "cell_geometry.points"))
             if _dig(calib, v) is None]
-    return {
+    out = {
         "task_id": f"TASK-{i:02d}-{scene['scene_id'].split('-', 2)[2]}",
         "name": scene["name"], "recipe_type": p["task_type"],
         "scene_ref": scene["scene_id"], "site": "SITE-A.ST11",
@@ -151,6 +178,9 @@ def build(scene, calib, i):
         "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
         "blocked_by_site": gaps, "_note": p["note"],
     }
+    if p.get("model_ref"):            # 任务绑定的模型 (老倪: 任务7 AOI → L5 自主进化程序)
+        out["model_ref"] = p["model_ref"]
+    return out
 
 
 def main():
@@ -163,7 +193,13 @@ def main():
         calib = json.load(open(CALIB, encoding="utf-8"))
     except Exception:  # noqa: BLE001
         calib = {}
-    tasks = [build(s, calib, int(s["scene_id"].split("-")[1])) for s in sc]
+    tasks, skipped = [], []
+    for s in sc:
+        t = build(s, calib, int(s["scene_id"].split("-")[1]))
+        (tasks.append(t) if t else skipped.append("%s (%s)" % (s["scene_id"], s["scene_type"])))
+    if skipped:
+        print("⏭ 无配方计划(PLAN), 未入任务清单: " + " · ".join(skipped)
+              + "  —— 要建任务请在 tools/task_build.py 的 PLAN 里加一条")
     doc = {"schema": "zmax-tasks/1.0",
            "note": "任务配置真源 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
            "sources": {"flows/scenes_5jobs.json": _sha16(SCENES),

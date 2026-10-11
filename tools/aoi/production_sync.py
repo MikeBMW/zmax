@@ -5,7 +5,7 @@
 架构(2026-10-08 老倪定):
     产线程序 = 跑在**工控机 192.168.23.23** 上的 `D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py`
                (10082 金手指) / `cam_surface_10083_work_v20.py` (10083 表面)
-    调试程序 = 本仓库 `tools/aoi/` 里的同名副本 + 画布节点「🔍 外观质量检测」的
+    调试程序 = 本仓库 `tools/aoi/` 里的同名副本 + 画布节点「🔍 光学质量检测」的
                `src/lerobot/policies/yolo_3d/quality_check.py::AOIQualityChecker`
 
     ⇒ 调参/改判据**先在仓库副本上做**, 用本工具对齐/下发, 而不是直接改工控机上那份。

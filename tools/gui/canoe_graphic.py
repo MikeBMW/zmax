@@ -84,6 +84,10 @@ HOST_SOURCES = [
     ("space",   "zmax_data/dataspace/live.json"),
     # 状态空间工程实况 (引擎轨迹快照 = 3D 场景面板屏幕上的同一批数字; 单一真源)
     ("sstrace", "zmax_data/ss_live/trace_live.json"),
+    # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
+    #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
+    #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
+    ("ar", "zmax_data/ar_live/ar_aoi_live.json"),
 ]
 
 ORIN_ENV = ("source /opt/ros/humble/setup.bash; "
@@ -1701,6 +1705,7 @@ class CanoeGraphicWidget(QWidget):
         self.tree.addTopLevelItem(host_root)
         host_items = sorted([b for b in self.store.bufs.values()
                              if b.src not in ("ros", "ds", "file")
+                             and not b.key.startswith("ar.")          # ar. 单独成组 (见下)
                              and (b.key.startswith("sstrace.") if only3d else True)],
                             key=lambda x: x.key)
         if host_items:
@@ -1718,6 +1723,29 @@ class CanoeGraphicWidget(QWidget):
                 it = QTreeWidgetItem([f"{pref}  ({rel.split('/')[-1]})  等数据…", "-", "-", "-", "-"])
                 it.setForeground(0, QColor(C_DIM))
                 host_root.addChild(it)
+        # 1b) 🥽 AR 场景 · 空间点位 / AOI 话题 (按注册表分组; 数据范围=全部来源时才列)
+        if not only3d:
+            ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
+                              key=lambda x: x.key)
+            if ar_items:
+                grp = self._ar_groups()
+                ar_root = QTreeWidgetItem(["🥽 AR 场景 · 空间点位 / AOI 话题  (ar_aoi_live.json)", "", "", "", ""])
+                ar_root.setForeground(0, QColor(C_GREEN))
+                self.tree.addTopLevelItem(ar_root)
+                by_g = {}
+                for b in ar_items:
+                    if filt and filt not in b.key.lower():
+                        continue
+                    by_g.setdefault(grp.get(b.key[3:], "AR 场景 · 其它信号"), []).append(b)
+                for g in sorted(by_g):
+                    gnode = QTreeWidgetItem([g, "", "", "", ""])
+                    gnode.setForeground(0, QColor(C_DIM))
+                    for b in by_g[g]:
+                        gnode.addChild(self._make_item(b, checked=b.key in self.selected))
+                    _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
+                    gnode.setExpanded(bool(filt) or _inuse or gnode.text(0) in self._expanded)
+                    ar_root.addChild(gnode)
+                ar_root.setExpanded(True)
         # 2) Orin ROS2 话题 (数据范围=全部来源时才列)
         ros_root = QTreeWidgetItem(["Orin ROS2 话题", "", ""])
         ros_root.setForeground(0, QColor(C_BLUE))
@@ -1796,12 +1824,34 @@ class CanoeGraphicWidget(QWidget):
         self._apply_default_selection()
         self._update_tree_values()
 
+    def _ar_groups(self):
+        """🥽 AR/AOI 信号总线 live 文件里的 信号→组 映射 (按 mtime 缓存; 读不到就空 —— 静默降级)。"""
+        p = os.path.join(ROOT, "zmax_data", "ar_live", "ar_aoi_live.json")
+        try:
+            mt = os.path.getmtime(p)
+        except OSError:
+            return {}
+        if getattr(self, "_ar_grp", None) is not None and getattr(self, "_ar_grp_mt", None) == mt:
+            return self._ar_grp
+        out = {}
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            for k in (d.get("s") or {}):
+                st = (d.get("groups") or {}).get(k)
+                if st:
+                    out[k] = st
+        except Exception:                                                         # noqa: BLE001
+            out = {}
+        self._ar_grp, self._ar_grp_mt = out, mt
+        return out
+
     def _disp_name(self, key):
         """列表显示的短名: 去掉来源前缀 (来源已由上层分组写清), 名字列才容得下。
         全路径 + Min/Max + 点数 都放 tooltip。"""
         if key.startswith("ros."):
             return "/" + key[4:]                     # ROS 保留话题全路径 (老倪要看 topic)
-        for pre in ("sstrace.", "ds."):
+        for pre in ("sstrace.", "ds.", "ar."):
             if key.startswith(pre):
                 return key[len(pre):]
         return key
@@ -1818,6 +1868,8 @@ class CanoeGraphicWidget(QWidget):
     )
 
     def _src_hint(self, key):
+        if key.startswith("ar."):
+            return "🥽 AR/AOI 信号总线 · " + self._ar_groups().get(key[3:], "AR 场景")
         if key.startswith("sstrace."):
             n = key[8:]
             for pre, s in self.SS_TRACE_SRC:

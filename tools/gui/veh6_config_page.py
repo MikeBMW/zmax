@@ -337,6 +337,65 @@ def _task_state_cell(tid, act=None):
         return ("★ 活跃" if act == tid else "— 状态未知(%s)" % type(e).__name__)
 
 
+_SCENES_CACHE = {}
+_SCENE_SHORT = {"ar_aoi": "AR", "fw_loading": "FW Loading", "handle": "上下料",
+                "bi_aging": "BI 老化", "thermal_chamber": "热海柜体", "ats_test": "ATS",
+                "tray_filling": "摆盘", "updown": "上下料(工位)"}
+
+
+def _scenes_index():
+    """场景真源 flows/scenes_5jobs.json → {scene_id: 场景对象} (读不到就空, 不猜)。"""
+    p = os.path.join(ROOT, "flows", "scenes_5jobs.json")
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return {}
+    if _SCENES_CACHE.get("mt") == mt:
+        return _SCENES_CACHE.get("idx") or {}
+    try:
+        with open(p, encoding="utf-8") as f:
+            sc = json.load(f).get("scenes") or []
+        idx = {s.get("scene_id"): s for s in sc}
+    except Exception:                                                           # noqa: BLE001
+        idx = {}
+    _SCENES_CACHE.update({"mt": mt, "idx": idx})
+    return idx
+
+
+def _scene_cell(t):
+    """🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增「场景」列 (短标签 · 场景ID)。"""
+    sid = t.get("scene_ref") or "—"
+    sc = _scenes_index().get(sid) or {}
+    st = _SCENE_SHORT.get(sc.get("scene_type"), sc.get("scene_type") or "")
+    return ("%s · %s" % (st, sid)) if st else str(sid)
+
+
+def _scene_tip(t):
+    sc = _scenes_index().get(t.get("scene_ref")) or {}
+    return "场景真源 flows/scenes_5jobs.json\nscene_id: %s\nscene_type: %s\nname: %s\n%s" % (
+        t.get("scene_ref"), sc.get("scene_type"), sc.get("name"), sc.get("desc") or "")
+
+
+def _model_cell(t):
+    """🆕 2026-10-11 老倪: 「模型对应 Automated Optical Inspection 自动光学检测 的 L5 自主进化程序」。"""
+    mr = t.get("model_ref") or {}
+    if not mr:
+        return "逐层 L2/L3/L4 + L5 规划"      # 未显式绑模型的任务: 走逐层选型 (binding_hint 口径)
+    prog = str(mr.get("program") or "")
+    short = prog.split("·")[-1].strip() if "·" in prog else prog
+    layer = str(mr.get("layer") or "")
+    return short if short.startswith(layer) else "%s · %s" % (layer, short)
+
+
+def _model_tip(t):
+    mr = t.get("model_ref") or {}
+    if not mr:
+        return "未显式绑模型: 逐层选型 (L2/L3/L4) + L5 规划 (见 binding_hint)"
+    return "\n".join(["层: %s" % mr.get("layer"), "程序: %s" % mr.get("program"),
+                       "入口: %s" % mr.get("entry"), "章程: %s" % mr.get("charter"),
+                       "画布节点: %s" % mr.get("node"), "能力: %s" % mr.get("capability")])
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -687,8 +746,10 @@ class ConfigCenterPage(QWidget):
         proj = bind.get("project", {})
         # 1) 任务配置 (首屏) —— 含"状态空间工程"配置清单列
         self.tasks_table = _mk_table(
-            ["任务ID", "类型", "工艺步骤", "适用段", "粒度", "启用节点", "禁用节点", "档位(开)", "活跃", "状态"],
-            [[t["task_id"], t["recipe_type"],
+            # 🆕 2026-10-11 老倪: 新增「场景」「模型」两列 (任务7 = AOI → 场景 AR · 模型 L5 自主进化程序)
+            ["任务ID", "类型", "场景", "工艺步骤", "适用段", "粒度", "启用节点", "禁用节点",
+             "档位(开)", "模型", "活跃", "状态"],
+            [[t["task_id"], t["recipe_type"], _scene_cell(t),
               " → ".join(s["name"] for s in t.get("steps", [])),
               f"{len(t['applies_segments'])}/8",
               len(t.get("variants", [])),
@@ -696,6 +757,7 @@ class ConfigCenterPage(QWidget):
               (len(bmap[t["task_id"]]["disabled_nodes"]) if t["task_id"] in bmap else "—"),
               (sum(1 for v in bmap[t["task_id"]]["run_cfg"].values() if v["checked"])
                if t["task_id"] in bmap else "—"),
+              _model_cell(t),                            # 🆕 模型列 (未显式绑 = 逐层 L2/L3/L4 + L5 规划)
               _task_state_cell(t["task_id"], act),        # 🆕 活跃属性三态: ★ 活跃 / ○ 未激活 / — 无配置
               ("⛔ 缺站点几何" + str(len(t["blocked_by_site"]))) if t.get("blocked_by_site") else "✅"]
              for t in tk.get("tasks", [])], th)
@@ -703,6 +765,15 @@ class ConfigCenterPage(QWidget):
         #   设计: 活跃列每行一个下拉 (★ 活跃 / ○ 未激活 / — 无配置) —— 选「★ 活跃」= 真激活该任务 (走 ss_task_bind --activate,
         #   写绑定真源 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
         #   改完立刻重算全表 + 表头计数, 动作与结果都写进下方日志 (失败照实说, 不假成功)。
+        # 🆕 场景/模型列的完整说明放 tooltip (单元格只放短标签, 完整口径不截断)
+        try:
+            for _i, _t in enumerate(tk.get("tasks", [])):
+                for _c, _tip in ((2, _scene_tip(_t)), (9, _model_tip(_t))):
+                    _it = self.tasks_table.item(_i, _c)
+                    if _it is not None:
+                        _it.setToolTip(_tip)
+        except Exception:                                                       # noqa: BLE001
+            pass
         self._task_rows = [t["task_id"] for t in tk.get("tasks", [])]
         self._act_now = act
         self._install_state_combos()

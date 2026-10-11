@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""aoi_inspect_console.py — 🔍 外观质量检测 · **质量检测汇总终端** (UI v2, 2026-09-24)
+"""aoi_inspect_console.py — 🔍 光学质量检测 · **质量检测汇总终端** (UI v2, 2026-09-24)
 
 老倪 v2 反馈: 「最大化按钮不好用; 字数太多太挤, 有的显示不全; 太乱了, 要简洁清晰」
 
@@ -168,7 +168,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         # ① 最大化真能用 (必须换窗口类型; 只加 hint 在 X11 无效)
         self.setWindowFlags(QtCore.Qt.Window | QtCore.Qt.WindowMaximizeButtonHint
                             | QtCore.Qt.WindowMinimizeButtonHint | QtCore.Qt.WindowCloseButtonHint)
-        self.setWindowTitle("🔍 外观质量检测 · 汇总终端")
+        self.setWindowTitle("🔍 光学质量检测 · 汇总终端")
         self.resize(1500, 920)
         self.setMinimumSize(1200, 700)
         self.setStyleSheet(_qss())

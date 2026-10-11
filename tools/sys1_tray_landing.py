@@ -93,7 +93,7 @@ NEW_FEATURES = [
          module_refs=["🎯 YOLO 目标检测", "📐 2D→3D 解算", "🧩 开放词汇分割 (SAM3 分割anything)"]),
     dict(pf_id="PF-Z100-11", product_id="Z100",
          title="料盘空满三态判定与选槽",
-         capability_ref="BO_ B5 外观质量检测 + BO_ B2 空间位姿感知",
+         capability_ref="BO_ B5 光学质量检测 + BO_ B2 空间位姿感知",
          subsys=["sys1", "sys0"], status="规划",
          kpi="空/满/异常三态判定 100% (POC ≥98%) · 单次判定 ≤500ms · 异常态拒送并告警",
          desc="判定载具空/满/异常三态, 决定是否继续在当前载具取放; 由盘面几何给出槽位坐标与占用状态, L3 决定抓取顺序与放料槽位, 避免基于错误状态动作",
