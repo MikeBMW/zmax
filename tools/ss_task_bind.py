@@ -305,6 +305,12 @@ def main():
         print(txt); return 0
     if a.activate:
         open(OUT, "w", encoding="utf-8").write(txt)
+        # 🆕 2026-10-11 老倪: 「完成了任务配置切换后, 马上就可以工作」⇒ 切换即记台账, 供配置中心三态 (活跃/未激活/无配置)
+        try:
+            import ss_task_state as _tst
+            _tst.record_activation(doc["active_task"], source="ss_task_bind --activate")
+        except Exception:                                                       # noqa: BLE001
+            pass
         print(f"✅ 已激活 {doc['active_task']} (写盘 config/ss_task_binding.json)")
         return 0
     if a.task:

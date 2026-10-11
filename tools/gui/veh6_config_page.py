@@ -318,6 +318,22 @@ def _doc_inventory():
     return "\n".join(lines) if lines else "⚠️ 还没有产物 —— 点上面任一按钮, 跑完这里就会出现绝对路径"
 
 
+def _task_state_cell(tid, act=None):
+    """🆕 2026-10-11 老倪: 任务「活跃属性」三态 —— ★ 活跃 / ○ 未激活 / — 无配置。
+
+    口径真源 = tools/ss_task_state.py (不手填): 活跃 = 绑定真源 active_task;
+    未激活 = 该任务配置切换过或跑过验证 (激活台账 / 运行报告); 无配置 = 还没开始。
+    """
+    try:
+        _t = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _t not in sys.path:
+            sys.path.insert(0, _t)
+        import ss_task_state as _ts
+        return _ts.cell(tid, act)
+    except Exception as e:                                                      # noqa: BLE001
+        return ("★ 活跃" if act == tid else "— 状态未知(%s)" % type(e).__name__)
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -586,13 +602,17 @@ class ConfigCenterPage(QWidget):
               (len(bmap[t["task_id"]]["disabled_nodes"]) if t["task_id"] in bmap else "—"),
               (sum(1 for v in bmap[t["task_id"]]["run_cfg"].values() if v["checked"])
                if t["task_id"] in bmap else "—"),
-              ("★ 活跃" if act == t["task_id"] else ""),
+              _task_state_cell(t["task_id"], act),        # 🆕 活跃属性三态: ★ 活跃 / ○ 未激活 / — 无配置
               ("⛔ 缺站点几何" + str(len(t["blocked_by_site"]))) if t.get("blocked_by_site") else "✅"]
              for t in tk.get("tasks", [])], th)
         w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(6, 6, 6, 6)
+        _st_n = {k: sum(1 for t in tk.get("tasks", []) if _task_state_cell(t["task_id"], act) == k)
+                 for k in ("★ 活跃", "○ 未激活", "— 无配置")}
         head = QLabel(f"状态空间工程(主工程): {proj.get('nodes', '?')} 节点 / {proj.get('links', '?')} 连线"
                       f"  ·  md5 {str(proj.get('canvas_md5', ''))[:12]}  ·  承载 {len(bind.get('tasks', []))} 个任务"
-                      f"  ·  活跃 {act or '—'}")
+                      f"  ·  活跃 {act or '—'}"
+                      # 🆕 2026-10-11 老倪: 活跃属性三态一眼看全 (★ 活跃 / ○ 未激活 / — 无配置)
+                      f"  ·  状态 活跃 {_st_n['★ 活跃']} / 未激活 {_st_n['○ 未激活']} / 无配置 {_st_n['— 无配置']}")
         head.setFont(QFont("Consolas", 10))
         head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         l.addWidget(head)
