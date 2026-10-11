@@ -121,14 +121,15 @@ def _rs_pose(use_last_detect=True, roi=None):
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
 
 
-def _rs_detect():
+def _rs_detect(conf=0.25, imgsz=640):
     """🥽 光模块检测(AR 相机帧): 在**本进程**跑在役 YOLO —— 相机被本服务独占, 别的进程打不开设备。
 
     返回 bbox/conf + 深度相机系 3D; 标注图落 zmax_data/ar_rs/rs_detect_last.png (AR 页面可直接看)。
+    conf/imgsz 可调: 归因"没东西 vs 权重不认视角"时, 用低 conf / 高分辨率各跑一次对比。
     """
     try:
         import ar_calib_module as ACM
-        r = ACM.detect()
+        r = ACM.detect(conf=conf, imgsz=imgsz)
         if r.get("ok"):
             RS_LAST_DET["ts"] = time.time()
             RS_LAST_DET["dets"] = r.get("dets") or []
@@ -288,7 +289,8 @@ class H(BaseHTTPRequestHandler):
                 import realsense_source as RS
                 self._json(RS.info())
             elif p == "/api/rs_detect":            # 🥽 在 AR 相机帧里跑在役 YOLO 找光模块(标定用)
-                self._json(_rs_detect())
+                self._json(_rs_detect(conf=float(qs.get("conf", "0.25")),
+                                      imgsz=int(qs.get("imgsz", "640"))))
             elif p == "/api/rs_options":            # 🥽 相机可调项全表(找 AE 测光区等)
                 self._json(_rs_options())
             elif p == "/api/rs_exposure":          # 🥽 曝光/增益(强逆光过曝会污染叠加): 读+可调
