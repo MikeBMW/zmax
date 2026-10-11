@@ -19,7 +19,7 @@ def run(extra):
 out, full = run({})
 print("  clean-boot ->", out)
 chk("SS-TRAY-PLACE" in out and "MODE=tray" in out, "1) restart: scene truth source restored from canvas -> tray (SS-TRAY-PLACE)")
-chk("\\u573a\\u666f\\u771f\\u6e90\\u6309\\u753b\\u5e03\\u6570\\u636e\\u6e90\\u81ea\\u6062\\u590d" in full, "1) log names the source")
+chk("\u573a\u666f\u771f\u6e90\u6309\u753b\u5e03\u6570\u636e\u6e90\u81ea\u6062\u590d" in full, "1) log names the source (scene restored from canvas)")
 out2, _ = run({"ZMAX_SCENE_DIR": ROOT + "/data/scene/scenes/SS-EPI-CORNER"})
 chk("SS-EPI-CORNER" in out2 and "MODE=plug" in out2, "2) explicit env wins (peg scene kept)")
 print("")
