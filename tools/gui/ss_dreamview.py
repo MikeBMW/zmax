@@ -1141,7 +1141,7 @@ class DreamView3D(QWidget):
             # ── 感知层 (最前) ──
             ("scene",     "📡 感知层 · 物理世界几何",     True,
              "画布节点「📡 融合定位 / 🌍 物理世界」的真实几何: 台面 / 带孔盒 / 光模块 /\n"
-             "Sawyer 臂 + 夹爪 (含物体名字标注; 关掉它连机械臂和标注一起隐藏)"),
+             "Sawyer 臂 + 末端工具 (摆盘=真空吸盘 / 插拔=两指夹爪; 关掉它连机械臂和标注一起隐藏)"),
             ("yolo",      "📡 感知层 · YOLO 目标检测",    True,
              "画布节点「🎯 YOLO 目标检测」的输出: hand / 光模块 / hole 三个 3D 检测框"),
             ("traj",      "📡 感知层 · 末端实测轨迹",     True,
@@ -1940,9 +1940,32 @@ class DreamView3D(QWidget):
                                 color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_peg)
         arm.append(arm_peg)
+        # 🧲 2026-10-11 老倪: 「机械臂应该是带吸盘的, 能吸住光模块」⇒ 摆盘/真空任务: 末端换成**真空吸盘**。
+        #   (两指夹爪在摆盘里根本伸不进盘 — tools/gen_tray_place_video.py 实测卡在盘壁顶面 z=0.038;
+        #    真机工艺见 TASK-06-TRAY 配方: 「末端下降至吸附位, 真空建立(≤200ms)后抬起离盘」)
+        #   几何: 吸嘴盘 (朝下薄圆柱) + 吸嘴杆 (细圆柱) + 真空管 (斜插), 都挂腕法兰下, 由 _update_frame 跟着末端走。
+        arm_vac_stem = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.008),
+                                     color=(0.85, 0.88, 0.92, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_vac_stem)
+        arm.append(arm_vac_stem)
+        arm_vac_disc = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.017),
+                                     color=(0.15, 0.75, 0.85, 1.0), smooth=True, shader=None)
+        self.view.addItem(arm_vac_disc)
+        arm.append(arm_vac_disc)
+        arm_vac_hose = gl.GLMeshItem(meshdata=_cylinder_mesh([0, 0, 0], [0, 0, 0.001], 0.0045),
+                                     color=(0.30, 0.32, 0.36, 1.0), smooth=True, shader='shaded')
+        self.view.addItem(arm_vac_hose)
+        arm.append(arm_vac_hose)
         self._gl_items["arm"] = arm
         self._arm_idx = {"upper": 1, "fore": 2, "shoulder": 3, "elbow": 4,
-                         "wrist": 5, "jaw_l": 6, "jaw_r": 7, "peg": 8}
+                         "wrist": 5, "jaw_l": 6, "jaw_r": 7, "peg": 8,
+                         "vac_stem": 9, "vac_disc": 10, "vac_hose": 11}
+        _tool = self._tool_kind()
+        _vac = (_tool == "vacuum")
+        arm[6].setVisible(not _vac)       # 真空吸盘 ⇒ 收掉两指夹爪
+        arm[7].setVisible(not _vac)
+        for _k in ("vac_stem", "vac_disc", "vac_hose"):
+            arm[self._arm_idx[_k]].setVisible(_vac)
         if scene_mode(getattr(self, "scene_id", None)) == "tray":
             arm[8].setVisible(False)      # 摆盘: 光模块由场景数据 (料盘里 3 个) 提供
 
@@ -2083,6 +2106,29 @@ class DreamView3D(QWidget):
         # 应用当前图层开关状态
         for key, on in self._layer_on.items():
             self._apply_layer_visibility(key, on)
+        # 🧲 末端工具可见性**收口**: 图层开关是整层置可见, 会把夹爪/吸盘的选择覆盖掉 ⇒ 必须在它之后压一次
+        self._apply_tool_visibility()
+
+    def _apply_tool_visibility(self):
+        """🧲 末端工具可见性收口 (摆盘=吸盘显/夹爪收; 插拔=夹爪显/吸盘收)。
+
+        2026-10-11 老倪「机械臂应该是带吸盘的」: _build_scene 尾部会按图层开关整层置可见,
+        夹爪两瓣属于 arm 层 ⇒ 单在上面设 setVisible 会被整层覆盖, 必须收口到这里 (图层之后)。
+        """
+        arm = (self._gl_items or {}).get("arm") or []
+        ix = getattr(self, "_arm_idx", {}) or {}
+        if len(arm) <= 11 or "vac_stem" not in ix:
+            return
+        try:
+            _vac = (self._tool_kind() == "vacuum")
+            arm[ix["jaw_l"]].setVisible(not _vac)
+            arm[ix["jaw_r"]].setVisible(not _vac)
+            for _k in ("vac_stem", "vac_disc", "vac_hose"):
+                arm[ix[_k]].setVisible(_vac)
+            if scene_mode(getattr(self, "scene_id", None)) == "tray":
+                arm[ix["peg"]].setVisible(False)
+        except Exception as _e:                                                 # noqa: BLE001
+            print("末端工具可见性设置失败: %r" % (_e,))
 
     def _apply_layer_visibility(self, key, on):
         """图层开关 → GL 元素可见性。
@@ -2207,6 +2253,41 @@ class DreamView3D(QWidget):
         "L3": ["scene", "traj", "uff", "latent", "prior"],        # L3: 再加 前馈/状态估计/预测
         "L4": ["scene", "traj", "uff", "latent", "prior"],        # L4: 引擎真链全部执行层
     }
+
+    def _tool_kind(self):
+        """🧲 末端工具判定: 'vacuum' (真空吸盘) / 'gripper' (两指夹爪) —— 按真源, 不手填。
+
+        ① 场景是摆盘 (scene_mode == 'tray') ⇒ 真空吸附摆放;
+        ② 活跃任务配置 (config/ss_task_binding.json 的 tasks[active_task]) 里出现 真空/吸附/吸盘/vacuum ⇒ 真空;
+        ③ 其余 ⇒ 两指夹爪。判定依据存 self._tool_reason, 供界面/日志标注 (说不出依据就不说)。
+        """
+        reasons = []
+        _sm = None
+        try:
+            _sm = scene_mode(getattr(self, "scene_id", None))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        # 场景优先: 现场由数据源决定 —— 摆盘=真空吸盘 / 插拔=两指夹爪; 场景说不清才看任务工艺
+        _scene_vac = (True if _sm == "tray" else False)   # scene_mode 只返回 tray / plug
+        if _sm == "tray":
+            reasons.append("摆盘场景")
+        try:
+            import json as _json
+            _p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                              "config", "ss_task_binding.json")
+            _d = _json.load(open(_p, encoding="utf-8"))
+            _at = next((t for t in (_d.get("tasks") or []) if t.get("task_id") == _d.get("active_task")), {}) or {}
+            _blob = _json.dumps(_at, ensure_ascii=False)
+            _tv = any(_k in _blob for _k in ("真空", "吸附", "吸盘", "vacuum"))
+            reasons.append("活跃任务 %s 工艺=%s" % (_at.get("task_id"), "真空吸附" if _tv else "夹持"))
+            if _scene_vac is not None and _tv != _scene_vac:
+                reasons.append("⚠️ 场景与任务不一致 (按场景画, 数据源/任务请对齐)")
+                print("⚠️ 末端工具: " + " · ".join(reasons))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        _vac = _scene_vac if _scene_vac is not None else any("真空吸附" in _r for _r in reasons)
+        self._tool_reason = " · ".join(reasons) or "无从判定"
+        return "vacuum" if _vac else "gripper"
 
     def _switch_scene(self, scene_id: str):
         """🧩 场景切换 (插拔 / 摆盘): 把当前 3D 视图切到该场景真源 (同一个视图, 不新开窗口)。
@@ -2569,6 +2650,17 @@ class DreamView3D(QWidget):
             meshdata=_box_mesh_yaw(_jaw_lc, (0.05, 0.016, 0.05), _hvy, _wrist))
         arm[self._arm_idx["jaw_r"]].setMeshData(
             meshdata=_box_mesh_yaw(_jaw_rc, (0.05, 0.016, 0.05), _hvy, _wrist))
+        # 🧲 真空吸盘 (摆盘) 跟着末端: 吸嘴盘贴在腕下朝下, 吸嘴杆连腕, 真空管斜插 (与夹爪同源同一 _wrist 位姿)
+        if getattr(self, "_arm_idx", {}).get("vac_disc") is not None:
+            _dc = np.asarray(_wrist, float) + np.array([0.0, 0.0, -0.008])
+            arm[self._arm_idx["vac_disc"]].setMeshData(
+                meshdata=_cylinder_mesh(_dc, _dc + np.array([0, 0, 0.008]), 0.017))
+            _sc = np.asarray(_wrist, float) + np.array([0.0, 0.0, 0.004])
+            arm[self._arm_idx["vac_stem"]].setMeshData(
+                meshdata=_cylinder_mesh(_sc, _sc + np.array([0, 0, 0.032]), 0.008))
+            _hc = np.asarray(_wrist, float) + np.array([0.0, -0.032, 0.022])
+            arm[self._arm_idx["vac_hose"]].setMeshData(
+                meshdata=_cylinder_mesh(_hc, _hc + np.array([0, 0, 0.028]), 0.0045))
         # 🔩 光模块: 独立物体 — 抓取前躺台面, 抓取后随末端 (位置来自仿真 tr["peg"])
         #   🎯 2026-09-09: peg 绕 z 朝向 (peg_yaw) — 来料被外力转 90° 的旋转过程 3D 可见
         peg_grasp = (np.asarray(tr["peg"][i], dtype=float)
