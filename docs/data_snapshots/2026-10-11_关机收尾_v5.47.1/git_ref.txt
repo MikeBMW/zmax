@@ -1,0 +1,4 @@
+commit: 446a2cb
+tag: v5.47.0
+branch: main
+version_md: v5.47.1

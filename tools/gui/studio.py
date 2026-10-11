@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11251,7 +11251,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11259,9 +11259,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.1: v5.47.1 — 关机收尾 (数据快照 + 状态/记忆/技能/场景叠加同步 + 工程库重建全绿, 无功能改动) (2026-10-11 老倪「保存数据，小版本迭代，准备关机」) 本版**无功能改动**, 代码与 v5.47.0 相同, 只多版本号与留痕: ①工程库一致性修复: `engineering_db check` 实测报漂移 `['canvas','manifold']` (画布被后续迭代改过、库没重建) → `engineering_db.py build` 重建 → **判据全绿** (768 参数 / 1731 数字链接 / 184 连线 / 74 功能 / MCD 三轴 5 层); ②四路同步实测: 记忆 (MEMORY.md/USER.md → docs/memory/hermes-jingjing-*-2026-10-11.md, 与仓库逐字一致) · 技能 (docs/skills/xspace 31 + hermes-all 全量 **215** 个, 含 sim-real-scene-overlay/zmax-scene-engineering) · 飞书端场景叠加任务公网端到端通 (`https://datadrive.world/ov/overlay?k=zmax-live` 等 4 条 HTTP 200 + POST 403 只读闸门 + `/ov/live.json` 三相机拼图与逐路叠加流清单) · 状态推公网 (`publish_status.py` → `zmax_status.json` 7182B, 手机端实时); ③数据保存: 快照 `docs/data_snapshots/2026-10-11_关机收尾_v5.47.1/` (工程库/画布 md5 4d3824c6d63d/判据报告/叠加验证/公网状态/CI/git_ref + shutdown_checklist.md) + 归档 `zmax_data/release_5.47.1_20261011/` (MANIFEST.sha256 逐文件校验); ④关机预检 `tools/preflight_shutdown.sh` 实测 **🟢 可以下电** (臂 idle · 真值帧龄 0.02s · 无授权窗口 · 无采集/训练在写 · 仓库已保存); 一次性脚本 `tools/save_data_v5_42_0.sh` / `tools/finalize_data_sync.sh` 入库。
         # v5.47.0: DDS 真实性取证: 新增 tools/dds_verify_real.py (selftest / pair / pair-sub / listen), 把「是不是真 DDS 数据」拆成三问分证: ① 总线真不真 → selftest (同进程自发自收) ② 跨进程/跨机 → pair/pair-sub ③ 现在有没有真数据 → listen (配对 + 窗口内条数, take() 返回列表, 空列表≠一条)  实测 (2026-10-11): - ① 同进程: 发 5 收 1 ✅   ② 跨进程: 发 15 → 收 16 ✅  ⇒ DDS 机制真、进程间真通 - ③ calib 档 9 个允许话题: 独立订阅 25s = 0 条 / 0 配对 ⇒ 此刻没有真实数据在发 (黑灯) - 原因 (可核): (a) 状态/动作源 zmax_data/ss_live/state_*.jsonl 里 tcp=null jpos=[] robot_status=null, 只有相机图像在流 (std≈47.3) ⇒ 状态无真值, 守护进程按 STALE_S=5s 纪律只发 diag 不发状态/动作; (b) 能量 tap 守护进程判过期 3.46 天 (它认 10-08 旧文件, 10-11 新写的 energy_*_iter.jsonl 没被认 ⇒ 扫描/口径不一致, 待修); (c) 跨网 unicast peer 10.163.146.78 的 UDP 写持续失败 retcode -1。 结论: 机制真、链路真、数据空 —— 不是伪造数据。
         # v5.46.0: 逐层「真模型 vs 解析回退」可查证据 (TaskL45.model_use / model_line, 两链每次运行都打): - L2 蒸馏 MLP (ss_left_brain.npz 2.19MB, loaded=True): 插拔 每帧真调 409/409 帧 (真模型占比 1.0); 摆盘 0/852 帧 (占比 0.0, 全程走域外解析守卫) ← 实锤问题 - L3 世界模型 (ss_right_brain.npz) 已加载, 每帧产生 prior/residual; 但状态估计器是手设卡尔曼 (A=1.0, K=0.2) 非学习 - L4 解析安全闸(saturate)+平滑: 模型在回路=False (真 L4 模型 l4_mani_predictor_v5.pt 3.47MB 只在 studio/simulink/real 链) - L5 配置中心驱动的阶段链: 模型在回路=False, planner 未加载, LLM 端点未配置  摆盘 L2 域外机制: 域判定 (a) ||hand-target|| ≤ D_GUARD=0.25m (蒸馏数据 p99.9) + (b) 归一化逐通道 ≤4σ。摆盘工位 hand→target = 0.293m > 0.25 ⇒ 每帧判域外 ⇒ 真模型 0 次。 结论: 切配置真生效(任务/阶段/公差/力上限/档位/判据), 但**不换模型权重**; L2/L3 有真模型在跑(插拔), L4/L5 无模型在回路。  修: ss_task_l45 增 model_use() 从各层自身计数器读实数(不猜)。
         # v5.45.0: 四层同跑证据 + 切换配置证据 (L5/L4/L3/L2 一起运行)。  逐帧证据 (新增 trace 字段 l4_du/l4_veto/l4_f, 两链都写; 逐帧介入量 = L4 本帧把指令改了多少): - 插拔 TASK-01-FW: 1036 帧全帧活跃 | L5 10 段 | L4 介入 1036/1036 帧 (峰 0.344) 力否决 341 帧 | L3 残差非零 1036 | L2 前馈非零 1036 - 摆盘 TASK-06-TRAY: 2708 帧 | L5 9 段 | L4 档位关 ⇒ 只做基础限速未介入 (限速 0 次, 无越界) | L3 残差非零 2708 | L2 前馈非零 2708  切换证据 (6 轮交替, 走 ss_task_runner = 走配置中心激活): - 6/6 通过; 每轮 active_task 回读都对 + config/ss_task_binding.json sha 每轮都变 → 配置真切换 - L5 阶段链 13 段(力上限 5.0N) vs 8 段(3.0N) → 层间行为随配置变 - L4 逐层计数每轮都在 (插拔: 帧 754~903 · 限速 472~591 · 力否决 57~72 · 平滑 107~153 · 精炼 754~903; 摆盘: 全 0 = 档位关) - 判据: 插拔 完成 success=True; 摆盘 3/3 合格  修: ss_task_runner.parse_result 读 npz meta 只认严格 JSON ⇒ 链侧 meta 是 Python repr, 一直 JSONDecodeError 丢掉逐层证据。改为 json→ast.literal_eval 两层解析, 并把 l45(L4/L5 逐层) 提到报告顶层 (l45/l45_line/success/steps/stage_final)。  产物: 视频 2 条 (带 L4/L5 重渲染) + 四层同跑图 2 张 + 切换证据表 1 张, 存档 docs/data_snapshots/2026-10-10_配置驱动双功能/。
@@ -11902,7 +11903,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13637,7 +13638,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.1</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
