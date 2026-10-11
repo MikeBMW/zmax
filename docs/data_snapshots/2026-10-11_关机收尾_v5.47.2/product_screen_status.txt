@@ -1,0 +1,15 @@
+产品大屏数据源 (v5.47.2) @ 2026-10-11 21:47:01
+  工位总览服务同源: ok=True err=None
+  通道 10/10 在线 · 最大帧龄 34.47s · 手动闸 motion_armed=False
+    · 🦾 机器人臂上 D405 (Orin)          在线    0.0 fps 帧龄  28.68s ⚠️卡死
+    · 🔌 USB USB2.0 Camera: USB2.0 Camera 在线    0.0 fps 帧龄  28.63s ⚠️卡死
+    · 📺 WT15: MAXHUB-Camera        在线  19.99 fps 帧龄    0.0s 
+    · 🌈 D405 深度图 (彩色化)             在线    0.0 fps 帧龄  34.47s ⚠️卡死
+    · 🔍 金手指检测 (工控机 OPT)            在线    0.0 fps 帧龄  32.96s ⚠️卡死
+    · aoi_gold_raw                 在线    0.0 fps 帧龄  32.92s ⚠️卡死
+    · 🔍 表面检测 (工控机 OPT)             在线    0.0 fps 帧龄  31.61s ⚠️卡死
+    · 🦾 机器人臂上 D405 (Orin)          在线    0.0 fps 帧龄  28.68s ⚠️卡死
+    · 🔌 USB USB2.0 Camera: USB2.0 Camera 在线    0.0 fps 帧龄  28.63s ⚠️卡死
+    · 📺 WT15: MAXHUB-Camera        在线  10.05 fps 帧龄   0.07s 
+  机械臂: {'power': 'off', 'operation': 'idle', 'mode': 'manual', 'estop': False, 'has_error': False, 'src': 'rokae_direct(192.168.23.160 · SDK 直读)'}
+  数据源: http://127.0.0.1:8793/station

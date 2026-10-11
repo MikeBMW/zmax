@@ -134,6 +134,47 @@ def build_card(d: dict) -> dict:
     }
 
 
+def _default_base_url(port: int = 8799) -> str:
+    """给 web / 手机端用的基址: 取本机默认路由网卡的 IPv4 (现场局域网), 取不到退回 127.0.0.1。"""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:                                                         # noqa: BLE001
+        ip = "127.0.0.1"
+    return "http://%s:%d" % (ip, port)
+
+
+def build_web_task_card(d: dict, base_url: str) -> dict:
+    """🖥 产品大屏 → web 任务单 (老倪: 「将功能页的产品大屏完全同步工位总览的服务, 完善数据流服务,
+    然后让 web 将这个数据推流, 做到手机远程操作, APP发布; 把这个发给飞书, 通知 web」)。"""
+    s = d.get("screen") or {}
+    ch = s.get("channels") or []
+    rb = s.get("robot") or {}
+    rows = []
+    for c in ch[:6]:
+        rows.append("· %s %s %s fps · 帧龄 %ss%s"
+                    % (c.get("label") or c.get("key"), "在线" if c.get("online") else "离线",
+                       c.get("fps"), c.get("age_s"), "  ⚠️卡死" if c.get("stalled") else ""))
+    lines = [
+        "**① 同源** 产品大屏 与 工位总览 = **同一台服务 (:8793) 的同一份在役状态**: 通道 **%s/%s 在线** · "
+        "最大帧龄 **%ss** · 手动闸 motion_armed=**%s** · 机械臂 %s/%s"
+        % (s.get("channels_online"), s.get("channels_total"), s.get("frame_age_max_s"),
+           s.get("motion_armed"), rb.get("power"), rb.get("operation")),
+        "**② 单一数据源(推流用)** %s/dashboard.json  ·  数据时间 %s" % (base_url, d.get("generated_at")),
+        "**③ 手机远程页** %s/  (手机优先视口/CSS 已适配; 远程动作受现场授权闸约束)" % base_url,
+        "**④ 交付 APP** %s/dl/ZMAX-Dash.apk" % base_url,
+        "**⑤ 工位通道实况**\n" + ("\n".join(rows) if rows else "· 服务未连通(如实为空)"),
+        "**请 web 接续**: 拉 ② 的 JSON 做推流 → ③ 手机端远程操作页 → ④ 出/发布 APP",
+    ]
+    return {"config": {"wide_screen_mode": True},
+            "header": {"template": "blue" if s.get("ok") else "orange",
+                       "title": {"tag": "plain_text", "content": "🖥 Z-MAX 产品大屏 → web 交付任务单"}},
+            "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lines)}}]}
+
+
 def _send_card(card: dict, chat_id: str) -> dict:
     tok, tr = fs.get_token()
     if not tok:
@@ -154,6 +195,10 @@ def main(argv=None) -> int:
     ap.add_argument("--dry", action="store_true", help="只打印卡片 JSON, 不真发")
     ap.add_argument("--send", action="store_true", help="真发到群")
     ap.add_argument("--refresh", action="store_true", help="先重采大屏数据源再渲染")
+    ap.add_argument("--notify-web", dest="notify_web", action="store_true",
+                    help="推送「产品大屏 → web 任务单」(数据源/手机页/APP 链接 + 同源实测)")
+    ap.add_argument("--base-url", default=os.environ.get("ZMAX_SCREEN_BASE", ""),
+                    help="卡片里给 web 的基址 (默认按本机局域网 IP 拼 :8799)")
     ap.add_argument("--chat", default=os.environ.get("FEISHU_REPORT_CHAT_ID", fs.DEFAULT_CHAT),
                     help="目标 chat_id (默认报告群)")
     a = ap.parse_args(argv)
@@ -171,6 +216,25 @@ def main(argv=None) -> int:
         print(json.dumps({"ok": False, "stage": "load", "error": "%s: %s" % (type(e).__name__, e)},
                          ensure_ascii=False))
         return 1
+
+    if a.notify_web:
+        base = a.base_url or _default_base_url()
+        card = build_web_task_card(d, base)
+        _ok, _hits, _n = rma.assert_no_secrets(json.dumps(card, ensure_ascii=False))
+        if not _ok:
+            print(json.dumps({"ok": False, "stage": "redact",
+                              "error": "卡片命中 %d 个已知口令, 已中止" % _hits}, ensure_ascii=False))
+            return 1
+        if a.dry:
+            print(json.dumps({"ok": True, "dry": True, "base_url": base, "card": card},
+                             ensure_ascii=False, indent=2))
+            return 0
+        res = _send_card(card, a.chat)
+        res["dry"] = False
+        res["base_url"] = base
+        res["kind"] = "product_screen_web_task"
+        print(json.dumps(res, ensure_ascii=False))
+        return 0 if res.get("ok") else 1
 
     card = build_card(d)
     # 发送前脱敏断言: 整张卡片 JSON 里不应出现任何已知口令

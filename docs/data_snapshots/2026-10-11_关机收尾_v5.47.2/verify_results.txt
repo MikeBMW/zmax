@@ -1,0 +1,5 @@
+  verify_no_flicker: exit=0 NO-FLICKER PASS 失败=0
+  verify_pin_persist: exit=0 PIN-PERSIST PASS 失败=0
+  verify_time_corr: exit=0 TIME-CORR PASS 失败=0
+  verify_playback_cursor: exit=0 PLAYBACK-CURSOR PASS 失败=0
+  verify_monitor_graphic: exit=0 MONITOR-GRAPHIC PASS 失败=0

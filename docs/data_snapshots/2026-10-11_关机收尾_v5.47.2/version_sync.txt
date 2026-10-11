@@ -1,0 +1,57 @@
+========================================================================
+Z-MAX 版本同源体检   2026-10-11 21:47:01   仓库: /home/ubuntu/zmax
+========================================================================
+权威版本: 5.47.2  (来源: studio.py 品牌 QLabel)
+
+① 版本号同步点 (逐个 file:line + 实际值)
+------------------------------------------------------------------------
+  ✅ tools/gui/studio.py:870                = v5.47.2    [studio.py:品牌版本 QLabel]
+  ✅ tools/gui/studio.py:10963              = v5.47.2    [studio.py:窗口标题(正常)]
+  ✅ tools/gui/studio.py:10955              = v5.47.2    [studio.py:窗口标题(非调试)]
+  ✅ tools/gui/studio.py:10966              = v5.47.2    [studio.py:changelog 前缀]
+  ✅ tools/gui/update_checker.py:10         = v5.47.2    [update_checker.py:CURRENT_VERSION]
+  ✅ tools/gui/version_sync.py:318          = 5.47.2     [version_sync.py:zmax_ver]
+  ✅ tools/gui/docs_sync.py:198             = v5.47.2    [docs_sync.py:"version"]
+  ✅ tools/gui/docs_sync.py:202             = v5.47.2    [docs_sync.py:"zmax_version"]
+  ✅ tools/ci/integrity_check.py:27         = v5.47.2    [integrity_check.py:EXPECTED_VERSION]
+  => 全部一致 ✅
+
+② 与 "xspace 版本" 的对齐
+------------------------------------------------------------------------
+  · local_dir_/home/xspace = False
+  · brand_used_in_gui = True
+  · lerobot_local_pyproject = 0.5.2
+  · lerobot_remote = https://github.com/MikeBMW/lerobot-smolvla-lew.git
+  · external_gui_studio_version = v5.15.13
+  · external_gui_update_checker = v5.15.13
+  · update_checker_repo = MikeBMW/zmax
+  · github_MikeBMW/xspace = 404
+  · lerobot_repo_latest_release = v5.17.0
+  结论: "xspace" 不是独立版本号, 而是 GUI 品牌/旧工作区名: 实据 —— GitHub MikeBMW/xspace 不存在 (404); 本机 /home/xspace 目录不存在 (False); 但 GUI 主窗口标题仍用品牌 'XSpace Studio — Z-MAX vX.Y.Z' (brand_used=True)。 ⇒ 老倪说的"xspace 版本"= XSpace Studio (Z-MAX 控制台) 的版本线, 与该线当前版本号同一处; 另有一支历史"xspace 工程仓" MikeBMW/lerobot-smolvla-lew (GUI 工程 external/lerobot-smolvla-lew 的 origin), 它是 LeRobot 0.5.2 派生, 与 Z-MAX 版本线不是同一个号。
+
+③ 与 Git 远程 tag / Release 的对齐
+------------------------------------------------------------------------
+  origin         : https://github.com/MikeBMW/zmax.git  (slug=MikeBMW/zmax)
+  本地 HEAD      : 5fe6689  (main)  describe=v5.47.1
+  本地 tag(尾)   : ['v5.44.0', 'v5.45.0', 'v5.46.0', 'v5.47.0', 'v5.47.1', 'vv5.16.35']
+  远端 tag 数    : 88  尾: ['v5.44.0', 'v5.45.0', 'v5.46.0', 'v5.47.0', 'v5.47.1', 'vv5.16.35']
+  远端异常 tag   : ['vv5.16.35']
+  权威 tag 在远端: v5.47.2 -> 无 ❌
+  最新 Release   : v5.47.1   (来源: HTTPS GitHub API (gh 不可用, 已降级))
+      - Z-MAX_Console-macOS.zip  (134481115 bytes)
+      - Z-MAX_Console-win64-nounpack.zip  (174543833 bytes)
+      - Z-MAX_Console.exe  (170828416 bytes)
+  发布对齐       : 不一致 ❌
+
+④ GUI 显示版本 vs 实际
+------------------------------------------------------------------------
+  GUI 中 Z-MAX vX.Y.Z 字面量 5 处; 陈旧 0 处
+  => 显示一致 ✅
+
+偏差汇总
+------------------------------------------------------------------------
+  ❌ 远端缺少 tag v5.47.2
+  ❌ 最新 Release tag v5.47.1 ≠ v5.47.2
+========================================================================
+结论: ❌ 有偏差 (exit 1)
+========================================================================

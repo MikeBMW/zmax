@@ -30,7 +30,9 @@ import android.widget.Toast;
  *       数据时间与帧龄置顶; 关键数字点一下即复制。
  *
  * 地址口径(公网优先 → 局域网 → 离线兜底):
- *   ① http://10.163.146.78:8799/unified_app.html  —— 工位机 dashboard_server(只读静态, 与在役 8791 互不影响)。
+ *   ① http://192.168.23.50:8799/unified_app.html   —— 工位机(产线 192.168.23.50) dashboard_server, 只读静态, 与在役 8793 互不影响。
+ *   ② http://10.163.146.78:8799/unified_app.html   —— 办公室 WiFi 同一服务
+ *   ③ https://datadrive.world/factory-dashboard.html —— 公网兜底
  *   ② file:///android_asset/unified_app.html       —— 打进包里的离线副本(页内含真实数据快照, 无网也能看)。
  * 主框架加载失败会自动试下一个候选; 长按屏幕可手改地址并记住。
  */
@@ -38,7 +40,7 @@ public class MainActivity extends Activity {
 
     /** 候选地址: 工位机数据服务 → 包内离线副本。按顺序试, 第一个能打开的就用。 */
     private static final String[] CANDIDATES = {
-            "http://10.163.146.78:8799/unified_app.html",     // 工位机 dashboard_server
+            "http://192.168.23.50:8799/unified_app.html",    // ① 产线局域网 (手机连现场网, 优先)\n            "http://10.163.146.78:8799/unified_app.html",   // ② 办公室 WiFi\n            "https://datadrive.world/factory-dashboard.html", // ③ 公网兜底
             "file:///android_asset/unified_app.html",         // 离线兜底(包内快照)
     };
     private static final String DEFAULT_URL = CANDIDATES[0];

@@ -47,16 +47,19 @@ print("probe ④ 画布接管 + 真触发 + QAction 兼容", flush=True)
 m = SM.SimulinkModule()
 called = []
 for meth in ("export_flow", "import_flow", "save_trained_model", "start_recording",
-             "stop_recording", "toggle_float_canvas", "open_ss_3d"):
+             "stop_recording", "toggle_float_canvas", "open_ss_3d",
+             "open_monitor_window", "open_z700_flow"):
     setattr(m, meth, (lambda n: (lambda *a, **k: called.append(n)))(meth))
 r = m.attach_canvas_actions(acts)
-chk(r.get("ok") and r.get("n") == 7, f"attach_canvas_actions 接管 7 项 ({r})")
+chk(r.get("ok") and r.get("n") >= 7, f"attach_canvas_actions 接管 {r.get('n')} 项 ({r})")
 win.simulink = m
-for k in ("save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d"):
+for k in ("save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d",
+          "monitor", "z700"):
     acts[k].trigger()
 chk(sorted(called) == sorted(["export_flow", "import_flow", "save_trained_model",
-                              "start_recording", "stop_recording", "toggle_float_canvas", "open_ss_3d"]),
-    f"7 项菜单真触发到画布方法: {sorted(called)}")
+                              "start_recording", "stop_recording", "toggle_float_canvas", "open_ss_3d",
+                              "open_monitor_window", "open_z700_flow"]),
+    f"9 项菜单真触发到画布方法: {sorted(called)}")
 chk(isinstance(getattr(m, "btn_record", None), QAction), "btn_record 现在是菜单项 (QAction)")
 chk(getattr(m, "btn_stop_rec", None) is not None and m.btn_stop_rec.isEnabled() is False,
     "接管后「停止录制」初始不可点 (没在录)")
@@ -76,13 +79,19 @@ print("probe ④ 画布工具栏: 🧮 状态空间 + 🛰 工位总览 两个�
 try:
     m = SM.SimulinkModule()
     app.processEvents()
-    for attr, txt in (("btn_state_space", "状态空间"), ("btn_station", "工位总览"),
-                      ("btn_ss_3d", "3D 视图")):
+    for attr, txt in (("btn_state_space", "状态空间"), ("btn_station", "产品大屏"),
+                      ("btn_ss_3d", "3D场景"), ("btn_monitor", "实时监控"),
+                      ("btn_ds_win", "数据空间")):
         b = getattr(m, attr, None)
         chk(b is not None and txt in b.text(), f"工具栏有「{txt}」按钮 (attr={attr}, 文本={getattr(b, 'text', lambda: '—')() if b else '无'})")
         chk(bool(b) and b.isVisibleTo(m), f"「{txt}」按钮已挂进工具栏布局 (isVisibleTo=True, 没被 setVisible(False) 藏掉)")
     # 真点: 在**类**上替换两个方法 → 新建实例 → 点按钮 (构造时绑定的就是替身 ⇒ 真验证"点击→方法")
+    # 🗂 2026-10-11 老倪: 工具栏已删除 Z700 按钮 (能力移到画布菜单) —— 判据: 该按钮没有父容器
+    #   (= 从没被 addWidget 进任何布局), 不是"对象被删"(方法 open_z700_flow 保留, 菜单里有入口)
+    _z = getattr(m, "btn_z700", None)
+    chk(_z.parent() is None, "🚀 Z700 按钮已从画布工具栏撤下 (没挂进任何布局; 能力在画布菜单)")
     hit = {}
+    SM.SimulinkModule.open_monitor_window = lambda self, *a, **k: hit.setdefault("mon", True)
     SM.SimulinkModule.open_state_space = lambda self, *a, **k: hit.setdefault("ss", True)
     SM.SimulinkModule.open_station_page = lambda self, *a, **k: hit.setdefault("station", True)
     SM.SimulinkModule.open_ss_3d = lambda self, *a, **k: hit.setdefault("v3d", True)
@@ -91,9 +100,11 @@ try:
     m2.btn_state_space.click()
     m2.btn_station.click()
     m2.btn_ss_3d.click()
+    m2.btn_monitor.click()
     app.processEvents()
-    chk(hit.get("ss") and hit.get("station") and hit.get("v3d"),
-        f"三个按钮点击真转发到 open_state_space / open_station_page / open_ss_3d (实测 {hit})")
+    chk(hit.get("ss") and hit.get("station") and hit.get("v3d") and hit.get("mon"),
+        f"四个按钮点击真转发到 open_state_space / open_station_page / open_ss_3d / "
+        f"open_monitor_window (实测 {hit})")
     # 视觉证据: 把工具栏这一行真渲染成 PNG (老倪要"看得到", 不只看打印)
     try:
         _tb = m2.btn_state_space.parentWidget()

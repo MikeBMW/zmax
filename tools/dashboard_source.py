@@ -65,6 +65,53 @@ _SNAP_B = "/*DASHBOARD_SNAPSHOT_END*/"
 
 
 # ─────────────────────────── 各源 → 关键字段 (都做 None 兜底) ───────────────────────────
+def _collect_screen(offline: bool = False) -> dict:
+    """产品大屏数据流 (2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务, 完善数据流服务」).
+
+    把 **工位总览服务 (cam_live_stream :8793)** 的在役状态原样摘进大屏数据源:
+    6 路通道 (在线/帧率/帧龄/是否卡死/已服务帧数) + 手动控制闸位 (motion_armed) + 机械臂状态。
+    ⇒ 「产品大屏」与「工位总览」同源: 同一台服务的同一份 /station/status + /ctl/status。
+    不通/超时就如实记 err 与已采到的部分, **绝不编造字段**。
+    """
+    import urllib.request
+    out = {"ok": False, "err": None, "station_url": None, "channels": [], "channels_online": 0,
+           "channels_total": 0, "frame_age_max_s": None, "motion_armed": None, "robot": None}
+    base = os.environ.get("ZMAX_STATION_BASE", "http://127.0.0.1:8793")
+    if offline:
+        out["err"] = "offline"
+        return out
+    try:
+        raw = urllib.request.urlopen(base + "/station/status", timeout=6).read().decode("utf-8", "replace")
+        stats = (json.loads(raw).get("stats") or {})
+        for k, v in stats.items():
+            if not isinstance(v, dict):
+                continue
+            fps = v.get("fps") or 0.0
+            kbf = v.get("kb_per_frame") or 0.0
+            out["channels"].append({
+                "key": k, "label": v.get("label"), "online": bool(v.get("online")),
+                "fps": v.get("fps"), "age_s": v.get("age_s"), "stalled": bool(v.get("stalled")),
+                "frames_served": v.get("frames_served"),
+                "kbps": round(float(fps) * float(kbf), 1)})
+        out["channels_total"] = len(out["channels"])
+        out["channels_online"] = sum(1 for c in out["channels"] if c["online"])
+        ages = [c["age_s"] for c in out["channels"] if isinstance(c["age_s"], (int, float))]
+        out["frame_age_max_s"] = round(max(ages), 3) if ages else None
+        out["station_url"] = base + "/station"
+        try:
+            cs = json.loads(urllib.request.urlopen(base + "/ctl/status", timeout=5).read().decode("utf-8", "replace"))
+            out["motion_armed"] = bool(cs.get("motion_armed"))
+            rb = cs.get("robot") or {}
+            out["robot"] = {"power": rb.get("power"), "operation": rb.get("operation"), "mode": rb.get("mode"),
+                            "estop": rb.get("estop"), "has_error": rb.get("has_error"), "src": rb.get("src")}
+        except Exception as e:                                                    # noqa: BLE001
+            out["ctl_err"] = "%s: %s" % (type(e).__name__, e)
+        out["ok"] = True
+    except Exception as e:                                                        # noqa: BLE001
+        out["err"] = "%s: %s" % (type(e).__name__, e)
+    return out
+
+
 def _collect_remote(offline: bool) -> dict:
     if offline:
         return {"endpoints_total": None, "endpoints_ok": None, "endpoints_err": None,
@@ -183,6 +230,7 @@ def build(offline: bool = False) -> dict:
     data["datasets"] = _collect_datasets()
     data["scene"] = _collect_scene()
     data["remote"] = _collect_remote(offline)
+    data["screen"] = _collect_screen(offline)   # 🖥 产品大屏 == 工位总览服务 (:8793) 同一份在役状态
     data["version_sync"] = _collect_version(offline)
     data["version"] = data["version_sync"].get("canonical")
     return data

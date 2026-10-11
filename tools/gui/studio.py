@@ -867,7 +867,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -2338,11 +2338,12 @@ class HomeWidget(QWidget):
             ("simulink", "🎛️", "Simulink模式",  "System 1 · 仿真",    "模块库拖拽·连线\n仿真·数据上传·训练·部署",   "#00d4aa"),
             ("config",   "⚙️", "配置中心",     "System 1 · 参数",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
-            ("monitor",  "📈", "实时监控",     "System 1 · L3",     "训练曲线 · GPU状态\n推理延迟 · 力控曲线",        SYS12_COLOR),
+            ("monitor",  "📈", "实时监控",     "System 1 · L3",     "远程同源实采 · Orin 状态\n回放会话 · Rerun/RViz",     SYS12_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 引导系统",   "LeWorldModel验证\n动作回放 · 成功率分析",        SYS12_COLOR),
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
-            ("website",  "🌍", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线\nhttps://datadrive.world/factory-dashboard.html", "#1f6feb"),
+            # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
+            ("website",  "🖥", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线 (与工位总览服务同源)\n本机 http://192.168.23.50:8799/  ·  数据 .../dashboard.json\n公网 https://datadrive.world/factory-dashboard.html", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
@@ -9556,7 +9557,7 @@ class MonitorModule(SubModuleWidget):
     
     Rerun: 现代化机器人数据可视化 (rerun.io)
     RViz:  ROS2 原生 3D 可视化工具
-    数据源: 回放会话 | 实时仿真 | Orin真机
+    数据源: 回放会话 | Orin 真机信号 (2026-10-11: 4 个无关联假源已删)
     """
     
     def __init__(self):
@@ -9605,30 +9606,15 @@ class MonitorModule(SubModuleWidget):
         self._refresh_monitor_sessions()
         src_layout.addWidget(self.mon_session_combo)
         
-        self.src_sim = QRadioButton("仿真数据")
-        self.src_sim.setStyleSheet(radio_style)
-        self._src_group.addButton(self.src_sim, 1)
-        src_layout.addWidget(self.src_sim)
-        
-        self.src_demo = QRadioButton("演示动画")
-        self.src_demo.setStyleSheet(radio_style)
-        self._src_group.addButton(self.src_demo, 2)
-        src_layout.addWidget(self.src_demo)
-        
+        # 🔧 2026-10-11 老倪「功能模块的实时监控, 没有关联的功能都删掉」:
+        #   信号源只留**有真关联**的两路 —— 回放数据(真会话) / 实时数据(Orin 真信号)。
+        #   原「仿真数据 / 演示动画 / 离线仿真 / PushT数据」四个源都没有真实数据关联
+        #   (演示=现场造的 30s 正弦波 .rrd; 离线=本地 dummy 帧; PushT=公开数据集; 仿真=14-DOF 正弦),
+        #   已连同各自的生成方法与 Rerun 推送分支一并删除。
         self.src_live = QRadioButton("实时数据")
         self.src_live.setStyleSheet(radio_style)
-        self._src_group.addButton(self.src_live, 3)
+        self._src_group.addButton(self.src_live, 1)
         src_layout.addWidget(self.src_live)
-        
-        self.src_dummy = QRadioButton("离线仿真")
-        self.src_dummy.setStyleSheet(radio_style)
-        self._src_group.addButton(self.src_dummy, 4)
-        src_layout.addWidget(self.src_dummy)
-        
-        self.src_pusht = QRadioButton("PushT数据")
-        self.src_pusht.setStyleSheet(radio_style)
-        self._src_group.addButton(self.src_pusht, 5)
-        src_layout.addWidget(self.src_pusht)
         
         self.src_status = QLabel("回放: 未加载")
         self.src_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; padding-top:4px;")
@@ -9773,15 +9759,34 @@ class MonitorModule(SubModuleWidget):
         bl.addWidget(self.mon_log)
         
         body.setLayout(bl)
-        self._build_shell(body)
+        # 🔧 2026-10-11 老倪「实时监控 要能像 CANoe 的 Graphic 那样显示任意 topic 的数值波形」:
+        #    本页重构为 CANoe Graphic 式信号分析(波形)。旧的同源实采表 / Orin 部署状态 /
+        #    Rerun·RViz 引擎收进第二个页签 —— 真功能不丢, 只是不再是首屏。
+        host = body
+        try:
+            if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from canoe_graphic import CanoeGraphicWidget
+            self.graphic = CanoeGraphicWidget()
+            self.graphic.log.connect(self._mlog)
+            _tabs = QTabWidget()
+            _tabs.setStyleSheet(
+                f"QTabWidget::pane{{border:1px solid {C_BORDER}; border-radius:6px;}}"
+                f"QTabBar::tab{{background:{C_BG2}; color:{C_DIM}; padding:6px 14px; font-size:13px;"
+                f"border:1px solid {C_BORDER}; border-bottom:none; border-top-left-radius:6px;"
+                f"border-top-right-radius:6px; margin-right:2px;}}"
+                f"QTabBar::tab:selected{{color:{C_WHITE}; background:{C_BG};"
+                f"border-bottom:2px solid {C_BLUE};}}")
+            _tabs.addTab(self.graphic, "📈 实时监控 · 信号分析")
+            _tabs.addTab(body, "🌐 同源实采 / Orin 状态")
+            host = _tabs
+        except Exception as _e:
+            print("[MonitorModule] Graphic 页加载失败:", _e)
+        self._build_shell(host)
         
         # 信号源切换
         self.src_replay.toggled.connect(lambda v: v and self._on_source_changed("replay"))
-        self.src_sim.toggled.connect(lambda v: v and self._on_source_changed("sim"))
-        self.src_demo.toggled.connect(lambda v: v and self._on_source_changed("demo"))
         self.src_live.toggled.connect(lambda v: v and self._on_source_changed("live"))
-        self.src_dummy.toggled.connect(lambda v: v and self._on_source_changed("dummy"))
-        self.src_pusht.toggled.connect(lambda v: v and self._on_source_changed("pusht"))
     
     def _mode_btn_style(self, color, active):
         if active:
@@ -9818,26 +9823,12 @@ class MonitorModule(SubModuleWidget):
             if session and not session.startswith("—"):
                 self._mon_load_session()
             self.src_status.setText("回放: 选择会话")
-        elif src == "sim":
-            self.mon_session_combo.setEnabled(False)
-            self._mon_use_sim()
-            self.src_status.setText("仿真: Z700 14-DOF")
-        elif src == "demo":
-            self.mon_session_combo.setEnabled(False)
-            self._gen_rrd_demo()
-            self.src_status.setText("演示: 生成 .rrd 动画")
         elif src == "live":
             self.mon_session_combo.setEnabled(False)
-            self._mlog("📡 实时模式已选择,点击启动加载数据")
-            self.src_status.setText("实时: 已选择")
-        elif src == "dummy":
-            self.mon_session_combo.setEnabled(False)
-            self._start_dummy_monitor()
-            self.src_status.setText("离线: 本地仿真")
-        elif src == "pusht":
-            self.mon_session_combo.setEnabled(False)
-            self._gen_pusht_rrd()
-            self.src_status.setText("PushT: 已生成 .rrd")
+            # 2026-10-11 老倪「没有关联的都删掉」: 原来这条路只打一行日志、没接任何数据 ⇒ 真接上
+            # Orin 的实时 ROS2 信号 (SSH + ROS_DOMAIN_ID=0, 实测 15 topics/8 nodes)
+            self._start_live_monitor()
+            self.src_status.setText("实时: Orin 信号")
     
     def _mon_load_session(self):
         session = self.mon_session_combo.currentText()
@@ -9853,17 +9844,6 @@ class MonitorModule(SubModuleWidget):
             )
         else:
             self._mlog(f"❌ 加载失败: {session}")
-    
-    def _mon_use_sim(self):
-        """使用仿真数据"""
-        from hardware_simulator import get_simulator
-        self._sim_src = get_simulator("sim")
-        self._mlog("🖥️ 数据源: 仿真引擎 (14-DOF 正弦波)")
-        self.mon_data_preview.setHtml(
-            "<b>🖥️ 仿真数据源</b><br>"
-            "Z700 14-DOF 正弦波 · 7路相机测试图案 · 六维力传感器<br>"
-            "点击「启动可视化」查看实时仿真数据"
-        )
     
     def _refresh_orin_status(self):
         """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)
@@ -9912,7 +9892,10 @@ class MonitorModule(SubModuleWidget):
         self.mon_stop_btn.setEnabled(True)
         self.mon_status.setText("● 运行中")
         self._mlog("📡 实时监控已启动")
-        self._show_inline_data()
+        if self.src_live.isChecked():
+            self._start_live_monitor()      # Orin 真信号 (SSH · ROS_DOMAIN_ID=0)
+        else:
+            self._show_inline_data()        # 回放会话: 只显示该会话的真实字段
     
     def _launch_rerun(self):
         """启动 Rerun — 全部在后台 QThread 中运行"""
@@ -9922,17 +9905,14 @@ class MonitorModule(SubModuleWidget):
             self._mlog("❌ rerun-sdk 未安装")
             return
         
-        if self.replay.total_frames <= 0 and not hasattr(self, '_sim_src'):
-            self._mlog("⚠️ 请先选择数据源")
+        if self.replay.total_frames <= 0:
+            self._mlog("⚠️ 请先选择并加载回放会话 (或切「实时数据」看 Orin 真信号)")
             return
         
         self._mlog("📊 启动 Rerun (后台线程)...")
         
         # 创建后台工作线程
-        self._rerun_worker = _RerunStreamWorker(
-            replay=self.replay,
-            sim=getattr(self, '_sim_src', None),
-        )
+        self._rerun_worker = _RerunStreamWorker(replay=self.replay)
         self._rerun_worker.log_msg.connect(self._mlog)
         self._rerun_worker.finished.connect(self._on_rerun_done)
         self._rerun_worker.start()
@@ -10000,119 +9980,40 @@ class MonitorModule(SubModuleWidget):
     
     def _mlog(self, msg):
         ts = time.strftime("%H:%M:%S")
-    def _show_inline_data(self):
-        self.mon_data_preview.setHtml(
-            "<div style=\"font-family:monospace;font-size:15px;color:#E2E8F0\">"
-            "<b>Z-MAX 实时信号追踪</b><br><br>"
-            "J1:+0.1602 J2:-0.0615 J3:-2.5455<br>"
-            "J4:+1.4469 J5:+0.4350 J6:-0.8225<br><br>"
-            "Fx:+2.48N Fy:-1.73N Fz:+0.17N<br>"
-            "夹爪:0.0 急停:ACTIVE</div>"
-        )
-
         self.mon_log.append(f"  [{ts}] {msg}")
     
-    def _gen_rrd_demo(self):
-        """生成演示 .rrd 文件 — 6-DOF 机器人动画"""
-        import rerun as rr, math, os
-        
-        out = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
-        os.makedirs(os.path.dirname(out), exist_ok=True)
-        
-        self._mlog("📊 生成演示动画 .rrd...")
-        rr.init('Z-MAX Robot Demo', spawn=False)
-        
-        rr.log('world/xyz', rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.5,0,0],[0,0.5,0],[0,0,0.5]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-        rr.log('robot/base', rr.Points3D([[0,0,0]], radii=[0.08], colors=[[100,100,100]]), static=True)
-        
-        trail = []
-        for frame in range(60):
-            t = frame * 0.1
-            rr.set_time('frame', sequence=frame)
-            pts = []; x = y = z = 0.0
-            for j in range(6):
-                phase = j * 0.8; amp = 0.3/(j+1)
-                x += math.cos(t*2+phase)*amp*0.5
-                y += math.sin(t*2+phase)*amp*0.6
-                z += math.cos(t*1.5+phase)*amp*0.3
-                pts.append([x,y,z])
-            colors = [[255-i*30,100+i*20,i*40] for i in range(6)]
-            rr.log('robot/joints', rr.Points3D(pts, radii=[0.05]*6, colors=colors))
-            for i in range(5):
-                rr.log(f'robot/link_{i}', rr.Arrows3D(
-                    origins=[pts[i]], vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]], radii=[0.015]))
-            trail.append(pts[-1])
-            if len(trail)>1: rr.log('robot/trail', rr.LineStrips3D([trail[-60:]], colors=[[255,200,0]]))
-        
-        rr.save(out)
-        size_kb = os.path.getsize(out)/1024
-        self._mlog(f"✅ {out} ({size_kb:.0f}KB)")
-        self._mlog(f"   🌐 打开 https://rerun.io/viewer → 拖入 .rrd 文件")
-    
-    def _gen_replay_rrd(self):
-        """回放数据 → .rrd"""
-        if self.replay.total_frames <= 0:
-            self._mlog("⚠️ 请先加载回放会话")
-            return
-        import rerun as rr
-        self._mlog(f"📊 生成回放 .rrd ({self.replay.total_frames}帧)...")
-        rr.init("replay", spawn=False)
-        rr.log("world/xyz", rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-        
-        self.replay.current_frame = 0
-        for seq in range(self.replay.total_frames):
-            frame = self.replay.get_frame()
-            if not frame: break
-            rr.set_time("frame", sequence=seq)
-            joints = frame.get("joints", [])
-            if len(joints) >= 6:
-                pts = [[i*0.2, joints[i]*0.8, 0] for i in range(6)]
-                rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
-                    colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
-                for i in range(5):
-                    rr.log(f"robot/link_{i}", rr.Arrows3D(origins=[pts[i]],
-                        vectors=[[pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1],0]], radii=[0.01]))
-            self.replay.advance()
-        
-        out = os.path.expanduser("~/yspace/replay_data/replay.rrd")
-        rr.save(out)
-        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
-    
-    def _gen_sim_rrd(self):
-        """仿真数据 → .rrd"""
-        from hardware_simulator import get_simulator
-        import rerun as rr, math
-        sim = get_simulator("sim")
-        self._mlog("📊 生成仿真 .rrd (60帧)...")
-        rr.init("sim", spawn=False)
-        rr.log("world/xyz", rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]), static=True)
-        
-        sim.start()
-        for seq in range(60):
-            snap = sim.get_joint_snapshot()
-            positions = [s["pos"] for s in list(snap.values())[:6]]
-            rr.set_time("frame", sequence=seq)
-            pts = [[i*0.2, positions[i]*0.8, 0] for i in range(min(6,len(positions)))]
-            rr.log("robot/joints", rr.Points3D(pts, radii=[0.05]*6,
-                colors=[[255-i*30,100+i*20,i*40] for i in range(6)]))
-            import time; time.sleep(0.01)
-        sim.stop()
-        
-        out = os.path.expanduser("~/yspace/replay_data/sim.rrd")
-        rr.save(out)
-        self._mlog(f"   ✅ {out} ({os.path.getsize(out)/1024:.0f}KB)")
+    def _show_inline_data(self):
+        """「▶ 启动」后的追踪面板 —— 只显示真数据, 不造数。
+
+        2026-10-11 修两处不实旧实现:
+          ① `_mlog` 函数体被截断(它的 append 掉进了本函数) ⇒ 全页日志静默丢失, 且本函数一进入
+             就 `NameError: ts` —— 点「▶ 启动」必崩(就是"点了没反应")。现按原意还原;
+          ② 原实现硬编码 J1~J6 关节角 / Fx~Fz 六维力 + 「急停:ACTIVE」冒充实时信号 ⇒ 删除,
+             没有真数据源就如实说没有。
+        """
+        if self.replay.total_frames > 0:
+            fr = self.replay.get_frame(0) or {}
+            joints = fr.get("joints")
+            jtxt = (" ".join("J%d:%+.4f" % (i + 1, float(v)) for i, v in enumerate(joints[:6]))
+                    if joints else "(该会话无关节字段)")
+            self.mon_data_preview.setHtml(
+                "<div style=\"font-family:monospace;font-size:15px;color:#E2E8F0\">"
+                "<b>回放会话: %s</b><br>帧数 %d · 时长 %.2fs<br><br>%s</div>"
+                % (self.mon_session_combo.currentText(), self.replay.total_frames,
+                   self.replay.duration, jtxt)
+            )
+        else:
+            self.mon_data_preview.setHtml(
+                "<i>未加载数据源: 选「回放数据」→ 选一个会话 → 点 ▶ 启动<br>"
+                "(远程同源实采见本页顶部表; Orin 部署/推理状态见下方状态条)</i>"
+            )
     
     def _start_live_monitor(self):
-        """SSH 到 Orin 拉取实时 ROS2 topic/node 列表 + 数据"""
+        """SSH 到 Orin 拉取实时 ROS2 topic/node 列表 + 数据
+
+        2026-10-11: 域号由 23 改回 **0** —— 实测 Orin 上 ROS_DOMAIN_ID=0 有 15 topics/8 nodes,
+        =23 只有 2 topics/0 nodes ⇒ 原来这一路(页面上唯一真.实时数据.源)其实拿不到机器人信号。
+        """
         import subprocess
         
         self._mlog("🔍 实时监控: 连接 Orin...")
@@ -10128,42 +10029,44 @@ class MonitorModule(SubModuleWidget):
                 try:
                     r = subprocess.run([
                         "ssh", "-o", "ConnectTimeout=3", "tashan@192.168.23.66",
+                        # 🔧 2026-10-11: 照抄**在役**位姿采样的可用环境(pid 8790) —— 原来只
+                        #   source /opt/ros/humble + ROS_DOMAIN_ID, 缺工作区/传输层, 7 路全是空
+                        #   (实测: 无 FASTDDS_BUILTIN_TRANSPORTS=UDPv4 时 ros2 topic info 连
+                        #    tcp_pose 的 Publisher count 都报 0) ⇒ 这一路从来没有真数据。
+                        #   同时每路单独 timeout, 无发布者的话题不会把整轮拖死。
                         "source /opt/ros/humble/setup.bash && "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /gripper_pos 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/joint_states 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot_status 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /emergency_stop 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /tower_light/status 2>/dev/null; "
-                        "echo '---'; "
-                        "ROS_DOMAIN_ID=23 ros2 topic echo --once /robot/tcp_pose 2>/dev/null "],
-                        capture_output=True, text=True, timeout=8)
-                    out = r.stdout.strip()
-                    if out:
-                        topics = {}
-                        sections = out.split('---')
-                        topic_names = ["gripper_pos", "joint_states", "force_torque", 
-                                      "robot_status", "emergency_stop", "tower_light", "tcp_pose"]
-                        for i, sec in enumerate(sections):
-                            sec = sec.strip()
-                            if sec and i < len(topic_names):
-                                # 提取关键数据行
-                                key_lines = []
-                                for line in sec.split('\n')[:6]:
-                                    line = line.strip()
-                                    if line and not line.startswith('---'):
-                                        key_lines.append(line)
-                                topics[topic_names[i]] = " | ".join(key_lines[:3]) if key_lines else "无数据"
+                        "for w in /home/tashan/0810/*/install/setup.bash; do [ -f \"$w\" ] && source \"$w\" && break; done; "
+                        "export ROS_DOMAIN_ID=0 FASTDDS_BUILTIN_TRANSPORTS=UDPv4 ROS_LOCALHOST_ONLY=0; "
+                        "echo '##gripper_pos'; timeout 3 ros2 topic echo --once /gripper_pos std_msgs/msg/Float32 2>/dev/null; "
+                        "echo '##joint_states'; timeout 3 ros2 topic echo --once /robot/joint_states --field position 2>/dev/null; "
+                        "echo '##force_torque'; timeout 3 ros2 topic echo --once /robot/force_torque 2>/dev/null; "
+                        "echo '##robot_status'; timeout 3 ros2 topic echo --once /robot_status 2>/dev/null; "
+                        "echo '##emergency_stop'; timeout 2 ros2 topic echo --once /emergency_stop 2>/dev/null; "
+                        "echo '##tower_light'; timeout 2 ros2 topic echo --once /tower_light/status 2>/dev/null; "
+                        "echo '##tcp_pose'; timeout 3 ros2 topic echo --once /robot/tcp_pose --field pose 2>/dev/null"],
+                        capture_output=True, text=True, timeout=25)
+                    out = r.stdout
+                    topics = {}
+                    # 🔧 2026-10-11: 按 '##<名字>' 标签切段。原来按位置切, 某一路多/少一个分隔
+                    #   符整列就错位一行(WARNING 挂到别的话题名下) ⇒ 改成标签对齐, 并滤掉 WARNING。
+                    for chunk in out.split("##"):
+                        if not chunk.strip():
+                            continue
+                        name, _, val = chunk.partition("\n")
+                        name = name.strip().split()[0] if name.strip() else ""
+                        if not name:
+                            continue
+                        vlines = [l.strip() for l in val.split("\n")
+                                  if l.strip() and l.strip() != "---"
+                                  and not l.strip().upper().startswith("WARNING")]
+                        if vlines:
+                            topics[name] = " | ".join(vlines[:3])
+                    if topics:
                         self._live_data["topics"] = topics
                         self._live_data["_ts"] = {t: time.time() for t in topics}
                         self._live_data["status"] = "🟢 在线"
                     else:
-                        self._live_data["status"] = "⚠️ 机器人idle"
+                        self._live_data["status"] = "⚠️ 无数据(话题当前无发布者)"
                 except:
                     self._live_data["status"] = "🔴 断开"
                 time.sleep(1.5)
@@ -10176,55 +10079,6 @@ class MonitorModule(SubModuleWidget):
         self._live_timer.timeout.connect(self._update_live_display)
         self._live_timer.start(500)
         self._mlog("   ✅ 实时监控已启动")
-    
-    def _start_dummy_monitor(self):
-        """离线仿真 — 本地生成假数据替代 Orin"""
-        from hardware_simulator import get_simulator
-        
-        self._mlog("🖥️ 离线仿真: 本地假数据...")
-        sim = get_simulator("sim")
-        sim.start()
-        
-        self._live_data = {"status": "🖥️ 离线仿真", "topics": {}, "topic_list": [], "node_list": []}
-        
-        # 假 topic/node 列表
-        self._live_data["topic_list"] = [
-            "/robot/joint_states", "/gripper_pos", "/robot/force_torque",
-            "/robot/tcp_pose", "/robot_status", "/emergency_stop",
-            "/tower_light/status", "/real_joint_states", "/joint_states",
-            "/tf", "/tf_static", "/parameter_events", "/rosout",
-        ]
-        self._live_data["node_list"] = [
-            "/robot_driver", "/gripper_driver", "/motion", "/vision",
-            "/vision_tag", "/robot_state_publisher", "/rviz2",
-        ]
-        self._show_topic_node_lists()
-        
-        import threading
-        def _poll():
-            while getattr(self, '_live_running', True):
-                snap = sim.get_joint_snapshot()
-                topics = {}
-                positions = list(snap.values())[:6]
-                topics["joint_states"] = " | ".join([f"J{i+1}:{s['pos']:+.4f}" for i, s in enumerate(positions)])
-                topics["gripper_pos"] = f"data: {sim.io.gripper_left:.1f}"
-                topics["force_torque"] = f"Fx:{sim.force.fx:+.3f} Fy:{sim.force.fy:+.3f} Fz:{sim.force.fz:+.3f}"
-                topics["robot_status"] = '{"success":true,"mode":"sim"}'
-                topics["emergency_stop"] = f"data: {str(sim.io.estop).lower()}"
-                topics["tower_light"] = f"{['灭','红','黄','绿'][sim.io.tower_light]}"
-                topics["tcp_pose"] = f"x:{math.sin(time.time())*0.1:.4f} y:0.0 z:0.27"
-                self._live_data["topics"] = topics
-                self._live_data["_ts"] = {t: time.time() for t in topics}
-                time.sleep(0.5)
-        
-        self._live_running = True
-        t = threading.Thread(target=_poll, daemon=True)
-        t.start()
-        
-        self._live_timer = _tq(self)   # 🐛 2026-08-18 挂 parent (MonitorModule 崩溃根因)
-        self._live_timer.timeout.connect(self._update_live_display)
-        self._live_timer.start(500)
-        self._mlog("   ✅ 离线仿真已启动")
     
     def _refresh_topic_node_list(self):
         """手动刷新 Topic/Node 列表"""
@@ -10239,8 +10093,8 @@ class MonitorModule(SubModuleWidget):
             r = subprocess.run(
                 ["ssh", "-o", "ConnectTimeout=5", "tashan@192.168.23.66",
                  "source /opt/ros/humble/setup.bash && "
-                 "echo '===TOPICS===' && ROS_DOMAIN_ID=23 ros2 topic list 2>/dev/null && "
-                 "echo '===NODES===' && ROS_DOMAIN_ID=23 ros2 node list 2>/dev/null"],
+                 "echo '===TOPICS===' && ROS_DOMAIN_ID=0 ros2 topic list 2>/dev/null && "
+                 "echo '===NODES===' && ROS_DOMAIN_ID=0 ros2 node list 2>/dev/null"],
                 capture_output=True, text=True, timeout=10)
             out = r.stdout
             if '===TOPICS===' in out:
@@ -10307,99 +10161,14 @@ class MonitorModule(SubModuleWidget):
                 
                 lines.append(f"  <span style='color:{color}'>{bright}{topic:24s}{endb}</span> {value}\n")
         else:
+            st = d.get("status", "")
             lines.append("  等待数据...\n")
+            lines.append(f"  <span style='color:#8b949e'>{st or '未启动'} · "
+                         "Orin 上没有发布者的话题不会有值(话题清单见左上)</span>\n")
         
         lines.append("</pre>")
         self.mon_data_preview.setHtml("".join(lines))
     
-    def _gen_live_rrd(self):
-        """实时数据 - 使用内置显示,不依赖rerun"""
-        self._mlog("📊 实时模式 - 使用内置数据显示")
-        self._show_inline_data()
-    
-    def _start_replay_display(self):
-        """回放数据终端显示 — 定时刷新信号追踪面板"""
-        if self.replay.total_frames <= 0:
-            return
-        
-        self._mlog(f"📺 终端回放显示: {self.replay.total_frames} 帧")
-        self.replay.current_frame = 0
-        
-        def _show_frame():
-            if not getattr(self, '_replay_display_running', True):
-                self._replay_timer.stop()
-                return
-            
-            frame = self.replay.get_frame()
-            if not frame:
-                self._replay_timer.stop()
-                return
-            
-            joints = frame.get("joints", [])
-            topics = {}
-            if len(joints) >= 6:
-                topics["joint_states"] = " | ".join([f"J{i+1}:{joints[i]:+.4f}" for i in range(6)])
-            topics["gripper_pos"] = f"data: {frame.get('gripper', '?')}"
-            topics["frame"] = f"{self.replay.current_frame}/{self.replay.total_frames}"
-            topics["time"] = f"{frame.get('ts',0)-self.replay.frames[0]['ts']:.2f}s" if self.replay.frames else "?"
-            
-            self._live_data = {"status": "📼 回放中", "topics": topics, "_ts": {t: time.time() for t in topics}}
-            self._update_live_display()
-            self.replay.advance()
-        
-        self._replay_display_running = True
-        self._replay_timer = _tq(self)   # 🐛 2026-08-18 挂 parent
-        self._replay_timer.timeout.connect(_show_frame)
-        self._replay_timer.start(200)
-        self._mlog("   ✅ 终端显示已启动")
-    
-    def _gen_pusht_rrd(self):
-        """PushT数据集 → .rrd — 1个完整episode轨迹"""
-        import rerun as rr
-        
-        self._mlog("📊 加载 PushT 数据集...")
-        try:
-            from datasets import load_dataset
-            ds = load_dataset("lerobot/pusht", split="train[:100]")
-        except:
-            self._mlog("❌ 无法加载 PushT")
-            return
-        
-        rr.init("PushT LeRobot", spawn=False)
-        # 固定坐标系和背景
-        rr.log("world/xy", rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0]], vectors=[[0.6,0,0],[0,0.6,0]],
-            colors=[[255,0,0],[0,255,0]], labels=["X","Y"]), static=True)
-        
-        prev_pos = None
-        total = len(ds)
-        for f_idx, row in enumerate(ds):
-            state = row["observation.state"]
-            action = row["action"]
-            x, y = float(state[0]), float(state[1])
-            
-            rr.set_time("frame", sequence=f_idx)
-            
-            # Agent 当前位置 (蓝色圆点)
-            rr.log("agent/current", rr.Points3D([[x, y, 0]], 
-                radii=[0.02], colors=[[30,144,255]]))
-            
-            # Action 方向 (浅蓝箭头)
-            rr.log("agent/action", rr.Arrows3D(
-                origins=[[x, y, 0]],
-                vectors=[[float(action[0])*0.03, float(action[1])*0.03, 0]],
-                colors=[[100,200,255]]))
-            
-            # 轨迹连线
-            if prev_pos is not None:
-                rr.log("agent/trail", rr.LineStrips3D(
-                    [[prev_pos, [x, y, 0]]], colors=[[60,160,255,120]]))
-            prev_pos = [x, y, 0]
-        
-        out = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
-        rr.save(out)
-        self._mlog(f"✅ {out} ({os.path.getsize(out)/1024:.0f}KB, {total} frames)")
-
     def _open_rerun_local(self):
         """根据信号源选 .rrd → subprocess 启动 rerun --web-viewer"""
         import subprocess, os
@@ -10411,14 +10180,11 @@ class MonitorModule(SubModuleWidget):
                 rrd = bag_rrd
             else:
                 rrd = os.path.expanduser("~/yspace/replay_data/replay.rrd")
-        elif self.src_sim.isChecked():
-            rrd = os.path.expanduser("~/yspace/replay_data/sim.rrd")
         elif self.src_live.isChecked():
             rrd = os.path.expanduser("~/yspace/replay_data/live.rrd")
-        elif self.src_pusht.isChecked():
-            rrd = os.path.expanduser("~/yspace/replay_data/pusht.rrd")
-        else:
-            rrd = os.path.expanduser("~/yspace/replay_data/robot_demo.rrd")
+        else:                       # 两个源都没选: 不拿 demo 文件顶替, 如实报缺
+            self._mlog("⚠️ 请先在上方「信号源」里选「回放数据」或「实时数据」")
+            return
         
         if not os.path.exists(rrd):
             self._mlog(f"⚠️ .rrd 不存在: {rrd}")
@@ -10452,13 +10218,12 @@ class MonitorModule(SubModuleWidget):
 # ═══════════════════════════════════════════════
 
 class _RerunStreamWorker(QThread):
-    """后台线程：初始化 Rerun + Web Viewer + 数据流推送"""
+    """后台线程：初始化 Rerun + Web Viewer + 回放数据流推送"""
     log_msg = pyqtSignal(str)
     
-    def __init__(self, replay=None, sim=None):
+    def __init__(self, replay=None):
         super().__init__()
         self._replay = replay
-        self._sim = sim
         self._running = True
     
     def stop(self):
@@ -10486,11 +10251,10 @@ class _RerunStreamWorker(QThread):
             # 开始推送数据
             if self._replay and self._replay.total_frames > 0:
                 self._stream_replay(rr, rrc)
-            elif self._sim:
-                self._stream_sim(rr, rrc)
             else:
-                # 无数据源，推一些演示数据
-                self._stream_demo(rr, rrc)
+                # 没有真数据就如实说, 不造假帧顶替 (2026-10-11 删掉 4 个假源后的口径)
+                self.log_msg.emit("   ⚠️ 无可推送数据: 回放会话未加载"
+                                  " (实时数据在本页「实时信号追踪」里看)")
                 
         except Exception as e:
             self.log_msg.emit(f"❌ Rerun 错误: {e}")
@@ -10541,69 +10305,6 @@ class _RerunStreamWorker(QThread):
         
         self.log_msg.emit("   ✅ 回放完成")
     
-    def _stream_sim(self, rr, rrc):
-        sim = self._sim
-        if not sim.running:
-            sim.start()
-        self.log_msg.emit("   ▶ 推送仿真数据")
-        
-        seq = 0
-        while self._running and sim.running:
-            snap = sim.get_joint_snapshot()
-            positions = [s["pos"] for s in snap.values()]
-            
-            rr.set_time("stable_time", sequence=seq)
-            rr.log("joints/3d", rr.Points3D(
-                [[i*0.15, positions[i]*0.3, 0] for i in range(min(6, len(positions)))],
-                radii=[0.03]*min(6, len(positions))
-            ))
-            
-            rr.log("force/fx", rrc.Scalar(sim.force.fx))
-            rr.log("force/fz", rrc.Scalar(sim.force.fz))
-            seq += 1
-            time.sleep(0.1)
-        
-        sim.stop()
-    
-    def _stream_demo(self, rr, rrc):
-        """演示数据 — 持续30秒的正弦波动画"""
-        import math
-        self.log_msg.emit("   ▶ 推送演示数据 (30秒正弦波)")
-        
-        # 坐标系
-        rr.log("world/xyz", rr.Arrows3D(
-            origins=[[0,0,0],[0,0,0],[0,0,0]],
-            vectors=[[0.3,0,0],[0,0.3,0],[0,0,0.3]],
-            colors=[[255,0,0],[0,255,0],[0,0,255]]
-        ))
-        rr.log("world/origin", rr.Points3D([[0,0,0]], radii=[0.02]))
-        
-        seq = 0
-        start = time.time()
-        while self._running and (time.time() - start) < 30:
-            t = time.time() - start
-            rr.set_time("stable_time", sequence=seq)
-            
-            # 6个正弦波关节
-            pts = [[i*0.2, math.sin(t*2 + i)*0.5, math.cos(t*1.5 + i)*0.2] for i in range(6)]
-            colors = [[255-i*30, 100+i*20, i*40] for i in range(6)]
-            rr.log("robot/joints", rr.Points3D(pts, radii=[0.06]*6, colors=colors))
-            
-            # 连线
-            for i in range(5):
-                rr.log(f"robot/link_{i}", rr.Arrows3D(
-                    origins=[pts[i]], 
-                    vectors=[[pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1], pts[i+1][2]-pts[i][2]]],
-                    radii=[0.01]
-                ))
-            
-            for i in range(6):
-                rr.log(f"joint/J{i+1}", rrc.Scalar(pts[i][1]))
-            
-            seq += 1
-            time.sleep(0.1)
-        
-        self.log_msg.emit("   ✅ 演示完成")
 
 
 # ═══════════════════════════════════════════════
@@ -11251,7 +10952,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11259,9 +10960,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.2: v5.47.2 — 小版本迭代（2026-10-11 现场验收后收口）老倪本轮指令:   「两个入口走同一套"加载后归一"」「删除 Z700 按钮, 增加 实时监控 按钮」「工位总览 → 产品大屏」   「状态空间独立页删除, 恢复原样, 但要跟文件打开的工程保持一致」「为什么已加载 proj 再点状态空间按钮屏幕还闪? 不要闪烁」   「实时监控窗口删掉(CANoe式)」「同步时间轴不要消失: 我移动 3D 播放按钮, 刚停止, 时间轴就不见了」  一、画布「🧮 状态空间」: 撤掉独立页 + 同一套加载后归一 + 不闪烁    · 删 tools/gui/ss_page_window.py (老倪否掉独立页), 按钮恢复 open_state_space() 装进主画布。    · normalize_after_load(): 两条入口 (状态空间按钮 / 文件→加载工程文件) 同一套 —— 加载→尺寸规则(280x110)      →按行重排→几何落盘回画布真源 (只写 x/y/w/h)。⚠️ 必须按 name 配对 (load_flow_file 给画布节点分新 id)。    · 不闪烁: ① 记账 (文件 md5 + 画布几何指纹) ⇒ "已在显示该文件内容的归一后状态"直接 return, 零重绘;      ② 真要重建 ⇒ _frozen(True) 包住 clear+load+重排, 最后只刷一帧。判据 verify_no_flicker.py 12/12 PASS;      真机连拍 8 帧像素差 0.0000 (shutter_flicker_probe.py)。    · 改完真源跑 engineering_db.py build, 否则 check 报漂移 ['project','canvas'] (已重建, 全绿)。  二、工具栏按钮口径    · 删 🚀 Z700 按钮 (能力不丢: open_z700_flow + 画布菜单固定入口)。    · 增 📈 实时监控 → 独立功能页 (open_monitor_window → open_graphic_window.sh, 已有窗口只置顶)。    · 改名: 数据空间窗口→🌐 数据空间; 3D 视图→🧭 3D场景; 🛰 工位总览→🖥 产品大屏 (服务一字不动)。    · 修真 bug: 控制台 env 的 QT_QPA_PLATFORM=xcb 让 Qt 子进程去 cv2/qt/plugins 找 xcb ⇒ 整进程退出      (观感"点了没反应"); 子进程 env 清 QT_QPA_PLATFORM/QT_PLUGIN_PATH + 脚本 unset (双保险)。    · 判据 tools/probe_canvas_menu.py 全绿 (9 菜单项真触发 / 5 按钮 isVisibleTo / Z700 无父容器 / 4 按钮点击真转发)。  三、产品大屏链 (工位总览服务 → 单一数据源 → 飞书 → web → APP)    · tools/dashboard_source.py 新增 screen 段: 直拉 :8793 /station/status + /ctl/status (实测 10/10 通道在线,      逐通道 fps/帧龄/卡死/kbps, frame_age_max_s, motion_armed, 机械臂 power/operation), 不通如实记 err。    · tools/dashboard_server.py :8799 只读服务 (不动在役 8793): / 手机优先页 · /dashboard.json · /dl/<APK>。    · APK 候选地址改为 ①产线 LAN 192.168.23.50:8799 → ②办公室 WiFi → ③公网 → ④包内离线页      (原包只烧 WiFi IP, 换网白屏); 重建 sha256 5373173a…, 下载件与构建件逐字符相同。    · tools/feishu_dashboard_push.py --notify-web --send: 飞书卡片真发 code=0 message_id om_x100b638ca7aef8a4df95ffee272cb7d。    · 公网缺口如实记录: dashboard.json 与 /dl/*.apk 在 datadrive.world 仍 404 ⇒ 需 web 侧 (ECS nginx) 接管。  四、实时监控 (信号分析页)    · 窗口标题删掉 "(CANoe 式)": 📈 实时监控 · Graphic 信号分析 (console 内嵌 tab 同步改名)。    · ▶ 同步时间轴不消失: 加 _pb_last (播放/拖动期间记 {t_s,ts,frame,total}); 3D 停下 (fresh=False) 竖线      **留在停下的那一刻** 并写 "(3D 已停在这一帧)"; 所有分支显式 setVisible(True); 再加"被缩放挤出去就把      x 范围撑到含它"一层兜底。判据 verify_pin_persist.py 10/10 PASS; 真机 watch 日志: fresh=False 后      竖线 x 原地不动 (9.000) 且标签仍在。    · 回归: time_corr / playback_cursor / monitor_graphic / pin_persist 4/4 PASS (TIME-CORR 曾在 3D 回放中      假失败, 停下后重跑 PASS —— 测试与在役播放的竞态, 非回归)。  五、技能沉淀 (docs/skills 同步)    · zmax-console: 独立功能页四件套与归一 (含 Qt 子进程 env 坑 / 按 name 配对坑)      · 产品大屏链 · 画布闪烁根因与修法 · 3D 停止竖线保持。
         # v5.47.1: v5.47.1 — 关机收尾 (数据快照 + 状态/记忆/技能/场景叠加同步 + 工程库重建全绿, 无功能改动) (2026-10-11 老倪「保存数据，小版本迭代，准备关机」) 本版**无功能改动**, 代码与 v5.47.0 相同, 只多版本号与留痕: ①工程库一致性修复: `engineering_db check` 实测报漂移 `['canvas','manifold']` (画布被后续迭代改过、库没重建) → `engineering_db.py build` 重建 → **判据全绿** (768 参数 / 1731 数字链接 / 184 连线 / 74 功能 / MCD 三轴 5 层); ②四路同步实测: 记忆 (MEMORY.md/USER.md → docs/memory/hermes-jingjing-*-2026-10-11.md, 与仓库逐字一致) · 技能 (docs/skills/xspace 31 + hermes-all 全量 **215** 个, 含 sim-real-scene-overlay/zmax-scene-engineering) · 飞书端场景叠加任务公网端到端通 (`https://datadrive.world/ov/overlay?k=zmax-live` 等 4 条 HTTP 200 + POST 403 只读闸门 + `/ov/live.json` 三相机拼图与逐路叠加流清单) · 状态推公网 (`publish_status.py` → `zmax_status.json` 7182B, 手机端实时); ③数据保存: 快照 `docs/data_snapshots/2026-10-11_关机收尾_v5.47.1/` (工程库/画布 md5 4d3824c6d63d/判据报告/叠加验证/公网状态/CI/git_ref + shutdown_checklist.md) + 归档 `zmax_data/release_5.47.1_20261011/` (MANIFEST.sha256 逐文件校验); ④关机预检 `tools/preflight_shutdown.sh` 实测 **🟢 可以下电** (臂 idle · 真值帧龄 0.02s · 无授权窗口 · 无采集/训练在写 · 仓库已保存); 一次性脚本 `tools/save_data_v5_42_0.sh` / `tools/finalize_data_sync.sh` 入库。
         # v5.47.0: DDS 真实性取证: 新增 tools/dds_verify_real.py (selftest / pair / pair-sub / listen), 把「是不是真 DDS 数据」拆成三问分证: ① 总线真不真 → selftest (同进程自发自收) ② 跨进程/跨机 → pair/pair-sub ③ 现在有没有真数据 → listen (配对 + 窗口内条数, take() 返回列表, 空列表≠一条)  实测 (2026-10-11): - ① 同进程: 发 5 收 1 ✅   ② 跨进程: 发 15 → 收 16 ✅  ⇒ DDS 机制真、进程间真通 - ③ calib 档 9 个允许话题: 独立订阅 25s = 0 条 / 0 配对 ⇒ 此刻没有真实数据在发 (黑灯) - 原因 (可核): (a) 状态/动作源 zmax_data/ss_live/state_*.jsonl 里 tcp=null jpos=[] robot_status=null, 只有相机图像在流 (std≈47.3) ⇒ 状态无真值, 守护进程按 STALE_S=5s 纪律只发 diag 不发状态/动作; (b) 能量 tap 守护进程判过期 3.46 天 (它认 10-08 旧文件, 10-11 新写的 energy_*_iter.jsonl 没被认 ⇒ 扫描/口径不一致, 待修); (c) 跨网 unicast peer 10.163.146.78 的 UDP 写持续失败 retcode -1。 结论: 机制真、链路真、数据空 —— 不是伪造数据。
         # v5.46.0: 逐层「真模型 vs 解析回退」可查证据 (TaskL45.model_use / model_line, 两链每次运行都打): - L2 蒸馏 MLP (ss_left_brain.npz 2.19MB, loaded=True): 插拔 每帧真调 409/409 帧 (真模型占比 1.0); 摆盘 0/852 帧 (占比 0.0, 全程走域外解析守卫) ← 实锤问题 - L3 世界模型 (ss_right_brain.npz) 已加载, 每帧产生 prior/residual; 但状态估计器是手设卡尔曼 (A=1.0, K=0.2) 非学习 - L4 解析安全闸(saturate)+平滑: 模型在回路=False (真 L4 模型 l4_mani_predictor_v5.pt 3.47MB 只在 studio/simulink/real 链) - L5 配置中心驱动的阶段链: 模型在回路=False, planner 未加载, LLM 端点未配置  摆盘 L2 域外机制: 域判定 (a) ||hand-target|| ≤ D_GUARD=0.25m (蒸馏数据 p99.9) + (b) 归一化逐通道 ≤4σ。摆盘工位 hand→target = 0.293m > 0.25 ⇒ 每帧判域外 ⇒ 真模型 0 次。 结论: 切配置真生效(任务/阶段/公差/力上限/档位/判据), 但**不换模型权重**; L2/L3 有真模型在跑(插拔), L4/L5 无模型在回路。  修: ss_task_l45 增 model_use() 从各层自身计数器读实数(不猜)。
@@ -11903,7 +11605,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.2  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -11970,6 +11672,11 @@ class StudioMainWindow(QMainWindow):
                     elif line == "station_page":
                         if getattr(self, "simulink", None) is not None:
                             _oneshot(self, 300, self.simulink.open_station_page)
+                    # 🗂 2026-10-11 老倪: 这些按钮统一成"打开独立功能页" ⇒ 自测通道同步加两条
+                    #   (从控制台内部触发按钮本体, 不必盲点坐标)
+                    elif line == "monitor":
+                        if getattr(self, "simulink", None) is not None:
+                            _oneshot(self, 300, self.simulink.open_monitor_window)
                     elif line in self.modules:
                         self._on_nav(line)
                     else:
@@ -12863,7 +12570,9 @@ class StudioMainWindow(QMainWindow):
             pass
 
     # 🗂 2026-10-09 画布菜单 → 转发到 SimulinkModule 的既有方法 (画布懒创建, 未就绪时如实提示)
-    CANVAS_MENU_METHOD = {"save_canvas": "export_flow", "load_canvas": "import_flow",
+    CANVAS_MENU_METHOD = {"monitor": "open_monitor_window",
+                          "z700": "open_z700_flow",
+                          "save_canvas": "export_flow", "load_canvas": "import_flow",
                           "save_model": "save_trained_model", "record": "start_recording",
                           "stop_rec": "stop_recording", "float": "toggle_float_canvas",
                           "ss_3d": "open_ss_3d"}
@@ -13638,7 +13347,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.1</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.2</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

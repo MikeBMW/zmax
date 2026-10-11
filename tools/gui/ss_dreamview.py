@@ -29,6 +29,55 @@ import math
 import time
 import numpy as np
 
+# ════════════════════════════════════════════════════════════════
+# 📡 状态空间实况快照 (2026-10-11 老倪: 「3D 场景左下角这些实时变化的数据 topic 是什么?
+#    对应实时监控哪些波形? 当前状态空间工程的所有数据要同步, 要保持一致」)
+#    ── 引擎轨迹 tr = 唯一真源: 3D 面板画面上的每个数字 = 实时监控的每条曲线 = 这里的字段,
+#       同帧同值。原来这些数只在内存里滚, 外部/波形页看不到 ⇒ 两处不一致。
+#    ── 落盘走原子替换 (tmp + os.replace), 读方永远拿不到半截文件。
+# ════════════════════════════════════════════════════════════════
+def clock_str(epoch, ms=True):
+    """epoch → 本地时刻字符串。⚠️ canoe_graphic.clock_str 必须与本函数一字不差 (老倪要两边对时刻)。"""
+    try:
+        e = float(epoch)
+    except Exception:
+        return "—"
+    s = time.strftime("%H:%M:%S", time.localtime(e))
+    if not ms:
+        return s
+    return "%s.%03d" % (s, int((e - int(e)) * 1000) % 1000)
+
+
+SS_TRACE_LIVE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "zmax_data", "ss_live", "trace_live.json")
+_TRACE_PUB_LAST = {"t": 0.0}
+
+
+def publish_trace_live(payload, min_interval=0.05):
+    """把 3D 面板这一帧显示的全部数值写成一份快照 (节流 10Hz, 原子替换)
+
+    这是「状态空间工程的实况数据出口」: 3D 场景面板、实时监控波形页、外部核对脚本读同一份。
+    """
+    try:
+        now = time.time()
+        # 契约: 快照 == 屏幕上正在显示的那一帧。换帧必写 (只对"同一帧重复写"做节流),
+        # 否则播放时面板已到第 N 帧、文件还停在第 N-1 帧 ⇒ 两处不一致。
+        if (payload.get("帧") == _TRACE_PUB_LAST.get("frame")
+                and now - _TRACE_PUB_LAST["t"] < float(min_interval)):
+            return False
+        _TRACE_PUB_LAST["t"] = now
+        os.makedirs(os.path.dirname(SS_TRACE_LIVE), exist_ok=True)
+        tmp = SS_TRACE_LIVE + ".tmp%d" % os.getpid()
+        with open(tmp, "w", encoding="utf-8") as _f:
+            json.dump(payload, _f, ensure_ascii=False)
+        os.replace(tmp, SS_TRACE_LIVE)
+        _TRACE_PUB_LAST["frame"] = payload.get("帧")
+        return True
+    except Exception:                                                       # noqa: BLE001
+        return False
+
+
 from PyQt5.QtCore import Qt, QTimer, QPointF
 from PyQt5.QtGui import QColor, QFont, QVector3D, QPainter, QPen, QPixmap, QBrush, QPolygonF
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
@@ -1572,6 +1621,18 @@ class DreamView3D(QWidget):
         return ("🧭 动作调制器 %s%s" % (_n, cur)).strip() + ("  " + bar if bar else ""), \
             QColor(255, 217, 77), True, 0
 
+    def _clock_row(self):
+        """🕒 场景 HUD 上的时间戳行 —— 与实时监控的标记线/快照 trace_live.json 同一时刻。"""
+        ts = getattr(self, "_frame_ts", None) or time.time()
+        _i = getattr(self, "_frame_i", None)
+        _n = getattr(self, "_n", 0) or 0
+        _t = getattr(self, "_scene_t", None)
+        extra = (" · 帧 %d/%d" % (_i, max(0, _n - 1))) if _i is not None else ""
+        if _t is not None:
+            extra += " · 场景时刻 %.3fs" % float(_t)
+        return ("🕒 快照时刻 %s%s   ← 实时监控页「🕒 最新」标记线是同一时刻"
+                % (clock_str(ts), extra), QColor(88, 166, 255), True, 0)
+
     def set_fsm_panel(self, rows):
         """状态机面板交给标注层 —— 折叠时只给一行 (其余不画 ⇒ 不挡视线)。"""
         _rows = list(rows or [])
@@ -1580,6 +1641,10 @@ class DreamView3D(QWidget):
                 _rows = [self._fsm_compact_row(_rows)]
             except Exception:                                                  # noqa: BLE001
                 pass
+        try:
+            _rows.insert(0, self._clock_row())      # 🕒 时间戳永远在面板第一行 (核对用)
+        except Exception:                                                      # noqa: BLE001
+            pass
         try:
             self._overlay.set_collapsible(bool(rows), self._fsm_folded)
             self._overlay.set_panel(_rows)
@@ -2859,6 +2924,8 @@ class DreamView3D(QWidget):
             except Exception:
                 pass
             # 🪗 折叠状态由本视图维护 (老倪 2026-10-10: 面板别挡视线)
+            self._frame_ts = time.time()        # 🕒 本帧时刻 (HUD 与快照共用同一个值)
+            self._frame_i = int(i)
             self._fsm_rows = list(_rows)
             self.set_fsm_panel(_rows)
         except Exception as _e:
@@ -2866,6 +2933,7 @@ class DreamView3D(QWidget):
 
         # 📟 实时数值面板 (每帧滚动 — 老倪: 运行后数据须实时动态滚动, 不要一次性静态填充)
         t = tr["t"][i]
+        self._scene_t = float(t)            # 🕒 场景时刻 (HUD 上显示, 与波形时间轴同口径)
         stage = tr["stage"][i].replace("阶段 ", "")
         def _f(v, n=3):
             return f"{float(v):+.{n}f}"
@@ -2905,8 +2973,35 @@ class DreamView3D(QWidget):
             f"前馈加速器  {u_ff_m:5.3f} m/s\n"
             f"动作调制器  {u_fu_m:5.3f} m/s\n"
             f"安全边界    {u_li_m:5.3f} m/s")
+        # 📡 同一帧数值落快照 ⇒ 实时监控波形页 / 外部核对读的就是屏幕上这些数 (单一真源)
+        _ri = getattr(self, "_res_info", (0, 0, 0))
+        publish_trace_live({
+            "ts": getattr(self, "_frame_ts", None) or time.time(),   # == HUD 上那个时刻
+            "src": str(getattr(self, "_src", "")),
+            "帧": int(i), "总帧": int(self._n - 1),
+            "阶段": str(stage), "时间_s": round(float(t), 3),
+            "末端": [float(x[0]), float(x[1]), float(x[2])],
+            "光模块": [float(peg_grasp[0]), float(peg_grasp[1]), float(peg_grasp[2])],
+            "光模块头": [float(peg_h[0]), float(peg_h[1]), float(peg_h[2])],
+            "估计值": [float(lat3[0]), float(lat3[1]), float(lat3[2])],
+            "估计误差_mm": round(float(err), 3),
+            "估计抖动_mm每步": round(float(jit), 4),
+            "夹爪": round(float(tr["gripper"][i]), 4),
+            "光模块头到孔_mm": round(float(d_ph) * 1000, 3),
+            "环境接触": round(float(fenv), 4),
+            "夹持": (None if fg != fg else round(float(fg), 4)),
+            "残差": round(float(res), 5),
+            "接触概率": round(float(cp), 4),
+            "净接触": round(max(0.0, min(1.0, (cp - 0.58) / 0.42)), 4),
+            "残差系统偏差_mm": round(float(_ri[1]), 3),
+            "残差系统占比_pct": round(float(_ri[2]) * 100, 1),
+            "前馈速度_mps": round(float(u_ff_m), 5),
+            "动作调制_mps": round(float(u_fu_m), 5),
+            "安全边界_mps": round(float(u_li_m), 5),
+        })
         self.lbl_t.setText(f"数据源: {self._src}")
-        self.lbl_frame.setText(f"{i} / {self._n - 1}")
+        self.lbl_frame.setText(f"{i} / {self._n - 1} · 🕒 {clock_str(self._frame_ts)}"
+                               f" · t={float(t):.3f}s")
         if not self.slider.isSliderDown():
             self.slider.setValue(i)
 

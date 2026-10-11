@@ -5387,10 +5387,13 @@ class SimulinkModule(QWidget):
         # (2026-09-04 老倪: 「🔍 Z 分析」「⚙️ 前馈 PD」工具栏按钮没用 → 删除;
         #  on_z_analysis 保留 (9232 自动流程仍走), open_ff_pd_top 保留 (方法)
         # 🧮 状态空间 (2026-08-17 老倪: 状态空间模型画布 — 时空感知→并行认知→决策执行→物理闭环)
-        self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: 时空感知前端(43D obs) → 并行处理层(前馈加速器+自适应状态估计器) → 认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)", self.open_state_space, "#87CEEB")
+        # 🗂 2026-10-11 老倪: 「状态空间的独立页做得太差了, 删除, 恢复成原来的样子, 但是要跟文件打开的工程保持一致」
+        #   ⇒ 撤掉独立页 (ss_page_window.py 已删), 按钮恢复 = 把状态空间模型画布装进主画布 (原行为);
+        #     "跟文件打开的工程一致" 由 normalize_after_load() 保证 (两条入口同一套加载后归一 + 几何落盘)。
+        self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: 时空感知前端(43D obs) → 并行处理层(前馈加速器+自适应状态估计器) → 认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)\n  · 与「文件→加载工程文件」同一套加载后归一 (真源==屏幕, 摆位一致)", self.open_state_space, "#87CEEB")
         # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮曾删除 → 恢复 (用户要求保留工具栏入口;
         #   画布 🔭可视化层 也有 🧭 3D 视图 节点, 双入口同开 open_ss_3d)
-        self.btn_ss_3d = mk_btn("🧭 3D 视图", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
+        self.btn_ss_3d = mk_btn("🧭 3D场景", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
         # 🗑 2026-10-09 老倪: 工具栏「🧭 数据闭环引导」按钮已挪进「🎯 数据闭环控制台」面板 (btn_guide)
         # (2026-08-06 老倪: Scope 移到左侧 node 库后, 工具栏「🖥 Scope」按钮删除 — 只留库入口)
         tl.addWidget(self.btn_run)
@@ -5405,10 +5408,22 @@ class SimulinkModule(QWidget):
         #   (v5.26.0 那轮工具栏清理把 11 个按钮一起撤走, 这两个属于"重要功能", 老倪要求单独恢复;
         #    入口只增不减: 原方法 open_state_space / open_station_page 一字未改, 只是重新挂上按钮)
         tl.addWidget(self.btn_state_space)                     # 🧮 状态空间 (对象在 5306 行已建)
+        # 📈 2026-10-11 老倪: 「增加 实时监控 按钮, 打开实时监控的独立的功能页」
+        self.btn_monitor = mk_btn(
+            "📈 实时监控",
+            "打开【独立功能页】的实时监控 (信号分析页):\n"
+            "  · 独立顶层窗口 (进程隔离, 不占控制台页面) ⇒ 可与画布/3D场景并排看\n"
+            "  · 首屏默认只显示 3D 场景数据 (与 3D场景 同一份快照真源 trace_live.json)\n"
+            "  · 🕒 时间戳标记线 = 3D 播放进度; ➕增加信号话题 可看 Orin ROS2 / 数据空间(DDS) / 本机真值流\n"
+            "  · 已有窗口时不重复开, 只置顶",
+            self.open_monitor_window, "#58a6ff")
+        tl.addWidget(self.btn_monitor)
         if not hasattr(self, "btn_station"):
+            # 🗂 2026-10-11 老倪: 「将 工位总览 按钮改名成 产品大屏」—— 名字改, 服务一字不动
+            #   (同一个 8793 站点页 + 同一条数据流服务 ⇒ 产品大屏 == 原工位总览)
             self.btn_station = mk_btn(
-                "🛰 工位总览",
-                "6 路同屏工位总览页 (深度源 + 工控机金手指/表面检测 + 手动控制区):\n"
+                "🖥 产品大屏",
+                "产品大屏 (原「工位总览」, 同一套服务): 6 路同屏 (深度源 + 工控机金手指/表面检测 + 手动控制区):\n" 
                 "  · 视频流没在跑会自动拉起 (最多等 12s), 然后开浏览器窗口\n"
                 "  · 页面地址 = 8793 站点 /station; 只读看画面 + 手动控制按钮走同一站点接口",
                 self.open_station_page, "#58a6ff")
@@ -5510,7 +5525,7 @@ class SimulinkModule(QWidget):
 # 🗑 2026-10-09 老倪: 工具栏「⚙️ 运行开关」按钮删掉 → 能力页仍在:
 #   右侧栏下拉「🔧 运行开关」(ModelTreeDock.VIEW_KEYS[-1]) 就是它, 6 个开关 + 作用/生效/代价都在。
         self.btn_ds_win = mk_btn(
-            "🌐 数据空间窗口",
+            "🌐 数据空间",
             "打开【独立窗口】的全局数据空间 (CANoe 范式: 测量组 + 信号表 + Trace + 详情 + 闭环/告警):\n"
             "  · **不占用控制台页面** ⇒ 可以一边跑 L5 状态空间画布/3D 场景, 一边看 topic 实时值\n"
             "  · 窗口可自由拖动/缩放(非模态, 不挡操作), 关掉后再点即复用同一个窗口\n"
@@ -5552,8 +5567,9 @@ class SimulinkModule(QWidget):
         # (🗑 2026-08-14 老倪: 工具栏「🧿 AWE」按钮已删 — 画布 AWE 入口保留在 Model Zoo)
         tl.addWidget(self.btn_compare5)
         # 🚀 Z700 快捷入口 (2026-08-12 老倪: 一键打开 Z700 完整工程 — YOLO感知+双脑+状态机+交付)
+        # 🗂 2026-10-11 老倪: 「画布上, 删除 Z700 按钮」→ 从工具栏撤下 (能力不丢: 方法 open_z700_flow 保留,
+        #   画布(C) 菜单里有固定入口「🚀 Z700 完整工程」, 窄屏/宽屏都点得到)
         self.btn_z700 = mk_btn("🚀 Z700", "Z700 完整工程: 🎯YOLO感知链 → 🧠双脑+状态机 → ▶交付 (flows/dual_brain_peg_yolo.json, 感知源码 src/lerobot/policies/yolo_3d/)", self.open_z700_flow, "#00d4aa")
-        tl.addWidget(self.btn_z700)
         # (🗑 2026-08-12 老倪: 工具栏 🌐方案介绍按钮已删 — 改用画布节点 (交付行))
         self.btn_atomic = mk_btn("🧩 原子", "打开原子技能库 (242条, W²-VLA Token) → 选技能 → 自动建节点链: 技能→结构条件→SYS1→action JSON", self.open_atomic_skill_flow, "#00d4aa")
         tl.addWidget(self.btn_atomic)
@@ -6183,6 +6199,14 @@ class SimulinkModule(QWidget):
         try:
             self.refresh_library()
         except Exception:
+            pass
+        # 🧮 2026-10-11 老倪: 「已加载工程再点状态空间按钮, 屏幕闪烁了好几下, 不是同一个源头么? 不要闪烁」
+        #   ⇒ 载入即记账: 画布现在显示的是**哪个文件、什么内容指纹**。再点按钮时据此判断"已在显示同一份"→ 不重建。
+        try:
+            self._loaded_src = os.path.abspath(path)
+            self._loaded_src_md5 = self._src_md5(path)
+            self._loaded_fp = self._canvas_fingerprint()
+        except Exception:                                                        # noqa: BLE001
             pass
         return True
 
@@ -6868,10 +6892,19 @@ class SimulinkModule(QWidget):
          "画布独立成可最大化窗口 (关闭自动还原回主窗口)", True),
         # 🧭 2026-10-10 老倪「3D 视图按钮找回来」: 除工具栏常驻外, 菜单里也给固定入口
         #   (工具栏在窄屏会被压掉, 菜单永远点得到) — 与工具栏 btn_ss_3d 同一个方法
-        ("ss_3d", "🧭 3D 视图 (场景可视化 + 编辑)", "Ctrl+Shift+D",
+        ("ss_3d", "🧭 3D场景 (场景可视化 + 编辑)", "Ctrl+Shift+D",
          "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层"
          " (YOLO 检测框/末端轨迹/前馈 u_ff/融合指令 u/限幅 u_sat/状态估计/接触), 每层可开关;"
          " 视图内可直接管理/编辑 3D 场景 (对象列出·选中编辑·显隐·新增, 写库走 scene_edit.py 单一写路径)", True),
+        # 🗂 2026-10-11 老倪: 「删除 Z700 按钮」+「增加 实时监控 按钮, 打开独立功能页」
+        #   +「状态空间也改成打开独立的功能页面」⇒ 工具栏撤下的能力在这里保留固定入口 (窄屏也点得到)
+        ("monitor", "📈 实时监控 (独立功能页)", "Ctrl+Shift+M",
+         "打开独立功能页的实时监控 (信号分析页): 首屏只显示 3D 场景数据, "
+         "➕可加任意话题 (Orin ROS2 / 数据空间 DDS / 本机真值流); 🕒 竖线 = 3D 播放进度, "
+         "📌 可打标记; 已有窗口则只置顶", False),
+        ("z700", "🚀 Z700 完整工程", "",
+         "Z700 完整工程: 🎯YOLO感知链 → 🧠双脑+状态机 → ▶交付 "
+         "(flows/dual_brain_peg_yolo.json, 感知源码 src/lerobot/policies/yolo_3d/)", False),
     ]
 
     def attach_canvas_actions(self, acts):
@@ -13647,6 +13680,170 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+    # ══════════════ 🗂 独立功能页 (2026-10-11 老倪: 「状态空间 工位总览 3D场景 数据空间 这些按钮,
+    #   实际上都是打开独立的功能页面」⇒ 统一成「点按钮 = 开独立页面」, 不占用/不覆盖主画布) ══════════════
+    def _src_md5(self, path):
+        """文件内容 md5 (判断"画布显示的是不是这份内容") — 读不到返回 None。"""
+        try:
+            import hashlib
+            with open(path, "rb") as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception:                                                        # noqa: BLE001
+            return None
+
+    def _canvas_fingerprint(self):
+        """当前画布显示内容指纹: 非 row_bg 节点的 (名字,x,y,w,h) 排序元组 (与文件指纹同口径)。"""
+        try:
+            rows = []
+            for n in (self.nodes or []):
+                if n.get("type") == "row_bg":
+                    continue
+                rows.append((str(n.get("name") or ""), round(float(n.get("x") or 0), 3),
+                             round(float(n.get("y") or 0), 3), round(float(n.get("w") or 0), 3),
+                             round(float(n.get("h") or 0), 3)))
+            return tuple(sorted(rows))
+        except Exception:                                                        # noqa: BLE001
+            return None
+
+    def _file_fingerprint(self, path):
+        """文件里节点几何指纹 (与 _canvas_fingerprint 同口径)。"""
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+            rows = []
+            for n in (d.get("nodes") or []):
+                if n.get("type") == "row_bg":
+                    continue
+                rows.append((str(n.get("name") or ""), round(float(n.get("x") or 0), 3),
+                             round(float(n.get("y") or 0), 3), round(float(n.get("w") or 0), 3),
+                             round(float(n.get("h") or 0), 3)))
+            return tuple(sorted(rows))
+        except Exception:                                                        # noqa: BLE001
+            return None
+
+    def _frozen(self, on):
+        """冻结/解冻画布重绘: 重建期间不逐帧刷, 解冻后只刷一帧 (老倪 2026-10-11「不要闪烁」)。"""
+        targets = []
+        try:
+            c = getattr(self, "canvas", None)
+            if c is not None:
+                targets.append(c)
+                sc = getattr(c, "_scene", None)
+                if sc is not None:
+                    targets.extend(list(sc.views()) or [])
+        except Exception:                                                        # noqa: BLE001
+            pass
+        for w in targets:
+            try:
+                if hasattr(w, "setUpdatesEnabled"):
+                    w.setUpdatesEnabled(not on)
+            except Exception:                                                    # noqa: BLE001
+                pass
+        if not on:
+            try:
+                self.canvas._scene.update()
+            except Exception:                                                    # noqa: BLE001
+                pass
+
+    def normalize_after_load(self, persist=True, reason="normalize_after_load"):
+        """**加载后归一 (两个入口同一套)** —— 老倪 2026-10-11「两个入口走同一套加载后归一」
+
+        ① 节点尺寸规则: load_flow_file 内已按 DW/DH(280x110) 撑开 (JSON 里 160x68 只是输入)
+        ② 按行重排: `_relayout_row_gaps()` 按 y 分桶把同行节点推到"前一个右缘+56"
+        ③ **几何落盘回真源**: 只把 x/y/w/h 写回 (其余字段以磁盘为准, 不污染真源) ⇒ 真源==屏幕
+           收敛后幂等 (第二次加载不再产生差异), 从此「🧮状态空间」路 与「📂加载工程文件」路结果一致。
+        返回 {relayout_moved, persisted, fields, backup, path}
+        """
+        out = {"relayout_moved": 0, "persisted": False, "fields": 0}
+        try:
+            before = {n.get("id"): (n.get("x"), n.get("y")) for n in self.nodes}
+            self._relayout_row_gaps()
+            out["relayout_moved"] = sum(1 for n in self.nodes
+                                        if before.get(n.get("id")) != (n.get("x"), n.get("y")))
+        except Exception as e:                                                   # noqa: BLE001
+            self._log("⚠️ 加载后归一: 按行重排失败 %s: %s" % (type(e).__name__, e))
+        if not persist:
+            return out
+        try:
+            import project_file as _pj
+            flows = _pj._flows()
+            path = flows.canvas_path()
+            with open(path, encoding="utf-8") as f:
+                disk = json.load(f)
+            # ⚠️ 必须按 **name** 配对: load_flow_file 给画布里的节点分的是新 id (id_map),
+            #    与文件里的 id 不同 ⇒ 按 id 配对会全部落空 (fields 永远 0, 归一形同虚设)。
+            def _key(n):                                   # row_bg(行背景)不参与归一
+                return str(n.get("name") or "")
+            ondisk = {}
+            for n in (disk.get("nodes") or []):
+                if n.get("type") != "row_bg":
+                    ondisk.setdefault(_key(n), []).append(n)
+            fields = 0
+            for n in self.nodes:                       # 只同步几何, 不回写会话/状态类字段
+                if n.get("type") == "row_bg":
+                    continue
+                lst = ondisk.get(_key(n)) or []
+                d = lst.pop(0) if lst else None            # 同名多个按顺序一一对应
+                if d is None:
+                    continue
+                for k in ("x", "y", "w", "h"):
+                    if k in n and d.get(k) != n.get(k):
+                        d[k] = n.get(k)
+                        fields += 1
+            out["fields"] = fields
+            if fields:
+                p, bak = flows.save_canvas(disk, reason=reason)
+                out.update({"persisted": True, "path": p, "backup": bak})
+                self._log("🗂 加载后归一: 几何收敛 %d 处 → 已写回画布真源 (备份 %s)"
+                          % (fields, os.path.basename(str(bak))))
+            else:
+                self._log("🗂 加载后归一: 真源与屏幕已一致, 无需写盘")
+        except Exception as e:                                                   # noqa: BLE001
+            self._log("⚠️ 加载后归一: 写回真源失败(画布不受影响) %s: %s" % (type(e).__name__, e))
+        # 🧮 记账: 把"该文件内容的归一后状态"存下来 ⇒ 同一份文件再点按钮 = 零重绘 (不闪烁)
+        try:
+            import project_file as _pj2
+            self._norm_md5 = self._src_md5(_pj2._flows().canvas_path())
+            self._loaded_src_md5 = self._norm_md5            # 此刻画布内容 == 该真源
+            self._loaded_src = os.path.abspath(_pj2._flows().canvas_path())
+        except Exception:                                                        # noqa: BLE001
+            self._norm_md5 = None
+        try:
+            self._norm_fp = self._canvas_fingerprint()
+        except Exception:                                                        # noqa: BLE001
+            self._norm_fp = None
+        return out
+
+    def open_monitor_window(self):
+        """📈 实时监控 → 打开【独立功能页】(2026-10-11 老倪: 「增加 实时监控 按钮, 打开实时监控的独立的功能页」)
+
+        独立进程 (= tools/gui/canoe_graphic.py 自开窗口), 与控制台进程隔离, 不占控制台页面;
+        已有窗口时脚本只置顶, 不重复开。首屏默认只显示 3D 场景数据 (与 3D场景 同源快照)。
+        """
+        import subprocess as _sp
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "open_graphic_window.sh")
+        if not os.path.exists(script):
+            self._qmsg_info("📈 实时监控", "缺启动脚本:\n%s" % script)
+            return
+        # 🔴 2026-10-11 实测根因: 控制台进程带着 QT_QPA_PLATFORM=xcb 起, 子进程里 Qt 会去
+        #   gui-venv311/.../cv2/qt/plugins 找 xcb 插件 ⇒ 找不到就整进程退出 (实测日志:
+        #   'Could not load the Qt platform plugin "xcb" ... This application failed to start'),
+        #   看着就是"点了实时监控没反应"。手动从干净 shell 跑同一脚本却正常 ⇒ 差别只在 env。
+        #   ⇒ 子进程 env 去掉这几个平台/插件变量 (让 Qt 自己探测), 并顺带修 DBUS/XDG (浏览器同款)。
+        try:
+            env = _zmax_sane_env()
+        except Exception:                                                       # noqa: BLE001
+            env = dict(os.environ)
+        for _k in ("QT_QPA_PLATFORM", "QT_QPA_PLATFORM_PLUGIN_PATH", "QT_PLUGIN_PATH"):
+            env.pop(_k, None)
+        env.setdefault("DISPLAY", ":0")
+        try:
+            _sp.Popen(["bash", script], env=env, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                      start_new_session=True)
+            self._log("📈 实时监控: 已请求打开独立功能页 (信号分析; 已有窗口则只置顶)")
+        except Exception as e:                                                   # noqa: BLE001
+            self._qmsg_info("📈 实时监控", "打开失败\n\n%s: %s" % (type(e).__name__, e))
+
     def open_state_space(self):
         """🧮 状态空间模型画布 (2026-08-17 老倪: 按流程做状态空间新按钮 — 打开模型画布)
         融合定位 (视觉 ⊕ 触觉 → 统一状态空间 43D obs)
@@ -13654,9 +13851,29 @@ class SimulinkModule(QWidget):
         认知决策层 (动作调制器握否决权 → 安全执行边界)
         执行层: 机器人执行器 → 物理世界 → 卡尔曼反馈闭环 (z_k → 状态校正)
         """
-        self.clear()
+        # 🚫 2026-10-11 老倪: 「我已经加载了状态空间的工程 proj 文件, 再点击画布的状态空间按钮, 屏幕又闪烁了好几下。
+        #   不是同一个源头么? 不要闪烁」——根因: 这条腿**无条件** clear() → 逐个重建 89 节点 → 再按行重排,
+        #   每一步都重绘 (整屏空 → 半成品 → 节点挪位) 就是"闪烁好几下"; 而画布上其实已经是同一份文件的归一状态。
+        #   修法: ① 已是"该文件内容的归一后状态"⇒ 直接不重建 (零重绘, 只落一行日志);
+        #         ② 真要重建 (换了文件/几何确实需归一) ⇒ 全程冻结重绘, 最后只刷一帧 ⇒ 只有一次"到位置", 不再闪。
         flow = _flows_path("state_space_obs.json")          # v5.15.8: 多候选定位 (修"画布加载失败")
-        if not os.path.exists(flow) or not self.load_flow_file(flow, confirm=False):
+        _md5 = self._src_md5(flow)
+        _fp = self._canvas_fingerprint()
+        if (self.nodes and _md5 is not None and _md5 == getattr(self, "_norm_md5", None)
+                and _fp is not None and _fp == getattr(self, "_norm_fp", None)):
+            self._log("🧮 状态空间: 画布已在显示同一份工程 (真源 md5 %s… · %d 节点几何==归一后状态) ⇒ 不重建, 零闪烁"
+                      % (_md5[:8], len(self.nodes)))
+            self._l5_start_poll(1000)                        # 幂等: 保证状态轮询还在跑
+            return
+        _ok = False
+        self._frozen(True)
+        try:
+            self.clear()
+            if os.path.exists(flow) and self.load_flow_file(flow, confirm=False):
+                _ok = True
+        finally:
+            self._frozen(False)
+        if not _ok:
             self._qmsg_info("🧮 状态空间", "状态空间模型画布加载失败")
             return
         self._log("════ 🧮 状态空间模型 (时空感知 → 并行认知 → 决策执行 → 物理闭环) ════")
@@ -13665,7 +13882,9 @@ class SimulinkModule(QWidget):
         self._log("   └ 📈先验动力学预测器(预测next_obs) → 🧪状态校正器(残差&接触概率)")
         self._log("认知决策层 (握有否决权): 🧭动作调制器(原状态机, 8阶段状态机: 接近→对位→下降→抓取→抬起→转移→插入→完成) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
-        self._relayout_row_gaps()      # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠
+        # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠;
+        # 2026-10-11: 抽成 normalize_after_load() ⇒ 与「文件→加载工程文件」同一套归一 + 几何落盘(真源==屏幕)
+        self.normalize_after_load(reason="open_state_space")
         _oneshot(self, 300, self._state_space_hint)
         # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反馈」: **画布一打开就挂 L5 状态轮询**。
         #   原来只有"从画布点运行"那条路才建 QTimer ⇒ 闭环是在别处/上一个进程起的时,
