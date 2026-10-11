@@ -86,6 +86,100 @@ def detect(conf=0.25, imgsz=640, save=True):
     return out
 
 
+def pose(roi=None, use_last_detect=True, draw=True):
+    """🥽 **相机系**的 3D 位姿叠加: 把虚拟 3D 坐标架/尺寸框画回真实画面。
+
+    这是「AR 场景里光模块标定能力」的**相机半边**: RealSense 有深度 ⇒ 目标在**相机系**的位置/朝向/尺寸
+    是量出来的, 不是猜的(外参那半边要 base 配对, 见 pair/solve)。
+    target 选择: ① 近 2s 内的 YOLO 检出框(光模块) → ② 否则取画面中心 ROI(场景平面)。
+    输出: 中心(mm) · 尺寸(mm) · 主轴法向 · 平面 RMS · 有效深度占比; 标注图 zmax_data/ar_rs/rs_pose_last.png
+    """
+    import cv2
+    import realsense_source as RS
+    L = RS.latest()
+    img, dep = L.get("color"), L.get("depth")
+    if img is None or dep is None:
+        return {"ok": False, "err": "RealSense 没有帧/深度", "err_rs": L.get("err")}
+    ci = RS.intrinsics() or {}
+    fx, fy, cx0, cy0 = ci.get("fx"), ci.get("fy"), ci.get("ppx"), ci.get("ppy")
+    h, w = img.shape[:2]
+    target = "plane:场景平面(中心ROI)"
+    if use_last_detect:
+        try:
+            import tcp_ar_server as TAS
+            if getattr(TAS, "RS_LAST_DET", None) and (time.time() - TAS.RS_LAST_DET.get("ts", 0) < 2.0) \
+                    and TAS.RS_LAST_DET.get("dets"):
+                b = TAS.RS_LAST_DET["dets"][0]["bbox"]
+                roi = (int(b[0]), int(b[1]), int(b[2]), int(b[3]))
+                target = "det:光模块(YOLO bbox)"
+        except Exception:                                                        # noqa: BLE001
+            pass
+    if roi is None:
+        roi = (int(w * 0.3), int(h * 0.3), int(w * 0.7), int(h * 0.7))
+    x1, y1, x2, y2 = roi
+    sub = dep[max(0, y1):min(h, y2), max(0, x1):min(w, x2)].astype(np.float32)
+    sc = float(ci.get("depth_scale_m", 0.001))
+    yy, xx = np.mgrid[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
+    m = sub > 0
+    n_valid, n_all = int(m.sum()), int(sub.size)
+    if n_valid < 200:
+        return {"ok": False, "err": "ROI 内有效深度只有 %d/%d 点 —— 对着远景/反光面时正常" % (n_valid, n_all),
+                "target": target, "roi": list(roi), "valid_ratio": round(n_valid / max(1, n_all), 3)}
+    Z = sub[m] * sc
+    X = (xx[m] - cx0) * Z / fx
+    Y = (yy[m] - cy0) * Z / fy
+    P = np.stack([X, Y, Z], 1)
+    mu = P.mean(0)
+    Q = P - mu
+    # 平面法向 + 面内主轴(PCA)
+    _, _, Vt = np.linalg.svd(Q[np.random.default_rng(3).choice(len(Q), min(4000, len(Q)), replace=False)], full_matrices=False)
+    nrm = Vt[2]
+    if nrm[2] < 0:
+        nrm = -nrm                                                               # 法向朝相机
+    e1 = Vt[0]
+    e2 = np.cross(nrm, e1)
+    proj = np.stack([Q @ e1, Q @ e2, Q @ nrm], 1)
+    lo, hi = proj.min(0), proj.max(0)
+    size_mm = (hi - lo) * 1000.0
+    rms_plane = float(np.sqrt((proj[:, 2] ** 2).mean()) * 1000.0)
+    ang = float(np.degrees(np.arctan2(e1[1], e1[0])))
+    out = {"ok": True, "target": target, "roi": list(roi),
+           "cam_center_mm": [round(float(v) * 1000, 1) for v in mu],
+           "size_mm": [round(float(v), 1) for v in size_mm],
+           "long_axis_az_deg": round(ang, 2),
+           "plane_normal": [round(float(v), 4) for v in nrm],
+           "plane_rms_mm": round(rms_plane, 2),
+           "valid_ratio": round(n_valid / max(1, n_all), 3), "n_pts": n_valid,
+           "depth_median_m": round(float(np.median(Z)), 3),
+           "intrinsics": {k: ci.get(k) for k in ("fx", "fy", "ppx", "ppy")},
+           "note": "相机系(不是 base 系); 外参要 base 配对解出后才能画到 base 上"}
+    if draw:
+        ax = 0.03                                                                 # 30mm 坐标架
+        Rm = np.stack([e1, e2, nrm], 1)
+        pts = np.stack([[0, 0, 0], [ax, 0, 0], [0, ax, 0], [0, 0, ax]]) + mu
+        uv, _ = cv2.projectPoints(pts.reshape(-1, 1, 3), np.zeros(3), np.zeros(3),
+                                  np.array([[fx, 0, cx0], [0, fy, cy0], [0, 0, 1]]), None)
+        uv = uv.reshape(-1, 2).astype(int)
+        vis = img.copy()
+        cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 220, 255), 1)
+        o = tuple(uv[0])
+        for i, col in enumerate([(60, 60, 255), (60, 255, 60), (255, 120, 60)]):  # 相机系 X/Y/Z (BGR)
+            cv2.arrowedLine(vis, o, tuple(uv[i + 1]), col, 2, tipLength=0.18)
+        cv2.putText(vis, "camX", tuple(uv[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (60, 60, 255), 1)
+        cv2.putText(vis, "camY", tuple(uv[2]), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (60, 255, 60), 1)
+        cv2.putText(vis, "camZ", tuple(uv[3]), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 120, 60), 1)
+        txt = "%s  c=(%.0f,%.0f,%.0f)mm  %.0fx%.0fmm  Z=%.2fm" % (
+            target.split(":")[0], mu[0] * 1000, mu[1] * 1000, mu[2] * 1000, size_mm[0], size_mm[1], np.median(Z))
+        cv2.rectangle(vis, (4, 4), (int(9 * len(txt)) // 2 * 2 + 8, 24), (0, 0, 0), -1)
+        cv2.putText(vis, txt, (8, 19), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        d = os.path.expanduser("~/zmax/zmax_data/ar_rs")
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, "rs_pose_last.png")
+        cv2.imwrite(p, vis)
+        out["vis"] = p
+    return out
+
+
 def _read_tcp():
     d = json.load(open(TCP_JSON))
     return [float(d["x"]), float(d["y"]), float(d["z"])], round(time.time() - float(d["ts"]), 2)
@@ -177,7 +271,7 @@ def selftest():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["detect", "pair", "solve", "selftest", "pairs"])
+    ap.add_argument("cmd", choices=["detect", "pair", "solve", "selftest", "pairs", "pose"])
     ap.add_argument("--u", type=float); ap.add_argument("--v", type=float)
     ap.add_argument("--base"); ap.add_argument("--note", default=""); ap.add_argument("--min-pairs", type=int, default=5)
     a = ap.parse_args()
@@ -188,6 +282,8 @@ def main():
         print(json.dumps(pair(a.u, a.v, base, a.note), ensure_ascii=False, indent=1))
     elif a.cmd == "solve":
         print(json.dumps(solve(a.min_pairs), ensure_ascii=False, indent=1))
+    elif a.cmd == "pose":
+        print(json.dumps(pose(), ensure_ascii=False, indent=1))
     elif a.cmd == "pairs":
         d = json.load(open(PAIRS, encoding="utf-8")) if os.path.exists(PAIRS) else {"pairs": []}
         print(json.dumps({"n": len(d.get("pairs") or []), "pairs": d.get("pairs")}, ensure_ascii=False, indent=1))

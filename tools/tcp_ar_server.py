@@ -88,6 +88,18 @@ def snap_cam(cam: str = "local"):
     return cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
 
 
+RS_LAST_DET = {"ts": 0.0, "dets": []}       # 最近一次 AR 帧检测(pose 用来选目标)
+
+
+def _rs_pose(use_last_detect=True):
+    """🥽 相机系 3D 位姿叠加: 有检出框就量光模块, 没有就量画面中心平面 —— 都是**深度真值**。"""
+    try:
+        import ar_calib_module as ACM
+        return ACM.pose(use_last_detect=use_last_detect)
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
+
+
 def _rs_detect():
     """🥽 光模块检测(AR 相机帧): 在**本进程**跑在役 YOLO —— 相机被本服务独占, 别的进程打不开设备。
 
@@ -95,7 +107,11 @@ def _rs_detect():
     """
     try:
         import ar_calib_module as ACM
-        return ACM.detect()
+        r = ACM.detect()
+        if r.get("ok"):
+            RS_LAST_DET["ts"] = time.time()
+            RS_LAST_DET["dets"] = r.get("dets") or []
+        return r
     except SystemExit as e:
         return {"ok": False, "err": str(e)}
     except Exception as e:                                                       # noqa: BLE001
@@ -252,6 +268,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(RS.info())
             elif p == "/api/rs_detect":            # 🥽 在 AR 相机帧里跑在役 YOLO 找光模块(标定用)
                 self._json(_rs_detect())
+            elif p == "/api/rs_pose":              # 🥽 目标相机系 3D 位姿 + 虚拟坐标架叠加(深度)
+                self._json(_rs_pose(use_last_detect=(qs.get("det", "1") != "0")))
             elif p == "/api/rs_point":             # 🥽 像素→相机系 3D(用深度量, 不是猜)
                 import realsense_source as RS
                 self._json(RS.deproject(float(qs.get("u") or 0), float(qs.get("v") or 0)))
