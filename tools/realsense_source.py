@@ -108,6 +108,85 @@ def ensure():
     return _ST
 
 
+def color_ctl(auto=None, exposure_us=None, gain=None):
+    """🥽 彩色曝光/增益控制(真调设备, 回读为准)。
+
+    为什么要: 实测本机 RealSense 画面顶部有强逆光, **10.8% 像素 >250 全白**, 会污染 AR 叠加与检测;
+    灯不换又躲不开的情况下, 只能压曝光/增益。返回的是**调后从设备回读的值**(不是回显请求参数),
+    并给出可调范围, 便于"到底能在哪一档"有据可依。
+    """
+    ensure()
+    out = {"ok": False}
+    try:
+        import pyrealsense2 as _rsmod
+        _rs = _rsmod
+        prof = _RS_OBJ.pipe.get_active_profile()
+        dev = prof.get_device()
+        s = None
+        try:
+            s = dev.first_color_sensor()
+        except Exception:                                                        # noqa: BLE001
+            for q in dev.query_sensors():
+                if q.supports(_rs.option.exposure) or q.supports(_rs.option.enable_auto_exposure):
+                    s = q
+                    break
+        if s is None:
+            return {"ok": False, "err": "找不到彩色 sensor(设备可能在重连)"}
+        if auto is not None:
+            s.set_option(_rs.option.enable_auto_exposure, 1.0 if auto else 0.0)
+        if exposure_us is not None:
+            s.set_option(_rs.option.exposure, float(exposure_us))
+        if gain is not None:
+            s.set_option(_rs.option.gain, float(gain))
+        rg = {}
+        for k, o in (("exposure", _rs.option.exposure), ("gain", _rs.option.gain)):
+            try:
+                rr = s.get_option_range(o)
+                rg[k] = [round(rr.min, 1), round(rr.max, 1), round(rr.step, 1)]
+            except Exception:                                                    # noqa: BLE001
+                rg[k] = None
+        out = {"ok": True,
+               "auto_exposure": (int(s.get_option(_rs.option.enable_auto_exposure))
+                                 if s.supports(_rs.option.enable_auto_exposure) else None),
+               "exposure_us": (round(float(s.get_option(_rs.option.exposure)), 1)
+                               if s.supports(_rs.option.exposure) else None),
+               "gain": (round(float(s.get_option(_rs.option.gain)), 1)
+                        if s.supports(_rs.option.gain) else None),
+               "range": rg,
+               "note": "以上为**调后从设备回读**的真值; auto=1 时手设曝光会被自动曝光覆盖"}
+    except Exception as e:                                                       # noqa: BLE001
+        out = {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:140])}
+    return out
+
+
+def options():
+    """列彩色 sensor 的全部可调项(找 AE 测光区/自动曝光优先级这类控制时用)。"""
+    ensure()
+    try:
+        import pyrealsense2 as rs
+        prof = _RS_OBJ.pipe.get_active_profile()
+        dev = prof.get_device()
+        out = {"ok": True, "device": dev.get_info(rs.camera_info.name),
+               "firmware": dev.get_info(rs.camera_info.firmware_version), "sensors": []}
+        for s in dev.query_sensors():
+            try:
+                nm = s.get_info(rs.camera_info.name)
+            except Exception:                                                    # noqa: BLE001
+                nm = "?"
+            items = []
+            for o in s.get_supported_options():
+                try:
+                    ro = s.get_option_range(o)
+                    items.append({"name": o.name, "min": ro.min, "max": ro.max, "step": ro.step,
+                                  "now": (s.get_option(o) if s.supports(o) else None)})
+                except Exception:                                                # noqa: BLE001
+                    pass
+            out["sensors"].append({"name": nm, "n_options": len(items), "options": items})
+        return out
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:140])}
+
+
 def latest():
     """最新帧: {"color","depth","age_s","n","err",...}; color 为 None 表示还没拿到真帧。"""
     ensure()

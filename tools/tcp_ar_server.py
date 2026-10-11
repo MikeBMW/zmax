@@ -91,11 +91,32 @@ def snap_cam(cam: str = "local"):
 RS_LAST_DET = {"ts": 0.0, "dets": []}       # 最近一次 AR 帧检测(pose 用来选目标)
 
 
-def _rs_pose(use_last_detect=True):
-    """🥽 相机系 3D 位姿叠加: 有检出框就量光模块, 没有就量画面中心平面 —— 都是**深度真值**。"""
+def _rs_options():
+    try:
+        import realsense_source as RS
+        d = RS.options()
+        if d.get("ok"):
+            flt = [o["name"] for s in d["sensors"] for o in s["options"]]
+            d["has_ae_roi"] = [n for n in flt if "roi" in n.lower()]
+            d["has_ae_priority"] = [n for n in flt if "priority" in n.lower()]
+        return d
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:140])}
+
+
+def _rs_exposure(auto=None, exposure_us=None, gain=None):
+    try:
+        import realsense_source as RS
+        return RS.color_ctl(auto=auto, exposure_us=exposure_us, gain=gain)
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:140])}
+
+
+def _rs_pose(use_last_detect=True, roi=None):
+    """🥽 相机系 3D 位姿叠加: 有检出框就量光模块, 指定 roi 就量那块, 否则量画面中心平面 —— 都是**深度真值**。"""
     try:
         import ar_calib_module as ACM
-        return ACM.pose(use_last_detect=use_last_detect)
+        return ACM.pose(roi=roi, use_last_detect=use_last_detect)
     except Exception as e:                                                       # noqa: BLE001
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
 
@@ -268,8 +289,24 @@ class H(BaseHTTPRequestHandler):
                 self._json(RS.info())
             elif p == "/api/rs_detect":            # 🥽 在 AR 相机帧里跑在役 YOLO 找光模块(标定用)
                 self._json(_rs_detect())
+            elif p == "/api/rs_options":            # 🥽 相机可调项全表(找 AE 测光区等)
+                self._json(_rs_options())
+            elif p == "/api/rs_exposure":          # 🥽 曝光/增益(强逆光过曝会污染叠加): 读+可调
+                _a = qs.get("auto")
+                _e = qs.get("exposure")
+                _g = qs.get("gain")
+                self._json(_rs_exposure(
+                    auto=(None if _a is None else (_a not in ("0", "false", "no"))),
+                    exposure_us=(float(_e) if _e else None),
+                    gain=(float(_g) if _g else None)))
             elif p == "/api/rs_pose":              # 🥽 目标相机系 3D 位姿 + 虚拟坐标架叠加(深度)
-                self._json(_rs_pose(use_last_detect=(qs.get("det", "1") != "0")))
+                _roi = None
+                if qs.get("roi"):
+                    try:
+                        _roi = [int(float(v)) for v in qs["roi"].split(",")][:4]
+                    except Exception:                                                # noqa: BLE001
+                        _roi = None
+                self._json(_rs_pose(use_last_detect=(qs.get("det", "1") != "0"), roi=_roi))
             elif p == "/api/rs_point":             # 🥽 像素→相机系 3D(用深度量, 不是猜)
                 import realsense_source as RS
                 self._json(RS.deproject(float(qs.get("u") or 0), float(qs.get("v") or 0)))

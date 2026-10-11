@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.47.13")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.47.14")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.13 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.47.14 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.13 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.47.14 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.47.14: AR 底图曝光实测+控制: 8797 /api/rs_exposure(读=设备回读)|/api/rs_options(全表) + tools/ar_exposure_sweep.py; 结论: 过曝团是顶部灯且在工作区外, 压曝光把工作区从104压到59(黑泡棉槽位糊掉) ⇒ 保持自动曝光, 灯靠改机位/柔光; 该固件无 AE 测光区
         # v5.47.13: AR 相机系 3D 位姿叠加: ar_calib_module.pose + 8797 /api/rs_pose + AR 页「📦 目标位姿(相机系)」(深度真值出中心/尺寸/主轴/平面RMS, 虚拟坐标架画回真实画面; 实测 2.16m 处大面 RMS 193mm, 检出 0 光模块⇒相机未对准工作区)
         # v5.47.12: AR 场景落地: Intel RealSense D435 驱动+接入 8797(rs 流/内参/深度3D/YOLO检测/AOI 联合检查端点) · 3D场景「力控」→「🥽 AR」 · 工控机 AOI 联合检查(缺陷判决+金手指矩形+侧边修正, 实测 OK/0缺陷/1.7s, 矩形 363.8x17.5px 倾角1.75°, Δx=+4px) · 光模块 AR 标定能力(ar_calib_module, 出厂内参只解 R,t, 自检 rms 0.0px) · 摆盘仿真链 3/3 合格; 真机取放待 8793 运动授权(闸门实测未授权, 未发任何运动)
         # v5.47.11: 工程状态开机自恢复 — 控制台启动第一步从 .proj 的 debug_state 回填场景真源+画布数据源(src_state)+活跃任务; 根因: 重启会把画布 src_state 写成默认真机(22:39:24实测), 老倪选的摆盘当场丢; 只改那一个值+留 .bak。判据 verify_proj_boot PASS
@@ -11634,7 +11635,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.47.13  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.47.14  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13376,7 +13377,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.47.13</b> · 多模态动作专家<br>
+<b>Z-MAX v5.47.14</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

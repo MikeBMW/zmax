@@ -83,6 +83,7 @@
         <button id="bRsDet" class="sm">🔎 找光模块(YOLO)</button>
         <button id="bRsCal" class="sm">📐 标定信息</button>
         <button id="bRsPose" class="sm">📦 目标位姿(相机系)</button>
+        <button id="bRsExp" class="sm">💡 曝光</button>
       </div>
       <pre id="pRs">🥽 RealSense D435: 点『🔎 找光模块』在 AR 相机帧里跑**在役权重**(models/yolo_peg_live.pt) —— 这就是「光模块的标定能力」第一步: 检测框中心 + 深度 → 相机系 3D, 与 TCP/base 真值配对后即可解外参。</pre>
     </div>
@@ -378,6 +379,7 @@ if($('bAoiRead')) $('bAoiRead').onclick=aoiRead;
 if($('bRsDet')) $('bRsDet').onclick=rsDetect;
 if($('bRsCal')) $('bRsCal').onclick=rsCalInfo;
 if($('bRsPose')) $('bRsPose').onclick=rsPose;
+if($('bRsExp')) $('bRsExp').onclick=()=>rsExposure();
   $('pCal').textContent='点已清空。'; });
 $('bSolve').addEventListener('click',async ()=>{
   $('pCal').textContent='解算中…';
@@ -486,6 +488,19 @@ async function rsDetect(){
     const lines=(d.dets||[]).map((x,i)=>`#${i+1} conf=${x.conf} uv=(${x.uv[0]},${x.uv[1]}) 相机系3D=${x.cam_xyz_m?('['+x.cam_xyz_m.map(v=>v.toFixed(3)).join(', ')+']m'):('无深度('+(x.depth_why||'')+')')}`);
     $('pRs').textContent=`权重 ${d.model} · 检出 ${d.n} 个 · 帧龄 ${d.age_s}s\n`+(lines.join('\n')||'本帧没检出(光模块不在视野/被遮挡)');
   }catch(e){ $('pRs').textContent='检测失败: '+e.message; }
+}
+async function rsExposure(auto,exposure,gain){
+  let u='/api/rs_exposure'; const p=[];
+  if(auto!==undefined) p.push('auto='+(auto?1:0));
+  if(exposure!==undefined) p.push('exposure='+exposure);
+  if(gain!==undefined) p.push('gain='+gain);
+  if(p.length) u+='?'+p.join('&');
+  try{ const d=await (await fetch(u)).json();
+    if(!d.ok){ $('pRs').textContent='曝光不可用: '+(d.err||''); return; }
+    $('pRs').textContent=`💡 RealSense 曝光(设备回读真值)\n自动曝光 = ${d.auto_exposure} · 曝光 = ${d.exposure_us}us · 增益 = ${d.gain}\n`
+      +`可调范围: 曝光 ${d.range&&d.range.exposure?d.range.exposure.join('~'):'—'} · 增益 ${d.range&&d.range.gain?d.range.gain.join('~'):'—'}\n`
+      +`${d.note||''}\n(顶部强逆光过曝会污染叠加: 关闭自动曝光并压低曝光/增益)`;
+  }catch(e){ $('pRs').textContent='曝光失败: '+e.message; }
 }
 async function rsPose(){
   $('pRs').textContent='量深度 + 解析 3D 位姿…';
