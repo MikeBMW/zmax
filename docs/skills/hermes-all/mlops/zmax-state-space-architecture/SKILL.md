@@ -64,6 +64,19 @@ src/lerobot/engineering/
 实例: `ss_pred` 被「先验动力学」(dynamics.py) 与「流形专家」(manifold) 重复注册,
 导致「📈 先验动力学预测器」长期不可执行 (落在档位审计 R5-待建); 已拆为 `ss_dyn` + `ss_pred`。
 新加节点/改关键字后, 拿画布节点名跑一遍 `match_node()` 验非 None (或直接 `levels.check()`)。
+**反过来: 目标节点若已有更长匹配的 key, 你新注册的短关键字 key 永远不命中** (实测给「标定诊断测量 · 主参数 M」
+另立 `cfg_import` key 毫无效果, `match_node` 仍返回既有的 `n_calib_mani`) ⇒ 要给已存在的节点加行为, **改它自己的
+节点函数或它已注册的 key**, 不要另立新 key。
+
+### ⚠️ 往 `nodes/library.py` (5000+ 行, 一个文件装 140+ 节点) 插代码: 锚点必须唯一
+1. **别拿通用注释当锚点** (`# ②`、`# 第2步`): 实测插进了**另一个节点函数** (`node_flight`) 里面 —— 编译通过、
+   判据静默失败 (日志里就是没有那段输出)。插完必须回验: 取插入点前最近的 `def`, 确认正是目标函数。
+2. **用「docstring 行 + 函数体首行」这类唯一多行上下文**作锚点, 交给 patch 工具插 (它会回报 diff)。
+3. **缩进按该函数实际层级**: 节点函数体是 **4 空格**(不是 8), `try:` 4 / body 8 / `except` 4。
+   `textwrap.dedent` 去掉的是**公共前缀**(不是固定 4 空格) ⇒ 8 空格内容会被削成 0 空格、函数被截断,
+   报错形如 `'return' outside function` 且位置在几百行之后, 极难定位。
+4. **插在函数 `try:` 块之前时, 该块要自带 `import numpy as np` / `import os`** —— 函数里的 import 在 try 内还没执行。
+5. 改坏了的恢复链: `cp -a` 备份 → `py_compile` → `git diff --stat <该文件>` 应为空(即回到已提交状态) → 重做。
 
 ## 画布节点源码展示机制 (tools/gui/node_logic.py + node_logic_dialog.py)
 - **执行层可共用分派函数**: 多个节点 _reg 注册同一 node 函数, 靠 `"关键词" in name` 分派
@@ -343,6 +356,22 @@ src/lerobot/engineering/
 - **零回归红线**: 默认 `M=1.0 · inertia=false` 必须与旧一阶过阻尼**逐位相同**; 判据 = 引擎内建 selftest(M=0/关 ⇒ 与旧轨迹相等)
   + `tools/manifold_M_experiment.py`(同场同起点: 关与 M=0 逐位相同; M=1 时反转 −F 后**仍沿原方向前进** ⇒ 动量可观测)。
 - 画布节点改动后**须重启控制台才可见**; 若重启前有人在画布上点了「保存」, 内存旧版可能覆盖磁盘 ⇒ 重跑 `tools/canvas_add_manifold_calib.py --apply`(幂等+六断言+自动备份)。
+
+### 🔷 主参数 M 升级为**张量** = 度量张量 g_ij(x) = M·G_ij(x) (det G = 1)
+- 老倪定调: 主参数是一个**张量** —— 随状态变化的度量张量 g_ij(x), 大小 n×n, 独立分量 n(n+1)/2;
+  梯度/联络/曲率/测地线**全由它导出**。
+- **必须按尺度×形状分解** `g = M·G (det G = 1)`: **M 仍是那个现场单标量**(范围 [0,8]; 各向同性 ⇒ Γ=0 ⇒
+  `a = F/M` 逐字零回归), **G 是形状**(各向异性 + 随状态变化)。
+- 为什么非分不可: **Γ 对度量的整体尺度不变** ⇒ 弯曲只由形状决定 ⇒ 尺度与形状**可分开标定**, 互不污染;
+  不分离就会「标 M 的时候曲率跟着动」, 现场根本标不动。
+- 真源实现 `src/lerobot/manifold/metric_field.py`(∇Φ=g⁻¹∂Φ 用 Cholesky 解 · Γ 中心差分 · R^i_jkl+Ric ·
+  测地线半步辛积分; n>8 的曲率如实降为 3 维子空间抽样)。参数化 `isotropic / diag / full`(n(n+1)/2 独立分量:
+  3→6 · 6→21 · 16→136 · 43→946) + 可选状态相关项 `G(x)=G₀+Σx_k G_k`。
+- 标定接口 `tools/zmax_params.py::manifold_metric()/write_manifold_metric()`; 真源 `config/calib/zmax_manifold.json`
+  的 `metric` 段; 画布节点「标定诊断测量 · 主参数 M」运行即打印 dim/mode/独立分量/正定性/‖Γ‖/‖R‖/测地线偏离。
+- 判据 `tools/verify_metric_main_param.py`(7 组: 独立分量数 · 正定+det G=1 · 零回归 · 解析 Γ 张量对照 ·
+  常度量 ‖R‖=0 / 弯曲 ‖R‖>0 · 配置真源读写+非正定拒写 · 真跑节点报数) ✅ 23/23 PASS。
+- 公式/解析对照值/两个数值坑见 `references/metric-tensor-main-param.md`。
 
 ## 🎛 GUI 安全启停 (2026-09-24 血案)
 

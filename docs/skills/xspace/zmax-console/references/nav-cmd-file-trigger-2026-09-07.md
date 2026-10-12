@@ -41,25 +41,41 @@ def _poll_nav_cmd(self):
         pass
 
 def _open_ss_canvas_cmd(self):
-    if getattr(self, "simulink", None) is not None:
-        self.simulink.open_state_space()
+    """（注：早期版会加载画布真源）"""
 
 def _open_ss_3d_cmd(self):
-    if getattr(self, "simulink", None) is not None:
-        self.simulink.open_ss_3d(on_top=False)
+    self.simulink.open_ss_3d(on_top=False)
 ```
 
 注意: studio.py 顶部已有 `from PyQt5.QtCore import ... QTimer ...` (178 行附近),
 不需要另起别名。类内方法缩进对齐。
 
 ## 用法
+
 ```bash
 echo simulink > /tmp/zmax_nav_cmd     # 切 Simulink 页 (QStackedWidget idx 10)
-echo ss_canvas > /tmp/zmax_nav_cmd    # 开状态空间画布
+echo ss_canvas > /tmp/zmax_nav_cmd    # 开状态空间画布 (=加载状态空间工程)
 echo ss_3d > /tmp/zmax_nav_cmd        # 开 3D 视图
+echo ss_run > /tmp/zmax_nav_cmd       # ▶ 跑状态空间仿真
+echo monitor > /tmp/zmax_nav_cmd      # 开独立窗口「📈 实时监控 · 信号分析」
 echo training > /tmp/zmax_nav_cmd     # 任意 modules key: home/dataset/training/...
+echo l5_status / l5_interact / l5_diag > /tmp/zmax_nav_cmd
 ```
 写后 `ls /tmp/zmax_nav_cmd` 消失 = 已消费 (轮询 300ms; 画布/3D 另有 600/1200ms 延迟补偿)。
+
+## 🔴 命令通道实测锤出来的三条 (2026-10-12「信号分析动起来」)
+
+1. **`ss_run` 前必须画布已加载** —— 新起/重启后的进程里 `simulink.nodes` 是**空**的,
+   直接 `start_sim()` 只会写一行 `⚠️ 画布为空 — 点击「参考应用」…` 就返回(**静默失败**,
+   看台面就是"我点了运行但没反应"). 正确顺序: `ss_canvas` → 等几秒 → `ss_run`.
+   已在 `studio._run_ss_cmd` 内置兜底(空画布先 `open_state_space()` 再跑; 下次重启生效)。
+2. **`ss_run` 失败的原因去 `/tmp/simulink_log.txt` 找, 不要猜** —— `SimulinkModule._log` 把
+   每一行都落这个文件(带 `[HH:MM:SS]`), 运行/失败/相态全在里面(比截图 OCR 快且准)。
+3. **"信号分析会不会动"看 `zmax_data/ss_live/trace_live.json` 的帧龄**(≤2s 才算实况):
+   它的**唯一写入者**是 3D 面板渲染帧时的 `ss_dreamview.publish_trace_live` ⇒ 3D 窗口
+   必须在 `_ss_3d_windows` 里才喂得到帧。判据 `tools/verify_ss3d_trace_publish.py`(11 项)。
+   屏幕侧复核: 实况期对信号分析窗口连拍, 相邻两张平均像素差 >2 = 真在动(实测 8.0/7.7/8.0;
+   停后 0.01) —— 像素差比 OCR 可靠, 也不用看字。
 
 ## 为什么不用 xdotool 盲点
 - 像素找按钮 (PIL 色块聚类/猜卡片坐标) 多轮失败: 深色主题无浅色大块可锚、
@@ -73,9 +89,12 @@ echo training > /tmp/zmax_nav_cmd     # 任意 modules key: home/dataset/trainin
 - `xdotool get_desktop_for_window <wid>`: desktop=-1 = 隐藏幽灵; 可见 = desktop=0。
 - `xdotool getactivewindow getwindowname` 确认前台; 操作前 `windowactivate <wid>`。
 - GUI 中央大片黑 = Mutter map/渲染问题或窗口根本没在截图区域 — 先确认
-  getwindowgeometry Position 落在截图范围内, 别把黑屏当界面状态分析。
+  `getwindowgeometry Position` 落在截图范围内, 别把黑屏当界面状态分析。
+- `xdotool search --onlyvisible --name XSpace` 会额外返回一个 `mutter-x11-frames`
+  (=GNOME 窗框代理, 它镜像窗口标题) —— 不是第二个控制台, 按 `_NET_WM_PID` 认归属。
+- `scrot` 抓的是**最上层**那张 ⇒ 截任何独立窗口前先 `wmctrl -i -a <win>` 再等 1~3s。
 
 ## 相关
 - zmax-console SKILL.md § 外部命令文件触发
-- simulink_module.py SimulinkModule.open_state_space / open_ss_3d
+- simulink_module.py SimulinkModule.open_state_space / open_ss_3d / start_sim / _real_finish / _ss_tick
 - 重启 GUI: 精确 PID / `pkill -f "[s]tudio.py"` 方括号技巧 (见 SKILL.md 陷阱)

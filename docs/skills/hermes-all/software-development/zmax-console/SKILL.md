@@ -13,6 +13,8 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 `references/canoe-graphic-signal-analysis.md` + `monitor-live-source.md`
 > 🚀 标准打开流程: `references/standard-open-flow.md`
+> 🎬 3D 场景渲染正确性 + 像素取证 (件位置/透明/夹具与插入点错位): `references/3d-scene-render-forensics.md`
+> 📥 配置中心配置数据 → 画布节点 (配置导入真加载/写回 · 右键直达导入函数 · 画布真源写口 · 可重跑判据): `references/config-import-node.md`
 
 ## 🖥 界面文案 = 工程真值 (侧栏卡 / 首页架构图 / 模块卡)
 

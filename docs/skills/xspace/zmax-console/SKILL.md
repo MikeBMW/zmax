@@ -12,6 +12,9 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
 > 📄 `references/canoe-graphic-signal-analysis.md` + `monitor-live-source.md`
+> 🚀 标准打开流程: `references/standard-open-flow.md`
+> 🎬 3D 场景渲染正确性 + 像素取证 (件位置/透明/夹具与插入点错位): `references/3d-scene-render-forensics.md`
+> 📥 配置中心配置数据 → 画布节点 (配置导入真加载/写回 · 右键直达导入函数 · 画布真源写口 · 可重跑判据): `references/config-import-node.md`
 
 ## 🖥 界面文案 = 工程真值 (侧栏卡 / 首页架构图 / 模块卡)
 
@@ -194,6 +197,8 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
   可以放心重跑修正版; 用字符串切片替换整段时, 切片终点要写成显式常量 (`SEP = "self.setLayout(layout)..."`),
   并把尾巴原样拼回, 否则会把 `setLayout`/`def` 头部一起切掉。
 
+> 📄 左右分栏页「拖不动/字被截」= 右栏单行 QLabel 顶死最小宽: `references/config-leftcol-width.md`
+
 ## 🎛 全局可改数字 (参数注册表 / 改数即链动, 2026-10-09)
 
 老倪的硬要求: **改任意一个数字都要能说清它动了什么** (功能·性能·代码), 且数字只有一份真源。
@@ -301,14 +306,10 @@ LIBRARY = LIBRARY_STATIC(源码里的手写组)
 
 ## 📦 小版本迭代清单 (老倪: 「保存数据，小版本迭代」)
 
-> ⚠️ **桌面版出包的两个硬教训 (2026-10-08, 坏包连发四版)**:
-> ① `.github/` 在 `.gitignore` 里, 改 workflow 后必须 `git add -f .github/workflows/build-win-exe.yml`,
->    否则 add 整条失败、改动只在本机 → tag 触发的是旧打包参数(漏 `--add-data src/lerobot/engineering`)。
-> ② `node_logic.py` 是**兼容壳**, 内部 `import lerobot.engineering` 拿的是**仓库外**的 `src/` ——
->    打包漏带这个包时整个控制台**双击即崩**(studio:258 → simulink_module:26 → node_logic:25),
->    而冻结核验只 import 引擎 ⇒ 假绿。判据/做法见 skill `pyqt5-distribution`「冻结包必须验 GUI 启动链」。
-> ③ `gui-venv311` 是软链(`→ external/lerobot-smolvla-lew/gui-venv311`), 里面的 CLI shebang 是家目录整合前的
->    老路径 ⇒ 直接执行报 `cannot execute` (`python -m` 不受影响, 所以长期没被发现)。修: `tools/fix_venv_shebangs.py`。
+> ⚠️ **桌面版出包三个硬教训 (2026-10-08, 坏包连发四版, 判据见 skill `pyqt5-distribution`「冻结包必须验 GUI 启动链」)**:
+> ① `.github/` 在 .gitignore 里 ⇒ 改 workflow 必须 `git add -f`(否则 add 整条失败, tag 触发旧打包参数)
+> ② `node_logic.py` 是兼容壳(import 仓库外 `src/`) ⇒ 漏带即**双击崩**, 冻结核验只 import 引擎 ⇒ 假绿
+> ③ `gui-venv311` 是软链, 内部 CLI shebang 是老家目录路径 ⇒ 直接执行报 cannot execute; 修 `tools/fix_venv_shebangs.py`
 
 细节与命令见 `references/version-iteration-checklist.md`; 一句话版:
 ①现场数据(`data/` 被 gitignore)先拷进 `docs/data_snapshots/<日期>_<主题>/` + README →
