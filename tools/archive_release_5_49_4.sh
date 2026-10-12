@@ -38,6 +38,9 @@ cat > /tmp/rel_${VER}.md <<'EOF'
    src/lerobot/engineering/config_import.py (8 真源 + 工程库 + 工单 → 写回节点 cfg_*), 节点运行真加载;
    右键「打开源码」直达导入函数 (params.source+source_symbol ⇒ code -g config_import.py:94);
    画布写口改真源 data/database/zmax/sources/canvas/。判据 verify_node_cfg_import.py ✅ 15/15 PASS。
+10. 主参数 M = 度量张量 g_ij(x) = M·G_ij(x) (det G=1): src/lerobot/manifold/metric_field.py
+   (Γ/曲率/梯度/测地线全数值; 单位行列式 ⇒ 尺度与形状可分开标定) + 节点真跑报几何量
+   + 写盘闸门 (原始形状须严格正定)。判据 verify_metric_main_param.py ✅ 23/23 PASS。
 
 取证工具: tools/verify_v2_look.py (两场景抓图量像素) · tools/verify_mouth_align.py (孔口↔插入终点
 唯一颜色反查, 换算 mm) · tools/qa_3d_pixels.py · 放大 3D 窗用 `xdotool windowsize` (无需重启即可取证)。
@@ -49,6 +52,7 @@ echo "=== ① 本轮改动的代码 (逐文件拷贝) ==="
 cp -f tools/gui/ss_dreamview.py tools/gui/studio.py tools/gui/update_checker.py "$DST/gui/" 2>/dev/null
 cp -f tools/gui/veh6_config_page.py tools/verify_zmax_open_flow.py tools/verify_node_cfg_import.py \
       src/lerobot/engineering/config_import.py src/lerobot/engineering/nodes/library.py \
+      src/lerobot/manifold/metric_field.py tools/zmax_params.py tools/verify_metric_main_param.py \
       tools/gui/launch_studio.sh tools/verify_no_autostart.py \
       tools/sim_scene_def.py tools/tray_live_publish.py tools/tray_plan_3parts.py \
       tools/verify_v2_look.py tools/verify_mouth_align.py tools/qa_3d_pixels.py tools/cmp_3d_fix.py \
@@ -59,6 +63,9 @@ echo "  编译: $(gui-venv311/bin/python -m py_compile tools/gui/ss_dreamview.py
 
 mkdir -p "$DST/src/lerobot/engineering/nodes"
 cp -f src/lerobot/engineering/config_import.py "$DST/src/lerobot/engineering/" 2>/dev/null
+mkdir -p "$DST/src/lerobot/manifold"
+cp -f src/lerobot/manifold/metric_field.py "$DST/src/lerobot/manifold/" 2>/dev/null
+cp -f config/calib/zmax_manifold.json "$DST/config/" 2>/dev/null
 cp -f src/lerobot/engineering/nodes/library.py "$DST/src/lerobot/engineering/nodes/" 2>/dev/null
 
 echo "=== ② 真源快照 (场景/画布/信号色标) ==="
