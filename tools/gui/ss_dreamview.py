@@ -1010,6 +1010,94 @@ class CollapsibleSide(QFrame):
             return False
 
 
+# ───────────────── 🥽 AR 场景按钮的实现件 (2026-10-12) ─────────────────
+#   老倪: 「在 3D场景中点击 AR按钮, 直接打开 http://127.0.0.1:8797/ar 这个页面」
+#        实测反馈: 「怎么没有打开服务呢? 场景也没有切换啊」 ⇒ 按钮要做三件事, 每件都如实回报:
+#        ① 平台切到 AR 数据源(画布 ssdata.src_state, 真源 ss_scene_switch.py — 与配置中心激活同一条路)
+#        ② AR 服务(8797)没起就起 ③ 打开页面(webbrowser → Qt → xdg-open → firefox, 逐条回落)
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+AR_PAGE_URL = "http://127.0.0.1:8797/ar"
+AR_SERVICE_URL = "http://127.0.0.1:8797"
+
+
+def ar_service_up(timeout: float = 2.0) -> bool:
+    """AR 服务(8797)在不在 —— 读真值 /api/cams, 不猜。"""
+    try:
+        import urllib.request as _u
+        with _u.urlopen(AR_SERVICE_URL + "/api/cams", timeout=timeout) as _r:
+            return 200 <= int(getattr(_r, "status", 200) or 200) < 300
+    except Exception:                                                           # noqa: BLE001
+        return False
+
+
+def ar_ensure_service(tries: int = 12) -> tuple:
+    """服务没起就起(ar_server_ctl.sh start), 返回 (在跑?, 说明)。"""
+    if ar_service_up():
+        return True, "已在跑"
+    import subprocess as _sp
+    _ctl = os.path.join(_REPO, "tools", "ar_server_ctl.sh")
+    if not os.path.exists(_ctl):
+        return False, "AR 服务没在跑, 且找不到 %s" % _ctl
+    try:
+        _sp.Popen(["bash", _ctl, "start"], cwd=_REPO, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                  start_new_session=True)
+    except Exception as _e:                                                     # noqa: BLE001
+        return False, "起服务失败: %r" % (_e,)
+    import time as _t
+    for _ in range(max(1, int(tries))):
+        _t.sleep(1.0)
+        if ar_service_up():
+            return True, "已启动"
+    return False, "启动后 %ds 仍无响应" % int(tries)
+
+
+def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False) -> str:
+    """打开页面, 按 浏览器→Qt→xdg-open→firefox 逐条回落; 返回实际生效的那条(空串=都没起来)。"""
+    import subprocess as _sp
+    import shutil as _sh
+    if dry:      # 只探路, 不真开(判据用)
+        try:
+            import webbrowser
+            webbrowser.get()
+            return "webbrowser(探路)"
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return "xdg-open(探路)" if _sh.which("xdg-open") else ("firefox(探路)" if _sh.which("firefox") else "")
+    try:         # ① 系统默认浏览器(系统真调, 返回值也会骗人 ⇒ 后面还有回落)
+        import webbrowser
+        if webbrowser.open(url):
+            return "webbrowser"
+    except Exception:                                                           # noqa: BLE001
+        pass
+    try:         # ② Qt 的打开器(桌面会话最稳)
+        from PyQt5.QtCore import QUrl
+        from PyQt5.QtGui import QDesktopServices
+        if QDesktopServices.openUrl(QUrl(url)):
+            return "QDesktopServices"
+    except Exception:                                                           # noqa: BLE001
+        pass
+    for _c in (["xdg-open", url], ["firefox", url]):       # ③ 直接把窗口拉起来
+        if not _sh.which(_c[0]):
+            continue
+        try:
+            _sp.Popen(_c, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+            return _c[0]
+        except Exception:                                                       # noqa: BLE001
+            continue
+    return ""
+
+
+def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
+    """把平台数据源切到该任务对应的场景(真源 ss_scene_switch.py ⇒ 画布 src_state)。"""
+    import subprocess as _sp
+    _py = os.path.join(_REPO, "gui-venv311", "bin", "python")
+    _py = _py if os.path.exists(_py) else sys.executable
+    _p = _sp.run([_py, os.path.join(_REPO, "tools", "ss_scene_switch.py"), "--task", str(task), "--json"],
+                 cwd=_REPO, capture_output=True, text=True, timeout=timeout)
+    _out = (_p.stdout or "").strip().splitlines()
+    return json.loads(_out[-1]) if _out else {"ok": False, "msg": "无输出: %s" % ((_p.stderr or "")[-160:],)}
+
+
 class DreamView3D(QWidget):
     """Apollo Dreamview 风格 3D 分层视图"""
 
@@ -2407,27 +2495,41 @@ class DreamView3D(QWidget):
                 pass
             print(msg)
 
-        # 🥽 2026-10-12 老倪: 「在 3D场景中点击 AR 按钮, 直接打开 http://127.0.0.1:8797/ar 这个页面」
-        #   ⇒ 直接开页面, **不做前置门禁**(原来先探 /api/rs_info, 探不到就 return 不开页面; 现在一律开,
-        #     相机状态作为附带信息如实回报, 读不到也照实说)。
+        # ① 切场景/数据源 → AR (真源 = 画布 ssdata.src_state; 与配置中心激活同一条路)
         try:
-            import webbrowser
-            webbrowser.open("http://127.0.0.1:8797/ar")
+            _j = ar_switch_scene("TASK-07-AOI")
+            _say("🥽 场景已切到 AR数据源 · %s" % (_j.get("msg") or "?"))
         except Exception as _e:                                                 # noqa: BLE001
-            _say("🥽 AR 页面打不开(浏览器): %r" % (_e,))
+            _say("⚠️ 切 AR 场景没成功: %s (AR 页面照开)" % type(_e).__name__)
+            _j = {}
+        # ② 服务在不在 → 不在就起 (老倪: 「怎么没有打开服务呢」)
+        try:
+            _up, _why = ar_ensure_service()
+        except Exception as _e:                                                 # noqa: BLE001
+            _up, _why = False, "探测异常 %s" % type(_e).__name__
+        # ③ 打开页面(多条路回落), 并如实回报各相机实况
+        _how = ""
+        try:
+            _how = ar_open_url(AR_PAGE_URL)
+        except Exception as _e:                                                 # noqa: BLE001
+            _how = ""
+            _say("⚠️ 打开页面异常: %r" % (_e,))
+        if not _how:
+            _say("🥽 浏览器三条路都没起来 ⇒ 请手动开 %s (服务%s)" % (AR_PAGE_URL, _why))
             return None
-        # 附带实况: 底图来源 = 状态空间工程的视频数据源 4 台相机(页面顶部可切); 在线/帧龄从 8797 /api/cams 真值读
+        _live, _age = [], None
         try:
             import urllib.request as _u
-            with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=3) as _r:
+            with _u.urlopen(AR_SERVICE_URL + "/api/cams", timeout=3) as _r:
                 info = json.loads(_r.read().decode("utf-8", "ignore"))
             _cams = (info or {}).get("cams") or {}
             _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
             _age = (_cams.get("arm") or {}).get("age_s")
-            _say("🥽 AR 已打开 http://127.0.0.1:8797/ar · 底图=状态空间工程视频源 · 在线 %d/4 · 手臂相机帧龄 %s"
-                 % (len(_live), ("%.1fs" % _age) if isinstance(_age, (int, float)) else "读不到"))
-        except Exception as _e:                                                 # noqa: BLE001
-            _say("🥽 AR 已打开 http://127.0.0.1:8797/ar (相机状态读不到: %s)" % type(_e).__name__)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        _say("🥽 AR 已打开 %s (浏览器: %s · 服务 %s) · 底图=状态空间工程视频源 · 在线 %d/4 · 手臂相机帧龄 %s"
+             % (AR_PAGE_URL, _how, _why, len(_live),
+                ("%.1fs" % _age) if isinstance(_age, (int, float)) else "读不到"))
         return True
 
     def _open_force_scope(self):
