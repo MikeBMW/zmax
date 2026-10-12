@@ -1092,7 +1092,51 @@ class BusView(QWidget):
         老倪 2026-10-01: 「默认是 topic 固定, 时间变动; 现在的滚动模式, 看着太累了, 默认不是滚动」。
         行序: 搜索命中(置顶关键词)最前 → 其余按话题名; 缺测(-1)一律显式写 '—', 不装 0。
         """
+        # 🔌 2026-10-12 老倪: 单步运行 ⇒ 当前节点输出的 topic 高亮 (数据源: 全局数据空间/数据总线)
+        _cur_topics = set()
+        try:
+            import ss_bus_topics as _bt
+            _cur_topics = _bt.highlight_topics()
+            self._cur_step = _bt.read_current()
+        except Exception:                                                  # noqa: BLE001
+            pass
         tp = self._live_topics()
+        # 🔌 2026-10-12 老倪: 单步 ⇒ 当前节点的**输出 topic 作为一行实时话题**进表 (数据源: 全局数据空间)。
+        #   路径: 单步执行 → ss_bus_topics.publish() 真序列化 → step_current.json → 这里并入 live topics
+        #   (live.json 只有真 DDS 流量的话题, 单步的节点输出 topic 不在其中; 视图侧并入 ⇒ 不被发布进程覆盖)
+        try:
+            _cur = getattr(self, "_cur_step", None) or {}
+            if _cur.get("serialized") and _cur.get("topics"):
+                tp = dict(tp)
+                # 值列口径: _live_vals 只渲染白名单键 ⇒ 把单步载荷压成 "state=[…]" 数字序列 (真值, 不装)
+                def _nums(v, acc=None, cap=12):
+                    acc = [] if acc is None else acc
+                    if len(acc) >= cap:
+                        return acc
+                    if isinstance(v, bool):
+                        acc.append(float(v))
+                    elif isinstance(v, (int, float)):
+                        acc.append(float(v))
+                    elif isinstance(v, (list, tuple)):
+                        for x in v:
+                            _nums(x, acc, cap)
+                    elif isinstance(v, dict):
+                        for x in v.values():
+                            _nums(x, acc, cap)
+                    return acc
+                _numv = _nums(_cur.get("payload"))
+                for _t in _cur["topics"]:
+                    tp[_t] = {"topic": _t, "type": "zmax::SSNodeOut", "qos": "step", "allowed": True,
+                              "hz": 0.0, "hz_design": 1.0, "count": 1, "matched_pubs": 1, "jitter_ms": 0.0,
+                              "loss_pct": 0.0, "bytes": len(str(_cur.get("payload"))), "age_s": 0.0,
+                              "verdict": "step", "score": 100.0, "source": "单步 debug",
+                              "producer": "单步运行 (studio · 标定用)", "publisher": "studio",
+                              "fields": {"state": _numv, "count": len(_numv),
+                                         "payload": _cur.get("payload") or {}},
+                              "digest": "🔌 单步节点: %s" % (_cur.get("node_name") or _cur.get("node_id")),
+                              "link_topics": _cur.get("link_topics") or []}
+        except Exception:                                                  # noqa: BLE001
+            pass
         self._set_trace_header("fixed")
         if not tp:
             self.tb.setRowCount(1)
@@ -1115,6 +1159,10 @@ class BusView(QWidget):
                                                     or pin in str(t.get("type") or "").lower()))
         if pin:
             self._mark_search(n_hit, pin)
+        if _cur_topics:                     # 🔌 单步: 当前节点输出 topic **置顶** (与搜索命中共用一套观感)
+            items.sort(key=lambda kv: (0 if (kv[0] in _cur_topics
+                                             or str(kv[1].get("topic") or kv[0]) in _cur_topics) else 1,
+                                       str(kv[1].get("topic") or kv[0])))
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(len(items))
         lv = getattr(self, "_lv_last", None) or {}
@@ -1134,6 +1182,7 @@ class BusView(QWidget):
             _h = ("%s / %s" % (_f3(hz), _f3(hzd))) if (isinstance(hz, (int, float)) and hz >= 0) else "—"
             nm = str(t.get("topic") or k)
             _is_hit = bool(pin) and (pin in nm.lower() or pin in str(t.get("type") or "").lower())
+            _is_step = (k in _cur_topics) or (nm in _cur_topics)      # 🔌 单步当前节点的输出 topic
             _sig = self._sig_names(f if isinstance(f, dict) and f else t.get("digest"))
             cells = [tt, nm, _sig, vals or "—", str(t.get("verdict") or "—"), _h,
                      str(t.get("count", "—")),
@@ -1157,7 +1206,19 @@ class BusView(QWidget):
                 elif c == 4:
                     item.setForeground(QColor(C_GREEN if str(txt) == "ok" else
                                               C_RED if str(txt) in ("fail", "error") else C_YELLOW))
-                if _is_hit:
+                if _is_step:                                       # 🔌 单步: 金色高亮 (与画布单步节点同色)
+                    item.setBackground(QColor("#2b2611"))
+                    if c in (1, 3):
+                        item.setForeground(QColor("#ffd700"))
+                    if c == 1:
+                        item.setToolTip("🔌 单步调试: 这是**当前单步节点**输出的 topic\n"
+                                        "节点: %s\n载荷: 已真序列化 (单步是为了标定系统)\n"
+                                        "真源出线 topic: %s" % ((self._cur_step or {}).get("node_name")
+                                                              or (self._cur_step or {}).get("node_id") or "—",
+                                                              (self._cur_step or {}).get("link_topics") or []))
+                    elif c == 3:
+                        item.setToolTip("🔌 单步该节点输出的真实载荷 (来自 step_current.json)")
+                elif _is_hit:
                     item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
@@ -1242,7 +1303,9 @@ class BusView(QWidget):
                 str(rec.get("n", "—")),
                 str(live_t.get("qos") or "—"),
             ]
-            _hitrow = bool(_pin) and (_pin in topic.lower() or _pin in str(rec.get("type", "")).lower())
+            _step_hit = topic in _cur_topics                         # 🔌 单步当前节点的输出 topic
+            _hitrow = _step_hit or (bool(_pin) and (_pin in topic.lower()
+                                                   or _pin in str(rec.get("type", "")).lower()))
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
                 item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 8, 10) else UI, 10))
@@ -1263,7 +1326,14 @@ class BusView(QWidget):
                         item.setForeground(QColor(C_GREEN if v >= 99 else C_YELLOW if v > 0 else C_GRAY))
                     except Exception:                                        # noqa: BLE001
                         pass
-                if _hitrow:                                            # 📌 置顶命中: 整行高亮
+                if _step_hit:                                          # 🔌 单步: 金色高亮 (与画布单步节点同色)
+                    item.setBackground(QColor("#2b2611"))
+                    if c == 1:
+                        item.setForeground(QColor("#ffd700"))
+                    elif c == 3:
+                        item.setForeground(QColor("#ffd700"))
+                        item.setToolTip("🔌 单步调试: 这是当前单步节点输出的 topic (载荷已序列化)")
+                elif _hitrow:                                          # 📌 置顶命中: 整行高亮
                     item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                     if c == 3:
                         item.setForeground(QColor("#7ee787"))

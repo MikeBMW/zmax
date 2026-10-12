@@ -8045,6 +8045,19 @@ class SimulinkModule(QWidget):
         if out is not None:
             self._log(f"  ⮕ 输出: {out}")
             self._sim_signals[n["id"]] = out
+        # 🔌 2026-10-12 老倪: 「默认每个节点至少输出一个 topic; 单步 debug 肯定输出(序列化), 整体运行
+        #   考虑性能不序列化 —— 单步是为了标定系统。」⇒ 单步/节点级调试走真序列化 + 写当前节点指针
+        #   (数据总线视图据此金色高亮该节点输出 topic); 整体运行(▶运行)不经过本函数 ⇒ 零序列化开销。
+        try:
+            import ss_bus_topics as _bt
+            _mode = "step" if str(label or "").startswith(("单步", "step")) else "debug"
+            _rr = _bt.publish({"id": n["id"], "name": n.get("name")}, out, mode=_mode)
+            _tp = ", ".join(_rr.get("topics") or [])
+            _sz = len(json.dumps(_rr.get("payload"), ensure_ascii=False)) if _rr.get("serialized") else 0
+            self._log("  🔌 数据总线: %s → %s (%s)" % (
+                _tp, ("载荷 %d 字符已序列化" % _sz) if _rr.get("serialized") else str(_rr.get("why"))))
+        except Exception as _e:                                            # noqa: BLE001
+            self._log("  ⚠ 数据总线 topic 发布失败: %r" % (_e,))
         # 状态: 成功 (绿) — 单步模式保持金色高亮
         n["status"] = "step_active" if keep_active else "success"
         if item:
