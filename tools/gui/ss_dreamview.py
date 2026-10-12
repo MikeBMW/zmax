@@ -2548,9 +2548,25 @@ class DreamView3D(QWidget):
             print(msg)
 
         # ① 切场景/数据源 → AR (真源 = 画布 ssdata.src_state; 与配置中心激活同一条路)
+        #   ⚠️ 但**不抢老倪手里的数据源**: 现场他把数据源切到「真机」(bypass_real) 时, 点 AR 只开页面,
+        #      不把真机改回 AR场景(2026-10-12 现场: 他切了真机, 画布却显示 AR场景 ⇒ 是我这一步改的)。
+        _cur = ""
         try:
-            _j = ar_switch_scene("TASK-07-AOI")
-            _say("🥽 场景已切到 AR数据源 · %s" % (_j.get("msg") or "?"))
+            import subprocess as _sp0
+            _o = _sp0.run([sys.executable, os.path.join(_REPO, "tools", "ss_scene_switch.py"), "--now"],
+                          cwd=_REPO, capture_output=True, text=True, timeout=30).stdout or ""
+            _cur = "真机" if "真机" in _o else ("AR场景" if "AR场景" in _o else "")
+        except Exception:                                                       # noqa: BLE001
+            _cur = ""
+        try:
+            if _cur == "真机":
+                _say("🥽 数据源保持「真机」不动(点 AR 只开页面) · 底图=状态空间工程视频源")
+                _j = {}
+            elif _cur == "AR场景":
+                _j = {"msg": "已经是 AR场景 ⇒ 不动"}
+            else:
+                _j = ar_switch_scene("TASK-07-AOI")
+                _say("🥽 场景已切到 AR数据源 · %s" % (_j.get("msg") or "?"))
         except Exception as _e:                                                 # noqa: BLE001
             _say("⚠️ 切 AR 场景没成功: %s (AR 页面照开)" % type(_e).__name__)
             _j = {}

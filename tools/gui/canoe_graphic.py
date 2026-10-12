@@ -341,7 +341,16 @@ class HostJsonSource(threading.Thread):
                         raw = json.load(f)
                 except Exception:
                     continue
-                vals = flatten_json(raw, "", {}, 0, 48)
+                # 🥽 AR/AOI 源(ar_aoi_live.json): 它的信号表就在 `s` 里(86 条), 而且 groups 的组名就是信号名
+                #   ⇒ 直接取 s 的键, 不走 flatten。**踩过的坑**: flatten_json 有 48 键上限, 原来 AR 的 86 条
+                #   只进来 48 条(老倪: 「AR场景的信号呢?」), 且键名前缀会多出 "s."(组名对不上, 全掉进"其它信号")。
+                if prefix == "ar" and isinstance(raw.get("s"), dict):
+                    _meta = ("ts", "t", "age", "meta", "groups", "schema")     # 元数据不是信号, 别混进目录
+                    vals = {str(k): v for k, v in raw["s"].items()
+                            if isinstance(v, (int, float)) and not isinstance(v, bool)
+                            and str(k).split(".")[0] not in _meta}
+                else:
+                    vals = flatten_json(raw, "", {}, 0, 48)
                 age = max(0.0, time.time() - st.st_mtime)      # 源侧帧龄 = 文件写龄
                 # 🕒 时间戳口径: 源侧自带的 ts 优先 (trace_live.json = 3D 面板那一帧的时刻),
                 # 这样波形标记线上的时刻 == 3D 场景 HUD 上的时刻, 才能一一对应核对。
