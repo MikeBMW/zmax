@@ -76,8 +76,13 @@ def cmd_save(a):
     if a.out:
         path = a.out
     else:
-        path = os.path.join(PF.project_dir(), "状态空间工程_%s%s" % (time.strftime("%Y%m%d_%H%M%S"),
-                                                                   PF.EXT))
+        # 🔴 2026-10-12 老倪: 「怎么突然多出来一个工程文件? 两个工程文件加载哪个?」
+        #   真因: save 默认把带时间戳的快照写进**工程目录**(与总工程 zmax_space.proj 同目录)
+        #   ⇒ 控制台文件对话框里两个 .proj 并列, 分不清哪个是总工程。
+        #   修法: 快照一律进 archive/ 子目录(与既有 archive/*.zmaxproj 一致), 工程目录只剩总工程。
+        _ad = os.path.join(PF.project_dir(), "archive")
+        os.makedirs(_ad, exist_ok=True)
+        path = os.path.join(_ad, "状态空间工程_%s%s" % (time.strftime("%Y%m%d_%H%M%S"), PF.EXT))
     r = PF.save_project(path, note=a.note, with_calib=not a.no_calib_content)
     print("✅ 工程存档已写: %s  (%s)" % (r["path"], _fmt_bytes(r["bytes"])))
     print("   版本 %s · 存于 %s · schema %s" % (r["version"], r["saved_at"], r["schema"]))
