@@ -2392,7 +2392,7 @@ class DreamView3D(QWidget):
         """🥽 AR 场景 (2026-10-11 老倪: 「把 3D场景的 力控, 改成 AR」)。
 
         不是在仿真里再开一个 3D 窗, 而是**把虚拟信息叠到真实画面**上:
-        · 底图 = 本机 Intel RealSense D435 实拍彩色帧 (8797 `/rs.mjpg`, 带深度与出厂内参)
+        · 底图 = **状态空间工程的视频数据源**(8791 cam_live_stream 的 4 台相机; 页面顶部可切, 默认手臂 D405)
         · 叠加 = base 系 3D 内容经相机外参投影上去 (金手指 AOI 点位/空间点位/TCP 真值/录制轨迹)
         · 标定/开关/清除语义全在 8797 (AR 服务) 与页面里, 本方法只负责**打开并如实回报状态**
         服务没起/相机没帧就照实说, 不弹空窗、不用旧帧冒充。
@@ -2407,33 +2407,27 @@ class DreamView3D(QWidget):
                 pass
             print(msg)
 
-        info = None
+        # 🥽 2026-10-12 老倪: 「在 3D场景中点击 AR 按钮, 直接打开 http://127.0.0.1:8797/ar 这个页面」
+        #   ⇒ 直接开页面, **不做前置门禁**(原来先探 /api/rs_info, 探不到就 return 不开页面; 现在一律开,
+        #     相机状态作为附带信息如实回报, 读不到也照实说)。
+        try:
+            import webbrowser
+            webbrowser.open("http://127.0.0.1:8797/ar")
+        except Exception as _e:                                                 # noqa: BLE001
+            _say("🥽 AR 页面打不开(浏览器): %r" % (_e,))
+            return None
+        # 附带实况: 底图来源 = 状态空间工程的视频数据源 4 台相机(页面顶部可切); 在线/帧龄从 8797 /api/cams 真值读
         try:
             import urllib.request as _u
             with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=3) as _r:
                 info = json.loads(_r.read().decode("utf-8", "ignore"))
+            _cams = (info or {}).get("cams") or {}
+            _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
+            _age = (_cams.get("arm") or {}).get("age_s")
+            _say("🥽 AR 已打开 http://127.0.0.1:8797/ar · 底图=状态空间工程视频源 · 在线 %d/4 · 手臂相机帧龄 %s"
+                 % (len(_live), ("%.1fs" % _age) if isinstance(_age, (int, float)) else "读不到"))
         except Exception as _e:                                                 # noqa: BLE001
-            _say("🥽 AR 服务(8797)没起: %s: %s" % (type(_e).__name__, str(_e)[:80]))
-            return None
-        # 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
-        #   机器人手臂的 RealSense、金手指检测相机、表面检测相机 —— 4 个都照同一个场景」 ⇒ 默认开**状态空间视频源**(手臂相机),
-        #   页面上可切到另外 3 台(金手指/表面/本机 USB D435); 哪几路在线/帧龄多少在页面上照实写。
-        _cams = (info or {}).get("cams") or {}
-        _def = (info or {}).get("default") or "arm"
-        _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
-        _say("🥽 AR 底图 = 状态空间工程视频源 (%s) · 在线 %s/%s" % (_def, len(_live), 4))
-        try:
-            import webbrowser
-            webbrowser.open("http://127.0.0.1:8797/ar?cam=" + _def)
-        except Exception as _e:                                                 # noqa: BLE001
-            _say("🥽 AR 页面打不开(浏览器): %r" % (_e,))
-            return None
-        if info.get("ok"):
-            _say("🥽 AR 场景已打开: RealSense 实拍 + 叠加层 (帧 %s · 帧龄 %.2fs · 深度中位 %smm)"
-                 % (info.get("frames"), info.get("age_s") or -1,
-                    (info.get("depth") or {}).get("median_mm")))
-        else:
-            _say("🥽 AR 页面已开, 但 RealSense 还没出帧 (err=%s)" % (info.get("err") or "无"))
+            _say("🥽 AR 已打开 http://127.0.0.1:8797/ar (相机状态读不到: %s)" % type(_e).__name__)
         return True
 
     def _open_force_scope(self):
