@@ -5040,6 +5040,36 @@ _EXTERNAL_LOC["ss_energy"] = (os.path.join(_MANIFOLD_DIR, "energy_manifold.py"),
 def node_ss_calib_mani(ctx):
     """🧮 流形引擎标定 — 主参数 M (状态空间结构参数/等效惯量): 同一场 有惯性 vs 过阻尼 两臂真跑"""
     log = ctx.get("log")
+
+    # ①e 🆕 2026-10-12 老倪设计: **主参数 M 是张量** —— 度量张量 g_ij(x) = M · G_ij(x) (det G = 1)。
+    #   真源实现 src/lerobot/manifold/metric_field.py; 本节点真跑给出几何量 (正定性/联络/曲率/测地线)。
+    mf = None
+    try:
+        import os as _os2
+        import numpy as _np2
+        import importlib as _il2
+        _mf2 = _il2.import_module("lerobot.manifold.metric_field")
+        mf = _mf2.MetricField.from_config(path=_os2.path.join(_REPO_ROOT, "config", "calib", "zmax_manifold.json"))
+        _sp = mf.spec()
+        _okp, _mn, _det = mf.is_positive_definite()
+        _cr = mf.curvature_report()
+        _x0 = _np2.zeros(mf.dim)
+        _v0 = _np2.zeros(mf.dim)
+        _v0[0] = 1.0
+        _lin = _x0 + _v0 * 0.25                                            # 欧氏直线 (对照)
+        _geo = mf.geodesic_curve(_x0, _v0, steps=5, dt=0.05)[-1]           # 真测地线
+        _dev = float(_np2.linalg.norm(_geo - _lin))
+        if log:
+            log("🧭 主参数 M = 度量张量 g_ij(x) = M·G_ij(x): dim=%d · mode=%s · 独立分量 %d · M=%.3g"
+                % (_sp["dim"], _sp["mode"], _sp["独立分量数"], _sp["尺度 M"]))
+            log("   正定: %s (min_eig %.4g · det g %.4g) · 曲率: %s"
+                % ("✅" if _okp else "❌", _mn, _det, ("‖Γ‖=%.3g ‖R‖=%.3g" % (_cr["‖Γ‖_F"], _cr["‖R‖_F"]))
+                   if _cr.get("full_tensor") else ("子空间抽样 ‖R‖=%.3g" % _cr["‖R‖_F"])))
+            log("   测地线 (v=e1, t=0.25): 度量走 %s vs 欧氏直线 %s → 偏离 %.4g (各向同性 ⇒ 0 = 零回归)"
+                % (_np2.round(_geo, 4).tolist(), _np2.round(_lin, 4).tolist(), _dev))
+    except Exception as _e:                                                 # noqa: BLE001
+        if log:
+            log("⚠️ 度量张量口径不可用 (退回标量 M): %r" % (_e,))
     try:
         import importlib.util as _ilu
         import numpy as np

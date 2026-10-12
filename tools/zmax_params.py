@@ -310,6 +310,60 @@ def manifold_inertia(path: str = CALIB) -> bool:
     return bool((calib(path).get("manifold_engine") or {}).get("inertia", False))
 
 
+def manifold_metric(path: str = MANIFOLD_P) -> dict:
+    """主参数 M 的**度量张量**口径 (真源 config/calib/zmax_manifold.json 的 metric 段)。
+
+    返回 {dim, mode, scale(M), diag, components, 独立分量数, 测地线…}; 缺 metric 段 ⇒ 各向同性 (零回归)。
+    """
+    import sys as _s
+    mp = os.path.join(ROOT, "src")
+    if mp not in _s.path:
+        _s.path.insert(0, mp)
+    from lerobot.manifold.metric_field import MODE_ISOTROPIC, independent_components       # noqa: PLC0415
+    c = _load_json(path) or {}
+    m = c.get("metric") or {}
+    dim = int(m.get("dim", 3))
+    out = {"dim": dim, "mode": str(m.get("mode", MODE_ISOTROPIC)), "M": float(c.get("M", MANIFOLD_M_DEFAULT)),
+           "diag": m.get("diag"), "components": m.get("components"), "gain": m.get("gain"),
+           "independent_components": independent_components(dim), "unit": MANIFOLD_M_UNIT,
+           "_src": os.path.relpath(path, ROOT)}
+    return out
+
+
+def write_manifold_metric(dim: int | None = None, mode: str | None = None, diag=None, comps=None,
+                          path: str = MANIFOLD_P) -> dict:
+    """写主参数的度量口径 (只有显式给的字段才改; 写后回读)。"""
+    d = _load_json(path) or {}
+    m = dict(d.get("metric") or {})
+    if dim is not None:
+        m["dim"] = int(dim)
+    if mode is not None:
+        m["mode"] = str(mode)
+    if diag is not None:
+        m["diag"] = [float(x) for x in diag]
+    if comps is not None:
+        m["components"] = [float(x) for x in comps]
+    import sys as _s
+    if os.path.join(ROOT, "src") not in _s.path:
+        _s.path.insert(0, os.path.join(ROOT, "src"))
+    from lerobot.manifold.metric_field import (MODE_ISOTROPIC, MetricField,   # noqa: PLC0415
+                                              independent_components, raw_shape_positive_definite)
+    f = MetricField(dim=int(m.get("dim", 3)), scale=float(d.get("M", 1.0)),
+                    mode=str(m.get("mode", MODE_ISOTROPIC)), diag=m.get("diag"), comps=m.get("components"))
+    ok, mn = raw_shape_positive_definite(int(m.get("dim", 3)), str(m.get("mode", MODE_ISOTROPIC)),
+                                        m.get("diag"), m.get("components"))
+    if not ok:
+        return {"ok": False, "why": "该形状**归一化前**非严格正定 (min eig %.3g ≤ 0, 或 det ≤ 0) ⇒ 已拒写" % mn}
+    ok2, mn2, det2 = f.is_positive_definite()
+    d["metric"] = m
+    d["_updated_at"] = __import__("time").strftime("%F %T")
+    import json as _js
+    _js.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    back = (_load_json(path) or {}).get("metric") or {}
+    return {"ok": back.get("mode") == m.get("mode") and int(back.get("dim", 0)) == int(m.get("dim", 0)),
+            "metric": back, "min_eig": mn, "dest": os.path.relpath(path, ROOT)}
+
+
 def manifold_spec(path: str = CALIB) -> dict:
     """读流形引擎标定域全量 (M/inertia/range/unit/flow/struct_src/zero_regression/_src)。"""
     return dict(calib(path).get("manifold_engine") or {})
