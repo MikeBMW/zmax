@@ -48,5 +48,13 @@ if pgrep -f "[g]ui-venv311/bin/python studio.py" >/dev/null 2>&1; then
     exit 0
 fi
 
+# 🔴 2026-10-12 老倪: 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
+#   真根因候选: /tmp/zmax_nav_cmd 里若残留上一轮(`open_all`/`ss_3d`)的命令, **新进程**的去重表是空的
+#   ⇒ 界面一建好就执行旧命令 ⇒ 老倪看到"3D 自己开起来了"。启动前一律清空命令文件。
+: > /tmp/zmax_nav_cmd 2>/dev/null || true
+
 cd "$GUI_DIR" || exit 1
+# 只启动控制台本体: 不设任何自动开窗开关 (ZMAX_AUTO_RUN/ZMAX_AUTO_SS/ZMAX_AUTO_SS_RUN/ZMAX_AUTO_TEST
+# 一律不导出) —— 双击图标 = 落到配置中心, 由老倪自己检查任务配置后点「🚀 启动工程 · 信号 · 场景」。
+unset ZMAX_AUTO_RUN ZMAX_AUTO_SS ZMAX_AUTO_SS_RUN ZMAX_AUTO_SS_3D ZMAX_AUTO_TEST
 exec nice -n 10 "$VENV_PY" studio.py >> "$LOG" 2>&1

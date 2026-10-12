@@ -11700,6 +11700,11 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._engine_combo)
         sb.showMessage("Z-MAX v5.49.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
+        # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
+        #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
+        #   只落配置中心(ZMAX_BOOT_PAGE=config), 不开 3D/信号/画布, 不自动跑 —— 由老倪看任务配置后
+        #   点右下角「🚀 启动工程 · 信号 · 场景」(= tools/zmax_open.py step2 同一执行体)。
+        #   回归判据: tools/verify_no_autostart.py (启动后 45s 内不得出现 3D/信号/画布窗口)。
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
         if os.environ.get("ZMAX_AUTO_RUN") == "1":

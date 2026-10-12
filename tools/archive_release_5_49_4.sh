@@ -30,6 +30,10 @@ cat > /tmp/rel_${VER}.md <<'EOF'
    逐像素复核发现 **孔口全图 0px 不可见** (纯深色方口画在深色盒体上) + 插入终点在盒面内侧 35mm 被盒体挡死
    ⇒ 看着像错位。修: 孔口加**亮青边框**(朝相机 +X 面, 相机 x=+1.3 已核) + 插入终点绿框**穿透显示**。
 7. 摆盘 tray盘 槽位线框按件半长放大 r=0.012→0.027 (24mm 框装不下 52mm 件 = "盘太小"来源之一)。
+8. 老倪定规矩: 双击启动图标 → **只落配置中心, 不自动开 3D/信号/画布**, 先检查任务配置再点「🚀 启动工程」。
+   真根因: /tmp/zmax_nav_cmd 残留上一轮命令 ⇒ 新进程(去重表空)一建好界面就执行 ⇒ 看着像"3D 自己开起来"。
+   修: launch_studio.sh 启动前清空命令通道 + unset 全部 ZMAX_AUTO_*; studio.py 启动段写死该规矩。
+   判据: tools/verify_no_autostart.py PASS (启动后 45s 无 3D/信号窗; 命令通道空; 落配置中心)。
 
 取证工具: tools/verify_v2_look.py (两场景抓图量像素) · tools/verify_mouth_align.py (孔口↔插入终点
 唯一颜色反查, 换算 mm) · tools/qa_3d_pixels.py · 放大 3D 窗用 `xdotool windowsize` (无需重启即可取证)。
@@ -38,7 +42,8 @@ gui-venv311/bin/python tools/bump_version.py --to "$VER" --summary-file /tmp/rel
 
 echo "=== ① 本轮改动的代码 (逐文件拷贝) ==="
 cp -f tools/gui/ss_dreamview.py tools/gui/studio.py tools/gui/update_checker.py "$DST/gui/" 2>/dev/null
-cp -f tools/sim_scene_def.py tools/tray_live_publish.py tools/tray_plan_3parts.py \
+cp -f tools/gui/launch_studio.sh tools/verify_no_autostart.py \
+      tools/sim_scene_def.py tools/tray_live_publish.py tools/tray_plan_3parts.py \
       tools/verify_v2_look.py tools/verify_mouth_align.py tools/qa_3d_pixels.py tools/cmp_3d_fix.py \
       tools/verify_3d_scene_episode.sh tools/check_3d_scene_now.sh tools/verify_3d_follow.sh \
       tools/archive_release_${VER/./_}.sh "$DST/tools/" 2>/dev/null
