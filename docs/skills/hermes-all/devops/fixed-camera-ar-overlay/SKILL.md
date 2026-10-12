@@ -36,6 +36,19 @@ metadata:
    不拼 `?cam=`、也不做前置门禁(先探服务/探不到就 `return` 不开页面 = **点了没反应**, 是 bug)。
    正解 = 先开页面, 相机在线/帧龄作为打开后的**附带回报**(读不到就照实说读不到); 页面必须**无参可用** —— 默认底图写在页面里。
 
+   🔴 **「AR 服务打不开」的两个真因 (2026-10-12 实测, 别再猜)** —— 现场 4 次投诉，日志逐字:
+   `🥽 AR 页面没能自动打开(试过 chromium/firefox/xdg-open/gio/webbrowser/Qt 但窗口没出现) …(服务启动后 12s 仍无响应)`。
+   1. **判据错: 只认“顶层窗口标题”**。chromium 在**已开着的窗口里新开标签页**时，顶层窗口标题**不变** ⇒
+      六个候选全被判"没出现"。⇒ 候选加 `--new-window`（chromium/firefox/chrome）；
+      真判据换成**服务侧硬信号**：页面一加载就会拉 `/api/cams` ⇒ 比较启动前后 **到 8797 的已建立连接数**
+      (`ss -tn state established` 里含 `:8797` 的行数)，涨了就是真开了（窗口标题只作辅助）。实测
+      1.8s 返回 `chromium(页面已连上服务(8797 连接 +10))`（旧法 6 候选 ×6s 全“失败”）。
+   2. **服务探测的 IP 是启动时冻结的**：`_LAN=_lan_ip()` 在模块导入时算一次（控制台 08:58 起时默认路由是产线网
+      ⇒ 冻成 192.168.23.50），之后网段一变（拔线/换网）就永远不通 ⇒ 回环一直好却报"服务没响应"。
+      ⇒ 探测按**回环优先**逐个真探并记住通的 base（`ar_hosts()` → `127.0.0.1` 再 LAN，实测 0.14s 连上）。
+   3. 验证要**关掉旧窗口再点一次**（而不是在旧窗口还在时点）—— 旧窗口还在时只会走"已在窗口表里(置顶)"分支。
+      判据脚本: `~/.hermes/cache/scratch/ar_open_e2e.py`（关旧→真跑→查返回+连接数+新窗口，输出 ✅/⛔ + exit code）。
+
 ### 光模块标定能力(与 YOLO 在役权重同源)
 `tools/ar_calib_module.py`: `detect`(AR 帧里跑 `models/yolo_peg_live.pt` 软链 → bbox/conf + 深度 3D) ·
 `pair`(追加 uv↔base, base 缺省取 TCP 真值, **帧龄>1s 拒收脏点**) · `solve`(≥5 对, 只解 R,t, 落 `cam_calib.json["rs"]`)
@@ -159,6 +172,8 @@ AR 页(`tools/web/tcp-ar.html`, 按 mtime 热读 ⇒ **改页面不用重启服�
 | 内联 JS 页面里留了一行**孤立残片**(如 `$('x').textContent='…'; });`) | 整段 `<script>` 解析失败 ⇒ **页面上所有按钮同时失效**, 浏览器只留一条空 exception ⇒ 极易误判成"后端崩了" | 抽出 `<script>` 跑 `node --check`; 若 HEAD 与新版报同一处错, 那是历史遗留的真 bug, 顺手修掉 |
 | 想造 PyQt 实例来测"点按钮会做什么" | `object.__new__(Cls)` 报 `TypeError: not safe, use Cls.__new__()`; `Cls.__new__(Cls)` 报 `RuntimeError: super-class __init__() of type X was never called`(sip 属性访问要求 C++ 对象已初始化) ⇒ 两条路都不可用 | 轻量: `ast.parse` 找目标方法 + `ast.get_source_segment` 取方法体, 断言关键调用的**实参字面量**(URL)且前半段无提前 `return`; 重量: `QT_QPA_PLATFORM=offscreen` 真起窗口/真插数据; URL·默认参数这类事实再用真浏览器打开复核 |
 | 把 GUI 重启与核查串在同一条前台命令 | 重启脚本内部等进程退出/端口就绪, 前台**长时间不返回**(实测卡 >400s) ⇒ 撞超时上限, 跟在后面的核查结论一起丢 | 重启发一条、核查另发一条(进程 pid 变了 + 端口 200 即成功); 长重启用 background+notify; 一批改动攒完只重启**一次** |
+| 用户说"某块太拥挤, 恢复上一版布局"就直接改 HTML | 改完自己以为好了, 现场还是"挤"或反而更长 —— 因为**拥挤的往往是** `grid-template-columns:repeat(7,…)`/`auto-fit minmax(120px)` 这类小格子，而"上一版"是哪一版没定义 | ① 先**量后改**: 浏览器里 `getComputedStyle(el).gridTemplateColumns` + 按钮 `getBoundingClientRect()` + `scrollWidth>clientWidth` 数截断，把"挤"变成数（例: 7094px 页高 / 103 按钮 / 四块 button 条都是 7 列）；② 让用户在**具体哪一块**上选一次（给可点选项，别让他描述）；③ 改完**同口径重量一遍**作证据（四块单列 · 19px · 57px 高 · 0 截断）。 |
+| 把点位按钮条 `.slotbar` 放进 flex 的 `.row` | 单列大按钮铺不开 —— flex 把它压成内容宽度（实测 204px) | `.row>.slotbar{flex:1 1 100%;width:100%}`；另注意媒体查询中同优先级规则**后写者赢**，窄屏断点里的 `repeat(4,…)` 会把单列盖回去 |
 
 ## 参考与延伸
 - 多相机底图(状态空间工程视频源 4 路)+ L5(VLM) 理解 + 信号场景色标: 见技能 `ar-multicam-scene-tagging`。

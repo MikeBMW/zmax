@@ -1216,6 +1216,34 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
 - ⚠️ 验证脚本里的期望值**必顶从真源现读**(实测: 写死 `0.489774` 的断言在现场重教点1 后报**假失败**)。
 - 📄 链路口径(谁在检测/模型吃什么/接口清单): `docs/AOI_GOLD_DETECTION_CHAIN_20261012.md`
 
+### 🔁 续篇(同日): **空间点**也漏同步 + 点位要记 **6 个数(x y z a b c)**
+
+老倪逐字: 「空间点7的位置我更新了, 但是你的配置中心, 还是没有更新空间点7的位置。**其它点, 得实时更新, 必须实时**」
++ 「配置中心的点, 除了位置, 还得有 **a b c**, 6 个数字都要记录」。
+
+- **② 真因(只修 AOI 点不够)**: 上一版只对 `_is_aoi_point(name)` 调 `_config_sync` ⇒ 空间点走
+  `record_l2_point.py --store space` 后**不重建配置**。实测: 他 13:41:40 改的 space7 库里已是新值,
+  `config/tasks/tasks.json` 的 `pt.空间点7` 还停在 10-08 旧值(差 103mm)。
+- **收口两条(缺一不可)**: ① 记录/清除**任何**点成功都立刻 `_config_sync`(别按点名分支);
+  ② 常驻**守护线程** `_config_watch_worker(1.5s)` 盯三个真源(`space_points.json` / `taught_points.json` /
+  `reports/aoi_points/*.json`)的 `(mtime_ns,size)` 指纹, 一变就重建 `tasks.json` ⇒ **谁写都跟得上**
+  (8793 标记 / 控制台示教 / 脚本 / 手改)。判据: 碰一下真源 mtime, 5s 内日志出「配置同步真源变更(守护) rc=0」。
+  为什么要有这一层: 记录接口只是**一条**写口, 把"实时"押在它身上迟早再被投诉。
+- **6 个数**: 点位库历来只存 `pos + quat`; a b c(度)= 四元数按 RPY 换算。
+  🔴 **口径必须唯一** ⇒ 新建 `tools/pt_pose.py`(`abc_deg` / `rec_abc` / `abc_str`), 记录脚本落库时同时写
+  `abc` + `abc_src=quat2rpy`; 8793 tooltip(`cam_live_stream._pt_abc_deg` 改调它)、`task_build`(配置串)、
+  `verify_points_consistency`(体检) 全部改调这一份 —— 原来三处各写一份公式, 早晚算出不同的角。
+  历史点位补齐用 `tools/backfill_point_abc.py`(幂等, 只补缺的, 先备份 /tmp): 实测 77 条(空间点8 + 示教点61 + 台账8)。
+- **配置中心的点是** `pt.<点名>` 串 ⇒ 变成 `x=… y=… z=… m · a=… b=… c=… ° · 记录 … · 真源`;
+  点位表 7 列 → **10 列**(点位/X/Y/Z/A/B/C/时间/更新/真源), 复制/导出的 TSV 同步带 A/B/C。
+- 🐛 **判据当场抓到的真 bug(必须一起修, 否则表里看还是 7 列)**: 页面 `_fill()`(🔄 与 2s 自动跟随都调它)
+  写的是**旧 7 列**元组 ⇒ 把 A/B/C 三列冲成 时间/更新/真源。症状极像"后端没数据", 其实是前端覆盖。
+  ⇒ 改表结构时, **所有**写这张表的路径(`_mk_table` 初建 + `_fill` 刷新)都要同步改列。
+  离屏真建卡回读单元格的判据脚本写法见 `~/.hermes/cache/scratch/cfg_pts_abc_test.py`(PASS 12/FAIL 0)。
+- **验收**: `tools/verify_points_consistency.py` 现在**位置 + 姿态**一起体检 ⇒ 16 点全一致(0 问题);
+  真路径复验: `POST http://127.0.0.1:8793/ctl/record_point {"name":"space7"}` 回执里 `config_synced=True`,
+  库里 `abc=[-1.238, 29.02, 176.288]`, 配置串同值。
+
 ## 🔴 判据图与 YOLO 的关系 (用户会反复问, 先记在这里)
 
 - **主口径不给判据图**: 工控机模型吃的是**同帧派生的 960×960 方图**
