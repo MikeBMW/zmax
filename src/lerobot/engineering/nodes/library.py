@@ -5075,6 +5075,29 @@ def node_ss_calib_mani(ctx):
             if log:
                 log("⚠️ 配置中心全量装载失败 → 退回单文件读 zmax_params: %s: %s" % (type(_e).__name__, _e))
 
+        # ①d 🆕 2026-10-12 老倪: 「这个配置中心的配置数据, 要写入状态空间的 标定诊断测量 主参数M 节点,
+        #     我右键打开这个节点, 要直接定位到, 导入配置文件的位置, 而且要能够运行, 要有能加载配置文件的逻辑」
+        #   ⇒ 本节点运行 = 真加载**配置文件真源** (8 项 json/proj 真源 + 工程库 SQLite + 工单) 并**写回本节点 params**
+        #   (cfg_entries / cfg_snapshot / cfg_loaded_at / cfg_files)。右键「打开源码」由节点 params.source +
+        #   source_symbol 直达导入函数 (src/lerobot/engineering/config_import.py::import_config_files)。
+        ci = {}
+        try:
+            import importlib as _il
+            _ci = _il.import_module("lerobot.engineering.config_import")
+            ci = _ci.load_config()              # 真加载 + 真写回 (print 逐文件清单)
+            if log:
+                _s = (ci.get("import") or {})
+                log("📥 配置导入: 真源 %s/%s · 工程库 %s · 参数 %s/%s 就绪 · 任务 %s · 活跃 %s · 工单 %s · 写回 %s"
+                    % (_s.get("files_ok"), _s.get("files_total"), "✅" if _s.get("db_ok") else "❌",
+                       _s.get("params_ready"), _s.get("params_total"), _s.get("tasks"),
+                       _s.get("active_task"), _s.get("orders"),
+                       "✅" if (ci.get("write") or {}).get("ok") else "❌"))
+                if _s.get("missing"):
+                    log("   ⚠️ 缺文件: %s" % ", ".join(_s["missing"]))
+        except Exception as _e:                                                 # noqa: BLE001
+            if log:
+                log("⚠️ 配置导入失败 (不影响主参数 M 标定): %r" % (_e,))
+
         # ①b 可写口 (可选): 画布节点 params 带数值 write_M 且 zmax_params 可用 → 真写盘并复读
         wrote = None
         _wv = (ctx.get("params") or {}).get("write_M")
@@ -5247,4 +5270,7 @@ _reg("l5_loop", ["L5 · 视觉语言自动标注", "L5 标注→训练", "标注
      node_l5_loop)
 
 # ── 迁移收尾: 把本模块命名空间交给注册表 (用户改过的逻辑 exec 时用同一份 globals) ──
+
+# ════════════════════════════════════════════════════════════════
+
 set_logic_globals(globals())

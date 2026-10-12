@@ -185,6 +185,11 @@ def main():
     before_fp = _fingerprint_excl(d)
     old_name = node.get("name")
     want = {"cfg_role": "配置中心 ←→ 状态空间工程 的唯一收口口 (测量/标定/诊断 三视图 + 主参数 M)",
+            # 🔴 2026-10-12 老倪: 「我右键打开这个节点, 要直接定位到, 导入配置文件的位置, 而且要能够运行,
+            #   要有能加载配置文件的逻辑」⇒ 节点 source/source_symbol 明确指向**配置导入逻辑**
+            #   (右键「打开源码」= code -g src/lerobot/engineering/config_import.py:<import 函数行>)
+            "source": "src/lerobot/engineering/config_import.py",
+            "source_symbol": "def import_config_files(",
             "cfg_entries": snap["entries"], "cfg_snapshot": snap["snapshot"],
             "measure_view": snap["measure"], "calib_view": snap["calib"],
             "diagnose_view": snap["diagnose"], "task_layer": snap["task_layer"]}
