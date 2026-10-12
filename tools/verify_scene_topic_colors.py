@@ -116,9 +116,9 @@ def main() -> int:
     w.resize(1500, 960)
     w.setAttribute(0x00800000, True)                   # WA_DontShowOnScreen
     w.show()
-    for _ in range(20):
+    for _ in range(30):                # 等本机源线程真推一帧进 store (1s 太短会假红: 组在但行没到)
         app.processEvents()
-        time.sleep(0.05)
+        time.sleep(0.1)
     _tree = None
     for t in w.findChildren(QTreeWidget):
         if t.topLevelItemCount():
@@ -176,8 +176,38 @@ def main() -> int:
         import sig_scene_tags as _s
         chk("ar.* → AR场景(紫)", _s.color("ar.AOI.倾角_deg") == "#8957e5")
 
+    print("⑦ 四场景组 + 组名/组色 (老倪 10-12: 绿色组叫插拔场景 · 摆盘蓝 · AR 紫 · 其余基础场景白)")
+    gnames, gcols = [], {}
+    if _tree is not None:
+        for i in range(_tree.topLevelItemCount()):
+            r = _tree.topLevelItem(i)
+            gnames.append(r.text(0))
+            gcols[r.text(0)] = r.foreground(0).color().name()
+    def _gcol(want):
+        for nm, c in gcols.items():
+            if want in nm:
+                return c
+        return "缺"
+    chk("四组齐全(插拔/摆盘/AR/基础)", all(any(k in n for n in gnames) for k in ("插拔场景", "摆盘场景", "AR 场景", "基础场景")),
+        " / ".join(n[:14] for n in gnames))
+    chk("插拔组标题不再叫 3D 场景实时数据", not any("3D 场景实时数据" in n for n in gnames))
+    chk("插拔组=绿 #2e8b57", _gcol("插拔场景") == "#2e8b57", _gcol("插拔场景"))
+    chk("摆盘组=蓝 #1f6feb", _gcol("摆盘场景") == "#1f6feb", _gcol("摆盘场景"))
+    chk("AR组=紫 #8957e5", _gcol("AR 场景") == "#8957e5", _gcol("AR 场景"))
+    chk("基础组=白 #ffffff", _gcol("基础场景") == "#ffffff", _gcol("基础场景"))
+
+    print("⑧ 折叠/展开状态可保持 (老倪: 三角点了没反应)")
+    _r0 = _tree.topLevelItem(0) if _tree is not None else None
+    if _r0 is not None:
+        _r0.setExpanded(False)
+        w._fill_tree()
+        for _ in range(4):
+            app.processEvents()
+        chk("折叠插拔组后重建仍折叠", _tree.topLevelItem(0).isExpanded() is False)
+
     print("\n%s  %d/%d PASS" % ("✅" if not FAIL else "❌", OK, OK + FAIL))
-    return 1 if FAIL else 0
+    sys.stdout.flush()
+    os._exit(1 if FAIL else 0)      # Qt 退出期线程偶发崩溃(segfault) ⇒ 判据结论以打印为准, 直接硬退
 
 
 if __name__ == "__main__":

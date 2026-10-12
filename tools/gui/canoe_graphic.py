@@ -83,7 +83,16 @@ SCENE_SORT_WHITE = "#ffffff"
 SCENE_SORT_ITEMS = (("⚪ 全部(白)", "", SCENE_SORT_WHITE), ("🟢 插拔", "插拔场景", "#2e8b57"),
                     ("🔵 摆盘", "摆盘场景", "#1f6feb"), ("🟣 AR", "AR场景", "#8957e5"))
 # 场景色 (与 tools/ss_scene_switch.py 同一份真值: 插拔绿 / 摆盘蓝 / AR 紫; 未分类=白)
-SCENE_COLORS = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5", "未分类": "#ffffff"}
+SCENE_COLORS = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5",
+                "基础场景": "#ffffff", "未分类": "#ffffff"}
+# 信号目录的四个场景组 (老倪 2026-10-12: 「绿色场景标题改成 插拔场景; 摆盘应该是蓝色; 其它无法分类的
+#   信号定义为基础场景, 用白色显示 topic」) —— 顺序 = 色序, 标题直接写场景名 + 数据来源, 不再叫「3D 场景实时数据」
+SCENE_GROUPS = (
+    ("插拔场景", "🟢 插拔场景 · 状态空间引擎轨迹 + 力控/夹持 (trace_live.json · force_torque · gripper_pos)"),
+    ("摆盘场景", "🔵 摆盘场景 · 取放 / 料盘 / 真空 (pick & place)"),
+    ("AR场景",   "🥽 AR 场景 · 空间点位 / AOI 话题 (ar_aoi_live.json)"),
+    ("基础场景", "⚪ 基础场景 · 未分类信号 (真机位姿 / 安全 / YOLO / 空间点 / ROS / DDS 遥测)"),
+)
 
 
 def _scene_tags_mod():
@@ -1151,6 +1160,7 @@ class CanoeGraphicWidget(QWidget):
         self._tree_sig = None          # 上次建树时的 (目录, 信号集合) 指纹
         self._last_fill = 0.0
         self._expanded = set()         # 重建时保留展开的话题
+        self._collapsed = set()        # 用户手动折叠的组/话题 (重建时不许被顶开 —— 老倪 10-12「点了没反应」)
         self._build_ui()
         self.catalog_ready.connect(self._on_catalog)
         self._load_catalog_cache()
@@ -1750,74 +1760,95 @@ class CanoeGraphicWidget(QWidget):
         return sorted(topics)
 
     def _fill_tree(self):
-        """建信号目录 (信号名 = 话题.字段 全路径)。可反复调用: 记指纹 + 保留展开状态。"""
+        """建信号目录 —— **按场景分组** (老倪 2026-10-12: 「绿色场景的标题应该叫插拔场景; AR 下面是白的?;
+        摆盘呢, 摆盘应该是蓝色信号; 其它无法分类的信号, 定义为基础场景, 用白色显示 topic」)。
+
+        四组(顺序 = 色序): 🟢 插拔场景 / 🔵 摆盘场景 / 🥽 AR 场景 / ⚪ 基础场景(白)。
+        一个信号归哪组 = 打标真源 `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`;
+        没打标的一律进「基础场景」(白 ○)。可反复调用: 记指纹 + 保留展开/折叠状态
+        (老倪点的折叠不再被下一次重建顶开 —— 之前是硬编码 setExpanded(True) 顶开的)。
+        """
         filt = self.filter.text().strip().lower()
-        # 记住展开的话题, 重建后恢复
-        for it in self._all_items():
-            key = it.data(0, Qt.UserRole)
-            nm = it.text(0)
-            if (it.isExpanded() and (key or nm)):
-                self._expanded.add(key or nm)
+        for it in self._all_items():        # 记住展开/折叠, 重建后原样恢复
+            _k = it.data(0, Qt.UserRole + 1) or it.data(0, Qt.UserRole) or it.text(0)
+            if not _k:
+                continue
+            if it.isExpanded():
+                self._expanded.add(_k)
+                self._collapsed.discard(_k)
+            else:
+                self._collapsed.add(_k)
         self._tree_sig = (len(self.catalog or {}), tuple(sorted(self.store.keys())))
         self._last_fill = time.monotonic()
         self.tree.blockSignals(True)
         self.tree.clear()
-        # 1) 本机真值流
+
+        def _scene_of(_key):
+            try:
+                return ((SST.tag(_key) if SST is not None else "") or "基础场景")
+            except Exception:                                                  # noqa: BLE001
+                return "基础场景"
+
+        def _mkroot(_sc, _title):
+            _r = QTreeWidgetItem([_title, "", "", ""])
+            _r.setForeground(0, QColor(SCENE_COLORS.get(_sc, C_WHITE)))
+            _r.setData(0, Qt.UserRole + 1, "scene:" + _sc)
+            self.tree.addTopLevelItem(_r)
+            return _r
+
         only3d = (self.scope == "3d")
-        host_root = QTreeWidgetItem(["🎬 3D 场景实时数据 · 状态空间引擎轨迹快照 (zmax_data/ss_live/trace_live.json)" if only3d else "本机真值流 (JSON)",
-                                     "", "", "", ""])
-        host_root.setForeground(0, QColor(C_GREEN))
-        self.tree.addTopLevelItem(host_root)
-        host_items = sorted([b for b in self.store.bufs.values()
-                             if b.src not in ("ros", "ds", "file")
-                             and not b.key.startswith("ar.")          # ar. 单独成组 (见下)
-                             and (b.key.startswith("sstrace.") if only3d else True)],
-                            key=lambda x: (self._scene_rank(x.key), x.key))
-        if host_items:
-            for b in host_items:
-                if filt and filt not in b.key.lower():
-                    continue
-                host_root.addChild(self._make_item(b))
-        elif only3d:
-            it = QTreeWidgetItem(["3D 场景快照 (zmax_data/ss_live/trace_live.json) 等数据… — 先跑一次 3D 场景/引擎",
-                                  "-", "-", "-", "-"])
-            it.setForeground(0, QColor(C_DIM))
-            host_root.addChild(it)
-        else:
-            for pref, rel in HOST_SOURCES:      # 还没数据也先把来源名字列出来
-                it = QTreeWidgetItem([f"{pref}  ({rel.split('/')[-1]})  等数据…", "-", "-", "-", "-"])
-                it.setForeground(0, QColor(C_DIM))
-                host_root.addChild(it)
+        roots = {_sc: _mkroot(_sc, _ti) for _sc, _ti in SCENE_GROUPS}
+        # 1) 本机真值流: 按打标落到 插拔 / 摆盘 / 基础 三组 (AR 有二级分组, 见下)
+        host_bufs = [b for b in self.store.bufs.values() if b.src not in ("ros", "ds", "file")]
+        _n_host = 0
+        for b in sorted(host_bufs, key=lambda x: (self._scene_rank(x.key), x.key)):
+            if filt and filt not in b.key.lower():
+                continue
+            if b.key.startswith("ar."):
+                continue                        # AR 单独成组(二级), 见 1b
+            _sc = _scene_of(b.key)
+            roots[_sc if _sc in roots else "基础场景"].addChild(self._make_item(b))
+            _n_host += 1
+        if not _n_host:
+            _it = QTreeWidgetItem(["（暂无本机真值流数据 — 在画布点 ▶运行 跑一轮；真机位姿/安全等未分类信号会进「基础场景」组）",
+                                   "-", "-", "-", "-"])
+            _it.setForeground(0, QColor(C_DIM))
+            roots["插拔场景"].addChild(_it)
         # 1b) 🥽 AR 场景 · 空间点位 / AOI 话题
         #   🔴 2026-10-12 老倪: 「实时监控信号的窗口, AOI 相关的信号, 也没有啊」——
         #     根因: 这一段原来套在 `if not only3d:` 里, 而打开窗口默认的「数据范围」= 3D 场景实时数据,
         #     于是 AOI/AR 话题(176 条)整组被挡在外面, 一眼看不到。⇒ 与数据范围无关, **一律列出**。
         ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
                           key=lambda x: (self._scene_rank(x.key), x.key))
+        _ar_root = roots["AR场景"]
         if ar_items:
             grp = self._ar_groups()
-            ar_root = QTreeWidgetItem(["🥽 AR 场景 · 空间点位 / AOI 话题  (ar_aoi_live.json)", "", "", "", ""])
-            ar_root.setForeground(0, QColor(SCENE_COLORS["AR场景"]))
-            self.tree.addTopLevelItem(ar_root)
             by_g = {}
             for b in ar_items:
                 if filt and filt not in b.key.lower():
                     continue
                 by_g.setdefault(grp.get(b.key[3:], "AR 场景 · 其它信号"), []).append(b)
             for g in sorted(by_g):
-                gnode = QTreeWidgetItem([g, "", "", "", ""])
-                gnode.setForeground(0, QColor(C_DIM))
+                _sid = "ar:" + g
+                gnode = QTreeWidgetItem([g, "", "", ""])
+                gnode.setForeground(0, QColor(SCENE_COLORS["AR场景"]))   # 二级标题也用场景色(老倪: AR 下面别是白的)
+                gnode.setData(0, Qt.UserRole + 1, _sid)
                 for b in by_g[g]:
                     gnode.addChild(self._make_item(b, checked=b.key in self.selected))
                 _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
-                gnode.setExpanded(bool(filt) or _inuse or gnode.text(0) in self._expanded)
-                ar_root.addChild(gnode)
-            ar_root.setExpanded(True)
-        # 2) Orin ROS2 话题 (数据范围=全部来源时才列)
-        ros_root = QTreeWidgetItem(["Orin ROS2 话题", "", ""])
-        ros_root.setForeground(0, QColor(C_BLUE))
-        if not only3d:
-            self.tree.addTopLevelItem(ros_root)
+                gnode.setExpanded(False if _sid in self._collapsed
+                                  else bool(filt) or _inuse or _sid in self._expanded)
+                _ar_root.addChild(gnode)
+        else:
+            _it = QTreeWidgetItem(["（AR/AOI 总线此刻没有数据帧 — ar_aoi_live.json 未在写; 紫组信号由 tools/ar_aoi_bus.py 发布）",
+                                   "-", "-", "-", "-"])
+            _it.setForeground(0, QColor(C_DIM))
+            _ar_root.addChild(_it)
+        # 2) Orin ROS2 话题 (未分类 ⇒ 挂「⚪ 基础场景」组下)
+        ros_root = QTreeWidgetItem(["Orin ROS2 话题 (未分类 → 基础场景)", "", ""])
+        ros_root.setForeground(0, QColor(C_DIM))
+        ros_root.setData(0, Qt.UserRole + 1, "base:ros")
+        roots["基础场景"].addChild(ros_root)
         if self.catalog and not only3d:
             for topic, meta in sorted(self.catalog.items()):
                 tnode = QTreeWidgetItem([f"{topic}  ({meta['type'].split('/')[-1]})", "", ""])
@@ -1845,11 +1876,12 @@ class CanoeGraphicWidget(QWidget):
                 ros_root.addChild(tnode)
         else:
             ros_root.addChild(QTreeWidgetItem(["（点「⟳ 话题目录」从 Orin 拉取）", "", ""]))
-        # 3) 🌐 全局数据空间 (DDS 总线帧) — 与「数据空间」页同一份真源
+        # 3) 🌐 全局数据空间 (DDS 总线帧) — 与「数据空间」页同一份真源 (未分类 ⇒ 挂基础场景组下)
+        ds_root = QTreeWidgetItem(["🌐 全局数据空间 (DDS 总线)", "", ""])
+        ds_root.setForeground(0, QColor("#bc8cff"))
+        ds_root.setData(0, Qt.UserRole + 1, "base:ds")
+        roots["基础场景"].addChild(ds_root)
         if not only3d:
-            ds_root = QTreeWidgetItem(["🌐 全局数据空间 (DDS 总线)", "", ""])
-            ds_root.setForeground(0, QColor("#bc8cff"))
-            self.tree.addTopLevelItem(ds_root)
             ds_topics = {}
             if self.ds_src is not None:
                 for t, meta in self.ds_src.seen.items():
@@ -1884,9 +1916,17 @@ class CanoeGraphicWidget(QWidget):
                 _inuse = any(k.startswith(pref) for k in self.selected)
                 tnode.setExpanded(bool(filt) or _inuse or tnode.text(0) in self._expanded)
                 ds_root.addChild(tnode)
-            ds_root.setExpanded(True)
-        host_root.setExpanded(True)
-        ros_root.setExpanded(True)      # 话题名(=/robot/tcp_pose 等)始终直接可见
+        # 4) 组展开/折叠: 用户点过的折叠优先, 没点过的默认展开(一眼能看到)
+        for _sc, _r in roots.items():
+            _sid = "scene:" + _sc
+            _r.setExpanded(False if _sid in self._collapsed else True)
+        for _sc, _ph in (("摆盘场景", "（摆盘场景链路此刻无数据帧: 真空/吸盘/料盘/槽位话题未接 — 真机网络通 + 摆盘场景激活后, 蓝色信号出现在这里）"),
+                         ("基础场景", "（本机真值流/ROS/DDS 此刻没有数据帧）")):
+            _r = roots[_sc]
+            if _r.childCount() == 0:
+                _it = QTreeWidgetItem([_ph, "-", "-", "-", "-"])
+                _it.setForeground(0, QColor(C_DIM))
+                _r.addChild(_it)
         self.tree.blockSignals(False)
         self._apply_default_selection()
         self._update_tree_values()
@@ -2348,6 +2388,21 @@ class CanoeGraphicWidget(QWidget):
         if getattr(self, "wave", None) is not None:
             self.wave.set_playback(pb)
 
+    def _wave_dirty(self, xr):
+        """这一帧要不要重画波形?
+
+        老倪 2026-10-12「感觉就是反映慢 / 窗口拖不动 / 三角点了没反应」—— 真因之一是 **20Hz 无条件重画**
+        (250 条曲线 × UI_FPS=20 ⇒ GUI 线程一直忙, 输入事件排在后面)。判据: 有新样本 / 播放游标动了 /
+        跟随滚动 / 暂停切换 ⇒ 重画; 否则这一帧什么都不做。
+        """
+        _pb = getattr(self, "pb", None) or {}
+        sig = (self.store.total_pts, _pb.get("frame"), _pb.get("fresh"), self.paused, self.follow,
+               len(self.wave.curves))
+        if xr is not None or sig != getattr(self, "_wave_sig", None):
+            self._wave_sig = sig
+            return True
+        return False
+
     def _tick(self):
         # 0) ▶ 3D 场景播放进度 (老倪: 拖 3D 进度条 ⇒ 这里的竖线要同步左右移动)
         self._poll_playback()
@@ -2364,7 +2419,8 @@ class CanoeGraphicWidget(QWidget):
                     end = e if end is None else max(end, e)
             if end is not None:
                 xr = (end - self.window_s, end)
-        self.wave.refresh(x_range=xr)
+        if self._wave_dirty(xr):
+            self.wave.refresh(x_range=xr)
 
         # 2) 记录
         if self.logger is not None:
@@ -2478,7 +2534,27 @@ if __name__ == "__main__":
     w = CanoeGraphicWidget()
     w.log.connect(lambda s: print(s, flush=True))
     win.setCentralWidget(w)
-    win.resize(1720, 1010)
+    # 🪟 2026-10-12 老倪: 「窗口无法拖放调整窗口大小」—— 真因 = 开窗尺寸超过屏幕
+    #   (实测 2017x1131 @ (1934,118), 桌面 3840x1200 ⇒ 右边 111px / 下边 49px 在屏幕外, 抓不到边框)。
+    #   ⇒ 开窗按**当前屏幕可用区**收口, 留 40px 余量; 尺寸也可用 GRAPHIC_WIN_GEOM=x,y,w,h 覆盖。
+    _g = os.environ.get("GRAPHIC_WIN_GEOM", "")
+    _scr = app.primaryScreen()
+    _av = _scr.availableGeometry() if _scr is not None else None
+    if _g:
+        try:
+            _x, _y, _ww, _hh = (int(v) for v in _g.replace("x", ",").split(",")[:4])
+            win.move(_x, _y)
+            win.resize(max(900, _ww), max(600, _hh))
+        except Exception:                                                      # noqa: BLE001
+            pass
+    elif _av is not None:
+        _ww = min(1720, max(900, _av.width() - 40))
+        _hh = min(1010, max(600, _av.height() - 40))
+        win.resize(_ww, _hh)
+        win.move(_av.x() + max(0, (_av.width() - _ww) // 2), _av.y() + max(0, (_av.height() - _hh) // 2))
+    else:
+        win.resize(1720, 1010)
+    win.setMinimumSize(900, 600)      # 允许缩小: 不设最小尺寸时布局最小宽会顶死(拖不动)
     win.show()
     if os.environ.get("GRAPHIC_SELFCHECK"):     # 取证钩子: 打印左栏全局坐标 + 把左栏单独存图
         from PyQt5.QtCore import QTimer
