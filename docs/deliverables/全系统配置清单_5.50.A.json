@@ -1,14 +1,14 @@
 {
   "schema": "zmax-config-inventory/1.0",
   "version": "5.50.A",
-  "generated_at": "2026-10-13 07:12:27",
+  "generated_at": "2026-10-13 07:19:05",
   "repo": "/home/ubuntu/zmax",
   "sections": {
     "版本": {
-      "界面品牌版本": "5.49.4",
-      "VERSION.md 记载": "5.49.4",
-      "git HEAD": "f2d4f82 feat(feishu): 飞书端回读核验工具 (拉消息/翻页/按 id 直查/文件回读+逐字节比对) + 交付核验通过",
-      "git describe": "v5.49.3-20-gf2d4f82",
+      "界面品牌版本": "5.50.1",
+      "VERSION.md 记载": "5.50.1",
+      "git HEAD": "7926345 数据总线 × 单步 topic: 每节点独立输出 topic(89/89) + 单步置顶金色高亮 + 整体运行不序列化(性能闸)",
+      "git describe": "v5.49.3-22-g7926345",
       "最新 tag(按创建时间, 只认 vX.Y.Z)": "v5.49.3",
       "tag 总数": 105
     },
@@ -16,7 +16,7 @@
       "监听端口": {
         "8791": "LISTEN 0      5            0.0.0.0:8791       0.0.0.0:*    users:((\"python\",pid=575243,fd=10))",
         "8793": "LISTEN 0      5            0.0.0.0:8793       0.0.0.0:*    users:((\"python\",pid=575243,fd=4))",
-        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=2067702,fd=4))",
+        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=2067702,fd=4),(\"python\",pid=864840,fd=4)",
         "8888": "LISTEN 0      1024            [::]:8888          [::]:*",
         "8796": "LISTEN 0      5          127.0.0.1:8796       0.0.0.0:*    users:((\"python\",pid=5246,fd=16))"
       },
@@ -134,58 +134,122 @@
     },
     "任务与场景": {
       "active_task": "TASK-01-FW",
+      "project": {
+        "name": "状态空间工程 · 主工程",
+        "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
+        "canvas_md5": "0bf580c4d90a3963714e4328ad835345",
+        "nodes": 89,
+        "links": 184
+      },
       "tasks": [
         {
-          "id": null,
+          "task_id": "TASK-01-FW",
           "name": "FW Loading + EEPROM 写/读校验",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "插拔+固件校验",
+          "scene": "SCN-01-FW",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 9,
+          "enabled_nodes": 52,
+          "disabled_nodes": 0
         },
         {
-          "id": null,
+          "task_id": "TASK-02-HANDLE",
           "name": "料盘/治具上下料搬运",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "上下料搬运",
+          "scene": "SCN-02-HANDLE",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 4,
+          "enabled_nodes": 43,
+          "disabled_nodes": 9
         },
         {
-          "id": null,
+          "task_id": "TASK-03-BI",
           "name": "BI老化箱模块插拔",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "老化箱插拔",
+          "scene": "SCN-03-BI",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 7,
+          "enabled_nodes": 52,
+          "disabled_nodes": 0
         },
         {
-          "id": null,
+          "task_id": "TASK-04-THERMAL",
           "name": "热海柜体电口+光口插拔",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "热海柜体插拔(电口+光口)",
+          "scene": "SCN-04-THERMAL",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 8,
+          "enabled_nodes": 52,
+          "disabled_nodes": 0
         },
         {
-          "id": null,
+          "task_id": "TASK-05-ATS",
           "name": "ATS/线外检测插接 (核心挑战场景)",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "检测插接",
+          "scene": "SCN-05-ATS",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 9,
+          "enabled_nodes": 52,
+          "disabled_nodes": 0
         },
         {
-          "id": null,
+          "task_id": "TASK-06-TRAY",
           "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "摆盘取放",
+          "scene": "SCN-06-TRAY",
+          "site": "SITE-A.ST11",
+          "ss_mode": "tray",
+          "steps": 5,
+          "enabled_nodes": 52,
+          "disabled_nodes": 0
         },
         {
-          "id": null,
+          "task_id": "TASK-07-AOI",
           "name": "AR 光学质量检测 (AOI 联合检查)",
-          "mode": null,
-          "scene": null,
-          "chain": null
+          "recipe_type": "光学质量检测",
+          "scene": "SCN-07-AOI",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 5,
+          "enabled_nodes": 32,
+          "disabled_nodes": 20
         }
       ],
-      "count": 7
+      "count": 7,
+      "segment_node_map": 8,
+      "coverage": {
+        "nodes": 89,
+        "covered_by_segments": 52,
+        "uncovered": [
+          "n_calib_mani",
+          "n_hil",
+          "n_moveit",
+          "n_realscene",
+          "n_skill_dict",
+          "ss3d_view",
+          "ss_l5",
+          "ss_lora_l3",
+          "ss_seg",
+          "ssact",
+          "ssest",
+          "ssff",
+          "ssff_hist",
+          "ssinnov",
+          "ssmode",
+          "ssobs",
+          "sspred",
+          "ssreason",
+          "sssk1",
+          "ssvideo",
+          "ssvideo2",
+          "ssworld"
+        ]
+      }
     },
     "模型权重": {
       "files": [
@@ -296,62 +360,62 @@
       "流服务通道": {
         "arm": {
           "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 29.9,
+          "fps": 29.86,
           "age_s": 0.01,
           "stalled": false
         },
         "local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
-          "fps": 5.09,
-          "age_s": 0.09,
+          "fps": 5.06,
+          "age_s": 0.02,
           "stalled": false
         },
         "local2": {
           "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 21.56,
-          "age_s": 0.02,
+          "fps": 27.54,
+          "age_s": 0.01,
           "stalled": false
         },
         "depth": {
           "label": "🌈 D405 深度图 (彩色化)",
           "fps": 0.0,
-          "age_s": 355.21,
+          "age_s": 753.38,
           "stalled": true
         },
         "aoi_gold": {
           "label": "🔍 金手指检测 (工控机 OPT)",
-          "fps": 0.22,
-          "age_s": 2.41,
+          "fps": 0.32,
+          "age_s": 0.08,
           "stalled": true
         },
         "aoi_gold_raw": {
           "label": "",
-          "fps": 0.22,
-          "age_s": 2.4,
+          "fps": 0.32,
+          "age_s": 0.08,
           "stalled": true
         },
         "aoi_surface": {
           "label": "🔍 表面检测 (工控机 OPT)",
-          "fps": 0.32,
-          "age_s": 0.23,
+          "fps": 0.21,
+          "age_s": 2.38,
           "stalled": true
         },
         "ov_arm": {
           "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 10.07,
-          "age_s": 0.04,
+          "fps": 10.02,
+          "age_s": 0.06,
           "stalled": false
         },
         "ov_local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
-          "fps": 5.09,
-          "age_s": 0.09,
+          "fps": 5.06,
+          "age_s": 0.22,
           "stalled": false
         },
         "ov_local2": {
           "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 10.07,
-          "age_s": 0.08,
+          "fps": 10.02,
+          "age_s": 0.07,
           "stalled": false
         }
       },
@@ -398,6 +462,7 @@
           "全系统配置清单_5.50.A.json",
           "全系统配置清单_5.50.A.md",
           "功能清单_Z-MAX_20261012.md",
+          "功能说明_5.50.A.md",
           "原型验证测试报告_Z-MAX_20261012.md",
           "项目立项文档_Z-MAX_20261012.md"
         ],
@@ -524,7 +589,7 @@
       "主机": "ubuntu",
       "内核": "6.17.0-14-generic",
       "CPU": "32 核",
-      "内存": "30 GB (可用 17 GB)",
+      "内存": "30 GB (可用 16 GB)",
       "磁盘": "396G 总 / 60G 可用 (85% 已用)",
       "GPU": "NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, 580.126.09",
       "Python": "Python 3.11.15"

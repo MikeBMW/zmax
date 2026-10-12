@@ -121,9 +121,15 @@ def main() -> int:
     tasks = b.get("tasks") or []
     inv["sections"]["任务与场景"] = {
         "active_task": b.get("active_task"),
-        "tasks": [{"id": t.get("id"), "name": t.get("name"), "mode": t.get("mode"),
-                   "scene": t.get("scene"), "chain": t.get("chain")} for t in tasks],
+        "project": b.get("project"),
+        "tasks": [{"task_id": t.get("task_id"), "name": t.get("name"), "recipe_type": t.get("recipe_type"),
+                   "scene": t.get("scene_ref"), "site": t.get("site"), "ss_mode": t.get("ss_mode"),
+                   "steps": len(t.get("steps") or []),
+                   "enabled_nodes": len(t.get("enabled_nodes") or []),
+                   "disabled_nodes": len(t.get("disabled_nodes") or [])} for t in tasks],
         "count": len(tasks),
+        "segment_node_map": len(b.get("segment_node_map") or {}),
+        "coverage": b.get("coverage"),
     }
 
     # ⑤ 模型与数据集 (交付需知道依赖哪些权重/数据)
