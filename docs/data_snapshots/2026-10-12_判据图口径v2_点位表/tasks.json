@@ -1,0 +1,819 @@
+{
+ "schema": "zmax-tasks/1.0",
+ "note": "任务配置真源 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
+ "sources": {
+  "flows/scenes_5jobs.json": "4c592df0e429d0a1",
+  "config/calib/zmax_calib.json": "38592726272d455b",
+  "recipe": "tools/build_sheet.py#RECIPE_STEPS (8 段)"
+ },
+ "counts": {
+  "tasks": 7,
+  "segments_total": 8
+ },
+ "tasks": [
+  {
+   "task_id": "TASK-01-FW",
+   "name": "FW Loading + EEPROM 写/读校验",
+   "recipe_type": "插拔+固件校验",
+   "scene_ref": "SCN-01-FW",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.6,
+     "name": "取料",
+     "desc": "左臂从归位移动到吸塑盒上方(X=2.5,Y=-0.4,Z=1.3), 夹爪闭合(力控1~5N)抓取光模块",
+     "force": "1~5N"
+    },
+    {
+     "t": 0.6,
+     "dur": 1.0,
+     "name": "扫码",
+     "desc": "右臂携带模块移至扫码枪前(X=2.1,Y=0.4,Z=1.35), 红色十字激光扫描SN二维码",
+     "force": null
+    },
+    {
+     "t": 1.6,
+     "dur": 0.8,
+     "name": "翻转",
+     "desc": "腕部旋转180°(150°/s), 模块标签面朝下, 金手指面朝上",
+     "force": null
+    },
+    {
+     "t": 2.4,
+     "dur": 0.5,
+     "name": "对位",
+     "desc": "视觉定位QSFP插座导向槽, 末端移动到(X=2.5,Y=0,Z=1.26), 偏差<0.1mm",
+     "force": null
+    },
+    {
+     "t": 2.9,
+     "dur": 0.7,
+     "name": "插入",
+     "desc": "沿导向槽直推35mm, 力控≤2N, 弹簧卡扣锁紧",
+     "force": "≤2N"
+    },
+    {
+     "t": 3.6,
+     "dur": 50.0,
+     "name": "异步测试",
+     "desc": "PC自动下载固件→校验EEPROM→显示PASS/FAIL; R MPV可转向机台B",
+     "force": null
+    },
+    {
+     "t": 53.6,
+     "dur": 0.8,
+     "name": "拔出",
+     "desc": "夹爪夹持模块, 力控拉出≤2N, 脱离QSFP插座",
+     "force": "≤2N"
+    },
+    {
+     "t": 54.4,
+     "dur": 3.0,
+     "name": "AOI飞拍",
+     "desc": "金手指正反2面飞拍(0.5s×2)+4侧面飞拍(0.5s×4)=3.0s, 速度0.6m/s",
+     "force": null
+    },
+    {
+     "t": 57.4,
+     "dur": 0.8,
+     "name": "分拣",
+     "desc": "PASS→绿色料盘(Y=0.35), FAIL→红色料盘(Y=-0.35), 行程0.4m·速度1.0m/s",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "来料吸塑盒",
+     "role": "台面左侧·20穴位",
+     "size_mm": [
+      300,
+      200,
+      30
+     ],
+     "pos": [
+      2.5,
+      -0.4,
+      1.24
+     ]
+    },
+    {
+     "level": "L2 治具级",
+     "name": "EVB测试子板",
+     "role": "台面中央·QSFP插座",
+     "size_mm": [
+      200,
+      150,
+      2
+     ],
+     "pos": [
+      2.5,
+      0,
+      1.25
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": 35.0,
+    "ins.force_ctrl": "Fz>1kHz, 力峰≤5N",
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "pick.close_force": 3.0,
+    "sort.rule": "AOI 各站失败累计→NG"
+   },
+   "trigger": "来料盒就位 / 上游工位放行信号",
+   "loop": "单件循环; 连续 2 次抓取失败停机",
+   "targets": {
+    "合格率": "≥99%"
+   },
+   "orders_rule": "1 批 = 1 工单; 1 件 = 1 条记录",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "插入深度 35mm 判到位 end_pose.x>0.750 (实测判据)"
+  },
+  {
+   "task_id": "TASK-02-HANDLE",
+   "name": "料盘/治具上下料搬运",
+   "recipe_type": "上下料搬运",
+   "scene_ref": "SCN-02-HANDLE",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "4 放置/插入",
+    "5 拔出/取回"
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "取盘",
+     "desc": "左臂从缓存架第3层抓取整盘→移至对接台(X=0.8,Y=0,Z=1.0)",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 3.0,
+     "name": "配送",
+     "desc": "R MPV差速转向90°→导航至对接台前方→视觉定位销→下降入位",
+     "force": null
+    },
+    {
+     "t": 6.0,
+     "dur": 6.0,
+     "name": "精密对接",
+     "desc": "右臂视觉定位治具4个定位孔(精度<0.1mm)→插入单颗物料",
+     "force": null
+    },
+    {
+     "t": 12.0,
+     "dur": 8.0,
+     "name": "检测",
+     "desc": "2D外观(2s)→3D尺寸(2s)→金线显微(2s)→缺陷分级(2s)",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "缓存架",
+     "role": "料盘缓存·多层",
+     "size_mm": [
+      600,
+      400,
+      1800
+     ],
+     "pos": [
+      0.5,
+      -0.6,
+      1.0
+     ]
+    },
+    {
+     "level": "L2 治具级",
+     "name": "治具",
+     "role": "4定位孔·L2治具级",
+     "size_mm": [
+      200,
+      200,
+      15
+     ],
+     "pos": [
+      0.8,
+      0,
+      1.1
+     ]
+    },
+    {
+     "level": "L3 单颗级",
+     "name": "单颗物料",
+     "role": "光模块单颗·L3治具内",
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "pos": [
+      0.8,
+      0,
+      1.12
+     ]
+    }
+   ],
+   "overrides": {
+    "pick.close_force": 3.0,
+    "pick.lift_h": 30,
+    "pick.retry": 2,
+    "src.orient": "料盘/治具按定位孔朝向",
+    "sort.pass_tray": "不适用(不涉及分拣)",
+    "cyc.dual_arm": "协作(一臂取盘一臂对接)"
+   },
+   "trigger": "料盘到位信号 / 手动按钮",
+   "loop": "整盘连续(12 件/盘); 满盘→空盘切换",
+   "targets": {
+    "配送准时率": "≥99.5%"
+   },
+   "orders_rule": "1 盘 = 1 工单; 1 件 = 1 条记录",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "上下料: 取盘→配送→对接→回位; 不涉及插入/拔出 ⇒ 配方段 4/5 不适用"
+  },
+  {
+   "task_id": "TASK-03-BI",
+   "name": "BI老化箱模块插拔",
+   "recipe_type": "老化箱插拔",
+   "scene_ref": "SCN-03-BI",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 5.0,
+     "name": "导航就位",
+     "desc": "R MPV至老化箱前对接位(X=1.0)",
+     "force": null
+    },
+    {
+     "t": 5.0,
+     "dur": 3.0,
+     "name": "升降就位",
+     "desc": "电动丝杆升至第5层(Z=1.2m)",
+     "force": null
+    },
+    {
+     "t": 8.0,
+     "dur": 2.0,
+     "name": "拉出抽屉",
+     "desc": "右臂拉出800mm·力控≤15kg",
+     "force": "≤15kg"
+    },
+    {
+     "t": 10.0,
+     "dur": 60.0,
+     "name": "批量插入",
+     "desc": "左臂依次取模块→插入QSFP插座 (10颗×6s)",
+     "force": null
+    },
+    {
+     "t": 72.0,
+     "dur": 2.0,
+     "name": "关闭",
+     "desc": "推回抽屉·确认锁紧·状态灯变绿",
+     "force": null
+    },
+    {
+     "t": 74.0,
+     "dur": 14400.0,
+     "name": "老化",
+     "desc": "85°C±1°C·1~4小时·R MPV可服务其他工位",
+     "force": null
+    },
+    {
+     "t": 14474.0,
+     "dur": 13.0,
+     "name": "批量拔出+分拣",
+     "desc": "拉出抽屉→依次拔出10颗→按Pass/Fail分拣",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "料盘",
+     "role": "待测模块料盘",
+     "size_mm": [
+      330,
+      330,
+      20
+     ],
+     "pos": [
+      0.6,
+      -0.4,
+      1.1
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false,
+    "cyc.takt": "见场景性能目标"
+   },
+   "trigger": "老化箱槽位放行信号",
+   "loop": "按槽位序列循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "插入深度按老化箱规格 (待现场确认)"
+  },
+  {
+   "task_id": "TASK-04-THERMAL",
+   "name": "热海柜体电口+光口插拔",
+   "recipe_type": "热海柜体插拔(电口+光口)",
+   "scene_ref": "SCN-04-THERMAL",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "导航",
+     "desc": "R MPV至柜体前对接位(X=0.8)",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 2.0,
+     "name": "取料",
+     "desc": "左臂从躯干A区料盘取光模块→移至槽位前方",
+     "force": null
+    },
+    {
+     "t": 5.0,
+     "dur": 2.0,
+     "name": "插电口",
+     "desc": "对准槽位底部电口·导向±0.5mm直推",
+     "force": null
+    },
+    {
+     "t": 7.0,
+     "dur": 1.5,
+     "name": "光口检测",
+     "desc": "右臂探头检查端面清洁度",
+     "force": null
+    },
+    {
+     "t": 8.5,
+     "dur": 4.0,
+     "name": "插光口×2",
+     "desc": "依次插入两根光纤LC接头",
+     "force": null
+    },
+    {
+     "t": 12.5,
+     "dur": 2.0,
+     "name": "清洁",
+     "desc": "棉签清洁→喷气除尘→重新检测",
+     "force": null
+    },
+    {
+     "t": 14.5,
+     "dur": 1800.0,
+     "name": "测试",
+     "desc": "柜体环境测试·气缸顶出模块",
+     "force": null
+    },
+    {
+     "t": 1814.5,
+     "dur": 5.5,
+     "name": "拉出+拔光口+分拣",
+     "desc": "拉出电口(1.5s)→拔光口×2(3s)→分拣(1s)",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L1 料盘级",
+     "name": "料盘",
+     "role": "躯干A区料盘",
+     "size_mm": [
+      330,
+      330,
+      20
+     ],
+     "pos": [
+      0.5,
+      0.4,
+      1.15
+     ]
+    }
+   ],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false
+   },
+   "trigger": "柜体门开信号",
+   "loop": "电口→光口 顺序循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "电口/光口两套插拔参数 (待现场确认)"
+  },
+  {
+   "task_id": "TASK-05-ATS",
+   "name": "ATS/线外检测插接 (核心挑战场景)",
+   "recipe_type": "检测插接",
+   "scene_ref": "SCN-05-ATS",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.2,
+     "name": "导航",
+     "desc": "R MPV至光学平台前(X=1.0)·遮光帘降下·<1lux·23±1°C",
+     "force": null
+    },
+    {
+     "t": 2.2,
+     "dur": 1.0,
+     "name": "扫码",
+     "desc": "模块放入ATS托架·自动扫码SN",
+     "force": null
+    },
+    {
+     "t": 3.2,
+     "dur": 1.5,
+     "name": "插光口检测",
+     "desc": "光口对接·功率计初测基线",
+     "force": null
+    },
+    {
+     "t": 4.7,
+     "dur": 1.0,
+     "name": "清洁度检测",
+     "desc": "端面检测探头检查",
+     "force": null
+    },
+    {
+     "t": 5.7,
+     "dur": 2.0,
+     "name": "清洁",
+     "desc": "棉签+酒精+喷气·重新检测",
+     "force": null
+    },
+    {
+     "t": 6.7,
+     "dur": 1.2,
+     "name": "插电口",
+     "desc": "连接EVB电口·上电初始化",
+     "force": null
+    },
+    {
+     "t": 7.9,
+     "dur": 1.5,
+     "name": "插光纤",
+     "desc": "连接LC光纤至耦合器",
+     "force": null
+    },
+    {
+     "t": 9.4,
+     "dur": 120.0,
+     "name": "测试",
+     "desc": "光功率·眼图·误码率·光谱全参数",
+     "force": null
+    },
+    {
+     "t": 129.4,
+     "dur": 3.6,
+     "name": "拔光纤+拔模块+目检+分拣",
+     "desc": "拔光纤(1s)→拔模块(0.8s)→金手指AOI(1s)→分拣(0.8s)",
+     "force": null
+    }
+   ],
+   "variants": [],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "sort.rule": "测试结果 PASS/FAIL 分拣"
+   },
+   "trigger": "测试台就绪信号",
+   "loop": "到货即测",
+   "targets": {
+    "成功率": "≥99%",
+    "测试读取": "≥99.9%"
+   },
+   "orders_rule": "1 批 = 1 工单",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "核心挑战场景: 测试读取成功率 ≥99.9%"
+  },
+  {
+   "task_id": "TASK-06-TRAY",
+   "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+   "recipe_type": "摆盘取放",
+   "scene_ref": "SCN-06-TRAY",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "5 拔出/取回"
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.0,
+     "name": "定位识别",
+     "desc": "全局定位相机识别满料周转盘位置与堆叠层数、空 Tray 盘位置、工装位置; 取 1 盘周转盘到作业工装并二次拍照, 识别盘内光模块数量与坐标、Tray 空槽数量与坐标",
+     "force": null
+    },
+    {
+     "t": 2.0,
+     "dur": 0.6,
+     "name": "取件",
+     "desc": "腕部相机对准目标光模块, 末端下降至吸附位, 真空建立(≤200ms)后抬起离盘",
+     "force": null
+    },
+    {
+     "t": 2.6,
+     "dur": 1.0,
+     "name": "转运对位",
+     "desc": "沿安全轨迹转移至目标 Tray 槽位上方, 姿态对准槽口方向, 粗定位后 XYZ/姿态微调",
+     "force": null
+    },
+    {
+     "t": 3.6,
+     "dur": 0.8,
+     "name": "放入",
+     "desc": "下降到放置面, 断真空释放光模块; 放置下压不超过配方上限, 姿态偏差 ≤1°",
+     "force": null
+    },
+    {
+     "t": 4.4,
+     "dur": 0.3,
+     "name": "判态循环",
+     "desc": "判断周转盘是否空、Tray 盘是否满; 未满且盘未空则回到取件; 触发上报则暂停待人工补料/下料",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L3 单颗级",
+     "name": "光模块单颗",
+     "role": "物料单颗·100G/400G/800G · 12+ 型号",
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "pos": [
+      0.9,
+      -0.3,
+      0.82
+     ]
+    }
+   ],
+   "overrides": {
+    "pick.vac_establish_ms": 200,
+    "pick.hold_s": 5,
+    "pick.retry": 3,
+    "place.down_force_max": "配方上限(防压伤)",
+    "place.angle_tol_deg": 1.0,
+    "src.orient": "周转盘槽位朝向",
+    "cyc.takt": "单颗 ≤3.15s (PVT)",
+    "sort.pass_tray": "不适用(摆盘不分拣)"
+   },
+   "trigger": "满料周转盘到位 / Tray 盘满或周转盘空信号",
+   "loop": "单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
+   "targets": {
+    "单颗CT": "≤3.15s (PVT)",
+    "成功率": "≥99% (PVT)",
+    "取放精度": "单边 ≤1mm / ≤1°",
+    "连续": "≥12 盘周转盘"
+   },
+   "orders_rule": "1 盘 = 1 工单; 1 颗 = 1 条记录",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "摆盘: 周转盘→上料Tray盘取放; 不涉及插入/拔出 ⇒ 配方段 5 不适用; CT 起止口径写死=从吸取离盘到下一位就位"
+  },
+  {
+   "task_id": "TASK-07-AOI",
+   "name": "AR 光学质量检测 (AOI 联合检查)",
+   "recipe_type": "光学质量检测",
+   "scene_ref": "SCN-07-AOI",
+   "site": "SITE-A.ST11",
+   "applies_segments": [
+    "0 料源与来料状态",
+    "3 识别与工位对接",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "1 取件",
+    "2 姿态准备",
+    "4 放置/插入",
+    "5 拔出/取回"
+   ],
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.5,
+     "name": "AR 取像",
+     "desc": "RealSense D435 实拍 640×480 作 AR 底图 (深度 1mm 尺度 · 工作区有效深度 93.7% · 自动曝光)",
+     "force": null
+    },
+    {
+     "t": 0.5,
+     "dur": 1.8,
+     "name": "AOI 联合检查",
+     "desc": "工控机 AOI 10082 (金手指) 触发拍照检测 → 判据图 + 金手指矩形搜索 (位置/尺寸/倾角) + 侧边位置修正 Δx 一次拿全; 10083 (表面) 同口径",
+     "force": null
+    },
+    {
+     "t": 2.3,
+     "dur": 0.4,
+     "name": "光模块检测",
+     "desc": "在役权重 models/yolo_peg_live.pt 在 AR 帧上检测 (conf/imgsz 可调, 检出即给像素坐标)",
+     "force": null
+    },
+    {
+     "t": 2.7,
+     "dur": 0.3,
+     "name": "位姿叠加",
+     "desc": "相机系 3D 位姿: 深度反投影 + 平面拟合 (RMS 留痕), 虚拟坐标架画回实拍; 手眼 TSAI 闭环 1.74mm",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 0.3,
+     "name": "判决与上报",
+     "desc": "判决 PASS/FAIL + 缺陷数; 判据图导出; AOI 全部话题经 ar_aoi_bus 发到信号分析页 (来源 ar.)",
+     "force": null
+    }
+   ],
+   "variants": [
+    {
+     "level": "L3 单颗级",
+     "name": "光模块单颗",
+     "role": "物料单颗·AR 实拍视野内 (基座系位置待标定; RealSense 工作区距离实测 1.000m · 有效深度 93.7%)",
+     "size_mm": [
+      18,
+      9,
+      4
+     ],
+     "pos": null
+    }
+   ],
+   "overrides": {
+    "aoi.port_gold": 10082,
+    "aoi.port_surface": 10083,
+    "aoi.cam": "RealSense D435 (AR 底图 · 独占 :8797)",
+    "aoi.weights": "models/yolo_peg_live.pt (在役软链)",
+    "aoi.side_fix": "侧边位置修正 Delta x 一次给全",
+    "aoi.judge_png": "判据图 914x348 等比(真实金手指 ROI · 不拉伸) 可导出",
+    "sort.rule": "AOI 判决 PASS/FAIL 累计→NG",
+    "pt.dir": "reports/aoi_points",
+    "pt.space_dir": "data/skills/l2_atomic/space_points.json",
+    "pt.空间点1": "x=0.593219 y=0.141854 z=0.636190 m · 记录 2026-10-12 11:46:01 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点2": "x=0.532254 y=0.268576 z=0.216567 m · 记录 2026-10-08 13:12:04 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点3": "x=0.625895 y=0.002902 z=0.228974 m · 记录 2026-10-08 13:12:12 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点4": "x=0.563630 y=-0.308197 z=0.230259 m · 记录 2026-10-08 13:12:20 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点5": "x=0.617425 y=-0.242753 z=0.234263 m · 记录 2026-10-08 13:12:35 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点6": "x=0.606414 y=0.010491 z=0.242096 m · 记录 2026-10-08 13:12:43 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点7": "x=0.555758 y=0.244123 z=0.259439 m · 记录 2026-10-08 13:12:51 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点8": "x=0.502146 y=0.128635 z=0.630156 m · 记录 2026-10-08 14:44:53 · data/skills/l2_atomic/space_points.json",
+    "pt.侧面点0": "x=0.389759 y=-0.418188 z=0.486943 m · 记录 2026-10-01 07:30:00 · reports/aoi_points/侧面点0.json",
+    "pt.侧面点1": "x=0.404639 y=-0.450586 z=0.526237 m · 记录 2026-09-30 09:38:20 · reports/aoi_points/侧面点1.json",
+    "pt.侧面点2": "x=0.362814 y=-0.405824 z=0.534343 m · 记录 2026-10-01 06:51:27 · reports/aoi_points/侧面点2.json",
+    "pthist.侧面点2": "1 次更新 · 最近 2026-10-01 06:51:27: (0.362814, -0.405824, 0.534343) → (0.362814, -0.405824, 0.534343)",
+    "pt.侧面点3": "x=0.367691 y=-0.431047 z=0.538134 m · 记录 2026-10-01 06:58:34 · reports/aoi_points/侧面点3.json",
+    "pt.准备点": "x=0.389759 y=-0.264932 z=0.369128 m · 记录 2026-10-01 07:34:39 · reports/aoi_points/准备点.json",
+    "pt.安全点1": "x=0.377606 y=0.042374 z=0.362116 m · 记录 2026-10-09 13:38:31 · reports/aoi_points/安全点1.json",
+    "pt.金手指点1": "x=0.489774 y=0.147378 z=0.405416 m · 记录 2026-10-09 13:37:23 · reports/aoi_points/金手指点1.json",
+    "pthist.金手指点1": "2 次更新 · 最近 2026-10-09 13:37:23: (0.596737, 0.142622, 0.641536) → (0.489774, 0.147378, 0.405416)",
+    "pt.金手指点2": "x=0.336866 y=0.156149 z=0.579929 m · 记录 2026-10-09 06:59:04 · reports/aoi_points/金手指点2.json",
+    "pthist.金手指点2": "5 次更新 · 最近 2026-10-09 06:59:04: (0.588737, 0.142627, 0.641534) → (0.336866, 0.156149, 0.579929)"
+   },
+   "trigger": "AR 场景就位 (RealSense 有帧) / 工控机 AOI 就绪信号",
+   "loop": "单件循环; 判决 + 判据图落盘后进入下一件",
+   "targets": {
+    "缺陷检出": "与产线 AOI 同口径 (10082 金手指 / 10083 表面)",
+    "判决": "PASS/FAIL + 缺陷数 (工控机 /capture_detect → GET /last_result)",
+    "金手指矩形": "位置/尺寸/倾角 (实测 363.8×17.5px · 倾角 1.75°)",
+    "侧边位置修正": "Δx = +4.0px (实测, 一次给全)",
+    "位置精修": "手眼 TSAI 闭环 1.74mm",
+    "判据图": "914×348 等比(真实金手指 ROI x226~1143 · y299~638 全覆盖) 可导出 (reports/aoi_console_state.json 留痕)"
+   },
+   "orders_rule": "1 件 = 1 条记录 (判据图 + 判决 + 时间戳)",
+   "binding_hint": "逐层选型(L2/L3/L4) + 站点 SITE-A.ST11; 真机域模型需站点几何齐",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "_note": "AOI: AR 实拍底图 + 工控机 AOI 联合检查 (金手指 10082 / 表面 10083) + 光模块检测 + 相机系 3D 位姿; 不涉及取件/姿态/放置/拔出 ⇒ 配方段 1/2/4/5 不适用; 模型 = L5 自主进化程序",
+   "model_ref": {
+    "layer": "L5",
+    "program": "Automated Optical Inspection 自动光学检测 · L5 自主进化程序",
+    "entry": "tools/l5_plan_and_gen.py + tools/aoi_link.py (工控机 10082/10083 客户端)",
+    "charter": "docs/L5_AUTONOMOUS_EVOLUTION.md",
+    "node": "🔍 光学质量检测 (画布节点 · 发出 AOI 全部话题)",
+    "capability": "BO_ B5 光学质量检测"
+   }
+  }
+ ]
+}

@@ -94,7 +94,7 @@ PLAN = {
                    "aoi.cam": "RealSense D435 (AR 底图 · 独占 :8797)",
                    "aoi.weights": "models/yolo_peg_live.pt (在役软链)",
                    "aoi.side_fix": "侧边位置修正 Delta x 一次给全",
-                   "aoi.judge_png": "判据图 900x332 可导出",
+                   "aoi.judge_png": "判据图 914x348 等比(真实金手指 ROI · 不拉伸) 可导出",
                    "sort.rule": "AOI 判决 PASS/FAIL 累计→NG"},
         trigger="AR 场景就位 (RealSense 有帧) / 工控机 AOI 就绪信号",
         loop="单件循环; 判决 + 判据图落盘后进入下一件",
@@ -122,6 +122,24 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
     只**读**台账生成配置(不反向写台账): 台账改了重跑 build 即同步, 单一真源不打架。
     """
     out = {"pt.dir": dir_rel}
+    # 🔲 2026-10-12 老倪: 「配置中心, 也要有空间点1~7 的配置位置」—— 空间点真源是
+    #   data/skills/l2_atomic/space_points.json (8793 标记模式下记的 7+1 个空间点), 只读摊进配置:
+    #   pt.空间点N = x/y/z + 记录时间 + 真源文件 ⇒ 配置中心那张表自动多出这几行(单一真源, 不另写)。
+    sp_rel = "data/skills/l2_atomic/space_points.json"
+    out["pt.space_dir"] = sp_rel
+    try:
+        with open(os.path.join(ROOT, sp_rel), encoding="utf-8") as fh:
+            spj = json.load(fh)
+        for k, v in sorted((spj.get("points") or {}).items()):
+            pos = (v or {}).get("pos") or []
+            if not isinstance(pos, list) or len(pos) != 3:
+                continue
+            ks = str(k)
+            nm = ("空间点" + ks[5:]) if ks.startswith("space") else ks
+            out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · 记录 %s · %s"
+                               % (pos[0], pos[1], pos[2], (v or {}).get("recorded_at") or "-", sp_rel))
+    except Exception:                                                           # noqa: BLE001
+        pass
     d = os.path.join(ROOT, dir_rel)
     try:
         files = sorted(f for f in os.listdir(d) if f.endswith(".json"))

@@ -486,9 +486,33 @@ def _pt_parse(t):
         n = (re.match(r"(\d+)\s*次更新", h or "") or [None, "—"])[1] if h else "—"
         rows.append({"name": nm, "x": m.group(1), "y": m.group(2), "z": m.group(3),
                      "t": m.group(4).strip(), "src": m.group(5), "n": n, "hist": h})
-    rows.sort(key=lambda r: (0 if r["name"] == "金手指点1" else
-                             1 if r["name"] == "金手指点2" else 2, r["name"]))
+    rows.sort(key=lambda r: _pt_rank(r["name"]))
     return rows
+
+
+def _pt_rank(name):
+    """操作员视角的顺序(老倪: 金手指点1 要一眼看到; 空间点1~7 也要在) ——
+    金手指点1 → 金手指点2 → 空间点1..8 → 侧面点0..3 → 准备点 → 安全点N → 其它。"""
+    import re
+    n = str(name or "")
+    if n == "金手指点1":
+        return (0, 0, n)
+    if n == "金手指点2":
+        return (1, 0, n)
+    m = re.match(r"^空间点(\d+)$", n)
+    if m:
+        return (2, int(m.group(1)), n)
+    if n.startswith("金手指点"):
+        return (3, 0, n)
+    m = re.match(r"^侧面点(\d+)$", n)
+    if m:
+        return (4, int(m.group(1)), n)
+    if n.startswith("准备点"):
+        return (5, 0, n)
+    m = re.match(r"^安全点(\d+)$", n)
+    if m:
+        return (6, int(m.group(1)), n)
+    return (7, 0, n)
 
 
 def _pt_tsv(rows):
@@ -863,8 +887,9 @@ class ConfigCenterPage(QWidget):
         ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
         head.addWidget(ttl)
         head.addStretch()
+        _sdir = (t.get("overrides") or {}).get("pt.space_dir") or "data/skills/l2_atomic/space_points.json"
         sub = QLabel("任务 TASK-07-AOI(光学质量检测) · 场景 SCN-07-AOI(AR) · 单位 m(基座系) · "
-                     "真源 reports/aoi_points(由 tools/task_build.py 只读生成)")
+                     "真源 reports/aoi_points(示教点) + %s(空间点1~8) —— 由 tools/task_build.py 只读生成" % _sdir)
         sub.setFont(QFont("Consolas", 9))
         sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
         cv.addWidget(ttl)
