@@ -62,3 +62,72 @@
 ## 7. 还没做 (如实报, 别当已完成)
 - 形状 G(x) 的 gain 张量目前是手工/待标定 —— 从真实数据或物理导出那一步未做 (需要带状态的实测轨迹拟合 G_k)。
 - 现场标定流程 (先 M 后形状两步) 未固化到界面上。
+
+## 8. 健康度 H 与尺度分离 (分级口径)
+
+    H = (1/κ)·λ_min = M · H̃,    H̃ = (1/κ)·λ̃_min      (λ̃ = 形状 G 的特征值, det G = 1)
+
+| 配置 | M | κ | λ_min | H | **H̃** | 分级(按 H̃) |
+|---|---|---|---|---|---|---|
+| TASK-01-FW 插拔 (diag [10,10,50,10,10,10]) | 3.643 | 5.00 | 2.786 | 0.557 | **0.153** | 良好 |
+| TASK-06-TRAY 摆盘 (isotropic) | 4.423 | 1.00 | 4.423 | 4.423 | **1.000** | 优秀 |
+
+- 为什么: κ 与 anisotropy 对 `g → M·g` 不变, 只有 λ_min ∝ M ⇒ H 里混着"物理尺度"。
+- 实现: `health.py::health_from_metric(g)` → HealthReport(H/κ/λmin/λmax/anisotropy/status/trend);
+  阈值真源 `config/calib/zmax_health.json`(grades/trend_eps/kappa_warn); 分级 ≤0.01 危险 / ≤0.1 警告 / 0.5 良好 / >0.5 优秀。
+- 对外: **H 与 H̃ 两个都给** —— H 反映工作量(带尺度), H̃ 无量纲、用于分级与阈值标定。
+
+## 9. 闭环引擎 (`engine_loop.py`) + SIL 实测数字
+
+结构: 度量 g_ij(x) → H/H̃ → 动力 τ=‖g⁻¹F‖ (m/s²) → L5(系统边界/安全规范/任务规划) → L4(认知+监督否决)
+→ L3(调度) → L2(原子技能/肌肉记忆/快速反馈) → 记忆上行 L2→L3→L4→L5 → L5 汇总回写(调 L4/L3 增益 + 补偿 L2 肌肉记忆)。
+
+SIL 真 trace 重放 (`tools/sil_test_engine.py --repeat 3`, 产物 `reports/sil_engine_<ts>.json`):
+
+| 检查 | 插拔真 trace (752 帧×3) |
+|---|---|
+| 五层调用 | L5=L4=L3=L2=**2256** |
+| 记忆上行+回写 | L2→L3→L4→L5 各 2256, L5 回写 2256 |
+| L4 监督真否决 | 234 帧 (超速/超力/越界/trace 力), **越限帧 0** |
+| 肌肉记忆 | 7 个原子技能各练 3 次固化 |
+| τ | mean 0.035 / max 0.343 m/s² |
+| 零回归 | τ=‖F‖/M (偏差 4.6e-9) · a=F/M (1.1e-16) · 执行与 L2 原始一致 752/752 |
+
+判据 `tools/verify_engine_loop.py` ✅ 20/20。
+- ⚠️ **零回归自检不要耦合 `from_config()`**: 真源换成各向异性后会把"零回归"判成失败; 用显式各向同性度量做零回归。
+- ⚠️ 真源是**常度量**(无 gain) 时 H 是常数 (min==max) —— 别把"H 不变"报成"健康度监控失效"; 分级随状态动要用带 gain 的度量来证明。
+- ⚠️ 收口闸逐轴 |corr|<0.5 在真 trace 上大量否决(实测 2195/2247) 属**已知 KPI-1 卡点**, 不是本引擎缺陷 —— 报缺口时别归因错。
+
+## 10. 配置单 → M 映射 (`tools/config_to_M.py`)
+
+| 规则 | 目标 | 依据 |
+|---|---|---|
+| R1 | dim | 工序含腕部姿态控制(旋转/翻转/定向/朝向) ⇒ 6; 否则 3 |
+| R2 | mode | 平移↔姿态 / 图面↔深度耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic |
+| R3 | diag/components | 各轴刚度 ∝ 1/公差(公差越小越"贵"), 归一 det G=1 |
+| R4 | gain | 动态交互需现场辨识 ⇒ 系数**待标定**(缺省 0=常度量), 留有限差分实测入口 |
+| R5 | scale M | M = 1 + (½m_eff v² + m_eff g h)/E_ref, clamp[0,8] (复用 `tools/master_param_m.py`, 别 fork) |
+
+- 幂等以 **`m_audit_sha`** 为准; 文件 sha 每次都变(`_updated_at`)。
+- 落地分工: 「主参数M节点」= 映射(写 `m_*` 参数 + 逐条打依据 + 写回回读) · 「流形引擎节点」= 用 M 算几何/健康/扭矩。
+- 节点右键源码: 映射函数用节点新字段 `m_source/m_source_symbol` 声明; 若要让右键默认直达它, 需同步改原判据的期望值(不要静默改判据)。
+- 回退: 真源被映射改写后, `git checkout`(若在库内) 或从画布 `_archive/` 备份恢复。
+
+## 11. 集成总线 (AOI/AR 作为集成信号接口)
+
+```bash
+python3 tools/engine_bus_publish.py [--task TASK-06-TRAY] [--dry-run]   # 引擎信号 → AR/AOI 总线
+```
+
+- 走 `tools/ar_aoi_bus.py::publish(signals, meta, prov)` 的**同一 live 文件** `zmax_data/ar_live/ar_aoi_live.json`
+  (AR 8797 `/api/rs_*` 与 AOI 10082/10083 的状态都汇到这条路) ⇒ 引擎健康度与现场信号同源可见。
+- 信号值域: 只收数值键; 写完**回读校验**(工具自报 ok/missing), 别只看退出码。
+- 服务没起(AOI 10082/10083)时只能做到**接口级**验证, 报告里如实写明, 不许写成"已集成"。
+
+## 12. 写盘与判据的两个通用坑
+
+- 🔴 **原子写(临时文件 + `os.replace`)会把软链顶成普通文件**: 画布真源是 `src/lerobot/engineering/flows/x.json`
+  →(软链)→ `data/database/zmax/sources/canvas/x.json`; 对软链路径 rename 之后**软链消失、两份从此分叉**
+  (实测 `git status` 报 typechange)。写前先 `os.path.realpath(p)`, 或直接写真实路径。
+- 🔴 **判据别拿"前后时间戳不同"当"本次真跑过"**: 秒级时间戳在同一秒内的两次写会相等 ⇒ 假 FAIL。
+  改成"时间戳落在最近 N 分钟内"或比较内容/计数。

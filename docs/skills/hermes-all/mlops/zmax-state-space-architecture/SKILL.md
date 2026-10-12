@@ -373,6 +373,24 @@ src/lerobot/engineering/
   常度量 ‖R‖=0 / 弯曲 ‖R‖>0 · 配置真源读写+非正定拒写 · 真跑节点报数) ✅ 23/23 PASS。
 - 公式/解析对照值/两个数值坑见 `references/metric-tensor-main-param.md`。
 
+### 📊 健康度 H 与**尺度分离** (分级口径红线)
+- `g = M·G` ⇒ 特征值 λ = M·λ̃, 而 **κ = λmax/λmin 与 anisotropy 对整体尺度不变** ⇒
+  **H = (1/κ)·λ_min = M·H̃** (H̃ = (1/κ)·λ̃_min 才是尺度不变的几何健康度)。
+- 🔴 **分级/阈值一律落在 H̃, 不许落在 H**: 同一套形状 M=3.643 ⇒ H=0.557/H̃=0.153(良好); M=4.423 ⇒ H=4.423/H̃=1.0(优秀)
+  —— 拿 H 分级会把"物理尺度变大"读成"几何变好"。对外报数 **H 与 H̃ 两个都给**。
+- 口径唯一实现 `src/lerobot/manifold/health.py`(`health_from_metric(g)`/`health_from_eigvals` → H/κ/λmin/λmax/
+anisotropy/status/trend); 阈值真源 `config/calib/zmax_health.json`(现场可标定) —— 别在调用处复制阈值常量。
+
+### 🔁 闭环引擎 · 配置单→M 映射 · 集成总线 (落点分工)
+- 分工: **「标定诊断测量 · 主参数 M」节点 = 配置单→M 的映射关系** · **「流形引擎」节点 = 用 M 实现功能**。
+- `tools/config_to_M.py`: 显式规则表 R1 dim / R2 mode / R3 diag·components / R4 gain(待标定) / R5 scale=M(能量标定),
+  每条带来源依据; 幂等以 **`m_audit_sha`** 为准(不是文件 sha —— `_updated_at` 每次都变)。
+- `src/lerobot/manifold/engine_loop.py`: 度量 → H → 动力 τ=‖g⁻¹F‖ → L5(路径/系统边界/规划) → L4(认知+监督否决)
+  → L3(调度) → L2(原子技能+肌肉记忆+快速反馈) → 记忆上行 L2→L3→L4→L5 → **L5 汇总回写**(调 L4/L3 增益 + 补偿 L2)。
+- 集成接口 = AOI/AR 总线: `tools/engine_bus_publish.py` 把引擎信号(含 H̃)**并进 `tools/ar_aoi_bus.py` 的同一 live 文件**, 写完回读。
+- 判据: `verify_engine_loop.py`(闭环完整性) · `verify_config_to_M.py`(映射/闸门/幂等) · `sil_test_engine.py`(SIL 真 trace 重放)。
+- 深度(尺度分离推导/映射规则表/SIL 数字/写盘与判据两坑)见 `references/metric-tensor-main-param.md` §8–§12。
+
 ## 🎛 GUI 安全启停 (2026-09-24 血案)
 
 - **别用 `pkill -f studio.py` / `ps|grep studio.py`**: 你的命令行里含 "studio.py" 字样 → **匹配到自己 → 自杀**
