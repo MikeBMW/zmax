@@ -1178,8 +1178,12 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natur
                 if abs(float(deskew_deg)) > 0.05:
                     h0, w0 = img.shape[:2]
                     M = cv2.getRotationMatrix2D((w0 / 2.0, h0 / 2.0), -float(deskew_deg), 1.0)
+                    # 🔴 2026-10-12 老倪「判据图上下怎么有白色的边缘?」—— 根因就是这里:
+                    #   细长条(2448x141)绕中心转 ~2.8° + 纵向拉伸, **白色填充**(255)被放大成上下两条白边
+                    #   (实测: 不转时 0 白行; 带角度时 顶 6 / 底 8 行, 首行均值 172)。
+                    #   ⇒ 填充改深色(与判据图底色一致), 白边消失。
                     img = cv2.warpAffine(img, M, (w0, h0), flags=cv2.INTER_LINEAR,
-                                         borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+                                         borderMode=cv2.BORDER_CONSTANT, borderValue=(18, 18, 18))
                     meta = dict(meta or {})
                     meta["deskew_deg"] = round(float(deskew_deg), 3)
                 # 2026-09-28 老倪: 「能再纵向拉伸成 3 倍长度么」—— 判据图是细长条(≈8:1),
@@ -1211,7 +1215,241 @@ def _aoi_frame(bgr, clean: bool = True, out: int = 900, quality: int = 78, natur
     return (buf.tobytes() if ok else b""), meta
 
 
+
+def _gold_legacy_from_natural(nat_bgr, deskew_deg=0.0, vstretch=3.0, fix_hw=(900, 332),
+                              quality=88, out=900):
+    """旧口径渲染(旋转拉正 + 定尺/拉伸), 但**不重新裁剪** —— 新口径判死时用它回落,
+    省掉第二次 clean_judge_frame(实测那样会让刷新从 0.66s 掉到 0.84s)。"""
+    img = nat_bgr.copy()
+    meta = {"legacy_from_natural": True}
+    try:
+        if abs(float(deskew_deg)) > 0.05:
+            h0, w0 = img.shape[:2]
+            M = cv2.getRotationMatrix2D((w0 / 2.0, h0 / 2.0), -float(deskew_deg), 1.0)
+            img = cv2.warpAffine(img, M, (w0, h0), flags=cv2.INTER_LINEAR,
+                                 borderMode=cv2.BORDER_CONSTANT, borderValue=(18, 18, 18))
+            meta["deskew_deg"] = round(float(deskew_deg), 3)
+        if fix_hw:
+            img = cv2.resize(img, (int(fix_hw[0]), int(fix_hw[1])), interpolation=cv2.INTER_LINEAR)
+            meta["fix_hw"] = [int(fix_hw[0]), int(fix_hw[1])]
+        elif abs(float(vstretch) - 1.0) > 0.01:
+            _h1, _w1 = img.shape[:2]
+            img = cv2.resize(img, (_w1, max(1, int(round(_h1 * float(vstretch))))),
+                             interpolation=cv2.INTER_LINEAR)
+            meta["vstretch"] = float(vstretch)
+        h, w = img.shape[:2]
+        if max(h, w) > out:
+            k = out / float(max(h, w))
+            img = cv2.resize(img, (int(w * k), int(h * k)))
+    except Exception as e:                                                        # noqa: BLE001
+        return b"", {"legacy_from_natural": True, "err": str(e)[:120]}
+    okq, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+    return (buf.tobytes() if okq else b""), meta
+
+
+def _gold_rectify(bgr, hw=(900, 332), stretch=3.0, margin_y=0.16, margin_x=0.02,
+                  dark=(18, 18, 18), box=(63, 185, 80), box_th=2):
+    """🔲 判据图 = 金手指条带**透视矫正**成真正的矩形 + 定尺画布 + 只画一个外框矩形。
+
+    老倪 2026-10-12 现场两条投诉, 逐条对上:
+      · 「上下怎么有白色的边缘?」   → 旧路子把条带外的**过曝白带**一起裁进来了 ⇒ 这里只贴条带本身,
+        画布其余部分用深色背景, 白边消失。
+      · 「上下边缘要平行啊」       → 旧路子只做**旋转**(从 /region 拿一个角度) + 等比缩放,
+        而画面里条带是**梯形**(透视) ⇒ 旋转治不了: 实测上边缘 -2.89° / 下边缘 -0.46°, 首尾差 38px。
+        这里用**上下边缘实测**拟两条直线, 取四角做**透视变换** ⇒ 做完上下沿严格水平、左右严格竖直。
+      · 「金手指的矩形外边缘, 需要保留一个小区域」 → 条带按 ~stretch 倍纵向放大后**居中**,
+        四周留深色 margin(默认上下各 16%、左右各 2%)。
+      · 「你需要将中间的矩形, 标记出来」 → 只画**一个**绿色外框(box), 不画任何别的东西。
+
+    返回 (jpg_bytes, meta); 条带/边缘不可靠时返回 (None, meta) —— 调用方回落旧路子并如实标注,
+    **绝不在一张没拍到条带的帧上硬画一个矩形**(那是"无中生有")。
+    """
+    try:
+        if bgr is None or bgr.size == 0:
+            return None, {"rect_ok": False, "why": "空图"}
+        H0, W0 = bgr.shape[:2]
+        sc = min(1.0, 1200.0 / float(max(1, W0)))          # 分析用降采样, 几何再按比例还原
+        small = cv2.resize(bgr, (int(W0 * sc), int(H0 * sc)), interpolation=cv2.INTER_AREA) if sc < 1.0 else bgr
+        g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        h, w = g.shape
+        gx = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3))
+        # ① 条带行区间: 竖直边缘密度(金手指就是一排竖直边)最大的连续带
+        ed = cv2.GaussianBlur(gx.mean(axis=1).reshape(-1, 1), (1, 9), 0).ravel()
+        pk = int(np.argmax(ed))
+        if ed[pk] <= 4.0:
+            return None, {"rect_ok": False, "why": "画面里找不到齿排(竖直边缘能量=%.1f)" % ed[pk]}
+        thr = 0.45 * ed[pk]
+        y0 = pk
+        while y0 > 0 and ed[y0 - 1] > thr:
+            y0 -= 1
+        y1 = pk
+        while y1 < h - 1 and ed[y1 + 1] > thr:
+            y1 += 1
+        if y1 - y0 < 8:
+            return None, {"rect_ok": False, "why": "条带太薄(%d 行)" % (y1 - y0)}
+        win = max(6, int((y1 - y0) * 0.45))                 # 上下各留一个小窗找边界①②
+        # ② 条带列区间
+        # 每列的竖直边缘能量(1-D)。做法: 先找"能量核心段"(最强的那片齿排),
+        # 再从核心向两侧**蔓延**(容忍 ≤max(20, 宽*2%) 列的小空隙) ⇒ 得到整排金手指的横向范围。
+        # ⚠️ 不能用"最长连续段": 齿排两端对比度低会断, 实测只取到中间 372/2448 px(判据图被裁成一小块)。
+        ec = gx[max(0, y0):y1 + 1, :].mean(axis=0)
+        pk_e = float(ec.max())
+        if pk_e <= 1.0:
+            return None, {"rect_ok": False, "why": "横向边缘能量太低"}
+        core = np.where(ec > 0.5 * pk_e)[0]
+        if len(core) < 5:
+            return None, {"rect_ok": False, "why": "找不到齿排核心段"}
+        core_lvl = float(np.median(ec[core])) or 1.0
+        ethr = max(1.0, 0.22 * core_lvl)
+        gapmax = max(20, int(w * 0.02))
+        a = int(core[0])
+        gap = 0
+        for i in range(int(core[0]) - 1, -1, -1):
+            if ec[i] > ethr:
+                a, gap = i, 0
+            else:
+                gap += 1
+                if gap > gapmax:
+                    break
+        b2 = int(core[-1])
+        gap = 0
+        for i in range(int(core[-1]) + 1, w):
+            if ec[i] > ethr:
+                b2, gap = i, 0
+            else:
+                gap += 1
+                if gap > gapmax:
+                    break
+        x0, x1 = a, b2
+        if x1 - x0 < 60:
+            return None, {"rect_ok": False, "why": "条带横向太窄(%d px)" % (x1 - x0)}
+        if x1 - x0 < 60:
+            return None, {"rect_ok": False, "why": "条带横向太窄(%d px)" % (x1 - x0)}
+        # ③ 上下边界: 不逐列取点(齿排内部结构会把点带跑, 实测残差 13~18px, 直接判死),
+        #    改成把宽度分 **左/中/右三段**, 每段用"行方向竖直边缘密度"的轮廓定出该段条带的上下沿
+        #    ⇒ 四个角直接给出**倾斜**(左右段中心不同高)与**透视**(左右段厚薄不同)。整段积分 ⇒ 稳。
+        def _band_edges(xa, xb):
+            xa2, xb2 = max(0, int(xa)), min(w, int(xb))
+            if xb2 - xa2 < 12:
+                return None
+            off = max(0, y0 - win)
+            sub = g[off:min(h, y1 + win + 1), xa2:xb2]
+            if sub.shape[0] < 6:
+                return None
+            ed2 = np.abs(cv2.Sobel(sub, cv2.CV_32F, 1, 0, ksize=3)).mean(axis=1)
+            ed2 = cv2.GaussianBlur(ed2.reshape(-1, 1), (1, 7), 0).ravel()
+            pk3 = float(ed2.max())
+            if pk3 < 2.0:
+                return None
+            thr3 = 0.35 * pk3
+            yp = int(np.argmax(ed2))
+            u = yp
+            while u > 0 and ed2[u - 1] > thr3:
+                u -= 1
+            dn = yp
+            while dn < len(ed2) - 1 and ed2[dn + 1] > thr3:
+                dn += 1
+            return (float(off + u), float(off + dn), pk3)
+
+        W3 = float(x1 - x0)
+        segL = _band_edges(x0, x0 + 0.25 * W3)
+        segM = _band_edges(x0 + 0.30 * W3, x0 + 0.70 * W3)
+        segR = _band_edges(x0 + 0.75 * W3, x1)
+        if not (segL and segM and segR):
+            return None, {"rect_ok": False, "why": "上下边界定不出来(左%s/中%s/右%s)"
+                          % tuple(bool(s2) for s2 in (segL, segM, segR))}
+        tl, bl, cL = segL
+        tm, bm, cM = segM
+        tr, br, cR = segR
+        if min(cL, cM, cR) < 2.5:
+            return None, {"rect_ok": False, "why": "边缘对比度太低(%.1f/%.1f/%.1f)" % (cL, cM, cR)}
+        hsrc = ((bl - tl) + (br - tr)) / 2.0
+        band_h = float(y1 - y0)
+        if hsrc < 6.0:
+            return None, {"rect_ok": False, "why": "条带实测高度太小(%.1f px)" % hsrc}
+        if hsrc > 1.6 * band_h + 10.0:            # 实测条带不该远高于"边缘密集带" ⇒ 说明边界被带跑
+            return None, {"rect_ok": False, "why": "上下边界跨度过大(实测%.1f vs 边缘带%.1f px)" % (hsrc, band_h)}
+        mid_meas = (tm + bm) / 2.0
+        mid_lin = ((tl + bl) / 2.0 + (tr + br) / 2.0) / 2.0
+        if abs(mid_meas - mid_lin) > 0.35 * hsrc + 4.0:
+            return None, {"rect_ok": False, "why": "中段与左右段对不上(中%.1f vs 插值%.1f)" % (mid_meas, mid_lin)}
+        at = (tr - tl) / max(1.0, W3)              # 上沿斜率(px/px)
+        ab = (br - bl) / max(1.0, W3)              # 下沿斜率(px/px)
+        bt_ = tl - at * x0
+        bb = bl - ab * x0
+        rt = rb = 0.0
+        nt = nb = 3
+        trapez = float(((br - tr) - (bl - tl)) / max(1e-6, hsrc))
+        slope_deg = {"top": round(float(np.degrees(np.arctan(at))), 2),
+                     "bot": round(float(np.degrees(np.arctan(ab))), 2)}
+        # ④ 四角 → 透视变换(把梯形拉成严格矩形)
+        q = np.float32([[x0, at * x0 + bt_], [x1, at * x1 + bt_],
+                        [x1, ab * x1 + bb], [x0, ab * x0 + bb]])
+        Ws = int(min(hw[0] * (1 - 2 * margin_x), (x1 - x0) / max(1e-6, sc)))
+        Hs = int(min(hw[1] * (1 - 2 * margin_y), max(24.0, hsrc * stretch / max(1e-6, sc))))
+        if Ws < 40 or Hs < 20:
+            return None, {"rect_ok": False, "why": "输出尺寸异常(%dx%d)" % (Ws, Hs)}
+        dst = np.float32([[0, 0], [Ws - 1, 0], [Ws - 1, Hs - 1], [0, Hs - 1]])
+        M = cv2.getPerspectiveTransform(q / max(1e-6, sc), dst)
+        strip = cv2.warpPerspective(bgr, M, (Ws, Hs), flags=cv2.INTER_LINEAR)
+        # ⑤ 🔴 齿排自检(必须有): 矫正后的框里得**真的**是一排周期性金手指, 否则一律不画框
+        #    (老倪 2026-10-12 之前就骂过"没拍到也照样画一排" —— 那叫无中生有)
+        gp = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        core2 = gp[int(Hs * 0.25):max(int(Hs * 0.25) + 1, int(Hs * 0.75)), :]
+        pr = core2.mean(axis=0)
+        pr = pr - float(pr.mean())
+        ac = np.correlate(pr, pr, "full")[len(pr) - 1:]
+        ac = ac / (float(ac[0]) + 1e-9)
+        lo_l, hi_l = max(8, int(Ws * 0.02)), max(24, int(Ws * 0.14))
+        seg2 = ac[lo_l:hi_l]
+        lag = (lo_l + int(np.argmax(seg2))) if len(seg2) else 0
+        rr = float(ac[lag]) if lag else 0.0
+        if len(seg2) < 3 or rr < 0.45 or lag in (lo_l, hi_l - 1):
+            return None, {"rect_ok": False, "lattice_fail": True, "lattice_r": round(rr, 3), "lag": lag,
+                          "why": "框内没有周期性齿排(自相关 r=%.2f @lag %d) ⇒ 不画框(工件不在位/没对准)"
+                                 % (rr, lag)}
+        # ⑥ 深色画布 + 居中贴条带(向内收 1px, 去掉边界混色) + 只画一个外框
+        out = np.full((int(hw[1]), int(hw[0]), 3), dark, np.uint8)
+        dx0, dy0 = (int(hw[0]) - Ws) // 2, (int(hw[1]) - Hs) // 2
+        trim = 1
+        core = strip[trim:Hs - trim, trim:Ws - trim]
+        out[dy0 + trim:dy0 + trim + core.shape[0], dx0 + trim:dx0 + trim + core.shape[1]] = core
+        cv2.rectangle(out, (dx0, dy0), (dx0 + Ws - 1, dy0 + Hs - 1), box, int(box_th))
+        ok, buf = cv2.imencode(".jpg", out, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        meta = {"rect_ok": True, "ver": "rect-v1-20261012", "out": [int(hw[0]), int(hw[1])],
+                "box": [dx0, dy0, Ws, Hs],
+                "slope_before": slope_deg, "trapez": trapez,
+                "thirds": {"L": [round(tl, 1), round(bl, 1)], "M": [round(tm, 1), round(bm, 1)],
+                           "R": [round(tr, 1), round(br, 1)]},
+                "band": [int(y0 / sc), int(y1 / sc)], "cols": [int(x0 / sc), int(x1 / sc)],
+                "h_src_px": round(hsrc / sc, 1), "hline_px": round(hsrc / sc, 1),
+                "resid": {"top": round(rt, 2), "bot": round(rb, 2), "n": [nt, nb]},
+                "lattice": {"r": round(rr, 3), "lag_px": lag},
+                "margin_px": [dy0, int(hw[1]) - dy0 - Hs, dx0, int(hw[0]) - dx0 - Ws]}
+        return (buf.tobytes() if ok else None), meta
+    except Exception as e:                                                        # noqa: BLE001
+        return None, {"rect_ok": False, "why": "异常: %s" % str(e)[:100]}
+
+
 _AOI_AUTO = {10082: True, 10083: False}   # 自动取景: 工控机内存里没照片时, 由本服务现拍一张
+
+# 判据图新口径(老倪 2026-10-12): 条带**透视矫正**成严格矩形 + 深色画布 + 只画一个绿色外框。
+# 置 ZMAX_AOI_GOLD_RECT=0 即回旧口径(旋转拉正 + 白底), 作为一键回退。
+_AOI_GOLD_RECT = os.environ.get("ZMAX_AOI_GOLD_RECT", "1") != "0"
+_AOI_RECT_LAST: dict = {}                 # 口径决策日志去抖(状态变化才打一行)
+
+
+def _gold_natural_bgr(bgr):
+    """取「原比例条带」的 BGR 版(与判据图**同一裁剪口径**), 供透视矫正用; 不出条带返回 None"""
+    try:
+        from aoi_exposure_fix import clean_judge_frame
+        _rgb, meta = clean_judge_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB),
+                                      out=900, return_natural=True)
+        nat = meta.get("natural") if isinstance(meta, dict) else None
+        return None if nat is None else cv2.cvtColor(nat, cv2.COLOR_RGB2BGR)
+    except Exception as e:                                                        # noqa: BLE001
+        print("[aoi_gold] 取原比例条带失败: %s" % str(e)[:120], flush=True)
+        return None
 _AOI_AUTO_AT = {10082: 0.0, 10083: 0.0}   # 上次自动现拍的时刻(限流: 最快 30s 一次)
 _AOI_AUTO_MIN_S = 60.0
 
@@ -1812,11 +2050,38 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                     meta = dict(meta or {})
                     meta["caliber"] = "same"
                 else:
-                    jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
-                                           deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
-                                           fix_hw=(900, 332))
-                    meta = dict(meta or {})
+                    # 🔲 新口径(2026-10-12 老倪): 条带透视矫正成严格矩形 + 深色画布 + 只画一个外框。
+                    #    齿排自检不过 ⇒ 不画框、回落旧口径, 并在 meta 里如实写原因(绝不无中生有)。
+                    _rj, _rm = (None, {})
+                    if _AOI_GOLD_RECT:
+                        _pre = _gold_natural_bgr(bgr)
+                        if _pre is None:
+                            _rm = {"why": "取原比例条带失败(clean_judge_frame 没给出条带)"}
+                        else:
+                            _rj, _rm = _gold_rectify(_pre)
+                    if not _rj:
+                        if _pre is not None:
+                            # 复用已经裁好的条带(不再第二次 clean) ⇒ 回落也不拖慢刷新节奏
+                            jpg, meta = _gold_legacy_from_natural(
+                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
+                                fix_hw=(900, 332), quality=88)
+                        else:
+                            jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
+                                                   deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
+                                                   fix_hw=(900, 332))
+                        meta = dict(meta or {})
+                        meta["rect"] = False
+                        meta["rect_why"] = str((_rm or {}).get("why") or "未走新口径")
+                    else:
+                        jpg, meta = _rj, dict(_rm or {})
+                        meta["rect"] = True
                     meta["caliber"] = "canonical"
+                    _rc = bool(meta.get("rect"))
+                    if _rc != _AOI_RECT_LAST.get(name):
+                        _AOI_RECT_LAST[name] = _rc
+                        print("[aoi_gold] %s 判据图口径: %s%s" % (
+                            name, "透视矫正+外框" if _rc else "旧口径(不画框)",
+                            "" if _rc else " · 原因: %s" % str(meta.get("rect_why"))[:90]), flush=True)
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 # 整板原图那格: canonical 下复用同一张 origin; same 下另取一次(低频)
