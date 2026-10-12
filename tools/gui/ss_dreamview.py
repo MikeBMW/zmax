@@ -1750,8 +1750,16 @@ class DreamView3D(QWidget):
                 self._src = ("L4 演示全链 (seed=%s, %s 步, 终态 %s)"
                              % (meta.get('seed'), meta.get('steps'), meta.get('stage_final')))
             else:
-                head_off = np.asarray(meta.get("peg_head_off", np.array([-0.13, 0, -0.01])), dtype=float)
-                self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
+                # 🔴 2026-10-12 老倪: 「拿起来的光模块, 和渲染的光模块有位置偏差」
+                #   根因: meta 里没有 `peg_head_off` 的 episode (摆盘就是) 会**静默套用插拔的默认
+                #   [-0.13,0,-0.01]** ⇒ 偏移 = -0.03m ⇒ 画出来的件横向偏 30mm (实测 peg 就是件中心)。
+                #   修法: 缺该字段 ⇒ 偏移 0 (不猜); 摆盘场景一律 0。
+                if meta.get("peg_head_off") is None or scene_mode(getattr(self, "scene_id", None)) == "tray":
+                    self._peg_center_off = np.zeros(3)
+                    print("🧩 [3D场景] 光模块抓握偏移 = 0 (episode 无 peg_head_off / 摆盘件中心即真值)", flush=True)
+                else:
+                    head_off = np.asarray(meta["peg_head_off"], dtype=float)
+                    self._peg_center_off = head_off * 0.5 + np.array([0.035, 0.0, 0.0])
                 self._src = (f"操作视频同源 episode (metaworld seed={meta.get('seed')}, "
                              f"{meta.get('steps')} 步, 终态 {meta.get('stage_final')})")
             # 相机: 精确对齐视频 corner2 (四元数含 roll), 视距 = 相机到场景锚点的真实距离
@@ -2192,12 +2200,31 @@ class DreamView3D(QWidget):
             self.view.addItem(aoi_lens)
             scene.append(aoi_lens)
             # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
-            # 2026-10-12: 独立复核发现「孔口方块全图 0 px 可见」= 被盒面吞掉 ⇒ 外移到盒面之外 10mm
-            mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.010, 0, 0]),
-                                                     (0.016, 0.05, 0.05)),
+            # 2026-10-12 老倪: 「夹具/孔座 与插入终点有横向偏差」—— 逐像素复核发现**孔口全图 0 px 可见**
+            #   (纯深色方口在深色盒体/背景上根本分不出, 等于没有孔口 ⇒ 只能用夹具实体去比插入终点)。
+            #   修: ① 方正对着相机来向 (相机 x=+1.3 ⇒ 看 +X 面) 外凸 10mm; ② 深色内芯 + **亮青边框**
+            #   让"孔口在哪"一眼可见、也可被像素反查; ③ 孔口内再嵌一层更深的"孔底"。
+            _mo_p = self._mouth + np.array([0.010, 0, 0])
+            mouth = gl.GLMeshItem(meshdata=_box_mesh(_mo_p, (0.016, 0.05, 0.05)),
                                   color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
             self.view.addItem(mouth)
             scene.append(mouth)
+            try:
+                _mv, _me = _bbox_lines(_mo_p + np.array([0.009, 0, 0]), (0.016, 0.05, 0.05))
+                _mpts = []
+                for _e in _me:
+                    _mpts.append(_mv[_e[0]])
+                    _mpts.append(_mv[_e[1]])
+                mouth_rim = gl.GLLinePlotItem(pos=np.array(_mpts), color=(0.10, 0.85, 1.00, 1.0),
+                                              width=2.5, mode='lines')
+                mouth_rim.setGLOptions('additive')
+                self.view.addItem(mouth_rim)
+                scene.append(mouth_rim)
+                self._gl_items["mouth_rim"] = mouth_rim
+                print("🧩 [3D场景] 孔口可见化: 深色方口 + 亮青边框 @%.4f (相机 x=+1.3 看 +X 面)" % _mo_p[0],
+                      flush=True)
+            except Exception as _e:                                             # noqa: BLE001
+                print("孔口亮边框创建失败:", _e)
             # 插入终点标记 (goal, 半透明绿点线框)
             gv, ge = _bbox_lines(self._hole, (0.03, 0.05, 0.05))
             gpts = []
@@ -2206,6 +2233,12 @@ class DreamView3D(QWidget):
                 gpts.append(gv[e[1]])
             goal = gl.GLLinePlotItem(pos=np.array(gpts), color=(0.20, 0.95, 0.55, 0.7),
                                      width=2, mode='lines')
+            # 🔴 插入终点按物理在盒面内侧 35mm (goal.x=-0.2373 vs 盒面 -0.2023) —— 不透明盒体会把它挡死,
+            #   老倪就只能拿"夹具实体"去猜 ⇒ 改成穿透显示(不参与深度测试), 让"孔口↔插入终点"能同时看到对齐。
+            try:
+                goal.setGLOptions('additive')
+            except Exception:                                                   # noqa: BLE001
+                pass
             self.view.addItem(goal)
             scene.append(goal)
         # 🎯 2026-09-09 L4 演示场景设备 (物理 XML 注入, 3D 必须同呈现 — 老倪: 看不到转台/光耦合台):
@@ -2473,6 +2506,25 @@ class DreamView3D(QWidget):
             self.view.addItem(core)
             c_items += [halo, core]
         self._gl_items["contact"] = c_items      # [夹持halo, 夹持core, 环境halo, 环境core]
+
+        # 🧩 摆盘: tray盘 3 个槽位的"已放好件"占位 (默认隐藏, 由 _update_frame 按完成次数点亮)
+        try:
+            if scene_mode(getattr(self, "scene_id", None)) == "tray":
+                import sim_scene_def as _SSD3
+                _mk = _SSD3._tray_layout()["markers"]
+                _psz = (float(_SSD3._TRAY_MW), float(_SSD3._TRAY_MD), float(_SSD3._TRAY_MH))
+                _items = []
+                for _k, _m in enumerate(_mk[1:4]):        # tray盘 槽位 1..3
+                    _it = gl.GLMeshItem(meshdata=_box_mesh(np.asarray(_m["pos"], float) - np.array([0, 0, 0.02 + _psz[2]]),
+                                                           _psz),
+                                        color=(0.92, 0.74, 0.24, 1.0), smooth=False, shader="shaded")
+                    _it.setVisible(False)
+                    self.view.addItem(_it)
+                    scene.append(_it)
+                    _items.append(_it)
+                self._gl_items["tray_placed"] = _items
+        except Exception as _e:                                                 # noqa: BLE001
+            print("摆盘已放件占位创建失败:", _e)
 
         # 🏷 文字标注统一走 LabelOverlay 自绘层 (GLTextItem 在本机 Mesa 下不渲染, 已弃用)
 
@@ -3157,6 +3209,19 @@ class DreamView3D(QWidget):
         _pc2 = np.asarray(peg_grasp, dtype=float) + np.asarray(self._peg_center_off, dtype=float)
         arm[self._arm_idx["peg"]].setMeshData(
             meshdata=_box_mesh_yaw(_pc2, getattr(self, "_peg_size", _PEG_SIZE), _pyv))
+
+        # 🧩 2026-10-12 老倪: 「放下后又消失了」—— 摆盘里放好的件必须**留在 tray盘 槽位**上。
+        #   真值口径: episode 的 stage 里每出现一次「完成」= 放好一颗 (不另造数), 按次数点亮对应槽位。
+        try:
+            if scene_mode(getattr(self, "scene_id", None)) == "tray":
+                _placed_items = self._gl_items.get("tray_placed")
+                if _placed_items:
+                    _n_placed = sum(1 for _j in range(1, i + 1)
+                                    if "完成" in str(tr["stage"][_j]) and "完成" not in str(tr["stage"][_j - 1]))
+                    for _k, _it in enumerate(_placed_items):
+                        _it.setVisible(_k < _n_placed)
+        except Exception as _e:                                                 # noqa: BLE001
+            pass
 
         # 🎯 2026-09-09 转台盘十字刻度随 tt_yaw 旋转 (来料旋转的机构证据可见)
         _ttc = self._gl_items.get("tt_cross")

@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.49.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.49.4")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10977,7 +10977,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.3 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.4 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10985,9 +10985,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.3 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.4 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.49.4: ## v5.49.4 — 3D 场景渲染修正 (小版本迭代)  老倪现场两条: 「点击插拔却跳到摆盘; 摆盘光模块本来短小, 拿起来后变长+透明长方体」→ 追加: 「夹具/孔座 与插入终点横向偏差; 拿起的光模块与渲染的有位置偏差; 放下后又消失」  1. 场景按钮被看门狗扳回 (回归): 按钮只切窗口、未写画布数据源 ⇒ 跟随看门狗 2s 后扳回。    修: 按钮改走 `_switch_scene_manual()` = 先 `write_canvas_scene()`(复用 tools/ss_scene_switch.py::switch)    再切窗口 + 8s 独占期。实测: 写画布=插拔 → 10s/24s 后标题仍「3D场景 · 插拔场景」。 2. 拿起来"变长": 摆盘臂上件被整件隐藏(旧逻辑怕与料盘 3 件重复) ⇒ 拿起时露出插拔的 200mm 那根。    修: 摆盘也画臂上件, 尺寸按摆盘件真源 52×20×12mm (`sim_scene_def._tray_layout`)。 3. "透明长方体": 盘件原为无光照平涂 (shader=None, 单色+线框穿面) ⇒ 金色件改 shader='shaded'。    实测: 单色平涂像素 72 → 含明暗面 15893 (明暗占比≈100%)。 4. 拿起件与渲染件"位置偏差"30mm: 摆盘 episode 的 meta 无 `peg_head_off`, 代码静默套用插拔默认    [-0.13,0,-0.01] ⇒ 偏移 -0.13/2+0.035 = -30mm。修: 缺字段 ⇒ 偏移 0 (该 episode 的 peg 即件中心)。 5. "放下后消失": 放好的件没留在 tray盘 槽位。修: 按 episode「完成」真值帧 [798/1723/2654] 点亮槽位件。 6. 插拔"夹具与插入终点横向偏差": 数值上齐 (盒心 y=0.6833 vs 终点 y=0.6834, 差 0.1mm);    逐像素复核发现 **孔口全图 0px 不可见** (纯深色方口画在深色盒体上) + 插入终点在盒面内侧 35mm 被盒体挡死    ⇒ 看着像错位。修: 孔口加**亮青边框**(朝相机 +X 面, 相机 x=+1.3 已核) + 插入终点绿框**穿透显示**。 7. 摆盘 tray盘 槽位线框按件半长放大 r=0.012→0.027 (24mm 框装不下 52mm 件 = "盘太小"来源之一)。  取证工具: tools/verify_v2_look.py (两场景抓图量像素) · tools/verify_mouth_align.py (孔口↔插入终点 唯一颜色反查, 换算 mm) · tools/qa_3d_pixels.py · 放大 3D 窗用 `xdotool windowsize` (无需重启即可取证)。
         # v5.49.3: **标准打开流程收口 (双击图标→配置中心 · 任务表三列 · 右下角启动按钮 · 3D窗跟随场景)** (老倪 10-12) ① 双击桌面图标 → 先开配置中心: `launch_studio.sh` 导出 `ZMAX_BOOT_PAGE`(默认 config), 新实例由 studio.py 界面建好后自动跳页; **已有实例**则写命令通道 `config` + 激活窗口 ⇒ 双击永远落到配置中心且不起第二个进程 ② 配置中心任务表新增「**工程**」列(工程名 + 项目启动文件真名真路径 `reports/projects/SS_主工程_任务配置.zmaxproj`, 悬停给绝对路径/时间/画布 md5) 与「**实时监控**」列(该任务加载信号的颜色+条数: 插拔 #2e8b57 ×5 · 摆盘 #1f6feb ×3 · AR #8957e5 ×176 + 基础/未分类 白), 原「场景」列改「**3D场景**」并显示场景名字(插拔场景 · SCN-01-FW / 摆盘场景 · SCN-06-TRAY / AR场景 · SCN-07-AOI); 三列内容与上色全从真源算(`config/topics/scene_tags.json` + `tools/ss_scene_switch.py`), 未绑场景的任务如实写「未绑」 ③ **右下角「🚀 启动工程 · 信号 · 场景」**(表格下右对齐)= 确定配置→应用场景→同时开 画布+3D+信号分析, 与 `tools/zmax_open.py step2` 同一执行体 ④ 修真 bug(**3D 窗不跟场景**): open_all 原来只开 3D 窗、不推本轮场景真源 ⇒ 3D 窗停在控制台启动时的场景(老倪会看着画面问「怎么还是插拔」); 现按画布 `ssdata.src_state` 让在册 3D 窗真切场景(标题带场景名; AR 场景无仿真目录 ⇒ 如实不动不硬套) ⑤ 新增判据: `verify_zmax_open_flow.py` **43/43 PASS**(表头列序/三列真内容/启动文件绝对路径真存在/两列同色/按钮在右下角且 1280-1920 宽都不挤不截断/开机默认页接线) + `verify_task_scene_matrix.py` **三任务自动测试**(逐任务真激活→切场景→统一打开, 核 绑定真源/画布数据源/控制台回执/3D窗标题/信号窗该场景颜色像素/配置中心两格文字与颜色, 收尾还原现场)
         # v5.49.2: 配置中心左侧栏改"适配宽度" (老倪: 「左侧栏无法更改宽度, 字体都挡住了」) ——
         #   ① 左栏按**内容实测**定宽(最长条目+层级缩进+箭头/边框/滚动条余量)当初始值+最小宽度(挤不没); 句柄 4→8px;
