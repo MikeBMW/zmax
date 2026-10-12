@@ -110,6 +110,60 @@ PLAN = {
              "不涉及取件/姿态/放置/拔出 ⇒ 配方段 1/2/4/5 不适用; 模型 = L5 自主进化程序"),
 }
 
+
+# ── 🥽 任务7 AOI 示教点位(含"更新记录")写进任务配置 (老倪 2026-10-12) ──────────────────
+def teach_point_overrides(dir_rel="reports/aoi_points"):
+    """把示教点位台账写进任务配置的 overrides —— 让「金手指点1 的位置」在**配置中心的配置里**就能查到。
+
+    老倪: 「更新记录这个 金手指点1 的位置, 要在配置中心的配置里找到这个数据」
+      · pt.<点名>     = 位置(x,y,z) + 记录时间 + 真源文件      (读 reports/aoi_points/<点名>.json)
+      · pthist.<点名> = 更新次数 + 最近一次 old→new           (读 <点名>.history.jsonl)
+      · pt.dir        = 台账目录
+    只**读**台账生成配置(不反向写台账): 台账改了重跑 build 即同步, 单一真源不打架。
+    """
+    out = {"pt.dir": dir_rel}
+    d = os.path.join(ROOT, dir_rel)
+    try:
+        files = sorted(f for f in os.listdir(d) if f.endswith(".json"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            with open(os.path.join(d, f), encoding="utf-8") as fh:
+                j = json.load(fh)
+        except Exception:                                                       # noqa: BLE001
+            continue
+        pos = j.get("pos") or []
+        if not isinstance(pos, list) or len(pos) != 3:
+            continue
+        nm = str(j.get("point") or f[:-5])
+        out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · 记录 %s · %s/%s"
+                           % (pos[0], pos[1], pos[2], j.get("recorded_at") or "-", dir_rel, f))
+        hp = os.path.join(d, nm + ".history.jsonl")
+        if os.path.exists(hp):
+            lines = []
+            try:
+                with open(hp, encoding="utf-8") as fh:
+                    for x in fh.read().splitlines():
+                        if x.strip():
+                            lines.append(json.loads(x))
+            except Exception:                                                   # noqa: BLE001
+                lines = []
+            if lines:
+                last = lines[-1]
+                op = (last.get("old") or {}).get("pos") or []
+                np_ = last.get("new_pos") or []
+                out["pthist." + nm] = ("%d 次更新 · 最近 %s: %s → %s"
+                                       % (len(lines),
+                                          last.get("replaced_at") or last.get("ts") or "-",
+                                          ("(%.6f, %.6f, %.6f)" % tuple(op)) if len(op) == 3 else "?",
+                                          ("(%.6f, %.6f, %.6f)" % tuple(np_)) if len(np_) == 3 else "?"))
+    return out
+
+
+_PT = teach_point_overrides()
+PLAN["ar_aoi"]["overrides"].update(_PT)
+
 TIER = {"12槽": "L1 料盘级", "12穴位": "L1 料盘级", "20穴位": "L1 料盘级",
         "4定位孔": "L2 治具级", "单颗": "L3 单颗级", "12槽·L1料盘级": "L1 料盘级",
         "4定位孔·L2治具级": "L2 治具级", "光模块单颗·L3治具内": "L3 单颗级"}

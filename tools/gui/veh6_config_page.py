@@ -413,6 +413,56 @@ def _model_tip(t):
                        "画布节点: %s" % mr.get("node"), "能力: %s" % mr.get("capability")])
 
 
+def _pt_entries(t):
+    """🥽 任务配置里的示教点位 —— 老倪 2026-10-12: 「更新记录这个 金手指点1 的位置, 要在配置中心的配置里找到这个数据」
+
+    口径: 点位数据**已经写进任务配置**(config/tasks/tasks.json 的 overrides, 由 tools/task_build.py
+    从台账 reports/aoi_points/*.json + *.history.jsonl 生成), 配置中心里能直接查到:
+        pt.<点名>     = x/y/z + 记录时间 + 真源文件
+        pthist.<点名> = 更新次数 + 最近一次 old→new
+    """
+    ov = (t or {}).get("overrides") or {}
+    pts = {k[3:]: v for k, v in ov.items() if k.startswith("pt.")}
+    hist = {k[7:]: v for k, v in ov.items() if k.startswith("pthist.")}
+    return pts, hist
+
+
+def _points_tip(t):
+    """任务行 tooltip: 示教点位 + 更新记录 (没有点位配置 ⇒ 空串, 不污染别的任务)."""
+    pts, hist = _pt_entries(t)
+    if not pts:
+        return ""
+    ov = (t or {}).get("overrides") or {}
+    ls = ["🥽 示教点位 (来自任务配置 overrides · 真源 %s)" % (ov.get("pt.dir") or "reports/aoi_points")]
+    for k in sorted(pts):
+        ls.append("  · %s   %s" % (k, pts[k]))
+    for k in sorted(hist):
+        ls.append("  ↻ %s   %s" % (k, hist[k]))
+    return "\n".join(ls)
+
+
+def _points_block():
+    """底部结果面板追加段 (可选中复制): 把任务配置里的示教点位摊开, 一眼能看到金手指点1 在哪。"""
+    try:
+        tk = _j(TASKS_J, {}) or {}
+    except Exception:                                                           # noqa: BLE001
+        return ""
+    rows = []
+    for t in (tk.get("tasks") or []):
+        pts, hist = _pt_entries(t)
+        if not pts:
+            continue
+        rows.append("")
+        rows.append("🥽 %s · %s —— 示教点位 (配置里可查 · 真源 %s)"
+                    % (t.get("task_id"), t.get("task_type") or "",
+                       (t.get("overrides") or {}).get("pt.dir") or "reports/aoi_points"))
+        for k in sorted(pts):
+            rows.append("   · %-6s %s" % (k, pts[k]))
+        for k in sorted(hist):
+            rows.append("   ↻ %-6s %s" % (k, hist[k]))
+    return ("\n".join(rows)) if rows else ""
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -524,7 +574,8 @@ class ConfigCenterPage(QWidget):
         self.out.setFont(QFont("Consolas", 9))
         self.out.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
                                f"border:1px solid {th['C_BORDER']};")
-        self.out.setPlainText(_run("overview"))
+        # 🥽 老倪: 示教点位(金手指点1 等)要在配置里查得到 ⇒ 底部面板末尾摊开(可复制), 任务行 tooltip 同样给
+        self.out.setPlainText(_run("overview") + _points_block())
         root.addWidget(self.out)
         self.setLayout(root)
         from PyQt5.QtCore import QTimer
@@ -785,7 +836,7 @@ class ConfigCenterPage(QWidget):
         # 🆕 场景/模型列的完整说明放 tooltip (单元格只放短标签, 完整口径不截断)
         try:
             for _i, _t in enumerate(tk.get("tasks", [])):
-                for _c, _tip in ((2, _scene_tip(_t)), (9, _model_tip(_t))):
+                for _c, _tip in ((2, _scene_tip(_t)), (9, _model_tip(_t)), (0, _points_tip(_t))):
                     _it = self.tasks_table.item(_i, _c)
                     if _it is not None:
                         _it.setToolTip(_tip)
