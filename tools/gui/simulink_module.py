@@ -218,7 +218,7 @@ NODE_LABEL_MAX_PX = 340          # 单行标签像素上限 (仅作最终的省�
 # 标签里**不写图标** (图标由原名字自动带过来), 长度按上面的算法都 ≤10 字。
 NODE_CORE_LABELS = (
     (r"视觉语言自动标注", "L5 视觉自动标注"),
-    (r"阶段专家\s*MOE", "阶段专家MOE门控路由"),
+    (r"(阶段专家|元数据)\s*MOE", "元数据MOE门控路由"),
     (r"环境渲染图像源", "插拔环境渲染图像源"),
     (r"INTACT\s*插拔策略", "INTACT 插拔策略"),
     (r"INTACT.*(工作安全|物理世界导航)", "INTACT 安全导航"),
@@ -5624,6 +5624,16 @@ class SimulinkModule(QWidget):
             "  · 仅读取, 不下发任何动作",
             self.open_dataspace_window, "#58a6ff")
         tl.addWidget(self.btn_ds_win)
+        # 🗂 2026-10-13 老倪: 「simulink 画布上面工具栏增加配置中心的独立打开窗口; 所有这些独立打开的窗口,
+        #   要保证与全系统的数据一致性。数据源来源于全局数据空间」(独立窗口与主控制台同一真源: 每次打开/每 3s
+        #   重读磁盘真源并对齐指纹; 再点一次置顶复用, 不新开第二个)
+        self.btn_cfg_win = mk_btn(
+            "🗂 配置中心",
+            "配置中心 · 独立窗口 (与主控制台同一真源: config/ 配置 + 工程库 zmax_engineering.db;\n"
+            "  · 打开即重读磁盘真源 (无内存副本), 每 3s 自动对齐一次\n"
+            "  · 与画布/3D/信号/数据总线各窗口共用同一份全局数据空间)",
+            self.open_config_window, "#c9a0ff")
+        tl.addWidget(self.btn_cfg_win)
         tl.addSpacing(8)
         # (2026-08-06 老倪: Scope 移到 node 库, 工具栏按钮已删; btn_scope 移除)
         # 🗂 2026-10-09 老倪: 工具栏「⛶ 浮动」删 → 菜单「画布 → 浮动画布」 (Ctrl+Shift+F)
@@ -9833,6 +9843,89 @@ class SimulinkModule(QWidget):
         ("🚀 全新训练", "system", "第6/7步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
         ("📊 Scope 示波器", "action", "第7/7步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
     ]
+
+    def open_config_window(self):
+        """🗂 配置中心 → **独立窗口** (老倪 2026-10-13)。
+
+        数据一致性口径: 独立窗口与主控制台**同一真源** — 页面类 ConfigCenterPage 每次 _j() 直读磁盘
+        (无缓存), 本方法打开即 reload_from_source(), 之后每 3s 比对真源指纹 (sha256), 变了就重读;
+        因此主控制台/别的会话改了 config/ 或工程库, 这个窗口会自动跟上, 不会显示陈旧副本。
+        再点按钮: 复用已有窗口 → 重读真源 → 置顶 (不新开第二个)。
+        """
+        from PyQt5.QtCore import QTimer as _QT
+        w = getattr(self, "_cfg_win", None)
+        try:
+            if w is not None and w.isVisible():
+                try:
+                    w._cfg_page.reload_from_source()
+                except Exception:                                               # noqa: BLE001
+                    pass
+                w.raise_()
+                w.activateWindow()
+                return w
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            from veh6_config_page import ConfigCenterPage
+        except Exception as e:                                                  # noqa: BLE001
+            self._log("⛔ 配置中心独立窗口打不开: %r" % (e,))
+            return None
+        dlg = QDialog(self.window() or self)
+        dlg.setWindowTitle("🗂 配置中心 · 独立窗口 (与主控制台同一真源)")
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
+        dlg.resize(1480, 900)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
+        page = ConfigCenterPage(model_page=None)
+        lay.addWidget(page, 1)
+        try:                                        # 顶栏「← 返回主窗口」在独立窗口里 = 关窗 (语义一致)
+            page.back_btn.clicked.disconnect()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            page.back_btn.clicked.connect(dlg.close)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        fp0 = {}
+        try:
+            fp0 = page.reload_from_source()          # 打开即对齐真源
+        except Exception:                                                       # noqa: BLE001
+            pass
+        dlg._cfg_page = page
+        dlg._cfg_fp0 = fp0
+
+        def _sync():                                 # 每 3s 与磁盘真源比对 (跨窗口一致性)
+            try:
+                cur = page.source_fingerprint()
+                prev = getattr(dlg, "_cfg_fp", None) or fp0
+                if cur != prev:
+                    page.reload_from_source()
+                    dlg._cfg_fp = cur
+                    self._log("🔗 配置中心独立窗口: 真源已变 → 已重读对齐 (%d 个真源文件)" % len(cur))
+            except Exception:                                                   # noqa: BLE001
+                pass
+        tmr = _QT(dlg)
+        tmr.setInterval(3000)
+        tmr.timeout.connect(_sync)
+        tmr.start()
+        dlg._cfg_timer = tmr
+
+        def _on_close(*_a):
+            try:
+                tmr.stop()
+            except Exception:                                                   # noqa: BLE001
+                pass
+            try:
+                page.deleteLater()
+            except Exception:                                                   # noqa: BLE001
+                pass
+            self._cfg_win = None
+        dlg.finished.connect(_on_close)
+        self._cfg_win = dlg
+        dlg.show()
+        self._log("🗂 配置中心独立窗口已打开 (同一真源 · 指纹 %s)" %
+                  (", ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in list(fp0.items())[:3]) or "—"))
+        return dlg
 
     def _open_float_workflow(self, title, setup_fn):
         """在独立浮动窗口打开一个新流程实例 (2026-08-05 老倪:

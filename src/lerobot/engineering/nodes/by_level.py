@@ -33,7 +33,7 @@ LEVELS_INDEX = {
         ("ss_mem_l2", "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)", 'ss_mem_l2', "mem_nodes.py", 'node_ss_mem_l2'),
         ("n_board_frame", "📐 板坐标系定位 (工序坐标系·免手眼)", 'n_board_frame', "library.py", 'node_n_board_frame'),
         ("n_l2_muscle", "💪 L2 肌肉记忆技能库 (光模块抓放循环)", 'n_l2_muscle', "library.py", 'node_n_l2_muscle'),
-        ("ss_moe", "🧬 阶段专家 MOE · 7 专家 + 先验门控路由 (在役)", 'ss_moe', "library.py", 'node_ss_moe'),
+        ("ss_moe", "🧬 元数据MOE门控路由 (在役)", 'ss_moe', "library.py", 'node_ss_moe'),
         ("n_moveit", "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)", 'n_moveit', "library.py", 'node_moveit'),
         ("ss_seg", "🧩 开放词汇分割 (SAM3 分割anything)", 'ss_seg', "library.py", 'node_ss_seg'),
     ],

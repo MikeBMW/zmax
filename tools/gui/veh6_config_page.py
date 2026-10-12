@@ -951,6 +951,35 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
 
+    # 🗂 2026-10-13 老倪: 「所有这些独立打开的窗口, 要保证与全系统的数据一致性。数据源来源于全局数据空间」
+    #   口径: 独立窗口**每次打开/每次轮询都重读磁盘真源**, 不吃构造时的内存副本; 指纹用于跨窗口核验。
+    _SRC_FILES = ("config/tasks/tasks.json", "config/ss_task_binding.json", "config/topics/scene_tags.json",
+                  "config/platform/zmax_perf_spec.json", "config/mcd/zmax_mcd.json",
+                  "data/database/zmax/zmax_engineering.db")
+
+    def source_fingerprint(self):
+        """真源指纹 (sha256 前 16 位): 独立窗口与主控制台应是同一份 ⇒ 指纹必须相同。"""
+        import hashlib
+        out = {}
+        for rel in self._SRC_FILES:
+            fp = os.path.join(ROOT, rel)
+            try:
+                out[rel] = hashlib.sha256(open(fp, "rb").read()).hexdigest()[:16]
+            except Exception as e:                                              # noqa: BLE001
+                out[rel] = "缺(%s)" % type(e).__name__
+        return out
+
+    def reload_from_source(self):
+        """从磁盘真源重读并刷新本页 (独立窗口调用: 主控制台改了配置, 这里自动跟上)。"""
+        self._task_cache = None if getattr(self, "_task_cache", None) else None   # 明确不吃旧副本
+        try:
+            self._reload_task_states()
+        except Exception as e:                                                   # noqa: BLE001
+            self._log_cc("   ⚠ 重读真源时任务表刷新失败: %r" % (e,))
+        fp = self.source_fingerprint()
+        self._log_cc("   🔗 已与真源对齐: " + " · ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in fp.items()))
+        return fp
+
     def _reload_task_states(self):
         """重算全表活跃列 + 表头计数 (改一个状态, 全表跟着动: 旧活跃会自动变未激活)。"""
         import ss_task_state as _ts

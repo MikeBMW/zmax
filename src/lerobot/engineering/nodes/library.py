@@ -4594,7 +4594,7 @@ def _resolve_python():
             return _c
     return "python3"
 
-# ═══════════ 2026-09-24 新增功能节点: 阶段专家 MOE / L4 LoRA 微调 / L3 LoRA 微调 ═══════════
+# ═══════════ 2026-09-24 新增功能节点: (2026-10-13 改名) 元数据MOE门控路由 / L4 LoRA 微调 / L3 LoRA 微调 ═══════════
 # 老倪: 「代办任务也要面向节点功能, 例如 MOE架构这样的改造, 也要显示在状态空间的整个工程里,
 #        作为一个功能节点; L4和L3层的LoRA微调节点需要显示在画布上」+ 「节点要是进不了系统则删掉」
 # 三节点均为**真节点** (注册 + 真源码映射 + 真实磁盘现状 + 真实连线), 不是装饰。
@@ -4603,9 +4603,16 @@ def _swm_home():
     return _o3.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
 
 def node_ss_moe(ctx):
-    """🧬 阶段专家 MOE — 7 阶段专属专家 + 先验门控路由 (SigLIP 主干冻结)
-    源码: tools/stage_moe_backbone.py (STAGES / class StageMoE) · 诊断: tools/moe_gate_diagnose.py
-    报告的数字全部取自磁盘/日志实况, 不写死 (缺就报缺)。"""
+    """🧬 元数据MOE门控路由 (原「阶段专家MOE门控路由」, 老倪 2026-10-13 改名定稿)
+
+    这一节点实现的是**数据空间的根**: 元数据是整个系统的数据库根服务。
+      ① 元数据 = 基础核心组成 (标准原子模型类比: 玻色子型=场/连续量, 费米子型=离散实体/可数)
+      ② 数据空间每个 topic = 由元数据组合成的"原子/分子/有机物" (显式映射规则表)
+      ③ 全息系统 = 整体信息编码在部分里: 整体算子可由 topic 子集复现 (真线性代数, 实测秩与误差)
+      ④ 硬先验门控路由 = 7 阶段 → 7 专家 1:1 (单射; 学习式门控实测坍缩, 故用先验)
+    实现源码: tools/meta_moe_router.py (META_PRIMITIVES / COMPOSE_RULES / incidence / holography / route)
+    原能力保留: tools/stage_moe_backbone.py (STAGES / class StageMoE) · 诊断 tools/moe_gate_diagnose.py
+    数字全部真算/取自磁盘实况, 不写死 (缺就报缺)。"""
     import glob
     import os as _o4
     import time as _t4
@@ -4622,12 +4629,33 @@ def node_ss_moe(ctx):
            _ck(os.path.join(_swm_home(), "checkpoints", "stage_moe", "moe.pt"), "s2")]
     gate = sorted(glob.glob(os.path.join(_REPO_ROOT, "reports", "moe_gate_*.json")))
     if log:
-        log("🧬 阶段专家 MOE: 7 专家 (接近/对位/下降/抓取/抬起/转移/插入) · 主干 SigLIP 768d 冻结 + 门控路由")
+        log("🧬 元数据MOE门控路由: 7 阶段专家 (接近/对位/下降/抓取/抬起/转移/插入) · 主干 SigLIP 768d 冻结 + 先验门控路由")
         log(f"   权重: {' · '.join(cks)}")
         log("   实测 (训练日志 2026-09-24): s1 留出 观测 0.0106@1500 · s2 best 观测 0.0093 / 动作 0.0503 "
             f"(平凡基线 0.0366 / 0.0955 → 优 75% / 47%)")
         log("   ⏳ 建设中 (老倪待办): ①门控分化诊断="
             f"{'已跑 ' + os.path.basename(gate[-1]) if gate else '待跑'} ②同数据密集基线严格A/B=待跑 ③引擎闭环n=10=待跑")
+    # ── 元数据层 (2026-10-13 老倪: 元数据=数据库根服务 · topic=原子/分子/有机物 · 映射关系+全息系统) ──
+    try:
+        import meta_moe_router as _mm
+        _r = _mm.report()
+        _h = _r.get("holography") or {}
+        if log:
+            log("   🧩 元数据: %d 项 (玻色子型 %d · 费米子型 %d) — 系统数据库根服务 (基础核心组成)"
+                % (_r["primitives"], _r["bose"], _r["fermi"]))
+            log("   🔗 映射关系: 数据空间 %d 个 topic 全部由元数据组合而成 (覆盖 %s%%; 规则表 %d 条)"
+                % (_r["topics"], _r["coverage_pct"], len(_mm.COMPOSE_RULES)))
+            log("   🧪 全息系统: 映射矩阵秩 %s/%s · 整体算子复现误差 %.1e · 覆盖率≥90%% 需 %s 个 topic · 退化反证 %.1e"
+                % (_h.get("rank"), _h.get("n_primitives"), _h.get("max_op_err") or 0.0,
+                   _h.get("k_topics_for_whole_90pct"), _h.get("degraded_op_err_at_k_minus_1") or 0.0))
+            if _h.get("primitives_unused"):
+                log("   ⚠ 尚未落到任何 topic 的元数据: %s (如实报缺)" % ",".join(_h["primitives_unused"]))
+            log("   🎛 门控路由: 硬先验 7 阶段 → 7 专家 · 单射 %s · 路由熵 0.000"
+                % ("✅" if _r["stage_injective"] else "❌"))
+    except Exception as _e:
+        if log:
+            log("   ⚠ 元数据层报告失败: %r" % (_e,))
+
     return True
 
 def node_ss_lora_l4(ctx):
