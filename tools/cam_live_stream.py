@@ -2555,6 +2555,16 @@ def _ctl_move(req: dict) -> dict:
                 "msg": "未授权真动(现场安全): 先点页面上『🔓 授权真动』并二次确认(现场确认无人), "
                        "再操作; 授权 %.0f 分钟后自动失效" % _win}
     cmd = {"skill": sid, "speed": speed} if pname is None else {"skill": sid, pname: val, "speed": speed}
+    # 🧗 2026-10-12 老倪: 「点击 安全点1 就要移动到这个点」—— 安全点/准备点这类**目标本身就更高**的点,
+    #   计划里必带一段上升(实测 准备点 z=0.4172 → 安全点1 z=0.6362 = **+219mm**), 会被「升高 >10cm 必须先问人」
+    #   的闸拦住(那条规矩来自 2026-10-01 碰撞)。规矩不改, 但必须给人一条**显式**放行通道:
+    #   请求里带 allow_climb_mm=<现场确认的净空高度>才放行(不带 ⇒ 照旧拦)。上限 1000mm 挡填错量级。
+    try:
+        _ac = req.get("allow_climb_mm")
+        if _ac is not None and str(_ac) != "":
+            cmd["allow_climb_mm"] = max(0.0, min(1000.0, float(_ac)))
+    except (TypeError, ValueError):
+        return {"ok": False, "msg": "allow_climb_mm 不是数字"}
     if not want_real:
         cmd["dry"] = True
         why = "服务未授权真动(--ctl-motion)" if not _CTL["motion"] else "未授权真动(只算目标, 不下发)"

@@ -1161,7 +1161,19 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
   $('#msg').textContent='🎯 '+human+': 下发中…'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000), label);
+    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000), label);
+    /* 🧗 2026-10-12 老倪: 「点击 安全点1 就要移动到这个点」—— 安全点/准备点这类目标本身更高的点,
+       计划里必有一段上升(实测 准备点→安全点1 = +219mm), 会被「升高 >10cm 必须先问人」的闸拦住。
+       规矩不改(那条来自 10-01 碰撞), 但把"人确认净空"这一步做进按钮: 服务端回执里已给出放行量,
+       这里让现场点一次确认 ⇒ 带 allow_climb_mm 重发(不确认就不发, 照旧拦)。 */
+    const _ac=(j&&j.msg||'').match(/allow_climb_mm=([0-9]+(?:\.[0-9]+)?)/);
+    if(_ac && real){
+      const mm=parseFloat(_ac[1]);
+      if(confirm('到该点需要上升 '+mm.toFixed(0)+'mm（超过「升高不超 10cm」规矩）。\n现场已目视确认上方净空、无人？\n确定 = 立即带放行量下发；取消 = 不下发。')){
+        m.textContent='⏳ 已确认净空, 带放行量 '+mm.toFixed(0)+'mm 重发…';
+        j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:1,allow_climb_mm:mm},20000), label);
+      }
+    }
     if(j.denied||(j.ok&&j.dry)){
       m.textContent='⛔ 未授权: 只算了目标, 机械臂不会动 —— 先点左边『🔓 授权真动』再点我';
     }else if(j.ok&&j.pending){
