@@ -32,7 +32,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socketserver
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import cv2
 import numpy as np
@@ -267,6 +268,29 @@ def _ss_stats(timeout: float = 3.0) -> dict:
         return {"_err": "%s: %s" % (type(e).__name__, e)}
 
 
+def _rs_online_fast(timeout: float = 2.5):
+    """USB D435 在线自证 —— **必须有硬超时**。
+
+    2026-10-12 现场: D435 拔掉后, /api/cams 里那步直接 `_rs_jpeg()` 抓帧 ⇒ pyrealsense 永久等帧,
+    整个 /api/cams 卡死(3D 场景的 AR 按钮正是拿 /api/cams 探"服务起没起" ⇒ 于是它以为服务没起,
+    点 AR 既不切场景也不开页面)。⇒ 先查设备在不在, 抓帧再套一层超时。
+    """
+    try:
+        import pyrealsense2 as _rs
+        if len(_rs.context().query_devices()) == 0:
+            return False, "没检测到 RealSense 设备(D435 不在位/已掉线)"
+    except Exception as _e:                                                 # noqa: BLE001
+        return False, "RealSense 查询失败: %s" % type(_e).__name__
+    import concurrent.futures as _cf
+    _ex = _cf.ThreadPoolExecutor(max_workers=1)
+    try:
+        return bool(_ex.submit(_rs_jpeg, 82).result(timeout=timeout)), SRC_NOTE.get("usb", "")
+    except Exception:                                                       # noqa: BLE001
+        return False, "抓帧超时(设备在但没帧 ⇒ 疑似掉线)"
+    finally:
+        _ex.shutdown(wait=False)                                            # 不等卡住的线程
+
+
 def _cams_payload() -> dict:
     """底图来源清单: 每路带 来源/分辨率/是否已标定/在线/帧龄(从视频源真值读)。"""
     st = _ss_stats()
@@ -285,15 +309,11 @@ def _cams_payload() -> dict:
             d["fps"] = s.get("fps")
             d["stalled"] = s.get("stalled")
             d["label_src"] = s.get("label")
-        elif k == "rs":                       # 本机 USB D435 不在 8791 stats 里 ⇒ 自己真抓一帧自证
-            try:
-                _b = _rs_jpeg(82)       # 真抓一帧(与 /snap/rs.jpg 同源) ⇒ 在线与否有实据, 不靠"以为"
-                d["online"] = bool(_b)
-                d["age_s"] = 0.0 if _b else None
-                d["label_src"] = SRC_NOTE["usb"]
-            except Exception as e:                                                # noqa: BLE001
-                d["online"] = False
-                d["label_src"] = "抓帧失败: %s" % type(e).__name__
+        elif k == "rs":                       # 本机 USB D435 不在 8791 stats 里 ⇒ 自己真抓一帧自证(带超时!)
+            _on, _note = _rs_online_fast()
+            d["online"] = _on
+            d["age_s"] = 0.0 if _on else None
+            d["label_src"] = SRC_NOTE.get("usb", "") if _on else _note
         out[k] = d
     return {"ok": True, "cams": out, "default": DEFAULT_CAM, "four": list(FOUR_CAMS),
             "calibrated": [c for c in CAMS if load_calib(c)],
@@ -371,6 +391,16 @@ def l5_understand(cam: str = None, hint: str = "") -> dict:
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-tcp-ar/1.0"
+    # 2026-10-12 现场实测(AR 按钮打不开): 客户端断链后处理线程**永久卡死**(连接堆成 CLOSE-WAIT,
+    #   accept 队列满 6 ⇒ 新连接一律超时; 进程活着、老连接还能答, 换成别的端口也一样复现)。
+    #   根因=处理线程没有读超时 ⇒ 这里给每条连接一个硬超时(读/写超时即收尾放行), 免得线程泄漏把服务憋死。
+    timeout = 20
+    # 单个响应不要无限拖: 大图走分块也要能在超时内收尾
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except Exception:                                                       # noqa: BLE001
+            self.close_connection = True
 
     def log_message(self, fmt, *a):                                               # noqa: A003
         sys.stderr.write("[%s] %s\n" % (time.strftime("%H:%M:%S"), fmt % a))
@@ -770,8 +800,15 @@ class H(BaseHTTPRequestHandler):
 def main():
     if not os.path.exists(PAGE):
         print("✗ 页面不存在: %s" % PAGE); return 1
-    srv = ThreadingHTTPServer(("0.0.0.0", PORT), H)
-    srv.daemon_threads = True
+    # 2026-10-12 现场: 线程模型(ThreadingHTTPServer)会把整个服务憋死 ——
+    #   实测 74 线程 / 16 条 CLOSE-WAIT / 主线程卡 futex(不再 accept) ⇒ 新连接一律超时(AR 按钮打不开),
+    #   只有老连接还能被服务。换成**每连接一进程**(ForkingMixIn): 一个连接卡死/线程泄漏都影响不到 accept。
+    #   max_children 兜住内存(父进程 ~60MB × N)。
+    class _ForkingSrv(socketserver.ForkingMixIn, HTTPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+        max_children = 24
+    srv = _ForkingSrv(("0.0.0.0", PORT), H)
     print("═══ TCP 轨迹 AR/VR 服务 ═══")
     print("  AR 页:      http://0.0.0.0:%d/          (手机/PC 同网可开)" % PORT)
     for k, v in CAMS.items():

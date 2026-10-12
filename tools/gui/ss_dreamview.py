@@ -1016,8 +1016,21 @@ class CollapsibleSide(QFrame):
 #        ① 平台切到 AR 数据源(画布 ssdata.src_state, 真源 ss_scene_switch.py — 与配置中心激活同一条路)
 #        ② AR 服务(8797)没起就起 ③ 打开页面(webbrowser → Qt → xdg-open → firefox, 逐条回落)
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-AR_PAGE_URL = "http://127.0.0.1:8797/ar"
-AR_SERVICE_URL = "http://127.0.0.1:8797"
+# 2026-10-12 现场: 回环(127.0.0.1)连 8797 实测**一律超时**(accept 队列满 6, 主线程卡 futex),
+#   而 LAN 地址那条路是好的 ⇒ 用**本机 LAN IP** 开页面(可用 ZMAX_AR_URL 覆盖), 回环只当兜底。
+def _lan_ip():
+    import socket as _s
+    try:
+        _x = _s.socket(_s.AF_INET, _s.SOCK_DGRAM); _x.connect(("10.255.255.255", 1))
+        _ip = _x.getsockname()[0]; _x.close()
+        return _ip if _ip and not _ip.startswith("127.") else "127.0.0.1"
+    except Exception:                                                       # noqa: BLE001
+        return "10.163.146.78"
+
+_LAN = _lan_ip()
+AR_PAGE_URL = os.environ.get("ZMAX_AR_URL", "http://%s:8797/ar" % _LAN)
+AR_SERVICE_URL = "http://%s:8797" % _LAN
+AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8797/ar"      # 兜底: LAN 那条不通时再试
 
 
 def ar_service_up(timeout: float = 2.0) -> bool:
