@@ -1982,17 +1982,21 @@ class CanoeGraphicWidget(QWidget):
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
         it.setForeground(0, QColor(b.color))
-        # 🥽 场景标记: 有目标场景的用场景色 + ●(绿/蓝/紫), 没分类的用白圈 ○(老倪: 没有分类的都是白色)
+        # 🥽 场景标记(老倪 2026-10-12: 「插拔信号绿色; 摆盘信号蓝色; AOI信号紫色; 没有分类的信号都是白色」):
+        #   有目标场景 → ● + **场景色**; 没分类 → ○ + **白**(不再沿用曲线色, 否则看着像"乱七八糟的颜色")
+        _tagged = False
         if SST is not None:
             try:
                 _sc = SST.tag(b.key)
                 if _sc:
+                    _tagged = True
                     it.setText(0, "● " + it.text(0))
                     it.setForeground(0, QColor(SST.color(b.key)))
                     it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 由 tools/sig_scene_tags.py 打标"
                                   % (_sc, SST.color(b.key)))
                 else:
                     it.setText(0, "○ " + it.text(0))
+                    it.setForeground(0, QColor(C_WHITE))
                     it.setToolTip(0, it.toolTip(0) + "\n场景: 未分类 (白)")
             except Exception:                                                 # noqa: BLE001
                 pass
