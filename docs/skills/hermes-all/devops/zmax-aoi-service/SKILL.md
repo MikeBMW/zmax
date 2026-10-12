@@ -1200,6 +1200,34 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
 8. 落地: `tools/aoi_exposure_fix.py::gold_roi()` + `tools/cam_live_stream.py::_gold_roi_hold()/_GOLD_OUT_LOCK/_gold_rect_vote()/_gold_rectify(v3)`;
    一键回退 `ZMAX_AOI_GOLD_RECT=0`; 台账 `docs/AOI_GOLD_FRAME_V2_20261012.md`; 验收 `tools/verify_aoi_gold_display.py`(PASS 17/FAIL 0)。
 
+## 🗂 同一个物理点两套库 ⇒ 配置中心永远滞后 (2026-10-12, 用户: 「标注模式更新了点1, 配置中心还是没更新」)
+
+- **真因**: 8793 标记模式走 `tools/record_l2_point.py` —— **只写 L2 技能库** `data/skills/l2_atomic/taught_points.json`;
+  而配置中心读的是 **AOI 台账** `reports/aoi_points/<点名>.json`(只由 `tools/record_point_sdk.py` 写、
+  只由 `tools/task_build.py::teach_point_overrides()` 读进任务配置) ⇒ 同一个点两套库各写各的, 一个库变了另一个不知道。
+  实测: taught 13:14 已更新(0.593219,…), 台账还停在 10-09 13:37 → 配置中心显示旧值。
+- **收口(单一链路)**: AOI 点(金手指点1/2 · 侧面点0~3 · 准备点 · 安全点N)走 `record_point_sdk.py`
+  —— 它**一次写两个库**(L2 技能库 + AOI 台账, 同值同时间戳); 写完**立刻重跑 `task_build.py`**。
+  清除时台账同一份也要删(否则配置中心留一行死数据)。空间点走 `record_l2_point.py --store space`(它自己就是真源)。
+- **UI 要自己跟随真源**: 配置中心点位表不能等用户点「重新读取」—— 加 `QTimer(2s)` 盯 `tasks.json` 的 mtime,
+  变了就**静默**重填(不弹提示)。判据: 离屏真建控件 + 改真源 ⇒ 3s 内表行数与值都跟上。
+- **验收工具**: `tools/verify_points_consistency.py` —— 台账 / L2 技能库 / 空间点库 / 任务配置 四处同值体检
+  (位置差 ≤1e-5 m · 配置里的 x/y/z 与台账逐位相符)。每次改点位录链都跑它。
+- ⚠️ 验证脚本里的期望值**必顶从真源现读**(实测: 写死 `0.489774` 的断言在现场重教点1 后报**假失败**)。
+- 📄 链路口径(谁在检测/模型吃什么/接口清单): `docs/AOI_GOLD_DETECTION_CHAIN_20261012.md`
+
+## 🔴 判据图与 YOLO 的关系 (用户会反复问, 先记在这里)
+
+- **主口径不给判据图**: 工控机模型吃的是**同帧派生的 960×960 方图**
+  (`/crop_info.model_input_file = zmax_main_960_No_*.png` · `model_input_kind = "960x960 方图(同帧派生, 检测完即删)"`),
+  判据图 `Finger_TopView_W900_H332_*` 只给人看/存档。
+- **但有一条影子通道**: `/last_result.shadow.input = "判据图压 960x960"`, 判决取并集 ⇒
+  「判据图进过模型」只在 shadow 这一路成立, 不是主判据。
+- 本机 8791/8793 页面那张判据图(现 914×348 等比口径)**只是显示/存档, 不进任何模型**;
+  改显示口径**不会**动模型输入 —— 上线后回读 `model_input_file` 仍是 `zmax_main_960_*` 即可硬证。
+- **画布节点 🔍光学质量检测 ≠ 另一个 YOLO**: 它跑 `quality_check.py::AOIQualityChecker`(纯 numpy/cv2 几何阈值,
+  无训练权重) = 取像健康 + 本机同口径体检; 真缺陷判决在工控机那条链上(节点通过 `ar_aoi_bus.pull()` 把工控机真值汇进同一套话题)。
+
 ## 画布侧 AOI: 能力名 / 节点名 / AOI 话题 (2026-10-12 实测)
 
 **① 能力名「光学质量检测」(老倪 10-11 定名, 原「外观质量检测」) 的上游是真源链, 不是 GUI 代码**:

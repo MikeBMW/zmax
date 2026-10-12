@@ -369,6 +369,18 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   改过画布后**必须先刷新快照 `python3 tools/project_archive.py space-save`**, 否则下一次打开(包括 `tools/probe_open_space.py` 这种离屏探针)
   就把你的改动**回滚**到存档那一份(实测: 改完画布跑一次打开探针, 改的注释被冲掉、库/绑定双双报漂移)。
   收尾跑 `probe_open_space.py` 验"打开后画布 md5 不变"= 幂等, 再交。
+- 🔴 **快照别落进工程目录 (2026-10-12 实测)**: `project_archive.py save` 原默认输出 = `project_dir()`,
+  与总工程 `zmax_space.proj` **同目录** ⇒ 控制台「打开/加载工程」的文件对话框里并排两个 `.proj`,
+  用户当场问「怎么突然多出来一个工程文件? 两个工程文件加载哪个?」。已改: `save` 默认落
+  `<工程目录>/archive/`(与既有 `archive/*.zmaxproj` 惯例一致), 工程目录只剩总工程。
+  **加载永远只认 `zmax_space.proj`**(= `PF.space_path()`); 带时间戳的 `状态空间工程_<ts>.proj` 一律是
+  时间点快照, 加载它 = 把画布/标定/主参数/任务/面板**回滚**到那一刻。
+  排查口令: `find . -name "*.proj"` + `project_archive.py list`; 归属看 mtime 对不对得上当时跑过什么。
+- ⚠️ `probe_open_space.py` 会把 `tasks` 报一次**假漂移**: 打开会刷新绑定文件的 `_meta.generated_at`
+  (实测 13:29:57→13:33:50), 内容逐字段相同 ⇒ 它的比对本没忽略时间戳。看真漂移用
+  `project_archive.py space-show`(已忽略 `_meta/generated_at`)。
+- 📐 幂等判据要用**内容**不用 md5: 打开前备份 vs 打开后真源, **逐节点 JSON 相等(0 变化)+ 连线逐条相等**
+  (实测口径); md5 变了只是重新序列化(键序/缩进), 不代表画布变了。
 - 🔴 **改画布后的下游同步顺序 (不能换)**: ① 改画布 → ② `ss_node_sync.py`(节点配置段要同步时)
   → ③ `ss_task_bind.py --activate <task>` → ④ `project_archive.py space-save`(刷新总工程快照)
   → ⑤ `engineering_db.py build` → ⑥ `ss_task_bind.py --check` + `engineering_db.py check`(+ 工程库服务 restart)。
