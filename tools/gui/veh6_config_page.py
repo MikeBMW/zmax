@@ -463,6 +463,43 @@ def _points_block():
     return ("\n".join(rows)) if rows else ""
 
 
+def _pt_parse(t):
+    """把任务配置里的点位条目拆成结构化行 —— 「工程配置」页直接显示/复制/导出用。
+
+    老倪 2026-10-12: 「我已经在配置中心的 TASK-07 激活的 AOI 任务, 现在要立刻看到 金手指点1 的实际位置数据,
+    应该在工程配置里, 用户能立刻找到」⇒ 数据取自任务配置(TASK-07-AOI.overrides 的 pt.* / pthist.*,
+    由 tools/task_build.py 从台账 reports/aoi_points 只读生成), 这里只做展示, 不另立真源。
+    """
+    import re
+    ov = (t or {}).get("overrides") or {}
+    hist = {k[7:]: v for k, v in ov.items() if k.startswith("pthist.")}
+    pat = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)\s*m\s*·\s*记录\s*([^·]+?)\s*·\s*(\S+)")
+    rows = []
+    for k, v in ov.items():
+        if not k.startswith("pt."):
+            continue
+        m = pat.match(str(v).strip())
+        if not m:
+            continue
+        nm = k[3:]
+        h = hist.get(nm, "")
+        n = (re.match(r"(\d+)\s*次更新", h or "") or [None, "—"])[1] if h else "—"
+        rows.append({"name": nm, "x": m.group(1), "y": m.group(2), "z": m.group(3),
+                     "t": m.group(4).strip(), "src": m.group(5), "n": n, "hist": h})
+    rows.sort(key=lambda r: (0 if r["name"] == "金手指点1" else
+                             1 if r["name"] == "金手指点2" else 2, r["name"]))
+    return rows
+
+
+def _pt_tsv(rows):
+    """复制/导出用的 TSV(粘进 Excel/飞书表格即成型)。"""
+    out = ["点位\tX(m)\tY(m)\tZ(m)\t记录时间\t更新次数\t真源文件"]
+    for r in rows:
+        out.append("%s\t%s\t%s\t%s\t%s\t%s\t%s" %
+                   (r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"]))
+    return "\n".join(out)
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -806,6 +843,93 @@ class ConfigCenterPage(QWidget):
         self._run_into("tasks" if "TASK" in txt.upper() else "overview")
 
     # ── 右侧页签 ──
+    def _ar_pts_card(self, th, tk):
+        """🥽 AR 场景 · 工程配置数据 (专用一块, 放「工程配置」页顶部)。
+
+        老倪 2026-10-12: 「我已经在配置中心的 TASK-07 激活的 AOI 任务, 现在要看到 金手指点1 的实际位置数据,
+        应该在工程配置里, 用户能立刻找到 —— 搞一个专门对应 AR场景的 工程配置数据」
+        ⇒ 点位表(金手指点1 置顶) + 复制/导出按钮; 数据来自任务配置, 真源是 reports/aoi_points 台账。
+        """
+        t = next((x for x in (tk.get("tasks") or []) if str(x.get("task_id")) == "TASK-07-AOI"), {})
+        rows = _pt_parse(t)
+        card = QWidget()
+        card.setStyleSheet(f"background:{th['C_CARD']};border:1px solid {th['C_BORDER']};border-radius:6px;")
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(8, 6, 8, 6)
+        cv.setSpacing(4)
+        head = QHBoxLayout()
+        ttl = QLabel("🥽 AR 场景 · 工程配置数据 —— 示教点位(实际位置)")
+        ttl.setFont(QFont("Consolas", 11, QFont.Bold))
+        ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
+        head.addWidget(ttl)
+        head.addStretch()
+        sub = QLabel("任务 TASK-07-AOI(光学质量检测) · 场景 SCN-07-AOI(AR) · 单位 m(基座系) · "
+                     "真源 reports/aoi_points(由 tools/task_build.py 只读生成)")
+        sub.setFont(QFont("Consolas", 9))
+        sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
+        cv.addWidget(ttl)
+        cv.addWidget(sub)
+        tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "记录时间", "更新", "真源文件"],
+                       [[r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"]] for r in rows], th)
+        tb.setMinimumHeight(28 * (len(rows) + 2) + 6)
+        tb.setMaximumHeight(30 * (len(rows) + 2) + 10)
+        try:                                        # 金手指点1 那一行高亮(老倪要"立刻找到")
+            if rows:
+                from PyQt5.QtGui import QColor as _QC
+                for c in range(tb.columnCount()):
+                    it = tb.item(0, c)
+                    if it is not None:
+                        it.setForeground(_QC(th["C_GREEN"]))
+                        it.setToolTip("★ 金手指点1 —— 实际位置 x=%s y=%s z=%s m · 记录 %s\n   真源 %s\n   %s"
+                                      % (rows[0]["x"], rows[0]["y"], rows[0]["z"], rows[0]["t"],
+                                         rows[0]["src"], rows[0].get("hist") or ""))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        cv.addWidget(tb)
+        rb = QHBoxLayout()
+        b_cp = _btn("📋 复制这张表", th)
+        b_cp.setToolTip("复制成 TSV(可直接粘进 Excel / 飞书表格)")
+        b_ex = _btn("📄 存 CSV", th)
+        b_rl = _btn("🔄 重新读取", th)
+        rb.addWidget(b_cp); rb.addWidget(b_ex); rb.addWidget(b_rl); rb.addStretch()
+        cv.addLayout(rb)
+
+        def _cp():
+            try:
+                from PyQt5.QtWidgets import QApplication as _QA
+                _QA.clipboard().setText(_pt_tsv(rows))
+                self.out.setPlainText("✅ 已复制 AR 场景示教点位表 (%d 行, TSV) —— 直接粘进表格即可\n\n%s"
+                                      % (len(rows), _pt_tsv(rows)))
+            except Exception as e:                                              # noqa: BLE001
+                self.out.setPlainText("⛔ 复制失败: %s" % repr(e)[:120])
+
+        def _ex():
+            try:
+                d = os.path.join(ROOT, "reports", "exports")
+                os.makedirs(d, exist_ok=True)
+                fp = os.path.join(d, "AR场景_示教点位_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
+                with open(fp, "w", encoding="utf-8-sig") as f:
+                    f.write(_pt_tsv(rows).replace("\t", ","))
+                self.out.setPlainText("✅ 已导出: %s   (%d 行)\n\n%s" % (fp, len(rows), _pt_tsv(rows)))
+            except Exception as e:                                              # noqa: BLE001
+                self.out.setPlainText("⛔ 导出失败: %s" % repr(e)[:120])
+
+        def _rl():
+            tk2 = _j(TASKS_J, {}) or {}
+            t2 = next((x for x in (tk2.get("tasks") or []) if str(x.get("task_id")) == "TASK-07-AOI"), {})
+            r2 = _pt_parse(t2)
+            tb.setRowCount(len(r2))
+            for i, r in enumerate(r2):
+                for c, v in enumerate((r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"])):
+                    tb.setItem(i, c, QTableWidgetItem(str(v)))
+            self.out.setPlainText("🔄 已重新读取任务配置(%s) —— %d 个点位\n%s"
+                                  % (time.strftime("%H:%M:%S"), len(r2), _pt_tsv(r2)))
+
+        b_cp.clicked.connect(_cp)
+        b_ex.clicked.connect(_ex)
+        b_rl.clicked.connect(_rl)
+        return card
+
     def _build_tabs(self, d, tk, model_page):
         th = self.th
         bind = _j(BIND_J, {}) or {}
@@ -893,6 +1017,12 @@ class ConfigCenterPage(QWidget):
         self.tab2_table = t2
         self.eng_rows = [c["id"] for c in cs]
         w2 = QWidget(); l2 = QVBoxLayout(w2); l2.setContentsMargins(6, 6, 6, 6)
+        # 🆕 2026-10-12 老倪: 「搞一个专门对应 AR场景的 工程配置数据」⇒ 工程配置页顶部先给这块(点位实际位置)
+        try:
+            self.ar_pts_card = self._ar_pts_card(th, tk)
+            l2.addWidget(self.ar_pts_card)
+        except Exception:                                                       # noqa: BLE001
+            self.ar_pts_card = None
         self.tab2_head = QLabel("点左侧「工程配置」只筛该域; 点具体参数名直接定位到行")
         self.tab2_head.setFont(QFont("Consolas", 10))
         self.tab2_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
@@ -1035,6 +1165,25 @@ class ConfigCenterPage(QWidget):
             "  三份文档同源: 都读 data/database/zmax/zmax_engineering.db + config/platform/*.json, 不手抄数字。")
         l8.addWidget(self.preview, 1)
         self.tabs.addTab(w8, "📄 文档预览")
+
+        # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
+        try:
+            _mk = os.path.join(ROOT, "zmax_data", "cc_last_tab.txt")
+            if os.path.exists(_mk):
+                _i = int(open(_mk, encoding="utf-8").read().strip() or 0)
+                if 0 <= _i < self.tabs.count():
+                    self.tabs.setCurrentIndex(_i)
+
+            def _remember(_idx):
+                try:
+                    os.makedirs(os.path.dirname(_mk), exist_ok=True)
+                    with open(_mk, "w", encoding="utf-8") as f:
+                        f.write(str(int(_idx)))
+                except Exception:                                               # noqa: BLE001
+                    pass
+            self.tabs.currentChanged.connect(_remember)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     # ── 文档配置: 预览 + 一致性 (2026-10-10 老倪) ──
     def _pv_tab_index(self):
