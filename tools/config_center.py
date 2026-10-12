@@ -590,9 +590,48 @@ def cmd_docs(a):
     return subprocess.call(argv)
 
 
+def cmd_sheet(a):
+    """📋 配置单(全参数) —— 该任务在当前状态空间工程里的**全套配置参数** → 文件 (md + json)。
+
+    老倪 2026-10-12: 「你要发布一个配置单，可以从配置清单导出。带出所有的配置参数。」
+    8 段: 任务/场景 · 工艺步骤 · 适用段 · 六档位 · 参数覆盖 · 画布(启用节点参数) · 参数注册表(全量) · 标定+点位
+    """
+    import importlib
+    import time as _t
+    cs = importlib.import_module("config_sheet")
+    tid = (a.arg or a.task or "").strip()
+    d = cs.collect(tid)
+    tid = d["任务"]["task_id"]
+    out = os.path.join(ROOT, "outputs", "config_sheets")
+    os.makedirs(out, exist_ok=True)
+    md = cs.to_md(d)
+    js = json.dumps(d, ensure_ascii=False, indent=1)
+    base = "配置单_%s_%s" % (tid, _t.strftime("%Y%m%d_%H%M%S"))
+    open(os.path.join(out, base + ".json"), "w", encoding="utf-8").write(js)
+    open(os.path.join(out, base + ".md"), "w", encoding="utf-8").write(md)
+    open(os.path.join(out, "配置单_%s_latest.json" % tid), "w", encoding="utf-8").write(js)
+    open(os.path.join(out, "配置单_%s_latest.md" % tid), "w", encoding="utf-8").write(md)
+    if a.json:
+        print(js)
+        return 0
+    t, p = d["任务"], d["参数注册表"]
+    print("📋 配置单 · %s — %s" % (tid, t.get("name") or ""))
+    print("   场景 %s (%s) · 站点 %s · 配方 %s · 工艺 %d 步 · 适用段 %d"
+          % (t.get("场景"), t.get("场景色"), t.get("site"), t.get("recipe_type"),
+             len(t.get("工艺步骤") or []), len(t.get("适用段") or [])))
+    print("   画布 %s: %s 节点/%s 连线 · 该任务启用 %d 节点 · 六档位 %d · 参数覆盖 %d"
+          % (d["画布"]["工程"], d["画布"]["节点"], d["画布"]["连线"], d["画布"]["启用节点数"],
+             len(t.get("档位") or {}), len(t.get("参数覆盖") or {})))
+    print("   参数注册表 %d 项: %s" % (p["总数"], " · ".join("%s %d" % (k, v) for k, v in p["分组计数"].items())))
+    print("   标定 %d 文件 · 点位台账 %d 份" % (len(d["标定真源"]), len(d["点位台账"])))
+    print("   → outputs/config_sheets/%s.md · .json   (最新副本: 配置单_%s_latest.md/.json)" % (base, tid))
+    return 0
+
+
 CMDS = {"overview": cmd_overview, "list": cmd_list, "show": cmd_show, "open": cmd_open,
         "recipe": cmd_recipe, "variants": cmd_variants, "orders": cmd_orders,
         "tasks": cmd_tasks, "task": cmd_task, "bind": cmd_bind, "activate": cmd_activate,
+        "sheet": cmd_sheet,
         "node": cmd_node, "project": cmd_project,
         "order": cmd_order, "check": cmd_check, "sys1": cmd_sys1, "sor": cmd_sor,
         "data": cmd_data, "agreement": cmd_agreement,

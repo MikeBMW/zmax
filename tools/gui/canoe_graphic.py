@@ -1356,6 +1356,21 @@ class CanoeGraphicWidget(QWidget):
         lv.addLayout(sc_row)
         self._scene_sync_lab()
 
+        # ⚙️ 2026-10-12 老倪: 「现在的实时监控, 要能看出配置」——顶部常显一行"当前配置"
+        #   (任务/场景+色/配方/工艺步数/启用节点/档位/覆盖参数/配置单文件与时间);
+        #   真源 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_*_latest.json), 5s 自刷新。
+        self._cfg_mtime = None
+        self._cfg_lab = QLabel("")
+        self._cfg_lab.setTextFormat(Qt.RichText)
+        self._cfg_lab.setWordWrap(True)
+        self._cfg_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px; padding:2px 3px;")
+        lv.addWidget(self._cfg_lab)
+        self._fill_cfg()
+        self._cfg_timer = QTimer(self)
+        self._cfg_timer.setInterval(5000)
+        self._cfg_timer.timeout.connect(self._fill_cfg)
+        self._cfg_timer.start()
+
         self.tree = QTreeWidget()
         self.tree.setColumnCount(4)
         self.tree.setHeaderLabels(["信号名称", "当前值", "帧龄", "来源话题"])
@@ -1363,10 +1378,9 @@ class CanoeGraphicWidget(QWidget):
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.setStyleSheet(f"""
-            QTreeWidget{{background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER};
+            QTreeWidget{{background:{C_BG2}; color:#c9d1d9; border:1px solid {C_BORDER};
                          border-radius:6px; font-size:13px;
                          alternate-background-color:#11161d;}}
-            QTreeWidget::item{{color:#c9d1d9; padding:2px 1px;}}
             QTreeWidget::item:selected{{background:{C_BLUE}44; color:#ffffff;}}
             QHeaderView::section{{background:{C_BG}; color:{C_DIM}; border:none; padding:4px; font-size:12px;}}
         """)
@@ -1898,6 +1912,52 @@ class CanoeGraphicWidget(QWidget):
             out = {}
         self._ar_grp, self._ar_grp_mt = out, mt
         return out
+
+    def _fill_cfg(self):
+        """顶部「当前配置」横幅 —— 让实时监控一眼看出"正在看的是哪套配置"。
+
+        真源 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_<TASK>_latest.json);
+        没有配置单就退回 config/ss_task_binding.json + config/tasks/tasks.json 现算一行(不编数字)。
+        """
+        import glob as _g
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cands = sorted(_g.glob(os.path.join(root, "outputs", "config_sheets", "配置单_*_latest.json")),
+                       key=os.path.getmtime, reverse=True)
+        mt = os.path.getmtime(cands[0]) if cands else None
+        if mt is not None and mt == self._cfg_mtime:
+            return
+        self._cfg_mtime = mt
+        txt = ""
+        if cands:
+            try:
+                d = json.load(open(cands[0], encoding="utf-8"))
+                t, meta = (d.get("任务") or {}), (d.get("_meta") or {})
+                col = t.get("场景色") or "#c9d1d9"
+                txt = ("⚙️ <b>当前配置</b> <b>%s</b> %s · 场景 <span style='color:%s'><b>%s</b></span>"
+                       " · 配方 %s · 工艺 %d 步 · 启用节点 %d · 档位 %d · 参数覆盖 %d"
+                       " <span style='color:#8b949e'>[配置单 %s · 导出 %s · 真源 任务/绑定/画布/参数注册表]</span>") % (
+                    t.get("task_id") or "—", t.get("name") or "", col, t.get("场景") or "—",
+                    t.get("recipe_type") or "—", len(t.get("工艺步骤") or []),
+                    (d.get("画布") or {}).get("启用节点数") or 0, len(t.get("档位") or {}),
+                    len(t.get("参数覆盖") or {}), os.path.basename(cands[0]), meta.get("generated_at") or "—")
+            except Exception:                                                  # noqa: BLE001
+                txt = ""
+        if not txt:
+            try:
+                sys.path.insert(0, os.path.join(root, "tools"))
+                import ss_task_bind as _sb
+                b = _sb.build()
+                tid = b.get("active_task") or "—"
+                tk = next((x for x in (b.get("tasks") or []) if x["task_id"] == tid), {})
+                txt = ("⚙️ <b>当前配置</b> <b>%s</b> %s · 工艺 %d 步 · 启用节点 %d · "
+                       "<span style='color:#8b949e'>配置单未导出 (跑 python3 tools/config_sheet.py)</span>") % (
+                    tid, tk.get("name") or "", len(tk.get("steps") or []), len(tk.get("enabled_nodes") or []))
+            except Exception:                                                  # noqa: BLE001
+                txt = "⚙️ <b>当前配置</b> <span style='color:#8b949e'>未读到任务配置 (config/ss_task_binding.json)</span>"
+        try:
+            self._cfg_lab.setText(txt)
+        except Exception:                                                      # noqa: BLE001
+            pass
 
     def _disp_name(self, key):
         """列表显示的短名: 去掉来源前缀 (来源已由上层分组写清), 名字列才容得下。

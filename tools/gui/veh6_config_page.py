@@ -1152,6 +1152,7 @@ class ConfigCenterPage(QWidget):
         row = QHBoxLayout()
         for txt, fn, kw in (("🧩 刷新绑定", "bind", {}),
                             ("📋 配置清单(选中)", "bind", {"use_sel": True}),
+                            ("📋 配置单(全参数导出)", "sheet", {"use_sel": True}),
                             ("✅ 激活选中任务", "activate", {"use_sel": True}),
                             ("📦 导出工程文件", "project", {}),
                             ("📥 写入状态空间节点", "node", {"arg": "write"}),

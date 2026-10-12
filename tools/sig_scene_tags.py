@@ -165,7 +165,7 @@ def _node_signal_tags(universe) -> dict:
 #  依据 = **各场景自己定义原文里的对象/步骤**(真源 flows/scenes_5jobs.json, 下面每条括注出处),
 #  不是拍脑袋: 只有出现在场景定义里的词才算该场景的信号; 两边都沾(如 光模块/料盘/夹爪共用词)一律不猜 ⇒ 留白。
 SCENE_KEYWORDS = {
-    "插拔场景": {   # SCN-01-FW「FW Loading + EEPROM 写/读校验」: QSFP插座「插入深度35mm」· 步骤「力控拉出/夹爪夹持/对位/固件下载」
+    "插拔场景": {   # SCN-01-FW「FW Loading + EEPROM 写/读校验」: 力控拉出/夹爪夹持/对位/插入/固件校验
         "孔", "插入", "插拔", "力控", "夹爪", "夹持", "接触", "对位", "固件", "eeprom", "qsfp", "pull", "ins",
     },
     "摆盘场景": {   # SCN-06-TRAY「光模块摆盘 (周转盘 → 上料 Tray 盘)」: 周转盘/上料/下料/取件/槽位 · 目标「单颗CT/取放精度」
@@ -211,6 +211,30 @@ def _live_universe() -> set:
     return out
 
 
+def _source_scenes() -> dict:
+    """来源族 → 场景 (2026-10-12 老倪: 「之前说的, 绿色topic是插拔任务, 你怎么没有将topic设置成绿色的?」)
+
+    证据链(**不是拍脑袋分类**, 每一条都能复核):
+      · `sstrace.*` = 状态空间引擎轨迹快照 (zmax_data/ss_live/trace_live.json), 由**画布数据源那一个场景**
+        的这一次运行写出 —— 画布数据源真源 = `tools/ss_scene_switch.now()['src_state']`。
+      · `ros./robot/force_torque.*` · `ros./gripper_pos.*` = 力控插入/夹持专用话题, 插拔链独用
+        (摆盘走真空吸盘、AR 走 AOI 取像)。
+      · `ros./robot/tcp_pose.*` = 真机末端位姿, 三个场景共用的平台量 ⇒ **留白**(要它绿就写进 overrides)。
+    """
+    out = {}
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import ss_scene_switch as _ssw
+        sc = (_ssw.now() or {}).get("src_state") or ""
+        if sc in SCENES:
+            out["sstrace."] = sc
+            out["ros./robot/force_torque"] = sc
+            out["ros./gripper_pos"] = sc
+    except Exception:                                                         # noqa: BLE001
+        pass
+    return out
+
+
 def build(from_runs: bool = False) -> dict:
     """生成注册表: AR/AOI(紫) + 运行证据 + overrides。返回统计。"""
     reg = _registry()
@@ -223,6 +247,12 @@ def build(from_runs: bool = False) -> dict:
             universe |= set((json.load(f).get("signals") or {}).keys())
     except Exception:                                                         # noqa: BLE001
         pass
+    src_scenes = _source_scenes()      # 来源族铺底(逐信号规则可覆盖)
+    for _k in universe:
+        for _pre, _sc in sorted(src_scenes.items(), key=lambda x: -len(x[0])):
+            if str(_k).startswith(_pre):
+                sig[_k] = _sc
+                break
     for k, sc in _node_signal_tags(universe).items():
         sig[k] = sc
     for k, sc in _keyword_tags(universe).items():       # 场景专属关键词(证据=场景定义原文)
@@ -244,9 +274,12 @@ def build(from_runs: bool = False) -> dict:
            "colors": {"插拔场景": SCENE_COLOR.get("插拔场景"), "摆盘场景": SCENE_COLOR.get("摆盘场景"),
                       "AR场景": SCENE_COLOR.get("AR场景"), "未分类": WHITE},
            "rules": {"AR场景": ["ar.*", "AR/AOI 注册表组内信号 (config/topics/ar_aoi_signals.json)"],
-                     "插拔场景": ["TASK-01-FW 运行产物里出现过的信号"],
+                     "插拔场景": ["TASK-01-FW 运行产物里出现过的信号",
+                                  "来源族 sstrace.* (引擎轨迹快照=画布数据源场景那一次运行)",
+                                  "ros./robot/force_torque.* · ros./gripper_pos.* (力控插入/夹持专用)"],
                      "摆盘场景": ["TASK-06-TRAY 运行产物里出现过的信号"],
-                     "未分类": ["其余一律白; 排序选『白』= 全部显示"]},
+                     "未分类": ["其余一律白 (含三场景共用的 ros./robot/tcp_pose.*); 排序选『白』= 全部显示"]},
+           "source_scenes": src_scenes,
            "signals": dict(sorted(sig.items())),
            "overrides": overrides,
            "counts": _counts(sig)}
@@ -280,6 +313,9 @@ def tag(key: str) -> str:
     for _b in _cand:
         if _b in sig:
             return sig[_b]
+    for _pre in sorted((reg.get("source_scenes") or {}), key=len, reverse=True):
+        if k.startswith(_pre):
+            return (reg.get("source_scenes") or {})[_pre]
     bare = k.split(".", 1)[1] if k.startswith("ar.") else k
     if k.startswith("ar.") or bare.startswith("光学质量检测.") or bare.startswith("AOI."):
         return "AR场景"                    # AR/AOI 前缀兜底: 注册表没刷也认得(照实标场景, 不丢颜色)
