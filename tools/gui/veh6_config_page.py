@@ -363,15 +363,24 @@ def _scenes_index():
 
 
 def _scene_cell(t):
-    """🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增「场景」列 (短标签 · 场景ID)。
+    """3D场景列 —— 老倪 2026-10-12: 「增加3D场景列, 可以看到对应的场景名字」。
 
+    🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增场景列 (短标签 · 场景ID)。
     🥽 2026-10-12 老倪: 「信号分析也用 绿色/蓝色/紫色 代表对应不同的场景」⇒ 配置中心这一列**同色**,
     颜色/映射单一真源 = tools/ss_scene_switch.py(插拔#2e8b57 绿 · 摆盘#1f6feb 蓝 · AR#8957e5 紫), 一致到像素。
+    🚀 2026-10-12 二次: 单元格改显示**场景名字**(插拔场景/摆盘场景/AR场景, 真源 config/topics/scene_tags.json)
+    + 场景ID —— 与 3D 场景按钮 / 信号分析窗口的叫法一致; 没绑场景的就标未绑定, 不猜。
     """
     sid = t.get("scene_ref") or "—"
-    sc = _scenes_index().get(sid) or {}
-    st = _SCENE_SHORT.get(sc.get("scene_type"), sc.get("scene_type") or "")
-    return ("%s · %s" % (st, sid)) if st else str(sid)
+    try:
+        _d, by_task, _c = _tag_index()
+        name = str((by_task.get(str(t.get("task_id"))) or {}).get("scene") or "")
+    except Exception:                                                                # noqa: BLE001
+        name = ""
+    if not name:
+        sc = _scenes_index().get(sid) or {}
+        name = _SCENE_SHORT.get(sc.get("scene_type"), sc.get("scene_type") or "")
+    return ("%s · %s" % (name, sid)) if name else str(sid)
 
 
 def _scene_color(t):
@@ -391,6 +400,106 @@ def _scene_tip(t):
     sc = _scenes_index().get(t.get("scene_ref")) or {}
     return "场景真源 flows/scenes_5jobs.json\nscene_id: %s\nscene_type: %s\nname: %s\n%s" % (
         t.get("scene_ref"), sc.get("scene_type"), sc.get("name"), sc.get("desc") or "")
+
+
+def _proj_paths():
+    """🚀 2026-10-12 老倪: 「增加工程列, 可看到 zmax 相关的名字和项目启动文件的实际名字和路径」。
+
+    真源: 绑定真源 config/ss_task_binding.json 的 project 段 (工程名/画布/节点) +
+          项目启动文件 = 工程文件 .zmaxproj (控制台启动第一步就按它的 debug_state 回填场景/数据源/活跃任务;
+          默认路径真源 tools/proj_state.py)。缺就如实标缺, 不编路径。
+    """
+    b = _j(BIND_J, {}) or {}
+    pr = b.get("project") or {}
+    out = {"name": pr.get("name") or "状态空间工程 · 主工程", "canvas": pr.get("canvas_file") or "",
+           "nodes": pr.get("nodes"), "links": pr.get("links"), "md5": pr.get("canvas_md5"),
+           "proj_file": "", "proj_abs": "", "proj_rel": "", "proj_mtime": ""}
+    cand = []
+    try:
+        import proj_state as _ps                                                     # noqa: PLC0415
+        for _a in ("DEFAULT_PROJ", "PROJ_DEFAULT", "PROJ_PATH"):
+            if getattr(_ps, _a, None):
+                cand.append(getattr(_ps, _a))
+    except Exception:                                                                # noqa: BLE001
+        pass
+    _d = os.path.join(ROOT, "reports", "projects")
+    cand.append(os.path.join(_d, "SS_主工程_任务配置.zmaxproj"))
+    try:
+        cand += [os.path.join(_d, f) for f in sorted(os.listdir(_d)) if f.endswith(".zmaxproj")]
+    except Exception:                                                                # noqa: BLE001
+        pass
+    for c in cand:
+        try:
+            if c and os.path.isfile(c):
+                out["proj_abs"] = os.path.abspath(c)
+                out["proj_file"] = os.path.basename(c)
+                out["proj_rel"] = os.path.relpath(os.path.abspath(c), ROOT)
+                out["proj_mtime"] = time.strftime("%F %T", time.localtime(os.path.getmtime(c)))
+                break
+        except Exception:                                                            # noqa: BLE001
+            continue
+    return out
+
+
+def _proj_cell():
+    """工程列单元格: 工程名 + 项目启动文件 (真名, 相对仓库根的路径)。"""
+    p = _proj_paths()
+    return "%s\n📄 %s" % (p["name"], p["proj_rel"] or p["proj_file"] or "（没有工程文件: 先点「📦 导出工程文件」）")
+
+
+def _proj_tip():
+    p = _proj_paths()
+    return "\n".join([
+        "工程名: %s" % p["name"],
+        "项目启动文件: %s" % (p["proj_file"] or "(缺)"),
+        "启动文件绝对路径: %s" % (p["proj_abs"] or "(缺)"),
+        "启动文件时间: %s" % (p["proj_mtime"] or "(缺)"),
+        "画布真源: %s" % (p["canvas"] or "(缺)"),
+        "画布: %s 节点 / %s 连线 · md5 %s" % (p["nodes"], p["links"], str(p["md5"] or "")[:12]),
+        "口径: 控制台启动第一步按该工程文件的 debug_state 回填 场景/数据源/活跃任务 (真源 tools/proj_state.py)",
+    ])
+
+
+def _tag_index():
+    """信号打标真源 config/topics/scene_tags.json → (全文, {任务: 场景条目}, {场景: 信号条数})。"""
+    d = _j(os.path.join(ROOT, "config", "topics", "scene_tags.json"), {}) or {}
+    by_task = {str(x.get("task")): x for x in (d.get("scenes") or []) if isinstance(x, dict)}
+    cnt = {}
+    sig = d.get("signals") or {}
+    if isinstance(sig, dict):
+        for _v in sig.values():
+            cnt[str(_v)] = cnt.get(str(_v), 0) + 1
+    return d, by_task, cnt
+
+
+def _monitor_cell(t):
+    """实时监控列: 该任务会加载的信号**颜色** + 条数 (颜色与信号分析窗口 / 3D 场景按钮同一套, 真源 scene_tags.json)。"""
+    _d, by_task, cnt = _tag_index()
+    x = by_task.get(str(t.get("task_id")))
+    if not x:
+        return "— 未绑场景\n信号走 未分类 白 #ffffff"
+    sc = str(x.get("scene") or "")
+    col = str(x.get("color") or "")
+    n = cnt.get(sc, 0)
+    return "%s  %s ×%d\n+ 基础/未分类 白 #ffffff" % (col or "#ffffff", sc or "?", n)
+
+
+def _monitor_tip(t):
+    _d, by_task, cnt = _tag_index()
+    x = by_task.get(str(t.get("task_id"))) or {}
+    sc = str(x.get("scene") or "")
+    names = [k for k, v in ((_d.get("signals") or {}) if isinstance(_d.get("signals"), dict) else {}).items()
+             if str(v) == sc]
+    rows = ["颜色真源: config/topics/scene_tags.json (与信号分析窗口 / 3D 场景按钮同一套色)",
+            "该任务场景: %s · 颜色 %s · 注册信号 %d 条" % (sc or "(无)", x.get("color") or "-", cnt.get(sc, 0)),
+            "未分类/基础信号: 白 #ffffff (三场景共用/没打标的一律白)"]
+    if names:
+        rows.append("前 %d 条信号: %s" % (min(12, len(names)), " · ".join(names[:12])))
+        if len(names) > 12:
+            rows.append("… 其余 %d 条见配置单/信号分析窗口" % (len(names) - 12))
+    else:
+        rows.append("（该场景当前没有注册信号帧 —— 数据源接通后这里会自动有颜色条数）")
+    return "\n".join(rows)
 
 
 def _model_cell(t):
@@ -1101,9 +1210,14 @@ class ConfigCenterPage(QWidget):
         # 1) 任务配置 (首屏) —— 含"状态空间工程"配置清单列
         self.tasks_table = _mk_table(
             # 🆕 2026-10-11 老倪: 新增「场景」「模型」两列 (任务7 = AOI → 场景 AR · 模型 L5 自主进化程序)
-            ["任务ID", "类型", "场景", "工艺步骤", "适用段", "粒度", "启用节点", "禁用节点",
+            # 🚀 2026-10-12 老倪: 「增加工程列(工程名+项目启动文件真名真路径) · 增实时监控列(看加载信号的颜色)
+            #   · 增3D场景列(看场景名字)」—— 原「场景」列即 3D 场景名, 改名「3D场景」不重复占列
+            ["任务ID", "类型", "工程", "3D场景", "实时监控", "工艺步骤", "适用段", "粒度", "启用节点", "禁用节点",
              "档位(开)", "模型", "活跃", "状态"],
-            [[t["task_id"], t["recipe_type"], _scene_cell(t),
+            [[t["task_id"], t["recipe_type"],
+              _proj_cell(),                               # 🚀 工程列 (工程名 + 项目启动文件真名 + 路径)
+              _scene_cell(t),                             # 3D场景列 (场景名字, 按场景色上色)
+              _monitor_cell(t),                           # 🚀 实时监控列 (该任务加载信号的颜色 + 条数)
               " → ".join(s["name"] for s in t.get("steps", [])),
               f"{len(t['applies_segments'])}/8",
               len(t.get("variants", [])),
@@ -1115,6 +1229,15 @@ class ConfigCenterPage(QWidget):
               _task_state_cell(t["task_id"], act),        # 🆕 活跃属性三态: ★ 活跃 / ○ 未激活 / — 无配置
               ("⛔ 缺站点几何" + str(len(t["blocked_by_site"]))) if t.get("blocked_by_site") else "✅"]
              for t in tk.get("tasks", [])], th)
+        # 🚀 2026-10-12: 两行单元格 (工程/实时监控) 要够高 + 列宽按内容 (否则路径/颜色被截)
+        try:
+            self.tasks_table.verticalHeader().setDefaultSectionSize(46)
+            _hh = self.tasks_table.horizontalHeader()
+            _hh.setSectionResizeMode(QHeaderView.ResizeToContents)
+            _hh.setSectionResizeMode(5, QHeaderView.Stretch)      # 工艺步骤 吃剩余宽度
+            self.tasks_table.resizeRowsToContents()
+        except Exception:                                                          # noqa: BLE001
+            pass
         # 🆕 2026-10-11 老倪: 「配置中心的活跃属性列, 增加新功能, 用户可以自主调整 活跃/未激活 等状态, 用下拉菜单」
         #   设计: 活跃列每行一个下拉 (★ 活跃 / ○ 未激活 / — 无配置) —— 选「★ 活跃」= 真激活该任务 (走 ss_task_bind --activate,
         #   写绑定真源 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
@@ -1122,17 +1245,21 @@ class ConfigCenterPage(QWidget):
         # 🆕 场景/模型列的完整说明放 tooltip (单元格只放短标签, 完整口径不截断)
         try:
             for _i, _t in enumerate(tk.get("tasks", [])):
-                for _c, _tip in ((2, _scene_tip(_t)), (9, _model_tip(_t)), (0, _points_tip(_t))):
+                # 列序: 0任务ID 1类型 2工程 3=3D场景 4=实时监控 5工艺步骤 … 11模型 12活跃 13状态
+                for _c, _tip in ((2, _proj_tip()), (3, _scene_tip(_t)), (4, _monitor_tip(_t)),
+                                 (11, _model_tip(_t)), (0, _points_tip(_t))):
                     _it = self.tasks_table.item(_i, _c)
                     if _it is not None:
                         _it.setToolTip(_tip)
-                # 🥽 2026-10-12: 场景列按三色上色 (插拔绿/摆盘蓝/AR紫) —— 与 3D 场景按钮、信号分析同色同源
+                # 🥽 2026-10-12: 3D场景列 + 实时监控列 都按场景色上色 —— 与 3D 场景按钮、信号分析同色同源
                 _col = _scene_color(_t)
-                _it2 = self.tasks_table.item(_i, 2)
-                if _it2 is not None and _col:
-                    from PyQt5.QtGui import QColor as _QC, QBrush as _QB
-                    _it2.setForeground(_QB(_QC(_col)))
-                    _it2.setToolTip((_it2.toolTip() or "") + "\n场景色 %s (与 3D 场景按钮 / 信号分析 同一套色)" % _col)
+                for _c2 in (3, 4):
+                    _it2 = self.tasks_table.item(_i, _c2)
+                    if _it2 is not None and _col:
+                        from PyQt5.QtGui import QColor as _QC, QBrush as _QB
+                        _it2.setForeground(_QB(_QC(_col)))
+                        _it2.setToolTip((_it2.toolTip() or "")
+                                        + "\n场景色 %s (与 3D 场景按钮 / 信号分析 同一套色)" % _col)
         except Exception:                                                       # noqa: BLE001
             pass
         self._task_rows = [t["task_id"] for t in tk.get("tasks", [])]
@@ -1163,26 +1290,27 @@ class ConfigCenterPage(QWidget):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn, k=kw: self._run_selected(f, **k))
             row.addWidget(b)
-        # 🚀 2026-10-12 老倪标准打开流程第二步: 一步「确认配置 · 统一打开工程」
-        #   单独一行 (老倪口径: 界面不许挤/字不许截断 —— 实测这一排 10 个按钮已占 1416px,
-        #   再塞一个 197px 会被挤出可视区; 单独一行则任何窗口宽度都完整可见 + 更醒目)
-        _b_all = _btn("🚀 确认配置 · 统一打开工程", th)
-        _b_all.setToolTip("按本表选中任务确定配置 (可选真激活: 写绑定真源 + 台账) → 应用场景到画布 →\n"
-                          "统一打开 状态空间画布 · 3D 场景 · 信号分析 → 回到本页选中该任务行。\n"
-                          "只做打开/定位/写配置, 不下发任何运动指令")
-        _b_all.setStyleSheet(_b_all.styleSheet() + ";font-weight:bold;")
-        _b_all.clicked.connect(lambda: self._open_all_clicked())
-        row2 = QHBoxLayout()
-        row2.addWidget(_b_all)
-        _hint = QLabel("= 状态空间画布 · 3D 场景 · 信号分析 (按选中/活跃任务确定配置; 只打开, 不动机械臂)")
-        _hint.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
-        _hint.setFont(QFont("Consolas", 9))
-        row2.addWidget(_hint)
-        row2.addStretch()
         row.addStretch()
         l.addLayout(row)
-        l.addLayout(row2)
         l.addWidget(self.tasks_table, 1)
+        # 🚀 2026-10-12 老倪: 「右下角增加启动按钮, 用户可以同时启动工程, 信号, 和场景」
+        #   右下角 = 表格之下右对齐; 执行体 = studio._open_all_cmd (与命令行 zmax_open.py step2 同一段代码)
+        row2 = QHBoxLayout()
+        _hint = QLabel("按选中任务确定配置 (没选 = 活跃任务) → 同源启动:")
+        _hint.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        _hint.setFont(QFont("Consolas", 9))
+        row2.addStretch()
+        row2.addWidget(_hint)
+        _b_all = _btn("🚀 启动工程 · 信号 · 场景", th)
+        _b_all.setToolTip("同时启动三样 (同一份真源, 顺序: 工程 → 场景 → 信号):\n"
+                          "· 工程 = 状态空间画布 (按工程文件/绑定真源加载)\n"
+                          "· 场景 = 3D 场景视图 (与画布同源)\n"
+                          "· 信号 = 📈 实时监控 · Graphic 信号分析\n"
+                          "按选中任务确定配置 (可选真激活) → 应用场景 → 统一打开。只打开/定位, 不下发任何运动指令")
+        _b_all.setStyleSheet(_b_all.styleSheet() + ";font-weight:bold;")
+        _b_all.clicked.connect(lambda: self._open_all_clicked())
+        row2.addWidget(_b_all)
+        l.addLayout(row2)
         self.tabs.addTab(w, "📋 任务配置")
         try:
             self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)

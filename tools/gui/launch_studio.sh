@@ -33,8 +33,14 @@ if ! echo "${DBUS_SESSION_BUS_ADDRESS:-}" | grep -q '^unix:'; then
 fi
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-# 已有实例在跑 → 激活已有窗口, 不重复启动
+# 🚀 2026-10-12 老倪: 「双击启动图标后, 先打开配置中心」——
+#   新实例: studio.py 按 ZMAX_BOOT_PAGE 启动后跳页 (默认 config = 配置中心);
+#   已有实例: 直接写命令通道把它弹到配置中心 (双击图标一定落到配置中心, 不用记快捷键)。
+export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
+
+# 已有实例在跑 → 激活已有窗口 + 弹到配置中心, 不重复启动
 if pgrep -f "[g]ui-venv311/bin/python studio.py" >/dev/null 2>&1; then
+    printf '%s\n' "$ZMAX_BOOT_PAGE" > /tmp/zmax_nav_cmd 2>/dev/null || true
     WIN=$(DISPLAY="$DISPLAY" xdotool search --onlyvisible --name "XSpace Studio" 2>/dev/null | head -1)
     if [ -n "$WIN" ]; then
         DISPLAY="$DISPLAY" xdotool windowactivate "$WIN" 2>/dev/null
