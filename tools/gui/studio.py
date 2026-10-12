@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.49.0")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.49.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.0 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.1 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,12 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.0 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.1 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.49.1: 小版本迭代(10-12 现场验收后收口) —— AR 三维视图搬到相机窗口下面且同尺寸 + 画 base/tool0/tool1 三个坐标系;
+        #         手动回已记的点(安全点/准备点)不再硬拦(慢速+提示, 回执给出够用的放行量 allow_climb_mm=ceil);
+        #         表面检测显示侧压高光(相机曝光/判据/模型未动); 点位记 6 个数 x y z a b c; 新增 4 条判据
         # v5.49.0: AR 场景改造(底图 = 状态空间工程的视频数据源 · 4 相机 · L5 deepseek VL 理解) + 活跃配置→场景切换 + 信号分析场景色标/排序 (老倪 10-12 逐字指令)
         # 老倪原话: 「3D场景的 AR场景, 背景的真实图像应该是状态空间工程的视频数据源; 现在有 USB 相机(realsense)、机器人手臂的 realsense、金手指检测相机、
         #   表面检测相机 —— 这 4 个相机都照射着同一个场景, L5 层的 deepseek VL 能理解么? 理解之后修改 AR 场景; 修改完检查配置中心的活跃配置,
@@ -11669,7 +11672,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.49.0  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.49.1  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🚀 自动运行钩子 (2026-08-06 老倪: 自动打开控制台→加载五模型对比→直接运行)
         # 环境变量 ZMAX_AUTO_RUN=1 时: 启动后自动切到 Simulink 页 → 加载五模型对比 → ▶运行
@@ -13448,7 +13451,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.49.0</b> · 多模态动作专家<br>
+<b>Z-MAX v5.49.1</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
