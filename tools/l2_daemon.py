@@ -27,8 +27,16 @@ FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
 LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 # 原子技能注册表路径 (v5.11.1 热加载引入 REG_PATH, 当时漏了这行定义 -> NameError 起不来)
 REG_PATH = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
+# 2026-10-12 现场: 夹爪 ROS 服务名 = **/gripper_driver**(不是 /gripper_srv), 类型 interfaces/srv/GripperSrv,
+#   它属于 **Orin 上的厂家方案包**(/home/tashan/tashan0924/tashan_robot_so_*/install/setup.bash)。
+#   ⇒ ssh 侧必须把厂家包一起 source, 否则 ①类型解析不到 ②服务名看不见 ⇒ 「waiting for service to become available」。
+#   可用 ZMAX_ORIN_VENDOR_SETUP 覆盖(换包/换路径时改环境变量即可, 不动代码)。
+_VENDOR_SETUP = os.environ.get("ZMAX_ORIN_VENDOR_SETUP",
+                              "/home/tashan/tashan0924/tashan_robot_so_*/install/setup.bash")
 PRE = ("source /opt/ros/humble/setup.bash; for ws in /home/tashan/0810/*/install/setup.bash; "
-       "do [ -f \"$ws\" ] && source \"$ws\" && break; done; export ROS_DOMAIN_ID=0; "
+       "do [ -f \"$ws\" ] && source \"$ws\" && break; done; "
+       "for vs in " + _VENDOR_SETUP + "; do [ -f \"$vs\" ] && source \"$vs\" && break; done; "
+       "export ROS_DOMAIN_ID=0; "
       "export FASTDDS_BUILTIN_TRANSPORTS=UDPv4; export ROS_LOCALHOST_ONLY=0; ")
 
 _pose = {"p": None, "q": None, "t": 0.0}
@@ -639,7 +647,7 @@ def _gripper_cmd(st):
     加 `timeout N`(timeout_s+10) 硬上限: 超时即返回失败, 通道立刻放行。
     注意口径: 客户端超时 ≠ 动作没下发 —— 判完成仍只看真值/回执(绝不重发)。
     """
-    return ('timeout %d ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
+    return ('timeout %d ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
             'target_force: %.1f, target_acc: %.1f, target_push_length: %.1f, target_push_speed: %.1f}"'
             % (int(float(st.get("timeout_s", 30)) + 10),
                float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
@@ -1311,11 +1319,11 @@ def dispatch(reg, spec, chan):
         _dir = "夹爪"
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))
-            call = ('timeout 30 ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: 0.0, '
+            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
                     'target_speed: -1.0, target_force: %s, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"' % fo)
         else:
-            call = ('timeout 30 ros2 service call /gripper_srv interfaces/srv/GripperSrv "{target_pos: 1000.0, '
+            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 1000.0, '
                     'target_speed: -1.0, target_force: -1.0, target_acc: -1.0, target_push_length: -1.0, '
                     'target_push_speed: -1.0}"')
     else:
@@ -1688,6 +1696,55 @@ def _block_msg() -> str:
     return "🛑 被拦: 命令通道不可用(自动重建后仍失败) — 看日志「🩹 命令通道」"
 
 
+def _fast_warn_only():
+    """现场指令(2026-10-12 老倪): 「别拦我, 有提示就行了」。
+
+    含义: 快反射层(遮挡/糊化 · 裁决过期 · 裁决缺失)一律**只提示不拦** —— 判据照算、日志照写、
+    页面照显示, 但不再拦住下发。
+    开关: `~/zmax/zmax_data/vl_fast_warn_only.json = {enabled, ts_str, by, note, until?, until_str?}`
+          env `ZMAX_VL_FAST_WARN_ONLY=1` 同等生效(只给一次性手工运行)。
+    文件缺失 / enabled=false / until 已过 ⇒ 回拒发(fail-closed), **不需要重启**(每次下发实时读)。
+    返回 (bool, 说明串)
+    """
+    if os.environ.get("ZMAX_VL_FAST_WARN_ONLY", "").strip().lower() in ("1", "true", "yes", "on"):
+        return True, "env ZMAX_VL_FAST_WARN_ONLY=1"
+    p = os.path.expanduser("~/zmax/zmax_data/vl_fast_warn_only.json")
+    try:
+        d = json.loads(open(p, encoding="utf-8").read())
+    except Exception:                                                   # noqa: BLE001
+        return False, ""
+    if not d.get("enabled"):
+        return False, ""
+    u = d.get("until")
+    if u:
+        try:
+            if float(u) < time.time():
+                return False, "开关已到期(%s)" % (d.get("until_str") or u)
+        except Exception:                                               # noqa: BLE001
+            pass
+    return True, "%s · by=%s · %s" % (d.get("ts_str") or "", d.get("by") or "", d.get("note") or "")
+
+
+def _fast_block(f, fage, fresh, err=None):
+    """快反射层这一条要不要拦。返回 (拦?, 日志串)。
+
+    判定只在这里, 便于判据用假裁决文件零下发验证(见 tools/verify_fast_warn_only.py)。
+    老倪 2026-10-12「别拦我, 有提示就行了」⇒ 开了 warn-only 就一律不拦(但日志写成 ⚠️ 提示)。
+    """
+    wo, wwhy = _fast_warn_only()
+    if err is not None:
+        m = "反射层裁决缺失(%s)" % str(err)[:60]
+    elif fage > fresh:
+        m = "反射层裁决过期 %.1fs > %.0fs(确认 vl_safety_fast 在跑)" % (fage, fresh)
+    elif not f.get("safe"):
+        m = "遮挡/糊化(%s): %s" % (f.get("unsafe_cams"), f.get("why"))
+    else:
+        return False, "放行 (裁决 %.1fs 前 · 纹理正常无遮挡)" % fage
+    if wo:
+        return False, "⚠️ 只提示不拦(%s) · %s" % (wwhy, m)
+    return True, m
+
+
 def _vl_gate_blocks(call: str) -> bool:
     """True = 拦住这条下发。"""
     c = call or ""
@@ -1733,20 +1790,19 @@ def _vl_gate_blocks(call: str) -> bool:
         _fresh = float(os.environ.get("ZMAX_VL_FAST_FRESH_S", "4"))
         f = json.loads(open(_fp, encoding="utf-8").read())
         fage = time.time() - float(f.get("ts") or 0)
-        if fage > _fresh:
-            log("🛡 VL 安全闸(快层): 反射层裁决过期 %.1fs > %.0fs ⇒ 拒发; 确认 vl_safety_fast 在跑" % (fage, _fresh))
-            _note_block("快层·本地反射(5Hz)", "反射层裁决过期 %.1fs > %.0fs ⇒ 拒发; 确认 vl_safety_fast 在跑" % (fage, _fresh))
+        _blk, _msg = _fast_block(f, fage, _fresh)
+        if _blk:
+            log("🛡 VL 安全闸(快层): %s ⇒ 拒发(本地检测, 亚秒级)" % _msg)
+            _note_block("快层·本地反射(5Hz)", _msg)
             return True
-        if not f.get("safe"):
-            log("🛡 VL 安全闸(快层): **遮挡/糊化**(%s): %s ⇒ 拒发(本地检测, 亚秒级)"
-                % (f.get("unsafe_cams"), f.get("why")))
-            _note_block("快层·本地反射(5Hz)", "遮挡/糊化 %s: %s" % (f.get("unsafe_cams"), f.get("why")))
-            return True
-        log("🛡 VL 安全闸(快层): 放行 (裁决 %.1fs 前 · 纹理正常无遮挡)" % fage)
+        log("🛡 VL 安全闸(快层): %s" % _msg)
     except Exception as e:                                              # noqa: BLE001
-        log("🛡 VL 安全闸(快层): 反射层裁决缺失(%s) ⇒ 从严拒发" % str(e)[:60])
-        _note_block("快层·本地反射(5Hz)", "反射层裁决缺失(%s) ⇒ 从严拒发" % str(e)[:60])
-        return True
+        _blk, _msg = _fast_block({}, 0.0, float(os.environ.get("ZMAX_VL_FAST_FRESH_S", "4")), err=e)
+        if _blk:
+            log("🛡 VL 安全闸(快层): %s ⇒ 从严拒发" % _msg)
+            _note_block("快层·本地反射(5Hz)", _msg)
+            return True
+        log("⚠️ VL 安全闸(快层): %s" % _msg)
     log("🛡 VL 安全闸: 放行 (risk=%s · 裁决 %.0fs 前 · %s)" % (d.get("risk_level"), age, d.get("image")))
     return False
 

@@ -658,8 +658,8 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢</button>
         <button data-v="60">60</button><button data-v="200">200</button><button data-v="500">500 快</button>
         <button data-v="1000">1000</button><button data-v="2000">2000 快</button></span>
-        <input class="num" id="spd" value="8"></div>
-      <div class="hint" style="margin-top:6px">速度是相对量(1~2000, 可直接在右边框里填任意数)。<b>实测换算: 实际轴速 ≈ 0.0093×设定值 mm/s</b>(2026-10-08 三次独立实测一致; 原来写的 0.0999 偏大 10 倍) ⇒ 120→1.1mm/s、200→1.9mm/s、<b>1000/2000 都被腿上限 30mm/s 封顶 = 实测 3.0mm/s(当前最快)</b>。
+        <input class="num" id="spd" value="200"></div>
+      <div class="hint" style="margin-top:6px">速度是相对量(1~2000, 可直接在右边框里填任意数)。<b>实测换算: 实际轴速 ≈ 0.0935×设定值 mm/s(SDK 腿现码, 上限 300)</b>(2026-10-08 三次独立实测一致; 原来写的 0.0999 偏大 10 倍) ⇒ 120→1.1mm/s、200→1.9mm/s、<b>1000/2000 换算见左: 200≈18.7mm/s · 500≈47mm/s · 1000≈93mm/s</b>。
         <b>实测基线: 60 → 腕部 10° 约 10s</b>, 想快 5 倍填 300。停下前
         驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动。
         键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
@@ -835,7 +835,7 @@ function paintArm(){
        +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</b>后自动失效 · 授权IP '+(AUTH_IP||'本机'))
     : '⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b>';
   $('#armhint').textContent = on
-    ? '现场安全: 授权期内每点一次方向键, 机械臂就真的动一次(速度按下面档位, 执行器 1.5s 间隔); 人离开前点左边「🔒 立即撤销授权」。'
+    ? '现场安全: 授权期内每点一次方向键, 机械臂就真的动一次(速度按下面档位, 连点间隔 0.35s); 人离开前点左边「🔒 立即撤销授权」。'
     : '现场安全: 只让守在机器旁的人授权 —— 点「🔓 授权真动」→ 再点一次「⚠️ 现场确认无人」。授权 '
       +Math.round(ARMWIN/60)+' 分钟自动失效; 刷新页面也回到未授权(不记忆)。';
   document.body.classList.toggle('locked',!on);
@@ -906,39 +906,43 @@ async function move(btn,force){
    ⇒ 只看 ok 会把"被拒"显示成"✅ 已下发", 现场就以为没反应。这里一律**扫 lines+msg 里的否决标记**。 */
 function _moveReason(j){
   const txt=((j&&j.msg)||'')+'\n'+(((j&&j.lines)||[]).join('\n'));
-  const pats=[
-    /* 🔴 2026-10-12 老倪「⛔ 被拒: (本地检测, 亚秒级) 又是怎么回事?」——
-       快层否决那行末尾的括号备注被下面通用 `/拒发[：:]*(...)/` **抢先**捕获, 横幅只剩一句括号, 现场看不到原因。
-       ① 优先抓「🛑 被拦(快层…)」那行(带 原因+哪路相机+实测指标) ② 通用「拒发」抓到**纯括号**就跳过继续找。 */
-    /被拦\(快层[^:\n]*[:：]\s*([^\n]*)/,      // 行里括号嵌套(「本地反射(5Hz)」)⇒ 不能用 [^)]*
-    /被拦\(慢层[^:\n]*[:：]\s*([^\n]*)/,
-    /安全闸\((?:快|慢)层\)[^:\n]*[:：]\s*([^\n⇒]*)/,
-    /目标出已验证包络[：: ]*([^\n]*)/,        // 例: ⛔ 目标出已验证包络: x=0.3348 越界[0.3368, 0.7975]
-    /扫掠越界急停[：: ]*([^\n」]*)/,           // 例: 🛑 扫掠越界急停: ['x'] 轴出包络(实测 [0.3348, …]) ⇒ stop()
-    /出包络\s*\(([^\n]*)/,                     // 兜底: 任何"...出包络(...)"
-    /拒发[：: ]*([^\n]*)/,
-    /被拦[：: ]*([^\n]*)/,
-    /拒绝[：: ]*([^\n]*)/,
-    /不在手动控制白名单[^\n]*/,
-    /超出允许范围[^\n]*/,
-    /未授权真动[^\n]*/,
-    /太快了[^\n]*/,
-    /FIFO[^\n]*/,
-    /TCP 真值陈旧[^\n]*/,
-    /等 SDK 代理回执超时[^\n]*/
-  ];
-  for(const re of pats){
-    const m=txt.match(re); if(!m) continue;
-    const s=String(m[1]||m[0]).replace(/\*\*/g,'').trim();
-    if(!s) continue;
-    /* 纯括号备注(如 "(本地检测, 亚秒级)")不是原因 ⇒ 跳过, 继续往下找 */
-    if(/^[（(][^（()）]{0,48}[)）]$/.test(s)) continue;
-    return s.slice(0,220);
+  /* 🔴 2026-10-12 定式: **最新那条判决行说了算** —— 倒序扫行, 先命中 DENY 就给原因, 先命中 PASS 就返回空。
+     两次现场事故都出在这个函数上: ①横幅只剩一句括号 ②横幅写「被拒: 放行 (裁决 0.0s 前 · 纹理正常无遮挡)」
+     (执行器每次下发都写那行"放行", 那是**通过**不是被拒)。旧拒发行也不许压过新的"已下发"。 */
+  const DENY=/🛑[^\n]*被拦|⛔[^\n]*拒|⇒\s*拒发|被安全闸拒|未授权真动|不在手动控制白名单|目标出已验证包络|扫掠越界急停|出包络\s*\(|超出允许范围|太快了|TCP 真值陈旧|等 SDK 代理回执超时|拒\(不排队\)|被拒/;
+  const PASS=/受理:\s*(✅|DRY-RUN)|已下发|放行|只提示不拦|安全闸[^\n]*已关闭/;
+  const lines=String(txt).split('\n').map(x=>x.replace(/\*\*/g,'').trim()).filter(Boolean);
+  for(let i=lines.length-1;i>=0;i--){
+    const ln=lines[i];
+    if(DENY.test(ln)){
+      const pats=[
+        /被拦\(快层[^:\n]*[:：]\s*(.+)/,        // 行里括号嵌套(「本地反射(5Hz)」)⇒ 不能用 [^)]*
+        /被拦\(慢层[^:\n]*[:：]\s*(.+)/,
+        /安全闸\((?:快|慢)层\)[^:\n]*[:：]\s*(.+?)(?:\s*⇒|$)/,
+        /目标出已验证包络[：: ]*(.+)/,
+        /扫掠越界急停[：: ]*(.+)/,
+        /出包络\s*\((.+)/,
+        /未授权真动[^\n]*/,
+        /不在手动控制白名单[^:：]*/,
+        /超出允许范围[^:：]*/,
+        /太快了[^:：]*/,
+        /TCP 真值陈旧[^:：]*/,
+        /等 SDK 代理回执超时[^:：]*/,
+        /拒发[：: ]*(.+)/,
+        /被拒[：: ]*(.+)/
+      ];
+      for(const re of pats){
+        const m=ln.match(re); if(!m) continue;
+        const s=String(m[1]||m[0]).trim();
+        if(!s) continue;
+        if(/^[（(][^（()）]{0,48}[)）]$/.test(s)) continue;   // 纯括号备注不是原因
+        return s.slice(0,220);
+      }
+      return ln.replace(/^\[[\d:]+\]\s*/,'').slice(0,220);  // 兜底: 整行原文(总比空括号强)
+    }
+    if(PASS.test(ln)) return '';                             // 最新一条是"通过/只提示不拦" ⇒ 没有原因
   }
-  /* 兜底: 把最后一条含否决标记的原文摆出来(总比横幅上只剩一句空括号强) */
-  const bad=(txt.split('\n').filter(l=>/拒发|被拦|被拒|越界|急停|不在.*白名单|未授权|陈旧/.test(l)).pop()||'')
-            .replace(/\*\*/g,'').replace(/^\s*\[[\d:]+\]\s*/,'').trim();
-  return bad.slice(0,220);
+  return '';
 }
 let _feedInit=false;
 function _feedTime(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
@@ -969,7 +973,14 @@ function renderMoveOut(j,again){
   const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
   const _reason=_moveReason(j);
   const _isWait=!!(j.ok&&(j.dry||j.pending));      // 演练 / 等裁决: 都还没被"拒", 不算失败
-  const _rejected=(!j.ok)||(!_isWait&&!!_reason);    // ok=true 但 lines 里有否决行 ⇒ 也算被拒
+  /* 🔴 2026-10-12 老倪: 「赶快放行，删除这个被拒功能」——
+     原来这行会**从执行器日志尾去猜**被拒(ok=true + lines 里有否决字样 ⇒ 也算被拒),
+     结果两次误报: ①横幅只剩一句括号「(本地检测, 亚秒级)」
+                  ②把每次下发必写的那行「🛡 VL 安全闸(快层): 放行 (裁决 0.0s 前…)」当成被拒。
+     ⇒ 取消"猜": **只有服务端明确拒发(ok=false)才算被拒**; 日志里若还有别的否决行, 只作为
+       ⚠️ 提示原地给出(不摆红色大横幅), 既不静默也不误报。 */
+  const _rejected=(!j.ok);
+  const _hint=(!_rejected&&_reason)?_reason:'';
   let _res;
   if(_rejected){
     const _why=_reason||j.msg||'被拒(看下方日志原文)';
@@ -980,9 +991,10 @@ function renderMoveOut(j,again){
   }else{
     _res=j.pending?'⏳ 等裁决':(j.dry?'🧪 演练(未下发)':'✅ 已下发');
     $('#msg').textContent=(j.ok?(j.pending?'⏳ ':(j.dry?'🧪 ':'✅ '))+j.msg+_el:'⛔ '+j.msg+_el)
+      +(_hint?('  ⚠️ 提示: '+_hint):'')
       +'  (对上 X/Y/Z 看有没有变就知道动没动)';
     $('#msg').className=(j.ok?((j.pending||j.dry)?'wa':'ok'):'bad');
-    _showDeny('');
+    _showDeny('');                                  // 通过 ⇒ 一律收起红横幅
   }
   $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
   // 🧾 台账: 每次下发无论成败各留一行(技能名+参数+结果+原因+时间)
@@ -998,6 +1010,7 @@ function renderMoveOut(j,again){
       if(!_ex.dataset.base){ _ex.dataset.base=_ex.innerHTML; }
       _ex.innerHTML=_ex.dataset.base+'<br><span class="bad">⛔ 最近一次下发被拒: '+(_reason||j.msg||'')+'</span>'
         +'<span class="hint"> · 用时 '+((j.elapsed_s||0).toFixed(1))+'s</span>';
+      /* (2026-10-12) 这里只在服务端明确拒发(_rejected=!j.ok)时才会走到 —— 见上面那条注释 */
     }
   }catch(_e){}
   if(j.denied||(j.ok&&j.dry)){           // 未授权点了 → 给**授权入口**
@@ -1339,7 +1352,13 @@ async function poll(){
         ? '<span class="ok">已授权 · 剩 '+Math.floor((s.auth.left_s||0)/60)+'分'
           +String(Math.max(0,Math.floor((s.auth.left_s||0)%60))).padStart(2,'0')+'秒</span> · 授权IP '
           +(s.auth.ip||'—')+' · 授权时刻 '+hhmmss(Math.max(0,(s.server_time||0)-(s.auth.since||0)))
-        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)');
+        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)')
+      /* 🛡 2026-10-12 老倪: 「别拦我，有提示就行了。」——
+         快反射层改成"只提示不拦"后, 这行就是那个**提示**(服务端算好整行, 页面只贴):
+         正常/遮挡+原因 · 只提示·不拦(谁/何时开) · 降级不否决的相机 · 裁决帧龄。 */
+      +'<br>'+(s.gate&&s.gate.line
+        ? s.gate.line.replace('**','')
+        : '🛡 画面安全闸: 状态未知(服务端未给)');
     applyAuth(s.auth);
     /* 🌈 深度格 (2026-09-28 修): 深度源(容器 ros_depth_stream 落的 depth_raw.npy)早断更,
        原先显示「帧龄 57312s · 拍照 17:43:49 · 0.0fps」像"有一路在用" ⇒ 改成醒目「深度源已断 Ns」。 */
@@ -1442,12 +1461,25 @@ document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
    curl 取流有真帧, 页面却是空的 ⇒ 问题在**页面连接**这一层)。
    判据(不猜, 都有数): ① img.onerror 立刻重连 ② 每 6s 比对 /stats 的 frames_served:
    在涨=连接活着; 连续 2 轮不涨 ⇒ 换 src(新时间戳)强制重连。 */
-const MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({im:im, url:_u(_mb()+im.dataset.src), seen:-1, still:0}));
+const MJPG=(window.__MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({
+  im:im, url:_u(_mb()+im.dataset.src), seen:-1, still:0,
+  key:(im.dataset.src||'').replace(/^\//,'').replace(/\.mjpg$/,'')})));
 MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
+/* 🔴 2026-10-12 老倪: 「金手指窗口的整版原图，怎么变成金手指的判据图了？别串台了」
+   根因: 用户点 [判据图|整板原图] 换源后, 这里仍拿**初始**那条 url 与它的帧序号判活
+   ⇒ 目标流的计数(它看的是另一条流的 frames_served)不涨 ⇒ 自愈把 img 又拉回初始那条流 = 串台。
+   修: 换源时同步 rec.url / rec.key(_mjpgBind), 并且只对自己那条 url 生效(不跟用户对着干)。 */
+function _mjpgBind(im, stream){
+  const rec=(window.__MJPG||[]).find(r=>r.im===im); if(!rec) return;
+  rec.url=_u(_mb()+stream); rec.key=String(stream||'').replace(/^\//,'').replace(/\.mjpg$/,'');
+  rec.seen=-1; rec.still=0;
+}
+window._mjpgBind=_mjpgBind;
 setInterval(()=>{
   const st=window.__stats||{};
   MJPG.forEach(rec=>{
-    const v=st[rec.im.id.replace(/^i_/,'')]; if(!v) return;
+    if(rec.im.src.indexOf(rec.url)!==0) return;               // 用户换了源 ⇒ 本自愈不插手
+    const v=(rec.key&&st[rec.key])||st[rec.im.id.replace(/^i_/,'')]; if(!v) return;
     const n=v.frames_served; if(n===undefined||n===null) return;
     if(rec.seen<0){ rec.seen=n; return; }
     if(n>rec.seen){ rec.seen=n; rec.still=0; return; }
@@ -1458,13 +1490,15 @@ document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   const im=$('#i_aoi_gold');                    // 现在是 MJPEG 流: 换 src 就等于换源(旧连接自动断)
-  if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
+  if(im){ im.src=_u(b.dataset.stream)+'?t='+Date.now();
+          if(window._mjpgBind) window._mjpgBind(im, b.dataset.stream); }   // 自愈跟着换源(别串台)
 });
 document.querySelectorAll('#sview button').forEach(b=>b.onclick=()=>{   // 🔍 表面: 判据图(切模块+调平) / 整板原图
   document.querySelectorAll('#sview button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on');
   const im=$('#i_aoi_surface');
-  if(im) im.src=_u(b.dataset.stream)+'?t='+Date.now();
+  if(im){ im.src=_u(b.dataset.stream)+'?t='+Date.now();
+          if(window._mjpgBind) window._mjpgBind(im, b.dataset.stream); }   // 表面那格同理(别串台)
 });
 /* 🎛 笔记本这一路 [内置 | USB] 换源 (2026-10-07 老倪: 「用户能选择内置摄像头, 或者是USB摄像头」)
    —— POST /cam/src, 服务侧按卡名重开那一格采集设备(不动别的通道: 叠加/安全层读的还是 "local")。
@@ -1600,7 +1634,8 @@ async function loadSlots(){
       +'点位真值在 <span style="font-family:ui-monospace">'+j.points_file+'</span> —— 页面/接口都改不了点位。';
   }catch(e){}
 }
-poll(); setInterval(poll,1500);
+/* 2026-10-12 老倪「延迟太大, 得快速反馈」: 状态轮询 1.5s → 0.7s(页面感知延迟主要来自这里) */
+poll(); setInterval(poll,700);
 /* ── 右上角实时位姿 HUD 的**单独快轮询** (250ms) ─────────────────────────────
    2026-10-01 老倪: 右上角要实时显示 x y z a b c。整页 /station/status 是聚合重接口(还查工控机
    两站 AOI), 保持 1.5s 不动; HUD 走 /pose 专用轻量端点(服务端与 tcp 字段同一个 _rokae_pose(),

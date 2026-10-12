@@ -92,6 +92,30 @@ def _get(path: str, timeout: float = 10.0):
         return r.read()
 
 
+# 🆕 2026-10-12 老倪: 「8797 和 8793 这两个服务的 金手指检测 的整板原图 判据图, 怎么不一样呢?」
+#   实测根因两条:
+#   ① /api/aoi/gold.jpg 取不到本机那张时会**回退到工控机 kind=crop**(=程序画上去的那张, 没拍到金手指
+#      也照样画一排) ⇒ AR 页与工位总览页显示的不是同一张 ⇒ 现场一眼就看出"不一样"。
+#   ② 本机那路的取帧会偶尔慢(工控机送检帧节奏), 一旦超过超时, 页面就空/慢, 越看越像两个服务在给不同的图。
+#   定式: 只用**本机裁切的实拍区域**这一个口径 + 记住**上一次成功那一张**兜底(宁可给略旧的一帧, 也不换口径)。
+_SNAP_CACHE = {}          # path -> (bytes, ts); 只在成功时更新
+
+
+def _cached_get(path: str, timeout: float = 6.0):
+    """取上游一帧; 上游慢/失败 ⇒ 给**上一次成功的那张**(附时间), 绝不换口径、绝不挂住页面。"""
+    try:
+        b = _get(path, timeout=timeout)
+        if b and len(b) > 1500:
+            _SNAP_CACHE[path] = (b, time.time())
+            return b, 0.0
+    except Exception:                                                   # noqa: BLE001
+        pass
+    old = _SNAP_CACHE.get(path)
+    if old:
+        return old[0], time.time() - old[1]
+    return b"", None
+
+
 def read_tcp():
     try:
         with open(TCP_JSON) as f:
@@ -283,7 +307,8 @@ def frame_bytes(cam: str):
         return _rs_jpeg(82), "rs(本机 USB RealSense D435)"
     mj = (CAMS.get(cam) or CAMS[DEFAULT_CAM]).get("mjpg") or "/arm.mjpg"
     snap = "/snapshot/%s.jpg" % mj.rsplit("/", 1)[-1][:-5]      # /arm.mjpg -> /snapshot/arm.jpg
-    return _get(snap, timeout=20.0), cam
+    _b, _old = _cached_get(snap, timeout=6.0)                  # 慢 ⇒ 上一张成功的(见 _cached_get)
+    return _b, cam + ("(取帧慢·上一张)" if _old else "")
 
 
 PY_EXE = os.path.join(REPO, "gui-venv311", "bin", "python")
@@ -409,18 +434,21 @@ class H(BaseHTTPRequestHandler):
                 self._json(_aoi_state_read())
             elif p == "/api/aoi/read":             # 🔍 只读体检(不拍照)
                 self._json((AOI.health(10082) if AOI else {"err": "aoi_link 不可用"}))
-            elif p == "/api/aoi/gold.jpg":         # 🔍 金手指判据图
+            elif p == "/api/aoi/gold.jpg":         # 🔍 金手指判据图(唯一口径: 本机从原始帧裁切的实拍区域)
                 # 🆕 2026-10-12 老倪: 「不要显示那么多高亮的条, 就显示你截取的金手指区域即可」
                 #   原来直传工控机 kind=crop = **程序画上去的**判据图(没拍到金手指时也照样画一排) ⇒
                 #   改成端 8793 那格"本机从原始帧裁切的实拍区域"(同一张, 页面/AR 口径一致); 取不到才回退直传。
-                try:
-                    _loc = _get("/snapshot/aoi_gold.jpg", 2.5)  # 本机裁切实拍区域(本机取, 超时要短: 8797 是单线程, 别拖住别的请求)
-                except Exception:                                                # noqa: BLE001
-                    _loc = b""
+                # 🆕 2026-10-12: 去掉"取不到就回退工控机 kind=crop"那条 —— 那正是两个页面"不一样"的来源
+                #   (工控机那张是**程序画上去的**, 没拍到金手指也画一排)。取不到就给上一次成功那张,
+                #   再没有就 503 + 说清原因, 让现场知道是取帧问题, 而不是悄悄换个口径。
+                _loc, _old = _cached_get("/snapshot/aoi_gold.jpg", timeout=6.0)
                 if _loc and len(_loc) > 2000:
-                    self._send(200, "image/jpeg", _loc)
+                    self._send(200, "image/jpeg", _loc,
+                               {"X-Zmax-Stale-S": ("%.1f" % _old) if _old else "0",
+                                "X-Zmax-Source": "local-crop(8791/snapshot/aoi_gold.jpg)"})
                 else:
-                    self._send(200, "image/png", (AOI._req("/picture?kind=crop", 10082)["raw"] if AOI else b""))
+                    self._json({"ok": False, "err": "本机裁切帧取不到(8791 /snapshot/aoi_gold.jpg), 且无缓存",
+                                "hint": "看 8791 那路是否在跑: curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8791/snapshot/aoi_gold.jpg"}, 503)
             elif p == "/api/rs_stream_help":
                 self._json({"mjpg": "/rs.mjpg", "snapshot": "/snapshot/rs.jpg",
                             "info": "/api/rs_info", "point": "/api/rs_point?u=&v="})

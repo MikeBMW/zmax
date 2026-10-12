@@ -663,7 +663,9 @@ def _jbytes(obj) -> bytes:
 
 # 🕹 手动控制: **服务级开关** —— 不加 --ctl-motion 时本进程只演练(dry), 真动需要
 #   ①启动参数 --ctl-motion ②页面勾「授权真动」, 双重闸门(防止推流服务被当成遥控器)。
-_CTL = {"motion": False, "min_gap": 1.5, "last_real": 0.0,
+# 2026-10-12 老倪「延迟太大, 你是局域网啊, 得快速反馈」: 连点节流 1.5s → 0.35s(仅防"把臂当摇杆刷",
+#   真安全闸在: 包络校验 + 快层 5Hz + 到位判据 + 授权窗, 不靠这个间隔)。可用 ZMAX_CTL_MIN_GAP 覆盖。
+_CTL = {"motion": False, "min_gap": float(os.environ.get("ZMAX_CTL_MIN_GAP", "0.35")), "last_real": 0.0,
         "last": {"t": 0.0, "skill": "", "dry": True, "ok": False, "msg": "", "lines": []}}
 _CTL_LOG = "/tmp/zmax_ctl.log"
 # 🔐 真动授权 (2026-09-27 老倪: 「页面的授权真动 / 现场安全 / 授权」)
@@ -2037,7 +2039,8 @@ def _ctl_move(req: dict) -> dict:
     else:
         why = ""
         gap = time.time() - float(_CTL["last_real"])
-        if gap < float(_CTL["min_gap"]):
+        _is_grip = ("grip" in sid) or ("夹爪" in sid)
+        if (not _is_grip) and gap < float(_CTL["min_gap"]):
             return {"ok": False, "msg": "太快了(距上一条 %.1fs < %.1fs), 防连点把臂当摇杆刷"
                     % (gap, _CTL["min_gap"])}
     # 🔐 带上"签发时的授权 epoch": 执行器下发前会比对; 撤销 (+1) 后旧命令一律作废(在途也能拦)
@@ -2249,6 +2252,53 @@ def _collisions(limit: int = 80) -> list:
     return led[:limit]
 
 
+def _gate_state():
+    """🛡 安全闸现状(只读) —— 页面「安全」区那行提示用。
+
+    老倪 2026-10-12: 「别拦我，有提示就行了。」
+      ⇒ 快反射层只提示不拦, 但现场必须**看得见**提示(不许静默)。
+    返回 {fast:{safe,why,age_s,unsafe,degraded}, warn_only:{on,by,note,ts_str}, slow_enabled, line}
+    """
+    d = {"fast": {}, "warn_only": {"on": False}, "slow_enabled": False, "line": "—"}
+    try:
+        fp = os.path.expanduser("~/zmax/zmax_data/vl_safety_fast.json")
+        f = json.loads(open(fp, encoding="utf-8").read())
+        d["fast"] = {"safe": bool(f.get("safe")), "why": str(f.get("why") or ""),
+                     "age_s": _age(f.get("ts")), "unsafe": f.get("unsafe_cams") or [],
+                     "degraded": f.get("degraded_cams") or []}
+    except Exception:                                                   # noqa: BLE001
+        d["fast"] = {"safe": None, "why": "裁决文件读不到", "age_s": None, "unsafe": [], "degraded": []}
+    try:
+        wp = os.path.expanduser("~/zmax/zmax_data/vl_fast_warn_only.json")
+        w = json.loads(open(wp, encoding="utf-8").read())
+        u = w.get("until")
+        alive = bool(w.get("enabled")) and (not u or float(u) > time.time())
+        d["warn_only"] = {"on": alive, "by": w.get("by"), "note": w.get("note"),
+                          "ts_str": w.get("ts_str"), "until_str": w.get("until_str")}
+    except Exception:                                                   # noqa: BLE001
+        pass
+    d["slow_enabled"] = os.environ.get("ZMAX_VL_SLOW", "0").strip().lower() in ("1", "true", "yes", "on")
+    f = d["fast"]
+    age = ("%.1fs 前" % f["age_s"]) if isinstance(f.get("age_s"), (int, float)) else "帧龄未知"
+    if f.get("safe") is None:
+        body = "⛔ 读不到画面判据"
+    elif f["safe"]:
+        body = "✅ 画面判据正常"
+    else:
+        body = "⚠️ %s" % (f.get("why") or "画面判据异常")[:80]
+    tail = []
+    if d["warn_only"]["on"]:
+        tail.append("只提示·不拦(%s%s)" % (d["warn_only"].get("ts_str") or "开",
+                                       " · by=%s" % d["warn_only"]["by"] if d["warn_only"].get("by") else ""))
+    else:
+        tail.append("拦(拒发)")
+    if f.get("degraded"):
+        tail.append("降级不否决: %s" % ",".join(f["degraded"]))
+    tail.append("裁决 %s" % age)
+    d["line"] = "🛡 %s · %s" % (body, " · ".join(tail))
+    return d
+
+
 def _ctl_status() -> dict:
     """页面 1.5s 轮询用的一把抓状态: 三查 + TCP 位姿 + 最近运动 + 各路源心跳。"""
     st = _read_json(ROBOT_STATUS_JSON, {}) or {}
@@ -2274,6 +2324,7 @@ def _ctl_status() -> dict:
         "labels": dict(_CAM_LABEL),
         "exec": _exec_health(),      # 🛠 执行器在不在(页面显示; 离线时按钮点了不动)
         "collisions": _collisions(),  # 🔴 碰撞点台账(右上角实时位姿下面那张红字卡片)
+        "gate": _gate_state(),        # 🛡 画面安全闸现状 + 是否"只提示不拦"(2026-10-12 老倪「别拦我, 有提示就行了」)
     }
 
 
