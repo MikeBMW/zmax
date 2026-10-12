@@ -1051,40 +1051,92 @@ def ar_ensure_service(tries: int = 12) -> tuple:
     return False, "启动后 %ds 仍无响应" % int(tries)
 
 
-def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False) -> str:
-    """打开页面, 按 浏览器→Qt→xdg-open→firefox 逐条回落; 返回实际生效的那条(空串=都没起来)。"""
+def ar_window_seen(timeout: float = 6.0) -> str:
+    """页面的窗口出现了吗 —— 查真窗口表(wmctrl), 认页面标题里的「TCP 轨迹 / AR/VR」。
+    返回窗口 id(空串=没出现)。**别信 webbrowser.open() 的返回值**: 实测它会返回 True 却什么都没起来。"""
+    import subprocess as _sp
+    import time as _t
+    _t0 = _t.time()
+    while True:
+        try:
+            _o = _sp.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=4).stdout or ""
+        except Exception:                                                       # noqa: BLE001
+            _o = ""
+        for _ln in _o.splitlines():
+            if ("TCP 轨迹" in _ln) or ("AR/VR" in _ln):
+                return _ln.split()[0]
+        if _t.time() - _t0 >= float(timeout):
+            return ""
+        _t.sleep(0.6)
+
+
+def ar_raise_window(win_id: str) -> bool:
+    """把页面窗口拉到最前(否则它可能开在别的桌面/被挡在后面 —— 老倪会以为「没打开」)。"""
+    if not win_id:
+        return False
+    try:
+        import subprocess as _sp
+        _sp.run(["wmctrl", "-i", "-a", win_id], capture_output=True, timeout=4)
+        _sp.run(["wmctrl", "-i", "-R", win_id], capture_output=True, timeout=4)
+        return True
+    except Exception:                                                           # noqa: BLE001
+        return False
+
+
+def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
+                timeout: float = 6.0) -> str:
+    """打开 AR 页面 —— 逐条候选**真拉起 + 验窗口**; 返回「用了哪条」的说明(空串=六条都没出窗口)。
+
+    2026-10-12 老倪实测反馈「AR 按钮打不开」: 日志里 webbrowser.open() 返回 True、却没有任何浏览器进程
+    ⇒ 只认「窗口真的出现在窗口表里」, 不认返回值。顺序: 具体浏览器(chromium/firefox/chrome) → xdg-open/gio
+    → webbrowser/Qt。成功即置顶(避免窗口开在别的桌面被他当成「没打开」)。
+    """
     import subprocess as _sp
     import shutil as _sh
+    _cands = []
+    for _b in ("chromium", "firefox", "google-chrome", "chromium-browser"):
+        if _sh.which(_b):
+            _cands.append([_b, url])
+    if _sh.which("xdg-open"):
+        _cands.append(["xdg-open", url])
+    if _sh.which("gio"):
+        _cands.append(["gio", "open", url])
     if dry:      # 只探路, 不真开(判据用)
-        try:
-            import webbrowser
-            webbrowser.get()
-            return "webbrowser(探路)"
-        except Exception:                                                       # noqa: BLE001
-            pass
-        return "xdg-open(探路)" if _sh.which("xdg-open") else ("firefox(探路)" if _sh.which("firefox") else "")
-    try:         # ① 系统默认浏览器(系统真调, 返回值也会骗人 ⇒ 后面还有回落)
-        import webbrowser
-        if webbrowser.open(url):
-            return "webbrowser"
-    except Exception:                                                           # noqa: BLE001
-        pass
-    try:         # ② Qt 的打开器(桌面会话最稳)
-        from PyQt5.QtCore import QUrl
-        from PyQt5.QtGui import QDesktopServices
-        if QDesktopServices.openUrl(QUrl(url)):
-            return "QDesktopServices"
-    except Exception:                                                           # noqa: BLE001
-        pass
-    for _c in (["xdg-open", url], ["firefox", url]):       # ③ 直接把窗口拉起来
-        if not _sh.which(_c[0]):
-            continue
+        return ("%s(探路)" % _cands[0][0]) if _cands else ("webbrowser(探路)" if _sh.which("python3") else "")
+    _tried = []
+    for _c in _cands:
+        _win = ar_window_seen(0.01)      # 开之前先看有没有(比如别人已经开过)
+        if _win:
+            ar_raise_window(_win)
+            return "已在窗口表里(置顶)"
         try:
             _sp.Popen(_c, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
-            return _c[0]
+            _tried.append(_c[0])
         except Exception:                                                       # noqa: BLE001
             continue
-    return ""
+        _win = ar_window_seen(timeout=timeout) if verify else ""
+        if _win:
+            ar_raise_window(_win)
+            return "%s(窗口已出现并置顶)" % _c[0]
+    for _how in ("webbrowser", "Qt"):
+        try:
+            if _how == "webbrowser":
+                import webbrowser
+                if not webbrowser.open(url):
+                    continue
+            else:
+                from PyQt5.QtCore import QUrl
+                from PyQt5.QtGui import QDesktopServices
+                if not QDesktopServices.openUrl(QUrl(url)):
+                    continue
+        except Exception:                                                       # noqa: BLE001
+            continue
+        _tried.append(_how)
+        _win = ar_window_seen(timeout=timeout) if verify else ""
+        if _win:
+            ar_raise_window(_win)
+            return "%s(窗口已出现并置顶)" % _how
+    return "" if not _tried else ("试过 %s 但窗口没出现" % "/".join(_tried))
 
 
 def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
@@ -2507,15 +2559,27 @@ class DreamView3D(QWidget):
             _up, _why = ar_ensure_service()
         except Exception as _e:                                                 # noqa: BLE001
             _up, _why = False, "探测异常 %s" % type(_e).__name__
-        # ③ 打开页面(多条路回落), 并如实回报各相机实况
+        # ③ 打开页面(逐条候选 + **验窗口真的出现** + 置顶), 并如实回报各相机实况
         _how = ""
         try:
             _how = ar_open_url(AR_PAGE_URL)
         except Exception as _e:                                                 # noqa: BLE001
             _how = ""
             _say("⚠️ 打开页面异常: %r" % (_e,))
-        if not _how:
-            _say("🥽 浏览器三条路都没起来 ⇒ 请手动开 %s (服务%s)" % (AR_PAGE_URL, _why))
+        if (not _how) or _how.startswith("试过"):
+            # 六条路都没把窗口拉出来 ⇒ 不假装成功: 弹一个可复制的框 + 状态行写明网址
+            _say("🥽 AR 页面没能自动打开(%s) ⇒ 请手动打开: %s (服务%s)" % (_how or "无可用浏览器", AR_PAGE_URL, _why))
+            try:
+                from PyQt5.QtWidgets import QMessageBox as _MB
+                _mb = _MB(self)
+                _mb.setWindowTitle("AR 页面没能自动打开")
+                _mb.setIcon(_MB.Warning)
+                _mb.setText("没能自动打开 AR 页面(已试: 浏览器/xdg-open/gio/Qt)。\n服务状态: %s" % _why)
+                _mb.setInformativeText("请手动在浏览器里打开(可复制):\n%s" % AR_PAGE_URL)
+                _mb.setDetailedText(AR_PAGE_URL)
+                _mb.exec_()
+            except Exception:                                                   # noqa: BLE001
+                pass
             return None
         _live, _age = [], None
         try:

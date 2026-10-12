@@ -47,13 +47,22 @@ ck("回读 src_state == AR场景", _j.get("src_state") == "AR场景", _j.get("sr
 _j2 = SD.ar_switch_scene("TASK-06-TRAY")      # 还原老倪原来的状态: 摆盘 + 任务6
 ck("还原到摆盘场景(交还原状态)", bool(_j2.get("ok")) and _j2.get("src_state") == "摆盘场景", _j2.get("msg"))
 
-print("④ 打开页面的回落链")
+print("④ 打开页面: 逐条候选 + **验窗口真出现**(不认 webbrowser 的返回值)")
 _how_dry = SD.ar_open_url(dry=True)
 ck("探路能定出至少一条可用路", bool(_how_dry), _how_dry)
-_how = ""
+ck("有窗口表检查 ar_window_seen", callable(getattr(SD, "ar_window_seen", None)))
+ck("有置顶 ar_raise_window", callable(getattr(SD, "ar_raise_window", None)))
 if os.environ.get("AR_REAL_OPEN") == "1":
-    _how = SD.ar_open_url()
-    ck("真打开(浏览器真起来)", bool(_how), "用了: %s" % _how)
+    import subprocess as _sp
+    _sp.run(["pkill", "-f", "127.0.0.1:8797"], capture_output=True)   # 先把已开的 AR 窗口关掉, 好真测一次拉起
+    import time as _t
+    _t.sleep(2)
+    _w0 = SD.ar_window_seen(1.0)
+    ck("关掉后窗口表里确实没有 AR 页(检查不是摆设)", _w0 == "", "win=%r" % _w0)
+    _how = SD.ar_open_url(timeout=12.0)
+    _w1 = SD.ar_window_seen(1.0)
+    ck("真打开: 返回「窗口已出现」", "窗口已出现" in _how, _how)
+    ck("真打开: 窗口表里确有该页(可被老倪看到)", bool(_w1), "win=%s" % _w1)
 else:
     print("  ⏭ 跳过真打开 (置 AR_REAL_OPEN=1 才真开)")
 
