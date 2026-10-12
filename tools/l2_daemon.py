@@ -24,6 +24,10 @@ except Exception as _e:                                                 # noqa: 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
 FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
+# 🖐 2026-10-12 老倪点头:「手动回已记的点这类点击不再硬拦(保留慢速 + 提示)」——
+#   页面点"已记的点"时会带 manual_point=1: 抬升闸不硬拦 + 相对下向守卫不拦 + 本条速度档封到这个上限
+#   ("慢一些", 依据他 2026-10-09 现场指令「也可以抬升, 但要慢一些, 而且要发出警报声」)。
+MANUAL_SPEED_UNITS = 200.0
 LOG = os.path.expanduser("~/zmax/zmax_data/l2_daemon.log")
 # 原子技能注册表路径 (v5.11.1 热加载引入 REG_PATH, 当时漏了这行定义 -> NameError 起不来)
 REG_PATH = os.path.join(REPO, "data/skills/l2_atomic/registry.json")
@@ -818,7 +822,11 @@ def plan_stage(sk, st, pts, spec, cur):
     g = dict(sk.get("guard") or {})
     g.update(st.get("guard") or {})                        # 阶段级守卫覆盖技能级
     gd = g.get("dz_down_limit_mm")
-    if gd is not None and dz < -abs(float(gd)):
+    # 🖐 2026-10-12: 人工单点回位也同样放过"相对下向守卫" —— 依据老倪 2026-09-20 的现场纠正
+    #   「把臂抬到槽位上方 185mm 后点『一号位』被'向下>40mm'误拦; 真正该守的是**绝不下压到槽位点以下**,
+    #    而不是相对当前位姿下降多少(转移段本来就该允许大下降)」。
+    #   绝对值红线 z_floor(见下) 与包络/天花板照旧生效 ⇒ 不会攻进夹具。
+    if gd is not None and dz < -abs(float(gd)) and not spec.get("manual_point"):
         if spec.get("allow_down_mm") is None or float(spec.get("allow_down_mm")) < abs(dz):
             return {"err": "向下 %.1fmm > 守卫 %.0fmm (确需下降请带 allow_down_mm)" % (-dz, float(gd)),
                     "pos": t, "dz": dz}
@@ -1086,7 +1094,16 @@ def run_stages(sk, spec, chan, pts):
                 #   allow_climb_mm 才放行(= 上升必须先问人)。豁免量只留着打提示。
                 _lim += 0.0   # 🔴 2026-10-08 上升逻辑已删除: 不再给「到该点位本身必升」豁免
                 _allow = float(spec.get("allow_climb_mm", 0.0) or 0.0)
-                if _climb > max(_lim, _allow) + 1e-6:
+                if _climb > max(_lim, _allow) + 1e-6 and spec.get("manual_point"):
+                    # 🖐 人工单点回位(页面点"已记的点"带 manual_point=1): **不再硬拦**, 只大声提示 ——
+                    #   老倪 2026-10-12 现场点头:「手动回已记的点这类点击不再硬拦(保留慢速 + 提示)」,
+                    #   依据他 2026-10-09 的现场指令「也可以抬升, 但要慢一些, 而且要发出警报声」
+                    #   (警报由监控侧 motion_beep 按 vz>阈值发声; 限速在 main 循环入口统一收口)。
+                    #   ⚠️ 硬红线一条都不退: 环境包络 / 安全区天花板(z 上限) / z_floor(绝不下压到参考点以下)
+                    #      / VL 快层(5Hz 遮挡·糊化反射) —— 全部照旧生效。
+                    log("🖐 阶段 %d/%d 手动回点位豁免抬升闸: 抬升 %.0fmm > 上限 %.0fmm ⇒ 放行(慢速+提示在先)"
+                        % (i, n, _climb, _lim))
+                elif _climb > max(_lim, _allow) + 1e-6:
                     # 🔢 2026-10-12 现场修正: 回执里必须给出**够用**的放行量 —— 原来按 %.0f 四舍五入报"170",
                     #   而真值是 170.2mm ⇒ 现场照着填 170 又被同一道闸拒一次(老倪:「点了没反应」的真因之一)。
                     #   ⇒ 一律向上取整 +1mm, 并写进**受理行**(页面从这行解析, 弹"现场确认净空"确认框)。
@@ -2065,6 +2082,17 @@ def main():
                 # 🐛 2026-09-20 21:22 现场: 注册表热加载原来只在主循环顶部做 → 改完注册表后的
                 #   **第一条**指令仍用旧表(新建的 L2.slot2 被判"未知技能", 第二条才认)。现在每条指令前重读。
                 reg = maybe_reload(reg)
+                # 🖐 2026-10-12 老倪点头: 手动回已记的点不再硬拦, 但**要慢一些** ⇒ 人工回位这一单
+                #   统一下调速度档(老倪口径: 慢速 + 警报在先; 报警由监控侧 motion_beep 发声)。
+                if spec.get("manual_point"):
+                    try:
+                        _s0 = float(spec.get("speed", 0) or 0)
+                        if _s0 > MANUAL_SPEED_UNITS:
+                            spec["speed"] = MANUAL_SPEED_UNITS
+                            log("🐢 手动回点位限速: %.0f → %.0f 档(约 %.1f mm/s 名义)"
+                                % (_s0, MANUAL_SPEED_UNITS, 0.0935 * MANUAL_SPEED_UNITS))
+                    except (TypeError, ValueError):
+                        pass
                 # 🔐 记下本条命令**签发时**的授权 epoch: 撤销会 +1 ⇒ 旧 epoch 的命令在执行层一律作废
                 _CUR.update({"epoch": spec.get("auth_epoch"), "skill": spec.get("skill") or "", "t": time.time()})
                 try:

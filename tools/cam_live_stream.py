@@ -2560,6 +2560,10 @@ def _ctl_move(req: dict) -> dict:
     #   的闸拦住(那条规矩来自 2026-10-01 碰撞)。规矩不改, 但必须给人一条**显式**放行通道:
     #   请求里带 allow_climb_mm=<现场确认的净空高度>才放行(不带 ⇒ 照旧拦)。上限 1000mm 挡填错量级。
     try:
+        # 🖐 2026-10-12 老倪点头: 页面点"已记的点"时带 manual_point=1 ⇒ 执行器按"人工单点回位"处理
+        #   (抬升闸不硬拦 + 限速 + 相对下向守卫不拦; 绝对值红线 z_floor/包络/天花板/VL 快层全照旧)
+        if req.get("manual_point"):
+            cmd["manual_point"] = True
         _ac = req.get("allow_climb_mm")
         if _ac is not None and str(_ac) != "":
             cmd["allow_climb_mm"] = max(0.0, min(1000.0, float(_ac)))

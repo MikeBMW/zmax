@@ -1161,7 +1161,8 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
   $('#msg').textContent='🎯 '+human+': 下发中…'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000), label);
+    // 🖐 人工单点回位: 带 manual_point=1 ⇒ 执行器不再因"需要抬升/相对下降"硬拦(慢速+提示在先, 见 l2_daemon)
+    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0,manual_point:1},20000), label);
     /* 🧗 2026-10-12 老倪: 「点击 安全点1 就要移动到这个点」—— 安全点/准备点这类目标本身更高的点,
        计划里必有一段上升(实测 准备点→安全点1 = +219mm), 会被「升高 >10cm 必须先问人」的闸拦住。
        规矩不改(那条来自 10-01 碰撞), 但把"人确认净空"这一步做进按钮: 服务端回执里已给出放行量,
