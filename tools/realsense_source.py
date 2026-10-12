@@ -22,6 +22,46 @@ W, H, FPS = 640, 480, 30
 _LK = threading.Lock()
 _ST = {"color": None, "depth": None, "ts": 0.0, "n": 0, "ci": None, "scale": 0.001,
        "err": "", "started": 0.0, "restarts": 0}
+# 曝光/增益「待生效档」: 服务可能早于相机启动(实测: 服务 17:01 起, 相机 22:37 才插) ⇒ 控制请求
+# 先记档, 由取帧循环在**活跃管线**上应用(pyrealsense2 只在 start()~stop() 之间能 get_active_profile,
+# 直接取会抛 RuntimeError 而假失败)。这样"先调曝光、后插相机"也成立。
+_PEND = {"auto": None, "exposure_us": None, "gain": None, "dirty": False, "applied": 0, "note": ""}
+
+
+def _pend_set(auto=None, exposure_us=None, gain=None):
+    with _LK:
+        if auto is not None:
+            _PEND["auto"] = bool(auto)
+        if exposure_us is not None:
+            _PEND["exposure_us"] = float(exposure_us)
+        if gain is not None:
+            _PEND["gain"] = float(gain)
+        _PEND["dirty"] = True
+    return dict(_PEND)
+
+
+def apply_pending():
+    """在**活跃管线**上应用待生效档(取帧循环每轮调用, 幂等)。"""
+    if not (_PEND["dirty"] and _RS_OBJ is not None and _RS_OBJ.pipe is not None):
+        return False
+    try:
+        import pyrealsense2 as rs
+        s = _RS_OBJ.pipe.get_active_profile().get_device().first_color_sensor()
+        if _PEND["auto"] is not None:
+            s.set_option(rs.option.enable_auto_exposure, 1.0 if _PEND["auto"] else 0.0)
+        if _PEND["exposure_us"] is not None:
+            s.set_option(rs.option.exposure, float(_PEND["exposure_us"]))
+        if _PEND["gain"] is not None:
+            s.set_option(rs.option.gain, float(_PEND["gain"]))
+        with _LK:
+            _PEND["dirty"] = False
+            _PEND["applied"] += 1
+            _PEND["note"] = "已应用到活跃管线 %s" % time.strftime("%H:%M:%S")
+        return True
+    except Exception as e:                                                       # noqa: BLE001
+        with _LK:
+            _PEND["note"] = "应用失败 %s: %s" % (type(e).__name__, str(e)[:90])
+        return False
 
 
 class _RS:
@@ -62,6 +102,7 @@ class _RS:
     def _loop(self):
         while self.running:
             try:
+                apply_pending()          # 🎛 待生效档: 必须在活跃管线内应用(否则 get_active_profile 抛错)
                 fs = self.pipe.wait_for_frames(timeout_ms=2000)
                 c, d = fs.get_color_frame(), fs.get_depth_frame()
                 if not c or not d:
@@ -116,11 +157,20 @@ def color_ctl(auto=None, exposure_us=None, gain=None):
     并给出可调范围, 便于"到底能在哪一档"有据可依。
     """
     ensure()
+    _pend_set(auto=auto, exposure_us=exposure_us, gain=gain)    # 先记档: 管线未激活/相机后到也能生效
     out = {"ok": False}
     try:
         import pyrealsense2 as _rsmod
         _rs = _rsmod
-        prof = _RS_OBJ.pipe.get_active_profile()
+        try:
+            prof = _RS_OBJ.pipe.get_active_profile()
+        except Exception as _e:                                                  # noqa: BLE001
+            # 管线没在跑(典型: 服务早于相机启动) ⇒ 如实回 pending, 不假装写成功
+            d = dict(_PEND)
+            d.update({"ok": False, "pending": True,
+                      "err": "管线未激活(%s): %s ⇒ 已记档, 取帧循环恢复后自动应用"
+                             % (type(_e).__name__, str(_e)[:80])})
+            return d
         dev = prof.get_device()
         s = None
         try:
