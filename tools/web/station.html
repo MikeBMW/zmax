@@ -494,6 +494,9 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <button data-stream="/aoi_surface.mjpg" class="on">判据图</button>
         <button data-stream="/aoi_surface_raw.mjpg">整板原图</button></span></div>
       <div class="note" id="n_aoi_surface"></div>
+      <!-- ☀ 2026-10-12 老倪「侧面检测的曝光太大了」: 传感器侧**不能**降(实测降曝光 ⇒ 表面判据连续失败),
+           所以这里只把死白压成浅灰(>200 压到 214), 让他看得见模块边界/丝印; 相机曝光/判据/模型输入都没动。 -->
+      <div class="note" style="color:#8b949e">显示: 已压高光(只看边界) · 相机曝光/判据/模型未改 · 关: ZMAX_SURFACE_DEGLARE=0</div>
       <!-- 🎯 表面检测观察位回点按钮 —— 最左『准备点』(安全退让位), 其后按序号 0 → 1 → 2 → 3
            (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面…你重新排列一下UI布局」
             又: 「增加 按钮 准备点，在表面检测的窗口，位置位于 侧面点0的前面」)

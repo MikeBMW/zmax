@@ -2026,6 +2026,26 @@ def _aoi_note(port: int, **kw) -> None:
         d["t"] = time.time()
 
 
+# 2026-10-12 老倪: 「侧面检测的曝光太大了，你能改么？」—— 实测结论(见 docs/): 真降曝光会让表面判据 v12.1
+#   **连续失败**(judge_ok=False 3/3, 原因「找过曝亮条(掩膜)」找不到), 而且 10083 的判据图是"亮条归一化渲染",
+#   降曝光它也不会变暗(逐像素平均差 0.25/255)。所以:**显示**这侧压高光(不设假的暗, 只把死白压到浅灰,
+#   让模块边界/丝印看得见), 相机曝光 / 判据 / 模型的输入图**一律不动**。可用 ZMAX_SURFACE_DEGLARE=0 关掉。
+_SURFACE_DEGLARE = os.environ.get("ZMAX_SURFACE_DEGLARE", "1") != "0"
+_DEGLARE_KNEE, _DEGLARE_TOP = 200, 214      # >knee 的像素线性压到 [knee, top] ⇒ 死白不再刺眼, 边界不减
+
+
+def _deglare_bgr(bgr, knee: int = _DEGLARE_KNEE, top: int = _DEGLARE_TOP):
+    """只压高光、不动其它: x<=knee 原样; x>knee 映射到 [knee, top]。**只用于显示**, 不参与判据/模型。"""
+    try:
+        lut = np.arange(256, dtype=np.float32)
+        m = lut > knee
+        lut[m] = knee + (top - knee) * (lut[m] - knee) / float(255 - knee)
+        lut = np.clip(lut, 0, 255).astype(np.uint8)
+        return cv2.LUT(bgr, lut)
+    except Exception:                                                             # noqa: BLE001
+        return bgr
+
+
 def _aoi_full_frame(bgr, max_side: int = 1400) -> bytes:
     """整板原图 → 缩到长边 ≤max_side 的 JPEG (给「判据图 / 整板原图」切换用)。
 
@@ -2106,6 +2126,8 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 #   deskew/3×/定尺 都会把它变成另一张图 ⇒ 那又回到"两边不一致"。故 kind=crop 时全停。
                 _nat = (name == "aoi_gold")
                 _ds = _aoi_gold_angle() if _nat else 0.0
+                if port == 10083 and _SURFACE_DEGLARE:      # 🔴 仅显示: 表面判据图整体过曝(实测白区 43%)
+                    bgr = _deglare_bgr(bgr)
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
                                         vstretch=(3.0 if _nat else 1.0),
                                         fix_hw=((900, 332) if _nat else None))
@@ -2117,6 +2139,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                         _put(full_name, fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 _aoi_note(port, ok=True, src=name, url=_req_url, http=code, kb=round(len(raw) / 1024.0, 1),
                           shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching),
+                          deglare=bool(port == 10083 and _SURFACE_DEGLARE),
                           src_frame_age_s=(round(_src_age, 1) if _src_age is not None else None))
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
