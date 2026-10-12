@@ -12018,8 +12018,20 @@ class StudioMainWindow(QMainWindow):
 
     def _run_ss_cmd(self):
         """▶ 运行状态空间仿真 (命令文件触发)"""
-        if getattr(self, "simulink", None) is not None:
-            self.simulink.start_sim()
+        _sim = getattr(self, "simulink", None)
+        if _sim is not None:
+            # 🐛 2026-10-12 实测: 新起/重启后的进程里画布是空的 ⇒ 直接 start_sim() 只会
+            #   打印「⚠️ 画布为空」静默失败 (老倪「你运行啊」点了半天没动静就是这个)。
+            #   这里先确保加载状态空间工程, 再跑 (延迟一拍等节点填进来)。
+            if not getattr(_sim, "nodes", None):
+                try:
+                    _sim.open_state_space()
+                    self.statusBar().showMessage("▶ 画布为空 ⇒ 已先加载状态空间工程, 稍后自动运行", 2500)
+                    _oneshot(self, 1500, _sim.start_sim)
+                    return
+                except Exception as _e:                                         # noqa: BLE001
+                    self.statusBar().showMessage(f"▶ 加载状态空间工程失败: {_e}", 3000)
+            _sim.start_sim()
             self.statusBar().showMessage("▶ 状态空间仿真已启动 (命令触发)", 2000)
 
     # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────

@@ -14055,6 +14055,33 @@ class SimulinkModule(QWidget):
                     _live.activateWindow()
                 except Exception:                                               # noqa: BLE001
                     pass
+                # 🔴 2026-10-12 老倪「信号分析运行啊，动起来」——真根因(实测):
+                #   这条**提前 return 的复用分支**原来是唯一没登记进 `_ss_3d_windows` 的路径
+                #   (新建分支在下面 append, 复用分支在 14098 靠遍历它; 而"把 Sim&Real 页里内嵌的
+                #    live DreamView 拎成独立窗口"这条走的就是这里 ⇒ 窗口不在册)。
+                #   后果: `_ss_tick` 每 tick 的 `for w in _ss_3d_windows: w.set_frame(idx)` 跳过它
+                #   ⇒ 3D 面板不渲染播放帧 ⇒ **它内部唯一的发布者 publish_trace_live 不写**
+                #   ⇒ zmax_data/ss_live/trace_live.json 停在上一轮(帧龄 800s+) ⇒ 实时监控·信号分析
+                #   永远显示"停下的那一刻"(看着就是"不动")。修: 这条分支照样登记 + 绑 module + 换轨迹。
+                try:
+                    if not hasattr(self, "_ss_3d_windows"):
+                        self._ss_3d_windows = []
+                    if getattr(_live, "module", None) is not self:
+                        _live.module = self
+                    # 轨迹换了要重建场景 (同一窗口/同一 GL 上下文, shader 有效)
+                    # ⚠️ 这里**不能**用后面才赋值的局部名 `tr`(Pyright: unbound) ⇒ 用 self._ss_tr
+                    _tr_now = getattr(self, "_ss_tr", None)
+                    if _tr_now is not None and getattr(_live, "tr", None) is not _tr_now:
+                        _live.set_trajectory(_tr_now)
+                    if getattr(_live, "_cam_watch", None) is not None \
+                            and not _live._cam_watch.isActive():
+                        _live._cam_watch.start(50)
+                    if _live not in self._ss_3d_windows:
+                        self._ss_3d_windows.append(_live)
+                    self._log("🧭 3D 视图(复用 Sim&Real 内嵌 live DreamView)已登记到播放同步列表 "
+                              "⇒ 运行/播放会逐帧喂帧 (信号分析波形跟着动)")
+                except Exception as _e:                                         # noqa: BLE001
+                    self._log(f"⚠️ 3D 复用分支登记失败(信号分析可能不刷新): {_e}")
                 return _live
         except Exception:                                                       # noqa: BLE001
             pass
@@ -14677,6 +14704,17 @@ class SimulinkModule(QWidget):
     def _real_finish(self, tr):
         """🎥 真实轨迹 → 播放/3D/总线 (io_trace 与引擎同构 13 模块, dw 复用)"""
         self._ss_tr = tr
+        # 🐛 2026-10-12 老倪「信号分析运行啊，动起来」: 播放前把**本轮**轨迹推给在册 3D 窗口。
+        #   窗口的 tr 可能是上一轮/离线 episode ⇒ set_frame(idx) 画的是旧轨迹的帧,
+        #   更糟的是 3D 面板是 trace_live.json **唯一发布者**(ss_dreamview.publish_trace_live),
+        #   不喂它 ⇒ 实时监控·信号分析的波形永远停在"停下的那一刻"。
+        for _w in list(getattr(self, "_ss_3d_windows", [])):
+            try:
+                if _w is not None and getattr(_w, "tr", None) is not tr:
+                    _w.set_trajectory(tr)
+                    self._log("🧭 3D 视图已切换为本轮真实轨迹 (信号分析波形将随播放刷新)")
+            except Exception as _e:                                             # noqa: BLE001
+                self._log(f"⚠️ 3D 轨迹切换失败(不影响播放): {_e}")
         try:
             from data_world import DataWorld
             self._dw = DataWorld(tr)
