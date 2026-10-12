@@ -7,11 +7,11 @@
   ✅ ⑤ 工程段齐 (7/7)
   ✅ ⑤b 功能 74 == 画布功能节点 74 (无重复计数)
   ✅ ⑤c 同名功能 0 条 (每节点只算一次)
-  ❌ ⑥ 库与真源一致 (漂移 ['project', 'canvas'])
+  ✅ ⑥ 库与真源一致 (漂移 无)
   ✅ ⑦ 模块 74 个, 其中 74 个链到引擎代码真源 (nodes/library.py)
   ✅ ⑧ 全局可改数字 768 个 (可写 710 · 明确范围 688 · 未定/缺口 22)
   ✅ ⑧b 每个数字的真源都在盘上 (18 个来源)
   ✅ ⑧c 数字→功能/模块/系统 链接 1731 条
   ✅ ⑨ MCD 三轴 5 层: 产品 M9/C45/D57 · 系统 sys0 M9/C41/D38 sys1 M0/C0/D8 sys2 M0/C4/D11
-  📦 单文件: /home/ubuntu/zmax/data/database/zmax/zmax_engineering.db (1.25 MB)
-❌ 判据失败: ["drift ['project', 'canvas']"]
+  📦 单文件: /home/ubuntu/zmax/data/database/zmax/zmax_engineering.db (1.26 MB)
+✅ 判据全绿
