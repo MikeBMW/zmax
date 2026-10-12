@@ -12,6 +12,26 @@ metadata:
 
 # 固定相机 AR/VR 叠加底图 (第二台相机 → 叠加层)
 
+## 🧭 坐标系链 (世界/base · tool0 法兰 · tool1 夹爪—模块头) (2026-10-12 老倪现场定的口径)
+
+老倪原话即口径:「世界坐标系; tool0 = 6 轴末端的法兰盘中心点; tool1 = 夹爪夹住光模块 ——
+手臂相机看到的屏幕最下方那个小光模块头部的中心点」。
+
+- **真值源 `tcp_out/latest.json` 报的就是 tool1**(珞石 `endInRef`, 控制器 toolset=tool1;
+  旁证: `l2_daemon.py` 的 J6 自转公式把上报值当 TCP ⇒ `p_tcp − R_tool·t_tool = 法兰原点` 同一口径)。
+- **tool0 = tool1 ⊖ URDF tool0→tool1 固定位姿**(与当前姿态无关):
+  `_J6_RPY=(0.03702518, 0.67516757, 2.37524865)` · `_J6_XYZ=(-0.01588615, 0.01834850, 0.25867757)`
+  ⇒ 法兰↔模块头 **259.8mm**。算法: `t_tool = R_off^T·t_off`; `p_tool0 = p_tool1 − R_tool1·t_tool`;
+  `R_tool0 = R_tool1·R_off^T`。自检: `tools/verify_ar_layout.py`(独立实现逐位对照, 24 项)。
+- 服务端 `tcp_ar_server.read_tcp()` 直接回 `frames{base,tool0,tool1}`, 每系给原点 + 三轴单位向量。
+
+**三维视图规格**(老倪: 「要跟相机的窗口一样大, 现在太小了, 就放在相机窗口的下面」):
+`#leftcol` = 相机窗口 + `#vrcard`(三维视图) 同列; 画布 `width:calc(100% + 24px);margin:0 -12px`
+抵消卡内边距 ⇒ 同宽; `syncVr()` 把画布高设成 `#stagewrap.clientHeight` ⇒ 同高, 挂在 `applyRot()`
++ ResizeObserver 上。画 base/tool0/tool1 三色轴(红X/绿Y/蓝Z) + 名称标注 + 读数;
+`vrFitBox` 把 tool0/tool1 纳入取景(含 base 原点会拉远) ⇒ 关掉 🧭 再『对准轨迹』才拉回只看轨迹。
+重画指纹必须含 `quat` —— 只按 xyz 判, 手腕原地转时三维视图会冻结。
+
 ## When to Use
 - 用户:「应用 VR/AR 技术把机器人工具中心轨迹可视化出来」「在**笔记本摄像头**这个场景上叠加一条看得见的通道」「场景叠加是为了更好地调试算法」。
 - 要给一台**不在机械臂上**的相机(笔记本内置、电视顶摄)画 base 系 3D 内容(管道/框/点)。
