@@ -72,6 +72,8 @@ def publish():
     _part = 0
     _prev_stage = ""
     _placed = 0
+    _plan = _load_plan()
+    _cum, _wp = 0.0, 0          # 轨迹累计里程/抽稀路点 (>2mm 才留, 与现场叠加同口径)
     with open(jl, "w", encoding="utf-8") as f:
         for i in range(n):
             st = str(z["stage"][i])
@@ -101,6 +103,12 @@ def publish():
                 "真空建立_ms": round(float(_j.get("vac_establish_ms") or 0.0), 1),
                 "合格": bool(_j.get("ok")),
             }
+            if i:                                   # 轨迹/规划状态信号 (老倪: 「信号状态得发出来」)
+                _d = sum((float(z["x"][i][k]) - float(z["x"][i - 1][k])) ** 2 for k in range(3)) ** 0.5
+                _cum += _d
+                if _d >= 0.002 or i == n - 1:
+                    _wp += 1
+            rec.update(_traj_fields(i, n, st, _part, _cum, _wp, _plan))
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     # ── run_summary.json (每颗判据真值) ──
@@ -140,16 +148,42 @@ def _vec(v, i):
     return v if isinstance(v, (int, float)) else 0.0
 
 
-def live(speed: float = 1.0):
+def _traj_fields(i, n, stage, part, cum_m, wp, plan):
+    """轨迹/规划状态信号 (jsonl 与 live 共用同一口径)。
+    老倪: 「三个光模块的轨迹，得规划出来，机器人手臂需要按照轨迹动作，信号状态得发出来」"""
+    return {
+        "轨迹_当前颗": int(part), "轨迹_已规划颗数": int((plan or {}).get("颗数") or 0),
+        "轨迹_段": str(stage).replace("阶段 ", ""), "轨迹_进度_pct": round((i + 1) * 100.0 / max(1, n), 1),
+        "轨迹_路点数": int(wp), "轨迹_累计距离_mm": round(cum_m * 1000.0, 1),
+        "轨迹_来源": "摆盘真跑 episode(真值) · 非MoveIt",
+    }
+
+
+def _load_plan():
+    try:
+        with open(os.path.join(ROOT, "reports", "tray_plan_3parts.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:                                                          # noqa: BLE001
+        return {}
+
+
+def live(speed: float = 1.0, loop: bool = False):
     z, meta = load_episode()
     n = len(z["t"])
     judges = meta.get("judges") or []
     dt = 0.05 / max(0.1, float(speed))                    # 20Hz × speed
     _part, _prev, _placed = 0, "", 0
+    _plan = _load_plan()
+    _cum, _wp = 0.0, 0
     print("📡 重放摆盘 episode → %s (%d 步 · %.0fHz)" % (os.path.relpath(LIVE, ROOT), n, 1.0 / dt), flush=True)
     t0 = time.time()
     for i in range(n):
         st = str(z["stage"][i])
+        if i:
+            _d = sum((float(z["x"][i][k]) - float(z["x"][i - 1][k])) ** 2 for k in range(3)) ** 0.5
+            _cum += _d
+            if _d >= 0.002 or i == n - 1:            # >2mm 才留 (与 §5c 抽稀同口径)
+                _wp += 1
         if "阶段 接近" in st and "接近" not in _prev:
             _part += 1
         _prev = st
@@ -172,7 +206,8 @@ def live(speed: float = 1.0):
             "真空建立_ms": round(float(_j.get("vac_establish_ms") or 0.0), 1),
             "合格": bool(_j.get("ok")),
         }
-        tmp = LIVE + ".tmp"
+        rec.update(_traj_fields(i, n, st, _part, _cum, _wp, _plan))
+        tmp = LIVE + ".tmp%d" % os.getpid()   # 名字带 pid: 固定 .tmp 与并发写者撞名会 FileNotFoundError
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(rec, f, ensure_ascii=False)
         os.replace(tmp, LIVE)
@@ -180,6 +215,10 @@ def live(speed: float = 1.0):
     print("✅ 重放完 (%d 步, 用时 %.1fs) — 末帧: 阶段=%s 已放 %s/%s 合格=%s"
           % (n, time.time() - t0, z["stage"][-1], meta.get("placed"), meta.get("total"),
              bool((judges or [{}])[-1].get("ok"))), flush=True)
+    if loop:                                   # 老倪: 实时监控要看"一直在动" ⇒ 循环重放 (同一份真值, 不造数)
+        time.sleep(3.0)
+        while True:
+            live(speed, loop=True)
 
 
 def main() -> int:
@@ -187,6 +226,7 @@ def main() -> int:
     ap.add_argument("--publish", action="store_true", help="落运行产物 + 重建场景标签")
     ap.add_argument("--live", action="store_true", help="按 episode 时间轴重放写 trace_live.json")
     ap.add_argument("--speed", type=float, default=1.0, help="重放倍速 (默认 1.0)")
+    ap.add_argument("--loop", action="store_true", help="循环重放 (实时监控一直有动作, 不造数)")
     a = ap.parse_args()
     if not os.path.exists(NPZ):
         print("❌ 没有真跑产物 %s —— 先: MUJOCO_GL=egl gui-venv311/bin/python tools/ss_task_runner.py "
@@ -195,7 +235,7 @@ def main() -> int:
     if a.publish or not a.live:
         publish()
     if a.live:
-        live(a.speed)
+        live(a.speed, loop=a.loop)
     return 0
 
 

@@ -120,6 +120,34 @@ EPISODE_NPZ = os.path.join(
     "reports", "ss_episode_latest.npz")
 
 
+def scene_episode_path(scene_id):
+    """🧩 场景 → 该场景自己的 episode 真源 (2026-10-12 老倪)。
+
+    老倪: 「摆盘的场景，为什么还残留着插拔场景的轨迹线？」
+    根因: `_switch_scene` 只重建了几何 (`_build_scene`), **没有换 episode 真源** ——
+      `self.tr` 永远是构造时从 `reports/ss_episode_latest.npz`(插拔) 读进来的那份,
+      所以摆盘场景里那条「末端实测轨迹」还是插拔的。修法 = 每个场景认自己的 episode。
+    """
+    return {
+        "SS-TRAY-PLACE": (os.path.join(_REPO, "reports", "tray_place_latest.npz"), "摆盘"),
+        "SS-EPI-CORNER": (os.path.join(_REPO, "reports", "ss_episode_latest.npz"), "插拔"),
+    }.get(scene_id)
+
+
+def load_scene_episode(scene_id):
+    """取该场景 episode → (tr, meta, 说明); 没配/文件缺返回 (None, None, 原因)。"""
+    ent = scene_episode_path(scene_id)
+    if not ent:
+        return None, None, "该场景没配 episode 真源"
+    path, lab = ent
+    if not os.path.isfile(path):
+        return None, None, "%s episode 不存在: %s" % (lab, os.path.basename(path))
+    tr, meta = load_episode(path)
+    if not tr:
+        return None, None, "%s episode 读不出: %s" % (lab, os.path.basename(path))
+    return tr, meta, "%s episode · %s · %d 帧" % (lab, os.path.basename(path), len(tr.get("x", [])))
+
+
 def _pair_age(p):
     return abs(os.path.getmtime(p) - os.path.getmtime(os.path.splitext(p)[0] + ".mp4"))
 
@@ -1591,8 +1619,29 @@ class DreamView3D(QWidget):
         self._cam_watch.start(50)
         self._cam_sig = None
 
+        # 🧩 2026-10-12 老倪: 「摆盘的场景，为什么还残留着插拔场景的轨迹线？」
+        #   根因之二: 3D 窗只在按「🚀 启动工程·信号·场景」(`studio._ss3d_push_scene`) 时被推场景;
+        #   **单独切场景 (画布 ssdata.src_state 变) 时窗口根本不跟** ⇒ 画面留的是上一个场景的
+        #   几何 + 轨迹线(插拔)。修法 = 看门狗: 2s 比一次画布数据源, 变了就 `_switch_scene`
+        #   (trait 里已按场景换 episode 真源 + 重建几何/轨迹)。
+        self._scene_watch = QTimer(self)
+        self._scene_watch.timeout.connect(self._watch_canvas_scene)
+        self._scene_watch.start(2000)
+
         if tr is not None:
             self.set_trajectory(tr)
+
+    def _watch_canvas_scene(self):
+        """画布数据源变了 → 3D 窗自动跟场景 (含换该场景自己的 episode 真源)。"""
+        try:
+            sid = canvas_src_scene_id()
+            if not sid or sid == getattr(self, "scene_id", None):
+                return
+            if self._switch_scene(sid):
+                print("🧩 [3D场景] 跟随画布数据源 → %s" % sid, flush=True)
+        except Exception as _e:                                                 # noqa: BLE001
+            print("⚠️ [3D场景] 跟随画布失败: %r" % (_e,), flush=True)
+
 
     # ── 数据装载 ──
     def set_trajectory(self, tr):
@@ -2568,6 +2617,21 @@ class DreamView3D(QWidget):
         #   修法: 切换后显式重建场景层 —— `_build_scene()` 本来就是幂等重建 (先清空全部 GL item 再建,
         #   收尾重贴图层开关), 也正是「🔁 重建 3D 视图」按钮调的那个钩子。
         self.scene_id = scene_id
+        # 🧩 2026-10-12 老倪: 「摆盘的场景, 为什么还残留着插拔场景的轨迹线?」
+        #   根因 = 切场景只重建几何 (_build_scene), **`self.tr` (episode 真源) 没换** ⇒
+        #   轨迹层 ("📡 末端实测轨迹") 重建出来还是插拔那份。修法 = 先换 episode 再重建。
+        try:
+            _tr, _meta, _why = load_scene_episode(scene_id)
+            if _tr:
+                if _meta and "_meta" not in _tr:
+                    _tr["_meta"] = _meta
+                _tr["_viz_src"] = "episode"
+                self.set_trajectory(_tr)     # 内部: 应用 meta → _n/slider → _build_scene → 取景 → 第 0 帧
+                print("🧩 [3D场景] %s → 已装载 %s" % (scene_id, _why), flush=True)
+            else:
+                print("⚠️ [3D场景] %s → %s (轨迹层保持不动)" % (scene_id, _why), flush=True)
+        except Exception as _e:                                                 # noqa: BLE001
+            print("⚠️ [3D场景] 装载场景 episode 失败: %r" % (_e,), flush=True)
         _rebuilt = False
         try:
             self._build_scene()
