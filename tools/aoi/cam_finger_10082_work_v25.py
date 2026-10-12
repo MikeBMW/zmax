@@ -110,6 +110,16 @@ GAMMA_VAL = 1.0
 _CAM_LIVE = {"exposure_us": float(EXPOSURE_US), "gain_db": float(GAIN_DB),
              "gamma_val": float(GAMMA_VAL), "sn": TARGET_SN, "model": CAM_DESC}
 
+# 🆕 v30 层① (2026-10-09) 取像档位**持久化** —— 重启不丢档位:
+#   病: 服务自启只跑 set_auto_off()+文件默认档(20000×8), **不读落盘** ⇒ 任何重启(部署/异常/保活)
+#       都把现场档位(如点2 的 40000×8)打回默认, 判据图整幅变。此前只有部署器 ⑤b 会补, 覆盖不到普通重启。
+#   修: 服务自己**落盘**当前生效档位 + 启动/重连时**按落盘复原**(完全不依赖部署脚本)。
+#   落盘路径(工控机侧, 相对工作目录 D:\xspace\ultralytics_AOI, 可用 AOI_CAM_PARAM_PERSIST 覆盖):
+#     zmax_data/aoi_v4/cam_param_persist.json  —— 与 4060 侧同名同格式 {"10082": {...}}
+_CAM_PARAM_PERSIST = os.environ.get("AOI_CAM_PARAM_PERSIST") or os.path.join(
+    HERE, "zmax_data", "aoi_v4", "cam_param_persist.json")
+_RUN_PORT = str(PRODUCTION_PORT)      # __main__ 里按实际 --port 覆盖(与落盘键一致)
+
 # ===== v3 保留: 最近一次照片 / 最近一次检测判决 =====
 _LAST_PIC = {"origin": None, "topview": None, "t": 0.0}
 _LAST_MODELIN = ""          # v10: 本轮送检的模型输入文件(960x960 同帧派生图, 在 %TEMP%, 检测完即删)
@@ -379,6 +389,62 @@ def set_auto_off():
             print(f"{node} 关自动异常: {e!r}")
 
 
+def _write_cam_param_persist(src="服务"):
+    """把**当前实际生效**的取像档位写进本机落盘文件(供服务自启复原)。返回 bool。"""
+    try:
+        d = {}
+        if os.path.exists(_CAM_PARAM_PERSIST):
+            try:
+                d = json.load(open(_CAM_PARAM_PERSIST, encoding="utf-8")) or {}
+            except Exception:
+                d = {}
+        d[str(_RUN_PORT)] = {"exposure_us": float(_CAM_LIVE.get("exposure_us")),
+                             "gain_db": float(_CAM_LIVE.get("gain_db")),
+                             "profile": "", "src": str(src),
+                             "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+        _dir = os.path.dirname(_CAM_PARAM_PERSIST)
+        if _dir and not os.path.isdir(_dir):
+            os.makedirs(_dir, exist_ok=True)
+        _tmp = _CAM_PARAM_PERSIST + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as fh:
+            json.dump(d, fh, ensure_ascii=False, indent=2)
+        os.replace(_tmp, _CAM_PARAM_PERSIST)
+        _e = d[str(_RUN_PORT)]
+        print("【档位落盘】%s ⇐ %gus×%gdB" % (_CAM_PARAM_PERSIST, _e["exposure_us"], _e["gain_db"]))
+        return True
+    except Exception as e:
+        print("⚠️ 取像档位落盘失败: %r" % (e,))
+        return False
+
+
+def _restore_cam_param():
+    """🆕 v30 层①: 服务自身启动/重连时按**本机落盘**档位复原(不靠部署脚本)。
+
+    返回 True = 至少复原了一项; False = 无落盘/未复原。任何异常都吞掉(绝不影响启动)。"""
+    try:
+        if not os.path.exists(_CAM_PARAM_PERSIST):
+            print("【档位复原】无落盘文件(%s) ⇒ 保持文件默认 %gus×%gdB"
+                  % (_CAM_PARAM_PERSIST, EXPOSURE_US, GAIN_DB))
+            return False
+        d = json.load(open(_CAM_PARAM_PERSIST, encoding="utf-8")) or {}
+        e = d.get(str(_RUN_PORT)) or {}
+        ex, gn = e.get("exposure_us"), e.get("gain_db")
+        if not ex and not gn:
+            print("【档位复原】落盘无 %s 项 ⇒ 保持默认" % (_RUN_PORT,))
+            return False
+        ok = True
+        if ex:
+            ok = bool(set_exposure(float(ex))) and ok
+        if gn:
+            ok = bool(set_gain(float(gn))) and ok
+        print("【档位复原】按落盘(%s, src=%s) exposure=%s gain=%s ⇒ ok=%s"
+              % (e.get("ts"), e.get("src"), ex, gn, ok))
+        return ok
+    except Exception as ex:
+        print("⚠️ 档位复原跳过(不影响启动): %r" % (ex,))
+        return False
+
+
 def Open_Device(target_dev):
     global _cam_open
     reVal = m_Device.SciCam_CreateDevice(target_dev)
@@ -394,6 +460,7 @@ def Open_Device(target_dev):
     set_exposure(EXPOSURE_US)
     set_gain(GAIN_DB)
     set_gamma(GAMMA_VAL)
+    _restore_cam_param()    # 🆕 v30 层①: 按**本机落盘**档位复原 —— 重启/重连不丢现场档位
     _cam_open = True
     print("相机打开成功")
     return True
@@ -536,7 +603,11 @@ _V21_BRIGHT_FRAC = 0.72          # a pixel is "bright" above this much of the lo
 #   这些阈值就相对变松/变紧 ⇒ 左端那块 ~78px 金属边块在"单键窗/拒收窗/双键窗"之间漂 ⇒ 认领跨度漂。
 #   修法: 几何分析(键行窗/裁剪/亮列/键掩膜)**统一走逐帧对比度归一化副本 ga**, 阈值由此变成相对量;
 #   渲染像素仍取原图 src(1111 行 block=src[...]) ⇒ 判据图观感不变; sat_before/曝光增益仍用原图 g。
-_JUDGE_VER = "v26-gold-judge-20261008"
+_JUDGE_VER = "v36-gold19-cxwin-20261009"
+PREVIEW_VER = "pv1-20261012"   # live-preview route /preview.jpg (grab only, no crop/judge)
+   # v35: v34 + (a) 单键宽度门(死区块 1.6×中键宽..1.35×节距 不再整块拒收, 按"有/无内部凹陷"判 2 键 or 单键)
+   #      (b) 救回趟(pass2, 仅 n1∈[11,16] 触发) 用更宽的重切分上限; 结果需 >n1 且 >=14 根且节距自洽才采纳。
+   #      v33 的 keep-frame 抑制分支 / v34 的锚点两遍校验 / 19 根实线框全部保留。
 _V22_GATES = (                       # 第 1 组 = v21 原口径(保证成功帧像素不变)
     {},
     {"col_level_frac": 0.80, "cf_key_col": 0.40, "min_key_w": 4},
@@ -550,7 +621,8 @@ _V23_GAP_DIM = 0.38
 # 🆕 v23 (2026-10-08 老倪「金手指的高度, 可以再搞一些, 变成原来的 1.2 倍吧」):
 #   判据图里**键的高度**放大到 1.2 倍(宽度不变) —— 只在宽度受限时生效(本就按宽度定尺),
 #   实现 = 纵向按 sc*1.2 重采样(纯显示放大, 不改检测/不改键宽/不改口径参数)。
-_V23_KEY_HSTRETCH = 1.2
+_V23_KEY_HSTRETCH = 3.0        # v23 原值(参考序列逐位零回退用)
+_V36_HSTRETCH = 3.0            # 🆕 v36: 新清晰画面的键高放大(只在 _V36_LIVE 时取代上值)
 _V22_DBG_PNG = "debug_judge_fail_last.png"
 _V22_DBG_JSON = "debug_judge_fail_last.json"
 # 🔴 2026-10-08 现场(老倪: 「判据图怎么总变呢? 不稳定」): 原先是一张**全局**好图 —— 切到点2 后判据屡屡失败,
@@ -728,6 +800,529 @@ def _v21_adaptive_bright(win):
                          _V21_BRIGHT_MIN, _V21_BRIGHT_LEVEL))
 
 
+_V26_BAND_HOLD = {"band": None, "ts": 0.0, "thumb": None}   # 静止保持: 同一工件静止时按住行带(见 _v26_pick_band)
+_V26_BAND_HOLD_S = 15.0                      # 保持有效期(s): 超过就按新候选重新认
+_V26_BAND_TOL = 100                          # 新候选起点漂过这么多 px ⇒ 认为换件/换视角, 重新认
+# 🆕 v30 层② (2026-10-09) 场景变化门: 帧内出现多个候选带时, 别一律取"最上簇"(伪结构常更靠上),
+#   而是当**缩略图帧差小(同一静止工件)**时, 选**与上帧成功带重叠**的那一簇。缩略图帧差 > 该阈值才认"换件/换视角",
+#   退回"最上簇"重新认。实测 16 帧静止序列缩略图帧差 0.96~1.9 ⇒ 阈值 6.0 只区分真换件(整幅重排, 差远超 6)。
+_V30_SCENE_DIFF = 6.0
+
+
+def _v26_pick_band(hits, met=None, prev=None, thumb=None):
+    """挑出**真正的齿排那一段行带** —— 治「判据图一闪一闪/不断跳动」。
+
+    🔴 真因(2026-10-08/09 离线冻结真帧复现, 与亮度无关: p50 恒 27 仍在跳):
+      老写法 `ky0=min(y0)/ky1=max(y1)` 把**所有**命中窗并成一条带。同一批帧里有 2~3 个命中窗:
+      真齿排(y≈1550-1619, 节距 70~72) **和** 它下方过曝亮面上的假周期结构(y≈1650-1699, 节距 46)。
+      远窗一并进来, 行带就从 50 行涨到 130/150 行 ⇒ 判据图按带渲染 ⇒ 齿带纵向漂 **240px**、
+      高度 50~150 行来回变 = 肉眼"一跳一跳"。
+
+    ⚠️ 本地会话的"带锁并集"(_V21_BAND_PREV) 思路对(要跨帧稳定)但方向反了: **并集只会更宽**,
+      一旦把假结构并进来, 就永久停在宽带上(实测当前场景行带仍在 2 种之间翻、根数 7↔15)。
+      ⇒ 本版改为"**取最上簇 + 只与锚窗重叠**"(齿排是最靠上的周期结构), 再叠静止保持。
+
+    两条规则(实测支撑):
+      ① 金手指是最靠上的那条周期结构 ⇒ 取最上面那一簇, 簇内只收与锚窗重叠的窗(不让远端窗撑长带)。
+      ② 同一个工件静止 ⇒ 行带不该帧间变。保持上一次的行带, 除非新候选起点漂 > _V26_BAND_TOL。
+    实测(12 帧冻真帧, 当前场景): 行带 2 种 ⇒ **1 种**; 根数 7/15 ⇒ **恒 15**; 帧间像素差 6.6 ⇒ 5.1。
+    """
+    hs = sorted(hits, key=lambda h: int(h["y0"]))
+    clusters, cur = [], [hs[0]]
+    for h in hs[1:]:
+        if int(h["y0"]) - int(cur[-1]["y1"]) <= _V21_WIN_H:      # 相邻/重叠 ⇒ 同一簇
+            cur.append(h)
+        else:
+            clusters.append(cur)
+            cur = [h]
+    clusters.append(cur)
+
+    def _cluster_span(cl):
+        a, b = int(cl[0]["y0"]), int(cl[0]["y1"])
+        for h in cl[1:]:                    # 只收与已选段重叠的窗
+            if int(h["y0"]) <= b:
+                b = max(b, int(h["y1"]))
+        return a, b
+
+    top = clusters[0]                       # 默认: 最上面那一簇 = 齿排
+    _gate = "top"
+    held = _V26_BAND_HOLD.get("band")
+    held_thumb = _V26_BAND_HOLD.get("thumb")
+    if len(clusters) > 1 and held is not None:
+        # 🆕 v30 层②: 场景变化门 —— 缩略图帧差小(同一静止工件)时, 伪结构(更靠上)可能这一帧冒头;
+        #   此时**不取最上簇**, 改选与"上帧成功带"重叠的那一簇(与上帧真键排一致的候选),
+        #   避免每帧在 y≈1260-1400 与 y≈1550-1639 之间翻。帧差大 = 真换件/换视角 ⇒ 回落"最上簇"重认。
+        _static = False
+        if thumb is not None and held_thumb is not None:
+            try:
+                _static = float(np.abs(np.asarray(thumb, np.float32)
+                                       - np.asarray(held_thumb, np.float32)).mean()) <= _V30_SCENE_DIFF
+            except Exception:
+                _static = False
+        if _static:
+            _ov = [(cl, _cluster_span(cl)) for cl in clusters]
+
+            def _overlap_len(ab):
+                return max(0, min(int(ab[1]), int(held[1])) - max(int(ab[0]), int(held[0])) + 1)
+
+            _cand_ov = [(cl, ab, _overlap_len(ab)) for cl, ab in _ov if _overlap_len(ab) > 0]
+            if _cand_ov:
+                top = max(_cand_ov, key=lambda t: t[2])[0]
+                _gate = "overlap"
+    y0, y1 = _cluster_span(top)
+    cand = [y0, y1]
+    now = time.time()
+    if (held and (now - float(_V26_BAND_HOLD.get("ts") or 0.0)) < _V26_BAND_HOLD_S
+            and abs(int(held[0]) - y0) <= _V26_BAND_TOL):
+        y0, y1 = int(held[0]), int(held[1])
+        if met is not None:
+            met["band_hold"] = {"hold": [y0, y1], "cand": cand}
+    else:
+        _V26_BAND_HOLD["band"] = [y0, y1]
+        _V26_BAND_HOLD["ts"] = now
+    if thumb is not None:
+        _V26_BAND_HOLD["thumb"] = np.asarray(thumb, np.float32).copy()
+    if met is not None:
+        met["band_pick"] = {"clusters": len(clusters), "hits": len(hs), "cluster_hits": len(top),
+                            "band": [y0, y1], "h": int(y1 - y0 + 1), "cand": cand, "gate": _gate}
+    return y0, y1
+
+
+# ═══ v32 (2026-10-09) 几何自适应取带: 列自相关"相位锚点" ══════════════════════════
+#   病(当前位姿实测): `_v26_pick_band` 取带 **比真键排高 ~100–140px** ⇒ 只切到键排上缘,
+#   数出 4~12 根(真值 19); 节距估计也因此偏成 95px。真键排(用列自相关扫出来的唯一周期带)
+#   在**取带下方**, 而取带落在"连接器壳体暗面"上(该处无列周期)。
+#   修: 用列自相关在**整幅**扫出唯一周期带(pitch 55..90px、跨度≈19×pitch)当**相位锚点**,
+#   仅当"锚点带与当前取带**几乎不重叠**"且锚点足够强时, 才把取带钉到锚点带。
+#   铁律(前视零回退): 前视取带本就落在真键排 ⇒ 锚点带与当前带重叠 ⇒ **不触发** ⇒ 逐位不变。
+#   只动"取哪一行带", 不碰 crop/warp/get_cropper/_region_payload。
+_V32_ON = True
+_V32_WIN_H = 110          # 锚点窗口高(px, 全分辨率) —— 覆盖键排高度
+_V32_STEP = 5             # 纵向扫描步长
+_V32_CUT_K = 201          # 平场大窗(≈3×节距): 去掉低频亮度梯度, 只留键列周期
+_V32_PITCH_LO, _V32_PITCH_HI = 55, 90
+_V32_AC_MIN = 0.15        # 去低频后 ACF 峰值门槛(实测真键排 ~0.40, 其余 ≤0.23/多为负)
+_V32_CUR_MAX = 0.15       # 当前取带的周期分低于此 ⇒ 判"没落在键排上" ⇒ 才允许钉带(否则一字不动)
+_V32_OVERRIDE_ON = True   # 钉带总开关
+_V32_TWOPASS_ON = True    # 两遍校验总开关(pass1≠19 且锚点强 ⇒ 用锚点带重渲, 恰好19才采用)
+_V32_ATTEMPT_LO = 12      # pass1 键数 < 此值(或 > 19) 才认为"明显不对" ⇒ 才试重渲(保其它视角逐位不变)
+_V32_AMP_MIN = 6.0        # 去低频剖面的**幅度**门槛(px·灰度): 平坦区(过曝白板/暗壳)自相关是数值假象
+_V32_MIN_OVL_FRAC = 0.35  # 与当前取带重叠 < 该比例(×锚点带高) 才覆盖
+_V32_SLOT_CC = 0.45       # 格心"局部平移相关"门槛(真键 ≥0.7; 边缘金属条 ≤0.2) —— 低于此判为边缘槽
+
+
+# 🆕 v36 (2026-10-09 现场镜头对焦修好后) —— 新清晰画面适配
+#   病: 列自相关原用**全宽**剖面; 新画面两侧大片亮/暗背景把键排周期淹没(真键排带全宽 ACF 变负,
+#      中心窗 ACF 0.72@lag71) ⇒ 取带选错行窗、节距估成 254 ⇒ 根数乱。真节距实测 70~71px。
+#   修: (1) 所有列自相关改在**中心 x 窗**上算(两侧背景不进剖面);
+#       (2) 键行窗加**中心窗周期门**(平场去低频 ACF 峰 < 门 ⇒ 判"这条不是键排" ⇒ 不收);
+#       (3) 节距候选/回退**掐死**在真键排量级, 拒绝任何 >cap 的节距(治 254/384 假节距)。
+_V36_XWIN_FRAC = 0.5           # 中心 x 窗宽度 / 画幅宽(键排恒在画面中部)
+_V36_ON = True                 # v36 总开关(关掉 ⇒ 逐位退回 v35 行为)
+# 🔴 只在"镜头对焦修好后"的**新清晰画面**上启用 v36 逻辑。判据 = 键排区的**锐度**
+#   (中心窗 Laplacian 方差): 实测 参考序列 ≤39.8(l3 3.4 / frozen 1.2 / live 12.7 / pt2 39.8)
+#   vs 修好对焦后 81~86 ⇒ 门卡在 60(空档 ~2 倍)。关着的帧**逐位退回 v35**(参考零回退由结构保证)。
+_V36_MIN_SHARP = 60.0
+_V36_MIN_P50 = 85.0            # 且键排区要够亮: 实测新画面 p50=86~101, 全部参考组 ≤84
+_V36_LIVE = False              # 由 _v21_render_core 按当帧中心窗锐度置位
+_V36_LAST_BAND = None          # _v36_lattice 命中时写回所采用的行带 (y0,y1)
+_V36_LATTICE_INFO = None       # 命中时的逐根相位验证数字
+_V36_WIN_AC_MIN = 0.35         # 键行窗的"中心窗 ACF 峰"门(实测真键排 0.68~0.85, 伪结构 <0.25/多为负)
+_V36_PITCH_HARD_CAP = 120.0    # 🔴 任何节距候选/回退超过此值 ⇒ 判为非键排结构, 一律拒绝
+_V36_PITCH_LO, _V36_PITCH_HI = 62.0, 80.0   # 真键排节距带(实测 70~71)
+_V36_SLOT_LO, _V36_SLOT_HI = 430.0, 1980.0  # 键排横向存在区(实测 567~1841, 两侧留余量)
+_V36_GAP_MIN = 12.0            # 抗凹陷"无假框"衬度门(格内亮脊 − 格间谷; 灰度级): 正确栅格恒为正
+
+
+def _v36_cxwin(w, frac=None):
+    """🆕 v36: 列自相关用的**中心 x 窗** —— 真机判据画面里金手指键排总在画面中部,
+    而两侧的大片亮/暗背景会把**全宽**列剖面的自相关彻底淹掉(实测新清晰画面: 真键排带
+    全宽 ACF 峰值 -0.09 <0, 中心窗 ACF 0.72@lag71)。全宽剖面对新画面失效 ⇒ 取中心窗。
+    返回 (x0, x1)。
+    """
+    w = int(w)
+    f = float(_V36_XWIN_FRAC) if frac is None else float(frac)
+    hw = int(w * f / 2.0)
+    c = w // 2
+    return max(0, c - hw), min(w, c + hw + 1)
+
+
+def _v36_band_acf(ga, y0, y1, lo=55, hi=95, K=61):
+    """🆕 v36: 中心 x 窗 + 去低频的列自相关峰值 → (score, lag)。无周期返回 (0.0, 0)。"""
+    try:
+        y0 = max(0, int(y0))
+        y1 = min(int(ga.shape[0]) - 1, int(y1))
+        if y1 - y0 < 12 or ga.shape[1] < 64:
+            return 0.0, 0
+        x0, x1 = _v36_cxwin(ga.shape[1])
+        prof = ga[y0:y1 + 1, x0:x1].astype(np.float32).mean(axis=0)
+        k = int(K) | 1
+        bg = cv2.blur(prof.reshape(1, -1), (k, 1)).ravel()
+        pd = prof - bg
+        pd = pd - pd.mean()
+        if float(pd.std()) < 2.0:
+            return 0.0, 0
+        ac = np.correlate(pd, pd, "full")[len(pd) - 1:]
+        a0 = float(ac[0])
+        if a0 <= 1e-6:
+            return 0.0, 0
+        seg = ac[int(lo):int(hi) + 1] / a0
+        if seg.size == 0:
+            return 0.0, 0
+        kk = int(seg.argmax())
+        return round(float(seg[kk]), 3), int(lo) + kk
+    except Exception:                                                        # noqa: BLE001
+        return 0.0, 0
+
+
+def _v36_lattice(ga, ky0=0, ky1=0, merged=None, x0=520, x1=1950, want=None):
+    """🆕 v36 权威键排栅格: **逐行带扫描**的组合梳拟合(节距+相位) + 径向半高宽边缘门。
+
+    为什么要这一层: 新清晰画面下 v21 的"亮列分块"会在**每根键的暗凹陷(notch)**处分叉 ⇒ 段数/
+    宽度帧间抖, 而两端整块金属边(宽)与真键(窄)又同为"亮", 老口径认不出 ⇒ 根数 15/18/20 乱跳。
+    本函数不依赖任何会抖的中间量, 只依赖两个**物理自明**的事实:
+      (1) 真键排是**窄**亮脊(半高全宽 6~13px)沿节距 70.75px 规则排布; 两端整块金属是**宽**亮区(半高宽 22~110px)。
+      (2) 键排所在行带在 y 上是一个窄条; 而"金属焊盘"行带同样有周期但亮脊**宽得多**。
+    做法: 对每个 60 行带做梳拟合 ⇒ 取"径向半高宽"定义下的**最长连续窄槽段**; 只有段长恰为 want(19)
+    且该带中心窗 ACF>=0.55(确有 70px 周期)才接受; 多家命中取 ACF 最高的带。命中即返回逐槽矩形。
+    实测(2048x2448 新画面): 5/5 现役帧 + 全部清晰参考帧都给出 y0=880、pitch 70.75、19 槽 567..1841。
+
+    ⚠️ 只产出"取哪几列"(rects), 不碰 crop/warp/get_cropper/_region_payload 等模型输入函数。
+    """
+    try:
+        g = np.asarray(ga)
+        if g.ndim == 3:
+            g = g[:, :, 0]
+        H, W = g.shape[:2]
+        _want = int(want) if want else 19
+        if H < 120 or W < 600:
+            return None
+        # ---- 1. 逐带 ACF 预筛(中心窗, 去低频) ----
+        _bands = []
+        for _y0 in range(0, max(1, H - 60), 10):
+            _pd = _v36_cxprof(g, _y0, _y0 + 59, 61)
+            if _pd is None:
+                continue
+            _sc, _lag = _v36_pd_acf(_pd, _V36_PITCH_LO, _V36_PITCH_HI)
+            if _sc >= 0.55:
+                _bands.append((_sc, _y0, _lag))
+        _bands.sort(reverse=True)
+        # ---- 2. 对 ACF 最强的若干带做梳拟合, 只有"窄槽连续段长 = want"才接受 ----
+        for _sc, _y0, _lag in _bands[:30]:
+            for _Pst, _phst in ((0.5, 2.0), (0.05, 0.5)):
+                _out = _v36_combfit(g, _y0, _y0 + 59, _Pst, _phst)
+                if _out is None:
+                    continue
+                _P, _ph, _xs, _pd = _out
+                _rn = _v36_narrow_run(_xs, _pd)
+                if _rn is None or (_rn[1] - _rn[0] + 1) != _want:
+                    break                      # 粗口径已否决该带 ⇒ 换带(不再细拟合)
+                if _Pst == 0.05:               # 细口径确认通过
+                    _slots = [int(_xs[i]) for i in range(_rn[0], _rn[1] + 1)]
+                    _d = np.diff(sorted(_slots))
+                    _mad = float(np.median(np.abs(_d - np.median(_d)))) if _d.size else 0.0
+                    if _mad > 8.0:             # 节距不齐 ⇒ 不是真键排
+                        break
+                    # 🔴 相位锁定(治"框压在键缝里"): 把每个槽吸附到**该带全宽剖面的局部亮脊**
+                    #   (±0.3×节距内取 argmax), 再逐根验证"脊亮度 > 两侧半格处亮度"。
+                    _pf = _v36_fwprof(g, _y0, _y0 + 59)
+                    if _pf is None:
+                        break
+                    _Pm = float(np.median(_d)) if _d.size else float(_P)
+                    _sn = []
+                    for _s in _slots:
+                        _lo = max(0, int(_s - 0.30 * _Pm))
+                        _hi = min(_pf.size - 1, int(_s + 0.30 * _Pm))
+                        _sn.append(int(_lo + int(np.argmax(_pf[_lo:_hi + 1]))))
+                    _ph = _v36_phase_check(_pf, _sn, _Pm)
+                    if _ph is None or (not _ph["all_ok"]):
+                        break                  # 相位对不上(仍有框压缝) ⇒ 否决, 换带
+                    _kw = 0.66 * _Pm
+                    _kw = max(18.0, min(_kw, 1.2 * _P))
+                    global _V36_LAST_BAND, _V36_LATTICE_INFO
+                    _V36_LAST_BAND = (int(_y0), int(_y0 + 59))
+                    _V36_LATTICE_INFO = dict(_ph)
+                    _V36_LATTICE_INFO.update({"band": [int(_y0), int(_y0 + 59)], "pitch": round(_Pm, 2)})
+                    return [(int(round(s - _kw / 2.0)), int(round(s + _kw / 2.0))) for s in _sn]
+        return None
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def _v36_cxprof(g, y0, y1, K=61):
+    """中心 x 窗上、去低频的列剖面(供 ACF 用)。"""
+    try:
+        w = g.shape[1]
+        a, b = _v36_cxwin(w)
+        prof = g[y0:y1 + 1, a:b].astype(np.float32).mean(axis=0)
+        bg = cv2.blur(prof.reshape(1, -1), (int(K) | 1, 1)).ravel()
+        pd = prof - bg
+        return pd - pd.mean()
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def _v36_pd_acf(pd, lo, hi):
+    """归一化自相关在 [lo,hi] 的峰值 → (score, lag)。"""
+    try:
+        n = pd.size
+        p = np.concatenate([pd, np.zeros_like(pd)])
+        F = np.fft.rfft(p)
+        ac = np.fft.irfft(F * np.conj(F))[:n]
+        ac = ac / (float(ac[0]) + 1e-9)
+        a, b = int(lo), int(hi)
+        seg = ac[a:b + 1]
+        if seg.size == 0:
+            return 0.0, 0
+        k = int(seg.argmax())
+        return float(seg[k]), a + k
+    except Exception:                                                        # noqa: BLE001
+        return 0.0, 0
+
+
+def _v36_combfit(g, y0, y1, Pstep, phstep):
+    """全宽列剖面上拟合"节距+相位"(梳), 返回 (P, ph, slot_xs, pd) 或 None。"""
+    try:
+        prof = g[y0:y1 + 1, :].astype(np.float32).mean(axis=0)
+        bg = cv2.blur(prof.reshape(1, -1), (301, 1)).ravel()
+        pd = prof - bg
+        pd = pd - pd.mean()
+        W = pd.size
+        best = None
+        for P in np.arange(66.0, 75.001, Pstep):
+            for ph in np.arange(0.0, P, phstep):
+                xs = np.arange(ph, W, P)
+                xs = xs[(xs >= _V36_SLOT_LO) & (xs <= _V36_SLOT_HI)].astype(int)
+                if xs.size < 10:
+                    continue
+                v = pd[xs]
+                sc = float(v.mean() - 0.5 * v.std())
+                if best is None or sc > best[0]:
+                    best = (sc, float(P), float(ph))
+        if best is None:
+            return None
+        _, P, ph = best
+        xs = [int(round(x)) for x in np.arange(ph, W, P)
+              if _V36_SLOT_LO <= x <= _V36_SLOT_HI]
+        if len(xs) < 10:
+            return None
+        return P, ph, xs, pd
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def _v36_fwprof(g, y0, y1):
+    """该行带的**全宽**列亮度剖面(用于相位锁定/逐根验证)。"""
+    try:
+        return g[y0:y1 + 1, :].astype(np.float32).mean(axis=0)
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def _v36_phase_check(pf, slots, P):
+    """逐根验证"框心(亮脊) > 框缝(两侧半格处)"。返回 {all_ok, boxes:[{x,bar,gap,diff}], n_bad}。
+
+    ⚠️ 这是**唯一**能证明"框没压在键缝里"的判据: 数量对 + 节距对, 相位仍可能错半格。
+    """
+    try:
+        rows = []
+        n_bad = 0
+        hw = max(3, int(0.10 * P))
+        gmin = max(1, int(0.42 * P))
+        gmax = max(2, int(0.58 * P))
+        W = pf.size
+        for x in slots:
+            bar = float(pf[max(0, x - hw):min(W, x + hw + 1)].mean())
+            gaps = []
+            for sgn in (-1, 1):
+                a = int(x + sgn * gmin)
+                b = int(x + sgn * gmax)
+                lo, hi = min(a, b), max(a, b)
+                if lo < 0 or hi >= W:
+                    continue
+                w = pf[lo:hi + 1]
+                gaps.append(float(w.min()))
+            gap = min(gaps) if gaps else 0.0
+            diff = bar - gap
+            if diff <= 0.0:
+                n_bad += 1
+            rows.append({"x": int(x), "bar": round(bar, 1), "gap": round(gap, 1), "diff": round(diff, 1)})
+        return {"all_ok": bool(rows and n_bad == 0), "n_bad": int(n_bad),
+                "n": len(rows), "boxes": rows}
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def _v36_narrow_run(xs, pd):
+    """径向半高全宽 < max(1.6×中位, 16px) 的槽判为"真键", 返回最长连续段 (i0,i1) 或 None。
+
+    真键: 亮脊在 ±半高宽内就落到谷 ⇒ 窄;  两端整块金属: 亮区横跨 ~20~110px ⇒ 宽被剔。
+    """
+    try:
+        W = pd.size
+        ws = []
+        for x in xs:
+            half = 0.5 * pd[x]
+            a = x
+            while a > 0 and pd[a - 1] > half:
+                a -= 1
+            b = x
+            while b < W - 1 and pd[b + 1] > half:
+                b += 1
+            ws.append(b - a + 1)
+        ws = np.asarray(ws, dtype=np.float64)
+        med = float(np.median(ws))
+        thr = max(1.6 * med, 16.0)
+        ba = bb = -1
+        a = last = -1
+        for i, k in enumerate(ws <= thr):
+            if not k:
+                continue
+            if a < 0:
+                a = last = i
+            elif i == last + 1:
+                last = i
+            else:
+                if last - a > bb - ba:
+                    ba, bb = a, last
+                a = last = i
+        if a >= 0 and last - a > bb - ba:
+            ba, bb = a, last
+        return (ba, bb) if ba >= 0 else None
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+
+def _v35_band_pitch(ga, y0, y1, lo=58, hi=96):
+    """🆕 v35: **带内列自相关**峰值 → 真键排节距。
+
+    为什么不用 uniformize 的"段间中位差"(v21 老口径): 那个量随**分块粘连程度**漂 —— 同一个
+    静止场景实测在 72.5/78/83.5/88.5 之间跳。节距一漂, 栅格槽就落到键与键的**缝**上 ⇒ 框虽然
+    数量对但**位置错**(实测 pitch=88 时槽心衬度出现 -54/-45 的负值 = 框压在缝里)。
+    带内(只有几十行)去低频列自相关对同一场景稳定得多。
+
+    🆕 v36: 全宽剖面在**新清晰画面**上会被两侧背景淹掉(真键排全宽 ACF 变负) ⇒ 全宽取不到
+    可靠周期时, 退回**中心 x 窗**再取一次(中心窗只留键排, ACF 恢复)。全宽已够可靠(>=门)的
+    帧**一字不动**(参考序列零回退由结构保证)。
+    返回 (pitch, score); 无可靠周期返回 (0.0, -1.0)。
+    """
+    try:
+        y0 = max(0, int(y0))
+        y1 = min(int(ga.shape[0]) - 1, int(y1))
+        if y1 - y0 < 12 or ga.shape[1] < 64:
+            return 0.0, -1.0
+        prof = ga[y0:y1 + 1, :].astype(np.float32).mean(axis=0)
+        k = 61 | 1
+        bg = cv2.blur(prof.reshape(1, -1), (k, 1)).ravel()
+        pd = prof - bg
+        pd = pd - pd.mean()
+        if float(pd.std()) < 2.0:                # 平坦带(白板/暗壳): 自相关是数值假象
+            return 0.0, -1.0
+        ac = np.correlate(pd, pd, "full")[len(pd) - 1:]
+        a0 = float(ac[0])
+        if a0 <= 1e-6:
+            return 0.0, -1.0
+        seg = ac[int(lo):int(hi) + 1] / a0
+        if seg.size == 0:
+            return 0.0, -1.0
+        kk = int(seg.argmax())
+        _ph, _ps = float(int(lo) + kk), round(float(seg[kk]), 3)
+        # 🆕 v36: 全宽不可靠 ⇒ 中心窗兜底(只在新清晰画面/背景淹掉键排时才会走到; 参考序列不触发)
+        if _V36_LIVE and _ps < _V35_AC_MIN:
+            _sc, _lag = _v36_band_acf(ga, y0, y1, lo, hi, k)
+            if _sc > _ps:
+                _ph, _ps = float(_lag), _sc
+        return _ph, _ps
+    except Exception:                                                        # noqa: BLE001
+        return 0.0, -1.0
+
+
+def _v32_win_score(ga, yc):
+    """中心 yc 的行窗口的(去低频)列自相关峰值 score(正=有键列周期) 与 lag。"""
+    h, w = ga.shape
+    wh = int(_V32_WIN_H)
+    y0 = int(yc) - wh // 2
+    y1 = y0 + wh - 1
+    if y0 < 0 or y1 >= h:
+        return None, None
+    K = int(_V32_CUT_K) | 1
+    # 🆕 v36: 全宽剖面在新清晰画面上被两侧背景淹没 ⇒ 改在**中心 x 窗**上算(键排恒在画面中部)。
+    #   非 v36 画面(参考序列) ⇒ 保持全宽, 逐位退回 v35。
+    if _V36_LIVE:
+        _cx0, _cx1 = _v36_cxwin(w)
+    else:
+        _cx0, _cx1 = 0, w
+    prof = ga[y0:y1 + 1, _cx0:_cx1].astype(np.float32).mean(axis=0)
+    bg = cv2.blur(prof.reshape(1, -1), (K, 1)).ravel()
+    pd = prof - bg
+    pd = pd - pd.mean()
+    if float(pd.std()) < _V32_AMP_MIN:      # 平坦区(白板/暗壳): 自相关是数值假象 ⇒ 无周期
+        return None, None
+    ac = np.correlate(pd, pd, "full")[len(pd) - 1:]
+    ac0 = float(ac[0])
+    if ac0 <= 1e-6:
+        return None, None
+    seg = ac[_V32_PITCH_LO:_V32_PITCH_HI + 1] / ac0
+    if seg.size == 0:
+        return None, None
+    k = int(seg.argmax())
+    return float(seg[k]), float(_V32_PITCH_LO + k)
+
+
+def _v32_acf_score(ga, yc):
+    """最终取带中心的周期分 —— 判"当前带是否已落在键排周期上"。无周期返回 -1。"""
+    sc, _lag = _v32_win_score(ga, yc)
+    return -1.0 if sc is None else sc
+
+
+def _v32_band_score_robust(ga, ky0, ky1):
+    """当前取带的周期分(在带中心 ±40px 内取最大, 抗单点抖动)。
+
+    真键排(任意姿位)该值高; 取带落到壳体/过曝白板时该值低 ⇒ 才允许 v32 修正。
+    其它姿位若已取在键排上 ⇒ 值高 ⇒ v32 一字不动(降级为原始行为)。
+    """
+    try:
+        c = (int(ky0) + int(ky1)) // 2
+        h = ga.shape[0]
+        best = -1.0
+        for yc in range(max(0, c - 40), min(h - 1, c + 40) + 1, 5):
+            best = max(best, _v32_acf_score(ga, yc))
+        return best
+    except Exception:                                                       # noqa: BLE001
+        return -1.0
+
+
+def _v32_anchor_band(ga, met=None):
+    """列自相关横扫整幅 → 唯一周期带 (相位锚点)。
+
+    对每个候选中心 yc: 取 [yc-WH/2, yc+WH/2] 行的**列亮度剖面**, 平场(减大窗均值)去低频后
+    自相关; 真键排在 lag≈节距 处给出**正峰**(实测 0.40@lag71), 过曝白板/暗壳为平/负。
+    ⚠️ 必须配 amplitude 门: 平坦区自相关是数值假象(实测过曝白板 normalized peak 可达 0.46 但 std≈0.5)。
+    返回 (y0, y1, pitch, score) 或 None。
+    """
+    if not _V32_ON:
+        return None
+    h, w = ga.shape
+    wh = int(_V32_WIN_H)
+    if h < wh + 4 or w < 64:
+        return None
+    best = None
+    for yc in range(wh // 2, h - wh // 2 + 1, int(_V32_STEP)):
+        sc, lag = _v32_win_score(ga, yc)
+        if sc is None or sc < _V32_AC_MIN:
+            continue
+        if best is None or sc > best[0]:
+            best = (sc, yc - wh // 2, yc + wh // 2 - 1, lag)
+    if best is None:
+        return None
+    sc, y0, y1, lag = best
+    if met is not None:
+        met["v32_autocorr"] = {"win_h": wh, "score": round(sc, 3),
+                               "band": [int(y0), int(y1)], "pitch": round(lag, 1)}
+    return (int(y0), int(y1), lag, sc)
+
+
 def _v21_key_windows(g, lvl):
     """Slide a window down the frame and keep the ones that look like a ROW OF KEYS.
 
@@ -748,9 +1343,17 @@ def _v21_key_windows(g, lvl):
             if (len(segs) >= _V21_MIN_KEYS and med is not None
                     and _V21_PITCH_MIN <= med <= _V21_PITCH_MAX
                     and mad < _V21_PITCH_JITTER_K * med):
-                hits.append({"y0": int(y), "y1": int(y + _V21_WIN_H - 1),
-                             "n_seg": int(len(segs)), "pitch_px": round(med, 1),
-                             "jitter_px": round(mad, 1)})
+                # 🆕 v36: 键行窗必须**在中心 x 窗上真有键列周期**(平场去低频 ACF 峰)。
+                #   治"取带选错行窗": 新清晰画面里键排**上缘的竖直边缘**也凑出 >=6 组规则亮列
+                #   (实测窗 [840,889] 伪间距 34.5px), 但它们**没有 70px 周期**(ACF 为负) ⇒ 被此门剔掉。
+                #   非 v36 画面(参考序列) ⇒ 门关闭, 逐位退回 v35 行为。
+                _ac, _acl = 0.0, 0
+                if _V36_LIVE:
+                    _ac, _acl = _v36_band_acf(g, y, y + _V21_WIN_H - 1, 55, 95, 61)
+                if (not _V36_LIVE) or _ac >= _V36_WIN_AC_MIN:
+                    hits.append({"y0": int(y), "y1": int(y + _V21_WIN_H - 1),
+                                 "n_seg": int(len(segs)), "pitch_px": round(med, 1),
+                                 "jitter_px": round(mad, 1), "ac": _ac, "ac_pitch": _acl})
         y += _V21_WIN_STEP
     return hits
 
@@ -996,11 +1599,103 @@ def _v26_fill_lattice(rects, ga, x0, x1, y0, y1):
     return out, info
 
 
-def _v21_uniformize(segs):
+# ═══ v30 层③ (2026-10-09) 列剖面**低频背景归一(平场)后裂块** ═══
+#   病(f14/f15 右端): 亮度梯度把"键间暗缝"的 cf(亮列占比)抬高(实测右端基线 cf 0.72~0.80, 左端只 0.30)
+#   ⇒ 2~3 根被冲糊的真键粘成一块 **w≈201~204px(≈2.8×节距)** 的过宽块 ⇒ 过宽判 TOOWIDE ⇒
+#   **整块丢弃** ⇒ 认领跨度右端缩短 ⇒ 缺齿(f14 缺 3 根 / f15 缺 6 根)。
+#   修: 对**过宽块**做平场 —— ff = cf / blur(cf, ~3×节距)(键亮而局部凸 ⇒ ff>1, 暗缝 ⇒ ff<1);
+#   再按**已建立的节距/相位栅格**把块**裂开**: 每格槽心须亮(ff>=FF_KEY) 且相邻槽之间须有凹陷
+#   (ff 谷 <= FF_NOTCH)才认领这些格。**纯增**: 只把原先"整块丢弃"里的**真键**找回来, 绝不改宽块以外的
+#   任何判据 ⇒ 不引入新的假齿(不满足形状的块仍整块丢弃)。
+_V30_SPLIT_ON = True
+_V30_SPLIT_FF_KEY = 0.90     # 槽心平场值下限(键 ⇒ ff 明显 >1)
+_V30_SPLIT_FF_NOTCH = 0.80   # 槽间中点平场值上限(暗缝 ⇒ ff 明显 <1)
+_V30_SPLIT_WMAX = 4.5        # 只裂 <= 该倍数×节距 的块(更宽 = 连接器端/背景, 一律不裂)
+_V30_SPLIT_MAXSLOTS = 4      # 单块最多裂成几根(防失控)
+
+# ═══ v35 (2026-10-09) 现役位姿"分不开"救回: 单键宽度门 + 救回趟重切分 ══════════════════
+#  真帧取证(工位现役 y[1130,1189]): 真键排周期性成立(pitch≈70.5, x≈610..2020 共约 20~21 格),
+#  但 pass1 只给 10~12 根。逐槽局部衬度(用本帧实测节距对齐栅格)在 y≈1135~1180 全格 +40~+128 ⇒
+#  **行带内可分**(不是照明/对焦的物理极限), 丢根发生在**分块资格门**:
+#    · 死区块(1.6×中键宽 < w < 1.35×节距, 实测 77~99px)被整块拒收 —— 它其实是"整键"或"键+亮缝";
+#    · 更宽的粘连块(271px≈4 键) 走裂块逻辑, 但默认裂块门(ff 阈值)太严 ⇒ 整块丢弃。
+#  修: ① `_v21_uniformize` 的**死区块**不再一刀拒收 —— 改判: 有内部凹陷(notch) 且跨 2~3 格 ⇒ 认 2~3 格;
+#        否则(跨 ≤1 格) ⇒ 按**单键**认领最近格。窄单键/宽背景块的行为**一字不变**。
+#      ② 救回趟(pass2)另给一档更宽的裂块上限(ff_key/notch/wmax), 把被糊住的粘连块找回;
+#        两个改动都**只在显式带(=救回趟)**启用 ⇒ pass1 与在役逐位一致。
+_V35_ON = True
+_V35_N_LO, _V35_N_HI = 3, 16    # pass1 键数落在该区间才试救回(≥17 视为已分离好; 采纳另有严闸兜底)
+_V35_SINGLE_MAX = 1.30          # 死区块当"单键"的最大宽度(×中位节距)
+_V35_SPLIT_MAXSLOTS = 8         # 救回趟: 单块最多裂成几根(末闸=衬度门, 故放宽)
+_V35_SPLIT_WMAX = 9.0           # 救回趟: 裂块宽度上限(×节距; 末闸=衬度门, 故放宽)
+_V35_SPLIT_FF_KEY = 0.45        # 救回趟: 槽心平场下限(放宽; 末闸=衬度门)
+_V35_SPLIT_FF_NOTCH = 0.95      # 救回趟: 槽间中点平场上限(放宽)
+_V35_ADOPT_MIN = 14             # 救回结果至少这么多根才采纳(宁少不假)
+_V35_CTR_MIN = 8.0              # 采纳闸: 每个键心相对左右邻谷的最小衬度(灰度级) —— 防"框压在缝里"的假框
+_V35_AC_MIN = 0.65              # 带内列自相关峰值可信度门: 只有"周期明确"的带才允许用自相关节距/救回
+#   实测: 现役场景 0.671~0.723(键排清晰); liveF 0.623~0.624; pt2 0.504~0.522; frozen* 0.34~0.53 ⇒ 取 0.65 卡在实测空档
+_V35_PITCH_LO, _V35_PITCH_HI = 63.0, 80.0   # 采纳闸: 救回结果的节距必须落在此(真键排 70~72)
+
+
+def _v32_slot_filter(ctr, luma, ky0, ky1, pitch):
+    """🆕 v32: 去掉"不参与节距周期"的边缘槽(连接器两端金属边条)。
+
+    真键的列剖面在**位移一个节距**后仍与自己高度相关(邻格也是键); 而连接器两端的整块金属边条
+    (宽、过曝、只出现一次) 与前一格/后一格**都不像** ⇒ 局部相关低 ⇒ 去掉。
+    只按"最长 [首,末] 存活区间"截边(内部不删), 因此不会误删中间真键; 全灭则不动作(保底)。
+    返回 (new_ctr, info)。
+    """
+    if luma is None or not ctr or len(ctr) < 4 or not pitch or pitch < 6:
+        return ctr, None
+    try:
+        prof = np.asarray(luma, np.float32)[int(ky0):int(ky1) + 1, :].mean(axis=0)
+    except Exception:
+        return ctr, None
+    K = max(15, int(round(3.0 * pitch))) | 1
+    pd = prof - cv2.blur(prof.reshape(1, -1), (K, 1)).ravel()
+    pd = pd - pd.mean()
+    p = int(round(pitch))
+    w = int(round(pitch * 0.6))
+
+    def lc(c, shift):
+        a = max(0, int(c) - w)
+        b = min(len(pd), int(c) + w)
+        x1 = pd[a:b]
+        x2 = pd[a + shift:b + shift]
+        if x2.size != x1.size or x1.size < 10:
+            return None
+        x1 = x1 - x1.mean()
+        x2 = x2 - x2.mean()
+        den = float(np.sqrt((x1 * x1).sum() * (x2 * x2).sum()))
+        return float((x1 * x2).sum() / den) if den > 1e-6 else 0.0
+
+    keep, scores = [], []
+    for c in ctr:
+        f = lc(c, p)
+        b = lc(c, -p)
+        m = max(f if f is not None else -9.0, b if b is not None else -9.0)
+        scores.append(round(float(m), 3))
+        keep.append(m >= _V32_SLOT_CC)
+    kept_idx = [i for i, k in enumerate(keep) if k]
+    if not kept_idx:
+        return ctr, {"scores": scores, "kept": None, "note": "全灭 ⇒ 不动作"}
+    lo, hi = kept_idx[0], kept_idx[-1]
+    if lo == 0 and hi == len(ctr) - 1:
+        return ctr, {"scores": scores, "kept": [0, len(ctr) - 1], "dropped": 0}
+    return ctr[lo:hi + 1], {"scores": scores, "kept": [lo, hi],
+                            "dropped_head": lo, "dropped_tail": len(ctr) - 1 - hi}
+
+
+def _v21_uniformize(segs, cf=None, cx0=0, luma=None, luma_rows=None, wgate=False, pitch_hint=0.0,
+                    phase_flip=False):
     """Merge split parts, pick the MEDIAN width, drop the odd blocks.
 
     Returns (rects, info).  Every rect is (x0, x1) with the SAME width and is centred
-    on that key's own detected centre -- defect (1) and (4) fixed here."""
+    on that key's own detected centre -- defect (1) and (4) fixed here.
+
+    v29 (2026-10-09 层③): 认领多键段前先做**形状校验**(cf=列剖面, cx0=剖面起点列)——
+    只在段内沿栅格"槽间中点明显比槽心暗"时才算真·两键粘连; 平顶块(如连接器左端的
+    整块金属边条)没有内部凹陷 ⇒ 一律不认领, 不再靠宽度窗口的一刀切。"""
     info = {"raw_segs": [[int(a), int(b)] for a, b in segs]}
     if not segs:
         return [], info
@@ -1036,6 +1731,11 @@ def _v21_uniformize(segs):
     centers = [(a + b) / 2.0 for a, b in merged]
     gaps = [centers[i + 1] - centers[i] for i in range(len(centers) - 1)]
     med_gap = float(np.median(gaps)) if gaps else 0.0
+    # 🆕 v35: 救回趟用**带内列自相关**的节距替代"段间中位差"(后者随分块粘连程度漂,
+    #   同一静止场景实测在 72.5/78/83.5/88.5 之间跳; 节距一漂栅格槽就落到缝上 ⇒ 框位置错)。
+    if wgate and 0.0 < float(pitch_hint) < 200.0:
+        info["v35_gap_before_px"] = round(med_gap, 1)
+        med_gap = float(pitch_hint)
     info["pitch_median_px"] = round(med_gap, 1)
     keep, flags = [], []
     for i, (a, b) in enumerate(merged):
@@ -1101,19 +1801,106 @@ def _v21_uniformize(segs):
         _multi_hi = 1.66 * med_gap
         _claims, _rejected = set(), []
         _lo = _hi = None
+        # v29 层③: 认领多键段前先做**形状校验** —— 真·两键粘连在"槽间中点"处必有凹陷;
+        #   连接器左端整块金属边条是平顶(无凹陷) ⇒ 不认领(即使其宽度恰好落进多键窗)。
+        #   本闸只会**去掉**误认领, 不会新增, 故不会凭空造齿。
+        def _cf_at(x):
+            if cf is None:
+                return 1.0
+            k = int(round(x)) - int(cx0)
+            return float(cf[k]) if 0 <= k < len(cf) else 0.0
+
+        # 🆕 v30 层③: 列剖面的**低频背景归一(平场)** —— ff = cf / blur(cf, ~3×节距)。
+        #   cf(亮列占比) 的空间基线随光照梯度漂(右端 0.72~0.80, 左端 0.30) ⇒ 用大窗均值当"背景"除掉它;
+        #   键(亮且局部凸) ⇒ ff>1; 暗缝 ⇒ ff<1 ⇒ 粘连大块里的真缝重新露出来。
+        _ff = None
+        if cf is not None and len(cf) > 8 and med_gap > 2:
+            try:
+                _K = max(15, int(round(3.0 * med_gap))) | 1
+                _bg = cv2.blur(np.asarray(cf, np.float32).reshape(1, -1), (_K, 1)).ravel()
+                _ff = np.asarray(cf, np.float32) / np.maximum(_bg, 1e-6)
+            except Exception:
+                _ff = None
+
+        def _ff_at(x):
+            if _ff is None:
+                return 0.0
+            k = int(round(x)) - int(cx0)
+            return float(_ff[k]) if 0 <= k < len(_ff) else 0.0
+
+        def _spanned_slots(_a, _b):
+            return list(range(int(np.floor((_a + 0.10 * med_gap - phase) / med_gap)),
+                              int(np.ceil((_b - 0.10 * med_gap - phase) / med_gap)) + 1))
+
+        def _has_notch(_slots):
+            for _k in range(len(_slots) - 1):
+                _cl = _cf_at(phase + _slots[_k] * med_gap)
+                _cr = _cf_at(phase + _slots[_k + 1] * med_gap)
+                _cm = _cf_at(phase + (_slots[_k] + 0.5) * med_gap)
+                _base = min(_cl, _cr)
+                if _base > 0.0 and _cm < 0.75 * _base:
+                    return True
+            return False
+
+        # 🆕 v35: 救回趟(wgate)用更宽的一档裂块门; 非救回趟 = v30 原档(逐位不变)
+        _V35FFK = _V35_SPLIT_FF_KEY if wgate else _V30_SPLIT_FF_KEY
+        _V35FFN = _V35_SPLIT_FF_NOTCH if wgate else _V30_SPLIT_FF_NOTCH
+        _V35WMAX = _V35_SPLIT_WMAX if wgate else _V30_SPLIT_WMAX
+        _V35MSLOT = _V35_SPLIT_MAXSLOTS if wgate else _V30_SPLIT_MAXSLOTS
+
+        def _ff_split_ok(_slots):
+            """平场形状闸: 每个槽心须亮(ff>=FF_KEY) 且相邻槽之间须有凹陷(ff 谷<=FF_NOTCH)。"""
+            if _ff is None or len(_slots) < 2:
+                return False
+            for _k in range(len(_slots)):
+                if _ff_at(phase + _slots[_k] * med_gap) < _V35FFK:
+                    return False
+            for _k in range(len(_slots) - 1):
+                _m = phase + (_slots[_k] + 0.5) * med_gap
+                _lo = int(round(_m - 0.18 * med_gap))
+                _hi = int(round(_m + 0.18 * med_gap))
+                _vals = [_ff_at(_x) for _x in range(_lo, _hi + 1)]
+                _vals = [v for v in _vals if v > 0.0]
+                if not _vals or min(_vals) > _V35FFN:
+                    return False
+            return True
+
+        _split_notes = []
+        # 🆕 v35: 救回趟把"单键宽上限"从 1.6×中键宽 放宽到 _V35_SINGLE_MAX×节距 ——
+        #   死区块(1.6×中键宽 .. 1.35×节距)不再一律拒收: 有内部凹陷且跨 2~3 格 ⇒ 认那些格(真·粘连);
+        #   否则(跨 ≤1 格) ⇒ 按单键认领最近格。非救回趟 wgate=False ⇒ _single_hi=_pad_hi ⇒ 逐位不变。
+        _single_hi = max(_pad_hi, _V35_SINGLE_MAX * med_gap) if wgate else _pad_hi
         for _a, _b in merged:
             _w = _b - _a + 1
-            if _w < _pad_lo or (_pad_hi < _w < _multi_lo) or _w > _multi_hi:
+            if _w < _pad_lo or (_single_hi < _w < _multi_lo):
                 _rejected.append([int(_a), int(_b), int(_w)])   # 碎屑 / 边缘亮条 ⇒ 不认领
                 continue
-            if _w <= _pad_hi:                                   # 单根键
+            if _w > _multi_hi:
+                # 🆕 v30 层③: 过宽块 —— 原先一律丢弃; 现在**平场裂块**: 若它跨 2~4 个栅格槽且
+                #   平场剖面在槽心亮/槽间有凹陷, 就按节距认领这些格(把被冲糊的真键找回); 否则仍整块丢弃。
+                _slots = [k for k in range(int(np.ceil((_a - phase) / med_gap - 1e-9)),
+                                           int(np.floor((_b - phase) / med_gap + 1e-9)) + 1)]
+                if (_V30_SPLIT_ON and 2 <= len(_slots) <= _V35MSLOT
+                        and _w <= _V35WMAX * med_gap and _ff_split_ok(_slots)):
+                    _claims.update(_slots)
+                    _split_notes.append([int(_a), int(_b), int(_w), list(_slots)])
+                else:
+                    _rejected.append([int(_a), int(_b), int(_w)])   # 背景/连接器端 ⇒ 仍丢弃
+                continue
+            if _w <= _pad_hi:                                   # 单根键(窄)
                 _claims.add(int(round((0.5 * (_a + _b) - phase) / med_gap)))
-            else:                                               # 多键段: 跨度内每格都认领
-                for _i in range(int(np.floor((_a - 0.25 * med_gap - phase) / med_gap)),
-                                int(np.ceil((_b + 0.25 * med_gap - phase) / med_gap)) + 1):
-                    _c = phase + _i * med_gap
-                    if _a - 0.25 * med_gap <= _c <= _b + 0.25 * med_gap:
-                        _claims.add(int(_i))
+            else:                                               # 多键段 / v35 死区块
+                _slots = _spanned_slots(_a, _b)
+                if 2 <= len(_slots) <= 3 and _has_notch(_slots):
+                    _claims.update(_slots)
+                elif wgate and _w <= _single_hi and len(_slots) <= 1:
+                    # 🆕 v35: 死区块无内部凹陷且只跨 ≤1 格 ⇒ 真身是"一整根宽键", 按单键认领
+                    _claims.add(int(round((0.5 * (_a + _b) - phase) / med_gap)))
+                    _split_notes.append([int(_a), int(_b), int(_w), "v35-single"])
+                else:
+                    _rejected.append([int(_a), int(_b), int(_w), "flat(no-notch)"])
+        if _split_notes:
+            info["v30_split_blocks"] = _split_notes
         # v25b: 短窗逐格投票(见 _V25_VOTE_WIN 注释) —— 只动"哪些格被认领", 不动单帧的宽度规则
         _vote_note = None
         if _claims:
@@ -1142,6 +1929,36 @@ def _v21_uniformize(segs):
         info["v25_vote"] = _vote_note
         if _claims:
             _lo, _hi = min(_claims), max(_claims)
+            if wgate and phase_flip:       # 🆕 v35: 相位二选一 —— 段落中心可能整排落在"缝"上
+                phase = phase + 0.5 * med_gap   #   (实测: 相位错半个节距时全部槽心衬度为负), 平移半格再验
+            # 🆕 v35: **栅格延伸** —— 块分段会漏掉两端被"糊住"的真键(实测现役带: 块分段只认领
+            #   中段 ~15 格, 而按真节距 70px 对齐后 20 格槽心衬度 +40~+124 全为正)。这里在
+            #   "已认领跨度"的两端逐格外扩: 只要该槽的灰度剖面相对左右邻谷仍有正衬度(>= _V35_CTR_MIN),
+            #   就补认这一格; 一旦碰到缝/平区(衬度不足)立刻停 —— 端点金属边块因此进不来。
+            if wgate and luma is not None and luma_rows is not None:
+                try:
+                    _ly0, _ly1 = int(luma_rows[0]), int(luma_rows[1])
+                    _prof = luma[_ly0:_ly1 + 1, :].astype(np.float32).mean(axis=0)
+                    _half = max(1, int(round(0.5 * med_gap)))
+
+                    def _slot_con(_i):
+                        _c = int(round(phase + _i * med_gap))
+                        if _c < 0 or _c >= _prof.size:
+                            return -999.0
+                        return float(_prof[_c] - min(_prof[max(0, _c - _half)],
+                                                      _prof[min(_prof.size - 1, _c + _half)]))
+                    _ext = 0
+                    while _ext < 8 and _slot_con(_lo - 1) >= _V35_CTR_MIN:
+                        _lo -= 1; _ext += 1
+                    while _ext < 8 and _slot_con(_hi + 1) >= _V35_CTR_MIN:
+                        _hi += 1; _ext += 1
+                    if _ext:
+                        _claims |= set(range(_lo, _hi + 1))
+                        info["v35_extend"] = {"slots": _ext, "span": [int(_lo), int(_hi)],
+                                              "con_left": round(_slot_con(_lo), 1),
+                                              "con_right": round(_slot_con(_hi), 1)}
+                except Exception:                                               # noqa: BLE001
+                    pass
             ctr = [int(round(phase + i * med_gap)) for i in range(_lo, _hi + 1)]
         else:
             ctr = [int(round(c)) for c in mctr]
@@ -1163,6 +1980,12 @@ def _v21_uniformize(segs):
     else:
         ctr = [int(round(c)) for c in mctr]
         info["lattice_note"] = "no regular pitch (fewer than 2 reliable keys)"
+    # 🆕 v34 (移植 v32): 去掉"不参与节距周期"的边缘槽(连接器两端金属边条) —— 只截边, 内部不删
+    if _V32_ON and luma is not None and luma_rows is not None:
+        _ctr32, _f32 = _v32_slot_filter(ctr, luma, luma_rows[0], luma_rows[1], med_gap)
+        if _f32 is not None:
+            info["v32_slot_filter"] = _f32
+            ctr = _ctr32
     rects = [(int(round(c - half)), int(round(c + half - 1))) for c in ctr]
     info["centers"] = ctr
     info["rects"] = [[int(a), int(b)] for a, b in rects]
@@ -1201,6 +2024,27 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         met["src_size"] = [int(w), int(h)]
         g = _v21_luma(src)
         met["src_mean"] = round(float(g.mean()), 1)
+        # 🆕 v36: 按当帧**键排区锐度**(中心窗 Laplacian 方差)判定"是否对焦修好后的新清晰画面"
+        #   ⇒ 决定整套 v36 逻辑开不开(参考序列是旧模糊画面 ⇒ 关着 ⇒ 逐位退回 v35)。
+        global _V36_LIVE
+        _sharp = 0.0
+        _sherr = ""
+        try:
+            _h, _w = g.shape[:2]
+            _cy0, _cy1 = max(0, _h // 2 - 200), min(_h, _h // 2 + 200)
+            _cx0, _cx1 = max(0, _w // 2 - 700), min(_w, _w // 2 + 700)
+            _crop = np.ascontiguousarray(g[_cy0:_cy1, _cx0:_cx1])
+            if _crop.dtype != np.uint8:          # OpenCV 5: Laplacian(CV_64F) 只吃 uint8 输入
+                _crop = np.clip(_crop, 0, 255).astype(np.uint8)
+            _sharp = float(cv2.Laplacian(_crop, cv2.CV_64F).var())
+            _V36_LIVE = bool(_V36_ON and _sharp >= _V36_MIN_SHARP
+                             and float(np.median(g)) >= _V36_MIN_P50)
+        except Exception as _e:                                              # noqa: BLE001
+            _sherr = repr(_e)[:120]
+            _V36_LIVE = False
+        met["v36_live"] = bool(_V36_LIVE)
+        met["v36_sharp"] = round(float(_sharp), 1)
+        met["v36_sherr"] = _sherr
         # 🆕 v25: 几何分析专用副本(逐帧对比度归一化) —— 阈值变相对量, 亮度漂移不影响判据几何。
         #   渲染不经过它(src 原样), sat_before / 曝光增益统计也仍用原图 g。
         ga = _v25_norm_luma(g)
@@ -1237,25 +2081,18 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             ky0, ky1 = int(band[0]), int(band[1])
             met["band_overridden"] = [int(ky0), int(ky1)]
         else:
-            ky0 = min(hh["y0"] for hh in hits)
-            ky1 = max(hh["y1"] for hh in hits)
-            # 🔴 2026-10-08 老倪「判据图还是跳动」的真凶就在这两行的"并集"上:
-            #   现场实测(原始帧已恒定) kept_rows 在 [1570,1619]/[1330,1699]/[1650,1699] 之间逐帧翻 ——
-            #   逐帧总有一个远端 hit 冒出来/消失, min/max 直接把整条带撑宽或缩窄 ⇒ 交付图整幅换区。
-            #   这不是"评分打平"(上轮的假设), 是**键行带由全体 hit 的并集决定**这一条本身不稳。
-            #   修: 与上帧**成功**渲染的带明显重叠时取并集(并集只会更宽 ⇒ 单帧漏检再也撑不动整条带);
-            #   跨视角/换场景时重叠≈0 ⇒ 不并 ⇒ 不会把上一个视角的带带进来。
-            _pv = _V21_BAND_PREV
-            if _pv is not None:
-                try:
-                    _p0, _p1 = int(_pv[0]), int(_pv[1])
-                    _ov = min(ky1, _p1) - max(ky0, _p0) + 1
-                    _h_new, _h_old = ky1 - ky0 + 1, _p1 - _p0 + 1
-                    if _ov >= 0.5 * min(_h_new, _h_old) and _ov > 0:
-                        ky0, ky1 = min(ky0, _p0), max(ky1, _p1)
-                        met["band_lock_union"] = [int(ky0), int(ky1)]
-                except Exception:
-                    pass
+            # v28: 行带 = 最上簇(齿排) + 静止保持, 不用"全体 hit 的并集"
+            #   (本地会话的并集版实测仍在翻: 行带 2 种/根数 7↔15; 本版 1 种/恒 15。见 _v26_pick_band)
+            # v30 层②: 传入粗缩略图(48x36) 供"场景变化门" —— 帧差小=同一静止工件, 多候选时选与上帧带重叠的那簇。
+            try:
+                _thumb = cv2.resize(ga, (48, 36), interpolation=cv2.INTER_AREA)
+            except Exception:
+                _thumb = None
+            ky0, ky1 = _v26_pick_band(hits, met, thumb=_thumb)
+        # 🆕 v34 (移植 v32): 端点有效性过滤**只在显式指定带时启用**(= 两遍校验的 pass2);
+        #    pass1(band=None) ⇒ 一字不动 ⇒ 与 v33 逐位一致(参考序列零回退由结构保证)。
+        _v32_filt = bool(_V32_ON and band is not None and not gate.get("no_sfilt"))
+        met["v32_filt"] = bool(_v32_filt)
         # ---- 2. strip columns (kills the flat grey block on the right) ----
         left, right, rsrc, lsrc, band = _v21_strip_cols(ga, ky0, ky1)   # v25: 归一化域 ⇒ 裁窗不随亮度漂
         if right is None:
@@ -1288,7 +2125,23 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
             met["why"] = "no key columns survived the bright-column gate"
             met["err"] = met["why"]
             return None, met
-        rects, uinfo = _v21_uniformize(segs)
+        _wgate = bool(gate.get("wgate"))         # 🆕 v35: 救回趟开关(仅显式带 pass2 由调用方置位)
+        _pflip = bool(gate.get("phase_flip"))    # 🆕 v35: 相位二选一(另一档)
+        met["v35_wgate"] = bool(_wgate)
+        _phint = 0.0
+        if _wgate:
+            # 🆕 v35: 救回趟先用**带内列自相关**量出真键排节距, 交 uniformize 覆盖"段间中位差"。
+            #   仅在**周期可信**(峰值 >= _V35_AC_MIN) 时才覆盖 —— 低周期场景用老口径, 不冒险。
+            _ph, _ps = _v35_band_pitch(ga, ky0, ky1)
+            met["v35_pitch_hint"] = {"pitch": round(float(_ph), 1), "score": float(_ps)}
+            if float(_ps) >= _V35_AC_MIN:
+                _phint = float(_ph)
+        if _v32_filt:
+            rects, uinfo = _v21_uniformize(segs, cf=cf, cx0=cx0, luma=ga, luma_rows=(ky0, ky1),
+                                           wgate=_wgate, pitch_hint=_phint, phase_flip=_pflip)
+        else:
+            rects, uinfo = _v21_uniformize(segs, cf=cf, cx0=cx0, wgate=_wgate, pitch_hint=_phint,
+                                           phase_flip=_pflip)
         met.update(uinfo)
         # 🆕 v26: 格点补齐(内部缺口 + 两端延伸) —— 点2 右段黑帽被高光吃掉导致掩膜跨度截断
         _r26, _i26 = _v26_fill_lattice(rects, ga, cx0, cx1, ky0, ky1)
@@ -1411,7 +2264,7 @@ def _v21_render_core(bgr, gain=None, gamma=None, deskew_deg=0.0, hw=_JUDGE_HW,
         met["gain"] = round(float(gain), 4)
         met["gamma"] = round(float(gamma), 4)
         # ---- 7. scale to width out_w (natural aspect × 键高系数), centre on black -----
-        _vs = max(0.1, float(_V23_KEY_HSTRETCH))       # v23: 键高 1.2×(宽度不变, 纯显示放大)
+        _vs = max(0.1, float(_V36_HSTRETCH if _V36_LIVE else _V23_KEY_HSTRETCH))  # v36: 新画面键高放大, 旧画面=v23 原值
         scw = out_w / float(block.shape[1])
         sch = out_h / float(block.shape[0] * _vs)      # 高度预算按"拉伸后"算 ⇒ 一定装得下
         sc = min(scw, sch)
@@ -1546,7 +2399,519 @@ def render_judge(bgr, deskew_deg=0.0, hw=_JUDGE_HW, k=_JR_K):
                      "rule": "v21 strip columns (horizontal edge strength |dI/dy|)"}
     met["k"] = float(k)
     met["fix_hw"] = [int(_hw[0]), int(_hw[1])]
+    # 🆕 v34 (移植 v32 两遍校验): 只在 pass1 明显不对(数太少 <12 根, 或比 19 还多)且存在强周期锚点带时,
+    #   用锚点带重渲一遍; 重渲结果**恰好 19** 才采用, 否则原样保留 ⇒ pass1 已 15~19 的视角逐位不变。
+    _n1v = int(met.get("n_keys") or 0)
+    if _V32_ON and _V32_TWOPASS_ON and (_n1v < _V32_ATTEMPT_LO or _n1v > _V31_N_TARGET):
+        try:
+            _g2 = _v25_norm_luma(_v21_luma(np.asarray(bgr)))
+            _an = _v32_anchor_band(_g2)
+        except Exception:                                                   # noqa: BLE001
+            _an = None
+        if _an is not None:
+            _ay0, _ay1, _apitch, _ascore = _an
+            _b0 = met.get("key_rows") or met.get("kept_rows")
+            if _ascore >= _V32_AC_MIN:
+                _i2, _m2 = _v21_render_core(bgr, deskew_deg=deskew_deg, hw=_hw,
+                                            band=(int(_ay0), int(_ay1)))
+                _m2 = dict(_m2 or {})
+                if _i2 is not None and int(_m2.get("n_keys") or 0) == _V31_N_TARGET:
+                    _m2["out"] = _m2.get("out_size")
+                    _m2["kept_rows"] = _m2.get("key_rows")
+                    _m2["kept_h"] = _m2.get("n_key_rows")
+                    _m2["dropped_sat_rows"] = _m2.get("bar_rows_dropped")
+                    _bh2 = max(1, int(_m2.get("band_h") or 1))
+                    _m2["dropped_pct"] = round(100.0 * int(_m2.get("bar_rows_dropped") or 0) / _bh2, 1)
+                    _m2["sat_after"] = _m2.get("strip_sat_frac")
+                    _sx2 = _m2.get("strip_x") or [0, 0]
+                    _m2["x_trim"] = {"trimmed": True, "x_span": [int(_sx2[0]), int(_sx2[1])],
+                                     "dropped_cols": ([0, int(_sx2[0])] if _sx2[0] else []),
+                                     "col_sat_before_max": None,
+                                     "rule": "v21 strip columns (horizontal edge strength |dI/dy|)"}
+                    _m2["k"] = float(k)
+                    _m2["fix_hw"] = [int(_hw[0]), int(_hw[1])]
+                    _m2["v32_twopass"] = {"from": _b0, "to": [int(_ay0), int(_ay1)],
+                                          "score": round(float(_ascore), 3),
+                                          "first_n": int(met.get("n_keys") or 0)}
+                    _m2["v32_autocorr"] = {"band": [int(_ay0), int(_ay1)], "pitch": round(float(_apitch), 1),
+                                           "score": round(float(_ascore), 3)}
+                    _m2.setdefault("err", "")
+                    img, met = _i2, _m2
+    # 🆕 v35 救回趟: pass1 键数落在 [_V35_N_LO,_V35_N_HI] 时, 用**同一行带** + 单键宽度门重跑一遍,
+    #   结果需 **> pass1** 且 >= _V35_ADOPT_MIN 根 且节距落在真键排量级 才采纳(**宁少不假**)。
+    _n1w = int(met.get("n_keys") or 0)
+    if _V35_ON and (_V35_N_LO <= _n1w <= _V35_N_HI):
+        _bw = met.get("key_rows") or met.get("kept_rows") or met.get("key_row_span")
+        if _bw:
+            # 🔴 救回趟会再进一次 `_v21_uniformize` ⇒ 它会往 `_V25_SEEN`(跨帧投票窗)里多塞一条。
+            #   为保 pass1 的投票动态不被救回趟污染(参考序列零回退的关键), 调用前后快照/恢复。
+            try:
+                with _V25_SEEN_LOCK:
+                    _vseen_bak = {_k: list(_v) for _k, _v in _V25_SEEN.items()}
+                    # 救回趟是"一次性诊断重跑", 不该被跨帧投票窗否掉它新认领的格 ⇒ 先清空窗口,
+                    #   使 uniformize 在**单帧**环境下走(vote 无 ≥2 票 ⇒ 不否决), 调用后原样恢复。
+                    _V25_SEEN.clear()
+            except Exception:                                                   # noqa: BLE001
+                _vseen_bak = None
+            # 🔁 救回趟做**多假设(多带)**: pass1 带 + (若够高) 其上/下各 60 行子带 —— 同一静止场景
+            #   实测"带差 10 行"就会让某些粘连块被拒/被收(如 [1120,1189] 给 11, [1120,1179] 给 15)。
+            #   对每个候选带跑一遍救回趟, 取"**通过全部闸**且根数最多"者; 全不通过则不采纳。
+            _cands = []
+            _by0, _by1 = int(_bw[0]), int(_bw[1])
+            _bh = _by1 - _by0 + 1
+            _cands.append((_by0, _by1, False))
+            _cands.append((_by0, _by1, True))          # 🆕 相位二选一(另一档)
+            # 🔴 只在 pass1 带**附近**微调(带高变化 ≤25%): 救回趟的前提是"这条带就是一条键排",
+            #    键排实测高 40~70 行。若允许换成高度差一倍的带(如 liveF 的 145 行带回落到 60 行),
+            #    就等于换了另一块结构 —— 参考序列会被改写(实测 liveF 16→18) ⇒ 禁止。
+            if _bh > 62:
+                for (_sy0, _sy1) in ((_by0, _by0 + 59), (_by1 - 59, _by1)):
+                    if _sy1 - _sy0 + 1 >= 0.75 * _bh:
+                        _cands.append((_sy0, _sy1, False))
+                        _cands.append((_sy0, _sy1, True))
+            _tries, _pick = [], None
+            for (_cy0, _cy1, _cflip) in _cands:
+                if _vseen_bak is not None:      # 每个候选都从"空投票窗"起跑(救回趟=单帧重跑)
+                    try:
+                        with _V25_SEEN_LOCK:
+                            _V25_SEEN.clear()
+                            _V25_SEEN.update(_vseen_bak)
+                            _V25_SEEN.clear()
+                    except Exception:                                           # noqa: BLE001
+                        pass
+                try:
+                    _i4, _m4 = _v21_render_core(bgr, deskew_deg=deskew_deg, hw=_hw,
+                                                band=(int(_cy0), int(_cy1)),
+                                                gate={"wgate": True, "phase_flip": _cflip})
+                except Exception:                                               # noqa: BLE001
+                    _i4, _m4 = None, None
+                finally:
+                    if _vseen_bak is not None:
+                        try:
+                            with _V25_SEEN_LOCK:
+                                _V25_SEEN.clear()
+                                _V25_SEEN.update(_vseen_bak)
+                        except Exception:                                       # noqa: BLE001
+                            pass
+                _m4 = dict(_m4 or {})
+                _n4 = int(_m4.get("n_keys") or 0)
+                _p4 = float(_m4.get("lattice_pitch_px") or 0.0)
+                # "**无假框**"闸: 用交付带算每个键心的局部衬度(键心 − 左右邻谷, 灰度级)。
+                #   真键排每个键心都该坐在亮脊上(实测 +35~+86); 栅格错位(相位/节距漂)时会出现负值
+                #   (实测漏配时 21 根里 19 根衬度为负 = 框压在缝里) ⇒ 一票否决。
+                _mincon = None
+                _gapcon = None
+                try:
+                    _pr = _v21_luma(bgr)
+                    _bb2 = _m4.get("key_rows") or [_cy0, _cy1]
+                    _pr = _pr[int(_bb2[0]):int(_bb2[1]) + 1, :].astype(np.float32).mean(axis=0)
+                    _hh = max(1, int(round(_p4 / 2.0)))
+                    _cs = []
+                    for _c in (int(v) for v in (_m4.get("centers") or [])):
+                        _l = _pr[max(0, _c - _hh)]
+                        _r = _pr[min(_pr.size - 1, _c + _hh)]
+                        _cs.append(float(_pr[_c] - min(_l, _r)))
+                    if _cs:
+                        _mincon = float(min(_cs))
+                        _m4["v35_ctr_contrast"] = [round(v, 1) for v in _cs]
+                        _m4["v35_ctr_min"] = round(_mincon, 1)
+                    # 🆕 v36: 新清晰画面里**每根键心都有一道暗凹陷(notch)**, 于是"键心 vs ±节距/2"
+                    #   会把正确栅格误判成负衬度 ⇒ 补一个**抗凹陷**的衬度口径: 每格只取格内**局部峰值**
+                    #   (键的亮脊, 与凹陷无关), 减去该格左右**格间中点**的谷值。正确栅格恒为正。
+                    _ctr = sorted(int(v) for v in (_m4.get("centers") or []))
+                    if len(_ctr) >= 3:
+                        _q = []
+                        for _i, _c in enumerate(_ctr):
+                            _lo = _ctr[_i - 1] if _i > 0 else _c - _hh
+                            _hi = _ctr[_i + 1] if _i < len(_ctr) - 1 else _c + _hh
+                            _gp = []
+                            if _i > 0:
+                                _gp.append(_pr[max(0, int((_ctr[_i - 1] + _c) / 2.0))])
+                            if _i < len(_ctr) - 1:
+                                _gp.append(_pr[min(_pr.size - 1, int((_c + _ctr[_i + 1]) / 2.0))])
+                            if not _gp:
+                                continue
+                            _band_lo = max(0, _c - int(0.45 * _p4))
+                            _band_hi = min(_pr.size, _c + int(0.45 * _p4) + 1)
+                            _peak = float(_pr[_band_lo:_band_hi].max()) if _band_hi > _band_lo else float(_pr[_c])
+                            _q.append(_peak - float(sum(_gp) / len(_gp)))
+                        if _q:
+                            _gapcon = float(np.median(_q))
+                            _m4["v36_gap_contrast"] = [round(float(v), 1) for v in _q]
+                            _m4["v36_gap_med"] = round(_gapcon, 1)
+                except Exception:                                               # noqa: BLE001
+                    _mincon = None
+                    _gapcon = None
+                _ac4 = float(((_m4.get("v35_pitch_hint") or {}).get("score")) or -1.0)
+                # 🆕 v36: "无假框"闸改判据 —— 旧口径(键心 vs ±节距/2)被暗凹陷污染 ⇒ 除它外,
+                #   抗凹陷口径(格内峰 vs 格间谷)达标也可采纳。
+                _ctr_ok = bool((_mincon is not None and _mincon >= _V35_CTR_MIN)
+                               or (_V36_LIVE and _gapcon is not None and _gapcon >= _V36_GAP_MIN))
+                _ok = bool(_i4 is not None and _n4 > _n1w and _n4 >= _V35_ADOPT_MIN
+                           and _V35_PITCH_LO <= _p4 <= _V35_PITCH_HI
+                           and _ctr_ok
+                           and _ac4 >= _V35_AC_MIN)
+                _tries.append({"band": [int(_cy0), int(_cy1)], "flip": bool(_cflip),
+                               "n": _n4, "pitch": round(_p4, 1),
+                               "ctr_min": (None if _mincon is None else round(_mincon, 1)),
+                               "ac": _ac4, "ok": _ok})
+                if _ok:
+                    if _V36_LIVE:                # 🆕 v36: 收集**所有**通过闸的候选, 取**最接近 19** 的那条
+                        _score = (-abs(int(_n4) - 19), int(_n4))
+                        if _pick is None or _score > _pick[0]:
+                            _pick = (_score, _i4, _m4)
+                    elif _pick is None:           # v35 原口径: 取**第一个通过全部闸**的候选
+                        _pick = ((-1, 0), _i4, _m4)
+            met["v35_try"] = {"n1": _n1w, "cands": _tries}
+            if _pick is not None:
+                _i4, _m4 = _pick[1], _pick[2]
+                _n4 = int(_m4.get("n_keys") or 0)
+                _p4 = float(_m4.get("lattice_pitch_px") or 0.0)
+                _bw = _m4.get("key_rows") or _bw
+                _m4["out"] = _m4.get("out_size")
+                _m4["kept_rows"] = _m4.get("key_rows")
+                _m4["kept_h"] = _m4.get("n_key_rows")
+                _m4["dropped_sat_rows"] = _m4.get("bar_rows_dropped")
+                _bh4 = max(1, int(_m4.get("band_h") or 1))
+                _m4["dropped_pct"] = round(100.0 * int(_m4.get("bar_rows_dropped") or 0) / _bh4, 1)
+                _m4["sat_after"] = _m4.get("strip_sat_frac")
+                _sx4 = _m4.get("strip_x") or [0, 0]
+                _m4["x_trim"] = {"trimmed": True, "x_span": [int(_sx4[0]), int(_sx4[1])],
+                                 "dropped_cols": ([0, int(_sx4[0])] if _sx4[0] else []),
+                                 "col_sat_before_max": None,
+                                 "rule": "v21 strip columns (horizontal edge strength |dI/dy|)"}
+                _m4["k"] = float(k)
+                _m4["fix_hw"] = [int(_hw[0]), int(_hw[1])]
+                _m4["v35_rescue"] = {"from_n": _n1w, "to_n": _n4, "pitch": round(_p4, 1),
+                                     "band": [int(_bw[0]), int(_bw[1])]}
+                _m4.setdefault("err", "")
+                img, met = _i4, _m4
+    # 🆕 v36 确定性栅格兜底: 候选栅格仍非 19(18/20) 或未采纳时, 用**组合梳拟合**的权威栅格替换
+    #   端到端根数与栅格(实测帧间恒稳, 剔掉两端宽金属边块后正好 19 根)。只改"取哪几行/哪几列",
+    #   不碰 crop/warp/get_cropper/_region_payload。
+    if _V36_ON and _V36_LIVE:
+        try:
+            _nnow = int(met.get("n_keys") or 0)
+            _pl = float(met.get("lattice_pitch_px") or 0.0)
+            _bmow = met.get("key_rows") or met.get("kept_rows") or met.get("key_row_span")
+            # 🔴 触发条件: 根数≠19 **或 节距不在真键排带**(实测现役帧会给出 n=19 但节距 121 的
+            #   伪结构 ⇒ 门 geo_ok=False 被抑制)。两者任一不合法 ⇒ 用确定性栅格重算。
+            # 🔴 无条件重算(治"数量对但框压在键缝里"): pass1 有时会锁到**金属焊盘行带**
+            #   (同样 pitch 71 但相位与真键差半格) ⇒ rects 数量/节距都对、位置全错。
+            #   只要在新清晰画面上, 一律用"逐带扫描 + 相位锁定"的权威栅格覆盖 rects。
+            _need = True
+            if _need:
+                _ga2 = _v25_norm_luma(_v21_luma(np.asarray(bgr)))
+                _lr = _v36_lattice(_ga2, want=_V31_N_TARGET)
+                if _lr is not None:
+                    _cens = sorted((a + b) / 2.0 for a, b in _lr)
+                    _dds = np.diff(_cens) if len(_cens) > 1 else np.array([])
+                    _lband = list(_V36_LAST_BAND) if _V36_LAST_BAND else None
+                    met["rects"] = [[int(a), int(b)] for a, b in _lr]
+                    met["centers"] = [int(round(c)) for c in _cens]
+                    met["n_keys"] = int(len(_lr))
+                    if _lband:
+                        met["key_rows"] = _lband
+                        met["kept_rows"] = _lband
+                    met["width_uniform_px"] = int(round(float(np.median([b - a + 1 for a, b in _lr]))))
+                    if _dds.size:
+                        met["lattice_pitch_px"] = round(float(np.median(_dds)), 1)
+                        met["pitch_median_px"] = met["lattice_pitch_px"]
+                    met["v36_lattice"] = {"n": int(len(_lr)), "band": _lband,
+                                          "from_n": _nnow, "pitch": met.get("lattice_pitch_px")}
+                    if _V36_LATTICE_INFO:
+                        met["v36_phase"] = dict(_V36_LATTICE_INFO)
+                        _bad = int(_V36_LATTICE_INFO.get("n_bad") or 0)
+                        met["v36_phase_bad"] = _bad
+                    met.setdefault("err", "")
+        except Exception:                                                    # noqa: BLE001
+            pass
     return img, met
+
+
+# ============================================================================
+# 🆕 v31 【19根渲染门】+ 同姿位输出闩锁 (2026-10-09 老倪硬要求)
+#   目标: 判据图上"除了 19 根金手指其它一律不要显示; 不要跳不要跳不要跳"。
+#   规则:
+#     ① **只有**判决落在真键排(几何自洽: 节距≈70 量级 / 高度合理 / 与已验证带一致)
+#        **且 n_keys==19** 时才画金手指框;
+#     ② 否则**不画任何金手指框**, 改为在画面上打醒目状态横幅(原因 + 帧龄 + 当前拍到的 y 区间);
+#     ③ 绝不把 y≈[1220,1279] 这类**非键排**结构画成金手指;
+#     ④ 同一位姿下**逐帧逐位一致**(不可抖动): 用缩略图帧差判定"同一姿位", 同一姿位沿用上帧输出(逐像素相同);
+#        判决(画框/抑制)是**按姿位**定的, 不是按帧定的 ⇒ 避免单帧 n_keys 抖动导致闪。
+#   ⚠️ 本门只作用于**人看的判据图**, 绝不动模型输入链(crop_goldfinger_regular / warp...)。
+# ============================================================================
+_V31_GATE_ON = True
+_V31_SCENE_TOL = 6.0          # 缩略图平均绝对差 <= 该值 ⇒ 判为"同一姿位"(沿用上帧输出)
+_V31_N_TARGET = 19            # 金手指真值根数
+_V31_PITCH_MIN, _V31_PITCH_MAX = 60.0, 85.0   # 真键排节距量级(实测 ~70~72)
+_V31_BAND_H_MAX = 160         # 键排带最大高度(超过=把别的结构并进来了)
+_V31_ESCALATE_STREAK = 2      # 抑制态下, 连续这么多帧都合格 ⇒ 升为"画框"(避免误判也防抖)
+_V31_ST = {"scene": None, "out": None, "ret_met": None, "ret_state": None,
+           "state": None, "band": None, "ok_streak": 0, "ts": 0.0,
+           "banner": "", "boxes": []}
+
+
+def _v31_thumb(bgr):
+    """粗缩略图(64x48 灰度) — 判"同一姿位"用。"""
+    try:
+        return cv2.cvtColor(cv2.resize(bgr, (64, 48), interpolation=cv2.INTER_AREA),
+                            cv2.COLOR_BGR2GRAY).astype(np.float32)
+    except Exception:                                                       # noqa: BLE001
+        return None
+
+
+def _v31_banner(hw, rows, accent):
+    """状态横幅(BGR, 定尺 hw)。rows = [(中文, ascii), ...]; 有 PIL+CJK 字体走中文, 否则回退 cv2 ASCII。"""
+    W, H = int(hw[0]), int(hw[1])
+    img = np.zeros((H, W, 3), np.uint8)
+    bar = max(28, H // 7)
+    img[0:bar, :] = (int(accent[0]), int(accent[1]), int(accent[2]))
+    done = False
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        fp = None
+        for cand in ("C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
+                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
+            if os.path.exists(cand):
+                fp = cand
+                break
+        if fp:
+            pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            dr = ImageDraw.Draw(pil)
+            f0 = ImageFont.truetype(fp, max(15, int(bar * 0.62)))
+            f1 = ImageFont.truetype(fp, max(14, int(bar * 0.46)))
+            dr.text((8, max(2, int(bar * 0.16))), rows[0][0], font=f0, fill=(255, 255, 255))
+            yy = bar + 10
+            for r in rows[1:]:
+                dr.text((8, yy), r[0], font=f1, fill=(255, 255, 255))
+                yy += max(20, int(bar * 0.62))
+            img = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+            done = True
+    except Exception:                                                       # noqa: BLE001
+        done = False
+    if not done:
+        cv2.putText(img, rows[0][1][:58], (8, int(bar * 0.74)), cv2.FONT_HERSHEY_SIMPLEX,
+                    max(0.40, bar / 40.0), (255, 255, 255), 2, cv2.LINE_AA)
+        yy = bar + max(18, int(bar * 0.62))
+        for r in rows[1:]:
+            cv2.putText(img, r[1][:72], (8, yy), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.46, (255, 255, 255), 1, cv2.LINE_AA)
+            yy += max(18, int(bar * 0.62))
+    return img
+
+
+def _v31_overlay(base, rows, accent=(0, 0, 200)):
+    """v33: 在**保留画面**的前提下, 在顶部打一条状态横幅 —— 绝不整张不显示。
+
+    rows = [(中文, ascii), ...]; 有 PIL+CJK 字体走中文, 否则回退 cv2 ASCII。
+    顶部条高度取 H//3(判据图键排集中在中部 y≈127~205, 顶部 1/3 是黑边)⇒ 横幅不盖住金手指。
+    """
+    out = np.ascontiguousarray(base).copy()
+    H, W = out.shape[:2]
+    bar = max(30, min(H // 3, H - 1))
+    out[0:bar, :] = (int(accent[0]), int(accent[1]), int(accent[2]))
+    done = False
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        fp = None
+        for cand in ("C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
+                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
+            if os.path.exists(cand):
+                fp = cand
+                break
+        if fp:
+            pil = Image.fromarray(cv2.cvtColor(out, cv2.COLOR_BGR2RGB))
+            dr = ImageDraw.Draw(pil)
+            nrow = max(1, len(rows))
+            fs0 = max(14, int(bar / max(1.55, nrow * 0.52)))
+            fs1 = max(11, int(bar / max(2.3, nrow * 0.78)))
+            dr.text((8, 3), rows[0][0], font=ImageFont.truetype(fp, fs0), fill=(255, 255, 255))
+            yy = 3 + fs0 + 3
+            for r in rows[1:]:
+                if yy + fs1 > bar:
+                    break
+                dr.text((8, yy), r[0], font=ImageFont.truetype(fp, fs1), fill=(255, 255, 255))
+                yy += fs1 + 3
+            out = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+            done = True
+    except Exception:                                                       # noqa: BLE001
+        done = False
+    if not done:
+        cv2.putText(out, rows[0][1][:58], (8, int(bar * 0.45)), cv2.FONT_HERSHEY_SIMPLEX,
+                    max(0.36, bar / 60.0), (255, 255, 255), 2, cv2.LINE_AA)
+        yy = int(bar * 0.45) + max(14, int(bar * 0.28))
+        for r in rows[1:]:
+            if yy > bar - 2:
+                break
+            cv2.putText(out, r[1][:72], (8, yy), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.40, (255, 255, 255), 1, cv2.LINE_AA)
+            yy += max(14, int(bar * 0.28))
+    return out
+
+
+def _v31_draw_boxes(img, met, hw, color=(0, 255, 0), thick=2):
+    """🆕 把金手指列(rects)按渲染变换映射到判据图坐标, 画实线框(仅 19 根时用)。
+
+    映射与 _v21_render_core 第 7 步一致: block=src[crop] → resize(sc, 纵向×_V23_KEY_HSTRETCH)
+    → 居中贴到 out。失败则原样返回(绝不因画框而丢图)。
+    """
+    return img  # [no-box 2026-10-09 老倪: 不要高亮框]
+    # 2026-10-09 老倪要求: 不加绿色方框 ⇒ 本函数置空(原实现仍在下方, 需要时删这行即可恢复)
+    return img
+    try:
+        crop = met.get("crop")
+        if img is None or not crop:
+            return img
+        px0, py0, px1, py1 = [int(v) for v in crop]
+        sc = float(met.get("resize_scale") or 1.0)
+        band = met.get("key_rows") or met.get("kept_rows") or met.get("key_row_span")
+        rects = met.get("rects") or []
+        if not band or not rects:
+            return img
+        W, H = int(hw[0]), int(hw[1])
+        if img.shape[0] != H or img.shape[1] != W:
+            img = cv2.resize(img, (W, H))
+        vs = max(0.1, float(_V36_HSTRETCH if _V36_LIVE else _V23_KEY_HSTRETCH))
+        bw = max(1, px1 - px0)
+        bh = max(1, py1 - py0)
+        ow = max(1, int(round(bw * sc)))
+        oh = max(1, int(round(bh * sc * vs)))
+        x0o = max(0, (W - ow) // 2)
+        y0o = max(0, (H - oh) // 2)
+        jy0 = int(y0o + (int(band[0]) - py0) * sc * vs)
+        jy1 = int(y0o + (int(band[1]) + 1 - py0) * sc * vs)
+        for a, b in rects:
+            jx0 = int(x0o + (int(a) - px0) * sc)
+            jx1 = int(x0o + (int(b) + 1 - px0) * sc)
+            cv2.rectangle(img, (max(0, jx0), max(0, jy0)),
+                          (min(W - 1, jx1), min(H - 1, jy1)), color, thick)
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return img
+
+
+def render_judge_gated(bgr, deskew_deg=0.0, hw=_JUDGE_HW, k=_JR_K):
+    """v31/v33: 先按 v30 出原判据图, 再套【19根渲染门】+ 同姿位闩锁。返回 (out_bgr, meta)。
+
+    v33 修正: 抑制态下**保留判据画面**(img) 并在顶部打横幅 —— 绝不整张不显示(黑屏)。
+    """
+    _hw = (int(hw[0]), int(hw[1])) if hw else _JUDGE_HW
+    if not _V31_GATE_ON:
+        return render_judge(bgr, deskew_deg=deskew_deg, hw=_hw, k=k)
+    thumb = _v31_thumb(bgr)
+    scene_same = (thumb is not None and _V31_ST.get("scene") is not None
+                  and float(np.abs(thumb - _V31_ST["scene"]).mean()) <= _V31_SCENE_TOL)
+    if not scene_same:                       # 换姿位 ⇒ 复位判决锁
+        _V31_ST["state"] = None
+        _V31_ST["ok_streak"] = 0
+        # 🔴 2026-10-09 修: 必须同时清掉记住的行带 —— 否则先前在**错行带**(如金属焊盘 [1000,1059])
+        #   被判抑制后, 该错带会一直留在 _V31_ST["band"], 后续即使当前帧是完美 19 根 + 正确行带
+        #   [890,949], band_ok 也因"与旧带不重叠"恒为 False ⇒ 永久抑制, 横幅还会自相矛盾地
+        #   印出"识别 19 根 ≠ 19"。
+        _V31_ST["band"] = None
+    img, met = render_judge(bgr, deskew_deg=deskew_deg, hw=_hw, k=k)
+    met = dict(met or {})
+    n = int(met.get("n_keys") or 0)
+    pitch = float(met.get("lattice_pitch_px") or 0.0)
+    band = met.get("key_rows") or met.get("kept_rows") or None
+    bh = (int(band[1]) - int(band[0]) + 1) if band else 0
+    ov = False
+    if band and _V31_ST.get("band"):
+        vb = _V31_ST["band"]
+        ov = (max(0, min(int(band[1]), int(vb[1])) - max(int(band[0]), int(vb[0])) + 1) > 0)
+    geo_ok = (n == _V31_N_TARGET and _V31_PITCH_MIN <= pitch <= _V31_PITCH_MAX
+              and 0 < bh <= _V31_BAND_H_MAX)
+    band_ok = (_V31_ST.get("band") is None) or ov
+    ok = bool(geo_ok and band_ok and img is not None)
+    # ---- 按姿位定判决(不按帧) ----
+    if _V31_ST["state"] is None:
+        _V31_ST["state"] = "shown" if ok else "suppressed"
+        if ok:
+            _V31_ST["band"] = [int(band[0]), int(band[1])]
+        _V31_ST["ok_streak"] = 0
+    elif _V31_ST["state"] == "suppressed":
+        _V31_ST["ok_streak"] = (_V31_ST["ok_streak"] + 1) if ok else 0
+        if _V31_ST["ok_streak"] >= _V31_ESCALATE_STREAK:
+            _V31_ST["state"] = "shown"
+            _V31_ST["band"] = [int(band[0]), int(band[1])]
+            _V31_ST["ok_streak"] = 0
+    if _V31_ST["state"] != "shown" and not scene_same:
+        _V31_ST["ts"] = time.time()
+    state = _V31_ST["state"]
+    # ---- 组装输出 ----
+    if state == "shown" and img is not None:
+        # 🆕 v34: 19 根 ⇒ 画面 = 真判据图 + **实线框**(框住每一根金手指); 画框失败则原样返回
+        out = _v31_draw_boxes(img, met, _hw, color=(0, 255, 0), thick=2)
+        boxes = [[int(a), int(b)] for a, b in (met.get("rects") or [])]
+        # 🆕 v36: 人工核对用的**参考竖线** —— 只在 v36 生效帧上画(参考序列像素不受影响)。
+        #   画在**第 1 根键的框心**(原图 x 坐标经渲染变换映射到判据图), 并在顶部标注原图 x。
+        if False:  # [老倪 2026-10-09: 不要参考竖线/细长条] _V36_LIVE and met.get("rects") and met.get("crop"):
+            try:
+                _crop = [int(v) for v in met["crop"]]
+                _px0, _py0, _px1, _py1 = _crop
+                _sc = float(met.get("resize_scale") or 1.0)
+                _W, _H = int(_hw[0]), int(_hw[1])
+                _vs = max(0.1, float(_V36_HSTRETCH))
+                _ow = max(1, int(round((_px1 - _px0) * _sc)))
+                _ox0 = max(0, (_W - _ow) // 2)
+                _cx = 0.5 * (met["rects"][0][0] + met["rects"][0][1])
+                _jx = int(_ox0 + (_cx - _px0) * _sc)
+                cv2.line(out, (max(0, min(_W - 1, _jx)), 0),
+                         (max(0, min(_W - 1, _jx)), _H - 1), (255, 0, 255), 2)
+                cv2.putText(out, "ref x=%d" % int(round(_cx)), (max(0, min(_W - 160, _jx + 4)), 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+            except Exception:                                                # noqa: BLE001
+                pass
+        banner = ""
+    else:
+        age = max(0.0, time.time() - float(_V31_ST.get("ts") or time.time()))
+        ytxt = ("y=%d-%d" % (int(band[0]), int(band[1]))) if band else "y=?"
+        if n == 0:
+            headline = "未识别到金手指键排"
+            line2 = "本帧未检出周期键排结构 · %s · 帧龄%.1fs" % (ytxt, age)
+        else:
+            headline = "识别 %d 根 ≠ %d，已抑制显示" % (n, _V31_N_TARGET)
+            line2 = "当前拍到 y=%s · 节距%s · 帧龄%.1fs" % (
+                ("%d-%d" % (int(band[0]), int(band[1]))) if band else "?",
+                ("%.0fpx" % pitch) if pitch > 0 else "?", age)
+        line3 = "金手指真值应为 %d 根；未达标的帧不画出框" % _V31_N_TARGET
+        rows = [(headline, "NO GOLD-FINGER ROW (suppressed)"),
+                (line2, "n_keys=%d need=%d band=%s pitch=%.0f age=%.1fs" % (
+                    n, _V31_N_TARGET, ytxt, pitch, age)),
+                (line3, "true count expected = %d" % _V31_N_TARGET)]
+        # 🔴 v33: **保留画面** —— 有判据图就在它上面打横幅; 只有完全没有图时才退回黑底横幅。
+        if img is not None:
+            out = _v31_overlay(img, rows, (0, 0, 200))
+        else:
+            out = _v31_banner(_hw, rows, (0, 0, 200))
+        banner = headline + " | " + line2
+        boxes = []
+    # ---- 同姿位 + 同判决 ⇒ 直接回放上帧输出(逐像素相同) ----
+    if (scene_same and _V31_ST.get("out") is not None
+            and _V31_ST.get("ret_state") == state):
+        out = _V31_ST["out"]
+        met = dict(_V31_ST.get("ret_met") or met)
+    else:
+        _V31_ST["out"] = np.ascontiguousarray(out).copy()
+        _V31_ST["ret_state"] = state
+        _V31_ST["banner"] = banner
+        _V31_ST["boxes"] = boxes
+        _V31_ST["n"] = n
+    _V31_ST["scene"] = thumb
+    met["ver"] = _JUDGE_VER
+    met["gate"] = {"state": state, "ok": bool(ok),
+                   "n_keys": int(_V31_ST.get("n") if _V31_ST.get("n") is not None else n),
+                   "n_keys_raw": n,
+                   "pitch": round(pitch, 1),
+                   "band": ([int(band[0]), int(band[1])] if band else None), "band_h": bh,
+                   "geo_ok": bool(geo_ok), "band_ok": bool(band_ok),
+                   "scene_same": bool(scene_same)}
+    met["gate_banner"] = _V31_ST["banner"]
+    met["gate_boxes"] = _V31_ST["boxes"]
+    return out, met
 
 
 def crop_goldfinger_regular(bgr):
@@ -1560,6 +2925,69 @@ def crop_goldfinger_regular(bgr):
     crop, info = cr.crop(bgr)
     _LAST_NATURAL = getattr(cr, "_last_natural", None)
     return crop, info
+
+
+def _grab_bgr_only():
+    """Grab ONE frame -> BGR array. No crop / no judge render / no disk write.
+
+    Added 2026-10-12 (operator live preview, route /preview.jpg):
+    the full GrabAndSaveImage path costs ~1.9s per frame on this box
+    (template crop ~0.49s + judge render ~1.39s, see /crop_info crop_ms/judge_ms),
+    which the live picture does not need. This helper does exactly the
+    grab+convert part and nothing else:
+      - never writes files, never writes camera parameters
+      - never touches _LAST_PIC / _mem / _LAST_CROP_INFO / the detect queue
+      - never touches the model input (imgsz 960 path is untouched)
+    Returns None on any failure (caller reports 500).
+    """
+    ppayload = ctypes.c_void_p()
+    reVal = m_Device.SciCam_Grab(ppayload)
+    if reVal != SCI_CAMERA_OK:
+        print('preview: SciCam_Grab failed, code=%d' % reVal)
+        return None
+    payloadAttribute = SCI_CAM_PAYLOAD_ATTRIBUTE()
+    reVal = SciCam_Payload_GetAttribute(ppayload, payloadAttribute)
+    if reVal != SCI_CAMERA_OK:
+        print('preview: GetAttribute failed: %d' % reVal)
+        m_Device.SciCam_FreePayload(ppayload)
+        return None
+    if (not bool(payloadAttribute.isComplete)
+            or payloadAttribute.payloadMode != SciCamPayloadMode.SciCam_PayloadMode_2D):
+        print('preview: image not complete or payload type error,')
+        m_Device.SciCam_FreePayload(ppayload)
+        return None
+    imgW = payloadAttribute.imgAttr.width
+    imgH = payloadAttribute.imgAttr.height
+    imgData = ctypes.c_void_p()
+    reVal = SciCam_Payload_GetImage(ppayload, imgData)
+    if reVal != SCI_CAMERA_OK:
+        print('preview: GetImage failed: %d' % reVal)
+        m_Device.SciCam_FreePayload(ppayload)
+        return None
+    dstImgSize = ctypes.c_int()
+    mono_types = [
+        SciCamPixelType.Mono1p, SciCamPixelType.Mono2p, SciCamPixelType.Mono4p,
+        SciCamPixelType.Mono8s, SciCamPixelType.Mono8,
+        SciCamPixelType.Mono10, SciCamPixelType.Mono10p,
+        SciCamPixelType.Mono12, SciCamPixelType.Mono12p,
+        SciCamPixelType.Mono14, SciCamPixelType.Mono16,
+        SciCamPixelType.Mono10Packed, SciCamPixelType.Mono12Packed, SciCamPixelType.Mono14p
+    ]
+    is_mono = payloadAttribute.imgAttr.pixelType in mono_types
+    target_type = SciCamPixelType.Mono8 if is_mono else SciCamPixelType.RGB8
+    nch = 1 if is_mono else 3
+    reVal = SciCam_Payload_ConvertImage(payloadAttribute.imgAttr, imgData, target_type, None, dstImgSize, True)
+    bgr = None
+    if reVal == SCI_CAMERA_OK:
+        pDstData = (ctypes.c_ubyte * dstImgSize.value)()
+        reVal = SciCam_Payload_ConvertImage(payloadAttribute.imgAttr, imgData, target_type, pDstData, dstImgSize, True)
+        if reVal == SCI_CAMERA_OK:
+            arr = np.frombuffer(pDstData, dtype=np.uint8).reshape(imgH, imgW, nch)
+            bgr = arr.copy() if nch == 3 else cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR)
+    m_Device.SciCam_FreePayload(ppayload)
+    if bgr is None:
+        print('preview: ConvertImage failed: %d' % reVal)
+    return bgr
 
 
 def GrabAndSaveImage(save: bool = True):
@@ -1646,7 +3074,7 @@ def GrabAndSaveImage(save: bool = True):
             #      影子对照改成: 用**判据图压成 960x960** 再喂一次(方形, 不走那条会卡死的路),
             #      两个口径同帧对照(自然条带 ×13.7  vs  判据图含上下内容 ⇒ 谁更准用数据说话)。
             t_j = time.time()
-            judge, jmeta = render_judge(bgr, deskew_deg=float(info.get("angle") or 0.0))
+            judge, jmeta = render_judge_gated(bgr, deskew_deg=float(info.get("angle") or 0.0))
             dt_j = (time.time() - t_j) * 1000
             model_in = crop                    # 主口径 960x960(金手指条带拉伸, 与 v6/v7 逐位同口径)
             if judge is None:
@@ -1660,8 +3088,10 @@ def GrabAndSaveImage(save: bool = True):
                 jmeta["state"] = _jst
                 jmeta["fail_ver"] = _JUDGE_VER
             else:
-                jmeta["state"] = "ok"
-                _v22_remember_good(judge, no, _v22_view_key_from_crop(crop))   # 记好图(**按视角**), 供同视角失败顶着用
+                _gst = ((jmeta.get("gate") or {}).get("state") or "shown")
+                jmeta["state"] = "ok" if _gst == "shown" else "suppressed_19gate"
+                if _gst == "shown":
+                    _v22_remember_good(judge, no, _v22_view_key_from_crop(crop))   # v31: 只有"真键排(19)"的好图才记为可顶用的好图
             _mem_put(crop=judge, origin=bgr, natural=_LAST_NATURAL)   # v5: 内存帧(kind=crop 给的就是判据图)
             top_name = "Finger_TopView_W{}_H{}_No_{}.png".format(judge.shape[1], judge.shape[0], no)
             top_path = os.path.join(SAVE_ROOT_DIR, top_name)
@@ -1766,7 +3196,10 @@ def GrabAndSaveImage(save: bool = True):
                                         "judge": {k: jmeta.get(k) for k in
                                                   ("out", "kept_rows", "kept_h", "dropped_sat_rows", "dropped_pct",
                                                    "sat_before", "sat_after", "x_trim", "k", "fix_hw", "deskew_deg",
-                                                   "state", "ver", "why", "err", "n_keys", "attempt")},
+                                                   "state", "ver", "why", "err", "n_keys", "attempt",
+                                                   "lattice_pitch_px", "gate", "gate_banner", "gate_boxes",
+                                                   "v36_live", "v36_sharp", "v36_lattice", "v36_phase",
+                                                   "v36_phase_bad", "rects", "centers")},
                                         "anno_file": os.path.basename(anno_path), **info})
             # v4.2: 金手指"区域"信息(原始图坐标系) + 对焦清晰度 —— 供状态空间/机械臂伺服使用
             try:
@@ -2062,6 +3495,62 @@ def picture_api():
         return jsonify({"code": 500, "msg": str(e)}), 500
 
 
+@app.route("/preview.jpg", methods=["GET"])
+def preview_jpg():
+    """Live preview for the operator screen (added 2026-10-12).
+
+    GET /preview.jpg?scale=1.0&q=88  -> one freshly grabbed frame as JPEG.
+    Skips the template crop, the judge render, the disk write and the detect
+    queue (~1.9s of work) so the operator view can refresh fast.
+    Read-only: no camera parameter write, no file write, no model-input change.
+    Optional ?meta=1 returns the timings as JSON instead of an image (for
+    measuring grab cost without a picture transfer).
+    """
+    try:
+        try:
+            sc = float(request.args.get("scale") or 1.0)
+        except Exception:
+            sc = 1.0
+        sc = min(1.0, max(0.25, sc))
+        try:
+            qv = int(request.args.get("q") or 88)
+        except Exception:
+            qv = 88
+        qv = min(95, max(50, qv))
+        if not ensure_camera():
+            return jsonify({"code": 500, "msg": "相机初始化失败"}), 500
+        t0 = time.time()
+        bgr = _grab_bgr_only()
+        if bgr is None:                       # same retry semantics as /picture?grab=1 (v5.1)
+            print("⚠️ preview 抓帧失败, 重连相机后重试…")
+            Close_Device()
+            if ensure_camera():
+                bgr = _grab_bgr_only()
+        if bgr is None:
+            return jsonify({"code": 500, "msg": "抓帧失败"}), 500
+        t_grab = (time.time() - t0) * 1000.0
+        if sc < 1.0:
+            bgr = cv2.resize(bgr, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA)
+        t1 = time.time()
+        ok_enc, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), qv])
+        if not ok_enc:
+            return jsonify({"code": 500, "msg": "JPEG 编码失败"}), 500
+        t_enc = (time.time() - t1) * 1000.0
+        print("[preview] %dx%d scale=%.2f q=%d grab_ms=%.0f enc_ms=%.0f kb=%.0f"
+              % (bgr.shape[1], bgr.shape[0], sc, qv, t_grab, t_enc, len(buf) / 1024.0))
+        if str(request.args.get("meta") or "") in ("1", "true", "yes"):
+            return jsonify({"code": 200, "ver": PREVIEW_VER, "w": int(bgr.shape[1]), "h": int(bgr.shape[0]),
+                            "scale": sc, "q": qv, "grab_ms": round(t_grab, 1), "enc_ms": round(t_enc, 1),
+                            "kb": round(len(buf) / 1024.0, 1), "total_ms": round((time.time() - t0) * 1000.0, 1)})
+        return Response(buf.tobytes(), mimetype="image/jpeg",
+                        headers={"Cache-Control": "no-store",
+                                 "X-Grab-Ms": "%.0f" % t_grab,
+                                 "X-Preview-Ver": PREVIEW_VER})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"code": 500, "msg": str(e)}), 500
+
+
 @app.route("/last_result", methods=["GET"])
 def last_result_api():
     with _PIC_LOCK:
@@ -2079,7 +3568,7 @@ def cam_param():
     GET  /param                           -> 当前生效值(曝光us/增益dB/Gamma/相机SN/型号)
     GET|POST /param?exposure=5000&gain=1  -> 现场实时下发, **不必重启服务**
       只调用相机 SDK 的 ExposureTime / Gain / Gamma 三个节点, 不动任何裁剪/判据/模型口径。
-      重启服务后回到文件里的 EXPOSURE_US / GAIN_DB / GAMMA_VAL。
+      重启服务后: 先按**本机落盘** cam_param_persist.json **自动复原**(v30 层①), 无落盘才回到文件默认。
     """
     from flask import request
     want, bad = {}, []
@@ -2107,6 +3596,9 @@ def cam_param():
     if "gamma_val" in want:
         applied["gamma_val"] = {"ok": bool(set_gamma(want["gamma_val"])), "want": want["gamma_val"]}
     _fail = [k for k, v in applied.items() if not v.get("ok")]
+    if applied and not _fail:
+        # 🆕 v30 层①: 现场实时改档成功后**立即落盘** ⇒ 任何重启都由服务自己复原(不靠部署脚本)
+        _write_cam_param_persist("服务/param")
     _hint = ""
     if _fail:
         _hint = ("相机在采集中拒绝写 %s (实测本机型只能在不采集时写) ⇒ 请改本文件里的常数并重启服务; "
@@ -2114,7 +3606,7 @@ def cam_param():
     return jsonify({"code": 200, "ok": not _fail, "applied": applied, "hint": _hint, "now": dict(_CAM_LIVE),
                     "file_defaults": {"exposure_us": EXPOSURE_US, "gain_db": GAIN_DB,
                                       "gamma_val": GAMMA_VAL},
-                    "note": "只改相机采集参数(曝光/增益/Gamma); 重启服务回到 file_defaults"})
+                    "note": "只改相机采集参数(曝光/增益/Gamma); 重启服务先按本机落盘 cam_param_persist.json 自动复原(v30 层①), 无落盘才回 file_defaults"})
 
 
 @app.route("/crop_info", methods=["GET"])
@@ -2231,6 +3723,7 @@ if __name__ == "__main__":
     _port = int(os.environ.get("AOI_PORT") or PRODUCTION_PORT)
     if "--port" in sys.argv:
         _port = int(sys.argv[sys.argv.index("--port") + 1])
+    _RUN_PORT = str(_port)          # 🆕 v30: 落盘/复原档位的键 = 实际运行端口
     # 通道→模型 映射按"实际运行的端口"注册 (产线固定 10082; 换端口自测时通道也不会报 400)
     PORT_TO_DETECT_TYPE[str(_port)] = "gf"
     print(f"金手指检测相机程序启动({VERSION})，端口{_port}，gf金手指模型，相机常驻模式；"

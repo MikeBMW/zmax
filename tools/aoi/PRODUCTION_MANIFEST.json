@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08 21:58:00",
+  "generated_at": "2026-10-12 11:24:00",
   "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
   "host": "192.168.23.23",
   "items": [
@@ -9,12 +9,23 @@
       "repo_copy": "tools/aoi/cam_finger_10082_work_v25.py",
       "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v25.py",
       "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
-      "sha256": "e1bac80e23c5f5f2a3a76dde514ad71e3cf160999b4b1b8d237ebbe3bcfc3ba6",
-      "bytes": 110276,
-      "src_sha256": "e1bac80e23c5f5f2a3a76dde514ad71e3cf160999b4b1b8d237ebbe3bcfc3ba6",
-      "src_mtime": "2026-10-08 20:44:10",
-      "why_v25": "修掉根数 19/18/16/21 跳: ①几何分析走逐帧增益归一化(中位灰度→63, 正常状态与 v24 逐位相同) ②端部认领改短窗逐格投票(7帧/≥2票): 补回偶发漏认、否掉偶发多认 —— 真帧复放 22 帧预热后恒 19(其中 13 帧原始为 16)",
-      "copy_matches_source": true
+      "sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
+      "bytes": 206049,
+      "src_sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
+      "src_mtime": "2026-10-12 11:20:48",
+      "why_v25": "v36 判据(19根cxwin) + 2026-10-12 新增**实时预览路由 /preview.jpg** (只抓帧+JPEG编码, 实测 130ms; 不裁剪/不渲染/不落盘/不动模型输入) —— 现场『金手指刷新5秒多』的解法: 旧取图口每帧要付 模板裁剪486ms + 判据渲染1393ms ⇒ 2.2~3.5s/帧",
+      "copy_matches_source": true,
+      "preview_route": {
+        "path": "/preview.jpg",
+        "ver": "pv1-20261012",
+        "measured_ms": {
+          "grab": 30,
+          "jpeg_encode": 98,
+          "total": 130
+        },
+        "old_path_ms": 2166,
+        "accept": "抓帧+编码 only; 无副作用(不写盘/不改参数/不动模型输入)"
+      }
     },
     {
       "port": 10083,

@@ -1732,6 +1732,9 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
             time.sleep(max(0.05, max(0.2, 1.0 / max(0.1, fps)) - (time.time() - t0)))
 
 
+_AOI_PREVIEW_OK: dict = {}          # 工控机是否支持 /preview.jpg (快取图路由) —— 遇到 404 即永久回落老路
+
+
 def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0,
                      full_name: str = "aoi_gold_raw", anno_name: str = "aoi_gold_anno") -> None:
     """🔍 金手指格 —— **口径感知**: 让"页面显示的那张"必然等于"检测吃的那张"。
@@ -1771,17 +1774,31 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         _watching = ((not _aoi_busy(port))           # 🔴 同上: 检测期间不抢相机
                      and any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
                              for k in (name, full_name, anno_name)))
-        _req_url = url + ("&grab=1" if _watching else "")
+        # 🆕 2026-10-12 老倪「金手指刷新图像的延迟怎么这么大, 得5秒多才能更新, 优化, 延迟要小于1秒」
+        #   根因(工控机自报 /crop_info): 旧路 /picture?grab=1 每帧都要做**模板裁剪 486ms + 判据渲染 1393ms**
+        #   ⇒ 实测 2.17~3.5s/帧(偶发 5s+) ⇒ 页面 2.2s 才换一帧(实测)。
+        #   修法: 工控机新增 /preview.jpg(只 抓帧+JPEG 编码, 实测 **130ms**; 不裁剪/不渲染/不落盘/不动模型输入),
+        #   本机仍做**同一套** canonical 加工(原比例+去倾角+纵向3× → 900x332) ⇒ 显示口径不变, 只是取帧快了 ~16×。
+        #   老版工控机无此路由 ⇒ 404 自动永久回落老路(零影响)。
+        if _watching and _AOI_PREVIEW_OK.get(port, True):
+            _req_url = "http://192.168.23.23:%d/preview.jpg?q=88" % port
+            _use_prev = True
+        else:
+            _req_url = url + ("&grab=1" if _watching else "")
+            _use_prev = False
         code, raw, err, _src_age = 0, b"", "", None
         try:
             req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 code = r.status
-                _src_age = _hdr_age(r.headers)
+                _src_age = 0.0 if _use_prev else _hdr_age(r.headers)   # preview 必是当帧现抓 ⇒ 帧龄 0
                 raw = r.read()
         except urllib.error.HTTPError as e:
             code = e.code
             err = (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
+            if _use_prev and code == 404:
+                _AOI_PREVIEW_OK[port] = False
+                print("[aoi_gold] 工控机没有 /preview.jpg ⇒ 永久回落 /picture?grab=1")
         except Exception as e:                                                    # noqa: BLE001
             err = str(e)[:140]
 
