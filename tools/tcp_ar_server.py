@@ -117,12 +117,90 @@ def _cached_get(path: str, timeout: float = 6.0):
     return b"", None
 
 
+# ═══ 🧭 坐标系链 (2026-10-12 老倪:「世界坐标系 / tool0 = 6轴末端法兰盘中心 / tool1 = 夹爪夹住光模块,
+#       Arm 相机画面最下方那个光模块头部的中心点 —— 你能看到机器人的每个坐标系么?」)
+#   · base/world: 真值源的 frame 字段就是 base_link ⇒ 本服务所有坐标都在 base 系里(单位 m)。
+#   · tool1: latest.json 报的位姿**就是 tool1**(珞石 endInRef, 控制器 toolset=tool1;
+#             l2_daemon 的 J6 自转公式也是把上报值当 TCP ⇒ "p_tcp − R_tool·t_tool = 法兰原点" 同一口径)。
+#   · tool0: 法兰中心 = tool1 ⊖ URDF tool0→tool1 的**固定**位姿(与当前姿态无关, 常数如下)。
+#   ⚠️ 常数来源 = 现场 URDF; 离线自检: tools/test_j6_axis.py(与 FK 位置差 6e-14mm)。
+TOOL01_RPY = (0.03702517838719945, 0.6751675651256659, 2.375248653715161)   # URDF tool0→tool1 rpy
+TOOL01_XYZ = (-0.01588615307905028, 0.018348498948158043, 0.2586775713451509)  # URDF tool0→tool1 xyz
+
+
+def _rpy_R(r: float, p: float, y: float):
+    """rpy(URDF 口径 Rz·Ry·Rx) → 3×3"""
+    import math as _m
+    cr, sr, cp, sp, cy, sy = _m.cos(r), _m.sin(r), _m.cos(p), _m.sin(p), _m.cos(y), _m.sin(y)
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp,     cp * sr,                cp * cr]]
+
+
+def _quat_R(q):
+    """四元数(x,y,z,w) → 3×3"""
+    x, y, z, w = [float(v) for v in q]
+    n = (x * x + y * y + z * z + w * w) ** 0.5 or 1.0
+    x, y, z, w = x / n, y / n, z / n, w / n
+    return [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w),     2 * (x * z + y * w)],
+            [2 * (x * y + z * w),     1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w),     2 * (y * z + x * w),     1 - 2 * (x * x + y * y)]]
+
+
+def _mm(A, B):
+    return [[sum(A[i][k] * B[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+
+
+def _mv(A, v):
+    return [sum(A[i][k] * v[k] for k in range(3)) for i in range(3)]
+
+
+def _T(A):
+    return [[A[j][i] for j in range(3)] for i in range(3)]
+
+
+_R_OFF = _rpy_R(*TOOL01_RPY)                       # URDF tool0→tool1 旋转
+_T_TOOL = _mv(_T(_R_OFF), TOOL01_XYZ)              # 法兰→TCP 平移(工具系) = R_off^T·t_off
+
+
+def _frames(d):
+    """base / tool0 / tool1 三个坐标系的原点 + 三轴单位向量(都在 base 系里) —— 给 3D 视图画三色轴。"""
+    q = [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")]
+    if any(v is None for v in q):
+        return None
+    R1 = _quat_R(q)                                # tool1 姿态(上报值)
+    p1 = [float(d["x"]), float(d["y"]), float(d["z"])]
+    p0 = [p1[i] - _mv(R1, _T_TOOL)[i] for i in range(3)]     # 法兰中心 = tool1 − R_tool1·t_tool
+    R0 = _mm(R1, _T(_R_OFF))                                # R_tool0 = R_tool1 · R_off^T
+    def tri(R, p):
+        return {"origin": [round(v, 5) for v in p],
+                "x": [round(v, 5) for v in [_R_col(R, 0)[i] for i in range(3)]],
+                "y": [round(v, 5) for v in [_R_col(R, 1)[i] for i in range(3)]],
+                "z": [round(v, 5) for v in [_R_col(R, 2)[i] for i in range(3)]]}
+    return {"base": {"origin": [0.0, 0.0, 0.0], "x": [1.0, 0.0, 0.0], "y": [0.0, 1.0, 0.0], "z": [0.0, 0.0, 1.0]},
+            "tool0": tri(R0, p0), "tool1": tri(R1, p1),
+            "flange_mm": round(1000.0 * sum((p1[i] - p0[i]) ** 2 for i in range(3)) ** 0.5, 1),
+            "src": "tool1 = 珞石 endInRef(控制器 toolset=tool1, latest.json) · tool0 = tool1 ⊖ URDF tool0→tool1 固定位姿"}
+
+
+def _R_col(R, j):
+    return [R[0][j], R[1][j], R[2][j]]
+
+
 def read_tcp():
     try:
         with open(TCP_JSON) as f:
             d = json.load(f)
-        return {"ok": True, "x": d["x"], "y": d["y"], "z": d["z"],
-                "t": d.get("t"), "age_s": round(time.time() - float(d["ts"]), 3)}
+        out = {"ok": True, "x": d["x"], "y": d["y"], "z": d["z"],
+               "t": d.get("t"), "age_s": round(time.time() - float(d["ts"]), 3),
+               "frame": d.get("frame") or "base_link", "src": d.get("src"),
+               "quat": [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")],
+               "tool01_const": {"rpy": list(TOOL01_RPY), "xyz": list(TOOL01_XYZ),
+                                "dist_mm": round(1000 * sum(v * v for v in TOOL01_XYZ) ** 0.5, 1)}}
+        fr = _frames(d)
+        if fr:
+            out["frames"] = fr
+        return out
     except Exception as e:                                                        # noqa: BLE001
         return {"ok": False, "err": str(e)[:120]}
 

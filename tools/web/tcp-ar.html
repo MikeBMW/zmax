@@ -10,7 +10,11 @@
  .tag.on{background:#1f6feb;color:#fff}
  .tag.warn{background:#7d4e00;color:#ffd479}
  main{display:flex;gap:12px;padding:12px;align-items:flex-start;flex-wrap:wrap}
- #stagewrap{position:relative;flex:1 1 640px;min-width:320px;background:#000;border:1px solid #21262d;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+ /* 🆕 2026-10-12 老倪:「VR 三维视图要跟相机的窗口一样大, 就放在相机窗口的下面」⇒ 左列 = 相机窗口 + 三维视图(逐像素同宽同高), 指标卡全归右栏 */
+ #leftcol{flex:1 1 640px;min-width:320px;display:flex;flex-direction:column;gap:12px}
+ #stagewrap{position:relative;width:100%;background:#000;border:1px solid #21262d;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+ #vrcard #vr{width:calc(100% + 24px);margin:0 -12px}      /* 画布通宽(抵消卡内边距) ⇒ 与相机窗口同宽 */
+ #vrcard h2{display:flex;justify-content:space-between;align-items:center}
  /* 🆕 旋转单元: img + 叠加层 + 命中层 一起绕中心转 ⇒ 叠加/投影/标定像素永远同一坐标系 */
  #inner{position:relative;flex:0 0 auto}
  #vid{display:block;width:100%;height:100%}
@@ -56,6 +60,7 @@
   </span>
 </header>
 <main>
+ <div id="leftcol">
   <div id="stagewrap">
    <div id="inner">
     <img id="vid" src="/cam.mjpg?c=local2" alt="固定相机实时画面">
@@ -67,6 +72,17 @@
       轨迹默认不显示 —— 点右侧『显示轨迹』
     </div>
   </div>
+  <div class="card" id="vrcard">
+    <h2><span>VR 三维视图(base 系 · 拖动可转)</span><span style="font-weight:400;font-size:12px;color:#6b7a8d">与相机窗口同尺寸</span></h2>
+    <canvas id="vr"></canvas>
+    <div class="row" style="margin-top:8px">
+      <button id="bFit" class="sm">🔍 对准轨迹</button>
+      <button id="bSpin" class="sm" title="自动缓慢旋转">🎥 自动环绕</button>
+      <button id="bFrames" class="sm on" title="画 base(世界系) / tool0(法兰中心) / tool1(夹爪·模块头) 三个坐标系">🧭 坐标系</button>
+    </div>
+    <pre id="pVr">—</pre>
+  </div>
+ </div>
   <aside>
     <div class="card">
       <h2>🎥 底图来源 · 状态空间工程视频源</h2>
@@ -124,15 +140,6 @@
 解算器带 DLT 线性初值 + 管线自检, 少于 6 点不开解。标定按相机各存一份(切相机不会串)。</pre>
       <div class="bar"><i id="calBar" style="width:0%"></i></div>
     </div>
-    <div class="card">
-      <h2>VR 三维视图(base 系, 拖动可转)</h2>
-      <canvas id="vr"></canvas>
-      <div class="row" style="margin-top:8px">
-        <button id="bFit" class="sm">🔍 对准轨迹</button>
-        <button id="bSpin" class="sm" title="自动缓慢旋转">🎥 自动环绕</button>
-      </div>
-      <pre id="pVr">—</pre>
-    </div>
   </aside>
 </main>
 <footer>
@@ -159,7 +166,7 @@ let CAMS={arm:{w:640,h:480,label:'🦾 机器人手臂 RealSense D405 (Orin 臂�
 const ARPURPLE='#8957e5';   // 🥽 与 3D 场景「🥽 AR」按钮同色(插拔 #2e8b57 绿 / 摆盘 #1f6feb 蓝 / AR 紫)
 const FOUR=['arm','gold','surface','rs'];   // 老倪点名的 4 台相机(同一场景 4 视角)
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
-    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true};
+    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true};
 
 // ── 图像实际渲染矩形(= object-fit:contain 后画面占的位置), 叠加层必须贴这个矩形 ──
 // 🔴 踩坑(2026-09-29 屏幕闪烁): Safari/部分浏览器对 multipart/x-mixed-replace 的 <img> **每帧都触发 load**,
@@ -203,6 +210,7 @@ function applyRot(){
   inner.style.transform=ROT?('rotate('+ROT+'deg)'):'';
   LASTRECT=null; layout();                            // 强制重画叠加层
   if(typeof drawVR==='function') drawVR();
+  syncVr();                                            // 🆕 三维视图尺寸跟着相机窗口走
   const t=$('tRot'); if(t) t.textContent='旋转 '+ROT+'°';
 }
 function setRot(d){
@@ -213,7 +221,15 @@ function setRot(d){
 $('bRotL').addEventListener('click',()=>setRot(-90));  // 左旋 = 逆时针
 $('bRotR').addEventListener('click',()=>setRot(+90));  // 右旋 = 顺时针
 
-new ResizeObserver(()=>{ applyRot(); layout(); }).observe($('stagewrap'));
+// 🆕 2026-10-12 老倪: 「VR 三维视图要跟相机的窗口一样大」⇒ 画布高 = 相机窗口高(宽靠 CSS 通宽)
+//    尺寸没变就不碰 DOM(重设 canvas 尺寸 = 清空, 会闪)
+function syncVr(){
+  const st=$('stagewrap'), v=$('vr'); if(!st||!v) return;
+  const h=Math.max(160, st.clientHeight||0);
+  const cur=parseInt(v.style.height||'0',10)||0;
+  if(h>0 && Math.abs(cur-h)>1) v.style.height=h+'px';
+}
+new ResizeObserver(()=>{ applyRot(); layout(); syncVr(); }).observe($('stagewrap'));
 $('vid').addEventListener('load',()=>{ applyRot(); layout(); });
 applyRot();
 
@@ -301,6 +317,12 @@ function vrFitBox(){
   (TRAJ.trace||[]).forEach(p=>pts.push(p));
   (TRAJ.plan||[]).forEach(p=>pts.push(p));
   if(TCP&&TCP.ok) pts.push([TCP.x,TCP.y,TCP.z]);
+  // 🧭 坐标系也纳入取景(否则三个轴可能全落在画面外)。含 base 世界系原点 ⇒ 会拉远看全域:
+  //    想看"整条臂 + 底座 + 台面"就开着; 只想看轨迹就点 🧭 关掉再『对准轨迹』。
+  if(VR.frames && TCP && TCP.frames){
+    ['tool0','tool1'].forEach(k=>{ const f=TCP.frames[k]; if(f&&f.origin) pts.push(f.origin); });
+    pts.push([0,0,0]);
+  }
   if(pts.length<2){ VR.tgt=[0.70,0.22,0.14]; VR.dist=1.35; return '默认视角'; }
   const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
   pts.forEach(p=>{ for(let i=0;i<3;i++){ if(p[i]<mn[i])mn[i]=p[i]; if(p[i]>mx[i])mx[i]=p[i]; } });
@@ -369,9 +391,35 @@ function drawVR(){
   if(TCP&&TCP.ok){ const q=pr([TCP.x,TCP.y,TCP.z]);
     if(q){ g.fillStyle='#ffd166'; g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fill();
       g.font='12px monospace'; g.fillText('TCP',q.u+7,q.v-6); tcpTxt=`TCP=(${TCP.x.toFixed(3)}, ${TCP.y.toFixed(3)}, ${TCP.z.toFixed(3)})`; } }
+  // 🧭 base(世界系) / tool0(6轴法兰中心) / tool1(夹爪夹住的光模块头部中心) 三个坐标系, 红X/绿Y/蓝Z
+  //    真值: 服务端 /api/tcp 的 frames —— tool1 = 珞石 endInRef 上报位姿(控制器 toolset=tool1);
+  //          tool0(法兰) = tool1 ⊖ URDF tool0→tool1 固定位姿(与当前姿态无关, 两点相距 259.8mm)
+  let frTxt='';
+  if(VR.frames && TCP && TCP.frames && TCP.frames.tool1){
+    const LEN={base:0.16,tool0:0.13,tool1:0.13}, C={x:'#ff5d5d',y:'#5dff8f',z:'#5db8ff'};
+    const NAME={base:'base(世界系)',tool0:'tool0(法兰)',tool1:'tool1(模块头)'};
+    ['base','tool0','tool1'].forEach(k=>{
+      const f=TCP.frames[k]; if(!f||!f.origin) return;
+      const o=f.origin, L0=LEN[k];
+      [['x',f.x],['y',f.y],['z',f.z]].forEach(a=>{
+        const d=a[1]; if(!d) return;
+        const p1=pr(o), p2=pr([o[0]+d[0]*L0, o[1]+d[1]*L0, o[2]+d[2]*L0]);
+        if(!p1||!p2) return;
+        g.strokeStyle=C[a[0]]; g.lineWidth=2.5;
+        g.beginPath(); g.moveTo(p1.u,p1.v); g.lineTo(p2.u,p2.v); g.stroke();
+      });
+      const q0=pr(o); if(!q0) return;
+      g.fillStyle='#e6edf3'; g.beginPath(); g.arc(q0.u,q0.v,3,0,Math.PI*2); g.fill();
+      g.font='11px monospace'; g.fillText(NAME[k], q0.u+7, q0.v+15);
+    });
+    const T0=TCP.frames.tool0||{}, T1=TCP.frames.tool1;
+    frTxt=' · 🧭 tool0(法兰)='+(T0.origin?T0.origin.map(v=>v.toFixed(3)).join(','):'—')
+         +' · tool1(模块头)='+T1.origin.map(v=>v.toFixed(3)).join(',')
+         +' · 法兰↔模块头 '+TCP.frames.flange_mm+'mm';
+  }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
-  g.fillText('base 系 · 台面网格 z=0.12m · 拖动旋转',8,14);
-  $('pVr').textContent=(SHOW?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点 · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt);
+  g.fillText('base 系 · 台面网格 z=0.12m · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
+  $('pVr').textContent=(SHOW?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点 · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 let drag=null;
 $('vr').addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};VR.auto=false;$('vr').setPointerCapture(e.pointerId);});
@@ -380,6 +428,8 @@ $('vr').addEventListener('pointermove',e=>{ if(!drag) return;
   drag={x:e.clientX,y:e.clientY}; drawVR(); });
 $('vr').addEventListener('pointerup',()=>{drag=null;});
 $('bFit').addEventListener('click',()=>{ VR.auto=true; drawVR(); });
+$('bFrames').addEventListener('click',()=>{ VR.frames=!VR.frames; VR.auto=true;
+  $('bFrames').classList.toggle('on',VR.frames); drawVR(); });
 let SPIN=null;
 $('bSpin').addEventListener('click',()=>{
   if(SPIN){ clearInterval(SPIN); SPIN=null; $('bSpin').classList.remove('on'); return; }
@@ -503,7 +553,10 @@ $('bAll').addEventListener('click',async ()=>{
 // 🔴 只在"数据真的变了"时重画: 每 1.5s 无条件重画 = 叠加层/VR 面板一直在闪(即便内容没变)
 let SIG='';
 function drawIfChanged(){
-  const tcpK=(TCP&&TCP.ok)?[TCP.x.toFixed(3),TCP.y.toFixed(3),TCP.z.toFixed(3)].join(','):'-';
+  // 🆕 姿态也进指纹: 手腕原地转时 xyz 几乎不动, 只按 xyz 判会让三维视图里的坐标系冻结
+  const _q=(TCP&&TCP.quat)||[0,0,0,0];
+  const tcpK=(TCP&&TCP.ok)?[TCP.x.toFixed(3),TCP.y.toFixed(3),TCP.z.toFixed(3),
+      _q.slice(0,4).map(v=>(v||0).toFixed(2)).join(',')].join(','):'-';
   const s=[(TRAJ.trace||[]).length,(TRAJ.plan||[]).length,tcpK,SHOW?1:0,CALIB?1:0].join('|');
   if(s===SIG) return;
   SIG=s; drawOv(); drawVR();
