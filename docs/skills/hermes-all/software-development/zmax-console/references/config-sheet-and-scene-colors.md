@@ -82,6 +82,18 @@ AR 下面是白色? · 摆盘呢? · 其它无法分类的定义为基础场景,
 4. **二维数组取值坑**: `_f(z["x"], i, k)` 这种助手(第3参是 default)会把 k 当 default 吃掉, 异常时返回 default
    ⇒ 末端/光模块整列变 0,1,2。必须 `_f(z["x"][i], k)`。
 
+## 工程列的真源 = data/database/zmax (不是 reports/)
+老倪 10-12 现场纠正: 「配置中心 状态空间的主工程, 路径不是 reports/, 一个都不对」
+「/home/ubuntu/zmax/data/database/zmax 主工程路径是这」
+- **真源**: `data/database/zmax/zmax_space.proj` (总工程; 代码真源 `tools/gui/project_file.space_path()`,
+  其余 9 个工具同源) + `data/database/zmax/zmax_engineering.db` (工程库, 单一真源: 库内 `projects` 表存工程名/路径)。
+- **坑**: `tools/proj_state.DEFAULT_PROJ` 指向 `reports/projects/SS_主工程_任务配置.zmaxproj` —— 那是 5.21 的
+  **老导出件**; 照它显示工程列 = 全错(文件虽存在, 但已不是工程的落地处)。旧文件还在被某段代码引用 ≠ 它还是真源。
+- 修法: `veh6_config_page._proj_paths()` 候选序 = ① `project_file.find_space()` ② 工程库 projects 表 path
+  ③ `data/database/zmax/zmax_space.proj`; 工程名取总工程文件自带 `name`; tooltip 补「工程目录」「工程库(单一真源)」。
+- 判据: `tools/verify_zmax_open_flow.py` 里工程列断言必须指向 `data/database/zmax` + `zmax_space.proj`
+  (否则判据本身在给错路径背书)。
+
 验收口径 (真看图, 不要看代码就说好了): `xdotool windowactivate --sync <信号窗>` + `scrot -u`(抓**焦点窗自身**,
 不受层序影响; 全屏裁剪会量到压在它上面的配置中心 ⇒ 它的表也有绿/蓝/紫格子 = 假绿) + 数蓝色像素(`#1f6feb`):
 只有组标题 ≈365px, 真信号上屏后 **6263px**; 再 OCR 左栏能看到真信号名与实时值(例: 单颗CT 10.64)。
