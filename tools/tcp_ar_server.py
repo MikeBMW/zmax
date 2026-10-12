@@ -409,8 +409,18 @@ class H(BaseHTTPRequestHandler):
                 self._json(_aoi_state_read())
             elif p == "/api/aoi/read":             # 🔍 只读体检(不拍照)
                 self._json((AOI.health(10082) if AOI else {"err": "aoi_link 不可用"}))
-            elif p == "/api/aoi/gold.jpg":         # 🔍 金手指判据图(工控机口径, 直传)
-                self._send(200, "image/png", (AOI._req("/picture?kind=crop", 10082)["raw"] if AOI else b""))
+            elif p == "/api/aoi/gold.jpg":         # 🔍 金手指判据图
+                # 🆕 2026-10-12 老倪: 「不要显示那么多高亮的条, 就显示你截取的金手指区域即可」
+                #   原来直传工控机 kind=crop = **程序画上去的**判据图(没拍到金手指时也照样画一排) ⇒
+                #   改成端 8793 那格"本机从原始帧裁切的实拍区域"(同一张, 页面/AR 口径一致); 取不到才回退直传。
+                try:
+                    _loc = _get("/snapshot/aoi_gold.jpg", 2.5)  # 本机裁切实拍区域(本机取, 超时要短: 8797 是单线程, 别拖住别的请求)
+                except Exception:                                                # noqa: BLE001
+                    _loc = b""
+                if _loc and len(_loc) > 2000:
+                    self._send(200, "image/jpeg", _loc)
+                else:
+                    self._send(200, "image/png", (AOI._req("/picture?kind=crop", 10082)["raw"] if AOI else b""))
             elif p == "/api/rs_stream_help":
                 self._json({"mjpg": "/rs.mjpg", "snapshot": "/snapshot/rs.jpg",
                             "info": "/api/rs_info", "point": "/api/rs_point?u=&v="})

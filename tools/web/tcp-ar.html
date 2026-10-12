@@ -89,7 +89,7 @@
         <button id="bAoiGo" class="primary">📸 请求检测</button>
       </div>
       <pre id="pAoi">还没跑过 —— 点『📸 请求检测』真拍一张(工控机 10082): 缺陷判决 + 金手指矩形 + 侧边位置修正都回这里。</pre>
-      <img id="aoiImg" style="width:100%;border-radius:6px;margin-top:6px;display:none" alt="金手指判据图(工控机口径)">
+      <img id="aoiImg" style="width:100%;border-radius:6px;margin-top:6px;display:none" alt="金手指判据图(本机从原始帧裁切的实拍区域, 不画任何东西)">
       <div class="row" style="margin-top:8px">
         <button id="bRsDet" class="sm">🔎 找光模块(YOLO)</button>
         <button id="bRsCal" class="sm">📐 标定信息</button>
@@ -487,7 +487,12 @@ function aoiRender(d){
     `倾角 ${(rg.rect||{}).angle_deg}° · bbox ${JSON.stringify(rg.bbox||[])} · 判据 ${j.ver||'—'} keys=${j.n_keys} state=${j.state}\n`+
     `侧边位置修正: Δx = ${sf.dx_px}px${sf.px_per_mm?('  ('+(sf.dx_px/sf.px_per_mm).toFixed(2)+'mm)'):''} · 反旋 ${sf.angle_deg}°`+
     (sf.px_per_mm?'':'  ※ px→mm 需现场雅可比')+`\n时间 ${d.ts||d.age_s||'—'}`;
-  if(d.ok!==false){ const im=$('aoiImg'); im.style.display='block'; im.src='/api/aoi/gold.jpg?t='+Date.now(); }
+  // 🆕 2026-10-12 老倪: 「不要显示那么多高亮的条, 就显示你截取的金手指区域即可」
+  //   判据图**不再**走工控机画的那张(它没拍到金手指也照样画一排 46 根) ⇒ 直取工位总览 8793 的金手指格:
+  //   那是本机从工控机原始帧**裁切出来的实拍区域**(原比例 + 去倾角 + 纵向3×, 不画任何东西)。
+  //   直接由页面取 8791(与 8793 同进程), 不经 8797 中转 —— 中转会被 RealSense 轮询挤住(实测 25s 超时)。
+  if(d.ok!==false){ const im=$('aoiImg'); im.style.display='block';
+    im.src='//'+location.hostname+':8791/snapshot/aoi_gold.jpg?t='+Date.now(); }
 }
 async function aoiGo(){
   $('pAoi').textContent='已请求拍照, 等工控机判决…(真拍一张, 约 3~10s)';

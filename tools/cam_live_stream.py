@@ -1754,10 +1754,15 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         #   工控机 v22 的判据图(kind=crop: 纯黑底 + 等宽键 + 右侧灰块已切)才是"只看金手指"那张,
         #   而且它就是**落盘/送检的同一张** ⇒ 这里默认直接用它(本机零加工, 页面 == 判据图)。
         #   要回到老街口: 环境变量 ZMAX_AOI_GOLD_CALIBER=canonical(重启本服务生效)。
-        if os.environ.get("ZMAX_AOI_GOLD_CALIBER", "same").strip().lower() == "canonical":
-            mode = "canonical"
-        else:
+        # 🆕 2026-10-12 老倪: 「判据图怎么显示这么多根? 不要显示那么多高亮的条, 就显示你截取的金手指区域即可」
+        #   工控机那张 kind=crop 是**程序按认领规则画上去的**(v36 自报 n_keys_raw=46 · 节距 35.5px · 行带 350 行);
+        #   当这一帧根本没拍到金手指排时(实测 /region bbox=null · quad=null · focus=0.1), 它**照样画一排名** ⇒
+        #   现场看到的就是"这么多根, 还对应不上"。⇒ 默认改成**本机从原始帧裁切**(实拍像素, 一个字都不画)。
+        #   要回到工控机画的那张: 环境变量 ZMAX_AOI_GOLD_CALIBER=same (重启本服务生效)。
+        if os.environ.get("ZMAX_AOI_GOLD_CALIBER", "canonical").strip().lower() == "same":
             mode = "same"
+        else:
+            mode = "canonical"
         kind = "crop" if mode == "same" else "origin"
         url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
