@@ -841,7 +841,13 @@ _POINT_SLOTS = {1: "slot1", 2: "slot2", 3: "slot3", 4: "slot4", 5: "slot5", 6: "
 #    没有下发技能(只做显示+记录), 绿=已记 / 灰=未记。
 _SPACE_SLOTS = {1: "space1", 2: "space2", 3: "space3", 4: "space4",
                 5: "space5", 6: "space6", 7: "space7"}
-_POINT_RECORD_ALLOW = set(_POINT_SLOTS.values()) | set(_SPACE_SLOTS.values())
+# 🎯 2026-10-12 老倪: 「金手指 点1 点2 安全点, 侧面点 准备点/侧面点0~3 —— 都变成 标记模式和运动模式:
+#    标记模式下, 点一下就清除, 再点一下就记录」。
+#    ⇒ 这几个**在用示教点**允许从页面把当前 TCP 真值记进去(覆盖是安全的: 回点技能按点名**热读**点位库,
+#      记完即生效; 技能本身只锁"去哪个点", 页面改不了点名, 只能改这个点的坐标)。
+_POINT_TEACH_NAMES = {"金手指点1", "金手指点2", "准备点",
+                      "侧面点0", "侧面点1", "侧面点2", "侧面点3"}
+_POINT_RECORD_ALLOW = (set(_POINT_SLOTS.values()) | set(_SPACE_SLOTS.values()) | _POINT_TEACH_NAMES)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -1008,19 +1014,27 @@ def _ctl_record_point(body: dict) -> dict:
 
 
 def _ctl_clear_point(body: dict) -> dict:
-    """🗑 清除一个**空间点**(老倪 2026-10-01: 「已经记录时, 再次点击, 就是清除这个记录」)。
+    """🗑 清除一个点(**空间点** 或 **示教点**)。
 
-    只允许空间点 ``space1..space7`` —— 号位点位被 ``L2.slotN`` 技能引用, 清掉会让在用的回点失效,
-    不在页面上开这个口子(要清号位走 tools 显式操作)。
-    零运动(不碰机械臂); 删前把原值备份到 ``/tmp/space_points.cleared_*.json`` +
-    追加一行到 ``~/zmax/zmax_data/space_points_removed.jsonl`` (可追溯/可恢复), 再原子替换库文件。
+    2026-10-01 老倪: 「已经记录时, 再次点击, 就是清除这个记录」(空间点)。
+    2026-10-12 老倪: 「金手指 点1 点2 安全点, 侧面点 准备点/侧面点0~3 —— 都变成 标记模式和运动模式:
+      标记模式下, 点一下就清除, 再点一下就记录」⇒ 这几个**在用示教点**也开这个口子。
+    ⚠️ 号位 ``slot1..7`` 仍然**不开** —— 产线 recipe 与多个技能在引用, 清掉会让在用的回点失效(要清走 tools 显式操作)。
+    零运动(不碰机械臂); 删前原值备份到 ``/tmp/<库>.cleared_*.json`` + 追加一行到
+    ``~/zmax/zmax_data/<库>_removed.jsonl`` (可追溯/可恢复), 再原子替换库文件。
     """
     name = str((body or {}).get("name") or "").strip()
-    if name not in set(_SPACE_SLOTS.values()):
+    _is_space = name in set(_SPACE_SLOTS.values())
+    _is_teach = (name in _POINT_TEACH_NAMES) or bool(re.fullmatch(r"安全点\d{1,2}", name))
+    if not (_is_space or _is_teach):
         return {"ok": False, "code": 400,
-                "msg": "只允许清除空间点 %s (收到 %r)" % ("/".join(sorted(_SPACE_SLOTS.values())), name)}
+                "msg": "只允许清除 空间点 %s 或 示教点 %s + 安全点N (号位 slot1..7 不开放; 收到 %r)"
+                       % ("/".join(sorted(_SPACE_SLOTS.values())),
+                          "/".join(sorted(_POINT_TEACH_NAMES)), name)}
+    _kind = "空间点" if _is_space else "示教点"
+    _stem = "space_points" if _is_space else "taught_points"
     dry = bool((body or {}).get("dry"))
-    _p = os.path.join(_REPO_ROOT, "data/skills/l2_atomic/space_points.json")
+    _p = os.path.join(_REPO_ROOT, "data/skills/l2_atomic/%s.json" % _stem)
     try:
         with open(_p, encoding="utf-8") as _f:
             st = json.load(_f)
@@ -1035,10 +1049,10 @@ def _ctl_clear_point(body: dict) -> dict:
     if dry:
         return out
     try:
-        _bak = "/tmp/space_points.cleared_%s_%s.json" % (name, time.strftime("%m%d_%H%M%S"))
+        _bak = "/tmp/%s.cleared_%s_%s.json" % (_stem, name, time.strftime("%m%d_%H%M%S"))
         shutil.copy(_p, _bak)
-        with open(os.path.expanduser("~/zmax/zmax_data/space_points_removed.jsonl"), "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "name": name,
+        with open(os.path.expanduser("~/zmax/zmax_data/%s_removed.jsonl" % _stem), "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "name": name, "kind": _kind,
                                  "removed": old, "by": str((body or {}).get("by") or ""), "backup": _bak},
                                 ensure_ascii=False) + "\n")
         pts.pop(name, None)
@@ -1052,8 +1066,8 @@ def _ctl_clear_point(body: dict) -> dict:
         return {"ok": False, "msg": "清除失败: %s" % str(_e)[:100]}
     out.update({"removed": True, "backup": _bak})
     try:
-        print("[清除空间点] %s ← 原 pos=(%.4f, %.4f, %.4f) · 备份 %s"
-              % (name, old["pos"][0], old["pos"][1], old["pos"][2], _bak), flush=True)
+        print("[清除%s] %s ← 原 pos=(%.4f, %.4f, %.4f) · 备份 %s"
+              % (_kind, name, old["pos"][0], old["pos"][1], old["pos"][2], _bak), flush=True)
     except Exception:                                                         # noqa: BLE001
         pass
     return out
@@ -1247,153 +1261,126 @@ def _gold_legacy_from_natural(nat_bgr, deskew_deg=0.0, vstretch=3.0, fix_hw=(900
     return (buf.tobytes() if okq else b""), meta
 
 
-def _gold_rectify(bgr, hw=(900, 332), stretch=3.0, margin_y=0.16, margin_x=0.02,
-                  dark=(18, 18, 18), box=(63, 185, 80), box_th=2):
-    """🔲 判据图 = 金手指条带**透视矫正**成真正的矩形 + 定尺画布 + 只画一个外框矩形。
+def _gold_rectify(bgr, hw=(900, 332), stretch=1.0, margin_y=0.0, margin_x=0.0,
+                  dark=(18, 18, 18), box=(63, 185, 80), box_th=2, frame_px=None,
+                  skip_lattice=False, force_box=None, lock_key=None):
+    """🔲 判据图 = 金手指条带**透视矫正**成严格矩形 + **等比**(不纵向拉伸) + 四周小余量 + 只画一个绿框。
 
-    老倪 2026-10-12 现场两条投诉, 逐条对上:
-      · 「上下怎么有白色的边缘?」   → 旧路子把条带外的**过曝白带**一起裁进来了 ⇒ 这里只贴条带本身,
-        画布其余部分用深色背景, 白边消失。
-      · 「上下边缘要平行啊」       → 旧路子只做**旋转**(从 /region 拿一个角度) + 等比缩放,
-        而画面里条带是**梯形**(透视) ⇒ 旋转治不了: 实测上边缘 -2.89° / 下边缘 -0.46°, 首尾差 38px。
-        这里用**上下边缘实测**拟两条直线, 取四角做**透视变换** ⇒ 做完上下沿严格水平、左右严格竖直。
-      · 「金手指的矩形外边缘, 需要保留一个小区域」 → 条带按 ~stretch 倍纵向放大后**居中**,
-        四周留深色 margin(默认上下各 16%、左右各 2%)。
-      · 「你需要将中间的矩形, 标记出来」 → 只画**一个**绿色外框(box), 不画任何别的东西。
+    老倪 2026-10-12 三条投诉, 逐条对上:
+      · 「上下怎么有白色的边缘?」  → 条带外的过曝白带不再裁进来(条带由 gold_roi() 给, 只贴它本身),
+        画布其余部分是深色背景 ⇒ 白边消失。
+      · 「上下边缘要平行啊」        → 用**左/中/右三段的上下沿**拟合两条直线(整段积分, 抗齿排内部结构),
+        四角做透视变换 ⇒ 做完上下沿严格水平、左右严格竖直。
+      · 「上边和下面少了一小部分 · 为什么反而更模糊」
+          → 输入条带换成**真实金手指 ROI**(见 aoi_exposure_fix.gold_roi: 边缘锚 + 金色证据向外扩,
+            不再切掉真金手指; x 也不再取全宽背景); 输出**严格等比**: Ws = min(输出宽上限, 条带自身宽)
+            (绝不放大), Hs = 条带高 × Ws/条带宽 —— 不再纵向拉伸 ~2.8 倍(1 输出px 只对 0.36 源px = 糊的根)。
+      · 「保留一个小区域 + 标记中间的矩形」 → 条带四周留小余量(默认按宽 0.8% 且 ≥6px), 只画一个绿框。
 
-    返回 (jpg_bytes, meta); 条带/边缘不可靠时返回 (None, meta) —— 调用方回落旧路子并如实标注,
-    **绝不在一张没拍到条带的帧上硬画一个矩形**(那是"无中生有")。
+    🔴 2026-10-12 第二版(治「还在跳变」):
+      · 几何**锚在锁定的条带自身边界**上(0~W0-1, 0~H0-1), 只用拟合出的上下沿斜率做透视 ⇒ 输出尺寸恒定;
+        之前内部又自己估一次 y/x ⇒ 尺寸逐帧 329/335/340 乱跳(实测), 而且几道"判死"闸让整帧被丢 ⇒
+        逐帧在两条渲染路之间换脸。
+      · 拟合不成 ⇒ **不做透视、原样等比贴**(绝不丢帧); 生产工件在位与否只由下面的自检决定"画不画框"。
+      · 齿排自检(列剖面自相关) r≥0.45 才画框; 画不画由调用方按**施密特触发**决定(见 _gold_rect_vote,
+ 上线 0.46 / 下线 0.36): force_box=True/False 时本函数只出几何、框跟随判定,
+ ⇒ 几何与尺寸绝不随帧变, 只有框的显隐跟工件在位与否。
+
+    返回 (jpg_bytes, meta); 只有条带本身不可用(空/太小)才返回 None —— 调用方回落旧口径并如实标注。
     """
     try:
         if bgr is None or bgr.size == 0:
             return None, {"rect_ok": False, "why": "空图"}
         H0, W0 = bgr.shape[:2]
+        if W0 < 40 or H0 < 12:
+            return None, {"rect_ok": False, "why": "条带太小(%dx%d)" % (W0, H0)}
         sc = min(1.0, 1200.0 / float(max(1, W0)))          # 分析用降采样, 几何再按比例还原
         small = cv2.resize(bgr, (int(W0 * sc), int(H0 * sc)), interpolation=cv2.INTER_AREA) if sc < 1.0 else bgr
         g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
         h, w = g.shape
         gx = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3))
-        # ① 条带行区间: 竖直边缘密度(金手指就是一排竖直边)最大的连续带
         ed = cv2.GaussianBlur(gx.mean(axis=1).reshape(-1, 1), (1, 9), 0).ravel()
         pk = int(np.argmax(ed))
-        if ed[pk] <= 4.0:
-            return None, {"rect_ok": False, "why": "画面里找不到齿排(竖直边缘能量=%.1f)" % ed[pk]}
-        thr = 0.45 * ed[pk]
-        y0 = pk
-        while y0 > 0 and ed[y0 - 1] > thr:
-            y0 -= 1
-        y1 = pk
-        while y1 < h - 1 and ed[y1 + 1] > thr:
-            y1 += 1
-        if y1 - y0 < 8:
-            return None, {"rect_ok": False, "why": "条带太薄(%d 行)" % (y1 - y0)}
-        win = max(6, int((y1 - y0) * 0.45))                 # 上下各留一个小窗找边界①②
-        # ② 条带列区间
-        # 每列的竖直边缘能量(1-D)。做法: 先找"能量核心段"(最强的那片齿排),
-        # 再从核心向两侧**蔓延**(容忍 ≤max(20, 宽*2%) 列的小空隙) ⇒ 得到整排金手指的横向范围。
-        # ⚠️ 不能用"最长连续段": 齿排两端对比度低会断, 实测只取到中间 372/2448 px(判据图被裁成一小块)。
-        ec = gx[max(0, y0):y1 + 1, :].mean(axis=0)
-        pk_e = float(ec.max())
-        if pk_e <= 1.0:
-            return None, {"rect_ok": False, "why": "横向边缘能量太低"}
-        core = np.where(ec > 0.5 * pk_e)[0]
-        if len(core) < 5:
-            return None, {"rect_ok": False, "why": "找不到齿排核心段"}
-        core_lvl = float(np.median(ec[core])) or 1.0
-        ethr = max(1.0, 0.22 * core_lvl)
-        gapmax = max(20, int(w * 0.02))
-        a = int(core[0])
-        gap = 0
-        for i in range(int(core[0]) - 1, -1, -1):
-            if ec[i] > ethr:
-                a, gap = i, 0
-            else:
-                gap += 1
-                if gap > gapmax:
-                    break
-        b2 = int(core[-1])
-        gap = 0
-        for i in range(int(core[-1]) + 1, w):
-            if ec[i] > ethr:
-                b2, gap = i, 0
-            else:
-                gap += 1
-                if gap > gapmax:
-                    break
-        x0, x1 = a, b2
-        if x1 - x0 < 60:
-            return None, {"rect_ok": False, "why": "条带横向太窄(%d px)" % (x1 - x0)}
-        if x1 - x0 < 60:
-            return None, {"rect_ok": False, "why": "条带横向太窄(%d px)" % (x1 - x0)}
-        # ③ 上下边界: 不逐列取点(齿排内部结构会把点带跑, 实测残差 13~18px, 直接判死),
-        #    改成把宽度分 **左/中/右三段**, 每段用"行方向竖直边缘密度"的轮廓定出该段条带的上下沿
-        #    ⇒ 四个角直接给出**倾斜**(左右段中心不同高)与**透视**(左右段厚薄不同)。整段积分 ⇒ 稳。
-        def _band_edges(xa, xb):
-            xa2, xb2 = max(0, int(xa)), min(w, int(xb))
-            if xb2 - xa2 < 12:
-                return None
-            off = max(0, y0 - win)
-            sub = g[off:min(h, y1 + win + 1), xa2:xb2]
-            if sub.shape[0] < 6:
-                return None
-            ed2 = np.abs(cv2.Sobel(sub, cv2.CV_32F, 1, 0, ksize=3)).mean(axis=1)
-            ed2 = cv2.GaussianBlur(ed2.reshape(-1, 1), (1, 7), 0).ravel()
-            pk3 = float(ed2.max())
-            if pk3 < 2.0:
-                return None
-            thr3 = 0.35 * pk3
-            yp = int(np.argmax(ed2))
-            u = yp
-            while u > 0 and ed2[u - 1] > thr3:
-                u -= 1
-            dn = yp
-            while dn < len(ed2) - 1 and ed2[dn + 1] > thr3:
-                dn += 1
-            return (float(off + u), float(off + dn), pk3)
+        # ① 上/下沿拟合 —— 拟合不成也不丢帧, 退化成"原样等比贴"
+        at = ab = 0.0
+        bt_ = bb = 0.0
+        hsrc = float(h)
+        trap = 0.0
+        cseq = [0.0, 0.0]
+        slope_deg = {"top": 0.0, "bot": 0.0}
+        geo = "straight(未拟合到上下沿)"
+        if ed[pk] > 4.0:
+            thr = 0.45 * float(ed[pk])
+            y0 = pk
+            while y0 > 0 and ed[y0 - 1] > thr:
+                y0 -= 1
+            y1 = pk
+            while y1 < h - 1 and ed[y1 + 1] > thr:
+                y1 += 1
+            if y1 - y0 >= 8:
+                win = max(6, int((y1 - y0) * 0.45))
 
-        W3 = float(x1 - x0)
-        segL = _band_edges(x0, x0 + 0.25 * W3)
-        segM = _band_edges(x0 + 0.30 * W3, x0 + 0.70 * W3)
-        segR = _band_edges(x0 + 0.75 * W3, x1)
-        if not (segL and segM and segR):
-            return None, {"rect_ok": False, "why": "上下边界定不出来(左%s/中%s/右%s)"
-                          % tuple(bool(s2) for s2 in (segL, segM, segR))}
-        tl, bl, cL = segL
-        tm, bm, cM = segM
-        tr, br, cR = segR
-        if min(cL, cM, cR) < 2.5:
-            return None, {"rect_ok": False, "why": "边缘对比度太低(%.1f/%.1f/%.1f)" % (cL, cM, cR)}
-        hsrc = ((bl - tl) + (br - tr)) / 2.0
-        band_h = float(y1 - y0)
-        if hsrc < 6.0:
-            return None, {"rect_ok": False, "why": "条带实测高度太小(%.1f px)" % hsrc}
-        if hsrc > 1.6 * band_h + 10.0:            # 实测条带不该远高于"边缘密集带" ⇒ 说明边界被带跑
-            return None, {"rect_ok": False, "why": "上下边界跨度过大(实测%.1f vs 边缘带%.1f px)" % (hsrc, band_h)}
-        mid_meas = (tm + bm) / 2.0
-        mid_lin = ((tl + bl) / 2.0 + (tr + br) / 2.0) / 2.0
-        if abs(mid_meas - mid_lin) > 0.35 * hsrc + 4.0:
-            return None, {"rect_ok": False, "why": "中段与左右段对不上(中%.1f vs 插值%.1f)" % (mid_meas, mid_lin)}
-        at = (tr - tl) / max(1.0, W3)              # 上沿斜率(px/px)
-        ab = (br - bl) / max(1.0, W3)              # 下沿斜率(px/px)
-        bt_ = tl - at * x0
-        bb = bl - ab * x0
-        rt = rb = 0.0
-        nt = nb = 3
-        trapez = float(((br - tr) - (bl - tl)) / max(1e-6, hsrc))
-        slope_deg = {"top": round(float(np.degrees(np.arctan(at))), 2),
-                     "bot": round(float(np.degrees(np.arctan(ab))), 2)}
-        # ④ 四角 → 透视变换(把梯形拉成严格矩形)
-        q = np.float32([[x0, at * x0 + bt_], [x1, at * x1 + bt_],
-                        [x1, ab * x1 + bb], [x0, ab * x0 + bb]])
-        Ws = int(min(hw[0] * (1 - 2 * margin_x), (x1 - x0) / max(1e-6, sc)))
-        Hs = int(min(hw[1] * (1 - 2 * margin_y), max(24.0, hsrc * stretch / max(1e-6, sc))))
-        if Ws < 40 or Hs < 20:
+                def _band_edges(xa, xb):
+                    xa2, xb2 = max(0, int(xa)), min(w, int(xb))
+                    if xb2 - xa2 < 12:
+                        return None
+                    off = max(0, y0 - win)
+                    sub = g[off:min(h, y1 + win + 1), xa2:xb2]
+                    if sub.shape[0] < 6:
+                        return None
+                    ed2 = np.abs(cv2.Sobel(sub, cv2.CV_32F, 1, 0, ksize=3)).mean(axis=1)
+                    ed2 = cv2.GaussianBlur(ed2.reshape(-1, 1), (1, 7), 0).ravel()
+                    pk3 = float(ed2.max())
+                    if pk3 < 2.0:
+                        return None
+                    thr3 = 0.35 * pk3
+                    yp = int(np.argmax(ed2))
+                    u = yp
+                    while u > 0 and ed2[u - 1] > thr3:
+                        u -= 1
+                    dn = yp
+                    while dn < len(ed2) - 1 and ed2[dn + 1] > thr3:
+                        dn += 1
+                    return (float(off + u), float(off + dn), pk3)
+
+                segL = _band_edges(0, 0.25 * w)
+                segM = _band_edges(0.30 * w, 0.70 * w)
+                segR = _band_edges(0.75 * w, w)
+                if segL and segM and segR and min(segL[2], segM[2], segR[2]) >= 2.0:
+                    tl, bl, cL = segL
+                    tm, bm, cM = segM
+                    tr, br, cR = segR
+                    _hs = ((bl - tl) + (br - tr)) / 2.0
+                    _band_h = float(y1 - y0)
+                    _mid_ok = abs((tm + bm) / 2.0 - ((tl + bl) / 2.0 + (tr + br) / 2.0) / 2.0) <= 0.45 * _hs + 6.0
+                    if 6.0 <= _hs <= 2.2 * _band_h + 60.0 and _mid_ok:
+                        _cx_l, _cx_r = 0.125 * w, 0.875 * w          # 左/右段的中心 x
+                        at = (tr - tl) / max(1.0, _cx_r - _cx_l)
+                        ab = (br - bl) / max(1.0, _cx_r - _cx_l)
+                        bt_ = tl - at * _cx_l
+                        bb = bl - ab * _cx_l
+                        hsrc = _hs
+                        trap = float(((br - tr) - (bl - tl)) / max(1e-6, _hs))
+                        cseq = [round(float(cL), 1), round(float(cM), 1), round(float(cR), 1)]
+                        slope_deg = {"top": round(float(np.degrees(np.arctan(at))), 2),
+                                     "bot": round(float(np.degrees(np.arctan(ab))), 2)}
+                        geo = "persp(三段上下沿拟合)"
+        # ② 四角 = 条带自身边界 × 拟合出的上下沿 ⇒ 几何稳定(尺寸不随帧变)
+        _xr = float(w - 1)
+        q = np.float32([[0, bt_], [_xr, at * _xr + bt_], [_xr, ab * _xr + bb], [0, bb]])
+        Ws = int(min(hw[0], float(W0)))                       # 绝不放大(1 输出px ≥ 1 源px)
+        _k = Ws / float(max(1, W0))
+        Hs = int(max(16.0, round(float(H0) * _k * float(stretch))))     # stretch=1.0 ⇒ 严格等比
+        _hmax = int(max(hw[1], 460))
+        if Hs > _hmax:
+            _k2 = _hmax / float(Hs)
+            Ws, Hs = int(Ws * _k2), _hmax
+        if Ws < 40 or Hs < 16:
             return None, {"rect_ok": False, "why": "输出尺寸异常(%dx%d)" % (Ws, Hs)}
         dst = np.float32([[0, 0], [Ws - 1, 0], [Ws - 1, Hs - 1], [0, Hs - 1]])
         M = cv2.getPerspectiveTransform(q / max(1e-6, sc), dst)
         strip = cv2.warpPerspective(bgr, M, (Ws, Hs), flags=cv2.INTER_LINEAR)
-        # ⑤ 🔴 齿排自检(必须有): 矫正后的框里得**真的**是一排周期性金手指, 否则一律不画框
-        #    (老倪 2026-10-12 之前就骂过"没拍到也照样画一排" —— 那叫无中生有)
+        # ③ 🔴 齿排自检: 框里得**真的**是一排周期性金手指, 否则不画框(绝不无中生有)
         gp = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY).astype(np.float32)
         core2 = gp[int(Hs * 0.25):max(int(Hs * 0.25) + 1, int(Hs * 0.75)), :]
         pr = core2.mean(axis=0)
@@ -1404,28 +1391,49 @@ def _gold_rectify(bgr, hw=(900, 332), stretch=3.0, margin_y=0.16, margin_x=0.02,
         seg2 = ac[lo_l:hi_l]
         lag = (lo_l + int(np.argmax(seg2))) if len(seg2) else 0
         rr = float(ac[lag]) if lag else 0.0
-        if len(seg2) < 3 or rr < 0.45 or lag in (lo_l, hi_l - 1):
+        _lat_ok = not (len(seg2) < 3 or rr < 0.45 or lag in (lo_l, hi_l - 1))
+        _draw = _lat_ok if force_box is None else bool(force_box)     # 框: 可由调用方按施密特判定覆盖
+        if not _lat_ok and not skip_lattice and force_box is None:
             return None, {"rect_ok": False, "lattice_fail": True, "lattice_r": round(rr, 3), "lag": lag,
                           "why": "框内没有周期性齿排(自相关 r=%.2f @lag %d) ⇒ 不画框(工件不在位/没对准)"
                                  % (rr, lag)}
-        # ⑥ 深色画布 + 居中贴条带(向内收 1px, 去掉边界混色) + 只画一个外框
-        out = np.full((int(hw[1]), int(hw[0]), 3), dark, np.uint8)
-        dx0, dy0 = (int(hw[0]) - Ws) // 2, (int(hw[1]) - Hs) // 2
+        # ④ 深色画布 + 四周小余量 + 只画一个绿框
+        _fr = int(frame_px) if frame_px else max(6, int(round(Ws * 0.008)))
+        ow, oh = Ws + 2 * _fr, Hs + 2 * _fr
+        # 🔒 输出尺寸锁(2026-10-12): 首次算定后**恒定** —— 条带 ROI 抖几行会让 Hs 变成 348/351 来回
+        #    (老倪「还在跳变」的另一条)。锁定后条带按等比塞进内框, 差 <1% ⇒ 肉眼无感, 但尺寸绝不变。
+        if lock_key is not None:
+            _lk = _GOLD_OUT_LOCK.get(int(lock_key))
+            if _lk is None:
+                _GOLD_OUT_LOCK[int(lock_key)] = (int(ow), int(oh))
+            else:
+                ow, oh = int(_lk[0]), int(_lk[1])
+        iw, ih = max(16, ow - 2 * _fr), max(16, oh - 2 * _fr)
         trim = 1
         core = strip[trim:Hs - trim, trim:Ws - trim]
-        out[dy0 + trim:dy0 + trim + core.shape[0], dx0 + trim:dx0 + trim + core.shape[1]] = core
-        cv2.rectangle(out, (dx0, dy0), (dx0 + Ws - 1, dy0 + Hs - 1), box, int(box_th))
-        ok, buf = cv2.imencode(".jpg", out, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
-        meta = {"rect_ok": True, "ver": "rect-v1-20261012", "out": [int(hw[0]), int(hw[1])],
-                "box": [dx0, dy0, Ws, Hs],
-                "slope_before": slope_deg, "trapez": trapez,
-                "thirds": {"L": [round(tl, 1), round(bl, 1)], "M": [round(tm, 1), round(bm, 1)],
-                           "R": [round(tr, 1), round(br, 1)]},
-                "band": [int(y0 / sc), int(y1 / sc)], "cols": [int(x0 / sc), int(x1 / sc)],
-                "h_src_px": round(hsrc / sc, 1), "hline_px": round(hsrc / sc, 1),
-                "resid": {"top": round(rt, 2), "bot": round(rb, 2), "n": [nt, nb]},
-                "lattice": {"r": round(rr, 3), "lag_px": lag},
-                "margin_px": [dy0, int(hw[1]) - dy0 - Hs, dx0, int(hw[0]) - dx0 - Ws]}
+        _kk = min(iw / float(core.shape[1]), ih / float(core.shape[0]))     # 等比塞进锁定的内框
+        if abs(_kk - 1.0) > 0.002:
+            core = cv2.resize(core, (max(8, int(round(core.shape[1] * _kk))),
+                                     max(8, int(round(core.shape[0] * _kk)))),
+                              interpolation=cv2.INTER_AREA if _kk < 1 else cv2.INTER_LINEAR)
+        out = np.full((oh, ow, 3), dark, np.uint8)
+        _bx = _fr + max(0, (iw - core.shape[1]) // 2)
+        _by = _fr + max(0, (ih - core.shape[0]) // 2)
+        out[_by:_by + core.shape[0], _bx:_bx + core.shape[1]] = core
+        if _draw:
+            cv2.rectangle(out, (_bx - 1, _by - 1), (_bx + core.shape[1], _by + core.shape[0]), box, int(box_th))
+        ok, buf = cv2.imencode(".jpg", out, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        meta = {"rect_ok": True, "ver": "rect-v3-anchored-20261012", "out": [int(ow), int(oh)],
+                "box": [_bx, _by, int(core.shape[1]), int(core.shape[0])], "frame_px": _fr,
+                "size_lock": bool(lock_key is not None), "uniform_k": round(_k, 4),
+                "src_px_per_out_px": round(1.0 / max(1e-6, _k), 3),
+                "geometry": geo, "edge_contrast": cseq,
+                "slope_before": slope_deg, "trapez": round(trap, 4),
+                "band": [int(pk), int(pk)], "cols": [0, int(W0)],
+                "h_src_px": float(H0), "hline_px": round(hsrc, 1), "w_src_px": float(W0),
+                "lattice": {"r": round(rr, 3), "lag_px": lag, "ok": bool(_lat_ok)},
+                "box_drawn": bool(_draw), "force_box": force_box,
+                "margin_px": [_fr, _fr, _fr, _fr]}
         return (buf.tobytes() if ok else None), meta
     except Exception as e:                                                        # noqa: BLE001
         return None, {"rect_ok": False, "why": "异常: %s" % str(e)[:100]}
@@ -1439,12 +1447,91 @@ _AOI_GOLD_RECT = os.environ.get("ZMAX_AOI_GOLD_RECT", "1") != "0"
 _AOI_RECT_LAST: dict = {}                 # 口径决策日志去抖(状态变化才打一行)
 
 
-def _gold_natural_bgr(bgr):
-    """取「原比例条带」的 BGR 版(与判据图**同一裁剪口径**), 供透视矫正用; 不出条带返回 None"""
+_GOLD_RECT_VOTE: dict = {}         # 工件在位状态(施密特: 单帧抖动不改状态 ⇒ 绿框不闪/口径不跳)
+
+
+def _gold_rect_vote(port, rr, base_ok=True, up=0.46, down=0.36):
+    """🔒 「工件在位」判定用 **施密特触发**(默认 上线 0.46 / 下线 0.36) —— 老倪「还在跳变」的真因:
+    实测自检值 r 在门限 0.45 上下抖(0.43 / 0.47 / 0.52 …), 单门限 ⇒ 绿框和渲染口径逐帧来回切。
+    上线取 0.46(与老门限 0.45 同量级 ⇒ 该画框的时候照样画), 下线 0.36 ⇒ 0.36~0.46 之间的抖动不起作用;
+    真摆正(r 0.7~0.9)立刻进, 真拿走(r<0.2)立刻出。"""
     try:
-        from aoi_exposure_fix import clean_judge_frame
-        _rgb, meta = clean_judge_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB),
-                                      out=900, return_natural=True)
+        k = int(port or 0)
+        prev = bool(_GOLD_RECT_VOTE.get(k, False))
+        if not base_ok:
+            _GOLD_RECT_VOTE[k] = False
+            return False
+        if prev:
+            if float(rr) < float(down):
+                _GOLD_RECT_VOTE[k] = False
+        else:
+            if float(rr) >= float(up):
+                _GOLD_RECT_VOTE[k] = True
+        return bool(_GOLD_RECT_VOTE.get(k, False))
+    except Exception:                                                            # noqa: BLE001
+        return bool(base_ok)
+
+
+_GOLD_ROI_LAST: dict = {}          # 🔒 帧间锁框(抗 ±1px 抖动被纵向拉伸放大)
+_GOLD_ROI_PEND: dict = {}          # 去抖: 待确认的新框 (roi, 连续帧数)
+_GOLD_OUT_LOCK: dict = {}          # 🔒 输出尺寸锁: port → (w, h), 首次算定后恒定(尺寸不随帧变)
+_GOLD_ROI_INFO: dict = {}          # 最近一次 ROI 证据(进 meta/日志, 供审计)
+
+
+def _gold_roi_hold(port, roi, tol_y=6, tol_x=12, need=3):
+    """帧间锁框 + 去抖(老倪「还在跳变」的真因之一):
+      · 与上次框的差 ≤tol ⇒ **沿用小框**(源图每帧框抖 ±1~4px 不再传下去);
+      · 差超 tol ⇒ 要**连续 need 帧都指向同一个新框**才切(防单帧误检) —— 实拍 2Hz ⇒ ~1.5s 跟随,
+        工件真移动/换位照样跟得上, 但单帧噪声不会让判据图忽大忽小。"""
+    try:
+        k = int(port or 0)
+        roi = tuple(int(v) for v in roi)
+        prev = _GOLD_ROI_LAST.get(k)
+        if not prev:
+            _GOLD_ROI_LAST[k] = roi
+            _GOLD_ROI_PEND[k] = 0
+            return roi
+        dy = max(abs(roi[1] - prev[1]), abs(roi[3] - prev[3]))
+        dx = max(abs(roi[0] - prev[0]), abs(roi[2] - prev[2]))
+        if dy <= tol_y and dx <= tol_x:
+            _GOLD_ROI_PEND[k] = 0
+            return prev
+        pend = _GOLD_ROI_PEND.get(k)
+        n = 1
+        if pend:
+            p_roi, p_n = pend
+            if max(abs(roi[i] - p_roi[i]) for i in range(4)) <= tol_y:
+                n = p_n + 1
+        if n >= need:
+            _GOLD_ROI_LAST[k] = roi
+            _GOLD_ROI_PEND[k] = 0
+            return roi
+        _GOLD_ROI_PEND[k] = (roi, n)
+        return prev
+    except Exception:                                                            # noqa: BLE001
+        return roi
+
+
+def _gold_natural_bgr(bgr, port=None):
+    """取「原比例条带」的 BGR 版(判据图**同一裁剪口径**), 供透视矫正用; 不出条带返回 None。
+
+    🔲 2026-10-12 新裁剪口径(老倪: 「上边和下面少了一小部分 / 为什么反而更模糊」):
+      · 用 aoi_exposure_fix.gold_roi() 的**真实金手指 ROI**(边缘锚 + 金色证据向外扩; 产线帧 8 帧实测
+        框完全一致、抖动 ≤1px) —— 旧口径(边缘密集带 + 上下 8 行)实测切掉真金手指, 且 x 取全宽
+        (真金手指只占 ~65% 宽 ⇒ 37% 背景白占像素, 判据图被挤糊);
+      · 帧间锁框 _gold_roi_hold() ⇒ 小抖动不跟, 画面不跳;
+      · 找不到 ROI ⇒ 回落旧口径 clean_judge_frame(零回退风险)。"""
+    try:
+        from aoi_exposure_fix import gold_roi, clean_judge_frame
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        roi, info = gold_roi(rgb)
+        if roi is not None:
+            roi = _gold_roi_hold(port, roi)
+            x0, y0, x1, y1 = [int(v) for v in roi]
+            _GOLD_ROI_INFO[int(port or 0)] = dict(info, held_box=[x0, y0, x1, y1])
+            return bgr[y0:y1, x0:x1].copy()
+        _GOLD_ROI_INFO[int(port or 0)] = {"fallback": "gold_roi 未检出", "info": info}
+        _rgb, meta = clean_judge_frame(rgb, out=900, return_natural=True)
         nat = meta.get("natural") if isinstance(meta, dict) else None
         return None if nat is None else cv2.cvtColor(nat, cv2.COLOR_RGB2BGR)
     except Exception as e:                                                        # noqa: BLE001
@@ -2054,21 +2141,34 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                     #    齿排自检不过 ⇒ 不画框、回落旧口径, 并在 meta 里如实写原因(绝不无中生有)。
                     _rj, _rm = (None, {})
                     if _AOI_GOLD_RECT:
-                        _pre = _gold_natural_bgr(bgr)
+                        _pre = _gold_natural_bgr(bgr, port)
                         if _pre is None:
-                            _rm = {"why": "取原比例条带失败(clean_judge_frame 没给出条带)"}
+                            _rm = {"why": "取原比例条带失败(gold_roi 与旧口径都没给出条带)"}
                         else:
-                            _rj, _rm = _gold_rectify(_pre)
+                            # 🔴 2026-10-12: 几何**恒定**(锚在锁定的条带上), 绿框单独跟"工件在位"判定
+                            #   ⇒ 不再逐帧在"有框/无框/旧渲染"之间换脸(老倪「还在跳变」的主因)。
+                            _r0, _m0 = _gold_rectify(_pre, lock_key=port)
+                            _lat = _m0.get("lattice") or {}
+                            _inplace = _gold_rect_vote(port, float(_lat.get("r") or 0.0),
+                                                       bool(_lat.get("ok")))
+                            _r1, _m1 = _gold_rectify(_pre, force_box=_inplace, lock_key=port)
+                            _rj, _rm = (_r1, _m1) if _r1 else (_r0, _m0)
+                            if not _rj and _inplace:                     # 兜底: 自检不过但在位 ⇒ 只出几何
+                                _r2, _m2 = _gold_rectify(_pre, skip_lattice=True)
+                                _rj, _rm = (_r2 or _r0), (_m2 or _m0)
+                            _rm = dict(_rm or {})
+                            _rm["inplace"] = bool(_inplace)
+                            _rm["inplace_rule"] = "schmitt 0.46/0.36"
                     if not _rj:
                         if _pre is not None:
                             # 复用已经裁好的条带(不再第二次 clean) ⇒ 回落也不拖慢刷新节奏
                             jpg, meta = _gold_legacy_from_natural(
-                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
-                                fix_hw=(900, 332), quality=88)
+                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=1.0,
+                                fix_hw=None, quality=90, out=900)
                         else:
                             jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
-                                                   deskew_deg=_aoi_gold_angle(port), vstretch=3.0,
-                                                   fix_hw=(900, 332))
+                                                   deskew_deg=_aoi_gold_angle(port), vstretch=1.0,
+                                                   fix_hw=None)
                         meta = dict(meta or {})
                         meta["rect"] = False
                         meta["rect_why"] = str((_rm or {}).get("why") or "未走新口径")
@@ -2076,6 +2176,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                         jpg, meta = _rj, dict(_rm or {})
                         meta["rect"] = True
                     meta["caliber"] = "canonical"
+                    meta["gold_roi"] = _GOLD_ROI_INFO.get(int(port or 0))
                     _rc = bool(meta.get("rect"))
                     if _rc != _AOI_RECT_LAST.get(name):
                         _AOI_RECT_LAST[name] = _rc

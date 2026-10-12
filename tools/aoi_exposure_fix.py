@@ -197,6 +197,174 @@ def clean_judge_frame(rgb, out: int | None = None, sat_thr: float | None = None,
     return clean, meta
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════
+# 🔲 2026-10-12 老倪: 「判据图还在跳变, 上边和下面少了一小部分; 为什么反而更模糊?
+#    你先从整板原图上, 把矩形区域要截取的部分, 画出边界框」
+#   ⇒ 旧的取景口径 = 『边缘密度 P92 的密集带 + 上下各 pad=8 行』, 实测把真实金手指切掉
+#     上边 11 行 / 下边 32 行(整板 1400x1171 坐标); 而且 x 用全宽(含 37% 无金手指背景),
+#      真正的金手指只占宽度 ~63% ⇒ 背景白占像素, 判据图被挤糊。
+#   新口径 gold_roi(): **两道独立证据**定 ROI(不依赖亮度/边缘密度) ——
+#     · 行: 逐行数『焊盘亮块』(宽 6~40px 的亮段) 个数 ≥ gold_min_cnt 的**最长连续段**;
+#     · 列: 该行段内 『焊盘亮块列』 ∪ 『金色列(R>G 且 G>B 的暖色像素)』 的跨度;
+#     · 四周各留 margin_frac 比例的小余量(默认 1.0%, 最少 6px)。
+#   找不到就如实返回 None, 由调用方回落旧口径 —— 绝不在一张没对准的帧上硬裁。
+_GOLD_DEF = {"w_min": 6, "w_max": 40, "cnt_min": 6, "margin_frac": 0.010, "margin_min": 6,
+             "gold_min": 40, "min_rows": 8}
+
+
+def _blob_spans(row, thr, w_min=6, w_max=40):
+    """一行里宽度在 [w_min, w_max] 的亮段(焊盘量级)"""
+    ok = row > thr
+    out, st = [], None
+    for i, v in enumerate(ok):
+        if v and st is None:
+            st = i
+        elif not v and st is not None:
+            if w_min <= i - st <= w_max:
+                out.append((st, i))
+            st = None
+    if st is not None and w_min <= len(ok) - st <= w_max:
+        out.append((st, len(ok)))
+    return out
+
+
+def gold_roi(rgb, margin_frac=None, cnt_min=None, gold_min=None, max_grow=2.5):
+    """真实金手指 ROI = (x0, y0, x1, y1) + info。两道证据, **锚 + 扩** 两级(2026-10-12 实测):
+      · 锚 = 『竖直边缘密度』最强的连续带(与判据图旧口径同源, 逐帧实测只抖 ±1px —— 它历来稳);
+      · 扩 = 从锚向上下按**金色证据**(R>100 且 R-B>35 且 R>=G 且 G-B>15)向外扩, 容忍 3 行空洞,
+             硬上限 max_grow×锚高 ⇒ 把被旧口径切掉的真金手指补回来, 但不会被别的亮结构带跑
+             (纯 blob 口径在产线帧上实测抖 324 行, 不可用 ⇒ 只当兜底证据)。
+      · 列 = 齿排行内 『金色列』 ∪ 『焊盘亮块列』, 1%/99% 分位抗噪 + 小余量;
+      · 余量 = 上下 max(6, 高*4*margin_frac) px, 左右 max(6, 宽*margin_frac) px。
+    检测不到返回 (None, info) —— 调用方回落旧口径, 绝不硬裁。"""
+    import cv2
+    a = np.asarray(rgb)
+    d = dict(_GOLD_DEF)
+    if margin_frac is not None:
+        d["margin_frac"] = margin_frac
+    if cnt_min is not None:
+        d["cnt_min"] = cnt_min
+    if gold_min is not None:
+        d["gold_min"] = gold_min
+    H, W = a.shape[:2]
+    g = _gray(a).astype(np.float32)
+    if a.ndim == 3:                                    # 约定: 传进来的就是 RGB(clean_judge_frame 同口径)
+        R, G, B = a[:, :, 0].astype(np.int16), a[:, :, 1].astype(np.int16), a[:, :, 2].astype(np.int16)
+    else:
+        R = G = B = g.astype(np.int16)
+    gold = (R > 100) & ((R - B) > 35) & (R >= G) & ((G - B) > 15)
+    gold_row = gold.sum(axis=1)
+
+    # ① 锚: 竖直边缘密度最强带(稳定)
+    gx = np.abs(cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3))
+    ed = cv2.GaussianBlur(gx.mean(axis=1).reshape(-1, 1), (1, 9), 0).ravel()
+    pk = int(np.argmax(ed))
+    base = {"evidence": "edge-anchor ∪ gold-expand", "src_wh": [int(W), int(H)],
+            "edge_pk": round(float(ed[pk]), 2), "gold_px": int(gold.sum())}
+    if ed[pk] <= 4.0:
+        return None, dict(base, why="画面里找不到齿排(竖直边缘能量=%.1f)" % ed[pk])
+    thr = 0.45 * float(ed[pk])
+    ya0 = ya1 = pk
+    while ya0 > 0 and ed[ya0 - 1] > thr:
+        ya0 -= 1
+    while ya1 < H - 1 and ed[ya1 + 1] > thr:
+        ya1 += 1
+    if ya1 - ya0 < 8:
+        return None, dict(base, why="锚带太薄(%d 行)" % (ya1 - ya0))
+
+    # ② 从锚向外按金色证据扩(容忍 3 行空洞, 硬上限 max_grow×锚高)
+    gmin = max(int(d["gold_min"]), int(round(0.004 * W)))
+    ev = gold_row >= gmin
+    if not ev[ya0:ya1 + 1].any():                      # 锚带里没有金色 ⇒ 退回锚本身 + 小 pad
+        y0, y1 = ya0, ya1
+        note = "锚带内无金色证据 ⇒ 只用锚带"
+    else:
+        lim = int(max_grow * (ya1 - ya0 + 1))
+        y0, gap = ya0, 0
+        while y0 > 0 and (ya1 - y0) < lim + (ya1 - ya0):
+            if ev[y0 - 1]:
+                y0 -= 1
+                gap = 0
+            else:
+                gap += 1
+                if gap > 3:
+                    break
+                y0 -= 1
+        if not ev[y0]:
+            y0 = ya0
+        y1, gap = ya1, 0
+        while y1 < H - 1 and (y1 - y0) < lim + (ya1 - ya0):
+            if ev[y1 + 1]:
+                y1 += 1
+                gap = 0
+            else:
+                gap += 1
+                if gap > 3:
+                    break
+                y1 += 1
+        if not ev[y1]:
+            y1 = ya1
+        note = "锚带 y%d~%d + 金色扩到 y%d~%d" % (ya0, ya1, y0, y1)
+
+    # ③ 列证据: 齿排行内 金色列 ∪ 焊盘亮块列
+    cols = np.zeros(W, np.float32)
+    for y in range(y0, y1 + 1):
+        row = g[y]
+        bg = float(np.median(row))
+        hi = float(np.percentile(row, 97))
+        t2 = bg + 0.45 * max(6.0, hi - bg)
+        for (s0, e0) in _blob_spans(row, t2, d["w_min"], d["w_max"]):
+            cols[s0:e0] += 1.0
+    bcol = np.where(cols > 0)[0]
+    gcol = np.where(gold[y0:y1 + 1].sum(axis=0) >= max(6, int(0.15 * (y1 - y0 + 1))))[0]
+    if len(bcol) == 0 and len(gcol) == 0:
+        x0, x1 = 0, W
+        note += " · 无列证据 ⇒ 全宽"
+    else:
+        if len(bcol):
+            x0, x1 = int(np.percentile(bcol, 1)), int(np.percentile(bcol, 99)) + 1
+        else:
+            x0, x1 = int(gcol.min()), int(gcol.max()) + 1
+        if len(gcol):                                  # 金色证据并集(更保守地往外)
+            x0 = min(x0, int(gcol.min()))
+            x1 = max(x1, int(gcol.max()) + 1)
+
+    my = max(int(d["margin_min"]), int(round((y1 - y0) * d["margin_frac"] * 4)))
+    mx = max(int(d["margin_min"]), int(round((x1 - x0) * d["margin_frac"])))
+    x0, x1 = max(0, int(x0) - mx), min(W, int(x1) + mx)
+    y0, y1 = max(0, int(y0) - my), min(H, int(y1) + my)
+    if x1 - x0 < 40 or y1 - y0 < 12:
+        return None, dict(base, why="ROI 太小(%dx%d)" % (x1 - x0, y1 - y0))
+    info = dict(base, note=note, anchor=[int(ya0), int(ya1)],
+                pad_rows=[int(y0), int(y1)], pad_cols=[int(x0), int(x1)],
+                pad_wh=[int(x1 - x0), int(y1 - y0)],
+                gold_cols=[int(gcol.min()), int(gcol.max()) + 1] if len(gcol) else None,
+                blob_cols=[int(bcol.min()), int(bcol.max()) + 1] if len(bcol) else None,
+                margin_px=[int(mx), int(my)])
+    return (int(x0), int(y0), int(x1), int(y1)), info
+
+
+
+
+
+def clean_gold_frame(rgb, return_natural=True, margin_frac=None):
+    """金手指判据图**新裁剪口径**: 只留真实金手指 ROI(不切上下、不缩放/不拉伸)。
+    返回 (band_rgb, meta); 找不到 ROI 返回 (None, meta) 由调用方回落。"""
+    roi, info = gold_roi(rgb, margin_frac=margin_frac)
+    meta = {"ok": roi is not None, "roi_mode": "pads+gold", **info}
+    if roi is None:
+        return None, meta
+    x0, y0, x1, y1 = roi
+    band = np.asarray(rgb)[y0:y1, x0:x1]
+    meta.update({"roi": [int(x0), int(y0), int(x1), int(y1)], "roi_wh": [int(x1 - x0), int(y1 - y0)]})
+    if return_natural:
+        meta["natural"] = band
+    return band, meta
+
+
+
 def stretch_rect(rgb, rect, out: int | None = None, k: float = K_DEFAULT):
     """**把用户框选的矩形拉伸成判据图** (老倪 2026-09-24: "我拖出边界框圈出矩形, 你来将圈选矩形对应拉伸")。
 

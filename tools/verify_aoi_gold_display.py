@@ -8,7 +8,7 @@
   ① 代码默认口径 = 本机裁切 (ZMAX_AOI_GOLD_CALIBER 默认 canonical) —— 静态 + 运行时
   ② 页面那张(8791/8793 /snapshot/aoi_gold.jpg) **不是**工控机画的那张(10082 kind=crop):
      黑底占比差 > 0.30 或 平均像素差 > 20 (画的那张是纯黑底 + 一排键)
-  ③ 页面那张是实拍区域: 无红/绿横幅(占比 < 0.02) · 尺寸 900x332(老口径)
+  ③ 页面那张是实拍区域: 无红/绿横幅(占比 < 0.02) · 尺寸 = 真实金手指 ROI 等比输出(新口径 ~914x33x~35x)
   ④ AR 页那张(8797 /api/aoi/gold.jpg) 与 8793 同源 (平均像素差 < 10)
   另附【如实报告】(不算成败): 工控机自报根数/节距/行带 · /region 是否检出区域 · 机器人 TCP 离各示教点多远
 """
@@ -55,9 +55,17 @@ def img_of(raw):
     return cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
 
 
+def green_frame_ratio(img):
+    """判据图**口框**的绿像素占比(老倪 2026-10-12 要的绿框, 只允许是细框 ≤0.06)"""
+    b, g, r = img[:, :, 0].astype(int), img[:, :, 1].astype(int), img[:, :, 2].astype(int)
+    return float(((g > 110) & (g - r > 45) & (g - b > 45)).mean())
+
+
 def banner_ratio(img):
-    h = img.shape[0]
-    top = img[:max(1, h // 3)]
+    """🔴 红/绿**横幅**(字/条)占比 —— 只统计画面**中间**区域(外圈 6% 留给判据图口框的绿线)。"""
+    h, w = img.shape[0], img.shape[1]
+    dy, dx = max(2, int(h * 0.06)), max(2, int(w * 0.06))
+    top = img[dy:max(dy + 1, h // 3), dx:max(dx + 1, w - dx)]
     b, g, r = top[:, :, 0].astype(int), top[:, :, 1].astype(int), top[:, :, 2].astype(int)
     red = float(((r > 110) & (r - g > 45) & (r - b > 45)).mean())
     grn = float(((g > 110) & (g - r > 45) & (g - b > 45)).mean())
@@ -86,11 +94,12 @@ if page is not None and drawn is not None:
     w = min(page.shape[1], drawn.shape[1])
     d = float(np.abs(page[:h, :w].astype(int) - drawn[:h, :w].astype(int)).mean())
     bp, bd = black_ratio(page), black_ratio(drawn)
-    ck((page.shape[1], page.shape[0]) == (900, 332), "页面那张尺寸 = 900x332(老口径)", page.shape[:2])
+    ck(860 <= page.shape[1] <= 1100 and 240 <= page.shape[0] <= 470,
+       "页面那张 = 新口径(真实金手指 ROI 等比输出 · 不拉伸)", page.shape[:2])
     ck(abs(bp - bd) > 0.30 or d > 20,
        "页面那张 != 工控机画的那张(证明不再是画上去的)",
        "平均像素差 %.1f · 黑底 页面 %.3f vs 画 %.3f" % (d, bp, bd))
-    ck(banner_ratio(page) < 0.02, "页面那张没有红/绿横幅", "%.4f" % banner_ratio(page))
+    ck(banner_ratio(page) < 0.02, "页面那张没有红/绿横幅(绿框=判据图口框另计)", "%.4f" % banner_ratio(page))
     ck(bp < 0.30, "页面那张不是纯黑底(是实拍区域)", "黑底占比 %.3f" % bp)
 
 print("\n=== ④ AR 页的判据图来源 = 本机裁切的实拍区域 ===")
@@ -106,8 +115,44 @@ st = img_of(fetch("http://127.0.0.1:8791/snapshot/aoi_gold.jpg"))
 ck(st is not None, "现场真取到那张",
    ("%dx%d" % (st.shape[1], st.shape[0])) if st is not None else "取不到")
 if st is not None:
-    ck(st.shape[:2] == (332, 900) and banner_ratio(st) < 0.02,
-       "那张 = 实拍裁切(900x332 · 无红/绿横幅)", "黑底 %.3f · 横幅 %.4f" % (black_ratio(st), banner_ratio(st)))
+    ck(860 <= st.shape[1] <= 1100 and 240 <= st.shape[0] <= 470 and banner_ratio(st) < 0.02,
+       "那张 = 实拍裁切(新口径 · 无红/绿横幅)", "%dx%d · 黑底 %.3f · 横幅 %.4f" %
+       (st.shape[1], st.shape[0], black_ratio(st), banner_ratio(st)))
+    # 🔲 2026-10-12 新口径三条不变量(老倪: 上下别切 · 别更糊 · 别跳)
+    g0 = cv2.cvtColor(st, cv2.COLOR_BGR2GRAY)
+    wht = float((g0.mean(axis=1)[:2] > 235).sum() + (g0.mean(axis=1)[-2:] > 235).sum())
+    lap = float(cv2.Laplacian(g0, cv2.CV_64F).var())
+    rows = g0.mean(axis=1); bgv = float(np.median(rows)); nz = np.where(rows > bgv + 12)[0]
+    fill = (float(nz.max() - nz.min() + 1) / g0.shape[0]) if len(nz) else 0.0
+    ck(wht == 0, "① 无白边(上下各 2 行都不是死白)", "白行 %.0f" % wht)
+    ck(fill > 0.80, "② 内容填满画布(不再是一条细缝 + 大片黑)", "内容占高 %.0f%%" % (100 * fill))
+    ck(lap > 380, "③ 清晰度: Laplacian 方差 > 380(旧口径实测 282 ⇒ 更清楚, 不是更糊)", "%.0f" % lap)
+    _fs = []
+    try:
+        r0 = urllib.request.urlopen(urllib.request.Request(
+            "http://127.0.0.1:8791/aoi_gold.mjpg", headers={"User-Agent": "zmax-verify"}), timeout=15)
+        _buf, _t0 = b"", time.time()
+        while len(_fs) < 4 and time.time() - _t0 < 15:
+            _c = r0.read(8192)
+            if not _c:
+                break
+            _buf += _c
+            while True:
+                _i = _buf.find(b"\xff\xd8")
+                _j = _buf.find(b"\xff\xd9", _i + 2) if _i >= 0 else -1
+                if _i < 0 or _j < 0:
+                    break
+                _im = img_of(_buf[_i:_j + 2])
+                if _im is not None:
+                    _fs.append(_im)
+                _buf = _buf[_j + 2:]
+    except Exception:                                                            # noqa: BLE001
+        pass
+    _szs = sorted({im.shape[:2] for im in _fs})
+    ck(len(_szs) <= 1, "④ 尺寸逐帧恒定(老倪「还在跳变」= 两条渲染路逐帧换脸 / 尺寸随帧漂)",
+       "%d 帧尺寸 %s" % (len(_fs), _szs))
+    ck(green_frame_ratio(st) <= 0.06, "⑤ 绿框存在且只是细框(判据图口框, 不是糊成一片)",
+       "绿像素占比 %.4f" % green_frame_ratio(st))
 
 print("\n=== 【如实报告】为什么这张看着不像金手指 ===")
 ci = json.loads(fetch("http://192.168.23.23:10082/crop_info") or b"{}")

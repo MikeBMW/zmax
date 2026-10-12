@@ -129,6 +129,17 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 #spacebar button.norec{background:#2b2410;border-color:#6b5a1e;color:#d9b64a}     /* 未记: 暗黄(不是灰) */
 #spacebar button.norec:hover{background:#3a3016}
 #spacebar button small{display:block;font-size:12px;font-weight:400;opacity:.95;margin-top:4px;white-space:nowrap}
+/* 🎯 金手指 / 侧面点 的 标记·运动 双模式条 (2026-10-12 老倪) —— 与空间点同款按钮, 各换一套配色:
+   金手指=蓝(与回点按钮同色系) · 侧面点=绿(准备点=安全退让位同色); 列数自适应(2~4 个按钮不拉成 7 列)。 */
+#goldbar,#sidebar{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+#goldbar button.rec{background:#0f2f52;border-color:#1f6feb;color:#cfe4ff}
+#goldbar button.rec:hover:not(:disabled){background:#164a80}
+#goldbar button.norec{background:#12161c;border-color:#2a3038;color:#8b949e}
+#goldbar button.norec:hover{background:#1b2027}
+#sidebar button.rec{background:#123d22;border-color:#2ea043;color:#9ff0b5}
+#sidebar button.rec:hover:not(:disabled){background:#17512d}
+#sidebar button.norec{background:#12161c;border-color:#2a3038;color:#8b949e}
+#sidebar button.norec:hover{background:#1b2027}
 .dim{color:#8b949e}
 .ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
 /* ── 右侧控制台 ── */
@@ -349,27 +360,29 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
         <button data-stream="/aoi_gold.mjpg" class="on">判据图</button>
         <button data-stream="/aoi_gold_raw.mjpg">整板原图</button></span>
-        <button id="b_pt1" onclick="gotoPt1(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『金手指点1』(技能 L2.goto_gold_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 点1</button>
-        <span id="pt1_msg" style="font-size:13px;opacity:.85"></span>
-        <!-- 🎯 点2 (2026-10-08 老倪: 「记录当前点，增加 金手指点2 按钮」): 与 点1 完全同一份
-             gotoTeachPoint(不新开通道、不复制闸门); 点位真值 = 示教点库『金手指点2』
-             (2026-10-08 20:58:46 现场实录, 6 帧极差 pos 2e-06m / quat 1e-06)。
-             ⚠️ 本点与 点1 位置只差 2.00mm, 但**姿态差 54.0°** ⇒ 从别处回本点会带一次腕部大角度转身
-             (现场铁律: ≥30° 的姿态变化不能和横移塞进同一段) —— 按之前把这条写在按钮提示里。 -->
-        <button id="b_pt2" onclick="gotoPt2(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『金手指点2』(技能 L2.goto_gold_pt2 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作。注意: 本点与点1 位置仅差 2mm 但姿态差 54°, 从别处过来会带一次腕部大角度转身, 点之前确认末端周围无遮挡">🎯 点2</button>
-        <span id="pt2_msg" style="font-size:13px;opacity:.85"></span>
-        <!-- ➕ 增加安全点 (2026-10-09 老倪: 「当前位置记录，安全点，增加安全点 按钮，
-             在金手指窗口，金手指点2旁边」) —— 零运动: 只"读当前 TCP 真值 + 落盘", 不需要真动授权。
-             三道闸(与号位同一套): 帧龄>2s 拒 / 全0 会话陈旧拒 / 6帧极差>1e-4m(还在动)拒。
-             名称自动取下一个「安全点N」(读 /ctl/points 的 taught 键, 不覆盖已有点)。 -->
-        <button id="b_safept" onclick="addSafePoint(this)"
-          style="font-size:19px;font-weight:700;border-color:#2f6f3f"
-          title="把**当前** TCP 真值记成一个安全点(自动命名 安全点1/2/3…, 不覆盖已有) —— 零运动: 只读真值+落盘, 不需要『授权真动』。停稳再点(还在动会被拒), 记完回执会给出坐标与 6 帧极差。">➕ 增加安全点</button>
-        <span id="safept_msg" style="font-size:13px;opacity:.85"></span></div>
+        <!-- 🎯 2026-10-12 老倪: 「参考 空间点 的标记模式和运动模式, 将 金手指 点1 点2 安全点 都变成
+             标记模式和运动模式; 标记模式下, 点一下就清除, 再点一下就记录」。
+             口径与下方「🧭 空间1~7」**逐条一致**(同一套服务端收口, 不新开任何下发通道):
+               ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止) · 点已记 = 8 秒内再点一次确认**清除**
+               🚀运动模式(默认, 保住原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动), 点未记 = 明确说不动的理由
+             按钮由 loadTPT() 按 /ctl/points 的 taught(示教点库)现渲染: 蓝=已记 / 灰=未记, 「安全点N」有几个就列几个。 -->
+        <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+          <span class="k">模式:</span>
+          <span class="seg" id="goldmode">
+            <button data-m="move" class="on" onclick="setTPTMode('gold','move')">🚀 运动模式</button>
+            <button data-m="mark" onclick="setTPTMode('gold','mark')">✏️ 标记模式</button>
+          </span>
+          <span id="gold_mode_hint" style="font-size:13px;color:#8b949e"></span>
+        </div>
+        <div class="slotbar" id="goldbar"></div>
+        <div class="row" style="padding:4px 10px 2px;align-items:center">
+          <button id="b_safept" onclick="addSafePoint(this)"
+            style="font-weight:700;border-color:#2f6f3f"
+            title="把**当前** TCP 真值记成一个新的安全点(自动命名 安全点1/2/3…, 不覆盖已有) —— 零运动: 只读真值+落盘, 不需要『授权真动』。停稳再点(还在动会被拒), 记完回执会给出坐标与 6 帧极差。记好之后上面就多一个「🛟 安全点N」按钮(运动模式点它 = 走过去)。">➕ 新增安全点</button>
+          <span id="goldpt_msg" style="font-size:13px;opacity:.9"></span>
+          <span id="pt1_msg" style="font-size:12px;opacity:.7"></span>
+          <span id="pt2_msg" style="font-size:12px;opacity:.7"></span>
+          <span id="safept_msg" style="font-size:12px;opacity:.7"></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
@@ -479,27 +492,24 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
            (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面…你重新排列一下UI布局」
             又: 「增加 按钮 准备点，在表面检测的窗口，位置位于 侧面点0的前面」)
            ⇒ 准备点排在危险点(侧面点0)之前 = 出事时往左第一个就能退; 按钮与其右侧结果文字同序。 -->
-      <div class="row" style="padding:6px 10px 2px">
-        <button id="b_ready" onclick="gotoReady(this)"
-          style="font-size:19px;font-weight:700;border-color:#2ea043;color:#3fb950"
-          title="回到示教点『准备点』(技能 L2.goto_ready · 3 段转移: ①就地垂直抬升 50mm ②高位平移到准备点正上方 ③垂直下落 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与侧面点同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 准备点</button>
-        <button id="b_spt0" onclick="gotoSurfacePt0(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『侧面点0』(技能 L2.goto_surface_pt0 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2/3 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点0</button>
-        <button id="b_spt1" onclick="gotoSurfacePt1(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『侧面点1』(技能 L2.goto_surface_pt1 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 走 L2 收口: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点1</button>
-        <button id="b_spt2" onclick="gotoSurfacePt2(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『侧面点2』(技能 L2.goto_surface_pt2 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点2</button>
-        <button id="b_spt3" onclick="gotoSurfacePt3(this)"
-          style="font-size:19px;font-weight:700;border-color:#1f6feb"
-          title="回到示教点『侧面点3』(技能 L2.goto_surface_pt3 · 目标位姿锁在技能定义里, 页面/接口都改不了点位) —— 与 侧面点1/2 同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">🎯 侧面点3</button>
-        <span id="ready_msg" style="font-size:13px;opacity:.85"></span>
-        <span id="spt0_msg" style="font-size:13px;opacity:.85"></span>
-        <span id="spt1_msg" style="font-size:13px;opacity:.85"></span>
-        <span id="spt2_msg" style="font-size:13px;opacity:.85"></span>
-        <span id="spt3_msg" style="font-size:13px;opacity:.85"></span></div>
+      <!-- 🎯 2026-10-12 老倪: 「侧面点 准备点 侧面点0~3 都变成 标记模式和运动模式」——
+           与金手指窗口同一套(也照抄「🧭 空间1~7」); 准备点仍排最左 = 出事往左第一个就能退。 -->
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="sidemode">
+          <button data-m="move" class="on" onclick="setTPTMode('side','move')">🚀 运动模式</button>
+          <button data-m="mark" onclick="setTPTMode('side','mark')">✏️ 标记模式</button>
+        </span>
+        <span id="side_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
+      <div class="slotbar" id="sidebar"></div>
+      <div class="row" style="padding:4px 10px 2px">
+        <span id="sidept_msg" style="font-size:13px;opacity:.9"></span>
+        <span id="ready_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt0_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt1_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt2_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt3_msg" style="font-size:12px;opacity:.7"></span></div>
       <div class="row" style="padding:4px 10px 4px">
         <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10083,'s')" style="font-weight:600">🧾 最后结果</button>
@@ -1883,6 +1893,113 @@ async function loadSpaces(){
   }catch(e){}
 }
 loadSpaces(); setInterval(loadSpaces,10000);
+/* ── 🎯 金手指(点1/点2/安全点) 与 侧面点(准备点/侧面点0~3) 的「标记模式 / 运动模式」(老倪 2026-10-12)
+   老倪原话: 「参考 空间点 的标记模式 和运动模式, 将 金手指 点1 点2 安全点, 侧面点 准备点 侧面点0 点1 点2 点3,
+   都变成 标记模式和运动模式, 标记模式下, 点一下就清除, 再点一下就记录」。
+   口径与「🧭 空间1~7」逐条一致 —— 同一套服务端收口(不新开通道):
+     ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止) · 点已记 = 8 秒内再点一次确认**清除**
+     🚀运动模式(默认 = 原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动) · 点未记 = 明确说不动的理由
+   真源: /ctl/points(taught=示教点库) · 记/清走 /ctl/record_point · /ctl/clear_point(服务端白名单已放行这几个点名)。 */
+const TPT = {
+  gold:{ bar:'#goldbar', seg:'#goldmode', hint:'#gold_mode_hint', msg:'#goldpt_msg', mode:'move',
+         busy:false, over:0, map:{}, dyn:{},
+         items:[{name:'金手指点1', lb:'🎯 点1', skill:'L2.goto_gold_pt1', st:{t0:0,timer:null}, human:'回到金手指点1'},
+                {name:'金手指点2', lb:'🎯 点2', skill:'L2.goto_gold_pt2', st:{t0:0,timer:null}, human:'回到金手指点2'}],
+         dynRe:/^安全点\d+$/, dynSkill:n=>'L2.goto_safe'+(n.match(/\d+/)||[''])[0], dynLb:n=>'🛟 '+n, dynHuman:n=>'去'+n },
+  side:{ bar:'#sidebar', seg:'#sidemode', hint:'#side_mode_hint', msg:'#sidept_msg', mode:'move',
+         busy:false, over:0, map:{}, dyn:{},
+         items:[{name:'准备点', lb:'🎯 准备点', skill:'L2.goto_ready', st:{t0:0,timer:null}, human:'回到准备点'},
+                {name:'侧面点0', lb:'🎯 侧面点0', skill:'L2.goto_surface_pt0', st:{t0:0,timer:null}, human:'回到侧面点0'},
+                {name:'侧面点1', lb:'🎯 侧面点1', skill:'L2.goto_surface_pt1', st:{t0:0,timer:null}, human:'回到侧面点1'},
+                {name:'侧面点2', lb:'🎯 侧面点2', skill:'L2.goto_surface_pt2', st:{t0:0,timer:null}, human:'回到侧面点2'},
+                {name:'侧面点3', lb:'🎯 侧面点3', skill:'L2.goto_surface_pt3', st:{t0:0,timer:null}, human:'回到侧面点3'}]}
+};
+function tptAll(g){
+  const G=TPT[g], out=G.items.slice();
+  Object.keys(G.dyn).sort((a,b)=>parseInt(a.replace(/\D/g,''),10)-parseInt(b.replace(/\D/g,''),10))
+    .forEach(n=>out.push({name:n, lb:G.dynLb(n), skill:G.dynSkill(n), st:{t0:0,timer:null}, human:G.dynHuman(n), dyn:true}));
+  return out;
+}
+function setTPTMode(g,m){
+  const G=TPT[g]; G.mode=m;
+  document.querySelectorAll(G.seg+' button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  const h=$(G.hint);
+  if(h) h.textContent = (m==='move')
+    ? '运动模式(默认): 点已记的点 = 自动走过去(需先🔓授权真动); 点未记的点会明确拒绝'
+    : '标记模式: 点未记 = 记录当前位姿(零运动, 臂要停稳); 点已记 = 再点一次清除该记录';
+  const bar=$(G.bar); if(bar) bar.dataset.sig='';
+  loadTPT();
+}
+async function loadTPT(){
+  try{
+    const j = await getj('/ctl/points?t='+Date.now(), 8000);
+    if(!j||!j.ok||!j.taught) return;
+    const T=j.taught;
+    ['gold','side'].forEach(g=>{
+      const G=TPT[g], bar=$(G.bar); if(!bar) return;
+      const dyn={}; Object.keys(T).forEach(k=>{ if(G.dynRe && G.dynRe.test(k)) dyn[k]=T[k]; });
+      G.dyn=dyn; G.map=T;
+      const all=tptAll(g);
+      const sig=all.map(it=>(T[it.name]&&T[it.name].pos)?'1':'0').join('');
+      if(bar.dataset.sig===sig) return;                  // 状态没变就不重建(不闪)
+      bar.dataset.sig=sig;
+      bar.innerHTML=all.map(it=>{
+        const d=T[it.name]||{}, rec=!!d.pos;
+        const ptxt=rec?('pos=('+(d.pos||[]).join(', ')+')'+(d.abc?(' a b c '+(d.abc||[]).join('/')+'°'):'')+(d.at?(' · '+d.at):'')):'';
+        const tip=rec
+          ? (it.name+' 已记录 '+ptxt+' —— '+(G.mode==='move'?'🚀运动模式: 点我=走过去(需先🔓授权真动)':'✏️标记模式: 再点一次就清除这个记录(8 秒内两次点击确认)'))
+          : (it.name+' 未记录 —— '+(G.mode==='mark'?'✏️标记模式: 点我就把当前 TCP 真值记成它(零运动, 臂要停稳)':'🚀运动模式: 没有目标位姿 ⇒ 先切 ✏️标记模式记一次'));
+        const dim=(G.mode==='move' && (!rec || !it.skill))?' style="opacity:.55"':'';
+        return '<button data-tpt="'+g+'" data-name="'+it.name+'" class="'+(rec?'rec':'norec')+'"'+dim
+          +' title="'+tip.replace(/"/g,'')+'">'+it.lb+'<small>'+(rec?'✅ 已记':'⛔ 未记')+'</small></button>';
+      }).join('');
+      bar.querySelectorAll('button[data-tpt]').forEach(b=>{ b.onclick=()=>tptClick(b.dataset.tpt,b.dataset.name,b); });
+    });
+  }catch(e){}
+}
+async function tptClick(g,name,btn){
+  const G=TPT[g], m=$(G.msg), rec=!!((G.map[name]||{}).pos);
+  if(G.mode==='move'){                       // 🚀 运动模式 = 原来的回点行为(不新开通道)
+    if(!rec){ if(m) m.innerHTML='⛔ <b>'+name+' 还没有记录</b> —— 运动模式要有目标位姿: 先切 ✏️ 标记模式记一次'; return; }
+    const it=tptAll(g).find(x=>x.name===name);
+    if(!it||!it.skill){ if(m) m.innerHTML='⛔ <b>'+name+'</b> 没有回点技能 —— 现在只支持「标记/清除」'; return; }
+    return gotoTeachPoint(btn, it.st, it.skill, name, G.msg, it.human);
+  }
+  if(G.busy){ if(m) m.textContent='⏳ 上一次操作还在进行, 等它完'; return; }
+  if(rec){                                   // ✏️ 标记模式 + 已记 = 清除(8 秒二次确认, 与空间点同口径)
+    if(Date.now()-G.over>8000){
+      G.over=Date.now();
+      if(m) m.innerHTML='⚠️ <b>'+name+' 已有记录</b> —— 再点一次就<b>清除</b>这个记录(清掉变未记, 可以重新记)';
+      return;
+    }
+    G.over=0; G.busy=true; if(m) m.textContent='🗑 正在清除 '+name+' …';
+    try{
+      const j=await post('/ctl/clear_point',{name:name,by:'页面标记模式: 点已记点(8793)'},20000);
+      if(j.ok&&m){
+        m.innerHTML='🗑 <b>已清除 '+name+'</b>'
+          +(j.cleared_pos?(' · 原 pos=('+j.cleared_pos.map(v=>Number(v).toFixed(4)).join(', ')+')'):'')
+          +' —— 现在变未记, 可以重新记'
+          +(j.backup?('<br><span style="opacity:.7">已备份 '+j.backup+' (可回溯)</span>'):'');
+      } else if(m){ m.innerHTML='⛔ 清除失败: '+(j.msg||'未知'); }
+    }catch(e){ if(m) m.innerHTML='⛔ 清除请求失败: '+e; }
+    G.busy=false; await loadTPT(); return;
+  }
+  G.over=0; G.busy=true;                     // ✏️ 标记模式 + 未记 = 记录当前位姿(零运动)
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  if(m) m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 '+name+'…';
+  try{
+    const j=await post('/ctl/record_point',{name:name,note:'页面标记模式: 点未记点即记录(8793)'},45000);
+    if(j.ok&&m){
+      m.innerHTML='✅ <b>'+name+' 已记录</b> · pos=('+j.pos.map(x=>Number(x).toFixed(4)).join(', ')+')'
+        +' · '+j.n_samples+' 帧 · 极差 '+(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+    } else if(m){ m.innerHTML='⛔ '+name+' 记录失败: '+(j.msg||'未知'); if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  }catch(e){ if(m) m.innerHTML='⛔ 请求失败: '+e; if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  G.busy=false; await loadTPT();
+}
+loadTPT(); setInterval(loadTPT,10000);
+try{ setTPTMode('gold','move'); setTPTMode('side','move'); }catch(e){}
+
 /* 🐛 2026-10-01: 建图卡片原来只在点过「▶ 开始建图」之后才取状态 ⇒ 开页面永远是"读状态…"。
    现在开页面就取一次, 之后每 10s 刷一次(端点 /ctl/gs_map POST action=status 已修好)。*/
 try{ gsMapPoll(); setInterval(gsMapPoll, 10000); }catch(e){}
