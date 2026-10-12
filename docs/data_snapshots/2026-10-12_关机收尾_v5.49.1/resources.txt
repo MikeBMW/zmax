@@ -1,0 +1,4 @@
+/dev/nvme0n1p5  396G  315G   62G  84% /
+               total        used        free      shared  buff/cache   available
+Mem:            30Gi        13Gi       3.0Gi       3.3Gi        18Gi        17Gi
+0 %, 798 MiB
