@@ -22,6 +22,21 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 - `wmctrl -lG`: `XSpace Studio — Z-MAX…` / `3D场景` / `📈 实时监控 · Graphic 信号分析`
 - 真源: 任务 `config/ss_task_binding.json`; 配置参数 `outputs/config_sheets/配置单_<TASK>_latest.json`
 
+## 界面入口 (2026-10-12 二次追加: 双击图标 → 配置中心; 三列 + 右下角启动按钮)
+
+- 桌面图标 `~/Desktop/XSpace-Studio.desktop` → `tools/gui/launch_studio.sh`; 脚本导出 `ZMAX_BOOT_PAGE` (默认 config),
+  新实例由 studio.py `QTimer.singleShot(3200, _on_nav(bp))` 跳页; **已有实例**则把 `$ZMAX_BOOT_PAGE` 写进
+  `/tmp/zmax_nav_cmd` 再 `xdotool windowactivate` ⇒ 双击图标永远落到配置中心、不起第二个进程。
+- 任务配置表列: 任务ID/类型/**工程**/**3D场景**/**实时监控**/工艺步骤/… —— 工程=工程名+项目启动文件真名真路径
+  (tooltip 给绝对路径, 判据会 `os.path.isfile` 校真); 实时监控=`#hex 场景 ×N` + `基础/未分类 白 #ffffff`
+  (真源 `config/topics/scene_tags.json`); 3D场景=场景名+场景ID (`插拔场景 · SCN-01-FW`)。
+  三列内容/上色都从真源算, 没绑场景的任务如实写「未绑场景」。
+- 右下角按钮「🚀 启动工程 · 信号 · 场景」(表格下方右对齐) = 确定配置→应用场景→开 画布+3D+信号分析,
+  与 `zmax_open.py step2` 同一执行体。
+- 表宽坑: 列多时用 `ResizeToContents` + 只给「工艺步骤」`Stretch`; 两行单元格要
+  `verticalHeader().setDefaultSectionSize(46)` + `resizeRowsToContents()`, 否则第二行被裁。
+- 启动页判据不要只看代码: 重启后**不发任何命令**, 看 `/tmp/zmax_console_state.json` 是否自己写成 `page=配置`。
+
 ## 坑 (都实测踩过)
 
 1. **状态文件跨进程残留**: 重启控制台后旧文件还在, 只判 `page==配置` 会把上次的当本次 → 判据必须带
