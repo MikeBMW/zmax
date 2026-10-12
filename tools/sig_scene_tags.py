@@ -161,23 +161,71 @@ def _node_signal_tags(universe) -> dict:
     return out
 
 
+# ── 场景专属关键词表 (2026-10-12 老倪: 「插拔信号绿色; 摆盘信号蓝色; AOI信号紫色」) ──
+#  依据 = **各场景自己定义原文里的对象/步骤**(真源 flows/scenes_5jobs.json, 下面每条括注出处),
+#  不是拍脑袋: 只有出现在场景定义里的词才算该场景的信号; 两边都沾(如 光模块/料盘/夹爪共用词)一律不猜 ⇒ 留白。
+SCENE_KEYWORDS = {
+    "插拔场景": {   # SCN-01-FW「FW Loading + EEPROM 写/读校验」: QSFP插座「插入深度35mm」· 步骤「力控拉出/夹爪夹持/对位/固件下载」
+        "孔", "插入", "插拔", "力控", "夹爪", "夹持", "接触", "对位", "固件", "eeprom", "qsfp", "pull", "ins",
+    },
+    "摆盘场景": {   # SCN-06-TRAY「光模块摆盘 (周转盘 → 上料 Tray 盘)」: 周转盘/上料/下料/取件/槽位 · 目标「单颗CT/取放精度」
+        "真空", "吸盘", "周转盘", "料盘", "槽位", "放置", "取件", "上料", "下料", "摆盘", "takt", "vac", "place", "tray",
+    },
+    "AR场景": {     # SCN-07-AOI「AR 光学质量检测 (AOI 联合检查)」: 光学质量/判决/金手指/侧面观察/取像/像素坐标/倾角
+        "aoi", "光学", "金手指", "表面", "判决", "缺陷", "划伤", "污点", "清晰度", "灰度", "边缘占比", "取像", "倾角",
+    },
+}
+# 共用词: 只有信号名里**除了这些词之外没有任何场景专属词**时才算不猜(留白)。
+#   ⚠️ 不能拿"光模块"当一票否决 ——「光模块头到孔_mm」是插拔专属(孔), 之前一否决就被错留白了。
+_AMBIGUOUS = ("夹爪",)
+
+
+def _keyword_tags(universe) -> dict:
+    """按场景定义里的专属关键词给信号打标; 命中多个场景或命中共用词 ⇒ 不打标(白)。"""
+    out = {}
+    for sig in universe:
+        _s = (sig[3:] if str(sig).startswith("ar.") else str(sig)).lower()
+        if any(w in _s for w in _AMBIGUOUS):
+            continue
+        _hit = [sc for sc, kws in SCENE_KEYWORDS.items() if any(k in _s for k in kws)]
+        if len(_hit) == 1:
+            out[sig] = _hit[0]
+    return out
+
+
+def _live_universe() -> set:
+    """现场信号名全集 —— 从 zmax_data/ss_live/*.json 递归取键(等价信号分析窗口里会出现的那批),
+    这样「按场景关键词打标」是在**真实信号名**上算的, 不是在想象中的名字上算的。"""
+    import glob as _glob
+    out = set()
+    for p in _glob.glob(os.path.join(ROOT, "zmax_data", "ss_live", "*.json")):
+        try:
+            if os.path.getsize(p) > 3_000_000:
+                continue
+            with open(p, encoding="utf-8") as f:
+                _acc = {}
+                _walk_keys(json.load(f), _acc, "", 0)      # 注意: _walk_keys 收 dict(setdefault), 不是 set
+                out |= set(_acc.keys())
+        except Exception:                                                     # noqa: BLE001
+            continue
+    return out
+
+
 def build(from_runs: bool = False) -> dict:
     """生成注册表: AR/AOI(紫) + 运行证据 + overrides。返回统计。"""
     reg = _registry()
     overrides = dict(reg.get("overrides") or {})
     sig = {}
     universe = set(_ar_signals().keys()) | set("ar." + k for k in _ar_signals().keys())
-    try:                                    # sstrace 的通用信号名也进候选(推不出来就白)
-        with open(os.path.join(ROOT, "zmax_data", "ss_live", "trace_live.json"), encoding="utf-8") as f:
-            universe |= set((json.load(f).get("signals") or {}).keys())
-    except Exception:                                                         # noqa: BLE001
-        pass
+    universe |= _live_universe()            # 现场信号名(等价于信号分析窗口里会出现的那批)
     try:
         with open(OUT, encoding="utf-8") as f:      # 旧注册表里的名字也别丢
             universe |= set((json.load(f).get("signals") or {}).keys())
     except Exception:                                                         # noqa: BLE001
         pass
     for k, sc in _node_signal_tags(universe).items():
+        sig[k] = sc
+    for k, sc in _keyword_tags(universe).items():       # 场景专属关键词(证据=场景定义原文)
         sig[k] = sc
     for k in _ar_signals():
         sig[k] = "AR场景"
@@ -224,9 +272,15 @@ def tag(key: str) -> str:
     k = str(key or "")
     if k in sig:
         return sig[k]
+    # 来源前缀层: 窗口里的键可能带 ar./sstrace./host./ros./catalog. 等前缀, 逐个剥再查
+    _cand = [k]
+    _parts = k.split(".")
+    for _i in range(1, min(3, len(_parts))):
+        _cand.append(".".join(_parts[_i:]))
+    for _b in _cand:
+        if _b in sig:
+            return sig[_b]
     bare = k.split(".", 1)[1] if k.startswith("ar.") else k
-    if bare in sig:
-        return sig[bare]
     if k.startswith("ar.") or bare.startswith("光学质量检测.") or bare.startswith("AOI."):
         return "AR场景"                    # AR/AOI 前缀兜底: 注册表没刷也认得(照实标场景, 不丢颜色)
     return ""

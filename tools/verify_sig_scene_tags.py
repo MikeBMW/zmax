@@ -41,10 +41,17 @@ def main() -> int:
     import ss_scene_switch as SSW
     ck("AR/AOI 信号 → AR场景", SST.tag("光学质量检测.判决") == "AR场景", SST.tag("光学质量检测.判决"))
     ck("ar. 前缀也认", SST.tag("ar.AOI.判决") == "AR场景", SST.tag("ar.AOI.判决"))
-    ck("未分类 = 白", SST.tag("光模块头到孔_mm") == "" and SST.color("光模块头到孔_mm").lower() == "#ffffff",
-       SST.color("光模块头到孔_mm"))
+    ck("插拔场景信号(孔/插入) → 绿 #2e8b57",
+       SST.tag("sstrace.光模块头到孔_mm") == "插拔场景" and SST.color("sstrace.光模块头到孔_mm").lower() == "#2e8b57",
+       "%s / %s" % (SST.tag("sstrace.光模块头到孔_mm"), SST.color("sstrace.光模块头到孔_mm")))
+    ck("两场景共用词(光模块/夹爪)不硬猜 ⇒ 白",
+       SST.tag("sstrace.光模块.0") == "" and SST.color("sstrace.夹爪").lower() == "#ffffff",
+       "%r / %s" % (SST.tag("sstrace.光模块.0"), SST.color("sstrace.夹爪")))
     reg = json.load(open(os.path.join(ROOT, "config", "topics", "scene_tags.json"), encoding="utf-8"))
     ck("注册表有计数", isinstance(reg.get("counts"), dict), reg.get("counts"))
+    _c = reg.get("counts") or {}
+    ck("三场景各有信号(插拔>0 · 摆盘>0 · AR>0)",
+       int(_c.get("插拔场景") or 0) > 0 and int(_c.get("摆盘场景") or 0) > 0 and int(_c.get("AR场景") or 0) > 0, _c)
 
     print("=== ② 颜色/任务映射与 ss_scene_switch 逐字一致 ===")
     for tid, m in SSW.TASK_SCENE.items():
@@ -89,13 +96,17 @@ def main() -> int:
         ck("默认 = 全部(白)", getattr(w, "_scene_sort", None) == "", getattr(w, "_scene_sort", None))
         # 塞进真信号(带 ar. 前缀的 AR 信号 + 一个未分类), 重建目录
         import time as _t
-        for key, col in (("ar.光学质量检测.判决", "#ff0000"), ("sstrace.光模块头到孔_mm", "#00ff00")):
+        for key, col in (("ar.光学质量检测.判决", "#ff0000"), ("sstrace.光模块头到孔_mm", "#00ff00"),
+                         ("sstrace.pick_place_loop_count", "#00ffff"), ("sstrace.夹爪", "#ff00ff")):
             b = CG.SignalBuffer(key, col, "test")
             b.push(_t.time(), 0.0)
             w.store.bufs[key] = b
-        # ar. 那一组只在「全部来源」范围下显示(3D 范围只列 sstrace.*, 这是既有口径) ⇒ 判据要在全部范围下看
-        w.scope = "all"
+        # 🔴 老倪 2026-10-12: 「AOI 相关的信号也没有啊」—— 原来 ar. 组被 `not only3d` 挡住
+        #   ⇒ 判据现在**只用默认数据范围**(不动 scope)就要能看到 AOI/AR 组, 这才是修好的口径。
         w._fill_tree()
+        _tops = [w.tree.topLevelItem(i).text(0) for i in range(w.tree.topLevelItemCount())]
+        ck("默认数据范围下列出 🥽 AR 场景 · 空间点位 / AOI 话题 组",
+           any("AR 场景" in t and "AOI" in t for t in _tops), _tops[:4])
         _dots, _colors, _plain = [], [], []
         def _walk(it):
             for i in range(it.childCount()):
@@ -109,11 +120,16 @@ def main() -> int:
         for i in range(w.tree.topLevelItemCount()):
             _walk(w.tree.topLevelItem(i))
         ck("AR 信号带 ● 且染成紫 #8957e5", any(c.lower() == "#8957e5" for c in _colors), _colors[:3])
+        ck("插拔信号带 ● 且染成绿 #2e8b57", any(c.lower() == "#2e8b57" for c in _colors), _colors[:4])
+        ck("摆盘信号带 ● 且染成蓝 #1f6feb", any(c.lower() == "#1f6feb" for c in _colors), _colors[:4])
         ck("未分类带 ○ (白圈)", len(_plain) >= 1, _plain[:2])
         # 排序: 选 🟣 AR ⇒ AR 项秩 0, 未分类项秩 1
         w._set_scene_sort("AR场景")
         ck("AR 置顶(秩0) / 未分类(秩1)",
-           w._scene_rank("ar.光学质量检测.判决") == 0 and w._scene_rank("sstrace.光模块头到孔_mm") == 1)
+           w._scene_rank("ar.光学质量检测.判决") == 0 and w._scene_rank("sstrace.夹爪") == 1)
+        w._set_scene_sort("插拔场景")
+        ck("选 🟢 插拔 ⇒ 插拔信号秩0 / 其它秩1",
+           w._scene_rank("sstrace.光模块头到孔_mm") == 0 and w._scene_rank("ar.光学质量检测.判决") == 1)
         ck("标题行给出 当前场景 + 各色计数", "计数" in (w._scene_lab.text() or ""), w._scene_lab.text()[:90])
         w._set_scene_sort("")
         ck("切回 全部(白) = 不排序(都秩 0)", w._scene_rank("sstrace.光模块头到孔_mm") == 0)

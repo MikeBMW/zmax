@@ -82,6 +82,8 @@ DS_BUSDB = os.path.join(DS_DIR, "busdb.json")
 SCENE_SORT_WHITE = "#ffffff"
 SCENE_SORT_ITEMS = (("⚪ 全部(白)", "", SCENE_SORT_WHITE), ("🟢 插拔", "插拔场景", "#2e8b57"),
                     ("🔵 摆盘", "摆盘场景", "#1f6feb"), ("🟣 AR", "AR场景", "#8957e5"))
+# 场景色 (与 tools/ss_scene_switch.py 同一份真值: 插拔绿 / 摆盘蓝 / AR 紫; 未分类=白)
+SCENE_COLORS = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5", "未分类": "#ffffff"}
 
 
 def _scene_tags_mod():
@@ -1763,29 +1765,31 @@ class CanoeGraphicWidget(QWidget):
                 it = QTreeWidgetItem([f"{pref}  ({rel.split('/')[-1]})  等数据…", "-", "-", "-", "-"])
                 it.setForeground(0, QColor(C_DIM))
                 host_root.addChild(it)
-        # 1b) 🥽 AR 场景 · 空间点位 / AOI 话题 (按注册表分组; 数据范围=全部来源时才列)
-        if not only3d:
-            ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
-                              key=lambda x: (self._scene_rank(x.key), x.key))
-            if ar_items:
-                grp = self._ar_groups()
-                ar_root = QTreeWidgetItem(["🥽 AR 场景 · 空间点位 / AOI 话题  (ar_aoi_live.json)", "", "", "", ""])
-                ar_root.setForeground(0, QColor(C_GREEN))
-                self.tree.addTopLevelItem(ar_root)
-                by_g = {}
-                for b in ar_items:
-                    if filt and filt not in b.key.lower():
-                        continue
-                    by_g.setdefault(grp.get(b.key[3:], "AR 场景 · 其它信号"), []).append(b)
-                for g in sorted(by_g):
-                    gnode = QTreeWidgetItem([g, "", "", "", ""])
-                    gnode.setForeground(0, QColor(C_DIM))
-                    for b in by_g[g]:
-                        gnode.addChild(self._make_item(b, checked=b.key in self.selected))
-                    _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
-                    gnode.setExpanded(bool(filt) or _inuse or gnode.text(0) in self._expanded)
-                    ar_root.addChild(gnode)
-                ar_root.setExpanded(True)
+        # 1b) 🥽 AR 场景 · 空间点位 / AOI 话题
+        #   🔴 2026-10-12 老倪: 「实时监控信号的窗口, AOI 相关的信号, 也没有啊」——
+        #     根因: 这一段原来套在 `if not only3d:` 里, 而打开窗口默认的「数据范围」= 3D 场景实时数据,
+        #     于是 AOI/AR 话题(176 条)整组被挡在外面, 一眼看不到。⇒ 与数据范围无关, **一律列出**。
+        ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
+                          key=lambda x: (self._scene_rank(x.key), x.key))
+        if ar_items:
+            grp = self._ar_groups()
+            ar_root = QTreeWidgetItem(["🥽 AR 场景 · 空间点位 / AOI 话题  (ar_aoi_live.json)", "", "", "", ""])
+            ar_root.setForeground(0, QColor(SCENE_COLORS["AR场景"]))
+            self.tree.addTopLevelItem(ar_root)
+            by_g = {}
+            for b in ar_items:
+                if filt and filt not in b.key.lower():
+                    continue
+                by_g.setdefault(grp.get(b.key[3:], "AR 场景 · 其它信号"), []).append(b)
+            for g in sorted(by_g):
+                gnode = QTreeWidgetItem([g, "", "", "", ""])
+                gnode.setForeground(0, QColor(C_DIM))
+                for b in by_g[g]:
+                    gnode.addChild(self._make_item(b, checked=b.key in self.selected))
+                _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
+                gnode.setExpanded(bool(filt) or _inuse or gnode.text(0) in self._expanded)
+                ar_root.addChild(gnode)
+            ar_root.setExpanded(True)
         # 2) Orin ROS2 话题 (数据范围=全部来源时才列)
         ros_root = QTreeWidgetItem(["Orin ROS2 话题", "", ""])
         ros_root.setForeground(0, QColor(C_BLUE))
