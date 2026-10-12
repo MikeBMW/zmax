@@ -2059,6 +2059,17 @@ class DreamView3D(QWidget):
         self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
 
         # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
+        # 🔴 2026-10-12 老倪: 「摆盘…tray盘也太小了, 目测明显放不下」
+        #   根因(实测): 光模块网格一直硬用插拔的 `_PEG_SIZE` (200×30×30mm), 而摆盘料盘外廓只有
+        #   82×124mm、槽位 52×20×12mm ⇒ 画出来的光模块比盘还长 1.6 倍 (当然放不下)。
+        #   修法: 光模块尺寸**按场景取** (摆盘 = 料盘槽位尺寸 = 仿真真值, 插拔 = 200mm 长条)。
+        self._peg_size = _PEG_SIZE
+        if scene_mode(getattr(self, "scene_id", None)) == "tray":
+            try:
+                import sim_scene_def as _SSD2
+                self._peg_size = (float(_SSD2._TRAY_MW), float(_SSD2._TRAY_MD), float(_SSD2._TRAY_MH))
+            except Exception as _e:                                             # noqa: BLE001
+                print("摆盘光模块尺寸取真源失败:", _e)
         scene = []
         # 工作台面板
         # 🎯 2026-09-09 L4 演示: 桌面加宽 (注入设备在右前 0.55,0.42, 原渲染台 x 右缘 0.46 放不下)
@@ -2089,16 +2100,34 @@ class DreamView3D(QWidget):
             try:
                 import sim_scene_def as _SSD
                 for _o in _SSD._tray_layout()["objects"]:
+                    # 🔴 2026-10-12 老倪: 「光模块不能是透明的」—— 独立看图复核: 盘件金块是**无光照平涂**
+                    #   (235,189,61) + 上面有亮黄线框线穿过 + 边上透出灰内底 ⇒ 读起来像玻璃/贴图块。
+                    #   修法: 光模块(金色件)一律走**带光照**实心渲染 (shader='shaded', alpha=1.0) ⇒ 有明暗面,
+                    #   一眼是实心金属件; 盘壁/内底保持平涂 (黑/灰面本来就不该有高光, 改了反而怪)。
+                    _col = tuple(_o["color"]) + (1.0,)
+                    _sh = "shaded" if (abs(float(_o["color"][0]) - 0.92) < 0.05
+                                       and abs(float(_o["color"][2]) - 0.24) < 0.08) else None
                     _it = gl.GLMeshItem(meshdata=_box_mesh(np.asarray(_o["center"], float),
                                                            tuple(float(v) for v in _o["size"])),
-                                        color=tuple(_o["color"]) + (1.0,), smooth=False, shader=None)
+                                        color=_col, smooth=False, shader=_sh)
                     self.view.addItem(_it)
                     scene.append(_it)
             except Exception as _e:                                             # noqa: BLE001
                 print("摆盘盘件渲染失败:", _e)
         else:
             # 带孔盒 (红, 醒目 — 侧插目标件)
-            box = gl.GLMeshItem(meshdata=_box_mesh(self._box_c, _BOX_SIZE),
+            # 🔴 2026-10-12 老倪: 「夹具/孔座 的位置, 与插入的 孔口 横向有个偏差距离」
+            #   根因(实测): meta['box_center'] 是**环境系原点** (z=-0.0008), 这里却当**网格中心**画 ⇒
+            #   盒顶 z=0.0942 而孔口 z=0.1292 ⇒ 孔口浮在盒顶上方 35mm, 盒子还一半埋进桌面
+            #   (盒 z 跨 -0.096~+0.094, 桌面顶 ~0.024) ⇒ 现场看着就是"孔座与孔口错开一截"。
+            #   真值口径: 侧插入口开在盒的 +X 面**中部** ⇒ 盒心由孔口推: x 让 +X 面与孔口面齐平, z=孔口高。
+            _mo = np.asarray(self._mouth, dtype=float)
+            _bc = np.asarray(self._box_c, dtype=float).copy()
+            if abs(float(_mo[2]) - float(_bc[2])) > 0.02:
+                _bc = np.array([float(_mo[0]) - _BOX_SIZE[0] / 2.0, float(_mo[1]), float(_mo[2])])
+                print("🧩 [3D场景] 带孔盒按孔口重定位 (meta z=%.4f → %.4f, 原差 %.1fmm)"
+                      % (float(self._box_c[2]), float(_bc[2]), (float(_mo[2]) - float(self._box_c[2])) * 1000), flush=True)
+            box = gl.GLMeshItem(meshdata=_box_mesh(_bc, _BOX_SIZE),
                                 color=(0.95, 0.22, 0.14, 1.0), smooth=False, shader='shaded')
             self.view.addItem(box)
             scene.append(box)
@@ -2126,8 +2155,9 @@ class DreamView3D(QWidget):
             self.view.addItem(aoi_lens)
             scene.append(aoi_lens)
             # 孔口 (盒子 +X 面上的深色方口 = 光模块侧插入口)
-            mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.004, 0, 0]),
-                                                     (0.012, 0.05, 0.05)),
+            # 2026-10-12: 独立复核发现「孔口方块全图 0 px 可见」= 被盒面吞掉 ⇒ 外移到盒面之外 10mm
+            mouth = gl.GLMeshItem(meshdata=_box_mesh(self._mouth + np.array([0.010, 0, 0]),
+                                                     (0.016, 0.05, 0.05)),
                                   color=(0.04, 0.03, 0.02, 1.0), smooth=False, shader=None)
             self.view.addItem(mouth)
             scene.append(mouth)
@@ -2238,7 +2268,7 @@ class DreamView3D(QWidget):
         self.view.addItem(arm_jaw_r)
         arm.append(arm_jaw_r)
         # 光模块 光模块 (金色光模块 — 独立物体: 抓取前躺在台面, 抓取后随末端; 位置来自 tr["光模块"])
-        arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], _PEG_SIZE),
+        arm_peg = gl.GLMeshItem(meshdata=_box_mesh([0, 0, 0], getattr(self, "_peg_size", _PEG_SIZE)),
                                 color=(0.95, 0.72, 0.10, 1.0), smooth=True, shader='shaded')
         self.view.addItem(arm_peg)
         arm.append(arm_peg)
@@ -2617,6 +2647,21 @@ class DreamView3D(QWidget):
         #   修法: 切换后显式重建场景层 —— `_build_scene()` 本来就是幂等重建 (先清空全部 GL item 再建,
         #   收尾重贴图层开关), 也正是「🔁 重建 3D 视图」按钮调的那个钩子。
         self.scene_id = scene_id
+        # 🧮 2026-10-12 老倪: 「摆盘…光模块不能是透明的」
+        #   根因: 插拔专属的「🧮 流形导航层 · 接触通道曲面」**默认就是开的** —— 它是 8 环半透明管
+        #   (α=0.55) + 一个金色大球 (0.95,0.72,0.10 = 与光模块同色), 画在孔口/插入通道位置; 摆盘场景里
+        #   没有孔口, 这层就正好盖在盘件上当"透视玻璃"看 ⇒ 被看成"光模块是透明的"。
+        #   修法: 切到摆盘自动关掉插拔专属图层 (mani/contact), 用户想开可手动再勾。
+        if scene_mode(scene_id) == "tray":
+            for _lk in ("mani", "contact"):
+                try:
+                    _cb = (getattr(self, "_chk", None) or {}).get(_lk)
+                    if _cb is not None and _cb.isChecked():
+                        _cb.setChecked(False)
+                        print("🧩 [3D场景] 摆盘: 自动关掉插拔专属图层「%s」(半透明通道曲面/同色金球会盖在盘件上)"
+                              % _lk, flush=True)
+                except Exception as _e:                                         # noqa: BLE001
+                    print("⚠️ [3D场景] 关图层 %s 失败: %r" % (_lk, _e), flush=True)
         # 🧩 2026-10-12 老倪: 「摆盘的场景, 为什么还残留着插拔场景的轨迹线?」
         #   根因 = 切场景只重建几何 (_build_scene), **`self.tr` (episode 真源) 没换** ⇒
         #   轨迹层 ("📡 末端实测轨迹") 重建出来还是插拔那份。修法 = 先换 episode 再重建。
@@ -3070,7 +3115,7 @@ class DreamView3D(QWidget):
                                            and len(tr["peg_yaw"]) > i) else 0.0
         _pc2 = np.asarray(peg_grasp, dtype=float) + np.asarray(self._peg_center_off, dtype=float)
         arm[self._arm_idx["peg"]].setMeshData(
-            meshdata=_box_mesh_yaw(_pc2, _PEG_SIZE, _pyv))
+            meshdata=_box_mesh_yaw(_pc2, getattr(self, "_peg_size", _PEG_SIZE), _pyv))
 
         # 🎯 2026-09-09 转台盘十字刻度随 tt_yaw 旋转 (来料旋转的机构证据可见)
         _ttc = self._gl_items.get("tt_cross")

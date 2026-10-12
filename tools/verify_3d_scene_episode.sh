@@ -2,7 +2,8 @@
 # 等控制台就绪 → 统一打开(3D+信号) → 场景 摆盘↔插拔↔摆盘 各抓一张 3D 窗图 → 核 3D 窗到底装了哪条 episode
 cd /home/ubuntu/zmax || exit 1
 PY=gui-venv311/bin/python
-DISP="DISPLAY=:0"
+export DISPLAY=:0
+DISP="env DISPLAY=:0"
 
 echo "── ① 等控制台就绪 (最多 9 分钟) ──"
 for i in $(seq 1 54); do

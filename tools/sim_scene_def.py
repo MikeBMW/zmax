@@ -237,9 +237,13 @@ def _tray_layout() -> dict:
         _o("tray盘·隔板 %d" % (_i + 1), (TX, TY + _dy, BH + WH / 2),
            (PW - 2 * WW, WW, WH), _TRAY_BLACK, "摆盘: 槽位隔板 (3 槽 = 3 个光模块位)")
     for _i, _dy in enumerate((-_TRAY_GAP, 0.0, _TRAY_GAP)):
-        marks.append({"id": "tray_mk_%02d" % (_i + 2), "name": "tray盘 槽位 %d (光模块落位)" % (_i + 1),
-                      "pos": [TX, TY + _dy, BH + WH], "type": "检查点", "radius_m": 0.012,
-                      "source": "摆盘: 固定槽位 ↔ 光模块 (正好落进)"})
+        # 🔴 2026-10-12 老倪: 「tray盘也太小了, 目测明显放不下」—— 独立看图复核: 件(52×20mm)明显超出各自槽位线框。
+        #   根因: 槽位标记 r=0.012 (直径 24mm) < 件长 52mm ⇒ 线框装不下光模块, 现场看着就是"盘太小"。
+        #   修法: 槽位半径按**件半长**取 (+1mm 余量) ⇒ 线框正好包住落位的件。
+        marks.append({"id": "tray_mk_%02d" % (_i + 2), "name": "tray盘 槽位 %d (光模块落位 %.0f×%.0fmm)"
+                      % (_i + 1, _TRAY_MW * 1000, _TRAY_MD * 1000),
+                      "pos": [TX, TY + _dy, BH + WH], "type": "检查点", "radius_m": _TRAY_MW / 2 + 0.001,
+                      "source": "摆盘: 固定槽位 ↔ 光模块 (线框按件半长 %.0fmm)" % (_TRAY_MW * 500)})
     return {"objects": objs, "markers": marks}
 
 
