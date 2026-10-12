@@ -72,8 +72,17 @@ chk(bool(mp.get("node", {}).get("params")), "④ 带画布 M 节点 7 段快照 
     % len((mp.get("node") or {}).get("params") or {}))
 chk(bool((proj["measure"].get("measure_view") or {}).get("源")), "⑤ measure: measure_view 源 %d 条"
     % len((proj["measure"].get("measure_view") or {}).get("源") or []))
-chk(len((proj["tasks"].get("content") or {}).get("tasks") or {}) == 5, "⑥ tasks: %d 个任务"
-    % len((proj["tasks"].get("content") or {}).get("tasks") or {}))
+# 🔴 2026-10-12: 原来写死 ==5 ⇒ 现场任务加到 7 个就报假失败。改成与**真源**比(缺一不可: 存档里
+#   不能少于现场那份), 数目变化不再触发假失败。
+_tasks_arc = (proj["tasks"].get("content") or {}).get("tasks") or {}
+try:
+    import json as _json2
+    with open(os.path.join(ROOT, "config/tasks/tasks.json"), encoding="utf-8") as _f2:
+        _tasks_live = (_json2.load(_f2) or {}).get("tasks") or {}
+except Exception:                                                           # noqa: BLE001
+    _tasks_live = {}
+chk(len(_tasks_arc) >= max(1, len(_tasks_live)), "⑥ tasks: 存档 %d / 真源 %d 个任务"
+    % (len(_tasks_arc), len(_tasks_live)))
 chk(len(proj["fingerprints"]) >= 4, "⑦ fingerprints: %d 个真源文件" % len(proj["fingerprints"]))
 
 print("\n② CLI: verify / inspect / explode / diff")
@@ -218,8 +227,10 @@ import studio as ST                                                   # noqa: E4
 win = ST.StudioMainWindow()          # 真建主窗口 (菜单在它身上, 不在画布模块上)
 app.processEvents()
 menu_txt = [a.text() for a in win.findChildren(_QA)]
-chk(any("保存总工程" in t for t in menu_txt), "主窗口 文件菜单有「🗂 保存总工程」 (%d 项菜单)" % len(menu_txt))
-chk(any("打开总工程" in t for t in menu_txt), "主窗口 文件菜单有「🗂 打开总工程」")
+# 2026-10-12 老倪「zmax_space.proj 默认应该是这个, 保存, 自动更新, 加载这个」⇒ 菜单改名:
+#   💾 保存工程 (更新 zmax_space.proj) / 📂 打开工程 (zmax_space.proj)
+chk(any("保存工程" in t for t in menu_txt), "主窗口 文件菜单有「💾 保存工程 (更新 zmax_space.proj)」 (%d 项菜单)" % len(menu_txt))
+chk(any("打开工程" in t for t in menu_txt), "主窗口 文件菜单有「📂 打开工程 (zmax_space.proj)」")
 chk(callable(getattr(win, "_save_space_file", None)) and callable(getattr(win, "_open_space_file", None)),
     "两个处理函数已绑上菜单")
 SPACE2 = os.path.join(TMP, "zmax_space_gui.proj")

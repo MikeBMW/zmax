@@ -29,8 +29,10 @@ app.processEvents()
 menu_titles = [a.text() for a in win.menuBar().actions()]
 chk(any("画布" in t for t in menu_titles), f"主窗口一级菜单含「画布」 (共 {len(menu_titles)} 个: {menu_titles})")
 acts = getattr(win, "_canvas_menu_acts", {})
-chk(set(acts) == {"save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d"},
-    f"菜单 7 项齐全: {sorted(acts)}")
+# 🔴 2026-10-12: 原来用 == 全等 ⇒ 后来往画布菜单加的项(ss_3d 已算在内, 再新增的)会把判据判失败。
+#   改成"七项必须都在", 多出来的项照实打印(新增功能不该算失败)。
+_WANT = {"save_canvas", "load_canvas", "save_model", "record", "stop_rec", "float", "ss_3d"}
+chk(_WANT <= set(acts), f"菜单七项齐全(另有 {sorted(set(acts) - _WANT)}): {sorted(acts)}")
 for k, sc in (("save_canvas", "Ctrl+Shift+S"), ("load_canvas", "Ctrl+Shift+L"),
               ("record", "Ctrl+Shift+R"), ("float", "Ctrl+Alt+F"), ("ss_3d", "Ctrl+Shift+D")):
     got = acts[k].shortcut().toString() if acts.get(k) else "—"
