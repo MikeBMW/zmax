@@ -111,9 +111,20 @@ def main():
         if te is not None:
             out = te.toPlainText()
         tip_all = "\n".join(tips)
+        # 🔴 期望值**从台账真源现读**(原来写死 0.489774 ⇒ 2026-10-12 现场重教点1 后这条报假失败)
+        _x_led = None
+        try:
+            _p = os.path.join(ROOT, "reports", "aoi_points", "金手指点1.json")
+            with open(_p, encoding="utf-8") as _f:
+                _x_led = float((json.load(_f).get("pos") or [None])[0])
+        except Exception:                                                       # noqa: BLE001
+            pass
+        _x_exp = ("%.6f" % _x_led) if _x_led is not None else None
         ck("金手指点1" in tip_all, "AOI 行 tooltip 里有「金手指点1」")
-        ck("0.489774" in tip_all, "tooltip 里带 x=0.489774", tip_all.split("金手指点1")[-1][:60] if "金手指点1" in tip_all else "")
-        ck("金手指点1" in out and "0.489774" in out, "底部面板(可复制) 里有金手指点1 的位置")
+        ck(bool(_x_exp) and (_x_exp in tip_all), "tooltip 里的 x 与台账真源现读值一致",
+           "台账 x=%s · tooltip %s" % (_x_exp, tip_all.split("金手指点1")[-1][:60] if "金手指点1" in tip_all else ""))
+        ck("金手指点1" in out and bool(_x_exp) and (_x_exp in out),
+           "底部面板(可复制) 里有金手指点1 的位置(与台账同值)", "台账 x=%s" % _x_exp)
         del page
     except Exception as e:                                                  # noqa: BLE001
         ck(False, "配置中心页起窗口", repr(e)[:120])

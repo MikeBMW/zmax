@@ -952,6 +952,67 @@ def _ctl_points() -> dict:
             "space_points_file": "data/skills/l2_atomic/space_points.json"}
 
 
+# 🗂 2026-10-12 老倪: 「我已经通过标注模式更新了金手指点1, 但配置中心还是没更新; 要实时更新数据库, 全局数据要保持一致」
+#   真因(实测): 8793 标记模式走 tools/record_l2_point.py —— **只写 L2 技能库**(taught_points.json),
+#   而配置中心读的是 **AOI 台账** reports/aoi_points/<点名>.json(由 tools/record_point_sdk.py 写)
+#   ⇒ 同一个物理点两套库、各写各的(实测: taught 已 13:14 更新, 台账还停在 10-09 13:37)。
+#   收口: AOI 点(金手指点1/2 · 侧面点0~3 · 准备点 · 安全点N)改走 record_point_sdk.py ——
+#   它一次把 **L2 技能库 + AOI 台账** 写成同一个值; 写完立刻重跑 task_build ⇒ 配置中心/画布同刻一致。
+_AOI_POINT_NAMES = ("金手指点1", "金手指点2", "侧面点0", "侧面点1", "侧面点2", "侧面点3", "准备点")
+
+
+def _is_aoi_point(name: str) -> bool:
+    """这个点是不是 AOI 任务在用的点(要用 AOI 台账那份真源)。"""
+    _n = str(name or "")
+    return (_n in _AOI_POINT_NAMES) or bool(re.fullmatch(r"安全点\d{1,2}", _n))
+
+
+def _run_py(args, timeout=180):
+    """跑一个工程内脚本, 返回 (rc, stdout+stderr)。"""
+    try:
+        _r = subprocess.run([sys.executable or "python3"] + list(args),
+                            capture_output=True, text=True, timeout=timeout)
+        return _r.returncode, (_r.stdout or "") + (_r.stderr or "")
+    except Exception as _e:                                                        # noqa: BLE001
+        return 124, "执行失败: %s" % str(_e)[:160]
+
+
+def _last_json_line(txt):
+    for _l in reversed((txt or "").splitlines()):
+        _l = _l.strip()
+        if _l.startswith("{") and _l.endswith("}"):
+            try:
+                return json.loads(_l)
+            except ValueError:
+                continue
+    return None
+
+
+def _config_sync(tag=""):
+    """🔁 真源变了 ⇒ 立刻重建任务配置(config/tasks/tasks.json), 让配置中心/画布读到新值(不等人工点刷新)。"""
+    _rc, _txt = _run_py([os.path.join(_REPO_ROOT, "tools", "task_build.py")], timeout=120)
+    _ok = _rc == 0
+    print("[配置同步%s] task_build rc=%s%s" % (tag, _rc, "" if _ok else " · " + _txt.strip()[-160:]), flush=True)
+    return _ok
+
+
+def _aoi_ledger_remove(name: str):
+    """🗑 清除 AOI 点时把台账同一份也删掉(先备份, 可回滚) —— 否则配置中心会留一行"已删的点"。"""
+    _fp = os.path.join(_REPO_ROOT, "reports", "aoi_points", "%s.json" % name)
+    if not os.path.isfile(_fp):
+        return {"removed": False, "ledger": _fp, "why": "台账里本来就没有"}
+    try:
+        _bak = "/tmp/aoi_ledger_%s_cleared_%s.json" % (name, time.strftime("%m%d_%H%M%S"))
+        shutil.copy(_fp, _bak)
+        with open(os.path.expanduser("~/zmax/zmax_data/aoi_ledger_removed.jsonl"), "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({"ts": time.time(), "name": name, "ledger": _fp, "backup": _bak},
+                                ensure_ascii=False) + "\n")
+        os.remove(_fp)
+        return {"removed": True, "ledger": _fp, "backup": _bak}
+    except Exception as _e:                                                        # noqa: BLE001
+        return {"removed": False, "ledger": _fp, "why": str(_e)[:120]}
+
+
 def _ctl_record_point(body: dict) -> dict:
     """📝 把**当前** TCP 真值记成号位示教点 (2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」)。
 
@@ -973,14 +1034,21 @@ def _ctl_record_point(body: dict) -> dict:
         _ns = max(4, min(12, int((body or {}).get("samples") or 6)))
     except (TypeError, ValueError):
         _ns = 6
-    cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_l2_point.py"),
-           "--name", name, "--samples", str(_ns), "--json",
-           "--store", ("space" if name.startswith("space") else "taught")]   # 🧭 空间点走独立库
     _note = str((body or {}).get("note") or "").strip()
-    if _note:
-        cmd += ["--desc", _note]
-    if dry:
-        cmd.append("--dry")
+    if (not dry) and _is_aoi_point(name):
+        # AOI 点: 一次写两库(L2 技能库 + AOI 台账) —— 配置中心的真源就是台账, 这样两边永远同值
+        cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_point_sdk.py"),
+               "--record", name, "--n", str(_ns), "--json"]
+        if _note:
+            cmd += ["--desc", _note]
+    else:
+        cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_l2_point.py"),
+               "--name", name, "--samples", str(_ns), "--json",
+               "--store", ("space" if name.startswith("space") else "taught")]   # 🧭 空间点走独立库
+        if _note:
+            cmd += ["--desc", _note]
+        if dry:
+            cmd.append("--dry")
     try:
         _r = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
     except Exception as _e:                                                   # noqa: BLE001
@@ -998,6 +1066,10 @@ def _ctl_record_point(body: dict) -> dict:
         return {"ok": False, "msg": "记录脚本无 JSON 回执: %s" % ((_r.stdout or _r.stderr or "")[-240:])}
     _out["dry"] = dry
     _out["tail"] = "\n".join([_x for _x in (_r.stdout or "").splitlines() if not _x.strip().startswith("{")][-6:])
+    if _out.get("ok") and not dry and _is_aoi_point(name):
+        # 🗂 AOI 点: 台账与技能库同值 + 立刻重建配置 ⇒ 配置中心/画布同刻看到新值(老倪 2026-10-12)
+        _out["aoi_ledger"] = os.path.join("reports", "aoi_points", "%s.json" % name)
+        _out["config_synced"] = _config_sync("记录 %s" % name)
     if _out.get("ok") and not dry:
         log_line = ("[记录点] %s ← (%.4f, %.4f, %.4f) · n=%s · 极差 %.1e m%s"
                     % (name, _out["pos"][0], _out["pos"][1], _out["pos"][2], _out.get("n_samples"),
@@ -1055,6 +1127,8 @@ def _ctl_clear_point(body: dict) -> dict:
             _f.write(json.dumps({"ts": time.time(), "ts_str": time.strftime("%F %T"), "name": name, "kind": _kind,
                                  "removed": old, "by": str((body or {}).get("by") or ""), "backup": _bak},
                                 ensure_ascii=False) + "\n")
+        if _is_aoi_point(name):
+            out["aoi_ledger"] = _aoi_ledger_remove(name)      # 🗂 台账同一份也删(否则配置中心留一行死数据)
         pts.pop(name, None)
         st["points"] = pts
         st["updated_at"] = time.strftime("%F %T")
@@ -1065,6 +1139,8 @@ def _ctl_clear_point(body: dict) -> dict:
     except Exception as _e:                                                   # noqa: BLE001
         return {"ok": False, "msg": "清除失败: %s" % str(_e)[:100]}
     out.update({"removed": True, "backup": _bak})
+    if _is_aoi_point(name):
+        out["config_synced"] = _config_sync("清除 %s" % name)
     try:
         print("[清除%s] %s ← 原 pos=(%.4f, %.4f, %.4f) · 备份 %s"
               % (_kind, name, old["pos"][0], old["pos"][1], old["pos"][2], _bak), flush=True)

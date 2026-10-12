@@ -86,6 +86,7 @@ def main():
     ap.add_argument("--desc", default="")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--n", type=int, default=6)
+    ap.add_argument("--json", action="store_true", help="末尾多打一行 JSON 回执(给 8793 /ctl/record_point 解析用)")
     a = ap.parse_args()
     if not (a.record or a.show):
         ap.print_help()
@@ -101,6 +102,10 @@ def main():
     print("极差: pos %.2e m · quat %.2e" % (sp, sq))
     print(("✅ " if ok else "❌ ") + why)
     if a.show or not ok or not a.record:
+        if a.json:                       # 失败也回一行结构化回执(调用方一眼看出为什么没写)
+            print(json.dumps({"ok": bool(ok and a.record), "why": why, "name": a.record,
+                              "pos": [round(v, 7) for v in mean[:3]], "n_samples": len(rows),
+                              "spread_pos_m": round(sp, 8)}, ensure_ascii=False))
         return 0 if (ok or a.show) else 1
 
     try:
@@ -138,6 +143,13 @@ def main():
                   f, ensure_ascii=False, indent=1)
     print("✅ 已记录点位 %s → %s" % (a.record, STORE))
     print(json.dumps(store["points"][a.record], ensure_ascii=False, indent=1))
+    if a.json:                           # 🗂 同一值同时进了 L2 技能库 与 AOI 台账(reports/aoi_points/<名>.json)
+        print(json.dumps({"ok": True, "name": a.record, "pos": store["points"][a.record]["pos"],
+                          "quat": store["points"][a.record]["quat"],
+                          "recorded_at": store["points"][a.record]["recorded_at"],
+                          "n_samples": len(rows), "spread_pos_m": round(sp, 8),
+                          "overwrote": bool(old), "store": STORE, "ledger": ctx,
+                          "source": store["points"][a.record]["source"]}, ensure_ascii=False))
     return 0
 
 

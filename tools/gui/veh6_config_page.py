@@ -22,7 +22,7 @@ TOOLS = os.path.join(ROOT, "tools")
 if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
-from PyQt5.QtCore import Qt  # noqa: E402
+from PyQt5.QtCore import Qt, QTimer  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLabel,  # noqa: E402
                              QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem,
@@ -911,6 +911,10 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         cv.addWidget(tb)
+        _sync = QLabel("真源同步: —")
+        _sync.setFont(QFont("Consolas", 9))
+        _sync.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
+        cv.addWidget(_sync)
         rb = QHBoxLayout()
         b_cp = _btn("📋 复制这张表", th)
         b_cp.setToolTip("复制成 TSV(可直接粘进 Excel / 飞书表格)")
@@ -939,16 +943,52 @@ class ConfigCenterPage(QWidget):
             except Exception as e:                                              # noqa: BLE001
                 self.out.setPlainText("⛔ 导出失败: %s" % repr(e)[:120])
 
-        def _rl():
-            tk2 = _j(TASKS_J, {}) or {}
-            t2 = next((x for x in (tk2.get("tasks") or []) if str(x.get("task_id")) == "TASK-07-AOI"), {})
-            r2 = _pt_parse(t2)
+        def _fill(r2, silent=False):
             tb.setRowCount(len(r2))
             for i, r in enumerate(r2):
                 for c, v in enumerate((r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"])):
                     tb.setItem(i, c, QTableWidgetItem(str(v)))
-            self.out.setPlainText("🔄 已重新读取任务配置(%s) —— %d 个点位\n%s"
-                                  % (time.strftime("%H:%M:%S"), len(r2), _pt_tsv(r2)))
+            try:
+                from PyQt5.QtGui import QColor as _QC2
+                for c in range(tb.columnCount()):
+                    it = tb.item(0, c)
+                    if it is not None and r2:
+                        it.setForeground(_QC2(th["C_GREEN"]))
+            except Exception:                                                   # noqa: BLE001
+                pass
+            _h = os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0
+            _sync.setText("真源同步: %s · %d 个点位(点位一改就自动跟上, 无需点按钮)"
+                          % (time.strftime("%H:%M:%S", time.localtime(_h)) if _h else "—", len(r2)))
+            if not silent:
+                self.out.setPlainText("🔄 已重新读取任务配置(%s) —— %d 个点位\n%s"
+                                      % (time.strftime("%H:%M:%S"), len(r2), _pt_tsv(r2)))
+
+        def _rl():
+            tk2 = _j(TASKS_J, {}) or {}
+            t2 = next((x for x in (tk2.get("tasks") or []) if str(x.get("task_id")) == "TASK-07-AOI"), {})
+            _fill(_pt_parse(t2))
+
+        # 🔁 2026-10-12 老倪: 「标注模式更新了金手指点1, 配置中心还是没更新; 要实时更新, 全局数据一致」
+        #   ⇒ 表自己盯真源 mtime(任务配置由 task_build 从 AOI 台账重建), 变了就**静默刷新**:
+        #   不用重启控制台、不用点按钮, 点位的记录/清除立刻反映到这里。
+        _watch = {"m": (os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0)}
+
+        def _tick_sync():
+            try:
+                _m = os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0
+            except OSError:
+                return
+            if _m and _m != _watch["m"]:
+                _watch["m"] = _m
+                _t2 = next((x for x in ((_j(TASKS_J, {}) or {}).get("tasks") or [])
+                            if str(x.get("task_id")) == "TASK-07-AOI"), {})
+                _fill(_pt_parse(_t2), silent=True)
+
+        _tmr = QTimer(card)
+        _tmr.setInterval(2000)
+        _tmr.timeout.connect(_tick_sync)
+        _tmr.start()
+        _fill(rows, silent=True)
 
         b_cp.clicked.connect(_cp)
         b_ex.clicked.connect(_ex)
