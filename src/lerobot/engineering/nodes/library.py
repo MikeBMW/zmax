@@ -4811,6 +4811,59 @@ _EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridg
 def node_ss_mani_eng(ctx):
     """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)"""
     log = ctx.get("log")
+    # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。
+    #   ⇒ 本节点先消费**配置单映射出的主参数 M** (= 度量张量 g_ij(x)=M·G_ij(x) 的尺度), 真跑算:
+    #     ① 度量几何量 (dim/mode/独立分量/正定 min_eig/det g/联络 ‖Γ‖/曲率 κ=‖R‖)
+    #     ② 健康度 H (= 度量几何健康 × 内稳态生命力; 内稳态真跑 homeostasis.py)
+    #     ③ 扭矩 τ = M·‖Γ v v‖ (曲率回正力矩: 等效惯量 M × 测地线弯曲加速度; 各向同性 ⇒ Γ=0 ⇒ τ=0, 零回归)
+    try:
+        import importlib.util as _ilu_me
+        import numpy as _np_me
+        _s_me = _ilu_me.spec_from_file_location("config_to_M", os.path.join(_REPO_ROOT, "tools", "config_to_M.py"))
+        _cm = _ilu_me.module_from_spec(_s_me)
+        sys.modules["config_to_M"] = _cm
+        _s_me.loader.exec_module(_cm)
+        _sp = _cm.compute_M()                                       # 配置单 → M (与主参数 M 节点同一映射函数)
+        import lerobot.manifold.metric_field as _MF
+        _mf = _MF.MetricField(dim=int(_sp["dim"]), scale=float(_sp["scale"]), mode=str(_sp["mode"]),
+                              diag=_sp["diag"], comps=_sp["components"], gain=_sp["gain"])
+        _okp, _mn, _detg = _mf.is_positive_definite()
+        _spec_g = _mf.spec()
+        _cr = _mf.curvature_report()
+        _kappa = float(_cr.get("‖R‖_F", 0.0))
+        _x0 = _np_me.zeros(int(_sp["dim"]))
+        _v0 = _np_me.zeros(int(_sp["dim"]))
+        _v0[0] = 1.0
+        _geo = _mf.geodesic_curve(_x0, _v0, steps=5, dt=0.05)[-1]
+        _dev = float(_np_me.linalg.norm(_geo - (_x0 + _v0 * 0.25)))
+        _Gam = _mf.christoffel(_x0)
+        _tau = float(_sp["scale"]) * float(_np_me.linalg.norm(_np_me.einsum("kij,i,j->k", _Gam, _v0, _v0)))
+        _H_metric = 1.0 if (bool(_okp) and abs(float(_np_me.linalg.det(_mf.shape(_x0))) - 1.0) < 1e-9) else 0.0
+        try:
+            from lerobot.manifold.homeostasis import HomeostasisEngine as _HE
+            _H_vit = float((_HE().drive(dt=0.01) or {}).get("vitality", 1.0))
+        except Exception:                                                       # noqa: BLE001
+            _H_vit = None
+        _H = _H_metric * (_H_vit if _H_vit is not None else 1.0)
+        _mani_geo = {"task": _sp["task_id"], "dim": _sp["dim"], "mode": _sp["mode"], "scale": _sp["scale"],
+                     "min_eig": _mn, "det_g": _detg, "kappa": _kappa, "geodesic_dev": _dev, "tau": _tau,
+                     "H_metric": _H_metric, "H_vitality": _H_vit, "H": _H, "audit_sha": _sp["audit_sha"]}
+        _SS_STATE["mani_geo"] = _mani_geo
+        if log:
+            log("🧮 流形引擎 · 用主参数 M 算几何/健康/扭矩 (M ← 配置单 %s 映射, 审计 %s)"
+                % (_sp["task_id"], _sp["audit_sha"][:12]))
+            log("   ① 度量 g=M·G: dim=%d · mode=%s · 独立分量 %d · M=%.4g · 正定 %s (min_eig %.4g) · det g %.4g"
+                % (_spec_g["dim"], _spec_g["mode"], _spec_g["独立分量数"], _spec_g["尺度 M"],
+                   "✅" if _okp else "❌", _mn, _detg))
+            log("   ② κ (曲率) = ‖R‖_F = %.6g · 联络 ‖Γ‖_F = %.6g · 测地线偏离欧氏直线 %.4g"
+                " (常度量 gain=0 ⇒ Γ=0)" % (_kappa, float(_cr.get("‖Γ‖_F", 0.0)), _dev))
+            log("   ③ 健康度 H = %.4g (= 度量几何健康 %.3g × 内稳态生命力 %s)"
+                % (_H, _H_metric, ("%.5g" % _H_vit) if _H_vit is not None else "N/A"))
+            log("   ④ 扭矩 τ = M·‖Γ v v‖ = %.6g (曲率回正力矩: 等效惯量 M × 测地线弯曲加速度; 常度量⇒0)"
+                % _tau)
+    except Exception as _e:                                                     # noqa: BLE001
+        if log:
+            log("⚠️ 主参数 M 几何层不可用 (流形引擎续跑): %r" % (_e,))
     try:
         import importlib.util as _ilu
         import numpy as np
@@ -5070,6 +5123,47 @@ def node_ss_calib_mani(ctx):
     except Exception as _e:                                                 # noqa: BLE001
         if log:
             log("⚠️ 度量张量口径不可用 (退回标量 M): %r" % (_e,))
+    # ①f 🆕 2026-10-12 老倪: 「配置中心的参数, 要映射到主参数 M … 这个逻辑在**主参数 M 节点**实现, 主要是映射关系」。
+    #   ⇒ 本节点 = **配置单 → M 的映射关系** (唯一映射函数 tools/config_to_M.py::compute_M):
+    #     读配置单 (任务/注册表/MCD/绑定/快照/性能指标) → 按 R1~R5 显式映射表定 M →
+    #     写回本节点 params (m_metric/m_mapping/…) → 逐条打印**映射依据**(每条都带来源)。
+    try:
+        import importlib.util as _ilu_cm
+        _s_cm = _ilu_cm.spec_from_file_location("config_to_M", os.path.join(_REPO_ROOT, "tools", "config_to_M.py"))
+        _cm = _ilu_cm.module_from_spec(_s_cm)
+        sys.modules["config_to_M"] = _cm
+        _s_cm.loader.exec_module(_cm)
+        _spec_cm = _cm.compute_M((ctx.get("params") or {}).get("task") or None)      # 缺省=活跃配置单
+        _w_cm = _cm.write_into_node(_spec_cm)                                        # 写回本节点 params (记 m_*)
+        _SS_STATE["config_to_M"] = {"task": _spec_cm["task_id"], "dim": _spec_cm["dim"], "mode": _spec_cm["mode"],
+                                    "scale": _spec_cm["scale"], "diag": _spec_cm["diag"], "comps": _spec_cm["components"],
+                                    "gain": _spec_cm["gain"], "audit_sha": _spec_cm["audit_sha"],
+                                    "node_write_ok": bool(_w_cm.get("ok"))}
+        if log:
+            log("🧮 主参数 M ← 配置单 [%s] 的显式映射 (R1~R5 · 审计哈希 %s · 映射函数 tools/config_to_M.py::compute_M)"
+                % (_spec_cm["task_id"], _spec_cm["audit_sha"][:16]))
+            for _r in _spec_cm["mapping_table"]:
+                log("   [%s] %-16s = %-22s ⇐ %s"
+                    % (_r["id"], _r["target"], str(_r.get("value"))[:22], str(_r["source"])[:64]))
+                _ev = _r.get("evidence") if isinstance(_r.get("evidence"), list) else [_r.get("evidence")]
+                for _e2 in [x for x in _ev if x][:3]:
+                    log("        · %s" % str(_e2)[:104])
+                if _r.get("axis_tolerance"):
+                    for _a in _r["axis_order"]:
+                        log("        · 轴 %-3s ε=%-8.4g ⇐ %s"
+                            % (_a, _r["axis_tolerance"][_a], str(_r["tolerance_sources"][_a])[:66]))
+                if _r.get("input_sources"):
+                    for _k, _v in _r["input_sources"].items():
+                        log("        · 输入 %-10s ⇐ %s" % (_k, str(_v)[:66]))
+            log("   ⇒ 主参数 M = (dim=%d · mode=%s · scale=%.3g [能级 %s] · diag %s · gain %s)"
+                % (_spec_cm["dim"], _spec_cm["mode"], _spec_cm["scale"], _spec_cm["energy_level"],
+                   _spec_cm["diag"], _spec_cm["gain"]))
+            log("   📥 写回本节点 params: %s (键 %s)"
+                % ("✅" if _w_cm.get("ok") else "❌ " + str(_w_cm.get("err")), ",".join(_w_cm.get("written") or [])[:110]))
+            log("   🔗 「用 M 实现功能」在**流形引擎节点** (ss_mani_eng): 度量几何/健康度 H/扭矩 τ")
+    except Exception as _e:                                                 # noqa: BLE001
+        if log:
+            log("⚠️ 配置单→主参数 M 映射不可用 (不影响标量标定): %r" % (_e,))
     try:
         import importlib.util as _ilu
         import numpy as np
