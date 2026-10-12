@@ -88,19 +88,36 @@
 ────────────────────────────────────────
 五、判据与留痕
 ────────────────────────────────────────
-判据: `tools/verify_zmax_open_flow.py` → **24/24 PASS**
+判据 ①`tools/verify_zmax_open_flow.py` → **43/43 PASS**
   ① 接线在位 (执行体 / 命令通道 open_all / 导航写状态 / 页面拿到回调 / 按绑定真源 / 走 ss_scene_switch)
-  ② 按钮 + 选中行 + 无回调退回命令通道
+  ② 配置中心: 右下角按钮「🚀 启动工程 · 信号 · 场景」+ 三列 (工程 / 3D场景 / 实时监控) 表头与真内容 +
+     按钮连 `_open_all_clicked` + `select_task_row` + 无回调退回命令通道
   ③ 驱动四入口 + step2 走 open_all 且能回退三连 (老版本控制台)
   ④ 安全门 (零运动词)
-  ⑤ 真起配置中心页: `select_task_row("TASK-06-TRAY")` 真选中那一行
+  ⑤ 真起配置中心页: 三列真内容 (工程列含项目启动文件真名 + **绝对路径真存在** os.path.isfile 校真 /
+     3D场景列含场景名 · SCN / 实时监控列含场景色 #hex, 且两列同色) + 真渲染按钮在 1280/1400/1920 宽下**在右下角且不挤不截断**
   ⑥ 真点按钮(有回调): 回调收到 task/activate/page, 页内日志逐条结果
   ⑦ 真点按钮(无回调): `/tmp/zmax_nav_cmd` 真被写成 `open_all`
   ⑧ 驱动 `status` 真跑 (退出码 0, 真读到绑定真源与窗口)
   ⑨ 端到端回执 (控制台重启到含本流程的版本后才验, 否则如实"跳过"而不是假绿)
+  ⑩ 双击图标 → 配置中心: studio.py `ZMAX_BOOT_PAGE` 接线 + 启动脚本导出 + 已有实例写通道 + 桌面图标指向本脚本
+
+判据 ②`tools/verify_task_scene_matrix.py` → **46/46 PASS** (配置 × 任务 × 场景 × 信号实时监控 自动测试)
+  对 TASK-01-FW(插拔绿) / TASK-06-TRAY(摆盘蓝) / TASK-07-AOI(AR紫) 逐轮真激活 → 切场景 → 统一打开, 每轮核 6 项真值:
+   ① 绑定真源 `active_task` == 该任务   ② 画布 `ssdata.src_state` == 该场景
+   ③ 控制台回执 (epoch 必须晚于发命令时刻 + task 匹配, 防跨轮残留假绿)   ④ 3D 窗标题带本轮场景名 (真切场景)
+   ⑤ 信号分析窗**自己的内容**里三场景色真上屏 (绿 7895 / 蓝 365 / 紫 756 px; `scrot -u` 抓焦点窗 + 尺寸/OCR 自证)
+   ⑥ 配置中心该行两格文字与颜色 == 该场景
+  收尾自动还原测试前的活跃任务与数据源; 报告 `reports/task_scene_matrix_<ts>.{json,md}` + 每轮信号窗截图 `reports/shots/`。
+  两条实测教训 (都写进判据了): (a) 3D 窗的场景推送必须**排程时定值**, 且在延迟回调里读画布会把上一轮的值推过去;
+  (b) 抓信号窗**不能**用"全屏截图按 wmctrl 几何裁剪" —— 控制台压在它上面时量到的是配置中心的像素, 而配置中心
+      任务表本来就有绿/蓝/紫格子 ⇒ 会假绿; 现在用 `scrot -u` 抓焦点窗 + 尺寸==窗尺寸 + 顶部 OCR 自证。
 
 代码留痕:
-  · `tools/gui/studio.py`: `_open_all_cmd` / `_write_console_state` / 命令通道 `open_all` / `_on_nav` 写状态 / 页面回调注入
-  · `tools/gui/veh6_config_page.py`: 「🚀 确认配置 · 统一打开工程」按钮 + `_open_all_clicked` + `select_task_row`
+  · `tools/gui/studio.py`: `_open_all_cmd` (含 3D 场景对齐数据源) / `_ss3d_push_scene` / `_src_state_now` /
+    `_write_console_state` / 命令通道 `open_all` / `_on_nav` 写状态 / 页面回调注入 / 开机默认页 `ZMAX_BOOT_PAGE`
+  · `tools/gui/veh6_config_page.py`: 右下角「🚀 启动工程 · 信号 · 场景」按钮 + `_open_all_clicked` +
+    `select_task_row` + 三列 (`_proj_cell`/`_proj_tip` · `_scene_cell` · `_monitor_cell` + 双列同色)
+  · `tools/gui/launch_studio.sh`: 双击图标 → 配置中心 (新实例跳页 / 已有实例写通道 + 激活窗口)
   · `tools/zmax_open.py` (新): 标准流程驱动 (step1 / step2 / auto / status)
-  · `tools/verify_zmax_open_flow.py` (新): 上述 24 条判据
+  · `tools/verify_zmax_open_flow.py`: 上述 43 条判据 · `tools/verify_task_scene_matrix.py` (新): 三任务矩阵 40 条

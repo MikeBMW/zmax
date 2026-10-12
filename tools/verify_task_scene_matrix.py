@@ -126,25 +126,112 @@ def send_nav(*cmds):
         f.write("\n".join(cmds) + "\n")
 
 
-def shot_win(w, path):
-    """抓整屏再按窗口几何裁剪 (xwd 在本机不可用)。"""
+def shot_win(w, path, tries=4):
+    """把窗口提到最前**并确认它就是当前活动窗**再抓整屏裁剪。
+
+    实测: 只 windowactivate 有时会被刚开的窗口抢走焦点 (open_all 里 3D/信号窗是延迟开的) ⇒ 抓到的像素
+    其实是压在上面的配置中心 (三色像素数与配置中心表格一模一样, 看着"绿蓝紫都在"但根本不是信号窗)。
+    所以这里核 `xdotool getactivewindow == 窗 id`, 不对就重来; 返回 (图, 是否真抓到该窗)。
+    """
     try:
         import cv2                                                                 # noqa: PLC0415
     except Exception:                                                              # noqa: BLE001
-        return None
+        return None, False
+    _env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+    _wid = str(int(w["id"], 16)) if str(w["id"]).startswith("0x") else str(w["id"])
+    _ok = False
+    for _ in range(max(1, int(tries))):
+        try:
+            subprocess.run(["xdotool", "windowactivate", "--sync", w["id"]], capture_output=True,
+                           timeout=10, env=_env)
+            subprocess.run(["xdotool", "windowraise", w["id"]], capture_output=True, timeout=10, env=_env)
+            time.sleep(1.0)
+            _act = subprocess.run(["xdotool", "getactivewindow"], capture_output=True, text=True,
+                                  timeout=10, env=_env).stdout.strip()
+            if _act == _wid:
+                _ok = True
+                break
+        except Exception:                                                          # noqa: BLE001
+            pass
+        time.sleep(1.0)
     tmp = "/tmp/_matrix_full.png"
-    subprocess.run(["scrot", tmp], capture_output=True,
-                   env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")})
+    subprocess.run(["scrot", tmp], capture_output=True, env=_env)
     img = cv2.imread(tmp)
     if img is None:
-        return None
+        return None, False
     h, wd = img.shape[:2]
     x0, y0 = max(0, w["x"]), max(0, w["y"])
     x1, y1 = min(wd, x0 + w["w"]), min(h, y0 + w["h"])
     crop = img[y0:y1, x0:x1]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     cv2.imwrite(path, crop)
-    return crop
+    return crop, _ok
+
+
+def ocr_band(img, y0=0, y1=40, scale=2.2):
+    """OCR 图上一横带 (tesseract CLI; 本机没有 pytesseract)。失真/失败返回 ""。"""
+    try:
+        import cv2                                                                 # noqa: PLC0415
+        band = img[y0:y1, :]
+        band = cv2.resize(band, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        cv2.imwrite("/tmp/_matrix_band.png", cv2.cvtColor(band, cv2.COLOR_BGR2GRAY))
+        r = subprocess.run(["tesseract", "/tmp/_matrix_band.png", "stdout", "-l", "chi_sim+eng", "--psm", "6"],
+                           capture_output=True, text=True, timeout=60)
+        return (r.stdout or "").strip()
+    except Exception:                                                              # noqa: BLE001
+        return ""
+
+
+def ocr_top(img, h=140):
+    """OCR 顶部 h 像素 (分 40px 带逐带读, 标签栏/工具条各在一带里)。"""
+    txt = []
+    for y in range(0, max(40, int(h)), 40):
+        t = ocr_band(img, y, min(img.shape[0], y + 40))
+        if t:
+            txt.append(t)
+    return " | ".join(txt)
+
+
+SIG_MARKS = ("增加信号", "采样点", "导出", "视图", "网格", "信号")
+
+
+def shot_sig_window(w, path, tries=5):
+    """抓**信号分析窗自己的内容**: 先聚焦, 再用 `scrot -u` (抓当前焦点窗) —— 不依赖窗口层序。
+
+    实测踩过两次坑:
+      ① 只 `windowactivate` 再抓全屏裁剪 ⇒ 控制台在它上面 (open_all 会延迟开窗/抢焦点), 量到的是**配置中心**
+         的像素; 而配置中心任务表本身就有绿/蓝/紫格子 ⇒ "三色都在场"看着像通过, 其实是假绿。
+      ② 按 wmctrl 几何裁全屏同样被上层窗口污染 ⇒ 必须抓**窗自己的 drawable** (`scrot -u`)。
+    自证: 抓到图的尺寸必须 == 该窗尺寸 (是别的窗就对不上), 且顶部 OCR 读得到信号窗工具条。
+    返回 (图, OCR 文本, 是否自证成功)。
+    """
+    try:
+        import cv2                                                                 # noqa: PLC0415
+    except Exception:                                                              # noqa: BLE001
+        return None, "", False
+    _env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+    img, txt = None, ""
+    for _ in range(max(1, int(tries))):
+        try:
+            subprocess.run(["xdotool", "windowactivate", "--sync", w["id"]], capture_output=True,
+                           timeout=10, env=_env)
+            time.sleep(1.0)
+            subprocess.run(["scrot", "-u", "/tmp/_matrix_win.png"], capture_output=True, timeout=20, env=_env)
+        except Exception:                                                          # noqa: BLE001
+            time.sleep(1.0)
+            continue
+        img = cv2.imread("/tmp/_matrix_win.png")
+        if img is None:
+            time.sleep(1.0)
+            continue
+        _size_ok = abs(img.shape[1] - int(w["w"])) <= 8 and abs(img.shape[0] - int(w["h"])) <= 8
+        txt = ocr_top(img)
+        if _size_ok and any(m in txt for m in SIG_MARKS):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            cv2.imwrite(path, img)
+            return img, txt, True
+        time.sleep(1.2)
+    return img, txt, False
 
 
 def count_color(img, hexs, tol=14):
@@ -204,7 +291,11 @@ def one_round(task, want):
     ck("④ 3D 场景窗口在", bool(w3), run["win3d"])
     _want3 = (want.get("win3d") or "").strip()
     if _want3:
-        ck("④ 3D 窗口标题带本轮场景名 (%s)" % _want3, _want3 in (run["win3d"] or ""),
+        # 场景是 open_all 里延迟推给 3D 窗的 (等窗建好 + 有界重试), 这里同样有界等标题到位
+        w3b = wait_for(lambda: (lambda w: w if (w and _want3 in (w["title"] or "")) else None)(find_win("3D场景")), 45)
+        if w3b:
+            run["win3d"] = w3b["title"]
+        ck("④ 3D 窗口标题带本轮场景名 (%s)" % _want3, bool(w3b),
            "%s (窗口真切场景, 不是只开个窗)" % run["win3d"])
     else:
         ck("④ AR 场景: 3D 窗如实不套仿真目录 (标题不带场景名)", True,
@@ -214,13 +305,23 @@ def one_round(task, want):
     ck("⑤ 信号分析窗口在", bool(wsig), run["winsig"])
 
     if wsig:
-        img = shot_win(wsig, os.path.join(SHOTS, "matrix_%s.png" % task))
-        if img is not None:
+        time.sleep(2.5)                        # 等控制台把窗口开齐/停止抢焦点, 再提信号窗
+        img, _txt, _ok = shot_sig_window(wsig, os.path.join(SHOTS, "matrix_%s.png" % task), tries=6)
+        run["sig_shot_ocr"] = _txt[:120]
+        ck("⑤ 抓到的确实是信号分析窗 (提窗 + OCR 自证)",
+           bool(_ok), (_txt[:60] if _ok else "OCR 未读到信号窗工具条: %s" % _txt[:60]))
+        # 没自证成功就**不报颜色** —— 否则量到的是压在信号窗上面的配置中心 (它的表里也有绿/蓝/紫格子)
+        if img is not None and _ok:
             run["sig_colors"] = {k: count_color(img, k) for k in ("#2e8b57", "#1f6feb", "#8957e5", "#ffffff")}
-            ck("⑤ 信号窗口里该场景颜色真上屏 (%s)" % want["color"],
-               run["sig_colors"][want["color"]] > 0, run["sig_colors"])
+            _c = run["sig_colors"]
+            # 信号分析窗是**全局树** (三场景组同屏, 组序=色序) ⇒ 该场景色在场 + 三色都上屏 才算真渲染
+            ck("⑤ 信号窗口里该场景色真上屏 (%s)" % want["color"], _c[want["color"]] > 0,
+               "%d px" % _c[want["color"]])
+            ck("⑤ 三场景色都在信号窗口里 (信号按场景着色真渲染)",
+               all(_c[k] > 0 for k in ("#2e8b57", "#1f6feb", "#8957e5")), _c)
         else:
-            ck("⑤ 信号窗口截图", False, "抓图失败")
+            ck("⑤ 信号窗口颜色像素 (先自证抓到该窗再量)", False,
+               "截图未自证 ⇒ 不报颜色 (防假绿: 配置中心的表也有三色格子)")
 
     row = cc_row(task)
     run["cc"] = row
@@ -252,9 +353,11 @@ def main():
     try:
         for t in tasks:
             runs.append(one_round(t, WANT[t]))
-        titles = [r.get("win3d") or "" for r in runs]
+        # 3D 窗真切场景: 有仿真目录的两轮 (插拔/摆盘) 标题必须不同 —— AR 场景没有仿真目录 ⇒ 如实保留上一场景
+        _lab = [(r["task"], r.get("win3d") or "") for r in runs if (r["want"].get("win3d") or "").strip()]
         print()
-        ck("④ 三轮 3D 窗口标题互不相同 (真切场景)", len(set(titles)) == len(titles), titles)
+        ck("④ 有仿真目录的两轮 3D 标题互不相同 (3D 窗真切了场景)",
+           len({t for _k, t in _lab}) == len(_lab), _lab)
     finally:
         print("\n↩ 收尾还原: 活跃任务 %s · 数据源 %s" % (_keep_task, _keep_src))
         if _keep_task:
