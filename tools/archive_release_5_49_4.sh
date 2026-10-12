@@ -34,6 +34,10 @@ cat > /tmp/rel_${VER}.md <<'EOF'
    真根因: /tmp/zmax_nav_cmd 残留上一轮命令 ⇒ 新进程(去重表空)一建好界面就执行 ⇒ 看着像"3D 自己开起来"。
    修: launch_studio.sh 启动前清空命令通道 + unset 全部 ZMAX_AUTO_*; studio.py 启动段写死该规矩。
    判据: tools/verify_no_autostart.py PASS (启动后 45s 无 3D/信号窗; 命令通道空; 落配置中心)。
+9. 配置中心配置数据 → 状态空间「标定诊断测量 · 主参数 M」节点: 新真源模块
+   src/lerobot/engineering/config_import.py (8 真源 + 工程库 + 工单 → 写回节点 cfg_*), 节点运行真加载;
+   右键「打开源码」直达导入函数 (params.source+source_symbol ⇒ code -g config_import.py:94);
+   画布写口改真源 data/database/zmax/sources/canvas/。判据 verify_node_cfg_import.py ✅ 15/15 PASS。
 
 取证工具: tools/verify_v2_look.py (两场景抓图量像素) · tools/verify_mouth_align.py (孔口↔插入终点
 唯一颜色反查, 换算 mm) · tools/qa_3d_pixels.py · 放大 3D 窗用 `xdotool windowsize` (无需重启即可取证)。
@@ -43,7 +47,9 @@ gui-venv311/bin/python tools/bump_version.py --to "$VER" --summary-file /tmp/rel
 
 echo "=== ① 本轮改动的代码 (逐文件拷贝) ==="
 cp -f tools/gui/ss_dreamview.py tools/gui/studio.py tools/gui/update_checker.py "$DST/gui/" 2>/dev/null
-cp -f tools/gui/launch_studio.sh tools/verify_no_autostart.py \
+cp -f tools/gui/veh6_config_page.py tools/verify_zmax_open_flow.py tools/verify_node_cfg_import.py \
+      src/lerobot/engineering/config_import.py src/lerobot/engineering/nodes/library.py \
+      tools/gui/launch_studio.sh tools/verify_no_autostart.py \
       tools/sim_scene_def.py tools/tray_live_publish.py tools/tray_plan_3parts.py \
       tools/verify_v2_look.py tools/verify_mouth_align.py tools/qa_3d_pixels.py tools/cmp_3d_fix.py \
       tools/verify_3d_scene_episode.sh tools/check_3d_scene_now.sh tools/verify_3d_follow.sh \
@@ -51,10 +57,16 @@ cp -f tools/gui/launch_studio.sh tools/verify_no_autostart.py \
 ls "$DST/gui" | sed 's/^/  gui: /'; ls "$DST/tools" | sed 's/^/  tool: /'
 echo "  编译: $(gui-venv311/bin/python -m py_compile tools/gui/ss_dreamview.py tools/sim_scene_def.py && echo OK)"
 
+mkdir -p "$DST/src/lerobot/engineering/nodes"
+cp -f src/lerobot/engineering/config_import.py "$DST/src/lerobot/engineering/" 2>/dev/null
+cp -f src/lerobot/engineering/nodes/library.py "$DST/src/lerobot/engineering/nodes/" 2>/dev/null
+
 echo "=== ② 真源快照 (场景/画布/信号色标) ==="
 cp -f data/scene/scenes/SS-TRAY-PLACE/objects3d.json "$DST/config/tray_objects3d.json" 2>/dev/null
 cp -f data/scene/scenes/SS-EPI-CORNER/objects3d.json "$DST/config/fw_objects3d.json" 2>/dev/null
-cp -f flows/state_space_obs.json "$DST/canvas/state_space_obs.json" 2>/dev/null
+cp -fL data/database/zmax/sources/canvas/state_space_obs.json "$DST/canvas/state_space_obs.json" 2>/dev/null
+cp -f data/database/zmax/zmax_space.proj "$DST/canvas/" 2>/dev/null
+cp -f data/database/zmax/zmax_engineering.db "$DST/canvas/" 2>/dev/null
 cp -f src/lerobot/engineering/flows/state_space_obs.json "$DST/canvas/state_space_obs__src_copy.json" 2>/dev/null
 mkdir -p "$DST/config/topics"; cp -f config/topics/scene_tags.json "$DST/config/topics/" 2>/dev/null
 echo "   画布 md5: $(md5sum flows/state_space_obs.json 2>/dev/null | cut -d' ' -f1)"
