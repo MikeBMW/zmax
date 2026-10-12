@@ -148,6 +148,31 @@ def load_scene_episode(scene_id):
     return tr, meta, "%s episode · %s · %d 帧" % (lab, os.path.basename(path), len(tr.get("x", [])))
 
 
+_BTN_SCENE_TASK = {"SS-EPI-CORNER": "TASK-01-FW", "SS-TRAY-PLACE": "TASK-06-TRAY"}
+
+
+def write_canvas_scene(scene_id):
+    """🧩 3D 窗场景按钮 → **同步画布数据源** (单一真源), 再切窗口。
+
+    2026-10-12 老倪: 「点击插拔, 却自动跳到了摆盘场景」—— 真因: 按钮只切了窗口, 画布 `ssdata.src_state`
+    还停在旧场景; 我加的"跟随画布"看门狗 2s 后就把窗口扳回去了 ⇒ 按钮像失灵。修法 = 按钮两件事一起做
+    (复用 `tools/ss_scene_switch.py::switch`, 与配置中心切场景同一条路)。
+    """
+    _t = _BTN_SCENE_TASK.get(str(scene_id or "").strip())
+    if not _t:
+        return ""
+    try:
+        import sys as _sys
+        _td = os.path.join(_REPO, "tools")
+        if _td not in _sys.path:
+            _sys.path.insert(0, _td)
+        import ss_scene_switch as _SSW
+        _r = _SSW.switch(_t)
+        return str(_r.get("msg") or _r.get("action") or "")
+    except Exception as _e:                                                     # noqa: BLE001
+        return "画布数据源同步失败: %r" % (_e,)
+
+
 def _pair_age(p):
     return abs(os.path.getmtime(p) - os.path.getmtime(os.path.splitext(p)[0] + ".mp4"))
 
@@ -1409,7 +1434,7 @@ class DreamView3D(QWidget):
                              f"border:none;border-radius:4px;padding:6px 4px;font-size:12px;}}"
                              f"QPushButton:hover{{background:#33e0b8;color:#0d1117;}}")
             _b.clicked.connect(lambda _=False, sid=_sid: (self._open_ar_view() if sid is None
-                                                          else self._switch_scene(sid)))
+                                                          else self._switch_scene_manual(sid)))
             _row_lv.addWidget(_b)
         pl.addLayout(_row_lv)
         pl.addSpacing(6)
@@ -1631,9 +1656,21 @@ class DreamView3D(QWidget):
         if tr is not None:
             self.set_trajectory(tr)
 
+    def _switch_scene_manual(self, scene_id):
+        """🧩 场景按钮入口: 同步画布 + 切窗口 + 8s 内不让看门狗抢 (否则 2s 后又被扳回去)。"""
+        import time as _t
+        self._manual_scene_ts = _t.time()
+        _m = write_canvas_scene(scene_id)
+        if _m:
+            print("🧩 [3D场景] 按钮切场景 → 画布数据源: %s" % _m, flush=True)
+        return self._switch_scene(scene_id)
+
     def _watch_canvas_scene(self):
         """画布数据源变了 → 3D 窗自动跟场景 (含换该场景自己的 episode 真源)。"""
         try:
+            import time as _t
+            if _t.time() - float(getattr(self, "_manual_scene_ts", 0.0)) < 8.0:
+                return                      # 手动刚切过: 给按钮独占 8s
             sid = canvas_src_scene_id()
             if not sid or sid == getattr(self, "scene_id", None):
                 return
@@ -2299,7 +2336,11 @@ class DreamView3D(QWidget):
         for _k in ("vac_stem", "vac_disc", "vac_hose"):
             arm[self._arm_idx[_k]].setVisible(_vac)
         if scene_mode(getattr(self, "scene_id", None)) == "tray":
-            arm[8].setVisible(False)      # 摆盘: 光模块由场景数据 (料盘里 3 个) 提供
+            # 🔴 2026-10-12 老倪: 「摆盘的光模块本来很短小, 拿起来后就变长了, 而且是透明长方体」
+            #   查证: 摆盘里臂上那件曾被整件隐藏, 而"看见的"是被拿起的那件必须按**摆盘件尺寸**
+            #   (52×20×12mm, 真源 sim_scene_def._tray_layout) 画 —— 尺寸已在上面按场景取好。
+            #   ⇒ 摆盘也要显示臂上件 (尺寸正确), 而不是隐藏 (隐藏会变成"拿起来就没了/露出旧的 200mm")。
+            arm[8].setVisible(True)
 
         # 动态层占位 (创建空 item, 更新时 setData)
         # 轨迹线 — ⚠️ 2026-08-25 实测: 末端轨迹恰好走在机械臂/夹爪实体位置, 默认深度测试下
@@ -2458,7 +2499,7 @@ class DreamView3D(QWidget):
             for _k in ("vac_stem", "vac_disc", "vac_hose"):
                 arm[ix[_k]].setVisible(_vac)
             if scene_mode(getattr(self, "scene_id", None)) == "tray":
-                arm[ix["peg"]].setVisible(False)
+                arm[ix["peg"]].setVisible(True)    # 摆盘: 臂上件可见, 尺寸 = 摆盘件 (52×20×12mm)
         except Exception as _e:                                                 # noqa: BLE001
             print("末端工具可见性设置失败: %r" % (_e,))
 
