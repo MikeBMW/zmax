@@ -1028,19 +1028,49 @@ def _lan_ip():
         return "10.163.146.78"
 
 _LAN = _lan_ip()
-AR_PAGE_URL = os.environ.get("ZMAX_AR_URL", "http://%s:8797/ar" % _LAN)
-AR_SERVICE_URL = "http://%s:8797" % _LAN
-AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8797/ar"      # 兜底: LAN 那条不通时再试
+# 🔴 2026-10-12 现场实测(老倪「3D场景的 AR服务还是打不开」): 控制台 08:58 启动时默认路由是产线网(192.168.x),
+#   之后网线/网段一变, 模块级冻结的 AR_SERVICE_URL 就指向一个**已经不通的 IP** ⇒ 探测 12s 全超时,
+#   日志写「服务启动后 12s 仍无响应」, 于是整个 AR 按钮判失败 —— 而 8797 明明在听(同机回环一直通)。
+#   修法: ① 服务探测**回环优先**(控制台与 AR 服务同一台机器), LAN 只当备选;
+#         ② 地址在**点击时现算**, 不再吃启动那一刻的网络。
+AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8797/ar"
+AR_PAGE_URL_LAN = "http://%s:8797/ar" % _LAN
+AR_PAGE_URL = os.environ.get("ZMAX_AR_URL") or AR_PAGE_URL_LOOPBACK      # 同机打开: 回环最稳(与 verify_ar_button 判据一致)
+AR_SERVICE_URL = "http://127.0.0.1:8797"
+
+
+def ar_hosts():
+    """探测/打开的候选主机(回环优先, 再当前 LAN IP + 启动时那个 LAN IP)。"""
+    _h = ["127.0.0.1"]
+    for _x in (_lan_ip(), _LAN):
+        if _x and _x not in _h:
+            _h.append(_x)
+    return _h
+
+
+def ar_service_urls():
+    return ["http://%s:8797" % _h for _h in ar_hosts()]
+
+
+def ar_service_base(timeout: float = 2.0) -> str:
+    """AR 服务(8797)在哪个地址上通 —— 回环优先, 逐个真探, 返回通的 base(空串=都不通)。"""
+    global AR_SERVICE_URL
+    import urllib.request as _u
+    _errs = []
+    for _b in ar_service_urls():
+        try:
+            with _u.urlopen(_b + "/api/cams", timeout=timeout) as _r:
+                if 200 <= int(getattr(_r, "status", 200) or 200) < 300:
+                    AR_SERVICE_URL = _b            # 记住这次通的, 后面取实况也用它
+                    return _b
+        except Exception as _e:                                                 # noqa: BLE001
+            _errs.append("%s:%s" % (_b, type(_e).__name__))
+    return ""
 
 
 def ar_service_up(timeout: float = 2.0) -> bool:
-    """AR 服务(8797)在不在 —— 读真值 /api/cams, 不猜。"""
-    try:
-        import urllib.request as _u
-        with _u.urlopen(AR_SERVICE_URL + "/api/cams", timeout=timeout) as _r:
-            return 200 <= int(getattr(_r, "status", 200) or 200) < 300
-    except Exception:                                                           # noqa: BLE001
-        return False
+    """AR 服务(8797)在不在 —— 读真值 /api/cams, 不猜(回环优先, 见上面现场坑)。"""
+    return bool(ar_service_base(timeout))
 
 
 def ar_ensure_service(tries: int = 12) -> tuple:
@@ -1083,6 +1113,39 @@ def ar_window_seen(timeout: float = 6.0) -> str:
         _t.sleep(0.6)
 
 
+def ar_conn_count():
+    """到 8797 的已建立连接数 —— 页面一加载就会开 /api/cams + 各相机流(几条)。
+    2026-10-12 现场: chromium 在已开着的窗口里**开新标签页**, 顶层窗口标题没有 "TCP 轨迹"/"AR/VR"
+    ⇒ 原来只认窗口标题的判据一律判"窗口没出现"(实际页面已经打开了) ⇒ 换成"连接数变多"这个硬信号。"""
+    import subprocess as _sp
+    try:
+        _o = _sp.run(["ss", "-tn", "state", "established"], capture_output=True, text=True,
+                     timeout=5).stdout or ""
+    except Exception:                                                           # noqa: BLE001
+        return -1
+    return sum(1 for _l in _o.splitlines()[1:] if ":8797" in _l)
+
+
+def ar_wait_loaded(n0: int, timeout: float = 6.0):
+    """等"页面真的打开了": 到 8797 的连接变多(硬信号) 或 窗口标题出现 AR 痕迹。
+    返回说明串(空串=没等到)。"""
+    import time as _t
+    _t0 = _t.time()
+    while True:
+        if n0 >= 0 and ar_conn_count() > n0:
+            _w = ar_window_seen(0.4)
+            if _w:
+                ar_raise_window(_w)
+            return "页面已连上服务(8797 连接 +%d)" % (max(0, ar_conn_count() - n0))
+        _w = ar_window_seen(0.3)
+        if _w:
+            ar_raise_window(_w)
+            return "窗口已出现并置顶"
+        if _t.time() - _t0 >= float(timeout):
+            return ""
+        _t.sleep(0.4)
+
+
 def ar_raise_window(win_id: str) -> bool:
     """把页面窗口拉到最前(否则它可能开在别的桌面/被挡在后面 —— 老倪会以为「没打开」)。"""
     if not win_id:
@@ -1109,7 +1172,9 @@ def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
     _cands = []
     for _b in ("chromium", "firefox", "google-chrome", "chromium-browser"):
         if _sh.which(_b):
-            _cands.append([_b, url])
+            # 2026-10-12 现场: 不加 --new-window, chromium 会在**已开着的窗口**里开新标签页
+            # ⇒ 顶层窗口标题不变 ⇒ 旧的"验窗口"判据判"没出现"(其实页面已打开)。加参数 + 换判据(ar_wait_loaded)。
+            _cands.append([_b, "--new-window", url])
     if _sh.which("xdg-open"):
         _cands.append(["xdg-open", url])
     if _sh.which("gio"):
@@ -1117,6 +1182,7 @@ def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
     if dry:      # 只探路, 不真开(判据用)
         return ("%s(探路)" % _cands[0][0]) if _cands else ("webbrowser(探路)" if _sh.which("python3") else "")
     _tried = []
+    _n0 = ar_conn_count()            # 打之前先记"到 8797 的连接数"基线(页面一加载就会 +几条)
     for _c in _cands:
         _win = ar_window_seen(0.01)      # 开之前先看有没有(比如别人已经开过)
         if _win:
@@ -1127,10 +1193,9 @@ def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
             _tried.append(_c[0])
         except Exception:                                                       # noqa: BLE001
             continue
-        _win = ar_window_seen(timeout=timeout) if verify else ""
-        if _win:
-            ar_raise_window(_win)
-            return "%s(窗口已出现并置顶)" % _c[0]
+        _how2 = ar_wait_loaded(_n0, timeout) if verify else ""
+        if _how2:
+            return "%s(%s)" % (_c[0], _how2)
     for _how in ("webbrowser", "Qt"):
         try:
             if _how == "webbrowser":
@@ -1145,10 +1210,9 @@ def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
         except Exception:                                                       # noqa: BLE001
             continue
         _tried.append(_how)
-        _win = ar_window_seen(timeout=timeout) if verify else ""
-        if _win:
-            ar_raise_window(_win)
-            return "%s(窗口已出现并置顶)" % _how
+        _how2 = ar_wait_loaded(_n0, timeout) if verify else ""
+        if _how2:
+            return "%s(%s)" % (_how, _how2)
     return "" if not _tried else ("试过 %s 但窗口没出现" % "/".join(_tried))
 
 

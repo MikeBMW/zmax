@@ -853,18 +853,12 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _pt_abc_deg(_q):
     """🔴 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」:
-    点位库只存四元数 ⇒ 用系统现成口径 l2_transport_sdk.quat2rpy(返回弧度)换算成度。
-    读不到就返回 None(不编)。"""
+    四元数 → a b c(度)。**唯一口径** = tools/pt_pose.py(2026-10-12 收口: 页面/记录脚本/
+    配置中心/一致性体检 都用它, 免得同一条记录在不同地方算出不同的角)。读不到返回 None(不编)。"""
     try:
-        import math as _m
-        _x, _y, _z, _w = [float(v) for v in _q[:4]]
-        _n = _m.sqrt(_x*_x + _y*_y + _z*_z + _w*_w) or 1.0
-        _x, _y, _z, _w = _x/_n, _y/_n, _z/_n, _w/_n
-        _rx = _m.atan2(2.0*(_w*_x + _y*_z), 1.0 - 2.0*(_x*_x + _y*_y))
-        _sy = 2.0*(_w*_y - _z*_x)
-        _ry = _m.copysign(_m.pi/2.0, _sy) if abs(_sy) >= 1.0 else _m.asin(_sy)
-        _rz = _m.atan2(2.0*(_w*_z + _x*_y), 1.0 - 2.0*(_y*_y + _z*_z))
-        return [round(_m.degrees(v), 3) for v in (_rx, _ry, _rz)]
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "tools"))
+        import pt_pose as _pp
+        return _pp.abc_deg(_q)
     except Exception:                                                   # noqa: BLE001
         return None
 
@@ -989,11 +983,55 @@ def _last_json_line(txt):
 
 
 def _config_sync(tag=""):
-    """🔁 真源变了 ⇒ 立刻重建任务配置(config/tasks/tasks.json), 让配置中心/画布读到新值(不等人工点刷新)。"""
-    _rc, _txt = _run_py([os.path.join(_REPO_ROOT, "tools", "task_build.py")], timeout=120)
-    _ok = _rc == 0
-    print("[配置同步%s] task_build rc=%s%s" % (tag, _rc, "" if _ok else " · " + _txt.strip()[-160:]), flush=True)
-    return _ok
+    """🔁 真源变了 ⇒ 立刻重建任务配置(config/tasks/tasks.json), 让配置中心/画布读到的是新值。"""
+    rc, txt = _run_py([os.path.join(_REPO_ROOT, "tools", "task_build.py")], timeout=120)
+    ok = rc == 0
+    print("[配置同步%s] task_build rc=%s%s" % (tag, rc, "" if ok else " · " + txt.strip()[-160:]), flush=True)
+    return ok
+
+
+# 🔴 2026-10-12 老倪: 「空间点7的位置我更新了, 但是你的配置中心还是没更新; 其它点, 得实时更新, 必须实时」
+#   记录/清除接口只是**一条**写口(控制台示教/脚本/手改都绕得过) ⇒ 除了"写成功就同步",
+#   再加一个盯着真源的守护: 谁改都跟得上, 配置中心 2s 内自动刷新。
+_CONFIG_SOURCES = ("data/skills/l2_atomic/space_points.json",
+                   "data/skills/l2_atomic/taught_points.json",
+                   "reports/aoi_points")
+
+
+def _src_stamp():
+    """三个点位真源的指纹 (文件 mtime_ns+size / 目录里所有 .json 的指纹)。"""
+    out = []
+    for _rel in _CONFIG_SOURCES:
+        _p = os.path.join(_REPO_ROOT, _rel)
+        try:
+            if os.path.isdir(_p):
+                for _f in sorted(os.listdir(_p)):
+                    if _f.endswith(".json"):
+                        _s = os.stat(os.path.join(_p, _f))
+                        out.append((_f, int(_s.st_mtime_ns), int(_s.st_size)))
+            else:
+                _s = os.stat(_p)
+                out.append((_rel, int(_s.st_mtime_ns), int(_s.st_size)))
+        except OSError:
+            out.append((_rel, 0, 0))
+    return tuple(out)
+
+
+def _config_watch_worker(interval=1.5):
+    """🔁 盯住点位真源, 一变就重建配置 ⇒ 配置中心不用点按钮、不用重启就跟着变。"""
+    _last = _src_stamp()
+    while True:
+        time.sleep(max(0.5, float(interval)))
+        try:
+            _cur = _src_stamp()
+        except Exception:                                                     # noqa: BLE001
+            continue
+        if _cur != _last:
+            _last = _cur
+            try:
+                _config_sync("真源变更(守护)")
+            except Exception as _e:                                          # noqa: BLE001
+                print("[配置同步] 守护异常: %s" % str(_e)[:120], flush=True)
 
 
 def _aoi_ledger_remove(name: str):
@@ -1066,9 +1104,12 @@ def _ctl_record_point(body: dict) -> dict:
         return {"ok": False, "msg": "记录脚本无 JSON 回执: %s" % ((_r.stdout or _r.stderr or "")[-240:])}
     _out["dry"] = dry
     _out["tail"] = "\n".join([_x for _x in (_r.stdout or "").splitlines() if not _x.strip().startswith("{")][-6:])
-    if _out.get("ok") and not dry and _is_aoi_point(name):
-        # 🗂 AOI 点: 台账与技能库同值 + 立刻重建配置 ⇒ 配置中心/画布同刻看到新值(老倪 2026-10-12)
-        _out["aoi_ledger"] = os.path.join("reports", "aoi_points", "%s.json" % name)
+    if _out.get("ok") and not dry:
+        # 🗂 任何点(AOI 点 / 空间点 / 示教点)写成功 ⇒ 立刻重建配置 ⇒ 配置中心/画布同刻看到新值。
+        #   老倪 2026-10-12: 「空间点7 的位置我更新了, 但是配置中心还是没更新 —— 其它点得实时更新, 必须实时」
+        #   (上一版只对 AOI 点做这一步 ⇒ 空间点改了配置中心不动, 就是这个坑)
+        if _is_aoi_point(name):
+            _out["aoi_ledger"] = os.path.join("reports", "aoi_points", "%s.json" % name)
         _out["config_synced"] = _config_sync("记录 %s" % name)
     if _out.get("ok") and not dry:
         log_line = ("[记录点] %s ← (%.4f, %.4f, %.4f) · n=%s · 极差 %.1e m%s"
@@ -1139,8 +1180,7 @@ def _ctl_clear_point(body: dict) -> dict:
     except Exception as _e:                                                   # noqa: BLE001
         return {"ok": False, "msg": "清除失败: %s" % str(_e)[:100]}
     out.update({"removed": True, "backup": _bak})
-    if _is_aoi_point(name):
-        out["config_synced"] = _config_sync("清除 %s" % name)
+    out["config_synced"] = _config_sync("清除 %s" % name)      # 任何点: 删了也要立刻重建配置
     try:
         print("[清除%s] %s ← 原 pos=(%.4f, %.4f, %.4f) · 备份 %s"
               % (_kind, name, old["pos"][0], old["pos"][1], old["pos"][2], _bak), flush=True)
@@ -5292,6 +5332,12 @@ def main():
                              args=(args.local2_dev, args.quality, args.width,
                                    args.height, args.fps, "local2"),
                              daemon=True, name="local2").start()
+
+    # ── 🔁 点位真源 → 配置实时跟随（老倪 2026-10-12: 「其它点, 得实时更新, 必须实时」）──
+    threading.Thread(target=_config_watch_worker, args=(1.5,), daemon=True,
+                     name="cfg-watch").start()
+    print("   🔁 配置实时跟随: 盯 %s ⇒ 一变就重建 config/tasks/tasks.json"
+          % " · ".join(_CONFIG_SOURCES), flush=True)
 
     # ── 场景叠加（老倪 2026-09-27）──
     if args.overlay:

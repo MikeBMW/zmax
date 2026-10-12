@@ -23,6 +23,15 @@ import math
 import os
 import re
 import shutil
+
+try:                                            # 姿态 a b c 的唯一口径 (tools/pt_pose.py)
+    import os as _os_pp
+    import sys as _sys_pp
+    _sys_pp.path.insert(0, _os_pp.path.dirname(_os_pp.path.abspath(__file__)))
+    from pt_pose import abc_deg as _abc_deg
+except Exception:                               # noqa: BLE001
+    def _abc_deg(_q):                           # 兜底: 读不到就留空, 绝不编数
+        return None
 import subprocess
 import sys
 import time
@@ -212,6 +221,9 @@ def main():
     entry = {
         "pos": [round(v, 7) for v in mean[:3]],
         "quat": quat,
+        # 🔴 2026-10-12 老倪「6 个数字都要记录」: a b c(度) 与 quat 同刻落库(口径见 tools/pt_pose.py)
+        "abc": _abc_deg(quat),
+        "abc_src": "quat2rpy",
         "desc": desc or ("%s — 2026-09-30 现场记录" % name),
         "recorded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source": _src,

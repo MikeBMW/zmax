@@ -8,7 +8,8 @@
   ③ 空间点库   data/skills/l2_atomic/space_points.json    ← 8793 空间点1~8(独立库, 只比它自己)
   ④ 任务配置   config/tasks/tasks.json 的 TASK-07-AOI overrides.pt.<点名>  ← 配置中心显示的值
 
-判据: ①② 位置差 ≤ 1e-5 m; ④ 里的 x/y/z 与 ① 逐位相符(6 位小数); 台账里的点都能在 ④ 找到(反之亦然)。
+判据: ①② 位置差 ≤ 1e-5 m; ④ 里的 x/y/z 与 ① 逐位相符(6 位小数) —— **姿态 a b c 也要逐位相符**;
+     台账里的点都能在 ④ 找到(反之亦然)。
 用法: gui-venv311/bin/python tools/verify_points_consistency.py [--json]
 """
 from __future__ import annotations
@@ -58,6 +59,7 @@ def main() -> int:
             pos = j.get("pos") or []
             if len(pos) == 3:
                 led[j.get("point") or fn[:-5]] = {"pos": pos, "t": j.get("recorded_at"),
+                                                  "abc": j.get("abc"), "quat": j.get("quat"),
                                                   "src": "reports/aoi_points/%s" % fn}
     except OSError:
         pass
@@ -72,6 +74,16 @@ def main() -> int:
             ov = t.get("overrides") or {}
     pat = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)")
 
+    import pt_pose as _pp                                                   # 姿态唯一口径
+    pat_abc = re.compile(r"a=(-?[\d.]+)\s+b=(-?[\d.]+)\s+c=(-?[\d.]+)")
+
+    def _abc_of(rec):
+        try:
+            _v = _pp.rec_abc(rec)
+            return ("%.3f|%.3f|%.3f" % (_v[0], _v[1], _v[2])) if _v else ""
+        except Exception:                                                   # noqa: BLE001
+            return ""
+
     for name, v in sorted(led.items()):
         r = {"point": name, "ledger": v["pos"], "taught": (tp.get(name) or {}).get("pos")}
         d12 = _dist(v["pos"], r["taught"]) if r["taught"] else None
@@ -81,7 +93,18 @@ def main() -> int:
         r["in_config"] = bool(m)
         r["config_vs_ledger"] = (("x=%.6f y=%.6f z=%.6f" % tuple(v["pos"][:3])) == m.group(0).strip()
                                  if m else None)
+        # 姿态 a b c: 台账(或它没存 abc 就从 quat 现算) 必须与配置里那串逐位相符
+        _labc = _abc_of(v)
+        _mabc = pat_abc.search(str(cfg or ""))
+        r["abc_ledger"] = _labc
+        r["abc_in_config"] = bool(_mabc)
+        r["config_vs_ledger_abc"] = (("%s|%s|%s" % (_mabc.group(1), _mabc.group(2), _mabc.group(3))) == _labc
+                                     if (_mabc and _labc) else None)
         rows.append(r)
+        if _labc and (not _mabc):
+            bad.append("%s: 配置里没有姿态 a b c(老倪: 6 个数字都要有)" % name)
+        elif _labc and _mabc and not r["config_vs_ledger_abc"]:
+            bad.append("%s: 姿态与台账不符(配置 %s vs 台账 %s)" % (name, _mabc.group(0), _labc))
         if d12 is None or d12 > TOL_M:
             bad.append("%s: 台账≠L2库(差 %s m)" % (name, d12))
         if not m:
@@ -89,16 +112,23 @@ def main() -> int:
         elif not r["config_vs_ledger"]:
             bad.append("%s: 配置里的值与台账不符(%s vs 台账 %s)" % (name, cfg, v["pos"]))
 
-    # 空间点(独立库)也要在配置里
+    # 空间点(独立库)也要在配置里 —— 位置 + 姿态 a b c 都要
     for k, v in sorted(sp.items()):
         nm = ("空间点" + str(k)[5:]) if str(k).startswith("space") else str(k)
         cfg = ov.get("pt." + nm)
         m = pat.search(str(cfg or ""))
+        mabc = pat_abc.search(str(cfg or ""))
         pos = v.get("pos") or []
         ok = bool(m) and len(pos) == 3 and m.group(0).strip() == ("x=%.6f y=%.6f z=%.6f" % tuple(pos[:3]))
-        rows.append({"point": nm, "space": pos, "in_config": bool(m), "config_vs_space": ok})
+        _labc = _abc_of(v)
+        okabc = bool(mabc) and bool(_labc) and (
+            ("%s|%s|%s" % (mabc.group(1), mabc.group(2), mabc.group(3))) == _labc)
+        rows.append({"point": nm, "space": pos, "abc_space": _labc, "in_config": bool(m),
+                     "config_vs_space": ok, "config_vs_space_abc": okabc})
         if not ok:
             bad.append("%s: 空间点库≠配置(%s vs %s)" % (nm, cfg, pos))
+        if not okabc:
+            bad.append("%s: 空间点姿态≠配置(%s vs 库 %s)" % (nm, (mabc.group(0) if mabc else "缺"), _labc))
 
     if a.json:
         print(json.dumps({"rows": rows, "bad": bad, "n": len(rows)}, ensure_ascii=False, indent=1))
@@ -107,12 +137,15 @@ def main() -> int:
               % ("reports/aoi_points", "taught_points.json", "space_points.json", "tasks.json"))
         for r in rows:
             if "ledger" in r:
-                print("  %-8s 台账 %s · L2库差 %s m · 配置 %s"
-                      % (r["point"], r["ledger"], r["ledger_vs_taught_m"],
-                         "✅同值" if r.get("config_vs_ledger") else ("缺" if not r["in_config"] else "✗不符")))
+                print("  %-8s 台账 %s abc=%s · L2库差 %s m · 配置 %s"
+                      % (r["point"], r["ledger"], r.get("abc_ledger") or "—", r["ledger_vs_taught_m"],
+                         "✅同值" if (r.get("config_vs_ledger") and r.get("config_vs_ledger_abc") is not False)
+                         else ("缺" if not r["in_config"] else "✗不符")))
             else:
-                print("  %-8s 空间点 %s · 配置 %s" % (r["point"], r["space"],
-                                                      "✅同值" if r.get("config_vs_space") else "✗"))
+                print("  %-8s 空间点 %s abc=%s · 配置 %s"
+                      % (r["point"], r["space"], r.get("abc_space") or "—",
+                         "✅同值(位置+姿态)" if (r.get("config_vs_space") and r.get("config_vs_space_abc"))
+                         else "✗"))
         print("\n=== %s (共 %d 个点 · 问题 %d) ==="
               % ("✅ 全部一致" if not bad else "⛔ 有不一致", len(rows), len(bad)))
         for b in bad:

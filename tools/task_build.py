@@ -29,6 +29,11 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys_path_tools = os.path.join(ROOT, "tools")
+if sys_path_tools not in __import__("sys").path:
+    __import__("sys").path.insert(0, sys_path_tools)
+import pt_pose as _pose                                                     # noqa: E402  姿态 a b c 唯一口径
+
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 SCENES = os.path.join(ROOT, "flows", "scenes_5jobs.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
@@ -121,6 +126,11 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
       · pt.dir        = 台账目录
     只**读**台账生成配置(不反向写台账): 台账改了重跑 build 即同步, 单一真源不打架。
     """
+    # 姿态 a b c 用**唯一口径** tools/pt_pose.py(8793 页面 / 记录脚本 / 配置中心 同一份实现)——
+    #   老倪 2026-10-12: 「配置中心的点, 除了位置, 还得有 a b c, 6 个数字都要记录」。
+    def _abc_s(rec):
+        return _pose.abc_str(rec)
+
     out = {"pt.dir": dir_rel}
     # 🔲 2026-10-12 老倪: 「配置中心, 也要有空间点1~7 的配置位置」—— 空间点真源是
     #   data/skills/l2_atomic/space_points.json (8793 标记模式下记的 7+1 个空间点), 只读摊进配置:
@@ -136,8 +146,9 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
                 continue
             ks = str(k)
             nm = ("空间点" + ks[5:]) if ks.startswith("space") else ks
-            out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · 记录 %s · %s"
-                               % (pos[0], pos[1], pos[2], (v or {}).get("recorded_at") or "-", sp_rel))
+            out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · %s · 记录 %s · %s"
+                               % (pos[0], pos[1], pos[2], _abc_s(v),
+                                  (v or {}).get("recorded_at") or "-", sp_rel))
     except Exception:                                                           # noqa: BLE001
         pass
     d = os.path.join(ROOT, dir_rel)
@@ -155,8 +166,8 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
         if not isinstance(pos, list) or len(pos) != 3:
             continue
         nm = str(j.get("point") or f[:-5])
-        out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · 记录 %s · %s/%s"
-                           % (pos[0], pos[1], pos[2], j.get("recorded_at") or "-", dir_rel, f))
+        out["pt." + nm] = ("x=%.6f y=%.6f z=%.6f m · %s · 记录 %s · %s/%s"
+                           % (pos[0], pos[1], pos[2], _abc_s(j), j.get("recorded_at") or "-", dir_rel, f))
         hp = os.path.join(d, nm + ".history.jsonl")
         if os.path.exists(hp):
             lines = []

@@ -50,10 +50,13 @@ for k in sorted(buckets):
 
 # ② 三个关键入口必须各自可达 (快捷键内容固定, 防"修好了又被人改回去")
 print("② 打开/加载 入口快捷键", flush=True)
-chk(buckets.get("Ctrl+Shift+O") == ["📂 加载工程文件…  (接着上次调试)"],
-    "Ctrl+Shift+O 只归「📂 加载工程文件…」→ %s" % buckets.get("Ctrl+Shift+O"))
-chk(buckets.get("Ctrl+Alt+O") == ["🗂 打开总工程 (zmax_space)…"],
-    "Ctrl+Alt+O 只归「🗂 打开总工程」→ %s" % buckets.get("Ctrl+Alt+O"))
+chk(buckets.get("Ctrl+Shift+O") == ["📂 打开其他工程文件…"],
+    "Ctrl+Shift+O 只归「📂 打开其他工程文件…」→ %s" % buckets.get("Ctrl+Shift+O"))
+chk(buckets.get("Ctrl+Alt+O") == ["📂 打开工程 (zmax_space.proj)"],
+    "Ctrl+Alt+O 只归「📂 打开工程 (zmax_space.proj)」→ %s" % buckets.get("Ctrl+Alt+O"))
+# 🔴 2026-10-12: 默认工程 = zmax_space.proj ⇒ 「保存工程」拿 Ctrl+S 就地更新它; 快照项不占快捷键
+chk(buckets.get("Ctrl+S") == ["💾 保存工程 (更新 zmax_space.proj)"],
+    "Ctrl+S 只归「💾 保存工程 (更新默认工程)」→ %s" % buckets.get("Ctrl+S"))
 chk(buckets.get("Ctrl+Shift+L") == ["📂 加载 JSON…"],
     "画布「📂 加载 JSON…」已改到 Ctrl+Shift+L → %s" % buckets.get("Ctrl+Shift+L"))
 chk(buckets.get("Ctrl+Alt+F") == ["⛶ 浮动画布 (独立窗口)"],

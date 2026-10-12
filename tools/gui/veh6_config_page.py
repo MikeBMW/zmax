@@ -473,7 +473,10 @@ def _pt_parse(t):
     import re
     ov = (t or {}).get("overrides") or {}
     hist = {k[7:]: v for k, v in ov.items() if k.startswith("pthist.")}
-    pat = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)\s*m\s*·\s*记录\s*([^·]+?)\s*·\s*(\S+)")
+    # 位置 x y z + 姿态 a b c(度) + 记录时间 + 真源; abc 段**可选**(旧配置串没这段也能解析)
+    pat = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)\s*m"
+                     r"(?:\s*·\s*a=(-?[\d.]+)\s+b=(-?[\d.]+)\s+c=(-?[\d.]+)\s*°)?"
+                     r"\s*·\s*记录\s*([^·]+?)\s*·\s*(\S+)")
     rows = []
     for k, v in ov.items():
         if not k.startswith("pt."):
@@ -485,7 +488,8 @@ def _pt_parse(t):
         h = hist.get(nm, "")
         n = (re.match(r"(\d+)\s*次更新", h or "") or [None, "—"])[1] if h else "—"
         rows.append({"name": nm, "x": m.group(1), "y": m.group(2), "z": m.group(3),
-                     "t": m.group(4).strip(), "src": m.group(5), "n": n, "hist": h})
+                     "a": m.group(4) or "—", "b": m.group(5) or "—", "c": m.group(6) or "—",
+                     "t": (m.group(7) or "").strip(), "src": m.group(8), "n": n, "hist": h})
     rows.sort(key=lambda r: _pt_rank(r["name"]))
     return rows
 
@@ -517,10 +521,11 @@ def _pt_rank(name):
 
 def _pt_tsv(rows):
     """复制/导出用的 TSV(粘进 Excel/飞书表格即成型)。"""
-    out = ["点位\tX(m)\tY(m)\tZ(m)\t记录时间\t更新次数\t真源文件"]
+    out = ["点位\tX(m)\tY(m)\tZ(m)\tA(°)\tB(°)\tC(°)\t记录时间\t更新次数\t真源文件"]
     for r in rows:
-        out.append("%s\t%s\t%s\t%s\t%s\t%s\t%s" %
-                   (r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"]))
+        out.append("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" %
+                   (r["name"], r["x"], r["y"], r["z"], r.get("a", "—"), r.get("b", "—"),
+                    r.get("c", "—"), r["t"], r["n"], r["src"]))
     return "\n".join(out)
 
 
@@ -894,8 +899,10 @@ class ConfigCenterPage(QWidget):
         sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
         cv.addWidget(ttl)
         cv.addWidget(sub)
-        tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "记录时间", "更新", "真源文件"],
-                       [[r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"]] for r in rows], th)
+        # 🔴 老倪 2026-10-12: 「配置中心的点, 除了位置, 还得有 a b c, 6 个数字都要记录」
+        tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "真源文件"],
+                       [[r["name"], r["x"], r["y"], r["z"], r["a"], r["b"], r["c"],
+                         r["t"], r["n"], r["src"]] for r in rows], th)
         tb.setMinimumHeight(28 * (len(rows) + 2) + 6)
         tb.setMaximumHeight(30 * (len(rows) + 2) + 10)
         try:                                        # 金手指点1 那一行高亮(老倪要"立刻找到")
@@ -905,9 +912,11 @@ class ConfigCenterPage(QWidget):
                     it = tb.item(0, c)
                     if it is not None:
                         it.setForeground(_QC(th["C_GREEN"]))
-                        it.setToolTip("★ 金手指点1 —— 实际位置 x=%s y=%s z=%s m · 记录 %s\n   真源 %s\n   %s"
-                                      % (rows[0]["x"], rows[0]["y"], rows[0]["z"], rows[0]["t"],
-                                         rows[0]["src"], rows[0].get("hist") or ""))
+                        it.setToolTip("★ 金手指点1 —— 位姿 x=%s y=%s z=%s m · a=%s° b=%s° c=%s°"
+                                      " · 记录 %s\n   真源 %s\n   %s"
+                                      % (rows[0]["x"], rows[0]["y"], rows[0]["z"],
+                                         rows[0].get("a", "—"), rows[0].get("b", "—"), rows[0].get("c", "—"),
+                                         rows[0]["t"], rows[0]["src"], rows[0].get("hist") or ""))
         except Exception:                                                       # noqa: BLE001
             pass
         cv.addWidget(tb)
@@ -944,9 +953,14 @@ class ConfigCenterPage(QWidget):
                 self.out.setPlainText("⛔ 导出失败: %s" % repr(e)[:120])
 
         def _fill(r2, silent=False):
+            # 🔴 2026-10-12: 列数要和表头一致(点位+X+Y+Z+A+B+C+时间+更新+真源)。
+            #   原来这里只写 7 列(旧的"只要位置"口径) ⇒ 刷新一次就把 A/B/C 三列冲成时间/更新/真源,
+            #   表格看起来"6 个数字缺 3 个"。真跑判据当场抓到(离屏真建卡回读单元格)。
             tb.setRowCount(len(r2))
             for i, r in enumerate(r2):
-                for c, v in enumerate((r["name"], r["x"], r["y"], r["z"], r["t"], r["n"], r["src"])):
+                for c, v in enumerate((r["name"], r["x"], r["y"], r["z"],
+                                       r.get("a", "—"), r.get("b", "—"), r.get("c", "—"),
+                                       r["t"], r["n"], r["src"])):
                     tb.setItem(i, c, QTableWidgetItem(str(v)))
             try:
                 from PyQt5.QtGui import QColor as _QC2
