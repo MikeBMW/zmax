@@ -256,28 +256,13 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 /* 📱 2026-10-01 (老倪: 「我要远程操作 / 手机远程控制」) —— 手机竖屏断点。
    原来 .slotbar 固定 7 列(390px 屏上每格≈50px, 空间点/号位按钮点不准), 碰撞台账 7 列同理。
    手机改成 4 列 + 加大触控高度; 提示文字让位给控件; 内边距收紧把可视区让给内容。 */
-/* 🔴 2026-10-12 老倪(逐字): 「http://...:8793/station 下面的显示，太拥挤了，改成上一版本的布局」→ 现场选定:
-   「相机下面那几块按钮区(金手指 点1/点2/安全点 · 表面 侧面点0~3 · 号位1~7 · 空间1~7):
-     恢复上一版 —— **一列大按钮**, 不要现在这种小格子网格(标记/运动模式保留)」。
-   做法: 四块点位按钮一律**单列**铺满面板宽度, 字号回到上一版的大字(19px 粗体)、行更高 ⇒ 点得准、不挤;
-   「已记/未记」状态跟名字同一行显示(不再换行到第二行占高度)。配色与功能(标记/运动双模式、回点、记录)全部不动。
-   ⚠️ 这条是 >560px 与窄屏断点**之后**才生效的统一覆盖(手机断点的 4 列已被上面那行改成 1 列)。 */
-.slotbar,#goldbar,#sidebar,#spacebar{grid-template-columns:1fr;gap:8px}
-.slotbar button,#goldbar button,#sidebar button,#spacebar button{
-  font-size:19px;font-weight:700;padding:15px 14px;text-align:left;letter-spacing:.3px}
-.slotbar button small,#goldbar button small,#sidebar button small,#spacebar button small{
-  display:inline;font-size:13px;font-weight:400;opacity:.9;margin:0 0 0 10px;white-space:normal}
-/* 金手指那块的 .slotbar 被塞在 flex 的 .row 里 ⇒ flex 会把它压成内容宽度(实测 204px, 一列按钮就窄了);
-   让它占满整行, 与「表面/号位/空间点」三块同宽(612px), 一列大按钮才铺得开。 */
-.row>.slotbar{flex:1 1 100%;width:100%}
-
 @media (max-width:560px){
   main{padding:6px;gap:8px}
   header{padding:8px 10px}
   header h1{font-size:15px}
   header .hint{display:none}
   .panel .cap .ttl{font-size:12px}
-  .slotbar{grid-template-columns:1fr;gap:6px;padding:8px 6px 4px}   /* 一列大按钮(老倪 10-12) */
+  .slotbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:8px 6px 4px}
   .pad{grid-template-columns:repeat(3,1fr);gap:6px}
   .rot2{grid-template-columns:1fr 1fr;gap:6px}
   .rot{grid-template-columns:1fr auto auto;gap:6px}
