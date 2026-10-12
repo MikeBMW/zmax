@@ -172,8 +172,10 @@ AR 页(`tools/web/tcp-ar.html`, 按 mtime 热读 ⇒ **改页面不用重启服�
 | 内联 JS 页面里留了一行**孤立残片**(如 `$('x').textContent='…'; });`) | 整段 `<script>` 解析失败 ⇒ **页面上所有按钮同时失效**, 浏览器只留一条空 exception ⇒ 极易误判成"后端崩了" | 抽出 `<script>` 跑 `node --check`; 若 HEAD 与新版报同一处错, 那是历史遗留的真 bug, 顺手修掉 |
 | 想造 PyQt 实例来测"点按钮会做什么" | `object.__new__(Cls)` 报 `TypeError: not safe, use Cls.__new__()`; `Cls.__new__(Cls)` 报 `RuntimeError: super-class __init__() of type X was never called`(sip 属性访问要求 C++ 对象已初始化) ⇒ 两条路都不可用 | 轻量: `ast.parse` 找目标方法 + `ast.get_source_segment` 取方法体, 断言关键调用的**实参字面量**(URL)且前半段无提前 `return`; 重量: `QT_QPA_PLATFORM=offscreen` 真起窗口/真插数据; URL·默认参数这类事实再用真浏览器打开复核 |
 | 把 GUI 重启与核查串在同一条前台命令 | 重启脚本内部等进程退出/端口就绪, 前台**长时间不返回**(实测卡 >400s) ⇒ 撞超时上限, 跟在后面的核查结论一起丢 | 重启发一条、核查另发一条(进程 pid 变了 + 端口 200 即成功); 长重启用 background+notify; 一批改动攒完只重启**一次** |
-| 用户说"某块太拥挤, 恢复上一版布局"就直接改 HTML | 改完自己以为好了, 现场还是"挤"或反而更长 —— 因为**拥挤的往往是** `grid-template-columns:repeat(7,…)`/`auto-fit minmax(120px)` 这类小格子，而"上一版"是哪一版没定义 | ① 先**量后改**: 浏览器里 `getComputedStyle(el).gridTemplateColumns` + 按钮 `getBoundingClientRect()` + `scrollWidth>clientWidth` 数截断，把"挤"变成数（例: 7094px 页高 / 103 按钮 / 四块 button 条都是 7 列）；② 让用户在**具体哪一块**上选一次（给可点选项，别让他描述）；③ 改完**同口径重量一遍**作证据（四块单列 · 19px · 57px 高 · 0 截断）。 |
-| 把点位按钮条 `.slotbar` 放进 flex 的 `.row` | 单列大按钮铺不开 —— flex 把它压成内容宽度（实测 204px) | `.row>.slotbar{flex:1 1 100%;width:100%}`；另注意媒体查询中同优先级规则**后写者赢**，窄屏断点里的 `repeat(4,…)` 会把单列盖回去 |
+| 用户说"某块太拥挤, 恢复上一版布局"就直接改 HTML | 改完自己以为好了, 现场还是"挤"或反而更长 —— 因为**真正的病可能是"面板少了一个闭合标签"**: 被套进别的面板里的那几块会挤在同一个窄列、而且把宿主面板撑到上千 px (实测金手指面板 2844px, 同行相机面板被 grid 拉伸成同样高) ⇒ 用户说的"一长条"就是它 | ① 先**量结构**: 浏览器里数 `.grid > .panel` 与全部 `.panel`（若不相等 = 有面板被嵌套）; 再量每块 `getBoundingClientRect()`（修前 2844 / 修后 941）+ 页高（4152 → 2884）; 实在不行静态跑 `python3 -c` + `HTMLParser` 数标签配平（末尾 depth 应 = 0）; ② 布局需求写清楚（"侧面点在金手指右边 + 号位/空间点在下" = 同级按序排进多列网格，靠 `grid-column:1/-1` 让后两块整行）; ③ 静态判据固化: `tools/verify_station_layout.py`（配平 + 同级 + 顺序 + 整行）。|
+| 改区块 markup 时只盯着"新旧样子像不像" | 替换一段 HTML 时**丢一个 `</div>`** 不会报错、不会 lint、页面上大多数东西看着正常 | 改完立刻数结构（父链/同级数）再提交；大块 markup 替换前后都跑一遍 DOM 层级对照 |
+| 用户说"某块太拥挤"就直接改 HTML | 改完现场还是"挤"或更长 —— 拥挤往往是 `grid-template-columns:repeat(7,…)` 小格子，而"上一版"是哪一版没定义 | ① 先**量后改**（`gridTemplateColumns` + 按钮宽高 + `scrollWidth>clientWidth` 数截断）; ② 让用户在**具体哪一块**上选一次; ③ 改完同口径重量一遍当证据。 |
+| 把点位按钮条 `.slotbar` 放进 flex 的 `.row` | 单列大按钮铺不开 —— flex 把它压成内容宽度（实测 204px) | `.row>.slotbar{flex:1 1 100%;width:100%}`；另注意媒体查询中同优先级规则**后写者赢** |
 
 ## 参考与延伸
 - 多相机底图(状态空间工程视频源 4 路)+ L5(VLM) 理解 + 信号场景色标: 见技能 `ar-multicam-scene-tagging`。
