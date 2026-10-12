@@ -10,8 +10,10 @@
  .tag.on{background:#1f6feb;color:#fff}
  .tag.warn{background:#7d4e00;color:#ffd479}
  main{display:flex;gap:12px;padding:12px;align-items:flex-start;flex-wrap:wrap}
- #stagewrap{position:relative;flex:1 1 640px;min-width:320px;background:#000;border:1px solid #21262d;border-radius:12px;overflow:hidden}
- #vid{display:block;width:100%;height:auto}
+ #stagewrap{position:relative;flex:1 1 640px;min-width:320px;background:#000;border:1px solid #21262d;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+ /* 🆕 旋转单元: img + 叠加层 + 命中层 一起绕中心转 ⇒ 叠加/投影/标定像素永远同一坐标系 */
+ #inner{position:relative;flex:0 0 auto}
+ #vid{display:block;width:100%;height:100%}
  #ov{position:absolute;left:0;top:0;pointer-events:none}
  #hit{position:absolute;left:0;top:0;cursor:crosshair}
  /* 标定放大镜: MAXHUB 里末端只有 10~25px, 肉眼点不准 ⇒ 鼠标附近给 4× 放大 + 十字 */
@@ -47,12 +49,19 @@
   <span class="tag" id="tCal">标定: 未标定</span>
   <span class="tag" id="tShow">轨迹: 关(默认)</span>
   <span class="tag" id="tAge">帧龄 —</span>
+  <span style="display:flex;gap:6px;align-items:center">
+    <button id="bRotL" class="sm" title="整幅画面向左旋转 90°(逆时针)">↺ 左旋90°</button>
+    <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
+    <span class="tag" id="tRot">旋转 0°</span>
+  </span>
 </header>
 <main>
   <div id="stagewrap">
+   <div id="inner">
     <img id="vid" src="/cam.mjpg?c=local2" alt="固定相机实时画面">
     <canvas id="ov"></canvas>
     <div id="hit"></div>
+   </div>
     <canvas id="loupe" width="176" height="176"></canvas>
     <div id="hint" style="position:absolute;left:10px;bottom:10px;background:#000a;border:1px solid #30363d;border-radius:8px;padding:6px 10px;font-size:13px">
       轨迹默认不显示 —— 点右侧『显示轨迹』
@@ -174,8 +183,39 @@ function layout(){
                         if(c.width!==IMG_W||c.height!==IMG_H){ c.width=IMG_W; c.height=IMG_H; } });
   if(READY){ drawOv(); drawVR(); }
 }
-new ResizeObserver(layout).observe($('stagewrap'));
-$('vid').addEventListener('load', layout);
+// ── 🆕 2026-10-12 老倪: 「图像增加旋转功能, 左旋/右旋 90° 两个按钮, 点一下就旋转 90°」 ──
+//    整幅画面(img + 叠加层 + 命中层)作为一个整体**绕中心旋转** —— 不是只转 <img>,
+//    否则投影/轨迹/L5 框/标定像素全都会错位。旋转后要让画面占满可用空间 ⇒ 容器宽高按
+//    旋转后的纵横比走(90/270 时宽高互换), 内层盒子始终是"未旋转画幅"(宽高比 = IMG_W:IMG_H)。
+let ROT=0, LASTOROT='';
+try{ ROT=((parseInt(localStorage.getItem('zmax_ar_rot')||'0',10)%360)+360)%360; }catch(e){ ROT=0; }
+function applyRot(){
+  const wrap=$('stagewrap'), inner=$('inner'), w=IMG_W||1280, h=IMG_H||720;
+  const sw=(ROT%180)!==0;
+  const cw=Math.max(160, wrap.clientWidth||wrap.getBoundingClientRect().width||640);
+  const sig=[ROT,w,h,cw].join('|');
+  if(sig===LASTOROT && inner.style.width) return;    // 角度/尺寸没变 ⇒ 不碰 DOM(否则每帧重排=闪)
+  LASTOROT=sig;
+  const ch=Math.round(cw*(sw? w/h : h/w));
+  wrap.style.height=ch+'px';                          // 显式高度(不依赖 aspect-ratio 支持)
+  inner.style.width=(sw? ch : cw)+'px';               // 90/270: 未旋转盒子宽高互换 ⇒ 转完正好铺满
+  inner.style.height=(sw? cw : ch)+'px';
+  inner.style.transform=ROT?('rotate('+ROT+'deg)'):'';
+  LASTRECT=null; layout();                            // 强制重画叠加层
+  if(typeof drawVR==='function') drawVR();
+  const t=$('tRot'); if(t) t.textContent='旋转 '+ROT+'°';
+}
+function setRot(d){
+  ROT=((ROT+d)%360+360)%360;
+  try{ localStorage.setItem('zmax_ar_rot',String(ROT)); }catch(e){}
+  LASTOROT=''; applyRot();
+}
+$('bRotL').addEventListener('click',()=>setRot(-90));  // 左旋 = 逆时针
+$('bRotR').addEventListener('click',()=>setRot(+90));  // 右旋 = 顺时针
+
+new ResizeObserver(()=>{ applyRot(); layout(); }).observe($('stagewrap'));
+$('vid').addEventListener('load',()=>{ applyRot(); layout(); });
+applyRot();
 
 // ── 3D → 像素 (与后端同口径: 针孔, fx=fy=f, 主点=中心) ──
 function proj(P){                                  // P=[x,y,z] base (m)
@@ -351,14 +391,26 @@ $('bSpin').addEventListener('click',()=>{
 //    放大镜: 光标附近 4× 放大 + 十字 ⇒ MAXHUB 里末端只有 10~25px 也能点准
 const LZ=4;
 function uvFromEvent(e){
+  // 🆕 旋转感知: 屏幕上量到的是**旋转后**的包围盒 ⇒ 先取画幅中心, 再逆旋转回"未旋转画幅"坐标。
+  // ROT=0 时与旧口径逐位等价。
   const r=e.currentTarget.getBoundingClientRect();
-  return [(e.clientX-r.left)/r.width*IMG_W, (e.clientY-r.top)/r.height*IMG_H];
+  const sw=(ROT%180)!==0;
+  const bw=sw? r.height : r.width;                    // 未旋转画幅的显示宽(px)
+  const bh=sw? r.width  : r.height;
+  let dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+  if(ROT){ const a=-ROT*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+           const lx=dx*ca-dy*sa, ly=dx*sa+dy*ca; dx=lx; dy=ly; }
+  return [(dx+bw/2)/bw*IMG_W, (dy+bh/2)/bh*IMG_H];
 }
 function drawLoupe(u,v,clientX,clientY){
   const lp=$('loupe'), lg=lp.getContext('2d'), vid=$('vid');
   const src=176/LZ, x0=u-src/2, y0=v-src/2;
   lg.clearRect(0,0,176,176);
-  try{ lg.drawImage(vid, x0, y0, src, src, 0, 0, 176, 176); }catch(err){}
+  try{
+    if(ROT){ lg.save(); lg.translate(88,88); lg.rotate(ROT*Math.PI/180);
+             lg.drawImage(vid, x0, y0, src, src, -88,-88, 176, 176); lg.restore(); }
+    else   { lg.drawImage(vid, x0, y0, src, src, 0, 0, 176, 176); }
+  }catch(err){}
   lg.strokeStyle='#58a6ff'; lg.lineWidth=2;
   lg.beginPath(); lg.moveTo(88-20,88); lg.lineTo(88+20,88); lg.moveTo(88,88-20); lg.lineTo(88,88+20); lg.stroke();
   lg.fillStyle='#58a6ff'; lg.font='12px monospace'; lg.fillText(`${u.toFixed(0)},${v.toFixed(0)}`,6,14);
@@ -620,6 +672,7 @@ function setCam(k){
   $('bSolve').disabled=true; $('calBar').style.width='0%';
   $('pCal').textContent='已切到 '+(CAMS[k].label||k)+' —— 这台相机的标定点和外参都独立(分辨率不同, 混用必然投影错)。';
   $('vid').src='/cam.mjpg?c='+k+'&t='+Date.now();
+  LASTOROT=''; applyRot();          // 🆕 分辨率变了 ⇒ 旋转盒子(宽高比)要重算
   buildCamPick();
   loadCalib().then(()=>{ layout(); refresh(); });
 }
