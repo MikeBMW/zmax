@@ -907,6 +907,12 @@ async function move(btn,force){
 function _moveReason(j){
   const txt=((j&&j.msg)||'')+'\n'+(((j&&j.lines)||[]).join('\n'));
   const pats=[
+    /* 🔴 2026-10-12 老倪「⛔ 被拒: (本地检测, 亚秒级) 又是怎么回事?」——
+       快层否决那行末尾的括号备注被下面通用 `/拒发[：:]*(...)/` **抢先**捕获, 横幅只剩一句括号, 现场看不到原因。
+       ① 优先抓「🛑 被拦(快层…)」那行(带 原因+哪路相机+实测指标) ② 通用「拒发」抓到**纯括号**就跳过继续找。 */
+    /被拦\(快层[^:\n]*[:：]\s*([^\n]*)/,      // 行里括号嵌套(「本地反射(5Hz)」)⇒ 不能用 [^)]*
+    /被拦\(慢层[^:\n]*[:：]\s*([^\n]*)/,
+    /安全闸\((?:快|慢)层\)[^:\n]*[:：]\s*([^\n⇒]*)/,
     /目标出已验证包络[：: ]*([^\n]*)/,        // 例: ⛔ 目标出已验证包络: x=0.3348 越界[0.3368, 0.7975]
     /扫掠越界急停[：: ]*([^\n」]*)/,           // 例: 🛑 扫掠越界急停: ['x'] 轴出包络(实测 [0.3348, …]) ⇒ stop()
     /出包络\s*\(([^\n]*)/,                     // 兜底: 任何"...出包络(...)"
@@ -921,8 +927,18 @@ function _moveReason(j){
     /TCP 真值陈旧[^\n]*/,
     /等 SDK 代理回执超时[^\n]*/
   ];
-  for(const re of pats){ const m=txt.match(re); if(m) return String(m[1]||m[0]).trim().slice(0,220); }
-  return '';
+  for(const re of pats){
+    const m=txt.match(re); if(!m) continue;
+    const s=String(m[1]||m[0]).replace(/\*\*/g,'').trim();
+    if(!s) continue;
+    /* 纯括号备注(如 "(本地检测, 亚秒级)")不是原因 ⇒ 跳过, 继续往下找 */
+    if(/^[（(][^（()）]{0,48}[)）]$/.test(s)) continue;
+    return s.slice(0,220);
+  }
+  /* 兜底: 把最后一条含否决标记的原文摆出来(总比横幅上只剩一句空括号强) */
+  const bad=(txt.split('\n').filter(l=>/拒发|被拦|被拒|越界|急停|不在.*白名单|未授权|陈旧/.test(l)).pop()||'')
+            .replace(/\*\*/g,'').replace(/^\s*\[[\d:]+\]\s*/,'').trim();
+  return bad.slice(0,220);
 }
 let _feedInit=false;
 function _feedTime(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
