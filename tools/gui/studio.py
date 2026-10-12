@@ -11770,42 +11770,60 @@ class StudioMainWindow(QMainWindow):
             return d
 
     def _save_project_file(self):
-        """💾 文件 → 保存工程文件… (画布 + 运行档位 → 一个自包含 .zmaxproj)"""
+        """💾 文件 → 另存工程快照… (另外留一份; 默认工程永远是 zmax_space.proj)
+
+        🔴 老倪 2026-10-12: 「两个工程文件, 加载哪个?」的根因就是"保存"会新建带时间戳的文件。
+        ⇒ 默认工程 = zmax_space.proj (就地更新); 想单独留一份才走这里, 且默认落 archive/(跟默认工程不同目录)。
+        """
         _pj = self._proj_mod()
         if _pj is None:
             return
         from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
-        default = os.path.join(self._proj_dir(),
-                               "状态空间工程_%s%s" % (time.strftime("%Y%m%d_%H%M"), _pj.EXT))
-        path, _ = QFileDialog.getSaveFileName(self, "💾 保存状态空间工程文件 (画布 + 运行档位)",
+        _ad = os.path.join(self._proj_dir(), "archive")
+        os.makedirs(_ad, exist_ok=True)
+        default = os.path.join(_ad, "状态空间工程_%s%s" % (time.strftime("%Y%m%d_%H%M%S"), _pj.EXT))
+        path, _ = QFileDialog.getSaveFileName(self, "💾 另存工程快照 (默认工程仍是 zmax_space.proj)",
                                               default, "Z-MAX 工程文件 (*%s);;JSON (*.json)" % _pj.EXT)
         if not path:
-            self.statusBar().showMessage("已取消: 未保存工程文件", 2500)
+            self.statusBar().showMessage("已取消: 未另存工程快照", 2500)
             return
         if not (path.endswith(_pj.EXT) or path.endswith(".json")):
             path += _pj.EXT
         try:
-            r = _pj.save_project(path, sim=getattr(self, "simulink", None),
-                                 page=getattr(self, "_simulink_index", None))
+            r = _pj.save_space(path, sim=getattr(self, "simulink", None),
+                               page=getattr(self, "_simulink_index", None))
         except Exception as e:                                                   # noqa: BLE001
             _msg_ok(self, "💾 保存工程文件", "❌ 保存失败\n\n%s: %s" % (type(e).__name__, e), "warning")
             return
-        rc = r.get("run_cfg") or {}
-        checked = [v.get("label") for v in rc.values() if isinstance(v, dict) and v.get("checked")]
-        msg = ("✅ 工程已保存\n\n%s\n\n画布: %s\n md5 %s\n运行档位: 记下 %d 项%s\n大小: %.1f KB\n\n"
-               "下次进控制台 → 文件 → 📂 加载工程文件… 选它即可接着调试。") % (
-            r["path"], json.dumps(r.get("stats") or {}, ensure_ascii=False), (r.get("md5") or "")[:12],
-            len(rc), ("（勾选中: " + "、".join(checked) + "）") if checked
-            else "（画布还没打开过，就只存画布本身）", (r.get("bytes") or 0) / 1024.0)
-        _msg_ok(self, "💾 保存工程文件", msg)
-        self.statusBar().showMessage("✅ 工程已保存: %s" % r["path"], 5000)
+        sec = r.get("sections") or {}
+        msg = ("✅ 工程快照已另存 (默认工程 zmax_space.proj 未动)\n\n%s\n\n" % r["path"]
+               + "\n".join("  · %s: %s" % (k, v) for k, v in sec.items())
+               + "\n\n要恢复它: 文件 → 📂 打开其他工程文件… 选这个文件 (集成式全量回填)。")
+        _msg_ok(self, "💾 另存工程快照", msg)
+        self.statusBar().showMessage("✅ 工程快照已另存: %s" % r["path"], 5000)
 
     def _save_space_file(self):
-        """🗂 文件 → 保存总工程 (zmax_space): 7 段全量 → data/database/zmax/zmax_space.proj"""
+        """💾 文件 → 保存工程: **就地更新**默认工程 zmax_space.proj (7 段全量)
+
+        🔴 老倪 2026-10-12: 「zmax_space.proj 工程文件默认应该是这个, 保存, 自动更新, 加载这个」
+        ⇒ 不弹文件框、不生成时间戳新文件: 永远更新同一个 zmax_space.proj;
+          覆盖前把旧的那份自动拷进 archive/ (可回滚)。要单独留一份 → 「💾 另存工程快照…」。
+        """
         _pj = self._proj_mod()
         if _pj is None:
             return
         path = _pj.space_path(getattr(self, "repo_path", None))
+        _bak = ""
+        try:                                     # 就地覆盖前先留一份可回滚
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                import shutil as _sh
+                _ad = os.path.join(self._proj_dir(), "archive")
+                os.makedirs(_ad, exist_ok=True)
+                _bak = os.path.join(_ad, "zmax_space_before_%s%s"
+                                    % (time.strftime("%Y%m%d_%H%M%S"), _pj.EXT))
+                _sh.copy2(path, _bak)
+        except Exception:                                                        # noqa: BLE001
+            _bak = ""
         try:
             r = _pj.save_space(path, sim=getattr(self, "simulink", None),
                                page=getattr(self, "_simulink_index", None))
@@ -11813,12 +11831,13 @@ class StudioMainWindow(QMainWindow):
             _msg_ok(self, "🗂 保存总工程", "❌ 保存失败\n\n%s: %s" % (type(e).__name__, e), "warning")
             return
         sec = r.get("sections") or {}
-        msg = ("✅ 总工程已保存 (一个文件承载整个状态空间工程)\n\n%s\n\n" % r["path"]
+        msg = ("✅ 默认工程已更新 (就地覆盖, 没有新开文件)\n\n%s\n\n" % r["path"]
                + "\n".join("  · %s: %s" % (k, v) for k, v in sec.items())
-               + "\n\n下次: 文件 → 🗂 打开总工程 (或 📂 加载工程文件选它) → 画布/标定/主参数/任务/面板"
-                 "一次全回填。\n🔴 真源没被改: 这是快照+指纹; 打开时会先备份再写再回读。")
-        _msg_ok(self, "🗂 保存总工程", msg)
-        self.statusBar().showMessage("✅ 总工程已保存: %s" % r["path"], 6000)
+               + (("\n\n旧的一份已备份: %s" % _bak) if _bak else "")
+               + "\n\n下次: 文件 → 📂 打开工程 (zmax_space.proj) → 画布/标定/主参数/任务/面板一次全回填。"
+                 "\n🔴 真源没被改: 这是快照+指纹; 打开时会先备份再写再回读。")
+        _msg_ok(self, "💾 保存工程", msg)
+        self.statusBar().showMessage("✅ 默认工程已更新: %s" % r["path"], 6000)
 
     def _open_space_file(self, path=None):
         """🗂 文件 → 打开总工程 (zmax_space): 集成式回填 (画布/标定/主参数/任务/面板)"""
@@ -11826,14 +11845,14 @@ class StudioMainWindow(QMainWindow):
         _pj = self._proj_mod()
         if _pj is None:
             return
-        from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
+        # 🔴 老倪 2026-10-12: 「zmax_space.proj 默认应该是这个 … 加载这个」
+        #   ⇒ 打开工程不再弹文件框, 直接打开默认工程; 要打开别的文件走「📂 打开其他工程文件…」。
         if not path:
-            d = _pj.find_space(getattr(self, "repo_path", None))
-            path, _ = QFileDialog.getOpenFileName(self, "🗂 打开总工程 (zmax_space)",
-                                                  os.path.dirname(d) or self._proj_dir(),
-                                                  "Z-MAX 总工程 (*%s *.zmaxproj);;所有文件 (*)" % _pj.EXT)
+            path = _pj.space_path(getattr(self, "repo_path", None))
+            if not os.path.exists(path):
+                path = _pj.find_space(getattr(self, "repo_path", None))
         if not path:
-            self.statusBar().showMessage("已取消: 未打开总工程", 2500)
+            self.statusBar().showMessage("已取消: 未打开工程", 2500)
             return
         if not os.path.exists(path):
             _proj_trace("打开总工程: 文件不存在")
@@ -11912,7 +11931,9 @@ class StudioMainWindow(QMainWindow):
         if _pj is None:
             return
         from PyQt5.QtWidgets import QFileDialog          # 本文件惯例: QFileDialog 函数内局部导入
-        path, _ = QFileDialog.getOpenFileName(self, "📂 加载状态空间工程文件 (接着上次调试)", self._proj_dir(),
+        _sp = _pj.space_path(getattr(self, "repo_path", None))     # 默认工程预选(老倪: 「加载这个」)
+        _start = _sp if os.path.exists(_sp) else self._proj_dir()
+        path, _ = QFileDialog.getOpenFileName(self, "📂 打开其他工程文件 (默认工程 = zmax_space.proj)", _start,
                                               "Z-MAX 工程文件 (*%s *.zmaxproj);;JSON (*.json);;所有文件 (*)" % _pj.EXT)
         if not path:
             self.statusBar().showMessage("已取消: 未加载工程文件", 2500)
@@ -12353,6 +12374,21 @@ class StudioMainWindow(QMainWindow):
                 _f2.write(f"=== {_t3.time():.3f} closeEvent 调用栈 ===\n" + "".join(_tb2.format_stack()) + "\n")
         except Exception:
             pass
+        # 🔁 2026-10-12 老倪: 「保存, 自动更新」⇒ 关控制台时自动把默认工程 zmax_space.proj 刷新一次,
+        #    下次打开就是最新。跳过离屏判据环境 (offscreen), 免得测试跑一次就写一次档;
+        #    也可用 ZMAX_NO_AUTOSAVE_ON_EXIT=1 关掉。
+        try:
+            if (os.environ.get("QT_QPA_PLATFORM", "") != "offscreen"
+                    and not os.environ.get("ZMAX_NO_AUTOSAVE_ON_EXIT")):
+                _pjx = self._proj_mod()
+                _spx = _pjx.space_path(getattr(self, "repo_path", None)) if _pjx else ""
+                if _spx and os.path.exists(_spx):
+                    _rx = _pjx.save_space(_spx, sim=getattr(self, "simulink", None),
+                                          page=getattr(self, "_simulink_index", None))
+                    _proj_trace("退出自动更新默认工程: %s (段 %d)"
+                                % (_spx, len(_rx.get("sections") or {})))
+        except Exception:                                                        # noqa: BLE001
+            pass
         """🛡 主窗口关闭清理 (2026-08-05 崩溃修复#4: StudioMainWindow 原本无 closeEvent →
         _orin_timer(5s轮询)/_rerun_worker(QThread)/_live_timer/_replay_timer/_stats_timer
         关闭时未清理 → QThread: Destroyed while thread is still running exit 134 SIGABRT)
@@ -12703,32 +12739,33 @@ class StudioMainWindow(QMainWindow):
 
         # 🗂 2026-10-09 老倪: 「每次打开工程, 要从工程文件打开… 定义一个 zmax_space 工程, 把所有状态空间
         #   工程文件/标定/配置/主参数都整合进这个总工程文件, 通过 文件→打开/加载工程 集成式打开」
-        act_space_save = QAction("🗂 保存总工程 (zmax_space)…  ", self)
-        act_space_save.setShortcut("Ctrl+Alt+S")
-        act_space_save.setToolTip("把**整个**状态空间工程存成一个总工程文件 "
-                                  "data/database/zmax/zmax_space.proj：画布模型 + 右侧栏配置 + 6 运行开关 + "
-                                  "标定 + 主参数 M + 测量 + 任务绑定。下次一次打开即全量回填。")
+        # 🔴 2026-10-12 老倪: 「zmax_space.proj 工程文件默认应该是这个, 保存, 自动更新, 加载这个」
+        act_space_save = QAction("💾 保存工程 (更新 zmax_space.proj)  ", self)
+        act_space_save.setShortcut("Ctrl+S")
+        act_space_save.setToolTip("就地更新默认工程 data/database/zmax/zmax_space.proj：画布模型 + 右侧栏配置 + "
+                                  "运行开关 + 标定 + 主参数 M + 测量 + 任务绑定。不新开文件、不弹文件框; "
+                                  "覆盖前旧的那份自动备份到 archive/。")
         act_space_save.triggered.connect(self._save_space_file)
         m_file.addAction(act_space_save)
 
-        act_space_open = QAction("🗂 打开总工程 (zmax_space)…  ", self)
+        act_space_open = QAction("📂 打开工程 (zmax_space.proj)  ", self)
         act_space_open.setShortcut("Ctrl+Alt+O")
-        act_space_open.setToolTip("集成式打开总工程：画布 / 标定 / 主参数 / 任务 / 面板一次全回填。"
+        act_space_open.setToolTip("直接打开默认工程 zmax_space.proj (不弹文件框)：画布 / 标定 / 主参数 / 任务 / 面板一次全回填。"
                                   "写盘前都会先备份 (画布→flows/_archive, 标定→*.bak_<ts>)，并给一页恢复报告。")
         act_space_open.triggered.connect(self._open_space_file)
         m_file.addAction(act_space_open)
         m_file.addSeparator()
 
         # 📁 2026-10-08 老倪: 「文件下拉菜单增加一个保存工程文件的功能, 下次进控制台直接加载它继续调试状态空间工程」
-        act_proj_save = QAction("💾 保存工程文件…  (状态空间工程)", self)
-        act_proj_save.setShortcut("Ctrl+S")
-        act_proj_save.setToolTip("把当前画布(节点+连线)与画布页 6 个运行档位勾选状态存成一个工程文件 (.zmaxproj)")
+        act_proj_save = QAction("💾 另存工程快照…  (archive/)", self)
+        act_proj_save.setToolTip("另外留一份工程快照 (默认落 archive/, 同一份 7 段内容); "
+                                 "默认工程始终是 zmax_space.proj (Ctrl+S 就地更新它)")
         act_proj_save.triggered.connect(self._save_project_file)
         m_file.addAction(act_proj_save)
 
-        act_proj_load = QAction("📂 加载工程文件…  (接着上次调试)", self)
+        act_proj_load = QAction("📂 打开其他工程文件…", self)
         act_proj_load.setShortcut("Ctrl+Shift+O")
-        act_proj_load.setToolTip("从工程文件 (.zmaxproj) 复原画布与运行档位; 写画布前原件自动备份到 flows/_archive/")
+        act_proj_load.setToolTip("打开别的工程存档 (默认已预选 zmax_space.proj); 写画布前原件自动备份到 flows/_archive/")
         act_proj_load.triggered.connect(self._load_project_file)
         m_file.addAction(act_proj_load)
 

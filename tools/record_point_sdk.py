@@ -61,11 +61,22 @@ def _one():
     }
 
 
-def sample(n: int = 6, gap: float = 0.35):
+# 🔴 2026-10-12 老倪: 「是延迟太大，点了好几秒才有反映，为什么？」—— 真因就是这里:
+#   原来是 `gap=0.35` 且**最后一个样本后面也 sleep** ⇒ 6 个样本白白睡 6×0.35 = **2.1s**,
+#   而 8793 是同步等这个子进程返回才回执 ⇒ 按钮要 2.1s 才有反映。
+#   现在改成"**窗口时长**"口径: 总采样窗口默认 0.30s(不管几个样本), 只在样本之间睡。
+#   采样源 (tcp_out/latest.json) 本来就是 50Hz(20ms 一帧), 所以 0.30s 窗口能拿到 ~15 帧真值,
+#   判别门槛仍是极差 >1e-4 m(0.1mm) ⇒ 0.30s 窗口下任何 >0.33mm/s 的残余运动都照抓不误
+#   (现场实测: 臂在动时 0.3s 窗口照样报「还在动」)。要更保守可传 --window 1.0。
+def sample(n: int = 6, gap: float = None, window: float = 0.30):
+    n = max(2, int(n))
+    if gap is None:
+        gap = max(0.0, float(window) / (n - 1))      # 保住 n 个样本, 但把**总窗口**压到 window 秒
     rows = []
-    for _ in range(n):
+    for i in range(n):
         rows.append(_one())
-        time.sleep(gap)
+        if i < n - 1:                                # 最后一个样本后面不再睡(白等)
+            time.sleep(gap)
     return rows
 
 
@@ -95,6 +106,8 @@ def main():
     ap.add_argument("--desc", default="")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--n", type=int, default=6)
+    ap.add_argument("--window", type=float, default=0.30,
+                    help="采样总窗口秒数(默认 0.30; 只在样本之间睡) —— 现场要更保守可给 1.0")
     ap.add_argument("--json", action="store_true", help="末尾多打一行 JSON 回执(给 8793 /ctl/record_point 解析用)")
     a = ap.parse_args()
     if not (a.record or a.show):
@@ -103,7 +116,7 @@ def main():
     if not os.path.exists(SRC):
         print("❌ 读不到真值源: %s (rokae_tcp_sampler 在跑吗?)" % SRC)
         return 1
-    rows = sample(a.n)
+    rows = sample(a.n, window=a.window)
     mean, sp, sq = analyse(rows)
     ok, why = vet(rows, mean, sp, sq)
     print("采样 %d 帧 · pos=(%.7f, %.7f, %.7f) · quat(xyzw)=(%.7f, %.7f, %.7f, %.7f)"
@@ -114,7 +127,7 @@ def main():
         if a.json:                       # 失败也回一行结构化回执(调用方一眼看出为什么没写)
             print(json.dumps({"ok": bool(ok and a.record), "why": why, "name": a.record,
                               "pos": [round(v, 7) for v in mean[:3]], "n_samples": len(rows),
-                              "spread_pos_m": round(sp, 8)}, ensure_ascii=False))
+                              "window_s": a.window, "spread_pos_m": round(sp, 8)}, ensure_ascii=False))
         return 0 if (ok or a.show) else 1
 
     try:

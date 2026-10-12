@@ -1087,7 +1087,8 @@ async function gotoPt2(btn){
    名称自动取下一个「安全点N」(读 /ctl/points 的 taught 键), 绝不覆盖已有点。 */
 async function addSafePoint(btn){
   const m=$('#safept_msg');
-  flash(btn); btn.disabled=true; setTimeout(()=>{btn.disabled=false;},8000);
+  flash(btn); btn.disabled=true;                      // 只在请求在飞时禁用; 回来立刻恢复(原来固定 8s ⇒ 连点像"没反应")
+  const _re=()=>{btn.disabled=false;};
   m.textContent='⏳ 正在读当前位姿并落盘(6 帧)…';
   try{
     let n=1;
@@ -1110,6 +1111,7 @@ async function addSafePoint(btn){
       $('#msg').textContent='⛔ 增加安全点未成: '+((r&&r.msg)||'被拒'); $('#msg').className='bad';
     }
   }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  finally{ _re(); setTimeout(_re,1200); }             // 双保险: 回来就恢复
 }
 /* ═══ 🎯 侧面点0: 回到示教点『侧面点0』(技能 L2.goto_surface_pt0) ═══
    2026-10-01 老倪: 「记录当前的侧面点0，增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0
