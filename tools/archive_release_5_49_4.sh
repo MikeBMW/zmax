@@ -53,6 +53,9 @@ cp -f tools/gui/ss_dreamview.py tools/gui/studio.py tools/gui/update_checker.py 
 cp -f tools/gui/veh6_config_page.py tools/verify_zmax_open_flow.py tools/verify_node_cfg_import.py \
       src/lerobot/engineering/config_import.py src/lerobot/engineering/nodes/library.py \
       src/lerobot/manifold/metric_field.py tools/zmax_params.py tools/verify_metric_main_param.py \
+      src/lerobot/manifold/health.py src/lerobot/manifold/engine_loop.py tools/sil_test_engine.py \
+      tools/verify_engine_loop.py tools/config_to_M.py tools/verify_config_to_M.py \
+      tools/engine_bus_publish.py tools/feishu_send_file.py \
       tools/gui/launch_studio.sh tools/verify_no_autostart.py \
       tools/sim_scene_def.py tools/tray_live_publish.py tools/tray_plan_3parts.py \
       tools/verify_v2_look.py tools/verify_mouth_align.py tools/qa_3d_pixels.py tools/cmp_3d_fix.py \
@@ -64,7 +67,7 @@ echo "  编译: $(gui-venv311/bin/python -m py_compile tools/gui/ss_dreamview.py
 mkdir -p "$DST/src/lerobot/engineering/nodes"
 cp -f src/lerobot/engineering/config_import.py "$DST/src/lerobot/engineering/" 2>/dev/null
 mkdir -p "$DST/src/lerobot/manifold"
-cp -f src/lerobot/manifold/metric_field.py "$DST/src/lerobot/manifold/" 2>/dev/null
+cp -f src/lerobot/manifold/metric_field.py src/lerobot/manifold/health.py src/lerobot/manifold/engine_loop.py "$DST/src/lerobot/manifold/" 2>/dev/null
 cp -f config/calib/zmax_manifold.json "$DST/config/" 2>/dev/null
 cp -f src/lerobot/engineering/nodes/library.py "$DST/src/lerobot/engineering/nodes/" 2>/dev/null
 
@@ -100,6 +103,10 @@ cp -f VERSION.md "$DST/docs/" 2>/dev/null
 cp -f docs/skills/hermes-all/software-development/zmax-console/references/config-sheet-and-scene-colors.md \
       "$DST/docs/zmax-console-config-sheet-and-scene-colors.md" 2>/dev/null
 
+mkdir -p "$DST/deliverables"
+cp -f docs/deliverables/*.md "$DST/deliverables/" 2>/dev/null
+
+cp -f reports/sil_engine_*.json "$DST/reports/" 2>/dev/null
 echo "=== ⑤ MANIFEST + sha256 ==="
 ( cd "$DST" && find . -type f ! -name sha256sums.txt ! -name MANIFEST.md -print0 | sort -z | xargs -0 sha256sum > sha256sums.txt )
 { echo "# 归档 v$VER — 3D 场景渲染修正 (摆盘件/孔口可见/场景按钮不再被扳回)";
