@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.49.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.49.3")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10977,7 +10977,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.2 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.3 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10985,9 +10985,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.2 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.3 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.49.3: **标准打开流程收口 (双击图标→配置中心 · 任务表三列 · 右下角启动按钮 · 3D窗跟随场景)** (老倪 10-12) ① 双击桌面图标 → 先开配置中心: `launch_studio.sh` 导出 `ZMAX_BOOT_PAGE`(默认 config), 新实例由 studio.py 界面建好后自动跳页; **已有实例**则写命令通道 `config` + 激活窗口 ⇒ 双击永远落到配置中心且不起第二个进程 ② 配置中心任务表新增「**工程**」列(工程名 + 项目启动文件真名真路径 `reports/projects/SS_主工程_任务配置.zmaxproj`, 悬停给绝对路径/时间/画布 md5) 与「**实时监控**」列(该任务加载信号的颜色+条数: 插拔 #2e8b57 ×5 · 摆盘 #1f6feb ×3 · AR #8957e5 ×176 + 基础/未分类 白), 原「场景」列改「**3D场景**」并显示场景名字(插拔场景 · SCN-01-FW / 摆盘场景 · SCN-06-TRAY / AR场景 · SCN-07-AOI); 三列内容与上色全从真源算(`config/topics/scene_tags.json` + `tools/ss_scene_switch.py`), 未绑场景的任务如实写「未绑」 ③ **右下角「🚀 启动工程 · 信号 · 场景」**(表格下右对齐)= 确定配置→应用场景→同时开 画布+3D+信号分析, 与 `tools/zmax_open.py step2` 同一执行体 ④ 修真 bug(**3D 窗不跟场景**): open_all 原来只开 3D 窗、不推本轮场景真源 ⇒ 3D 窗停在控制台启动时的场景(老倪会看着画面问「怎么还是插拔」); 现按画布 `ssdata.src_state` 让在册 3D 窗真切场景(标题带场景名; AR 场景无仿真目录 ⇒ 如实不动不硬套) ⑤ 新增判据: `verify_zmax_open_flow.py` **43/43 PASS**(表头列序/三列真内容/启动文件绝对路径真存在/两列同色/按钮在右下角且 1280-1920 宽都不挤不截断/开机默认页接线) + `verify_task_scene_matrix.py` **三任务自动测试**(逐任务真激活→切场景→统一打开, 核 绑定真源/画布数据源/控制台回执/3D窗标题/信号窗该场景颜色像素/配置中心两格文字与颜色, 收尾还原现场)
         # v5.49.2: 配置中心左侧栏改"适配宽度" (老倪: 「左侧栏无法更改宽度, 字体都挡住了」) ——
         #   ① 左栏按**内容实测**定宽(最长条目+层级缩进+箭头/边框/滚动条余量)当初始值+最小宽度(挤不没); 句柄 4→8px;
         #      禁拖成 0 宽; 拖过的宽度记住(QSettings config_center/tree_width), 下次开页面沿用(只在 ≥ 需求宽度时恢复)
@@ -12133,6 +12134,10 @@ class StudioMainWindow(QMainWindow):
             try:
                 _oneshot(self, 700, lambda: _sim.open_ss_3d(on_top=False))
                 steps.append(("打开 3D 场景", True, "3D 视图窗口 (与画布同源)"))
+                # 🚀 2026-10-12 老倪: 「打开不同的任务, 对应不同的场景」—— 3D 窗必须跟着本轮场景切,
+                #   否则 3D 窗还停在控制台启动时的场景 (看着「怎么还是插拔」)。真源=画布 ssdata.src_state。
+                steps.append(("3D 场景对齐数据源", bool(self._ss3d_push_scene()),
+                              "按画布数据源切 3D 窗 (标题带场景名; 无仿真目录的场景如实不动)"))
             except Exception as _e:                                             # noqa: BLE001
                 steps.append(("打开 3D 场景", False, str(_e)[:160]))
             try:
@@ -12161,6 +12166,74 @@ class StudioMainWindow(QMainWindow):
         print("[open_all] %s\n%s" % (_txt, "\n".join("  %s %s : %s" % ("✅" if o else "❌", n, d)
                                                      for n, o, d in steps)), flush=True)
         return steps
+
+    def _ss3d_push_scene(self, scene_state="", tries=8, every=2500):
+        """🚀 2026-10-12 老倪: 「打开不同的任务, 对应不同的场景」 —— 把画布数据源对应的场景推给在册 3D 窗。
+
+        根因: open_all 原来只开 3D 窗, 不推本轮场景 ⇒ 3D 窗停在控制台启动时的场景真源
+        (ZMAX_SCENE_DIR 只在 import 时按画布自恢复一次), 老倪会看着画面问「怎么还是插拔」。
+        真源 = 画布 `ssdata.params.src_state`(→ ss_dreamview.SRC_STATE_SCENE 的场景目录 id);
+        没有仿真目录的场景 (AR 场景/真机) ⇒ 如实不动, 不硬套一个目录。
+
+        🐛 2026-10-12 实测两个坑 (自动测试里现形):
+          ① **场景必须在排程时就定住**: 第一版在延迟回调里才去读画布 ⇒ 面板线程被建窗/重建几何占住时回调晚到,
+             读到的已经是下一轮的数据源 (把摆盘那轮推成了 AR)。现在调用即定值。
+          ② 3D 窗是**延迟建**的 (open_ss_3d 走 700ms oneshot) ⇒ 到点可能还没窗, 所以**有界重试**到窗口出现。
+        返回 True = 已排程 (幂等: 已在该场景且标题已带场景名就不重复重建几何)。
+        """
+        _st = (scene_state or "").strip() or self._src_state_now()
+        try:
+            from ss_dreamview import SRC_STATE_SCENE as _M
+        except Exception:                                                       # noqa: BLE001
+            _M = {"摆盘场景": "SS-TRAY-PLACE", "插拔场景": "SS-EPI-CORNER",
+                  "仿真": "SS-EPI-CORNER", "真机": "", "AR场景": ""}
+        # 场景目录 id → 3D 窗标题里用的场景名 (与 ss_dreamview._switch_scene 的 _lab 同一套)
+        _LBL = {"SS-EPI-CORNER": "插拔场景", "SS-TRAY-PLACE": "摆盘场景"}
+        _sid = (_M.get(_st) or "").strip()
+        if not _sid:
+            print("[open_all] 3D 切场景: 数据源「%s」没有仿真场景目录 ⇒ 3D 窗不动 (如实)" % _st, flush=True)
+            return True
+        _sd = os.path.join(self._repo_root(), "data", "scene", "scenes", _sid)
+        if not os.path.isdir(_sd):
+            print("[open_all] 3D 切场景: 场景目录不存在 %s ⇒ 不动" % _sd, flush=True)
+            return True
+        _lab = str(_LBL.get(_sid) or {"SS-EPI-CORNER": "插拔场景", "SS-TRAY-PLACE": "摆盘场景"}.get(_sid, _sid))
+
+        def _try(n):
+            _sim = getattr(self, "simulink", None)
+            _wins = [w for w in (getattr(_sim, "_ss_3d_windows", None) or []) if w is not None] if _sim else []
+            _did = False
+            for _w in _wins:
+                try:
+                    if not hasattr(_w, "_switch_scene"):
+                        continue
+                    _t = (_w.windowTitle() or "")
+                    if getattr(_w, "scene_id", None) == _sid and _lab in _t:
+                        continue                      # 已在该场景 ⇒ 不重复重建几何
+                    _w._switch_scene(_sid)
+                    _did = True
+                    print("[open_all] 3D 窗已切场景 → %s (%s)" % (_sid, _st), flush=True)
+                except Exception as _e:                                              # noqa: BLE001
+                    print("[open_all] 3D 切场景失败 %s: %r" % (_sid, _e), flush=True)
+            if not _did and n > 0:                    # 窗还没建好 (延迟建) ⇒ 有界重试
+                _oneshot(self, int(every), lambda: _try(n - 1))
+            elif not _did:
+                print("[open_all] 3D 切场景: 等不到在册 3D 窗 ⇒ 放弃 (如实)" , flush=True)
+
+        _oneshot(self, 1600, lambda: _try(int(tries)))
+        return True
+
+    def _src_state_now(self):
+        """只读: 画布真源里数据源节点的 src_state (open_all 判定场景唯一口径)。"""
+        try:
+            _p = os.path.join(self._repo_root(), "src/lerobot/engineering/flows/state_space_obs.json")
+            _d = json.load(open(_p, encoding="utf-8"))
+            for _n in (_d.get("nodes") or []):
+                if (_n.get("params") or {}).get("src_state"):
+                    return str(_n["params"]["src_state"]).strip()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return ""
 
     # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────
     def _l5_status_cmd(self):
