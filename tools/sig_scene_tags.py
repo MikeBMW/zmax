@@ -262,8 +262,15 @@ def build(from_runs: bool = False) -> dict:
         sig["ar." + k] = "AR场景"          # 页面里 AR 信号带 ar. 前缀(来源前缀), 两种写法都认
     n_runs = 0
     if from_runs:
+        # 🚀 2026-10-12 老倪: 「摆盘场景…蓝色信号一个都没有么? 你是真正运行了么」——
+        #   根因之一是这里**只补空缺**(`if k not in sig`): 运行产物(真跑过 = 最强证据)被 node/关键词这类启发式
+        #   先占了位置 ⇒ 摆盘真跑出来的信号一条也标不上(摆盘只剩 3 条历史夹具名)。改成: 运行证据**覆盖**启发式,
+        #   但不动显式来源族前缀(ar./sstrace./ds.)与人工 overrides(它们在循环之后无条件写入)。
+        _prot = set(str(k) for k in sig if str(k).startswith(("ar.", "sstrace.", "ds.")))
         for k, sc in _run_signals().items():
-            if k not in sig:
+            if k in _prot:
+                continue
+            if sig.get(k) != sc:
                 sig[k] = sc
                 n_runs += 1
     for k, sc in overrides.items():        # 人工补充优先级最高

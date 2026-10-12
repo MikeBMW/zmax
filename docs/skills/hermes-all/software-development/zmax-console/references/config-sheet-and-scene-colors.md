@@ -67,3 +67,21 @@ AR 下面是白色? · 摆盘呢? · 其它无法分类的定义为基础场景,
 判据扩展(同一脚本): ⑦ 四组组名+组色(插拔#2e8b57/摆盘#1f6feb/AR#8957e5/基础#ffffff) · ⑧ 折叠后重建仍折叠。
 判据要等 2~3s 再断言行数 —— 本机源线程推第一帧前先建树会得到“只有组没有行”的假红。
 末尾用 `os._exit(code)` 硬退: Qt+线程退出期偶发 segfault, 别让它污染判据退出码。
+
+## 信号→场景颜色: 摆盘(蓝)为什么一条真信号都没有 (2026-10-12 实测根因)
+
+老倪问「摆盘场景的实时监控蓝色信号一个都没有么? 你是真正运行了么」—— 四条真因, 一查就见:
+1. **打标真源空着**: `tools/sig_scene_tags.py::_run_signals()` 只扫 `zmax_data/task_runs/<TASK>/**` 里的
+   json/jsonl 键名; 两条 episode 链真跑完只落 `reports/*.npz/mp4` ⇒ 该目录空 ⇒ 摆盘只剩 3 条历史夹具名。
+   ⇒ 跑完必须把运行产物落 `zmax_data/task_runs/<TASK>/` (逐步 jsonl + 汇总 json)。
+2. **运行证据优先权反了**: `build()` 原为 `if k not in sig`(只补空缺) ⇒ 真跑过的信号被 node/关键词启发式先占位,
+   一条也标不上。已改为运行证据**覆盖**启发式(不动 `ar./sstrace./ds.` 前缀与人工 overrides)。
+3. **`--from-runs` 单独跑不重建**: `main()` 里只有 `--build --from-runs` 才写盘; 只给 `--from-runs` 只打印汇总。
+   摆盘还多一道: 链侧从不写 `zmax_data/ss_live/trace_live.json`(窗里 `sstrace.*` 的唯一源) ⇒ 需要自己的重放
+   发布器 `tools/tray_live_publish.py` (读 npz → 落运行产物 → 重建标签 → 按 episode 时间轴 20Hz 重放写 trace_live)。
+4. **二维数组取值坑**: `_f(z["x"], i, k)` 这种助手(第3参是 default)会把 k 当 default 吃掉, 异常时返回 default
+   ⇒ 末端/光模块整列变 0,1,2。必须 `_f(z["x"][i], k)`。
+
+验收口径 (真看图, 不要看代码就说好了): `xdotool windowactivate --sync <信号窗>` + `scrot -u`(抓**焦点窗自身**,
+不受层序影响; 全屏裁剪会量到压在它上面的配置中心 ⇒ 它的表也有绿/蓝/紫格子 = 假绿) + 数蓝色像素(`#1f6feb`):
+只有组标题 ≈365px, 真信号上屏后 **6263px**; 再 OCR 左栏能看到真信号名与实时值(例: 单颗CT 10.64)。

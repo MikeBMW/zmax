@@ -33,7 +33,7 @@ cp -f reports/shots/matrix_TASK-*.png "$DST/evidence/" 2>/dev/null
 gui-venv311/bin/python tools/verify_zmax_open_flow.py > "$DST/evidence/verify_zmax_open_flow.txt" 2>&1 || true
 tail -3 "$DST/evidence/verify_zmax_open_flow.txt" | sed 's/^/  /'
 gui-venv311/bin/python tools/verify_version_sync.py --offline > "$DST/evidence/verify_version_sync.txt" 2>&1 || true
-{ echo "version_repo: $(grep -m1 -o 'v5\.[0-9.]*' tools/gui/update_checker.py)";
+{ echo "version_repo: $(grep -m1 -oP 'CURRENT_VERSION = \K.*' tools/gui/update_checker.py)";
   echo "git_head: $(git rev-parse --short HEAD 2>/dev/null)";
   echo "git_tag: $(git describe --tags --always 2>/dev/null)";
   echo "canvas_md5: $(md5sum flows/state_space_obs.json | cut -d' ' -f1)";
