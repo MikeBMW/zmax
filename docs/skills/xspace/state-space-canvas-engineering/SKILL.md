@@ -537,9 +537,20 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
   `engineering_db.py build` → `ss_task_bind.py --check` + `engineering_db.py check`(顺序反了会报 drift ['project'])。
 - 界面要看得见: 配置中心「📋 任务配置」表加列直接在 `veh6_config_page.py` 的 `_mk_table([...])` 里加值 +
   给每行 `item.setToolTip()` 存完整口径(单元格只放短标签); 改完**一次性重启控制台**才生效。
+  列里要带**场景色**(绿/蓝/紫)或任何颜色/映射时, 从单一真源 `tools/ss_scene_switch.py` 取, 别另写一份。
 
 **③ 节点要「发出话题」= 建一条话题总线真源, 别让节点自己到处写文件**:
 模式(2026-10-12 实做, `tools/ar_aoi_bus.py`): 注册表 JSON(`config/topics/<域>_signals.json`, 含 组/单位/真源说明)
 + 单一写入器(原子写 + `.bak` + 回读, 键 → 组映射写进文件) + 生产者(节点执行时 `publish(部分信号)` 合并写入; 外部真源用 `pull()` 拉)
 + 常驻拉取器 `*_ctl.sh start|stop|status` + 消费端(信号分析页 `HOST_SOURCES` 加一条 + 去前缀显示 + 分组树取注册表的组名)。
 判据: 真跑节点后**回读 live 文件**数话题 ≥N 且自洽(如 缺陷数 = 划伤 + 污点); 演示值不许填 0 冒充, 缺的键不写。
+
+**④ 数据源/场景新增一态 (如「AR场景」) = 三处同改 + 一个收口判据 + 挂在唯一激活路径上**:
+- 词汇表加新态: `SRC_CYCLE` / `SRC_DESC` / `SRC_SCENE_ID` + `_src_norm`(`tools/gui/simulink_module.py`)。
+- 🔴 **把所有 `== "真机"` 收口成一个判据**(如 `_src_is_real()`): 新增一态若没进这个判据, 它会**悄悄走仿真算路**
+  (界面写着新场景、引擎跑的是 metaworld 演示)。改前先 `grep -n '真机' tools/gui/simulink_module.py` 数清有几处分支。
+- 任务→场景/数据源切换的**单一真源** = `tools/ss_scene_switch.py`(内含 任务→场景→颜色 映射表), 直接写**画布数据源节点**
+  `ssdata.params.src_state`(经 `flows.load_canvas` / `save_canvas`, 不手改 .db), **写完回读校验**。
+- 挂钩点选**唯一激活路径** `ss_task_bind.py --activate`, 并用 try/except 包住: 切场景失败只提示, **不能拦激活**。
+- 判据: 逐个任务 `--activate` → 回读 `active_task` + 画布数据源 + 节点色 → 最后**还原成用户原来的任务/场景**
+  (验收不要把现场停在测试用的那一态)。

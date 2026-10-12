@@ -272,3 +272,25 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
 
 `verify_wave_modes.py` (模式互切不串色): 勾 5 条 → 每模式抓图数每种信号颜色像素 (>100);
 数子图矩形之外的该色像素 (<300); 多轴模式→独立图往返后再数一次; 读 `extra_vbs` 断言每条副轴量程覆盖自身数据。
+
+## 🎨 按场景给信号上色 + 按色排序
+
+老倪要求: 「信号分析主窗口的信号是有目标场景的, 你得标记出来…用 绿色/蓝色/紫色 代表不同场景…要有个排序的功能,
+白色就是所有颜色的信号都显示, 没有分类的信号都是白色」。
+
+* **颜色/任务映射只准有一份**: `tools/ss_scene_switch.py` —— 插拔 `#2e8b57`(绿) · 摆盘 `#1f6feb`(蓝) · AR场景 `#8957e5`(紫);
+  未分类 = 白 `#ffffff`。3D 场景按钮、配置中心「场景」列、信号分析目录**都从它取**, 不许各处写死色值。
+* **标签真源**: `tools/sig_scene_tags.py --build [--from-runs]` → `config/topics/scene_tags.json`(生成物, 勿手改)。
+  打标证据: ① AR/AOI 信号注册表(`config/topics/ar_aoi_signals.json`) ② **任务启用节点的名字前缀** ——
+  信号键约定 `节点名.字段`, 节点名要先剥 emoji/括号再比 ③ 运行产物 (`zmax_data/task_runs/`) ④ 人工 overrides。
+  **没证据的分类就留白**: 宁可未分类并在标题行报数, 也不要猜(某场景暂无带节点前缀的信号 ⇒ 该类 0 条是如实结果)。
+* **UI 三个动作** (`canoe_graphic.py`): ① 目录项前缀 `● `(画场景色) / `○ `(未分类白);
+  ② 排序行四钮 ⚪全部/🟢/🔵/🟣 —— 选某色 = 该色**置顶**, 其余**压暗但仍显示**(不是隐藏), 白 = 不排序全显示;
+  ③ 标题行写「当前数据源场景 + 各色计数」。
+* 🔴 **统计实时 store 必须先快照 key**: `for k in list(self.store.bufs.keys())` —— 数据源线程同时在加键,
+  直接迭代 `.items()/.values()` 会 `RuntimeError: dictionary changed size during iteration`, 被 try 吞掉后表现为
+  「计数一直是 —」(静默不更新)。GUI 里凡遍历实时 store 都按这条做。
+* **判据 `tools/verify_sig_scene_tags.py` (offscreen)**: 真起窗口 → 插两条已知信号(一 AR、一无标签) →
+  验前缀色/白、按色置顶、标题行计数; 另验 `/api/cams` 真值 + 每路快照魔数(`\xff\xd8`)。
+  ⚠️ AR 组只在「🌐 全部来源」范围出现 ⇒ 断言前按上面老用例的姿势先切范围
+  (`w._default_done=True` + `scope_combo.setCurrentIndex(1)`), 否则取不到 AR 项 = **假失败**。

@@ -437,6 +437,29 @@ daemon 全部运动技能安全拒绝("位姿缓存未就绪"); 恢复前不要�
   (实测 exit -15, 服务与人一起死)。取 pid 用: `ps -eo pid,cmd | grep <名> | grep -v grep | awk '{print $1}'`。
 - 回点同样要过上面的**现场协同闸门**(三查/拖动关闭/自动模式/伺服上电 + 逐条请示) —— daemon 不做闸门判断。
 
+### 臂全不动时的 30 秒判据(2026-10-12 现场)
+
+现场症状: 左右/升降/点位**全都**「受理: 已下发」但机械臂一动不动, 现场反复问"都授权了怎么还不动"。
+先读**两份独立真值**(秒级刷新, 比问人快):
+
+```
+zmax_data/rokae_sdk/tcp_out/agent_heartbeat.json   → state.operateMode / state.operationState
+zmax_data/rokae_sdk/tcp_out/state.json             → mode
+```
+
+同时执行器日志同刻会写:
+
+```
+❌ SDK 腿失败: … rc=3 · ABORT 前置条件不满足: 不是自动模式 (OperateMode.manual)
+```
+
+⇒ `rc=3` + `operateMode: OperateMode.manual` = **控制器在手动模式**, 与授权/快层/包络/服务名**全都无关**
+(那些闸门都过了才会走到 SDK 腿这一步)。只有现场示教器能解决: ① 退出拖动 ② 切自动
+(`operationState` 必须 `idle`; 残留拖动会报 `#10011 切换至自动模式失败`)。切完复读真值应为
+`OperateMode.automatic` + `PowerState.on`, 再让现场点一次。
+
+判据要点: **"受理: 已下发" 不是成功**; `SDK 腿完成` 才是。日志里 "已投递" → "❌ SDK 腿失败" 两层要分开看。
+
 ## 🕹 网页手动控制区 (2026-09-27, 老倪: 「手动控制机器人 X Y Z 平移 + A B C 绕轴旋转」)
 
 页面 `/station` 上的点动按钮 → `tools/cam_live_stream.py` 的 `POST /ctl/move` → 写 L2 FIFO。
