@@ -85,3 +85,68 @@ AR 下面是白色? · 摆盘呢? · 其它无法分类的定义为基础场景,
 验收口径 (真看图, 不要看代码就说好了): `xdotool windowactivate --sync <信号窗>` + `scrot -u`(抓**焦点窗自身**,
 不受层序影响; 全屏裁剪会量到压在它上面的配置中心 ⇒ 它的表也有绿/蓝/紫格子 = 假绿) + 数蓝色像素(`#1f6feb`):
 只有组标题 ≈365px, 真信号上屏后 **6263px**; 再 OCR 左栏能看到真信号名与实时值(例: 单颗CT 10.64)。
+
+## 3D 场景几何/材质 四个真坑 (2026-10-12 老倪两问实测)
+
+老倪: 「插拔的 夹具/孔座 与插入的孔口 横向有偏差」·「摆盘 光模块不能是透明的, tray盘太小放不下」
+1. **盒心用错口径**: `meta["box_center"]` 是**环境系原点**(实测 z=-0.0008), 被当网格中心画 ⇒ 盒顶比孔口低 35mm,
+   盒子一半埋进桌面(盒跨 -0.096~+0.094, 桌面顶≈0.024)。修 = 盒心由孔口反推(+X 面与孔口面齐平、z=孔口高)。
+   取证口径: 数值(z 差) + 逐像素复核两层都要 —— 独立复核同时确认「孔口标签浮在盒顶上方 90~130px」。
+2. **“透明”不是图层叠加, 是 shader**: 盘件用 `shader=None`(无光照平涂) ⇒ 单一色 (235,189,61) +
+   亮黄线框穿面 + 内底灰面透出 ⇒ 被看成玻璃/贴图块。修 = 金属件改 `shader='shaded'`(盘壁/内底保持平涂)。
+   判据可量化: 单色平涂像素(±6) 72 → 宽色域(±45) 15893 ⇒ **明暗占比≈100%** = 真的有面明暗。
+3. **“太小放不下”要对准比的是谁**: 实测金件全在盘内、桌上 0 金色像素 ⇒ 不是超盘外廓, 而是**件比自己的槽位线框大**
+   (标记 r=0.012=24mm < 件长 52mm)。修 = 槽位半径按件半长取 (r=件半长+1mm)。
+4. **同一物体网格别跨场景硬用**: 光模块网格曾一直硬用插拔 `_PEG_SIZE`(200mm), 而摆盘槽位 52×20×12mm;
+   摆盘盘件尺寸的真源 = `sim_scene_def._tray_layout`。切场景时要重算尺寸并重建网格。
+
+取证脚手架(现成脚本, 别每次现写): `tools/qa_3d_pixels.py`(颜色反查物体) · `tools/cmp_3d_fix.py`(修前后对比) ·
+`tools/qa_3d_pixels.py` 必须带 `export DISPLAY=:0`(`DISP="DISPLAY=:0"` 这种变量前缀会 command not found ⇒ 抓到别的窗口);
+颜色掩膜按物体常量 + 连通块, 不排掉窗口背景色会被背景吞掉。
+看不见图时: 派一个能看图的子代理逐像素描述(本次就是它推翻了“透明=图层叠加”的猜测)。
+
+## 3D 场景「残留上一个场景的轨迹线」——两条真因 (2026-10-12 实测)
+
+老倪: 「摆盘的场景, 为什么还残留着插拔场景的轨迹线?」两条都修真了, 都很容易再犯:
+1. **切场景不换 episode 真源**: `ss_dreamview._switch_scene` 原来只 `_build_scene()`(重建几何), `self.tr` 一直是
+   构造时读的 `reports/ss_episode_latest.npz`(插拔 752 帧) ⇒ 摆盘里那条「📡 末端实测轨迹」还是插拔的。
+   修法 = `scene_episode_path()/load_scene_episode()` 每场景认自己的 episode(**摆盘=`reports/tray_place_latest.npz`
+   2708 帧 · 插拔=`reports/ss_episode_latest.npz` 752 帧**), 切场景先 `set_trajectory()` 再重建。
+2. **单独切场景窗口不跟**: 3D 窗原来只在按「🚀 启动工程·信号·场景」(`studio._ss3d_push_scene`) 时被推场景;
+   直接改画布 `ssdata.src_state` 窗口无感 ⇒ 现场看就是“残留”。修法 = `_watch_canvas_scene()` 看门狗
+   (2s 比对 `canvas_src_scene_id()` 与 `self.scene_id`, 变了就切)。
+3. **看门狗不能吃掉手动按钮** (同日回归, 必修): 场景按钮只切窗口、**不写画布 `ssdata.src_state`** ⇒ 上面那个 2s
+   看门狗又把窗口扳回旧场景 —— 现场看到的竟是「点击插拔, 却自动跳到了摆盘场景」(= 按钮像失灵)。
+   修法 = 按钮走 `_switch_scene_manual()`: **先** `write_canvas_scene()` (复用 `tools/ss_scene_switch.py::switch`,
+   与配置中心同一条路) **再**切窗口, 并给手动动作 8s 独占期 (`self._manual_scene_ts`, 看门狗期间不抢)。
+   通用规则: 任何“自动跟随单一真源”的看门狗, 都要给手动入口留独占窗口, 且手动入口必须先写真源。
+   验证: 写画布后 **10s 与 24s 各看一次** `wmctrl -l | grep 3D场景` 仍停在目标场景才算修好
+   (只看一次会把“还没来得扳回去”当成功)。
+证据只看日志一行(别靠截图: 视图在动画, 任意两张图必有差): `🧩 [3D场景] 跟随画布数据源 → SS-TRAY-PLACE`
++ `已装载 摆盘 episode · tray_place_latest.npz · 2708 帧`。
+附: 脚本里 `DISP="DISPLAY=:0"` 这种**变量前缀写法无效**(报 `DISPLAY=:0: command not found`), 要 `export DISPLAY=:0`。
+
+## 三颗光模块轨迹 · MoveIt 口径 (2026-10-12)
+- `tools/tray_plan_3parts.py` 从**真跑 episode 抽 3 颗各自轨迹** → `reports/tray_plan_3parts.json`
+  (按 `stage` 回退切颗: 每颗 10 段, 段名取 episode 真 stage; 路点 >2mm 抽稀, 上限 1500)。
+  文件里 `source` 写死「真跑 episode 真值 · NOT MoveIt 输出」—— **不许冒充规划产物**。
+- **MoveIt 没为摆盘出过轨迹**: 画布 `n_moveit` 只是规格节点; 真链是容器 `zmax-moveit`(plan-only),
+  最后一次成功规划 10-09 21:04 且目标是 slot7 类插拔目标, `live_plan.jsonl` 至今未更新, 容器默认没起
+  (只有写请求的 `zmax-moveit-plan-req.service` 常驻)。要跑: `bash tools/moveit_live_up.sh up` +
+  `python3 tools/moveit_plan_req.py --goal-xyz … --goal-quat … --once`(目标取 plan JSON 各颗 TCP 终点),
+  且必须先过同源闸 ≤5mm/2° —— 无真机链路时过不了 ⇒ 如实说“出不来”, 别说成规划结果。
+- 轨迹/状态信号: `tray_live_publish.py` 每帧发 轨迹_当前颗/已规划颗数/段/进度_pct/路点数/累计距离_mm/来源
+  (jsonl 与 trace_live **双写** —— 只写 trace_live 打标扫不到, 进不了蓝组)。
+
+## 3D 场景后续追加 (偏移默认值 / 拿起的件 / 放下留件 / 像素口径)
+
+> 📄 完整口径与判据已整理成专题: `references/3d-scene-rendering-geometry.md` (先读它再改 `ss_dreamview.py`)。
+> ⚠️ `SKILL.md` 已撞 100KB 上限, 新专题**只能**从本文件或其它 references 转一层链过去。
+1. **`meta.get("peg_head_off", [-0.13,0,-0.01])` 静默套用插拔默认值** ⇒ 摆盘 episode (无该字段) 上的抓握偏移
+   变成 -30mm ⇒ 画出的件横向偏 30mm (用户: “拿起来的和渲染的光模块有位置偏差”)。缺字段 ⇒ 偏移 0 + 打日志。
+2. **“拿起来就变长/消失”**: 摆盘臂上件曾被整件隐藏(理由: 料盘里已有 3 个) ⇒ 拿起时露出插拔的 200mm 那根。
+   该画就画, 只换尺寸 (`_peg_size` 按场景取)。
+3. **放下后件不见**: 只画“当前这一颗” ⇒ 放完就没了。用 episode `stage` 进入“完成”的次数点亮 tray 槽位
+   (真值帧 798/1723/2654), 不另造数。
+4. **像素对比要同分辨率**: 3068×1862 与 1300×900 直比像素数会得假结论 —— 换算 px↔mm 或重抓同尺寸;
+   抓“事件那一刻”要轮询 live trace 字段(如 阶段/轨迹_段 含 抬起) 命中后再 `scrot -u`。
