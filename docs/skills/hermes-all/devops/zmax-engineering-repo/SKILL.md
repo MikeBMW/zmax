@@ -151,6 +151,16 @@ data/datasets/  📊 yolo_* · ss_* · metaworld_* · smolvla_* · orin_* · *.n
 - 🔴 **按名字动态拼路径必须走 `tools/gui/data_locate.py`** (`data_dir(root,name)` / `datasets_root(root)`):
   写死 `os.path.join(root,"data",x)` 在分区后**不报错、只是找不到** (isdir 为 False ⇒ 静默跳过/枚举为空)。
   已收口三处: `studio._local_datasets` · `data_space._scan_datasets` · `simulink_module` 数据集组。
+- 🔴 **`config/` 是 `data/database/<产品>/sources/config` 的软链 ⇒ 改它不在 git 里**: 改 `config/*.json` 后
+  `git status` **什么都不显示**(且 `git add config/xxx` 报 `beyond a symbolic link`)。定式:
+  ① 改 `config/` 里的真源 → ② `engineering_db.py build`(把 sources 重包进库) → ③ `engineering_db.py check` + 审计脚本
+  → ④ **把改过的 config JSON 拷一份到 `docs/data_snapshots/<日期>_<主题>/` + README 说明**, 它才真进 git。
+  实测:`tools/task_build.py` 生成的任务配置(tasks.json)里的点位/目标文本, 真源一半在 `config/`(软链), 一半在
+  `tools/task_build.py` 的 PLAN 与 `flows/scenes_5jobs.json`(真进 git) —— **同一个数字会同时活在两处**, 改一处必出两套口径。
+- 🔴 **要往配置里加一类新东西(如空间点位), 扩展生成器而不是另立显示源**: 任务配置的 `overrides` 由
+  `tools/task_build.py::teach_point_overrides()` 从台账**只读**生成(`pt.<名>` = x/y/z + 记录时间 + 真源文件)。
+  新增数据源(如 `data/skills/l2_atomic/space_points.json`)就在那个函数里多读一份、写成同格式的 `pt.xxx` ⇒
+  配置中心那张表自动多出几行, 单一真源不打架(实测: 配置中心 8 示教点 + 8 空间点 = 16 行)。
 - 🔴 **改完画布必须重绑**: 画布 `state_space_obs.json` 一改 (`canvas_md5` 变) ⇒ `ss_task_bind.py --check` 报
   "需重绑定", `engineering_db check` 报 `drift ['project'/'canvas']`。定式: `ss_task_bind.py --activate <task>` →
   `engineering_db.py build` → 两个 check 走一遍。
