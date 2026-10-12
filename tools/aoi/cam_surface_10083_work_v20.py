@@ -380,6 +380,33 @@ JUDGE_RIGHT_PAD = 15                        # 台阶右侧再留一点, 保住�
 JUDGE_STEP_PX = 18                          # 台阶判据: 上边缘相对基线偏移 ≥18px 且持续 ≥8 列
 JUDGE_BAND_K = 1.30                         # 纵向收带: 模块厚度 = 实测中位厚度 × 1.3(挡掉那块更高的料)
 JUDGE_SCALE_MAX = 1.0                       # 只缩不放(不插值放大 ⇒ 保像素真实)
+# 🆕 v20.1: 判据阈值**相对化** —— 老口径 JUDGE_TH_BAR=200 / JUDGE_TH_MOD=170 是**绝对**阈值,
+#   成立前提是"模块壳体过曝到 ≥200"。现场把曝光降下来(实测 80000→40000)亮条就没了 ⇒
+#   上边缘点 0 个 ⇒ judge_ok=False 连垮(「亮条上边缘点太少(0)」/「两法估角不一致」)。
+#   改为按**本帧自己的动态范围**定阈: th = bg + FRAC×(lvl-bg)(bg=ROI 两侧中位, lvl=ROI 99.5 分位),
+#   并夹下限。`AOI_SURFACE_JUDGE_TH=abs` 可回老街口(逐位一致) —— 用于同帧 A/B。
+JUDGE_TH_MODE = os.environ.get("AOI_SURFACE_JUDGE_TH", "rel").lower()   # rel(默认) / abs
+JUDGE_TH_FRAC = 0.50                        # 亮条阈值: 占 (亮电平-背景) 的比例
+JUDGE_TH_FRAC_MOD = 0.33                    # 模块并集阈值(比亮条松, 含左端灰青连接器头)
+JUDGE_TH_MIN = 25.0                         # 相对阈值下限(很暗的帧也别把噪点当亮条)
+
+
+def _judge_th_levels(g, x0, y0, x1, y1):
+    """本帧的 (背景电平, 亮条电平, 亮条阈值, 模块阈值) —— 不再吃固定 200/170。
+
+    为什么: 表面判据 v12.1 是靠"找过曝亮条(掩膜)→取上边缘/台阶"量厚度的。相机把曝光降下来(修过曝)
+    时, 画面里就没有 ≥200 的亮条了 ⇒ 判据整条垮掉。所以阈值必须**跟着本帧走**, 而不是写死一个
+    "只对过曝帧成立"的数。返回的 th 在 abs 模式下就是老常量 ⇒ 老行为逐位可复现。
+    """
+    side = np.concatenate([g[y0:y1, x0:x0 + 30].ravel(), g[y0:y1, x1 - 30:x1].ravel()])
+    bg = float(np.median(side))
+    lvl = float(np.percentile(g[y0:y1, x0:x1].ravel(), 99.5))
+    if JUDGE_TH_MODE == "abs":
+        return bg, lvl, float(JUDGE_TH_BAR), float(JUDGE_TH_MOD)
+    span = max(0.0, lvl - bg)
+    th = max(JUDGE_TH_MIN, min(bg + JUDGE_TH_FRAC * span, 254.0))
+    thm = max(JUDGE_TH_MIN * 0.8, min(bg + JUDGE_TH_FRAC_MOD * span, th))
+    return bg, lvl, float(th), float(thm)
 
 
 def _judge_bg_level(g, x0, y0, x1, y1):
@@ -388,8 +415,13 @@ def _judge_bg_level(g, x0, y0, x1, y1):
                                          g[y0:y1, x1 - 30:x1].ravel()])))
 
 
-def _judge_top_edge(g, xa, xb, ya, yb, th=JUDGE_TH_BAR, min_run=40):
-    """逐列取"模块上边缘"点: 该列里第一个亮像素(要求该列亮像素数≥min_run, 排除噪点)。"""
+def _judge_top_edge(g, xa, xb, ya, yb, th=None, min_run=40):
+    """逐列取"模块上边缘"点: 该列里第一个亮像素(要求该列亮像素数≥min_run, 排除噪点)。
+
+    th=None ⇒ 用老常量 JUDGE_TH_BAR(仅兜底); 判据主路一律显式传**本帧算出的**阈值。
+    """
+    if th is None:
+        th = JUDGE_TH_BAR
     pts = []
     for x in range(xa, xb):
         col = np.where(g[ya:yb, x] > th)[0]
@@ -417,8 +449,11 @@ def render_judge_surface(bgr):
     g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     met = {"roi": [x0, y0, x1, y1], "canvas": list(JUDGE_CANVAS), "ok": False, "why": ""}
     try:
+        bg0, lvl0, th_bar, th_mod = _judge_th_levels(g, x0, y0, x1, y1)     # 🆕 v20.1 本帧阈值
+        met.update({"th_mode": JUDGE_TH_MODE, "th_bar": round(th_bar, 1), "th_mod": round(th_mod, 1),
+                    "bg_lvl": [round(bg0, 1), round(lvl0, 1)]})
         # ── 法(a): 滑窗找"最直的一段上边缘"当角度基准 ──
-        pts = _judge_top_edge(g, x0, x1, y0, y1)
+        pts = _judge_top_edge(g, x0, x1, y0, y1, th=th_bar)
         if len(pts) < 200:
             met["why"] = "亮条上边缘点太少(%d) —— 画面里没找到过曝条(没拍到位/曝光变了?)" % len(pts)
             return None, met
@@ -432,7 +467,7 @@ def render_judge_surface(bgr):
         angA = float(np.degrees(np.arctan(kA)))
         # ── 法(b): ROI 掩膜 minAreaRect ──
         m = np.zeros_like(g)
-        m[y0:y1, x0:x1] = (g[y0:y1, x0:x1] > JUDGE_TH_BAR).astype(np.uint8) * 255
+        m[y0:y1, x0:x1] = (g[y0:y1, x0:x1] > th_bar).astype(np.uint8) * 255
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
         cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not cnts:
@@ -460,13 +495,15 @@ def render_judge_surface(bgr):
         rot = cv2.warpAffine(bgr, M, (W, H), flags=cv2.INTER_LINEAR, borderValue=(bg, bg, bg))
         gr = cv2.cvtColor(rot, cv2.COLOR_BGR2GRAY)
         # ── 🆕 v12.2: 在**旋后帧**里量模块几何(此时上边缘≈水平), 把掩膜收紧到模块本体 ──
-        pts_r = _judge_top_edge(gr, x0, x1, y0, y1)
+        _, _, th_bar_r, th_mod_r = _judge_th_levels(gr, x0, y0, x1, y1)
+        pts_r = _judge_top_edge(gr, x0, x1, y0, y1, th=th_bar_r)
+        met["th_bar_rot"] = round(th_bar_r, 1)
         if len(pts_r) < 200:
             met["why"] = "旋后上边缘点太少(%d)" % len(pts_r)
             return None, met
         y_base = float(np.median(pts_r[:, 1]))              # 旋后上边缘基线(中位比拟合稳)
         xa = int(np.median(pts_r[:, 0])) - 200
-        ths = [int((gr[y0:y1, xx] > JUDGE_TH_BAR).sum()) for xx in range(max(x0, xa), min(x1, xa + 400))]
+        ths = [int((gr[y0:y1, xx] > th_bar_r).sum()) for xx in range(max(x0, xa), min(x1, xa + 400))]
         ths = [v for v in ths if v > 20]
         thick = float(np.median(ths)) if ths else 0.0
         if thick < JUDGE_MIN_WH[1]:
@@ -476,13 +513,13 @@ def render_judge_surface(bgr):
         #   注意方向性 —— 左端那块"舌尖"是更矮的(y_top 更小), 不会误触发。
         x_step = None
         for xx in range(x0 + 300, x1 - 12):
-            col = np.where(gr[y0:y1, xx] > JUDGE_TH_BAR)[0]
+            col = np.where(gr[y0:y1, xx] > th_bar_r)[0]
             if len(col) < 40:
                 continue
             if (y_base - (y0 + col.min())) >= JUDGE_STEP_PX:
                 okpersist = True
                 for d in range(1, 9):
-                    cc = np.where(gr[y0:y1, xx + d] > JUDGE_TH_BAR)[0]
+                    cc = np.where(gr[y0:y1, xx + d] > th_bar_r)[0]
                     if len(cc) < 40 or (y_base - (y0 + cc.min())) < JUDGE_STEP_PX * 0.6:
                         okpersist = False
                         break
@@ -498,7 +535,7 @@ def render_judge_surface(bgr):
                                        if x_step else "ROI 右界(未找到台阶 ⇒ 可能切在亮料中间)"})
         # ── 模块掩膜: 旋后帧 ∩ ROI ∩ x≤右界 ∩ 纵向厚度带(挡掉那块更高的料) ──
         mm = np.zeros_like(gr)
-        mm[y_lo:y_hi, x0:x_end] = (gr[y_lo:y_hi, x0:x_end] > JUDGE_TH_MOD).astype(np.uint8) * 255
+        mm[y_lo:y_hi, x0:x_end] = (gr[y_lo:y_hi, x0:x_end] > th_mod_r).astype(np.uint8) * 255
         mm = cv2.morphologyEx(mm, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
         n, lab, stats, _ = cv2.connectedComponentsWithStats(mm, 8)
         comps = [i for i in range(1, n) if stats[i, 4] >= 1500]
@@ -533,7 +570,7 @@ def render_judge_surface(bgr):
         met.update({"crop_bbox_rot": [int(px0), int(py0), int(px1), int(py1)],
                     "crop_size": [int(px1 - px0), int(py1 - py0)],
                     "canvas_scale": round(float(r), 4),
-                    "cover_frac": round(float((gc > JUDGE_TH_MOD).mean()), 4),
+                    "cover_frac": round(float((gc > th_mod_r).mean()), 4),
                     "border_med": [round(v, 1) for v in bd]})
         if max(bd) >= max(120.0, bg + 60):
             met["why"] = "画布边缘发亮(留边 %s, 背景 %d) ⇒ 疑似把台面/夹具切进来了" % (met["border_med"], bg)
@@ -779,6 +816,39 @@ def _enqueue_detect(topview_path, origin_path, detect_type):
 #   而相机 SDK 没有 GetFloatValue, 改完也只能靠图看 ⇒ 必须把"试参数"变成**一次 HTTP**(几毫秒)。
 _EXPO_LAST = {}
 _EXPO_LOCK = threading.Lock()      # 与抓帧互斥: 改参数时别让抓帧拿到半帧
+_EXPO_SETTLE_S = float(os.environ.get("AOI_EXPO_SETTLE_S", "0.25"))   # 🆕 v20.1: 写参数后等相机应用
+
+
+def _warmup_grab(tries=3):
+    """🆕 v20.1: 改完取像参数后, **替调用方吃掉那一帧**(实测: 改完紧跟的第一次抓帧会失败/仍是旧档)。
+
+    只做"抓一帧并丢掉": 不落盘、不动 `_LAST_PIC`/`_MEM`(免得用废帧污染显示)。
+    失败**只在第一次**重连相机(实测"重开后的首抓也会失败一次"); 之后再失败就原地重试 ——
+    不要每次失败都 Close/Open, 那会把相机推进"关了又开 ⇒ 首抓必失败"的死循环。
+    返回 True = 相机已能出好帧(下一帧可当准)。
+    """
+    n = max(1, int(tries))
+    for i in range(n):
+        ppayload = ctypes.c_void_p()
+        if m_Device.SciCam_Grab(ppayload) == SCI_CAMERA_OK:
+            try:
+                m_Device.SciCam_FreePayload(ppayload)
+            except Exception:
+                pass
+            print("  【曝光】settle 第 %d 次抓帧成功(已丢弃, 不动显示帧)" % (i + 1))
+            return True
+        print("  【曝光】settle 第 %d 次抓帧失败(旧档/未就绪)" % (i + 1))
+        if i == 0:
+            print("  【曝光】重连相机后重试…")
+            try:
+                Close_Device()
+            except Exception:
+                pass
+            if not ensure_camera():
+                return False
+        else:
+            time.sleep(0.05)
+    return False
 
 
 def _apply_expo(us, gain, save=False):
@@ -787,6 +857,8 @@ def _apply_expo(us, gain, save=False):
     ① 相机已开: 直接设; 失败再试"停流→设→重开流"(某些 SDK 要求空闲态)。
     ② 相机没开: 只记住参数, 等首次取帧初始化时按新值设 ⇒ 回执里写明。
     ③ 参数一变就让内存帧失效 ⇒ 避免"看着新参数、拿到旧帧"。
+    ④ 🆕 v20.1: 改完**主动 settle 一帧**(`_warmup_grab`) —— 实测"改完紧跟的第一次抓帧必失败(500)/仍是旧档",
+       把这一帧在 POST 里吃掉, 后续 GET /picture?grab=1 第一次就是新档好帧。
     """
     global EXPOSURE_US, GAIN_DB, EXPO_SRC
     with _EXPO_LOCK:
@@ -820,6 +892,14 @@ def _apply_expo(us, gain, save=False):
             if not res["ok"]:
                 res["reason"] = "相机拒绝了该值(SDK 返回非 0) ⇒ 以图像实测为准"
         EXPOSURE_US, GAIN_DB, EXPO_SRC = us, gain, "runtime"
+        # 🆕 v20.1: settle —— 改完参数**主动吃掉跟着来的那一帧**, 别把失败/旧档留给调用方
+        res["warmup"] = None
+        if res["cam_open"] and (res["ok"] or res["reopened"]):
+            time.sleep(_EXPO_SETTLE_S)
+            res["warmup"] = bool(_warmup_grab())
+            if not res["warmup"]:
+                res["warmup"] = bool(_warmup_grab(tries=2))
+            print("  【曝光】settle 结果: %s" % ("就绪" if res["warmup"] else "相机未就绪(下一帧可能仍失败)"))
         if save:
             try:
                 with open(_EXPO_FILE, "w", encoding="utf-8") as f:

@@ -1,52 +1,55 @@
 {
-  "generated_at": "2026-10-12 11:24:00",
-  "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
-  "host": "192.168.23.23",
-  "items": [
-    {
-      "port": 10082,
-      "title": "金手指检测 (工控机 192.168.23.23:10082)",
-      "repo_copy": "tools/aoi/cam_finger_10082_work_v25.py",
-      "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v25.py",
-      "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
-      "sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
-      "bytes": 206049,
-      "src_sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
-      "src_mtime": "2026-10-12 11:20:48",
-      "why_v25": "v36 判据(19根cxwin) + 2026-10-12 新增**实时预览路由 /preview.jpg** (只抓帧+JPEG编码, 实测 130ms; 不裁剪/不渲染/不落盘/不动模型输入) —— 现场『金手指刷新5秒多』的解法: 旧取图口每帧要付 模板裁剪486ms + 判据渲染1393ms ⇒ 2.2~3.5s/帧",
-      "copy_matches_source": true,
-      "preview_route": {
-        "path": "/preview.jpg",
-        "ver": "pv1-20261012",
-        "measured_ms": {
-          "grab": 30,
-          "jpeg_encode": 98,
-          "total": 130
-        },
-        "old_path_ms": 2166,
-        "accept": "抓帧+编码 only; 无副作用(不写盘/不改参数/不动模型输入)"
-      }
+ "generated_at": "2026-10-12 17:12:13",
+ "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
+ "host": "192.168.23.23",
+ "items": [
+  {
+   "port": 10082,
+   "title": "金手指检测 (工控机 192.168.23.23:10082)",
+   "repo_copy": "tools/aoi/cam_finger_10082_work_v25.py",
+   "local_source": "zmax_data/aoi_v4/cam_finger_10082_work_v25.py",
+   "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_finger_10082_work_v20.py",
+   "sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
+   "bytes": 206049,
+   "src_sha256": "7a410d89899ec6fd91594ff0e83fc3d2eb89ddbb6083c391f1e4553209529ce4",
+   "src_mtime": "2026-10-12 11:20:48",
+   "why_v25": "v36 判据(19根cxwin) + 2026-10-12 新增**实时预览路由 /preview.jpg** (只抓帧+JPEG编码, 实测 130ms; 不裁剪/不渲染/不落盘/不动模型输入) —— 现场『金手指刷新5秒多』的解法: 旧取图口每帧要付 模板裁剪486ms + 判据渲染1393ms ⇒ 2.2~3.5s/帧",
+   "copy_matches_source": true,
+   "preview_route": {
+    "path": "/preview.jpg",
+    "ver": "pv1-20261012",
+    "measured_ms": {
+     "grab": 30,
+     "jpeg_encode": 98,
+     "total": 130
     },
-    {
-      "port": 10083,
-      "title": "表面/端面检测 (工控机 192.168.23.23:10083)",
-      "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py",
-      "local_source": "zmax_data/aoi_v4/cam_surface_10083_work_v20.py",
-      "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
-      "sha256": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
-      "bytes": 55909,
-      "src_sha256": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
-      "src_mtime": "2026-10-08 07:57:11",
-      "copy_matches_source": true
-    }
-  ],
-  "files": {
-    "10082": {
-      "src": "zmax_data/aoi_v4/cam_finger_10082_work_v26.py",
-      "bytes": 120339,
-      "sha256_12": "3EB59BDB393B",
-      "judge_ver": "v26-gold-judge-20261008",
-      "note": "判据上一张好图按视角隔离(=判据图总变的正解); 补格/分桶实测证伪后关闭/退化"
-    }
+    "old_path_ms": 2166,
+    "accept": "抓帧+编码 only; 无副作用(不写盘/不改参数/不动模型输入)"
+   }
+  },
+  {
+   "port": 10083,
+   "title": "表面/端面检测 (工控机 192.168.23.23:10083)",
+   "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py",
+   "local_source": "zmax_data/aoi_v4/cam_surface_10083_work_v20.py",
+   "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
+   "sha256": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
+   "bytes": 60693,
+   "src_sha256": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
+   "src_mtime": "2026-10-12 17:10:15",
+   "copy_matches_source": true,
+   "pending_deploy": true,
+   "why_v20_1": "v20.1 = v20 + ① 取像参数 settle(_warmup_grab: 改曝光后紧跟的第一帧由 POST 自己吃掉, 不落盘/不动显示帧, 回执报 warmup) + ② 判据阈值相对化(不再吃绝对 200/170, 改 bg+0.5×(lvl-bg); AOI_SURFACE_JUDGE_TH=abs 逐位回老街口) + 模型输入零改动。离线判据 test_v20_1_settle_and_relth.py 10/10 PASS, v13 曝光契约回归 12/12 PASS。⏸ 未上线: 产线网卡不在位(192.168.23.23 不可达) ⇒ 上线前先 production_sync pull --port 10083",
+   "old_sha256_before_v20_1": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317"
   }
+ ],
+ "files": {
+  "10082": {
+   "src": "zmax_data/aoi_v4/cam_finger_10082_work_v26.py",
+   "bytes": 120339,
+   "sha256_12": "3EB59BDB393B",
+   "judge_ver": "v26-gold-judge-20261008",
+   "note": "判据上一张好图按视角隔离(=判据图总变的正解); 补格/分桶实测证伪后关闭/退化"
+  }
+ }
 }
