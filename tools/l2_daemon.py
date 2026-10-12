@@ -1087,10 +1087,15 @@ def run_stages(sk, spec, chan, pts):
                 _lim += 0.0   # 🔴 2026-10-08 上升逻辑已删除: 不再给「到该点位本身必升」豁免
                 _allow = float(spec.get("allow_climb_mm", 0.0) or 0.0)
                 if _climb > max(_lim, _allow) + 1e-6:
+                    # 🔢 2026-10-12 现场修正: 回执里必须给出**够用**的放行量 —— 原来按 %.0f 四舍五入报"170",
+                    #   而真值是 170.2mm ⇒ 现场照着填 170 又被同一道闸拒一次(老倪:「点了没反应」的真因之一)。
+                    #   ⇒ 一律向上取整 +1mm, 并写进**受理行**(页面从这行解析, 弹"现场确认净空"确认框)。
+                    _need = int(_climb) + 1
                     log("🛡🛡 阶段 %d/%d 拒发: 相对计划起点抬升 %.0fmm > 上限 %.0fmm 「现场规矩: 升高不要超过 10cm」"
                         " —— 横移高度必须相对当前高度有界, 不能写成与起点无关的绝对量(如\"目标点z+180\")。"
-                        " 现场目视确认净空后, 请求带 allow_climb_mm=%.0f 才放行。" % (i, n, _climb, _lim, _climb))
-                    return "阶段 %d 拒发: 抬升 %.0fmm 超 %.0fmm 上限(需 allow_climb_mm 显式放行)" % (i, _climb, _lim)
+                        " 现场目视确认净空后, 请求带 allow_climb_mm=%d 才放行。" % (i, n, _climb, _lim, _need))
+                    return "阶段 %d 拒发: 抬升 %.0fmm 超 %.0fmm 上限(现场目视确认净空后, 请求带 allow_climb_mm=%d 才放行)" % (
+                        i, _climb, _lim, _need)
                 log("🧗 阶段 %d/%d 抬升检查: 相对计划起点 %+.0fmm · 上限 %.0fmm ✅" % (i, n, _climb, _lim))
             except Exception as _e:                                              # noqa: BLE001
                 log("🧗 阶段 %d/%d 抬升检查跳过(%s)" % (i, n, str(_e)[:40]))

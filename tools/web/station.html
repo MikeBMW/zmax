@@ -1166,9 +1166,14 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
        计划里必有一段上升(实测 准备点→安全点1 = +219mm), 会被「升高 >10cm 必须先问人」的闸拦住。
        规矩不改(那条来自 10-01 碰撞), 但把"人确认净空"这一步做进按钮: 服务端回执里已给出放行量,
        这里让现场点一次确认 ⇒ 带 allow_climb_mm 重发(不确认就不发, 照旧拦)。 */
-    const _ac=(j&&j.msg||'').match(/allow_climb_mm=([0-9]+(?:\.[0-9]+)?)/);
-    if(_ac && real){
-      const mm=parseFloat(_ac[1]);
+    const _txt=[(j&&j.msg)||''].concat((j&&j.lines)||[]).join(' \n ');
+    let _mm=null;
+    const _m1=_txt.match(/allow_climb_mm=([0-9]+(?:[.][0-9]+)?)/);      // 服务端已明确给出放行量(首选)
+    if(_m1){ _mm=parseFloat(_m1[1]); }
+    else { const _m2=_txt.match(/抬升[  ]*([0-9]+(?:[.][0-9]+)?)[  ]*mm[  ]*超/);  // 兜底: 从"抬升 NNNmm 超…"里取
+           if(_m2){ _mm=parseFloat(_m2[1]); } }
+    if(_mm!=null && real){
+      const mm=Math.ceil(_mm)+2;      // 回执数字四舍五入过 ⇒ 留 2mm 余量, 免得刚好卡边界又被同一道闸拒一次
       if(confirm('到该点需要上升 '+mm.toFixed(0)+'mm（超过「升高不超 10cm」规矩）。\n现场已目视确认上方净空、无人？\n确定 = 立即带放行量下发；取消 = 不下发。')){
         m.textContent='⏳ 已确认净空, 带放行量 '+mm.toFixed(0)+'mm 重发…';
         j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:1,allow_climb_mm:mm},20000), label);
