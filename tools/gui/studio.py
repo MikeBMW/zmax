@@ -9377,7 +9377,14 @@ class ConfigModule(SubModuleWidget):
         try:
             import veh6_config_page
             _th = {k: v for k, v in globals().items() if k.startswith("C_")}
-            self._build_shell(veh6_config_page.build_config_center(container, _th))
+            self.cfg_page = veh6_config_page.build_config_center(container, _th)
+            self._build_shell(self.cfg_page)
+            # 🚀 2026-10-12 老倪标准打开流程: 「确认配置 · 统一打开工程」按钮 → 主窗口同一执行体
+            #   (按钮不留第二套逻辑: 页面拿到回调就调 _open_all_cmd, 没回调才退回命令通道)
+            try:
+                self.cfg_page.on_open_all = self._open_all_cmd
+            except Exception:                                                   # noqa: BLE001
+                pass
         except Exception as _e:
             print(f"[配置中心] 新页构建失败, 已回退模型配置页: {_e}")
             self._build_shell(container)
@@ -11751,6 +11758,10 @@ class StudioMainWindow(QMainWindow):
                     elif line == "monitor":
                         if getattr(self, "simulink", None) is not None:
                             _oneshot(self, 300, self.simulink.open_monitor_window)
+                    # 🚀 2026-10-12 老倪标准打开流程第二步: 确定配置 → 统一打开工程 (画布+3D+信号分析)
+                    #   (同源: 就是配置中心那个「🚀 确认配置 · 统一打开工程」按钮执行体)
+                    elif line == "open_all":
+                        _oneshot(self, 300, self._open_all_cmd)
                     elif line in self.modules:
                         self._on_nav(line)
                     else:
@@ -12033,6 +12044,113 @@ class StudioMainWindow(QMainWindow):
                     self.statusBar().showMessage(f"▶ 加载状态空间工程失败: {_e}", 3000)
             _sim.start_sim()
             self.statusBar().showMessage("▶ 状态空间仿真已启动 (命令触发)", 2000)
+
+    # ─────── 🚀 标准打开流程 · 第二步「确定配置 → 统一打开工程」(2026-10-12 老倪) ───────
+    #   老倪: 「确定一下 zmax 项目的标准打开流程。第一步, 打开, 加载 zmax 项目; 第二步, 弹出配置中心
+    #          的窗口, 在配置中心, 确定配置, 然后统一打开工程。」
+    #   本方法 = 第二步的执行体: ① 按绑定真源确定任务/场景 (可选真激活) ② 应用场景到画布
+    #   ③ 统一打开 画布 → 3D 场景 → 信号分析 ④ 回到配置中心并选中该任务行 ⑤ 状态落盘 (外部可核)。
+    #   安全: 只做「打开 / 定位 / 写配置」, **不下发任何运动指令** (与 motion_armed 无关)。
+    CONSOLE_STATE = "/tmp/zmax_console_state.json"
+
+    def _repo_root(self):
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def _write_console_state(self, **kw):
+        """控制台状态落盘 (当前页/任务/上一步动作) —— 让 tools/zmax_open.py 核到「第几步真的到了」(非自述)。"""
+        d = {}
+        try:
+            if os.path.isfile(self.CONSOLE_STATE):
+                d = json.load(open(self.CONSOLE_STATE, encoding="utf-8")) or {}
+        except Exception:                                                       # noqa: BLE001
+            d = {}
+        d.update(kw)
+        d["ts"] = time.strftime("%F %T")
+        d["epoch"] = time.time()
+        d["pid"] = os.getpid()
+        try:
+            _t = self.CONSOLE_STATE + ".tmp"
+            with open(_t, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            os.replace(_t, self.CONSOLE_STATE)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return d
+
+    def _open_all_cmd(self, task="", activate=False, page=None):
+        """🚀 统一打开工程 (标准流程第二步)。返回 [(名称, ok, 说明)] 逐步结果 —— 失败绝不假成功。"""
+        root = self._repo_root()
+        steps = []
+        # ① 确定配置: 任务 = 显式给 或 绑定真源 active_task (界面不另算一套口径)
+        _act = (task or "").strip()
+        if not _act:
+            try:
+                _b = json.load(open(os.path.join(root, "config", "ss_task_binding.json"), encoding="utf-8"))
+                _act = (_b.get("active_task") or "").strip()
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("读活跃任务", False, "读不了绑定真源: %s" % str(_e)[:120]))
+        if activate and _act:
+            try:
+                _r = subprocess.run([sys.executable, os.path.join(root, "tools", "ss_task_bind.py"),
+                                     "--activate", _act], capture_output=True, text=True, timeout=120, cwd=root)
+                _o = ((_r.stdout or "") + (_r.stderr or "")).strip().replace("\n", " ")[:160]
+                steps.append(("激活任务 %s" % _act, _r.returncode == 0, _o or "（无输出）"))
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("激活任务 %s" % _act, False, str(_e)[:160]))
+        steps.append(("活跃任务 (绑定真源)", bool(_act), _act or "绑定真源里没有 active_task"))
+        # ② 应用场景到画布 (幂等, 真源 tools/ss_scene_switch.py)
+        _sc = ""
+        if _act:
+            try:
+                _r = subprocess.run([sys.executable, os.path.join(root, "tools", "ss_scene_switch.py"),
+                                     "--task", _act], capture_output=True, text=True, timeout=120, cwd=root)
+                _out = ((_r.stdout or "") + (_r.stderr or "")).strip()
+                _sc = (_out.splitlines()[-1].strip()[:140] if _out else "")
+                steps.append(("应用场景 (ss_scene_switch)", _r.returncode == 0, _sc or "（无输出）"))
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("应用场景 (ss_scene_switch)", False, str(_e)[:160]))
+        # ③ 统一打开: 画布 → 3D 场景 → 信号分析 (同一份真源, 顺序固定)
+        _sim = getattr(self, "simulink", None)
+        if _sim is None:
+            steps.append(("打开 画布/3D/信号分析", False, "Simulink 画布模块还没建 (控制台仍在启动?)"))
+        else:
+            try:
+                _sim.open_state_space()
+                _n = len(getattr(_sim, "nodes", []) or [])
+                steps.append(("打开状态空间画布", True, "已切到画布页并加载工程 (%d 节点)" % _n))
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("打开状态空间画布", False, str(_e)[:160]))
+            try:
+                _oneshot(self, 700, lambda: _sim.open_ss_3d(on_top=False))
+                steps.append(("打开 3D 场景", True, "3D 视图窗口 (与画布同源)"))
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("打开 3D 场景", False, str(_e)[:160]))
+            try:
+                if hasattr(_sim, "open_monitor_window"):
+                    _oneshot(self, 900, _sim.open_monitor_window)
+                    steps.append(("打开信号分析", True, "📈 实时监控 · Graphic 信号分析"))
+                else:
+                    steps.append(("打开信号分析", False, "该版本没有 open_monitor_window"))
+            except Exception as _e:                                             # noqa: BLE001
+                steps.append(("打开信号分析", False, str(_e)[:160]))
+        # ④ 回到配置中心并选中该任务行 (「在配置中心确定配置」在界面上看得见)
+        try:
+            self._on_nav("config")
+            _pg = page or getattr(self, "cfg_page", None)
+            if _pg is not None and _act and hasattr(_pg, "select_task_row"):
+                steps.append(("配置中心选中 %s" % _act, bool(_pg.select_task_row(_act)),
+                              "任务行已选中 (配置就在眼前)"))
+        except Exception as _e:                                                 # noqa: BLE001
+            steps.append(("回配置中心", False, str(_e)[:160]))
+        # ⑤ 落盘 + 汇总
+        _ok = all(s[1] for s in steps)
+        self._write_console_state(last_action="open_all", task=_act, scene=_sc, open_all_ok=_ok,
+                                  open_all_steps=[{"name": n, "ok": bool(o), "detail": d} for n, o, d in steps])
+        _txt = "  ·  ".join("%s %s" % ("✅" if o else "❌", n) for n, o, _d in steps)
+        self.statusBar().showMessage(("🚀 统一打开工程 %s | " % ("完成" if _ok else "有失败")) + _txt, 12000)
+        print("[open_all] %s\n%s" % (_txt, "\n".join("  %s %s : %s" % ("✅" if o else "❌", n, d)
+                                                     for n, o, d in steps)), flush=True)
+        return steps
 
     # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────
     def _l5_status_cmd(self):
@@ -12649,6 +12767,12 @@ class StudioMainWindow(QMainWindow):
         # 更新状态栏
         names = ["首页", "数据集", "训练", "评估", "硬件", "配置", "监控", "3D场景", "版本同步", "推理服务", "Simulink", "数据空间", "架构总览"]  # v1.8.0: 与 self.modules 顺序一致 (13项)
         self.statusBar().showMessage(f"● {names[idx]}  |  Z-MAX 三层解耦架构  |  Sys-0 + Sys-11 + Sys-12 + Sys-2")
+        # 🚀 2026-10-12 标准打开流程: 当前页落盘 (/tmp/zmax_console_state.json)
+        #   外部工具 (tools/zmax_open.py) 靠它核「第一步真的到了配置中心」, 不靠自述
+        try:
+            self._write_console_state(page=names[idx], nav_target=target, page_index=idx)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _open_l2_skills(self):
         """L2 原子技能清单 (工程记忆 技能与经验库)"""

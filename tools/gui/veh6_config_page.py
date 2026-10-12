@@ -1163,8 +1163,26 @@ class ConfigCenterPage(QWidget):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn, k=kw: self._run_selected(f, **k))
             row.addWidget(b)
+        # 🚀 2026-10-12 老倪标准打开流程第二步: 一步「确认配置 · 统一打开工程」
+        #   单独一行 (老倪口径: 界面不许挤/字不许截断 —— 实测这一排 10 个按钮已占 1416px,
+        #   再塞一个 197px 会被挤出可视区; 单独一行则任何窗口宽度都完整可见 + 更醒目)
+        _b_all = _btn("🚀 确认配置 · 统一打开工程", th)
+        _b_all.setToolTip("按本表选中任务确定配置 (可选真激活: 写绑定真源 + 台账) → 应用场景到画布 →\n"
+                          "统一打开 状态空间画布 · 3D 场景 · 信号分析 → 回到本页选中该任务行。\n"
+                          "只做打开/定位/写配置, 不下发任何运动指令")
+        _b_all.setStyleSheet(_b_all.styleSheet() + ";font-weight:bold;")
+        _b_all.clicked.connect(lambda: self._open_all_clicked())
+        row2 = QHBoxLayout()
+        row2.addWidget(_b_all)
+        _hint = QLabel("= 状态空间画布 · 3D 场景 · 信号分析 (按选中/活跃任务确定配置; 只打开, 不动机械臂)")
+        _hint.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        _hint.setFont(QFont("Consolas", 9))
+        row2.addWidget(_hint)
+        row2.addStretch()
         row.addStretch()
-        l.addLayout(row); l.addWidget(self.tasks_table, 1)
+        l.addLayout(row)
+        l.addLayout(row2)
+        l.addWidget(self.tasks_table, 1)
         self.tabs.addTab(w, "📋 任务配置")
         try:
             self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)
@@ -1489,6 +1507,48 @@ class ConfigCenterPage(QWidget):
             return None
         it = self.tasks_table.item(r, 0)
         return it.text() if it else None
+
+    # ───────── 🚀 标准打开流程第二步: 确定配置 → 统一打开工程 (2026-10-12 老倪) ─────────
+    def select_task_row(self, tid):
+        """按任务ID选中任务表那一行 (给「统一打开工程」定位; 找不到返回 False, 不假装选中)。"""
+        try:
+            for _r in range(self.tasks_table.rowCount()):
+                _it = self.tasks_table.item(_r, 0)
+                if _it is not None and (_it.text() or "").strip() == str(tid).strip():
+                    self.tasks_table.setCurrentCell(_r, 0)
+                    self.tasks_table.selectRow(_r)
+                    self.tasks_table.scrollToItem(_it)
+                    return True
+        except Exception:  # noqa: BLE001
+            return False
+        return False
+
+    def _open_all_clicked(self):
+        """🚀 统一打开工程按钮: 有主窗口回调走主窗口 (同一执行体, 不留第二套逻辑); 否则退回命令通道。"""
+        from PyQt5.QtWidgets import QApplication as _QA
+        _tid = (self._selected_task() or "").strip()
+        _cb = getattr(self, "on_open_all", None)
+        if callable(_cb):
+            self.out.setPlainText("🚀 统一打开工程… 任务 = %s (真源: 绑定真源 config/ss_task_binding.json)"
+                                  % (_tid or "当前活跃任务"))
+            _QA.processEvents()
+            try:
+                _steps = _cb(task=_tid, activate=bool(_tid), page=self) or []
+                self.out.setPlainText("🚀 统一打开工程 %s\n\n%s" % (
+                    "完成" if all(s[1] for s in _steps) else "有失败 (逐条见下)",
+                    "\n".join("  %s %s : %s" % ("✅" if o else "❌", n, d) for n, o, d in _steps)))
+            except Exception as _e:  # noqa: BLE001
+                self.out.setPlainText("⛔ 统一打开工程失败: %s" % _e)
+            self._fit_out()
+            return
+        try:      # 兜底: 控制台命令通道 (控制台内部同源 _open_all_cmd)
+            with open("/tmp/zmax_nav_cmd", "w", encoding="utf-8") as _f:
+                _f.write("open_all\n")
+            self.out.setPlainText("🚀 已把「统一打开工程」写进控制台命令通道 (/tmp/zmax_nav_cmd: open_all)\n"
+                                  "   控制台会在 300ms 内执行: 状态空间画布 · 3D 场景 · 信号分析")
+        except Exception as _e:  # noqa: BLE001
+            self.out.setPlainText("⛔ 命令通道写入失败: %s" % _e)
+        self._fit_out()
 
     def _run_selected(self, fn, use_sel=False, **kw):
         """按钮入口: use_sel=True 时取表格选中行的任务ID传进去。"""
