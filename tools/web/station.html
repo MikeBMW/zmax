@@ -481,6 +481,12 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <label class="arm" style="font-size:15px;color:#8b949e">
           <input type="checkbox" id="auto82" style="width:18px;height:18px" checked>
           <span>自动取景(没照片时现拍一张)</span></label></div></div>
+    <!-- 🔴 2026-10-12 老倪: 「侧面点的窗口，放在金手指的右边；号位点，空间点，放在下面；恢复以前的布局；现在一长条」——
+         真因 = 这一行的 `</div>` 丢了: 金手指面板没闭合 ⇒ 表面检测/号位/空间点三个面板全被**套进金手指面板里**
+         (实测 .grid 直接子元素只有 6 个而不是 9 个), 于是「表面检测」(应该在金手指右边) 掉到金手指下面,
+         金手指面板被撑到 2844px 高 (同行的深度图也被拉伸到 2844), 整栏看起来就是一条长条。
+         补上这个闭合标签即恢复原布局: 3DGS 整行 → 三路相机 → 深度图|金手指|表面检测 同一行 → 号位/空间点整行在下。 -->
+    </div>
     <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
