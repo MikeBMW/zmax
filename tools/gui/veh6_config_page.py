@@ -22,7 +22,7 @@ TOOLS = os.path.join(ROOT, "tools")
 if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
-from PyQt5.QtCore import Qt, QTimer  # noqa: E402
+from PyQt5.QtCore import Qt, QSettings, QTimer  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLabel,  # noqa: E402
                              QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem,
@@ -610,6 +610,11 @@ class ConfigCenterPage(QWidget):
         root.addLayout(bar)
 
         # ── 左树 + 右页签 ──
+        # 2026-10-12 老倪: 「配置中心左侧栏无法更改宽度, 字体都挡住了 ⇒ 改适配宽度」
+        #   真因(离屏真渲染实测): 树没设最小宽度 ⇒ splitter 在窄窗下把它压到 **71px**(文本需求 ~135px),
+        #   而且 setSizes([230,1000]) 只是一次性初值, 右边 QTabWidget 的最小尺寸把左边挤没了。
+        #   修法: ①按**内容实测**算需求宽度当初始值 + 最小宽度(挤不没) ②句柄加宽到 8px 好拖
+        #   ③关闭"拖到 0 折叠" ④用户拖过的宽度记下来, 下次开页面沿用(只在 ≥ 需求宽度时恢复)。
         sp = QSplitter(Qt.Horizontal)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -627,9 +632,18 @@ class ConfigCenterPage(QWidget):
                                 f"QTabBar::tab{{background:{th['C_BG2']};color:{th['C_GRAY']};padding:6px 14px;}}"
                                 f"QTabBar::tab:selected{{background:{th['C_CARD']};color:{th['C_WHITE']};}}")
         self._build_tabs(d, tk, model_page)
+        self._wrap_wide_labels(self.tabs)         # 右侧超宽说明行改换行 ⇒ 让分割条真的拖得动(见下)
         sp.addWidget(self.tabs)
-        sp.setSizes([230, 1000])
+        self._tree_need = self._tree_need_width()
+        self.tree.setMinimumWidth(self._tree_need)
+        self.tree.setToolTip("左侧栏宽度可按内容自适应, 也可直接拖分隔条调整 (宽度会记住)")
+        sp.setSizes([self._tree_need, 1000])
+        sp.setChildrenCollapsible(False)          # 不许把左栏拖成 0 宽(会看不见)
+        sp.setHandleWidth(8)                      # 原来 4px 太细, 鼠标不好抓
+        self.splitter = sp
+        sp.splitterMoved.connect(self._on_tree_split_moved)
         root.addWidget(sp, 1)
+        QTimer.singleShot(0, self._apply_tree_width)      # 布局完成后按"记过的宽度"或需求宽度落定
 
         # ── 底部结果面板 (点了必出结果) ──
         self.out = QTextEdit()
@@ -644,8 +658,77 @@ class ConfigCenterPage(QWidget):
         self.out.setPlainText(_run("overview") + _points_block())
         root.addWidget(self.out)
         self.setLayout(root)
-        from PyQt5.QtCore import QTimer
         QTimer.singleShot(0, self._fit_out)      # 首次布局完成后按内容定高
+
+    # ── 左侧栏宽度: 适配内容 + 可拖 + 记住 (2026-10-12 老倪「无法更改宽度, 字体都挡住了」) ──
+    _TREE_W_KEY = "config_center/tree_width"
+
+    # ── 右侧超宽说明行 ⇒ 允许换行 (2026-10-12「无法更改宽度」的真凶) ──
+    #   实测(真机 192DPI): 页1「工程配置」里一条 **2621px 的单行 QLabel** 把 QTabWidget 的最小宽度顶到
+    #   2653px; 加上左树需求 393 ⇒ 整页最小 3046px, 而窗口 3068px 还要减主侧栏 240px ⇒ 分割条被"顶死":
+    #   左栏被挤到最小值(**字被截**), 而且**根本拖不动**(没有余量可分)。让超宽说明行换行后, 右侧最小宽度
+    #   回落到表格本身, 分割条立刻有余量可拖。换行 ≠ 删字: 全文照旧显示(也照旧可复制)。
+    _WRAP_MIN_PX = 520
+
+    def _wrap_wide_labels(self, root=None):
+        """把"单行撑得比窗口还宽"的说明 QLabel 改成自动换行, 返回改了几条。幂等。"""
+        n = 0
+        try:
+            for lb in (root or self).findChildren(QLabel):
+                if lb.wordWrap() or lb.minimumSizeHint().width() <= self._WRAP_MIN_PX:
+                    continue
+                lb.setWordWrap(True)
+                lb.setMinimumWidth(0)
+                n += 1
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return n
+
+    def showEvent(self, ev):
+        """每次显示时再扫一遍(有的页内容是后填的, 构造时还不宽)。"""
+        super().showEvent(ev)
+        try:
+            self._wrap_wide_labels(self.tabs)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _tree_need_width(self):
+        """按**内容实测**算左侧栏需求宽度: 最长条目文本 + 层级缩进 + 图标/边距/滚动条余量。
+
+        为什么要算而不是写死: 条目文本会变(任务 ID/参数 ID/文档名), 写死一个数总会在某天把字截掉;
+        而只设初始值不设最小宽度时, 窗口一窄 splitter 就把这一栏压到 70 多像素(实测)。
+        """
+        fm = self.tree.fontMetrics()
+        ind = max(12, self.tree.indentation())
+        need = 0
+        stack = [(self.tree.topLevelItem(i), 0) for i in range(self.tree.topLevelItemCount())]
+        while stack:
+            it, d = stack.pop()
+            if it is None:
+                continue
+            need = max(need, d * ind + fm.horizontalAdvance(it.text(0)))
+            for i in range(it.childCount()):
+                stack.append((it.child(i), d + 1))
+        # + 展开箭头/图标(~22) + 边框(4) + 竖直滚动条(18) + 左右余量(12)
+        return int(max(150, need + 22 + 4 + 18 + 12))
+
+    def _on_tree_split_moved(self, _pos, _idx):
+        """用户拖动分隔条 ⇒ 记住宽度(下次开这个页面沿用)。"""
+        try:
+            QSettings("ZMAX", "Console").setValue(self._TREE_W_KEY, int(self.tree.width()))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _apply_tree_width(self):
+        """落定左栏宽度: 用过记过的值(但不得小于内容需求), 没记过就用需求宽度。"""
+        try:
+            saved = int(QSettings("ZMAX", "Console").value(self._TREE_W_KEY, 0) or 0)
+        except Exception:                                                       # noqa: BLE001
+            saved = 0
+        total = max(self.width(), self.splitter.width())
+        want = max(self._tree_need, saved)
+        want = min(want, max(self._tree_need, int(total * 0.5)))                # 别把右栏挤没
+        self.splitter.setSizes([want, max(1, total - want)])
 
     # ── 左侧域树 ──
     def _fill_tree(self, d, tk):

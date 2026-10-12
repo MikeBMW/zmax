@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.49.1")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.49.2")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10970,7 +10970,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.1 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.49.2 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10978,9 +10978,16 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.1 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.49.2 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.49.2: 配置中心左侧栏改"适配宽度" (老倪: 「左侧栏无法更改宽度, 字体都挡住了」) ——
+        #   ① 左栏按**内容实测**定宽(最长条目+层级缩进+箭头/边框/滚动条余量)当初始值+最小宽度(挤不没); 句柄 4→8px;
+        #      禁拖成 0 宽; 拖过的宽度记住(QSettings config_center/tree_width), 下次开页面沿用(只在 ≥ 需求宽度时恢复)
+        #   ② "无法更改宽度"的真凶(真机 192DPI 实测): 右侧页签里一条 **2621px 单行 QLabel**(工程配置页 任务/场景/真源 说明行)
+        #      把 tabs 最小宽顶到 2653px ⇒ 整页最小 3046px > 可用 2828px ⇒ 分割条被顶死(左栏被挤到 230px 字被截 + 一点余量都没有)
+        #      ③ 超宽说明行(>520px)自动换行(**全文一字不删**) ⇒ tabs 最小 2653→1924, 整页最小 3046→2325 ⇒ 真拖得动
+        #   ④ 判据 tools/verify_config_tree_width.py 10/10 × 两套 DPI(96 离屏 + 192 真机口径)
         # v5.49.1: 小版本迭代(10-12 现场验收后收口) —— AR 三维视图搬到相机窗口下面且同尺寸 + 画 base/tool0/tool1 三个坐标系;
         #         手动回已记的点(安全点/准备点)不再硬拦(慢速+提示, 回执给出够用的放行量 allow_climb_mm=ceil);
         #         表面检测显示侧压高光(相机曝光/判据/模型未动); 点位记 6 个数 x y z a b c; 新增 4 条判据
