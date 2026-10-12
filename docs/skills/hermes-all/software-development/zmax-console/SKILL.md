@@ -12,6 +12,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
 > 📄 `references/canoe-graphic-signal-analysis.md` + `monitor-live-source.md`
+> 🚀 标准打开流程: `references/standard-open-flow.md`
 
 ## 🖥 界面文案 = 工程真值 (侧栏卡 / 首页架构图 / 模块卡)
 
