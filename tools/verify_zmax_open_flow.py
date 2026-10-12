@@ -77,7 +77,8 @@ def main():
        all(x in p for x in ('"工程"', '"3D场景"', '"实时监控"')), )
     ck("三列各自真源函数在位 (_proj_cell/_scene_cell/_monitor_cell)",
        all(x in p for x in ("def _proj_cell", "def _scene_cell", "def _monitor_cell")))
-    ck("工程列读工程文件真路径 (proj_state + reports/projects)", "proj_state" in p and "reports" in p and ".zmaxproj" in p)
+    ck("工程列读总工程真路径 (project_file.space_path / 工程库 projects 表)",
+                   "data/database/zmax" in p and "zmax_space.proj" in p, p[-160:])
     ck("实时监控列读颜色真源 (scene_tags.json colors)", "topics\", \"scene_tags.json\"" in p or "scene_tags.json" in p)
     ck("列序: 工程=2 · 3D场景=3 · 实时监控=4 (tooltip/上色同源)", "(2, _proj_tip())" in p and "for _c2 in (3, 4):" in p)
 
@@ -113,7 +114,7 @@ def main():
     _sc3 = _tt.item(_r, 3).text() if _r >= 0 else ""
     _mon = _tt.item(_r, 4).text() if _r >= 0 else ""
     _ptip = _tt.item(_r, 2).toolTip() if _r >= 0 else ""
-    ck("工程列真显示工程名 + 项目启动文件名", ("状态空间工程" in _proj) and (".zmaxproj" in _proj), _proj.replace("\n", " | "))
+    ck("工程列真显示工程名 + 项目启动文件名", ("状态空间" in _proj) and ("zmax_space.proj" in _proj), _proj.replace("\n", " | "))
     _p_abs = ""
     for _ln in _ptip.splitlines():
         if "启动文件绝对路径" in _ln:

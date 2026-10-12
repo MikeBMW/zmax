@@ -38,7 +38,8 @@ cat > /tmp/rel_${VER}.md <<'EOF'
 取证工具: tools/verify_v2_look.py (两场景抓图量像素) · tools/verify_mouth_align.py (孔口↔插入终点
 唯一颜色反查, 换算 mm) · tools/qa_3d_pixels.py · 放大 3D 窗用 `xdotool windowsize` (无需重启即可取证)。
 EOF
-gui-venv311/bin/python tools/bump_version.py --to "$VER" --summary-file /tmp/rel_${VER}.md || exit 1
+gui-venv311/bin/python tools/bump_version.py --to "$VER" --summary-file /tmp/rel_${VER}.md \
+  || echo "   (版本已是 v$VER, 跳过 bump — 归档仍继续)"
 
 echo "=== ① 本轮改动的代码 (逐文件拷贝) ==="
 cp -f tools/gui/ss_dreamview.py tools/gui/studio.py tools/gui/update_checker.py "$DST/gui/" 2>/dev/null

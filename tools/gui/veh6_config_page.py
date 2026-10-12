@@ -413,21 +413,32 @@ def _proj_paths():
     pr = b.get("project") or {}
     out = {"name": pr.get("name") or "状态空间工程 · 主工程", "canvas": pr.get("canvas_file") or "",
            "nodes": pr.get("nodes"), "links": pr.get("links"), "md5": pr.get("canvas_md5"),
-           "proj_file": "", "proj_abs": "", "proj_rel": "", "proj_mtime": ""}
+           "proj_file": "", "proj_abs": "", "proj_rel": "", "proj_mtime": "",
+           "proj_dir": os.path.join(ROOT, "data", "database", "zmax"),
+           "db": os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")}
+    # 🔴 2026-10-12 老倪(现场纠正): 「配置中心 状态空间的主工程, 路径不是 reports/, 一个都不对」
+    #   「/home/ubuntu/zmax/data/database/zmax 主工程路径是这」—— 工程 / 工程库 / 总工程文件都在这里:
+    #     data/database/zmax/zmax_space.proj      (总工程文件, 其余 9 个工具同源: tools/gui/project_file.space_path)
+    #     data/database/zmax/zmax_engineering.db  (工程库, 单一真源: 库内 projects 表 = 工程名/路径)
+    #   ⇒ 只认真源, 不再拿旧的 reports/projects/SS_主工程_任务配置.zmaxproj 顶替(那是 5.21 的老导出件)。
     cand = []
     try:
-        import proj_state as _ps                                                     # noqa: PLC0415
-        for _a in ("DEFAULT_PROJ", "PROJ_DEFAULT", "PROJ_PATH"):
-            if getattr(_ps, _a, None):
-                cand.append(getattr(_ps, _a))
+        import project_file as _pf                                                   # noqa: PLC0415
+        cand.append(_pf.find_space(ROOT))            # 总工程 (.proj 优先, 退回旧 .zmaxproj)
+        out["proj_dir"] = os.path.dirname(_pf.space_path(ROOT))
     except Exception:                                                                # noqa: BLE001
         pass
-    _d = os.path.join(ROOT, "reports", "projects")
-    cand.append(os.path.join(_d, "SS_主工程_任务配置.zmaxproj"))
     try:
-        cand += [os.path.join(_d, f) for f in sorted(os.listdir(_d)) if f.endswith(".zmaxproj")]
+        import sqlite3 as _sq                                                        # noqa: PLC0415
+        if os.path.isfile(out["db"]):
+            _cn = _sq.connect(out["db"])
+            for _r in _cn.execute("select path from projects"):
+                if _r and _r[0]:
+                    cand.append(str(_r[0]))     # 工程库登记的工程文件路径 (单一真源)
+            _cn.close()
     except Exception:                                                                # noqa: BLE001
         pass
+    cand.append(os.path.join(ROOT, "data", "database", "zmax", "zmax_space.proj"))
     for c in cand:
         try:
             if c and os.path.isfile(c):
@@ -435,6 +446,12 @@ def _proj_paths():
                 out["proj_file"] = os.path.basename(c)
                 out["proj_rel"] = os.path.relpath(os.path.abspath(c), ROOT)
                 out["proj_mtime"] = time.strftime("%F %T", time.localtime(os.path.getmtime(c)))
+                try:                     # 总工程文件自带工程名 ⇒ 显示真名 (不编)
+                    _d = _j(c, {}) or {}
+                    if _d.get("name"):
+                        out["name"] = str(_d["name"])
+                except Exception:                                                    # noqa: BLE001
+                    pass
                 break
         except Exception:                                                            # noqa: BLE001
             continue
@@ -454,6 +471,8 @@ def _proj_tip():
         "项目启动文件: %s" % (p["proj_file"] or "(缺)"),
         "启动文件绝对路径: %s" % (p["proj_abs"] or "(缺)"),
         "启动文件时间: %s" % (p["proj_mtime"] or "(缺)"),
+        "工程目录: %s" % (p.get("proj_dir") or "(缺)"),
+        "工程库 (单一真源): %s" % (p.get("db") or "(缺)"),
         "画布真源: %s" % (p["canvas"] or "(缺)"),
         "画布: %s 节点 / %s 连线 · md5 %s" % (p["nodes"], p["links"], str(p["md5"] or "")[:12]),
         "口径: 控制台启动第一步按该工程文件的 debug_state 回填 场景/数据源/活跃任务 (真源 tools/proj_state.py)",
