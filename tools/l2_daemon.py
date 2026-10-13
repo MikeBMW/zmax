@@ -131,11 +131,19 @@ def maybe_reload(reg):
             log("注册表热加载失败(继续用旧): %s" % e)
     return reg
 
+# 🚚 2026-10-13 老倪第四次「怎么又不动了」: 腿的**当场拒绝**(前置条件/50102/50113)原本没人告诉
+#   执行器, 执行器只会傻等到位窗口跑满(实测 ~130s) ⇒ 现场连点几下全堵在队里, 看着就是"又不动了"。
+#   腿的失败行经 log() 落盘 ⇒ 在这里打标, 由 wait_arrive 的 fail_check 立刻打断等待。
+_LEG_FAIL = {"t": 0.0, "why": ""}
+
+
 def log(msg):
     line = "[%s] %s" % (time.strftime("%H:%M:%S"), msg)
     print(line, flush=True)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+    if ("SDK 腿失败" in msg) or ("⛔ ABORT" in msg):
+        _LEG_FAIL.update(t=time.time(), why=msg.strip())
 
 def state_thread():
     """常驻位姿流(ssh + ROS 一次性 echo 循环) → `_pose` 缓存。
@@ -895,11 +903,17 @@ def plan_stage(sk, st, pts, spec, cur):
             "dir": _dir, "lin": lin, "call": call, "speed": sp}
 
 
-def wait_arrive(target, tol_mm=2.0, timeout_s=30.0):
+def wait_arrive(target, tol_mm=2.0, timeout_s=30.0, fail_check=None):
     """等到位: **只看真值**(直读 /robot/tcp_pose; 读不到才退常驻缓存), 连续两次落进容差算停稳。
-    返回 (ok, 最近偏差mm, 位姿来源)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。"""
+    返回 (ok, 最近偏差mm, 位姿来源)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。
+    fail_check: 可选回调 —— 返回非空字符串即**当场中止**(腿已拒/已报错, 不必再空等窗口)。
+    2026-10-13 加: 被腿拒时原来要空等满窗口(实测 ~130s)才返回, 现场连点全堵在队里。"""
     t0, best, src = time.time(), None, "none"
     while time.time() - t0 < timeout_s:
+        if fail_check:
+            _why = fail_check()
+            if _why:
+                return False, best, "腿拒:" + str(_why)
         p, _q, src = _pose_best()
         if p:
             e = max(abs(p[i] - target[i]) * 1000.0 for i in range(3))
@@ -1197,6 +1211,8 @@ def run_stages(sk, spec, chan, pts):
         #   ⇒ **整条计划中止**(实测 goto_space1 第4段 / goto_space3 第1段 全栽在这, 臂停在点上空 30mm 不落地)。
         #   同一条计划的相邻段本来就该串行 ⇒ 等它; 跨计划的并发仍由腿那条"不排队"挡着(执行器本身也是串行收命令)。
         _wait_leg_idle(pl.get("name", "阶段"), i, n)
+        _LEG_FAIL.update(t=0.0, why="")            # 🚚 打标窗口: 本条下发之后的腿失败才算数
+        _t_send = time.time()
         if not chan_send(pl["call"], _intent_desc(pl.get("name", "阶段"), pl.get("dx", 0.0), pl.get("dy", 0.0),
                                                   pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0))):
             # 🧭 把"被哪一层拦、为什么"原样带出去给界面(老倪: 点了必须出结果, 别只说"通道不可用或VL拒发")
@@ -1205,8 +1221,17 @@ def run_stages(sk, spec, chan, pts):
             return "🛑 阶段 %d 下发被拦: %s" % (i, _why)
         log("已下发 阶段 %d/%d %s → %s · Δ=(%+.1f, %+.1f, %+.1f)mm %s · 直线 %.0fmm · 等到位上限 %.0fs"
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
-        ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to)
+        # 🚚 2026-10-13: 腿当场拒(前置条件/50102/50113)就**立刻**停, 不再空等到位窗口跑满 ——
+        #    否则一次被拒白等 ~130s, 现场连点几下全堵在队里(表现为"又不动了")。
+        ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to,
+                                    fail_check=lambda: (_LEG_FAIL["why"]
+                                                        if _LEG_FAIL["t"] >= _t_send else None))
         if not ok:
+            if str(psrc or "").startswith("腿拒:"):
+                _raw = str(psrc)[3:]
+                log("🛑 阶段 %d/%d 被**腿当场拒**(不再空等到位窗口 %.0fs) → 中止剩余阶段, 绝不重发\n"
+                    "     腿的原话: %s" % (i, n, _to, _raw[:200]))
+                return "🛑 阶段 %d 被腿拒: %s" % (i, _raw[:160])
             log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm, 位姿来源 %s) → 中止剩余阶段, 绝不重发; "
                 "⚠️ 已下发的指令不会撤回, 臂可能仍在走 —— 以真值判定, 别重复点"
                 % (i, n, _to, ("%.1f" % err) if err is not None else "无真值", psrc))
