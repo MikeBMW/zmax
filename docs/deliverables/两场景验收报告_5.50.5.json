@@ -2,14 +2,14 @@
  "schema": "zmax.scene_acceptance/1",
  "ver": "5.50.5",
  "task": "TASK-01-FW + TASK-06-TRAY",
- "generated_at": "2026-10-13 13:13:26",
+ "generated_at": "2026-10-13 13:18:59",
  "binding_active": "TASK-06-TRAY",
  "sections": {
   "config_center": {
    "check_rc": 1,
    "check": [
     "VEH.6 全链校验",
-    "  ① 描述与真源同步 : ❌ 变了: config/calib/zmax_calib.json, config/calib/zmax_manifold.json, tools/gui/studio.py",
+    "  ① 描述与真源同步 : ✅ 7 个真源一致",
     "  ② 站点几何      : ⛔ 未标定 T_base_cam, plane_z, cell_geometry.points ⇒ 坐标类参数不可信",
     "  ③ 模型×工程配置 : ⛔ 可用 9/10 · 受阻 L4.intact",
     "  ④ 能力库        : ✅ feature.dbc BO_ 31 条",
@@ -20,7 +20,7 @@
     "总判: ⛔ 有阻塞项 (见上, 站点几何是共同根因)"
    ],
    "overview": [
-    "VEH.6 配置中心 · 总览     描述 zmax-mcd/1.0 @ 2026-10-12 07:01:55   真源同步: ❌ config/calib/zmax_calib.json, config/calib/zmax_manifold.json, tools/gui/studio.py",
+    "VEH.6 配置中心 · 总览     描述 zmax-mcd/1.0 @ 2026-10-13 13:14:10   真源同步: ✅",
     "",
     "域             参数     就绪  缺口",
     "------------------------------------------------------------------------------",
@@ -1524,29 +1524,29 @@
    "steps": 835,
    "dt": 0.0125,
    "t_span_s": 10.425,
-   "depth_mm": 0.6051,
-   "d_xy_mm": 0.5662,
+   "depth_mm": 0.4532,
+   "d_xy_mm": 0.3922,
    "depth_judge_mm": 2.0,
    "depth_ok": true,
    "depth_judge_src": "链内判完成口径: `_insert_depth()`(光模块头→插入终点距离) < 0.002m 且连续 2 帧 (真源: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
    "depth_cfg_target_mm": 35.0,
-   "depth_at_step": 834,
-   "depth_at_stage": "阶段 插入",
-   "depth_at_t": 10.4125,
+   "depth_at_step": 835,
+   "depth_at_stage": "完成",
+   "depth_at_t": 10.425,
    "goal_est": [
-    -0.20604,
-    0.59434,
+    -0.20598,
+    0.59433,
     0.13098
    ],
-   "depth_end_of_episode_mm": 0.406,
+   "depth_end_of_episode_mm": 0.453,
    "head_final": [
     -0.20634,
     0.59449,
     0.13121
    ],
    "goal_final": [
-    -0.20604,
-    0.59434,
+    -0.20598,
+    0.59433,
     0.13098
    ],
    "tcp_final": [
@@ -5463,7 +5463,7 @@
    [
     "插拔(插入到位)",
     "达标",
-    "到位残差 0.61mm ≤ 判据 2mm · 配置行程 ins.depth=35mm · episode 时长 10.43s · success=True"
+    "到位残差 0.45mm ≤ 判据 2mm · 配置行程 ins.depth=35mm · episode 时长 10.43s · success=True"
    ],
    [
     "真空建立",

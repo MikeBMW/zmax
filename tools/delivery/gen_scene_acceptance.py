@@ -152,10 +152,11 @@ def insert_metrics():
         stages = np.asarray([str(s) for s in z["stage"]])
         # 🔴 判据口径必须与链内 judge **同源** (tools/gen_ss_metaworld_episode.py:305 `depth=‖head_now−goal‖`,
         #   而 npz 里存的是 `target = goal − head_off`(head_off=peg_head−hand), goal 本身没存) ⇒
-        #   这里用**插入段**反解 GOAL = target + (peg_head − hand) 取中位数, 再算插入段达到的最深 depth。
-        #   不能拿末帧算: 末帧在「拔出/回位」之后, 会得到 100+mm 的假失败。
+        #   这里用**插入段(含完成帧)**最后一帧反解 GOAL = target + (peg_head − hand), 再在判据区间内取最小残差。
+        #   判据区间必须显式收口: 若任务末段含「拔出/取回」, 直接拿整段末帧算会得到 100+mm 的假失败。
         head_off = head - x
-        ins_mask = np.array(["插入" in s for s in stages])
+        # 判据区间 = 插入段 ∪ 「完成」帧 (插入的终态); 若任务末段含「拔出/取回」则不计入
+        ins_mask = np.array([("插入" in s) or ("完成" in s) for s in stages])
         if not ins_mask.any():
             ins_mask = np.ones(len(stages), dtype=bool)
         ins_idx = np.where(ins_mask)[0]
@@ -173,7 +174,7 @@ def insert_metrics():
                "depth_judge_src": "链内判完成口径: `_insert_depth()`(光模块头→插入终点距离) < 0.002m 且连续 2 帧 "
                                   "(真源: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
                "depth_cfg_target_mm": 35.0,      # 配置 ins.depth (行程目标, 不是公差)
-               "depth_at_step": i_min + 1, "depth_at_stage": stages[i_min],
+               "depth_at_step": i_min + 1, "depth_at_stage": stages[i_min].replace("阶段 ", ""),
                "depth_at_t": round(float(t[i_min]), 4),
                "goal_est": [round(float(v), 5) for v in goal_est],
                "depth_end_of_episode_mm": round(float(d_all[-1]) * 1000.0, 3),
@@ -526,8 +527,8 @@ def main(argv=None):
         A("- 出现在第 %s 步/阶段 `%s` · XY 残差 %.4f mm · 抓取成功帧=%s" %
           (ins.get("depth_at_step"), ins.get("depth_at_stage"), ins.get("d_xy_mm"), ins.get("grasped_any")))
         A("- 判据真源: %s" % ins.get("depth_judge_src"))
-        A("- (对照) episode 末帧 ‖头−终点‖ = %s mm —— 末帧在「拔出/回位」之后, 不能拿它当插入判据" %
-          ins.get("depth_end_of_episode_mm"))
+        A("- 口径: 残差取 **插入段 ∪ 完成帧** 内的最小值 = 插入到位最好值; 若任务末段含「拔出/取回」, 那一段已离开插入位, 不计入"
+          " (本 episode 末帧 ‖头−终点‖ = %s mm)" % ins.get("depth_end_of_episode_mm"))
         A("- 光模块头末值 %s · 孔口目标 %s · TCP 末值 %s" %
           (ins.get("head_final"), ins.get("goal_final"), ins.get("tcp_final")))
     A("")
