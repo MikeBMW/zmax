@@ -12,6 +12,10 @@ WorkingDirectory=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
 Environment=ZMAX_REPO=/home/ubuntu/zmax
 Environment=ZMAX_DATASPACE_LIVE=/home/ubuntu/zmax/zmax_data/dataspace/live.json
+# 🔴 2026-10-13: 单播配置**必须显式给** —— 原来脚本默认指 dds/cyclonedds_unicast.xml, 但那个文件
+#   当时不存在 ⇒ os.path.isfile 判假 ⇒ 静默退回默认多播 ⇒ 多网卡挑错网卡 + 常驻后 IP 变化不恢复
+#   ⇒ 本机自己都收不到, 10 个话题全黑灯。现由 tools/dds/gen_unicast_cfg.py 生成并在此显式引用。
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
 # 必须 dds-venv(cyclonedds 只装在这里; 主 venv 不许被污染) —— 「DDS → JSON 桥」
 ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/src/lerobot/dataspace/probe.py --watch --interval 2
 Restart=always

@@ -177,7 +177,7 @@ SCENE_KEYWORDS = {
 }
 # 共用词: 只有信号名里**除了这些词之外没有任何场景专属词**时才算不猜(留白)。
 #   ⚠️ 不能拿"光模块"当一票否决 ——「光模块头到孔_mm」是插拔专属(孔), 之前一否决就被错留白了。
-_AMBIGUOUS = ("夹爪",)
+_AMBIGUOUS = ("夹爪", "抓住")     # 共用词(插拔=两指夹爪用, 摆盘=同一根通道实为吸附建立/吸住) ⇒ 不染色
 
 
 def _keyword_tags(universe) -> dict:
@@ -227,9 +227,15 @@ def _source_scenes() -> dict:
         import ss_scene_switch as _ssw
         sc = (_ssw.now() or {}).get("src_state") or ""
         if sc in SCENES:
+            # sstrace.* 跟随数据源 (引擎轨迹快照 = 画布数据源那一次运行)
             out["sstrace."] = sc
-            out["ros./robot/force_torque"] = sc
-            out["ros./gripper_pos"] = sc
+            # 🔴 2026-10-13 老倪: 「摆盘场景的实时监控信号, 蓝色信号, 还有夹爪? 不是吸盘么」
+            #   下面两条本函数的注释就写明了「力控插入/夹持专用, **插拔链独用**」, 原实现却把它们
+            #   一起 `= sc` ⇒ 数据源一切到摆盘, 夹爪/力控就被整族染成蓝色(摆盘冒出夹爪波形的直接原因)。
+            #   口径: 这两族是**插拔专用**, 固定挂插拔场景, 不随数据源变 (摆盘走真空吸盘、AR 走 AOI 取像)。
+            _plug = "插拔场景"
+            out["ros./robot/force_torque"] = _plug
+            out["ros./gripper_pos"] = _plug
     except Exception:                                                         # noqa: BLE001
         pass
     return out
@@ -251,6 +257,11 @@ def build(from_runs: bool = False) -> dict:
     for _k in universe:
         for _pre, _sc in sorted(src_scenes.items(), key=lambda x: -len(x[0])):
             if str(_k).startswith(_pre):
+                # 🔴 2026-10-13: 共用词(如「夹爪」)不随来源族染色 —— 关键词表 _AMBIGUOUS 已声明它
+                #   不专属任何场景(留白)。否则 `sstrace.夹爪` 被整族染成"数据源场景"的颜色 ⇒
+                #   摆盘(真空吸盘)的蓝色组里冒出一条夹爪波形 = 与现场动作对不上。
+                if any(_w in str(_k)[len(_pre):].lower() for _w in _AMBIGUOUS):
+                    break
                 sig[_k] = _sc
                 break
     for k, sc in _node_signal_tags(universe).items():
@@ -269,6 +280,11 @@ def build(from_runs: bool = False) -> dict:
         _prot = set(str(k) for k in sig if str(k).startswith(("ar.", "sstrace.", "ds.")))
         for k, sc in _run_signals().items():
             if k in _prot:
+                continue
+            # 🔴 2026-10-13: 共用词同样不因运行证据染色。「夹爪」在摆盘运行产物里出现, 只是**通道沿用
+            #   插拔底座旧名**(实测该通道 = 吸附建立证据, 见 tools/scene_signal_names.py 取证);
+            #   照原样染蓝 = 摆盘蓝色组里挂一条夹爪波形, 与现场(真空吸盘)对不上。
+            if any(_w in str(k).lower() for _w in _AMBIGUOUS):
                 continue
             if sig.get(k) != sc:
                 sig[k] = sc
@@ -322,6 +338,10 @@ def tag(key: str) -> str:
             return sig[_b]
     for _pre in sorted((reg.get("source_scenes") or {}), key=len, reverse=True):
         if k.startswith(_pre):
+            # 🔴 2026-10-13: 共用词(如「夹爪」)不随来源族染色 —— 与 build() 同口径。
+            #   否则 `sstrace.夹爪` 被这一层兜底判成"数据源场景"的颜色, 摆盘(真空吸盘)里又冒出夹爪。
+            if any(_w in k[len(_pre):].lower() for _w in _AMBIGUOUS):
+                return ""
             return (reg.get("source_scenes") or {})[_pre]
     bare = k.split(".", 1)[1] if k.startswith("ar.") else k
     if k.startswith("ar.") or bare.startswith("光学质量检测.") or bare.startswith("AOI."):

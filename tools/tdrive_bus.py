@@ -44,7 +44,30 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 TAP_DIR = os.path.join(ROOT, "zmax_data", "ss_live")
 PID = os.path.join(TAP_DIR, "torque.pid")
-DEFAULT_SCENE = os.environ.get("ZMAX_TORQUE_SCENE", "SCN-07-AOI")
+
+
+def _active_scene() -> str:
+    """🔴 当前场景真源 (2026-10-13): 原实现把 scene **写死成 SCN-07-AOI**(DEFAULT_SCENE) ⇒ 活跃任务
+    已切到摆盘(TASK-06-TRAY/SCN-06-TRAY)时, 扭矩 payload 仍标 SCN-07-AOI, tap 也写进
+    torque_SCN-07-AOI.jsonl ⇒ **同一时刻两处口径不一致**(实测: 判据 ⑨ 首帧 scene=SCN-07-AOI,
+    而画布数据源/绑定文件都是摆盘)。口径: 场景跟随唯一真源 tools/ss_scene_switch.py,
+    env ZMAX_TORQUE_SCENE 仅用于离线/单测指定。"""
+    env = os.environ.get("ZMAX_TORQUE_SCENE")
+    if env:
+        return env
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import ss_scene_switch as _s
+        w = _s.now() or {}
+        scn = w.get("scn") or ""
+        if scn:
+            return scn
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return "SCN-06-TRAY"          # 兜底 = 摆盘(当前在役任务), 不再是 AR
+
+
+DEFAULT_SCENE = _active_scene()
 # 驱动扭矩的"转动惯量↔度量张量"对应关系: 旋转 3 维 + 平移 3 维 = 6 维
 ROT_DIM, TRANS_DIM = 3, 3
 UNIT_NOTE = ("单位按规格记 N·m; 真源主参数 M 是归一化度量 (det G=1, M=3.283 标定口径), "

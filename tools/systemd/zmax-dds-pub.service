@@ -12,7 +12,10 @@ WorkingDirectory=/home/ubuntu/zmax
 #   (旧路径保留兼容软链, 但服务一律指单一工程根 /home/ubuntu/zmax)
 Environment=ZMAX_REPO=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
-# 不带 --cfg: 默认多播发现(=当前实测可用状态)。跨机单播配置见 dds/cyclonedds_unicast.template.xml(现场填 peers 后再引)
+# 🔴 2026-10-13: 原注「不带 --cfg: 默认多播发现(=当前实测可用状态)」已作废 —— 实测多播在本机多网卡
+#   + 常驻 IP 变化时会静默失效(探针持续往 172.18.0.1/239.255.0.1 发, retcode -1, 全黑灯)。
+#   现统一走单播: dds/cyclonedds_unicast.xml 由 tools/dds/gen_unicast_cfg.py 生成。
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
 ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/publisher.py --interval 3
 Restart=always
 RestartSec=5

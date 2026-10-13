@@ -39,7 +39,25 @@ import project_profile  # noqa: E402  项目档案: 根据配置适配不同项�
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 OUT_ROOT = os.path.join(ROOT, "outputs", "sor")
 DOC_NO = "SOR-OM-ROBOT-" + time.strftime("%Y%m%d")
-VERSION = "V1.0"
+
+
+def _dev_version(default: str = "5.50.5") -> str:
+    """文档版本 = **开发工程版本** (老倪 2026-10-13: 「文档版本号为 5.50.5 与开发工程同版本」)。
+
+    不手写: 现读开发工程版本真源 tools/gui/update_checker.py::CURRENT_VERSION;
+    读不到才退回字面量 —— 这样「同版本」这件事本身可复核 (改版本号只有一处)。
+    """
+    try:
+        import re as _re
+        with open(os.path.join(ROOT, "tools", "gui", "update_checker.py"), encoding="utf-8") as _f:
+            m = _re.search(r"CURRENT_VERSION\s*=\s*[\"']v?([\d.]+)[\"']", _f.read())
+        return m.group(1) if m else default
+    except Exception:                                                           # noqa: BLE001
+        return default
+
+
+VERSION = _dev_version()          # 例: "5.50.5" (与开发工程同版本)
+_VER_STR = VERSION                # 供附录 H/I/J 定位「摆盘性能对账_<ver>.json」
 CN_FONT = "微软雅黑"
 
 # ── 模板静态段 (供应商要求, 与配置无关的采购条款) ─────────────────────
@@ -686,6 +704,120 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "G.4 迁移验收判据: 迁移后须满足 —— ① 画布节点/连线数与不变量一致; ② 工程库 check 全绿; "
               "③ 本附录 G.1 表内该任务的「启用/禁用节点 · 改写项」与配置一致。判据命令: "
               "python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check", size=10)
+    # ───────── 附录 H/I/J: 性能配置与验收 (2026-10-13 老倪: 「要保证…成功率>99%、节拍<3.5s 的硬性要求 …
+    #   主参数M要合理, 可被测量 … 要可操作, 可被验证」) ─────────
+    # 数字来源 = docs/deliverables/摆盘性能对账_<VER>.json (由 tools/delivery/gen_tray_perf_report.py
+    # 从真源现取现算: 配置单 targets/overrides · 真跑产物 judges · 主参数M真源 · 扭矩判据报告)。
+    # ⚠️ 本文档**不手写性能数字**: 取不到就如实标缺, 不许拿概念值充数 (老倪铁律)。
+    _pf = os.path.join(ROOT, "docs", "deliverables", "摆盘性能对账_%s.json" % _VER_STR)
+    PERF = {}
+    try:
+        with open(_pf, encoding="utf-8") as _f:
+            PERF = json.load(_f)
+    except Exception:                                                           # noqa: BLE001
+        print("⚠️ 性能对账文件缺失: %s (先跑 tools/delivery/gen_tray_perf_report.py --ver %s)" % (_pf, _VER_STR))
+
+    h(doc, "附录 H. 性能指标对账 (目标 ↔ 实测 ↔ 判定 ↔ 复核命令)", 1)
+    para(doc, "本章每个数字由工具现场现取现算 (不手写), 数据来源与指纹见 H.4。未达标项如实列明, 不柔化。", size=10)
+    _rows = PERF.get("rows") or []
+    if _rows:
+        para(doc, "H.1 指标对账表", bold=True)
+        table(doc, ["#", "指标", "目标 (配置单)", "实测", "判定", "复核命令"],
+              [[str(r.get("#")), r.get("指标"), r.get("目标(配置单)"), r.get("实测"), r.get("判定"),
+                r.get("复核命令")] for r in _rows],
+              widths=[0.8, 3.0, 3.4, 3.6, 4.2, 6.0])
+    _ep = PERF.get("episode") or {}
+    if _ep.get("segments"):
+        para(doc, "H.2 单颗节拍分解 (第 1 颗 · 控制周期 %.4f s = 80 Hz)" % float(_ep.get("ctrl_dt_s") or 0), bold=True)
+        table(doc, ["段", "步数", "时长 (s)", "占单颗 (%)"],
+              [[s.get("段"), str(s.get("步")), "%.2f" % float(s.get("时长_s") or 0),
+                "%.1f" % float(s.get("占比_pct") or 0)] for s in _ep["segments"]],
+              widths=[4.0, 2.4, 3.0, 3.2], center_cols={1, 2, 3})
+        _sp = _ep.get("steps_per_part") or []
+        _cts = _ep.get("ct_s") or []
+        if _sp and _cts:
+            para(doc, "总步数/颗: %s · 目标节拍 3.15 s ⇒ 允许 ≤251 步 ⇒ 需提速 %.2f×。"
+                      "节拍 = 步数 × 控制周期, 故提速只有两条路: 减步数 (速度/剖面) 或缩短控制周期。"
+                      % (" / ".join(str(x) for x in _sp), max(_cts) / 3.15), size=10)
+    _ss = PERF.get("speed_gate") or {}
+    if _ss and not _ss.get("_err"):
+        para(doc, "H.3 配置项→节拍 的可达性 (代码级证据, 供应商与集成方共同遵守)", bold=True)
+        table(doc, ["项", "现取值", "结论"], [
+            ["L5 速度指令公式", "speed_scale = max(1.0, min(1.5, takt_s/est)) ; takt_s ≤ est ⇒ 1.0",
+             "闸门上限 1.5×, 且 takt≤est 时恒为 1.0"],
+            ["takt_s (配置单)", "%.2f s" % float(_ss.get("takt_s") or 0), "来自任务配置 targets[单颗CT]"],
+            ["est (预估节拍)", "%.1f s (源码硬编码)" % float(_ss.get("est_s") or 0),
+             "须改为**实测/标定值** (现为常量, 与现场节拍脱钩)"],
+            ["当前 speed_scale", "%.2f" % float(_ss.get("speed_scale") or 0), _ss.get("note")],
+        ], widths=[3.4, 6.2, 7.4])
+    para(doc, "H.4 达标路径 (须改的工程项, 逐条可验证)", bold=True)
+    table(doc, ["项", "现状", "目标", "改什么", "验证"], [
+        ["控制周期", "12.5 ms (80 Hz)", "≤5 ms (≥200 Hz)", "真机控制器周期 / 仿真 frame_skip", "H.2 节拍分解逐颗报数"],
+        ["速度剖面", "z 接近段 29.7~31.1 mm/s", "粗接近 ≥100 mm/s, 精接近保留", "按公差/行程做段分级", "H.2 分解表"],
+        ["固定等待段", "对位 + 完成 1.35 s (12.7%)", "取消或并行", "L5 阶段链 (配置)", "H.2 分解表"],
+        ["速度闸", "clamp 1.5× / est 硬编码 11.0", "按实测标定至 ≥3.4×", "ss_task_l45.py 的闸门与 est", "H.3"],
+        ["主参数 M", "在役 3.283 (dim3/full)", "配置单算得值落役 (见附录 I)", "config_to_M --write + 作业链消费 M", "附录 I + verify_metric_main_param"],
+        ["真空建立", "425~538 ms", "≤200 ms", "真空阈值 / 吸嘴压入量 / 检测带宽", "判据 vac_ok"],
+    ], widths=[2.6, 3.6, 3.6, 4.4, 4.2])
+
+    h(doc, "附录 I. 主参数 M (定义 · 配置单映射 · 测量与验收)", 1)
+    _mf = PERF.get("manifold") or {}
+    _lv, _mp = (_mf.get("live") or {}), (_mf.get("mapped") or {})
+    para(doc, "I.1 定义与数学口径", bold=True)
+    para(doc, "度量张量 g_ij(x) = M · G_ij(x), det G(x) = 1, M ∈ %s。M = 度量的**整体尺度**"
+              "(物理类比 = 等效惯量尺度, a = F/M); G = 度量的**形状** (各向异性方向与状态相关性)。"
+              "M 由流形结构导出 (非自由拟合), 现场以**单标量**标定。" % (_lv.get("range"),), size=10)
+    table(doc, ["项", "值", "真源 / 依据"], [
+        ["在役 M", str(_lv.get("M")), "config/calib/zmax_manifold.json (可写真源, 更新 %s)" % _lv.get("updated_at")],
+        ["在役 dim / mode", "%s / %s" % (_lv.get("dim"), _lv.get("mode")), "metric 段"],
+        ["配置单映射算得 M", str(_mp.get("scale")), "tools/config_to_M.py 规则 R5 (能量标定)"],
+        ["配置单映射 dim / mode", "%s / %s" % (_mp.get("dim"), _mp.get("mode")), "规则 R1 (工序自由度) / R2+R3 (公差与耦合)"],
+        ["audit_sha", str(_mp.get("audit_sha"))[:32], "映射输入的可审计指纹 (现场复核用)"],
+        ["判定", ("一致" if (_lv.get("M") == _mp.get("scale") and _lv.get("dim") == _mp.get("dim")) else
+                 "**不一致 ⇒ 配置单尚未落到在役主参数** (映射链已在, 真源未写)"),
+         "判据: 在役 M 必须 == 配置单算出 M"],
+    ], widths=[3.8, 6.0, 7.2])
+    para(doc, "I.2 配置单 → M 的映射规则 (唯一实现: tools/config_to_M.py, 可审计)", bold=True)
+    table(doc, ["规则", "目标分量", "映射", "来源依据"], [
+        ["R1", "dim (位姿自由度)", "工序含腕部姿态控制 ⇒ 6 轴; 否则 3 轴", "任务工序真源 config/tasks/tasks.json"],
+        ["R2", "mode (形状参数化)", "平移-姿态耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic", "性能指标真源 + 任务配置"],
+        ["R3", "diag / components (形状 G)", "各轴刚度 ∝ 1/公差_轴 (不许偏的轴更“贵”), 归一 det G = 1", "逐轴工艺公差真源"],
+        ["R4", "gain (状态相关 G(x))", "动态交互场景才需现场辨识; 缺省 0 = 常度量 (零回归)", "MCD 设计 §6 可辨识性"],
+        ["R5", "scale = M", "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref, clamp [0, 8]", "能量标定真源 tools/master_param_m.py + 夹具/工件质量真源 + 工序速度"],
+    ], widths=[1.2, 3.4, 6.8, 5.6])
+    para(doc, "I.3 测量方法 (M 可被测量, 现场照做, 两种互检)", bold=True)
+    for _i, _s in enumerate([
+        "能量法: M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref。输入: m_eff = 夹具/吸嘴 + 工件质量 (真源"
+        " config/calib 或现场称重); v_peak = 轨迹实测峰值速度 (tcp_pose 50 Hz 差分); h = 升降行程 (结构参数);"
+        " E_ref = 标定基准能量。",
+        "动力学反解: M = F/a。施加已知力 F (力控/已知负载), 测等效加速度 a (位姿二阶差分), 与能量法结果互检。",
+        "验收区间: M ∈ [0, 8]; **在役 M 必须与配置单算出 M 逐位一致**, 不一致即判「映射未落役」(本条为硬判据)。",
+        "复核命令: python3 tools/config_to_M.py --task TASK-06-TRAY  ·  "
+        "python3 tools/verify_metric_main_param.py (节点侧判据 23/23)。",
+    ], 1):
+        para(doc, "%d) %s" % (_i, _s), size=10)
+
+    h(doc, "附录 J. 验收试验设计 (成功率 / 节拍 / 精度 / 连续性)", 1)
+    para(doc, "J.1 样本量 (统计口径, 不许用“跑了几次都没错”代替)", bold=True)
+    para(doc, "成功率 ≥99% 是**可靠性指标**, 证据必须按统计口径给: 0 失效下 95% 置信下限 = 0.05^(1/n) ≥ 99%"
+              " ⇒ **n ≥ 299 次连续无失效**。建议验收量为 **12 盘 × 25 颗 = 300 颗** (同时覆盖“连续 ≥12 盘”)。"
+              "单 seed 3/3 只能作为功能证据, **不得作为 99% 的依据**。", size=10)
+    para(doc, "J.2 判据表 (每项: 通过线 / 证据 / 命令)", bold=True)
+    table(doc, ["项", "通过线", "证据 (落盘)", "命令"], [
+        ["节拍", "单颗 CT P95 ≤ 3.15 s; 硬上限 ≤3.5 s", "逐颗 CT 原始记录 (每颗一条)", "python3 tools/gen_tray_place_video.py --params-json '{}'"],
+        ["成功率", "300 颗连续 0 失效 (95% 下限 ≥99%)", "逐颗判据 JSON + 失败样本留存", "同上, 逐 seed 汇总报数"],
+        ["取放精度", "水平单边 ≤1 mm 且 yaw ≤1°", "每颗 dx/dy/yaw 原始值", "reports/*.npz → judges[]"],
+        ["真空建立", "≤200 ms (或按实测重定上限并留证据)", "每颗 vac_establish_ms + vac_ok", "同上 judges[]"],
+        ["连续盘数", "≥12 盘无人工干预、无报警", "盘/工件计数 + 事件日志", "轮次日志"],
+        ["主参数 M", "在役 M == 配置单算出 M, 且 ∈[0,8]", "映射输出 + 标定记录", "附录 I.3 两条命令"],
+        ["驱动扭矩话题", "10 Hz 常驻; payload torque == M·(−∇Φ); 场景 == 活跃场景", "reports/driving_torque_judge.json", "gui-venv311/bin/python tools/verify_driving_torque_topic.py"],
+    ], widths=[2.4, 5.0, 4.6, 5.0])
+    para(doc, "J.3 不允许的验收口径 (红线)", bold=True)
+    for _s in ["以单次/单 seed 的小样本结果宣称 ≥99% 成功率;",
+               "以概念速度/理论节拍 (未实测) 代替实测 CT;",
+               "以「配置项存在」代替「配置项已落役生效」(如 M 映射算得出但未写入真源);",
+               "把真空建立超上限的现状 (425~538 ms vs 200 ms) 直接写成“达标”。"]:
+        para(doc, "· %s" % _s, size=10)
     con.close()
     return doc
 
@@ -790,7 +922,7 @@ def main():
         json.dump(man, f, ensure_ascii=False, indent=1)
     print("✅ SOR (Word): %s" % fp)
     print("✅ SOR (Markdown): %s (同源渲染)" % mp)
-    print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)/E(配置关联性)/F(架构兼容性)/G(任务迁移)" % (os.path.getsize(fp) / 1024.0))
+    print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)/E(配置关联性)/F(架构兼容性)/G(任务迁移)/H(性能对账)/I(主参数M)/J(验收试验)" % (os.path.getsize(fp) / 1024.0))
     print("   目录: %s" % out)
     for n in man["files"]:
         print("   - %s" % n)

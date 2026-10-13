@@ -93,8 +93,27 @@ class Node:
     """一个 DDS 参与者 + 按需创建的 writer/reader（同一进程可同时收发）"""
 
     def __init__(self, name, domain=0, config_xml=None):
-        if config_xml and os.path.isfile(config_xml):
-            os.environ["CYCLONEDDS_URI"] = "file://" + os.path.abspath(config_xml)
+        # 🔴 2026-10-13 口径(单一配置): **全系统只有一张 DDS 配置**, 任何参与者都不许默认走多播 ——
+        #   实测后果: 发布端已改单播(AllowMulticast=false), 而验证器/脚本的订阅端没给配置 ⇒ 仍走多播
+        #   ⇒ 双方发现不到对方 ⇒ "DDS 真收 0 条"(torque 判据 ⑨a 连挂), 现场表现为"话题发了但谁都看不见"。
+        #   所以: 没显式给配置、也没环境变量时, 自动用工程根这张 (存在且非空才用)。
+        if not config_xml and not os.environ.get("CYCLONEDDS_URI"):
+            _d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cyclonedds_unicast.xml")
+            if os.path.isfile(_d) and os.path.getsize(_d) > 0:
+                config_xml = _d
+        # 🛡 防呆 (2026-10-13 现场黑灯根因): 「空/缺配置」绝不许静默当"未配置"用 ——
+        #   实测: 脚本默认指 dds/cyclonedds_unicast.xml 而该文件当时不存在 ⇒ 这里判假 ⇒ 静默退回
+        #   默认多播 ⇒ 多网卡挑错网卡 + 常驻进程 IP 变化不恢复 ⇒ 本机自己都收不到, 数据空间全黑灯。
+        #   口径: 要么真读到非空配置, 要么**大声告警**(让人当场看得见), 不许默默降级。
+        if config_xml:
+            if not os.path.isfile(config_xml):
+                print("⚠️ DDS 配置不存在: %s ⇒ 将退回默认多播发现(多网卡下可能收不到)。"
+                      "生成: python3 tools/dds/gen_unicast_cfg.py" % config_xml, flush=True)
+            elif os.path.getsize(config_xml) == 0:
+                print("⚠️ DDS 配置是 0 字节: %s ⇒ 参与者会掉出发现网。"
+                      "重生成: python3 tools/dds/gen_unicast_cfg.py" % config_xml, flush=True)
+            else:
+                os.environ["CYCLONEDDS_URI"] = "file://" + os.path.abspath(config_xml)
         self.name = name
         self.dp = DomainParticipant(domain)
         self._w, self._r = {}, {}

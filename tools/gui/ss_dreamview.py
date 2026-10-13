@@ -3596,6 +3596,24 @@ class DreamView3D(QWidget):
         u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
         u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
         d_ph = float(np.linalg.norm(peg_h[:2] - self._mouth[:2]))
+        # 🔤 场景感知命名 (2026-10-13 老倪: 「摆盘场景的实时监控信号, 蓝色信号, 还有夹爪? 不是吸盘么」)
+        #   取证: 摆盘 episode 跑 sawyer_tray_place.xml, 通道名沿用插拔底座(gripper), 但物理是**真空吸盘**
+        #   —— 通道 gripper ∈ {0.0, 0.9}, 0.9 = 吸附建立证据 (gen_tray_place_video: grip_ev=0.9 if vac)。
+        #   取名唯一真源 = tools/scene_signal_names.py (只改显示名, 不动通道/数值/口径)。
+        try:
+            import sys as _sys2
+            _td2 = os.path.join(_REPO, "tools")
+            if _td2 not in _sys2.path:
+                _sys2.path.insert(0, _td2)
+            import scene_signal_names as _SN
+            _SNM = "tray" if scene_mode(getattr(self, "scene_id", None)) == "tray" else "plug"
+            _T_NAME, _T_HINT = _SN.name("夹爪", _SNM), _SN.hint("夹爪", _SNM)
+            _TT_NAME, _H_NAME = _SN.name("光模块头→孔", _SNM), _SN.name("夹持", _SNM)
+            _GK, _TK, _HK = (_SN.name("夹爪", _SNM), _SN.name("光模块头到孔_mm", _SNM), _SN.name("夹持", _SNM))
+            _TOOL = "真空吸附" if _SNM == "tray" else "夹持"
+        except Exception:                                                       # noqa: BLE001
+            _T_NAME, _T_HINT, _TT_NAME, _H_NAME = "夹爪", "(1=闭合)", "光模块头→孔", "夹持"
+            _GK, _TK, _HK, _TOOL = "夹爪", "光模块头到孔_mm", "夹持", "夹持"
         self.lbl_num.setText(
             f"阶段    {stage}\n"
             f"t       {t:6.2f}s   帧 {i}/{self._n - 1}\n"
@@ -3606,9 +3624,9 @@ class DreamView3D(QWidget):
             f"估计x̂   {_f(lat3[0])} {_f(lat3[1])} {_f(lat3[2])}\n"
             f"x̂−末端  {err:6.1f} mm   抖动 {jit:4.2f} mm/步\n"
             f"────────────────────\n"
-            f"夹爪    {float(tr['gripper'][i]):5.2f}  (1=闭合)\n"
-            f"光模块头→孔 {d_ph * 1000:6.1f} mm\n"
-            f"  环境接触 {fenv:5.3f}  夹持 {fg:5.3f}\n"
+            f"{_T_NAME}    {float(tr['gripper'][i]):5.2f}  {_T_HINT}\n"
+            f"{_TT_NAME} {d_ph * 1000:6.1f} mm\n"
+            f"  环境接触 {fenv:5.3f}  {_H_NAME} {fg:5.3f}\n"
             f"状态校正器 残差{res:6.4f}\n"
             f"  接触概率 {cp:4.2f} (净 {max(0.0, min(1.0, (cp - 0.58) / 0.42)):4.2f})\n"
             f"  残差系统偏差 {getattr(self, '_res_info', (0, 0, 0))[1]:5.2f}mm "
@@ -3624,16 +3642,17 @@ class DreamView3D(QWidget):
             "src": str(getattr(self, "_src", "")),
             "帧": int(i), "总帧": int(self._n - 1),
             "阶段": str(stage), "时间_s": round(float(t), 3),
+            "工艺": _TOOL,        # 场景语义 (真空吸附/夹持) ⇒ 快照自证这根通道是吸盘还是夹爪, 不用猜
             "末端": [float(x[0]), float(x[1]), float(x[2])],
             "光模块": [float(peg_grasp[0]), float(peg_grasp[1]), float(peg_grasp[2])],
             "光模块头": [float(peg_h[0]), float(peg_h[1]), float(peg_h[2])],
             "估计值": [float(lat3[0]), float(lat3[1]), float(lat3[2])],
             "估计误差_mm": round(float(err), 3),
             "估计抖动_mm每步": round(float(jit), 4),
-            "夹爪": round(float(tr["gripper"][i]), 4),
-            "光模块头到孔_mm": round(float(d_ph) * 1000, 3),
+            _GK: round(float(tr["gripper"][i]), 4),
+            _TK: round(float(d_ph) * 1000, 3),
             "环境接触": round(float(fenv), 4),
-            "夹持": (None if fg != fg else round(float(fg), 4)),
+            _HK: (None if fg != fg else round(float(fg), 4)),
             "残差": round(float(res), 5),
             "接触概率": round(float(cp), 4),
             "净接触": round(max(0.0, min(1.0, (cp - 0.58) / 0.42)), 4),

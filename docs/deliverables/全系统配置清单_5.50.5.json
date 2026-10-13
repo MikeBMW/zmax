@@ -1,0 +1,793 @@
+{
+  "schema": "zmax-config-inventory/1.0",
+  "version": "5.50.5",
+  "generated_at": "2026-10-13 11:59:05",
+  "repo": "/home/ubuntu/zmax",
+  "sections": {
+    "版本": {
+      "界面品牌版本": "5.50.5",
+      "VERSION.md 记载": "5.50.5",
+      "git HEAD": "852aa97 交付包发飞书(已服务端回读核验) + feishu_send_file 增 --text-file",
+      "git describe": "v5.50.5-3-g852aa97",
+      "最新 tag(按创建时间, 只认 vX.Y.Z)": "v5.50.5",
+      "tag 总数": 106
+    },
+    "在役服务": {
+      "监听端口": {
+        "8888": "LISTEN 0      1024            [::]:8888          [::]:*",
+        "8795": "LISTEN 0      5            0.0.0.0:8795       0.0.0.0:*    users:((\"python\",pid=105806,fd=4))",
+        "8793": "LISTEN 0      5            0.0.0.0:8793       0.0.0.0:*    users:((\"python\",pid=18171,fd=8))",
+        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=5320,fd=4))",
+        "8791": "LISTEN 0      5            0.0.0.0:8791       0.0.0.0:*    users:((\"python\",pid=18171,fd=15))",
+        "8796": "LISTEN 0      5          127.0.0.1:8796       0.0.0.0:*    users:((\"python\",pid=5300,fd=16))"
+      },
+      "systemd 单元": {
+        "sam3-seg.service": "active",
+        "zmax-agent-hub.service": "active",
+        "zmax-ctl-stop.service": "active",
+        "zmax-data-mount.service": "active",
+        "zmax-dataspaces-loop.service": "active",
+        "zmax-dataspaces-probe.service": "active",
+        "zmax-dds-agg.service": "active",
+        "zmax-dds-pub.service": "active",
+        "zmax-dds-ss.service": "active",
+        "zmax-ecs-ov.service": "active",
+        "zmax-ecs-station.service": "active",
+        "zmax-engdb.service": "active",
+        "zmax-hil-bridge.service": "active",
+        "zmax-mapping.service": "active",
+        "zmax-moveit-plan-req.service": "active",
+        "zmax-net-optimize.service": "active",
+        "zmax-proxy.service": "activating",
+        "zmax-ss3d-live-push.service": "active",
+        "zmax-station-gate.service": "active",
+        "zmax-torque-bus.service": "active"
+      },
+      "crontab": [
+        "0 */2 * * * bash /home/ubuntu/.hermes/scripts/disk_redline.sh >> /home/ubuntu/.hermes/logs/disk_redline.log 2>&1",
+        "@reboot sleep 20 && cd /home/ubuntu/zmax && /home/ubuntu/zmax/venvs/lerobot-venv/bin/python tools/auto_loop.py >> /home/ubuntu/zmax/outputs/auto_loop.log 2>&1",
+        "@reboot sleep 30 && /home/ubuntu/.hermes/scripts/hermes_cron_reclock.sh",
+        "@reboot sleep 25 && bash /home/ubuntu/.hermes/scripts/l2_daemon_keepalive.sh >> /home/ubuntu/.hermes/logs/l2_daemon_keepalive.log 2>&1",
+        "*/5 * * * * bash /home/ubuntu/.hermes/scripts/l2_daemon_keepalive.sh >> /home/ubuntu/.hermes/logs/l2_daemon_keepalive.log 2>&1",
+        "*/5 * * * * bash /home/ubuntu/.hermes/scripts/vl_safety_keepalive.sh >> /tmp/vl_safety_keepalive.log 2>&1",
+        "@reboot bash /home/ubuntu/.hermes/scripts/vl_safety_keepalive.sh >> /tmp/vl_safety_keepalive.log 2>&1",
+        "*/3 * * * * cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/publish_live_url.py >> /tmp/publish_live_url.log 2>&1",
+        "* * * * * bash /home/ubuntu/zmax/tools/tunnel_keepalive.sh",
+        "* * * * * sleep 30; bash /home/ubuntu/zmax/tools/tunnel_keepalive.sh",
+        "*/5 * * * * bash /home/ubuntu/.hermes/scripts/cam_stream_guard.sh >> /tmp/cam_stream_guard.log 2>&1",
+        "*/10 * * * * cd /home/ubuntu/zmax && /usr/bin/python3 tools/env_model.py build --quiet >> /home/ubuntu/zmax/zmax_data/env_model.log 2>&1"
+      ]
+    },
+    "配置真源": {
+      "files": [
+        {
+          "file": "config/ss_task_binding.json",
+          "size": 32560,
+          "sha256_12": "4fe10fc754f5"
+        },
+        {
+          "file": "config/topics/ar_aoi_signals.json",
+          "size": 11298,
+          "sha256_12": "87db2f4edaec"
+        },
+        {
+          "file": "config/topics/scene_tags.json",
+          "size": 11083,
+          "sha256_12": "84edd6511349"
+        },
+        {
+          "file": "config/mcd/match_matrix.json",
+          "size": 10569,
+          "sha256_12": "c0975b334974"
+        },
+        {
+          "file": "config/mcd/param_registry.json",
+          "size": 72361,
+          "sha256_12": "0a6974bf9714"
+        },
+        {
+          "file": "config/mcd/zmax_mcd.json",
+          "size": 73757,
+          "sha256_12": "fd176116ae74"
+        },
+        {
+          "file": "config/aoi/side_path.json",
+          "size": 5212,
+          "sha256_12": "2a15d6b04e55"
+        },
+        {
+          "file": "config/2026-07-18_SysXX_Z700.json",
+          "size": 1587,
+          "sha256_12": "a2867f36be9a"
+        },
+        {
+          "file": "config/2026-07-19_SysXX_Z700.json",
+          "size": 2848,
+          "sha256_12": "3a22c6e64298"
+        },
+        {
+          "file": "config/cc_snapshot.json",
+          "size": 24083,
+          "sha256_12": "0bb7c235dccb"
+        },
+        {
+          "file": "config/dds_cycle.json",
+          "size": 1934,
+          "sha256_12": "6f8166ed80e9"
+        },
+        {
+          "file": "config/library_curation.json",
+          "size": 7306,
+          "sha256_12": "f4d6337c42c0"
+        },
+        {
+          "file": "config/task_state.json",
+          "size": 3229,
+          "sha256_12": "eb699850db9b"
+        },
+        {
+          "file": "config/task_state_ledger.json",
+          "size": 16122,
+          "sha256_12": "68ed641f693b"
+        },
+        {
+          "file": "config/task_state_manual.json",
+          "size": 136,
+          "sha256_12": "18bd748055ab"
+        }
+      ],
+      "count": 15
+    },
+    "任务与场景": {
+      "active_task": "TASK-06-TRAY",
+      "project": {
+        "name": "状态空间工程 · 主工程",
+        "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
+        "canvas_md5": "821f97a5137a583f166d4a59b70b32b4",
+        "nodes": 89,
+        "links": 184
+      },
+      "tasks": [
+        {
+          "task_id": "TASK-01-FW",
+          "name": "FW Loading + EEPROM 写/读校验",
+          "recipe_type": "插拔+固件校验",
+          "scene": "SCN-01-FW",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 9,
+          "enabled_nodes": 51,
+          "disabled_nodes": 0
+        },
+        {
+          "task_id": "TASK-02-HANDLE",
+          "name": "料盘/治具上下料搬运",
+          "recipe_type": "上下料搬运",
+          "scene": "SCN-02-HANDLE",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 4,
+          "enabled_nodes": 42,
+          "disabled_nodes": 9
+        },
+        {
+          "task_id": "TASK-03-BI",
+          "name": "BI老化箱模块插拔",
+          "recipe_type": "老化箱插拔",
+          "scene": "SCN-03-BI",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 7,
+          "enabled_nodes": 51,
+          "disabled_nodes": 0
+        },
+        {
+          "task_id": "TASK-04-THERMAL",
+          "name": "热海柜体电口+光口插拔",
+          "recipe_type": "热海柜体插拔(电口+光口)",
+          "scene": "SCN-04-THERMAL",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 8,
+          "enabled_nodes": 51,
+          "disabled_nodes": 0
+        },
+        {
+          "task_id": "TASK-05-ATS",
+          "name": "ATS/线外检测插接 (核心挑战场景)",
+          "recipe_type": "检测插接",
+          "scene": "SCN-05-ATS",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 9,
+          "enabled_nodes": 51,
+          "disabled_nodes": 0
+        },
+        {
+          "task_id": "TASK-06-TRAY",
+          "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+          "recipe_type": "摆盘取放",
+          "scene": "SCN-06-TRAY",
+          "site": "SITE-A.ST11",
+          "ss_mode": "tray",
+          "steps": 5,
+          "enabled_nodes": 51,
+          "disabled_nodes": 0
+        },
+        {
+          "task_id": "TASK-07-AOI",
+          "name": "AR 光学质量检测 (AOI 联合检查)",
+          "recipe_type": "光学质量检测",
+          "scene": "SCN-07-AOI",
+          "site": "SITE-A.ST11",
+          "ss_mode": "insert",
+          "steps": 5,
+          "enabled_nodes": 31,
+          "disabled_nodes": 20
+        }
+      ],
+      "count": 7,
+      "segment_node_map": 8,
+      "coverage": {
+        "nodes": 89,
+        "covered_by_segments": 51,
+        "uncovered": [
+          "n_calib_mani",
+          "n_hil",
+          "n_moveit",
+          "n_realscene",
+          "n_skill_dict",
+          "ss3d_view",
+          "ss_l5",
+          "ss_lora_l3",
+          "ss_moe",
+          "ss_seg",
+          "ssact",
+          "ssest",
+          "ssff",
+          "ssff_hist",
+          "ssinnov",
+          "ssmode",
+          "ssobs",
+          "sspred",
+          "ssreason",
+          "sssk1",
+          "ssvideo",
+          "ssvideo2",
+          "ssworld"
+        ]
+      }
+    },
+    "模型权重": {
+      "files": [
+        {
+          "file": "models/hjepa_zflow_model.pt",
+          "size": "10.3 MB",
+          "sha256_12": "5f6471214222"
+        },
+        {
+          "file": "models/l4_mani_predictor_v2.pt",
+          "size": "3.3 MB",
+          "sha256_12": "10afd516c290"
+        },
+        {
+          "file": "models/l4_mani_predictor_v4.pt",
+          "size": "3.3 MB",
+          "sha256_12": "b63f210202da"
+        },
+        {
+          "file": "models/l4_mani_predictor_v5.pt",
+          "size": "3.3 MB",
+          "sha256_12": "5cc4b5820755"
+        },
+        {
+          "file": "models/l4_yaw_head_grasp_dz_v1.pt",
+          "size": "0.3 MB",
+          "sha256_12": "ccdf452baa94"
+        },
+        {
+          "file": "models/l4_yaw_head_grasp_dz_v2.pt",
+          "size": "0.3 MB",
+          "sha256_12": "9516aa839ff4"
+        },
+        {
+          "file": "models/lew_mamba_interleave.pt",
+          "size": "22.6 MB",
+          "sha256_12": "2e3e26cbcc3a"
+        },
+        {
+          "file": "models/lew_transformer.pt",
+          "size": "20.9 MB",
+          "sha256_12": "2820d0eb603f"
+        },
+        {
+          "file": "models/yolo26n.pt",
+          "size": "5.3 MB",
+          "sha256_12": "9b09cc8bf347"
+        },
+        {
+          "file": "models/yolo_peg_live.pt",
+          "size": "5.9 MB",
+          "sha256_12": "e0d84ed83da7"
+        },
+        {
+          "file": "models/yolov8n.pt",
+          "size": "6.2 MB",
+          "sha256_12": "f59b3d833e2f"
+        },
+        {
+          "file": "models/manifold_engine.npz",
+          "size": "0.0 MB",
+          "sha256_12": "e29604685389"
+        },
+        {
+          "file": "models/ss_left_brain.npz",
+          "size": "2.1 MB",
+          "sha256_12": "e350408e5163"
+        },
+        {
+          "file": "models/ss_left_brain_engine.npz",
+          "size": "2.1 MB",
+          "sha256_12": "e42cae6735c2"
+        },
+        {
+          "file": "models/ss_left_brain_mw3_backup.npz",
+          "size": "2.1 MB",
+          "sha256_12": "1811cf919e79"
+        },
+        {
+          "file": "models/ss_left_brain_mw4_backup.npz",
+          "size": "2.1 MB",
+          "sha256_12": "717eb912f95b"
+        },
+        {
+          "file": "models/ss_left_brain_mw4w_backup.npz",
+          "size": "2.1 MB",
+          "sha256_12": "70345dfcdf93"
+        },
+        {
+          "file": "models/ss_right_brain.npz",
+          "size": "0.3 MB",
+          "sha256_12": "777400fec2ee"
+        },
+        {
+          "file": "models/ss_right_brain_mw4_backup.npz",
+          "size": "0.3 MB",
+          "sha256_12": "7f9518e9534d"
+        },
+        {
+          "file": "zmax_data/models/hjepa_zflow_model.pt",
+          "size": "10.3 MB",
+          "sha256_12": "5f6471214222"
+        }
+      ],
+      "count": 20
+    },
+    "相机与AOI": {
+      "流服务通道": {
+        "arm": {
+          "label": "🦾 机器人臂上 D405 (Orin)",
+          "fps": 0.0,
+          "age_s": -1.0,
+          "stalled": false
+        },
+        "local": {
+          "label": "💻 内置 Integrated RGB Camera: Integrat",
+          "fps": 5.02,
+          "age_s": 0.19,
+          "stalled": false
+        },
+        "local2": {
+          "label": "",
+          "fps": 0.0,
+          "age_s": -1.0,
+          "stalled": false
+        },
+        "depth": {
+          "label": "🌈 D405 深度图 (彩色化)",
+          "fps": 0.0,
+          "age_s": 2861.8,
+          "stalled": true
+        },
+        "aoi_gold": {
+          "label": "🔍 金手指检测 (工控机 OPT)",
+          "fps": 0.0,
+          "age_s": -1.0,
+          "stalled": false
+        },
+        "aoi_surface": {
+          "label": "🔍 表面检测 (工控机 OPT)",
+          "fps": 0.0,
+          "age_s": -1.0,
+          "stalled": false
+        },
+        "ov_local": {
+          "label": "💻 内置 Integrated RGB Camera: Integrat",
+          "fps": 5.02,
+          "age_s": 0.19,
+          "stalled": false
+        }
+      },
+      "AOI端口(工控机 192.168.23.23)": {
+        "10082": "",
+        "10083": ""
+      }
+    },
+    "数据空间": {
+      "注册 topic 数": 25,
+      "闭环环节数": 9,
+      "注册表版本": "1.0.0 2026-10-10",
+      "registry": "src/lerobot/dataspace/topics.py (TOPICS / CLOSED_LOOP 单一真源)",
+      "live": "zmax_data/dataspace/live.json",
+      "AR/AOI 信号组": 6
+    },
+    "状态空间工程": {
+      "画布真源 (被任务绑定方)": "src/lerobot/engineering/flows/state_space_obs.json",
+      "节点数": 89,
+      "连线数": 184,
+      "画布 md5": "821f97a5137a583f166d4a59b70b32b4",
+      "画布文件 sha256_12": "e101d657da7c",
+      "工程库": "data/database/zmax/zmax_engineering.db (1.3 MB)",
+      "其余画布源件数": 20,
+      "说明": "以上节点数/连线数取自「任务绑定文件声明的那份画布」; 仓库 flows/ 下另有同名符号链接与其它历史画布源件(数量见上), 非本次交付所用。",
+      "其余画布源件": [
+        "flows/atom.json",
+        "flows/atomic_conditions_flow.json",
+        "flows/atomic_skill_tokens.json",
+        "flows/atomic_skills_conditions.json",
+        "flows/atomic_skills_raw.json",
+        "flows/calib_closure.json",
+        "flows/cooperation_closed_loop.json",
+        "flows/detection_targets.json",
+        "flows/dual_brain_peg.json",
+        "flows/dual_brain_peg_yolo.json",
+        "flows/ff_pd_top.json",
+        "flows/general_model.json"
+      ]
+    },
+    "技能与文档": {
+      "技能数": 202,
+      "docs 目录": {
+        "data_snapshots": 19,
+        "deliverables": [
+          "INDEX_5.50.B.md",
+          "README_交付包_摆盘TASK-06-TRAY_5.50.B.md",
+          "SOR_Z-MAX_5.50.B_20261013.md",
+          "Z-MAX_交付文档_摆盘TASK-06-TRAY_5.50.B_20261013.zip",
+          "Z-MAX_交付文档包_20261012.zip",
+          "任务配置单_Z-MAX_20261012.md",
+          "供应商SOR_Z-MAX_光模块精细操作_20261012.md",
+          "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.docx",
+          "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.json",
+          "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.manifest.json",
+          "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md",
+          "全系统配置清单_5.50.A.json",
+          "全系统配置清单_5.50.A.md",
+          "全系统配置清单_5.50.B.json",
+          "全系统配置清单_5.50.B.md",
+          "全系统配置清单_Z-MAX_5.50.B_20261013.md",
+          "功能清单_Z-MAX_20261012.md",
+          "功能说明_5.50.A.md",
+          "功能说明_Z-MAX_5.50.B_20261013.md",
+          "原型验证测试报告_Z-MAX_20261012.md",
+          "摆盘性能对账_5.50.5.json",
+          "摆盘性能对账_5.50.5.md",
+          "版本策略_5.50.A_B_C.md",
+          "立项文档_Z-MAX_5.50.B_20261013.md",
+          "项目立项文档_Z-MAX_20261012.md"
+        ],
+        "design": [
+          "ARCHITECTURE-OVERVIEW.md",
+          "DDS-MASTER-DATA.md",
+          "FEISHU_SYNC_SCENE_OVERLAY_20260927.md",
+          "L2-Z-MAX解决方案-v1.0.5.md",
+          "L2-Z-MAX解决方案-v1.0.6.md",
+          "L3-技术路线与开发指南-v1.0.4.md",
+          "MAPPING-3DGS.md",
+          "MAPPING-DIAGNOSIS.md",
+          "MODEL-THEORY.md",
+          "SCENE_OVERLAY.md",
+          "SCENE_OVERLAY_3CAM_20260927.md",
+          "SIMULINK-PIPELINE-DETAILS.md",
+          "STATE_SPACE_RETROSPECTIVE_20260926.md",
+          "Z-MAX-SYS-INTERFACE-SPEC.md",
+          "Z-MAX-SmolVLA训练方案.md",
+          "Z-MAX-Sys0-框架设计.md",
+          "Z-MAX-插拔状态机.md",
+          "Z-MAX-硬件平台-L2-L3-L4方案.md",
+          "Z-MAX-类脑计算方案.md",
+          "Z-MAX-类脑迭代路线图.md",
+          "Z-MAX-系统架构-五层引擎.md",
+          "Z-MAX产品等级定义-L1-L5标准.md",
+          "aoi_gold_servo.md",
+          "aoi_quality_head_and_console_20260924.md",
+          "architecture_layers_v511.md",
+          "arm_j5_torque_FIX_20260922.md",
+          "canvas_layout_forward_20260924.md",
+          "engineering_path_consolidation_20260929.md",
+          "evidence_20260922",
+          "factory_fine_ops_demand.md",
+          "factory_fine_ops_requirements.md",
+          "factory_fine_ops_supervision.md",
+          "feedback-edges-v510.json",
+          "full_system_dataclosedloop_20260922.md",
+          "fusion_localization_blur_refocus_20260924.md",
+          "global_data_space_mapping_20260929.md",
+          "handoff_20260922_2_shutdown.md",
+          "handoff_20260922_3_shutdown.md",
+          "handoff_20260922_shutdown.md",
+          "hil_terminal_station_l2_20261009.md",
+          "intact_robot_switch.md",
+          "l4_dy_axis_attribution_20260922.md",
+          "l4_runtime_evidence_matrix_20260922.md",
+          "l4_stats_caliber_fix_20260922.md",
+          "left_right_policy.md",
+          "library_sync_20261009.md",
+          "lora_align_ab_20260924.md",
+          "manifold_engine_20260924.md",
+          "manifold_mcd_master_param_M_20261009.md",
+          "memory-layers-v510.md",
+          "model_capability_architecture.md",
+          "model_zoo_architecture.md",
+          "model_zoo_config_matching_20261009.md",
+          "moe_dense_engine_bypass_20260924.md",
+          "orin-grasp-place-workflow.md",
+          "orin-pipeline-kb.md",
+          "orin-workflow-analysis.md",
+          "param_registry_20261009.md",
+          "platform_engineering_db_20261009.md",
+          "project_archive_v2_20261009.md",
+          "real_autolabel_by_robot_motion.md",
+          "real_machine_j5_torque_diagnosis_20260922.md",
+          "real_machine_safety_checklist.md",
+          "right_panel_trim_mparam_20261009.md",
+          "robot_build_sheet_loading_unloading_20261009.md",
+          "rokae_j5_issue_report_for_vendor.md",
+          "sam3_open_vocab_seg_L2_20260929.md",
+          "sim2real_robot_motion_autolearn_plan.md",
+          "space_model_nodes_load_map.md",
+          "ss_run_cfg_panel_20261009.md",
+          "ss_step_follow_20261009.md",
+          "ss_task_binding_20261009.md",
+          "state_space_feature_list.md",
+          "third_party_model_spec.md",
+          "three_brain_architecture.md",
+          "ui_slim_toolbar_menu_20261009.md",
+          "v5.27.0_summary.txt",
+          "v5.28.0_summary.txt",
+          "v5.29.0_summary.txt",
+          "v5.29.1_summary.txt",
+          "v5.30.0_summary.txt",
+          "v5.30.1_summary.txt",
+          "v5.31.0_summary.txt",
+          "v5.32.0_summary.txt",
+          "v5.32.1_summary.txt",
+          "v5.32.2_summary.txt",
+          "v5.33.0_summary.txt",
+          "v5.33.1_summary.txt",
+          "v5.33.2_summary.txt",
+          "v5.33.3_summary.txt",
+          "v5.34.0_summary.txt",
+          "v5.34.1_summary.txt",
+          "v5.34.2_summary.txt",
+          "v5.41.0_summary.txt",
+          "veh6_config_center_mcd_20261009.md",
+          "veh6_config_center_operation_20261009.md",
+          "veh6_task_config_20261009.md",
+          "vision_grasp_skill.md",
+          "yolo_weights_lineage_20260919.md",
+          "zmax_adaptive_gain.md",
+          "zmax_intact_alignment.md",
+          "zmax_intact_node.md",
+          "zmax_intent_bundle_3layer.md",
+          "zmax_l2_l3_l4_capability_stack.md",
+          "zmax_l4_fiber_bundle.md",
+          "zmax_l4_intact_policy.md",
+          "zmax_l4_l2_compat_wiring.md",
+          "zmax_lie_intent_manifolds.md",
+          "zmax_memory_integration.md",
+          "zmax_sim2real_dr_experiment.md",
+          "zmax_sim2real_yolo_flow.md",
+          "zmax状态空间数据空间.md",
+          "光模块产线-全流程12工位场景定义.md",
+          "光模块产线-机器人场景设计.md",
+          "流形引擎_自动光学检测_架构设计_v0.1.md",
+          "空间质数结构化理解能力_设计_v1.md"
+        ]
+      }
+    },
+    "运行环境": {
+      "主机": "ubuntu",
+      "内核": "6.17.0-14-generic",
+      "CPU": "32 核",
+      "内存": "30 GB (可用 18 GB)",
+      "磁盘": "396G 总 / 53G 可用 (87% 已用)",
+      "GPU": "NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, 580.126.09",
+      "Python": "Python 3.11.15"
+    },
+    "配置关联性": {
+      "说明": "本节列出「配置项之间的关联」, 每条关系的条数都从单一工程库/绑定文件现取, 可回读复现。表结构 = src↔dst 关系。",
+      "关系总量 (links)": 389,
+      "关系明细 (源类型→目标类型 · 关系 · 条数)": [
+        {
+          "源": "function",
+          "目标": "module",
+          "关系": "对应模块",
+          "条数": 74
+        },
+        {
+          "源": "module",
+          "目标": "code",
+          "关系": "实现",
+          "条数": 73
+        },
+        {
+          "源": "product_feature",
+          "目标": "module",
+          "关系": "用到",
+          "条数": 60
+        },
+        {
+          "源": "verification",
+          "目标": "level",
+          "关系": "分级",
+          "条数": 57
+        },
+        {
+          "源": "product_feature",
+          "目标": "subsystem",
+          "关系": "归属",
+          "条数": 35
+        },
+        {
+          "源": "capability",
+          "目标": "interface",
+          "关系": "IN",
+          "条数": 31
+        },
+        {
+          "源": "capability",
+          "目标": "interface",
+          "关系": "OUT",
+          "条数": 31
+        },
+        {
+          "源": "product_feature",
+          "目标": "capability",
+          "关系": "能力引用",
+          "条数": 28
+        }
+      ],
+      "参数关联总量 (param_links)": 1767,
+      "参数关联明细 (参数↔对象 · 条数)": [
+        {
+          "关联对象": "功能",
+          "条数": 809
+        },
+        {
+          "关联对象": "模块",
+          "条数": 723
+        },
+        {
+          "关联对象": "系统",
+          "条数": 61
+        },
+        {
+          "关联对象": "阶段",
+          "条数": 58
+        },
+        {
+          "关联对象": "标准",
+          "条数": 58
+        },
+        {
+          "关联对象": "指标组",
+          "条数": 58
+        }
+      ],
+      "功能节点数": 74,
+      "功能→源码 映射数": 73,
+      "能力条目数 (feature.dbc BO_)": 31,
+      "验收判据数": 57,
+      "工程段数": 25,
+      "任务关联 (同一画布 ⇒ 各任务启用/禁用/改写)": [
+        {
+          "task_id": "TASK-01-FW",
+          "名称": "FW Loading + EEPROM 写/读校验",
+          "作业类型": "插拔+固件校验",
+          "场景": "SCN-01-FW",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 9,
+          "改写项": 6
+        },
+        {
+          "task_id": "TASK-02-HANDLE",
+          "名称": "料盘/治具上下料搬运",
+          "作业类型": "上下料搬运",
+          "场景": "SCN-02-HANDLE",
+          "档位/模式": "insert",
+          "适用段": 6,
+          "排除段": 2,
+          "启用节点": 42,
+          "禁用节点": 9,
+          "步骤": 4,
+          "改写项": 6
+        },
+        {
+          "task_id": "TASK-03-BI",
+          "名称": "BI老化箱模块插拔",
+          "作业类型": "老化箱插拔",
+          "场景": "SCN-03-BI",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 7,
+          "改写项": 4
+        },
+        {
+          "task_id": "TASK-04-THERMAL",
+          "名称": "热海柜体电口+光口插拔",
+          "作业类型": "热海柜体插拔(电口+光口)",
+          "场景": "SCN-04-THERMAL",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 8,
+          "改写项": 3
+        },
+        {
+          "task_id": "TASK-05-ATS",
+          "名称": "ATS/线外检测插接 (核心挑战场景)",
+          "作业类型": "检测插接",
+          "场景": "SCN-05-ATS",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 9,
+          "改写项": 4
+        },
+        {
+          "task_id": "TASK-06-TRAY",
+          "名称": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+          "作业类型": "摆盘取放",
+          "场景": "SCN-06-TRAY",
+          "档位/模式": "tray",
+          "适用段": 7,
+          "排除段": 1,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 5,
+          "改写项": 8
+        },
+        {
+          "task_id": "TASK-07-AOI",
+          "名称": "AR 光学质量检测 (AOI 联合检查)",
+          "作业类型": "光学质量检测",
+          "场景": "SCN-07-AOI",
+          "档位/模式": "insert",
+          "适用段": 4,
+          "排除段": 4,
+          "启用节点": 31,
+          "禁用节点": 20,
+          "步骤": 5,
+          "改写项": 28
+        }
+      ],
+      "任务迁移不变量": {
+        "画布": "src/lerobot/engineering/flows/state_space_obs.json (节点 89 / 连线 184)",
+        "结论": "7 个任务共用同一份画布与同一套功能节点; 切换任务只改「任务绑定配置」(适用/排除段 · 启用/禁用节点 · overrides · ss_mode), 不改代码、不改画布。",
+        "迁移步骤": "改 config/tasks/tasks.json 或任务绑定 → ss_task_bind.py --activate <TASK> → engineering_db.py build → check"
+      }
+    }
+  }
+}

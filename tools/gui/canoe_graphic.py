@@ -1531,8 +1531,11 @@ class CanoeGraphicWidget(QWidget):
                   else "🌐 数据范围: 全部来源 (3D 场景 + 本机真值流 + Orin ROS2 + 全局数据空间)")
 
     # 首屏默认曲线: 3D 场景里最说明问题的几条 (量纲差大 ⇒ 配「每信号独立图」)
+    # 🔤 两套按场景给 (2026-10-13): 摆盘 = 真空吸持 / 吸嘴到槽位_mm; 插拔 = 夹爪 / 光模块头到孔_mm。
+    #   命名真源 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
     DEFAULT_3D = ("sstrace.末端.0", "sstrace.末端.1", "sstrace.末端.2",
-                  "sstrace.光模块头到孔_mm", "sstrace.接触概率", "sstrace.安全边界_mps")
+                  "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
+                  "sstrace.接触概率", "sstrace.安全边界_mps")
 
     def _apply_watch(self):
         """被「➕ 增加信号话题」点名但当时还没出帧的话题: 一有字段出现就自动勾上"""
@@ -2012,11 +2015,14 @@ class CanoeGraphicWidget(QWidget):
     # 3D 场景那批信号的"血缘": 哪些是真机话题, 哪些是 L2 引擎算的 (老倪要能一眼看到)
     SS_TRACE_SRC = (                                  # 顺序要紧: 长前缀必须排在短前缀前面
         ("光模块头到孔", "L2 引擎 (孔口 objects3d.json)"),
+        ("吸嘴到槽位", "L2 引擎 (槽位 objects3d.json) · 摆盘"),
         ("末端", "/robot/tcp_pose (Orin 50Hz)"),
         ("光模块头", "YOLO 3D 检测 (旁路 JSON)"),
         ("光模块", "YOLO 3D 检测 (旁路 JSON)"),
+        ("真空吸持", "/gripper_pos (Orin) · 摆盘=吸附建立(0.9)"),
         ("夹爪", "/gripper_pos (Orin)"),
         ("环境接触", "/robot/force_torque (Orin)"),
+        ("吸附力", "/robot/force_torque (Orin) · 摆盘=吸持力"),
         ("夹持", "/robot/force_torque (Orin)"),
     )
 

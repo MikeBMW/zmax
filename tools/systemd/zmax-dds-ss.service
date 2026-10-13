@@ -11,6 +11,8 @@ Group=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
 Environment=ZMAX_REPO=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
+# 🔴 2026-10-13 单播发现: 见 dds/cyclonedds_unicast.xml 头注 (多播+多网卡 ⇒ 本机自己都收不到)
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
 ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/ss_daemon.py
 Restart=always
 RestartSec=5

@@ -88,8 +88,12 @@ def publish():
                 "光模块_x": round(_f(z["peg"][i], 0), 5), "光模块_y": round(_f(z["peg"][i], 1), 5),
                 "光模块_z": round(_f(z["peg"][i], 2), 5),
                 "手到件_mm": round(_f(z["dist"], i) * 1000.0, 2),
-                "夹爪": round(_f(z["gripper"], i), 3),
-                "抓住": int(_f(z["grasped"], i)),
+                # 🔤 2026-10-13: 通道沿用插拔底座旧名(gripper/grasped), 但物理是**真空吸盘** ——
+                #   gripper∈{0.0,0.9}, 0.9=吸附建立证据 ⇒ 摆盘只能叫「真空吸持/吸住」, 否则实时监控
+                #   蓝色组里挂着一条"夹爪"波形, 与现场看到的吸盘动作对不上。取名真源 scene_signal_names.py
+                "真空吸持": round(_f(z["gripper"], i), 3),
+                "吸住": int(_f(z["grasped"], i)),
+                "工艺": "真空吸附",
                 "接触概率": round(_f(z["contact_p"], i), 4),
                 "力_N": round(_f(z["force"], i), 4),
                 "L4介入": round(_f(z["l4_du"], i), 5),
@@ -196,7 +200,8 @@ def live(speed: float = 1.0, loop: bool = False):
             "末端": [round(_f(z["x"][i], k), 5) for k in range(3)],
             "光模块": [round(_f(z["peg"][i], k), 5) for k in range(3)],
             "手到件_mm": round(_f(z["dist"], i) * 1000.0, 2),
-            "夹爪": round(_f(z["gripper"], i), 3), "抓住": int(_f(z["grasped"], i)),
+            "真空吸持": round(_f(z["gripper"], i), 3), "吸住": int(_f(z["grasped"], i)),
+            "工艺": "真空吸附",
             "接触概率": round(_f(z["contact_p"], i), 4), "力_N": round(_f(z["force"], i), 4),
             "残差_mm": round(_f(z["residual"], i) * 1000.0, 3),
             "槽位偏差_mm": round(abs(float(_j.get("dx_mm") or 0.0)) + abs(float(_j.get("dy_mm") or 0.0)), 3),

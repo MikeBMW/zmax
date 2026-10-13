@@ -1,0 +1,29 @@
+[Unit]
+Description=Z-MAX 流形引擎驱动扭矩发布器 (真源 M × −∇Φ → ss_torque, 10Hz 常驻)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target
+Wants=network-online.target
+# 为什么不带前置依赖: 扭矩只依赖标定真源 config/calib/zmax_manifold.json + 当前状态, 不依赖机器人在线。
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+# 🔴 2026-10-13 单播发现: 与探针/发布端/聚合器同一张配置 (口径只有一份)
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
+# 为什么要有这个常驻单元 (2026-10-13 实测):
+#   话题 ss_torque 在设计里由 tools/tdrive_bus.py (常驻 10Hz) 发布, 但它**从来不是服务** ⇒ 没人拉起
+#   ⇒ 探针侧 matched_pubs=0 / count=0 / 黑灯, ss 守护每 2s 打「驱动扭矩 tap 过期 — 不把旧的当现在」
+#   ⇒ 「流形引擎输出的驱动扭矩 topic」这件事**在系统里不成立**(只有手跑才有)。
+#   口径: 真源要么在跑, 要么明说没跑 —— 不许靠手跑一次的快照冒充在役。
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/tdrive_bus.py run --hz 10
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-torque.log
+StandardError=append:/var/log/zmax-torque.log
+
+[Install]
+WantedBy=multi-user.target
