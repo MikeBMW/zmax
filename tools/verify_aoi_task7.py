@@ -101,12 +101,25 @@ def main():
         nrow, ncol = t.rowCount(), t.columnCount()
         head = [t.horizontalHeaderItem(c).text() for c in range(ncol)]
         ck("任务表 7 行", nrow == 7, "行=%d 列=%d %s" % (nrow, ncol, head))
-        ck("表头含「场景」与「模型」", "场景" in head and "模型" in head, head)
+        # v5.49.3 起「场景」列改名「3D场景」⇒ 按真列名查 (老写法 "场景" in head 是列表精确匹配, 会假 FAIL)
+        _scene_col = "3D场景" if "3D场景" in head else "场景"
+        ck("表头含「场景」与「模型」", _scene_col in head and "模型" in head, head)
         i = head.index("任务ID")
         r = next((r for r in range(nrow) if t.item(r, i) and t.item(r, i).text() == "TASK-07-AOI"), -1)
         ck("任务7 行在表内", r >= 0)
+        # 🆕 2026-10-13: 活跃属性下拉必须落在「活跃」列 (10-12 加两列后列序右移, 下拉曾跑位到「启用节点」列),
+        #   且活跃列文字必须 == 真源推导 (曾只重算下拉、不重算文字 ⇒ 那格永远停在建表那一刻)
+        _ac = head.index("活跃") if "活跃" in head else -1
+        ck("活跃属性下拉都落在「活跃」列", _ac >= 0 and all(t.cellWidget(_rr, _ac) is not None for _rr in range(nrow)),
+           "活跃列下标=%d" % _ac)
+        if _ac >= 0:
+            import ss_task_state as _ts
+            _bact = (V._j(V.BIND_J, {}) or {}).get("active_task")
+            _exp = _ts.cell("TASK-07-AOI", _bact)
+            _got = t.item(r, _ac).text() if t.item(r, _ac) else None
+            ck("任务7 活跃列 == 真源推导", _got == _exp, "界面=%s 真源=%s (active_task=%s)" % (_got, _exp, _bact))
         if r >= 0:
-            scell = t.item(r, head.index("场景"))
+            scell = t.item(r, head.index(_scene_col))
             mcell = t.item(r, head.index("模型"))
             ck("任务7 场景列含 AR", scell is not None and "AR" in scell.text(),
                scell.text() if scell else None)

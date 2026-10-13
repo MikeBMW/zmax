@@ -324,6 +324,11 @@ def _doc_inventory():
 
 
 _STATE_ITEMS = ("★ 活跃", "○ 未激活", "— 无配置")
+# 活跃属性所在列 (建表列序见 _build_tasks: 0任务ID 1类型 2工程 3=3D场景 4=实时监控 5工艺步骤
+#   6适用段 7粒度 8启用节点 9禁用节点 10档位(开) 11模型 12活跃 13状态)
+# 🐛 2026-10-13: 10-12 加「3D场景」「实时监控」两列后列序右移, 下拉仍写死在第 8 列(启用节点) ⇒ 下拉跑到
+#   「启用节点」列、真正的活跃列只剩文字(而且重算时只更新下拉不更新文字 ⇒ 那格永远停建表那一刻)。
+_ACT_COL = 12
 
 
 def _task_state_cell(tid, act=None):
@@ -996,11 +1001,28 @@ class ConfigCenterPage(QWidget):
             pass
         return n
 
+    def _bind_sig(self):
+        """绑定真源指纹 (mtime_ns:size) —— 用来判断「界面建好之后真源有没有被动过」。"""
+        try:
+            _s = os.stat(BIND_J)
+            return "%d:%d" % (_s.st_mtime_ns, _s.st_size)
+        except Exception:                                                        # noqa: BLE001
+            return ""
+
     def showEvent(self, ev):
         """每次显示时再扫一遍(有的页内容是后填的, 构造时还不宽)。"""
         super().showEvent(ev)
         try:
             self._wrap_wide_labels(self.tabs)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            # 🐛 2026-10-13: 显示时若绑定真源变了(开机自恢复/别的窗口激活了任务)就自对齐 ——
+            #   否则界面停在建表那一刻, 真源说活跃、屏幕上写未激活。
+            _sig = self._bind_sig()
+            if _sig and _sig != getattr(self, "_bind_sig_seen", None):
+                self._bind_sig_seen = _sig
+                self._reload_task_states()
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -1083,7 +1105,7 @@ class ConfigCenterPage(QWidget):
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
     def _install_state_combos(self):
-        """活跃列 (第 9 列) 每行一个下拉: ★ 活跃 / ○ 未激活 / — 无配置。"""
+        """活跃列 (第 12 列 · _ACT_COL) 每行一个下拉: ★ 活跃 / ○ 未激活 / — 无配置。"""
         t = getattr(self, "tasks_table", None)
         ids = getattr(self, "_task_rows", None)
         if t is None or not ids:
@@ -1104,7 +1126,7 @@ class ConfigCenterPage(QWidget):
                 cb.setToolTip("选择该任务的活跃属性:\n★ 活跃 = 真激活 (写绑定真源 + 台账, 活跃唯一)\n"
                               "○ 未激活 = 配置就绪但不激活\n— 无配置 = 还没开始")
                 cb.currentTextChanged.connect(lambda s, _t=tid: self._on_task_state_changed(_t, s))
-                t.setCellWidget(r, 8, cb)
+                t.setCellWidget(r, _ACT_COL, cb)
                 if not hasattr(self, "_state_cbs"):
                     self._state_cbs = {}
                 self._state_cbs[tid] = cb
@@ -1179,19 +1201,40 @@ class ConfigCenterPage(QWidget):
         return fp
 
     def _reload_task_states(self):
-        """重算全表活跃列 + 表头计数 (改一个状态, 全表跟着动: 旧活跃会自动变未激活)。"""
+        """重算全表活跃列 + 表头计数 (改一个状态, 全表跟着动: 旧活跃会自动变未激活)。
+
+        🐛 2026-10-13 修: 原来只写下拉格、不写活跃列的文字格 ⇒ 那格永远停在**建表那一刻**
+        (实测: 开机自恢复把活跃任务改成 TASK-07-AOI 后, 任务7 那格还写 ○ 未激活 —— 与真源相反,
+        任务6 那格反倒写 ★ 活跃)。下拉格和文字格必须同一个函数一起写, 否则界面又出现第二套口径。
+        """
         import ss_task_state as _ts
         bind = _j(BIND_J, {}) or {}
         self._act_now = bind.get("active_task")
         ids = getattr(self, "_task_rows", None) or []
+        _t = getattr(self, "tasks_table", None)
+        _row_of = {}
+        if _t is not None:                      # 行号按第 0 列的任务 ID 现查, 不假设行序
+            for _r in range(_t.rowCount()):
+                _it0 = _t.item(_r, 0)
+                if _it0 is not None:
+                    _row_of[_it0.text()] = _r
         for tid in ids:
-            cb = (getattr(self, "_state_cbs", {}) or {}).get(tid)
-            if cb is None:
-                continue
             cur = _ts.cell(tid, self._act_now)
-            cb.blockSignals(True)
-            cb.setCurrentText(cur if cur in _STATE_ITEMS else "— 无配置")
-            cb.blockSignals(False)
+            cur = cur if cur in _STATE_ITEMS else "— 无配置"
+            cb = (getattr(self, "_state_cbs", {}) or {}).get(tid)
+            if cb is not None:
+                cb.blockSignals(True)
+                cb.setCurrentText(cur)
+                cb.blockSignals(False)
+            _r2 = _row_of.get(tid)               # 文字格一起写 (复制出来的文字读的就是它)
+            if _t is not None and _r2 is not None and _ACT_COL < _t.columnCount():
+                _it = _t.item(_r2, _ACT_COL)
+                if _it is not None:
+                    _it.setText(cur)
+        try:
+            self._bind_sig_seen = self._bind_sig()
+        except Exception:                                                        # noqa: BLE001
+            pass
         st = _ts.build(write=True)
         self._log_cc("   ↻ 全表已重算: 活跃 %d / 未激活 %d / 无配置 %d · 绑定真源 active_task=%s"
                      % (st["counts"]["活跃"], st["counts"]["未激活"], st["counts"]["无配置"], self._act_now))
@@ -1707,6 +1750,7 @@ class ConfigCenterPage(QWidget):
         self._task_rows = [t["task_id"] for t in tk.get("tasks", [])]
         self._act_now = act
         self._install_state_combos()
+        self._bind_sig_seen = self._bind_sig()
         w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(6, 6, 6, 6)
         _st_n = {k: sum(1 for t in tk.get("tasks", []) if _task_state_cell(t["task_id"], act) == k)
                  for k in ("★ 活跃", "○ 未激活", "— 无配置")}
