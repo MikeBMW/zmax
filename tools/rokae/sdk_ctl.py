@@ -438,6 +438,54 @@ def cmd_move_abs(r, args):
     return rc
 
 
+def cmd_mode(r, args):
+    """切换 操作模式(手动/自动) —— 腿的前置条件要求 **自动**(OperateMode.automatic)。
+
+    2026-10-13 现场: 老倪重标定点时控制器停在 manual ⇒ 程序下发全被前置条件挡掉(表现"点了不动")
+      (另一条同源: 拖动态 OperationState.drag, 见 drag 子命令)。
+    """
+    st0 = {"operationState": str(r.operationState({})), "operateMode": str(r.operateMode({}))}
+    log("自检: %s" % json.dumps(st0, ensure_ascii=False))
+    want = x.OperateMode.automatic if args.auto else x.OperateMode.manual
+    ec = {}
+    r.setOperateMode(want, ec)
+    time.sleep(1.0)
+    st1 = {"operationState": str(r.operationState({})), "operateMode": str(r.operateMode({}))}
+    log("已请求 %s · ec=%s ⇒ 现在: %s" % (str(want), json.dumps(dict(ec), ensure_ascii=False),
+                                        json.dumps(st1, ensure_ascii=False)))
+    write_evid({"cmd": "mode", "want": str(want), "ip": IP, "before": st0, "after": st1,
+                "ec": dict(ec)}, "mode")
+    return 0
+
+
+def cmd_drag(r, args):
+    """进出拖动模式 —— 拖动/示教态下控制器**拒绝一切程序下发**。
+
+    2026-10-13 现场(老倪「重新标定了, 怎么还不动」): 重标定点后停在 drag ⇒ 腿报
+      rc=3 ABORT 前置条件不满足: 机器人不空闲 (OperationState.drag) ⇒ 点什么都不动。
+    退出用 SDK disableDrag; 进入用 enableDrag(含末端拖动按钮)。
+    """
+    st0 = {"powerState": str(r.powerState({})), "operationState": str(r.operationState({})),
+           "operateMode": str(r.operateMode({}))}
+    log("自检: %s" % json.dumps(st0, ensure_ascii=False))
+    ec = {}
+    if args.on:
+        r.enableDrag(int(args.space), int(args.type), ec, True)
+        log("🖐 已请求**进入**拖动模式 (space=%s type=%s · 末端拖动按钮=True) · ec=%s"
+            % (args.space, args.type, json.dumps(dict(ec), ensure_ascii=False)))
+    else:
+        r.disableDrag(ec)
+        log("✋ 已请求**退出**拖动模式 · ec=%s" % json.dumps(dict(ec), ensure_ascii=False))
+    time.sleep(1.0)
+    st1 = {"operationState": str(r.operationState({})), "operateMode": str(r.operateMode({}))}
+    log("现在: %s" % json.dumps(st1, ensure_ascii=False))
+    if not args.on and "drag" in st1["operationState"].lower():
+        log("⚠️ 仍是拖动态 —— 可能由示教器/末端按钮把持 ⇒ 需要现场操作退一下")
+    write_evid({"cmd": "drag", "on": bool(args.on), "ip": IP, "before": st0, "after": st1,
+                "ec": dict(ec)}, "drag")
+    return 0
+
+
 def cmd_speed_scale(r, args):
     """在线速度倍率 scale —— 让「页面点的数字」= 「实际 mm/s」 (2026-10-13 老倪)
 
@@ -499,6 +547,12 @@ def main():
     s = sub.add_parser("speed-scale")
     s.add_argument("--scale", type=float, required=True,
                    help="在线速度倍率 [0.01, 1]; 1.0 = 名义速度即实际速度")
+    g = sub.add_parser("drag")
+    g.add_argument("--on", action="store_true", help="进入拖动模式(默认=退出)")
+    g.add_argument("--space", default="1", help="拖动空间(enableDrag 用, 默认1)")
+    g.add_argument("--type", default="0", help="拖动类型(enableDrag 用, 默认0)")
+    md = sub.add_parser("mode")
+    md.add_argument("--auto", action="store_true", help="切自动(默认=切手动)")
     args = ap.parse_args()
 
     r = x.xMateRobot()
@@ -510,7 +564,7 @@ def main():
     try:
         fn = {"state": cmd_state, "pose": cmd_pose, "stop": cmd_stop, "reset": cmd_reset,
               "move-rel": cmd_move_rel, "move-abs": cmd_move_abs,
-              "speed-scale": cmd_speed_scale}[args.cmd]
+              "speed-scale": cmd_speed_scale, "drag": cmd_drag, "mode": cmd_mode}[args.cmd]
         return fn(r, args)
     finally:
         try:

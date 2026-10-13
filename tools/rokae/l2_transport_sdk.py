@@ -51,13 +51,22 @@ SWITCH = os.path.join(_DATA, "move_transport.json")
 EVID = os.path.join(_DATA, "l2_sdk_leg.jsonl")
 
 MAX_SPEED_MM_S = 1000.0       # 速度上限(mm/s, 2026-10-13 老倪「再增加 500 和 1000」: 300→1000)
-                              #   与 sdk_ctl.MAX_SPEED_MM_S / 服务端 [1,1000] 三处同口径;
-                              #   ⚠️ 实得 ≈ 名义 × 10%(控制器在线倍率), 所以 1000 名义 ≈ 实得 100mm/s
-                               #   (历史: 60 → 实测 ≈6mm/s; 两级现都是 1000, 不再互相夹)
+                              #   与 sdk_ctl.MAX_SPEED_MM_S / 服务端 [1,1000] 三处同口径
+                              #   ⚠️ 2026-10-13 起控制器在线倍率已设 1.0 (sdk_ctl speed-scale) ⇒ 名义 ≈ 实得
+                              #      (实测 名义10 ⇒ 9.44mm/s 94%; 名义18.7 ⇒ 15.22mm/s 81%); 之前是 ×10%
 MAX_ABS_MM = 800.0             # 单条绝对位移上限(空间点之间最远 ~470mm, 800 够且能拦住误目标)
 REL_STEP_MM = 40.0             # rel 位移分片步长(代理硬上限 HARD_MAX_MM=50)
 POSE_FRESH_S = 3.0             # 真值文件新鲜度要求
 ENV_BLOCK = os.environ.get("ZMAX_SDK_LEG_ENV", "0") == "1"
+# 🔀 姿态分步(2026-10-13 现场 老倪「怎么又不动了」x3): 控制器实测拒发阈值 20.49° —— 一条 MoveL 里
+#   同时平移 + 大姿态变化会被它以 50102/50113 **直接拒**(rc=6 · 残差=全量位移 · 6s 零位移)。
+#   实测被拒: 横移 space2 255mm/24.7°、space6 255mm/24.7°、space4 157mm/28.6°;
+#             姿态差 ≤8° 的那些 (0.1°/0.1°/7.9°) 全部一次通过。
+#   ⇒ 超阈值就**先在原地(位置不动)分步转身(≤ROT_STEP_DEG), 再平移** —— 平移段姿态差 ≤5° 必过。
+#   与本仓既定规矩同口径: "≥30° 姿态必须单独成段、单段姿态 ≤5°"。
+ROT_SPLIT = os.environ.get("ZMAX_SDK_LEG_ROT_SPLIT", "1") != "0"              # 0 = 关(退回一条直发)
+ROT_SPLIT_DEG = float(os.environ.get("ZMAX_SDK_LEG_ROT_SPLIT_DEG", "15.0"))   # 超它就拆
+ROT_STEP_DEG = float(os.environ.get("ZMAX_SDK_LEG_ROT_STEP_DEG", "5.0"))      # 单段姿态上限
 
 _LOCK = threading.Lock()
 _BUSY = {"in_flight": False, "what": "", "since": 0.0}
@@ -142,6 +151,24 @@ def quat_angle_deg(a, b):
         return None
     d = abs(sum(float(p) * float(q) for p, q in zip(a, b)))
     return math.degrees(2.0 * math.acos(min(1.0, d)))
+
+
+def quat_slerp(a, b, t):
+    """球面插值 —— 把大姿态变化切成 ≤5° 的小步(每步都单独下发, 见 ROT_SPLIT)。"""
+    x0, y0, z0, w0 = [float(v) for v in a]
+    x1, y1, z1, w1 = [float(v) for v in b]
+    d = x0 * x1 + y0 * y1 + z0 * z1 + w0 * w1
+    if d < 0.0:                                        # 取短弧
+        x1, y1, z1, w1, d = -x1, -y1, -z1, -w1, -d
+    if d > 0.9995:                                     # 近乎同向 ⇒ 线性插值足够
+        q = [x0 + t * (x1 - x0), y0 + t * (y1 - y0), z0 + t * (z1 - z0), w0 + t * (w1 - w0)]
+    else:
+        th = math.acos(max(-1.0, min(1.0, d)))
+        s = math.sin(th)
+        k0, k1 = math.sin((1.0 - t) * th) / s, math.sin(t * th) / s
+        q = [x0 * k0 + x1 * k1, y0 * k0 + y1 * k1, z0 * k0 + z1 * k1, w0 * k0 + w1 * k1]
+    n = math.sqrt(sum(v * v for v in q)) or 1.0
+    return [v / n for v in q]
 
 
 # ───────────────────────── 真值 / 证据 ─────────────────────────
@@ -376,6 +403,28 @@ def _worker(kind, tgt, quat, sp_mm, meta, logf, p0, ang=None):
         if kind == "rel":
             ok, done = _run_rel([(tgt[i] - p0["pos"][i]) * 1000.0 for i in range(3)], sp_mm, meta, logf)
         else:
+            # 🔀 姿态分步(见文件头 ROT_SPLIT): 姿态差超阈值 ⇒ 先在原地分步转身, 再把平移单独走。
+            #    理由: 一条 MoveL 里同时平移 + 大姿态变化被控制器直接拒(实测阈值 20.49°)。
+            if ROT_SPLIT and quat and (ang is not None) and ang > ROT_SPLIT_DEG:
+                n = int(math.ceil(ang / ROT_STEP_DEG))
+                logf("🔀 姿态差 %.1f° > %.0f° ⇒ 拆成 %d 段原地转身(每段 ≤%.0f°, 位置不动), 转身完再平移"
+                     % (ang, ROT_SPLIT_DEG, n - 1, ROT_STEP_DEG))
+                for i in range(1, n):
+                    if _STOP["flag"]:
+                        logf("⏹ 原地转身 %d/%d 前收到叫停(%s) ⇒ 中止, 不续发平移"
+                             % (i, n - 1, _STOP["why"]))
+                        return
+                    qi = quat_slerp(p0["quat"], quat, i / float(n))
+                    if (quat_angle_deg(qi, p0["quat"]) or 0.0) < 0.2:
+                        continue                                   # 首段太小 ⇒ 跳过(数值噪声)
+                    oki, _erri, _ri = _run_abs(p0["pos"], quat2rpy(*qi), sp_mm,
+                                               "%s · 原地转身 %d/%d" % (meta, i, n - 1), logf,
+                                               ang=ang / n)
+                    if not oki:
+                        logf("❌ 原地转身 %d/%d 未到位 ⇒ 中止(不续发平移, 不吞错)" % (i, n - 1))
+                        return
+                ang = quat_angle_deg(quat, read_pose()["quat"])
+                logf("🔀 转身完成 ⇒ 续发平移(姿态差已降到 %.1f°)" % (ang or 0.0))
             ok, err, _r = _run_abs(tgt, rpy, sp_mm, meta, logf, ang=ang)
         if ok:
             logf("🚚 SDK 腿完成: %s" % meta)
