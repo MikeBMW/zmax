@@ -36,7 +36,41 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 PY = sys.executable or os.path.join(ROOT, "gui-venv311", "bin", "python")
 DDS_PY = os.path.join(ROOT, "venvs", "dds-venv", "bin", "python")
-TAP = os.path.join(ROOT, "zmax_data", "ss_live", "torque_SCN-07-AOI.jsonl")
+
+
+def _resolve_tap() -> str:
+    """驱动的 tap 真源 = **当前活跃场景**那份 (与 tools/tdrive_bus.py 同一口径)。
+
+    🔴 2026-10-13: 原先这里写死 `torque_SCN-07-AOI.jsonl` —— 服务改成"场景跟随 ss_scene_switch"
+    之后, 活跃场景是摆盘(SCN-06-TRAY)时, 判据去读**没人再写的旧 AOI 文件**, 于是 ⑩b 假红
+    (实测 tap 帧龄 4318s ⇒ 判据在量一个陈旧文件, 不是在量现场)。
+    规则: 跟活跃场景取 torque_<SCN>.jsonl; 取不到就取最新在写的那份, 并把选中的文件打出来。
+    """
+    import glob
+    import json as _json
+    scn = ""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import ss_scene_switch as _sw
+        nm = (_sw.now() or {}).get("src_state") or ""
+        for s in (_json.load(open(os.path.join(ROOT, "config", "topics", "scene_tags.json"),
+                                  encoding="utf-8")).get("scenes") or []):
+            if s.get("scene") == nm:
+                scn = s.get("scn") or ""
+                break
+    except Exception:                                                              # noqa: BLE001
+        pass
+    if scn:
+        p = os.path.join(ROOT, "zmax_data", "ss_live", "torque_%s.jsonl" % scn)
+        if os.path.isfile(p):
+            return p
+    g = sorted(glob.glob(os.path.join(ROOT, "zmax_data", "ss_live", "torque_SCN-*.jsonl")),
+               key=os.path.getmtime, reverse=True)
+    return g[0] if g else os.path.join(ROOT, "zmax_data", "ss_live", "torque_live.json")
+
+
+TAP = _resolve_tap()
+print("驱动扭矩判据 · tap 真源: %s" % os.path.relpath(TAP, ROOT))
 LIVE = os.path.join(ROOT, "zmax_data", "ss_live", "torque_live.json")
 PIDF = os.path.join(ROOT, "zmax_data", "ss_live", "torque.pid")
 DS_LIVE = os.path.join(ROOT, "zmax_data", "dataspace", "live.json")
