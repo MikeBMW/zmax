@@ -438,6 +438,42 @@ def cmd_move_abs(r, args):
     return rc
 
 
+def cmd_speed_scale(r, args):
+    """在线速度倍率 scale —— 让「页面点的数字」= 「实际 mm/s」 (2026-10-13 老倪)
+
+    背景: 实测在役链路 **实得 ≈ 名义 × 10%**(现场点 50 只跑 ~5mm/s)。老倪要求
+          「你来乘一个系数, 让我能直接点击对应实际的速度数字」。
+    SDK 文档(xCoreSDK __init__.pyi): adjustSpeedOnline(scale) ——
+          「动态调整机器人运动速率。非实时模式时生效。当设置 scale 为 1 时, 机器人将以路径原本速度运动。」
+          scale 范围 [0.01, 1]。本腿走的正是 NrtCommandMode(非实时) ⇒ 该设置生效。
+    ⇒ scale=1.0 后 名义 = 实得: 页面点 50 就真跑 50mm/s。
+
+    ⚠️ 这是**控制器级**设置(影响所有走这个控制器的动作; 产线 ROS 那条另有 rt_speed_ratio 限速)。
+    ⚠️ SDK 没有 getter ⇒ 当前值读不到, **只能实测验证**: 调完现场点一次小距离, 量真值速率。
+    ⚠️ 若实测速率没变 ⇒ 那 10% 折扣不在这个倍率上, 要把实测数报回来另查。
+    """
+    scale = float(args.scale)
+    out = {"cmd": "speed-scale", "ip": IP, "scale_req": scale}
+    if not (0.01 <= scale <= 1.0):
+        log("⛔ scale=%.3f 超出 SDK 文档范围 [0.01, 1] ⇒ 拒" % scale)
+        return 2
+    why = precheck(r, out)                 # 只在 上电on/空闲idle/自动 时改(运动中改倍率很危险)
+    if why:
+        out["verdict"] = "ABORT 前置条件不满足: %s" % why
+        log("⛔ %s" % out["verdict"])
+        write_evid(out, "speed-scale")
+        return 3
+    log("🎚 请求在线速度倍率 scale=%.3f (1.0 = 名义即实际; 现场在役实测 ≈0.1)" % scale)
+    ec = {}
+    r.adjustSpeedOnline(scale, ec)
+    out["adjust_ec"] = dict(ec)
+    out["verdict"] = "已请求 scale=%.3f · ec=%s (SDK 无读取接口 ⇒ 请用一次小位移实测验证)" % (
+        scale, json.dumps(dict(ec), ensure_ascii=False))
+    log("结果: " + out["verdict"])
+    write_evid(out, "speed-scale")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="本机独立 SDK 直连控制 (不经 Orin)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -460,6 +496,9 @@ def main():
     a.add_argument("--ry", type=float, default=None)
     a.add_argument("--rz", type=float, default=None)
     a.add_argument("--speed", type=float, default=5.0)
+    s = sub.add_parser("speed-scale")
+    s.add_argument("--scale", type=float, required=True,
+                   help="在线速度倍率 [0.01, 1]; 1.0 = 名义速度即实际速度")
     args = ap.parse_args()
 
     r = x.xMateRobot()
@@ -470,7 +509,8 @@ def main():
         return 1
     try:
         fn = {"state": cmd_state, "pose": cmd_pose, "stop": cmd_stop, "reset": cmd_reset,
-              "move-rel": cmd_move_rel, "move-abs": cmd_move_abs}[args.cmd]
+              "move-rel": cmd_move_rel, "move-abs": cmd_move_abs,
+              "speed-scale": cmd_speed_scale}[args.cmd]
         return fn(r, args)
     finally:
         try:
