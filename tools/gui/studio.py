@@ -46,7 +46,7 @@ try:
     _bs = _ilu_boot.spec_from_file_location("proj_state_boot", os.path.abspath(_bp))
     _bm = _ilu_boot.module_from_spec(_bs)
     _bs.loader.exec_module(_bm)
-    _br = _bm.restore()
+    _br = _bm.restore(respect_newer_binding=True)
     _ba = _br.get("applied") or {}
     print("📌 工程状态自恢复: 场景 %s · 数据源回写 %s · 存档任务 %s / 当前 %s"
           % (_ba.get("scene_dir") or "—", _ba.get("src_state_written") or "无需改",

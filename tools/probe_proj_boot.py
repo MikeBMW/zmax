@@ -14,7 +14,7 @@ open(CV, "w", encoding="utf-8").write(re.sub(r'("src_state"\s*:\s*")[^"]*(")', l
 print("BOOT_CLOBBERED=" + cur())
 s = ilu.spec_from_file_location("ps", os.path.join(ROOT, "tools", "proj_state.py"))
 m = ilu.module_from_spec(s); s.loader.exec_module(m)
-r = m.restore()
+r = m.restore(respect_newer_binding=True)
 print("BOOT_AFTER=" + cur())
 print("BOOT_ENV=" + (os.environ.get("ZMAX_SCENE_DIR") or "(unset)"))
 print("BOOT_TASK=%s->%s" % (r.get("applied", {}).get("active_task_saved"), r.get("applied", {}).get("active_task_now")))

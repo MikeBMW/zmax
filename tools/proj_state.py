@@ -137,8 +137,15 @@ def save(path=None, reason=""):
             "others_unchanged": others_ok, "state": back.get(SECTION), "why": why}
 
 
-def restore(path=None, log=None):
-    """打开工程文件后: 恢复场景真源 + 存档里的活跃任务 (画布由 load_project 负责)。"""
+def restore(path=None, log=None, respect_newer_binding=False):
+    """打开工程文件后: 恢复场景真源 + 存档里的活跃任务 (画布由 load_project 负责)。
+
+    respect_newer_binding: 控制台**启动自恢复**传 True —— 操作员在控制台里显式激活的任务
+    (绑定真源比工程存档新) 不能被一份更老的存档顶掉。2026-10-13 实测: 激活摆盘 TASK-06-TRAY
+    后重启, 被存档里的 TASK-07-AOI 恢复回来 ⇒ 界面「末端工具」判成夹持、实时监控/信号分组的
+    场景跟着错, 老倪要的"摆盘末端 x y z"整条链就串了。
+    而"打开工程文件"是**显式用户动作** ⇒ 默认 False: 存谁的档就回谁的状态。
+    """
     path = os.path.abspath(path or DEFAULT_PROJ)
     proj = _j(path, {}) or {}
     ds = proj.get(SECTION) or {}
@@ -192,7 +199,21 @@ def restore(path=None, log=None):
     want = ds.get("active_task")
     cur = (_j(BIND, {}) or {}).get("active_task")
     out["applied"]["active_task_saved"], out["applied"]["active_task_now"] = want, cur
-    if want and want != cur:
+    # 🔴 2026-10-13: 原来这里**无条件**用存档任务覆盖绑定真源 ⇒ 操作员刚激活的摆盘被更老的存档顶掉。
+    #   规则: 启动自恢复时, 绑定真源比工程存档新 ⇒ 听操作员的 (只记差异, 不动绑定)。
+    _bnewer = False
+    if respect_newer_binding and want and want != cur:
+        try:
+            _bnewer = os.path.getmtime(BIND) > (os.path.getmtime(path) + 1.0)
+        except Exception:                                                       # noqa: BLE001
+            _bnewer = False
+    if _bnewer:
+        out["task_kept"] = ("保留当前 %s —— 绑定真源比工程存档新 (操作员显式激活过), 不回填存档任务 %s"
+                            % (cur, want))
+        out["applied"]["task_kept"] = cur
+        if log:
+            log(out["task_kept"])
+    elif want and want != cur:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ss_task_bind.py"), "--activate", want],
                            capture_output=True, text=True, timeout=600, cwd=ROOT)
         now = (_j(BIND, {}) or {}).get("active_task")

@@ -1533,7 +1533,7 @@ class CanoeGraphicWidget(QWidget):
     # 首屏默认曲线: 3D 场景里最说明问题的几条 (量纲差大 ⇒ 配「每信号独立图」)
     # 🔤 两套按场景给 (2026-10-13): 摆盘 = 真空吸持 / 吸嘴到槽位_mm; 插拔 = 夹爪 / 光模块头到孔_mm。
     #   命名真源 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
-    DEFAULT_3D = ("sstrace.末端.0", "sstrace.末端.1", "sstrace.末端.2",
+    DEFAULT_3D = ("sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
                   "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
                   "sstrace.接触概率", "sstrace.安全边界_mps")
 

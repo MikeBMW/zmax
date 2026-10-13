@@ -198,7 +198,17 @@ def live(speed: float = 1.0, loop: bool = False):
             "ts": time.time(), "src": "TASK-06-TRAY", "帧": i + 1, "总帧": n, "阶段": st,
             "时间_s": round(_f(z["t"], i), 4),
             "末端": [round(_f(z["x"][i], k), 5) for k in range(3)],
+            # 🔴 2026-10-13 老倪「摆盘的机器人, 末端执行器的 x y z, 必须有」:
+            #   实时监控/信号分析按**扁平键名**订阅, 而真源注册表 config/topics/scene_tags.json
+            #   里摆盘场景注册的名字就是 `sstrace.末端_x/_y/_z` (与 episode jsonl 同源)。
+            #   只给列表键 `末端` ⇒ 面板渲染成未注册的 `sstrace.末端.0/.1/.2` = **那几行永远空**。
+            #   故: 列表键保留, 同时补标量别名 (名字逐字一致) + scene 标签 (防与插拔串台)。
+            "末端_x": round(_f(z["x"][i], 0), 5), "末端_y": round(_f(z["x"][i], 1), 5),
+            "末端_z": round(_f(z["x"][i], 2), 5),
             "光模块": [round(_f(z["peg"][i], k), 5) for k in range(3)],
+            "光模块_x": round(_f(z["peg"][i], 0), 5), "光模块_y": round(_f(z["peg"][i], 1), 5),
+            "光模块_z": round(_f(z["peg"][i], 2), 5),
+            "scene": "SS-TRAY-PLACE",
             "手到件_mm": round(_f(z["dist"], i) * 1000.0, 2),
             "真空吸持": round(_f(z["gripper"], i), 3), "吸住": int(_f(z["grasped"], i)),
             "工艺": "真空吸附",

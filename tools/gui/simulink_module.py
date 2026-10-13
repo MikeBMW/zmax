@@ -14847,7 +14847,7 @@ class SimulinkModule(QWidget):
         try:
             _mt = getattr(self, "model_tree", None)
             if _mt is not None and getattr(_mt, "bus", None) is not None \
-                    and _mt.cmb_view.currentIndex() == 9:
+                    and _mt.view_is("bus"):
                 _mt.bus.begin_stream()
         except Exception:
             pass
@@ -14998,7 +14998,7 @@ class SimulinkModule(QWidget):
         try:
             _mt = getattr(self, "model_tree", None)
             if _mt is not None and getattr(_mt, "bus", None) is not None \
-                    and _mt.cmb_view.currentIndex() == 9:
+                    and _mt.view_is("bus"):
                 _mt.bus.begin_stream()
         except Exception:
             pass
@@ -15141,7 +15141,7 @@ class SimulinkModule(QWidget):
                 try:
                     _mt = getattr(self, "model_tree", None)
                     if _mt is not None and getattr(_mt, "bus", None) is not None \
-                            and _mt.cmb_view.currentIndex() == 9:
+                            and _mt.view_is("bus"):
                         _t_snap, _io = io_trace[idx]
                         _mt.bus.feed(_t_snap, _io)
                 except Exception:
@@ -15207,10 +15207,15 @@ class SimulinkModule(QWidget):
         try:
             _mt = getattr(self, "model_tree", None)
             if _mt is not None:
-                _idx = _mt.cmb_view.currentIndex()
-                if _idx == 3:
-                    _mt._show_state_space()
-                # 🔌 数据总线 (index 9) 已在 _ss_tick 逐帧 feed, 无需额外刷新
+                # 🐛 2026-10-13: 原 `if _idx == 3: _mt._show_state_space()` 指旧 11 项布局的
+                #   「状态空间变量」页; 侧栏重排成 4 项后 index 3 = **运行开关** ⇒ 停在运行开关页
+                #   跑完会被误跳视图。该页已从侧栏移除 (v5.24.2「测量, 只保留数据总线」)
+                #   ⇒ 这里不再自动跳转 (对象/方法都还在, 要复活只需改这一处判定)。
+                # 🔌 数据总线: 跑完补一次**全量刷新** —— 老倪 2026-10-13 实报「跑过了总线还是空」:
+                #   原实现只有"切到该页"才 refresh, 且运行中的动态 feed 因写死 index 9 成了死分支
+                #   ⇒ 停在总线页看运行的人全程看不到数据。现在: 运行中逐帧 feed (已修) + 结束全量铺一次。
+                if getattr(_mt, "view_is", None) and _mt.view_is("bus") and getattr(_mt, "bus", None) is not None:
+                    _mt.bus.refresh()
         except Exception:
             pass
         # 🎥 2026-08-18 老倪: 仿真完成自动输出操作视频 → 后台渲染 mp4 + 传 ECS + 打印链接

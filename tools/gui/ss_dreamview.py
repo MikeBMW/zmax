@@ -51,16 +51,35 @@ def clock_str(epoch, ms=True):
 SS_TRACE_LIVE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "zmax_data", "ss_live", "trace_live.json")
-_TRACE_PUB_LAST = {"t": 0.0}
+_TRACE_PUB_LAST: dict = {"t": 0.0}      # t/frame=节流状态; blocked/took_over=场景串台取证 (字符串)
 
 
 def publish_trace_live(payload, min_interval=0.05):
     """把 3D 面板这一帧显示的全部数值写成一份快照 (节流 10Hz, 原子替换)
 
     这是「状态空间工程的实况数据出口」: 3D 场景面板、实时监控波形页、外部核对脚本读同一份。
+
+    🔴 2026-10-13 防串台 (老倪: 「摆盘的机器人, 末端执行器的 x y z, 必须有」的配套):
+    本文件是**全系统唯一快照**, 摆盘(SS-TRAY-PLACE) 与插拔(SS-EPI-CORNER) 两个 3D 面板都会写它。
+    实测(2026-10-13 12:47): 摆盘该有的 2708 帧快照被**插拔 752 帧那一路覆盖** ⇒
+    摆盘实时监控里出现的是插拔的数/键 —— 用户要的"摆盘末端 x y z"就这么丢的。
+    规则: ① 载荷带 `scene` 标签; ② **另一场景的快照仍新鲜(<3s)时不抢写**(不打断正在看的活流);
+    ③ 同场景或对方已陈旧才写; ④ 被挡下时把原因记在小状态里, 便于面板/日志自证。
     """
     try:
         now = time.time()
+        _scn = str(payload.get("scene") or "")
+        if _scn and os.path.isfile(SS_TRACE_LIVE):
+            try:
+                with open(SS_TRACE_LIVE, encoding="utf-8") as _rf:
+                    _cur_scn = str((json.load(_rf) or {}).get("scene") or "")
+                if _cur_scn and _cur_scn != _scn and (now - os.path.getmtime(SS_TRACE_LIVE)) < 3.0:
+                    _TRACE_PUB_LAST["blocked"] = "另一场景 %s 的活快照(帧龄<3s) ⇒ %s 不抢写" % (_cur_scn, _scn)
+                    return False
+                if _cur_scn and _cur_scn != _scn:
+                    _TRACE_PUB_LAST["took_over"] = "%s 覆盖陈旧快照 %s" % (_scn, _cur_scn)
+            except Exception:                                               # noqa: BLE001
+                pass
         # 契约: 快照 == 屏幕上正在显示的那一帧。换帧必写 (只对"同一帧重复写"做节流),
         # 否则播放时面板已到第 N 帧、文件还停在第 N-1 帧 ⇒ 两处不一致。
         if (payload.get("帧") == _TRACE_PUB_LAST.get("frame")
@@ -3644,6 +3663,18 @@ class DreamView3D(QWidget):
             "阶段": str(stage), "时间_s": round(float(t), 3),
             "工艺": _TOOL,        # 场景语义 (真空吸附/夹持) ⇒ 快照自证这根通道是吸盘还是夹爪, 不用猜
             "末端": [float(x[0]), float(x[1]), float(x[2])],
+            # 🔴 2026-10-13 老倪「摆盘的机器人, 末端执行器的 x y z 必须有」——
+            #   实时监控/信号分析是按**扁平键名**订阅的, 而真源注册表
+            #   config/topics/scene_tags.json 里摆盘场景注册的名字就是 `sstrace.末端_x/_y/_z`
+            #   (与 episode jsonl 同源)。只发列表键 `末端` 会被渲染成 `sstrace.末端.0/.1/.2`
+            #   —— **未注册的名字** ⇒ 面板上「末端 x y z」那几行永远是空的。
+            #   故: 列表键保留(3D 画面/外部核对用), 同时补三个**标量别名**, 名字与注册表逐字一致。
+            "末端_x": round(float(x[0]), 5), "末端_y": round(float(x[1]), 5),
+            "末端_z": round(float(x[2]), 5),
+            "光模块_x": round(float(peg_grasp[0]), 5), "光模块_y": round(float(peg_grasp[1]), 5),
+            "光模块_z": round(float(peg_grasp[2]), 5),
+            # 场景标签: 这份快照属于哪个场景 (防摆盘/插拔两路互相覆盖时串台, 见 publish_trace_live)
+            "scene": str(getattr(self, "scene_id", "") or ""),
             "光模块": [float(peg_grasp[0]), float(peg_grasp[1]), float(peg_grasp[2])],
             "光模块头": [float(peg_h[0]), float(peg_h[1]), float(peg_h[2])],
             "估计值": [float(lat3[0]), float(lat3[1]), float(lat3[2])],

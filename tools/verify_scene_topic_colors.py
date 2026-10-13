@@ -84,10 +84,19 @@ def main() -> int:
     import sig_scene_tags as SST
     import ss_scene_switch as SSW
     scene = (SSW.now() or {}).get("src_state") or ""
+    # 🎨 场景色**随数据源真源取**, 不写死 (老倪 10-13: 画布数据源切到摆盘后, sstrace 全族应转蓝)
+    #   写死 #2e8b57 会让"摆盘在跑"这件事被判成红 —— 判据必须跟真源, 不跟历史某一刻。
+    _scol = (SSW.now() or {}).get("color") or SST.color("sstrace.接触概率") or "#1f6feb"
     chk("画布数据源场景可读", bool(scene), scene or "读不到")
     chk("sstrace.* → 画布场景", SST.tag("sstrace.末端.0") == scene, SST.tag("sstrace.末端.0"))
-    chk("sstrace.* 着色 = 场景色", SST.color("sstrace.接触概率") == "#2e8b57", SST.color("sstrace.接触概率"))
-    chk("force_torque 话题 → 画布场景", SST.tag("ros./robot/force_torque.fx") == scene)
+    chk("摆盘末端 x y z 具名注册 (老倪 10-13「末端执行器 x y z 必须有」)",
+        all(SST.tag("sstrace.末端_%s" % _a) == "摆盘场景" for _a in "xyz")
+        and all(SST.tag("sstrace.光模块_%s" % _a) == "摆盘场景" for _a in "xyz"),
+        "末端_x/_y/_z → 摆盘场景")
+    chk("sstrace.* 着色 = 数据源场景色", SST.color("sstrace.接触概率") == _scol,
+        "%s (期望 %s)" % (SST.color("sstrace.接触概率"), _scol))
+    chk("force_torque → 插拔(力控专属, 摆盘是真空吸盘)", SST.tag("ros./robot/force_torque.fx") == "插拔场景",
+        SST.tag("ros./robot/force_torque.fx") or "空")
     chk("tcp_pose 留白(三场景共用)", SST.tag("ros./robot/tcp_pose.x") == "", "白")
 
     print("③ 离屏真渲染 — 真数据拷贝 fixture (ts=now, 模拟实况)")
@@ -130,19 +139,19 @@ def main() -> int:
     p = QPainter(img)
     w.render(p)
     p.end()
-    px = pixels(img, ("#2e8b57", "#c9d1d9", "#8957e5"), step=1, rect=rect_tree)
+    px = pixels(img, (_scol, "#c9d1d9", "#8957e5"), step=1, rect=rect_tree)
     rows, greens = 0, 0
     if _tree is not None:
         for i in range(_tree.topLevelItemCount()):
             r = _tree.topLevelItem(i)
             for j in range(r.childCount()):
                 rows += 1
-                if r.child(j).foreground(0).color().name() == "#2e8b57":
+                if r.child(j).foreground(0).color().name() == _scol:
                     greens += 1
     chk("树里条目 ≥ 20 行", rows >= 20, "%d 行" % rows)
-    chk("绿色条目 ≥ 20 行", greens >= 20, "%d 行 (sstrace 全族)" % greens)
-    chk("渲染绿像素 ≥ 500", px["#2e8b57"] >= 500, "%d px" % px["#2e8b57"])
-    chk("仍有白像素(不是全涂绿)", px["#c9d1d9"] > 0, "%d px" % px["#c9d1d9"])
+    chk("数据源场景色条目 ≥ 20 行", greens >= 20, "%d 行 (色 %s)" % (greens, _scol))
+    chk("渲染场景色像素 ≥ 500", px[_scol] >= 500, "%d px" % px[_scol])
+    chk("仍有白像素(不是全涂一色)", px["#c9d1d9"] > 0, "%d px" % px["#c9d1d9"])
 
     print("④ 负对照 — 贴回旧样式(带 item color) ⇒ 绿像素必须归零")
     try:
@@ -154,8 +163,8 @@ def main() -> int:
         p2 = QPainter(img2)
         w.render(p2)
         p2.end()
-        px2 = pixels(img2, ("#2e8b57",), step=1, rect=rect_tree)
-        chk("旧样式下绿像素 = 0 (真因可复现)", px2["#2e8b57"] == 0, "%d px" % px2["#2e8b57"])
+        px2 = pixels(img2, (_scol,), step=1, rect=rect_tree)
+        chk("旧样式下场景色像素 = 0 (真因可复现)", px2[_scol] == 0, "%d px" % px2[_scol])
     except Exception as e:                                                    # noqa: BLE001
         chk("负对照可执行", False, str(e)[:80])
 
@@ -204,6 +213,43 @@ def main() -> int:
         for _ in range(4):
             app.processEvents()
         chk("折叠插拔组后重建仍折叠", _tree.topLevelItem(0).isExpanded() is False)
+
+    print("⑨ 摆盘末端执行器 x y z 真出行 (老倪 10-13: 「摆盘的机器人, 末端执行器的 x y z, 必须有」)")
+    try:
+        # 注入 3D 面板改后要发的**具名标量** (末端_x/_y/_z), 断言面板树上真出现这三行、且是摆盘蓝。
+        # 这条判据盯的就是"只发列表键 ⇒ 渲染成未注册的 末端.0/.1/.2 ⇒ 那几行永远空"的老毛病。
+        d2 = json.load(open(real, encoding="utf-8"))
+        for _a, _v in zip("xyz", (0.1234, 0.5678, 0.9101)):
+            d2["末端_%s" % _a] = _v
+            d2["光模块_%s" % _a] = _v
+        d2["scene"] = "SS-TRAY-PLACE"
+        d2["ts"] = time.time()
+        fx2 = os.path.join(fixd, "sstrace_tray_xyz.json")
+        json.dump(d2, open(fx2, "w", encoding="utf-8"), ensure_ascii=False)
+        C.HOST_SOURCES = [("sstrace", fx2)]
+        w2 = C.CanoeGraphicWidget()
+        w2.resize(1500, 960)
+        w2.setAttribute(0x00800000, True)
+        w2.show()
+        for _ in range(30):
+            app.processEvents()
+            time.sleep(0.1)
+        hits = []
+        for t in w2.findChildren(QTreeWidget):
+            for i in range(t.topLevelItemCount()):
+                r = t.topLevelItem(i)
+                for j in range(r.childCount()):
+                    nm = r.child(j).text(0)
+                    if "末端_" in nm or "光模块_" in nm:
+                        _clean = re.sub(r"^[●○\s]+", "", re.sub(r"^[a-z]+\.", "", nm)).strip()
+                        hits.append((_clean[:14], r.child(j).foreground(0).color().name()))
+        got = {n for n, _c in hits}
+        chk("面板树真出 末端_x/_y/_z 三行", {"末端_x", "末端_y", "末端_z"} <= got,
+            " | ".join(sorted(got)[:6]) or "0 行")
+        chk("这三行是摆盘蓝 #1f6feb", bool(hits) and all(c == "#1f6feb" for _n, c in hits),
+            " ".join("%s=%s" % (n, c) for n, c in hits[:4]))
+    except Exception as e:                                                    # noqa: BLE001
+        chk("摆盘末端 x y z 真出行可跑", False, str(e)[:80])
 
     print("\n%s  %d/%d PASS" % ("✅" if not FAIL else "❌", OK, OK + FAIL))
     sys.stdout.flush()

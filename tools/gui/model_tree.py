@@ -12,6 +12,7 @@ import os
 import math
 import sys
 import json
+import time
 import numpy as np
 
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -103,6 +104,84 @@ class DataBusTrace(QWidget):
     _IN_C = QColor("#58a6ff")
     _OUT_C = QColor("#3fb950")
 
+    # ── 两种数据源的表头 / 灯色 / 真源路径 (2026-10-13) ─────────────────────
+    _HDR_ENGINE = ["⏱ 时间", "🔗 通道", "📋 接口", "⬅➡ 方向", "📊 数据"]
+    _HDR_DS = ["⏱ 帧龄(s)", "🔗 灯", "📋 话题", "🔀 类型", "📊 数据 (实测/设计 Hz · 值)"]
+    # 灯色口径唯一真源 = src/lerobot/dataspace/lamps.py (这里只是渲染成中文+圆点)
+    _LAMP = {"green": "🟢 正常", "yellow": "🟡 注意", "red": "🔴 异常", "black": "⚫ 无数据"}
+    # 数据空间探针真源 (与 tools/gui/dds_bus.py 同一份文件, ~2s 刷新)
+    DS_LIVE = os.environ.get(
+        "ZMAX_DATASPACE_LIVE",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                     "zmax_data", "dataspace", "live.json"))
+
+    def _set_headers(self, hdr):
+        try:
+            self.table.setHorizontalHeaderLabels(list(hdr))
+        except Exception:
+            pass
+
+    def _refresh_from_dataspace(self):
+        """降级源②: 数据空间探针 live.json (唯一真源) — 逐话题一行, 有真数据就出真数据。
+
+        返回 True = 已填充 (调用方不必再画空态)。读不到文件/文件里没话题 ⇒ False。
+        🔴 纪律: 这一屏的数字**必须**带帧龄; 灯色只说数据源自己的判定, 不替它下结论。
+        """
+        try:
+            with open(self.DS_LIVE, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            return False
+        topics = d.get("topics") or {}
+        if not topics:
+            return False
+        try:
+            age_file = max(0.0, time.time() - os.path.getmtime(self.DS_LIVE))
+        except Exception:
+            age_file = -1.0
+        _rank = {"green": 0, "red": 1, "yellow": 2, "black": 3}
+
+        def _f(x, fmt):
+            try:
+                return fmt % float(x) if x is not None else "—"
+            except Exception:
+                return "—"
+
+        items = sorted(topics.items(), key=lambda kv: (_rank.get((kv[1] or {}).get("lamp"), 9), kv[0]))
+        rows = []
+        for key, v in items:
+            v = v or {}
+            fld = v.get("fields")
+            try:
+                vals = _sig_val(fld) if fld else (v.get("lamp_reason") or "—")
+            except Exception:
+                vals = "—"
+            if isinstance(vals, str) and len(vals) > 200:
+                vals = vals[:200] + "…"
+            a = v.get("age_s")
+            rows.append((
+                float(a) if isinstance(a, (int, float)) else -1.0,
+                self._LAMP.get(v.get("lamp"), str(v.get("lamp") or "?")),
+                "%s  (%s)" % (key, v.get("topic") or ""),
+                "%s · pub%s" % (v.get("type") or v.get("qos") or "—", int(v.get("matched_pubs") or 0)),
+                "%s/%s Hz · n=%s · %s" % (_f(v.get("hz"), "%.2f"), _f(v.get("hz_design"), "%.1f"),
+                                          v.get("count"), vals)))
+        self._set_headers(self._HDR_DS)
+        self._flush(rows, "🗂 来源: 数据空间探针 live.json · 文件帧龄 %.1fs · %s · 话题 %d"
+                    % (age_file, time.strftime("%H:%M:%S"), len(rows)))
+        for r, _row in enumerate(rows):
+            if _row[0] < 0:                      # 帧龄未知 (无数据的话题) → 显示 — 而不是 -1.00
+                it0 = self.table.item(r, 0)
+                if it0 is not None:
+                    it0.setText("—")
+        try:
+            self.lbl_cnt.setToolTip(
+                "本表非引擎轨迹: 状态空间引擎尚未跑过 (画布「▶ 运行」产生 io_trace 后本页自动切回引擎视图)。\n"
+                "当前显示 = 数据空间探针 live.json 的逐话题质量/值 (每 2s 刷新, 文件: %s)" % self.DS_LIVE)
+        except Exception:
+            pass
+        return True
+
     def _flush(self, rows, note):
         """一次性填充 rows (每行 (t, mod, name, dirn, val)) — refresh/append 复用"""
         self.table.clearSpans()
@@ -127,17 +206,32 @@ class DataBusTrace(QWidget):
         self.lbl_cnt.setText(note)
 
     def refresh(self):
-        """完整重建 (切视图时加载完整时序 / 固定格式)"""
+        """完整重建 (切视图时加载完整时序 / 固定格式)
+
+        2026-10-13 (老倪: 「跑过了, 要有数据总线数据」) —— 原实现只有**一条数据源**:
+        状态空间引擎的轨迹 `module._ss_tr["io_trace"]`。凡是不产引擎轨迹的运行
+        (L5 造数据/标注 · 摆盘 episode 回放 · AOI 巡检 …) ⇒ 面板永远显示"暂无数据"。
+        现改两段式, 保证"跑过就有数据", 且**来源与帧龄写在计数条上**:
+          ① 有引擎轨迹 → 引擎视图 (时间顺序 / 固定格式, 原逻辑不变);
+          ② 没有 → **数据空间探针真源 live.json** (逐话题一行: 灯 / 实测与设计 Hz /
+             帧龄 / 值), 显式标来源 + 文件帧龄, 绝不冒充引擎轨迹。
+        """
         tr = getattr(self.module, "_ss_tr", None)
         if not tr or not tr.get("io_trace"):
+            if self._refresh_from_dataspace():
+                return
+            self._set_headers(self._HDR_ENGINE)
             self._flush([], "")
             self.table.clearSpans()
             self.table.setRowCount(1)
             self.table.setSpan(0, 0, 1, 5)
-            it = QTableWidgetItem("⚠️ 暂无数据 — 点「▶ 运行」跑一次状态空间仿真后自动出数据总线")
+            it = QTableWidgetItem("⚠️ 暂无数据 — ① 点画布「▶ 运行」跑一次状态空间仿真 "
+                                  "(出引擎接口数据流); ② 数据空间探针 live.json 也没有 ⇒ "
+                                  "起探针服务: sudo systemctl start zmax-dataspaces-probe")
             it.setForeground(QColor("#9aa4b2"))
             self.table.setItem(0, 0, it)
             return
+        self._set_headers(self._HDR_ENGINE)
         time_order = self.cmb_mode.currentIndex() == 0
         rows = []
         if time_order:
@@ -1575,6 +1669,28 @@ class ModelTreeDock(QWidget):
 
     # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪: 测量收 1 行 + 加标定页 ⇒ 4 行)
     VIEW_KEYS = ("mparam", "bus", "calib", "run_cfg")
+
+    def view_is(self, key):
+        """当前侧栏视图 == key ?
+
+        🔴 2026-10-13 (老倪: 「跑过了, 要有数据总线数据」) 根因之一: 下游 (simulink_module)
+        用**写死的索引**判"用户是否停在数据总线页" —— `cmb_view.currentIndex() == 9`。
+        侧栏在 v5.23/v5.24 重排成 4 项 (VIEW_KEYS 表) 后 "数据总线" 变成 **index 1**
+        ⇒ 那三处判定全成死分支, 运行时不再往面板喂数据, 看起来"总线永远是空的"。
+        这里给一个**表驱动**的判定口, 以后重排只改 VIEW_KEYS 一处, 不再有死分支。
+        """
+        try:
+            i = int(self.cmb_view.currentIndex())
+            keys = list(getattr(self, "VIEW_KEYS", ()))
+            if 0 <= i < len(keys):
+                return keys[i] == key
+        except Exception:
+            pass
+        try:                                    # 兜底: 按显示文案判定
+            _lbl = {"mparam": "主参数", "bus": "数据总线", "calib": "标定", "run_cfg": "运行开关"}
+            return _lbl.get(key, key) in str(self.cmb_view.currentText() or "")
+        except Exception:
+            return False
 
     def _switch_view(self, idx):
         """视图切换 (表驱动: 以后加视图只改 VIEW_KEYS + cmb_view 两处)。
