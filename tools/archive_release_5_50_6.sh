@@ -43,9 +43,18 @@ echo "  + evidence/criteria_output.txt"
 echo "=== ④ 文档 (交付版 5.50.C / 开发版 5.50.6) ==="
 for f in docs/deliverables/交付文档_摆盘_TASK-06-TRAY_* docs/deliverables/交付文档_插拔_TASK-01-FW_* \
          docs/deliverables/SOR_供应商要求_摆盘_TASK-06-TRAY_* docs/deliverables/SOR_供应商要求_插拔_TASK-01-FW_* \
+         docs/deliverables/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_* \
+         docs/deliverables/SOR-OM-ROBOT_摆盘完整版_* \
          docs/deliverables/合作协议_机器人数据平台与解决方案_* docs/deliverables/两场景验收报告_* \
          docs/deliverables/功能topic_输入输出测试报告_* docs/deliverables/全系统配置清单_* ; do
   [ -f "$f" ] && { cp "$f" "$DST/docs/"; }
+done
+# 配置单 (第二份 SOR 的配置真源): 每任务只留最新一批 (md+json), 避免多批时间戳堆叠
+for t in TASK-01-FW TASK-05-ATS; do
+  for ext in md json; do
+    f=$(ls -1t outputs/config_sheets/配置单_${t}_*.${ext} 2>/dev/null | head -1)
+    [ -n "$f" ] && cp "$f" "$DST/evidence/"
+  done
 done
 echo "  + docs/ ($(ls "$DST/docs" | wc -l) 个文件)"
 
