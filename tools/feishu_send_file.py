@@ -109,9 +109,12 @@ def main() -> int:
     ap.add_argument("files", nargs="*")
     ap.add_argument("--chat", default=os.path.expanduser(load_env().get("FEISHU_REPORT_CHAT_ID", DEFAULT_CHAT)))
     ap.add_argument("--text", default="")
+    ap.add_argument("--text-file", default="", help="文字结论从文件读 (多行说明避免 shell 转义出错)")
     ap.add_argument("--zip", action="store_true", help="打包 docs/deliverables/*.md 为一个 zip 再发")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    if a.text_file:
+        a.text = open(os.path.expanduser(a.text_file), encoding="utf-8").read().strip()
     files = list(a.files)
     if a.zip:
         out = "docs/deliverables/Z-MAX_交付文档包_%s.zip" % __import__("time").strftime("%Y%m%d")
