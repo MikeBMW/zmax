@@ -2156,6 +2156,10 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                     if _surf_crop is not None:
                         bgr = _surf_crop                      # ⇒ 判据图 = 摆正后的刚体
                         clean = False
+                    elif _surf_ov is not None:
+                        # 宁缺勿假, 但**不留空**(空帧槽 = 页面 503): 显示原图 + "NO RECT: <原因>" 标注
+                        bgr = _surf_ov
+                        clean = False
                     if _surf_ov is not None and full_name:
                         _fj = _aoi_full_frame(_surf_ov)
                         if _fj:
