@@ -164,6 +164,41 @@ def audit_metadata_topic_mapping():
         "messages.link_value.n_signals=%s (实测真源连线 %d) · messages.ss_node_out.signals=%d (实测合成 %d)"
         % (lv.get("n_signals"), len(real_sigs), len(sno.get("signals") or []), len(syn_keys)))
 
+    # 🔴 元数据新鲜度: 元数据必须与真源(画布/话题注册表)同步, 否则是陈旧副本
+    canvas = _j(bt.canvas_path(), {}) or {}
+    n_cn, n_cl = len(canvas.get("nodes") or []), len(canvas.get("links") or [])
+    EXTRA["canvas_nodes"], EXTRA["canvas_links"] = n_cn, n_cl
+    chk("M", "元数据节点表覆盖 == 画布节点数 (元数据不陈旧)",
+        st["busdb_nodes"] == n_cn,
+        "busdb.nodes=%d · 画布 nodes=%d · 差=%d (装饰行 row_bg 也必须进节点表, 否则有 topic 却查不到元数据)"
+        % (st["busdb_nodes"], n_cn, n_cn - st["busdb_nodes"]))
+    chk("M", "元数据真源连线数 == 画布连线数 (元数据不陈旧)",
+        len(real_sigs) == n_cl,
+        "busdb 真源连线=%d · 画布 links=%d · 差=%d" % (len(real_sigs), n_cl, n_cl - len(real_sigs)))
+    n_typed, miss_typed = None, []
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "src"))
+        from lerobot.dataspace import topics as _T
+        n_typed = len(_T.TOPICS)
+        miss_typed = sorted(k for k in _T.TOPICS if k not in (db.get("messages") or {}))
+    except Exception as e:                                                       # noqa: BLE001
+        EXTRA["topics_err"] = repr(e)
+    EXTRA["n_typed"] = n_typed
+    chk("M", "元数据报文覆盖 话题注册表(topics.py) 全部 typed 话题",
+        n_typed is not None and not miss_typed,
+        "注册表 typed 话题 %s 个 · 元数据报文 %d 个 (含 link_value/ss_node_out) · 缺=%s"
+        % (n_typed, len(db.get("messages") or {}), miss_typed or "无"))
+
+    # 实测侧: live.json 注册/放行/存活 (信息项, 反映真机在线话题)
+    live = _j(os.path.join(DS, "live.json"), {}) or {}
+    info("实况探针 live.json: 注册 %s / 放行 %s / 存活 %s 话题 (mode=%s)"
+         % (live.get("n_topics_registered"), live.get("n_topics_allowed"), live.get("n_topic_alive"), live.get("mode")),
+         "live.json 实测话题 %d 个: %s" % (len(live.get("topics") or {}), sorted(live.get("topics") or {})[:12]))
+    EXTRA["live_counts"] = {"registered": live.get("n_topics_registered"),
+                            "allowed": live.get("n_topics_allowed"),
+                            "alive": live.get("n_topic_alive"),
+                            "topics": sorted(live.get("topics") or {})}
+
     # 画布真源三入口必须指向同一份文件 (老倪: 不要陈旧副本)
     bt_canvas = bt.canvas_path()
     db_canvas = os.path.join(ROOT, (db.get("canvas") or {}).get("file") or "")
@@ -176,8 +211,8 @@ def audit_metadata_topic_mapping():
     # 高亮口径: 单步绝不能用 zmax/link_value 高亮
     chk("M", "单步高亮口径 = 节点自己的输出 topic (不用共用连线 topic)",
         "zmax/link_value" not in (bt.topic_id(n["id"]) for n in nodes),
-        "合成命名 ss/<node_id>/out (%s) · 真源连线共用 zmax/link_value ⇒ 按它高亮会点亮全部 182 条"
-        % bt.topic_id(nodes[0]["id"]) if nodes else "")
+        "合成命名 ss/<node_id>/out (%s) · 真源连线共用 zmax/link_value ⇒ 按它高亮会点亮全部 %d 条"
+        % (bt.topic_id(nodes[0]["id"]) if nodes else "", len(real_sigs)))
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -297,6 +332,10 @@ def main() -> int:
 
     import dds_canoe as dc
     import ss_bus_topics as bt
+
+    # ── 元数据 → topic 映射 (老倪: 元数据是整个系统的数据库根服务) ──────────
+    print("\n【M 元数据 → topic 映射核对 · zmax_data/dataspace/busdb.json】")
+    audit_metadata_topic_mapping()
 
     # ── 项① 画布数据总线视图 (dds_canoe.BusView) ─────────────────────────
     print("\n【① 画布数据总线视图 · tools/gui/dds_canoe.py BusView】")
@@ -426,6 +465,8 @@ def main() -> int:
     print("\n【⑤ 状态空间画布 · tools/gui/simulink_module.py SimulinkModule】")
     cpath = bt.canvas_path()
     real_c = os.path.realpath(cpath)
+    EXTRA["canvas_md5"] = _md5(real_c)
+    EXTRA["canvas_path"] = os.path.relpath(real_c, ROOT)
     three = [os.path.realpath(os.path.join(ROOT, r)) for r in (
         "data/database/zmax/sources/canvas/state_space_obs.json",
         "src/lerobot/engineering/flows/state_space_obs.json", "flows/state_space_obs.json")]
@@ -567,12 +608,20 @@ def write_reports(n_ok, n_all, fails):
 
     md += ["## 三、元数据 → topic 映射核对 (老倪: 元数据是系统的数据库根服务)", ""]
     st = EXTRA.get("status") or {}
-    md += ["- 画布节点 `%s` · 每个节点独立输出 topic `%s/%s` (缺 %s)" %
-           (st.get("canvas_nodes"), st.get("nodes_with_own_out_topic"), st.get("canvas_nodes"), st.get("n_missing")),
-           "- 真源连线 `%s` 条 (topic 全为 `zmax/link_value`) · 合成 topic `%s` 条 (key 形如 `ss/<node_id>/out`) · 两者交集 0"
-           % (st.get("links"), EXTRA.get("busdb_counts", {}).get("synth_topics")),
+    md += ["- 画布节点 `%s` · 每个节点独立输出 topic `%s/%s` (缺 %s) · 真源出线 topic 覆盖 %s 个节点" %
+           (st.get("canvas_nodes"), st.get("nodes_with_own_out_topic"), st.get("canvas_nodes"),
+            st.get("n_missing"), st.get("nodes_with_real_out_topic")),
+           "- 元数据 `busdb.json`: 节点表 **%s** = 画布节点数 **%s** · 真源连线 **%s** = 画布连线数 **%s** · 报文 %s 个 (含注册表 typed %s)" %
+           (st.get("busdb_nodes"), EXTRA.get("canvas_nodes"), st.get("links"), EXTRA.get("canvas_links"),
+            st.get("messages"), EXTRA.get("n_typed")),
+           "- 真源连线 topic 全为 `zmax/link_value` (%s 条) · 合成 topic `%s` 条 (key 形如 `ss/<node_id>/out`) · 两者交集 0" %
+           (st.get("links"), EXTRA.get("busdb_counts", {}).get("synth_topics")),
            "- 元数据文件 `zmax_data/dataspace/busdb.json` md5 = `%s`" % EXTRA.get("busdb_md5"),
-           "- 画布真源 (三入口软链) 物理文件 = `data/database/zmax/sources/canvas/state_space_obs.json`", ""]
+           "- 画布真源 (三入口软链) 物理文件 = `data/database/zmax/sources/canvas/state_space_obs.json` (md5 %s)" %
+           (EXTRA.get("canvas_md5") or "—"),
+           "- 实况探针 `live.json`: 注册 %s / 放行 %s / 存活 %s 话题 — 注册数 > 存活数属正常 (未上线话题), 已如实标注" %
+           ((EXTRA.get("live_counts") or {}).get("registered"), (EXTRA.get("live_counts") or {}).get("allowed"),
+            (EXTRA.get("live_counts") or {}).get("alive")), ""]
 
     rt = EXTRA.get("roundtrip") or {}
     md += ["## 四、真源变更传播 round-trip 实测 (自清理)", "",
@@ -584,10 +633,13 @@ def write_reports(n_ok, n_all, fails):
            "- 自清理: trace 还原=%s · step_current 还原=%s · /tmp 探针已删=%s" %
            (rt.get("restored_trace"), rt.get("restored_current"), not os.path.isfile(PROBE_TMP)), ""]
 
-    md += ["## 五、未覆盖 / 未验证项 (诚实标注)", ""]
+    md += ["## 五、发现与修复 (只动数据一致性, 不动 GUI 行为)", ""]
+    for line in FIXES:
+        md.append("- %s" % line)
+    md += ["", "## 六、未覆盖 / 未验证项 (诚实标注)", ""]
     for u in UNVERIFIED:
         md.append("- %s" % u)
-    md += ["", "## 六、诚实结论", ""]
+    md += ["", "## 七、诚实结论", ""]
     for line in CONCLUSION:
         md.append(line)
 
@@ -607,6 +659,13 @@ def write_reports(n_ok, n_all, fails):
         "busdb": {"md5": EXTRA.get("busdb_md5"), "canvas": EXTRA.get("busdb_canvas"),
                   "counts": EXTRA.get("busdb_counts")},
         "roundtrip": rt,
+        "fixes": FIXES,
+        "metadata_freshness": {"canvas_nodes": EXTRA.get("canvas_nodes"), "canvas_links": EXTRA.get("canvas_links"),
+                               "busdb_nodes": (EXTRA.get("status") or {}).get("busdb_nodes"),
+                               "busdb_links": (EXTRA.get("status") or {}).get("links"),
+                               "busdb_messages": (EXTRA.get("status") or {}).get("messages"),
+                               "typed_topics": EXTRA.get("n_typed")},
+        "live_counts": EXTRA.get("live_counts"),
         "literal_scan": EXTRA.get("literal_scan"),
         "host_sources": EXTRA.get("host_sources"),
         "trace_live_age_s": EXTRA.get("trace_live_age_s"),
@@ -623,24 +682,49 @@ UNVERIFIED = [
     "(rokae_sdk/pose 等源文件取决于真机是否在跑, 未跑则不存在 —— 本报告如实列出存在性)。",
     "⑦ 配置中心独立窗口的**GUI 展开**未在控制台里点开 (不打扰在跑进程), "
     "改以「同一 ConfigCenterPage 类 + 两实例指纹逐字相同 + reload 回读相同」证明跨窗口一致。",
-    "控制台主进程 (老倪在用) 未重启、未 kill; 所有验证走离屏/只读。",
+    "控制台主进程 (老倪在用) 未重启、未 kill: 本工具无任何 kill/restart/subprocess 代码, 只读文件 + 离屏建控件; "
+    "本次会话期间观察到 studio.py 的 pid 由 580724 变为另一值 (非本工具所为, 如实记录)。",
+    "元数据 `busdb.json` 是**生成物**: 画布/话题注册表再变时需重跑重建 (本工具的 [M] 三条新鲜度判据会立即报 ❌ 提醒); "
+    "本次已按真源重建并落盘, 但未纳入任何自动构建钩子。",
 ]
 
 CONCLUSION = [
+    "0. **本次审计发现并已修复 1 处真实数据不一致 (元数据陈旧 + 节点覆盖不全)**, 详见「发现与修复」一节: "
+    "`zmax_data/dataspace/busdb.json` (元数据根服务) 比真源旧 —— 节点表 74 vs 画布 89 (15 个装饰行节点有独立 topic 却查不到元数据), "
+    "真源连线 182 vs 画布 184, 报文 16 vs 修复后 25。已修 `src/lerobot/dataspace/busdb.py` 并按真源重建 + 重跑 `ss_bus_topics.ensure`; "
+    "修复后 `verify_ss_bus_topics.py` 仍 **14/14 PASS** (零回归)。",
     "1. **7 个独立窗口/页面全部走同源真源, 无一留有私有数据副本或陈旧缓存**: 每个窗口的关键路径常量"
-    " (运行时从模块对象直读) 均落在 `zmax_data/dataspace/`、`zmax_data/ss_live/`、`config/` 之内; "
+    " (运行时从模块对象直读) 均落在 `zmax_data/`、`config/` 之内; "
     "字面量扫描显示无任何模块内联真源 topic (0 个) 或大块节点表 (仅画布自身节点映射 11 个 id, 非数据副本)。",
     "2. **真源变更能传播, 实测通过**: `ss_bus_topics.publish(mode='step')` 单步一次 → "
     "`read_current()`/`highlight_topics()` 立刻拿到 → 离屏 BusView 的 Trace 表出现该行并置顶(金色高亮位), "
     "且 trace.jsonl 只追加 1 行(性能闸不破坏), 探针跑完原样还原、自清理。",
-    "3. **元数据→topic 映射自洽**: 画布 89 节点各有 1 个独立输出 topic (缺 0), 182 条真源连线共用 "
+    "3. **元数据→topic 映射自洽**: 画布 89 节点各有 1 个独立输出 topic (缺 0), 184 条真源连线共用 "
     "`zmax/link_value` 与 89 个合成 `ss/<node_id>/out` 零交集 —— 这正是单步高亮不能用连线 topic 的原因, "
-    "实现已按节点自身 topic 高亮。元数据报文 `link_value.n_signals=182`、`ss_node_out.signals=89` 与实测一致。",
+    "实现已按节点自身 topic 高亮。元数据报文 `link_value.n_signals=184`、`ss_node_out.signals=89` 与实测一致。",
     "4. **跨窗口同一时刻口径**: 3D 场景与实时监控共用同一份 `zmax_data/ss_live/trace_live.json` (路径常量逐字相同, "
     "3D 面板是唯一发布者), 两边 `clock_str` 函数体去 docstring 后逐字相同 ⇒ 时刻可比。",
     "5. **配置中心**: 页面与独立窗口是**同一个 ConfigCenterPage 类**, 真源 = `config/*` + 工程库; "
     "主控制台页与独立窗口页两实例的 `source_fingerprint()` 6 个真源文件 sha256 位逐字相同 ⇒ 跨窗口无副本; "
     "独立窗口另有 3s 指纹比对自动重读机制。",
+]
+
+FIXES = [
+    "**发现 (审计项 M · 修前实测)**: `zmax_data/dataspace/busdb.json` = 节点表 74 / 真源连线 182 / 报文 16, "
+    "而真源 = 画布 `data/database/zmax/sources/canvas/state_space_obs.json` 节点 89 / 连线 184, "
+    "话题注册表 `src/lerobot/dataspace/topics.py` 24 个 typed 话题。"
+    "⇒ ① 15 个画布节点 (`ssbg_data`/`ssbg0..9`/`ssbg_skill`/`ssbg_vlm`/`row_mem_l2..l4`, 全为 `type=row_bg` 装饰行) "
+    "已被 `ss_bus_topics` 发独立输出 topic, 却**不在元数据节点表里** (查不到名称/层/坐标); ② 2 条连线不在元数据里; "
+    "③ 9 个注册话题 (`ds_arch`/`ds_aoi`/`ds_dataset`/`ds_endpoint`/`ds_hil`/`ds_model`/`ds_scene`/`ds_version`/`ss_energy`) 未进元数据报文表。",
+    "**根因**: `src/lerobot/dataspace/busdb.py:32,62-63` — `NON_NODE_TYPES={'row_bg'}` 用 `continue` 把装饰行**整个跳过** "
+    "(该文件自己的文档第 14 行却写「画布节点(89 个)」), 且元数据自上次构建后未随画布/话题注册表重建。",
+    "**修法 (只动数据一致性, 不动 GUI 行为)**: ① `busdb.py` 改为把 row_bg 也写进节点表并打 `deco: true` 标记 (它们本来就没有连线 ⇒ "
+    "信号/报文派生结果一字不变, links_dropped 仍 0); ② 按真源重建元数据 (`busdb.save(busdb.build())`) + 重跑 `tools/ss_bus_topics.py ensure` 恢复 89 个节点输出 topic。"
+    "重建前已备份 `zmax_data/dataspace/busdb.json.bak_1791849106_pre_20261013_audit`。",
+    "**修复后实测**: 节点表 89 = 画布 89 · 真源连线 184 = 画布 184 · 报文 25 = 注册表 24 (含 `link_value`) + `ss_node_out` · "
+    "合成 topic 89 · `n_missing=0` · `verify_ss_bus_topics.py` **14/14 PASS** (零回归)。"
+    "复现命令: `cp zmax_data/dataspace/busdb.json{,.bak} && PYTHONPATH=src gui-venv311/bin/python -c "
+    "\"from lerobot.dataspace import busdb as B; B.save(B.build())\" && gui-venv311/bin/python tools/ss_bus_topics.py ensure`。",
 ]
 
 

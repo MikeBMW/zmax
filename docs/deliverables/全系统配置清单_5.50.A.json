@@ -1,14 +1,14 @@
 {
   "schema": "zmax-config-inventory/1.0",
   "version": "5.50.A",
-  "generated_at": "2026-10-13 07:19:05",
+  "generated_at": "2026-10-13 07:49:27",
   "repo": "/home/ubuntu/zmax",
   "sections": {
     "版本": {
-      "界面品牌版本": "5.50.1",
-      "VERSION.md 记载": "5.50.1",
-      "git HEAD": "7926345 数据总线 × 单步 topic: 每节点独立输出 topic(89/89) + 单步置顶金色高亮 + 整体运行不序列化(性能闸)",
-      "git describe": "v5.49.3-22-g7926345",
+      "界面品牌版本": "5.50.2",
+      "VERSION.md 记载": "5.50.2",
+      "git HEAD": "6462c27 docs(5.50.A): 功能说明(详细) + 配置清单校准(任务键名/权威画布 89节点184连线)",
+      "git describe": "v5.49.3-23-g6462c27",
       "最新 tag(按创建时间, 只认 vX.Y.Z)": "v5.49.3",
       "tag 总数": 105
     },
@@ -16,7 +16,7 @@
       "监听端口": {
         "8791": "LISTEN 0      5            0.0.0.0:8791       0.0.0.0:*    users:((\"python\",pid=575243,fd=10))",
         "8793": "LISTEN 0      5            0.0.0.0:8793       0.0.0.0:*    users:((\"python\",pid=575243,fd=4))",
-        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=2067702,fd=4),(\"python\",pid=864840,fd=4)",
+        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=2067702,fd=4),(\"python\",pid=1102053,fd=4",
         "8888": "LISTEN 0      1024            [::]:8888          [::]:*",
         "8796": "LISTEN 0      5          127.0.0.1:8796       0.0.0.0:*    users:((\"python\",pid=5246,fd=16))"
       },
@@ -61,8 +61,8 @@
       "files": [
         {
           "file": "config/ss_task_binding.json",
-          "size": 32683,
-          "sha256_12": "d41fe6045266"
+          "size": 32560,
+          "sha256_12": "613a7a1c9b12"
         },
         {
           "file": "config/topics/ar_aoi_signals.json",
@@ -101,8 +101,8 @@
         },
         {
           "file": "config/cc_snapshot.json",
-          "size": 23179,
-          "sha256_12": "55423cd2f9d0"
+          "size": 23073,
+          "sha256_12": "9c0da4a0cbe9"
         },
         {
           "file": "config/dds_cycle.json",
@@ -117,12 +117,12 @@
         {
           "file": "config/task_state.json",
           "size": 3227,
-          "sha256_12": "78a203289aa4"
+          "sha256_12": "ee2809ff73d2"
         },
         {
           "file": "config/task_state_ledger.json",
-          "size": 14620,
-          "sha256_12": "454783697e34"
+          "size": 14745,
+          "sha256_12": "3246e8f68a35"
         },
         {
           "file": "config/task_state_manual.json",
@@ -133,11 +133,11 @@
       "count": 14
     },
     "任务与场景": {
-      "active_task": "TASK-01-FW",
+      "active_task": "TASK-07-AOI",
       "project": {
         "name": "状态空间工程 · 主工程",
         "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
-        "canvas_md5": "0bf580c4d90a3963714e4328ad835345",
+        "canvas_md5": "378eff71cea1ae45b0a2f910b3ed367f",
         "nodes": 89,
         "links": 184
       },
@@ -150,7 +150,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 9,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -161,7 +161,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 4,
-          "enabled_nodes": 43,
+          "enabled_nodes": 42,
           "disabled_nodes": 9
         },
         {
@@ -172,7 +172,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 7,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -183,7 +183,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 8,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -194,7 +194,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 9,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -205,7 +205,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "tray",
           "steps": 5,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -216,7 +216,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 5,
-          "enabled_nodes": 32,
+          "enabled_nodes": 31,
           "disabled_nodes": 20
         }
       ],
@@ -224,7 +224,7 @@
       "segment_node_map": 8,
       "coverage": {
         "nodes": 89,
-        "covered_by_segments": 52,
+        "covered_by_segments": 51,
         "uncovered": [
           "n_calib_mani",
           "n_hil",
@@ -234,6 +234,7 @@
           "ss3d_view",
           "ss_l5",
           "ss_lora_l3",
+          "ss_moe",
           "ss_seg",
           "ssact",
           "ssest",
@@ -360,62 +361,62 @@
       "流服务通道": {
         "arm": {
           "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 29.86,
+          "fps": 29.93,
           "age_s": 0.01,
           "stalled": false
         },
         "local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
-          "fps": 5.06,
-          "age_s": 0.02,
+          "fps": 5.05,
+          "age_s": 0.15,
           "stalled": false
         },
         "local2": {
           "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 27.54,
-          "age_s": 0.01,
+          "fps": 21.3,
+          "age_s": 0.05,
           "stalled": false
         },
         "depth": {
           "label": "🌈 D405 深度图 (彩色化)",
           "fps": 0.0,
-          "age_s": 753.38,
+          "age_s": 2575.15,
           "stalled": true
         },
         "aoi_gold": {
           "label": "🔍 金手指检测 (工控机 OPT)",
-          "fps": 0.32,
-          "age_s": 0.08,
+          "fps": 0.22,
+          "age_s": 3.6,
           "stalled": true
         },
         "aoi_gold_raw": {
           "label": "",
-          "fps": 0.32,
-          "age_s": 0.08,
+          "fps": 0.22,
+          "age_s": 3.6,
           "stalled": true
         },
         "aoi_surface": {
           "label": "🔍 表面检测 (工控机 OPT)",
-          "fps": 0.21,
-          "age_s": 2.38,
+          "fps": 0.34,
+          "age_s": 0.12,
           "stalled": true
         },
         "ov_arm": {
           "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 10.02,
-          "age_s": 0.06,
+          "fps": 9.98,
+          "age_s": 0.12,
           "stalled": false
         },
         "ov_local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
-          "fps": 5.06,
-          "age_s": 0.22,
+          "fps": 5.05,
+          "age_s": 0.15,
           "stalled": false
         },
         "ov_local2": {
           "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 10.02,
-          "age_s": 0.07,
+          "fps": 9.98,
+          "age_s": 0.08,
           "stalled": false
         }
       },
@@ -452,18 +453,26 @@
       ]
     },
     "技能与文档": {
-      "技能数": 201,
+      "技能数": 202,
       "docs 目录": {
         "data_snapshots": 19,
         "deliverables": [
+          "INDEX_5.50.B.md",
+          "SOR_Z-MAX_5.50.B_20261013.md",
           "Z-MAX_交付文档包_20261012.zip",
           "任务配置单_Z-MAX_20261012.md",
           "供应商SOR_Z-MAX_光模块精细操作_20261012.md",
           "全系统配置清单_5.50.A.json",
           "全系统配置清单_5.50.A.md",
+          "全系统配置清单_5.50.B.json",
+          "全系统配置清单_5.50.B.md",
+          "全系统配置清单_Z-MAX_5.50.B_20261013.md",
           "功能清单_Z-MAX_20261012.md",
           "功能说明_5.50.A.md",
+          "功能说明_Z-MAX_5.50.B_20261013.md",
           "原型验证测试报告_Z-MAX_20261012.md",
+          "版本策略_5.50.A_B_C.md",
+          "立项文档_Z-MAX_5.50.B_20261013.md",
           "项目立项文档_Z-MAX_20261012.md"
         ],
         "design": [
@@ -589,7 +598,7 @@
       "主机": "ubuntu",
       "内核": "6.17.0-14-generic",
       "CPU": "32 核",
-      "内存": "30 GB (可用 16 GB)",
+      "内存": "30 GB (可用 21 GB)",
       "磁盘": "396G 总 / 60G 可用 (85% 已用)",
       "GPU": "NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, 580.126.09",
       "Python": "Python 3.11.15"

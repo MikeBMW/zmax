@@ -28,7 +28,10 @@ REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 CANVAS = os.path.join(REPO, "src/lerobot/engineering/flows/state_space_obs.json")
 OUT = os.environ.get("ZMAX_BUSDB", "/home/ubuntu/zmax/zmax_data/dataspace/busdb.json")
 
-# 画布上"不是数据节点"的类型(背景行/纯装饰) —— 它们不参与总线
+# 画布上"不是数据节点"的类型(背景行/纯装饰) —— 它们不参与**信号/连线**派生 (无 tx/rx),
+# 但必须仍在节点表里: 元数据是整个系统的数据库根服务, 每个画布节点都要能被查到
+# (2026-10-13 审计发现: 原来直接 continue ⇒ 节点表只有 74 个, 而画布有 89 个节点
+#  且 ss_bus_topics 给每个节点发了独立输出 topic ⇒ 15 个节点有 topic 却查不到元数据)。
 NON_NODE_TYPES = {"row_bg"}
 
 # 层 → 总线话题(每条连线按**源节点所在层**上车)
@@ -59,15 +62,19 @@ def build(canvas=CANVAS):
     lv = _level_map()
     nodes, sigs = {}, []
     for n in d.get("nodes", []):
-        if n.get("type") in NON_NODE_TYPES:
-            continue
         nid = n.get("id")
+        if not nid:
+            continue
+        # 装饰/背景行: 进节点表(可查元数据 + 每节点 ≥1 输出 topic), 但标记 deco ⇒ 不派生信号
+        _deco = n.get("type") in NON_NODE_TYPES
         nodes[nid] = {
             "id": nid, "name": (n.get("name") or "").strip(), "type": n.get("type"),
             "layer": lv.get(nid, "meta"), "icon": n.get("icon") or "",
             "x": n.get("x"), "y": n.get("y"),
             "tx": 0, "rx": 0,
         }
+        if _deco:
+            nodes[nid]["deco"] = True
     dropped = 0
     for i, l in enumerate(d.get("links", [])):
         f, t = l.get("f"), l.get("t")
