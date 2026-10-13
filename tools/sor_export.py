@@ -690,6 +690,58 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     return doc
 
 
+def _md_cell(c):
+    """表格单元格 → markdown 文本 (多段落合一, 转义竖线, 去换行)。"""
+    t = " ".join(p.text.replace("\n", " ").strip() for p in c.paragraphs).strip()
+    return t.replace("|", "\\|") or " "
+
+
+def to_markdown(docx_path, md_path, meta):
+    """把已生成的 SOR .docx 按**原始顺序**渲染成 Markdown。
+
+    为什么渲染 Word 而不是另写一份 md: 两份手写必然漂移 (交付件口径不一比没有更糟)。
+    这里 md 只是 Word 版的另一种呈现, 内容逐字相同; Word 变 ⇒ md 跟着变, 永不失同步。
+    """
+    from docx.oxml.ns import qn as _qn
+    from docx.table import Table as _T
+    from docx.text.paragraph import Paragraph as _P
+
+    d = Document(docx_path)
+    out = ["<!-- 本文件由 %s 按原始顺序渲染 (内容与 Word 版逐字相同); 重新导出即自动刷新 -->" % os.path.basename(docx_path), ""]
+    for ch in d.element.body.iterchildren():
+        if ch.tag == _qn("w:p"):
+            p = _P(ch, d)
+            txt = p.text.strip()
+            st = (p.style.name or "")
+            if not txt:
+                continue
+            if st.startswith("Heading"):
+                lv = "".join(c for c in st if c.isdigit()) or "1"
+                out.append("#" * int(lv) + " " + txt)
+            elif st.startswith("Title"):
+                out.append("# " + txt)
+            else:
+                out.append(txt)
+            out.append("")
+        elif ch.tag == _qn("w:tbl"):
+            t = _T(ch, d)
+            rows = t.rows
+            if not rows:
+                continue
+            hdr = [_md_cell(c) for c in rows[0].cells]
+            out.append("| " + " | ".join(hdr) + " |")
+            out.append("|" + "---|" * len(hdr))
+            for r in rows[1:]:
+                out.append("| " + " | ".join(_md_cell(c) for c in r.cells) + " |")
+            out.append("")
+    out += ["---", "", "**复核命令**", "", "```bash",
+            meta.get("cmd", ""),
+            "python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check",
+            "```"]
+    open(md_path, "w", encoding="utf-8").write("\n".join(out))
+    return md_path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default=None, help="项目档案 pid ⇒ 项目名/采购范围/manifest 随项目变")
@@ -713,6 +765,11 @@ def main():
     fp = os.path.join(out, base + ".docx")
     doc.save(fp)
     files = {os.path.basename(fp): fp}
+    # Markdown 版 = 上一行那份 Word 的原序渲染 (同源同内容, 不另写一份文档)
+    mp = os.path.join(out, base + ".md")
+    to_markdown(fp, mp, {"cmd": "gui-venv311/bin/python tools/sor_export.py %s--task %s --json"
+                                % (("--project %s " % a.project) if a.project else "", a.task)})
+    files[os.path.basename(mp)] = mp
     if a.json:
         sys1, feats, fns, axes, params, _ = load()
         jp = os.path.join(out, base + ".json")
@@ -732,6 +789,7 @@ def main():
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(man, f, ensure_ascii=False, indent=1)
     print("✅ SOR (Word): %s" % fp)
+    print("✅ SOR (Markdown): %s (同源渲染)" % mp)
     print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)/E(配置关联性)/F(架构兼容性)/G(任务迁移)" % (os.path.getsize(fp) / 1024.0))
     print("   目录: %s" % out)
     for n in man["files"]:

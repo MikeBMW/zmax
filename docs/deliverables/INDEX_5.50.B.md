@@ -33,7 +33,7 @@
 | # | 文档 | 文件 | 真源 | 备注 |
 |:--|:---|:---|:---|:---|
 | A | 全系统总配置清单（刷新） | `docs/deliverables/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描 + 单一工程库 | 新增「配置关联性」章（links 389 · param_links 1767 · 任务关联 7）；画布口径修正为被绑定方 89 节点/184 连线 |
-| B | 供应商外发 SOR · 摆盘 TASK-06-TRAY | `docs/deliverables/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.docx` / `.json` / `.manifest.json` | 单一工程库 + `config/tasks/tasks.json` + `config/platform/zmax_perf_spec.json` + 项目档案 PROJ-TH-TRAY | 章节 1–15 + 附录 A–G；新增 附录 E 配置表关联性（需求↔配置项追溯矩阵）· 附录 F 架构兼容性 · 附录 G 任务迁移 |
+| B | 供应商外发 SOR · 摆盘 TASK-06-TRAY | `docs/deliverables/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md` / `.docx` / `.json` / `.manifest.json` | 单一工程库 + `config/tasks/tasks.json` + `config/platform/zmax_perf_spec.json` + 项目档案 PROJ-TH-TRAY | 章节 1–15 + 附录 A–G；新增 附录 E 配置表关联性（需求↔配置项追溯矩阵）· 附录 F 架构兼容性 · 附录 G 任务迁移。**md 为 Word 版原序渲染（同源同内容，自动同步）** |
 | C | SOR 导出器（可复跑到最新） | `tools/sor_export.py` | — | 复跑：`gui-venv311/bin/python tools/sor_export.py --project PROJ-TH-TRAY --task TASK-06-TRAY --json` |
 
 > 交付分工口径（本批明确）：**供应商研制摆盘作业具身模型（L3）· 我方做工程集成与收口（L2 执行链接入 / 几何真值 / 安全红线）**。见 SOR 第 2.1 节交付分工表。

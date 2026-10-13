@@ -1,17 +1,21 @@
 {
  "doc_no": "SOR-OM-ROBOT-20261013",
  "version": "V1.0",
- "generated_at": "2026-10-13 11:25:54",
+ "generated_at": "2026-10-13 11:32:33",
  "source_db": "data/database/zmax/zmax_engineering.db",
  "source_db_sha256": "c957042aa8112f6c6b1c19797e7e040393b7ae0539c01fbc7cc795b59912e77e",
  "files": {
   "SOR-OM-ROBOT-20261013_V1.0.docx": {
-   "bytes": 73831,
-   "sha256": "eca71fe05685aa3916a5e589bef9b8584431cac14af65cfbdc4cae5576bfc68f"
+   "bytes": 73829,
+   "sha256": "cae97d325544781676b5cee6853be5d8a5cd5a8874cc14efa6d2751291e405f3"
   },
   "SOR-OM-ROBOT-20261013_V1.0.json": {
    "bytes": 38937,
    "sha256": "5bd14212aecce05a77b79c843855fa3789e555d01b8f3461f6d69a6521895c9c"
+  },
+  "SOR-OM-ROBOT-20261013_V1.0.md": {
+   "bytes": 54747,
+   "sha256": "1b90b0f19bef429b09532a34b48dd4c8eda59d0ca0ccfd98558c12e3301b3a9d"
   }
  },
  "project": "泰国模块摆料场景 (Z100LFd 固定上肢形态)",
