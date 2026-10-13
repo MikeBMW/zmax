@@ -70,6 +70,15 @@ ALLOW_STATION = [
     r"/scene\.json", r"/stats", r"/robot_status", r"/motion", r"/ctl/status",
     r"/aoi/status", r"/aoi_status",
     r"/dl/[A-Za-z0-9_.-]+", r"/lib/[A-Za-z0-9_./-]+",
+    # 🧊 2026-10-14 老倪「实时查看器白屏」: 站台页里那个 3D 查看器(iframe→/gsview)和它的只读资产
+    #   在通道上被拦成 403 ⇒ iframe 一片白。3DGS 这一组全是**只读**产物(页面/资产清单/轻量副本/渲染图),
+    #   与 /snapshot 同级放行; 建图**启动**那条 POST /ctl/gs_map 仍走 --allow-ctl 的独立白名单。
+    r"/gsview", r"/gsview[.]html", r"/3dgs", r"/splat",
+    r"/gs_render[.]png", r"/api/gs_render[.]png",
+    r"/gs/list", r"/api/gs/list",
+    r"/gs/latest[.]splat", r"/api/gs/latest[.]splat",
+    r"/gs/latest_display[.]splat", r"/api/gs/latest_display[.]splat",
+    r"/gs/[A-Za-z0-9_.-]+[.]splat", r"/gs/[A-Za-z0-9_.-]+[.]display60k[.]splat",
     r"/live", r"/live\.html", r"/live\.json",
     # 手机远程控制页(2026-10-01): 页面本身只读放行, POST 由 --allow-ctl 单独管
     r"/room", r"/room\.html",
