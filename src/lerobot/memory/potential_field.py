@@ -719,6 +719,29 @@ class MemoryLayerBridge:
         contrib["phi_total"] = round(float(phi), 6)
         return float(phi), contrib
 
+    def grad_raw(self, x, t=None):
+        """**原始**合成梯度 +∇Φ (不归一化) —— 驱动扭矩 T_drive = M·(−∇Φ) 需要真实量纲的梯度。
+
+        与 `grad()` 的区别（实测坑）: `grad()` 为"意图方向"服务, 逐层求和后**归一化**成单位向量
+        (见 grad() 末两行) —— 用它算扭矩只能得到 ‖M·1‖ 这种**尺度无关**的假量; T_drive 必须用本函数。
+        逐层语义与 `grad()` 完全一致 (L2 技能场 / L3 流程场 / L4 障碍+世界项; 全关 ⇒ 零向量 ⇒ 零扭矩不干预)。
+        """
+        g = np.zeros(3)
+        if not self.any_on() or self.process is None:
+            return g
+        if self._gates["L2"]:
+            a = self._active(x, t)
+            if a is not None:
+                g = g + a.grad(x)
+        if self._gates["L3"]:
+            g = g + self.process.grad(x, t)
+        if self._gates["L4"]:
+            if self.obstacle:
+                g = g + self.obstacle.grad(x)
+            if self.world:
+                g = g + self.world.grad(x, t)
+        return np.asarray(g, float).ravel()[:3]
+
     def grad(self, x, t=None):
         """按已开层算梯度 (全关 → 零向量)"""
         g = np.zeros(3)

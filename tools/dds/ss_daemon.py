@@ -59,16 +59,18 @@ STALE_S = 5.0                     # 源帧龄超过它就只发 diag, 不发状�
 # 能量层是**每轮聚合量**(跑一次 pipeline 迭代出一份), 不是 10Hz 流 ⇒ 单独的帧龄预算:
 #   900s 内算"本轮有效"; 超过就当没有 (宁可不发, 也不把上上轮的数当现在).
 STALE_ENERGY_S = float(os.environ.get("ZMAX_ENERGY_STALE_S", "900"))
+# 🔧 驱动扭矩是**逐帧高频信号** (10Hz 实测数据通道) ⇒ 用紧的帧龄预算: 3s 内算现在, 超过就发 -1 并说明
+STALE_TORQUE_S = float(os.environ.get("ZMAX_TORQUE_STALE_S", "3.0"))
 
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
 MODE_TOPICS = {
     "prod": [],
-    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
+    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy"],
+              "ss_plan", "ss_energy", "ss_torque"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
-             "ss_plan", "ss_energy"],
+             "ss_plan", "ss_energy", "ss_torque"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -164,6 +166,14 @@ def read_plan():
 def read_energy():
     """流形引擎能量层 tap (tools/manifold_energy_probe.py 真跑一轮 pipeline 迭代写出)"""
     p = _newest(os.path.join(SS_REMOTE, "energy_*.jsonl"))
+    if not p:
+        return None, None
+    return _last_line(p), os.path.getmtime(p)
+
+
+def read_torque():
+    """驱动扭矩 tap (tools/tdrive_bus.py 逐帧算 T_drive = M·(−∇Φ) 写出; 最后一行才是 payload)"""
+    p = _newest(os.path.join(SS_REMOTE, "torque_*.jsonl"))
     if not p:
         return None, None
     return _last_line(p), os.path.getmtime(p)
@@ -423,6 +433,46 @@ class SSDaemon:
             criterion=str(d.get("criterion") or ""), source=str(d.get("source") or ""),
             note="frame_age=%.1fs tap=%s" % (age, os.path.basename(_newest(
                 os.path.join(SS_REMOTE, "energy_*.jsonl")) or ""))))
+        return True
+
+    def pub_torque(self):
+        """驱动扭矩 T_drive = M·(−∇Φ) → zmax/ss_torque (6D 扭矩 / 主参数 M / 势场负梯度 / 健康度)"""
+        from ss_types import SSDrivingTorque                              # noqa: PLC0415
+
+        def _f(v, dv=-1.0):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float(dv)
+
+        def _vec(v, n=0):
+            try:
+                out = [float(x) for x in (v or [])]
+            except TypeError:
+                return []
+            if n and len(out) != n:
+                return []
+            return out
+
+        d, mt = read_torque()
+        age = (time.time() - mt) if mt else -1.0
+        if not d:
+            return False
+        if age > STALE_TORQUE_S:
+            log("⏸ 驱动扭矩 tap 过期 %.1fs (>%.1fs) — 不把旧的当现在 (跑 tools/tdrive_bus.py run)" % (age, STALE_TORQUE_S))
+            return False
+        self.publish("ss_torque", SSDrivingTorque(
+            ts=float(d.get("ts") or time.time()), node=str(d.get("node") or "流形引擎"),
+            scene=str(d.get("scene") or ""), stage=str(d.get("stage") or ""), skill=str(d.get("skill") or ""),
+            torque=_vec(d.get("torque"), 6), torque_norm=_f(d.get("torque_norm"), 0.0),
+            torque_inv=_vec(d.get("torque_inv"), 6), unit=str(d.get("unit") or "N·m"),
+            metric_tensor=_vec(d.get("metric_tensor")), metric_dim=int(d.get("metric_dim") or 0),
+            potential_gradient=_vec(d.get("potential_gradient"), 6), neg_gradient=_vec(d.get("neg_gradient"), 6),
+            phi=_f(d.get("phi"), 0.0), health=_f(d.get("health")), status=str(d.get("status") or ""),
+            gain=_f(d.get("gain"), 1.0), x=_vec(d.get("x"), 3), gates=str(d.get("gates") or ""),
+            source=str(d.get("source") or ""), unit_note=str(d.get("unit_note") or "")[:200],
+            note="frame_age=%.2fs tap=%s" % (age, os.path.basename(_newest(
+                os.path.join(SS_REMOTE, "torque_*.jsonl")) or ""))))
         return True
 
     def pub_state(self):
@@ -689,6 +739,8 @@ class SSDaemon:
             self.pub_plan()
         if allowed("ss_energy"):
             self.pub_energy()
+        if allowed("ss_torque"):
+            self.pub_torque()
 
     def run(self, seconds=0.0, once=False):
         t0 = time.time()
@@ -706,7 +758,7 @@ class SSDaemon:
             if seconds and time.time() - t0 >= seconds:
                 log("⏹ 到时长退出 (sent=%s)" % json.dumps(self.sent, ensure_ascii=False))
                 return
-            time.sleep(2.0)
+            time.sleep(float(os.environ.get("ZMAX_SS_TICK_S", "0.1")))
 
 
 def main() -> int:

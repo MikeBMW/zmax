@@ -79,6 +79,21 @@ def _digest_for(k, f):
                     % (f.get("dim"), (f.get("vec") or [])[:6], f.get("pos_x"), f.get("pos_y"),
                        f.get("pos_z"), f.get("layer"), f.get("source"),
                        (f.get("note") or "")[:60]))[:400]
+        if k == "ss_torque":
+            # 🔧 驱动扭矩 T_drive=M·(−∇Φ): 载荷是 6D 数组 + 36/9 维张量 + 长说明, 直接截断会得到
+            #    **残缺 JSON** ⇒ parse_ds_digest 解析不出数值叶子 ⇒ 实时监控里"看得到话题、没有波形"
+            #    (判据 ⑧b 实测 0/117 帧可解析)。这里给一行**完整 JSON**: 只留监控要画的标量叶子。
+            tq = f.get("torque") or []
+            return json.dumps({"torque_norm": f.get("torque_norm"), "raw_norm": f.get("torque_raw_norm"),
+                               "T_x": tq[3] if len(tq) > 3 else None, "T_y": tq[4] if len(tq) > 4 else None,
+                               "T_z": tq[5] if len(tq) > 5 else None,
+                               "phi": f.get("phi"), "grad_norm": f.get("grad_raw_norm"),
+                               "health": f.get("health"), "gain": f.get("gain"),
+                               "metric_dim": f.get("metric_dim"), "t_max": f.get("t_max"),
+                               "clipped": 1 if f.get("clipped") else 0,
+                               "d_trough_m": f.get("dist_to_trough_m"),
+                               "status": f.get("status"), "stage": f.get("stage")},
+                              ensure_ascii=False)[:400]
     except Exception:                                                        # noqa: BLE001
         return None
     return None
@@ -110,6 +125,7 @@ class Probe:
         self.fixed_mode = mode
         self.keys = T.topics_for_mode(self.mode)
         self.out = out
+        self._tr_last = {}    # topic → 上次落 Trace 的时刻 (每话题限速 1s, 见 pump)
         self.node = None
         self.st = {}          # topic → 统计(所有曾经见过的)
         self.hist = {}        # topic → 接收时刻(最近 120s)
@@ -189,7 +205,12 @@ class Probe:
                     body = json.dumps(f, ensure_ascii=False)
                     dg = _digest_for(k, f) or body[:180]
                     self.tr_bytes[k] = self.tr_bytes.get(k, 0) + len(body)
-                    if len(self.trace) < 500 or s["count"] % 20 == 0:
+                    # Trace 采样规则 (2026-10-13 修): 原规则 `len(trace)<500 or count%20==0` 对**低频话题**
+                    #   等于 40s 才落一帧 (实测 ss_torque 0.5Hz ⇒ 监控里几乎看不见) ⇒ 改为**每话题限速 1s**:
+                    #   首次必落, 之后同一话题 ≥1s 才再落, 既保文件大小又让低/高频话题都看得见。
+                    last_k = self._tr_last.get(k, 0.0)
+                    if len(self.trace) < 500 or (now - last_k) >= 1.0:
+                        self._tr_last[k] = now
                         self.trace.append({"t": round(now, 3), "topic": T.full_name(k),
                                            "type": (T.TOPICS.get(k, {}).get("type") or "").split("::")[-1],
                                            "n": s["count"], "bytes": len(body),

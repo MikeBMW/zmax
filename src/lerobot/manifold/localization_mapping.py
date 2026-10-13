@@ -185,6 +185,15 @@ def frame_source(kind: str = "live", cam: str = "arm", video: str = "", frames_d
 
 
 # ── ③ 机器人位姿真源 ────────────────────────────────────────────────────────────
+_POSE_KNOWN = [
+    os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json"),
+    os.path.join(ROOT, "zmax_data", "tcp_out", "latest.json"),
+    os.path.join(ROOT, "zmax_data", "runtime", "tcp_out", "latest.json"),
+]
+_POSE_GLOBS = ["zmax_data/**/tcp_out/latest.json", "zmax_data/**/tcp_pose.json",
+               "zmax_data/**/tcp_latest.json", "data/**/tcp_out/latest.json"]
+
+
 def read_robot_pose() -> dict:
     """读位姿真源 (tcp_pose). 全 0 = 陈旧; 找不到 = 无。诚实返回, 不造位姿。
 
@@ -194,8 +203,14 @@ def read_robot_pose() -> dict:
     现改为同时认扁平键 + 四元数, 并把跳过的候选**报出来**而不是无声吞掉。
     """
     cands = []
-    for pat in ("**/tcp_out/latest.json", "**/tcp_pose.json", "**/tcp_latest.json"):
-        cands += glob.glob(os.path.join(ROOT, pat), recursive=True)
+    # ⚠️ 实测坑: 对整个工程根做 `**/tcp_out/latest.json` 递归 glob 要 2.5s/次 (工程树含 models/datasets/releases)
+    #    ⇒ 10Hz 发布根本达不到 (实测整帧 2479ms, 其中 2556ms 全在这里)。改为: 已知真源直取 + 限定目录扫描 + 30s 缓存。
+    for p in _POSE_KNOWN:
+        if os.path.isfile(p):
+            cands.append(p)
+    if not cands:
+        for pat in _POSE_GLOBS:
+            cands += glob.glob(os.path.join(ROOT, pat), recursive=True)
     skipped, best = [], None
     for p in sorted(set(cands)):
         if not os.path.isfile(p):
@@ -313,7 +328,7 @@ class MappingSession:
 
     def __init__(self, scene: str = "SCN-07-AOI", cam: str = "arm", backend: str = "orb_pose_slam",
                  kf_trans_m: float = 0.010, kf_rot_deg: float = 2.0, save: bool = True,
-                 kf_min_inlier: int = 30, dup_eps: float = 0.8):
+                 kf_min_inlier: int = 30, dup_eps: float = 0.8, save_every_s: float = 0.0):
         if backend not in BACKENDS:
             raise MappingError("未知建图后端 %r (支持 %s)" % (backend, "/".join(BACKENDS)))
         self.scene, self.cam, self.backend = scene, cam, backend
@@ -327,6 +342,11 @@ class MappingSession:
         self.parallax_px = []
         self.live_every = 10          # 每 N 帧写一次活体真源 (实测: 只在整轮末写 ⇒ 长跑时状态是陈旧的)
         self._last_live = 0.0
+        # 🔧 2026-10-13: 持续建图 (老倪现场示教"同时建图") —— 原实现每轮 30 帧就 save() 一次且**每轮重置**,
+        #    地图永远只装最后一轮 (实测 round 97 有 5 关键帧/113 点, 下一轮 98 立刻回到 1 关键帧/0 点,
+        #    盘上的 map_SCN-07-AOI.json 只剩残帧) ⇒ 长跑等于"同时建图"没结果。改为单会话累积 + 定期落盘。
+        self.save_every_s = float(save_every_s)       # >0 ⇒ 运行中每 N 秒 save() 一次 (地图文件也长)
+        self._last_save = 0.0
         self.intr = load_intrinsics(cam)
         self.front = OrbFrontEnd()
         self.intr_eff_source = self.intr["source"]
@@ -391,6 +411,15 @@ class MappingSession:
                                   or time.time() - self._last_live > 2.0):
             try:
                 self._write_live()
+            except Exception:                                                    # noqa: BLE001
+                pass
+        # 持续模式: 定期落盘, 让 map_<scene>.json 跟着长 (否则长跑只有活体是真, 地图文件是残帧)
+        if (self.save_enabled and self.save_every_s > 0
+                and time.time() - self._last_save > self.save_every_s):
+            try:
+                self.save()
+                self._write_live(running=True)   # save() 内部会写 running=False, 运行中要翻回来
+                self._last_save = time.time()
             except Exception:                                                    # noqa: BLE001
                 pass
         return rec
@@ -603,7 +632,7 @@ def ensure_config() -> str:
 
 def auto_start(n_frames: int = 24, cam: str = "", scene: str = "", save: bool = True,
                frame_getter=None, video: str = "", frames_dir: str = "", stride: int = 5,
-               interval_s: float = 0.3) -> dict:
+               interval_s: float = 0.3, save_every_s: float = 0.0) -> dict:
     """自动加载 → 建图会话 → 回环 → 松弛 → 落盘 → 进化 tick。返回完整证据链。
 
     帧源三选一: live 相机 (8797/snap, 按 interval_s 节流) / 真录像 mp4 (video) / 真帧序列目录 (frames_dir)。
@@ -617,7 +646,8 @@ def auto_start(n_frames: int = 24, cam: str = "", scene: str = "", save: bool = 
     kf = cfg.get("keyframe") or {}
     sess = MappingSession(scene=scene, cam=cam, backend=cfg.get("backend", "orb_pose_slam"),
                           kf_trans_m=kf.get("trans_m", 0.010), kf_rot_deg=kf.get("rot_deg", 2.0), save=save,
-                          kf_min_inlier=int(kf.get("min_inlier", 30)), dup_eps=float(kf.get("dup_eps", 0.8)))
+                          kf_min_inlier=int(kf.get("min_inlier", 30)), dup_eps=float(kf.get("dup_eps", 0.8)),
+                          save_every_s=float(save_every_s))
     if frame_getter is not None:
         gen, kind = ((frame_getter(cam) for _ in range(int(n_frames))), "custom")
     else:
@@ -668,6 +698,12 @@ def _run(n: int, cam: str, scene: str, dry: bool, video: str = "", frames_dir: s
     """rounds=0 ⇒ 持续跑 (给"启动建图程序"当守护用, 由 pid 停止)。"""
     r = {}
     done = 0
+    # 🔧 2026-10-13: rounds=0 (持续/守护) ⇒ **单会话无限跑**: n_frames=0 (帧源无限) + 每 20s 落盘。
+    #    原来 rounds=0 也是"轮"循环 ⇒ 每 30 帧重建一次 MapSession, 地图不累积 (示教长跑看不到图)。
+    if not rounds and not video and not frames_dir:
+        r = auto_start(n_frames=0, cam=cam, scene=scene, save=not dry, video=video,
+                       frames_dir=frames_dir, stride=stride, interval_s=interval_s, save_every_s=20.0)
+        return 0 if r.get("started") and not r.get("errors") else 1
     while True:
         r = auto_start(n_frames=n, cam=cam, scene=scene, save=not dry, video=video,
                        frames_dir=frames_dir, stride=stride, interval_s=interval_s)

@@ -13,6 +13,7 @@ import glob
 import io
 import json
 import os
+import re
 import sys
 import time
 from contextlib import redirect_stdout
@@ -24,16 +25,20 @@ if TOOLS not in sys.path:
 
 from PyQt5.QtCore import Qt, QSettings, QTimer  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
-from PyQt5.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLabel,  # noqa: E402
-                             QPushButton, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem,
-                             QComboBox, QTabWidget, QTextEdit, QTreeWidget, QTreeWidgetItem,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
+                             QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QSizePolicy, QSplitter,
+                             QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextEdit, QTreeWidget,
+                             QTreeWidgetItem, QVBoxLayout, QWidget)
 
 TASKS_J = os.path.join(ROOT, "config", "tasks", "tasks.json")
 MCD_J = os.path.join(ROOT, "config", "mcd", "zmax_mcd.json")
 MATCH_J = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 ORDERS_D = os.path.join(ROOT, "config", "orders")
 BIND_J = os.path.join(ROOT, "config", "ss_task_binding.json")
+# 🏷 产品配置真源 (老倪 2026-10-13: 550A 原创版 / 550B 标定版 / 550C 量产版)
+PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
+REL_PRODUCT = "config/platform/zmax_product.json"
+PRODUCT_IDS = ("550A", "550B", "550C")
 
 DEFAULT_THEME = {"C_BG": "#11151c", "C_BG2": "#161b24", "C_CARD": "#1b222c", "C_BORDER": "#2a3340",
                  "C_WHITE": "#e8edf4", "C_GRAY": "#8b98a8", "C_GREEN": "#3fbf7f", "C_RED": "#e05a5a",
@@ -693,6 +698,185 @@ def _btn(text, theme):
     return b
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🏷 产品配置 (老倪 2026-10-13) —— 产品标识 + 空间质数结构化理解能力
+#   真源: config/platform/zmax_product.json (active_product / products / capability_signatures /
+#         releases / fingerprints / checks / capability_divisibility)
+#   纪律: 界面上每个值都是**从真源回读**的 (不在这里自算副本); 选中产品 = **原子写回** active_product;
+#         prime_structure 只用来把同一批值独立回算一次做交叉核对 (对不上如实标 ❌, 不掩盖)。
+# ══════════════════════════════════════════════════════════════════════════════
+def _sha16(path):
+    import hashlib
+    try:
+        return hashlib.sha256(open(path, "rb").read()).hexdigest()[:16]
+    except Exception as e:                                                      # noqa: BLE001
+        return "缺(%s)" % type(e).__name__
+
+
+def _ps_module():
+    """prime_structure 模块 (产品真源解读的唯一入口); 取不到返回 None (页面如实降级显示)。"""
+    try:
+        _src = os.path.join(ROOT, "src")
+        if _src not in sys.path:
+            sys.path.insert(0, _src)
+        if TOOLS not in sys.path:
+            sys.path.insert(0, TOOLS)
+        from lerobot.manifold import prime_structure as _PS
+        return _PS
+    except Exception:                                                           # noqa: BLE001
+        return None
+
+
+def _cut_big(n, head=18, tail=6):
+    """大整数显示口径: 前 head + … + 后 tail (N 位) —— 只影响**显示**, 完整值仍在控件/复制里。"""
+    s = str(n)
+    return s if len(s) <= head + tail + 3 else "%s…%s (%d 位)" % (s[:head], s[-tail:], len(s))
+
+
+def _vmark(flag):
+    """交叉核对标记: 真源写下的值 vs prime_structure 独立回算。None = 没核对上 (不可假成功)。"""
+    return " ✅ 真源与回算一致" if flag else (" ❌ 真源与回算不一致" if flag is False else " · 未核对")
+
+
+def _product_view():
+    """产品配置区要显示的**回读值** —— 全部从真源 config/platform/zmax_product.json 读 (不吃内存副本)。"""
+    out = {"src": REL_PRODUCT, "error": None, "ps": False}
+    d = _j(PRODUCT_J, None)
+    if not isinstance(d, dict):
+        out["error"] = "真源读不出: %s" % PRODUCT_J
+        return out
+    prods = d.get("products") or {}
+    pid = str(d.get("active_product") or "")
+    p = prods.get(pid) or {}
+    caps = list(p.get("capabilities") or [])
+    rels = d.get("releases") or {}
+    rk = max(rels, key=lambda k: int((rels[k] or {}).get("iteration", 0) or 0)) if rels else ""
+    relv = rels.get(rk) or {}
+    fpr = (d.get("fingerprints") or {}).get(rk) or {}
+    out.update({
+        "schema": d.get("schema"), "updated": d.get("updated"),
+        "active": pid, "product_name": p.get("name"), "version_segment": p.get("version_segment"),
+        "prime": p.get("prime"), "capabilities": caps, "n_caps": len(caps),
+        "names": {k: ((v or {}).get("name") or k) for k, v in prods.items()},
+        "cap_signature": (d.get("capability_signatures") or {}).get(pid),
+        "release": rk, "release_product": relv.get("product"), "release_iteration": relv.get("iteration"),
+        "release_kind": relv.get("kind"), "fingerprint": fpr.get("fingerprint"),
+        "fingerprint_hex": fpr.get("hex"),
+        "checks": dict(d.get("checks") or {}),
+        "div": dict(d.get("capability_divisibility") or {}),
+        "cont": dict(d.get("capability_containment") or {}),
+        "sha16": _sha16(PRODUCT_J),
+    })
+    # 交叉核对: 用 prime_structure 把同一批值独立回算 (页面显示的仍是真源写下的值)
+    PS = _ps_module()
+    if PS is not None:
+        out["ps"] = True
+        try:
+            prim = set(getattr(PS, "PRIMITIVE_PRIMES", {}) or {})
+            stg = set(getattr(PS, "STAGE_PRIMES", {}) or {})
+            out["n_prim"] = len([x for x in caps if x in prim])
+            out["n_stage"] = len([x for x in caps if x in stg])
+            out["cap_signature_verified"] = bool(out["cap_signature"] == PS.cap_signature_of(pid))
+            out["fingerprint_verified"] = bool(
+                out["fingerprint"] == PS.fingerprint(str(relv.get("product") or pid),
+                                                     int(relv.get("iteration") or 1))["fingerprint"])
+            sigs = {k: PS.signature(list((prods[k] or {}).get("capabilities") or []), "cap") for k in prods}
+            out["div_verified"] = {k: bool(sigs.get(k.split("|")[1], 0) % max(1, sigs.get(k.split("|")[0], 1)) == 0)
+                                   for k in (out["div"] or {})} or None
+            fps = [v.get("fingerprint") for v in (d.get("fingerprints") or {}).values()]
+            out["uniq_verified"] = bool(len(set(fps)) == len(fps))
+            out["n_fingerprints"] = len(fps)
+        except Exception as e:                                                  # noqa: BLE001
+            out["ps_error"] = "%s: %s" % (type(e).__name__, e)
+    return out
+
+
+def _write_active_product(pid):
+    """把 active_product **原子写回**真源 (临时文件 + os.replace, 不留半截文件) → 回读确认。
+
+    返回 (ok, 回读值, 错误说明)。除 active_product 一个键外, 真源其它内容逐字节保持 (读改写)。
+    """
+    if pid not in PRODUCT_IDS:
+        return False, None, "产品号 %r 不在 %s" % (pid, list(PRODUCT_IDS))
+    try:
+        with io.open(PRODUCT_J, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception as e:                                                      # noqa: BLE001
+        return False, None, "真源读不出: %r" % (e,)
+    if (d.get("products") or {}) and pid not in (d.get("products") or {}):
+        return False, None, "真源 products 里没有 %s" % pid
+    if str(d.get("active_product")) == pid:
+        return True, pid, "已是当前产品 (无需改写)"
+    d["active_product"] = pid
+    tmp = "%s.tmp.%d" % (PRODUCT_J, os.getpid())
+    try:
+        with io.open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)      # 与真源既有格式一致 (无多余改动, 便于 diff)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, PRODUCT_J)                    # 原子替换: 要么旧文件, 要么新文件, 无半截
+    except Exception as e:                                                      # noqa: BLE001
+        try:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return False, None, "写盘失败: %r" % (e,)
+    back = str((_j(PRODUCT_J, {}) or {}).get("active_product"))     # 回读确认 (不信内存)
+    return (back == pid), back, None
+
+
+class _CopyLabel(QLabel):
+    """产品配置区的**可复制**值标签: 双击 / 右键菜单复制; 自动换行 ⇒ 窄窗不截断。
+
+    · 显示文本 (text) 可以是大整数截断形式, 但 **完整值** 存在 .full_value (复制的是完整值);
+    · 判据可直接读 .full_value 与真源/prime_structure 回读值比对。
+    """
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.full_value = text
+        self.key_text = ""
+        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.setWordWrap(True)                        # 窄窗换行, 字一个不丢
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
+        self.setToolTip("双击这一行 = 复制**完整值**; 也可右键 → 复制")
+
+    def set_value(self, shown, full=None):
+        """shown = 界面显示 (可截断), full = 完整值 (复制/tooltip/判据用)。"""
+        self.full_value = str(full if full is not None else shown)
+        self.setText(str(shown))
+        self.setToolTip("完整值: %s\n(双击这一行 = 复制完整值)" % self.full_value)
+
+    def _copy(self):
+        try:
+            QApplication.clipboard().setText(self.full_value)
+            return True
+        except Exception:                                                       # noqa: BLE001
+            return False
+
+    def _copy_pair(self):
+        try:
+            QApplication.clipboard().setText("%s: %s" % (self.key_text, self.full_value))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _menu(self, pos):
+        m = QMenu(self)
+        m.addAction("📋 复制值").triggered.connect(self._copy)
+        m.addAction("📋 复制「字段名: 值」").triggered.connect(self._copy_pair)
+        m.exec_(self.mapToGlobal(pos))
+
+    def mouseDoubleClickEvent(self, ev):
+        if self._copy():
+            ev.accept()
+            return
+        super().mouseDoubleClickEvent(ev)
+
+
 class ConfigCenterPage(QWidget):
     """左五域树 + 右工作区 (首屏=任务配置) + 底部结果面板。"""
 
@@ -878,6 +1062,15 @@ class ConfigCenterPage(QWidget):
         doms.append((f"工艺·工单  任务 {len(tk.get('tasks', []))}",
                      "⛔" if (tk.get("tasks") and any(t.get("blocked_by_site") for t in tk["tasks"])) else "✅",
                      [t["task_id"] for t in tk.get("tasks", [])]))
+        # 🏷 产品配置 (2026-10-13 老倪: 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力)
+        try:
+            _pv = _product_view()
+            _nm = _pv.get("names") or {}
+            doms.append((f"产品配置  当前 {_pv.get('active') or '—'}",
+                         "⛔" if _pv.get("error") else "✅",
+                         [_nm.get(p, p) for p in PRODUCT_IDS]))
+        except Exception:                                                       # noqa: BLE001
+            pass
         self.tree.clear()
         for label, mark, kids in doms:
             it = QTreeWidgetItem([f"{mark} {label}"])
@@ -955,6 +1148,7 @@ class ConfigCenterPage(QWidget):
     #   口径: 独立窗口**每次打开/每次轮询都重读磁盘真源**, 不吃构造时的内存副本; 指纹用于跨窗口核验。
     _SRC_FILES = ("config/tasks/tasks.json", "config/ss_task_binding.json", "config/topics/scene_tags.json",
                   "config/platform/zmax_perf_spec.json", "config/mcd/zmax_mcd.json",
+                  "config/platform/zmax_product.json",
                   "data/database/zmax/zmax_engineering.db")
 
     def source_fingerprint(self):
@@ -976,6 +1170,10 @@ class ConfigCenterPage(QWidget):
             self._reload_task_states()
         except Exception as e:                                                   # noqa: BLE001
             self._log_cc("   ⚠ 重读真源时任务表刷新失败: %r" % (e,))
+        try:
+            self._refresh_product_view(silent=True)     # 🏷 产品配置区跟着真源走 (回读, 不自算)
+        except Exception as e:                                                   # noqa: BLE001
+            self._log_cc("   ⚠ 重读真源时产品配置区刷新失败: %r" % (e,))
         fp = self.source_fingerprint()
         self._log_cc("   🔗 已与真源对齐: " + " · ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in fp.items()))
         return fp
@@ -1078,6 +1276,19 @@ class ConfigCenterPage(QWidget):
 
     def _on_tree(self, item, _col):
         txt = item.text(0)
+        # 🏷 产品配置 (2026-10-13): 点左树 → 切到「产品配置」页 (只切页/只读, 不写真源 —— 写盘只在单选按钮上)
+        if "产品配置" in txt or re.search(r"550[ABC]", txt):
+            _i = self._tab_index_by_title("产品配置")
+            if _i >= 0:
+                self.tabs.setCurrentIndex(_i)
+            if re.search(r"550[ABC]", txt):
+                self.out.setPlainText(
+                    "🏷 产品配置: %s\n"
+                    "   切产品请在「🏷 产品配置」页的**单选按钮**上点选 (点选即原子写回真源 %s 的 active_product, "
+                    "写完回读确认)。\n   本页右侧的值全部是从真源回读的, 双击/右键/📋 可复制完整值。"
+                    % (txt.strip(), REL_PRODUCT))
+                self._fit_out()
+            return
         if "文档" in txt or "SOR" in txt or "立项" in txt or "协议" in txt or "一致性" in txt:
             if "一致性" in txt or "文档配置" in txt:
                 self._show_consistency()
@@ -1110,6 +1321,189 @@ class ConfigCenterPage(QWidget):
         if "任务配置" in txt or "工艺" in txt:
             self.tabs.setCurrentIndex(0)
         self._run_into("tasks" if "TASK" in txt.upper() else "overview")
+
+    # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
+    _PROD_ROWS = ("产品", "版本段", "产品质数", "能力数", "能力质数签名", "当前发布指纹", "质数结构自检")
+
+    def _product_card(self, th):
+        """🏷 产品配置区 —— 三个产品**单选** + 右侧**真源回读**值 (可复制)。
+
+        老倪 2026-10-13: 「流形引擎节点要一眼认出是系统核心 —— 给它加产品标识 (550A/550B/550C)
+        与空间质数结构化理解能力的输出」⇒ 配置中心这边给产品配置区:
+          · 选中即**原子写回**真源 config/platform/zmax_product.json 的 active_product (临时文件 + os.replace);
+          · 右边显示 版本段 / 产品质数 / 能力数 / 能力质数签名(截断) / 当前发布指纹(截断) /
+            质数结构自检(唯一性 + 整除关系) —— 每个值都**从真源回读**, 不是界面自算的副本;
+          · 显示可复制 (双击 / 右键菜单 / 📋 按钮, 复制的是**完整值**);
+          · 窄窗 1280 完整可见: 值标签自动换行 (不截断), 每个字段一行 + 一个 📋 按钮。
+        """
+        card = QWidget()
+        card.setObjectName("productConfigCard")
+        card.setStyleSheet(f"background:{th['C_CARD']};border:1px solid {th['C_BORDER']};border-radius:6px;")
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(10, 8, 10, 8)
+        cv.setSpacing(6)
+
+        ttl = QLabel("🏷 产品配置 —— 产品标识 (550A 原创版 / 550B 标定版 / 550C 量产版)"
+                     " + 空间质数结构化理解能力")
+        ttl.setFont(QFont("Consolas", 11, QFont.Bold))
+        ttl.setWordWrap(True)
+        ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
+        cv.addWidget(ttl)
+        sub = QLabel("选一个产品 = 原子写回真源 %s 的 active_product (临时文件 + 替换, 不留半截文件); "
+                     "右侧每个值都是从真源**回读**的 (不是界面自算的副本), 双击/右键/📋 复制完整值。"
+                     "产品标识由流形引擎节点输出 (链路缓存 mani_product.product_id)。" % REL_PRODUCT)
+        sub.setFont(QFont("Consolas", 9))
+        sub.setWordWrap(True)
+        sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
+        cv.addWidget(sub)
+
+        # ① 三产品单选 (选中 → 写回真源 active_product)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        self._prod_group = QButtonGroup(self)
+        self._prod_group.setExclusive(True)
+        self._prod_btns = {}
+        for pid in PRODUCT_IDS:
+            rb = QRadioButton(pid)
+            rb.setObjectName("productRadio_%s" % pid)
+            rb.setFont(QFont("Consolas", 10))
+            rb.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;spacing:6px;")
+            rb.toggled.connect(lambda ck, _p=pid: self._on_product_pick(_p, ck))
+            self._prod_group.addButton(rb)
+            self._prod_btns[pid] = rb
+            row.addWidget(rb)
+        row.addStretch()
+        b_rl = _btn("🔄 重新读取真源", th)
+        b_rl.setToolTip("不写盘, 只把下面的只读值按真源重读一遍")
+        b_rl.clicked.connect(lambda: self._refresh_product_view(silent=False))
+        row.addWidget(b_rl)
+        cv.addLayout(row)
+
+        # ② 只读回读值 (每行一个字段 + 可复制标签 + 📋)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(3)
+        self._prod_val = {}
+        for i, k in enumerate(self._PROD_ROWS):
+            lab = QLabel(k)
+            lab.setFont(QFont("Consolas", 9))
+            lab.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
+            val = _CopyLabel("—")
+            val.key_text = k
+            val.setFont(QFont("Consolas", 10))
+            val.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
+            bcp = _btn("📋", th)
+            bcp.setFixedWidth(36)
+            bcp.setToolTip("复制「%s」的完整值" % k)
+            bcp.clicked.connect(lambda _, _k=k: self._copy_field(_k))
+            self._prod_val[k] = val
+            grid.addWidget(lab, i, 0)
+            grid.addWidget(val, i, 1)
+            grid.addWidget(bcp, i, 2)
+        grid.setColumnStretch(1, 1)
+        cv.addLayout(grid)
+
+        self._prod_src = QLabel("真源: —")
+        self._prod_src.setFont(QFont("Consolas", 8))
+        self._prod_src.setWordWrap(True)
+        self._prod_src.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
+        cv.addWidget(self._prod_src)
+        cv.addStretch()
+        self._prod_card = card
+        self._prod_shown_active = None
+        self._refresh_product_view(silent=True)          # 构造即回读真源 (不显示空壳)
+        return card
+
+    def _refresh_product_view(self, silent=True):
+        """按真源重读产品配置并刷新界面 (只读, 不改真源)。返回本次读到的那份 (判据/日志可查)。"""
+        v = _product_view()
+        self._prod_last = v
+        names = v.get("names") or {}
+        for pid in PRODUCT_IDS:
+            rb = (getattr(self, "_prod_btns", {}) or {}).get(pid)
+            if rb is None:
+                continue
+            nm = str(names.get(pid) or "").strip()
+            rb.setText(nm if nm.startswith(pid) else ("%s %s" % (pid, nm) if nm else pid))
+            rb.blockSignals(True)                    # 程序回填不触发写盘 (防写—读回环)
+            rb.setChecked(pid == v.get("active"))
+            rb.blockSignals(False)
+        self._prod_shown_active = v.get("active")
+        vals = getattr(self, "_prod_val", {}) or {}
+        if not vals:
+            return v
+        if v.get("error"):
+            for k in self._PROD_ROWS:
+                vals[k].set_value("⛔ " + str(v["error"]))
+            self._prod_src.setText("真源: %s (读不出 ⇒ 如实报缺, 不造数)" % v["src"])
+            return v
+        vals["产品"].set_value("%s — %s" % (v.get("active"), v.get("product_name")))
+        vals["版本段"].set_value(v.get("version_segment"))
+        vals["产品质数"].set_value(v.get("prime"))
+        n_prim, n_stage = v.get("n_prim"), v.get("n_stage")
+        vals["能力数"].set_value("%s 项%s" % (v.get("n_caps"),
+                                            (" (元数据基元 %s + 阶段 %s)" % (n_prim, n_stage))
+                                            if n_prim is not None else ""))
+        vals["能力质数签名"].set_value("%s%s" % (_cut_big(v.get("cap_signature")),
+                                               _vmark(v.get("cap_signature_verified"))),
+                                      v.get("cap_signature"))
+        vals["当前发布指纹"].set_value(
+            "%s · %s%s" % (_cut_big(v.get("fingerprint")),
+                           "发布 %s (迭代 %s · %s)" % (v.get("release"), v.get("release_iteration"),
+                                                       v.get("release_kind")),
+                           _vmark(v.get("fingerprint_verified"))),
+            v.get("fingerprint"))
+        ck = v.get("checks") or {}
+        dv = v.get("div") or {}
+        dvv = v.get("div_verified") or {}
+
+        def _cmp(x):
+            return "一致" if x else ("不符" if x is False else "未核对")
+
+        uniq = "唯一性 %s (%s/%s 指纹互不相等 · 回算%s)" % (
+            "✅" if ck.get("all_fingerprints_distinct") else "❌",
+            ck.get("n_fingerprints"), v.get("n_fingerprints"), _cmp(v.get("uniq_verified")))
+        div_txt = " · ".join("%s %s%s" % (k, "✅" if dv.get(k) else "❌",
+                                          "" if (not dvv or dvv.get(k) == dv.get(k)) else "(回算不符)")
+                             for k in sorted(dv)) or "—"
+        vals["质数结构自检"].set_value("%s · 整除 %s" % (uniq, div_txt))
+        self._prod_src.setText("真源: %s · schema %s · 更新 %s · 文件 sha256[:16] %s · prime_structure 交叉回算 %s"
+                               % (v["src"], v.get("schema"), v.get("updated"), v.get("sha16"),
+                                  "✅ 可用" if v.get("ps") else "⚠ 不可用 (只显真源回读值)"))
+        if not silent:
+            self._log_cc("🏷 产品配置已按真源重读: active=%s · 产品质数 %s · 能力 %s 项 · 能力质数签名 %s · 指纹 %s"
+                         % (v.get("active"), v.get("prime"), v.get("n_caps"),
+                            _cut_big(v.get("cap_signature")), _cut_big(v.get("fingerprint"))))
+        return v
+
+    def _on_product_pick(self, pid, checked):
+        """勾选产品 → **原子写回**真源 active_product → 回读确认 → 刷新只读值 (失败如实报)。"""
+        if not checked or pid == getattr(self, "_prod_shown_active", None):
+            return
+        ok, back, err = _write_active_product(pid)
+        if ok:
+            self._log_cc("🏷 产品已切到 %s — 真源 %s 回读 active_product=%s" % (pid, REL_PRODUCT, back))
+        else:
+            self._log_cc("⛔ 产品切换失败 (真源未改): %s" % (err or "未知原因"))
+        self._refresh_product_view(silent=True)
+        try:
+            self.out.append("%s 产品配置: 选中 %s → %s (真源回读 active_product=%s)"
+                            % ("✅" if ok else "⛔", pid, "已写回真源" if ok else ("未写: %s" % (err or "")), back))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _copy_field(self, key):
+        """📋 按钮: 复制某字段的**完整值** (界面显示可能截断, 复制的不截断)。"""
+        lb = (getattr(self, "_prod_val", {}) or {}).get(key)
+        if lb is None:
+            return False
+        try:
+            QApplication.clipboard().setText(lb.full_value)
+            self._log_cc("📋 已复制「%s」= %s" % (key, lb.full_value))
+            return True
+        except Exception as e:                                                  # noqa: BLE001
+            self._log_cc("⛔ 复制失败: %r" % (e,))
+            return False
 
     # ── 右侧页签 ──
     def _ar_pts_card(self, th, tk):
@@ -1522,6 +1916,20 @@ class ConfigCenterPage(QWidget):
             "  三份文档同源: 都读 data/database/zmax/zmax_engineering.db + config/platform/*.json, 不手抄数字。")
         l8.addWidget(self.preview, 1)
         self.tabs.addTab(w8, "📄 文档预览")
+
+        # 9) 🏷 产品配置 (2026-10-13 老倪: 流形引擎是系统核心 ⇒ 产品标识 550A/B/C + 空间质数结构化理解能力)
+        #    加在**末尾**: 保持既有页签序号不变 (「记住上次那一页」存的是序号 zmax_data/cc_last_tab.txt)
+        w9 = QWidget()
+        l9 = QVBoxLayout(w9)
+        l9.setContentsMargins(6, 6, 6, 6)
+        try:
+            l9.addWidget(self._product_card(th))
+        except Exception as _e9:                                                # noqa: BLE001
+            _lb9 = QLabel("⛔ 产品配置区构造失败: %r" % (_e9,))
+            _lb9.setWordWrap(True)
+            l9.addWidget(_lb9)
+        l9.addStretch()
+        self.tabs.addTab(w9, "🏷 产品配置")
 
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
         try:

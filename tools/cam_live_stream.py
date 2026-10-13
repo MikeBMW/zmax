@@ -2078,6 +2078,31 @@ def _put_aoi_pair(port: int, name: str, bgr) -> None:
             _put(name + "_raw", fj, time.time(), 0.0, src_age_s=0.0)
 
 
+_SURFACE_RECT_JUDGE = os.environ.get("ZMAX_AOI_SURFACE_RECT", "1") != "0"
+_SURFACE_META: dict = {}
+
+
+def _surface_rect_pair(bgr):
+    """🏭 10083 侧面「本机判据图」口径: **搜索矩形刚体 → 纯旋转摆正 → 按真实尺寸裁剪**。
+
+    为什么要这一层(老倪 2026-10-13: 「判据图还是显示原图, 不对」):
+      工控机 `GET /picture?kind=judge` 会**退化** —— 程序没在画面里找到模块时回的是
+      `Surface_Letterbox_W1280_H1280_No_<n>.png`(整幅 letterbox 规范图, 且可能是几小时前的旧图)
+      ⇒ 那一格直通显示它 = 看着就是"判据图=整幅原图"。
+      ⇒ 改从 `kind=origin`(2448×2048 原图) 本机自己搜框 + 摆正 + 裁剪: 判据图口径由我们保证。
+    宁缺勿假: 找不到合规刚体(矩形度 <0.45) ⇒ 返回 (None, 原图+原因, meta), 调用方回落原样(不伪造)。
+    """
+    try:
+        from aoi_surface_rect import surface_judge
+    except Exception as e:                                                        # noqa: BLE001
+        return None, None, {"ok": False, "why": "aoi_surface_rect 导入失败: %s" % str(e)[:80]}
+    try:
+        crop, ov, meta = surface_judge(bgr, out_long=1400)
+        return crop, ov, meta
+    except Exception as e:                                                        # noqa: BLE001
+        return None, None, {"ok": False, "why": "surface_judge 异常: %s" % str(e)[:100]}
+
+
 def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 clean: bool = True, verdict: bool = True, full_name: str = "",
                 full_kind: str = "", full_every: int = 0) -> None:
@@ -2119,6 +2144,22 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         if code == 200 and raw:
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if bgr is not None:
+                # 🆕 2026-10-13 老倪: 「判据图还是显示原图, 不对 / 刚体在图像里是垂直角度」⇒ 10083 改**本机口径**:
+                #   从 kind=origin 原图**搜索矩形刚体 → 纯旋转摆正 → 按真实尺寸裁剪** ⇒ 判据图那格出摆正后的刚体;
+                #   整板原图那格 = 原图 + 搜索到的矩形(绿框/四角/倾角标注), 供对照。
+                #   找不到合规刚体(矩形度 <0.45) ⇒ 不伪造: 该格保留原样并如实报 why。
+                #   置 ZMAX_AOI_SURFACE_RECT=0 一键回退旧口径(kind=judge 直通)。
+                _surf_crop = None
+                if port == 10083 and _SURFACE_RECT_JUDGE:
+                    _surf_crop, _surf_ov, _sm = _surface_rect_pair(bgr)
+                    _SURFACE_META[int(port)] = _sm
+                    if _surf_crop is not None:
+                        bgr = _surf_crop                      # ⇒ 判据图 = 摆正后的刚体
+                        clean = False
+                    if _surf_ov is not None and full_name:
+                        _fj = _aoi_full_frame(_surf_ov)
+                        if _fj:
+                            _put(full_name, _fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 # 2026-09-28: 金手指那格走"原比例 + 去倾角"(老倪: 要矩形、不能有角度)
                 # 2026-09-28 老倪: 「工控机拍摄的照片与你的金手指判据图不一样, 要跟判据图保持一致」
                 #   金手指已改为直接取工控机自己的判据图(kind=crop) ⇒ 本地**一律不再加工**
@@ -2133,13 +2174,14 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                                         fix_hw=((900, 332) if _nat else None))
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
-                if full_name and not full_kind:            # 整板缩图 (面板上可切换到这一张)
-                    fj = _aoi_full_frame(bgr)
+                if full_name and not full_kind and not (port == 10083 and _SURFACE_RECT_JUDGE):
+                    fj = _aoi_full_frame(bgr)   # 10083 本机口径时, 该槽已放"原图+搜索框"(见上)
                     if fj:
                         _put(full_name, fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 _aoi_note(port, ok=True, src=name, url=_req_url, http=code, kb=round(len(raw) / 1024.0, 1),
                           shape=[int(bgr.shape[0]), int(bgr.shape[1])], err="", live=bool(_watching),
                           deglare=bool(port == 10083 and _SURFACE_DEGLARE),
+                          local_rect=(_SURFACE_META.get(int(port)) if port == 10083 else None),
                           src_frame_age_s=(round(_src_age, 1) if _src_age is not None else None))
             else:
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
@@ -5427,8 +5469,8 @@ def main():
         #     整板原图 = 低频取 kind=origin(原图缩图) ⇒ /aoi_surface_raw.mjpg。
         #   模型输入那张(1280 全幅规范图)不受影响, 仍可在 /aoi_surface_modelin.png 看。
         threading.Thread(target=_aoi_worker,
-                         args=(10083, "aoi_surface", args.aoi_fps, "judge", False, True,
-                               "aoi_surface_raw", "origin", 3),
+                         args=(10083, "aoi_surface", args.aoi_fps, "origin", False, True,
+                               "aoi_surface_raw", "", 0),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(**口径感知**: canonical=本地 原比例+去倾角+3×→900×332 · "
               f"same=直接显示工控机送检那张 kind=crop, 零本地加工; 另推 /aoi_gold_anno.mjpg = 判据图+检测框) "

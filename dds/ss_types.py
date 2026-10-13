@@ -258,3 +258,39 @@ class SSEnergy(IdlStruct, typename="zmax::SSEnergy"):
     criterion: str = ""               # 能量口径 (CJ 定义)
     source: str = ""                  # 数据来源 (日志/话题/tap)
     note: str = ""
+
+
+@dataclass
+class SSDrivingTorque(IdlStruct, typename="zmax::SSDrivingTorque"):
+    """驱动扭矩 T_drive = M·(−∇Φ) —— 流形引擎在度量张量 M 下沿势场负方向产生的驱动力
+
+    口径 (老倪 2026-10-13 命名): 转动惯量 I ↔ 度量张量 M; 角加速度 α ↔ 负梯度 −∇Φ; T = M·(−∇Φ)。
+      · torque     6D = M·(−∇Φ)  (M 作用在 6D 梯度上, 后 3 维平移为真实势场分量)
+      · torque_inv 6D = M⁻¹·(−∇Φ) (分量定义式 T^i = M^{ij}·(−∂_j Φ), 与 torque 成对给出)
+      · unit       N·m (按真源标定口径; 未做扭矩计量学标定 —— 见 unit_note)
+      · metric_tensor 36 = 6×6 主参数 M (真源 config/calib/zmax_manifold.json)
+      · potential_gradient 6D ∇Φ (前 3 维旋转恒 0: 当前势场只定义在平移子空间, 如实标注)
+      · health/status/gain: 健康度 >0.5 正常; 0.1~0.5 良好; 0.01~0.1 警告(×0.5); <0.01 危险(×0.0)
+    """
+    ts: float64 = 0.0
+    node: str = ""
+    scene: str = ""
+    stage: str = ""
+    skill: str = ""
+    torque: sequence[float64] = field(default_factory=list)
+    torque_norm: float64 = 0.0
+    torque_inv: sequence[float64] = field(default_factory=list)
+    unit: str = "N·m"
+    metric_tensor: sequence[float64] = field(default_factory=list)
+    metric_dim: int32 = 0
+    potential_gradient: sequence[float64] = field(default_factory=list)
+    neg_gradient: sequence[float64] = field(default_factory=list)
+    phi: float64 = 0.0
+    health: float64 = -1.0
+    status: str = ""
+    gain: float64 = 1.0
+    x: sequence[float64] = field(default_factory=list)
+    gates: str = ""
+    source: str = ""
+    unit_note: str = ""
+    note: str = ""

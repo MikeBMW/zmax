@@ -203,6 +203,25 @@ TOPICS = {
                        "发动机类比: 输入功率 P_in / 转速 ω / 扭矩 τ=P每循环做功 / 能量 E=τ·N / 效率 η=E/W_in。"
                        "1 CJ ≜ 把归一化势能下降 1.0 的能力 (逐层同口径); 总能量 E_total = Σ(存量+做功)"),
     },
+    "ss_torque": {
+        "type": "zmax::SSDrivingTorque", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/manifold_engine/driving_torque",   # 老倪 2026-10-13 规格里的 ROS 话题名
+        "producer": "流形引擎驱动扭矩发布器 tools/tdrive_bus.py → tap "
+                    "zmax_data/ss_live/torque_*.jsonl (真源主参数 M + 真实势场 −∇Φ 逐帧算)",
+        "consumers": ["实时监控 (📈 全局数据空间信号源)", "控制台 数据空间页", "L2 执行层 (限幅后)", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "torque[6]", "torque_norm", "torque_inv[6]", "unit", "metric_tensor[36]",
+                       "metric_dim", "potential_gradient[6]", "neg_gradient[6]", "phi", "health",
+                       "status", "gain", "x[3]", "gates", "source", "unit_note"],
+        "quality": ["freshness", "finite", "unit", "no_zero_fake", "metric_definite",
+                    "torque_matches_definition", "health_gain_consistent"],
+        "provenance": ("T_drive = M·(−∇Φ): M = 主参数度量张量真源 (config/calib/zmax_manifold.json, dim6); "
+                       "−∇Φ = 真实势场负梯度 (src/lerobot/memory/potential_field.py 解析梯度: "
+                       "L2 肌肉记忆技能场 + L3 流程场 + L4 障碍/世界项, 按逐层开关合成, 全关 ⇒ 零不干预)。"
+                       "转动惯量 I ↔ M, 角加速度 α ↔ −∇Φ (老倪 2026-10-13 规格)。"
+                       "通道: 规格三通道 1000Hz 电机 / 100Hz 监控 / 10Hz 数据 —— **当前只接 10Hz 数据通道**, "
+                       "100Hz/1000Hz 未接 (无实时消费者, 如实标注, 不得当作已实现)。"),
+    },
     "ds_dataset": {
         "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
         "area": "数据集", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
@@ -290,12 +309,12 @@ TOPICS = {
 #    tools/gui/zmax_telemetry.py::MODE_TOPICS —— 两处手工同步, 收口后本表为准。
 MODE_TOPICS = {
     "prod":  [],
-    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
+    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy"],
+              "ss_plan", "ss_energy", "ss_torque"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
-              "ss_diag", "ss_test", "ss_plan", "ss_energy"],
+              "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -325,6 +344,8 @@ PRODUCERS = {
     "流形引擎能量探针": {"unit": None, "path": "tools/manifold_energy_probe.py",
                         "publishes": ["ss_energy"],
                         "note": "写 tap zmax_data/ss_live/energy_*.jsonl; 由 ss_daemon 转发上 DDS"},
+    "流形引擎驱动扭矩发布器": {"unit": "tools/tdrive_bus.py (前台/常驻, 10Hz)", "path": "/home/ubuntu/zmax/tools/tdrive_bus.py",
+                        "publishes": ["ss_torque"], "source": "真源 M (config/calib/zmax_manifold.json) × 真实 −∇Φ (potential_field 解析梯度)"},
     "DDS→relay 汇聚器": {"unit": "zmax-dds-agg.service", "path": "/home/ubuntu/zmax/dds_aggregator.py",
                         "publishes": [], "subscribes": ["hw_state", "train_prog", "heartbeat"]},
     "画布连线总线": {"unit": None, "path": "tools/gui/dds_link_bus.py",
@@ -428,6 +449,10 @@ QUALITY_RULES = {
     "sum_consistent":   "E_total == Σ 各层 (存量+做功), 容差 1e-9 (逐位可核 ⇒ 总量不靠估)",
     "shell_monotonic":  "能级壳层 E_cum 单调不减 (能级越高总能量越大 = 壳层扩展律)",
     "feasible_narrowing": "可行域半径逐层收窄 R_L2 ≥ R_L3 ≥ R_L4 ≥ R_L5 (权限向上收窄律)",
+    # ── 驱动扭矩 T_drive=M·(−∇Φ) (2026-10-13) ──
+    "metric_definite":  "主参数 M 必须对称正定 (6×6, 特征值>0) 才允许发扭矩",
+    "torque_matches_definition": "torque == M·(−∇Φ) 且 torque_inv == M⁻¹·(−∇Φ) (用报文体自带的 M/∇Φ 独立复算, 容差 1e-9)",
+    "health_gain_consistent": "gain 必须与 status 一致 (normal=1.0 / warning=0.5 / critical=0.0), 不许自行放宽",
     "eta_sign":         "效率 η = E_total/W_in ≥ 0; W_in ≤ 0 时必须报 -1(未测), 不许用 0 冒充",
 }
 

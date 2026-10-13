@@ -2275,7 +2275,7 @@ def _ss_ensure_obs43(log):
     return obs43
 
 def node_ss_s1(ctx):
-    """融合定位 — 📡 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量: fuse_sensors() → 统一状态空间 43D (perception.py)
+    """融合定位建图 — 📡 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量: fuse_sensors() → 统一状态空间 43D (perception.py); 兼做建图 (manifold/localization_mapping.py)
     🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
     log = ctx.get("log")
     try:
@@ -2292,12 +2292,12 @@ def node_ss_s1(ctx):
         obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
         _SS_STATE.update({"obs43": obs43, "obs39": obs39})
         if log:
-            log(f"📡 融合定位 (真实): 视觉39D ⊕ 触觉4D → 统一状态空间 43D · hand={np.round(obs39[0:3],3)} "
+            log(f"📡 融合定位建图 (真实): 视觉39D ⊕ 触觉4D → 统一状态空间 43D · hand={np.round(obs39[0:3],3)} "
                 f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ 融合定位真实执行失败: {e}")
+            log(f"⚠️ 融合定位建图真实执行失败: {e}")
         return False
 
 def node_ss_s2(ctx):
@@ -2728,7 +2728,7 @@ _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
 
 _reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 
-_reg("ss_sensor", ["传感器融合", "融合定位"], "📡 融合定位 — 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量 → 统一状态空间 43D obs (源码 perception.py fuse_sensors)", node_ss_s1)
+_reg("ss_sensor", ["传感器融合", "融合定位建图", "融合定位"], "📡 融合定位建图 — 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量 → 统一状态空间 43D obs; 兼做建图 (源码 manifold/localization_mapping.py)", node_ss_s1)
 
 # 🧩 2026-09-20: VEH.5.041「统一状态」= SU(2) 群节点 (43D 拼接语义保留在 📡传感器融合)
 #   key 仍用 ss_obs (与画布节点 id ssobs 对齐, 避免与 ss_su2 重复注册歧义)
@@ -4836,14 +4836,194 @@ _EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridg
 #   数据真源: module._ss_tr 当前帧 obs43 (与 ▶运行/单步 同源) · 标定 models/manifold_engine.npz
 #   ⚠ 只读旁路: 结果进 _SS_STATE/日志, **不下发动作** (动作须人工授权)
 # ══════════════════════════════════════════════════════════════════════════════
+class _NodeOut(dict):
+    """流形引擎节点的**返回字典** (含产品标识 / 结构理解各键)。
+
+    dict 语义照旧: 本函数原先返回 True/False, 现改成字典 —— 用 __bool__ 保住老语义
+    (真跑成功=真, 失败=假), 因此画布双击/单步/播放对返回值的判断与改造前一致。
+    """
+
+    def __bool__(self):
+        return bool(self.get("ok", True))
+
+
+_PRODUCT_J = os.path.join(_REPO_ROOT, "config", "platform", "zmax_product.json")
+
+
+def _mani_product_block(ctx, log=None, g=None, step=1):
+    """🏷 产品标识 + 空间质数结构化理解能力 (流形引擎 · 理解层对接)。
+
+    口径 (与 config/platform/zmax_product.json 同源, 数值全部**回读真源**, 绝不写死):
+      ① 产品标识 product_id — 真源 active_product 回读 (550A 原创版 / 550B 标定版 / 550C 量产版);
+      ② 产品名 + 版本段    — 同一真源 products.<产品> 回读;
+      ③ 能力集合 + 能力质数签名 cap_signature — 真源能力清单 → prime_structure 的唯一分解编码
+         (算术基本定理 ⇒ 该整数与"用了哪些原子、各几次"一一对应, 可逆、可比对);
+      ④ 当前发布指纹 fingerprint — 真源指纹台账里迭代序号最大的那次发布 (= 当前发布), 仍回读真源;
+         并回算核对一次 (真源写下的值 == prime_structure 重算值), 对不上如实标 False, 不掩盖;
+      ⑤ 结构化理解输出 — 把"当前结构" (当前产品能力里的元数据基元 + 本帧所处工序阶段) 交给
+         prime_structure.understand ⇒ signature / known / seen_structures / novel_events / evolution_input
+         (未见结构 = 自主进化的输入; 记忆真源 zmax_data/manifold/prime_memory.json);
+      ⑥ 谱对称正则项 symmetry + 锚点稀疏度 + 采样课程当前值 — 都是只读正则: 度量张量不会被改写
+         (保正定与 det G = 1), 锚点稀疏度约束"哪些索引位允许固化", 课程用采样率表述 (质数步跳变)。
+    诚实边界: 谱条款在维数 > 2 时"精确对称"不可达, 只作偏离量正则 (见 prime_structure 的 note);
+    本块只读真源 + 记一次结构事件 (记忆库原子写), 不下发任何动作。
+    """
+    out = {"product_src": os.path.relpath(_PRODUCT_J, _REPO_ROOT)}
+    try:
+        import numpy as _np_p                                                        # noqa: F401
+        try:                                                    # 首选: 包内正常导入 (src 已在路径上)
+            from lerobot.manifold import prime_structure as _PS
+        except Exception:                                       # noqa: BLE001
+            import importlib.util as _ilu_p                     # 兜底: 按文件路径加载 (与几何层同一手法)
+            _spec_p = _ilu_p.spec_from_file_location(
+                "lerobot.manifold.prime_structure",
+                os.path.join(_REPO_ROOT, "src", "lerobot", "manifold", "prime_structure.py"))
+            _PS = _ilu_p.module_from_spec(_spec_p)
+            sys.modules["lerobot.manifold.prime_structure"] = _PS
+            _spec_p.loader.exec_module(_PS)
+        d = _PS.load_products()                                  # 真源回读 (每次读盘, 不吃内存副本)
+        pid = str(d.get("active_product") or _PS.active_product())
+        pr = (d.get("products") or {}).get(pid) or {}
+        caps = list(pr.get("capabilities") or [])
+        cap_sig = (d.get("capability_signatures") or {}).get(pid)
+        if cap_sig is None:                                      # 真源没登记 ⇒ 现算, 并标注来源
+            cap_sig = _PS.cap_signature_of(pid)
+        cap_sig = int(cap_sig)
+        # ④ 当前发布 = 真源 releases 里迭代序号最大的那条 (开发中版本也在册, 不写死版本号)
+        rels = d.get("releases") or {}
+        rel_key = max(rels, key=lambda k: int((rels[k] or {}).get("iteration", 0) or 0)) if rels else ""
+        relv = rels.get(rel_key) or {}
+        fp_row = (d.get("fingerprints") or {}).get(rel_key) or {}
+        fp = fp_row.get("fingerprint")
+        fp_ok = None
+        cap_sig_ok = None
+        try:
+            fp_ok = bool(fp == _PS.fingerprint(str(relv.get("product") or pid),
+                                               int(relv.get("iteration") or 1))["fingerprint"])
+            cap_sig_ok = bool(cap_sig == int(_PS.cap_signature_of(pid)))
+        except Exception:                                        # noqa: BLE001
+            fp_ok, cap_sig_ok = None, None
+        # ⑤ 当前结构 = 当前产品能力里的元数据基元 + 本帧所在工序阶段 (真跑轨迹里读, 无轨迹则只取基元)
+        prim_keys = set(getattr(_PS, "PRIMITIVE_PRIMES", {}) or {})
+        stage_keys = set(getattr(_PS, "STAGE_PRIMES", {}) or {})
+        mins = [x for x in caps if x in prim_keys]
+        stgs = [x for x in caps if x in stage_keys]
+        cur_stage, cur_idx = None, None
+        try:
+            _mod = ctx.get("module") if isinstance(ctx, dict) else None
+            _tr = getattr(_mod, "_ss_tr", None) if _mod is not None else None
+            _seq = list((_tr or {}).get("stage") or [])
+            if _seq:
+                cur_idx = int(min(max(0, int(getattr(_mod, "_ss_round", 0) or 0)), len(_seq) - 1))
+                _txt = str(_seq[cur_idx])
+                cur_stage = next((s for s in (getattr(_PS, "STAGE_IDS", []) or []) if s in _txt), None)
+        except Exception:                                        # noqa: BLE001
+            cur_stage, cur_idx = None, None
+        items = list(mins) + ([cur_stage] if cur_stage else [])
+        u = _PS.understand(items, product=pid)                    # 已知/未见比对 + 记事件 (原子写)
+        # ⑥ 只读正则三项
+        sym = {}
+        if g is not None:
+            try:
+                sym = dict(_PS.spectral_symmetry(g))              # 只读: 不改写度量张量
+            except Exception:                                     # noqa: BLE001
+                sym = {}
+        sym_name = "symmetry_gap" if "symmetry_gap" in sym else "symmetry"
+        sp = {}
+        srate = None
+        try:
+            _n = int(sym.get("dim") or (len(g) if g is not None else 64) or 64)
+            sp = dict(_PS.anchor_sparsity(_n))
+            srate = float(_PS.sample_rate(int(cur_idx or step or 1)))
+        except Exception:                                        # noqa: BLE001
+            sp, srate = {}, None
+        out.update({
+            "product_id": pid,
+            "product_name": pr.get("name"),
+            "version_segment": pr.get("version_segment"),
+            "product_prime": pr.get("prime"),
+            "active_product": str(d.get("active_product")),
+            "capabilities": caps, "n_capabilities": len(caps),
+            "n_primitives": len(mins), "n_stages": len(stgs),
+            "cap_signature": cap_sig, "cap_signature_src": "%s#capability_signatures.%s" % (out["product_src"], pid),
+            "cap_signature_verified": cap_sig_ok,
+            "release": rel_key, "release_product": relv.get("product"),
+            "release_iteration": relv.get("iteration"), "release_kind": relv.get("kind"),
+            "fingerprint": fp, "fingerprint_src": "%s#fingerprints.%s" % (out["product_src"], rel_key),
+            "fingerprint_verified": fp_ok,
+            "structure_items": items, "structure_stage": cur_stage, "structure_frame": cur_idx,
+            "understand": u,
+            "signature": u.get("signature"), "known": u.get("known"), "hits": u.get("hits"),
+            "seen_structures": u.get("seen_structures"), "novel_events": u.get("novel_events"),
+            "evolution_input": u.get("evolution_input"),
+            "symmetry": sym.get(sym_name), "symmetry_kind": sym_name,
+            "symmetry_gap_penalty": sym.get("gap_penalty"), "spectral_positive_definite": sym.get("positive_definite"),
+            "spectral_note": sym.get("note"),
+            "anchor_n": sp.get("n"), "anchor_allowed_count": sp.get("allowed_anchor_count"),
+            "anchor_density": sp.get("density"),
+            "sample_rate": srate, "sample_step": int(cur_idx or step or 1),
+            "prime_policy": "只读正则 (不改写度量张量; 与黎曼猜想无证明关系)",
+        })
+        if log:
+            log("🏷 产品标识: %s — %s (版本段 %s · 产品质数 %s) · 能力 %d 项 (基元 %d + 阶段 %d)"
+                % (out["product_id"], out["product_name"], out["version_segment"], out["product_prime"],
+                   out["n_capabilities"], out["n_primitives"], out["n_stages"]))
+            log("   🧬 能力质数签名 %s (%d 位) — %s (回读核对 %s)"
+                % (_cut_big(cap_sig), len(str(cap_sig)), out["cap_signature_src"],
+                   "✅ 与真源一致" if cap_sig_ok else ("❌ 不一致" if cap_sig_ok is False else "N/A")))
+            log("   🧾 当前发布 %s (迭代 %s · %s · 产品 %s) · 指纹 %s (回读核对 %s)"
+                % (rel_key, out["release_iteration"], out["release_kind"], out["release_product"],
+                   _cut_big(fp), "✅ 与真源一致" if fp_ok else ("❌ 不一致" if fp_ok is False else "N/A")))
+            log("   🧭 结构理解: 当前结构 %s → 签名 %s · 已知 %s · 记忆结构 %s 个 · 未见事件 %s 个 · 进化输入 %s"
+                % ("+".join(items) if items else "空", u.get("signature"), "是" if u.get("known") else "否",
+                   u.get("seen_structures"), u.get("novel_events"), "是" if u.get("evolution_input") else "否"))
+            log("   📐 谱对称正则 %s=%s (偏离量 %s · 正定 %s) · 锚点稀疏度 前 %s 位允许固化 %s 个 (%s)"
+                " · 采样课程 步 %s → 采样率 %s"
+                % (sym_name, out["symmetry"], out["symmetry_gap_penalty"], out["spectral_positive_definite"],
+                   out["anchor_n"], out["anchor_allowed_count"], out["anchor_density"],
+                   out["sample_step"], out["sample_rate"]))
+            log("   🔒 只读: 产品标识/结构理解进数据总线与日志, 不改画布节点/连线, 不下发动作")
+    except Exception as _e:                                      # noqa: BLE001
+        out["error"] = "%s: %s" % (type(_e).__name__, _e)
+        if log:
+            log("⚠️ 产品标识/结构理解层不可用 (流形引擎续跑): %r" % (_e,))
+    return out
+
+
+def _cut_big(n, head=18, tail=6):
+    """大整数显示口径: 前 head + … + 后 tail (完整值仍在返回字典里, 不丢精度)。"""
+    s = str(n)
+    return s if len(s) <= head + tail + 3 else "%s…%s(%d 位)" % (s[:head], s[-tail:], len(s))
+
+
 def node_ss_mani_eng(ctx):
-    """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)"""
+    """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)。
+
+    🏷 本节点同时是**产品标识**与**空间质数结构化理解能力**的输出口 (老倪 2026-10-13):
+      产品标识 (550A 原创版 / 550B 标定版 / 550C 量产版) 与版本段回读配置真源
+      config/platform/zmax_product.json 的 active_product; 能力集合由质数指纹给出唯一编码
+      (可逆分解, 无冗余); 当前发布指纹回读真源台账; 结构理解把"当前结构" (产品能力里的元数据
+      基元 + 本帧工序阶段) 与记忆库比对, 报出已知/未见 (未见结构 = 自主进化的输入); 并给
+      谱对称正则项 / 锚点稀疏度 / 采样课程当前值 (只读, 不改写度量张量)。
+      返回 dict (见 _mani_product_block): product_id / version_segment / cap_signature / fingerprint /
+      understand{signature,known,seen_structures,novel_events,evolution_input} / symmetry / anchor_* /
+      sample_rate; 另带 ok = 本节点真跑成功与否 (与改造前的 True/False 同义)。
+    """
     log = ctx.get("log")
+
+    def _ret(ok):
+        """返回**结果字典** (含 ok=本节点真跑成功与否, 与改造前的 True/False 同义)。"""
+        _d = dict(_prod if isinstance(_prod, dict) else {})
+        _d["ok"] = bool(ok)
+        return _NodeOut(_d)
+
     # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。
     #   ⇒ 本节点先消费**配置单映射出的主参数 M** (= 度量张量 g_ij(x)=M·G_ij(x) 的尺度), 真跑算:
     #     ① 度量几何量 (dim/mode/独立分量/正定 min_eig/det g/联络 ‖Γ‖/曲率 κ=‖R‖)
     #     ② 健康度 H (= 度量几何健康 × 内稳态生命力; 内稳态真跑 homeostasis.py)
     #     ③ 扭矩 τ = M·‖Γ v v‖ (曲率回正力矩: 等效惯量 M × 测地线弯曲加速度; 各向同性 ⇒ Γ=0 ⇒ τ=0, 零回归)
+    # ── 🏷 产品标识 + 空间质数结构化理解 (真跑先出: 与轨迹无关, 任何返回路径都带上) ──
+    _g_metric = None
     try:
         import importlib.util as _ilu_me
         import numpy as _np_me
@@ -4864,6 +5044,7 @@ def node_ss_mani_eng(ctx):
         _v0[0] = 1.0
         _geo = _mf.geodesic_curve(_x0, _v0, steps=5, dt=0.05)[-1]
         _dev = float(_np_me.linalg.norm(_geo - (_x0 + _v0 * 0.25)))
+        _g_metric = _mf.shape(_x0)                                  # 度量真值形状 → 谱对称正则项用 (只读)
         _Gam = _mf.christoffel(_x0)
         _tau = float(_sp["scale"]) * float(_np_me.linalg.norm(_np_me.einsum("kij,i,j->k", _Gam, _v0, _v0)))
         _H_metric = 1.0 if (bool(_okp) and abs(float(_np_me.linalg.det(_mf.shape(_x0))) - 1.0) < 1e-9) else 0.0
@@ -4892,6 +5073,13 @@ def node_ss_mani_eng(ctx):
     except Exception as _e:                                                     # noqa: BLE001
         if log:
             log("⚠️ 主参数 M 几何层不可用 (流形引擎续跑): %r" % (_e,))
+    # ── 🏷 产品标识 (550A/550B/550C) + 空间质数结构化理解能力: 真源回读, 与轨迹无关 ──
+    _mod_now = ctx.get("module") if isinstance(ctx, dict) else None
+    _step_now = int(getattr(_mod_now, "_ss_round", 0) or 0) or 1
+    _prod = _mani_product_block(ctx, log=log, g=_g_metric, step=_step_now)
+    _SS_STATE["mani_product"] = _prod                    # 进链路缓存: 画布/控制台/外部可读
+    if isinstance(ctx, dict):
+        ctx["mani_product"] = _prod                      # 调用方也能直接取 (不改其它节点契约)
     try:
         import importlib.util as _ilu
         import numpy as np
@@ -4904,13 +5092,13 @@ def node_ss_mani_eng(ctx):
         if tr is None or not tr.get("t"):
             if log:
                 log("⚠️ 流形引擎: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源, 不造状态)")
-            return False
+            return _ret(False)                       # 产品标识/结构理解已在上面真跑出 (照旧返回)
         idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
         O = np.asarray(tr["obs"], dtype=float)
         if O.ndim != 2 or O.shape[1] < 43:
             if log:
                 log(f"⚠️ 流形引擎: 轨迹 obs 维数 {O.shape} 不足 43 → 无法编码 (如实报, 不补造)")
-            return False
+            return _ret(False)
         eng = m.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4)
         ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
         loaded = eng.load(ck)
@@ -4974,17 +5162,22 @@ def node_ss_mani_eng(ctx):
                     + (f" · ♻去充电" if hom["mode"] == "recharge" else ""))
                 log(f"      快照落盘 zmax_data/ss_live/manifold_homeostasis.json (可被画布/控制台/DDS 切面读)")
             log("   🔒 只读旁路: 结论进数据总线/日志, 不下发动作 (动作须人工授权)")
-        return True
+        return _ret(True)
     except Exception as e:                                                      # noqa: BLE001
         if log:
             log(f"⚠️ 流形引擎失败: {type(e).__name__}: {e}")
-        return False
+        return _ret(False)
 
 _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      "🧮 流形引擎 【系统核心 · 画布上唯一琥珀金 ◉核心】— L4 核心内核: 高维状态→低维流形, "
      "流形上 表征/投影/度量/测地线导航/梯度流/有界反馈; 并挂 ⚖ 内稳态层 (身体状态→紧迫度→行为/自主安全), "
+     "🆕 同时是**产品标识**输出口 (550A 原创版 / 550B 标定版 / 550C 量产版: 从配置真源 config/platform/"
+     "zmax_product.json 回读产品名/版本段/能力质数签名/当前发布指纹) 与**空间质数结构化理解能力**输出口 "
+     "(当前结构 → 唯一质数编码 → 已知/未见比对; 未见结构即自主进化的输入), 并给谱对称正则项/锚点稀疏度/"
+     "采样课程当前值 (只读正则, 不改写度量张量; 结果进 _SS_STATE['mani_product'] 与节点日志), "
      "(源码 src/lerobot/manifold/manifold_engine.py::ManifoldEngine · "
-     "src/lerobot/manifold/homeostasis.py::HomeostasisEngine)",
+     "src/lerobot/manifold/homeostasis.py::HomeostasisEngine · "
+     "src/lerobot/manifold/prime_structure.py)",
      node_ss_mani_eng)
 
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),

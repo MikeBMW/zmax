@@ -10,7 +10,7 @@ GUI 只显示, 逻辑在包里, 这份索引就是把两边对上的那张表。
 
 LEVELS_INDEX = {
     "L2": [
-        ("sssensor", "📡 融合定位", 'ss_sensor', "library.py", 'node_ss_s1'),
+        ("sssensor", "📡 融合定位建图", 'ss_sensor', "library.py", 'node_ss_s1'),
         ("ssobs", "🧩 SU(2) 统一状态空间 (二阶特殊酉群)", 'ss_obs', "library.py", 'node_ss_su2'),
         ("ssff", "⚡ 前馈加速器", 'ss_ff', "library.py", 'node_ss_s2'),
         ("ssest", "🔮 自适应状态估计器", 'ss_est', "library.py", 'node_ss_s2'),
