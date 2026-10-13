@@ -42,8 +42,31 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-TAP_DIR = os.path.join(ROOT, "zmax_data", "ss_live")
-PID = os.path.join(TAP_DIR, "torque.pid")
+# 🔴 2026-10-13 老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是啥？删掉，不要自己保存」
+#   ⇒ tap (10Hz 逐帧流, ≈2.0 GB/天) 不再落盘: 默认写 **内存盘 /dev/shm**(重启即清), 并加**环形上限**
+#   (超 ZMAX_TORQUE_TAP_MAX_MB 就只保留尾部, 默认 32MB)。要落盘显式给
+#   ZMAX_TORQUE_TAP_DIR=<dir> (此时仍受同一上限约束), 判据脚本读同一环境变量解析。
+TAP_DIR = os.environ.get("ZMAX_TORQUE_TAP_DIR") or "/dev/shm/zmax_torque"
+TAP_MAX_MB = float(os.environ.get("ZMAX_TORQUE_TAP_MAX_MB") or 32)
+# 最新值快照 + pid 锁仍留磁盘 (单文件覆盖写, 不增长 —— 实时监控按此读)
+LIVE_DIR = os.path.join(ROOT, "zmax_data", "ss_live")
+PID = os.path.join(LIVE_DIR, "torque.pid")
+
+
+def _trim_tap(path: str, cap_bytes: int) -> None:
+    """环形上限: 超过 cap 就只留尾部一半 (追加型流, 不许 rm 掉正在写的 fd)。"""
+    try:
+        if os.path.getsize(path) <= cap_bytes:
+            return
+        with open(path, "rb") as f:
+            f.seek(max(0, cap_bytes // 2))
+            tail = f.read()
+        i = tail.find(b"\n")
+        tail = tail[i + 1:] if i >= 0 else b""
+        with open(path, "wb") as f:
+            f.write(tail)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _active_scene() -> str:
@@ -92,7 +115,7 @@ def _tap_path(scene: str) -> str:
 
 
 def _live_path(scene: str) -> str:
-    return os.path.join(TAP_DIR, "torque_live.json")
+    return os.path.join(LIVE_DIR, "torque_live.json")
 
 
 # ─────────────────────── 真源读取 ───────────────────────
@@ -230,6 +253,7 @@ def publish(payload: dict) -> dict:
     tp = _tap_path(payload["scene"])
     with io.open(tp, "a", encoding="utf-8") as f:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    _trim_tap(tp, int(TAP_MAX_MB * 1024 * 1024))   # 环形上限: 流不落盘无限长
     live = _live_path(payload["scene"])
     tmp = live + ".tmp.%d" % os.getpid()
     with io.open(tmp, "w", encoding="utf-8") as f:

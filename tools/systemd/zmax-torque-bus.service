@@ -12,6 +12,9 @@ Group=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
 Environment=ZMAX_REPO=/home/ubuntu/zmax
 Environment=PYTHONUNBUFFERED=1
+# tap 流不落盘 (老倪 2026-10-13): 内存盘 + 环形上限; 见 tools/tdrive_bus.py
+Environment=ZMAX_TORQUE_TAP_DIR=/dev/shm/zmax_torque
+Environment=ZMAX_TORQUE_TAP_MAX_MB=32
 # 🔴 2026-10-13 单播发现: 与探针/发布端/聚合器同一张配置 (口径只有一份)
 Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
 # 为什么要有这个常驻单元 (2026-10-13 实测):

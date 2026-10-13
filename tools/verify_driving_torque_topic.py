@@ -33,6 +33,8 @@ import time
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# tap 流不再落盘 (老倪 2026-10-13): 与 tools/tdrive_bus.py 同源解析 —— 默认内存盘 /dev/shm
+TAP_DIR = os.environ.get("ZMAX_TORQUE_TAP_DIR") or "/dev/shm/zmax_torque"
 sys.path.insert(0, os.path.join(ROOT, "src"))
 PY = sys.executable or os.path.join(ROOT, "gui-venv311", "bin", "python")
 DDS_PY = os.path.join(ROOT, "venvs", "dds-venv", "bin", "python")
@@ -61,10 +63,10 @@ def _resolve_tap() -> str:
     except Exception:                                                              # noqa: BLE001
         pass
     if scn:
-        p = os.path.join(ROOT, "zmax_data", "ss_live", "torque_%s.jsonl" % scn)
+        p = os.path.join(TAP_DIR, "torque_%s.jsonl" % scn)
         if os.path.isfile(p):
             return p
-    g = sorted(glob.glob(os.path.join(ROOT, "zmax_data", "ss_live", "torque_SCN-*.jsonl")),
+    g = sorted(glob.glob(os.path.join(TAP_DIR, "torque_SCN-*.jsonl")),
                key=os.path.getmtime, reverse=True)
     return g[0] if g else os.path.join(ROOT, "zmax_data", "ss_live", "torque_live.json")
 
