@@ -1,0 +1,21 @@
+# 空间质数结构化理解能力 (prime_structure) — 实测坑与口径
+
+实现真源 `src/lerobot/manifold/prime_structure.py` · 判据 `tools/verify_prime_structure.py` (31/31) · 产品真源 `config/platform/zmax_product.json`
+
+## 口径 (老倪文档《流形引擎·用质数约束泛化性》四条规则)
+- 规则2 唯一分解: 原子结构⇄质数, 复杂结构=质数乘积; 算术基本定理⇒唯一可逆。**唯一数学严格的一条。**
+- 规则1: 可固化锚点只在质数索引位 (密度~1/ln n), 非质数位只插值。
+- 规则3 黎曼条款: **原写法是错的** —— 把特征值置 `0.5+1j*间隙` 再 `np.diag` 重建, 会让实对称正定度量变成非 Hermite 复数矩阵, 破坏正定闸门与 det G=1; 且 RH 未证明。按"只读谱偏离量正则"交付 (质心偏离 + 补对称缺口), **绝不改写 g**。
+- 规则4: 采样率 = π(step)/step。
+
+## 坑 (都实测过)
+1. **质数域必须从真源生成, 禁止手写**。手写 18 项基元时写了 `m_grasp`/`m_slot`/`m_gold` 等真源里**不存在**的 id, 被新判据"与根服务逐项同名"当场抓到。真源 = `tools/meta_moe_router.py` 的 `META_PRIMITIVES` (18 项: m_pos/m_rot/m_vel/m_w/m_force/m_time/m_conf/m_health/m_metric/m_flux/m_node/m_topic/m_layer/m_stage/m_skill/m_msg/m_scene/m_task)。改法: 导入真源生成, 读不到直接 raise。
+2. **"归一化谱对称于 1/2" 在 n>2 时不可达** (成对补和为 1 ⇒ 总和 n/2 ≠ 1)。判据里别写"各向同性应比病态更对称"这类想当然断言 —— 实测两者都是 0.333。要判就判: n=2 可达 (λ̃=[0.3,0.7] ⇒ 缺口 1.0) / n>2 不可达 / 质心偏离量能区分双峰对称(0)与单主方向(>0)。
+3. **三质数域必须互不相交** (能力 2..101 / 产品 1009,1013,1019 / 迭代 ≥1031), 否则指纹不可反解。反证判据: 拿产品质数去能力域 `decompose` 必须失败。
+4. **能力集合用包含关系 ⇒ 签名整除** (550A⊆550B⊆550C ⇒ cap_sig(A)|cap_sig(B)|cap_sig(C)); 这是产品协同/数据一致性最省事的可测不变量, 升级只等于"乘上新增能力的质数"。
+5. 引擎集成时记忆落盘必须挂开关: `understand(..., record=apply_updates)`, 干跑只读 —— 否则自检/判据会污染真源记忆库 (判据查 mtime 不变)。
+6. **`data/` 与 `zmax_data/` 在 .gitignore 里** (第 170/339 行), 且 `config/` 是软链到 `data/database/zmax/sources/config` ⇒ 工程数据库/产品真源在 git 眼里不存在。要"保存到 github"必须把压缩归档放到**未被忽略的路径**(如 `release/db/`), 入库后用 `git ls-files` 回读确认真的被跟踪; `git add config/...` 会报 "beyond a symbolic link"。
+
+## 版本指纹 (每次系统更新一个质数结构)
+`F = p_prod · p_iter · Π p_cap`; 已注册 5.50.A/B/C + 5.50.1/2/3 六个指纹两两互异, 可反解。5.50.3 = 4056194784082756189908876233542010574 (hex 30d31d7d373f)。
+改能力集后**必须重算**并写回真源 (脚本化: 载入 JSON → 改 capabilities → dump → 重算 signatures/fingerprints/checks), 否则判据的真源自洽项会红。

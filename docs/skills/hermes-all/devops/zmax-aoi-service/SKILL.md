@@ -5,6 +5,21 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 
 # 产线 AOI 检测服务 (Z-MAX, 工控机 192.168.23.23)
 
+## 🔴 侧面检测相机 = 10083 · 曝光写入必须 POST (2026-10-12 实测, 老倪纠正端口)
+- **10083 = 侧面检测相机**；10082 = 金手指/顶视。两者控制口不同：
+  - 10083 曝光：`GET /exposure` **只读**；**写必须 `POST /exposure?us=<微秒>&gain=<dB>`**。
+    ⚠️ **用 GET 带参数会静默无效**（回执里的 `last.us_ok=true` 是上一次 POST 的残留）⇒ 极易误判为“假可控”。
+    实测：POST `us=20000&gain=1.0` ⇒ 饱和≥250 从 43.09% → **4.39%**（达标）；并落盘
+    `D:\xspace\ultralytics_AOI\surface_exposure.json`（重启保持）。
+  - 10082 曝光：`/param?exposure=&gain=`（GET 带参同样只读 → 写用 POST；本轮 GET 写入四档画面均不变）。
+  - 程序自带验收口径（`cam_surface_10083_work_v20.py` 路由注释）：**饱和(≥250) ≤5%，mean 60~200**。
+  - 源件在本仓 `tools/aoi/cam_surface_10083_work_v20.py`；部署走 `tools/aoi_remote_deploy.py --surface`。
+- 🔴 **量具必须用 `kind=origin&grab=1`**：`kind=judge` 是**派生/落盘**结果（尺寸会变，如 1400x300 ↔ 1280x1280），
+  拿它做曝光 A/B 会得到“改了没变化”的假结论（本轮连测四档数字一字不变，实为读的同一张）。
+- ⚠️ **高反差场景单靠曝光无法同时满足 mean 60~200 与 饱和≤5%**：模块面亮、背景暗 ⇒
+  压到饱和达标时整帧 mean 只有 36~49。判据应按 **ROI(模块)口径**，不要用整帧 mean
+  （设计见 `docs/design/流形引擎_自动光学检测_架构设计_v0.1.md`）。
+
 ## 🆕 客户端 `tools/aoi_link.py` (2026-10-11): 缺陷判决 + 矩形搜索 + 侧边修正 一次拿全
 
 ```bash
