@@ -2596,10 +2596,10 @@ def _ctl_move(req: dict) -> dict:
         speed_mm_s = speed * 0.0935               # 回显口径: 相对量 → mm/s
     else:
         try:
-            speed_mm_s = max(1.0, min(200.0, float(_mm)))     # 上限 200 mm/s (老倪 2026-10-13 定)
+            speed_mm_s = max(1.0, min(1000.0, float(_mm)))    # 上限 1000 mm/s (老倪 2026-10-13「再增加 500 和 1000」)
         except (TypeError, ValueError):
             return {"ok": False, "msg": "speed_mm_s 不是数字"}
-        speed = max(1.0, min(2400.0, round(speed_mm_s / 0.0935, 1)))
+        speed = max(1.0, min(11000.0, round(speed_mm_s / 0.0935, 1)))   # units 上限 = 1000mm/s ÷ 0.0935
     #   口径: 页面档位 8/60/200/500 + 可自己填数字; 上限定 1000(相对量, 线性实测 ≈0.0999mm/s 每单位,
     #   即 speed=1000 ≈ 100mm/s) —— 真正的物理上限由控制器自己的关节限速兜, 这里只挡住"填错量级"。
     #   实测基线: speed=60 → 腕部 10° 花 ~10s (~1°/s), 所以想快 5 倍就用 300。
@@ -4276,12 +4276,13 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
         <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
-      <div class="row" style="margin-top:8px"><span class="k">速度 (mm/s · 上限 200)</span>
-        <span class="seg" id="sSpd"><button data-v="1" class="on">1</button>
-        <button data-v="10">10</button><button data-v="20">20</button><button data-v="50">50</button>
-        <button data-v="100">100</button><button data-v="200">200 最快</button></span>
-        <input class="num" id="spd" value="1"></div>
-      <div class="hint" style="margin-top:6px">速度单位 = <b>mm/s</b>(1 / 10 / 20 / 50 / 100 / 200, 上限 200)。
+      <div class="row" style="margin-top:8px"><span class="k">速度 (mm/s · 上限 1000)</span>
+        <span class="seg" id="sSpd"><button data-v="1">1</button>
+        <button data-v="10" class="on">10</button><button data-v="20">20</button><button data-v="50">50</button>
+        <button data-v="100">100</button><button data-v="200">200</button>
+        <button data-v="500">500</button><button data-v="1000">1000</button></span>
+        <input class="num" id="spd" value="10"></div>
+      <div class="hint" style="margin-top:6px">速度单位 = <b>mm/s</b>(1/10/20/50/100/200/<b>500</b>/<b>1000</b>, 上限 1000)。
         这是下给执行器的<b>名义</b>速度; 实际跑多快还受控制器自己的速度倍率限(在役实测约 10%: 名义 100 ⇒ 实际约
         10mm/s) —— 每次动作的「实测速率」在执行器日志里, <b>以实测为准</b>。键盘: A/B/C 加 Shift = 反向;
         单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
@@ -4393,7 +4394,7 @@ function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.c
 async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
-  const spd=Math.max(1,Math.min(200,parseFloat($('#spd').value||'1')||1));
+  const spd=Math.max(1,Math.min(1000,parseFloat($('#spd').value||'10')||10));
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);

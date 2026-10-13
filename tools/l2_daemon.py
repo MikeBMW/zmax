@@ -878,8 +878,15 @@ def plan_stage(sk, st, pts, spec, cur):
                        % (name, lin, float(ml), _dir or "就在附近"),
                 "pos": t, "lin": lin}
     sp = float(spec.get("speed", 60))
+    _sp0 = sp
     if sk.get("speed_max") is not None:                    # 技能级限速上限(练习用低速, 收口在执行层)
         sp = min(sp, float(sk["speed_max"]))
+        if sp < _sp0 - 1e-6:
+            # 🆕 2026-10-13 老倪「设了没用」的教训: 技能级 speed_max 压速度必须**留痕**,
+            #    不许静默截断 —— 现场要能一眼看出"我填的 1000 被这个技能压到了 200"。
+            log("⚠️ 技能 %s 的 speed_max=%.0f 把速度从 %.0f 压到 %.0f (名义 %.1f mm/s · 实得约 %.1f mm/s)"
+                % (sk.get("id") or sk.get("point") or "?", float(sk["speed_max"]), _sp0, sp,
+                   sp * 0.0935, sp * 0.0935 * 0.1))
     # ⚠️ 2026-09-21: 加硬超时, 服务端没起时别把命令通道永久卡死(客户端超时≠没下发, 到位仍只看真值)
     call = ('timeout %d ros2 service call /move_line interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
             'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'

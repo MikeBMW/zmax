@@ -50,8 +50,10 @@ POSE = os.path.join(_DATA, "rokae_sdk/tcp_out/latest.json")
 SWITCH = os.path.join(_DATA, "move_transport.json")
 EVID = os.path.join(_DATA, "l2_sdk_leg.jsonl")
 
-MAX_SPEED_MM_S = 300.0          # 2026-10-08 老倪「再提速」: 150→300(是他授权的; 实际还受控制器 override 限)          # 速度上限(2026-10-08 用户点头 30→60: 1000 档原来被 30 封顶=实测 3mm/s,
-                               #  现 60 ⇒ 实测 ≈6mm/s; 代理侧 sdk_ctl.py 同为 60 ⇒ 两级一致, 不再互相夹)
+MAX_SPEED_MM_S = 1000.0       # 速度上限(mm/s, 2026-10-13 老倪「再增加 500 和 1000」: 300→1000)
+                              #   与 sdk_ctl.MAX_SPEED_MM_S / 服务端 [1,1000] 三处同口径;
+                              #   ⚠️ 实得 ≈ 名义 × 10%(控制器在线倍率), 所以 1000 名义 ≈ 实得 100mm/s
+                               #   (历史: 60 → 实测 ≈6mm/s; 两级现都是 1000, 不再互相夹)
 MAX_ABS_MM = 800.0             # 单条绝对位移上限(空间点之间最远 ~470mm, 800 够且能拦住误目标)
 REL_STEP_MM = 40.0             # rel 位移分片步长(代理硬上限 HARD_MAX_MM=50)
 POSE_FRESH_S = 3.0             # 真值文件新鲜度要求

@@ -39,7 +39,9 @@ def build_skill(n, pname):
         "quat": "taught",
         "point": pname,
         "point_locked": True,
-        "speed_max": 1000,
+        "speed_max": 11000,      # 2026-10-13 老倪「再增加 500 和 1000」: 1000→11000 (相对量口径)
+                                 #   units = mm/s ÷ 0.0935 ⇒ 11000 ≈ 名义 1028mm/s, 与服务端 [1,1000] 对齐;
+                                 #   原来 1000/2000 会把 500/1000 档静默压到 93/187mm/s
         "param": {},
         "guard": {"max_lin_mm": 1500.0, "z_floor_point": pname, "z_floor_offset_mm": 0},
         "steps": [
