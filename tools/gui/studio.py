@@ -885,7 +885,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.5")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.6")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -10977,7 +10977,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.5 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.6 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10985,9 +10985,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.5 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.6 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.6: 5.50.6 (2026-10-13)  **功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议** —— 新增 `tools/verify_feature_io.py`: 功能=画布节点, 输出 topic=`ss/<节点id>/out`, 输入 topic=上游节点输出 topic+连线总线; **真 DDS 往返实测**(发布/订阅两个独立参与者 + 挂单播配置) ⇒ 74/74 通道 ✅, 注册 typed 话题 6/16 有流量(其余本刻无发布端如实标注)。 新增 `tools/delivery/gen_scene_doc.py`: 按配置模板出**摆盘/插拔两份**交付文档(目标 99%/3.5s · 工程配置(场景切换/点位/位置角度/指标目标) · 任务配置(工艺技能/参数覆盖/档位) · 功能清单(每行: 详细描述+输入topic+输出topic+可测性能指标) · 每功能 topic 实测 · 结论与达成路径)。 新增 `tools/delivery/gen_contract_pack.py`: 供应商 SOR ×2(md+docx, 9 章) + 合作协议(机器人数据平台提供/销售 · 解决方案采购; 含 99%/3.5s 验收口径与实测差距)。 修坑: 订阅端不挂单播配置 ⇒ 与单播发布端互相发现不到 ⇒ 实测『收 0 条』假失败; Cyclone 匹配数 API 是 `get_matched_publications()`(用错名静默返 0 ⇒ 74/74 被误判 0/74)。 交付版 **5.50.C**(量产交付版), 飞书分三档送达并服务端回读核验(字节+sha256 全一致); 归档 `zmax_data/release_5.50.6_20261013/`(MANIFEST+sha256sums)。
         # v5.50.5: AOI 侧面(10083)判据图改「本机口径」(搜矩形刚体→纯旋转摆正→剖面扩暗头部; env ZMAX_AOI_SURFACE_RECT=0 回退) · 真机奇异区分段到位(stepwise_goto/close_loop_to_point/probe_motion_axes) · AOI 示教四点三源对账 · 建图单会话累积 + 每 20s 落盘 · ss_torque 判据 30/30 · 版本位/指纹同步
         # v5.50.3: # 5.50.3 (开发版 · 小版本迭代)  ## 主题: 空间质数结构化理解能力 + 产品标识  ### 1. 流形引擎「理解能力」升级为空间质数结构化理解能力 依据老倪文档《流形引擎 · 用质数约束泛化性》, 四条规则逐条落地 (唯一实现 src/lerobot/manifold/prime_structure.py): - 规则2 唯一分解 (数学严格): 原子结构 ⇄ 质数, 复杂结构 = 质数乘积; 算术基本定理保证**唯一且可逆** (分解回原子组合)。 - 规则1 质数间隙约束状态空间: 可固化锚点只允许落在质数索引位 (非质数位只允许插值), 密度 ~1/ln n, 抑制"在任何位置都记住"。 - 规则3 黎曼猜想条款 → **按诚实版交付**: 原文档写法 (特征值置 0.5+1j·间隙 再重建) 会把实对称正定度量变成非 Hermite 复数矩阵, 破坏正定闸门与 det G=1, 且 RH 未被证明 ⇒ 本实现改为**只读**谱偏离量正则 (质心偏离 + 补对称缺口), 绝不改写度量张量; 并给出数学事实: n>2 时"归一化谱对称于 1/2"不可达 (成对补和为 1 ⇒ 总和 n/2)。 - 规则4 质数计数约束课程: 采样率 = π(step)/step, 质数步跳变。  ### 2. L5 状态空间工程: 边工作边自主进化 (用的就是这个理解能力) - ManifoldEngineLoop.step 每 tick 增加 ⑥ 结构化理解: 把本 tick 真实出现的结构 (位置/力/速度/阶段, 按实际载荷计入, 不臆造) 编码成质数签名, 与记忆库比对。 - 未见结构 ⇒ 记一条进化事件 (`zmax_data/manifold/prime_memory.json`), 作为自主进化的输入; 干跑 (apply_updates=False) 只读不落盘, 不污染真源。 - 每 tick 输出: 签名 / 已知·未见 / 累计未见数 / product_id。  ### 3. 版本唯一性: 每次系统更新一个质数结构 - 指纹 = p_prod · p_iter · Π p_cap, 三个质数域互不相交 (能力 2..101 / 产品 1009,1013,1019 / 迭代 ≥1031) ⇒ 由算术基本定理: 指纹与 (产品, 迭代, 能力集合含重数) 一一对应, 可反解。 - 注册 6 个发布版本指纹 (5.50.A/B/C + 5.50.1/2/3) 两两互异; 本次 5.50.3 指纹 = 4056194784082756189908876233542010574 (hex 30d31d7d373f)。  ### 4. 产品标识 + 配置中心产品配置 - 真源 config/platform/zmax_product.json: 550A 原创版 (默认, 具备理解能力, 任务 TASK-07-AOI) / 550B 标定版 / 550C 量产版。 - 协同不变量: 能力集合 550A ⊆ 550B ⊆ 550C (10/20/26 项) ⇒ 能力签名整除 cap_sig(A) | cap_sig(B) | cap_sig(C)。 - 流形引擎节点显示产品标识; 配置中心可选产品并回写真源。  ### 5. 元数据全系统数据一致性 (根服务同源) - 判定修复: 第一版质数表的基元是**手写**的, 与元数据根服务真源不符 (m_grasp/m_slot/m_gold 等根本不存在) —— 被新判据"逐项同名"当场抓到 ⇒ 改为**从真源生成** (tools/meta_moe_router.py 的 META_PRIMITIVES), 读不到直接报错, 禁止手写。 - 现: 18 个元数据基元 + 8 阶段与真源逐项同名, 差集 0。  ### 6. 判据 - 新增 tools/verify_prime_structure.py: **31/31 PASS** (规则1-4 + 唯一性/可逆 + 产品协同 + 真源自洽 + 根服务同源 + 引擎集成 + 零回归 engine_loop 自检全通过)。 - 零回归: engine_loop 自检全通过; 画布 89 节点/184 连线未动。  ### 7. 诚实缺口 - 谱条款只能作偏离量正则 (n>2 不可达精确对称); 与黎曼猜想无证明关系。 - 在役度量的谱向单主方向偏 (质心 0.6667, 偏离 0.1667) —— 这是几何形状 G(x) 仍待按带状态实测轨迹标定的直接体现。 - 理解能力的进化事件只做记录与上报, 尚未接入"按事件自动固化新结构"的闭环 (需真机/真数据在线)。
         # v5.50.2: **元数据MOE门控路由 (原「阶段专家MOE门控路由」改名) + 元数据层实现**: ① 元数据 = 整个系统的数据库根服务 (18 项基础核心组成: 玻色子型 10 = 场/连续量, 费米子型 8 = 离散实体), ② 数据空间每个 topic = 由元数据组合成的"原子/分子/有机物" (映射规则表 22 条, 105/105 topic 覆盖 100%), ③ **全息系统** = 整体算子可由 topic 子集复现 (真线性代数: 秩 14/18 · 复现误差 0.0e+00 · 覆盖率曲线实测 + 退化反证), ④ 硬先验门控路由 7 阶段→7 专家 1:1 (单射, 路由熵 0); 实现源码 `tools/meta_moe_router.py`, 节点 `node_ss_moe` 真跑四段真值 (判据 `tools/verify_meta_moe_router.py` 17/17 PASS); 改名同步画布真源 / by_level 映射 / 名称归一器 / 节点 docstring, 旧名只留历史变更记录   **画布工具栏「🗂 配置中心」独立窗口 + 跨窗口数据一致性**: 独立窗口与主控制台同一真源 (ConfigCenterPage 每次直读磁盘, 打开即 reload_from_source(), 每 3s 比对 sha256 指纹自动对齐), 再点复用不新开第二个; `source_fingerprint`/`reload_from_source` 落在配置页 (判据离屏 11/11 PASS)   **单步运行 × 数据总线 topic**: 每节点独立输出 topic (89/89 节点: 68 真源出线 + 21 合成 `ss/<节点id>/out`), 单步时该 topic 行在数据总线 Trace **置顶 + 金色高亮**(#2b2611/#ffd700)并显示该步真载荷, **整体运行不序列化**(性能闸); `tools/ss_bus_topics.py` + `tools/verify_ss_bus_topics.py` 14/14 PASS (含离屏渲染实证)   **独立窗口数据一致性审计**: `tools/verify_databus_consistency.py` (7 个独立窗口/页面 × 全局数据空间真源逐项审计)   工程真源链已重绑定对齐: ss_task_bind → 工程库 build/check 全绿; 画布 89 节点 / 184 连线未回归

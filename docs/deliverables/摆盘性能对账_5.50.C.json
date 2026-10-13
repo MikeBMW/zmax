@@ -1,0 +1,296 @@
+{
+ "schema": 1,
+ "ver": "5.50.C",
+ "generated_at": "2026-10-13 14:59:43",
+ "task": "TASK-06-TRAY",
+ "task_name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+ "active_task": "TASK-06-TRAY",
+ "scene": "SCN-06-TRAY",
+ "scene_color": "#1f6feb",
+ "sources": {
+  "任务绑定": {
+   "path": "config/ss_task_binding.json",
+   "sha256_16": "155bff015a13351b",
+   "mtime": "2026-10-13 13:06:00"
+  },
+  "摆盘真跑产物": {
+   "path": "reports/tray_place_latest.npz",
+   "sha256_16": "43a42916bdaa01d8",
+   "mtime": "2026-10-12 20:14:36"
+  },
+  "主参数M真源": {
+   "path": "config/calib/zmax_manifold.json",
+   "sha256_16": "a56a3c3bf6a3988b",
+   "mtime": "2026-10-13 11:56:46"
+  },
+  "扭矩判据报告": {
+   "path": "reports/driving_torque_judge.json",
+   "sha256_16": "3ab2af582975378b",
+   "mtime": "2026-10-13 14:59:29"
+  }
+ },
+ "rows": [
+  {
+   "#": 1,
+   "指标": "单颗CT (节拍)",
+   "目标(配置单)": "≤3.15s (PVT) (硬上限 ≤3.5s)",
+   "实测": "10.637 ; 11.550 ; 11.625 s",
+   "判定": "未达标 (最坏 11.625s = 目标 3.15s 的 3.69 倍; 硬上限 3.5s 也超)",
+   "复核命令": "python3 tools/delivery/gen_tray_perf_report.py",
+   "备注": ""
+  },
+  {
+   "#": 2,
+   "指标": "节拍可达性 (配置项能否做到)",
+   "目标(配置单)": "改配置即可达标",
+   "实测": "L5 速度指令 speed_scale=1.00 (takt=3.15s vs est=11.0s)",
+   "判定": "**当前配置项不可能达标**: 需要 3.38× 提速, 闸门上限只有 1.5× 且 takt≤est 时恒为 1.0",
+   "复核命令": "python3 tools/delivery/gen_tray_perf_report.py",
+   "备注": "takt_s=3.15s ≤ est=11.0s(硬编码) ⇒ 分支直接给 speed_scale=1.00, 完全不加速; 即便 takt 收紧到 <est, 闸门上限也只有 1.5× (ss_task_l45.py:106)"
+  },
+  {
+   "#": 3,
+   "指标": "连续动作成功率",
+   "目标(配置单)": "≥99% (PVT)",
+   "实测": "3/3 (单 seed 0)",
+   "判定": "**不构成 99% 证据** (单 seed 3 颗; 0 失效 n≥299 才是 95% 置信下限 99%)",
+   "复核命令": "python3 tools/gen_tray_place_video.py --seed <0..N> (逐 seed 报数, 汇总 ≥299 颗)",
+   "备注": "验收样本量要求见附录 J"
+  },
+  {
+   "#": 4,
+   "指标": "取放精度 (水平单边)",
+   "目标(配置单)": "≤1.0 mm",
+   "实测": "最大 0.597 mm (0.397 ; 0.552 ; 0.597)",
+   "判定": "达标",
+   "复核命令": "python3 -c \"import numpy as np;print(np.load('reports/tray_place_latest.npz',allow_pickle=True)['meta'].item()['judges'])\"",
+   "备注": "真源: 每颗判据 dx/dy 绝对值之和"
+  },
+  {
+   "#": 5,
+   "指标": "姿态偏差",
+   "目标(配置单)": "≤1.0 °",
+   "实测": "最大 0.042 °",
+   "判定": "达标",
+   "复核命令": "同上 (judges[].yaw_err_deg)",
+   "备注": ""
+  },
+  {
+   "#": 6,
+   "指标": "真空建立时长",
+   "目标(配置单)": "≤200.0 ms (配方上限)",
+   "实测": "425.0 ; 537.5 ; 525.0 ms",
+   "判定": "**全部不合格** (超上限 2.1~2.7 倍)",
+   "复核命令": "python3 -c \"import numpy as np;print([j['vac_ok'] for j in np.load('reports/tray_place_latest.npz',allow_pickle=True)['meta'].item()['judges']])\"",
+   "备注": "配方上限 200ms 与实测 425~538ms 差 2.1~2.7×; 需供应商给达标证据或按实测重定上限"
+  },
+  {
+   "#": 7,
+   "指标": "真空保持时长",
+   "目标(配置单)": "配置 5.0 s",
+   "实测": "5.49 ; 5.49 ; 5.49 s",
+   "判定": "超标 9.7% (实际保持 > 配置)",
+   "复核命令": "同上 (judges[].hold_s / hold_s_cfg)",
+   "备注": "保持过长会被节拍直接吃掉"
+  },
+  {
+   "#": 8,
+   "指标": "连续周转盘数",
+   "目标(配置单)": "≥12 盘 (PVT)",
+   "实测": "未测 (单盘 3 颗)",
+   "判定": "未验证",
+   "复核命令": "python3 tools/gen_tray_place_video.py --modules 3 --seed <N> (连续 ≥12 盘不中断报数)",
+   "备注": "验收判据: 12 盘无人工干预、无报警"
+  },
+  {
+   "#": 9,
+   "指标": "主参数 M (配置单→M 映射落役)",
+   "目标(配置单)": "配置单算出的 M 必须 == 在役真源",
+   "实测": "在役 M=3.283 (dim=3/full) vs 配置单映射 M=4.423 (dim=6/isotropic)",
+   "判定": "**不一致 ⇒ 映射未落役**",
+   "复核命令": "python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役真源前须评审)",
+   "备注": "映射规则 R1–R5 在 config_to_M.py; 落役判据 verify_metric_main_param.py 23/0 PASS (节点侧)"
+  },
+  {
+   "#": 10,
+   "指标": "驱动扭矩话题 ss_torque",
+   "目标(配置单)": "10Hz 常驻 · 与 tap 逐位一致 · 场景=活跃场景",
+   "实测": "判据 30 项 · 通过 29 · 未过 1 (未过: ['⑫d verify_localization_mapping.py 仍 23/23'])",
+   "判定": "扭矩链本身全过; 唯一未过项是真录像依赖 (办公模式无相机源, 非扭矩缺陷)",
+   "复核命令": "gui-venv311/bin/python tools/verify_driving_torque_topic.py",
+   "备注": "2026-10-13 修复: ①单播 DDS 配置 ②常驻服务 zmax-torque-bus (原先只是手跑脚本) ③场景跟随 ss_scene_switch"
+  },
+  {
+   "#": 11,
+   "指标": "数据空间话题灯 (10 个允许话题)",
+   "目标(配置单)": "全部绿 (真数据)",
+   "实测": "见 zmax_data/dataspace/live.json 的 lamp_tally",
+   "判定": "部分黑/红 (办公模式无机器人 ⇒ ss_state/ss_action/ss_plan 无源; ss_calib 设计 0.2Hz vs 实测 19.84Hz 灯红)",
+   "复核命令": "python3 -c \"import json;print(json.load(open('zmax_data/dataspace/live.json'))['lamp_tally'])\"",
+   "备注": "2026-10-13 修复发现层: 单播配置 + 全参与者同一张 (原 10/10 黑灯)"
+  }
+ ],
+ "episode": {
+  "episode_tag": "20261012_201423",
+  "seed": 0,
+  "total": 3,
+  "placed": 3,
+  "steps": 2708,
+  "params": {
+   "src": "TASK-06-TRAY",
+   "task_id": "TASK-06-TRAY",
+   "xy_tol_m": 0.001,
+   "yaw_tol_deg": 1.0,
+   "dz_tol_m": 0.004,
+   "vac_establish_ms": 200.0,
+   "hold_s": 5.0,
+   "takt_s": 3.15,
+   "targets": {
+    "单颗CT": "≤3.15s (PVT)",
+    "成功率": "≥99% (PVT)",
+    "取放精度": "单边 ≤1mm / ≤1°",
+    "连续": "≥12 盘周转盘"
+   }
+  },
+  "ct_s": [
+   10.637,
+   11.55,
+   11.625
+  ],
+  "ok": [
+   true,
+   true,
+   true
+  ],
+  "xy_mm": [
+   0.397,
+   0.552,
+   0.597
+  ],
+  "yaw_deg": [
+   0.042,
+   0.017,
+   0.023
+  ],
+  "vac_ms": [
+   425.0,
+   537.5,
+   525.0
+  ],
+  "hold_s": [
+   5.4875,
+   5.4875,
+   5.4875
+  ],
+  "steps_per_part": [
+   852,
+   925,
+   931
+  ],
+  "segments": [
+   {
+    "段": "接近",
+    "步": 32,
+    "时长_s": 0.4,
+    "占比_pct": 3.8
+   },
+   {
+    "段": "对位",
+    "步": 54,
+    "时长_s": 0.68,
+    "占比_pct": 6.3
+   },
+   {
+    "段": "下降",
+    "步": 272,
+    "时长_s": 3.4,
+    "占比_pct": 31.9
+   },
+   {
+    "段": "抓取",
+    "步": 2,
+    "时长_s": 0.03,
+    "占比_pct": 0.2
+   },
+   {
+    "段": "抬起",
+    "步": 48,
+    "时长_s": 0.6,
+    "占比_pct": 5.6
+   },
+   {
+    "段": "转移",
+    "步": 130,
+    "时长_s": 1.62,
+    "占比_pct": 15.3
+   },
+   {
+    "段": "放下",
+    "步": 213,
+    "时长_s": 2.66,
+    "占比_pct": 25.0
+   },
+   {
+    "段": "放下 · 接触",
+    "步": 3,
+    "时长_s": 0.04,
+    "占比_pct": 0.4
+   },
+   {
+    "段": "放下",
+    "步": 44,
+    "时长_s": 0.55,
+    "占比_pct": 5.2
+   },
+   {
+    "段": "完成",
+    "步": 54,
+    "时长_s": 0.68,
+    "占比_pct": 6.3
+   }
+  ],
+  "ctrl_dt_s": 0.0125
+ },
+ "manifold": {
+  "live": {
+   "M": 3.283,
+   "dim": 3,
+   "mode": "full",
+   "unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
+   "range": [
+    0.0,
+    8.0
+   ],
+   "updated_at": "2026-10-13 11:56:46"
+  },
+  "mapped": {
+   "scale": 4.423,
+   "dim": 6,
+   "mode": "isotropic",
+   "diag": null,
+   "components": null,
+   "gain": null,
+   "audit_sha": "d7584d4d4621173130954aacbd89f618f282b7508ba09c778ad0c32da0eddcff",
+   "E_task_j": null,
+   "level": null,
+   "inputs": null
+  }
+ },
+ "speed_gate": {
+  "takt_s": 3.15,
+  "est_s": 11.0,
+  "speed_scale": 1.0,
+  "note": "takt_s=3.15s ≤ est=11.0s(硬编码) ⇒ 分支直接给 speed_scale=1.00, 完全不加速; 即便 takt 收紧到 <est, 闸门上限也只有 1.5× (ss_task_l45.py:106)"
+ },
+ "torque": {
+  "总项": 30,
+  "通过": 29,
+  "未过": 1,
+  "跳过": [],
+  "未过清单": [
+   "⑫d verify_localization_mapping.py 仍 23/23"
+  ],
+  "生成": "2026-10-13 14:59:29",
+  "主题": "T_drive = M·(−∇Φ) → zmax/ss_torque"
+ }
+}
