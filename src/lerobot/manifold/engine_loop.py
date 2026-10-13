@@ -46,11 +46,13 @@ import numpy as np
 try:                                                                            # 包内正常导入
     from .health import HealthMonitor, HealthThresholds
     from .metric_field import MetricField, MODE_ISOTROPIC
+    from . import prime_structure as PS                                         # 空间质数结构化理解能力
 except ImportError:                                                             # 直接跑本文件 (无父包) 的兜底
     import sys as _sys
     _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from health import HealthMonitor, HealthThresholds                          # type: ignore  # noqa: E402
     from metric_field import MetricField, MODE_ISOTROPIC                        # type: ignore  # noqa: E402
+    import prime_structure as PS                                                # type: ignore  # noqa: E402
 
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -408,6 +410,9 @@ class ManifoldEngineLoop:
                            if self.muscle is not None else "缺 (未加载 muscle_memory 真源)")
         # 记忆总线 (上行 L2→L3→L4→L5)
         self.memory = {"L2": [], "L3": [], "L4": [], "L5": []}
+        # 空间质数结构化理解能力 (L5 运行时自主进化的输入; 550A 产品默认具备)
+        self.prime_memory = os.path.join(_ROOT, "zmax_data", "manifold", "prime_memory.json")
+        self.prime_events = {"ticks": 0, "novel": 0, "known": 0}
         self.mem_events = {"L2_to_L3": 0, "L3_to_L4": 0, "L4_to_L5": 0, "L5_writeback": 0}
         self.records: list = []
         self.layer_calls = {"L5": 0, "L4": 0, "L3": 0, "L2": 0}
@@ -483,6 +488,8 @@ class ManifoldEngineLoop:
         if self.apply_updates:
             self._apply_updates(cmd)
         self.mem_events["L5_writeback"] += 1
+        # ⑥ 空间质数结构化理解 + 自主进化 (老倪: L5 状态空间工程运行时, 边工作边自主进化用的就是这个能力)
+        und = self.understand(frame, plan.stage)
         _cap = float(plan.safety["speed_cap_ms"])
         rec = {
             "t": float(frame.get("t", len(self.records))),
@@ -502,9 +509,56 @@ class ManifoldEngineLoop:
             "gate_corr": gate["corr"], "gate_ok": gate["ok"],
             # 记忆
             "memory": mem,
+            # 空间质数结构化理解 (产品标识 + 结构签名 + 未见结构计数 = 自主进化输入)
+            "understand": und,
         }
         self.records.append(rec)
         return rec
+
+    # ── 空间质数结构化理解能力 (运行时; 唯一实现见 src/lerobot/manifold/prime_structure.py) ──
+    def _struct_caps(self, frame: dict, stage: str) -> list:
+        """本 tick 真实出现的原子结构 (只取真的有信号的, 不臆造)。
+
+        位置恒有; 力/速度按实际载荷是否非零计入; 阶段按 8 阶段质数表计入。
+        """
+        caps = ["m_pos"]
+        try:
+            if abs(float(frame.get("force", 0.0))) > 0.0:
+                caps.append("m_force")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            v = np.asarray(frame.get("vel", []), float).ravel()
+            if v.size and float(np.max(np.abs(v))) > 0.0:
+                caps.append("m_vel")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        for k in (stage, str(frame.get("stage", ""))):
+            if k in PS.STAGE_PRIMES and k not in caps:
+                caps.append(k)
+                break
+        return [c for c in caps if c in PS.CAP_PRIMES]
+
+    def understand(self, frame: dict, stage: str) -> dict:
+        """把本 tick 的结构编码成质数签名, 与记忆库比对 ⇒ 已知/未见 (未见即自主进化输入)。
+
+        质数签名由算术基本定理保证唯一且可逆 (decode 回原子结构), 判据见 tools/verify_prime_structure.py。
+        记忆落盘只在 apply_updates=True 时发生 (干跑/自检只读, 不污染真源记忆库)。
+        """
+        caps = self._struct_caps(frame, stage)
+        try:
+            u = PS.understand(caps, memory_path=self.prime_memory, domain="cap",
+                              record=bool(self.apply_updates))
+        except Exception as e:                                                  # noqa: BLE001
+            u = {"signature": 0, "items": caps, "known": True, "error": repr(e)[:100],
+                 "evolution_input": False}
+        u["product_id"] = PS.active_product()
+        u["caps"] = caps
+        u["stage"] = stage
+        self.prime_events["ticks"] += 1
+        self.prime_events["novel" if u.get("evolution_input") else "known"] += 1
+        u["novel_ticks_total"] = self.prime_events["novel"]
+        return u
 
     def _champ(self, stage: str):
         if self.muscle is None:
