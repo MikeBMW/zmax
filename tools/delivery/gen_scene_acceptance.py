@@ -407,7 +407,7 @@ def main(argv=None):
     concl.append(("真空建立", "未达标",
                   "实测 %s ms vs 配方上限 %s ms" % (v["vacuum"]["measured_ms"], v["vacuum"]["judge_limit_ms"])))
     concl.append(("信号→topic 登记", "达标(结构)" if led["n_unreg"] == 0 else "有缺口",
-                  "信号 %d 条 · DDS typed %d · 画布节点输出族 %d · ROS2 通道 %d · **未登记 %d** (%s)" %
+                  "信号 %d 条 · DDS typed %d · 画布节点输出族 %d · ROS2 通道 %d · **未登记 %d**; 信号族构成: %s" %
                   (led["n"], led["n_dds"], led["n_node"], led["n_ros"], led["n_unreg"],
                    "·".join("%s%d" % (k, v) for k, v in (led.get("fam_count") or {}).items()))))
     concl.append(("信号实测覆盖", "部分",

@@ -2,7 +2,7 @@
  "schema": "zmax.scene_acceptance/1",
  "ver": "5.50.5",
  "task": "TASK-01-FW + TASK-06-TRAY",
- "generated_at": "2026-10-13 13:18:59",
+ "generated_at": "2026-10-13 13:21:15",
  "binding_active": "TASK-06-TRAY",
  "sections": {
   "config_center": {
@@ -5473,7 +5473,7 @@
    [
     "信号→topic 登记",
     "有缺口",
-    "信号 286 条 · DDS typed 14 · 画布节点输出族 184 · ROS2 通道 0 · **未登记 88** (AOI检测14·引擎快照184·AR/L588)"
+    "信号 286 条 · DDS typed 14 · 画布节点输出族 184 · ROS2 通道 0 · **未登记 88**; 信号族构成: AOI检测14·引擎快照184·AR/L588"
    ],
    [
     "信号实测覆盖",
