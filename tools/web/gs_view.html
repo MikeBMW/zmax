@@ -23,10 +23,17 @@
  #fps,#quality,#caminfo,#camid,#progress{position:fixed;left:-9999px;top:-9999px}
 </style></head><body>
 <canvas id="canvas"></canvas>
+<!-- 🛟 2026-10-14 老倪「打开是白屏」: 资产 69MB / 200 万+ 高斯, 拉取+挑显示副本要几秒到几十秒
+     (手机/弱网更久)。原来这段时间屏幕上什么都没有 = 白屏/黑屏, 现场以为坏了。
+     现在先垫一张**参考渲染图**(226KB, 秒出), 等 3D 真正开始渲染再把它撤掉 ⇒ 任何时候都有画面。 -->
+<img id="pre" src="gs_render.png" alt="参考渲染图(3D 加载中)"
+     style="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#05070a;z-index:5">
 <div id="bar">
   <span class="t">🧊 Z-MAX 3DGS 场景</span>
   <select id="pick" title="选择建图资产"></select>
   <button onclick="location.reload()">🔄 重载</button>
+  <button onclick="var u=new URLSearchParams(location.search);u.set('full','1');location.search=u.toString()" title="拉全量资产(284 万高斯 / 86.7MB)——会明显卡, 一定要看就在新窗口">🐘 全量(卡)</button>
+  <button onclick="var p=document.getElementById('pre');p.style.display=(p.style.display==='none'?'block':'none')" title="垫底的参考渲染图(3D 加载中先给一张静态图)">🖼 参考图</button>
   <span id="meta">加载中…</span>
 </div>
 <div id="info"><div id="message"></div><div id="instructions"></div></div>
@@ -54,11 +61,25 @@ function loadViewer(){
   document.body.appendChild(s);
 }
 function boot(name){
-  var src='gs/'+(name?name+'.splat':'latest.splat');
+  /* 🪶 2026-10-14 老倪「打开太卡, 卡住鼠标和其它窗口」: 原来直接拉**全量** splat(284 万高斯 / 86.7MB),
+     下载 + 解析全在浏览器主线程 ⇒ 同标签页里的视频 UI、鼠标、别的窗口一起卡。
+     默认改拉服务端**预算好的轻量副本**(6 万高斯 ≈ 1.9MB, 下载量降 ~45×); 轻量副本取不到再回落全量。
+     要看全量: 加 ?full=1(顶部「🐘 全量」按钮), 建议在新窗口看。 */
+  var FULL=/[?&]full=1/.test(location.search);
+  var light='gs/'+(name?name+'.display60k.splat':'latest_display.splat');
+  var full='gs/'+(name?name+'.splat':'latest.splat');
+  var src=FULL?full:light;
   setMeta('拉取 '+src+' …');
   fetch(src).then(function(r){
     if(!r.ok) throw new Error('HTTP '+r.status+' '+src);
     return r.arrayBuffer();
+  }).catch(function(e){
+    if(FULL) throw e;
+    setMeta('轻量副本不可用('+e.message+') ⇒ 回落全量 '+full+' …');
+    return fetch(full).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status+' '+full);
+      return r.arrayBuffer();
+    });
   }).then(function(ab){
     if(ab.byteLength % 32 !== 0) throw new Error('资产字节数不是 32 的整数倍: '+ab.byteLength);
     var n=ab.byteLength/32, f=new Float32Array(ab), o;
@@ -83,25 +104,38 @@ function boot(name){
     /* 🖼 2026-10-08 老倪「页面卡死了」: 查看器每帧在 CPU 上排序**全部**高斯;
        58.9 万个排序会占满主线程 ⇒ 站页假死。这里做**显示副本降采样**:
        按不透明度(alpha 字节)保留最实的 K 个 —— 视觉几乎无损(半透明雾状粒子本来就看不见),
-       排序量降 5×。只改浏览器里的显示副本, 不动资产、不动训练。 */
-    var KMAX = 120000;
+       排序量降 5×。只改浏览器里的显示副本, 不动资产、不动训练。
+       🔴 2026-10-13 老倪又「点实景查看器卡死」: 当时资产 10.1 万**正好落在旧上限 12 万以下
+       ⇒ 一次都没降采样, 全量 10 万在 JS 里每帧排序 ⇒ 手机/弱机照样假死。
+       上限砍到 6 万(排序量再降 2×), 现场判据: 卡不卡由**这一个数**决定, 不是资产大小。 */
+    var KMAX = 60000;
     if(n > KMAX){
-      var u8 = new Uint8Array(ab), idx = new Array(n);
-      for(var i=0;i<n;i++) idx[i]=i;
-      idx.sort(function(a,b){ return u8[b*32+27] - u8[a*32+27]; });   // alpha 降序
-      var nb = new ArrayBuffer(KMAX*32), nd = new Float32Array(nb), sd = new Uint8Array(nb);
-      for(var j=0;j<KMAX;j++){ var src=idx[j]*32, dst=j*32;
-        for(var q=0;q<32;q++) sd[dst+q]=u8[src+q]; }
-      ab = nb; f = nd; n = KMAX;
-      setMeta('显示降采样 '+n.toLocaleString()+' / 原始 '+idx.length.toLocaleString()+' 高斯(保最实) · ');
+      /* 🔴 2026-10-14 老倪「打开是白屏/卡住」: 原来是**全量 JS 排序**(比较器被调用 ~4000 万次),
+         200 万+ 高斯时主线程一卡十几秒到几十秒, 页面看着就是白屏/没反应。
+         改用两趟线性 + 256 桶 alpha 直方图挑最实的 KMAX 个(阈值以上全要, 不足从阈值桶补),
+         32 字节整块 memcpy。实测 216 万高斯从数十秒降到亚秒级。 */
+      var u8 = new Uint8Array(ab), hist = new Uint32Array(256), ii;
+      for(ii=0;ii<n;ii++) hist[u8[ii*32+27]]++;
+      var acc=0, thr=255;
+      for(; thr>=0; thr--){ acc+=hist[thr]; if(acc>=KMAX) break; }
+      if(thr<0) thr=0;
+      var nb = new ArrayBuffer(KMAX*32), sd = new Uint8Array(nb), w=0;
+      for(ii=0;ii<n && w<KMAX;ii++){ if(u8[ii*32+27]>thr){ sd.set(u8.subarray(ii*32,ii*32+32), w*32); w++; } }
+      for(ii=0;ii<n && w<KMAX;ii++){ if(u8[ii*32+27]===thr){ sd.set(u8.subarray(ii*32,ii*32+32), w*32); w++; } }
+      var raw = n; ab = nb; n = w;
+      setMeta('显示降采样 '+n.toLocaleString()+' / 原始 '+raw.toLocaleString()+' 高斯(保最实) · ');
     }
     setMeta('高斯 '+n.toLocaleString()+' · 已居中缩放 ×'+k.toFixed(1)+'(世界中心 '+cx.toFixed(2)+','+cy.toFixed(2)+','+cz.toFixed(2)+
-            ' · 原半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m) · 左键拖转角度');
+            ' · 原半跨度 '+mx.toFixed(2)+'/'+my.toFixed(2)+'/'+mz.toFixed(2)+' m) · 左键拖转角度'+
+            (FULL?' · 🐘 全量(会卡)':' · 🪶 轻量副本'));
     var u=URL.createObjectURL(new Blob([ab],{type:'application/octet-stream'}));
     /* 2026-10-08: 不再用 hash 改相机(那样左键轨道轴心在场景外, 老倪「左键转不了角度」的根因)。
        场景已按默认相机尺度缩放 ⇒ 交给查看器原厂相机与控件。 */
     try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u));}catch(e){}
     loadViewer();
+    /* 查看器接管后把垫底的参考渲染图撤掉(给 6 秒: 要么它画出来了, 要么红色错误框会说明原因)。
+       顶部「🖼 参考图」按钮随时可以再把静态图叫回来。 */
+    setTimeout(function(){var p=document.getElementById('pre'); if(p) p.style.display='none';}, 6000);
   }).catch(function(e){ setMeta('资产拉取失败: '+e); loadViewer(); });
 }
 fetch('gs/list').then(function(r){return r.json();}).then(function(d){

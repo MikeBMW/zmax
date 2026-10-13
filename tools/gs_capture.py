@@ -84,6 +84,7 @@ def main():
     last_md5 = None
     last_file = None
     last_seq = -1
+    seen_md5 = {}  # 🧷 全局内容表: md5 → (首次落盘的文件名, seq)。见下面 2026-10-13 那条。
     kb = 0.0
     poses = []
     print("[gs_capture] 起采 → %s (%.1fHz, 源 %s)" % (out, args.hz, args.url), flush=True)
@@ -113,7 +114,18 @@ def main():
                 #   矛盾监督(训练视角都拟合不上, 留出 PSNR 低于"填常数"平凡基线)。原来每取必存,
                 #   118586 次取图存下 5,830 张唯一画面(77.7% 是废帧)。现在: 内容变才写文件,
                 #   重复的只在 frames.jsonl 里记一行(`dup=true` 指向那张图), 时间/位姿序列不丢。
-                if md5 == last_md5 and last_file:
+                # 🔴 2026-10-13 老倪「我走点建图」: 上面那条只比**相邻**帧 —— 相机有效帧率远低于取图率时,
+                #   同一画面在"走远又走回"后会再被当成新帧 ⇒ 同一张图配两个差 100mm 的位姿
+                #   (= 矛盾监督; 会话级 content_pose_consistency 判 fail ⇒ 整场建图被拒,
+                #   实测 6484 次取图 / 337 唯一画面 / 11 组同图异位姿)。
+                #   现在按**全局** md5 表判: 这张画面本会话见过 ⇒ 一律记 dup 指向首见那条, 不再落新文件、
+                #   也不产生第二个"位姿"。只写一行的代价换来数据集不再自相矛盾。
+                first = seen_md5.get(md5)
+                if first is not None:
+                    rec.update({"file": first[0], "bytes": len(img), "md5": md5,
+                                "dup": True, "dup_of": first[1]})
+                    n_dup += 1
+                elif md5 == last_md5 and last_file:
                     rec.update({"file": last_file, "bytes": len(img), "md5": md5,
                                 "dup": True, "dup_of": last_seq})
                     n_dup += 1
@@ -123,6 +135,7 @@ def main():
                         f.write(img)
                     rec.update({"file": fn, "bytes": len(img), "md5": md5, "dup": False})
                     last_md5, last_file, last_seq = md5, fn, seq
+                    seen_md5[md5] = (fn, seq)
                     n_uniq += 1
                 n_ok += 1
                 kb += len(img) / 1024.0

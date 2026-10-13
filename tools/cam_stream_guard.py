@@ -37,7 +37,9 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get("ZMAX_STREAM_PORT", "8791"))
 RGB_KEY = "Integrated RGB"          # 笔记本彩色相机的卡名关键字
-USB_KEY = "USB2.0 Camera"           # 笔记本那格「换源」选到的 USB 相机卡名关键字
+USB_KEY = "USB2.0 Camera,RealSense"  # 笔记本那格「换源」选到的 USB 相机卡名关键字(逗号=任一命中;
+#   实测 2026-10-14: 外接 Intel RealSense D435 的卡名是 "Intel(R) RealSense(TM) Depth Camera",
+#   只认 "USB2.0 Camera" 会让解析器报 USB=-1 ⇒ 页面选了 USB 也一直不显示那台相机)
 TOP_KEY = "MAXHUB"                  # 顶视相机
 # ⚠️ 2026-10-08 修: 站台有「笔记本内置 ↔ USB」换源功能, 用户选择会落盘到 cam_local_src.json。
 #   本守卫原先只认 "Integrated RGB" ⇒ 用户选了 USB 之后, 每 5 分钟把站台重启一次(实测 06:58/07:00
@@ -167,8 +169,10 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
     if st:
         lo = (st.get("local") or {}).get("label", "")
         l2 = (st.get("local2") or {}).get("label", "")
-        if lo and local_key and local_key.lower() not in lo.lower():
-            return False, "local 那一格不是用户选的那台相机(实测 label=%r, 期望含 %r)" % (lo, local_key)
+        if lo and local_key:
+            _keys = [k.strip().lower() for k in str(local_key).split(",") if k.strip()]
+            if not any(k in lo.lower() for k in _keys):
+                return False, "local 那一格不是用户选的那台相机(实测 label=%r, 期望含 %r)" % (lo, local_key)
         if l2 and TOP_KEY.lower() not in l2.lower():
             return False, "local2 那一格不是 MAXHUB(实测 label=%r) — 串线" % l2
     return True, "ok"

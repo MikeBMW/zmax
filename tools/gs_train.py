@@ -93,6 +93,12 @@ def main() -> int:
                     help="增量续训时通常关掉致密化(新视角少, 致密化会过度膨胀)")
     ap.add_argument("--smoke", type=int, default=0, help=">0 时只跑这么多步(冒烟测试)")
     ap.add_argument("--seed", type=int, default=0)
+    # 🔴 2026-10-14 致密化旋钮(默认 = gsplat 官方默认, 不传即老行为):
+    #   高斯数失控时用它们做同口径对照, e.g. --prune-opa 0.01 --grow-grad2d 0.0004
+    ap.add_argument("--prune-opa", type=float, default=0.005, help="低于此不透明度直接剪掉(官方默认 0.005)")
+    ap.add_argument("--grow-grad2d", type=float, default=0.0002, help="梯度阈值, 越大长得越少(官方默认 0.0002)")
+    ap.add_argument("--grow-scale3d", type=float, default=0.01, help="3D 尺度超过则分裂(官方默认 0.01)")
+    ap.add_argument("--grow-scale2d", type=float, default=0.05, help="屏幕尺度超过则分裂(官方默认 0.05)")
     ap.add_argument("--refine-stop", type=int, default=0,
                     help="停止致密化的步数 (0=自动=min(steps, 15000)*0.5)。"
                          "官方配方: 30k 步训练、15k 步停致密化; 跑满全程会过度致密化")
@@ -199,6 +205,13 @@ def main() -> int:
             return means_lr_min
         return float(np.exp(np.log(means_lr0) + (np.log(means_lr_min) - np.log(means_lr0)) * (step / _st_total)))
     strategy = DefaultStrategy(verbose=True,
+                               # 🔴 2026-10-14: 实测高斯失控(216 万 → 284 万)而留出 PSNR 不升反微降 ⇒
+                               #   致密化阈值成了瓶颈。这里把三个旋钮显式暴露出来(默认值 = gsplat 官方默认,
+                               #   不传时行为与以前逐字节一致), 用来做"收敛致密化"的同口径对照。
+                               prune_opa=a.prune_opa,
+                               grow_grad2d=a.grow_grad2d,
+                               grow_scale3d=a.grow_scale3d,
+                               grow_scale2d=a.grow_scale2d,
                                refine_stop_iter=(0 if a.no_refine else
                                                  (a.refine_stop or int(min(_st_total, 15000) * 0.5))))
     strat_state = strategy.initialize_state(scene_scale=scene_scale)

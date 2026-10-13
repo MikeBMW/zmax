@@ -343,7 +343,7 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
 #     ⇒ 换源会一起改变安全层看到的全局画面; 页面上如实标注, 不藏着。
 _SRC_FILE = os.path.expanduser("~/zmax/zmax_data/cam_local_src.json")
 _SRC_LOCK = threading.Lock()
-_USBCFG = {"name": "USB2.0 Camera", "dev": -1}   # USB 相机: 卡名匹配串 + 可选写死号(-1=自动)
+_USBCFG = {"name": "USB2.0 Camera,RealSense", "dev": -1}   # USB 相机: 卡名匹配串(逗号=任一命中) + 可选写死号(-1=自动)
 _LOCAL_SRC = {"kind": "builtin", "dev": -1, "builtin_dev": -1, "gen": 0}
 
 
@@ -373,16 +373,26 @@ def _v4l_scan() -> list:
 
 
 def _src_find(needle: str, exclude: int = -1) -> int:
-    """按卡名找**真能出图**的节点: 优先 MJPG(JPEG) 路, 其次任何有像素格式的路; 找不到 = -1。"""
-    fallback = -1
+    """按卡名找**真能出图**的节点: 优先 MJPG(JPEG) 路, 其次任何有像素格式的路; 找不到 = -1。
+
+    needle 可用**逗号分隔多个关键字**(任一命中即算)。实测 2026-10-14: 外接 Intel RealSense D435 的卡名是
+    "Intel(R) RealSense(TM) Depth Camera"; 它同时暴露多个节点, 其中只有彩色那一路是 YUYV
+    (IR/深度那路是 GREY/UYVY/Y12I, metadata 节点列不出任何格式) ⇒ 靠"必须有 MJPG/JPEG/YUYV"这一条
+    正好落在彩色那一路, 不会挑到 IR/深度节点。
+    """
+    keys = [k.strip().lower() for k in str(needle).split(",") if k.strip()]
+    color_fb, any_fb = -1, -1
     for d in _v4l_scan():
-        if d["dev"] == exclude or needle.lower() not in (d["name"] or "").lower():
+        nm = (d["name"] or "").lower()
+        if d["dev"] == exclude or not any(k in nm for k in keys):
             continue
         if any(f in ("MJPG", "JPEG") for f in d["fmt"]):
             return d["dev"]
-        if d["fmt"] and fallback < 0:
-            fallback = d["dev"]
-    return fallback
+        if color_fb < 0 and any(f in ("YUYV", "RGB3", "BGR3") for f in d["fmt"]):
+            color_fb = d["dev"]                                  # 彩色但无 MJPG(RealSense 就是这种)
+        if any_fb < 0 and d["fmt"]:
+            any_fb = d["dev"]                                    # 兜底(别拿它顶掉彩色节点)
+    return color_fb if color_fb >= 0 else any_fb
 
 
 def _src_kinds() -> list:
@@ -3859,6 +3869,22 @@ def _gs_assets():
     return out
 
 
+def _gs_latest_render():
+    """最新资产(按 gs.splat mtime)的留出视角渲染图 → (path, 资产名, mtime)。
+
+    🐛 2026-10-14 老倪「参考渲染图是一个历史帧(应该是这轮手臂相机建的图)」:
+       原实现是 `sorted(glob('*/renders/holdout_00.png'))[-1]` —— 按**路径字母序**取最后一个,
+       取到的是 10-01/10-07 那些老资产(名字排序靠后, 如 verify_train_*/scene_*), 跟"最新建图"无关。
+       现在与资产列表/3D 查看器**同一口径**: 取 gs.splat 最新的那个资产的渲染图。"""
+    for d in _gs_assets():                       # 已按 splat mtime 新 → 旧
+        base = os.path.dirname(d["splat"])
+        for rel in ("renders/holdout_00.png", "renders/holdout_01.png"):
+            p = os.path.join(base, rel)
+            if os.path.isfile(p):
+                return p, d["name"], os.path.getmtime(p)
+    return None, "", 0.0
+
+
 def _gs_list_json() -> bytes:
     a = _gs_assets()
     return json.dumps({"latest": (a[0]["name"] if a else ""), "assets": [
@@ -3867,6 +3893,54 @@ def _gs_list_json() -> bytes:
          "psnr_holdout_db": (round(d["psnr_holdout"], 2) if d["psnr_holdout"] else None),
          "n_gaussians": d["n_gaussians"], "steps": d["steps"],
          "url": "gs/" + d["name"] + ".splat"} for d in a]}, ensure_ascii=False).encode("utf-8")
+
+
+def _gs_display_splat(name: str, kmax: int = 60000):
+    """🪶 2026-10-14 老倪「打开太卡, 卡住鼠标和其它窗口」的收口:
+    页面原来直接拉**全量** splat(284 万高斯 / 86.7MB), 浏览器要整份下载 + 解析, 同源连接还被工位页
+    那几路视频流占着 ⇒ 主线程卡死, 整个浏览器(鼠标/别的窗口)都跟着卡。
+    这里在服务端预算出「最实的 kmax 个」做成轻量显示资产(60k ⇒ 约 1.9MB), 页面默认拉它 —— 下载量降 45 倍。
+    挑法与前端一致: 按第 27 字节(alpha) 取前 kmax 大, 保证页面看到的点与全量降采样是同一套。缓存到
+    `<资产>/gs.display60k.splat`(不叫 gs.splat, 不会被当成新资产列出来)。"""
+    root = os.path.expanduser("~/zmax/zmax_data/gs_assets")
+    src = os.path.join(root, name, "gs.splat")
+    if not os.path.isfile(src):
+        return None
+    dst = os.path.join(root, name, "gs.display%dk.splat" % (kmax // 1000))
+    try:
+        if os.path.isfile(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+            return dst
+        import numpy as np
+        a = np.fromfile(src, dtype=np.uint8)
+        a = a[:(len(a) // 32) * 32].reshape(-1, 32)
+        if a.shape[0] > kmax:
+            idx = np.argpartition(a[:, 27].astype(np.int16), -kmax)[-kmax:]
+            a = a[idx]
+        a.tofile(dst)
+        return dst
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
+def _gs_display_bytes(p: str):
+    """`/gs/latest_display.splat` → 最新资产的轻量副本; `/gs/<名>.display60k.splat` → 指定资产。"""
+    if p.rstrip("/").endswith("/latest_display.splat"):
+        a = _gs_assets()
+        if not a:
+            return None
+        nm = a[0]["name"]
+    else:
+        nm = p.rsplit("/", 1)[-1][:-len(".display60k.splat")]
+        if not re.match(r"^[A-Za-z0-9_.\-]{1,80}$", nm):
+            return None
+    fp = _gs_display_splat(nm)
+    if not fp:
+        return None
+    try:
+        with open(fp, "rb") as f:
+            return f.read()
+    except Exception:                                                            # noqa: BLE001
+        return None
 
 
 def _gs_splat_bytes(p: str):
@@ -4700,14 +4774,17 @@ class Handler(BaseHTTPRequestHandler):
         #   被后面的通用兜底分支截走 ⇒ 一律返回 not found ⇒ 面板图永远加载不出(白屏)。
         #   这里提到链首优先处理; 且 _send 必须收 bytes(传 str 会 TypeError 崩)。
         if p in ("/gs_render.png", "/api/gs_render.png"):
-            import glob as _g
-            _c = sorted(_g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")),
-                        key=os.path.getmtime, reverse=True)
-            if not _c:
+            # 🔴 2026-10-14 老倪「参考渲染图是一个历史帧」: 这里原来自己 sorted(glob(…), key=mtime) 取最新,
+            #   与资产列表/查看器各自一套口径; 更早的版本还有个**字母序**取尾的重复分支(名字排序靠后
+            #   的老资产会被当成"最新", 现场读到的正是"历史帧") —— 一条路径两个处理器, 改一个另一个照样生效。
+            #   现在统一走 `_gs_latest_render()`: 与 `/gs/list`、3D 查看器**同一个**资产(按 gs.splat mtime)。
+            #   渲染图来自哪个资产/什么时候渲的由状态 JSON 带给页面(自定义 X-* 头会被 _send 白名单丢掉)。
+            _rp, _ra, _rm = _gs_latest_render()
+            if not _rp:
                 self._send(404, "text/plain", b"no render yet")
             else:
                 try:
-                    with open(_c[0], "rb") as _f:
+                    with open(_rp, "rb") as _f:
                         _d = _f.read()
                     self._send(200, "image/png", _d, {"Cache-Control": "no-store"})
                 except Exception as _e:
@@ -4763,6 +4840,14 @@ class Handler(BaseHTTPRequestHandler):
         elif p in ("/gs/list", "/api/gs/list"):
             # 资产清单(页面下拉用; 手机可 curl 取证)
             self._send(200, "application/json; charset=utf-8", _gs_list_json())
+        elif p in ("/gs/latest_display.splat", "/api/gs/latest_display.splat") or p.endswith(".display60k.splat"):
+            # 🪶 轻量显示副本(服务端预算 6 万高斯 ≈ 1.9MB): 页面默认走它。
+            #    全量 86.7MB 只在用户显式要「🐘 全量」时才拉(新窗口/明确点击), 避免一开页就卡住主线程。
+            _b = _gs_display_bytes(p)
+            if _b is None:
+                self._send(404, "text/plain; charset=utf-8", b"display splat not available")
+            else:
+                self._send(200, "application/octet-stream", _b)
         elif p in ("/gs/latest.splat", "/api/gs/latest.splat") or p.endswith(".splat"):
             _b = _gs_splat_bytes(p)
             if _b is None:
@@ -5110,19 +5195,16 @@ class Handler(BaseHTTPRequestHandler):
                 _st = json.load(open(stf, encoding="utf-8"))
             except Exception:                                                         # noqa: BLE001
                 _st = {"running": False, "status_line": "还没有跑过建图", "step": "idle"}
-            if _g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")):
+            _rp, _ra, _rm = _gs_latest_render()
+            if _rp:
                 _st["image_url"] = "/gs_render.png?t=__T__"
+                # 渲染图来自哪个资产 + 什么时候渲的 ⇒ 页面就地标注, 避免"历史帧"再被误当当前图
+                _st["image_asset"] = _ra
+                _st["image_ts"] = time.strftime("%H:%M:%S", time.localtime(_rm))
+                _st["image_age_s"] = int(max(0, time.time() - _rm))
             # 🐛 2026-10-01: _send 要的是 bytes, 原来这里传 str ⇒ 按钮点了必崩
             #   (TypeError: a bytes-like object is required, not 'str') ⇒ 页面看到空白/无反应。
             return self._send(200, "application/json", json.dumps(_st, ensure_ascii=False).encode("utf-8"))
-        elif p == "/gs_render.png":
-            import glob as _g
-            _rend = sorted(_g.glob(os.path.expanduser("~/zmax/zmax_data/gs_assets/*/renders/holdout_00.png")))
-            if not _rend:
-                return self._send(404, "text/plain", "no render yet")
-            with open(_rend[-1], "rb") as _f:
-                _d = _f.read()
-            return self._send(200, "image/png", _d, {"Cache-Control": "no-store"})
         elif p in ("/ctl/record_point", "/api/ctl/record_point"):
             # 📝 把当前 TCP 真值记成号位示教点(零运动, 不需要真动授权; 只允许 slot1~slot7)。
             #    2026-09-30 老倪: 「4 5 6 号位, 你能自己实现记录么？」 ⇒ 现场点动到位后一键记住。
@@ -5346,8 +5428,10 @@ def main():
                          "(~/zmax/zmax_data/cam_local_src.json, 没有记录就是内置)")
     ap.add_argument("--usb-dev", type=int, default=-1,
                     help="USB 摄像头 /dev/videoN (-1=按卡名自动扫; 推荐自动 —— 插拔/换口后序号会变)")
-    ap.add_argument("--usb-name", default="USB2.0 Camera",
-                    help="USB 摄像头卡名匹配串 (取 v4l2 卡名, 默认 'USB2.0 Camera')")
+    ap.add_argument("--usb-name", default="USB2.0 Camera,RealSense",
+                    help="USB 摄像头卡名匹配串(逗号分隔多个, 任一命中即可; 取 v4l2 卡名 —— "
+                         "默认 'USB2.0 Camera,RealSense': 实测外接 Intel RealSense D435 的卡名是 "
+                         "'Intel(R) RealSense(TM) Depth Camera', 只认 USB2.0 Camera 会把它判成不在位)")
     ap.add_argument("--no-local", action="store_true", help="不启第一路本机相机")
     # 🎥 2026-09-27 老倪: 三相机兼容 —— 第二路本机相机 (MAXHUB 电视顶摄) 或网络相机
     ap.add_argument("--local2-dev", type=int, default=-1,

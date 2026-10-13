@@ -97,7 +97,12 @@ def dataset_checks(d):
                            "唯一图 %d/%d (重复率 %.1f%%); 重复>10%% ⇒ 同图配不同位姿=矛盾监督" % (uniq, n, out["dup_ratio"] * 100))
     ck["distinct_views"] = (PASS if views >= 50 else WARN, "真正不同视点 %d 个(3DGS 建议 ≥100)" % views)
     if len(difs) >= 5:
-        _d = out["same_pose_img_diff_med"] or 999.0
+        # 🔴 2026-10-13 修正: 原来是 `out["same_pose_img_diff_med"] or 999.0` —— Python 里 **0.0 是假值**,
+        #   于是"同一位姿不同时刻画面差 = 0.0"(最理想的情形!)被替换成 999.0 判 FAIL ⇒ 现场明明是
+        #   干净数据却永远"没过门, 不训"(实测 21:10~21:14 连续 4 轮: 352 对 · 中位 999.0/255)。
+        _d = out.get("same_pose_img_diff_med")
+        if _d is None:
+            _d = 999.0
         ck["static_scene"] = (PASS if _d < 8 else FAIL,
                               "同一位姿不同时刻画面差异中位 %.1f/255(应 <8, %d 对)" % (_d, len(difs)))
     elif len(difs) > 0:

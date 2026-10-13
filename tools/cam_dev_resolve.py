@@ -80,8 +80,9 @@ def pick_usb(rows, prefer_usb_name: str, exclude: str = ""):
     """
     def _cap(r):
         return any(f in ("MJPG", "JPEG", "YUYV") for f in r["formats"])
+    keys = [k.strip().lower() for k in str(prefer_usb_name).split(",") if k.strip()]
     return next((r["dev"] for r in rows
-                 if prefer_usb_name.lower() in r["name"].lower() and _cap(r)
+                 if any(k in r["name"].lower() for k in keys) and _cap(r)
                  and r["dev"] != exclude), None)
 
 
@@ -89,7 +90,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rgb-name", default="Integrated RGB", help="笔记本彩色相机的卡名关键字")
     ap.add_argument("--top-name", default="MAXHUB", help="顶视相机的卡名关键字")
-    ap.add_argument("--usb-name", default="USB2.0 Camera", help="外接 USB 摄像头的卡名关键字")
+    ap.add_argument("--usb-name", default="USB2.0 Camera,RealSense",
+                    help="外接 USB 摄像头的卡名关键字(逗号分隔多个, 任一命中即可; "
+                         "实测本机外接 Intel RealSense D435 的卡名是 Intel(R) RealSense(TM) Depth Camera, "
+                         "只认 'USB2.0 Camera' 会把它判成不在位)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     local, top, rows = pick(a.rgb_name, a.top_name)

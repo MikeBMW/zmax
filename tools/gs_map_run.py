@@ -290,11 +290,24 @@ def inc_round(sess, tag, i, prev, steps, st):
          "--json", q], timeout=1800)
     rep = read_json(q) or {}
     nv = int((rep.get("data") or {}).get("distinct_views") or 0)
-    if rep.get("verdict") == "fail":
+    # 🎯 2026-10-13 门要判在**数据集**上: 真正入训的是 data 部分(已按图像内容去重)。
+    #   会话级(session)那部分会把"同一画面被取了多次"算成脏数据 —— 人工走点模式下这是**取图率
+    #   高于相机有效帧率**的正常现象(实测 6484 次取图 / 337 唯一画面), 数据集里根本没有这些重复,
+    #   原来拿聚合判定 ⇒ 数据集明明干净也永远不训(现场: 视点 45 早过门, 却一直"没过门")。
+    _dsv = str(((rep.get("data") or {}).get("verdict") or rep.get("verdict") or "")).lower()
+    _ssv = str(((rep.get("session") or {}).get("verdict") or "")).lower()
+    if _ssv == "fail" and _dsv != "fail":
+        w(st, "  ℹ️ 会话级检查 fail(同图多取导致), 数据集干净 ⇒ 照常训练")
+    if _dsv == "fail":
         w(st, "  ⚠️ 第 %d 轮数据集没过门(视点 %d) ⇒ 本轮不训" % (i, nv))
         return prev
     if nv < MIN_TRAIN_VIEWS:
-        w(st, "  ⚠️ 第 %d 轮真正不同视点只有 %d(<%d) ⇒ 本轮不训(等相机真的换位置)" % (i, nv, MIN_TRAIN_VIEWS))
+        # 2026-10-13: 现场最需要的是**实时还差多少** —— 原来只说"只有 N<%d", 老倪走了半天不知道差在哪。
+        w(st, "  ⚠️ 第 %d 轮独立视点 %d/%d (还差 %d 个) ⇒ 本轮不训; 计数就是进度条: "
+              "每个**新位置**再走一次就 +1(原地转不算 ⇒ 要有平移)"
+              % (i, nv, MIN_TRAIN_VIEWS, MIN_TRAIN_VIEWS - nv))
+        st.update(step="views", status_line="独立视点 %d/%d (还差 %d 个) —— 继续走新位置"
+                  % (nv, MIN_TRAIN_VIEWS, MIN_TRAIN_VIEWS - nv))
         return prev
     mdl = os.path.join(GS, "map_%s_m%d" % (tag, i))
     cmd = ["bash", os.path.join(REPO, "tools/run_gs_train.sh"), "--data", ds, "--out", mdl,
@@ -455,7 +468,16 @@ def main():
         if not skill:
             skill, info = pick_novelty(cat, visited)
             why = "兜底: %s" % json.dumps(info, ensure_ascii=False)
-        if not skill:
+        if not skill and args.manual:
+            # 🖐 人工模式: **建议点不是队列** —— 我"建议"过了不算他"去过"(臂根本没动) ⇒ 轮空就
+            #    把已建议集清掉重新给建议, 绝不能因为"没有可去的点"把整场人工建图收了。
+            visited.clear()
+            _s2, _i2 = pick_novelty(cat, {})
+            if _s2:
+                skill, why = _s2, "人工模式(重置建议) %s" % json.dumps(_i2, ensure_ascii=False)
+            else:
+                w(st, "  🧭 没有可建议的点 —— 你自由走就行(照常采帧)")
+        if not skill and not args.manual:
             st.update(running=False, status_line="没有可去的目标点(都访问过了?)")
             w(st, "⛔ " + st["status_line"])
             break
@@ -489,7 +511,8 @@ def main():
             return 1
         if not args.manual:
             w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (skill, dd * 1000))
-        visited[skill] = pose() or tgt or [0, 0, 0]
+        if not args.manual:
+            visited[skill] = pose() or tgt or [0, 0, 0]   # 人工模式的"建议"不进已访问集(臂没动过)
 
         st.update(step="capture", status_line="(%d/%d) 到位后补采 %.0fs…" % (i, args.rounds, args.dwell))
         if cap is not None:
@@ -572,9 +595,11 @@ def finish(sess, ds, st, args, train_only_ds=False, model="", ds_last=""):
     p = run([PY, os.path.join(REPO, "tools/gs_quality.py"), "--dataset", ds, "--session", sess,
              "--json", q1], timeout=1800)
     rep = read_json(q1) or {}
-    v = rep.get("verdict", "?")
+    # 同 inc_round 的口径: 收尾也判在**数据集**上(会话级的"同图多取"不拦训练)
+    v = str(((rep.get("data") or {}).get("verdict") or rep.get("verdict") or "?")).lower()
     nv = int((rep.get("data") or {}).get("distinct_views") or 0)
-    w(st, "  数据集判定: %s · 真正不同视点 %d" % (v.upper(), nv))
+    w(st, "  数据集判定: %s · 真正不同视点 %d (会话级: %s)"
+      % (v.upper(), nv, str(((rep.get("session") or {}).get("verdict") or "?")).upper()))
     if v == "fail":
         st.update(running=False, step="stopped", status_line="数据集没过门 ⇒ 不训练(避免白烧 GPU)",
                   verdict=v, dataset=ds, quality=q1)

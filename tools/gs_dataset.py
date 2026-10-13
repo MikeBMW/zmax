@@ -162,6 +162,12 @@ def select(frames, T_tool_cam, max_frames):
         if dmin[nxt] <= 0:
             break
         sel.append(nxt)
+        # 🔴 2026-10-13 修: **选完必须把它自己的 dmin 归零**。原来少了这一行 ⇒ 只要"新点到最后一点"
+        #   的距离 d[nxt] 比 dmin[nxt] 大, dmin[nxt] 就压不下去 ⇒ argmax 每轮都返回同一个索引,
+        #   同一个视图被反复选中。实测: 614 个不同文件里, 只选出 180 个不同索引, 其中一个视图被选了
+        #   **221 次** ⇒ 数据集 400 张里有 221 张是同一张图(唯一图 180/400 判 fail; 训出来 PSNR 16dB,
+        #   正常是 33dB+); 而且这条检查的报错话术是"同图配多位姿", 一直把人往"走动太快"上带。
+        dmin[nxt] = 0.0
     return sorted(sel)
 
 
