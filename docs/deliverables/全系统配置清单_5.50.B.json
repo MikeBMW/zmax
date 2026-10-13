@@ -1,24 +1,24 @@
 {
   "schema": "zmax-config-inventory/1.0",
   "version": "5.50.B",
-  "generated_at": "2026-10-13 07:37:17",
+  "generated_at": "2026-10-13 11:25:41",
   "repo": "/home/ubuntu/zmax",
   "sections": {
     "版本": {
-      "界面品牌版本": "5.50.1",
-      "VERSION.md 记载": "5.50.1",
-      "git HEAD": "6462c27 docs(5.50.A): 功能说明(详细) + 配置清单校准(任务键名/权威画布 89节点184连线)",
-      "git describe": "v5.49.3-23-g6462c27",
-      "最新 tag(按创建时间, 只认 vX.Y.Z)": "v5.49.3",
-      "tag 总数": 105
+      "界面品牌版本": "5.50.5",
+      "VERSION.md 记载": "5.50.5",
+      "git HEAD": "cc22fc1 版本号更正: 5.55.5 → 5.50.5 (版本位8处+VERSION.md+发布登记/指纹 550B·iter7), 清理版本工具误塞的巨型 changelog 行",
+      "git describe": "v5.50.5",
+      "最新 tag(按创建时间, 只认 vX.Y.Z)": "v5.50.5",
+      "tag 总数": 106
     },
     "在役服务": {
       "监听端口": {
-        "8791": "LISTEN 0      5            0.0.0.0:8791       0.0.0.0:*    users:((\"python\",pid=575243,fd=10))",
-        "8793": "LISTEN 0      5            0.0.0.0:8793       0.0.0.0:*    users:((\"python\",pid=575243,fd=4))",
-        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=2067702,fd=4))",
         "8888": "LISTEN 0      1024            [::]:8888          [::]:*",
-        "8796": "LISTEN 0      5          127.0.0.1:8796       0.0.0.0:*    users:((\"python\",pid=5246,fd=16))"
+        "8793": "LISTEN 0      5            0.0.0.0:8793       0.0.0.0:*    users:((\"python\",pid=18171,fd=8))",
+        "8797": "LISTEN 0      5            0.0.0.0:8797       0.0.0.0:*    users:((\"python\",pid=5320,fd=4))",
+        "8791": "LISTEN 0      5            0.0.0.0:8791       0.0.0.0:*    users:((\"python\",pid=18171,fd=15))",
+        "8796": "LISTEN 0      5          127.0.0.1:8796       0.0.0.0:*    users:((\"python\",pid=5300,fd=16))"
       },
       "systemd 单元": {
         "sam3-seg.service": "active",
@@ -34,13 +34,13 @@
         "zmax-ecs-station.service": "active",
         "zmax-engdb.service": "active",
         "zmax-hil-bridge.service": "active",
+        "zmax-mapping.service": "active",
         "zmax-moveit-plan-req.service": "active",
         "zmax-net-optimize.service": "active",
-        "zmax-proxy.service": "active",
+        "zmax-proxy.service": "activating",
         "zmax-ss3d-live-push.service": "active",
         "zmax-station-gate.service": "active",
-        "zmax-traj-ar.service": "active",
-        "zmax-traj-pub.service": "active"
+        "zmax-traj-ar.service": "active"
       },
       "crontab": [
         "0 */2 * * * bash /home/ubuntu/.hermes/scripts/disk_redline.sh >> /home/ubuntu/.hermes/logs/disk_redline.log 2>&1",
@@ -61,8 +61,8 @@
       "files": [
         {
           "file": "config/ss_task_binding.json",
-          "size": 32684,
-          "sha256_12": "810489438c4f"
+          "size": 32559,
+          "sha256_12": "bcb249b90c37"
         },
         {
           "file": "config/topics/ar_aoi_signals.json",
@@ -88,6 +88,11 @@
           "file": "config/mcd/zmax_mcd.json",
           "size": 73757,
           "sha256_12": "fd176116ae74"
+        },
+        {
+          "file": "config/aoi/side_path.json",
+          "size": 5212,
+          "sha256_12": "2a15d6b04e55"
         },
         {
           "file": "config/2026-07-18_SysXX_Z700.json",
@@ -117,12 +122,12 @@
         {
           "file": "config/task_state.json",
           "size": 3227,
-          "sha256_12": "f5bc01cf1230"
+          "sha256_12": "781cb400b119"
         },
         {
           "file": "config/task_state_ledger.json",
-          "size": 14745,
-          "sha256_12": "3246e8f68a35"
+          "size": 15620,
+          "sha256_12": "38efc4475168"
         },
         {
           "file": "config/task_state_manual.json",
@@ -130,14 +135,14 @@
           "sha256_12": "6b4a5f295ffa"
         }
       ],
-      "count": 14
+      "count": 15
     },
     "任务与场景": {
       "active_task": "TASK-07-AOI",
       "project": {
         "name": "状态空间工程 · 主工程",
         "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
-        "canvas_md5": "652bfe663460ede0107bb6fa7cd54c9d",
+        "canvas_md5": "1c9169b195ebf29fd0f2cfebafa18208",
         "nodes": 89,
         "links": 184
       },
@@ -150,7 +155,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 9,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -161,7 +166,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 4,
-          "enabled_nodes": 43,
+          "enabled_nodes": 42,
           "disabled_nodes": 9
         },
         {
@@ -172,7 +177,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 7,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -183,7 +188,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 8,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -194,7 +199,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 9,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -205,7 +210,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "tray",
           "steps": 5,
-          "enabled_nodes": 52,
+          "enabled_nodes": 51,
           "disabled_nodes": 0
         },
         {
@@ -216,7 +221,7 @@
           "site": "SITE-A.ST11",
           "ss_mode": "insert",
           "steps": 5,
-          "enabled_nodes": 32,
+          "enabled_nodes": 31,
           "disabled_nodes": 20
         }
       ],
@@ -224,7 +229,7 @@
       "segment_node_map": 8,
       "coverage": {
         "nodes": 89,
-        "covered_by_segments": 52,
+        "covered_by_segments": 51,
         "uncovered": [
           "n_calib_mani",
           "n_hil",
@@ -234,6 +239,7 @@
           "ss3d_view",
           "ss_l5",
           "ss_lora_l3",
+          "ss_moe",
           "ss_seg",
           "ssact",
           "ssest",
@@ -360,82 +366,69 @@
       "流服务通道": {
         "arm": {
           "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 29.91,
-          "age_s": 0.01,
+          "fps": 0.0,
+          "age_s": -1.0,
           "stalled": false
         },
         "local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
-          "fps": 5.0,
-          "age_s": 0.19,
+          "fps": 5.11,
+          "age_s": 0.0,
           "stalled": false
         },
         "local2": {
-          "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 25.66,
-          "age_s": 0.0,
+          "label": "",
+          "fps": 0.0,
+          "age_s": -1.0,
           "stalled": false
         },
         "depth": {
           "label": "🌈 D405 深度图 (彩色化)",
           "fps": 0.0,
-          "age_s": 1845.93,
+          "age_s": 857.11,
           "stalled": true
         },
         "aoi_gold": {
           "label": "🔍 金手指检测 (工控机 OPT)",
-          "fps": 0.21,
-          "age_s": 3.28,
-          "stalled": true
-        },
-        "aoi_gold_raw": {
-          "label": "",
-          "fps": 0.21,
-          "age_s": 3.28,
-          "stalled": true
+          "fps": 0.0,
+          "age_s": -1.0,
+          "stalled": false
         },
         "aoi_surface": {
           "label": "🔍 表面检测 (工控机 OPT)",
-          "fps": 0.21,
-          "age_s": 2.92,
-          "stalled": true
-        },
-        "ov_arm": {
-          "label": "🦾 机器人臂上 D405 (Orin)",
-          "fps": 10.01,
-          "age_s": 0.11,
+          "fps": 0.0,
+          "age_s": -1.0,
           "stalled": false
         },
         "ov_local": {
           "label": "💻 内置 Integrated RGB Camera: Integrat",
           "fps": 5.0,
-          "age_s": 0.19,
-          "stalled": false
-        },
-        "ov_local2": {
-          "label": "📺 WT15: MAXHUB-Camera",
-          "fps": 10.01,
-          "age_s": 0.1,
+          "age_s": 0.2,
           "stalled": false
         }
       },
       "AOI端口(工控机 192.168.23.23)": {
-        "10082": "{\"applied\":{},\"code\":200,\"file_defaults\":{\"exposure_us\":20000.0,\"gain_db\":8.0,\"gamma_val\":1.0},\"hint\":\"\",\"note\":\"\\u53ea\\u6539\\u76f8\\u673a\\u91c7\\u96c6\\u53c2\\u6570(\\u66dd\\u5149/\\u589e\\u76ca/Gamma); \\u91cd\\u542f\\u670d\\u52a1\\u5148\\u6309\\u672c\\u673a\\u843d\\u76d8 cam",
-        "10083": "{\"cam_open\":true,\"code\":200,\"default\":{\"gain\":1.8,\"us\":80000.0},\"file\":\"D:\\\\xspace\\\\ultralytics_AOI\\\\surface_exposure.json\",\"file_exists\":true,\"gain\":1.0,\"last\":{\"cam_open\":true,\"gain\":1.0,\"gain_ok\":true,\"ok\":true,\"reason\":\"\",\"reopened\":false,\"saved\":\"D:\\\\xspa"
+        "10082": "",
+        "10083": ""
       }
     },
     "数据空间": {
-      "topic 常量数": 1,
-      "registry": "src/lerobot/dataspace/topics.py",
+      "注册 topic 数": 25,
+      "闭环环节数": 9,
+      "注册表版本": "1.0.0 2026-10-10",
+      "registry": "src/lerobot/dataspace/topics.py (TOPICS / CLOSED_LOOP 单一真源)",
       "live": "zmax_data/dataspace/live.json",
-      "AR/AOI 信号": 6
+      "AR/AOI 信号组": 6
     },
     "状态空间工程": {
-      "画布真源": "flows/state_space_obs.json",
-      "节点数": 251,
-      "连线数": 242,
-      "flows 源件数": 20,
+      "画布真源 (被任务绑定方)": "src/lerobot/engineering/flows/state_space_obs.json",
+      "节点数": 89,
+      "连线数": 184,
+      "画布 md5": "1c9169b195ebf29fd0f2cfebafa18208",
+      "画布文件 sha256_12": "f48142290b3f",
       "工程库": "data/database/zmax/zmax_engineering.db (1.3 MB)",
+      "其余画布源件数": 20,
+      "说明": "以上节点数/连线数取自「任务绑定文件声明的那份画布」; 仓库 flows/ 下另有同名符号链接与其它历史画布源件(数量见上), 非本次交付所用。",
       "其余画布源件": [
         "flows/atom.json",
         "flows/atomic_conditions_flow.json",
@@ -456,15 +449,22 @@
       "docs 目录": {
         "data_snapshots": 19,
         "deliverables": [
+          "INDEX_5.50.B.md",
+          "SOR_Z-MAX_5.50.B_20261013.md",
           "Z-MAX_交付文档包_20261012.zip",
           "任务配置单_Z-MAX_20261012.md",
           "供应商SOR_Z-MAX_光模块精细操作_20261012.md",
           "全系统配置清单_5.50.A.json",
           "全系统配置清单_5.50.A.md",
+          "全系统配置清单_5.50.B.json",
+          "全系统配置清单_5.50.B.md",
+          "全系统配置清单_Z-MAX_5.50.B_20261013.md",
           "功能清单_Z-MAX_20261012.md",
           "功能说明_5.50.A.md",
           "功能说明_Z-MAX_5.50.B_20261013.md",
           "原型验证测试报告_Z-MAX_20261012.md",
+          "版本策略_5.50.A_B_C.md",
+          "立项文档_Z-MAX_5.50.B_20261013.md",
           "项目立项文档_Z-MAX_20261012.md"
         ],
         "design": [
@@ -582,7 +582,8 @@
           "zmax状态空间数据空间.md",
           "光模块产线-全流程12工位场景定义.md",
           "光模块产线-机器人场景设计.md",
-          "流形引擎_自动光学检测_架构设计_v0.1.md"
+          "流形引擎_自动光学检测_架构设计_v0.1.md",
+          "空间质数结构化理解能力_设计_v1.md"
         ]
       }
     },
@@ -590,10 +591,194 @@
       "主机": "ubuntu",
       "内核": "6.17.0-14-generic",
       "CPU": "32 核",
-      "内存": "30 GB (可用 16 GB)",
-      "磁盘": "396G 总 / 60G 可用 (85% 已用)",
+      "内存": "30 GB (可用 20 GB)",
+      "磁盘": "396G 总 / 56G 可用 (86% 已用)",
       "GPU": "NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, 580.126.09",
       "Python": "Python 3.11.15"
+    },
+    "配置关联性": {
+      "说明": "本节列出「配置项之间的关联」, 每条关系的条数都从单一工程库/绑定文件现取, 可回读复现。表结构 = src↔dst 关系。",
+      "关系总量 (links)": 389,
+      "关系明细 (源类型→目标类型 · 关系 · 条数)": [
+        {
+          "源": "function",
+          "目标": "module",
+          "关系": "对应模块",
+          "条数": 74
+        },
+        {
+          "源": "module",
+          "目标": "code",
+          "关系": "实现",
+          "条数": 73
+        },
+        {
+          "源": "product_feature",
+          "目标": "module",
+          "关系": "用到",
+          "条数": 60
+        },
+        {
+          "源": "verification",
+          "目标": "level",
+          "关系": "分级",
+          "条数": 57
+        },
+        {
+          "源": "product_feature",
+          "目标": "subsystem",
+          "关系": "归属",
+          "条数": 35
+        },
+        {
+          "源": "capability",
+          "目标": "interface",
+          "关系": "IN",
+          "条数": 31
+        },
+        {
+          "源": "capability",
+          "目标": "interface",
+          "关系": "OUT",
+          "条数": 31
+        },
+        {
+          "源": "product_feature",
+          "目标": "capability",
+          "关系": "能力引用",
+          "条数": 28
+        }
+      ],
+      "参数关联总量 (param_links)": 1767,
+      "参数关联明细 (参数↔对象 · 条数)": [
+        {
+          "关联对象": "功能",
+          "条数": 809
+        },
+        {
+          "关联对象": "模块",
+          "条数": 723
+        },
+        {
+          "关联对象": "系统",
+          "条数": 61
+        },
+        {
+          "关联对象": "阶段",
+          "条数": 58
+        },
+        {
+          "关联对象": "标准",
+          "条数": 58
+        },
+        {
+          "关联对象": "指标组",
+          "条数": 58
+        }
+      ],
+      "功能节点数": 74,
+      "功能→源码 映射数": 73,
+      "能力条目数 (feature.dbc BO_)": 31,
+      "验收判据数": 57,
+      "工程段数": 25,
+      "任务关联 (同一画布 ⇒ 各任务启用/禁用/改写)": [
+        {
+          "task_id": "TASK-01-FW",
+          "名称": "FW Loading + EEPROM 写/读校验",
+          "作业类型": "插拔+固件校验",
+          "场景": "SCN-01-FW",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 9,
+          "改写项": 6
+        },
+        {
+          "task_id": "TASK-02-HANDLE",
+          "名称": "料盘/治具上下料搬运",
+          "作业类型": "上下料搬运",
+          "场景": "SCN-02-HANDLE",
+          "档位/模式": "insert",
+          "适用段": 6,
+          "排除段": 2,
+          "启用节点": 42,
+          "禁用节点": 9,
+          "步骤": 4,
+          "改写项": 6
+        },
+        {
+          "task_id": "TASK-03-BI",
+          "名称": "BI老化箱模块插拔",
+          "作业类型": "老化箱插拔",
+          "场景": "SCN-03-BI",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 7,
+          "改写项": 4
+        },
+        {
+          "task_id": "TASK-04-THERMAL",
+          "名称": "热海柜体电口+光口插拔",
+          "作业类型": "热海柜体插拔(电口+光口)",
+          "场景": "SCN-04-THERMAL",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 8,
+          "改写项": 3
+        },
+        {
+          "task_id": "TASK-05-ATS",
+          "名称": "ATS/线外检测插接 (核心挑战场景)",
+          "作业类型": "检测插接",
+          "场景": "SCN-05-ATS",
+          "档位/模式": "insert",
+          "适用段": 8,
+          "排除段": 0,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 9,
+          "改写项": 4
+        },
+        {
+          "task_id": "TASK-06-TRAY",
+          "名称": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+          "作业类型": "摆盘取放",
+          "场景": "SCN-06-TRAY",
+          "档位/模式": "tray",
+          "适用段": 7,
+          "排除段": 1,
+          "启用节点": 51,
+          "禁用节点": 0,
+          "步骤": 5,
+          "改写项": 8
+        },
+        {
+          "task_id": "TASK-07-AOI",
+          "名称": "AR 光学质量检测 (AOI 联合检查)",
+          "作业类型": "光学质量检测",
+          "场景": "SCN-07-AOI",
+          "档位/模式": "insert",
+          "适用段": 4,
+          "排除段": 4,
+          "启用节点": 31,
+          "禁用节点": 20,
+          "步骤": 5,
+          "改写项": 28
+        }
+      ],
+      "任务迁移不变量": {
+        "画布": "src/lerobot/engineering/flows/state_space_obs.json (节点 89 / 连线 184)",
+        "结论": "7 个任务共用同一份画布与同一套功能节点; 切换任务只改「任务绑定配置」(适用/排除段 · 启用/禁用节点 · overrides · ss_mode), 不改代码、不改画布。",
+        "迁移步骤": "改 config/tasks/tasks.json 或任务绑定 → ss_task_bind.py --activate <TASK> → engineering_db.py build → check"
+      }
     }
   }
 }

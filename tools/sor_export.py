@@ -392,6 +392,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "文件编号: %s" % DOC_NO, size=11)
     para(doc, "版本号: %s" % VERSION, size=11)
     para(doc, "项目名称: %s" % PROJ, size=11)
+    para(doc, "交付主体: 摆盘作业具身模型 (供应商研制) · 系统集成与收口 (我方)", size=11)
     para(doc, "适用对象: 供应商技术、质量、交付团队", size=11)
     para(doc, "导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台真源)", size=11)
     para(doc, "导出时间: %s" % time.strftime("%Y-%m-%d %H:%M:%S"), size=11)
@@ -404,8 +405,23 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "供应商应确保系统满足本规格书规定的功能、性能、接口、质量、安全及验收要求。"
               "本规格书由配置中心按当前 System 1 配置导出, 任何配置变更后须重新导出并对齐版本。")
 
-    # 2 采购范围
-    h(doc, "2. 采购范围", 1)
+    # 2 采购范围与交付分工 (2026-10-13: 明确「供应商做摆盘具身模型 · 我方做工程集成/收口」)
+    h(doc, "2. 采购范围与交付分工", 1)
+    para(doc, "本次采购对象为「摆盘作业的具身模型」, 不含硬件本体; 硬件与站点由我方提供并集成为作业单元。"
+              "分工按下表, 越界内容不计入本次采购。", size=10)
+    para(doc, "2.1 交付分工", bold=True)
+    table(doc, ["分工项", "供应商 (本次采购)", "我方 (工程集成 / 收口)"], [
+        ["具身模型", "取放循环策略与序列规划、多型号自适应配方、异常处置与断点续作 (L3)",
+         "提供接口契约与集成环境, 不代研模型"],
+        ["模型接入", "按接口契约交付可替换权重与推理入口",
+         "接入 L2 执行链, 保证每帧真调用与收口放行"],
+        ["硬件本体", "不提供", "相机 / 机械臂 / 夹爪 / 真空 / 料盘机构 / 控制系统"],
+        ["几何真值", "不提供 (不得自带坐标系)", "K / plane_z / cell_geometry / 盘面槽位 (现场标定)"],
+        ["安全红线", "只读消费, 无否决权", "急停 / 限速 / 禁区 / 力阈值 (底层独立收口)"],
+        ["底层控制", "不提供", "L2 力控与伺服回路 (饱和限幅后下发)"],
+        ["验收", "FAT 工厂验收 (功能 / 节拍 / 成功率)", "SAT 现场验收 + 全链集成验证"],
+    ], widths=[2.8, 6.6, 6.6])
+    para(doc, "2.2 被集成系统的作业条件 (由我方提供; 供应商模型须在此条件下适配)", bold=True)
     table(doc, ["项目", "要求"], SUPPLY_SCOPE, widths=[4.5, 11.5])
 
     # 3 产品规格
@@ -570,6 +586,107 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
         ["子系统口径", "%s (%s)" % (sys1.get("name"), sys1.get("level"))],
         ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
     ], widths=[4.5, 11.5])
+
+    # 附录 E 配置表关联性 (需求 ↔ 配置项 追溯矩阵)
+    doc.add_page_break()
+    h(doc, "附录 E. 配置表关联性 (需求 ↔ 配置项 追溯矩阵)", 1)
+    para(doc, "本附录给出「每一条要求 → 挂在配置中的哪一项 → 该配置项关联到哪些模块 / 能力 / 验收判据」的追溯关系, "
+              "供应商按配置项实现即可逐条对照验收。所有条数取自单一工程库 (zmax_engineering.db) 与任务绑定文件, 可回读复现。", size=10)
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    para(doc, "E.1 配置关系总览 (工程库 links 表: 功能↔模块代码↔能力↔验收)", bold=True)
+    table(doc, ["源类型", "目标类型", "关系", "条数"],
+          [[r["src_type"], r["dst_type"], r["kind"], r["n"]] for r in con.execute(
+              "select src_type,dst_type,kind,count(*) n from links group by 1,2,3 order by n desc")],
+          widths=[3.4, 3.4, 3.4, 2.4], center_cols={3})
+    _np = con.execute("select count(*) from param_links").fetchone()[0]
+    para(doc, "E.2 参数关联明细 (工程库 param_links 共 %d 条: 每个可改数字挂到哪些功能/模块/系统/阶段/标准/指标组)" % _np, bold=True)
+    table(doc, ["参数关联对象", "条数"],
+          [[r["kind"], r["n"]] for r in con.execute(
+              "select kind,count(*) n from param_links group by 1 order by n desc")],
+          widths=[6.0, 3.0], center_cols={1})
+
+    para(doc, "E.3 需求条目 → 配置项 追溯", bold=True)
+    _rows = []
+    for _i, _x in enumerate(SCOPE_IN, 1):
+        _rows.append(["需求 %d" % _i, _x[:42], "供货边界", "tools/sys1_delivery.py"])
+    for _f in feats:
+        _rows.append([_f["pf_id"], (_f.get("title") or "")[:30],
+                      "能力 " + (_f.get("capability_ref") or "-"), "工程库 product_features"])
+    for _m in METRICS:
+        _rows.append([(_m[3] or "-")[:16], _m[0][:30], "性能指标", "config/platform/zmax_perf_spec.json"])
+    for _i, _s in enumerate((task or {}).get("steps") or [], 1):
+        _rows.append(["%s#%d" % (task_id, _i), (_s.get("name") or "")[:30], "工艺步骤", "config/tasks/tasks.json"])
+    table(doc, ["配置 ID", "条目", "关联类别", "真源"], _rows, widths=[2.6, 5.8, 3.6, 4.0])
+
+    _ov = (task or {}).get("overrides") or {}
+    para(doc, "E.4 本任务改写项 (任务级配置, 共 %d 项; 供应商须实现为可配置项而非硬编码)" % len(_ov), bold=True)
+    table(doc, ["配置键", "值"], [[k, str(v)[:86]] for k, v in _ov.items()], widths=[4.4, 11.6])
+
+    # 附录 F 架构兼容性
+    h(doc, "附录 F. 架构兼容性要求", 1)
+    para(doc, "供应商交付的具身模型只承担「意图/条件 → 动作序列」这一段, 上游接口与下游执行接口均不得改动; "
+              "平台内建的层级边界是硬约束, 越界的方案不予验收。", size=10)
+    table(doc, ["层", "职责", "与供应商模型的关系", "接口形态"], [
+        ["L5", "造数据 / 自主规划 (视觉语言理解、自动标注、自主进化)", "不涉及 — 模型不消费 L5 内部结构", "意图/条件 (慢决策)"],
+        ["L4", "认知 + 监督 (世界模型预判与恢复、意图解码)", "输入来源 — 模型接收解码后的意图/条件", "意图向量 + 条件约束"],
+        ["L3", "调度 / 任务规划 (长程序列规划、VLM 编码、Flow-Matching 动作生成)",
+         "供应商交付主体 — 取放循环策略与序列规划在此层", "动作序列 (VLA-T 动作 + Z-Flow 引导)"],
+        ["L2", "检测 / 执行 (安全层 + HAL + 运动学 + 原子技能 + 收口闸)",
+         "输出现场 — 模型输出交 L2 执行, 不直接驱动硬件", "物理指令 (由 L2 饱和限幅后下发)"],
+    ], widths=[1.4, 5.6, 5.4, 3.6])
+    para(doc, "F.1 兼容性硬约束 (逐条)", bold=True)
+    for _x in [
+        "输入 = 上游意图 / 条件; 站点几何真值 (K / plane_z / cell_geometry / 盘面槽位) 由 L2·基石执行域提供, 模型不得自带坐标系或标定。",
+        "输出 = 动作序列 / 策略指令; 底层力控与伺服回路由 L2 收口, 模型不产生底层控制量。",
+        "模型不产生否决权: 急停 / 限速 / 禁区等安全红线由底层独立收口, 模型只读消费。",
+        "全部可调量按配置中心三轴 (cfg 可配置 / cal 标定 / dia 诊断) 实现, 不得硬编码 (详见附录 A)。",
+        "运行状态与事件上报格式须符合接口契约: 阶段 / 成功 / 失败 / 异常码 / 断点 / CT 计时。",
+        "模型替换对上层透明: 换权重即换模型, 不改调用方代码 (接口契约不变)。",
+    ]:
+        para(doc, "· " + _x)
+    para(doc, "F.2 接口契约 (上游给意图不给轨迹; 坐标真值由底层提供)", bold=True)
+    for _k, _rows2 in CONTRACT.items():
+        para(doc, "【%s】" % _k, bold=True)
+        for _r in _rows2:
+            _src = _r.get("from") or _r.get("to") or "—"
+            _extra = ("  → %s" % _r["value"]) if _r.get("value") else ""
+            para(doc, "   - %s: %s%s" % (_src, _r.get("item", ""), _extra), size=10)
+
+    # 附录 G 配置驱动与任务迁移
+    h(doc, "附录 G. 配置驱动与任务迁移 (按配置迁移到其它 TASK)", 1)
+    para(doc, "平台以「一个工程承载全部任务」为口径: 同一份画布与同一套功能节点, 通过任务绑定配置决定本次作业。"
+              "供应商交付的模型须满足「改配置即换任务」, 不得为单个任务做不可迁移的定制。", size=10)
+    _bind = json.load(open(os.path.join(ROOT, "config", "ss_task_binding.json"), encoding="utf-8"))
+    _bp = _bind.get("project") or {}
+    _tk = _bind.get("tasks") or []
+    para(doc, "G.1 在册任务 (同一画布的差异化配置, 共 %d 个)" % len(_tk), bold=True)
+    table(doc, ["任务 ID", "名称", "场景", "档位/模式", "适用段", "排除段", "启用节点", "禁用节点"],
+          [[t.get("task_id"), (t.get("name") or "")[:22], t.get("scene_ref"), t.get("ss_mode"),
+            len(t.get("applies_segments") or []), len(t.get("excluded_segments") or []),
+            len(t.get("enabled_nodes") or []), len(t.get("disabled_nodes") or [])] for t in _tk],
+          widths=[2.6, 4.0, 2.2, 1.8, 1.4, 1.4, 1.4, 1.4],
+          center_cols={3, 4, 5, 6, 7})
+    para(doc, "G.2 迁移不变量 (以下项在任何任务下都不变, 供应商据此做一次、各任务通用)", bold=True)
+    table(doc, ["不变量", "值"], [
+        ["画布真源", "%s (节点 %s / 连线 %s)" % (_bp.get("canvas_file"), _bp.get("nodes"), _bp.get("links"))],
+        ["功能节点数", str(len(fns))],
+        ["分层架构", "L5/L4/L3/L2 四层职责与接口契约 (附录 F) 不变"],
+        ["供货边界", "SCOPE_IN / SCOPE_OUT (第 2.2 节) 不变"],
+        ["配置三轴", "cfg / cal / dia (%d / %d / %d 项) 不变" % (len(axes.get("cfg", [])), len(axes.get("cal", [])), len(axes.get("dia", [])))],
+    ], widths=[3.6, 12.4])
+    para(doc, "G.3 迁移步骤 (由配置中心执行, 不改代码)", bold=True)
+    for _i, _s in enumerate([
+        "改任务配置: config/tasks/tasks.json (步骤 / 改写项 / 适用段)",
+        "重算任务绑定: python3 tools/ss_task_bind.py --activate <TASK_ID>",
+        "重建工程库: python3 tools/engineering_db.py build && python3 tools/engineering_db.py check",
+        "按新任务重新导出本文档 (即迁移后的 SOR 版本)",
+    ], 1):
+        para(doc, "%d) %s" % (_i, _s))
+    para(doc, "G.4 迁移验收判据: 迁移后须满足 —— ① 画布节点/连线数与不变量一致; ② 工程库 check 全绿; "
+              "③ 本附录 G.1 表内该任务的「启用/禁用节点 · 改写项」与配置一致。判据命令: "
+              "python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check", size=10)
+    con.close()
     return doc
 
 
@@ -615,7 +732,7 @@ def main():
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(man, f, ensure_ascii=False, indent=1)
     print("✅ SOR (Word): %s" % fp)
-    print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)" % (os.path.getsize(fp) / 1024.0))
+    print("   大小 %.1f KB · 章节: 1-15 + 附录 A(功能配置)/B(系统组成)/C(待确认)/D(可复现)/E(配置关联性)/F(架构兼容性)/G(任务迁移)" % (os.path.getsize(fp) / 1024.0))
     print("   目录: %s" % out)
     for n in man["files"]:
         print("   - %s" % n)
