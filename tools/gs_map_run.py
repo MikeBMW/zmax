@@ -118,6 +118,21 @@ def api_post(path, body, timeout=30):
         return {"ok": False, "msg": str(e)[:150]}
 
 
+def power_on():
+    """机械臂上电真源(8793 /ctl/status → robot.power)。读不到 ⇒ None(如实说, 不猜)。"""
+    s = api_get("/ctl/status")
+    if not isinstance(s, dict):
+        return None, s
+    r = s.get("robot") if isinstance(s.get("robot"), dict) else {}
+    for k in ("power", "power_state", "powerState"):
+        v = r.get(k, s.get(k))
+        if isinstance(v, bool):
+            return v, v
+        if isinstance(v, str) and v.strip():
+            return v.strip().lower() in ("on", "true", "powerstate.on"), v
+    return None, s
+
+
 def armed():
     """真动授权真源(8793 /ctl/status)。读不到 ⇒ 如实当"未授权", 不猜。"""
     s = api_get("/ctl/status")
@@ -323,6 +338,11 @@ def main():
     ap.add_argument("--move-speed", type=float, default=None,
                     help="建图移动速度(L2 speed 相对量; 默认 %s ≈ %.1fmm/s)" % (MOVE_SPEED, 0.0935 * MOVE_SPEED))
     ap.add_argument("--from-recording", default="", help="用已有会话重跑 建库→质检(不动臂)")
+    ap.add_argument("--manual", action="store_true",
+                    help="🖐 人工走点模式 (老倪 2026-10-13): 臂**不动**(不授权真动/不碰手动白名单), "
+                         "全程连续采帧 + 每 N 秒增量建图一轮; L5 选点只作**建议**(你去走), 不下发")
+    ap.add_argument("--manual-every", type=float, default=float(os.environ.get("GS_MANUAL_EVERY_S", "45")),
+                    help="人工走点模式: 每 N 秒增量建图一轮(默认 45s)")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
     if args.move_speed:
@@ -346,7 +366,8 @@ def main():
     os.makedirs(sess, exist_ok=True)
 
     # ---------- 真动前置: 授权真源 ----------
-    if not args.dry_run:
+    # 🖐 人工走点模式**整程不碰臂** ⇒ 与 dry-run 同口径: 不需要真动授权, 也不走手动白名单。
+    if not args.dry_run and not args.manual:
         a, raw = armed()
         if a is None:
             st.update(running=False, status_line="读不到真动授权(8793 /ctl/status) ⇒ 不动作, 如实停")
@@ -358,13 +379,44 @@ def main():
             return 1
         w(st, "真动授权已确认(motion_armed=true)")
 
+        # 🔌 上电前置 (2026-10-13 现场教训): 臂没上电时 SDK 腿在**自检那一步就 ABORT**
+        #    ("ABORT 前置条件不满足: 上电状态不是 on (PowerState.off)"), 而本循环仍在等一个永远不会到的
+        #    "到位" ⇒ 现场白等 900s 才退出, 这一轮全是重复帧(唯一画面 69/1223)。这里提前读一次真源当场拒。
+        _pw, _pwhy = power_on()
+        if _pw is False:
+            st.update(running=False, status_line="机械臂未上电(power=%s) ⇒ 下发必被 SDK 腿 ABORT; 先上电再点「开始建图」" % _pwhy)
+            w(st, "⛔ " + st["status_line"])
+            return 1
+        w(st, "上电已确认(power=%s)" % _pwhy)
+
     cat = catalog()
     w(st, "可达目标点 %d 个(空间点真源 + 绝对运动白名单) · 模式=%s · %d 轮 × 采集 %.0fs"
       % (len(cat), args.targets, args.rounds, args.dwell))
 
     visited = {}
     prev_model = ""
+    # 🖐 人工走点模式 (2026-10-13 老倪: 「我走点, 不也可以建图么? 我动, 你同时建图」):
+    #    臂永远在现场手上(不用授权真动、不碰手动白名单), 我们只做两件事:
+    #      ① 全程**连续采帧**(一次起采跑到收工 ⇒ 你横移的过程全录下来)
+    #      ② 每 manual_every 秒**增量建图一轮**(建库去重 → 从上一轮资产续训 → 质检) ⇒ 你走到哪就建到哪
+    #    L5 选点降级为**建议**(告诉你下一个最该走的视点), 不下发、不动臂。
+    #    收工: 点页面「停止建图」(会落会话目录 STOP 文件), 本循环下一轮开头看到就停。
+    cap_all = None
+    _last_i = 1
+    if args.manual:
+        if int(args.rounds) < 200:
+            args.rounds = 200          # 人工模式没有"轮数"概念: 一直转, 直到 STOP
+        # 建议点用**纯几何**兜底(瞬时出): 人工模式下 L5 VLM 那一跳最长 300s(短提示+小JSON),
+        # 而"该往哪走"在你手上 —— 让人等 5 分钟拿一条建议不值得。要看 L5 建议: --targets l5。
+        if args.targets == "l5":
+            args.targets, args.order = "spaces", "novelty"
+        cap_all = cap_start(sess)
+        w(st, "🖐 人工走点模式: 臂**不动** · 全程采帧 → %s · 每 %.0fs 增量建图一轮 (你走到哪就采到哪; 收工点「停止建图」)"
+          % (os.path.basename(sess), args.manual_every))
     for i in range(1, args.rounds + 1):
+        if args.manual and os.path.exists(os.path.join(sess, "STOP")):
+            w(st, "⏹ 收到 STOP ⇒ 收工(不再起新一轮)")
+            break
         st.update(step="select", status_line="(%d/%d) 选点…" % (i, args.rounds))
         w(st)
         skill = None
@@ -416,7 +468,13 @@ def main():
         #    改成: 移动**前**起采, 覆盖整段横移 + 到位后再采 dwell 秒。判据/门禁一个字没改。
         st.update(step="move", status_line="(%d/%d) 去 %s(边走边采)…" % (i, args.rounds, skill))
         cap = None
-        if args.dry_run:
+        if args.manual:
+            # 🖐 只**建议**, 不下发: 全程那一个采帧进程已经在跑, 这里只等他走 + 报建议点。
+            st.update(step="walk", status_line="(%d) 建议视点 %s —— 你走过去就行(不自动下发)" % (i, skill))
+            w(st, "  🧭 建议下一个视点: %s —— 你走过去就行(不下发, 只采帧); 依据: %s" % (skill, why[:140]))
+            time.sleep(float(args.manual_every))
+            ok, dd, err = True, 0.0, ""
+        elif args.dry_run:
             p = pose()
             ok, dd, err = (p is not None), 0.0, ("dry-run: 不移动" if p else "读不到 TCP 位姿")
             w(st, "  (dry-run) 不移动, 用当前位姿 %s" % (p,))
@@ -429,7 +487,8 @@ def main():
             st.update(running=False, status_line="%s 未成功: %s" % (skill, err))
             w(st, "⛔ " + st["status_line"])
             return 1
-        w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (skill, dd * 1000))
+        if not args.manual:
+            w(st, "  ✓ %s 到位(偏差 %.1fmm)" % (skill, dd * 1000))
         visited[skill] = pose() or tgt or [0, 0, 0]
 
         st.update(step="capture", status_line="(%d/%d) 到位后补采 %.0fs…" % (i, args.rounds, args.dwell))
@@ -457,10 +516,18 @@ def main():
         if args.incremental:
             st.update(step="inc_train", status_line="(%d/%d) 增量续训…" % (i, args.rounds))
             prev_model = inc_round(sess, tag, i, prev_model, args.inc_steps, st)
+        _last_i = i
 
+    if cap_all is not None:
+        st.update(step="wrap", status_line="采帧收工, 落盘…")
+        cap_stop(cap_all, sess)
+        _sm2 = read_json(os.path.join(sess, "capture_summary.json")) or {}
+        w(st, "🎬 采帧收工: %s 次取图 · 唯一画面 %s · 位姿跨度 x%s y%s z%s mm"
+          % (_sm2.get("frames"), _sm2.get("unique_images"), _sm2.get("pose_x_range_mm"),
+             _sm2.get("pose_y_range_mm"), _sm2.get("pose_z_range_mm")))
     return finish(sess, ds, st, args,
                   model=(prev_model if (args.incremental and prev_model) else ""),
-                  ds_last=(os.path.join(GS, "map_%s_r%d" % (tag, args.rounds)) if args.incremental else ""))
+                  ds_last=(os.path.join(GS, "map_%s_r%d" % (tag, _last_i)) if args.incremental else ""))
 
 
 def finish(sess, ds, st, args, train_only_ds=False, model="", ds_last=""):

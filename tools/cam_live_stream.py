@@ -5054,8 +5054,13 @@ class Handler(BaseHTTPRequestHandler):
                 if (_b.get("action") or "start") == "status":
                     pass                                    # 取状态 ⇒ 落到下面统一返回
                 else:
-                    _ai = _auth_info()
-                    if not _ai.get("armed"):
+                    # 🖐 2026-10-13 老倪定案: 建图改成「**我走点 + 你同步建图**」——
+                    #   臂永远在现场手上 ⇒ 不授权真动、不碰手动白名单、不下发任何动作;
+                    #   我们只做两件事: ① 全程连续采帧(横移过程全录) ② 每 45s 增量建图一轮。
+                    #   回到旧的"程序自己跑点"模式: 环境变量 GS_MAP_MODE=auto 重启推流服务。
+                    _manual = (os.environ.get("GS_MAP_MODE", "manual") != "auto")
+                    _ai = {} if _manual else _auth_info()
+                    if (not _manual) and (not _ai.get("armed")):
                         # 2026-10-07 现场: 点"开始建图"比点"授权真动"早 5 秒 ⇒ 后台任务启动瞬间读到
                         # motion_armed=false, fail-closed 立刻退出且**不重试** ⇒ 页面毫无反应。
                         # 现在当场拒 + 把原因返给页面(不再偷偷起一个必死的后台任务)。
@@ -5077,7 +5082,7 @@ class Handler(BaseHTTPRequestHandler):
                             ensure_ascii=False).encode("utf-8"))
                     _win_old = float(_ai.get("window_s") or 0)
                     _win_msg = ""
-                    if CA is not None:
+                    if (not _manual) and (CA is not None):
                         try:
                             CA.grant(ip=_ai.get("ip") or "", window=_GS_MAP_WINDOW_S,
                                      note="自动建图 %s 起 · 窗口延长覆盖整轮(现场已在授权窗口内)"
@@ -5089,14 +5094,17 @@ class Handler(BaseHTTPRequestHandler):
                             print("[授权] 延长窗口失败(不影响启动): %s" % str(_e)[:80], flush=True)
                     _log = os.path.expanduser("~/zmax/zmax_data/gs_map/run.log")
                     os.makedirs(os.path.dirname(_log), exist_ok=True)
+                    _flags = ("--manual --incremental --inc-steps 3000" if _manual else "")
                     subprocess.Popen(["bash", "-lc",
-                                      "cd %s && nohup /home/ubuntu/zmax/venvs/gs-venv/bin/python tools/gs_map_run.py >> %s 2>&1 &"
-                                      % (_REPO_ROOT, _log)],
+                                      "cd %s && nohup /home/ubuntu/zmax/venvs/gs-venv/bin/python tools/gs_map_run.py %s >> %s 2>&1 &"
+                                      % (_REPO_ROOT, _flags, _log)],
                                      start_new_session=True)
                     return self._send(200, "application/json", json.dumps(
                         {"ok": True, "armed": True,
-                         "msg": "已启动后台自动跑点建图(空间1→7)%s · 执行腿=%s"
-                                % (_win_msg, _move_transport_info()["label"]),
+                         "msg": (("🖐 已启动**人工走点建图**: 臂不动(不用授权), 你走到哪就采到哪, "
+                                  "每 45s 增量建图一轮; 收工点『⏹ 停止建图』") if _manual else
+                                 ("已启动后台自动跑点建图(空间1→7)%s · 执行腿=%s"
+                                  % (_win_msg, _move_transport_info()["label"]))),
                          "log": _log}, ensure_ascii=False).encode("utf-8"))
             try:
                 _st = json.load(open(stf, encoding="utf-8"))
