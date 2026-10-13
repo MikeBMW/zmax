@@ -12,7 +12,10 @@
 #   --arm-http ...:8792/...  手臂相机源(Orin 的 HTTP 帧)
 #   --arm-fps 30             手臂源抓取上限
 #   --local-dev 0            笔记本相机 = /dev/video0
-#   --local2-dev 6           MAXHUB 顶摄 = /dev/video6 (WT15: MAXHUB-Camera)
+#   --local2-dev 4           MAXHUB 顶摄 = /dev/video4 (WT15: MAXHUB-Camera)
+#                            ⚠️ 2026-10-13 改正: 原来是 6 —— 但 /dev/video6 是 RealSense D405 的
+#                            深度视频节点(2-2.2:1.0), 拿它当顶摄就是开错设备(本脚本开头那段
+#                            "裸启动会去开别的设备" 的教训, 结果自己踩了)。现场在役=4, 以现场为准:
 #   --depth-fps 4            D405 深度图
 #   --aoi-fps 0.25           工控机 AOI 取图
 #   --ctl-motion             服务侧允许真动(页面仍需显式授权, 5 分钟失效)
@@ -31,7 +34,7 @@ for i in $(seq 1 15); do ss -ltn 2>/dev/null | grep -q ':8793' || break; sleep 1
 setsid nohup "$PY" tools/cam_live_stream.py \
   --port 8791 --quality 72 --fps 30 \
   --arm-http http://192.168.23.66:8792/frame.jpg --arm-fps 30 \
-  --local-dev 0 --local2-dev 6 --depth-fps 4 --aoi-fps 0.25 \
+  --local-dev 0 --local2-dev 4 --depth-fps 4 --aoi-fps 0.25 \
   --ctl-motion --station-port 8793 \
   --overlay --overlay-src all --overlay-fps 10 \
   >> "$LOG" 2>&1 < /dev/null &

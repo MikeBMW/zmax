@@ -39,7 +39,9 @@ STATE_JSON = os.path.join(SDK_DIR, "tcp_out", "state.json")
 POSE_JSON = os.path.join(SDK_DIR, "tcp_out", "latest.json")
 IP = os.environ.get("ZMAX_ROBOT_IP", "192.168.23.160")
 
-MAX_SPEED_MM_S = 60.0        # 速度上限(与页面档位一致的量级)
+MAX_SPEED_MM_S = 200.0        # 速度上限(2026-10-13 老倪: 「速度改成 mm/s, 1 10 20 50 100 200, 最大每秒 200 毫米」)
+                              #   60→200: 之前 100/200 档会被这一行静默截到 60(=设了没用)。两条收口:
+                              #   l2_transport.MAX_SPEED_MM_S=300 与新值 200 都够; 改这一行必须重启容器 agent 才生效。
 DEFAULT_MAX_MM = 5.0         # 单次相对运动默认上限(mm)
 HARD_MAX_MM = 50.0           # 硬上限(mm): 超过必须显式 --i-know-what-im-doing
 SETTLE_MM = 0.1              # 判"到位"的容差

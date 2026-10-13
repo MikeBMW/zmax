@@ -673,15 +673,18 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
       <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
         <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
-      <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~1000)</span>
-        <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢</button>
-        <button data-v="60">60</button><button data-v="200">200</button><button data-v="500">500 快</button>
-        <button data-v="1000">1000</button><button data-v="2000">2000 快</button></span>
-        <input class="num" id="spd" value="200"></div>
-      <div class="hint" style="margin-top:6px">速度是相对量(1~2000, 可直接在右边框里填任意数)。<b>实测换算: 实际轴速 ≈ 0.0935×设定值 mm/s(SDK 腿现码, 上限 300)</b>(2026-10-08 三次独立实测一致; 原来写的 0.0999 偏大 10 倍) ⇒ 120→1.1mm/s、200→1.9mm/s、<b>1000/2000 换算见左: 200≈18.7mm/s · 500≈47mm/s · 1000≈93mm/s</b>。
-        <b>实测基线: 60 → 腕部 10° 约 10s</b>, 想快 5 倍填 300。停下前
-        驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动。
-        键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
+      <div class="row" style="margin-top:8px"><span class="k">速度 (mm/s · 上限 200)</span>
+        <span class="seg" id="sSpd"><button data-v="1">1</button>
+        <button data-v="10" class="on">10</button><button data-v="20">20</button>
+        <button data-v="50">50</button><button data-v="100">100</button>
+        <button data-v="200">200 最快</button></span>
+        <input class="num" id="spd" value="10"></div>
+      <div class="hint" style="margin-top:6px">速度单位 = <b>mm/s</b>（1 / 10 / 20 / 50 / 100 / 200，最大 200 毫米/秒）。
+        这是下给执行器的<b>名义</b>速度；实际能跑多快还受控制器自己的速度倍率限 —— <b>在役实测实得约 10%</b>
+        （2026-10-13 现场实测：设 200 ⇒ 名义 18.7mm/s ⇒ 实得 1.84mm/s，175mm 走了 95s）。
+        每次动作实际跑了多少，看执行器日志那行「📏 整段平均速率 X mm/s」，<b>以实测为准</b>。
+        停下前驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记，不是失败</b>，看 TCP 有没有变就知道动没动。
+        键盘：A/B/C 加 Shift = 反向；单次 ≤30°（执行层守卫）。整页没有软急停，急停请用示教器。</div>
     </div>
     <div class="card">
       <h2>🔩 第 6 轴 (J6) 独立自转 · 关节自转</h2>
@@ -903,7 +906,7 @@ async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   // 🔩 第 6 轴自转走自己的步进档(≤10°); 其余 deg 类(A/B/C)仍用 STEP_DEG
   const v=(p==='deg')?(skill.indexOf('L2.j6_')===0?STEP_J6:STEP_DEG):STEP_MM;
-  const spd=parseFloat($('#spd').value||'8');
+  const spd=Math.max(1,Math.min(200,parseFloat($('#spd').value||'10')||10));
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);
@@ -911,7 +914,7 @@ async function move(btn,force){
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    renderMoveOut(await post('/ctl/move',{skill:skill,[p]:v,speed:spd,arm:real?1:0},18000),'刚才那个方向键');
+    renderMoveOut(await post('/ctl/move',{skill:skill,[p]:v,speed_mm_s:spd,arm:real?1:0},18000),'刚才那个方向键');
   }catch(e){
     $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
     $('#msg').className='bad';
@@ -1152,7 +1155,7 @@ async function gotoSurfacePt3(btn){
   return gotoTeachPoint(btn,_spt3,'L2.goto_surface_pt3','『🎯 侧面点3』','#spt3_msg','回到侧面点3');
 }
 async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
-  const spd=parseFloat($('#spd').value||'8');
+  const spd=Math.max(1,Math.min(200,parseFloat($('#spd').value||'10')||10));
   const real=ARMED;                    // 🔐 只有已授权才真下发(服务端还会再拦一次)
   const m=$(msgSel);
   if(st.timer){ clearInterval(st.timer); st.timer=null; }
@@ -1162,7 +1165,7 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
   $('#mq').style.display='none';
   try{
     // 🖐 人工单点回位: 带 manual_point=1 ⇒ 执行器不再因"需要抬升/相对下降"硬拦(慢速+提示在先, 见 l2_daemon)
-    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0,manual_point:1},20000), label);
+    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:real?1:0,manual_point:1},20000), label);
     /* 🧗 2026-10-12 老倪: 「点击 安全点1 就要移动到这个点」—— 安全点/准备点这类目标本身更高的点,
        计划里必有一段上升(实测 准备点→安全点1 = +219mm), 会被「升高 >10cm 必须先问人」的闸拦住。
        规矩不改(那条来自 10-01 碰撞), 但把"人确认净空"这一步做进按钮: 服务端回执里已给出放行量,
@@ -1177,7 +1180,7 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
       const mm=Math.ceil(_mm)+2;      // 回执数字四舍五入过 ⇒ 留 2mm 余量, 免得刚好卡边界又被同一道闸拒一次
       if(confirm('到该点需要上升 '+mm.toFixed(0)+'mm（超过「升高不超 10cm」规矩）。\n现场已目视确认上方净空、无人？\n确定 = 立即带放行量下发；取消 = 不下发。')){
         m.textContent='⏳ 已确认净空, 带放行量 '+mm.toFixed(0)+'mm 重发…';
-        j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:1,allow_climb_mm:mm},20000), label);
+        j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:1,allow_climb_mm:mm},20000), label);
       }
     }
     if(j.denied||(j.ok&&j.dry)){
@@ -1239,7 +1242,7 @@ function trackTeachPoint(st,msgSel){
    带安全闸时最终结果 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决", 再追日志到那一行。 */
 let _grip={t0:0,timer:null};
 async function gripAct(btn, skill, label){
-  const spd=parseFloat($('#spd').value||'8');
+  const spd=Math.max(1,Math.min(200,parseFloat($('#spd').value||'10')||10));
   const real=ARMED;
   const m=$('#grip_msg');
   if(_grip.timer){ clearInterval(_grip.timer); _grip.timer=null; }
@@ -1248,7 +1251,7 @@ async function gripAct(btn, skill, label){
   $('#msg').textContent='🤏 '+label+': 下发中…'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed:spd,arm:real?1:0},20000),'『'+label+'』');
+    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:real?1:0},20000),'『'+label+'』');
     if(j.denied||(j.ok&&j.dry)){
       m.textContent='⛔ 未授权: 只算了目标, 夹爪不会动 —— 先点上面『🔓 授权真动』再点我';
     }else if(j.ok&&j.pending){

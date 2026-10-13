@@ -19,6 +19,7 @@ Orin 零参与: 不读不写 Orin 任何文件/单元/服务, 也不依赖它的
 守卫: 全部复用 sdk_ctl 里的同一套(前置自检 / 回读校验 / 越界立刻 stop / 证据 JSON / 收尾回 Idle)
 """
 import json
+import math
 import os
 import select
 import sys
@@ -114,6 +115,18 @@ def handle(r, req):
             out2["retry_after_moveL"] = _first
             rc, out = rc2, out2
         out["took_s"] = round(time.time() - t0, 2)
+        # 📏 整段平均速率 (2026-10-13 老倪: 速度既然按 mm/s 说事, 就得有"实得多少"这一行)
+        #    Δ 路径 / 整段耗时(含收尾安定) ⇒ 名义与实得的差距 = 控制器自己的速度倍率。
+        #    有这一行, 现场/页面看就知道"设了 200 为什么还是慢", 不用猜; 没动(奇异)则实得=0%, 一眼可见。
+        try:
+            _d = out.get("delta_mm") or {}
+            _path = math.sqrt(sum(float(_d.get(a) or 0.0) ** 2 for a in "xyz"))
+            out["achieved_mm_s"] = round(_path / out["took_s"], 2) if out["took_s"] > 0 else None
+            C.log("📏 整段平均速率 %.2f mm/s (Δ路径 %.1fmm / %.1fs · 名义 %.1f mm/s ⇒ 实得 %.0f%%)"
+                  % (out["achieved_mm_s"] or 0.0, _path, out["took_s"], speed,
+                     (100.0 * (out["achieved_mm_s"] or 0.0) / speed) if speed else 0.0))
+        except Exception as _e:                                            # noqa: BLE001
+            C.log("📏 整段平均速率算不出(%s)" % str(_e)[:60])
         return rc, out
     return 1, {"cmd": cmd, "verdict": "未知命令: %s" % cmd}
 

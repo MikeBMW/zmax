@@ -2582,11 +2582,24 @@ def _ctl_move(req: dict) -> dict:
             return {"ok": False, "msg": "参数 %s 不是数字" % pname}
         if not (lo <= val <= hi):
             return {"ok": False, "msg": "%s=%.1f 超出允许范围 [%d, %d]" % (pname, val, lo, hi)}
-    try:
-        speed = float(req.get("speed", 8))
-    except (TypeError, ValueError):
-        speed = 8.0
-    speed = max(1.0, min(1000.0, speed))          # 手动控制速度上限(2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」)
+    # 🆕 2026-10-13 老倪: 「改变速度的表达, 变成每秒多少毫米, 即 1 10 20 50 100 200, 最大每秒 200 毫米」
+    #   页面从此按 **mm/s** 说事 (speed_mm_s); 服务层换算成执行器一直在用的"相对量" units:
+    #       units = mm/s / 0.0935     (腿里就是 sp_mm = 0.0935 × units, 见 tools/rokae/l2_transport_sdk.py:406)
+    #   旧字段 speed(相对量) 保持原语义不动 —— gs_map_run / loop_points 还在用它, 不能改口径。
+    _mm = req.get("speed_mm_s")
+    if _mm is None or str(_mm) == "":
+        try:
+            speed = float(req.get("speed", 8))
+        except (TypeError, ValueError):
+            speed = 8.0
+        speed = max(1.0, min(1000.0, speed))      # 手动控制速度上限(2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」)
+        speed_mm_s = speed * 0.0935               # 回显口径: 相对量 → mm/s
+    else:
+        try:
+            speed_mm_s = max(1.0, min(200.0, float(_mm)))     # 上限 200 mm/s (老倪 2026-10-13 定)
+        except (TypeError, ValueError):
+            return {"ok": False, "msg": "speed_mm_s 不是数字"}
+        speed = max(1.0, min(2400.0, round(speed_mm_s / 0.0935, 1)))
     #   口径: 页面档位 8/60/200/500 + 可自己填数字; 上限定 1000(相对量, 线性实测 ≈0.0999mm/s 每单位,
     #   即 speed=1000 ≈ 100mm/s) —— 真正的物理上限由控制器自己的关节限速兜, 这里只挡住"填错量级"。
     #   实测基线: speed=60 → 腕部 10° 花 ~10s (~1°/s), 所以想快 5 倍就用 300。
@@ -2670,11 +2683,13 @@ def _ctl_move(req: dict) -> dict:
     _pend = bool(buf) and ("受理" not in buf) and ("等针对该动作的裁决" in buf or "告知 VL" in buf)
     _par = {} if pname is None else {pname: val}
     out = {"ok": True, "dry": not want_real, "skill": sid, "param": _par, "speed": speed,
+           "speed_mm_s": round(speed_mm_s, 1),
            "pending": bool(_pend and want_real),
            "msg": ("⏳ 执行器已收到: 正在等安全裁决(最多 300s, 实测 45~190s) — 机械臂还没动, 继续追裁决"
                    if _pend else (("演练(未下发): %s" % why) if not want_real else "已下发(真动)")),
            "elapsed_s": round(time.time() - t0, 2), "lines": lines}
     rec = {"t": time.time(), "skill": sid, "param": _par, "speed": speed,
+           "speed_mm_s": round(speed_mm_s, 1),
            "dry": not want_real, "lines": lines}
     _CTL["last"] = {"t": rec["t"], "skill": sid, "dry": not want_real, "ok": True,
                     "pending": out["pending"], "msg": out["msg"], "lines": lines}
@@ -4261,13 +4276,15 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
         <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
         <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
-      <div class="row" style="margin-top:8px"><span class="k">速度 (相对量 1~60+)</span>
-        <span class="seg" id="sSpd"><button data-v="8" class="on">8 慢·默认</button>
-        <button data-v="20">20</button><button data-v="40">40</button><button data-v="60">60 快</button></span>
-        <input class="num" id="spd" value="8"></div>
-      <div class="hint" style="margin-top:6px">速度是相对量: <b>8 很慢</b>(一次动作可能十几~几十秒才停, 停下前
-        驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记, 不是失败</b>, 看 TCP 有没有变就知道动没动);
-        想快用 40/60。键盘: A/B/C 加 Shift = 反向; 单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
+      <div class="row" style="margin-top:8px"><span class="k">速度 (mm/s · 上限 200)</span>
+        <span class="seg" id="sSpd"><button data-v="1" class="on">1</button>
+        <button data-v="10">10</button><button data-v="20">20</button><button data-v="50">50</button>
+        <button data-v="100">100</button><button data-v="200">200 最快</button></span>
+        <input class="num" id="spd" value="1"></div>
+      <div class="hint" style="margin-top:6px">速度单位 = <b>mm/s</b>(1 / 10 / 20 / 50 / 100 / 200, 上限 200)。
+        这是下给执行器的<b>名义</b>速度; 实际跑多快还受控制器自己的速度倍率限(在役实测约 10%: 名义 100 ⇒ 实际约
+        10mm/s) —— 每次动作的「实测速率」在执行器日志里, <b>以实测为准</b>。键盘: A/B/C 加 Shift = 反向;
+        单次 ≤30°(执行层守卫)。整页没有软急停, 急停请用示教器。</div>
     </div>
     <div class="card">
       <h2>📋 最近一次动作 (可复制)</h2>
@@ -4376,7 +4393,7 @@ function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.c
 async function move(btn,force){
   const skill=btn.dataset.skill, p=btn.dataset.p;
   const v=(p==='deg')?STEP_DEG:STEP_MM;
-  const spd=parseFloat($('#spd').value||'8');
+  const spd=Math.max(1,Math.min(200,parseFloat($('#spd').value||'1')||1));
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);
@@ -4384,7 +4401,7 @@ async function move(btn,force){
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
-    const j=await post('/ctl/move',{skill:skill,[p]:v,speed:spd,arm:real?1:0},18000);
+    const j=await post('/ctl/move',{skill:skill,[p]:v,speed_mm_s:spd,arm:real?1:0},18000);
     const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
     $('#msg').textContent=(j.ok?(j.dry?'🧪 ':'✅ ')+j.msg+_el:'⛔ '+j.msg+_el)
       +'  (对上 X/Y/Z 看有没有变就知道动没动)';
