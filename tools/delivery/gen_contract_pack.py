@@ -23,7 +23,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 DLV = os.path.join(ROOT, "docs", "deliverables")
-SCENES = {"TASK-06-TRAY": "摆盘", "TASK-01-FW": "插拔"}
+SCENES = {"TASK-06-TRAY": "摆盘", "TASK-01-FW": "插拔", "TASK-05-ATS": "插接"}
 
 
 def _j(p, d=None):
@@ -74,7 +74,10 @@ def blocks_sor(task, ver):
     B.append(("table", (["项", "要求"], [
         ["任务", "%s (%s)" % (st.get("name"), st.get("task_id"))],
         ["配方", str(st.get("recipe_type"))],
-        ["场景/场景号", "%s / %s (色 %s)" % (st.get("场景"), st.get("SCN"), st.get("场景色"))],
+        ["场景/场景号", ("%s / %s (色 %s)" % (st.get("场景"), st.get("SCN"), st.get("场景色")))
+         if st.get("SCN") else
+         ("%s (色: **未登记** —— `config/topics/scene_tags.json` 无此任务场景卡片, 需补登记)"
+          % (st.get("scene_ref") or "—"))],
         ["站点", str(st.get("site"))],
         ["触发/循环", "%s；%s" % (st.get("trigger"), st.get("loop"))],
         ["适用工序段", " / ".join(st.get("适用段") or [])],
