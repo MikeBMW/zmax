@@ -57,6 +57,33 @@ open("/tmp/zmax_nav_cmd", "w").write("open_all\n")
 print("   /tmp/zmax_nav_cmd = open_all (残留)")
 
 t0 = time.time()
+print("=== ②' 基线: 记录启动前已存在的 3D/信号 窗口 (老倪可能自己开着 ⇒ 不能算'自动开') ===")
+BASE_WINS = {}
+for _l in sh("wmctrl -lp").splitlines():
+    _p = _l.split(None, 4)
+    if len(_p) >= 5 and any(b in _p[4] for b in BAD):
+        BASE_WINS[_p[0]] = _p[2]
+print("   基线窗口 (id→pid): %s  (%d 个)" % (BASE_WINS or "无", len(BASE_WINS)))
+
+
+def _started_after(pid, t):
+    """进程是否在时刻 t 之后启动 (读 /proc/<pid>/stat 的 starttime, 不受 ps 名匹配影响)。"""
+    try:
+        hz = os.sysconf("SC_CLK_TCK")
+        with open("/proc/%s/stat" % pid, encoding="utf-8") as f:
+            flds = f.read().rsplit(")", 1)[1].split()
+        start_ticks = float(flds[19])                       # 第 22 个字段
+        btime = 0.0
+        with open("/proc/stat", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("btime"):
+                    btime = float(line.split()[1])
+                    break
+        return (btime + start_ticks / hz) >= (t - 5)
+    except Exception:                                           # noqa: BLE001
+        return True                                             # 拿不到就从严 (宁可报可疑)
+
+
 print("=== ③ 走桌面图标同一条路启动: bash tools/gui/launch_studio.sh ===")
 sh("nohup bash tools/gui/launch_studio.sh > /tmp/verify_autostart_launch.log 2>&1 &", timeout=20)
 time.sleep(8)
@@ -82,10 +109,18 @@ if win_at is None:
 print("=== ⑤ 窗口刚出现 → 观察 45s 内是否冒出 3D/信号窗 ===")
 bad_seen = {}
 for i in range(16):
-    w = wins()
-    for b in BAD:
-        if any(b in x for x in w):
-            bad_seen.setdefault(b, int(time.time() - t0))
+    for _l in sh("wmctrl -lp").splitlines():
+        _p = _l.split(None, 4)
+        if len(_p) < 5:
+            continue
+        wid, pid, title = _p[0], _p[2], _p[4]
+        hit = next((b for b in BAD if b in title), None)
+        if not hit:
+            continue
+        if wid in BASE_WINS:
+            continue                                # 🐛 启动前就有 (老倪自己开着) ⇒ 不是自动开
+        if pid in ("0", "", "N/A") or _started_after(pid, t0):
+            bad_seen.setdefault(hit, int(time.time() - t0))
     time.sleep(3)
 log = ""
 try:
