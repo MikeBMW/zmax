@@ -1,0 +1,129 @@
+{
+ "ts": "2026-10-13T15:43:06",
+ "reason": "老倪 2026-10-13: torque tap 删掉不要自己保存; 清理磁盘保证 300G 以下",
+ "df_before": {
+  "used": "325G",
+  "avail": "51G",
+  "pct": "87%",
+  "total": "396G"
+ },
+ "df_after": {
+  "used": "296G",
+  "avail": "80G",
+  "pct": "79%"
+ },
+ "items": [
+  {
+   "stage": 0,
+   "what": "torque tap 流 (10Hz, ≈2.0GB/天)",
+   "path": "zmax_data/ss_live/torque_SCN-06-TRAY.jsonl",
+   "bytes": 306593062,
+   "action": "删; 且改写入 /dev/shm/zmax_torque + 32MB 环形上限 (ZMAX_TORQUE_TAP_DIR/MAX_MB)",
+   "refs": "tools/tdrive_bus.py 写 / tools/verify_driving_torque_topic.py 读 (已同源改)"
+  },
+  {
+   "stage": 0,
+   "what": "torque tap (旧场景 AOI)",
+   "path": "zmax_data/ss_live/torque_SCN-07-AOI.jsonl",
+   "bytes": 136199516,
+   "action": "删 (11:56 后停写, 早已过期)",
+   "refs": "同上"
+  },
+  {
+   "stage": 1,
+   "what": "/var/log 追加型日志截断",
+   "paths": [
+    "syslog 693M",
+    "syslog.1 231M",
+    "zmax-dds-agg.log 251M",
+    "zmax-dds-ss.log 171M",
+    "zmax-dds-pub.log 134M"
+   ],
+   "action": "truncate -s 0 (服务持 fd, 不 rm)",
+   "freed": "~1.4G"
+  },
+  {
+   "stage": 1,
+   "what": "缓存",
+   "paths": [
+    "~/.cache/LarkShell 521M",
+    "~/.cache/pip",
+    "~/.cache/thumbnails",
+    "~/.cache/mesa_shader_cache",
+    "/var/crash/*.crash",
+    "apt cache"
+   ],
+   "action": "删 (可再生)",
+   "freed": "~0.6G"
+  },
+  {
+   "stage": 1,
+   "what": "HF 缓存重复",
+   "path": "~/.cache/huggingface",
+   "freed": "2.0G",
+   "action": "改为软链 → zmax_data/hf_cache (同一套缓存, 以后不再重复)"
+  },
+  {
+   "stage": 1,
+   "what": "ss_live 旧状态流",
+   "paths": [
+    "state_20261008.jsonl 680M",
+    "state_20261009.jsonl 449M"
+   ],
+   "action": "删 (零引用, 早于 5 天轮转窗)",
+   "freed": "1.13G"
+  },
+  {
+   "stage": 2,
+   "what": "lerobot .git 临时包垃圾",
+   "path": "external/lerobot-smolvla-lew/.git/objects/pack/tmp_pack_*",
+   "count": 3487,
+   "freed": "7.7G",
+   "action": "git gc --prune=now (首次因坏 ref refs/remotes/origin/mac 失败) → 删坏 ref 后 gc 成功, garbage=0, .git 15G→6.9G"
+  },
+  {
+   "stage": 2,
+   "what": "同族零引用训练 run (LoRA-40 族)",
+   "paths": [
+    "smolvla_lew_lora_40_l5261010_061856 2.5G",
+    "…_l5261010_172525 2.5G",
+    "…_l5261011_222807 2.5G",
+    "…_l5261012_081308 2.5G",
+    "…_l5261013_104327 1.3G",
+    "…_l5261013_113847 2.5G"
+   ],
+   "freed": "13.8G",
+   "action": "删; 留最新一份 …_l5261013_124042 作证; 全部 refs=0 (含 glob/变量检查)"
+  },
+  {
+   "stage": 2,
+   "what": "零引用 ckpt 目录",
+   "paths": [
+    "abA_v6only",
+    "abB_v6plusl5",
+    "unified_intense",
+    "unified_plus_l5",
+    "unified_v16_s1",
+    "unified_v6expand"
+   ],
+   "freed": "2.0G",
+   "action": "删 (6×335M, 全仓零引用; A/B 消融与 v16 的 stage-1 旧轮)"
+  }
+ ],
+ "protected_verified": [
+  "zmax_data/stable-wm-cache/datasets/cube_single_expert.h5 (95G)",
+  "optical_insert_v5_disturb.h5 6.9G",
+  "l5_gen_1010_big.h5 6.7G",
+  "checkpoints/unified_v16",
+  "checkpoints/stage_moe",
+  "models/yolo_peg_live.pt (在役检测权重)",
+  "outputs/train/smolvla_lew_v10",
+  "outputs/train/smolvla_lew_lora_40_l5261013_124042",
+  "data/database/zmax/zmax_engineering.db"
+ ],
+ "notes": [
+  "未动 cube_single_expert.h5 (95G, 仅 INTACT 论文复现引用, 重下 HF quentinll/lewm-cube) —— 若日后仍缺空间, 这是最大一笔",
+  "l5_gen_1010_big.h5 曾列入 2026-10-10 保护区 ⇒ 不删",
+  "rerun: bash ~/.hermes/cache/scratch/disk_cleanup_20261013.sh (阶段 A/B/C)"
+ ]
+}
