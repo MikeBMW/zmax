@@ -261,6 +261,7 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 ## 9. 重启后核验：链路自愈了没有（用户说「重启了 / 回来了 / 元气恢复」先跑这个）
 
 这类话要的是**最简现状**：哪些自愈了、哪些还缺、缺在哪一层。一条命令跑完只读清点：
+（**重启后必看 cron ticker 心跳** —— 偏钟下它会静默卡死, 13 个守护任务一起哑, 见 §9g。）
 ```bash
 date; uptime
 systemctl --failed --no-pager
@@ -481,6 +482,52 @@ ECS 侧占口的两个 `sshd: root` 的 etimes 只有 **196s / 20s** —— 按 
 ⇒ 每次开机都报一行 ✗, 属陈旧项不用管; `local2`(MAXHUB 顶视)不在位时 `cam_dev_resolve.py` 给 `LOCAL2=-1`,
 是**硬件缺失**(`/dev/video*` 里根本没有它的卡名), 不是串线。
 另: 列"启用单元"别用 `awk '/enabled/'` —— 它会连 `disabled` 一起匹配(实测把 disabled 的 `zmax-moveit-plan`、`zmax-swapfile` 报成自启项); 要 `systemctl is-enabled` 逐个判。
+
+## 9g. 时钟被回拨(开机 RTC 快 8h)会把「时间戳判活」全打成假象 —— cron ticker 会静默卡死
+
+**判活一律不许只看 age/`max(0, now - t)`。** 2026-10-13 实录: 开机时 RTC 比真实时间快 8h, 内核先按 RTC 置钟,
+NTP 约 30s 后才拨正 ⇒ **在回拨前写下的任何时间戳(文件 mtime / 心跳 epoch / 台账 t 字段)都落在"未来 8h"**。
+而 `age = max(0, now - t)` 会把负值夹成 **0 秒 = 永远"新鲜"** ⇒ 死了也报活。
+- 判活要**分开判 两种坏**: `t - now > 120s`(在未来 = 时钟被回拨污染) 和 `now - t > STALE`(真过期)。
+  只判后者 = 这一整类故障**永远不会被发现**。
+- 典型现场(同一分钟里同时中招): cron 心跳 `ticker_heartbeat` 冻在回拨前的 epoch(看着新鲜)、
+  反向通道取回执的逻辑用 `max(mtime)` 恒选到那几个"未来 mtime"的陈旧回执(每次误报"通道死了")、
+  `hermes cron status` 误报 `✗ No gateway is running`(pid 文件被按"陈旧"清掉)。
+
+**cron 看门狗不能靠 cron 自己看着自己。** 这次网关在偏钟下起(01:51:57), cron ticker 只写了**一次**心跳就再没动过:
+`next_run` 早过点的 13 个任务(磁盘红线 · 推流守护 · AOI 两路看门狗 · 运动警报 · 阶梯哨兵 · 4060 同步)全线静默,
+而 `ps`/心跳/py-spy 都显示 ticker 线程还好好地在它的 `stop_event.wait()` 里 —— **静默、无报错、无告警**。
+处置与固化:
+```bash
+hermes cron status                      # ✗ No gateway is running 时别照它下结论(见上)
+systemctl --user is-active hermes-gateway; pgrep -f 'gateway run'
+hermes cron tick                        # 不依赖网关 ticker, 立刻把"过点"的任务点一遍(补火)
+hermes gateway restart                  # 让 ticker 在正时钟下重起 —— 实测重启后 60s 一次, 恢复正常
+```
+- **独立哨兵**(装在 systemd user timer 里, 不在 cron 里): `~/.hermes/scripts/cron_ticker_watchdog.sh`
+  + `~/.config/systemd/user/hermes-cron-ticker-watchdog.{service,timer}`(每 5 分钟, `loginctl Linger=yes` 才随开机起)。
+  三条判据任一命中就重启 gateway(30 分钟限流): ①心跳过期 >600s ②心跳在"未来" >120s ③有 enabled 任务的
+  `next_run_at` 过点 >300s。健康时**一个字都不打**; 出动作才写 `~/.hermes/logs/cron_ticker_watchdog.log`。
+  两个分支都要真跑一遍验证(用一个假心跳文件 + 改掉副本里的路径 + `HERMES=/bin/true` 的副本试, 别拿真脚本试重启)。
+- `@reboot` 的重算脚本(`~/.hermes/scripts/hermes_cron_reclock.sh`)只重排 `next_run`, **修不了已经卡死的 ticker**;
+  现在它在末尾量一次开机时钟偏差, 偏了(>60s)就调上面那个哨兵复核。
+- **重排 `next_run` 会吃掉"当前就过点"的那一次**(重排 = now + interval)。补火用 `hermes cron tick`, 不是重跑 reclock。
+
+**反向通道取回执: 用"文件名集合差", 不要用 `max(mtime)`。** `tools/station_cmd.py` 原先按 mtime 找最新回执,
+回拨后 18 分钟里**每一次调用**都误报"N 秒内没等到回执(通道死了?)", 而 `hub.log` 同一秒就写着回执已落盘(443 字节)。
+改成"入队前记一次 `os.listdir` 集合, 之后找新出现的名字"(文件名 = 落地时的 epoch 秒) 后, 通道秒答。
+⇒ 凡是"等一个新文件出现"的逻辑, 都用集合差/内容指纹, **mtime 是会被时钟跳变污染的**。
+
+**钉死哈希的哨兵会随版本过期而喊假警报。** `tools/aoi_channel_sentinel.sh` 钉的是 `cam_surface_10083_work_v6.py`
++ `636AC7854C947943`, 而 2026-10-12 已上线 v20(v6 文件在工控机上早删了) ⇒ 通道一醒就报
+"文件损坏且无可用副本"。修法两层: ①把 `F`/`WANT` 更新到在役版; ②**当"钉的文件名在盘上根本不存在"时单独报
+【哨兵钉的版本已过期】并列出在役 `cam_*_work_v*.py` 文件名** —— 与"文件真损坏"区分开, 否则下次升版本又是一场假警报。
+更根本: 版本号从部署真源取(`tools/aoi_remote_deploy.py` 的 `FILENAME_10082/FILENAME_10083`), 别在启动/恢复脚本里硬编码
+(实测 `tools/start_aoi_v6.py`、`tools/boot_restore.sh` 的 aoi 段都还钉着 v6 ⇒ 会"成功地"起两个不存在的文件)。
+
+**这一轮的实测时间线**(口径照抄): 17:52:09 网关起 → ticker 唯一一次心跳 → 17:54:24 一条 4060 同步因
+GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:10 `hermes cron tick` 手工补火 4 个任务 →
+18:15:17 `hermes gateway restart`(PID 79899) → 心跳回到 60s 一次、incident 清零、8791/8793/8797/8798 全 200。
 
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 

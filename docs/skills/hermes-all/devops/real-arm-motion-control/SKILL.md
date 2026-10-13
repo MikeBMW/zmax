@@ -460,6 +460,30 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
 
 判据要点: **"受理: 已下发" 不是成功**; `SDK 腿完成` 才是。日志里 "已投递" → "❌ SDK 腿失败" 两层要分开看。
 
+**2026-10-13 第四次现场「怎么又不动了」: 三层都要查(症状一样, 病因三层, 现场只会说"不动")**
+
+```
+① 模式层: 控制器停在 「拖动 drag」或「手动 manual」 ⇒ 腿 rc=3 ABORT 前置条件不满足
+   (`OperationState.drag` / `不是自动模式 (OperateMode.manual)`)。重标定点后最容易留在这两个态。
+   现成命令: bash tools/rokae_sdk_run.sh drag      (退拖动; --on 进拖动)
+              bash tools/rokae_sdk_run.sh mode --auto  (切自动; 默认切手动)
+   判据: operation=idle + mode=automatic 才可能动。
+② 路径层: **一条 MoveL 里同时平移 + 大姿态变化**被控制器以 50102/50113 直接拒 ——
+   实测阈值 **20.49°**; 被拒实例 255mm/24.7° · 255mm/24.7° · 157mm/28.6°
+   (特征: rc=6 · 残差 = **全量位移** · 6.9s 零位移 · 报警变化=True); 姿态差 ≤8° 的全过。
+   ⇒ 腿内 ROT_SPLIT(姿态差 >15° ⇒ 先原地 slerp 分步转身 ≤5°/步, 转身完再平移);
+   离线判据 verify_rot_split.py(真实点对 + 90/150/179°: 每段 ≤5° · 平移段残差 ≤5° · 无 NaN);
+   真机已跑通 3 次(每段残差 0.0mm); ZMAX_SDK_LEG_ROT_SPLIT=0 退回直发。
+③ 排队层(**最容易被当成"又不动了"**): 腿当场拒绝后, 执行器原来还要**空等到位窗口跑满**(实测 ~130s)
+   才返回 ⇒ 现场连点几下全堵在 FIFO 里, 看着就是"连着几下都不动"。
+   ⇒ 执行器 wait_arrive(fail_check=...): 腿的失败行(log 钩子)一出现就**立刻**中止
+   (离线判据: 窗口 30s ⇒ 0.00s 返回)。日志新行:
+   `🛑 阶段 X/Y 被**腿当场拒**(不再空等到位窗口 Ns)` + 腿的原话。
+```
+
+**重启执行器前必须清队列**: 重启会把 FIFO 里没执行的旧点击**真跑一遍**(实测臂自己走到别的点位,
+现场看到"没人点它却动了")。先 O_NONBLOCK 读空 `zmax_data/rokae_sdk/cmd_arm.fifo` 再重启。
+
 ## 🕹 网页手动控制区 (2026-09-27, 老倪: 「手动控制机器人 X Y Z 平移 + A B C 绕轴旋转」)
 
 页面 `/station` 上的点动按钮 → `tools/cam_live_stream.py` 的 `POST /ctl/move` → 写 L2 FIFO。
@@ -689,6 +713,24 @@ def _point_name(sk, st, spec):
 （录制器已带 SIGTERM/SIGINT 处理 + `os._exit(0)`）→ 视频精确收尾、不多不短。
 轮询判"完成"**不能 grep 全日志**（会匹配上一条运行的 `40/40` → 假完成提前退出）:
 下发前记 `OFF=$(stat -c%s $LOG)`，之后只看 `tail -c +$((OFF+1)) $LOG` 的新行。
+
+## ⚙️ 速度口径 = 真实 mm/s (2026-10-13 收口; 现场「我设 200 怎么还这么慢/点50不到50」)
+
+* **两道折扣要分清**: ①我们链上的换算 `名义 mm/s = 0.0935 × speed_units`;
+  ②**控制器在线倍率** SDK `adjustSpeedOnline(scale)`(范围 0.01~1, 非实时模式生效;
+  **scale=1 ⇒ 以路径原本速度运动**)。在役实测 ②≈**0.1** ⇒ 名义 18.7 只跑 1.83/1.85mm/s(=10%),
+  三条独立数据一致。
+* **修法 = 改倍率, 不是把指令数字乘 10**: 名义值一旦膨胀到 1e4, 谁把倍率改回 1 就是 10m/s 冲出去(隐患)。
+  现成命令 `bash tools/rokae_sdk_run.sh speed-scale --scale 1.0`(带 idle+automatic 前置闸);
+  SDK **没有 getter**(读不到当前值) ⇒ **只能实测验证**; 退回原样 `--scale 0.1`。
+  实调后实测: 名义 10 ⇒ 9.44mm/s(94%) · 名义 18.7 ⇒ 15.22mm/s(81%)。
+* **四处收口必须同口径**(缺一处就"设了没用"): 工位页真源 `tools/web/station.html`(热读;
+  `tools/cam_live_stream.py` 里还有一份**重复内联副本**, 两处都要改) · 服务 `/ctl/move` 收 [1,1000] ·
+  腿 `tools/rokae/l2_transport_sdk.py MAX_SPEED_MM_S` · 代理 `tools/rokae/sdk_ctl.py MAX_SPEED_MM_S`
+  (改后**必须重启容器**才对在役生效) · 技能注册表 `speed_max`(单位是 speed_units, 静默压档) ·
+  执行器 `MANUAL_SPEED_UNITS=200`(老倪 2026-10-12 定的"手动回点位要慢一些" ⇒ 手动点回点位最高 200 档 ≈18.7 名义)。
+* **静默截断必须留痕**: 任何一层压你的速度, 都要打一行
+  `⚠️ … 把速度从 A 压到 B (名义 X mm/s)` —— 否则现场只能靠体感说"设了没用"。
 
 ## 速度标定表（实测，speed=0.0999 mm/s 每单位，线性）
 | speed | 实测 | 对应 |
@@ -1020,5 +1062,46 @@ J1 +29.08 → **−0.258** · 全部六轴与现场 URDF 重力模型量值吻�
   实测反面: 从准备点一次抬 246mm 去抬到目标高度 ⇒ 现场"怎么又自己升高了, 差点碰撞"。
 - 工具: `tools/stepwise_goto.py`(四步分解 + 小位移(水平≤100mm 且 |Δz|≤50mm)免预抬升 + 下发前空闲闸 + 每段等到位)
   · `tools/close_loop_to_point.py`(小步闭环, 每步只发一条、核真值、不通换轴、全拒即停绝不重发)。
-- 速度: 慢的主因常是**段长太小**(实测 43mm 段走 24.5s = 1.75mm/s)。改成 `--chunk-mm 150~300` + `speed=1000`。
+· 速度: 慢的主因常是**段长太小**(实测 43mm 段走 24.5s = 1.75mm/s)。改成 `--chunk-mm 150~300` + `speed=1000`。
+
+## 🔢 速度口径 = mm/s (2026-10-13 老倪: 「改变速度的表达, 变成每秒多少毫米, 1 10 20 50 100 200, 最大 200」)
+
+三处同口径, 缺一处现象各不相同:
+
+1. **页面** `tools/web/station.html` 速度段 = mm/s `1/10/20/50/100/200`, 输入框夹 `[1,200]`; **4 处下发全改传 `speed_mm_s`**
+ (方向键 / 点名回点 / 抬升放行 / 夹爪)。漏一处 = 那条按钮还在用旧相对量口径。
+2. **服务** `cam_live_stream._ctl_move`: 收 `speed_mm_s` → **内部相对量 units = mm/s ÷ 0.0935**
+ (腿里就是 `sp_mm = 0.0935 × speed_units`, 见 `tools/rokae/l2_transport_sdk.py:406`), mm/s 夹 `[1,200]`; 回执回显 `speed_mm_s`。
+ ⚠️ **旧字段 `speed`(相对量) 语义一律不许动** —— `gs_map_run.py` / `loop_points.py` 仍在用它传 units(如 120),
+ 把 `speed` 也改成 mm/s 会把建图速度**悄悄放大 10 倍**。新字段另起名, 英文口径唯一。
+3. **腿上限(两条, 都要改)**: `tools/rokae/l2_transport_sdk.py MAX_SPEED_MM_S` 与 `tools/rokae/sdk_ctl.py MAX_SPEED_MM_S`
+   —— 代理里 `speed = min(req.speed, C.MAX_SPEED_MM_S)` 会把高档**静默截断**(现场"设了没用"的第二种原因)。
+   现口径: 服务端 `[1,1000]` · l2_transport `1000` · sdk_ctl `1000`(2026-10-13 老倪"再增加 500 和 1000")。
+   改 sdk_ctl 那个值**必须重启容器 agent**才在役生效
+   (回读: `docker exec <容器> python3 -c "import sdk_ctl as C; print(C.MAX_SPEED_MM_S)"`)。
+4. **技能级 `speed_max`(注册表, 相对量口径, 最容易漏)**: `l2_daemon.plan_stage` 里有 `sp = min(sp, sk["speed_max"])`
+   —— 它把 units 压回低档。`L2.goto_space1..7` 原为 1000/2000 units(≡名义 93/187mm/s), 会把 500/1000 档**压掉**。
+   现改为 **11000**(≡名义 1028mm/s), 但**必须用幂等注册器重建**: 改 `tools/register_space_skills.py` 的 `speed_max`
+   再跑一次它(实测: "8 个空间技能重建 · 其余 89 个一字不动"), 不许手改 `data/skills/l2_atomic/registry.json`。
+   个别技能故意留低速(`L2.goto_ready`=200 ≡ 名义 18.7mm/s) ⇒ 属于设计, 但**必须可见**:
+   `plan_stage` 已加留痕 `⚠️ 技能 X 的 speed_max=N 把速度从 A 压到 B (名义 …·实得 …)`, 不许静默截断。
+5. **验收(全零运动·干跑)**: `POST /ctl/move {skill, speed_mm_s:1000, arm:0}` ⇒ 回执 `speed_mm_s=1000.0 / speed=10695.2`,
+   执行器日志 `DRY-RUN … "{speed: 10695.2, …`; 发 1500 应被夹到 1000; 发一个低限技能应出现上面那行 ⚠️。
+
+- **实测实得 ≈ 名义 × 10%**(2026-10-13 现场实测): 页面设 200 ⇒ 名义 18.7mm/s ⇒ **实际 1.84mm/s**(175mm 走了 95s,
+腿记录 `speed_mm_s=18.7 / took_s=95.21`)。⇒ 名义 100 ⇒ 约 10mm/s; 名义 1 就基本是"不敢动"。
+这 10% 是**控制器自己的速度倍率**(代码注释早写了"实际还受控制器 override 限"), **不在我们这条链上**;
+要真快只能在控制器/示教器上提倍率, 光加档位只按比例涨。
+⇒ 页面必须同时写清"这是名义速度"+"以实测为准"; 每次动作落一行
+`📏 整段平均速率 X mm/s (Δ路径/耗时 · 名义 N mm/s ⇒ 实得 M%)`(实现在 `tools/rokae/sdk_agent.py` 移动收尾处;
+实得 0% = 没动, 一眼可判, 比翻日志快)。
+- **改页面要改对文件**: 工位页真源 = `tools/web/station.html`(服务**按 mtime 热读 ⇒ 改它不用重启**);
+`cam_live_stream.py` 里的 `STATION_PAGE` 字符串只是**回退副本**(文件缺失时才用)。改错文件的现象 = 页面一字不变,
+而 `curl | grep` 能立刻发现(核 `speed_mm_s` / 档位 `data-v` 是否上屏)。
+⚠️ 但**后端口径**(`_ctl_move`)在 `cam_live_stream.py` ⇒ 那部分必须重启 8793 才生效。
+- ⚠️ **重启 8793 会清掉内存里的授权窗**(`_CTL_AUTH` 只在进程内存, 无持久化) ⇒ 现场必须**重新点一次「授权真动」**;
+重启后回读: `/ctl/status` 的 `tcp` 年龄 <1s + 6 张快照 200(少了就是相机/叠加没起来)。
+- ⚠️ **`--local2-dev` 会指错设备**: `start_station_8793.sh` 原写 `6`, 而 `/dev/video6` 是 **RealSense D405 的深度**
+(`2-2.2:1.0`), **MAXHUB 顶摄在 `/dev/video4`**(`WT15: MAXHUB-Camera`)。现场在役 = 4。
+⇒ 重启前一律 `v4l2-ctl --list-devices` **按卡名核设备号**, 别照抄索引(脚本自己开头就写了这条教训, 结果自己踩了)。
 
