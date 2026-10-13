@@ -14,9 +14,14 @@
 
 ```bash
 python3 tools/feishu_send_file.py --zip --text "汇总说明"      # 文档目录打包一个 zip + 一句话
+python3 tools/feishu_send_file.py --zip --text-file /tmp/结论.txt  # 多行文字结论走文件 (避免 shell 转义/引号地狱)
 python3 tools/feishu_send_file.py --dry-run --zip              # 只换 token/只打包（自检不刷屏）
 python3 tools/feishu_send_file.py 路径.md [更多] --text "说明"
 ```
+
+🔴 **`--zip` 打的是 `docs/deliverables/*.md` 全部**，会把目录里所有历史 md 一起打包发出去。
+要发「本次这几件」就别用 `--zip`：自己按清单建 zip（含 .docx/.json，`--zip` 只收 .md），把 zip 路径当位置参数传给工具。
+多行结论用 `--text-file`（`--text` 收单行）。
 凭据读 `~/.hermes/.env` 的 `FEISHU_APP_ID/SECRET`；目标群默认 `FEISHU_REPORT_CHAT_ID`（可 `--chat` 覆盖）。
 
 ## 交付口径（用户偏好）
@@ -40,3 +45,13 @@ python3 tools/feishu_check_messages.py                                  # 列最
 python3 tools/feishu_check_messages.py --pages 8 --find "交付文档包"      # 翻页找更早的（默认只拉最新一页）
 python3 tools/feishu_check_messages.py --download <file_key> /tmp/back.zip --compare <本地zip>
 ```
+
+## 多档/多件投递的编排（分档包）
+- **每个 send 用一次独立的 terminal 调用**（前台，timeout 给足 ~400s）。
+  🔴 别把多个发送塞进一个脚本/`execute_code` 循环：那条路径有执行上限，超时会**杀掉进程并丢掉已打印的 `message_id`** ——
+  结果是「不知道发出去几条」，就得靠服务端回读来重建状态，白跑一轮。
+- **补发前先读服务端消息列表**，确认已到哪几条（文字/文件各自一条），**只补缺口**，绝不盲重发。
+  某档的「文件」比「文字」晚到是常态：文字一条 send 很快，文件要上传，循环被打断时常见的是「文字到了、文件没到」。
+- **完整 `message_id` 要从列表的 JSON 字段取**（`mine_list[].message_id`）；人类可读行里的 mid 会**截断**，拿去做直查会 404。
+  若某条已滑出当前页窗口，就用 `--pages` 翻页或直接用它自己执行时打印的 id。
+- 分档投递的收尾格式：每档「文字摘要 + zip」；每档核验后把 **bytes + 两端 sha256** 贴出来，一档一行，写清哪档还没发/待核。

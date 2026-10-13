@@ -74,6 +74,40 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
 - 与 `pgrep -f "studio.py"` 把本 shell 杀了是同一类自匹配。**grep 必须 `| grep -v <本脚本名>`。**
 - 同理: 审计脚本要用 `--dry-run` 先验证"在役链一条都没匹配上", 再真跑。
 
+## ⚠️ 2026-10-13 实测: 325G → 296G (释放 29G) + 把"流不落盘"定成规矩
+
+老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是啥？删掉，**不要自己保存**。清理磁盘，保证在 300G 以下」
+台账 `reports/disk_cleanup_20261013_ledger.json` · 脚本 `tools/disk_cleanup_20261013.sh`
+
+| 阶段 | 释放 | 内容 |
+|---|---|---|
+| 0 | 0.44G | **扭矩 tap 流删掉并改不落盘** (见规矩 1) |
+| 1 | ~4.0G | /var/log 截断 (syslog 693M · dds-agg 251M · dds-ss 171M · dds-pub 134M) · 客户端/构建缓存 · **HF 缓存改软链** (规矩 3) · ss_live 旧状态流 |
+| 2 | 23.5G | `.git` 临时包垃圾 7.7G (规矩 2) · 同族零引用 LoRA-40 训练 run 13.8G · 零引用 ckpt 目录 2.0G |
+
+### 规矩 1: 追加型遥测流一律**不落盘** (写了就等于每天 2G)
+10 Hz 逐帧 tap (扭矩/状态) = **≈2.36 KB/行 ⇒ ≈2.0 GB/天**, 25 天吃满 51G 余量。做法:
+- 写入端 `tools/tdrive_bus.py`: `TAP_DIR = os.environ.get("ZMAX_TORQUE_TAP_DIR") or "/dev/shm/zmax_torque"`
+  (内存盘, 重启即清) + `_trim_tap()` 环形上限 `ZMAX_TORQUE_TAP_MAX_MB`(默认 32MB, 超了留尾部)
+- **最新值快照** (`torque_live.json`, 单文件覆盖写不增长) 与 pid 锁仍留磁盘 —— 实时监控照旧读得到
+- 判据脚本 `tools/verify_driving_torque_topic.py` 必须**读同一环境变量**解析 tap, 否则报「tap 不存在」
+- 单元文件 (仓库 `tools/systemd/` + `/etc/systemd/system/`) 两处都要写 `Environment=ZMAX_TORQUE_TAP_DIR=...`
+- 删旧 tap 前先 `truncate -s 0` 再 `rm` (写入端持 fd 时 rm 不释放空间)
+
+### 规矩 2: git 临时包垃圾能占几个 G, 而且 gc 会被"坏 ref"卡死
+`git count-objects -vH` 看 `size-garbage`: 本仓实测 **3487 个 `.git/objects/pack/tmp_pack_*` = 7.7 Gib**(中断的 fetch/push 残留)。
+`git gc --prune=now` 报 `fatal: bad object refs/remotes/origin/<x>` + `failed to run repack` ⇒ **先删坏 ref**
+(`git update-ref -d refs/remotes/origin/<x>`), 再 gc; 或直接 `rm -f .git/objects/pack/tmp_pack_*`(它们永远是垃圾)。
+清完 `.git` 15G→6.9G。
+
+### 规矩 3: HF 缓存会悄悄开第二份
+`~/.cache/huggingface`(默认) 与 `ZMAX_HF_HOME`(`zmax_data/hf_cache`) 各存一份同模型(实测 SmolVLM2 各 1.9G)。
+统一为软链 `~/.cache/huggingface -> <repo>/zmax_data/hf_cache` ⇒ 省 2G 且以后不复现。
+
+### 坑 7: 保护区核对别用错路径, 会自己骗自己
+本次脚本核对 `zmax_data/models/yolo_peg_live.pt` 报「❌ 丢失」, 实际在役软链在 **`models/yolo_peg_live.pt`**
+(→ `external/lerobot-smolvla-lew/models/`)。核对清单必须写**真源路径**; 报丢失先 `ls`/`readlink` 复核再动手。
+
 ## 清理清单 (超红线时按此顺序, 2026-09-14 实测把 307G→295G)
 
 ### 🆕 2026-10-07 实测: 347G → 299G (释放 48G, 一次把这套做成了 cron v5.0)

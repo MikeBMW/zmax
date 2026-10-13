@@ -222,7 +222,37 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    **重启后按 §9 逐项核验**；手工进程没自己起来时先读 §10（守护早退），再查服务本身。
 8. **收尾核对**: `sync` → `df -h` → `systemctl --failed`(应 0) → `git status --short` (应 0 待推) → `git log --oneline -1`。
 9. **清空转进程, 但不碰 GUI**: 起过却没输入的循环进程(外设缺/流断, 如相机不在位时仍 `--loop` 的检测循环)
-   要 `kill`, 并在留档"机器状态"里写"已停 pid X"; **控制台 GUI 留给用户自己关**(反复重启 GUI 被投诉过)。
+   要 `kill`, 并在留档"机器状态"里写"已停 pid X"。
+   **控制台 GUI 的规矩是「不许反复重启」, 不是「不许关」**: 收尾时把控制台 graceful 退出(`kill -TERM <pid>`)是正规动作 ——
+   它是**用户级 systemd 单元**(`~/.config/systemd/user/zmax-studio.service`), 下次登录自起, 不必手工重开;
+   要禁的是"用户还在看的时候替他把 GUI 重启一遍"。关完复核 `pgrep -af 'studio\.py'` 为空。
+
+## 8b. 停守护 ≠ 停住: 先查 keepalive, 否则「已停」一分钟内被推翻
+
+本机的常驻守护**几乎都有看护在拉**: `crontab -l` 里的 `* * * * *` / `*/5 * * * *` 保活行(tunnel_keepalive ·
+cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepalive)+ `@reboot` 行 + 系统级/用户级 systemd 单元。
+⇒ **停之前先列看护**: `crontab -l | grep -vE '^\s*#'` 过滤 `keepalive|guard|sentinel|tunnel`; 再
+`systemctl list-units --state=running 'zmax*'` 与 `systemctl --user list-units 'zmax*'`。
+- 停法固定: **先停 keepalive/包装 shell, 再停被守护的进程**; 只停后者等于没停 —— 实测 15 个守护停掉后 ~1 分钟内被拉回 9 个,
+  且新实例正处在**加载模型**阶段(CPU 28~37%, 白烧)。
+- **报告口径**: 不写"守护已全部停止"。写「停了什么 / 什么会被看护拉回 / 拉回对关机有无风险」——
+  这些守护写的是**追加型** jsonl/日志(断电最多丢最后一行), 且开机由 `@reboot`+cron 自动恢复 ⇒ 结论仍可是「可安全下电」。
+- **逐条复核并报残留**: TERM 后仍活着的单独列出(实测有一个推送守候 TERM 连 KILL 之后仍存活、状态 `Ss`、0% CPU、
+  不持写句柄) —— 「停不掉的」和「停掉的」都要写, 否则用户以为全场静止。
+- **有意不停的一类**: 对外/隧道单元(`zmax-ecs-*` · `zmax-tunnel-*`)—— 提前停只会让站点早一点失联, 与本机写盘无关, 交给 systemd 收尾。
+- 可直接用: `scripts/stop_writers_safe.sh [--dry] [--pat '<正则>']`(排除调用它的这条 shell, 先停 keepalive 再停其余, 末尾逐条复核)。
+
+## 8c. “可以下电”的证据集 (四件, 缺一件就不说这句话)
+
+1. **库无待写**: `PRAGMA wal_checkpoint(TRUNCATE)` 回 `(0,-1,-1)`(无 WAL 可并) + `PRAGMA quick_check` = ok + 无 `-wal/-shm` 残留。
+2. **状态文件无半写**: 逐个 `json.load` 关键状态(实时数据/总线/任务绑定/报告) + 逐条 jsonl **末行可解析**(行数与字节数一起报)。
+3. **端口与进程层**: 数据面端口已释放(`ss -ltnp | grep <端口>` 空) + 剩余 running 单元逐个列出并带**为什么留着**。
+4. **产物层**: `git status --short` = 0 · 归档目录在且 MANIFEST 计数对得上(见 4b) · `sync` 已跑。
+把这份快照写成 `evidence/shutdown_prep_<ts>.md` 落进归档目录 —— 给用户的回复仍是"停了什么/核过哪些数/还剩什么"三行, 快照是底账。
+
+**顺手体检要算增速, 不只看 `df` 百分比**: 有的 tap 是 10Hz 无轮转 jsonl(实测 306MB/129k 行 ≈ **2.0GB/天**) ——
+`df` 87%/余 51G 看着安全, 实际约 25 天吃满 ⇒ 报告给「MB/千行 · GB/天 · 剩余天数」并建议按天轮转/降采样,
+比只贴一个百分比有用得多。
 
 **新增生成物顺手加 .gitignore**: 每次训练动态生成的 `config_*_lora_*.yaml`、
 `reports/joint_train_*/` (内含 .pt) 这类必须显式 ignore, 否则下次 `add` 就会把权重拖进库。
@@ -574,5 +604,8 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | 拿"进程在"当"应用可用" | 报成功但窗口根本没起 | 复核窗口(`wmctrl -l` / `xdotool search --name`), 不是 `pgrep` |
 | 设备被生产服务占着却报"硬件坏了" | 误判摄像头/串口故障 | `sudo fuser -v /dev/*` + `lsof` 找占用者; 报冲突并请示, 不擅停生产服务 |
 | 老目录整理完又冒出来 | 代码扫干净了却仍重建 `~/<老名>` | 查**仓库外**工具的全局配置(`~/.config/Ultralytics/settings.json` 的 `runs_dir/weights_dir/datasets_dir` 等): 不在仓库里, 五种路径写法全扫不到, 但工具每次都按它落盘 ⇒ 备份后改到工程内 → 把已落错地方的产物**合并回来** → 空目录才 `rmdir`; 判据是"跑一次那个工具看产物落在哪", 不是 grep |
+| 停守护只停被守护的进程, 没停 keepalive | 汇报"守护已全部停止", 一分钟后它们全回来了(且正加载模型烧 CPU) | 先 `crontab -l` 找保活/guard 行 → 先停 keepalive 再停守护 → 报告写"会被拉回哪些"(追加型文件 ⇒ 下电无风险) |
+| 下电结论只看 `df` 百分比 | 87%/余 51G 看着安全, 10Hz 无轮转 tap 约 25 天就吃满 | 报盘耗增速(MB/千行 · GB/天 · 剩余天数)+ 轮转建议; 百分比给不出"还剩几天" |
+| 停完不复核就报"全场静止" | 有个别守护 TERM/KILL 后仍活着 | 逐条复核并列出残留(状态/CPU/是否持写句柄), 「停不掉的」也要写 |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`

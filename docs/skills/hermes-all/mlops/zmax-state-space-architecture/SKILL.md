@@ -390,6 +390,15 @@ anisotropy/status/trend); 阈值真源 `config/calib/zmax_health.json`(现场可
 - 集成接口 = AOI/AR 总线: `tools/engine_bus_publish.py` 把引擎信号(含 H̃)**并进 `tools/ar_aoi_bus.py` 的同一 live 文件**, 写完回读。
 - 判据: `verify_engine_loop.py`(闭环完整性) · `verify_config_to_M.py`(映射/闸门/幂等) · `sil_test_engine.py`(SIL 真 trace 重放)。
 - 深度(尺度分离推导/映射规则表/SIL 数字/写盘与判据两坑)见 `references/metric-tensor-main-param.md` §8–§12。
+- 🔴 **映射存在 ≠ 已落役**: `tools/config_to_M.py --task <T>` 算出的是**提案**(实测摆盘 M=4.423 · dim6 · isotropic),
+  而真源 `config/calib/zmax_manifold.json` 是**在役值**(实测 M=3.283 · dim3 · full) —— 两者不一致时只能报
+  "映射链在、**未落役**", 绝不说"已映射/已生效"。节点侧判据 `verify_metric_main_param.py` 23/23 PASS
+  **只证明映射本身对**, 不证明作业链在用这个 M。核口径 = 真源 JSON 的 `M/dim/mode` 与 `config_to_M` 输出**逐项对照**。
+- 驱动扭矩 topic: `ss_torque = M·(−∇Φ)` 由 `tools/tdrive_bus.py` 发布, 落**系统服务常驻**(`zmax-torque-bus.service`,
+  10Hz; 写 `zmax_data/ss_live/torque_live.json` + `torque_<场景>.jsonl` tap)。🔴 **发布器里的场景必须现取**
+  (跟 `ss_scene_switch` 的活跃场景), **不许写死 `SCN-xx`** —— 写死会让 tap 文件名与场景标签长期指错任务
+  (实测手跑 120s、published/errors 全对, 却整份写进了另一个场景的 jsonl)。改完重启服务并**回读 tap 的场景字段**。
+  判据口径: 逐项 PASS 里**只有依赖真录像/真相机源的那几条**在办公模式必然未过 ⇒ 如实标"待现场复跑", 不算回归。
 
 ## 🎛 GUI 安全启停 (2026-09-24 血案)
 
@@ -440,3 +449,6 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - 数据空间(DDS 总线)的信号表与关键词、MoveIt 规划/action 取数地图（含"域是 42""action 话题默认隐藏"
   "规划结果走 get_result 服务不走话题""`tcp_path` 只存 x y z""姿态比对只能用四元数夹角"）
   → `references/dds-bus-signal-map-and-moveit-action.md`
+- **末端位姿 x/y/z/a/b/c 的真源与坐标系口径**（仿真 episode 不记姿态 · 真机走 `rokae_sdk/tcp_out/latest.json`
+  `frame=base_link` · 现场世界系须标定才存在 · `ss_live/trace_live.json` 是单槽会被不同任务互相覆盖）
+  → 同上文件末节「末端位姿 x/y/z/a/b/c 的真源与坐标系」
