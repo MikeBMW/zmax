@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
-"""经反向通道在工控机 192.168.23.23 上: 停自愈任务 + 停旧的 10082/10083 + 起 v6 + 验收。
+"""经反向通道在工控机 192.168.23.23 上: 停自愈任务 + 停旧的 10082/10083 + 起现役版 + 验收。
 
 老倪 2026-09-28: 「你启动吧，我刚才启动v6失败了」
   —— 他起失败的最可能原因: 旧实例还占着 10082/10083(端口被占 ⇒ 新进程起不来),
      以及 ZMAX_AOI_KeepAlive(每分自愈)会在几十秒内把旧的再拉回来。
-  所以本条命令的顺序是: ①先关自愈任务(否则白干) ②按端口属主停旧进程 ③起两个 v6 ④40秒后验收端口。
-通道状况: /tmp/zmax_agent_out 最后一次取件 2026-09-27 10:50 ⇒ agent 任务疑似已死。
-  本脚本 wait=45s; 返回 <<TIMEOUT ...>> 即表示工控机没接单, 只能就地手动。
+  所以本条命令的顺序是: ①先关自愈任务(否则白干) ②按端口属主停旧进程 ③起两个 ④40秒后验收端口。
+
+⚠ 2026-10-13 修: 原先硬编码 `..._work_v6.py`。2026-10-12 已上线 v20, v6 文件在工控机上已删
+  ⇒ 本脚本会"成功启动"两个不存在的文件(日志里才看出来)。现改为**直接取
+  tools/aoi_remote_deploy.py 里的 FILENAME_10082/FILENAME_10083**(部署与启动同一真源),
+  以后升版本只改那一处, 这里不会再悄悄过期。
+
+通道状况: 反向通道是活的(2026-10-13 核: /agent/beat 新鲜 + echo awake 有回执)。
+  本脚本 wait=45s; 返回 <<TIMEOUT ...>> 才表示工控机没接单, 只能就地手动。
 """
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import aoi_remote_deploy as A  # noqa: E402
+
+F_FINGER = A.FILENAME_10082
+F_SURFACE = A.FILENAME_10083
 
 PS = r"""
 $out = @()
@@ -33,23 +43,23 @@ foreach ($p in 10082, 10083) {
 }
 Start-Sleep -Seconds 5
 
-# ③ 起 v6 两个(工控机现役文件名)
+# ③ 起现役两个(文件名来自 aoi_remote_deploy.py, 不在本文件硬编码)
 $d = 'D:\xspace\ultralytics_AOI'
 $py = Join-Path $d 'venv\Scripts\python.exe'
 $sh = New-Object -ComObject WScript.Shell
-$sh.Run(("cmd /c cd /d {0} && {1} cam_finger_10082_work_v6.py > {0}\v6f.log 2>&1" -f $d, $py), 0, $false) | Out-Null
-$sh.Run(("cmd /c cd /d {0} && {1} cam_surface_10083_work_v6.py > {0}\v6s.log 2>&1" -f $d, $py), 0, $false) | Out-Null
+$sh.Run(("cmd /c cd /d {0} && {1} __F_FINGER__ > {0}\__F_FINGER__.log 2>&1" -f $d, $py), 0, $false) | Out-Null
+$sh.Run(("cmd /c cd /d {0} && {1} __F_SURFACE__ > {0}\__F_SURFACE__.log 2>&1" -f $d, $py), 0, $false) | Out-Null
 $out += "started both"
 Start-Sleep -Seconds 40
 
-# ④ 验收: 端口 + 旧进程是否真死
+# ④ 验收: 端口 + 现役进程数
 foreach ($p in 10082, 10083) {
   $c = Get-NetTCPConnection -LocalPort $p -State Listen -EA SilentlyContinue
   if ($c) { $out += ("{0} -> up pid {1}" -f $p, $c.OwningProcess) } else { $out += ("{0} -> DOWN" -f $p) }
 }
-$out += ("running v6 python procs: " + ((Get-CimInstance Win32_Process -Filter "Name='python.exe'" -EA SilentlyContinue | Where-Object { $_.CommandLine -like '*cam_*_work_v6.py*' } | Measure-Object).Count))
+$out += ("running live python procs: " + ((Get-CimInstance Win32_Process -Filter "Name='python.exe'" -EA SilentlyContinue | Where-Object { $_.CommandLine -like '*cam_*_work_v20.py*' } | Measure-Object).Count))
 $out -join " | "
-"""
+""".replace("__F_FINGER__", F_FINGER).replace("__F_SURFACE__", F_SURFACE)
 
 
 def main() -> int:

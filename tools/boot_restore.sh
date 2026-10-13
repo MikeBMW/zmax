@@ -129,10 +129,12 @@ TXT
     # 手工起(与部署脚本同款):
     $d='D:\xspace\ultralytics_AOI'; $py="$d\venv\Scripts\python.exe"
     $sh=New-Object -ComObject WScript.Shell
-    $sh.Run("cmd /c cd /d $d && $py cam_finger_10082_work_v6.py  > $d\v6f.log 2>&1",0,$false) | Out-Null
-    $sh.Run("cmd /c cd /d $d && $py cam_surface_10083_work_v6.py > $d\v6s.log 2>&1",0,$false) | Out-Null
+    $sh.Run("cmd /c cd /d $d && $py cam_finger_10082_work_v20.py  > $d\v20f.log 2>&1",0,$false) | Out-Null
+    $sh.Run("cmd /c cd /d $d && $py cam_surface_10083_work_v20.py > $d\v20s.log 2>&1",0,$false) | Out-Null
+    # ↑ 文件名取自 tools/aoi_remote_deploy.py 的 FILENAME_10082/10083(升版本只改那一处, 别在这儿硬猜)
   验收(本机跑): for p in 10082 10083; do curl -s -o /dev/null -w "$p %{http_code}\n" http://192.168.23.23:$p/last_result; done
-  ⚠ 远程通道已死(agent 23h 没取件) ⇒ 任何远程更新/巡检都不可用, 只能就地操作
+  通道: 8794 反向通道**是活的**(2026-10-13 核: 本机 ~/zmax/zmax_data/agent_hub/beat 新鲜 + echo awake 有回执)
+        ⇒ 优先用远程: bash tools/start_aoi_v6.py …; 不通再走上面就地操作
 TXT
   ;;
   *) echo "用法: bash tools/boot_restore.sh {check|local|orin|aoi}" ;;
