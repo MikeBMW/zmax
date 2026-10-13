@@ -38,6 +38,22 @@ src2 = src2.replace(anchor, ENTRY + anchor, 1)   # 只在它**前面插入**新�
 
 **顺序**：版本同步 commit → push main → `git tag -a vX.Y.0` → push tag → CI 双平台构建 → 验资产。
 
+**现在的正解 = 工具 + 判据, 不手写升级脚本**（老的手写脚本已退役）：
+```bash
+./gui-venv311/bin/python tools/bump_version.py --to vX.Y.Z --summary-file /tmp/v.txt  # 同步 8 处 + VERSION.md 表首插行; 打印「旧命中→新命中」逐行表
+./gui-venv311/bin/python tools/verify_version_sync.py                                 # 判据: GUI 显示 / 远端 tag / 最新 Release
+```
+- summary 只写**结论与判据**（口径/根因/实测数, 如「名义10 ⇒ 实测9.44mm/s」）一行 —— 它直接进 studio.py 的 changelog。
+- 🔴 **工具的命中集 ≠ 全量**: 判据会点出工具**漏掉**的显示字面量。实测 studio.py 的状态栏
+  `sb.showMessage("Z-MAX v…  |  Sys-…")` 与「关于」框 `<b>Z-MAX v…</b>` 各有一处写死的版本号，
+  不在工具的命中集里，长期停在旧版本。判据报 `❌ GUI 显示陈旧: studio.py:<行>` —— 照行号改掉再复跑。
+  **bump 报全 ✅ 不等于同步完成**; 推完才发现漏改，补一个订正 commit 再 push 即可，不必动已推的 tag。
+- 🔴 判据里「**最新 Release tag ≠ 新版本**」那一条**不要追**: tag 推送即触发本仓库 workflow 构建并自动建
+  Release。复跑时 `actions/runs` 里能看到 `Build Desktop … vX.Y.Z in_progress` 就是在路上，不是没做。
+  本机没装 `gh` 也能查公开 API: `repos/<O>/<R>/actions/runs`(取 `workflow_runs[].name/status/conclusion`)
+  与 `repos/<O>/<R>/releases/latest`(取 `tag_name`)。
+- 只 `push main`、不带 `--tags` ⇒ 远端没 tag ⇒ 不上文所述的双平台构建、Release 不动。
+
 **中/小版本口径**（本仓库）：应用发布系列走 `v5.MAJOR.MINOR`（如 v5.14.0 → **v5.15.0** = 中版本）；
 `pyproject.toml` 的 `0.5.2` 是**库版本**，与 tag 不是同一条线 —— 不必强行对齐（PyPI release
 job 因版本不匹配显示 `skipped` 属**正常**，不是失败）。
