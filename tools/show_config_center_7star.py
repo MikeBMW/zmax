@@ -36,7 +36,9 @@ def main() -> int:
     dlg.resize(1720, 950)
     dlg.show()
 
-    shots = [("任务配置", "天璇"), ("产品配置", "天枢"), ("功能·性能·模型", "天玑")]
+    # (页签关键字, 出图名, 要点的星 key 或 None) —— 单独出一张「只亮玉衡」证明一致性修复
+    shots = [("任务配置", "天璇", None), ("产品配置", "天枢", None),
+             ("功能·性能·模型", "天玑", "func"), ("功能·性能·模型", "玉衡", "perf")]
     state = {"i": 0}
 
     def _step():
@@ -46,10 +48,12 @@ def main() -> int:
             print("出图完成 →", dst)
             app.quit()
             return
-        kw, star = shots[i]
+        kw, star, key = shots[i]
         j = page._tab_index_by_title(kw)
         if j >= 0:
             page.tabs.setCurrentIndex(j)
+        if key:
+            page._goto_star(key)          # 点星 = 只亮这一颗 (一页三星时验证一致性)
         app.processEvents()
         f = os.path.join(dst, "real_%d_%s.png" % (i + 1, star))
         page.grab().save(f)
