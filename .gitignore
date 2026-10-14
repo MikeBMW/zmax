@@ -352,7 +352,10 @@ hermes/
 !tools/web/lib/**
 
 # 快照证据图(实拍/渲染大图)不进代码库 —— 放 zmax_data/ 或网盘 (tools/repo_guard.py 会拦 >300KB)
-docs/data_snapshots/**/evidence/*.png
+# 2026-10-15 放宽: 原来只挡 `**/evidence/*.png` ⇒ 其它子目录的 1MB 级截图照样入库了 13 张(最老到 2026-10-10)。
+# 现在**快照目录下所有 png** 一律不入库; 文件仍留在本机原路径可直接看, 库里只留 MANIFEST(名字+sha256+重建命令)。
+docs/data_snapshots/**/*.png
+docs/data_snapshots/*.png
 
 ### Z-MAX 平台/实例 解耦 (2026-10-09) ###
 # 平台仓库只放代码 + 平台文档 + 出厂骨架 defaults/

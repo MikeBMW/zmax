@@ -29,12 +29,18 @@ TEXT_EXT = {".py", ".pyi", ".sh", ".bash", ".md", ".txt", ".json", ".jsonl", ".y
 
 
 def tracked(staged):
-    if staged:
-        out = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                             capture_output=True, text=True).stdout
-    else:
-        out = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout
-    return [p for p in out.splitlines() if p.strip()]
+    """已跟踪文件清单 (NUL 分隔 + 关掉 quotepath)。
+
+    🔴 2026-10-15 实测坑: 原来用 `git ls-files` + splitlines() —— 中文文件名会被 git 按
+    `core.quotepath` 转义成 `"…/real_1_\345\244\251…"`, `os.path.getsize()` 抛 OSError ⇒ **被静默跳过**。
+    结果: 中文名的大文件 (1MB 级 png) 一个都查不出来, guard 报"干净"是假的。
+    修法: `-c core.quotepath=false` + `-z`(NUL 分隔), 名字原样进 Python。
+    """
+    cmd = ["git", "-c", "core.quotepath=false"] + (
+        ["diff", "--cached", "--name-only", "--diff-filter=ACM", "-z"] if staged
+        else ["ls-files", "-z"])
+    out = subprocess.run(cmd, capture_output=True, text=True, errors="surrogateescape").stdout
+    return [p for p in out.split("\0") if p.strip()]
 
 
 def main():
