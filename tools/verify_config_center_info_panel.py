@@ -134,6 +134,38 @@ def main():
     chk("8 页都包在 QScrollArea · 内容比视口高时竖直滚动条可用", not bad,
         ("有问题: " + " ; ".join(bad)) if bad else "%d/%d 页可滚" % (page.tabs.count(), page.tabs.count()))
 
+    print("\n═══ ⑦ 产品配置页: 平台产品/产品特征清单两张表**看得见** (老倪 2026-10-15) ═══")
+    _i = page._tab_index_by_title("产品配置")
+    page.tabs.setCurrentIndex(_i)
+    page.resize(1600, 950)
+    app.processEvents()
+    _p = getattr(page, "plat_prod_table", None)
+    _f = getattr(page, "plat_feat_table", None)
+    chk("平台产品表 ≥ 100px 且有数据行", _p is not None and _p.height() >= 100 and _p.rowCount() >= 2,
+        "高=%s · 行=%s" % (getattr(_p, "height", lambda: "—")(), getattr(_p, "rowCount", lambda: "—")()))
+    chk("产品特征清单表 ≥ 260px 且有数据行 (之前被压成看不见)",
+        _f is not None and _f.height() >= 260 and _f.rowCount() >= 10,
+        "高=%s · 行=%s" % (getattr(_f, "height", lambda: "—")(), getattr(_f, "rowCount", lambda: "—")()))
+
+    print("\n═══ ⑦b 功能配置页 74 行功能清单也看得见 ═══")
+    page.tabs.setCurrentIndex(page._tab_index_by_title("功能配置"))
+    app.processEvents()
+    _fn = getattr(page, "fn_table", None)
+    chk("功能清单表 ≥ 300px 且行数 = 真源", _fn is not None and _fn.height() >= 300 and _fn.rowCount() >= 70,
+        "高=%s · 行=%s" % (getattr(_fn, "height", lambda: "—")(), getattr(_fn, "rowCount", lambda: "—")()))
+    page.tabs.setCurrentIndex(page._tab_index_by_title("产品配置"))
+    app.processEvents()
+
+    print("\n═══ ⑧ 窗口压矮后这两张表**仍不被压没** (页面靠外层滚动, 表格保底高度) ═══")
+    page.resize(1600, 620)
+    app.processEvents()
+    _h1, _h2 = _p.height(), _f.height()
+    _min1, _min2 = _p.minimumHeight(), _f.minimumHeight()
+    chk("压矮后两表高度 ≥ 各自最小高度 (不会缩成看不见)", _h1 >= _min1 and _h2 >= _min2,
+        "产品表 %d≥%d · 特性表 %d≥%d" % (_h1, _min1, _h2, _min2))
+    page.resize(1600, 950)
+    app.processEvents()
+
     _ok = sum(1 for _n, k, _d in CHECKS if k)
     print("\n═══ 判据汇总: %d/%d PASS ═══" % (_ok, len(CHECKS)))
     for n, k, d in CHECKS:

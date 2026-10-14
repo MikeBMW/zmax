@@ -2838,6 +2838,9 @@ class ConfigCenterPage(QWidget):
         _rows = [[_cn.get(f["sys"], f["sys"]), f["fn_id"], f["name"], f["layer"], f["kind"],
                   (f["module"] or "")[:44]] for f in _fns]
         self.fn_table = _mk_table(["系统", "功能编号", "功能名称", "层", "类别", "承载模块"], _rows, th)
+        # 同一类问题的预防: 74 行功能清单也要给足最小高度 (封顶 460, 约 15 行可见, 其余表内滚动),
+        # 不许被上方/下方挤成"两行都看不见" (老倪 2026-10-15 报的是产品配置页, 这里是同一写法)。
+        self.fn_table.setMinimumHeight(min(460, 28 * (len(_rows) + 2) + 8))
         lay.addWidget(self.fn_table, 1)
         return w
 
@@ -2880,7 +2883,9 @@ class ConfigCenterPage(QWidget):
                for x in _d.get("products") or []]
         lay.addWidget(_sec("🏷 平台产品 (%d) —— 产品通过 系统2/1/0 组成的全系统实现" % len(_pr)))
         self.plat_prod_table = _mk_table(["产品", "名称", "类别", "定位", "关键指标"], _pr, th)
-        self.plat_prod_table.setMaximumHeight(96)
+        # 2026-10-15 老倪: 「产品特征清单 平台产品的窗口太小了, 根本看不到」⇒ 不再用 maximumHeight 压它,
+        # 给一个**够看的**最小高度 (按行数算, 封顶 200) —— 少到 2 行也要看得见表头和数据行。
+        self.plat_prod_table.setMinimumHeight(min(200, 34 * (len(_pr) + 2) + 8))
         lay.addWidget(self.plat_prod_table)
         _ft = [[f["pf_id"], f["product"], f["title"], f["capability"], f["kpi"], f["status"],
                 "/".join(f["subsys"] or []), "、".join((f["modules"] or [])[:2])]
@@ -2890,7 +2895,19 @@ class ConfigCenterPage(QWidget):
                            % (len(_ft), _on)))
         self.plat_feat_table = _mk_table(["特征ID", "产品", "产品特征", "能力", "指标 KPI", "状态", "子系统", "模块"],
                                          _ft, th)
+        # 同一问题: 产品特性 23 条挤在几行里看不见 ⇒ 给足最小高度 (封顶 460px, 约 13 行可见, 其余表内滚动),
+        # 页面整体不够放时由外层 QScrollArea 滚动 —— 不许再把表压成"看不到"。
+        self.plat_feat_table.setMinimumHeight(min(460, 30 * (len(_ft) + 2) + 8))
         lay.addWidget(self.plat_feat_table, 1)
+        _rowcp = QHBoxLayout()
+        _bcp = _btn("📋 复制产品特性清单 (TSV)", th)
+        _bcp.setToolTip("把 %d 条产品特性整表复制到剪贴板 (可直接粘进 Excel/文档)" % len(_ft))
+        _bcp.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["特征ID", "产品", "产品特征", "能力", "指标 KPI", "状态", "子系统", "模块"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in _r) for _r in _ft)))
+        _rowcp.addWidget(_bcp)
+        _rowcp.addStretch()
+        lay.addLayout(_rowcp)
         return w
 
     def _build_fpm_view(self, th, d, domains, default_dom, tab_title):

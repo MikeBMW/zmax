@@ -915,7 +915,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.78")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.79")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11229,7 +11229,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.78 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.79 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11237,9 +11237,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.78 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.79 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.79: 配置中心 UI: 平台产品/产品特征清单(产品特性)两张表给足高度看得见 + 功能清单表同修 [老倪:「你看你的 产品特征清单 平台产品的窗口太小了, 根本看不到, 改UI」]  ① 根因: 上一版把 平台产品表 用 setMaximumHeight(96) 压住, 产品特性表(23 行)没有任何最小高度 ⇒ 页面被压小(页签已包 QScrollArea)时两张表被挤成几行, 表头都看不清 ② 产品表: 去掉 maximumHeight, 改最小高度 min(200, 34*(行+2)+8) ⇒ 实测 192px / 2 行全见 ③ 产品特性表: 最小高度 min(460, 30*(行+2)+8) ⇒ 实测 460px / 23 行(约 13 行可见+表内滚动), 并加「📋 复制产品特性清单(TSV)」一键整表复制 ④ 同类预防: 功能配置页 74 行功能清单表也给最小高度 min(460, 28*(行+2)+8) ⇒ 约 15 行可见 ⑤ 判据 verify_config_center_info_panel.py 16/16 (新增 ⑦ 两表≥100/260px 有数据行 · ⑦b 功能清单表≥300px 行数=真源 · ⑧ 窗口压矮后两表高度仍≥各自最小高度=不被压没)
         # v5.50.78: 配置中心 UI 调整: 底部信息窗改成可拖可藏 + 每页可滚动 + 内容随当前配置面 [老倪:「产品配置的右侧下半部分的显示区太小, 且不能用鼠标滚动调整, 看不到显示内容; 下面的信息窗口当选择相应的配置面时, 信息没有对应上, 且显示区无法用鼠标拖动调整大小, 要可以隐藏」]  ① 根因: 页里的表按「不许挤/不许截断」给了最小高度 (工程配置那张表 510px) ⇒ QTabWidget 最小高 1265px, 把竖直空间吃光 ⇒ 信息窗被压到 98px 且没有余量可分(拖也拖不大) ② 8 个页各包一层 QScrollArea(widgetResizable) ⇒ 页面能压小、鼠标滚动看全; AR 示教点表最小高度封顶 300px ③ 底部信息窗改成竖直 QSplitter(工作区 / 信息窗), 分隔条 9px 可拖, 初值按内容给 220~460px; 拖过之后不再被自动覆盖(想再自动一次点「↕ 自适应高度」) ④ 信息窗头一行: 「当前配置面」提示 + ↕自适应高度 + 📋复制 + ▾收起信息窗/▴展开 (可隐藏) ⑤ 内容随当前配置面自动对应: _page_out_text 逐面给「哪颗星 + 本面真源摘要 + 真源在哪/怎么改」 ⑥ 判据: 新增 tools/verify_config_center_info_panel.py 12/12 · 七星 18/18 · 产品页 51/51 · 任务工单 28/28 · domains 单测全过
         # v5.50.77: 配置中心: 取消模型匹配/文档预览两页(并入模型配置/文档配置) + 产品配置页复用「Z-MAX 平台」页描述与产品特性 + 功能配置页收系统2/1/0全部功能与汇总 [老倪:「取消 模型匹配, 信息合并到 模型配置页面; 取消文档预览页面, 合并到 文档配置页面; 产品配置页面, 要复用 Z-MAX平台的页面描述, 里面有产品特性; 功能配置, 要包括 系统1 系统2 系统0的所有功能, 还有功能清单的汇总」]  ① 页签只剩 8 个: 产品/任务/功能/模型/性能/工单/文档 + 工程配置(非七星); 模型配置页 = 模型配置 + 模型↔工程配置匹配表(原模型匹配); 文档配置页 = 导出按钮 + 清单 + 正文预览(原文档预览) ② 产品配置页新增「平台描述(定位/架构/数据契约) + 平台产品 2 行 + 产品特征清单 23 行」, 与 tools/gui/platform_spec.py 的 Z-MAX 平台页读同一批真源 ③ 功能配置页新增功能清单 74 行(系统2 30/系统1 4/系统0 27/平台支撑 13) + 汇总行, 真源=工程库 functions 表 ④ 单一真源口 zmax_platform_info.py 增 platform_page_data()/function_summary() ⑤ 判据: 七星 18/18(新增⑯合并生效·⑰内容口径) · 产品页 51/51 · 任务工单 28/28 · domains 单测全过
         # v5.50.76: 配置中心: 页签名改配置名(功能配置/性能配置各自一页) + 产品配置页与主控制台左侧 Z-MAX 平台描述同源 + 判据三处修改 [老倪:「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息; 功能 性能 模型 标签, 改成功能配置, 即标签页的名字, 对应 1~7 配置名称; 你检查一下后面几个标签页」]  ① 特征库三域拆成「3.功能配置(天玑)」与「5.性能配置(玉衡)」两页(同一真源, 默认域不同; 点左树点星图自动切页+按亮该域按钮) ② 「文档交付」改成「文档配置」—— 七个页签名 == 配置名; 页签次序 产品→任务→功能→模型→性能→工单→文档→(非七星)工程/模型匹配/文档预览 ③ 新增 tools/gui/zmax_platform_info.py 单一真源读取口(平台描述取 config/platform/zmax_platform.json, 计数取工程库), 主控制台左侧卡面与产品配置页都读它(卡面不再硬写「Z700 精细 · Z100 通用」); 产品配置页新增🏭平台块(3行 + 复制 + 重读真源) ④ 判据: 七星 16/16 · 产品页 51/51 · 任务工单拆页 28/28 · domains 单测全过
@@ -11964,7 +11965,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.50.78  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.79  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -14057,7 +14058,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.78</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.79</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
