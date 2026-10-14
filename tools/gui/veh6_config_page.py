@@ -80,8 +80,14 @@ DOC_SCRIPTS = {
     "sor":       ("供应商 SOR 需求规格说明书 (Word)", "sor_export.py", []),
     "agreement": ("机器人数据平台合作与模型授权协议 (Word)", "agreement_export.py", []),
     "bom":       ("BOM / 成本 / ROI 算账 (不出文档)", "project_doc_export.py", ["--check"]),
+    # 🆕 2026-10-14 老倪: 「这些元任务, 要由配置中心可以在任务配置里可以导出 word 和 pdf 文档」
+    #   元任务 = 一个功能(FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证 + 归属层
+    #   真源(config_meta.json 74 功能 / tasks.json 7 任务 / ss_task_binding.json / 画布 89 节点) →
+    #   md → HTML → LibreOffice → docx + pdf; 一致性校验 4/4 内建在脚本里 (--check)
+    "metaplan":  ("元任务开发计划 · 项目立项书 (Word + PDF)", "export_meta_doc.py", []),
 }
-DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements"]
+DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements",
+            "docs/deliverables"]
 
 
 # ── 文档配置 (2026-10-10 老倪: 左侧栏增加文档配置, 内置窗口直接看生成的文档, 数据统一保证一致性) ──
@@ -1776,6 +1782,18 @@ class ConfigCenterPage(QWidget):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn, k=kw: self._run_selected(f, **k))
             row.addWidget(b)
+        # 🆕 2026-10-14 老倪: 「这些元任务, 要由配置中心可以在任务配置里可以导出 word 和 pdf 文档」
+        #   任务配置首屏直接出「元任务开发计划 · 项目立项书」(md + docx + pdf),
+        #   元任务 = 一个功能 + 该功能全部配置参数; 与命令行 tools/export_meta_doc.py 同一执行体。
+        _b_mt = _btn("📄 元任务计划 (Word/PDF)", th)
+        _b_mt.setToolTip("导出「元任务开发计划 · 项目立项书」\n"
+                         "元任务 = 每个功能 + 该功能全部配置参数 (打散到可独立开发的粒度)\n"
+                         "产物: docs/deliverables/元任务开发计划_2026-10_2027-12.md / .docx / .pdf\n"
+                         "数据源: config_meta.json(74 功能) + tasks.json(7 任务) + "
+                         "ss_task_binding.json + 画布(89 节点) —— 出文档前先跑一致性校验")
+        _b_mt.setStyleSheet(_b_mt.styleSheet() + ";font-weight:bold;")
+        _b_mt.clicked.connect(lambda: self._run_doc("metaplan"))
+        row.addWidget(_b_mt)
         row.addStretch()
         l.addLayout(row)
         l.addWidget(self.tasks_table, 1)
@@ -1897,7 +1915,7 @@ class ConfigCenterPage(QWidget):
         src.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         l7.addWidget(src)
         row7 = QHBoxLayout()
-        for key in ("bundle", "project", "sor", "agreement", "bom"):
+        for key in ("bundle", "project", "sor", "agreement", "bom", "metaplan"):
             label, script, args = DOC_SCRIPTS[key]
             b = _btn(("📦 " if key == "bundle" else ("🧮 " if key == "bom" else "📄 ")) + label.split(" (")[0], th)
             b.setToolTip(f"{label}\n→ tools/{script} {' '.join(args)}\n产物落在 outputs/ 下 (跑完面板给出绝对路径)")

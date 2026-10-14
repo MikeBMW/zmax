@@ -25,15 +25,19 @@
 <canvas id="canvas"></canvas>
 <!-- 🛟 2026-10-14 老倪「打开是白屏」: 资产 69MB / 200 万+ 高斯, 拉取+挑显示副本要几秒到几十秒
      (手机/弱网更久)。原来这段时间屏幕上什么都没有 = 白屏/黑屏, 现场以为坏了。
-     现在先垫一张**参考渲染图**(226KB, 秒出), 等 3D 真正开始渲染再把它撤掉 ⇒ 任何时候都有画面。 -->
-<img id="pre" src="gs_render.png" alt="参考渲染图(3D 加载中)"
+     现在先垫一张**手臂相机实时帧**(36KB, 秒出), 等 3D 真正开始渲染再把它撤掉 ⇒ 任何时候都有画面。 -->
+<!-- 🔴 2026-10-14 老倪「点实景查看器看到的是参考渲染图, 不对, 也不是现在实时的手臂相机的图」:
+     垫底图原来是 gs_render.png(**模型渲的留出视角图** —— 用采集那一刻的画面训出来的历史帧, 不是相机现在拍的),
+     与站台页 2026-10-14 已改成"手臂相机实时帧"的口径**不一致** ⇒ iframe 里看到的还是老渲染图。
+     现在统一: 垫底 = **/snapshot/arm.jpg 手臂相机实时帧**(2 秒一刷 · 36KB), 与 /station 的 gs_ref 同源同口径。 -->
+<img id="pre" src="/snapshot/arm.jpg" alt="手臂相机实时帧(3D 加载中)"
      style="position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#05070a;z-index:5">
 <div id="bar">
   <span class="t">🧊 Z-MAX 3DGS 场景</span>
   <select id="pick" title="选择建图资产"></select>
   <button onclick="location.reload()">🔄 重载</button>
   <button onclick="var u=new URLSearchParams(location.search);u.set('full','1');location.search=u.toString()" title="拉全量资产(284 万高斯 / 86.7MB)——会明显卡, 一定要看就在新窗口">🐘 全量(卡)</button>
-  <button onclick="var p=document.getElementById('pre');p.style.display=(p.style.display==='none'?'block':'none')" title="垫底的参考渲染图(3D 加载中先给一张静态图)">🖼 参考图</button>
+  <button onclick="var p=document.getElementById('pre');p.style.display=(p.style.display==='none'?'block':'none')" title="垫底的手臂相机实时帧(3D 加载中先给一张实时画面 · 2 秒一刷)">🦾 臂相机</button>
   <span id="meta">加载中…</span>
 </div>
 <div id="info"><div id="message"></div><div id="instructions"></div></div>
@@ -50,6 +54,13 @@
    不动训练链路、不动资产文件、不改服务端。 */
 var Q = new URLSearchParams(location.search);
 var SEL = Q.get('a') || '';
+/* 🦾 2026-10-14 老倪「参考渲染图不对, 应该是现在实时的手臂相机的图」:
+   垫底图 = 手臂相机实时帧, 每 2 秒换一次 src(?t= 破缓存); 3D 渲染出来被撤掉后就不再拉(不占带宽)。 */
+(function(){
+  var pre=document.getElementById('pre'); if(!pre) return;
+  function tick(){ if(pre.style.display==='none') return; pre.src='/snapshot/arm.jpg?t='+Date.now(); }
+  tick(); setInterval(tick, 2000);
+})();
 function fail(t){var e=document.getElementById('err');e.style.display='block';e.textContent='❌ '+t;}
 window.addEventListener('error',function(ev){fail('JS 错误: '+(ev.message||ev.type));});
 window.addEventListener('unhandledrejection',function(ev){fail('加载失败: '+((ev.reason&&ev.reason.message)||ev.reason));});
@@ -133,8 +144,8 @@ function boot(name){
        场景已按默认相机尺度缩放 ⇒ 交给查看器原厂相机与控件。 */
     try{history.replaceState(null,'',location.pathname+'?url='+encodeURIComponent(u));}catch(e){}
     loadViewer();
-    /* 查看器接管后把垫底的参考渲染图撤掉(给 6 秒: 要么它画出来了, 要么红色错误框会说明原因)。
-       顶部「🖼 参考图」按钮随时可以再把静态图叫回来。 */
+    /* 查看器接管后把垫底的**手臂相机实时帧**撤掉(给 6 秒: 要么它画出来了, 要么红色错误框会说明原因)。
+       顶部「🦾 臂相机」按钮随时可以再把实时画面叫回来。 */
     setTimeout(function(){var p=document.getElementById('pre'); if(p) p.style.display='none';}, 6000);
   }).catch(function(e){ setMeta('资产拉取失败: '+e); loadViewer(); });
 }

@@ -5095,8 +5095,11 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 border: 1px solid {C_BORDER};
                 border-radius: 4px;
                 padding: 2px 4px;   /* 🐛 2026-08-09 老倪: 8px→2px 上下留白致光标/行距两倍 */
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size:20px;
+                /* 🔴 2026-10-14 老倪「终端日志区文字显示不全, 只能看到部分的文字」: 字体族/字号**不在这里设** ——
+                   原来这里写 font-family:'Consolas' + font-size:20px, 下面又 setFont(QFont("Consolas",32)),
+                   两处口径打架; 本机 Xft.dpi=192, 且 Consolas **不存在**(fc-match 回退 DejaVu Sans Mono),
+                   实测 QFont("Consolas",32) 现场行高 **100px** ⇒ 200px 高的日志区只放得下 2 行, 其余全被挤掉。
+                   现在字号/字体统一在下方 setFont 一处收口, 用**像素字号**(与屏幕 DPI 无关 ⇒ 现场=离屏)。 */
             }}
             QScrollBar:vertical {{
                 background: {C_BG};
@@ -5116,9 +5119,12 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         # 🐛 2026-08-09 老倪: 显式等宽字体 + 零文档边距 (WSLg 下 Consolas 回退致行高/光标两倍)
+        # 🔴 2026-10-14: ①字体族换**本机真有的** DejaVu Sans Mono (Consolas 不存在, 中文还会逐字回退)
+        #   ②字号改**像素口径** setPixelSize(15) —— 原来 QFont(族, 32) 是 pt 口径, 192dpi 下 ~100px 行高(见上)。
         try:
-            _f = QFont("Consolas", 32)
+            _f = QFont("DejaVu Sans Mono")
             _f.setStyleHint(QFont.Monospace)
+            _f.setPixelSize(15)
             self.log_text.setFont(_f)
             self.log_text.document().setDocumentMargin(0)
         except Exception:
