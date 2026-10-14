@@ -61,7 +61,7 @@ DROP TABLE IF EXISTS products;                CREATE TABLE products(product_id T
 DROP TABLE IF EXISTS subsystems;              CREATE TABLE subsystems(system_id TEXT PRIMARY KEY, name TEXT, level TEXT, role TEXT, hardware TEXT, kpi TEXT, rows TEXT, ord INTEGER);
 DROP TABLE IF EXISTS subsystem_axes;          CREATE TABLE subsystem_axes(system_id TEXT, axis TEXT, idx INTEGER, item TEXT);
 DROP TABLE IF EXISTS product_features;        CREATE TABLE product_features(pf_id TEXT PRIMARY KEY, product_id TEXT, title TEXT, capability_ref TEXT, kpi TEXT, status TEXT, descr TEXT, subsys TEXT, module_refs TEXT);
-DROP TABLE IF EXISTS functions;               CREATE TABLE functions(fn_id TEXT PRIMARY KEY, system_id TEXT, name TEXT, layer TEXT, kind TEXT, row_name TEXT, module_ref TEXT, params TEXT, source TEXT);
+DROP TABLE IF EXISTS functions;               CREATE TABLE functions(fn_id TEXT PRIMARY KEY, system_id TEXT, name TEXT, layer TEXT, kind TEXT, row_name TEXT, module_ref TEXT, params TEXT, source TEXT, note_work TEXT, note_pain TEXT, note_state TEXT);
 DROP TABLE IF EXISTS fn_axes;                 CREATE TABLE fn_axes(fn_id TEXT, axis TEXT, idx INTEGER, item TEXT, src TEXT);
 DROP TABLE IF EXISTS calib_params;            CREATE TABLE calib_params(path TEXT, key TEXT, value TEXT, unit TEXT, src TEXT, status TEXT, PRIMARY KEY(path, key));
 DROP TABLE IF EXISTS modules;                 CREATE TABLE modules(name TEXT PRIMARY KEY, kind TEXT, group_name TEXT, params TEXT, verif_layer INTEGER, source TEXT);
@@ -364,6 +364,15 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         return best if score >= 6 else None
 
     used_rows, unmatched = set(), []
+    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」⇒ 描述真源 = data/database/zmax/function_notes.json
+    #   (每个功能点 work 干什么活 / pain 卡在哪 / state 当前状态; 朴素工程化口径, 禁词与"须含真源事实"由
+    #    tools/verify_function_notes.py 判据把住)。这里把描述并进 functions 表, 库/文档/GUI 一处取数。
+    _notes_doc = {}
+    try:
+        _notes_doc = json.loads(_read(os.path.join(PROJ_DIR, "function_notes.json")) or "{}")
+    except Exception:                                                        # noqa: BLE001
+        _notes_doc = {}
+    NOTES = (_notes_doc.get("notes") or {}) if isinstance(_notes_doc, dict) else {}
     fno = 0
     for s_ in plat.get("subsystems", []):
         sid = s_.get("system_id")
@@ -384,10 +393,12 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                 pp = dict(n.get("params", {}) or {})
                 ref = engine_code_for(nm, logics)
                 _kind = "模块节点" if not any(x[0] == nm for x in out_of_band) else "行外节点(就近归属)"
-                c.execute("INSERT INTO functions VALUES(?,?,?,?,?,?,?,?,?)",
+                c.execute("INSERT INTO functions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                           (fid, sid, nm, s_.get("level"), _kind, hname, nm,
                            _j({k: v for k, v in pp.items() if k != "desc"}),
-                           (ref or {}).get("file", "") + ((":%d" % ref["line"]) if ref and ref.get("line") else "")))
+                           (ref or {}).get("file", "") + ((":%d" % ref["line"]) if ref and ref.get("line") else ""),
+                           (NOTES.get(fid) or {}).get("work"), (NOTES.get(fid) or {}).get("pain"),
+                           (NOTES.get(fid) or {}).get("state")))
                 c.execute("INSERT INTO links VALUES(?,?,?,?,?)", ("function", fid, "module", nm, "对应模块"))
                 jx = 0
                 for k, v in pp.items():
@@ -716,6 +727,23 @@ def check(db=DB_DEFAULT):
     print(("  ✅ " if not drift else "  ❌ ") + "⑥ 库与真源一致 (漂移 %s)" % (drift or "无"), flush=True)
     if drift:
         bad.append("drift %s" % drift)
+    # ⑦b 功能点描述 (老倪 2026-10-14: 「你来修改每个功能点的描述」) —— 每条功能要有"干什么活/卡在哪/状态",
+    #     且不许出现宣传话术 (禁词表与真源事实要求由 tools/verify_function_notes.py 做细判)。
+    try:
+        n_note = q1("SELECT COUNT(*) FROM functions WHERE note_work IS NOT NULL AND note_work<>''")
+        n_fn3 = q1("SELECT COUNT(*) FROM functions")
+        _ban = ("赋能", "生态", "抓手", "全面提升", "显著提升", "智能化升级", "助力", "打造",
+                "一站式", "无缝", "深度融合", "颠覆", "行业领先")
+        _txt = " ".join((r[0] or "") + " " + (r[1] or "") + " " + (r[2] or "")
+                        for r in con.execute("SELECT note_work,note_pain,note_state FROM functions"))
+        _hit = [b for b in _ban if b in _txt]
+        print("  %s ⑦b 功能点描述 %d/%d 条 (干什么活/卡在哪/状态) · 禁词命中 %d" %
+              ("✅" if n_note == n_fn3 and not _hit else "❌", n_note, n_fn3, len(_hit)), flush=True)
+        if n_note != n_fn3 or _hit:
+            bad.append("fn_notes %d/%d ban=%s" % (n_note, n_fn3, _hit))
+    except Exception as _e:                                                   # noqa: BLE001
+        print("  ❌ ⑦b 功能点描述判据异常: %r" % (_e,), flush=True)
+        bad.append("fn_notes_judge")
     # ⑦ 模块→代码 链接非空
     nmod = q1("SELECT COUNT(*) FROM modules")
     ncode = q1("SELECT COUNT(DISTINCT module_name) FROM module_code")

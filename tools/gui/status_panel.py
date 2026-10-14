@@ -18,11 +18,14 @@
     "training":{"active","layer","name","version","step","total","pct","eta_s","speed_s_per_step"},
     "assets":  [{"kind":"3DGS","name","version","path"}] }
 
-形态 (两行, 总 560x68 px):
-  第1行  GPU/CPU/内存/磁盘: Ø8 灯 + 名称 + 迷你状态条(40x7) + 3~4 字符数值   ... 右端 通信灯
-  第2行  每层一个 chip: Ø8 灯 + 层标(L2..) + **短模型名(≤9字)** + 极短版本 + 同层计数(+N);
-         推理中=青环 · 训练中=黄弧;   训练进度条(40x7)+% 与 3DGS v<版本> 落在第 1 行右半
-颜色语义: 绿=在役&健康 · 黄=候选或忙 · 红=异常/未训练 · 灰=未知(含服务不可达)
+形态 (**一行**, 总 1080x40 px · 2026-10-14 老倪「下面的硬件显示排成一行; 现在两行, 占地方」):
+  单行从左到右: GPU/CPU/内存/磁盘 (Ø8 灯 + 名称 + 迷你状态条 26x7 + 数值)
+                → 训练进度条(40x7)+% (或空载灰灯)
+                → 每层一个 chip (Ø8 灯 + 层标 + 短模型名 ≤9字 + 极短版本 + 同层计数 +N)
+                → 右端 3DGS v<版本>  → 最右 Ø8 通信灯
+  推理中=青环 · 训练中=黄弧;   颜色语义: 绿=在役&健康 · 黄=候选或忙 · 红=异常/未训练 · 灰=未知
+  老倪口径: 「不要占太大面积, 不要用很多文字, 我要看状态」⇒ 一行换掉两行, 高度 68→40,
+  宽度加给内容(4 硬件 + 4 模型层 + 训练 + 资产全在一行内, 不折叠不截断)。
 
 运行/自检:
   QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/gui/status_panel.py --selftest
@@ -189,7 +192,7 @@ class _Fetcher(QThread):
 # 面板
 # ============================================================
 class StatusPanel(QWidget):
-    W, H = 560, 68
+    W, H = 1080, 40                 # 2026-10-14: 两行→一行 (560x68 → 1080x40), 占地方改小
     POLL_MS = 1000
     MAX_CHIPS = 4
 
@@ -443,19 +446,19 @@ class StatusPanel(QWidget):
         f_sb.setBold(True)
 
         row1, gpu, cpu, mem, dsk = self._rows()
-        y1 = 6.0
+        cy = h / 2.0                     # ★ 一行布局: 全部元素共用一条中线 (2026-10-14 老倪)
         gw = 88.0
         for i, (cap, val) in enumerate(row1):
             x0 = 6.0 + i * gw
             col = QColor(tone(val))
-            self._lamp(p, x0 + 5, y1 + 16, col, val is not None)
+            self._lamp(p, x0 + 5, cy, col, val is not None)
             p.setPen(QColor(C_GRAY))
             p.setFont(f_lb)
-            p.drawText(QRectF(x0 + 11, y1, 25, 32), Qt.AlignVCenter | Qt.AlignLeft,
+            p.drawText(QRectF(x0 + 11, 0, 25, h), Qt.AlignVCenter | Qt.AlignLeft,
                        QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, 25))
             # 迷你状态条
             bx, bw, bh = x0 + 37, 26, 7
-            by = y1 + 16 - bh / 2.0
+            by = cy - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
             p.drawRoundedRect(QRectF(bx, by, bw, bh), 3.5, 3.5)
@@ -464,11 +467,10 @@ class StatusPanel(QWidget):
                 p.drawRoundedRect(QRectF(bx, by, max(3.0, bw * min(1.0, max(0.0, val / 100.0))), bh), 3.5, 3.5)
             p.setPen(QColor(C_WHITE if val is not None else C_DIM))
             p.setFont(f_num)
-            p.drawText(QRectF(x0 + 62, y1, 23, 32), Qt.AlignVCenter | Qt.AlignRight, _txt(val))
+            p.drawText(QRectF(x0 + 62, 0, 23, h), Qt.AlignVCenter | Qt.AlignRight, _txt(val))
 
-        # ---- 第 2 行: 每层一个 chip = 灯 + 层标 + **短模型名** + 极短版本 ----
+        # ---- 模型层 chips (同一行: 画在训练条之后 / 3DGS 之前的空档里, 见本函数末尾) ----
         # (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」)
-        y2, cy2 = h - 28.0, h - 11.0
         vs = self._chips()
         fm_sm, fm_nm, fm_ver = QFontMetrics(f_sm), QFontMetrics(f_name), QFontMetrics(f_ver)
 
@@ -480,51 +482,11 @@ class StatusPanel(QWidget):
             cnt = fm_ver.width("+%d" % max(0, int(m.get("n") or 1) - 1)) + 4 if (with_cnt and int(m.get("n") or 1) > 1) else 0
             return 12 + w_ly + 4 + (w_nm + 4 if w_nm else 0) + w_vr + cnt, w_ly, w_nm, w_vr
 
-        x_end = w - 20.0                       # 右端给通信灯留位
-        with_cnt = sum(_chip_w(m, True)[0] + 8 for m in vs) + 4 <= x_end
-        x = 4.0
-        for m in vs:
-            cw, w_ly, w_nm, w_vr = _chip_w(m, with_cnt)
-            st = str(m.get("state", ""))
-            col = QColor(STATE_COLOR.get(st, C_DIM))
-            self._lamp(p, x + 6, cy2, col, st in STATE_COLOR)
-            # 推理/训练标记 = 灯的外圈 (青环=推理中 · 黄弧=训练中), 不占额外宽度
-            if self._is_training_layer(m.get("layer")):
-                p.setPen(QPen(QColor(C_YELLOW), 1.5))
-                p.setBrush(Qt.NoBrush)
-                p.drawArc(QRectF(x - 0.5, cy2 - 6.5, 13, 13), 40 * 16, 280 * 16)
-            elif m.get("inferring"):
-                p.setPen(QPen(QColor(C_CYAN), 1.5))
-                p.setBrush(Qt.NoBrush)
-                p.drawEllipse(QRectF(x - 0.5, cy2 - 6.5, 13, 13))
-            p.setPen(QColor(C_WHITE))
-            p.setFont(f_sm)
-            p.drawText(QRectF(x + 13, y2, w_ly, 34), Qt.AlignVCenter | Qt.AlignLeft,
-                       str(m.get("layer", "?"))[:3] or "?")
-            cx = x + 13 + w_ly + 4
-            if w_nm:                            # 短模型名 (最要紧的一格)
-                p.setPen(QColor(C_GRAY))
-                p.setFont(f_name)
-                p.drawText(QRectF(cx, y2, w_nm, 34), Qt.AlignVCenter | Qt.AlignLeft, str(m.get("name") or ""))
-                cx += w_nm + 4
-            p.setPen(QColor(C_DIM))
-            p.setFont(f_ver)
-            p.drawText(QRectF(cx, y2, w_vr, 34), Qt.AlignVCenter | Qt.AlignLeft,
-                       short_ver(m.get("version")) if m.get("version") else "—")
-            cx += w_vr
-            if with_cnt and int(m.get("n") or 1) > 1:       # 其余同层模型: 计数聚合
-                p.setPen(QColor(C_DIM))
-                p.setFont(f_ver)
-                p.drawText(QRectF(cx + 4, y2, 26, 34), Qt.AlignVCenter | Qt.AlignLeft,
-                           "+%d" % (int(m.get("n") or 1) - 1))
-            x += cw + 8
-
-        # 通信灯 (绿=最近取数成功; 灰=服务不可达/读失败)
+        # 通信灯 (绿=最近取数成功; 灰=服务不可达/读失败) —— 一行布局: 落在这条中线的右端
         fresh = self._age is not None and (time.time() - self._age) < max(3.0, self.POLL_MS / 1000.0 * 3)
-        self._lamp(p, w - 9, cy2, QColor(C_GREEN if fresh else C_DIM), fresh)
+        self._lamp(p, w - 9, cy, QColor(C_GREEN if fresh else C_DIM), fresh)
 
-        # ---- 训练进度条 + %  /  3DGS 资产版本 (都落在**第 1 行右半**, 把第 2 行整行让给模型名) ----
-        yt = y1 + 16.0                          # 第 1 行中线
+        # ---- 训练进度条 + % · 模型层 chips · 3DGS 资产 —— 全部落在**这一条中线**上 (一行布局) ----
         tx = 6.0 + 4.0 * gw + 6.0               # 4 个硬件条的右边界 + 6
         bar_w = 40.0
         pct_x = tx + bar_w + 3.0
@@ -539,7 +501,7 @@ class StatusPanel(QWidget):
                 except Exception:
                     pct = None
             bw, bh = bar_w, 7
-            by = yt - bh / 2.0
+            by = cy - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
             p.drawRoundedRect(QRectF(tx, by, bw, bh), 3.5, 3.5)
@@ -548,24 +510,69 @@ class StatusPanel(QWidget):
                 p.drawRoundedRect(QRectF(tx, by, max(3.0, bw * min(1.0, max(0.0, pct / 100.0))), bh), 3.5, 3.5)
             p.setPen(QColor(C_WHITE if pct is not None else C_DIM))
             p.setFont(f_num)
-            p.drawText(QRectF(pct_x, y1, pct_w, 32), Qt.AlignVCenter | Qt.AlignRight, _txt(pct))
+            p.drawText(QRectF(pct_x, 0, pct_w, h), Qt.AlignVCenter | Qt.AlignRight, _txt(pct))
             pct_end = pct_x + pct_w
         else:
-            self._lamp(p, tx + 5, yt, QColor(C_DIM), False)
+            self._lamp(p, tx + 5, cy, QColor(C_DIM), False)
 
-        # 3DGS 资产 (末尾, 极短)
+        # 3DGS 资产 (同一条中线的最右, 通信灯左侧) —— 先算它要占多宽, 剩下的才给模型层
         assets = [a for a in self._assets() if str(a.get("kind", "")).upper() == "3DGS"]
         ver = short_ver(assets[-1].get("version")) if assets else "—"
         label = "3DGS %s" % ver
         if len(assets) > 1:
             label = "3DGS ×%d %s" % (len(assets), ver)
         p.setFont(f_ver)
-        xr = w - 6.0
+        xr = w - 22.0                            # 右端给通信灯(w-9)留位
         room = max(24.0, xr - (pct_end + 8.0))
         label = QFontMetrics(f_ver).elidedText(label, Qt.ElideRight, int(room))
         tw = QFontMetrics(f_ver).width(label)
+        x_assets = xr - tw
+
+        # ---- 模型层 chips: 塞在「训练条之后、3DGS 之前」的空档里 (一行) ----
+        chips_x0 = pct_end + 12.0
+        chips_limit = max(chips_x0, x_assets - 10.0)
+        with_cnt = chips_x0 + sum(_chip_w(m, True)[0] + 8 for m in vs) <= chips_limit
+        x = chips_x0
+        for m in vs:
+            cw, w_ly, w_nm, w_vr = _chip_w(m, with_cnt)
+            if x + cw > chips_limit:                 # 真源 4 层一定放得下; 这是不许画出框的兜底
+                break
+            st = str(m.get("state", ""))
+            col = QColor(STATE_COLOR.get(st, C_DIM))
+            self._lamp(p, x + 6, cy, col, st in STATE_COLOR)
+            # 推理/训练标记 = 灯的外圈 (青环=推理中 · 黄弧=训练中), 不占额外宽度
+            if self._is_training_layer(m.get("layer")):
+                p.setPen(QPen(QColor(C_YELLOW), 1.5))
+                p.setBrush(Qt.NoBrush)
+                p.drawArc(QRectF(x - 0.5, cy - 6.5, 13, 13), 40 * 16, 280 * 16)
+            elif m.get("inferring"):
+                p.setPen(QPen(QColor(C_CYAN), 1.5))
+                p.setBrush(Qt.NoBrush)
+                p.drawEllipse(QRectF(x - 0.5, cy - 6.5, 13, 13))
+            p.setPen(QColor(C_WHITE))
+            p.setFont(f_sm)
+            p.drawText(QRectF(x + 13, 0, w_ly, h), Qt.AlignVCenter | Qt.AlignLeft,
+                       str(m.get("layer", "?"))[:3] or "?")
+            cx = x + 13 + w_ly + 4
+            if w_nm:                            # 短模型名 (最要紧的一格)
+                p.setPen(QColor(C_GRAY))
+                p.setFont(f_name)
+                p.drawText(QRectF(cx, 0, w_nm, h), Qt.AlignVCenter | Qt.AlignLeft, str(m.get("name") or ""))
+                cx += w_nm + 4
+            p.setPen(QColor(C_DIM))
+            p.setFont(f_ver)
+            p.drawText(QRectF(cx, 0, w_vr, h), Qt.AlignVCenter | Qt.AlignLeft,
+                       short_ver(m.get("version")) if m.get("version") else "—")
+            cx += w_vr
+            if with_cnt and int(m.get("n") or 1) > 1:       # 其余同层模型: 计数聚合
+                p.setPen(QColor(C_DIM))
+                p.setFont(f_ver)
+                p.drawText(QRectF(cx + 4, 0, 26, h), Qt.AlignVCenter | Qt.AlignLeft,
+                           "+%d" % (int(m.get("n") or 1) - 1))
+            x += cw + 8
+
         p.setPen(QColor(C_BLUE_A if assets else C_DIM))
-        p.drawText(QRectF(xr - tw, y1, tw, 32), Qt.AlignVCenter | Qt.AlignRight, label)
+        p.drawText(QRectF(x_assets, 0, tw, h), Qt.AlignVCenter | Qt.AlignRight, label)
 
     def _is_training_layer(self, layer):
         t = self._training()
@@ -624,9 +631,37 @@ def _selftest(shot=None):
         ok = ok and bool(cond)
         res.append("%s %s%s" % ("✓" if cond else "✗", name, (" :: " + str(extra)) if extra else ""))
 
-    # 1) 面积红线 (2026-10-01: 加模型短名 ⇒ 宽 420→560, 高不变 68)
+    # 1) 面积红线 (2026-10-14: 老倪「排成一行; 现在两行占地方」⇒ 560x68 两行 → 1080x40 一行)
     pn = StatusPanel(poll=False)
-    chk("面积 ≤ 560x90 px", pn.width() <= 560 and pn.height() <= 90, "%dx%d" % (pn.width(), pn.height()))
+    chk("面积 ≤ 1080x56 px (一行)", pn.width() <= 1080 and pn.height() <= 56, "%dx%d" % (pn.width(), pn.height()))
+
+    # 1b) 真·一行判据: 渲染后按像素扫描内容行带, 必须只有**一条**带 (背景外的像素行连续成带)
+    pn.feed(REAL)
+    img = pn.grab().toImage()
+    bands, cur = [], None
+    for y in range(3, img.height()):                    # 跳过 y=0 的 1px 边框线
+        n = 0
+        for x in range(0, img.width(), 2):
+            c = img.pixelColor(x, y)
+            if abs(c.red() - 0x16) > 12 or abs(c.green() - 0x1b) > 12 or abs(c.blue() - 0x21) > 12:
+                n += 1
+        if n > 0:
+            cur = (cur[0], y) if cur else (y, y)
+        elif cur:
+            bands.append(cur)
+            cur = None
+    if cur:
+        bands.append(cur)
+    chk("渲染内容只有 1 条行带 (一行)", len(bands) == 1, "行带 %s" % (bands,))
+    if bands:
+        y0, y1 = bands[0]
+        chk("行带高度 ≤ 40px 且占满中部", (y1 - y0) <= 40, "%d..%d (%dpx)" % (y0, y1, y1 - y0 + 1))
+    # 1c) 一行里必须同时看得见 4 个硬件项 + 4 个模型层 + 3DGS (都没有被折到别处)
+    xs = [x for x in range(0, img.width(), 2)
+          if any(abs(img.pixelColor(x, y).red() - 0x16) > 12 or abs(img.pixelColor(x, y).green() - 0x1b) > 12
+                 for y in range(max(3, bands[0][0]), min(img.height(), bands[0][1] + 1))) ] if bands else []
+    chk("单行内容横跨 ≥600px (装得下 4 硬件+4 层+资产)", bool(xs) and (max(xs) - min(xs)) >= 600,
+        "x %s..%s" % (min(xs) if xs else "-", max(xs) if xs else "-"))
 
     # 2) 颜色阈值
     chk("阈值 69→绿", tone(69) == C_GREEN)
@@ -694,7 +729,7 @@ def _selftest(shot=None):
                                        {"layer": "L7", "name": "x3", "version": "v8", "state": "candidate", "inferring": False}]
     pn.feed(many)
     pn.grab()
-    chk("6 模型走聚合位不崩", pn.width() == 560)
+    chk("6 模型走聚合位不崩", pn.width() == 1080)
     if shot:
         pn.grab().save(shot.replace(".png", "_many.png"))
 

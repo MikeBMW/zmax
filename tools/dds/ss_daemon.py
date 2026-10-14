@@ -33,7 +33,16 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
+
+# 🐛 2026-10-14 实测: 节拍线程 (ss_cfg_names / ss_engine) 与 DDS 建链是并发的, 线程可能先跑一轮
+#   ⇒ 日志出现「⚠️ ss_engine 发布失败: ModuleNotFoundError: No module named 'ss_types'」(首轮丢一帧)。
+#   ss_types.py / zmax_types.py / dds_link_bus.py 就在本文件同目录 ⇒ 模块级先注入一次 (幂等, 与
+#   ensure_node() 里的 DDS_DIR 注入是同一件事)。
+_DDS_SELF = os.path.dirname(os.path.abspath(__file__))
+if _DDS_SELF not in sys.path:
+    sys.path.insert(0, _DDS_SELF)
 
 HOME = os.path.expanduser("~")
 # ⚠️ 2026-10-07 修正: 默认原来是 ~/zmax_ss_remote, 但**真实 tap 一直在工程根的 zmax_data/ss_live**
@@ -61,16 +70,29 @@ STALE_S = 5.0                     # 源帧龄超过它就只发 diag, 不发状�
 STALE_ENERGY_S = float(os.environ.get("ZMAX_ENERGY_STALE_S", "900"))
 # 🔧 驱动扭矩是**逐帧高频信号** (10Hz 实测数据通道) ⇒ 用紧的帧龄预算: 3s 内算现在, 超过就发 -1 并说明
 STALE_TORQUE_S = float(os.environ.get("ZMAX_TORQUE_STALE_S", "3.0"))
+# 🧮 配置名称清单: 它只在**主参数节点执行**时才刷新 (不是流) ⇒ 帧龄预算给宽: 10 分钟内算"现在",
+#    超过就在 note 里明说"节点记录陈旧"(真源纪律: 不拿旧记录当现状), 但名称照发(名称本身没变过就不算错)。
+STALE_CFG_S = float(os.environ.get("ZMAX_CFG_STALE_S", "600"))
+# 🧮 流形引擎常驻回路 (老倪 2026-10-14): tap 由 tools/ss_engine_loop.py 每周期写, 这里读它发 DDS。
+#    与扭矩同口径: 帧龄超 STALE_ENGINE_S 只发告警, **不把旧帧当现在**。
+STALE_ENGINE_S = float(os.environ.get("ZMAX_SS_ENGINE_STALE_S", "3.0"))
+ENGINE_TAP_DIR = os.environ.get("ZMAX_SS_ENGINE_TAP_DIR") or "/dev/shm/zmax_ss_engine"
+_EN_LOGGED = {"dir": "", "none": 0.0}
+# 🧮 主参数节点已加载配置名称的真源: 画布真源里该节点的 params (cfg_entries/cfg_loaded_at)
+CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas", "state_space_obs.json"),
+             os.path.join(REPO, "flows", "state_space_obs.json"),
+             os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
 
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
 MODE_TOPICS = {
     "prod": [],
-    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque"],
+    "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
+             "ss_cfg_names", "ss_engine", "ss_meta_task"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy", "ss_torque"],
+              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
-             "ss_plan", "ss_energy", "ss_torque"],
+             "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -171,10 +193,42 @@ def read_energy():
     return _last_line(p), os.path.getmtime(p)
 
 
+# 🔴 2026-10-14 修 (与 2026-10-07 那次同类坑, 换了个形式): 扭矩 tap 在 2026-10-13 已改为写**内存盘**
+#    /dev/shm/zmax_torque (10Hz 逐帧 ≈2GB/天, 不再落盘), 但本守护仍按 SS_REMOTE(=工程根 zmax_data/ss_live)
+#    找 torque_*.jsonl ⇒ 永远找不到 ⇒ pub_torque 静默返回 False ⇒ **话题 zmax/ss_torque 全静默**
+#    (现场表现: "流形引擎在跑, 数据空间这条话题一条都看不到")。口径与发布器同源:
+#    显式 env ZMAX_TORQUE_TAP_DIR > 内存盘规范路径(存在就用) > SS_REMOTE(向后兼容)。
+_TQ_CANON = os.environ.get("ZMAX_TORQUE_TAP_DIR") or "/dev/shm/zmax_torque"
+TORQUE_TAP_DIR = _TQ_CANON if os.path.isdir(_TQ_CANON) else SS_REMOTE
+_TQ_LOGGED = {"dir": "", "none": 0.0}
+
+
 def read_torque():
     """驱动扭矩 tap (tools/tdrive_bus.py 逐帧算 T_drive = M·(−∇Φ) 写出; 最后一行才是 payload)"""
-    p = _newest(os.path.join(SS_REMOTE, "torque_*.jsonl"))
+    if TORQUE_TAP_DIR != _TQ_LOGGED["dir"]:
+        log("🛞 扭矩 tap 目录 = %s (发布器同源口径; 找不到就明说, 不许静默)" % TORQUE_TAP_DIR)
+        _TQ_LOGGED["dir"] = TORQUE_TAP_DIR
+    p = _newest(os.path.join(TORQUE_TAP_DIR, "torque_*.jsonl"))
     if not p:
+        if time.time() - _TQ_LOGGED["none"] > 60:      # 静默 60s 报一次, 不刷屏
+            log("⏸ 扭矩 tap 目录里没有 torque_*.jsonl (%s) → ss_torque 不发 (跑 tools/tdrive_bus.py run)"
+                % TORQUE_TAP_DIR)
+            _TQ_LOGGED["none"] = time.time()
+        return None, None
+    return _last_line(p), os.path.getmtime(p)
+
+
+def read_engine():
+    """流形引擎常驻回路 tap (tools/ss_engine_loop.py 每周期一行; **最后一行才是 payload**)"""
+    if ENGINE_TAP_DIR != _EN_LOGGED["dir"]:
+        log("🧮 流形引擎 tap 目录 = %s (发布器同源口径; 找不到就明说, 不许静默)" % ENGINE_TAP_DIR)
+        _EN_LOGGED["dir"] = ENGINE_TAP_DIR
+    p = _newest(os.path.join(ENGINE_TAP_DIR, "engine_*.jsonl"))
+    if not p:
+        if time.time() - _EN_LOGGED["none"] > 60:
+            log("⏸ 流形引擎 tap 目录里没有 engine_*.jsonl (%s) → ss_engine 不发 (跑 tools/ss_engine_loop.py run)"
+                % ENGINE_TAP_DIR)
+            _EN_LOGGED["none"] = time.time()
         return None, None
     return _last_line(p), os.path.getmtime(p)
 
@@ -215,6 +269,51 @@ def read_calibs():
                 out.append((kind, json.load(open(p, encoding="utf-8"))))
             except Exception:                                        # noqa: BLE001
                 out.append((kind, {}))
+    return out
+
+
+def _age_of_stamp(s):
+    """'%F %T' 时刻 → 距今秒数 (解析失败返回 None, 不猜)"""
+    try:
+        return max(0.0, time.time() - time.mktime(time.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")))
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
+def read_cfg_names():
+    """🧮 主参数节点 (n_calib_mani) **已加载的配置名称** (只读画布节点参数, 不猜不编)
+
+    老倪 2026-10-14: 「主参数节点, 需要发出 加载的配置名称的 topic, 字符串就可以, 周期 5 秒」
+    返回 {names[list], loaded_at, source, note} —— names 取 params.cfg_entries 的**键**
+    (节点加载时逐个写进这份清单, 键就是配置名称; 路径/哈希在值里, 不要)。
+    """
+    out = {"names": [], "loaded_at": "", "source": "", "note": ""}
+    for c in CFG_CANDS:
+        if not os.path.isfile(c):
+            continue
+        try:
+            d = json.load(open(c, encoding="utf-8"))
+        except Exception as e:                                           # noqa: BLE001
+            out["note"] = "画布真源解析失败: %s" % type(e).__name__
+            continue
+        for n in (d.get("nodes") or []):
+            pr = n.get("params") or {}
+            if not (n.get("id") == "n_calib_mani" or pr.get("manifold_calib")
+                    or "标定诊断测量" in str(n.get("name", ""))):
+                continue
+            ent = pr.get("cfg_entries")
+            if isinstance(ent, dict):
+                out["names"] = [str(k) for k in ent.keys()]
+            elif isinstance(ent, list):
+                out["names"] = [str(x.get("name") if isinstance(x, dict) else x) for x in ent]
+            out["loaded_at"] = str(pr.get("cfg_loaded_at") or "")
+            out["source"] = "%s · 节点 %s" % (os.path.relpath(c, REPO), n.get("id"))
+            if not out["names"]:
+                out["note"] = "主参数节点还没加载过配置 (无 cfg_entries)"
+            return out
+        out["note"] = "画布上没有主参数节点"
+        return out
+    out["note"] = "画布真源找不到 (%s)" % os.path.basename(CFG_CANDS[0])
     return out
 
 
@@ -338,6 +437,8 @@ class SSDaemon:
         self._svc_t = 0.0
         self._mode = None
         self._canvas_i = 0          # ss_canvas 轮转游标
+        self._t_cfg = 0.0           # 🧮 ss_cfg_names 上次发布时刻 (专用线程用)
+        self._stop = threading.Event()   # 🧮 线程退出信号 (run 退出时置位)
         self._svc_nodes = {}
         self._svc_nodes_t = 0.0
         self._pending = {}      # topic → 等配对是否成功 (只提示一次)
@@ -471,6 +572,12 @@ class SSDaemon:
             phi=_f(d.get("phi"), 0.0), health=_f(d.get("health")), status=str(d.get("status") or ""),
             gain=_f(d.get("gain"), 1.0), x=_vec(d.get("x"), 3), gates=str(d.get("gates") or ""),
             source=str(d.get("source") or ""), unit_note=str(d.get("unit_note") or "")[:200],
+            task_id=str((d.get("identity") or {}).get("task_id") or ""),
+            task_name=str((d.get("identity") or {}).get("task_name") or "")[:80],
+            product=str((d.get("identity") or {}).get("product_name") or "")[:80],
+            product_prime=int((d.get("identity") or {}).get("product_prime") or 0),
+            m_scale=float(((d.get("identity") or {}).get("main_params") or {}).get("metric_M") or -1.0),
+            identity_json=json.dumps(d.get("identity") or {}, ensure_ascii=False)[:4000],
             note="frame_age=%.2fs tap=%s" % (age, os.path.basename(_newest(
                 os.path.join(SS_REMOTE, "torque_*.jsonl")) or ""))))
         return True
@@ -584,6 +691,114 @@ class SSDaemon:
             n += 1
         return n > 0
 
+    def pub_meta_task(self):
+        """🧾 任务 → 元任务清单 → zmax/ss_meta_task (老倪 2026-10-14)
+
+        与「已加载配置名」同一个 5s 节拍、同一个出口 (主参数节点 n_calib_mani): 元任务是**配置的
+        派生件**, 内容由 tools/ss_meta_task.py 真源现算 (复用 export_meta_doc.build_meta_tasks,
+        与文档同一条映射链)。意图不参与内容, 只决定选哪一批 (任务ID)。
+        """
+        from ss_types import SSMetaTask                                  # noqa: PLC0415
+        _t = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _t not in sys.path:
+            sys.path.insert(0, _t)
+        import ss_meta_task as SM                                        # noqa: PLC0415
+        d = SM.build(write=True)
+        self.publish("ss_meta_task", SSMetaTask(
+            ts=time.time(), task_id=str(d.get("task_id") or ""),
+            task_name=str(d.get("task_name") or ""), n=int(d.get("n") or 0),
+            n_all=int(d.get("n_all") or 0),
+            layers=" · ".join("%s=%d" % kv for kv in (d.get("by_layer") or {}).items()),
+            prio=" · ".join("%s=%d" % kv for kv in (d.get("by_prio") or {}).items()),
+            fn_ids=", ".join((m.get("fn_id") or "") for m in (d.get("items") or [])[:12]),
+            src="meta:%s bind:%s canvas:%s" % (
+                (d.get("sources") or {}).get("config_meta.json"),
+                (d.get("sources") or {}).get("ss_task_binding.json"),
+                (d.get("sources") or {}).get("state_space_obs.json")),
+            note=str(d.get("note") or "")))
+
+    def pub_cfg_names(self):
+        """🧮 主参数节点已加载的配置名称 → zmax/ss_cfg_names (老倪 2026-10-14: 字符串型, 5s 周期)
+
+        载荷只放**名称串** (+ loaded_at 供判帧龄); 节点记录陈旧时 note 里写明, 不假装是最新。
+        """
+        from ss_types import SSConfigNames                               # noqa: PLC0415
+        r = read_cfg_names()
+        names = " · ".join(r["names"])
+        note = r["note"]
+        if names and not note:
+            age = _age_of_stamp(r["loaded_at"])
+            if age is not None and age > STALE_CFG_S:
+                note = "主参数节点记录陈旧: %.0f 分钟前加载 (跑一次该节点即刷新)" % (age / 60.0)
+        self.publish("ss_cfg_names", SSConfigNames(
+            ts=time.time(), names=names, loaded_at=r["loaded_at"],
+            source=r["source"], note=note[:160]))
+        return bool(names)
+
+    def pub_engine(self):
+        """🧮 流形引擎每周期输出 → zmax/ss_engine (常驻回路; 真调 ManifoldEngine.step 的结果)
+
+        口径: 只转发 **新鲜** 帧 (帧龄 > STALE_ENGINE_S 就明说停发, 不拿旧帧冒充在跑);
+        cycle 单调递增 ⇒ 订阅侧一看 cycle 就知道回路是不是真在按周期跑。
+        """
+        from ss_types import SSManifoldStep                               # noqa: PLC0415
+
+        def _f(v, dv=-1.0):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float(dv)
+
+        def _i(v, dv=0):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return int(dv)
+
+        def _vec(v, n=0):
+            try:
+                out = [float(x) for x in (v or [])]
+            except TypeError:
+                return []
+            return out if (not n or len(out) == n) else []
+
+        d, mt = read_engine()
+        age = (time.time() - mt) if mt else -1.0
+        if not d:
+            return False
+        if age > STALE_ENGINE_S:
+            if time.time() - _EN_LOGGED.get("stale", 0.0) > 60:
+                log("⏸ 流形引擎 tap 过期 %.1fs (>%.1fs) — 不把旧的当现在 (跑 tools/ss_engine_loop.py run)"
+                    % (age, STALE_ENGINE_S))
+                _EN_LOGGED["stale"] = time.time()
+            return False
+        p = _vec(d.get("p"))
+        a = _vec(d.get("action"))
+        self.publish("ss_engine", SSManifoldStep(
+            ts=_f(d.get("ts"), time.time()), cycle=_i(d.get("cycle")), hz=_f(d.get("hz")),
+            step_ms=_f(d.get("ms")), provider=str(d.get("provider") or ""),
+            source=str(d.get("source") or "")[:160], traj_at=str(d.get("traj_at") or ""),
+            traj_idx=_i(d.get("idx"), -1), traj_n=_i(d.get("traj_n")), replay=_i(bool(d.get("replay"))),
+            project=str(d.get("project") or ""), task_id=str(d.get("task_id") or ""),
+            task_name=str(d.get("task_name") or ""), scene=str(d.get("scene") or ""),
+            M=_f(d.get("M")), inertia=_i(bool(d.get("inertia"))), calib=str(d.get("calib") or "")[:120],
+            decode_src=str(d.get("decode_src") or "")[:120], p=p,
+            # 不引 numpy (本守护只做转发): 纯 python 求模, 0 依赖
+            p_norm=float(sum(x * x for x in p) ** 0.5) if p else 0.0, phi=_f(d.get("phi")),
+            grad_norm=_f(d.get("grad_norm")), action=a,
+            action_norm=float(sum(x * x for x in a) ** 0.5) if a else 0.0,
+            confidence=_f(d.get("confidence")), anomaly=_f(d.get("anomaly")),
+            residual=_f(d.get("residual")),
+            momentum=_f(d.get("momentum"), -1.0) if d.get("momentum") is not None else -1.0,
+            hom_enabled=_i(bool(d.get("hom_enabled"))), hom_mode=str(d.get("hom_mode") or ""),
+            hom_vitality=_f(d.get("hom_vitality")), hom_gain=_f(d.get("hom_gain"), 1.0),
+            hom_dominant=str(d.get("hom_dominant") or ""), hom_urgency=_f(d.get("hom_urgency")),
+            hom_veto=_i(bool(d.get("hom_veto"))),
+            t_encode_ms=_f(d.get("t_encode_ms")), t_project_ms=_f(d.get("t_project_ms")),
+            t_grad_ms=_f(d.get("t_grad_ms")),
+            note=("帧龄 %.2fs" % age) if age >= 0 else ""))
+        return True
+
     def pub_diag(self):
         from ss_types import SSDiag                                  # noqa: PLC0415
         now = time.time()
@@ -611,7 +826,9 @@ class SSDaemon:
             ts=now, node="services", kind="health", count=okn,
             health=round(okn / max(1, len(self._svc)), 3), level="ok" if okn == len(self._svc) else "warn",
             msg=json.dumps(self._svc, ensure_ascii=False)[:180]))
-        for t, c in self.sent.items():
+        # 🔒 2026-10-14: 节拍线程 (ss_cfg_names/ss_engine) 会在 publish() 里写 self.sent, 主 tick 在这里
+        #    迭代同一个 dict ⇒ 实测「tick 异常: dictionary changed size during iteration」。取快照。
+        for t, c in list(self.sent.items()):
             self.publish("ss_diag", SSDiag(ts=now, node="ss_daemon", kind="throughput",
                                            count=c, hz=round(c / max(1.0, now - self.t0), 3),
                                            queue=self.seq.get(t, 0) - c, level="ok", msg="topic=" + t))
@@ -667,7 +884,7 @@ class SSDaemon:
         now = time.time()
         el = max(1.0, now - self.t0)
         svc = self.nodes_svc_cache()
-        topics = sorted(self.sent.keys())
+        topics = sorted(list(self.sent.keys()))
         self.publish("ss_nodes", SSNodes(
             ts=now,
             nodes=["ss_daemon(本守护)"] + ["%s:%s" % (k, v) for k, v in svc.items()],
@@ -741,10 +958,71 @@ class SSDaemon:
             self.pub_energy()
         if allowed("ss_torque"):
             self.pub_torque()
+        # 🧮 主参数节点已加载的配置名称 (老倪 2026-10-14 规格「字符串就可以, 周期5秒」)：
+        #    ⚠ 实测: 主 tick 一次要 17~26s (远端读取 + 服务健康检查都在里面), 挂在 tick 里做 5s 门控
+        #    会退化 ≈20s (实测相邻两条 21.0s) ⇒ 改由 `_cfg_thread()` 专用节拍线程发, 这里不再发。
+
+    def _cfg_thread(self, period=5.0):
+        """🧮 主参数节点已加载配置名称的**专用 5s 节拍线程** (老倪 2026-10-14 规格: 周期 5 秒)
+
+        为什么不挂在主 tick 上: 实测主循环一次 tick 17~26s (read_state/read_calibs/services_health
+        都在 tick 里, 远端读慢), 5s 门控会退化成 ~20s。本线程只做一件事: 每 5s 把
+        **节点记录里的配置名称**发一条 zmax/ss_cfg_names — 只读真源, 不触发任何动作。
+        """
+        for _ in range(100):                      # 同上: 等 DDS 参与者就绪, 避免首轮半成品模块
+            if self.node is not None or self._stop.is_set():
+                break
+            self._stop.wait(0.1)
+        while not self._stop.is_set():
+            t0 = time.time()
+            try:
+                if allowed("ss_cfg_names"):
+                    self.pub_cfg_names()
+                if allowed("ss_meta_task"):          # 🧾 元任务: 与配置名同一节拍/同一出口 (主参数节点)
+                    self.pub_meta_task()
+            except Exception as e:                                       # noqa: BLE001
+                log("⚠️ ss_cfg_names / ss_meta_task 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
+            self._stop.wait(max(0.05, period - (time.time() - t0)))
+
+    def _engine_thread(self, period=0.2):
+        """🧮 流形引擎常驻回路的**专用节拍线程** (主 tick 实测 17~26s, 挂主 tick 会把 10Hz 压成 0.05Hz)。
+
+        只做一件事: 读 tap 最后一帧 → 发 zmax/ss_engine。只读真源, 不触发任何动作。
+        """
+        # ⏳ 首轮前等 DDS 参与者建好: 实测并发的首个 tick 会撞上 `import ss_types` / `import cyclonedds`
+        #    的半成品模块 (ModuleNotFoundError: ss_types / KeyError: 'cyclonedds') ⇒ 白丢一帧 + 刷告警。
+        for _ in range(100):
+            if self.node is not None or self._stop.is_set():
+                break
+            self._stop.wait(0.1)
+        while not self._stop.is_set():
+            t0 = time.time()
+            try:
+                if allowed("ss_engine"):
+                    self.pub_engine()
+            except Exception as e:                                       # noqa: BLE001
+                log("⚠️ ss_engine 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
+            self._stop.wait(max(0.02, period - (time.time() - t0)))
 
     def run(self, seconds=0.0, once=False):
         t0 = time.time()
         n = 0
+        if once:
+            # 单轮取证: 直接把这一条也发掉 (线程不启, 免得等 5s)
+            try:
+                if allowed("ss_cfg_names"):
+                    self.pub_cfg_names()
+                if allowed("ss_meta_task"):
+                    self.pub_meta_task()
+            except Exception as e:                                       # noqa: BLE001
+                log("⚠️ ss_cfg_names / ss_meta_task 一次性发布失败: %s" % type(e).__name__)
+        else:
+            th = threading.Thread(target=self._cfg_thread, name="ss_cfg_names", daemon=True)
+            th.start()
+            log("🧮 配置名称 5s 节拍线程已启动 (话题 zmax/ss_cfg_names)")
+            th2 = threading.Thread(target=self._engine_thread, name="ss_engine", daemon=True)
+            th2.start()
+            log("🧮 流形引擎常驻回路 5Hz 转发线程已启动 (话题 zmax/ss_engine ← tap %s)" % ENGINE_TAP_DIR)
         while True:
             try:
                 fast = (n % 5 == 0)

@@ -20,6 +20,10 @@ done
 
 pids() {                       # 宽松精确匹配: cmdline 里同时含 'studio.py' 与 本工程 venv 解释器路径
   # ⚠️ 判断在**脚本文件里**做 (不是命令行), 所以不会像 `pkill -f studio.py` 那样匹配到自己
+  # 🛑 2026-10-14 老倪「debug 模式下运行怎么没启动控制台」真根因: VSCode 调试起的实例 cmdline 里
+  #    **同样**有本工程 venv 解释器 + studio.py (debugpy 的 launcher 就在中间) ⇒ 原来 stop/restart
+  #    会把调试会话一起 kill 掉 (老倪 F5 后看着"打印几行就回到提示符, 没窗口没报错")。
+  #    ⇒ 这里把调试会话**排除**在 ctrl 实例之外 (另有 dbg() 专门认它们)。
   python3 - "$PY" <<'PYEOF'
 import os, sys, glob
 target_dir = sys.argv[1].rsplit("/", 1)[0]          # .../gui-venv311/bin
@@ -39,7 +43,31 @@ for p in glob.glob("/proc/[0-9]*"):
     _tgt = os.path.realpath(target_dir + "/python")
     _ok_py = any((a == target_dir + "/python" or a.startswith(target_dir + "/python")
                   or os.path.realpath(a) == _tgt) for a in argv)
+    if any("debugpy" in a for a in argv):            # 🛑 VSCode 调试会话: 绝不归 studio_ctl 管
+        continue
     if _ok_py and any(a.endswith("studio.py") for a in argv):
+        out.append(int(os.path.basename(p)))
+print(" ".join(str(x) for x in out))
+PYEOF
+}
+
+dbg() {                        # VSCode 调试会话 (debugpy 起的 studio.py) —— 只用来"报告", 不杀
+  python3 - "$PY" <<'PYEOF'
+import os, sys, glob
+target_dir = sys.argv[1].rsplit("/", 1)[0]
+out = []
+for p in glob.glob("/proc/[0-9]*"):
+    try:
+        with open(os.path.join(p, "cmdline"), "rb") as f:
+            argv = [a.decode(errors="ignore") for a in f.read().split(b"\0") if a]
+    except Exception:
+        continue
+    if not argv:
+        continue
+    _tgt = os.path.realpath(target_dir + "/python")
+    _ok_py = any((a == target_dir + "/python" or a.startswith(target_dir + "/python")
+                  or os.path.realpath(a) == _tgt) for a in argv)
+    if _ok_py and any(a.endswith("studio.py") for a in argv) and any("debugpy" in a for a in argv):
         out.append(int(os.path.basename(p)))
 print(" ".join(str(x) for x in out))
 PYEOF
@@ -69,7 +97,10 @@ _start_gui() {
 
 case "${1:-status}" in
   status)
-    P=$(pids); [ -n "$P" ] && echo "running: $P" || echo "stopped"
+    P=$(pids); D=$(dbg)
+    [ -n "$P" ] && echo "running: $P" || echo "stopped"
+    # 🛑 2026-10-14: 调试会话单独报出来 (studio_ctl 不会去动它)
+    [ -n "$D" ] && echo "debug(VSCode F5): $D  ← studio_ctl 不管它 (不杀/不重启)"
     ;;
   stop|restart)
     # 🛑 2026-09-28 老倪两次问「控制台怎么自己重启呢」——真因不是自启(Restart=no, 无 cron 碰它),

@@ -14,8 +14,12 @@ import numpy as np
 class RobotExecutor:
     """🤖 机器人执行器 — 接收物理指令执行"""
 
-    def __init__(self, n_joints=7):
-        self.n_joints = n_joints  # 7 轴冗余臂 (Sawyer)
+    def __init__(self, n_joints=6):
+        # 🔧 2026-10-14 修 (真源一致性): 原写 `n_joints=7` + 注释"7 轴冗余臂 (Sawyer)";
+        #   本平台真机是珞石 Z700 = **6 轴** (config/calib/zmax_calib.json 的 robot.dof=6),
+        #   Sawyer 注释是早期遗留。全仓检索确认: 该属性除了这里赋值**没有任何消费点**
+        #   (execute() 只做 np.asarray(u)), 所以改成与真机一致的 6 —— 不影响行为, 只去掉误导。
+        self.n_joints = n_joints  # 珞石 Z700 · 6 轴 (未被消费的登记属性)
 
     def execute(self, u):
         """执行物理指令 → 返回执行结果 (关节/末端状态变化)"""

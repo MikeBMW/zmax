@@ -308,22 +308,82 @@ def _newest(paths: list) -> str:
     return best
 
 
+# ── 在役模型**真名**真源 (老倪 2026-10-14: 「在役模型的名字要改成真实模型的名字, 例如 L2 YOLO」)
+#    以前这里写死的名字只说"指针种类"(如 在役指针/稳定指针), 没说是什么模型。名字真源 = models/active_models.json
+#    (zh 名的指针文件, 与 model_autoload.py 加载的是同一份); 取不到就如实标注, **不编模型名**。
+_ACTIVE_JSON = os.path.join(ROOT, "models/active_models.json")
+_ACT_CACHE = {"mtime": None, "data": {}}
+
+
+def _active_names() -> dict:
+    try:
+        mt = os.path.getmtime(_ACTIVE_JSON)
+    except OSError:
+        return {}
+    if _ACT_CACHE["mtime"] != mt:                      # 按 mtime 缓存 (模型引擎面板 5s 轮询, 不重复读盘)
+        try:
+            with open(_ACTIVE_JSON, encoding="utf-8") as f:
+                _ACT_CACHE["data"] = json.load(f) or {}
+        except Exception:                                                    # noqa: BLE001
+            _ACT_CACHE["data"] = {}
+        _ACT_CACHE["mtime"] = mt
+    return _ACT_CACHE["data"]
+
+
+def _act_name(layer: str, kind: str) -> str:
+    """在役行显示名 = 真源登记的真名; 没登记 ⇒ "<层> 在役 (<kind>) · 名称真源未登记" (不编)。"""
+    nm = re.sub(r"^L\d\s*·\s*", "", str((_active_names().get(layer) or {}).get("name") or "").strip())
+    return nm or ("%s 在役 (%s) · 名称真源未登记" % (layer, kind))
+
+
+def _l5_merged_name() -> str:
+    """L5 本地在役产物的真名 = 读它自己的 config.json (model_type/architectures), 不靠目录名猜。
+
+    实测 zmax_data/models/l5_vlm_merged_*/config.json: model_type=smolvlm,
+    architectures=[SmolVLMForConditionalGeneration] ⇒ 真名 "SmolVLM"; 读不到就说读不到。
+    """
+    d = os.path.dirname(_newest(glob.glob(os.path.join(ROOT, "zmax_data/models/l5_vlm_merged_*/model.safetensors"))) or "")
+    try:
+        with open(os.path.join(d, "config.json"), encoding="utf-8") as f:
+            c = json.load(f) or {}
+        arch = str((c.get("architectures") or [""])[0] or c.get("model_type") or "")
+        fam = re.sub(r"(ForConditionalGeneration|ForCausalLM|Model)$", "", arch) or str(c.get("model_type") or "")
+        if fam:
+            return "%s 本地视觉语言模型 (merged 可部署)" % fam
+    except Exception:                                                        # noqa: BLE001
+        pass
+    return "本地 VLM merged (可部署) · 架构真源未登记"
+
+
 def _layer_candidates(layer: str, active: dict) -> list:
     """按层收集候选权重 (真源优先: active_models.json 的指针排第一)。"""
     cands = []  # (name, path, is_active)
     if layer == "L2":
         act = (active.get("L2") or {}).get("path")
         if act:
-            cands.append(("L2 在役 (指针)", os.path.join(ROOT, act), True))
+            cands.append((_act_name("L2", "指针"), os.path.join(ROOT, act), True))
         newest = _newest(glob.glob(os.path.join(
             ROOT, "external/lerobot-smolvla-lew/runs/detect/outputs/yolo_annot*/**/weights/best.pt"),
             recursive=True))
         if newest:
             cands.append(("L2 最新训练产物", newest, False))
+        # 🧩 2026-10-14 老倪: 「还有个 SAM3 呢，怎么搞？」
+        #   SAM3 是 L2 的**第二个模型**(开放词汇分割, 官方基座 848M + annot_v1 适配器 + 常驻服务 8796),
+        #   此前不在清单里 ⇒ 配置通道/配置中心模型配置/模型引擎窗口(三处同一份真源)**一起漏掉它**。
+        #   这里按磁盘真源登记; 状态与判据由 8796 /status/all 的 state/note_short 给 (不在这里编)。
+        _sam3_base = os.path.join(ROOT, "zmax_data/models/sam3_hf/model.safetensors")
+        if os.path.exists(_sam3_base):
+            cands.append(("L2 候选 · SAM3 开放词汇分割 (官方基座 848M, 未在役)", _sam3_base, False))
+        for _ad in sorted(glob.glob(os.path.join(
+                ROOT, "outputs/sam3_finetune/*/lora_adapter/adapter_model.safetensors"))):
+            if "_smoke" in _ad:                     # _smoke = 冒烟产物, 不入候选
+                continue
+            cands.append(("L2 候选 · SAM3 适配器 %s (未证明提升)" % os.path.basename(os.path.dirname(os.path.dirname(_ad))),
+                          _ad, False))
     elif layer == "L3":
         act = (active.get("L3") or {}).get("path")
         if act:
-            cands.append(("L3 在役 (运行时 ckpt)", os.path.join(ROOT, act), True))
+            cands.append((_act_name("L3", "运行时 ckpt"), os.path.join(ROOT, act), True))
         newest = _newest(glob.glob(os.path.join(
             ROOT, "outputs/train/*/checkpoints/last/pretrained_model/model_merged.safetensors")))
         if newest:
@@ -333,7 +393,7 @@ def _layer_candidates(layer: str, active: dict) -> list:
         if act:
             # intact_l4_current 是"目录 + 恰好一个 weights.pt 软链"格式 → 指向软链真实目标
             wt = os.path.join(act, "weights.pt")
-            cands.append(("L4 在役 (稳定指针)", wt if os.path.exists(wt) else act, True))
+            cands.append((_act_name("L4", "稳定指针"), wt if os.path.exists(wt) else act, True))
         newest = _newest(glob.glob(os.path.join(
             ROOT, "zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_*",
             "weights_epoch_*merged.pt")) + glob.glob(os.path.join(
@@ -345,7 +405,7 @@ def _layer_candidates(layer: str, active: dict) -> list:
         newest_merged = _newest(glob.glob(os.path.join(
             ROOT, "zmax_data/models/l5_vlm_merged_*/model.safetensors")))
         if newest_merged:
-            cands.append(("L5 最新 merged (可部署)", newest_merged, True))
+            cands.append((_l5_merged_name(), newest_merged, True))
         newest_lora = _newest(glob.glob(os.path.join(
             ROOT, "zmax_data/models/l5_vlm_lora_*/adapter_model.safetensors")))
         if newest_lora:
@@ -394,7 +454,17 @@ def collect_models(reports: list) -> list:
     active = _load_active()
     models = []
     for layer in LAYERS:
-        for name, path, is_active in _layer_candidates(layer, active):
+        _tri = list(_layer_candidates(layer, active))
+        # 🧩 2026-10-14 老倪: 「候选为什么不能都变成在役?」—— 一层可以**多条在役**: 基座指针 + 适配层(LoRA)
+        #   + 感知原语(SAM3) + 本地技能包(L5)。真源 = models/active_models.json#extra_in_service (不是界面开关)。
+        _ext: dict = {}
+        for e in ((active.get("extra_in_service") or {}).get(layer) or []):
+            if not isinstance(e, dict) or not e.get("path"):
+                continue
+            _fp = str(e["path"]) if os.path.isabs(str(e["path"])) else os.path.join(ROOT, str(e["path"]))
+            _tri.append((str(e.get("name") or ""), _fp, True))
+            _ext[_fp] = e
+        for name, path, is_active in _tri:
             st = _stat(path)
             real = os.path.realpath(path) if os.path.exists(path) else path
             is_link = os.path.islink(path)
@@ -404,9 +474,12 @@ def collect_models(reports: list) -> list:
                 size = _dir_size(path)          # 目录型 (L4 指针/L3 ckpt 目录)
             # 推理可用判定 (静态): 文件存在且 >0 字节。不做真推理。
             ready = bool(st["exists"] and (size or 0) > 0)
+            # 名字统一只带**一个**层前缀: candidate 名本身就写成 "L2 候选 · …" ⇒ 直接拼会出现
+            # "L2 · L2 候选 · …" (实测大屏 dashboard.json 里就是这样)。这里一次性收口。
+            _nm = re.sub(r"^%s\s*(?:·\s*)?" % layer, "", str(name)).strip()
             entry = {
                 "layer": layer,
-                "name": f"{layer} · {name}",
+                "name": f"{layer} · {_nm or name}",
                 "path": path,
                 "realpath": real if real != path else None,
                 "symlink": is_link,
@@ -423,6 +496,10 @@ def collect_models(reports: list) -> list:
                 "ready": ready,
                 "ready_reason": ("存在且 size>0" if ready else
                                  ("路径不存在" if not st["exists"] else "size<=0")),
+                # 多条目在役的说明 (适配层/感知原语/技能包): 界面上要写清它凭什么在役
+                "serving_ext": ({k: _ext[path].get(k) for k in
+                                 ("kind", "role", "note", "since", "base", "adapter")
+                                 if _ext.get(path, {}).get(k)} or None),
             }
             models.append(entry)
     return models

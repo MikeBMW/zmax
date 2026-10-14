@@ -153,9 +153,14 @@ def stats_rows(db, live=None, stats=None):
         k = key
         lv = lt.get(k) or {}
         sv = st.get(k) or {}
+        # 🐛 2026-10-14 修: 报文表里有"族条目"(如 ss_node_out = 每节点一个输出话题的集合),
+        #   它没有单个 topic 字段 ⇒ 老写法 m["topic"] 直接 KeyError, 整张 Statistics 表打不开
+        #   (实测 tools/dds_bus.py --check 崩在 busdb.stats_rows)。族条目按 key 当显示名, 信号数取 signals。
+        _sg = m.get("signals") or []
         rows.append({
-            "key": key, "topic": m["topic"], "type": m["type"], "kind": m["kind"],
-            "n_signals": m.get("n_signals"), "hz_design": m.get("hz_design"),
+            "key": key, "topic": m.get("topic") or ("%s (%d 个话题)" % (k, len(_sg)) if _sg else k),
+            "type": m.get("type") or "-", "kind": m.get("kind") or "-",
+            "n_signals": m.get("n_signals") or (len(_sg) or None), "hz_design": m.get("hz_design"),
             "hz": lv.get("hz", sv.get("hz", -1.0)),
             "count": lv.get("count", sv.get("count", 0)),
             "jitter_ms": sv.get("jitter_ms"), "loss_pct": sv.get("loss_pct"),

@@ -349,6 +349,21 @@ def cmd_record(slot: int, size_mm, demo: str, use_vlm: bool, tcp_override=None) 
         print("   投影 ok=%s · TCP=%s(age %ss) · 深度上线=%s · VLM=%s"
               % ((out.get("projection") or {}).get("ok"), t.get("tcp"), t.get("age_s"),
                  s.get("depth_online"), (out.get("vlm") or {}).get("verdict")))
+        # 🔎 2026-10-14 老倪「怎么报错了? 现场怎么回事」: 只看到 arm 一路失败(503)容易误会是代码错 ——
+        #    把**每一路**取帧结果 + TCP 帧龄(陈旧即按帧龄拒用) + 深度源状态写进结论, 现场一眼可判。
+        _cams = []
+        for _ck, _cv in (out.get("frames") or {}).items():
+            _cams.append("%s=%s" % (_ck, "OK" if (_cv or {}).get("path")
+                                    else str((_cv or {}).get("err") or "缺")[:38]))
+        try:
+            _ag = float(t.get("age_s"))
+        except (TypeError, ValueError):
+            _ag = None
+        print("   为什么: 相机 %s · TCP %s%s · 深度 %s"
+              % (" / ".join(_cams) or "无",
+                 ("%.0fs" % _ag) if _ag is not None else "取不到",
+                 " (陈旧 ⇒ 按帧龄拒用, 不是代码错)" if (_ag is None or _ag > 5.0) else "",
+                 "上线" if s.get("depth_online") else "未上线(源停写)"))
         if (out.get("vlm") or {}).get("verdict") == "不一致":
             print("   VLM 说的话: %s" % str((out.get("vlm") or {}).get("why") or
                                            (out.get("vlm") or {}).get("note") or "")[:160])
@@ -522,5 +537,21 @@ def main() -> int:
     return 2
 
 
+def _finish(rc: int) -> None:
+    """🔻 交付退出码 —— **判据结论 ≠ 崩溃**。
+
+    老倪 2026-10-14 实测: 调试器里跑本工具, 退出时弹「Exception has occurred: SystemExit 1」,
+    看着像代码报错; 其实 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
+    用 `os._exit` 交付同一个退出码 (CI/脚本语义完全不变), 但不再抛 SystemExit ⇒ 调试器不再误报异常。
+    ⚠️ `os._exit` 跳过缓冲刷新 ⇒ 先显式 flush。
+    """
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:                                                        # noqa: BLE001
+        pass
+    os._exit(int(rc))
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _finish(main())

@@ -5200,6 +5200,142 @@ class _DatasetInfoDialog(QDialog):
             pass
 
 
+def _dump_ss_traj_true_source(tr, max_rows: int = 400) -> str | None:
+    """💾 状态空间工程运行轨迹 → **落盘真源** (老倪 2026-10-14)
+
+    「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，怎么只是调用一次呢？改」
+
+    改前的事実: 轨迹只在控制台进程内存里 (`self._ss_tr`) ⇒ 任何**常驻**服务/线程都拿不到状态
+    ⇒ 流形引擎这条核心回路"只有在人手点 ▶ 运行的那一刻存在一次"。
+    落盘后: 工程一跑, tools/ss_engine_loop.py (常驻周期循环) 立刻按周期吃真轨迹调 eng.step()。
+
+    路径: data/database/zmax/sources/canvas/ss_traj_last.json   (单文件覆盖 + 原子写 + 回读校验)
+    只写真有的量 (obs 末 N 行 / u_exec_vec / t / 标识), 取不到就如实写 null —— 不补造。
+    """
+    try:
+        import json as _j2
+        import os as _o2
+        import time as _t2
+        o = getattr(tr, "get", lambda *_: None)
+        obs = o("obs")
+        if obs is None:
+            return None
+        rows = [[round(float(x), 6) for x in row] for row in list(obs)[-int(max_rows):]]
+        if not rows:
+            return None
+        u = o("u_exec_vec")
+        uu = [[round(float(x), 6) for x in row] for row in list(u)[-int(max_rows):]] if u else None
+        tt = o("t")
+        meta = {}
+        try:
+            _b = _j2.load(open(_o2.path.join(_o2.path.dirname(_o2.path.dirname(
+                _o2.path.dirname(_o2.path.abspath(__file__)))), "config", "ss_task_binding.json"),
+                encoding="utf-8"))
+            meta["task_id"] = str(_b.get("active_task") or "")
+            meta["scene"] = str(_b.get("scene") or "")
+        except Exception:                                    # noqa: BLE001
+            meta = {}
+        out = {"saved_at": _t2.strftime("%F %T"), "src": "状态空间工程 ▶ 运行 · 控制台 _ss_tr 落盘",
+               "n": len(rows), "obs_dim": len(rows[0]), "task_id": meta.get("task_id") or "",
+               "scene": meta.get("scene") or "", "obs": rows,
+               "u_exec_vec": uu, "t": (list(tt)[-int(max_rows):] if tt is not None else None)}
+        d = _o2.path.join(_o2.path.dirname(_o2.path.dirname(_o2.path.dirname(
+            _o2.path.abspath(__file__)))), "data", "database", "zmax", "sources", "canvas")
+        _o2.makedirs(d, exist_ok=True)
+        p = _o2.path.join(d, "ss_traj_last.json")
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            _j2.dump(out, fh, ensure_ascii=False)
+        _o2.replace(tmp, p)
+        back = _j2.load(open(p, encoding="utf-8"))           # 回读校验: 行数一致才算落盘成功
+        return p if len(back.get("obs") or []) == len(rows) else None
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def _vscode_launch_cfg(root: str) -> dict:
+    """🧩 `.vscode/launch.json` 的**唯一模板** (右键「打开 VSCode」用它重写该文件)。
+
+    ⚠️ 教训 (2026-10-14 实测): 只手改 `.vscode/launch.json` 会被本模板覆盖掉 —— 早先加的
+      🌀 流形引擎 ×4 / 🧮 配置导入 ×2 就是这样消失的 (18:44 被重写)。**要加调试配置, 只改这里。**
+    """
+    import os as _os
+    _py = lambda: _os.path.join(root, "gui-venv311", "bin", "python")          # noqa: E731
+    return {
+        "version": "0.2.0",
+        "configurations": [
+            # 🚀 默认 F5 (2026-08-31 老倪: attach 找不到 → 全新启动调试进程)
+            {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {}},
+            {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
+             "connect": {"host": "127.0.0.1", "port": 5678}, "justMyCode": False},
+            {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
+             "program": "${file}",
+             "python": _os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False},
+            # ── 🎯 INTACT L4 (2026-09-13) ──
+            {"name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools/intact_service_e2e.py"), "python": _py(),
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
+            {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools/intact_gui_node_check.py"), "python": _py(),
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
+            {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools/intact_worker_debug.py"),
+             "python": "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
+            {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools/intact_sw_optical_bridge.py"), "python": _py(),
+             "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
+            # ── 🌀 流形引擎 (2026-10-14 老倪: 「流形引擎是全系统的核心」——F5 就能进 step 断点) ──
+            #   断点打 src/lerobot/manifold/manifold_engine.py:697(入口) / 699(M 生效点) / 733(可观察量) / 750
+            {"name": "🌀 流形引擎 · 自检 (step 断点必停)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {}},
+            {"name": "🌀 流形引擎 · 状态快照 (--state)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["--state"], "env": {}},
+            {"name": "🌀 流形引擎 · 内稳态演示 (--hom-demo)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["--hom-demo"], "env": {}},
+            {"name": "🌀 流形引擎 · 能量层自检 (energy_manifold --selftest)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "manifold", "energy_manifold.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["--selftest"], "env": {}},
+            # ⚠️ 调试前先停常驻单元, 否则单写入器锁会拒绝第二个发布器:
+            #    sudo systemctl stop zmax-ss-engine-loop     (调完: sudo systemctl start …)
+            {"name": "🌀 流形引擎 · 常驻周期循环 (先停服务; step 断点每周期停)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "ss_engine_loop.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["run", "--hz", "10"], "env": {"ZMAX_SS_ENGINE_HZ": "10"}},
+            {"name": "🌀 流形引擎 · 常驻循环 · 单轮取证 (once)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "ss_engine_loop.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["once"], "env": {}},
+            # ── 🧮 配置导入 (2026-10-14 老倪: 「必须能进入这个断点」) ──
+            #   断点打 src/lerobot/engineering/config_import.py:186  db = _read_db(...)
+            {"name": "🧮 配置导入 · 真源+工程库读 (config_import · 断点 186 必停)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {}},
+            {"name": "🧮 配置导入 · 读+写回画布节点 (--node n_calib_mani)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "args": ["--node", "n_calib_mani"], "env": {}},
+        ],
+    }
+
+
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
@@ -5634,6 +5770,18 @@ class SimulinkModule(QWidget):
             "  · 与画布/3D/信号/数据总线各窗口共用同一份全局数据空间)",
             self.open_config_window, "#c9a0ff")
         tl.addWidget(self.btn_cfg_win)
+        # 🧠 2026-10-14 老倪: 「在状态空间工程, 增加一个 模型引擎 按钮, 用于打开模型引擎的独立窗口」
+        #   口径: 弹出的就是**与主控制台功能区同一个 ModelEnginePanel** (同一份代码/同一真源/同一设计宽,
+        #   判据 tools/verify_model_engine_same_render.py 逐像素 0 差异), 不是另做一套画布专用界面。
+        self.btn_me_win = mk_btn(
+            "🧠 模型引擎",
+            "打开【独立窗口】的模型引擎 (L2~L5 训练与推理状态):\n"
+            "  · 与主控制台功能区「模型引擎」**同一个面板、同一份代码、同一份真源** (两处逐像素一致)\n"
+            "  · 四层在役行 + 🔎 候选行 (L2 候选 = 🧩 SAM3 开放词汇分割, 带未切在役判据与候选权重路径)\n"
+            "  · 逐层 ▶训练本层 / ■停止 / 📄训练日志 / 📂目录 / 🚀执行; 双击任意格复制完整路径\n"
+            "  · 非模态 (可与画布/3D 并排看), 已有窗口就置顶复用, 不新开第二个",
+            self.open_model_engine_window, "#c9a0ff")
+        tl.addWidget(self.btn_me_win)
         tl.addSpacing(8)
         # (2026-08-06 老倪: Scope 移到 node 库, 工具栏按钮已删; btn_scope 移除)
         # 🗂 2026-10-09 老倪: 工具栏「⛶ 浮动」删 → 菜单「画布 → 浮动画布」 (Ctrl+Shift+F)
@@ -9843,6 +9991,46 @@ class SimulinkModule(QWidget):
         ("🚀 全新训练", "system", "第6/7步 训练入口: 点击「🚀 全新训练」(双击启动 metaworld 训练)"),
         ("📊 Scope 示波器", "action", "第7/7步 效果观察: 点击「📊 Scope 示波器」(训练完双击它看 loss 波形)"),
     ]
+
+    def open_model_engine_window(self):
+        """🧠 模型引擎 → **独立窗口** (老倪 2026-10-14: 「在状态空间工程, 增加一个模型引擎按钮,
+        用于打开模型引擎的独立窗口」)。
+
+        内容 = 与主控制台功能区**同一个 `ModelEnginePanel`** (同一份代码 ⇒ 列宽/逐格文字/颜色逐像素一致,
+        判据 `tools/verify_model_engine_same_render.py`), 数据真源 = `model_inventory --json` + 8796 `/status/all`
+        (面板自带 5s 轮询, 所以训练状态/推理状态会自己刷新, 不是打开那一刻的快照)。
+        非模态: 可与画布/3D 并排看; 关掉再点即复用, 不新开第二个。
+        """
+        w = getattr(self, "_me_win", None)
+        try:
+            if w is not None and w.isVisible():
+                w.raise_()
+                w.activateWindow()
+                return w
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from model_engine_window import ModelEngineWindow
+        except Exception as e:                                                  # noqa: BLE001
+            self._log("⛔ 模型引擎独立窗口打不开: %r" % (e,))
+            return None
+        try:
+            # 🖥 2026-10-14 老倪「无法最大化」真根因: 传了 parent ⇒ WM_TRANSIENT_FOR 被设上 ⇒
+            #   GNOME 不给瞬态窗口 MAXIMIZE 权限 (_NET_WM_ALLOWED_ACTIONS 里没有 MAXIMIZE_*), 实测按钮无效。
+            #   ⇒ 不传父窗口 (真·独立顶层窗), 实例由 self._me_win 持有 (复用不重开, 生命周期照样管住)。
+            win = ModelEngineWindow(None)
+            self._me_win = win
+            win.show()
+            win.raise_()
+            win.activateWindow()
+            self._log("🧠 模型引擎: 独立窗口已打开 (L2~L5 在役 + 🔎 候选行; 与功能区同一界面同一真源)")
+            return win
+        except Exception as e:                                                  # noqa: BLE001
+            self._log("⚠️ 模型引擎独立窗口打开失败: %r" % (e,))
+            return None
 
     def open_config_window(self):
         """🗂 配置中心 → **独立窗口** (老倪 2026-10-13)。
@@ -14810,6 +14998,12 @@ class SimulinkModule(QWidget):
     def _real_finish(self, tr):
         """🎥 真实轨迹 → 播放/3D/总线 (io_trace 与引擎同构 13 模块, dw 复用)"""
         self._ss_tr = tr
+        # 💾 2026-10-14 老倪: 轨迹落盘真源 ⇒ 常驻流形引擎周期循环 (tools/ss_engine_loop.py) 才吃得到
+        try:
+            _p = _dump_ss_traj_true_source(tr)
+            self._log("💾 轨迹真源落盘: %s (常驻流形引擎回路按周期吃它)" % (_p or "失败"))
+        except Exception as _e:                                                  # noqa: BLE001
+            self._log("⚠️ 轨迹落盘异常: %s" % _e)
         # 🐛 2026-10-12 老倪「信号分析运行啊，动起来」: 播放前把**本轮**轨迹推给在册 3D 窗口。
         #   窗口的 tr 可能是上一轮/离线 episode ⇒ set_frame(idx) 画的是旧轨迹的帧,
         #   更糟的是 3D 面板是 trace_live.json **唯一发布者**(ss_dreamview.publish_trace_live),
@@ -14941,6 +15135,12 @@ class SimulinkModule(QWidget):
             self.btn_run.setEnabled(True)
             return
         self._ss_tr = tr
+        # 💾 2026-10-14 老倪: 轨迹落盘真源 (常驻流形引擎周期循环的数据源; 失败只告警, 不影响运行)
+        try:
+            _p = _dump_ss_traj_true_source(tr)
+            self._log("💾 轨迹真源落盘: %s" % (_p or "失败"))
+        except Exception as _e:                                                  # noqa: BLE001
+            self._log("⚠️ 轨迹落盘异常: %s" % _e)
         # 🎯 2026-09-03 老倪: ▶运行 真实 YOLO 感知 — 原引擎轨迹里 YOLO/2D→3D 快照是
         #   state_space_sim._io_snapshot 写死的 conf 0.99 仿真伪装 (detect_3d 从不执行),
         #   已改为 conf -- (引擎无 YOLO 模型, 不伪装)。这里真实执行一次 ss_yolo 节点:
@@ -16552,62 +16752,7 @@ class SimulinkModule(QWidget):
             self._log(f"⚠️ settings.json 写入失败: {ex}")
         # launch.json: 三个调试配置
         lj = os.path.join(vsc, "launch.json")
-        cfg = {
-            "version": "0.2.0",
-            "configurations": [
-                # 🚀 默认 F5 (2026-08-31 老倪: attach 找不到 → 全新启动调试进程):
-                # 点 start debugging 直接 launch 新 studio.py 实例, 无需控制台先启动
-                {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
-                 "program": os.path.join(root, "tools", "gui", "studio.py"),
-                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 # 🐛 2026-09-01 老倪: 右键打开 VSCode 会重写本文件 — env 必须写死在模板里,
-                 #   否则 ZMAX_DEBUG_BREAK 被覆盖 → 节点逻辑断点永不触发 (踩过)
-                 # 🐛 2026-09-02 老倪: ZMAX_DEBUG_BREAK 默认移除 — 数据源已接真实数据层
-                 #   (probe_data_source 真实断点可命中), 强制断点反而先停 execute_node_logic
-                 #   造成"没设断点却停了"困惑; 需要时手动加 env: {"ZMAX_DEBUG_BREAK": "metaworld"}
-                 "env": {}},
-                # 🔌 attach 现有控制台 (需控制台已启动, 5678 在监听)
-                {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
-                 "connect": {"host": "127.0.0.1", "port": 5678},
-                 "justMyCode": False},
-                {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
-                 "program": "${file}",
-                 "python": os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False},
-                # ── 🎯 INTACT L4 调试配置 (2026-09-13 老倪: "你来给出 INTACT L4 的调试配置") ──
-                #   ⚠️ 必须写在本模板里: 「右键 → 打开 VSCode」会重写 .vscode/launch.json,
-                #      模板里没有的条目会被抹掉。改动这里 = 同步改 .vscode/launch.json。
-                #   ① policy 层 (gui-venv311): 断点打 src/lerobot/policies/intact/**
-                #       (service.py / decoder.py / runtime/*.py), 不经过 GUI 也能单步
-                #   ② GUI 节点路径: 断点打 tools/gui/node_logic.py::node_intact_dec + policy 层
-                #   ③ 模型侧 (INTACT-JEPA/.venv = py3.10): 断点打 /home/ubuntu/zmax/external/INTACT-JEPA/**
-                #       与 tools/intact_worker.py::Runtime.act —— 真输入来自 reports/intact_last_input.npz
-                #       (INTACT_KEEP_INPUT=1 时桥自动留档), 不是合成数据
-                #   ④ 光模块插拔链 (真物理, gui-venv311 + Z-MAX 引擎)
-                {"name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)", "type": "python", "request": "launch",
-                 "program": os.path.join(root, "tools/intact_service_e2e.py"),
-                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
-                {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
-                 "program": os.path.join(root, "tools/intact_gui_node_check.py"),
-                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
-                {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
-                 "program": os.path.join(root, "tools/intact_worker_debug.py"),
-                 "python": "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
-                {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
-                 "program": os.path.join(root, "tools/intact_sw_optical_bridge.py"),
-                 "python": os.path.join(root, "gui-venv311", "bin", "python"),
-                 "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
-                 "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-                 "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
-            ],
-        }
+        cfg = _vscode_launch_cfg(root)      # 🧩 单一模板 (改配置只改 _vscode_launch_cfg, 别再手改 json)
         try:
             with open(lj, "w", encoding="utf-8") as f:
                 _j.dump(cfg, f, ensure_ascii=False, indent=2)

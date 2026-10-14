@@ -27,7 +27,7 @@
 from dataclasses import dataclass, field
 
 from cyclonedds.idl import IdlStruct
-from cyclonedds.idl.types import float64, int32, sequence
+from cyclonedds.idl.types import float64, int32, int64, sequence
 
 
 # ─────────────────────────── 状态空间 ───────────────────────────
@@ -293,4 +293,110 @@ class SSDrivingTorque(IdlStruct, typename="zmax::SSDrivingTorque"):
     gates: str = ""
     source: str = ""
     unit_note: str = ""
+    note: str = ""
+    # ── 🏷 标识信息 (老倪 2026-10-14: 「输出 topic 看到正在执行的任务/产品质数/主参数等标识信息」) ──
+    #    标量给数据空间视图直接显示; identity_json 是完整块 (能力质数签名是大整数 ⇒ 只能走字符串, int64 装不下)
+    task_id: str = ""                    # TASK-01-FW (活跃配置真源 config/ss_task_binding.json)
+    task_name: str = ""                  # FW Loading + EEPROM 写/读校验
+    product: str = ""                    # 550A 原创版 (版本段 5.50.A)
+    product_prime: int64 = 0             # 1009 (产品质数真源 config/platform/zmax_product.json)
+    m_scale: float64 = -1.0              # 主参数 M (度量尺度, config/calib/zmax_manifold.json)
+    identity_json: str = ""              # 完整标识块 JSON (任务/场景/站点/产品/质数/主参数/来源)
+
+
+# ─────────────────────── 🧮 配置导入 (主参数节点) ───────────────────────
+@dataclass
+class SSConfigNames(IdlStruct, typename="zmax::SSConfigNames"):
+    """主参数节点**已加载的配置名称** (老倪 2026-10-14:
+    「那主参数节点, 需要发出 加载的配置名称的 topic, 字符串就可以, 周期可以是5秒」)
+
+    口径: **只发名称** (不含路径/哈希/计数) —— 跟「打开工程弹窗只列配置名称」同一口径。
+    真源: 画布节点 n_calib_mani (🧮 标定诊断测量 · 主参数 M) 的 params.cfg_entries / cfg_loaded_at,
+          该节点每次执行 (import_config_files → write_into_node) 才会刷新 ⇒ loaded_at 即它的加载时刻。
+    """
+    ts: float64 = 0.0                 # epoch 秒 (本次发布时间)
+    names: str = ""                   # 已加载配置名称, 以 " · " 连接的一整串 (主载荷)
+    loaded_at: str = ""               # 主参数节点上次真加载的时刻 (真源 cfg_loaded_at, 供判帧龄)
+    source: str = ""                  # 名称的真源位置
+    note: str = ""
+
+
+# ──────────────── 🧾 元任务 · 任务 → 功能+参数+依赖+验证 (老倪 2026-10-14) ──
+@dataclass
+class SSMetaTask(IdlStruct, typename="zmax::SSMetaTask"):
+    """**根据任务输出的元任务清单** (老倪 2026-10-14: 「流形引擎, 需要根据任务, 输出元任务」)
+
+    口径 (技能 zmax-meta-task-planning): 元任务 = 一个功能(FN-SYSx-N) + 该功能全部配置参数 + 依赖
+    + 验证方法 + 归属层。它是**登记表派生件**, 不是意图、不是技能:
+
+        任务(TASK-xx) ──enabled_nodes──> 画布节点 ──name──> 功能(module_ref) ──fn_id──> 元任务
+
+    ⇒ 内容只能真源现算 (config_meta.json + ss_task_binding.json + 画布); 意图只决定**选哪一批**
+      (🔮 意图直读/ss_intent_direct 是 Δz→技能 kNN, 输出技能ID, 不能当元任务读)。
+    出口: 主参数节点 n_calib_mani (与「已加载配置名」同一个 5s 节拍, 派生器 tools/ss_meta_task.py)。
+    """
+    ts: float64 = 0.0                  # epoch 秒 (发布时刻)
+    task_id: str = ""                  # 任务ID (真源 ss_task_binding.json 的 active_task 或指定)
+    task_name: str = ""
+    n: int32 = 0                       # 本任务元任务数
+    n_all: int32 = 0                   # 全量元任务数 (工程 74)
+    layers: str = ""                   # 层分布 "L2=9 · L3=1 · L4/L5=14 · PLAT=7"
+    prio: str = ""                     # 优先级分布 "P0=31"
+    fn_ids: str = ""                   # 功能ID串 (前 N 个, "FN-SYS0-36, FN-SYS0-49, …")
+    src: str = ""                      # 真源 sha 摘要 (可复核)
+    note: str = ""
+
+
+# ──────────────── 🧮 流形引擎 · 常驻周期循环 (老倪 2026-10-14) ────────────────
+@dataclass
+class SSManifoldStep(IdlStruct, typename="zmax::SSManifoldStep"):
+    """ManifoldEngine.step() 的**每周期**输出 (流形引擎常驻回路 → 全局数据空间)
+
+    老倪 2026-10-14: 「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，
+    怎么只是调用一次呢？改」
+
+    改前: step() 只在①画布节点执行 ②引擎自检 ③hom 演示 ④bench 时被调 ⇒ 引擎核心没有常驻回路
+          (10Hz 的 zmax-torque-bus 每周期算的是 T=M·(−∇Φ), 不经过 step)。
+    改后: tools/ss_engine_loop.py 常驻按周期(默认10Hz)真调 step, 每周期落 tap,
+          守护 tools/dds/ss_daemon.py 读 tap → 本话题。帧龄过期只发告警, 不把旧帧当现在。
+    """
+    ts: float64 = 0.0                  # epoch 秒 (发布时刻)
+    cycle: int64 = 0                   # 常驻回路累计周期数 (单调, 可判"是不是真在跑")
+    hz: float64 = 0.0                  # 目标频率
+    step_ms: float64 = 0.0             # 本周期 step() 实测耗时
+    provider: str = ""                 # 状态源: traj(工程轨迹真源) / state_file(外部实时源)
+    source: str = ""                   # 状态源说明 (文件/真源标签)
+    traj_at: str = ""                  # 状态空间工程该轮运行的落盘时刻
+    traj_idx: int32 = -1               # 当前吃的是轨迹第几帧
+    traj_n: int32 = 0                  # 轨迹总帧数
+    replay: int32 = 0                  # 1 = 已回放到尾部(重放), 0 = 第一遍
+    project: str = ""                  # 状态空间工程名 (真源 zmax_space.proj)
+    task_id: str = ""                  # 活跃任务 (真源 config/ss_task_binding.json)
+    task_name: str = ""
+    scene: str = ""
+    M: float64 = -1.0                  # 主参数 M (真源 config/calib/zmax_manifold.json)
+    inertia: int32 = 0                 # 1 = 二阶(有惯性)演化, 0 = 一阶过阻尼
+    calib: str = ""                    # 标定来源 (标定文件 / 现场拟合 / 未标定占位)
+    decode_src: str = ""               # 动作解码来源 (ridge 拟合 / 占位前 N 维)
+    p: sequence[float64] = field(default_factory=list)     # 潜坐标 (流形上的点)
+    p_norm: float64 = 0.0
+    phi: float64 = 0.0                 # 势能 Φ
+    grad_norm: float64 = 0.0           # ‖∇Φ‖
+    action: sequence[float64] = field(default_factory=list)  # 解出的动作
+    action_norm: float64 = 0.0
+    confidence: float64 = 0.0
+    anomaly: float64 = 0.0
+    residual: float64 = 0.0
+    momentum: float64 = -1.0           # 二阶动量模长 (无惯性时 -1)
+    hom_enabled: int32 = 0
+    hom_mode: str = ""                 # ⚖ 内稳态模式 / 生命体征 / 增益 / 否决
+    hom_vitality: float64 = 0.0
+    hom_gain: float64 = 1.0
+    hom_dominant: str = ""
+    hom_urgency: float64 = 0.0
+    hom_veto: int32 = 0
+    t_encode_ms: float64 = -1.0
+    t_project_ms: float64 = -1.0
+    t_grad_ms: float64 = -1.0
+    node: str = "manifold_engine"
     note: str = ""

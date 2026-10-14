@@ -1,0 +1,1047 @@
+{
+ "schema": "zmax.ss_meta_task/1",
+ "generated_at": "2026-10-14 20:41:12",
+ "ts": 1791981672.699783,
+ "task_id": "TASK-07-AOI",
+ "task_name": "AR 光学质量检测 (AOI 联合检查)",
+ "scene_ref": "SCN-07-AOI",
+ "site": "SITE-A.ST11",
+ "n": 30,
+ "n_all": 74,
+ "enabled_nodes": 31,
+ "by_layer": {
+  "L2": 9,
+  "L3": 1,
+  "L4/L5": 13,
+  "PLAT": 7
+ },
+ "by_prio": {
+  "P0": 30
+ },
+ "note": "按任务启用节点现算",
+ "sources": {
+  "config_meta.json": "301385b20bf2",
+  "ss_task_binding.json": "cd08c796b646",
+  "state_space_obs.json": "f60e05a60775"
+ },
+ "items": [
+  {
+   "mt_id": "MT-001",
+   "fn_id": "FN-SYS0-36",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "layer": "L2",
+   "node_id": "n_l2_muscle",
+   "prio": "P0",
+   "n_params": 48,
+   "params_head": [
+    "real=True",
+    "摆盘取放循环 (周转盘 → 上料 Tray 盘) · 单颗 CT ≤3.15s (P=3.15s",
+    "摆盘取放循环 (周转盘 → 上料 Tray 盘) · 取放精度 单边 ≤1mm/角 =1.0mm"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🛠 L3 技能序列编排"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-002",
+   "fn_id": "FN-SYS0-49",
+   "name": "🧭 动作调制器",
+   "layer": "L2",
+   "node_id": "sssched",
+   "prio": "P0",
+   "n_params": 48,
+   "params_head": [
+    "action_modulator=True",
+    "align_th(__init__) 默认值=0.02",
+    "align_xy_coarse(__init__) 默认值=0.06"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "⚡ 前馈加速器",
+    "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+    "📐 板坐标系定位 (工序坐标系·免手眼)",
+    "🔍 光学质量检测",
+    "🔍 异常推理器 (LLM)",
+    "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "🧠 L3 长程序列规划器 (场景理解驱动)",
+    "🧪 状态校正器",
+    "🧬 元数据MOE门控路由",
+    "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+    "🧾 元任务预测 (驱动扭矩 → 元任务预测值)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-003",
+   "fn_id": "FN-SYS0-37",
+   "name": "🎯 YOLO 目标检测",
+   "layer": "L2",
+   "node_id": "ssyolo",
+   "prio": "P0",
+   "n_params": 44,
+   "params_head": [
+    "detection_targets=True",
+    "多型号自适应换型 (12+ 型号 / ≥6 种摆放) · 0% (POC ≥98%) ·=98.0%",
+    "多型号自适应换型 (12+ 型号 / ≥6 种摆放) · %) · 换型 ≤30min=30.0"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "📦 metaworld 数据源",
+    "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-004",
+   "fn_id": "FN-SYS0-41",
+   "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "layer": "L2",
+   "node_id": "n_board_frame",
+   "prio": "P0",
+   "n_params": 42,
+   "params_head": [
+    "real=True",
+    "精细对位 (头-孔亚毫米对位) · 对位残差 ≤0.5mm · =0.5mm",
+    "料盘空满三态判定与选槽 · 0% (POC ≥98%) ·=98.0%"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🎯 YOLO 目标检测",
+    "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+    "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-005",
+   "fn_id": "FN-SYS0-43",
+   "name": "📡 融合定位建图",
+   "layer": "L2",
+   "node_id": "sssensor",
+   "prio": "P0",
+   "n_params": 42,
+   "params_head": [
+    "OBS_DIM=43",
+    "TACTILE_DIM=4",
+    "VISUAL_DIM=39"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "📐 2D→3D 解算",
+    "📦 metaworld 数据源",
+    "🔍 光学质量检测",
+    "🖐 触觉感知"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-006",
+   "fn_id": "FN-SYS0-50",
+   "name": "🛡 安全执行边界 (饱和限幅)",
+   "layer": "L2",
+   "node_id": "sslimit",
+   "prio": "P0",
+   "n_params": 42,
+   "params_head": [
+    "sat_limit=True",
+    "FORCE_LIMIT=5.0",
+    "POS_LIMIT=0.6"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🧭 动作调制器"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-10"
+  },
+  {
+   "mt_id": "MT-007",
+   "fn_id": "FN-SYS0-52",
+   "name": "② 对位 · SK02",
+   "layer": "L2",
+   "node_id": "sssk2",
+   "prio": "P0",
+   "n_params": 40,
+   "params_head": [
+    "skill_layer=True",
+    "精细对位 (头-孔亚毫米对位) · 对位残差 ≤0.5mm · =0.5mm",
+    "camera.K[0]=394.0623474121094"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🛠 L3 技能序列编排",
+    "🛡 安全执行边界 (饱和限幅)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-008",
+   "fn_id": "FN-SYS0-40",
+   "name": "🔍 光学质量检测",
+   "layer": "L2",
+   "node_id": "ssaoi",
+   "prio": "P0",
+   "n_params": 38,
+   "params_head": [
+    "camera.K[0]=394.0623474121094",
+    "camera.K[1]=0.0",
+    "camera.K[2]=318.443603515625"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🎯 YOLO 目标检测"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-009",
+   "fn_id": "FN-SYS0-35",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "layer": "L2",
+   "node_id": "ss_mem_l2",
+   "prio": "P0",
+   "n_params": 38,
+   "params_head": [
+    "camera.K[0]=394.0623474121094",
+    "camera.K[1]=0.0",
+    "camera.K[2]=318.443603515625"
+   ],
+   "verification": [
+    "GPU/相机帧龄与掉帧",
+    "重投影残差 (标定验收)",
+    "夹持锁存/台面约束断言 (F-A05)",
+    "逐帧 io_trace 与状态总线一致性"
+   ],
+   "deps_up": [
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+    "🧬 技能词典 · L2 动作基"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-010",
+   "fn_id": "FN-SYS1-31",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "layer": "L3",
+   "node_id": "ss_mem_l3",
+   "prio": "P0",
+   "n_params": 40,
+   "params_head": [
+    "摆盘取放循环 (周转盘 → 上料 Tray 盘) · 单颗 CT ≤3.15s (P=3.15s",
+    "摆盘取放循环 (周转盘 → 上料 Tray 盘) · 取放精度 单边 ≤1mm/角 =1.0mm",
+    "摆盘取放循环 (周转盘 → 上料 Tray 盘) ·  ≤1mm/角 ≤1° ·=1.0"
+   ],
+   "verification": [
+    "VLM 编码器一致性",
+    "模型在役哈希与版本比对",
+    "反归一化/长轨迹平均化陷阱自检",
+    "策略 rollout 成功率 (同源口径)"
+   ],
+   "deps_up": [
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-011",
+   "fn_id": "FN-SYS2-01",
+   "name": "📝 任务指令 · MES/自然语言",
+   "layer": "L4/L5",
+   "node_id": "ssllm_in",
+   "prio": "P0",
+   "n_params": 17,
+   "params_head": [
+    "task_input=True",
+    "max_veto(diagnose) 默认值=3",
+    "veto_count(diagnose) 默认值=0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "📦 metaworld 数据源",
+    "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-012",
+   "fn_id": "FN-SYS2-02",
+   "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "layer": "L4/L5",
+   "node_id": "ssllm",
+   "prio": "P0",
+   "n_params": 17,
+   "params_head": [
+    "task_planner=True",
+    "max_veto(diagnose) 默认值=3",
+    "veto_count(diagnose) 默认值=0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+    "📝 任务指令 · MES/自然语言",
+    "🙋 HIL 人机在环 · 状态↔指示",
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-11"
+  },
+  {
+   "mt_id": "MT-013",
+   "fn_id": "FN-SYS2-12",
+   "name": "🌐 Web 智能体桥 · 远程提示词",
+   "layer": "L4/L5",
+   "node_id": "n_web_agent",
+   "prio": "P0",
+   "n_params": 16,
+   "params_head": [
+    "poll_s=5s",
+    "readonly=True",
+    "web_agent=True"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "📚 工程记忆 · 技能与经验库"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-014",
+   "fn_id": "FN-SYS2-04",
+   "name": "🛠 L3 技能序列编排",
+   "layer": "L4/L5",
+   "node_id": "ssskill",
+   "prio": "P0",
+   "n_params": 16,
+   "params_head": [
+    "skill_composer=True",
+    "max_veto(diagnose) 默认值=3",
+    "veto_count(diagnose) 默认值=0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+    "📦 metaworld 数据源",
+    "🔍 异常推理器 (LLM)",
+    "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-015",
+   "fn_id": "FN-SYS2-26",
+   "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "layer": "L4/L5",
+   "node_id": "swworld",
+   "prio": "P0",
+   "n_params": 15,
+   "params_head": [
+    "sim=True",
+    "sw_bridge=True",
+    "control_tcp.n_frames=400"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "🌍 物理世界",
+    "🎥 真实场景叠加 · 双眼 (sim2real)",
+    "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-016",
+   "fn_id": "FN-SYS2-21",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "layer": "L4/L5",
+   "node_id": "ssintact",
+   "prio": "P0",
+   "n_params": 15,
+   "params_head": [
+    "expert=True",
+    "intact=True",
+    "control_tcp.n_frames=400"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "⚡ 前馈加速器",
+    "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+    "📡 融合定位建图",
+    "📦 metaworld 数据源",
+    "🧭 能力档位"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-017",
+   "fn_id": "FN-SYS2-10",
+   "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "layer": "L4/L5",
+   "node_id": "n_vlm_llm",
+   "prio": "P0",
+   "n_params": 14,
+   "params_head": [
+    "vlm_llm=True",
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-018",
+   "fn_id": "FN-SYS2-09",
+   "name": "📚 工程记忆 · 技能与经验库",
+   "layer": "L4/L5",
+   "node_id": "n_eng_mem",
+   "prio": "P0",
+   "n_params": 14,
+   "params_head": [
+    "eng_memory=True",
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2026-12"
+  },
+  {
+   "mt_id": "MT-019",
+   "fn_id": "FN-SYS2-08",
+   "name": "🔗 跨层连接 · 记忆图谱",
+   "layer": "L4/L5",
+   "node_id": "n_mem_links",
+   "prio": "P0",
+   "n_params": 14,
+   "params_head": [
+    "bundle=True",
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+    "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-020",
+   "fn_id": "FN-SYS2-17",
+   "name": "🧮 标定层 · 引力-斥力-动作",
+   "layer": "L4/L5",
+   "node_id": "sscalib",
+   "prio": "P0",
+   "n_params": 14,
+   "params_head": [
+    "calib_layer=True",
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "📐 2D→3D 解算"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-021",
+   "fn_id": "FN-SYS2-16",
+   "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "layer": "L4/L5",
+   "node_id": "ss_mem_field",
+   "prio": "P0",
+   "n_params": 14,
+   "params_head": [
+    "mem_field=True",
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+    "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-022",
+   "fn_id": "FN-SYS2-15",
+   "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "layer": "L4/L5",
+   "node_id": "ss_mem_l4",
+   "prio": "P0",
+   "n_params": 13,
+   "params_head": [
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0",
+    "control_tcp.offset_std_mm[1]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-023",
+   "fn_id": "FN-SYS2-05",
+   "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "layer": "L4/L5",
+   "node_id": "ss_mem_share",
+   "prio": "P0",
+   "n_params": 13,
+   "params_head": [
+    "control_tcp.n_frames=400",
+    "control_tcp.offset_std_mm[0]=0.0",
+    "control_tcp.offset_std_mm[1]=0.0"
+   ],
+   "verification": [
+    "记忆写入/读取一致性",
+    "INTACT 常驻与冷启时长",
+    "Feature/Test 质量门 (57 条断言)",
+    "L3/L4 节点实现审计 (ss_node_impl_audit)"
+   ],
+   "deps_up": [
+    "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+    "📐 板坐标系定位 (工序坐标系·免手眼)",
+    "📚 工程记忆 · 技能与经验库",
+    "🔗 跨层连接 · 记忆图谱"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-024",
+   "fn_id": "FN-PLAT-62",
+   "name": "📦 metaworld 数据源",
+   "layer": "PLAT",
+   "node_id": "ssdata",
+   "prio": "P0",
+   "n_params": 7,
+   "params_head": [
+    "action_dim=4",
+    "frames=4800",
+    "run_env=True"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-01"
+  },
+  {
+   "mt_id": "MT-025",
+   "fn_id": "FN-PLAT-74",
+   "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "layer": "PLAT",
+   "node_id": "swvideo",
+   "prio": "P0",
+   "n_params": 3,
+   "params_head": [
+    "sw_bridge=True",
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [
+    "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  },
+  {
+   "mt_id": "MT-026",
+   "fn_id": "FN-PLAT-67",
+   "name": "🧩 Feature 功能清单",
+   "layer": "PLAT",
+   "node_id": "ssfeat",
+   "prio": "P0",
+   "n_params": 3,
+   "params_head": [
+    "verif_layer=True",
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [
+    "🌍 物理世界",
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  },
+  {
+   "mt_id": "MT-027",
+   "fn_id": "FN-PLAT-73",
+   "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "layer": "PLAT",
+   "node_id": "swds",
+   "prio": "P0",
+   "n_params": 3,
+   "params_head": [
+    "sw_bridge=True",
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [
+    "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+    "🎯 YOLO 目标检测",
+    "📦 metaworld 数据源"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  },
+  {
+   "mt_id": "MT-028",
+   "fn_id": "FN-PLAT-65",
+   "name": "🧭 能力档位",
+   "layer": "PLAT",
+   "node_id": "sscap",
+   "prio": "P0",
+   "n_params": 3,
+   "params_head": [
+    "cap_switch=True",
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [
+    "🔀 训练/推理"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  },
+  {
+   "mt_id": "MT-029",
+   "fn_id": "FN-PLAT-72",
+   "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+   "layer": "PLAT",
+   "node_id": "ssbypv",
+   "prio": "P0",
+   "n_params": 2,
+   "params_head": [
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [
+    "📦 metaworld 数据源"
+   ],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  },
+  {
+   "mt_id": "MT-030",
+   "fn_id": "FN-PLAT-64",
+   "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "layer": "PLAT",
+   "node_id": "ssz700",
+   "prio": "P0",
+   "n_params": 2,
+   "params_head": [
+    "cell_geometry.points=None",
+    "plane_z.value=None"
+   ],
+   "verification": [
+    "旁路流帧率与帧龄",
+    "数据集完整性/时间戳单调",
+    "Feature/Test 断言结果 (verification_layer)"
+   ],
+   "deps_up": [],
+   "tasks": [
+    "TASK-01-FW",
+    "TASK-02-HANDLE",
+    "TASK-03-BI",
+    "TASK-04-THERMAL",
+    "TASK-05-ATS",
+    "TASK-06-TRAY",
+    "TASK-07-AOI"
+   ],
+   "month": "2027-02"
+  }
+ ]
+}

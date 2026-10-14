@@ -135,7 +135,11 @@ while time.time() - t0 < 14:
 out = [{"ts": float(m.ts), "torque": [float(v) for v in m.torque], "phi": float(m.phi),
         "unit": str(m.unit), "scene": str(m.scene), "gain": float(m.gain),
         "status": str(m.status), "metric_dim": int(m.metric_dim),
-        "torque_inv": [float(v) for v in m.torque_inv]} for m in got[:3]]
+        "torque_inv": [float(v) for v in m.torque_inv],
+        # 🏷 标识信息 (老倪 2026-10-14): 话题上必须看得到"在为哪个任务/哪个产品干活"
+        "task_id": str(m.task_id), "task_name": str(m.task_name), "product": str(m.product),
+        "product_prime": int(m.product_prime), "m_scale": float(m.m_scale),
+        "identity_json": str(m.identity_json)} for m in got[:3]]
 print(json.dumps({"n": len(got), "samples": out}, ensure_ascii=False))
 '''
 
@@ -178,7 +182,10 @@ def main() -> int:
     # ───────────────────────── ① 定义式一致 ─────────────────────────
     print("\n[① 定义式一致] 用 payload 自带字段独立复算 (不信任发布器结论)")
     ROT = 3
-    raw_exp = np.concatenate([np.zeros(ROT), M @ neg6[ROT:]])
+    # 主参数维数真源: dim=3 (位置) / dim=6 (位姿, 插拔任务含腕部翻转 ⇒ config_to_M R1 判 6)。
+    # 向量必须与 M 同维 —— 与 tools/tdrive_bus.py 同一条口径 (dim=6 用 6D 向量 [旋转 0,0,0 | 平移 …])。
+    _d6 = (M.shape[0] == 6)
+    raw_exp = (M @ neg6) if _d6 else np.concatenate([np.zeros(ROT), M @ neg6[ROT:]])
     exp_clip = np.clip(raw_exp, -t_max, t_max) * gain
     e1 = float(np.max(np.abs(tau - exp_clip))) if tau.size else 9e9
     chk("①a torque == clip(M·(−∇Φ), ±%.0f)·gain" % t_max, e1 <= 1e-9,
@@ -187,8 +194,8 @@ def main() -> int:
     chk("①b torque_raw == M·(−∇Φ) (未限幅)", e1b <= 1e-9, "逐位最大偏差 %.3e (≤1e-9)" % e1b)
     try:
         Minv = np.linalg.inv(M)
-        inv_exp = gain * (Minv @ neg6[ROT:])
-        e2 = float(np.max(np.abs(tinv[ROT:] - inv_exp)))
+        inv_exp = gain * (Minv @ (neg6 if _d6 else neg6[ROT:]))
+        e2 = float(np.max(np.abs((tinv if _d6 else tinv[ROT:]) - inv_exp)))
     except Exception as ex:                                                       # noqa: BLE001
         e2 = 9e9
         _ = ex
@@ -201,7 +208,8 @@ def main() -> int:
         from lerobot.manifold.metric_field import MetricField, _load_manifold_cfg
         cfg = _load_manifold_cfg()
         mf = MetricField.from_config(cfg)
-        g_true = np.asarray(mf.g(x), float).ravel()
+        _xm = np.concatenate([np.zeros(ROT), x]) if int(getattr(mf, "dim", 3)) == 6 else x
+        g_true = np.asarray(mf.g(_xm), float).ravel()
         g_pay = np.asarray(d["metric_tensor"], float).ravel()
         em = float(np.max(np.abs(g_true - g_pay)))
         chk("②a metric_tensor == MetricField.from_config(cfg).g(x)", em <= 1e-9,
@@ -432,6 +440,99 @@ def main() -> int:
                 "未解析到结论行 (exit=%d, tail=%s)" % (rc, (out or err)[-90:]))
     except Exception as ex:                                                       # noqa: BLE001
         chk("⑫d verify_localization_mapping 23/23", False, "运行失败: %s" % repr(ex)[:120])
+
+    # ───────────────────────── ⑬ 标识信息 (老倪 2026-10-14) ─────────────────────────
+    #  「流形引擎的输出 topic 看到: 正在执行的任务 / 产品质数 / 主参数 等标识信息」
+    #  判据口径: 载荷里的标识必须与**各自真源**逐字段一致 (不从载荷反推载荷), 且必须真在 DDS 话题上。
+    print("\n[⑬ 标识信息] 任务 / 场景 / 产品质数 / 主参数 —— 与各自真源逐字段核对")
+    idb = d.get("identity") or {}
+    try:
+        bind = json.load(io.open(os.path.join(ROOT, "config", "ss_task_binding.json"), encoding="utf-8"))
+        tasks = json.load(io.open(os.path.join(ROOT, "config", "tasks", "tasks.json"), encoding="utf-8"))
+        tsk = next((t for t in (tasks.get("tasks") or [])
+                    if str(t.get("task_id")) == str(bind.get("active_task"))), {})
+        bad = []
+        if str(idb.get("task_id")) != str(bind.get("active_task")):
+            bad.append("task_id %r ≠ 绑定 %r" % (idb.get("task_id"), bind.get("active_task")))
+        if str(idb.get("task_name")) != str(tsk.get("name")):
+            bad.append("task_name %r ≠ tasks.json %r" % (idb.get("task_name"), tsk.get("name")))
+        if str(idb.get("site")) != str(tsk.get("site")):
+            bad.append("site %r ≠ %r" % (idb.get("site"), tsk.get("site")))
+        chk("⑬a 标识-任务: task_id/task_name/site 与 config/ss_task_binding.json + tasks.json 一致",
+            bool(idb) and not bad,
+            ("%s · %s · %s" % (idb.get("task_id"), idb.get("task_name"), idb.get("site"))) if not bad
+            else "; ".join(bad)[:150])
+    except Exception as ex:                                                       # noqa: BLE001
+        chk("⑬a 标识-任务 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "src"))
+        from lerobot.manifold import prime_structure as _PS
+        pd = _PS.load_products() or {}
+        pid = str(pd.get("active_product"))
+        pr = (pd.get("products") or {}).get(pid) or {}
+        b2 = []
+        if str(idb.get("product_id")) != pid:
+            b2.append("product_id %r ≠ %r" % (idb.get("product_id"), pid))
+        if int(idb.get("product_prime") or -1) != int(pr.get("prime") or -2):
+            b2.append("product_prime %r ≠ 真源 %r" % (idb.get("product_prime"), pr.get("prime")))
+        if str(idb.get("version_segment")) != str(pr.get("version_segment")):
+            b2.append("version_segment %r ≠ %r" % (idb.get("version_segment"), pr.get("version_segment")))
+        chk("⑬b 标识-产品: 产品 id / **产品质数** / 版本段 与 config/platform/zmax_product.json 一致",
+            bool(idb) and not b2,
+            ("%s · 产品质数 %s · 版本段 %s · 能力 %s 项" % (idb.get("product_id"), idb.get("product_prime"),
+                                                     idb.get("version_segment"), idb.get("n_capabilities")))
+            if not b2 else "; ".join(b2)[:150])
+    except Exception as ex:                                                       # noqa: BLE001
+        chk("⑬b 标识-产品 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+    try:
+        mcfg = json.load(io.open(os.path.join(ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8"))
+        mp = idb.get("main_params") or {}
+        b3 = []
+        if abs(float(mp.get("metric_M") or -1) - float(mcfg.get("M") or -2)) > 1e-12:
+            b3.append("metric_M %r ≠ 真源 M %r" % (mp.get("metric_M"), mcfg.get("M")))
+        if int(mp.get("metric_dim") or -1) != int((mcfg.get("metric") or {}).get("dim") or -2):
+            b3.append("metric_dim %r ≠ %r" % (mp.get("metric_dim"), (mcfg.get("metric") or {}).get("dim")))
+        if str(mp.get("metric_mode")) != str((mcfg.get("metric") or {}).get("mode")):
+            b3.append("metric_mode %r ≠ %r" % (mp.get("metric_mode"), (mcfg.get("metric") or {}).get("mode")))
+        if int(d.get("metric_dim") or -1) != int(mp.get("metric_dim") or -2):
+            b3.append("载荷 metric_dim %r ≠ 标识 metric_dim %r" % (d.get("metric_dim"), mp.get("metric_dim")))
+        chk("⑬c 标识-主参数: M / dim / mode 与 config/calib/zmax_manifold.json 一致, 且与载荷度量同维",
+            not b3,
+            ("M=%s · dim=%s · mode=%s · 形状 diag=%s · 任务工艺参数 %d 项" % (
+                mp.get("metric_M"), mp.get("metric_dim"), mp.get("metric_mode"),
+                mp.get("metric_diag"), len(mp.get("task_params") or {}))) if not b3 else "; ".join(b3)[:170])
+    except Exception as ex:                                                       # noqa: BLE001
+        chk("⑬c 标识-主参数 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+    # ⑬d 必须**真在 DDS 话题上** (不是只在 tap 文件里)
+    try:
+        ok9, samp9, err9 = dds_subscribe()
+    except Exception as ex:                                                       # noqa: BLE001
+        ok9, samp9, err9 = False, [], repr(ex)
+    if ok9 and samp9:
+        s0 = samp9[0]
+        same = (str(s0.get("task_id")) == str(idb.get("task_id"))
+                and int(s0.get("product_prime") or -1) == int(idb.get("product_prime") or -2)
+                and abs(float(s0.get("m_scale") or -1) - float(mp.get("metric_M") or -2)) < 1e-12)
+        chk("⑬d DDS 话题 zmax/ss_torque 上真带标识 (task_id/产品质数/主参数 M 与 tap 逐字段同值)", same,
+            "话题样本: task=%s · 产品质数=%s · M=%s · task_name=%s" % (
+                s0.get("task_id"), s0.get("product_prime"), s0.get("m_scale"), s0.get("task_name")))
+        chk("⑬e identity_json 在话题上是完整块 (含 真源 出处, 可回读复核)",
+            len(str(s0.get("identity_json") or "")) > 80 and "src" in str(s0.get("identity_json")),
+            "identity_json %d 字符 · 首 60: %s" % (len(str(s0.get("identity_json"))),
+                                                   str(s0.get("identity_json"))[:60]))
+    else:
+        skip("⑬d/⑬e 标识真在 DDS 话题上", "DDS 未收到样本: %s" % err9)
+    try:
+        tp = io.open(os.path.join(ROOT, "src", "lerobot", "dataspace", "topics.py"), encoding="utf-8").read()
+        blk = tp.split('"ss_torque": {', 1)[-1].split('"ds_dataset"', 1)[0]
+        need = ["task_id", "product_prime", "m_scale", "identity_json"]
+        miss = [k for k in need if k not in blk]
+        dm = io.open(os.path.join(ROOT, "tools", "dds", "ss_daemon.py"), encoding="utf-8").read()
+        dmiss = [k for k in ("task_id", "product_prime", "identity_json") if k not in dm]
+        chk("⑬f 标识字段已登记 (topics.py key_fields + 守护 pub_torque 转发)", not miss and not dmiss,
+            "key_fields 缺=%s · 守护缺=%s" % (miss or "无", dmiss or "无"))
+    except Exception as ex:                                                       # noqa: BLE001
+        chk("⑬f 标识字段登记", False, "读取失败: %s" % repr(ex)[:120])
 
     # ───────────────────────── 结论 ─────────────────────────
     print("\n" + "═" * 104)

@@ -108,6 +108,47 @@ def _read_db(db: str) -> dict:
     return out
 
 
+def read_task_cfg(root: str | None = None, orders: list | None = None) -> dict:
+    """🧮 **实际任务配置** —— 老倪 2026-10-14: 「我就是要看到记录实际任务配置的那个变量」
+
+    一个变量把"这次到底在按哪个任务干活"看全 (全部现读真源, 不猜不编):
+      · 活跃任务绑定 `config/ss_task_binding.json`   → active_task + 该任务全字段 (tasks 是 list)
+      · 任务清单     `config/tasks/tasks.json`       → tasks (list, 逐任务: 工序/变体/覆盖参数/判据)
+      · 工单         `config/orders/BS_*.json`       → 计数
+    返回 {active_task, active_name, recipe_type, scene_ref, site, n_tasks, task_names{id:name},
+          steps[活跃任务工序名], tasks[全清单], binding, tasks_doc, orders[], n_orders, src, loaded_at}
+    """
+    R = _root(root)
+    binding = _j(os.path.join(R, "config", "ss_task_binding.json"), {}) or {}
+    tasks_doc = _j(os.path.join(R, "config", "tasks", "tasks.json"), {}) or {}
+    bt = binding.get("tasks") if isinstance(binding, dict) else None
+    tt = tasks_doc.get("tasks") if isinstance(tasks_doc, dict) else None
+    b_list = bt if isinstance(bt, list) else []
+    t_list = tt if isinstance(tt, list) else []
+    names = {}
+    for t in t_list:
+        if isinstance(t, dict) and t.get("task_id"):
+            names[str(t["task_id"])] = str(t.get("name") or "")
+    aid = str((binding.get("active_task") if isinstance(binding, dict) else "") or "")
+    act = {}
+    for t in (b_list + t_list):
+        if isinstance(t, dict) and str(t.get("task_id")) == aid:
+            act = t
+            break
+    if orders is None:
+        orders = sorted(glob.glob(os.path.join(R, "config/orders/BS_*.json")))
+    return {"active_task": aid, "active_name": str(act.get("name") or names.get(aid, "")),
+            "recipe_type": str(act.get("recipe_type") or ""), "scene_ref": str(act.get("scene_ref") or ""),
+            "site": str(act.get("site") or ""),
+            "n_tasks": len(t_list or b_list), "task_names": names,
+            "steps": [str(s.get("name") or "") for s in (act.get("steps") or []) if isinstance(s, dict)],
+            "tasks": (t_list or b_list), "binding": binding, "tasks_doc": tasks_doc,
+            "orders": [os.path.basename(x) for x in orders], "n_orders": len(orders),
+            "src": {"binding": "config/ss_task_binding.json", "tasks": "config/tasks/tasks.json",
+                    "orders": "config/orders/BS_*.json"},
+            "loaded_at": time.strftime("%F %T")}
+
+
 def import_config_files(root: str | None = None, verbose: bool = True) -> dict:
     """📥 **加载配置文件** (节点运行 = 这个函数)。
 
@@ -138,14 +179,17 @@ def import_config_files(root: str | None = None, verbose: bool = True) -> dict:
             missing.append(relf)
     # 工单 (多文件)
     orders = sorted(glob.glob(os.path.join(R, "config/orders/BS_*.json")))
+    # 🧮 **实际任务配置** (老倪 2026-10-14: 「我就是要看到记录实际任务配置的那个变量」):
+    #    显式读成一个变量, 且放在**工程库读取(断点那一行)之前** ⇒ 调试停在这行时变量面板里就有它。
+    task_cfg = read_task_cfg(R, orders)
     # 工程库
     db = _read_db(os.path.join(R, DB_REL))
 
     # ── 摘要 (给节点 cfg_snapshot 用; 每个数都来自上面真源) ──
-    bind = _j(os.path.join(R, "config/ss_task_binding.json"), {}) or {}
+    bind = task_cfg["binding"]           # 🧮 实际任务配置 (上面已现读, 这里复用, 不重复读盘)
     reg = _j(os.path.join(R, "config/mcd/param_registry.json"), {}) or {}
     mcd = _j(os.path.join(R, "config/mcd/zmax_mcd.json"), {}) or {}
-    tasks = _j(os.path.join(R, "config/tasks/tasks.json"), {}) or {}
+    tasks = task_cfg["tasks_doc"]        # 🧮 同上 (任务清单真源)
     # 参数注册表: `params` 是 list(82); 就绪/缺口在 `summary.ready` / `summary.gaps` (真源字段, 不自算)
     _prm = reg.get("params")
     _total = len(_prm) if isinstance(_prm, (list, dict)) else 0
@@ -167,7 +211,8 @@ def import_config_files(root: str | None = None, verbose: bool = True) -> dict:
         "canvas": os.path.relpath(canvas_path(R), R),
     }
     res = {"ok": (not missing) and summary["db_ok"], "root": R, "files": files, "orders": [os.path.basename(x) for x in orders],
-           "db": db, "summary": summary, "missing": missing, "ms": int((time.time() - t0) * 1000)}
+           "db": db, "summary": summary, "missing": missing, "task_cfg": task_cfg,
+           "ms": int((time.time() - t0) * 1000)}
     if verbose:
         print("📥 导入配置文件 (真源 %d 项 + 工单 %d + 工程库) — 根 %s" % (len(files), len(orders), R))
         for f in files:
@@ -271,6 +316,9 @@ def main(argv=None) -> int:
         return 0
     if "--node" in argv:
         print(json.dumps(load_config(root), ensure_ascii=False, indent=1))
+        return 0
+    if "--task-cfg" in argv:
+        print(json.dumps(read_task_cfg(root), ensure_ascii=False, indent=1))
         return 0
     if "--json" in argv:
         print(json.dumps(import_config_files(root, verbose=False), ensure_ascii=False, indent=1))

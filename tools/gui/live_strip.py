@@ -331,7 +331,8 @@ def fmt_models(p, err):
     g = p.get("gpu") or {}
     tr = p.get("training") or []
     ms = p.get("models") or []
-    s = ("GPU %s%% · 显存 %s/%s MiB · %s°C · %sW · 在跑训练 %d · 模型 %d 条"
+    # 📏 2026-10-14 统一口径: 与「模型引擎 · L2~L5」标题行**逐字同款** (老倪读屏发现两处 GPU 行单位/措辞不一致)
+    s = ("GPU %s%% · 显存 %s/%sMB · %s°C · %sW · 训练中 %d · 模型 %d 条"
          % (g.get("util"), int(g.get("mem_used") or 0), int(g.get("mem_total") or 0),
             g.get("temp"), g.get("power"), len(tr), len(ms)))
     if tr:

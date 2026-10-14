@@ -485,7 +485,8 @@ class ManifoldEngine:
     def __init__(self, manifold_type: str = "sphere", latent_dim: int = 16,
                  state_dim: int = 43, action_dim: int = 4, gain: float = 0.3,
                  max_step: float = 0.05, manifold_M: float = MANIFOLD_M_DEFAULT,
-                 inertia: bool = False, homeostasis: bool = True) -> None:
+                 inertia: bool = False, homeostasis: bool = True,
+                 latent_provider=None, latent_provider_note: str = "") -> None:
         self.manifold_type = manifold_type
         self.latent_dim = int(latent_dim)
         self.state_dim = int(state_dim)
@@ -498,6 +499,13 @@ class ManifoldEngine:
         self.velocity: np.ndarray | None = None      # 动量 (二阶演化的速度状态)
         self.M_history: list[dict] = []              # M 标定/演化留痕 (只读旁路用)
         self.encoder = Encoder(latent_dim)
+        # 🧠 编码模型 (老倪 2026-10-14): 「流形是被预测出来的, 得加一个编码模型, INTACT呢?」
+        #   内建编码器 = PCA (对当前状态**拟合**潜坐标, 不预测); 外接编码模型 = 直接给出**预测的**
+        #   潜表示 (例: INTACT-JEPA 的 z_pred, 经 models/intact_fiber_map.json 已过闸的标定投到本引擎潜维)。
+        #   latent_provider=None ⇒ 逐位回到内建 PCA (零回归); 见 src/lerobot/manifold/encoder_model.py
+        self.latent_provider = latent_provider
+        self.latent_provider_note = str(latent_provider_note or "")
+        self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
         self.projector = ManifoldProjector(manifold_type)
         self.metric = MetricCalculator(manifold_type)
         self.navigator = Navigator(manifold_type)
@@ -522,6 +530,18 @@ class ManifoldEngine:
         return float(max(0.0, min(1.0, (float(x) - lo) / (hi - lo)))) if hi > lo else 0.0
 
     # ── 主标定参数 M (可读可写) ──
+    def set_latent_provider(self, provider, note: str = "") -> dict:
+        """接入/摘除**编码模型** (外部预测潜表示来源)。provider = callable() → 长度 latent_dim 的 z。
+
+        返回变更留痕 (供画布/日志/数据空间核对)。provider=None ⇒ 回到内建 PCA (零回归)。
+        """
+        prev = self.latent_provider_note
+        self.latent_provider = provider
+        self.latent_provider_note = str(note or "")
+        return {"provider": "编码模型" if provider is not None else "内建 PCA (Encoder.fit)",
+                "note_prev": prev, "note": self.latent_provider_note,
+                "latent_dim": int(self.latent_dim)}
+
     def set_M(self, value: float, inertia: bool | None = None) -> dict:
         """设置主标定参数 M (带范围校验; inertia=None 时保持原状)。
 
@@ -622,6 +642,21 @@ class ManifoldEngine:
         if unfitted:
             # 未拟合 (含 planned 流形): 不猜、不造 → 零潜向量 + 显式标注 (调用方据此忽略数值)
             z = np.zeros(self.encoder.latent_dim or self.latent_dim)
+        elif self.latent_provider is not None:
+            # 🧠 编码模型: 潜表示由**外部**给出 (VLM 视觉编码器→黎曼度规约束; 或 INTACT 预测潜表示)。
+            #   不读 state, 只校验维度 —— 维度不符就报错, 不截断。
+            #   返回 None = 当下没有新鲜输入 (相机停更/特征没算出来) ⇒ 回退内建 PCA, 且必须明写出来
+            #   (不静默: 静默回退会让上层以为在吃 L4 潜表示)。
+            _zx = self.latent_provider()
+            if _zx is None:
+                z = self.encoder.encode(np.asarray(state, float).reshape(-1))
+                self._z_fallback = "编码模型无新鲜输入 ⇒ 回退内建 PCA (本帧不是 L4 潜表示)"
+            else:
+                self._z_fallback = ""
+                z = np.asarray(_zx, float).ravel()
+                if z.size != int(self.latent_dim):
+                    raise ValueError("编码模型输出 %d 维 != 引擎潜维 %d (口径不符, 拒绝静默截断)"
+                                     % (z.size, int(self.latent_dim)))
         else:
             z = self.encoder.encode(np.asarray(state, float).reshape(-1))
         t1 = time.perf_counter()
@@ -641,7 +676,12 @@ class ManifoldEngine:
                 "constraint_ok": bool(resid < 1e-9),
                 "encoder_unfitted": bool(unfitted),
                 "t_encode_ms": round((t1 - t0) * 1e3, 3), "t_project_ms": round((t2 - t1) * 1e3, 3),
-                "manifold": self.manifold_type, "status": MANIFOLD_REGISTRY[self.manifold_type]["status"]}
+                "manifold": self.manifold_type, "status": MANIFOLD_REGISTRY[self.manifold_type]["status"],
+                # 🧠 潜坐标来源 (可核对): 内建 PCA 还是外部编码模型
+                "z_source": ((self.latent_provider_note or "编码模型 (未给说明)") + (
+                    (" · ⚠️ " + self._z_fallback) if getattr(self, "_z_fallback", "") else ""
+                )) if self.latent_provider
+                else "内建 PCA 编码器 (Encoder.fit, 对当前状态拟合; 非预测)"}
 
     def navigate(self, goal_point: np.ndarray, T: int = 16) -> dict:
         t0 = time.perf_counter()
@@ -731,6 +771,8 @@ class ManifoldEngine:
         if a.size:
             a = np.clip(a, -1.0, 1.0)
         rec = {"state": np.asarray(state, float).ravel(), "p": r["p"], "p_next": p_new,
+               # 🧠 潜表示来源必须随每步带出 (否则上下游只能"看到跑"，看不到喝的是哪条编码链)
+               "z_source": r.get("z_source"), "z_dim": int(np.asarray(r["z"]).size),
                "z": r["z"], "phi": gf["phi"], "grad": gf["grad"], "action": a,
                "confidence": r["confidence"], "anomaly": r["anomaly"],
                "residual": r["residual"], "feedback": fb, "decode_src": dec_src,

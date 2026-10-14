@@ -2274,6 +2274,31 @@ def _ss_ensure_obs43(log):
     _SS_STATE.update({"obs43": obs43, "obs39": obs39})
     return obs43
 
+def _seg_mask3d_obs(max_age_s=3.0):
+    """🧩 SAM3 掩膜级 3D 观测 → 融合用 (2026-10-14 老倪: 掩膜输出别悬着, 要进「融合定位建图」)。
+
+    真源: 🧩 开放词汇分割节点写下的 `_YOLO_CACHE['mask3d']` —— 掩膜内中位深度 + 手眼外参
+          → **base 系中心 / z / 足印 / yaw** (每目标一组)。
+    只认**同帧新鲜**的掩膜 (age ≤ max_age_s): 把上一帧的掩膜套到这一帧 = 假数据 ⇒ 宁可不给。
+    取不到返回 {} ⇒ 调用方走原路, 一个字段都不动 (零回退, 不编造)。
+    """
+    try:
+        mk = _YOLO_CACHE.get("mask3d") or {}
+        at = float((_YOLO_CACHE.get("seg_masks") or {}).get("at") or 0.0)
+        if not mk or not at or (time.time() - at) > float(max_age_s):
+            return {}
+        out = {}
+        for k, v in mk.items():
+            c = v.get("center_base") or []
+            if len(c) >= 2:
+                out[str(k)] = {"x": float(c[0]), "y": float(c[1]), "z_mm": v.get("z_mm"),
+                               "yaw_deg": v.get("yaw_deg"), "xy_size_mm": v.get("xy_size_mm"),
+                               "area_px": v.get("area_px"), "score": v.get("score"),
+                               "iou_yolo": v.get("iou_yolo"), "src": v.get("src"), "at": v.get("at")}
+        return out
+    except Exception:                                                       # noqa: BLE001
+        return {}
+
 def node_ss_s1(ctx):
     """融合定位建图 — 📡 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量: fuse_sensors() → 统一状态空间 43D (perception.py); 兼做建图 (manifold/localization_mapping.py)
     🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
@@ -2289,11 +2314,47 @@ def node_ss_s1(ctx):
             return True
         obs39, _img = _ss_env_obs(log)
         tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
+        # 🧩 SAM3 掩膜 3D → 融合 (2026-10-14: 先前"只算不用", 掩膜 3D 落在缓存里零消费者 = 老倪说的"悬着")
+        #   ① 掩膜可用 ⇒ 作**独立观测**入库 + 与框法**交叉校验**(偏差入状态), 参与融合质量判定;
+        #   ② 真要改写 3D 数值必须显式开闸 `ZMAX_FUSION_SEG=1` —— 未证明提升不进默认档。
+        seg_obs = _seg_mask3d_obs()
+        seg_dev_mm = None
+        if seg_obs:
+            _SS_STATE["seg_mask3d"] = seg_obs
+            try:
+                _o0 = seg_obs[sorted(seg_obs)[0]]
+                seg_dev_mm = float(np.linalg.norm(np.asarray([_o0["x"], _o0["y"]], float) -
+                                                 np.asarray(obs39[4:6], float))) * 1000.0
+                _SS_STATE["seg_mask3d_dev_mm"] = round(seg_dev_mm, 2)
+            except Exception:                                               # noqa: BLE001
+                seg_dev_mm = None
+            if os.environ.get("ZMAX_FUSION_SEG") == "1":
+                try:
+                    _o0 = seg_obs[sorted(seg_obs)[0]]
+                    obs39[4:6] = [float(_o0["x"]), float(_o0["y"])]
+                    if _o0.get("z_mm") is not None:
+                        obs39[6] = float(_o0["z_mm"]) / 1000.0
+                    _SS_STATE["seg_mask3d_used"] = sorted(seg_obs)[0]
+                except Exception:                                           # noqa: BLE001
+                    pass
+        else:
+            _SS_STATE.pop("seg_mask3d", None)
+            _SS_STATE.pop("seg_mask3d_dev_mm", None)
         obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
         _SS_STATE.update({"obs43": obs43, "obs39": obs39})
         if log:
             log(f"📡 融合定位建图 (真实): 视觉39D ⊕ 触觉4D → 统一状态空间 43D · hand={np.round(obs39[0:3],3)} "
                 f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
+            if seg_obs:
+                _o0 = seg_obs[sorted(seg_obs)[0]]
+                _dev = ("-" if seg_dev_mm is None else "%.1fmm" % seg_dev_mm)
+                log("   🧩 SAM3 掩膜 3D 观测[%s] base=(%.3f,%.3f)m z=%smm 足印=%s 帧=%s · 与框法偏差 %s%s" % (
+                    sorted(seg_obs)[0], _o0["x"], _o0["y"],
+                    ("-" if _o0.get("z_mm") is None else "%.0f" % float(_o0["z_mm"])),
+                    (_o0.get("xy_size_mm") or "-"), (_o0.get("src") or "-"), _dev,
+                    (" · 已按 ZMAX_FUSION_SEG=1 填进 39D" if os.environ.get("ZMAX_FUSION_SEG") == "1" else "")))
+            else:
+                log("   🧩 SAM3 掩膜 3D 观测: 本帧无 (未跑分割 / 帧非臂上相机 / 掩膜已过期) — 融合走框法")
         return True
     except Exception as e:
         if log:
@@ -2968,10 +3029,19 @@ def node_dsvl(ctx):
             if log:
                 log("🧿 DeepSeek-V4-Flash: ⚠️ 无可用画面 (真机帧不在 / 仿真帧未采样) — 不判读")
             return False
-        st = _vlm_ask_async("describe", img, dict(_vlm_ctx(ctx), instruction=ins), log)
+        _cx = dict(_vlm_ctx(ctx), instruction=ins)
+        st = _vlm_ask_async("describe", img, _cx, log)
         if log:
             log(f"🧿 DeepSeek-V4-Flash (deepseek-flash · Vision): 画面 {meta.get('frame')} "
                 f"({meta.get('frame_src')}) → 场景判读 (后台线程); 右键本节点可打开判读结果窗口")
+            _sg = _cx.get("seg") or {}
+            if _sg:
+                log("   🧩 输入选项·开放词汇分割(SAM3): %d 实例 · 类别=%s · 选中 %s · 帧=%s%s → 已进判读上下文" % (
+                    _sg.get("n_instances", 0), (_sg.get("labels") or "-"), _sg.get("n_selected"),
+                    _sg.get("frame_src") or "-",
+                    (" · 掩膜3D %d 组" % len(_sg.get("mask3d_base") or {})) if _sg.get("mask3d_base") else ""))
+            else:
+                log("   🧩 输入选项·开放词汇分割(SAM3): 本帧无 (🖼 分割节点未跑 / 结果过期) — 判读只用画面")
             r = (st or {}).get("result") or {}
             if st.get("pending"):
                 log("   ⏳ 判读中 (Cold start 60~134s, 缓存命中 ~1s) — 结果下一拍显示")
@@ -3174,6 +3244,28 @@ def _vlm_ctx(ctx):
         c["box"] = b3.get("box2d_obs")
     if b3.get("center"):
         c["tcp"] = [round(v, 4) for v in b3["center"]]
+    # 🧩 SAM3 开放词汇分割 → VLM 的**输入选项** (2026-10-14 老倪: 分割结果要给大模型当输入, 不许悬着)
+    #   只认**同帧新鲜**结果 (≤3s): 拿上一帧的掩膜当这一帧 = 假数据 ⇒ 宁可不给; 取不到就不加这一路。
+    try:
+        _sm = _YOLO_CACHE.get("seg_masks") or {}
+        _at = float(_sm.get("at") or 0.0)
+        if _sm and _at and (time.time() - _at) <= 3.0:
+            _inst = _sm.get("instances") or []
+            _labs = []
+            for _it in _inst:
+                _lb = _it.get("label")
+                if _lb and _lb not in _labs:
+                    _labs.append(_lb)
+            c["seg"] = {"n_instances": len(_inst), "labels": _labs[:6],
+                        "n_selected": _sm.get("n_selected"), "frame_src": _sm.get("src"),
+                        "area_px": [int(_it.get("area_px") or 0) for _it in _inst[:6]],
+                        "iou_yolo": [round(float(_it.get("iou_yolo") or 0), 3) for _it in _inst[:6]]}
+            _m3 = _seg_mask3d_obs()
+            if _m3:
+                c["seg"]["mask3d_base"] = {k: {"xy": [round(v["x"], 4), round(v["y"], 4)],
+                                               "z_mm": v.get("z_mm")} for k, v in _m3.items()}
+    except Exception:                                                          # noqa: BLE001
+        pass
     return {k: v for k, v in c.items() if v is not None}
 
 def _vlm_brief(j):
@@ -3894,6 +3986,15 @@ def node_ss_mani(ctx):
             cm = m.ContactManifold()
             r = cm.decompose(hand, peg_head, target, v, stage)
             _SS_STATE["contact_mani"] = r
+            # ⛓ 承接 L4 LoRA 节点算出的接触约束 (摩擦锥/穿透罚) —— 同一组数, 不另算一套
+            _ll = _SS_STATE.get("lora_l4") or {}
+            _lc = _ll.get("contact") or {}
+            if log and _lc:
+                log("   ⛓ 来自 L4 LoRA 节点的接触约束: f_n=%.3f ‖f_t‖=%.3f 锥余量 %.3f → %s · Φ_c=%.4g"
+                    % (float(_lc.get("f_n") or 0.0), float(_lc.get("f_t_norm") or 0.0),
+                       float(_lc.get("slack") or 0.0),
+                       "在锥内" if _lc.get("inside_cone") else "越锥(已投影)",
+                       float(_lc.get("phi_c") or 0.0)))
             if log:
                 log(f"🧮 接触流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {cm.summarize(r)}")
                 if r["axis"] is not None:
@@ -3905,6 +4006,12 @@ def node_ss_mani(ctx):
                         f"V̇={r['Vdot']:.3e}")
             return True
         if "性能" in name:
+            _ll2 = _SS_STATE.get("lora_l4") or {}
+            _lp = _ll2.get("performance") or {}
+            if log and _lp:
+                log("   ⛓ 来自 L4 LoRA 节点的性能流形: V_p=%.4g · η=%.4f · 黎曼梯度范数 %.4g (g_p 度量)"
+                    % (float(_lp.get("V_p") or 0.0), float(_lp.get("eta") or 0.0),
+                       float(np.linalg.norm(np.asarray(_lp.get("riemann_grad") or [0.0], float)))))
             pm = m.PerformanceManifold()
             r = pm.evaluate(peg_head, stage=stage)
             _SS_STATE["perf_mani"] = r
@@ -4128,6 +4235,21 @@ def node_ss_pred(ctx):
         idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
         if log:
             log("🧠 JEPA 世界模型预测器 [当前步]: encoder(z) → predictor → 接触/性能流形 → decoder 动作")
+        # ⛓ 老倪 2026-10-14: 本节点接在 🎛 L4 INTACT LoRA 微调**之后** ⇒ 条件必须真读它的输出
+        #    (接线≠被消费: 这里把上游 u_lora/度规步长读出来打进日志, 取不到就明写)
+        _ll = _SS_STATE.get("lora_l4") or {}
+        if log:
+            if _ll:
+                _pr = _ll.get("predictor") or {}
+                log("   ⛓ 条件来自 L4 LoRA 节点: ‖u_lora‖=%.4g · ‖Δu‖=%.4g/上限 %.4g%s · γ_eff=%.3f%s"
+                    % (float(np.linalg.norm(_ll.get("u_lora") or [])), float(_ll.get("du_norm") or 0.0),
+                       float(_ll.get("cap") or 0.0), " 已限幅" if _ll.get("clipped") else "",
+                       float(_ll.get("gate") or 0.0),
+                       "" if _ll.get("trained") else " · ⚠️ LoRA 未训练(恒等)"))
+                log("   ⛓ 本节点承接度规步长 ‖dz‖_g=%.4g (M·G 约束) ⇒ 沿测地线预测"
+                    % float(_pr.get("metric_norm") or 0.0))
+            else:
+                log("   ⚠️ 未取到 L4 LoRA 节点输出 (_SS_STATE['lora_l4'] 空) ⇒ 本步条件回退引擎潜坐标")
         # ── ① 真实 WorldModelPredictor 结构 + 前向维度自检 (几何 z R⁷ 对照实例) ──
         try:
             _ns = _pred_ns()
@@ -4306,7 +4428,9 @@ _reg("ss_skill_dict", ["技能词典"], "🧬 技能词典 · L2 动作基 — {
 
 _reg("ss_mem_links", ["跨层连接"], "🔗 跨层连接 · 记忆图谱 — 层间链接 links + 意图检索 recall", node_ss_mem_links)
 
-_reg("ss_intent_direct", ["意图直读"], "🔮 意图直读 · Direct (INTACT) — Δz→技能 kNN 无搜索 (ms 级)", node_ss_intent_direct)
+_reg("ss_intent_direct", ["元任务预测", "意图直读"],
+     "🧾 元任务预测 (驱动扭矩 → 元任务预测值) — 输入=流形引擎驱动扭矩 T_drive=M·(−∇Φ), 输出=逐元任务得分 top-k",
+     node_ss_intent_direct)
 
 _reg("ss_motor_hub", ["运动基元库", "肌肉记忆中枢", "运动基元"],
      "🦾 运动基元库 — L2 肌肉记忆共享抽象 (发力/速度/加速度/时长 → 全局基元, 参数压缩)",
@@ -4659,35 +4783,139 @@ def node_ss_moe(ctx):
     return True
 
 def node_ss_lora_l4(ctx):
-    """🎛 L4 · INTACT LoRA 微调 — 真源 tools/lora_inject.py (LoRALinear/inject_lora, r8/α16)
-    + tools/merge_lora_ckpt.py (merge 后才可部署)。现状取自磁盘 + 最新 Δu 诊断报告。"""
-    import glob
-    import json
-    import os as _o5
+    """🎛 L4 · INTACT LoRA 微调 (在役链路位置: INTACT 意图解码器 → **本节点** → 流形专家预测器)
+
+    老倪 2026-10-14: 「不想动 INTACT 原始模型权重，只需要修改 LoRA 节点；元任务预测节点的输出也要
+    接到 INTACT LoRA 微调节点；然后向后连接流形专家预测器，以及接触流形、性能流形。」
+
+    数学 (src/lerobot/manifold/manifold_chain.py, 可单跑自检):
+      ① LoRA 层: u_lora = u_int + γ·Δu,  Δu = γ_eff·(α/r)·mean_j(B_j A_j φ)   ← 原权重 W0 **冻结**
+         γ_eff = g(元任务预测值)  (L4/L5 层元任务预测得分的焦点权重 ⇒ 增益)
+         限幅: ‖Δu‖ ≤ ρ·容量, 容量=(α/r)‖B_j‖_F‖A_j‖_F‖φ_j‖  (ρ=0.35, 可复核上界)
+      ② 流形专家预测器: ẑ = z − δ·g⁻¹∇Φ(z) + R(z,u_lora);  g=M·G(x), det G=1
+      ③ 接触流形约束: 法向/切向分解 + Coulomb 摩擦锥 (‖f_t‖≤μf_n, 越锥投影) + 穿透罚 Φ_c
+      ④ 性能流形约束: V_p=½δᵀWδ · η=exp(−V_p/σ²) · 黎曼梯度 g_p⁻¹∇V_p · 帕累托非劣闸
+    """
+    import json as _j
+    import os as _o7
+    import numpy as _np
+
     log = ctx.get("log")
-    d = os.path.join(_swm_home(), "checkpoints", "intact_goal_optical_insert_v6lora_200")
-    pt = sorted(glob.glob(os.path.join(d, "*.pt")))
+    sys_path = _o7.path.join(_REPO_ROOT, "src")
+    if sys_path not in __import__("sys").path:
+        __import__("sys").path.insert(0, sys_path)
+    try:
+        from lerobot.manifold.manifold_chain import (ContactConstraint, L4Adapter,
+                                                     ManifoldExpert, PerformanceConstraint)
+    except Exception as e:                                                # noqa: BLE001
+        if log:
+            log(f"❌ L4 LoRA 链导入失败: {type(e).__name__}: {str(e)[:110]}")
+        return False
+
+    # ── ① 产物真源 (LoRA 包装 ckpt: 只有它含 lora_A/B; merged_* 已折叠=改了原权重, 不用) ──
+    ad = L4Adapter(_REPO_ROOT)
+    ok_a, note_a = ad.load()
     if log:
-        log("🎛 L4 · INTACT LoRA 微调: r=8 / α=16 · 注入 112 层线性 · 产物目录 checkpoints/"
-            "intact_goal_optical_insert_v6lora_200")
-        if pt:
-            log("   产物: " + " · ".join(f"{os.path.basename(p)} {os.path.getsize(p) / 1e6:.0f}MB" for p in pt))
+        log("🎛 L4 · INTACT LoRA 微调 (INTACT 意图解码器 → 本节点 → 流形专家预测器)")
+        log(f"   原权重: 冻结 (base.weight 不动) · 产物: {note_a}")
+
+    # ── ② 意图输入 u_int (真源优先级: 上游节点写入 > 引擎潜坐标 > 轨迹帧 > 无) ──
+    u_int, u_src = None, ""
+    st = _SS_STATE.get("lora_in") or {}
+    if isinstance(st, dict) and st.get("u_int"):
+        u_int = _np.asarray(st["u_int"], float); u_src = str(st.get("src") or "上游节点写入")
+    mod = ctx.get("module")
+    tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+    if u_int is None:
+        me = _SS_STATE.get("mani_eng") or {}
+        z_eng = me.get("z") if isinstance(me, dict) else None
+        if z_eng is not None:
+            u_int = _np.asarray(z_eng, float); u_src = "流形引擎 L4 潜坐标 z"
+    def _has_tr(_t):        # tr["t"] 可能是 list 也可能是 ndarray ⇒ 不能用布尔真值判断 (实测 ambiguous)
+        try:
+            return bool(_t) and (len(_t.get("t")) > 0 if _t.get("t") is not None else False)
+        except Exception:                                                # noqa: BLE001
+            return False
+    if u_int is None and _has_tr(tr):
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        u_int = _np.asarray(tr["obs"][idx][:16], float) if tr.get("obs") else None
+        u_src = f"轨迹帧 obs[:16] (idx={idx})"
+    if u_int is None:
+        u_int = _np.zeros(16)
+        u_src = "无意图输入 (占位 0) ⇒ Δu 平凡"
+
+    # ── ③ 元任务预测值 (门控真源: zmax_data/ss_live/meta_pred.json) ──
+    meta_pred = None
+    mp_path = _o7.path.join(_REPO_ROOT, "zmax_data", "ss_live", "meta_pred.json")
+    if _o7.path.exists(mp_path):
+        try:
+            meta_pred = _j.load(open(mp_path, encoding="utf-8"))
+        except Exception:                                                 # noqa: BLE001
+            meta_pred = None
+
+    # ── ④ 链路一步: LoRA → 专家预测 → 接触流形 → 性能流形 ──
+    stage = str(_SS_STATE.get("mani_frame", {}).get("stage") or _SS_STATE.get("stage") or "")
+    r_lora = ad.forward(u_int, meta_pred, stage)
+    grad_phi = _np.asarray((_SS_STATE.get("mani_eng") or {}).get("grad") or _np.zeros(16), float)
+    expo = ManifoldExpert(M=float(_SS_STATE.get("M") or 3.643))
+    r_pred = expo.step(r_lora["u_lora"], grad_phi)
+    cc = ContactConstraint()
+    hand = f_vec = axis = v_vec = None
+    h_pen = 0.0
+    if _has_tr(tr):
+        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        try:
+            hand = _np.asarray(tr["x"][idx], float)
+            peg_head = _np.asarray(tr["peg_head"][idx], float)
+            target = _np.asarray(tr["target"][idx], float)
+            v_vec = _np.asarray(tr["v_vec"][idx], float) if tr.get("v_vec") else _np.zeros(3)
+            from lerobot.manifold.manifold_layer import ContactManifold  # noqa: PLC0415
+            cm = ContactManifold()
+            dec = cm.decompose(hand, peg_head, target, v_vec, stage)
+            axis = dec.get("axis")
+            f_vec = _np.concatenate([_np.asarray(dec.get("e_par", _np.zeros(3)), float),
+                                     _np.asarray(dec.get("e_perp", _np.zeros(3)), float)])[:3]
+        except Exception:                                                 # noqa: BLE001
+            pass
+    if axis is None:
+        axis = _np.array([1.0, 0.0, 0.0])
+    if f_vec is None:
+        f_vec = _np.asarray(r_lora["du"][:3], float)
+        f_src = "Δu 前 3 维 (无轨迹帧 ⇒ 无真实接触力, 如实)"
+    else:
+        f_src = "轨迹帧 e∥/e⊥ 合成 (真实几何误差作接触力输入)"
+    r_contact = cc.apply(f_vec, axis, v=v_vec, h=h_pen)
+    pc = PerformanceConstraint()
+    d_perf = None
+    if _has_tr(tr):
+        try:
+            d_perf = _np.asarray(tr["peg_head"][idx], float) - _np.asarray(tr["target"][idx], float)
+        except Exception:                                                 # noqa: BLE001
+            d_perf = None
+    r_perf = pc.evaluate(_np.zeros(3) if d_perf is None else d_perf)
+
+    # ── ⑤ 交给下游 (流形专家预测器/接触流形/性能流形 节点真读这里) ──
+    _SS_STATE["lora_l4"] = {
+        "u_int": r_lora["u_int"].tolist(), "u_lora": r_lora["u_lora"].tolist(),
+        "du_norm": r_lora["du_norm"], "capacity": r_lora["capacity"], "cap": r_lora["cap"],
+        "clipped": bool(r_lora["clipped"]), "trained": bool(r_lora["trained"]),
+        "gate": float(r_lora["gate"][0]), "src": r_lora["src"], "note": note_a,
+        "predictor": {"z_next": r_pred["z_next"].tolist(), "metric_norm": r_pred["metric_norm"]},
+        "contact": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in r_contact.items()},
+        "performance": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in r_perf.items()},
+    }
+    if log:
+        log(f"   意图输入 u_int: {u_src} · ‖u_int‖={float(_np.linalg.norm(r_lora['u_int'])):.4g}")
+        log("   " + ad.summary(r_lora))
+        log(f"   元任务预测门控: {r_lora['gate_note']}")
+        log("   " + expo.summary(r_pred))
+        log(f"   接触流形 [{f_src}]: " + cc.summary(r_contact))
+        log("   性能流形: " + pc.summary(r_perf) + ("" if d_perf is not None
+            else " ⚠️ 无轨迹帧 ⇒ δ=0 (平凡, 不是真性能)"))
+        if not r_lora["trained"]:
+            log("   ⚠️ 未训练/无产物 ⇒ Δu=0 (恒等, 零回归) —— 没有假装有微调")
         else:
-            log("   产物: 缺 (目录不存在)")
-        rep = sorted(glob.glob(os.path.join(_REPO_ROOT, "reports", "diag_lora_du_*intact_l4_v6lora_200.json")))
-        if rep:
-            try:
-                j = json.load(open(rep[-1], encoding="utf-8"))
-                cm = j.get("compare", {})
-                k = next((k for k in cm if k.endswith(":direct")), None)
-                if k:
-                    f = cm[k]["final"]
-                    log(f"   Δu 诊断 ({os.path.basename(rep[-1])}): 最终指令与解析链逐位相同 "
-                        f"{f.get('identical_frames')}/{f.get('frames')} 帧 · Δu_raw 均值 {cm[k]['raw_l4'].get('d_norm_mean'):.2f}"
-                        " → 根因=幅值比中位 5.2~5.8×(红线 1.5×) 被 L2 收口闸逐帧否决")
-            except Exception as e:                                        # noqa: BLE001
-                log(f"   Δu 诊断读取失败: {type(e).__name__}")
-        log("   ⏳ 待办: 对齐层把幅值比收到 ~1 后同口径重跑 3seed×4臂 A/B (有提升才切在役指针)")
+            log("   ⏳ 待办: LoRA A/B 与统一主干/阶段专家同口径 A/B (留出集+平凡基线) 有提升才切在役指针")
     return True
 
 def node_ss_lora_l3(ctx):

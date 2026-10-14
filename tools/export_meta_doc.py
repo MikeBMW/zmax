@@ -78,11 +78,23 @@ def build_meta_tasks():
     byname = {n["name"]: n["id"] for n in nodes}
     sb = _j(os.path.join(SRC, "ss_task_binding.json"))
     tasks = sb["tasks"]
+    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」—— 描述真源 = function_notes.json
+    #   (每个功能点: work 干什么活 / pain 卡在哪 / state 当前状态)。GUI/文档/工程库/交底书 一处取数。
+    _nf = _j(os.path.join(DB, "function_notes.json")) or {}
+    NOTES = (_nf.get("notes") or {}) if isinstance(_nf, dict) else {}
 
     node2tasks = defaultdict(list)
     for t in tasks:
         for nid in (t.get("enabled_nodes") or []):
             node2tasks[nid].append(t["task_id"])
+
+    # 真实依赖 = 画布连线 (links 的 t←f): config_meta 的 deps.functions 实测 74/74 为空,
+    # 唯一有据的依赖来源就是画布上游节点 ⇒ 用它, 不手写依赖表 (2026-10-14)。
+    nid2name = {n["id"]: n["name"] for n in nodes}
+    up_ids = defaultdict(set)
+    for lk in (canvas.get("links") or []):
+        if lk.get("t") and lk.get("f"):
+            up_ids[lk["t"]].add(lk["f"])
 
     bad = []
     MT = []
@@ -106,6 +118,16 @@ def build_meta_tasks():
             "prio_rank": {"P0": 0, "P1": 1, "P2": 2}[prio],
             "verification": ((v.get("verification") or {}).get("methods") or [])[:4],
             "deps_fn": (v.get("deps") or {}).get("functions") or [],
+            "note": NOTES.get(fn_id) or {},
+            # ── 《元任务标准模板》字段 (2026-10-14 老倪文档): 输入/输出/配置参数/依赖关系/承载场景 ──
+            "inputs": ((v.get("fields") or {}).get("inputs") or []),
+            "outputs": ((v.get("fields") or {}).get("outputs") or []),
+            "deps_up": sorted({nid2name.get(x, x) for x in up_ids.get(nid, ())}) if nid else [],
+            "scenes": ["%s(%s)" % (t.get("scene_ref") or "—", t.get("task_id"))
+                       for t in tasks if t["task_id"] in ts],
+            "params_head": ["%s=%s%s" % (p.get("cn") or p.get("id"), p.get("value"),
+                                         ("" if p.get("unit") in (None, "-") else p.get("unit")))
+                            for p in params[:3]],
         })
 
     MT.sort(key=lambda m: (m["prio_rank"], LAYER_SEQ.get(m["layer"], 9),
@@ -344,7 +366,20 @@ def render_md(MT, ctx):
     A("| 导出产物 | `元任务开发计划_<日期>.md` / `.docx` / `.pdf` |")
     A("| 生成链 | 真源 → Markdown → HTML → LibreOffice(soffice) → docx/pdf |")
     A("| 实现脚本 | `tools/export_meta_doc.py` |")
-    A("| GUI 入口 | 「配置中心 → 📋 任务配置 → 📄 导出 Word/PDF」 |")
+    A("| GUI 入口 | 「配置中心 → 📋 任务配置 → 📄 元任务计划 (Word/PDF)」 |")
+    A("")
+    A("### 7.3 配置中心两项拆分（任务配置 / 工单配置）\n")
+    A("> 老倪 2026-10-14：「将元任务，这些信息，体现在配置中心的 任务配置；"
+      "将原来的工艺工单任务，拆解成 任务配置 和 工单配置 两项」\n")
+    A("| 项 | 左树/页签 | 粒度 | 真源 | 内容 |")
+    A("|---|---|---|---|---|")
+    A("| **任务配置** | 📋 任务配置 | **元任务**（功能 + 配置参数） | `config_meta.json` + "
+      "画布连线 + `tasks.json` + `ss_task_binding.json` | 元任务清单（标准模板七字段：功能名称/输入/输出/"
+      "配置参数/依赖关系/验证方法/承载场景）+ 任务表 14 列（原样保留）|")
+    A("| **工单配置** | 🧾 工单配置 | **工单实例**（一次执行） | `config/orders/BS_*.json` | "
+      "工单身份/配方/变体/选项/目标/安全/防错链/站点就绪（原 6 列保留，新维度追加在后）|")
+    A("")
+    A("拆的是**粒度**，不是换列：原任务表的列一列未动，原工单表 6 列保留、新维度追加在后面。")
     A("")
     A("---\n")
     A("## 八、风险与对策\n")
@@ -369,13 +404,25 @@ def render_md(MT, ctx):
     A(f"3. **工程级**：{len(MT)}/{len(MT)} 元任务完成，数据一致性校验全绿，配置中心可导出 Word/PDF；")
     A("4. **证据级**：所有验收以**视频 / 数据实证**为准，不以“已实现”声明为准。\n")
     A("---\n")
-    A("## 附录 A · 元任务参数明细（前 8 个示例）\n")
+    A("## 附录 A · 元任务标准模板（示例，前 8 个）\n")
+    A("每个元任务按《元任务标准模板》登记七个字段（全部实读真源，不人工编造）：")
+    A("功能名称 / 输入 / 输出 / 配置参数 / 依赖关系 / 验证方法 / 承载场景。\n")
     for m in MT[:8]:
         A(f"### {m['mt_id']} {m['name']}（{m['fn_id']} · {m['layer']}）")
-        A(f"- 画布节点：`{m['node_id']}`　代码：`{m['code_file'] or '—'}`")
-        A(f"- 承载任务：{', '.join(m['tasks']) or '（未接入）'}")
-        A(f"- 参数 {m['n_params']} 条（专属 {m['n_specific']}）")
+        A(f"- 功能名称：{m['name']}")
+        if m.get("note"):
+            A(f"- 干什么活：{m['note'].get('work') or '—'}")
+            A(f"- 卡在哪：{m['note'].get('pain') or '—'}")
+            A(f"- 现在什么状态：{m['note'].get('state') or '—'}")
+        A(f"- 输入：{' / '.join(m['inputs']) or '—（真源未登记）'}")
+        A(f"- 输出：{' / '.join(m['outputs']) or '—（真源未登记）'}")
+        A(f"- 配置参数：{m['n_params']} 条（专属 {m['n_specific']}）——"
+          f"{'；'.join(m['params_head']) or '—'}")
+        A(f"- 依赖关系：{' / '.join(m['deps_up']) or '—（画布无上游）'}"
+          + (f"；登记函数依赖：{' / '.join(m['deps_fn'])}" if m['deps_fn'] else ""))
         A(f"- 验证方法：{' / '.join(m['verification']) or '—'}")
+        A(f"- 承载场景：{' / '.join(m['scenes']) or '—（未接入任务）'}")
+        A(f"- 归属层 · 画布节点 · 代码：{m['layer']} · `{m['node_id']}` · `{m['code_file'] or '—'}`")
         A("")
     A("---\n")
     A("**编制**：AI 助手（Hermes）　**依据**：工程真源实读　**日期**：2026-10-14\n")

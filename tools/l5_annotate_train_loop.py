@@ -632,18 +632,42 @@ def stage_supervision(st: dict, batch_dir: str) -> dict:
     _n_map = int((stat or {}).get("mapped_boxes") or 0)
     _zero_reason = None
     if _n_map <= 0:
-        _tgt = (r.get("targeted") or {})
-        _cams_ok = int((r.get("summary") or {}).get("n_ok") or 0) if isinstance(r.get("summary"), dict) else 0
-        _n_tgt = int(_tgt.get("n_boxes") or 0)
-        _lat = [_c.get("latency_s") for _c in (_tgt.get("cams") or {}).values() if _c.get("latency_s")]
-        if _cams_ok == 0:
+        # 🔧 2026-10-14 老倪「怎么报错了? 现场怎么回事」的**真因**:
+        #   原来这里读 `r["summary"]["n_ok"]` —— 该键本函数**从来不设置** ⇒ 恒 0 ⇒ 无论真因如何
+        #   都报「①所有相机都没拿到帧 (相机离线)」。实测现场: n_frames=4 · 每路 ok=true ·
+        #   latency 163.6s · 7 个框全被跳过(标签是"插槽/托盘槽位", 不在类别表 peg/OPT_Gold) —— 
+        #   跟"相机离线"毫无关系, 是**报错口径错了**, 现场被误导。
+        #   修: 只用本函数**真有的量**分开判 ①②③, 并把现场数字写进原因 (不编)。
+        _n_frames = int(r.get("n_frames") or 0)
+        _cam_ok = 0
+        try:
+            for fn in sorted(os.listdir(batch_dir)):
+                if fn.endswith(".json") and not fn.endswith(("summary.json", "_ann.json", "_target.json")):
+                    _dd = json.load(open(os.path.join(batch_dir, fn), encoding="utf-8"))
+                    if isinstance(_dd, dict) and _dd.get("ok"):
+                        _cam_ok += 1
+        except Exception:                                                   # noqa: BLE001
+            _cam_ok = 0
+        _n_obj = sum(len(d.get("objects") or []) for d in recs)
+        _lat = [float(d.get("latency_s") or 0) for d in recs if d.get("latency_s")]
+        _lat_max = max(_lat) if _lat else 0.0
+        _sl = (stat or {}).get("skipped_labels") or {}
+        _sl_txt = " · ".join("%s×%s" % (k, v) for k, v in
+                             sorted(_sl.items(), key=lambda kv: -kv[1])[:5]) or "无"
+        _scene = next((str(d.get("scene") or "") for d in recs if d.get("scene")), "")
+        if _n_frames == 0 or (_cam_ok == 0 and _n_frames == 0):
             _zero_reason = "①所有相机都没拿到帧 (流没起/相机离线) → 0 框"
-        elif _n_tgt == 0 and _lat and max(_lat) > 60:
-            _zero_reason = ("②VLM 返回空/超时 (单片 %.0fs) —— 多半是 max_tokens<3000 导致 content 为空, "
-                            "或图过暗/无目标 → 0 框" % max(_lat))
+        elif _n_obj == 0 and _lat_max > 60:
+            _zero_reason = ("②VLM 返回空/超时 (单片 %.0fs · %d 路 ok · %d 帧) —— 多半是 content 为空 "
+                            "或图过暗/无目标 → 0 框" % (_lat_max, _cam_ok, _n_frames))
+        elif _n_obj == 0:
+            _zero_reason = ("②VLM 没识别出任何目标 (%d 路 ok · %d 帧 · 0 objects) → 0 框"
+                            % (_cam_ok, _n_frames))
         else:
-            _zero_reason = ("③VLM 识别了但都不是目标类别 (未命中类别表 %s; 见 skipped_labels) → 0 框"
-                            % ("/".join((stat or {}).get("classes") or [])))
+            _zero_reason = ("③VLM 标了 %d 个框, 但没有一个落在训练类别表 (%d 路 ok · %d 帧 · 跳过: %s%s) "
+                            "→ 本批画面里没有可训练目标 (不是相机/流的问题)"
+                            % (_n_obj, _cam_ok, _n_frames, _sl_txt,
+                               (" · VLM 画面描述: " + _scene[:70]) if _scene else ""))
     r.update({"supdir": supdir, "l2_root": L2_ROOT, "session": sess, "stats": stat,
               "build": {k: build.get(k) for k in ("n_train", "n_val", "n_boxes", "classes",
                                                   "auto_in_val", "n_auto_train", "val_overlap_train",
@@ -1143,5 +1167,21 @@ def main() -> int:
     return 0 if st.get("status") == "done" else 1
 
 
+def _finish(rc: int) -> None:
+    """🔻 交付退出码 —— **判据结论 ≠ 崩溃**。
+
+    老倪 2026-10-14 实测: 调试器里跑本工具, 退出时弹「Exception has occurred: SystemExit 1」,
+    看着像代码报错; 其实 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
+    用 `os._exit` 交付同一个退出码 (CI/脚本语义完全不变), 但不再抛 SystemExit ⇒ 调试器不再误报异常。
+    ⚠️ `os._exit` 跳过缓冲刷新 ⇒ 先显式 flush。
+    """
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:                                                        # noqa: BLE001
+        pass
+    os._exit(int(rc))
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _finish(main())

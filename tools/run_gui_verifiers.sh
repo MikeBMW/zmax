@@ -37,4 +37,7 @@ run engineering       tools/verify_engineering.py
 run canvas_render     tools/verify_canvas_render.py
 run node_impl_audit   tools/ss_node_impl_audit.py
 run console_text_sync tools/audit_console_consistency.py
+run me_same_render tools/verify_model_engine_same_render.py
+seg_to_fusion tools/verify_seg_into_fusion.py
+run seg_dsvl_link     tools/verify_seg_dsvl_canvas_link.py
 echo "══ 完 ══"

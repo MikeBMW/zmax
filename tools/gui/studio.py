@@ -54,6 +54,29 @@ try:
 except Exception as _be:                                                        # noqa: BLE001
     print("工程状态自恢复跳过: %r" % (_be,))
 
+# 🧮 2026-10-14 老倪: 「必须能进入这个断点 (config_import.py:142 `db = _read_db(...)`) —— 改」
+#   真因: config_import 原来只在**主参数节点执行**/CLI 时才被惰性 import ⇒ 启动期这个文件根本不在进程里,
+#   VSCode 里断点是空心的(Unbound)、按多少次运行都不停。现在把「配置真源 + 工程库」的**读取提到启动流程**:
+#     · 走同一条函数链: import_config_files() → _read_db(os.path.join(R, DB_REL))  ← 断点就落在这行
+#     · **只读**(不写画布节点): 节点回写仍由主参数节点的 write_into_node 负责, 免得启动期动画布
+#     · 失败不拦启动, 只如实打一行 (取不到就说取不到, 不编)
+try:
+    import importlib as _il_boot
+    _src_boot = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+    if os.path.isdir(_src_boot) and _src_boot not in sys.path:
+        sys.path.insert(0, _src_boot)
+    _ci_boot = _il_boot.import_module("lerobot.engineering.config_import")
+    _cf_boot = _ci_boot.import_config_files(verbose=False)      # ← 这一句会执行 config_import.py:142
+    _nm_boot = [str(f.get("name")) for f in (_cf_boot.get("files") or []) if f.get("name")]
+    _db_boot = (_cf_boot.get("db") or {})
+    _tc_boot = _cf_boot.get("task_cfg") or {}          # 🧮 实际任务配置 (一个变量看全)
+    print("📚 启动期配置真源预读: 配置 %d 项 (%s) · 工程库 %s · 实际任务 %s %s"
+          % (len(_nm_boot), " · ".join(_nm_boot),
+             "✅ 在位" if _db_boot.get("exists") else "❌ 取不到",
+             _tc_boot.get("active_task") or "—", _tc_boot.get("active_name") or ""))
+except Exception as _ce:                                                        # noqa: BLE001
+    print("启动期配置真源预读跳过: %r" % (_ce,))
+
 # 🔬 2026-10-10 启动探测 (老倪 Windows exe 双击报 `MemoryError: Unable to allocate output buffer`):
 #   实测那行字 = **zlib 解包时分配不到内存**(CPython `_BlocksOutputBuffer`), 即启动那几秒进程拿不到内存,
 #   不是包坏也不是代码 bug —— 是机器侧的事, 远端看不见。所以在任何重依赖 import 之前, 先把
@@ -737,6 +760,9 @@ class SystemLayerCard(QFrame):
 
         # 2026-10-09 老倪: 边框彩色 (每卡不同) · 卡里字浅/灰两色 · 卡面深色不用白底
         title = QLabel(label)
+        # 📏 2026-10-14 读屏实拍: 侧栏卡面标题「🏭 Z-MAX 平台」被建成「🏭 Z-MAX 平」(右侧紧贴边框硬裁,
+        #   无省略号) —— 大屏字体放大后单行放不下。开 wordWrap (高度由侧栏 _snap_label_heights 复算)。
+        title.setWordWrap(True)
         title.setFont(QFont("Arial", 12, QFont.Bold))
         title.setStyleSheet(f"color:{C_CARD_TITLE}; background:transparent; border:none; margin:0; padding:0;")
         layout.addWidget(title)
@@ -885,7 +911,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.7")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.71")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -965,6 +991,8 @@ class SystemSidebar(QFrame):
 
         # 底部信息 (紧跟卡片, 不再插弹簧 → 不留空隙)
         info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
+        # 📏 2026-10-14: 原来单行硬裁, 读屏看到「5.2-zmax.1.0」/「eRobot · Z-MA」(两侧都被切) ⇒ 允许换行
+        info.setWordWrap(True)
         info.setFont(QFont("Consolas", 11))
         info.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
         info.setAlignment(Qt.AlignCenter)
@@ -4048,43 +4076,60 @@ class DataSpaceModule(QWidget):
 class TrainingModule(QWidget):
     """Training Console - Support for SmolVLA and custom policy training"""
 
-    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (参考宝马整车配置表 — 类别分组 × 7模型横列)
-    ZOO_SPEC = [
-        ("🏗 架构", [
-            ("架构", {"ACT": "ResNet18→Transformer", "SmolVLA": "SmolVLM2-500M→DiT-B", "SmolVLA+LEW": "SmolVLM2·LEW→DiT-B·LEW",
-                      "VLA-Touch": "DINOv2→baseVLA", "AWE": "SigLIP→H-JEPA", "MLP 蒸馏": "MLP 512", "官方专家": "PD控制律", "状态空间": "MLP 512×3→4D", "YOLO检测": "YOLOv8n·CSPDarknet(C2f)→PAN-FPN→解耦头"}),
-            ("VLM 层", {"ACT": "—", "SmolVLA": "16", "SmolVLA+LEW": "16", "VLA-Touch": "8", "AWE": "6", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
-            ("CNN 层", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "—", "YOLO检测": "8×C2f+SPPF"}),
-            ("状态编码", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "39D→512", "官方专家": "—", "状态空间": "39D→512", "YOLO检测": "—"}),
-            ("动作调制", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "8阶段门控融合", "YOLO检测": "—"}),
-            ("Expert 层", {"ACT": "—", "SmolVLA": "4", "SmolVLA+LEW": "4", "VLA-Touch": "2", "AWE": "2", "MLP 蒸馏": "1", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
-            ("模型宽度", {"ACT": "512", "SmolVLA": "1024", "SmolVLA+LEW": "1024", "VLA-Touch": "256", "AWE": "256", "MLP 蒸馏": "512", "官方专家": "—", "状态空间": "512", "YOLO检测": "—"}),
-            ("世界模型", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "✅ LeWorldModel", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 状态空间估计器", "YOLO检测": "—"}),
-        ]),
-        ("🛡 安全", [
-            ("安全机制", {"ACT": "Sys0 外部壳", "SmolVLA": "Sys0 外部壳", "SmolVLA+LEW": "Sys0 外部壳", "VLA-Touch": "Sys0 外部壳",
-                       "AWE": "Sys0 外部壳", "MLP 蒸馏": "Sys0 外部壳", "官方专家": "PD力控有界+Sys0", "状态空间": "内置否决+限幅+Sys0", "YOLO检测": "—"}),
-            ("动作限幅", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "✅ 力控闭环", "状态空间": "✅ clip(±0.6~±1)", "YOLO检测": "—"}),
-            ("力限值", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "力控≤5N", "状态空间": "5N(过盈≤2N)", "YOLO检测": "—"}),
-            ("否决重试", {"ACT": "—", "SmolVLA": "—", "SmolVLA+LEW": "—", "VLA-Touch": "—", "AWE": "—", "MLP 蒸馏": "—", "官方专家": "—", "状态空间": "✅ 残差>2.0→减速×3", "YOLO检测": "—"}),
-        ]),
-        ("⚙️ 训练", [
-            ("步数", {"ACT": "4000", "SmolVLA": "4000", "SmolVLA+LEW": "4000", "VLA-Touch": "4000", "AWE": "4000", "MLP 蒸馏": "4000", "官方专家": "基准", "状态空间": "3000", "YOLO检测": "50 epoch"}),
-            ("批量", {"ACT": "8", "SmolVLA": "1", "SmolVLA+LEW": "1", "VLA-Touch": "1", "AWE": "1", "MLP 蒸馏": "8", "官方专家": "—", "状态空间": "8", "YOLO检测": "8"}),
-            ("学习率", {"ACT": "1e-4", "SmolVLA": "1e-4", "SmolVLA+LEW": "1e-4", "VLA-Touch": "1e-4", "AWE": "1e-4", "MLP 蒸馏": "1e-4", "官方专家": "—", "状态空间": "1e-4", "YOLO检测": "自动"}),
-            ("VAE", {"ACT": "🚫无", "SmolVLA": "无", "SmolVLA+LEW": "无", "VLA-Touch": "无", "AWE": "无", "MLP 蒸馏": "🚫无", "官方专家": "—", "状态空间": "无", "YOLO检测": "—"}),
-        ]),
-        ("📊 数据·输出", [
-            ("动作块", {"ACT": "100", "SmolVLA": "100", "SmolVLA+LEW": "100", "VLA-Touch": "50", "AWE": "50", "MLP 蒸馏": "100", "官方专家": "—", "状态空间": "1", "YOLO检测": "—"}),
-            ("状态空间", {"ACT": "39D", "SmolVLA": "39D", "SmolVLA+LEW": "39D", "VLA-Touch": "39D+触觉", "AWE": "39D+力觉", "MLP 蒸馏": "39D", "官方专家": "39D", "状态空间": "39D·仿真", "YOLO检测": "39D 输出"}),
-            ("结构条件", {"ACT": "✅", "SmolVLA": "✅", "SmolVLA+LEW": "✅", "VLA-Touch": "✅", "AWE": "✅", "MLP 蒸馏": "✅", "官方专家": "—", "状态空间": "—", "YOLO检测": "—"}),
-        ]),
-        ("🏆 性能", [
-            ("插拔结果", {"ACT": "0/10 → novae 0.066m接近", "SmolVLA": "训练中", "SmolVLA+LEW": "训练中", "VLA-Touch": "训练中",
-                          "AWE": "训练中", "MLP 蒸馏": "2/5 唯一可插拔", "官方专家": "85% 🏆基准", "状态空间": "仿真蒸馏 · 4/4 ✅", "YOLO检测": "感知前端 · mAP 0.994"}),
-        ]),
-    ]
-    ZOO_MODELS = ["ACT", "SmolVLA", "SmolVLA+LEW", "VLA-Touch", "AWE", "MLP 蒸馏", "官方专家", "状态空间", "YOLO检测"]
+    def showEvent(self, e):
+        """🧩 2026-10-14: 页面**显示后**再把内层滚动区撑到内容高。
+
+        建页时表还没挂进页面的 QScrollArea ⇒ 那时往上走父链找不到滚动区, 改了也没用
+        (真机实测: 内层滚动区最小高 600px 会把 1522px 的配置通道表切得只剩前 5 行)。
+        """
+        super().showEvent(e)
+        self._cfg_fit_inner_scroll()
+
+    def _cfg_fit_inner_scroll(self):
+        """把配置通道表所在的内层 QScrollArea 最小高提到内容高 (整页滚动交给外层)。"""
+        _dbg = os.environ.get("ZMAX_CFG_DEBUG")
+        try:
+            _t = getattr(self, "cfg_matrix_table", None)
+            _par = _t.parentWidget() if _t is not None else None
+            while _par is not None:
+                if isinstance(_par, QScrollArea):
+                    _cw = _par.widget()
+                    _h = _cw.sizeHint().height() if _cw is not None else 0
+                    if _dbg:
+                        print("[cfgfit] 找到 QScrollArea: 内容hint=%d min=%d" % (_h, _par.minimumHeight()), flush=True)
+                    if _h > _par.minimumHeight():
+                        _par.setMinimumHeight(int(_h))
+                    return
+                _par = _par.parentWidget()
+            if _dbg:
+                print("[cfgfit] 没找到内层 QScrollArea (表=%r)" % (getattr(self, "cfg_matrix_table", None),),
+                      flush=True)
+        except Exception as _e:                                                  # noqa: BLE001
+            if _dbg:
+                print("[cfgfit] 异常: %r" % (_e,), flush=True)
+
+    def open_model_engine_window(self):
+        """🧠 模型引擎窗口 (L2~L5) — 老倪 2026-10-14:
+        「改变模型配置，L2~L5 在模型引擎窗口，要能方便的查看控制所有模型的训练状态，执行任务工程」
+        同一个窗口里: 四层在役/推理/训练状态 + 逐层 ▶训练/■停止/📄日志/📂目录 + 🚀 执行任务工程。
+        """
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from model_engine_window import ModelEngineWindow
+            w = getattr(self, "_me_win", None)
+            if w is None or not w.isVisible():                          # 已开着就抬起来, 不重复开
+                # 🖥 2026-10-14: 不传 parent (瞬态窗口 GNOME 禁最大化); 实例仍存在 self._me_win 上
+                w = ModelEngineWindow(None)                             # 非模态独立窗: 可一边看训练一边操作
+                w.setWindowFlag(Qt.Window, True)
+                self._me_win = w
+            w.show()
+            w.raise_()
+            return w
+        except Exception as _e:                                          # noqa: BLE001
+            print("[model_engine_window] 打开失败: %r" % (_e,))
+            return None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -4151,7 +4196,22 @@ class TrainingModule(QWidget):
         title = QLabel("🧠 Model Engine")  # 2026-08-08 老倪: SmolVLA Training Console → Model Engine (模型引擎)
         title.setStyleSheet(f"color: {C_WHITE}; font-size: 20px; font-weight: bold;")
         top_bar.addWidget(title)
-        
+
+        # 🧠 2026-10-14 老倪: 「L2~L5 在模型引擎窗口, 要能方便的查看控制所有模型的训练状态, 执行任务工程」
+        #   ⇒ 顶部一键开出独立窗口 (四层状态 + 逐层训练/停止/日志 + 执行任务工程), 不离开本页
+        self.btn_me_window = QPushButton("⧉ 弹出为窗口 (同一界面)")
+        self.btn_me_window.setToolTip("本页已内嵌「模型引擎」(L2~L5); 这里只是把它弹出来看 (拖动到第二屏用), "
+                                     "界面与页面内完全一致 · ▶训练本层 · ■停止 · 📄日志 · 🚀执行任务工程")
+        try:
+            self.btn_me_window.setStyleSheet(
+                f"QPushButton{{background:{C_CARD};color:{C_WHITE};border:1px solid {C_BORDER};"
+                f"border-radius:6px;padding:6px 14px;font-size:18px;font-weight:bold}}"
+                f"QPushButton:hover{{border-color:{C_CYAN}}}")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self.btn_me_window.clicked.connect(self.open_model_engine_window)
+        top_bar.addWidget(self.btn_me_window)
+
         top_bar.addStretch()
         
         # ===== 🖥 训练引擎选择 (2026-08-08 老倪: 顶部 — 本地/远程 GPU 选择) =====
@@ -4262,6 +4322,29 @@ class TrainingModule(QWidget):
         top_bar.addWidget(src_lbl)
         
         layout.addLayout(top_bar)
+
+        # ===== 🧠 模型引擎面板 (L2~L5) =====
+        #   2026-10-14 老倪: 「现在的模型引擎，与主界面功能区的模型引擎，界面应该是一个」
+        #   ⇒ 本页直接内嵌 `ModelEnginePanel` (与弹窗**同一份代码同一个界面**),
+        #     顶部按钮只是把它"弹出来看" (同一界面, 不另做一套)。
+        try:
+            _d = os.path.dirname(os.path.abspath(__file__))
+            if _d not in sys.path:
+                sys.path.insert(0, _d)
+            from model_engine_window import ModelEnginePanel
+            self.me_panel = ModelEnginePanel(self, poll=True)
+            self.me_panel.setMinimumHeight(300)
+            # 🖥 2026-10-14 老倪: (a) 窗口要能拖宽/最大化 (面板已不钉死宽度) (b) 两处默认视图仍要一致
+            #   ⇒ 功能区页面里的面板宽度 = 窗口默认宽 (同一个 default_w()), 不是随父容器拉伸。
+            try:
+                self.me_panel.setFixedWidth(ModelEnginePanel.default_w())
+            except Exception:                                                    # noqa: BLE001
+                pass
+            layout.addWidget(self.me_panel)
+        except Exception as _e:                                                  # noqa: BLE001
+            print("[model_engine] 页面内嵌面板失败: %r" % (_e,))
+            self.me_panel = None
+
         
         # ===== Training Parameter Area =====
         self.param_group = QGroupBox(" 配置通道 ")  # 🐛 2026-08-08 老倪: ID 渲染到控件
@@ -4309,8 +4392,8 @@ class TrainingModule(QWidget):
         param_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         param_layout.setContentsMargins(0, 4, 0, 0)
 
-        # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
-        self._build_zoo_table(param_layout)
+        # 🧩 2026-10-14 老倪: 换成与状态空间工程实际数据一致的真源矩阵 (旧 Model Zoo 实验表不再当现状显示)
+        self._build_config_matrix(param_layout)
         
         # 🐳 2026-08-08 老倪: 容器管理 — 简化为几个点选控件 (单选 radio, 不搞复杂状态机)
         cg = QGroupBox(" 🐳 容器管理 ")
@@ -5611,83 +5694,210 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
         except Exception:
             pass
 
-    # 🏁 2026-08-08 老倪: Model Zoo 横向配置对比表 (宝马整车配置表风格 — 类别分组 × 7模型横列)
-    def _build_zoo_table(self, layout):
+    # 🧩 2026-10-14 老倪: 「你看下面的配置通道，都是之前的模型配置了。现在要与状态空间工程实际数据一致。
+    #   最开始配置中心的模型配置，就是配置模型的。也没对应上啊」
+    #   ⇒ 「配置通道」不再用 2026-08-08 的 Model Zoo 实验表 (ACT/VLA-Touch/AWE/官方专家…), 改成**真源现算**:
+    #     tools/model_config_matrix.py (在役模型/权重/体积/参数量/训练入口/最近训练/状态空间节点+话题)。
+    #     真源取不到就明写"真源取不到", **不退回旧表**(拿旧数据当现状就是骗人)。
+    def _build_config_matrix(self, layout):
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
-        n_cols = len(self.ZOO_MODELS) + 1
-        n_rows = 1 + sum(len(items) + 1 for _, items in self.ZOO_SPEC)  # 表头 + (类别行+参数行)
-        t = QTableWidget(n_rows, n_cols)
-        t.setObjectName("zoo_table")
-        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        t.setSelectionMode(QAbstractItemView.NoSelection)
-        t.setFocusPolicy(Qt.NoFocus)
-        t.verticalHeader().setVisible(False)
-        t.horizontalHeader().setVisible(False)
-        t.setShowGrid(True)
-        # 🐛 2026-08-08 老倪: 表格自身滚动条关闭 (外层 scroll 已有 — 两个拖动条重复)
-        t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        t.setStyleSheet("""
-            QTableWidget#zoo_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
-                                     gridline-color:#30363d; font-size:20px; }
-            QTableWidget#zoo_table::item { padding:4px 8px; }
+        m = {}
+        try:
+            p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                             "reports", "model_config_matrix.json")
+            with open(p, encoding="utf-8") as f:
+                m = json.load(f)
+        except Exception as _e:                                                  # noqa: BLE001
+            m = {}
+        cols = m.get("columns") or []
+        if not cols:
+            lab = QLabel("⚠ 模型配置真源取不到 (reports/model_config_matrix.json 缺) — "
+                         "请跑: ./gui-venv311/bin/python tools/model_config_matrix.py --write")
+            lab.setStyleSheet(f"color:{C_RED}; font-size:16px;")
+            layout.addWidget(lab)
+            return
+        bar = QHBoxLayout()
+        t = QLabel("真源现算 · %s · 来源: model_inventory / 8796 引擎状态 / 状态空间画布 / 模型配置域 / 最近训练"
+                   % (m.get("ts") or "?"))
+        t.setStyleSheet(f"color:{C_GRAY}; font-size:14px;")
+        bar.addWidget(t)
+        bar.addStretch()
+        btn = QPushButton("🔄 重取真源")
+        btn.setStyleSheet(f"QPushButton{{background:{C_CARD};color:{C_WHITE};border:1px solid {C_BORDER};"
+                          f"border-radius:6px;padding:4px 12px;font-size:15px}}")
+        btn.clicked.connect(lambda: self._reload_config_matrix(tbl))
+        bar.addWidget(btn)
+        # ⚠️ 2026-10-14 实测崩溃: 这个 layout 是 **QFormLayout** (没有 addLayout/addWidget) ⇒
+        #   直接 addLayout 会 AttributeError → 建页异常 → 遗留线程 → "QThread: Destroyed while thread is
+        #   still running" → Fatal Python error: Aborted (core dumped)。此处按布局类型自适应。
+        _bw = QWidget()
+        _bw.setLayout(bar)
+        self._cfg_add(layout, _bw)
+
+        groups = m.get("groups") or []
+        n_rows = 1 + sum(len(g.get("rows") or []) + 1 for g in groups)
+        n_cols = 1 + len(cols)
+        tbl = QTableWidget(n_rows, n_cols)
+        tbl.setObjectName("cfg_matrix_table")
+        tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        tbl.setSelectionMode(QAbstractItemView.NoSelection)
+        tbl.setFocusPolicy(Qt.NoFocus)
+        tbl.verticalHeader().setVisible(False)
+        tbl.horizontalHeader().setVisible(False)
+        tbl.setShowGrid(True)
+        tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        tbl.setStyleSheet("""
+            QTableWidget#cfg_matrix_table { background:#161b22; border:1px solid #30363d; border-radius:6px;
+                                            gridline-color:#30363d; font-size:18px; }
+            QTableWidget#cfg_matrix_table::item { padding:4px 8px; }
         """)
-        # 表头: 参数名 + 7 模型
         h = QTableWidgetItem("配置项")
         h.setTextAlignment(Qt.AlignCenter)
         h.setBackground(QColor("#21262d")); h.setForeground(QColor("#58a6ff"))
-        h.setFont(QFont("Arial", 13, QFont.Bold))
-        t.setItem(0, 0, h)
-        for c, nm in enumerate(self.ZOO_MODELS):
-            it = QTableWidgetItem(nm)
+        h.setFont(QFont("Arial", 12, QFont.Bold))
+        tbl.setItem(0, 0, h)
+        for c, col in enumerate(cols):
+            # 📏 2026-10-14 读屏实拍: 原来取在役模型名前 16 字 ⇒ 硬切在词中间且**没有省略号**
+            #   ("INTACT-JEPA 意图-动" / "DeepSeek 视觉规划 (L")。改成**按词边界取短名** + 截断必带 "…"。
+            _full = str(col.get("在役模型") or "")
+            _short = _full.split(" ")[0].split("(")[0].split("（")[0].strip()   # 取到第一个空格/括号为止
+            if len(_short) > 14:
+                _short = _short[:14] + "…"
+            it = QTableWidgetItem("%s · %s" % (col.get("layer"), _short or _full[:14]))
             it.setTextAlignment(Qt.AlignCenter)
             it.setBackground(QColor("#21262d")); it.setForeground(QColor("#58a6ff"))
-            it.setFont(QFont("Arial", 12, QFont.Bold))
-            t.setItem(0, c + 1, it)
-        t.setRowHeight(0, 30)
-        # 类别分组 + 参数行 (宝马配置表风格)
+            it.setFont(QFont("Arial", 11, QFont.Bold))
+            it.setToolTip("%s · %s · %s" % (col.get("layer"), col.get("在役模型"), col.get("版本")))
+            tbl.setItem(0, c + 1, it)
+        tbl.setRowHeight(0, 30)
         r = 1
-        for cat, items in self.ZOO_SPEC:
-            ci = QTableWidgetItem(f"  {cat}")
+        for g in groups:
+            ci = QTableWidgetItem("  %s" % g.get("cat"))
             ci.setBackground(QColor("#1f2733")); ci.setForeground(QColor("#00d4aa"))
             ci.setFont(QFont("Arial", 12, QFont.Bold))
-            t.setItem(r, 0, ci)
-            t.setSpan(r, 0, 1, n_cols)          # 类别行横跨全宽
-            t.setRowHeight(r, 26)
+            tbl.setItem(r, 0, ci)
+            tbl.setSpan(r, 0, 1, n_cols)
+            tbl.setRowHeight(r, 26)
             r += 1
-            for pname, pvals in items:
-                pi = QTableWidgetItem("  " + pname)
+            for row in (g.get("rows") or []):
+                pi = QTableWidgetItem("  " + str(row.get("name")))
                 pi.setBackground(QColor("#161b22")); pi.setForeground(QColor("#e6edf3"))
-                pi.setFont(QFont("Arial", 12, QFont.Bold))
-                t.setItem(r, 0, pi)
-                for c, nm in enumerate(self.ZOO_MODELS):
-                    v = pvals.get(nm, "—")
+                pi.setFont(QFont("Arial", 11, QFont.Bold))
+                tbl.setItem(r, 0, pi)
+                _is_path = (row.get("name") == "权重路径")
+                for c, col in enumerate(cols):
+                    v = str((row.get("vals") or {}).get(col.get("layer")) or "—")
+                    if _is_path and len(v) > 52:
+                        # 与「模型引擎窗口」同一口径: 显示尾部保留可辨识片段(带 … 明示省略),
+                        # 完整路径进 tooltip (hover 可见) —— 既不静默截断, 也不让整行被撑成 3 行
+                        v = "…" + v[-52:]
                     it = QTableWidgetItem(v)
                     it.setTextAlignment(Qt.AlignCenter)
                     it.setBackground(QColor("#161b22"))
-                    it.setForeground(QColor("#ffd33d") if ("✅" in v or "🏆" in v or "唯一" in v or "novae" in v) else QColor("#c9d1d9"))
-                    t.setItem(r, c + 1, it)
-                t.setRowHeight(r, 28)
+                    it.setForeground(QColor("#ffd33d") if ("在役" in v or "rc=0" in v) else
+                                     (QColor("#f85149") if ("未登记" in v or "无训练" in v or "rc=1" in v)
+                                      else QColor("#c9d1d9")))
+                    it.setToolTip(v)                      # 完整值 (列窄也不丢)
+                    tbl.setItem(r, c + 1, it)
+                tbl.setRowHeight(r, 28)
                 r += 1
-        hdr = t.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
-        for c in range(2, n_cols):
-            hdr.setSectionResizeMode(c, QHeaderView.Stretch)
-        t.setMinimumHeight(n_rows * 28 + 30)  # 内容全高 — 外层 scroll 滚动 (表格自身不滚)
-        layout.addRow(t)
-        self.zoo_table = t
-        # 旧参数控件隐藏 (表格替代显示 — 控件保留供训练逻辑读值)
-        for w in (getattr(self, a, None) for a in
-                  ("steps_spin", "batch_spin", "lr_spin", "vlm_layers_spin", "expert_layers_spin",
-                   "chunk_spin", "obs_steps_spin", "diffusion_spin", "freeze_checkbox",
-                   "world_model_checkbox", "vlm_info", "expert_width_spin")):
-            if w is not None:
-                try:
-                    w.setVisible(False)
-                except Exception:
-                    pass
+        try:
+            tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            for c in range(1, n_cols):
+                tbl.horizontalHeader().setSectionResizeMode(c, QHeaderView.Stretch)
+        except Exception:                                                        # noqa: BLE001
+            pass
+        # 📐 2026-10-14 二次实测: 权重路径(86 字绝对路径)/状态空间节点 这类长格在 581px 列里会被 Qt
+        #   静默右截(且**没有省略号**) —— 老倪口径「关键列不许截断、完整路径要看得见」。
+        #   ⇒ 全部值格开自动换行, 并按**实测字宽**给每行算够行高 (长格换成 2~3 行, 一个字都不丢)。
+        try:
+            from PyQt5.QtGui import QFontMetrics as _FM                               # noqa: PLC0415
+            tbl.setWordWrap(True)
+            _fm = _FM(tbl.font())
+            _lh = _fm.height() + 6
+            for r in range(tbl.rowCount()):
+                _lines = 1
+                for c in range(tbl.columnCount()):
+                    it = tbl.item(r, c)
+                    if it is None or c == 0:
+                        continue
+                    _w = tbl.columnWidth(c)
+                    if _w <= 0:
+                        continue
+                    _need = _fm.horizontalAdvance(it.text()) + 12
+                    _lines = max(_lines, -(-_need // _w))                          # 向上取整
+                if _lines > 1:
+                    tbl.setRowHeight(r, int(_lh * min(_lines, 4)))
+        except Exception:                                                        # noqa: BLE001
+            pass
+        # 📏 2026-10-14 实测: 只设行高不设**表高** ⇒ 布局给多少就多少(435px) 而内容 588px,
+        #   竖滚动条又被 AlwaysOff ⇒ 末 5 行(候选组那一块)**直接看不见**。
+        #   ⇒ 按内容定表高 (与模型引擎窗口四层表同一口径), 页面滚动交给外层 QScrollArea。
+        try:
+            _need = sum(tbl.rowHeight(r) for r in range(tbl.rowCount())) \
+                + (tbl.horizontalHeader().height() if tbl.horizontalHeader().isVisible() else 0) \
+                + tbl.frameWidth() * 2 + 2
+            tbl.setFixedHeight(int(_need))
+            tbl.setMinimumWidth(0)
+        except Exception:                                                        # noqa: BLE001
+            pass
+        try:
+            self.cfg_matrix_table = tbl
+        except Exception:                                                        # noqa: BLE001
+            pass
+        self._cfg_add(layout, tbl)
+        # 🐛 2026-10-14 真机 3200 宽实测 (父链取证): 表自己是 1522px 高、21 行全在, 但页面里那个**内层
+        #   QScrollArea 最小高只有 600px** ⇒ 表被切得只剩前 5 行 (老倪读屏报"只渲染到版本行就收边")。
+        #   把该内层滚动区最小高提到内容高 ⇒ 表内 21 行一次看全, 整页滚动交给外层 QScrollArea。
+        # 建页时父链还没接完 (页面容器稍后才插进 QScrollArea) ⇒ 用定时器在页面就位后再撑一次;
+        # showEvent 那条路在"页面已可见后才建内容"的时序下不会触发, 所以这里必须补两拍。
+        for _ms in (800, 2500, 6000):
+            try:
+                QTimer.singleShot(_ms, self._cfg_fit_inner_scroll)   # ⚠️ 必须用模块级 QTimer:
+                #   studio 里 `_QTimer` 只在个别函数内是局部别名 (模块级叫 QTimer),
+                #   写成 _QTimer 会 NameError 被 except 静默吞掉 ⇒ 这一整段形同不存在。
+            except Exception as _e:                                              # noqa: BLE001
+                print("[cfgfit] 定时器排程失败: %r" % (_e,), flush=True)
 
+    @staticmethod
+    def _cfg_add(layout, w):
+        """按布局类型挂控件 (QFormLayout 只有 addRow; QVBoxLayout/HBoxLayout 用 addWidget)。"""
+        try:
+            if hasattr(layout, "addRow"):
+                layout.addRow(w)
+            else:
+                layout.addWidget(w)
+        except Exception:                                                        # noqa: BLE001
+            try:
+                layout.addWidget(w)
+            except Exception:                                                    # noqa: BLE001
+                pass
+
+    def _reload_config_matrix(self, tbl):
+        """🔄 重取真源: 真跑 tools/model_config_matrix.py, 就地刷新表内容 (不重建控件)。"""
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            subprocess.run([sys.executable, os.path.join(root, "tools", "model_config_matrix.py"), "--write"],
+                           cwd=root, timeout=300, capture_output=True, text=True)
+            m = json.load(open(os.path.join(root, "reports", "model_config_matrix.json"), encoding="utf-8"))
+            cols = m.get("columns") or []
+            for c, col in enumerate(cols):
+                it = tbl.item(0, c + 1)
+                if it:
+                    it.setText("%s · %s" % (col.get("layer"), str(col.get("在役模型") or "")[:16]))
+            r = 1
+            for g in (m.get("groups") or []):
+                r += 1
+                for row in (g.get("rows") or []):
+                    for c, col in enumerate(cols):
+                        it = tbl.item(r, c + 1)
+                        if it:
+                            v = str((row.get("vals") or {}).get(col.get("layer")) or "—")
+                            it.setText(v); it.setToolTip(v)
+                    r += 1
+        except Exception as _e:                                                  # noqa: BLE001
+            print("[cfg_matrix] 重取失败: %r" % (_e,))
     # 🤖 模型选择变化 (2026-08-08 老倪: SmolVLA 是 7 模型之一 — 参数区标题/属性/参数预设跟随)
     def _on_model_changed(self, name):
         try:
@@ -6318,7 +6528,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     reg.append((f"S-{len([r for r in reg if r[2] == '开关']) + 1:02d}", f"训练开关 {nm}", "开关",
                                 lambda w=w: "开" if w.isChecked() else "关"))
             # 表格/日志 (T-xx / L-xx)
-            if hasattr(self, "zoo_table"):
+            if hasattr(self, "cfg_matrix_table"):          # (旧 zoo_table 已于 2026-10-14 下线)
                 reg.append(("T-01", "配置通道表格", "表格", lambda: "7 模型" ))
             if hasattr(self, "log_text"):
                 reg.append(("L-01", "终端日志区", "日志", lambda: f"{self.log_text.document().blockCount()} 行"))
@@ -6347,8 +6557,8 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                                               lambda w=w: "选中" if w.isChecked() else "未选")
             if hasattr(self, "_btn_upload_ct"):
                 self._holo_coord_register("P03", "02", "04", self._btn_upload_ct, "上传容器到远程", "按钮")
-            if hasattr(self, "zoo_table"):
-                self._holo_coord_register("P03", "03", "01", self.zoo_table, "配置通道表格", "表格")
+            if hasattr(self, "cfg_matrix_table"):          # (旧 zoo_table 已于 2026-10-14 下线)
+                self._holo_coord_register("P03", "03", "01", self.cfg_matrix_table, "配置通道表格", "表格")
             if hasattr(self, "log_text"):
                 self._holo_coord_register("P03", "06", "01", self.log_text, "终端日志区", "日志")
             self._holo_refresh()
@@ -10962,6 +11172,32 @@ def _msg(parent, title, text, kind="info", yes_no=False, yes_text=None, no_text=
     mb.exec_()
     return False
 
+# ── 🧾 工程文件"已加载配置"名称清单 (2026-10-14 老倪: 弹窗只列配置名称, 数字/哈希/路径全不要) ──
+#   键顺序 = 工程文件里段的自然顺序; 只报**文件里真有的段** (没有的不编)。
+_PROJ_SECTION_NAMES = (
+    ("canvas", "画布 · 状态空间工程"),
+    ("run_cfg", "运行档位"),
+    ("ui", "界面状态"),
+    ("panel", "右侧栏配置"),
+    ("task_binding", "任务绑定"),
+    ("tasks", "任务 / 工单"),
+    ("calibration", "标定"),
+    ("master_param", "主参数 M"),
+    ("measure", "测量"),
+    ("debug_state", "调试状态 (任务/数据源/场景)"),
+)
+
+
+def _pj_loaded_names(path):
+    """从工程文件真源取「已加载配置的名称」——只给名字, 不给计数/哈希/索引。"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:                                                            # noqa: BLE001
+        return []
+    return [nm for k, nm in _PROJ_SECTION_NAMES if isinstance(d, dict) and k in d]
+
+
 def _msg_ok(parent, title, text, kind="info"):
     """深色信息/警告框 (无返回值)"""
     _msg(parent, title, text, kind=kind)
@@ -10983,7 +11219,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.7 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.71 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -10991,9 +11227,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.7 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.71 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.71: L4 潜空间与后段链: VLM 通用视觉编码器 → 黎曼度规约束 → INTACT LoRA 微调 → 流形专家预测器 → 接触/性能流形  · L4 潜空间 (新): VLM 视觉塔 (SmolVLM2, 768 维) 作编码输入 + 黎曼度规约束 (g_f=(1/M)diag(σ²), det=1,   广义特征分解, z=Vᵀg_f^{-1/2}(f-μ)∈R^16) 落 models/l4_latent_calib.json; 引擎加编码模型注入点   (latent_provider/z_source, 无新鲜输入回退内建 PCA 并明写); 常驻回路 --encoder l4 (独立线程 + 帧龄)。 · L4 后段链 (新): 意图解码器 → INTACT LoRA 微调 (冻结原权重, 只调 ΔW=(α/r)BA, 元任务预测值作增益门控   γ_eff, 限幅 ρ×容量) → 流形专家预测器 (测地线一步 + 度规步长) → 接触流形 (摩擦锥/穿透罚) →   性能流形 (V_p/η + 黎曼梯度 + 帕累托闸); 数学层 src/lerobot/manifold/manifold_chain.py (自检 9/9)。 · 画布重排: LoRA 节点入链 (意图解码器之后), 元任务预测 → LoRA, LoRA → 专家预测器/接触/性能/DiT,   删两条旁路 (绕过微调), UI 按 x 递增排序; 下游节点真读 LoRA 输出 (日志 ⛓ 承接)。 · 判据: L4 潜空间 10/10 · L4 后段链 8/8 · 常驻回路 16/16 · 任务绑定/工程库/画布层级全绿。
         # v5.50.7: 5.50.7 (2026-10-13 · 开发版)  **真机 L2 运动三案收口: 「点了不动」/「连点都不动」/「速度不实」** —— ① **速度口径落到真实 mm/s**: 定位出第二道折扣是**控制器在线倍率**(SDK `adjustSpeedOnline`, 在役 ≈0.1) ⇒ 名义 18.7 实测只有 1.83/1.85mm/s(10%, 三条独立数据一致)。新增 `sdk_ctl speed-scale` 子命令(带 idle+automatic 前置闸; SDK 无 getter ⇒ 只能实测验证), 实调 scale=1.0 后实测: 名义10 ⇒ 9.44mm/s(94%) · 名义18.7 ⇒ 15.22(81%)。**不采用"换算层乘 10"** —— 那会让名义值膨胀到 1e4, 倍率一旦被改回 1 就是 10m/s 冲出去的隐患。 ② **速度档位 1/10/20/50/100/200/500/1000 mm/s, 四处收口同口径**(工位页真源 `tools/web/station.html` + `cam_live_stream.py` 重复内联副本 · 服务 `/ctl/move` [1,1000] · 腿 `MAX_SPEED_MM_S` 300→1000 · 代理 `sdk_ctl.MAX_SPEED_MM_S` 60→200→1000(改后重启容器) · 技能注册表 `speed_max`→11000 units · 执行器 `MANUAL_SPEED_UNITS=200` 保留老倪"手动回点位慢一些"的口径), 且**不再静默截断**: 任何一层压速必打一行 `⚠️ … 把速度从 A 压到 B (名义 X mm/s)`。 ③ **「点了不动」两个真因**: 控制器停在 **drag(拖动/示教)或 manual** 态 ⇒ 拒绝一切程序下发(腿 rc=3 ABORT 机器人不空闲) ⇒ 新增 `sdk_ctl drag`(`--on` 进/默认退) 与 `mode`(`--auto` 切自动/默认手动) 两个子命令, 改完读回; **一条 MoveL 里同时平移 + 大姿态变化**被控制器以 50102/50113 直接拒(实测阈值 **20.49°**; 被拒实例 255mm/24.7° · 255mm/24.7° · 157mm/28.6° · 特征 rc=6 且**残差=全量位移**、6.9s 零位移; 姿态差 ≤8° 的全过) ⇒ 腿最后一道收口加 **ROT_SPLIT 姿态分步**(姿态差 >15° 先**原地** slerp 分步转身 ≤5°/步, 转身完再平移 ⇒ 平移段姿态差 ≤5° 必过), 离线判据 `verify_rot_split.py`(真实点对 + 90/150/179°: 每段 ≤5° · 平移段残差 ≤5° · 无 NaN)全过, 真机已跑通 3 次(每段残差 0.0mm), `ZMAX_SDK_LEG_ROT_SPLIT=0` 可退回直发。 ④ **被拒不再堵队(现场"连点几下都不动"的元凶)**: 腿当场拒绝后执行器原来还要**空等到位窗口跑满**(实测 ~130s)才返回 ⇒ 连点全堵在 FIFO。现 `wait_arrive(fail_check=...)`: 腿的失败行一出现就**立刻**中止, 日志给结论 `🛑 阶段 X/Y 被**腿当场拒**(不再空等到位窗口 Ns)` + 腿的原话; 离线判据: 窗口 30s ⇒ **0.00s** 返回。 ⑤ **AR/AOI 信号总线 `ar.` 停摆修复**: 常驻拉取器没在跑 ⇒ 信号分析里 `ar.末端.*` 与 102 条 AR 空间点位/AOI 话题显示近 2 小时旧值; 拉起后抽样验证与真值一致到 0.01mm(帧龄 0.1~0.3s)。 ⑥ 现场口径留档: 速度倍率 3 组实测 · 被拒 3 例 · 模式拒绝 1 例 · 姿态分步离线表 · ar. 一致性抽样; 全部修法都带 env 回退开关。
         # v5.50.6: 5.50.6 (2026-10-13)  **功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议** —— 新增 `tools/verify_feature_io.py`: 功能=画布节点, 输出 topic=`ss/<节点id>/out`, 输入 topic=上游节点输出 topic+连线总线; **真 DDS 往返实测**(发布/订阅两个独立参与者 + 挂单播配置) ⇒ 74/74 通道 ✅, 注册 typed 话题 6/16 有流量(其余本刻无发布端如实标注)。 新增 `tools/delivery/gen_scene_doc.py`: 按配置模板出**摆盘/插拔两份**交付文档(目标 99%/3.5s · 工程配置(场景切换/点位/位置角度/指标目标) · 任务配置(工艺技能/参数覆盖/档位) · 功能清单(每行: 详细描述+输入topic+输出topic+可测性能指标) · 每功能 topic 实测 · 结论与达成路径)。 新增 `tools/delivery/gen_contract_pack.py`: 供应商 SOR ×2(md+docx, 9 章) + 合作协议(机器人数据平台提供/销售 · 解决方案采购; 含 99%/3.5s 验收口径与实测差距)。 修坑: 订阅端不挂单播配置 ⇒ 与单播发布端互相发现不到 ⇒ 实测『收 0 条』假失败; Cyclone 匹配数 API 是 `get_matched_publications()`(用错名静默返 0 ⇒ 74/74 被误判 0/74)。 交付版 **5.50.C**(量产交付版), 飞书分三档送达并服务端回读核验(字节+sha256 全一致); 归档 `zmax_data/release_5.50.6_20261013/`(MANIFEST+sha256sums)。
         # v5.50.5: AOI 侧面(10083)判据图改「本机口径」(搜矩形刚体→纯旋转摆正→剖面扩暗头部; env ZMAX_AOI_SURFACE_RECT=0 回退) · 真机奇异区分段到位(stepwise_goto/close_loop_to_point/probe_motion_axes) · AOI 示教四点三源对账 · 建图单会话累积 + 每 20s 落盘 · ss_torque 判据 30/30 · 版本位/指纹同步
@@ -11710,7 +11947,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.50.7  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.71  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -11742,6 +11979,14 @@ class StudioMainWindow(QMainWindow):
         self._nav_cmd_timer.start(300)
         self._nav_cmd_seen = set()   # 已处理命令去重 (防重复执行同内容)
 
+    def _cfg_task_note(self, msg):
+        """cfg_task 的取证轨迹 (stdout 抓不全时靠这个文件)。"""
+        try:
+            with open("/tmp/zmax_cfg_task.log", "a", encoding="utf-8") as _f:
+                _f.write("%s %s\n" % (time.strftime("%H:%M:%S"), msg))
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def _poll_nav_cmd(self):
         """📡 轮询外部命令文件 /tmp/zmax_nav_cmd (一行=一个命令)"""
         try:
@@ -11764,6 +12009,26 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
                         _oneshot(self, 300, self._run_ss_cmd)
+                    # 🧩 2026-10-14 老倪: 「画布太大了, 我找不到」⇒ 命令通道加"跳到 SAM3 分割节点"
+                    elif line == "ss_focus_seg":
+                        _oneshot(self, 600, self._focus_seg_cmd)
+                    # 🧠 2026-10-14 老倪: 「在模型引擎里要增加 SAM3, 你来设计UI显示」⇒ 命令通道弹模型引擎窗口
+                    #   (窗口内容 = 页内同一个 ModelEnginePanel; L2 下面是 🔎 候选行, SAM3 就在那)
+                    elif line == "model_engine":
+                        # 注意: open_model_engine_window 在 TrainingModule(页面) 上, 不在主窗口上 ⇒ 按栈找承载页
+                        _tm = None
+                        try:
+                            for _i in range(self.stack.count()):
+                                _w = self.stack.widget(_i)
+                                if _w is not None and hasattr(_w, "open_model_engine_window"):
+                                    _tm = _w
+                                    break
+                        except Exception:                                     # noqa: BLE001
+                            _tm = None
+                        if _tm is not None:
+                            _oneshot(self, 900, _tm.open_model_engine_window)
+                        else:
+                            self.statusBar().showMessage("📡 模型引擎: 没找到承载页面", 2500)
                     # 🧿 2026-09-28 L5 交互取证命令 (真鼠标点 L5 单选钮 + 真点 ▶运行 + 截图)
                     elif line == "l5_interact":
                         _oneshot(self, 300, self._l5_interact_cmd)
@@ -11773,6 +12038,11 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 300, self._l5_diag_cmd)
                     # 🔬 2026-09-27 给"页面按钮"也开一条命令通道 (静静自测: 反复触发按钮本体,
                     #   不必盲点鼠标坐标; 老倪: 点了没反应 → 我要能从控制台内部逐次复现)
+                    # 🧠 2026-10-14 老倪: 「在状态空间工程增加一个模型引擎按钮, 打开模型引擎的独立窗口」
+                    #   ⇒ 同一执行体开一条命令通道 (不必盲点画布工具栏坐标)
+                    elif line == "ss_model_engine":
+                        if getattr(self, "simulink", None) is not None:
+                            _oneshot(self, 600, self.simulink.open_model_engine_window)
                     elif line == "ds_win":
                         _oneshot(self, 900, lambda: getattr(self, "simulink", None)
                                  and self.simulink.open_dataspace_window())
@@ -11791,6 +12061,48 @@ class StudioMainWindow(QMainWindow):
                     #   (同源: 就是配置中心那个「🚀 确认配置 · 统一打开工程」按钮执行体)
                     elif line == "open_all":
                         _oneshot(self, 300, self._open_all_cmd)
+                    # 🎛 老倪 2026-10-14 操练: 「先通过配置中心, 配置成 插拔任务」—— 从命令通道走
+                    #   **配置中心那条真路径** (选中该任务行的「活跃属性」下拉 → 置 ★ 活跃), 不是旁路改文件。
+                    #   用法: echo "cfg_task TASK-01-FW" > /tmp/zmax_nav_cmd
+                    elif line.startswith("cfg_task"):
+                        _tid = line.split(None, 1)[1].strip() if len(line.split(None, 1)) > 1 else ""
+                        try:      # 取证轨迹: 命令通道收到/结果都落这个文件 (状态栏看不见时靠它)
+                            with open("/tmp/zmax_cfg_task.log", "a", encoding="utf-8") as _f:
+                                _f.write("%s 收到: %r\n" % (time.strftime("%H:%M:%S"), line))
+                        except Exception:                                            # noqa: BLE001
+                            pass
+
+                        def _do_cfg_task(_t=_tid):
+                            """配置中心页可能还没构建 (该页按需建) ⇒ 先切过去; 实在没有就现场建一个
+                            (activate_task 只动任务表 + 调 ss_task_state, 不依赖它挂在哪个布局里)。"""
+                            _pg = getattr(self, "cfg_page", None)
+                            if _pg is None:
+                                try:
+                                    self._on_nav("config")
+                                except Exception as _e1:                             # noqa: BLE001
+                                    self._cfg_task_note("_on_nav(config) 失败: %r" % _e1)
+                                _pg = getattr(self, "cfg_page", None)
+                            if _pg is None:
+                                try:
+                                    import veh6_config_page as _V
+                                    _pg = self.cfg_page = _V.build_config_center(None, {})
+                                    self._cfg_task_note("配置中心页未建, 已现场构建临时页 (只作执行体)")
+                                except Exception as _e2:                             # noqa: BLE001
+                                    self._cfg_task_note("现场建页失败: %r" % _e2)
+                            if _pg is None:
+                                self.statusBar().showMessage("⛔ 配置中心页建不起来 (看 /tmp/zmax_cfg_task.log)", 6000)
+                                return
+                            _ok, _why = _pg.activate_task(_t)
+                            self.statusBar().showMessage(("✅ " if _ok else "⛔ ") + _why, 8000)
+                            self._cfg_task_note("%s → %s" % (_t, _why))
+                            try:
+                                _lg = getattr(self.simulink, "_log", None)
+                                if callable(_lg):
+                                    _lg("🎛 配置中心 %s" % _why, "ok" if _ok else "warn")
+                            except Exception:                                        # noqa: BLE001
+                                pass
+
+                        _oneshot(self, 1500, _do_cfg_task)      # 延迟一拍: 页面构建/表格填行要时间
                     elif line in self.modules:
                         self._on_nav(line)
                     else:
@@ -11965,14 +12277,20 @@ class StudioMainWindow(QMainWindow):
                     n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "", _view or "-")
             except Exception as e:                                               # noqa: BLE001
                 detail = "⚠️ 界面回填异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
-        _msg_ok(self, "🗂 总工程已集成式打开", (
-            "✅ 集成式打开完成 (ok=%s)\n\n" % r.get("ok")
-            + "\n".join("   " + x for x in (r.get("lines") or []))
-            + "\n\n当前现场 vs 这个总工程 (打开前核对):\n" + drift_txt
-            + "\n\n界面: %s\n\n存档存于 %s · 控制台 %s"
-            % (detail, r.get("saved_at"), r.get("version"))))
+        # 🧾 2026-10-14 老倪: 「状态空间工程打开时弹出来的文本清单简单一些, 只列出加载的配置名称即可;
+        #   那么多数字字符串不是给人看的, 别的都删掉」⇒ 弹窗只留: 工程名 + 配置名称清单;
+        #   ok 标志/结构计数/漂移计数/时间戳/控制台版本/路径一律不进弹窗 (细节走日志与台账)。
+        _names = _pj_loaded_names(path)
+        _msg_ok(self, "🗂 状态空间工程已打开", "✅ %s\n\n已加载配置:\n%s" % (
+            os.path.basename(path),
+            "\n".join("  · " + n for n in _names) if _names else "  · (工程里没有可识别的配置段)"))
         self.statusBar().showMessage("✅ 总工程已打开并切到画布: %s" % os.path.basename(path), 8000)
-        self._ui_msg("🗂 总工程已打开 → 已切到 🧮 Simulink 画布 (%s)" % os.path.basename(path))
+        try:
+            self._ui_msg("🗂 总工程已打开: %s · 配置 %s · %s · 存档 %s"
+                         % (os.path.basename(path), " / ".join(_names) or "(无)",
+                            detail, r.get("saved_at")))
+        except Exception:                                                        # noqa: BLE001
+            pass
 
     def _load_project_file(self):
         """📂 文件 → 加载工程文件… (先给摘要让用户确认, 再写画布真源 + 重载界面)"""
@@ -12036,21 +12354,48 @@ class StudioMainWindow(QMainWindow):
                     n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "")
             except Exception as e:                                               # noqa: BLE001
                 detail = "⚠️ 画布重载异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
-        _dr = r.get("drift") or {}
-        _drift_txt = "\n".join("%s %s: %s" % (
-            {"一致": "✅", "漂移": "⚠️"}.get(v.get("status"), "◻︎"), k, v.get("status"))
-            for k, v in _dr.items()) or "(无漂移段)"
-        _msg_ok(self, "📂 加载工程文件", (
-            "✅ 工程已加载\n\n%s\n\n画布: %s\n%s\n%s\n备份: %s\n真源: %s\n\n"
-            "── 存档 vs 当时现场 (标定/主参数只核对, 没覆盖) ──\n%s") % (
-            os.path.basename(path), json.dumps(r.get("stats") or {}, ensure_ascii=False),
-            "与加载前完全一致（等于只做了备份）" if r.get("same_as_before") else "已替换为工程里的画布",
-            detail, r.get("backup") or "无", r.get("written") or "", _drift_txt))
+        # 🧾 2026-10-14 老倪: 「弹出来的文本清单简单一些, 只列出所有加载的配置的名称即可;
+        #   那么多数字字符串不是给人看的, 别的都删掉」⇒ 弹窗只剩: 工程名 + 配置名称清单。
+        #   统计/哈希/索引/备份路径/漂移计数**不进弹窗**; 需要细节看控制台日志那一行。
+        _names = _pj_loaded_names(path)
+        _msg_ok(self, "📂 加载工程文件", "✅ 工程已加载\n\n%s\n\n已加载配置:\n%s" % (
+            os.path.basename(path),
+            "\n".join("  · " + n for n in _names) if _names else "  · (工程里没有可识别的配置段)"))
         self.statusBar().showMessage("✅ 工程已加载: %s" % os.path.basename(path), 6000)
+        try:      # 数字/路径这类"给人查"的东西只留在日志里
+            self._ui_msg("📂 工程已加载: %s · 配置 %s · %s · 备份 %s"
+                         % (os.path.basename(path), " / ".join(_names) or "(无)",
+                            detail, r.get("backup") or "无"))
+        except Exception:                                                        # noqa: BLE001
+            pass
 
     def _open_ss_canvas_cmd(self):
         if getattr(self, "simulink", None) is not None:
             self.simulink.open_state_space()
+
+    def _focus_seg_cmd(self):
+        """🧩 把画布跳到「🧩 开放词汇分割 (SAM3)」节点 (老倪 2026-10-14: 画布太大找不到节点)。
+
+        按**名字**找 (load_flow_file 会重编 id) → 用画布自带 `focus_node` (缩放到看得清 + 平移 + 重绘)。
+        """
+        sim = getattr(self, "simulink", None)
+        if sim is None:
+            return
+        key = "开放词汇分割"
+        hit = None
+        for n in (getattr(sim, "nodes", None) or []):
+            if key in str(n.get("name") or ""):
+                hit = n
+                break
+        if hit is None:
+            sim._log("⚠️ 跳到 SAM3 节点: 画布上没找到「%s」(先打开状态空间画布)" % key)
+            return
+        try:
+            ok, info = sim.canvas.focus_node(hit.get("id"))
+            sim._log(("🧩 画布已跳到「%s」: " % hit.get("name")) + str(info) if ok
+                     else "⚠️ 跳到 SAM3 节点失败: %s" % info)
+        except Exception as e:                                               # noqa: BLE001
+            sim._log("⚠️ 跳到 SAM3 节点异常: %s: %s" % (type(e).__name__, e))
 
     def _open_ss_3d_cmd(self):
         if getattr(self, "simulink", None) is not None:
@@ -13695,7 +14040,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.7</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.71</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

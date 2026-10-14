@@ -2,10 +2,18 @@
 """VEH.6 配置中心 · 页面 (主要工程配置 = 任务配置)
 
 老倪 2026-10-09: 「主要工程配置, 例如 上下料的任务配置」⇒ 任务配置是首屏。
-结构: 左五域树 + 右工作区(页签, 首屏=任务配置) + 底部结果面板(点了必出结果)。
+老倪 2026-10-14: 「将元任务, 这些信息, 体现在配置中心的 任务配置;
+                  将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
+  ⇒ 左树原「工艺·工单」一项拆成两项, 各有一页 (拆的是**粒度**, 不是换列):
+     · 📋 任务配置 = **元任务粒度**: 一个功能 (FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证方法 + 承载场景
+       (列 = 《元任务标准模板》七个字段; 真源 config_meta.json + 画布连线 + tasks.json)
+     · 🧾 工单配置 = **工单实例粒度**: 一份工单 (order_no) 的身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪
+       (真源 config/orders/BS_*.json)
+结构: 左域树 + 右工作区(页签, 首屏=任务配置) + 底部结果面板(点了必出结果)。
 
 本文件只依赖 PyQt5 + json, **不 import studio** (颜色由 studio 传进来), 保证可离屏单测。
-每个按钮都调用 tools/config_center.py 的同一份函数 (一份逻辑两处用), 输出抓到面板里。
+每个按钮都调用 tools/config_center.py 的同一份函数 (一份逻辑两处用), 输出抓到面板里;
+元任务清单直接调 tools/export_meta_doc.py 的构建函数 (与 Word/PDF 导出同源, 不写第二套)。
 """
 from __future__ import annotations
 
@@ -73,6 +81,70 @@ def _run(fn, **kw):
     return buf.getvalue()
 
 
+# ── 元任务 (功能 + 该功能全部配置参数) —— 与 tools/export_meta_doc.py **同一份构建函数** ──────────
+# 老倪 2026-10-14: 「将元任务, 这些信息, 体现在配置中心的 任务配置;
+#                   将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
+#   任务配置 = **元任务粒度**: 一个功能 (FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证方法 + 承载场景;
+#   工单配置 = **工单实例粒度**: 一份工单 (order_no) 的身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪。
+# 两份都是真源派生 (config_meta.json / tasks.json / ss_task_binding.json / 画布 / config/orders/BS_*.json),
+# **不在 GUI 里写第二套构建逻辑** —— 直接调导出器那一份 (一份逻辑两处用)。
+_MT_SRC = (os.path.join(ROOT, "data/database/zmax/config_meta.json"),
+           TASKS_J, BIND_J,
+           os.path.join(ROOT, "src/lerobot/engineering/flows/state_space_obs.json"))
+_MT_CACHE_SIG = None            # 真源 (mtime,size) 指纹
+_MT_CACHE_MT = None             # 元任务清单缓存 (真源变了才重建)
+
+
+def _meta_tasks():
+    """元任务清单 (与 Word/PDF 导出器同源同口径)。真源 mtime/size 变了才重建。"""
+    global _MT_CACHE_SIG, _MT_CACHE_MT
+    import export_meta_doc as E
+    try:
+        sig = tuple((os.path.getmtime(p), os.path.getsize(p)) for p in _MT_SRC)
+    except OSError:
+        sig = None
+    if _MT_CACHE_MT is None or (sig is not None and _MT_CACHE_SIG != sig):
+        mt, _ctx = E.build_meta_tasks()
+        _MT_CACHE_SIG, _MT_CACHE_MT = sig, mt
+    return _MT_CACHE_MT
+
+
+def _meta_task_count():
+    """元任务条数 (画树用): 读不到就返回 '?', 绝不编数。"""
+    try:
+        return len(_meta_tasks())
+    except Exception:                                                           # noqa: BLE001
+        try:
+            with io.open(_MT_SRC[0], encoding="utf-8") as f:
+                return len(json.load(f).get("functions", {}))
+        except Exception:                                                       # noqa: BLE001
+            return "?"
+
+
+def _orders_list():
+    """工单配置真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
+    out = []
+    for f in sorted(glob.glob(os.path.join(ORDERS_D, "BS_*.json"))):
+        d = _j(f, {}) or {}
+        d["_file"] = f
+        out.append(d)
+    return out
+
+
+def _short(v, n=3, sep=" / ", w=26):
+    """列表/字符串 → 一行的短标签 (界面列只放短标签, 完整值走 tooltip/复制)。"""
+    if v is None or v == "":
+        return "—"
+    items = [str(x) for x in v] if isinstance(v, (list, tuple)) else [str(v)]
+    items = [x for x in items if x]
+    if not items:
+        return "—"
+    head = sep.join(items[:n])
+    if len(items) > n:
+        head += " …(+%d)" % (len(items) - n)
+    return head if len(head) <= w else head[:w - 1] + "…"
+
+
 # ── 三份交付文档 (2026-10-10): 与 config_center.py 同一份真源, 点了必出结果 ──
 DOC_SCRIPTS = {
     "bundle":    ("三件套导出 (立项文档 + SOR + 协议)", "docs_bundle.py", []),
@@ -85,6 +157,10 @@ DOC_SCRIPTS = {
     #   真源(config_meta.json 74 功能 / tasks.json 7 任务 / ss_task_binding.json / 画布 89 节点) →
     #   md → HTML → LibreOffice → docx + pdf; 一致性校验 4/4 内建在脚本里 (--check)
     "metaplan":  ("元任务开发计划 · 项目立项书 (Word + PDF)", "export_meta_doc.py", []),
+    # 🆕 2026-10-14 老倪: 「以后每个功能, 需要独立成一个研究成果, 都可以申请专利,
+    #   所以你要预留专利申请一键导出的功能」—— 一个功能点 = 一份交底书 (74 份),
+    #   内容全部实读真源并标出处 (config_meta + function_notes + 画布 + 代码文件), 出 md+docx+pdf。
+    "patent":    ("专利交底书 · 一键导出 (每功能一份 · Word + PDF)", "export_patent_draft.py", ["--all"]),
 }
 DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements",
             "docs/deliverables"]
@@ -1087,9 +1163,17 @@ class ConfigCenterPage(QWidget):
         self._doc_group_tip_on = True
         doms.append((f"文档配置  文档 {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
                      ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
-        doms.append((f"工艺·工单  任务 {len(tk.get('tasks', []))}",
+        # 🆕 2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
+        #   原来一个顶层项「工艺·工单」把两件事混在一起 ⇒ 现在拆成两项, 各自在册:
+        #     · 📋 任务配置 = 元任务粒度 (功能 + 配置参数): 这台设备干哪些活 (子项 = 任务 ID)
+        #     · 🧾 工单配置 = 工单实例粒度 (一次执行): 身份/配方/变体/覆盖 (子项 = 工单号)
+        _bs = _orders_list()
+        doms.append((f"📋 任务配置  任务 {len(tk.get('tasks', []))} · 元任务 {_meta_task_count()}",
                      "⛔" if (tk.get("tasks") and any(t.get("blocked_by_site") for t in tk["tasks"])) else "✅",
                      [t["task_id"] for t in tk.get("tasks", [])]))
+        doms.append((f"🧾 工单配置  工单 {len(_bs)}",
+                     "⛔" if any((b.get("readiness") or {}).get("site_missing") for b in _bs) else "✅",
+                     [((b.get("identity") or {}).get("order_no") or "?") for b in _bs]))
         # 🏷 产品配置 (2026-10-13 老倪: 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力)
         try:
             _pv = _product_view()
@@ -1107,7 +1191,8 @@ class ConfigCenterPage(QWidget):
             for k in kids:
                 QTreeWidgetItem(it, [f"   {k}"])
             self.tree.addTopLevelItem(it)
-            it.setExpanded(label.startswith("工艺") or label.startswith("文档"))
+            it.setExpanded(label.startswith("工艺") or label.startswith("文档")
+                           or label.startswith("📋 任务配置") or label.startswith("🧾 工单配置"))
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
     def _install_state_combos(self):
@@ -1177,6 +1262,7 @@ class ConfigCenterPage(QWidget):
     _SRC_FILES = ("config/tasks/tasks.json", "config/ss_task_binding.json", "config/topics/scene_tags.json",
                   "config/platform/zmax_perf_spec.json", "config/mcd/zmax_mcd.json",
                   "config/platform/zmax_product.json",
+                  "data/database/zmax/config_meta.json",      # 🆕 2026-10-14 元任务真源 (任务配置页的元任务表)
                   "data/database/zmax/zmax_engineering.db")
 
     def source_fingerprint(self):
@@ -1323,6 +1409,202 @@ class ConfigCenterPage(QWidget):
             self._run_into("overview")
         return True
 
+    # ── 📋 任务配置 / 🧾 工单配置 两项 (2026-10-14 老倪: 「拆解成 任务配置 和 工单配置 两项」) ──────
+    # 元任务表列 = 老倪文档《元任务标准模板》七个字段 (功能名称/输入/输出/配置参数/依赖关系/验证方法/承载场景) + 编号/层/优先级
+    _MT_COLS = ("元任务", "功能名称", "层", "输入", "输出", "配置参数", "依赖关系", "验证方法", "承载场景", "优先")
+
+    def _show_tasks(self, txt=""):
+        """📋 任务配置页 = **元任务粒度**。点具体任务 ID ⇒ 元任务表只留该任务承载的行。"""
+        i = self._tab_index_by_title("任务配置")
+        if i >= 0:
+            self.tabs.setCurrentIndex(i)
+        m = re.search(r"(TASK-[A-Za-z0-9-]+)", txt or "")
+        tid = m.group(1) if m else None
+        if tid:
+            self._filter_meta_tasks(tid)
+        else:
+            self._run_into("tasks")
+        return True
+
+    def _meta_head_text(self, tid=None, shown=None):
+        mt = _meta_tasks()
+        if tid:
+            t = next((x for x in (_j(TASKS_J, {}) or {}).get("tasks", [])
+                      if x.get("task_id") == tid), {})
+            return ("元任务 (一个功能 + 该功能全部配置参数) · 承载任务 %s (%s) · %d/%d 条"
+                    " · 真源 config_meta.json" % (tid, (t.get("name") or "—")[:18],
+                                                 len(mt) if shown is None else shown, len(mt)))
+        return ("元任务 (一个功能 + 该功能全部配置参数) · 全部 %d 条 "
+                "· 真源 config_meta.json + 画布连线 + tasks.json" % len(mt))
+
+    def _filter_meta_tasks(self, tid=None):
+        """元任务表按**承载任务**过滤 (tid=None = 全部)。返回可见条数; 表头同步口径。"""
+        t = getattr(self, "meta_table", None)
+        if t is None:
+            return 0
+        shown, first = 0, -1
+        for r in range(t.rowCount()):
+            m = self._meta_rows[r] if r < len(self._meta_rows) else {}
+            ok = (tid is None) or (tid in (m.get("tasks") or []))
+            t.setRowHidden(r, not ok)
+            if ok:
+                shown += 1
+                if first < 0:
+                    first = r
+        if first >= 0:
+            t.selectRow(first)
+        if getattr(self, "meta_head", None) is not None:
+            self.meta_head.setText(self._meta_head_text(tid, shown))
+        return shown
+
+    def _meta_from_task_row(self, *_a):
+        """点任务表某行 ⇒ 元任务表只留该任务的元任务 (两表联动, 一处口径)。"""
+        t = getattr(self, "tasks_table", None)
+        if t is None:
+            return
+        r = t.currentRow()
+        ids = getattr(self, "_task_rows", [])
+        tid = ids[r] if 0 <= r < len(ids) else None
+        n = self._filter_meta_tasks(tid)
+        self._log_cc("   🧩 元任务筛选: 任务 %s ⇒ %d 条" % (tid or "全部", n))
+
+    def _copy_meta_table(self):
+        """复制当前可见的元任务表 (TSV, 可直接粘 Excel) —— 复制不截断。"""
+        t = getattr(self, "meta_table", None)
+        if t is None:
+            return
+        lines = ["\t".join(self._MT_COLS)]
+        for r in range(t.rowCount()):
+            if t.isRowHidden(r):
+                continue
+            lines.append("\t".join((t.item(r, c).text() if t.item(r, c) else "") for c in range(t.columnCount())))
+        try:
+            QApplication.clipboard().setText("\n".join(lines))
+            self._log_cc("   📋 已复制元任务表 %d 行 (TSV, 可粘 Excel)" % (len(lines) - 1))
+        except Exception as e:                                                  # noqa: BLE001
+            self._log_cc("   ⛔ 复制失败: %r" % (e,))
+
+    def _meta_card_text(self, m):
+        """一个元任务的**完整**标准模板文本 (老倪文档《元任务标准模板》七个字段 + 朴素工程化描述)。"""
+        nt = m.get("note") or {}
+        return ("元任务 %s · %s\n"
+                "  干什么活 : %s\n  卡在哪   : %s\n  当前状态 : %s\n"
+                "  功能名称 : %s\n  输入     : %s\n  输出     : %s\n  配置参数 : %s\n"
+                "  依赖关系 : %s\n  验证方法 : %s\n  承载场景 : %s\n"
+                "  画布节点 : %s · 层 %s · 优先级 %s · 计划 %s"
+                % (m.get("mt_id") or "—", m.get("fn_id") or "—",
+                   nt.get("work") or "—(真源未登记)",
+                   nt.get("pain") or "—(真源未登记)",
+                   nt.get("state") or "—(真源未登记)",
+                   m.get("name") or "—",
+                   " / ".join(m.get("inputs") or []) or "—(真源未登记)",
+                   " / ".join(m.get("outputs") or []) or "—(真源未登记)",
+                   "%d 条: %s" % (m.get("n_params", 0),
+                                 " · ".join(m.get("params_head") or []) or "—"),
+                   " / ".join(m.get("deps_up") or []) or "—(画布无上游)",
+                   " / ".join(m.get("verification") or []) or "—",
+                   " / ".join(m.get("scenes") or []) or "—(未接入任务)",
+                   m.get("node_id") or "—", m.get("layer") or "—", m.get("prio") or "—",
+                   m.get("month") or "—"))
+
+    def _build_meta_block(self, layout, th):
+        """任务表之下再加一张**元任务表**: 每个元任务 = 一个功能 + 该功能全部配置参数。
+
+        列按老倪文档《元任务标准模板》落 (功能名称/输入/输出/配置参数/依赖关系/验证方法/承载场景)。
+        ⚠️ 加的是**一张新表**, 上面任务表的 14 列一列没动 (只增列/增表, 不换列)。
+        """
+        mt = _meta_tasks()
+        self._meta_rows = mt
+        rows = [[m.get("mt_id") or "—", (m.get("name") or "")[:30], m.get("layer") or "—",
+                 _short(m.get("inputs")), _short(m.get("outputs")), "%d 条" % m.get("n_params", 0),
+                 _short(m.get("deps_up")), _short(m.get("verification")), _short(m.get("scenes")),
+                 m.get("prio") or "—"] for m in mt]
+        self.meta_head = QLabel(self._meta_head_text(None, len(mt)))
+        self.meta_head.setFont(QFont("Consolas", 10))
+        self.meta_head.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        self.meta_head.setWordWrap(True)
+        layout.addWidget(self.meta_head)
+        rb = QHBoxLayout()
+        for txt, fn in (("🔎 显示全部元任务", lambda: self._filter_meta_tasks(None)),
+                        ("📌 只看选中任务", self._meta_from_task_row),
+                        ("📋 复制元任务表", self._copy_meta_table),
+                        ("📄 专利交底书 (选中功能)", self._patent_selected),
+                        ("📄 专利交底书 (全部 74 份)", lambda: self._run_patent())):
+            b = _btn(txt, th)
+            b.clicked.connect(lambda _=False, f=fn: f())
+            rb.addWidget(b)
+        rb.addStretch()
+        layout.addLayout(rb)
+        t = _mk_table(list(self._MT_COLS), rows, th)
+        try:
+            t.verticalHeader().setDefaultSectionSize(22)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self.meta_table = t
+        for r in range(t.rowCount()):
+            full = self._meta_card_text(mt[r] if r < len(mt) else {})
+            for c in range(t.columnCount()):
+                it = t.item(r, c)
+                if it is not None:
+                    it.setToolTip(full)          # 列里是短标签, 完整模板在 tooltip (不截断)
+        layout.addWidget(t, 1)
+        # 点任务表任意一行 ⇒ 元任务表跟着筛 (两表联动)
+        try:
+            self.tasks_table.itemSelectionChanged.connect(self._meta_from_task_row)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _show_orders(self, txt=""):
+        """🧾 工单配置页 = **工单实例粒度**。点具体工单号 ⇒ 底部面板摊开这份工单的完整配置面。"""
+        i = self._tab_index_by_title("工单配置")
+        if i >= 0:
+            self.tabs.setCurrentIndex(i)
+        m = re.search(r"(BS-[A-Za-z0-9-]+)", txt or "")
+        if m:
+            self._show_order_detail(m.group(1))
+        else:
+            self._run_into("orders")
+        return True
+
+    def _show_order_detail(self, order_no):
+        """一份工单 (Build Sheet) 的配置面 → 底部面板 (全部读真源 config/orders/BS_*.json, 可复制)。"""
+        bs = next((b for b in _orders_list()
+                   if str((b.get("identity") or {}).get("order_no", "")).startswith(order_no)), None)
+        if not bs:
+            self.out.setPlainText("⛔ 真源里没有工单 %s (config/orders/BS_*.json)" % order_no)
+            self._fit_out()
+            return False
+        i, rd = bs.get("identity") or {}, bs.get("readiness") or {}
+        rec = bs.get("recipe") or []
+        self.out.setPlainText("\n".join([
+            "🧾 工单配置 · %s" % i.get("order_no", "—"),
+            "   场景       : %s (%s)" % (i.get("scene_id", "—"), i.get("name", "—")),
+            "   工单目标   : %s" % (bs.get("targets") or {}),
+            "   配方       : %d 段 / %d 条参数" % (len(rec), sum(len(x.get("params") or []) for x in rec)),
+            "   变体对象   : %s" % _short([o.get("name") for o in (bs.get("variant") or {}).get("objects") or []],
+                                        n=6, sep=" · ", w=80),
+            "   选项       : %s" % _short((bs.get("options") or {}).get("selected"), n=8, sep=" · ", w=80),
+            "   安全(Sys-0): %d 条 · 防错校验链 %d 步" % (len(bs.get("safety") or []), len(bs.get("poka_yoke") or [])),
+            "   站点就绪   : %s/9%s" % (rd.get("site_ok", "?"),
+                                      ("  ⛔ 缺 " + ", ".join(rd.get("site_missing") or [])) if rd.get("site_missing") else ""),
+            "   被站点拦   : %s" % _short(rd.get("blocked_by_site"), n=8, sep=", ", w=80),
+            "   真源       : %s" % bs.get("_file", "—"),
+        ]))
+        self._fit_out()
+        return True
+
+    def _order_from_row(self, table=None):
+        """工单配置表的某一行 → 底部面板摊开该工单完整配置面 (点行 / 点按钮走同一入口)。"""
+        t = table if table is not None else getattr(self, "order_table", None)
+        ords = getattr(self, "order_rows", [])
+        if t is None or not ords:
+            return False
+        r = t.currentRow()
+        if not (0 <= r < len(ords)):
+            self._log_cc("   ⛔ 先在「🧾 工单配置」表里点一行 (共 %d 份工单)" % len(ords))
+            return False
+        return self._show_order_detail(ords[r])
+
     def _on_tree(self, item, _col):
         txt = item.text(0)
         # 🏷 产品配置 (2026-10-13): 点左树 → 切到「产品配置」页 (只切页/只读, 不写真源 —— 写盘只在单选按钮上)
@@ -1367,9 +1649,14 @@ class ConfigCenterPage(QWidget):
             self.out.setPlainText("⛔ 配置中心里没有参数 %s (真源里没这一项)" % pid)
             self._fit_out()
             return
-        if "任务配置" in txt or "工艺" in txt:
-            self.tabs.setCurrentIndex(0)
-        self._run_into("tasks" if "TASK" in txt.upper() else "overview")
+        # 🆕 2026-10-14 老倪: 左树拆两项 ⇒ 点「任务配置」进**元任务粒度**页, 点「工单配置」进**工单实例粒度**页
+        if "工单配置" in txt or re.search(r"\bBS-", txt):
+            self._show_orders(txt.strip())
+            return
+        if "任务配置" in txt or "工艺" in txt or re.search(r"\bTASK-", txt.upper()):
+            self._show_tasks(txt)
+            return
+        self._run_into("overview")
 
     # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
     _PROD_ROWS = ("产品", "版本段", "产品质数", "能力数", "能力质数签名", "当前发布指纹", "质数结构自检")
@@ -1815,6 +2102,18 @@ class ConfigCenterPage(QWidget):
         _b_all.clicked.connect(lambda: self._open_all_clicked())
         row2.addWidget(_b_all)
         l.addLayout(row2)
+        # 🆕 2026-10-14 老倪: 「将元任务, 这些信息, 体现在配置中心的 任务配置」——
+        #   任务表之下再给一张**元任务表** (每个元任务 = 一个功能 + 该功能全部配置参数),
+        #   列 = 元任务标准模板; 真源同 Word/PDF 导出器 (同一份构建函数)。
+        #   ⚠️ 上面任务表的列一列没动 (只增一张表, 不换列)。
+        try:
+            self._build_meta_block(l, th)
+        except Exception as _e:                                                 # noqa: BLE001
+            self.meta_table = None
+            _lb = QLabel("⛔ 元任务表构建失败: %r (上面任务表照常可用)" % (_e,))
+            _lb.setStyleSheet("color:%s;background:transparent;" % th["C_RED"])
+            _lb.setWordWrap(True)
+            l.addWidget(_lb)
         self.tabs.addTab(w, "📋 任务配置")
         try:
             self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)
@@ -1873,20 +2172,46 @@ class ConfigCenterPage(QWidget):
         l3.addWidget(t3, 1)
         self.tabs.addTab(w3, "🧩 功能·性能·模型")
 
-        # 4) 工单
-        rows = []
-        for f in sorted(glob.glob(os.path.join(ORDERS_D, "BS_*.json"))):
-            b = _j(f, {}) or {}
-            i, r = b.get("identity", {}), b.get("readiness", {})
-            rows.append([i.get("order_no", ""), i.get("name", ""), len(b.get("bom", [])),
-                         len(b.get("process", [])), f"{r.get('site_ok', '?')}/9",
-                         "⛔ 站点几何" if r.get("site_missing") else "✅"])
-        t4 = _mk_table(["工单号", "场景", "BOM", "步骤", "站点就绪", "状态"], rows, th)
+        # 4) 🧾 工单配置 (2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」)
+        #   这一页 = **工单实例粒度** (一份工单 = 一次执行): 身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪。
+        #   真有据: 真源 config/orders/BS_*.json; 点工单号 (表格行/左树子项) ⇒ 底部面板摊开完整配置面。
+        #   ⚠️ 原有 6 列一列没动, 新维度**追加在后面**; 页签名由「🎯 工单」改成「🧾 工单配置」(与左树同名)。
+        _ords = _orders_list()
+        rows4 = []
+        for b in _ords:
+            i, r = b.get("identity") or {}, b.get("readiness") or {}
+            rec = b.get("recipe") or []
+            rows4.append([i.get("order_no", ""), i.get("name", ""), len(b.get("bom", [])),
+                          len(b.get("process", [])), f"{r.get('site_ok', '?')}/9",
+                          "⛔ 站点几何" if r.get("site_missing") else "✅",
+                          "%d 段" % len(rec),
+                          "%d 条" % sum(len(x.get("params") or []) for x in rec),
+                          "%d 个" % len((b.get("variant") or {}).get("objects") or []),
+                          _short((b.get("targets") or {}), n=2, sep=" · ", w=18),
+                          _short((b.get("options") or {}).get("selected"), n=4, sep=" · ", w=22)])
+        t4 = _mk_table(["工单号", "场景", "BOM", "步骤", "站点就绪", "状态",
+                        "配方", "参数", "变体对象", "目标", "选项(覆盖)"], rows4, th)
+        self.order_rows = [((b.get("identity") or {}).get("order_no") or "") for b in _ords]
+        self.order_table = t4
+        try:
+            t4.itemSelectionChanged.connect(lambda: self._order_from_row(t4))
+        except Exception:                                                       # noqa: BLE001
+            pass
         w4 = QWidget(); l4 = QVBoxLayout(w4); l4.setContentsMargins(6, 6, 6, 6)
+        _h4 = QLabel("工单配置 = 工单实例粒度 (身份/配方/变体/选项/目标/站点就绪) · 真源 %s"
+                     " · 点一行看完整配置面" % os.path.relpath(ORDERS_D, ROOT))
+        _h4.setFont(QFont("Consolas", 10))
+        _h4.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        _h4.setWordWrap(True)
+        l4.addWidget(_h4)
         r4 = QHBoxLayout()
-        b4 = _btn("📋 工单列表", th); b4.clicked.connect(lambda: self._run_into("orders")); r4.addWidget(b4)
+        for txt, fn in (("📋 工单列表", lambda: self._run_into("orders")),
+                        ("🧾 工单配置明细(选中)", lambda: self._order_from_row(t4))):
+            b4 = _btn(txt, th)
+            b4.clicked.connect(lambda _=False, f=fn: f())
+            r4.addWidget(b4)
         r4.addStretch(); l4.addLayout(r4); l4.addWidget(t4, 1)
-        self.tabs.addTab(w4, "🎯 工单")
+        self.tabs.addTab(w4, "🧾 工单配置")
 
         # 5) 模型 × 工程配置
         m = _j(MATCH_J, {}) or {}
@@ -2090,6 +2415,34 @@ class ConfigCenterPage(QWidget):
                 return
         self.out.setPlainText("⛔ 文档交付页签缺失 (页面构建异常)")
 
+    def _run_patent(self, fn=None):
+        """专利交底书一键导出: 传 fn 只出该功能 1 份 (快), 不传 = 74 个功能全出 (几分钟)。
+        执行体 = tools/export_patent_draft.py —— 内容逐条标出处, 出 md + docx + pdf。"""
+        from PyQt5.QtWidgets import QApplication
+        args = ["--fn", fn] if fn else ["--all"]
+        self.out.setPlainText("▶ 专利交底书导出%s …\n"
+                              "   一个功能 = 一份交底书 (技术问题/技术方案/有益效果/实施例/证据清单/检索词)\n"
+                              "   真源: config_meta.json + function_notes.json + 画布连线 + 代码文件行\n"
+                              "   产物: reports/patents/<功能号>_<名称>_专利交底书.md / .docx / .pdf"
+                              % ("（%s）" % fn if fn else "（全部 74 个功能）"))
+        QApplication.processEvents()
+        self.out.setPlainText(_run_script("export_patent_draft.py", args))
+        self._fit_out()
+        QApplication.processEvents()
+
+    def _patent_selected(self, *_a):
+        """取元任务表选中行的功能号 → 只导这一份 (没选中就明说, 不静默)。"""
+        t = getattr(self, "meta_table", None)
+        rows = getattr(self, "_meta_rows", [])
+        if t is None or not rows:
+            self._log_cc("   ⛔ 专利导出: 先在元任务表里点一行")
+            return
+        r = t.currentRow()
+        if not (0 <= r < len(rows)):
+            self._log_cc("   ⛔ 专利导出: 先在元任务表里点一行 (共 %d 条)" % len(rows))
+            return
+        self._run_patent(rows[r].get("fn_id"))
+
     def _run_doc(self, key):
         """点按钮必出结果: 真跑导出器, 面板给日志, 右侧列出可复制的绝对路径。"""
         from PyQt5.QtWidgets import QApplication
@@ -2205,6 +2558,27 @@ class ConfigCenterPage(QWidget):
                 return
             kw["arg"] = tid
         self._run_into(fn, **kw)
+
+    # ───────── 🎛 按任务ID 激活 (与用户手点「活跃属性」下拉/「激活选中任务」完全同一条路径) ─────────
+    def activate_task(self, tid):
+        """给命令通道用: 选中该任务的活跃属性下拉 → 置「★ 活跃」⇒ 触发 _on_task_state_changed
+        (落绑定真源 + 台账 + 自动存档), 不经任何旁路。返回 (ok, msg)。"""
+        tid = str(tid or "").strip()
+        if not tid:
+            return False, "用法: cfg_task <TASK-ID>"
+        try:
+            if not self.select_task_row(tid):
+                return False, "任务表里没有 %s 这一行" % tid
+            _r = self.tasks_table.currentRow()
+            cb = self.tasks_table.cellWidget(_r, _ACT_COL)
+            if cb is None:
+                return False, "第 %d 行没有活跃属性下拉 (界面结构变了?)" % _r
+            if str(cb.currentText()) == "★ 活跃":
+                return True, "%s 已经是「★ 活跃」" % tid
+            cb.setCurrentText("★ 活跃")            # ← 真触发下拉 change 信号 (不是直接调内部函数)
+            return True, "已通过配置中心「活跃属性」下拉激活 %s" % tid
+        except Exception as e:                                                  # noqa: BLE001
+            return False, "%s: %s" % (type(e).__name__, e)
 
     def _fit_out(self):
         """底部面板按内容自适应高度 (老倪口径: 界面不许挤/不许截断); 超过 320px 才交给滚动条。"""

@@ -187,6 +187,31 @@ TOPICS = {
         "quality": ["freshness", "hz_tol", "finite"],
         "provenance": "画布上真实连线求值",
     },
+    "ss_cfg_names": {
+        "type": "zmax::SSConfigNames", "src": TYPES_SRC, "rate_hz": 0.2, "qos": "state",
+        "producer": "状态空间数据空间守护 (tools/dds/ss_daemon.py · zmax-dds-ss.service) "
+                    "← 画布节点 n_calib_mani(🧮 主参数 M) 的 cfg_entries / cfg_loaded_at 真源",
+        "consumers": ["控制台 数据空间页", "独立窗口/网页端", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "names", "loaded_at", "source", "note"],
+        "quality": ["freshness", "names_only", "no_path_no_hash", "no_fake_when_unloaded"],
+        "provenance": ("主参数节点执行 import_config_files() → write_into_node() 时把逐文件清单写进该节点；"
+                       "本话题只读这条记录 ⇒ names 就是节点真加载过的**配置名称**(不含路径/哈希/计数)。"
+                       "周期 5s (老倪 2026-10-14: 「需要发出加载的配置名称的 topic, 字符串就可以, 周期5秒」)"),
+    },
+    "ss_meta_task": {
+        "type": "zmax::SSMetaTask", "src": TYPES_SRC, "rate_hz": 0.2, "qos": "state",
+        "producer": "状态空间数据空间守护 (tools/dds/ss_daemon.py · zmax-dds-ss.service) "
+                    "← 派生器 tools/ss_meta_task.py (复用 export_meta_doc.build_meta_tasks 同一条映射链)",
+        "consumers": ["控制台 数据空间页", "状态空间工程/画布", "元层(ss_moe)/大屏", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "task_id", "n", "n_all", "layers", "prio", "fn_ids", "src"],
+        "quality": ["derived_from_true_source", "no_intent_readthrough", "counts_match_enabled_nodes"],
+        "provenance": ("元任务 = 功能(FN-SYSx-N) + 全部配置参数 + 依赖 + 验证方法 + 归属层; "
+                       "任务(TASK-xx) ──enabled_nodes──> 画布节点 ──module_ref──> 功能 ──fn_id──> 元任务。"
+                       "内容真源现算(config_meta.json/ss_task_binding.json/画布), 意图只决定选哪一批; "
+                       "周期 5s, 出口=主参数节点 n_calib_mani (与已加载配置名同一节拍)"),
+    },
     "ss_energy": {
         "type": "zmax::SSEnergy", "src": TYPES_SRC, "rate_hz": 0.5, "qos": "state",
         "producer": "流形引擎能量探针 tools/manifold_energy_probe.py → tap "
@@ -203,6 +228,21 @@ TOPICS = {
                        "发动机类比: 输入功率 P_in / 转速 ω / 扭矩 τ=P每循环做功 / 能量 E=τ·N / 效率 η=E/W_in。"
                        "1 CJ ≜ 把归一化势能下降 1.0 的能力 (逐层同口径); 总能量 E_total = Σ(存量+做功)"),
     },
+    "ss_engine": {
+        "type": "zmax::SSManifoldStep", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/manifold_engine/step",
+        "producer": "流形引擎常驻周期回路 tools/ss_engine_loop.py (每周期真调 ManifoldEngine.step) "
+                    "→ tap /dev/shm/zmax_ss_engine/engine_*.jsonl; 由状态空间工程驱动 "
+                    "(工程/活跃任务/主参数 M 每 5s 跟随真源)",
+        "consumers": ["控制台 数据空间页", "实时监控", "画布「🧮 流形引擎」对照", "L2 执行层"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "cycle", "hz", "step_ms", "provider", "traj_at", "traj_idx", "traj_n",
+                       "replay", "project", "task_id", "task_name", "scene", "M", "inertia", "calib",
+                       "decode_src", "p[16]", "p_norm", "phi", "grad_norm", "action[4]", "action_norm",
+                       "confidence", "anomaly", "residual", "momentum", "hom_enabled", "hom_mode",
+                       "hom_vitality", "hom_gain", "hom_dominant", "hom_urgency", "hom_veto"],
+        "quality": ["freshness", "finite", "no_zero_fake", "step_per_period"],
+    },
     "ss_torque": {
         "type": "zmax::SSDrivingTorque", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
         "ros_alias": "/manifold_engine/driving_torque",   # 老倪 2026-10-13 规格里的 ROS 话题名
@@ -212,7 +252,9 @@ TOPICS = {
         "modes": ["diag", "calib", "test"],
         "key_fields": ["ts", "torque[6]", "torque_norm", "torque_inv[6]", "unit", "metric_tensor[36]",
                        "metric_dim", "potential_gradient[6]", "neg_gradient[6]", "phi", "health",
-                       "status", "gain", "x[3]", "gates", "source", "unit_note"],
+                       "status", "gain", "x[3]", "gates", "source", "unit_note",
+                       # 🏷 标识信息 (老倪 2026-10-14): 一帧载荷自带"在为哪个任务/哪个产品干活"
+                       "task_id", "task_name", "product", "product_prime", "m_scale", "identity_json"],
         "quality": ["freshness", "finite", "unit", "no_zero_fake", "metric_definite",
                     "torque_matches_definition", "health_gain_consistent"],
         "provenance": ("T_drive = M·(−∇Φ): M = 主参数度量张量真源 (config/calib/zmax_manifold.json, dim6); "
@@ -307,14 +349,15 @@ TOPICS = {
 # ─────────────────────── 遥测模式 → 允许话题 (口径与守护一致) ───────────────────────
 # ⚠️ 真源当前是 /home/ubuntu/zmax/dds_ss_daemon.py:51 (MODE_TOPICS) 与
 #    tools/gui/zmax_telemetry.py::MODE_TOPICS —— 两处手工同步, 收口后本表为准。
-MODE_TOPICS = {
+MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s, 字符串) 见 ss_daemon.tick
     "prod":  [],
-    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque"],
+    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
+              "ss_cfg_names", "ss_engine", "ss_meta_task"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy", "ss_torque"],
+              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
-              "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque"],
+              "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -340,7 +383,7 @@ PRODUCERS = {
     "状态空间数据空间守护": {"unit": "zmax-dds-ss.service", "path": "/home/ubuntu/zmax/dds_ss_daemon.py",
                         "publishes": ["ss_state", "ss_action", "ss_infer", "ss_calib", "ss_diag",
                                       "ss_test", "ss_canvas", "ss_macro", "ss_nodes", "ss_plan",
-                                      "ss_energy"]},
+                                      "ss_energy", "ss_cfg_names"]},
     "流形引擎能量探针": {"unit": None, "path": "tools/manifold_energy_probe.py",
                         "publishes": ["ss_energy"],
                         "note": "写 tap zmax_data/ss_live/energy_*.jsonl; 由 ss_daemon 转发上 DDS"},

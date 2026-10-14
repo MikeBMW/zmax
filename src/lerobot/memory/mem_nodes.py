@@ -289,31 +289,45 @@ def node_ss_mem_links(ctx):
 
 
 def node_ss_intent_direct(ctx):
-    """🔮 意图直读 · Direct (INTACT) — Δz → 技能 kNN (无搜索, 实测延迟 ms 级)"""
+    """🧾 元任务预测 (老倪 2026-10-14 改名改制) — 输入 = 流形引擎**驱动扭矩**, 输出 = 元任务预测值
+
+    改前: 「🔮 意图直读 · Direct」= Δz → 技能 kNN (memory_graph.intent_direct, 输出技能ID)。
+    改后: 老倪「元任务可以被预测出来 ⇒ 改名元任务预测, 输出元任务预测值, 输入为流形引擎的驱动扭矩」:
+          输入 = 驱动扭矩 T_drive = M·(−∇Φ) 真源 (tap /dev/shm/zmax_torque/torque_<scene>.jsonl · 话题 zmax/ss_torque)
+          输出 = 逐元任务得分 + top-k (候选集 = 真源任务绑定派生的元任务集)
+    口径: 结构先验原型 + 真算特征 (trained=false); 驱动扭矩恒定时**如实**标 frozen/degraded,
+          不假装有预测力 (要真预测需时变驱动扭矩 + 阶段标签后 --fit)。实现: tools/ss_meta_predict.py
+    """
     log = ctx.get("log")
     try:
-        mg = _mg()
-        if mg is None:
-            if log:
-                log("⚠️ 意图直读: memory_graph 不可用")
-            return False
-        d = mg.skill_dict()
-        if not d:
-            if log:
-                log("🔮 意图直读: 技能词典为空 (L2 尚未固化 — 先练 ≥3 次成功)")
-            return True
-        qk = next((k for k, v in d.items() if v.get("dz")), None)
-        q = d[qk]["dz"] if qk else None
-        r = mg.intent_direct(q)
+        import os as _o
+        import sys as _s
+        _root = _o.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")
+        _t = _o.path.join(_root, "tools")
+        if _t not in _s.path:
+            _s.path.insert(0, _t)
+        import ss_meta_predict as MP                                       # noqa: PLC0415
+        p = MP.predict(write=True)
         if log:
-            log(f"🔮 意图直读 · Direct (INTACT): 查询 Δz={q} (取自 {qk})")
-            log(f"    命中技能={r.get('hit')} dist={r.get('dist')} 延迟={r.get('latency_ms')}ms")
-            log(f"    method: {r.get('method')}")
-            log("    参照 INTACT 论文: Direct 推理 2.9-5.5ms (无 CEM 搜索); 真意图向量接入待 S2/S3")
+            inp = p.get("input") or {}
+            ft = p.get("input_features") or {}
+            log("🧾 元任务预测 ← 驱动扭矩 %s (%s 帧 · 帧龄 %ss)"
+                % (inp.get("src") or "—", inp.get("frames") or 0,
+                   ("%.1f" % inp["age_s"]) if inp.get("age_s") is not None else "—"))
+            log("    输入特征: |τ|=%s Φ=%s ‖∇Φ‖=%s M=%s std_max=%.2e"
+                % (ft.get("abs_tau"), ft.get("phi"), ft.get("grad_norm"), ft.get("M"),
+                   ft.get("std_max") or 0.0))
+            log("    任务 %s · 候选元任务 %s 个 · 口径 %s"
+                % (p.get("task_id") or "—", p.get("n_meta"), p.get("method")))
+            for i, t in enumerate((p.get("top") or [])[:5], 1):
+                log("      %d. %-10s %-6s score=%.4f %s"
+                    % (i, t.get("fn_id"), t.get("layer"), t.get("score"), (t.get("name") or "")[:32]))
+            if p.get("degraded"):
+                log("    ⚠️ %s" % (p.get("note") or ""))
         return True
     except Exception as e:
         if log:
-            log(f"⚠️ 意图直读失败: {e}")
+            log(f"⚠️ 元任务预测失败: {e}")
         return False
 
 

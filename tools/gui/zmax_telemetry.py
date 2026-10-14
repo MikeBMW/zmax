@@ -42,16 +42,20 @@ MODES = ("prod", "diag", "calib", "test", "dev")
 # 每档开启的话题（★ prod 为空 = 全关）
 MODE_TOPICS = {
     "prod":  [],
-    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy"],
+    "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_cfg_names",
+              "ss_meta_task",
+              "ss_engine"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy"],
+              "ss_plan", "ss_energy", "ss_cfg_names", "ss_engine", "ss_meta_task"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd",
               "link_value", "ss_state", "ss_action", "ss_infer",
               "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
-              "ss_plan", "ss_energy"],
+              "ss_plan", "ss_energy", "ss_cfg_names", "ss_engine", "ss_meta_task"],
     "dev":   ["hw_state", "heartbeat", "train_prog", "deploy_cmd",
               "link_value", "ss_state", "ss_action", "ss_infer",
-              "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test"],
+              "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test", "ss_cfg_names",
+              "ss_meta_task",
+              "ss_engine"],
 }
 
 _LOCK = threading.Lock()

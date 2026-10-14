@@ -265,7 +265,9 @@ PARAM_SPEC = [
     dict(id="feature.dbc_version", cn="能力库版本", domain="功能配置", grade="G4",
          src="feature.dbc#VERSION", read=None, unit="-", rng=None, dflt="1.0",
          perm="version", affects=["全模型"], feature=["G1"], judge="入库 git, 演进可追溯"),
-    # ── 模型配置: 见 cfg_spec (六类标准参数) + 在役权重 ──
+    # ── 模型配置: 见 cfg_spec (六类标准参数) + 在役权重 (2026-10-14 老倪「改变模型配置, L2~L5 …」)──
+    #   2026-10-14 起在役权重不再是"未接线": 真源 = tools/model_inventory.py --json (四层 在役/最新 产物
+    #   + 训练进程), 由 _cur(kind="model") 逐层取**真实路径**; 每层另有**真训练入口**(引擎窗口的按钮用它)。
     dict(id="model.arch_mode", cn="架构模式 (Sys-11 / Sys-11+12)", domain="模型配置", grade="G2",
          src="tools/gui/studio.py#ConfigModule.mode_group", read=None,
          unit="-", rng=None, dflt="Sys-11+12", perm="auth",
@@ -277,22 +279,89 @@ PARAM_SPEC = [
          affects=["ACT", "SmolVLA", "VLA-JEPA"], feature=["G1"],
          judge="三模型逐行可比; 导出 Excel 与表内逐位一致"),
     dict(id="model.ckpt_l2", cn="L2 在役权重 (YOLO)", domain="模型配置", grade="G4",
-         src="models/yolo_peg_live.pt (软链)", read=None, unit="-", rng=None,
-         dflt=None, perm="version", affects=["ssyolo"], feature=["B1"],
+         src="models/yolo_peg_live.pt (软链) → tools/model_inventory.py#L2 active", read=("model", "L2"),
+         unit="-", rng=None, dflt=None, perm="version", affects=["ssyolo"], feature=["B1"],
          judge="软链目标存在 · 版本台账可追溯 (yolo_weights_lineage)"),
-    dict(id="model.ckpt_l3", cn="L3 在役权重 (SmolVLA LoRA)", domain="模型配置", grade="G4",
-         src="outputs/train/**/checkpoints/last", read=None, unit="-", rng=None,
-         dflt=None, perm="version", affects=["ssvlm", "ssdec"], feature=["C1"],
+    dict(id="model.ckpt_l3", cn="L3 在役权重 (SmolVLA)", domain="模型配置", grade="G4",
+         src="tools/model_inventory.py#L3 active", read=("model", "L3"),
+         unit="-", rng=None, dflt=None, perm="version", affects=["ssvlm", "ssdec"], feature=["C1"],
          judge="LoRA 必须 merge 后才算生效 (否则零动作伪装)"),
     dict(id="model.ckpt_l4", cn="L4 在役权重 (INTACT)", domain="模型配置", grade="G4",
-         src="outputs/train/**/checkpoints/last", read=None, unit="-", rng=None,
-         dflt=None, perm="version", affects=["ssintact", "swintact"], feature=["C1"],
+         src="tools/model_inventory.py#L4 active", read=("model", "L4"),
+         unit="-", rng=None, dflt=None, perm="version", affects=["ssintact", "swintact"], feature=["C1"],
          judge="反归一化按 ckpt 训练集同源 · 稳态延迟 <120ms"),
+    dict(id="model.ckpt_l5", cn="L5 在役权重 (DeepSeek/本地 VLM merged)", domain="模型配置", grade="G4",
+         src="tools/model_inventory.py#L5 active", read=("model", "L5"),
+         unit="-", rng=None, dflt=None, perm="version", affects=["n_dsvl", "ssllm"], feature=["C1"],
+         judge="merged 产物存在 (adapter 未 merge 不算在役)"),
+    dict(id="model.train_state", cn="L2~L5 训练/推理状态 (每层在役/候选/训练中)", domain="模型配置", grade="G2",
+         src="tools/model_inventory.py --json (training[] + models[]) + 8796 /status/all",
+         read=("model", "status"),
+         unit="-", rng=None, dflt=None, perm="readonly", affects=["🧠 模型引擎窗口"], feature=["G1"],
+         judge="四层各有判定 · 训练中必须带 step/total · 与 nvidia-smi 进程一致 (无可信训练进程则 training=[] )"),
+    dict(id="model.train_entry", cn="逐层训练入口 (引擎窗口 ▶ 按钮执行的命令)", domain="模型配置", grade="G2",
+         src="tools/joint_train_all.py --only L2|L3|L4|L5", read=("model", "entry"),
+         unit="-", rng=None, dflt=None, perm="auth", affects=["训练链"], feature=["G1"],
+         judge="每条命令可 --dry-run 过环境检查; 执行后必须产出 ckpt 或明确报错"),
     dict(id="model.third_party", cn="第三方模型接入 (POD)", domain="模型配置", grade="G4",
          src="feature.dbc#BU_ THIRD_PARTY", read=None, unit="-", rng=None,
          dflt="未接入", perm="version", affects=["平台容器"], feature=["G1"],
          judge="登记 BU_ + 勾选 CM_ + 对齐 SG_ 三步齐"),
 ]
+
+# 🧩 2026-10-14 老倪: 「最开始配置中心的模型配置，就是配置模型的。也没对应上啊」
+#   ⇒ 把**四层真实模型**逐层做成一等参数 (在役模型 / 最近训练 / 状态空间节点 / 输出话题),
+#     真源 = reports/model_config_matrix.json (与主界面「配置通道」和模型引擎窗口**同一份**现算数据)。
+#     这样"配置中心的模型配置"就是"配置模型", 且与状态空间工程实际数据逐字对应。
+# ① L2 候选 · SAM3 开放词汇分割 (老倪 2026-10-14:「还有个 SAM3 呢, 怎么搞?」)
+#    真源 = 磁盘 (官方基座 + annot_v1 适配器) + 8796 /status/all (state=candidate / note_short)
+SAM3_BASE = "zmax_data/models/sam3_hf/model.safetensors"
+SAM3_ADAPTER = "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors"
+PARAM_SPEC += [
+    dict(id="model.sam3_base", cn="SAM3 官方基座权重 (未在役)", domain="模型配置", grade="G3",
+         src=SAM3_BASE, read=("matrix", "SAM3|基座路径"), unit="-", rng=None, dflt=None, perm="readonly",
+         affects=["L2 感知", "SAM3 服务 8796"], feature=["G1"], judge="文件必须存在 (848M, sha256 已落)"),
+    dict(id="model.sam3_adapter", cn="SAM3 适配器 (annot_v1 · 未证明提升)", domain="模型配置", grade="G3",
+         src=SAM3_ADAPTER, read=("matrix", "SAM3|适配器路径"), unit="-", rng=None, dflt=None, perm="readonly",
+         affects=["SAM3 服务 8796 (ZMAX_SAM3_ADAPTER)"], feature=["G1"],
+         judge="默认不装 (纯基座); 装载走 ZMAX_SAM3_ADAPTER, 键数须 256 张量全匹配"),
+    dict(id="model.sam3_state", cn="SAM3 档位状态", domain="模型配置", grade="G2",
+         src="http://127.0.0.1:8796/status/all (state)", read=("matrix", "SAM3|状态"), unit="-", rng=None,
+         dflt=None, perm="readonly", affects=["L2 收口", "模型引擎窗口"], feature=["G1"],
+         judge="必须如实=候选; 未证明提升不许写 in_service"),
+]
+for _ly in ("L2", "L3", "L4", "L5"):
+    _LY = _ly.lower()
+    PARAM_SPEC += [
+        dict(id="model.candidate_%s" % _LY, cn="%s 候选产物 (未在役, 真源现算)" % _ly, domain="模型配置", grade="G4",
+             src="tools/model_inventory.py#%s 非在役条目" % _ly, read=("matrix", "%s|候选模型" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["模型引擎窗口"], feature=["G1"],
+             judge="逐个来自磁盘真产物; 无候选写'无' (不编)"),
+        dict(id="model.cand_reason_%s" % _LY, cn="%s 候选未切在役的判据" % _ly, domain="模型配置", grade="G3",
+             src="http://127.0.0.1:8796/status/all (note_short)", read=("matrix", "%s|候选判据" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["模型配置", "交付口径"], feature=["G1"],
+             judge="有产物无 A/B ⇒ 写'产物未评估'; 有 A/B ⇒ 写实测 Δ (不夸)"),
+    ]
+for _ly in ("L2", "L3", "L4", "L5"):
+    _LY = _ly.lower()
+    PARAM_SPEC += [
+        dict(id="model.in_service_%s" % _LY, cn="%s 在役模型 (真源现算)" % _ly, domain="模型配置", grade="G2",
+             src="tools/model_config_matrix.py#%s|在役模型" % _ly, read=("matrix", "%s|在役模型" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["🧠 模型引擎窗口", "🖥 模型引擎页"],
+             feature=["G1"], judge="与 8796 /status/all 的 layer==%s 且 state=in_service 一致" % _ly),
+        dict(id="model.last_train_%s" % _LY, cn="%s 最近一次训练 (真训时间戳)" % _ly, domain="模型配置", grade="G4",
+             src="tools/model_inventory.py#%s last_train" % _ly, read=("matrix", "%s|最近训练" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["训练链"], feature=["G1"],
+             judge="时间戳来自真产物 mtime; 无产物写'无训练记录' (不编时间)"),
+        dict(id="model.ss_node_%s" % _LY, cn="%s 状态空间承载节点" % _ly, domain="模型配置", grade="G3",
+             src="src/lerobot/engineering/flows/state_space_obs.json", read=("matrix", "%s|状态空间节点" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["状态空间画布"], feature=["G1"],
+             judge="节点必须真在画布上 (按节点 id 判定, 不靠名字猜)"),
+        dict(id="model.ss_topic_%s" % _LY, cn="%s 状态空间输出话题" % _ly, domain="模型配置", grade="G3",
+             src="状态空间画布节点 id → ss/<id>/out", read=("matrix", "%s|输出话题" % _ly),
+             unit="-", rng=None, dflt=None, perm="readonly", affects=["DDS/话题"], feature=["G1"],
+             judge="话题名与画布节点 id 对得上 (逐字一致)"),
+    ]
 
 # ─────────────────────── 测量量 (只读) ───────────────────────
 MEASUREMENT = [
@@ -323,6 +392,57 @@ COMPU = [
 ]
 
 
+def _model_inventory():
+    """📊 模型配置的真源: tools/model_inventory.py --json (L2~L5 在役/最新产物 + 训练进程)。
+    读不到就返回 {} (调用方按"未接线"处理, 不编数据)。"""
+    import subprocess
+    py = os.path.join(ROOT, "gui-venv311", "bin", "python")
+    py = py if os.path.exists(py) else sys.executable
+    try:
+        r = subprocess.run([py, os.path.join(ROOT, "tools", "model_inventory.py"), "--json"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=180)
+        return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip().startswith("{") else {}
+    except Exception:                                                                # noqa: BLE001
+        return {}
+
+
+# 逐层真训练入口 (引擎窗口 ▶ 按钮执行的命令; 都是 joint_train_all 的真实参数)
+MODEL_ENTRY = {
+    "L2": "tools/joint_train_all.py --only L2 --yolo-epochs 1",
+    "L3": "tools/joint_train_all.py --only L3 --steps 20",
+    "L4": "tools/joint_train_all.py --only L4 --steps 20",
+    "L5": "tools/joint_train_all.py --only L5 --l5-steps 20 --l5-merge",
+}
+
+
+def _model_matrix():
+    """🧩 模型配置矩阵真源 (与主界面「配置通道」/模型引擎窗口同一份):
+    reports/model_config_matrix.json ← tools/model_config_matrix.py (在役模型/架构/体积/训练/状态空间节点)。
+    缓存不在就现场生成一次; 生成也失败 ⇒ 返回 {} (调用方按"未接线"处理, 不编)。"""
+    p = os.path.join(ROOT, "reports", "model_config_matrix.json")
+    if not os.path.exists(p):
+        try:
+            import subprocess                                                    # noqa: PLC0415
+            subprocess.run([os.path.join(ROOT, "gui-venv311", "bin", "python"),
+                            os.path.join(ROOT, "tools", "model_config_matrix.py"), "--write"],
+                           cwd=ROOT, timeout=300, capture_output=True)
+        except Exception:                                                        # noqa: BLE001
+            pass
+    try:
+        with open(p, encoding="utf-8") as f:
+            m = json.load(f)
+        flat = {}
+        for g in (m.get("groups") or []):
+            for row in (g.get("rows") or []):
+                for ly, v in (row.get("vals") or {}).items():
+                    flat["%s|%s" % (ly, row.get("name"))] = v
+        for k, v in (m.get("extras") or {}).items():         # L2 候选 SAM3 等单项真源
+            flat[k] = v
+        return flat
+    except Exception:                                                            # noqa: BLE001
+        return {}
+
+
 def _cur(src_kind, key, sources):
     """取当前值 (只读真源)。"""
     kind, k = src_kind
@@ -336,9 +456,59 @@ def _cur(src_kind, key, sources):
         v = sources.get("cfgspec")
     elif kind == "perf_spec":
         v = (sources.get("perf_spec") or {}).get(k)
+    elif kind == "model":
+        v = _cur_model(k, sources.get("modelinv") or {})
+    elif kind == "matrix":
+        v = (sources.get("matrix") or {}).get(k)
     else:
         v = None
     return v
+
+
+def _cur_model(k, inv):
+    """模型配置取数 (四层在役权重 / 训练状态 / 训练入口)。缺就 None, 不编。"""
+    models = [m for m in (inv.get("models") or []) if isinstance(m, dict)]
+
+    def _active(ly):
+        for m in models:
+            if str(m.get("layer")) == ly and m.get("active"):
+                p = (m.get("realpath") or m.get("path") or "").strip()
+                return p or None
+        return None
+
+    if k == "L2":                                    # 真源是软链 ⇒ 取软链真实目标
+        p = os.path.join(ROOT, "models", "yolo_peg_live.pt")
+        return os.path.realpath(p) if os.path.exists(p) else _active("L2")
+    if k in ("L3", "L4", "L5"):
+        return _active(k)
+    if k == "status":
+        if not models:
+            return None
+        tr = {}
+        for t in (inv.get("training") or []):
+            if isinstance(t, dict):
+                tr[str(t.get("layer"))] = t
+        out = {}
+        for ly in ("L2", "L3", "L4", "L5"):
+            mine = [m for m in models if str(m.get("layer")) == ly]
+            if not mine:
+                continue
+            act = [m for m in mine if m.get("active")]
+            lt = (act[0].get("last_train") if act else (mine[0].get("last_train") or {})) or {}
+            t = tr.get(ly) or {}
+            out[ly] = {"在役": (act[0].get("name") if act else None) or "—",
+                       "本层产物数": len(mine),
+                       "最近训练": ("%s · %s 步" % (lt.get("ts"), lt.get("steps"))
+                                if lt.get("ts") else "无训练记录"),
+                       "训练中": ("%s%% (%s/%s)" % (t.get("pct"), t.get("step"), t.get("total"))
+                               if t else "否")}
+        return out or None
+    if k == "entry":
+        if not all(os.path.exists(os.path.join(ROOT, MODEL_ENTRY["L%d" % i].split()[0]))
+                   for i in (2, 3, 4, 5)):
+            return None
+        return dict(MODEL_ENTRY)
+    return None
 
 
 def build():
@@ -347,7 +517,8 @@ def build():
     cfgspec = read_cfg_spec_rows()
     perf_rows, perf_flat = read_perf_spec()
     src = {"calib": calib, "manifold": manifold, "dbc": dbc, "levels": levels,
-           "features": feats, "cfgspec": cfgspec, "perf_spec": perf_flat}
+           "features": feats, "cfgspec": cfgspec, "perf_spec": perf_flat,
+           "modelinv": _model_inventory(), "matrix": _model_matrix()}
 
     chars, gaps, perms, grades = [], [], {}, {}
     for spec in PARAM_SPEC + perf_rows:
@@ -380,6 +551,7 @@ def build():
                 "src/lerobot/engineering/levels.py": _sha16(LEVELS_PY),
                 "src/lerobot/verification/verification_layer.py": _sha16(VERIF_PY),
                 "tools/gui/studio.py": _sha16(STUDIO_PY),
+                "tools/model_inventory.py": _sha16(os.path.join(ROOT, "tools", "model_inventory.py")),
                 "config/platform/zmax_perf_spec.json": _sha16(PERF_SPEC),
             },
             "counts": {"MEASUREMENT": len(MEASUREMENT), "CHARACTERISTIC": len(chars),

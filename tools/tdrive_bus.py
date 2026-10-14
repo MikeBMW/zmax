@@ -83,11 +83,29 @@ def _active_scene() -> str:
         import ss_scene_switch as _s
         w = _s.now() or {}
         scn = w.get("scn") or ""
+        if not scn:
+            # 🔴 2026-10-14 修: ss_scene_switch.now() 只回 **src_state(场景名) + node + color**, 根本没有 scn 字段
+            #   ⇒ 原代码一直走下面的兜底 "SCN-06-TRAY", 于是切到插拔后 tap 仍叫 torque_SCN-06-TRAY.jsonl、
+            #   payload 的 scene 也是摆盘 (同一类"写死旧场景"的坑, 换了个形式又踩一次)。改成按唯一映射表反查:
+            #   ① now().scn → ② src_state 场景名反查 TASK_SCENE → ③ 活跃任务 (config/ss_task_binding.json) 查表
+            st = str(w.get("src_state") or "")
+            for _m in (_s.TASK_SCENE or {}).values():
+                if st and st == _m.get("scene"):
+                    scn = _m.get("scn") or ""
+                    break
+            if not scn:
+                try:
+                    import json as _j
+                    _b = _j.load(open(os.path.join(ROOT, "config", "ss_task_binding.json"), encoding="utf-8"))
+                    _m = (_s.TASK_SCENE or {}).get(str(_b.get("active_task") or "")) or {}
+                    scn = _m.get("scn") or ""
+                except Exception:                                         # noqa: BLE001
+                    scn = ""
         if scn:
             return scn
     except Exception:                                                           # noqa: BLE001
         pass
-    return "SCN-06-TRAY"          # 兜底 = 摆盘(当前在役任务), 不再是 AR
+    return "SCN-未登记"           # 兜底不再谎报某个场景 (取不到就说取不到)
 
 
 DEFAULT_SCENE = _active_scene()
@@ -182,9 +200,17 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
     # 6D: 前 3 维是转动分量, 后 3 维是平移分量。Φ 只定义在平移子空间 ⇒ 转动分量恒 0 (不是补零凑数)
     grad6 = np.concatenate([np.zeros(ROT_DIM), g_])
     neg6 = np.concatenate([np.zeros(ROT_DIM), neg])
-    tau_xyz = M @ neg                                          # T = M·(−∇Φ)
-    tau6 = np.concatenate([np.zeros(ROT_DIM), tau_xyz])
-    tau_inv6 = np.concatenate([np.zeros(ROT_DIM), metric.ginv_mul(x, neg)])
+    # 🔴 主参数 M 的**维数必须与被打的向量一致**: dim=3 (位置) 或 dim=6 (位姿)。维数由真源决定 ——
+    #    「配置单 → 主参数 M」(tools/config_to_M.py): 插拔任务含腕部翻转 ⇒ dim=6。实测 2026-10-14 16:29
+    #    切到插拔任务后 M 变 6×6, 而这里仍拿 3 维 neg 去乘 ⇒ 每帧 ValueError(matmul 3 vs 6), 10Hz 流静默断流
+    #    (帧全失败、tap 不落新帧)。修法 = 同维相乘; dim=6 用 6D 向量 [旋转 0,0,0 | 平移 x,y,z] (与 grad6 同布局),
+    #    dim=3 逐位保持原行为 (零回归)。
+    _dim = int(np.asarray(M).shape[0])
+    neg_in = neg6 if _dim == 6 else neg
+    tau_vec = M @ neg_in                                       # T = M·(−∇Φ)
+    tau6 = tau_vec if _dim == 6 else np.concatenate([np.zeros(ROT_DIM), tau_vec])
+    _inv = metric.ginv_mul(x, neg_in)
+    tau_inv6 = _inv if _dim == 6 else np.concatenate([np.zeros(ROT_DIM), _inv])
     rep = health_from_field(metric, x)
     H = float(getattr(rep, "H", -1.0))
     status, gain = status_gain(H, getattr(rep, "status", ""))
@@ -201,8 +227,16 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
         d_tr = float(min(np.linalg.norm(x - np.asarray(f.x_g, float)[:3]) for f in br.fields)) if br.fields else None
     except Exception:                                                             # noqa: BLE001
         d_tr = None
+    # 🏷 标识块 (老倪 2026-10-14): 一帧物理量必须自带"我在为谁干活" —— 任务/场景/产品质数/主参数。
+    #    真源现算 (tools/ss_identity.py), 取不到写"真源未登记", 绝不用默认值糊。
+    try:
+        import ss_identity as _ident                                              # noqa: PLC0415
+        _idb = _ident.identity(scene=scene, metric_cfg=cfg)
+    except Exception as _e:                                                       # noqa: BLE001
+        _idb = {"task_id": "真源未登记", "error": "%s: %s" % (type(_e).__name__, _e)}
     return {
         "ts": time.time(), "node": "流形引擎", "scene": scene,
+        "identity": _idb,
         "stage": (getattr(act, "stage", "") if act is not None else ""),
         "skill": (getattr(act, "code", "") if act is not None else ""),
         "torque": [float(v) for v in tau_c6],                     # 已限幅+健康度缩 (= 可执行口径)
@@ -294,12 +328,25 @@ def cmd_run(scene: str, hz: float, seconds: float) -> int:
     dt = 1.0 / max(1e-6, float(hz))
     t0 = time.time()
     n, errs = 0, []
-    print("▶ 驱动扭矩发布: %.1fHz · %s · tap %s" % (hz, scene, _tap_path(scene)), flush=True)
+    # 🔀 2026-10-14: 场景**每 5s 重解析**一次 —— 原来 DEFAULT_SCENE 只在 import 时算一次, 于是"配置中心把
+    #    活跃配置切到插拔"之后, 常驻发布器仍然按老场景发 (tap 名/payload.scene/标识块里的场景全是旧的), 必须
+    #    手动重启服务才生效 ⇒ 现场表现"我切了任务, 数据空间里还是老场景"。显式指定 (--scene / env) 时不动。
+    _scn_lock = bool(os.environ.get("ZMAX_TORQUE_SCENE"))
+    _scn, _scn_t = scene, time.time()
+    print("▶ 驱动扭矩发布: %.1fHz · %s · tap %s%s" % (
+        hz, _scn, _tap_path(_scn), "" if _scn_lock else " · 场景每 5s 跟随活跃配置", ), flush=True)
     try:
         while seconds <= 0 or (time.time() - t0) < float(seconds):
             ts = time.time()
+            if not _scn_lock and (time.time() - _scn_t) > 5.0:
+                _scn_t = time.time()
+                _new = _active_scene()
+                if _new and _new != _scn:
+                    print("🔀 场景跟随活跃配置: %s → %s · tap %s"
+                          % (_scn, _new, _tap_path(_new)), flush=True)
+                    _scn = _new
             try:
-                d = compute(scene, bridge=br)
+                d = compute(_scn, bridge=br)
                 r = publish(d)
                 n += 1
                 if n % max(1, int(hz)) == 0:

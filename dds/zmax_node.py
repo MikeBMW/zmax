@@ -29,7 +29,7 @@ from zmax_types import DeployCommand, HardwareState, Heartbeat, TrainProgress   
 try:
     from ss_types import (SSState, SSAction, SSInfer, SSCanvasNode, SSMacro, SSNodes,
                           SSCalib, SSDiag, SSTest, SSPlan, SSEnergy, SSEnergyLayer,
-                          SSDrivingTorque)
+                          SSDrivingTorque, SSConfigNames, SSManifoldStep, SSMetaTask)
     _SS_TOPICS = {
         "ss_state": SSState, "ss_action": SSAction, "ss_infer": SSInfer,
         "ss_canvas": SSCanvasNode, "ss_macro": SSMacro, "ss_nodes": SSNodes,
@@ -37,6 +37,9 @@ try:
         "ss_plan": SSPlan,          # 🧭 MoveIt plan-only 轨迹镜像 (老倪 2026-09-29)
         "ss_energy": SSEnergy,      # ⚡ 流形引擎能量层 (发动机类比: 功率/转速/扭矩/能量/效率)
         "ss_torque": SSDrivingTorque,  # 🔧 驱动扭矩 T_drive = M·(−∇Φ) (老倪 2026-10-13)
+        "ss_cfg_names": SSConfigNames,  # 🧮 主参数节点已加载的配置名称 (老倪 2026-10-14, 5s, 字符串)
+        "ss_engine": SSManifoldStep,   # 🧮 流形引擎每周期输出 (常驻回路, 老倪 2026-10-14)
+        "ss_meta_task": SSMetaTask,    # 🧾 根据任务输出的元任务清单 (主参数节点出口, 5s, 老倪 2026-10-14)
     }
 except Exception:                                                               # noqa: BLE001
     _SS_TOPICS = {}
@@ -64,6 +67,11 @@ QOS_CLASS = {
     "ss_energy": "state",   # ⚡ 每轮聚合量 → state(latch, 新订阅者立刻拿到最新一轮)
     # 🔧 驱动扭矩 T_drive=M·(−∇Φ): 高频逐帧驱动力 (10Hz 实测数据通道) → beat (低延迟, 丢帧无妨)
     "ss_torque": "beat",
+    # 🧮 配置名称清单是"一段时间内有效"的状态型产物 → state(latch): 新开的窗口立刻拿到最新一份
+    "ss_cfg_names": "state",
+    # 🧮 流形引擎常驻回路每周期输出 (高频逐帧) → beat (低延迟, 丢帧无妨; 帧龄由载荷 ts 判)
+    "ss_engine": "beat",
+    "ss_meta_task": "state",
     # 规划是"状态型"产物(一段时间内有效) → latch: 新开的独立窗口立刻拿到最新一条轨迹
     "ss_plan": "state",
 }

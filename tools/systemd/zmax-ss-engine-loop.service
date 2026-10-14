@@ -1,0 +1,27 @@
+[Unit]
+Description=Z-MAX 流形引擎常驻周期循环 (ManifoldEngine.step 每周期真调 → ss_engine, 10Hz)
+Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+After=network-online.target zmax-dds-ss.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+# 🔴 与探针/发布端/聚合器同一张单播配置 (口径只有一份)
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
+Environment=ZMAX_SS_ENGINE_TAP_MAX_MB=32
+Environment=ZMAX_SS_ENGINE_HZ=10
+# 为什么要有这个常驻单元 (老倪 2026-10-14 实测):
+#   「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，怎么只是调用一次呢？改」
+#   改前: ManifoldEngine.step() 只有 4 处调用 (画布节点 / 引擎自检 / hom 演示 / bench), 全是手跑一次性;
+#         10Hz 的 zmax-torque-bus 每周期算的是 T=M·(−∇Φ), **不经过 step** ⇒ 引擎核心在系统里没有常驻回路。
+#   口径: 真源要么在跑, 要么明说没跑 —— 状态源缺失时空转并明说, 不造状态。
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/ss_engine_loop.py run --hz 10
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-ss-engine.log
+StandardError=append:/var/log/zmax-ss-engine.log
+
+[Install]
+WantedBy=multi-user.target

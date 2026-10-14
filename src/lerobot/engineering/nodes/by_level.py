@@ -57,7 +57,7 @@ LEVELS_INDEX = {
         ("ss_mem_field", "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)", 'ss_mem_field', "mem_nodes.py", 'node_ss_mem_field'),
         ("ss_mem_share", "🧠 总装记忆中枢 (前额叶总装 · 三层协同)", 'ss_mem_share', "mem_nodes.py", 'node_ss_mem_share'),
         ("n_intent_bundle", "🧠 意图丛 · 四槽语法", 'ss_intent_bundle', "mem_nodes.py", 'node_ss_intent_bundle'),
-        ("n_intent_direct", "🔮 意图直读 · Direct", 'ss_intent_direct', "mem_nodes.py", 'node_ss_intent_direct'),
+        ("n_intent_direct", "🧾 元任务预测 (驱动扭矩 → 元任务预测值)", 'ss_intent_direct', "mem_nodes.py", 'node_ss_intent_direct'),
         ("swintact", "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)", 'sw_intact', "library.py", 'node_sw_intact'),
         ("swworld", "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)", 'sw_world', "library.py", 'node_sw_world'),
         ("ss_lora_l4", "🎛 L4 · INTACT LoRA 微调 (r8/α16) · 接入中", 'ss_lora_l4', "library.py", 'node_ss_lora_l4'),

@@ -43,7 +43,7 @@ REG = os.path.join(ROOT, "config", "mcd", "param_registry.json")
 MATCH = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 ORDERS = os.path.join(ROOT, "config", "orders")
 TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
-DOMAINS = ["模型配置", "工程配置", "功能配置", "性能配置", "工艺·工单"]
+DOMAINS = ["模型配置", "工程配置", "功能配置", "性能配置", "任务配置", "工单配置"]
 
 
 def _j(p, d=None):
@@ -92,11 +92,23 @@ def cmd_overview(a):
     print(f"{'域':<12}{'参数':>4}{'就绪':>7}  缺口")
     print("-" * 78)
     for dom in DOMAINS:
-        if dom == "工艺·工单":
-            from build_sheet import RECIPE_STEPS, SAFETY, POKA_YOKE
-            n = sum(len(r["params"]) for r in RECIPE_STEPS) + len(SAFETY)
+        if dom in ("任务配置", "工单配置"):
+            # 🆕 2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
+            #   任务配置 = 元任务粒度 (一个功能 + 该功能全部配置参数); 工单配置 = 工单实例粒度。
+            from build_sheet import RECIPE_STEPS, SAFETY
             site = [c for c in chars if c["domain"] == "工程配置" and not c.get("ready")]
-            print(f"{dom:<12}{n:>4}{'—':>7}  站点几何未定 ⇒ 坐标类参数不可信（缺 {len(site)} 项）")
+            if dom == "任务配置":
+                tk_ = _j(TASKS, {})
+                ts_ = tk_.get("tasks", [])
+                mt_ = (_j(os.path.join(ROOT, "data/database/zmax/config_meta.json"), {}) or {}).get("functions", {})
+                blk = sum(1 for t in ts_ if t.get("blocked_by_site"))
+                print(f"{dom:<12}{len(ts_):>4}{('元任务 %d' % len(mt_)):>10}  "
+                      f"{'站点几何未定 ⇒ %d 个任务被拦' % blk if blk else '任务→元任务映射就绪'}")
+            else:
+                n = sum(len(r["params"]) for r in RECIPE_STEPS) + len(SAFETY)
+                ords_ = sorted(glob.glob(os.path.join(ORDERS, "BS_*.json")))
+                print(f"{dom:<12}{n:>4}{('工单 %d' % len(ords_)):>10}  "
+                      f"站点几何未定 ⇒ 坐标类参数不可信（缺 {len(site)} 项）")
             continue
         cs = [c for c in chars if c["domain"] == dom]
         ready = [c for c in cs if c.get("ready")]

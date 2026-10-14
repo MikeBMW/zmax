@@ -360,3 +360,14 @@ docs/data_snapshots/**/evidence/*.png
 /config
 /feature.dbc
 /src/lerobot/engineering/flows/state_space_obs.json
+
+# 归档件不进库 (老倪 Git 精简口径: 归档/交付件放网盘/数据服务器)
+zmax_data/cloud/*.tar.zst
+zmax_data/cloud/*.tar.gz
+zmax_data/cloud/*.tar
+
+# Hermes 自身缓存 (agent 运行缓存, 与工程无关)
+.hermes/
+
+# 数据快照里的库文件 (二进制 >300KB) 不进库, 只留 sha256 清单
+docs/data_snapshots/*/*.db
