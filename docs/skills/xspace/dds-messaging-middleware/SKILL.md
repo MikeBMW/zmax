@@ -92,7 +92,8 @@ UI 读 JSON。**两端互不污染，任一端可单独重启。**
 模式文件 ~/.zmax_telemetry_mode   (env ZMAX_TELEMETRY > 运行时 > 文件 > prod)
 prod=空 · diag=[hw_state,heartbeat,ss_infer,train_prog,ss_diag] · calib=+ss_state,ss_action,ss_calib
 test/dev=全量 14 话题
-守护 /home/ubuntu/zmax_dds_ss_daemon.py  ·  service zmax-dds-ss.service (User=ubuntu)
+守护 `tools/dds/ss_daemon.py` (仓库根; 早期副本 `/home/ubuntu/zmax_dds_ss_daemon.py` 已不作为执行体)
+· service zmax-dds-ss.service (User=ubuntu) · 类型真源 `dds/ss_types.py` + `dds/zmax_node.py` (TOPICS+QoS)
 取证 /home/ubuntu/zmax_dds_ss_verify.py  (四档 × 话题 × 真值, 16 条断言)
 真源 /home/ubuntu/zmax_dds/{ss_types.py 9 类型 · zmax_node.py TOPICS+QoS} · 仓库镜像 dds/
 ```
@@ -113,6 +114,36 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 
 **判据 (必须四档全测)**: prod 订阅端 0 条且守护无参与者 · diag 收到 ss_diag/ss_infer 且值 ≠ -1 且**裁剪掉** ss_state/ss_calib · calib 收到 ss_calib(来自真文件)+ss_state · test 收到 ss_state(dim>0 且 pos≠-1)+ss_action(6 关节)+ss_test。
 
+### 加一个新遥测话题: 五处登记, 漏一处就静默不发
+顺序固定 (全是"登记表", 漏一处 = `allowed(topic)` 为假或 writer 建不起来, 表现是订阅端 0 条而不是报错):
+1. `dds/ss_types.py` — `@dataclass class SSxxx(IdlStruct, typename="zmax::SSxxx")`; **字段只加不改成必填**, 字符串字段用内置 `str`
+2. `dds/zmax_node.py` — import 该类型 + `_SS_TOPICS["ss_xxx"] = SSxxx` + `QOS_CLASS["ss_xxx"]`
+   (状态型/latch 选 `state`, 高频流选 `beat`; 状态型让新订阅者立刻拿到最新一份)
+3. `tools/dds/ss_daemon.py` — `MODE_TOPICS` **三档都要加** (diag/calib/test) + `read_xxx()` (只读真源, 不猜不编)
+   + `pub_xxx()` (字段写前先 `grep -n '^    [a-z_]* *:' ss_types.py` 核对) + tick/线程里调用
+4. `src/lerobot/dataspace/topics.py` — `TOPICS` 条目 (type/rate_hz/qos/producer/modes/key_fields/quality/provenance)
+   + `MODE_TOPICS` + `PRODUCERS[守护]["publishes"]`
+5. `tools/gui/zmax_telemetry.py::MODE_TOPICS` — 控制台读侧的同一张表 (不登记则控制台/数据空间页看不到)
+验证: 重启 `zmax-dds-ss` 后 `--status` 应把新话题列进 allowed_topics; 再跑订阅脚本实测。
+
+### 周期型话题: **别挂在主 tick 上, 开专用节拍线程**
+- 实测主 tick 一次耗时 **17~26s** (read_state/read_calibs/services_health 都在里面, 远端读很慢) ⇒
+  写在 tick 里的 "5s 门控" 实际退化成 ~20s (实测相邻两条间隔 21.0s), 用户看到的就是"周期不对"。
+- 修法: `threading.Thread(target=self._cfg_thread, daemon=True)` + `Event.wait(max(0.05, period - 耗时))`,
+  run() 退出时 `_stop.set()`; `--once` 那条单独直接发一次。改完实测相邻 ts 间隔 5.0s×4 ✓
+- 订阅脚本必须打印**相邻 ts 间隔**(不能只报条数), 并去重: latch/state 型话题会把同一条重复给新样本 ⇒ 只认新 ts。
+- 载荷口径: 只发用户要的那一件事 (例: 配置**名称**串), **不塞路径/哈希/计数**; 另带一个 `loaded_at` 供判帧龄,
+  源头记录陈旧时在 `note` 里**写明陈旧多少分钟**(不拿旧记录当现状), 而不是默默发旧值。
+
+### 🔴 给已有守护加第二/第三条节拍线程: 两个并发缺陷会立刻发作
+多一个发布线程 = 多一个"并发跑"的 tick, 下面两条**必然**出现 (实测都在首轮/重启后):
+| 现象 | 机理 | 修法 |
+|---|---|---|
+| 首轮 `ModuleNotFoundError: No module named 'ss_types'` 或 `KeyError: 'cyclonedds'` | 节拍线程比主线程的 `sys.path.insert(DDS_DIR)` / `import cyclonedds` 先跑一轮 ⇒ 撞上半成品模块 | 文件头部 (stdlib import 之后) **模块级**插一次 `sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))`; 每个节拍线程开跑前先 `while self.node is None and not self._stop.is_set(): self._stop.wait(0.1)` (上限 ~10s) 再发第一帧 |
+| `tick 异常: dictionary changed size during iteration` | `publish()` 会写 `self.sent[topic]=...`, 而主 tick 同时在 `for t, c in self.sent.items()` 里遍历 ⇒ 并发改写 | 遍历一律取**快照**: `list(self.sent.items())` / `sorted(list(self.sent.keys()))` |
+两条都**不报错退出**, 只是丢帧 + 刷告警, 最容易被当成"网络抖动"放过 ⇒ 加完线程的第一次验证必须**翻守护日志**找这两行。
+判据: 重启守护后日志里"允许 N 话题"的 N 必须比你加线程前**多出**新话题 (不涨 = 登记表漏了)。
+
 ## Pitfalls 汇总
 ```
 ✗ 多网卡下不配单播 → 发得出去收不到（最高频, 且日志完全正常, 极易误判成"代码逻辑没问题"）
@@ -120,6 +151,8 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 ✗ json.dump(msg.__dict__) → SampleInfo 不可序列化
 ✗ 把"测不到"写成 0 → 下游把缺数据当零负载
 ✗ 只在同一进程自测就宣布"两端通了" → 必须双进程 + 双机
+✗ 加节拍线程后不翻守护日志 → 首轮 import 竞态 / self.sent 并发改写被漏掉(丢帧不报错)
+✗ 手改 .vscode/launch.json 或画布 JSON 而不改生成器 → 下次"打开 VSCode"/保存画布被整体重写抹掉
 ✗ 状态类话题不用 TRANSIENT_LOCAL → 订阅者后上线要干等下一个周期
 ✗ 把 DDS 装进业务 venv → 依赖互相绑架; 用独立 venv + JSON 桥解耦
 ```

@@ -57,6 +57,18 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 裸井号。写法: `vX.Y.Z — 主题 (日期 老倪)  老倪: 「原话」  ① …② …③ …  实测: …`, 单行、无 `#`、无 `|`。
 已插错就整行替换: 正则 `^\s*# v5\.X\.Y: .*$` → 干净行, 再 `py_compile` 复验。
 
+## 5b-2. 🔴 bump_version.py 两个实测坑 (2026-10-14 实跑 v5.50.7 → v5.50.71)
+
+* **`--to` 传不带 v 的号**: `--to 5.50.71` ✓; 传 `v5.50.71` 会生成 `vv5.50.71` (工具只在报告里显示
+  `v5.50.7 → vv5.50.71`, 不会拦住)。
+* **新号把旧号当子串时会重复追位**: 5.50.7 → 5.50.71 时, `studio.py` 的品牌 QLabel + **两处窗口标题**
+  变成了 `v5.50.711` (状态栏/关于框却是对的) —— 根因是多趟替换里后一趟把已改好的文本再匹配一次。
+  ⇒ **不能只看工具报的「✅ 旧命中 1 → 新命中 1」**(旧号是新号的子串时, 把 `5.50.711` 数成命中 1 也是对的)。
+  必须**回读** `grep -n 新号 tools/gui/studio.py` 逐位看, 并 `grep -c '新号+额外字符'` (如 `5.50.711`) 应为 0;
+  修法是定点把多余的位删掉再 `py_compile` + `checks/tools/ci/integrity_check.py`。
+* 提交前顺手查 `git check-ignore -v <路径>` 是否命中忽略规则, 且过了 `repo_guard`:
+  数据快照目录里拷进来的 `.db`/归档件 (二进制 >300KB) 会被拦 ⇒ 只留 sha256 清单 + 重建命令进 README。
+
 ## 5c. push zmax 的 ghproxy 变体 (skill 自带脚本写死了另一个仓库)
 `scripts/push_via_ghproxy.sh` 里 `REPO`/`URL` 是 lerobot-smolvla-lew ⇒ 推 zmax 要改
 `REPO=/home/ubuntu/zmax` + `URL=…/MikeBMW/zmax.git`, 且**推两样**: `HEAD:refs/heads/main` 与

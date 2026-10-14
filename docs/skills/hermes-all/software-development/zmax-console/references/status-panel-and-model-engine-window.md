@@ -60,6 +60,61 @@ class ModelEngineWindow(QDialog):     # 薄壳: 只把同一个 Panel 装进去 
   (源码里不再有"另有窗口"的说法) ⑦ **两处界面实例化两遍逐字一致** (列名 + 按钮文字 list 相等)。
   改界面后它与 `verify_product_ui.py` 一起跑。
 
+## 2c. 「推理中 / 空闲」的口径与真源 (2026-10-14 老倪问诊「跑 L5 功能为什么 L2 L3 显空闲」)
+
+那一列是**推理**列, 逐条 `probe` 真探针决定 (`models_manifest.json` 每条模型的 `probe`, 由 `status_hub._probe_inferring` 判)。真源:
+
+| 层 | 在役条目 | 探针 | 阈值 |
+|---|---|---|---|
+| L2 | YOLO 检测+2D→3D | `file_fresh` `ss_bypass/yolo_detections.json` | 10s |
+| L2 | 状态空间小模型组 | `json_counter` `ss_bypass/status.json#layer_calls.perception` | 窗口 |
+| L3 | SmolVLA+LEW 长程规划 | **`json_counter` `ss_live/layer_calls.json#L3.count`** (2026-10-14 新) | 60s |
+| L4 | INTACT-JEPA | `http_counter` `127.0.0.1:8790/health#infer_count` | 窗口 |
+| L5 | DeepSeek 视觉规划 | `file_fresh` `zmax_data/vl_safety.json` | 600s |
+
+**口径 (写在窗口/文档里, 免得反复被问)**: `空闲` = 该层最近**窗口内没有任何画布节点被真跑过** —— 不是"模型没加载",
+也不是"系统没用它"。跑**训练**列的是「训练中」(黄, pct/step), 训练不等于推理 ⇒ 训练时推理列本就应该空闲。
+L5 标注→监督→训练闭环的**标注阶段**只调 L5 大模型 (碰不到 L2/L3) ⇒ L2/L3 推理列空闲是如实的。
+
+🔴 **坑: 用「代理信号」当推理计数会变成恒假的探针**。L3 原来 probe = `json_age`
+`dataspace/live.json#topics.ss_action.age_s` ("状态空间引擎动作节拍"代理)。实测 `live.json` 里 `ss_action` 只有
+`topic/type/qos/allowed/hz/hz_design`、`count=0`, **没有 age_s 字段** ⇒ `_dig` 取不到 ⇒ 恒 `False`
+(manifest 自己都注了"是代理, 系统中无该计数")。这类探针永远显示空闲, 看不出"该层到底有没被调"。
+
+**修法 (已落地, commit 52efd88)**: `src/lerobot/engineering/layer_calls.py` + `runtime.execute_node_logic` 在
+真调真函数**成功后** `touch(key,name)` 一次 (demo/异常不计) ⇒ `zmax_data/ss_live/layer_calls.json` = 逐层
+`count/last_ts/last_key`; 节点→层 用 `nodes/by_level.LEVELS_INDEX` (禁猜)。改完把 probe 换成 `json_counter`;
+判据 `tools/verify_layer_call_counter.py` (5/5: 真跑 L3 节点 ⇒ L3 计数 0→1 ⇒ /status/all L3 inferring=True)。
+生效面: 新起进程立刻生效; **已在跑的 GUI 进程不会**, 且若该 GUI 正是用户那个长跑任务的父进程
+(实测 `l5_annotate_train_loop.py --run` 的 ppid = studio pid) —— **先 `ps -o ppid` 再决定要不要重启控制台**,
+否则重启会把用户正在跑的功能一起杀掉。
+
+**目检前先自证**: 用户说"某层显空闲/在跑"时, 别直接答"机制就是这样" —— 先跑一遍
+`ModelEnginePanel(poll=False)` + `_force_refresh()` + `_drain()` + `_rows()` 复现那一屏 (离屏), 再对探针目标
+连续采样 (实测 L2 探针目标 20/20 次帧龄 0.0~0.6s ⇒ L2 真在推理, "显空闲" 是那个窗没刷到 ⇒ 让他点 🔄 刷新)。
+
+## 2d. 「让某层运行」= 真跑那一层, 不是改显示 (2026-10-14 老倪「让L2 L3都运行，我看着」)
+
+工具: `tools/ss_l3_live_loop.py --interval 1.0 [--seconds N]` (单实例 pid 文件; `kill $(cat
+zmax_data/ss_live/l3_live.pid)` 停)。每周期: 抓一帧真相机 (`8791/snapshot/local2.jpg`) + 取一帧真轨迹
+(`reports/ss_episode_latest.npz`) → `runtime.execute_node_logic` 真跑 L3 节点 (`ss_vlm` / `ss_skill` / `ss_mem_l3`)
+→ 落 `zmax_data/ss_live/l3_live_status.json` + `jsonl`。`action_head`(DiT) 与 `ss_lora_l3` 是**结构/产物节点**
+(只登记配置/产物, 不做前向) ⇒ 不许拿它们充"L3 在推理"。
+L2 不用另起回路: 在役 `ss_yolo_on_real.py --auto --loop` 写 `ss_bypass/yolo_detections.json` (探针 10s 新鲜度)
+就是 L2 的推理信号。
+
+🔴 **坑: 节点“看着在跑”其实一次前向都没发生** —— `vlm_encoder.py` 原先是 `MODEL_ID` 联网 (`hf-mirror.com`)
+加载, 而本机 HF 缓存**已有**权重 ⇒ 卡在 `loading` 永不 `ready`, `ss_vlm` 每周期 2ms 返回「权重加载中」
+(实测连跑 26 周期 0 次真编码)。**判据: 看单周期节点耗时** —— 真前向 SmolVLM2-500M 在 4060 上 **350~420ms**,
+2ms 就是没算。修法: 默认离线 (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE` + `local_files_only`), 留
+`ZMAX_VLM_OFFLINE=0` 回联网; 回路启动时先 `ensure_loaded_async()+wait_loaded(180)` 预加载 (实测 1.0s)。
+另一个使“真前向”退化成缓存命中: 节点侧 `encode_stage(…, cache)` 按 (stage, seed) 缓存 ⇒ 回路每周期
+把 `ctx._vlm_cache = {}` 清掉, 否则只有第一帧是真算、其余都是"(缓存)"。
+
+📝 **回答老倪前先自证**: 改完拿**窗口自己的代码**复现那 4 行 (`ModelEnginePanel(poll=False)` +
+`_force_refresh()`/`_drain()`/`_rows()`, 过滤 `ext` 与候选行), 并把 `/status/all` **连采两次** (计数探针需
+两次采样间增长才判 True, 单采必为 False)。实测四层齐 `推理中` 才算交代。
+
 ## 3. 模型配置接线
 机制与口径写在 `references/veh6-config-center-mcd.md`「生成器 tools/mcd_build.py」一节 (`read=("model",...)` 的四个键、
 `_meta.sources` 加 sha16、改完必跑的判据链)。结论: **模型配置 9 项, `ckpt_l2/l3/l4/l5 + train_state + train_entry`

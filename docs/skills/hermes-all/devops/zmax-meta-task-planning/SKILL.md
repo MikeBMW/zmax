@@ -73,7 +73,33 @@ metadata:
 | 各任务元任务数 = 启用节点数 | 51/51/42/51/51/51/31 |
 真源 sha256 随文档发布冻结; 任一真源变更 ⇒ 重出计划 + 重跑校验。
 
-## 8. 汇报口径
+## 9. 运行时输出（与文档同一映射链, 2026-10-14）
+问「流形引擎需要根据任务输出元任务, 哪个节点输出合理? 意图直读么?」时的定论:
+
+| 项 | 口径 |
+|---|---|
+| 内容 | 元任务 = 功能+参数+依赖+验证+层; **只能真源现算**, 不从意图/技能直读 |
+| 派生器 | `tools/ss_meta_task.py` → 复用 `export_meta_doc.build_meta_tasks()`（不重写映射链）; 19ms/次 |
+| 出口节点 | **主参数节点 n_calib_mani**（与「已加载配置名」同一个 5s 节拍）→ 话题 `zmax/ss_meta_task`; 订阅 `tools/dds_sub_meta_task.py` |
+| 流形引擎的角色 | 每周期只带 `meta_n/meta_all`（运行时可观测量）+ 任务变时重算派生件落盘; **不在 step() 里每步带清单**（污染高频记录） |
+| 🔮 意图直读 | **不参与内容**。`ss_intent_direct`（mem_nodes.py）是 Δz→技能 kNN, 输出**技能ID**, 没有功能登记/参数/验证/层; 意图只决定选哪一批（任务切换触发重算） |
+| 判据 | `ss_meta_task.py --selftest` 3/3（74/74 映射 + 各任务元任务数 == enabled_nodes 数） |
+
+## 11. 元任务**预测**节点（2026-10-14 老倪）
+「元任务可以被预测出来 ⇒ 把意图直读节点改名为元任务预测, 输出元任务预测值, 输入为流形引擎的驱动扭矩」
+
+| 项 | 定稿 |
+|---|---|
+| 画布节点 | id 仍 `n_intent_direct`（保 id 不改，免得断线）; 名 → 「🧾 元任务预测 (驱动扭矩 → 元任务预测值)」 |
+| 输入边 | `ssintact_dec → n_intent_direct`(Δz→技能 kNN) **重接为** `ss_mani_eng → n_intent_direct` 标签「驱动扭矩 T_drive=M·(−∇Φ) (6D)」 |
+| 输出边 | `n_intent_direct → sssched` 标签改为「元任务预测值 → 动作调制」 |
+| 实现 | `tools/ss_meta_predict.py` + `mem_nodes.node_ss_intent_direct`; 真源 tap `/dev/shm/zmax_torque/torque_<scene>.jsonl` |
+| 口径 | 结构先验原型 + 真算特征（trained=false）; 层响应选择向量 LAYER_SEL + 画布入度 + 参数规模 |
+| ⚠️ 输入真相 | **驱动扭矩目前恒定**(std=0, 发布器跑固定状态) ⇒ 预测无区分度, 输出必带 `frozen/degraded` + 说明; 要真预测需时变扭矩 + 阶段标签后 `--fit` |
+| 判据 | `ss_meta_predict.py --selftest` 4/4（输入真读 / 分数归一Σ=1 / 信息量如实 / 与真源集对照） |
+| 改名连带（必做） | `config_meta.json` 的 FN-SYS2-24 name+module_ref（**同名才能保住 74/74**）→ `ss_task_bind.py` 重绑 → `engineering_db.py build` → 两 check |
+
+## 12. 汇报口径
 只说: 元任务数 / 优先级分布 / 两阶段排期 / 一致性结果 / 产物路径 / 飞书回读结果。
 **编号必须点明**: 摆盘在工程里是 `TASK-06-TRAY`, `TASK-07-AOI` 是 AR 光学质检 ——
 老倪说「task7 的摆盘」时把两种编号并列标出让他确认, **别默默按自己的理解改**。

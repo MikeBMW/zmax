@@ -145,7 +145,7 @@ d = {k: getattr(m, k, None) for k in KEYS[topic]}
    后零丢失)；`CYCLONEDDS_URI=file://<0 字节>` 会让参与者掉出发现网，表现为“发了配对=0”
    —— 空/缺配置一律当未配置处理并告警，且发布端与守护端要同一套防呆。
 
-深度: `references/bus-observability.md`(深历史/节流/短键/档位跟随/防呆/回灌口径)；
+深度: `references/bus-observability.md`(深历史/节流/短键/档位跟随/防呆/回灌口径/**新增话题端到端清单:类型→注册→档位→重启对的服务→回读 live.json**)；
 四色状态灯(绿正常·红故障·黄报警·黑无信号)的唯一口径与取值坑: `references/status-lamp-four-colors.md`。
 
 ## 验证顺序（每步都要真跑，别跳）

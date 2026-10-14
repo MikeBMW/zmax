@@ -100,7 +100,41 @@ _, obs = world.envs.reset(seed=42)      # ★ reset 返回 (None, info) — 观�
 - L2 是**技能 Token 序列**(离散), 与 L4 连续动作不同维 ⇒ L2 定"做什么"、L4 定"怎么做", 靠编排器桥接, 不是替代
 - 纤维丛层(`fiber_bundle.py`, SS_L4_FIBER=1): 只往 DiT 加 214 维条件 token; **direct 模式动作来自 intent_actor, DiT 不是动作来源 ⇒ 实测 A/B 无提升(48 rollout 全 75%)**, 默认关
 
-## 7. 纪律
+## 7. 潜表示接口 (z_t/z_pred): 当"编码模型"用、以及 z_pred 为什么会是 NaN
+仓库内有**两条**访问路径, 别混:
+- 独立工程: `/home/ubuntu/INTACT-JEPA` 自己的 `.venv` (上面 1~4 节的官方 eval 路径)
+- **仓库内运行时** (引擎/控制台用): `zmax_data/stable-wm-cache/checkpoints/intact_l4_current/{config.json, weights.pt→…weights_epoch_N.pt}`
+  入口 `from lerobot.policies.intact.service import get_service` (内部 `IntactNode`) —— 在 `gui-venv311` 里可直接跑,
+  **不需要** INTACT-JEPA 那个 venv。
+
+一次真推理后 `svc.node.runtime.last_latent` 给出 5 个潜表示 (各 `(1,192)`, config: `jepa.JEPA` · ViT-tiny(224², patch14)
+· `ARPredictor(num_frames=3, 192→192)` · `intent_mode=goal_displacement`):
+| 键 | 含义 | 实测 |
+|---|---|---|
+| `z_t` | encoder(帧) 当前潜表示 | 有限 |
+| `z_goal` | 目标帧潜表示 | 有限 |
+| `delta` | `z_goal − z_t` (意图位移) | 有限 |
+| `z_pred` / `z_pred_last` | **predictor 预测的下一步潜表示** | 🔴 **实测全 NaN** |
+
+🔴 **z_pred 全 NaN 的根因在上游动作块, 不在编码器**: 同轮日志有 `⚠️ INTACT chunk 空或含 NaN/Inf`;
+连跑第二次直接抛 `Action history contains non-finite values; initialize missing history as raw zero
+before action normalization` ⇒ **predictor 没有有效动作可前推** (且 NaN 会污染动作历史, 后续步全坏)。
+**纪律: 绝不用有限的 `z_t` 冒充 `z_pred`** (那是把"拟合"说成"预测"); 要拿到有限 z_pred, 走原生口径
+(真实 `env.render()` 帧 + `num_frames=3` 历史 + 有效 action 经 `env.step`), 或先查动作头为何出 NaN。
+
+🔴 **该 ckpt `skill_dim>0` ⇒ 不传 `skill_ctx` 会被模型侧硬闸拒绝** (不是降级):
+`ValueError: checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not provided`
+→ `runtime/node.py` 拒绝返回零动作。构造口径: `build_skill_ctx(process, x_hand, stage, grip)`,
+其中 `process = MemoryLayerBridge.from_real_data(root=…, seed=104, use_engine_geom=True).process` (实测输出 24 维)。
+
+把潜表示接成**引擎编码模型** (流形引擎的潜坐标来源) 时: 用已过闸的标定 `models/intact_fiber_map.json`
+(`ready=true`, n=582) 而不是自己切维度 —— `z7_morph` z_pred(192)→z7_geo(7) r²_loso=0.607 ·
+`geom_contact` z7(7)→接触丛(6) r²_loso=0.586 · `l3_contact` z_pred(192)→接触丛(6) r²_loso=0.471 ·
+闸值 `r2_gate=0.3 / null_gate=0.1`。引擎侧接口 `ManifoldEngine(latent_provider=<callable→z>)`
+(/`set_latent_provider`): provider=None 时逐位回到内建 PCA(零回归), 维度不符必须报错不静默截断,
+`project()/step()` 返回值带 `z_source` 供核对。单步耗时实测 0.5~0.8s (policy=direct 零搜索), GPU 需 ≥~1GB 空闲。
+
+## 8. 纪律
 - 每次改动都要**同口径 A/B**(同 seed、每臂独立进程) + 零回退验证(`tools/verify_fiber_zero_regression.py`)
 - L3 档逐位 hash 不可当判据(CPU bf16 FP 非确定, 已复现 3 次) → 判据用"新代码未进 + 结构不变 + L2 逐位相同"
 - 单次评估不作结论: metaworld 布局跨进程漂移 ⇒ 多 seed 多重复

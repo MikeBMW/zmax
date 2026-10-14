@@ -83,3 +83,27 @@ N 条画布连线若开 N 个 topic, 发现/内存/可读性一起崩。CANoe �
   UI/报告必须能一眼区分“回灌”与“真机实测”;
 * 发前先等配对(`wait_for_match`), 发完 linger 2s 再退 —— BEST_EFFORT 下进程立刻退出会
   让读者收不全; 持续回灌用 `--watch --rate`。
+
+## 十一、新增一条话题到「信号分析可见」的端到端清单
+
+新增话题不是"加个 dataclass"就完事 —— 少登记一处, 症状都是"页面上没这条"且**不报错**。按序改齐:
+
+1. **类型**: `dds/ss_types.py` 新增 IdlStruct (字段带单位; 缺测写 `-1.0`, 别用 0 冒充)。
+2. **注册**: `dds/zmax_node.py` 的话题→类型映射 + QoS 分级 (状态快照类 = `state`)。漏这步 ⇒ 订阅端 `TOPICS[key]` KeyError。
+3. **发布端**: `tools/dds/ss_daemon.py` 增 `pub_<topic>()`, 读**真源 JSON**; 帧龄超阈值要**如实写"陈旧/未训练"**,
+   绝不静默沿用旧值; `trained/frozen` 这类状态原样转发。挂到常驻节拍线程里, 不是只发一次。
+4. **目录册**: `src/lerobot/dataspace/topics.py` 补名称/类型/来源/周期描述 —— 页面上的说明文案从这里来。
+5. **档位白名单 `MODE_TOPICS` 是手抄多份**: `tools/dds/ss_daemon.py`、`tools/gui/zmax_telemetry.py`、
+   `src/lerobot/dataspace/topics.py` 都要加, 并在文件里注明哪份是真源。只加一处 ⇒ 探针按档位订阅时看不到它。
+6. **重启对的那个服务**: 信号分析页的实时值来自 `live.json`, 它由 **`zmax-dataspaces-probe.service`**
+   (`venvs/dds-venv` 跑 `src/lerobot/dataspace/probe.py --watch`) 写; `zmax-dataspaces-loop.service` 只写 `loop.json`
+   —— 重启它页面一个字段都不会变(实测白等一轮)。判据 = `live.json` 话题数 N→N+1 **且**该话题下有字段值。
+7. **验证三步**: ① 订阅器真收到 ≥2 帧且间隔符合周期 ② 回读 `live.json` 该话题有值 ③ 页面上能选到它。
+   三步缺一步都别宣布"已接进信号分析"。
+
+> 改完代码服务行为没变时, 先问**服务自己的解释器**加载的是哪个副本, 别看仓库文件:
+> `systemctl cat <svc>` 拿 ExecStart 的解释器/CWD, 再用那个 python 打印 `module.__file__`。
+> editable 安装的 `.pth` 可能指向已不存在的旧路径 ⇒ 你改的副本和它加载的副本不是同一份。
+
+> 挂载到"某层在役/推理中"这类状态列时: 计数/新鲜度取**真跑过的痕迹**(真调用计数、落盘帧龄),
+> 不要拿"话题里有没有某字段"当代理信号 —— 代理字段一旦不写, 判定就恒假(真跑也显空闲)。

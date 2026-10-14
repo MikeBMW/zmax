@@ -133,6 +133,9 @@ RealSense D435(以及多数工业相机)是独占设备: 谁起了 pipeline, 别
 - `references/offline-rehearsal-harness.md` —— 硬件/产线不可用时的**离线演练取证**（合成场景 + 调真函数 +
   断言表），以及另一半：**复放产线程序本体**把多段判据流水线的失败定位到具体一段（桩 SDK 载入 → 全量读 meta →
   从结果往上游对账）、度量窗口先校准、别猜内部函数签名。
+- `references/l5-auto-annotation-supervision.md` —— **L5 VLM 自动标注 → L2 数据集**的失败归因：
+  0 有效框分三类报（无帧 / VLM 无目标 / 有框但不在类别表）、诊断分支只能读本函数真有的量、
+  用同一批现场数据重放该阶段验证（别重跑整链）。
 - 相关用户自有技能 (只读参考, 不要改): `yolo-3d-perception-chain` (仿真=真机同构链 / BGR 坑 /
   标定目录契约 / 深度头), `qt-gl-rendering-pitfalls` 的
   `references/crash-forensics-and-cross-thread.md` (GUI 硬崩与跨线程取证)。

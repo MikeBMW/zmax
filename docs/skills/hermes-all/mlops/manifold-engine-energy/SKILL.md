@@ -69,6 +69,16 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 - 还没做 (如实报): 五路只有 alignment 是真信号 (其余 decay 外推 + `estimated=True`), 接口见 `SENSOR_MAP`;
   对真机成功率的提升未做同口径对照 ⇒ 按纪律不进默认档, 定位=核心节点自带安全旁路。
 
+## 常驻周期回路 (2026-10-14)
+老倪: 「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，怎么只是调用一次呢？改」
+⇒ step() 原来只有手跑一次性调用 ⇒ 见 `references/resident-engine-loop.md` (架构 / 三个必踩坑: goal_point 早退 /
+MODE_TOPICS 三份 / launch.json 单模板 / 单写入器锁 / 判据 verify_ss_engine_loop.py 16 项)。
+
+## L4 潜空间: VLM 编码器 → 黎曼度规约束 → INTACT 意图解码 (2026-10-14)
+老倪: 「VLM 通用视觉编码器是输入，流形引擎根据黎曼度规加约束，INCACT 负责意图解码」⇒ 见
+`references/l4-latent-space.md`。同文件还含 **L4 后段链** (意图解码器→INTACT LoRA 微调→流形专家预测器→
+接触/性能流形 · 数学层 `manifold_chain.py` · 画布 `canvas_l4_lora_chain.py` · 判据 8/8 · 四个实测坑)。
+
 ## 整合后环境链路（2026-10-07 修，别再踩）
 - 工程根 `/home/ubuntu/zmax`，HF 家在 `zmax_data/hf_cache`（`~/.cache/huggingface` 已空）⇒ 各训练阶段必须带 `HF_HOME`/`HF_HUB_CACHE`。
 - `import torch` 报 `libcusparseLt.so.0` 找不到 = `/etc/ld.so.conf.d/nvidia-pip.conf` 还指整合前已删路径；改指 `~/zmax/gui-venv311/lib/python3.11/site-packages/nvidia/*/lib`（`cusparselt` 需补一个去 `nvidia/` 前缀的兼容软链，因为 torch RPATH 那一项没带 `nvidia/`）。
