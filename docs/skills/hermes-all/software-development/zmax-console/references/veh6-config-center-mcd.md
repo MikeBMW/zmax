@@ -27,6 +27,22 @@
   feature.dbc 能力 30(8 域) 组合 5 · 档位契约 L2 7/L3 4/L4 6/L5 5 · 断言 57(自动 47) · 就绪 10/24 缺 14。
 - 缺口分三类（诊断列要分开显示）：**现场未标定**(T_base_cam/plane_z/cell_geometry) ·
   **真源非文件**(saturate/veto_th 在源码常量里) · **未接线**(权重/第三方/档位)。
+  ⚠ **"未接线"与"现场未标定"是两种不同的缺**: 前者改生成器去接真源, 后者得去现场标; 都写成"缺"就分不清该动谁。
+- **`read` 种类**: `calib` / `manifold` / `dbc` / `levels` / `features` / `cfgspec` / `perf_spec` / **`model`**。
+  `model` 这一类的真源 = `tools/model_inventory.py --json` (nvidia-smi + 四层在役/最新产物 + 训练进程):
+  `("model","L2")` = `os.path.realpath(models/yolo_peg_live.pt)` (**L2 真源是软链**) ·
+  `("model","L3"|"L4"|"L5")` = inventory 里该层 `active` 的 `realpath || path` ·
+  `("model","status")` = 逐层 {在役, 本层产物数, 最近训练, 训练中} 现算 ·
+  `("model","entry")` = 逐层真训练命令 (脚本文件不存在 ⇒ `ready=false`, 不许编)。
+  加真源后 `_meta.sources` 要带 `tools/model_inventory.py` 的 sha16 (否则"真源同步"会假报)。
+- **模型配置域已接线 (实测 9 项全 ready)**: `model.arch_mode / cfg_spec / ckpt_l2 / ckpt_l3 / ckpt_l4 / ckpt_l5 /
+  train_state / train_entry / third_party`。以前 `ckpt_l2/l3/l4` 全是 `value=null · ready=false · 未接线` 且
+  **L5 根本没有** ⇒ 现在 L2~L5 在役权重逐层真取 (例 `zmax_data/models/l5_vlm_merged_<stamp>/model.safetensors`)。
+- **改 `mcd_build.py` 后必跑的顺序**: `mcd_build.py`(生成) → `--check`(幂等, 剔除 `_meta.generated_at`) →
+  `engineering_db.py build` + `check` → 配置中心域判据 + `verify_task_order_split.py` + `verify_product_ui.py`。
+  漏掉 `engineering_db build` 会让工程库里的 sha16/就绪度与配置中心不一致。
+- **一个命令只能有一份定义**: 窗口/按钮/文档要执行某个动作, 就引 `param_registry.json` 里的那条参数
+  (如 `model.train_entry`), 不另写一份 —— 否则配置中心改了、窗口还跑旧的。
 
 ## 模型多时如何区分配置 / 如何匹配工程配置
 - **区分的不是名字，是三件正交的事**：`域(domain)` × `层(layer L2/L3/L4/L5)` × `角色(检测/策略/意图/肌肉)`。
@@ -44,7 +60,29 @@
 - 冲解规则：G1/G3 **站点永远赢**（模型只能要求）；G2 组配覆盖可可回溯；归一化 stats 谁都不可覆盖（不同源=拒绝加载）。
 - 命名：模型 ID `<层>.<家族>.<版本>#<sha16>`；组配 `binding_id = sha16(逐层模型+站点+档位+覆盖)` → 事后能还原“当时哪套”。
 
-## 第五域「工艺·工单」(Build Sheet) —— 工艺流程怎么配
+## 第五域「工艺·工单」→ **已拆成两项**「📋 任务配置」+「🧾 工单配置」(2026-10-14 老倪)
+
+**老倪原话**: 「将元任务, 这些信息, 体现在配置中心的 任务配置; 将原来的工艺工单任务, 拆解成
+任务配置 和 工单配置 两项」。原来一个顶层项「工艺·工单」把两件事混在一起 ⇒ 拆成两项, 拆的是
+**粒度**, 不是换列 (原任务表 14 列、原工单表 6 列一列未动, 新维度只追加在后)。
+
+- 📋 **任务配置 = 元任务粒度** (一个功能 FN-SYSx-N + 该功能全部配置参数): 左树子项 = 任务 ID;
+  页面 = 原任务表 + 下方**元任务表** (列 = 《元任务标准模板》七字段: 功能名称/输入/输出/配置参数/
+  **依赖关系**/验证方法/**承载场景**)。两表联动: 点任务行 ⇒ 元任务表只留该任务承载的行。
+- 🧾 **工单配置 = 工单实例粒度** (一份工单 = 一次执行): 身份 + 配方 + 变体 + 选项 + 目标 +
+  安全/防错链 + 站点就绪; 点工单号 (表行/左树子项) ⇒ 底部面板摊开完整配置面。
+- **依赖关系不许手写**: `config_meta.json` 的 `deps.functions` 实测 74/74 为空, 唯一有据来源是
+  画布连线 (`state_space_obs.json` links 的 t←f) ⇒ 用它算上游依赖。编一张依赖表就是造假。
+- **一份逻辑两处用**: GUI 元任务表直接 import `tools/export_meta_doc.py` 的构建函数 (与 Word/PDF
+  导出同源), 不在 GUI 里写第二套取数。真源: `config_meta.json` + 画布连线 + `tasks.json` +
+  `ss_task_binding.json`。
+- CLI 同步: `config_center.py` 的 `DOMAINS` 同步拆成 `任务配置` / `工单配置` (GUI 树与 CLI 域名一致);
+  `tools/verify_product_ui.py` keep 列表里的 `🎯 工单` 要跟着改成 `🧾 工单配置`, 否则判据假红。
+- 判据: `tools/verify_task_order_split.py` (离屏真起 ConfigCenterPage, 27 项: 拆项/七字段/回读真源/
+  两表联动条数 == 真源 enabled_nodes/增列不换列/CLI 同源)。改这一块后必跑它 + `verify_product_ui.py`。
+
+### 原第五域设计说明 (保留: 四层配置/优先级/拦截, 仍然有效)
+
 - 汽车总装 Build Sheet(单车身份+装配指令+零件清单) → 机器人产线: 工单身份+工序配方+物料清单;
   再加一节汽车表上不写的: **安全(Sys-0)**(急停/力阈值/关节限位/光幕), 它不在配方里、在站点里。
 - **四层配置 + 优先级(谁说了算, 写死)**:

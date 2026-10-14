@@ -63,4 +63,32 @@ tools/canvas_level_audit.py        档位级真接 / 无执行注册 / 真缺口
 tools/rewire_cross_check.py        交叉前/后 + **每条线贡献**(归因到具体连线)
 tools/canvas_rewire_exec_chain.py  执行链重连(六断言+备份+还原命令) —— 可当重连模板抄
 tools/canvas_add_realscene_node.py 加单节点(端口自动取真实值 + 位置搜索方向正确)
+tools/canvas_add_seg_dsvl_link.py  加**单条线**(幂等+端口存在+前向+回读: 既有线逐条不变)
+tools/verify_seg_into_fusion.py    消费链: 掩膜3D真进下游 + 零回退 + 开闸行为 (11 条)
+tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里找那条线 (5 条)
 ```
+两条已挂进 `tools/run_gui_verifiers.sh` (seg_to_fusion / seg_dsvl_link)。
+
+## 7. 「节点输出悬着」的判定 + 接法 (2026-10-14 SAM3 → 融合定位建图 / DeepSeek-VL)
+
+老倪这类直觉往往是对的, 但**在画布上看不出来** (线可能早就画着)。必须三步, 缺一步就答错:
+
+① **它算出来的东西存在哪**: grep 缓存写点 —— 例 `🧩 分割节点` 把"掩膜级 3D"写进 `_YOLO_CACHE['mask3d']`。
+② **谁读它**: 若全仓只有 `tools/` 下的取证脚本读 ⇒ **就是"悬着"**, 与"线画了没画"无关。
+   (`search_files 'mask3d|seg_masks'` 一次就能把消费者列全。)
+③ **渲染级确认**: 按**节点名**在 `SimLinkItem` 里找 (别按 id — `load_flow_file` 会重编)。
+
+接法 (两层, **不挪能力节点所在层**; 上层只给意图/条件, 执行由下层收口):
+- **数据面**: 在**下游节点逻辑**里读该缓存。本案例: `📡 融合定位建图`(`node_ss_s1`) 加"掩膜 3D → 独立观测入
+  `_SS_STATE` + 与框法交叉校验(偏差 mm)"; 要改写状态向量必须**显式开闸**(`ZMAX_FUSION_SEG=1`),
+  默认档一个字段不改 —— 守住"未证明提升不进默认档"。
+- **意图面 (当大模型输入选项)**: 在**上层节点的上下文构造函数**里加一路 (本案例 `_vlm_ctx()` 往 ctx 加 `seg`),
+  这样"作为大模型的一个输入选项"是**真被读**的, 而不只是画一条线。新鲜度闸: 只用同帧 (≤3s) 的结果,
+  过期一律当没有 —— 拿上一帧掩膜套这一帧 = 假数据。
+- 跨层接线优先找**空闲输入口**: `n_dsvl` 声明 in1..in4, 已占 in1/2/3 ⇒ 新线落 **in4**, 不动任何既有线。
+  跨行前向判据 `f.x+f.w <= t.x` 要先算 (例 ss_seg 右缘 1776 ≤ n_dsvl 左缘 1995 ✓)。
+
+坑:
+- `flows.load_canvas()` 返回 **(data, errors) 二元组**(validate 默认 True) ⇒ 直接 `d['nodes']` 会 `TypeError`。
+- 改画布**前先 `studio_ctl.sh stop`** (GUI 退出/另存为会把内存画布写回真源, 覆盖你的改动), 写完再 `restart --force`;
+  控制台日志里 `已加载工作流: ... (89节点 185连线)` 是"新画布真读进来了"的唯一凭证。

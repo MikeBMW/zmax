@@ -151,6 +151,9 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 ### 14. `Destroyed while ... is still running` + `Fatal Python error: Aborted` (QThread / QProcess 同族)
 - 典型成因: `QThread`(子类)实例只活在局部变量里 —— `.start()` 返回后 Python 包装对象被 GC, 而 C++ 侧线程还在跑 ⇒ Qt 直接 abort, **窗口整体消失**(应用日志里没有 Traceback)。
 - 纪律: 每个 QThread 实例都要有长期归属(`self._workers.append(w)` / `self._w = w`); 自查 `grep -n "Worker(" <file>.py`, 逐个确认实例被持有。
+- **★ 反查顺序: `Aborted` 上面那条 Python 异常才是根因** —— 建页/构造中途抛异常 ⇒ 已经起的后台线程没人停 ⇒ `QThread: Destroyed while thread is still running` ⇒ `Fatal Python error: Aborted` + core dump。
+  所以崩溃栈里的 DDS/mujoco/torch/其它 C++ 线程**只是陪葬**, 别先怀疑它们; 判据 = 启动日志里 `Aborted` 之前那段 traceback 定到哪个函数抛的, 不是末尾的线程列表。
+- **收到别人传进来的 layout 必须按类型自适应**: builder 拿到的可能是 `QFormLayout`/`QVBoxLayout`/`QHBoxLayout` 任一 —— `QFormLayout` **没有 `addLayout`/`addWidget`, 只有 `addRow`** ⇒ 误用抛 AttributeError(建页即崩, 且崩在启动期不好定位)。写法: 控件包一层 QWidget 后 `if hasattr(layout, "addRow"): layout.addRow(w) else: layout.addWidget(w)`。
 - **同一个坑在 `QProcess` 上以另一副面孔出现: 把 QProcess 挂 `parent=控件`**(`QProcess(self)`)—— 换页/关窗时父控件先析构, 而子进程还在跑 ⇒ `QProcess: Destroyed while process is still running` ⇒ **abort / core dump (控制台整体消失)**。它只在"离屏验证脚本跑完析构"或"用户换页/关窗"时触发, 平时看不出来 ⇒ 必须显式测: 起采集后立刻 `w.close(); w.deleteLater()`, 不断言到无崩溃就别算完。
   - 正确写法(实测): ① **不挂 parent** —— `p = QProcess()` 并把引用存成 `self._proc`(谁持有谁负责); ② 槽里用 `self.sender()` 取回对象, 不要 `lambda: self._on(p)` 闭包捕获(闭包持的是已删 C++ 包装对象, 报 `wrapped C/C++ object of type QProcess has been deleted`); ③ 槽内 `readAllStandardOutput()` 用 try/except RuntimeError 兜; ④ 提供 `stop()`: disconnect → 未停则 `kill()+waitForFinished(300)` → `deleteLater()`, 并在 `closeEvent` 里调它 + 停掉自己那个刷新 QTimer; ⑤ 收到 `finished` 后 `deleteLater()` 并清 `self._proc = None`(防重入叠进程)。
 - **用 QProcess 定时跑只读工具取实时数据是可行模式**(数据条/明细表): 子进程跑 `工具 --json` → 主线程解析 → 贴到 QLabel/表。纪律: 显示**采集时间**(没有时间戳的数字等于没说) · 工具失败显红字并保留上一次的值(绝不假装正常) · 上一轮没回不叠新进程 · 按真源 mtime 或定时器缓存。

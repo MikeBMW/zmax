@@ -489,6 +489,24 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 - 恢复习惯: 工具条常驻 + 「画布(C)」菜单双入口(菜单项 `triggered` 接到**同一按钮**的 click,
   不要把常驻按钮 `setattr` 成 QAction — `attach_canvas_actions` 里 6 个替身项是那个用法, 新按钮不是)。
 
+### 从画布开一个「独立窗口」按钮的完整收口 (2026-10-14 老倪「在状态空间工程增加一个模型引擎按钮」)
+1. 按钮 = `self.btn_xxx = mk_btn("🧠 模型引擎", "<多行 tooltip: 数据真源/复用口径/干什么>", self.open_xxx, "#c9a0ff")`
+   + **紧跟 `tl.addWidget(self.btn_xxx)`**；挨着同类按钮放 (本次挂在「🗂 配置中心」右边)。
+2. 打开方法 = **薄壳**: 已有且 `isVisible()` 就 `raise_()+activateWindow()` 复用 (不新开第二个),
+   否则 `ModelEngineWindow(self.window() or self)` → `show()` → **写一行日志**。父窗口只用于定位/生命周期,
+   窗口内容必须是**与控制台同一个面板类**, 不要为画布另写第二套界面 (两套必然漂移)。
+3. **可见性必须查**, 别只看源码在: `tools/probe_canvas_me_button.py` 离屏真建 `SimulinkModule()` → 打印新按钮
+   `isVisible()` + 全局 x 范围 + 模块右边界 (本次 1400 宽下 x=1214..1314 < 右边界 1402 ⇒ 完整可见;
+   真屏上用按钮文字色 `#c9a0ff` 聚类找坐标，紫钮像素 x 1121..1292 ✓)。
+4. **真鼠标点击取证** (`tools/click_canvas_me_button.py` 按色聚类算中心 → `xdotool mousemove/click`):
+   先 `wmctrl -c` 关掉旧窗 → 点按钮 → `wmctrl -lG` 应出现新窗口 + 日志出现自己那一行;
+   再点一次/再触发一次 ⇒ 窗口个数**仍为 1** (复用没重复开)。
+5. 控制台命令通道同步开一条 (`elif line == "ss_model_engine": _oneshot(self, 600, self.simulink.open_model_engine_window)`),
+   方便无鼠标复现; 但注意 `open_model_engine_window` 定义在 **SimulinkModule** 上 (不在 studio 主窗),
+   写 `self.open_...` 会 AttributeError 被 except 吞掉 = 点了毫无反应。
+6. 判据: `tools/verify_model_engine_same_render.py` ⑦a~⑦d 钉住「按钮在布局里 / 回调是同一个窗口类 /
+   复用逻辑在 / 命令通道在同一执行体」。
+
 ## 两个 Python 级陷阱 (都在 simulink_module.py 真踩过, 2026-10-10)
 1. **函数内某分支 `import sys` ⇒ `sys` 变局部名** ⇒ 同函数别处的 `sys.path` 抛
    `UnboundLocalError: cannot access local variable 'sys'`。open_ss_3d 里就是这句 —— 后果是

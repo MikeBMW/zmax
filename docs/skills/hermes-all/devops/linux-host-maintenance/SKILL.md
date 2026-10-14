@@ -360,7 +360,28 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
   (实测 640x480 / 37KB / mean 108 / std 43.6)。再跑一次守卫只读判定必须 ✅ —— 关键字没同步改时, 守卫每 5 分钟按老关键字判 ❌ 白重启一次。
 - ⚠️ "进程在 + 端口 200" 不能证明那一格好: 唯一判据是**帧号递增**。(本条与 §9b 的 v4l2 卡死区分开: 那条是设备被占着不再出新帧, 这条是**挑错了设备节点**。)
 
-## 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
+### 9b-3. 推流某格「帧号在涨但画面纯黑」= 相机被 EC/UVC 隐私开关关掉, 不是取流代码 (2026-10-14 实测)
+
+症状与 §9b 的 v4l2 卡死**要分开判**: 那条是帧号冻住; 这条是 **frames_served 正常递增(实测 5fps)而画面全黑**。
+判据按顺序量三个数:
+```bash
+# ① 画面本身(别只看字节数): 纯黑 = mean≈0 且 std≈0
+ffmpeg -hide_banner -loglevel error -f v4l2 -i /dev/video2 -frames:v 8 -y /tmp/x.jpg   # 挑一个空闲节点, 绕开推流进程
+<venv>/bin/python -c "import cv2;im=cv2.imread('/tmp/x.jpg');print(im.mean(),im.std(),im.max())"   # 实测 0.0/0.0/0
+# ② 相机电源(联想 ideapad_acpi): 0 = 关着
+cat /sys/bus/platform/devices/VPC2004:00/camera_power
+# ③ UVC 隐私开关: value=1 + flags=read-only = 硬件侧关着
+v4l2-ctl -d /dev/videoN --list-ctrls | grep -i privacy
+```
+- **两个软件口都改不动** ⇒ 就是硬件/EC 层: `echo 1 > camera_power` 返回 0 却**读回仍是 0**(EC 拒收);
+  `v4l2-ctl -c privacy=0` 直接 `Permission denied`(read-only)。此时**不要再去重启推流/换源** —— 换源/重启都不出图
+  (实测重启后帧号涨、图还是 mean 2.7)。
+- 处置 = **现场一个物理动作**: 按相机开关热键(F4/F8 那类带相机图标的键) 或拨开物理挡片; 之后 `privacy` 应回 0、
+  `camera_power` 变 1, 抓帧 mean 会跳到两位数。**在报「某格黑」时把这条物理动作直接写给用户**, 别说成服务故障。
+- ⚠️ 视觉安全闸会因此 `degraded_cams=[local]` + `blocked/no_signal` (§视觉闸 fail-closed) ⇒ 真机动作被拦是这条的下游, 同源处理。
+- 同类白瞎功: 换源(内置↔USB)只切设备, **不解除隐私开关**; D435 没插时选 USB 只会回落到「内置+黑帧」。
+
+### 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
 
 实测(2026-10-07 重启后): `zmax-ecs-ov` / `zmax-ecs-station` 报 `activating` 且 `NRestarts` 每秒涨;
 `/var/log/zmax-ecs-*.log` 满屏 `Error: remote port forwarding failed for listen port 18791`;

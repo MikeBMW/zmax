@@ -24,6 +24,61 @@ metadata:
 - **代码位置**: 算法内核 `src/lerobot/policies/<模型名>/`(与 `policies/yolo_3d` 同层级 —— 老倪纠正过: 别把模型算法写进 tools/); `tools/` 只放**调用方**(CLI/常驻服务/写规格/取证图)。
 - 接入四件套: registry `_reg(key, [关键字], doc, fn)` + `_EXTERNAL_LOC[key]=(路径, 行号, "def xxx")`(源码视图指向**类内真推理**, 不是三行转发壳) + 画布节点(进对应 row_bg 行带) + capability_levels 一条能力。
 
+## UI 显示: 模型引擎里 SAM3 摆在哪 (2026-10-14 老倪: 「在模型引擎里要增加 SAM3, 位置 L2 对不? 你来设计 UI 显示」)
+
+**摆法 = 在役四层下面一行「🔎 L2 · 候选」(灰 = 未在役)**, 不是新层、更不搬 L5。在役行=绿/红(在役/异常),
+候选行=`C_YELLOW` 的层标签 + 其余单元格压 `C_GRAY`; 一眼分清"在跑的"和"候选的"。
+
+**真源唯一 (三处必须同一个函数算)**: `tools/model_config_matrix.py::candidate_rows(models, st_models, layers)`
+— 窗口 `tools/gui/model_engine_window.py::_rows()` 追加候选行、主界面配置通道「🔎 候选」组、配置中心模型配置域
+都调它。规则: 名字压缩 `_cmpp`; **判据取 8796 `/status/all` 的 `note_short`**, 引擎没给备注就如实写
+「产物未评估(尚无 A/B 判据)」—— **不许自己编"为什么没切"**。候选行 tooltip 必带候选清单 + 完整权重路径 +
+候选产物数 + 最近训练; 单元格双击可复制路径。
+
+**列宽红线 = 不截断(ElideNone)**: 显示串要**按像素预算**裁 (`_wpx`: CJK≈18px, ASCII≈9px), 放不下收成 ` +k`
+(全清单进 tooltip), 不用省略号糊。实测踩过两处硬切: ① 候选版本串两个版本拼一起 297px > 版本列 278px;
+② 层列只 56px 放不下 `🔎 L2 · 候选`。现列宽 `(132, 340, 278, 76, 78, 160, 180)` + 最后一列 Stretch,
+且**判据要用真 8796 状态再喂一遍**(用空 stub 喂 ⇒ 版本/判据列都是 `—` ⇒ 越列宽检不出来 = 假绿)。
+
+**判据**: `tools/verify_model_engine_unified.py` ⑬(L2 候选行显 SAM3) · ⑬b(带未切在役判据) ·
+⑬c(候选权重路径存在) · ⑬d(真状态喂入不越列宽) · ⑭(窗口候选路径 == 配置通道「候选权重路径」同源同值);
+面板自带 `model_engine_window.py --selftest` (行数=4+候选数/列宽余量≥24px/路径不截断)。
+
+**命令通道坑 (能白等一整轮)**: 要在控制台外部弹这个窗口, `echo model_engine > /tmp/zmax_nav_cmd`。
+但 `open_model_engine_window` 定义在 **`TrainingModule`(页面)** 上, 不在 `StudioMainWindow` 上 ——
+在 `_poll_nav_cmd` 里写 `self.open_model_engine_window` = AttributeError 被 except 吞掉、命令文件已被删、
+**什么反应都没有**。正确写法: 遍历 `self.stack` 找 `hasattr(w, "open_model_engine_window")` 的承载页再调。
+
+**两处界面“保持一致”是硬约束，不是口头语** (老倪 2026-10-14: 「你单独打开的模型引擎窗口，与控制台功能区模型引擎标签打开的界面，要保持一致」):
+同一个面板类**不够** —— 未列（权重路径）是 Stretch ⇒ 表宽跟随父容器 ⇒ 同一行在两处被裁的位置不同。实测: 弹窗 1900 宽时该列 622px、窄容器 1400 只剩 100px、而**功能区页面会把表撑到 2497px（路径列 1253px，全不裁）** = 用户看到的"两处显示两个样"。
+- 口径: 面板 `setFixedWidth(设计宽)`（**Fixed 不是 SetMinimum**——minimum 挡不住页面把它撑大），页面侧不够宽就在**页面级 QScrollArea 里横滚**（先确认父链真有 QScrollArea 且横滚 max>0，否则右列永远看不见）。
+- 窗口高度也按**内容**定 (`adjustSize()` + `resize(宽, panel.sizeHint().height())`): 窗口比面板高时多出的高度会把按钮行拉开/居中，与页面排布对不上（实测 660 高时抓图逐像素差 20%，差异全在表下那一条）。
+- **比对方法（别拿 OCR 锚点凑）**: 用面板自己 `panel.grab()` 抓图，用 `tb.geometry()` 对齐**表格区**逐像素比（面板表头带 GPU 实时读数，两处各取一次天然不同，不比）。页面那个面板 `poll=True`，抓图前必须停它的轮询（`_t/_lt/_fetcher.stop()`），否则它自己刷成实时数据再抓 = 比两份不同数据。
+- 判据: `tools/verify_model_engine_same_render.py` —— 窗口实例 vs **真*功能区页面实例** (`studio.TrainingModule().me_panel`) 逐列/逐格/字体/按钮一致 + 窄容器不变形 + 表格区逐像素差异 <0.5% (实测 0.000% / 0 px)。该脚本实例化页面会起 poll 线程，结尾必须 `os._exit()` 绕开 Qt 析构（否则 dump core）。
+
+## 输出三个去向 + 「悬着」的诊断 (2026-10-14 老倪: 「SAM3 放 L5? 输出给融合定位建图合理么?」)
+
+诊断: 老倪感觉"SAM3 悬着"——**它是对的, 但真因不在画布线上**。🖼 分割节点把"掩膜级 3D"写进
+`_YOLO_CACHE['mask3d']`, 而全仓只有一个 `tools/` 取证脚本读它 ⇒ **算完就躺在缓存里, 零下游消费者**。
+通用判据: `search_files 'mask3d|seg_masks'` 数消费者; 只有 tools/ 下的 ⇒ 悬着。
+
+三个去向 (都在在役链路上):
+1. **融合定位建图** (`📡 sssensor`, `node_ss_s1`): 读 `mask3d` 作独立观测入 `_SS_STATE['seg_mask3d']`
+   + 与框法(39D 光模块段)**交叉校验**(偏差 mm 入状态); 掩膜过期(>3s)一律当没有。
+   要真正改写状态向量必须显式开闸 `ZMAX_FUSION_SEG=1` (默认一个字段不动 —— 未证明提升不进默认档)。
+2. **当 L5 大模型的输入选项**: 画布线 `ss_seg.out2 → n_dsvl.in4`(🧿DeepSeek-V4-Flash, in4 是空闲口) +
+   代码在 `_vlm_ctx()` 里往 ctx 加 `seg`(实例数/类别/面积/IoU/掩膜 3D base 坐标) —— **两条都要有**:
+   只画线不改 ctx = 装饰线; 只改 ctx 不画线 = 老倪在画布上看不见。
+3. **场景叠加** (`origin='seg'` 规格): 见下文"集成到场景叠加/绑帧"。
+
+层归属结论 (老倪提议"把 SAM3 挪到 L5"): **不挪**。分割是感知原语 ⇒ 能力留 L2(与 YOLO 同级),
+L5 只给"要用什么概念"+把分割结果当**输入**。搬到 L5 的两个真损失: L2 感知链少掉开放词汇这一路;
+L5 变成"产像素原语的层"(以后每加一个视觉能力都往 L5 堆)。想"一眼看到 L5 有这个输入选项"就接线 + 标签,
+别搬节点 (搬节点 = 反向线 + 重叠断言, 是画布变乱的主因)。
+
+判据 (已挂 `tools/run_gui_verifiers.sh`): `verify_seg_into_fusion.py` 11 条(消费+零回退+开闸+上下文) ·
+`verify_seg_dsvl_canvas_link.py` 5 条(渲染级: 按**节点名**在 `SimLinkItem` 里找那条线, id 会被重编)。
+
 ## 权重获取 (官方 gated 时)
 - `facebook/sam3` 在 HF 是 **gated(需审批)**, 匿名取 config.json 直接 401。走**未门禁镜像的逐文件复制**(键前缀 `detector_model.*`/`tracker_model.*` = transformers 命名)。落数据盘, **不入 git**(3.4GB)。
 - 下载: 单连接 1.3~1.7MB/s; 分段并发要配**看门狗**(每 45s 查进度, 僵死就杀重连续传)。⚠️ 中途改分段数会让各段起点错位产生空洞 —— **续传必须段数一致**, 换段数先删 `.parts`。

@@ -7,14 +7,12 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
-> 📄 VEH.6 配置中心 (MCD 测量/标定/诊断): `references/veh6-config-center-mcd.md` — 一张参数表+三个视角列; 四层配置(站点/配方/变体/工单); 操作面 CLI(config_center.py); 真源唯一/G1 无编辑口/只改本节/写后回读/生成物不手改。
+> 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
 
-> 📄 `references/canoe-graphic-signal-analysis.md` + `monitor-live-source.md`
-> 🚀 标准打开流程: `references/standard-open-flow.md`
-> 🎬 3D 场景渲染正确性 + 像素取证 (件位置/透明/夹具与插入点错位): `references/3d-scene-render-forensics.md`
-> 📥 配置中心配置数据 → 画布节点 (配置导入真加载/写回 · 右键直达导入函数 · 画布真源写口 · 可重跑判据): `references/config-import-node.md`
+> 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md`
+> 🧠 `status-panel-and-model-engine-window.md` = 底栏面板一行 · 模型引擎窗口 L2~L5 (训练状态+控制+执行任务工程) · 模型配置接线 · GUI 硬约束判据 (不截断/一屏放得下)
 
 ## 🖥 界面文案 = 工程真值 (侧栏卡 / 首页架构图 / 模块卡)
 
