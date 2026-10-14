@@ -69,6 +69,21 @@ def months_2026_10_to_2027_12():
             if (y == 2026 and m >= 10) or y == 2027]
 
 
+def _norm_node_name(s) -> str:
+    """归一化节点/功能名, 用于抗改名匹配 (老倪 2026-10-14「补上, 配置完备性」)。
+
+    实测断裂例: 画布节点已改名「🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)」,
+    而登记表还是旧名「🎛 L4 · INTACT LoRA 微调 (r8/α16) · 接入中」⇒ 按原名精确匹配就断 (73/74)。
+    口径: 去掉括号补充 + 去掉「接入中/todo/待接入」这类状态尾巴 + 压缩空白 ⇒ 两侧都归一到同一形。
+    """
+    s = str(s or "").strip()
+    s = re.sub(r"[（(][^）)]*[）)]", "", s)
+    for suf in ("接入中", "待接入", "未接入", "· todo", "todo", "TODO", "待做"):
+        s = s.replace(suf, "")
+    s = re.sub(r"\s+", " ", s).strip(" ·•-—~:")
+    return s
+
+
 def build_meta_tasks():
     """构建元任务清单 + 排期。返回 (元任务列表, 上下文 dict)。"""
     cm = _j(os.path.join(DB, "config_meta.json"))
@@ -98,16 +113,31 @@ def build_meta_tasks():
 
     bad = []
     MT = []
+    # 抗改名匹配: ① 原名精确 ② 归一化名 ③ 唯一前缀 (仅当只有 1 个节点匹配得上, 否则如实算未映射)
+    _norm_map: dict = {}
+    for _n in nodes:
+        _norm_map.setdefault(_norm_node_name(_n["name"]), _n["id"])
     for fn_id, v in fnmap.items():
-        nid = byname.get(v.get("module_ref"))
+        ref = v.get("module_ref")
+        nid = byname.get(ref)
+        how = "name" if nid else ""
         if not nid:
-            bad.append((fn_id, v.get("module_ref")))
+            nid = _norm_map.get(_norm_node_name(ref))
+            how = "norm" if nid else ""
+        if not nid:
+            _r = _norm_node_name(ref)
+            _cand = [_n["id"] for _n in nodes if _norm_node_name(_n["name"]).startswith(_r) and len(_r) >= 6]
+            if len(_cand) == 1:
+                nid, how = _cand[0], "prefix"
+        if not nid:
+            bad.append((fn_id, ref))
+            how = "unmatched"
         ts = node2tasks.get(nid, [])
         params = (v.get("fields") or {}).get("parameters") or []
         n_serv = len(ts)
         prio = "P0" if n_serv == len(tasks) else ("P1" if n_serv > 0 else "P2")
         MT.append({
-            "fn_id": fn_id, "name": v.get("name"), "node_id": nid,
+            "fn_id": fn_id, "name": v.get("name"), "node_id": nid, "match": how,
             "layer": v.get("layer"), "subsystem": v.get("subsystem"),
             "code_file": v.get("code_file"),
             "n_params": len(params),
