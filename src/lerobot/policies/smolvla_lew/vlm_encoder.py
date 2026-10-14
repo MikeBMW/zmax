@@ -20,6 +20,15 @@ import time
 
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# 2026-10-14 老倪「让L2 L3都运行」: 本机 HF 缓存里**已有**该权重
+#   (~/.cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct),
+#   而联网 hf-mirror 会**卡在 loading 永不 ready** —— 实测 L3 节点连着 9 个周期都只打印
+#   「SmolVLM2 权重加载中 (~15s)」⇒ 真实前向从未发生 (推理列看着"在跑", 其实一次都没encode)。
+#   ⇒ 默认**离线只认本地缓存**; 要联网下权重时显式 ZMAX_VLM_OFFLINE=0。
+VLM_OFFLINE = os.environ.get("ZMAX_VLM_OFFLINE", "1") == "1"
+if VLM_OFFLINE:
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 MODEL_ID = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
 
@@ -64,9 +73,9 @@ class SmolVLMEncoder:
         try:
             import torch
             from transformers import AutoModelForImageTextToText, AutoProcessor
-            self.proc = AutoProcessor.from_pretrained(MODEL_ID)
+            self.proc = AutoProcessor.from_pretrained(MODEL_ID, local_files_only=VLM_OFFLINE)
             self.model = AutoModelForImageTextToText.from_pretrained(
-                MODEL_ID, torch_dtype=torch.float16).to("cuda")
+                MODEL_ID, torch_dtype=torch.float16, local_files_only=VLM_OFFLINE).to("cuda")
             self.model.eval()
             self.load_ms = (time.time() - t0) * 1000
             self.status = "ready"
