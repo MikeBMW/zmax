@@ -1097,7 +1097,10 @@ class ConfigCenterPage(QWidget):
         _hv.setSpacing(4)
         _hv.addWidget(self.star_banner.w)
         _hv.addWidget(self.tabs, 1)
-        self.tabs.currentChanged.connect(self._sync_star_banner)
+        # 一致性: 一页多星(功能·性能·模型)时, 只亮**当前点的那一颗**;
+        # 换页签 = 换阵 ⇒ 清掉记忆, 按新页签默认星点亮 (老倪 2026-10-15: 点天玑时天权/玉衡跟着亮 = 错)
+        self._star_focus = None
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         self._sync_star_banner()
         sp.addWidget(self.star_host)
         self._tree_need = self._tree_need_width()
@@ -1497,10 +1500,16 @@ class ConfigCenterPage(QWidget):
         print(msg, flush=True)
 
     # ── ⭐ 北斗七星阵: 顶部阵图条 (跟页签走 · 点星跳页) ─────────────────────────────
+    def _on_tab_changed(self, *_a):
+        """换页签 = 换阵: 清掉"上一页点过哪颗星"的记忆, 按新页签默认星点亮 (一致性)。"""
+        self._star_focus = None
+        self._sync_star_banner()
+
     def _sync_star_banner(self, *_a):
-        """按当前页签刷阵图条: 七星页显示该星说明, 非七星页显示阵法总览 + 该视图归属的如实说明。"""
+        """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。"""
         try:
-            self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()))
+            self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()),
+                                     focus_key=getattr(self, "_star_focus", None))
         except Exception as e:                                                  # noqa: BLE001
             try:
                 self._log_cc("   ⚠ 阵图条刷新失败: %r" % (e,))
@@ -1514,7 +1523,8 @@ class ConfigCenterPage(QWidget):
             return
         i = self._tab_index_by_title(s["tab"])
         if i >= 0:
-            self.tabs.setCurrentIndex(i)
+            self.tabs.setCurrentIndex(i)      # 可能触发 _on_tab_changed (会清 _star_focus) ⇒ 之后再设
+        self._star_focus = s["key"]           # 点哪颗就只亮哪颗 (一页多星时靠它区分)
         _kw = "%s · %s" % (s["name"], s["star"])
         for _i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(_i)

@@ -95,6 +95,34 @@ def main() -> int:
                    " chips=%s → 当前页=%s" % ("/".join(snap0["chips"]),
                                              page.tabs.tabText(page.tabs.currentIndex()).strip())))
 
+    # ⑧ 一致性: 任何一页下**恰好一颗**星亮 (老倪 2026-10-15: 点天玑时天权/玉衡跟着亮 = 错)
+    multi = []
+    for i in range(page.tabs.count()):
+        page.tabs.setCurrentIndex(i)
+        _app.processEvents()
+        _t = page.tabs.tabText(i)
+        lit = page.star_banner.snapshot()["lit"]
+        _want = 1 if S.keys_for_tab(_t) else 0      # 七星页=恰好 1 颗; 非七星页(阵法总览)=0 颗
+        if len(lit) != _want:
+            multi.append("%s→亮%d颗(%s) 应为%d" % (_t.strip(), len(lit), "/".join(lit) or "无", _want))
+    checks.append(("⑧ 七星页恰好一颗星亮 · 非七星页 0 颗 (不许一页亮三颗)", not multi,
+                   " ; ".join(multi) if multi else "逐一实测: 七星页 1 颗 / 工程配置页 0 颗(总览)"))
+
+    # ⑨ 一页三星的页签: 点哪颗只亮哪颗 + 说明跟着换 (天玑/玉衡/天权 依次点)
+    _j = page._tab_index_by_title("功能·性能·模型")
+    page.tabs.setCurrentIndex(_j)
+    _app.processEvents()
+    one_by_one = []
+    for k, star, bind in (("func", "天玑", "定能力"), ("perf", "玉衡", "定指标"), ("model", "天权", "定算法")):
+        page._goto_star(k)
+        _app.processEvents()
+        snap = page.star_banner.snapshot()
+        one_by_one.append("%s→亮[%s]标题%s" % (star, "/".join(snap["lit"]) or "无",
+                                             star if star in snap["title"] else "✗" + snap["title"][:12]))
+    good = all(("%s→亮[%s]" % (st, k)) in "".join(one_by_one)
+               for k, st in (("func", "天玑"), ("perf", "玉衡"), ("model", "天权")))
+    checks.append(("⑨ 点天玑/玉衡/天权 各只亮各自那一颗 (同一页内)", good, " ; ".join(one_by_one)))
+
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []
     for _w, _h in ((1600, 900), (1120, 700)):

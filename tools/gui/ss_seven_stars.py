@@ -83,21 +83,22 @@ OVERVIEW = dict(
     color="#e0b64a",
 )
 
-# ── 页签 → 星 (子串匹配; 先匹配先生效) ───────────────────────────────────────────
+# ── 页签 → 该页覆盖的星 (子串匹配; 先匹配先生效; 元组第一个 = 打开该页默认显示的星) ──────────
+# ⚠️ 一致性口径 (老倪 2026-10-15 实测报错): 页签覆盖多颗星时, **只点亮当前那一颗** ——
+#    点天玑就只亮天玑, 点玉衡就只亮玉衡。原来"一页三星全亮"是错的(点天玑时天权/玉衡跟着亮),
+#    因为"这页装着三颗星"≠"这三颗星同时是当前星"。
 TAB_STAR_RULES = (
-    ("产品配置", "prod"),
-    ("任务配置", "task"),
-    ("功能·性能·模型", "func"),        # 一页三星: 功能/性能/模型 共用, 主显 天玑
-    ("功能配置", "func"),
-    ("性能配置", "perf"),
-    ("模型配置", "model"),
-    ("模型匹配", "model"),
-    ("工单配置", "order"),
-    ("文档交付", "doc"),
-    ("文档预览", "doc"),
+    ("产品配置", ("prod",)),
+    ("任务配置", ("task",)),
+    ("功能·性能·模型", ("func", "perf", "model")),   # 一页三星: 功能/性能/模型 共用
+    ("功能配置", ("func",)),
+    ("性能配置", ("perf",)),
+    ("模型配置", ("model",)),
+    ("模型匹配", ("model",)),
+    ("工单配置", ("order",)),
+    ("文档交付", ("doc",)),
+    ("文档预览", ("doc",)),
 )
-# 一页多星的页签: 除主星外还要点亮的星
-TAB_EXTRA_STARS = {"功能·性能·模型": ("func", "model", "perf")}
 
 # ── 不属于七星的视图: 如实说明它是什么 (不硬塞进阵法) ─────────────────────────────
 EXTRA_VIEWS = (
@@ -108,13 +109,19 @@ EXTRA_VIEWS = (
 )
 
 
-def star_for_tab(title):
-    """页签标题 → 星 dict (取不到返回 None ⇒ 显示阵法总览, 不猜)。"""
+def keys_for_tab(title):
+    """页签标题 → 该页覆盖的星 key 元组 (取不到返回 ())。"""
     t = str(title or "")
-    for sub, key in TAB_STAR_RULES:
+    for sub, keys in TAB_STAR_RULES:
         if sub in t:
-            return BY_KEY[key]
-    return None
+            return tuple(keys)
+    return ()
+
+
+def star_for_tab(title):
+    """页签标题 → 该页**默认**显示的星 dict (取不到返回 None ⇒ 显示阵法总览, 不猜)。"""
+    keys = keys_for_tab(title)
+    return BY_KEY[keys[0]] if keys else None
 
 
 def extra_note_for_tab(title):
@@ -126,14 +133,16 @@ def extra_note_for_tab(title):
     return ""
 
 
-def focus_keys_for_tab(title):
-    """本页要重点亮的星 (一页多星时不止一颗)。"""
-    t = str(title or "")
-    for k, v in TAB_EXTRA_STARS.items():
-        if k in t:
-            return tuple(v)
-    s = star_for_tab(title)
-    return (s["key"],) if s else ()
+def focus_keys_for_tab(title, focus_key=None):
+    """本页当前要亮的那**一颗**星 (老倪: 点天玑就只亮天玑)。
+
+    一页覆盖多颗星时 (功能·性能·模型): 用 focus_key 指定当前这颗; 不指定 / 指定了不属于本页的星,
+    就取本页默认星 (keys[0])。**绝不一次亮多颗** —— 那是"这页装着几颗星", 不是"当前是哪颗星"。
+    """
+    keys = keys_for_tab(title)
+    if not keys:
+        return ()
+    return (focus_key if focus_key in keys else keys[0],)
 
 
 def star_line(key):
@@ -250,10 +259,14 @@ class StarBanner(object):
                          % (s["no_cn"], s["name"], s["star"], s["alias"],
                             "  ← 当前页" if on else "", s["q"], s["define"], s["wuxing"]))
 
-    def set_tab(self, title):
-        """按当前页签刷新整条 (七星页 → 该星说明; 非七星页 → 阵法总览 + 如实说明)。"""
+    def set_tab(self, title, focus_key=None):
+        """按当前页签刷新整条 (七星页 → **当前这一颗星**的说明; 非七星页 → 阵法总览 + 如实说明)。
+
+        focus_key: 一页多星时用户当前点的那颗 (点天玑=func / 点玉衡=perf); 不传则用本页默认星。
+        """
         th = self.th
-        s = star_for_tab(title)
+        keys = keys_for_tab(title)
+        s = BY_KEY[focus_key] if (keys and focus_key in keys) else star_for_tab(title)
         note = extra_note_for_tab(title)
         if s is not None:
             self.t_title.setText("%s、%s · %s（%s）" % (s["no_cn"], s["name"], s["star"], s["alias"]))
@@ -279,7 +292,7 @@ class StarBanner(object):
         else:
             self.t_note.hide()
             self._note_on = False
-        self._paint_chips(focus_keys_for_tab(title))
+        self._paint_chips(focus_keys_for_tab(title, focus_key))
 
     # ── 判据用 (纯文本快照, 不依赖截图) ──
     def snapshot(self):
