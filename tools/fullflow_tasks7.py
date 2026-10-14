@@ -25,6 +25,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -347,7 +348,13 @@ def stage_report(run_dir, state, logdir, send=True):
         md += ["- ⚠️ 真缺口: 7 个场景的驱动扭矩完全相同 (‖T‖=%s N·m, 位姿同一点) ⇒ **元任务预测输入不含场景信息**、"
                "无区分度 (top1 差别只来自各场景候选池)。要真正"
                "按场景预测元任务, 须把场景相关特征 (工件/孔位/装配件) 并入驱动扭矩, 或训练预测头。" % (list(tn.values())[0])]
-    md += ["- 已知长期缺口: INTACT z_pred 仍 NaN (上游动作块空); LoRA A/B 未证明提升前不进默认档; 磁盘 ~86%。"]
+    try:
+        _du = shutil.disk_usage(ROOT)
+        _disk = "磁盘 %d%% (余 %.1fGB)" % (round(_du.used * 100.0 / _du.total),
+                                          _du.free / (1024.0 ** 3))
+    except Exception:                                                         # noqa: BLE001
+        _disk = "磁盘余量取不到"
+    md += ["- 已知长期缺口: INTACT z_pred 仍 NaN (上游动作块空); LoRA A/B 未证明提升前不进默认档; %s。" % _disk]
     txt = "\n".join(md)
     os.makedirs(run_dir, exist_ok=True)
     rp = os.path.join(run_dir, "REPORT.md")

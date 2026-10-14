@@ -1,0 +1,971 @@
+{
+ "run_ts": "20261014_215744",
+ "tasks": [
+  "TASK-01-FW",
+  "TASK-02-HANDLE",
+  "TASK-03-BI",
+  "TASK-04-THERMAL",
+  "TASK-05-ATS",
+  "TASK-06-TRAY",
+  "TASK-07-AOI"
+ ],
+ "params": {
+  "tasks": "TASK-01-FW,TASK-02-HANDLE,TASK-03-BI,TASK-04-THERMAL,TASK-05-ATS,TASK-06-TRAY,TASK-07-AOI",
+  "sim_target": 10,
+  "mode": "insert",
+  "steps": 40,
+  "yolo_epochs": 3,
+  "l5_steps": 20,
+  "skip_train": false,
+  "resume": false,
+  "dry_run": false,
+  "no_feishu": false
+ },
+ "results": {
+  "TASK-01-FW": {
+   "task_id": "TASK-01-FW",
+   "name": "FW Loading + EEPROM 写/读校验",
+   "scene": "SCN-01-FW",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 21:57:44",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 已经是 插拔场景(绿) (SCN-01-FW) ⇒ 不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 97.5,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-01-FW",
+    "instruction": "metaworld 光模块插拔 · FW Loading + EEPROM 写/读校验 (插拔+固件校验)",
+    "episodes": 10,
+    "frames": 4448,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 87s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4448 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-01-FW (96s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 484.7,
+    "run_dir": "joint_train_20261014_215922",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 54.5,
+    "disk_free_gb_after": 53.0,
+    "tail": [
+     "L3      0    230.4  smolvla_lew_lora_40✔",
+     "L2      0    115.7  dataset✔",
+     "L5      0     24.0  l5_vlm_lora_20261014_215922✔",
+     "",
+     "汇总: reports/joint_train_20261014_215922/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 22:07:45] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.82ms · 帧#130/400 · 任务 TASK-01-FW · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 22:07:46] 周期    140 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.87ms · 帧#140/400 · 任务 TASK-01-FW · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 146, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-01-fw/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.1}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-01-FW)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 50,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-29",
+       "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+       "layer": "L4/L5",
+       "node_id": "ss_mani_eng",
+       "score": 0.051957
+      },
+      {
+       "fn_id": "FN-SYS2-23",
+       "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+       "layer": "L4/L5",
+       "node_id": "ssmani_exp",
+       "score": 0.049202
+      },
+      {
+       "fn_id": "FN-SYS2-18",
+       "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+       "layer": "L4/L5",
+       "node_id": "ssmani_c",
+       "score": 0.049202
+      },
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.047376
+      },
+      {
+       "fn_id": "FN-SYS2-22",
+       "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+       "layer": "L4/L5",
+       "node_id": "ssintact_dec",
+       "score": 0.047376
+      }
+     ],
+     "frozen": true
+    }
+   },
+   "sec": 627.7,
+   "ok": true
+  },
+  "TASK-02-HANDLE": {
+   "task_id": "TASK-02-HANDLE",
+   "name": "料盘/治具上下料搬运",
+   "scene": "SCN-02-HANDLE",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 22:08:12",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 该任务没有场景映射(只有 任务1 FW / 任务6 TRAY / 任务7 AOI 有) ⇒ 数据源不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 95.0,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-02-HANDLE",
+    "instruction": "metaworld 光模块插拔 · 料盘/治具上下料搬运 (上下料搬运)",
+    "episodes": 10,
+    "frames": 4377,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 83s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4377 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-02-HANDLE (93s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 480.4,
+    "run_dir": "joint_train_20261014_220947",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 53.0,
+    "disk_free_gb_after": 51.5,
+    "tail": [
+     "L3      0    227.5  smolvla_lew_lora_40_r2✔",
+     "L2      0    115.8  dataset✔",
+     "L5      0     23.3  l5_vlm_lora_20261014_220947✔",
+     "",
+     "汇总: reports/joint_train_20261014_220947/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 22:18:04] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.74ms · 帧#130/400 · 任务 TASK-02-HANDLE · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 22:18:05] 周期    140 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.94ms · 帧#140/400 · 任务 TASK-02-HANDLE · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 145, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-02-handle/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.0}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-02-HANDLE)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 30,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.086423
+      },
+      {
+       "fn_id": "FN-SYS2-02",
+       "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+       "layer": "L4/L5",
+       "node_id": "ssllm",
+       "score": 0.083911
+      },
+      {
+       "fn_id": "FN-SYS2-04",
+       "name": "🛠 L3 技能序列编排",
+       "layer": "L4/L5",
+       "node_id": "ssskill",
+       "score": 0.083215
+      },
+      {
+       "fn_id": "FN-SYS2-05",
+       "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+       "layer": "L4/L5",
+       "node_id": "ss_mem_share",
+       "score": 0.08116
+      },
+      {
+       "fn_id": "FN-SYS2-26",
+       "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+       "layer": "L4/L5",
+       "node_id": "swworld",
+       "score": 0.078802
+      }
+     ],
+     "frozen": true
+    },
+    "tdrive": {
+     "scene": "SCN-02-HANDLE",
+     "tap_bytes_before": 365634,
+     "tap_bytes_after": 365634,
+     "rc": null
+    }
+   },
+   "sec": 618.2,
+   "ok": true
+  },
+  "TASK-03-BI": {
+   "task_id": "TASK-03-BI",
+   "name": "BI老化箱模块插拔",
+   "scene": "SCN-03-BI",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 22:18:30",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 该任务没有场景映射(只有 任务1 FW / 任务6 TRAY / 任务7 AOI 有) ⇒ 数据源不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 100.1,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-03-BI",
+    "instruction": "metaworld 光模块插拔 · BI老化箱模块插拔 (老化箱插拔)",
+    "episodes": 10,
+    "frames": 4448,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 89s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4448 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-03-BI (98s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 514.7,
+    "run_dir": "joint_train_20261014_222010",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 51.5,
+    "disk_free_gb_after": 50.0,
+    "tail": [
+     "L3      0    228.2  smolvla_lew_lora_40_r3✔",
+     "L2      0    116.2  dataset✔",
+     "L5      0     23.9  l5_vlm_lora_20261014_222010✔",
+     "",
+     "汇总: reports/joint_train_20261014_222010/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 22:29:03] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.73ms · 帧#130/400 · 任务 TASK-03-BI · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 22:29:04] 周期    140 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.75ms · 帧#140/400 · 任务 TASK-03-BI · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 145, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-03-bi/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.0}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-03-BI)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 30,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.086423
+      },
+      {
+       "fn_id": "FN-SYS2-02",
+       "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+       "layer": "L4/L5",
+       "node_id": "ssllm",
+       "score": 0.083911
+      },
+      {
+       "fn_id": "FN-SYS2-04",
+       "name": "🛠 L3 技能序列编排",
+       "layer": "L4/L5",
+       "node_id": "ssskill",
+       "score": 0.083215
+      },
+      {
+       "fn_id": "FN-SYS2-05",
+       "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+       "layer": "L4/L5",
+       "node_id": "ss_mem_share",
+       "score": 0.08116
+      },
+      {
+       "fn_id": "FN-SYS2-26",
+       "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+       "layer": "L4/L5",
+       "node_id": "swworld",
+       "score": 0.078802
+      }
+     ],
+     "frozen": true
+    },
+    "tdrive": {
+     "scene": "SCN-03-BI",
+     "tap_bytes_before": 0,
+     "tap_bytes_after": 365007,
+     "rc": 0
+    }
+   },
+   "sec": 658.5,
+   "ok": true
+  },
+  "TASK-04-THERMAL": {
+   "task_id": "TASK-04-THERMAL",
+   "name": "热海柜体电口+光口插拔",
+   "scene": "SCN-04-THERMAL",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 22:29:28",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 该任务没有场景映射(只有 任务1 FW / 任务6 TRAY / 任务7 AOI 有) ⇒ 数据源不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 107.0,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-04-THERMAL",
+    "instruction": "metaworld 光模块插拔 · 热海柜体电口+光口插拔 (热海柜体插拔(电口+光口))",
+    "episodes": 10,
+    "frames": 4446,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 95s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4446 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-04-THERMAL (105s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 471.5,
+    "run_dir": "joint_train_20261014_223116",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 49.9,
+    "disk_free_gb_after": 48.5,
+    "tail": [
+     "L3      0    225.6  smolvla_lew_lora_40_r4✔",
+     "L2      0    106.8  dataset✔",
+     "L5      0     24.5  l5_vlm_lora_20261014_223116✔",
+     "",
+     "汇总: reports/joint_train_20261014_223116/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 22:39:27] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.82ms · 帧#130/400 · 任务 TASK-04-THERMAL · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 22:39:28] 周期    140 · 11.09Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 1.71ms · 帧#140/400 · 任务 TASK-04-THERMAL · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 144, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-04-thermal/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.1}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-04-THERMAL)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 30,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.086423
+      },
+      {
+       "fn_id": "FN-SYS2-02",
+       "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+       "layer": "L4/L5",
+       "node_id": "ssllm",
+       "score": 0.083911
+      },
+      {
+       "fn_id": "FN-SYS2-04",
+       "name": "🛠 L3 技能序列编排",
+       "layer": "L4/L5",
+       "node_id": "ssskill",
+       "score": 0.083215
+      },
+      {
+       "fn_id": "FN-SYS2-05",
+       "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+       "layer": "L4/L5",
+       "node_id": "ss_mem_share",
+       "score": 0.08116
+      },
+      {
+       "fn_id": "FN-SYS2-26",
+       "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+       "layer": "L4/L5",
+       "node_id": "swworld",
+       "score": 0.078802
+      }
+     ],
+     "frozen": true
+    },
+    "tdrive": {
+     "scene": "SCN-04-THERMAL",
+     "tap_bytes_before": 0,
+     "tap_bytes_after": 365809,
+     "rc": 0
+    }
+   },
+   "sec": 625.3,
+   "ok": true
+  },
+  "TASK-05-ATS": {
+   "task_id": "TASK-05-ATS",
+   "name": "ATS/线外检测插接 (核心挑战场景)",
+   "scene": "SCN-05-ATS",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 22:39:54",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 该任务没有场景映射(只有 任务1 FW / 任务6 TRAY / 任务7 AOI 有) ⇒ 数据源不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 102.2,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-05-ATS",
+    "instruction": "metaworld 光模块插拔 · ATS/线外检测插接 (核心挑战场景) (检测插接)",
+    "episodes": 10,
+    "frames": 4445,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 91s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4445 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-05-ATS (101s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 473.6,
+    "run_dir": "joint_train_20261014_224136",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 48.4,
+    "disk_free_gb_after": 47.0,
+    "tail": [
+     "L3      0    220.0  smolvla_lew_lora_40_r5✔",
+     "L2      0    116.0  dataset✔",
+     "L5      0     23.0  l5_vlm_lora_20261014_224136✔",
+     "",
+     "汇总: reports/joint_train_20261014_224136/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 22:49:47] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 1.03ms · 帧#130/400 · 任务 TASK-05-ATS · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 22:49:48] 周期    140 · 11.09Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 1.35ms · 帧#140/400 · 任务 TASK-05-ATS · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 145, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-05-ats/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.1}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-05-ATS)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 30,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.086423
+      },
+      {
+       "fn_id": "FN-SYS2-02",
+       "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+       "layer": "L4/L5",
+       "node_id": "ssllm",
+       "score": 0.083911
+      },
+      {
+       "fn_id": "FN-SYS2-04",
+       "name": "🛠 L3 技能序列编排",
+       "layer": "L4/L5",
+       "node_id": "ssskill",
+       "score": 0.083215
+      },
+      {
+       "fn_id": "FN-SYS2-05",
+       "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+       "layer": "L4/L5",
+       "node_id": "ss_mem_share",
+       "score": 0.08116
+      },
+      {
+       "fn_id": "FN-SYS2-26",
+       "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+       "layer": "L4/L5",
+       "node_id": "swworld",
+       "score": 0.078802
+      }
+     ],
+     "frozen": true
+    },
+    "tdrive": {
+     "scene": "SCN-05-ATS",
+     "tap_bytes_before": 0,
+     "tap_bytes_after": 365185,
+     "rc": 0
+    }
+   },
+   "sec": 619.9,
+   "ok": true
+  },
+  "TASK-06-TRAY": {
+   "task_id": "TASK-06-TRAY",
+   "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+   "scene": "SCN-06-TRAY",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 22:50:14",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 已经是 摆盘场景(蓝) (SCN-06-TRAY) ⇒ 不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 102.7,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-06-TRAY",
+    "instruction": "metaworld 光模块插拔 · 光模块摆盘 (周转盘 → 上料 Tray 盘) (摆盘取放)",
+    "episodes": 10,
+    "frames": 4447,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 92s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4447 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-06-TRAY (101s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 475.1,
+    "run_dir": "joint_train_20261014_225156",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 47.0,
+    "disk_free_gb_after": 45.5,
+    "tail": [
+     "L3      0    221.8  smolvla_lew_lora_40_r6✔",
+     "L2      0    115.9  dataset✔",
+     "L5      0     23.4  l5_vlm_lora_20261014_225156✔",
+     "",
+     "汇总: reports/joint_train_20261014_225156/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 23:00:11] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.73ms · 帧#130/400 · 任务 TASK-06-TRAY · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 23:00:12] 周期    140 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.85ms · 帧#140/400 · 任务 TASK-06-TRAY · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 144, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-06-tray/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.1}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-06-TRAY)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 50,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-29",
+       "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+       "layer": "L4/L5",
+       "node_id": "ss_mani_eng",
+       "score": 0.051957
+      },
+      {
+       "fn_id": "FN-SYS2-23",
+       "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+       "layer": "L4/L5",
+       "node_id": "ssmani_exp",
+       "score": 0.049202
+      },
+      {
+       "fn_id": "FN-SYS2-18",
+       "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+       "layer": "L4/L5",
+       "node_id": "ssmani_c",
+       "score": 0.049202
+      },
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.047376
+      },
+      {
+       "fn_id": "FN-SYS2-22",
+       "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+       "layer": "L4/L5",
+       "node_id": "ssintact_dec",
+       "score": 0.047376
+      }
+     ],
+     "frozen": true
+    }
+   },
+   "sec": 623.5,
+   "ok": true
+  },
+  "TASK-07-AOI": {
+   "task_id": "TASK-07-AOI",
+   "name": "AR 光学质量检测 (AOI 联合检查)",
+   "scene": "SCN-07-AOI",
+   "site": "SITE-A.ST11",
+   "started": "2026-10-14 23:00:37",
+   "configure": {
+    "task_bind_rc": 0,
+    "scene_switch_rc": 0,
+    "detail": [
+     "✅ 已经是 AR场景(紫) (SCN-07-AOI) ⇒ 不动"
+    ]
+   },
+   "sim_data": {
+    "rc": 0,
+    "sec": 101.5,
+    "out": "/home/ubuntu/zmax/data/datasets/sim_TASK-07-AOI",
+    "instruction": "metaworld 光模块插拔 · AR 光学质量检测 (AOI 联合检查) (光学质量检测)",
+    "episodes": 10,
+    "frames": 4445,
+    "dataset_meta": true,
+    "tail": [
+     "  seed115: ✅ 轨迹9 采得 395 帧 (插深 0.0mm) [10/10 · 90s]",
+     "写入视频/parquet ...",
+     "",
+     "✅ 完成: 10 轨迹 / 4445 帧 → /home/ubuntu/zmax/data/datasets/sim_TASK-07-AOI (100s)"
+    ]
+   },
+   "train": {
+    "rc": 0,
+    "sec": 471.4,
+    "run_dir": "joint_train_20261014_230219",
+    "stages": {
+     "L4": {
+      "rc": 0,
+      "sec": null
+     },
+     "L3": {
+      "rc": 0,
+      "sec": null
+     },
+     "L2": {
+      "rc": 0,
+      "sec": null
+     },
+     "L5": {
+      "rc": 0,
+      "sec": null
+     }
+    },
+    "gpu_peak": {
+     "util": 100,
+     "mem": 6794
+    },
+    "disk_free_gb_before": 45.4,
+    "disk_free_gb_after": 44.0,
+    "tail": [
+     "L3      0    223.3  smolvla_lew_lora_40_r7✔",
+     "L2      0    110.0  dataset✔",
+     "L5      0     23.2  l5_vlm_lora_20261014_230219✔",
+     "",
+     "汇总: reports/joint_train_20261014_230219/summary.json"
+    ]
+   },
+   "infer": {
+    "engine_loop": {
+     "rc": 0,
+     "l4_attached": true,
+     "tail": [
+      "[2026-10-14 23:10:27] 周期    130 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 1.48ms · 帧#130/400 · 任务 TASK-07-AOI · 工程 Z-MAX 状态空间总工程",
+      "[2026-10-14 23:10:28] 周期    140 · 11.10Hz · Φ=+1.2640 ‖∇Φ‖=  1.59 ‖a‖=0.105 · M=3.6430 · H=explore(gain 0.99) · p̂=1.0000 置信=0.01 · 0.74ms · 帧#140/400 · 任务 TASK-07-AOI · 工程 Z-MAX 状态空间总工程",
+      "{\"cycles\": 145, \"idle\": 0, \"provider\": \"traj\", \"tap\": \"/dev/shm/zmax_ss_engine_task-07-aoi/engine_default.jsonl\", \"calib\": \"标定文件 manifold_engine.npz · 目标=轨迹末帧\", \"seconds\": 18.1}"
+     ]
+    },
+    "l4_intent_models": {
+     "rc": 0,
+     "pass": [
+      "L4 意图模型 10/10 全部跑通 (任务 TASK-07-AOI)"
+     ]
+    },
+    "meta_predict": {
+     "rc": 0,
+     "n_candidates": 30,
+     "top": [
+      {
+       "fn_id": "FN-SYS2-21",
+       "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+       "layer": "L4/L5",
+       "node_id": "ssintact",
+       "score": 0.086423
+      },
+      {
+       "fn_id": "FN-SYS2-02",
+       "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+       "layer": "L4/L5",
+       "node_id": "ssllm",
+       "score": 0.083911
+      },
+      {
+       "fn_id": "FN-SYS2-04",
+       "name": "🛠 L3 技能序列编排",
+       "layer": "L4/L5",
+       "node_id": "ssskill",
+       "score": 0.083215
+      },
+      {
+       "fn_id": "FN-SYS2-05",
+       "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+       "layer": "L4/L5",
+       "node_id": "ss_mem_share",
+       "score": 0.08116
+      },
+      {
+       "fn_id": "FN-SYS2-26",
+       "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+       "layer": "L4/L5",
+       "node_id": "swworld",
+       "score": 0.078802
+      }
+     ],
+     "frozen": true
+    }
+   },
+   "real_readonly": {
+    "redline": "只读: 抓帧/读位姿/调 AOI; 不下发动作",
+    "items": {
+     "cam_arm": {
+      "ok": true,
+      "http": 200,
+      "bytes": 22598
+     },
+     "cam_local2": {
+      "ok": true,
+      "http": 200,
+      "bytes": 17348
+     },
+     "tcp_pose": {
+      "ok": true,
+      "age_s": 0.1,
+      "x": 0.658505,
+      "y": 0.008092,
+      "z": 0.359935
+     },
+     "aoi_gold_10082": {
+      "rc": 0,
+      "tail": [
+       "{\"code\":200,\"msg\":\"success\"}",
+       "",
+       "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+      ]
+     },
+     "aoi_surface_10083": {
+      "rc": 0,
+      "tail": [
+       "{\"code\":200,\"msg\":\"success\"}",
+       "",
+       "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+      ]
+     }
+    },
+    "ok": true
+   },
+   "sec": 618.7,
+   "ok": true
+  }
+ }
+}

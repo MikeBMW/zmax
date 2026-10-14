@@ -52,6 +52,7 @@ import model_inventory as _mi            # noqa: E402
 import remote_monitor_aggregate as _rma  # noqa: E402
 import scene_edit as _se                 # noqa: E402
 import verify_version_sync as _vs        # noqa: E402
+import fullflow_status as _ff           # noqa: E402  (7 任务全流程闭环 只读状态, 2026-10-14 新增)
 
 ROOT = os.path.dirname(_HERE)            # …/zmax
 CST = timezone(timedelta(hours=8))
@@ -147,6 +148,18 @@ def _collect_remote(offline: bool) -> dict:
             "unreachable": unreachable, "error": None}
 
 
+def _collect_fullflow() -> dict:
+    """🔁 7 任务全流程闭环: 直接复用 tools/fullflow_status.py 的只读采集 (它有全量异常兜底)。
+
+    口径: 来自 reports/fullflow7/<最新 run>/state.json 的真跑证据 —— 任务数/仿真轨迹/训练每层 rc/GPU 峰值/
+    元任务预测覆盖与**输入是否退化**/任务7 真机只读证据。取不到就返回 {"ok": False, "note": ...} 如实标注。
+    """
+    try:
+        return _ff.collect()
+    except Exception as e:                                                    # noqa: BLE001
+        return {"ok": False, "note": "%s: %s" % (type(e).__name__, str(e)[:80])}
+
+
 def _collect_datasets() -> dict:
     inv = _ds.build_inventory(ROOT, _ds.DEFAULT_MAX_DEPTH)
     cats = {k: {"count": v["count"], "size_human": v["size_human"]}
@@ -231,6 +244,7 @@ def build(offline: bool = False) -> dict:
     data["scene"] = _collect_scene()
     data["remote"] = _collect_remote(offline)
     data["screen"] = _collect_screen(offline)   # 🖥 产品大屏 == 工位总览服务 (:8793) 同一份在役状态
+    data["fullflow"] = _collect_fullflow()   # 🔁 7 任务全流程闭环 (仿真→训练→推理→真机只读)
     data["version_sync"] = _collect_version(offline)
     data["version"] = data["version_sync"].get("canonical")
     return data

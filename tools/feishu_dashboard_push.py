@@ -68,6 +68,12 @@ def _anomalies(d: dict) -> list:
         out.append("端点数据 stale: %s" % n)
     for f in (rm.get("mismatch") or []):
         out.append("同源不一致: %s" % f)
+    ff = d.get("fullflow") or {}
+    if ff.get("ok") and ff.get("meta_input_degenerate"):
+        out.append("元任务预测输入退化: 各场景驱动扭矩相同 (‖T‖=%s) ⇒ 无区分度, 需并场景特征或训练预测头"
+                   % ((ff.get("meta_torque_norm") or ["?"])[0]))
+    if ff and not ff.get("ok"):
+        out.append("7 任务全流程: %s" % (ff.get("note") or "未跑"))
     m = d.get("models") or {}
     if m.get("training_active"):
         out.append("训练进行中: %d 个进程" % m["training_active"])
@@ -81,6 +87,7 @@ def build_card(d: dict) -> dict:
     sc = d.get("scene") or {}
     rm = d.get("remote") or {}
     vs = d.get("version_sync") or {}
+    ff = d.get("fullflow") or {}
     anom = _anomalies(d)
 
     gpu_line = ("采集失败: %s" % g["error"]) if g.get("error") else (
@@ -109,6 +116,13 @@ def build_card(d: dict) -> dict:
         "**🗺 场景** objects %s · fences %s · traj %s · 隐藏 %s · 轨迹显示 %s"
         % (sc.get("objects"), sc.get("fences"), sc.get("trajectories"),
            sc.get("deleted"), sc.get("traj_show")),
+        "**🔁 全流程闭环** %s" % ("未跑 7 任务闭环" if not ff.get("ok") else
+                                  "%s/%s 任务 · 仿真 %s 轨迹/%s 帧 · 训练全层 rc=0 %s · GPU 峰值 %s%%/%sMB · "
+                                  "元任务预测 %s/%s%s"
+                                  % (ff.get("tasks_infer_ok"), ff.get("tasks"), ff.get("sim_episodes"),
+                                     ff.get("sim_frames"), ff.get("tasks_train_ok"), ff.get("gpu_peak_util"),
+                                     ff.get("gpu_peak_mem_mb"), ff.get("meta_pred_tasks"), ff.get("tasks"),
+                                     " ⚠ 输入退化" if ff.get("meta_input_degenerate") else "")),
         "**📡 远程端点** %s" % remote_line,
         "**🔗 同源判定** %s" % (facts or "-"),
         "**🏷 版本同源** ok=%s · 权威 %s · Release %s"

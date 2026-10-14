@@ -1,0 +1,193 @@
+{
+ "run": "/home/ubuntu/zmax/reports/fullflow7/20261014_215744",
+ "copied": [
+  {
+   "file": "REPORT.md",
+   "sha256": "e5a611556851d50ef271101ca93327134d78f548c08b2973901bd3b8c934c066",
+   "bytes": 3921
+  },
+  {
+   "file": "REPORT.json",
+   "sha256": "992af0f984b8137b8dd59ac82d155e4ba1c3520482cc7fee9f3ee5741cb4c6e5",
+   "bytes": 29060
+  },
+  {
+   "file": "state.json",
+   "sha256": "9ea268d0d5208d0c98f5fdd26ed15dde4c235dd1c22f82e0569e80fce122b9b9",
+   "bytes": 27982
+  }
+ ],
+ "per_task": [
+  {
+   "task": "TASK-01-FW",
+   "files": {
+    "configure.log": {
+     "bytes": 296,
+     "sha256_16": "a7a608c476d2b250"
+    },
+    "infer.log": {
+     "bytes": 11239,
+     "sha256_16": "decef3b1b00276b2"
+    },
+    "sim_data.log": {
+     "bytes": 2333,
+     "sha256_16": "3d810169810b6173"
+    },
+    "train.log": {
+     "bytes": 119101,
+     "sha256_16": "b743177efe2761cc"
+    }
+   }
+  },
+  {
+   "task": "TASK-02-HANDLE",
+   "files": {
+    "configure.log": {
+     "bytes": 398,
+     "sha256_16": "10b6dfb2e8bb4f92"
+    },
+    "infer.log": {
+     "bytes": 8360,
+     "sha256_16": "d2c0f28c383238a1"
+    },
+    "sim_data.log": {
+     "bytes": 2337,
+     "sha256_16": "7541463031371ff6"
+    },
+    "train.log": {
+     "bytes": 118813,
+     "sha256_16": "3af921735e9e9911"
+    }
+   }
+  },
+  {
+   "task": "TASK-03-BI",
+   "files": {
+    "configure.log": {
+     "bytes": 394,
+     "sha256_16": "74f1cef3f30d3792"
+    },
+    "infer.log": {
+     "bytes": 8257,
+     "sha256_16": "0ebc3fa33537401b"
+    },
+    "sim_data.log": {
+     "bytes": 2334,
+     "sha256_16": "cf96c6f89d6c5bed"
+    },
+    "train.log": {
+     "bytes": 119372,
+     "sha256_16": "f16c57e5041a5963"
+    }
+   }
+  },
+  {
+   "task": "TASK-04-THERMAL",
+   "files": {
+    "configure.log": {
+     "bytes": 399,
+     "sha256_16": "4990025a91285168"
+    },
+    "infer.log": {
+     "bytes": 8386,
+     "sha256_16": "bdcb43e8a01cc03f"
+    },
+    "sim_data.log": {
+     "bytes": 2340,
+     "sha256_16": "4ad6dc2c7f15a8df"
+    },
+    "train.log": {
+     "bytes": 119424,
+     "sha256_16": "44bbd91c40d9654d"
+    }
+   }
+  },
+  {
+   "task": "TASK-05-ATS",
+   "files": {
+    "configure.log": {
+     "bytes": 395,
+     "sha256_16": "c8cfb84abe6ee661"
+    },
+    "infer.log": {
+     "bytes": 8282,
+     "sha256_16": "b147ac8a40df9c16"
+    },
+    "sim_data.log": {
+     "bytes": 2336,
+     "sha256_16": "b92823d4fff0ce0e"
+    },
+    "train.log": {
+     "bytes": 118842,
+     "sha256_16": "10216afafdbd17cd"
+    }
+   }
+  },
+  {
+   "task": "TASK-06-TRAY",
+   "files": {
+    "configure.log": {
+     "bytes": 507,
+     "sha256_16": "b285b4a91484e04e"
+    },
+    "infer.log": {
+     "bytes": 11309,
+     "sha256_16": "0c9719ae341f86c3"
+    },
+    "sim_data.log": {
+     "bytes": 2337,
+     "sha256_16": "85c496d166e38e44"
+    },
+    "train.log": {
+     "bytes": 118683,
+     "sha256_16": "fee311fd97af2162"
+    }
+   }
+  },
+  {
+   "task": "TASK-07-AOI",
+   "files": {
+    "aoi.log": {
+     "bytes": 496,
+     "sha256_16": "04cfd93642f12719"
+    },
+    "configure.log": {
+     "bytes": 496,
+     "sha256_16": "53751d7891c37fae"
+    },
+    "infer.log": {
+     "bytes": 10820,
+     "sha256_16": "43a65229d0b72d96"
+    },
+    "sim_data.log": {
+     "bytes": 2336,
+     "sha256_16": "9a76023faa7b54c1"
+    },
+    "train.log": {
+     "bytes": 118749,
+     "sha256_16": "0193aa256ebedbbd"
+    }
+   }
+  }
+ ],
+ "not_in_repo": [
+  {
+   "name": "run7_full.log",
+   "abs_path": "/home/ubuntu/zmax/reports/fullflow7/run7_full.log",
+   "bytes": 926851,
+   "note": "大文件/目录不进库: 只留 sha256 + 重建命令"
+  },
+  {
+   "name": "datasets",
+   "abs_path": "/home/ubuntu/zmax/data/datasets",
+   "bytes": null,
+   "note": "大文件/目录不进库: 只留 sha256 + 重建命令"
+  },
+  {
+   "name": "engine_db",
+   "abs_path": "/home/ubuntu/zmax/zmax_data/engineering/zmax_engineering.db",
+   "bytes": null,
+   "note": "大文件/目录不进库: 只留 sha256 + 重建命令"
+  }
+ ]
+}
