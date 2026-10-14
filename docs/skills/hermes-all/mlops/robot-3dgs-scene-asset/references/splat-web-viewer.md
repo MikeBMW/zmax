@@ -70,11 +70,90 @@
 
 ## 5. 运维口径
 
-- 页服务常是**手工起的进程**(无 systemd): 改**路由**要重启 ⇒ **按 PID 杀**(`pkill -f` 会匹配执行它的 shell 自己),
-  用**原命令行**拉起, 起来后核 `/stats` 各路 fps 回来; 改**页面 HTML** 不用重启(热读)。
+- 页服务常是**手工起的进程**(无 systemd): 改**路由**要重启, 改**页面 HTML** 不用重启(热读, 改完核 md5 即可)。
+  重启**用启动脚本, 别手写 kill+命令**: 仓库里那条推流启动脚本自己做完了全套 —— 按**端口**找回 pid(不用 `pkill -f`,
+  会匹配到执行它的 shell 自己) → 停 → 抬 fd 上限并 `closerange` → 用**原参数**以 nohup 拉起 → 打印复核(两个端口 200 + 各路相机映射)。
+  起来后自己核: 两个端口都 200 · 相机路仍是你选的那台(`/stats` 的 label) · 新路由 200(如 `/gs/latest_display.splat`)。
+  一句话: **一次一版 + 回读才算生效**, 别把"重启命令成功"当成"服务已带新代码"。
 - 页面真源判定: `curl -s :<port>/<页> | md5sum` 必须等于 `md5sum tools/web/<页>.html`;
   资产同理: `curl -s :<port>/gs/latest.splat | md5sum` == 最新资产文件的 md5。
 - 🔴 `tools/web/lib` 常被 `.gitignore` 里的 `lib` 规则挡掉: vendored JS **没入库**, 克隆后的仓库页面 404 白屏。
   修法 = 加 `!tools/web/lib/` + `!tools/web/lib/**` → `git check-ignore -v <文件>` **验证不再忽略** → `git add -f` 补提交。
 - 入口挂法: 在既有站页加一个**相对链接**(`href="gsview"`)—— 相对路径在"根路径访问"与"子路径反代"两种入口下都解析正确,
   写成绝对路径会在反代下 404。
+
+## 6. 大资产(百万高斯/几十 MB)的加载体验: 挑显示副本要线性, 加载期必须有画面
+
+### 6.1 挑 KMAX 个显示高斯 = 两趟线性 + 直方图, 绝不 `sort(比较器)`
+
+`idx.sort((a,b)=>alpha[b]-alpha[a])` 在 200 万+ 高斯时比较器被调用约 4000 万次 ⇒ 主线程卡十几秒~几十秒,
+现场看到的就是"白屏/点开就假死", 而服务端毫秒级、console 也不报错。线性定式:
+
+```js
+var KMAX = 60000;
+if (n > KMAX) {                              // n 大 = 必须降采样显示
+  var u8 = new Uint8Array(ab), hist = new Uint32Array(256), i;
+  for (i = 0; i < n; i++) hist[u8[i*32+27]]++;          // ① alpha 直方图(每记录第 28 字节)
+  var acc = 0, thr = 255;
+  for (; thr >= 0; thr--) { acc += hist[thr]; if (acc >= KMAX) break; }
+  if (thr < 0) thr = 0;
+  var nb = new ArrayBuffer(KMAX*32), sd = new Uint8Array(nb), w = 0, raw = n;
+  for (i = 0; i < n && w < KMAX; i++)                   // ② 阈值以上全要
+    if (u8[i*32+27] > thr) { sd.set(u8.subarray(i*32, i*32+32), w*32); w++; }
+  for (i = 0; i < n && w < KMAX; i++)                   // ③ 不足从阈值桶补满
+    if (u8[i*32+27] === thr) { sd.set(u8.subarray(i*32, i*32+32), w*32); w++; }
+  ab = nb; n = w;                                       // ④ 之后所有步骤用新缓冲
+  setMeta('显示降采样 ' + n + ' / 原始 ' + raw + ' 高斯(保最实) · ');
+}
+```
+砍掉的是**最透明的那批**(雾状粒子), 视觉几乎无损; 顺序稳定、无比较器 ⇒ 亚秒级。
+
+### 6.2 加载期不许留空屏
+
+- 页面里垫一张 `#pre` 静态图(<img src="gs_render.png">, 全屏 `object-fit:contain`, 盖在 canvas 上),
+  `loadViewer()` 之后 `setTimeout(hide, ~6s)` 撤掉; 顶部放一个「🖼 参考图」按钮 toggle 它。
+  这样**从打开到渲染完成任何一刻都有画面**, 且这条兜底同时覆盖"没拉下来"和"WebGL 起不来"。
+- 宿主页(工位页那格 iframe)另加**超时退回**: N 秒后 `iframe.contentDocument.title` 仍读不到 ⇒
+  收起 iframe、显示静态图、并把提示改成"要可拖拽的 3D 点「↗ 新窗口打开」"。
+
+### 6.3 三种"白屏"的区分(用户看不到、你也看不到时)
+
+| 现场念出的一行字 | 成因 | 现场动作 |
+|---|---|---|
+| 停在「拉取 …」 | 同源 6 连接被页面上多路 MJPEG/快照占着, 几十 MB 请求轮不到 | 「🔄 重载」或「↗ 新窗口打开」(独立连接池) |
+| 「高斯 <N> · 已居中缩放…」而画面空 | 拉到了但没画出来: WebGL2 被禁/走软件渲染 | 让他看 `chrome://gpu` 的 WebGL2 是否 "Hardware accelerated" |
+| 屏幕上有红框 | 查看器 JS 抛错(DOM 契约缺节点/资产格式) | 直接要那句原文 |
+
+### 6.4 无头验收的边界
+软件 GL 下重渲染会占满主线程: 同一个页面**先能 eval、之后连读 DOM 文本的 eval 都超时**(不是页面坏了)。
+所以验收证据用: ① 页面字节 == 仓库文件 md5 ② `/gs/latest.splat` 200 且字节数 == 资产文件 ③ 首次加载时查看器
+console 里的"加载到 N 个高斯" ④ 用户念出的那一行字。**别把"应该会显示"讲成已验证**, 如实说看不到他的屏幕。
+
+### 6.5 真正的收口: 服务端先预算一份轻量显示副本(不把全量发给浏览器)
+
+§6.1 只解决了"排序"这一段; 下载 + 解析几十 MB 同样在宿主页**同一个主线程**上, 而且和视频流抢**同一个**
+同源连接池。症状就是用户说的「打开太卡, 卡住鼠标和其它窗口」(不是他自己那台机器的问题)。
+定式 = **服务端算好一份轻量副本, 页面默认只吃它**; 全量只走显式入口。
+
+服务端预算(纯 numpy, 与前端同一套挑选口径: 每 32B 记录的第 28 字节 alpha 取前 K 大):
+
+```python
+def _gs_display_splat(name, kmax=60000):
+    src = f"{ROOT}/{name}/gs.splat"; dst = f"{ROOT}/{name}/gs.display{kmax//1000}k.splat"
+    if os.path.isfile(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
+        return dst                                    # 按源 mtime 失效, 不是每天重建
+    a = np.fromfile(src, dtype=np.uint8)
+    a = a[:(len(a) // 32) * 32].reshape(-1, 32)       # 整记录切, 不切碎 32B 边界
+    if a.shape[0] > kmax:
+        a = a[np.argpartition(a[:, 27].astype(np.int16), -kmax)[-kmax:]]
+    a.tofile(dst)
+    return dst
+```
+
+- 缓存文件名**不能叫 `gs.splat`**(资产清单是按这个名扫描目录的, 否则轻量副本会被列成一个新资产)。
+- 路由: `/gs/latest_display.splat` + `/gs/<名>.display60k.splat`, **放在 `p.endswith('.splat')` 那条宽分支之前**
+  (否则会被全量分支先吃掉)。找不到就 404, 让前端回落全量。
+- 实测: 284 万高斯 / 86.7MB → 6 万高斯 / 1.8MB(47×, 预算 0.04s; 缓存命中后毫秒级)。
+- 前端: 默认拉轻量副本(取不到再 `catch` 回落全量), 另给一个「🐘 全量(卡)」按钮(`?full=1`)—— 全量不是不可用,
+  只是变成**用户要它才拉**, 且提示"要看全量就在新窗口"。状态条写明当前是「🪶 轻量副本」还是「🐘 全量」。
+- 宿主页那格: **默认不加载 3D**(静态图秒出), 用户点了才把 iframe 指向查看器; 既省连接又不会卡住鼠标。

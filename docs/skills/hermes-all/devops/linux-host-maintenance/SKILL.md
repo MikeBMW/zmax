@@ -345,6 +345,21 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
 复核两格帧号**持续递增** + `8793/station=200`; 实测重启后 `local 15fps frames=3003`(重启前 14 帧冻结)。
 注意 `MAXHUB 顶视相机` 没枚举时 `local2=-1/frames=0` 属**硬件缺失**, 重启无用, 如实报缺。
 
+### 9b-2. 「换源选了 USB 但那格还是不显示」= 卡名关键字没命中, 不是相机坏 (2026-10-14 实测)
+站台 local 格的 [内置|USB] 选择落在 `zmax_data/cam_local_src.json`, 而设备是按**卡名关键字**扫出来的 ——
+关键字在三处各有一份, **改一处不算改**: `cam_dev_resolve.py`(`--usb-name`) · `cam_live_stream.py`(`_USBCFG` **和** `--usb-name` 的 argparse 默认值, 后者会在启动时覆盖前者) · `cam_stream_guard.py`(`USB_KEY`, 它用它判"这格对不对")。
+- 现场症状: 外接 **Intel RealSense D435** 已插好(`lsusb` 有 `8086:0b07`), 页面选了 USB, 但那格一直显示内置/不出图 ——
+  当时关键字只有 `USB2.0 Camera`, D435 的卡名是 `Intel(R) RealSense(TM) Depth Camera` ⇒ 解析器 `USB=-1`,
+  进程回落到内置(日志话术"上次选的是 USB …, 现在没扫到 ⇒ 先按内置起"), 守卫还把它当"相机不在位"跳过。
+- 两个必须同时做的修法: ①关键字改成**逗号分隔多关键字**(任一命中): `USB2.0 Camera,RealSense`;
+  ②多节点相机(**D435 一台就 7 个 `/dev/video*`**: video0=Z16 深度 · video3=GREY/Y12I 红外 · video5=YUYV 彩色 · 其余 metadata 列不出格式)
+  必须**按彩色格式挑节点**; 老代码"有像素格式就兜底"会挑到 `/dev/video0` 深度节点 ⇒ 进程活着但 `fps=0 frames=0`
+  (彩色判据 = 含 `MJPG/JPEG/YUYV`; `Z16/GREY/UYVY/Y12I` 都不算).
+- 修完的复核三证(缺一不算好): ① `python3 tools/cam_dev_resolve.py` 出 `USB=<n>`(且 `--json` 里挑中的是彩色那路);
+  ② 官方启动器打印 `local 🔌 USB Intel(R) RealSense…`; ③ `/stats` 帧号**三次采样递增** + `/snapshot/local.jpg` 200 且不是黑帧
+  (实测 640x480 / 37KB / mean 108 / std 43.6)。再跑一次守卫只读判定必须 ✅ —— 关键字没同步改时, 守卫每 5 分钟按老关键字判 ❌ 白重启一次。
+- ⚠️ "进程在 + 端口 200" 不能证明那一格好: 唯一判据是**帧号递增**。(本条与 §9b 的 v4l2 卡死区分开: 那条是设备被占着不再出新帧, 这条是**挑错了设备节点**。)
+
 ## 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
 
 实测(2026-10-07 重启后): `zmax-ecs-ov` / `zmax-ecs-station` 报 `activating` 且 `NRestarts` 每秒涨;
@@ -369,6 +384,10 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
   curl -s -o /dev/null -w '%{http_code}\n' -X POST 'https://datadrive.world/ov/live.json?k=zmax-live'  # 403
   ```
   另: `systemctl show -p NRestarts --value` 要**隔 20s 采两次**确认不再涨 (=真自愈); 单次 active 可能是刚重启的假象。
+  ⚠️ **开机头 10~15 分钟内别动 ECS 侧的端口**: 启动期 WiFi/公网抖动会让两个隧道各重启十几次(`NRestarts` 实测涨到 13/11),
+  期间公网探活夹杂 000(fail2pass: "Connection ... closed by remote host" / "not responding"), 而**复采一两次(隔 30~60s)就会自己回到 200**。
+  实测 2026-10-14 开机: 06:15 探活 /st/=000 → 清掉 ECS 侧占口 sshd + 重启单元 → 06:23:/ov/ 与 /st/ 双双 200、NRestarts 冻住不再涨。
+  定式: **先隔 30~60s 复采两轮, 仍是 000 才走本节 ECS 清口**(过早 kill 只会把刚建起来的隧道一起打断)。
   2026-10-07 实测该故障复现: ECS 侧 `ss -ltnp | grep 1879` 只看到 18793 被一个 sshd 占着(18791 那路客户端已死但口没回收),
   kill 后 + **补上 ECS sshd 保活** (`ClientAliveInterval 30`/`ClientAliveCountMax 3`/`TCPKeepAlive yes` → `sshd -t && systemctl reload ssh`),
   复核本机闸门/公网 200 + POST 403, NRestarts 稳定在 4 不再涨。

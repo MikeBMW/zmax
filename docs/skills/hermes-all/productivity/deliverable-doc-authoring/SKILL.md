@@ -65,6 +65,10 @@ metadata:
 | 生成器里写死「任务→场景/名称」字典 | 换成新任务一跑就 `KeyError`；该任务缺登记时表里打出 `None / None (色 None)` | 一律 `.get()` + 回落真源字段，缺登记写「**未登记，需补登记**」，绝不输出 `None` |
 | 归档/打包脚本的 glob 只列旧文档前缀 | 本轮新交付件（新 SOR、新场景文档）静默不进归档包，MANIFEST 里查不到还以为保存好了 | 归档脚本**显式列出本轮新增文档前缀**；同一任务多批时间戳的配置单**只留最新一批**（按 mtime 取第一条），否则归档一次膨胀一截 |
 | 交付件路径落在**软链目录**下(如 `outputs/` 指向数据盘) | `git add` / `check-ignore` 报 `fatal: pathspec ... is beyond a symbolic link`, 或以为提交了其实根本没入仓 | 入库用**真实路径**(数据盘下那个目标路径)或把交付件按**稳定名拷到 `docs/deliverables/`** 再 `git add`; `outputs/` 只当产物区, 不当入库路径 |
+| 从 HTML 直接 `--convert-to docx` | `Error: no export filter for <x>.docx found, aborting.` —— 看着像没装 LibreOffice | HTML 被当成 **Writer/Web** 文档, 那种文档类型**没有 docx 导出过滤器** ⇒ 先转 `.odt` 再 `.odt`→docx（铁律十） |
+| md→HTML 渲染器没处理 `**粗体**` | 交付件里满屏字面 `**`, 用户一眼看出「这文档没排版」 | 行内标记先 escape 再替换成 `<b>/<i>/<code>`; 出稿后按铁律十抠字复查残留数为 0 |
+| 只核「文件生成了」就交付 | 生成成功但内容是豆腐块 / 空表 / 字面标记 | 抠字自检: `pdftotext` 看中文成串 + docx 解 XML 核关键串与标记残留 |
+| 中文字体只报「缺字体」就换方案 | reportlab 找不到硬编码的 ttf 路径 | 换 LibreOffice 链路（吃系统字体族），或按系统**实际已装**的 CJK 字体改路径; 别把「某路径没这个文件」当成「没有中文字体」 |
 
 ## 铁律七：达标与未达标**分开写**，硬指标不许柔化
 - 验收型文档（测试报告 / 原型验证 / 投标应答）必须把命题逐条列出并标结论：**已证明 / 未证明 / 未达标**。
@@ -173,6 +177,41 @@ metadata:
   不标来源，模板继承项会被当成该任务的真源要求交付出去。
 - 真源为 `null` / 未登记的项（如某任务插入行程未定义、场景卡片未登记）记「**待现场标定 / 采购附件确认**」并在正文点明；
   **绝不代填一个看起来合理的数值**，也不要用模板值冒充该任务的实测/真源值。
+
+## 铁律十：Word/PDF 由 Markdown 派生 —— 走 `md → HTML → LibreOffice`
+
+同一份正文**只维护 Markdown**，`.docx` / `.pdf` 是派生件（别手改 docx，改下一轮就被覆盖）。
+LibreOffice **不能直接吃 `.md`**，中间必须过一层自带 `<style>` 的 HTML：
+
+```bash
+# ① md → html（自写渲染器，见下）
+# ② html → odt → docx      ← 必须两步
+# ③ odt  → pdf
+soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
+        --convert-to odt --outdir <out> <doc>.html
+soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
+        --convert-to "docx:MS Word 2007 XML" --outdir <out> <out>/<doc>.odt
+soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
+        --convert-to pdf --outdir <out> <out>/<doc>.odt
+```
+
+- **`-env:UserInstallation=file://<临时目录>` 必须带**：否则并发的 soffice 抢同一个 profile，第二次调用会静默失败或挂住。
+- **中文字体交给「系统字体族」，不要写死 ttf 路径**：CSS 用
+  `font-family:"WenQuanYi Zen Hei","Noto Sans CJK SC",sans-serif`，LibreOffice 会用系统已装的 CJK 字体。
+  reportlab 那条路（`docs_pdf.py` 一类）要求**指定一个 TrueType 文件路径**，且**不吃 OTF/CFF 的 Noto CJK** ⇒
+  纯 md→pdf 用 LibreOffice 更省事；只有需要精细排版控制时才回 reportlab。
+- **导出器写成能独立跑的脚本**（`--out` / `--check` 只校验不出文档 / `--json` 给调用方解析），
+  GUI 按钮和命令行**调同一个执行体**，不要各写一套。
+
+### 自写 md→HTML 渲染器的最小规则（没装 markdown 库时）
+- 行内**先 `html.escape` 再替换标记**：`**x**`→`<b>`、`` `x` ``→`<code>`、`*x*`→`<i>`。**顺序反了标记会被转义掉**。
+- 表格：`|` 开头成行，**第二行 `---` 分隔行要丢弃**；遇到非 `|` 行要补 `</table>`。
+- 代码围栏内**只转义不解析**；文档结尾补上未闭合的 `</table>` / `</pre>`。
+- `@page { size: A4; margin: 18mm 15mm }` 控页边距；中文正文 10.5pt / 行高 1.55 观感稳。
+
+### 出稿自检（必做，别只看「文件生成了」）
+从产物里把字**抠回来核**：`pdftotext <pdf> -` 看中文是否成串（不是豆腐块/空白）+ 页数；
+`zipfile` 读 docx 的 `word/document.xml` 去标签后核字数与关键串；**并核 Markdown 标记残留数为 0**。
 
 ## 支持文件
 - `templates/product-manual.md` —— 产品手册骨架（八章 + 写作红线自查清单），复制后逐节填。
