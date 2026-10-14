@@ -48,6 +48,14 @@ PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
 REL_PRODUCT = "config/platform/zmax_product.json"
 PRODUCT_IDS = ("550A", "550B", "550C")
 
+# ⭐ 北斗七星阵 (2026-10-15 老倪): 「我的状态空间工程, 实际上是一个阵法, 是有完备的结构的」——
+#   七类配置 = 天枢/天璇/天玑/天权/玉衡/开阳/瑶光。星名/次序/定义/关系只写在 ss_seven_stars 一处,
+#   左树与每页顶部的阵图条都从这里取 (同源, 不各写一份)。
+_GUI_DIR = os.path.dirname(os.path.abspath(__file__))
+if _GUI_DIR not in sys.path:
+    sys.path.insert(0, _GUI_DIR)
+import ss_seven_stars as _ss  # noqa: E402
+
 DEFAULT_THEME = {"C_BG": "#11151c", "C_BG2": "#161b24", "C_CARD": "#1b222c", "C_BORDER": "#2a3340",
                  "C_WHITE": "#e8edf4", "C_GRAY": "#8b98a8", "C_GREEN": "#3fbf7f", "C_RED": "#e05a5a",
                  "C_YELLOW": "#e0b64a", "C_BLUE": "#4a90e0"}
@@ -878,6 +886,38 @@ def _product_view():
     return out
 
 
+def _ss_star_tip(label):
+    """左树条目的 tooltip: 该条属于哪颗星、主什么、定什么 (从阵法数据取, 不各写一份)。"""
+    for _s in _ss.STARS:
+        if "%s · %s" % (_s["name"], _s["star"]) in str(label):
+            return ("%s、%s配置 · %s（%s）— %s\n%s\n%s  [%s]"
+                    % (_s["no_cn"], _s["name"], _s["star"], _s["alias"], _s["role"],
+                       _s["q"], _s["rel"], _s["bind"]))
+    return ""
+
+
+def _current_version():
+    """当前版本号真源: tools/gui/update_checker.py 的 CURRENT_VERSION → VERSION.md 首行 → ""。
+
+    为什么要: 写回 active_product 时要把 `updated` 盖成 "日期 (版本)", 版本必须现取, 不能写死。
+    """
+    try:
+        with io.open(os.path.join(ROOT, "tools", "gui", "update_checker.py"), encoding="utf-8") as f:
+            m = re.search(r'CURRENT_VERSION\s*=\s*"([^"]+)"', f.read())
+        if m:
+            return m.group(1)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    try:
+        with io.open(os.path.join(ROOT, "VERSION.md"), encoding="utf-8") as f:
+            m = re.search(r"\*\*(v[0-9.]+)\*\*", f.read())
+        if m:
+            return m.group(1)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return ""
+
+
 def _write_active_product(pid):
     """把 active_product **原子写回**真源 (临时文件 + os.replace, 不留半截文件) → 回读确认。
 
@@ -895,6 +935,13 @@ def _write_active_product(pid):
     if str(d.get("active_product")) == pid:
         return True, pid, "已是当前产品 (无需改写)"
     d["active_product"] = pid
+    # 🕒 2026-10-15 实测坑: 真源里 `updated` 停在 "2026-10-13 (5.50.3)" —— 别的写入口只改了
+    #    active_product 没盖时间戳 ⇒ 界面/报告显示"真源 2026-10-13"而文件其实是今天 06:30 改的。
+    #    这里写回时**同一把锁内**盖上真实时间 + 版本, 让"最后改动"可核。
+    try:
+        d["updated"] = "%s (%s)" % (time.strftime("%Y-%m-%d"), _current_version())
+    except Exception:                                                           # noqa: BLE001
+        pass
     tmp = "%s.tmp.%d" % (PRODUCT_J, os.getpid())
     try:
         with io.open(tmp, "w", encoding="utf-8") as f:
@@ -1021,6 +1068,14 @@ class ConfigCenterPage(QWidget):
         self.tree.setStyleSheet(f"QTreeWidget{{color:{th['C_WHITE']};background:{th['C_CARD']};"
                                 f"border:1px solid {th['C_BORDER']};}}")
         self._fill_tree(d, tk)
+        # 🏷 左树「产品配置 当前 X」跟真源: 首刷一次 + 每 2s 检查 mtime (只在可见时读, 不空转)
+        self._prod_mt_seen = None
+        self._sync_tree_product(force=True)
+        _ptmr = QTimer(self)
+        _ptmr.setInterval(2000)
+        _ptmr.timeout.connect(lambda: self.isVisible() and self._sync_tree_product())
+        _ptmr.start()
+        self._prod_timer = _ptmr
         self.tree.itemDoubleClicked.connect(self._on_tree)
         self.tree.itemClicked.connect(self._on_tree)      # 单击即生效 (双击才响应会让人以为"点了没反应")
         sp.addWidget(self.tree)
@@ -1032,7 +1087,19 @@ class ConfigCenterPage(QWidget):
                                 f"QTabBar::tab:selected{{background:{th['C_CARD']};color:{th['C_WHITE']};}}")
         self._build_tabs(d, tk, model_page)
         self._wrap_wide_labels(self.tabs)         # 右侧超宽说明行改换行 ⇒ 让分割条真的拖得动(见下)
-        sp.addWidget(self.tabs)
+        # ⭐ 北斗七星阵 (2026-10-15 老倪: 「贯穿配置中心, 在每个配置中心打开的主页面的最上顶部, 写上这样的说明」)
+        #   右工作区最顶部一条**阵图条**: 当前页是哪颗星 + 该星一句 + 定义 + 关系 + 定什么 + 七星星图(可点)。
+        #   放在页签之上 ⇒ 七个页各自打开时它都在最顶部, 跟着页签自动换内容。
+        self.star_banner = _ss.StarBanner(th, on_chip=self._goto_star)
+        self.star_host = QWidget()
+        _hv = QVBoxLayout(self.star_host)
+        _hv.setContentsMargins(0, 0, 0, 0)
+        _hv.setSpacing(4)
+        _hv.addWidget(self.star_banner.w)
+        _hv.addWidget(self.tabs, 1)
+        self.tabs.currentChanged.connect(self._sync_star_banner)
+        self._sync_star_banner()
+        sp.addWidget(self.star_host)
         self._tree_need = self._tree_need_width()
         self.tree.setMinimumWidth(self._tree_need)
         self.tree.setToolTip("左侧栏宽度可按内容自适应, 也可直接拖分隔条调整 (宽度会记住)")
@@ -1095,6 +1162,10 @@ class ConfigCenterPage(QWidget):
         """每次显示时再扫一遍(有的页内容是后填的, 构造时还不宽)。"""
         super().showEvent(ev)
         try:
+            self._sync_tree_product(force=True)      # 🏷 打开就按真源现算左树「产品配置 当前 X」
+        except Exception:                                                         # noqa: BLE001
+            pass
+        try:
             self._wrap_wide_labels(self.tabs)
         except Exception:                                                       # noqa: BLE001
             pass
@@ -1107,6 +1178,63 @@ class ConfigCenterPage(QWidget):
                 self._reload_task_states()
         except Exception:                                                       # noqa: BLE001
             pass
+
+    def _sync_tree_product(self, force=False):
+        """🏷 左树「产品配置  当前 X」**真源现算** —— 别的窗口/客户端改了 active_product 必须自动跟上。
+
+        实测 bug (2026-10-15 老倪): 控制台 06:27 启动时真源是 550A; 06:30 在**别处**把 active_product 写成
+        550B 后, 左树仍写「当前 550A」⇒ 界面与真源不一致。根因: 左树文本只在 `_fill_tree()` 建树那一刻取一次,
+        之后再没人重读 (右侧「产品配置」页有 _refresh_product_view, 左树没有)。
+
+        口径: ① mtime 变了才重解析(每 2s 检查一次, 代价≈一次 stat) ② 读到什么写什么, 读不出写「取不到」并标 ⛔,
+        不退回旧值 (真源纪律) ③ 值变了才刷新右侧页, 防止读—写回环。
+        """
+        if getattr(self, "_prod_syncing", False):
+            return
+        try:
+            mt = os.path.getmtime(PRODUCT_J)
+        except OSError:
+            mt = None
+        if not force and mt is not None and mt == getattr(self, "_prod_mt_seen", None):
+            return
+        self._prod_syncing = True
+        try:
+            self._prod_mt_seen = mt
+            pv = _product_view()
+            err = pv.get("error")
+            act = pv.get("active") or ""
+            mark = "⛔" if err else "✅"
+            # 「真源改于」用**文件 mtime**(改了就变, 别的写入口也瞒不过); 若真源内部 `updated` 字段与
+            # mtime 不是同一天 ⇒ 如实标注它没同步 (实测坑: 06:30 改了 550B 而 updated 还写 2026-10-13)。
+            _mt = _mt_day = ""
+            _upd = str(pv.get("updated") or "")
+            try:
+                _mts = os.path.getmtime(PRODUCT_J)
+                _mt = time.strftime("%m-%d %H:%M", time.localtime(_mts))
+                _mt_day = time.strftime("%Y-%m-%d", time.localtime(_mts))
+            except OSError:
+                pass
+            _stale = bool(_mt_day and _upd[:10] and _mt_day != _upd[:10])
+            tail = "  取不到 (真源读不出, 不退回旧值)" if err else (
+                ("  · 真源改于 %s%s" % (_mt, " ⚠️内部 updated=%s 未同步" % _upd if _stale else ""))
+                if _mt else "")
+            txt = "%s %s  当前 %s%s" % (mark, _ss.star_line("prod"), act or "—", tail)
+            for i in range(self.tree.topLevelItemCount()):
+                it = self.tree.topLevelItem(i)
+                if it is not None and "产品配置" in it.text(0):
+                    it.setText(0, txt)
+                    it.setToolTip(0, "真源 %s\n每次读文件现算 (mtime 变了才重解析); "
+                                     "任何窗口/客户端改了 active_product 都会自动跟上。" % REL_PRODUCT)
+                    break
+            if force or act != getattr(self, "_prod_shown_active", None):
+                self._refresh_product_view(silent=True)      # 右侧页与左树同源
+        except Exception as e:                                                    # noqa: BLE001
+            try:
+                self._log_cc("   ⚠ 产品配置同步失败: %r" % (e,))
+            except Exception:                                                     # noqa: BLE001
+                pass
+        finally:
+            self._prod_syncing = False
 
     def _tree_need_width(self):
         """按**内容实测**算左侧栏需求宽度: 最长条目文本 + 层级缩进 + 图标/边距/滚动条余量。
@@ -1148,51 +1276,77 @@ class ConfigCenterPage(QWidget):
 
     # ── 左侧域树 ──
     def _fill_tree(self, d, tk):
+        """左树顶层 = **北斗七星阵** 七项, 从上到下 1..7 (老倪 2026-10-15)。
+
+        次序 = 配置体系的传导次序: 天枢定边界 → 天璇定作业 → 天玑定能力 → 天权定算法 → 玉衡定指标
+        → 开阳定调度 → 瑶光定记录。每项前面必须有**序号** (老倪原话: 「注意前面要显示一个序号」)。
+
+        与原布局的差别 (如实记, 免得下次又"改回"来):
+          · 原来顶层 8 项, 次序是 模型/工程/功能/性能/文档/任务/工单/产品 —— 顺序是按代码里 append 的先后来的,
+            没有体系含义; 现在按阵法次序。
+          · 原来「工程配置」单列顶层; 它是**特征库第 4 个域**(工程库类特征), 不是八颗星里的一颗 ⇒
+            归到「天玑·功能配置(定能力)」下作子入口 (功能没删, 点它照样进工程域视图)。
+        """
         chars = d.get("CHARACTERISTIC", [])
-        doms = []
+        _dom = {}
         for dom in ("模型配置", "工程配置", "功能配置", "性能配置"):
             cs = [c for c in chars if c.get("domain") == dom]
             rd = sum(1 for c in cs if c.get("ready"))
-            doms.append((f"{dom}  {rd}/{len(cs)}", "⛔" if rd < len(cs) else "✅",
-                         [c["id"] for c in cs if not c.get("ready")]))
+            _dom[dom] = (rd, len(cs), [c["id"] for c in cs if not c.get("ready")])
         # 文档配置 (2026-10-10): 三份外发/立项文档 + 一致性核对
         dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
         # 计数是"文档份数", 第 4 项是一致性核对视图 ⇒ 提示里写清, 免得看成"子项数对不上"
         self._doc_group_tip = ("文档 3/3 = 三份文档 (供应商外发 SOR / 项目立项文档 / 合作协议) 全部就绪且与当前真源一致;\n"
                                "第 4 项『一致性核对』是核对视图, 不计入份数。")
         self._doc_group_tip_on = True
-        doms.append((f"文档配置  文档 {sum(1 for m in dm if m == '✅')}/3", "⛔" if "⛔" in dm else "✅",
-                     ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
-        # 🆕 2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
-        #   原来一个顶层项「工艺·工单」把两件事混在一起 ⇒ 现在拆成两项, 各自在册:
-        #     · 📋 任务配置 = 元任务粒度 (功能 + 配置参数): 这台设备干哪些活 (子项 = 任务 ID)
-        #     · 🧾 工单配置 = 工单实例粒度 (一次执行): 身份/配方/变体/覆盖 (子项 = 工单号)
-        _bs = _orders_list()
-        doms.append((f"📋 任务配置  任务 {len(tk.get('tasks', []))} · 元任务 {_meta_task_count()}",
-                     "⛔" if (tk.get("tasks") and any(t.get("blocked_by_site") for t in tk["tasks"])) else "✅",
-                     [t["task_id"] for t in tk.get("tasks", [])]))
-        doms.append((f"🧾 工单配置  工单 {len(_bs)}",
-                     "⛔" if any((b.get("readiness") or {}).get("site_missing") for b in _bs) else "✅",
-                     [((b.get("identity") or {}).get("order_no") or "?") for b in _bs]))
-        # 🏷 产品配置 (2026-10-13 老倪: 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力)
+        # 🏷 产品配置真源 (次序第 1, 现读)
+        _pv, _nm, _pact, _perr = {}, {}, "—", False
         try:
             _pv = _product_view()
             _nm = _pv.get("names") or {}
-            doms.append((f"产品配置  当前 {_pv.get('active') or '—'}",
-                         "⛔" if _pv.get("error") else "✅",
-                         [_nm.get(p, p) for p in PRODUCT_IDS]))
+            _pact = _pv.get("active") or "—"
+            _perr = bool(_pv.get("error"))
         except Exception:                                                       # noqa: BLE001
-            pass
+            _perr = True
+        _bs = _orders_list()
+        _tk_all = tk.get("tasks", [])
+        doms = []
+        # 1 · 天枢 —— 产品配置
+        doms.append((f"{_ss.star_line('prod')}  当前 {_pact}", "⛔" if _perr else "✅",
+                     [_nm.get(p, p) for p in PRODUCT_IDS]))
+        # 2 · 天璇 —— 任务配置 (元任务粒度)
+        doms.append((f"{_ss.star_line('task')}  任务 {len(_tk_all)} · 元任务 {_meta_task_count()}",
+                     "⛔" if (_tk_all and any(t.get("blocked_by_site") for t in _tk_all)) else "✅",
+                     [t["task_id"] for t in _tk_all]))
+        # 3 · 天玑 —— 功能配置 (特征库功能域 + 工程域子入口)
+        _r3, _n3, _b3 = _dom["功能配置"]
+        doms.append((f"{_ss.star_line('func')}  {_r3}/{_n3}", "⛔" if _r3 < _n3 else "✅",
+                     list(_b3) + ["工程配置 · 工程库域（特征库第 4 域）"]))
+        # 4 · 天权 —— 模型配置 ; 5 · 玉衡 —— 性能配置
+        for _k, _d in (("model", "模型配置"), ("perf", "性能配置")):
+            _r, _n, _b = _dom[_d]
+            doms.append((f"{_ss.star_line(_k)}  {_r}/{_n}", "⛔" if _r < _n else "✅", list(_b)))
+        # 6 · 开阳 —— 工单配置 (工单实例粒度)
+        doms.append((f"{_ss.star_line('order')}  工单 {len(_bs)}",
+                     "⛔" if any((b.get("readiness") or {}).get("site_missing") for b in _bs) else "✅",
+                     [((b.get("identity") or {}).get("order_no") or "?") for b in _bs]))
+        # 7 · 瑶光 —— 文档配置 (收束全部)
+        doms.append((f"{_ss.star_line('doc')}  文档 {sum(1 for m in dm if m == '✅')}/3",
+                     "⛔" if "⛔" in dm else "✅",
+                     ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
+        #   记 (2026-10-14 老倪): 「任务配置」= 元任务粒度 (功能 + 配置参数) / 「工单配置」= 工单实例粒度 (一次执行)。
+        #   记 (2026-10-13 老倪): 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力。
         self.tree.clear()
         for label, mark, kids in doms:
             it = QTreeWidgetItem([f"{mark} {label}"])
-            if label.startswith("文档") and getattr(self, "_doc_group_tip_on", False):
+            if "文档配置" in label and getattr(self, "_doc_group_tip_on", False):
                 it.setToolTip(0, self._doc_group_tip)
             for k in kids:
                 QTreeWidgetItem(it, [f"   {k}"])
             self.tree.addTopLevelItem(it)
-            it.setExpanded(label.startswith("工艺") or label.startswith("文档")
-                           or label.startswith("📋 任务配置") or label.startswith("🧾 工单配置"))
+            # 默认展开: 任务/工单/文档 (清单型, 一眼要看全); 其余展开会太长
+            it.setExpanded(("任务配置" in label) or ("工单配置" in label) or ("文档配置" in label))
+            it.setToolTip(0, _ss_star_tip(label))
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
     def _install_state_combos(self):
@@ -1341,6 +1495,39 @@ class ConfigCenterPage(QWidget):
                 except Exception:                                               # noqa: BLE001
                     pass
         print(msg, flush=True)
+
+    # ── ⭐ 北斗七星阵: 顶部阵图条 (跟页签走 · 点星跳页) ─────────────────────────────
+    def _sync_star_banner(self, *_a):
+        """按当前页签刷阵图条: 七星页显示该星说明, 非七星页显示阵法总览 + 该视图归属的如实说明。"""
+        try:
+            self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()))
+        except Exception as e:                                                  # noqa: BLE001
+            try:
+                self._log_cc("   ⚠ 阵图条刷新失败: %r" % (e,))
+            except Exception:                                                   # noqa: BLE001
+                pass
+
+    def _goto_star(self, key):
+        """点阵图条上的星 → 切到该星的页 + 左树选中对应项 (真联动, 不是画着好看)。"""
+        s = _ss.BY_KEY.get(key)
+        if not s:
+            return
+        i = self._tab_index_by_title(s["tab"])
+        if i >= 0:
+            self.tabs.setCurrentIndex(i)
+        _kw = "%s · %s" % (s["name"], s["star"])
+        for _i in range(self.tree.topLevelItemCount()):
+            it = self.tree.topLevelItem(_i)
+            if it is not None and _kw in it.text(0):
+                self.tree.setCurrentItem(it)
+                break
+        self._sync_star_banner()
+        try:
+            self.out.setPlainText("⭐ %s、%s · %s（%s）· %s  [%s]\n   %s\n   %s" % (
+                s["no_cn"], s["name"], s["star"], s["alias"], s["role"], s["bind"], s["q"], s["define"]))
+            self._fit_out()
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _tab_index_by_title(self, kw):
         for i in range(self.tabs.count()):
@@ -1752,6 +1939,7 @@ class ConfigCenterPage(QWidget):
 
     def _refresh_product_view(self, silent=True):
         """按真源重读产品配置并刷新界面 (只读, 不改真源)。返回本次读到的那份 (判据/日志可查)。"""
+        self._sync_tree_product()      # 🏷 左树那行必须与右侧同源 (本 UI 写回 / 别处改动都覆盖)
         v = _product_view()
         self._prod_last = v
         names = v.get("names") or {}
