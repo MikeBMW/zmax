@@ -26,13 +26,12 @@
 | `docs/data_snapshots/20261008_aoi_gold_judge_v21/compare/deploy_v21_gold_judge_now.png` | 217439 | `aace08c9e08c7e20` |
 | `docs/data_snapshots/20261008_safety_gates_v5184/l2_daemon_recent.log` | 572586 | `0b108e36a99befb2` |
 | `docs/data_snapshots/20261014_L4_latent_chain/zmax_engineering.db` | 1400832 | `ca30183196d348fd` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/config_center_full.png` | 472422 | `11808fb0529202e5` |
 | `docs/data_snapshots/20261015_config_center_seven_stars/console_real_064912.png` | 1145802 | `202aef711ea4f705` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 1031561 | `7b9cd8eebb9e883e` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 723645 | `533e935edb606763` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 911214 | `89fbfa1d915a427b` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 893089 | `45d595583b30abb0` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 981486 | `e6bd3b5fe860a68a` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 981486 | `e6bd3b5fe860a68a` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 1030312 | `cdd26b1e41dc7cd3` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 794120 | `b8c65819a18f7a23` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 409032 | `8a7fc33f9f6842e4` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 980240 | `fc0badaa1226d059` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 980240 | `fc0badaa1226d059` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 980240 | `fc0badaa1226d059` |
 
 刷新: `./gui-venv311/bin/python tools/snapshot_media_index.py --write`
