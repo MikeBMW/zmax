@@ -36,9 +36,11 @@ def main() -> int:
     dlg.resize(1720, 950)
     dlg.show()
 
-    # (页签关键字, 出图名, 要点的星 key 或 None) —— 单独出一张「只亮玉衡」证明一致性修复
-    shots = [("任务配置", "天璇", None), ("产品配置", "天枢", None),
-             ("功能·性能·模型", "天玑", "func"), ("功能·性能·模型", "玉衡", "perf")]
+    # (页签关键字, 出图名, 要点的星 key 或 None, 是否用"点左树"的方式)
+    # 最后一张 = 老倪报的场景: **点左树「5. 性能配置 · 玉衡」** → 右页必须显玉衡(按钮按下)而不是天玑
+    shots = [("任务配置", "天璇", None, False), ("产品配置", "天枢", None, False),
+             ("功能·性能·模型", "天玑", "func", False), ("功能·性能·模型", "玉衡", "perf", False),
+             ("性能配置", "性能配置点左树", "perf", True)]
     state = {"i": 0}
 
     def _step():
@@ -48,12 +50,17 @@ def main() -> int:
             print("出图完成 →", dst)
             app.quit()
             return
-        kw, star, key = shots[i]
-        j = page._tab_index_by_title(kw)
-        if j >= 0:
-            page.tabs.setCurrentIndex(j)
-        if key:
-            page._goto_star(key)          # 点星 = 只亮这一颗 (一页三星时验证一致性)
+        kw, star, key, by_tree = shots[i]
+        if by_tree:
+            _it = next(page.tree.topLevelItem(k) for k in range(page.tree.topLevelItemCount())
+                       if kw in page.tree.topLevelItem(k).text(0))
+            page._on_tree(_it, 0)                       # 走"点左树"这条真实路径
+        else:
+            j = page._tab_index_by_title(kw)
+            if j >= 0:
+                page.tabs.setCurrentIndex(j)
+            if key:
+                page._goto_star(key)      # 点星 = 只亮这一颗 (一页三星时验证一致性)
         app.processEvents()
         f = os.path.join(dst, "real_%d_%s.png" % (i + 1, star))
         page.grab().save(f)
