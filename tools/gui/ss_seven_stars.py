@@ -145,6 +145,15 @@ def focus_keys_for_tab(title, focus_key=None):
     return (focus_key if focus_key in keys else keys[0],)
 
 
+def key_for_label(label):
+    """左树/标题文本 → 星 key (按「名称 · 星名」匹配; 取不到返回 "")。"""
+    t = str(label or "")
+    for s in STARS:
+        if "%s · %s" % (s["name"], s["star"]) in t:
+            return s["key"]
+    return ""
+
+
 def star_line(key):
     """左树/标题用的短名: 「N. 名称 · 星名」 (序号在最前 —— 老倪要求)"""
     s = BY_KEY.get(key)
@@ -214,6 +223,10 @@ class StarBanner(object):
         # 行 3: 定义 + 关系 (合成一段, 用 · 分段, 不截断)
         self.t_def = _lbl("", th["C_GRAY"], 9, wrap=True)
         v.addWidget(self.t_def)
+        # 行 3a: **本页真源摘要** —— 老倪 2026-10-15: 「左侧不用显示那么多 …… 详细信息要在配置页面显示」
+        #        ⇒ 左树只留 7 行星名, 计数/当前值/真源时间搬到每页顶部这一行 (+ hover tooltip)。
+        self.t_fact = _lbl("", th["YELLOW"] if "YELLOW" in th else th["C_YELLOW"], 9, wrap=True)
+        v.addWidget(self.t_fact)
         # 行 3b: 非七星视图的如实说明 (平时隐藏)
         self.t_note = _lbl("", th["C_YELLOW"], 9, wrap=True)
         self.t_note.hide()
@@ -259,10 +272,11 @@ class StarBanner(object):
                          % (s["no_cn"], s["name"], s["star"], s["alias"],
                             "  ← 当前页" if on else "", s["q"], s["define"], s["wuxing"]))
 
-    def set_tab(self, title, focus_key=None):
-        """按当前页签刷新整条 (七星页 → **当前这一颗星**的说明; 非七星页 → 阵法总览 + 如实说明)。
+    def set_tab(self, title, focus_key=None, facts=None):
+        """按当前页签刷新整条 (七星页 → **当前这一颗**星的说明; 非七星页 → 阵法总览 + 如实说明)。
 
         focus_key: 一页多星时用户当前点的那颗 (点天玑=func / 点玉衡=perf); 不传则用本页默认星。
+        facts:     {"prod": "当前 550B · 真源改于 …", ...} 各星的真源摘要 (现算传入, 本模块不读真源)。
         """
         th = self.th
         keys = keys_for_tab(title)
@@ -285,6 +299,10 @@ class StarBanner(object):
             self.t_bind.setText("北斗所指 · 工程所向")
             self.bar.setStyleSheet("background:%s;border:none;" % o["color"])
             self.t_bind.setStyleSheet("color:%s;background:transparent;" % o["color"])
+        _fact = str((facts or {}).get(s["key"], "") if s is not None else (facts or {}).get("__all__", ""))
+        self.t_fact.setText(("本页真源: " + _fact) if _fact else "")
+        self.t_fact.setVisible(bool(_fact))
+        self._fact_on = bool(_fact)
         if note:
             self.t_note.setText("说明：" + note)
             self.t_note.show()
@@ -299,6 +317,7 @@ class StarBanner(object):
         return dict(title=self.t_title.text(), meta=self.t_meta.text(), q=self.t_q.text(),
                     define=self.t_def.text(), bind=self.t_bind.text(),
                     note=self.t_note.text() if getattr(self, "_note_on", False) else "",
+                    fact=self.t_fact.text() if getattr(self, "_fact_on", False) else "",
                     lit=[k for k, b in self.chips.items() if "transparent" not in b.styleSheet()],
                     chips=[b.text() for b in self.chips.values()])
 

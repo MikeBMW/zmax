@@ -896,6 +896,63 @@ def _ss_star_tip(label):
     return ""
 
 
+def _mt_str(p):
+    """文件 mtime → "MM-DD HH:MM" (取不到返回 "取不到"); 显示"真源何时改的"用文件时间, 不信内部字段。"""
+    try:
+        return time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(p)))
+    except OSError:
+        return "取不到"
+
+
+def _star_facts():
+    """七颗星各自的**真源摘要一行** (老倪 2026-10-15: 「左侧不用显示那么多 …… 详细信息要在配置页面显示」)。
+
+    左树只留 7 行星名; 每页顶部的阵图条 + 左树 tooltip 用这里的摘要。
+    全部**现读真源**(不缓存); 读不出就写"取不到 (原因)", 不退回旧值。
+    """
+    f = {}
+    # 1 · 天枢 产品配置
+    try:
+        pv = _product_view()
+        f["prod"] = "当前 %s · 真源改于 %s · 三档 %s" % (
+            pv.get("active") or "取不到", _mt_str(PRODUCT_J),
+            " / ".join(str((pv.get("names") or {}).get(p, p)) for p in PRODUCT_IDS))
+    except Exception as e:                                                      # noqa: BLE001
+        f["prod"] = "取不到 (%s)" % type(e).__name__
+    # 2 · 天璇 任务配置
+    try:
+        _tk = _j(TASKS_J, {}) or {}
+        _bd = _j(BIND_J, {}) or {}
+        f["task"] = "任务 %d 条 · 元任务 %d · 活跃 %s · 绑定真源改于 %s" % (
+            len(_tk.get("tasks", [])), _meta_task_count(), _bd.get("active_task") or "—", _mt_str(BIND_J))
+    except Exception as e:                                                      # noqa: BLE001
+        f["task"] = "取不到 (%s)" % type(e).__name__
+    # 3/4/5 · 天玑/天权/玉衡 (特征库三域)
+    try:
+        _cs = (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", [])
+        for _dom, _k in (("功能配置", "func"), ("模型配置", "model"), ("性能配置", "perf")):
+            _l = [c for c in _cs if c.get("domain") == _dom]
+            f[_k] = "%s %d/%d 就绪" % (_dom, sum(1 for c in _l if c.get("ready")), len(_l))
+        f["func"] += " · 工程域 %d 项 (天玑下的子入口)" % len([c for c in _cs if c.get("domain") == "工程配置"])
+    except Exception as e:                                                      # noqa: BLE001
+        for _k in ("func", "model", "perf"):
+            f.setdefault(_k, "取不到 (%s)" % type(e).__name__)
+    # 6 · 开阳 工单配置
+    try:
+        f["order"] = "工单 %d 个" % len(_orders_list())
+    except Exception as e:                                                      # noqa: BLE001
+        f["order"] = "取不到 (%s)" % type(e).__name__
+    # 7 · 瑶光 文档配置
+    try:
+        f["doc"] = "文档 %d/3 就绪 (SOR / 立项 / 合作)" % sum(
+            1 for m in (_doc_mark(k) for k in ("sor", "project", "agreement")) if m == "✅")
+    except Exception as e:                                                      # noqa: BLE001
+        f["doc"] = "取不到 (%s)" % type(e).__name__
+    f["__all__"] = " · ".join("%s %s" % (_ss.BY_KEY[k]["star"], f.get(k, "").split(" · ")[0])
+                              for k in ("prod", "task", "func", "model", "perf", "order", "doc"))
+    return f
+
+
 def _current_version():
     """当前版本号真源: tools/gui/update_checker.py 的 CURRENT_VERSION → VERSION.md 首行 → ""。
 
@@ -1221,13 +1278,15 @@ class ConfigCenterPage(QWidget):
             tail = "  取不到 (真源读不出, 不退回旧值)" if err else (
                 ("  · 真源改于 %s%s" % (_mt, " ⚠️内部 updated=%s 未同步" % _upd if _stale else ""))
                 if _mt else "")
-            txt = "%s %s  当前 %s%s" % (mark, _ss.star_line("prod"), act or "—", tail)
+            # 左树只留星名 (计数/当前值进 tooltip 与配置页) —— 2026-10-15 老倪口径
+            txt = "%s %s" % (mark, _ss.star_line("prod"))
             for i in range(self.tree.topLevelItemCount()):
                 it = self.tree.topLevelItem(i)
                 if it is not None and "产品配置" in it.text(0):
                     it.setText(0, txt)
-                    it.setToolTip(0, "真源 %s\n每次读文件现算 (mtime 变了才重解析); "
-                                     "任何窗口/客户端改了 active_product 都会自动跟上。" % REL_PRODUCT)
+                    it.setToolTip(0, "%s\n\n真源 %s (%s)\n 每次读文件现算 (mtime 变了才重解析); "
+                                     "任何窗口/客户端改了 active_product 都会自动跟上。"
+                                     % (_ss_star_tip(_ss.star_line("prod")), REL_PRODUCT, REL_PRODUCT))
                     break
             if force or act != getattr(self, "_prod_shown_active", None):
                 self._refresh_product_view(silent=True)      # 右侧页与左树同源
@@ -1339,17 +1398,26 @@ class ConfigCenterPage(QWidget):
                      ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
         #   记 (2026-10-14 老倪): 「任务配置」= 元任务粒度 (功能 + 配置参数) / 「工单配置」= 工单实例粒度 (一次执行)。
         #   记 (2026-10-13 老倪): 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力。
+        # 🧹 2026-10-15 老倪: 「左侧不用显示那么多, 只显示 1..7; 详细信息要在配置页面显示」
+        #   ⇒ 顶层 7 行只写「序号 + 名称 · 星名」(+ 一个 ✅/⛔ 就绪符), **不带计数/当前值/子项**;
+        #     计数与真源时间进 ①每页顶部阵图条「本页真源: …」 ②左树 hover tooltip (可复制原文)。
+        _facts = _star_facts()
         self.tree.clear()
         for label, mark, kids in doms:
-            it = QTreeWidgetItem([f"{mark} {label}"])
+            _short = re.sub(r"\s{2,}.*$", "", label)          # 掉掉计数尾巴, 只留「N. 名称 · 星名」
+            it = QTreeWidgetItem([f"{mark} {_short}"])
+            _tip = _ss_star_tip(label)
+            _k = _ss.key_for_label(label)
+            _det = ""
+            if _facts.get(_k):
+                _det += "\n\n本页真源: " + _facts[_k]
+            if kids:
+                _det += "\n明细 (%d): %s%s" % (len(kids), " · ".join(str(x) for x in kids[:24]),
+                                              " …" if len(kids) > 24 else "")
             if "文档配置" in label and getattr(self, "_doc_group_tip_on", False):
-                it.setToolTip(0, self._doc_group_tip)
-            for k in kids:
-                QTreeWidgetItem(it, [f"   {k}"])
+                _det += "\n\n" + self._doc_group_tip
+            it.setToolTip(0, (_tip + _det).strip())
             self.tree.addTopLevelItem(it)
-            # 默认展开: 任务/工单/文档 (清单型, 一眼要看全); 其余展开会太长
-            it.setExpanded(("任务配置" in label) or ("工单配置" in label) or ("文档配置" in label))
-            it.setToolTip(0, _ss_star_tip(label))
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
     def _install_state_combos(self):
@@ -1509,7 +1577,8 @@ class ConfigCenterPage(QWidget):
         """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。"""
         try:
             self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()),
-                                     focus_key=getattr(self, "_star_focus", None))
+                                     focus_key=getattr(self, "_star_focus", None),
+                                     facts=_star_facts())      # 「本页真源: …」现算 (左树不再显示计数)
         except Exception as e:                                                  # noqa: BLE001
             try:
                 self._log_cc("   ⚠ 阵图条刷新失败: %r" % (e,))
@@ -1804,6 +1873,28 @@ class ConfigCenterPage(QWidget):
 
     def _on_tree(self, item, _col):
         txt = item.text(0)
+        # ⭐ 北斗七星阵顶层项 (2026-10-15): 先按**星名**分派到各自配置页。
+        #   为什么必须放最前 —— 实测 bug: 序号 "2." 里有一个点, 下面的「参数 ID 分支」把
+        #   「⛔ 2. 任务配置 · 天璇」当成参数 ID, 真源里查不到就只打印一行"配置中心里没有参数…",
+        #   **页面完全不动** (老倪报: 产品配置能跳, 任务配置不跳; 工单配置同理)。
+        if re.search(r"·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光)", txt):
+            for _dom in ("模型配置", "工程配置", "功能配置", "性能配置"):
+                if _dom in txt:
+                    self._show_domain(_dom, None)
+                    return
+            if "工单配置" in txt:
+                self._show_orders(txt)
+                return
+            if "任务配置" in txt:
+                self._show_tasks(txt)
+                return
+            if "文档配置" in txt:
+                self._show_doc_config()
+                return
+            _i = self._tab_index_by_title("产品配置")
+            if _i >= 0:
+                self.tabs.setCurrentIndex(_i)
+            return
         # 🏷 产品配置 (2026-10-13): 点左树 → 切到「产品配置」页 (只切页/只读, 不写真源 —— 写盘只在单选按钮上)
         if "产品配置" in txt or re.search(r"550[ABC]", txt):
             _i = self._tab_index_by_title("产品配置")
@@ -2541,6 +2632,22 @@ class ConfigCenterPage(QWidget):
             if "文档预览" in self.tabs.tabText(i):
                 return i
         return -1
+
+    def _show_doc_config(self):
+        """7 · 瑶光·文档配置 → 切到「📄 文档交付」页 + 底部写一句真源摘要 (不去抢别的页)。"""
+        _i = self._tab_index_by_title("文档交付")
+        if _i >= 0:
+            self.tabs.setCurrentIndex(_i)
+        _rows = ["7 · 瑶光 · 文档配置 (定记录)"]
+        for _k in ("sor", "project", "agreement"):
+            try:
+                _st = _doc_state(_k)
+                _rows.append("   %s %s — %s" % (_doc_mark(_k), _st.get("name", _k), _st.get("why", "")))
+            except Exception:                                                   # noqa: BLE001
+                _rows.append("   %s %s (状态取不到)" % (_doc_mark(_k), _k))
+        _rows.append("   正文预览在「📄 文档预览」页; 一致性核对在文档页最后一列。")
+        self.out.setPlainText("\n".join(_rows))
+        self._fit_out()
 
     def _show_doc(self, kind, force=False):
         """内置窗口看文档: 没有产物就先真跑生成, 再读回 .docx 实际内容; 过期给红字告警。"""

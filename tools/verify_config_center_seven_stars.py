@@ -38,17 +38,21 @@ def main() -> int:
     import veh6_config_page as V
 
     _app = QApplication.instance() or QApplication([])
-    page = V.ConfigCenterPage()
+    # 与 studio 同一条构造路径 (传一个容器当 model_page ⇒ 「🧠 模型配置」页签才会建出来;
+    # 直接 ConfigCenterPage() 会少那个页签, 判"点模型配置跳哪"就会判错 —— 2026-10-15 实测)
+    from PyQt5.QtWidgets import QWidget as _QW
+    page = V.build_config_center(_QW())
     checks = []
 
     # ① 顶层 7 项 + ② 序号在最前 + ③ 星名齐全
     tops = [page.tree.topLevelItem(i).text(0) for i in range(page.tree.topLevelItemCount())]
     ok1 = len(tops) == 7
     checks.append(("① 左树顶层恰好 7 项 (北斗七星)", ok1, " | ".join(t[:26] for t in tops)))
-    ok2 = all(re.match(r"^[✅⛔] \d\. ", t) for t in tops) and all(
-        (w[0] + " " + w[1]) in t for w, t in zip(WANT, tops)) and all(w[2] in t for w, t in zip(WANT, tops))
-    checks.append(("② 每项「序号在最前 + 名称 + 星名」全对", ok2,
-                   " · ".join("%s%s·%s" % ((w[0]), w[1], w[2]) for w in WANT)))
+    _want_lbl = ["%s %s %s · %s" % ("%s", w[0], w[1], w[2]) for w in WANT]
+    ok2 = all(re.match(r"^[✅⛔] \d\. [\u4e00-\u9fa5]+ · [\u4e00-\u9fa5]{2}$", t) for t in tops) and all(
+        (w[0] + " " + w[1] + " · " + w[2]) in t for w, t in zip(WANT, tops))
+    checks.append(("② 每项正好「序号 + 名称 · 星名」(不带计数/当前值)", ok2,
+                   " | ".join(t for t in tops)))
     stars_in_tree = [w[2] for w in WANT if w[2] in " ".join(tops)]
     checks.append(("③ 七颗星齐全且无重复", len(stars_in_tree) == 7 == len(set(stars_in_tree)),
                    " ".join(stars_in_tree)))
@@ -57,12 +61,12 @@ def main() -> int:
                    [S.BY_KEY[k]["star"] for k in ("prod", "task", "func", "model", "perf", "order", "doc")]
                    == stars_in_tree, " ".join(s["star"] for s in S.STARS)))
 
-    # ④ 工程配置 归位 (不再顶层, 但健在)
-    kids3 = [page.tree.topLevelItem(2).child(j).text(0) for j in range(page.tree.topLevelItem(2).childCount())]
-    top_has_eng = any(t.strip().startswith(("✅", "⛔")) and "工程配置" in t and "·" not in t for t in tops)
-    checks.append(("④ 「工程配置」不再顶层 · 仍是天玑下子入口 (功能没丢)",
-                   (not top_has_eng) and any("工程配置" in k for k in kids3),
-                   "天玑子项: " + " / ".join(k.strip() for k in kids3 if "工程配置" in k)))
+    # ④ 左树只留 7 行 (无子项) · 「工程配置」页签仍在 (功能没丢, 从配置页进)
+    _kids = sum(page.tree.topLevelItem(i).childCount() for i in range(page.tree.topLevelItemCount()))
+    _eng_tab = page._tab_index_by_title("工程配置") >= 0
+    checks.append(("④ 左树无子项 (只 7 行) · 「工程配置」页签健在 (功能没丢)",
+                   _kids == 0 and _eng_tab and not any("工程配置" in t for t in tops),
+                   "子项数=%d · 工程配置页签=%s" % (_kids, "有" if _eng_tab else "无")))
 
     # ⑤ 阵图条: 每个页签都要有该页所属星的说明 (或非七星页的总览)
     bad = []
@@ -122,6 +126,40 @@ def main() -> int:
     good = all(("%s→亮[%s]" % (st, k)) in "".join(one_by_one)
                for k, st in (("func", "天玑"), ("perf", "玉衡"), ("model", "天权")))
     checks.append(("⑨ 点天玑/玉衡/天权 各只亮各自那一颗 (同一页内)", good, " ; ".join(one_by_one)))
+
+    # ⑩ 点左树每个星项 → **必须切到对应配置页** (老倪 2026-10-15: 产品配置能跳, 任务配置不跳)
+    #    根因: 序号 "2." 的点被"参数 ID 分支"当成参数 ID ⇒ 页面不动。这里逐项模拟点击验证。
+    _EXPECT = [("1. 产品配置", "产品配置"), ("2. 任务配置", "任务配置"),
+               ("3. 功能配置", "功能·性能·模型"), ("4. 模型配置", "模型配置"),
+               ("5. 性能配置", "功能·性能·模型"), ("6. 工单配置", "工单配置"),
+               ("7. 文档配置", "文档交付")]
+    _jump = []
+    for _i in range(page.tree.topLevelItemCount()):
+        _it = page.tree.topLevelItem(_i)
+        _t = _it.text(0)
+        _exp = next((e for k, e in _EXPECT if k in _t), None)
+        page.tabs.setCurrentIndex(0)                     # 先挪走, 证明是"点出来的"而不是"本来就在"
+        page._on_tree(_it, 0)
+        _app.processEvents()
+        _cur = page.tabs.tabText(page.tabs.currentIndex())
+        _ok = (_exp is not None) and (_exp in _cur)
+        _jump.append("%s→%s%s" % (_t.split(" · ")[0], _cur.strip(), "" if _ok else " ❌应到" + str(_exp)))
+        if not _ok:
+            _jump[-1] = "❌" + _jump[-1]
+    checks.append(("⑩ 点左树七项各自跳到对应配置页 (含任务/工单/文档)",
+                   not any(x.startswith("❌") for x in _jump), " ; ".join(_jump)))
+
+    # ⑪ 详细信息在配置页: 每颗星那页顶部都要有「本页真源: …」且非空
+    _facts = []
+    for _k in ("prod", "task", "func", "model", "perf", "order", "doc"):
+        page._goto_star(_k)
+        _app.processEvents()
+        _f = page.star_banner.snapshot().get("fact", "")
+        _facts.append("%s→%s" % (S.BY_KEY[_k]["star"], (_f[8:40] + "…") if len(_f) > 48 else _f[8:]))
+        if not _f.startswith("本页真源: ") or len(_f) <= 9:
+            _facts[-1] = "❌" + _facts[-1]
+    checks.append(("⑪ 每颗星的页顶都有「本页真源: …」(左树删掉的详细值落到这里)",
+                   not any(x.startswith("❌") for x in _facts), " ; ".join(_facts)))
 
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []
