@@ -191,6 +191,15 @@ def execute_node_logic(module, node, label=None, trace=None, demo=False):
         return _demo_node_output(module, node, ctx)
     if trace is None:
         trace = bool(getattr(module, "_trace_nodes", False))
+    # 逐层真调用计数 (2026-10-14): 模型引擎「推理中/空闲」的真源 —— 只有**真调真函数且执行成功**才记,
+    #   演示播放 (demo) 早在上面的分支返回, 异常也不算 ⇒ 空闲 = 该层节点最近没被真跑过。
     if trace:
-        return _trace_exec(info["fn"], ctx, getattr(module, "_log", None))
-    return info["fn"](ctx)
+        _out = _trace_exec(info["fn"], ctx, getattr(module, "_log", None))
+    else:
+        _out = info["fn"](ctx)
+    try:
+        from .layer_calls import touch as _lc_touch
+        _lc_touch(key, name)
+    except Exception:                                                # noqa: BLE001
+        pass
+    return _out

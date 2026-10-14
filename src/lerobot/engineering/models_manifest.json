@@ -65,8 +65,8 @@
         "note_short": "在役: 引擎真跑",
         "artifact": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
         "source": "models/active_models.json#L3",
-        "note": "与 state_space_sim_real.py 的 SS_L3_CK 默认值同源 (引擎真跑的就是它)。inferring 为**代理信号** = 状态空间引擎动作节拍 (zmax/ss_action 主题 age_s), 非 L3 层独立推理计数 (系统中无该计数, 如实标注)",
-        "probe": { "type": "json_age", "path": "/home/ubuntu/zmax/zmax_data/dataspace/live.json", "pointer": "topics.ss_action.age_s", "max_age_s": 3 }
+        "note": "与 state_space_sim_real.py 的 SS_L3_CK 默认值同源 (引擎真跑的就是它)。inferring = **逐层真调用计数** (2026-10-14 改: 原为「引擎动作节拍」代理信号 = dataspace/live.json#topics.ss_action.age_s, 而该主题实测连 age_s 字段都没有(count=0) ⇒ 恒判空闲、与是否在跑无关; 现改接 runtime.execute_node_logic → layer_calls.touch 的真调用计数 zmax_data/ss_live/layer_calls.json#L3.count, 窗口 60s 内增长 ⇒ 推理中; 演示播放不计)",
+        "probe": { "type": "json_counter", "path": "~/zmax/zmax_data/ss_live/layer_calls.json", "pointer": "L3.count", "window_s": 60 }
       },
       {
         "name": "SmolVLA+LEW 长程规划 LoRA (7帧窗口)",
