@@ -272,9 +272,16 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
 
 
 # ─────────────────────── 落盘 (单一写入器 + 原子写 + 回读) ───────────────────────
-def _pid_owner_alive() -> int | None:
+def _pid_file(instance: str = "main") -> str:
+    """实例化 pid 锁: main = 在役常驻那份 (pid 锁 = zmax_data/ss_live/torque.pid);
+    别的名字 (如 retro/task-xx) ⇒ 独立 pid 锁, 可与常驻发布器**并行**给别的场景补 tap。
+    (对齐 tools/ss_engine_loop.py --instance 的同一套做法)"""
+    return PID if instance in ("main", "", None) else "%s_%s" % (PID, instance)
+
+
+def _pid_owner_alive(instance: str = "main") -> int | None:
     try:
-        with io.open(PID, encoding="utf-8") as f:
+        with io.open(_pid_file(instance), encoding="utf-8") as f:
             p = int(f.read().strip())
         os.kill(p, 0)
         return p
@@ -315,13 +322,14 @@ def cmd_once(scene: str) -> int:
     return 0
 
 
-def cmd_run(scene: str, hz: float, seconds: float) -> int:
-    own = _pid_owner_alive()
+def cmd_run(scene: str, hz: float, seconds: float, instance: str = "main",
+            lock_scene: bool = False) -> int:
+    own = _pid_owner_alive(instance)
     if own:
         print(json.dumps({"started": False, "reason": "已有写入器在跑 (pid %d)" % own}, ensure_ascii=False))
         return 1
     os.makedirs(TAP_DIR, exist_ok=True)
-    with io.open(PID, "w", encoding="utf-8") as f:
+    with io.open(_pid_file(instance), "w", encoding="utf-8") as f:
         f.write(str(os.getpid()))
     from lerobot.memory.potential_field import MemoryLayerBridge
     br = MemoryLayerBridge.from_real_data(ROOT)                 # 只建一次 (建场要读真数据)
@@ -331,7 +339,9 @@ def cmd_run(scene: str, hz: float, seconds: float) -> int:
     # 🔀 2026-10-14: 场景**每 5s 重解析**一次 —— 原来 DEFAULT_SCENE 只在 import 时算一次, 于是"配置中心把
     #    活跃配置切到插拔"之后, 常驻发布器仍然按老场景发 (tap 名/payload.scene/标识块里的场景全是旧的), 必须
     #    手动重启服务才生效 ⇒ 现场表现"我切了任务, 数据空间里还是老场景"。显式指定 (--scene / env) 时不动。
-    _scn_lock = bool(os.environ.get("ZMAX_TORQUE_SCENE"))
+    # ⚠️ 实测坑: 只给 --scene 并不锁场景 —— 循环里 5s 一次「跟随活跃配置」会把 tap 切走 (写出来的
+    #    torque_SCN-02-HANDLE.jsonl 里混进 SCN-07-AOI 的帧)。显式 --scene 就该锁住该场景。
+    _scn_lock = bool(os.environ.get("ZMAX_TORQUE_SCENE")) or bool(lock_scene)
     _scn, _scn_t = scene, time.time()
     print("▶ 驱动扭矩发布: %.1fHz · %s · tap %s%s" % (
         hz, _scn, _tap_path(_scn), "" if _scn_lock else " · 场景每 5s 跟随活跃配置", ), flush=True)
@@ -433,9 +443,13 @@ def main() -> int:
     ap.add_argument("--scene", default=DEFAULT_SCENE)
     ap.add_argument("--hz", type=float, default=10.0, help="发布频率 (数据通道=10Hz, 规格 1000Hz 电机通道未接)")
     ap.add_argument("--seconds", type=float, default=0.0, help="跑多少秒 (0=直到被停)")
+    ap.add_argument("--instance", default="main",
+                    help="实例名: main=在役常驻发布器 (默认); 别的名字 ⇒ 独立 pid 锁, 可与常驻并存"
+                         "(给非活跃场景补 tap 用; tap 仍写同一 TAP_DIR, 判据脚本照常读)")
     a = ap.parse_args()
     if a.cmd == "run":
-        return cmd_run(a.scene, a.hz, a.seconds)
+        _explicit_scene = any(x == "--scene" or x.startswith("--scene=") for x in sys.argv[1:])
+        return cmd_run(a.scene, a.hz, a.seconds, a.instance, lock_scene=_explicit_scene)
     if a.cmd == "once":
         return cmd_once(a.scene)
     if a.cmd == "status":

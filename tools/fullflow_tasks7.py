@@ -130,8 +130,10 @@ def stage_sim_data(task, ev, logdir, target, mode):
     instr = "metaworld 光模块插拔 · %s (%s)" % (meta.get("name", task), meta.get("recipe_type", ""))
     outd = os.path.join(ROOT, "data/datasets/sim_%s" % task)
     r = _run(["tools/collect_simreal_vla_data.py", "--task", instr, "--target", str(target),
-              "--out", outd, "--mode", mode, "--max-seeds", str(max(60, target * 2))],
-             1800, os.path.join(logdir, "sim_data.log"), "sim_data")
+              "--out", outd, "--mode", mode, "--max-seeds", str(max(40, target * 3))],
+             int(os.environ.get("SIM_TIMEOUT_S", "900")), os.path.join(logdir, "sim_data.log"), "sim_data")
+    # ⚠️ 收集器 --target 计的是**成功轨迹**数 (失败 seed 每个空跑 ~20s) ⇒ 实测 target 24 只出 8 条成功、
+    #    其余全 "未完成, 跳过"(磨了 4 分钟)。target 10 收敛快; 墙钟上限兜底防拖死循环。
     # 轨迹/帧数取**收集器自己的真报数** ("✅ 完成: 6 轨迹 / 2896 帧 → 路径") + LeRobot 数据集落盘核验
     m = re.search(r"完成:\s*(\d+)\s*轨迹\s*/\s*(\d+)\s*帧", r["out"])
     n_epi = int(m.group(1)) if m else 0
@@ -184,6 +186,19 @@ def stage_infer(task, scene, ev, logdir, real=False):
     a = _run(["tools/ss_engine_loop.py", "run", "--instance", task.lower(), "--encoder", "l4",
               "--l4-hz", "1", "--seconds", "18", "--no-lock"], 900, os.path.join(logdir, "infer.log"), "engine_loop")
     b = _run(["tools/run_l4_intent_models.py"], 1200, os.path.join(logdir, "infer.log"), "l4_intent_models")
+    # 🧾 元任务预测的输入 = 驱动扭矩 tap `/dev/shm/zmax_torque/torque_<SCN>.jsonl`, 由 tools/tdrive_bus.py 按
+    #    **当前场景**写。实测(7 任务全量跑): 只有跑过的场景才有 tap ⇒ TASK-02..05 无输入 ⇒ 预测端如实"不预测(不猜)"、
+    #    候选 0 —— 而老倪要的是「流形引擎预测**每个**元任务」。这里为该任务场景补一段**真**驱动扭矩 (有界 8s),
+    #    补不上就如实记 rc/frames=0 (不伪造)。
+    tapf = "/dev/shm/zmax_torque/torque_%s.jsonl" % scene
+    tap_before = os.path.getsize(tapf) if os.path.exists(tapf) else 0
+    d = None
+    if tap_before == 0:
+        #  --instance: 常驻发布器 (main) 在跑时不能抢锁 ⇒ 用独立实例名并行给本场景补 tap (tap 同 TAP_DIR)
+        d = _run(["tools/tdrive_bus.py", "run", "--scene", scene, "--hz", "10", "--seconds", "8",
+                  "--instance", "ff_" + task.lower().replace("-", "_")],
+                 300, os.path.join(logdir, "infer.log"), "tdrive_bus")
+    tap_after = os.path.getsize(tapf) if os.path.exists(tapf) else 0
     c = _run(["tools/ss_meta_predict.py", "--scene", scene, "--write", "--json"], 600,
              os.path.join(logdir, "infer.log"), "meta_predict")
     meta = {}
@@ -196,6 +211,8 @@ def stage_infer(task, scene, ev, logdir, real=False):
                                    "tail": a["tail"][-3:]},
                    "l4_intent_models": {"rc": b["rc"],
                                         "pass": [x for x in b["out"].splitlines() if "判据" in x or "L4 意图模型" in x][-2:]},
+                   "tdrive": {"scene": scene, "tap_bytes_before": tap_before, "tap_bytes_after": tap_after,
+                              "rc": (d or {}).get("rc")},
                    "meta_predict": {"rc": c["rc"], **meta}}
     if real:
         ev["real_readonly"] = stage_real_readonly(logdir)
@@ -223,6 +240,25 @@ def stage_real_readonly(logdir):
         out["items"][name] = {"rc": r["rc"], "tail": r["tail"][-3:]}
     out["ok"] = all(v.get("ok") or v.get("rc") == 0 for v in out["items"].values())
     return out
+
+
+def _tap_torque(scene):
+    """读某场景驱动扭矩 tap 的**最后一帧** ‖T‖ (只读尾部 4KB, 不整文件读) —— 报告核验用。"""
+    p = "/dev/shm/zmax_torque/torque_%s.jsonl" % scene
+    try:
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            n = f.tell()
+            f.seek(max(0, n - 262144))          # 尾 256KB (写入器还在追加 ⇒ 末行可能是半行)
+            lines = f.read().decode("utf-8", "replace").splitlines()
+        for ln in reversed(lines):              # 从尾往前找第一条**完整可解析**的帧
+            try:
+                return round(float(json.loads(ln).get("torque_norm")), 4)
+            except Exception:                                                 # noqa: BLE001
+                continue
+        return None
+    except Exception:                                                         # noqa: BLE001
+        return None
 
 
 def stage_report(run_dir, state, logdir, send=True):
@@ -291,7 +327,26 @@ def stage_report(run_dir, state, logdir, send=True):
                 gaps.append("%s 训练层 %s rc=%s" % (t, k, (v or {}).get("rc")))
         if not (ev.get("infer") or {}).get("engine_loop", {}).get("l4_attached"):
             gaps.append("%s 推理时 L4 潜空间未接入" % t)
-    md += ["- " + g for g in gaps[:20]] or ["- 无 (逐项 rc=0/接入 True)"]
+    md += ["- " + g for g in gaps[:20]] or ["- 过程项无 (逐任务 rc=0 / L4 潜空间接入 True)"]
+    # 🧾 元任务预测的**输入质量**如实核验: 预测值来自驱动扭矩 T_drive=M·(−∇Φ)。若各场景 ‖T‖ 一模一样 ⇒ 输入
+    #    不含场景信息 ⇒ 输出差别只来自候选池, 不是"预测准"而是"输入退化"。这一条必须写进报告 (老倪零容忍口径)。
+    pred_n = {t: ((ev.get("infer") or {}).get("meta_predict") or {}).get("n_candidates") or 0
+              for t, ev in state["results"].items()}
+    tops = {t: ((((ev.get("infer") or {}).get("meta_predict") or {}).get("top") or [{}])[0]).get("fn_id")
+            for t, ev in state["results"].items()}
+    tn = {}
+    for t, ev in state["results"].items():
+        scn = ((ev.get("infer") or {}).get("tdrive") or {}).get("scene")
+        if scn and scn not in tn:
+            tn[scn] = _tap_torque(scn)
+    md += ["- 元任务预测覆盖: %d/%d 任务有候选(≥30) · top1 取值 %d 种 (%s) · 驱动扭矩 ‖T‖ 取值 %d 种 (%s)"
+           % (len([v for v in pred_n.values() if v]), len(pred_n), len(set(v for v in tops.values() if v)),
+              "/".join(sorted(set(str(v) for v in tops.values() if v))),
+              len(set(str(v) for v in tn.values() if v)), "/".join(sorted(set(str(v) for v in tn.values() if v))))]
+    if len(set(str(v) for v in tn.values() if v)) == 1 and len(pred_n) > 1:
+        md += ["- ⚠️ 真缺口: 7 个场景的驱动扭矩完全相同 (‖T‖=%s N·m, 位姿同一点) ⇒ **元任务预测输入不含场景信息**、"
+               "无区分度 (top1 差别只来自各场景候选池)。要真正"
+               "按场景预测元任务, 须把场景相关特征 (工件/孔位/装配件) 并入驱动扭矩, 或训练预测头。" % (list(tn.values())[0])]
     md += ["- 已知长期缺口: INTACT z_pred 仍 NaN (上游动作块空); LoRA A/B 未证明提升前不进默认档; 磁盘 ~86%。"]
     txt = "\n".join(md)
     os.makedirs(run_dir, exist_ok=True)

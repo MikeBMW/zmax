@@ -71,6 +71,13 @@ LATENT = 16
 ACTION_DIM = 4
 
 
+# 🧠 多层 pipeline 逐层真跑 (老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」)
+#   · 输入用**真产线帧** (8791 /aoi_modelin.png = 喂产线检测器的那张图) ⇒ L2 在役 YOLO 有真检出
+#   · 每 N 周期跑一遍 L5→MEM→L2→L4→L3, 每层落一行计数 ⇒ models_manifest 探针读的是真调用, 不造假绿
+PIPE_IMG_DEFAULT = os.environ.get("ZMAX_SS_PIPE_IMG") or "http://127.0.0.1:8791/aoi_modelin.png"
+PIPE_TAP = os.path.join(ROOT, "zmax_data/ss_live/layer_calls.jsonl")
+
+
 def _log(msg: str) -> None:
     print("[%s] %s" % (time.strftime("%F %T"), msg), flush=True)
 
@@ -236,13 +243,23 @@ def build_engine(traj: dict, M: float, inertia: bool):
 # ─────────────────────────── 主循环 ───────────────────────────
 class Loop:
     def __init__(self, hz: float, state_file: str | None, traj_path: str, inertia: bool,
-                 encoder: str = "pca", l4_hz: float = 1.0, l4_url: str = "") -> None:
+                 encoder: str = "pca", l4_hz: float = 1.0, l4_url: str = "",
+                 pipe: bool = False, pipe_every: int = 5, pipe_img: str = "") -> None:
         self.dt = 1.0 / max(1e-6, float(hz))
         self.hz = float(hz)
         self.encoder = str(encoder or "pca")
         self.l4_hz = float(l4_hz)
         self.l4_url = l4_url
         self.l4 = None
+        # 🧠 多层 pipeline (L5→MEM→L2→L4→L3 依次真跑)
+        self.pipe = None
+        self.pipe_on = bool(pipe)
+        self.pipe_every = max(1, int(pipe_every))
+        self.pipe_img_url = pipe_img or PIPE_IMG_DEFAULT
+        self.pipe_frame = None
+        self.pipe_frame_ts = 0.0
+        self.pipe_calls = 0
+        self.pipe_last: dict = {}
         self.state_file = state_file
         self.traj_path = traj_path
         self.inertia = bool(inertia)
@@ -292,6 +309,75 @@ class Loop:
             self.l4 = None
 
     # 真源 5s 跟随 (工程/任务/M/源文件)—— 与 tdrive_bus 的场景跟随同口径
+    # ── 🧠 多层 pipeline: 让 L5/MEM/L2/L4/L3 每周期按序真跑 (不是只看状态灯) ──
+    def _attach_pipeline(self) -> None:
+        if not self.pipe_on:
+            return
+        try:
+            _tp = os.path.join(ROOT, "tools")
+            if _tp not in sys.path:
+                sys.path.insert(0, _tp)
+            from multi_layer_pipeline import Pipeline, build_default_spec          # noqa: PLC0415
+            spec = build_default_spec(L5="planner.rules", L2="detect.yolo", L4="node.unified")
+            spec["L4"] = {"impl": "node.unified", "on": True, "combine": "vote", "peers": ["node.intact"]}
+            self.pipe = Pipeline(spec)
+            self.pipe = self.pipe                                       # 装配一次, 不每周期重建 (会重载模型)
+            _log("🧠 多层 pipeline 已接入常驻回路: L5→MEM→L2(yolo 在役)→L4(vote[unified,intact])→L3"
+                 " · 每 %d 周期真跑 · 输入帧 %s" % (self.pipe_every, self.pipe_img_url))
+        except Exception as e:                                                    # noqa: BLE001
+            self.pipe = None
+            _log("⚠️ 多层 pipeline 接不上 (%s: %s) ⇒ 本轮回退单层引擎" % (type(e).__name__, str(e)[:100]))
+
+    def _pick_frame(self):
+        """取一帧真产线图 (TTL 2s 缓存, 不每周期拉 1.7MB)。"""
+        now = time.time()
+        if self.pipe_frame is not None and (now - self.pipe_frame_ts) < 2.0:
+            return self.pipe_frame
+        try:
+            import cv2                                                            # noqa: PLC0415
+            import urllib.request                                                 # noqa: PLC0415
+            raw = urllib.request.urlopen(urllib.request.Request(
+                self.pipe_img_url, headers={"User-Agent": "zmax-engine-loop"}), timeout=8).read()
+            im = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if im is not None:
+                self.pipe_frame, self.pipe_frame_ts = im, now
+                return im
+        except Exception:                                                         # noqa: BLE001
+            pass
+        return self.pipe_frame
+
+    def _run_pipeline(self, state) -> dict:
+        """逐层真跑一次并落每层计数 (探针的真源)。"""
+        if self.pipe is None:
+            return {}
+        img = self._pick_frame()
+        if img is None:
+            return {}
+        obs39 = np.asarray(state, float).ravel()[:39]
+        t0 = time.perf_counter()
+        try:
+            out = self.pipe.run(img=np.ascontiguousarray(img), obs39=obs39)
+        except Exception as e:                                                    # noqa: BLE001
+            self.pipe_last = {"err": "%s: %s" % (type(e).__name__, str(e)[:140])}
+            _log("⚠️ pipeline 本轮异常: %s" % self.pipe_last["err"])
+            return self.pipe_last
+        ms = (time.perf_counter() - t0) * 1000.0
+        layers = {}
+        for k, v in (out or {}).items():
+            layers[str(k)] = {"ok": bool(getattr(v, "ok", False)),
+                              "src": str(getattr(v, "src", ""))[:44],
+                              "ms": round(float(getattr(v, "latency_ms", 0.0) or 0.0), 2)}
+        self.pipe_calls += 1
+        rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "cycle": self.n,
+               "pipe_calls": self.pipe_calls, "ms": round(ms, 2), "layers": layers}
+        self.pipe_last = rec
+        try:
+            with open(PIPE_TAP, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:                                                         # noqa: BLE001
+            pass
+        return rec
+
     def _refresh(self, force: bool = False) -> None:
         if not force and (time.time() - self.t_src) < 5.0:
             return
@@ -324,6 +410,7 @@ class Loop:
             try:
                 self.eng, self.calib_note, _ = build_engine(new, self.M, self.inertia)
                 self._attach_encoder()
+                self._attach_pipeline()
                 self.idx = 0
                 _log("🧮 引擎就位: %s · 源=%s (%d 帧) · M=%.4f (键 %s) · 工程 %s · 任务 %s"
                      % (self.calib_note, self.src_key, len(new["obs"]), self.M, self.M_key,
@@ -375,6 +462,10 @@ class Loop:
         rec = self.eng.step(np.asarray(state, float), dt=self.dt)
         ms = (time.perf_counter() - t0) * 1000.0
         self.n += 1
+        # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」: 每 N 周期按序真跑 L5→MEM→L2→L4→L3
+        pipe_rec: dict = {}
+        if self.pipe is not None and (self.n % self.pipe_every == 0):
+            pipe_rec = self._run_pipeline(state)
         hom = rec.get("homeostasis") or {}
         p = np.asarray(rec.get("p"), float).ravel()
         a = np.asarray(rec.get("action"), float).ravel()
@@ -416,6 +507,10 @@ class Loop:
             "t_encode_ms": float(rec.get("t_encode_ms") or 0.0),
             "t_project_ms": float(rec.get("t_project_ms") or 0.0),
             "t_grad_ms": float(rec.get("t_grad_ms") or 0.0),
+            # 🧠 多层 pipeline 逐层真跑结果 (L5/MEM/L2/L4/L3 的 ok/src/ms + 本次总耗时)
+            "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
+            "pipe_calls": int(self.pipe_calls),
+            "pipe_on": bool(self.pipe is not None),
         }
 
     def emit(self, d: dict) -> None:
@@ -599,7 +694,15 @@ def main() -> int:
     ap.add_argument("--l4-hz", type=float, default=float(os.environ.get("ZMAX_L4_HZ") or 1.0),
                     help="L4 潜表示刷新节拍 Hz (视觉塔实测 ~0.8s/帧, 故独立线程按此节拍)")
     ap.add_argument("--l4-frame-url", default=os.environ.get("ZMAX_L4_FRAME_URL") or "",
-                    help="L4 输入帧来源 (默认 8791 /snapshot/local2.jpg = 真实相机)")
+                    help="L4 视觉编码器的帧 URL (空=用内建帧源)")
+    # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」
+    ap.add_argument("--pipeline", action="store_true",
+                    default=bool(os.environ.get("ZMAX_SS_PIPELINE")),
+                    help="每 N 周期按序真跑整条 pipeline L5→MEM→L2→L4→L3 (所有层真推理)")
+    ap.add_argument("--pipe-every", type=int, default=int(os.environ.get("ZMAX_SS_PIPE_EVERY") or 5),
+                    help="每几个引擎周期跑一次整条 pipeline (默认 5; 10Hz 下 = 2Hz)")
+    ap.add_argument("--pipe-img", default=os.environ.get("ZMAX_SS_PIPE_IMG") or "",
+                    help="L2 输入的**真产线帧** URL (默认 8791 /aoi_modelin.png)")
     a = ap.parse_args()
     if a.cmd == "status":
         return cmd_status()
@@ -610,7 +713,8 @@ def main() -> int:
     global INSTANCE
     INSTANCE = str(a.instance or "main")
     lp = Loop(hz=a.hz, state_file=a.state_file, traj_path=a.traj, inertia=a.inertia,
-              encoder=a.encoder, l4_hz=a.l4_hz, l4_url=a.l4_frame_url)
+              encoder=a.encoder, l4_hz=a.l4_hz, l4_url=a.l4_frame_url,
+              pipe=a.pipeline, pipe_every=a.pipe_every, pipe_img=a.pipe_img)
     # `run --seconds N` 必须真按 N 收 (实测踩过: 恒传 0 ⇒ --seconds 被忽略, 一直跑)
     rc = lp.run(seconds=(a.seconds if a.cmd == "run" else 1.0), once=(a.cmd == "once"),
                 lock=not a.no_lock)
