@@ -1,0 +1,6 @@
+  8791/local     {"name": "8791/local", "url": "http://127.0.0.1:8791/snapshot/local.jpg", "bytes": 6060, "w": 640, "h": 480, "mean": 5.981, "std": 1.009, "max": 12, "nonblack_pct": 0.02}
+  8791/local2    {"name": "8791/local2", "url": "http://127.0.0.1:8791/snapshot/local2.jpg", "bytes": 66933, "w": 1280, "h": 720, "mean": 119.969, "std": 51.997, "max": 255, "nonblack_pct": 99.82}
+  8791/depth     {"name": "8791/depth", "url": "http://127.0.0.1:8791/snapshot/depth.jpg", "bytes": 46296, "w": 640, "h": 526, "mean": 30.999, "std": 32.948, "max": 235, "nonblack_pct": 68.79}
+  8797/arm       {"name": "8797/arm", "url": "http://127.0.0.1:8797/snap/arm.jpg", "bytes": 0, "err": "error: OpenCV(5.0.0) /io/opencv/modules/imgcodecs/src/loadsave.cpp:1291: erro"}
+
+可用的有内容帧: 2/4 ⇒ 8791/local2, 8791/depth

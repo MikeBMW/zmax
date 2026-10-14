@@ -1,0 +1,36 @@
+▶ zmax_data/eval_frames/live_1014_230655/live_000.png  [480, 640]
+    conf>=0.01  ndet=2    best=0.0132   OPT_Gold
+    conf>=0.05  ndet=0    best=None     
+    conf>=0.10  ndet=0    best=None     
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.013 < 0.15 ⇒ 视为无定量视觉证据)
+▶ zmax_data/eval_frames/live_1014_230655/live_001.png  [480, 640]
+    conf>=0.01  ndet=4    best=0.0244   OPT_Gold
+    conf>=0.05  ndet=0    best=None     
+    conf>=0.10  ndet=0    best=None     
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.024 < 0.15 ⇒ 视为无定量视觉证据)
+▶ zmax_data/eval_frames/live_1014_230655/live_002.png  [480, 640]
+    conf>=0.01  ndet=1    best=0.0146   OPT_Gold
+    conf>=0.05  ndet=0    best=None     
+    conf>=0.10  ndet=0    best=None     
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.015 < 0.15 ⇒ 视为无定量视觉证据)
+▶ zmax_data/eval_frames/live_1014_230655/live_003.png  [480, 640]
+    conf>=0.01  ndet=1    best=0.0621   peg
+    conf>=0.05  ndet=1    best=0.0621   peg
+    conf>=0.10  ndet=0    best=None     
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.062 < 0.15 ⇒ 视为无定量视觉证据)

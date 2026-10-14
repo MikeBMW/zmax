@@ -911,7 +911,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.71")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.72")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -11219,7 +11219,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.71 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.72 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11227,9 +11227,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.71 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.72 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.72: 视觉证据口径收口(阈值响应表+分辨率口径)+7任务闭环进大屏 (2026-10-15 老倪)  老倪:「数据保存，小版本迭代到 5.50.72」  ① 新增 tools/yolo_threshold_response.py(报无检出前必跑的阈值响应表, 判定分 强>=0.4/弱非空0.15~0.4/空<0.15) ② 新增 tools/probe_frames_local.py(不依赖产线网卡的本机真帧可用性核查) ③ 实测: 在役口径 imgsz=640+conf=0.4 把 best 0.219 的真检出切光 => 无检出是阈值口径不是没目标; 同帧 imgsz 1280 只有 0.088 => 报数必须带口径 ④ 大屏数据源新增 fullflow 段 + 飞书卡片🔁行 + 快照 docs/data_snapshots/20261015_visual_evidence_caliber ⑤ 7任务全流程闭环结果入 docs/data_snapshots/20261014_fullflow7
         # v5.50.71: L4 潜空间与后段链: VLM 通用视觉编码器 → 黎曼度规约束 → INTACT LoRA 微调 → 流形专家预测器 → 接触/性能流形  · L4 潜空间 (新): VLM 视觉塔 (SmolVLM2, 768 维) 作编码输入 + 黎曼度规约束 (g_f=(1/M)diag(σ²), det=1,   广义特征分解, z=Vᵀg_f^{-1/2}(f-μ)∈R^16) 落 models/l4_latent_calib.json; 引擎加编码模型注入点   (latent_provider/z_source, 无新鲜输入回退内建 PCA 并明写); 常驻回路 --encoder l4 (独立线程 + 帧龄)。 · L4 后段链 (新): 意图解码器 → INTACT LoRA 微调 (冻结原权重, 只调 ΔW=(α/r)BA, 元任务预测值作增益门控   γ_eff, 限幅 ρ×容量) → 流形专家预测器 (测地线一步 + 度规步长) → 接触流形 (摩擦锥/穿透罚) →   性能流形 (V_p/η + 黎曼梯度 + 帕累托闸); 数学层 src/lerobot/manifold/manifold_chain.py (自检 9/9)。 · 画布重排: LoRA 节点入链 (意图解码器之后), 元任务预测 → LoRA, LoRA → 专家预测器/接触/性能/DiT,   删两条旁路 (绕过微调), UI 按 x 递增排序; 下游节点真读 LoRA 输出 (日志 ⛓ 承接)。 · 判据: L4 潜空间 10/10 · L4 后段链 8/8 · 常驻回路 16/16 · 任务绑定/工程库/画布层级全绿。
         # v5.50.7: 5.50.7 (2026-10-13 · 开发版)  **真机 L2 运动三案收口: 「点了不动」/「连点都不动」/「速度不实」** —— ① **速度口径落到真实 mm/s**: 定位出第二道折扣是**控制器在线倍率**(SDK `adjustSpeedOnline`, 在役 ≈0.1) ⇒ 名义 18.7 实测只有 1.83/1.85mm/s(10%, 三条独立数据一致)。新增 `sdk_ctl speed-scale` 子命令(带 idle+automatic 前置闸; SDK 无 getter ⇒ 只能实测验证), 实调 scale=1.0 后实测: 名义10 ⇒ 9.44mm/s(94%) · 名义18.7 ⇒ 15.22(81%)。**不采用"换算层乘 10"** —— 那会让名义值膨胀到 1e4, 倍率一旦被改回 1 就是 10m/s 冲出去的隐患。 ② **速度档位 1/10/20/50/100/200/500/1000 mm/s, 四处收口同口径**(工位页真源 `tools/web/station.html` + `cam_live_stream.py` 重复内联副本 · 服务 `/ctl/move` [1,1000] · 腿 `MAX_SPEED_MM_S` 300→1000 · 代理 `sdk_ctl.MAX_SPEED_MM_S` 60→200→1000(改后重启容器) · 技能注册表 `speed_max`→11000 units · 执行器 `MANUAL_SPEED_UNITS=200` 保留老倪"手动回点位慢一些"的口径), 且**不再静默截断**: 任何一层压速必打一行 `⚠️ … 把速度从 A 压到 B (名义 X mm/s)`。 ③ **「点了不动」两个真因**: 控制器停在 **drag(拖动/示教)或 manual** 态 ⇒ 拒绝一切程序下发(腿 rc=3 ABORT 机器人不空闲) ⇒ 新增 `sdk_ctl drag`(`--on` 进/默认退) 与 `mode`(`--auto` 切自动/默认手动) 两个子命令, 改完读回; **一条 MoveL 里同时平移 + 大姿态变化**被控制器以 50102/50113 直接拒(实测阈值 **20.49°**; 被拒实例 255mm/24.7° · 255mm/24.7° · 157mm/28.6° · 特征 rc=6 且**残差=全量位移**、6.9s 零位移; 姿态差 ≤8° 的全过) ⇒ 腿最后一道收口加 **ROT_SPLIT 姿态分步**(姿态差 >15° 先**原地** slerp 分步转身 ≤5°/步, 转身完再平移 ⇒ 平移段姿态差 ≤5° 必过), 离线判据 `verify_rot_split.py`(真实点对 + 90/150/179°: 每段 ≤5° · 平移段残差 ≤5° · 无 NaN)全过, 真机已跑通 3 次(每段残差 0.0mm), `ZMAX_SDK_LEG_ROT_SPLIT=0` 可退回直发。 ④ **被拒不再堵队(现场"连点几下都不动"的元凶)**: 腿当场拒绝后执行器原来还要**空等到位窗口跑满**(实测 ~130s)才返回 ⇒ 连点全堵在 FIFO。现 `wait_arrive(fail_check=...)`: 腿的失败行一出现就**立刻**中止, 日志给结论 `🛑 阶段 X/Y 被**腿当场拒**(不再空等到位窗口 Ns)` + 腿的原话; 离线判据: 窗口 30s ⇒ **0.00s** 返回。 ⑤ **AR/AOI 信号总线 `ar.` 停摆修复**: 常驻拉取器没在跑 ⇒ 信号分析里 `ar.末端.*` 与 102 条 AR 空间点位/AOI 话题显示近 2 小时旧值; 拉起后抽样验证与真值一致到 0.01mm(帧龄 0.1~0.3s)。 ⑥ 现场口径留档: 速度倍率 3 组实测 · 被拒 3 例 · 模式拒绝 1 例 · 姿态分步离线表 · ar. 一致性抽样; 全部修法都带 env 回退开关。
         # v5.50.6: 5.50.6 (2026-10-13)  **功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议** —— 新增 `tools/verify_feature_io.py`: 功能=画布节点, 输出 topic=`ss/<节点id>/out`, 输入 topic=上游节点输出 topic+连线总线; **真 DDS 往返实测**(发布/订阅两个独立参与者 + 挂单播配置) ⇒ 74/74 通道 ✅, 注册 typed 话题 6/16 有流量(其余本刻无发布端如实标注)。 新增 `tools/delivery/gen_scene_doc.py`: 按配置模板出**摆盘/插拔两份**交付文档(目标 99%/3.5s · 工程配置(场景切换/点位/位置角度/指标目标) · 任务配置(工艺技能/参数覆盖/档位) · 功能清单(每行: 详细描述+输入topic+输出topic+可测性能指标) · 每功能 topic 实测 · 结论与达成路径)。 新增 `tools/delivery/gen_contract_pack.py`: 供应商 SOR ×2(md+docx, 9 章) + 合作协议(机器人数据平台提供/销售 · 解决方案采购; 含 99%/3.5s 验收口径与实测差距)。 修坑: 订阅端不挂单播配置 ⇒ 与单播发布端互相发现不到 ⇒ 实测『收 0 条』假失败; Cyclone 匹配数 API 是 `get_matched_publications()`(用错名静默返 0 ⇒ 74/74 被误判 0/74)。 交付版 **5.50.C**(量产交付版), 飞书分三档送达并服务端回读核验(字节+sha256 全一致); 归档 `zmax_data/release_5.50.6_20261013/`(MANIFEST+sha256sums)。
@@ -11947,7 +11948,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.50.71  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.72  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -14040,7 +14041,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.71</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.72</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

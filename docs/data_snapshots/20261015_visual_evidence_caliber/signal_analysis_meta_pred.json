@@ -1,0 +1,42 @@
+{
+ "live_mtime": "2026-10-15 06:26:48",
+ "mode": "calib",
+ "n_topics": 14,
+ "ss_meta_pred": {
+  "topic": "zmax/ss_meta_pred",
+  "type": "zmax::SSMetaPred",
+  "qos": "state",
+  "allowed": true,
+  "hz": 0.2,
+  "hz_design": 0.2,
+  "count": 6179,
+  "matched_pubs": 1,
+  "jitter_ms": 26.87,
+  "loss_pct": 0.0,
+  "bytes": 3979209,
+  "age_s": 2.39,
+  "verdict": "-",
+  "score": -1.0,
+  "rules": [],
+  "fields": {
+   "ts": 1792016806.4871438,
+   "ts_pred": 1791991034.510425,
+   "scene": "SCN-05-ATS",
+   "task_id": "TASK-07-AOI",
+   "n_meta": 30,
+   "n_cand": 30,
+   "top_ids": "FN-SYS2-21, FN-SYS2-02, FN-SYS2-04, FN-SYS2-05, FN-SYS2-26, FN-SYS2-08, FN-SYS2-16, FN-SYS2-01",
+   "top_scores": "0.0864, 0.0839, 0.0832, 0.0812, 0.0788, 0.0781, 0.0781, 0.0765",
+   "input_src": "../../../dev/shm/zmax_torque/torque_SCN-05-ATS.jsonl",
+   "input_ok": 1,
+   "input_age_s": 0.725106954574585,
+   "method": "结构先验原型 + 真算特征 (trained=false)",
+   "trained": 0,
+   "frozen": 1,
+   "src": "zmax_data/ss_live/meta_pred.json (zmax.ss_meta_pred/1)",
+   "note": "预测陈旧: 430 分钟前生成 (跑一次 ss_meta_predict 即刷新) · 未训练头 ⇒ 得分仅供参考 · 恒定输入降级 (无区分度, 如实标)"
+  },
+  "lamp": "green",
+  "lamp_reason": "正常"
+ }
+}

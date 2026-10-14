@@ -1,0 +1,116 @@
+{
+ "schema": "zmax-dashboard/1",
+ "generated_at": "2026-10-15 06:13:39",
+ "version": "5.50.71",
+ "fullflow": {
+  "ok": true,
+  "run": "/home/ubuntu/zmax/reports/fullflow7/20261014_215744",
+  "note": null,
+  "tasks": 7,
+  "tasks_infer_ok": 7,
+  "tasks_train_ok": 7,
+  "sim_episodes": 70,
+  "sim_frames": 31056,
+  "gpu_peak_util": 100,
+  "gpu_peak_mem_mb": 6794,
+  "layers_rc": {
+   "TASK-01-FW": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-02-HANDLE": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-03-BI": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-04-THERMAL": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-05-ATS": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-06-TRAY": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   },
+   "TASK-07-AOI": {
+    "L4": 0,
+    "L3": 0,
+    "L2": 0,
+    "L5": 0
+   }
+  },
+  "disk": {
+   "disk_free_min_gb": 44.0,
+   "disk_free_first_gb": 45.4
+  },
+  "meta_pred_tasks": 7,
+  "meta_top1_distinct": [
+   "FN-SYS2-21",
+   "FN-SYS2-29"
+  ],
+  "meta_torque_norm": [
+   51.9615
+  ],
+  "meta_input_degenerate": true,
+  "real_readonly": {
+   "cam_arm": {
+    "ok": true,
+    "http": 200,
+    "bytes": 22598
+   },
+   "cam_local2": {
+    "ok": true,
+    "http": 200,
+    "bytes": 17348
+   },
+   "tcp_pose": {
+    "ok": true,
+    "age_s": 0.1,
+    "x": 0.658505,
+    "y": 0.008092,
+    "z": 0.359935
+   },
+   "aoi_gold_10082": {
+    "rc": 0,
+    "tail": [
+     "{\"code\":200,\"msg\":\"success\"}",
+     "",
+     "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+    ]
+   },
+   "aoi_surface_10083": {
+    "rc": 0,
+    "tail": [
+     "{\"code\":200,\"msg\":\"success\"}",
+     "",
+     "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+    ]
+   }
+  },
+  "report_md": "/home/ubuntu/zmax/reports/fullflow7/20261014_215744/REPORT.md",
+  "report_mtime": 1791991114.5589373,
+  "gaps": [
+   "元任务预测输入退化: 各场景驱动扭矩相同 (‖T‖=51.9615) ⇒ 无区分度, 需并场景特征或训练预测头",
+   "INTACT z_pred 仍 NaN (上游动作块空)",
+   "LoRA A/B 未证明提升前不进默认档"
+  ]
+ }
+}

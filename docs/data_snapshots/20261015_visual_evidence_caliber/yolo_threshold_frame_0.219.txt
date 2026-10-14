@@ -1,0 +1,9 @@
+▶ docs/data_snapshots/20261015_visual_evidence_caliber/frame_local2_best0.219.jpg  [720, 1280]
+    conf>=0.01  ndet=12   best=0.0881   OPT_Gold,peg
+    conf>=0.05  ndet=2    best=0.0881   OPT_Gold
+    conf>=0.10  ndet=0    best=None     
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.088 < 0.15 ⇒ 视为无定量视觉证据)
