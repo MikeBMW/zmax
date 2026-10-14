@@ -34,7 +34,8 @@ if TOOLS not in sys.path:
 from PyQt5.QtCore import Qt, QSettings, QTimer  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
-                             QFrame, QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QSizePolicy, QSplitter,
+                             QFrame, QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
+                             QSplitter,
                              QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextEdit, QTreeWidget,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -761,6 +762,25 @@ def _pt_tsv(rows):
     return "\n".join(out)
 
 
+def _scrollable(w, theme=None):
+    """把一页包进**可滚动**容器 —— 老倪 2026-10-15: 「显示区太小, 且不能用鼠标滚动调整, 看不到显示内容」。
+
+    为什么必须这样: 页里的表/卡片都按"不许挤/不许截断"给了最小高度 (工程配置那张表 510px),
+    QTabWidget 的最小高度 = 各页最大值 ⇒ 上方工作区把竖直空间**吃光**, 底部信息窗被压到最小值 98px,
+    而且拖也拖不大 (没有余量可分), 用户就"看不到显示内容"。
+    包一层 QScrollArea 后: 页面可以压到任意高度 (内容不够看就滚鼠标/滚轮), 竖直空间能真正分给信息窗。
+    """
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)                     # 视口变大 → 页面跟着变宽/变高
+    sa.setFrameShape(QFrame.NoFrame)
+    sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    sa.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+    sa.setWidget(w)
+    if theme:
+        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+    return sa
+
+
 def _mk_table(headers, rows, theme, widths=None):
     t = QTableWidget(len(rows), len(headers))
     t.setHorizontalHeaderLabels(headers)
@@ -1172,23 +1192,58 @@ class ConfigCenterPage(QWidget):
         sp.setHandleWidth(8)                      # 原来 4px 太细, 鼠标不好抓
         self.splitter = sp
         sp.splitterMoved.connect(self._on_tree_split_moved)
-        root.addWidget(sp, 1)
         QTimer.singleShot(0, self._apply_tree_width)      # 布局完成后按"记过的宽度"或需求宽度落定
 
-        # ── 底部结果面板 (点了必出结果) ──
+        # ── 底部信息窗 (点了必出结果) ──────────────────────────────────────────────
+        # 2026-10-15 老倪: 「显示区太小, 且不能用鼠标拖动调整大小, 要可以隐藏; 选择相应的配置面时信息没有对应上」
+        #   ⇒ ① 改成**竖直 QSplitter**(工作区 / 信息窗): 分隔条 8px 可拖, 拖过之后不再被自动覆盖;
+        #     ② 头部一行按钮: 「↕ 自适应高度」「📋 复制」「▾ 收起/▴ 展开」(可隐藏);
+        #     ③ 内容随**当前配置面**自动对应 (_sync_out_for/_page_out_text, 真源现算)。
         self.out = QTextEdit()
         self.out.setReadOnly(True)
-        # 2026-10-10: 原来写死 168px ⇒ 总览表第 5 行被半行切掉 (真机截图复核发现)。改成按内容自适应 (120~320px),
-        # 超过上限才靠滚动 —— 半行被切不是"可滚动", 是看不清。
-        self.out.setFixedHeight(200)
+        self.out.setMinimumHeight(56)             # 最小值给小 ⇒ 能拖到很矮; 上限交给分隔条
         self.out.setFont(QFont("Consolas", 9))
         self.out.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
                                f"border:1px solid {th['C_BORDER']};")
-        # 🥽 老倪: 示教点位(金手指点1 等)要在配置里查得到 ⇒ 底部面板末尾摊开(可复制), 任务行 tooltip 同样给
-        self.out.setPlainText(_run("overview") + _points_block())
-        root.addWidget(self.out)
+        self.out.setPlainText(_run("overview") + _points_block())   # 首屏: 总览 + 示教点位(可复制)
+        self._out_on = True                       # 显式记录显示状态 (离屏下 isVisible() 恒 False, 不可当判据)
+        self._out_user_sized = False              # 用户拖过分隔条后, 不再自动改高度
+
+        self.out_hint = QLabel("📍 信息窗 — 内容随「当前配置面」自动对应 · 拖上方分隔条调高度 · 点右侧「收起」可隐藏")
+        self.out_hint.setWordWrap(True)
+        self.out_hint.setFont(QFont("Consolas", 9))
+        self.out_hint.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        self.b_out_fit = _btn("↕ 自适应高度", th)
+        self.b_out_fit.setToolTip("按当前内容重给一次高度 (之后你拖过的高度不会再被覆盖)")
+        self.b_out_fit.clicked.connect(self._fit_out_clicked)
+        self.b_out_cp = _btn("📋 复制", th)
+        self.b_out_cp.setToolTip("把信息窗内容整段复制到剪贴板")
+        self.b_out_cp.clicked.connect(lambda: QApplication.clipboard().setText(self.out.toPlainText()))
+        self.b_out = _btn("▾ 收起信息窗", th)
+        self.b_out.setToolTip("隐藏 / 展开底部信息窗")
+        self.b_out.clicked.connect(self._toggle_out)
+        _oh = QHBoxLayout()
+        _oh.setContentsMargins(0, 0, 0, 0)
+        _oh.addWidget(self.out_hint, 1)
+        for _b in (self.b_out_fit, self.b_out_cp, self.b_out):
+            _oh.addWidget(_b)
+        self.out_box = QWidget()
+        _ov = QVBoxLayout(self.out_box)
+        _ov.setContentsMargins(0, 2, 0, 0)
+        _ov.setSpacing(2)
+        _ov.addLayout(_oh)
+        _ov.addWidget(self.out, 1)
+
+        self.vsplit = QSplitter(Qt.Vertical)
+        self.vsplit.addWidget(sp)
+        self.vsplit.addWidget(self.out_box)
+        self.vsplit.setHandleWidth(9)             # 分隔条加粗: 鼠标好抓
+        self.vsplit.setChildrenCollapsible(False)
+        self.vsplit.splitterMoved.connect(self._on_vsplit_moved)
+        root.addWidget(self.vsplit, 1)
         self.setLayout(root)
-        QTimer.singleShot(0, self._fit_out)      # 首次布局完成后按内容定高
+        self._sync_out_for()
+        QTimer.singleShot(0, self._fit_out)      # 首次布局完成后给一次合适高度 (之后以拖动为准)
 
     # ── 左侧栏宽度: 适配内容 + 可拖 + 记住 (2026-10-12 老倪「无法更改宽度, 字体都挡住了」) ──
     _TREE_W_KEY = "config_center/tree_width"
@@ -1573,9 +1628,13 @@ class ConfigCenterPage(QWidget):
 
     # ── ⭐ 北斗七星阵: 顶部阵图条 (跟页签走 · 点星跳页) ─────────────────────────────
     def _on_tab_changed(self, *_a):
-        """换页签 = 换阵: 清掉"上一页点过哪颗星"的记忆, 按新页签默认星点亮 (一致性)。"""
+        """换页签 = 换阵: 清掉"上一页点过哪颗星"的记忆, 按新页签默认星点亮 (一致性)。
+
+        2026-10-15 加: 同时把底部信息窗刷成**这一面**的信息 (老倪: 「选择相应的配置面时, 信息没有对应上」)。
+        """
         self._star_focus = None
         self._sync_star_banner()
+        self._sync_out_for()
 
     def _sync_star_banner(self, *_a):
         """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。"""
@@ -2254,7 +2313,9 @@ class ConfigCenterPage(QWidget):
         tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "真源文件"],
                        [[r["name"], r["x"], r["y"], r["z"], r["a"], r["b"], r["c"],
                          r["t"], r["n"], r["src"]] for r in rows], th)
-        tb.setMinimumHeight(28 * (len(rows) + 2) + 6)
+        # 2026-10-15: 原来按全表给最小高度 (可到 510px) ⇒ 把整页顶高、信息窗被压到 98px。
+        # 现在封顶 300px (看不够用滚), 页面整体还能压 (页已包进 QScrollArea)。
+        tb.setMinimumHeight(min(300, 28 * (len(rows) + 2) + 6))
         tb.setMaximumHeight(30 * (len(rows) + 2) + 10)
         try:                                        # 金手指点1 那一行高亮(老倪要"立刻找到")
             if rows:
@@ -2495,7 +2556,7 @@ class ConfigCenterPage(QWidget):
             _lb.setStyleSheet("color:%s;background:transparent;" % th["C_RED"])
             _lb.setWordWrap(True)
             l.addWidget(_lb)
-        self.tabs.addTab(w, "📋 任务配置")
+        self.tabs.addTab(_scrollable(w, th), "📋 任务配置")
         try:
             self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)
         except Exception:                                                       # noqa: BLE001
@@ -2525,7 +2586,7 @@ class ConfigCenterPage(QWidget):
         b_all2.clicked.connect(lambda: self._filter_eng(None))
         r2b.addWidget(b_all2); r2b.addStretch(); l2.addLayout(r2b)
         l2.addWidget(t2, 1)
-        self.tabs.addTab(w2, "⚙️ 工程配置")
+        self.tabs.addTab(_scrollable(w2, th), "⚙️ 工程配置")
 
         # 3) 功能配置 (天玑) + 5) 性能配置 (玉衡) —— 老倪 2026-10-15: 「功能 性能 模型 标签, 改成功能配置,
         #    即标签页的名字, 对应 1~7 配置名称」⇒ 页签名就叫配置名, 所以这里建**两个页** (同一构造器、默认域不同):
@@ -2583,7 +2644,7 @@ class ConfigCenterPage(QWidget):
             b4.clicked.connect(lambda _=False, f=fn: f())
             r4.addWidget(b4)
         r4.addStretch(); l4.addLayout(r4); l4.addWidget(t4, 1)
-        self.tabs.addTab(w4, "🧾 工单配置")
+        self.tabs.addTab(_scrollable(w4, th), "🧾 工单配置")
 
         # 5) 模型 × 工程配置
         m = _j(MATCH_J, {}) or {}
@@ -2610,7 +2671,7 @@ class ConfigCenterPage(QWidget):
             _lb6.setWordWrap(True)
             l6.addWidget(_lb6)
         l6.addWidget(t5, 2)
-        self.tabs.addTab(w6, "🧠 模型配置")
+        self.tabs.addTab(_scrollable(w6, th), "🧠 模型配置")
 
         # 7) 文档交付 (2026-10-10 老倪: 三份文档导出做成配置中心按钮)
         w7 = QWidget()
@@ -2649,7 +2710,7 @@ class ConfigCenterPage(QWidget):
                                     f"border:1px solid {th['C_BORDER']};")
         self.docs_out.setPlainText(_doc_inventory())
         l7.addWidget(self.docs_out, 1)
-        self.tabs.addTab(w7, "📄 文档配置")
+        self.tabs.addTab(_scrollable(w7, th), "📄 文档配置")
 
         # 8) 文档预览 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
         #    ⇒ 不再单开页签: 预览控件直接进上面那张「📄 文档配置」页 (同一页: 上面导出/清单, 下面正文)
@@ -2717,7 +2778,7 @@ class ConfigCenterPage(QWidget):
             _lb9.setWordWrap(True)
             l9.addWidget(_lb9)
         l9.addStretch()
-        self.tabs.addTab(w9, "🏷 产品配置")
+        self.tabs.addTab(_scrollable(w9, th), "🏷 产品配置")
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
 
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
@@ -2867,7 +2928,7 @@ class ConfigCenterPage(QWidget):
         row.addWidget(b_all)
         row.addStretch(); l.addLayout(row)
         l.addWidget(t, 1)
-        self.tabs.addTab(w, tab_title)
+        self.tabs.addTab(_scrollable(w, th), tab_title)
         self._apply_fpm_filter(view, default_dom)      # 本页默认就筛自己那一域
         return view
 
@@ -3157,14 +3218,134 @@ class ConfigCenterPage(QWidget):
             return False, "%s: %s" % (type(e).__name__, e)
 
     def _fit_out(self):
-        """底部面板按内容自适应高度 (老倪口径: 界面不许挤/不许截断); 超过 320px 才交给滚动条。"""
+        """给底部信息窗一次**按内容算**的高度 (老倪口径: 不许挤/不许截断)。
+
+        2026-10-15 改法: 原来是 `out.setFixedHeight(...)` ⇒ 用户**根本拖不动** (老倪: 「显示区太小,
+        不能用鼠标拖动调整大小」)。现在只设**竖直分隔条的初始比例** —— 之后随用户拖; 用户拖过就不再覆盖
+        (`_out_user_sized`), 想再自动一次点「↕ 自适应高度」。
+        """
         try:
+            if getattr(self, "_out_user_sized", False) or not getattr(self, "_out_on", True):
+                return
             d = self.out.document()
             d.setTextWidth(max(200, self.out.viewport().width()))
-            h = int(d.size().height()) + 16
-            cap = int(min(420, max(200, self.height() * 0.45)))   # 小窗口别把上方表格挤没
-            self.out.setFixedHeight(max(130, min(h, cap)))
+            h = int(d.size().height()) + 44                      # + 头部一行按钮
+            total = max(400, self.vsplit.height() or self.height())
+            # 默认给够 (老倪 2026-10-15: 「显示区太小…看不到显示内容」) —— 窗口够高时至少 220px 起,
+            # 但也不许把上方工作区挤没 (上限 = 高度的 50%, 最多 460)。
+            _floor = 220 if total >= 700 else 150
+            cap = int(min(460, max(_floor, self.height() * 0.50)))
+            want = max(_floor, min(h, cap))
+            self.vsplit.setSizes([max(220, total - want), want])
         except Exception:  # noqa: BLE001
+            pass
+
+    def showEvent(self, _e):
+        """首次真正显示时算一次信息窗高度 (构建时窗口高度还是 0, 算不出比例; 首帧默认会被压到最小值)。"""
+        super().showEvent(_e)
+        if not getattr(self, "_out_first_shown", False):
+            self._out_first_shown = True
+            self._fit_out()                       # 立刻算 (同步, 不等事件循环): 首帧就要给够高度
+            from PyQt5.QtCore import QTimer as _QT
+            _QT.singleShot(0, self._fit_out)      # 布局真正落定后再校一次
+
+    def _fit_out_clicked(self):
+        """「↕ 自适应高度」: 清掉"用户拖过"的标记, 再按内容给一次高度 (之后仍可自由拖)。"""
+        self._out_user_sized = False
+        if not getattr(self, "_out_on", True):
+            self._toggle_out()
+        self._fit_out()
+
+    def _on_vsplit_moved(self, *_a):
+        """用户拖动分隔条 ⇒ 记住"这是你要的高度", 不再自动覆盖。"""
+        self._out_user_sized = True
+
+    def _toggle_out(self):
+        """显示/隐藏底部信息窗 (老倪 2026-10-15: 「要可以隐藏」)。"""
+        self._out_on = not getattr(self, "_out_on", True)
+        self.out_box.setVisible(self._out_on)
+        _h = getattr(self, "out_hint", None)
+        if _h is not None:
+            _h.setText(("📍 信息窗 — 内容随「当前配置面」自动对应 · 拖上方分隔条调高度 · 点右侧「收起」可隐藏"
+                        if self._out_on else
+                        "📍 信息窗已收起 —— 点「▴ 展开信息窗」恢复 (收起后上方工作区拿回全部高度)"))
+        self.b_out.setText("▾ 收起信息窗" if self._out_on else "▴ 展开信息窗")
+        if self._out_on:
+            _want = 240
+            _total = max(400, self.vsplit.height() or self.height())
+            self.vsplit.setSizes([max(220, _total - _want), _want])
+            self.out.setVisible(True)
+
+    def _page_out_text(self, tab_title=""):
+        """**当前配置面**该显示的信息 (老倪 2026-10-15: 「选择相应的配置面时, 信息没有对应上」)。
+
+        每一面一行: 是哪颗星 · 这一面是什么 · 本页真源摘要 (现算); 再补 1~2 行"真源在哪/怎么改"。
+        读不到就写「取不到」, 不退回上一页的旧内容。
+        """
+        t = (tab_title or self.tabs.tabText(self.tabs.currentIndex())).strip()
+        facts = _star_facts()
+        keys = next((ks for kw, ks in getattr(_ss, "TAB_STAR_RULES", ()) if kw in t), ())
+        L = ["📍 当前配置面: %s" % t,
+             "   (随左侧/页签选择自动对应 · 拖上方分隔条调高度 · 点「▾ 收起信息窗」可隐藏)"]
+        for k in keys:
+            s = _ss.BY_KEY.get(k) or {}
+            L.append("   %s %s · %s（%s） — %s" % (s.get("i_cn", ""), s.get("name", k), s.get("star", ""),
+                                                 s.get("alias", ""), facts.get(k, "取不到")))
+        try:
+            if "产品配置" in t:
+                _i = _zmax_platform_info() or {}
+                L.append("   平台: " + " · ".join((_i.get("lines") or ["取不到"])[1:]))
+                L.append("   真源: %s —— 单选即**原子写回** active_product (质数不动); 下面两张表 = 「🏭 Z-MAX 平台」页同源"
+                         % (_i.get("src") or "取不到"))
+            elif "任务配置" in t:
+                _tk = _j(TASKS_J, {}) or {}
+                _bd = _j(BIND_J, {}) or {}
+                _ts = _tk.get("tasks", []) or []
+                L.append("   任务(%d): %s" % (len(_ts), " · ".join(str(x.get("id", "?")) for x in _ts[:9])))
+                L.append("   绑定真源 %s · active_task=%s"
+                         % (os.path.relpath(BIND_J, ROOT), _bd.get("active_task") or "—"))
+            elif "功能配置" in t:
+                from zmax_platform_info import platform_page_data as _ppd, function_summary as _fs
+                _f = _ppd().get("functions") or []
+                L.append("   功能清单汇总: %s" % (_fs(_f)["text"] if _f else "取不到"))
+                L.append("   真源: 单一工程库 functions 表 (系统 2/1/0 + 平台支撑); 本页功能表 %d 行" % len(_f))
+            elif "性能配置" in t or "模型配置" in t:
+                _dom = "性能配置" if "性能配置" in t else "模型配置"
+                _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == _dom]
+                L.append("   %s参数 %d 条 · 就绪 %d · 未就绪 %d" % (_dom, len(_cs),
+                                                                 sum(1 for c in _cs if c.get("ready")),
+                                                                 sum(1 for c in _cs if not c.get("ready"))))
+                L.append("   真源: %s" % os.path.relpath(MCD_J, ROOT))
+                if _dom == "模型配置":
+                    _mt = getattr(self, "match_table", None)
+                    L.append("   下表格 = 模型 ↔ 工程配置匹配 (原「模型匹配」页, 已并入 %s 行)"
+                             % (getattr(_mt, "rowCount", lambda: "—")()))
+            elif "工单配置" in t:
+                _bs = _orders_list()
+                L.append("   工单 %d 份: %s" % (len(_bs), " · ".join(
+                    str((b.get("identity") or {}).get("order_no", "?")) for b in _bs[:8])))
+                L.append("   真源: config/orders/BS_*.json (点工单号看完整配置面)")
+            elif "文档配置" in t:
+                _dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
+                L.append("   三份交付文档: 项目立项 %s · 供应商 SOR %s · 合作协议 %s (✅就绪 / ⛔过期或未生成)"
+                         % (_dm[1], _dm[0], _dm[2]))
+                L.append("   本页 = 导出按钮 + 产物清单 + **正文预览** (原「文档预览」页已并入)")
+            elif "工程配置" in t:
+                _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "工程配置"]
+                L.append("   工程域参数 %d 条 · 真源 %s" % (len(_cs), os.path.relpath(MCD_J, ROOT)))
+                L.append("   本页还带 AR 场景示教点位表 (可复制 / 导出 TSV)")
+        except Exception as _e:                                                 # noqa: BLE001
+            L.append("   ⛔ 本面信息取不到: %r" % (_e,))
+        return "\n".join(L)
+
+    def _sync_out_for(self, *_a):
+        """选面(换页签/点左树)时把信息窗刷成**这一面**的信息; 页面内动作(导出/复制/定位)仍覆盖成它的结果。"""
+        if not getattr(self, "_out_auto", True):
+            return
+        try:
+            self.out.setPlainText(self._page_out_text())
+            self._fit_out()
+        except Exception:                                                       # noqa: BLE001
             pass
 
     def _run_into(self, fn, **kw):
