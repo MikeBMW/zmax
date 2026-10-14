@@ -26,13 +26,13 @@
 | `docs/data_snapshots/20261008_aoi_gold_judge_v21/compare/deploy_v21_gold_judge_now.png` | 217439 | `aace08c9e08c7e20` |
 | `docs/data_snapshots/20261008_safety_gates_v5184/l2_daemon_recent.log` | 572586 | `0b108e36a99befb2` |
 | `docs/data_snapshots/20261014_L4_latent_chain/zmax_engineering.db` | 1400832 | `ca30183196d348fd` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/config_center_full.png` | 304224 | `ed8e4e4b0659cd29` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/config_center_full.png` | 286891 | `7b0bf3c209555c32` |
 | `docs/data_snapshots/20261015_config_center_seven_stars/console_real_064912.png` | 1145802 | `202aef711ea4f705` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 362549 | `39d6aa113dd5b4c2` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 443432 | `f215308daefa4bfd` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 372305 | `99b867df0cdf0214` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 343206 | `17d6265755569043` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 343206 | `17d6265755569043` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 343206 | `17d6265755569043` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 389982 | `8b02391de36422d4` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 482201 | `96100efad9936bf0` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 391641 | `d4eaf5eab16a9959` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 369138 | `080d7f4284d1e85d` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 369138 | `080d7f4284d1e85d` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 369138 | `080d7f4284d1e85d` |
 
 刷新: `./gui-venv311/bin/python tools/snapshot_media_index.py --write`
