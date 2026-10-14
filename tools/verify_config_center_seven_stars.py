@@ -161,6 +161,45 @@ def main() -> int:
     checks.append(("⑪ 每颗星的页顶都有「本页真源: …」(左树删掉的详细值落到这里)",
                    not any(x.startswith("❌") for x in _facts), " ; ".join(_facts)))
 
+    # ⑫ 主页面页签次序 == 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
+    #    应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)
+    _order_want = ["产品配置", "任务配置", "功能·性能·模型", "模型配置", "工单配置", "文档交付",
+                   "工程配置", "模型匹配", "文档预览"]
+    _order_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]
+    _pos = [next((i for i, t in enumerate(_order_now) if k in t), -1) for k in _order_want]
+    checks.append(("⑫ 页签次序 == 北斗次序 (1产品→2任务→…→7文档→非七星视图)",
+                   all(x >= 0 for x in _pos) and _pos == sorted(_pos),
+                   " | ".join("→".join([t.strip() for t in _order_now])[:150].split("→"))[:150]))
+
+    # ⑬ 点「5. 性能配置 · 玉衡」→ 顶部阵图条必须是**玉衡**, 且右页「性能配置」按钮是按下态
+    #    (老倪实测: 左侧点性能配置, 右侧还显示天玑的按钮/描述)
+    _it5 = next(page.tree.topLevelItem(i) for i in range(page.tree.topLevelItemCount())
+                if "性能配置" in page.tree.topLevelItem(i).text(0))
+    page._on_tree(_it5, 0)
+    _app.processEvents()
+    _snap5 = page.star_banner.snapshot()
+    _btns = {d: b.isChecked() for d, b in getattr(page, "tab3_btns", {}).items()}
+    _ok13 = ("玉衡" in _snap5["title"]) and _btns.get("性能配置") is True and \
+        sum(1 for v in _btns.values() if v) == 1
+    checks.append(("⑬ 点「性能配置」→ 顶部=玉衡 且右页只有「性能配置」按钮按下",
+                   _ok13, "阵图条标题=%s ; 按钮按下=%s" % (_snap5["title"][:18],
+                                                       "".join(d for d, v in _btns.items() if v) or "无")))
+
+    # ⑭ 同理 点「3. 功能配置」→ 天玑 ; 点「4. 模型配置」→ 天权 (同一页三星不许显示成同一颗)
+    _pair = []
+    for _want, _kw in (("3. 功能配置", "天玑"), ("4. 模型配置", "天权"), ("5. 性能配置", "玉衡")):
+        _it = next(page.tree.topLevelItem(i) for i in range(page.tree.topLevelItemCount())
+                   if _want in page.tree.topLevelItem(i).text(0))
+        page._on_tree(_it, 0)
+        _app.processEvents()
+        _t = page.star_banner.snapshot()["title"]
+        _on = [d for d, b in getattr(page, "tab3_btns", {}).items() if b.isChecked()]
+        _pair.append("%s→%s%s" % (_want, _t.split(" · ")[0][:4], "" if _kw in _t else " ❌应" + _kw))
+        if _kw not in _t:
+            _pair[-1] = "❌" + _pair[-1]
+    checks.append(("⑭ 点功能/模型/性能三种都显示各自那颗 (同一页三星)",
+                   not any(x.startswith("❌") for x in _pair), " ; ".join(_pair)))
+
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []
     for _w, _h in ((1600, 900), (1120, 700)):

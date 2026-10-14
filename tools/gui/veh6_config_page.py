@@ -1594,6 +1594,8 @@ class ConfigCenterPage(QWidget):
         if i >= 0:
             self.tabs.setCurrentIndex(i)      # 可能触发 _on_tab_changed (会清 _star_focus) ⇒ 之后再设
         self._star_focus = s["key"]           # 点哪颗就只亮哪颗 (一页多星时靠它区分)
+        if s["key"] in ("func", "perf", "model"):
+            self._press_fpm_btn(s["name"])     # 右页域按钮同步按亮 (单一真源: 星 → 域)
         _kw = "%s · %s" % (s["name"], s["star"])
         for _i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(_i)
@@ -1634,6 +1636,15 @@ class ConfigCenterPage(QWidget):
             t.scrollToItem(t.item(sel, 0))
         n = len(self.eng_rows) if not param else 1
         self.tab2_head.setText(("仅显示: %s" % param) if param else "工程配置 · 全部 %d 项" % n)
+
+    def _press_fpm_btn(self, dom=None):
+        """把「功能·性能·模型」页上的域按钮按成**单选**状态 (dom=None = 全不按)。
+
+        与左树点星、阵图条点星同源: 点哪颗星, 这一页的按钮就亮哪一个 —— 否则会出现
+        「左侧点了性能配置, 右页还显示天玑按钮亮着」的不一致 (老倪 2026-10-15 实测)。
+        """
+        for _d, _b in getattr(self, "tab3_btns", {}).items():
+            _b.setChecked(_d == dom)
 
     def _filter_fpm(self, dom=None, param=None):
         """功能/性能/模型三域合页: dom=None 显示全部; 否则只留该域; param 再精确定位到行。"""
@@ -1878,9 +1889,16 @@ class ConfigCenterPage(QWidget):
         #   「⛔ 2. 任务配置 · 天璇」当成参数 ID, 真源里查不到就只打印一行"配置中心里没有参数…",
         #   **页面完全不动** (老倪报: 产品配置能跳, 任务配置不跳; 工单配置同理)。
         if re.search(r"·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光)", txt):
+            _k = _ss.key_for_label(txt)
             for _dom in ("模型配置", "工程配置", "功能配置", "性能配置"):
                 if _dom in txt:
                     self._show_domain(_dom, None)
+                    # 功能·性能·模型 是**一页三星**: 点「5. 性能配置 · 玉衡」必须显示玉衡的按钮/描述,
+                    # 不能落到本页默认星(天玑) —— 老倪 2026-10-15 实测报的。
+                    self._star_focus = _k or None
+                    if _k in ("func", "perf", "model"):
+                        self._press_fpm_btn(_dom)          # 右页按钮跟着按亮 (同一页三星)
+                    self._sync_star_banner()
                     return
             if "工单配置" in txt:
                 self._show_orders(txt)
@@ -2450,12 +2468,21 @@ class ConfigCenterPage(QWidget):
         self.tab3_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         l3.addWidget(self.tab3_head)
         r3b = QHBoxLayout()
+        # 2026-10-15 老倪: 点左侧「5. 性能配置 · 玉衡」时, 右页必须显示**性能配置**这颗星的按钮/描述
+        #   (原来右页按钮没有按下态 ⇒ 看着还是天玑)。改成 checkable 单选: 按哪个亮哪个。
+        self.tab3_btns = {}
         for dom in self.tab3_domains:
             b = _btn("🔎 " + dom, th)
-            b.clicked.connect(lambda _, d=dom: self._filter_fpm(d))
+            b.setCheckable(True)
+            b.setStyleSheet((b.styleSheet() or "")
+                            + ("QPushButton:checked{background:%s;color:#0b0f14;border:1px solid %s;}"
+                               % (th["C_YELLOW"], th["C_YELLOW"])))
+            b.setToolTip("只筛%s域" % dom)
+            b.clicked.connect(lambda _=False, d=dom: (self._press_fpm_btn(d), self._filter_fpm(d)))
+            self.tab3_btns[dom] = b
             r3b.addWidget(b)
         b_all3 = _btn("显示全部", th)
-        b_all3.clicked.connect(lambda: self._filter_fpm(None))
+        b_all3.clicked.connect(lambda: (self._press_fpm_btn(None), self._filter_fpm(None)))
         r3b.addWidget(b_all3)
         r3b.addStretch(); l3.addLayout(r3b)
         l3.addWidget(t3, 1)
@@ -2606,12 +2633,20 @@ class ConfigCenterPage(QWidget):
             l9.addWidget(_lb9)
         l9.addStretch()
         self.tabs.addTab(w9, "🏷 产品配置")
+        self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
 
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
         try:
             _mk = os.path.join(ROOT, "zmax_data", "cc_last_tab.txt")
             if os.path.exists(_mk):
-                _i = int(open(_mk, encoding="utf-8").read().strip() or 0)
+                # 2026-10-15: 原来记的是**页序号** —— 页签次序改成北斗次序后, 同一个序号指向的是别的页
+                # (回来会落在错的页)。改成记**页名**, 兼容老的纯数字文件 (按序号解释一次)。
+                _v = open(_mk, encoding="utf-8").read().strip()
+                _i = -1
+                if _v.isdigit():
+                    _i = int(_v)
+                elif _v:
+                    _i = self._tab_index_by_title(_v)
                 if 0 <= _i < self.tabs.count():
                     self.tabs.setCurrentIndex(_i)
 
@@ -2619,7 +2654,7 @@ class ConfigCenterPage(QWidget):
                 try:
                     os.makedirs(os.path.dirname(_mk), exist_ok=True)
                     with open(_mk, "w", encoding="utf-8") as f:
-                        f.write(str(int(_idx)))
+                        f.write(str(self.tabs.tabText(int(_idx))))
                 except Exception:                                               # noqa: BLE001
                     pass
             self.tabs.currentChanged.connect(_remember)
@@ -2627,6 +2662,26 @@ class ConfigCenterPage(QWidget):
             pass
 
     # ── 文档配置: 预览 + 一致性 (2026-10-10 老倪) ──
+    # ⭐ 主页面(右工作区)页签次序 = 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
+    #   应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)。非七星的视图排在七阵之后。
+    _TAB_ORDER = ("产品配置", "任务配置", "功能·性能·模型", "模型配置", "工单配置", "文档交付",
+                  "工程配置", "模型匹配", "文档预览")
+
+    def _apply_tab_order(self):
+        """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
+
+        要放在所有 addTab 之后: 页签的创建次序是按代码里构造的先后 (任务/工程/功能性能模型/工单/模型匹配/
+        模型配置/文档交付/文档预览/产品) —— 没有体系含义, 产品配置原来还排在最后一位。
+        """
+        _bar = self.tabs.tabBar()
+        for _target, _kw in enumerate(self._TAB_ORDER):
+            _cur = next((i for i in range(self.tabs.count()) if _kw in self.tabs.tabText(i)), None)
+            if _cur is None:
+                continue
+            if _cur != _target:
+                _bar.moveTab(_cur, _target)
+        return [self.tabs.tabText(i) for i in range(self.tabs.count())]
+
     def _pv_tab_index(self):
         for i in range(self.tabs.count()):
             if "文档预览" in self.tabs.tabText(i):
