@@ -188,8 +188,23 @@ def load_products() -> dict:
 
 
 def active_product() -> str:
+    """当前产品号 (真源 config/platform/zmax_product.json 的 active_product)。
+
+    2026-10-15 (老倪「保证全局数据同步」): 原来 `d.get("active_product") or "550A"` —— 真源读不出该键时
+    **静默退回 550A**, 于是 550B 的工程里可能带着 550A 的产品号继续跑, 谁也不知道。现在缺键会**喊一声**,
+    仍返回 550A 兜住调用方 (引擎常驻回路不能因为一个键就被打断), 但不再是静默的。
+    """
     d = load_products()
-    return d.get("active_product") or "550A"
+    _v = d.get("active_product")
+    if not _v:
+        try:
+            import sys as _s
+            _s.stderr.write("⚠️ 产品真源 %s 里没有 active_product ⇒ 本次退回 550A (不是真源的值, 请核对)\n"
+                            % PRODUCT_J)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return "550A"
+    return str(_v)
 
 
 # ── 规则3: 谱对称正则 (诚实版 —— 不改写 g, 不声称 RH) ─────────────────────────────
