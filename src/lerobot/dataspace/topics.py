@@ -212,6 +212,20 @@ TOPICS = {
                        "内容真源现算(config_meta.json/ss_task_binding.json/画布), 意图只决定选哪一批; "
                        "周期 5s, 出口=主参数节点 n_calib_mani (与已加载配置名同一节拍)"),
     },
+    "ss_meta_pred": {
+        "type": "zmax::SSMetaPred", "src": TYPES_SRC, "rate_hz": 0.2, "qos": "state",
+        "producer": "状态空间数据空间守护 (tools/dds/ss_daemon.py · zmax-dds-ss.service) "
+                    "← 预测器 tools/ss_meta_predict.py (输入=流形引擎驱动扭矩 zmax/ss_torque)",
+        "consumers": ["控制台 信号分析页", "状态空间工程/画布", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "ts_pred", "scene", "n_meta", "n_cand", "top_ids", "top_scores",
+                       "input_src", "input_ok", "input_age_s", "method", "trained", "frozen", "note"],
+        "quality": ["input_is_driving_torque", "no_fake_power", "frozen_flagged", "staleness_flagged"],
+        "provenance": ("「将元任务预测的topic，放到信号分析」(老倪 2026-10-14): 输入=流形引擎驱动扭矩 "
+                       "(zmax/ss_torque, 10Hz), 输出=各元任务(功能 FN-SYSx-N)的得分 + top-k; "
+                       "真源 zmax_data/ss_live/meta_pred.json; trained=0/frozen=1 时**如实标注** "
+                       "「未训练头/恒定输入降级」, 不假装有预测力; 帧龄 >180s 写「预测陈旧」"),
+    },
     "ss_energy": {
         "type": "zmax::SSEnergy", "src": TYPES_SRC, "rate_hz": 0.5, "qos": "state",
         "producer": "流形引擎能量探针 tools/manifold_energy_probe.py → tap "
@@ -351,13 +365,17 @@ TOPICS = {
 #    tools/gui/zmax_telemetry.py::MODE_TOPICS —— 两处手工同步, 收口后本表为准。
 MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s, 字符串) 见 ss_daemon.tick
     "prod":  [],
+    # 🧾 ss_meta_task = 元任务清单 (主参数节点出口 5s) · 🧾 ss_meta_pred = 元任务**预测值**
+    #    (输入=流形引擎驱动扭矩; 老倪 2026-10-14「将元任务预测的topic，放到信号分析」)
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-              "ss_cfg_names", "ss_engine", "ss_meta_task"],
+              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
+              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
+              "ss_meta_task", "ss_meta_pred"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
-              "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
+              "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
+              "ss_meta_task", "ss_meta_pred"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 

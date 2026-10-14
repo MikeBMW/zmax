@@ -21,8 +21,21 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 PY = os.path.join(ROOT, "gui-venv311/bin/python")
-TASK = os.environ.get("ZMAX_L4_TASK") or "TASK-06-TRAY"
-SCENE = os.environ.get("ZMAX_L4_SCENE") or "SCN-06-TRAY"
+# 任务/场景真源 = 当前 active_task (7 任务循环里每任务都会被重绑; 不再硬编码 TASK-06-TRAY —— 实测过
+#   :run_l4_intent_models 硬编码托盘任务, 换成 TASK-01-FW 后 ④⑦ 两条判据因任务不匹配报 ❌)
+TASK = os.environ.get("ZMAX_L4_TASK") or ""
+SCENE = os.environ.get("ZMAX_L4_SCENE") or ""
+if not TASK:
+    try:
+        _b = json.load(open(os.path.join(ROOT, "config/ss_task_binding.json"), encoding="utf-8"))
+        TASK = str(_b.get("active_task") or "")
+        SCENE = SCENE or next((str(t.get("scene_ref") or "") for t in (_b.get("tasks") or [])
+                               if t.get("task_id") == TASK), "")
+    except Exception:                                                     # noqa: BLE001
+        TASK = ""
+if not TASK:
+    TASK, SCENE = "TASK-06-TRAY", SCENE or "SCN-06-TRAY"
+SCENE = SCENE or "SCN-06-TRAY"
 ENV = {**os.environ, "INTACT_POLICY": "intact_l4_current",
        "STABLEWM_HOME": os.path.join(ROOT, "zmax_data/stable-wm-cache")}
 ok_all = []

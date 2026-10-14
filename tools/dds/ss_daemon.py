@@ -84,15 +84,19 @@ CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas",
              os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
 
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
+META_PRED_STALE_S = 180.0        # 元任务预测帧龄阈值 (超过 ⇒ note 里明说陈旧, 不拿旧预测冒充现在)
+
 MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-             "ss_cfg_names", "ss_engine", "ss_meta_task"],
+             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
-              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task"],
+              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
+              "ss_meta_pred"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
-             "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine"],
+             "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
+             "ss_meta_pred"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -717,6 +721,57 @@ class SSDaemon:
                 (d.get("sources") or {}).get("state_space_obs.json")),
             note=str(d.get("note") or "")))
 
+    def pub_meta_pred(self):
+        """🧾 **元任务预测值** → zmax/ss_meta_pred (老倪 2026-10-14: 「将元任务预测的topic，放到信号分析」)
+
+        输入 = 流形引擎驱动扭矩 (zmax/ss_torque) ⇒ 各元任务(功能)得分 + top-k。
+        真源 = tools/ss_meta_predict.py 落的 zmax_data/ss_live/meta_pred.json。
+        纪律: 帧龄超过 META_PRED_STALE_S 就**明说陈旧**(预报值不是现在的值), trained/frozen 原样转发,
+              不把"未训练/恒定输入"的降级结果说成有预测力。
+        """
+        from ss_types import SSMetaPred                                    # noqa: PLC0415
+        p = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"),      # 与 _TAP_CANON 同根
+                         "zmax_data", "ss_live", "meta_pred.json")
+        d = {}
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception as e:                                             # noqa: BLE001
+            note = "读不到预测真源 %s (%s)" % (os.path.basename(p), type(e).__name__)
+            self.publish("ss_meta_pred", SSMetaPred(ts=time.time(), note=note))
+            return False
+        ip = d.get("input") or {}
+        top = d.get("top") or []
+        ids, scs = [], []
+        for it in top[:8]:
+            if isinstance(it, dict):
+                ids.append(str(it.get("fn_id") or it.get("id") or ""))
+                scs.append("%.4f" % float(it.get("score") or it.get("s") or 0.0))
+            else:
+                ids.append(str(it)[:24])
+                scs.append("")
+        ts_pred = float(d.get("ts") or 0.0)
+        age = (time.time() - ts_pred) if ts_pred else -1.0
+        note = ""
+        if age < 0:
+            note = "预测真源无时间戳"
+        elif age > META_PRED_STALE_S:
+            note = "预测陈旧: %.0f 分钟前生成 (跑一次 ss_meta_predict 即刷新)" % (age / 60.0)
+        if not int(d.get("trained") or 0):
+            note = (note + " · " if note else "") + "未训练头 ⇒ 得分仅供参考"
+        if int(d.get("frozen") or 0):
+            note = (note + " · " if note else "") + "恒定输入降级 (无区分度, 如实标)"
+        self.publish("ss_meta_pred", SSMetaPred(
+            ts=time.time(), ts_pred=ts_pred, scene=str(ip.get("scene") or d.get("scene") or ""),
+            task_id=str(d.get("task_id") or ""), n_meta=int(d.get("n_meta") or 0),
+            n_cand=len(d.get("scores") or []) or len(top),
+            top_ids=", ".join(x for x in ids if x), top_scores=", ".join(scs),
+            input_src=str(ip.get("src") or ""), input_ok=1 if ip.get("ok") else 0,
+            input_age_s=float(ip.get("age_s") or -1.0), method=str(d.get("method") or "")[:80],
+            trained=int(d.get("trained") or 0), frozen=int(d.get("frozen") or 0),
+            src="zmax_data/ss_live/meta_pred.json (%s)" % d.get("schema", "?"), note=note[:200]))
+        return True
+
     def pub_cfg_names(self):
         """🧮 主参数节点已加载的配置名称 → zmax/ss_cfg_names (老倪 2026-10-14: 字符串型, 5s 周期)
 
@@ -980,6 +1035,8 @@ class SSDaemon:
                     self.pub_cfg_names()
                 if allowed("ss_meta_task"):          # 🧾 元任务: 与配置名同一节拍/同一出口 (主参数节点)
                     self.pub_meta_task()
+                if allowed("ss_meta_pred"):          # 🧾 元任务预测值 (输入=驱动扭矩) → 信号分析可见
+                    self.pub_meta_pred()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_cfg_names / ss_meta_task 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
             self._stop.wait(max(0.05, period - (time.time() - t0)))
@@ -1014,6 +1071,8 @@ class SSDaemon:
                     self.pub_cfg_names()
                 if allowed("ss_meta_task"):
                     self.pub_meta_task()
+                if allowed("ss_meta_pred"):
+                    self.pub_meta_pred()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_cfg_names / ss_meta_task 一次性发布失败: %s" % type(e).__name__)
         else:

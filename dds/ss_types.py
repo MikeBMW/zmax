@@ -347,6 +347,32 @@ class SSMetaTask(IdlStruct, typename="zmax::SSMetaTask"):
     note: str = ""
 
 
+@dataclass
+class SSMetaPred(IdlStruct, typename="zmax::SSMetaPred"):
+    """🧾 **元任务预测值** (老倪 2026-10-14: 「将元任务预测的topic，放到信号分析」)
+
+    口径: 输入 = **流形引擎的驱动扭矩** (zmax/ss_torque, 10Hz), 输出 = 各元任务(功能)的预测得分 + top-k。
+    真源: tools/ss_meta_predict.py (结构先验原型 + 真算特征; trained=false 时**如实标 frozen**, 不假装有预测力)。
+    发布: 守护 tools/dds/ss_daemon.py 读 zmax_data/ss_live/meta_pred.json (帧龄阈值内才发; 过期写明)。
+    """
+    ts: float64 = 0.0                  # 发布时刻 (epoch 秒)
+    ts_pred: float64 = 0.0             # 预测生成时刻 (真源文件 ts —— 判帧龄用这个)
+    scene: str = ""                    # 场景 (SCN-xx)
+    task_id: str = ""
+    n_meta: int32 = 0                  # 参与打分的元任务数
+    n_cand: int32 = 0                  # 候选总数
+    top_ids: str = ""                  # top-k 功能ID ("FN-SYS2-29, FN-SYS3-04, …")
+    top_scores: str = ""               # top-k 得分 (与 ids 一一对应, 保留 4 位)
+    input_src: str = ""                # 输入真源 (驱动扭矩 tap 路径 / 场景)
+    input_ok: int32 = 0                # 1 = 输入帧新鲜可用
+    input_age_s: float64 = -1.0        # 输入帧龄
+    method: str = ""                   # 预测方法 ("结构先验原型 + 真算特征")
+    trained: int32 = 0                 # 1 = 已训练头, 0 = 未训练 (如实)
+    frozen: int32 = 0                  # 1 = 降级/恒定输入 ⇒ 无区分度 (如实)
+    src: str = ""                      # 真源摘要 (可复核)
+    note: str = ""
+
+
 # ──────────────── 🧮 流形引擎 · 常驻周期循环 (老倪 2026-10-14) ────────────────
 @dataclass
 class SSManifoldStep(IdlStruct, typename="zmax::SSManifoldStep"):

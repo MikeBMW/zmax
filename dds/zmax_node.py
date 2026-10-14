@@ -29,7 +29,7 @@ from zmax_types import DeployCommand, HardwareState, Heartbeat, TrainProgress   
 try:
     from ss_types import (SSState, SSAction, SSInfer, SSCanvasNode, SSMacro, SSNodes,
                           SSCalib, SSDiag, SSTest, SSPlan, SSEnergy, SSEnergyLayer,
-                          SSDrivingTorque, SSConfigNames, SSManifoldStep, SSMetaTask)
+                          SSDrivingTorque, SSConfigNames, SSManifoldStep, SSMetaTask, SSMetaPred)
     _SS_TOPICS = {
         "ss_state": SSState, "ss_action": SSAction, "ss_infer": SSInfer,
         "ss_canvas": SSCanvasNode, "ss_macro": SSMacro, "ss_nodes": SSNodes,
@@ -40,6 +40,7 @@ try:
         "ss_cfg_names": SSConfigNames,  # 🧮 主参数节点已加载的配置名称 (老倪 2026-10-14, 5s, 字符串)
         "ss_engine": SSManifoldStep,   # 🧮 流形引擎每周期输出 (常驻回路, 老倪 2026-10-14)
         "ss_meta_task": SSMetaTask,    # 🧾 根据任务输出的元任务清单 (主参数节点出口, 5s, 老倪 2026-10-14)
+        "ss_meta_pred": SSMetaPred,    # 🧾 元任务预测值 (输入=流形引擎驱动扭矩; 信号分析可见, 老倪 2026-10-14)
     }
 except Exception:                                                               # noqa: BLE001
     _SS_TOPICS = {}
@@ -72,6 +73,7 @@ QOS_CLASS = {
     # 🧮 流形引擎常驻回路每周期输出 (高频逐帧) → beat (低延迟, 丢帧无妨; 帧龄由载荷 ts 判)
     "ss_engine": "beat",
     "ss_meta_task": "state",
+    "ss_meta_pred": "state",   # 预测是"一段时间内有效"的状态型产物 → latch
     # 规划是"状态型"产物(一段时间内有效) → latch: 新开的独立窗口立刻拿到最新一条轨迹
     "ss_plan": "state",
 }
