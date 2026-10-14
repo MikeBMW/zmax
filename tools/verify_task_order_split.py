@@ -59,22 +59,33 @@ def main():
     tabs = [pg.tabs.tabText(i) for i in range(pg.tabs.count())]
 
     print("═══ ① 左树拆两项 ═══")
-    chk("左树有「📋 任务配置」项", any("📋 任务配置" in t for t in tops), " / ".join(t.strip() for t in tops))
-    chk("左树有「🧾 工单配置」项", any("🧾 工单配置" in t for t in tops))
+    # 2026-10-15 老倪: 「左侧不用显示那么多, 只显示 1..7 …… 详细信息要在配置页面显示」
+    # ⇒ 左树只留 7 颗星 (序号+名称·星名), **不再有子项**; 任务 ID/工单号改在各自配置页的表里看。
+    chk("左树有「2. 任务配置 · 天璇」项", any("任务配置 · 天璇" in t for t in tops), " / ".join(t.strip() for t in tops))
+    chk("左树有「6. 工单配置 · 开阳」项", any("工单配置 · 开阳" in t for t in tops))
     chk("旧的「工艺·工单」项已不再单列", not any(t.strip().startswith("工艺·工单") for t in tops))
     task_it = next((pg.tree.topLevelItem(i) for i in range(pg.tree.topLevelItemCount())
-                    if "📋 任务配置" in pg.tree.topLevelItem(i).text(0)), None)
+                    if "任务配置" in pg.tree.topLevelItem(i).text(0)), None)
     ord_it = next((pg.tree.topLevelItem(i) for i in range(pg.tree.topLevelItemCount())
-                   if "🧾 工单配置" in pg.tree.topLevelItem(i).text(0)), None)
-    chk("任务配置子项 = 任务 ID (7 条)", task_it is not None and task_it.childCount() == 7,
-        "子项 %s" % (task_it.childCount() if task_it else "—"))
-    chk("工单配置子项 = 工单号", ord_it is not None and ord_it.childCount() == 5,
-        "子项 %s" % (ord_it.childCount() if ord_it else "—"))
+                   if "工单配置" in pg.tree.topLevelItem(i).text(0)), None)
+    chk("左树七项都**没有子项** (老倪 2026-10-15 精简)", all(
+        pg.tree.topLevelItem(i).childCount() == 0 for i in range(pg.tree.topLevelItemCount())),
+        "子项数=%s" % [pg.tree.topLevelItem(i).childCount() for i in range(pg.tree.topLevelItemCount())])
+    # 明细挪到配置页: 任务配置页的任务表 = 7 行; 工单配置页的工单表行数 = 真源工单数
+    _tt = getattr(pg, "tasks_table", None)
+    _ot = getattr(pg, "order_table", None)
+    _ord_n = len([f for f in os.listdir(os.path.join(ROOT, "config", "orders")) if f.endswith(".json")]) \
+        if os.path.isdir(os.path.join(ROOT, "config", "orders")) else -1
+    chk("任务明细在配置页: 任务表 7 行", _tt is not None and _tt.rowCount() == 7,
+        "行数=%s" % (getattr(_tt, "rowCount", lambda: "—")()))
+    chk("工单明细在配置页: 工单表 %d 行 (真源工单数)" % _ord_n,
+        _ot is not None and _ot.rowCount() == _ord_n,
+        "行数=%s" % (getattr(_ot, "rowCount", lambda: "—")()))
 
     print("\n═══ ② 页签同拆 + 既有区没丢 ═══")
     chk("页签有「📋 任务配置」", "📋 任务配置" in tabs, " · ".join(tabs))
     chk("页签有「🧾 工单配置」(旧「🎯 工单」改名)", "🧾 工单配置" in tabs and "🎯 工单" not in tabs)
-    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能·性能·模型", "🧠 模型匹配", "📄 文档交付", "📄 文档预览"]
+    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能配置", "⚡ 性能配置", "🧠 模型匹配", "📄 文档配置", "📄 文档预览"]
     chk("既有 6 个区一个没丢", all(k in tabs for k in keep), "缺 %s" % [k for k in keep if k not in tabs])
 
     print("\n═══ ③ 元任务表 (标准模板七字段) ═══")
@@ -125,9 +136,11 @@ def main():
     n_bs = len([f for f in os.listdir(os.path.join(ROOT, "config/orders")) if f.startswith("BS_")])
     chk("工单行数 == 真源份数 %d" % n_bs, bool(t4) and t4.rowCount() == n_bs, "行 %s" % (t4.rowCount() if t4 else "—"))
 
-    print("\n═══ ⑦ 点左树工单号 ⇒ 完整配置面 ═══")
-    child = QTreeWidgetItem(["   BS-SCN-01-FW-0001"]) if ord_it is None else ord_it.child(0)
-    pg._on_tree(child, 0)
+    print("\n═══ ⑦ 定位到具体工单 ⇒ 完整配置面 ═══")
+    # 2026-10-15: 左树不再有工单号子项 ⇒ 走与"点工单号"同一条处理函数 (_show_orders(工单号))
+    _bs_list = vp._orders_list()                              # 真源: config/orders/BS_*.json
+    _bs_no = str(((_bs_list[0].get("identity") or {}).get("order_no")) or "BS-")
+    pg._show_orders(_bs_no)
     app.processEvents()
     txt = pg.out.toPlainText()
     chk("切到工单配置页", "工单配置" in pg.tabs.tabText(pg.tabs.currentIndex()),

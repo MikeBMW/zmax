@@ -113,7 +113,7 @@ def main() -> int:
                    " ; ".join(multi) if multi else "逐一实测: 七星页 1 颗 / 工程配置页 0 颗(总览)"))
 
     # ⑨ 一页三星的页签: 点哪颗只亮哪颗 + 说明跟着换 (天玑/玉衡/天权 依次点)
-    _j = page._tab_index_by_title("功能·性能·模型")
+    _j = page._tab_index_by_title("功能配置")
     page.tabs.setCurrentIndex(_j)
     _app.processEvents()
     one_by_one = []
@@ -130,9 +130,9 @@ def main() -> int:
     # ⑩ 点左树每个星项 → **必须切到对应配置页** (老倪 2026-10-15: 产品配置能跳, 任务配置不跳)
     #    根因: 序号 "2." 的点被"参数 ID 分支"当成参数 ID ⇒ 页面不动。这里逐项模拟点击验证。
     _EXPECT = [("1. 产品配置", "产品配置"), ("2. 任务配置", "任务配置"),
-               ("3. 功能配置", "功能·性能·模型"), ("4. 模型配置", "模型配置"),
-               ("5. 性能配置", "功能·性能·模型"), ("6. 工单配置", "工单配置"),
-               ("7. 文档配置", "文档交付")]
+               ("3. 功能配置", "功能配置"), ("4. 模型配置", "模型配置"),
+               ("5. 性能配置", "性能配置"), ("6. 工单配置", "工单配置"),
+               ("7. 文档配置", "文档配置")]
     _jump = []
     for _i in range(page.tree.topLevelItemCount()):
         _it = page.tree.topLevelItem(_i)
@@ -163,7 +163,7 @@ def main() -> int:
 
     # ⑫ 主页面页签次序 == 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #    应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)
-    _order_want = ["产品配置", "任务配置", "功能·性能·模型", "模型配置", "工单配置", "文档交付",
+    _order_want = ["产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
                    "工程配置", "模型匹配", "文档预览"]
     _order_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]
     _pos = [next((i for i, t in enumerate(_order_now) if k in t), -1) for k in _order_want]
@@ -178,27 +178,46 @@ def main() -> int:
     page._on_tree(_it5, 0)
     _app.processEvents()
     _snap5 = page.star_banner.snapshot()
-    _btns = {d: b.isChecked() for d, b in getattr(page, "tab3_btns", {}).items()}
-    _ok13 = ("玉衡" in _snap5["title"]) and _btns.get("性能配置") is True and \
-        sum(1 for v in _btns.values() if v) == 1
-    checks.append(("⑬ 点「性能配置」→ 顶部=玉衡 且右页只有「性能配置」按钮按下",
-                   _ok13, "阵图条标题=%s ; 按钮按下=%s" % (_snap5["title"][:18],
-                                                       "".join(d for d, v in _btns.items() if v) or "无")))
+    _cur5 = page.tabs.tabText(page.tabs.currentIndex()).strip()
+    # 2026-10-15: 功能配置/性能配置 各自一页 ⇒ 看**那一页**自己的域按钮 (不再共用一页)
+    _btns = {d: b.isChecked() for d, b in page.fpm_views["性能配置"]["btns"].items()}
+    _ok13 = ("玉衡" in _snap5["title"]) and ("性能配置" in _cur5) and \
+        _btns.get("性能配置") is True and sum(1 for v in _btns.values() if v) == 1
+    checks.append(("⑬ 点「性能配置」→ 切到⚡性能配置页 · 顶部=玉衡 · 只有该域按钮按下",
+                   _ok13, "当前页=%s ; 阵图条=%s ; 按下=%s" % (_cur5, _snap5["title"][:16],
+                                                             "".join(d for d, v in _btns.items() if v) or "无")))
 
-    # ⑭ 同理 点「3. 功能配置」→ 天玑 ; 点「4. 模型配置」→ 天权 (同一页三星不许显示成同一颗)
+    # ⑭ 点「3. 功能配置」→ 天玑 · 「5. 性能配置」→ 玉衡 · 「4. 模型配置」→ 天权 (三颗星不许混成一颗)
     _pair = []
-    for _want, _kw in (("3. 功能配置", "天玑"), ("4. 模型配置", "天权"), ("5. 性能配置", "玉衡")):
+    for _want, _kw, _tabkw in (("3. 功能配置", "天玑", "功能配置"), ("5. 性能配置", "玉衡", "性能配置"),
+                               ("4. 模型配置", "天权", "模型配置")):
         _it = next(page.tree.topLevelItem(i) for i in range(page.tree.topLevelItemCount())
                    if _want in page.tree.topLevelItem(i).text(0))
         page._on_tree(_it, 0)
         _app.processEvents()
         _t = page.star_banner.snapshot()["title"]
-        _on = [d for d, b in getattr(page, "tab3_btns", {}).items() if b.isChecked()]
-        _pair.append("%s→%s%s" % (_want, _t.split(" · ")[0][:4], "" if _kw in _t else " ❌应" + _kw))
-        if _kw not in _t:
+        _cur = page.tabs.tabText(page.tabs.currentIndex()).strip()
+        _bad = (_kw not in _t) or (_tabkw not in _cur)
+        _pair.append("%s→星%s 页%s%s" % (_want, _t.split(" · ")[0][:4], _cur,
+                                        "" if not _bad else " ❌应显示%s/%s" % (_kw, _tabkw)))
+        if _bad:
             _pair[-1] = "❌" + _pair[-1]
-    checks.append(("⑭ 点功能/模型/性能三种都显示各自那颗 (同一页三星)",
+    checks.append(("⑭ 点功能/性能/模型三种: 星与页都各自对上",
                    not any(x.startswith("❌") for x in _pair), " ; ".join(_pair)))
+
+    # ⑮ 产品配置页的「🏭 Z-MAX 平台」块 == 单一真源模块, 且主控制台左侧卡面同源 (老倪 2026-10-15:
+    #    「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息」)
+    try:
+        from zmax_platform_info import zmax_platform_info as _zpi
+        _pi_lines = (_zpi() or {}).get("lines") or []
+    except Exception:                                                           # noqa: BLE001
+        _pi_lines = []
+    _page_lines = list(getattr(page, "plat_lines", None) or [])
+    _src_studio = open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8").read()
+    _wired = '(_zmax_platform_info() or {}).get("short")' in _src_studio
+    _ok15 = bool(_pi_lines) and _page_lines == _pi_lines and _wired
+    checks.append(("⑮ 产品配置页平台块 == 单一真源 且主控制台卡面同源 (不硬写)",
+                   _ok15, "页上3行=%s | 模块=%s | 卡面接线=%s" % (len(_page_lines), len(_pi_lines), _wired)))
 
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []
@@ -220,7 +239,7 @@ def main() -> int:
     # 出图 (给人看的证据; 本判据不依赖看图)
     try:
         page.resize(1680, 940)
-        page.tabs.setCurrentIndex(page._tab_index_by_title("功能·性能·模型"))
+        page.tabs.setCurrentIndex(page._tab_index_by_title("功能配置"))
         _app.processEvents()
         _dst = os.path.join(ROOT, "docs", "data_snapshots", "20261015_config_center_seven_stars")
         os.makedirs(_dst, exist_ok=True)

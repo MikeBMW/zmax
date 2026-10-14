@@ -34,7 +34,7 @@ if TOOLS not in sys.path:
 from PyQt5.QtCore import Qt, QSettings, QTimer  # noqa: E402
 from PyQt5.QtGui import QColor, QFont  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
-                             QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QSizePolicy, QSplitter,
+                             QFrame, QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QSizePolicy, QSplitter,
                              QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextEdit, QTreeWidget,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -55,6 +55,10 @@ _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _GUI_DIR not in sys.path:
     sys.path.insert(0, _GUI_DIR)
 import ss_seven_stars as _ss  # noqa: E402
+try:                                     # 🏭 平台描述单一真源 (与主控制台左侧卡面同源, 老倪 2026-10-15)
+    from zmax_platform_info import zmax_platform_info as _zmax_platform_info
+except Exception:                        # noqa: BLE001
+    _zmax_platform_info = None
 
 DEFAULT_THEME = {"C_BG": "#11151c", "C_BG2": "#161b24", "C_CARD": "#1b222c", "C_BORDER": "#2a3340",
                  "C_WHITE": "#e8edf4", "C_GRAY": "#8b98a8", "C_GREEN": "#3fbf7f", "C_RED": "#e05a5a",
@@ -1594,8 +1598,10 @@ class ConfigCenterPage(QWidget):
         if i >= 0:
             self.tabs.setCurrentIndex(i)      # 可能触发 _on_tab_changed (会清 _star_focus) ⇒ 之后再设
         self._star_focus = s["key"]           # 点哪颗就只亮哪颗 (一页多星时靠它区分)
-        if s["key"] in ("func", "perf", "model"):
-            self._press_fpm_btn(s["name"])     # 右页域按钮同步按亮 (单一真源: 星 → 域)
+        if s["key"] in ("func", "perf"):
+            _v = self.fpm_views.get(s["name"])
+            if _v is not None:
+                self._press_fpm_btn(s["name"], view=_v)     # 那一页的域按钮同步按亮
         _kw = "%s · %s" % (s["name"], s["star"])
         for _i in range(self.tree.topLevelItemCount()):
             it = self.tree.topLevelItem(_i)
@@ -1637,25 +1643,23 @@ class ConfigCenterPage(QWidget):
         n = len(self.eng_rows) if not param else 1
         self.tab2_head.setText(("仅显示: %s" % param) if param else "工程配置 · 全部 %d 项" % n)
 
-    def _press_fpm_btn(self, dom=None):
-        """把「功能·性能·模型」页上的域按钮按成**单选**状态 (dom=None = 全不按)。
+    def _press_fpm_btn(self, dom=None, view=None):
+        """把特征库页上的域按钮按成**单选**状态 (dom=None = 全不按; view=None = 所有特征库页)。
 
-        与左树点星、阵图条点星同源: 点哪颗星, 这一页的按钮就亮哪一个 —— 否则会出现
+        与左树点星、阵图条点星同源: 点哪颗星, 那一页的按钮就亮哪一个 —— 否则会出现
         「左侧点了性能配置, 右页还显示天玑按钮亮着」的不一致 (老倪 2026-10-15 实测)。
         """
-        for _d, _b in getattr(self, "tab3_btns", {}).items():
-            _b.setChecked(_d == dom)
+        views = [view] if view else list(getattr(self, "fpm_views", {}).values())
+        for _v in views:
+            for _d, _b in _v["btns"].items():
+                _b.setChecked(_d == dom)
 
-    def _filter_fpm(self, dom=None, param=None):
-        """功能/性能/模型三域合页: dom=None 显示全部; 否则只留该域; param 再精确定位到行。"""
-        idx = self._tab_index_by_title("功能·性能")
-        if idx >= 0:
-            self.tabs.setCurrentIndex(idx)
-        t = self.tab3_table
-        shown, sel = 0, -1
+    def _apply_fpm_filter(self, view, dom, param=None):
+        """在一张特征库页上落筛选 (行隐藏 + 表头文案 + 域按钮按下态)。返回显示行数。"""
+        t, shown, sel = view["table"], 0, -1
         for r in range(t.rowCount()):
-            d, pid = self.fpm_rows[r] if r < len(self.fpm_rows) else ("", "")
-            ok = (dom is None or d == dom) and (param is None or pid == param)
+            dv, pid = view["rows"][r] if r < len(view["rows"]) else ("", "")
+            ok = (dom is None or dv == dom) and (param is None or pid == param)
             t.setRowHidden(r, not ok)
             if ok:
                 shown += 1
@@ -1664,8 +1668,25 @@ class ConfigCenterPage(QWidget):
         if sel >= 0:
             t.selectRow(sel)
             t.scrollToItem(t.item(sel, 0))
-        self.tab3_head.setText(("仅显示: %s%s" % (dom or "全部", (" / " + param) if param else ""))
-                               + " · %d 项" % shown)
+        view["head"].setText(("仅显示: %s%s" % (dom or "全部", (" / " + param) if param else ""))
+                             + " · %d 项" % shown)
+        for _d, _b in view["btns"].items():
+            _b.setChecked(_d == dom)
+        return shown
+
+    def _filter_fpm(self, dom=None, param=None, view=None):
+        """特征库三域: dom=None 显示全部; 否则只留该域; param 再精确定位到行。
+
+        2026-10-15: 页签名改成配置名后, **功能配置 / 性能配置 各有一页** (同一真源、默认域不同):
+          dom ∈ {功能配置, 性能配置} → 切到对应那一页筛那一域; 其它域 → 落「功能配置」那张三域总表。
+        """
+        if view is None:
+            view = self.fpm_views.get(dom) or self.fpm_views.get("功能配置")
+            if dom in self.fpm_views:
+                _i = self._tab_index_by_title(view["title"])
+                if _i >= 0:
+                    self.tabs.setCurrentIndex(_i)
+        return self._apply_fpm_filter(view, dom, param)
 
     def _show_domain(self, dom, param=None):
         """老倪 2026-10-10: 点『性能配置/功能配置/工程配置/模型配置』右侧必须有内容, 不能只是底部刷字。"""
@@ -1896,8 +1917,9 @@ class ConfigCenterPage(QWidget):
                     # 功能·性能·模型 是**一页三星**: 点「5. 性能配置 · 玉衡」必须显示玉衡的按钮/描述,
                     # 不能落到本页默认星(天玑) —— 老倪 2026-10-15 实测报的。
                     self._star_focus = _k or None
-                    if _k in ("func", "perf", "model"):
-                        self._press_fpm_btn(_dom)          # 右页按钮跟着按亮 (同一页三星)
+                    if _k in ("func", "perf"):
+                        # 点哪颗星 → 切到那一页并按下该域按钮 (单一真源: 星 → 页 → 域)
+                        self._filter_fpm({"func": "功能配置", "perf": "性能配置"}[_k])
                     self._sync_star_banner()
                     return
             if "工单配置" in txt:
@@ -1966,6 +1988,58 @@ class ConfigCenterPage(QWidget):
 
     # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
     _PROD_ROWS = ("产品", "版本段", "产品质数", "能力数", "能力质数签名", "当前发布指纹", "质数结构自检")
+
+    def _zmax_platform_card(self, th):
+        """🏭 Z-MAX 平台信息块 —— **与主控制台左侧「🏭 Z-MAX 平台」卡面同源**。
+
+        老倪 2026-10-15: 「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息」。
+        两边都读 tools/gui/zmax_platform_info.py (平台/产品描述来自 config/platform/zmax_platform.json,
+        计数来自单一工程库) ⇒ 改一处两侧同时变; 读不到就写「取不到」, 不回退旧值。
+        内容可复制 (📋 复制 / 双击文本也复制)。
+        """
+        info = (_zmax_platform_info() if _zmax_platform_info else {}) or {}
+        w = QFrame()
+        w.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:6px;}"
+                        % (th["C_BG2"], th["C_BORDER"]))
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(2)
+        lines = info.get("lines") or ["🏭 Z-MAX 平台: 取不到 (zmax_platform_info 不可用)"]
+        self.plat_lines = list(lines)
+        for _i, _ln in enumerate(lines):
+            lb = QLabel(_ln)
+            lb.setWordWrap(True)
+            lb.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+            lb.setFont(QFont("Consolas", 10 if _i == 0 else 9))
+            lb.setStyleSheet("color:%s;background:transparent;border:none;"
+                             % (th["C_YELLOW"] if _i == 0 else th["C_GRAY"]))
+            lb.setToolTip(_ln)
+            lay.addWidget(lb)
+        row = QHBoxLayout()
+        b_cp = _btn("📋 复制平台信息", th)
+        b_cp.setToolTip("把上面三行复制到剪贴板 (给文档/飞书用)")
+        b_cp.clicked.connect(lambda: QApplication.clipboard().setText("\n".join(self.plat_lines or [])))
+        row.addWidget(b_cp)
+        b_rl = _btn("♻️ 重读真源", th)
+        b_rl.setToolTip("重读 config/platform/zmax_platform.json + 工程库 (改过真源点一下)")
+        b_rl.clicked.connect(self._refresh_platform_card)
+        row.addWidget(b_rl)
+        row.addStretch()
+        lay.addLayout(row)
+        return w
+
+    def _refresh_platform_card(self):
+        """重读平台真源并刷新块内文本 (真源现算, 不缓存旧值)。"""
+        info = (_zmax_platform_info() if _zmax_platform_info else {}) or {}
+        lines = info.get("lines") or ["🏭 Z-MAX 平台: 取不到"]
+        self.plat_lines = list(lines)
+        _labels = [lb for lb in (getattr(self, "plat_card", None).findChildren(QLabel)
+                                 if getattr(self, "plat_card", None) else [])]
+        for _lb, _ln in zip(_labels, lines):
+            _lb.setText(_ln)
+            _lb.setToolTip(_ln)
+        self.out.setPlainText("🏭 已重读平台真源:\n" + "\n".join("  " + x for x in lines)
+                              + "\n\n真源: %s" % (info.get("src") or "取不到"))
 
     def _product_card(self, th):
         """🏷 产品配置区 —— 三个产品**单选** + 右侧**真源回读**值 (可复制)。
@@ -2453,40 +2527,18 @@ class ConfigCenterPage(QWidget):
         l2.addWidget(t2, 1)
         self.tabs.addTab(w2, "⚙️ 工程配置")
 
-        # 3) 功能·性能·模型 (参数表)
-        cs3 = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") in ("功能配置", "性能配置", "模型配置")]
-        t3 = _mk_table(["域", "参数", "级", "权限", "真源", "值", "判据"],
-                       [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
-                         ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
-                         str(c["judge"])[:48]] for c in cs3], th)
-        self.tab3_table = t3
-        self.fpm_rows = [(c["domain"], c["id"]) for c in cs3]
+        # 3) 功能配置 (天玑) + 5) 性能配置 (玉衡) —— 老倪 2026-10-15: 「功能 性能 模型 标签, 改成功能配置,
+        #    即标签页的名字, 对应 1~7 配置名称」⇒ 页签名就叫配置名, 所以这里建**两个页** (同一构造器、默认域不同):
+        #    🧩 功能配置 默认只筛功能域 · ⚡ 性能配置 默认只筛性能域。数据同一真源 (特征库), 不复制真相。
+        self.fpm_views = {}
         self.tab3_domains = ["功能配置", "性能配置", "模型配置"]
-        w3 = QWidget(); l3 = QVBoxLayout(w3); l3.setContentsMargins(6, 6, 6, 6)
-        self.tab3_head = QLabel("点左侧「功能配置 / 性能配置 / 模型配置」只筛该域; 点具体参数名直接定位到行")
-        self.tab3_head.setFont(QFont("Consolas", 10))
-        self.tab3_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
-        l3.addWidget(self.tab3_head)
-        r3b = QHBoxLayout()
-        # 2026-10-15 老倪: 点左侧「5. 性能配置 · 玉衡」时, 右页必须显示**性能配置**这颗星的按钮/描述
-        #   (原来右页按钮没有按下态 ⇒ 看着还是天玑)。改成 checkable 单选: 按哪个亮哪个。
-        self.tab3_btns = {}
-        for dom in self.tab3_domains:
-            b = _btn("🔎 " + dom, th)
-            b.setCheckable(True)
-            b.setStyleSheet((b.styleSheet() or "")
-                            + ("QPushButton:checked{background:%s;color:#0b0f14;border:1px solid %s;}"
-                               % (th["C_YELLOW"], th["C_YELLOW"])))
-            b.setToolTip("只筛%s域" % dom)
-            b.clicked.connect(lambda _=False, d=dom: (self._press_fpm_btn(d), self._filter_fpm(d)))
-            self.tab3_btns[dom] = b
-            r3b.addWidget(b)
-        b_all3 = _btn("显示全部", th)
-        b_all3.clicked.connect(lambda: (self._press_fpm_btn(None), self._filter_fpm(None)))
-        r3b.addWidget(b_all3)
-        r3b.addStretch(); l3.addLayout(r3b)
-        l3.addWidget(t3, 1)
-        self.tabs.addTab(w3, "🧩 功能·性能·模型")
+        _v_func = self._build_fpm_view(th, d, self.tab3_domains, "功能配置", "🧩 功能配置")
+        _v_perf = self._build_fpm_view(th, d, self.tab3_domains, "性能配置", "⚡ 性能配置")
+        self.fpm_views["功能配置"] = _v_func
+        self.fpm_views["性能配置"] = _v_perf
+        # 兼容别名 (老代码/判据引用 self.tab3_* ⇒ 一律指「功能配置」那张三域总表)
+        self.tab3_table, self.tab3_head = _v_func["table"], _v_func["head"]
+        self.tab3_btns, self.fpm_rows = _v_func["btns"], _v_func["rows"]
 
         # 4) 🧾 工单配置 (2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」)
         #   这一页 = **工单实例粒度** (一份工单 = 一次执行): 身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪。
@@ -2582,7 +2634,7 @@ class ConfigCenterPage(QWidget):
                                     f"border:1px solid {th['C_BORDER']};")
         self.docs_out.setPlainText(_doc_inventory())
         l7.addWidget(self.docs_out, 1)
-        self.tabs.addTab(w7, "📄 文档交付")
+        self.tabs.addTab(w7, "📄 文档配置")
 
         # 8) 文档预览 (2026-10-10 老倪: 内置窗口直接看根据配置生成的文档, 数据统一/一致性)
         w8 = QWidget()
@@ -2626,6 +2678,14 @@ class ConfigCenterPage(QWidget):
         l9 = QVBoxLayout(w9)
         l9.setContentsMargins(6, 6, 6, 6)
         try:
+            try:                       # 🏭 Z-MAX 平台 (与主控制台左侧卡面同源) —— 老倪 2026-10-15
+                self.plat_card = self._zmax_platform_card(th)
+                l9.addWidget(self.plat_card)
+            except Exception as _e9p:                                           # noqa: BLE001
+                self.plat_card = None
+                _lb9p = QLabel("⛔ Z-MAX 平台信息块构造失败: %r" % (_e9p,))
+                _lb9p.setWordWrap(True)
+                l9.addWidget(_lb9p)
             l9.addWidget(self._product_card(th))
         except Exception as _e9:                                                # noqa: BLE001
             _lb9 = QLabel("⛔ 产品配置区构造失败: %r" % (_e9,))
@@ -2662,9 +2722,48 @@ class ConfigCenterPage(QWidget):
             pass
 
     # ── 文档配置: 预览 + 一致性 (2026-10-10 老倪) ──
+    def _build_fpm_view(self, th, d, domains, default_dom, tab_title):
+        """建一张「特征库三域」页 (功能配置 / 性能配置 各一张, 同一真源)。
+
+        老倪 2026-10-15: 「功能 性能 模型 标签, 改成功能配置, 即标签页的名字, 对应 1~7 配置名称」
+        ⇒ 页签名就叫配置名, 所以功能配置与性能配置各要一个页签。两页读的是**同一份特征库真源**,
+        只是默认筛的域不同 (页内可按别的域按钮, 也可由左树点星/顶部星图改)。
+        """
+        cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") in domains]
+        t = _mk_table(["域", "参数", "级", "权限", "真源", "值", "判据"],
+                      [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
+                        ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
+                        str(c["judge"])[:48]] for c in cs], th)
+        w = QWidget(); l = QVBoxLayout(w); l.setContentsMargins(6, 6, 6, 6)
+        head = QLabel("点左侧「功能配置 / 性能配置 / 模型配置」只筛该域; 点具体参数名直接定位到行")
+        head.setFont(QFont("Consolas", 10))
+        head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l.addWidget(head)
+        view = {"w": w, "table": t, "rows": [(c["domain"], c["id"]) for c in cs], "head": head,
+                "btns": {}, "default": default_dom, "title": tab_title}
+        row = QHBoxLayout()
+        for dom in domains:
+            b = _btn("🔎 " + dom, th)
+            b.setCheckable(True)
+            b.setStyleSheet((b.styleSheet() or "")
+                            + ("QPushButton:checked{background:%s;color:#0b0f14;border:1px solid %s;}"
+                               % (th["C_YELLOW"], th["C_YELLOW"])))
+            b.setToolTip("只筛%s域" % dom)
+            b.clicked.connect(lambda _=False, dd=dom, vv=view: self._filter_fpm(dd, None, vv))
+            view["btns"][dom] = b
+            row.addWidget(b)
+        b_all = _btn("显示全部", th)
+        b_all.clicked.connect(lambda _=False, vv=view: self._filter_fpm(None, None, vv))
+        row.addWidget(b_all)
+        row.addStretch(); l.addLayout(row)
+        l.addWidget(t, 1)
+        self.tabs.addTab(w, tab_title)
+        self._apply_fpm_filter(view, default_dom)      # 本页默认就筛自己那一域
+        return view
+
     # ⭐ 主页面(右工作区)页签次序 = 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #   应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)。非七星的视图排在七阵之后。
-    _TAB_ORDER = ("产品配置", "任务配置", "功能·性能·模型", "模型配置", "工单配置", "文档交付",
+    _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
                   "工程配置", "模型匹配", "文档预览")
 
     def _apply_tab_order(self):
@@ -2690,7 +2789,7 @@ class ConfigCenterPage(QWidget):
 
     def _show_doc_config(self):
         """7 · 瑶光·文档配置 → 切到「📄 文档交付」页 + 底部写一句真源摘要 (不去抢别的页)。"""
-        _i = self._tab_index_by_title("文档交付")
+        _i = self._tab_index_by_title("文档配置")
         if _i >= 0:
             self.tabs.setCurrentIndex(_i)
         _rows = ["7 · 瑶光 · 文档配置 (定记录)"]

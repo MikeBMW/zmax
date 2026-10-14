@@ -327,6 +327,10 @@ from PyQt5.QtGui import (
 
 # Z-MAX 版本同步模块
 from version_sync import VersionSyncWidget
+try:                                     # 🏭 平台描述单一真源 (主控制台左侧卡面 ↔ 配置中心·产品配置页 同源)
+    from zmax_platform_info import zmax_platform_info as _zmax_platform_info
+except Exception:                        # noqa: BLE001
+    _zmax_platform_info = None
 try:                                    # 🆕 2026-10-10 实时数据条 (与全系统数据同步)
     from live_strip import LiveStrip, LiveTable, fmt_dataset, fmt_models, fmt_arch, \
         fmt_remote, rows_remote, \
@@ -911,7 +915,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.75")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.76")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
         logo_row.addWidget(ver)
         logo_row.addStretch()
@@ -935,8 +939,14 @@ class SystemSidebar(QFrame):
         _LC = _live_counts()          # 🎛 六卡文案里的数字全部 live 取自工程库
         _MCD = _mcd_from_db()
         _mcd_prod = _MCD.get("product") or _MCD.get("plat") or {}
+        # 2026-10-15 老倪「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息」⇒ 卡面副标题
+        # 不再硬写在 studio, 与配置中心·产品配置页读**同一个** tools/gui/zmax_platform_info.py
+        try:
+            _plat_short = (_zmax_platform_info() or {}).get("short") if _zmax_platform_info else None
+        except Exception:                                                    # noqa: BLE001
+            _plat_short = None
         self.zmax = SystemLayerCard(
-            "zmax", "🏭 Z-MAX 平台", "Z700 精细 · Z100 通用",
+            "zmax", "🏭 Z-MAX 平台", _plat_short or "Z700 精细 · Z100 通用",
             CARD_BORDER["zmax"],
             "特征 %d · 系统 %d · 功能 %d · 点开看产品与功能清单" % (_LC["特征"], _LC["子系统"], _LC["功能"]),
             mcd=_mcd_prod
@@ -11219,7 +11229,7 @@ class StudioMainWindow(QMainWindow):
             _ok = False
         if not _ok:
             try:
-                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.75 [W-01] ⚠️非调试模式")
+                self.setWindowTitle("XSpace Studio — Z-MAX v5.50.76 [W-01] ⚠️非调试模式")
                 self.statusBar().showMessage(
                     "⚠️ 非调试模式 — 节点断点不会生效; 请用 VSCode F5 (🚀全新调试进程) 启动调试", 0)
             except Exception:
@@ -11227,9 +11237,10 @@ class StudioMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.75 [W-01]")
+        self.setWindowTitle("XSpace Studio — Z-MAX v5.50.76 [W-01]")
         # 🐛 2026-09-01 老倪: 非调试模式检测 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.76: 配置中心: 页签名改配置名(功能配置/性能配置各自一页) + 产品配置页与主控制台左侧 Z-MAX 平台描述同源 + 判据三处修改 [老倪:「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息; 功能 性能 模型 标签, 改成功能配置, 即标签页的名字, 对应 1~7 配置名称; 你检查一下后面几个标签页」]  ① 特征库三域拆成「3.功能配置(天玑)」与「5.性能配置(玉衡)」两页(同一真源, 默认域不同; 点左树点星图自动切页+按亮该域按钮) ② 「文档交付」改成「文档配置」—— 七个页签名 == 配置名; 页签次序 产品→任务→功能→模型→性能→工单→文档→(非七星)工程/模型匹配/文档预览 ③ 新增 tools/gui/zmax_platform_info.py 单一真源读取口(平台描述取 config/platform/zmax_platform.json, 计数取工程库), 主控制台左侧卡面与产品配置页都读它(卡面不再硬写「Z700 精细 · Z100 通用」); 产品配置页新增🏭平台块(3行 + 复制 + 重读真源) ④ 判据: 七星 16/16 · 产品页 51/51 · 任务工单拆页 28/28 · domains 单测全过
         # v5.50.75: 配置中心: 点左树星项与右页、页签次序对齐 (老倪:「点击左侧的性能配置, 但右侧窗口是天玑按钮和描述在显示; 主页面标签顺序也不一致, 应该显示产品配置标签, 然后是第二个任务配置, 依次顺序排列」)  ① 页签次序改成北斗次序: 产品配置 → 任务配置 → 功能·性能·模型 → 模型配置 → 工单配置 → 文档交付 → 工程配置 → 模型匹配 → 文档预览 (moveTab 重排, 不重建页、不动页内状态) ② 修「点性能配置右页却显示天玑」: 一页三星记下点的是哪颗 (_star_focus), 右页域按钮改成单选按下态(点哪颗亮哪个) ③ 记住上次页签从"页序号"改成"页名"(换了次序后旧序号会落在别的页) ④ 判据 tools/verify_config_center_seven_stars.py 15/15 (新增 ⑫页签次序==北斗次序 · ⑬点性能配置→顶部=玉衡且右页只有性能配置按钮按下 · ⑭功能/模型/性能三种各显各的)
         # v5.50.74: 配置中心=北斗七星阵 收官: 左树只留 7 行(1.产品配置·天枢 … 7.文档配置·瑶光)、点任一项都跳到对应配置页、详细值移到每页顶部「本页真源」行 (老倪:「点击左侧的产品配置 任务配置也要调到相应的配置界面; 任务配置没有跳转; 左侧不用显示那么多 …… 详细信息要在配置页面显示」)  ① 修真 bug: 序号 "2." 里那个点被"参数 ID 分支"当成参数 ID ⇒ 点任务配置/工单配置**页面完全不动**(现在先按星名分派再走其它分支) ② 左树去计数、去子项, 明细进 hover tooltip ③ 每页顶部新增「本页真源: …」现算行(产品当前/任务条数/特征库三域就绪/工单数/文档份数) ④ 点文档配置 → 文档交付页 + 摘要 ⑤ 判据 tools/verify_config_center_seven_stars.py 12/12(新增: 七项各自跳对页 · 每颗星页顶都有本页真源) ⑥ 判据构造口径修正: 必须走 build_config_center(model_page=容器), 否则「模型配置」页签不存在会判错
         # v5.50.73: 配置中心=北斗七星阵: 左树 1..7 带序号+星名 · 每页顶部阵图条(七星星图可点真跳页) · 一页三星只亮当前一颗 (老倪:「改变配置中心左侧窗口的排列顺序…北斗七星阵…我的状态空间工程实际上是一个阵法, 是有完备的结构的…贯穿配置中心」)  ① 新增 tools/gui/ss_seven_stars.py = 七阵唯一真源(次序/别号/主司/定义/关系/五行色) ② _fill_tree 按阵法次序重排 7 项(原「工程配置」归位为天玑·功能配置下的特征库第4域入口, 功能没删) ③ StarBanner 阵图条(定什么 + 该星一句 + 定义/关系 + 五行色 + 点星跳页) ④ 判据 tools/verify_config_center_seven_stars.py 10/10 (顶层恰好7项·序号在最前·七颗星不缺不重·七星页恰好一颗亮·点天玑只亮天玑·两种窗宽不截) ⑤ 修配置中心左树「产品配置 当前」陈旧(真源现算+mtime 监视+写回盖 updated, 判据 verify_config_page_product_sync 8/8, 质数 1009/1013/1019 未动) ⑥ prime_structure.active_product 缺键不再静默退回 550A(改喊一行) ⑦ 出图 docs/data_snapshots/20261015_config_center_seven_stars/
@@ -11951,7 +11962,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.50.75  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.76  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -14044,7 +14055,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.75</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.76</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

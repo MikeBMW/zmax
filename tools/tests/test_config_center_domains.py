@@ -7,7 +7,8 @@
 
 判据:
   1. 点 工程配置 → 切到「⚙️ 工程配置」页且可见行 = 9
-  2. 点 功能配置/性能配置 → 切到「🧩 功能·性能·模型」且可见行 = 3 / 6 (不是 0, 也不是全部 15)
+  2. 点 功能配置/性能配置 → 各自切到「🧩 功能配置」/「⚡ 性能配置」且可见行 = 该域行数
+     (2026-10-15 页签名改成配置名: 功能/性能各一页, 不再共用一页; 不是 0, 也不是全部)
   3. 点 模型配置 → 切到有内容的页 (专门的「🧠 模型配置」或合页), 可见行 > 0
   4. 点参数 ID 子项 → 该页只剩 1 行且正是这一行 (选中)
   5. 「显示全部」能恢复全部行
@@ -35,10 +36,13 @@ def check(name, ok, detail=""):
 
 
 def vis_rows(page, tab_title):
+    """页签名 → 该页的表 (2026-10-15: 功能配置/性能配置 各自一页)。"""
     if "工程配置" in tab_title:
         t = page.tab2_table
-    elif "功能·性能" in tab_title:
-        t = page.tab3_table
+    elif "功能配置" in tab_title:
+        t = page.fpm_views["功能配置"]["table"]
+    elif "性能配置" in tab_title:
+        t = page.fpm_views["性能配置"]["table"]
     else:
         return None
     return sum(1 for r in range(t.rowCount()) if not t.isRowHidden(r))
@@ -76,21 +80,28 @@ def main():
     _exp = {}
     for _c in _m["CHARACTERISTIC"]:
         _exp[_c["domain"]] = _exp.get(_c["domain"], 0) + 1
+    # 工程配置 2026-10-15 起不再是左树顶层项 (北斗就 7 颗星) ⇒ 直接走它对应的处理函数量行数
+    page._show_domain("工程配置")
+    app.processEvents()
+    seen["工程配置"] = (page.tabs.tabText(page.tabs.currentIndex()),
+                    sum(1 for r in range(page.tab2_table.rowCount()) if not page.tab2_table.isRowHidden(r)))
     for _d in ("工程配置", "功能配置", "性能配置"):
         check("%s 筛出行数 = 真源条数 %d" % (_d, _exp[_d]), seen.get(_d, ("", -1))[1] == _exp[_d], seen.get(_d))
     check("性能配置含光模块精细操作指标 (≥50 条)", _exp["性能配置"] >= 50, _exp["性能配置"])
 
-    print("\n═══ 3) 点参数 ID → 精确定位到那一行 ═══")
-    c = page.tree.topLevelItem(2).child(0)          # 功能配置 → feature.cap_level
-    page._on_tree(c, 0)
+    print("\n═══ 3) 定位到具体参数 → 只留那一行且选中 ═══")
+    # 2026-10-15: 左树按老倪要求只留 7 行 (参数子项已撤, 详细值进配置页) ⇒ 这里走**同一条处理函数**
+    # (_show_domain(dom, param) 就是老子项点击落到的地方), 判据不变: 只留 1 行且正是这一行。
+    tb = page.fpm_views["功能配置"]["table"]
+    _pid = next(p for dv, p in page.fpm_views["功能配置"]["rows"] if dv == "功能配置")
+    page._show_domain("功能配置", _pid)
     app.processEvents()
-    tb = page.tab3_table
     vis = [r for r in range(tb.rowCount()) if not tb.isRowHidden(r)]
-    print(f"      点 {c.text(0)!r} → 可见行 {vis} · 选中行 {tb.currentRow()} · 页签 {page.tabs.tabText(page.tabs.currentIndex())!r}")
+    print(f"      定位 {_pid!r} → 可见行 {vis} · 选中行 {tb.currentRow()} · 页签 {page.tabs.tabText(page.tabs.currentIndex())!r}")
     check("参数 ID 定位到唯一行", len(vis) == 1 and tb.currentRow() == vis[0], (vis, tb.currentRow()))
 
     print("\n═══ 4) 显示全部可恢复 ═══")
-    page._filter_fpm(None)
+    page._filter_fpm(None, None, page.fpm_views["功能配置"])
     app.processEvents()
     n = sum(1 for r in range(tb.rowCount()) if not tb.isRowHidden(r))
     check("恢复全部行", n == tb.rowCount(), f"{n}/{tb.rowCount()}")   # 三域合计 (指标会增长)

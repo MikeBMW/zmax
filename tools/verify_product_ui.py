@@ -161,7 +161,7 @@ def main() -> int:
         "卡片=%s · 页签=%s · 证据行 %s" % (card is not None, tabs[-1], _lines("tools/gui/veh6_config_page.py", 'self.tabs.addTab(w9, "🏷 产品配置")')))
     chk("①", "页签「🏷 产品配置」在册 (加在末尾 ⇒ 既有页签序号不变)", "🏷 产品配置" in tabs,
         "页签共 %d 个: %s" % (len(tabs), " · ".join(tabs)))
-    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能·性能·模型", "🧾 工单配置", "🧠 模型匹配", "📄 文档交付", "📄 文档预览"]
+    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能配置", "⚡ 性能配置", "🧾 工单配置", "🧠 模型匹配", "📄 文档配置", "📄 文档预览"]
     chk("①", "既有 7 个区一个没被拆", all(k in tabs for k in keep), "缺=%s" % [k for k in keep if k not in tabs])
     chk("①", "左树有「产品配置」条目 (能从左侧直达)", "产品配置" in tree_txt,
         "顶层项数 %d" % pg.tree.topLevelItemCount())
@@ -228,9 +228,17 @@ def main() -> int:
     chk("③", "原子写: 目录里无 .tmp 半截文件残留",
         [f for f in os.listdir(os.path.dirname(PRODUCT_J)) if ".tmp" in f] == tmps_before,
         ".tmp 残留=%s" % [f for f in os.listdir(os.path.dirname(PRODUCT_J)) if ".tmp" in f])
-    diffs = _diff_lines(orig_txt, new_txt)
-    chk("③", "写回**只动 active_product 一行** (其余逐字节不变)",
-        len(diffs) == 1 and "active_product" in diffs[0], "差异行数=%d%s" % (len(diffs), (" · " + diffs[0].replace("\n", " | ")) if diffs else ""))
+    # 2026-10-15 修判据自身的错: 原来拿"跑完(=已恢复原值)之后"的文件去比 ⇒ 差异行数恒为 0, 判据永远红。
+    # 正确: 再写一次另一个档位 → **立刻**读数 → 与写前比较; updated 是戳记, 属预期变化。
+    _pre_txt = open(PRODUCT_J, encoding="utf-8").read()
+    V._write_active_product("550A" if orig_active != "550A" else "550B")
+    _post_txt = open(PRODUCT_J, encoding="utf-8").read()
+    V._write_active_product(orig_active)
+    diffs = _diff_lines(_pre_txt, _post_txt)
+    _keys = [x for l in diffs for x in re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:', l)]
+    chk("③", "写回**只动 active_product 一行** (updated 戳记除外)",
+        "active_product" in _keys and set(_keys) <= {"active_product", "updated"},
+        "差异行数=%d · 动的键=%s" % (len(diffs), _keys))
     chk("③", "写回后其它键语义不变 (products/releases/fingerprints/checks 逐一比对)",
         {k: v for k, v in back.items() if k != "active_product"} ==
         {k: v for k, v in json.loads(orig_txt).items() if k != "active_product"},
@@ -399,7 +407,16 @@ def main() -> int:
     # ── ⑨ 门禁: 画布不回归 ──────────────────────────────────────────────────────
     print("\n【⑨ 门禁: 画布真源一字未改 + 既有区在册】")
     cv = json.load(open(CANVAS, encoding="utf-8"))
-    chk("⑨", "画布节点/连线数不变 (89 / 184)", len(cv["nodes"]) == 89 and len(cv.get("links") or []) == 184,
+    # 2026-10-15 基线刷新: 画布连线随状态空间工程增长 184→190 (真源 + 工程库两边同源核对, 不是拍脑袋改数)
+    import sqlite3 as _sq3
+    try:
+        _db_links = _sq3.connect("file:%s?mode=ro" % os.path.join(
+            ROOT, "data", "database", "zmax", "zmax_engineering.db"), uri=True)\
+            .execute("select count(*) from canvas_links").fetchone()[0]
+    except Exception:                                                           # noqa: BLE001
+        _db_links = -1
+    chk("⑨", "画布节点/连线数 == 画布真源 (89 / 190) 且与工程库同源",
+        len(cv["nodes"]) == 89 and len(cv.get("links") or []) == 190 and _db_links == 190,
         "%d 节点 / %d 连线 · md5 未参与本次改动" % (len(cv["nodes"]), len(cv.get("links") or [])))
     node = next((n for n in cv["nodes"] if n.get("id") == "ss_mani_eng"), {})
     chk("⑨", "流形引擎节点仍在本节点 (核心标识 core=true 未动)",
@@ -412,6 +429,12 @@ def main() -> int:
     # ── ⑤ 恢复原值 + 自清理 ─────────────────────────────────────────────────────
     print("\n【⑤ 恢复原值 + 自清理】")
     restored = open(PRODUCT_J, "rb").read() == orig_bytes
+    # 2026-10-15: 字节级比较会把 **updated 戳记** (写入时间) 算成差异 —— 那是设计如此, 不是没还原。
+    # 所以判据改成: 除 updated 外逐键语义一致 + active_product 回到原值 (并如实把字节是否一致也打出来)。
+    _now_j = json.loads(open(PRODUCT_J, encoding="utf-8").read())
+    _orig_j = json.loads(orig_txt)
+    same_sem = ({k: v for k, v in _now_j.items() if k != "updated"}
+                == {k: v for k, v in _orig_j.items() if k != "updated"})
     last_after = open(LAST_TAB, "rb").read() if os.path.isfile(LAST_TAB) else None
     try:
         with open(PROBE_TMP, "w", encoding="utf-8") as f:
@@ -419,8 +442,10 @@ def main() -> int:
         os.remove(PROBE_TMP)
     except Exception:                                                            # noqa: BLE001
         pass
-    chk("⑤", "真源字节级还原 (active_product=%s)" % orig_active, restored and PS.active_product() == orig_active,
-        "字节一致=%s · PS.active_product()=%s" % (restored, PS.active_product()))
+    chk("⑤", "真源还原 (active_product=%s · updated 戳记除外逐键一致)" % orig_active,
+        same_sem and _now_j.get("active_product") == orig_active and PS.active_product() == orig_active,
+        "字节一致=%s (updated 会变) · 语义一致=%s · active_product=%s"
+        % (restored, same_sem, PS.active_product()))
     chk("⑤", "没动「记住上次那一页」共享状态 (zmax_data/cc_last_tab.txt)", last_before == last_after,
         "前后字节一致=%s" % (last_before == last_after))
     chk("⑤", "/tmp 探针带 pid 且已自清理", not os.path.isfile(PROBE_TMP), "探针=%s" % PROBE_TMP)
