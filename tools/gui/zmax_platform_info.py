@@ -68,6 +68,79 @@ def _counts():
     return out
 
 
+def _jstr(v):
+    """库里存的可能是 JSON 文本 (kpi) —— 能解析就返回 dict, 不能就原样。"""
+    if v is None:
+        return {}
+    try:
+        out = json.loads(v)
+        return out if isinstance(out, dict) else {"_": out}
+    except Exception:                                                           # noqa: BLE001
+        return {"_": v}
+
+
+def _jlist(v):
+    """库里存的可能是 JSON 数组文本 (subsys / module_refs) —— 解析失败返回空表, 不猜。"""
+    if not v:
+        return []
+    try:
+        out = json.loads(v)
+        return out if isinstance(out, list) else [out]
+    except Exception:                                                           # noqa: BLE001
+        return []
+
+
+def _db_rows(sql):
+    """只读工程库取行 (库不在/表不在 → 空表, 不猜)。"""
+    if not os.path.exists(DB):
+        return []
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % DB, uri=True)
+        rows = list(con.execute(sql))
+        con.close()
+        return rows
+    except Exception:                                                           # noqa: BLE001
+        return []
+
+
+def platform_page_data():
+    """主控制台「🏭 Z-MAX 平台」页**同一批**真源 (platform / products / product_features / functions)。
+
+    老倪 2026-10-15: 「产品配置页面, 要复用 Z-MAX 平台的页面描述, 里面有产品特性」;
+    同一天: 「功能配置, 要包括 系统1 系统2 系统0 的所有功能, 还有功能清单的汇总」。
+    都从单一工程库读 (库是生成物; 人可编真源是 config/platform/zmax_platform.json)。
+    """
+    p = _db_rows("select platform_id, name, positioning, architecture, data_contract from platform")
+    prods = _db_rows("select product_id, name, category, positioning, kpi from products")
+    feats = _db_rows("select pf_id, product_id, title, capability_ref, kpi, status, subsys, module_refs"
+                     " from product_features")
+    fns = _db_rows("select fn_id, system_id, name, layer, kind, module_ref, params from functions")
+    return {
+        "platform": ({"platform_id": p[0][0], "name": p[0][1], "positioning": p[0][2],
+                      "architecture": p[0][3], "data_contract": p[0][4]} if p else {}),
+        "products": [{"id": r[0], "name": r[1], "category": r[2], "positioning": r[3], "kpi": _jstr(r[4])}
+                     for r in prods],
+        "features": [{"pf_id": r[0], "product": r[1], "title": r[2], "capability": r[3], "kpi": r[4],
+                      "status": r[5], "subsys": _jlist(r[6]), "modules": _jlist(r[7])} for r in feats],
+        "functions": [{"fn_id": r[0], "sys": r[1], "name": r[2], "layer": r[3], "kind": r[4],
+                       "module": r[5], "params": r[6]} for r in fns],
+    }
+
+
+def function_summary(fns=None):
+    """功能清单汇总: 按系统分组条数 (系统2/系统1/系统0/平台支撑) + 合计 —— 功能配置页用。"""
+    fns = fns if fns is not None else platform_page_data()["functions"]
+    order = (("sys2", "系统 2"), ("sys1", "系统 1"), ("sys0", "系统 0"), ("plat", "平台支撑"))
+    by = {}
+    for f in fns:
+        by[f["sys"]] = by.get(f["sys"], 0) + 1
+    parts = ["%s %d" % (cn, by.get(sid, 0)) for sid, cn in order if by.get(sid, 0)]
+    for sid, n in sorted(by.items()):                # 兜底: 没见过的 system_id 不许吞掉
+        if sid not in [x[0] for x in order]:
+            parts.append("%s %d" % (sid, n))
+    return {"by": by, "total": len(fns), "text": " · ".join(parts) + " · 合计 %d 条" % len(fns)}
+
+
 def zmax_platform_info():
     """平台描述 + 计数 + 产品档位 (按真源 mtime 缓存, 改真源自动失效)。"""
     key = (_mtime(PLATFORM_J), _mtime(DB), _mtime(PRODUCT_J))

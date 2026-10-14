@@ -2533,6 +2533,10 @@ class ConfigCenterPage(QWidget):
         self.fpm_views = {}
         self.tab3_domains = ["功能配置", "性能配置", "模型配置"]
         _v_func = self._build_fpm_view(th, d, self.tab3_domains, "功能配置", "🧩 功能配置")
+        try:                     # 2026-10-15 老倪: 「功能配置, 要包括 系统1 系统2 系统0 的所有功能,
+            _v_func["lay"].addWidget(self._functions_block(th), 3)   # 还有功能清单的汇总」
+        except Exception as _ef:                                                # noqa: BLE001
+            _v_func["lay"].addWidget(QLabel("⛔ 功能清单块构建失败: %r" % (_ef,)))
         _v_perf = self._build_fpm_view(th, d, self.tab3_domains, "性能配置", "⚡ 性能配置")
         self.fpm_views["功能配置"] = _v_func
         self.fpm_views["性能配置"] = _v_perf
@@ -2590,12 +2594,23 @@ class ConfigCenterPage(QWidget):
                   "✅" if r["usable_now"] else "⛔ " + r.get("verdict", "")[:40]]
                  for r in m.get("MODELS", [])]
         t5 = _mk_table(["模型", "层", "域", "工程配置(9 项)", "判定"], rows5, th)
-        w5 = QWidget(); l5 = QVBoxLayout(w5); l5.setContentsMargins(6, 6, 6, 6); l5.addWidget(t5)
-        self.tabs.addTab(w5, "🧠 模型匹配")
-
-        # 6) 现有模型配置页 (整块搬进来, 不重写)
+        self.match_table = t5
+        # 6) 🧠 模型配置 = 现有模型配置页 + 「模型 ↔ 工程配置」匹配表
+        #    2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面」⇒ 不再单列页签, 一张页看全。
+        w6 = QWidget(); l6 = QVBoxLayout(w6); l6.setContentsMargins(6, 6, 6, 6)
+        _h6 = QLabel("模型匹配 (模型 ↔ 工程配置 9 项) —— 原「🧠 模型匹配」页, 已并入本页 (老倪 2026-10-15)")
+        _h6.setWordWrap(True)
+        _h6.setFont(QFont("Consolas", 10))
+        _h6.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        l6.addWidget(_h6)
         if model_page is not None:
-            self.tabs.addTab(model_page, "🧠 模型配置")
+            l6.addWidget(model_page, 3)          # 现有模型配置页整块搬进来 (不重写)
+        else:
+            _lb6 = QLabel("⛔ 模型配置页未注入 (调用方没传 model_page) —— 本页只显示匹配表")
+            _lb6.setWordWrap(True)
+            l6.addWidget(_lb6)
+        l6.addWidget(t5, 2)
+        self.tabs.addTab(w6, "🧠 模型配置")
 
         # 7) 文档交付 (2026-10-10 老倪: 三份文档导出做成配置中心按钮)
         w7 = QWidget()
@@ -2636,11 +2651,14 @@ class ConfigCenterPage(QWidget):
         l7.addWidget(self.docs_out, 1)
         self.tabs.addTab(w7, "📄 文档配置")
 
-        # 8) 文档预览 (2026-10-10 老倪: 内置窗口直接看根据配置生成的文档, 数据统一/一致性)
-        w8 = QWidget()
-        l8 = QVBoxLayout(w8)
-        l8.setContentsMargins(6, 6, 6, 6)
-        self.pv_head = QLabel("文档预览 — 左侧栏「📄 文档配置」点一份文档即可在这里看到它的**实际内容**")
+        # 8) 文档预览 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
+        #    ⇒ 不再单开页签: 预览控件直接进上面那张「📄 文档配置」页 (同一页: 上面导出/清单, 下面正文)
+        l8 = l7
+        _sep8 = QLabel("─" * 96)
+        _sep8.setStyleSheet(f"color:{th['C_BORDER']};background:transparent;")
+        l8.addWidget(_sep8)
+        self.pv_head = QLabel("文档正文预览 — 点一份文档按钮即可在这里看到**实际内容** "
+                              "(本节原为独立「📄 文档预览」页, 已并入本页)")
         self.pv_head.setWordWrap(True)
         self.pv_head.setFont(QFont("Consolas", 10))
         self.pv_head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
@@ -2670,7 +2688,6 @@ class ConfigCenterPage(QWidget):
             "  对不上 = ⛔ 已过期 (老倪口径: 过期文档不能当交付件), 顶部会红字告警, 点「♻️ 重新生成并预览」。\n"
             "  三份文档同源: 都读 data/database/zmax/zmax_engineering.db + config/platform/*.json, 不手抄数字。")
         l8.addWidget(self.preview, 1)
-        self.tabs.addTab(w8, "📄 文档预览")
 
         # 9) 🏷 产品配置 (2026-10-13 老倪: 流形引擎是系统核心 ⇒ 产品标识 550A/B/C + 空间质数结构化理解能力)
         #    加在**末尾**: 保持既有页签序号不变 (「记住上次那一页」存的是序号 zmax_data/cc_last_tab.txt)
@@ -2687,6 +2704,14 @@ class ConfigCenterPage(QWidget):
                 _lb9p.setWordWrap(True)
                 l9.addWidget(_lb9p)
             l9.addWidget(self._product_card(th))
+            try:                   # 🏭 复用「Z-MAX 平台」页描述 + 产品特性清单 (老倪 2026-10-15)
+                self.plat_page_block = self._zmax_platform_page_block(th)
+                l9.addWidget(self.plat_page_block, 1)
+            except Exception as _e9q:                                           # noqa: BLE001
+                self.plat_page_block = None
+                _lb9q = QLabel("⛔ Z-MAX 平台页描述块构造失败: %r" % (_e9q,))
+                _lb9q.setWordWrap(True)
+                l9.addWidget(_lb9q)
         except Exception as _e9:                                                # noqa: BLE001
             _lb9 = QLabel("⛔ 产品配置区构造失败: %r" % (_e9,))
             _lb9.setWordWrap(True)
@@ -2722,6 +2747,91 @@ class ConfigCenterPage(QWidget):
             pass
 
     # ── 文档配置: 预览 + 一致性 (2026-10-10 老倪) ──
+    def _functions_block(self, th):
+        """🧮 功能清单 (系统 2 / 系统 1 / 系统 0 + 平台支撑 的全部功能) + 汇总。
+
+        老倪 2026-10-15: 「功能配置, 要包括 系统1 系统2 系统0 的所有功能, 还有功能清单的汇总」。
+        真源 = 单一工程库 functions 表 (与人可编真源 config/platform/zmax_platform.json 同源);
+        汇总口径: 各系统条数 + 合计, 一个字都不写死。
+        """
+        try:
+            from zmax_platform_info import platform_page_data as _ppd, function_summary as _fs
+        except Exception:                                                       # noqa: BLE001
+            return QLabel("⛔ 功能清单: zmax_platform_info 不可用 (取不到)", )
+        _d = _ppd()
+        _fns = _d.get("functions") or []
+        _sm = _fs(_fns)
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 6, 0, 0)
+        lay.setSpacing(4)
+        _hd = QLabel("🧮 功能清单汇总: %s  (真源: 单一工程库 functions 表 · 与主控制台「🏭 Z-MAX 平台」页同源)"
+                     % (_sm["text"] if _fns else "取不到"))
+        _hd.setWordWrap(True)
+        _hd.setFont(QFont("Consolas", 10))
+        _hd.setStyleSheet(f"color:{th['C_YELLOW']};background:transparent;")
+        _hd.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lay.addWidget(_hd)
+        _cn = {"sys2": "系统 2 · 认知决策", "sys1": "系统 1 · 动作执行",
+               "sys0": "系统 0 · 基石执行", "plat": "平台支撑"}
+        _rows = [[_cn.get(f["sys"], f["sys"]), f["fn_id"], f["name"], f["layer"], f["kind"],
+                  (f["module"] or "")[:44]] for f in _fns]
+        self.fn_table = _mk_table(["系统", "功能编号", "功能名称", "层", "类别", "承载模块"], _rows, th)
+        lay.addWidget(self.fn_table, 1)
+        return w
+
+    def _zmax_platform_page_block(self, th):
+        """🏭 「Z-MAX 平台」页那两块表: 平台产品 + **产品特征清单(产品特性)**。
+
+        老倪 2026-10-15: 「产品配置页面, 要复用 Z-MAX 平台的页面描述, 里面有产品特性」
+        ⇒ 与 tools/gui/platform_spec.py 的「🏭 Z-MAX 平台」页读同一批真源 (工程库 platform/products/
+        product_features), 列也对齐, 不手抄。
+        """
+        try:
+            from zmax_platform_info import platform_page_data as _ppd
+        except Exception:                                                       # noqa: BLE001
+            return QLabel("⛔ 平台页数据: zmax_platform_info 不可用 (取不到)")
+
+        def _sec(txt):
+            lb = QLabel(txt)
+            lb.setWordWrap(True)
+            lb.setFont(QFont("Consolas", 10))
+            lb.setStyleSheet(f"color:{th['C_YELLOW']};background:transparent;")
+            lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            return lb
+
+        _d = _ppd()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 4, 0, 0)
+        lay.setSpacing(4)
+        _p = _d.get("platform") or {}
+        _lb = QLabel("🏭 平台描述 (同源: 工程库 platform 表)\n   定位: %s\n   架构: %s\n   数据契约: %s"
+                     % (_p.get("positioning") or "取不到", _p.get("architecture") or "取不到",
+                        _p.get("data_contract") or "取不到"))
+        _lb.setWordWrap(True)
+        _lb.setFont(QFont("Consolas", 9))
+        _lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        _lb.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
+        lay.addWidget(_lb)
+        _pr = [[x["id"], x["name"], x["category"], (x["positioning"] or "")[:56],
+                " · ".join("%s=%s" % (k, v) for k, v in list((x["kpi"] or {}).items())[:3])]
+               for x in _d.get("products") or []]
+        lay.addWidget(_sec("🏷 平台产品 (%d) —— 产品通过 系统2/1/0 组成的全系统实现" % len(_pr)))
+        self.plat_prod_table = _mk_table(["产品", "名称", "类别", "定位", "关键指标"], _pr, th)
+        self.plat_prod_table.setMaximumHeight(96)
+        lay.addWidget(self.plat_prod_table)
+        _ft = [[f["pf_id"], f["product"], f["title"], f["capability"], f["kpi"], f["status"],
+                "/".join(f["subsys"] or []), "、".join((f["modules"] or [])[:2])]
+               for f in _d.get("features") or []]
+        _on = sum(1 for f in (_d.get("features") or []) if f["status"] == "在役")
+        lay.addWidget(_sec("🎯 产品特征清单 (产品特性) 共 %d 条 · 在役 %d —— 特征 → 子系统 → 模块 → 能力"
+                           % (len(_ft), _on)))
+        self.plat_feat_table = _mk_table(["特征ID", "产品", "产品特征", "能力", "指标 KPI", "状态", "子系统", "模块"],
+                                         _ft, th)
+        lay.addWidget(self.plat_feat_table, 1)
+        return w
+
     def _build_fpm_view(self, th, d, domains, default_dom, tab_title):
         """建一张「特征库三域」页 (功能配置 / 性能配置 各一张, 同一真源)。
 
@@ -2740,7 +2850,7 @@ class ConfigCenterPage(QWidget):
         head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         l.addWidget(head)
         view = {"w": w, "table": t, "rows": [(c["domain"], c["id"]) for c in cs], "head": head,
-                "btns": {}, "default": default_dom, "title": tab_title}
+                "btns": {}, "default": default_dom, "title": tab_title, "lay": l}
         row = QHBoxLayout()
         for dom in domains:
             b = _btn("🔎 " + dom, th)
@@ -2763,8 +2873,10 @@ class ConfigCenterPage(QWidget):
 
     # ⭐ 主页面(右工作区)页签次序 = 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #   应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)。非七星的视图排在七阵之后。
+    # 2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面; 取消文档预览页面, 合并到 文档配置页面」
+    # ⇒ 只剩 7 个配置页 + 1 个非七星视图 (工程配置)。页签名 = 配置名。
     _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                  "工程配置", "模型匹配", "文档预览")
+                  "工程配置")
 
     def _apply_tab_order(self):
         """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
@@ -2782,6 +2894,11 @@ class ConfigCenterPage(QWidget):
         return [self.tabs.tabText(i) for i in range(self.tabs.count())]
 
     def _pv_tab_index(self):
+        """文档预览所在页 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
+        ⇒ 预览控件现在就在「📄 文档配置」页里 (兼容旧名兜底)。"""
+        i = self._tab_index_by_title("文档配置")
+        if i >= 0:
+            return i
         for i in range(self.tabs.count()):
             if "文档预览" in self.tabs.tabText(i):
                 return i
@@ -2799,7 +2916,7 @@ class ConfigCenterPage(QWidget):
                 _rows.append("   %s %s — %s" % (_doc_mark(_k), _st.get("name", _k), _st.get("why", "")))
             except Exception:                                                   # noqa: BLE001
                 _rows.append("   %s %s (状态取不到)" % (_doc_mark(_k), _k))
-        _rows.append("   正文预览在「📄 文档预览」页; 一致性核对在文档页最后一列。")
+        _rows.append("   正文预览就在本页下方 (原「📄 文档预览」页已并入); 一致性核对在文档页最后一列。")
         self.out.setPlainText("\n".join(_rows))
         self._fit_out()
 

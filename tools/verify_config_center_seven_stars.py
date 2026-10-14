@@ -163,8 +163,9 @@ def main() -> int:
 
     # ⑫ 主页面页签次序 == 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #    应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)
+    # 2026-10-15: 模型匹配/文档预览 已并入 模型配置/文档配置 ⇒ 只剩 7 配置页 + 工程配置
     _order_want = ["产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                   "工程配置", "模型匹配", "文档预览"]
+                   "工程配置"]
     _order_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]
     _pos = [next((i for i, t in enumerate(_order_now) if k in t), -1) for k in _order_want]
     checks.append(("⑫ 页签次序 == 北斗次序 (1产品→2任务→…→7文档→非七星视图)",
@@ -218,6 +219,43 @@ def main() -> int:
     _ok15 = bool(_pi_lines) and _page_lines == _pi_lines and _wired
     checks.append(("⑮ 产品配置页平台块 == 单一真源 且主控制台卡面同源 (不硬写)",
                    _ok15, "页上3行=%s | 模块=%s | 卡面接线=%s" % (len(_page_lines), len(_pi_lines), _wired)))
+
+    # ⑯ 合并已生效 (老倪 2026-10-15: 取消模型匹配/文档预览, 并入模型配置/文档配置)
+    _tabs_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]
+
+    def _in_tab(_w, _kw):
+        _i = page._tab_index_by_title(_kw)
+        if _i < 0 or _w is None:
+            return False
+        _host = page.tabs.widget(_i)
+        return (_host is _w) or bool(_host.isAncestorOf(_w))
+
+    _gone = (not any("模型匹配" in t for t in _tabs_now)) and (not any("文档预览" in t for t in _tabs_now))
+    _m1 = _in_tab(getattr(page, "match_table", None), "模型配置")
+    _m2 = _in_tab(getattr(page, "preview", None), "文档配置")
+    checks.append(("⑯ 「模型匹配/文档预览」页签已取消, 内容确实在合并后的页里",
+                   _gone and _m1 and _m2,
+                   "页签 %d 个 · 匹配表在模型配置=%s · 预览在文档配置=%s" % (len(_tabs_now), _m1, _m2)))
+
+    # ⑰ 内容口径: 功能配置页 = 系统2/1/0 全部功能 + 汇总; 产品配置页 复用「Z-MAX 平台」页描述(含产品特性)
+    try:
+        from zmax_platform_info import platform_page_data as _ppd2, function_summary as _fs2
+        _pdata = _ppd2()
+        _fns2 = _pdata.get("functions") or []
+        _smy = _fs2(_fns2)
+    except Exception:                                                           # noqa: BLE001
+        _pdata, _fns2, _smy = {}, [], {"text": ""}
+    _ft = getattr(page, "fn_table", None)
+    _pt = getattr(page, "plat_feat_table", None)
+    _ok17 = (bool(_fns2) and _ft is not None and _ft.rowCount() == len(_fns2)
+             and all(k in _smy["text"] for k in ("系统 2", "系统 1", "系统 0"))
+             and _in_tab(_ft, "功能配置")
+             and _pt is not None and _pt.rowCount() == len(_pdata.get("features") or [])
+             and _in_tab(_pt, "产品配置"))
+    checks.append(("⑰ 功能配置页=系统2/1/0 全部功能+汇总 · 产品配置页=平台页描述+产品特性",
+                   _ok17, "功能表 %s 行 (真源 %d) · 汇总「%s」· 产品特性 %s 行 (真源 %d)"
+                   % (getattr(_ft, "rowCount", lambda: "—")(), len(_fns2), _smy["text"],
+                      getattr(_pt, "rowCount", lambda: "—")(), len(_pdata.get("features") or []))))
 
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []

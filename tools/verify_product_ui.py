@@ -161,7 +161,8 @@ def main() -> int:
         "卡片=%s · 页签=%s · 证据行 %s" % (card is not None, tabs[-1], _lines("tools/gui/veh6_config_page.py", 'self.tabs.addTab(w9, "🏷 产品配置")')))
     chk("①", "页签「🏷 产品配置」在册 (加在末尾 ⇒ 既有页签序号不变)", "🏷 产品配置" in tabs,
         "页签共 %d 个: %s" % (len(tabs), " · ".join(tabs)))
-    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能配置", "⚡ 性能配置", "🧾 工单配置", "🧠 模型匹配", "📄 文档配置", "📄 文档预览"]
+    # 2026-10-15: 模型匹配 → 并入 🧠 模型配置 · 文档预览 → 并入 📄 文档配置 (页签取消)
+    keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能配置", "⚡ 性能配置", "🧾 工单配置", "🧠 模型配置", "📄 文档配置"]
     chk("①", "既有 7 个区一个没被拆", all(k in tabs for k in keep), "缺=%s" % [k for k in keep if k not in tabs])
     chk("①", "左树有「产品配置」条目 (能从左侧直达)", "产品配置" in tree_txt,
         "顶层项数 %d" % pg.tree.topLevelItemCount())
