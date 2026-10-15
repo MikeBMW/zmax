@@ -111,6 +111,14 @@
    **完整紧凑 JSON**(只留要画的叶子, 同 ss_torque 做法) ② `parse_ds_digest` 加“被切掉的 JSON”
    分支: 逐对抠 `"键": 数值`。**判据要直接调页面的 parse_ds_digest**, 不能只看话题列表。
 
+19. **“信号里有、但看不到状态” ⇒ 状态名是字符串, 永远上不了波形** (老倪「也没有显示状态啊」)。
+   数值通道只给 idx/idx8/v_cap; 阶段名要单独**写状态栏**。要点: 写在状态行**最前面** (末尾会被
+   窗口宽截掉); 快照停更时整行转橙 + “⚠ 停更 Ns”, 不拿旧阶段冒充现在。
+20. **控制台里内嵌了同一个 CanoeGraphicWidget** (studio.py `from canoe_graphic import`)。
+   所以信号页的递归爆栈会**连带把 3D 面板定时器堵死** (pyqtgraph AxisItem.setRange→updateAutoSIPrefix
+   / ViewBox.linkedXChanged→screenGeometry): 现象是“3D 面板不跑、快照停更、状态不动”, 排查时
+   别只看独立信号窗口的日志 —— 必须重启控制台才能带新代码 (判据: 40s 内新增 RecursionError == 0)。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
