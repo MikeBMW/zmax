@@ -35,7 +35,7 @@ import time
 
 import numpy as np
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QRadialGradient
 from PyQt5.QtWidgets import QSizePolicy, QWidget
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -472,7 +472,8 @@ class OrbitalArchView(QWidget):
 
     def _geom(self):
         W, H = int(self.width()), int(self.height())
-        pad_t, pad_b = 20, 48
+        pad_t = 20
+        pad_b = 12 + 11 * len(self._foot_lines(W))
         S = max(120, min(W - 14, H - pad_t - pad_b))
         cx, cy = W / 2.0, pad_t + (H - pad_t - pad_b) / 2.0
         return W, H, S, cx, cy, S * 0.46
@@ -514,7 +515,7 @@ class OrbitalArchView(QWidget):
             _W, _H, _S, cx, cy, R = self._geom()
         b = self.data.body
         ang = self._angles(b)
-        pos = {}
+        pos = {"sun": (cx, cy, 0.0)}        # 太阳也要在表里! 否则 _draw_forces 取不到端点 ⇒ 太阳的连线全被跳过
         for key, frac in self.ORB.items():
             a = ang.get(key, 0.0)
             pos[key] = self._proj(frac * math.cos(a), frac * math.sin(a), 0.0, cx, cy, R)
@@ -611,6 +612,9 @@ class OrbitalArchView(QWidget):
         p.setPen(QPen(QColor(120, 132, 150, 170), 1))
         p.drawLine(QPointF(ex, ey), QPointF(mx, my))
         self._labels(p, pos, cx, cy, R, b, W, H, S)
+        # 文字块是不透明底 (为了可读) ⇒ 会把压住的线段遮住。再以极低透明度描一遍主体↔主体线,
+        # 让"力的作用"在文字块上也保持连续可见 (老倪: 连线不要很快消失/平顺柔和)。
+        self._draw_forces(p, cx, cy, R, b, ghost=True)
         self._legend(p, W, H, b)
         p.end()
 
@@ -629,7 +633,7 @@ class OrbitalArchView(QWidget):
             for j in range(len(pts) - 1):
                 p.drawLine(QPointF(pts[j][0], pts[j][1]), QPointF(pts[j + 1][0], pts[j + 1][1]))
 
-    def _draw_forces(self, p, cx, cy, R, b):
+    def _draw_forces(self, p, cx, cy, R, b, ghost=False):
         """力的相互作用: 每条真源连线两遍画 (外发光 + 实芯); 反馈类虚线**慢速流动**。
 
         不做闪烁/脉冲 —— 线宽 2.2px 实芯 + 6px 半透明发光, 人眼友好; 虚线相位连续推进,
@@ -655,6 +659,13 @@ class OrbitalArchView(QWidget):
             x2, y2 = float(pb[0]), float(pb[1])
             col, dashed = kind_style.get(e["kind"], (QColor("#8b949e"), False))
             bb = e["body_body"]
+            if ghost:                                  # 文字块之上的"不断线"透描 (只描主体↔主体的实线)
+                if not bb or e["kind"] == "feedback":
+                    continue
+                c2 = QColor(col); c2.setAlpha(70)
+                p.setPen(QPen(c2, 2.2))
+                p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+                continue
             core = QColor(col); core.setAlpha(210 if bb else 120)
             glow = QColor(col); glow.setAlpha(46 if bb else 22)
             pen_w = 2.2 if bb else 1.4
@@ -701,33 +712,202 @@ class OrbitalArchView(QWidget):
             out[nid] = (x, y)
         return out
 
-    def _labels(self, p, pos, cx, cy, R, b, W, H, S):
+
+    # ── 文字: 量宽 · 按分隔符换行 (宁可换行也不"…"截断) · 带底文字块 (防被线/球压) ─────
+    def _fm(self, size, bold=False):
+        f = QFont("DejaVu Sans")
+        f.setPixelSize(int(size))
+        f.setBold(bool(bold))
+        return QFontMetrics(f)
+
+    def _wrap(self, text, width, size=9, sep=" · "):
+        """按 `sep` 切段塞进 width 像素 (量宽用 QFontMetrics) —— 塞不下不截断, 交给下一行。"""
+        fm = self._fm(size)
+        words, lines, cur = [], [], ""
+        for part in str(text).split(sep):
+            words.append(part)
+        for i, w in enumerate(words):
+            piece = w if cur == "" else sep + w
+            if fm.horizontalAdvance(cur + piece) > width and cur:
+                lines.append(cur)
+                cur = w
+            else:
+                cur += piece
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    def _foot_lines(self, W):
+        """底部图注 (完整, 自动换行) —— 判据 J2 核"不许截断"。"""
+        s = self.data.body.get("sun", {})
+        e1, e2 = s.get("eig_min"), s.get("eig_max")
+        mtxt = ("度量 g dim=%s diag 特征值 %.3f~%.3f (引力=度量, 井扁率按此)" % (s.get("metric_dim"), e1, e2)) \
+            if e1 else "度量 g 未读 torque_live"
+        nv = self.info.get("checked", {})
+        miss = [k for k, v in nv.items() if not v.get("在")]
+        a = "力的相互作用 (画布真源): 主体↔主体 %d 条 · 主体↔体系外节点 %d 条 · 外圈灰点 = 体系外直接邻居 %d 个" % (
+            sum(1 for e in self._edges if e["body_body"]), sum(1 for e in self._edges if not e["body_body"]), len(self._ext))
+        bb = "线义: 实线青=几何条件 · 实线金=语义条件(直连) · 实线绿=动作/前馈 · 慢虚线紫=反馈/回灌(流动, 不闪)"
+        c = "角度映射: 水星←接触进度‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步λ · 木星←η · 月球与原子技能=地球相位(协同行进)"
+        d = "真源: engine_latest(帧龄 %s) · torque_live(%s) · skill_latest · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布 %d 节点/%d 连线 · 节点映射核对 %d/%d 全命中" % (
+            ("%.1fs" % s["帧龄"]) if isinstance(s.get("帧龄"), (int, float)) else "—", mtxt,
+            (self.data.frames or {}).get("n", 0), len(self.data.nodes), len(self.data.links), len(BODIES) - len(miss), len(BODIES))
+        out = []
+        for t in (a, bb, c, d):
+            out += self._wrap(t, max(80, W - 12), 9)
+        if miss:
+            out.append("⚠ 缺源: %s" % ",".join(miss))
+        if self.data.err:
+            out.append("⚠ 读源异常 %d 处" % len(self.data.err))
+        return out
+
+    def _block(self, p, lines, x, y, w, color, size=9, frame=True):
+        """画一块文字 (带半透明底 + 细框 ⇒ 压在环/线上也读得清) —— 返回外接矩形。"""
+        lines = [str(t) for t in lines if str(t) != ""]
+        if not lines:
+            return QRectF()
+        fm = self._fm(size)
+        h = 11 * len(lines) + 4
+        rect = QRectF(x, y, w, h)
+        if frame:
+            p.setPen(QPen(QColor(48, 64, 80, 190), 1))
+            p.setBrush(QColor(13, 17, 23, 205))
+            p.drawRoundedRect(rect, 3, 3)
+        p.setPen(color)
+        f = QFont("DejaVu Sans"); f.setPixelSize(int(size)); p.setFont(f)
+        for i, t in enumerate(lines):
+            p.drawText(QRectF(rect.x() + 3, rect.y() + 2 + i * 11, rect.width() - 6, 11),
+                       Qt.AlignLeft | Qt.AlignVCenter, t)
+        return rect
+
+    def _body_line(self, key, d):
+        """球下的真值一行 (完整短句, 不截断); 取不到 ⇒ 诚实文案。"""
+        return self._body_text(key, d)
+
+    def _label_blocks(self, pos, b, cx, cy, R, S, W, H):
+        """算出**所有文字块的外接矩形** (先避让再画) —— 判据 J1 用它核「任何两块文字不重叠」。
+
+        避让规则 (老倪 2026-10-16 看图: 月球标签压地球标签 / 金球压水星参数行):
+          · 每颗行星的标签沿"离太阳"的径向往外让 (r + 26px 起), 太阳球体再也压不住它;
+          · 月球标签沿"离地球"的方向让 (不与地球标签同侧);
+          · 与已放置的块/球体圆/卫星圈相交 ⇒ 沿自己的方向每次推 6px, 最多 26 次。
+        块宽 208px (与侧栏 682px 宽兼容), 每行 11px。
+        """
+        w = min(228.0, max(150.0, W - 24))
+        pad_top, pad_bot = 20, 12 + 11 * len(self._foot_lines(W))
+        placed, out = [], []
+
+        def keepouts():
+            ks = [(cx, cy, S * self.RAD["sun"] + 4)]                     # 太阳球体
+            for k in ("mercury", "earth", "mars", "jupiter"):
+                x, y, _z = pos[k]
+                ks.append((x, y, S * self.RAD[k] + 3))
+            for x, y, _z, _sk in pos["_sat"]:
+                ks.append((x, y, S * self.RAD["sat"] + 4))
+            return ks
+
+        def place_near(x, y, lines, color, size, ux, uy, own_r):
+            """把文字块贴到 (x,y) 这颗球的**外侧**: 块的近边离球 own_r+12px, 朝 (ux,uy) 展开。
+
+            坑 (真踩过): 块宽 228 而径向偏移只有 ~47px ⇒ 以 anchor 为中心的块会反过来盖住自己的球,
+            每个候选位置都被自身球的 keep-out 判"冲突", 最后退化成重叠最小者(跑到画布另一头)。
+            所以径向偏移必须 ≥ 块在该方向上的半宽 + own_r。
+            再在候选方向 (径向 → ±45° → ±90° → ±135° → 反向) 上 6px 步扫, 先 clamp 再判冲突。
+            """
+            h = 11 * len(lines) + 4
+            ks = keepouts()
+
+            def rect_at(ox, oy):
+                if abs(ux) >= abs(uy):                         # 主要横向: 块的近边贴球
+                    px = x + own_r + 12 if ux >= 0 else x - own_r - 12 - w
+                    py = y + oy - h / 2.0
+                    px += ox
+                else:                                          # 主要纵向
+                    px = x + ox - w / 2.0
+                    py = y + own_r + 12 if uy >= 0 else y - own_r - 12 - h
+                    py += oy
+                r = QRectF(px, py, w, h)
+                if r.x() < 2:
+                    r.moveLeft(2)
+                if r.x() + r.width() > W - 2:
+                    r.moveLeft(max(2, W - 2 - r.width()))
+                if r.y() < pad_top:
+                    r.moveTop(pad_top)
+                if r.y() + r.height() > H - pad_bot:
+                    r.moveTop(max(pad_top, H - pad_bot - r.height()))
+                return r
+
+            base = math.atan2(uy, ux)
+            best, best_ov = None, None
+            for ang in [base + d for d in (0.0, 0.7854, -0.7854, 1.5708, -1.5708, 2.3562, -2.3562, 3.1416)]:
+                dx, dy = math.cos(ang), math.sin(ang)
+                for k in range(0, 26):
+                    rect = rect_at(dx * 6 * k, dy * 6 * k)
+                    ov = 0.0
+                    for r in placed:
+                        inter = rect.intersected(r)
+                        if not inter.isEmpty():
+                            ov += inter.width() * inter.height()
+                    for (kx, ky, kr) in ks:
+                        nx = max(rect.x(), min(kx, rect.x() + rect.width()))
+                        ny = max(rect.y(), min(ky, rect.y() + rect.height()))
+                        dd = math.hypot(nx - kx, ny - ky)
+                        if dd < kr:
+                            ov += (kr - dd) * 60.0
+                    if ov <= 0.0:
+                        placed.append(rect)
+                        out.append((rect, lines, color, size))
+                        return rect
+                    if best_ov is None or ov < best_ov:
+                        best, best_ov = rect, ov
+            placed.append(best)
+            out.append((best, lines, color, size))
+            return best
+
         names = {"mercury": "☿ 接触流形", "earth": "♁ 前馈加速器", "mars": "♂ DiT 动作头",
                  "jupiter": "♃ 性能流形"}
-        p.setPen(FG); f = QFont("DejaVu Sans"); f.setPixelSize(10); p.setFont(f)
-        for key, txt in names.items():
+        for key in ("mercury", "mars", "jupiter", "earth"):
             x, y, _z = pos[key]
-            p.drawText(QRectF(max(0, x - 60), y + 8, 120, 12), Qt.AlignCenter, txt)
-            sub = self._body_text(key, b.get(key, {}))       # 球下的真值一行 (取不到就写"未算/未测")
+            ux, uy = x - cx, y - cy
+            n = math.hypot(ux, uy) or 1.0
+            ux, uy = ux / n, uy / n
+            lines = [names[key]]
+            sub = self._body_line(key, b.get(key, {}))
             if sub:
-                p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
-                p.drawText(QRectF(max(0, x - 92), y + 19, 184, 11), Qt.AlignCenter,
-                           self._fit_text(p, sub, 184))
+                lines += self._wrap(sub, w - 8, 9)
+            place_near(x, y, lines, FG if key != "earth" else QColor("#cfe4ff"), 9,
+                       ux, uy, S * self.RAD[key])
+        # 太阳 (贴球底)
+        slines = ["☀ 流形引擎"] + self._wrap(self._sun_text(b.get("sun", {})), w - 8, 9)
+        place_near(cx, cy, slines, GOLD, 9, 0.0, 1.0, S * self.RAD["sun"])
+        # 卫星群 (绕地球的那一圈的外侧)
         if pos["_sat"]:
-            sx, sy = pos["_sat"][0][0], pos["_sat"][0][1]
-            p.setPen(QColor("#7fd1c1")); f.setPixelSize(9); p.setFont(f)
-            n = len(pos["_sat"])
-            p.drawText(QRectF(max(0, sx - 90), sy + 10, 180, 11), Qt.AlignCenter,
-                       "🛰 原子技能 %d 颗 (绕地球)" % n)
+            gx = sum(x for x, _y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
+            gy = sum(y for _x, y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
+            ux, uy = gx - pos["earth"][0], gy - pos["earth"][1]
+            n = math.hypot(ux, uy) or 1.0
+            nsk = len(pos["_sat"])
+            place_near(gx, gy, ["🛰 原子技能 %d 颗 (绕地球公转)" % nsk], QColor("#7fd1c1"), 9,
+                       ux / n, uy / n, self.SAT_R * R + 8)
+        # 月球 (沿"离地球"方向往外)
         mx, my, _mz = pos["moon"]
-        p.setPen(DIM); f.setPixelSize(9); p.setFont(f)
-        p.drawText(QRectF(max(0, mx - 46), my + 7, 92, 11), Qt.AlignCenter, "🌙 校正器")
-        # 太阳的文字
-        p.setPen(FG); f.setPixelSize(12); f.setBold(True); p.setFont(f)
-        p.drawText(QRectF(cx - 90, cy + S * self.RAD["sun"] + 6, 180, 14), Qt.AlignCenter, "☀ 流形引擎")
-        p.setPen(GOLD); f.setPixelSize(9); f.setBold(False); p.setFont(f)
-        p.drawText(QRectF(6, cy + S * self.RAD["sun"] + 20, W - 12, 12), Qt.AlignCenter,
-                   self._fit_text(p, self._sun_text(b.get("sun", {})), W - 16))
+        ux, uy = mx - pos["earth"][0], my - pos["earth"][1]
+        n = math.hypot(ux, uy) or 1.0
+        _mr = math.hypot(mx - pos["earth"][0], my - pos["earth"][1]) + S * self.RAD["earth"] + 10
+        place_near(mx, my, ["🌙 校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n, _mr / 2.0)
+        return out, placed
+
+    def label_rects(self):
+        """给判据用: 当前布局下所有文字块矩形 (两两不许重叠)。"""
+        W, H, S, cx, cy, R = self._geom()
+        pos = self.positions(cx, cy, R)
+        out, placed = self._label_blocks(pos, self.data.body, cx, cy, R, S, W, H)
+        return placed
+
+    def _labels(self, p, pos, cx, cy, R, b, W, H, S):
+        blocks, _placed = self._label_blocks(pos, b, cx, cy, R, S, W, H)
+        for rect, lines, color, size in blocks:
+            self._block(p, lines, rect.x(), rect.y(), rect.width(), color, size)
 
     @staticmethod
     def _fit_text(p, text, width):
@@ -737,31 +917,13 @@ class OrbitalArchView(QWidget):
             return str(text)
 
     def _legend(self, p, W, H, b):
-        p.setPen(DIM); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
-        y0 = H - 44
-        s = b.get("sun", {})
-        e1, e2 = s.get("eig_min"), s.get("eig_max")
-        mtxt = ("度量 g dim=%s %s 特征值 %.2f~%.2f" % (s.get("metric_dim"), s.get("metric_mode"), e1, e2)) if e1 else "度量 g 未读 torque_live"
-        nv = self.info.get("checked", {})
-        miss = [k for k, v in nv.items() if not v.get("在")]
-        p.drawText(QRectF(4, y0, W - 8, 11), Qt.AlignLeft,
-                   self._fit_text(p, "力的相互作用 (画布真源): 主体↔主体 %d 条 · 主体↔体系外节点 %d 条 · 外圈灰点 = 体系外直接邻居 %d 个"
-                                  % (sum(1 for e in self._edges if e["body_body"]),
-                                     sum(1 for e in self._edges if not e["body_body"]), len(self._ext)), W - 8))
+        """底部图注: **完整** (自动换行, 不省略号截断) —— 行数已经算进 _geom 的底栏高度。"""
+        lines = self._foot_lines(W)
         p.setPen(DIM)
-        p.drawText(QRectF(4, y0 + 11, W - 8, 11), Qt.AlignLeft,
-                   self._fit_text(p, "线义: 实线青=几何条件 · 实线金=语义条件(直连) · 实线绿=动作/前馈 · 慢虚线紫=反馈/回灌(流动, 不闪) · "
-                                  "角度映射: 水星←进度·地球←前馈请求·火星←块步λ·木星←η·月球与卫星=地球相位(协同)", W - 8))
-        p.setPen(DIM)
-        p.drawText(QRectF(4, y0 + 22, W - 8, 11), Qt.AlignLeft,
-                   self._fit_text(p, "真源: engine_latest(帧龄 %.1fs) · torque_live(%s) · skill_latest · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布 %d 节点/%d 连线 · 节点映射核对 %d/%d"
-                                  % (s.get("帧龄") if isinstance(s.get("帧龄"), (int, float)) else -1.0, mtxt,
-                                     (self.data.frames or {}).get("n", 0), len(self.data.nodes), len(self.data.links),
-                                     len(BODIES) - len(miss), len(BODIES)), W - 8))
-        if miss or self.data.err:
-            p.setPen(RED)
-            p.drawText(QRectF(4, y0 + 33, W - 8, 11), Qt.AlignLeft,
-                       self._fit_text(p, "⚠ 缺: %s %s" % (",".join(miss), ("· 读源异常 %d 处" % len(self.data.err)) if self.data.err else ""), W - 8))
+        f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
+        y0 = H - 8 - 11 * len(lines)
+        for i, t in enumerate(lines):
+            p.drawText(QRectF(4, y0 + i * 11, W - 8, 11), Qt.AlignLeft | Qt.AlignVCenter, t)
 
     def _sphere(self, p, x, y, r, col, energy=None):
         r = max(2.0, float(r))

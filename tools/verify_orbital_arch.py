@@ -313,7 +313,7 @@ def main():
     chk("E4", "视图是只读的 (源码里没有写文件口; 只读真源画图)", {"命中写口": writes}, not writes, "无写口")
 
     # ═══ H 鼠标可操作 (旋转 / 缩放 / 复位) ═══
-    from PyQt5.QtCore import QPoint, Qt
+    from PyQt5.QtCore import QPoint, QPointF, Qt
     from PyQt5.QtGui import QMouseEvent
     v3 = OA.OrbitalArchView()
     v3.resize(680, 900)
@@ -391,6 +391,54 @@ def main():
         {"视图线数": len(ed), "主体↔主体": len(_bb), "主体↔体系外": len(_ex2),
          "真源应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
         _src_ok and _want == _got and len(ed) > 20, "真源===视图, 一条不漏一条不造")
+    # I1b 像素级: 每条主体↔主体线在画面里**真的可见** (清单相等 ≠ 真画出来 —— 端点取不到会被静默跳过)
+    _A1b = _arr(v3.grab().toImage())
+    _rs1b = v3.label_rects()
+    _p1b = v3.positions()
+    _cir = [(_p1b["_cx"], _p1b["_cy"], 0.052 * _p1b["_R"])]
+    for _k in ("mercury", "earth", "mars", "jupiter"):
+        _cir.append((_p1b[_k][0], _p1b[_k][1], OA.OrbitalArchView.RAD[_k] * _p1b["_R"]))
+
+    def _visible(nid_a, nid_b, kind):
+        def _pt(nid):
+            if OA.OrbitalArchView._key_of(nid) == "sun":
+                return (_p1b["_cx"], _p1b["_cy"])
+            t = _p1b[OA.OrbitalArchView._key_of(nid)]
+            return (t[0], t[1])
+        ax, ay = _pt(nid_a)
+        bx, by = _pt(nid_b)
+        col = {"condition": [0x39, 0xc5, 0xcf], "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
+               "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[kind]
+        mk = np.abs(_A1b - np.array(col)).sum(axis=2) < 200
+        dx, dy = bx - ax, by - ay
+        L = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / L, dx / L
+        used, seen = 0, 0
+        for f in [0.10 + 0.04 * i for i in range(21)]:
+            qx, qy = ax + dx * f, ay + dy * f
+            if any(r.adjusted(-3, -3, 3, 3).contains(QPointF(qx, qy)) for r in _rs1b):
+                continue
+            if any(math.hypot(qx - kx, qy - ky) < kr + 3 for (kx, ky, kr) in _cir):
+                continue
+            used += 1
+            hit = False
+            for j2 in range(-24, 25):
+                t = j2 * 0.125
+                x, y = int(round(qx + nx * t)), int(round(qy + ny * t))
+                if 0 <= y < mk.shape[0] and 0 <= x < mk.shape[1] and mk[y, x]:
+                    hit = True
+                    break
+            seen += hit
+        return used, seen
+
+    _vis = {}
+    for _e in _bb:
+        _u, _s2 = _visible(_e["f"], _e["t"], _e["kind"])
+        _vis["%s→%s" % (_e["f"], _e["t"])] = [int(_s2), int(_u)]
+    plot = all(u >= 3 and (s / u) >= 0.8 for s, u in _vis.values())
+    chk("I1b", "像素级: 每条主体↔主体线在画面里**真的可见** (可用采样点 ≥80% 命中该线色; 文字块/球体遮挡处跳过)",
+        {"各线 命中/可用": _vis}, plot and len(_vis) == len(_bb), "每条线 ≥80% 命中 (端点取不到会被静默跳过 → 这条能抓)")
+
     # 线宽: 沿主体↔主体线取 7 个位置, 每处沿**法向**取剖面, 最长连续命中 ≈ 该处线宽。
     #   取中位数判定 (单点会被"线正好压在轨道虚线/光晕上"这类局部干扰打偏 —— 判据要稳, 不能时红时绿)。
     p2 = v3.positions()
@@ -413,8 +461,11 @@ def main():
             _dx, _dy = _b2[0] - _a[0], _b2[1] - _a[1]
             _L = math.hypot(_dx, _dy) or 1.0
             _nx, _ny = -_dy / _L, _dx / _L
-            for _f in (0.30, 0.37, 0.43, 0.50, 0.57, 0.63, 0.70):
+            _rsI = v3.label_rects()                     # 文字块是不透明底, 落进去的采样点要跳过
+            for _f in (0.22, 0.30, 0.37, 0.43, 0.50, 0.57, 0.63, 0.70, 0.78):
                 _qx, _qy = _a[0] + _dx * _f, _a[1] + _dy * _f
+                if any(r.adjusted(-2, -2, 2, 2).contains(QPointF(_qx, _qy)) for r in _rsI):
+                    continue
                 _prof = []
                 for _i in range(-40, 41):                    # ±5px, 步长 0.125px
                     _t = _i * 0.125
@@ -430,7 +481,7 @@ def main():
     chk("I2", "连线不细 (主体↔主体线 2.2px 实芯 + 柔光): 沿线 7 处法向剖面线宽的中位数 ≥ 2px",
         {"线": "%s→%s (%s)" % (_e0["f"], _e0["t"], _e0["kind"]) if _e0 else None, "中点": _mid,
          "7 处线宽 px": _runs, "中位数": _med},
-        _med >= 2.0, "中位数 ≥2px (不是 1px 细丝, 也不靠单点侥幸)")
+        _med >= 2.0 and len(_runs) >= 3, "中位数 ≥2px (≥3 个有效采样点, 不靠单点侥幸)")
     # 不闪/不消失: 相邻两帧 (一个 tick) 的线像素数变化小, 且都没有归零; 三帧内不做透明度脉冲
     def _linepx():
         _a = _arr(v3.grab().toImage())
@@ -451,6 +502,40 @@ def main():
         0 < _rel < 0.35 and (max(_c1, _c2, _c3) - min(_c1, _c2, _c3)) / max(1.0, (_c1 + _c2 + _c3) / 3.0) < 0.12
         and min(_c1, _c2, _c3) > 300,
         "变化占比 <0.35 · 三帧线量极差 <12% · 每帧线像素 >300 (不闪不消失)")
+
+    # ═══ J 文字不许压盖/截断 (老倪红线; 看图抓到过: 月球标签压地球标签 / 金球压水星参数行) ═══
+    _W = int(v3.width())
+    _H = int(v3.height())
+    _rs = v3.label_rects()
+    _inter = [(i, j) for i, r in enumerate(_rs) for j, r2 in enumerate(_rs) if j > i and r.intersects(r2)]
+    _oob = [i for i, r in enumerate(_rs)
+            if r.x() < 1 or r.y() < 1 or r.x() + r.width() > _W - 1 or r.y() + r.height() > _H - 1]
+    _minarea = min((r.width() * r.height() for r in _rs), default=0)
+    chk("J1", "文字块互不压盖、都在画布内: 每个球/团队标签各占一块 (先避让再画)",
+        {"文字块数": len(_rs), "相交对": _inter, "出画布": _oob,
+         "块位置": [[round(r.x()), round(r.y()), round(r.width()), round(r.height())] for r in _rs]},
+        len(_rs) >= 5 and not _inter and not _oob and _minarea > 0, "无相交 · 无出界")
+    _imJ = _arr(v3.grab().toImage())
+    _empty = []
+    for _i, _r in enumerate(_rs):
+        _box = _imJ[int(_r.y()):int(_r.y() + _r.height()), int(_r.x()):int(_r.x() + _r.width())]
+        _bright = int((_box.sum(axis=2) > 240).sum()) if _box.size else 0
+        if _bright < 30:
+            _empty.append((_i, _bright))
+    chk("J2", "每块文字**真的画出来了** (块内亮像素 ≥30: 不是空框/被盖成背景色)",
+        {"亮像素最少的块": sorted([(i, int((_imJ[int(r.y()):int(r.y() + r.height()), int(r.x()):int(r.x() + r.width())].sum(axis=2) > 240).sum())) for i, r in enumerate(_rs)], key=lambda t: t[1])[:3],
+         "疑似空块": _empty}, not _empty, "每块都有字")
+    _fl = v3._foot_lines(_W)
+    _fmJ = v3._fm(9)
+    _tooWide = [t for t in _fl if _fmJ.horizontalAdvance(t) > _W - 8]
+    _joined = "\n".join(_fl)
+    chk("J3", "底部图注**完整** (自动换行写全, 不用省略号截断): 无「…」· 每行都不超宽 · 关键项都在",
+        {"行数": len(_fl), "超宽行": _tooWide,
+         "含省略号": [t for t in _fl if "…" in t],
+         "关键项": {k: (k in _joined) for k in ("力的相互作用", "线义", "角度映射", "真源", "torque_live", "节点映射核对")}},
+        len(_fl) >= 4 and not _tooWide and not any("…" in t for t in _fl)
+        and all(k in _joined for k in ("力的相互作用", "线义", "角度映射", "真源", "torque_live", "节点映射核对")),
+        "全在 · 无省略号 · 无超宽")
 
     # ═══ F 文案诚实 ═══
     chk("F1", "图注写清 角度映射 (位置不是装饰, 是实测量的映射)",
