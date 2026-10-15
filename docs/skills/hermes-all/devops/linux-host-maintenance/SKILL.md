@@ -262,6 +262,9 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 
 这类话要的是**最简现状**：哪些自愈了、哪些还缺、缺在哪一层。一条命令跑完只读清点：
 （**重启后必看 cron ticker 心跳** —— 偏钟下它会静默卡死, 13 个守护任务一起哑, 见 §9g。）
+**可直接跑 `scripts/reboot_verify.sh`** —— 只读, 一条出齐下列全部数字(含开机满 10min 的两点网络复采、cron 心跳双向判活、
+帧号递增双采), 输出就是四行汇报的底稿; 以下为它覆盖的同款命令, 手工跑也行:
+（每条命令都是实测过的, 但**脚本本身是这组命令的首次组装** ⇒ 第一次跑先通读输出再采信, 发现哪段不合本机实际就直接改脚本）
 ```bash
 date; uptime
 systemctl --failed --no-pager
@@ -283,7 +286,13 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
   `lsusb | grep -i ethernet` 也还看不到它, 此时 `ping Orin` 会经默认路由报 `No route to host` ⇒ 据此报
   「环境缺失 ⇒ 拒发动作」是**假警报**(实测开机 1min 时判定缺失、90s 后网卡就位且 Orin/工控机全通)。
   判据: `ip -br addr` 里真出现 `192.168.23.x` + `ping -c1 -W2 <Orin>` 通才算「网卡在位」;
-  一次不通就**隔 60~90s 复采一次**再下结论 —— 两次都在位才是真缺失。
+  一次不通就**隔 60~90s 复采一次**再下结论 —— **两次采样都查不到**才判真缺失(实操口径见 §9e③: 开机 5min 与 10min 两个点)。
+  ⚠️ **「等开机满 N 分钟再复采」必须用 `/proc/uptime` 计时, 不要用 `date -d` 做相对算术**:
+  `date -d "$(uptime -s) + 10 minutes"` 里 GNU date 把 `+ 10` 读成**时区偏移**(UTC+10:00) ⇒ 算出比现在**早 2 小时**的时间戳,
+  于是 `while [ now -lt target ]; do sleep 10; done` **第一轮就退出**, 第二点采样其实离开机只有 4 分钟, 却打印"已满10min" ——
+  **凭空造出"两次复采一致 ⇒ 真缺失"的结论**(这条比采样本身更危险: 它让"两点复采"这条防线静默失效)。
+  定式: `while [ "$(awk '{print int($1)}' /proc/uptime)" -lt 600 ]; do sleep 10; done`;
+  `scripts/reboot_verify.sh --wait` 已按这个计时写好。
 - **本机那 5 个手工进程一律走官方复原脚本，别手敲命令行**（幂等，已在跑的不重拉）：
   `bash tools/boot_restore.sh check` 先看清点 → `bash tools/boot_restore.sh local` 补齐
   （cam_live_stream 8791+8793 / l5_live_mark / vl_safety_monitor / l2_daemon / studio）；它自己按
@@ -292,6 +301,10 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
   这两个要单独拉，且按 §9e① **单独一条短命令**（跟长动作串在同一条里会被超时一起带走）。
 - **「有进程」≠「在役」**：端口没在监听就是没在服务。逐个 `ss -ltnp | grep <端口>` + 一次 HTTP 探活，双证后才敢说「起来了」。
   探活判据要认得**合法拒绝**：闸门不带 `?k=<token>` 给 403、HIL 终端口不带 token 给 403 —— 有响应码就是「在役」，不是故障。
+- **开机后先读 `hermes cron list` 的 `Last run` 会看到**重启前**那一轮的记录 —— 连上一轮的 `error` 一起**:
+  实测开机 6min 时读到的 `Last run` 全部早于开机时刻, 「工位推流守护 error: Script exited with code 1」是**上电前**那轮的,
+  同一任务开机后下一轮就是 ok。⇒ 判读只认**开机之后发生**的 run; 不足一个调度周期就等一轮, 或 `hermes cron tick` 补火后再读,
+  否则会把已被取代的失败当当前故障报给用户(反向同理: 上一轮的 ok 也不代表本轮跑过)。
 - `systemctl is-active` 给 `activating` + 反复计数 ⇒ `journalctl -u <unit> -n 20` 看真实原因，不要因为「单元存在」就报正常。
 - 汇报按「本机已起 / 本机还缺 / 外设缺失 / 资源(GPU·磁盘)」四行给，一眼能看完，不写「已恢复正常」。
 

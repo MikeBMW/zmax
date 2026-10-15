@@ -134,7 +134,7 @@ metadata:
 2. 画布 JSON → 只经 `flows.save_canvas()` 写 (自动备份 + 校验不过拒写); 写 `flows/` 软链也通。
 3. 改完必跑 (数字必须与迁移基线一致):
    `gui-venv311/bin/python tools/verify_engineering.py` (架构自检 6 项: 逻辑住包里/JSON 真源/档位契约/壳一致)
-   `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_canvas_render.py` (应仍 **87 节点项 / 172 连线项**)
+   `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_canvas_render.py` (2026-10-15 实测 **90 节点项 / 201 连线项**)
    `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/canvas_level_audit.py` (应仍 R1 15·R2 34·R3 13·R4 7·R5 3·真缺口 0)
 
 ⚠️ **注册 key 重名会静默覆盖**: 同一个 key 注两次 ⇒ 后一条把前一条的 fn+关键字一起换掉,
@@ -247,8 +247,8 @@ metadata:
 ## 关键数字基线 (每次改画布前后都要对)
 | 指标 | 基线 | 怎么查 |
 |---|---|---|
-| 画布节点项 / 连线项 | **89 / 183** (2026-10-09 实测; 2026-10-08 为 89/182 · 迁移时 87/172) | `verify_canvas_render.py` |
-| 节点数 / 连线数 (JSON) | **89 / 184** (2026-10-09 实测; 2026-10-08 为 89/183) | 直接数 `state_space_obs.json` |
+| 画布节点项 / 连线项 | **90 / 201** (2026-10-15 实测; 2026-10-09 为 89/183 · 迁移时 87/172) | `verify_canvas_render.py` |
+| 节点数 / 连线数 (JSON) | **90 / 202** (2026-10-15 实测; 2026-10-09 为 89/184) | 直接数 `state_space_obs.json` |
 | 档位审计 | R1 15 · R2 **36** · R3 13 · R4 7 · R5 3 · 真缺口 0 · 无执行注册 0 | `canvas_level_audit.py` |
 | 档位测试 | L2 275/275 · L3 94/94 · L4 178/178 | `xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py --level Lx` |
 
@@ -365,6 +365,24 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 只是不 `addWidget` 进面板; `MeasureHub` 类保留停用 (`self.measure = None`), 一会话里就能复活。
 **副作用要如实报**: 「双击节点参数直接标定/调节」入口随树一块从面板消失 (编辑器代码还在)。
 → 教训: 用户说「只保留 X」时, 把**同时失去的能力**(而不只是行数) 一并报出来, 别让人事后才发现。
+
+### 侧栏定稿: 3 页 = 主参数 M / 数据总线 / 参数中心 (删运行开关)
+老倪: 「画布右侧栏, 保留 主参数：对应流形引擎； 数据总线：对应数据空间的 Trace； 参数中心：对应数据库服务的所有参数；删除 运行开关。」
+- 下拉只剩 3 行, **三处必须同源**: `cmb_view` 文案 · `VIEW_KEYS` 元组 · 工程存档段 `available_views`(`project_file.py`)。
+  加减页只在 `_switch_view` 的**表驱动**里动一条, 别再堆索引 if。
+- 🔴 **撤下某一页 = 控件对象留下, 只是不进可见布局** (`setVisible(False)` / 不 `addWidget`), 绝不删对象:
+  引擎与画布有几十处 `self.chk_*` / `dock.calib` / `dock.run_cfg` 的读点(实测 40 处), 删对象 = 引擎早退 + 一批判据全红。
+  撤一页时**被撤页承载的能力要给出新去处**(标定数字改从「参数中心」🟡标定 类看; 6 个开关仍在主界面「参数中心」🟠开关 类可改)。
+- 「🎛 参数中心」页 = **只读**, 直连工程库只读服务 `http://127.0.0.1:8798/params`(`engineering_db.serve` 的端点:
+  `{total, by_cat, params[]}`); 服务没起就**诚实空态 + 给启动命令**, 不显示 0 或旧值。
+  **不许在这里开第二条写路径** —— 唯一写口仍是主界面「参数中心」页(`param_center.py`: 校验/影响链/备份/留痕)。
+- 🔴 **页面上的数必须来自它要写的那个真源**: 「主参数 M」页原来读**画布节点快照**的 M(画布默认 1.0), 而真源
+  `config/calib/zmax_manifold.json` 是现场标定值 ⇒ 页面显示 1.0, 按一下「✏️ 写 M」就把真源覆盖成 1.0。
+  修法: 微调框**以真源为准**(真源缺才退回节点值), 两者不一致时页头标 `⚠真源≠节点`(具体数字塞 tooltip, 行仍守 ≤115 字预算)。
+- 判据 `tools/verify_sidebar_views.py`(改侧栏就补一份同型): 3 行文案 · 逐页真切换(一次只有一页可见) ·
+  参数中心表行数 == 服务 total · 撤下两页对象在且永不显示 · 开关仍是同一对象 · `view_is` 表驱动仍准 · 存档同源 · 三页出图。
+- 连带一致性: 注册表与单一工程库必须**同数** (`param_registry.registry()` 少 58 条 `spec:perf.*` ⇒ 759 ≠ 817)
+  ⇒ 补 `scan_perf_spec()` 读 `config/platform/zmax_perf_spec.json`(只读, `status=已定义(目标值)`, 类别色/图标同补)。
 
 ### 面板 "没有用的都删掉" 怎么答才站得住
 1. **逐个视图切换实测** (offscreen 真建窗口 + `setCurrentIndex` + `processEvents` + 读 `isVisible()`/标签/树/表行数),

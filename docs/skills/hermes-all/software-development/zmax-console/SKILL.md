@@ -11,7 +11,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全) · 右上角三色状态灯真源+控制台重启(禁 systemctl restart) `references/status-lights-and-restart.md` · 首页 hero 按钮基线 `references/ui-hero-buttons-slimming.md`。
 
-> 📄 Roadmap Phase 卡(描述由工程库生成·点开可编辑·主指标整齐 + 真窗几何取证 + 整页横向溢出陷阱): `references/roadmap-phase-cards.md`
+> 📄 Roadmap Phase 卡(描述由工程库生成·点开可编辑·主指标整齐 + 真窗几何取证 + 整页横向溢出陷阱 + **卡面不许写解释性横幅文字: 状态用图标/说明进 tooltip**): `references/roadmap-phase-cards.md`
 
 > 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md` · `console-title-and-debug-parity.md`(标题·调试同源)
 > 🧠 `status-panel-and-model-engine-window.md` = 底栏面板一行 · 模型引擎窗口 L2~L5 (训练状态+控制+执行任务工程) · 模型配置接线 · GUI 硬约束判据 (不截断/一屏放得下)

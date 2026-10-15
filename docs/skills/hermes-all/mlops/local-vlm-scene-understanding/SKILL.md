@@ -264,6 +264,24 @@ max_tokens=500  → 1.9s · 正常回答 ✓     (reasoning_tokens=225, completi
   判据里加 `n < 20 ⇒ 样本不足, 不下结论`。**两个指标一起看**(合法率 + 字段命中):
   只盯合法率会被"学会吐 JSON 但内容更差"骗过(实测合法率 +0.167 而字段命中 -0.033)。
 
+## 十七、加载本地视觉权重: 别写死 `AutoModelForCausalLM`
+SmolVLM / Idefics 系权重的 config 与 CausalLM 不匹配, 直接报
+`ValueError: Unrecognized configuration class <class 'transformers.models.smolvlm...'>`。
+按模型族**依次试**, 第一个成功的留用, 全失败才 raise(把每次的异常串起来报, 便于定位):
+```python
+for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModelForCausalLM"):
+    cls = getattr(__import__("transformers", fromlist=[name]), name)
+```
+产出里记下**哪个类加载的 / backend 名**(如 `l5-vlm` vs 退化成 `encoder+fusion`/`none`) —— 否则
+"VLM 真跑过了"这句无法复核; 只有见到 `l5-vlm` 才能说走了语言推理。
+同理别靠**目录名大小写**找权重: 大小写变体都试(`l5_*` / `L5_*`), 实测漏一个大写变体就静默退化成兜底实现。
+
+## 十八、输入图像先过"可用性闸" (全黑/纯色不是证据)
+送 VLM/YOLO 前算灰度 `mean`/`std`, `mean≤3 或 std≤2` 判**不可用**: 跳过模型调用(省算力)、
+在输出里标 `degraded=true` + 原因, **不要**把黑图送上去再拿模型的一句"看不清/未见物体"当对现场的判断。
+实测: 产线侧相机某时刻 `kind=origin` 帧灰度均值 **0.0**(全黑) ⇒ 下游 0 检出、VLM 无输入,
+真因在取像/灯光/曝光, 不在模型。**先量画面, 再问模型**; 画面不合格时如实报"这一路无视觉证据, 本次仅依据状态量推理"。
+
 ## 坑清单
 | 坑 | 对策 |
 |---|---|
@@ -296,3 +314,6 @@ max_tokens=500  → 1.9s · 正常回答 ✓     (reasoning_tokens=225, completi
 | "训练完成/loss 收敛"但只有 1 条样本 | max_len 过滤**静默丢样本** ⇒ 丢弃必须计数打印 |
 | 基座 A/B 离谱地差(0.0 复述提示词) | 先查图: SmolVLM `do_image_splitting` 把裁剪图上采样切 9 块 ⇒ 关掉再看 |
 | 12 帧 val 差 2 条就报"提升" | 判据加样本量闸(n<20 不下结论) + 合法率与字段命中双指标 |
+| 加载 SmolVLM/Idefics 系权重报 `Unrecognized configuration class` | 别写死 `AutoModelForCausalLM` ⇒ Vision2Seq→ImageTextToText→CausalLM 依次试, 并记下哪个类加载的 |
+| 权重目录明明在却报"找不到"、静默退化成兜底实现 | 大小写变体都找(`l5_*` / `L5_*`), 并把实际 backend 名打进产出 |
+| 输入帧全黑/纯色还送去 VLM | 先算灰度 mean/std(mean≤3 或 std≤2 = 不可用) ⇒ 跳过调用 + 标 degraded, 别把黑图当证据 |

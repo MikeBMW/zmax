@@ -6,7 +6,8 @@ description: Use when PyQt5 GUI 自动取证测试 — 驱动真实窗口截图�
 # PyQt5 GUI 自动取证测试 (真人测试工程师自动化)
 
 触发: 让 GUI 自动化"操作所有图表/窗口"做验证、每个用例要截图证据、报告要嵌图。
-Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`。
+Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
+断言写法 / 证据采集 / 禁词类判据的坑见 `references/assertion-and-evidence-pitfalls.md`。
 
 ## 通用工作流
 1. 环境: PyQt5 venv; 有 DISPLAY 用 X (3D/GL 窗口才能渲染), 无则 `QT_QPA_PLATFORM=offscreen` (3D/GL 项会失败 — 诚实记录 FAIL, 别假装)

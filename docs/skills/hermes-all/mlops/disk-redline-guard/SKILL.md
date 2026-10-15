@@ -74,6 +74,47 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
 - 与 `pgrep -f "studio.py"` 把本 shell 杀了是同一类自匹配。**grep 必须 `| grep -v <本脚本名>`。**
 - 同理: 审计脚本要用 `--dry-run` 先验证"在役链一条都没匹配上", 再真跑。
 
+## ⚠️ 2026-10-15 实测: 336G → 302.8G (释放 33.3G), **手工可动杠杆已用尽**
+
+老倪: 「检查磁盘，保持磁盘红线」· 台账 `zmax_data/backups/DISK_LEDGER.md` · 脚本 `tools/disk_redline_20261015.sh` (带 `--dry-run`)
+
+| 类别 | 内容 | 释放 |
+|---|---|---|
+| 被取代训练 run | 14 个 LoRA 扫描中间产物 (lora_40_r2..r7 / lora_30* / lora_20_r2..r8 / lora_200_r2{,_merged} / l5261013_201828 / l5261014_210701) | ~26G |
+| 日志/缓存 | `__pycache__` 全树 4.2G 中的在用部分 · /var/log syslog 截断 · journal/apt | ~1.3G |
+| 第三方缓存 | Feishu `aha/users/<id>/profile_explorer/Service Worker`(1.5G) + `sdk_storage/log`(408M) | 1.9G |
+| 历史流 | `ss_live/state_20261010.jsonl` (5天轮转收紧到 4 天) | 0.9G |
+| 零引用 ckpt | `checkpoints/joint_{frozen,full_fix,reg,v3_l4l3l2,v4_deploy,valid}` (10-13 C 段同口径) | 0.5G |
+
+### 新规矩: 引用核查的**精确口径** (本轮把 30.2G 细化为 26G, 避免了误删)
+`grep -rl --include=*.py --include=*.sh --include=*.yaml --include=*.json <名> <roots>` 之后必须再滤掉
+`disk_cleanup|cleanup_audit|__pycache__|\.bak|/\.curator_backups/` —— **否则旧清理脚本自己 + .pyc + .bak
+会把早已被取代的 run 判成"有活引用"** (本轮 `lora_30` 全族、`lora_200_r2`、`smolvla_lew_d1` 都是被这层噪声挡住的)。
+判为"零引用"后**逐条点名写进删除列表** (不通配), 且保护区名单 (cube/l5_gen_1010_big/optical_insert_v5/
+unified_v16/stage_moe/d1/124042) 逐条 case 匹配否决。
+
+### 新规矩: git 包垃圾与"修坏 ref"是两件事, 后者不一定省空间
+- `rm -f .git/objects/pack/tmp_pack_*` 永远安全 (本轮 1004 个)。
+- `git gc` 卡死时, 先 `git fsck` 分类: 本轮真存在 **5 个 0 字节 loose object + 坏 ref `refs/remotes/origin/mac`**
+  → `rm` 掉空对象 + `git update-ref -d` 删坏 ref, `git fsck` 即由报错变**只剩 dangling** (✅仓库修好了)。
+- ⚠️ 但 `git repack -Ad`/`gc` **只回收了 0.2G** —— 因为 pack 里那几个 994M/962M/960M/782M blob
+  `git rev-list --objects --all | grep -c <sha>` = **1, 可达** (被某个还活着的分支的历史引用着)。
+  **要拿回这 ~4G 只能改历史 (filter-repo + force push), 属于破坏性操作, 别顺手做。**
+  先备份: `cp -al .git .git.hardsafe` (硬链接, 0 空间) → 修 → 验 (`fsck`/`rev-parse HEAD`/`rev-list --count`)
+  → 确认无误再 `rm -rf .git.hardsafe`。
+
+### ⛔ 唯一剩下的杠杆就是那 95G, 而且它**真的被训练配置引用着**
+本轮核实: `cube_single_expert.h5` 94.9G 被
+`external/INTACT-JEPA/config/train/data/ogb.yaml` + `config/eval/cube.yaml` 引用 ——
+**不只是 `tools/intact/*` 脚本** (本 SKILL 旧文写的"只有论文复现脚本引用"不准确)。
+按铁律"被训练配置引用的数据集属在用数据, 绝不能自己删" ⇒ **只能列清单请老倪点头**。
+其余被点名的文件**本轮全部复核为活引用, 一个没动**: optical_insert_v5_disturb.h5 (studio.py)、v6_disturb
+(joint_train_full.py)、l5_gen_1010_big.h5 (10-13 保留区)、l5_gen_v5/v6 + l5_train + v6_* (backbone_cont_runner.sh /
+train_cog_event_head.py / stage_moe_backbone.py)、checkpoints 其余 20 个目录、demo_20260928/gs_*/sim2real_dr/vl_safety*。
+> 结论口径: 手工清理的红利已吃完 (336→302.8G)。再往下压只有三条路, **全部要先得老倪一句话**:
+> ① 删 INTACT 复现数据集 94.9G (可重下) ② 删 `l5_gen_1010_big.h5` 6.7G (10-13 保留区) ③ 改 git 历史拿回 ~4G。
+> 302.8G 时**可用空间仍有 74G, 无运行风险** —— 别为了凑指标去动保护区。
+
 ## ⚠️ 2026-10-13 实测: 325G → 296G (释放 29G) + 把"流不落盘"定成规矩
 
 老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是啥？删掉，**不要自己保存**。清理磁盘，保证在 300G 以下」

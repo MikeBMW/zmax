@@ -191,10 +191,29 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
      放不下交给 QScrollArea 滚, 别靠压表; 配一个「📋 复制…(TSV)」按钮让内容能拿走。
   3. 面板用**竖直 QSplitter** + `setHandleWidth(9)` (4px 抓不住); 面板高度**不再 setFixedHeight**;
      用户拖过之后设 flag (`_user_sized=True`) 就不再自动改尺寸(给一个"↕ 自适应高度"按钮重算)。
-  4. 首帧高度在 `showEvent` 里**同步**算一次 (构建期 `height()`=0 算不出比例, 首帧会被压到最小值; 单靠 QTimer 可能晚于用户第一眼)。
+  4. **先靠最小高度定尺寸, 别指望 `setSizes()`**: 构建期 (或页面还藏在隐藏的 QTabWidget 页里) `height()`=0,
+     此时 `setSizes([...])` 会被 Qt 按比例缩回去 —— 实测给 `[552,600]` 结果还是 464px。**两舱各
+     `setMinimumHeight(够看高度)` 才是有确定性初值的做法**; 要补算就在 `showEvent` 同步算一次 + 挂 tab
+     `currentChanged` 幂等补算 (隐藏页里算不出 ⇒ 别"算一次就置 flag")。
 - 可隐藏: 用自己记的 flag (`_on`) + `setVisible()`; **不能拿 `isVisible()` 当判据** (离屏/父未显示时恒 False)。
 - 内容"选哪个面显哪个" : 每面给[当前面名 + 该面真源摘要 + 真源在哪] 一行, 挂 tab `currentChanged`; 页面内动作(导出/复制)之后再覆盖它。
 - 验收判据: 切到该页量 `table.height()` (行数对但高度被压**不算过**) + 窗口压矮后仍 ≥ 各自最小高 + 每个页签确实是 QScrollArea + 内容超视口时 scrollBar().maximum()>0。
+- **"能不能看见"按行数说, 不按像素说**: 判据 = `(表高 − 表头高) / 行高` ⇒ 可见行数; 再加**表内 `scrollBar().maximum()==0`**
+  (内容真的全在表里) 与**页面 `verticalScrollBar().maximum()`** (超出视口就得页滚 ⇒ 把 px 数写进汇报)。三样齐了才算量清。
+  量测一律离屏 (`QT_QPA_PLATFORM=offscreen` + `page.resize(W,H)` + `show()` + `processEvents()` + `widget.grab().save(png)`),
+  并按**用户真实窗口几何**补一档容器尺寸 (`DISPLAY=:0 wmctrl -lG | grep <标题>` 取尺寸); 出图后用 OCR 数条数当"N 条都在画面里"的证据。
+- **两张表同处一个 QVBoxLayout、谁都没边界 ⇒ 用户"想多看也拉不动"**: 这是结构缺陷, 补一条竖直 `QSplitter`
+  (`setChildrenCollapsible(False)` + `setHandleWidth(9)` + 连 `splitterMoved` 记 `_user_sized`) 才算修好 —— 不是把高度调大就完事。
+- 🚫 **一个 QLayout 只能有一个父布局**: `l.addLayout(row)` 之后又把同一个 `row` `addLayout` 到新容器,
+  Qt 只认第一个 ⇒ 那一行控件高度被挤成 **0** (肉眼=按钮消失, 且**没有任何报错**)。把控件挪进新容器前先删
+  **原容器的 add**; 接手别人的布局改动先 `grep -n "addLayout(<row>)\|addWidget(<widget>)"` 查重。
+- **最小高度写成 `min(上限, 行高*(行数+2)+8)` 时, 那个"上限"就是天花板**: 用户说"还太矮"时第一件事是找它
+  (第一轮封 `300` 就是把表压到只看得见十几行的元凶); 表格行被某列长文本(`" → ".join(...)` 且是唯一 Stretch 列)撑高时,
+  单元格改短标签 + `setToolTip` 放全文, 而不是调高度。
+- **中文表格列宽**: 打印/对齐要按**显示宽度**补空格 (东亚宽字符算 2: `unicodedata.east_asian_width(ch) in "WF"`),
+  直接 `%-7s` 会串列。
+- **回归证据 = 和"改动前"逐条比对, 不是只看"全绿"**: `git stash push -- <改动文件>` → 跑既有 verify 套件 → `git stash pop`,
+  这样能分清哪条 FAIL 是本来就有的; 用户要的是"没回退"。
 
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
