@@ -2579,8 +2579,12 @@ class RealStateSpaceSim:
         except Exception:                                               # noqa: BLE001
             return miss
 
-    def run(self, max_steps=None, cap=None):
+    def run(self, max_steps=None, cap=None, resume=False):
         """R0 主循环 — metaworld 单轮硬上限 (insert 默认 500 步 / full 全链 2000 步)。
+
+        resume=True: **不重置环境**, 从当前状态继续走 (老倪 2026-10-15「怎么就循环耗时有信号」的根因修):
+          原实现每次 run() 都 `self._reset(self.seed)` ⇒ 渲染帧服务每秒 run(1) 拿到的永远是"第 0/1 步"
+           的同一张图 (实测 4 次取帧 md5 完全一致) ⇒ VLM 潜表示/φ/梯度/置信 全冻住 ⇒ 只有循环耗时在抖。
 
         🐛 2026-09-08 静静: 原默认 500 步 — mode=full (插拔+AOI 13 段) 实测需 850-1000 步,
         默认 500 必截断未完成 (45ce9453 GUI 接线漏传 max_steps → GUI 勾 L3 全链同样截断,
@@ -2606,7 +2610,8 @@ class RealStateSpaceSim:
             max_steps = (MAX_STEPS * 2 if cap == "l4" else MAX_STEPS) if self.mode == "full" \
                 else (1000 if cap == "l4" else 1000)   # 🐛 09-10: insert 500→1000 (深孔布局重抓余量)
         env = self.env
-        self._reset(self.seed)
+        if not resume:                                  # resume=True ⇒ 接着走(渲染帧/闭环逐帧推进用)
+            self._reset(self.seed)
         # 🧠 2026-09-07 肌肉记忆: 本轮观察开始 (记录各技能段轨迹; 失败轮不固化)
         if getattr(self, "_mm_obs", False) and self.muscle is not None:
             try:

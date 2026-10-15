@@ -26,32 +26,53 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "std": None, "shape": None, "err": None}
+STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "std": None, "shape": None,
+         "step": None, "err": None}
 
 
-def _render_loop(hz: float, seed: int, mode: str):
+def _render_loop(hz: float, seed: int, mode: str, steps_per_tick: int = 4):
     try:
         import cv2
         import numpy as np
         from state_space_sim_real import RealStateSpaceSim
-        sim = RealStateSpaceSim(seed=seed, vision=False, mode=mode, log=lambda *x: None)
-        sim.run(max_steps=8)
-        step = 0
+
+        def _fresh():
+            s = RealStateSpaceSim(seed=seed, vision=False, mode=mode, log=lambda *x: None)
+            s.run(max_steps=8)
+            return s
+
+        sim = _fresh()
+        step = 8
         while True:
             t0 = time.time()
             try:
-                sim.run(max_steps=1)
-                step += 1
-                if step % 260 == 0:                     # 走到头就重开一轮 (保持"活着"的渲染流)
-                    sim = RealStateSpaceSim(seed=seed, vision=False, mode=mode, log=lambda *x: None)
-                    sim.run(max_steps=8)
+                # 🔴 2026-10-15 老倪「怎么就循环耗时有信号, 别的没有信号」——真根因:
+                #   RealStateSpaceSim.run() 每次进来都 `_reset(seed)` ⇒ 原来每秒 run(1) 拿到的永远是
+                #   "第 0/1 步"的**同一张图**(实测连取 4 帧 md5 全同) ⇒ VLM 潜表示/φ/梯度/置信 全冻住。
+                #   改成 resume=True 接着走 (每个 tick 推进 N 步, 走完重置) ⇒ 渲染帧真的在变。
+                tr = sim.run(max_steps=steps_per_tick, resume=True)
+                step += steps_per_tick
+                _done = bool(tr.get("done") and tr["done"][-1]) if isinstance(tr, dict) else False
+                if _done or step % 1000 == 0:               # 一轮走完 → 重开 (保持"活着"的渲染流)
+                    sim = _fresh()
+                    step = 8
             except Exception:                                                        # noqa: BLE001
-                pass
-            img = np.asarray(sim._render_frame())
+                try:
+                    sim = _fresh()
+                    step = 8
+                except Exception:                                                    # noqa: BLE001
+                    pass
+            try:
+                img = np.asarray(sim._render_frame())
+            except Exception as e:                                                   # noqa: BLE001
+                STATE["err"] = "%s: %s" % (type(e).__name__, e)
+                time.sleep(1.0 / max(0.1, hz))
+                continue
             ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             if ok:
                 STATE.update(png=buf.tobytes(), n=STATE["n"] + 1, ts=time.time(),
-                             mean=float(img.mean()), std=float(img.std()), shape=list(img.shape), err=None)
+                             mean=float(img.mean()), std=float(img.std()), shape=list(img.shape),
+                             step=step, err=None)
             time.sleep(max(0.0, 1.0 / max(0.1, hz) - (time.time() - t0)))
     except Exception as e:                                                           # noqa: BLE001
         STATE["err"] = "%s: %s" % (type(e).__name__, e)
@@ -73,6 +94,7 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/status.json"):
             d = {"n": STATE["n"], "age_s": (round(time.time() - STATE["ts"], 2) if STATE["ts"] else None),
                  "shape": STATE["shape"], "mean": STATE["mean"], "std": STATE["std"],
+                 "episode_step": STATE.get("step"),
                  "src": "RealStateSpaceSim._render_frame() · mode=%s (插拔场景渲染帧, 与 pipeline_closure_run 同口径)"
                         % (getattr(self, "_mode", "insert")), "err": STATE["err"]}
             b = json.dumps(d, ensure_ascii=False).encode("utf-8")
@@ -87,9 +109,11 @@ def main():
     ap.add_argument("--hz", type=float, default=2.0)
     ap.add_argument("--seed", type=int, default=104)
     ap.add_argument("--mode", default="insert")
+    ap.add_argument("--steps-per-tick", type=int, default=4,
+                    help="每 tick 推进的仿真步数 (帧真的在动; 老倪 2026-10-15)")
     ap.add_argument("--seconds", type=float, default=0.0, help="0=常驻")
     a = ap.parse_args()
-    t = threading.Thread(target=_render_loop, args=(a.hz, a.seed, a.mode), daemon=True)
+    t = threading.Thread(target=_render_loop, args=(a.hz, a.seed, a.mode, a.steps_per_tick), daemon=True)
     t.start()
     for _ in range(120):                                # 等首帧 (最多 60s)
         if STATE["png"] or STATE["err"]:

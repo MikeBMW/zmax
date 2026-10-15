@@ -137,7 +137,7 @@ def main() -> int:
         _t, _v = b.arrays()
         if len(_v) > 1 and max(_v) != min(_v):
             live.append((k, len(_v), round(min(_v), 4), round(max(_v), 4)))
-    good6 = len(live) >= 1 and len(w.wave.items) >= 1
+    good6 = len(live) >= 3 and len(w.wave.items) >= 1        # ≥3 条真在动: 冻结的链路必须判失败
     ok &= good6
     print("   已选曲线 %d 条 · 曲线对象 %d 个 · 有起伏(非平线/非单点) %d 条" % (
         len(w.selected), len(w.wave.items), len(live)))
