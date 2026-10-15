@@ -86,6 +86,34 @@ def _digest_for(k, f):
             return json.dumps({"idx": f.get("idx"), "idx8": f.get("idx8"), "v_cap": f.get("v_cap"),
                                "done": f.get("done"), "age_s": f.get("age_s"),
                                "name": f.get("name") or ""}, ensure_ascii=False)[:400]
+        if k == "ss_action_chunk":
+            # 🧩 动作块 (老倪 2026-10-15「Flow Matching Action Head 的输出是个 chunk action … 应该有输出 topic,
+            #   在信号分析里显示」): 载荷里 chunk/ff/u 都是长数组 ⇒ 通用兜底会把 digest 灌满原始浮点。
+            #   这里给一行紧凑 JSON: 每拍**速度模长** (mm/s 由界面换算) + 权重 λ + 平滑性 + 阶段 + 技能派发。
+            _ch = [float(x) for x in (f.get("chunk") or [])]
+            _uu = [float(x) for x in (f.get("u") or [])]
+            _lam = [float(x) for x in (f.get("lam") or [])]
+            _h = int(f.get("h") or 0)
+
+            def _nrm(arr, i):
+                seg = arr[4 * i:4 * i + 3]
+                return round(float(sum(x * x for x in seg) ** 0.5), 6) if seg else None
+
+            _d = {"h": _h, "stage": str(f.get("stage") or ""), "stage_idx": f.get("stage_idx"),
+                  "turn_mean_deg": f.get("turn_mean_deg"), "step_delta": f.get("step_delta"),
+                  "jerk": f.get("jerk"), "u_norm0": f.get("u_norm0"), "ms": f.get("ms"),
+                  "dispatch_age_s": f.get("dispatch_age_s"), "cycle": f.get("cycle")}
+            # ⚠️ digest 整行有 400 字上限: 8 拍 × 3 组会把尾巴切掉 (切出非法 JSON ⇒ 正则也抠不全)。
+            #   这里给 6 拍 (页面够画; 完整块在话题载荷与 chunk_latest.json 里), 名字串放最后。
+            for i in range(min(_h, 8)):
+                _d["c%d" % i] = _nrm(_ch, i)          # 块第 i 拍 (引擎规划)
+                _d["u%d" % i] = _nrm(_uu, i)          # 加权+调制+安全后第 i 拍
+                _d["lam%d" % i] = (round(_lam[i], 4) if i < len(_lam) else None)
+            _d["skill_list"] = str(f.get("skill_list") or "")[:70]
+            _d["ff_mode"] = str(f.get("ff_mode") or "")[:40]
+            # 上限放宽到 760 (8 拍 ×3 组 + 技能串实测 ~520 字): 切在 JSON 中间会切出**非法 JSON**,
+            #   下游 (页面/判据) 连前面的数都抠不全 —— 块这种"长数组型"载荷必须放宽, 别照搬 400。
+            return json.dumps(_d, ensure_ascii=False, separators=(",", ":"))[:760]
         if k == "ss_meta_pred":
             # 🧾 元任务预测值 (老倪 2026-10-15「元任务预测这个节点…要加入到实时监控的信号分析」):
             #   载荷里 top_ids/top_scores 是长字符串 ⇒ 通用兜底 body[:180] 切到 top_ids 就断了,

@@ -373,6 +373,44 @@ class SSMetaPred(IdlStruct, typename="zmax::SSMetaPred"):
     note: str = ""
 
 
+# ─────────────────────── 🧩 动作块 (老倪 2026-10-15) ───────────────────────
+@dataclass
+class SSActionChunk(IdlStruct, typename="zmax::SSActionChunk"):
+    """🧩 **动作块 (chunk action)** —— 老倪 2026-10-15: 「Flow Matching Action Head 的输出是个 chunk action,
+    预测 [a_t,…,a_{t+H-1}], 一次推理管多步 … 应该有输出 topic, 在信号分析里显示」
+
+    链路口径 (每一环都在载荷里, 不是图上的箭头):
+      chunk[H,4]  引擎**一次求解**的测地线规划 → 逐点解码的动作块 (a_t … a_{t+H-1})
+      ff[H,4]     前馈加速器 (训练左脑 MLP 真权重) 的 H 步序列 (逐拍 或 hold, ff_mode 写明)
+      u[H,4]      加权后的序列 (u = (1-λ)·ff + λ·chunk) → 逐拍过动作调制器 → 逐拍过安全执行边界
+      lam[H]      块权重 (近步小、远步大, 单调; 可查)
+    真源: tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写);
+          守护读它发布 (过期/缺块只发告警, 不拿旧块当现在)。
+    H 上限 16 (载荷按 16 预留, 实际块长看 h 字段)。
+    """
+    ts: float64 = 0.0                  # 发布时刻 (epoch 秒)
+    cycle: int64 = 0                   # 产出块的回路周期号 (单调, 可判"是不是真在跑")
+    h: int32 = 0                       # 块长 H (实际)
+    stage: str = ""                    # 当前八阶段 (接近/对位/下降/…)
+    stage_idx: int32 = -1
+    chunk_src: str = ""                # 块来源 (测地线规划 … / ridge 解码 …)
+    ff_mode: str = ""                  # 前馈序列来源 (rollout / hold)
+    chunk: sequence[float64] = field(default_factory=list)   # H*4 平铺 (a_t … a_{t+H-1})
+    ff: sequence[float64] = field(default_factory=list)      # H*4 平铺 (前馈序列)
+    u: sequence[float64] = field(default_factory=list)       # H*4 平铺 (调制+安全后, 待技能选取)
+    lam: sequence[float64] = field(default_factory=list)     # H (块权重)
+    turn_max_deg: float64 = -1.0       # 块内最大折角 (度)
+    turn_mean_deg: float64 = -1.0      # 块内平均折角 (度)
+    step_delta: float64 = -1.0         # 块内平均步间差 ‖Δa‖
+    jerk: float64 = -1.0               # 块内平均二阶差分 ‖Δ²a‖
+    u_norm0: float64 = -1.0            # 第一拍 (当前阶段要执行的那一拍) 速度模长
+    skill_list: str = ""               # 派发到各技能 ("下降:步0, 抓取:步1, …")
+    dispatch_age_s: float64 = -1.0     # 技能派发帧龄 (由技能循环服务刷新的 skill_dispatch.json)
+    ms: float64 = -1.0                 # 本块耗时
+    src: str = ""
+    note: str = ""
+
+
 # ──────────────── 🧮 流形引擎 · 常驻周期循环 (老倪 2026-10-14) ────────────────
 @dataclass
 class SSManifoldStep(IdlStruct, typename="zmax::SSManifoldStep"):

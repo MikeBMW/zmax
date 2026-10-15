@@ -88,19 +88,20 @@ CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas",
              os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
 
 # 模式 → 允许话题 (与 tools/gui/zmax_telemetry.py::MODE_TOPICS 同口径)
+CHUNK_STALE_S = float(os.environ.get("ZMAX_CHUNK_STALE_S", "30"))
 META_PRED_STALE_S = 180.0        # 元任务预测帧龄阈值 (超过 ⇒ note 里明说陈旧, 不拿旧预测冒充现在)
 
 MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage"],
+             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-              "ss_meta_pred", "ss_stage"],
+              "ss_meta_pred", "ss_stage", "ss_action_chunk"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-             "ss_meta_pred", "ss_stage"],
+             "ss_meta_pred", "ss_stage", "ss_action_chunk"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -762,6 +763,57 @@ class SSDaemon:
                 (d.get("sources") or {}).get("state_space_obs.json")),
             note=str(d.get("note") or "")))
 
+    def pub_action_chunk(self):
+        """🧩 **动作块** → zmax/ss_action_chunk (老倪 2026-10-15)。
+
+        真源 = 常驻回路经 tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json。
+        纪律: 帧龄 > CHUNK_STALE_S 就明说陈旧; 块不 ok (引擎无目标点等) 就发空块 + note 写原因, 不编块。
+        """
+        from ss_types import SSActionChunk                                    # noqa: PLC0415
+        _root = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+        p = os.path.join(_root, "zmax_data", "ss_live", "chunk_latest.json")
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception as e:                                               # noqa: BLE001
+            self.publish("ss_action_chunk", SSActionChunk(ts=time.time(),
+                                                          note="读不到块真源 %s (%s)" % (os.path.basename(p),
+                                                                                          type(e).__name__)))
+            return False
+        age = time.time() - float(d.get("ts") or 0.0)
+        note = ""
+        if not d.get("ok"):
+            note = "块未产出: %s" % str(d.get("reason") or "")[:80]
+        elif age > CHUNK_STALE_S:
+            note = "⚠️ 块陈旧 %.1fs (> %.0fs): 这不是现在的块" % (age, CHUNK_STALE_S)
+        ch, ff, uu = (d.get("chunk") or []), (d.get("ff") or []), (d.get("u") or [])
+        sk = d.get("skills") or {}
+        # 技能派发帧龄 (由技能循环服务刷新的 skill_dispatch.json)
+        _dage = -1.0
+        try:
+            with open(os.path.join(_root, "zmax_data", "ss_live", "skill_dispatch.json"), encoding="utf-8") as f:
+                _dage = time.time() - float((json.load(f) or {}).get("ts") or 0.0)
+        except Exception:                                                    # noqa: BLE001
+            pass
+        self.publish("ss_action_chunk", SSActionChunk(
+            ts=time.time(), cycle=int(d.get("cycle") or 0), h=int(d.get("h") or 0),
+            stage=str(d.get("stage") or ""), stage_idx=int(d.get("stage_idx") or -1),
+            chunk_src=str(d.get("chunk_src") or "")[:120], ff_mode=str(d.get("ff_mode") or "")[:80],
+            chunk=[float(x) for row in ch for x in (row or [])],
+            ff=[float(x) for row in ff for x in (row or [])],
+            u=[float(x) for row in uu for x in (row or [])],
+            lam=[float(x) for x in (d.get("lam") or [])],
+            # ⚠️ 数值字段不能用 `or -1.0` 兜底: 0.0 是**合法值** (块退化时转角=0), 会被误判成"没值"
+            turn_max_deg=(-1.0 if d.get("turn_max_deg") is None else float(d["turn_max_deg"])),
+            turn_mean_deg=(-1.0 if d.get("turn_mean_deg") is None else float(d["turn_mean_deg"])),
+            step_delta=(-1.0 if d.get("step_delta") is None else float(d["step_delta"])),
+            jerk=(-1.0 if d.get("jerk") is None else float(d["jerk"])),
+            u_norm0=(-1.0 if d.get("u_norm0") is None else float(d["u_norm0"])),
+            skill_list=", ".join("%s:步%d" % (k, int(v.get("step") or 0)) for k, v in list(sk.items())[:8]),
+            dispatch_age_s=round(_dage, 2),
+            ms=float(d.get("ms") or -1.0), src=str(d.get("chunk_src") or "")[:120], note=note))
+        return True
+
     def pub_meta_pred(self):
         """🧾 **元任务预测值** → zmax/ss_meta_pred (老倪 2026-10-14: 「将元任务预测的topic，放到信号分析」)
 
@@ -1127,6 +1179,8 @@ class SSDaemon:
                     self.pub_meta_task()
                 if allowed("ss_meta_pred"):          # 🧾 元任务预测值 (输入=驱动扭矩) → 信号分析可见
                     self.pub_meta_pred()
+                if allowed("ss_action_chunk"):       # 🧩 动作块 (块/前馈序列/加权调制后序列) → 信号分析可见
+                    self.pub_action_chunk()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_cfg_names / ss_meta_task 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
             self._stop.wait(max(0.05, period - (time.time() - t0)))

@@ -212,6 +212,22 @@ TOPICS = {
                        "内容真源现算(config_meta.json/ss_task_binding.json/画布), 意图只决定选哪一批; "
                        "周期 5s, 出口=主参数节点 n_calib_mani (与已加载配置名同一节拍)"),
     },
+    "ss_action_chunk": {
+        "type": "zmax::SSActionChunk", "src": TYPES_SRC, "rate_hz": 0.2, "qos": "state",
+        "producer": "状态空间数据空间守护 (tools/dds/ss_daemon.py · zmax-dds-ss.service) "
+                    "← 常驻回路 tools/ss_engine_loop.py 经 tools/ss_chunk_pipeline.py 落盘",
+        "consumers": ["控制台 信号分析页", "🦾 技能派发循环服务 (zmax-ss-skill-dispatch)", "报告/审计"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "cycle", "h", "stage", "stage_idx", "chunk", "ff", "u", "lam",
+                       "turn_mean_deg", "step_delta", "jerk", "u_norm0", "skill_list",
+                       "dispatch_age_s", "chunk_src", "ff_mode", "note"],
+        "quality": ["chunk_is_multi_step", "ff_seq_length_equals_h", "weighted_and_modulated",
+                    "safety_clamped", "staleness_flagged"],
+        "provenance": ("「Flow Matching Action Head 的输出, 是个 chunk action, 预测 [a_t,…,a_{t+H-1}] … "
+                       "应该有输出 topic, 在信号分析里显示」(老倪 2026-10-15): 块=流形引擎一次求解的测地线规划 "
+                       "→ 逐点解码; ff=前馈加速器(训练左脑 MLP)的 H 步序列; u=加权+逐拍动作调制+逐拍安全后的"
+                       "执行序列(待技能选取); 真源 zmax_data/ss_live/chunk_latest.json"),
+    },
     "ss_meta_pred": {
         "type": "zmax::SSMetaPred", "src": TYPES_SRC, "rate_hz": 0.2, "qos": "state",
         "producer": "状态空间数据空间守护 (tools/dds/ss_daemon.py · zmax-dds-ss.service) "
@@ -384,14 +400,15 @@ MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s,
     # 🧾 ss_meta_task = 元任务清单 (主参数节点出口 5s) · 🧾 ss_meta_pred = 元任务**预测值**
     #    (输入=流形引擎驱动扭矩; 老倪 2026-10-14「将元任务预测的topic，放到信号分析」)
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage"],
+              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage",
+              "ss_action_chunk"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
               "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 

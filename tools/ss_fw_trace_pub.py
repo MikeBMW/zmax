@@ -85,6 +85,9 @@ def build_frame(d: dict, t_s: float) -> dict:
         "动作调制_y_mps": _f(act[1]) if len(act) > 1 else None,
         "动作调制_z_mps": _f(act[2]) if len(act) > 2 else None,
         "动作调制_夹爪": _f(act[3]) if len(act) > 3 else None,
+        # 🧩 动作块 (老倪 2026-10-15): 常驻回路平铺的块键 (chunk.H / chunk.块步N_mps / chunk.λN / 平滑_转角…)
+        #   原样搬过来 ⇒ 信号分析里块与其它曲线同一根钟、同一画法。回路没出块 (ZMAX_CHUNK_H<=1) 时这里为空。
+        **{k: v for k, v in ((d.get("chunk_keys") or {}).items())},
         "元任务数": _f(d.get("meta_n")),
     }
     for i in range(min(4, len(p))):

@@ -134,6 +134,13 @@ HOST_SOURCES = [
     #   tools/ss_fw_trace_pub.py 从 engine_latest.json 搬运: φ/梯度/耗时/置信/内稳态/潜表示/动作调制),
     #   与 3D 是否在播无关 ⇒ 波形恒有数据。schema 同 trace_live(ts + 时间_s ⇒ 按场景时刻铺点)。
     ("sseng", "zmax_data/ss_live/engine_trace.json"),
+    # 🧩 2026-10-15 老倪「Flow Matching Action Head 的输出是个 chunk action … 应该有输出 topic, 在信号分析里显示」:
+    #   块真源 = 常驻回路每周期经 tools/ss_chunk_pipeline.py 落的 chunk_latest.json
+    #   (与话题 zmax/ss_action_chunk 同一份文件: 块/前馈序列/加权+调制+安全后序列 三段都在)。
+    #   ⚠️ 不直接把 chunk_latest.json 当宿主源: 它的 chunk/ff/u 是 H×4 原始数组 ⇒ 页面会铺 48 行生数
+    #   (界面要极简)。语义键走常驻回路平铺的 trace (engine_trace.json → sseng.chunk.*), 见下面的分组标签。
+    # 🦾 技能派发 (肌肉记忆): 每技能当前那一拍 + 拍号 + 块帧龄 —— 由 tools/ss_skill_dispatch.py 60Hz 刷。
+    ("skill", "zmax_data/ss_live/skill_latest.json"),
     # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
     #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
     #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
@@ -1676,6 +1683,25 @@ class CanoeGraphicWidget(QWidget):
                                 "生成: gui-venv311/bin/python tools/ss_meta_predict.py --scene SCN-01-FW --write")
         root.addWidget(self.lb_meta)
 
+        # ── 🧩 动作块: **文字**一行 (老倪 2026-10-15「Flow Matching Action Head 的输出是个 chunk action …
+        #    应该有输出 topic, 在信号分析里显示」) ──
+        #    内容 = 块真源 zmax_data/ss_live/chunk_latest.json (与话题 zmax/ss_action_chunk 同一份) 的
+        #    H/阶段/平滑性/技能派发 + 帧龄; 没块就写"等引擎出块", 不编。
+        self.lb_chunk = QLabel("")
+        self.lb_chunk.setTextFormat(Qt.RichText)
+        self.lb_chunk.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        try:
+            self.lb_chunk.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            self.lb_chunk.setMinimumWidth(0)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        self.lb_chunk.setToolTip("动作块 = 流形引擎一次求解的测地线规划 (a_t…a_t+H-1) → 前馈序列 → 加权 → "
+                                 "逐拍动作调制 → 逐拍安全 → 技能派发\n"
+                                 "话题 zmax/ss_action_chunk (type zmax::SSActionChunk) · "
+                                 "真源 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写)\n"
+                                 "技能派发循环服务: systemctl status zmax-ss-skill-dispatch (60Hz)")
+        root.addWidget(self.lb_chunk)
+
         # ── 主体: 左信号栏 + 右波形 ──
         split = QSplitter(Qt.Horizontal)
         split.setStyleSheet(f"QSplitter::handle{{background:{C_BORDER};}}")
@@ -2515,12 +2541,20 @@ class CanoeGraphicWidget(QWidget):
         #   真源: 画布节点 🧾 元任务预测 (n_intent_direct) ← 输入=流形引擎驱动扭矩 T_drive=M·(−∇Φ)
         #   出口话题 zmax/ss_meta_pred (SSMetaPred, ss_daemon 5s 转发) ⇒ 信号页 ds.* 一路可画。
         ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 逐元任务得分)"),
+        # 🧩 块 (老倪 2026-10-15): 块步 → 前馈 → 加权 → 逐拍调制/安全 → 技能派发, 每段都可画
+        ("sseng.chunk.块步", "🧩 动作块 (引擎规划 a_t…a_t+H-1)"),
+        ("sseng.chunk.λ", "🧩 块权重 λ (近步小 → 远步大)"),
+        ("sseng.chunk.", "🧩 动作块 chunk action"),
+        ("skill.", "🦾 技能派发 (肌肉记忆 · 每技能最新一拍)"),
+        ("ds.zmax/ss_action_chunk", "🧩 动作块 (话题 zmax/ss_action_chunk)"),
         ("ros./robot/tcp_pose", "📦 数据源 · 真机 TCP 位姿"),
         ("ros./robot/force_torque", "🖐 触觉感知"),
         ("ros./gripper_pos", "🤖 机器人执行器"),
         ("ros.", "Orin ROS2 (真机)"),
         ("ds.", "📦 数据源 (DDS 全局数据空间)"),
         ("yolo.", "🎯 YOLO 目标检测"),
+        ("sseng.chunk.", "🧩 动作块 chunk action"),
+        ("skill.", "🦾 技能派发 (肌肉记忆)"),
         ("space.", "📡 融合定位建图"),
         ("safety.", "🛡 安全执行边界 (饱和限幅)"),
         ("pose.", "📦 数据源 · 真机 TCP 位姿"),
@@ -3088,6 +3122,41 @@ class CanoeGraphicWidget(QWidget):
             self._update_tree_values()
             self._update_status(keys)
 
+    def _chunk_text(self):
+        """🧩 块一行文字: H / 阶段 / 平滑性 / 技能派发 / 帧龄 —— 全部取自块真源 (不编)。"""
+        import json as _json
+        _p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "..", "zmax_data", "ss_live", "chunk_latest.json")
+        try:
+            with open(os.path.abspath(_p), encoding="utf-8") as f:
+                d = _json.load(f)
+        except Exception:                                                      # noqa: BLE001
+            return ("🧩 <b>动作块</b>: 等引擎出块 (真源 zmax_data/ss_live/chunk_latest.json 还没有; "
+                    "常驻回路 ZMAX_CHUNK_H>1 时每周期写)", None)
+        _age = max(0.0, time.time() - float(d.get("ts") or 0.0))
+        if not d.get("ok"):
+            return ("🧩 <b>动作块</b>: 未产出 — %s" % str(d.get("reason") or "")[:70], None)
+        _sk = d.get("skills") or {}
+        _who = " / ".join("%s:步%d" % (k, int(v.get("step") or 0)) for k, v in list(_sk.items())[:8])
+        _age_s = ""
+        try:
+            with open(os.path.abspath(os.path.join(os.path.dirname(_p), "skill_latest.json")),
+                      encoding="utf-8") as f:
+                _s2 = _json.load(f)
+            _age_s = " · 派发帧龄 %.2fs · 派发 %d 次" % (max(0.0, time.time() - float(_s2.get("ts") or 0.0)),
+                                                        int(_s2.get("n") or 0))
+        except Exception:                                                      # noqa: BLE001
+            pass
+        _col = C_GREEN if _age < 3.0 else C_ORANGE
+        return ("🧩 <b>动作块</b> H=%d · 阶段 <b>%s</b> · 平滑 转角 %.1f°/步间差 %.5f/二阶 %.5f · "
+                "首拍 %.2f mm/s · 块耗时 %.2fms · 帧龄 %s%.1fs</span> · 技能派发 [%s]%s"
+                % (int(d.get("h") or 0), str(d.get("stage_name") or d.get("stage") or ""),
+                   float(d.get("turn_mean_deg") or 0.0), float(d.get("step_delta") or 0.0),
+                   float(d.get("jerk") or 0.0), 1000.0 * float(d.get("u_norm0") or 0.0),
+                   float(d.get("ms") or 0.0),
+                   '<span style="color:%s">' % _col, _age, _who, _age_s),
+                _age)
+
     def _meta_pred_text(self):
         """🧾 元任务预测一行 (确切元任务名) —— 内容直接来自话题载荷, 不是页面自造。
 
@@ -3249,6 +3318,12 @@ class CanoeGraphicWidget(QWidget):
             _mt, _ = self._meta_pred_text()
             if self.lb_meta.text() != _mt:
                 self.lb_meta.setText(_mt)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        try:                                   # 🧩 动作块一行 (H/阶段/平滑性/技能派发, 来自块真源)
+            _ct, _ = self._chunk_text()
+            if self.lb_chunk.text() != _ct:
+                self.lb_chunk.setText(_ct)
         except Exception:                                                      # noqa: BLE001
             pass
         parts = []

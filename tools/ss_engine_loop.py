@@ -242,6 +242,34 @@ def build_engine(traj: dict, M: float, inertia: bool):
 
 # ─────────────────────────── 主循环 ───────────────────────────
 class Loop:
+    def _chunk_stage(self) -> tuple[int, str]:
+        """当前八阶段 (真源 zmax_data/ss_live/trace_live.json = ss_stage 话题的同一份; 读不到就 0 + 如实标注)。"""
+        try:
+            d = _j(os.path.join(LIVE_DIR, "trace_live.json"), None) or {}
+            _n = str(d.get("阶段") or d.get("stage") or "")
+            if _n:
+                for i, s_ in enumerate(["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]):
+                    if s_ in _n:
+                        return i, s_
+            _i = d.get("idx8")
+            if isinstance(_i, (int, float)):
+                return max(0, min(7, int(_i))), str(_n)
+        except Exception:                                                    # noqa: BLE001
+            pass
+        return 0, ""
+
+    def _meta_pred(self):
+        """🧾 元任务预测 (真源 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
+        try:
+            d = _j(os.path.join(LIVE_DIR, "meta_pred.json"), None) or {}
+            _t = d.get("top") or []
+            _v = [float(x.get("score") or 0.0) for x in _t if isinstance(x, dict)]
+            return {"top1": (_v[0] if _v else 0.0),
+                    "spread": ((_v[0] - _v[1]) if len(_v) > 1 else 0.0),
+                    "n_meta": int(d.get("n_meta") or 0), "frozen": int(d.get("frozen") or 0)}
+        except Exception:                                                    # noqa: BLE001
+            return None
+
     def __init__(self, hz: float, state_file: str | None, traj_path: str, inertia: bool,
                  encoder: str = "pca", l4_hz: float = 1.0, l4_url: str = "",
                  pipe: bool = False, pipe_every: int = 5, pipe_img: str = "") -> None:
@@ -264,6 +292,16 @@ class Loop:
         self.traj_path = traj_path
         self.inertia = bool(inertia)
         self.n = 0
+        # 🧩 动作块流水线 (老倪 2026-10-15): H>1 才建; ZMAX_CHUNK_H=1/0 ⇒ 完全不参与 (逐位回退)
+        try:
+            _h = int(os.environ.get("ZMAX_CHUNK_H", "8"))
+        except Exception:                                                    # noqa: BLE001
+            _h = 8
+        if _h > 1:
+            from ss_chunk_pipeline import ChunkPipeline                       # noqa: PLC0415
+            self.chunk = ChunkPipeline(h=_h)
+        else:
+            self.chunk = None
         self.idle_n = 0
         self.eng = None
         self.calib_note = ""
@@ -462,6 +500,18 @@ class Loop:
         rec = self.eng.step(np.asarray(state, float), dt=self.dt)
         ms = (time.perf_counter() - t0) * 1000.0
         self.n += 1
+        # 🧩 动作块流水线 (老倪 2026-10-15; ZMAX_CHUNK_H<=1 不进): 引擎出块 → 前馈序列 → 加权 → 逐拍调制
+        #    → 逐拍安全 → 技能派发。**不改** rec["action"] (引擎动作照旧), 块走独立分支 + 落盘给技能服务。
+        chunk_rec: dict = {}
+        if self.chunk is not None and not replay:
+            try:
+                _si, _sn = self._chunk_stage()
+                chunk_rec = self.chunk.step(self.eng, np.asarray(state, float), state=np.asarray(state, float),
+                                            stage_idx=_si, meta=self._meta_pred(),
+                                            residual=float(rec.get("residual") or 0.0))
+                chunk_rec["stage_name"] = _sn
+            except Exception as e:                                           # noqa: BLE001
+                chunk_rec = {"ok": False, "reason": "%s: %s" % (type(e).__name__, str(e)[:120])}
         # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」: 每 N 周期按序真跑 L5→MEM→L2→L4→L3
         pipe_rec: dict = {}
         if self.pipe is not None and (self.n % self.pipe_every == 0):
@@ -508,6 +558,12 @@ class Loop:
             "t_project_ms": float(rec.get("t_project_ms") or 0.0),
             "t_grad_ms": float(rec.get("t_grad_ms") or 0.0),
             # 🧠 多层 pipeline 逐层真跑结果 (L5/MEM/L2/L4/L3 的 ok/src/ms + 本次总耗时)
+            # 🧩 块流水线的关键量**平铺**到本帧顶层 (信号分析按 sseng.* 前缀逐个当信号画 ⇒ 不用改读法)
+            **({k: v for k, v in (self.chunk.trace_keys(chunk_rec)
+                                  if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}).items()}),
+            "chunk": chunk_rec if isinstance(chunk_rec, dict) else {},
+            "chunk_keys": (self.chunk.trace_keys(chunk_rec)
+                           if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}),
             "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
             "pipe_calls": int(self.pipe_calls),
             "pipe_on": bool(self.pipe is not None),
