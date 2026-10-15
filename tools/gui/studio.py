@@ -1002,14 +1002,8 @@ class SystemSidebar(QFrame):
         self.params_card.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.params_card)
 
-        # 底部信息 (紧跟卡片, 不再插弹簧 → 不留空隙)
-        info = QLabel("0.5.2-zmax.1.0.1\nLeRobot · Z-MAX")
-        # 📏 2026-10-14: 原来单行硬裁, 读屏看到「5.2-zmax.1.0」/「eRobot · Z-MA」(两侧都被切) ⇒ 允许换行
-        info.setWordWrap(True)
-        info.setFont(QFont("Consolas", 11))
-        info.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        info.setAlignment(Qt.AlignCenter)
-        layout.addWidget(info)
+        # 🧹 2026-10-15 老倪: 「控制台左下角的 0.5.2 lerobot 这写字符串, 删掉」
+        #  ⇒ 原「0.5.2-zmax.1.0.1 / LeRobot · Z-MAX」标签整块移除 (版本号仍见菜单栏右侧品牌行与「关于」框)
 
         self.setLayout(layout)
 
@@ -1156,7 +1150,8 @@ class ArchFlowBar(QFrame):
 
         # Sys-11 左（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🧠", "System 1 · VLA-T 动作 (SmolVLA 500M)", "", SYS11_COLOR), 1)
+            # 🧹 2026-10-15 老倪: 去掉标题里的括号型号 (SmolVLA 500M)
+            "🧠", "System 1 · VLA-T 动作", "", SYS11_COLOR), 1)
         # 双向箭头
         link = QLabel("⟷")
         link.setFont(QFont("Arial", 18))
@@ -1165,7 +1160,8 @@ class ArchFlowBar(QFrame):
         mid_row.addWidget(link)
         # Sys-12 右（自适应宽度）
         mid_row.addWidget(self._make_stage_box(
-            "🌐", "System 1 · Z-Flow 引导 (LeWM 15M)", "", SYS12_COLOR), 1)
+            # 🧹 2026-10-15 老倪: 去掉标题里的括号型号 (LeWM 15M)
+            "🌐", "System 1 · Z-Flow 引导", "", SYS12_COLOR), 1)
 
         mid_container = QWidget()
         mid_container.setStyleSheet("background:transparent; border:none;")
@@ -1444,7 +1440,7 @@ class ProductRoadmapWidget(QFrame):
                 "title": "System 1 · L3 动作执行\nVLA-T 端到端 + Z-Flow 引导",
                 "time": "2026 Q4",
                 "dims": "M + A",
-                "desc": "VLA-T 动作 (SmolVLA 500M) 端到端 + Z-Flow 引导 (LeWM 15M)\n"
+                "desc": "VLA-T 动作 端到端 + Z-Flow 引导\n"   # 🧹 2026-10-15 老倪: 去括号型号
                         "功能 %d · MCD %s · 长程规划与跨段技能序列 · 本地 GPU/边缘推理"
                         % (_F["sys1"]["fn"], _mcd("sys1")),
                 "color": C_CYAN,
@@ -2114,6 +2110,62 @@ class _HwFetcher(QThread):
 
     def stop(self):                                                             # noqa: A003
         self._stop = True
+
+
+def _light_qss(color, solid):
+    """🚦 状态灯样式 (2026-10-15): solid=True 实心亮 / False 空心带边线 —— 与老版视觉一致"""
+    return (f"background:{color}; border:2px solid {color}; border-radius:7px;" if solid
+            else f"background:transparent; border:2px solid {color}; border-radius:7px;")
+
+
+class _StatusLightFetcher(QThread):
+    """🚦 右上角三色状态灯的真源采样线程 (2026-10-15 老倪要求「准确实时显示」)
+
+    真源**单一出处** = tools/status_lights.py --json (人可复核: ./gui-venv311/bin/python tools/status_lights.py)。
+    阻塞 I/O (nvidia-smi / HTTP 8790 / /proc 扫描 / 读真源文件) 全在本线程, GUI 线程只贴样式 ⇒ 不冻结。
+    """
+
+    got = pyqtSignal(dict)
+
+    def __init__(self, parent=None, interval=2.0):
+        super().__init__(parent)
+        self.interval = float(interval)
+        self._stop = False
+
+    def run(self):
+        # 🐛 2026-10-15: 原来是 dirname(dirname(__file__)) + "tools/status_lights.py" ⇒ 拼成 tools/tools/...
+        #    (rc=2 被 8s 超时+traceback 静默吞掉, 灯全灭无提示) ⇒ 现按本源 __file__ 逐级回退找工具
+        here = os.path.dirname(os.path.abspath(__file__))            # .../zmax/tools/gui
+        tool = os.path.join(os.path.dirname(here), "status_lights.py")   # .../zmax/tools/status_lights.py
+        first = True
+        while not self._stop:
+            try:
+                r = subprocess.run([sys.executable, tool, "--json"],
+                                   capture_output=True, text=True, timeout=8)
+                if r.returncode == 0 and r.stdout.strip():
+                    self.got.emit(json.loads(r.stdout.strip().splitlines()[-1]))
+                elif first:
+                    _light_log("rc=%s stdout=%r stderr=%r" % (r.returncode, r.stdout[:200], r.stderr[-400:]))
+            except Exception as e:                                              # noqa: BLE001
+                if first:
+                    _light_log("%s: %s" % (e.__class__.__name__, e))
+            first = False
+            waited = 0.0
+            while waited < self.interval and not self._stop:
+                time.sleep(0.1)
+                waited += 0.1
+
+    def stop(self):                                                             # noqa: A003
+        self._stop = True
+
+
+def _light_log(msg):
+    """🚦 采样线程异常落盘 (老倪要求"准确实时", 所以取不到时必须留痕, 不能静默)"""
+    try:
+        with open("/tmp/zmax_light_fetcher.log", "a", encoding="utf-8") as f:
+            f.write("%s %s\n" % (time.strftime("%F %T"), msg))
+    except Exception:                                                           # noqa: BLE001
+        pass
 
 
 class ReflowCardRow(QWidget):
@@ -13703,29 +13755,83 @@ class StudioMainWindow(QMainWindow):
         sl.setContentsMargins(4, 2, 8, 2)
         sl.setSpacing(4)
         # 🏷 品牌标签 (原侧栏大标题提升至此, 白字清晰可见, 不占侧栏空间)
-        brand = QLabel("🦾 Z-MAX 具身智能 · Simulink 模式")
+        # 🧹 2026-10-15 老倪: 「主控制台右上角边框 去掉 Simulink模式这几个字」
+        brand = QLabel("🦾 Z-MAX 具身智能")
         brand.setStyleSheet("color:#e6edf3; font-size:20px; font-weight:600; background:transparent; border:none; padding:0 8px;")
         sl.addWidget(brand)
         
+        # 🚦 2026-10-15 老倪: 「那三个状态指示灯，保留，绿色表示功能正常(可以随时进行模型推理，且所有模型可以
+        #   数据闭环全流程工作)，黄色…训练正在进行(且GPU负荷平均大于50%)，红色…正处于真机器联调且随时可以进行
+        #   机械臂操作；你来同步功能，要保证功能的准确实时显示。」⇒ 三灯改成**可证伪的真状态**, 每秒实时同步:
+        #     绿 实心常亮  = 功能正常: 8790 推理服务在线 + 全部在役模型指针可解析 + 数据闭环全流程入口在位;
+        #     黄 1s 周期闪 = 训练进行中: 训练进程在场 且 GPU 利用率滑窗平均 > 50%; 否则保持现状(空心不闪);
+        #     红 1s 周期闪 = 真机联调且可操作: 位姿真源帧龄 ≤2s 且 真动授权 armed; 否则保持现状(空心不闪)。
+        #   真源**单一出处** = tools/status_lights.py (可直接复核: ./gui-venv311/bin/python tools/status_lights.py)
+        #   本处只做两件事: 后台线程每 2s 取一次真状态 + 250ms 渲染相位; 取不到就如实标失效, 不冒充现状。
         self._status_lights = {}
+        self._light_state = {}
+        self._light_ts = 0.0
         for color_on, name, tooltip in [
-            ("#3fb950", "green",  "Hermes Agent 在线 · 守护进程运行中"),
-            ("#d29922", "yellow", "需要紧急处理"),
-            ("#f85149", "red",    "Agent 不在线或异常"),
+            ("#3fb950", "green",  "功能正常: 可以随时进行模型推理, 且所有模型可以数据闭环全流程工作"),
+            ("#d29922", "yellow", "训练进行中: 1s 周期闪烁 (训练进程在场 且 GPU 负荷平均 > 50%)"),
+            ("#f85149", "red",    "正处于真机器联调且随时可以进行机械臂操作: 1s 周期闪烁"),
         ]:
             dot = QLabel()
             dot.setFixedSize(14, 14)
             dot.setToolTip(tooltip)
-            # 默认: 绿灯实心, 其他空心带边线
-            if name == "green":
-                dot.setStyleSheet(f"background:{color_on}; border:2px solid {color_on}; border-radius:7px;")
-            else:
-                dot.setStyleSheet(f"background:transparent; border:2px solid {color_on}; border-radius:7px;")
+            # 默认: 绿灯实心, 其他空心带边线 (黄/红"保持现状" = 就是这个空心)
+            dot.setStyleSheet(_light_qss(color_on, name == "green"))
             sl.addWidget(dot)
             self._status_lights[name] = dot
-        
+
         status_widget.setLayout(sl)
         mb.setCornerWidget(status_widget, Qt.TopRightCorner)
+
+        # 采样线程 (2s, 阻塞 I/O 全在后台) + 渲染定时器 (250ms, 只为闪烁相位)
+        self._light_fetcher = _StatusLightFetcher(self, interval=2.0)
+        self._light_fetcher.got.connect(self._on_light_state)
+        self._light_fetcher.start()
+        self._light_timer = QTimer(self)
+        self._light_timer.timeout.connect(self._render_lights)
+        self._light_timer.start(250)
+
+
+    # 🚦 三色状态灯 (2026-10-15): 真状态每 2s 由 _StatusLightFetcher 写入, 本组函数只做渲染与提示
+    def _on_light_state(self, st):
+        """收到一轮真状态 (tools/status_lights.py --json) —— 只存数据, 渲染交给 250ms 定时器"""
+        self._light_state = st or {}
+        self._light_ts = time.time()
+
+    def _render_lights(self):
+        """画三灯: 绿实心常亮 / 黄·红 1s 周期闪烁 (默认保持空心不闪); 取不到数据就**如实标失效**"""
+        try:
+            st = self._light_state or {}
+            age = (time.time() - self._light_ts) if self._light_ts else None
+            stale = (age is None) or (age > 10.0)
+            period = float(st.get("blink_period_s") or 1.0)
+            period = max(period, 0.2)
+            on_phase = (time.monotonic() % period) < (period / 2.0)   # 1s 周期 ⇒ 0.5s 亮 / 0.5s 灭
+            for name, color in (("green", "#3fb950"), ("yellow", "#d29922"), ("red", "#f85149")):
+                dot = self._status_lights.get(name)
+                if dot is None:
+                    continue
+                d = st.get(name) or {}
+                if name == "green":
+                    solid = bool(d.get("on")) and not stale
+                    ev = " · ".join("%s%s" % ("✓" if i.get("ok") else "✗", i.get("name")) for i in (d.get("items") or []))
+                else:
+                    solid = bool(d.get("blink")) and on_phase and not stale
+                    ev = ""
+                dot.setStyleSheet(_light_qss(color, solid))
+                tip = "%s\n%s" % (d.get("why") or "无数据 (状态源没回)", ev)
+                if stale:
+                    tip = ("⚠ 状态源已静止 %s ⇒ 当前灯色是最后一帧, 勿当现状\n" %
+                           ("(从未取到)" if age is None else "%.0fs" % age)) + tip
+                elif age is not None:
+                    tip += "\n(采样 %s · 数据龄 %.1fs)" % (st.get("t") or "—", age)
+                dot.setToolTip(tip)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _mk_nav_func(self, target):
         """创建导航闭包函数"""
