@@ -1399,6 +1399,22 @@
     "use_count": 24,
     "view_count": 24
   },
+  "manifold-sphere-geometry": {
+    "archived_at": null,
+    "created_at": "2026-10-15T22:04:39.287822+00:00",
+    "created_by": "learn",
+    "first_seen_at": null,
+    "last_patched_at": "2026-10-15T22:04:43.264069+00:00",
+    "last_reused_patch_generation": 0,
+    "last_used_at": null,
+    "last_viewed_at": null,
+    "patch_count": 1,
+    "patch_generation": 1,
+    "pinned": false,
+    "state": "active",
+    "use_count": 0,
+    "view_count": 0
+  },
   "manim-video": {
     "archived_at": null,
     "created_at": "2026-08-04T06:29:03.503785+00:00",
