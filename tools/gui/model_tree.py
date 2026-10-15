@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
+from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox, QStackedWidget,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QMenu, QDialog, QCheckBox, QApplication,
                              QLineEdit)                     # 🎛 2026-10-15 右侧栏「参数中心」页要用
+# QStackedWidget: 2026-10-16 🪐 球心引力架构视图与 🧊 四面板同页切换用
 from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage, QPixmap, QBrush   # QBrush: 参数中心着色
 # ══════════════════════════════════════════════════════════════════
 # 🧊 2026-10-09 老倪「没有联系的全注释掉」: 原「前馈PD/PM/数学」分析内核
@@ -1008,7 +1009,39 @@ class MasterParamMView(QWidget):
             self.viz.setMinimumHeight(470)
         except Exception:
             pass
-        lay.addWidget(self.viz, 2)
+        # ── 🪐 球心引力架构 (老倪 2026-10-16: 「在右侧侧面栏, 流形引擎是太阳, 前馈加速器是地球,
+        #    DiT是火星, 接触流形是水星, 性能流形是木星, 原子技能是卫星, 用球体映射主要的节点。
+        #    状态校正节点是月球。前馈加速器和状态校正器协同行进」) —— 与几何四面板**同一页**,
+        #    用一条下拉切换 (侧栏地方有限: 不许挤 ⇒ 二选一显示, 不叠在一起) ──
+        try:
+            try:
+                from tools.gui.orbital_arch import OrbitalArchView
+            except Exception:
+                _gdir2 = os.path.dirname(os.path.abspath(__file__))
+                if _gdir2 not in sys.path:
+                    sys.path.insert(0, _gdir2)
+                from orbital_arch import OrbitalArchView
+            self.orbital = OrbitalArchView()
+            self.orbital.setMinimumHeight(470)
+        except Exception as _e2:
+            self.orbital = QLabel("🪐 球心引力架构视图不可用: %s: %s" % (type(_e2).__name__, _e2))
+            self.orbital.setWordWrap(True)
+            self.orbital.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+        self.viz_stack = QStackedWidget()
+        self.viz_stack.addWidget(self.viz)          # 0 = 🧊 几何四面板 (默认, 不改变既有观感)
+        self.viz_stack.addWidget(self.orbital)      # 1 = 🪐 球心引力架构
+        self.cmb_viz_view = QComboBox()
+        self.cmb_viz_view.addItems(["🧊 流形几何 · 四面板", "🪐 球心引力架构 · 太阳系"])
+        self.cmb_viz_view.setToolTip("切换可视化视图 (都在本页; 数据同源: engine_latest / ss_traj_last / "
+                                     "torque_live / skill_* / 画布 state_space_obs.json 真连线)")
+        self.cmb_viz_view.setStyleSheet("QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
+                                        "border-radius:4px;padding:2px 6px;font-size:12px;}")
+        self.cmb_viz_view.currentIndexChanged.connect(self._switch_viz_view)
+        _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0)
+        _vrow.addWidget(QLabel("视图"), 0)
+        _vrow.addWidget(self.cmb_viz_view, 1)
+        lay.addLayout(_vrow)
+        lay.addWidget(self.viz_stack, 2)
 
         # ── 四视角页签 (测量/标定/诊断/配置) ──
         self.tabs = QTabWidget()
@@ -1038,8 +1071,30 @@ class MasterParamMView(QWidget):
         lay.addWidget(self.lbl_cmd)
         self.refresh()
 
+    def _switch_viz_view(self, idx):
+        """🧊 几何四面板 ⟷ 🪐 球心引力架构 (同一页切换; 切到谁就把谁当真源重读一遍)。"""
+        try:
+            self.viz_stack.setCurrentIndex(int(idx))
+        except Exception:                                                        # noqa: BLE001
+            return
+        if int(idx) == 1 and hasattr(self, "orbital") and hasattr(self.orbital, "refresh"):
+            try:
+                self.orbital.refresh()
+            except Exception:                                                    # noqa: BLE001
+                pass
+        elif hasattr(self, "viz") and hasattr(self.viz, "reload"):
+            try:
+                self.viz.reload()
+            except Exception:                                                    # noqa: BLE001
+                pass
+
     def _refresh_viz(self):
-        """重读可视化真源 (engine_latest / ss_traj_last / zmax_manifold) —— 只读, 不改任何真源。"""
+        """重读可视化真源 (engine_latest / ss_traj_last / zmax_manifold / torque_live / skill_*) —— 只读, 不改任何真源。"""
+        try:
+            if hasattr(self, "orbital") and hasattr(self.orbital, "refresh"):
+                self.orbital.refresh()
+        except Exception:                                                        # noqa: BLE001
+            pass
         try:
             if hasattr(self, "viz") and hasattr(self.viz, "reload"):
                 self.viz.reload()

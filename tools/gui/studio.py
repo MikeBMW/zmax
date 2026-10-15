@@ -12818,6 +12818,22 @@ class StudioMainWindow(QMainWindow):
         except Exception as _e:                                              # noqa: BLE001
             print("📡 mparam: 切页失败: %r" % _e)
 
+    def _goto_orbital_cmd(self):
+        """📡 命令通道 orbital: 跳到画布页 → 右侧栏「🧮 主参数 M」→ 视图切到「🪐 球心引力架构」。"""
+        self._goto_mparam_cmd()
+        try:
+            dock = getattr(getattr(self, "simulink", None), "model_tree", None)
+            page = getattr(dock, "mparam", None)
+            cmb = getattr(page, "cmb_viz_view", None)
+            if cmb is None:
+                print("📡 orbital: M 页没有视图切换器")
+                return
+            cmb.setCurrentIndex(1)
+            orb = getattr(page, "orbital", None)
+            print("📡 orbital: 已切到「%s」· 视图对象 %s" % (cmb.currentText(), type(orb).__name__))
+        except Exception as _e:                                              # noqa: BLE001
+            print("📡 orbital: 切视图失败: %r" % _e)
+
     def _mparam_shot_cmd(self):
         """📷 命令通道 mparam_shot: 切到 M 页并**从控制台内部**把该页真窗口抓成 PNG。
 
@@ -12833,8 +12849,13 @@ class StudioMainWindow(QMainWindow):
             if page is None:
                 print("📷 mparam_shot: 没有 M 页")
                 return
+            # 抓「当前显示的那一页」(视图切换器选谁抓谁), 文件名带视图后缀
+            _stack = getattr(page, "viz_stack", None)
+            _which = "viz"
+            if _stack is not None:
+                _which = "orbital" if _stack.currentIndex() == 1 else "viz"
             out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                               "reports", "ui_shots", "live_mparam_sidebar.png")
+                               "reports", "ui_shots", "live_mparam_%s.png" % _which)
             os.makedirs(os.path.dirname(out), exist_ok=True)
             pm = page.grab()
             pm.save(out)
@@ -12868,6 +12889,10 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 900, self._goto_mparam_cmd)
                     # 📷 2026-10-16 同上: 从控制台内部把「M 页」真窗口抓成 PNG (X11 遮挡抓不到时用)
                     #   用法: echo mparam_shot > /tmp/zmax_nav_cmd
+                    # 🪐 2026-10-16 老倪球心引力架构: 一句令直达「太阳系视图」(画布页 + M 页 + 视图切到 🪐)
+                    #   用法: echo orbital > /tmp/zmax_nav_cmd
+                    elif line == "orbital":
+                        _oneshot(self, 1000, self._goto_orbital_cmd)
                     elif line == "mparam_shot":
                         _oneshot(self, 1200, self._mparam_shot_cmd)
                     elif line == "ss_3d":
