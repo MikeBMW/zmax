@@ -33,10 +33,10 @@ import urllib.request
 SYNC_LOCS = [
     ("studio.py:品牌版本 QLabel", "tools/gui/studio.py",
      r'QLabel\("Z-MAX (v?\d+\.\d+\.\d+)"\)', "侧栏品牌版本小字"),
-    ("studio.py:窗口标题(正常)", "tools/gui/studio.py",
-     r'"XSpace Studio — Z-MAX (v?\d+\.\d+\.\d+) \[W-01\]"', "主窗口标题"),
-    ("studio.py:窗口标题(非调试)", "tools/gui/studio.py",
-     r'"XSpace Studio — Z-MAX (v?\d+\.\d+\.\d+) \[W-01\] ⚠️非调试模式"', "主窗口标题"),
+    # 2026-10-15 老倪: 窗口标题改成「XSpace ZMAX <产品号>」(产品标识, 不含版本号) ⇒ 标题不再是版本同步点。
+    #   版本仍由上面的「品牌版本 QLabel」(侧栏) + 状态栏 + 关于框承担;
+    #   标题↔产品真源的一致性归 tools/verify_console_title_product.py 判
+    #   (产品真源 config/platform/zmax_product.json · 实机窗口标题 · F5 调试同源 md5)。
     ("studio.py:changelog 前缀", "tools/gui/studio.py",
      r'(?m)^[ \t]*# (v?\d+\.\d+\.\d+):', "变更摘要注释(取最新一条)"),
     ("update_checker.py:CURRENT_VERSION", "tools/gui/update_checker.py",
@@ -169,9 +169,11 @@ def scan_xspace(repo, offline):
     ev = {}
     # 证据1: 本机是否有 /home/xspace 目录 (旧 hostname/工程师名)
     ev["local_dir_/home/xspace"] = os.path.isdir("/home/xspace")
-    # 证据2: 品牌名 "XSpace Studio" 是否仍是 GUI 标题
+    # 证据2: 品牌名是否用于 GUI (2026-10-15 起顶栏品牌 = "XSpace ZMAX <产品号>"; 旧记法 "XSpace Studio")
     sp = os.path.join(repo, "tools/gui/studio.py")
-    ev["brand_used_in_gui"] = bool(os.path.exists(sp) and "XSpace Studio" in read(sp))
+    _gsrc = read(sp) if os.path.exists(sp) else ""
+    ev["brand_used_in_gui"] = bool("XSpace Studio" in _gsrc)
+    ev["brand_now_in_gui"] = bool("XSpace ZMAX" in _gsrc)
     # 证据3: GUI 工程 external/lerobot-smolvla-lew 的 pyproject 版本 + remote + 自带 GUI 版本
     lr = os.path.join(repo, "external/lerobot-smolvla-lew")
     ev["lerobot_local_pyproject"] = None
@@ -212,7 +214,8 @@ def scan_xspace(repo, offline):
         "\"xspace\" 不是独立版本号, 而是 GUI 品牌/旧工作区名: 实据 —— "
         f"GitHub MikeBMW/xspace 不存在 ({ev['github_MikeBMW/xspace']}); "
         f"本机 /home/xspace 目录不存在 ({ev['local_dir_/home/xspace']}); "
-        f"但 GUI 主窗口标题仍用品牌 'XSpace Studio — Z-MAX vX.Y.Z' (brand_used={ev['brand_used_in_gui']})。 "
+        f"GUI 顶栏品牌现为 'XSpace ZMAX <产品号>' (旧记法 'XSpace Studio — Z-MAX vX.Y.Z' 已于 2026-10-15 下线; "
+        f"brand_now={ev['brand_now_in_gui']} · old_brand_left={ev['brand_used_in_gui']})。 "
         "⇒ 老倪说的\"xspace 版本\"= XSpace Studio (Z-MAX 控制台) 的版本线, 与该线当前版本号同一处; "
         "另有一支历史\"xspace 工程仓\" MikeBMW/lerobot-smolvla-lew (GUI 工程 external/lerobot-smolvla-lew 的 origin), "
         "它是 LeRobot 0.5.2 派生, 与 Z-MAX 版本线不是同一个号。"

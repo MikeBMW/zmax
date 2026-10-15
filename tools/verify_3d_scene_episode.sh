@@ -8,7 +8,7 @@ DISP="env DISPLAY=:0"
 echo "── ① 等控制台就绪 (最多 9 分钟) ──"
 for i in $(seq 1 54); do
   PID=$(ss -ltnp 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
-  N=$(wmctrl -l 2>/dev/null | grep -c "XSpace Studio")
+  N=$(wmctrl -l 2>/dev/null | grep -c "XSpace ZMAX")
   if [ "$N" -ge 1 ]; then echo "   控制台窗口已出现 (第 $((i*10))s, pid=${PID:-?})"; break; fi
   sleep 10
 done

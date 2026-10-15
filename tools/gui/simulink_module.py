@@ -8851,7 +8851,7 @@ class SimulinkModule(QWidget):
                 _g = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
                                     timeout=4).stdout
                 for _ln in _g.splitlines():
-                    if "XSpace Studio" in _ln:
+                    if "XSpace ZMAX" in _ln:
                         _p = _ln.split(None, 7)
                         return (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
             except Exception:
@@ -9224,7 +9224,7 @@ class SimulinkModule(QWidget):
                 _g0 = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
                                      timeout=4).stdout
                 for _ln in _g0.splitlines():
-                    if "XSpace Studio" in _ln:
+                    if "XSpace ZMAX" in _ln:
                         _p = _ln.split(None, 7)
                         _geo0 = (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
                         break
@@ -9337,7 +9337,7 @@ class SimulinkModule(QWidget):
                 _gout = subprocess.run(["wmctrl", "-lG"], capture_output=True, text=True,
                                        timeout=4).stdout
                 for _ln in _gout.splitlines():
-                    if "XSpace Studio" in _ln:
+                    if "XSpace ZMAX" in _ln:
                         _p = _ln.split(None, 7)
                         _geo = (int(_p[2]), int(_p[3]), int(_p[4]), int(_p[5]))
                         break
@@ -16070,7 +16070,7 @@ class SimulinkModule(QWidget):
             if _w is not None:
                 _base = getattr(self, "_win_title_base", None)
                 if not _base:
-                    _base = _w.windowTitle() or "XSpace Studio"
+                    _base = _w.windowTitle() or "XSpace ZMAX"
                     self._win_title_base = _base
                 if state == "idle":
                     _w.setWindowTitle(_base)

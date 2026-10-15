@@ -343,7 +343,7 @@ def main():
     tasks = [t.strip() for t in a.tasks.split(",") if t.strip()]
 
     print("═══ 配置 × 任务 × 场景 × 信号实时监控 自动测试 ═══")
-    if not find_win("XSpace Studio"):
+    if not find_win("XSpace ZMAX"):
         print("❌ 控制台没在跑 —— 先起控制台 (tools/studio_ctl.sh start)")
         return 1
     _keep_task, _keep_src = bind_active(), canvas_src()

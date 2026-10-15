@@ -7,7 +7,7 @@ PY=gui-venv311/bin/python
 echo "── ① 重启控制台 (载入三处修复) ──"
 unset QT_QPA_PLATFORM
 bash tools/studio_ctl.sh restart --force 2>&1 | tail -2
-for i in $(seq 1 30); do wmctrl -l 2>/dev/null | grep -q "XSpace Studio" && { echo "   就绪 ($((i*10))s)"; break; }; sleep 10; done
+for i in $(seq 1 30); do wmctrl -l 2>/dev/null | grep -q "XSpace ZMAX" && { echo "   就绪 ($((i*10))s)"; break; }; sleep 10; done
 sleep 20
 
 echo "── ② 打开(摆盘) ──"

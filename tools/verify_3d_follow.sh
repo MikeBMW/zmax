@@ -11,7 +11,7 @@ bash tools/studio_ctl.sh restart --force 2>&1 | tail -2
 
 echo "── ② 等窗口就绪 (最多 8 分钟) ──"
 for i in $(seq 1 48); do
-  wmctrl -l 2>/dev/null | grep -q "XSpace Studio" && { echo "   就绪 (第 $((i*10))s)"; break; }
+  wmctrl -l 2>/dev/null | grep -q "XSpace ZMAX" && { echo "   就绪 (第 $((i*10))s)"; break; }
   sleep 10
 done
 sleep 20

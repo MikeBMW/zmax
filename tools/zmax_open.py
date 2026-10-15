@@ -42,7 +42,7 @@ SHEET_DIR = os.path.join(ROOT, "outputs", "config_sheets")
 SCENE_SWITCH = os.path.join(ROOT, "tools", "ss_scene_switch.py")
 STUDIO_CTL = os.path.join(ROOT, "tools", "studio_ctl.sh")
 
-WIN_CONSOLE = "XSpace Studio — Z-MAX"
+WIN_CONSOLE = "XSpace ZMAX"
 WIN_3D = "3D场景"
 WIN_SIGNAL = "Graphic 信号分析"
 PAGE_CONFIG = ("配置", "配置中心")

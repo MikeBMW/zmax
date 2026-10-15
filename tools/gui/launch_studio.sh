@@ -41,7 +41,7 @@ export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
 # 已有实例在跑 → 激活已有窗口 + 弹到配置中心, 不重复启动
 if pgrep -f "[g]ui-venv311/bin/python studio.py" >/dev/null 2>&1; then
     printf '%s\n' "$ZMAX_BOOT_PAGE" > /tmp/zmax_nav_cmd 2>/dev/null || true
-    WIN=$(DISPLAY="$DISPLAY" xdotool search --onlyvisible --name "XSpace Studio" 2>/dev/null | head -1)
+    WIN=$(DISPLAY="$DISPLAY" xdotool search --onlyvisible --name "XSpace ZMAX" 2>/dev/null | head -1)
     if [ -n "$WIN" ]; then
         DISPLAY="$DISPLAY" xdotool windowactivate "$WIN" 2>/dev/null
     fi

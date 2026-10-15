@@ -84,12 +84,15 @@ def main() -> int:
     s2 = _ql.sub('QLabel("Z-MAX %s")' % nv_brand, s2)
     chk.append(("studio.py QLabel", n_ql,
                 len(re.findall(r'QLabel\("Z-MAX v{1,2}%s"\)' % re.escape(a.to), s2))))
-    # 2) studio.py 窗口标题 (两处)
-    _ti = re.compile(r"XSpace Studio — Z-MAX v{1,2}%s" % re.escape(old))
-    n_t = len(_ti.findall(s2))
-    s2 = _ti.sub("XSpace Studio — Z-MAX %s" % nv_brand, s2)
-    chk.append(("studio.py 窗口标题", n_t,
-                len(re.findall(r"XSpace Studio — Z-MAX v{1,2}%s" % re.escape(a.to), s2))))
+    # 2) studio.py 窗口标题 —— 自 v5.50.730 起标题 = 「XSpace ZMAX <产品号>」, **不再含版本号**
+    #    (老倪 2026-10-15: 「最上边框那行字改成 XSpace ZMAX 550A 或者按配置中心产品配置显示 550B/550C;
+    #     左侧边栏保留 v5.50.730; 不用特意显示非调试模式」)
+    #    ⇒ 标题已不是版本同步点 (版本仍在品牌 QLabel / 状态栏 / 关于框), 这里只做**断言**:
+    #      断言没被人改回「XSpace Studio — Z-MAX vX.Y.Z」的老写法; 标题↔产品真源的一致性
+    #      归 tools/verify_console_title_product.py 判 (它的口径是读真源 + 读真窗口)。
+    _ti_stale = re.compile(r"XSpace Studio — Z-MAX v{1,2}\d+\.\d+\.\d+")
+    chk.append(("studio.py 窗口标题(产品标识·无版本)", 1,
+                0 if _ti_stale.search(s2) else 1))
     # 2b) 🐛 2026-10-10 (第二次踩): 上面两条只认「QLabel("Z-MAX vX")」和窗口标题这两种**死串**,
     #     状态栏 sb.showMessage("Z-MAX vX  |  Sys-1 …") 和关于框 "<b>Z-MAX vX</b> · …" 都漏掉
     #     ⇒ 每次 bump 完 verify_version_sync 都报「显示陈旧」再手改。这里做一次**代码行**通扫

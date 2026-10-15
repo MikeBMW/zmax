@@ -84,7 +84,7 @@ except Exception as e:                                                          
     st, body = "%s" % e, ""
 
 new = [x for x in gl if x.split()[0] not in before]
-studio = [x for x in wins(True) if "XSpace Studio" in x]
+studio = [x for x in wins(True) if "XSpace ZMAX" in x]
 geo_same = False
 if new and studio:
     _n = new[0].split()

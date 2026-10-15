@@ -97,7 +97,7 @@ print("   启动后命令文件内容 = %r  (期望空 ⇒ launch_studio.sh 已�
 print("=== ④ 等控制台窗口 (最多 9 分钟) ===")
 win_at = None
 for i in range(54):
-    if "XSpace Studio" in sh("wmctrl -l"):
+    if "XSpace ZMAX" in sh("wmctrl -l"):
         win_at = int(time.time() - t0)
         print("   控制台窗口已出现 (第 %ds)" % win_at)
         break
