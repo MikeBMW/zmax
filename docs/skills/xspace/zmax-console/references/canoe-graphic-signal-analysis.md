@@ -294,3 +294,47 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
   验前缀色/白、按色置顶、标题行计数; 另验 `/api/cams` 真值 + 每路快照魔数(`\xff\xd8`)。
   ⚠️ AR 组只在「🌐 全部来源」范围出现 ⇒ 断言前按上面老用例的姿势先切范围
   (`w._default_done=True` + `scope_combo.setCurrentIndex(1)`), 否则取不到 AR 项 = **假失败**。
+
+### 🟢🔵 重名信号分区 / 蓝区折叠 / 不打勾 (老倪三条现场纠正)
+老倪口径: 「插拔是绿色信号, 如果需要重名信号, 就要在绿色区域重新加载」·「摆盘的蓝色信号, 怎么也有 tick 小对号?」
+·「蓝色区域你得折叠隐藏啊」。三条是同一件事的三面, 一起改。
+
+* **共写源的重名信号: 每个场景区域各自加载一份, 行色 = 它所在区域的场景色** (不是按标签二选一)。
+  机制: 一份快照文件可能被两个场景面板共写 (如 `trace_live.json` = 插拔 + 摆盘两块 3D 面板共写),
+  静态打标只能把同一个键归到一个场景 ⇒ 按标签二选一的结果就是"一个区缺半 + 另一个区多出不该有的数",
+  用户看到的是「插拔绿色信号没看到」和「蓝色区里也混进了插拔信号」。
+* 🔴 **勾选态是按信号 key 走的** ⇒ 重名行会在另一区跟着打勾。规则: **非当前场景的那一份不可勾选**
+  (`flags & ~Qt.ItemIsUserCheckable`)、强制未勾选、灰显, tooltip 注明"非当前场景 ⇒ 不参与波形";
+  首屏默认勾选 (`_apply_default_selection`) 跳过不可勾选的行。语义由 `_make_item(b, ..., scene=, interactive=)` 承载。
+* **非当前场景的场景组默认折叠隐藏**, 当前场景组展开; 用户手动点开过的组优先 (记 `scene:<组名>` 于
+  `self._expanded/_collapsed`); 基础场景(未分类)仍展开。
+* 建树/切排序后 **滚到目标场景组** (`self.tree.scrollToItem(_tgt, QAbstractItemView.PositionAtTop)`;
+  `QAbstractItemView` 在该文件已导入 —— 别再写 `QtWidgets.QAbstractItemView`, 那个名字没导入)。
+  树很长, 默认落点不在首组时用户会把"没滚到"当成"绿色信号没在"。
+* **当前场景判定**: `_scene_sort` (排序里选中的) 优先, 否则 `ss_scene_switch.now()['src_state']`
+  (真源直接返回场景名, 如 `'插拔场景'`, 不需要再映射)。`_active_scene()` 收口这一条。
+* 目录树只在**建窗那一刻**按当时 `scene_tags.json` 铺一次 ⇒ 打完标签必须重开窗口才看得见:
+  `tools/gui/restart_graphic_window.sh` (锚定整条 cmdline 找旧窗 pid, 先停→等死→再起; 子进程 env 要清
+  `QT_QPA_PLATFORM*`, 否则找不到 xcb 插件会整进程退出)。
+* ⚠️ **共写源无法静态归单场景时就打 overrides**: `sig_scene_tags.py` 的 `overrides` 机制是最高优先级
+  (与 `ins_depth_m` 同套路), 把它钉到目标场景, 并在报告里写明"为什么不能自动归类"。
+* ⚠️ `config/topics/scene_tags.json` 是**符号链接** (生成物): `git check-ignore` 会报
+  `fatal: pathspec ... is beyond a symbolic link`; 要提交/比对就走真实路径或重跑生成器。
+* 判据 `tools/verify_scene_signal_green.py` (offscreen 真建 `CanoeGraphicWidget`, 逐行走树取
+  (层级, 文本, 前景色, 勾选态, 可勾选标志, 组展开态)) 五条: ① 当前场景区逐行同色 ② 重名键两区各一份且色正确
+  ③ 非当前场景区已勾选 0 条 / 仍可勾选 0 条 ④ 该组 `expanded=False` 而当前场景组 `True` ⑤ 目标信号链在该区。
+  ⚠️ 断言里的过滤函数必须作用在**剥掉 `● `/`○ ` 前缀之后**的文本上, 否则 `t == "末端_x"` 永远不成立 ⇒ 全报"缺"= 假失败。
+* 界面交付的取证口径: **逐行核 颜色/勾选/折叠态/滚动位置**, 只证"数据源里有这条信号"不算交付 ——
+  用户当场看界面。真机截图先 `wmctrl -lG` 取窗口实际几何、或用目标色像素 bbox 定位再裁
+  (独立窗会开在主屏或第二块屏, 按记忆坐标裁会裁空)。
+
+### 🧭 动作调制器链: 问"某功能输出哪个 topic"就给链上邻居
+
+* 链: `sstrace.前馈速度_mps` (u_ff · 前馈加速器) → `sstrace.动作调制_mps`
+  (**= ‖u_fuse_vec[:3]‖**, 融合律 = 前馈 u_ff + 反馈 u_fb 相加后按阶段限速; 节点「🧭 动作调制器」
+  id=`sssched` = `cognition.py::decide`, 导出在 `ss_dreamview.py` 状态面板那一段) →
+  `sstrace.安全边界_mps` (u_limit · 饱和限幅)。真源同 `trace_live.json`。
+* 单问一个功能名时**给链上邻居 + 节点 id + 导出位置**, 不要只丢一个 topic 名 (用户接着就问上下游)。
+* 常驻 10Hz 路另有出口 `zmax/ss_engine` 的 action(4 维)/action_norm —— 与波形页的 `sstrace.*` 不是同一条路。
+* ⚠️ `sstrace.*` 的值来自 3D 回放快照 (`trace_live.json`) ⇒ 3D 不播时值停在末帧, 帧龄可能几千秒;
+  报数必须带帧龄, 别把回放快照说成实时 (要实时值走常驻回路 `zmax_data/ss_live/engine_latest.json`)。
