@@ -252,8 +252,15 @@ jobs:
           asset_name: Z-MAX_Console.exe
           tag: ${{ steps.release_tag.outputs.tag }}
           overwrite: true
+          # 老倪 2026-10-15: 「取消 5.50.80 该版本的 release note 署名, 北斗七星版」
+          #   ⇒ Release 名称/正文一律署**版本代号**, 不再只写数字版本号。
+          release_name: Z-MAX Console 北斗七星版 · ${{ steps.release_tag.outputs.tag }}
           body: |
-            ## Z-MAX Console ${{ steps.release_tag.outputs.tag }}
+            ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
+
+            > 版本号 5.50.730 · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
+            > 本版: 配置中心=北斗七星阵 (页签名=配置名) · 模型配置页=功能↔L2~L5 层模型映射 (与主控台模型矩阵同源) ·
+            > **专利**: 74 项功能逐条预留申请渠道 + 12 件发明专利内容设计 (层次/逻辑/真实数据/可落地) + 文档配置页专利导出预览。
 
             桌面版下载 (双平台):
             - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用

@@ -26,13 +26,15 @@
 | `docs/data_snapshots/20261008_aoi_gold_judge_v21/compare/deploy_v21_gold_judge_now.png` | 217439 | `aace08c9e08c7e20` |
 | `docs/data_snapshots/20261008_safety_gates_v5184/l2_daemon_recent.log` | 572586 | `0b108e36a99befb2` |
 | `docs/data_snapshots/20261014_L4_latent_chain/zmax_engineering.db` | 1400832 | `ca30183196d348fd` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/config_center_full.png` | 286907 | `5af7507b9207b891` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/config_center_full.png` | 324576 | `fd3ac8adae3cae7d` |
 | `docs/data_snapshots/20261015_config_center_seven_stars/console_real_064912.png` | 1145802 | `202aef711ea4f705` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 384068 | `9d5e654cf3d9b94f` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 343422 | `ae12a31b9f6bd234` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 301412 | `9b319d3816f9cd9a` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 328121 | `5d4b7b8fb6acf05d` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 328121 | `5d4b7b8fb6acf05d` |
-| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 328121 | `5d4b7b8fb6acf05d` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_1_天璇.png` | 409486 | `6a5918cade9efd63` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_2_天枢.png` | 342895 | `55a1c35a51edcd5f` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_3_天玑.png` | 311619 | `e355beb03e9a6779` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_4_玉衡.png` | 341905 | `357cab565a6c4db6` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_5_性能配置点左树.png` | 341905 | `357cab565a6c4db6` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_6_文档配置专利.png` | 388977 | `ddf6321b8b3535e0` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_7_模型配置层映射.png` | 424654 | `54ff02190a5efb5b` |
+| `docs/data_snapshots/20261015_config_center_seven_stars/real_page_full.png` | 424654 | `54ff02190a5efb5b` |
 
 刷新: `./gui-venv311/bin/python tools/snapshot_media_index.py --write`
