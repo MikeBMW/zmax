@@ -65,6 +65,12 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 8. 判据形态 `tools/verify_manifold_viz.py` (29 条): 几何 A (极点/往返/批量) · 真源 B (单位范数/同源映射/
    M 取标定真源/只读) · 几何量 C (distance 交叉核对/大圆弧长=θ/切空间性) · 控件 D (四面板/共享时间轴/
    空态诚实/窄栏转单列/帧龄标注) · 接线取证 E (M 页真接线/四面板像素证据/无重复公式)。
+9. **取证坑 (真踩过)**: 用 X11 全屏抓图 (`grabWindow(0)`) 时, 只要控制台被终端/浏览器压住, 抓到的**就是压在上面那个窗口** ——
+   会误判成"可视化没显示"。两条正确做法: ① 从控制台进程内 `QWidget.grab()` (与遮挡无关);
+   ② 控制台自带命令通道 `echo mparam > /tmp/zmax_nav_cmd` (跳画布页 + 侧栏切主参数 M),
+   `echo mparam_shot > /tmp/zmax_nav_cmd` (进程内抓 M 页 → `reports/ui_shots/live_mparam_sidebar.png`)。
+   另: 控制台默认停在**配置中心页**, 画布页+右侧栏不在屏幕上 —— 没切页就说"看不到"是错的。
+   还有 `lerobot` 被 fork 包遮蔽也会让面板退化成橙字空态 (见 `_load_by_path`)。
 
 ## 5. 训练侧与现场口径要对齐
 现场 `Encoder` 是 PCA/SVD 闭式拟合, 不是 SGD 网络 ⇒ 「反向传播/优化器」方案条款要落到可选的可微投影层 (`SphereProjection`) 上, 并让新能力**默认关** (`L4LatentSpace.project_sphere` 显式调用), 不动在役链路。
