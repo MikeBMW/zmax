@@ -119,6 +119,23 @@
    / ViewBox.linkedXChanged→screenGeometry): 现象是“3D 面板不跑、快照停更、状态不动”, 排查时
    别只看独立信号窗口的日志 —— 必须重启控制台才能带新代码 (判据: 40s 内新增 RecursionError == 0)。
 
+21. **“信号全变白 / 没颜色”两个真因** (老倪 2026-10-15)。
+   ① 波形区: `_build_items` 里 `setLabel(left, name, color=b.color)` 下一行又被
+      `setTextPen(C_DIM)` 覆盖 ⇒ 每信号独立图的信号名全灰白。统一用 `_kcolor(key)`:
+      场景色(插拔绿#2e8b57/摆盘蓝#1f6feb/AR紫#8957e5) > 角色色(位姿青#39c5cf/安全黄#d29922/
+      话题灰蓝#8ab4f8) > 调色板色; 标签笔+曲线笔都走它。
+   ② 信号目录: 非当前场景那份重名行**不要 setForeground(C_DIM)** (整组摆盘 48 行会灰成一片),
+      保留本场景色 + alpha≈165 淡显; “非当前场景”用不可勾选+tooltip 表达。
+22. **八阶段要“文字”不只序号**: 3D 面板随快照下发 `八阶段表`(真源 ActionModulator.STAGES 插拔
+   八段), 信号页状态行下再铺一行「🎛 八阶段: 接近 › 对位 › 【下降】 › …」当前段粗体绿+【】。
+   长富文本 QLabel 会把窗口 minimumSizeHint 顶到 3068x1936 ⇒ 必须 `setSizePolicy(Ignored, …)`。
+23. **首屏“一条曲线都没有”的真因**: 自动补勾在 `tree.blockSignals(True)` 里做 ⇒ setCheckState 不触发
+   `_on_item_changed` ⇒ `self.selected` 恒空。**离屏跑不复现** (键来得晚反而正常)。修: 建树时直接
+   append 进 selected。排查类问题必须在**真窗口日志**里读“已选共 N 条”。
+24. **状态/波形“不动”先查 GPU**: 控制台日志 `CUDA error: out of memory` (陈旧 INTACT/gui 进程各占
+   420MB~2GB 把 8GB 卡吃满) ⇒ 3D 面板定时器停 ⇒ 快照停更。`nvidia-smi --query-compute-apps`
+   按 etime 清陈旧进程, 再重启控制台。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
