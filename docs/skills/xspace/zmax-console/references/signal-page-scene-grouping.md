@@ -34,6 +34,12 @@
 5. **页面的 JSON 源解析有 48 键上限**(`flatten_json(..., 48)`, AR 曾因此只进 48 条)。新写一帧流别超;
    数值以外的东西(字符串)不进目录; 元数据键(ts/t/age/meta/groups/schema)要排除。
 
+## 新话题接入 = 五处登记 (少一处静默收不到)
+
+`dds/ss_types.py`(类型) · `dds/zmax_node.py`(`_SS_TOPICS` + qos) · `src/lerobot/dataspace/topics.py`(`TOPICS` + `MODE_TOPICS`) ·
+`tools/gui/zmax_telemetry.py::MODE_TOPICS` · `tools/dds/ss_daemon.py`(`MODE_TOPICS` + `pub_xxx` + 挂线程), 然后**两端都重启**。
+细节/踩坑/digest 400 字上限/`or -1.0` 呑 0.0 见 `references/new-topic-into-signal-page.md`。
+
 ## 现场验收话术(老倪看画面, 不看代码)
 
 - 先 `wmctrl -a '实时监控'` 把窗口抬到最前(3D 窗口会盖住波形区, 截图会拍到 3D 的界面 ⇒ 假“没波形”)。

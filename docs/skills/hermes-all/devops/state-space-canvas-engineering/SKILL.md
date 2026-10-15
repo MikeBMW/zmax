@@ -56,6 +56,22 @@ metadata:
 不许为了接线去挪任何现有节点(挪节点才是把画布搞乱的主因)。
 
 ## 新增连线的约定 (端口 + 连线, 2026-10-09 沉淀)
+
+### 🔴 同一对 (源,靶) 只能有一条边 —— GUI 会静默去重
+
+`tools/gui/simulink_module.py::add_link`: 已有 `lk["f"]==src and lk["t"]==dst` 就直接 return (只打一句
+`⚠️ 连线已存在`) ⇒ JSON 里写下 202 条、渲染只剩 200 条, `tools/verify_canvas_render.py` 判据 (容忍 N−M ≤ 1)
+直接变红, 而新加的那条**在界面上根本看不到**。
+
+想表达"同一对节点之间两条语义不同的流" (例: 🧪状态校正器→📡融合定位 已有回灌边, 现在还要"大偏差"边) 时:
+* **起一个真新节点做仲裁/分流** (例: ⚖物理约束闸 收 8 个技能的动作 → 出 可行动作/小偏差/大偏差 三路),
+  再接向各自目标 ⇒ (源,靶) 对天然唯一; 新节点就是代码真身 (`physics_constraints.InertiaLimiter`), 比给一条边塞两种含义诚实。
+* 落盘后自己先算重复对: `len(links) - len({(f,t) for l in links})`, 必须 ≤ 1 (那 1 条是历史遗留);
+  再跑 `verify_canvas_render.py` 看「文件 N / 渲染 M」。
+* 顺带: 往行里插节点会挪 `fn_id` (描述真源 `function_notes.json`/`config_meta.json` 静默错挂,
+  判据只看得见"空描述"看不到"错挂")——修法 `tools/fix_function_notes_align.py` + `tools/config_meta.py build`,
+  细节见 zmax-console::references/canvas-insert-shifts-fn-id.md。
+
 - **端口一律字符串列表** (`["in1","out1"]`); 历史遗留的 `[{'id':'out1','label':...}]` 字典格式要先归一(原标签存 `params._port_labels`)。
 - **新线必须前向**: `f.x + f.w <= t.x`(源节点右边界 ≤ 目标节点左边界), 否则渲染成交叉/反向线, 被断言拦下。
   **例外 —— 用户点名要的闭环反馈线**: 语义上就是"下游结果回灌到上游"(物理状态回灌 / 观测反馈 / 记忆汇聚)
