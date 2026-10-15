@@ -9,6 +9,20 @@ description: Use when 节点要能单步调试或判据因活真源时红时绿�
 - 用户说“这些节点的代码 review 一下, 要能 debug、能代码单步执行、我要看到实际的代码编写”。
 - 你写的判据/取证同一份代码**时红时绿**（尤其输入是 `ss_live/*.json` 这类被常驻服务每帧重写的真源）。
 
+## 1b. 键名与真体不符 = 假接入: 留痕, 不偷改
+- 节点名可能名不副实: 例 `ssdec` 名写「Flow-Matching Action Head (DiT)」, 实绑纯 MLP
+  (`state_space_action_head.py`, 无 DiT/无流匹配/无权重); 真 DiT 类 `action_head.py:205
+  SmolVLALewActionHead` 无任何节点引用。
+- 处置三步: (1) 把**真身**也加进单步清单, 三环节真跑它 (参数数/形状/耗时都打出来);
+  (2) 输出/JSON/不变量里写清「画布 X 绑 A, 真身 B 未被任何节点引用」;
+  (3) 要改真链路 (节点改指真身) 先请示, 不自己接。
+- 判据同时卡两件: 真身可跑 + 诚实标注出现在输出里。
+
+## 1c. 三环节不是到处都成立
+- 先核三环节是否真可分离: `ManifoldEngine` 有 (project · gradient_flow · navigate),
+  但 `ContactManifold`/`PerformanceManifold` 只有 decompose/evaluate (投影+度量融合, 无导航)。
+  不得为凑三环节硬编一步 —— 输出里标明那一步的真来源。
+
 ## 1. 单步调试器三条铁律
 1. **每步 = 节点真正在跑的那个函数**（同名同文件），不另写一套仿制实现。先定位
    “画布薄壳入口 file:line → 算法真体 file:line”，再按环节（如 投影→度量→导航→反馈）切步。
