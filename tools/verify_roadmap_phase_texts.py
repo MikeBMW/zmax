@@ -109,8 +109,17 @@ def main() -> int:
     base = card_desc("Phase 0")
     lib0 = studio._phase_desc("sys0", _F["sys0"]["fn"], "/".join(
         p for p in (("M%d" % _F["sys0"]["mcd"][0]), ("C%d" % _F["sys0"]["mcd"][1]), ("D%d" % _F["sys0"]["mcd"][2]))))
-    chk("④b 卡上文字 == 库生成文本", lib0.split("\n")[0] in base and lib0.split("\n")[1] in base,
-        "卡上含: %s" % lib0.replace("\n", " ／ "))
+    # ⚠️ 老倪会自己改卡 (实测 2026-10-15 11:33~11:38 他连改 5 张) ⇒ 有人工改写覆盖时,
+    #    "卡上文字"当然不等于库真值, 这是**正确**的: 判据改断「卡上文字 == 人工改写文本」,
+    #    库真值本身仍由 ② 独立核对 (② 比的是代码生成串 vs 工程库, 不走卡片)。
+    _ov0 = (studio.roadmap_text_overrides().get("Phase 0") or {})
+    if _ov0.get("desc"):
+        _w = _ov0["desc"].split("\n")[0]
+        chk("④b 卡上文字 == 库生成文本", _w in base,
+            "Phase 0 有人工改写覆盖 ⇒ 断「卡上 == 人工改写」: %s" % _w[:60])
+    else:
+        chk("④b 卡上文字 == 库生成文本", lib0.split("\n")[0] in base and lib0.split("\n")[1] in base,
+            "卡上含: %s" % lib0.replace("\n", " ／ "))
 
     mark = "✏️ 人工改写 · 试改一行 (判据自测)"
     ok_save, msg_save = studio.save_roadmap_phase_text("Phase 0", {"desc": mark})
@@ -134,6 +143,9 @@ def main() -> int:
         "%s ｜ 卡上回到: %s" % (msg_clr, back.replace("\n", " ／ ")[:80]))
 
     # ⑤ 判据不留痕: 现场快照 → 跑完原地还原 (判据不许把自己写的东西留在真源里)
+    #    注意: 老倪自己会改卡(人工改写覆盖是他写的), 所以"不留痕"= 与跑前**逐字节一致**
+    #    且 phases 集合与跑前完全相同 (不能多、也不能少) —— 不是"phases 必须为空"。
+    _before_phases = set((json.loads(before).get("phases") or {})) if before else set()
     if before is None:
         if os.path.exists(STORE):
             os.remove(STORE)
@@ -141,20 +153,35 @@ def main() -> int:
         with open(STORE, "w", encoding="utf-8") as _f:
             _f.write(before)
     now = open(STORE, encoding="utf-8").read() if os.path.exists(STORE) else None
-    resid = (json.loads(now).get("phases") or {}) if now else {}
-    chk("⑤ 判据不留痕 (现场快照已还原, 无残留覆盖)", now == before and not resid,
-        "store 内容与跑前逐字节一致=%s · 残留 phases=%s" % (now == before, list(resid) or "无"))
+    resid = set((json.loads(now).get("phases") or {}) if now else {})
+    chk("⑤ 判据不留痕 (现场快照逐字节还原, 你的改写一条不少)",
+        now == before and resid == _before_phases,
+        "store 与跑前逐字节一致=%s · phases 跑前 %s → 跑后 %s" % (now == before, sorted(_before_phases), sorted(resid)))
 
     # ⑥ 主指标(KPI)口径 + 位置一致 (老倪 2026-10-15: 「右下角主指标 … phase 0 速度反馈延迟 ≤ 10ms;
     #    phase 1 对位残差 ≤ 0.5mm; phase2 成功率 ≥ 97%; phase 3 稳定恢复时间 ≤ 1s; 字体排列/位置要一致, UI要优美整齐」)
     want_kpi = {"Phase 0": "速度反馈延迟 ≤ 10ms", "Phase 1": "对位残差 ≤ 0.5mm",
                 "Phase 2": "成功率 ≥ 97%", "Phase 3": "稳定恢复时间 ≤ 1s"}
+    # 判据口径: 默认文本必须 == 老倪指定; 但**他手改过的**以他写的为准 (人写的优先级高于默认),
+    # 只断「卡上文字 == 人工改写文本」并在明细里标注哪些是人工改写。
+    _ovs = studio.roadmap_text_overrides()
     got = {}
     for c in w.findChildren(studio.PhaseCardButton):
         got[c.phase_data["phase"]] = c.phase_data["kpi"]
-    bad_kpi = {k: (v, got.get(k)) for k, v in want_kpi.items() if got.get(k) != v}
-    chk("⑥ 主指标文本 == 老倪指定", not bad_kpi,
-        " ｜ ".join("%s: %s" % (k, v) for k, v in want_kpi.items()) + (" ｜ 偏差 %s" % bad_kpi if bad_kpi else ""))
+    bad_kpi, human_kpi = {}, {}
+    for k, v in want_kpi.items():
+        _o = (_ovs.get(k) or {}).get("kpi")
+        if _o:
+            if got.get(k) != _o:
+                bad_kpi[k] = ("人工改写 %s" % _o, got.get(k))
+            else:
+                human_kpi[k] = _o
+        elif got.get(k) != v:
+            bad_kpi[k] = (v, got.get(k))
+    chk("⑥ 主指标文本 (默认=老倪指定 / 已改写=以改写为准)", not bad_kpi,
+        " ｜ ".join("%s: %s" % (k, v) for k, v in want_kpi.items())
+        + (" ｜ ✏️人工改写: %s" % human_kpi if human_kpi else "")
+        + (" ｜ 偏差 %s" % bad_kpi if bad_kpi else ""))
 
     geo = {}
     for c in w.findChildren(studio.PhaseCardButton):
@@ -173,15 +200,18 @@ def main() -> int:
     #    按实机宽度量: 真窗 1400 − 侧栏/边距 ⇒ roadmap 实宽 1108 (实测值), 重新排版后逐条量文本宽 vs 标签宽。
     from PyQt5.QtGui import QFontMetrics
     w.resize(1108, 320); app.processEvents()
-    over = []
+    over, over_human = [], []
     for c in w.findChildren(studio.PhaseCardButton):
         kl = [l for l in c.findChildren(QLabel) if l.text() == c.phase_data["kpi"]]
         if kl:
             need = QFontMetrics(kl[0].font()).horizontalAdvance(kl[0].text())
             if need > kl[0].width():
-                over.append((c.phase_data["phase"], need, kl[0].width()))
+                # 老倪自己写长的 ⇒ 折行是他的选择, 只提醒不算失败; 默认文本折行才是 UI 缺陷
+                _t = (c.phase_data["phase"], need, kl[0].width())
+                ((over_human if (_ovs.get(c.phase_data["phase"]) or {}).get("kpi") else over)).append(_t)
     chk("⑧ 五条主指标单行放得下", not over,
-        ("全部单行 (卡内宽 %dpx)" % 176) if not over else "超宽折行: %s" % over)
+        (("全部单行 (卡内宽 %dpx)" % 176) if not over else "超宽折行: %s" % over)
+        + (" ｜ ✏️人工改写超宽(提醒, 非失败): %s" % over_human if over_human else ""))
 
     nbad = [r for r in rows if not r[1]]
     print("─── %d/%d %s" % (len(rows) - len(nbad), len(rows), "全绿 PASS" if not nbad else "FAIL"))
