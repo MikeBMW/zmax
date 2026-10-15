@@ -133,6 +133,39 @@ def main():
         chk("B7", "恶劣 sys.path (fork 的 lerobot 在前, 无 sphere.py) 仍加载工程真源算子 —— 按路径加载, 不退回空态",
             _got7, _ok7, "SP=src/lerobot/manifold/sphere.py · 有 stereographic_project · SU2 有 encode_obs43")
 
+    # E5 命令通道直达 (2026-10-16 老倪「找不到」定式): 控制台里 `echo mparam > /tmp/zmax_nav_cmd`
+    #    就能跳到画布页 + 侧栏切到「主参数 M」;  `mparam_shot` 从控制台**进程内部**抓该页真窗口
+    #    (X11 全屏抓图在被遮挡时会抓到压在上面的窗口 —— 这个坑本轮真踩到过)
+    with open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8") as _fst:
+        _st = _fst.read()
+    _nav = {}
+    for k, pat in (("分支 mparam", 'elif line == "mparam":'),
+                   ("分支 mparam_shot", 'elif line == "mparam_shot":'),
+                   ("执行体 _goto_mparam_cmd", "def _goto_mparam_cmd(self):"),
+                   ("执行体 _mparam_shot_cmd", "def _mparam_shot_cmd(self):"),
+                   ("切页真调 cmb_view", 'dock.cmb_view.setCurrentIndex(idx)'),
+                   ("抓图真调 grab()", "pm = page.grab()")):
+        _nav[k] = pat in _st
+    chk("E5", "命令通道 mparam/mparam_shot 真接线 (跳画布页 + 切主参数 M 页 + 进程内抓该页真窗口)",
+        _nav, all(_nav.values()), "六处都在: 两个分支 + 两个执行体 + setCurrentIndex + page.grab()")
+    # E6 在役控制台内抓图 (存在则核四象限都真有内容; 不存在不假装通过)
+    _shot = os.path.join(ROOT, "reports", "ui_shots", "live_mparam_sidebar.png")
+    if os.path.isfile(_shot):
+        from PIL import Image
+        _im = Image.open(_shot).convert("RGB")
+        _a = __import__("numpy").asarray(_im).astype(int)
+        _H, _W = _a.shape[0], _a.shape[1]
+        _q = {}
+        for _name, (_y0, _y1, _x0, _x1) in (("左上", (0, _H // 2, 0, _W // 2)), ("右上", (0, _H // 2, _W // 2, _W)),
+                                            ("左下", (_H // 2, _H, 0, _W // 2)), ("右下", (_H // 2, _H, _W // 2, _W))):
+            _b = _a[_y0:_y1, _x0:_x1]
+            _q[_name] = int((__import__("numpy").abs(_b - __import__("numpy").array([13, 17, 23])).sum(axis=2) > 40).sum())
+        chk("E6", "在役控制台内抓图 (live_mparam_sidebar.png) 四象限都真有内容 —— 不是空页/空态",
+            {"尺寸": [_W, _H], "四象限非背景像素": _q}, min(_q.values()) > 1200, "四象限各自 > 1200 非背景像素")
+    else:
+        chk("E6", "在役控制台内抓图 (存在才核; 缺图不假装通过)", {"有图": False}, None,
+            "跑 echo mparam_shot > /tmp/zmax_nav_cmd 后重现此判据")
+
     after = {f: sha(f) for f in files}
     # 静态: 可视化源码里没有任何写操作的语句 (真源只读 = 代码里就不能有写口)
     vizsrc = open(os.path.join(ROOT, "tools", "gui", "manifold_viz.py"), encoding="utf-8").read()

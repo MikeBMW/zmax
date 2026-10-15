@@ -12793,6 +12793,56 @@ class StudioMainWindow(QMainWindow):
         except Exception:                                                        # noqa: BLE001
             pass
 
+    def _goto_mparam_cmd(self):
+        """📡 命令通道 mparam: 跳到画布页 + 右侧栏切到「🧮 主参数 M」(流形可视化就在这一页)。
+
+        为什么要它: 可视化面板在**画布页**的右侧栏里, 而控制台平时停在别的页 (如配置中心)
+        ⇒ 从外面截图只会拍到配置中心, 看起来"没有可视化"。这条命令让跳转可复现、可取证。
+        """
+        try:
+            self._on_nav("simulink")
+        except Exception as _e:                                              # noqa: BLE001
+            print("📡 mparam: 跳画布页失败: %r" % _e)
+        _sim = getattr(self, "simulink", None)
+        dock = getattr(_sim, "model_tree", None) if _sim is not None else None
+        if dock is None:
+            print("📡 mparam: 右侧栏没建起来 (画布页未就绪)")
+            return
+        try:
+            keys = list(getattr(dock, "VIEW_KEYS", ()))
+            idx = keys.index("mparam")
+            dock.cmb_view.setCurrentIndex(idx)          # 触发 _switch_view → mparam.refresh()
+            viz = getattr(getattr(dock, "mparam", None), "viz", None)
+            print("📡 mparam: 已切到「主参数 M」(index=%d) · 可视化面板 %s"
+                  % (idx, "在" if viz is not None else "缺"))
+        except Exception as _e:                                              # noqa: BLE001
+            print("📡 mparam: 切页失败: %r" % _e)
+
+    def _mparam_shot_cmd(self):
+        """📷 命令通道 mparam_shot: 切到 M 页并**从控制台内部**把该页真窗口抓成 PNG。
+
+        根因备忘: 用 X11 全屏抓图 (grabWindow(0)) 时, 只要控制台被别的窗口压住 (终端/浏览器)
+        就抓到压在上面的那个窗口 —— 2026-10-16 就被这个坑骗过一次 (以为"没显示")。
+        在进程内 `QWidget.grab()` 渲染自己, 与遮挡无关; 结果落盘可复核。
+        """
+        self._goto_mparam_cmd()
+        try:
+            _sim = getattr(self, "simulink", None)
+            dock = getattr(_sim, "model_tree", None) if _sim is not None else None
+            page = getattr(dock, "mparam", None)
+            if page is None:
+                print("📷 mparam_shot: 没有 M 页")
+                return
+            out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                               "reports", "ui_shots", "live_mparam_sidebar.png")
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            pm = page.grab()
+            pm.save(out)
+            print("📷 mparam_shot: %dx%d → %s (%d B) · 抓取时刻 %s"
+                  % (pm.width(), pm.height(), out, os.path.getsize(out), time.strftime("%H:%M:%S")))
+        except Exception as _e:                                              # noqa: BLE001
+            print("📷 mparam_shot: 失败: %r" % _e)
+
     def _poll_nav_cmd(self):
         """📡 轮询外部命令文件 /tmp/zmax_nav_cmd (一行=一个命令)"""
         try:
@@ -12811,6 +12861,15 @@ class StudioMainWindow(QMainWindow):
                         self._on_nav("simulink")
                     elif line == "ss_canvas":
                         _oneshot(self, 600, self._open_ss_canvas_cmd)
+                    # 🧮 2026-10-16 老倪: 流形引擎可视化落在「主参数 M」侧栏页 ⇒ 命令通道加直达
+                    #   (自测/取证不必盲点下拉框; 老倪「找不到」时也能一句令跳到那一页)
+                    #   用法: echo mparam > /tmp/zmax_nav_cmd   (跳画布页 + 右侧栏切到主参数 M)
+                    elif line == "mparam":
+                        _oneshot(self, 900, self._goto_mparam_cmd)
+                    # 📷 2026-10-16 同上: 从控制台内部把「M 页」真窗口抓成 PNG (X11 遮挡抓不到时用)
+                    #   用法: echo mparam_shot > /tmp/zmax_nav_cmd
+                    elif line == "mparam_shot":
+                        _oneshot(self, 1200, self._mparam_shot_cmd)
                     elif line == "ss_3d":
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
