@@ -318,6 +318,18 @@ class Cam:
 
 
 # ═══════════════════════════ 面板一: S³ 立体投影球 ═══════════════════════════
+
+def _fit(p, text, width):
+    """按**面板宽度**省略画文字 —— 面板窄时绝不越框压到隔壁 (老倪: 不许挤/不许截断)。
+
+    ⚠️ `QFontMetrics.elidedText` 的宽度参数必须是 **int**: 传 float 会抛 TypeError 被
+    except 吞掉 ⇒ 静默退回"不省略" ⇒ 文字又压到面板外 (本文件 356 行记过同一个坑)。
+    """
+    try:
+        return p.fontMetrics().elidedText(str(text), Qt.ElideRight, int(max(24, width)))
+    except Exception:                                                        # noqa: BLE001
+        return str(text)
+
 class PanelBall(QWidget):
     """左上: 立体投影后的球面 + 当前状态点 + 时间着色轨迹 + 测地线。"""
 
@@ -386,7 +398,7 @@ class PanelBall(QWidget):
         cx, cy = w / 2.0, h / 2.0
         r = min(w, h) * 0.40
         p.setPen(QColor(FG))
-        p.drawText(8, 14, "① S³ 立体投影球 (北极→无穷远 · 南极→原点)")
+        p.drawText(8, 14, _fit(p, "① S³ 立体投影球 (北极→无穷远 · 南极→原点)", w - 112))
         if SP is None or self.d.n == 0:
             p.setPen(QColor(ORANGE))
             p.drawText(8, 34, "空态: 无真实轨迹数据 (见右下角数据源清单)")
@@ -413,8 +425,9 @@ class PanelBall(QWidget):
         _draw_geo(self.d.geo, "#d2a8ff", 2)
         _draw_geo(self.d.geo_live, ORANGE, 1)
         p.setPen(QColor("#d2a8ff"))
-        p.drawText(8, 26, "测地线 起点→终点: 弧长 %.4f rad (θ=%.4f)%s"
-                   % (self.d.geo_len, self.d.geo_theta, " · 退化(起点≈终点)" if self.d.geo_deg else ""))
+        p.drawText(8, 26, _fit(p, "测地线 起点→终点: 弧长 %.4f rad (θ=%.4f)%s"
+                               % (self.d.geo_len, self.d.geo_theta,
+                                  " · 退化(起点≈终点)" if self.d.geo_deg else ""), w - 16))
         # ── 当前状态点 + 实时状态点 ──
         i = max(0, min(self.d.n - 1, self.i))
         x, _m = SP.stereographic_project(self.d.Q[i])
@@ -431,9 +444,9 @@ class PanelBall(QWidget):
             p.drawEllipse(QPointF(lxy[0][0], lxy[0][1]), 7, 7)
         # ── 标注: 帧号/时间/距离 + 极点提示 ──
         p.setPen(QColor(DIM))
-        p.drawText(8, _int(h - 8), "帧 %d/%d · t=%.2fs · 到目标测地距离 φ=%.4f rad" %
-                   (i + 1, self.d.n, float(self.d.t[i]), float(self.d.dist[i])))
-        p.drawText(_int(w - 96), 14, "南极点=原点")
+        p.drawText(8, _int(h - 8), _fit(p, "帧 %d/%d · t=%.2fs · 到目标测地距离 φ=%.4f rad" %
+                                         (i + 1, self.d.n, float(self.d.t[i]), float(self.d.dist[i])), w - 96))
+        p.drawText(_int(w - 92), 14, _fit(p, "南极点=原点", 84))
         p.end()
 
     # 拖动旋转
@@ -494,7 +507,7 @@ class PanelTangent(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setFont(QFont("Consolas", 8))
         p.setPen(QColor(FG))
-        p.drawText(8, 14, "② 切空间 T_p  (梯度 / 速度 / 力 + 度量椭球)")
+        p.drawText(8, 14, _fit(p, "② 切空间 T_p · 梯度/速度/力 + 度量椭球", w - 16))
         if SP is None or self.d.n == 0:
             p.setPen(QColor(ORANGE))
             p.drawText(8, 34, "空态: 无真实状态 (见右下角数据源清单)")
@@ -540,10 +553,10 @@ class PanelTangent(QWidget):
                     p.drawLine(QPointF(xy[j][0], xy[j][1]), QPointF(xy[j + 1][0], xy[j + 1][1]))
             aniso = max(diag) / max(1e-9, float(np.median(diag))) if diag else 1.0
             p.setPen(QColor(ORANGE))
-            p.drawText(8, _int(h - 26), "度量椭球: 标定 diag=%s (dim=%d · 各向异性 %.1f:1)" %
-                       (str([round(x, 1) for x in diag[:6]]), self.d.metric.get("dim", 0), aniso))
+            p.drawText(8, _int(h - 26), _fit(p, "度量椭球: 标定 diag=%s (dim=%d · 各向异性 %.1f:1)" %
+                       (str([round(x, 1) for x in diag[:6]]), self.d.metric.get("dim", 0), aniso), w - 16))
             p.setPen(QColor(DIM))
-            p.drawText(8, _int(h - 12), "该度量作用空间 = 任务空间 (xyz+rpy); S³ 切空间的固有度规见 ③")
+            p.drawText(8, _int(h - 12), _fit(p, "该度量作用空间 = 任务空间 (xyz+rpy); S³ 固有度规见 ③", w - 16))
 
         # ── 三个真向量 (全部从真源/实测轨迹算, 非示意) ──
         v3 = norm3(coeff(self.d.v[i]), 0.9)
@@ -570,7 +583,7 @@ class PanelTangent(QWidget):
             p.setPen(QColor(VIOLET))
             p.drawText(_int(cx + 6), _int(cy + 34), "∇d 到目标 (log 方向) φ=%.4f rad" % float(self.d.dist[i]))
         p.setPen(QColor(DIM))
-        p.drawText(8, _int(h - 40), "切标架: e1=log_p(目标)/‖·‖, e2/e3 = 正交补 (sphere.parallel_transport/tangent_project)")
+        p.drawText(8, _int(h - 40), _fit(p, "切标架: e1=log_p(目标)/‖·‖ₚ, e2/e3 = 正交补 (sphere.parallel_transport/tangent_project)", w - 16))
         p.end()
 
 
@@ -609,7 +622,7 @@ class PanelMetricField(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setFont(QFont("Consolas", 8))
         p.setPen(QColor(FG))
-        p.drawText(8, 14, "③ 度量场采样 (椭球随位置是否变化)")
+        p.drawText(8, 14, _fit(p, "③ 度量场采样 · 椭球随位置是否变化", w - 16))
         if SP is None or self.d.n == 0:
             p.setPen(QColor(ORANGE))
             p.drawText(8, 34, "空态: 无真实状态 (见右下角数据源清单)")
@@ -636,10 +649,10 @@ class PanelMetricField(QWidget):
             radii.append(4)
         uniform = (max(radii) - min(radii)) < 1e-6 if radii else True
         p.setPen(QColor(GREEN if uniform else ORANGE))
-        p.drawText(8, _int(h - 26), "采样 %d 点 · 椭球半轴全部相等 (圆度规各向同性) ⇒ 度量**均匀**" % len(radii))
+        p.drawText(8, _int(h - 26), _fit(p, "采样 %d 点 · 椭球半轴全部相等 (圆度规各向同性) ⇒ 度量均匀" % len(radii), w - 16))
         p.setPen(QColor(DIM))
-        p.drawText(8, _int(h - 12), "标定直径度 (dim=%d diag) 只作用任务空间, 与 S³ 切空间非同一空间" %
-                   self.d.metric.get("dim", 0))
+        p.drawText(8, _int(h - 12), _fit(p, "标定度规 (dim=%d diag) 只作用任务空间, 与 S³ 切空间非同一空间" %
+                                          self.d.metric.get("dim", 0), w - 16))
         p.end()
 
 
@@ -664,7 +677,7 @@ class PanelSeries(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setFont(QFont("Consolas", 8))
         p.setPen(QColor(FG))
-        p.drawText(8, 14, "④ 时间序列 (M · 测地距离 φ · 速度 ‖v‖) — 共享时间轴")
+        p.drawText(8, 14, _fit(p, "④ 时间序列 · M / 测地距离 φ / 速度 ‖v‖ (共享时间轴)", w - 16))
         if self.d.n < 2:
             p.setPen(QColor(ORANGE))
             p.drawText(8, 34, "空态: 轨迹帧数 < 2 (见右下角数据源清单)")
@@ -692,15 +705,15 @@ class PanelSeries(QWidget):
                 p.drawLine(QPointF(px(tt[j]), T + ph - float(arr[j]) / mx * ph),
                            QPointF(px(tt[j + 1]), T + ph - float(arr[j + 1]) / mx * ph))
             p.setPen(QColor(col))
-            p.drawText(_int(L + 4), _int(T + 12 + 12 * k), "%s  peak=%.4f" % (name, mx))
+            p.drawText(_int(L + 4), _int(T + 12 + 12 * k), _fit(p, "%s  peak=%.4f" % (name, mx), pw - 8))
         M = float(d.M or 0.0)
         if M > 0:
             yy = T + ph - min(1.0, M / 8.0) * ph
             p.setPen(QPen(QColor(ORANGE), 1, Qt.DashLine))
             p.drawLine(QPointF(L, yy), QPointF(L + pw, yy))
             p.setPen(QColor(ORANGE))
-            p.drawText(_int(L + 4), _int(yy - 4), "M=%.3f (真源) · 惯性 %s" %
-                       (M, "开" if d.inertia else "关(零回归)"))
+            p.drawText(_int(L + 4), _int(yy - 4), _fit(p, "M=%.3f (真源) · 惯性 %s" %
+                                                       (M, "开" if d.inertia else "关(零回归)"), pw - 8))
         i = max(0, min(n - 1, self.i))
         xx = px(tt[i])
         p.setPen(QPen(QColor("#f0f6fc"), 1))
@@ -710,7 +723,8 @@ class PanelSeries(QWidget):
         p.drawText(_int(L + pw - 62), _int(h - 8), "t=%.2fs" % t1)
         p.setPen(QColor(FG))
         p.drawText(_int(min(xx + 3, L + pw - 40)), _int(T + 12 + 12 * len(series)),
-                   "帧 %d · φ=%.4f · ‖v‖=%.4f" % (i + 1, float(d.dist[i]), float(d.speed[i])))
+                   _fit(p, "帧 %d · φ=%.4f · ‖v‖=%.4f" % (i + 1, float(d.dist[i]), float(d.speed[i])),
+                        _int(L + pw - max(4, min(xx + 3, L + pw - 40)))))
         p.end()
 
 

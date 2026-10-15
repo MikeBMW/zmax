@@ -1127,12 +1127,32 @@ class MasterParamMView(QWidget):
     def refresh(self):
         n = self._node()
         if n is None:
+            # ⏳ 2026-10-16 (看图取证抓到): 控制台**懒建**画布页 + 后台读 flow ⇒ 页面刚出来时
+            #   内存里还没有 M 节点, 老页面立刻断言"没有这个节点"并把表清空 —— 明明画布正在加载。
+            #   改法: 先自动重试几次 (1.2s × 6), 仍没有才如实报警; 期间表格给一行说明, 不留全空黑表。
+            self._retry = int(getattr(self, "_retry", 0)) + 1
+            if self._retry <= 6:
+                self.lbl_node.setText("⏳ 画布还在加载… (第 %d 次没找到「主参数 M」节点, 稍后自动重试)"
+                                      % self._retry)
+                _ph = [("(等画布)", "画布加载中 ⇒ 本页 1.2s 后自动重试, 无需手动刷新")]
+                for t in self.tbl.values():
+                    self._fill(t, _ph)
+                self.lbl_cmd.setText("python3 tools/canvas_add_manifold_calib.py   # 迟迟找不到时, 把 M 节点加进当前画布")
+                try:
+                    QTimer.singleShot(1200, self.refresh)
+                except Exception:                                            # noqa: BLE001
+                    pass
+                return
             self.lbl_node.setText("⚠️ 当前画布没有「🧮 标定诊断测量 · 主参数 M」节点 —— "
                                   "打开状态空间工程, 或先运行 tools/canvas_add_manifold_calib.py")
+            # 🐛 2026-10-16 (看图取证抓到): 原来这里把四个表 setRowCount(0) ⇒ 页面上是一块
+            #   **全空的黑表** —— 老倪看到只会以为"坏了"。改成一行诚实占位: 说清为什么没有条目。
+            _ph = [("(无条目)", "画布没有「主参数 M」节点 ⇒ 本页没有测量/标定/诊断项 (见上方黄字提示)")]
             for t in self.tbl.values():
-                t.setRowCount(0)
+                self._fill(t, _ph)
             self.lbl_cmd.setText("python3 tools/canvas_add_manifold_calib.py   # 把 M 节点加进当前画布")
             return
+        self._retry = 0
         p = n.get("params", {}) or {}
         snap = p.get("cfg_snapshot", {}) or {}
         prj = snap.get("project", {}) or {}

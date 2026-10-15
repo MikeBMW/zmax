@@ -50,7 +50,9 @@ def sha(p):
 
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
+    import io
     import manifold_viz as MV
+    MV_SRC = io.open(os.path.join(ROOT, "tools", "gui", "manifold_viz.py"), encoding="utf-8").read()
 
     # ─────────── A 几何真源: 立体投影 ───────────
     south = np.array([0.0, 0.0, 0.0, -1.0])
@@ -108,6 +110,65 @@ def main():
     chk("B5", "度量 (dim/mode/diag) 取自标定真源",
         d.metric, int(d.metric.get("dim") or 0) == 6 and d.metric.get("mode") == "diag"
         and len(d.metric.get("diag") or []) == 6, "dim=6, mode=diag, 6 个对角分量")
+    # ═══ G 文字不越框 (老倪红线: 不许挤/不许截断) ═══
+    # G1 静态: 面板里画的**长串**必须走 _fit(...) 按面板宽度省略 (不然窄侧栏下会压到隔壁/被切)
+    import re as _re
+    _long_unwrapped = []
+    for _m in _re.finditer(r"drawText\(([^\n]*)\)", MV_SRC):
+        _seg = _m.group(0)
+        _lits = _re.findall(r'"([^"]{28,})"', _seg)
+        if _lits and "_fit(" not in _seg:
+            _long_unwrapped.append(_lits[0][:36])
+    chk("G1", "面板里的长串都按面板宽度省略 (_fit) —— 不再出现越框/被切的长文字",
+        {"未包 _fit 的长串": _long_unwrapped[:4], "条数": len(_long_unwrapped)},
+        not _long_unwrapped, "未包 _fit 的长串 = []")
+
+    # G2 动态: 把四个面板各缩到 300x380 (比在役侧栏更窄) 真渲染, 记录每一次省略:
+    #    每一条都必须满足「原文宽 ≤ 预算 或 已省略 (…)」 ⇒ 文字永不超面板宽
+    _rec = []
+    _d = MV.ManifoldData(root=ROOT)          # 真源数据 (与在役可视化同一个 data 类)
+    _orig_fit = MV._fit
+
+    def _rec_fit(painter, text, width):
+        out = _orig_fit(painter, text, width)
+        _rec.append({"原": str(text)[:44], "预算px": int(width), "出": str(out)[:44]})
+        return out
+    MV._fit = _rec_fit
+    _narrow = {}
+    try:
+        for _k, _cls in (("ball", MV.PanelBall), ("tangent", MV.PanelTangent),
+                         ("metric", MV.PanelMetricField), ("series", MV.PanelSeries)):
+            try:
+                _w = _cls(_d)
+                _w.resize(300, 380)
+                _w.show()
+                app.processEvents()
+                _img = _w.grab().toImage()
+                _narrow[_k] = "%dx%d" % (_img.width(), _img.height())
+            except Exception as _e:                                        # noqa: BLE001
+                _narrow[_k] = "异常: %s" % _e
+    finally:
+        MV._fit = _orig_fit
+    _bad = []
+    for _r in _rec:
+        try:
+            _fm = None
+            _fw = len(_r["原"]) * 6      # 等宽 8px 字号的经验估宽 (保守: 只在「出」无省略符且明显超预算时判坏)
+            if "…" not in _r["出"] and _fw > _r["预算px"] * 1.35:
+                _bad.append(_r)
+        except Exception:                                                    # noqa: BLE001
+            pass
+    chk("G2", "四个面板缩到 300x380 (比在役侧栏更窄) 真渲染: 每次省略都按预算截断, 无一超宽",
+        {"面板": _narrow, "记录条数": len(_rec), "超宽条目": _bad[:3]},
+        all("异常" not in str(v) for v in _narrow.values()) and not _bad and len(_rec) > 10,
+        "四面板都出图 · 超宽 0 条 · 记录 >10 条")
+
+    # G3 空态表格不许是"全黑空表": 无 M 节点时每个表有一行诚实占位
+    chk("G3", "M 页无节点时表格不留全空黑表 (有一行「(无条目)」+ 原因说明)",
+        {"model_tree 里有占位行": '(无条目)' in io.open(os.path.join(ROOT, "tools", "gui", "model_tree.py"), encoding="utf-8").read()},
+        "(无条目)" in io.open(os.path.join(ROOT, "tools", "gui", "model_tree.py"), encoding="utf-8").read(),
+        "源码里有一行诚实占位")
+
     # B7 恶劣环境回归: sys.path 前面塞一个「有 lerobot.manifold 但没 sphere.py」的假包 (复现控制台 fork 遮蔽),
     #    可视化必须仍加载**工程真源**算子 (按路径加载), 不许退化成空态。
     import importlib

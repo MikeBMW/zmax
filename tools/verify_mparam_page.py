@@ -118,13 +118,22 @@ app.processEvents()
 chk(any(("📥 节点同步" in x) and ("✅" in x) for x in _logs2), f"同步按钮路径走通: {[x[:70] for x in _logs2]}")
 chk("tools/tools" not in " ".join(_logs2), "路径没拼错 (无 tools/tools)")
 
-print("\n⑥ 没有 M 节点的画布 → 诚实空态")
+print("\n⑥ 没有 M 节点的画布 → 先「加载中自动重试」, 重试耗尽才如实报警 (不留全空黑表)")
 class _Stub:
     nodes = []
 v2 = MT.MasterParamMView(_Stub())
 app.processEvents()
-chk("⚠️" in v2.lbl_node.text() and v2.tbl["cfg"].rowCount() == 0,
-    f"空态提示: {v2.lbl_node.text()[:46]}…")
+_loading = ("加载中" in v2.lbl_node.text() or "自动重试" in v2.lbl_node.text())
+chk(_loading and v2.tbl["cfg"].rowCount() >= 1,
+    f"首刷是「加载中+自动重试」, 表里有一行说明(不留全空黑表): {v2.lbl_node.text()[:40]}… / 行数 {v2.tbl['cfg'].rowCount()}")
+# 重试 6 次仍没有 ⇒ 如实报"没有该节点"(不假装有)
+for _ in range(7):
+    v2.refresh()
+    app.processEvents()
+chk("⚠️" in v2.lbl_node.text() and "没有" in v2.lbl_node.text(),
+    f"重试耗尽后如实报缺节点: {v2.lbl_node.text()[:46]}…")
+chk(v2.tbl["cfg"].rowCount() >= 1 and "无条目" in v2.tbl["cfg"].item(0, 0).text(),
+    f"表格是诚实占位行不是全空: {v2.tbl['cfg'].item(0, 0).text() if v2.tbl['cfg'].rowCount() else '空表'}")
 chk("canvas_add_manifold_calib.py" in v2.lbl_cmd.text(), f"给出补救命令: {v2.lbl_cmd.text()[:60]}")
 
 print("\n" + "═" * 60)
