@@ -1350,6 +1350,7 @@ class DreamView3D(QWidget):
         self.tr = tr
         self._idx = 0
         self._playing = False
+        self._user_paused = False        # 用户手动暂停 ⇒ 心跳不要自己顶回来 (外部驱动不算)
         self._gl_items = {}       # layer -> GL item(s)
         self._layer_on = {}       # layer -> bool
         # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
@@ -1682,6 +1683,16 @@ class DreamView3D(QWidget):
         # 播放定时器
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
+
+        # 💓 2026-10-15 老倪「末端 x y z 怎么没有信号输出?」——**真根因**: 这一趟 episode 播完
+        #   (或被 GUI 运行驱动到最后一帧) 面板就停了 ⇒ 快照 trace_live.json 不再更新 ⇒
+        #   sstrace.* 全部冻结(每键只剩 1 个样本 ⇒ 画不出线) + ss_stage 话题断流。
+        #   这里放个心跳看门狗: 只要窗口还开着、外面 5s 没发过帧、且没被用户手动暂停,
+        #   就**从头再播这一趟**(真帧回放, 帧号真的回到 0, 不是拿旧帧冒充)。
+        #   关掉: 环境变量 ZMAX_SS_LOOP=0
+        self._hb_timer = QTimer(self)
+        self._hb_timer.timeout.connect(self._hb_check)
+        self._hb_timer.start(2000)
 
         # 🐛 2026-08-25 老倪「3D 空间的文字没有跟着图像走」: 鼠标旋转/缩放视角时投影变了,
         #   但标注只在换帧时算 → 文字停在原处。事件过滤器在本机 (Mesa/QOpenGLWidget) 实测
@@ -3650,9 +3661,11 @@ class DreamView3D(QWidget):
         #     · 插拔链"八阶段" = 接近→对位→下降→抓取→抬起→转移→插入→完成 (本文件按这 8 段给 0..7)
         #     · STAGE_V_CAP = 每阶段限速 m/s —— 动作调制器就是按它给 u 限幅(所以调制的单位是 m/s)
         #   阶段名原来是**字符串**, 信号页只收数值 ⇒ 波形里看不到 ⇒ 这里补两个数值通道。
+        #   ⚠️ 阶段名有时带后缀 ("转移 · 接触") ⇒ 查表前先剥后缀, 否则 idx 会掉成 -1 (实测 2026-10-15)。
         _stg_l, _cap_d, _p8_l = _stage_maps()
-        _sidx = _stg_l.index(stage) if stage in _stg_l else -1
-        _p8idx = _p8_l.index(stage) if stage in _p8_l else -1
+        _stg_key = str(stage).split(" ·")[0].split("·")[0].strip()
+        _sidx = _stg_l.index(_stg_key) if _stg_key in _stg_l else -1
+        _p8idx = _p8_l.index(_stg_key) if _stg_key in _p8_l else -1
         d_ph = float(np.linalg.norm(peg_h[:2] - self._mouth[:2]))
         # 🔤 场景感知命名 (2026-10-13 老倪: 「摆盘场景的实时监控信号, 蓝色信号, 还有夹爪? 不是吸盘么」)
         #   取证: 摆盘 episode 跑 sawyer_tray_place.xml, 通道名沿用插拔底座(gripper), 但物理是**真空吸盘**
@@ -3738,16 +3751,16 @@ class DreamView3D(QWidget):
             #    2876 行 `u_ff = np.concatenate([_m3, [u_ff[3]]])` 也是 3 平移 + 1 夹爪)。
             #   这里把分量拆开发 ⇒ 面板上能看到完整动作向量, 而不是只有一个模长。
             #   姿态(rx/ry/rz)不在这条出口: 姿态由 L2 状态机/技能段 + 执行器内环(真机 tcp_pose 50Hz)负责。
-            **{"前馈速度_%s" % _ax: round(float(np.asarray(tr["u_ff_vec"][i], dtype=float)[_j]), 6)
+            **{"前馈速度_%s_mps" % _ax: round(float(np.asarray(tr["u_ff_vec"][i], dtype=float)[_j]), 6)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
-            **{"动作调制_%s" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]), 6)
+            **{"动作调制_%s_mps" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]), 6)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
             "动作调制_夹爪": round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[3]), 4),
             # 🎛 八阶段状态机 (数值通道, 让状态机在波形上看得到; 真源见 _stage_maps())
             "阶段序号": float(_sidx),
             "八阶段序号": float(_p8idx),
-            "阶段限速_mps": (round(float(_cap_d[stage]), 4) if stage in _cap_d else None),
-            **{"安全边界_%s" % _ax: round(float(np.asarray(tr["u_limit_vec"][i], dtype=float)[_j]), 6)
+            "阶段限速_mps": (round(float(_cap_d[_stg_key]), 4) if _stg_key in _cap_d else None),
+            **{"安全边界_%s_mps" % _ax: round(float(np.asarray(tr["u_limit_vec"][i], dtype=float)[_j]), 6)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
         })
         self.lbl_t.setText(f"数据源: {self._src}")
@@ -3767,12 +3780,49 @@ class DreamView3D(QWidget):
             self._pause()
         else:
             self._playing = True
+            self._user_paused = False        # 老倪按 ▶ ⇒ 心跳可以继续接管 (不再算手动暂停)
             self.btn_play.setText("⏸ 暂停")
             self._timer.start(60)
 
+    def _hb_check(self):
+        """💓 心跳看门狗: 外面 5s 没发帧 ⇒ 从头再播这一趟 (见 __init__ 里的说明)
+
+        只在「窗口开着 + 有轨迹 + 用户没手动暂停 + ZMAX_SS_LOOP≠0」时动手; 动作只是
+        回到第 0 帧并启动自播定时器 —— 走的是和点 ▶ 播放**同一条路**, 不伪造任何数据。
+        """
+        try:
+            if os.environ.get("ZMAX_SS_LOOP", "1") == "0":
+                return
+            if not self.isVisible():
+                return
+            if getattr(self, "_user_paused", False):      # 老倪自己按了 ⏸ ⇒ 不顶回来
+                return
+            if int(getattr(self, "_n", 0)) <= 1:
+                return
+            _last = float((_TRACE_PUB_LAST or {}).get("t") or 0.0)
+            if _last and (time.time() - _last) < 5.0:
+                return
+            # 外部驱动 (GUI 那一趟跑完了) 或自播播完了 ⇒ 这里接管, 从头再播这一趟
+            self._hold_until = None
+            self._playing = True
+            try:
+                self.btn_play.setText("⏸ 暂停")
+            except Exception:                                                  # noqa: BLE001
+                pass
+            try:
+                self.slider.setValue(0)
+            except Exception:                                                  # noqa: BLE001
+                pass
+            self._update_frame(0)
+            self._timer.start(60)
+            print("[3D] 💓 快照已停更 %.1fs ⇒ 从头重播这一趟 (ZMAX_SS_LOOP=0 可关)"
+                  % (time.time() - _last if _last else -1.0))
+        except Exception as e:                                                 # noqa: BLE001
+            print("[3D] 心跳检查失败:", type(e).__name__, e)
+
     def closeEvent(self, ev):
         """🛡 关闭时停掉所有定时器 (工程铁律: QTimer 不清理 → 析构期回调崩溃)"""
-        for t in ("_timer", "_cam_watch"):
+        for t in ("_timer", "_cam_watch", "_hb_timer"):
             try:
                 obj = getattr(self, t, None)
                 if obj is not None:
@@ -3781,8 +3831,11 @@ class DreamView3D(QWidget):
                 pass
         super().closeEvent(ev)
 
-    def _pause(self):
+    def _pause(self, user=True):
+        """user=False = 外部驱动(set_frame)把我暂停的, 不是老倪按的 ⏸"""
         self._playing = False
+        self._hold_until = None
+        self._user_paused = bool(user)
         self.btn_play.setText("▶ 播放")
         self._timer.stop()
 
@@ -3861,7 +3914,8 @@ class DreamView3D(QWidget):
 
     def set_frame(self, i, follow=True):
         if follow:
-            self._pause()
+            self._pause(user=False)          # 外部驱动 (GUI 运行到第 i 步 → 本视图跟到第 i 步)
+            self._user_paused = False
         self._update_frame(i)
         try:
             self.slider.setValue(int(i))
@@ -3879,6 +3933,27 @@ class DreamView3D(QWidget):
             pass
 
     def _tick(self):
+        # 🔁 2026-10-15 老倪「末端 x y z 怎么没有信号输出?」——**真根因**: 播到最后一帧就 _pause(),
+        #   3D 面板快照 trace_live.json 停更 ⇒ sstrace.* 全部冻结 (每键只剩 1 个样本 ⇒ 画不出线),
+        #   下游 ss_stage 话题也断 (阶段不再推进)。改成**末尾停 3s 再从头循环**:
+        #   信号页一直有真数据在走、八阶段状态机也一直在转 (帧号真的回到 0, 不是拿旧帧冒充)。
+        #   要旧行为(播完即停): 环境变量 ZMAX_SS_LOOP=0
+        _n = int(getattr(self, "_n", 0))
+        _loop = os.environ.get("ZMAX_SS_LOOP", "1") != "0"
+        if _n > 0 and self._idx >= _n - 1 and _loop:
+            _hold = getattr(self, "_hold_until", None)
+            if _hold is None:
+                self._hold_until = time.time() + 3.0
+                return
+            if time.time() < _hold:
+                return
+            self._hold_until = None
+            try:
+                self.slider.setValue(0)          # 滑块/帧号也回到开头 (口径一致, 不自欺)
+            except Exception:                                                     # noqa: BLE001
+                pass
+            self._update_frame(0)
+            return
         if self._idx >= self._n - 1:
             self._pause()
             return

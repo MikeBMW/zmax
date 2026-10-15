@@ -426,3 +426,28 @@ class SSManifoldStep(IdlStruct, typename="zmax::SSManifoldStep"):
     t_grad_ms: float64 = -1.0
     node: str = "manifold_engine"
     note: str = ""
+
+# ─────────────────── 🎛 八阶段状态机 (动作调制器) ───────────────────
+@dataclass
+class SSStage(IdlStruct, typename="zmax::SSStage"):
+    """🎛 动作调制器的八阶段状态机 —— 老倪 2026-10-15: 「八个状态, 是哪个 topic 发出来的?」
+
+    真源 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
+      · STAGES 13 段: 接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成
+      · 插拔链「八阶段」= 接近→对位→下降→抓取→抬起→转移→插入→完成 (摆盘链把「插入」换「放入」)
+      · STAGE_V_CAP = 每阶段限速 m/s —— 动作调制器就是按当前阶段这张表给动作限幅
+
+    补齐的理由(诚实记录): 在这之前**没有任何话题**发这八个状态 —— 阶段只以**字符串**形式躺在
+    3D 面板快照 zmax_data/ss_live/trace_live.json 的 "阶段" 字段里(还有画布内部 stage_idx),
+    所以信号分析页(只收数值)看不到状态机。本话题把它做成真实 DDS 通道。
+    未测 = -1 / 空串(不用 0 冒充)。
+    """
+    ts: float64 = 0.0                  # epoch 秒 (发布时刻)
+    idx: int32 = -1                    # STAGES 13 段序号 (接近=0 … 完成=12; -1=取不到)
+    idx8: int32 = -1                   # 插拔链八阶段序号 0..7 (接近=0 … 完成=7; -1=取不到)
+    name: str = ""                     # 阶段名 (接近/对位/…/完成)
+    v_cap: float64 = -1.0              # 本阶段限速 m/s (调制器限幅表; -1=取不到)
+    done: int32 = 0                    # 1 = 已到「完成」段
+    age_s: float64 = -1.0              # 源快照帧龄 (s; -1=无源)
+    source: str = ""                   # 真源文件 / 采集口
+    note: str = ""

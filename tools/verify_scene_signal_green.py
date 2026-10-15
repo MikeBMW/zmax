@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sys
 import time
 from collections import Counter
@@ -241,7 +242,10 @@ def main() -> int:
             _d = json.load(open(_p, encoding="utf-8"))
             _need = ["动作调制_x_mps", "动作调制_y_mps", "动作调制_z_mps", "动作调制_夹爪"]
             if not all(k in _d for k in _need):
-                return None
+                # 兼容不带 _mps 的旧写法 (面板早期版本)
+                _need = ["动作调制_x", "动作调制_y", "动作调制_z", "动作调制_夹爪"]
+                if not all(k in _d for k in _need):
+                    return None
             _v = [float(_d[k]) for k in _need[:3]]
             _m = math.sqrt(sum(x * x for x in _v))
             _pub = float(_d.get("动作调制_mps") or 0.0)
@@ -270,6 +274,61 @@ def main() -> int:
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 取动作/阶段信息失败: %s" % _e)
+
+    print("\n⑪ 八阶段状态机: DDS 话题 zmax/ss_stage 真在发 + 面板快照不再断流 (老倪: 「八个状态, 应该有个 state 的 topic, 对不?」「末端 x y z 怎么没有信号输出?」)")
+    try:
+        _dsp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "zmax_data", "dataspace", "trace.jsonl")
+        _trp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "zmax_data", "ss_live", "trace_live.json")
+        _lines = []
+        if os.path.exists(_dsp):
+            with open(_dsp, encoding="utf-8", errors="ignore") as _f:
+                for _ln in _f:
+                    if "ss_stage" in _ln:
+                        _lines.append(_ln)
+        _n_topic = len(_lines)
+        print("   %s 话题 zmax/ss_stage 报文 %d 条 (真源: 数据空间探针 → trace.jsonl)" % (
+            "✅" if _n_topic > 0 else "❌", _n_topic))
+        ok &= _n_topic > 0
+        _last = None
+        _dg = {}
+        for _ln in reversed(_lines):
+            try:
+                _rec = json.loads(_ln)
+            except Exception:                                                  # noqa: BLE001
+                continue
+            _try = {}
+            try:
+                _try = json.loads(_rec.get("digest") or "{}")
+            except Exception:                                                  # noqa: BLE001
+                # 探针会把长 digest 截断 ⇒ JSON 不完整: 用正则把关键字段抠出来 (只抠这两个, 不做推测)
+                _dg_txt = str(_rec.get("digest") or "")
+                _m8 = re.search(r'"idx8"\s*:\s*(-?\d+)', _dg_txt)
+                _mn = re.search(r'"name"\s*:\s*"([^"]*)"', _dg_txt)
+                if _m8:
+                    _try = {"idx8": int(_m8.group(1)),
+                            "name": (_mn.group(1) if _mn else "")}
+            if "idx8" in _try:                  # 往回找第一条带 idx8 的报文
+                _last, _dg = _rec, _try
+                break
+        _snap = json.load(open(_trp, encoding="utf-8"))
+        _age = time.time() - os.path.getmtime(_trp)
+        print("      末条话题: idx=%s idx8=%s name=%s v_cap=%s" % (
+            _dg.get("idx"), _dg.get("idx8"), _dg.get("name"), _dg.get("v_cap")))
+        _same = (str(_dg.get("name") or "") == str(_snap.get("阶段") or "").split(" ·")[0]
+                 and float(_dg.get("idx8") if _dg.get("idx8") is not None else -9)
+                 == float(_snap.get("八阶段序号") if _snap.get("八阶段序号") is not None else -8))
+        print("   %s 话题末条 == 面板快照现场 (name/idx8 一致 ⇒ 不是各说各话)" % ("✅" if _same else "❌"))
+        ok &= _same
+        # 面板快照必须"一直在动" (老倪「末端 x y z 怎么没有信号输出?」的真根因就是它停了)
+        _fresh = _age < 5.0
+        print("   %s 面板快照帧龄 %.1fs (<5s ⇒ 末端_x/y/z 一直在出数; 播完会自动从头再播一趟)" % (
+            "✅" if _fresh else "❌", _age))
+        ok &= _fresh
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核话题失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))

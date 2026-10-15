@@ -78,6 +78,10 @@ STALE_CFG_S = float(os.environ.get("ZMAX_CFG_STALE_S", "600"))
 STALE_ENGINE_S = float(os.environ.get("ZMAX_SS_ENGINE_STALE_S", "3.0"))
 ENGINE_TAP_DIR = os.environ.get("ZMAX_SS_ENGINE_TAP_DIR") or "/dev/shm/zmax_ss_engine"
 _EN_LOGGED = {"dir": "", "none": 0.0}
+# 🎛 八阶段状态机 (老倪 2026-10-15「八个状态, 是哪个 topic 发出来的?」): 阶段快照帧龄阈值 +
+#    停发日志节流 (与 ss_engine 同款口径 —— 源不新鲜就明说停发, 不拿旧阶段当现在)
+STAGE_STALE_S = float(os.environ.get("ZMAX_SS_STAGE_STALE_S", "5.0"))
+_ST_LOGGED = {"none": 0.0, "stale": 0.0}
 # 🧮 主参数节点已加载配置名称的真源: 画布真源里该节点的 params (cfg_entries/cfg_loaded_at)
 CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas", "state_space_obs.json"),
              os.path.join(REPO, "flows", "state_space_obs.json"),
@@ -89,14 +93,14 @@ META_PRED_STALE_S = 180.0        # 元任务预测帧龄阈值 (超过 ⇒ note 
 MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred"],
+             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-              "ss_meta_pred"],
+              "ss_meta_pred", "ss_stage"],
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-             "ss_meta_pred"],
+             "ss_meta_pred", "ss_stage"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -235,6 +239,27 @@ def read_engine():
             _EN_LOGGED["none"] = time.time()
         return None, None
     return _last_line(p), os.path.getmtime(p)
+
+
+def read_trace_stage():
+    """🎛 动作调制器八阶段状态机 —— 真源 = 3D 面板快照 trace_live.json 的阶段字段。
+
+    老倪 2026-10-15: 「八个状态, 是哪个 topic 发出来的? 你要放到信号分析的窗口里显示」
+    在这之前**没有任何话题**发这八个状态: 阶段只是 trace_live.json 里的一个**字符串**
+    ("阶段": "抓取") ⇒ 信号分析页只收数值 ⇒ 看不到状态机。这里读三件事:
+      阶段(名) / 阶段序号(0..12) / 八阶段序号(0..7) / 阶段限速_mps —— 后三项由 3D 面板发的数值通道给。
+    返回 (dict, mtime) —— 缺字段就返回 None(不猜), 由 pub_stage 决定发不发。
+    """
+    p = os.path.join(_TAP_CANON, "trace_live.json")
+    if not os.path.isfile(p):
+        return None, None
+    try:
+        d = json.load(open(p, encoding="utf-8"))
+    except Exception:                                                        # noqa: BLE001
+        return None, None
+    if not isinstance(d, dict) or "阶段" not in d:
+        return None, None
+    return d, os.path.getmtime(p)
 
 
 def read_infer():
@@ -854,6 +879,51 @@ class SSDaemon:
             note=("帧龄 %.2fs" % age) if age >= 0 else ""))
         return True
 
+    def pub_stage(self):
+        """🎛 动作调制器八阶段状态机 → zmax/ss_stage (老倪 2026-10-15: 「八个状态, 是哪个 topic 发出来的?」)
+
+        口径: 只发**新鲜**快照 (帧龄 > STAGE_STALE_S 就明说停发 —— 3D 面板没在跑时这份快照就是旧的,
+        不拿旧阶段当现在)。idx8 = 插拔链八阶段序号 0..7; v_cap = 本阶段限速 m/s (调制器限幅表)。
+        """
+        from ss_types import SSStage                                    # noqa: PLC0415
+
+        def _f(v, dv=-1.0):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return float(dv)
+
+        def _i(v, dv=-1):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return int(dv)
+
+        d, mt = read_trace_stage()
+        if not d:
+            if time.time() - _ST_LOGGED["none"] > 60:
+                log("⏸ 没有阶段源 zmax_data/ss_live/trace_live.json (3D 面板没跑) → ss_stage 不发")
+                _ST_LOGGED["none"] = time.time()
+            return False
+        age = (time.time() - mt) if mt else -1.0
+        if age > STAGE_STALE_S:
+            if time.time() - _ST_LOGGED["stale"] > 60:
+                log("⏸ 阶段快照过期 %.1fs (>%.1fs) — 不把旧阶段当现在 (3D 面板没在跑)" % (age, STAGE_STALE_S))
+                _ST_LOGGED["stale"] = time.time()
+            return False
+        name = str(d.get("阶段") or "")
+        # ⚠️ 阶段名有时带后缀 ("转移 · 接触") ⇒ 剥掉再发, 免得消费侧按名对表对不上
+        name = name.split(" ·")[0].split("·")[0].strip()
+        idx = _i(d.get("阶段序号"), -1)
+        idx8 = _i(d.get("八阶段序号"), -1)
+        self.publish("ss_stage", SSStage(
+            ts=time.time(), idx=int(idx), idx8=int(idx8), name=name[:32],
+            v_cap=_f(d.get("阶段限速_mps"), -1.0), done=1 if name == "完成" else 0,
+            age_s=float(age), source="zmax_data/ss_live/trace_live.json (3D 面板快照)",
+            note="真源 ActionModulator.STAGES (cognition.py:31) · 十三段 idx=%d · 插拔八段 idx8=%d"
+                 % (idx, idx8)))
+        return True
+
     def pub_diag(self):
         from ss_types import SSDiag                                  # noqa: PLC0415
         now = time.time()
@@ -1059,6 +1129,12 @@ class SSDaemon:
                     self.pub_engine()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_engine 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
+            try:
+                # 🎛 八阶段状态机 (老倪 2026-10-15: 「八个状态, 是哪个 topic 发出来的?」)
+                if allowed("ss_stage"):
+                    self.pub_stage()
+            except Exception as e:                                       # noqa: BLE001
+                log("⚠️ ss_stage 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
             self._stop.wait(max(0.02, period - (time.time() - t0)))
 
     def run(self, seconds=0.0, once=False):

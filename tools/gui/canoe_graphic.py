@@ -836,6 +836,14 @@ class WaveArea(QWidget):
         p.getAxis("bottom").setPen(ax_pen)
         p.getAxis("left").setTextPen(C_DIM)
         p.getAxis("bottom").setTextPen(C_DIM)
+        # 🔴 2026-10-15 加固 (窗口日志实测又冒 RecursionError): 递归链的起点是
+        #   AxisItem.updateAutoSIPrefix (收到 linkedView 范围变化 → 改标签宽高 → 触发布局 → 又来一遍),
+        #   只关时间轴的还不够 ⇒ **每张图的每根轴全关**自动 SI 前缀, 从源头断链。
+        for _nm in ("left", "right", "bottom", "top"):
+            try:
+                p.getAxis(_nm).enableAutoSIPrefix(False)
+            except Exception:                                                  # noqa: BLE001
+                pass
         p.setClipToView(True)
         p.setDownsampling(auto=True, mode="peak")
         self._build_items()
@@ -952,6 +960,13 @@ class WaveArea(QWidget):
             axis.setPen(pg.mkPen(b.color))
             axis.setTextPen(b.color)
             axis.setLabel(b.key.split(".")[-1])
+            # 🔴 2026-10-15 同上: 副轴也要关自动 SI 前缀 (递归链起点; 每信号独立图模式全靠这些副轴)
+            try:
+                axis.enableAutoSIPrefix(False)
+                # 刻度文字宽度不再随数值长短变化 ⇒ 断掉"改宽度 → 触发布局 → 又改宽度"的互踢
+                axis.setStyle(autoExpandTextSpace=False, tickTextWidth=72)
+            except Exception:                                                  # noqa: BLE001
+                pass
             axis.linkToView(vb)
             item = pg.PlotDataItem(pen=pg.mkPen(b.color, width=b.bold))
             item.setClipToView(True)
@@ -962,15 +977,26 @@ class WaveArea(QWidget):
         self._sync_vb_geometry()
 
     def _sync_vb_geometry(self):
+        # 🔴 2026-10-15 加固: vb.setGeometry ⇒ sigResized ⇒ 又调回本函数 (递归/互踢),
+        #   加一道重入闸 —— 已在同步中就只记一次待办, 由当前这轮收尾时再对齐一遍。
+        if getattr(self, "_in_vb_sync", False):
+            self._vb_sync_pending = True
+            return
         if not self.extra_vbs or self.main_plot is None:
             return
-        rect = self.main_plot.getViewBox().sceneBoundingRect()
-        for vb, _ in self.extra_vbs.values():
-            vb.setGeometry(rect)
-            try:
-                vb.linkedViewChanged(self.main_plot.getViewBox(), vb.XAxis)
-            except Exception:
-                pass
+        self._in_vb_sync = True
+        try:
+            rect = self.main_plot.getViewBox().sceneBoundingRect()
+            for vb, _ in self.extra_vbs.values():
+                vb.setGeometry(rect)
+                try:
+                    vb.linkedViewChanged(self.main_plot.getViewBox(), vb.XAxis)
+                except Exception:                                              # noqa: BLE001
+                    pass
+        finally:
+            self._in_vb_sync = False
+        if getattr(self, "_vb_sync_pending", False):
+            self._vb_sync_pending = False
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -1568,6 +1594,12 @@ class CanoeGraphicWidget(QWidget):
     DEFAULT_3D = ("sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
                   "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
                   "sstrace.接触概率", "sstrace.安全边界_mps",
+                  # 🎛 2026-10-15 老倪「动作调制器 还有 八阶段状态机, 在哪里?」+「八个状态, 是哪个 topic
+                  #   发出来的? 你要放到信号分析的窗口里显示」:
+                  #     · ds.zmax/ss_stage.idx8 = 走 **DDS 话题** zmax/ss_stage 的八阶段序号(0..7)
+                  #       (话题 → 数据空间探针 → trace.jsonl → 本页 ds.* 信号; 老倪要的"话题里显示")
+                  #     · sstrace.阶段限速_mps = 3D 面板快照里的本阶段限速 m/s (调制器限幅表)
+                  "ds.zmax/ss_stage.idx8", "sstrace.阶段限速_mps",
                   # ⚡ 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: 上面 7 条来自 3D 面板快照
                   #   (trace_live.json), 3D 不播放 ⇒ 每键 1 个样本 ⇒ 画不出线。下面 3 条来自**常驻
                   #   引擎回路**的 10Hz 真值帧流 (sseng.*), 打开页面就有连续波形(每周期真值都在动)。

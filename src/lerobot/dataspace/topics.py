@@ -257,6 +257,22 @@ TOPICS = {
                        "hom_vitality", "hom_gain", "hom_dominant", "hom_urgency", "hom_veto"],
         "quality": ["freshness", "finite", "no_zero_fake", "step_per_period"],
     },
+    "ss_stage": {
+        "type": "zmax::SSStage", "src": TYPES_SRC, "rate_hz": 5.0, "qos": "beat",
+        "ros_alias": "/ss/stage",
+        "producer": "状态空间工程驱动守护 tools/dds/ss_daemon.py (只读转发) ← 3D 面板快照 "
+                    "zmax_data/ss_live/trace_live.json 的阶段字段; 阶段真源 = "
+                    "src/lerobot/policies/left_right/state_space/cognition.py:31 ActionModulator"
+                    " (STAGES 13 段 / 插拔八段 0..7 / STAGE_V_CAP 阶段限速 m/s)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页", "现场状态机核对"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "idx", "idx8", "name", "v_cap", "done", "age_s", "source", "note"],
+        "quality": ["freshness", "no_zero_fake", "stage_monotonic_within_episode"],
+        "provenance": ("老倪 2026-10-15「动作调制器 还有 八阶段状态机, 在哪里?」+「八个状态, 是哪个 topic "
+                       "发出来的?」—— 在这之前**没有任何话题**发这八个状态: 阶段只是 trace_live.json 里的"
+                       "一个字符串(\"阶段\": \"抓取\"), 信号分析页只收数值 ⇒ 看不到状态机。本话题把它做成"
+                       "真实 DDS 通道: idx=13 段序号, idx8=插拔八段序号(0..7), v_cap=本阶段限速(m/s)。"),
+    },
     "ss_torque": {
         "type": "zmax::SSDrivingTorque", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
         "ros_alias": "/manifold_engine/driving_torque",   # 老倪 2026-10-13 规格里的 ROS 话题名
@@ -368,14 +384,14 @@ MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s,
     # 🧾 ss_meta_task = 元任务清单 (主参数节点出口 5s) · 🧾 ss_meta_pred = 元任务**预测值**
     #    (输入=流形引擎驱动扭矩; 老倪 2026-10-14「将元任务预测的topic，放到信号分析」)
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred"],
+              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage"],
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage"],
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
               "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage"],
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
