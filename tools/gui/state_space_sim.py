@@ -11,8 +11,11 @@ state_space_sim.py — 🧮 状态空间画布真实仿真引擎 (2026-08-18 老
 引擎不引入 torch 等重依赖 — 六层源码经 importlib 按文件路径加载 (仅 numpy)。
 """
 import importlib.util
+import json
 import os
 import sys
+import time
+
 import numpy as np
 
 
@@ -282,6 +285,7 @@ class StateSpaceSim:
               "latent_vec": [], "corrected_vec": [], "residual_vec": [], "z_k_vec": [], "v_vec": [],
               # 📈 先验动力学预测器输出 (2026-08-25 老倪: 六层每层都要能在 3D 视图看到)
               "prior_vec": [],
+              "meta_gate": [],                    # 🧾 元任务门控值 (ZMAX_META_GATE=1 时 <1)
               # 🧮 2026-09-03 流形层逐帧序列 (Scope 全程曲线/验证层数据源)
               "mani_risk": [], "mani_progress": [], "mani_eta": [], "mani_V": [],
               "mani_rem": [], "mani_dperp": [],   # 🎯 2026-09-04: 插深剩余/横向错位 (0.5mm 验收)
@@ -341,7 +345,10 @@ class StateSpaceSim:
                             if getattr(self, "res_ema", None) is not None
                             else np.asarray(residual, dtype=float).copy())
             u_fb = np.concatenate([np.clip(0.5 * self.res_ema[:3], -0.5, 0.5), [0.0]])
-            u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
+            # 🧾 元任务预测 (真源 = daemon 发的 zmax/ss_meta_pred 的同一份文件) → 动作调制器状态约束
+            #   默认不生效 (ZMAX_META_GATE=1 才吃); 拿不到文件就传 None, 不伪造。
+            _meta = self._meta_pred_snapshot()
+            u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar, meta=_meta)
             # 🔭 2026-09-05: 探针快照存全序列(含阶段) — GUI 播放逐帧同步直方图/归因/阶段色带
             try:
                 _pr = getattr(self.accel, "probe", None)
@@ -479,6 +486,7 @@ class StateSpaceSim:
             tr["u_limit_vec"].append(np.asarray(u_sat, dtype=float).copy())  # 安全限幅输出
             tr["u_exec_vec"].append(np.asarray(u_vec, dtype=float).copy())   # 执行器输出
             tr["prior_vec"].append(np.asarray(prior, dtype=float).copy())
+            tr["meta_gate"].append(float(getattr(self.sched, "meta_gate", 1.0)))
             tr["latent_vec"].append(np.asarray(self.latent, dtype=float).copy())
             tr["corrected_vec"].append(np.asarray(corrected, dtype=float).copy())
             tr["residual_vec"].append(np.asarray(residual, dtype=float).copy())
@@ -520,6 +528,31 @@ class StateSpaceSim:
                 break
         tr["io"] = last_io
         return tr
+
+    def _meta_pred_snapshot(self, ttl=1.0):
+        """🧾 元任务预测快照 (top1/spread/…): 真源 zmax_data/ss_live/meta_pred.json, 1s 缓存。
+
+        与话题 zmax/ss_meta_pred 同源 (守护就是读这份文件转发的)。读不到返回 None —— 不编数。
+        """
+        _now = time.time()
+        if getattr(self, "_meta_cache", None) and (_now - self._meta_cache[0] < ttl):
+            return self._meta_cache[1]
+        try:
+            _p = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"),
+                              "zmax_data", "ss_live", "meta_pred.json")
+            with open(_p, encoding="utf-8") as _f:
+                _d = json.load(_f)
+            _top = _d.get("top") or []
+            _v = [float(x.get("score") or 0.0) for x in _top if isinstance(x, dict)]
+            _m = {"top1": (_v[0] if _v else 0.0),
+                  "spread": ((_v[0] - _v[1]) if len(_v) > 1 else 0.0),
+                  "n_meta": int(_d.get("n_meta") or 0),
+                  "top1_name": (str(_top[0].get("name") or "") if _top else ""),
+                  "frozen": int(_d.get("frozen") or 0)}
+        except Exception:                                                       # noqa: BLE001
+            _m = None
+        self._meta_cache = (_now, _m)
+        return _m
 
     def _io_snapshot(self, force, obs, u_ff, act4, latent_pred, prior, z_k,
                      corrected, residual, contact_p, r_scalar, u_fb, u, stage,

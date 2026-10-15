@@ -237,11 +237,19 @@ class ActionModulator:
             self._pend.clear()          # 证据不成立 → 清空待确认计数 (必须连续)
         return self.stage()
 
-    def decide(self, u_ff, u_fb, contact_p, residual):
-        """决策: ①否决权 (残差异常) ②前馈+反馈**相加** ③按阶段显式限速
+    def decide(self, u_ff, u_fb, contact_p, residual, meta=None):
+        """决策: ①否决权 (残差异常) ②前馈+反馈**相加** ③按阶段显式限速 ④元任务预测**门控**(可选)
 
         u = u_ff + k_fb·u_fb, 然后按当前阶段的速度上限等比缩放 (只削幅, 不改方向)。
         为什么不再用凸组合: 见 STAGE_V_CAP 上方注释 (量级差 21 倍 → 凸组合等于砍速度)。
+
+        🧾 meta (老倪 2026-10-15「元任务预测的输出…直接约束动作调制的状态输出」):
+          meta = {"spread": top1-top2, "top1": ..., "n_meta": ...} 来自 zmax/ss_meta_pred (真源 meta_pred.json)。
+          · 只在本函数吃到 meta 且 ```ZMAX_META_GATE=1``` 时生效 (默认 0 ⇒ 行为逐位不变);
+          · 约束律: 得分离散度越低 ⇒ 预测越没区分度 ⇒ 越保守:
+              f = clip(1.0 - KAPPA*(1 - spread/SPREAD_REF), META_GATE_MIN, 1.0)   (只削幅, 不改方向)
+          · 依据"未证明提升不得进默认档": 现在 meta_pred 为 frozen=1 (恒定扭矩⇒无区分度) ⇒ 默认关,
+            等真机时变扭矩 / 训练头后再按同口径对照定律。生效次数/最近值可查 (meta_calls / meta_gate)。
         """
         _zero = np.zeros_like(np.asarray(u_ff, dtype=float))
         if residual > self.veto_th:
@@ -260,5 +268,18 @@ class ActionModulator:
         vmin = self.v_min.get(st)
         if vmin is not None and 1e-6 < n < vmin:
             u = u * (vmin / n)             # 最小趋近速度: 证据未达标时别在末端磨 (同样保方向)
-        tag = " · 接触" if contact_p > self.contact_th else ""
+        # ── ④ 🧾 元任务预测门控 (默认关; 只削幅) ─────────────────────────────
+        _mtag = ""
+        try:
+            if (meta and os.environ.get("ZMAX_META_GATE") == "1"):
+                _sp = float(meta.get("spread") or 0.0)
+                _f = 1.0 - float(os.environ.get("ZMAX_META_KAPPA") or 1.0) * (1.0 - _sp / 0.05)
+                _f = min(1.0, max(0.5, _f))
+                u = u * _f
+                self.meta_gate = _f
+                self.meta_calls = int(getattr(self, "meta_calls", 0)) + 1
+                _mtag = " · 元任务门控 ×%.2f" % _f
+        except Exception:                                                       # noqa: BLE001
+            pass
+        tag = (" · 接触" if contact_p > self.contact_th else "") + _mtag
         return u, f"阶段 {st}{tag}"

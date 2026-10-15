@@ -786,7 +786,11 @@ class SSDaemon:
         ids, scs = [], []
         for it in top[:8]:
             if isinstance(it, dict):
-                ids.append(str(it.get("fn_id") or it.get("id") or ""))
+                # 🧾 2026-10-15 老倪「需要显示确切的元任务」: 功能号后面**带上元任务名**
+                #   (真源 meta_pred.json 的 top[].name) ⇒ 话题本身就自解释, 下游不用再查表。
+                _fid = str(it.get("fn_id") or it.get("id") or "")
+                _nm = str(it.get("name") or "").strip()
+                ids.append((_fid + " " + _nm).strip() if _nm else _fid)
                 scs.append("%.4f" % float(it.get("score") or it.get("s") or 0.0))
             else:
                 ids.append(str(it)[:24])

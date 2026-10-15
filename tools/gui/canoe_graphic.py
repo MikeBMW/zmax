@@ -151,6 +151,23 @@ _DS_SCALAR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\.]*(?:\[\d+\])?)\s*=\s*(-?\d+
 #   JSON**(缺右括号, 见 probe.py 的 body[:180] 兜底) ⇒ json.loads 必然失败 ⇒ 以前一条信号都出不来
 #   (ss_stage 就是这种情况: 话题在列表里, 波形里没有)。这条正则专收"键": 数值 的成对叶子。
 _DS_JSONNUM_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)')
+# 🧾 字符串叶子 (2026-10-15 老倪「需要显示确切的元任务」): digest 里除了数值还有**名字/ID 串**
+#   (如 ss_meta_pred 的 top_txt = "FN-SYS2-29 小目标插入 0.0366 › …") —— 那些不是画出来的信号,
+#   是要**直接上屏**的文字。此前只解数值 ⇒ 名字永远看不到。
+_DS_JSONSTR_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*"([^"]{1,400})"')
+
+
+def parse_ds_digest_str(d):
+    """从 digest 抠出**字符串**叶子 → {键: 文本} (供元任务等"名字"上屏)"""
+    out = {}
+    if not d:
+        return out
+    s = d if isinstance(d, str) else json.dumps(d, ensure_ascii=False)
+    for _m in _DS_JSONSTR_RE.finditer(s):
+        _k, _v = _m.group(1), _m.group(2).strip()
+        if _v:
+            out[_k] = _v
+    return out
 
 
 def parse_ds_digest(d):
@@ -310,6 +327,8 @@ class SignalStore:
         self.lap = 1                   # 回放趟号 (3D 面板绕圈一次 +1)
         self.lap_clears = 0            # 新一趟清过几次 (取证用)
         self.notes = collections.deque(maxlen=50)   # 最近几条"波形为什么变了"的说明
+        # 🧾 话题里的**字符串**叶子 (元任务名/ID...): 不是波形, 是要上屏的"确切内容"
+        self.ds_text = {}
 
     def note(self, msg):
         """📢 给老倪看的一行说明 (趟号/清空/对不齐这种"波形为什么变了"必须说出来, 不许静默)"""
@@ -466,7 +485,16 @@ class HostJsonSource(threading.Thread):
                     _sy = getattr(self, "_pb_sync", None)
                     now, _scene = ((_sy[1] + (float(_ts) - _sy[0])) if _sy else float(_ts)), True
                 else:
-                    now, _scene = time.time(), False
+                    # 既没有 时间_s 也没有 ts 的源 (如 yolo.* 逐帧检测): 它是"此刻到达"的 ⇒ 归到**主钟上此刻**
+                    #   (回放秒), 而不是 epoch。老倪的"各源必须同一根钟"是全局口径 —— 留一个 epoch 的源,
+                    #   一按 Fit 就会把时间轴拉到 1.79e9 (与 ds.* 那次同款事故)。
+                    _sy2 = getattr(self, "_pb_sync", None)
+                    if _sy2 is None:
+                        # 锚点还没来 ⇒ **这一拍先不铺** (拿 epoch 铺进去会永久留一个 1.79e9 的点,
+                        #   按 Fit 就把整列时间轴拉爆)。锚点在第一拍就会由 sstrace 源写上, 只等一拍。
+                        self._wait_anchor = getattr(self, "_wait_anchor", 0) + 1
+                        continue
+                    now, _scene = (_sy2[1], True)
                 keys = {f"{prefix}.{k}": v for k, v in vals.items()}
                 self.store.push_many(keys, now, {k: age for k in keys}, src=prefix, scene=_scene)
                 # (横轴 = ts 墙钟 ⇒ x→绝对时刻 的偏移恒为 0, 已在上面的分支里设好; 不再按 时间_s 反推)
@@ -1384,9 +1412,24 @@ class DataSpaceTraceSource(threading.Thread):
                         pass
                 return
         else:
-            # 还没有锚点 (3D 面板还没出过快照): 先按到达时刻铺, 标 scene=False —— 一旦有锚点就自动归到主钟。
-            #   **不静默**: 目录里该信号会带"等 3D 快照对齐"的注记。
-            x, _scene = time.time(), False
+            # 🔴 还没有锚点 (3D 面板还没出过快照): **一律不推** —— 推了就得拿 time.time() (epoch 1.79e9) 当 x,
+            #   于是同一个信号里混着"回放秒"和"epoch"两种量级 (判据实测差 1.79e9s), 又变成两根钟。
+            #   等锚点来 (≤1 拍); 等多久是数得出来的, 打印一行, 不静默。
+            self._wait_anchor = getattr(self, "_wait_anchor", 0) + 1
+            if self._wait_anchor == 1:
+                try:
+                    self.store.note("⏳ 还没拿到 3D 快照锚点 (回放秒↔墙钟): 先不铺 ds.* 波形, 等锚点对齐 "
+                                    "(否则同一曲线混 epoch/回放秒两种量级 ⇒ 又成两根钟)")
+                except Exception:
+                    pass
+            return
+        # 🧾 字符串叶子 (元任务名/ID 等) 不进波形, 存进 store 供上屏
+        _strs = parse_ds_digest_str(rec.get("digest"))
+        if _strs:
+            try:
+                self.store.ds_text[topic] = _strs
+            except AttributeError:
+                pass
         self.store.push_many({pref + k: v for k, v in vals.items()},
                              x, src="ds", scene=_scene)
         self.seen[topic] = {"type": str(rec.get("type") or ""), "wall": time.time(),
@@ -1617,6 +1660,22 @@ class CanoeGraphicWidget(QWidget):
                                  "ActionModulator.STAGES 的插拔八段 (真源常量, 随 3D 面板快照下发)")
         root.addWidget(self.lb_stages)
 
+        # ── 🧾 元任务预测: **文字**一行 (老倪 2026-10-15: 「需要显示确切的元任务, 在信号分析窗口要显示」) ──
+        #    内容 = 话题 zmax/ss_meta_pred 载荷里的 top_txt (功能号 + 元任务名 + 得分), 取自 digest 的字符串叶子;
+        #    页面**不自己编**名字: 没有载荷就写"等话题/未生成", 并给出怎么生成 (ss_meta_predict.py)。
+        self.lb_meta = QLabel("")
+        self.lb_meta.setTextFormat(Qt.RichText)
+        self.lb_meta.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        try:
+            self.lb_meta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            self.lb_meta.setMinimumWidth(0)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        self.lb_meta.setToolTip("元任务预测 = 🧾 元任务预测节点 (驱动扭矩 T_drive=M·(−∇Φ) → 逐元任务得分);\n"
+                                "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 真源 zmax_data/ss_live/meta_pred.json\n"
+                                "生成: gui-venv311/bin/python tools/ss_meta_predict.py --scene SCN-01-FW --write")
+        root.addWidget(self.lb_meta)
+
         # ── 主体: 左信号栏 + 右波形 ──
         split = QSplitter(Qt.Horizontal)
         split.setStyleSheet(f"QSplitter::handle{{background:{C_BORDER};}}")
@@ -1837,7 +1896,8 @@ class CanoeGraphicWidget(QWidget):
                   #   走 DDS 话题 zmax/ss_meta_pred (探针落 trace.jsonl ⇒ 本页 ds.* 信号)。
                   #   top1 = 最高分元任务得分; spread = top1−top2 (区分度, 越大越"选得准");
                   #   ⚠️ 驱动扭矩恒定时 (frozen=1) spread 恒小 ⇒ 如实标注"预测无区分度", 不吹成有预测力。
-                  "ds.zmax/ss_meta_pred.top1", "ds.zmax/ss_meta_pred.spread")
+                  "ds.zmax/ss_meta_pred.mt1", "ds.zmax/ss_meta_pred.mt2",
+                  "ds.zmax/ss_meta_pred.mt3", "ds.zmax/ss_meta_pred.spread")
 
     def _apply_watch(self):
         """被「➕ 增加信号话题」点名但当时还没出帧的话题: 一有字段出现就自动勾上"""
@@ -3028,6 +3088,34 @@ class CanoeGraphicWidget(QWidget):
             self._update_tree_values()
             self._update_status(keys)
 
+    def _meta_pred_text(self):
+        """🧾 元任务预测一行 (确切元任务名) —— 内容直接来自话题载荷, 不是页面自造。
+
+        返回 (HTML, 是否新鲜)。新鲜度用**该话题最后一帧的年龄**判 (store.bufs 里 ds.zmax/ss_meta_pred.* 的 age)。
+        """
+        txt = ""
+        try:
+            txt = str((getattr(self.store, "ds_text", None) or {}).get("zmax/ss_meta_pred", {}).get("top_txt") or "")
+        except Exception:                                                      # noqa: BLE001
+            txt = ""
+        age = -1.0
+        try:
+            for k, b in self.store.bufs.items():
+                if k.startswith("ds.zmax/ss_meta_pred.") and b.age is not None and b.age >= 0:
+                    age = min(age, b.age) if age >= 0 else b.age
+        except Exception:                                                      # noqa: BLE001
+            pass
+        head = "🧾 元任务预测: "
+        if not txt:
+            return (head + "<i>等话题 zmax/ss_meta_pred (跑一次 tools/ss_meta_predict.py --write 即生成)</i>", False)
+        fresh = (age >= 0 and age <= 60.0)
+        body = " › ".join("<b style='color:%s'>%s</b>" % (C_GREEN, x.strip()) if i == 0
+                          else "<span style='color:%s'>%s</span>" % (C_DIM, x.strip())
+                          for i, x in enumerate(txt.split("›")))
+        if not fresh and age >= 0:
+            body += " <span style='color:%s'>· 帧龄 %.0fs (非当下值)</span>" % (C_YELLOW, age)
+        return (head + body, fresh)
+
     def _stage_strip(self):
         """八阶段**文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」)。
 
@@ -3155,6 +3243,12 @@ class CanoeGraphicWidget(QWidget):
         try:                                   # 八阶段**文字**一行 (八段名 + 当前段高亮)
             _strip, _ = self._stage_strip()
             self.lb_stages.setText(_strip)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        try:                                   # 🧾 元任务预测一行 (确切元任务名, 来自话题载荷)
+            _mt, _ = self._meta_pred_text()
+            if self.lb_meta.text() != _mt:
+                self.lb_meta.setText(_mt)
         except Exception:                                                      # noqa: BLE001
             pass
         parts = []

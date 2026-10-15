@@ -94,14 +94,18 @@ def _digest_for(k, f):
             _sc = [x for x in str(f.get("top_scores") or "").replace(" ", "").split(",") if x]
             _ids = [x.strip() for x in str(f.get("top_ids") or "").split(",") if x.strip()]
             _v = []
-            for _x in _sc[:3]:
+            for _x in _sc[:5]:
                 try:
                     _v.append(float(_x))
                 except Exception:                                              # noqa: BLE001
                     pass
-            return json.dumps({"top1": (_v[0] if _v else None),
-                               "top2": (_v[1] if len(_v) > 1 else None),
-                               "top3": (_v[2] if len(_v) > 2 else None),
+            # 🧾 文本槽: 确切元任务 (功能号 + 名字 + 得分) —— 信号页拿它上屏, 不是只画数
+            _txt = " › ".join("%s %.4f" % (_ids[i], _v[i]) for i in range(min(3, len(_ids), len(_v))))
+            return json.dumps({"mt1": (_v[0] if _v else None),
+                               "mt2": (_v[1] if len(_v) > 1 else None),
+                               "mt3": (_v[2] if len(_v) > 2 else None),
+                               "mt4": (_v[3] if len(_v) > 3 else None),
+                               "mt5": (_v[4] if len(_v) > 4 else None),
                                "spread": (round(_v[0] - _v[1], 6) if len(_v) > 1 else None),
                                "n_meta": f.get("n_meta"), "n_cand": f.get("n_cand"),
                                "trained": f.get("trained"), "frozen": f.get("frozen"),
@@ -109,8 +113,8 @@ def _digest_for(k, f):
                                "t_pred_s": (round(float(f.get("ts") or 0) - float(f.get("ts_pred") or 0), 3)
                                             if f.get("ts_pred") else None),
                                "in_age_s": f.get("input_age_s"),
-                               "top1_id": (_ids[0] if _ids else ""),
-                               "scene": f.get("scene") or ""}, ensure_ascii=False)[:400]
+                               "top_txt": _txt, "scene": f.get("scene") or ""},
+                              ensure_ascii=False)[:400]
         if k == "ss_torque":
             # 🔧 驱动扭矩 T_drive=M·(−∇Φ): 载荷是 6D 数组 + 36/9 维张量 + 长说明, 直接截断会得到
             #    **残缺 JSON** ⇒ parse_ds_digest 解析不出数值叶子 ⇒ 实时监控里"看得到话题、没有波形"

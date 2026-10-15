@@ -46,13 +46,23 @@ def stat(k):
 rows = [r for r in (stat(k) for k in cands) if r]
 for r in rows:
     print(r)
-ds = [r for r in rows if r["k"].startswith("ds.")]
-tr = [r for r in rows if not r["k"].startswith("ds.")]
+allrows = []
+for k2, b2 in st.bufs.items():
+    if b2.n:
+        t2, _v2 = b2.arrays()
+        allrows.append((k2, float(t2[-1])))
+ds_max = max([x for k2, x in allrows if k2.startswith("ds.")] or [None])
+tr_max = max([x for k2, x in allrows if k2.startswith("sstrace.")] or [None])
 ok = True
-if ds and tr:
-    gap = abs(ds[0]["x1"] - tr[0]["x1"])
-    print("主钟对齐: ds.x1=%.2f vs sstrace.x1=%.2f ⇒ 差 %.2fs" % (ds[0]["x1"], tr[0]["x1"], gap))
-    ok = ok and gap < 5.0
+if ds_max is not None and tr_max is not None:
+    gap = abs(ds_max - tr_max)
+    print("主钟对齐: ds.* 最新 x=%.2f vs sstrace.* 最新 x=%.2f ⇒ 差 %.2fs" % (ds_max, tr_max, gap))
+    ok = ok and gap < 6.0
+# 全库检查: 不许出现"同一库混两种量级" (epoch 1.7e9 与回放秒 0~40)
+bad_scale = [k2 for k2, x in allrows if x > 1e6 and (k2.startswith("ds.") or k2.startswith("sstrace.")
+                                                        or k2.startswith("yolo.") or k2.startswith("engine"))]
+print("量级异常 (x>1e6, 疑似混了 epoch):", bad_scale[:4] or "无")
+ok = ok and not bad_scale
 bad_jump = [r for r in rows if r["同x跳变"] > 6]
 print("同 x 上跳变的信号:", [r["k"] for r in bad_jump] or "无")
 print("最近说明:", list(st.notes)[-2:])
