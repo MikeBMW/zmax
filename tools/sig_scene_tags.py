@@ -335,6 +335,11 @@ def tag(key: str) -> str:
     #   这类通用名会被注册表里早先记下的摆盘标签抢走 ⇒ 蓝区(摆盘)又冒出插拔的数(同一类串台的老毛病)。
     if k.startswith("sseng."):
         return "插拔场景"
+    # ⚖ 2026-10-15: 原子技能物理量 (skill_phys.json, 键 "SK01 接近 · v 速度 mm/s") = 插拔链八阶段的动作侧
+    #   物理量 ⇒ 场景固定「插拔场景」(绿), 优先级同 sseng. —— 否则会掉进"基础场景/白"。
+    #   注: 摆盘链共用同一套阶段号 (SK07 插入 ↔ SK07 放入), 本表八段来自插拔链 STAGES。
+    if k.startswith("skillphys.") or (k[:2] == "SK" and k[2:4].isdigit()):
+        return "插拔场景"
     if k in sig:
         return sig[k]
     # 来源前缀层: 窗口里的键可能带 ar./sstrace./host./ros./catalog. 等前缀, 逐个剥再查

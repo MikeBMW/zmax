@@ -27,11 +27,52 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(ROOT, "src") not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.join(ROOT, "src"))
-from lerobot.policies.left_right.state_space.physics_constraints import InertiaLimiter   # noqa: E402
+from lerobot.policies.left_right.state_space.physics_constraints import (InertiaLimiter,   # noqa: E402
+                                                                       limits_for)
+# ⚖ 技能号 ↔ 阶段: 真源 = 技能库的类 (code/stage 类属性), 不在这里手写编号
+from lerobot.policies.left_right.state_space.skills.atomic_skills import SKILLS, SKILLS_TRAY  # noqa: E402
+CODE_BY_STAGE = {}
+for _c in list(SKILLS) + list(SKILLS_TRAY):
+    CODE_BY_STAGE.setdefault(_c.stage, _c.code)          # SK07 插拔链=插入 / 摆盘链=放入 (同号两支)
 LIVE = os.path.join(ROOT, "zmax_data", "ss_live")
 SHM = os.environ.get("ZMAX_SHM_DIR", "/dev/shm/zmax_ss_engine")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 DT = 0.1                      # 块内每拍时长 (与回路 10Hz 同口径)
+POSE_STALE_S = float(os.environ.get("ZMAX_SKILL_POSE_STALE_S", "5.0"))   # 位姿停更阈值 (= 发布守护同口径)
+
+
+def _read_pose():
+    """真机 tap 位姿 (x/y/z mm + 姿态角 deg) —— 尾读最新 state_*.jsonl 的**最后一行** (不整文件读入)。
+
+    口径与发布守护 tools/dds/ss_daemon.py::read_state 同源 (同一个 tap 文件、同一个新鲜度阈值):
+      帧龄 > POSE_STALE_S ⇒ 位姿停更 ⇒ 一律 -1 (老倪: 不许拿旧位姿当现在)。
+    """
+    import glob as _g
+    c = _g.glob(os.path.join(LIVE, "state_*.jsonl"))
+    if not c:
+        return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": -1.0}
+    p = max(c, key=os.path.getmtime)
+    age = time.time() - os.path.getmtime(p)
+    try:
+        with open(p, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 262144))
+            tail = fh.read().decode("utf-8", "ignore").strip().splitlines()
+        d = json.loads(tail[-1]) if tail else {}
+    except Exception:                                                             # noqa: BLE001
+        return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": age}
+    if age > POSE_STALE_S:
+        return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": age, "stale": 1}
+    tcp = [float(v) for v in (d.get("tcp") or [])]
+    q = [float(v) for v in (d.get("tcp_quat") or [])]
+    ang = -1.0
+    if len(q) >= 4:
+        import math as _m
+        w = max(-1.0, min(1.0, abs(q[3])))
+        ang = round(2.0 * _m.degrees(_m.acos(w)), 3)
+    return {"x": (tcp[0] if len(tcp) > 0 else -1.0), "y": (tcp[1] if len(tcp) > 1 else -1.0),
+            "z": (tcp[2] if len(tcp) > 2 else -1.0), "angle": ang, "pose_age_s": round(age, 3)}
 
 
 def _atomic_json(path, obj):
@@ -61,6 +102,13 @@ class Dispatcher:
         self.lim = InertiaLimiter(dt=DT)
         self.last_v = {s_: np.zeros(3) for s_ in STAGES}
         self.last_a = {s_: np.zeros(3) for s_ in STAGES}
+        # ⚖ 加速度真源: 块边界算一次并**保留到下一块** (老倪 2026-10-15「信号分析里要看到 a 加速度」)。
+        #   为什么不能直接用 last_a: 它是 (本tick − 上一tick)/dt, 而块内同一步动作不变 ⇒ 只在换块那一拍
+        #   出现一个 16ms 尖峰 (60Hz 里 1 拍), 信号分析按 ~50Hz 采样几乎永远采不到 ⇒ 现场看 a 恒为 0 (假信号)。
+        #   改为: 换新块时算 ‖v_本块 − v_上一块‖ / Δt_块间 (mm/s²), 保留到下一块 ⇒ 稳定可读。
+        self.a_blk = {}            # stage → 块间加速度 mm/s²
+        self.v_blk = {}            # stage → 上一次换块时的速度 mm/s
+        self.t_blk = {}            # stage → 上一次换块的时刻
         self.err_last = {"ts": 0.0, "err": {}, "big": {}, "big_stage": "", "err_norm": {}, "why": {}}
         self._chunk_ts = None
         os.makedirs(SHM, exist_ok=True)
@@ -95,6 +143,13 @@ class Dispatcher:
                                 "ts": now, "stage": str(d.get("stage") or ""), "block_ts": self._chunk_ts}
                 self.skill_n[st] = self.skill_n.get(st, 0) + 1
                 got.append(st)
+                # ⚖ 块间加速度: 本块该技能速度 − 上一块该技能速度, 除以两块时间差 (保留到下一块)
+                _v_now = float(np.linalg.norm(np.asarray(a, float)[:3])) * 1000.0
+                _t_prev, _v_prev = self.t_blk.get(st), self.v_blk.get(st)
+                if _t_prev is not None and _v_prev is not None:
+                    self.a_blk[st] = abs(_v_now - float(_v_prev)) / max(1e-3, now - float(_t_prev))
+                self.v_blk[st] = _v_now
+                self.t_blk[st] = now
             self.reset_n += 1
             self.last_got = got
         # 队内推进: 按经过时间把每技能的当前拍往前推
@@ -106,13 +161,18 @@ class Dispatcher:
             step = min(c["step"] + max(0, adv), 7)
             _req = c["action"]
             _p = self._phys(st, _req)
+            # ⚖ 老倪 2026-10-15: 信号分析要看到 x y z v a 等物理值 ⇒ 逐拍把这些量算出来落盘
+            _a_n = float(self.a_blk.get(st, 0.0))                     # mm/s² (块间速度变化率, 保留到下一块)
+            _s_mm = float(self.lim.travel.get(st, 0.0)) * 1000.0       # 本段累计行程 mm
             out[st] = {"stage": st, "action": _p["u"], "step": step, "ts": now,
                        "age_s": round(now - float(c["ts"]), 4), "n": self.skill_n.get(st, 0),
                        "block_ts": c.get("block_ts"),
                        # ⚖ 物理闸口径: 请求值/可执行值/偏差/大偏差/哪条约束削的 + 该技能物理上限
                        "req": [round(float(x), 6) for x in _p["v_req"]],
                        "err": [round(float(x), 6) for x in _p["err"]], "err_norm": _p["err_norm"],
-                       "big": _p["big"], "why": _p["why"], "phys": _p["phys"]}
+                       "big": _p["big"], "why": _p["why"], "phys": _p["phys"],
+                       "a_mms2": _a_n, "s_mm": _s_mm,
+                       "skill": CODE_BY_STAGE.get(st, "")}
             _atomic_json(os.path.join(SHM, "skill_%d_%s.json" % (STAGES.index(st), st)), out[st])
         flat = {"ts": now, "n": self.n, "reset_n": self.reset_n,
                 "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3)}
@@ -124,6 +184,50 @@ class Dispatcher:
             flat["%s_偏差_mps" % st] = (float(v.get("err_norm") or 0.0) if v else -1.0)     # ⚖ 物理不可行偏差
             flat["%s_可行" % st] = (0 if (v or {}).get("why") not in (None, "可行") else 1)  # 1=原样可行 0=被削
         _atomic_json(os.path.join(LIVE, "skill_latest.json"), flat)
+        # ⚖ 原子技能物理量真源 (老倪 2026-10-15「所有原子技能都要有 topic 输出, 信号分析里看到 x y z v a」):
+        #   每个技能一份 —— 数值/偏差/物理上限全部来自上面刚过的物理闸 (_p), 不另算一份;
+        #   位置/姿态由 DDS 发布端从真机 tap 补 (这里不管位姿, 只管动作侧物理量)。
+        _pose = _read_pose()          # 位姿: 该技能在职时当前末端位姿就是它这一拍的位置
+        _ph = {"ts": now, "dt": DT, "pose": _pose, "src": "InertiaLimiter(按拍过闸) + config/calib/zmax_skill_physics.json",
+               "skills": {}}
+        for _st in STAGES:
+            _v = out.get(_st)
+            _code = CODE_BY_STAGE.get(_st, "")
+            if not _code:
+                continue
+            # ⚖ 包络一律取 **limits_for 真源** (在职/不在职都一样): 闸门导出到每拍结果里的 phys 是
+            #   给报告看的**四舍五入摘要** (m 4位 / a_max 4位 / jerk_max 3位), 拿它当"物理模型"发布
+            #   就等于把 4.166667 变成 4.1667 —— 信号分析里对不上真源, 判据也过不了 1e-6。
+            _q = dict(limits_for(_st) or {}) or dict((_v or {}).get("phys") or {})
+            # ⚠️ 两个来源的键名不同 (闸门 phys: v_cap/F_max; limits_for: v/F/jerk/s) —— 统一成正名,
+            #    否则会把包络写成一串 -1 而在信号分析里显示"没有物理模型"(同一类坑: dmdt vs dmdt_max)。
+            def _pk(*names):
+                for _n in names:
+                    _x = _q.get(_n)
+                    if isinstance(_x, (int, float)):
+                        return float(_x)
+                return -1.0
+            _ph["skills"][_code] = {
+                "stage": _st, "在职": 1 if _v else 0,
+                "step": (_v["step"] if _v else -1),
+                "x": (_pose["x"] if _v else -1.0), "y": (_pose["y"] if _v else -1.0),
+                "z": (_pose["z"] if _v else -1.0), "angle": (_pose["angle"] if _v else -1.0),
+                "pose_age_s": _pose["pose_age_s"],
+                "v_mms": (float(np.linalg.norm(np.asarray(_v["action"], float)[:3])) * 1000.0
+                          if _v else -1.0),                                    # 速度 mm/s (不四舍五入: 界面负责显示)
+                "a_mms2": (_v["a_mms2"] if _v else -1.0),                      # 加速度 mm/s²
+                "s_mm": (_v["s_mm"] if _v else -1.0),                          # 段累计行程 mm
+                "err_mms": (float(_v["err_norm"]) * 1000.0 if _v else -1.0),   # 削出的偏差 mm/s
+                "big": (_v["big"] if _v else 0),
+                "why": ((_v or {}).get("why") or ""),
+                "v_cap": _pk("v_cap", "v"), "a_max": _pk("a_max", "a_cal"),
+                "jerk_max": _pk("jerk_max", "jerk"),
+                "s_step": _pk("s_step"), "s_max": _pk("s_max", "s"),
+                "m_kg": _pk("m"), "f_max": _pk("F_max", "F"),
+                "calib": str(_q.get("calib") or ""),
+            }
+        _ph["skills"]["_元"] = {"派发帧龄_s": 0.0, "块帧龄_s": flat["块帧龄_s"], "n": self.n}
+        _atomic_json(os.path.join(LIVE, "skill_phys.json"), _ph)
         # ⚖ 偏差真源: 小偏差 → 🧪 状态校正器 (修正误差); 大偏差 → 📡 融合定位 → 🧮 流形引擎 (顶层补偿)
         #   每个技能各一份 (带物理上限与削因), 下游按 big 分流 —— 这是"误差反馈"的唯一出口, 不另开通道。
         _e = {"ts": now, "src": "physics_constraints.InertiaLimiter", "big_err": self.lim.big_err,

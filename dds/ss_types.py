@@ -489,3 +489,52 @@ class SSStage(IdlStruct, typename="zmax::SSStage"):
     age_s: float64 = -1.0              # 源快照帧龄 (s; -1=无源)
     source: str = ""                   # 真源文件 / 采集口
     note: str = ""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+@dataclass
+class SSSkillPhys(IdlStruct, typename="zmax::SSSkillPhys"):
+    """⚖ 原子技能的**物理量**. 每个技能一条话题 (zmax/skill_sk01 … zmax/skill_sk08)
+
+    老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控信号分析窗口都有
+    对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、速度、角度等物理值; 要实际发出来。」
+
+    真源 (全部可追):
+      · 数值 v/a/s/偏差/上限 ← 技能派发循环服务每拍过物理闸的结果
+          zmax_data/ss_live/skill_phys.json  (生产: tools/ss_skill_dispatch.py)
+          ← src/lerobot/policies/left_right/state_space/physics_constraints.py (InertiaLimiter)
+      · 标定上下限 ← config/calib/zmax_skill_physics.json (tools/skill_physics_calib.py)
+      · x/y/z/angle ← 真机 tap 状态帧 zmax_data/ss_live/state_*.jsonl (tcp 位姿; 该技能在职才有意义)
+      · 未测 = -1.0 (不用 0 冒充) · 不在职 = 在职 0 + 数值 -1 + note 说明
+
+    信号 (信号分析窗口里逐条可画):
+      x/y/z 位置 mm · v 速度 mm/s · a 加速度 mm/s² · s 段累计行程 mm · angle 姿态角 deg
+      v_cap 限速 / a_max 加速度上限 / jerk_max / s_step 单拍位移上限 / s_max 段行程上限 / m / F_max  ← 物理模型包络
+    """
+    ts: float64 = 0.0                  # epoch 秒 (发布时刻)
+    skill: str = ""                    # 技能号 SK01.. (真源 atomic_skills.py 的 code)
+    stage: str = ""                    # 阶段名 (接近/对位/…)
+    in_service: int32 = 0              # 1 = 该技能当前在职 (有块认领); 0 = 不在职 (数值 -1)
+    step: int32 = -1                   # 块内第几拍 (-1=无)
+    # ── 实测物理量 (缺测 -1) ──
+    x: float64 = -1.0                  # 末端 x mm
+    y: float64 = -1.0                  # 末端 y mm
+    z: float64 = -1.0                  # 末端 z mm
+    v: float64 = -1.0                  # 速度 mm/s  (= ‖实际下发的 3 维动作‖)
+    a: float64 = -1.0                  # 加速度 mm/s² (= ‖Δv‖/dt, 物理闸逐拍算的那个)
+    s: float64 = -1.0                  # 本段累计行程 mm (InertiaLimiter.travel)
+    angle: float64 = -1.0              # 末端姿态角 deg (由旋转矩阵反解, 真机 tap)
+    err: float64 = -1.0                # 物理闸削出的偏差 mm/s (‖u_req − u‖)
+    big: int32 = 0                     # 1 = 大偏差 (⇒ 融合定位 → 流形引擎顶层补偿)
+    # ── 本段物理模型包络 (标定真源; 静态可查) ──
+    v_cap: float64 = -1.0              # 限速 m/s
+    a_max: float64 = -1.0              # 加速度上限 m/s² (= F/m 或标定 a)
+    jerk_max: float64 = -1.0           # 加加速度上限 m/s³
+    s_step: float64 = -1.0             # 单拍位移上限 m
+    s_max: float64 = -1.0              # 段行程上限 m
+    m_kg: float64 = -1.0               # 运动质量 kg
+    f_max: float64 = -1.0              # 力上限 N
+    frame_age_s: float64 = -1.0        # 源帧龄 s
+    source: str = ""                   # 真源文件 / 采集口
+    why: str = ""                      # 本拍被哪几条约束削 (速度/加速度/…)
+    note: str = ""

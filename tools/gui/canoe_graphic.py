@@ -141,6 +141,13 @@ HOST_SOURCES = [
     #   (界面要极简)。语义键走常驻回路平铺的 trace (engine_trace.json → sseng.chunk.*), 见下面的分组标签。
     # 🦾 技能派发 (肌肉记忆): 每技能当前那一拍 + 拍号 + 块帧龄 —— 由 tools/ss_skill_dispatch.py 60Hz 刷。
     ("skill", "zmax_data/ss_live/skill_latest.json"),
+    # ⚖ 原子技能物理量 (老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控
+    #   信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、速度、角度等
+    #   物理值; 要实际发出来。」): 真源 = tools/ss_skill_dispatch.py 每拍过物理闸写出的 skill_phys.json,
+    #   8 个技能 × (x/y/z 位置 · v 速度 · a 加速度 · s 段行程 · angle 姿态角 · err 削出偏差 +
+    #   v_cap/a_max/jerk_max/s_step/s_max/m/F 物理包络) = 每条一行, 「实测曲线 vs 物理上限」可同图叠。
+    #   DDS 侧同一份数据的通道 = zmax/skill_sk01 … zmax/skill_sk08 (类型 zmax::SSSkillPhys)。
+    ("skillphys", "zmax_data/ss_live/skill_phys.json"),
     # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
     #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
     #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
@@ -443,7 +450,34 @@ class HostJsonSource(threading.Thread):
                 # 🥽 AR/AOI 源(ar_aoi_live.json): 它的信号表就在 `s` 里(86 条), 而且 groups 的组名就是信号名
                 #   ⇒ 直接取 s 的键, 不走 flatten。**踩过的坑**: flatten_json 有 48 键上限, 原来 AR 的 86 条
                 #   只进来 48 条(老倪: 「AR场景的信号呢?」), 且键名前缀会多出 "s."(组名对不上, 全掉进"其它信号")。
-                if prefix == "ar" and isinstance(raw.get("s"), dict):
+                if prefix == "skillphys" and isinstance(raw.get("skills"), dict):
+                    # ⚖ 原子技能物理量: 键 = "<SK号> <阶段> · <物理量> <单位>" ⇒ 一行一条自解释, 目录里搜 "SK01"
+                    #   就是这一个技能的全部物理量。**不走 flatten_json**: 它 48 键封顶(AR 源踩过这个坑),
+                    #   这里是 8 技能 × 17 条 = 136 条, 截断会变成"一部分技能有信号、一部分没有"的静默缺项。
+                    # ⚠️ 键名必须与 skill_phys.json 里的真名一致 (踩过: 照 DDS 消息的字段名去读,
+                    #    结果 v/a/s/err/x/y/z/angle 八个全读空 ⇒ 目录里只剩包络 ⇒ 看着"没有物理量")。
+                    _F = (("x", "x 位置 mm"), ("y", "y 位置 mm"), ("z", "z 位置 mm"),
+                          ("v_mms", "v 速度 mm/s"), ("a_mms2", "a 加速度 mm/s²"), ("s_mm", "s 段行程 mm"),
+                          ("angle", "angle 姿态角 deg"), ("err_mms", "err 削出偏差 mm/s"),
+                          ("v_cap", "v_cap 限速 m/s"), ("a_max", "a_max 加速度上限 m/s²"),
+                          ("jerk_max", "jerk_max 加加速度上限 m/s³"),
+                          ("s_step", "s_step 单拍位移上限 m"), ("s_max", "s_max 段行程上限 m"),
+                          ("m_kg", "m 运动质量 kg"), ("f_max", "F_max 力上限 N"))
+                    vals = {}
+                    for _code, _r in sorted(raw["skills"].items()):
+                        if not str(_code).startswith("SK") or not isinstance(_r, dict):
+                            continue                      # "_元" = 元数据, 不是信号
+                        _tag = "%s %s" % (_code, str(_r.get("stage") or ""))
+                        for _k, _lab in _F:
+                            _v = _r.get(_k)
+                            if isinstance(_v, (int, float)) and not isinstance(_v, bool):
+                                vals["%s · %s" % (_tag, _lab)] = float(_v)
+                        for _k, _lab in (("在职", "在职 1=在0=不在"), ("step", "step 块内拍号"),
+                                         ("pose_age_s", "位姿帧龄 s")):
+                            _v = _r.get(_k)
+                            if isinstance(_v, (int, float)) and not isinstance(_v, bool):
+                                vals["%s · %s" % (_tag, _lab)] = float(_v)
+                elif prefix == "ar" and isinstance(raw.get("s"), dict):
                     _meta = ("ts", "t", "age", "meta", "groups", "schema")     # 元数据不是信号, 别混进目录
                     vals = {str(k): v for k, v in raw["s"].items()
                             if isinstance(v, (int, float)) and not isinstance(v, bool)

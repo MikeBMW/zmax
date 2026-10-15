@@ -390,38 +390,284 @@ TOPICS = {
         "quality": ["freshness", "no_zero_fake", "source_on_disk"],
         "provenance": "各功能区 = **同一数据源的不同切面**: 由只读工具真扫盘/真采集产出 JSON, 登记为话题后即可走数据总线统一体现; 生产者脚本产出前不得由消费者自行编数",
     },
+    "skill_sk01": {      # ⚖ 原子技能 SK01 · 接近 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk01",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk02": {      # ⚖ 原子技能 SK02 · 对位 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk02",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk03": {      # ⚖ 原子技能 SK03 · 下降 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk03",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk04": {      # ⚖ 原子技能 SK04 · 抓取 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk04",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk05": {      # ⚖ 原子技能 SK05 · 抬起 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk05",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk06": {      # ⚖ 原子技能 SK06 · 转移 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk06",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk07": {      # ⚖ 原子技能 SK07 · 插入 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk07",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "skill_sk08": {      # ⚖ 原子技能 SK08 · 完成 的物理量 (老倪 2026-10-15「所有原子技能都要有 topic 输出」)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "ros_alias": "/skill/sk08",
+        "producer": "技能派发循环服务 tools/ss_skill_dispatch.py (60Hz, 每拍过物理闸) → "
+                    "zmax_data/ss_live/skill_phys.json → 驱动守护 tools/dds/ss_daemon.py pub_skills(); "
+                    "物理闸真源 src/lerobot/policies/left_right/state_space/physics_constraints.py "
+                    "(InertiaLimiter) · 标定真源 config/calib/zmax_skill_physics.json "
+                    "(tools/skill_physics_calib.py) · 位姿真源 zmax_data/ss_live/state_*.jsonl (真机 tap)",
+        "consumers": ["控制台 实时监控·信号分析 (波形/包络线)", "数据空间页", "现场核物理上限"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "big", "v_cap", "a_max", "jerk_max", "s_step", "s_max",
+                       "m_kg", "f_max", "frame_age_s", "source", "why", "note"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1", "envelope_within_calib"],
+        "provenance": ("老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控"
+                       "信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、"
+                       "速度、角度等物理值; 要实际发出来。」—— 在这之前原子技能的物理量只有一条平铺的 "
+                       "skill_latest.json (每个技能一个标量速度), 信号分析里看不到 x/y/z/a/s/角度, 也看不到"
+                       "**物理模型包络**(v_cap/a_max/jerk_max/s_step/s_max)。本话题按技能一条通道全带上。"),
+    },
+    "stage_pullout": {      # ⚖ 引擎 13 段里**没有技能类**的那几段: 拔出 — 插拔链第 8 段(把光模块拔出来)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 0.0, "qos": "beat",
+        "ros_alias": "/skill/stage_pullout",
+        "status": "已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的)",
+        "producer": "【待建】与 skill_sk01..08 同一条链: 把该段动作接进 tools/ss_skill_dispatch.py 逐拍过物理闸"
+                    " + 写 zmax_data/ss_live/skill_phys.json, 再由 tools/dds/ss_daemon.py pub_skills() 发布。"
+                    "当前该段只有引擎侧阶段号: zmax/ss_stage 的 idx (13 段表里 拔出 = 第 12 段, 0基 idx=7)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "v_cap", "a_max", "jerk_max", "s_step", "s_max", "m_kg", "f_max"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1"],
+        "provenance": ("老倪 2026-10-15「你来给出所有场景的原子技能 topic」—— 逐段清点时发现: 引擎 13 段"
+                       "(cognition.STAGES) 里有 5 段**没有技能类**(拔出); 技能库只有 8 个类 (SK01..SK08 插拔链 + "
+                       "SK07「放入」摆盘支)。诚实做法: 登记在这里 + 标\"待接生产者\", 不假装有数。"),
+    },
+    "stage_aoi_move": {      # ⚖ 引擎 13 段里**没有技能类**的那几段: AOI转移 — AR 链: 搬运到 AOI 工位
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 0.0, "qos": "beat",
+        "ros_alias": "/skill/stage_aoi_move",
+        "status": "已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的)",
+        "producer": "【待建】与 skill_sk01..08 同一条链: 把该段动作接进 tools/ss_skill_dispatch.py 逐拍过物理闸"
+                    " + 写 zmax_data/ss_live/skill_phys.json, 再由 tools/dds/ss_daemon.py pub_skills() 发布。"
+                    "当前该段只有引擎侧阶段号: zmax/ss_stage 的 idx (13 段表里 AOI转移 = 第 12 段, 0基 idx=8)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "v_cap", "a_max", "jerk_max", "s_step", "s_max", "m_kg", "f_max"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1"],
+        "provenance": ("老倪 2026-10-15「你来给出所有场景的原子技能 topic」—— 逐段清点时发现: 引擎 13 段"
+                       "(cognition.STAGES) 里有 5 段**没有技能类**(AOI转移); 技能库只有 8 个类 (SK01..SK08 插拔链 + "
+                       "SK07「放入」摆盘支)。诚实做法: 登记在这里 + 标\"待接生产者\", 不假装有数。"),
+    },
+    "stage_aoi_inspect": {      # ⚖ 引擎 13 段里**没有技能类**的那几段: AOI检测 — AR 链: AOI 工位检测
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 0.0, "qos": "beat",
+        "ros_alias": "/skill/stage_aoi_inspect",
+        "status": "已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的)",
+        "producer": "【待建】与 skill_sk01..08 同一条链: 把该段动作接进 tools/ss_skill_dispatch.py 逐拍过物理闸"
+                    " + 写 zmax_data/ss_live/skill_phys.json, 再由 tools/dds/ss_daemon.py pub_skills() 发布。"
+                    "当前该段只有引擎侧阶段号: zmax/ss_stage 的 idx (13 段表里 AOI检测 = 第 12 段, 0基 idx=9)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "v_cap", "a_max", "jerk_max", "s_step", "s_max", "m_kg", "f_max"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1"],
+        "provenance": ("老倪 2026-10-15「你来给出所有场景的原子技能 topic」—— 逐段清点时发现: 引擎 13 段"
+                       "(cognition.STAGES) 里有 5 段**没有技能类**(AOI检测); 技能库只有 8 个类 (SK01..SK08 插拔链 + "
+                       "SK07「放入」摆盘支)。诚实做法: 登记在这里 + 标\"待接生产者\", 不假装有数。"),
+    },
+    "stage_return": {      # ⚖ 引擎 13 段里**没有技能类**的那几段: 回程 — AR 链: 回到起始位
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 0.0, "qos": "beat",
+        "ros_alias": "/skill/stage_return",
+        "status": "已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的)",
+        "producer": "【待建】与 skill_sk01..08 同一条链: 把该段动作接进 tools/ss_skill_dispatch.py 逐拍过物理闸"
+                    " + 写 zmax_data/ss_live/skill_phys.json, 再由 tools/dds/ss_daemon.py pub_skills() 发布。"
+                    "当前该段只有引擎侧阶段号: zmax/ss_stage 的 idx (13 段表里 回程 = 第 12 段, 0基 idx=10)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "v_cap", "a_max", "jerk_max", "s_step", "s_max", "m_kg", "f_max"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1"],
+        "provenance": ("老倪 2026-10-15「你来给出所有场景的原子技能 topic」—— 逐段清点时发现: 引擎 13 段"
+                       "(cognition.STAGES) 里有 5 段**没有技能类**(回程); 技能库只有 8 个类 (SK01..SK08 插拔链 + "
+                       "SK07「放入」摆盘支)。诚实做法: 登记在这里 + 标\"待接生产者\", 不假装有数。"),
+    },
+    "stage_place": {      # ⚖ 引擎 13 段里**没有技能类**的那几段: 放下 — 摆盘链终点(「放入」的另一支语义)
+        "type": "zmax::SSSkillPhys", "src": TYPES_SRC, "rate_hz": 0.0, "qos": "beat",
+        "ros_alias": "/skill/stage_place",
+        "status": "已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的)",
+        "producer": "【待建】与 skill_sk01..08 同一条链: 把该段动作接进 tools/ss_skill_dispatch.py 逐拍过物理闸"
+                    " + 写 zmax_data/ss_live/skill_phys.json, 再由 tools/dds/ss_daemon.py pub_skills() 发布。"
+                    "当前该段只有引擎侧阶段号: zmax/ss_stage 的 idx (13 段表里 放下 = 第 12 段, 0基 idx=11)",
+        "consumers": ["控制台 实时监控·信号分析", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "skill", "stage", "in_service", "step", "x", "y", "z", "v", "a", "s",
+                       "angle", "err", "v_cap", "a_max", "jerk_max", "s_step", "s_max", "m_kg", "f_max"],
+        "quality": ["freshness", "no_zero_fake", "in_service_or_minus1"],
+        "provenance": ("老倪 2026-10-15「你来给出所有场景的原子技能 topic」—— 逐段清点时发现: 引擎 13 段"
+                       "(cognition.STAGES) 里有 5 段**没有技能类**(放下); 技能库只有 8 个类 (SK01..SK08 插拔链 + "
+                       "SK07「放入」摆盘支)。诚实做法: 登记在这里 + 标\"待接生产者\", 不假装有数。"),
+    },
 }
 
 # ─────────────────────── 遥测模式 → 允许话题 (口径与守护一致) ───────────────────────
 # ⚠️ 真源当前是 /home/ubuntu/zmax/dds_ss_daemon.py:51 (MODE_TOPICS) 与
 #    tools/gui/zmax_telemetry.py::MODE_TOPICS —— 两处手工同步, 收口后本表为准。
+# ⚖ 原子技能话题 (SK01..SK08): 一条技能一条通道, 见 TOPICS["skill_sk01".."skill_sk08"]。
+#   单列常量是为了 diag/calib/test 三档同步登记, 避免漏登记变成静默不发 (老倪最恨静默降级)。
+SKILL_TOPICS = ["skill_%s" % c.lower() for c in
+                ("SK01", "SK02", "SK03", "SK04", "SK05", "SK06", "SK07", "SK08")]
+
 MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s, 字符串) 见 ss_daemon.tick
     "prod":  [],
     # 🧾 ss_meta_task = 元任务清单 (主参数节点出口 5s) · 🧾 ss_meta_pred = 元任务**预测值**
     #    (输入=流形引擎驱动扭矩; 老倪 2026-10-14「将元任务预测的topic，放到信号分析」)
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
               "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage",
-              "ss_action_chunk"],
+              "ss_action_chunk"] + SKILL_TOPICS,
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
               "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
 # 8 个功能区切面 (ds_*) 的**登记状态**: 话题/生产者/消费者/质量已在 TOPICS 里定好, 但守护会按
 # MODE_TOPICS 预建 DDS 类型, 而 `zmax::SliceJSON` 类型还没落地 ⇒ 现在放进 MODE_TOPICS 会让
 # diag 档直接起不来。故单列此处, 落地 SliceJSON(IDL) + 通用 JSON 生产者后并入各档。
-MODE_TOPICS_PENDING = {m: [k for k in TOPICS if k.startswith("ds_")] for m in ("diag", "calib", "test")}
+MODE_TOPICS_PENDING = {m: [k for k in TOPICS if k.startswith("ds_") or k.startswith("stage_")]
+                       for m in ("diag", "calib", "test")}
 DS_SLICES_NEED = "dds/ss_types.py 增 zmax::SliceJSON (string key, string json, double ts) + tools/dds_slice_publish.py"
 MODE_DESC = {
     "prod":  "量产: 零开销 —— 不建 DDS 参与者、不开口、不 import cyclonedds",
     "diag":  "诊断: 只取性能/硬件类(不碰状态与标定)",
     "calib": "标定: 状态+动作+连线+标定量(现场核对用)",
-    "test":  "测试: 全量 22 话题(取证/回归, 含 8 个功能区切面 ds_*)",
+    "test":  "测试: 全量 31 话题(取证/回归, 含 8 个功能区切面 ds_* + 8 条原子技能 skill_*)",
     "dev":   "同 test",
 }
 

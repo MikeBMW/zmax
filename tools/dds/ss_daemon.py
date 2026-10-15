@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import math
 import os
 import subprocess
 import sys
@@ -91,17 +92,24 @@ CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas",
 CHUNK_STALE_S = float(os.environ.get("ZMAX_CHUNK_STALE_S", "30"))
 META_PRED_STALE_S = 180.0        # 元任务预测帧龄阈值 (超过 ⇒ note 里明说陈旧, 不拿旧预测冒充现在)
 
+# ⚖ 原子技能话题 (SK01..SK08) —— 与 src/lerobot/dataspace/topics.py::SKILL_TOPICS 同口径
+SKILL_TOPICS = ["skill_%s" % c for c in
+                ("sk01", "sk02", "sk03", "sk04", "sk05", "sk06", "sk07", "sk08")]
+SKILL_PHYS = os.path.join(_TAP_CANON, "skill_phys.json")   # 数值真源 (技能派发循环服务 60Hz 写)
+POSE_STALE_S = float(os.environ.get("ZMAX_SKILL_POSE_STALE_S", "5.0"))   # 位姿停更 ⇒ 位置/角度发 -1
+
 MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
-             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"],
+             "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"]
+             + SKILL_TOPICS,
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-              "ss_meta_pred", "ss_stage", "ss_action_chunk"],
+              "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-             "ss_meta_pred", "ss_stage", "ss_action_chunk"],
+             "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -181,6 +189,16 @@ def _last_line(path, max_bytes=262144):
     except Exception:                                                # noqa: BLE001
         pass
     return None
+
+
+def _quat_angle_deg(q):
+    """四元数 → 末端姿态的旋转角 (deg) = 2·acos(|w|); 读不到 ⇒ -1 (不用 0 冒充)"""
+    try:
+        w = abs(float(q[3] if len(q) >= 4 else q[0]))
+        w = max(-1.0, min(1.0, w))
+        return round(2.0 * math.degrees(math.acos(w)), 3)
+    except Exception:                                                    # noqa: BLE001
+        return -1.0
 
 
 def read_state():
@@ -996,6 +1014,70 @@ class SSDaemon:
                  % (idx, idx8)))
         return True
 
+    # ══════════════════ ⚖ 原子技能物理量 (老倪 2026-10-15) ══════════════════
+    def pub_skills(self):
+        """⚖ 每个原子技能一条话题: zmax/skill_sk01 … zmax/skill_sk08
+
+        「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控信号分析窗口都有对应的信号;
+          我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、速度、角度等物理值; 要实际发出来。」
+
+        每技能一条消息 = **实测值** + **物理模型包络**:
+          实测  x/y/z 位置 mm · v 速度 mm/s · a 加速度 mm/s² · s 本段累计行程 mm · angle 姿态角 deg
+                err 物理闸削出的偏差 mm/s · big 大偏差标志 · step 块内第几拍 · in_service 是否在职
+          包络  v_cap 限速 m/s · a_max 加速度上限 m/s² · jerk_max · s_step 单拍位移上限 m · s_max 段行程上限
+                m_kg 运动质量 · f_max 力上限  ⇒ 信号分析里"实测曲线 vs 物理上限"可以同图叠出来
+
+        真源 (全链可追, 一个数都不在这里算):
+          zmax_data/ss_live/skill_phys.json   ← 技能派发循环服务 tools/ss_skill_dispatch.py 每拍过物理闸写出
+          src/lerobot/policies/left_right/state_space/physics_constraints.py  (InertiaLimiter, 五条约束)
+          config/calib/zmax_skill_physics.json (标定上下限, tools/skill_physics_calib.py)
+          zmax_data/ss_live/state_*.jsonl      (真机 tap 位姿; 停更 ⇒ x/y/z/angle 发 -1)
+        未测 = -1 (不用 0 冒充); 不在职 ⇒ in_service=0 且实测值 -1, 包络照发。
+        """
+        from ss_types import SSSkillPhys                                 # noqa: PLC0415
+        try:
+            d = json.load(open(SKILL_PHYS, encoding="utf-8"))
+        except Exception:                                                # noqa: BLE001
+            return False
+        mt = os.path.getmtime(SKILL_PHYS) if os.path.isfile(SKILL_PHYS) else None
+        age_src = (time.time() - mt) if mt else -1.0
+        # 位姿 (x/y/z/angle): **由技能派发循环服务读真机 tap 后写进 skill_phys.json**, 这里只转发 ——
+        #   一个 tap 只允许一个读者(否则两处各读一份、各算一次新鲜度, 迟早出现"一条通道的位置是新的、
+        #   另一条是旧的"这种自打脸)。帧龄超阈时那边已经写成 -1, 这里照发, 不拿旧位姿当现在。
+        n_ok = 0
+        for code, r in sorted((d.get("skills") or {}).items()):
+            if not code.startswith("SK"):
+                continue
+            k = "skill_" + code.lower()
+            if not allowed(k):
+                continue
+            ins = 1 if int(r.get("在职") or 0) else 0
+            _pose_ok = float(r.get("x", -1.0)) != -1.0
+            note = ("在职: 数值=派发循环服务该技能最新一拍(过物理闸后); 位置/角度=%s"
+                    % ("真机 tap 当前位姿 (帧龄 %.2fs)" % float(r.get("pose_age_s", -1.0))
+                       if _pose_ok else "位姿停更/无位姿 ⇒ -1")) if ins else \
+                   "不在职: 该技能当前没有块认领 ⇒ 实测值 -1 (包络照发)"
+            msg = SSSkillPhys(
+                ts=time.time(), skill=code[:8], stage=str(r.get("stage") or "")[:16],
+                in_service=ins, step=int(r.get("step") if r.get("step") is not None else -1),
+                x=float(r.get("x", -1.0)), y=float(r.get("y", -1.0)), z=float(r.get("z", -1.0)),
+                v=float(r.get("v_mms") if r.get("v_mms") is not None else -1.0),
+                a=float(r.get("a_mms2") if r.get("a_mms2") is not None else -1.0),
+                s=float(r.get("s_mm") if r.get("s_mm") is not None else -1.0),
+                angle=float(r.get("angle", -1.0)),
+                err=float(r.get("err_mms") if r.get("err_mms") is not None else -1.0),
+                big=int(r.get("big") or 0),
+                v_cap=float(r.get("v_cap", -1.0)), a_max=float(r.get("a_max", -1.0)),
+                jerk_max=float(r.get("jerk_max", -1.0)), s_step=float(r.get("s_step", -1.0)),
+                s_max=float(r.get("s_max", -1.0)), m_kg=float(r.get("m_kg", -1.0)),
+                f_max=float(r.get("f_max", -1.0)), frame_age_s=float(age_src),
+                source="zmax_data/ss_live/skill_phys.json (技能派发循环服务 60Hz 过物理闸写)",
+                why=str(r.get("why") or "")[:48], note=note)
+            if self.publish(k, msg):
+                n_ok += 1
+        return n_ok > 0
+
+
     def pub_diag(self):
         from ss_types import SSDiag                                  # noqa: PLC0415
         now = time.time()
@@ -1135,6 +1217,8 @@ class SSDaemon:
             self.pub_state()
         if allowed("ss_action"):
             self.pub_action()
+        if any(allowed(k) for k in SKILL_TOPICS):     # ⚖ 原子技能物理量: 每技能一条话题 (老倪 2026-10-15)
+            self.pub_skills()
         if allowed("ss_diag"):
             self.pub_diag()
         if allowed("ss_infer"):
