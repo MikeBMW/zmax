@@ -147,7 +147,20 @@
    不要每张子图都 setLabel(bottom) —— 建图时只给最后一张，其余置空; 同时 `_update_markers` 里的
    轴名刷新循环也必须同样“只最后一张”(否则每 tick 又给全部写回)。
 
-## 常驻单元
+26. **横轴主钟只能是“ 3D 回放进度(场景时刻秒)”**, 不能改成墙钟 ts: 改成 ts ⇒ 刻度/píng光显示 1.79e+09
+   且与 3D 进度条脱钩(老倪: “拖进度条时间轴怎么不跟着动? 还显示 1.79e+09”). 其它源用
+   “快照那一刻的 (ts, t_s) 对应关系”把 ts 映射到回放钟 ⇒ 同一根钟 + 跟着进度条走. 绝对时刻另设开关
+   (epoch = ts − t_s).
+27. **单位口径: 速度一律 mm/s 毫米/秒, 禁 mps/m/s** (老倪: “mps 是欧洲用的, 我们是中国”). 键名里 `_mps`
+   是数据契约**不改**, 只改显示: 显示名 `xxx_mps` → `xxx (mm/s)`, 值 ×1000 —— 目录当前值/左轴名/图例/
+   光标 A·B/状态栏/CSV/3D HUD 全部要改, 否则“0.085 mm/s”就是假数。
+28. **`glw.clear()` 之后紧接的代码不能再碰旧标记线/光标**: clear() 销毁了它们的 C++ 实例, Python 还攥着
+   旧引用 ⇒ `mk.setPos()` 抛 “wrapped C/C++ object … has been deleted”, 而且**抛在 _build_items 里就把建图打断,
+   界面一条波形都没有**(判据⑥ 会报 “曲线对象 0 个”). 定式: clear() 后立即 `self.marks,pins=[],[]; c1=c2=None`,
+   重建处 setPos 兜 RuntimeError。
+29. **@staticmethod 在同类方法里必须 `self._klab(k)` 调用**: 裸调 `_klab(k)` 会被当成全局名 ⇒ NameError
+   ⇒ 被外层 except 吞掉 ⇒ 建图中断、一条曲线都出不来(排查时最容易看不见)。
+
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
 `zmax-ss-trace-pub.service`(真值帧发布) —— 一条命令装/重装: `bash tools/ss_fw_chain_install.sh`;
