@@ -73,6 +73,82 @@ def project(x, radius: float = 1.0, temperature: float = 1.0):
     return p, abs(float(np.linalg.norm(p)) - float(radius)), meta
 
 
+# ═══════════════════ 立体投影 (S^n ⊂ R^{n+1} → R^n; 可视化用 — 老倪 2026-10-16 可视化方案「二、状态点的可视化」) ═══════════════════
+def stereographic_project(p, pole: str = "south", clip: float = 1e4):
+    """立体投影: S^n 上的点 → R^n 中的点 (四维/高维状态点可视化到三维/二维)。
+
+    老倪原话 (2026-10-16): 「北极点投到无穷远, 南极点投到原点, 其余点投到三维空间中的点」。
+    ⇒ 光源在**北极** (0,…,0,+1), 投影超平面 = {x_{n+1} = 0}:
+         x = p[:n] / (1 − p[n])          南极点 (0,…,0,−1) → 原点 ✓   北极点 → 无穷远 ✓
+
+    极点邻域数值会炸 (分母→0) ⇒ 用 `clip` 截断并置 meta["clipped"]=True —— **不返回 inf**
+    (GUI/判据里 inf 会变成垃圾坐标与空图)。
+    返回 (x, meta): meta = {r_in, pole, denom, clipped, zero}。
+    """
+    p = np.asarray(p, float)
+    if p.ndim == 2:                                    # 批量: (k, n+1) → (k, n) (可视化整条轨迹用)
+        pol = str(pole).lower()
+        if pol not in ("south", "north"):
+            raise ValueError("pole 只能是 'south'/'north' (收到 %r)" % pole)
+        q = p.copy()
+        if pol == "north":
+            q[:, -1] *= -1.0
+        denom = 1.0 - q[:, -1]
+        clipped = np.abs(denom) < 1e-15
+        denom = np.where(clipped, 1e-15, denom)
+        x = q[:, :-1] / denom[:, None]
+        nrm = np.linalg.norm(x, axis=1)
+        over = nrm > float(clip) if clip else np.zeros_like(clipped)
+        if clip:
+            nz = nrm > 0
+            idx = over & nz
+            x[idx] = x[idx] * (float(clip) / nrm[idx])[:, None]
+        return x, {"k": int(p.shape[0]), "pole": pol,
+                   "clipped": int(np.count_nonzero(clipped | over)),
+                   "max_norm": float(np.nanmax(nrm)) if nrm.size else 0.0,
+                   "r_in_max": float(np.max(np.linalg.norm(q, axis=1))) if q.size else 0.0}
+    p = p.ravel()
+    nn = p.size
+    if nn < 2:
+        raise ValueError("stereographic_project 需要 dim ≥ 2 (收到 %d)" % nn)
+    pol = str(pole).lower()
+    if pol not in ("south", "north"):
+        raise ValueError("pole 只能是 'south'/'north' (收到 %r)" % pole)
+    q = p.copy()
+    if pol == "north":                      # 光源在南极 ⇒ 先把 p[n] 取反 (等价于换了哪一极投到原点)
+        q[-1] = -q[-1]
+    r_in = float(np.linalg.norm(q))
+    denom = 1.0 - float(q[-1])
+    clipped = False
+    if abs(denom) < 1e-15:
+        denom = np.sign(denom) * 1e-15 if denom != 0 else 1e-15
+        clipped = True
+    x = q[:-1] / denom
+    nrm = float(np.linalg.norm(x))
+    if clip and nrm > float(clip):          # 极点邻域 → 截断到 clip, 并如实标记
+        x = x * (float(clip) / nrm)
+        clipped = True
+    return x, {"r_in": r_in, "pole": pol, "denom": denom, "clipped": clipped,
+               "zero": bool(nrm < EPS), "norm": round(nrm, 9)}
+
+
+def stereographic_inverse(x, pole: str = "south", radius: float = 1.0):
+    """立体投影的逆 (R^n → S^n), 与 `stereographic_project` 互为逆映射 (判据核往返)。
+
+    令 s = ‖x‖²:  p[:n] = 2x/(1+s) · radius,  p[n] = (s−1)/(1+s) · radius。
+    ⇒ 原点 → 南极点, 无穷远 → 北极点; ‖p‖ = radius 恒成立 (代数恒等, s 无穷时取极限)。
+    """
+    x = np.asarray(x, float).ravel()
+    s = float(np.dot(x, x))
+    p = np.empty(x.size + 1, float)
+    p[:-1] = 2.0 * x / (1.0 + s) * float(radius)
+    p[-1] = (s - 1.0) / (1.0 + s) * float(radius)
+    if str(pole).lower() == "north":
+        p[-1] = -p[-1]
+    p, _ = normalize(p, radius=radius)
+    return p
+
+
 # ═══════════════════════════ 球面上的计算 (方案六) ═══════════════════════════
 def _angle(c: float) -> float:
     """由内积 c 取夹角 θ (稳定式): θ = 2·arcsin(√((1−c)/2))。

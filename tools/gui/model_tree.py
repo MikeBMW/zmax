@@ -976,6 +976,7 @@ class MasterParamMView(QWidget):
         self.btn_refresh = QPushButton("🔁 刷新")
         self.btn_refresh.setToolTip("重新从画布 M 节点读快照 (不跑脚本)")
         self.btn_refresh.clicked.connect(self.refresh)
+        self.btn_refresh.clicked.connect(self._refresh_viz)     # 一个刷新键把可视化也刷 (老倪: 点了必出结果)
         self.btn_copy = QPushButton("📋 复制摘要")
         self.btn_copy.clicked.connect(self._copy)
         for b in (self.btn_sync, self.btn_refresh, self.btn_copy):
@@ -985,6 +986,29 @@ class MasterParamMView(QWidget):
                             "border-radius:4px;padding:3px 8px;font-size:12px;}"
                             "QPushButton:hover{background:#30363d;}")
         lay.addWidget(mbar)
+
+        # ── 🌐 流形引擎可视化 (老倪 2026-10-16: 「将这个可视化球面, 轨迹显示方式, 做到画布右侧的
+        #    主参数 M 的侧面栏窗口」) —— S³ 立体投影球 / 切空间 / 度量场采样 / 时间序列 四面板,
+        #    共享同一时间轴。数据全来自真源 (engine_latest · ss_traj_last · zmax_manifold · sphere.py),
+        #    缺源走空态不画假点; 渲染走 QPainter 2.5D (主窗口已有 GL 上下文, 不开第二 GL) ──
+        try:
+            try:
+                from tools.gui.manifold_viz import ManifoldViz
+            except Exception:
+                _gdir = os.path.dirname(os.path.abspath(__file__))
+                if _gdir not in sys.path:
+                    sys.path.insert(0, _gdir)
+                from manifold_viz import ManifoldViz
+            self.viz = ManifoldViz(root=self._root)
+        except Exception as _e:
+            self.viz = QLabel("🌐 流形引擎可视化不可用: %s: %s" % (type(_e).__name__, _e))
+            self.viz.setWordWrap(True)
+            self.viz.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+        try:
+            self.viz.setMinimumHeight(470)
+        except Exception:
+            pass
+        lay.addWidget(self.viz, 2)
 
         # ── 四视角页签 (测量/标定/诊断/配置) ──
         self.tabs = QTabWidget()
@@ -1013,6 +1037,14 @@ class MasterParamMView(QWidget):
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
         lay.addWidget(self.lbl_cmd)
         self.refresh()
+
+    def _refresh_viz(self):
+        """重读可视化真源 (engine_latest / ss_traj_last / zmax_manifold) —— 只读, 不改任何真源。"""
+        try:
+            if hasattr(self, "viz") and hasattr(self.viz, "reload"):
+                self.viz.reload()
+        except Exception:
+            pass
 
     # ── 找画布上的 M 节点 (id 优先, 语义/名字兜底: 画布另存为会重编 id) ──
     def _node(self):
@@ -1072,7 +1104,7 @@ class MasterParamMView(QWidget):
                 f" · 回读 {snap.get('node_readback_at') or '✗'}")
         if _m_src is not None and abs(_m_src - _m_node) > 1e-9:
             # 行短 (≤115 字预算, verify_ui_slim 判据), 两个数放悬浮提示
-            _txt += " · ⚠真源≠节点"
+            _txt += " · ⚠真源 M≠节点"
             self.lbl_node.setToolTip("真源 M = %.3f (config/calib/zmax_manifold.json)\n"
                                      "画布节点快照 M = %.3f (n_calib_mani.params.M, 画布默认值)\n"
                                      "✏️ 写 M 写的是**真源**那一份 (节点快照由 tools/ss_node_sync.py 同步)" %
