@@ -2283,64 +2283,13 @@ class HomeWidget(QWidget):
         t.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:4px 0;")
         row.addWidget(t)
         row.addStretch()
-        b = QPushButton("● smolvla_lew")  # 改为按钮，点击打开 GitHub 仓库
-        b.setFont(QFont("Arial", 12, QFont.Bold))
-        b.setStyleSheet(f"background:{SYS12_COLOR}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        b.setCursor(Qt.PointingHandCursor)
-        b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))  # 打开GitHub链接
-        row.addWidget(b)
-
-        # 同步按钮：将本地GUI代码推送到GitHub  # 新增同步按钮
-        sync_btn = QPushButton("🔄 同步到GitHub")  # 新增同步按钮
-        sync_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        sync_btn.setStyleSheet(f"background:{C_GREEN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        sync_btn.setCursor(Qt.PointingHandCursor)
-        sync_btn.clicked.connect(self._sync_to_github)  # 调用同步方法
-        row.addWidget(sync_btn)  # 新增同步按钮
-
-        # 升级按钮
-        upg_btn = QPushButton("⬆ 升级")
-        upg_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        upg_btn.setStyleSheet(f"background:#d29922; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        upg_btn.setCursor(Qt.PointingHandCursor)
-        upg_btn.clicked.connect(lambda: self.module_clicked.emit("check_updates"))
-        row.addWidget(upg_btn)
-
-        # 官网按钮
-        web_btn = QPushButton("🌐 Z-MAX")
-        web_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        web_btn.setStyleSheet(f"background:{C_CYAN}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        web_btn.setCursor(Qt.PointingHandCursor)
-        web_btn.setToolTip("datadrive.world")
-        web_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world")))
-        row.addWidget(web_btn)
-
-        # ====== 版本同步按钮（快速跳转到版本管理页面） ======
-        ver_btn = QPushButton("📦 版本同步")
-        ver_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        ver_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        ver_btn.setCursor(Qt.PointingHandCursor)
-        ver_btn.setToolTip("检查 LeRobot 上游更新 · 安全同步 · 版本管理")
-        ver_btn.clicked.connect(lambda: self.module_clicked.emit("version"))
-        row.addWidget(ver_btn)
-
-        # ====== 新增：解决方案文档按钮（保留Markdown按钮） ======
-        doc_btn = QPushButton("📋 解决方案v1.0.4")
-        doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        doc_btn.setCursor(Qt.PointingHandCursor)
-        doc_btn.setToolTip("打开产品解决方案文档 (Markdown)")
-        doc_btn.clicked.connect(self._open_spec_doc)
-        row.addWidget(doc_btn)
-
-        # ====== 新增：PPT汇报按钮 ======
-        doc_btn = QPushButton("📊 PPT汇报")
-        doc_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        doc_btn.setStyleSheet(f"background:{C_ORANGE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
-        doc_btn.setCursor(Qt.PointingHandCursor)
-        doc_btn.setToolTip("打开管理层汇报PPT (8页幻灯片)")
-        doc_btn.clicked.connect(lambda: open_ppt_with_libreoffice(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'BRAND-品牌注册材料.pptx')))
-        row.addWidget(doc_btn)
+        # 🧹 2026-10-15 老倪: 「主控制台, 右上角的 按钮 smolvla_lew, 升级等, 就保留一个分享功能, 其余按钮都删掉
+        #                    (如果功能还有用, 则备份一下)」⇒ 本处删掉 7 个按钮: ● smolvla_lew · 🔄 同步到GitHub ·
+        #                    ⬆ 升级 · 🌐 Z-MAX · 📦 版本同步 · 📋 解决方案v1.0.4 · 📊 PPT汇报; 右侧只留 📱 分享。
+        #  删前逐个核过别的入口, 没丢能力: 同步到GitHub=菜单「📤 上传修改(推送到 GitHub)」· 升级=菜单「关于 → 🔄 检查更新」·
+        #  官网=首页「产品大屏」卡 · 版本同步=首页「版本同步」卡 · 解决方案=菜单「文档 → L2·方案层文档 (v1.0.6)」·
+        #  PPT=菜单「文档 → 品牌·竞品参考 → 品牌注册材料 PPT」· smolvla_lew 仓库=菜单「关于 → 🧪 GUI 工程仓库」。
+        #  按钮源码逐字备份 (含样式/接线, 可直接贴回): zmax_data/backups/studio_hero_buttons_20261015.py
 
         # ====== 分享按钮 ======
         share_btn = QPushButton("📱 分享")
@@ -13728,6 +13677,12 @@ class StudioMainWindow(QMainWindow):
         act_lerobot = QAction("LeRobot 官方文档", self)
         act_lerobot.triggered.connect(lambda: QDesktopServices.openUrl(QUrl("https://huggingface.co/docs/lerobot")))
         m_help.addAction(act_lerobot)
+
+        # 🧹 2026-10-15: 首页右上角「● smolvla_lew」按钮删了 ⇒ 仓库链接挪到这里 (功能不丢; 老倪只要求删按钮)
+        act_lew_repo = QAction("🧪 GUI 工程仓库 (smolvla_lew)", self)
+        act_lew_repo.triggered.connect(lambda: QDesktopServices.openUrl(
+            QUrl("https://github.com/MikeBMW/lerobot-smolvla-lew.git")))
+        m_help.addAction(act_lew_repo)
 
         m_help.addSeparator()
         act_update = QAction("🔄 检查更新", self)
