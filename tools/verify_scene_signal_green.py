@@ -150,24 +150,83 @@ def main() -> int:
         _show = [i for i, pp in enumerate(_plots)
                  if getattr(pp.getAxis("bottom"), "style", {}).get("showValues", True)]
         _ax_ok = bool(_plots) and _show == [len(_plots) - 1]          # 只最下面一张显示时刻刻度
-        # 标记线口径 = 跟 3D 播放游标 (pb.t_s), 不是"最新样本": 老倪要的是**和 3D 场景同一时刻**
-        _mk_ok, _pb = False, getattr(w.wave, "pb", None) or {}
+        # 标记线口径 = 跟 3D 播放游标 (pb.t_s), 不是"最新样本": 老倪要的是**和 3D 场景同一时刻**。
+        # 3D 停播时竖线按设计留在"停下的那一刻"(_pb_last) ⇒ 那时按 _pb_last 校, 都没得校就算 N/A(不判失败)。
+        _mk_ok, _mk_na, _pb = False, False, getattr(w.wave, "pb", None) or {}
         try:
             _scene_x = _pb.get("t_s") if _pb.get("fresh") else None
+            _src_txt = "3D 播放游标"
+            if _scene_x is None:
+                _scene_x = (getattr(w.wave, "_pb_last", None) or {}).get("t_s")
+                _src_txt = "3D 停播 → 竖线留在停下的那一刻"
             if getattr(w.wave, "marks", None) and _scene_x is not None:
                 _mk_ok = abs(float(w.wave.marks[0].value()) - float(_scene_x)) < 1e-6
+            elif not getattr(w.wave, "marks", None):
+                _mk_ok = False
+            else:
+                _mk_na = True
         except Exception:                                                      # noqa: BLE001
             _mk_ok = False
-        _lab_ok = any("场景时刻" in str(pp.getAxis("bottom").labelText) for pp in _plots)
-        ok &= (_ax_ok and _mk_ok and _lab_ok)
+        # 轴标签: 只要视图里有"场景源"(trace_live/engine_trace 这类带 时间_s 的)就必须是「场景时刻」
+        _has_scene = any((w.store.bufs.get(k) is not None
+                          and getattr(w.store.bufs[k], "scene", False)) for k in w.selected)
+        _lab_ok = (any("场景时刻" in str(pp.getAxis("bottom").labelText) for pp in _plots)
+                   if _has_scene else True)
+        ok &= (_ax_ok and (_mk_ok or _mk_na) and _lab_ok)
         print("   %s 整列共用一条时间轴 (子图 %d 张, 显示刻度的是第 %s 张)"
               % ("✅" if _ax_ok else "❌", len(_plots), (_show[-1] + 1) if _show else "无"))
-        print("   %s 标记线 == 3D 播放游标 场景时刻 %s (要与 3D 场景 HUD 对得上)"
-              % ("✅" if _mk_ok else "❌", (_pb.get("t_s") if _pb.get("fresh") else "3D 未播放")))
+        print("   %s 标记线 == 场景时刻 %s  [%s]"
+              % ("✅" if _mk_ok else ("⏭ N/A" if _mk_na else "❌"),
+                 (round(float(_scene_x), 3) if _scene_x is not None else "—"), _src_txt))
         print("   %s 轴标签 = 场景时刻 (可切换绝对时刻)" % ("✅" if _lab_ok else "❌"))
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 取时间轴/标记线失败: %s" % _e)
+
+    print("\n⑧ 子图自上而下顺序 == 树上勾选行自上而下顺序 (老倪: 「应该与信号上下顺序一致」)")
+    try:
+        _tree_order = []
+        for _o in w._all_items():
+            _k = _o.data(0, QtCore.Qt.UserRole)
+            if _k and _o.checkState(0) == QtCore.Qt.Checked and _k not in _tree_order:
+                _tree_order.append(_k)
+        _plot_order = [k for k in w.wave.curves]
+        _ord_ok = _plot_order == _tree_order
+        ok &= _ord_ok
+        print("   %s 树序   %s" % ("✅" if _ord_ok else "❌", [x.split(".")[-1] for x in _tree_order[:10]]))
+        print("     子图序 %s" % [x.split(".")[-1] for x in _plot_order[:10]])
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取顺序失败: %s" % _e)
+
+    print("\n⑨ 信号表列: 帧龄 → 输出节点 (老倪: 「删除 列 帧龄, 增加输出这个信号的节点名称」)")
+    try:
+        _heads = [w.tree.headerItem().text(i) for i in range(w.tree.columnCount())]
+        # 窗口已滚到别处也能查: 遍历所有行统计"输出节点"列是否都有值
+        _tot = _named = _age_col = 0
+        _samples = []
+        for _o in w._all_items():
+            _k = _o.data(0, QtCore.Qt.UserRole)
+            if not _k:
+                continue
+            _tot += 1
+            _c2 = _o.text(2)
+            if _c2 and _c2 != "-":
+                _named += 1
+                if len(_samples) < 4:
+                    _samples.append((_o.text(0)[:14], _c2))
+            if "s" == _c2[-1:] and _c2[:-1].replace(".", "").isdigit():
+                _age_col += 1                     # 这一列里还有"帧龄样式"的值 ⇒ 没删干净
+        _ok9 = (_heads[2] == "输出节点") and ("帧龄" not in _heads) and _tot > 0 \
+            and _named >= _tot * 0.9 and _age_col == 0
+        ok &= _ok9
+        print("   %s 表头 %s" % ("✅" if _ok9 else "❌", _heads))
+        print("     有节点名的行 %d/%d · 列里残留帧龄值 %d" % (_named, _tot, _age_col))
+        for _n, _node in _samples:
+            print("       %-16s ← %s" % (_n, _node))
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取列信息失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))

@@ -1415,7 +1415,7 @@ class CanoeGraphicWidget(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels(["信号名称", "当前值", "帧龄", "来源话题"])
+        self.tree.setHeaderLabels(["信号名称", "当前值", "输出节点", "来源话题"])
         self.tree.setRootIsDecorated(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -1610,6 +1610,9 @@ class CanoeGraphicWidget(QWidget):
                 it.setCheckState(0, Qt.Checked)
         self._auto_checked.update(_new)
         self._default_done = not [k for k in keys if k not in self._auto_checked]
+        # 子图顺序 = 树上顺序(老倪 2026-10-15)
+        self.selected = self._ordered_selected(self.selected)
+        self.wave.set_curves(list(self.selected))
         self.ymode.setCurrentIndex(2)       # 每信号独立图
         _names = " · ".join(x.replace("sstrace.", "").replace("sseng.", "") for x in _new[:4])
         self._log(f"🎬 首屏: 只显示 3D 场景数据, 本轮补勾 {len(_new)} 条 ({_names}) · 已选共 {len(self.selected)} 条 "
@@ -2015,6 +2018,10 @@ class CanoeGraphicWidget(QWidget):
                 self.tree.scrollToItem(_tgt, QAbstractItemView.PositionAtTop)
         except Exception:                                                       # noqa: BLE001
             pass
+        # 建完树先把"已勾信号"按树上顺序重排一次 (老倪 2026-10-15: 子图顺序要跟信号上下顺序一致),
+        # 再走首屏默认补勾 (补勾也会重排)。
+        self.selected = self._ordered_selected(self.selected)
+        self.wave.set_curves(list(self.selected))
         self._apply_default_selection()
         self._update_tree_values()
 
@@ -2110,6 +2117,67 @@ class CanoeGraphicWidget(QWidget):
         ("夹持", "/robot/force_torque (Orin)"),
     )
 
+    # ── 输出节点 (老倪 2026-10-15: 「删除 列 帧龄, 增加输出这个信号的节点名称」) ──
+    # 依据(每条都能复核, 不猜):
+    #   · 画布节点名 = 真源 flows/state_space_obs.json 里的 node.name (动作调制器/前馈加速器/
+    #     安全执行边界/流形引擎/状态校正器/YOLO 目标检测/VLM 编码 …)
+    #   · sseng.* = 常驻引擎回路 (tools/ss_engine_loop.py + tools/systemd/zmax-ss-engine-loop.service,
+    #     TASK-01-FW) 每周期真值; 潜表示来自 L4/L3 的 VLM 编码节点。
+    #   · sstrace.* = 3D 面板发布的那一帧画布场景快照 (ss_dreamview.publish_trace_live); 具体到节点:
+    #     动作调制/前馈/安全边界 = 画布同名节点; 末端 = 真机 TCP; 光模块类 = YOLO→2D→3D 解算链。
+    # 没进表的按"来源族"给最保守的节点名(画布数据源 / 本机真值流), 绝不编造节点。
+    OUT_NODE_RULES = (                       # 顺序要紧: 长的/具体的排前面
+        ("sseng.势能_phi", "🧮 流形引擎 (Manifold Engine)"),
+        ("sseng.梯度范数", "🧮 流形引擎 (Manifold Engine)"),
+        ("sseng.动量M", "🧮 流形引擎 (度规/等效惯量)"),
+        ("sseng.置信度", "🧮 流形引擎 (解码置信)"),
+        ("sseng.元任务数", "🧮 流形引擎 (元任务解码)"),
+        ("sseng.内稳态", "🧮 流形引擎 (内稳态)"),
+        ("sseng.潜表示", "🚀 L3 · VLM 编码 + Flow (潜表示)"),
+        ("sseng.动作调制", "🧭 动作调制器"),
+        ("sseng.", "🧩 SU(2) 状态空间 · 常驻回路 (ss_engine_loop)"),
+        ("sstrace.前馈速度", "⚡ 前馈加速器"),
+        ("sstrace.动作调制", "🧭 动作调制器"),
+        ("sstrace.安全边界", "🛡 安全执行边界 (饱和限幅)"),
+        ("sstrace.接触概率", "🧪 状态校正器 (接触判别)"),
+        ("sstrace.末端", "📦 数据源 · 真机 TCP 位姿"),
+        ("sstrace.光模块头", "📐 2D→3D 解算 (YOLO 孔口)"),
+        ("sstrace.光模块", "🎯 YOLO 目标检测"),
+        ("sstrace.吸嘴到槽位", "📐 2D→3D 解算 (槽位 · 摆盘)"),
+        ("sstrace.真空吸持", "🤖 机器人执行器 (真空吸盘 · 摆盘)"),
+        ("sstrace.夹爪", "🤖 机器人执行器 (夹爪)"),
+        ("sstrace.环境接触", "🖐 触觉感知"),
+        ("sstrace.吸附力", "🖐 触觉感知"),
+        ("sstrace.夹持", "🖐 触觉感知"),
+        ("sstrace.光学质量检测", "🔍 光学质量检测"),
+        ("sstrace.AOI", "🔍 光学质量检测"),
+        ("sstrace.", "📦 数据源 (画布场景快照)"),
+        ("ros./robot/tcp_pose", "📦 数据源 · 真机 TCP 位姿"),
+        ("ros./robot/force_torque", "🖐 触觉感知"),
+        ("ros./gripper_pos", "🤖 机器人执行器"),
+        ("ros.", "Orin ROS2 (真机)"),
+        ("ds.", "📦 数据源 (DDS 全局数据空间)"),
+        ("yolo.", "🎯 YOLO 目标检测"),
+        ("space.", "📡 融合定位建图"),
+        ("safety.", "🛡 安全执行边界 (饱和限幅)"),
+        ("pose.", "📦 数据源 · 真机 TCP 位姿"),
+        ("aoi.", "🔍 光学质量检测"),
+        ("光学质量检测.", "🔍 光学质量检测"),
+        ("AOI.", "🔍 光学质量检测"),
+    )
+
+    def _out_node(self, key):
+        """这个信号是哪个**节点**输出的 (画布节点名; 无对应节点就写数据源/进程名, 不编造)。"""
+        k = str(key or "")
+        if not k:
+            return ""
+        if k.startswith("ar.") or k.startswith("catalog."):
+            return "🔍 光学质量检测 / 🥽 AR 信号总线"
+        for pre, node in self.OUT_NODE_RULES:
+            if k.startswith(pre):
+                return node
+        return "本机真值流 (JSON)"
+
     def _src_hint(self, key):
         if key.startswith("ar."):
             return "🥽 AR/AOI 信号总线 · " + self._ar_groups().get(key[3:], "AR 场景")
@@ -2180,8 +2248,10 @@ class CanoeGraphicWidget(QWidget):
 
     def _make_item(self, b, checked=False, label=None, scene=None, interactive=True):
         name = label or self._disp_name(b.key)
-        it = QTreeWidgetItem([name, "-", "-", self._src_hint(b.key)])
-        it.setToolTip(0, f"{b.key}\n来源 {b.src} · 点数 {b.n}")
+        # 列2 = 输出节点 (老倪 2026-10-15: 删掉「帧龄」列, 换成"输出这个信号的节点名称");
+        # 帧龄挪进 tooltip, 不丢信息。
+        it = QTreeWidgetItem([name, "-", self._out_node(b.key), self._src_hint(b.key)])
+        it.setToolTip(0, f"{b.key}\n输出节点 {self._out_node(b.key)}\n来源 {b.src} · 点数 {b.n}")
         it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
@@ -2231,7 +2301,7 @@ class CanoeGraphicWidget(QWidget):
             h.setStretchLastSection(False)               # 否则最后一列把名字列空间又吃掉
             h.setMinimumSectionSize(28)                  # 样式表会把最小列宽抬到 80 ⇒ 设的 54/68 全被夹成 80, 5 列均分
             h.setSectionResizeMode(0, QHeaderView.Stretch)
-            for i, w in ((1, 78), (2, 54), (3, 168)):   # 值 / 帧龄 / 来源话题 (Min·Max 移进 tooltip)
+            for i, w in ((1, 78), (2, 226), (3, 168)):  # 值 / **输出节点** / 来源话题 (帧龄·Min·Max 移进 tooltip)
                 h.setSectionResizeMode(i, QHeaderView.Interactive)
                 self.tree.setColumnWidth(i, w)
         except Exception:
@@ -2247,6 +2317,25 @@ class CanoeGraphicWidget(QWidget):
             ch = parent.child(i)
             yield ch
             yield from self._all_items(ch)
+
+    def _ordered_selected(self, prev=()):
+        """已勾信号按**目录树自上而下的顺序**排。
+
+        老倪 2026-10-15: 「信号主窗口从上到下的顺序, 应该与信号上下顺序一致」—— 子图顺序(= self.curves
+        的顺序, 也决定配色顺序)必须跟左侧树上看到的顺序一样, 否则眼睛在两边对不上。
+        树上还没铺出来的(挂监视、还没出帧的前缀)保持接在最后。
+        """
+        out, seen = [], set()
+        for o in self._all_items():
+            k = o.data(0, Qt.UserRole)
+            if k and k not in seen and o.checkState(0) == Qt.Checked:
+                seen.add(k)
+                out.append(k)
+        for k in prev:                      # 树上没有的(如 ➕ 增加信号话题 的 watch 前缀)留在后面
+            if k not in seen:
+                seen.add(k)
+                out.append(k)
+        return out
 
     def _on_item_changed(self, item, col):
         if col != 0:
@@ -2266,6 +2355,8 @@ class CanoeGraphicWidget(QWidget):
             self.selected.append(key)
         elif not checked and key in self.selected:
             self.selected.remove(key)
+        # 🔴 老倪 2026-10-15: 子图/配色顺序 = 目录树自上而下的顺序(不是点击顺序)
+        self.selected = self._ordered_selected(self.selected)
         self.wave.set_curves(list(self.selected))
         if self.catalog and any(k.startswith("ros.") for k in self.selected) and self.running:
             topics_now = self._ros_topics()
@@ -2630,11 +2721,15 @@ class CanoeGraphicWidget(QWidget):
                 continue
             v = b.last_val
             it.setText(1, f"{v:.4g}" if abs(v) < 1e5 else f"{v:.3g}")   # 紧凑: 1.79e+09 不再撑列
-            it.setText(2, "-" if b.age < 0 else f"{b.age:.2f}s")
-            try:                                    # Min/Max 收进 tooltip, 不再占列宽
-                it.setToolTip(0, f"{key}\n来源 {b.src} · 点数 {b.n}"
+            # 列2 = 输出节点 (静态, 建行时写好) —— 这里**不再**覆盖, 帧龄挪进 tooltip (老倪 2026-10-15)
+            _age = "-" if b.age < 0 else f"{b.age:.2f}s"
+            try:                                    # Min/Max + 帧龄 收进 tooltip, 不再占列宽
+                it.setToolTip(0, f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
+                                 f"\n来源 {b.src} · 点数 {b.n}"
                                  f" · Min {b.vmin:.4g} · Max {b.vmax:.4g}"
-                                 if b.vmin is not None else f"{key}\n来源 {b.src} · 点数 {b.n}")
+                                 if b.vmin is not None else
+                                 f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
+                                 f"\n来源 {b.src} · 点数 {b.n}")
             except Exception:
                 pass
 
