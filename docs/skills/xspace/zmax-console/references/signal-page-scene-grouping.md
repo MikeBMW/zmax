@@ -52,6 +52,24 @@
 7. **“耗时应该单调递增吧?” —— 先分清是耗时还是计数。** `循环耗时_ms` 是**每周期计算耗时**(0.6~1.7ms, 抖动),
    不是累计计时; 单调递增的是横轴(`时间_s`)和计数(`控制周期/帧`)。回答要把这个口径直接说清, 并把两条都用实测数说。
 
+8. **主窗口“没信号”先查窗口日志里的 RecursionError。** 实测: 日志 5430 次
+   `RecursionError: max recursion depth exceeded` (AxisItem.linkedViewChanged → setRange →
+   updateAutoSIPrefix → _updateLabel → _adjustSize → _updateHeight …) ⇒ 布局/绘制整块失败,
+   连时间轴线都画不出来。扣发条件: “每信号独立图”档下 N 张子图各挂一条自定义 ClockAxis 且
+   `p.setXLink(main)` 互相链接, refresh() 又对**每张**子图 `setXRange` ⇒ 范围变化在 N 条轴之间来回通知。
+   · 修: ① `ax.enableAutoSIPrefix(False)` ② 只让最下面那张子图 `setStyle(showValues=True)` (整列共用一条
+     时间轴, CANoe 观感) ③ X 范围**只设一次**(设主图, 链接自己传), Y 只在各自 ViewBox 内设并 try/except。
+   · 验证: 重启后看新日志的 RecursionError 计数(应为 0) + `scrot -o -u` 数曲线色像素
+     (改前任何曲线色 0 px ⇒ 改后 #81C784 1073px / #BA68C8 1740px / 标记线 #ffb86c 1260px)。
+9. **“与场景同步的时间轴线” 的两个口径不能混**: 竖向标记线跟的是 **3D 播放游标**
+   (`pb.t_s`, 老倪定的: 两边必须是同一时刻), 不是“最新样本时刻”; 横轴标签是「场景时刻 (s)」,
+   按 `epoch_base = ts - 时间_s` 反算绝对时刻 (按钮「🕒 时间轴」切绝对)。判据要这么卡,
+   否则会把正确行为误判失败。
+10. **首屏默认曲线要“增量补勾”, 不能一次置位。** 各源文件是 `HostJsonSource` 一轮读一个陆续到齐的 ⇒
+   在第一次建树就 `_default_done=True` 会只勾上当时存在的那几条(实测日志“已勾 3 条”, 全是单样本 ⇒ 空白图)。
+   口径: 每次建树把“库里已有且从没被自动勾过”的默认信号补齐 (记在 `self._auto_checked`),
+   每条只自动勾一次(用户手动取消的不顶回来)。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
