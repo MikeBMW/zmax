@@ -1801,6 +1801,13 @@ class CanoeGraphicWidget(QWidget):
 
         only3d = (self.scope == "3d")
         roots = {_sc: _mkroot(_sc, _ti) for _sc, _ti in SCENE_GROUPS}
+        # 🔴 2026-10-15 老倪: 「为什么还有很多蓝色场景的信号也加在了? 插拔是绿色信号, 如果需要重名信号,
+        #   就要在绿色区域重新加载」—— sstrace 源(trace_live.json)是**插拔(SS-EPI-CORNER)与
+        #   摆盘(SS-TRAY-PLACE)两个 3D 面板共写的唯一快照**(见 publish_trace_live 的防串台注释):
+        #   同一批键名两个场景都要用。规则: 这些键在**每个场景区域内各自加载一份**, 行色 = 该区域场景色;
+        #   否则按旧口径"按标签二选一"会把光模块_x/末端_x/接触概率 等打给摆盘 ⇒ 插拔区里看着缺一半、
+        #   另一半跑到蓝组去(老倪现场看到的就是这个)。
+        _TRACE_SCENES = ("插拔场景", "摆盘场景")
         # 1) 本机真值流: 按打标落到 插拔 / 摆盘 / 基础 三组 (AR 有二级分组, 见下)
         host_bufs = [b for b in self.store.bufs.values() if b.src not in ("ros", "ds", "file")]
         _n_host = 0
@@ -1809,6 +1816,11 @@ class CanoeGraphicWidget(QWidget):
                 continue
             if b.key.startswith("ar."):
                 continue                        # AR 单独成组(二级), 见 1b
+            if b.key.startswith("sstrace."):
+                for _sc in _TRACE_SCENES:       # 重名信号: 每个场景区域重新加载一份
+                    roots[_sc].addChild(self._make_item(b, scene=_sc))
+                _n_host += 1
+                continue
             _sc = _scene_of(b.key)
             roots[_sc if _sc in roots else "基础场景"].addChild(self._make_item(b))
             _n_host += 1
@@ -2080,7 +2092,7 @@ class CanoeGraphicWidget(QWidget):
         self._scene_sync_lab()
         self._fill_tree()
 
-    def _make_item(self, b, checked=False, label=None):
+    def _make_item(self, b, checked=False, label=None, scene=None):
         name = label or self._disp_name(b.key)
         it = QTreeWidgetItem([name, "-", "-", self._src_hint(b.key)])
         it.setToolTip(0, f"{b.key}\n来源 {b.src} · 点数 {b.n}")
@@ -2088,6 +2100,16 @@ class CanoeGraphicWidget(QWidget):
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
         it.setForeground(0, QColor(b.color))
+        # 🔴 2026-10-15 老倪: 「为什么还有很多蓝色场景的信号也加在了? 插拔是绿色信号, 如果需要重名信号,
+        #   就要在绿色区域重新加载」⇒ 多场景共写的源(trace_live.json)里, 每个场景区域各自加载一份,
+        #   行色 = **该区域场景色**(不再按"这个键被打了哪个标签"二选一 —— 那会让插拔区里冒出摆盘蓝)。
+        if scene:
+            it.setText(0, "● " + it.text(0))
+            _c = SCENE_COLORS.get(scene, C_WHITE)
+            it.setForeground(0, QColor(_c))
+            it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 本场景区域加载 (该数据源为多场景共写)"
+                          % (scene, _c))
+            return it
         # 🥽 场景标记(老倪 2026-10-12: 「插拔信号绿色; 摆盘信号蓝色; AOI信号紫色; 没有分类的信号都是白色」):
         #   有目标场景 → ● + **场景色**; 没分类 → ○ + **白**(不再沿用曲线色, 否则看着像"乱七八糟的颜色")
         _tagged = False
