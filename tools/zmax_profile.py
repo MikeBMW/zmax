@@ -30,6 +30,24 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
+# 🏭 出厂骨架回落 (老倪 2026-10-15「产品 550A 550B 550C 同步发布」):
+#   平台/实例解耦后, 实例真源 config/platform/ 不在仓库里 ⇒ 全新安装 (含 Windows/macOS 安装包) 读不到产品档
+#   ⇒ 三档 550A/550B/550C 就选不出来。这里按 canvas 同一套规矩回落: 实例真源 → 仓库 defaults/ → 冻结包 _MEIPASS。
+def _product_candidates():
+    _c = [PRODUCT_J, os.path.join(ROOT, "defaults", "config", "platform", "zmax_product.json")]
+    _mp = getattr(__import__("sys"), "_MEIPASS", None)
+    if _mp:
+        _c.append(os.path.join(_mp, "defaults", "config", "platform", "zmax_product.json"))
+        _c.append(os.path.join(_mp, "config", "platform", "zmax_product.json"))
+    return _c
+
+
+def product_json():
+    """返回第一个存在且可读的产品真源路径 (找不到返回实例路径, 便于报错时指出该放哪)。"""
+    for _p in _product_candidates():
+        if os.path.isfile(_p):
+            return _p
+    return PRODUCT_J
 
 # 读不到 dev_profile 时的兜底 (按"调试档"= 全开, 宁可看得到也别把现场功能悄悄关掉)
 _DEFAULT = {
@@ -59,7 +77,7 @@ def product():
     if env:
         return env
     try:
-        with open(PRODUCT_J, encoding="utf-8") as f:
+        with open(product_json(), encoding="utf-8") as f:
             return str(json.load(f).get("active_product") or "550B")
     except Exception:                                                       # noqa: BLE001
         return "550B"
@@ -68,12 +86,12 @@ def product():
 def dev_profile(prod=None):
     """返回该档的 dev_profile dict (含兜底键; 真源改了自动重读)。"""
     p = prod or product()
-    key = (_mtime(PRODUCT_J), p)
+    key = (_mtime(product_json()), p)
     if _CACHE["key"] == key and _CACHE["v"] is not None:
         return _CACHE["v"]
     prof = dict(_DEFAULT)
     try:
-        with open(PRODUCT_J, encoding="utf-8") as f:
+        with open(product_json(), encoding="utf-8") as f:
             d = json.load(f)
         prof.update((d.get("products", {}).get(p) or {}).get("dev_profile") or {})
         prof.setdefault("product", p)

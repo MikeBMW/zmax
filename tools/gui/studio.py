@@ -11552,16 +11552,32 @@ def _msg_ask(parent, title, text, kind="warning", yes_text=None, no_text=None, d
 #        版本号只留侧栏品牌 QLabel (Z-MAX vX.Y.Z) 与菜单栏/状态栏/关于框。
 #   ⇒ 标题与配置中心永远同源 (切产品标题跟着变, 见 _watch_title_product), 调试同源见 _maybe_warn 的 md5 自检。
 # ─────────────────────────────────────────────────────────────────────────────
-_PRODUCT_JSON = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "config", "platform", "zmax_product.json")
+_ROOT_P = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_PRODUCT_JSON = os.path.join(_ROOT_P, "config", "platform", "zmax_product.json")
+
+
+def _product_json_path():
+    """产品真源路径: 实例真源 → 仓库出厂骨架 → 冻结包内 (老倪 2026-10-15「550A/B/C 同步发布」)。
+
+    平台/实例解耦后实例 config/ 不进仓库 ⇒ 全新安装 (Windows/macOS 包) 只有 defaults/ ⇒ 必须回落,
+    否则标题/配置中心读不到产品档, 三档就"发不出去"。
+    """
+    _c = [_PRODUCT_JSON, os.path.join(_ROOT_P, "defaults", "config", "platform", "zmax_product.json")]
+    _mp = getattr(sys, "_MEIPASS", None)
+    if _mp:
+        _c += [os.path.join(_mp, "defaults", "config", "platform", "zmax_product.json"),
+               os.path.join(_mp, "config", "platform", "zmax_product.json")]
+    for _p in _c:
+        if os.path.isfile(_p):
+            return _p
+    return _PRODUCT_JSON
 
 
 def _active_product_id(default="550A"):
     """读产品标识真源 (配置中心「产品配置」同源)。读不到**不静默**: 明写一行再按 default 显示。"""
     try:
         import json as _json
-        with open(_PRODUCT_JSON, "r", encoding="utf-8") as _f:
+        with open(_product_json_path(), "r", encoding="utf-8") as _f:
             _pid = str((_json.load(_f) or {}).get("active_product") or "").strip()
         if _pid:
             return _pid

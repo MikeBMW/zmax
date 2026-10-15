@@ -51,3 +51,13 @@
   `tools/config_meta.py build` 从库重建元数据。判据: `tools/verify_function_notes.py` 9 项全过 (75/75 逐条一致,
   描述里的功能名与库一致) + `engineering_db check` ✅ 判据全绿。
 * 本目录 `function_notes.json` / `config_meta.json` 就是修后的真源副本 (运行真源在 `data/` 下, 不入库)。
+
+## 发布口径: 三档 550A/550B/550C 随包 (老倪「三产品同步发布」)
+
+* **实捉缺口**: 平台/实例解耦后实例真源 `config/platform/` 不进仓库 (data/ 被 gitignore) ⇒ Windows/macOS/Linux
+  安装包里**没有产品档真源** ⇒ 全新安装只能"兜底=调试档全开", 三档选不出来。
+* **修**: ① 出厂骨架 `defaults/config/platform/zmax_product.json` (三档 dev_profile 全带) 进仓库
+  ② 读侧回落 `实例真源 → 仓库 defaults → 冻结包 _MEIPASS/defaults` (`tools/zmax_profile.py::product_json()`
+  + `studio.py::_product_json_path()`) ③ 打包 job (Windows/macOS) 带 `--add-data defaults` 并断言三档在。
+* **判据**: `tools/verify_product_release_factory.py` 20 条全过 —— 含**真回落**验证 (隔离目录只放 defaults、
+  故意不建 config/, 起子进程读三档: 550A=on/core/dds · 550B=debug/all/dds · 550C=off/none/shm)。

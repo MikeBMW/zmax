@@ -129,13 +129,15 @@ jobs:
           # (v5.35.0 首轮就是这么挂的: 资产核验 "画布真源: 0" → exit 1)。
           mkdir -p src/lerobot/engineering/flows
           cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          # 🏭 产品三档 (550A/550B/550C): 实例真源不在仓库里 ⇒ 出厂骨架必须随包, 否则全新安装选不出产品档
+          python -c "import json;d=json.load(open('defaults/config/platform/zmax_product.json',encoding='utf-8'));print('factory products:',list(d.get('products',{}).keys()),'active:',d.get('active_product'));assert set(('550A','550B','550C'))<=set(d.get('products',{}))"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
 
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "dds_hw.py;." studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -483,6 +485,7 @@ jobs:
             --collect-all glfw --collect-all gymnasium --collect-all imageio \
             --collect-all cyclonedds \
             --add-data "$GITHUB_WORKSPACE/dds:dds" \
+            --add-data "$GITHUB_WORKSPACE/defaults:defaults" \
             --add-data "dds_hw.py:." \
             studio.py
           ls -la dist/

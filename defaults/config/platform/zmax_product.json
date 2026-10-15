@@ -1,0 +1,319 @@
+{
+ "schema": "zmax.product.v1+factory-skeleton",
+ "updated": "2026-10-15",
+ "active_product": "550B",
+ "products": {
+  "550A": {
+   "name": "550A 原创版",
+   "version_segment": "5.50.A",
+   "prime": 1009,
+   "task": "TASK-07-AOI",
+   "scene": "SCN-07-AOI",
+   "understanding": "空间质数结构化理解能力",
+   "desc": "原型产品发布版 (原型创新)。默认具备空间质数结构化理解能力, 对应配置中心任务 TASK-07-AOI; 系统运行时由该能力做结构化理解并驱动自主进化。能力集为最小闭环子集 (5 基元 + 5 阶段)。",
+   "capabilities": [
+    "m_pos",
+    "m_rot",
+    "m_force",
+    "m_scene",
+    "m_task",
+    "接近",
+    "对位",
+    "下降",
+    "抓取",
+    "插入"
+   ],
+   "dev_profile": {
+    "role": "开发版 · 新技能 / 新算法 / 最新逻辑都在这档",
+    "chief_concern": "功能最全: 新技能、新算法、逻辑最多 (允许不稳定)",
+    "new_algorithms": "on",
+    "algorithm_gate": "先验不拦 (只看能不能跑通)",
+    "logic_depth": "max",
+    "topics": "core",
+    "comm": "dds",
+    "gui": {
+     "signal_analysis": true,
+     "scene_3d": true
+    },
+    "vscode_debug": true,
+    "remote_bypass": true,
+    "deploy": "仿真/台架为主, 真机按需",
+    "notes": "新东西先在这档落地; 在役产线不用这档。"
+   }
+  },
+  "550B": {
+   "name": "550B 标定版",
+   "version_segment": "5.50.B",
+   "prime": 1013,
+   "task": "TASK-07-AOI",
+   "scene": "SCN-07-AOI",
+   "understanding": "空间质数结构化理解能力 + 标定诊断",
+   "desc": "优化配置版 (优化标定诊断配置)。在 550A 之上补齐标定/诊断类元数据基元 (度量/健康/配置/时间/层/阶段/技能) 与全部 8 阶段; 能力集 ⊇ 550A。",
+   "capabilities": [
+    "m_pos",
+    "m_rot",
+    "m_force",
+    "m_scene",
+    "m_task",
+    "接近",
+    "对位",
+    "下降",
+    "抓取",
+    "插入",
+    "m_metric",
+    "m_health",
+    "m_conf",
+    "m_time",
+    "m_layer",
+    "m_stage",
+    "m_skill",
+    "抬起",
+    "转移",
+    "完成"
+   ],
+   "dev_profile": {
+    "role": "调试版 · 最大化 debug (看得到、能联调)",
+    "chief_concern": "观测与可调试性优先: 所有 TOPIC 全开, 允许 VSCode 联调",
+    "new_algorithms": "debug",
+    "algorithm_gate": "全部可开 (逐条开关显式, 不默认静默降级)",
+    "logic_depth": "high",
+    "topics": "all",
+    "comm": "dds",
+    "gui": {
+     "signal_analysis": true,
+     "scene_3d": true
+    },
+    "vscode_debug": true,
+    "remote_bypass": true,
+    "deploy": "调试用真机/仿真皆可",
+    "notes": "现场调试与取证用这档: 信号分析 / 3D 场景 / 全话题 / VSCode 断点都开。"
+   }
+  },
+  "550C": {
+   "name": "550C 量产版",
+   "version_segment": "5.50.C",
+   "prime": 1019,
+   "task": "TASK-07-AOI",
+   "scene": "SCN-07-AOI",
+   "understanding": "空间质数结构化理解能力 + 现场标定 + 量产交付",
+   "desc": "量产交付版。在 550B 之上补齐量产类元数据基元 (速度/功/节点/话题/报文/通量); 能力集 ⊇ 550B, 且为元数据基元全量 18 + 阶段全量 8 的完整覆盖。",
+   "capabilities": [
+    "m_pos",
+    "m_rot",
+    "m_force",
+    "m_scene",
+    "m_task",
+    "接近",
+    "对位",
+    "下降",
+    "抓取",
+    "插入",
+    "m_metric",
+    "m_health",
+    "m_conf",
+    "m_time",
+    "m_layer",
+    "m_stage",
+    "m_skill",
+    "抬起",
+    "转移",
+    "完成",
+    "m_vel",
+    "m_w",
+    "m_node",
+    "m_topic",
+    "m_msg",
+    "m_flux"
+   ],
+   "dev_profile": {
+    "role": "量产版 · 稳定性优先",
+    "chief_concern": "稳: 未经验证的算法全关; 通讯以效率优先 (不发序列化 topic, 共享内存直传)",
+    "new_algorithms": "off",
+    "algorithm_gate": "只允许 verified_algorithms 里的; 其余硬关 (不是「默认关」可被悄悄打开)",
+    "logic_depth": "fixed",
+    "topics": "none",
+    "comm": "shm",
+    "shm_dir": "/dev/shm/zmax_ss_engine",
+    "gui": {
+     "signal_analysis": false,
+     "scene_3d": false
+    },
+    "vscode_debug": false,
+    "remote_bypass": true,
+    "remote_bypass_scope": "远程运行 · 真机部署 · 旁路调试",
+    "deploy": "真机量产产线",
+    "verified_algorithms": [
+     "ActionModulator 八阶段状态机 + 阶段限速 + 否决",
+     "FeedforwardAccelerator (左脑 MLP 快通道 + 域外解析守卫)",
+     "安全执行边界 饱和限幅",
+     "ManifoldEngine 势场导航 (驱动扭矩 T_drive=M·(−∇Φ))",
+     "状态估计/校正 + 接触判别",
+     "动作执行链 (MoveIt/SDK) 速度口径 mm/s 收口"
+    ],
+    "notes": "在役产线用这档: 只跑已验证算法; 信号走共享内存, 不开信号分析/3D, 只留远程旁路。"
+   }
+  }
+ },
+ "releases": {
+  "5.50.A": {
+   "product": "550A",
+   "iteration": 1,
+   "kind": "原型产品发布版"
+  },
+  "5.50.B": {
+   "product": "550B",
+   "iteration": 2,
+   "kind": "优化配置版"
+  },
+  "5.50.C": {
+   "product": "550C",
+   "iteration": 3,
+   "kind": "量产交付版"
+  },
+  "5.50.1": {
+   "product": "550A",
+   "iteration": 4,
+   "kind": "开发版(中版本升级)"
+  },
+  "5.50.2": {
+   "product": "550B",
+   "iteration": 5,
+   "kind": "开发版(元数据MOE+配置中心独立窗口)"
+  },
+  "5.50.3": {
+   "product": "550B",
+   "iteration": 6,
+   "kind": "开发版(空间质数结构化理解能力+产品标识)"
+  },
+  "5.50.5": {
+   "product": "550B",
+   "iteration": 7,
+   "kind": "开发版(AOI侧面判据图本机口径 + 真机奇异区分段到位 + 示教四点三源对账)"
+  }
+ },
+ "fingerprints": {
+  "5.50.A": {
+   "fingerprint": 657552526539667321398,
+   "product": "550A",
+   "iteration": 1,
+   "iter_prime": 1031,
+   "product_prime": 1009,
+   "cap_signature": 632092473787962,
+   "hex": "23a55fdb06757cb236",
+   "roundtrip": true
+  },
+  "5.50.B": {
+   "fingerprint": 3949151000902438401673769226436283622,
+   "product": "550B",
+   "iteration": 2,
+   "iter_prime": 1033,
+   "product_prime": 1013,
+   "cap_signature": 3773931151470800600589021545118,
+   "hex": "2f8942d55b6e19fd5aef131c9b70ce6",
+   "roundtrip": true
+  },
+  "5.50.C": {
+   "fingerprint": 246540932503279854376693936177385246084094870,
+   "product": "550C",
+   "iteration": 3,
+   "iter_prime": 1039,
+   "product_prime": 1019,
+   "cap_signature": 232862364358497360900063316880507363070,
+   "hex": "b0e26aefa859b7ce580990e1a33d4d9fcdb96",
+   "roundtrip": true
+  },
+  "5.50.1": {
+   "fingerprint": 669032590048604287242,
+   "product": "550A",
+   "iteration": 4,
+   "iter_prime": 1049,
+   "product_prime": 1009,
+   "cap_signature": 632092473787962,
+   "hex": "2444b13bf66e99710a",
+   "roundtrip": true
+  },
+  "5.50.2": {
+   "fingerprint": 4017964861518356979824909445289965234,
+   "product": "550B",
+   "iteration": 5,
+   "iter_prime": 1051,
+   "product_prime": 1013,
+   "cap_signature": 3773931151470800600589021545118,
+   "hex": "305d4f65d674ba8914a66a6e24b76b2",
+   "roundtrip": true
+  },
+  "5.50.3": {
+   "fingerprint": 4056194784082756189908876233542010574,
+   "product": "550B",
+   "iteration": 6,
+   "iter_prime": 1061,
+   "product_prime": 1013,
+   "cap_signature": 3773931151470800600589021545118,
+   "hex": "30d31d7d373f85815f619af0c6506ce",
+   "roundtrip": true
+  },
+  "5.50.5": {
+   "fingerprint": 4063840768595636031925669591192419642,
+   "product": "550B",
+   "iteration": 7,
+   "iter_prime": 1063,
+   "product_prime": 1013,
+   "cap_signature": 3773931151470800600589021545118,
+   "capabilities": [
+    "m_pos",
+    "m_rot",
+    "m_force",
+    "m_scene",
+    "m_task",
+    "接近",
+    "对位",
+    "下降",
+    "抓取",
+    "插入",
+    "m_metric",
+    "m_health",
+    "m_conf",
+    "m_time",
+    "m_layer",
+    "m_stage",
+    "m_skill",
+    "抬起",
+    "转移",
+    "完成"
+   ],
+   "hex": "30eaad1b7dce7ae63b20a4a4803bd3a"
+  }
+ },
+ "invariants": [
+  "质数域互不相交: 能力域(元数据基元 18 项取前 18 个质数 2..61 + 阶段 8 项取紧随的 8 个质数 67..101) · 产品域 1009/1013/1019 · 迭代域 >=1031",
+  "唯一性: 指纹 = p_prod * p_iter * Π p_cap, 由算术基本定理 ⇒ (产品, 迭代, 能力集合含重数) 一一对应, 可逆分解",
+  "协同: 能力集合 550A ⊆ 550B ⊆ 550C ⇒ 能力签名 cap_signature(550A) | cap_signature(550B) | cap_signature(550C)",
+  "诚实: 谱条款按只读偏离量正则交付 —— n>2 时'归一化谱对称于 1/2'数学上不可达(需成对补和为 1 ⇒ 总和 n/2), 不改写度量张量(保正定与 det G=1); 与黎曼猜想无证明关系; 原文档写法会把实对称正定度量变成非 Hermite 复数矩阵",
+  "真源: 元数据基元表从元数据根服务实现 tools/meta_moe_router.py 的 META_PRIMITIVES 生成, 禁止手写"
+ ],
+ "capability_signatures": {
+  "550A": 632092473787962,
+  "550B": 3773931151470800600589021545118,
+  "550C": 232862364358497360900063316880507363070
+ },
+ "capability_containment": {
+  "550A⊆550B": true,
+  "550A⊆550C": true,
+  "550B⊆550C": true
+ },
+ "capability_divisibility": {
+  "550A|550B": true,
+  "550A|550C": true,
+  "550B|550C": true
+ },
+ "checks": {
+  "all_fingerprints_distinct": true,
+  "n_fingerprints": 6,
+  "containment_A_B_C": true,
+  "divisibility_follows_containment": true
+ },
+ "dev_profile_schema": "zmax.product.dev_profile.v1",
+ "dev_profile_note": "老倪 2026-10-15 定: 三产品同步开发 —— A=新技能/新算法/逻辑最多 (开发) · B=所有 TOPIC 全开 + 最大化 debug + 允许 VSCode 联调 (调试) · C=稳定性优先: 未验证算法全关、通讯效率优先 (不发序列化 topic, 共享内存直传)、不开信号分析/不开 3D 场景、只保留远程旁路 (远程运行 + 真机部署)。",
+ "factory_skeleton": true,
+ "factory_note": "出厂骨架 (随仓库/安装包含 550A/550B/550C 三档 dev_profile, 保证全新安装就能选档)。实例真源 config/platform/zmax_product.json 优先; 读不到时由 tools/zmax_profile.py 回落到本文件。"
+}
