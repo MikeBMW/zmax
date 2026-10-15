@@ -353,6 +353,26 @@ def main() -> int:
         ok = False
         print("   ❌ 取状态机文本失败: %s" % _e)
 
+    print("\n⑬ 八阶段要有**文字** (老倪: 「八个 stage, 除了序号, 还应该有文字表示」)")
+    try:
+        _strip, _sf = w._stage_strip()
+        _snap = {}
+        try:
+            _snap = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                                "zmax_data", "ss_live", "trace_live.json"), encoding="utf-8"))
+        except Exception:                                                      # noqa: BLE001
+            pass
+        _names = _snap.get("八阶段表") or []
+        _ok13 = all(str(x) in _strip for x in _names[:8]) and ("【" in _strip)
+        print("   %s 文字行 = %s" % ("✅" if _ok13 else "❌", _strip))
+        print("      真源 八阶段表(快照里下发, = ActionModulator.STAGES 插拔八段) = %s" % (_names or "（快照里还没有）"))
+        if not _names:
+            print("      (重启控制台后 3D 面板才会把「八阶段表」随帧发下来; 没表时只写当前阶段名, 不编)")
+        ok &= _ok13
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取八阶段文字行失败: %s" % _e)
+
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)

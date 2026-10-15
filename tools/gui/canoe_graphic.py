@@ -85,6 +85,15 @@ SCENE_SORT_ITEMS = (("⚪ 全部(白)", "", SCENE_SORT_WHITE), ("🟢 插拔", "
 # 场景色 (与 tools/ss_scene_switch.py 同一份真值: 插拔绿 / 摆盘蓝 / AR 紫; 未分类=白)
 SCENE_COLORS = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5",
                 "基础场景": "#ffffff", "未分类": "#ffffff"}
+# 🎨 2026-10-15 老倪: 「怎么信号全都变成白色了? 应该分颜色, 绿色 蓝色 紫色等」
+#   未分类里的**平台量**再按角色上色 (与场景色绿/蓝/紫不冲突): 位姿=青 · 安全=黄 · 话题统计=灰蓝;
+#   真没有角色的键仍是白 (老倪 2026-10-12 定的"没有分类的信号都是白色"照旧)。
+PLATFORM_COLORS = (
+    ("pose.", "#39c5cf"),        # 真机末端/关节位姿 (青)
+    ("safety.", "#d29922"),      # 安全门控 (黄, 与黄灯同语义)
+    ("space.", "#8ab4f8"),       # 话题统计 / 数据空间 (灰蓝)
+    ("hw_state", "#8ab4f8"),     # 硬件状态
+)
 # 信号目录的四个场景组 (老倪 2026-10-12: 「绿色场景标题改成 插拔场景; 摆盘应该是蓝色; 其它无法分类的
 #   信号定义为基础场景, 用白色显示 topic」) —— 顺序 = 色序, 标题直接写场景名 + 数据来源, 不再叫「3D 场景实时数据」
 SCENE_GROUPS = (
@@ -884,6 +893,27 @@ class WaveArea(QWidget):
                 pass
         self.extra_vbs.clear()
 
+    def _kcolor(self, k):
+        """信号在**波形区**的显示色 (老倪 2026-10-15: 「信号全都变成白色了? 应该分颜色, 绿蓝紫等」)。
+
+        口径与信号目录一致: 有场景标签 ⇒ 场景色(插拔绿/摆盘蓝/AR 紫); 平台量 ⇒ 角色色(位姿青/安全黄/
+        话题灰蓝); 都没有 ⇒ 回落到调色板色(每信号不同, 天然可区分)。取不到一律不编。
+        """
+        try:
+            if SST is not None:
+                _sc = SST.tag(k)
+                if _sc:
+                    return SCENE_COLORS.get(_sc) or SST.color(k)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        for _pre, _cc in PLATFORM_COLORS:
+            if k.startswith(_pre):
+                return _cc
+        try:
+            return self.store.get(k).color
+        except Exception:                                                      # noqa: BLE001
+            return C_DIM
+
     def _build_items(self):
         """按当前 mode 与 curves 建曲线对象"""
         self._clear_extra_axes()
@@ -893,14 +923,27 @@ class WaveArea(QWidget):
         keys = self.curves
         if self.mode == self.MODE_SINGLE:
             self.main_plot = None            # 🔧 原来指向被 clear() 删掉的那张图 ⇒ 光标/缩放打空对象
+            # 🕒 轴标签口径与 _update_markers 一致: 有场景信号 ⇒ "场景时刻", 否则 "时间"
+            #   (以前只在有标记线时才刷标签 ⇒ 判据/首屏偶尔读到旧的 "时间 (s)" ⇒ 不稳)
+            try:
+                _sv = any((self.store.bufs.get(_k) is not None and self.store.bufs[_k].scene)
+                          for _k in keys)
+            except Exception:                                                  # noqa: BLE001
+                _sv = False
+            self._scene_view = _sv
             for i, k in enumerate(keys):
                 p = self.glw.addPlot(row=i, col=0, axisItems=self._clock_axes())
                 self.plots.append(p)
                 p.getAxis("bottom").abs_on = self.abs_on
                 p.showGrid(x=self.grid, y=self.grid, alpha=0.25)
-                p.setLabel("left", k.split(".")[-1], color=self.store.get(k).color)
-                p.setLabel("bottom", "时间 (s)", color=C_DIM)
-                p.getAxis("left").setTextPen(C_DIM)
+                # 🎨 2026-10-15 老倪: 「怎么信号全都变成白色了? 应该分颜色, 绿色 蓝色 紫色等」
+                #   真因: 这一行给左边轴标签上了信号色, **紧接着又被 setTextPen(C_DIM) 覆盖成灰白**
+                #   ⇒ 每信号独立图模式下所有信号名看着都是白的。改: 标签色 = 场景/角色色(_kcolor)。
+                _kcol = self._kcolor(k)
+                p.setLabel("left", k.split(".")[-1], color=_kcol)
+                _blab = ("场景时刻" if _sv else "时间") + (" (绝对时刻)" if self.abs_on else " (s)")
+                p.setLabel("bottom", _blab, color=C_DIM)
+                p.getAxis("left").setTextPen(_kcol)
                 p.getAxis("bottom").setTextPen(C_DIM)
                 p.setClipToView(True)
                 p.setDownsampling(auto=True, mode="peak")
@@ -915,7 +958,7 @@ class WaveArea(QWidget):
                 _bax.setStyle(showValues=_last)
                 if not _last:
                     _bax.setHeight(12)
-                pen = pg.mkPen(self.store.get(k).color, width=self.store.get(k).bold)
+                pen = pg.mkPen(self._kcolor(k), width=self.store.get(k).bold)
                 item = p.plot(pen=pen, symbol=None)
                 item.setClipToView(True)      # 数据裁到本子图内, 不越界
                 self.items[k] = item
@@ -933,7 +976,7 @@ class WaveArea(QWidget):
             p.setDownsampling(auto=True, mode="peak")
             for i, k in enumerate(keys):
                 b = self.store.get(k)
-                pen = pg.mkPen(b.color, width=b.bold)
+                pen = pg.mkPen(self._kcolor(k), width=b.bold)          # 覆盖模式也按场景/角色上色
                 item = p.plot(pen=pen)
                 item.setClipToView(True)
                 self.items[k] = item
@@ -954,10 +997,11 @@ class WaveArea(QWidget):
             b = self.store.get(k)
             if i == 0:
                 # 第 1 条信号直接用左轴 (改色便于识别)
-                p.getAxis("left").setPen(pg.mkPen(b.color))
-                p.getAxis("left").setTextPen(b.color)
+                _c0 = self._kcolor(k)
+                p.getAxis("left").setPen(pg.mkPen(_c0))
+                p.getAxis("left").setTextPen(_c0)
                 p.getAxis("left").setLabel(b.key.split(".")[-1])
-                self.items[k] = p.plot(pen=pg.mkPen(b.color, width=b.bold))
+                self.items[k] = p.plot(pen=pg.mkPen(_c0, width=b.bold))
                 continue
             vb = pg.ViewBox()
             p.scene().addItem(vb)
@@ -969,8 +1013,9 @@ class WaveArea(QWidget):
                 axis = pg.AxisItem("right")
                 # (2, 3) = 右侧列; 每多一根轴把已有轴往外挪一列
                 p.layout.addItem(axis, 2, 3 + (i - 2))
-            axis.setPen(pg.mkPen(b.color))
-            axis.setTextPen(b.color)
+            _cK = self._kcolor(k)
+            axis.setPen(pg.mkPen(_cK))
+            axis.setTextPen(_cK)
             axis.setLabel(b.key.split(".")[-1])
             # 🔴 2026-10-15 同上: 副轴也要关自动 SI 前缀 (递归链起点; 每信号独立图模式全靠这些副轴)
             try:
@@ -1400,6 +1445,23 @@ class CanoeGraphicWidget(QWidget):
         st.addWidget(self.lb_legend)
         root.addLayout(st)
 
+        # ── 八阶段状态机: **文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」) ──
+        #    八段名 = 真源 ActionModulator.STAGES 的插拔八段 (由 3D 面板随快照发下来的「八阶段表」),
+        #    当前段 **粗体+场景绿+【】**, 已走过段淡显, 未到段常规 —— 一眼看出"现在在第几段、叫什么"。
+        self.lb_stages = QLabel("")
+        self.lb_stages.setTextFormat(Qt.RichText)
+        self.lb_stages.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        # 长富文本会把窗口的 minimumSizeHint 顶大 (实测窗口被撑到 3068x1936 ⇒ 大半跑到屏幕外),
+        # 所以这里**不参与宽度诉求**: 水平 policy = Ignored, 由布局按剩余空间裁。
+        try:
+            self.lb_stages.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            self.lb_stages.setMinimumWidth(0)
+        except Exception:                                                      # noqa: BLE001
+            pass
+        self.lb_stages.setToolTip("八阶段状态机 = src/lerobot/policies/left_right/state_space/cognition.py:31 "
+                                 "ActionModulator.STAGES 的插拔八段 (真源常量, 随 3D 面板快照下发)")
+        root.addWidget(self.lb_stages)
+
         # ── 主体: 左信号栏 + 右波形 ──
         split = QSplitter(Qt.Horizontal)
         split.setStyleSheet(f"QSplitter::handle{{background:{C_BORDER};}}")
@@ -1650,8 +1712,15 @@ class CanoeGraphicWidget(QWidget):
         for it in self._all_items():
             if not (it.flags() & Qt.ItemIsUserCheckable):
                 continue        # 非当前场景区域的重名行不可勾选(老倪: 蓝区不该跟着打勾)
-            if it.data(0, Qt.UserRole) in _new and it.checkState(0) != Qt.Checked:
+            _k = it.data(0, Qt.UserRole)
+            if _k in _new and it.checkState(0) != Qt.Checked:
                 it.setCheckState(0, Qt.Checked)
+                # 🔴 2026-10-15 老倪「主窗口没有信号」再犯: 建树时 tree.blockSignals(True) ⇒
+                #   setCheckState **不会**回调 _on_item_changed ⇒ self.selected 恒空 ⇒ 一条曲线都没有
+                #   (实测窗口日志 "已选共 0 条"; 离屏跑因为键来得晚反而正常 ⇒ 这种时序坑只在真窗口复现)。
+                #   口径: 不靠回调, 这里**直接登记**进 selected。
+                if _k not in self.selected:
+                    self.selected.append(_k)
         self._auto_checked.update(_new)
         self._default_done = not [k for k in keys if k not in self._auto_checked]
         # 子图顺序 = 树上顺序(老倪 2026-10-15)
@@ -2316,7 +2385,12 @@ class CanoeGraphicWidget(QWidget):
             if not interactive:
                 it.setFlags(it.flags() & ~Qt.ItemIsUserCheckable)
                 it.setCheckState(0, Qt.Unchecked)
-                it.setForeground(0, QColor(C_DIM))
+                # 🎨 2026-10-15 老倪: 「怎么信号全都变成白色了? 应该分颜色, 绿色 蓝色 紫色等」
+                #   —— 非当前场景那份**仍用本场景色**(淡显), 不再一律灰成一片白; "非当前场景"
+                #   靠勾选框不可点 + tooltip + 分组折叠来表达, 不靠抹掉颜色。
+                _c2 = QColor(_c)
+                _c2.setAlpha(165)
+                it.setForeground(0, _c2)
             it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 本场景区域加载 (该数据源为多场景共写)%s"
                           % (scene, _c, "" if interactive else "\n（非当前场景 ⇒ 不可勾选，不在本区画波形）"))
             return it
@@ -2333,9 +2407,18 @@ class CanoeGraphicWidget(QWidget):
                     it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 由 tools/sig_scene_tags.py 打标"
                                   % (_sc, SST.color(b.key)))
                 else:
+                    # 🎨 2026-10-15 老倪: 「怎么信号全都变成白色了? 应该分颜色, 绿色 蓝色 紫色等」
+                    #   未分类里**平台量**(真机位姿 / 安全门控 / 话题统计)也按**角色**上色,
+                    #   与场景色(绿蓝紫)不冲突: 位姿=青 · 安全=黄 · 话题统计=灰蓝; 真没角色的仍白。
+                    _pc = ""
+                    for _pre, _cc in PLATFORM_COLORS:
+                        if b.key.startswith(_pre):
+                            _pc = _cc
+                            break
                     it.setText(0, "○ " + it.text(0))
-                    it.setForeground(0, QColor(C_WHITE))
-                    it.setToolTip(0, it.toolTip(0) + "\n场景: 未分类 (白)")
+                    it.setForeground(0, QColor(_pc or C_WHITE))
+                    it.setToolTip(0, it.toolTip(0) + "\n场景: 未分类 (%s)%s"
+                                  % (_pc or "白", "  ← 平台量按角色上色" if _pc else ""))
             except Exception:                                                 # noqa: BLE001
                 pass
         return it
@@ -2710,6 +2793,37 @@ class CanoeGraphicWidget(QWidget):
             self._update_tree_values()
             self._update_status(keys)
 
+    def _stage_strip(self):
+        """八阶段**文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」)。
+
+        真源: 3D 面板快照的「八阶段表」(= ActionModulator.STAGES 插拔八段, 由 ss_dreamview 随帧下发)
+        + 「八阶段序号」定当前段。表取不到 ⇒ 只写当前阶段名, **不编**八段。
+        返回 (HTML, 是否新鲜)。
+        """
+        txt, fresh = self._stage_now()               # 顺带刷新 self._stage_d
+        d = getattr(self, "_stage_d", None) or {}
+        names = d.get("八阶段表")
+        cur = d.get("八阶段序号")
+        try:
+            cur = int(cur)
+        except Exception:                                                      # noqa: BLE001
+            cur = -1
+        head = "🎛 八阶段: "
+        if not isinstance(names, list) or not names:
+            nm = str(d.get("阶段") or "").split(" ·")[0].strip()
+            body = ("<b style='color:%s'>【%s】</b>" % (C_GREEN, nm)) if nm else "<i>（快照里没有八阶段表）</i>"
+            return (head + body, fresh)
+        parts = []
+        for i, nm in enumerate(names[:8]):
+            nm = str(nm)
+            if i == cur:
+                parts.append("<b style='color:%s'>【%s】</b>" % (C_GREEN, nm))
+            elif cur >= 0 and i < cur:
+                parts.append("<span style='color:#6e7681'>%s</span>" % nm)   # 已走过: 淡
+            else:
+                parts.append("<span style='color:#c9d1d9'>%s</span>" % nm)
+        return (head + " <span style='color:#484f58'>›</span> ".join(parts), fresh)
+
     def _stage_now(self):
         """🎛 八阶段状态机现状 —— 老倪 2026-10-15: 「是八阶段信号么? 也没有显示状态啊」
 
@@ -2728,9 +2842,11 @@ class CanoeGraphicWidget(QWidget):
             return cache[1]
         txt = "🎛 状态机: 读取失败"
         fresh = False
+        self._stage_d = None
         try:
             with open(p, encoding="utf-8") as f:
                 d = json.load(f)
+            self._stage_d = d
             nm = str(d.get("阶段") or "?").split(" ·")[0].strip() or "?"
             i8 = d.get("八阶段序号")
             cap = d.get("阶段限速_mps")
@@ -2788,6 +2904,11 @@ class CanoeGraphicWidget(QWidget):
                              f"{agestr}{clk} · 本机时刻 {time.strftime('%H:%M:%S')}")
         try:                                   # 新鲜=绿系, 停更=橙 (与状态灯同口径)
             self.lb_info.setStyleSheet(f"color:{C_DIM if _st_fresh else C_ORANGE}; font-size:13px;")
+        except Exception:                                                      # noqa: BLE001
+            pass
+        try:                                   # 八阶段**文字**一行 (八段名 + 当前段高亮)
+            _strip, _ = self._stage_strip()
+            self.lb_stages.setText(_strip)
         except Exception:                                                      # noqa: BLE001
             pass
         parts = []

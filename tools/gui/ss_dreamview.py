@@ -3713,6 +3713,10 @@ class DreamView3D(QWidget):
             "src": str(getattr(self, "_src", "")),
             "帧": int(i), "总帧": int(self._n - 1),
             "阶段": str(stage), "时间_s": round(float(t), 3),
+            # 🎛 2026-10-15 老倪: 「八个 stage, 除了序号, 还应该有文字表示」——
+            #   把**八段文字名**(真源 ActionModulator.STAGES, 不另抄)随快照一起发,
+            #   信号页据此在窗口里把八段铺开写文字、并高亮当前那一段 (只有序号看不出是哪个阶段)。
+            "八阶段表": _stage_maps()[2],
             "工艺": _TOOL,        # 场景语义 (真空吸附/夹持) ⇒ 快照自证这根通道是吸盘还是夹爪, 不用猜
             "末端": [float(x[0]), float(x[1]), float(x[2])],
             # 🔴 2026-10-13 老倪「摆盘的机器人, 末端执行器的 x y z 必须有」——
