@@ -42,6 +42,128 @@ class AtomicSkill:
     ctrl = {}
     source = ""
 
+    # ── ⚖ 本技能的物理约束 (惯性/质量变化率/速度/加速度/位移) ──────────────────────
+    #   老倪 (2026-10-15): 「每个技能都清楚的知道自己动作的惯性」「速度 v、加速度 a、位移 s
+    #   需要可以标定, 比如上限下限」。**技能类不自带物理数字** —— 数值真源只有一处:
+    #   config/calib/zmax_skill_physics.json (按 stage 取, 每项带 min/max), 读法就是下面三个方法。
+    #   为什么不把 m/F/v 直接写进类里: 会立刻出现第二份数字 (引擎常量 / 标定真源 / 技能类 三处打架)。
+    #   实测踩过: 段名不统一 (PHYS 里「放入」 vs 引擎「放下」) ⇒ 静默套用了别的段的物理量。
+    @classmethod
+    def _phys_mod(cls):
+        """取物理闸模块 (兼容三种导入方式: 包内相对 / 绝对包名 / 直接文件加载)。"""
+        try:
+            from .. import physics_constraints as _pc        # noqa: WPS433 (包内相对)
+            return _pc
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            from lerobot.policies.left_right.state_space import physics_constraints as _pc   # noqa: WPS433
+            return _pc
+        except Exception:                                                       # noqa: BLE001
+            import importlib.util
+            import os
+            _p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "physics_constraints.py")
+            _s = importlib.util.spec_from_file_location("zmax_physics_constraints", _p)
+            _m = importlib.util.module_from_spec(_s)
+            _s.loader.exec_module(_m)
+            return _m
+
+    @classmethod
+    def phys(cls):
+        """本技能的物理上限: m/F/v/v_min/a_max/jerk_max/s/s_step/dmdt + 真源与上下限。
+
+        例: SK01Approach.phys()["a_max"] → 4.17 m/s² (由 F=5N / m=1.2kg 推出, 或用标定值 a)。
+        """
+        return cls._phys_mod().limits_for(cls.stage)
+
+    @classmethod
+    def phys_bounds(cls):
+        """本技能每个物理量的**物理上下限** [min, max] + 单位 (给标定界面/接口用)。"""
+        return cls._phys_mod().bounds_for(cls.stage)
+
+    @classmethod
+    def phys_check(cls):
+        """自检: 本技能的物理量是否齐、是否都在物理上下限内 (标定越界立刻看得出来)。"""
+        q, b, bad = cls.phys(), cls.phys_bounds() or {}, []
+        # 真源里的名字 → 闸门输出里的名字 (a 生效值是 a_max: 标定 a 或 F/m 推出; s 生效值是 s_max)
+        _alias = {"a": "a_max", "s": "s_max"}
+        for k, spec in b.items():
+            v = q.get(_alias.get(k, k))
+            lo, hi = spec.get("min"), spec.get("max")
+            if v is None or lo is None or hi is None:
+                bad.append("%s 缺项" % k)
+            elif not (float(lo) - 1e-12 <= float(v) <= float(hi) + 1e-12):
+                bad.append("%s=%s ∉ [%s, %s]" % (k, v, lo, hi))
+        if q.get("unknown_stage"):
+            bad.append("段名 '%s' 在真源/内置表里都没有 ⇒ 已标 unknown_stage, 别静默当别的段用" % cls.stage)
+        return {"ok": not bad, "code": cls.code, "stage": cls.stage, "problems": bad,
+                "phys": {k: q.get(k) for k in ("m", "F", "v", "v_min", "a_max", "jerk_max", "s_step", "s_max")},
+                "真源": q.get("calib_src_kind")}
+
+    # ── ⚖ 本技能的物理模型 (方程形式写在这里, 数值不抄 —— 打开技能就能看到方程) ──────────
+    #   老倪 (2026-10-15): 「我打开 SK01Approach 的时候, 怎么没有看到任何物理方程呢?」
+    #   ⇒ 方程形式逐条写进技能类 (下面 EQ), 数值仍只从真源取 (config/calib/zmax_skill_physics.json);
+    #     打开技能看到形式, 调用 phys_model()/show_phys() 看到"带本段真实数字的方程"。
+    #   形式与闸门 physics_constraints.InertiaLimiter.limit() 的 ①..⑤ 一一对应, 改一处必须改另一处
+    #   (判据 tools/verify_skill_physics_calib.py ⑩ 会卡住: 类里方程条数/数字必须与真源一致)。
+    EQ = {
+        "①位移←速度": ("s(t) = ∫ v dt", "‖v‖·dt ≤ s_step  (单拍位移封顶; 段累计 ≤ s_max)"),
+        "②速度←加速度": ("v(t) = ∫ a dt", "‖Δv‖ ≤ a_max·dt,  a_max = F_max/m"),
+        "③加加速度(平顺)": ("a(t) = ∫ j dt", "‖Δa‖ ≤ jerk_max·dt  (伺服带宽有限, 不许阶跃)"),
+        "④动量/质量率": ("p = m·v", "‖m·Δv + v·Δm‖ ≤ F_max·dt  (抓取建立/释放时质量在变)"),
+        "⑤惯量(牛顿二定律)": ("F = m·a", "a = F/m  ⇒ 同样推力, 质量越大加速度越小"),
+    }
+
+    @classmethod
+    def phys_model(cls):
+        """本技能的**物理模型**: 五条方程 + 本段真实数值 (全部取自真源, 类里不硬编码数字)。"""
+        q = cls.phys()
+        dt = float(q.get("dt") or 0.1)
+        m, F = float(q["m"]), float(q["F"])
+        a, j, ss, sm = float(q["a_max"]), float(q["jerk_max"]), float(q["s_step"]), float(q["s_max"])
+        v, vmin = float(q["v"]), float(q.get("v_min") or 0.0)
+        dm = float(q.get("dmdt_max") or q.get("dmdt") or 0.0)   # 闸门里叫 dmdt, 报告里叫 dmdt_max
+        eq = dict(cls.EQ)
+        return {
+            "技能": "%s %s [%s]" % (cls.code, cls.name, cls.stage),
+            "方程": {
+                "①位移←速度": "%s   ∧   ‖v‖·dt ≤ %.4f m  (段累计 ≤ %.3f m)   [v ≤ %.3f m/s]"
+                              % (eq["①位移←速度"][0], ss, sm, v),
+                "②速度←加速度": "%s   ∧   ‖Δv‖ ≤ a_max·dt = %.3f×%.2f = %.4f m/s"
+                                % (eq["②速度←加速度"][0], a, dt, a * dt),
+                "③加加速度(平顺)": "%s   ∧   ‖Δa‖ ≤ jerk_max·dt = %.1f×%.2f = %.4f m/s²"
+                                   % (eq["③加加速度(平顺)"][0], j, dt, j * dt),
+                "④动量/质量率": "%s   ∧   ‖m·Δv + v·Δm‖ ≤ F_max·dt = %.1f×%.2f = %.4f N·s (dm/dt=%.2f kg/s)"
+                                % (eq["④动量/质量率"][0], F, dt, F * dt, dm),
+                "⑤惯量(牛顿二定律)": "%s   ⇒   a_max = %.1f N / %.2f kg = %.3f m/s²"
+                                     % (eq["⑤惯量(牛顿二定律)"][0], F, m, F / max(1e-9, m)),
+            },
+            "数值": {"m_kg": m, "F_max_N": F, "v_cap_mps": v, "v_min_mps": vmin, "a_max_mps2": a,
+                     "jerk_max_mps3": j, "s_step_m": ss, "s_max_m": sm, "dmdt_max_kg_s": dm, "dt": dt},
+            "上下限": cls.phys_bounds(),
+            "真源": q.get("calib_src_kind"),
+            "自检": cls.phys_check(),
+        }
+
+    @classmethod
+    def show_phys(cls):
+        """把本技能的物理模型打印出来 (人看/交付: 打开哪个技能, 就看到它自己的方程和数字)。"""
+        d = cls.phys_model()
+        out = ["⚖ %s — 物理模型 (数值真源: %s)" % (d["技能"], d["真源"])]
+        for k, val in d["方程"].items():
+            out.append("   %-18s %s" % (k, val))
+        n = d["数值"]
+        out.append("   本段数值: m=%.2fkg F≤%.1fN v≤%.3fm/s(v_min %.3f) a≤%.2fm/s² jerk≤%.1fm/s³ "
+                   "单拍位移≤%.4fm 段行程≤%.3fm dm/dt≤%.2fkg/s"
+                   % (n["m_kg"], n["F_max_N"], n["v_cap_mps"], n["v_min_mps"], n["a_max_mps2"],
+                      n["jerk_max_mps3"], n["s_step_m"], n["s_max_m"], n["dmdt_max_kg_s"]))
+        out.append("   自检: %s %s" % ("✅ 物理量齐 + 全在上下限内" if d["自检"]["ok"] else "❌",
+                                      d["自检"]["problems"] or ""))
+        txt = "\n".join(out)
+        print(txt)
+        return txt
+
 
 class SK01Approach(AtomicSkill):
     """① 接近 — 从初始位移动到光模块抓握点正上方 (悬停, 不触碰)"""
@@ -55,6 +177,15 @@ class SK01Approach(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.35, "v_min": 0.12}
     source = "state_space_sim_real.STAGE_APPROACH_H / cognition.STAGE_V_CAP"
 
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK01Approach.show_phys()
+    phys_note = '未夹持 m=1.20kg · F=5N 通用力 · dm/dt=0.1 ⇒ ①(±0.35m/s)+②(4.17m/s²)绑; ④ 非绑定'
+
 
 class SK02Align(AtomicSkill):
     """② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"""
@@ -67,6 +198,15 @@ class SK02Align(AtomicSkill):
     evidence = "手-光模块水平距离 < 0.02 (align_xy_fine) → 下降"
     ctrl = {"gripper": "张开", "v_cap": 0.12, "v_min": 0.04}
     source = "state_space_sim_real.STAGE_ALIGN_H"
+
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK02Align.show_phys()
+    phys_note = '未夹持 m=1.20kg · F=5N · v 收到 0.12m/s ⇒ ①+③(jerk 5.1)绑; ④ 非绑定'
 
 
 class SK03Descend(AtomicSkill):
@@ -82,6 +222,15 @@ class SK03Descend(AtomicSkill):
     ctrl = {"gripper": "张开 (到位前不闭 — 状态锁存非比例)", "v_cap": 0.09}
     source = "state_space_sim_real.STAGE_DESCEND_H / _z_stall"
 
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK03Descend.show_phys()
+    phys_note = '未夹持 m=1.20kg · 触到即停 ⇒ ①(0.09m/s)+③绑; 段行程 s_max=0.05 收紧(=对位悬停高度)'
+
 
 class SK04Grasp(AtomicSkill):
     """④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"""
@@ -96,6 +245,15 @@ class SK04Grasp(AtomicSkill):
     ctrl = {"gripper": "闭合锁存 (抓取及之后恒闭合)", "v_cap": 0.04}
     source = "cognition.ActionModulator(grasp_th=0.50) / GRASP_SAT"
 
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK04Grasp.show_phys()
+    phys_note = '夹持建立 m 1.20→1.28 · F=12N(夹爪最大夹持力) · **dm/dt=0.5kg/s ⇒ ④ 真绑定** (动量变化要付得起)'
+
 
 class SK05Lift(AtomicSkill):
     """⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"""
@@ -108,6 +266,15 @@ class SK05Lift(AtomicSkill):
     evidence = "提起高度 >0.08 (lift_h 判据) → 转移; 滑脱(off 漂移>8mm) → 回接近重抓"
     ctrl = {"gripper": "闭合保持", "v_cap": 0.30, "v_min": 0.10}
     source = "state_space_sim_real.STAGE_LIFT / GRASP_SLIP_MM"
+
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK05Lift.show_phys()
+    phys_note = '已夹持 m=1.35kg(夹爪1.2+件0.15) · F=5N · 段行程 s_max=0.16(STAGE_LIFT) ⇒ ①+②绑'
 
 
 class SK06Transfer(AtomicSkill):
@@ -123,6 +290,15 @@ class SK06Transfer(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.35, "v_min": 0.12}
     source = "cognition.INSERT_HOVER / sim_real align_th"
 
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK06Transfer.show_phys()
+    phys_note = '已夹持 m=1.35kg · F=5N · 空中快移 v=0.35 ⇒ ①+jerk(15.0)绑; 段行程用 POS_LIMIT 包络 0.6(工位跳度待现场标)'
+
 
 class SK07Insert(AtomicSkill):
     """⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"""
@@ -137,6 +313,15 @@ class SK07Insert(AtomicSkill):
     evidence = "插深 <0.006 → 完成 (full 模式 → 拔出)"
     ctrl = {"gripper": "闭合保持 (力控推入)", "v_cap": 0.085, "v_min": 0.02}
     source = "sim_real insert_depth=0.006 / cognition.STAGE_V_MIN 插入"
+
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK07Insert.show_phys()
+    phys_note = '已夹持 m=1.35kg · **F=2N 金手指保护 ⇒ a_max 只有 1.48m/s²(②最紧)** · 段行程 0.02≈孔深 ⇒ ②+⑤ 绑'
 
 
 class SK07Place(AtomicSkill):
@@ -158,6 +343,15 @@ class SK07Place(AtomicSkill):
     ctrl = {"gripper": "闭合保持 → 触底开爪释放", "v_cap": 0.06, "v_min": 0.015}
     source = "cognition.ActionModulator TRAY_MODE/PLACE_IDX + sim_scene_def tray 槽位真源"
 
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK07Place.show_phys()
+    phys_note = '已夹持 m=1.35kg · F=2N 不压伤 · **开爪释放 dm/dt=0.5 ⇒ ④ 绑定** · 段行程 0.06(放下行)'
+
 
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
@@ -170,6 +364,15 @@ class SK08Complete(AtomicSkill):
     evidence = "阶段 == 完成 (done)"
     ctrl = {"gripper": "闭合保持", "v_cap": 0.02}
     source = "cognition.ActionModulator STAGES[完成]"
+
+    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
+    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
+    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
+    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
+    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
+    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
+    #   带本段真实数字的方程: SK08Complete.show_phys()
+    phys_note = '已夹持 m=1.35kg · F=2N 保持 · v=0.02 ⇒ ①最紧; 段行程 0.002(终点判据)'
 
 
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
@@ -198,9 +401,16 @@ def skills_for_mode(mode="insert"):
 def list_skills(mode="insert"):
     """技能清单 (GUI/文档/测试复用)"""
     return [{"code": cls.code, "name": cls.name, "stage": cls.stage,
-             "desc": cls.desc, "params": dict(cls.params),
+             "desc": cls.desc, "goal": cls.goal, "params": dict(cls.params),
              "evidence": cls.evidence, "ctrl": dict(cls.ctrl),
-             "source": cls.source}
+             "source": cls.source,
+             # ⚖ 物理模型 (老倪 2026-10-15: 每个技能要能看到自己的物理方程): 方程五式 + 本段绑定说明
+             "phys_note": getattr(cls, "phys_note", ""),
+             "phys_equations": dict(getattr(cls, "EQ", {})),
+             "phys": {**{k: cls.phys().get(k) for k in
+                         ("m", "F", "v", "v_min", "a_max", "jerk_max", "s_step", "s_max")},
+                      "dmdt_max": (cls.phys().get("dmdt_max") or cls.phys().get("dmdt"))},
+             "phys_bounds": cls.phys_bounds()}
             for cls in skills_for_mode(mode)]
 
 
@@ -211,3 +421,11 @@ if __name__ == "__main__":
         print(f"      目标: {s['goal']}")
         print(f"      推进: {s['evidence']}")
         print(f"      参数: {s['params']}  ctrl: {s['ctrl']}")
+        if s.get("phys"):
+            ph = s["phys"]
+            print("      ⚖ 物理: m=%.2fkg F≤%.1fN v≤%.3fm/s a≤%.2fm/s² jerk≤%.1fm/s³ 单拍位移≤%.4fm "
+                  "段行程≤%.3fm dm/dt≤%.2fkg/s"
+                  % (ph["m"], ph["F"], ph["v"], ph["a_max"], ph["jerk_max"], ph["s_step"],
+                     ph["s_max"], ph["dmdt_max"]))
+            print("         方程: " + " | ".join("%s %s" % (k, v[0]) for k, v in (s.get("phys_equations") or {}).items()))
+            print("         本段: %s" % s.get("phys_note", ""))

@@ -266,6 +266,11 @@ def sync_calib(write: bool = True) -> dict:
     #   可写真源 = config/calib/zmax_manifold.json (现场标定单标量); 缺省值/范围/单位来自引擎模块。
     reg["manifold_engine"] = _manifold_section()
 
+    # ⑧ ⚖ 原子技能物理参数 (v/a/s + 物理上下限) —— 2026-10-15 老倪: 「速度/加速度/位移要可以标定,
+    #   比如上限下限、最大值最小值」。真源 = config/calib/zmax_skill_physics.json (每项 {value,min,max})。
+    #   ★ 本处只放**指针 + 摘要**, 不复制数值 —— 数值的唯一真源仍是那个文件 (避免两处打架)。
+    reg["skill_physics"] = _skill_physics_section()
+
     if write:
         os.makedirs(os.path.dirname(CALIB), exist_ok=True)
         tmp = CALIB + ".tmp"
@@ -273,6 +278,27 @@ def sync_calib(write: bool = True) -> dict:
             json.dump(reg, f, ensure_ascii=False, indent=1)
         os.replace(tmp, CALIB)
     return reg
+
+
+SKILL_PHYS_P = os.path.join(ROOT, "config", "calib", "zmax_skill_physics.json")
+
+
+def _skill_physics_section(path: str = SKILL_PHYS_P) -> dict:
+    """⚖ 原子技能物理参数摘要 (v/a/s + 物理上下限) — 只做指针, 数值真源仍是那个文件。"""
+    d = _load_json(path) or {}
+    st = d.get("stages") or {}
+    return {
+        "真源": os.path.relpath(path, ROOT),
+        "技能数": len(st),
+        "物理量": ["v", "v_min", "a", "s", "s_step", "jerk", "m", "F", "dmdt"],
+        "单位": {"v": "m/s", "v_min": "m/s", "a": "m/s^2", "s": "m", "s_step": "m",
+                 "jerk": "m/s^3", "m": "kg", "F": "N", "dmdt": "kg/s"},
+        "上下限口径": d.get("bounds_src") or {},
+        "标定工具": "tools/skill_physics_calib.py (--table/--set/--check) · 判据 tools/verify_skill_physics_calib.py",
+        "读取方": "src/lerobot/policies/left_right/state_space/physics_constraints.py::limits_for (缺文件回退内置 PHYS 表)",
+        "说明": "★ 数值不在本注册表复制, 避免两处打架; 要看值/改值用标定工具或直接读真源文件。",
+        "_src": os.path.relpath(path, ROOT) if os.path.isfile(path) else "未生成 (跑 tools/skill_physics_calib.py --init-from-sources)",
+    }
 
 
 def calib(path: str = CALIB) -> dict:

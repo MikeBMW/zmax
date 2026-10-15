@@ -65,21 +65,30 @@ if "ssphys" not in N:
         "outputs": ["out1", "out2", "out3"],
         "params": {"state_space": True, "physics_gate": True,
                    "desc": "[基础·分段小模型] 原子技能物理闸: 进技能的 action 先过 ①速度 ②加速度 ③加加速度 "
-                           "④动量/质量变化率 四条约束 (每技能自带 m/F/v/dm·dt⁻¹) ⇒ 削出偏差 error; "
+                           "④动量/质量变化率 ⑤位移 五条约束 (每技能自带 m/F/v/a/s/jerk/dm·dt⁻¹, "
+                           "数值+物理上下限真源 config/calib/zmax_skill_physics.json) ⇒ 削出偏差 error; "
                            "小偏差 → 状态校正器, 大偏差 → 融合定位 → 流形引擎顶层补偿",
                    "source": "src/lerobot/policies/left_right/state_space/physics_constraints.py"
                              "::InertiaLimiter.limit",
                    "skills": {r["技能"]: {"m_kg": r["m_kg"], "F_max_N": r["F_max_N"], "v_cap_mps": r["v_cap_mps"],
                                           "a_max_mps2": r["a_max_mps2"], "jerk_max_mps3": r["jerk_max_mps3"],
-                                          "dmdt_max_kg_s": r["dmdt_max_kg_s"], "真源": r["真源"]}
+                                          "dmdt_max_kg_s": r["dmdt_max_kg_s"],
+                                          "s_step_m": r.get("s_step_m"), "s_max_m": r.get("s_max_m"),
+                                          "标定真源": r.get("标定真源"), "真源": r["真源"]}
                               for r in _audit},
                    "big_err_mps": 0.05}})
     N = {n["id"]: n for n in d["nodes"]}
 else:
+    N["ssphys"]["params"]["desc"] = ("[基础·分段小模型] 原子技能物理闸: 进技能的 action 先过 ①速度 ②加速度 ③加加速度 "
+                                     "④动量/质量变化率 ⑤位移 五条约束 (每技能自带 m/F/v/a/s/jerk/dm·dt⁻¹, "
+                                     "数值+物理上下限真源 config/calib/zmax_skill_physics.json) ⇒ 削出偏差 error; "
+                                     "小偏差 → 状态校正器, 大偏差 → 融合定位 → 流形引擎顶层补偿")
     N["ssphys"]["params"]["skills"] = {r["技能"]: {"m_kg": r["m_kg"], "F_max_N": r["F_max_N"],
                                                    "v_cap_mps": r["v_cap_mps"], "a_max_mps2": r["a_max_mps2"],
                                                    "jerk_max_mps3": r["jerk_max_mps3"],
-                                                   "dmdt_max_kg_s": r["dmdt_max_kg_s"], "真源": r["真源"]}
+                                                   "dmdt_max_kg_s": r["dmdt_max_kg_s"],
+                                                   "s_step_m": r.get("s_step_m"), "s_max_m": r.get("s_max_m"),
+                                                   "标定真源": r.get("标定真源"), "真源": r["真源"]}
                                        for r in _audit}
 
 # ── 3) 连线 ──

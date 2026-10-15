@@ -201,7 +201,7 @@ except Exception as ex:                                                         
     chk("轨迹/回归探针", False, ex)
 
 print("\n" + "=" * 84)
-print("结论: %s" % ("✅ 全过 — 四个约束进每个技能 · 偏差 error 分流 (小→校正器 / 大→融合定位→流形引擎顶层补偿)"
+print("结论: %s" % ("✅ 全过 — 五条约束进每个技能 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移) · 偏差 error 分流 (小→校正器 / 大→融合定位→流形引擎顶层补偿)"
                     if ok else "❌ 未通过"))
 print("=" * 84)
 sys.exit(0 if ok else 1)
