@@ -9,7 +9,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
 
-> 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全)。
+> 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全) · 右上角三色状态灯真源+控制台重启(禁 systemctl restart) `references/status-lights-and-restart.md` · 首页 hero 按钮基线 `references/ui-hero-buttons-slimming.md`。
 
 > 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md` · `console-title-and-debug-parity.md`(标题·调试同源)
 > 🧠 `status-panel-and-model-engine-window.md` = 底栏面板一行 · 模型引擎窗口 L2~L5 (训练状态+控制+执行任务工程) · 模型配置接线 · GUI 硬约束判据 (不截断/一屏放得下)
@@ -446,7 +446,7 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
 > ③ **排序本身就是需求**: 「4060/本机」要沉到**灯带最右**, 整卡也移到首页**最底**并加节标题(与「功能模块/项目状态」同规格)。灯带每次 `set_data` 用 `insertWidget(i, lamp)` **重插已有灯**(只插新灯 ⇒ 旧灯卡在旧位次); 同一台机既出现在本机指标又出现在 DDS 节点列表时**合并成一盏灯**(按显卡名认), 否则用户看到"一台机两盏灯"。
 > ④ **阈值按物理语义, 不是"越大越红"**: 显存/CPU/内存 <80 绿 · 80-92 黄 · >92 红; 磁盘 <80/80/90; 温度 <70/70/82; **GPU 利用率反着来** —— 空闲(<5%)灰 · 训练中 <50% **判黄**(掉载口径) · 其余绿。
 > ⑤ **不许编造量纲**: 状态条的分母必须是真实量 —— 功耗条用 `nvidia-smi --query-gpu=power.limit`; 读不到就**只显数字不画条**(拿"本次观测峰值"当分母会让空载满格, 反而误导); 无训练时吞吐显示 `—`; 缺测一律 `—` 不用 0 冒充; 数据源不可达要亮**"未连通"红灯** —— 否则整卡全绿看不出是占位/过期数据。
-> ⑥ **自绘仪表盘做完必过一次 vision 逐像素质检**(两张图: 控件本体 + 整页), 高频真缺陷与修法清单见 `references/ui-visual-qa-defect-classes.md`; 本页实测踩到: 底槽与卡底色几乎同色 ⇒ 看着像"4 条只画了 2 条"; 圆环**圆头端帽**让 34% 画出 36% ⇒ 改 `Qt.FlatCap`; 前导 `addStretch()` 把内容挤到右端 ⇒ 卡左侧 31% 全空; 名称/小字按**字数**截断而非按**实测字宽** ⇒ 硬裁无省略号; 一排按钮三档高度/字号。
+> ⑥ **自绘仪表盘做完必过一次 vision 逐像素质检**(两张图: 控件本体 + 整页), 高频真缺陷与修法清单见 `references/ui-visual-qa-defect-classes.md`。
 > ⑦ **现场验收口径**: 重启后 `wmctrl -lG` 的窗口标题必须带**新版本号**(不带 = 起的是旧码), 再 `ffmpeg -f x11grab -video_size 3068x1862 -i :0.0+132,212` 抓图, 并用 PIL 抽检**控件特征色像素数**(环轨 #30363d / 条与灯 #3fb950 / Bar #2f81f7 > 0) ⇒ 才算证明"画到屏上了", 不是只存在于离屏脚本里。
 > 🛑 2026-09-28 老倪两次问「控制台怎么自己重启呢」——查证: 控制台**本身没有自启机制**
 > (systemd 用户单元 zmax-studio.service 是 Restart=no, 退出后一直 dead; crontab 11 条没一条碰它),
