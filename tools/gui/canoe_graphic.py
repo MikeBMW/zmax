@@ -1558,6 +1558,8 @@ class CanoeGraphicWidget(QWidget):
             return              # 3D 场景还没跑过 (快照未落) → 下次建树再试
         self._default_done = True
         for it in self._all_items():
+            if not (it.flags() & Qt.ItemIsUserCheckable):
+                continue        # 非当前场景区域的重名行不可勾选(老倪: 蓝区不该跟着打勾)
             if it.data(0, Qt.UserRole) in keys and it.checkState(0) != Qt.Checked:
                 it.setCheckState(0, Qt.Checked)
         self.ymode.setCurrentIndex(2)       # 每信号独立图
@@ -1808,6 +1810,7 @@ class CanoeGraphicWidget(QWidget):
         #   否则按旧口径"按标签二选一"会把光模块_x/末端_x/接触概率 等打给摆盘 ⇒ 插拔区里看着缺一半、
         #   另一半跑到蓝组去(老倪现场看到的就是这个)。
         _TRACE_SCENES = ("插拔场景", "摆盘场景")
+        _act = self._active_scene()          # 当前场景: 决定重名行可勾选性 + 组默认展开/折叠
         # 1) 本机真值流: 按打标落到 插拔 / 摆盘 / 基础 三组 (AR 有二级分组, 见下)
         host_bufs = [b for b in self.store.bufs.values() if b.src not in ("ros", "ds", "file")]
         _n_host = 0
@@ -1818,7 +1821,8 @@ class CanoeGraphicWidget(QWidget):
                 continue                        # AR 单独成组(二级), 见 1b
             if b.key.startswith("sstrace."):
                 for _sc in _TRACE_SCENES:       # 重名信号: 每个场景区域重新加载一份
-                    roots[_sc].addChild(self._make_item(b, scene=_sc))
+                    roots[_sc].addChild(self._make_item(b, scene=_sc,
+                                                        interactive=((not _act) or _act == _sc)))
                 _n_host += 1
                 continue
             _sc = _scene_of(b.key)
@@ -1931,10 +1935,18 @@ class CanoeGraphicWidget(QWidget):
                 _inuse = any(k.startswith(pref) for k in self.selected)
                 tnode.setExpanded(bool(filt) or _inuse or tnode.text(0) in self._expanded)
                 ds_root.addChild(tnode)
-        # 4) 组展开/折叠: 用户点过的折叠优先, 没点过的默认展开(一眼能看到)
+        # 4) 组展开/折叠: 用户点过的优先; 其余 **当前场景展开, 非当前场景默认折叠隐藏**
+        #    (老倪 2026-10-15: 「蓝色区域你得折叠隐藏啊」—— 摆盘蓝那一大片不该占着屏幕)
         for _sc, _r in roots.items():
             _sid = "scene:" + _sc
-            _r.setExpanded(False if _sid in self._collapsed else True)
+            if _sid in self._collapsed:
+                _r.setExpanded(False)
+            elif _sid in self._expanded or bool(filt):
+                _r.setExpanded(True)                       # 用户手动展开过 / 正在过滤 → 尊重
+            elif _sc == "基础场景" or not _act:
+                _r.setExpanded(True)                       # 基础场景保持可见(未分类信号要看)
+            else:
+                _r.setExpanded(_sc == _act)                # 当前场景展开, 其它场景组折叠
         for _sc, _ph in (("摆盘场景", "（摆盘场景链路此刻无数据帧: 真空/吸盘/料盘/槽位话题未接 — 真机网络通 + 摆盘场景激活后, 蓝色信号出现在这里）"),
                          ("基础场景", "（本机真值流/ROS/DDS 此刻没有数据帧）")):
             _r = roots[_sc]
@@ -1943,6 +1955,17 @@ class CanoeGraphicWidget(QWidget):
                 _it.setForeground(0, QColor(C_DIM))
                 _r.addChild(_it)
         self.tree.blockSignals(False)
+        # 🔴 2026-10-15 老倪: 「你重启信号分析」后要**一眼看到插拔(绿)**。原来建完树视图停在别处
+        #   (树很长, 默认落点/旧滚动位置不在首组) ⇒ 看着像"绿色信号不在"。规则: 首次建树 + 切场景排序后,
+        #   都把视图滚到目标场景组 (没切排序时滚第一个场景组 = 插拔绿), 组本身仍按 绿/蓝/紫/白 恒定顺序。
+        try:
+            _tgt = roots.get(self._scene_sort) if self._scene_sort else None
+            if _tgt is None:
+                _tgt = roots.get("插拔场景")
+            if _tgt is not None:
+                self.tree.scrollToItem(_tgt, QAbstractItemView.PositionAtTop)
+        except Exception:                                                       # noqa: BLE001
+            pass
         self._apply_default_selection()
         self._update_tree_values()
 
@@ -2064,6 +2087,20 @@ class CanoeGraphicWidget(QWidget):
         except Exception:                                                     # noqa: BLE001
             return 1
 
+    def _active_scene(self):
+        """当前正在看哪个场景: 排序里选中的场景优先; 否则取画布数据源场景真源 (ss_scene_switch src_state)。
+
+        用途(老倪 2026-10-15): ① 非当前场景的重名信号行不可勾选 ② 非当前场景的场景组默认**折叠隐藏**
+        (「摆盘的蓝色信号, 怎么也有 tick 小对号?」「蓝色区域你得折叠隐藏啊」)。
+        """
+        if getattr(self, "_scene_sort", ""):
+            return self._scene_sort
+        try:
+            import ss_scene_switch as _ssw
+            return str(_ssw.now().get("src_state") or "")
+        except Exception:                                                       # noqa: BLE001
+            return ""
+
     def _scene_sync_lab(self):
         """标题行实况: 当前画布数据源/场景 + 各色信号计数(照实报, 不编)。"""
         try:
@@ -2092,7 +2129,7 @@ class CanoeGraphicWidget(QWidget):
         self._scene_sync_lab()
         self._fill_tree()
 
-    def _make_item(self, b, checked=False, label=None, scene=None):
+    def _make_item(self, b, checked=False, label=None, scene=None, interactive=True):
         name = label or self._disp_name(b.key)
         it = QTreeWidgetItem([name, "-", "-", self._src_hint(b.key)])
         it.setToolTip(0, f"{b.key}\n来源 {b.src} · 点数 {b.n}")
@@ -2103,12 +2140,19 @@ class CanoeGraphicWidget(QWidget):
         # 🔴 2026-10-15 老倪: 「为什么还有很多蓝色场景的信号也加在了? 插拔是绿色信号, 如果需要重名信号,
         #   就要在绿色区域重新加载」⇒ 多场景共写的源(trace_live.json)里, 每个场景区域各自加载一份,
         #   行色 = **该区域场景色**(不再按"这个键被打了哪个标签"二选一 —— 那会让插拔区里冒出摆盘蓝)。
+        # 老倪 2026-10-15 后续: 「摆盘的蓝色信号, 怎么也有 tick 小对号?」—— 同一份重名键在两区都有,
+        #   勾选状态原来按 key 走 ⇒ 绿区勾上"末端_x/接触概率"时, 蓝区同名行也被打勾(看着像摆盘也在监视)。
+        #   规则: **非当前场景区域的那一份不可勾选、不带勾**(灰掉), 勾选只在当前场景区域生效。
         if scene:
             it.setText(0, "● " + it.text(0))
             _c = SCENE_COLORS.get(scene, C_WHITE)
             it.setForeground(0, QColor(_c))
-            it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 本场景区域加载 (该数据源为多场景共写)"
-                          % (scene, _c))
+            if not interactive:
+                it.setFlags(it.flags() & ~Qt.ItemIsUserCheckable)
+                it.setCheckState(0, Qt.Unchecked)
+                it.setForeground(0, QColor(C_DIM))
+            it.setToolTip(0, it.toolTip(0) + "\n场景: %s (%s) ← 本场景区域加载 (该数据源为多场景共写)%s"
+                          % (scene, _c, "" if interactive else "\n（非当前场景 ⇒ 不可勾选，不在本区画波形）"))
             return it
         # 🥽 场景标记(老倪 2026-10-12: 「插拔信号绿色; 摆盘信号蓝色; AOI信号紫色; 没有分类的信号都是白色」):
         #   有目标场景 → ● + **场景色**; 没分类 → ○ + **白**(不再沿用曲线色, 否则看着像"乱七八糟的颜色")
