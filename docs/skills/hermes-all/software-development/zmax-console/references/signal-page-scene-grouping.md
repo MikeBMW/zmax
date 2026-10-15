@@ -160,6 +160,26 @@
    重建处 setPos 兜 RuntimeError。
 29. **@staticmethod 在同类方法里必须 `self._klab(k)` 调用**: 裸调 `_klab(k)` 会被当成全局名 ⇒ NameError
    ⇒ 被外层 except 吞掉 ⇒ 建图中断、一条曲线都出不来(排查时最容易看不见)。
+30. **“每拍都改轴属性”会打爆事件循环 (递归爆栈 22.8 万次)**: 每拍判 `labelText`/写 `epoch_base +
+   picture=None` 会让 `AxisItem._updateLabel ↔ ViewBox.linkedViewChanged/screenGeometry` 相互触发;
+   轴名在 4 处各写一份口径不一致时 ⇒ 每拍都“文本不等 ⇒ 再 setLabel” ⇒ 永不收敛. 症状=控制台刷
+   RecursionError → 事件循环堵死 → **3D 面板 QTimer 停跑 → 快照/话题停更** (看着像信号页死了).
+   定式: 轴名收敛成**唯一口径 helper** (4 处共用) + 每拍重入闸 + 相对秒模式**不碰 epoch**。
+31. **元任务预测 = 话题 `zmax/ss_meta_pred` (不是 ss_meta_task)**: ss_meta_task = 元任务**清单**派生;
+   ss_meta_pred = 预测**得分** + top-k (输入=驱动扭矩). 长串字段 (top_ids/top_scores) 会让 `body[:180]`
+   兜底把数值叶子全挤掉 ⇒ 探针要给它**完整紧凑 JSON 摘要** (数值在前、名字在后). 现值 frozen=1 (驱动扭矩
+   恒定 ⇒ 无区分度) → 必须如实标, 不许写成“有预测力”。
+32. **画布接线先 grep 再动手**: 老倪说“X 要连到 Y”时, 先 `grep 两侧节点的出/入线` 列全 ——
+   `ssff(out2) → sssched(in6)` 这条线**本来就存在**, 真正的问题是节点 outputs 只声明 out1 而线用 out2
+   (端口表与线不一致) + 标签太笼统. 先定“加线”还是“写实已有线”, 直接加会撞重复被拦。
+33. **INTACT worker 泄露 = 反复 CUDA OOM 的真因**: engine loop 每建一个 IntactRuntime 就 spawn 一个
+   intact_worker (420 MiB) 且旧的不 close ⇒ 实测 5 分钟一个, 7 个吃满 8188 MiB ⇒ 面板/信号页停更.
+   应急: `tools/janitor_intact_workers.sh` (只留最新, 幂等) + crontab */5; 真修 = Runtime 走单例
+   (`src/lerobot/policies/intact/runtime/model_adapter.py`)。
+34. **新话题上线信号页的三件套** (缺一条就是“看得到话题、没波形”): ① 探针 `probe.py::_digest_for` 补
+   完整紧凑 JSON 摘要; ② `canoe_graphic.OUT_NODE_RULES` 加“话题→输出节点” (否则“输出节点”列只剩干数据源);
+   ③ `DEFAULT_3D` 加 1~2 个代表性键 (top1/spread 类); 再加判据 (话题在发 + digest 可解析 + 页面已建键)。
+
 
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
