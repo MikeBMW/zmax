@@ -294,126 +294,199 @@ class OrbitalArchData:
 
 
 class OrbitalArchView(QWidget):
-    """🪐 球心引力架构 (太阳系映射) — QPainter 2.5D, 球体用径向渐变。"""
+    """🪐 球心引力架构 (太阳系映射) —— QPainter 2.5D 真球体 + 可旋转可缩放 + 真源力连线。
+
+    老倪 2026-10-16 反馈 (逐条落实):
+      ① 「这些卫星都是原子技能, 应该围绕在地球周围, 不能散落在太阳系」
+         ⇒ 原子技能 = **地球的卫星群** (绕地球的闭合小轨道, 与地球同相位公转); 月球(状态校正器)
+            在稍外一圈 —— 也是绕地球, 两者不重叠 (内 0.055R / 外 0.085R)。
+      ② 「这个图需要能够用鼠标旋转放大, 可以操作」
+         ⇒ 左键拖动 = 旋转 (偏航 + 俯仰, 俯仰限幅), 滚轮 = 缩放 (0.55~2.4 倍), 双击 = 复位;
+            全部是**真三维变换** (轨道平面绕 X 轴俯仰 + 绕 Z 轴偏航后正交投影), 不是画椭圆凑。
+      ③ 「球与球之间的连线, 要做好规划, 相当于 模型节点之间的力的相互作用, 要能体现出,
+         有相互作用, 就显示连线」
+         ⇒ 连线**全部来自画布 links 真源** (画布 state_space_obs.json 的 202 条连线):
+            主体↔主体 的每一条真边都画; 主体↔体系外直接邻居 的边画到外圈小星点 (不隐形、也不编造)。
+            没有真连线的一律不画 (缺哪条在脚注里可核)。
+      ④ 「连线要适合人眼睛的观察, 不要太细, 不要高频率闪烁, 不要很快消失。要注意平顺柔和」
+         ⇒ 每条线两遍画 (外发光 6px 半透明 + 实芯 2.2px); 反馈线用**慢速流动**虚线 (相位连续推进,
+            不会闪、不会消失); 全图**不做任何透明度脉冲/闪烁动画**, 帧间只做平顺位移。
+    """
 
     TICK_MS = 60
     # 轨道半径 (相对 R) · 球径 (相对 S) · 颜色
     ORB = {"mercury": 0.30, "earth": 0.50, "mars": 0.68, "jupiter": 0.86}
-    RAD = {"sun": 0.052, "mercury": 0.019, "earth": 0.029, "mars": 0.031, "jupiter": 0.037, "moon": 0.013, "sat": 0.008}
+    RAD = {"sun": 0.052, "mercury": 0.019, "earth": 0.029, "mars": 0.031, "jupiter": 0.037,
+           "moon": 0.012, "sat": 0.0065}
     COL = {"sun": "#ffd166", "mercury": "#b9bec7", "earth": "#4da3ff", "mars": "#ff7a45",
-           "jupiter": "#d2a45f", "moon": "#dfe4ec", "sat": "#7fd1c1"}
+           "jupiter": "#d2a45f", "moon": "#dfe4ec", "sat": "#7fd1c1", "ext": "#8b949e"}
+    # 卫星群/月球 绕地球的半径 (相对 R) —— 原子技能在内, 月球在外 (不叠)
+    SAT_R = 0.055
+    MOON_R = 0.085
+    BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.data = OrbitalArchData()
         self.info = self.data.build()
-        self.t0 = time.time()
-        self.frozen = False
+        self.yaw = 0.0                    # 偏航 (拖动左右)
+        self.pitch = 0.42                 # 俯仰 (拖动上下, 限幅 ±1.15)
+        self.zoom = 1.0                   # 缩放 (滚轮 0.55~2.4)
+        self._drag = None
+        self._phase = 0.0                 # 虚线流动相位 (连续推进, 慢)
+        self._grids = []                  # 轨道圆采样 (平面坐标, 单位 R)
+        for _k in ("mercury", "earth", "mars", "jupiter"):
+            self._grids.append([(self.ORB[_k] * math.cos(t / 72.0 * 2 * math.pi),
+                                 self.ORB[_k] * math.sin(t / 72.0 * 2 * math.pi)) for t in range(73)])
+        self._ext = self._ext_nodes()     # 体系外直接邻居 (按 id 排序, 均布在外圈)
+        self._edges = self._build_edges()
         self.setMinimumSize(300, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet("background:%s;" % BG.name())
-        self.setToolTip("球心引力架构: 流形引擎=太阳 · 接触流形=水星 · 前馈加速器=地球 · DiT=火星 · "
-                        "性能流形=木星 · 状态校正器=月球(与地球协同行进) · 原子技能=卫星带\n"
-                        "引力=度量: 太阳输出 (状态 p / 度量 g / 势 φ) 作条件并联注入行星; 连线全部来自画布真源")
+        self.setCursor(Qt.OpenHandCursor)
+        self.setMouseTracking(True)
+        self.setToolTip("🪐 球心引力架构 · 左键拖动=旋转 · 滚轮=缩放 · 双击=复位\n"
+                        "球与球的连线全部来自画布真源 (力的相互作用: 有真连线才画)\n"
+                        "太阳=流形引擎 · 水星=接触流形 · 地球=前馈加速器(+原子技能卫星群) · "
+                        "火星=DiT · 木星=性能流形 · 月球=状态校正器")
         self._tm = QTimer(self)
         self._tm.timeout.connect(self._tick)
         self._tm.start(self.TICK_MS)
 
+    # ── 真源: 力的相互作用 (画布 links) ──────────────────────────────────────
+    def _ext_nodes(self):
+        """与 7 类主体有真连线的**体系外节点** (按 id 排序, 不编造)。"""
+        body_ids = {b[1] for b in BODIES}
+        nb = set()
+        for l in self.data.links:
+            f, t = l.get("f"), l.get("t")
+            if f in body_ids and t not in body_ids and t:
+                nb.add(t)
+            if t in body_ids and f not in body_ids and f:
+                nb.add(f)
+        return sorted(nb)
+
+    @staticmethod
+    def _kind(label):
+        """按**真源连线 label** 归类 (力/条件的种类; 不猜)。"""
+        t = str(label or "")
+        if any(k in t for k in ("反馈", "回灌", "闭环", "z_k", "校正")):
+            return "feedback"
+        if any(k in t for k in ("前馈", "action", "u_ff", "标杆", "动作块", "动作指令")):
+            return "drive"
+        if any(k in t for k in ("潜空间 z", "语义", "VLM", "视觉")):
+            return "semantic"
+        if any(k in t for k in ("条件", "几何", "流形", "代价", "势能", "度规", "指令")):
+            return "condition"
+        return "misc"
+
+    def _build_edges(self):
+        """所有**真存在**的相互作用线: 主体↔主体 全部画; 主体↔体系外邻居 画到外圈星点。"""
+        body_ids = {b[1] for b in BODIES}
+        out = []
+        for l in self.data.links:
+            f, t = l.get("f"), l.get("t")
+            if not f or not t:
+                continue
+            fb, tb = f in body_ids, t in body_ids
+            if not (fb or tb):
+                continue
+            out.append({"f": f, "t": t, "body_body": bool(fb and tb), "label": str(l.get("label") or ""),
+                        "kind": self._kind(l.get("label"))})
+        out.sort(key=lambda e: (not e["body_body"], e["f"], e["t"]))
+        # 同一对节点在画布里可能有多条重边 (不同 label) —— 力只画一次, 不叠线 (老倪: 平顺柔和)
+        seen, uniq = set(), []
+        for e in out:
+            k = (e["f"], e["t"])
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(e)
+        return uniq
+
+    def interactions(self):
+        """给判据/自检用: 当前画的相互作用清单 (真源)。"""
+        return list(self._edges)
+
+    # ── 交互 ────────────────────────────────────────────────────────────────
+    def mousePressEvent(self, e):
+        self._drag = (e.x(), e.y())
+        self.setCursor(Qt.ClosedHandCursor)
+
+    def mouseMoveEvent(self, e):
+        if self._drag is None:
+            return
+        dx = e.x() - self._drag[0]
+        dy = e.y() - self._drag[1]
+        self._drag = (e.x(), e.y())
+        self.yaw += dx * 0.012
+        self.pitch = max(-1.15, min(1.15, self.pitch + dy * 0.008))
+        self.update()
+
+    def mouseReleaseEvent(self, e):
+        self._drag = None
+        self.setCursor(Qt.OpenHandCursor)
+
+    def mouseDoubleClickEvent(self, e):
+        self.reset_view()
+
+    def wheelEvent(self, e):
+        try:
+            steps = e.angleDelta().y() / 120.0
+        except Exception:                                                    # noqa: BLE001
+            steps = 1.0
+        self.zoom = max(0.55, min(2.4, self.zoom * (1.12 ** steps)))
+        self.update()
+
+    def reset_view(self):
+        self.yaw, self.pitch, self.zoom = 0.0, 0.42, 1.0
+        self.update()
+
     def refresh(self):
         self.data = OrbitalArchData()
         self.info = self.data.build()
+        self._ext = self._ext_nodes()
+        self._edges = self._build_edges()
         self.update()
         return self.info
 
     def _tick(self):
-        if not self.frozen:
-            self.update()
+        # 只推进"虚线流动相位" (慢, 连续) —— 不做透明度脉冲 (老倪: 不要高频闪烁)
+        self._phase = (self._phase + 0.06) % 12.0
+        self.update()
 
-    # ── 画 ────────────────────────────────────────────────────────────────
-    def paintEvent(self, _e):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
+    # ── 3D: 平面坐标 → 屏幕 (绕 Z 偏航 + 绕 X 俯仰 + 正交投影 + 深度微缩) ────
+    def _proj(self, x, y, z, cx, cy, R, incl=None):
+        inc = self.BASE_INCL if incl is None else incl
+        # 先按轨道面倾角把平面转进三维
+        y2 = y * math.cos(inc)
+        z2 = y * math.sin(inc) + z
+        # 偏航 (绕 Z)
+        c, s = math.cos(self.yaw), math.sin(self.yaw)
+        x3, y3 = x * c - y2 * s, x * s + y2 * c
+        # 俯仰 (绕 X)
+        cp, sp = math.cos(self.pitch), math.sin(self.pitch)
+        y4, z4 = y3 * cp - z2 * sp, y3 * sp + z2 * cp
+        sc = R * self.zoom * (1.0 + 0.10 * z4)          # 近大远小
+        return cx + x3 * sc, cy + y4 * sc, z4
+
+    def _geom(self):
         W, H = int(self.width()), int(self.height())
-        p.fillRect(0, 0, W, H, BG)
-        b = self.data.body
-        # 版面: 顶 22 + 底 44
-        pad_t, pad_b = 20, 46
+        pad_t, pad_b = 20, 48
         S = max(120, min(W - 14, H - pad_t - pad_b))
         cx, cy = W / 2.0, pad_t + (H - pad_t - pad_b) / 2.0
-        R = S * 0.46
-        # 标题
-        p.setPen(FG)
-        f = QFont("DejaVu Sans"); f.setPixelSize(12); f.setBold(True); p.setFont(f)
-        p.drawText(QRectF(6, 2, W - 12, pad_t - 4), Qt.AlignLeft | Qt.AlignVCenter,
-                   "🪐 球心引力架构 (流形引擎=太阳 · 原子技能=卫星)")
-        # 引力井 (度量: 各向异性椭圆 = 度量张量特征值比)
-        self._gravity_well(p, cx, cy, R, b.get("sun", {}))
-        # 轨道
-        p.setPen(QPen(GRID, 1, Qt.DashLine))
-        for key, frac in self.ORB.items():
-            rr = R * frac
-            p.drawEllipse(QPointF(cx, cy), rr, rr * 0.94)
-        # 真连线: 条件 (青色) / 直连 (金色虚线) / 反馈 (绿色虚线)
-        self._draw_links(p, cx, cy, R, b)
-        # 天体位置 (角度 = 实测量的映射; 见底注)
-        ang = self._angles(b)
-        pos = {}
-        for key, frac in self.ORB.items():
-            a = ang.get(key, 0.0)
-            rr = R * frac
-            pos[key] = (cx + rr * math.cos(a), cy + rr * 0.94 * math.sin(a))
-        # 太阳
-        self._sphere(p, cx, cy, S * self.RAD["sun"], self.COL["sun"], b.get("sun", {}).get("grad_norm"))
-        self._label(p, cx, cy + S * self.RAD["sun"] + 12, "☀ 流形引擎", FG, 12, True, cx)
-        self._sub(p, cx, cy + S * self.RAD["sun"] + 26, self._sun_text(b.get("sun", {})), GOLD, cx, W)
-        # 水星 / 木星 / 火星 / 地球 (球体)
-        order = (("mercury", S * self.RAD["mercury"]), ("jupiter", S * self.RAD["jupiter"]),
-                 ("mars", S * self.RAD["mars"]), ("earth", S * self.RAD["earth"]))
-        for key, r in order:
-            x, y = pos[key]
-            self._sphere(p, x, y, r, self.COL[key], 1.0 if self._live(b.get(key, {})) else 0.35)
-            self._body_label(p, key, x, y, r, b, W, H)
-        # 月球: 与地球同相位, 径向摆幅 ∝ 残差 (协同行进)
-        if "earth" in pos:
-            ex, ey = pos["earth"]
-            a = ang.get("earth", 0.0)
-            wob = self._wobble(b.get("moon", {}))
-            mr = R * 0.085 * (1.0 + wob)
-            mx, my = ex + mr * math.cos(a), ey + mr * 0.94 * math.sin(a)
-            p.setPen(QPen(QColor(90, 100, 115, 150), 1, Qt.DotLine))
-            p.drawLine(QPointF(ex, ey), QPointF(mx, my))
-            self._sphere(p, mx, my, S * self.RAD["moon"], self.COL["moon"], 1.0 if self._live(b.get("moon", {})) else 0.35)
-            p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
-            p.drawText(QRectF(mx - 44, my + 10, 88, 11), Qt.AlignCenter, "🌙 状态校正器")
-        # 卫星带 (原子技能)
-        self._satellite_belt(p, cx, cy, R, S, b, ang)
-        # 图注 + 真源脚注
-        self._legend(p, W, H, b)
-        p.end()
-
-    def _gravity_well(self, p, cx, cy, R, sun):
-        """引力 = 度量: 井的扁率由度规特征值比给出 (真值; 取不到就不画扁, 只画等距井)。"""
-        e1, e2 = sun.get("eig_min"), sun.get("eig_max")
-        ratio = 1.0
-        if e1 and e2 and float(e2) > 0:
-            ratio = max(0.35, min(1.0, float(e1) / float(e2)))
-        for i in range(6):
-            rr = R * (0.10 + 0.055 * i)
-            alpha = 90 - i * 12
-            p.setPen(QPen(QColor(210, 153, 34, max(20, alpha)), 1))
-            p.drawEllipse(QPointF(cx, cy), rr, rr * (0.94 * ratio + 0.06))
+        return W, H, S, cx, cy, S * 0.46
 
     def _angles(self, b):
-        """角度映射 (实测量的可视映射, 写进图注): 水星←接触进度 · 地球←前馈请求/上限 ·
-        火星←块步 λ · 木星←耦合效率 η · 月球=地球相位 (协同行进)。取不到 ⇒ 定点 (不假装转)。"""
+        """角度映射 (实测量 → 公转相位, 写进图注): 水星←接触进度 · 地球←前馈请求/上限 ·
+        火星←块步 λ · 木星←耦合效率 η · 月球/卫星=地球相位 (协同)。取不到 ⇒ 定点 (不假装转)。"""
         a = {}
         m = b.get("mercury", {})
-        pr, p0 = m.get("progress"), 0.012
-        a["mercury"] = 2 * math.pi * max(0.0, min(1.0, float(pr) / p0)) if isinstance(pr, (int, float)) else 0.6
+        pr = m.get("progress")
+        a["mercury"] = 2 * math.pi * max(0.0, min(1.0, float(pr) / 0.012)) if isinstance(pr, (int, float)) else 0.6
         e = b.get("earth", {})
         req = e.get("req_mps")
-        cap = 0.35
-        a["earth"] = 2 * math.pi * max(0.0, min(1.0, float(req) / cap)) if isinstance(req, (int, float)) else 2.2
+        a["earth"] = 2 * math.pi * max(0.0, min(1.0, float(req) / 0.35)) if isinstance(req, (int, float)) else 2.2
         mg = b.get("mars", {})
         lam = mg.get("lambda")
         a["mars"] = 2 * math.pi * max(0.0, min(1.0, float(lam))) if isinstance(lam, (int, float)) else 3.1
@@ -423,22 +496,274 @@ class OrbitalArchView(QWidget):
         return a
 
     def _wobble(self, moon):
-        r = moon.get("err")
         try:
-            return max(0.0, min(0.55, abs(float(r)) * 2.4))
+            return max(0.0, min(0.55, abs(float(moon.get("err"))) * 2.4))
         except Exception:                                                    # noqa: BLE001
             return 0.0
 
     @staticmethod
     def _live(d):
-        """该天体当前有没有真值 (没有 = 未运行 ⇒ 球体压暗, 不假装在工作)。"""
         for k in ("progress", "eta", "action_norm", "req_mps"):
             if isinstance(d.get(k), (int, float)):
                 return True
         return bool(d.get("err_all"))
 
+    def positions(self, cx=None, cy=None, R=None):
+        """当前变换下的所有球体屏幕坐标 (判据也用它核"卫星确实绕地球")。"""
+        if cx is None:
+            _W, _H, _S, cx, cy, R = self._geom()
+        b = self.data.body
+        ang = self._angles(b)
+        pos = {}
+        for key, frac in self.ORB.items():
+            a = ang.get(key, 0.0)
+            pos[key] = self._proj(frac * math.cos(a), frac * math.sin(a), 0.0, cx, cy, R)
+        ea = ang.get("earth", 0.0)
+        er = self.ORB["earth"]
+        ex, ey = er * math.cos(ea), er * math.sin(ea)
+        sats = (b.get("sats", {}).get("list") or [])
+        pos["_sat"] = []
+        for i, d in enumerate(sats):
+            aa = ea + 2 * math.pi * i / max(1, len(sats))          # 与地球同向公转 (绕地球)
+            pos["_sat"].append(self._proj(ex + self.SAT_R * math.cos(aa),
+                                          ey + self.SAT_R * math.sin(aa), 0.0, cx, cy, R) + (d.get("SK"),))
+        wob = self._wobble(b.get("moon", {}))
+        mr = self.MOON_R * (1.0 + wob)
+        pos["moon"] = self._proj(ex + mr * math.cos(ea), ey + mr * math.sin(ea), 0.0, cx, cy, R)
+        pos["_cx"] = cx
+        pos["_cy"] = cy
+        pos["_R"] = R
+        return pos
+
+    def local_offsets(self):
+        """轨道平面内 (未投影) 的相对坐标 —— 判据用它核"卫星确实绕地球"(与视角无关)。
+
+        返回: {"earth": (x, y) 相对太阳, "sat": [(dx, dy, SK)…] 相对地球, "moon": (dx, dy) 相对地球}
+        """
+        b = self.data.body
+        ang = self._angles(b)
+        ea = ang.get("earth", 0.0)
+        er = self.ORB["earth"]
+        ex, ey = er * math.cos(ea), er * math.sin(ea)
+        sats = (b.get("sats", {}).get("list") or [])
+        out = []
+        for i, d in enumerate(sats):
+            aa = ea + 2 * math.pi * i / max(1, len(sats))
+            out.append((self.SAT_R * math.cos(aa), self.SAT_R * math.sin(aa), d.get("SK"), aa))
+        wob = self._wobble(b.get("moon", {}))
+        mr = self.MOON_R * (1.0 + wob)
+        return {"earth": (ex, ey), "earth_angle": ea, "sat": out,
+                "moon": (mr * math.cos(ea), mr * math.sin(ea)), "moon_radius": mr}
+
+    # ── 画 ────────────────────────────────────────────────────────────────
+    def paintEvent(self, _e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        W, H, S, cx, cy, R = self._geom()
+        p.fillRect(0, 0, W, H, BG)
+        b = self.data.body
+        p.setPen(FG)
+        f = QFont("DejaVu Sans"); f.setPixelSize(12); f.setBold(True); p.setFont(f)
+        p.drawText(QRectF(6, 2, W - 160, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                   "🪐 球心引力架构 (太阳系映射)")
+        p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
+        p.drawText(QRectF(max(0, W - 190), 2, 184, 18), Qt.AlignRight | Qt.AlignVCenter,
+                   "🖱 拖动旋转 · 滚轮缩放 · 双击复位")
+        # 引力井 (度量: 扁率按真特征值) + 轨道 (都在当前三维变换下)
+        self._gravity_well(p, cx, cy, R, b.get("sun", {}))
+        p.setPen(QPen(GRID, 1, Qt.DashLine))
+        for ring in self._grids:
+            pt = [self._proj(x, y, 0.0, cx, cy, R) for x, y in ring]
+            for j in range(len(pt) - 1):
+                p.drawLine(QPointF(pt[j][0], pt[j][1]), QPointF(pt[j + 1][0], pt[j + 1][1]))
+        # 力的相互作用 (真源连线) —— 先画线, 再画球 (球压线, 视觉更干净)
+        self._draw_forces(p, cx, cy, R, b)
+        # 球体 (按深度排序: 远的先画)
+        pos = self.positions(cx, cy, R)
+        sats = b.get("sats", {}).get("list") or []
+        items = [("sun", cx, cy, S * self.RAD["sun"], pos.get("sun", (cx, cy, 0.0))[2], None)]
+        for key in ("mercury", "jupiter", "mars", "earth"):
+            x, y, z = pos[key]
+            items.append((key, x, y, S * self.RAD[key], z, None))
+        for i, (x, y, z, sk) in enumerate(pos["_sat"]):
+            items.append(("sat", x, y, S * self.RAD["sat"] * (1.8 if sk == b.get("sats", {}).get("active") else 1.0),
+                          z, sk))
+        mx, my, mz = pos["moon"]
+        items.append(("moon", mx, my, S * self.RAD["moon"], mz, None))
+        items.sort(key=lambda t: t[4])
+        for kind, x, y, r, _z, sk in items:
+            if kind == "sat":
+                act = (sk == b.get("sats", {}).get("active"))
+                live = bool(b.get("sats", {}).get("list")) and any(
+                    d.get("SK") == sk and isinstance(d.get("偏差_mps"), (int, float))
+                    for d in sats)
+                self._sphere(p, x, y, r, self.COL["sat"], 1.0 if (act and live) else (0.7 if live else 0.32))
+                if act:
+                    p.setPen(QPen(GOLD, 1)); p.setBrush(Qt.NoBrush)
+                    p.drawEllipse(QPointF(x, y), r + 3, r + 3)
+                continue
+            ecol = self.COL[kind] if kind != "moon" else self.COL["moon"]
+            dkey = "sun" if kind == "sun" else kind
+            energy = b.get(dkey, {}).get("grad_norm") if kind == "sun" else (1.0 if self._live(b.get(dkey, {})) else 0.35)
+            self._sphere(p, x, y, r, ecol, energy)
+        # 地月细连线 + 标签
+        ex, ey, _ez = pos["earth"]
+        p.setPen(QPen(QColor(120, 132, 150, 170), 1))
+        p.drawLine(QPointF(ex, ey), QPointF(mx, my))
+        self._labels(p, pos, cx, cy, R, b, W, H, S)
+        self._legend(p, W, H, b)
+        p.end()
+
+    def _gravity_well(self, p, cx, cy, R, sun):
+        e1, e2 = sun.get("eig_min"), sun.get("eig_max")
+        ratio = 1.0
+        if e1 and e2 and float(e2) > 0:
+            ratio = max(0.35, min(1.0, float(e1) / float(e2)))
+        for i in range(6):
+            rr = 0.10 + 0.055 * i
+            alpha = 88 - i * 11
+            p.setPen(QPen(QColor(210, 153, 34, max(18, alpha)), 1))
+            pts = [self._proj(rr * math.cos(t / 60.0 * 2 * math.pi),
+                              rr * ratio * math.sin(t / 60.0 * 2 * math.pi), 0.0, cx, cy, R)
+                   for t in range(61)]
+            for j in range(len(pts) - 1):
+                p.drawLine(QPointF(pts[j][0], pts[j][1]), QPointF(pts[j + 1][0], pts[j + 1][1]))
+
+    def _draw_forces(self, p, cx, cy, R, b):
+        """力的相互作用: 每条真源连线两遍画 (外发光 + 实芯); 反馈类虚线**慢速流动**。
+
+        不做闪烁/脉冲 —— 线宽 2.2px 实芯 + 6px 半透明发光, 人眼友好; 虚线相位连续推进,
+        永远不会"整条消失"。
+        """
+        pos = self.positions(cx, cy, R)
+        body_ids = {x[1] for x in BODIES}
+        extpos = self._ext_positions(cx, cy, R)
+        kind_style = {"condition": (CYAN, False), "semantic": (GOLD, False),
+                      "drive": (GREEN, False), "feedback": (VIOLET, True), "misc": (QColor("#8b949e"), True)}
+        p.setRenderHint(QPainter.Antialiasing, True)
+        for e in self._edges:
+            a, c = e["f"], e["t"]
+            pa = pos.get(self._key_of(a)) if a in body_ids else extpos.get(a)
+            pb = pos.get(self._key_of(c)) if c in body_ids else extpos.get(c)
+            if a not in body_ids and a not in extpos:
+                continue
+            if c not in body_ids and c not in extpos:
+                continue
+            if pa is None or pb is None:
+                continue
+            x1, y1 = float(pa[0]), float(pa[1])
+            x2, y2 = float(pb[0]), float(pb[1])
+            col, dashed = kind_style.get(e["kind"], (QColor("#8b949e"), False))
+            bb = e["body_body"]
+            core = QColor(col); core.setAlpha(210 if bb else 120)
+            glow = QColor(col); glow.setAlpha(46 if bb else 22)
+            pen_w = 2.2 if bb else 1.4
+            if dashed:
+                # 慢速流动 (相位连续): 虚线在动, 但绝不闪、不断 (老倪: 不要高频闪烁/不要很快消失)
+                pen_g = QPen(glow, pen_w + 3.6, Qt.CustomDashLine); pen_g.setDashPattern([3.0, 3.0]); pen_g.setDashOffset(self._phase * 0.5)
+                pen_c = QPen(core, pen_w, Qt.CustomDashLine); pen_c.setDashPattern([3.0, 3.0]); pen_c.setDashOffset(self._phase * 0.5)
+            else:
+                pen_g = QPen(glow, pen_w + 3.6)
+                pen_c = QPen(core, pen_w)
+            p.setPen(pen_g); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+            p.setPen(pen_c); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+            if bb:                                     # 主体↔主体: 在中点前加一个小箭头 (方向可辨)
+                mx = x1 + (x2 - x1) * 0.62
+                my = y1 + (y2 - y1) * 0.62
+                self._arrow(p, x1, y1, x2, y2, mx, my, core, 3.4)
+        # 外圈星点 (体系外邻居)
+        for nid, (xx, yy) in extpos.items():
+            p.setPen(Qt.NoPen); p.setBrush(QColor(139, 148, 158, 150))
+            p.drawEllipse(QPointF(xx, yy), 1.8, 1.8)
+
+    def _arrow(self, p, x1, y1, x2, y2, x, y, col, size):
+        ang = math.atan2(y2 - y1, x2 - x1)
+        p.setPen(QPen(col, 1.4))
+        p.drawLine(QPointF(x, y), QPointF(x - size * math.cos(ang - 0.42), y - size * math.sin(ang - 0.42)))
+        p.drawLine(QPointF(x, y), QPointF(x - size * math.cos(ang + 0.42), y - size * math.sin(ang + 0.42)))
+
+    @staticmethod
+    def _key_of(nid):
+        for key, bid, _cn, _must in BODIES:
+            if bid == nid:
+                return key
+        return None
+
+    def _ext_positions(self, cx, cy, R):
+        """体系外邻居: 均布在外圈球壳上 (确定性: 按 id 排序 ⇒ 每次同一位置, 不随机跳)。"""
+        out = {}
+        n = max(1, len(self._ext))
+        for i, nid in enumerate(self._ext):
+            a = 2 * math.pi * i / n + 0.35
+            z = 0.34 * (1.0 if i % 2 else -1.0)                  # 交错前后, 有点立体感
+            rr = 1.06
+            x, y, _z = self._proj(rr * math.cos(a), rr * math.sin(a) * 0.72, z, cx, cy, R)
+            out[nid] = (x, y)
+        return out
+
+    def _labels(self, p, pos, cx, cy, R, b, W, H, S):
+        names = {"mercury": "☿ 接触流形", "earth": "♁ 前馈加速器", "mars": "♂ DiT 动作头",
+                 "jupiter": "♃ 性能流形"}
+        p.setPen(FG); f = QFont("DejaVu Sans"); f.setPixelSize(10); p.setFont(f)
+        for key, txt in names.items():
+            x, y, _z = pos[key]
+            p.drawText(QRectF(max(0, x - 60), y + 8, 120, 12), Qt.AlignCenter, txt)
+            sub = self._body_text(key, b.get(key, {}))       # 球下的真值一行 (取不到就写"未算/未测")
+            if sub:
+                p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
+                p.drawText(QRectF(max(0, x - 92), y + 19, 184, 11), Qt.AlignCenter,
+                           self._fit_text(p, sub, 184))
+        if pos["_sat"]:
+            sx, sy = pos["_sat"][0][0], pos["_sat"][0][1]
+            p.setPen(QColor("#7fd1c1")); f.setPixelSize(9); p.setFont(f)
+            n = len(pos["_sat"])
+            p.drawText(QRectF(max(0, sx - 90), sy + 10, 180, 11), Qt.AlignCenter,
+                       "🛰 原子技能 %d 颗 (绕地球)" % n)
+        mx, my, _mz = pos["moon"]
+        p.setPen(DIM); f.setPixelSize(9); p.setFont(f)
+        p.drawText(QRectF(max(0, mx - 46), my + 7, 92, 11), Qt.AlignCenter, "🌙 校正器")
+        # 太阳的文字
+        p.setPen(FG); f.setPixelSize(12); f.setBold(True); p.setFont(f)
+        p.drawText(QRectF(cx - 90, cy + S * self.RAD["sun"] + 6, 180, 14), Qt.AlignCenter, "☀ 流形引擎")
+        p.setPen(GOLD); f.setPixelSize(9); f.setBold(False); p.setFont(f)
+        p.drawText(QRectF(6, cy + S * self.RAD["sun"] + 20, W - 12, 12), Qt.AlignCenter,
+                   self._fit_text(p, self._sun_text(b.get("sun", {})), W - 16))
+
+    @staticmethod
+    def _fit_text(p, text, width):
+        try:
+            return p.fontMetrics().elidedText(str(text), Qt.ElideRight, int(max(24, width)))
+        except Exception:                                                    # noqa: BLE001
+            return str(text)
+
+    def _legend(self, p, W, H, b):
+        p.setPen(DIM); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
+        y0 = H - 44
+        s = b.get("sun", {})
+        e1, e2 = s.get("eig_min"), s.get("eig_max")
+        mtxt = ("度量 g dim=%s %s 特征值 %.2f~%.2f" % (s.get("metric_dim"), s.get("metric_mode"), e1, e2)) if e1 else "度量 g 未读 torque_live"
+        nv = self.info.get("checked", {})
+        miss = [k for k, v in nv.items() if not v.get("在")]
+        p.drawText(QRectF(4, y0, W - 8, 11), Qt.AlignLeft,
+                   self._fit_text(p, "力的相互作用 (画布真源): 主体↔主体 %d 条 · 主体↔体系外节点 %d 条 · 外圈灰点 = 体系外直接邻居 %d 个"
+                                  % (sum(1 for e in self._edges if e["body_body"]),
+                                     sum(1 for e in self._edges if not e["body_body"]), len(self._ext)), W - 8))
+        p.setPen(DIM)
+        p.drawText(QRectF(4, y0 + 11, W - 8, 11), Qt.AlignLeft,
+                   self._fit_text(p, "线义: 实线青=几何条件 · 实线金=语义条件(直连) · 实线绿=动作/前馈 · 慢虚线紫=反馈/回灌(流动, 不闪) · "
+                                  "角度映射: 水星←进度·地球←前馈请求·火星←块步λ·木星←η·月球与卫星=地球相位(协同)", W - 8))
+        p.setPen(DIM)
+        p.drawText(QRectF(4, y0 + 22, W - 8, 11), Qt.AlignLeft,
+                   self._fit_text(p, "真源: engine_latest(帧龄 %.1fs) · torque_live(%s) · skill_latest · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布 %d 节点/%d 连线 · 节点映射核对 %d/%d"
+                                  % (s.get("帧龄") if isinstance(s.get("帧龄"), (int, float)) else -1.0, mtxt,
+                                     (self.data.frames or {}).get("n", 0), len(self.data.nodes), len(self.data.links),
+                                     len(BODIES) - len(miss), len(BODIES)), W - 8))
+        if miss or self.data.err:
+            p.setPen(RED)
+            p.drawText(QRectF(4, y0 + 33, W - 8, 11), Qt.AlignLeft,
+                       self._fit_text(p, "⚠ 缺: %s %s" % (",".join(miss), ("· 读源异常 %d 处" % len(self.data.err)) if self.data.err else ""), W - 8))
+
     def _sphere(self, p, x, y, r, col, energy=None):
-        """球体: 径向渐变 (光从左上) + 高光点 + 描边; energy<1 ⇒ 压暗 (未运行)。"""
         r = max(2.0, float(r))
         f = 0.35 if (isinstance(energy, (int, float)) and energy < 0.5) else 1.0
         c = QColor(col)
@@ -454,14 +779,25 @@ class OrbitalArchView(QWidget):
         p.setPen(QPen(QColor(c).lighter(140), 1)); p.setBrush(Qt.NoBrush)
         p.drawEllipse(QPointF(x, y), r, r)
 
-    def _body_label(self, p, key, x, y, r, b, W, H):
-        txt = {"mercury": "☿ 接触流形", "earth": "♁ 前馈加速器", "mars": "♂ DiT 动作头", "jupiter": "♃ 性能流形"}[key]
-        p.setPen(FG); f = QFont("DejaVu Sans"); f.setPixelSize(10); p.setFont(f)
-        p.drawText(QRectF(max(0, x - 60), y + r + 2, 120, 12), Qt.AlignCenter, txt)
-        sub = self._body_text(key, b.get(key, {}))
-        if sub:
-            p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); f2.setBold(False); p.setFont(f2)
-            p.drawText(QRectF(2 if x - 90 < 2 else x - 90, y + r + 14, 180, 11), Qt.AlignCenter, sub[:44])
+    def _body_text(self, key, d):
+        """每个球下方的真值一行 (取不到 ⇒ 写"未算/未测", 不填 0 不编数)。"""
+        if key == "mercury":
+            if not isinstance(d.get("progress"), (int, float)):
+                return d.get("note") or "流形量未算 (无真帧)"
+            return "‖e∥‖=%.4fm · ‖e⊥‖=%.4fm · %s" % (d["progress"], d.get("risk") or 0.0, str(d.get("state") or "")[:10])
+        if key == "jupiter":
+            if not isinstance(d.get("eta"), (int, float)):
+                return d.get("note") or "流形量未算 (无真帧)"
+            return "V_p=%.3g · η=%.3f" % (d.get("V_p") or 0.0, d["eta"])
+        if key == "earth":
+            if not isinstance(d.get("req_mps"), (int, float)):
+                return "前馈请求未测 (无在职技能)"
+            return "u_ff=%.2f m/s · %s" % (d["req_mps"], "可行" if d.get("可行") else "削")
+        if key == "mars":
+            if not isinstance(d.get("action_norm"), (int, float)):
+                return "动作头未跑"
+            return "‖a‖=%.3f · 条件 %d 路" % (d["action_norm"], int(d.get("cond_n") or 0))
+        return ""
 
     def _sun_text(self, s):
         if not isinstance(s.get("M"), (int, float)):
@@ -472,111 +808,3 @@ class OrbitalArchView(QWidget):
         if isinstance(s.get("T_norm"), (int, float)):
             t += " · T=%.1f%sN·m" % (s["T_norm"], "≤" if s.get("clip") else "~")
         return t
-
-    def _body_text(self, key, d):
-        if key == "mercury":
-            if not isinstance(d.get("progress"), (int, float)):
-                return d.get("note") or "流形量未算 (无真帧)"
-            return "‖e∥‖=%.4fm · ‖e⊥‖=%.4fm · %s" % (d["progress"], d.get("risk") or 0.0, str(d.get("state") or "")[:12])
-        if key == "jupiter":
-            if not isinstance(d.get("eta"), (int, float)):
-                return d.get("note") or "流形量未算 (无真帧)"
-            return "V_p=%.3g · η=%.3f · δ⊥=%.3f" % (d.get("V_p") or 0.0, d["eta"], d.get("d_perp") or 0.0)
-        if key == "earth":
-            if not isinstance(d.get("req_mps"), (int, float)):
-                return "前馈请求未测 (无在职技能)"
-            return "u_ff=%.2f m/s · 偏差 %s · %s" % (d["req_mps"], ("%.3f" % d["dev_mps"]) if isinstance(d.get("dev_mps"), (int, float)) else "—",
-                                                   "可行" if d.get("可行") else "削")
-        if key == "mars":
-            if not isinstance(d.get("action_norm"), (int, float)):
-                return "动作头未跑"
-            return "‖a‖=%.3f · 条件 %d 路 · H=%s" % (d["action_norm"], int(d.get("cond_n") or 0), d.get("H"))
-        return ""
-
-    def _draw_links(self, p, cx, cy, R, b):
-        """只画真连线 (画布 links 真源里存在的), 缺哪条如实标「真源无此连线」。"""
-        cnt = {"真": 0, "缺": 0}
-        for f, t, label in KEY_EDGES:
-            ok = self.data.edge_ok(f, t)
-            if not ok:
-                cnt["缺"] += 1
-                continue
-            cnt["真"] += 1
-        # 双通道: VLM 在左上外侧 (真节点 ssvlm)
-        vx, vy = cx - R * 0.98, cy - R * 0.62
-        p.setPen(QPen(GOLD, 1, Qt.DashLine))
-        p.drawArc(QRectF(vx, vy, (cx - vx) * 1.6, (cy - vy) * 1.35), 200 * 16, -120 * 16)
-        p.setPen(GOLD); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
-        p.drawText(QRectF(max(0, vx - 30), vy - 12, 150, 12), Qt.AlignLeft, "① 直连 · 语义条件 (VLM z)")
-        p.setPen(QPen(CYAN, 1, Qt.DashLine))
-        p.drawLine(QPointF(vx + 40, vy + 6), QPointF(cx - R * 0.30, cy - R * 0.16))
-        p.drawLine(QPointF(vx + 40, vy + 6), QPointF(cx - R * 0.60, cy - R * 0.30))
-        p.setPen(CYAN)
-        p.drawText(QRectF(max(0, vx - 30), vy + 20, 150, 12), Qt.AlignLeft, "② 旁路 · 几何条件 (→流形)")
-        # 内部回路 (条件: 太阳→流形→DiT; 反馈: DiT→前馈→调制器; 校正器↔调制器/回灌)
-        p.setPen(QPen(CYAN, 1, Qt.DotLine))
-        p.drawLine(QPointF(cx + R * 0.12, cy - R * 0.10), QPointF(cx + R * 0.24, cy - R * 0.34))    # 太阳→水星/木星方向
-        p.drawLine(QPointF(cx + R * 0.36, cy - R * 0.20), QPointF(cx + R * 0.60, cy - R * 0.44))    # 流形→DiT
-        p.setPen(QPen(GREEN, 1, Qt.DashLine))
-        p.drawLine(QPointF(cx + R * 0.60, cy - R * 0.10), QPointF(cx + R * 0.42, cy + R * 0.30))    # DiT→前馈
-        p.drawLine(QPointF(cx + R * 0.46, cy + R * 0.34), QPointF(cx + R * 0.86, cy + R * 0.20))    # 前馈→调制器
-        p.setPen(QPen(VIOLET, 1, Qt.DotLine))
-        p.drawArc(QRectF(cx - R * 1.15, cy - R * 0.55, R * 2.3, R * 1.9), 250 * 16, 150 * 16)      # 回灌闭环
-        p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
-        p.drawText(QRectF(cx - 150, cy + R * 1.02, 300, 12), Qt.AlignCenter,
-                   "反馈闭环: 校正器 → 融合定位建图 → 流形引擎 (状态回灌) · 卡门: 先验 update ‖ 传感器 measurement")
-        self._edge_stat = cnt
-
-    def _satellite_belt(self, p, cx, cy, R, S, b, ang):
-        s = b.get("sats", {})
-        lst = s.get("list") or []
-        if not lst:
-            return
-        base = ang.get("earth", 0.0)
-        for i, d in enumerate(lst):
-            a = base + 2 * math.pi * i / len(lst)
-            rr = R * 0.99
-            x, y = cx + rr * math.cos(a), cy + rr * 0.94 * math.sin(a)
-            act = (d.get("SK") == s.get("active"))
-            r = S * self.RAD["sat"] * (1.7 if act else 1.0)
-            live = isinstance(d.get("偏差_mps"), (int, float))
-            self._sphere(p, x, y, r, self.COL["sat"], 1.0 if (act and live) else (0.7 if live else 0.3))
-            if act:
-                p.setPen(QPen(GOLD, 1)); p.drawEllipse(QPointF(x, y), r + 3, r + 3)
-        p.setPen(DIM); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
-        p.drawText(QRectF(cx - 150, cy - R * 1.02 - 12, 300, 12), Qt.AlignCenter,
-                   "🛰 卫星带 = 原子技能 %d 条在职 (标定表 %s 条 · 亮=当前在职 %s)"
-                   % (len(lst), (s.get("n_calib") or "?"), s.get("active") or "—"))
-
-    def _label(self, p, x, y, txt, col, size, bold, cxref):
-        p.setPen(col); f = QFont("DejaVu Sans"); f.setPixelSize(size); f.setBold(bold); p.setFont(f)
-        p.drawText(QRectF(cxref - 90, y, 180, size + 4), Qt.AlignCenter, txt)
-
-    def _sub(self, p, x, y, txt, col, cxref, W):
-        p.setPen(col); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
-        p.drawText(QRectF(cxref - (W - 16) / 2.0, y, W - 16, 12), Qt.AlignCenter, txt)
-
-    def _legend(self, p, W, H, b):
-        p.setPen(DIM); f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
-        y0 = H - 42
-        p.drawText(QRectF(6, y0, W - 12, 11), Qt.AlignLeft,
-                   "角度映射 (位置=实测): 水星←接触进度 ‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步 λ · 木星←耦合效率 η · 月球=地球相位+锁定 (协同行进, 摆幅∝残差)")
-        s = b.get("sun", {})
-        e1, e2 = s.get("eig_min"), s.get("eig_max")
-        mtxt = ("度量 g: dim=%s %s 特征值 %.3f~%.3f (引力=度量, 井扁率按此)" % (s.get("metric_dim"), s.get("metric_mode"), e1, e2)) if e1 else "度量 g: 未读 torque_live"
-        nv = self.info.get("checked", {})
-        miss = [k for k, v in nv.items() if not v.get("在")]
-        edge_txt = "真连线 %d 条绘制" % sum(1 for f, t, _l in KEY_EDGES if self.data.edge_ok(f, t))
-        if getattr(self, "_edge_stat", None):
-            edge_txt += " (真源缺 %d 条已跳过)" % self._edge_stat["缺"]
-        age = s.get("帧龄")
-        p.drawText(QRectF(6, y0 + 12, W - 12, 11), Qt.AlignLeft,
-                   "真源: engine_latest(帧龄 %.1fs) · torque_live(%s) · skill_latest(帧龄 %s) · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布真源 90 节点/202 连线"
-                   % (age if isinstance(age, (int, float)) else -1.0, mtxt,
-                      ("%.1fs" % self.data.ages.get("zmax_data/ss_live/skill_latest.json", -1.0)),
-                      (self.data.frames or {}).get("n", 0)))
-        tail = "节点映射核对: %d/%d 命中" % (len(BODIES) - len(miss), len(BODIES)) + (" · 缺: %s" % ",".join(miss) if miss else "") + " · " + edge_txt
-        if self.data.err:
-            tail += " · ⚠ 读源异常 %d 处" % len(self.data.err)
-        p.setPen(RED if (miss or self.data.err) else DIM)
-        p.drawText(QRectF(6, y0 + 24, W - 12, 11), Qt.AlignLeft, tail[:130])

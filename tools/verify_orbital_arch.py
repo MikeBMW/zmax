@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 import tempfile
@@ -38,6 +39,19 @@ import orbital_arch as OA                                                 # noqa
 
 PASS = FAIL = 0
 ROWS = []
+
+
+def _arr(im):
+    """QImage → ndarray(H,W,3) int (走 constBits, 比逐像素 pixel() 快两个数量级)。"""
+    from PyQt5.QtGui import QImage
+    im2 = im.convertToFormat(QImage.Format_RGB32)
+    ptr = im2.constBits()
+    try:
+        ptr.setsize(im2.byteCount())
+    except Exception:                                                        # noqa: BLE001
+        ptr.setsize(im2.sizeInBytes())
+    a = np.frombuffer(ptr, dtype=np.uint8).reshape(im2.height(), im2.width(), 4)
+    return a[:, :, 2::-1].astype(int)                                        # BGRX → RGB
 
 
 def chk(tag, title, got, ok, expect=""):
@@ -174,11 +188,7 @@ def main():
     pm = view.grab()
     img = pm.toImage()
     W, H = pm.width(), pm.height()
-    arr = np.zeros((H, W, 3), dtype=int)
-    for y in range(H):
-        for x in range(W):
-            c = img.pixel(x, y)
-            arr[y, x] = [(c >> 16) & 255, (c >> 8) & 255, c & 255]
+    arr = _arr(img)
 
     def near(rgb, hexcol, tol=70):
         ref = np.array([int(hexcol[1:3], 16), int(hexcol[3:5], 16), int(hexcol[5:7], 16)])
@@ -209,40 +219,32 @@ def main():
         {"轨道像素": int(grid.sum()), "行≥8 的行数": int((rows >= 8).sum()), "列≥8 的列数": int((cols >= 8).sum())},
         int(grid.sum()) > 800 and int((rows >= 8).sum()) >= 10 and int((cols >= 8).sum()) >= 10,
         "轨道像素 >800 · 行≥8 ≥10 行 · 列≥8 ≥10 列")
-    # 月球相位锁定: **从像素里找月球球体** (不是用画的公式反推) —— 月球色掩膜 + 3×3 腐蚀去掉
-    # 文字笔画, 只在离地球 15~40px 的环带里取连通质心; 再在椭圆轨道基里解出 (角, 半径)。
-    ang = view._angles(body)
-    pe = OA.OrbitalArchView.ORB
-    S = max(120, min(W - 14, H - 20 - 46))
-    R = S * 0.46
-    eb = ang.get("earth", 0.0)
-    cx = W / 2.0
-    cy = 20 + (H - 20 - 46) / 2.0
-    ex = cx + R * pe["earth"] * np.cos(eb)
-    ey = cy + R * pe["earth"] * 0.94 * np.sin(eb)
-    ref = np.array([int(OA.OrbitalArchView.COL["moon"][1:3], 16), int(OA.OrbitalArchView.COL["moon"][3:5], 16),
-                    int(OA.OrbitalArchView.COL["moon"][5:7], 16)])
-    m0 = np.abs(arr - ref).sum(axis=2) < 60
-    er = m0.copy()
-    er[1:-1, 1:-1] = (m0[1:-1, 1:-1] & m0[:-2, 1:-1] & m0[2:, 1:-1] & m0[1:-1, :-2] & m0[1:-1, 2:] &
-                      m0[:-2, :-2] & m0[:-2, 2:] & m0[2:, :-2] & m0[2:, 2:])
-    ys, xs = np.nonzero(er)
-    dd = np.hypot(xs - ex, ys - ey)
-    near = (dd > 15) & (dd < 40)
-    got_moon = {"腐蚀后球体像素": int(er.sum()), "地球近旁(15~40px)候选": int(near.sum())}
-    ok4 = False
-    if near.sum() > 20:
-        mx, my = float(xs[near].mean()), float(ys[near].mean())
-        dx, dy = mx - ex, my - ey
-        rr = float(np.hypot(dx, dy / 0.94))                 # 椭圆轨道基里的半径
-        aa = float(np.arctan2(dy / 0.94, dx))
-        dth = (aa - eb + np.pi) % (2 * np.pi) - np.pi       # 相位差
-        wob = view._wobble(body["moon"])
-        got_moon.update({"检测半径比": round(rr / (R * 0.085), 4), "期望 1+摆幅": round(1.0 + wob, 4),
-                         "相位差_rad": round(dth, 5), "摆幅(∝残差)": round(wob, 4), "地月距px": round(float(dd[near].mean()), 2)})
-        ok4 = abs(rr / (R * 0.085) - (1.0 + wob)) < 0.12 and abs(dth) < 0.15
-    chk("D4", "月球与地球同相位锁定 (协同行进): 从**像素里量出**月球方位 == 地球相位 (差≈0), 半径=0.085R·(1+摆幅)",
-        got_moon, ok4, "相位差 <0.15rad · 半径比 ≈ 1+摆幅 (±0.12)")
+    # D4 卫星群必须**绕地球**、且与月球不重叠 (老倪 2026-10-16: 「这些卫星都是原子技能,
+    #    应该围绕在地球周围, 不能散落在太阳系」) —— 在**轨道平面坐标**里核 (与视角无关),
+    #    再用屏幕像素核一遍 (真渲染确实贴在地球旁)。
+    lo = view.local_offsets()
+    sat_r = [math.hypot(dx, dy) for dx, dy, _sk, _aa in lo["sat"]]
+    sat_ang = [aa for _dx, _dy, _sk, aa in lo["sat"]]
+    d_angles = [((a - lo["earth_angle"] + math.pi) % (2 * math.pi)) - math.pi for a in sat_ang]
+    moon_r = math.hypot(*lo["moon"])
+    chk("D4", "原子技能 = **绕地球**的卫星群 (平面半径 = %.3fR 恒定 · 与地球同向公转 · 均布), 且与月球不同圈不重叠"
+        % OA.OrbitalArchView.SAT_R,
+        {"卫星数": len(sat_r), "卫星半径": [round(x, 4) for x in sat_r],
+         "相对地球相位(rad)": [round(x, 3) for x in d_angles],
+         "月球半径": round(moon_r, 4), "卫星圈 vs 月球圈": [OA.OrbitalArchView.SAT_R, round(OA.OrbitalArchView.MOON_R, 3)]},
+        len(sat_r) >= 6 and max(abs(x - OA.OrbitalArchView.SAT_R) for x in sat_r) < 1e-9
+        and max(abs(x) for x in d_angles) < 2 * math.pi
+        and moon_r > max(sat_r) + 0.01, "卫星半径恒定 = SAT_R · 月球圈在卫星圈之外 (不叠)")
+    # 屏幕像素核对: 每颗卫星与地球的屏幕距离 与 平面半径×R×zoom 一致 (量级正确)
+    _pos = view.positions()
+    _ex, _ey, _ = _pos["earth"]
+    _scr = [math.hypot(x - _ex, y - _ey) for x, y, _z, _sk in _pos["_sat"]]
+    _R = _pos["_R"]
+    chk("D4b", "屏幕上 (真渲染坐标) 卫星确实贴在地球旁: 屏距 ≈ 0.055R·投影 (不是散落在太阳系)",
+        {"屏距px": [round(x, 1) for x in _scr], "0.055R": round(0.055 * _R, 1),
+         "最远卫星屏距 / 太阳半径px": round(max(_scr) / (0.052 * 2 * _R / 0.46 if _R else 1), 2)},
+        max(_scr) < 0.16 * _R and min(_scr) > 0.01 * _R, "屏距在 0.01R~0.16R 之间 (贴着地球)")
+
     # 无数据: 压暗 + 文案诚实
     with tempfile.TemporaryDirectory() as td:
         v2 = OA.OrbitalArchView()
@@ -309,6 +311,130 @@ def main():
     src = open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
     writes = [k for k in ('open(fpath, "w"', "open(p, \"w\"", "json.dump(", "np.save", ".save(") if k in src]
     chk("E4", "视图是只读的 (源码里没有写文件口; 只读真源画图)", {"命中写口": writes}, not writes, "无写口")
+
+    # ═══ H 鼠标可操作 (旋转 / 缩放 / 复位) ═══
+    from PyQt5.QtCore import QPoint, Qt
+    from PyQt5.QtGui import QMouseEvent
+    v3 = OA.OrbitalArchView()
+    v3.resize(680, 900)
+    v3.show()
+    app.processEvents()
+    _img0 = v3.grab().toImage()
+    s0 = (v3.yaw, v3.pitch, v3.zoom)
+    ev1 = QMouseEvent(QMouseEvent.MouseButtonPress, QPoint(120, 120), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+    ev2 = QMouseEvent(QMouseEvent.MouseMove, QPoint(210, 160), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+    v3.mousePressEvent(ev1)
+    v3.mouseMoveEvent(ev2)
+    app.processEvents()
+    s1 = (v3.yaw, v3.pitch, v3.zoom)
+    _img1 = v3.grab().toImage()
+
+    class _W:                                                                 # 假滚轮事件: 滚 3 格
+        def angleDelta(self):
+            class _D:
+                def y(self):
+                    return 360
+            return _D()
+    v3.wheelEvent(_W())
+    s2 = (v3.yaw, v3.pitch, v3.zoom)
+    v3.mouseDoubleClickEvent(ev1)
+    s3 = (v3.yaw, v3.pitch, v3.zoom)
+    # 俯仰/缩放限幅 (拖到极端也不翻车)
+    v3.pitch = 0.0
+    for _ in range(60):
+        v3.mousePressEvent(QMouseEvent(QMouseEvent.MouseButtonPress, QPoint(100, 100), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+        v3.mouseMoveEvent(QMouseEvent(QMouseEvent.MouseMove, QPoint(100, 100 + 60), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+    _pitch_hi = v3.pitch
+    for _ in range(120):
+        v3.mousePressEvent(QMouseEvent(QMouseEvent.MouseButtonPress, QPoint(100, 100), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+        v3.mouseMoveEvent(QMouseEvent(QMouseEvent.MouseMove, QPoint(100, 100 - 60), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))
+    _pitch_lo = v3.pitch
+    for _ in range(40):
+        v3.wheelEvent(_W())
+    _zoom_hi = v3.zoom
+    for _ in range(120):
+        class _W2:
+            def angleDelta(self):
+                class _D2:
+                    def y(self):
+                        return -360
+                return _D2()
+        v3.wheelEvent(_W2())
+    _zoom_lo = v3.zoom
+    chk("H1", "鼠标真能用: 拖动 ⇒ 偏航/俯仰变化, 滚轮 ⇒ 缩放, 双击 ⇒ 复位 (且渲染图真的变了)",
+        {"拖动前": [round(x, 3) for x in s0], "拖动后": [round(x, 3) for x in s1],
+         "滚轮后 zoom": round(s2[2], 3), "双击复位": [round(x, 3) for x in s3],
+         "拖动前后图像变化像素": int(np.sum(np.abs(_arr(_img0) - _arr(_img1)).sum(axis=2) > 30))},
+        abs(s1[0]) > 0.2 and abs(s1[1] - s0[1]) > 0.05 and s2[2] > 1.05 and abs(s3[0]) < 1e-9
+        and abs(s3[2] - 1.0) < 1e-9
+        and int(np.sum(np.abs(_arr(_img0) - _arr(_img1)).sum(axis=2) > 30)) > 5000,
+        "yaw 变化>0.2 · pitch 变化>0.05 · zoom>1.05 · 复位回 (0, 0.42, 1.0) · 渲染图真变化 >5000 px")
+    chk("H2", "俯仰与缩放都有限幅 (拖/滚到极端不翻车, 图还在)",
+        {"pitch 上限": round(_pitch_hi, 3), "pitch 下限": round(_pitch_lo, 3),
+         "zoom 上限": round(_zoom_hi, 3), "zoom 下限": round(_zoom_lo, 3)},
+        abs(_pitch_hi) <= 1.1501 and abs(_pitch_lo) <= 1.1501 and _zoom_hi <= 2.4001 and _zoom_lo >= 0.5499,
+        "pitch ∈ [-1.15, 1.15] · zoom ∈ [0.55, 2.4]")
+
+    # ═══ I 力的相互作用连线 (真源 + 粗细 + 不闪) ═══
+    v3.reset_view()                       # 量线宽要在正视角 (H2 把视角拖到极端了, 不是干净量法)
+    app.processEvents()
+    ed = v3.interactions()
+    _bb = [e for e in ed if e["body_body"]]
+    _ex2 = [e for e in ed if not e["body_body"]]
+    _src_ok = all((e["f"], e["t"]) in canvas_links for e in ed)          # 每条都必须是画布真连线
+    # 反向: 画布上所有"至少一端是主体"的连线, 都必须出现在视图里 (有相互作用就显示)
+    _body_ids = {x[1] for x in OA.BODIES}
+    _want = {(l.get("f"), l.get("t")) for l in data.links
+             if (l.get("f") in _body_ids or l.get("t") in _body_ids)}
+    _got = {(e["f"], e["t"]) for e in ed}
+    chk("I1", "有相互作用就显示连线: 画布上所有「至少一端是主体的真连线」都画了 (无漏无造)",
+        {"视图线数": len(ed), "主体↔主体": len(_bb), "主体↔体系外": len(_ex2),
+         "真源应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
+        _src_ok and _want == _got and len(ed) > 20, "真源===视图, 一条不漏一条不造")
+    # 线宽: 在一条主体↔主体线的中点附近取垂直剖面, 数"实芯色"像素 ⇒ 不能太细
+    p2 = v3.positions()
+    _e0 = next((e for e in _bb if e["f"] in _body_ids and e["t"] in _body_ids), None)
+    _thick = None
+    if _e0 is not None:
+        def _posof(nid):
+            if OA.OrbitalArchView._key_of(nid) == "sun":
+                return (p2["_cx"], p2["_cy"], 0.0)
+            return p2.get(OA.OrbitalArchView._key_of(nid))
+
+        _a = _posof(_e0["f"])
+        _b2 = _posof(_e0["t"])
+        if _a and _b2:
+            _mx = (_a[0] + _b2[0]) / 2.0
+            _my = (_a[1] + _b2[1]) / 2.0
+            _A = _arr(v3.grab().toImage())
+            _col = {"condition": [0x39, 0xc5, 0xcf], "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
+                    "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[_e0["kind"]]
+            _mask = np.abs(_A - np.array(_col)).sum(axis=2) < 150
+            _box = _mask[max(0, int(_my) - 6):int(_my) + 7, max(0, int(_mx) - 6):int(_mx) + 7]
+            _thick = int(_box.sum(axis=1).max()) if _box.size else 0
+    chk("I2", "连线不细 (主体↔主体线有 2.2px 实芯 + 6px 柔光): 剖面上实芯色像素数 ≥ 2",
+        {"线": "%s→%s (%s)" % (_e0["f"], _e0["t"], _e0["kind"]) if _e0 else None, "剖面最宽像素": _thick},
+        (_thick or 0) >= 2, "剖面 ≥2 像素 (不与背景混成 1px 细丝)")
+    # 不闪/不消失: 相邻两帧 (一个 tick) 的线像素数变化小, 且都没有归零; 三帧内不做透明度脉冲
+    def _linepx():
+        _a = _arr(v3.grab().toImage())
+        _m = np.zeros(_a.shape[:2], dtype=bool)
+        for _col in ([0x39, 0xc5, 0xcf], [0xd2, 0x99, 0x22], [0x3f, 0xb9, 0x50], [0xa3, 0x71, 0xf7]):
+            _m |= (np.abs(_a - np.array(_col)).sum(axis=2) < 150)
+        return int(_m.sum()), _m
+    _c1, _m1 = _linepx()
+    v3._phase = (v3._phase + 0.06) % 12.0
+    _c2, _m2 = _linepx()
+    v3._phase = (v3._phase + 0.06) % 12.0
+    _c3, _m3 = _linepx()
+    _diff = int((_m1 ^ _m2).sum())
+    _rel = _diff / max(1, _c1)
+    chk("I3", "连线平顺不闪: 帧间只做慢速流动 (变化像素占比小), 三帧线量稳定 (无透明度脉冲/不整条消失)",
+        {"三帧线像素": [_c1, _c2, _c3], "帧间变化像素": _diff, "变化占比": round(_rel, 3),
+         "三帧极差/均值": round((max(_c1, _c2, _c3) - min(_c1, _c2, _c3)) / max(1.0, (_c1 + _c2 + _c3) / 3.0), 3)},
+        0 < _rel < 0.35 and (max(_c1, _c2, _c3) - min(_c1, _c2, _c3)) / max(1.0, (_c1 + _c2 + _c3) / 3.0) < 0.12
+        and min(_c1, _c2, _c3) > 300,
+        "变化占比 <0.35 · 三帧线量极差 <12% · 每帧线像素 >300 (不闪不消失)")
 
     # ═══ F 文案诚实 ═══
     chk("F1", "图注写清 角度映射 (位置不是装饰, 是实测量的映射)",
