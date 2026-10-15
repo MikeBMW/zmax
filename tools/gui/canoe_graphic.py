@@ -575,6 +575,16 @@ class WaveArea(QWidget):
     def _clock_axes(self):
         ax = ClockAxis(orientation="bottom")
         ax.store = self.store
+        # 🔴 2026-10-15 老倪「主窗口没有信号」的**真根因**(窗口日志实测 5430 次 RecursionError):
+        #   pyqtgraph 的 AxisItem 在收到 linkedView 范围变化时会 setRange → updateAutoSIPrefix →
+        #   _updateLabel → _adjustSize → _updateHeight …; 9 个子图各挂一个 ClockAxis 且互相 X 链接,
+        #   每帧又对**每个**子图 setXRange ⇒ 通知风暴 → 递归爆栈 ⇒ 布局/绘制整块失败 ⇒ 主窗口空白(连
+        #   时间轴线都画不出来)。修: ① 关掉自动 SI 前缀(那条链的起点) ② 见 _build_items/refresh:
+        #   只让最下面那张子图显示刻度值、X 范围只设一次(链接会自己传)。
+        try:
+            ax.enableAutoSIPrefix(False)
+        except Exception:                                                      # noqa: BLE001
+            pass
         return {"bottom": ax}
 
     def _label_y(self):
@@ -878,6 +888,13 @@ class WaveArea(QWidget):
                     self.main_plot = p
                 else:
                     p.setXLink(self.main_plot)
+                # 🕒 与场景同步的时间轴线: 只让**最下面**那张子图显示时刻刻度 (整列共用一条), 其余隐藏刻度
+                #   值 —— 既符合 CANoe 观感, 也把"9 条轴同时重排版"的通知风暴掐掉(老倪 2026-10-15)。
+                _last = (i == len(keys) - 1)
+                _bax = p.getAxis("bottom")
+                _bax.setStyle(showValues=_last)
+                if not _last:
+                    _bax.setHeight(12)
                 pen = pg.mkPen(self.store.get(k).color, width=self.store.get(k).bold)
                 item = p.plot(pen=pen, symbol=None)
                 item.setClipToView(True)      # 数据裁到本子图内, 不越界
@@ -996,17 +1013,24 @@ class WaveArea(QWidget):
                 self.main_plot.setXRange(*x_range, padding=0)
             except Exception:
                 pass
-        if self.mode == self.MODE_SINGLE:
-            for k, item in self.items.items():
-                b = store.bufs.get(k)
-                if b is None or b.n == 0:
-                    continue
-                plot = item.getViewBox().parentItem()
-                if x_range is not None:
-                    plot.setXRange(*x_range, padding=0)
-                if fit_y:
+        if self.mode == self.MODE_SINGLE and self.main_plot is not None:
+            # 🔴 X 范围**只设一次**(子图互相 X 链接, 链接会自己传)。原来对 9 张图逐个 setXRange ⇒
+            #   每张图的 linkedView 又反过来通知其它图 ⇒ 递归爆栈(日志 5430 次 RecursionError, 主窗口空白)。
+            if x_range is not None:
+                try:
+                    self.main_plot.setXRange(*x_range, padding=0)
+                except Exception:                                              # noqa: BLE001
+                    pass
+            if fit_y:
+                for k, item in self.items.items():
+                    b = store.bufs.get(k)
+                    if b is None or b.n == 0:
+                        continue
                     t, v = b.arrays()
-                    plot.setYRange(float(np.min(v)), float(np.max(v)), padding=0.1)
+                    try:
+                        item.getViewBox().setYRange(float(np.min(v)), float(np.max(v)), padding=0.1)
+                    except Exception:                                          # noqa: BLE001
+                        pass
 
     def fit_y(self):
         if self.mode == self.MODE_SINGLE:
@@ -1149,6 +1173,9 @@ class CanoeGraphicWidget(QWidget):
         self.ds_src = None             # 🌐 全局数据空间 (DDS 总线帧)
         self.scope = "3d"              # 数据范围: "3d"=只看 3D 场景数据 (默认) | "all"=全部来源
         self._default_done = False     # 3D 场景默认曲线是否已自动勾上
+        self._auto_checked = set()     # 已被自动勾过的默认信号 (老倪 2026-10-15「主窗口没有信号」: 源是
+                                       #   陆续到齐的(sstrace/sseng 不同时刻才落盘) ⇒ 必须**增量补勾**;
+                                       #   每条只自动勾一次, 用户手动取消的不再顶回来)
         self._watch_prefixes = set()   # 「增加信号话题」点名但暂无帧的话题: 出帧即自动画
         self.catalog = None            # {topic: {type, fields}}
         self.selected = []             # 画在波形里的信号 key (有序, 决定颜色)
@@ -1558,21 +1585,34 @@ class CanoeGraphicWidget(QWidget):
                 self.wave.set_curves(self.selected)
 
     def _apply_default_selection(self):
-        """首屏默认: 只显示 3D 场景数据, 并自动勾上代表曲线 (打开就有波形看)"""
+        """首屏默认: 只显示 3D 场景数据, 并自动勾上代表曲线 (打开就有波形看)
+
+        🔴 2026-10-15 老倪「主窗口没有信号」——真根因(实测窗口日志): 原来这里**一次置位** `_default_done`,
+        而开窗第一次建树时各源还没铺齐(`HostJsonSource` 一轮读一个文件, sstrace/sseng 不同时刻才到)
+        ⇒ 只勾上当时存在的那 3 条(日志: "已勾 3 条") ⇒ 3 条全是单样本的 3D 快照 ⇒ 主窗口一条曲线都没有。
+        口径改成**增量补勾**: 每次建树把"库里已有、且从没被自动勾过"的默认信号补齐; 每条只自动勾一次
+        (用户手动取消的不会被顶回来)。
+        """
         self._apply_watch()
-        if self._default_done or self.scope != "3d":
+        if self.scope != "3d":
             return
         keys = [k for k in self.DEFAULT_3D if k in self.store.bufs]
         if len(keys) < 3:
-            return              # 3D 场景还没跑过 (快照未落) → 下次建树再试
-        self._default_done = True
+            return                      # 3D 场景还没跑过 (快照未落) → 下次建树再试
+        _new = [k for k in keys if k not in self._auto_checked]
+        if not _new:
+            self._default_done = True
+            return
         for it in self._all_items():
             if not (it.flags() & Qt.ItemIsUserCheckable):
                 continue        # 非当前场景区域的重名行不可勾选(老倪: 蓝区不该跟着打勾)
-            if it.data(0, Qt.UserRole) in keys and it.checkState(0) != Qt.Checked:
+            if it.data(0, Qt.UserRole) in _new and it.checkState(0) != Qt.Checked:
                 it.setCheckState(0, Qt.Checked)
+        self._auto_checked.update(_new)
+        self._default_done = not [k for k in keys if k not in self._auto_checked]
         self.ymode.setCurrentIndex(2)       # 每信号独立图
-        self._log(f"🎬 首屏: 只显示 3D 场景数据, 已勾 {len(keys)} 条 (末端 xyz · 光模块头到孔 · 接触概率 · 安全边界) "
+        _names = " · ".join(x.replace("sstrace.", "").replace("sseng.", "") for x in _new[:4])
+        self._log(f"🎬 首屏: 只显示 3D 场景数据, 本轮补勾 {len(_new)} 条 ({_names}) · 已选共 {len(self.selected)} 条 "
                   f"· 要加别的话题点「➕ 增加信号话题」")
 
     def _add_topic_dialog(self):
@@ -2565,7 +2605,10 @@ class CanoeGraphicWidget(QWidget):
                                                         float(pb["t_s"])))
         elif pb:
             clk += " · ▶ 3D 播放已停 (进度条不动/播放完)"
-        self.lb_info.setText(f"{' / '.join(src_state)} · 信号 {len(self.selected)} · 点 {self.store.total_pts}"
+        _with = sum(1 for k in self.selected
+                    if (self.store.bufs.get(k) is not None and getattr(self.store.bufs.get(k), "n", 0) >= 2))
+        self.lb_info.setText(f"{' / '.join(src_state)} · 信号 {len(self.selected)} (有波形 {_with}) "
+                             f"· 点 {self.store.total_pts}"
                              f"{agestr}{clk} · 本机时刻 {time.strftime('%H:%M:%S')}")
         parts = []
         for k in keys[:8]:

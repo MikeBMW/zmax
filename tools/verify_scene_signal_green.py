@@ -144,6 +144,31 @@ def main() -> int:
     for k, n, lo, hi in live[:6]:
         print("      ✅ %-24s n=%-4d y∈[%s, %s]" % (k, n, lo, hi))
 
+    print("\n⑦ 与场景同步的时间轴线 + 标记线 (老倪: 「与场景同步的时间轴线呢?」)")
+    try:
+        _plots = list(getattr(w.wave, "plots", []) or [])
+        _show = [i for i, pp in enumerate(_plots)
+                 if getattr(pp.getAxis("bottom"), "style", {}).get("showValues", True)]
+        _ax_ok = bool(_plots) and _show == [len(_plots) - 1]          # 只最下面一张显示时刻刻度
+        # 标记线口径 = 跟 3D 播放游标 (pb.t_s), 不是"最新样本": 老倪要的是**和 3D 场景同一时刻**
+        _mk_ok, _pb = False, getattr(w.wave, "pb", None) or {}
+        try:
+            _scene_x = _pb.get("t_s") if _pb.get("fresh") else None
+            if getattr(w.wave, "marks", None) and _scene_x is not None:
+                _mk_ok = abs(float(w.wave.marks[0].value()) - float(_scene_x)) < 1e-6
+        except Exception:                                                      # noqa: BLE001
+            _mk_ok = False
+        _lab_ok = any("场景时刻" in str(pp.getAxis("bottom").labelText) for pp in _plots)
+        ok &= (_ax_ok and _mk_ok and _lab_ok)
+        print("   %s 整列共用一条时间轴 (子图 %d 张, 显示刻度的是第 %s 张)"
+              % ("✅" if _ax_ok else "❌", len(_plots), (_show[-1] + 1) if _show else "无"))
+        print("   %s 标记线 == 3D 播放游标 场景时刻 %s (要与 3D 场景 HUD 对得上)"
+              % ("✅" if _mk_ok else "❌", (_pb.get("t_s") if _pb.get("fresh") else "3D 未播放")))
+        print("   %s 轴标签 = 场景时刻 (可切换绝对时刻)" % ("✅" if _lab_ok else "❌"))
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取时间轴/标记线失败: %s" % _e)
+
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)
