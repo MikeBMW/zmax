@@ -36,6 +36,8 @@ SKILL_PHYS = os.path.join(ROOT, "zmax_data", "ss_live", "skill_phys.json")
 TRACE = os.path.join(ROOT, "zmax_data", "ss_live", "trace_live.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
+L2_FBLAT = os.path.join(ROOT, "zmax_data", "eval", "l2_speed_fb_latency.json")
+L2_FBLAT_STALE_S = 3600.0        # 探针落盘超过 1h ⇒ 视为陈旧, 不冒充"现在测得"
 TASK_RUNS = os.path.join(ROOT, "zmax_data", "task_runs")
 SKILL_CALIB = os.path.join(ROOT, "config", "calib", "zmax_skill_physics.json")
 
@@ -311,6 +313,47 @@ def p_sys_l2_physics():
             "extra": {"违反明细": det[:5]}}
 
 
+def p_sys_l2_fb_latency():
+    """⚡ Phase 0 · L2 原子技能「速度反馈延迟」— 真源 = 只读探针 probe_l2_speed_fb_latency.py 的落盘。
+
+    语义边界 (不许硬套): 这是 **L2 技能回路**的反馈延迟
+      = ① 引擎→块 (块周期, 新速度指令多久产出一次) + ② 块→反馈 (技能速度反馈多久跟上)
+    **不是** perf.latency_e2e「采图→位姿输出」, 也不是机械臂实测速度 (那一腿需要真机位姿,
+    位姿停更时单列"不可采", 不并入本值)。
+    """
+    d = _load(L2_FBLAT, {}) or {}
+    age = _now_age(L2_FBLAT)
+    if not d or age < 0:
+        return _untested("perf.sys_l2_fb_latency",
+                         "还没跑过逐技能实测 ⇒ 跑 tools/probe_l2_speed_fb_latency.py (只读, 不下发指令)")
+    if age > L2_FBLAT_STALE_S:
+        return {"value": None, "mode": "未测", "unit": "ms", "n": 0, "src": L2_FBLAT, "age_s": age,
+                "note": "探针落盘已 %.0f 分钟 (>%.0f 分钟) ⇒ 陈旧, 不敢当现在测得; 重跑探针后即回复"
+                        % (age / 60.0, L2_FBLAT_STALE_S / 60.0)}
+    blk = (d.get("腿① 引擎→块_周期_ms") or {})
+    disp = (d.get("全技能合计") or {})
+    b50, b95 = blk.get("P50"), blk.get("P95")
+    d50, d95 = disp.get("P50_ms"), disp.get("P95_ms")
+    if not all(isinstance(x, (int, float)) for x in (b50, d50)):
+        return _untested("perf.sys_l2_fb_latency", "探针落盘里缺腿①/派发腿读数")
+    e2e50, e2e95 = b50 + d50, (b95 + d95 if isinstance(b95, (int, float)) and isinstance(d95, (int, float)) else None)
+    sk = d.get("技能") or {}
+    per = ["%s %s→%sms(n=%s)" % (k, (v.get("P50_ms")), (v.get("P95_ms")), v.get("n"))
+           for k, v in sorted(sk.items()) if v.get("n")]
+    pose = (d.get("物理腿_位姿反馈帧龄_s") or {}).get("现测")
+    stale_pose = isinstance(pose, (int, float)) and pose > 5.0
+    return {"value": round(e2e50, 2), "mode": "实测", "unit": "ms", "n": disp.get("n") or 0,
+            "src": L2_FBLAT, "age_s": age,
+            "note": "速度反馈延迟 = 引擎块周期 %.2fms (P95 %s) + 派发腿 %.2fms (P95 %s) = **%.2fms** (P95 %s) "
+                    "· 逐技能: %s · 物理腿(真机位姿反馈) %s"
+                    % (b50, b95, d50, d95, e2e50, e2e95, " ".join(per) or "无",
+                       ("不可采 (位姿帧龄 %.0fs)" % pose) if stale_pose else "在采"),
+            "extra": {"引擎块周期_ms": {"P50": b50, "P95": b95}, "派发腿_ms": {"P50": d50, "P95": d95},
+                      "端到端_ms": {"P50": round(e2e50, 2), "P95": e2e95},
+                      "Phase0_KPI_ms": 10.0, "判定_按P50": ("达标" if e2e50 <= 10.0 else "未达标"),
+                      "物理腿": ("不可采" if stale_pose else "在采"), "探针": "tools/probe_l2_speed_fb_latency.py"}}
+
+
 def p_sys_channel():
     """📡 系统级: 遥测通道达标率 (登记 ↔ DDS 实收 ↔ 信号分析可见)"""
     d = _load(LIVE, {}) or {}
@@ -377,6 +420,10 @@ def p_sys_consistency():
 
 # ═══════════════════ 评测补充指标 (不在 58 条里, 但这是具身产品的真实性能面) ═══════════════════
 EXTRA = [
+    {"id": "perf.sys_l2_fb_latency", "cn": "L2 原子技能速度反馈延迟", "unit": "ms",
+     "target": "≤10 (Phase 0 KPI: 速度反馈延迟; 8 个原子技能逐个实测)",
+     "how": "引擎块周期 + 块→技能反馈 (指令阶跃→反馈跟上) 端到端 P50; 只读探针 probe_l2_speed_fb_latency.py 逐技能采",
+     "probe": p_sys_l2_fb_latency, "links": ["L2 原子技能物理参数", "信号分析", "元任务(Phase 0)"]},
     {"id": "perf.sys_l2_physics", "cn": "L2 原子技能物理合规率", "unit": "%", "target": "≥100 (逐拍不越包络)",
      "how": "每拍 L2 实测 v/a/s 与标定包络 (config/calib/zmax_skill_physics.json) 比对", "probe": p_sys_l2_physics,
      "links": ["L2 原子技能物理参数", "信号分析"]},
