@@ -260,7 +260,7 @@ class OrbitalArchData:
             "cond_n": len(ins), "cond_src": sorted(set(x for x in ins if x))[:8],
             "action_norm": eng.get("action_norm"), "confidence": eng.get("confidence"),
             "H": eng.get("chunk.H"), "lambda": lam, "stage_idx": chunk.get("stage_idx") if isinstance(chunk, dict) else None,
-            "K_gain": "设计: DiT→K 增益 (条件=update · SmolVLM=measurement) — 见 docs/design 待接",
+            "K_gain": "未接入 (设计口径: DiT 输出 K 增益 · 条件网络=模型 update · SmolVLM=测量; 真源里目前没有这条边)",
         }
         # 卫星带 原子技能
         sats = []
