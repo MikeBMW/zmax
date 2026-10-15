@@ -1331,13 +1331,15 @@ class PhaseCardButton(QFrame):
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
-        # ✏️ 人工改写标记 (老倪 2026-10-15: 点开可编辑; 改过的卡不冒充库真值)
+        # ✏️ 覆盖标记 (老倪 2026-10-15: 点开可编辑; 改过的卡不冒充库真值)
+        # 🔴 2026-10-15 老倪: 「产品迭代的 phase 标签页, 不要显示 人工改写 点开可改 可恢复真值 这几个字, 太显眼」
+        #   ⇒ 卡面只留一个铅笔图标, 那行字一个都不显示; 做法(点开可改 / 一键还原)一字未改, 说明挪进悬浮提示。
+        #     诚实性不靠字多: 图标在 = 本卡已改写、不是库真值 —— 这个事实有意保留, 只是不喧哗。
         if p.get("_edited"):
-            _tag = QLabel("✏️ 人工改写 · 点开可改/可恢复库真值")
+            _tag = QLabel("✏️")
             _tag.setFont(QFont("Arial", 10))
-            _tag.setStyleSheet(f"color:{C_ORANGE}; background:{C_ORANGE}18; border:1px solid {C_ORANGE}55;"
-                               "border-radius:3px; padding:1px 5px;")
-            _tag.setWordWrap(True)
+            _tag.setStyleSheet(f"color:{C_ORANGE}; background:transparent; border:none; padding:0;")
+            _tag.setToolTip("此卡已改写 (不是工程库真值)。点开可编辑; 弹窗里可一键还原库真值。")
             layout.addWidget(_tag)
 
         # KPI (右下角主指标): 先撑开 ⇒ 五张卡的 KPI 都贴卡底、同一行高、同一字体, 位置完全一致
@@ -1798,10 +1800,9 @@ class ProductRoadmapWidget(QFrame):
         #    Phase 1, Phase 2 3 4 同理可以可编辑修改」) ───────────────────────────────
         from PyQt5.QtWidgets import QGridLayout, QPlainTextEdit, QLineEdit, QPushButton
         _is_ov = bool(phase_data.get("_edited"))
-        src_lbl = QLabel(
-            "📕 文本真源 = 单一工程库 data/database/zmax/zmax_engineering.db"
-            + ("　⚠ 本卡已被人工改写 (%s) · 点「↩ 恢复库真值」可还原"
-               % (phase_data.get("_edited_at") or "?") if _is_ov else "　(库真值 · 未被改写)"))
+        # 2026-10-15 老倪: 「phase 标签页不要显示 人工改写/点开可改/可恢复真值 这几个字, 太显眼」⇒ 弹窗里也只留 ✏️ 已改写
+        _ov_txt = ("　✏️ 已改写 (%s)" % (phase_data.get("_edited_at") or "?")) if _is_ov else "　(库真值)"
+        src_lbl = QLabel("📕 文本真源 = 单一工程库 data/database/zmax/zmax_engineering.db" + _ov_txt)
         src_lbl.setStyleSheet(f"color:{C_DIM}; font-size:14px; background:transparent; border:none;")
         src_lbl.setWordWrap(True)
         dlg_layout.addWidget(src_lbl)

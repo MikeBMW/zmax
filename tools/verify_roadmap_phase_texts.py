@@ -121,7 +121,8 @@ def main() -> int:
         chk("④b 卡上文字 == 库生成文本", lib0.split("\n")[0] in base and lib0.split("\n")[1] in base,
             "卡上含: %s" % lib0.replace("\n", " ／ "))
 
-    mark = "✏️ 人工改写 · 试改一行 (判据自测)"
+    # ⚠️ 判据自测文本本身不许含被禁词 (否则是自测文本把'人工改写'带进卡上, 判据自己把自己弄红)
+    mark = "✏️ 试改一行 (判据自测)"
     ok_save, msg_save = studio.save_roadmap_phase_text("Phase 0", {"desc": mark})
     on_disk = json.load(open(STORE, encoding="utf-8")) if os.path.exists(STORE) else {}
     chk("④c 保存落盘 + 回读一致", ok_save and (on_disk.get("phases", {}).get("Phase 0", {}).get("desc") == mark),
@@ -129,9 +130,12 @@ def main() -> int:
 
     w._rebuild()
     after = card_desc("Phase 0")
-    chk("④d 卡当场刷新成改写文本 + 人工改写标记",
-        mark in after and "人工改写" in after and "库真值" not in after.replace("恢复库真值", ""),
-        "卡上文字: %s" % after.replace("\n", " ／ ")[:110])
+    # 老倪 2026-10-15: 「产品迭代的 phase 标签页, 不要显示 人工改写 点开可改 可恢复真值 这几个字, 太显眼」
+    #   ⇒ 判据断: 卡上有 ✏️ 标记 + 改写文本, 且**那几个字一个都不许再出现** (写回去就立刻红)。
+    _banned = [w for w in ("人工改写", "点开可改", "可恢复", "恢复库真值") if w in after]
+    chk("④d 卡当场刷新成改写文本 + ✏️ 标记 (不打那行字)",
+        mark in after and "✏️" in after and not _banned,
+        "卡上文字: %s ｜ 违规词 %s" % (after.replace("\n", " ／ ")[:110], _banned))
 
     ok_clr, msg_clr = studio.clear_roadmap_phase_text("Phase 0")
     w._rebuild()
