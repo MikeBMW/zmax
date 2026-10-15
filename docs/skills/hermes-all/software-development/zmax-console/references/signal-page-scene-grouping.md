@@ -81,6 +81,16 @@
    `_fill_tree` 收尾都重排 `self.selected` (`self.curves` 顺序 = 子图顺序 = 配色顺序)。
    判据直接卡 `wave.curves == 树上已勾行序`, 不要卡“某个信号必须第一”。
 
+13. **动作调制_mps 只是模长, 不是动作** (老倪 2026-10-15「要变成 action, 至少有 x y z a b c, 怎么就一个 mps?」)。
+   真源: `state_space_sim_real.py` 的 `u_fuse_vec/u_limit_vec`, `u_prev = np.zeros(4)` ⇒ 动作是
+   **4 维** `[vx, vy, vz (m/s), 夹爪 0/1]`; 模长 = `‖u[:3]‖`。姿态 (rx/ry/rz) 不走这条出口。
+   面板/发布器都要把 x/y/z/夹爪 分开发, 只发模长就是丢信息。
+14. **八阶段状态机 = `src/lerobot/policies/left_right/state_space/cognition.py:31 ActionModulator`**
+   STAGES 13 段(接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成),
+   插拔八阶段 = 前 7 段 + 完成; `STAGE_V_CAP` = 每阶段限速(m/s) —— 调制器限速的真源。
+   阶段名原本是**字符串**, 信号页只收数值 ⇒ 波形里看不到; 要看得把 阶段序号/八阶段序号/阶段限速_mps
+   发成数值通道。取常量直接从类里 import (`_stage_maps()`), **不要另抄一份**。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
