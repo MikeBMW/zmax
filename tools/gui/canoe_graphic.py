@@ -2710,6 +2710,41 @@ class CanoeGraphicWidget(QWidget):
             self._update_tree_values()
             self._update_status(keys)
 
+    def _stage_now(self):
+        """🎛 八阶段状态机现状 —— 老倪 2026-10-15: 「是八阶段信号么? 也没有显示状态啊」
+
+        真源 = 3D 面板快照 trace_live.json 的 阶段 / 八阶段序号 / 阶段限速_mps
+        (阶段名 = ActionModulator.STAGES, 真源 cognition.py:31)。按 mtime 缓存 0.1s 省 IO。
+        **停更就明说停更 + 帧龄**, 不拿旧阶段冒充"现在"。
+        返回 (文本, 是否新鲜)。
+        """
+        p = PLAYBACK_FILE
+        try:
+            mt = os.path.getmtime(p)
+        except OSError:
+            return ("🎛 状态机: 无快照 (3D 面板没跑)", False)
+        cache = getattr(self, "_stage_cache", None)
+        if cache is not None and cache[0] == mt:
+            return cache[1]
+        txt = "🎛 状态机: 读取失败"
+        fresh = False
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            nm = str(d.get("阶段") or "?").split(" ·")[0].strip() or "?"
+            i8 = d.get("八阶段序号")
+            cap = d.get("阶段限速_mps")
+            age = time.time() - mt
+            fresh = age < 5.0
+            txt = "🎛 状态机: %s (%s/7)" % (nm, ("%d" % i8) if isinstance(i8, (int, float)) and i8 >= 0 else "?")
+            if isinstance(cap, (int, float)) and cap >= 0:
+                txt += " · 限速 %.3f m/s" % float(cap)
+            txt += (" · 帧龄 %.1fs" % age) if fresh else (" · ⚠️ 快照停更 %.0fs (3D 面板没跑/播完)" % age)
+        except Exception as e:                                                 # noqa: BLE001
+            txt = "🎛 状态机: 读取失败 (%s)" % type(e).__name__
+        self._stage_cache = (mt, (txt, fresh))
+        return (txt, fresh)
+
     def _update_status(self, keys):
         src_state = []
         if self.ros_src is not None:
@@ -2745,9 +2780,16 @@ class CanoeGraphicWidget(QWidget):
             clk += " · ▶ 3D 播放已停 (进度条不动/播放完)"
         _with = sum(1 for k in self.selected
                     if (self.store.bufs.get(k) is not None and getattr(self.store.bufs.get(k), "n", 0) >= 2))
-        self.lb_info.setText(f"{' / '.join(src_state)} · 信号 {len(self.selected)} (有波形 {_with}) "
-                             f"· 点 {self.store.total_pts}"
+        # 🎛 状态机现状 (老倪: 「也没有显示状态啊」) —— 直接写在状态栏上, 一眼就能看到第几阶段
+        _st_txt, _st_fresh = self._stage_now()
+        # 🎛 状态机现状**放最前面** (老倪: 「也没有显示状态啊」; 放末尾会被窗口宽度截掉 ⇒ 看不到)
+        self.lb_info.setText(f"{_st_txt} · {' / '.join(src_state)} · 信号 {len(self.selected)} "
+                             f"(有波形 {_with}) · 点 {self.store.total_pts}"
                              f"{agestr}{clk} · 本机时刻 {time.strftime('%H:%M:%S')}")
+        try:                                   # 新鲜=绿系, 停更=橙 (与状态灯同口径)
+            self.lb_info.setStyleSheet(f"color:{C_DIM if _st_fresh else C_ORANGE}; font-size:13px;")
+        except Exception:                                                      # noqa: BLE001
+            pass
         parts = []
         for k in keys[:8]:
             b = self.store.bufs.get(k)

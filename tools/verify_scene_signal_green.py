@@ -342,6 +342,17 @@ def main() -> int:
         ok = False
         print("   ❌ 核话题失败: %s" % _e)
 
+    print("\n⑫ 信号页状态栏要写状态机现状 (老倪: 「是八阶段信号么? 也没有显示状态啊」)")
+    try:
+        _st, _fresh = w._stage_now()
+        _ok12 = ("状态机" in _st) and ("/7" in _st)
+        print("   %s 状态栏文本 = 「%s」" % ("✅" if _ok12 else "❌", _st))
+        print("      (同一份文本写在窗口底部 lb_info 上; 快照不新鲜时整行转橙色并明说停更)")
+        ok &= _ok12
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取状态机文本失败: %s" % _e)
+
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)

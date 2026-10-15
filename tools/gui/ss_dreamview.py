@@ -3943,7 +3943,7 @@ class DreamView3D(QWidget):
         if _n > 0 and self._idx >= _n - 1 and _loop:
             _hold = getattr(self, "_hold_until", None)
             if _hold is None:
-                self._hold_until = time.time() + 3.0
+                self._hold_until = time.time() + 1.5
                 return
             if time.time() < _hold:
                 return
