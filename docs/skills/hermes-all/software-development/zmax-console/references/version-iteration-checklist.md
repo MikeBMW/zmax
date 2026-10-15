@@ -57,6 +57,14 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 裸井号。写法: `vX.Y.Z — 主题 (日期 老倪)  老倪: 「原话」  ① …② …③ …  实测: …`, 单行、无 `#`、无 `|`。
 已插错就整行替换: 正则 `^\s*# v5\.X\.Y: .*$` → 干净行, 再 `py_compile` 复验。
 
+🔴 **summary-file 不要以版本号开头**: 写 `v5.50.73 — 主题…` 会让 changelog 行变成 `# v5.50.73: v5.50.73 — 主题…`、
+`VERSION.md` 单元格变成 `| **v5.50.73** | 10-15 | v5.50.73 — 主题…|` (版本号出现两次)。写法: **直接从主题写起**
+(`配置中心=北斗七星阵: …  老倪:「原话」  ① …② …`)。已重复就定点删开头那一段 + 回读两处。
+
+## 5b-1. 版本号上限与升级节奏 (老倪 2026-10-15)
+**最终极限版本 = v5.50.789** (第三段封顶 789) ⇒ 这是一条**有限跑道**: 小步升、不跳号、别一次吃掉几十号。
+每次迭代只前进一位 (`5.50.72 → 5.50.73 → …`), 把号留给后续真改动; 不要为了“看着整齐”合并多件事去跳号。
+
 ## 5b-2. 🔴 bump_version.py 两个实测坑 (2026-10-14 实跑 v5.50.7 → v5.50.71)
 
 * **`--to` 传不带 v 的号**: `--to 5.50.71` ✓; 传 `v5.50.71` 会生成 `vv5.50.71` (工具只在报告里显示
@@ -103,7 +111,19 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 → `git tag -f <tag> HEAD` → `push --force refs/tags/<tag>` ⇒ **必须再 ls-remote 核 tag SHA == 本地 HEAD**
 (踩过: 只 `push <url> HEAD:main refs/tags/t:refs/tags/t` 不带 `-f` 时 tag 会停在旧提交, 主分支却已前进)。
 
+## 5f. 快照图/大文件: 不入库, 只留可重生成的清单 (2026-10-15)
+`docs/data_snapshots/**/*.png` 已在 `.gitignore` (以前只挡 `**/evidence/*.png`, 漏得很多 ⇒ 13 张 1MB 图进过库)。
+往快照目录拷图**不要用 `git add -f`**: 图留在原地 (本机路径可直接看/发给老倪), 入库只入清单 ——
+`./gui-venv311/bin/python tools/snapshot_media_index.py --write` 重生 `docs/data_snapshots/MEDIA-INDEX.md`
+(名字 + 字节 + sha256前16, 从**工作区**扫 —— 不是 `git ls-files`, 因为那些文件已不入库)。
+工程库快照 `zmax_engineering.db` 同理: 不入库, 清单里记 sha256 + 重建命令 (`tools/zmax_engineering_db.py build`)。
+
 ## 已知既有告警(提交前先确认是不是老问题)
+- 🔴 **`repo_guard` 曾对中文文件名静默跳过 (2026-10-15 实捉)**: `tracked()` 原来用 `git ls-files` + `splitlines()`,
+  git 默认 `core.quotepath=true` 把中文名转义成 `"…/real_1_\345\244\251…"` ⇒ `os.path.getsize()` 抛 OSError 被 `continue`
+  ⇒ **中文名的大文件一个都查不到** (当时实际躺着 13 张 1MB 图 + 7 个工程库 .db, 它只报了 3 个 ASCII 名的)。
+  已修: `git -c core.quotepath=false ls-files -z` + 按 NUL 切。**判据: 修后计数应当变多**(实测 3 → 13+7);
+  若某次又只报几个 ASCII 名, 先查这条是不是被改回去了。看大文件别用 `for f in $(git ls-files)`, 中文名会断词。
 - `secret_scan` 命中 3 个已跟踪文件里的 agent-hub token(`tools/publish_status.py` · `tools/ss3d_live_push.py`
   · `tools/web/ss3d_push.php`) ⇒ 公开仓库里**已进历史**; 处置 = 挪 `zmax_data/secrets/zmax.env` + 轮换 + 清历史。
 - `repo_guard` 干净时输出「检查 已跟踪 N 个文件, 合计 ~47MB ✅ 干净」。

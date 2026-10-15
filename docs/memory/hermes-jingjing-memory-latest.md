@@ -30,7 +30,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
-阶段MOE: 门控须硬先验路由; 枚举不匹配静默降级吞阶段; 判据=单射性
+阶段MOE: 门控须硬先验路由; 枚举不匹配静默降级; 判据=单射性
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
@@ -44,19 +44,19 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 真源=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
 §
-我=主节点: 工控机+Orin归我; AOI(.23.23)=10082/10083(禁10084/85); 更新=aoi_remote_deploy.py
+我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=tcp_out/latest.json(全0=陈旧); 8793页=station.html
+位姿真源=tcp_out/latest.json(全0=陈旧)
 §
-运动安全: 抬升闸已放开; 速度口径=mm/s 1~1000(倍率已设1.0⇒名义≈实得; 4处收口含技能speed_max); 前置须idle+automatic(drag/manual拒下发); 工位页真源web/station.html(热读); 腿上限须重启容器; 清8793授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; '要碰撞'先agent_all_stop.py
+运动安全: 速度口径mm/s 1~1000(4处收口含技能speed_max); 前置须idle+automatic; 真源web/station.html; 腿上限须重启容器; 清8793授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; '要碰撞'先agent_all_stop.py
 §
 AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py桥; 3D「🥽AR」?cam=arm
 §
-任务7=TASK-07-AOI(=AR·L5自进化); 节点🔍光质检; 任务↔场景=ss_scene_switch.py(FW→插拔/TRAY→摆盘/AOI→AR); 信号色标=sig_scene_tags.py
+任务7=TASK-07-AOI(=AR·L5自进化); 任务↔场景=ss_scene_switch.py(FW/TRAY/AOI); 信号色标=sig_scene_tags.py
 §
-场景色: 插拔绿#2e8b57/摆盘蓝#1f6feb/AR紫#8957e5(3D按钮=配置中心=信号分析)
+场景色: 插拔绿/摆盘蓝/AR紫(3D按钮=配置中心=信号分析)
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密; MoveIt起点=SDK直采
 §
@@ -66,4 +66,8 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 扭矩tap→/dev/shm(32MB环)
 §
-建图=人工走点模式: 我走点+助手同步建图; 8793按钮已切manual(全程采帧+45s/轮增量建图); GS_MAP_MODE=auto回旧
+建图=人工走点(8793按钮已切manual, 全程采帧+45s/轮增量); GS_MAP_MODE=auto回旧
+§
+版本号不自主升级(只按老倪指定); 当前5.50.730代号「北斗七星版」(Release同署)
+§
+专利12件·功能渠道74/74; 真源config/patents/patent_registry.json; patent_center.py --coverage/--export; 文档docs/patents

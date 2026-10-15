@@ -473,6 +473,15 @@ sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg |
 ⇒ 别信这一行: 先判容器状态(`systemctl is-active ss-remote-tap` 或 docker inspect), 只有 `running` 才继续判进程;
 **落盘节拍(§9a 的 20s mtime 计数)才是真判据**。
 
+**②b 同一个脚本的 ① 进程行也会假绿 (2026-10-15 重启后实测)。** `check` 报 `✓ l5_live_mark pid 60798`,
+2 分钟后该 pid 已不存在、`pgrep -af l5_live_mark` 为空、`zmax_data/l5live/l5_live_mark.out` **根本不存在**(启动器从没跑过)
+⇒ `check` 的 ✓ 只能读成"取样那一刻有进程", 复核一律用**现场 `pgrep -af` + 输出文件 mtime/存在性**双证。
+(好事是 `local` 分支里的 `pgrep -f "[l]5_live_mark_run.sh"` 判重是准的: 缺了就 `bash tools/boot_restore.sh local` 一句补回,
+实测补后守护 shell + `tools/l5_live_mark.py` 双进程在跑。)
+**本机那 5 个手工进程(含 l5_live_mark)没有任何 cron keepalive**, 只有 `@reboot` 的 l2/vl 两条 ⇒ 重启后不自愈,
+靠 `boot_restore.sh local` 补; 它内部 `nohup … &` 而工具层拦的是**命令行里**的 nohup ⇒ 用 `bash tools/boot_restore.sh local`
+这种脚本形态起, 不要自己手搓 `setsid nohup`。
+
 **③ 产线网卡不在位时, 这一批会跟着"合理"地全倒** (不是独立故障, 别逐个当 bug 修):
 `ss-remote-tap` 单元 `start-pre` 超时→崩溃循环("No such container") ⇒ 深度格 stalled;
 `zmax-proxy`(tinyproxy `Listen 192.168.23.50`) 每 3s 一次 `Could not create listening sockets` 崩溃循环(NRestarts 分钟级+百);

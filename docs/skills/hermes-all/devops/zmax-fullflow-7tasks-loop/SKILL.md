@@ -39,6 +39,19 @@ description: Use when 循环跑 7 任务造数据→训练→推理全流程.
 - 信号分析可见: DDS 新增 `zmax/ss_meta_pred` (dds/ss_types.py `SSMetaPred` + ss_daemon `pub_meta_pred` + `tools/gui/zmax_telemetry.py` 与 `src/lerobot/dataspace/topics.py` MODE_TOPICS) ⇒ 重启 `zmax-dataspaces-probe.service` (它才写 live.json) 后 live.json 话题数应从 10 变 14, `ss_meta_pred` 有值; 订阅器 `tools/dds_sub_meta_pred.py`。
 - 任务7 真机段: arm 帧 bytes>0 · 位姿 `age_s`<30 · AOI 10082/10083 各 `code=200` (接口只投递不返判决)。
 
+## 结果同步（老倪「飞书的结果，同步」= 三处同源，不是再发一遍）
+
+1. **大屏**：`tools/fullflow_status.py`（新，只读 state.json + tap 尾帧；真源键 `train.gpu_peak={util,mem}`）⇒ 已挂进
+   `tools/dashboard_source.py` 的 `fullflow` 段 ⇒ 刷新大屏：`gui-venv311/bin/python tools/dashboard_source.py`
+   （写 `zmax_data/datapush/dashboard.json` + `tools/web/dashboard.json` + `unified_app.html` 页内快照）。
+2. **飞书卡片**：卡片渲染 `tools/feishu_dashboard_push.py`（已加「🔁 全流程闭环」行 + 输入退化/未跑异常项）
+   ⇒ `--dry` 看 JSON、`--send` 真发（报告群）。发完**回读**：`tools/feishu_check_messages.py`，确认 message_id 在群里 `deleted:false`。
+3. **归档快照**：`tools/snapshot_20261014_fullflow7.py` ⇒ `docs/data_snapshots/<日期>_<主题>/`（REPORT.md/json/state.json
+   + MANIFEST.json + README.md，逐件 sha256；大文件 [全量日志/数据集/工程库] 只留绝对路径 + 重建命令，不进库）。
+4. **提交/版本**：先 `python3 tools/verify_version_sync.py` 看偏差 ⇒ 修掉再提交。踩过：本机**没 gh CLI 也没 GitHub 令牌**⇒
+   只能 `git push origin <tag>`，**远端 Release 建不了**（大屏会留一条版本同源偏差，要建 Release 必须先给令牌）。
+5. 报告里写死的数字（如「磁盘 ~86%」）必须改成**实测** `shutil.disk_usage(ROOT)` —— 老倪会拿工具核。
+
 ## 相关技能
 
 `live-service-change-discipline`(改常驻服务) · `zmax-console`(控制台/版本/窗口) · `manifold-engine-energy`(流形引擎数学与 tap) · `unattended-job-orchestration`(长跑+哨兵)。
