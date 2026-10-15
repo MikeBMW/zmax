@@ -91,6 +91,20 @@
    阶段名原本是**字符串**, 信号页只收数值 ⇒ 波形里看不到; 要看得把 阶段序号/八阶段序号/阶段限速_mps
    发成数值通道。取常量直接从类里 import (`_stage_maps()`), **不要另抄一份**。
 
+15. **sstrace.* 停了 = 3D 面板播完就 `_pause()`** (老倪「末端 x y z 怎么没有信号输出?」)。
+   快照 trace_live.json 不更新 ⇒ 每键只剩 1 个样本 ⇒ 画不出线。修: `ss_dreamview._tick`
+   末尾停 3s 后从第 0 帧重播 + `_hb_check` 心跳看门狗 (窗口开着/用户没按⏸/快照 5s 未更新 ⇒ 接管);
+   `_pause(user=...)` 区分“外部驱动暂停”与“用户手动暂停”。`ZMAX_SS_LOOP=0` 关。
+16. **八个状态上真话题 `zmax/ss_stage`** (zmax::SSStage): 改 4 处才能全链通 —— `dds/ss_types.py`
+   加类型 · `dds/zmax_node.py` 注册话题+QOS(beat) · `src/lerobot/dataspace/topics.py` +
+   `tools/gui/zmax_telemetry.py` 登记话题/档位 · `tools/dds/ss_daemon.py` 读数并发布。
+   窗口里看到它走的是“话题 → 探针 trace.jsonl → ds.<话题名>.<字段>”这条道 (ds 源)。
+   `ss_state.stage` 是**真机 tap 的 prod_stage**, 别把仿真阶段灌进去 (混源会在现场核对时踩坑)。
+17. **pyqtgraph 递归爆栈要“全轴”断链**: 只关时间轴的 autoSIPrefix 不够 —— 主图每根轴
+   (left/right/bottom/top) + 每个副轴都要 `enableAutoSIPrefix(False)`，副轴再
+   `setStyle(autoExpandTextSpace=False, tickTextWidth=72)` (宽度不随数值长短变)，
+   `_sync_vb_geometry` 加重入闸(setGeometry ⇒ sigResized ⇒ 又调回来)。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
