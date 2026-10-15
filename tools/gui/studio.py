@@ -7861,12 +7861,41 @@ class EvalModule(SubModuleWidget):
         self.rep = None
         self._build_headline(bl)
         self._build_gates(bl)
+        self._build_iteration_roadmap(bl)        # 🗺 2026-10-15 老倪: 迭代路线图 Phase 0→4 · 迭代验证 · 对比分析
         self._build_table(bl)
         self._build_evidence(bl)
         self._build_log(bl)
         self._build_legacy_training(bl)          # 迭代不重写: 原「训练历史/基线对比」原样保留
-        self._build_shell(body)
+        # 🐛 2026-10-15: 1c79fc6 把 body.setLayout(bl) 漏掉了 ⇒ 本页控件全建了却没挂上布局,
+        #   页面一直渲染成空白 (实测 EvalModule findChildren(QGroupBox) == [])。补回这行 = 本页恢复显示。
+        body.setLayout(bl)
+        # 本页内容多 (5 张大表 + 迭代路线图) ⇒ 整页放进 QScrollArea, 否则固定最小高会被压扁/切掉
+        # (与「硬件工具箱」同法, 见 HardwareModule)。滚动交给页; 面板内部的三个子视图各自再滚。
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;}")
+        scroll.setWidget(body)
+        self._build_shell(scroll)
         self.reload()
+
+    # ─────────────────────────── 🗺 迭代路线图 · Phase 0→4 (老倪 2026-10-15) ───────────────────────────
+    def _build_iteration_roadmap(self, bl):
+        """内嵌独立面板 (tools/gui/iteration_roadmap_panel.py): 路线图 + 迭代验证 + 对比分析。
+
+        真源只有一个: zmax_data/eval/iteration_roadmap.json (由 tools/iteration_roadmap.py 生成);
+        本页**只读** 它 + 可重跑 (subprocess 带超时, 失败显真实退出码) + 可复制/导出。
+        文件不在 / 字段缺失 ⇒ 面板显示「尚未生成」, 绝不显示假 0。加载失败不影响评估分析页其余部分。"""
+        try:
+            from iteration_roadmap_panel import IterationRoadmapPanel       # tools/gui 已在 sys.path
+            self.irm_panel = IterationRoadmapPanel()
+            bl.addWidget(self.irm_panel)
+        except Exception as _e:                                                 # noqa: BLE001
+            self.irm_panel = None
+            _hb = QLabel("⚠️ 迭代路线图面板加载失败: %r" % (_e,))
+            _hb.setWordWrap(True)
+            _hb.setStyleSheet("color:#f85149; font-size:14px; border:none;")
+            bl.addWidget(_hb)
 
     # ─────────────────────────── 顶部: 基线/当前/准入 ───────────────────────────
     def _build_headline(self, bl):
@@ -8061,6 +8090,8 @@ class EvalModule(SubModuleWidget):
         self._render_table()
         self._log("报告 %s · 基线 %s · 指标 %d 条 (有值 %d)" %
                   (r.get("ts_str"), r.get("version_baseline"), r.get("n_metrics", 0), r.get("n_measured", 0)))
+        if getattr(self, "irm_panel", None) is not None:       # 🗺 重跑评估时同步刷新迭代路线图视图
+            self.irm_panel.reload()
 
     def _render_history(self):
         """升级准入台账: 每次评估逐条留痕 (zmax_data/eval/eval_history.jsonl), 页面上看最近 6 次"""
