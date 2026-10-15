@@ -2659,6 +2659,17 @@ class ConfigCenterPage(QWidget):
         # 6) 🧠 模型配置 = 现有模型配置页 + 「模型 ↔ 工程配置」匹配表
         #    2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面」⇒ 不再单列页签, 一张页看全。
         w6 = QWidget(); l6 = QVBoxLayout(w6); l6.setContentsMargins(6, 6, 6, 6)
+        self._th = th
+        # 🧠 **本页主要信息** (老倪 2026-10-15: 「模型配置, 要映射功能配置和 L2 L3 L4 L5层模型, 这是主要信息」)
+        #    —— 放在模型配置页最上面: 四层在役一行一层 + 功能↔层模型全量映射 (两个真源现算)。
+        try:
+            self.ml_block = self._model_layer_block(th)
+            l6.addWidget(self.ml_block, 4)
+        except Exception as _e6m:                                                   # noqa: BLE001
+            self.ml_block = None
+            _be6 = QLabel("⛔ 层模型映射块构建失败: %s" % _e6m)
+            _be6.setWordWrap(True)
+            l6.addWidget(_be6)
         _h6 = QLabel("模型匹配 (模型 ↔ 工程配置 9 项) —— 原「🧠 模型匹配」页, 已并入本页 (老倪 2026-10-15)")
         _h6.setWordWrap(True)
         _h6.setFont(QFont("Consolas", 10))
@@ -2843,6 +2854,108 @@ class ConfigCenterPage(QWidget):
         self.fn_table.setMinimumHeight(min(460, 28 * (len(_rows) + 2) + 8))
         lay.addWidget(self.fn_table, 1)
         return w
+
+    def _model_layer_block(self, th):
+        """🧠 功能配置 ←→ L2/L3/L4/L5 层模型 映射 —— **模型配置页的主要信息**。
+
+        老倪 2026-10-15: 「模型配置, 要映射功能配置和 L2 L3 L4 L5层模型, 这是主要信息。你来同步全局数据」
+        真源两处 (都不手抄): ① `models/active_models.json` 各层在役指针 (L5 主指针缺 → 由
+        `tools/model_inventory.py --json` 兜, 与「模型引擎」窗口同一命令) ② 工程库 `functions` 表的 layer 字段。
+        两个真源改任一处, 本页与模型引擎窗口同时变 (同一函数 zmax_platform_info)。
+        """
+        from zmax_platform_info import layer_summary as _ls, function_layer_map as _flm, short_model_name as _smn
+        ls = _ls()
+        fl = _flm()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+
+        def _hd(txt, color=None, size=10):
+            _l = QLabel(txt)
+            _l.setWordWrap(True)
+            _l.setFont(QFont("Consolas", size))
+            _l.setStyleSheet("color:%s;background:transparent;" % (color or th["C_YELLOW"]))
+            return _l
+
+        lay.addWidget(_hd("🧠 功能配置 ←→ L2/L3/L4/L5 层模型 —— 本页主要信息 (改模型只改真源 %s)" % ls["src"]))
+        _miss = ls.get("missing") or []
+        lay.addWidget(_hd("   功能清单 %d 条 (真源 %s, layer 字段) · 层模型 %s · %s"
+                          % (ls["total_fn"], fl["src_functions"], ls["src"],
+                             ("主指针未登记层: %s (已用 model_inventory 兜, 见下表「模型来源」列)" % "/".join(_miss)) if _miss else "四层主指针齐全"),
+                          th["C_GRAY"], 9))
+
+        # ① 四层一行: 层 | 短职责 | 在役主模型 | 附加在役条目 | 承载功能 | 模型来源
+        _L = [[r["layer"], r["role"], r["model"], r.get("version") or "—", r.get("state") or "—",
+               " · ".join(r["extra"]) if r["extra"] else "—",
+               "%d 条" % r["fn_count"],
+               r.get("src") or "取不到"] for r in ls["rows"]]
+        self.ml_layer_table = _mk_table(["层", "层职责 (干什么)", "在役主模型 (与主控制台同一份)", "版本", "状态",
+                                         "附加在役 (适配层/原语/技能包)", "承载功能", "模型来源"], _L, th)
+        self.ml_layer_table.setMinimumHeight(min(240, 34 * (len(_L) + 2) + 8))
+        for _i, _r in enumerate(ls["rows"]):
+            self.ml_layer_table.setToolTip("层模型真源: %s · 主模型全名: %s · 权重: %s\n职责: %s"
+                                           % (ls["src"], _r.get("model_full") or _r["model"], _r.get("path", ""), _r.get("role_full", "")))
+            self.ml_layer_table.item(_i, 2).setToolTip(str(_r.get("model_full") or _r["model"]))
+            self.ml_layer_table.item(_i, 3).setToolTip("版本 %s (真源 %s)" % (_r.get("version") or "取不到", _r.get("src") or "取不到"))
+            self.ml_layer_table.item(_i, 5).setToolTip("\n".join(_r["extra"]) or "—")
+        lay.addWidget(_hd("   ① 四层在役 (一行一层): 主模型 = 指针/引擎清单读到的真名 · 附加 = 基座之外的适配层/原语/技能包", th["C_YELLOW"], 9))
+        lay.addWidget(self.ml_layer_table)
+
+        # ② 全量映射: 功能 → 层 → 承载模型 (74 条, 一条不漏; L4/L5 组合功能两条模型都列)
+        _rows = [[r["fn_id"], _short(r["name"], n=1, sep="", w=46), r["sys"], r["layer"], r["model_text"],
+                  _short(r["role"], n=1, sep="", w=44)] for r in fl["rows"]]
+        self.ml_map_table = _mk_table(["功能编号", "功能名称", "系统", "层", "承载模型 (L2~L5)", "承载职责"], _rows, th)
+        self.ml_map_table.setMinimumHeight(min(460, 28 * (len(_rows) + 2) + 8))
+        for _i, _r in enumerate(fl["rows"]):
+            self.ml_map_table.item(_i, 1).setToolTip(str(_r["name"]))
+            self.ml_map_table.item(_i, 4).setToolTip(str(_r["model_text"]))
+            self.ml_map_table.item(_i, 5).setToolTip(str(_r["role"]))
+        lay.addWidget(_hd("   ② 全量映射 %d 条 (功能 ←→ 承载层模型; 组合层如 L4/L5 两条模型都列, 平台支撑条明写不归属)" % fl["total"],
+                          th["C_YELLOW"], 9))
+        lay.addWidget(self.ml_map_table, 1)
+
+        _brow = QHBoxLayout()
+        _b1 = _btn("📋 复制映射 (TSV)", th)
+        _b1.setToolTip("整表 %d 条 (含表头) 复制到剪贴板, 可直接粘进 Excel/文档" % fl["total"])
+        _b1.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["功能编号", "功能名称", "系统", "层", "承载模型", "承载职责"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in _rows)))
+        _b2 = _btn("📋 复制四层在役清单 (TSV)", th)
+        _b2.setToolTip("四层主模型 + 附加在役条目 + 权重 + 承载功能数, 一次复制")
+        _b2.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["层", "层职责", "在役主模型", "主模型全名", "版本", "状态", "权重/指针", "附加在役", "承载功能数", "模型来源"]) + "\n"
+            + "\n".join("\t".join([r["layer"], r["role"], r["model"], str(r.get("model_full") or ""),
+                                     str(r.get("version") or ""), str(r.get("state") or ""),
+                                     str(r.get("path") or ""), " / ".join(r["extra"]), str(r["fn_count"]),
+                                     str(r.get("src") or "")]) for r in ls["rows"])))
+        _b3 = _btn("♻️ 重读真源", th)
+        _b3.setToolTip("重新读 %s 与工程库 (改完指针/层标签不用重启)" % ls["src"])
+        _b3.clicked.connect(lambda: (_reload_model_block(), None)[1])
+        for _b in (_b1, _b2, _b3):
+            _brow.addWidget(_b)
+        _brow.addStretch()
+        lay.addLayout(_brow)
+        return w
+
+    def _reload_model_block(self):
+        """♻️ 重读真源: 重建层映射块 (写回同一位置, 不动其它页)。"""
+        try:
+            _i = self._tab_index_by_title("模型配置")
+            _host = self.tabs.widget(_i)
+            _page = _host.widget() if hasattr(_host, "widget") else _host
+            _lay = _page.layout()
+            _old = getattr(self, "ml_block", None)
+            _new = self._model_layer_block(self._th)
+            self.ml_block = _new
+            if _old is not None:
+                _lay.replaceWidget(_old, _new)
+                _old.deleteLater()
+            else:
+                _lay.insertWidget(0, _new)
+            self.out.setPlainText(self._page_out_text(self.tabs.tabText(_i)))
+        except Exception as _e:                                                     # noqa: BLE001
+            self.out.setPlainText("⛔ 重读层映射块失败: %s" % _e)
 
     def _zmax_platform_page_block(self, th):
         """🏭 「Z-MAX 平台」页那两块表: 平台产品 + **产品特征清单(产品特性)**。
@@ -3326,17 +3439,27 @@ class ConfigCenterPage(QWidget):
                 _f = _ppd().get("functions") or []
                 L.append("   功能清单汇总: %s" % (_fs(_f)["text"] if _f else "取不到"))
                 L.append("   真源: 单一工程库 functions 表 (系统 2/1/0 + 平台支撑); 本页功能表 %d 行" % len(_f))
-            elif "性能配置" in t or "模型配置" in t:
-                _dom = "性能配置" if "性能配置" in t else "模型配置"
-                _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == _dom]
-                L.append("   %s参数 %d 条 · 就绪 %d · 未就绪 %d" % (_dom, len(_cs),
-                                                                 sum(1 for c in _cs if c.get("ready")),
-                                                                 sum(1 for c in _cs if not c.get("ready"))))
+            elif "模型配置" in t:
+                from zmax_platform_info import layer_summary as _ls2, function_layer_map as _flm2
+                _l2, _f2 = _ls2(), _flm2()
+                L.append("   功能 ←→ 层模型 映射: 全量 %d 条 (真源 %s × %s)"
+                         % (_f2["total"], _l2["src"], _f2["src_functions"]))
+                L.append("   四层在役: " + " | ".join(
+                    "%s=%s%s" % (r["layer"], r["model"], ("(+%d 附加)" % len(r["extra"])) if r["extra"] else "")
+                    for r in _l2["rows"]))
+                _mt = getattr(self, "match_table", None)
+                L.append("   本页还含 模型配置参数表 + 模型 ↔ 工程配置 9 项匹配表 (%s 行)"
+                         % getattr(_mt, "rowCount", lambda: "—")())
+                _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "模型配置"]
+                L.append("   模型配置参数 %d 条 · 就绪 %d · 未就绪 %d · 真源 %s"
+                         % (len(_cs), sum(1 for c in _cs if c.get("ready")),
+                            sum(1 for c in _cs if not c.get("ready")), os.path.relpath(MCD_J, ROOT)))
+            elif "性能配置" in t:
+                _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "性能配置"]
+                L.append("   性能配置参数 %d 条 · 就绪 %d · 未就绪 %d"
+                         % (len(_cs), sum(1 for c in _cs if c.get("ready")),
+                            sum(1 for c in _cs if not c.get("ready"))))
                 L.append("   真源: %s" % os.path.relpath(MCD_J, ROOT))
-                if _dom == "模型配置":
-                    _mt = getattr(self, "match_table", None)
-                    L.append("   下表格 = 模型 ↔ 工程配置匹配 (原「模型匹配」页, 已并入 %s 行)"
-                             % (getattr(_mt, "rowCount", lambda: "—")()))
             elif "工单配置" in t:
                 _bs = _orders_list()
                 L.append("   工单 %d 份: %s" % (len(_bs), " · ".join(
