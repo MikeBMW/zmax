@@ -18,6 +18,7 @@
 (本机源=文件 mtime 龄; ROS 源=Orin 侧最后收包龄), 界面上标出来, 不冒充新鲜。
 """
 
+import collections
 import csv
 import json
 import os
@@ -253,6 +254,14 @@ class SignalBuffer:
         self.scene = False        # True = x 是"场景时刻"(回放进度), 不是到达时刻 ⇒ 按 x 排序画
 
     def push(self, t, v, age=-1.0):
+        # 🔁 去重: 同一个 key 连续两次 (x, v) 完全相同 ⇒ 不再入缓冲。
+        #   30Hz 轮询同一份快照会重复写同一点, 画出来只是把线加粗、视觉上更像"噪点团"。
+        if self.n and self.last_val is not None and v == self.last_val:
+            _j = (self.head - 1) % CAP
+            if self.t[_j] == t:
+                self.age = age
+                self.wall = time.time()
+                return
         i = self.head
         self.t[i] = t
         self.v[i] = v
@@ -295,6 +304,35 @@ class SignalStore:
         self.bufs = {}
         self.t0 = time.time()          # 🌍 统一用 epoch: 波形 x = t - t0 ⇒ 能换算回绝对时刻
         self.total_pts = 0
+        # 🎬 主钟锚点 (墙钟 ts, 回放秒 时间_s) —— 3D 面板快照那一刻的对应关系。
+        #   所有"自带别的钟"的源 (尤其是 ds.* DDS 话题) 都用它映射到同一根钟, 否则 x 差 2 万秒。
+        self.pb_anchor = None
+        self.lap = 1                   # 回放趟号 (3D 面板绕圈一次 +1)
+        self.lap_clears = 0            # 新一趟清过几次 (取证用)
+        self.notes = collections.deque(maxlen=50)   # 最近几条"波形为什么变了"的说明
+
+    def note(self, msg):
+        """📢 给老倪看的一行说明 (趟号/清空/对不齐这种"波形为什么变了"必须说出来, 不许静默)"""
+        with self.lock:
+            self.notes.append(msg)
+        try:
+            print("[信号页] " + msg, flush=True)
+        except Exception:
+            pass
+
+    def clear_scene(self, why=""):
+        """新一趟回放 (或拖进度条回看) 时清掉**场景钟**的缓冲: 避免两趟点叠在同一 x 上画成"噪声"。
+
+        只清 scene=True 的键 (场景/话题信号); 墙钟到达类信号不动。返回清掉的键数。
+        """
+        hit = 0
+        with self.lock:
+            for b in self.bufs.values():
+                if getattr(b, "scene", False) and b.n:
+                    b.clear()
+                    hit += 1
+            self.lap_clears += 1
+        return hit
 
     def get(self, key, src=""):
         b = self.bufs.get(key)
@@ -400,6 +438,22 @@ class HostJsonSource(threading.Thread):
                     now, _scene = float(_st), True                  # 3D 面板快照: 回放进度 = 主钟
                     self._pb_sync = (float(_ts), float(_st))
                     self._scene_epoch = float(_ts) - float(_st)     # x → 绝对时刻 的偏移 (轴标签用)
+                    # 🌍 锚点给全页共用 (ds.* 等自带别的钟的源靠它对齐; 见 SignalStore.pb_anchor)
+                    self.store.pb_anchor = (float(_ts), float(_st))
+                    # 🔄 新一趟回放检测: 回放秒比上一拍**回跳 > 2s** ⇒ 3D 面板绕回起点 (或老倪拖进度条回看)。
+                    #   不清的话: 第 1 趟和第 2 趟的点叠在同一个 x 上, 连成折线在两趟之间上下跳 ⇒
+                    #   目检就像"噪声/一块面积/跳变到 5 6"(老倪 2026-10-15 报的就是这个)。
+                    _prev = getattr(self, "_pb_t_prev", None)
+                    if _prev is not None and float(_st) < _prev - 2.0:
+                        _hit = self.store.clear_scene("新一趟回放/拖回看")
+                        self.store.lap += 1
+                        try:
+                            self.store.note("▶ 第 %d 趟回放 (回放秒 %.1f→%.1f): 清掉上一趟的 %d 条波形, "
+                                            "本趟从当前位置重新铺 (两趟叠画会看着像噪声)"
+                                            % (self.store.lap, _prev, float(_st), _hit))
+                        except Exception:
+                            pass
+                    self._pb_t_prev = float(_st)
                 elif isinstance(_st, (int, float)):
                     # 其它源自带"自己的钟"的 时间_s: 一律映射到主钟 (有 _pb_sync 就用映射; 没有就先按自己的)
                     _sy = getattr(self, "_pb_sync", None)
@@ -1305,10 +1359,36 @@ class DataSpaceTraceSource(threading.Thread):
             return
         # digest 有两种真实形态 (JSON / 人读文本 / 被截断的 JSON) → 交给 parse_ds_digest 判
         vals = parse_ds_digest(rec.get("digest"))
+        if not vals:
+            return
         pref = "ds." + topic.lstrip("/") + "."
-        # 帧龄 = 本机收到该帧的年龄 (总线帧本身就是落盘时刻)
+        # 🕒 **x 必须是主钟 (3D 回放进度秒), 不能是 time.monotonic()**。
+        #   踩过的坑 (老倪 2026-10-15「一块多出来的绿色面积/跳变到 5 6/好像有噪声」): ds.* 原用
+        #   time.monotonic() 当 x (~25965), 与场景信号的回放秒 (0~40) 差 2 万秒 ⇒ 一按 Fit, X 被拉到
+        #   0~25980, 场景曲线压成一个点, ds 曲线在自己那格上下乱跳, 看着就是"一块绿色面积"。
+        #   锚点 = 3D 快照那一刻的 (墙钟 ts, 回放秒 时间_s) ⇒ x = 回放秒_now + (帧时刻 − ts_now)。
+        _anc = getattr(self.store, "pb_anchor", None)
+        _tw = rec.get("t")
+        if _anc is not None:
+            x = float(_anc[1]) + ((float(_tw) - float(_anc[0])) if isinstance(_tw, (int, float)) else 0.0)
+            _scene = True
+            # ✂️ 首次接入时是"尾读 200KB 历史" (≈100s 之前的总线帧), 映射到本趟就是负的回放秒 ⇒
+            #   那不是本趟的数据, 画出来是一条伸到 0 左边的长尾巴 (老倪会当成"多出来的东西")。丢掉。
+            if x < -0.5:
+                self._dropped = getattr(self, "_dropped", 0) + 1
+                if self._dropped == 1:
+                    try:
+                        self.store.note("✂️ 丢掉 %d 条**上一趟之前**的总线旧帧 (尾读历史; 映射到本趟是负的回放秒)"
+                                        % self._dropped)
+                    except Exception:
+                        pass
+                return
+        else:
+            # 还没有锚点 (3D 面板还没出过快照): 先按到达时刻铺, 标 scene=False —— 一旦有锚点就自动归到主钟。
+            #   **不静默**: 目录里该信号会带"等 3D 快照对齐"的注记。
+            x, _scene = time.time(), False
         self.store.push_many({pref + k: v for k, v in vals.items()},
-                             time.monotonic(), src="ds")
+                             x, src="ds", scene=_scene)
         self.seen[topic] = {"type": str(rec.get("type") or ""), "wall": time.time(),
                             "n": int(rec.get("n") or 0)}
 
@@ -3011,6 +3091,12 @@ class CanoeGraphicWidget(QWidget):
             if isinstance(cap, (int, float)) and cap >= 0:
                 txt += " · 限速 %.0f mm/s" % (float(cap) * 1000.0)     # 🧮 真源 m/s ⇒ 界面按 mm/s (老倪)
             txt += (" · 帧龄 %.1fs" % age) if fresh else (" · ⚠️ 快照停更 %.0fs (3D 面板没跑/播完)" % age)
+            try:                                    # 🎬 趟号: 3D 回放绕圈会让波形重铺, 先说清楚现在是第几趟
+                _st = getattr(self, "store", None)
+                if _st is not None and getattr(_st, "lap", 0) > 1:
+                    txt += " · 第 %d 趟回放" % _st.lap
+            except Exception:
+                pass
         except Exception as e:                                                 # noqa: BLE001
             txt = "🎛 状态机: 读取失败 (%s)" % type(e).__name__
         self._stage_cache = (mt, (txt, fresh))

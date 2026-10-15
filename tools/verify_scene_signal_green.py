@@ -17,6 +17,8 @@ import json
 import math
 import os
 import re
+import io
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -525,6 +527,41 @@ def main() -> int:
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 核 Fit 失败: %s" % _e)
+
+    # ── ⑱ 波形"看着像噪声"的两条真根因是否已修 (老倪 2026-10-15 目检) ─────────────
+    print("\n⑱ 波形是**一条线**: ds.* 与场景信号同一根钟 + 换趟不叠画 + 同 x 不跳变")
+    try:
+        _cg = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui",
+                                   "canoe_graphic.py"), encoding="utf-8").read()
+        _feed = _cg.split("class DataSpaceTraceSource", 1)[1].split("\nclass ", 1)[0]
+        # 判"源码里不再这么干"要**去掉注释行**再判 (我自己写的注释里就出现了 time.monotonic() 这个词,
+        #   按整段字符串 grep 会假红 —— 这类假红踩过好几次)
+        _feedbody = _feed.split("def _feed", 1)[1]
+        _code = "\n".join(_l for _l in _feedbody.splitlines() if not _l.strip().startswith("#"))
+        _c1 = ("time.monotonic()" not in _code) and ("pb_anchor" in _code)
+        _c2 = ("clear_scene(" in _cg) and ("self.store.pb_anchor = " in _cg)
+        _c3 = ("scene=_scene" in _code) and ('push_many({' in _code)
+        for _v, _t in ((_c1, "ds.* 的 x 不再用 time.monotonic() (改用 3D 快照锚点映射到回放秒)"),
+                       (_c2, "3D 回放换趟检测 + 清上一趟波形 (store.clear_scene)"),
+                       (_c3, "ds.* 与场景信号同轴同画法 (scene=True)")):
+            print("   %s %s" % ("✅" if _v else "❌", _t))
+            ok &= _v
+        # 端到端: 跑 25s 离屏探针, 要求"同钟 + 无同-x乱跳"
+        _pr = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                           "probe_wave_noise.py"), "25"],
+                             capture_output=True, text=True, timeout=180,
+                             env=dict(os.environ, QT_QPA_PLATFORM="offscreen"))
+        _tail = (_pr.stdout or "").strip().splitlines()
+        _good = "✅ 同钟且无同-x乱跳" in (_pr.stdout or "")
+        print("   %s 端到端探针: %s" % ("✅" if _good else "❌",
+                                       next((l for l in _tail if l.startswith("结论")), ((_pr.stdout or "")[-90:] or "无输出").strip())))
+        for _l in _tail:
+            if _l.startswith("主钟对齐") or _l.startswith("同 x 上跳变") or "趟号" in _l:
+                print("      " + _l)
+        ok &= _good
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核波形单值性失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
