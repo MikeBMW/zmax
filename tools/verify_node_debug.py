@@ -45,20 +45,32 @@ def _run(args, stdin="", timeout=900):
 
 def main():
     print("═" * 96)
-    print("判据: 六节点单步调试器 (tools/node_debug.py) · 550B 标定/调试档")
+    print("判据: 节点单步调试器 (tools/node_debug.py) · 550B 标定/调试档 · 七条(含 DiT 真身)")
     print("═" * 96)
 
     # ── A 结构 ────────────────────────────────────────────────────────────────
-    chk("A1 六节点在册 (引擎/专家/接触/性能/DiT/加速器)", len(nd.NODES) == 6,
+    chk("A1 七条在册 (引擎/专家/接触/性能/DiT/加速器 + DiT 真身)", len(nd.NODES) == 7,
         " / ".join(nd.NODES.keys()))
     bad_entry = []
     lib = _io.open(os.path.join(ROOT, nd.ENTRY), encoding="utf-8").read().splitlines()
     for nid, n in nd.NODES.items():
         f, fn, ln = n["entry"]
-        line = lib[ln - 1] if ln - 1 < len(lib) else ""
-        if not line.startswith("def %s(" % fn):
-            bad_entry.append("%s→%s:%d" % (nid, fn, ln))
-    chk("A2 入口 file:line 逐条真命中 `def node_*` (行号不是编的)", not bad_entry,
+        if f == nd.ENTRY:                       # 画布节点: 入口必须是 library.py 里的 `def node_*`
+            line = lib[ln - 1] if ln - 1 < len(lib) else ""
+            if not line.startswith("def %s(" % fn):
+                bad_entry.append("%s→%s:%d" % (nid, fn, ln))
+        else:                                   # 非画布节点 (如 DiT 真身): 源码里必须有该符号, 且行号对得上
+            try:
+                src = _io.open(os.path.join(ROOT, f), encoding="utf-8").read().splitlines()
+            except OSError:
+                bad_entry.append("%s→%s (文件不在位)" % (nid, fn))
+                continue
+            hit = [i for i, L in enumerate(src, 1)
+                   if (L.startswith("class %s(" % fn) or L.startswith("class %s:" % fn)
+                       or L.startswith("def %s(" % fn))]
+            if not hit or abs(hit[0] - ln) > 2:
+                bad_entry.append("%s→%s:%d (实际 %s)" % (nid, fn, ln, hit[:1]))
+    chk("A2 入口 file:line 逐条真命中 (画布节点=def node_* · 真身类=class 真在, 行号不编)", not bad_entry,
         "坏: %s" % (bad_entry or "无"))
     miss = [m for n in nd.NODES.values() for m in n["modules"]
             if not os.path.isfile(os.path.join(ROOT, m))]
@@ -105,8 +117,8 @@ def main():
             results.append(nd.run_node(nid, g))
     finally:
         sys.stdout = old
-    chk("C1 六节点真跑完成 (无异常中断)", len(results) == 6, "跑完 %d 个" % len(results))
-    chk("C2 六节点不变量自检 6/6 全通过", all(r["checks_ok"] for r in results),
+    chk("C1 七条真跑完成 (无异常中断)", len(results) == 7, "跑完 %d 个" % len(results))
+    chk("C2 七条不变量自检 7/7 全通过", all(r["checks_ok"] for r in results),
         "未过: %s" % ([r["node"] for r in results if not r["checks_ok"]] or "无"))
     chk("C3 每节点每步都有真输出 (非空, 不是占位)", all(len(r["values"]) >= 3 and
         all(isinstance(v, dict) and v for v in r["values"]) for r in results),
@@ -174,8 +186,8 @@ def main():
     ok_json = False
     if os.path.exists(jp):
         d = json.load(open(jp, encoding="utf-8"))
-        ok_json = len(d.get("nodes", [])) == 6 and all("stages" in n for n in d["nodes"])
-    chk("E4 --all --json 写全六节点轨迹 (供文档/报告)", rc == 0 and ok_json,
+        ok_json = len(d.get("nodes", [])) == 7 and all("stages" in n for n in d["nodes"])
+    chk("E4 --all --json 写全七条轨迹 (供文档/报告)", rc == 0 and ok_json,
         "exit=%d · json=%s" % (rc, "ok" if ok_json else "缺"))
     with open(os.path.join(ROOT, "tools/node_debug.py"), encoding="utf-8") as f:
         ndsrc = f.read()
@@ -198,6 +210,17 @@ def main():
         _readonly_check(), "写口: --json 报告")
 
     print("═" * 96)
+    # ── C2: DiT 真身可单步 + 画布"假接入"如实标注 (2026-10-16 review 发现) ─────────────────
+    _rc, _out = _run(["--node", "ssdec_real", "--trace"], timeout=600)
+    chk("C2a DiT 真身在册并绑真源码 (action_head.py:205 SmolVLALewActionHead)",
+        "ssdec_real" in nd.NODES and "action_head.py" in " ".join(nd.NODES["ssdec_real"]["modules"]),
+        str(nd.NODES.get("ssdec_real", {}).get("entry")))
+    chk("C2b DiT 真身真跑流匹配采样 (predict_action → 动作块 H×action_dim)",
+        _rc == 0 and "predict_action" in _out and "action_chunk" in _out,
+        "exit=%d · 命中 predict_action/action_chunk" % _rc)
+    chk("C2c 画布接入口径如实 (ssdec 绑 MLP · 真 DiT 未被任何节点引用 ⇒ 标『假接入』)",
+        ("未被任何节点" in _out or "假接入" in _out), "输出里带诚实警示")
+
     print("判据 %d 条: PASS %d · FAIL %d" % (len(OK) + len(BAD), len(OK), len(BAD)))
     if BAD:
         print("未过: %s" % BAD)

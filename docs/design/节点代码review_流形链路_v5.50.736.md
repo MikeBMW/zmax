@@ -70,7 +70,27 @@ ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画�
 `zmax_data/ss_live/engine_latest.json` · `models/manifold_engine.npz`。
 观测通道划分与 `su2.py:253` 注释逐字一致 (`[0:3]手 [3]夹爪 [4:7]光模块 [36:39]孔位`)，判据 B4 核过。
 
-## 5. 六节点单步实测 (真源帧 200 · 2026-10-15 16:58:53 落盘)
+## 4b. ⚠️ 重大发现: 画布 `ssdec` 的「DiT」名不副实 (假接入)
+
+逐行核源 (子代理只读核对, 2026-10-16) 发现: 画布键 `ssdec` 名写
+「🎯 Flow-Matching Action Head (DiT)」, 但它绑的是
+`policies/smolvla_lew/state_space_action_head.py::StateSpaceActionHead` —— 一个
+**纯 MLP 投影** (Linear→SiLU→Linear), 既没有 DiT 注意力, 也没有流匹配, 更没有权重文件
+(`__init__` 随机初始化, docstring 自己写明"需训练后加载")。
+
+**真 DiT 类** 在同目录 `action_head.py:205 SmolVLALewActionHead`:
+`forward:322` = 流匹配 loss · `predict_action:354` = `@torch.no_grad()` 流匹配采样 ·
+`apply_l4_cond:301` = L4→L3 条件通道 (懒建投影) —— 当前**无任何画布节点引用它**。
+
+处置 (不擅自改真链路, 老倪零容忍的"假接入"要留痕而不是偷偷改):
+1. 把真身也纳入单步调试清单: 新增第 7 条 `ssdec_real` (节点 key `ssdec_real`, 入口
+   `action_head.py:205`), 三环节 = ① 条件 token(1,8,960) ② L4→L3 条件通道 ③ 流匹配采样。
+2. 调试器输出/JSON/不变量里**如实标「假接入」**: 画布 `ssdec` = MLP · 真 DiT 未被任何节点绑定。
+3. 真 DiT 实测 (本轮真跑): 参数 343,204 (DiT-test preset) · 条件宽 960 ·
+   `predict_action` → (1, 7, 4) 用时 4.6ms · `l4_cond` 通道真建起 (未训练)。
+4. 要真接 (让 ssdec 指向 DiT 并喂 960 宽条件) 需动 L3 真链路 —— **等老倪点头**。
+
+## 5. 七条单步实测 (真源帧 200 · 2026-10-15 16:58:53 落盘)
 
 | 节点 | 关键实测值 | 不变量 |
 |---|---|---|
@@ -78,7 +98,8 @@ ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画�
 | 流形专家 | z_pred 范数 0.0994 · 流形读出 dim=6 · 动作块 4×7 | ✅ 读出 6 维与引擎真值列对齐 |
 | 接触流形 | 进度 0.1250m(=decompose 0.1250) · 风险 0.0000m · V=7.78e-3(两处逐位一致) | ✅ 独立重算 == 真函数 |
 | 性能流形 | V_p=0.1290(== evaluate) · η=0.0000 · ∇V_p=[0.0848 −0.4813 −0.0917] | ✅ V_p/η/∇ 三项一致 |
-| DiT | z⁷ 7 维 · 动作块 28 = 4×7 | ✅ 结构可执行；⚠️ 权重未加载 ⇒ 标「未训练」 |
+| DiT (画布 ssdec) | z⁷ 7 维 · 动作块 28 = 4×7 | ✅ 结构可执行；⚠️ 权重未加载 · ⚠️ **实为 MLP, 非 DiT** |
+| DiT 真身 (ssdec_real) | 参数 343,204 · 条件宽 960 · 动作块 (1,7,4) · 4.6ms | ✅ 流匹配采样真跑；⚠️ 未被任何画布节点引用 |
 | 前馈加速器 | ‖u_ff‖=0.1486 · cos(输出,e)=0.9980 · 限幅 0.6 内 | ✅ 方向语义 = 误差方向 |
 
 ## 6. 遗留 (如实记录, 不藏)
@@ -88,3 +109,9 @@ ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画�
 - DiT 的 5 路条件值在 `engine_latest.json` 里**没有对应字段** ⇒ 调试器报「未测」而不是 0；
   连线真源已核（判据 B2/B3），条件**数值**要等引擎把条件发布出来才能逐路对照。
 - 接触流形 `v`（末端速度）在真源里没有速度通道，调试器用**相邻帧差分**并标注 `v_src`。
+- **`ssdec` 名不副实 (见 4b)**: 名字是 DiT、跑的是 MLP；真 DiT 未被任何节点引用。
+  真接要动 L3 真链路 ⇒ 等老倪点头。
+- 「投影/度量/导航」三环节在 `ContactManifold`/`PerformanceManifold` 上**不成立**:
+  这两类只有 `decompose`/`evaluate` (投影+度量融合)、没有导航方法；真正可分离的三环节
+  只存在于 `ManifoldEngine` (project:691 / gradient_flow:748 / navigate:738)。调试器里
+  这两个流形节点的第③步因此是「evaluate 的 ∇V_p 方向语义」, 已在输出里标明来源。

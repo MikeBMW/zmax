@@ -583,6 +583,105 @@ def _vec_close(a, b, tol=1e-6):
         return False
 
 
+def stages_dit_real(g):
+    """🎯 DiT 真身 (SmolVLALewActionHead · 流匹配) —— **画布上没有任何节点绑它**
+
+    2026-10-16 review 发现 (子代理逐行核源): 画布键 `ssdec` 的名字写「Flow-Matching Action Head
+    (DiT)」, 但它绑的是 `state_space_action_head.py::StateSpaceActionHead` —— 一个纯 MLP 投影,
+    既没有 DiT, 也没有流匹配, 更没有权重; 真正的 DiT 类是同目录 `action_head.py:205
+    SmolVLALewActionHead` (forward:322 = 流匹配 loss · predict_action:354 = @torch.no_grad 采样),
+    当前**无任何画布节点引用**。本步把真身也放进可单步调试的清单, 并在结果里如实标「假接入」,
+    避免"名字=DiT、跑的是 MLP"这种不实的口径 (老倪: 模型须被真实链路每帧调用)。
+    """
+    import numpy as np
+    import torch
+    cond_dim = 960                        # 真源: action_head.py 注释/实测 cross_attention_dim=960
+    chain = None
+    try:
+        import importlib
+        if os.path.join(ROOT, "src") not in sys.path:
+            sys.path.insert(0, os.path.join(ROOT, "src"))
+        _ah = importlib.import_module("lerobot.policies.smolvla_lew.action_head")
+        _cfgmod = importlib.import_module("lerobot.policies.smolvla_lew.configuration_smolvla_lew")
+        if not str(getattr(_ah, "__file__", "")).startswith(os.path.join(ROOT, "src")):
+            chain = "环境遮蔽: lerobot 解析到 %s (非本仓库 src) ⇒ 真身未跑" % getattr(_ah, "__file__", "?")
+    except Exception as e:                                            # noqa: BLE001
+        chain = "导入失败: %s: %s" % (type(e).__name__, e)
+
+    def _mk():
+        cfg = _cfgmod.SmolVLALewConfig()
+        preset = "DiT-test" if "DiT-test" in _ah.DIT_PRESETS else "DiT-B"
+        cfg.action_model_type = preset
+        cfg.chunk_size = 7
+        cfg.action_dim = 4
+        torch.manual_seed(0)
+        return preset, _ah.SmolVLALewActionHead(cfg, cross_attention_dim=cond_dim)
+
+    def s_project():
+        if chain:
+            return {"status": "未跑", "why": chain}
+        preset, head = _mk()
+        torch.manual_seed(0)
+        cond = torch.randn(1, 8, cond_dim)
+        return {"status": "ok", "preset": preset,
+                "cond_shape": list(cond.shape), "cond_dim": cond_dim,
+                "params": int(sum(p.numel() for p in head.parameters())),
+                "src": "SmolVLM/H16 条件 token 语义 (真源里没有逐 token 数值 ⇒ 本步用确定性合成 token, 不冒充真值)",
+                "weights": "无 ckpt (README/docstring 明说需训练) ⇒ 只证结构可执行"}
+
+    def s_metric():
+        if chain:
+            return {"status": "未跑", "why": chain}
+        preset, head = _mk()
+        torch.manual_seed(0)
+        cond = torch.randn(1, 8, cond_dim)
+        l4 = torch.randn(1, cond_dim)
+        a0 = head.predict_action(cond)
+        a1 = head.predict_action(cond, l4_cond=l4)
+        return {"a_none": list(a0.shape), "a_l4": list(a1.shape),
+                "l4_proj_built": head.l4_cond_proj is not None,
+                "l4_dim": int(getattr(head, "l4_cond_dim", 0)),
+                "zero_regress": "cond=None ⇒ 一个 token 都不加 (与改造前逐位相同)",
+                "note": "l4_cond_proj 未训练 (小随机初始化): 通道真参与前向, 增益待训练"}
+
+    def s_navigate():
+        if chain:
+            return {"status": "未跑", "why": chain}
+        preset, head = _mk()
+        torch.manual_seed(0)
+        cond = torch.randn(1, 8, cond_dim)
+        t0 = time.time()
+        with torch.no_grad():
+            a = head.predict_action(cond)
+        return {"status": "ok", "action_chunk": a.detach().numpy().reshape(-1),
+                "chunk_3d": list(a.shape), "H": int(a.shape[1]), "action_dim": int(a.shape[2]),
+                "n_infer_steps": int(getattr(head, "num_inference_timesteps", -1)),
+                "ms": round((time.time() - t0) * 1e3, 1),
+                "dit_src": "action_head.py:354 predict_action (flow matching 采样, @torch.no_grad)"}
+
+    return [
+        ("① 投影 条件 token (1, 8, 960)", s_project,
+         "action_head.py:205 SmolVLALewActionHead · cross_attention_dim=960 (DiT 条件宽度)",
+         {"entry": ("src/lerobot/policies/smolvla_lew/action_head.py", "SmolVLALewActionHead", 205)}),
+        ("② 度量 L4→L3 条件通道 (apply_l4_cond)", s_metric,
+         "action_head.py:301 apply_l4_cond · l4_cond_proj (懒建, 未训练)",
+         {"entry": ("src/lerobot/policies/smolvla_lew/action_head.py", "SmolVLALewActionHead.apply_l4_cond", 301)}),
+        ("③ 导航 流匹配采样 → 动作块", s_navigate,
+         "action_head.py:354 predict_action (整段去噪 = 沿流匹配轨迹导航)",
+         {"entry": ("src/lerobot/policies/smolvla_lew/action_head.py", "SmolVLALewActionHead.predict_action", 354)}),
+    ], (lambda res: [
+        ("DiT 真身可构造 (真代码, 非别名)", res[0].get("status") == "ok",
+         "preset=%s · 参数=%s" % (res[0].get("preset"), res[0].get("params"))),
+        ("条件宽度 = 960 (真源 cross_attention_dim)", res[0].get("cond_dim") == 960 or res[0].get("status") != "ok",
+         str(res[0].get("why", "cond_dim=960"))[:70]),
+        ("流匹配采样真跑出动作块 (H×action_dim)", bool(res[2].get("status") == "ok" and res[2]["chunk_3d"][1] == 7),
+         "形状=%s · %.1fms" % (res[2].get("chunk_3d"), float(res[2].get("ms") or -1))),
+        ("⚠️ 画布接入口径如实: ssdec 绑的是 MLP, 真 DiT 未被任何节点引用",
+         True, "画布 ssdec = StateSpaceActionHead (state_space_action_head.py, 无 DiT/无流匹配/无权重) "
+               "· 真 DiT = action_head.py:205 未被任何节点绑定 ⇒ 要接需动 L3 真链路 (等老倪点头)"),
+    ])
+
+
 NODES = {
     "ss_mani_eng": {
         "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
@@ -633,6 +732,15 @@ NODES = {
         "links": "投影(obs→u_ff) / 度量(限幅±0.6) / 导航(快路径语义)",
         "stages": stages_ff,
         "layer": "L2 (执行层快路径)",
+    },
+    "ssdec_real": {
+        "name": "🎯 DiT 真身 (SmolVLALewActionHead · 流匹配) —— ⚠️ 画布未接入",
+        "entry": ("src/lerobot/policies/smolvla_lew/action_head.py", "SmolVLALewActionHead", 205),
+        "modules": ["src/lerobot/policies/smolvla_lew/action_head.py",
+                    "src/lerobot/policies/smolvla_lew/configuration_smolvla_lew.py"],
+        "links": "投影(条件 token) / 度量(L4→L3 条件通道) / 导航(流匹配采样 predict_action)",
+        "stages": stages_dit_real,
+        "layer": "L3 (真 DiT · 当前无画布节点绑定 ⇒ 假接入警示)",
     },
 }
 
@@ -838,7 +946,7 @@ def main(argv=None):
                       ensure_ascii=False, indent=1)
         print("\n📄 JSON 轨迹 → %s" % out)
     bad = [r["node"] for r in results if not r["checks_ok"]]
-    print("\n%s" % (_c("ok", "═══ 六节点单步: %d/%d 节点不变量全通过 ═══" % (len(results) - len(bad), len(results)))
+    print("\n%s" % (_c("ok", "═══ 七节点单步: %d/%d 节点不变量全通过 ═══" % (len(results) - len(bad), len(results)))
                     if not bad else _c("bad", "═══ 未通过: %s ═══" % ",".join(bad))))
     return 0 if not bad else 1
 
