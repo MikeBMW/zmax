@@ -50,6 +50,15 @@ by_name = {}
 for k, it in (getattr(m, "_items", {}) or {}).items():
     nd = getattr(it, "node", None) or {}
     by_name[str(nd.get("name", ""))] = it
+# 老倪 2026-10-15 新要的: 状态校正器 → 融合定位建图 这条回灌线
+for _nm in ("🧪 状态校正器", "📡 融合定位建图", "⚡ 前馈加速器", "🧭 动作调制器"):
+    if _nm not in by_name:
+        print("⚠️ 名字没对上: %r" % _nm)
+cs, sn = by_name.get("🧪 状态校正器"), by_name.get("📡 融合定位建图")
+if cs and sn:
+    rect = cs.sceneBoundingRect().united(sn.sceneBoundingRect()).adjusted(-360, -300, 360, 300)
+    render(rect, "/tmp/canvas_innov_to_sensor.png")
+
 a, b = by_name.get("⚡ 前馈加速器"), by_name.get("🧭 动作调制器")
 if a and b:
     ra, rb = a.sceneBoundingRect(), b.sceneBoundingRect()
