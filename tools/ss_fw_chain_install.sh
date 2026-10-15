@@ -7,13 +7,14 @@ set -eu
 R=/home/ubuntu/zmax
 sudo cp -f "$R/tools/systemd/zmax-fw-render.service" /etc/systemd/system/
 sudo cp -f "$R/tools/systemd/zmax-ss-engine-loop.service" /etc/systemd/system/
+sudo cp -f "$R/tools/systemd/zmax-ss-trace-pub.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 # 停散跑的 (用 [x] 断自身匹配)
-for pat in '[f]w_render_server\.py --port 8799' '[s]s_engine_loop\.py run'; do
+for pat in '[f]w_render_server\.py --port 8799' '[s]s_engine_loop\.py run' '[s]s_fw_trace_pub\.py'; do
   pids=$(pgrep -f "$pat" 2>/dev/null | tr '\n' ' ') || true
   [ -n "${pids:-}" ] && { echo "停散跑: $pids"; sudo kill $pids 2>/dev/null || true; sleep 2; }
 done
-sudo systemctl enable zmax-fw-render.service zmax-ss-engine-loop.service >/dev/null 2>&1 || true
+sudo systemctl enable zmax-fw-render.service zmax-ss-engine-loop.service zmax-ss-trace-pub.service >/dev/null 2>&1 || true
 sudo systemctl restart zmax-fw-render.service
 for i in $(seq 1 60); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8799/frame.png || echo 000)
@@ -21,9 +22,10 @@ for i in $(seq 1 60); do
   sleep 0.5
 done
 sudo systemctl restart zmax-ss-engine-loop.service
+sudo systemctl restart zmax-ss-trace-pub.service
 sleep 8
 echo "--- 单元状态 ---"
-systemctl is-active zmax-fw-render.service zmax-ss-engine-loop.service
+systemctl is-active zmax-fw-render.service zmax-ss-engine-loop.service zmax-ss-trace-pub.service
 echo "--- 引擎真值 ---"
 "$R/gui-venv311/bin/python" - <<'PYEOF'
 import json, os, time

@@ -238,6 +238,10 @@ def _source_scenes() -> dict:
             out["ros./gripper_pos"] = _plug
     except Exception:                                                         # noqa: BLE001
         pass
+    # 🔴 2026-10-15: `sseng.*` = 常驻引擎回路发出来的 10Hz 真值帧流 (tools/ss_fw_trace_pub.py 从
+    #   zmax_data/ss_live/engine_latest.json 搬运)。发布者**只认 task_id=TASK-01-FW\*** (插拔 FW 加载)
+    #   才写 ⇒ 这一族固定挂插拔场景, 与画布数据源切到哪个场景无关 (同 force_torque/gripper_pos 口径)。
+    out["sseng."] = "插拔场景"
     return out
 
 
@@ -326,6 +330,11 @@ def tag(key: str) -> str:
     reg = _registry()
     sig = reg.get("signals") or {}
     k = str(key or "")
+    # 🔴 2026-10-15: `sseng.*` = 插拔链常驻引擎回路的 10Hz 真值帧流 (tools/ss_fw_trace_pub.py, 只认
+    #   task_id=TASK-01-FW\* 才发布) ⇒ 场景固定「插拔场景」, **优先级最高**。否则"帧/总帧/时间_s"
+    #   这类通用名会被注册表里早先记下的摆盘标签抢走 ⇒ 蓝区(摆盘)又冒出插拔的数(同一类串台的老毛病)。
+    if k.startswith("sseng."):
+        return "插拔场景"
     if k in sig:
         return sig[k]
     # 来源前缀层: 窗口里的键可能带 ar./sstrace./host./ros./catalog. 等前缀, 逐个剥再查

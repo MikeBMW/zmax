@@ -119,6 +119,11 @@ HOST_SOURCES = [
     ("space",   "zmax_data/dataspace/live.json"),
     # 状态空间工程实况 (引擎轨迹快照 = 3D 场景面板屏幕上的同一批数字; 单一真源)
     ("sstrace", "zmax_data/ss_live/trace_live.json"),
+    # 🔴 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: trace_live.json 的唯一发布者是 3D 面板,
+    #   3D 不播放 ⇒ 每键只有 1 个样本 ⇒ 画不出线。这一路是**常驻引擎回路**的真值帧流(10Hz, 由
+    #   tools/ss_fw_trace_pub.py 从 engine_latest.json 搬运: φ/梯度/耗时/置信/内稳态/潜表示/动作调制),
+    #   与 3D 是否在播无关 ⇒ 波形恒有数据。schema 同 trace_live(ts + 时间_s ⇒ 按场景时刻铺点)。
+    ("sseng", "zmax_data/ss_live/engine_trace.json"),
     # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
     #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
     #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
@@ -1535,7 +1540,11 @@ class CanoeGraphicWidget(QWidget):
     #   命名真源 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
     DEFAULT_3D = ("sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
                   "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
-                  "sstrace.接触概率", "sstrace.安全边界_mps")
+                  "sstrace.接触概率", "sstrace.安全边界_mps",
+                  # ⚡ 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: 上面 7 条来自 3D 面板快照
+                  #   (trace_live.json), 3D 不播放 ⇒ 每键 1 个样本 ⇒ 画不出线。下面 3 条来自**常驻
+                  #   引擎回路**的 10Hz 真值帧流 (sseng.*), 打开页面就有连续波形(每周期真值都在动)。
+                  "sseng.势能_phi", "sseng.梯度范数", "sseng.循环耗时_ms")
 
     def _apply_watch(self):
         """被「➕ 增加信号话题」点名但当时还没出帧的话题: 一有字段出现就自动勾上"""
@@ -2201,6 +2210,13 @@ class CanoeGraphicWidget(QWidget):
 
     def _on_item_changed(self, item, col):
         if col != 0:
+            return
+        # 🔴 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」——真根因(实测): 上一步让重名信号在
+        #   插拔/摆盘两个区域各加载一份后, **两份行的 key 相同**; 非当前场景那一份在建树时被强制
+        #   setCheckState(Unchecked) (必做, 否则蓝区跟着打勾), 这个 Unchecked 会走 itemChanged ⇒ 把
+        #   同名 key 从 self.selected 里**摘掉** ⇒ 连带当前场景(绿区)那条曲线也没了 ⇒ 主窗口空图。
+        #   规则: 勾选状态只由**当前场景区域那一份**(可勾选的 interactive 行)说了算。
+        if not (item.flags() & Qt.ItemIsUserCheckable):
             return
         key = item.data(0, Qt.UserRole)
         if not key:

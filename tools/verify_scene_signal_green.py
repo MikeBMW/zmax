@@ -128,8 +128,24 @@ def main() -> int:
         ok &= good
         print("   %s %-14s %s" % ("✅" if good else "❌", m, hit[:1] or "不在绿区"))
 
+    print("\n⑥ 主窗口真的有波形 (老倪: 「信号分析, 主窗口, 没有波形信号啊」)")
+    live = []
+    for k in w.selected:
+        b = w.store.bufs.get(k)
+        if b is None or getattr(b, "n", 0) < 2:
+            continue
+        _t, _v = b.arrays()
+        if len(_v) > 1 and max(_v) != min(_v):
+            live.append((k, len(_v), round(min(_v), 4), round(max(_v), 4)))
+    good6 = len(live) >= 1 and len(w.wave.items) >= 1
+    ok &= good6
+    print("   已选曲线 %d 条 · 曲线对象 %d 个 · 有起伏(非平线/非单点) %d 条" % (
+        len(w.selected), len(w.wave.items), len(live)))
+    for k, n, lo, hi in live[:6]:
+        print("      ✅ %-24s n=%-4d y∈[%s, %s]" % (k, n, lo, hi))
+
     print("\n" + "=" * 88)
-    print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠且不打勾" if ok else "❌ 未通过"))
+    print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)
     return 0 if ok else 1
 

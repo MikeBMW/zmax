@@ -1,0 +1,25 @@
+[Unit]
+Description=Z-MAX 插拔链真值帧发布 (engine_latest.json → engine_trace.json, 10Hz, 供实时监控·信号分析画波形)
+Documentation=file:/home/ubuntu/zmax/tools/ss_fw_trace_pub.py
+After=zmax-ss-engine-loop.service
+Wants=zmax-ss-engine-loop.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+# 为什么要有这个单元 (老倪 2026-10-15「信号分析, 主窗口, 没有波形信号啊」):
+#   trace_live.json 的唯一发布者是 3D 面板 (ss_dreamview.publish_trace_live) —— 3D 不播放就不写,
+#   sstrace.* 每键只有 1 个样本 ⇒ 主窗口画不出波形。本单元把**常驻引擎回路**每周期真值
+#   (φ/梯度/耗时/置信/内稳态/潜表示/动作调制) 搬运成一帧一帧的时序流, 与 3D 是否在播无关。
+# 只搬运不造数: 源 = zmax_data/ss_live/engine_latest.json; 只认 task_id=TASK-01-FW*(插拔) 才发,
+#   故 sseng.* 固定标「插拔场景·绿」不会说谎 (tools/sig_scene_tags.py::_source_scenes)。
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/ss_fw_trace_pub.py --hz 10
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-ss-trace-pub.log
+StandardError=append:/var/log/zmax-ss-trace-pub.log
+
+[Install]
+WantedBy=multi-user.target
