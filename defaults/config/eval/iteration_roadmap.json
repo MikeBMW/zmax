@@ -1,0 +1,684 @@
+{
+ "schema": "zmax-iteration-roadmap/1",
+ "meta": {
+  "version": "v5.50.735",
+  "baseline": "5.50.735",
+  "ts": 1792072394,
+  "ts_str": "2026-10-15 21:53:14",
+  "generated_by": "tools/iteration_roadmap.py",
+  "n_phases": 5,
+  "n_metrics": 58
+ },
+ "phases": [
+  {
+   "phase": "Phase 0",
+   "name": "反馈速度延迟",
+   "target_metrics": [
+    {
+     "id": "perf.res_joint",
+     "name": "关节分辨率 (最小可控增量)",
+     "unit": "°",
+     "target": "≤0.001 (编码器/减速比导出)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.res_tcp",
+     "name": "末端(微动)分辨率",
+     "unit": "µm",
+     "target": "≤20 (宏微复合: 宏臂走粗 + 微动走细)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.settle",
+     "name": "整定时间 (到位稳定)",
+     "unit": "ms",
+     "target": "≤300 (残差进入 ±0.05mm 并保持)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.vis_repeat",
+     "name": "腕部相机定位重复性 (1σ)",
+     "unit": "mm",
+     "target": "≤0.15 @300mm 工作距离",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.vis_scale",
+     "name": "视觉空间分辨率 (像素当量)",
+     "unit": "mm/px",
+     "target": "≤0.25 @300mm; 亚像素插值后 ≤0.05",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.depth_noise",
+     "name": "深度测量噪声 (D405)",
+     "unit": "mm",
+     "target": "≤0.5 @300mm (滤波后)",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.pose6d_ang",
+     "name": "6D 位姿角度分辨率",
+     "unit": "°",
+     "target": "≤0.10",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.latency_e2e",
+     "name": "端到端时延 (采图→位姿输出)",
+     "unit": "ms",
+     "target": "≤50 (帧龄须随帧标注)",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.insert_depth_res",
+     "name": "插入深度控制分辨率",
+     "unit": "mm",
+     "target": "≤0.02",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.force_res",
+     "name": "力控分辨率",
+     "unit": "N",
+     "target": "≤0.5",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.force_overshoot",
+     "name": "插装力超调",
+     "unit": "%",
+     "target": "≤15 (峰值/稳态)",
+     "group": "电口 (金手指) 精细插装"
+    }
+   ],
+   "entry_criteria": {
+    "kpi": "速度反馈延迟 ≤ 10ms",
+    "time": "2026 Q3",
+    "dims": "A 标准接口",
+    "rule": "一拍内就能算出来的量: 反馈时延、最小可控增量(分辨率)、到位整定时间 —— 直接决定「速度反馈延迟」。",
+    "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
+   },
+   "meta_combo": {
+    "baseline": [
+     "FN-SYS0-60",
+     "FN-SYS0-52",
+     "FN-SYS0-57",
+     "FN-SYS0-53",
+     "FN-SYS0-54"
+    ],
+    "added": [],
+    "upgraded": [],
+    "derive": "baseline=本阶段指标所挂元任务∩配置已齐(complete=True); added=所挂元任务−配置已齐 (本阶段新增/补齐); upgraded=所挂元任务∩更早阶段组合并集 (跨阶段复用⇒本阶段升级)。元任务↔指标映射来源 = meta_perf_matrix.build() 元任务字段 (指标 links FN-* 直连, 否则经物理载体段→SKxx→元任务)。"
+   }
+  },
+  {
+   "phase": "Phase 1",
+   "name": "对位残差",
+   "target_metrics": [
+    {
+     "id": "perf.RP_pose",
+     "name": "位姿可重复性 RP (末端)",
+     "unit": "mm",
+     "target": "≤0.10 (设计目标; 工艺容差 1mm 的 1/10)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.AP_pose",
+     "name": "位姿准确度 AP (末端)",
+     "unit": "mm",
+     "target": "≤0.50",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.RP_angle",
+     "name": "姿态可重复性 (绕末端轴)",
+     "unit": "°",
+     "target": "≤0.10 (工艺角容差 1° 的 1/10)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.backlash",
+     "name": "反向间隙 (回差)",
+     "unit": "mm",
+     "target": "≤0.05",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.lift_repeat",
+     "name": "升降轴重复定位精度",
+     "unit": "mm",
+     "target": "≤0.02 (结构设计值, 0–450mm 全行程)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.stiff",
+     "name": "末端静刚度 (受力位移)",
+     "unit": "mm/N",
+     "target": "≤0.02 (5N 侧向力下末端位移)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.sync_dual",
+     "name": "双臂同步误差",
+     "unit": "mm",
+     "target": "≤0.20 (协同轨迹瞬时相对偏差)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.handeye_res",
+     "name": "手眼标定残差",
+     "unit": "mm",
+     "target": "≤2.0 (TSAI 闭环现测 1.74)",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.slot_accuracy",
+     "name": "料位识别准确率",
+     "unit": "%",
+     "target": "≥99.9 (含缺料/错位/异物判态)",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.D_INSERT_mm",
+     "name": "插深终到误差 (现有指标 F-A02)",
+     "unit": "mm",
+     "target": "≤0.30 (现口径 <4mm)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.mate_align_repeat",
+     "name": "端子对位重复性",
+     "unit": "mm",
+     "target": "X/Y 各 ≤0.05 (3σ)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.mate_angle_repeat",
+     "name": "对插姿态角偏差",
+     "unit": "°",
+     "target": "≤0.10 (绕插轴/俯仰)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.coplanarity",
+     "name": "端子共面度容差 (可插件)",
+     "unit": "mm",
+     "target": "待定 (由工件公差给出)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.face_gap",
+     "name": "光纤端面非接触安全间隙",
+     "unit": "mm",
+     "target": "≥0.5 (端面禁止任何接触; 触面 = 判废)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.fiber_bend_r",
+     "name": "光纤最小弯曲半径 (作业中)",
+     "unit": "mm",
+     "target": "≥20 (动态) / ≥10 (静态)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.aa_res_lin",
+     "name": "有源耦合对准分辨率 (平移)",
+     "unit": "µm",
+     "target": "≤1.0 (六轴微动级)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.aa_res_ang",
+     "name": "有源耦合对准分辨率 (角度)",
+     "unit": "µrad",
+     "target": "≤50",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.aa_search",
+     "name": "对准搜索范围 (粗对准能力)",
+     "unit": "mm",
+     "target": "±2 (平移) / ±5° (角度)",
+     "group": "光口 · 光纤 · 光耦合"
+    }
+   ],
+   "entry_criteria": {
+    "kpi": "对位残差 ≤ 0.5mm",
+    "time": "2026 Q4",
+    "dims": "M + A",
+    "rule": "一次动作/一批动作做完后, 实际位置姿态与目标的**残差/重复性/准确度** (需 n 次样本统计)。",
+    "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
+   },
+   "meta_combo": {
+    "baseline": [
+     "FN-SYS0-52",
+     "FN-SYS0-57",
+     "FN-SYS0-60",
+     "FN-SYS0-56",
+     "FN-SYS0-53",
+     "FN-SYS0-55",
+     "FN-SYS0-54"
+    ],
+    "added": [
+     {
+      "fn_id": "FN-SYS1-31",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+     }
+    ],
+    "upgraded": [
+     {
+      "fn_id": "FN-SYS0-52",
+      "name": "② 对位 · SK02"
+     },
+     {
+      "fn_id": "FN-SYS0-57",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS0-60",
+      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
+     },
+     {
+      "fn_id": "FN-SYS0-53",
+      "name": "③ 下降 · SK03"
+     },
+     {
+      "fn_id": "FN-SYS0-54",
+      "name": "④ 抓取 · SK04"
+     }
+    ],
+    "derive": "baseline=本阶段指标所挂元任务∩配置已齐(complete=True); added=所挂元任务−配置已齐 (本阶段新增/补齐); upgraded=所挂元任务∩更早阶段组合并集 (跨阶段复用⇒本阶段升级)。元任务↔指标映射来源 = meta_perf_matrix.build() 元任务字段 (指标 links FN-* 直连, 否则经物理载体段→SKxx→元任务)。"
+   }
+  },
+  {
+   "phase": "Phase 2",
+   "name": "成功率 · 节拍",
+   "target_metrics": [
+    {
+     "id": "perf.contact_pressure",
+     "name": "金手指接触压力上限 (不划伤)",
+     "unit": "N",
+     "target": "待定 (按最小可行力作业)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.force_curve_consistency",
+     "name": "插装力-位移曲线一致性",
+     "unit": "corr",
+     "target": "≥0.90 (与标杆模板相关)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.conn_mate_force",
+     "name": "光连接器对接力上限",
+     "unit": "N",
+     "target": "待定 (按连接器规格, 超限判废)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.il_target",
+     "name": "插入损耗 IL",
+     "unit": "dB",
+     "target": "≤0.5 (单点; 按成品规格)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.rl_target",
+     "name": "回波损耗 RL",
+     "unit": "dB",
+     "target": "≥50 (UPC) / ≥60 (APC)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.opm_res",
+     "name": "光功率监测分辨率/采样率",
+     "unit": "dB/Hz",
+     "target": "≤0.05 / ≥? (需定功率计量程与刷新率)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.hold_drift",
+     "name": "固化前保持漂移 (UV 窗口内)",
+     "unit": "µm/s",
+     "target": "≤0.5 (点胶→UV 固化期间位移漂移)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.face_clean",
+     "name": "端面洁净度 (颗粒/划痕)",
+     "unit": "-",
+     "target": "颗粒 ≤5µm 无; 划痕按 IEC 61300-3-35",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.cycle_s",
+     "name": "单颗取放周期 CT (现有指标)",
+     "unit": "s",
+     "target": "≤3.15 / ≤8 / ≤20–25 s",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.cycle_split",
+     "name": "CT 分段预算",
+     "unit": "s",
+     "target": "五段合计 ≤3.15 s",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.uph",
+     "name": "理论/实测产能 UPH",
+     "unit": "颗/h",
+     "target": "PVT ≥1100 (理论 1142.9 × 效率 0.96)",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.success_rate",
+     "name": "取放成功率",
+     "unit": "%",
+     "target": "≥99 (PVT) / ≥95 (DVT) / ≥90 (EVT)",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.changeover",
+     "name": "换型时间",
+     "unit": "min",
+     "target": "≤30 (12+ 型号); 新型号学习 ≤3h",
+     "group": "节拍 · 吞吐 · 可靠性"
+    }
+   ],
+   "entry_criteria": {
+    "kpi": "成功率 ≥ 97%",
+    "time": "2026 Q4 - 2027 Q1",
+    "dims": "M+A 泛化",
+    "rule": "一件或一批作业**做完的结果**: 成不成、快不快、产能、换型、成品光学/过程力指标。",
+    "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
+   },
+   "meta_combo": {
+    "baseline": [
+     "FN-SYS0-57",
+     "FN-SYS0-58",
+     "FN-SYS0-60",
+     "FN-SYS0-52",
+     "FN-SYS0-53",
+     "FN-SYS0-54",
+     "FN-SYS0-55",
+     "FN-SYS0-56"
+    ],
+    "added": [
+     {
+      "fn_id": "FN-SYS1-31",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+     }
+    ],
+    "upgraded": [
+     {
+      "fn_id": "FN-SYS0-57",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS1-31",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+     },
+     {
+      "fn_id": "FN-SYS0-60",
+      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
+     },
+     {
+      "fn_id": "FN-SYS0-52",
+      "name": "② 对位 · SK02"
+     },
+     {
+      "fn_id": "FN-SYS0-53",
+      "name": "③ 下降 · SK03"
+     },
+     {
+      "fn_id": "FN-SYS0-54",
+      "name": "④ 抓取 · SK04"
+     },
+     {
+      "fn_id": "FN-SYS0-55",
+      "name": "⑤ 抬起 · SK05"
+     },
+     {
+      "fn_id": "FN-SYS0-56",
+      "name": "⑥ 转移 · SK06"
+     }
+    ],
+    "derive": "baseline=本阶段指标所挂元任务∩配置已齐(complete=True); added=所挂元任务−配置已齐 (本阶段新增/补齐); upgraded=所挂元任务∩更早阶段组合并集 (跨阶段复用⇒本阶段升级)。元任务↔指标映射来源 = meta_perf_matrix.build() 元任务字段 (指标 links FN-* 直连, 否则经物理载体段→SKxx→元任务)。"
+   }
+  },
+  {
+   "phase": "Phase 3",
+   "name": "稳定性",
+   "target_metrics": [
+    {
+     "id": "perf.illum_range",
+     "name": "照度适应性",
+     "unit": "lx",
+     "target": "300–1500 照度区间内定位漂移 ≤0.15mm",
+     "group": "视觉与测量链 (定位/分辨率/时延)"
+    },
+    {
+     "id": "perf.il_repeat",
+     "name": "耦合重复性 (逐件 IL 一致性)",
+     "unit": "dB",
+     "target": "σ ≤0.10 (同型号连续 ≥20 件)",
+     "group": "光口 · 光纤 · 光耦合"
+    },
+    {
+     "id": "perf.anomaly_recovery",
+     "name": "异常自恢复率",
+     "unit": "%",
+     "target": "待定 (卡料/缺料/对位失败三类)",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.temp_hum",
+     "name": "工作温湿度",
+     "unit": "℃/%RH",
+     "target": "待确认 (现场条件; 影响光耦合漂移)",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    }
+   ],
+   "entry_criteria": {
+    "kpi": "稳定恢复时间 ≤ 1s",
+    "time": "2027 Q1-Q2",
+    "dims": "X + Z 扩展",
+    "rule": "长期与扰动条件下的稳定性: 逐件一致性漂移、异常后恢复、环境(照度)扰动下的保持能力。",
+    "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
+   },
+   "meta_combo": {
+    "baseline": [
+     "FN-SYS0-52",
+     "FN-SYS0-60",
+     "FN-SYS0-57",
+     "FN-SYS0-58",
+     "FN-SYS0-54"
+    ],
+    "added": [],
+    "upgraded": [
+     {
+      "fn_id": "FN-SYS0-52",
+      "name": "② 对位 · SK02"
+     },
+     {
+      "fn_id": "FN-SYS0-60",
+      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
+     },
+     {
+      "fn_id": "FN-SYS0-57",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS0-58",
+      "name": "⑧ 完成 · SK08"
+     },
+     {
+      "fn_id": "FN-SYS0-54",
+      "name": "④ 抓取 · SK04"
+     }
+    ],
+    "derive": "baseline=本阶段指标所挂元任务∩配置已齐(complete=True); added=所挂元任务−配置已齐 (本阶段新增/补齐); upgraded=所挂元任务∩更早阶段组合并集 (跨阶段复用⇒本阶段升级)。元任务↔指标映射来源 = meta_perf_matrix.build() 元任务字段 (指标 links FN-* 直连, 否则经物理载体段→SKxx→元任务)。"
+   }
+  },
+  {
+   "phase": "Phase 4",
+   "name": "可靠性 · 准确性",
+   "target_metrics": [
+    {
+     "id": "perf.payload_ratio",
+     "name": "负载-自重复合比",
+     "unit": "-",
+     "target": "单臂额定 7kg / 实需 5kg ⇒ 余量 ≥1.4×",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.envelope",
+     "name": "单臂作业半径",
+     "unit": "mm",
+     "target": "≥988 (达标即覆盖 30 槽料盘与 Tray 全位)",
+     "group": "运动学与机械性能 (机器人学口径)"
+    },
+    {
+     "id": "perf.mate_life",
+     "name": "插拔寿命 (工件端)",
+     "unit": "次",
+     "target": "待定 (≥500 次不劣化)",
+     "group": "电口 (金手指) 精细插装"
+    },
+    {
+     "id": "perf.endurance",
+     "name": "连续自主作业盘数",
+     "unit": "盘",
+     "target": "≥12 (PVT, 硬下限 ≥6)",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.mtbf",
+     "name": "平均无故障时间 MTBF / MTTR",
+     "unit": "h/h",
+     "target": "待定 (按 EVT 后可靠性数据定档)",
+     "group": "节拍 · 吞吐 · 可靠性"
+    },
+    {
+     "id": "perf.esd_surface",
+     "name": "设备外壳表面电阻",
+     "unit": "Ω",
+     "target": "1×10^6 < X < 1×10^9",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.esd_friction_v",
+     "name": "摩擦电压",
+     "unit": "V",
+     "target": "<70",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.esd_ground",
+     "name": "系统接地电阻",
+     "unit": "Ω",
+     "target": "<1 (孤立导体/机架/仪表全接地)",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.cleanliness",
+     "name": "洁净度等级",
+     "unit": "-",
+     "target": "待定 (光口区建议 ≥ISO 7 级)",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.noise",
+     "name": "噪声",
+     "unit": "dB(A)",
+     "target": "待确认 (厂内 ≤75 建议)",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.safety_pl",
+     "name": "安全功能等级 (急停/安全门)",
+     "unit": "-",
+     "target": "≥ PLd / Cat.3 (建议; 按现场风险评估定)",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    },
+    {
+     "id": "perf.power_air",
+     "name": "供电/气源要求",
+     "unit": "-",
+     "target": "AC 220V 单相 · 真空 0.4–0.6MPa",
+     "group": "环境 · ESD · 洁净度 · 安全"
+    }
+   ],
+   "entry_criteria": {
+    "kpi": "7x24h 成功率 ≥ 99%",
+    "time": "2027+",
+    "dims": "Z·M·A·X 全域",
+    "rule": "全系统长时运行的**可靠性与合规**: 寿命/故障率/机械余量/ESD/洁净/噪声/安全等级。",
+    "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
+   },
+   "meta_combo": {
+    "baseline": [
+     "FN-SYS0-56",
+     "FN-SYS0-60",
+     "FN-SYS0-57",
+     "FN-SYS0-52",
+     "FN-SYS0-53",
+     "FN-SYS0-54",
+     "FN-SYS0-55",
+     "FN-SYS0-58"
+    ],
+    "added": [
+     {
+      "fn_id": "FN-SYS1-31",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+     },
+     {
+      "fn_id": "FN-SYS1-33",
+      "name": "🎯 Flow-Matching Action Head (DiT)"
+     }
+    ],
+    "upgraded": [
+     {
+      "fn_id": "FN-SYS1-31",
+      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+     },
+     {
+      "fn_id": "FN-SYS0-56",
+      "name": "⑥ 转移 · SK06"
+     },
+     {
+      "fn_id": "FN-SYS0-60",
+      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
+     },
+     {
+      "fn_id": "FN-SYS0-57",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS0-52",
+      "name": "② 对位 · SK02"
+     },
+     {
+      "fn_id": "FN-SYS0-53",
+      "name": "③ 下降 · SK03"
+     },
+     {
+      "fn_id": "FN-SYS0-54",
+      "name": "④ 抓取 · SK04"
+     },
+     {
+      "fn_id": "FN-SYS0-55",
+      "name": "⑤ 抬起 · SK05"
+     },
+     {
+      "fn_id": "FN-SYS0-58",
+      "name": "⑧ 完成 · SK08"
+     }
+    ],
+    "derive": "baseline=本阶段指标所挂元任务∩配置已齐(complete=True); added=所挂元任务−配置已齐 (本阶段新增/补齐); upgraded=所挂元任务∩更早阶段组合并集 (跨阶段复用⇒本阶段升级)。元任务↔指标映射来源 = meta_perf_matrix.build() 元任务字段 (指标 links FN-* 直连, 否则经物理载体段→SKxx→元任务)。"
+   }
+  }
+ ]
+}
