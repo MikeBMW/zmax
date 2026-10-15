@@ -105,6 +105,12 @@
    `setStyle(autoExpandTextSpace=False, tickTextWidth=72)` (宽度不随数值长短变)，
    `_sync_vb_geometry` 加重入闸(setGeometry ⇒ sigResized ⇒ 又调回来)。
 
+18. **“话题在列表里、波形里没有” = 数据空间 digest 被截断** (老倪「没看到 topic 在信号分析里啊」)。
+   probe.py 对没专门摘要的话题走 `body[:180]` 兜底 ⇒ 残缺 JSON ⇒ `parse_ds_digest` 的 json.loads
+   失败、人读正则也抠不到 ⇒ 该话题 0 条信号。修法两处: ① probe 的 `_digest_for` 给该话题一行
+   **完整紧凑 JSON**(只留要画的叶子, 同 ss_torque 做法) ② `parse_ds_digest` 加“被切掉的 JSON”
+   分支: 逐对抠 `"键": 数值`。**判据要直接调页面的 parse_ds_digest**, 不能只看话题列表。
+
 ## 常驻单元
 
 `zmax-fw-render.service`(8799 渲染帧) + `zmax-ss-engine-loop.service`(引擎回路挂 VLM+多层管线) +
