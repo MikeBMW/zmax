@@ -109,19 +109,42 @@ def walk(w, out):
     return out
 
 
-TOT = {}
-for i, (attr, key) in enumerate((("mparam", "mparam"), ("bus", "bus"),
-                                 ("calib", "calib"), ("run_cfg", "run_cfg"))):
+# 🧭 2026-10-15 老倪: 右侧栏 4 → 3 行 (主参数/数据总线/参数中心), 标定真源与运行开关两页撤下。
+#   口径也改对: **UI 文案字数 (QLabel/按钮/勾选框/组框)** 才是"字数太多"的度量; 表里是数据, 单列。
+UP = (("mparam", dock.mparam), ("bus", dock.bus), ("param_center", dock.pc_side))
+LAB_BUDGET = {"mparam": 400, "bus": 400, "param_center": 400, "calib": 400, "run_cfg": 800}
+
+
+def labels_only(w):
+    from PyQt5.QtWidgets import QCheckBox, QGroupBox
+    return [len(str(c.text())) for c in w.findChildren((QLabel, QCheckBox, QPushButton, QGroupBox))
+            if hasattr(c, "text") and str(c.text()).strip()]
+
+
+def table_rows(w):
+    from PyQt5.QtWidgets import QTableWidget
+    return {id(tb): tb.rowCount() for tb in w.findChildren(QTableWidget)}
+
+
+ROWS = {}
+for i, (key, page) in enumerate(UP):
     dock.cmb_view.setCurrentIndex(i)
     app.processEvents()
-    page = getattr(dock, attr, None)
-    lens = walk(page, []) if page is not None else []
-    TOT[key] = sum(lens)
-    if key == "bus":
-        chk(TOT[key] <= 60, f"bus 页本来就极简: {TOT[key]} 字 (空态一句提示)")
-    else:
-        # M 页含 4 个页签的全部内容 (量到的是上限) ⇒ 判"不增长 + 该瘦的地方真瘦了", 并如实报数
-        chk(TOT[key] <= BEFORE[key] + 40, f"{key} 字数 {BEFORE[key]} → {TOT[key]} (未增长)")
+    lab = labels_only(page)
+    ROWS[key] = table_rows(page)
+    chk(sum(lab) <= LAB_BUDGET[key],
+        f"{key} UI 文案 {sum(lab)} 字 ≤ 预算 {LAB_BUDGET[key]} (最长单条 {max(lab or [0])} 字) —— 表格数据不计)")
+for key, page in (("calib", dock.calib), ("run_cfg", dock.run_cfg)):   # 撤下下拉的两页 (对象仍在)
+    lab = labels_only(page)
+    chk(sum(lab) <= LAB_BUDGET[key], f"{key}(已撤下) UI 文案 {sum(lab)} 字 ≤ 预算 {LAB_BUDGET[key]}")
+# 数据不许为了好看被删
+_n_mparam = sum(ROWS.get("mparam", {}).values())
+chk(_n_mparam >= 14, f"M 页数据行仍 {_n_mparam} 行 (含真源路径; 只瘦文案不删数据)")
+dock.cmb_view.setCurrentIndex(list(dock.VIEW_KEYS).index("bus")); app.processEvents()
+_hdr = dock.bus.lbl_cnt.text() if hasattr(dock.bus, "lbl_cnt") else ""
+chk(("帧龄" in _hdr) or ("话题" in _hdr) or dock.bus.table.rowCount() > 0,
+    f"数据总线页有真实数据头: {_hdr[:60]!r} · 表 {dock.bus.table.rowCount()} 行")
+dock.cmb_view.setCurrentIndex(0); app.processEvents()
 # 该瘦的点逐个断 (光看总数看不出是哪句变短了)
 _node = dock.mparam.lbl_node.text()
 chk(len(_node) <= 115, f"M 页节点行 {len(_node)} 字 (原 119: 去「节点:/id=」等冗余)")
@@ -136,8 +159,13 @@ chk(max(_cards, default=0) <= 66, f"运行开关卡面单行最长 {max(_cards, 
 chk(len(_st.text()) <= 110, f"状态读数行 {len(_st.text())} 字 (数据行, 保留)")
 # 数据条数不变 (不许为了好看删数据)
 page = dock.calib
-tb = page.tbl
-chk(tb.rowCount() == COUNT_BEFORE["calib"], f"标定页仍 {tb.rowCount()} 行 (真源 9 段都在)")
+tb = dock.calib.tbl
+_n_sec = len([k for k in json.load(open(os.path.join(ROOT, "config/calib/zmax_calib.json"), encoding="utf-8"))
+              if not k.startswith("_")]) if False else None
+import json as _json
+_n_sec = len([k for k in _json.load(open(os.path.join(ROOT, "config", "calib", "zmax_calib.json"), encoding="utf-8"))
+              if not k.startswith("_")])
+chk(tb.rowCount() == _n_sec, f"标定真源页仍 {tb.rowCount()} 行 == 真源 {_n_sec} 段 (一行不少)")
 dock.cmb_view.setCurrentIndex(3)
 app.processEvents()
 chk(len(getattr(dock, "_run_rows", None) or dock.run_cfg._cks) == COUNT_BEFORE["run_cfg"],

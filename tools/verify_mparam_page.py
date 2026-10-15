@@ -73,8 +73,17 @@ _want_m = (NODE_PARAMS.get("calib_view") or {}).get("主参数M")
 _got_m = r_cal.get("主参数 M", "")
 chk(bool(_got_m) and (_got_m == _want_m), f"标定页 M 行 == 节点 calib_view 原样: {_got_m!r}")
 
-print("\n③ M 控件反映真源值")
-chk(abs(v.sp_M.value() - float(NODE_PARAMS.get("M", 1.0))) < 1e-9, f"微调框 M = {v.sp_M.value()} (节点 M={NODE_PARAMS.get('M')})")
+print("\n③ M 控件反映**真源**值 (2026-10-15 修: 原来只读节点快照 ⇒ 一按写 M 就把真源标定值覆盖掉)")
+_MANIFOLD = os.path.join("/home/ubuntu/zmax", "config", "calib", "zmax_manifold.json")
+try:
+    _m_truth = float(json.load(open(_MANIFOLD, encoding="utf-8")).get("M"))
+except Exception:                                                            # noqa: BLE001
+    _m_truth = None
+chk(_m_truth is not None and abs(v.sp_M.value() - _m_truth) < 1e-9,
+    f"微调框 M = {v.sp_M.value()} == 真源 {_m_truth} (节点快照 M={NODE_PARAMS.get('M')} 只作对照)")
+if _m_truth is not None and abs(_m_truth - float(NODE_PARAMS.get("M", 1.0))) > 1e-9:
+    chk(("真源 M" in v.lbl_node.text() and "≠" in v.lbl_node.text()),
+        f"真源≠节点时页面标出来 (不许静默): …{v.lbl_node.text().split('·')[-1].strip()[:44]}")
 chk(v.chk_inertia.isChecked() == bool(NODE_PARAMS.get("inertia", False)),
     f"惯性勾 = {v.chk_inertia.isChecked()} (节点 inertia={NODE_PARAMS.get('inertia')})")
 v.sp_M.setValue(99.0)
@@ -88,7 +97,11 @@ _raw_before = open(TK, encoding="utf-8").read()
 before = _vals(json.load(open(TK, encoding="utf-8")))
 _logs = []
 v._log = lambda msg: _logs.append(msg)          # 抓按钮自己的日志 (证「按钮这条路」真跑通)
-v.sp_M.setValue(float(NODE_PARAMS.get("M", 1.0)))
+# 🔴 2026-10-15: 原来这里把微调框改成**节点快照值**再写 ⇒ 那一下真的把真源标定值覆盖了
+#   (判据自己制造了脏写)。现在页面值 = 真源值, 直接点写就是"幂等", 这才是不许破坏真源的判据。
+v.refresh(); app.processEvents()                # ③ 里把微调框拨到 99→钳 8.0, 这里按真源重刷 (真实用法)
+chk(abs(v.sp_M.value() - _m_truth) < 1e-9,
+    f"写之前微调框 == 真源 M ({v.sp_M.value()} vs {_m_truth}) —— 手滑点一下也不会改真源")
 v._write_M()
 app.processEvents()
 chk(any("✏️ 主参数 M 已写入真源" in x for x in _logs), f"按钮路径走通: {[x[:60] for x in _logs]}")

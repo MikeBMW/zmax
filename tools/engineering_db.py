@@ -890,6 +890,30 @@ def load(db=DB_DEFAULT):
     return out
 
 
+PARAM_COLS = ("param_id", "group_cn", "cat", "name", "cn", "value", "default_val", "min", "max", "unit",
+              "kind", "choices", "source", "ref", "writable", "status", "color", "sys_id", "module_ref", "impact")
+
+
+def load_params(db=DB_DEFAULT):
+    """🎛 参数中心的数据面: 库里的**全部参数** (老倪 2026-10-15: 参数中心 = 数据库服务的所有参数)。
+
+    单独一个函数, 不塞进 load() ⇒ /summary /export_json 的形状一字不改。"""
+    con = sqlite3.connect(db)
+    try:
+        rows = [dict(zip(PARAM_COLS, r)) for r in con.execute("SELECT * FROM params").fetchall()]
+    except sqlite3.OperationalError:
+        rows = []
+    con.close()
+    return rows
+
+
+def _by_cat(rows):
+    out = {}
+    for x in rows:
+        out[x.get("cat") or "?"] = out.get(x.get("cat") or "?", 0) + 1
+    return out
+
+
 def export_json(out_path, db=DB_DEFAULT):
     d = load(db)
     with open(out_path, "w", encoding="utf-8") as f:
@@ -955,7 +979,15 @@ def serve(port=8798, db=DB_DEFAULT):
                     body = payload("modules", D["modules"])
                 elif p == "/capabilities":
                     body = payload("capabilities", D["capabilities"])
-                elif p == "/calib":
+                elif p == "/params":
+                    # 🎛 2026-10-15 老倪: 「参数中心：对应数据库服务的所有参数」
+                    #   ⇒ 画布右侧栏「参数中心」读的就是这条端点 (一处真源; 侧栏只显示, 不另算)
+                    _ps = load_params(db)
+                    body = payload("params", {"total": len(_ps), "by_cat": _by_cat(_ps), "params": _ps})
+                elif p.startswith("/param/"):
+                    _pid = p.split("/")[2]
+                    body = payload("param", [x for x in load_params(db) if x["param_id"] == _pid])
+                elif p in ("", "/calib"):
                     body = payload("calib", D["calib"])
                 elif p == "/project":
                     body = payload("project", D["project"])

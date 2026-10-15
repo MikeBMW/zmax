@@ -55,15 +55,19 @@ for k in KEYS:
         depth += 1
     chk(same and inpanel, f"{k}: 同一对象={same} · 已在「配置·运行开关」页内={inpanel}")
 
-print("\n② 入口: 工具栏按钮已删 → 右侧栏下拉直达 (2026-10-09 老倪「运行开关按钮删掉」)")
+print("\n② 入口: 工具栏按钮已删 + 右侧栏下拉也已删 (2026-10-15 老倪「删除 运行开关」)")
 btn = getattr(m, "btn_run_cfg", None)
 chk(not isinstance(btn, QWidget), f"⚙️ 运行开关 工具栏按钮已删 (属性={type(btn).__name__})")
 tl_txt = [b.text() for b in m.findChildren(QPushButton)]
 chk("⚙️ 运行开关" not in tl_txt and "运行开关" not in tl_txt, "工具栏文字里也没有它")
-d.cmb_view.setCurrentIndex(d.VIEW_KEYS.index("run_cfg"))     # 下拉第 4 项 = 同一个页
-app.processEvents()
-chk(d.cmb_view.currentIndex() == d.VIEW_KEYS.index("run_cfg"), f"下拉切到「🔧 运行开关」页 (index={d.cmb_view.currentIndex()})")
-chk(d.run_cfg.isVisible(), "运行开关页可见")
+chk("run_cfg" not in list(d.VIEW_KEYS), f"右侧栏下拉不含 run_cfg: {list(d.VIEW_KEYS)}")
+chk(not any("运行开关" in d.cmb_view.itemText(i) for i in range(d.cmb_view.count())),
+    "下拉文案里也没有「运行开关」")
+# 页面对象与 6 个开关本体必须还在 (引擎读 self.chk_*), 只是永不显示
+chk(isinstance(d.run_cfg, MT.RunConfigWidget), "运行开关页对象保留 (没删, 引擎控件挂在里面)")
+_vis = [w.isVisible() for w in (d.run_cfg,)]
+d.cmb_view.setCurrentIndex(0); app.processEvents()
+chk(not d.run_cfg.isVisible(), "切遍下拉它都不会被显示 (撤出下拉)")
 
 print("\n③ 页面内容 (作用/生效位置/代价/档位/诊断行)")
 cap = d.run_cfg._cap()
@@ -95,10 +99,14 @@ chk(all(d.run_cfg._cks[k].isChecked() == v for k, v in D.items()), "「↺ 恢�
 d.run_cfg._copy()
 chk("Z-MAX 运行开关" in QApplication.clipboard().text(), "「📋 复制当前配置」写进剪贴板")
 
-print("\n⑤ 精简后 4 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
-EXP = {0: ("mparam",), 1: ("bus",), 2: ("calib",), 3: ("run_cfg",)}
-OBJ = {"mparam": d.mparam, "bus": d.bus, "calib": d.calib, "run_cfg": d.run_cfg}
-chk(d.cmb_view.count() == 4, f"视图数 = {d.cmb_view.count()} (精简前 11 → 5 → 4: 测量三行合一 + 加标定页)")
+print("\n⑤ 精简后 3 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
+# 🧭 2026-10-15 老倪: 「画布右侧栏, 保留 主参数 · 数据总线 · 参数中心; 删除 运行开关」
+#   ⇒ 4 行 → 3 行; 标定真源(run_cfg 同批撤下) 的控件对象仍在, 只是不再显示
+EXP = {0: ("mparam",), 1: ("bus",), 2: ("param_center",)}
+OBJ = {"mparam": d.mparam, "bus": d.bus, "param_center": d.pc_side}
+chk(d.cmb_view.count() == 3, f"视图数 = {d.cmb_view.count()} (11 → 5 → 4 → 3: 2026-10-15 删运行开关, 加参数中心)")
+chk(d.run_cfg not in OBJ.values() and not any("运行开关" in d.cmb_view.itemText(i)
+                                              for i in range(d.cmb_view.count())), "运行开关已不在下拉")
 for i in range(d.cmb_view.count()):
     d.cmb_view.setCurrentIndex(i)
     app.processEvents()

@@ -175,7 +175,7 @@ def collect_panel(sim=None, page=None):
                 out["measure_tab"] = hub._cur_key()
             except Exception:                                                    # noqa: BLE001
                 pass
-    out["available_views"] = ["mparam", "bus", "calib", "run_cfg"]
+    out["available_views"] = ["mparam", "bus", "param_center"]
     if sim is None:
         out["note"] = ("控制台没打开 (命令行存档): 运行开关/当前视图没读到 —— "
                        "在控制台里用「文件 → 💾 保存工程文件」存, 这三项会自动带上")
@@ -617,7 +617,7 @@ def upgrade_v1(path, out=None):
     proj["upgraded_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     proj.setdefault("panel", {})["run_switches"] = proj.get("run_cfg") or {}
     proj["panel"]["canvas_stack_index"] = (proj.get("ui") or {}).get("canvas_stack_index")
-    proj["panel"]["available_views"] = ["mparam", "bus", "calib", "run_cfg"]
+    proj["panel"]["available_views"] = ["mparam", "bus", "param_center"]
     proj["calibration"] = collect_calibration(with_content=True)
     proj["master_param"] = collect_master_param(d)
     proj["measure"] = collect_measure(d)

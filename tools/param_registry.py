@@ -97,9 +97,11 @@ CURATED = {
     "switch.flow_yaw": {"cn": "流形偏航 (仅 L4 90°档)", "unit": "deg", "min": -180, "max": 180},
 }
 CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff", "scene": "#2ec4b6",
-             "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2", "teach": "#c084fc"}
+             "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2", "teach": "#c084fc",
+             "spec": "#7fb3ff"}
 CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量", "scene": "场景数据(对象/标记)",
-          "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点", "teach": "号位/示教点"}
+          "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点", "teach": "号位/示教点",
+          "spec": "性能指标定义(目标值)"}
 
 
 # ── 工具 ──────────────────────────────────────────────────────────────────
@@ -401,6 +403,41 @@ def scan_platform():
     return out
 
 
+def _perf_spec_path():
+    return os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json")
+
+
+def scan_perf_spec():
+    """📊 性能指标定义 (目标值/规格) — 真源 config/platform/zmax_perf_spec.json。
+
+    🐛 2026-10-15: 单一工程库 (engineering_db.build) 早已把这 58 条按 kind='spec' 入库, 而本注册表
+       没有对应扫描器 ⇒ 注册表 759 条 vs 库 817 条; 主界面「参数中心」与画布右侧栏「参数中心」
+       两张表总数对不上 (判据 verify_param_center ⑤ 抓到)。补同一份真源的扫描器 ⇒ 一个口径。
+    只读: 目标值/规格是**定义**不是现场可改的标定数 (改它 = 改验收口径, 走配置中心/文档流程)。
+    """
+    out = []
+    d = _load(_perf_spec_path(), {}) or {}
+    rel = os.path.relpath(_perf_spec_path(), ROOT)
+    for g in (d.get("groups") or []):
+        for m in (g.get("metrics") or []):
+            tgt = m.get("target")
+            ok = bool(tgt) and not str(tgt).startswith("待")
+            item = _mk("spec:" + str(m.get("id")), str(m.get("id")), (tgt if ok else None), rel,
+                       "perf_spec:" + str(m.get("id")), "spec",
+                       extra={"cn": "%s · %s" % (m.get("cn") or m.get("id"), g.get("name") or ""),
+                              "unit": m.get("unit") or "-",
+                              "fn_ref": ",".join(m.get("links") or []),
+                              "impact": "性能指标定义 (目标值=规格): 与基线版 5.50.735 同口径对比用 "
+                                        "(评估分析页; 声明不算达标, 要现场实测)",
+                              "sys_hint": str(g.get("gid") or "")})
+            item["writable"] = False
+            item["kind"] = "spec"
+            item["status"] = "已定义(目标值)" if ok else "未定义 · 目标值待确认"
+            item["stage"] = m.get("stage")
+            out.append(item)
+    return out
+
+
 def scan_code():
     out = []
     for rel in CODE_FILES:
@@ -480,7 +517,7 @@ def _mk(pid, name, value, src, ref, group, extra=None, sys_hint=""):
 
 def scan():
     ps = (scan_calib() + scan_canvas() + scan_platform() + scan_code() + scan_switch()
-          + scan_space() + scan_teach() + scan_scene())
+          + scan_space() + scan_teach() + scan_scene() + scan_perf_spec())
     seen, out = set(), []
     for p in ps:
         if p["param_id"] in seen:

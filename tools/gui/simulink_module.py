@@ -10061,7 +10061,27 @@ class SimulinkModule(QWidget):
         dlg = QDialog(self.window() or self)
         dlg.setWindowTitle("🗂 配置中心 · 独立窗口 (与主控制台同一真源)")
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
-        dlg.resize(1480, 900)
+        # 🔴 老倪 2026-10-15: 「任务配置的窗口, 太矮了, 看不到任务, 调高, 优化UI显示」
+        #   原来固定 resize(1480, 900): 离屏实测该尺寸下**上方工作区只有 ~450px**
+        #   (底部信息窗按"窗口高度的 50%"默认拿走 ~450px), 任务表被布局压到 192px ⇒ 7 行任务只见 1 行。
+        #   改成按**屏幕可用区**给够 (仍留边距, 不出屏), 并给一个不许再拖矮的最小高度。
+        _dlg_w, _dlg_h = 1480, 900
+        try:
+            from PyQt5.QtWidgets import QApplication as _QApp
+            _scr = (_QApp.primaryScreen() or None)
+            _ag = _scr.availableGeometry() if _scr is not None else None
+            if _ag is not None and _ag.width() > 100 and _ag.height() > 100:
+                # 宽度: 0.62~1700 之间 (保持左右有主控制台余光); 高度: 0.92 可用高, 上限 1700
+                # (任务配置页装下「任务表(7 行真实行高 ~552px) + 元任务表(300px)」实测需 **1054px** 工作区,
+                #  再加页签/阵图条 35px ⇒ 窗口要 1500+ 才一屏放得下; 高度上限 1700 是给底部信息窗留够余量)
+                _dlg_w = max(1280, min(1700, int(_ag.width() * 0.62)))
+                _dlg_h = max(980, min(1700, int(_ag.height() * 0.92)))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        dlg.resize(_dlg_w, _dlg_h)
+        dlg.setMinimumSize(1280, 900)           # 比这更矮就一定看不到任务 ⇒ 不让拖到那儿
+        dlg.setToolTip("默认窗口 %dx%d (按屏幕可用区算, 不出屏) —— 上方工作区要够高才看得到全部任务行; "
+                       "底部信息窗高度可用分隔条拖, 或点「▾ 收起信息窗」把空间让给任务表" % (_dlg_w, _dlg_h))
         lay = QVBoxLayout(dlg)
         lay.setContentsMargins(0, 0, 0, 0)
         page = ConfigCenterPage(model_page=None)
@@ -10308,20 +10328,22 @@ class SimulinkModule(QWidget):
 
     # ══ 🎯 单步跟随 / 定位 / 实现位置 (2026-10-09 老倪: 全面检查每个节点实现 + 单步跳转) ══
     def _show_run_cfg(self):
-        """⚙️ 运行开关: 把右侧面板切到「🔧 配置 · 运行开关」页 (2026-10-09 老倪)"""
+        """⚙️ 运行开关页入口 —— 🔴 2026-10-15 老倪: 「画布右侧栏…删除 运行开关」
+
+        该页已从右侧栏下拉撤出 (ModelTreeDock.VIEW_KEYS 不再含 "run_cfg"), 这里不再切页,
+        **如实报告**开关本体在哪、去哪儿改 (不假装还能打开一个已经不在下拉里的页)。
+        开关本身零改动: 6 个 QCheckBox 对象仍挂在隐藏的 d.run_cfg 页里, 引擎照旧读 self.chk_*。
+        """
         d = getattr(self, "model_tree", None)
         if d is None:
-            self._log("⚠️ 右侧面板未就绪, 打不开运行开关页")
+            self._log("⚠️ 右侧面板未就绪")
             return
         try:
-            _k = list(getattr(d, "VIEW_KEYS", ()))
-            d.cmb_view.setCurrentIndex(_k.index("run_cfg") if "run_cfg" in _k else 0)
-            d.run_cfg.setVisible(True)
-            d.run_cfg.refresh()
-            self._log("⚙️ 右侧 → 🔧 配置 · 运行开关 (6 个档位/策略开关; "
-                      "改完下一次 ▶运行 / ⏭单步 即生效, 不用重启)")
-        except Exception as ex:
-            self._log(f"⚠️ 打开运行开关页失败: {ex}")
+            _n = len(getattr(d.run_cfg, "_cks", {}) or {})
+            self._log("🔧 运行开关页已按老倪 2026-10-15 从右侧栏删除; %d 个开关本体仍在 (引擎零改动) —— "
+                      "改档位去主界面「🎛 参数中心」🟠开关/调试组 (6 条), 或画布工具栏 ▶运行/⏭单步 直接跑" % _n)
+        except Exception as ex:                                              # noqa: BLE001
+            self._log(f"⚠️ 运行开关状态读取失败: {ex}")
 
     def _follow_to(self, node, force=False):
         """⏭ 单步跟随: 画布跳到当前节点 (画布太大, 找不到节点)。

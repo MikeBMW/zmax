@@ -22,8 +22,9 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
                              QScrollArea, QFileDialog,
                              QTableWidget, QTableWidgetItem, QHeaderView,
-                             QMenu, QDialog, QCheckBox, QApplication)
-from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage, QPixmap
+                             QMenu, QDialog, QCheckBox, QApplication,
+                             QLineEdit)                     # 🎛 2026-10-15 右侧栏「参数中心」页要用
+from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QImage, QPixmap, QBrush   # QBrush: 参数中心着色
 # ══════════════════════════════════════════════════════════════════
 # 🧊 2026-10-09 老倪「没有联系的全注释掉」: 原「前馈PD/PM/数学」分析内核
 #   (node_transfer / series_chain / main_chain / tf_to_ss / analyze_system) 已挪出 →
@@ -1048,18 +1049,47 @@ class MasterParamMView(QWidget):
         p = n.get("params", {}) or {}
         snap = p.get("cfg_snapshot", {}) or {}
         prj = snap.get("project", {}) or {}
+        if not isinstance(prj, dict):
+            # 🐛 2026-10-15 实测: 有些同步版本把 cfg_snapshot.project 写成字符串 ⇒
+            #   prj.get('nodes') 抛 AttributeError 直接 core dump 整页刷新。
+            #   这里兜底成"没有这项信息", 不假装有数 (页面上显示 '?')。
+            prj = {}
         _at = str(snap.get("mcd_generated_at", "—"))
-        self.lbl_node.setText(
-            f"{n.get('name', '?')}  ·  id {n.get('id')}\n"
-            f"快照 {_at[5:16] if len(_at) > 16 else _at} · {prj.get('nodes', '?')} 节点/{prj.get('links', '?')} 连线"
-            f" · 回读 {snap.get('node_readback_at') or '✗'}")
+        _m_node = float(p.get("M", 1.0))
+        # 🐛 2026-10-15 实测 (verify_mparam_page ④ 抓到的真缺陷): 本页原来只读**画布节点**的 M
+        #   (n_calib_mani.params.M 是画布默认 1.0), 而真源 config/calib/zmax_manifold.json 的 M 是
+        #   现场标定值 (实测 3.643) ⇒ 页面显示 1.0, 一按「✏️ 写 M」就把真源 3.643 覆盖成 1.0。
+        #   改法: 微调框**以真源为准** (真源没有才退回节点值), 两者不一致时在页头标出来。
+        _m_src = None
         try:
-            self.sp_M.setValue(float(p.get("M", 1.0)))
+            with open(os.path.join(self._root, "config", "calib", "zmax_manifold.json"), encoding="utf-8") as _f:
+                _v = json.load(_f).get("M")
+            _m_src = float(_v) if _v is not None else None
+        except Exception:                                                    # noqa: BLE001
+            _m_src = None
+        _txt = (f"{n.get('name', '?')}  ·  id {n.get('id')}\n"
+                f"快照 {_at[5:16] if len(_at) > 16 else _at} · {prj.get('nodes', '?')} 节点/{prj.get('links', '?')} 连线"
+                f" · 回读 {snap.get('node_readback_at') or '✗'}")
+        if _m_src is not None and abs(_m_src - _m_node) > 1e-9:
+            # 行短 (≤115 字预算, verify_ui_slim 判据), 两个数放悬浮提示
+            _txt += " · ⚠真源≠节点"
+            self.lbl_node.setToolTip("真源 M = %.3f (config/calib/zmax_manifold.json)\n"
+                                     "画布节点快照 M = %.3f (n_calib_mani.params.M, 画布默认值)\n"
+                                     "✏️ 写 M 写的是**真源**那一份 (节点快照由 tools/ss_node_sync.py 同步)" %
+                                     (_m_src, _m_node))
+        self.lbl_node.setText(_txt)
+        try:
+            self.sp_M.setValue(_m_src if _m_src is not None else _m_node)
             self.chk_inertia.setChecked(bool(p.get("inertia", False)))
         except Exception:
             pass
         mv, cv, dv, tl = (p.get("measure_view") or {}, p.get("calib_view") or {},
                           p.get("diagnose_view") or {}, p.get("task_layer") or {})
+        # 🐛 2026-10-15: 同上, 四个视图段若不是 dict (老同步版本写成字符串) ⇒ 直接当空, 不崩页
+        mv = mv if isinstance(mv, dict) else {}
+        cv = cv if isinstance(cv, dict) else {}
+        dv = dv if isinstance(dv, dict) else {}
+        tl = tl if isinstance(tl, dict) else {}
         self._fill(self.tbl["measure"], [
             ("视图", mv.get("视图", "—")),
             ("测量量", mv.get("测量量", "—")),
@@ -1135,8 +1165,12 @@ class MasterParamMView(QWidget):
         try:
             r = subprocess.run([sys.executable, tool], capture_output=True, text=True,
                                timeout=180, cwd=self._root)
-            tail = (r.stdout or "").strip().splitlines()[-1] if r.stdout else ""
-            self._log(("📥 节点同步: " if not silent else "📥 回读校验: ") + (tail or f"exit={r.returncode}"))
+            # 🐛 2026-10-15: 原来只取 stdout **最后一行**, 而末行常是"还原命令: …"这类装饰行 ⇒
+            #   日志里看不到同步结果。改成优先取带 ✅/❌/⚠️ 的**结果行**, 没有才退回末行。
+            _ls = [x for x in (r.stdout or "").splitlines() if x.strip()]
+            _res = [x for x in _ls if x.lstrip().startswith(("✅", "❌", "⚠️", "⚠"))]
+            tail = (_res[-1] if _res else (_ls[-1] if _ls else "")) or f"exit={r.returncode}"
+            self._log(("📥 节点同步: " if not silent else "📥 回读校验: ") + tail.strip())
         except Exception as ex:
             self._log(f"❌ 节点同步异常: {ex}")
         self.refresh()
@@ -1383,6 +1417,163 @@ class CalibTruthView(QWidget):
             pass
 
 
+class ParamCenterSideView(QWidget):
+    """🎛 参数中心 · 数据库服务 (画布右侧栏第三页, 老倪 2026-10-15)
+
+    老倪: 「画布右侧栏, 保留 主参数：对应流形引擎; 数据总线：对应数据空间的 Trace;
+    参数中心：对应数据库服务的所有参数; 删除 运行开关。」
+
+    真源 = 工程库只读服务 ``http://127.0.0.1:8798/params`` (engineering_db.serve → load_params();
+    库 = data/database/zmax/zmax_engineering.db, 787 参数 / 9 类)。
+    🔴 本页**只显示不写**: 改数的唯一入口是主界面「🎛 参数中心」页 (校验→影响链→备份→留痕),
+       两条写路径必然打架。
+    🔴 服务没起 ⇒ 诚实空态 (+ 启动命令), 不拿旧值/0 冒充。
+    """
+
+    API = "http://127.0.0.1:8798/params"
+    CAT_CN = {"calib": "标定", "canvas": "画布", "code": "代码", "platform": "产品性能", "switch": "开关/调试",
+              "scene": "场景", "space": "空间点", "teach": "示教点", "spec": "规格"}
+
+    def __init__(self, module=None, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.rows = []
+        self.built_at = ""
+        v = QVBoxLayout(self)
+        v.setContentsMargins(2, 2, 2, 2)
+        v.setSpacing(6)
+
+        self.lbl_title = QLabel("🎛 参数中心 · 数据库服务")
+        self.lbl_title.setStyleSheet("color:#e6edf3; font-size:15px; font-weight:700; background:transparent;")
+        v.addWidget(self.lbl_title)
+
+        self.lbl_src = QLabel("真源: 127.0.0.1:8798/params (工程库只读服务)")
+        self.lbl_src.setWordWrap(True)
+        self.lbl_src.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_src.setStyleSheet("color:#9aa4b2; font-size:12px; background:transparent;")
+        v.addWidget(self.lbl_src)
+
+        self.lbl_cnt = QLabel("—")
+        self.lbl_cnt.setWordWrap(True)
+        self.lbl_cnt.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_cnt.setStyleSheet("color:#c9d1d9; font-size:13px; background:transparent;")
+        v.addWidget(self.lbl_cnt)
+
+        bar = QHBoxLayout(); bar.setSpacing(4)
+        self.ed = QLineEdit()
+        self.ed.setPlaceholderText("🔎 搜数字 (名字/真源路径)…")
+        self.ed.setStyleSheet("QLineEdit{background:#161b22; color:#e6edf3; border:1px solid #30363d;"
+                              " border-radius:4px; padding:4px; font-size:13px;}")
+        self.ed.textChanged.connect(self._refill)
+        bar.addWidget(self.ed, 1)
+        for txt, tip, fn in (("🔄", "重新读数据库服务", self.refresh),
+                             ("↗", "打开主界面「🎛 参数中心」页 (唯一改数入口)", self._open_full)):
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.setStyleSheet("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
+                            "border-radius:4px;padding:4px 9px;font-size:13px;}"
+                            "QPushButton:hover{background:#30363d;}")
+            b.clicked.connect(fn)
+            bar.addWidget(b)
+        v.addLayout(bar)
+
+        self.tbl = QTableWidget(0, 4)
+        self.tbl.setHorizontalHeaderLabels(["用途", "数字", "当前值", "单位"])
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl.setStyleSheet("QTableWidget{background:#0d1117; color:#e6edf3; gridline-color:#21262d;"
+                               " font-size:13px;} QHeaderView::section{background:#161b22; color:#e6edf3;"
+                               " padding:4px; border:0;}")
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.itemDoubleClicked.connect(self._on_dbl)
+        v.addWidget(self.tbl, 1)
+
+        self.lbl_hint = QLabel("双击一行 = 看它属于哪一类; 改数请用主界面「🎛 参数中心」页 (唯一写入口)")
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setStyleSheet("color:#9aa4b2; font-size:12px; background:transparent;")
+        v.addWidget(self.lbl_hint)
+
+    # ── 读数据 ────────────────────────────────────────────────────────────
+    def refresh(self):
+        import json as _json
+        import urllib.request as _u
+        err = ""
+        try:
+            with _u.urlopen(self.API, timeout=4) as r:
+                d = _json.loads(r.read().decode("utf-8"))
+            self.rows = (d.get("data") or {}).get("params") or []
+            self.built_at = d.get("built_at") or ""
+        except Exception as ex:                                              # noqa: BLE001
+            self.rows, err = [], "%s: %s" % (type(ex).__name__, str(ex)[:90])
+        if err or not self.rows:
+            self.lbl_src.setText("⚠️ 数据库服务未响应 (%s)\n启动: sudo systemctl start zmax-engdb" % (err or "空返回"))
+            self.lbl_cnt.setText("参数 0 条 (未读到 —— 不显示旧值/0 冒充)")
+            self.tbl.setRowCount(0)
+            return
+        cnt = {}
+        for x in self.rows:
+            cnt[x.get("cat") or "?"] = cnt.get(x.get("cat") or "?", 0) + 1
+        self.lbl_src.setText("真源: 127.0.0.1:8798/params · 库 %s · 构建 %s"
+                             % ("data/database/zmax/zmax_engineering.db", self.built_at or "?"))
+        self.lbl_cnt.setText("参数 %d 条 ｜ %s" % (len(self.rows), " · ".join(
+            "%s %d" % (self.CAT_CN.get(k, k), v) for k, v in sorted(cnt.items(), key=lambda kv: -kv[1]))))
+        self._refill()
+
+    def _refill(self):
+        kw = (self.ed.text() or "").strip().lower()
+        rows = [x for x in self.rows
+                if not kw or kw in str(x.get("cn") or "").lower() or kw in str(x.get("name") or "").lower()
+                or kw in str(x.get("source") or "").lower() or kw in str(x.get("value") or "").lower()]
+        self.tbl.setRowCount(len(rows))
+        for i, x in enumerate(rows):
+            for j, t in enumerate((self.CAT_CN.get(x.get("cat") or "", x.get("cat") or ""),
+                                   x.get("cn") or x.get("name") or "",
+                                   x.get("value"), x.get("unit") or "")):
+                it = QTableWidgetItem("—" if t in (None, "", "null") else str(t))
+                if j == 2:
+                    it.setForeground(QBrush(QColor("#7ee787" if x.get("writable") in (1, "1", True)
+                                                   else "#9aa4b2")))
+                it.setToolTip("%s\n真源: %s\n类: %s · 状态: %s\n范围: %s ~ %s %s"
+                              % (x.get("param_id"), x.get("source"), x.get("cat"), x.get("status"),
+                                 x.get("min"), x.get("max"), x.get("unit") or ""))
+                self.tbl.setItem(i, j, it)
+        self.tbl.setColumnWidth(0, 62); self.tbl.setColumnWidth(1, 118)
+        self.tbl.setColumnWidth(2, 86)
+        if not str(self.lbl_hint.text()).startswith("🔎"):
+            self.lbl_hint.setText("显示 %d / %d 条 · 双击一行 = 看真源与范围; 改数请用主界面「🎛 参数中心」页"
+                                  % (len(rows), len(self.rows)))
+
+    def _on_dbl(self, item):
+        r = item.row()
+        pid = self.tbl.item(r, 1).text() if self.tbl.item(r, 1) else "?"
+        src = ""
+        for x in self.rows:
+            if (x.get("cn") or x.get("name")) == pid:
+                src = x.get("source") or ""
+                break
+        if self.module is not None:
+            try:
+                self.module._log("🎛 参数中心: %s ← %s (改数请用主界面 🎛 参数中心页)" % (pid, src))
+            except Exception:                                                # noqa: BLE001
+                pass
+
+    def _open_full(self):
+        """↗ 打开主界面「🎛 参数中心」页 (唯一改数入口)"""
+        w = self.window()
+        try:
+            if hasattr(w, "_on_nav"):
+                w._on_nav("params")
+            if self.module is not None:
+                self.module._log("↗ 已切到主界面「🎛 参数中心」(改数入口)")
+        except Exception as ex:                                              # noqa: BLE001
+            if self.module is not None:
+                try:
+                    self.module._log("⚠️ 打开参数中心失败: %s" % ex)
+                except Exception:                                            # noqa: BLE001
+                    pass
+
+
 class ModelTreeDock(QWidget):
     export_done = pyqtSignal(str)  # 🐛 2026-08-19: 导出上传走后台线程, 完成信号回主线程
     """📚 数据字典 (Model Tree) — 画布节点参数树 + 标定 + 数学分析
@@ -1407,10 +1598,13 @@ class ModelTreeDock(QWidget):
         self.cmb_view = QComboBox()
         # 🧭 2026-10-09 老倪「重点 = 配置 + 标定 + 主参数 M」: 只剩 5 项, 全部与工程有真连接
         # 🧭 2026-10-09 老倪: 「测量类只保留一行 + 增加一个标定类」→ 4 行, 全部真连接
+        # 🧭 2026-10-15 老倪: 「画布右侧栏, 保留 主参数(流形引擎) · 数据总线(数据空间 Trace) ·
+        #   参数中心(数据库服务的所有参数); 删除 运行开关」⇒ 下拉 3 行。
+        #   「🎛 标定真源」与「🔧 运行开关」两页**对象保留但不进下拉** (标定数字都在参数中心的 🟡calib 类里;
+        #   运行开关的 6 个 QCheckBox 对象仍被引擎读, 见 attach_run_switches) —— 一行可复活。
         self.cmb_view.addItems(["🧮 主参数 M",
                                 "📏 数据总线",
-                                "🎛 标定真源",
-                                "🔧 运行开关"])
+                                "🎛 参数中心"])
 
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)
@@ -1544,6 +1738,11 @@ class ModelTreeDock(QWidget):
         self.bus.setVisible(False)
         lay.addWidget(self.bus, 1)
         self.measure = None
+
+        # 🎛 2026-10-15 老倪: 右侧栏第三页 = 参数中心 (对应数据库服务的所有参数) —— 只显示不写
+        self.pc_side = ParamCenterSideView(module)
+        self.pc_side.setVisible(False)
+        lay.addWidget(self.pc_side, 1)
         # ────────────────────────────────────────────────────────────────────────────────────────────
         # 🧊 已停用: 上面两处对停用部件的引用
         # ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1667,8 +1866,9 @@ class ModelTreeDock(QWidget):
                 pass
             return 0
 
-    # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-09 老倪: 测量收 1 行 + 加标定页 ⇒ 4 行)
-    VIEW_KEYS = ("mparam", "bus", "calib", "run_cfg")
+    # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-15 老倪: 主参数 · 数据总线 · 参数中心 ⇒ 3 行;
+    #   标定真源/运行开关两页撤出下拉, 对象保留: self.calib / self.run_cfg)
+    VIEW_KEYS = ("mparam", "bus", "param_center")
 
     def view_is(self, key):
         """当前侧栏视图 == key ?
@@ -1687,7 +1887,8 @@ class ModelTreeDock(QWidget):
         except Exception:
             pass
         try:                                    # 兜底: 按显示文案判定
-            _lbl = {"mparam": "主参数", "bus": "数据总线", "calib": "标定", "run_cfg": "运行开关"}
+            _lbl = {"mparam": "主参数", "bus": "数据总线", "param_center": "参数中心",
+                    "calib": "标定真源", "run_cfg": "运行开关"}
             return _lbl.get(key, key) in str(self.cmb_view.currentText() or "")
         except Exception:
             return False
@@ -1700,20 +1901,19 @@ class ModelTreeDock(QWidget):
         它们读画布上的 z700_internal 节点与 gain_schedule, 而状态空间画布 (state_space_obs.json)
         这两样都是 0 处 ⇒ 显示的是 analyze_system() 里的硬编码默认值, 与工程无实质联系。"""
         k = self.VIEW_KEYS[idx] if 0 <= idx < len(self.VIEW_KEYS) else "mparam"
-        v = {name: (name == k) for name in self.VIEW_KEYS}
-        self.mparam.setVisible(v["mparam"])
-        self.bus.setVisible(v["bus"])
-        self.calib.setVisible(v["calib"])
-        self.run_cfg.setVisible(v["run_cfg"])
+        W = {"mparam": self.mparam, "bus": self.bus, "param_center": self.pc_side}
+        for name, w in W.items():
+            w.setVisible(name == k)
+        # 🔒 2026-10-15 老倪撤下下拉的两页: 对象保留(引擎/画布仍读它们的控件/数据), 永远不显示
+        for w in (self.calib, self.run_cfg):
+            w.setVisible(False)
         # 懒刷新 (只在切到的视图刷新, 省算力)
-        if v["mparam"]:
+        if k == "mparam":
             self.mparam.refresh()
-        elif v["bus"]:
+        elif k == "bus":
             self.bus.refresh()
-        elif v["calib"]:
-            self.calib.refresh()
-        elif v["run_cfg"]:
-            self.run_cfg.refresh()
+        elif k == "param_center":
+            self.pc_side.refresh()
 
     # ── 数据字典树 (系统参数 + 节点 + 参数) ──
 

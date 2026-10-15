@@ -32,7 +32,9 @@ C_BG, C_BG2, C_CARD = "#0f1318", "#131823", "#1a2230"
 C_WHITE, C_GRAY, C_DIM, C_BORDER = "#e6edf3", "#9aa7b4", "#6e7b8a", "#2a3441"
 C_BLUE, C_GREEN, C_GOLD, C_RED = "#4da3ff", "#00d4aa", "#ffc857", "#ff6b6b"
 CAT_ICON = {"calib": "🟡", "canvas": "🔵", "code": "🟣", "platform": "🟢", "switch": "🟠",
-            "space": "🩷", "teach": "📍"}   # 🩷空间点 / 📍号位示教点 (2026-10-10: 所有点位都进参数中心, 可改)
+            "space": "🩷", "teach": "📍", "spec": "📊"}
+# 🩷空间点 / 📍号位示教点 (2026-10-10: 所有点位都进参数中心, 可改)
+# 📊性能指标定义 (2026-10-15: 注册表补 scan_perf_spec ⇒ 与单一工程库同数 817, 只读目标值)
 
 
 def _pr():

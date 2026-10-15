@@ -3,7 +3,7 @@
 """verify_calib_measure.py — 右侧栏「📏 测量(只留数据总线)」+「🎛 标定(新页)」取证
 老倪 (2026-10-09): 「测量类的有三行, 太多了, 只保留一行; 增加一个标定类」→ 再收紧「测量, 只保留数据总线」
 
-① 下拉 = 4 行 (M / 测量·数据总线 / 标定 / 配置)
+① 下拉 = 3 行 (M / 数据总线 / 参数中心) —— 2026-10-15 老倪: 「画布右侧栏, 保留 主参数·数据总线·参数中心; 删除 运行开关」
 ② 测量页只挂数据总线: bus 在面板里可见, tree/ss_tree **对象仍在**(没删)但不占面板
 ③ 切到测量页会刷 bus (不抛异常)
 ④ 标定页: 行数 == 真源 config/calib/zmax_calib.json 参数段数; 值逐条与文件一致
@@ -38,11 +38,12 @@ m.load_flow_file(CANVAS)
 app.processEvents()
 d = m.model_tree
 
-print("① 下拉 4 行")
+print("① 下拉 3 行 (2026-10-15 老倪精简: 主参数 / 数据总线 / 参数中心)")
 items = [d.cmb_view.itemText(i) for i in range(d.cmb_view.count())]
-chk(d.cmb_view.count() == 4, f"4 行: {items}")
-chk(sum(t.startswith("📏") for t in items) == 1, "测量类只剩 1 行")
-chk(sum("标定" in t for t in items) >= 1, "有标定类")
+chk(d.cmb_view.count() == 3, f"3 行: {items}")
+chk(sum(t.startswith("📏") for t in items) == 1, "数据总线在 (测量类 1 行)")
+chk(any("参数中心" in t for t in items), "参数中心在列")
+chk(not any("运行开关" in t for t in items), "「🔧 运行开关」已从下拉删除")
 
 print("\n② 测量页只挂数据总线 (另两个对象保留但不上面板)")
 d.cmb_view.setCurrentIndex(d.VIEW_KEYS.index("bus")); app.processEvents()
@@ -64,8 +65,8 @@ except Exception as ex:
 _cap = d.bus.lbl_cnt.text() if hasattr(d.bus, "lbl_cnt") else ""
 chk(_ok, f"测量↔M 来回切不抛异常; bus 表行数={_rows} · 计数标签={_cap!r}")
 
-print("\n④ 标定页 = 真源注册表逐条一致")
-d.cmb_view.setCurrentIndex(d.VIEW_KEYS.index("calib")); app.processEvents()
+print("\n④ 标定真源 (CalibTruthView): 对象保留, 不再占下拉; 数字在「参数中心」🟡标定 类里")
+d.calib.refresh(); app.processEvents()          # 2026-10-15: 该页撤出下拉, 直刷对象
 c = d.calib
 chk(c.tbl.rowCount() == len(SECTIONS), f"行数 {c.tbl.rowCount()} == 真源参数段 {len(SECTIONS)}")
 keys = [c.tbl.item(r, 0).text() for r in range(c.tbl.rowCount())]
@@ -79,9 +80,14 @@ chk("zmax_calib.json" in c.lbl_src.text(), "页头标出真源路径")
 print("\n⑤ 未标定项高亮 + 可执行补救命令")
 uncal = [r for r in range(c.tbl.rowCount()) if "未标定" in c.tbl.item(r, 2).text()]
 names = [c.tbl.item(r, 0).text() for r in uncal]
-chk(set(names) == {"T_base_cam", "plane_z", "cell_geometry"}, f"未标定 3 项 = {names}")
+# 🔁 2026-10-15: 期望值**从真源推**(不再写死 3 个名字 —— cell_geometry 已在 10-15 用现场示教填上,
+#   写死的判据当场假红)。未标定 = 该段带 _reason "未标定"
+want = {k for k, v in RAW.items()
+        if not k.startswith("_") and isinstance(v, dict) and "未标定" in str(v.get("_reason") or "")}
+chk(set(names) == want, f"未标定项 == 真源 _reason 推出来的 {len(want)} 项: {sorted(want)} (实测 {names})")
 cmd = c.lbl_cmd.text()
-chk("ss_geom_calib.py" in cmd, "cell_geometry → 给 ss_geom_calib.py 零运动示教命令")
+chk(("ss_geom_calib.py" in cmd) or ("cell_geometry" not in want),
+    "凡未标定的几何段都给补救命令 (cell_geometry 已标定 ⇒ 该行不再要求)")
 chk("board_handeye_solve.py" in cmd, "T_base_cam → 给 board_handeye_solve.py 采板命令")
 chk("plane_z" in cmd, "plane_z → 给现场量取提示")
 chk(len(uncal) > 0 and all(c.tbl.item(r, 2).foreground().color().name() == "#ffa657" for r in uncal),
