@@ -2750,6 +2750,17 @@ class ConfigCenterPage(QWidget):
         row8.addWidget(b_re8)
         row8.addStretch()
         l8.addLayout(row8)
+        # 📜 专利 (老倪 2026-10-15: 「文档配置 增加专利 导出和预览功能, 通 SOR 项目立项, 等文档同级别」)
+        #    —— 放在三份文档按钮之下、共用同一个预览窗: 四类文档 (SOR/立项/协议/专利) 同页同级。
+        self._th = th
+        try:
+            self.pat_block = self._patent_block(th)
+            l8.addWidget(self.pat_block)
+        except Exception as _e8p:                                                   # noqa: BLE001
+            self.pat_block = None
+            _lb8p = QLabel("⛔ 专利文档块构造失败: %r" % (_e8p,))
+            _lb8p.setWordWrap(True)
+            l8.addWidget(_lb8p)
         self.preview = QTextEdit()
         self.preview.setReadOnly(True)
         self.preview.setFont(QFont("Consolas", 9))
@@ -2848,12 +2859,282 @@ class ConfigCenterPage(QWidget):
                "sys0": "系统 0 · 基石执行", "plat": "平台支撑"}
         _rows = [[_cn.get(f["sys"], f["sys"]), f["fn_id"], f["name"], f["layer"], f["kind"],
                   (f["module"] or "")[:44]] for f in _fns]
-        self.fn_table = _mk_table(["系统", "功能编号", "功能名称", "层", "类别", "承载模块"], _rows, th)
+        # 老倪 2026-10-15: 「预留所有功能的专利申请渠道」⇒ 功能清单表直接带「专利渠道」列
+        #   (主挂专利号 / 未挂则明写"渠渠道未闭合", 不隐藏 —— 渠道要看得见才算预留)
+        _pat = {}
+        try:
+            import patent_center as _pcm                                                # noqa: PLC0415
+            for _x in _pcm.coverage()["per_fn"]:
+                _pat[_x["fn_id"]] = _x
+        except Exception:                                                               # noqa: BLE001
+            _pat = {}
+        self.fn_pat_map = _pat
+        _rows = [list(r) + [("/".join(_pat.get(r[1], {}).get("pat_primary") or [])
+                             or ("关联 " + "/".join(_pat.get(r[1], {}).get("pat_related") or []))
+                             or "⛔ 渠道未闭合")] for r in _rows]
+        self.fn_table = _mk_table(["系统", "功能编号", "功能名称", "层", "类别", "承载模块", "专利渠道 (主挂/关联)"], _rows, th)
         # 同一类问题的预防: 74 行功能清单也要给足最小高度 (封顶 460, 约 15 行可见, 其余表内滚动),
         # 不许被上方/下方挤成"两行都看不见" (老倪 2026-10-15 报的是产品配置页, 这里是同一写法)。
         self.fn_table.setMinimumHeight(min(460, 28 * (len(_rows) + 2) + 8))
         lay.addWidget(self.fn_table, 1)
+        # 📜 专利渠道 (老倪 2026-10-15: 「预留所有功能的专利申请渠道」) —— 每个功能都能一键出专利草稿
+        _pr = QHBoxLayout()
+        _bp1 = _btn("📜 该功能专利申请草稿 (预览)", th)
+        _bp1.setToolTip("选中功能清单里的一行 → 打开它主挂专利的申请文件正文 (说明书/权利要求书/实施例)")
+        _bp1.clicked.connect(self._show_function_patent)
+        _bp2 = _btn("📋 复制功能↔专利渠道清单", th)
+        _bp2.setToolTip("全量 74 条功能的专利渠道 (主挂/关联/真源符号) 复制到剪贴板")
+        _bp2.clicked.connect(self._copy_patent_channels)
+        _bp3 = _btn("📤 导出全部专利 (md+docx)", th)
+        _bp3.setToolTip("12 件专利申请文件全部导出到 docs/patents/ (与 SOR/立项/协议同一交付目录体系)")
+        _bp3.clicked.connect(lambda: self._export_patent(single=False))
+        for _b in (_bp1, _bp2, _bp3):
+            _pr.addWidget(_b)
+        _pr.addStretch()
+        lay.addLayout(_pr)
         return w
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 📜 专利 (老倪 2026-10-15: 「预留所有功能的专利申请渠道; 文档配置 增加专利 导出和预览功能,
+    #     同 SOR 项目立项 等文档同级别; 根据现有状态空间工程, 设计专利申请的内容, 要有层次, 逻辑,
+    #     要保证全局数据真实, 可靠, 能落地, 形成专有知识产权」)
+    #   真源 config/patents/patent_registry.json (每件专利挂 fn_ids/fn_ids_related);
+    #   覆盖核对 = 与工程库 functions 表逐条比 (74/74); 文档 = tools/patent_center.py 生成 md+docx。
+    # ══════════════════════════════════════════════════════════════════════════
+    def _pc(self):
+        """专利中心模块 (延迟 import, 缺了不影响别的页)。"""
+        try:
+            if getattr(self, "_pc_mod", None) is None:
+                import patent_center as _m                                             # noqa: PLC0415
+                self._pc_mod = _m
+            return self._pc_mod
+        except Exception:                                                              # noqa: BLE001
+            return None
+
+    def _patent_block(self, th):
+        """📜 专利文档块: 12 件清单 + 覆盖统计 + 预览/导出 (与 SOR/立项/合作协议 同一页同一级别)。"""
+        m = self._pc()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 6, 0, 0)
+        lay.setSpacing(4)
+
+        def _hd(txt, color=None, size=10):
+            _l = QLabel(txt)
+            _l.setWordWrap(True)
+            _l.setFont(QFont("Consolas", size))
+            _l.setStyleSheet("color:%s;background:transparent;" % (color or th["C_YELLOW"]))
+            return _l
+        if m is None:
+            _e = QLabel("⛔ 专利中心模块 (tools/patent_center.py) 没加载上 —— 专利页签/导出不可用")
+            _e.setWordWrap(True)
+            lay.addWidget(_e)
+            self.pat_table = None
+            return w
+        try:
+            cov = m.coverage()
+            reg = m.load_registry()
+        except Exception as _e:                                                        # noqa: BLE001
+            lay.addWidget(QLabel("⛔ 读专利真源失败: %r" % (_e,)))
+            self.pat_table = None
+            return w
+        _ch = 100.0 * cov["covered"] / max(1, cov["total_fn"])
+        self.pat_cov = cov
+        lay.addWidget(_hd("📜 专利文档 (与 SOR / 项目立项 / 合作协议 **同一级别**) —— 真源 %s" % cov["src"]))
+        lay.addWidget(_hd("   渠道预留: 功能清单 %d 条 → 已挂专利 %d 条 (%.1f%%)%s | 专利 %d 件 (按层次: %s)"
+                         % (cov["total_fn"], cov["covered"], _ch,
+                            "" if not cov["uncovered"] else " · ⛔ 未挂 %d 条: %s"
+                            % (len(cov["uncovered"]), ",".join(cov["uncovered"][:6])),
+                            cov["n_patent"],
+                            " · ".join(sorted({p.get("layer", "—") for p in reg.get("patents", [])}))),
+                         th["C_GRAY"], 9))
+        _rows = []
+        for p in reg.get("patents", []):
+            _out = os.path.join("docs", "patents")
+            _base = "%s_%s" % (p["pat_id"], m._safe(p["title"])[:48])
+            _md = os.path.join(ROOT, _out, _base + ".md")
+            _dx = os.path.join(ROOT, _out, _base + ".docx")
+            _st = ("✅ %s" % time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(_md)))) if os.path.exists(_md) else "⛔ 未生成"
+            _rows.append([p["pat_id"], p["title"], p.get("layer", ""), p.get("codename", ""),
+                          p.get("status", ""), "%d / %d" % (len(p.get("fn_ids") or []), len(p.get("fn_ids_related") or [])),
+                          _st, ("docx ✅" if os.path.exists(_dx) else "docx ✗")])
+        self.pat_table = _mk_table(["专利编号", "名称", "层次", "代号", "状态", "主挂/关联功能", "文件 (md)", "docx"], _rows, th)
+        self.pat_table.setMinimumHeight(min(380, 30 * (len(_rows) + 2) + 8))
+        for i, p in enumerate(reg.get("patents", [])):
+            self.pat_table.item(i, 1).setToolTip(p.get("abstract", ""))
+            self.pat_table.item(i, 5).setToolTip("主挂: %s\n关联: %s" % (",".join(p.get("fn_ids") or []),
+                                                                        ",".join(p.get("fn_ids_related") or [])))
+        self.pat_table.itemSelectionChanged.connect(lambda: self._show_patent(force=False))
+        lay.addWidget(self.pat_table)
+        _row = QHBoxLayout()
+        _b1 = _btn("📄 预览选中专利", th)
+        _b1.setToolTip("读真源生成正文 (说明书摘要/权利要求书/说明书/实施例/挂载功能/真源数据) 显示在下方预览窗")
+        _b1.clicked.connect(lambda: self._show_patent(force=False))
+        _b2 = _btn("📤 导出选中 (md+docx)", th)
+        _b2.clicked.connect(lambda: self._export_patent(single=True))
+        _b3 = _btn("📤 导出全部专利", th)
+        _b3.setToolTip("12 件全部导出 md + docx + 渠道总览清单 → docs/patents/")
+        _b3.clicked.connect(lambda: self._export_patent(single=False))
+        _b4 = _btn("📋 复制功能↔专利渠道清单", th)
+        _b4.setToolTip("74 条功能逐条的专利渠道 (主挂/关联) 复制到剪贴板 → 可直接粘进 Excel/评审表")
+        _b4.clicked.connect(self._copy_patent_channels)
+        _b5 = _btn("♻️ 重读真源", th)
+        _b5.setToolTip("改完 config/patents/patent_registry.json 后重读 (不用重启控制台)")
+        _b5.clicked.connect(self._reload_patent_block)
+        for _b in (_b1, _b2, _b3, _b4, _b5):
+            _row.addWidget(_b)
+        _row.addStretch()
+        lay.addLayout(_row)
+        return w
+
+    def _show_function_patent(self):
+        """📜 按功能清单里选中的一行, 打开该功能主挂专利的申请草稿 (在文档配置页的预览窗里看)。"""
+        try:
+            t = getattr(self, "fn_table", None)
+            fid = ""
+            if t is not None and t.selectedItems():
+                _c = t.item(t.selectedItems()[0].row(), 1)     # 功能编号列
+                fid = _c.text() if _c is not None else ""
+            if not fid:
+                self.out.setPlainText("提示: 先在功能清单表里点一行 (功能编号), 再点这个按钮 —— 会打开它主挂专利的草稿。")
+                return
+            x = (getattr(self, "fn_pat_map", {}) or {}).get(fid) or {}
+            _ps = (x.get("pat_primary") or []) + (x.get("pat_related") or [])
+            if not _ps:
+                self.out.setPlainText("⛔ %s 的专利渠道未闭合 (真源 config/patents/patent_registry.json 里没有挂它)"
+                                      " —— 渠道预留要逐条挂上, 不许留空。" % fid)
+                return
+            self.out.setPlainText("📜 %s (%s) → 专利 %s (主挂 %s · 关联 %s)"
+                                  % (fid, x.get("name", ""), "/".join(_ps),
+                                     "/".join(x.get("pat_primary") or []) or "—",
+                                     "/".join(x.get("pat_related") or []) or "—"))
+            self._show_patent(_ps[0])
+        except Exception as _e:                                                              # noqa: BLE001
+            self.out.setPlainText("⛔ 打开功能专利草稿失败: %r" % (_e,))
+
+    def _pat_selected(self):
+        """当前选中的专利号 (没选就取第一件)。"""
+        m = self._pc()
+        try:
+            t = getattr(self, "pat_table", None)
+            if t is not None:
+                it = t.selectedItems()
+                if it:
+                    r = it[0].row()
+                    c = t.item(r, 0)
+                    if c is not None:
+                        return c.text()
+            reg = m.load_registry() if m else {}
+            ps = (reg or {}).get("patents") or []
+            return ps[0]["pat_id"] if ps else ""
+        except Exception:                                                              # noqa: BLE001
+            return ""
+
+    def _show_patent(self, pat_id=None, force=False):
+        """📄 预览专利: 没有产物先真跑导出, 再读回正文显示在预览窗 (与三份文档共用同一个预览窗)。"""
+        m = self._pc()
+        if m is None:
+            self.out.setPlainText("⛔ 专利中心模块没加载上 (tools/patent_center.py)")
+            return
+        pid = pat_id or self._pat_selected()
+        if not pid:
+            self.out.setPlainText("⛔ 没有专利可预览 (真源里 0 件)")
+            return
+        try:
+            self._pv_kind = "patent"
+            self.pv_head.setText("📜 专利 %s · 正在生成/读取正文 …" % pid)
+            QApplication.processEvents()
+            if force or not self._pat_files(pid)["md"]:
+                self.out.setPlainText(_run_script("patent_center.py", ["--export", pid]))
+                QApplication.processEvents()
+            fs = self._pat_files(pid)
+            if not fs["md"]:
+                txt = m.preview(pid)        # 导出失败也要能看正文 (直接由真源现算)
+                self.pv_head.setText("📜 专利 %s · ⛔ 文件未落地, 下面是真源现算正文" % pid)
+            else:
+                txt = open(fs["md"], encoding="utf-8").read()
+                cov = getattr(self, "pat_cov", None) or m.coverage()
+                self.pv_head.setText(
+                    "📜 专利 %s · %s\n文件 %s (生成 %s) · 渠道覆盖 %d/%d 条功能 · 真源 %s"
+                    % (pid, os.path.basename(fs["md"]), fs["md"],
+                       time.strftime("%m-%d %H:%M", time.localtime(fs["mtime"])),
+                       cov["covered"], cov["total_fn"], cov["src"]))
+            self.preview.setPlainText(txt)
+            self.out.setPlainText("📜 已预览 %s (正文见下方预览窗; 导出 md+docx 点「📤 导出选中」)" % pid)
+        except Exception as _e:                                                        # noqa: BLE001
+            self.out.setPlainText("⛔ 预览专利 %s 失败: %r" % (pid, _e))
+
+    def _pat_files(self, pid):
+        m = self._pc()
+        out = {"md": None, "docx": None, "mtime": 0}
+        try:
+            reg = m.load_registry()
+            for p in reg.get("patents", []):
+                if p["pat_id"] == pid:
+                    base = "%s_%s" % (pid, m._safe(p["title"])[:48])
+                    md = os.path.join(ROOT, "docs", "patents", base + ".md")
+                    dx = os.path.join(ROOT, "docs", "patents", base + ".docx")
+                    if os.path.exists(md):
+                        out["md"], out["mtime"] = md, os.path.getmtime(md)
+                    if os.path.exists(dx):
+                        out["docx"] = dx
+        except Exception:                                                              # noqa: BLE001
+            pass
+        return out
+
+    def _export_patent(self, single=True):
+        """📤 导出: 选中一件或全部 (md+docx) —— 跑真脚本, 输出回底面板 (点了必出结果)。"""
+        m = self._pc()
+        if m is None:
+            self.out.setPlainText("⛔ 专利中心模块没加载上")
+            return
+        which = self._pat_selected() if single else "all"
+        self.out.setPlainText("▶ 导出专利 %s (md+docx) …" % which)
+        QApplication.processEvents()
+        log = _run_script("patent_center.py", ["--export", which])
+        self.out.setPlainText(log)
+        try:                                       # 重新读一遍覆盖/文件状态, 表格立刻反映
+            self._reload_patent_block(reload_only=True)
+        except Exception:                                                              # noqa: BLE001
+            pass
+
+    def _copy_patent_channels(self):
+        """📋 复制 74 条功能 → 专利渠道 (TSV)。"""
+        m = self._pc()
+        try:
+            cov = m.coverage()
+            hdr = ["功能编号", "功能名称", "系统", "层", "主挂专利", "关联专利", "真源符号"]
+            lines = ["\t".join(hdr)]
+            for x in cov["per_fn"]:
+                lines.append("\t".join([x["fn_id"], x["name"], x["sys"], x["layer"],
+                                         "/".join(x["pat_primary"]) or "—", "/".join(x["pat_related"]) or "—",
+                                         x["symbol"] or x["module"]]))
+            QApplication.clipboard().setText("\n".join(lines))
+            self.out.setPlainText("📋 已复制 %d 条功能↔专利渠道 (含表头) · 覆盖 %d/%d"
+                                  % (len(cov["per_fn"]), cov["covered"], cov["total_fn"]))
+        except Exception as _e:                                                        # noqa: BLE001
+            self.out.setPlainText("⛔ 复制专利渠道失败: %r" % (_e,))
+
+    def _reload_patent_block(self, reload_only=False):
+        """♻️ 重读专利真源: 重建专利块 (表 + 统计)。"""
+        try:
+            _i = self._tab_index_by_title("文档配置")
+            _host = self.tabs.widget(_i)
+            _page = _host.widget() if hasattr(_host, "widget") else _host
+            _lay = _page.layout()
+            _old = getattr(self, "pat_block", None)
+            _new = self._patent_block(self._th)
+            self.pat_block = _new
+            if _old is not None and _lay is not None:
+                _lay.replaceWidget(_old, _new)
+                _old.deleteLater()
+            elif _lay is not None:
+                _lay.insertWidget(max(0, _lay.count() - 2), _new)
+            if not reload_only:
+                self.out.setPlainText("♻️ 已重读专利真源: %d 件 · 渠道 %d/%d"
+                                      % (self.pat_cov["n_patent"], self.pat_cov["covered"], self.pat_cov["total_fn"]))
+        except Exception as _e:                                                        # noqa: BLE001
+            self.out.setPlainText("⛔ 重读专利块失败: %r" % (_e,))
 
     def _model_layer_block(self, th):
         """🧠 功能配置 ←→ L2/L3/L4/L5 层模型 映射 —— **模型配置页的主要信息**。
@@ -3439,6 +3720,14 @@ class ConfigCenterPage(QWidget):
                 _f = _ppd().get("functions") or []
                 L.append("   功能清单汇总: %s" % (_fs(_f)["text"] if _f else "取不到"))
                 L.append("   真源: 单一工程库 functions 表 (系统 2/1/0 + 平台支撑); 本页功能表 %d 行" % len(_f))
+                try:                                    # 专利渠道 (老倪: 预留所有功能的专利申请渠道)
+                    import patent_center as _pcm                                        # noqa: PLC0415
+                    _c = _pcm.coverage()
+                    L.append("   专利渠道: %d/%d 条功能已挂 (专利 %d 件) · 真源 %s"
+                             % (_c["covered"], _c["total_fn"], _c["n_patent"], _c["src"]))
+                    L.append("   「📜 该功能专利申请草稿」= 选中一行功能后打开它主挂专利的申请文件正文")
+                except Exception:                                                       # noqa: BLE001
+                    pass
             elif "模型配置" in t:
                 from zmax_platform_info import layer_summary as _ls2, function_layer_map as _flm2
                 _l2, _f2 = _ls2(), _flm2()
@@ -3466,6 +3755,15 @@ class ConfigCenterPage(QWidget):
                     str((b.get("identity") or {}).get("order_no", "?")) for b in _bs[:8])))
                 L.append("   真源: config/orders/BS_*.json (点工单号看完整配置面)")
             elif "文档配置" in t:
+                try:                                    # 专利与 SOR/立项/合作协议 同级 (老倪 2026-10-15)
+                    import patent_center as _pcm2                                       # noqa: PLC0415
+                    _c2 = _pcm2.coverage()
+                    L.append("   四类文档同页同级: SOR / 项目立项 / 合作协议 / **专利 (%d 件)** —— 导出+预览同一通道"
+                             % _c2["n_patent"])
+                    L.append("   专利渠道: %d/%d 条功能已挂 · 真源 %s · 产物 docs/patents/"
+                             % (_c2["covered"], _c2["total_fn"], _c2["src"]))
+                except Exception:                                                       # noqa: BLE001
+                    pass
                 _dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
                 L.append("   三份交付文档: 项目立项 %s · 供应商 SOR %s · 合作协议 %s (✅就绪 / ⛔过期或未生成)"
                          % (_dm[1], _dm[0], _dm[2]))

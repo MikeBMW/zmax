@@ -40,7 +40,9 @@ def main() -> int:
     # 最后一张 = 老倪报的场景: **点左树「5. 性能配置 · 玉衡」** → 右页必须显玉衡(按钮按下)而不是天玑
     shots = [("任务配置", "天璇", None, False), ("产品配置", "天枢", None, False),
              ("功能配置", "天玑", "func", False), ("性能配置", "玉衡", "perf", False),
-             ("性能配置", "性能配置点左树", "perf", True)]
+             ("性能配置", "性能配置点左树", "perf", True),
+             # 北斗七星版新增: 文档配置页的「📜 专利 (与 SOR/立项/合作协议同级)」+ 模型配置页层映射
+             ("文档配置", "文档配置专利", None, False), ("模型配置", "模型配置层映射", None, False)]
     state = {"i": 0}
 
     def _step():
@@ -63,6 +65,12 @@ def main() -> int:
                 page._goto_star(key)      # 点星 = 只亮这一颗 (一页三星时验证一致性)
         app.processEvents()
         f = os.path.join(dst, "real_%d_%s.png" % (i + 1, star))
+        if "专利" in star:                      # 文档配置页: 先预览一件专利 (预览窗里出正文) 再拍
+            try:
+                page._show_patent("ZMP-2026-001")
+                app.processEvents()
+            except Exception as _e:                                             # noqa: BLE001
+                print("   (预览专利没出: %r)" % (_e,))
         page.grab().save(f)
         print("  %s → %s (%d bytes)" % (star, os.path.basename(f), os.path.getsize(f)))
         state["i"] += 1
