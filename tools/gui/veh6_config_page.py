@@ -563,6 +563,34 @@ def _proj_paths():
     return out
 
 
+def _steps_cell(t):
+    """任务表「工艺步骤」单元格 —— 只放**一眼看完**的短标签, 完整序列一字不少进 tooltip。
+
+    老倪 2026-10-15: 「任务配置的窗口, 太矮了, 看不到任务」的真根因之一就在这里 ——
+    这一列原来把 8 段工艺全串成一行长文本 (`.join(" → ")`), 而它是**唯一的 Stretch 列** ⇒
+    单元格宽度不够时文字反复折行, 每一行任务被撑到 **133~177px**; 离屏实测 7 行合计 **865px**
+    (表头再加 41) ⇒ 任务表要 ~912px 才装得下, 矮窗口里自然只看得到 1 行。
+    改成「前两段 → … (共 N 段)」后行高回到 2 行文本 (~67px), 7 行 ~470px 一屏可见。
+    口径: 这不是静默截断 —— 省略处有显式 `… (共 N 段)` 标记, 完整序列在 tooltip 里。
+    """
+    names = [str(s.get("name") or "") for s in (t.get("steps") or [])]
+    if not names:
+        return "—"
+    if len(names) <= 2:
+        return " → ".join(names)
+    return "%s → %s → … (共 %d 段)" % (names[0], names[1], len(names))
+
+
+def _steps_tip(t):
+    """工艺步骤列的 tooltip: 完整序列 (与 config/tasks/tasks.json 真源逐条一致)。"""
+    names = [str(s.get("name") or "") for s in (t.get("steps") or [])]
+    if not names:
+        return "工艺步骤: (该任务在真源里没有 steps)"
+    return ("工艺步骤 · 完整序列 (共 %d 段)\n" % len(names)
+            + "\n".join("  %2d. %s" % (i + 1, n) for i, n in enumerate(names))
+            + "\n真源: config/tasks/tasks.json (由 tools/task_build.py 生成)")
+
+
 def _proj_cell():
     """工程列单元格: 工程名 + 项目启动文件 (真名, 相对仓库根的路径)。"""
     p = _proj_paths()
@@ -1897,6 +1925,16 @@ class ConfigCenterPage(QWidget):
             t.verticalHeader().setDefaultSectionSize(22)
         except Exception:                                                       # noqa: BLE001
             pass
+        # 🔴 老倪 2026-10-15 (同一条「看不到任务」): 元任务表 75 行原来**没有最小高度** ⇒ 被压到 192px
+        #   (22px 行高 ⇒ 只有 8 行可见)。当时给的是 min(300, …) 的**天花板**;
+        # 🔴 老倪 2026-10-15 第二轮: 「元任务 窗口, 也是太矮了, 调高适配」—— 实测(离屏 1700×1700)
+        #   它只拿到 463px ⇒ 75 行里只看得到 19 行, 而且高度是布局"分剩下的", 想多看也拉不动。
+        #   改法(根因是"没有可拖的边界"): 任务表 ↔ 元任务表 之间插一条 **竖直 QSplitter**(9px 可拖),
+        #   这里的最小高度只当"不许被拖没"的地板(240px), 不再是天花板; 高度交给分隔条 + 老倪自己拖。
+        try:
+            t.setMinimumHeight(min(240, 22 * (t.rowCount() + 2) + 8))
+        except Exception:                                                       # noqa: BLE001
+            pass
         self.meta_table = t
         for r in range(t.rowCount()):
             full = self._meta_card_text(mt[r] if r < len(mt) else {})
@@ -2438,7 +2476,7 @@ class ConfigCenterPage(QWidget):
               _proj_cell(),                               # 🚀 工程列 (工程名 + 项目启动文件真名 + 路径)
               _scene_cell(t),                             # 3D场景列 (场景名字, 按场景色上色)
               _monitor_cell(t),                           # 🚀 实时监控列 (该任务加载信号的颜色 + 条数)
-              " → ".join(s["name"] for s in t.get("steps", [])),
+              _steps_cell(t),                             # 🆕 2026-10-15 工艺步骤列: 短标签(前2段+共N段), 完整序列进 tooltip
               f"{len(t['applies_segments'])}/8",
               len(t.get("variants", [])),
               (len(bmap[t["task_id"]]["enabled_nodes"]) if t["task_id"] in bmap else "—"),
@@ -2458,6 +2496,27 @@ class ConfigCenterPage(QWidget):
             self.tasks_table.resizeRowsToContents()
         except Exception:                                                          # noqa: BLE001
             pass
+        # 🔴 老倪 2026-10-15: 「任务配置的窗口, 太矮了, 看不到任务, 调高, 优化UI显示」
+        #   根因 (离屏逐尺寸实测, tools/probe_task_cfg_height.py + tools/probe2_rows.py): 任务表**没有最小高度** ——
+        #   页面被压时布局把它和「元任务表」各分一半, 实测 1480x900 / 1920x950 都只分到 **192px**
+        #   (表头 41 + 视口 135 ⇒ 7 行任务里只有 **1 行**完整可见, 老倪看到的就是"看不到任务")。
+        #   修法: 给任务表一个**装得下全部任务行**的最小高度 (按**真实行高**逐行相加算, 不用 defaultSectionSize
+        #   —— 那一列长文本折行后行高实测 133~177px, 按 46 算会算少一半);
+        #   窗口再矮也不会被压成看不见, 整页不够高时由外层 QScrollArea 滚。
+        #   封顶 620px: 任务数将来变多时不许把整页顶到天上 (超出的行用表内滚动条)。
+        try:
+            _th_head = max(41, self.tasks_table.horizontalHeader().height())
+            _th_rows = sum(self.tasks_table.rowHeight(_r) for _r in range(self.tasks_table.rowCount()))
+            _th_hsb = self.tasks_table.horizontalScrollBar().sizeHint().height() or 16
+            _th_need = _th_head + _th_rows + 2 * self.tasks_table.frameWidth() + _th_hsb + 4
+            self.tasks_table.setMinimumHeight(min(660, _th_need))
+            self.tasks_table.setToolTip(
+                "任务表最小高度 = 表头 %d + %d 行真实行高合计 %d + 边框/横向滚动条 %d = %dpx\n"
+                "⇒ 全部任务行都渲染在表内 (窗口再矮也不压扁; 行数再多才用表内滚动条)"
+                % (_th_head, self.tasks_table.rowCount(), _th_rows,
+                   2 * self.tasks_table.frameWidth() + _th_hsb + 4, _th_need))
+        except Exception:                                                          # noqa: BLE001
+            pass
         # 🆕 2026-10-11 老倪: 「配置中心的活跃属性列, 增加新功能, 用户可以自主调整 活跃/未激活 等状态, 用下拉菜单」
         #   设计: 活跃列每行一个下拉 (★ 活跃 / ○ 未激活 / — 无配置) —— 选「★ 活跃」= 真激活该任务 (走 ss_task_bind --activate,
         #   写绑定真源 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
@@ -2467,6 +2526,7 @@ class ConfigCenterPage(QWidget):
             for _i, _t in enumerate(tk.get("tasks", [])):
                 # 列序: 0任务ID 1类型 2工程 3=3D场景 4=实时监控 5工艺步骤 … 11模型 12活跃 13状态
                 for _c, _tip in ((2, _proj_tip()), (3, _scene_tip(_t)), (4, _monitor_tip(_t)),
+                                 (5, _steps_tip(_t)),
                                  (11, _model_tip(_t)), (0, _points_tip(_t))):
                     _it = self.tasks_table.item(_i, _c)
                     if _it is not None:
@@ -2525,7 +2585,9 @@ class ConfigCenterPage(QWidget):
         row.addWidget(_b_mt)
         row.addStretch()
         l.addLayout(row)
-        l.addWidget(self.tasks_table, 1)
+        # ⚠️ 任务表**不直接进 l** —— 它要和元任务表之间夹一条可拖的分隔条 (见本页末尾的 self.tm_split),
+        #    否则两张表的高度都只能由布局"分剩下的"决定 ⇒ 元任务表 75 行只看得到 19 行, 老倪也拉不动它。
+        #    (老倪 2026-10-15: 「元任务窗口也是太矮了, 调高适配」)
         # 🚀 2026-10-12 老倪: 「右下角增加启动按钮, 用户可以同时启动工程, 信号, 和场景」
         #   右下角 = 表格之下右对齐; 执行体 = studio._open_all_cmd (与命令行 zmax_open.py step2 同一段代码)
         row2 = QHBoxLayout()
@@ -2543,19 +2605,74 @@ class ConfigCenterPage(QWidget):
         _b_all.setStyleSheet(_b_all.styleSheet() + ";font-weight:bold;")
         _b_all.clicked.connect(lambda: self._open_all_clicked())
         row2.addWidget(_b_all)
-        l.addLayout(row2)
+        # ⚠️ row2 (启动按钮行) **不进 l** —— 它要跟着任务表进同一个舱 (_ul, 见下面分隔条那段);
+        #    两边都 addLayout 会让 Qt 只认第一个父布局 ⇒ 按钮被挤到 0 高度看不见 (实测踩过)。
         # 🆕 2026-10-14 老倪: 「将元任务, 这些信息, 体现在配置中心的 任务配置」——
         #   任务表之下再给一张**元任务表** (每个元任务 = 一个功能 + 该功能全部配置参数),
         #   列 = 元任务标准模板; 真源同 Word/PDF 导出器 (同一份构建函数)。
         #   ⚠️ 上面任务表的列一列没动 (只增一张表, 不换列)。
+        # ── 任务表 ↔ 元任务表: 一条**可拖的竖直分隔条** (老倪 2026-10-15「元任务窗口太矮了, 调高适配」) ──
+        #   实测根因(离屏 1700×1700): 两张表同在一个 QVBoxLayout 里, 谁都没有边界 ⇒ 元任务表只拿到 463px,
+        #   75 行里看到 19 行; 老倪想多看也**拉不动**(没有可拖的控件)。改法:
+        #     ① 两表各自装进一个容器, 中间夹 QSplitter(Vertical), 9px 手柄可拖;
+        #     ② 初值按实测给 [552, 600]: 552 = 任务表 7 行真实行高(不能少, 少了自己那张表就要滚),
+        #        剩下给元任务表 (600px ≈ 25 行可见, 原来 19 行); 想全看 75 行直接把手柄往下拖。
+        #     ③ 子项不可折叠 (拖到 0 会把表藏掉, 老倪会以为"又不见了")。
         try:
-            self._build_meta_block(l, th)
-        except Exception as _e:                                                 # noqa: BLE001
+            _upper = QWidget()
+            _ul = QVBoxLayout(_upper)
+            _ul.setContentsMargins(0, 0, 0, 0)
+            _ul.setSpacing(4)
+            _ul.addWidget(self.tasks_table, 1)
+            _ul.addLayout(row2)
+            _meta_box = QWidget()
+            _ml = QVBoxLayout(_meta_box)
+            _ml.setContentsMargins(0, 0, 0, 0)
+            _ml.setSpacing(4)
             self.meta_table = None
-            _lb = QLabel("⛔ 元任务表构建失败: %r (上面任务表照常可用)" % (_e,))
-            _lb.setStyleSheet("color:%s;background:transparent;" % th["C_RED"])
-            _lb.setWordWrap(True)
-            l.addWidget(_lb)
+            try:
+                self._build_meta_block(_ml, th)
+            except Exception as _e:                                             # noqa: BLE001
+                _lb = QLabel("⛔ 元任务表构建失败: %r (上面任务表照常可用)" % (_e,))
+                _lb.setStyleSheet("color:%s;background:transparent;" % th["C_RED"])
+                _lb.setWordWrap(True)
+                _ml.addWidget(_lb)
+            self.tm_split = QSplitter(Qt.Vertical)
+            self.tm_split.setChildrenCollapsible(False)          # 拖不到 0 (拖没了会被当成"又看不见了")
+            self.tm_split.setHandleWidth(9)
+            self.tm_split.addWidget(_upper)
+            self.tm_split.addWidget(_meta_box)
+            # ⚠️ 关键(实测踩过): 只调 setSizes **没用** —— Qt 会按比例把它缩回去 (给 [552,600] 结果元任务表
+            #   还是 464px, 和改前一样)。要让两张表都"够看", 必须把两边的**够看高度写成最小高度**:
+            #     上舱 = 任务表 7 条真实行高 (self.tasks_table.minimumHeight(), 昨天刚修好不能回退) + 48px 启动按钮行;
+            #     下舱 = 元任务表 (22px 行高) 尽量给到 ~638px 表高 ⇒ ≈29 行可见 (改前只有 19 行), 封顶 700。
+            #   两舱最小高度之和 > 页面视口 ⇒ 页面整体要滚一点 (老倪 2026-10-15 明确接受"每页可滚动"),
+            #   但两张表**表内都不滚**(任务 7/7 · 元任务 29/75), 而且中间那条 9px 手柄随时可拖着重分。
+            _tneed = 552
+            try:
+                _tneed = max(300, int(self.tasks_table.minimumHeight()))
+            except Exception:                                                   # noqa: BLE001
+                pass
+            _mneed = min(700, 22 * (len(getattr(self, "_meta_rows", []) or []) + 2) + 70 + 8)
+            _mneed = max(360, _mneed)
+            _upper.setMinimumHeight(_tneed + 48)
+            _meta_box.setMinimumHeight(_mneed)
+            self.tm_split.setSizes([_tneed + 48, _mneed])
+            self.tm_split.setToolTip("↕ 拖这条分隔条: 上面=任务表 (7 条任务, 行高 67px) · "
+                                     "下面=元任务表 (75 条元任务, 行高 22px)\n"
+                                     "↓ 往下拖 = 元任务表更高 (全部 75 行要看时把上面压到最小, 表内再滚)")
+            l.addWidget(self.tm_split, 1)
+            try:                     # 老倪自己拖过 ⇒ 记下来, 不再被自动覆盖 (与底部信息窗同一套口径)
+                self.tm_split.splitterMoved.connect(self._on_tm_split_moved)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        except Exception as _esp:                                               # noqa: BLE001
+            self.tm_split = None
+            l.addWidget(self.tasks_table, 1)
+            _lbs = QLabel("⛔ 任务表/元任务表分隔条构建失败: %r (退回两表各占一半)" % (_esp,))
+            _lbs.setStyleSheet("color:%s;background:transparent;" % th["C_RED"])
+            _lbs.setWordWrap(True)
+            l.addWidget(_lbs)
         self.tabs.addTab(_scrollable(w, th), "📋 任务配置")
         try:
             self._install_state_combos()          # 表建好后再挂一次 (此时 tasks_table 已存在)
@@ -3289,9 +3406,12 @@ class ConfigCenterPage(QWidget):
                            % (len(_ft), _on)))
         self.plat_feat_table = _mk_table(["特征ID", "产品", "产品特征", "能力", "指标 KPI", "状态", "子系统", "模块"],
                                          _ft, th)
-        # 同一问题: 产品特性 23 条挤在几行里看不见 ⇒ 给足最小高度 (封顶 460px, 约 13 行可见, 其余表内滚动),
-        # 页面整体不够放时由外层 QScrollArea 滚动 —— 不许再把表压成"看不到"。
-        self.plat_feat_table.setMinimumHeight(min(460, 30 * (len(_ft) + 2) + 8))
+        # 2026-10-15 老倪「产品特征清单 平台产品的窗口太小了, 根本看不到」⇒ 给足最小高度 (当时封顶 460px);
+        # 2026-10-15 第二轮 老倪「窗口也是太矮了, 调高适配, 优化UI」—— 实测 460px 只显示 **13/23 行**
+        #   (30px 行高), 要一屏看全 23 行需 ≈758px ⇒ 把**天花板从 460 抬到 760** (按行数算, 不够 23 行时按实际)。
+        #   代价(如实说明): 本页固定内容 124+437+平台描述/按钮 ≈ 700px, 所以页面整体要高过视口 →
+        #   外层 QScrollArea 需要滚一点; 但表内 23 行**一次看全**(表内滚动条=0), 比"表矮+表内翻"强。
+        self.plat_feat_table.setMinimumHeight(min(760, 30 * (len(_ft) + 2) + 8))
         lay.addWidget(self.plat_feat_table, 1)
         _rowcp = QHBoxLayout()
         _bcp = _btn("📋 复制产品特性清单 (TSV)", th)
@@ -3628,12 +3748,31 @@ class ConfigCenterPage(QWidget):
         except Exception as e:                                                  # noqa: BLE001
             return False, "%s: %s" % (type(e).__name__, e)
 
+    def _work_area_need(self):
+        """当前配置面**装下主内容**所需的最小高度 (只算当前页; 页已包 QScrollArea)。
+
+        老倪 2026-10-15: 「任务配置的窗口, 太矮了, 看不到任务」—— 底部信息窗原来**无条件**
+        按"窗口高度的 50%"(最多 460px) 取走空间, 上方工作区只剩不到一半 ⇒ 任务表被压扁。
+        这里把当前页真实的 minimumSizeHint 算出来, 给 _fit_out 当"工作区优先"的判据。
+        """
+        try:
+            _sa = self.tabs.widget(self.tabs.currentIndex())
+            if isinstance(_sa, QScrollArea):
+                _inner = _sa.widget()
+                _h = int(_inner.minimumSizeHint().height()) if _inner is not None else 0
+                return _h + int(self.tabs.tabBar().height()) + 8 if _h > 0 else 0
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return 0
+
     def _fit_out(self):
         """给底部信息窗一次**按内容算**的高度 (老倪口径: 不许挤/不许截断)。
 
         2026-10-15 改法: 原来是 `out.setFixedHeight(...)` ⇒ 用户**根本拖不动** (老倪: 「显示区太小,
         不能用鼠标拖动调整大小」)。现在只设**竖直分隔条的初始比例** —— 之后随用户拖; 用户拖过就不再覆盖
         (`_out_user_sized`), 想再自动一次点「↕ 自适应高度」。
+        2026-10-15 第二轮 (老倪: 「任务配置的窗口太矮了, 看不到任务」): 再加一条**工作区优先** ——
+        先保证上方配置面装得下自己的主内容, 剩下的才给信息窗 (信息窗本身可滚/可拖/可收起)。
         """
         try:
             if getattr(self, "_out_user_sized", False) or not getattr(self, "_out_on", True):
@@ -3647,6 +3786,10 @@ class ConfigCenterPage(QWidget):
             _floor = 220 if total >= 700 else 150
             cap = int(min(460, max(_floor, self.height() * 0.50)))
             want = max(_floor, min(h, cap))
+            # 🔴 工作区优先: 当前页的主内容 (任务表/配置表) 至少要放得下 —— 不够就把信息窗让到 _floor。
+            _need = self._work_area_need()
+            if _need > 0:
+                want = max(_floor, min(want, total - _need))
             self.vsplit.setSizes([max(220, total - want), want])
         except Exception:  # noqa: BLE001
             pass
@@ -3659,6 +3802,13 @@ class ConfigCenterPage(QWidget):
             self._fit_out()                       # 立刻算 (同步, 不等事件循环): 首帧就要给够高度
             from PyQt5.QtCore import QTimer as _QT
             _QT.singleShot(0, self._fit_out)      # 布局真正落定后再校一次
+        # 🆕 2026-10-15 老倪「元任务窗口太矮了, 调高适配」——
+        #   分隔条现在靠**两舱的最小高度**定尺寸 (在 _build_tabs 里设的), 不依赖"显示后补算",
+        #   所以这里不再需要一次性 seed; 只有"老倪自己拖过"这个标记要留着 (见 _on_tm_split_moved)。
+
+    def _on_tm_split_moved(self, *_a):
+        """老倪自己拖过 ⇒ 记下来, 不再被自动覆盖。"""
+        self._tm_user_sized = True
 
     def _fit_out_clicked(self):
         """「↕ 自适应高度」: 清掉"用户拖过"的标记, 再按内容给一次高度 (之后仍可自由拖)。"""
