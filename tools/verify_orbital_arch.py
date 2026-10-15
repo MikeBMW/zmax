@@ -636,6 +636,14 @@ def main():
         {"图例token": _tok, "实际色": _c.name() if _c else None, "RGB": [_c.red(), _c.green(), _c.blue()] if _c else None},
         _ok_color, "图例与色板一致 (%s)" % _tok)
 
+    # ── J6: 球标签不硬截真源串 (2026-10-16 看图: 真源串被 str(state)[:10] 硬截 ⇒ 图上「自由空间 (无接触约」) ──
+    _oa_src = open(os.path.join(ROOT, "tools/gui/orbital_arch.py"), encoding="utf-8").read()
+    _long = "自由空间 (无接触约束)"
+    _txt6 = v3._body_text("mercury", {"progress": 0.125, "risk": 0.0, "state": _long})
+    chk("J6", "球标签把真源串写全 (无 [:10] 硬截; 太长才由 _fit 省略)",
+        {"标签": _txt6[:88], "可执行硬截还在?": 'or "")[:10]' in _oa_src},
+        (_long in _txt6) and ('or "")[:10]' not in _oa_src), "整串「%s」都在标签里 (注释可留, 代码不许硬截)" % _long)
+
     # ═══ F 文案诚实 ═══
     chk("F1", "图注写清 角度映射 (位置不是装饰, 是实测量的映射)",
         {"含角度映射": "角度映射" in src}, "角度映射" in src, "源码图注含该项")

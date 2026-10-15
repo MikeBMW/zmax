@@ -988,7 +988,10 @@ class OrbitalArchView(QWidget):
         if key == "mercury":
             if not isinstance(d.get("progress"), (int, float)):
                 return d.get("note") or "流形量未算 (无真帧)"
-            return "‖e∥‖=%.4fm · ‖e⊥‖=%.4fm · %s" % (d["progress"], d.get("risk") or 0.0, str(d.get("state") or "")[:10])
+            # 2026-10-16 看图: 这里原为 str(state)[:10] 硬截 ⇒ 图上渲染成「自由空间 (无接触约」(断句,
+            #   框内还空 150px)。改为**整串写全**(块宽由最长行量出, 太长才由 _fit 省略)。
+            _st = str(d.get("state") or "")
+            return "‖e∥‖=%.4fm · ‖e⊥‖=%.4fm · %s" % (d["progress"], d.get("risk") or 0.0, _st)
         if key == "jupiter":
             if not isinstance(d.get("eta"), (int, float)):
                 return d.get("note") or "流形量未算 (无真帧)"
