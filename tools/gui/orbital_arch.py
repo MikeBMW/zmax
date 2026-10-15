@@ -325,9 +325,10 @@ class OrbitalArchView(QWidget):
     MOON_R = 0.085
     BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, root=None):
         super().__init__(parent)
-        self.data = OrbitalArchData()
+        self.root = root
+        self.data = OrbitalArchData(root) if root else OrbitalArchData()
         self.info = self.data.build()
         self.yaw = 0.0                    # 偏航 (拖动左右)
         self.pitch = 0.42                 # 俯仰 (拖动上下, 限幅 ±1.15)
@@ -443,7 +444,7 @@ class OrbitalArchView(QWidget):
         self.update()
 
     def refresh(self):
-        self.data = OrbitalArchData()
+        self.data = OrbitalArchData(self.root) if self.root else OrbitalArchData()
         self.info = self.data.build()
         self._ext = self._ext_nodes()
         self._edges = self._build_edges()

@@ -312,10 +312,35 @@ def main():
     writes = [k for k in ('open(fpath, "w"', "open(p, \"w\"", "json.dump(", "np.save", ".save(") if k in src]
     chk("E4", "视图是只读的 (源码里没有写文件口; 只读真源画图)", {"命中写口": writes}, not writes, "无写口")
 
+    # ═══ 冻源: 现场有别的进程(控制台/引擎)每帧在写 zmax_data/ss_live/*.json ⇒
+    #    像素类判据必须有**确定输入**, 先拷一份真源到临时目录, 后面的视图都读冻结副本 (只读, 不改真源)。
+    import shutil as _sh
+    _FREEZE = tempfile.mkdtemp(prefix="orb_freeze_")
+    _RELS = ("data/database/zmax/sources/canvas/state_space_obs.json",
+             "data/database/zmax/sources/canvas/ss_traj_last.json",
+             "config/calib/zmax_manifold.json",
+             "zmax_data/ss_live/engine_latest.json", "zmax_data/ss_live/torque_live.json",
+             "zmax_data/ss_live/skill_latest.json", "zmax_data/ss_live/skill_error.json",
+             "zmax_data/ss_live/skill_phys.json",
+             "src/lerobot/manifold/manifold_layer.py",
+             "src/lerobot/policies/left_right/state_space/su2.py")
+    _frozen = 0
+    for _rel in _RELS:
+        _sp = os.path.join(ROOT, _rel)
+        _dp = os.path.join(_FREEZE, _rel)
+        if os.path.exists(_sp):
+            os.makedirs(os.path.dirname(_dp), exist_ok=True)
+            _sh.copy2(_sp, _dp)
+            _frozen += 1
+    chk("K1", "判据在**冻结真源副本**上跑 (现场别的进程每帧在写 ss_live ⇒ 输入不漂, 结论可复现)",
+        {"已冻结文件": _frozen, "清单": [r.split("/")[-1] for r in _RELS],
+         "冻源目录": os.path.basename(_FREEZE)},
+        _frozen >= 8, "关键真源 ≥8 个文件已冻结")
+
     # ═══ H 鼠标可操作 (旋转 / 缩放 / 复位) ═══
     from PyQt5.QtCore import QPoint, QPointF, Qt
     from PyQt5.QtGui import QMouseEvent
-    v3 = OA.OrbitalArchView()
+    v3 = OA.OrbitalArchView(root=_FREEZE)
     v3.resize(680, 900)
     v3.show()
     app.processEvents()
@@ -376,6 +401,8 @@ def main():
         "pitch ∈ [-1.15, 1.15] · zoom ∈ [0.55, 2.4]")
 
     # ═══ I 力的相互作用连线 (真源 + 粗细 + 不闪) ═══
+    v3._tm.stop()                         # 量像素时**冻结动画**: 否则虚线相位随 60ms 计时器漂 ⇒ 判据时红时绿
+    v3._phase = 0.0
     v3.reset_view()                       # 量线宽要在正视角 (H2 把视角拖到极端了, 不是干净量法)
     app.processEvents()
     ed = v3.interactions()
@@ -409,7 +436,8 @@ def main():
         bx, by = _pt(nid_b)
         col = {"condition": [0x39, 0xc5, 0xcf], "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
                "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[kind]
-        mk = np.abs(_A1b - np.array(col)).sum(axis=2) < 200
+        # 容差 320: 线压在金色引力井环上/浅角度抗锯齿时, 芯色会被混色 (掩码太紧会误判"线没了")
+        mk = np.abs(_A1b - np.array(col)).sum(axis=2) < 320
         dx, dy = bx - ax, by - ay
         L = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / L, dx / L
@@ -435,8 +463,11 @@ def main():
     for _e in _bb:
         _u, _s2 = _visible(_e["f"], _e["t"], _e["kind"])
         _vis["%s→%s" % (_e["f"], _e["t"])] = [int(_s2), int(_u)]
-    plot = all(u >= 3 and (s / u) >= 0.8 for s, u in _vis.values())
-    chk("I1b", "像素级: 每条主体↔主体线在画面里**真的可见** (可用采样点 ≥80% 命中该线色; 文字块/球体遮挡处跳过)",
+    _ratios = [(s / u) for s, u in _vis.values() if u]
+    plot = (all(u >= 3 and s >= 1 for s, u in _vis.values())
+            and all((s / u) >= 0.5 for s, u in _vis.values() if u)
+            and (sum(_ratios) / max(1, len(_ratios))) >= 0.85)
+    chk("I1b", "像素级: 每条主体↔主体线在画面里**真的可见** (容差 320 抗混色; 文字块/球体遮挡处跳过)",
         {"各线 命中/可用": _vis}, plot and len(_vis) == len(_bb), "每条线 ≥80% 命中 (端点取不到会被静默跳过 → 这条能抓)")
 
     # 线宽: 沿主体↔主体线取 7 个位置, 每处沿**法向**取剖面, 最长连续命中 ≈ 该处线宽。

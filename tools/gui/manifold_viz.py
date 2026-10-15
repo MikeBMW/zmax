@@ -425,7 +425,7 @@ class PanelBall(QWidget):
         _draw_geo(self.d.geo, "#d2a8ff", 2)
         _draw_geo(self.d.geo_live, ORANGE, 1)
         p.setPen(QColor("#d2a8ff"))
-        p.drawText(8, 26, _fit(p, "测地线 起点→终点: 弧长 %.4f rad (θ=%.4f)%s"
+        p.drawText(8, 30, _fit(p, "测地线 起点→终点: 弧长 %.4f rad (θ=%.4f)%s"
                                % (self.d.geo_len, self.d.geo_theta,
                                   " · 退化(起点≈终点)" if self.d.geo_deg else ""), w - 16))
         # ── 当前状态点 + 实时状态点 ──
@@ -534,7 +534,10 @@ class PanelTangent(QWidget):
             p.setPen(QPen(QColor(col), 1))
             p.drawLine(QPointF(o[0][0], o[0][1]), QPointF(tip[0][0], tip[0][1]))
             p.setPen(QColor(col))
-            p.drawText(_int(tip[0][0] + 3), _int(tip[0][1] - 3), lab)
+            # 轴标贴顶端, 但不许越过面板右边界 (老倪: 不许截断) —— 先按字体量宽再夹紧
+            _tw = p.fontMetrics().horizontalAdvance(lab)
+            _tx = max(2, min(_int(tip[0][0] + 3), _int(w - 4 - _tw)))
+            p.drawText(_int(_tx), _int(tip[0][1] - 3), lab)
 
         # ── 度量椭球 (标定真源 diag): 主轴 ∝ 1/√g (度量越大 ⇒ 该方向越短 ⇒ 刚度大) ──
         diag = [float(x) for x in (self.d.metric.get("diag") or [])]
@@ -553,26 +556,24 @@ class PanelTangent(QWidget):
                     p.drawLine(QPointF(xy[j][0], xy[j][1]), QPointF(xy[j + 1][0], xy[j + 1][1]))
             aniso = max(diag) / max(1e-9, float(np.median(diag))) if diag else 1.0
             p.setPen(QColor(ORANGE))
-            p.drawText(8, _int(h - 26), _fit(p, "度量椭球: 标定 diag=%s (dim=%d · 各向异性 %.1f:1)" %
+            p.drawText(8, _int(h - 38), _fit(p, "度量椭球: 标定 diag=%s (dim=%d · 各向异性 %.1f:1)" %
                        (str([round(x, 1) for x in diag[:6]]), self.d.metric.get("dim", 0), aniso), w - 16))
             p.setPen(QColor(DIM))
-            p.drawText(8, _int(h - 12), _fit(p, "该度量作用空间 = 任务空间 (xyz+rpy); S³ 固有度规见 ③", w - 16))
+            p.drawText(8, _int(h - 25), _fit(p, "作用空间 = 任务空间 (xyz+rpy); S³ 固有度规见 ③", w - 16))
 
         # ── 三个真向量 (全部从真源/实测轨迹算, 非示意) ──
         v3 = norm3(coeff(self.d.v[i]), 0.9)
         tip, _ = self.cam.project(v3, cx, cy, r)
         p.setPen(QPen(QColor(GREEN), 2))
         p.drawLine(QPointF(cx, cy), QPointF(tip[0][0], tip[0][1]))
-        p.setPen(QColor(GREEN))
-        p.drawText(_int(cx + 6), _int(cy - 6), "v 速度 ‖v‖=%.4f /s" % float(self.d.speed[i]))
+        # (v/F/∇d 的数值不写在画面中间 —— 那里会和轴标/边界打架; 统一放到左下"值行")
 
         f_mag = float(self.d.force[i])
         if f_mag > 0:
             tip, _ = self.cam.project(norm3(coeff(self.d.v[i]), 0.62), cx, cy, r)
             p.setPen(QPen(QColor(ORANGE), 2))
             p.drawLine(QPointF(cx, cy), QPointF(tip[0][0], tip[0][1]))
-            p.setPen(QColor(ORANGE))
-            p.drawText(_int(cx + 6), _int(cy + 18), "F = M·a ‖F‖=%.4f (M=%.3f)" % (f_mag, float(self.d.M or 0.0)))
+            pass
 
         g = SP.log_map(pp, self.d.Q[-1])
         ng = float(np.linalg.norm(g))
@@ -580,10 +581,13 @@ class PanelTangent(QWidget):
             tip, _ = self.cam.project(norm3(coeff(g / ng), 0.9), cx, cy, r)
             p.setPen(QPen(QColor(VIOLET), 2, Qt.DashLine))
             p.drawLine(QPointF(cx, cy), QPointF(tip[0][0], tip[0][1]))
-            p.setPen(QColor(VIOLET))
-            p.drawText(_int(cx + 6), _int(cy + 34), "∇d 到目标 (log 方向) φ=%.4f rad" % float(self.d.dist[i]))
+            pass
         p.setPen(QColor(DIM))
-        p.drawText(8, _int(h - 40), _fit(p, "切标架: e1=log_p(目标)/‖·‖ₚ, e2/e3 = 正交补 (sphere.parallel_transport/tangent_project)", w - 16))
+        p.drawText(8, _int(h - 51), _fit(p, "切标架: e1=log_p(目标)/‖·‖ₚ, e2/e3 = 正交补 (sphere.parallel_transport/tangent_project)", w - 16))
+        # 三个真向量的数值: 一行写完 (颜色对应箭头), 放在最底行 —— 不与轴标/边界互相压盖
+        p.setPen(QColor(FG))
+        p.drawText(8, _int(h - 12), _fit(p, "v 速度 ‖v‖=%.4f/s (绿) · F=M·a ‖F‖=%.4f M=%.3f (橙) · ∇d 到目标 φ=%.4f rad (紫)"
+                   % (float(self.d.speed[i]), f_mag, float(self.d.M or 0.0), float(self.d.dist[i])), w - 16))
         p.end()
 
 
@@ -649,7 +653,7 @@ class PanelMetricField(QWidget):
             radii.append(4)
         uniform = (max(radii) - min(radii)) < 1e-6 if radii else True
         p.setPen(QColor(GREEN if uniform else ORANGE))
-        p.drawText(8, _int(h - 26), _fit(p, "采样 %d 点 · 椭球半轴全部相等 (圆度规各向同性) ⇒ 度量均匀" % len(radii), w - 16))
+        p.drawText(8, _int(h - 25), _fit(p, "采样 %d 点 · 椭球半轴全部相等 (圆度规各向同性) ⇒ 度量均匀" % len(radii), w - 16))
         p.setPen(QColor(DIM))
         p.drawText(8, _int(h - 12), _fit(p, "标定度规 (dim=%d diag) 只作用任务空间, 与 S³ 切空间非同一空间" %
                                           self.d.metric.get("dim", 0), w - 16))
@@ -698,14 +702,23 @@ class PanelSeries(QWidget):
 
         series = (("φ 测地距离 (rad)", d.dist, VIOLET),
                   ("‖v‖ 测地速度 (1/s)", d.speed, GREEN))
+        _peaks = []
         for k, (name, arr, col) in enumerate(series):
             mx = max(1e-9, float(np.max(arr)))
             p.setPen(QPen(QColor(col), 1))
             for j in range(n - 1):
                 p.drawLine(QPointF(px(tt[j]), T + ph - float(arr[j]) / mx * ph),
                            QPointF(px(tt[j + 1]), T + ph - float(arr[j + 1]) / mx * ph))
-            p.setPen(QColor(col))
-            p.drawText(_int(L + 4), _int(T + 12 + 12 * k), _fit(p, "%s  peak=%.4f" % (name, mx), pw - 8))
+            _peaks.append((col, "%s peak=%.4f" % (name, mx)))
+        # 图例 (两色) —— 用一次绘制的东西各画一截, 只在总宽内排 (老倪: 不许挤/不许截断)
+        _xp = _int(L + 4)
+        for _col, _txt in _peaks:
+            if _xp >= _int(w - 46):                      # 排不下就不画 (老倪: 不许截断/不许超界)
+                break
+            _t = _fit(p, _txt, max(20, _int(w - 8 - _xp)))
+            p.setPen(QColor(_col))
+            p.drawText(_xp, _int(T + 11), _t)
+            _xp += _int(p.fontMetrics().horizontalAdvance(_t)) + 10
         M = float(d.M or 0.0)
         if M > 0:
             yy = T + ph - min(1.0, M / 8.0) * ph
@@ -719,10 +732,14 @@ class PanelSeries(QWidget):
         p.setPen(QPen(QColor("#f0f6fc"), 1))
         p.drawLine(QPointF(xx, T), QPointF(xx, T + ph))
         p.setPen(QColor(DIM))
-        p.drawText(L, _int(h - 8), "t0=%.2fs" % t0)
-        p.drawText(_int(L + pw - 62), _int(h - 8), "t=%.2fs" % t1)
+        _fmA = p.fontMetrics()
+        for _lx, _lt, _anch in ((L, "t0=%.2fs" % t0, "l"), (_int(L + pw), "t=%.2fs" % t1, "r")):
+            _tw2 = _fmA.horizontalAdvance(_lt)
+            _x2 = _lx if _anch == "l" else max(L, _lx - _tw2)      # 右边的标签**右对齐**到绘图区右界
+            _x2 = max(2, min(_x2, _int(w - 4 - _tw2)))             # 再夹进面板 (窄栏下也不越界)
+            p.drawText(_int(_x2), _int(h - 8), _fit(p, _lt, _int(w - 4 - _x2)))
         p.setPen(QColor(FG))
-        p.drawText(_int(min(xx + 3, L + pw - 40)), _int(T + 12 + 12 * len(series)),
+        p.drawText(_int(min(xx + 3, L + pw - 40)), _int(T + 23),
                    _fit(p, "帧 %d · φ=%.4f · ‖v‖=%.4f" % (i + 1, float(d.dist[i]), float(d.speed[i])),
                         _int(L + pw - max(4, min(xx + 3, L + pw - 40)))))
         p.end()

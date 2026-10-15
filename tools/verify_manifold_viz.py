@@ -169,6 +169,70 @@ def main():
         "(无条目)" in io.open(os.path.join(ROOT, "tools", "gui", "model_tree.py"), encoding="utf-8").read(),
         "源码里有一行诚实占位")
 
+    # G4/G5 硬核: 用 **QPainter 子类**截文字 (不改 C++ 类方法 —— 直接给 QPainter.drawText 赋值会让 PyQt abort),
+    #   把每一次绘制的 (位置, 文字) 都量出来 ⇒ ① 右边界不许越过面板宽度 ② 同一面板里两次绘制不许重叠。
+    _calls, _cur = [], {"w": 300, "k": ""}
+    _RealPainter = MV.QPainter
+
+    class _SpyPainter(_RealPainter):
+        def drawText(self, *a, **kw):                                        # noqa: A003
+            try:
+                _txt = a[-1] if a and isinstance(a[-1], str) else None
+                if _txt:
+                    _fm = _RealPainter.fontMetrics(self)
+                    _x = _y = _h = None
+                    if len(a) >= 6 and all(isinstance(v, (int, float)) for v in a[:4]):
+                        _x, _y, _h = float(a[0]), float(a[1]), float(a[3])
+                        _tw = min(float(_fm.horizontalAdvance(_txt)), float(a[2]))
+                    elif len(a) >= 3 and isinstance(a[0], (int, float)) and isinstance(a[1], (int, float)):
+                        _x, _y, _h = float(a[0]), float(a[1]), 12.0
+                        _tw = float(_fm.horizontalAdvance(_txt))
+                    elif len(a) >= 2 and hasattr(a[0], "width"):
+                        _x, _y, _h = float(a[0].x()), float(a[0].y()), float(a[0].height())
+                        _tw = min(float(_fm.horizontalAdvance(_txt)), float(a[0].width()))
+                    if _x is not None:
+                        _calls.append({"面板": _cur["k"], "面板宽": _cur["w"], "x": _x, "y": _y, "h": _h,
+                                       "宽": round(_tw, 1), "右": round(_x + _tw, 1), "文": _txt[:38]})
+            except Exception:                                                # noqa: BLE001
+                pass
+            return _RealPainter.drawText(self, *a, **kw)
+
+    MV.QPainter = _SpyPainter
+    try:
+        from PyQt5.QtGui import QPixmap as _QPix
+        for _k, _cls in (("ball", MV.PanelBall), ("tangent", MV.PanelTangent),
+                         ("metric", MV.PanelMetricField), ("series", MV.PanelSeries)):
+            _ww = _cls(_d)
+            _ww.resize(300, 380)
+            _cur = {"w": 300, "k": _k}
+            _pm = _QPix(300, 380)                # 必须留引用: render() 的临时 pixmap 被回收会崩
+            _ww.render(_pm)
+            del _ww
+    finally:
+        MV.QPainter = _RealPainter
+    _over = [c for c in _calls if c["右"] > c["面板宽"] - 1]
+    _rects = {}
+    for c in _calls:
+        _top = (c["y"] - 11.0) if c["h"] == 12.0 else c["y"]
+        _rects.setdefault(c["面板"], []).append((_top, _top + c["h"], c["x"], c["x"] + c["宽"], c["文"]))
+    _clash = []
+    for _k, _lst in _rects.items():
+        for _a2 in range(len(_lst)):
+            for _b2 in range(_a2 + 1, len(_lst)):
+                _r1, _r2 = _lst[_a2], _lst[_b2]
+                if _r1[0] < _r2[1] and _r2[0] < _r1[1] and _r1[2] < _r2[3] - 2 and _r2[2] < _r1[3] - 2:
+                    _clash.append({"面板": _k, "A": _r1[4], "B": _r2[4],
+                                   "A框": [round(_r1[0]), round(_r1[2]), round(_r1[3])],
+                                   "B框": [round(_r2[0]), round(_r2[2]), round(_r2[3])]})
+    chk("G4", "把每一次 drawText 都量出来: 没有一次绘制的右边界越过面板宽度 (硬编码/漏夹紧会被抓)",
+        {"绘制次数": len(_calls), "越界条数": len(_over), "越界": _over[:3],
+         "最靠右的几次": sorted([(c["面板"], c["右"], c["面板宽"], c["文"][:22]) for c in _calls],
+                              key=lambda t: -(t[1] / max(1, t[2])))[:3]},
+        not _over, "越界 = [] (每次绘制的右边界都在面板内)")
+    chk("G5", "同一面板里任意两次文字绘制**互不重叠** (两串字叠在同一行 ⇒ 压盖, 会被抓)",
+        {"重叠对数": len(_clash), "样例": _clash[:2], "每面板绘制数": {k: len(v) for k, v in _rects.items()}},
+        not _clash, "重叠对 = 0")
+
     # B7 恶劣环境回归: sys.path 前面塞一个「有 lerobot.manifold 但没 sphere.py」的假包 (复现控制台 fork 遮蔽),
     #    可视化必须仍加载**工程真源**算子 (按路径加载), 不许退化成空态。
     import importlib
