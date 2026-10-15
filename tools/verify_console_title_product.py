@@ -169,7 +169,11 @@ def main() -> int:
     if not t:
         chk("⑥ 实机窗口标题 (控制台在跑)", False, "DISPLAY=%s 下没找到含「XSpace ZMAX」的窗口" % DISPLAY)
     else:
-        chk("⑥ 实机窗口标题 == XSpace ZMAX %s" % pid, t == ("XSpace ZMAX %s" % pid),
+        # 🐛 2026-10-15 修正: 标题**允许带页面后缀** —— 画布模块会按"标题栏横幅"约定追加
+        #   " - [画布]" 这类后缀 (老倪要在标题栏看当前页/运行态)。原判据是严格相等 ⇒ 只要控制台停在
+        #   画布页就假红 (实测标题 "XSpace ZMAX 550B - [画布]")。口径改为"去掉 ' - …' 后缀后相等"。
+        _base_t = re.split(r"\s+-\s+", t.strip())[0].strip()
+        chk("⑥ 实机窗口标题 == XSpace ZMAX %s (允许 '- [页面]' 后缀)" % pid, _base_t == ("XSpace ZMAX %s" % pid),
             '实测窗口标题 = "%s"' % t)
 
     # ⑦ 跟随真源 (可选, 带备份/回读)

@@ -138,7 +138,23 @@ def mode():
 
 
 def allowed(topic):
-    return topic in MODE_TOPICS.get(mode(), [])
+    _m = MODE_TOPICS.get(mode(), [])
+    if topic not in _m:
+        return False
+    # 🧭 2026-10-15 老倪三产品分工(以后同步开发 A/B/C): 产品档位**再收一道**, 且只能收窄不能放宽 ——
+    #   C 档(量产) topics=none ⇒ 不发任何序列化 topic (信号只走共享内存 /dev/shm/zmax_ss_engine 直传);
+    #   A 档(开发) topics=core ⇒ 只发核心集; B 档(调试) topics=all ⇒ 全开。真源 tools/zmax_profile.py。
+    try:
+        _tp = os.path.join(REPO, "tools")
+        if os.path.isdir(_tp) and _tp not in sys.path:
+            sys.path.insert(0, _tp)
+        import zmax_profile as _zp                                          # noqa: PLC0415
+        if _zp.topics_mode() == "none":
+            return False
+        return topic in set(_zp.dds_topics_allowed(_m))
+    except Exception as _e:                                                 # noqa: BLE001
+        log("⚠️ 产品档位读取失败, 按运行模式原样放行: %s" % str(_e)[:80])
+        return True
 
 
 # ───────────────────────── 真实数据源读取 (全只读) ─────────────────────────

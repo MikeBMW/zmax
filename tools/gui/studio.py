@@ -10317,9 +10317,31 @@ class MonitorModule(SubModuleWidget):
         #    本页重构为 CANoe Graphic 式信号分析(波形)。旧的同源实采表 / Orin 部署状态 /
         #    Rerun·RViz 引擎收进第二个页签 —— 真功能不丢, 只是不再是首屏。
         host = body
+        # 🧭 2026-10-15 老倪三产品分工: C 档 (量产) **不启用信号分析** (稳定性优先: 信号走共享内存直传, 不开
+        #   观测界面)。B 档 (调试) 全开 —— 当前在役 550B ⇒ 行为不变。判断只调一处真源 tools/zmax_profile.py。
+        _sig_on = True
+        _prof_txt = ""
+        try:
+            if os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) not in sys.path:
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            import zmax_profile as _zp                                  # noqa: PLC0415
+            _sig_on = _zp.gui_on("signal_analysis")
+            _prof_txt = _zp.summary()
+        except Exception as _e:                                          # noqa: BLE001
+            print("[MonitorModule] 产品档位读取失败 (按全开兜底):", _e)
+        if not _sig_on:
+            _lb = QLabel("🚫 本产品档不启用信号分析 —— %s\n"
+                         "      量产档稳定性优先: 不发序列化 topic, 信号走共享内存 %s 直传;\n"
+                         "      只用远程旁路 (远程运行 + 真机部署)。要看波形请切到调试档 550B。"
+                         % (_prof_txt, "/dev/shm/zmax_ss_engine"))
+            _lb.setStyleSheet("color:%s; font-size:13px; padding:18px;" % C_DIM)
+            _lb.setWordWrap(True)
+            body.layout().addWidget(_lb)
         try:
             if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
                 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            if not _sig_on:
+                raise RuntimeError("本档不启用信号分析 (量产档)")
             from canoe_graphic import CanoeGraphicWidget
             self.graphic = CanoeGraphicWidget()
             self.graphic.log.connect(self._mlog)

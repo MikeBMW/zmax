@@ -14316,7 +14316,22 @@ class SimulinkModule(QWidget):
     def open_ss_3d(self, on_top=True, level=None):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)
         on_top: True=手动点按钮(置顶防被视频窗遮挡); False=运行后自动弹出(不抢画布, 防画布黑屏)
-        level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)"""
+        level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)
+
+        🧭 2026-10-15 老倪三产品分工: **量产档 (550C) 不开 3D 场景** (稳定性优先, 现场只用远程旁路)。
+        判断调一处真源 tools/zmax_profile.py::gui_on('scene_3d'); 调试档 550B 全开 ⇒ 行为不变。"""
+        try:
+            sys.path.insert(0, os.path.join(self._repo_root(), "tools"))
+            import zmax_profile as _zp                                          # noqa: PLC0415
+            if not _zp.gui_on("scene_3d"):
+                print("🚫 3D 场景: 本产品档不启用 —— %s" % _zp.summary())
+                try:
+                    self._log("🚫 3D 场景在本产品档关闭 (量产档稳定性优先: 只用远程旁路)")
+                except Exception:                                               # noqa: BLE001
+                    pass
+                return
+        except Exception as _e:                                                 # noqa: BLE001
+            print("[3D] 产品档位读取失败 (按开兜底):", _e)
         try:
             from ss_dreamview import DreamView3D, load_episode
             import ss_dreamview as _DV
@@ -16732,7 +16747,22 @@ class SimulinkModule(QWidget):
         .vscode/launch.json 三个调试配置 (全新调试进程 / attach 现有控制台 / 工具脚本 lerobot-venv)
         🐛 2026-08-30: 打开工程同时 -g 定位当前节点实际源文件 (原只开工程 → 源码空)
         🐛 2026-08-31: 「🚀 全新调试进程」提到第一位 = 默认 F5 — attach 需控制台已启动且
-        5678 在监听, 老倪找不到 attach 时直接 F5 全新启动一个调试进程"""
+        5678 在监听, 老倪找不到 attach 时直接 F5 全新启动一个调试进程
+
+        🧭 2026-10-15 老倪三产品分工: **只有调试档 (550B) 允许 VSCode 联调** (量产档 C 关掉联调口子)。
+        判断调一处真源 tools/zmax_profile.py::vscode_ok()。"""
+        try:
+            sys.path.insert(0, os.path.join(self._repo_root(), "tools"))
+            import zmax_profile as _zp2                                         # noqa: PLC0415
+            if not _zp2.vscode_ok():
+                print("🚫 VSCode 联调: 本产品档不启用 —— %s" % _zp2.summary())
+                try:
+                    self._log("🚫 VSCode 联调在本产品档关闭 (设计: 只有调试档 550B 允许联调)")
+                except Exception:                                               # noqa: BLE001
+                    pass
+                return
+        except Exception as _e2:                                                # noqa: BLE001
+            print("[VSCode] 产品档位读取失败 (按开兜底):", _e2)
         import subprocess as _sp, shutil as _sh, json as _j
         root = self._repo_root()
         vsc = os.path.join(root, ".vscode")
