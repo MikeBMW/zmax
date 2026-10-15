@@ -117,3 +117,32 @@ tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里�
 9. 落盘后照旧顺序收尾: `ss_task_bind --activate` → `project_archive space-save` → `engineering_db build` → 两 `--check` → 重启控制台;
    还原命令要打给用户 (`flows/_archive/state_space_obs_before_flow_layout_<ts>.json`)。
 
+## 单节点挪位 + “用户点名要的反馈接线” (2026-10-15 实测)
+
+触发语: 「某某节点是用于反馈物理状态的, 位置可以放到最右侧」「它的输出也要接到某某节点, 你来连线即可,
+节点位置可以不动」。这类请求=**只动 1 个节点的 x + 加 1 条线**, 四步定式:
+
+1. **目标列用真实极值算, 不要拍脑袋**: “最右侧” = 全图功能节点的 `max(x)` 那一列 (不是自己行带的右端 ——
+   实测节点已在行带最右 (9670) 但全图最右列是 10450, 用户看的就是后者)。同理“最上面/最左”也取全图极值。
+2. 🔴 **同步延长它所在行带的矩形**: `bg/row_bg` 的 `x/w` 是**手存的固定值**, 把节点挪出带外它不会跟着长 ⇒
+   界面看着节点“掉出带外”。写盘前算 `need_r = n.x + n.w + 40`, 带上矩形的右缘不够就补。
+3. 🔴 **目标节点入端口占满时先加口, 不要抢既有口**: 先断言端口表是**字符串列表**(不是历史遗留的字典格式),
+   再 `inputs = list(ins) + ['in5']`。抢口会把上游语义改掉, 用户不会发现直到行为变了。
+4. **这条线必是反向时, 如实报**: “右下 → 左上”的回灌线物理上就不可能前向 —— 接上、label 写闭环反馈、
+   交付时直说它是反向的反馈线, 并把反向线**逐条列出**(源→靶→Δy) + 报前向率 (实测 187/191 = 97.9% ≥ 97%)。
+   不要把它藏进“全部前向”的话里, 也不要把目标节点挪位去凑方向 (用户明确说“节点位置可以不动”)。
+
+判据工具形态 (单节点改动也写成脚本, `tools/canvas_innov_right_feedback.py` 可当模板):
+干跑/`--apply` 双模式 + 备份到 `flows/_archive/<事由>_<ts>.json` + 打印还原命令 + 落盘后**回读**
+(节点数/连线数/目标 x/目标节点端口表) + `assert 节点数不变 and 连线数只增这一条`。
+
+界面几何探针的具体取法 (配合 SKILL.md「load_flow_file 重编 id」):
+```python
+m = SM.SimulinkModule(); m.open_state_space(); ...
+for k, it in (getattr(m, "_items", {}) or {}).items():
+    nm = str((getattr(it, "node", None) or {}).get("name") or k)   # 只能按**名字**对位
+    p, br = it.pos(), it.boundingRect()                            # 场景坐标 == 真源 x/y
+```
+重叠判定要**排除 bg/row_bg**并用**真源 w/h** (界面 boundingRect 会带上选中/光晕余量, 直接比会报一堆假重叠)。
+
+
