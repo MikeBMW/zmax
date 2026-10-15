@@ -391,30 +391,46 @@ def main():
         {"视图线数": len(ed), "主体↔主体": len(_bb), "主体↔体系外": len(_ex2),
          "真源应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
         _src_ok and _want == _got and len(ed) > 20, "真源===视图, 一条不漏一条不造")
-    # 线宽: 在一条主体↔主体线的中点附近取垂直剖面, 数"实芯色"像素 ⇒ 不能太细
+    # 线宽: 沿主体↔主体线取 7 个位置, 每处沿**法向**取剖面, 最长连续命中 ≈ 该处线宽。
+    #   取中位数判定 (单点会被"线正好压在轨道虚线/光晕上"这类局部干扰打偏 —— 判据要稳, 不能时红时绿)。
     p2 = v3.positions()
     _e0 = next((e for e in _bb if e["f"] in _body_ids and e["t"] in _body_ids), None)
-    _thick = None
-    if _e0 is not None:
-        def _posof(nid):
-            if OA.OrbitalArchView._key_of(nid) == "sun":
-                return (p2["_cx"], p2["_cy"], 0.0)
-            return p2.get(OA.OrbitalArchView._key_of(nid))
+    _runs, _mid = [], None
 
+    def _posof(nid):
+        if OA.OrbitalArchView._key_of(nid) == "sun":
+            return (p2["_cx"], p2["_cy"], 0.0)
+        return p2.get(OA.OrbitalArchView._key_of(nid))
+
+    if _e0 is not None:
         _a = _posof(_e0["f"])
         _b2 = _posof(_e0["t"])
         if _a and _b2:
-            _mx = (_a[0] + _b2[0]) / 2.0
-            _my = (_a[1] + _b2[1]) / 2.0
             _A = _arr(v3.grab().toImage())
-            _col = {"condition": [0x39, 0xc5, 0xcf], "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
-                    "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[_e0["kind"]]
-            _mask = np.abs(_A - np.array(_col)).sum(axis=2) < 150
-            _box = _mask[max(0, int(_my) - 6):int(_my) + 7, max(0, int(_mx) - 6):int(_mx) + 7]
-            _thick = int(_box.sum(axis=1).max()) if _box.size else 0
-    chk("I2", "连线不细 (主体↔主体线有 2.2px 实芯 + 6px 柔光): 剖面上实芯色像素数 ≥ 2",
-        {"线": "%s→%s (%s)" % (_e0["f"], _e0["t"], _e0["kind"]) if _e0 else None, "剖面最宽像素": _thick},
-        (_thick or 0) >= 2, "剖面 ≥2 像素 (不与背景混成 1px 细丝)")
+            _m = np.zeros(_A.shape[:2], dtype=bool)
+            for _col in ([0x39, 0xc5, 0xcf], [0xd2, 0x99, 0x22], [0x3f, 0xb9, 0x50], [0xa3, 0x71, 0xf7]):
+                _m |= (np.abs(_A - np.array(_col)).sum(axis=2) < 200)
+            _dx, _dy = _b2[0] - _a[0], _b2[1] - _a[1]
+            _L = math.hypot(_dx, _dy) or 1.0
+            _nx, _ny = -_dy / _L, _dx / _L
+            for _f in (0.30, 0.37, 0.43, 0.50, 0.57, 0.63, 0.70):
+                _qx, _qy = _a[0] + _dx * _f, _a[1] + _dy * _f
+                _prof = []
+                for _i in range(-40, 41):                    # ±5px, 步长 0.125px
+                    _t = _i * 0.125
+                    _x, _y = int(round(_qx + _nx * _t)), int(round(_qy + _ny * _t))
+                    _prof.append(bool(_m[_y, _x]) if (0 <= _y < _m.shape[0] and 0 <= _x < _m.shape[1]) else False)
+                _run = _best = 0
+                for _v in _prof:
+                    _run = _run + 1 if _v else 0
+                    _best = max(_best, _run)
+                _runs.append(round(_best * 0.125, 3))
+            _mid = [round(_a[0] + _dx * 0.5, 1), round(_a[1] + _dy * 0.5, 1)]
+    _med = float(np.median(_runs)) if _runs else 0.0
+    chk("I2", "连线不细 (主体↔主体线 2.2px 实芯 + 柔光): 沿线 7 处法向剖面线宽的中位数 ≥ 2px",
+        {"线": "%s→%s (%s)" % (_e0["f"], _e0["t"], _e0["kind"]) if _e0 else None, "中点": _mid,
+         "7 处线宽 px": _runs, "中位数": _med},
+        _med >= 2.0, "中位数 ≥2px (不是 1px 细丝, 也不靠单点侥幸)")
     # 不闪/不消失: 相邻两帧 (一个 tick) 的线像素数变化小, 且都没有归零; 三帧内不做透明度脉冲
     def _linepx():
         _a = _arr(v3.grab().toImage())
