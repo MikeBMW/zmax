@@ -73,3 +73,5 @@ Orin真机: XMS5-R800 + AGX Orin
 |------|------|
 | `supply-chain-joyson-controller.md` | 均胜域控制器 |
 | `docs/供应链/` 全部PDF | Orin域控/Thor域控/电池包 |
+
+- docs/deliverables/元任务总体设计_v5.50.736.md — 元任务总体设计 (定义/迭代阶段/组成/评估分析/性能指标/验证报告), 生成器 tools/meta_task_chain.py
