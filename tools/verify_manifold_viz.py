@@ -108,6 +108,31 @@ def main():
     chk("B5", "度量 (dim/mode/diag) 取自标定真源",
         d.metric, int(d.metric.get("dim") or 0) == 6 and d.metric.get("mode") == "diag"
         and len(d.metric.get("diag") or []) == 6, "dim=6, mode=diag, 6 个对角分量")
+    # B7 恶劣环境回归: sys.path 前面塞一个「有 lerobot.manifold 但没 sphere.py」的假包 (复现控制台 fork 遮蔽),
+    #    可视化必须仍加载**工程真源**算子 (按路径加载), 不许退化成空态。
+    import importlib
+    with tempfile.TemporaryDirectory() as _td:
+        _fake = os.path.join(_td, "lerobot", "manifold")
+        os.makedirs(_fake)
+        open(os.path.join(_td, "lerobot", "__init__.py"), "w").close()
+        open(os.path.join(_fake, "__init__.py"), "w").close()
+        _saved = [m for m in list(sys.modules) if m == "lerobot" or m.startswith("lerobot.")]
+        _mods = {m: sys.modules.pop(m) for m in _saved}
+        sys.path.insert(0, _td)
+        try:
+            _m2 = importlib.reload(MV)
+            _ok7 = (_m2.SP is not None) and hasattr(_m2.SP, "stereographic_project")
+            _got7 = {"SP": None if _m2.SP is None else os.path.basename(getattr(_m2.SP, "__file__", "?")),
+                     "有立体投影": bool(_m2.SP is not None and hasattr(_m2.SP, "stereographic_project")),
+                     "SU2": None if _m2.SU2 is None else bool(hasattr(_m2.SU2, "encode_obs43")),
+                     "err": (_m2._SP_ERR or "")[:60]}
+        finally:
+            sys.path.remove(_td)
+            sys.modules.update(_mods)
+            importlib.reload(MV)
+        chk("B7", "恶劣 sys.path (fork 的 lerobot 在前, 无 sphere.py) 仍加载工程真源算子 —— 按路径加载, 不退回空态",
+            _got7, _ok7, "SP=src/lerobot/manifold/sphere.py · 有 stereographic_project · SU2 有 encode_obs43")
+
     after = {f: sha(f) for f in files}
     # 静态: 可视化源码里没有任何写操作的语句 (真源只读 = 代码里就不能有写口)
     vizsrc = open(os.path.join(ROOT, "tools", "gui", "manifold_viz.py"), encoding="utf-8").read()

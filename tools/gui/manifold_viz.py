@@ -46,17 +46,39 @@ _ROOT = os.path.dirname(os.path.dirname(_HERE))
 for _p in (_ROOT, os.path.join(_ROOT, "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
-try:
-    from lerobot.manifold import sphere as SP
-except Exception as _e:                                    # 引擎不可用时面板走空态, 不伪造几何
+def _load_by_path(modname, relpath, label):
+    """按**工程根下的文件路径**加载模块 —— 不受 sys.path 顺序影响。
+
+    🐛 2026-10-16 实测踩到的真坑: 控制台里 `lerobot` 可能先解析到 fork
+    (`external/lerobot-smolvla-lew/src/lerobot`), 而 fork 的 `manifold/` **没有 sphere.py**
+    ⇒ `from lerobot.manifold import sphere` 抛 ImportError ⇒ 面板全变空态 (页面上只有橙色空态字,
+    球/轨迹一个都不画)。可视化要的是**工程自己的真源算子**, 所以按绝对路径显式加载 ——
+    仍然是同一份源码 (单真源), 不是复制公式。
+    """
+    import importlib.util
+    fpath = os.path.join(_ROOT, relpath)
+    if not os.path.isfile(fpath):
+        return None, "缺文件: %s" % fpath
+    try:
+        spec = importlib.util.spec_from_file_location(modname, fpath)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[modname] = mod
+        spec.loader.exec_module(mod)
+        return mod, ""
+    except Exception as e:                                  # noqa: BLE001
+        return None, "%s: %s: %s" % (label, type(e).__name__, e)
+
+
+SP, _SP_ERR = _load_by_path("_zmax_manifold_sphere", os.path.join("src", "lerobot", "manifold", "sphere.py"), "sphere.py")
+if SP is None or not hasattr(SP, "stereographic_project"):  # 老版/别的树的 sphere.py 也当不可用 (避免画出错几何)
+    _SP_ERR = _SP_ERR or "sphere.py 缺 stereographic_project"
     SP = None
-    _SP_ERR = "%s: %s" % (type(_e).__name__, _e)
-try:
-    # L2 执行层同源映射: obs43 → SU(2) (几何误差的群表示; e→0 ⇒ U→I) —— 与引擎/引擎可视化同源
-    from lerobot.policies.left_right.state_space import su2 as SU2
-except Exception as _e2:
+# L2 执行层同源映射: obs43 → SU(2) (几何误差的群表示; e→0 ⇒ U→I) —— 与流形引擎同源, 同样按路径加载
+SU2, _SU2_ERR = _load_by_path("_zmax_state_space_su2",
+                              os.path.join("src", "lerobot", "policies", "left_right", "state_space", "su2.py"), "su2.py")
+if SU2 is not None and not hasattr(SU2, "encode_obs43"):
+    _SU2_ERR = "su2.py 缺 encode_obs43"
     SU2 = None
-    _SU2_ERR = "%s: %s" % (type(_e2).__name__, _e2)
 
 BG = "#0d1117"
 FG = "#e6edf3"
