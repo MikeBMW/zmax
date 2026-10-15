@@ -451,6 +451,43 @@ def main() -> int:
         ok = False
         print("   ❌ 核单位口径失败: %s" % _e)
 
+    print("\n⑯ 🧾 元任务预测 出口话题 zmax/ss_meta_pred 进信号分析 (老倪 2026-10-15: 「元任务预测这个节点是输出 topic, "
+          "是什么? 要加入到实时监控的信号分析」)")
+    try:
+        _tr = os.path.join(os.getcwd(), "zmax_data", "dataspace", "trace.jsonl")
+        _rec = None
+        for _ln in reversed(open(_tr, encoding="utf-8").readlines()[-400:]):
+            try:
+                _r = json.loads(_ln)
+            except Exception:                                                  # noqa: BLE001
+                continue
+            if _r.get("topic") == "zmax/ss_meta_pred":
+                _rec = _r
+                break
+        _dg = {}
+        if _rec:
+            try:
+                _dg = json.loads(_rec.get("digest") or "{}")
+            except Exception:                                                  # noqa: BLE001
+                _dg = {}
+        _leaves = {k: v for k, v in _dg.items() if isinstance(v, (int, float))}
+        _keys = [k for k in w.store.keys() if "ss_meta_pred" in k]
+        _hit = [k for k in _keys if k.split("ss_meta_pred.")[-1] in _leaves]
+        _ok16 = bool(_rec) and bool(_leaves) and bool(_hit)
+        ok &= _ok16
+        print("   %s 话题在发 (trace.jsonl 末条 n=%s) · digest 可解析出 %d 个数值叶子"
+              % ("✅" if _rec else "❌", (_rec or {}).get("n"), len(_leaves)))
+        print("        digest: %s" % json.dumps(_leaves, ensure_ascii=False)[:150])
+        print("   %s 页面已建出该话题的信号: %s" % ("✅" if _hit else "❌", _hit[:4] or "—"))
+        _dn = w._out_node(_hit[0]) if _hit else ""
+        print("   %s 输出节点列 = 「%s」" % ("✅" if "元任务预测" in _dn else "❌", _dn))
+        ok &= bool(_hit) and ("元任务预测" in _dn)
+        print("       ⚠️ 如实口径: frozen=%s (驱动扭矩恒定 ⇒ 无区分度, 不吹有预测力) · top1=%s spread=%s"
+              % (_dg.get("frozen"), _dg.get("top1"), _dg.get("spread")))
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核元任务预测话题失败: %s" % _e)
+
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)

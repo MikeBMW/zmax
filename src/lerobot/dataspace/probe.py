@@ -86,6 +86,31 @@ def _digest_for(k, f):
             return json.dumps({"idx": f.get("idx"), "idx8": f.get("idx8"), "v_cap": f.get("v_cap"),
                                "done": f.get("done"), "age_s": f.get("age_s"),
                                "name": f.get("name") or ""}, ensure_ascii=False)[:400]
+        if k == "ss_meta_pred":
+            # 🧾 元任务预测值 (老倪 2026-10-15「元任务预测这个节点…要加入到实时监控的信号分析」):
+            #   载荷里 top_ids/top_scores 是长字符串 ⇒ 通用兜底 body[:180] 切到 top_ids 就断了,
+            #   数值叶子一个都读不到 ⇒ 信号页"话题在列表、没有波形"(与 ss_stage 同款坑)。
+            #   这里给一行**完整紧凑 JSON**: 数值在前、名字在后 (真被切也只丢名字, 不丢可画的数)。
+            _sc = [x for x in str(f.get("top_scores") or "").replace(" ", "").split(",") if x]
+            _ids = [x.strip() for x in str(f.get("top_ids") or "").split(",") if x.strip()]
+            _v = []
+            for _x in _sc[:3]:
+                try:
+                    _v.append(float(_x))
+                except Exception:                                              # noqa: BLE001
+                    pass
+            return json.dumps({"top1": (_v[0] if _v else None),
+                               "top2": (_v[1] if len(_v) > 1 else None),
+                               "top3": (_v[2] if len(_v) > 2 else None),
+                               "spread": (round(_v[0] - _v[1], 6) if len(_v) > 1 else None),
+                               "n_meta": f.get("n_meta"), "n_cand": f.get("n_cand"),
+                               "trained": f.get("trained"), "frozen": f.get("frozen"),
+                               "input_ok": f.get("input_ok"),
+                               "t_pred_s": (round(float(f.get("ts") or 0) - float(f.get("ts_pred") or 0), 3)
+                                            if f.get("ts_pred") else None),
+                               "in_age_s": f.get("input_age_s"),
+                               "top1_id": (_ids[0] if _ids else ""),
+                               "scene": f.get("scene") or ""}, ensure_ascii=False)[:400]
         if k == "ss_torque":
             # 🔧 驱动扭矩 T_drive=M·(−∇Φ): 载荷是 6D 数组 + 36/9 维张量 + 长说明, 直接截断会得到
             #    **残缺 JSON** ⇒ parse_ds_digest 解析不出数值叶子 ⇒ 实时监控里"看得到话题、没有波形"

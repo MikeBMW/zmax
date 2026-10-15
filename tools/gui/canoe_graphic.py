@@ -726,7 +726,7 @@ class WaveArea(QWidget):
                 if isinstance(ax, ClockAxis):
                     ax.abs_on = self.abs_on
                     ax.picture = None                      # 强制重算刻度文字
-            p.setLabel("bottom", "时间 (绝对时刻)" if self.abs_on else "时间 (s)", color=C_DIM)
+            p.setLabel("bottom", self._bottom_lab(), color=C_DIM)
         self._refresh_marks()
 
     def set_playback(self, pb):
@@ -748,18 +748,27 @@ class WaveArea(QWidget):
             self.epoch_off = _off            # 光标 A/B 的"绝对时刻"显示也用它 (否则会显示 1.79e9 那种大数)
             _scene_view = any((self.store.bufs.get(k) is not None and self.store.bufs[k].scene)
                               for k in self.curves)
-            # 轴名口径与建图时一致: 最底下一张写「时间 (s)」; 绝对时刻开时补注一下 (不占地方)
-            _lab = "时间 (s)（可切绝对时刻）" if (self.abs_on and _scene_view) else "时间 (s)"
-            for _i, p in enumerate(self.plots):
-                ax = p.getAxis("bottom")
-                if isinstance(ax, ClockAxis) and ax.epoch_base != _off:
-                    ax.epoch_base = _off
-                    ax.picture = None
-                # 🕒 只有**最底下一张**写 X 轴名 (老倪: 「不用那么多个…不要占地方」), 其余留空
-                _lb2 = _lab if _i == len(self.plots) - 1 else ""
-                if p.getAxis("bottom").labelText != _lb2:
-                    p.setLabel("bottom", _lb2, color=C_DIM)
-                    p.getAxis("bottom").setTextPen(C_DIM)
+            # 🕒 轴名/epoch: **不在每拍里改轴属性** (2026-10-15 实测: 每拍判 labelText/写 epoch_base 会
+            #   让 AxisItem._updateLabel ↔ ViewBox.linkedViewChanged/screenGeometry 相互触发 ⇒ 递归爆栈
+            #   22 万次 ⇒ 事件循环堵死 ⇒ 3D 面板 QTimer 停跑 ⇒ 快照停更)。
+            #   定式: 只为「真变了」写一次 + 重入闸 + 相对秒模式**不碰 epoch**(刻度用不到它)。
+            if not getattr(self, "_in_axlab", False):
+                self._in_axlab = True
+                try:
+                    _lab = self._bottom_lab()
+                    _n = len(self.plots)
+                    for _i, p in enumerate(self.plots):
+                        ax = p.getAxis("bottom")
+                        if (self.abs_on and isinstance(ax, ClockAxis)
+                                and _off is not None and ax.epoch_base != _off):
+                            ax.epoch_base = _off
+                            ax.picture = None
+                        _lb2 = _lab if _i == _n - 1 else ""
+                        if p.getAxis("bottom").labelText != _lb2:
+                            p.setLabel("bottom", _lb2, color=C_DIM)
+                            p.getAxis("bottom").setTextPen(C_DIM)
+                finally:
+                    self._in_axlab = False
         except Exception:                                                      # noqa: BLE001
             pass
         if scene_x is not None:                     # ▶ 跟 3D 播放进度 (可左右移动)
@@ -958,6 +967,16 @@ class WaveArea(QWidget):
         except Exception:                                                      # noqa: BLE001
             return C_DIM
 
+    def _bottom_lab(self):
+        """🕒 X 轴名**唯一口径** (老倪 2026-10-15: 「很多 场景时刻(s), 每个信号都有…最底下的信号显示 时间(s)
+        即可, 不要占地方」): 只有最底下一张子图写, 默认「时间 (s)」, 绝对时刻模式加注。
+
+        ⚠️ 必须与 _update_markers / set_abs / MODE_MULTI 共用这一处 —— 三处各写一份时, 只要口径不一致,
+        每拍 setLabel 都会"文本不等 ⇒ 再写一次" ⇒ AxisItem._updateLabel ↔ ViewBox.linkedViewChanged
+        相互触发 ⇒ RecursionError 刷爆事件循环 (实测 22 万次, 3D 面板随之停跑、快照停更)。
+        """
+        return "时间 (s) · 绝对时刻" if self.abs_on else "时间 (s)"
+
     def _build_items(self):
         """按当前 mode 与 curves 建曲线对象"""
         self._clear_extra_axes()
@@ -993,7 +1012,7 @@ class WaveArea(QWidget):
                 # 🕒 2026-10-15 老倪: 「很多 场景时刻(s), 每个信号都有, 不用那么多个; 最底下的信号显示
                 #   时间(s) 即可, 不要占地方」⇒ **只有最底下一张**写 X 轴名, 其余子图 X 轴不留标签、
                 #   刻度也不显示 (整列共用最底下那一条时间轴)。
-                _blab = "时间 (s)" if not (_sv and self.abs_on) else "时间 (s) · 绝对时刻"
+                _blab = self._bottom_lab()
                 p.setLabel("bottom", _blab if (i == len(keys) - 1) else "", color=C_DIM)
                 p.getAxis("left").setTextPen(_kcol)
                 p.getAxis("bottom").setTextPen(C_DIM)
@@ -1020,7 +1039,7 @@ class WaveArea(QWidget):
             self.plots = [self.main_plot]
             self.main_plot.getAxis("bottom").abs_on = self.abs_on
             p = self.main_plot
-            p.setLabel("bottom", "时间 (绝对时刻)" if self.abs_on else "时间 (s)", color=C_DIM)
+            p.setLabel("bottom", self._bottom_lab(), color=C_DIM)
             p.showGrid(x=self.grid, y=self.grid, alpha=0.25)
             p.getAxis("left").setTextPen(C_DIM)
             p.getAxis("bottom").setTextPen(C_DIM)
@@ -1733,7 +1752,12 @@ class CanoeGraphicWidget(QWidget):
                   # ⚡ 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: 上面 7 条来自 3D 面板快照
                   #   (trace_live.json), 3D 不播放 ⇒ 每键 1 个样本 ⇒ 画不出线。下面 3 条来自**常驻
                   #   引擎回路**的 10Hz 真值帧流 (sseng.*), 打开页面就有连续波形(每周期真值都在动)。
-                  "sseng.势能_phi", "sseng.梯度范数", "sseng.循环耗时_ms")
+                  "sseng.势能_phi", "sseng.梯度范数", "sseng.循环耗时_ms",
+                  # 🧾 2026-10-15 老倪「元任务预测…要加入到实时监控的信号分析」:
+                  #   走 DDS 话题 zmax/ss_meta_pred (探针落 trace.jsonl ⇒ 本页 ds.* 信号)。
+                  #   top1 = 最高分元任务得分; spread = top1−top2 (区分度, 越大越"选得准");
+                  #   ⚠️ 驱动扭矩恒定时 (frozen=1) spread 恒小 ⇒ 如实标注"预测无区分度", 不吹成有预测力。
+                  "ds.zmax/ss_meta_pred.top1", "ds.zmax/ss_meta_pred.spread")
 
     def _apply_watch(self):
         """被「➕ 增加信号话题」点名但当时还没出帧的话题: 一有字段出现就自动勾上"""
@@ -2326,6 +2350,7 @@ class CanoeGraphicWidget(QWidget):
         ("sseng.内稳态", "🧮 流形引擎 (内稳态)"),
         ("sseng.潜表示", "🚀 L3 · VLM 编码 + Flow (潜表示)"),
         ("sseng.动作调制", "🧭 动作调制器"),
+        ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 得分)"),
         ("sseng.", "🧩 SU(2) 状态空间 · 常驻回路 (ss_engine_loop)"),
         ("sstrace.前馈速度", "⚡ 前馈加速器"),
         ("sstrace.动作调制", "🧭 动作调制器"),
@@ -2346,6 +2371,10 @@ class CanoeGraphicWidget(QWidget):
         ("sstrace.光学质量检测", "🔍 光学质量检测"),
         ("sstrace.AOI", "🔍 光学质量检测"),
         ("sstrace.", "📦 数据源 (画布场景快照)"),
+        # 🧾 2026-10-15 老倪「元任务预测这个节点是输出 topic，是什么？要加入到实时监控的信号分析」
+        #   真源: 画布节点 🧾 元任务预测 (n_intent_direct) ← 输入=流形引擎驱动扭矩 T_drive=M·(−∇Φ)
+        #   出口话题 zmax/ss_meta_pred (SSMetaPred, ss_daemon 5s 转发) ⇒ 信号页 ds.* 一路可画。
+        ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 逐元任务得分)"),
         ("ros./robot/tcp_pose", "📦 数据源 · 真机 TCP 位姿"),
         ("ros./robot/force_torque", "🖐 触觉感知"),
         ("ros./gripper_pos", "🤖 机器人执行器"),
