@@ -488,6 +488,44 @@ def main() -> int:
         ok = False
         print("   ❌ 核元任务预测话题失败: %s" % _e)
 
+    print("\n⑰ ⤢ Fit 一键适配: 点完**当拍**就能看到所有已画信号 (老倪 2026-10-15: 「点击信号分析窗口的 fit, "
+          "应该马上就能看到所有信号, 自动适配」)")
+    try:
+        _pl = list(w.wave.plots)
+        _before = [tuple(round(float(v), 3) for v in p.viewRange()[0]) for p in _pl] if _pl else []
+        w._fit()                                    # 点按钮走的同一个函数 (b_fit → _fit)
+        _outside = []
+        for p in _pl:
+            x0, x1 = p.viewRange()[0]
+            y0, y1 = p.viewRange()[1]
+            for k, it in w.wave.items.items():
+                if it.getViewBox() is not p.getViewBox():
+                    continue
+                _b = w.store.bufs.get(k)
+                if _b is None or not _b.n:
+                    continue
+                _t, _v = _b.arrays()
+                if len(_t) and (float(_t[0]) < x0 - 1e-6 or float(_t[-1]) > x1 + 1e-6
+                                or float(_v.min()) < y0 - 1e-3 or float(_v.max()) > y1 + 1e-3):
+                    _outside.append((k, round(x0, 2), round(x1, 2)))
+        _pb = getattr(w.wave, "_pb_last", None) or {}
+        _in_view = True
+        if _pb.get("t_s") is not None and _pl:
+            _x0, _x1 = _pl[0].viewRange()[0]
+            _in_view = float(_x0) - 1e-6 <= float(_pb["t_s"]) <= float(_x1) + 1e-6
+        _ok17 = bool(_pl) and (not _outside) and _in_view
+        ok &= _ok17
+        _after = [tuple(round(float(v), 3) for v in p.viewRange()[0]) for p in _pl] if _pl else []
+        print("   %s 子图 %d 张 · 点 Fit 后 '数据落在视窗外' 的子图 = %d 张" % ("✅" if not _outside else "❌", len(_pl), len(_outside)))
+        print("       X 范围: 前 %s → 后 %s" % (_before[:1], _after[:1]))
+        if _outside:
+            print("       越界: %s" % _outside[:3])
+        print("   %s 3D 游标 t_s=%s 仍在时间轴视窗内 (老倪: 时间轴不许消失) · 已画曲线 %d 条"
+              % ("✅" if _in_view else "❌", _pb.get("t_s"), len(w.wave.items)))
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核 Fit 失败: %s" % _e)
+
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))
     print("=" * 88)

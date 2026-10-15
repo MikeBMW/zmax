@@ -2779,15 +2779,54 @@ class CanoeGraphicWidget(QWidget):
 
     # ─────────── 刷新 ───────────
     def _fit(self):
-        """Fit signals: Y 自适应 + X 拉到全数据 (CANoe: Fit)"""
-        self.wave.fit_y()
-        ends = [float(b.arrays()[0][-1]) for b in self.store.bufs.values() if b.n]
-        starts = [float(b.arrays()[0][0]) for b in self.store.bufs.values() if b.n]
-        if ends and starts and self.wave.main_plot is not None:
+        """⤢ Fit: **立刻**看到所有信号 —— Y 各自自适应 + X 拉到全部已画数据 (CANoe: Fit signals)
+
+        🐛 2026-10-15 老倪「点击 Fit，应该马上就能看到所有信号，自动适配」两处真问题:
+          ① **每信号独立图模式下 X 根本不动**: 原来只在 `main_plot is not None` 时设 X 范围, 而该模式
+             `main_plot = None` (指向被 clear() 删掉的图 ⇒ 早已置空) ⇒ 点 Fit 只有 Y 变, X 还停在旧视窗。
+          ② X 范围取的是**整库所有信号**的时间跨度 (含没画的陈旧键), 一条离得远的旧键就把窗口拉废。
+        现在: X 取**已勾选已画**那些信号的并集 (没勾就退回全库) ∪ 3D 游标那一刻 (不许把游标挤出画面),
+              对**每一张子图**都设 (该模式还另开了轴), 设完立刻重绘一拍, 不依赖下一个刷新周期。
+        """
+        _keys = [k for k in (self.wave.curves or []) if self.store.bufs.get(k) is not None
+                 and self.store.bufs[k].n]
+        if not _keys:
+            _keys = [k for k, b in self.store.bufs.items() if b.n]
+        self.wave.fit_y()                                   # Y 自适应 (逐子图)
+        starts, ends = [], []
+        for k in _keys:
+            try:
+                _t = self.store.bufs[k].arrays()[0]
+                if len(_t):
+                    starts.append(float(_t[0]))
+                    ends.append(float(_t[-1]))
+            except Exception:                                                  # noqa: BLE001
+                pass
+        _pb = getattr(self.wave, "_pb_last", None) or {}
+        if _pb.get("t_s") is not None:
+            _c = float(_pb["t_s"])
+            starts.append(_c)
+            ends.append(_c)                                 # 游标那一刻必须在窗口里 (老倪: 时间轴不许消失)
+        if starts and ends:
             self.follow = False
             self.b_follow.setChecked(False)
-            self.wave.main_plot.setXRange(min(starts), max(ends), padding=0.02)
-        self._log("⤢ Fit: 波形自适应")
+            _plots = list(self.wave.plots) or ([self.wave.main_plot] if self.wave.main_plot else [])
+            for _p in _plots:
+                try:
+                    _p.setXRange(min(starts), max(ends), padding=0.02)
+                except Exception:                                              # noqa: BLE001
+                    pass
+            # 立刻重绘 (不等下一个刷新周期; 老倪: 「马上就能看到」)
+            try:
+                self.wave.glw.ci.layout.invalidate()
+                self.wave.refresh()
+                self.wave._refresh_marks()
+            except Exception:                                                  # noqa: BLE001
+                pass
+            self._log("⤢ Fit: %d 条曲线自适应 · X=%.3f~%.3fs · Y 逐子图自适应"
+                      % (len(_keys), min(starts), max(ends)))
+        else:
+            self._log("⤢ Fit: 暂无数据可适配 (先勾信号 / 让场景跑起来)")
 
     def _pan(self, fx, fy):
         """平移 (CANoe: Pan up/down/left/right); 时间轴平移即取消跟随"""
