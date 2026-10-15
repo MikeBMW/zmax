@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX 插拔场景渲染帧服务 (8799) — 给 VLM 编码器 / 多层管线提供"插拔环境渲染图像"
+Documentation=file:/home/ubuntu/zmax/tools/fw_render_server.py
+After=network-online.target
+Wants=network-online.target
+Before=zmax-ss-engine-loop.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+# 为什么要有这个常驻单元 (老倪 2026-10-15):
+#   「信息连接是核心, 要保证插拔环境的渲染图像进入 VLM, 被流形引擎的结构感知到」
+#   现场相机不在位 (8791 快照 503 / 8797 返 0 字节) ⇒ 10Hz 回路拿不到新鲜帧。
+#   本服务用引擎自己的渲染器 RealStateSpaceSim._render_frame() 持续渲染插拔场景 (mode=insert),
+#   HTTP 给出 GET /frame.png (最新帧) + /status.json (帧号/帧龄/尺寸/std, 给人核对非黑帧)。
+#   与 tools/pipeline_closure_run.py 的"真输入=引擎渲染帧"同一口径。
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/fw_render_server.py --port 8799 --hz 2
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/zmax-fw-render.log
+StandardError=append:/var/log/zmax-fw-render.log
