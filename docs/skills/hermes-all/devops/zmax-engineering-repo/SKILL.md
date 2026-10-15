@@ -306,6 +306,26 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
 - cron: Hermes job `hermes-skill-memory-sync`(每 6h) → 包装脚本 `~/.hermes/scripts/sync_hermes_to_repo.sh`
   → **必须指向工程根那份**(2026-09-30 前指向 fork 副本, 会把技能推到错仓库)。
 
+## 「状态同步」定式 (老倪会重复下这条令: 同步记忆/技能/场景叠加任务 → 保存数据 → 发 dataworld)
+
+原话 (2026-10-11 与 2026-10-16 两次一字不差): 「同步飞书端的记忆，技能，以及飞书端完成的场景叠加任务，
+保存数据，同步信息。发送给 dataworld」。一次性工具: **`bash tools/snapshot_state_sync.sh`** ——
+① `sync_hermes_to_repo.sh --no-push` 同步记忆+技能 ② 公网叠加通道当场 curl 取证 ③ 跑判据(场景迭代/球面/
+元任务全链/技能物理) ④ 工程库 check(漂移就 build) ⑤ `publish_status.py` + 回读 ⑥ git_ref + README 表 + 归档 MANIFEST。
+
+产出落 `docs/data_snapshots/<DATE>_状态同步_<VER>_<主题>/` (人读 + 判据原始输出) 与
+`zmax_data/release_sync_<DATE>_<VER>/` (归档 + MANIFEST.sha256)。
+
+- **「飞书端场景叠加任务」在本平台 = 公网叠加通道**: `/ov/overlay?k=zmax-live` (页面) · `/ov/wall.jpg?k=…` (拼图帧) ·
+  `/ov/live.json?k=…` (契约: 相机 + 4 类流含「场景契约(叠加框·位姿)」); **无口令 403 / POST 403 = 只读闸门按设计**。
+  取证要写 HTTP 码 + 字节数, 不比对就不知道通道还活不活。
+- **飞书发送结果字段是扁平的** `{ok, code, msg, message_id, http, attempts}` (不是 `{data:{message_id}}`);
+  发完**回读** `tools/feishu_check_messages.py --n 2` 看服务端在不在 (老倪: 不信返回值)。
+- 判据输出格式各不同 (`判据 24/24 通过` / `41/41 PASS` / `判据 20 条: PASS 20` / `判据汇总: PASS 11`),
+  一条 grep 抓不全 ⇒ 汇总脚本要么多条模式要么直接 tail 落盘文件。
+- 工程库 `check` 报 `drift ['project']` **是常态**(画布/总工程被改过) ⇒ `engineering_db.py build` 后复 check 全绿, 不是故障。
+- 记忆同步的"证据"是 sha256 + 逐行 diff (本地 vs `docs/memory/hermes-jingjing-*.md`), 不是"我同步了"。
+
 ## 验证口径 (交付前必做)
 ```bash
 cd /home/ubuntu/zmax && git status --porcelain | wc -l      # 0
