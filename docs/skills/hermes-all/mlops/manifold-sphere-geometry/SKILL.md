@@ -71,6 +71,38 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
    `echo mparam_shot > /tmp/zmax_nav_cmd` (进程内抓 M 页 → `reports/ui_shots/live_mparam_sidebar.png`)。
    另: 控制台默认停在**配置中心页**, 画布页+右侧栏不在屏幕上 —— 没切页就说"看不到"是错的。
    还有 `lerobot` 被 fork 包遮蔽也会让面板退化成橙字空态 (见 `_load_by_path`)。
+## 7. 球心引力架构视图 (天体 ↔ 画布真节点, 老倪 2026-10-16)
+
+老倪口径: 「流形引擎是太阳, 前馈加速器是地球, DiT是火星, 接触流形是水星, 性能流形是木星,
+原子技能是卫星, 用球体映射主要的节点。状态校正节点是月球。前馈加速器和状态校正器协同行进」
+落在画布右侧「主参数 M」页 (`tools/gui/orbital_arch.py`, 与四面板同页用下拉切换)。
+
+**三条硬规矩 (少了任何一条就是造假):**
+1. **天体必须是画布真源里的真节点 id** —— 活画布 (`data/database/zmax/sources/canvas/state_space_obs.json`)
+   里是: 太阳 `ss_mani_eng` · 水星 `ssmani_c` · 地球 `ssff` · 火星 `ssdec` · 木星 `ssmani_p` ·
+   月球 `ssinnov` · 卫星带 `ssbg_skill`+`skill_phys.json` 在职 SK。**名字对不上或 id 不存在就报错, 不倒推**
+   (库里还有同名不同 id 的节点: `ss_ff`/`ss_correct`/`dit_b`/`ss_mani_c`/`ss_mani_p` 是注册名,
+   活画布用的是 `ssff`/`ssinnov`/`ssdec`/`ssmani_c`/`ssmani_p` —— 认错就画成空节点)。
+2. **连线只画真连线** (画布 `links` 的 f/t): 双通道 = `ssvlm→ssdec` (直连语义条件) ‖ `ssvlm→ssmani_c/ssmani_p`
+   (旁路几何条件); DiT 条件并联汇总 = 入边 `ssmani_c/ssmani_p/sslat/ss_lora_l4/ssvlm` (5 路) → `ssdec`;
+   卡尔曼闭环 = `ssworld→ssinnov` (测量) + `ssest/sspred→ssinnov` (update) → `ssinnov→sssensor→ss_mani_eng` (回灌);
+   协同行进 = `ssff→sssched` 与 `ssinnov→sssched` 两路同进动作调制器。**图上不画真源里没有的边**。
+3. **球上的数是真值**, 且尽量用**同一个真模块**现算: 接触流形 `manifold_layer.ContactManifold.decompose`、
+   性能流形 `PerformanceManifold.evaluate` (返回值键是 `Vp` 不是 `V_p`!)、太阳扭矩/度规取 `torque_live.json`
+   (`metric_tensor` 是**展开的 6×6**, 对角项 = `mt[i*dim+i]`), M 取 `zmax_manifold.json`, 前馈请求/残差取
+   `skill_latest.json`/`skill_error.json`。**位置也是实测的映射** (水星←进度 · 地球←请求/v_cap · 火星←块步 λ ·
+   木星←η · 月球=地球相位锁定+摆幅∝残差), 映射写进图注, 缺源球体压暗 + 写「未算/未测」。
+
+**43D obs 通道划分** (重建手/光模块头/孔位必需, 见 `su2.obs43_geometry`):
+`[0:3]手位置 [3]夹爪 [4:7]光模块位置 [7:11]光模块四元数 [11:18]pad×7 [18:36]上一帧 [36:39]孔位 [39:43]触觉`;
+光模块头 = `obs[4:7] + (0,0,0.030)`。判据 C5 就是核这个重建与真函数逐位相等。
+
+**画球体** (QPainter, 不用 GL): `QRadialGradient(光从左上)` + 高光点 + 描边 = 真球感;
+判据从像素里量 (球色像素数 · 球内亮度落差 · 轨道像素跨行跨列 · **月球相位从像素质心反解**),
+不靠「公式反推公式」自证。孤立的球心用不上——月球的相位锁定是**用椭圆轨道基反解 (角, 半径)** 验证的。
+
+**取证**: `echo orbital > /tmp/zmax_nav_cmd` 直达 (画布页+M页+切该视图) · `echo mparam_shot > /tmp/zmax_nav_cmd`
+从控制台进程内抓当前显示页 → `reports/ui_shots/live_mparam_{viz,orbital}.png` (X11 全屏抓图被遮时会抓到别的窗口)。
 
 ## 5. 训练侧与现场口径要对齐
 现场 `Encoder` 是 PCA/SVD 闭式拟合, 不是 SGD 网络 ⇒ 「反向传播/优化器」方案条款要落到可选的可微投影层 (`SphereProjection`) 上, 并让新能力**默认关** (`L4LatentSpace.project_sphere` 显式调用), 不动在役链路。
