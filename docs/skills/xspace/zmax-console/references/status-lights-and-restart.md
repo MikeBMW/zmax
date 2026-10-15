@@ -29,6 +29,12 @@
 
 ⇒ 用 `bash tools/gui/restart_studio.sh` (停 → 等旧进程真死 → 起 → 必须确认新 pid + 'XSpace ZMAX' 窗口才 rc=0，日志 /tmp/zmax_studio_restart.log)。
 
+⚠️ **单实例检查必须锚定整条 cmdline，不能用子串**: `pgrep -f "gui-venv311/bin/python studio.py"` 会命中
+**任何 cmdline 里含这串字的进程** —— 包括我自己在终端里跑的那条诊断命令 ⇒ 启动脚本以为“已有实例”直接 `exit 0`
+⇒ **服务报启动成功、实际一个窗口都没有** (连带现象: 后续按空几何截图会报负偏移之类噪声)。
+两处统一用 `PAT='^[^ ]*gui-venv311/bin/python studio\.py$'` (`tools/gui/launch_studio.sh` + `tools/gui/restart_studio.sh`)。
+同类规则: 凡用 `pgrep -f`/`pkill -f` 判“某进程在不在”，先问一句“我自己这条命令的 cmdline 里有没有这串字”。
+
 ## 3. 验证界面的取证坑 (踩过的)
 
 - **截图区域别用 `wmctrl -lG` 的 y 当客户区顶** —— 实测该 y 比真实客户区顶低 ~48px，
