@@ -1438,6 +1438,7 @@ class ScenePhaseIterationView(QWidget):
         if not phs:
             self.lb_vsum.setText("尚未生成场景迭代验证 (%s) — 点『🔄 重跑场景迭代』生成" % _rel(self.JSON))
             self.lb_vsum.setStyleSheet(f"color:{C_ORANGE}; font-size:14px; font-weight:700; border:none;")
+            self.ktab.setFixedHeight(110)          # 无数据 ⇒ 别留着上一轮的固定高度 (空表留一大块黑)
             return
 
         # ① 配置完备性核验 + run.mode
