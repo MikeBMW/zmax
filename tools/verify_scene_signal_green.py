@@ -32,6 +32,7 @@ SHARED = ["光模块_x", "末端_x", "接触概率", "时间_s", "帧"]
 
 def main() -> int:
     from PyQt5 import QtWidgets, QtCore                             # noqa: PLC0415
+    from PyQt5.QtGui import QColor                                  # noqa: PLC0415
     import canoe_graphic as CG                                     # noqa: PLC0415
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -157,10 +158,12 @@ def main() -> int:
         # 3D 停播时竖线按设计留在"停下的那一刻"(_pb_last) ⇒ 那时按 _pb_last 校, 都没得校就算 N/A(不判失败)。
         _mk_ok, _mk_na, _pb = False, False, getattr(w.wave, "pb", None) or {}
         try:
-            _scene_x = _pb.get("t_s") if _pb.get("fresh") else None
-            _src_txt = "3D 播放游标"
+            # 2026-10-15 口径统一: 横轴 = ts 墙钟(所有源同一根钟) ⇒ 游标按**快照 ts** 校
+            #   (旧口径按回放进度 t_s 校; 那会让引擎快照/回放进度两根钟各跑各的)
+            _scene_x = _pb.get("ts") if _pb.get("fresh") else None
+            _src_txt = "3D 游标(墙钟 ts 口径)"
             if _scene_x is None:
-                _scene_x = (getattr(w.wave, "_pb_last", None) or {}).get("t_s")
+                _scene_x = (getattr(w.wave, "_pb_last", None) or {}).get("ts")
                 _src_txt = "3D 停播 → 竖线留在停下的那一刻"
             if getattr(w.wave, "marks", None) and _scene_x is not None:
                 _mk_ok = abs(float(w.wave.marks[0].value()) - float(_scene_x)) < 1e-6
@@ -170,18 +173,25 @@ def main() -> int:
                 _mk_na = True
         except Exception:                                                      # noqa: BLE001
             _mk_ok = False
-        # 轴标签: 只要视图里有"场景源"(trace_live/engine_trace 这类带 时间_s 的)就必须是「场景时刻」
+        # 轴标签口径 (2026-10-15 统一): 横轴 = **ts 墙钟**(所有源同一根钟) ⇒ 标签为「绝对时刻 (与 3D 同钟)」
+        #   —— 老倪「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号一起跑」: 以前 trace 用回放进度、
+        #   引擎快照用开机时长, 两根钟差 9650s。判据放宽为: 绝对时刻 / 场景时刻 二者之一都算对, 但**必须**
+        #   有明确时刻口径 (不许还是干巴巴的 "时间 (s)")。
         _has_scene = any((w.store.bufs.get(k) is not None
                           and getattr(w.store.bufs[k], "scene", False)) for k in w.selected)
-        _lab_ok = (any("场景时刻" in str(pp.getAxis("bottom").labelText) for pp in _plots)
-                   if _has_scene else True)
+        # 🕒 2026-10-15 老倪: 「很多 场景时刻(s), 每个信号都有, 不用那么多个; 最底下的信号显示 时间(s)
+        #   即可, 不要占地方」⇒ 口径: **只有最底下一张**有 X 轴名, 且它必须有明确时刻字样(时间/绝对时刻)。
+        _labs = [str(pp.getAxis("bottom").labelText or "") for pp in _plots]
+        _lab_ok = True
+        if _plots:
+            _lab_ok = (not any(_labs[:-1])) and ("时间" in _labs[-1] or "绝对时刻" in _labs[-1])
         ok &= (_ax_ok and (_mk_ok or _mk_na) and _lab_ok)
         print("   %s 整列共用一条时间轴 (子图 %d 张, 显示刻度的是第 %s 张)"
               % ("✅" if _ax_ok else "❌", len(_plots), (_show[-1] + 1) if _show else "无"))
         print("   %s 标记线 == 场景时刻 %s  [%s]"
               % ("✅" if _mk_ok else ("⏭ N/A" if _mk_na else "❌"),
                  (round(float(_scene_x), 3) if _scene_x is not None else "—"), _src_txt))
-        print("   %s 轴标签 = 场景时刻 (可切换绝对时刻)" % ("✅" if _lab_ok else "❌"))
+        print("   %s 轴名只在最底下一张 (其余留空): 各子图轴名 = %s" % ("✅" if _lab_ok else "❌", _labs))
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 取时间轴/标记线失败: %s" % _e)
@@ -372,6 +382,38 @@ def main() -> int:
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 取八阶段文字行失败: %s" % _e)
+
+    print("\n⑭ 所有曲线必须**同一根钟** + 当前场景只出本场景色 (老倪: 「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号一起跑」"
+          "「接触概率 末端 这几个蓝色的信号, 怎么也显示呢?」「应该只是绿色的信号」)")
+    try:
+        _xs, _kcol_map = [], {}
+        for _k in list(w.selected):
+            _b = w.store.bufs.get(_k)
+            if _b is None or not getattr(_b, "n", 0):
+                continue
+            _t, _ = _b.arrays()
+            _xs.append((_k, float(_t[-1])))
+            try:
+                _kcol_map[_k] = QColor(w.wave._kcolor(_k)).name()
+            except Exception:                                                  # noqa: BLE001
+                _kcol_map[_k] = "?"
+        _base = [x for _, x in _xs]
+        _spread = (max(_base) - min(_base)) if _base else 0.0
+        _ok14a = _spread < 120.0            # 同一根钟: 各条曲线"最后一点"的时刻差 < 2min
+        print("   %s 同一根钟: 各曲线末点时刻最大差 %.1fs (<120s ⇒ 不是两根钟各跑各的)" % ("✅" if _ok14a else "❌", _spread))
+        for _k, _x in sorted(_xs, key=lambda z: -z[1])[:3]:
+            print("        · %-26s 末点 x=%s 色=%s" % (_k, round(_x, 1), _kcol_map.get(_k)))
+        _act = w._active_scene() if hasattr(w, "_active_scene") else ""
+        _bad = [k for k in _kcol_map
+                if k.startswith("sstrace.") and _act and _kcol_map[k] != QColor(CG.SCENE_COLORS.get(_act)).name()]
+        _ok14b = (not _bad)
+        print("   %s 当前场景(%s) 的 sstrace 曲线全为本场景色 %s%s"
+              % ("✅" if _ok14b else "❌", _act or "?", QColor(CG.SCENE_COLORS.get(_act, "#ffffff")).name(),
+                 "" if _ok14b else " · 越色: %s" % _bad[:4]))
+        ok &= (_ok14a and _ok14b)
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核横轴/配色失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))

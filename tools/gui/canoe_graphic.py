@@ -387,16 +387,25 @@ class HostJsonSource(threading.Thread):
                 else:
                     vals = flatten_json(raw, "", {}, 0, 48)
                 age = max(0.0, time.time() - st.st_mtime)      # 源侧帧龄 = 文件写龄
-                # 🕒 时间戳口径: 源侧自带的 ts 优先 (trace_live.json = 3D 面板那一帧的时刻),
-                # 这样波形标记线上的时刻 == 3D 场景 HUD 上的时刻, 才能一一对应核对。
+                # 🕒 **统一横轴口径** (老倪 2026-10-15: 「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号
+                #   一起跑」): 两个快照的 `时间_s` **不是同一个钟** —— trace_live.json 的 = 3D 回放进度
+                #   (每趟重播归零, 实测 14.5), engine_trace.json 的 = 引擎开机时长 (实测 9664.6) ⇒ 同屏
+                #   两条曲线差 9650s ⇒ 各跑各的、轴标签也差 2.7h。
+                #   唯一同源的是 `ts`(墙钟, 两个文件实测相等) ⇒ **一律用 ts 当横轴**, epoch 偏移归零,
+                #   轴标签 = 绝对时刻; 3D 游标也画在快照那一刻的 ts 上 ⇒ 拖进度条游标照样左右走。
                 _ts = raw.get("ts") if isinstance(raw, dict) else None
-                # 🎬 3D 场景快照: x 用"场景时刻" (时间_s) ⇒ 波形横轴 = 回放进度, 拖进度条游标能左右走
                 _st = raw.get("时间_s") if isinstance(raw, dict) else None
-                _scene = isinstance(_st, (int, float)) and isinstance(_ts, (int, float))
-                now = float(_st) if _scene else (float(_ts) if isinstance(_ts, (int, float)) else time.time())
+                if isinstance(_ts, (int, float)):
+                    now, _scene = float(_ts), True                  # 与 3D 同钟 (墙钟)
+                    self._scene_epoch = 0.0
+                elif isinstance(_st, (int, float)):
+                    now, _scene = float(_st), True                  # 源不提供墙钟: 退回它自己的钟, 但标注出来
+                    self._scene_epoch = None
+                else:
+                    now, _scene = time.time(), False
                 keys = {f"{prefix}.{k}": v for k, v in vals.items()}
                 self.store.push_many(keys, now, {k: age for k in keys}, src=prefix, scene=_scene)
-                self._scene_epoch = (float(_ts) - float(_st)) if _scene else None   # 场景时刻→epoch 偏移
+                # (横轴 = ts 墙钟 ⇒ x→绝对时刻 的偏移恒为 0, 已在上面的分支里设好; 不再按 时间_s 反推)
                 self._cnt += 1
             dt = time.monotonic() - t_start
             if dt < 1.0 / HOST_POLL_HZ:
@@ -720,22 +729,24 @@ class WaveArea(QWidget):
         if not self.marks:
             return
         pb = self.pb or {}
-        scene_x = pb.get("t_s") if (pb.get("fresh") and pb.get("t_s") is not None) else None
-        # 轴向标签/时刻换算: 场景时刻轴要能反算绝对时刻 (epoch = ts - 场景时刻 + x)
+        # 🕒 横轴 = 墙钟 ts (与所有源同一根钟) ⇒ 游标画在**快照那一刻的 ts** 上, epoch 偏移恒 0
+        scene_x = pb.get("ts") if (pb.get("fresh") and pb.get("ts") is not None) else None
+        # 轴向标签/时刻换算: 横轴已是墙钟, epoch = x (偏移 0); 场景"回放进度"另在状态栏显示 (帧/总帧/t)
         try:
-            _off = (float(pb["ts"]) - float(pb["t_s"])
-                    if (pb.get("ts") is not None and pb.get("t_s") is not None) else None)
+            _off = 0.0
             _scene_view = any((self.store.bufs.get(k) is not None and self.store.bufs[k].scene)
                               for k in self.curves)
-            _lab = ("场景时刻" if _scene_view else "时间") + \
-                   (" (绝对时刻)" if self.abs_on else " (s)")
-            for p in self.plots:
+            # 轴名口径与建图时一致: 最底下一张写「时间 (s)」; 绝对时刻开时补注一下 (不占地方)
+            _lab = "时间 (s) · 绝对时刻" if (self.abs_on and _scene_view) else "时间 (s)"
+            for _i, p in enumerate(self.plots):
                 ax = p.getAxis("bottom")
                 if isinstance(ax, ClockAxis) and ax.epoch_base != _off:
                     ax.epoch_base = _off
                     ax.picture = None
-                if p.getAxis("bottom").labelText != _lab:
-                    p.setLabel("bottom", _lab, color=C_DIM)
+                # 🕒 只有**最底下一张**写 X 轴名 (老倪: 「不用那么多个…不要占地方」), 其余留空
+                _lb2 = _lab if _i == len(self.plots) - 1 else ""
+                if p.getAxis("bottom").labelText != _lb2:
+                    p.setLabel("bottom", _lb2, color=C_DIM)
                     p.getAxis("bottom").setTextPen(C_DIM)
         except Exception:                                                      # noqa: BLE001
             pass
@@ -896,9 +907,19 @@ class WaveArea(QWidget):
     def _kcolor(self, k):
         """信号在**波形区**的显示色 (老倪 2026-10-15: 「信号全都变成白色了? 应该分颜色, 绿蓝紫等」)。
 
-        口径与信号目录一致: 有场景标签 ⇒ 场景色(插拔绿/摆盘蓝/AR 紫); 平台量 ⇒ 角色色(位姿青/安全黄/
-        话题灰蓝); 都没有 ⇒ 回落到调色板色(每信号不同, 天然可区分)。取不到一律不编。
+        口径与信号目录**同一个**: 先看这份信号是**在当前场景区域加载的**还是按标签归到别的场景。
+        共写源(sstrace.*, 插拔/摆盘两个 3D 面板共用一份快照)在当前场景里加载的那一份 = **当前场景色**
+        —— 老倪: 「接触概率 末端 这几个蓝色的信号, 怎么也显示呢?」「应该只是绿色的信号」。
+        其余: 场景标签色(插拔绿/摆盘蓝/AR 紫) > 平台量角色色(位姿青/安全黄/话题灰蓝) > 调色板色。
         """
+        try:
+            # 当前场景由主控件每轮同步过来 (wave 自己没有场景状态机; 直接调 self._active_scene() 会
+            # AttributeError 被吞掉 ⇒ 又回落到标签色 ⇒ 摆盘蓝照旧, 就是这个坑)
+            _act = str(getattr(self, "scene_now", "") or "")
+            if _act and str(k).startswith("sstrace."):
+                return SCENE_COLORS.get(_act, C_DIM)
+        except Exception:                                                      # noqa: BLE001
+            pass
         try:
             if SST is not None:
                 _sc = SST.tag(k)
@@ -941,8 +962,11 @@ class WaveArea(QWidget):
                 #   ⇒ 每信号独立图模式下所有信号名看着都是白的。改: 标签色 = 场景/角色色(_kcolor)。
                 _kcol = self._kcolor(k)
                 p.setLabel("left", k.split(".")[-1], color=_kcol)
-                _blab = ("场景时刻" if _sv else "时间") + (" (绝对时刻)" if self.abs_on else " (s)")
-                p.setLabel("bottom", _blab, color=C_DIM)
+                # 🕒 2026-10-15 老倪: 「很多 场景时刻(s), 每个信号都有, 不用那么多个; 最底下的信号显示
+                #   时间(s) 即可, 不要占地方」⇒ **只有最底下一张**写 X 轴名, 其余子图 X 轴不留标签、
+                #   刻度也不显示 (整列共用最底下那一条时间轴)。
+                _blab = "时间 (s)" if not (_sv and self.abs_on) else "时间 (s) · 绝对时刻"
+                p.setLabel("bottom", _blab if (i == len(keys) - 1) else "", color=C_DIM)
                 p.getAxis("left").setTextPen(_kcol)
                 p.getAxis("bottom").setTextPen(C_DIM)
                 p.setClipToView(True)
@@ -1976,6 +2000,10 @@ class CanoeGraphicWidget(QWidget):
         #   另一半跑到蓝组去(老倪现场看到的就是这个)。
         _TRACE_SCENES = ("插拔场景", "摆盘场景")
         _act = self._active_scene()          # 当前场景: 决定重名行可勾选性 + 组默认展开/折叠
+        try:                                 # 同步给波形控件 (曲线配色按当前场景, 见 _kcolor)
+            self.wave.scene_now = _act
+        except Exception:                                                      # noqa: BLE001
+            pass
         # 1) 本机真值流: 按打标落到 插拔 / 摆盘 / 基础 三组 (AR 有二级分组, 见下)
         host_bufs = [b for b in self.store.bufs.values() if b.src not in ("ros", "ds", "file")]
         _n_host = 0
@@ -2898,6 +2926,11 @@ class CanoeGraphicWidget(QWidget):
                     if (self.store.bufs.get(k) is not None and getattr(self.store.bufs.get(k), "n", 0) >= 2))
         # 🎛 状态机现状 (老倪: 「也没有显示状态啊」) —— 直接写在状态栏上, 一眼就能看到第几阶段
         _st_txt, _st_fresh = self._stage_now()
+        # 🎨 当前场景同步给波形控件 (曲线配色要用它: 共写源 sstrace.* 在本场景区域加载 ⇒ 本场景色)
+        try:
+            self.wave.scene_now = self._active_scene()
+        except Exception:                                                      # noqa: BLE001
+            pass
         # 🎛 状态机现状**放最前面** (老倪: 「也没有显示状态啊」; 放末尾会被窗口宽度截掉 ⇒ 看不到)
         self.lb_info.setText(f"{_st_txt} · {' / '.join(src_state)} · 信号 {len(self.selected)} "
                              f"(有波形 {_with}) · 点 {self.store.total_pts}"
