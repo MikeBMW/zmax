@@ -756,8 +756,15 @@ class ManifoldEngine:
         g = self.metric.tangent_gradient(phi, p)
         d = -g
         self.lat["metric"].append((time.perf_counter() - t0) * 1e3)
+        # 🐛 2026-10-16 老倪「静默降级零容忍 / 未测不许冒充 0」: goal_point=None 时
+        #   原实现 φ 恒 0.0、梯度恒 0 —— 调用方分不清「已到目标」与「根本没设目标」,
+        #   看起来正常其实空转。现在把这件事写成显式标记 (no_goal / note), 数值口径不变。
+        _no_goal = self.goal_point is None
         return {"phi": round(float(phi(p)), 6), "grad": g, "descent": d,
                 "norm": round(float(np.linalg.norm(d)), 6),
+                "no_goal": bool(_no_goal),
+                "note": ("⚠️ 未设 goal_point ⇒ 势 φ 与梯度恒 0 (不是『已到目标』); 先 project+设目标"
+                         if _no_goal else ""),
                 "t_ms": round((time.perf_counter() - t0) * 1e3, 3)}
 
     def feedback_update(self, sensor_residual: np.ndarray) -> dict:

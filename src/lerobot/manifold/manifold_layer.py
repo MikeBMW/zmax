@@ -194,8 +194,10 @@ class PerformanceManifold:
             note = "接近孔口 (未入孔)"
         else:
             note = "非插入段 (光模块未对孔)"
+        # 🐛 2026-10-16 命名统一: 同一物理量文档/消费侧写 V_p、本函数原写 Vp ⇒ 两套键,
+        #   容易各取一个键各算一套。现在同时给 V_p 别名 (Vp 保留, 向后兼容, 数值同一份)。
         return {"delta": d, "d_axial": d_ax, "d_perp_norm": float(np.linalg.norm(d_perp)),
-                "Vp": Vp, "eta": eta, "grad": grad, "stage": stage, "note": note}
+                "Vp": Vp, "V_p": Vp, "eta": eta, "grad": grad, "stage": stage, "note": note}
 
     def summarize(self, r):
         """dict → 一行日志文本"""
