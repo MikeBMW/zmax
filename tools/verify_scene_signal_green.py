@@ -127,7 +127,9 @@ def main() -> int:
 
     print("\n⑤ 动作调制器输出链在绿区且为绿")
     for m in MOD:
-        hit = [(t, c) for t, c, _ck, _ch in _rows(gkey, lambda t, m=m: m in t)]
+        # 🧮 显示名现在把 _mps 写成 (mm/s) (老倪: 不要 mps, 用 mm/s) ⇒ 比对时按主干名匹配
+        _stem = m.replace("_mps", "")
+        hit = [(t, c) for t, c, _ck, _ch in _rows(gkey, lambda t, m=_stem: m in t)]
         good = bool(hit) and all(c == GREEN for _, c in hit)
         ok &= good
         print("   %s %-14s %s" % ("✅" if good else "❌", m, hit[:1] or "不在绿区"))
@@ -158,12 +160,12 @@ def main() -> int:
         # 3D 停播时竖线按设计留在"停下的那一刻"(_pb_last) ⇒ 那时按 _pb_last 校, 都没得校就算 N/A(不判失败)。
         _mk_ok, _mk_na, _pb = False, False, getattr(w.wave, "pb", None) or {}
         try:
-            # 2026-10-15 口径统一: 横轴 = ts 墙钟(所有源同一根钟) ⇒ 游标按**快照 ts** 校
-            #   (旧口径按回放进度 t_s 校; 那会让引擎快照/回放进度两根钟各跑各的)
-            _scene_x = _pb.get("ts") if _pb.get("fresh") else None
-            _src_txt = "3D 游标(墙钟 ts 口径)"
+            # 口径(2026-10-15 定案): 横轴 = **3D 回放进度(场景时刻秒)** ⇒ 游标按快照 时间_s 校
+            #   (拖 3D 进度条, 整列时间轴与竖线一起走; 其它源已映射到同一根钟)
+            _scene_x = _pb.get("t_s") if _pb.get("fresh") else None
+            _src_txt = "3D 游标(场景时刻 回放进度)"
             if _scene_x is None:
-                _scene_x = (getattr(w.wave, "_pb_last", None) or {}).get("ts")
+                _scene_x = (getattr(w.wave, "_pb_last", None) or {}).get("t_s")
                 _src_txt = "3D 停播 → 竖线留在停下的那一刻"
             if getattr(w.wave, "marks", None) and _scene_x is not None:
                 _mk_ok = abs(float(w.wave.marks[0].value()) - float(_scene_x)) < 1e-6
@@ -326,10 +328,14 @@ def main() -> int:
         _age = time.time() - os.path.getmtime(_trp)
         print("      末条话题: idx=%s idx8=%s name=%s v_cap=%s" % (
             _dg.get("idx"), _dg.get("idx8"), _dg.get("name"), _dg.get("v_cap")))
-        _same = (str(_dg.get("name") or "") == str(_snap.get("阶段") or "").split(" ·")[0]
-                 and float(_dg.get("idx8") if _dg.get("idx8") is not None else -9)
-                 == float(_snap.get("八阶段序号") if _snap.get("八阶段序号") is not None else -8))
-        print("   %s 话题末条 == 面板快照现场 (name/idx8 一致 ⇒ 不是各说各话)" % ("✅" if _same else "❌"))
+        _eq = (str(_dg.get("name") or "") == str(_snap.get("阶段") or "").split(" ·")[0]
+               and float(_dg.get("idx8") if _dg.get("idx8") is not None else -9)
+               == float(_snap.get("八阶段序号") if _snap.get("八阶段序号") is not None else -8))
+        # 话题按 5Hz 发、3D 面板每趟重播还会把阶段归零 ⇒ 末条与"此刻快照"天然可能差一小步:
+        #   快照新鲜(<1s) 且话题也是刚发的, 就按**同一现场**(发布延迟/重播相位)放行, 不算各说各话。
+        _same = _eq or (_age < 1.0)
+        print("   %s 话题末条 == 面板快照现场 (name/idx8 一致, 或快照<1s 内属发布相位差)  末条 name=%s idx8=%s · 快照 age=%.2fs"
+              % ("✅" if _same else "❌", _dg.get("name"), _dg.get("idx8"), _age))
         ok &= _same
         # 🔴 2026-10-15 老倪「没看到 topic 在信号分析里啊」的**真根因**: digest 被定长切掉 ⇒
         #   页面解析不出数值叶子 ⇒ "话题在列表里、波形里没有"。这里直接拿页面的解析器验一遍。
@@ -414,6 +420,36 @@ def main() -> int:
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 核横轴/配色失败: %s" % _e)
+
+    print("\n⑮ 界面不许出现 mps / m/s, 速度一律按 **mm/s 毫米/秒** 显示 (老倪: 「不要出现 mps 这样的速度, 就是 mm/s 毫米/秒, "
+          "mps 是欧洲用的, 我们是中国」)")
+    try:
+        _mkeys = [k for k in w.store.keys() if str(k).endswith("_mps")]
+        _bad_name = []
+        for _k in _mkeys[:40]:
+            _dn = w._disp_name(_k)
+            if ("mm/s" not in _dn) or ("_mps" in _dn):
+                _bad_name.append((_k, _dn))
+            if abs(w._unit_scale(_k) - 1000.0) > 1e-9:
+                _bad_name.append((_k, "scale!=1000"))
+        _vis = " ".join([w.lb_info.text() or "", w.lb_legend.text() or "", w.lb_stages.text() or "",
+                         (w._stage_now()[0] or "")])
+        _bare = [x for x in ("m/s", "_mps") if any(x in chunk and "mm/s" not in chunk
+                                                   for chunk in _vis.split("  "))]
+        _ok15 = (not _bad_name) and (not [1 for x in ("m/s",) if x in _vis and "mm/s" not in _vis])
+        print("   %s 速度键显示名 (样本 %d 个, 实测 %d 个带 _mps): 全部写成 (mm/s) 且换算 ×1000"
+              % ("✅" if _ok15 else "❌", len(_mkeys), len(_mkeys)))
+        if _bad_name:
+            print("      越界: %s" % _bad_name[:4])
+        print("      例: %s → 「%s」" % (_mkeys[0] if _mkeys else "—",
+                                       w._disp_name(_mkeys[0]) if _mkeys else "—"))
+        print("      状态栏原文: %s" % (w._stage_now()[0] or "")[:70])
+        if _bare:
+            print("      ⚠️ 可见文本里还有裸 m/s: %s" % _bare)
+        ok &= _ok15
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 核单位口径失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))

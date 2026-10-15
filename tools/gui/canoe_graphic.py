@@ -387,20 +387,30 @@ class HostJsonSource(threading.Thread):
                 else:
                     vals = flatten_json(raw, "", {}, 0, 48)
                 age = max(0.0, time.time() - st.st_mtime)      # 源侧帧龄 = 文件写龄
-                # 🕒 **统一横轴口径** (老倪 2026-10-15: 「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号
-                #   一起跑」): 两个快照的 `时间_s` **不是同一个钟** —— trace_live.json 的 = 3D 回放进度
-                #   (每趟重播归零, 实测 14.5), engine_trace.json 的 = 引擎开机时长 (实测 9664.6) ⇒ 同屏
-                #   两条曲线差 9650s ⇒ 各跑各的、轴标签也差 2.7h。
-                #   唯一同源的是 `ts`(墙钟, 两个文件实测相等) ⇒ **一律用 ts 当横轴**, epoch 偏移归零,
-                #   轴标签 = 绝对时刻; 3D 游标也画在快照那一刻的 ts 上 ⇒ 拖进度条游标照样左右走。
+                # 🕒 **横轴 = 3D 回放进度 (场景时刻秒)** —— 老倪 2026-10-15 两次口径合并后的结论:
+                #   · 「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号一起跑」⇒ 各源必须**同一根钟**
+                #     (trace 的 时间_s 是回放进度, engine 的 时间_s 是引擎开机时长, 直接混用会差 9650s);
+                #   · 「我拖动场景进度条, 信号分析的时间轴怎么不跟着动? 还显示 1.79e+09」⇒ 不能改用 ts 墙钟
+                #     (那就成了 1.79e9 的大数、也不跟滑动条走)。
+                #   ⇒ 主钟 = **3D 回放进度**; 其它源用「快照那一刻的 (墙钟, 回放秒) 对应关系」把它的 ts
+                #     映射到回放秒 (x = 回放秒_now + (ts_样本 − ts_now)) ⇒ 同一根钟, 且拖进度条整列跟着走。
                 _ts = raw.get("ts") if isinstance(raw, dict) else None
                 _st = raw.get("时间_s") if isinstance(raw, dict) else None
-                if isinstance(_ts, (int, float)):
-                    now, _scene = float(_ts), True                  # 与 3D 同钟 (墙钟)
-                    self._scene_epoch = 0.0
+                if _st is not None and _ts is not None and prefix == "sstrace":
+                    now, _scene = float(_st), True                  # 3D 面板快照: 回放进度 = 主钟
+                    self._pb_sync = (float(_ts), float(_st))
+                    self._scene_epoch = float(_ts) - float(_st)     # x → 绝对时刻 的偏移 (轴标签用)
                 elif isinstance(_st, (int, float)):
-                    now, _scene = float(_st), True                  # 源不提供墙钟: 退回它自己的钟, 但标注出来
-                    self._scene_epoch = None
+                    # 其它源自带"自己的钟"的 时间_s: 一律映射到主钟 (有 _pb_sync 就用映射; 没有就先按自己的)
+                    _sy = getattr(self, "_pb_sync", None)
+                    if _sy is not None and isinstance(_ts, (int, float)):
+                        now = _sy[1] + (float(_ts) - _sy[0])
+                    else:
+                        now = float(_st)
+                    now, _scene = float(now), True
+                elif isinstance(_ts, (int, float)):
+                    _sy = getattr(self, "_pb_sync", None)
+                    now, _scene = ((_sy[1] + (float(_ts) - _sy[0])) if _sy else float(_ts)), True
                 else:
                     now, _scene = time.time(), False
                 keys = {f"{prefix}.{k}": v for k, v in vals.items()}
@@ -729,15 +739,17 @@ class WaveArea(QWidget):
         if not self.marks:
             return
         pb = self.pb or {}
-        # 🕒 横轴 = 墙钟 ts (与所有源同一根钟) ⇒ 游标画在**快照那一刻的 ts** 上, epoch 偏移恒 0
-        scene_x = pb.get("ts") if (pb.get("fresh") and pb.get("ts") is not None) else None
-        # 轴向标签/时刻换算: 横轴已是墙钟, epoch = x (偏移 0); 场景"回放进度"另在状态栏显示 (帧/总帧/t)
+        # 🕒 横轴 = **3D 回放进度(场景时刻秒)** ⇒ 游标画在快照那一帧的 时间_s 上 (拖 3D 进度条整列跟着走);
+        #   epoch = (ts − 时间_s) + x ⇒ 轴标签切"绝对时刻"时能对上 3D HUD 的时刻 (老倪要两边对时刻)
+        scene_x = pb.get("t_s") if (pb.get("fresh") and pb.get("t_s") is not None) else None
         try:
-            _off = 0.0
+            _off = ((float(pb["ts"]) - float(pb["t_s"]))
+                    if (pb.get("ts") is not None and pb.get("t_s") is not None) else None)
+            self.epoch_off = _off            # 光标 A/B 的"绝对时刻"显示也用它 (否则会显示 1.79e9 那种大数)
             _scene_view = any((self.store.bufs.get(k) is not None and self.store.bufs[k].scene)
                               for k in self.curves)
             # 轴名口径与建图时一致: 最底下一张写「时间 (s)」; 绝对时刻开时补注一下 (不占地方)
-            _lab = "时间 (s) · 绝对时刻" if (self.abs_on and _scene_view) else "时间 (s)"
+            _lab = "时间 (s)（可切绝对时刻）" if (self.abs_on and _scene_view) else "时间 (s)"
             for _i, p in enumerate(self.plots):
                 ax = p.getAxis("bottom")
                 if isinstance(ax, ClockAxis) and ax.epoch_base != _off:
@@ -754,10 +766,13 @@ class WaveArea(QWidget):
             # 🔖 记住"3D 停下的那一刻" (拖动/播放时持续更新) — 停止后竖线靠它留在原地, 不消失
             self._pb_last = {"t_s": float(scene_x), "ts": pb.get("ts"),
                              "frame": pb.get("frame"), "total": pb.get("total")}
-            for mk in self.marks:
-                mk.setPos(float(scene_x))
-                mk.setPen(pg.mkPen("#ffb86c", width=1.6))
-                mk.setVisible(True)
+            for mk in list(self.marks):
+                try:
+                    mk.setPos(float(scene_x))
+                    mk.setPen(pg.mkPen("#ffb86c", width=1.6))
+                    mk.setVisible(True)
+                except RuntimeError:      # C++ 对象已销毁 ⇒ 丢掉引用, 不打断整拍
+                    self.marks.remove(mk)
             if self.mark_lb is not None:
                 _clk = (" · 🕒 %s" % clock_str(pb["ts"])) if pb.get("ts") else ""
                 _fr = (" · 帧 %s/%s" % (pb.get("frame"), pb.get("total"))
@@ -904,6 +919,14 @@ class WaveArea(QWidget):
                 pass
         self.extra_vbs.clear()
 
+    @staticmethod
+    def _klab(k):
+        """Y 轴名: 键名尾部 `_mps` ⇒ `(mm/s)` (老倪 2026-10-15: 界面不要出现 mps, 用 mm/s 毫米/秒)。"""
+        _n = str(k).split(".")[-1]
+        if str(k).endswith("_mps"):
+            _n = _n[:-4].strip() + " (mm/s)"
+        return _n
+
     def _kcolor(self, k):
         """信号在**波形区**的显示色 (老倪 2026-10-15: 「信号全都变成白色了? 应该分颜色, 绿蓝紫等」)。
 
@@ -939,6 +962,11 @@ class WaveArea(QWidget):
         """按当前 mode 与 curves 建曲线对象"""
         self._clear_extra_axes()
         self.glw.clear()
+        # ⚠️ clear() 销毁了标记线/光标的 C++ 实例, Python 这边还攥着旧引用 ⇒ 必须先置空, 否则下一拍
+        #   _refresh_marks 里 mk.setPos(...) 抛 "RuntimeError: wrapped C/C++ object ... has been deleted"
+        #   (实测踩到: 抛在 _build_items 里 ⇒ 曲线只建了一半, 界面上一条波形都没有)
+        self.marks, self.pins = [], []
+        self.mark_lb = self.pin_lb = self.c1 = self.c2 = None
         self.items.clear()
         self.plots = []
         keys = self.curves
@@ -961,7 +989,7 @@ class WaveArea(QWidget):
                 #   真因: 这一行给左边轴标签上了信号色, **紧接着又被 setTextPen(C_DIM) 覆盖成灰白**
                 #   ⇒ 每信号独立图模式下所有信号名看着都是白的。改: 标签色 = 场景/角色色(_kcolor)。
                 _kcol = self._kcolor(k)
-                p.setLabel("left", k.split(".")[-1], color=_kcol)
+                p.setLabel("left", self._klab(k), color=_kcol)
                 # 🕒 2026-10-15 老倪: 「很多 场景时刻(s), 每个信号都有, 不用那么多个; 最底下的信号显示
                 #   时间(s) 即可, 不要占地方」⇒ **只有最底下一张**写 X 轴名, 其余子图 X 轴不留标签、
                 #   刻度也不显示 (整列共用最底下那一条时间轴)。
@@ -1024,7 +1052,7 @@ class WaveArea(QWidget):
                 _c0 = self._kcolor(k)
                 p.getAxis("left").setPen(pg.mkPen(_c0))
                 p.getAxis("left").setTextPen(_c0)
-                p.getAxis("left").setLabel(b.key.split(".")[-1])
+                p.getAxis("left").setLabel(self._klab(b.key))
                 self.items[k] = p.plot(pen=pg.mkPen(_c0, width=b.bold))
                 continue
             vb = pg.ViewBox()
@@ -1099,6 +1127,10 @@ class WaveArea(QWidget):
             if b is None or b.n == 0:
                 continue
             t, v = b.arrays()
+            # 🧮 速度键 (键名带 _mps) 的**曲线与 Y 量程**都按 mm/s 显示 (真源 m/s ×1000;
+            #   老倪: 「不要出现 mps…就是 mm/s 毫米/秒」) —— 与列表/图例/状态栏同一口径。
+            if "_mps" in str(k):
+                v = v * 1000.0
             if not b.scene:
                 t = t - store.t0      # ⏱ 到达时刻源: x = 相对秒 (t - t0); 场景源 x 就是场景时刻
             if self.mode == self.MODE_MULTI and k in self.extra_vbs:
@@ -2236,13 +2268,31 @@ class CanoeGraphicWidget(QWidget):
 
     def _disp_name(self, key):
         """列表显示的短名: 去掉来源前缀 (来源已由上层分组写清), 名字列才容得下。
-        全路径 + Min/Max + 点数 都放 tooltip。"""
+        全路径 + Min/Max + 点数 都放 tooltip。
+
+        🧮 速度单位 (老倪 2026-10-15): 「不要出现 mps 这样的速度, 就是 mm/s 毫米/秒」—— 键名里的
+        `_mps` 只是**数据契约** (真源 trace_live.json 是 m/s), 界面上换成 `(mm/s)` 显示, 值 ×1000。
+        """
         if key.startswith("ros."):
-            return "/" + key[4:]                     # ROS 保留话题全路径 (老倪要看 topic)
-        for pre in ("sstrace.", "ds.", "ar."):
-            if key.startswith(pre):
-                return key[len(pre):]
-        return key
+            name = "/" + key[4:]                     # ROS 保留话题全路径 (老倪要看 topic)
+        else:
+            name = key
+            for pre in ("sstrace.", "ds.", "ar."):
+                if key.startswith(pre):
+                    name = key[len(pre):]
+                    break
+        if self._is_ms(key):
+            name = name.replace("_mps", "").strip() + " (mm/s)"
+        return name
+
+    # 🧮 速度键口径: 键名带 `_mps` 的 (前馈速度/动作调制/安全边界/阶段限速 及其 x/y/z 分量) ⇒ 显示 ×1000
+    @staticmethod
+    def _is_ms(key):
+        return str(key).endswith("_mps") or "_mps." in str(key)
+
+    @classmethod
+    def _unit_scale(cls, key):
+        return 1000.0 if cls._is_ms(key) else 1.0
 
     # 3D 场景那批信号的"血缘": 哪些是真机话题, 哪些是 L2 引擎算的 (老倪要能一眼看到)
     SS_TRACE_SRC = (                                  # 顺序要紧: 长前缀必须排在短前缀前面
@@ -2599,12 +2649,14 @@ class CanoeGraphicWidget(QWidget):
         a, b_ = float(self.wave.c1.value()), float(self.wave.c2.value())
         t0 = self.store.t0
         # 🕒 A/B 也标绝对时刻 (老倪拿它和 3D 场景 HUD 上的时刻对)
+        _off = getattr(self.wave, "epoch_off", None)
+        _base = float(_off) if isinstance(_off, (int, float)) else float(t0)
         rows = [f"<span style='color:{C_BLUE}'>A</span>={a:.3f}s"
-                f"({clock_str(t0 + a, ms=False)}) "
+                f"({clock_str(_base + a, ms=False)}) "
                 f"<span style='color:{C_ORANGE}'>B</span>={b_:.3f}s"
-                f"({clock_str(t0 + b_, ms=False)}) "
+                f"({clock_str(_base + b_, ms=False)}) "
                 f"<b>Δt={abs(b_ - a):.3f}s</b>"
-                + (f"  <span style='color:{C_ORANGE}'>B@</span>{clock_str(t0 + b_)}"
+                + (f"  <span style='color:{C_ORANGE}'>B@</span>{clock_str(_base + b_)}"
                    if self.wave.abs_on else "")]
         for k in self.wave.curves[:8]:
             buf = self.store.bufs.get(k)
@@ -2614,8 +2666,10 @@ class CanoeGraphicWidget(QWidget):
             t = t - t0                      # 曲线 x 是相对秒 ⇒ 插值必须同口径
             va = float(np.interp(a, t, v))
             vb = float(np.interp(b_, t, v))
-            rows.append(f"<span style='color:{buf.color}'>{k}</span>: {va:.4f} → {vb:.4f} "
-                        f"<b>Δ={vb - va:+.4f}</b>")
+            _sc = self._unit_scale(k)                     # 🧮 速度键按 mm/s 显示
+            va, vb = va * _sc, vb * _sc
+            rows.append(f"<span style='color:{buf.color}'>{self._disp_name(k)}</span>: "
+                        f"{va:.4f} → {vb:.4f} <b>Δ={vb - va:+.4f}</b>")
         self.cursor_lb.setText("  |  ".join(rows))
 
     # ─────────── 记录 / 导出 / 导入 ───────────
@@ -2651,8 +2705,10 @@ class CanoeGraphicWidget(QWidget):
                 if b is None or b.n == 0:
                     continue
                 t, v = b.arrays()
+                _sc = self._unit_scale(k)                 # 🧮 导出也按 mm/s (真源 m/s ×1000), 列名带单位
                 for i in range(b.n):
-                    w.writerow([k, round(float(t[i] - t0), 4), float(v[i]), b.age])
+                    w.writerow([self._disp_name(k), round(float(t[i] - t0), 4),
+                                float(v[i]) * _sc, b.age])
                     n += 1
         self._log(f"⤒ 已导出 CSV: {p} ({n} 行)")
 
@@ -2806,8 +2862,11 @@ class CanoeGraphicWidget(QWidget):
             for k in keys:
                 b = self.store.bufs.get(k)
                 if b is not None and b.n:
-                    w.writerow([k, round(now - self.store.t0, 4),
-                                time.strftime("%Y-%m-%dT%H:%M:%S"), b.last_val, b.age, 0])
+                    # 🧮 速度键按 mm/s 落记录 (真源 m/s ×1000), signal 列写显示名 (带单位)
+                    _sc = self._unit_scale(k)
+                    w.writerow([self._disp_name(k), round(now - self.store.t0, 4),
+                                time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                (None if b.last_val is None else b.last_val * _sc), b.age, 0])
                     self.log_rows += 1
             self.logger.flush()
 
@@ -2882,7 +2941,7 @@ class CanoeGraphicWidget(QWidget):
             fresh = age < 5.0
             txt = "🎛 状态机: %s (%s/7)" % (nm, ("%d" % i8) if isinstance(i8, (int, float)) and i8 >= 0 else "?")
             if isinstance(cap, (int, float)) and cap >= 0:
-                txt += " · 限速 %.3f m/s" % float(cap)
+                txt += " · 限速 %.0f mm/s" % (float(cap) * 1000.0)     # 🧮 真源 m/s ⇒ 界面按 mm/s (老倪)
             txt += (" · 帧龄 %.1fs" % age) if fresh else (" · ⚠️ 快照停更 %.0fs (3D 面板没跑/播完)" % age)
         except Exception as e:                                                 # noqa: BLE001
             txt = "🎛 状态机: 读取失败 (%s)" % type(e).__name__
@@ -2949,7 +3008,14 @@ class CanoeGraphicWidget(QWidget):
             b = self.store.bufs.get(k)
             if b is None or b.last_val is None:
                 continue
-            parts.append(f"<span style='color:{b.color}'>■</span> {k} <b>{b.last_val:.4f}</b>")
+            # 🧮 速度键按 mm/s 显示; 色块用场景/角色色 (与曲线同口径, 老倪: 应该只是绿色的信号)
+            _sc = self._unit_scale(k)
+            try:
+                _col = self.wave._kcolor(k)
+            except Exception:                                                  # noqa: BLE001
+                _col = b.color
+            parts.append(f"<span style='color:{_col}'>■</span> {self._disp_name(k)} "
+                         f"<b>{b.last_val * _sc:.4f}</b>")
         self.lb_legend.setText("   ".join(parts))
 
     def _update_tree_values(self):
@@ -2963,13 +3029,19 @@ class CanoeGraphicWidget(QWidget):
             if b is None or b.last_val is None:
                 continue
             v = b.last_val
-            it.setText(1, f"{v:.4g}" if abs(v) < 1e5 else f"{v:.3g}")   # 紧凑: 1.79e+09 不再撑列
+            # 🧮 速度键按 mm/s 显示 (真源 m/s ×1000)
+            _sc = self._unit_scale(key)
+            _v = v * _sc
+            it.setText(1, f"{_v:.4g}" if abs(_v) < 1e5 else f"{_v:.3g}")   # 紧凑: 1.79e+09 不再撑列
             # 列2 = 输出节点 (静态, 建行时写好) —— 这里**不再**覆盖, 帧龄挪进 tooltip (老倪 2026-10-15)
             _age = "-" if b.age < 0 else f"{b.age:.2f}s"
             try:                                    # Min/Max + 帧龄 收进 tooltip, 不再占列宽
+                _mn = (b.vmin * _sc) if b.vmin is not None else None
+                _mx = (b.vmax * _sc) if b.vmax is not None else None
                 it.setToolTip(0, f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
                                  f"\n来源 {b.src} · 点数 {b.n}"
-                                 f" · Min {b.vmin:.4g} · Max {b.vmax:.4g}"
+                                 f" · Min {_mn:.4g} · Max {_mx:.4g}"
+                                 f" ({'mm/s' if _sc != 1.0 else '原值'})"
                                  if b.vmin is not None else
                                  f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
                                  f"\n来源 {b.src} · 点数 {b.n}")
