@@ -79,6 +79,13 @@ def _digest_for(k, f):
                     % (f.get("dim"), (f.get("vec") or [])[:6], f.get("pos_x"), f.get("pos_y"),
                        f.get("pos_z"), f.get("layer"), f.get("source"),
                        (f.get("note") or "")[:60]))[:400]
+        if k == "ss_stage":
+            # 🎛 八阶段状态机 (老倪 2026-10-15「没看到 topic 在信号分析里啊」): 兜底 body[:180] 会
+            #    把 JSON 截断 ⇒ parse_ds_digest 解析不出数值叶子 ⇒ 信号页里"看得到话题、没有波形"。
+            #    这里给一行**完整 JSON**(只留要画的叶子)。
+            return json.dumps({"idx": f.get("idx"), "idx8": f.get("idx8"), "v_cap": f.get("v_cap"),
+                               "done": f.get("done"), "age_s": f.get("age_s"),
+                               "name": f.get("name") or ""}, ensure_ascii=False)[:400]
         if k == "ss_torque":
             # 🔧 驱动扭矩 T_drive=M·(−∇Φ): 载荷是 6D 数组 + 36/9 维张量 + 长说明, 直接截断会得到
             #    **残缺 JSON** ⇒ parse_ds_digest 解析不出数值叶子 ⇒ 实时监控里"看得到话题、没有波形"

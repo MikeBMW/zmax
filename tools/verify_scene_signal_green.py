@@ -321,6 +321,18 @@ def main() -> int:
                  == float(_snap.get("八阶段序号") if _snap.get("八阶段序号") is not None else -8))
         print("   %s 话题末条 == 面板快照现场 (name/idx8 一致 ⇒ 不是各说各话)" % ("✅" if _same else "❌"))
         ok &= _same
+        # 🔴 2026-10-15 老倪「没看到 topic 在信号分析里啊」的**真根因**: digest 被定长切掉 ⇒
+        #   页面解析不出数值叶子 ⇒ "话题在列表里、波形里没有"。这里直接拿页面的解析器验一遍。
+        try:
+            from canoe_graphic import parse_ds_digest                             # noqa: PLC0415
+            _keys = parse_ds_digest((_last or {}).get("digest"))
+        except Exception as _e:                                                   # noqa: BLE001
+            _keys = {}
+            print("      (导入页面解析器失败: %s)" % _e)
+        _ok_keys = {"idx", "idx8", "v_cap"} <= set(_keys)
+        print("   %s 窗口解析器能抠出 %s ⇒ 信号页会出现 ds.zmax/ss_stage.*" % (
+            "✅" if _ok_keys else "❌", sorted(_keys)))
+        ok &= _ok_keys
         # 面板快照必须"一直在动" (老倪「末端 x y z 怎么没有信号输出?」的真根因就是它停了)
         _fresh = _age < 5.0
         print("   %s 面板快照帧龄 %.1fs (<5s ⇒ 末端_x/y/z 一直在出数; 播完会自动从头再播一趟)" % (

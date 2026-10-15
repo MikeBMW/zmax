@@ -137,6 +137,10 @@ ORIN_ENV = ("source /opt/ros/humble/setup.bash; "
 
 _DS_TUPLE_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\.]*(?:\[\d+\])?)\s*=\s*\(([^)]*)\)")
 _DS_SCALAR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\.]*(?:\[\d+\])?)\s*=\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)")
+# 🔴 2026-10-15 老倪「没看到 topic 在信号分析里啊」: 数据空间里有些话题的 digest 是**被定长切掉的
+#   JSON**(缺右括号, 见 probe.py 的 body[:180] 兜底) ⇒ json.loads 必然失败 ⇒ 以前一条信号都出不来
+#   (ss_stage 就是这种情况: 话题在列表里, 波形里没有)。这条正则专收"键": 数值 的成对叶子。
+_DS_JSONNUM_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)')
 
 
 def parse_ds_digest(d):
@@ -161,6 +165,14 @@ def parse_ds_digest(d):
             except Exception:
                 pass
     out = {}
+    # ②.5 被定长切掉的 JSON: 逐对抠 "键": 数值 (只取数值叶子; 解析不出的一律不产出, 不编造)
+    for _m in _DS_JSONNUM_RE.finditer(s):
+        _k, _v = _m.group(1), _m.group(2)
+        if _k not in out:
+            try:
+                out[_k] = float(_v)
+            except Exception:                                                  # noqa: BLE001
+                pass
     spans = []
     for m in _DS_TUPLE_RE.finditer(s):
         name, body = m.group(1), m.group(2)
