@@ -11830,7 +11830,9 @@ def _msg(parent, title, text, kind="info", yes_no=False, yes_text=None, no_text=
     mb.exec_()
     return False
 
-# ── 🧾 工程文件"已加载配置"名称清单 (2026-10-14 老倪: 弹窗只列配置名称, 数字/哈希/路径全不要) ──
+# ── 🧾 工程文件"已加载配置"名称清单 ──
+#   2026-10-14 老倪: 弹窗只列配置名称 (数字/哈希/路径全不要);
+#   2026-10-15 老倪: 「删除打开工程的提示页面, 没啥用」⇒ 弹窗整页删除, 这份名称清单改喂**日志/台账**那一行。
 #   键顺序 = 工程文件里段的自然顺序; 只报**文件里真有的段** (没有的不编)。
 _PROJ_SECTION_NAMES = (
     ("canvas", "画布 · 状态空间工程"),
@@ -13055,13 +13057,10 @@ class StudioMainWindow(QMainWindow):
                     n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "", _view or "-")
             except Exception as e:                                               # noqa: BLE001
                 detail = "⚠️ 界面回填异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
-        # 🧾 2026-10-14 老倪: 「状态空间工程打开时弹出来的文本清单简单一些, 只列出加载的配置名称即可;
-        #   那么多数字字符串不是给人看的, 别的都删掉」⇒ 弹窗只留: 工程名 + 配置名称清单;
-        #   ok 标志/结构计数/漂移计数/时间戳/控制台版本/路径一律不进弹窗 (细节走日志与台账)。
+        # 🔕 2026-10-15 老倪: 「删除打开工程的提示页面，没啥用」⇒ 这两条加载路径**不再弹窗**。
+        #   (2026-10-14 那次只是把弹窗里的数字删掉, 现在整页删掉: 弹窗本身没信息量, 还挡画布)
+        #   信息没丢, 只是不再占屏: ① 状态栏一行 ② 控制台日志一行 (含配置名称清单) ③ 工程台账留痕。
         _names = _pj_loaded_names(path)
-        _msg_ok(self, "🗂 状态空间工程已打开", "✅ %s\n\n已加载配置:\n%s" % (
-            os.path.basename(path),
-            "\n".join("  · " + n for n in _names) if _names else "  · (工程里没有可识别的配置段)"))
         self.statusBar().showMessage("✅ 总工程已打开并切到画布: %s" % os.path.basename(path), 8000)
         try:
             self._ui_msg("🗂 总工程已打开: %s · 配置 %s · %s · 存档 %s"
@@ -13132,13 +13131,8 @@ class StudioMainWindow(QMainWindow):
                     n_apply, ("（跳过: " + "、".join(skip) + "）") if skip else "")
             except Exception as e:                                               # noqa: BLE001
                 detail = "⚠️ 画布重载异常(真源已写好, 重开画布即可): %s: %s" % (type(e).__name__, e)
-        # 🧾 2026-10-14 老倪: 「弹出来的文本清单简单一些, 只列出所有加载的配置的名称即可;
-        #   那么多数字字符串不是给人看的, 别的都删掉」⇒ 弹窗只剩: 工程名 + 配置名称清单。
-        #   统计/哈希/索引/备份路径/漂移计数**不进弹窗**; 需要细节看控制台日志那一行。
+        # 🔕 2026-10-15 老倪: 「删除打开工程的提示页面，没啥用」⇒ 不弹窗 (见上一条同样处理)
         _names = _pj_loaded_names(path)
-        _msg_ok(self, "📂 加载工程文件", "✅ 工程已加载\n\n%s\n\n已加载配置:\n%s" % (
-            os.path.basename(path),
-            "\n".join("  · " + n for n in _names) if _names else "  · (工程里没有可识别的配置段)"))
         self.statusBar().showMessage("✅ 工程已加载: %s" % os.path.basename(path), 6000)
         try:      # 数字/路径这类"给人查"的东西只留在日志里
             self._ui_msg("📂 工程已加载: %s · 配置 %s · %s · 备份 %s"

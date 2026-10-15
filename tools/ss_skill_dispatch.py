@@ -30,7 +30,8 @@ if os.path.join(ROOT, "src") not in __import__("sys").path:
 from lerobot.policies.left_right.state_space.physics_constraints import (InertiaLimiter,   # noqa: E402
                                                                        limits_for)
 # ⚖ 技能号 ↔ 阶段: 真源 = 技能库的类 (code/stage 类属性), 不在这里手写编号
-from lerobot.policies.left_right.state_space.skills.atomic_skills import SKILLS, SKILLS_TRAY  # noqa: E402
+from lerobot.policies.left_right.state_space.skills.atomic_skills import (  # noqa: E402
+    SKILLS, SKILLS_TRAY, bind_limiter, skill_for)
 CODE_BY_STAGE = {}
 for _c in list(SKILLS) + list(SKILLS_TRAY):
     CODE_BY_STAGE.setdefault(_c.stage, _c.code)          # SK07 插拔链=插入 / 摆盘链=放入 (同号两支)
@@ -100,6 +101,13 @@ class Dispatcher:
         # ⚖ 2026-10-15 老倪「每个技能都清楚地知道自己动作的惯性」: 每个技能各自记上一拍的**实际下发**速度/加速度,
         #   物理闸要拿它算 Δv/Δa (惯性是"下一拍相对上一拍"的关系, 不是绝对量)。
         self.lim = InertiaLimiter(dt=DT)
+        # ⚖ 老倪 2026-10-15「原子技能, 哪里是调用物理模型的?怎么保证每次都有物理约束」:
+        #   闸实例**绑给技能调用口** (bind_limiter) ⇒ 技能类里的 clamp() 与派发链/信号分析共用同一实例,
+        #   段累计行程与削因计数才不会两处各记一半; 计数见下 (判据用它证「拍数 == 过闸次数」)。
+        bind_limiter(self.lim)
+        self._sk_cache = {}
+        self.n_gate_skill = 0        # 走"技能对象自己的调用口"的拍数 (本段有技能类)
+        self.n_gate_stage = 0        # 走"同段真源闸"的拍数 (本段没有技能类: 拔出/AOI转移/AOI检测/回程)
         self.last_v = {s_: np.zeros(3) for s_ in STAGES}
         self.last_a = {s_: np.zeros(3) for s_ in STAGES}
         # ⚖ 加速度真源: 块边界算一次并**保留到下一块** (老倪 2026-10-15「信号分析里要看到 a 加速度」)。
@@ -120,9 +128,27 @@ class Dispatcher:
         except Exception:                                                  # noqa: BLE001
             return None
 
+    def _skill(self, st):
+        """按段名取技能**对象** (缓存) —— 段名→技能类的映射来自 atomic_skills 类属性, 不自己编号。"""
+        if st not in self._sk_cache:
+            _c = skill_for(st)
+            self._sk_cache[st] = _c() if _c is not None else None
+        return self._sk_cache[st]
+
     def _phys(self, st, action):
-        """⚖ 进技能的 action 先过物理闸 (惯性/加速度/加加速度/动量率) —— 过不去就削出偏差 error。"""
-        r = self.lim.limit(st, action, v_prev=self.last_v.get(st), a_prev=self.last_a.get(st))
+        """⚖ 进技能的 action 先过物理闸 (惯性/加速度/加加速度/动量率/位移) —— 过不去就削出偏差 error。
+
+        两路**都过闸**, 没有第三条路:
+          · 本段有技能类 ⇒ 走**技能对象自己的调用口** `skill.clamp()` (真调用写在 atomic_skills 类体里, 打开就能看到);
+          · 本段没有技能类 (拔出/AOI转移/AOI检测/回程) ⇒ 走同段真源闸 `self.lim.limit()` (如实登记, 不假装有技能)。
+        """
+        _sk = self._skill(st)
+        if _sk is not None:
+            r = _sk.clamp(action, dt=DT, v_prev=self.last_v.get(st), a_prev=self.last_a.get(st))
+            self.n_gate_skill += 1
+        else:
+            r = self.lim.limit(st, action, v_prev=self.last_v.get(st), a_prev=self.last_a.get(st))
+            self.n_gate_stage += 1
         v = np.asarray(r["u"], float)[:3]
         self.last_a[st] = (v - self.last_v.get(st, np.zeros(3))) / DT
         self.last_v[st] = v
@@ -175,7 +201,12 @@ class Dispatcher:
                        "skill": CODE_BY_STAGE.get(st, "")}
             _atomic_json(os.path.join(SHM, "skill_%d_%s.json" % (STAGES.index(st), st)), out[st])
         flat = {"ts": now, "n": self.n, "reset_n": self.reset_n,
-                "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3)}
+                "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3),
+                # ⚖ 过闸计数 (可观察): 技能调用口拍数 + 无技能段拍数 + 闸门累计拍数与削因
+                "过闸_技能拍": self.n_gate_skill, "过闸_段闸拍": self.n_gate_stage,
+                "闸_拍数": int(getattr(self.lim, "n", 0)),
+                "闸_削因": dict(getattr(self.lim, "n_cut", {}) or {}),
+                "闸_不可行拍": int(sum((getattr(self.lim, "n_cut", {}) or {}).values()))}
         for st in STAGES:
             v = out.get(st)
             flat["%s_mps" % st] = (_norm(v["action"]) if v else -1.0)

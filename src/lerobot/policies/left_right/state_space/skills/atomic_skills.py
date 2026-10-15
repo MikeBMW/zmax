@@ -146,6 +146,30 @@ class AtomicSkill:
             "自检": cls.phys_check(),
         }
 
+    # ── ⚖ 物理模型的**调用点** (真执行语句, 不是注释) ─────────────────────────────
+    #   老倪 (2026-10-15): 「原子技能, 哪里是调用物理模型的? 这里没看到模型调用的语句,
+    #   怎么保证每次都有物理约束」⇒ 每个技能类体内都有一条真调用 (`clamp`), 落到本方法,
+    #   本方法再落到闸门 physics_constraints.InertiaLimiter.limit (五式 ①..⑤ 的唯一收口)。
+    #   派发链每拍走这里: tools/ss_skill_dispatch.py::SkillDispatch._phys() → 技能对象.clamp()。
+    #   判据 tools/verify_skill_physics_calls.py 会数「调用次数 == 派发拍数」(没有一拍绕过闸)。
+    _LIMITER = None
+
+    @classmethod
+    def limiter(cls):
+        """本技能用的物理闸实例 (模块级**单例**: 段累计行程/上拍速度/削因计数必须跨拍连续)。"""
+        if AtomicSkill._LIMITER is None:
+            AtomicSkill._LIMITER = cls._phys_mod().InertiaLimiter()
+        return AtomicSkill._LIMITER
+
+    def apply_physics(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ **真调用物理模型**: 候选动作 u → 物理可行动作 (五式收口于闸门 limit())。
+
+        返回闸门原始结果: {u, v_req, err, err_norm, big, why, phys, ...}
+        `why` 写明是哪条约束削的 (可行/速度/加速度/加加速度/动量·质量率/位移),
+        `err` 就是"物理不可行"的偏差量 —— 信号分析里看得见, 也是判据的取证口。
+        """
+        return self.limiter().limit(self.stage, u, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt, dt=dt)
+
     @classmethod
     def show_phys(cls):
         """把本技能的物理模型打印出来 (人看/交付: 打开哪个技能, 就看到它自己的方程和数字)。"""
@@ -177,6 +201,13 @@ class SK01Approach(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.35, "v_min": 0.12}
     source = "state_space_sim_real.STAGE_APPROACH_H / cognition.STAGE_V_CAP"
 
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
     #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
@@ -198,6 +229,13 @@ class SK02Align(AtomicSkill):
     evidence = "手-光模块水平距离 < 0.02 (align_xy_fine) → 下降"
     ctrl = {"gripper": "张开", "v_cap": 0.12, "v_min": 0.04}
     source = "state_space_sim_real.STAGE_ALIGN_H"
+
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -222,6 +260,13 @@ class SK03Descend(AtomicSkill):
     ctrl = {"gripper": "张开 (到位前不闭 — 状态锁存非比例)", "v_cap": 0.09}
     source = "state_space_sim_real.STAGE_DESCEND_H / _z_stall"
 
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
     #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
@@ -245,6 +290,13 @@ class SK04Grasp(AtomicSkill):
     ctrl = {"gripper": "闭合锁存 (抓取及之后恒闭合)", "v_cap": 0.04}
     source = "cognition.ActionModulator(grasp_th=0.50) / GRASP_SAT"
 
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
     #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
@@ -266,6 +318,13 @@ class SK05Lift(AtomicSkill):
     evidence = "提起高度 >0.08 (lift_h 判据) → 转移; 滑脱(off 漂移>8mm) → 回接近重抓"
     ctrl = {"gripper": "闭合保持", "v_cap": 0.30, "v_min": 0.10}
     source = "state_space_sim_real.STAGE_LIFT / GRASP_SLIP_MM"
+
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -290,6 +349,13 @@ class SK06Transfer(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.35, "v_min": 0.12}
     source = "cognition.INSERT_HOVER / sim_real align_th"
 
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
     #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
@@ -313,6 +379,13 @@ class SK07Insert(AtomicSkill):
     evidence = "插深 <0.006 → 完成 (full 模式 → 拔出)"
     ctrl = {"gripper": "闭合保持 (力控推入)", "v_cap": 0.085, "v_min": 0.02}
     source = "sim_real insert_depth=0.006 / cognition.STAGE_V_MIN 插入"
+
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -343,6 +416,13 @@ class SK07Place(AtomicSkill):
     ctrl = {"gripper": "闭合保持 → 触底开爪释放", "v_cap": 0.06, "v_min": 0.015}
     source = "cognition.ActionModulator TRAY_MODE/PLACE_IDX + sim_scene_def tray 槽位真源"
 
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
     #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
@@ -364,6 +444,13 @@ class SK08Complete(AtomicSkill):
     evidence = "阶段 == 完成 (done)"
     ctrl = {"gripper": "闭合保持", "v_cap": 0.02}
     source = "cognition.ActionModulator STAGES[完成]"
+
+    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
+    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
+    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
+        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -429,3 +516,30 @@ if __name__ == "__main__":
                      ph["s_max"], ph["dmdt_max"]))
             print("         方程: " + " | ".join("%s %s" % (k, v[0]) for k, v in (s.get("phys_equations") or {}).items()))
             print("         本段: %s" % s.get("phys_note", ""))
+
+
+# ── stage → 技能类 索引 (派发链按阶段找技能对象, 不自己编号) ─────────────────────────
+def _index_by_stage():
+    out = {}
+    for _v in list(globals().values()):
+        if isinstance(_v, type) and issubclass(_v, AtomicSkill) and getattr(_v, "code", "SK--") != "SK--":
+            out.setdefault(str(_v.stage), _v)          # 同段多个类时取先定义的 (真源只能有一个)
+    return out
+
+
+SKILL_BY_STAGE = _index_by_stage()
+
+
+def bind_limiter(lim):
+    """把**外部闸实例**绑成技能调用口用的那一个 (派发链 ↔ 信号分析必须共用同一实例)。
+
+    为什么必须共用: 段累计行程 `travel` / 上拍速度 `last_v` / 削因计数都是**跨拍状态**,
+    两处各持一个实例 ⇒ 行程与削因各记一半 (信号分析里 s_mm 直接变 0, 判据也数不准调用次数)。
+    """
+    AtomicSkill._LIMITER = lim
+    return lim
+
+
+def skill_for(stage):
+    """按段名取技能类 (没有对应技能类的段返回 None ⇒ 派发链退回同段真源闸, 如实登记)。"""
+    return SKILL_BY_STAGE.get(str(stage))
