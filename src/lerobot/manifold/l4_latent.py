@@ -169,6 +169,15 @@ class L4LatentSpace:
         f = encoder.encode(frame)
         return self.project(f)
 
+    # ── 可选: 归一化球面投影 (老倪 2026-10-15「归一化球面实现方案」五、在流形引擎中的位置) ──
+    #   默认**不开**: 在役 su2 档按原样跑 (零回归; 现场 engine_latest.json: manifold=su2)。
+    #   要启用球面约束时显式调本方法 (或把引擎档位切到 sphere), 公式真源 = manifold/sphere.py。
+    def project_sphere(self, z, temperature: float = 1.0, radius: float = 1.0) -> tuple:
+        """编码器潜向量 → 单位球面上的点 (球面约束)。返回 (p, meta): meta 带 residual/drift/r_in。"""
+        from lerobot.manifold import sphere as _S
+        p, res, meta = _S.project(np.asarray(z, float).ravel(), radius=radius, temperature=temperature)
+        return p, {"residual": res, **meta, "temperature": float(temperature)}
+
 
 def fit_from_frames(encoder, frames: list, root: str = ROOT_DEFAULT, latent_dim: int = 16,
                     note: str = "") -> dict:

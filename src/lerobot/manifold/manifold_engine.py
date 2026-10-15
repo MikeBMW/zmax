@@ -55,6 +55,14 @@ try:
 except Exception:                                                              # noqa: BLE001
     quat_slerp = quat_mul = quat_exp = quat_from_R = R_from_quat = None
 
+# ── 归一化球面 S^n (老倪 2026-10-15「归一化球面实现方案」) — 公式**单真源**在 manifold/sphere.py:
+#    normalize(方法一)/project(方法四)/exp_map/log_map/geodesic_slerp/parallel_transport/tangent_project
+#    本文件只**复用**它, 不重写公式 (避免两处实现漂移)。
+try:
+    from lerobot.manifold import sphere as sphere_mod
+except Exception:                                                              # noqa: BLE001
+    sphere_mod = None
+
 # ── 内稳态层 (2026-10-10 老倪: 身体状态/功能性感受/自我模型) ──
 #   ⚠️ hospitality 模块带 @dataclass ⇒ 动态加载时**必须先 sys.modules[spec.name]=m 再 exec_module**,
 #   否则 dataclasses 取 sys.modules.get(cls.__module__).__dict__ 报 'NoneType' has no attribute '__dict__'。
@@ -93,7 +101,10 @@ MANIFOLD_REGISTRY: dict[str, dict] = {
     "euclidean": {"status": "ready", "dim": None, "constraint": "无约束 R^n",
                   "metric": "欧氏", "geodesic": "直线", "src": "本模块"},
     "sphere": {"status": "ready", "dim": None, "constraint": "‖p‖=1",
-               "metric": "弧长 (chord→arc)", "geodesic": "大圆 (slerp)", "src": "本模块"},
+               "metric": "弧长 (chord→arc)", "geodesic": "大圆 (slerp)",
+               "src": "本模块 + manifold/sphere.py (S^n 全套)",
+               "ops": "project(方法一/四)·exp_map·log_map·geodesic_slerp·great_circle_path·parallel_transport"
+                      "·tangent_project·riemannian_gradient·SphereProjection(可微投影层)·sphere_distance_loss·unit_norm_regularizer"},
     "torus": {"status": "ready", "dim": None, "constraint": "周期边界 (角度 mod 2π)",
               "metric": "周期欧氏", "geodesic": "线性 mod 2π", "src": "本模块"},
     "so3": {"status": "ready", "dim": 3, "constraint": "RᵀR=I, det R=1",
@@ -382,6 +393,47 @@ class Navigator:
         return {"path": path, "n": T, "length": round(float(L), 6),
                 "end_error": round(float(MetricCalculator(self.type).distance(path[-1], pT)), 6),
                 "geodesic_kind": MANIFOLD_REGISTRY.get(self.type, {}).get("geodesic", "直线")}
+
+    # ── 归一化球面 S^n 的补全算子 (2026-10-15 老倪「归一化球面实现方案」六、球面上的计算) ──
+    #   原缺: 对数映射 / 平行移动 (只有 exp map + slerp)。公式单真源 = manifold/sphere.py, 本处只收口+报错。
+    def log_map(self, p: np.ndarray, q: np.ndarray) -> np.ndarray:
+        """log_p(q): 流形点 → 切向量。
+
+        · sphere: 纯球面口径 arccos⟨p,q⟩
+        · su2   : **双覆盖消歧** —— ±U 是同一旋转 ⇒ 先取同叶 (⟨p,q⟩≥0) 再取 log, 否则会误走 π 对径。
+                  对径输入 (−U,−V) 表示**同一相对旋转**, 其 log 向量 = −log(U,V) (对径切空间里的同一元素),
+                  模长不变 (判据 ⑱ 逐位核)。
+        其余类型: 明确报错 (不静默返回假值)。
+        """
+        if self.type not in ("sphere", "su2"):
+            raise ValueError("log_map 只对 sphere/su2 实现 (当前 %r)" % self.type)
+        if sphere_mod is None:
+            raise RuntimeError("manifold/sphere.py 不可用")
+        p = np.asarray(p, float).ravel()
+        q = np.asarray(q, float).ravel()
+        if self.type == "su2" and float(np.dot(p, q)) < 0.0:
+            q = -q                                     # 同叶 (双覆盖)
+        return sphere_mod.log_map(p, q)
+
+    def parallel_transport(self, p0: np.ndarray, p1: np.ndarray, v: np.ndarray) -> np.ndarray:
+        """沿大圆把切向量 v∈T_{p0} 平行移动到 T_{p1} (保长度/保内积/落回切空间)。"""
+        if self.type not in ("sphere", "su2"):
+            raise ValueError("parallel_transport 只对 sphere/su2 实现 (当前 %r)" % self.type)
+        if sphere_mod is None:
+            raise RuntimeError("manifold/sphere.py 不可用")
+        p0 = np.asarray(p0, float).ravel()
+        p1 = np.asarray(p1, float).ravel()
+        if self.type == "su2" and float(np.dot(p0, p1)) < 0.0:
+            p1 = -p1
+        return sphere_mod.parallel_transport(p0, p1, v)
+
+    def great_circle_path(self, p0: np.ndarray, p1: np.ndarray, n: int = 16) -> dict:
+        """大圆路径 + 真弧长 + 解析夹角 θ (球面专用; 与 compute_geodesic 同口径可交叉核)。"""
+        if self.type not in ("sphere", "su2"):
+            raise ValueError("great_circle_path 只对 sphere/su2 实现 (当前 %r)" % self.type)
+        if sphere_mod is None:
+            raise RuntimeError("manifold/sphere.py 不可用")
+        return sphere_mod.great_circle_path(p0, p1, n=int(n))
 
     def step(self, p: np.ndarray, v: np.ndarray, dt: float = 0.01) -> np.ndarray:
         """沿切向量 v 走 dt (球面/SU2 = 指数映射; SE3 = 螺旋; 其余 = 加法)"""
