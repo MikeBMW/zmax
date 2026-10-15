@@ -39,7 +39,12 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
 
 # 已有实例在跑 → 激活已有窗口 + 弹到配置中心, 不重复启动
-if pgrep -f "[g]ui-venv311/bin/python studio.py" >/dev/null 2>&1; then
+# 🔴 2026-10-15 加固: 原来用 `pgrep -f "[g]ui-venv311/bin/python studio.py"` —— 这是**子串匹配**,
+#   任何 cmdline 里出现过这串字的进程(比如我自己在终端里跑 `pgrep -af 'gui-venv311/bin/python studio.py'`)
+#   都会被当成"控制台已在跑" ⇒ 本脚本 exit 0 不干活 ⇒ **服务报启动成功但一个窗口都没有**(实测踩到)。
+#   ⇒ 改成锚定整条 cmdline: 只有"就是那个解释器在跑 studio.py"才算实例。
+STUDIO_RE='^[^ ]*gui-venv311/bin/python studio\.py$'
+if pgrep -f "$STUDIO_RE" >/dev/null 2>&1; then
     printf '%s\n' "$ZMAX_BOOT_PAGE" > /tmp/zmax_nav_cmd 2>/dev/null || true
     WIN=$(DISPLAY="$DISPLAY" xdotool search --onlyvisible --name "XSpace ZMAX" 2>/dev/null | head -1)
     if [ -n "$WIN" ]; then

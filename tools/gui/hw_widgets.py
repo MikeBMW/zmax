@@ -101,7 +101,11 @@ class StatBar(QWidget):
         self._text = "—"
         self._color = C_DIM
         self.setFixedHeight(34)
-        self.setMinimumWidth(300)
+        # 🔴 2026-10-15 整齐修复: 原 300px × 4 条 = 状态条行 1278px ⇒ 把 HardwareCard 的最小宽撑到 1328px,
+        #   而实机首页视口只有 1144px (窗 1400 − 侧栏/边距) ⇒ 整页横向溢出: Roadmap 第 5 张卡 (Phase 4)
+        #   连同它的右下角主指标被挤出窗外(实测卡 x=1360..1600)。降到 245px 后整页最小宽 ≈1106 < 视口,
+        #   五张卡并排全见。窄到 245 时绘制代码自动缩短进度条 (见 paintEvent 的 x1 回退), 不会截断数字。
+        self.setMinimumWidth(245)
 
     def set_value(self, frac, text=None, color=None):
         self._frac = None if frac is None else max(0.0, min(1.0, float(frac)))

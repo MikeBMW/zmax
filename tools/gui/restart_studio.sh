@@ -11,7 +11,9 @@
 set -u
 LOG=/tmp/zmax_studio_restart.log
 echo "=== $(date '+%F %T') 重启控制台 ===" | tee -a "$LOG"
-PAT='gui-venv311/bin/python studio.py'
+# 锚定整条 cmdline (2026-10-15 加固): 子串匹配会把"任何 cmdline 里含这串字的进程"(例如我在终端里
+# 跑 pgrep -af '...studio.py') 当成控制台实例 ⇒ 判活/判死都错。只认"就是那个解释器在跑 studio.py"。
+PAT='^[^ ]*gui-venv311/bin/python studio\.py$'
 
 systemctl --user stop zmax-studio.service 2>/dev/null
 for _ in $(seq 1 30); do

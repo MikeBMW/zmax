@@ -977,7 +977,9 @@ class SystemSidebar(QFrame):
         # System 0 (底 — 红底)
         self.sys0 = SystemLayerCard(
             "sys0", "System 0", "L2 基石执行",
-            CARD_BORDER["sys0"], "安全层 · HAL · EtherCAT · 原子技能 · 肌肉记忆 · 功能 %d" % _LC["功能·sys0"],
+            CARD_BORDER["sys0"], "原子技能 SK01-08 · 分段感知/控制小模型 · 动作调制·安全限幅 · 肌肉记忆 · 功能 %d" % _LC["功能·sys0"],
+            # 🗺 2026-10-15: 原写「安全层 · HAL · EtherCAT」—— 工程库 L2 无这两行, 且
+            #   src/lerobot/policies/intact/runtime/robot_io.py 明标 EtherCAT「预留 · 未接入」⇒ 按库真值改
             mcd=_MCD.get("sys0")
         )
         self.sys0.clicked.connect(self.layer_clicked.emit)
@@ -1173,7 +1175,7 @@ class ArchFlowBar(QFrame):
         self._add_arrow(root, "↕")
 
         # ---- Layer 1: Sys-0 (底层) ----
-        self._add_layer_box(root, "⚙️", "System 0", "L2 基石执行 · EtherCAT · 安全层 · HAL · 原子技能 (27 功能)", SYS0_COLOR)
+        self._add_layer_box(root, "⚙️", "System 0", "L2 基石执行 · 原子技能 SK01-08 · 分段感知/控制小模型 · 动作调制·安全限幅 · 肌肉记忆 (27 功能)", SYS0_COLOR)
 
         self.setLayout(root)
 
@@ -1284,7 +1286,9 @@ class PhaseCardButton(QFrame):
 
         layout = QVBoxLayout()
         layout.setSpacing(6)
-        layout.setContentsMargins(12, 10, 12, 10)
+        # 🗺 2026-10-15: 左右内边距 12→8 ⇒ KPI 可用宽 172→180px; 配合指标字号 12pt, 让"速度反馈延迟 ≤ 10ms"
+        #   这类长指标也能单行放完 (实测 12pt 该串 174px) ⇒ 五张卡的主指标都是同一行、同一字号、同一右边界。
+        layout.setContentsMargins(8, 10, 8, 10)
 
         # Phase 标识 + 时间
         header = QHBoxLayout()
@@ -1296,14 +1300,22 @@ class PhaseCardButton(QFrame):
         time_lbl = QLabel(p["time"])
         time_lbl.setFont(QFont("Consolas", 11))
         time_lbl.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
+        # 🔴 2026-10-15 整齐修复: 这行时间原本撑出每卡最小宽 (Phase 2 的 "2026 Q4 - 2027 Q1" ⇒ 卡最小 275px),
+        #   五张卡合计最小宽 ~1152px > 实机页面可用宽 (~1110px, 左侧栏占 ~270px) ⇒ 第 5 张卡被挤出窗外、
+        #   Phase 4 的右下角主指标根本看不见。开 wordWrap 后最小宽由最长词决定 (>40px 而非 154px), 五卡并排即可全见。
+        time_lbl.setWordWrap(True)
+        time_lbl.setAlignment(Qt.AlignRight | Qt.AlignTop)
         header.addWidget(time_lbl)
         layout.addLayout(header)
 
-        # 标题
+        # 标题 (统一占两行高 ⇒ 五张卡的 维度/描述/KPI 行在所有卡上对齐, 老倪 2026-10-15「位置要一致, UI要优美, 整齐」)
         title = QLabel(p["title"])
         title.setFont(QFont("Arial", 11, QFont.Bold))
         title.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; margin:0; padding:2px 0;")
         title.setWordWrap(True)
+        title.setMinimumHeight(title.fontMetrics().lineSpacing() * 2)
+        title.setFixedHeight(title.fontMetrics().lineSpacing() * 3)   # 三行高固定 ⇒ 五张卡逐行对齐 (含 2 行标题的 Phase 1)
+        title.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         layout.addWidget(title)
 
         # 维度标签
@@ -1312,18 +1324,33 @@ class PhaseCardButton(QFrame):
         dim_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:0;")
         layout.addWidget(dim_lbl)
 
-        # 描述
+        # 描述 (黑灰字体, 来自工程库真值; 被人工改写时打标记)
         desc_lbl = QLabel(p["desc"])
         desc_lbl.setFont(QFont("Arial", 12))
         desc_lbl.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none; margin:0; padding:2px 0;")
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
-        # KPI
+        # ✏️ 人工改写标记 (老倪 2026-10-15: 点开可编辑; 改过的卡不冒充库真值)
+        if p.get("_edited"):
+            _tag = QLabel("✏️ 人工改写 · 点开可改/可恢复库真值")
+            _tag.setFont(QFont("Arial", 10))
+            _tag.setStyleSheet(f"color:{C_ORANGE}; background:{C_ORANGE}18; border:1px solid {C_ORANGE}55;"
+                               "border-radius:3px; padding:1px 5px;")
+            _tag.setWordWrap(True)
+            layout.addWidget(_tag)
+
+        # KPI (右下角主指标): 先撑开 ⇒ 五张卡的 KPI 都贴卡底、同一行高、同一字体, 位置完全一致
+        layout.addStretch()
         kpi_lbl = QLabel(p["kpi"])
-        kpi_lbl.setFont(QFont("Consolas", 13, QFont.Bold))
-        kpi_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:4px 0;")
-        kpi_lbl.setAlignment(Qt.AlignRight)
+        # 12pt = 实测"五条指标都能单行放完"的最大统一字号 (13pt 时 速度反馈延迟 ≤10ms=184px / 7×24h 那条=242px > 卡内 180px)
+        kpi_lbl.setFont(QFont("Consolas", 12, QFont.Bold))
+        kpi_lbl.setStyleSheet(f"color:{self.color}; background:transparent; border:none; margin:0; padding:4px 0 0 0;")
+        kpi_lbl.setMinimumHeight(30)
+        kpi_lbl.setWordWrap(True)          # 长指标换行不截断 (老倪: 字不许被切)
+        kpi_lbl.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+        # 统一留两行高 (Phase 4 的指标会折成两行) ⇒ 五张卡的 KPI 上沿/下沿都在同一水平线上
+        kpi_lbl.setFixedHeight(kpi_lbl.fontMetrics().lineSpacing() * 2 + 6)
         layout.addWidget(kpi_lbl)
 
         self.setLayout(layout)
@@ -1371,6 +1398,158 @@ def _roadmap_facts():
     except Exception:                                                          # noqa: BLE001
         pass
     return fallback
+
+
+# ── 🗺 Phase 卡文案 ↔ 工程库 对照 (老倪 2026-10-15: 「Phase 0 这个标签页, 这些黑灰字体的描述
+#    原子技能...这些, 与 L2 层要对应上, 再次检查, 更新」) ─────────────────────────────
+# 判据 tools/verify_roadmap_phase_texts.py 把下面这张表**锁死**: 每层的键必须逐条等于
+# 工程库里 system_id 的功能行集合 (少了/多了都红) ⇒ 库里改了行而这里不跟 = 判据红,
+# 逼着同步, 不允许再出现「手写印象」(本轮实测抓到的旧印象: Phase 0 写「安全层/HAL/EtherCAT」,
+# 而库里 L2 一行都没有, 且 robot_io.py 明确写 EtherCAT「预留 · 未接入」⇒ 已按库真值改)。
+PHASE_ROW_SHORT = {
+    "sys0": {
+        "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子": "原子技能库 SK01-08 + 通用算子",
+        "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)": "分段感知 (YOLO/触觉/2D→3D/AOI)",
+        "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)": "控制小模型 (前馈/估计/预测/校正)",
+        "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)": "感知融合 43D",
+        "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)": "动作调制 · 安全限幅",
+        "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)": "执行层 (执行器/物理闭环)",
+        "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)": "肌肉记忆 (标杆直通)",
+    },
+    "sys1": {
+        "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching": "VLM 编码 (SmolVLA) + Flow-Matching 动作头",
+        "🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)": "长程规划记忆 (跨段技能序列)",
+    },
+    "sys2": {
+        "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)": "L5 大模型层: 任务/编排/记忆中枢 (任务拆解 → 技能序列)",
+        "🏆 L4 专家自主功能 · 标定与流形世界模型": "L4 专家自主: 标定 + 流形世界模型 (预判/恢复)",
+        "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)": "L4 筹划记忆 (世界模型预测/恢复)",
+    },
+}
+# 阶段 → 系统 (Phase 2/4 是产品级, 不绑单层, 文案保持人工; 老倪可自行编辑)
+_PHASE_SYS = {"Phase 0": "sys0", "Phase 1": "sys1", "Phase 3": "sys2"}
+# 收尾口径 (逐条可核: 势场 src/lerobot/memory/potential_field.py · 逐轴 veto src/lerobot/manifold/engine_loop.py)
+_PHASE_TAIL = {
+    "sys0": "势场兜底 + 逐轴 veto 收口 (|corr|≥0.5)",
+    "sys1": "本地 GPU/边缘推理 · 与 L2 共用 43D 观测口径",
+    "sys2": "L4 用 INTACT 直驱 · 回路外慢决策",
+}
+
+
+def _zmax_db_path():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "data", "database", "zmax", "zmax_engineering.db")
+
+
+def _db_sys_rows(sid):
+    """工程库真值: 该系统下的功能行 [(row_name, 条数)] (条数降序)"""
+    import sqlite3
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % _zmax_db_path(), uri=True)
+        rows = list(con.execute("SELECT row_name, COUNT(*) FROM functions WHERE system_id=? "
+                                "GROUP BY row_name ORDER BY COUNT(*) DESC, row_name", (sid,)))
+        con.close()
+        return rows
+    except Exception:                                                           # noqa: BLE001
+        return []
+
+
+def _phase_desc(sid, fn, mcd_str):
+    """按库真值生成 Phase 卡描述 (卡面要“字少不挤” ⇒ 只留组名, 括号里的细节进弹窗的库真值全量表):
+    第 1 行 = 功能行→短语 (去括号), 第 2 行 = 功能数 · MCD · 收尾口径"""
+    import re as _re
+    short = PHASE_ROW_SHORT.get(sid, {})
+    rows = _db_sys_rows(sid)
+    names = []
+    for r, _n in rows:
+        s = short.get(r) or r
+        s = _re.sub(r"\s*[\(（][^)）]*[\)）]", "", s).strip()   # 卡面只留组名 (细节见弹窗)
+        if s and s not in names:
+            names.append(s)
+    line1 = " · ".join(names) or "—"
+    tail = _PHASE_TAIL.get(sid, "")
+    return "%s\n功能 %d · MCD %s%s" % (line1, fn, mcd_str, (" · " + tail) if tail else "")
+
+
+def _phase_db_ref(sid):
+    """弹窗里的**库真值全量**参考块 (组名 + 条数), 逐条与工程库对得上 ⇒ 老倪可当场核"""
+    rows = _db_sys_rows(sid)
+    if not rows:
+        return "📕 库真值: (读库失败, 用兜底文本)"
+    short = PHASE_ROW_SHORT.get(sid, {})
+    lines = ["📕 库真值全量 (%s · %d 组 · %d 功能):" % (sid.upper(), len(rows), sum(n for _r, n in rows))]
+    for r, n in rows:
+        lines.append("   · %s  [%d 项]  库行: %s" % (short.get(r) or r, n, r))
+    return "\n".join(lines)
+
+
+# ── ✏️ Phase 卡人工改写 (老倪 2026-10-15: 「鼠标点开的区域, 要可以变成可编辑区域, 可以保存更新;
+#    Phase 1, Phase 2 3 4 同理可以可编辑修改」) ────────────────────────────────────
+# 真源分两层, 界面如实标: ①工程库生成的默认文本 (库真值) ②人工覆盖 config/roadmap_phase_texts.json
+# (有覆盖 ⇒ 卡上打「✏️ 人工改写」, 不冒充库真值; 「↩ 恢复库真值」一键清覆盖)。
+_ROADMAP_TEXT_KEYS = ("title", "time", "dims", "desc", "kpi")
+
+
+def _roadmap_text_path():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "config", "roadmap_phase_texts.json")
+
+
+def _roadmap_text_raw():
+    try:
+        with open(_roadmap_text_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:                                                           # noqa: BLE001
+        return {}
+
+
+def roadmap_text_overrides():
+    """人工改写的 Phase 文案 {phase_id: {title/time/dims/desc/kpi, edited_at, edited_by}}"""
+    return {k: v for k, v in (_roadmap_text_raw().get("phases") or {}).items() if isinstance(v, dict)}
+
+
+def _roadmap_text_write(d):
+    p = _roadmap_text_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)          # 原子: 写 tmp 再 rename, 断电不会留半截文件
+
+
+def save_roadmap_phase_text(pid, fields):
+    """保存某个 Phase 的人工改写 (原子写 + 回读校验)。返回 (ok, msg)"""
+    d = _roadmap_text_raw()
+    d.setdefault("schema", "zmax-roadmap-phase-texts/1")
+    phases = d.setdefault("phases", {})
+    rec = dict(phases.get(pid) or {})
+    for k in _ROADMAP_TEXT_KEYS:
+        v = fields.get(k)
+        if v is not None:
+            rec[k] = str(v).strip()
+    rec["edited_at"] = time.strftime("%F %T")
+    rec["edited_by"] = "控制台 Phase 卡编辑"
+    phases[pid] = rec
+    d["updated_at"] = time.strftime("%F %T")
+    _roadmap_text_write(d)
+    back = roadmap_text_overrides().get(pid) or {}
+    good = all(back.get(k) == rec.get(k) for k in rec)
+    return (bool(good), ("已保存并回读一致 → %s" % _roadmap_text_path()) if good
+            else "⚠ 写入后回读不一致, 请检查 %s" % _roadmap_text_path())
+
+
+def clear_roadmap_phase_text(pid):
+    """删掉该 Phase 的人工覆盖 ⇒ 回到工程库真值。返回 (ok, msg)"""
+    d = _roadmap_text_raw()
+    phases = d.get("phases") or {}
+    had = phases.pop(pid, None)
+    d["phases"] = phases
+    d["updated_at"] = time.strftime("%F %T")
+    _roadmap_text_write(d)
+    gone = pid not in (roadmap_text_overrides() or {})
+    return (bool(gone), ("已恢复库真值 (删除人工改写: %s)" % pid) if gone
+            else "⚠ 删除后回读仍在, 请检查 %s" % _roadmap_text_path()) if had else (True, "本来就没有人工改写")
 
 
 class ProductRoadmapWidget(QFrame):
@@ -1429,22 +1608,22 @@ class ProductRoadmapWidget(QFrame):
                 "title": "System 0 · L2 基石执行",
                 "time": "2026 Q3",
                 "dims": "A 标准接口",
-                "desc": "原子技能 SK01-08 + 安全层/HAL/EtherCAT + 分段感知/控制小模型 + 肌肉记忆\n"
-                        "功能 %d · MCD %s · 一阶速度伺服 τ=0.08s · 势函数兜底 + 逐轴 veto 收口"
-                        % (_F["sys0"]["fn"], _mcd("sys0")),
+                # 🗺 2026-10-15 老倪「与 L2 层要对应上, 再次检查, 更新」⇒ 描述**由工程库真值生成**:
+                #   第一行 = 库里 L2 的 7 个功能行 (PHASE_ROW_SHORT 逐行对照, 判据锁死),
+                #   第二行 = 功能数/MCD (取自库) + 收尾口径; 旧文案里「安全层/HAL/EtherCAT」库里查无一行
+                #   且 robot_io.py 明标 EtherCAT「预留未接入」⇒ 已按库真值换掉。
+                "desc": _phase_desc("sys0", _F["sys0"]["fn"], _mcd("sys0")),
                 "color": SYS0_COLOR,
-                "kpi": "τ=0.08s 速度伺服",
+                "kpi": "速度反馈延迟 ≤ 10ms",       # 🎯 2026-10-15 老倪指定 (右下角主指标)
             },
             {
                 "phase": "Phase 1",
                 "title": "System 1 · L3 动作执行\nVLA-T 端到端 + Z-Flow 引导",
                 "time": "2026 Q4",
                 "dims": "M + A",
-                "desc": "VLA-T 动作 端到端 + Z-Flow 引导\n"   # 🧹 2026-10-15 老倪: 去括号型号
-                        "功能 %d · MCD %s · 长程规划与跨段技能序列 · 本地 GPU/边缘推理"
-                        % (_F["sys1"]["fn"], _mcd("sys1")),
+                "desc": _phase_desc("sys1", _F["sys1"]["fn"], _mcd("sys1")),   # 🗺 库真值生成
                 "color": C_CYAN,
-                "kpi": "对位残差 ≤0.5mm",
+                "kpi": "对位残差 ≤ 0.5mm",          # 🎯 老倪指定
             },
             {
                 "phase": "Phase 2",
@@ -1454,18 +1633,16 @@ class ProductRoadmapWidget(QFrame):
                 "desc": "一脑多能: 跨工位流转 · 工位精准对接 · 举升 0-80mm\n"
                         "Z100 产品特征 8 条 · 多品种小批量柔性产线",
                 "color": SYS11_COLOR,
-                "kpi": "抓取成功率 ≥97%",
+                "kpi": "成功率 ≥ 97%",              # 🎯 老倪指定
             },
             {
                 "phase": "Phase 3",
                 "title": "System 2 · L4/L5 认知决策",
                 "time": "2027 Q1-Q2",
                 "dims": "X + Z 扩展",
-                "desc": "流形世界模型预判/恢复 · 五层记忆筹划 · 任务拆解与调度 (MES/语言 → 技能序列)\n"
-                        "功能 %d · MCD %s · L4 用 INTACT 直驱"
-                        % (_F["sys2"]["fn"], _mcd("sys2")),
+                "desc": _phase_desc("sys2", _F["sys2"]["fn"], _mcd("sys2")),   # 🗺 库真值生成
                 "color": SYS12_COLOR,
-                "kpi": "IntAct 稳态 101ms",
+                "kpi": "稳定恢复时间 ≤ 1s",          # 🎯 老倪指定
             },
             {
                 "phase": "Phase 4",
@@ -1476,15 +1653,29 @@ class ProductRoadmapWidget(QFrame):
                         "单一工程库 (数据一体化): 产品 → 系统 → 功能 → 模块 → 代码 一份真源 · 功能 %d"
                         % _F["product"]["fn"],
                 "color": SYS2_COLOR,
-                "kpi": "7×24h · 插入成功率 ≥99%",
+                # 🗺 2026-10-15: 口径与另外四张统一成 "量 ≥ 值" 且单行 (实测 12pt 下 "7×24h · 成功率 ≥ 99%" 需 194px
+                #   > 卡内 176px 会折行 ⇒ 与四张单行主指标不齐; 老倪在弹窗里可随时改回带 7×24h 的长口径)。
+                "kpi": "成功率 ≥ 99%",
             },
         ]
+
+        # ✏️ 人工改写覆盖 (config/roadmap_phase_texts.json): 只覆盖被改过的键, 其余仍走库真值;
+        #    改过的卡片打「✏️ 人工改写」标记, 不冒充库真值 (显示诚实性)。
+        _ov = roadmap_text_overrides()
+        for p in phases:
+            o = _ov.get(p["phase"]) or {}
+            hit = [k for k in _ROADMAP_TEXT_KEYS if isinstance(o.get(k), str) and o.get(k)]
+            if hit:
+                for k in hit:
+                    p[k] = o[k]
+                p["_edited"] = True
+                p["_edited_keys"] = hit
+                p["_edited_at"] = o.get("edited_at") or ""
 
         for i, p in enumerate(phases):
             card = PhaseCardButton(p)
             card.clicked.connect(self._on_phase_clicked)
             phases_row.addWidget(card, 1)
-
             if i < len(phases) - 1:
                 arrow = QLabel("→")
                 arrow.setFont(QFont("Arial", 16, QFont.Bold))
@@ -1492,9 +1683,34 @@ class ProductRoadmapWidget(QFrame):
                 arrow.setAlignment(Qt.AlignCenter)
                 arrow.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none; margin:0;")
                 phases_row.addWidget(arrow)
+        self._cards_row = phases_row
 
         layout.addLayout(phases_row)
         self.setLayout(layout)
+
+    def _rebuild(self):
+        """✏️ 保存/恢复后刷新全部卡片 (清空布局重建, 免得残留旧字)。
+        老倪 2026-10-15: 「可以保存更新」⇒ 保存后**当场**看到卡变了, 不用重启控制台。"""
+        old = self.layout()
+        if old is not None:
+            while old.count():
+                it = old.takeAt(0)
+                w = it.widget()
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+                sub = it.layout()
+                if sub is not None:
+                    while sub.count():
+                        s2 = sub.takeAt(0)
+                        w2 = s2.widget()
+                        if w2 is not None:
+                            w2.setParent(None)
+                            w2.deleteLater()
+            _stub = QWidget()
+            _stub.setLayout(old)        # 旧布局挂到替身上一并销毁 (否则 setLayout 会警告)
+            _stub.deleteLater()
+        self._build()
 
     def _read_config_file(self, folder, config_file):
         """读取配置文件内容"""
@@ -1548,7 +1764,7 @@ class ProductRoadmapWidget(QFrame):
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"{phase_data['phase']} — {phase_data['title']}")
-        dialog.setFixedSize(600, 400)
+        dialog.setFixedSize(780, 680)
         dialog.setStyleSheet(f"""
             QDialog {{
                 background: #0d1117;
@@ -1578,18 +1794,101 @@ class ProductRoadmapWidget(QFrame):
         badges.addStretch()
         dlg_layout.addLayout(badges)
 
-        # Description
-        desc = QLabel(phase_data["desc"])
-        desc.setStyleSheet(f"color: {C_GRAY}; font-size:19px; padding: 8px;")
-        desc.setWordWrap(True)
-        dlg_layout.addWidget(desc)
+        # ── ✏️ 可编辑区 (老倪 2026-10-15: 「鼠标点开的区域, 要可以变成可编辑区域, 可以保存更新;
+        #    Phase 1, Phase 2 3 4 同理可以可编辑修改」) ───────────────────────────────
+        from PyQt5.QtWidgets import QGridLayout, QPlainTextEdit, QLineEdit, QPushButton
+        _is_ov = bool(phase_data.get("_edited"))
+        src_lbl = QLabel(
+            "📕 文本真源 = 单一工程库 data/database/zmax/zmax_engineering.db"
+            + ("　⚠ 本卡已被人工改写 (%s) · 点「↩ 恢复库真值」可还原"
+               % (phase_data.get("_edited_at") or "?") if _is_ov else "　(库真值 · 未被改写)"))
+        src_lbl.setStyleSheet(f"color:{C_DIM}; font-size:14px; background:transparent; border:none;")
+        src_lbl.setWordWrap(True)
+        dlg_layout.addWidget(src_lbl)
 
-        # Time
-        time_lbl = QLabel(f"📅 {phase_data['time']}")
-        time_lbl.setStyleSheet(f"color: {C_DIM}; font-size:20px;")
-        dlg_layout.addWidget(time_lbl)
+        # 📕 库真值全量参考块 (只读可复制) —— 老倪「与 L2 层要对应上」的当场核对口
+        _sid = _PHASE_SYS.get(phase_data["phase"])
+        if _sid:
+            _ref = QLabel(_phase_db_ref(_sid))
+            _ref.setStyleSheet(f"color:{C_GRAY}; font-size:13px; background:{C_BG2};"
+                               f"border:1px solid {C_BORDER}; border-radius:6px; padding:6px 8px;")
+            _ref.setWordWrap(True)
+            _ref.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            dlg_layout.addWidget(_ref)
 
+        _style = (f"background:#161b22; color:#e6edf3; border:1px solid {color}55;"
+                  f"border-radius:6px; padding:5px 8px; font-size:17px;")
+        ed_title = QPlainTextEdit(phase_data["title"])
+        ed_title.setFixedHeight(58)
+        ed_title.setStyleSheet(_style)
+        ed_desc = QPlainTextEdit(phase_data["desc"])
+        ed_desc.setMinimumHeight(118)
+        ed_desc.setStyleSheet(_style)
+        ed_time = QLineEdit(phase_data["time"])
+        ed_dims = QLineEdit(phase_data["dims"])
+        ed_kpi = QLineEdit(phase_data["kpi"])
+        for _w in (ed_time, ed_dims, ed_kpi):
+            _w.setStyleSheet(_style)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        for _i, (_lab, _w) in enumerate((("标题", ed_title), ("描述", ed_desc), ("时间", ed_time),
+                                         ("维度", ed_dims), ("KPI", ed_kpi))):
+            _l = QLabel(_lab)
+            _l.setStyleSheet(f"color:{C_GRAY}; font-size:15px; background:transparent; border:none;")
+            grid.addWidget(_l, _i, 0)
+            grid.addWidget(_w, _i, 1)
+        grid.setColumnStretch(1, 1)
+        dlg_layout.addLayout(grid)
         dlg_layout.addStretch()
+
+        status = QLabel("✏️ 直接改上面的框 → 「💾 保存并更新」写到 config/roadmap_phase_texts.json "
+                        "并当场刷新卡片; 不覆盖就点「↩ 恢复库真值」。")
+        status.setStyleSheet(f"color:{C_DIM}; font-size:14px; background:transparent; border:none;")
+        status.setWordWrap(True)
+        dlg_layout.addWidget(status)
+
+        btn_row = QHBoxLayout()
+        b_save = QPushButton("💾 保存并更新")
+        b_save.setStyleSheet(f"background:{color}33; color:#ffffff; border:1px solid {color};"
+                             "border-radius:6px; padding:6px 14px; font-size:16px;")
+        b_reset = QPushButton("↩ 恢复库真值")
+        b_reset.setStyleSheet("background:#161b22; color:#e6edf3; border:1px solid #30363d;"
+                              "border-radius:6px; padding:6px 14px; font-size:16px;")
+        b_close = QPushButton("关闭")
+        b_close.setStyleSheet("background:#161b22; color:#8b949e; border:1px solid #30363d;"
+                              "border-radius:6px; padding:6px 14px; font-size:16px;")
+        btn_row.addWidget(b_save)
+        btn_row.addWidget(b_reset)
+        btn_row.addStretch()
+        btn_row.addWidget(b_close)
+        dlg_layout.addLayout(btn_row)
+
+        def _say(ok, msg):
+            status.setText(("✅ " if ok else "❌ ") + msg)
+            status.setStyleSheet("color:%s; font-size:14px; background:transparent; border:none;"
+                                 % (C_GREEN if ok else "#f85149"))
+
+        def _do_save():
+            ok, msg = save_roadmap_phase_text(phase_data["phase"], {
+                "title": ed_title.toPlainText(), "desc": ed_desc.toPlainText(),
+                "time": ed_time.text(), "dims": ed_dims.text(), "kpi": ed_kpi.text(),
+            })
+            _say(ok, msg)
+            if ok:
+                self._rebuild()          # 卡片当场刷新 (老倪: 「可以保存更新」)
+
+        def _do_reset():
+            ok, msg = clear_roadmap_phase_text(phase_data["phase"])
+            _say(ok, msg)
+            if ok:
+                self._rebuild()
+
+        b_save.clicked.connect(_do_save)
+        b_reset.clicked.connect(_do_reset)
+        b_close.clicked.connect(dialog.accept)
+
         dialog.setLayout(dlg_layout)
         dialog.exec()
 
@@ -12141,6 +12440,11 @@ class StudioMainWindow(QMainWindow):
                             _oneshot(self, 900, _tm.open_model_engine_window)
                         else:
                             self.statusBar().showMessage("📡 模型引擎: 没找到承载页面", 2500)
+                    # 🗺 2026-10-15 老倪: 「Roadmap 主指标…字体排列/位置要一致, UI要优美整齐」
+                    #   ⇒ 命令通道加"量真窗几何": 从控制台内部 dump 五张卡 + 各自 KPI 标签的**真窗坐标**
+                    #   (不必靠截图猜坐标; 结果落 /tmp/zmax_roadmap_geo.json, 可复算可复现)
+                    elif line == "roadmap_geo":
+                        _oneshot(self, 300, self._roadmap_geo_cmd)
                     # 🧿 2026-09-28 L5 交互取证命令 (真鼠标点 L5 单选钮 + 真点 ▶运行 + 截图)
                     elif line == "l5_interact":
                         _oneshot(self, 300, self._l5_interact_cmd)
@@ -12709,6 +13013,59 @@ class StudioMainWindow(QMainWindow):
         except Exception:                                                       # noqa: BLE001
             pass
         return ""
+
+    # ───────────── 🗺 Roadmap 真窗几何取证 (2026-10-15 老倪: 主指标要字体/位置一致, 整齐) ─────────────
+    def _roadmap_geo_cmd(self):
+        """只读: 量真窗里 Roadmap 五张卡与各自 KPI 标签的**真窗坐标** → /tmp/zmax_roadmap_geo.json
+
+        为什么不用截图猜: 截图 OCR 只能给"大概在哪", 而"五张卡的 KPI 是不是同一水平线/同一字号/
+        有没有被挤出窗外"要的是**确定值**。这里从控制台内部量控件几何, 误差 0。
+        """
+        import json as _json
+        out = {"ts": time.strftime("%F %T"), "win_w": self.width(), "win_h": self.height(),
+               "viewport_w": None, "roadmap_w": None, "cards": [], "kpi_ok": None, "err": None}
+        try:
+            from PyQt5.QtCore import QPoint as _QP
+            rws = self.findChildren(ProductRoadmapWidget)
+            if rws:
+                rw = rws[0]
+                out["roadmap_w"] = rw.width()
+                p = rw.parentWidget()
+                while p is not None and not isinstance(p, QScrollArea):
+                    p = p.parentWidget()
+                if isinstance(p, QScrollArea):
+                    out["viewport_w"] = p.viewport().width()
+            for c in self.findChildren(PhaseCardButton):
+                tl = c.mapTo(self, _QP(0, 0))
+                kl = [l for l in c.findChildren(QLabel) if l.text() == c.phase_data["kpi"]]
+                rec = {"phase": c.phase_data["phase"], "kpi": c.phase_data["kpi"],
+                       "card": [tl.x(), tl.y(), c.width(), c.height()],
+                       # in_x = 横向没被挤出窗外 (整齐的硬指标); in_y 受页面滚动位置影响, 只作参考
+                       "in_x": (tl.x() >= 0) and (tl.x() + c.width()) <= self.width(),
+                       "in_y": (tl.y() >= 0) and (tl.y() + c.height()) <= self.height()}
+                if kl:
+                    kg = kl[0].mapTo(self, _QP(0, 0))
+                    rec["kpi_box"] = [kg.x(), kg.y(), kl[0].width(), kl[0].height()]
+                    rec["kpi_font"] = kl[0].font().pointSize()
+                out["cards"].append(rec)
+            tops = {c["kpi_box"][1] for c in out["cards"] if "kpi_box" in c}
+            bots = {c["kpi_box"][1] + c["kpi_box"][3] for c in out["cards"] if "kpi_box" in c}
+            fsz = {c["kpi_font"] for c in out["cards"] if "kpi_font" in c}
+            out["kpi_ok"] = (len(tops) == 1 and len(bots) == 1 and len(fsz) == 1
+                             and all(c["in_x"] for c in out["cards"]) and len(out["cards"]) == 5)
+            out["kpi_tops"] = sorted(tops)
+            out["kpi_bottoms"] = sorted(bots)
+            out["kpi_fonts"] = sorted(fsz)
+            out["all_in_x"] = all(c["in_x"] for c in out["cards"])
+            out["all_full"] = all(c["in_x"] and c["in_y"] for c in out["cards"])
+        except Exception as _e:                                                   # noqa: BLE001
+            out["err"] = "%s: %s" % (type(_e).__name__, _e)
+        try:
+            with open("/tmp/zmax_roadmap_geo.json", "w", encoding="utf-8") as f:
+                _json.dump(out, f, ensure_ascii=False, indent=2)
+        except Exception:                                                         # noqa: BLE001
+            pass
+        self.statusBar().showMessage("🗺 Roadmap 几何已落盘 /tmp/zmax_roadmap_geo.json · KPI 一致=%s" % out.get("kpi_ok"), 4000)
 
     # ───────────── 🧿 L5 交互取证 (2026-09-28 老倪: "用户正看的界面到底变没变") ─────────────
     def _l5_status_cmd(self):
