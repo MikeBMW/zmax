@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+import json
+import math
 import os
 import sys
 import time
@@ -227,6 +229,47 @@ def main() -> int:
     except Exception as _e:                                                    # noqa: BLE001
         ok = False
         print("   ❌ 取列信息失败: %s" % _e)
+
+    print("\n⑩ 动作调制 = 4 维动作(不是单个 mps) + 八阶段状态机通道 (老倪: 「怎么就一个 mps? 八阶段状态机在哪里?」)")
+    try:
+        _j = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zmax_data", "ss_live")
+
+        def _mag_ok(_p, _tag):
+            """核: 分量 → 模长 自洽 (证明发布的不是拍出来的数, 而是同一个向量的两种写法)"""
+            if not os.path.exists(_p):
+                return None
+            _d = json.load(open(_p, encoding="utf-8"))
+            _need = ["动作调制_x_mps", "动作调制_y_mps", "动作调制_z_mps", "动作调制_夹爪"]
+            if not all(k in _d for k in _need):
+                return None
+            _v = [float(_d[k]) for k in _need[:3]]
+            _m = math.sqrt(sum(x * x for x in _v))
+            _pub = float(_d.get("动作调制_mps") or 0.0)
+            _good = abs(_m - _pub) < 1e-4
+            print("   %s [%s] ‖(x,y,z)‖ = %.6f == 动作调制_mps %.6f · 夹爪 %s" % (
+                "✅" if _good else "❌", _tag, _m, _pub, _d["动作调制_夹爪"]))
+            return _good
+        _eng = _mag_ok(os.path.join(_j, "engine_trace.json"), "常驻回路")
+        _tr = _mag_ok(os.path.join(_j, "trace_live.json"), "3D 面板")
+        if _tr is None:
+            print("   ⏭ [3D 面板] 分量/阶段通道还没有 — trace_live.json 由控制台进程写, 控制台跑的还是旧代码,"
+                  " 下次启动控制台才生效 (publisher 侧已生效)")
+        _ok10 = bool(_eng) and (_tr in (True, None))
+        ok &= _ok10
+        # 八阶段 = 真源常量, 不是我编的: 直接读 cognition.ActionModulator
+        _sr = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+        if _sr not in sys.path:
+            sys.path.insert(0, _sr)
+        from lerobot.policies.left_right.state_space.cognition import ActionModulator as _AM
+        _p8 = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+        _sub_ok = _AM.STAGES[:7] == _p8[:7] and _AM.STAGES[-1] == _p8[-1]
+        ok &= _sub_ok
+        print("   %s 八阶段真源 = cognition.py:31 ActionModulator.STAGES %s … 限速(m/s) %s" % (
+            "✅" if _sub_ok else "❌", _AM.STAGES[:7] + [_AM.STAGES[-1]],
+            {k: _AM.STAGE_V_CAP.get(k) for k in _p8}))
+    except Exception as _e:                                                    # noqa: BLE001
+        ok = False
+        print("   ❌ 取动作/阶段信息失败: %s" % _e)
 
     print("\n" + "=" * 88)
     print("结论: %s" % ("✅ 全过 — 插拔(绿)全绿 · 重名信号本区加载 · 蓝区折叠不打勾 · 主窗口有真波形" if ok else "❌ 未通过"))

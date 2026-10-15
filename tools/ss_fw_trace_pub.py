@@ -76,6 +76,15 @@ def build_frame(d: dict, t_s: float) -> dict:
         "内稳态紧迫度": _f(d.get("hom_urgency")),
         "内稳态否决": 1.0 if d.get("hom_veto") else 0.0,
         "动作调制_mps": round(an, 6),
+        # 🔴 2026-10-15 老倪: 「动作调制器要变成 action, 至少有 x y z a b c, 怎么就一个 mps?」
+        #   上面的 动作调制_mps 只是**模长** ‖action[:3]‖; 完整动作是 **4 维**
+        #   [vx, vy, vz (m/s), 夹爪 0/1] (engine_latest.action, 真源 ss_engine_loop 每周期输出)。
+        #   拆成分量发出来, 面板上才是真正的动作向量。姿态(rx/ry/rz)不在本出口 (由 L2 状态机/技能段 +
+        #   执行器内环负责)。
+        "动作调制_x_mps": _f(act[0]) if len(act) > 0 else None,
+        "动作调制_y_mps": _f(act[1]) if len(act) > 1 else None,
+        "动作调制_z_mps": _f(act[2]) if len(act) > 2 else None,
+        "动作调制_夹爪": _f(act[3]) if len(act) > 3 else None,
         "元任务数": _f(d.get("meta_n")),
     }
     for i in range(min(4, len(p))):

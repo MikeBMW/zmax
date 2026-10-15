@@ -53,6 +53,36 @@ SS_TRACE_LIVE = os.path.join(
     "zmax_data", "ss_live", "trace_live.json")
 _TRACE_PUB_LAST: dict = {"t": 0.0}      # t/frame=节流状态; blocked/took_over=场景串台取证 (字符串)
 
+_STAGE_MAPS = None
+
+
+def _stage_maps():
+    """八阶段状态机 (ActionModulator) 的常量表 —— 直接取真源常量, 不另抄一份。
+
+    老倪 2026-10-15: 「动作调制器 还有 八阶段状态机, 在哪里?」
+      · 状态机 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
+      · STAGES(13 段) = 接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成
+      · 插拔链「八阶段」= 接近→对位→下降→抓取→抬起→转移→插入→完成 (摆盘链把「插入」换成「放入」)
+      · STAGE_V_CAP = 每阶段限速 m/s —— 动作调制器就是按当前阶段给动作限幅(所以调制量的单位是 m/s)
+    返回 (STAGES, STAGE_V_CAP, 插拔八段); 取不到就返回空表 —— 判据端不许编数。
+    """
+    global _STAGE_MAPS
+    if _STAGE_MAPS is None:
+        _stages, _cap = [], {}
+        try:
+            import sys as _s
+            _src = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) + "/src"
+            if _src not in _s.path:
+                _s.path.insert(0, _src)
+            from lerobot.policies.left_right.state_space.cognition import ActionModulator as _AM
+            _stages = list(_AM.STAGES)
+            _cap = dict(_AM.STAGE_V_CAP)
+        except Exception as _e:                                            # noqa: BLE001
+            print("[stage] 取 ActionModulator 常量失败:", type(_e).__name__, _e)
+        _STAGE_MAPS = (_stages, _cap,
+                       ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"])
+    return _STAGE_MAPS
+
 
 def publish_trace_live(payload, min_interval=0.05):
     """把 3D 面板这一帧显示的全部数值写成一份快照 (节流 10Hz, 原子替换)
@@ -3614,6 +3644,15 @@ class DreamView3D(QWidget):
         u_ff_m = float(np.linalg.norm(np.asarray(tr["u_ff_vec"][i], dtype=float)[:3]))
         u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
         u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
+        # 🎛 八阶段状态机 (老倪 2026-10-15: 「动作调制器 还有 八阶段状态机, 在哪里?」)
+        #   真源 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
+        #     · STAGES(13 段) = 接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成
+        #     · 插拔链"八阶段" = 接近→对位→下降→抓取→抬起→转移→插入→完成 (本文件按这 8 段给 0..7)
+        #     · STAGE_V_CAP = 每阶段限速 m/s —— 动作调制器就是按它给 u 限幅(所以调制的单位是 m/s)
+        #   阶段名原来是**字符串**, 信号页只收数值 ⇒ 波形里看不到 ⇒ 这里补两个数值通道。
+        _stg_l, _cap_d, _p8_l = _stage_maps()
+        _sidx = _stg_l.index(stage) if stage in _stg_l else -1
+        _p8idx = _p8_l.index(stage) if stage in _p8_l else -1
         d_ph = float(np.linalg.norm(peg_h[:2] - self._mouth[:2]))
         # 🔤 场景感知命名 (2026-10-13 老倪: 「摆盘场景的实时监控信号, 蓝色信号, 还有夹爪? 不是吸盘么」)
         #   取证: 摆盘 episode 跑 sawyer_tray_place.xml, 通道名沿用插拔底座(gripper), 但物理是**真空吸盘**
@@ -3692,6 +3731,24 @@ class DreamView3D(QWidget):
             "前馈速度_mps": round(float(u_ff_m), 5),
             "动作调制_mps": round(float(u_fu_m), 5),
             "安全边界_mps": round(float(u_li_m), 5),
+            # 🔴 2026-10-15 老倪: 「动作调制器的输出这个 mps 怎么理解? 要变成 action, 至少有 x y z a b c,
+            #   怎么就一个 mps?」—— mps 只是**模长** ‖u[:3]‖(合速度大小), 不是动作本身。
+            #   真源里动作是 **4 维**: u = [vx, vy, vz 速度(m/s), 夹爪 0/1]
+            #   (state_space_sim_real.py: u_fuse_vec / u_limit_vec / u_prev = np.zeros(4),
+            #    2876 行 `u_ff = np.concatenate([_m3, [u_ff[3]]])` 也是 3 平移 + 1 夹爪)。
+            #   这里把分量拆开发 ⇒ 面板上能看到完整动作向量, 而不是只有一个模长。
+            #   姿态(rx/ry/rz)不在这条出口: 姿态由 L2 状态机/技能段 + 执行器内环(真机 tcp_pose 50Hz)负责。
+            **{"前馈速度_%s" % _ax: round(float(np.asarray(tr["u_ff_vec"][i], dtype=float)[_j]), 6)
+               for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
+            **{"动作调制_%s" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]), 6)
+               for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
+            "动作调制_夹爪": round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[3]), 4),
+            # 🎛 八阶段状态机 (数值通道, 让状态机在波形上看得到; 真源见 _stage_maps())
+            "阶段序号": float(_sidx),
+            "八阶段序号": float(_p8idx),
+            "阶段限速_mps": (round(float(_cap_d[stage]), 4) if stage in _cap_d else None),
+            **{"安全边界_%s" % _ax: round(float(np.asarray(tr["u_limit_vec"][i], dtype=float)[_j]), 6)
+               for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
         })
         self.lbl_t.setText(f"数据源: {self._src}")
         self.lbl_frame.setText(f"{i} / {self._n - 1} · 🕒 {clock_str(self._frame_ts)}"
