@@ -15,11 +15,25 @@ import os
 import numpy as np
 
 
-def state_correction(prior_pred, z_k, K=0.5):
+def state_correction(prior_pred, z_k, K=0.5, err=None, w_err=0.5):
     """状态校正: 残差 r = z_k − prior_pred (传感器反馈 vs 先验预测);
-    校正后潜状态 x̂ = prior_pred + K·r (卡尔曼更新核心, K=增益)"""
+    校正后潜状态 x̂ = prior_pred + K·r (卡尔曼更新核心, K=增益)
+
+    ⚖ 老倪 2026-10-15「如果不能执行, 可以发出偏差 error, 这个 error 可以反馈给状态校正节点, 修正误差」:
+      err = 原子技能物理闸 (physics_constraints.InertiaLimiter) 判"物理上跟不动"的那部分偏差
+            (请求 − 可行)。**小偏差就地按 w_err 修** (与传感器残差同一套卡尔曼增益语义);
+      **大偏差不在这里修** —— 它由融合定位节点核对后送流形引擎改顶层结构 (见 ss_skill_dispatch →
+      skill_error.json → ss_engine_loop 的顶层补偿)。两档分开, 避免"用大偏差把小校正器冲爆"。
+    """
     residual = z_k - prior_pred
     corrected = prior_pred + K * residual
+    if err is not None:
+        e = np.asarray(err, dtype=float).ravel()
+        c = np.asarray(corrected, dtype=float).copy()
+        n = int(min(e.size, c.size))
+        if n > 0:
+            c[:n] = c[:n] + float(w_err) * e[:n]
+        corrected = c
     return corrected, residual
 
 

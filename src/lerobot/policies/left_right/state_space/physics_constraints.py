@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""physics_constraints.py — ⚖ 原子技能的**物理惯性 / 质量变化率**约束 (老倪 2026-10-15)
+
+老倪: 「每个 L2 层的原子技能, 都有肌肉记忆, 其中是否能够执行前馈加速器发出的 action, 主要取决于真实的物理定律,
+即有质量的惯性; 每个技能, 都清楚的知道自己动作的惯性, 例如 接近动作的速度与加速度的关系, 位置与速度的导数关系等;
+所有 L2 层的原子动作, 都要有物理质量变化率的约束 … 确保进入原子技能的 action 能够符合物理定律, 确保最终发出的动作
+都是物理上可以平顺执行的。如果不能执行, 可以发出偏差 error … 反馈给状态校正节点 … 如果误差太大, 则可以通过
+融合定位节点, 将大偏差先直接反馈给流形引擎节点, 从而改变顶层结构, 修复补偿偏差。」
+
+本模块 = 每个原子技能进入执行前的**物理闸**。物理量全部来自真源 (不是编的):
+  m     运动质量   真源 execution.py::ARM_SEGMENTS / HARDWARE_SPEC (末端夹爪 1.2 kg · 光模块 0.15 kg ⇒ 1.35 kg)
+  F_max 力上限     真源 safety.py::FORCE_LIMIT=5N · 夹爪最大夹持力 12 N · 金手指保护 ≤2 N (过盈/插入段)
+  v_cap 速度上限   真源 atomic_skills.SK0x.ctrl.v_cap (= cognition.ActionModulator.STAGE_V_CAP)
+  a_max 加速度上限 = F_max / m        (牛顿第二定律; 也 = 速度对时间的导数上限)
+  jerk_max 加加速度上限 = 15 m/s³ × (v_cap/0.35)   ← 15 m/s³ = **真机轨迹实测 P99** (357 帧 u_exec_vec 二阶差分)
+  dmdt_max 质量变化率上限 = 0.5 kg/s (抓取建立/释放期 0.15 kg / 0.30 s) · 其它段 0.1 kg/s
+
+四条约束 (全部向量化, 逐条可追溯; 削幅只削"超出物理可行"的那部分, 改动方向不翻转):
+  ① 速度:      ‖v‖ ≤ v_cap
+  ② 加速度:    ‖Δv‖ ≤ a_max·dt                     (位置←速度←加速度 的导数关系)
+  ③ 加加速度:  ‖Δa‖ ≤ jerk_max·dt                  (平顺性: 不许阶跃, 真机伺服带宽有限)
+  ④ 动量/质量率: ‖m·Δv + v·Δm‖ ≤ F_max·dt          (物理质量变化率约束: 夹起来/放下的瞬间动量变化要付得起)
+被约束削掉的部分 = **偏差 error**; ‖error‖ 大过阈值 ⇒ big=1 (该走融合定位 → 流形引擎的顶层补偿, 而不是就地校正)。
+
+用法:
+    lim = InertiaLimiter(dt=0.1)
+    r = lim.limit("接近", u_req, v_prev=v_prev, a_prev=a_prev)
+    r["u"]     # 物理可行动作 (真正下发给技能的)
+    r["err"]   # 偏差 (u_req − u), 给状态校正器
+    r["big"]   # 1 = 大偏差 ⇒ 走融合定位 → 流形引擎
+"""
+from __future__ import annotations
+
+import os
+
+import numpy as np
+
+# ── 物理参数表 (每技能一行; 数值真源见文件头) ─────────────────────────────────
+#   m: 运动质量 kg · F: 力上限 N · v: 速度上限 m/s (技能自带) · dmdt: 质量变化率 kg/s
+PHYS = {
+    # 技能           m      F     v      dmdt   来源说明
+    "接近":   dict(m=1.20, F=5.0,  v=0.35, dmdt=0.10, src="未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMIT 5N"),
+    "对位":   dict(m=1.20, F=5.0,  v=0.12, dmdt=0.10, src="未夹持 · F=FORCE_LIMIT 5N"),
+    "下降":   dict(m=1.20, F=5.0,  v=0.09, dmdt=0.10, src="未夹持 · F=FORCE_LIMIT 5N (触到即停)"),
+    "抓取":   dict(m=1.28, F=12.0, v=0.04, dmdt=0.50, src="夹持建立 m 1.20→1.35 · F=夹爪最大夹持力 12N"),
+    "抬起":   dict(m=1.35, F=5.0,  v=0.30, dmdt=0.10, src="已夹持 1.35kg · F=FORCE_LIMIT 5N"),
+    "转移":   dict(m=1.35, F=5.0,  v=0.35, dmdt=0.10, src="已夹持 · 平移 · F=FORCE_LIMIT 5N"),
+    "插入":   dict(m=1.35, F=2.0,  v=0.085, dmdt=0.10, src="已夹持 · **金手指保护 ≤2N** (过盈段力控)"),
+    "完成":   dict(m=1.35, F=2.0,  v=0.02, dmdt=0.10, src="已夹持 · 保持 · ≤2N"),
+    "放入":   dict(m=1.35, F=2.0,  v=0.06, dmdt=0.50, src="摆盘链第7段 · 触底开爪释放 · ≤2N 不压伤"),
+}
+JERK_REF = 15.0          # m/s³ — 真机轨迹实测 P99 (357 帧 u22 阶差分 14.84)
+JERK_V_REF = 0.35        # 参考速度 (接近/转移 的 v_cap)
+BIG_ERR = float(os.environ.get("ZMAX_SKILL_BIG_ERR", "0.05"))   # 大偏差阈值 m/s (50 mm/s)
+
+
+def limits_for(stage, dt=0.1, override=None):
+    """取某技能的物理上限 (含由 F/m 推出的 a_max 与按速度缩放的 jerk_max)。"""
+    p = dict(PHYS.get(str(stage), PHYS["接近"]))
+    if override:
+        p.update(override)
+    m = max(1e-6, float(p["m"]))
+    p["a_max"] = float(p["F"]) / m
+    p["jerk_max"] = JERK_REF * max(0.15, min(1.0, float(p["v"]) / JERK_V_REF))
+    p["dt"] = float(dt)
+    return p
+
+
+class InertiaLimiter:
+    """⚖ 惰性/质量率闸: 进技能的动作先过物理, 过不去就削出偏差 error。"""
+
+    def __init__(self, dt=0.1, big_err=None):
+        self.dt = float(dt)
+        self.big_err = float(big_err if big_err is not None else BIG_ERR)
+        self.n = 0
+        self.n_cut = {k: 0 for k in ("速度", "加速度", "加加速度", "动量/质量率")}
+        self.last = None
+
+    def limit(self, stage, u_req, v_prev=None, a_prev=None, m=None, dmdt=None, dt=None):
+        """把请求动作裁成**物理可行**的动作, 并给出被裁掉的偏差。
+
+        只动前 3 维 (x,y,z 平移速度); 第 4 维 (夹爪 0/1) 原样透传 (它不是运动学量)。
+        """
+        p = limits_for(stage, dt=dt or self.dt)
+        if m is not None:
+            p["m"] = float(m)
+            p["a_max"] = float(p["F"]) / max(1e-6, float(p["m"]))
+        _dmdt = float(p["dmdt"] if dmdt is None else dmdt)
+        u = np.asarray(u_req, dtype=float).ravel().copy()
+        v = u[:3].copy()
+        v0 = (np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy())
+        a0 = (np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy())
+        why = []
+        # ① 速度上限
+        n = float(np.linalg.norm(v))
+        if n > p["v"] > 0:
+            v = v * (p["v"] / n)
+            why.append("速度")
+        # ② 加速度上限 (F = m·a)
+        dv = v - v0
+        a_lim = p["a_max"] * p["dt"]
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+        # ③ 加加速度上限 (平顺: 不许在本拍把加速度整个翻过来)
+        a_new = (v - v0) / p["dt"]
+        da = a_new - a0
+        j_lim = p["jerk_max"] * p["dt"]
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * p["dt"]
+            why.append("加加速度")
+        # ④ 动量/质量变化率: |m·Δv + v·Δm| ≤ F_max·dt
+        f_lim = p["F"] * p["dt"]
+        f_need = p["m"] * (v - v0) + v * (_dmdt * p["dt"])
+        n_f = float(np.linalg.norm(f_need))
+        if n_f > f_lim > 0:
+            v = v0 + (v - v0) * (f_lim / max(n_f, 1e-9))
+            why.append("动量/质量率")
+        u[:3] = v
+        err = np.asarray(u_req, dtype=float).ravel()[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        self.n += 1
+        for w in why:
+            self.n_cut[w] = self.n_cut.get(w, 0) + 1
+        out = {"u": [float(x) for x in u],
+               "v_req": [float(x) for x in np.asarray(u_req, dtype=float).ravel()[:3]],
+               "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+               "big": int(e_norm > self.big_err), "why": "+".join(why) or "可行",
+               "phys": {"m": round(float(p["m"]), 4), "F_max": float(p["F"]), "v_cap": float(p["v"]),
+                        "a_max": round(float(p["a_max"]), 4), "jerk_max": round(float(p["jerk_max"]), 3),
+                        "dmdt_max": _dmdt, "dt": float(p["dt"]), "src": p["src"]}}
+        self.last = out
+        return out
+
+    def audit(self):
+        """盘查表: 每个技能是否带惯性约束 + 具体物理上限 (给审计/报告用)。"""
+        rows = []
+        for st, p in PHYS.items():
+            q = limits_for(st)
+            rows.append({"技能": st, "m_kg": p["m"], "F_max_N": p["F"], "v_cap_mps": p["v"],
+                         "a_max_mps2": round(q["a_max"], 4), "jerk_max_mps3": round(q["jerk_max"], 3),
+                         "dmdt_max_kg_s": p["dmdt"],
+                         "约束": "①速度 ②加速度 ③加加速度 ④动量/质量率", "真源": p["src"]})
+        return rows
+
+    def stats(self):
+        return {"n": self.n, "n_cut": dict(self.n_cut), "big_err": self.big_err, "dt": self.dt}
+
+
+if __name__ == "__main__":
+    lim = InertiaLimiter()
+    rows = lim.audit()
+    print("=== ⚖ 原子技能物理惯性/质量变化率盘查 (%d 个技能) ===" % len(rows))
+    for r in rows:
+        print("  %-3s m=%.2fkg F≤%.1fN v≤%.3fm/s ⇒ a≤%.2fm/s² jerk≤%.1fm/s³ dm/dt≤%.2fkg/s"
+              % (r["技能"], r["m_kg"], r["F_max_N"], r["v_cap_mps"], r["a_max_mps2"],
+                 r["jerk_max_mps3"], r["dmdt_max_kg_s"]))
+        print("      约束: %s\n      真源: %s" % (r["约束"], r["真源"]))
+    print("\n=== 闸门自检: 请求一个物理上跟不上的动作 ===")
+    r = lim.limit("接近", [1.2, 0.0, 0.0, 0.0], v_prev=[0.0, 0.0, 0.0])
+    print("  请求 1.2 m/s → 可行 %.4f m/s · 削因 %s · 偏差 %.4f m/s · big=%d"
+          % (r["u"][0], r["why"], r["err_norm"], r["big"]))
+    r2 = lim.limit("插入", [0.5, 0.0, 0.0, 1.0], v_prev=[0.05, 0.0, 0.0], dmdt=0.5)
+    print("  插入请求 0.5 m/s ⇒ 可行 %.4f m/s · 削因 %s · 偏差 %.4f m/s · big=%d (金手指 ≤2N 兜住)"
+          % (r2["u"][0], r2["why"], r2["err_norm"], r2["big"]))

@@ -324,7 +324,9 @@ class StateSpaceSim:
             # ⑥ 物理世界观测 z_k (位置带噪声 + 力觉 — 接触力是残差真实来源)
             z_k = np.concatenate([self.world.observe(self.x), [force_norm]])
             # ⑦ 状态校正: 残差 + 接触概率
-            corrected, residual = self.cognition.state_correction(prior, z_k, K=0.5)
+            # ⚖ 原子技能物理闸来的偏差 (小偏差就地修; 大偏差在引擎侧走融合定位→顶层补偿, 不在本函数里修)
+            _serr = self._skill_err_snapshot()
+            corrected, residual = self.cognition.state_correction(prior, z_k, K=0.5, err=_serr)
             residual = np.asarray(residual, dtype=float).copy()
             # 力残差 = 实测接触力 (接触力是外部事件不可预测, 预测力恒 0 —
             # 若走卡尔曼平滑, 潜状态力维会吃掉残差 → 调度器收不到接触信号)
@@ -528,6 +530,32 @@ class StateSpaceSim:
                 break
         tr["io"] = last_io
         return tr
+
+    def _skill_err_snapshot(self, ttl=1.0):
+        """⚖ 原子技能物理偏差 (真源 zmax_data/ss_live/skill_error.json, 由技能派发服务写)。
+
+        只取**当前阶段**那一条的偏差向量 (小偏差 → 状态校正器); 大偏差 (big=1) 不在这里修,
+        由引擎侧走"融合定位 → 流形引擎顶层补偿"(见 ss_engine_loop)。读不到返回 None —— 不编偏差。
+        """
+        _now = time.time()
+        if getattr(self, "_serr_cache", None) and (_now - self._serr_cache[0] < ttl):
+            return self._serr_cache[1]
+        _v = None
+        try:
+            _p = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"),
+                              "zmax_data", "ss_live", "skill_error.json")
+            with open(_p, encoding="utf-8") as _f:
+                _d = json.load(_f)
+            if _now - float(_d.get("ts") or 0.0) < 5.0:                    # 帧龄 >5s 视为停更, 不当现在
+                _st = str(getattr(self, "stage_now", "") or "")
+                _e = (_d.get("err") or {})
+                _vec = _e.get(_st) if _st in _e else (next(iter(_e.values())) if _e else None)
+                if _vec and not (_d.get("big") or {}).get(_st, 0):
+                    _v = [float(x) for x in _vec]
+        except Exception:                                                  # noqa: BLE001
+            _v = None
+        self._serr_cache = (_now, _v)
+        return _v
 
     def _meta_pred_snapshot(self, ttl=1.0):
         """🧾 元任务预测快照 (top1/spread/…): 真源 zmax_data/ss_live/meta_pred.json, 1s 缓存。

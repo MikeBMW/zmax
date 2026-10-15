@@ -22,7 +22,12 @@ import json
 import os
 import time
 
+import numpy as np
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if os.path.join(ROOT, "src") not in __import__("sys").path:
+    __import__("sys").path.insert(0, os.path.join(ROOT, "src"))
+from lerobot.policies.left_right.state_space.physics_constraints import InertiaLimiter   # noqa: E402
 LIVE = os.path.join(ROOT, "zmax_data", "ss_live")
 SHM = os.environ.get("ZMAX_SHM_DIR", "/dev/shm/zmax_ss_engine")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
@@ -51,6 +56,12 @@ class Dispatcher:
         self.reset_n = 0
         self.skill_n = {s: 0 for s in STAGES}
         self.cur = {}           # 技能 → {"action": [...], "step": i, "ts": 拿到时刻, "stage": 块阶段}
+        # ⚖ 2026-10-15 老倪「每个技能都清楚地知道自己动作的惯性」: 每个技能各自记上一拍的**实际下发**速度/加速度,
+        #   物理闸要拿它算 Δv/Δa (惯性是"下一拍相对上一拍"的关系, 不是绝对量)。
+        self.lim = InertiaLimiter(dt=DT)
+        self.last_v = {s_: np.zeros(3) for s_ in STAGES}
+        self.last_a = {s_: np.zeros(3) for s_ in STAGES}
+        self.err_last = {"ts": 0.0, "err": {}, "big": {}, "big_stage": "", "err_norm": {}, "why": {}}
         self._chunk_ts = None
         os.makedirs(SHM, exist_ok=True)
 
@@ -60,6 +71,14 @@ class Dispatcher:
                 return json.load(fh)
         except Exception:                                                  # noqa: BLE001
             return None
+
+    def _phys(self, st, action):
+        """⚖ 进技能的 action 先过物理闸 (惯性/加速度/加加速度/动量率) —— 过不去就削出偏差 error。"""
+        r = self.lim.limit(st, action, v_prev=self.last_v.get(st), a_prev=self.last_a.get(st))
+        v = np.asarray(r["u"], float)[:3]
+        self.last_a[st] = (v - self.last_v.get(st, np.zeros(3))) / DT
+        self.last_v[st] = v
+        return r
 
     def cycle(self) -> dict:
         d = self._chunk()
@@ -85,9 +104,15 @@ class Dispatcher:
             step = min(c["step"] + max(0, adv), max(0, len(c["action"]) - 1) if False else c["step"])
             # 块内推进由"块序号"决定: 当前拍 = 认领时那一拍 + 经过拍数 (上限 7)
             step = min(c["step"] + max(0, adv), 7)
-            out[st] = {"stage": st, "action": c["action"], "step": step, "ts": now,
+            _req = c["action"]
+            _p = self._phys(st, _req)
+            out[st] = {"stage": st, "action": _p["u"], "step": step, "ts": now,
                        "age_s": round(now - float(c["ts"]), 4), "n": self.skill_n.get(st, 0),
-                       "block_ts": c.get("block_ts")}
+                       "block_ts": c.get("block_ts"),
+                       # ⚖ 物理闸口径: 请求值/可执行值/偏差/大偏差/哪条约束削的 + 该技能物理上限
+                       "req": [round(float(x), 6) for x in _p["v_req"]],
+                       "err": [round(float(x), 6) for x in _p["err"]], "err_norm": _p["err_norm"],
+                       "big": _p["big"], "why": _p["why"], "phys": _p["phys"]}
             _atomic_json(os.path.join(SHM, "skill_%d_%s.json" % (STAGES.index(st), st)), out[st])
         flat = {"ts": now, "n": self.n, "reset_n": self.reset_n,
                 "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3)}
@@ -95,7 +120,27 @@ class Dispatcher:
             v = out.get(st)
             flat["%s_mps" % st] = (_norm(v["action"]) if v else -1.0)
             flat["%s_拍" % st] = (v["step"] if v else -1)
+            flat["%s_请求_mps" % st] = (_norm(v["req"]) if v and v.get("req") else -1.0)   # 前馈/块给的请求值
+            flat["%s_偏差_mps" % st] = (float(v.get("err_norm") or 0.0) if v else -1.0)     # ⚖ 物理不可行偏差
+            flat["%s_可行" % st] = (0 if (v or {}).get("why") not in (None, "可行") else 1)  # 1=原样可行 0=被削
         _atomic_json(os.path.join(LIVE, "skill_latest.json"), flat)
+        # ⚖ 偏差真源: 小偏差 → 🧪 状态校正器 (修正误差); 大偏差 → 📡 融合定位 → 🧮 流形引擎 (顶层补偿)
+        #   每个技能各一份 (带物理上限与削因), 下游按 big 分流 —— 这是"误差反馈"的唯一出口, 不另开通道。
+        _e = {"ts": now, "src": "physics_constraints.InertiaLimiter", "big_err": self.lim.big_err,
+              "err": {st: v.get("err") for st, v in out.items()},
+              "req": {st: v.get("req") for st, v in out.items()},
+              "u": {st: v.get("action") for st, v in out.items()},
+              "err_norm": {st: v.get("err_norm") for st, v in out.items()},
+              "big": {st: v.get("big") for st, v in out.items()},
+              "why": {st: v.get("why") for st, v in out.items()},
+              "phys": {st: v.get("phys") for st, v in out.items()},
+              "big_stage": next((st for st, v in out.items() if v.get("big")), ""),
+              "stats": self.lim.stats()}
+        self.err_last = _e
+        _atomic_json(os.path.join(LIVE, "skill_error.json"), _e)
+        # 末端技能 (最靠后那一段) 当前状态一并写, 便于上层"看得到技能现状"
+        flat["末端技能"] = list(out)[-1] if out else ""
+        flat["末端偏差"] = (out[list(out)[-1]]["err_norm"] if out else -1.0)
         self.n += 1
         if self.n % max(1, int(self.hz * 10)) == 1:
             print("[%s] 派发 #%d · 块 %d 个 · 技能 %d 个在职 · 块帧龄 %.2fs"

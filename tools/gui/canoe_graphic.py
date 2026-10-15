@@ -2517,6 +2517,8 @@ class CanoeGraphicWidget(QWidget):
         ("sseng.潜表示", "🚀 L3 · VLM 编码 + Flow (潜表示)"),
         ("sseng.动作调制", "🧭 动作调制器"),
         ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 得分)"),
+        ("sseng.skill闸.", "⚖ 原子技能物理闸 (惯性/质量变化率 · 偏差 error)"),
+        ("sseng.顶层补偿", "📡 融合定位 → 🧮 流形引擎 · 顶层结构补偿"),
         ("sseng.", "🧩 SU(2) 状态空间 · 常驻回路 (ss_engine_loop)"),
         ("sstrace.前馈速度", "⚡ 前馈加速器"),
         ("sstrace.动作调制", "🧭 动作调制器"),

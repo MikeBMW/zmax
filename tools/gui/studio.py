@@ -915,7 +915,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.730")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.735")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
                        "断点调试: VSCode F5「🚀 全新调试进程」= 同一份 studio.py 新实例; F5 目标与本实例同源 (md5 已自检)")
@@ -11649,6 +11649,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.735: 原子技能物理惯性/质量变化率约束 + 偏差 error 分流: ⚖ 物理闸进每个 L2 技能 (①速度 ②加速度 ③加加速度 ④动量/质量变化率), 不可执行即发偏差 error → 小偏差进状态校正器 / 大偏差经融合定位 → 流形引擎顶层结构补偿  老倪: 「所有 L2 层的原子动作, 都要有物理质量变化率的约束 … 每个技能都清楚的知道自己动作的惯性 … 如果不能执行, 可以发出偏差 error, 这个 error 可以反馈给状态校正节点; 如果误差太大, 则可以通过融合定位节点, 将大偏差先直接反馈给流形引擎节点, 从而改变顶层结构, 修复补偿偏差」  ① 盘查 9/9: 每技能带 m/F_max/v_cap/a_max/jerk_max/dm·dt⁻¹ 且 a_max==F/m 自洽 (真源 execution.py 臂段质量 1.20/1.35kg + FORCE_LIMIT 5N + 金手指保护 ≤2N) ② 技能派发服务每拍过闸: 过闸 15.3 万次, 削因 速度 87330/加加速度 222/加速度 4 ③ 偏差进状态校正器 state_correction(err=, w_err=) 已接线 ④ 大偏差 → 融合定位核对 (帧龄 ≤2s + 连续 ≥3 拍) → 流形引擎目标点补偿 2mm/次 累计封顶 20mm, 拒绝/等持续/补偿/到顶四态都落 trace ⑤ 画布新增 ⚖物理约束闸 节点 + 12 条连线 (8 技能→闸 · 闸→安全边界 · 闸→校正器 · 闸→融合定位), 90 节点/202 连线渲染一致  实测: 插入请求 0.112→可行 0.085 (偏差 62mm/s) · 完成偏差 100mm/s · 判据 verify_physics_constraints 34 条全过 · 盘查 audit_skill_inertia 9/9 过 · 引擎 action 零回归
         # v5.50.730: 🏆 **北斗七星版** (含专利: 12 件申请内容设计 + 74/74 渠道预留 + 文档配置页专利预览/导出) (版本号 5.50.730) —— 版本号不再自主升级, 按老倪指定 (2026-10-15:「版本号你不要自主升级, 定义为 5.50.730 … 北斗七星版」)。本版把配置中心收口成「北斗七星阵」并打通专利: ① 配置中心 = 北斗七星阵 (1 产品配置·天枢 … 7 文档配置·瑶光; 页签名=配置名; 每页顶部阵图条; 点左树/星图真跳页) ② 模型配置页 = 功能配置 ←→ L2/L3/L4/L5 层模型映射 (74 条全量, 与主控制台模型矩阵同名同版本) ③ 产品配置页复用「Z-MAX 平台」页描述 (平台描述 + 平台产品 + 产品特性 23 条) ④ 功能配置页收系统 2/1/0 全部功能 74 条 + 汇总 ⑤ UI: 底部信息窗可拖可藏、每页可滚动、表格给足高度看得见 ⑥ **专利申请渠道预留**: 74 条功能逐条挂专利渠道 (config/patents/patent_registry.json 真源), 文档配置页新增「专利」文档 (导出+预览), 与 SOR/项目立项/合作协议 同级别
         # v5.50.79: 配置中心 UI: 平台产品/产品特征清单(产品特性)两张表给足高度看得见 + 功能清单表同修 [老倪:「你看你的 产品特征清单 平台产品的窗口太小了, 根本看不到, 改UI」]  ① 根因: 上一版把 平台产品表 用 setMaximumHeight(96) 压住, 产品特性表(23 行)没有任何最小高度 ⇒ 页面被压小(页签已包 QScrollArea)时两张表被挤成几行, 表头都看不清 ② 产品表: 去掉 maximumHeight, 改最小高度 min(200, 34*(行+2)+8) ⇒ 实测 192px / 2 行全见 ③ 产品特性表: 最小高度 min(460, 30*(行+2)+8) ⇒ 实测 460px / 23 行(约 13 行可见+表内滚动), 并加「📋 复制产品特性清单(TSV)」一键整表复制 ④ 同类预防: 功能配置页 74 行功能清单表也给最小高度 min(460, 28*(行+2)+8) ⇒ 约 15 行可见 ⑤ 判据 verify_config_center_info_panel.py 16/16 (新增 ⑦ 两表≥100/260px 有数据行 · ⑦b 功能清单表≥300px 行数=真源 · ⑧ 窗口压矮后两表高度仍≥各自最小高度=不被压没)
         # v5.50.78: 配置中心 UI 调整: 底部信息窗改成可拖可藏 + 每页可滚动 + 内容随当前配置面 [老倪:「产品配置的右侧下半部分的显示区太小, 且不能用鼠标滚动调整, 看不到显示内容; 下面的信息窗口当选择相应的配置面时, 信息没有对应上, 且显示区无法用鼠标拖动调整大小, 要可以隐藏」]  ① 根因: 页里的表按「不许挤/不许截断」给了最小高度 (工程配置那张表 510px) ⇒ QTabWidget 最小高 1265px, 把竖直空间吃光 ⇒ 信息窗被压到 98px 且没有余量可分(拖也拖不大) ② 8 个页各包一层 QScrollArea(widgetResizable) ⇒ 页面能压小、鼠标滚动看全; AR 示教点表最小高度封顶 300px ③ 底部信息窗改成竖直 QSplitter(工作区 / 信息窗), 分隔条 9px 可拖, 初值按内容给 220~460px; 拖过之后不再被自动覆盖(想再自动一次点「↕ 自适应高度」) ④ 信息窗头一行: 「当前配置面」提示 + ↕自适应高度 + 📋复制 + ▾收起信息窗/▴展开 (可隐藏) ⑤ 内容随当前配置面自动对应: _page_out_text 逐面给「哪颗星 + 本面真源摘要 + 真源在哪/怎么改」 ⑥ 判据: 新增 tools/verify_config_center_info_panel.py 12/12 · 七星 18/18 · 产品页 51/51 · 任务工单 28/28 · domains 单测全过
@@ -12380,7 +12381,7 @@ class StudioMainWindow(QMainWindow):
         sb.addPermanentWidget(self._latency_label)
         sb.addPermanentWidget(self._engine_status)
         sb.addPermanentWidget(self._engine_combo)
-        sb.showMessage("Z-MAX v5.50.730  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.735  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -14591,7 +14592,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.730</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.735</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

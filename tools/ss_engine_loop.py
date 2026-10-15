@@ -258,6 +258,118 @@ class Loop:
             pass
         return 0, ""
 
+    def _skill_err(self, ttl=1.0):
+        """⚖ 原子技能物理偏差 (真源 zmax_data/ss_live/skill_error.json, 技能派发服务写)。
+
+        返回该文件 dict (含 err/err_norm/big/why/phys), 帧龄 >5s 视为停更返回 None。
+        """
+        _now = time.time()
+        if getattr(self, "_serr_cache", None) and (_now - self._serr_cache[0] < ttl):
+            return self._serr_cache[1]
+        _d = None
+        try:
+            _p = os.path.join(LIVE_DIR, "skill_error.json")
+            with open(_p, encoding="utf-8") as _f:
+                _d = json.load(_f)
+            if _now - float(_d.get("ts") or 0.0) > 5.0:
+                _d = None
+        except Exception:                                                    # noqa: BLE001
+            _d = None
+        self._serr_cache = (_now, _d)
+        return _d
+
+    def _skill_trace(self, p: dict) -> dict:
+        """⚖ 物理闸/顶层补偿 → 平铺 trace 键 (信号分析直接画)。单位: mm/s 与 mm。"""
+        if not p:
+            return {}
+        _top = p.get("top") or {}
+        _ks = {"skill闸.大偏差": (1.0 if p.get("big_stage") else 0.0),
+               "skill闸.削因_速度": float((p.get("stats") or {}).get("n_cut", {}).get("速度", 0)),
+               "skill闸.削因_加速度": float((p.get("stats") or {}).get("n_cut", {}).get("加速度", 0)),
+               "顶层补偿_mm": float((_top.get("goal_delta_mm") or [0, 0, 0])[0] * 1000.0 / 1000.0),
+               "顶层补偿_累计_mm": float(_top.get("cum_mm") or 0.0),
+               "顶层补偿_次数": float(_top.get("n") or 0)}
+        _en = p.get("err_norm") or {}
+        if isinstance(_en, dict):
+            for _st, _v in list(_en.items())[:8]:
+                try:
+                    _ks["skill闸.%s_偏差_mm_s" % _st] = round(float(_v) * 1000.0, 4)   # m/s → mm/s
+                except Exception:                                            # noqa: BLE001
+                    pass
+            _ks["skill闸.末端偏差_mm_s"] = round(float(list(_en.values())[-1]) * 1000.0, 4) if _en else 0.0
+        return _ks
+
+    def _top_compensate(self, e: dict) -> dict:
+        """📡 融合定位核对 → 🧮 流形引擎**顶层结构补偿** (老倪 2026-10-15)。
+
+        口径 (为什么不是"看到大偏差就直接改结构"):
+          ① 先过**融合定位**核对: 定位真值 (zmax_data/rokae_sdk/tcp_out/latest.json) 必须新鲜 (≤2s) ——
+             定位是死的/在漂的时候改顶层 = 拿错基准改结构, 只会把偏差放大;
+          ② 大偏差必须**持续** (同一技能连续 ≥3 拍) —— 单拍大偏差多半是换块/换段的瞬态, 不该改顶层;
+          ③ 补偿量**限幅** 2mm/次 且累计封顶 20mm —— 顶层结构是小步修, 不是一把翻;
+          ④ 全部落 trace (顶层补偿_mm / 顶层补偿_累计_mm / 顶层补偿_note), 界面上看得见"改了几次、改了多少"。
+        """
+        st = str((e.get("big_stage") or "") or "")
+        out = {"goal_delta_mm": [0.0, 0.0, 0.0], "n": int(getattr(self, "_top_n", 0)),
+               "cum_mm": float(getattr(self, "_top_cum", 0.0)), "note": "", "applied": 0}
+        if not st:
+            return out
+        # ① 融合定位核对
+        _age = None
+        try:
+            # 融合定位真值路径可用 ZMAX_FUSION_TRUTH 覆盖 (**只给离线自检用**; 现场恒为 tcp_out/latest.json)
+            _p = os.environ.get("ZMAX_FUSION_TRUTH") or os.path.join(
+                ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+            _age = time.time() - os.path.getmtime(_p) if os.path.isfile(_p) else None
+        except Exception:                                                    # noqa: BLE001
+            _age = None
+        if _age is None:
+            out["note"] = "🚫 融合定位无真值 (tcp_out/latest.json 不在) ⇒ 不改顶层"
+            return out
+        if _age > 2.0:
+            out["note"] = "🚫 融合定位帧龄 %.1fs > 2s (定位可能在漂) ⇒ 不改顶层" % _age
+            return out
+        # ② 持续性
+        if getattr(self, "_top_stage", None) == st:
+            self._top_n = int(getattr(self, "_top_n", 0)) + 1
+        else:
+            self._top_stage = st
+            self._top_n = 1
+        if self._top_n < 3:
+            out["note"] = "⏳ 大偏差持续 %d/3 拍 (瞬态不改顶层)" % self._top_n
+            out["n"] = self._top_n
+            return out
+        # ③ 限幅补偿 (方向 = 偏差方向; 2mm/次, 累计 ≤20mm)
+        _vec = (e.get("err") or {}).get(st) or [0.0, 0.0, 0.0]
+        _v = np.asarray(_vec, float).ravel()[:3]
+        _n = float(np.linalg.norm(_v))
+        if _n < 1e-9:
+            out["note"] = "偏差方向为 0 ⇒ 不补偿"
+            return out
+        if self.eng is None or getattr(self.eng, "goal_point", None) is None:
+            out["note"] = "🚫 引擎无目标点 ⇒ 无处补偿"
+            return out
+        try:
+            _step_mm = float(os.environ.get("ZMAX_TOP_COMP_MM", "2.0"))
+            _cap_mm = float(os.environ.get("ZMAX_TOP_COMP_CAP_MM", "20.0"))
+            _cum = float(getattr(self, "_top_cum", 0.0))
+            if _cum >= _cap_mm:
+                out["note"] = "⛔ 顶层补偿累计 %.1fmm 已到顶 (%.0fmm) ⇒ 停手, 交人工/重标定" % (_cum, _cap_mm)
+                out["cum_mm"] = _cum
+                return out
+            _d = (_v / _n) * (_step_mm / 1000.0)
+            _g = np.asarray(self.eng.goal_point, float).ravel().copy()
+            _g[:3] = _g[:3] + _d
+            self.eng.goal_point = _g
+            self._top_cum = _cum + _step_mm
+            out.update({"goal_delta_mm": [round(float(x * 1000.0), 4) for x in _d], "applied": 1,
+                        "cum_mm": self._top_cum, "n": self._top_n,
+                        "note": "✅ 顶层补偿 %.0fmm (方向=偏差方向; 累计 %.0fmm) · 融合定位帧龄 %.2fs"
+                                % (_step_mm, self._top_cum, _age)})
+        except Exception as ex:                                               # noqa: BLE001
+            out["note"] = "补偿失败 %s: %s" % (type(ex).__name__, str(ex)[:60])
+        return out
+
     def _meta_pred(self):
         """🧾 元任务预测 (真源 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
         try:
@@ -502,6 +614,7 @@ class Loop:
         self.n += 1
         # 🧩 动作块流水线 (老倪 2026-10-15; ZMAX_CHUNK_H<=1 不进): 引擎出块 → 前馈序列 → 加权 → 逐拍调制
         #    → 逐拍安全 → 技能派发。**不改** rec["action"] (引擎动作照旧), 块走独立分支 + 落盘给技能服务。
+        phys_rec: dict = {}
         chunk_rec: dict = {}
         if self.chunk is not None and not replay:
             try:
@@ -512,6 +625,16 @@ class Loop:
                 chunk_rec["stage_name"] = _sn
             except Exception as e:                                           # noqa: BLE001
                 chunk_rec = {"ok": False, "reason": "%s: %s" % (type(e).__name__, str(e)[:120])}
+        # ⚖ 物理偏差: 读技能闸的真源 → 大偏差走"融合定位 → 顶层补偿"
+        try:
+            _se = self._skill_err()
+            if _se:
+                phys_rec = {"big_stage": _se.get("big_stage") or "", "err_norm": _se.get("err_norm") or {},
+                            "big": _se.get("big") or {}, "why": _se.get("why") or {},
+                            "stats": _se.get("stats") or {},
+                            "top": self._top_compensate(_se) if _se.get("big_stage") else {}}
+        except Exception as e:                                               # noqa: BLE001
+            phys_rec = {"note": "物理偏差读取失败 %s: %s" % (type(e).__name__, str(e)[:60])}
         # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」: 每 N 周期按序真跑 L5→MEM→L2→L4→L3
         pipe_rec: dict = {}
         if self.pipe is not None and (self.n % self.pipe_every == 0):
@@ -561,6 +684,9 @@ class Loop:
             # 🧩 块流水线的关键量**平铺**到本帧顶层 (信号分析按 sseng.* 前缀逐个当信号画 ⇒ 不用改读法)
             **({k: v for k, v in (self.chunk.trace_keys(chunk_rec)
                                   if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}).items()}),
+            # ⚖ 原子技能物理闸的偏差 → 状态校正器(小偏差, 见 state_space_sim/skill_dispatch) /
+            #   大偏差 → 融合定位核对 → 流形引擎顶层结构补偿 (老倪 2026-10-15)
+            **self._skill_trace(phys_rec),
             "chunk": chunk_rec if isinstance(chunk_rec, dict) else {},
             "chunk_keys": (self.chunk.trace_keys(chunk_rec)
                            if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}),
