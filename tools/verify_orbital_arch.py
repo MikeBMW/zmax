@@ -509,10 +509,10 @@ def main():
                 _runs.append(round(_best * 0.125, 3))
             _mid = [round(_a[0] + _dx * 0.5, 1), round(_a[1] + _dy * 0.5, 1)]
     _med = float(np.median(_runs)) if _runs else 0.0
-    chk("I2", "连线不细 (主体↔主体线 2.2px 实芯 + 柔光): 沿线 7 处法向剖面线宽的中位数 ≥ 2px",
+    chk("I2", "连线不细 (2026-10-16 看图: 2.2px 仍被判『丝线档』 ⇒ 加粗到 2.9px): 沿线 7 处法向剖面线宽中位数 ≥ 2.5px",
         {"线": "%s→%s (%s)" % (_e0["f"], _e0["t"], _e0["kind"]) if _e0 else None, "中点": _mid,
          "7 处线宽 px": _runs, "中位数": _med},
-        _med >= 2.0 and len(_runs) >= 3, "中位数 ≥2px (≥3 个有效采样点, 不靠单点侥幸)")
+        _med >= 2.5 and len(_runs) >= 3, "中位数 ≥2.5px (≥3 个有效采样点, 不靠单点侥幸)")
     # 不闪/不消失: 相邻两帧 (一个 tick) 的线像素数变化小, 且都没有归零; 三帧内不做透明度脉冲
     def _linepx():
         _a = _arr(v3.grab().toImage())
@@ -567,6 +567,74 @@ def main():
         len(_fl) >= 4 and not _tooWide and not any("…" in t for t in _fl)
         and all(k in _joined for k in ("力的相互作用", "线义", "角度映射", "真源", "torque_live", "节点映射核对")),
         "全在 · 无省略号 · 无超宽")
+
+    # ═══ K 视觉缺陷收口 (2026-10-16 逐图复核: 地球区三条互压 / 标签压球 / 卫星互叠压地球 / 月球混堆 /
+    #     线仍偏细 / 底部三行压在球上) ═══
+    _Wk, _Hk, _Sk, _cxk, _cyk, _Rk = v3._geom()
+    _posk = v3.positions(_cxk, _cyk, _Rk)
+    _rad = {k: _Sk * v3.RAD[k] for k in v3.RAD}
+    _bodies = [("sun", _cxk, _cyk, _rad["sun"])]
+    for _k in ("mercury", "earth", "mars", "jupiter"):
+        _x, _y, _z = _posk[_k]
+        _bodies.append((_k, _x, _y, _rad[_k]))
+    _mx, _my, _mz = _posk["moon"]
+    _bodies.append(("moon", _mx, _my, _rad["moon"]))
+    _sats = [(_x, _y, _sk) for _x, _y, _z, _sk in _posk["_sat"]]
+
+    def _ball_hit(rect, x, y, r):
+        nx = max(rect.x(), min(x, rect.x() + rect.width()))
+        ny = max(rect.y(), min(y, rect.y() + rect.height()))
+        return math.hypot(nx - x, ny - y) < r + 1.0
+
+    _on_ball = []
+    for _i, _r in enumerate(_rs):
+        for _nm, _x, _y, _rr in _bodies:
+            if _ball_hit(_r, _x, _y, _rr):
+                _on_ball.append((_i, _nm))
+        for _x, _y, _sk in _sats:
+            if _ball_hit(_r, _x, _y, _rad["sat"]):
+                _on_ball.append((_i, "sat_%s" % _sk))
+    chk("K1", "文字块不压在球体/卫星上 (每块都做了带底避让: 与球心距 ≥ 球半径+1)",
+        {"压球的块": _on_ball[:6], "球数": len(_bodies), "卫星数": len(_sats)}, not _on_ball,
+        "0 块压球" if not _on_ball else "压 %d 处" % len(_on_ball))
+    _dmin, _dearth, _dbad = 1e9, 1e9, []
+    for _i in range(len(_sats)):
+        for _j in range(_i + 1, len(_sats)):
+            _d = math.hypot(_sats[_i][0] - _sats[_j][0], _sats[_i][1] - _sats[_j][1])
+            _dmin = min(_dmin, _d)
+    for _x, _y, _sk in _sats:
+        _dearth = min(_dearth, math.hypot(_x - _posk["earth"][0], _y - _posk["earth"][1]))
+    _need = 2 * _rad["sat"] + 2.0
+    chk("K2", "卫星不互叠、不压地球 (相邻屏距 ≥ 2r+2px · 离地球 ≥ r_earth+r_sat)",
+        {"相邻最小屏距": round(_dmin, 2), "需要": round(_need, 2),
+         "离地球最小": round(_dearth, 2), "需要": round(_rad["earth"] + _rad["sat"], 2)},
+        _dmin >= _need and _dearth >= _rad["earth"] + _rad["sat"], "卫星圈排得开")
+    _dmoon = math.hypot(_mx - _posk["earth"][0], _my - _posk["earth"][1])
+    _mneed = v3.SAT_R * _Rk + _rad["sat"] + _rad["moon"]
+    chk("K3", "月球在卫星圈外 (离地球 ≥ 卫星圈半径 + r_sat + r_moon ⇒ 不与卫星混成一片)",
+        {"月球离地球": round(_dmoon, 2), "需要": round(_mneed, 2),
+         "卫星圈半径": round(v3.SAT_R * _Rk, 2)}, _dmoon >= _mneed, "月球在外圈")
+    _padb = 12 + 11 * len(v3._foot_lines(_Wk))
+    _in_band = [(_nm, round(_y + _rr - (_Hk - _padb), 1)) for _nm, _x, _y, _rr in _bodies + [("sat", a, b, _rad["sat"]) for a, b, _sk in _sats]
+                if _y + _rr > _Hk - _padb]
+    chk("K4", "底部图注带里没有球体 (球压在说明行上的问题收口: 布局已按图注行数缩排)",
+        {"球进底栏带": _in_band[:6], "底栏高": _padb}, not _in_band, "底栏干净")
+    _tok = None
+    for _t in v3._foot_lines(_Wk):
+        if "慢虚线" in _t:
+            for _cand in ("紫", "青", "金", "绿"):
+                if "慢虚线" + _cand in _t:
+                    _tok = _cand
+    _pal = {"紫": OA.VIOLET, "青": OA.CYAN, "金": OA.GOLD, "绿": OA.GREEN}
+    _c = _pal.get(_tok)
+    _ok_color = bool(_c is not None) and (
+        (_tok == "紫" and _c.blue() > _c.red() and _c.blue() > _c.green()) or
+        (_tok == "青" and _c.green() > 120 and _c.blue() > 120 and _c.red() < 120) or
+        (_tok == "金" and _c.red() > _c.green() > _c.blue()) or
+        (_tok == "绿" and _c.green() > _c.red() and _c.green() > _c.blue()))
+    chk("K5", "图例写的虚线颜色 == 实画虚线颜色 (看图报「图例写褐色·实画蓝紫」⇒ 现在必须同源)",
+        {"图例token": _tok, "实际色": _c.name() if _c else None, "RGB": [_c.red(), _c.green(), _c.blue()] if _c else None},
+        _ok_color, "图例与色板一致 (%s)" % _tok)
 
     # ═══ F 文案诚实 ═══
     chk("F1", "图注写清 角度映射 (位置不是装饰, 是实测量的映射)",

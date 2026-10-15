@@ -49,6 +49,7 @@ CYAN = QColor("#39c5cf")
 GREEN = QColor("#3fb950")
 GOLD = QColor("#d29922")
 VIOLET = QColor("#a371f7")
+FOOT = QColor("#aebcc8")                      # 2026-10-16 看图: 底部图注原用 DIM(#8b949e) 对比度低
 RED = QColor("#f85149")
 BLUE = QColor("#4da3ff")
 
@@ -316,13 +317,16 @@ class OrbitalArchView(QWidget):
     TICK_MS = 60
     # 轨道半径 (相对 R) · 球径 (相对 S) · 颜色
     ORB = {"mercury": 0.30, "earth": 0.50, "mars": 0.68, "jupiter": 0.86}
-    RAD = {"sun": 0.052, "mercury": 0.019, "earth": 0.029, "mars": 0.031, "jupiter": 0.037,
-           "moon": 0.012, "sat": 0.0065}
+    RAD = {"sun": 0.052, "mercury": 0.019, "earth": 0.026, "mars": 0.031, "jupiter": 0.037,
+           "moon": 0.014, "sat": 0.0058}
     COL = {"sun": "#ffd166", "mercury": "#b9bec7", "earth": "#4da3ff", "mars": "#ff7a45",
            "jupiter": "#d2a45f", "moon": "#dfe4ec", "sat": "#7fd1c1", "ext": "#8b949e"}
     # 卫星群/月球 绕地球的半径 (相对 R) —— 原子技能在内, 月球在外 (不叠)
-    SAT_R = 0.055
-    MOON_R = 0.085
+    # 2026-10-16 看图逐项校正 (都为"账算得出来"的量, 判据 K2/K3 逐条卡):
+    #   · 卫星圈必须整体在地球球体之外: 投影后的最小地-卫距 ≥ r_earth + r_sat (+4px 余量)
+    #   · 月球必须在卫星圈之外: 地-月距 ≥ 卫星圈半径 + r_sat + r_moon
+    SAT_R = 0.098
+    MOON_R = 0.168
     BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
     def __init__(self, parent=None, root=None):
@@ -612,10 +616,10 @@ class OrbitalArchView(QWidget):
         ex, ey, _ez = pos["earth"]
         p.setPen(QPen(QColor(120, 132, 150, 170), 1))
         p.drawLine(QPointF(ex, ey), QPointF(mx, my))
-        self._labels(p, pos, cx, cy, R, b, W, H, S)
-        # 文字块是不透明底 (为了可读) ⇒ 会把压住的线段遮住。再以极低透明度描一遍主体↔主体线,
-        # 让"力的作用"在文字块上也保持连续可见 (老倪: 连线不要很快消失/平顺柔和)。
+        # 文字块是**半透明**底 (α=222) ⇒ 压住的线仍隐约可见 (老倪: 线不要很快消失);
+        # 透描放在文字之前 —— 先透描再写字, 字才不会被线盖暗 (2026-10-16 看图: 数值行前半被压暗)。
         self._draw_forces(p, cx, cy, R, b, ghost=True)
+        self._labels(p, pos, cx, cy, R, b, W, H, S)
         self._legend(p, W, H, b)
         p.end()
 
@@ -663,19 +667,19 @@ class OrbitalArchView(QWidget):
             if ghost:                                  # 文字块之上的"不断线"透描 (只描主体↔主体的实线)
                 if not bb or e["kind"] == "feedback":
                     continue
-                c2 = QColor(col); c2.setAlpha(70)
-                p.setPen(QPen(c2, 2.2))
+                c2 = QColor(col); c2.setAlpha(92)
+                p.setPen(QPen(c2, 2.9))
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
                 continue
-            core = QColor(col); core.setAlpha(210 if bb else 120)
-            glow = QColor(col); glow.setAlpha(46 if bb else 22)
-            pen_w = 2.2 if bb else 1.4
+            core = QColor(col); core.setAlpha(232 if bb else 150)
+            glow = QColor(col); glow.setAlpha(58 if bb else 30)
+            pen_w = 2.9 if bb else 1.9        # 2026-10-16 看图: 2.2px 仍是丝线档 ⇒ 加粗 (人眼友好)
             if dashed:
                 # 慢速流动 (相位连续): 虚线在动, 但绝不闪、不断 (老倪: 不要高频闪烁/不要很快消失)
-                pen_g = QPen(glow, pen_w + 3.6, Qt.CustomDashLine); pen_g.setDashPattern([3.0, 3.0]); pen_g.setDashOffset(self._phase * 0.5)
+                pen_g = QPen(glow, pen_w + 4.4, Qt.CustomDashLine); pen_g.setDashPattern([3.0, 3.0]); pen_g.setDashOffset(self._phase * 0.5)
                 pen_c = QPen(core, pen_w, Qt.CustomDashLine); pen_c.setDashPattern([3.0, 3.0]); pen_c.setDashOffset(self._phase * 0.5)
             else:
-                pen_g = QPen(glow, pen_w + 3.6)
+                pen_g = QPen(glow, pen_w + 4.4)
                 pen_c = QPen(core, pen_w)
             p.setPen(pen_g); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
             p.setPen(pen_c); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
@@ -771,8 +775,8 @@ class OrbitalArchView(QWidget):
         h = 11 * len(lines) + 4
         rect = QRectF(x, y, w, h)
         if frame:
-            p.setPen(QPen(QColor(48, 64, 80, 190), 1))
-            p.setBrush(QColor(13, 17, 23, 205))
+            p.setPen(QPen(QColor(52, 68, 86, 210), 1))
+            p.setBrush(QColor(13, 17, 23, 222))     # 222: 既压得住线, 又让线隐约透出来
             p.drawRoundedRect(rect, 3, 3)
         p.setPen(color)
         f = QFont("DejaVu Sans"); f.setPixelSize(int(size)); p.setFont(f)
@@ -805,6 +809,8 @@ class OrbitalArchView(QWidget):
                 ks.append((x, y, S * self.RAD[k] + 3))
             for x, y, _z, _sk in pos["_sat"]:
                 ks.append((x, y, S * self.RAD["sat"] + 4))
+            mx, my, _mz = pos["moon"]                    # 2026-10-16 看图: 漏了月球 ⇒ 标签曾压在月球上
+            ks.append((mx, my, S * self.RAD["moon"] + 4))
             return ks
 
         def place_near(x, y, lines, color, size, ux, uy, own_r):
@@ -861,6 +867,14 @@ class OrbitalArchView(QWidget):
                         return rect
                     if best_ov is None or ov < best_ov:
                         best, best_ov = rect, ov
+            # 兜底 (2026-10-16 看图: 地球区 三条标签互压 —— "重叠最小者"在拥挤区就等于重叠):
+            # 候选方向全冲突 ⇒ 放进**左侧/右侧页边栏**的第一个空槽 (先 clamp 再逐 8px 下移找位),
+            # 槽位同样对 已放置块/球体/底栏 做 keep-out ⇒ 保证任何两块文字不重叠。
+            fb = self._gutter_slot(lines, placed, ks, W, H, pad_top, pad_bot, w)
+            if fb is not None:
+                placed.append(fb)
+                out.append((fb, lines, color, size))
+                return fb
             placed.append(best)
             out.append((best, lines, color, size))
             return best
@@ -885,18 +899,45 @@ class OrbitalArchView(QWidget):
         if pos["_sat"]:
             gx = sum(x for x, _y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
             gy = sum(y for _x, y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
-            ux, uy = gx - pos["earth"][0], gy - pos["earth"][1]
-            n = math.hypot(ux, uy) or 1.0
             nsk = len(pos["_sat"])
+            # 2026-10-16 看图: 锚点方向原为"地球→卫星群质心" —— 整圈时该向量近零 ⇒ 方向乱飞,
+            #   标签落到地球/卫星堆上 (地球区三条互压的元凶之一)。改**固定朝上**展开,
+            #   own_r = 卫星圈半径 + 14 ⇒ 块近边一定在卫星圈外。
             place_near(gx, gy, ["🛰 原子技能 %d 颗 (绕地球公转)" % nsk], QColor("#7fd1c1"), 9,
-                       ux / n, uy / n, self.SAT_R * R + 8)
+                       0.0, -1.0, self.SAT_R * R + 14)
         # 月球 (沿"离地球"方向往外)
         mx, my, _mz = pos["moon"]
         ux, uy = mx - pos["earth"][0], my - pos["earth"][1]
         n = math.hypot(ux, uy) or 1.0
-        _mr = math.hypot(mx - pos["earth"][0], my - pos["earth"][1]) + S * self.RAD["earth"] + 10
-        place_near(mx, my, ["🌙 校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n, _mr / 2.0)
+        # own_r 原先写成 _mr/2.0 ⇒ 月球标签被推到"地球-月球连线中点之外", 结果压在卫星圈上;
+        # 换成 (月球球半径 + 12) ⇒ 近边贴月球外侧 (2026-10-16)
+        place_near(mx, my, ["🌙 校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n,
+                   S * self.RAD["moon"] + 12)
         return out, placed
+
+    def _gutter_slot(self, lines, placed, ks, W, H, pad_top, pad_bot, w):
+        """页边栏空槽 (保证不重叠的兜底位置) —— 候选方向全冲突时用 (2026-10-16 看图: 地球区三条互压)。"""
+        h = 11 * len(lines) + 4
+        for xg in (6.0, W - 6.0 - w):                 # 先左栏, 再右栏
+            y = float(pad_top) + 4.0
+            while y + h <= H - pad_bot - 2:
+                rect = QRectF(xg, y, w, h)
+                ok = True
+                for r in placed:
+                    if not rect.intersected(r).isEmpty():
+                        ok = False
+                        break
+                if ok:
+                    for (kx, ky, kr) in ks:
+                        nx = max(rect.x(), min(kx, rect.x() + rect.width()))
+                        ny = max(rect.y(), min(ky, rect.y() + rect.height()))
+                        if math.hypot(nx - kx, ny - ky) < kr:
+                            ok = False
+                            break
+                if ok:
+                    return rect
+                y += 8.0
+        return None
 
     def label_rects(self):
         """给判据用: 当前布局下所有文字块矩形 (两两不许重叠)。"""
@@ -920,7 +961,7 @@ class OrbitalArchView(QWidget):
     def _legend(self, p, W, H, b):
         """底部图注: **完整** (自动换行, 不省略号截断) —— 行数已经算进 _geom 的底栏高度。"""
         lines = self._foot_lines(W)
-        p.setPen(DIM)
+        p.setPen(FOOT)
         f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
         y0 = H - 8 - 11 * len(lines)
         for i, t in enumerate(lines):
