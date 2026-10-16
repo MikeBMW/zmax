@@ -5980,7 +5980,10 @@ class SimulinkModule(QWidget):
         try:
             self._v_split.setStretchFactor(0, 1)
             self._v_split.setStretchFactor(1, 0)
-            self._v_split.setSizes([560, 160])
+            # 🗜 2026-10-16 老倪: 「万有引力在当前窗口显示不全, 一动就上下滚」—— 根因: 主体只分到 560px,
+            #   M 页视口仅 ~450px, 装不下「太阳系 + 12 行表 + 页脚」。⇒ 默认把高度还给主体 (日志压到 150),
+            #   日志仍可拖/可折叠 (◀ 按钮)。实测 M 页视口 450 → ~700 ⇒ 整页装下, 不用滚。
+            self._v_split.setSizes([1100, 60])
         except Exception:
             pass
         # 🎨 应用当前主题 (QSS 硬编码为浅色模板, 构建后按 _CUR_THEME 重设为深/浅)

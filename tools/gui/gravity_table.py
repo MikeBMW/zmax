@@ -32,6 +32,7 @@ import math
 import os
 import time
 
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLabel, QSizePolicy,
                              QHeaderView)
 from PyQt5.QtCore import Qt, QTimer
@@ -656,6 +657,7 @@ def _fmt_q_line(q):
 
 
 class GravityTableWidget(QWidget):
+    resized = pyqtSignal(int)          # 整块高度变化 ⇒ M 页据此把表钉在底部 (永远整块可见)
     """一个标签「万有引力」+ 表格 (行=状态空间项, 列=L2/L3/L4/L5/合力, 右下角=总合力)。"""
 
     def __init__(self, parent=None):
@@ -703,6 +705,7 @@ class GravityTableWidget(QWidget):
         self.lbl_foot = QLabel("")
         self.lbl_foot.setWordWrap(True)
         self.lbl_foot.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_foot.setWordWrap(True)
         self.lbl_foot.setStyleSheet("color:#7ee787;font-size:10px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;")
         lay.addWidget(self.lbl_foot)
@@ -777,8 +780,13 @@ class GravityTableWidget(QWidget):
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:%dpx;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
-        self.t.verticalHeader().setDefaultSectionSize(42 if _pair else 40)   # 合力列第二行写 Δ主 xx°
+        self.t.verticalHeader().setDefaultSectionSize(24 if not _pair else 28)   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
         self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
+        try:
+            from PyQt5.QtCore import QTimer as _QT
+            _QT.singleShot(0, lambda: self.resized.emit(self.block_height()))
+        except Exception:                                                        # noqa: BLE001
+            pass
         self.lbl_head.setText(("⏸ " if getattr(self, "_frozen", False) else "🌍 ") + f.header_line())
 
         rows = f.rows
@@ -842,16 +850,29 @@ class GravityTableWidget(QWidget):
         _main_vec = (_ar["cells"][_ar["main"]].get("vec") if _ar and _ar.get("main") else None)
         _dev_tot = _angle_deg(_main_vec, _vsum([r["cells"][k].get("vec") for r in rows for k, _ in LAYERS]))
         _qtu, _qtn, _qtss = _qnorm(qt)
-        tot = QTableWidgetItem("总合力(全表) ‖q‖=%.2f\n%s\n%s行合力\n%s\n致%.2f Δ主%.0f°\n主 %s·%s"
-                               % (_qtn, _q_str(qt, 1), (_ar or {}).get("stage") or "本刻",
-                                  _q_str((_ar or {}).get("q") or (0.0, 0, 0, 0), 1),
-                                  coht, _dev_tot, dn_s or "?", dn_k or "?"))   # 2 位小数: 3 位在窄栏会被 Qt 打省略号
+        # 🎯 2026-10-16 老倪: 「总合力 5.6 哪里来的?」 —— 老口径把**32 个格子**(8 阶段 × 4 层)一股脑相加:
+        #   其中只有**在跑的那一项**是本刻的力, 其余 7 行是各阶段定格值 ⇒ 那个数被"格子个数"顶起来了, 不是本刻力。
+        #   ⇒ 头条改成**本刻系统合力 = 在跑项(主力 + Σ赋能力)**; 全表 32 格数值和降为附注(写清含哪些)。
+        _curq = (_ar or {}).get("q") or (0.0, 0, 0, 0)
+        _curq_u, _curq_n, _ = _qnorm(_curq)
+        _rest = [0.0] * 4
+        for _r in rows:
+            if _r is _ar:
+                continue
+            for _k, _n in LAYERS:
+                _q = _r["cells"][_k].get("q")
+                if _q:
+                    for _i in range(4):
+                        _rest[_i] += _q[_i]
+        tot = QTableWidgetItem("本刻总合力 %s ‖q‖=%.1f\n%s\n主 %s·%s Δ主%.0f°\n全表32格和 ‖q‖=%.1f\n%s"
+                               % ((_ar or {}).get("stage") or "本刻", _curq_n, _q_str(_curq, 1, False),
+                                  dn_s or "?", dn_k or "?", _dev_tot, _qtn, _q_str(qt, 1, False)))
         tot.setForeground(QColor("#ffd33d"))
         # 2026-10-16 老倪: 「右下角的字体太小了」⇒ 这一格在列宽内**尽量放大**(粗体 13~18px 自适应)
         from PyQt5.QtGui import QFontMetrics as _QFM
         _cw = self.t.columnWidth(self.t.columnCount() - 1) - 8
         _big = None
-        for _px in range(18, 12, -1):
+        for _px in range(13, 10, -1):
             _f = QFont("Consolas")
             _f.setPixelSize(_px)
             _f.setBold(True)
@@ -876,7 +897,7 @@ class GravityTableWidget(QWidget):
                        % (" ".join("%+.3f" % x for x in _qtu), _qtss, _qtn) + "\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 146)   # 右下角字号放大到 ~16px ⇒ 行高跟上   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 84)    # 右下角: 5 行 × ~13px (视口只 460px, 高度省着用)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"
@@ -884,26 +905,35 @@ class GravityTableWidget(QWidget):
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;" % _age_col)
         # 🔴 这一行是**保证看得见**的 (表若被窗口裁了, 右下角总合力也要在页面上有一份; 老倪拿画面当结果)
         _res_max, _dev_max, _coh_all = f.equation()
-        _tot_line = ("★★ 全表总合力 %s · 一致度 %.2f · 本刻主力 %s·%s ★★"
-                     % (_fmt_q(qt), coht, dn_s or "?", dn_k or "?"))
-        # 老倪 2026-10-16: 「主力是快速动作, 合力是叠加了补偿微调的总和矢量力, 保证等式关系」
-        _run_dev = [r.get("dev", 0.0) for r in rows if r.get("main") == "L2"]
-        _eq_line = ("✅ 等式: 合力 = 主力 + Σ赋能力 (矢量相加) · 逐行残差 max %.1e · 在跑项 主↔合 %.1f° · "
-                    "全表最大 %.1f° · 全表一致度 %.2f"
-                    % (_res_max, (max(_run_dev) if _run_dev else 0.0), _dev_max, _coh_all))
+        _cur = [r for r in rows if r.get("main")]
+        _curq = _cur[0]["q"] if _cur else (0.0, 0, 0, 0)
+        _curu, _curn, _ = _qnorm(_curq)
         _qu, _qn, _qss = _qnorm(qt)
-        _norm_line = ("🔵 归一 (单位四元数): 右下角总合力 ‖q‖=%.2f ⇒ q̂ = %s · **各项平方和 = %.6f** (=1)"
-                      % (_qn, " ".join("%+.3f" % x for x in _qu), _qss))
+        # 🗜 页脚压到 3 行 (老倪 2026-10-16: 表「显示不全, 一动就滚动」⇒ 高度省给表):
+        #   行1 本刻系统合力 · 行2 主力/归一/平方和 · 行3 活帧+帧龄; 长口径全在 tooltip
         self.lbl_foot.setText(
-            _tot_line + "\n" + _eq_line + "\n" + _norm_line + "\n" + f.live_line() + "\n"
-            + (f.age_line() + ("  ← 这几项不是本刻的, 上面格子的力是它们最后一拍的值\n" if stale else "\n"))
-            + "力四元数 = (w, x, y, z) = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref) · u_ref=%.3f (满速基准, 真源) · "
-              "★=**本刻唯一主力** (正在跑的那一项 ⇒ 它的 L2 执行收口格) · 其余格都是赋能力 · "
-              "合力 = 主力 + Σ赋能力: 四个数**逐位相加** (行=本行四层相加, 右下角=全表所有格子相加) · 一致度 |ΣF|/Σ|F| · "
-              "格子四个数是**力四元数**(不归一 ⇒ 能逐位相加); 归一后才是单位四元数 (各项平方和=1, 见 🔵 行) · "
-              "L2/L3/L4 = 该帧 动作调制器/安全边界/前馈加速器 m/s (3D 面板同一帧快照), L5 = 规划方向 × |前馈速度| · "
-              "只读真源: trace_live/meta_tasks/skill_latest/engine_latest (每 0.7s 重读)"
-            % f.u_ref)
+            "★★ 本刻系统合力 (在跑项 %s = 主力 + Σ赋能力) %s · ‖q‖=%.2f ★★\n"
+            "主力 %s·%s · 残差 %.0e · 归一 q̂=[%s] 平方和=%.6f (全表32格和 ‖q‖=%.1f)\n"
+            "%s · %s"
+            % ((_cur[0]["stage"] if _cur else "无"), _fmt_q(_curq), _curn,
+               dn_s or "?", dn_k or "?", _res_max, " ".join("%+.2f" % x for x in _qu), _qss, _qn,
+               f.live_line(), f.age_line() + (" ⚠️非本刻" if stale else "")))
+        self.lbl_foot.setToolTip(
+            "口径: 格子四个数 = 力四元数 (w=|F|/u_ref, xyz=方向分量/u_ref, **不归一** ⇒ 能逐位相加):\n"
+            "  合力 = 主力 + Σ赋能力 —— 行合力 = 本行四层逐位相加; 右下角 = 全表所有格子逐位相加\n"
+            "  归一后才是单位四元数 (各项平方和 = 1, 方向与合力同向, 力度丢在 ‖q‖ 里)\n"
+            "★ = 本刻唯一主力 (正在跑的那一项 ⇒ 它的 L2 执行收口格), 其余格都是赋能力\n"
+            "L2/L3/L4 = 该帧 动作调制器/安全边界/前馈加速器 m/s (3D 面板同一帧快照), L5 = 规划方向 × |前馈速度|\n"
+            "真源 (只读): trace_live / meta_tasks / skill_latest / engine_latest; 每 0.7s 重读\n"
+            "u_ref = %.4f (该阶段限速 = 满速基准)" % f.u_ref)
+
+    def block_height(self):
+        """整块高度 = 页头 + 表 + 页脚 (用**已布局的真实高度**, 不用 sizeHint —— 它被换行标签高估过)。"""
+        try:
+            # 表高是**定值**(setFixedHeight) ⇒ 可信; 页头+页脚给固定余量 (~2 行 + 1 行)
+            return max(200, int(self.t.height()) + 104)
+        except Exception:                                                        # noqa: BLE001
+            return int(self.sizeHint().height())
 
     def refresh_if_visible(self):
         if self.isVisible():

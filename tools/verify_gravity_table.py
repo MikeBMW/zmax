@@ -198,6 +198,16 @@ def main():
         and "setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)" in _gsrc
         and "self.split_m = QSplitter(Qt.Vertical)" not in _mpage),
        "表禁自带滚动条 (纵横都 Off) + M 页已撤掉专给表的上下拖动条")
+    # ⑰ 表格不乱动 + 整页右侧滚动条保留 (老倪 2026-10-16 两次纠正:
+    #    「用鼠标滚轮还是能调上下。要固定, 别乱动」 → 「表格自己不要乱动, 整体右边的拖动条还是需要的」)
+    ck("⑰ 表格不乱动 (滚轮就地吃掉) + 整页右侧滚动条保留",
+       ("_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)" in _mt
+        and "installEventFilter(self)" in _mt and "def eventFilter" in _mt and "QEvent.Wheel" in _mt),
+       "M 页纵滚动条 AsNeeded (要的那条可拖的在) + _scroll/viewport 装 eventFilter + Wheel 就地 accept (滚轮推不走表格)")
+    ck("⑰b 开页/换视图先翻到底 => 表格整块在视野里 (不再「表格怎么没了」)",
+       ("def _scroll_to_table" in _mt and "def showEvent" in _mt
+        and "setValue(_sb.maximum())" in _mt and "_scroll_to_table()" in _mt),
+       "_scroll_to_table(): 开页翻一次 + 换视图再翻; 不跟 0.7s 刷新翻 (用滚动条往上拖不会被拽回)")
     # ⑪c 太阳系视图的选择仍要落盘/可回读 (老倪的界面态不能因为撤掉分隔条而丢)
     import model_tree as MT                                                      # noqa: E402
     _vk = getattr(MT, "MPARAM_VIZ_KEY", None)
@@ -321,7 +331,7 @@ def main():
     # ⑭ 右下角那格必须把「是合力不是主力」讲清楚 (老倪 2026-10-16 问过)
     _cnr = _t.item(_t.rowCount() - 1, _t.columnCount() - 1)
     _ctxt = _cnr.text() if _cnr else ""
-    _need = ["总合力", "行合力", "主 "]
+    _need = ["本刻总合力", "全表32格和", "主 "]        # 老倪: 「总合力 5.6 哪里来的?」⇒ 本刻力与全表数值和分开写
     _cf = _cnr.font() if _cnr else None
     # ⑯ 归一四元数: 各项平方和 = 1 (老倪 2026-10-16: 「总合力的四元数, 各项平方和是不是也应该是 1」)
     #    口径: 格子四个数 = 力四元数(不归一 ⇒ 能逐位相加); 归一后才是单位四元数 ⇒ 这里核归一那一份
@@ -367,7 +377,7 @@ def main():
     ck("⑭b 右下角字号 ≥ 表体且加粗 (老倪: 「右下角的字体太小了」)",
        _cf is not None and _cf.pixelSize() >= _w._fmt[1] and _cf.bold(),
        "右下角 %dpx 粗体 vs 表体 %dpx" % (_cf.pixelSize(), _w._fmt[1]) if _cf else "没有右下角格")
-    ck("⑭ 右下角 = 总合力 + 本刻行合力 + 主力 (不是把主力当合力)", all(w in _ctxt for w in _need) and "Δ主" in _ctxt,
+    ck("⑭ 右下角 = 本刻总合力(在跑项) + 全表32格和(附注) + 主力", all(w in _ctxt for w in _need) and "Δ主" in _ctxt,
        "右下角逐行: " + " | ".join(_ctxt.split("\n")))
     _bad_tier = [x for x in _tiers if not x[4]]
     ck("⑫a 一格 = 一行四个数 (老倪: 「四元数不应该是 4 个数么?」)",

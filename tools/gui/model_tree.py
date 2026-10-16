@@ -970,8 +970,15 @@ class MasterParamMView(QWidget):
         lay0 = QVBoxLayout(self)
         lay0.setContentsMargins(0, 0, 0, 0)
         lay0.setSpacing(0)
-        _scroll = QScrollArea()
+        self._scroll = QScrollArea()
+        _scroll = self._scroll
         _scroll.setWidgetResizable(True)
+        # 🚫 2026-10-16 老倪: 「万有引力表格, 用鼠标滚轮还是能调上下。要固定, 别乱动」
+        # 2026-10-16 老倪(再纠正): 「表格自己不要乱动, 整体右边的拖动条还是需要的」
+        #   ⇒ ① 整页**右侧滚动条保留** (AsNeeded, 就是您要的那条可拖的);
+        #     ② 滚轮事件在 _scroll 上吃掉 (见 eventFilter) ⇒ 鼠标停在表上滚轮不会把表格推走 (= 表格不乱动);
+        #     ③ 万有引力表按内容整块显示, 太阳系吸收高度差。要上下看就用右边那条拖。
+        _scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         _scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # 2026-10-16 老倪: 「四元数要一行四个数」
         #   表给足最小宽度 ⇒ 窗口窄了横向可滚 (不出省略号/不被裁)
         _scroll.setFrameShape(QFrame.NoFrame)
@@ -981,6 +988,8 @@ class MasterParamMView(QWidget):
         _inner = QWidget()
         _inner.setStyleSheet("background:transparent;")
         _scroll.setWidget(_inner)
+        # 🚫 滚轮吃到手: 鼠标停在万有引力表上也**不许**把这一页上下带跑 (老倪: 「要固定, 别乱动」)
+        # 上面那半要能滚 (滚轮 + 右侧滚动条); 表那半不许滚 ⇒ 过滤只挂在表上 (见下, 建好 tabs 后)
         lay0.addWidget(_scroll)
         lay = QVBoxLayout(_inner)
         lay.setContentsMargins(6, 6, 6, 6)
@@ -991,6 +1000,7 @@ class MasterParamMView(QWidget):
         lay.addWidget(self.lbl_hd)
         self.lbl_node = QLabel("…")
         self.lbl_node.setWordWrap(True)
+        self.lbl_node.setMaximumHeight(20)      # 🗜 让高度给太阳系 + 表 (老倪: 两个都要更大)
         self.lbl_node.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;"
                                     "background:transparent;")
         lay.addWidget(self.lbl_node)
@@ -1079,6 +1089,7 @@ class MasterParamMView(QWidget):
             self.orbital.setWordWrap(True)
             self.orbital.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
         self.viz_stack = QStackedWidget()
+        self.viz_stack.setMinimumHeight(100)     # 页面不滚 ⇒ 高度差由太阳系这块吸收 (表永远整块可见)
         self.viz_stack.addWidget(self.viz)          # 0 = 🧊 几何四面板 (默认, 不改变既有观感)
         self.viz_stack.addWidget(self.orbital)      # 1 = 🪐 球心引力架构
         self.cmb_viz_view = QComboBox()
@@ -1134,26 +1145,126 @@ class MasterParamMView(QWidget):
         # 🌍 2026-10-16 老倪(改口径): 「右下角万有引力表, 右边不要有专门针对它的拖动调, 直接显示完全就好了」
         #   ⇒ 撤掉原来那条"上下可拖的分隔条"(split_m): 太阳系拿走剩余空间, 表按**内容高度整块**显示,
         #     表自己也不带滚动条 (见 gravity_table.py) ⇒ 一眼看全, 不用拖、不用滚。
-        _mv = QVBoxLayout()
-        _mv.setContentsMargins(0, 0, 0, 0)
-        _mv.setSpacing(6)
-        _mv.addWidget(self.viz_stack, 1)         # 上半: 太阳系/多面板 — 剩余高度全给它
-        _mv.addWidget(self.tabs, 0)              # 下半: 万有引力表 — 按内容整块显示, 不拉伸
-        lay.addLayout(_mv, 1)
+        # 🧷 2026-10-16 老倪: 「表格显示不全…用鼠标一动就自己上下滚动」⇒ 结构上治:
+        #   万有引力表**搬出滚动区**, 钉在这一页的底部 (fixed = 表的内容高) ⇒ 滚轮/滚动条只影响上面那堆,
+        #   表永远整块可见、不会被滚走。上面(标题/写入行/太阳系/命令回显)放进滚动区, 要细看可以滚。
+        # 🪐 2026-10-16 老倪(定稿): 「太阳系窗口增大高度, 不要右面的滚动条; 主参数窗口整体右边有个滚动条就可以了」
+        #   ⇒ ① 太阳系固定 300px (给足高度, 不再被表挤);
+        #     ② 整页只有**一条**右侧滚动条 (表自己 = 关, 太阳系不另开) ⇒ 上下看就用那一条;
+        #     ③ 滚轮照旧就地吃掉 ⇒ 表不会被滚轮带着乱动。
+        self.viz_stack.setFixedHeight(300)
+        lay.addWidget(self.viz_stack, 0)         # 太阳系: 固定 300px (在滚动区里, 不另开滚动条)
+        lay.addWidget(self.tabs, 0)              # 🌍 万有引力表: 按内容整块 (自己的滚动条 = 关)
+        try:
+            # 滚轮停在表上/表区 ⇒ 就地吃掉 (表不会被滚轮推着乱动; 整页要滚就用右边那一条)
+            self.tabs.installEventFilter(self)
+            self.gravity.installEventFilter(self)
+            self.gravity.t.installEventFilter(self)
+            self.gravity.t.viewport().installEventFilter(self)
+        except Exception:                                                        # noqa: BLE001
+            pass
 
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
+        self.lbl_cmd.setMaximumHeight(46)       # 🗜 命令回显留两行够用
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#7ee787;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
         lay.addWidget(self.lbl_cmd)
         self.refresh()
 
+    def _scroll_to_table(self, *_a):
+        """把 M 页翻到底 ⇒ 万有引力表整块落在视野里 (老倪 2026-10-16: 「表格怎么没了」)。
+        只翻一次 (开页/换视图时), 不跟着 0.7s 刷新翻 ⇒ 他用右边滚动条往上拖时不会被拽回来。"""
+        try:
+            from PyQt5.QtCore import QTimer
+            _sb = self._scroll.verticalScrollBar()
+            QTimer.singleShot(350, lambda: _sb.setValue(_sb.maximum()))
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _parents(self):
+        """自己到窗口的父链 (查"谁把这一页压小了")。"""
+        out, w, n = [], self.parentWidget(), 0
+        while w is not None and n < 14:
+            out.append(w)
+            w = w.parentWidget()
+            n += 1
+        return out
+
+    def _fit_heights(self, *_a):
+        """太阳系 + 万有引力表**正好塞满这一页** ⇒ 整页不滚、不裁 (老倪 2026-10-16:
+        「万有引力在当前窗口显示不全 … 用鼠标一动就自己上下滚动, 总是要不看到上, 要不看到下面」)。
+        做法: 太阳系那块按 (视口高 − 表需要的整块高) 定高, 表永远拿到它要的全部高度。"""
+        try:
+            vh = self._scroll.viewport().height()
+            if vh <= 0:
+                return
+            _g = getattr(self, "gravity", None)
+            need = 0
+            if _g is not None:
+                need = max(int(_g.height()), int(_g.sizeHint().height()))
+            # 🪐 2026-10-16 老倪: 「太阳系的窗口又太小了, 增大高度」—— 表已搬出滚动区(钉在底部),
+            #   所以太阳系**不必再给表让高度**: 直接铺满滚动区 (只给上面那几行留 ~60px)。
+            self.viz_stack.setFixedHeight(300)      # 🪐 固定 300px: 太阳系给足高度 (老倪: 增大高度)
+            try:                      # 体检用: 把这一页的高度账记下来 (诊断"显示不全/一直在滚")
+                import json as _json, tempfile as _tf
+                _g2 = getattr(self, "gravity", None)
+                _json.dump({"vh": int(vh), "need": int(need),
+                            "viz_h": int(self.viz_stack.height()),
+                            "viz_fixed": int(getattr(self.viz_stack, "minimumHeight")() or 0),
+                            "gravity_h": int(_g2.height()) if _g2 else -1,
+                            "gravity_hint": int(_g2.sizeHint().height()) if _g2 else -1,
+                            "table_h": int(_g2.t.height()) if _g2 is not None and hasattr(_g2, "t") else -1,
+                            "tab_h": int(getattr(self, "tabs").height()),
+                            "page_h": int(self.height()),
+                            "scroll_max": int(self._scroll.verticalScrollBar().maximum()),
+                            "chain": [(type(w).__name__, int(w.height()), (w.objectName() or ""))
+                                      for w in ([self] + self._parents())]},
+                           open("/tmp/zmax_mpage_fit.json", "w"))
+            except Exception:                                                    # noqa: BLE001
+                pass
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        try:
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(0, self._fit_heights)
+            QTimer.singleShot(300, self._fit_heights)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def showEvent(self, ev):
+        super().showEvent(ev)
+        self._fit_heights()
+        if not getattr(self, "_scrolled_once", False):
+            self._scrolled_once = True
+            self._scroll_to_table()
+
+    def eventFilter(self, obj, ev):
+        """🚫 万有引力页**钉死**: 滚轮事件就地吃掉 (老倪 2026-10-16: 「用鼠标滚轮还是能调上下。要固定, 别乱动」)。
+
+        为什么: 这一页套在 QScrollArea 里, 鼠标停在表格上滚轮会把整页推走 ⇒ 表就"乱动"。
+                表自己已经没有滚动条 (AlwaysOff), 所以这里吃掉滚轮不会挡住任何该滚的东西。
+        """
+        try:
+            from PyQt5.QtCore import QEvent
+            if ev.type() == QEvent.Wheel:
+                ev.accept()
+                return True
+        except Exception:                                                        # noqa: BLE001
+            pass
+        return super().eventFilter(obj, ev)
+
     def _switch_viz_view(self, idx):
         """🧊 几何四面板 ⟷ 🪐 球心引力架构 (同一页切换; 切到谁就把谁当真源重读一遍)。"""
         try:
             self.viz_stack.setCurrentIndex(int(idx))
+            self._fit_heights()              # 换视图后重新分配高度 (表整块可见, 整页不滚)
+            self._scroll_to_table()          # 换了视图高度差很大 ⇒ 再翻到底 (表照旧整块可见)
         except Exception:                                                        # noqa: BLE001
             return
         if int(idx) == 1 and hasattr(self, "orbital") and hasattr(self.orbital, "refresh"):
@@ -1526,6 +1637,7 @@ class CalibTruthView(QWidget):
         lay.addWidget(self.tbl, 1)
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
+        self.lbl_cmd.setMaximumHeight(46)       # 🗜 命令回显留两行够用
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#ffa657;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")

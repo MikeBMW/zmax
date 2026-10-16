@@ -12786,26 +12786,10 @@ class StudioMainWindow(QMainWindow):
         sb = self.statusBar()
         sb.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border-top:1px solid {C_BORDER};")
 
-        self._engine_combo = QComboBox()
-        self._engine_combo.addItems(["ACT (Local · 1ms)", "VTLA (Remote 4090)", "GR00T (Remote 4090)", "smolvla Sys-11 (Local)", "LEW Sys-12 (Local)"])
-        self._engine_combo.setCurrentIndex(0)
-        self._engine_combo.setStyleSheet(f"""
-            QComboBox {{ background:{C_BG}; color:{C_GREEN}; border:1px solid {C_BORDER};
-            border-radius:4px; padding:4px 10px; font-size:19px; min-width:200px; }}
-            QComboBox::drop-down {{ border:none; width:20px; }}
-            QComboBox QAbstractItemView {{ background:{C_BG2}; color:{C_WHITE}; selection-background-color:{C_GREEN}22; }}
-        """)
-        self._engine_combo.currentIndexChanged.connect(self._on_engine_change)
-
-        self._engine_status = QLabel("● 本地就绪")
-        self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
-
-        self._latency_label = QLabel("延迟: --")
-        self._latency_label.setStyleSheet(f"color:{C_GRAY}; font-size:20px; padding:0 8px;")
-
-        sb.addPermanentWidget(self._latency_label)
-        sb.addPermanentWidget(self._engine_status)
-        sb.addPermanentWidget(self._engine_combo)
+        # 🗑 2026-10-16 老倪: 「右下角的 延迟 / 本地就绪 / ACT local 1ms 没用了, 删掉」
+        #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
+        #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
+        #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
         sb.showMessage("Z-MAX v5.50.737  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
@@ -14146,39 +14130,9 @@ class StudioMainWindow(QMainWindow):
             self.statusBar().showMessage(f"⚠️ Simulink 初始化失败: {e}", 5000)
 
     def _on_engine_change(self, idx):
-        """引擎切换"""
-        mapping = {0:"act", 1:"vtla", 2:"groot", 3:"smolvla", 4:"lew"}
-        names = {0:"ACT 本地(1ms)", 1:"VTLA 4090(~280ms)", 2:"GR00T 4090(~500ms)", 3:"smolvla 本地(215ms)", 4:"LEW 本地(186ms)"}
-        engine_colors = {0:SYS1_COLOR, 1:SYS2_COLOR, 2:SYS2_COLOR, 3:SYS11_COLOR, 4:SYS12_COLOR}
-        engine = mapping.get(idx, "act")
-        import requests, time
-
-        # 测量推理延迟
-        t0 = time.time()
-        if engine in ("vtla", "groot"):
-            try:
-                r = requests.get("http://39.102.211.79:50051/health", timeout=3)
-                latency = (time.time() - t0) * 1000
-                if r.status_code == 200:
-                    self._engine_status.setText("● 4090 已连接")
-                    self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
-                    self._latency_label.setText(f"延迟: {latency:.0f}ms")
-                    self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
-                else:
-                    raise Exception("bad status")
-            except:
-                self._engine_status.setText("● 4090 断开 → 将回退ACT")
-                self._engine_status.setStyleSheet(f"color:#d29922; font-size:15px; font-weight:600; padding:0 10px;")
-                self._latency_label.setText("延迟: N/A")
-                self._latency_label.setStyleSheet(f"color:#d29922; font-size:20px; padding:0 8px;")
-        else:
-            latency = (time.time() - t0) * 1000
-            self._engine_status.setText("● 本地就绪")
-            self._engine_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:600; padding:0 10px;")
-            self._latency_label.setText(f"延迟: {latency:.1f}ms")
-            self._latency_label.setStyleSheet(f"color:{C_GREEN}; font-size:20px; padding:0 8px;")
-
-        self.statusBar().showMessage(f"引擎: {names.get(idx, 'ACT')}")
+        """(已废) 原状态栏右下角「引擎下拉 + 延迟 + 就绪」三件套 —— 2026-10-16 老倪要求「没用了, 删掉」。
+        控件已从状态栏移除, 这里留空实现只为不改变对外接口 (不再测延迟、不再写状态栏)。"""
+        return
 
     def on_flow_sync(self, flow):
         """Simulink 工作流变更 → 推送到 web (datadrive.world/api/comfy/task)
