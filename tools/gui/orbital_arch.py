@@ -344,7 +344,7 @@ class OrbitalArchView(QWidget):
     #   · 卫星圈必须整体在地球球体之外: 投影后的最小地-卫距 ≥ r_earth + r_sat (+4px 余量)
     #   · 月球必须在卫星圈之外: 地-月距 ≥ 卫星圈半径 + r_sat + r_moon
     SAT_R = 0.098
-    MOON_R = 0.168
+    MOON_R = 0.182
     BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
     def __init__(self, parent=None, root=None):
@@ -655,6 +655,17 @@ class OrbitalArchView(QWidget):
         mx, my, mz = pos["moon"]
         items.append(("moon", mx, my, S * self.RAD["moon"], mz, None))
         items.sort(key=lambda t: t[4])
+        # 地月细连线 (2026-10-16 看图: 原先画在球体**之后** + 端点取球心 ⇒ 1px 线压在球面上)
+        #   正解: 画在球体之前, 两端各缩掉球半径+2px。
+        _ex, _ey, _ez = pos["earth"]
+        _vx, _vy = mx - _ex, my - _ey
+        _nn = math.hypot(_vx, _vy) or 1.0
+        _vx, _vy = _vx / _nn, _vy / _nn
+        _r1 = S * self.RAD["earth"] + 2.0
+        _r2 = S * self.RAD["moon"] + 2.0
+        p.setPen(QPen(QColor(120, 132, 150, 170), 1))
+        p.drawLine(QPointF(_ex + _vx * _r1, _ey + _vy * _r1), QPointF(mx - _vx * _r2, my - _vy * _r2))
+
         for kind, x, y, r, _z, sk in items:
             if kind == "sat":
                 act = (sk == b.get("sats", {}).get("active"))
@@ -670,10 +681,6 @@ class OrbitalArchView(QWidget):
             dkey = "sun" if kind == "sun" else kind
             energy = b.get(dkey, {}).get("grad_norm") if kind == "sun" else (1.0 if self._live(b.get(dkey, {})) else 0.35)
             self._sphere(p, x, y, r, ecol, energy)
-        # 地月细连线 + 标签
-        ex, ey, _ez = pos["earth"]
-        p.setPen(QPen(QColor(120, 132, 150, 170), 1))
-        p.drawLine(QPointF(ex, ey), QPointF(mx, my))
         # 文字块是**半透明**底 (α=222) ⇒ 压住的线仍隐约可见 (老倪: 线不要很快消失);
         # 透描放在文字之前 —— 先透描再写字, 字才不会被线盖暗 (2026-10-16 看图: 数值行前半被压暗)。
         p.save()
@@ -693,12 +700,61 @@ class OrbitalArchView(QWidget):
         for i in range(3):                                        # 6 圈→3 圈 (2026-10-16 看图: 与轨道环混淆)
             rr = 0.12 + 0.09 * i
             alpha = 62 - i * 12
-            p.setPen(QPen(QColor(210, 153, 34, max(18, alpha)), 1))
+            # 2026-10-16 看图: 原金褐色 (210,153,34) 与金线辉光几乎同色(差2), 1× 数不出圈数 ⇒ 改冷灰蓝
+            p.setPen(QPen(QColor(91, 107, 125, max(30, alpha + 22)), 1.15))
             pts = [self._proj(rr * math.cos(t / 60.0 * 2 * math.pi),
                               rr * ratio * math.sin(t / 60.0 * 2 * math.pi), 0.0, cx, cy, R)
                    for t in range(61)]
             for j in range(len(pts) - 1):
                 p.drawLine(QPointF(pts[j][0], pts[j][1]), QPointF(pts[j + 1][0], pts[j + 1][1]))
+
+    def _force_segments(self, pos, b):
+        """要画的**主体↔主体**真连线 + 每条的法向平移量 (共线去重叠)。
+
+        抽出来是给判据量"实际画出来的几何"用 —— 判据只读 positions() 会量到平移**之前**的坐标
+        (2026-10-16: 判据 N2 因此误红)。
+        """
+        segs = []
+        for _e in self._edges:
+            if not _e["body_body"] or not self._signal_ok(_e, b):
+                continue
+            _pa = pos.get(self._key_of(_e["f"])); _pb = pos.get(self._key_of(_e["t"]))
+            if _pa is None or _pb is None:
+                continue
+            segs.append((_e, float(_pa[0]), float(_pa[1]), float(_pb[0]), float(_pb[1])))
+        offs = []
+        for _i2, _a in enumerate(segs):
+            shift = 0.0
+            for _b2 in segs[:_i2]:
+                _ang = abs(math.atan2(_a[4] - _a[2], _a[3] - _a[1])
+                           - math.atan2(_b2[4] - _b2[2], _b2[3] - _b2[1])) % math.pi
+                if min(_ang, math.pi - _ang) > 0.17:
+                    continue
+                _dx2, _dy2 = _b2[3] - _b2[1], _b2[4] - _b2[2]
+                _n2 = math.hypot(_dx2, _dy2) or 1.0
+                _nx, _ny = -_dy2 / _n2, _dx2 / _n2
+                _dd2 = min(abs((_a[1] - _b2[1]) * _nx + (_a[2] - _b2[2]) * _ny),
+                           abs((_a[3] - _b2[1]) * _nx + (_a[4] - _b2[2]) * _ny))
+                if _dd2 < 6.0:
+                    shift = 4.0
+            offs.append((_a[0], shift))
+        return offs
+
+    def drawn_segments(self):
+        """判据用: [(名字, x1,y1,x2,y2)] —— **实际画出来**的线 (含共线平移)。"""
+        W, H, S, cx, cy, R = self._geom()
+        pos = self.positions(cx, cy, R)
+        out = []
+        for _e, _off in self._force_segments(pos, self.data.body):
+            _pa = pos.get(self._key_of(_e["f"])); _pb = pos.get(self._key_of(_e["t"]))
+            _x1, _y1, _x2, _y2 = float(_pa[0]), float(_pa[1]), float(_pb[0]), float(_pb[1])
+            if _off:
+                _dx3, _dy3 = _x2 - _x1, _y2 - _y1
+                _n3 = math.hypot(_dx3, _dy3) or 1.0
+                _x1 += -_dy3 / _n3 * _off; _y1 += _dx3 / _n3 * _off
+                _x2 += -_dy3 / _n3 * _off; _y2 += _dx3 / _n3 * _off
+            out.append((_e["f"] + "→" + _e["t"], _x1, _y1, _x2, _y2))
+        return out
 
     def _ball_clip(self, p, pos, S):
         """把球体从裁剪区里挖掉 (给"文字之上透描"用: 线不许画在球面上)。"""
@@ -731,6 +787,11 @@ class OrbitalArchView(QWidget):
         col_of = {"geom": CYAN, "condition": CYAN, "perf": GOLD, "semantic": GOLD,
                   "drive": GREEN, "feedback": VIOLET, "misc": QColor("#8b949e")}
         p.setRenderHint(QPainter.Antialiasing, True)
+        # 2026-10-16 看图: 太阳→水星(青) 与 太阳→木星(金) 几乎共线 ⇒ 后画的把先画的吞成一条 8px 脏色带,
+        #   看着只有一条线。正解: 检出"近共线(<10°)且带间距<6px"的一对, 把**后一条**沿法向平移 4px
+        #   (两端同移, 仍落在两球之间)。两遍(透描/正画)用同一张偏移表 ⇒ 相位与位置一致。
+        _seg4 = self._force_segments(pos, b)
+        _offs = {id(_e): _o for (_e, _o) in _seg4}
         for e in self._edges:
             if not e["body_body"]:
                 continue
@@ -741,6 +802,12 @@ class OrbitalArchView(QWidget):
             if pa is None or pb is None:
                 continue
             x1, y1, x2, y2 = float(pa[0]), float(pa[1]), float(pb[0]), float(pb[1])
+            _o2 = _offs.get(id(e), 0.0)
+            if _o2:
+                _dx3, _dy3 = x2 - x1, y2 - y1
+                _n3 = math.hypot(_dx3, _dy3) or 1.0
+                x1 += -_dy3 / _n3 * _o2; y1 += _dx3 / _n3 * _o2
+                x2 += -_dy3 / _n3 * _o2; y2 += _dx3 / _n3 * _o2
             col = col_of.get(e.get("sig_kind") or e["kind"], QColor("#8b949e"))
             if ghost:
                 # 文字块**之下**先透描一遍 (字压线: 字仍可读, 线也没有"断"的错觉); 全部虚线, 同相位
@@ -914,7 +981,7 @@ class OrbitalArchView(QWidget):
             _ux, _uy = _x - pos["earth"][0], _y - pos["earth"][1]
             _n = math.hypot(_ux, _uy) or 1.0
             # 环外偏移必须 ≥ 块的半宽(16) + 卫星 keepout(球半径+4) ⇒ 26px 起 (14.9px 时会差 1px 压到自己那颗卫星)
-            _rr0 = S * self.RAD["sat"] + 26.0 + (11.0 if _i % 2 else 0.0)
+            _rr0 = S * self.RAD["sat"] + 34.0 + (13.0 if _i % 2 else 0.0)
             _blk = None
             for _k in range(7):
                 _ang = (0.0, 0.3927, -0.3927, 0.7854, -0.7854, 1.1781, -1.1781)[_k]   # 0/±22.5°/±45°/±67.5°
@@ -966,6 +1033,16 @@ class OrbitalArchView(QWidget):
             h = 11 * len(lines) + 4
             ks = keepouts()
 
+            def _fin(rect):
+                """块离自己的球太远 ⇒ 记一条引线 (2026-10-16 看图: 月球块孤零零挂左下角认不出归属)。
+                口径按"块矩形到该球**球面**的距离", 不是块心到球心 (宽块贴球时块心本来就远)。"""
+                _nx2 = max(rect.x(), min(x, rect.x() + rect.width()))
+                _ny2 = max(rect.y(), min(y, rect.y() + rect.height()))
+                _surf = max(0.0, math.hypot(_nx2 - x, _ny2 - y) - own_r)
+                if _surf > 45.0:
+                    self._leaders.append((rect, float(x), float(y), color))
+                return rect
+
             def rect_at(ox, oy):
                 if abs(ux) >= abs(uy):                         # 主要横向: 块的近边贴球
                     px = x + own_r + 12 if ux >= 0 else x - own_r - 12 - w
@@ -1006,7 +1083,7 @@ class OrbitalArchView(QWidget):
                     if ov <= 0.0:
                         placed.append(rect)
                         out.append((rect, lines, color, size))
-                        return rect
+                        return _fin(rect)
                     if best_ov is None or ov < best_ov:
                         best, best_ov = rect, ov
             # 兜底 (2026-10-16 看图: 地球区 三条标签互压 —— "重叠最小者"在拥挤区就等于重叠):
@@ -1016,12 +1093,10 @@ class OrbitalArchView(QWidget):
             if fb is not None:
                 placed.append(fb)
                 out.append((fb, lines, color, size))
-                return fb
+                return _fin(fb)
             placed.append(best)
             out.append((best, lines, color, size))
-            if math.hypot(best.center().x() - x, best.center().y() - y) > 88.0:
-                self._leaders.append((best, float(x), float(y), color))
-            return best
+            return _fin(best)
 
         # 2026-10-16 看图: 画面只有节点名, 认不出天体 ⇒ 标题带上**天体名 + 结点名**
         names = {"mercury": "☿ 水星 · 接触流形", "earth": "♁ 地球 · 前馈加速器",

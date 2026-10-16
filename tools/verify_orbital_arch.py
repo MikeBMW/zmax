@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import io
+
 import hashlib
 import json
 import math
@@ -830,7 +832,8 @@ def main():
     _SM = _vM._geom()[2]
     _onball = {}
     for _k, _col in (("mercury", [0x39, 0xc5, 0xcf]), ("earth", [0x3f, 0xb9, 0x50]),
-                     ("mars", [0x39, 0xc5, 0xcf]), ("jupiter", [0x3f, 0xb9, 0x50])):
+                     ("mars", [0x39, 0xc5, 0xcf]), ("jupiter", [0x3f, 0xb9, 0x50]),
+                     ("moon", [120, 132, 150])):
         _x, _y = int(_pM[_k][0]), int(_pM[_k][1])
         _r = int(_SM * OA.OrbitalArchView.RAD[_k] * 0.8)
         _pix = 0
@@ -863,6 +866,59 @@ def main():
         _ringM[_name] = round(_hit / max(1, _tot), 2)
     chk("M5", "地球卫星环在深底上看得见 (看图报: 太暗几乎看不见 ⇒ α=170/宽1.4)", _ringM,
         min(_ringM.values()) >= 0.25, "环上 ≥25% 采样点见线")
+
+    # ═══ N 第三轮看图 (deleg_e7ca3752) 收口: 引力井配色 · 共线去重叠 · 地月线 · 引线 ═══
+    _srcN = io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
+    _wellk = [s2 for s2 in ("QColor(91, 107, 125,", "QColor(210, 153, 34,") if s2 in _srcN]
+    _d_well = abs(91 - 210) + abs(107 - 153) + abs(125 - 34)
+    chk("N1", "引力井椭圆与**金线辉光**颜色可分 (看图报: 同色差2 ⇒ 1× 数不出圈数) + 只留 3 圈",
+        {"井色": _wellk, "与金线色距": _d_well, "圈数": _srcN.count("rr = 0.12 + 0.09 * i") and 3},
+        _wellk == ["QColor(91, 107, 125,"] and _d_well >= 60, "井=冷灰蓝(91,107,125), 与金线色距 ≥60")
+
+    _vN = OA.OrbitalArchView(root=_FREEZE)
+    _vN.resize(682, 1391)
+    _vN._phase = 0.0
+    _pN = _vN.positions()
+    _liveN = [e for e in _vN._edges if e["body_body"] and _vN._signal_ok(e, _vN.data.body)]
+    # 量**实际画出来的几何** (含共线法向平移) —— 只读 positions() 会量到平移之前
+    _sgN = [(n, x1, y1, x2, y2) for (n, x1, y1, x2, y2) in _vN.drawn_segments()]
+    _imin, _ipair = 999.0, None
+    for _i in range(len(_sgN)):
+        for _j in range(_i + 1, len(_sgN)):
+            _A, _B = _sgN[_i], _sgN[_j]
+            _angN = abs(math.atan2(_A[4] - _A[2], _A[3] - _A[1]) - math.atan2(_B[4] - _B[2], _B[3] - _B[1])) % math.pi
+            if min(_angN, math.pi - _angN) > 0.17:      # 不共线 ⇒ 不算
+                continue
+            _dxN, _dyN = _A[3] - _A[1], _A[4] - _A[2]
+            _nnN = math.hypot(_dxN, _dyN) or 1.0
+            _dd = min(abs((_B[1] - _A[1]) * (-_dyN / _nnN) + (_B[2] - _A[2]) * (_dxN / _nnN)),
+                      abs((_B[3] - _A[1]) * (-_dyN / _nnN) + (_B[4] - _A[2]) * (_dxN / _nnN)))
+            if _dd < _imin:
+                _imin, _ipair = _dd, (_A[0], _B[0])
+    chk("N2", "近共线的两条真连线**不再糊成一条** (看图报: 太阳→水星青线被太阳→木星金线吞掉)",
+        {"共线对最小带距px": round(_imin, 1) if _ipair else "无共线对", "最近对": _ipair or "无"},
+        (_imin >= 3.0) or (_ipair is None), "共线线对之间 ≥3px 带距")
+
+    _lzN = {}
+    for _k2 in ("earth", "moon"):
+        _x2, _y2 = int(_pN[_k2][0]), int(_pN[_k2][1])
+        _r2 = int(_SM * OA.OrbitalArchView.RAD[_k2] * 0.8)
+        _c2 = 0
+        for _dy3 in range(-_r2, _r2 + 1):
+            for _dx3 in range(-_r2, _r2 + 1):
+                if _dx3 * _dx3 + _dy3 * _dy3 > _r2 * _r2:
+                    continue
+                if float(np.abs(_AM[_y2 + _dy3, _x2 + _dx3] - np.array([120, 132, 150])).sum()) < 45:
+                    _c2 += 1
+        _lzN[_k2] = _c2
+    chk("N3", "**地月细连线**不压在球面上 (看图报: 1px 线穿地球/月球球面 ⇒ 已挪到球体之前 + 两端缩到球外)",
+        _lzN, sum(_lzN.values()) <= 4, "地球/月球球心区无该线色像素")
+
+    _vN._leaders = []                      # 判据要先触发布局, 再读引线账 (顺序反了会读到空的)
+    _lnN = [t2 for t2 in _vN.label_texts()]
+    _ldN = len(_vN._leaders)
+    chk("N4", "离自己的球太远(>45px)的文字块**拉引线说明归属** (看图报: 月球块孤零零挂左下角认不出)",
+        {"引线条数": _ldN, "块数": len(_lnN)}, _ldN >= 1, "确有块被拉引线")
 
     print("\n═══ 判据 %d 条: PASS %d · FAIL %d ═══" % (PASS + FAIL, PASS, FAIL))
     out = os.path.join(ROOT, "zmax_data", "eval", "orbital_arch_verify.json")
