@@ -318,6 +318,34 @@ def main():
     _ctxt = _cnr.text() if _cnr else ""
     _need = ["总合力", "行合力", "主 "]
     _cf = _cnr.font() if _cnr else None
+    # ⑮ 没在实跑 ⇒ 表**定格** (老倪 2026-10-16: 「现在什么都没有运行, 为什么合力还在变化」)
+    #    为什么必须测: 3D 场景面板自己会回放录制的 episode, trace_live 一直在走 ⇒ 不判实跑就会把"回放"当"实时"
+    import time as _tm
+    _w2 = GT.GravityTableWidget(); _w2.resize(int(W), 1400); _w2.show(); _app.processEvents()
+    GT._RUN_OVERRIDE = False
+    try:
+        _w2.refresh(); _t0 = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()  # 右下角总合力
+        _tm.sleep(1.2)
+        _w2.refresh()
+        _t1 = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
+        _head = _w2.lbl_head.text()
+    finally:
+        GT._RUN_OVERRIDE = None
+    ck("⑮ 没在实跑 ⇒ 表定格 (数字不跟 3D 回放走), 并写明「未运行」",
+       _t0 == _t1 and _head.startswith("⏸") and "定格" in _w2.lbl_foot.text(),
+       "两次 refresh 后右下角总合力 %r → %r (应不变); 页头 %r" % (_t0[:34], _t1[:34], _head[:40]))
+    # ⑮b 在跑时仍是实时 (两分支都测, 防"冻死")
+    GT._RUN_OVERRIDE = True
+    try:
+        _w2.refresh(); _a = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
+        _tm.sleep(1.2)
+        _w2.refresh(); _b = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
+        _head2 = _w2.lbl_head.text()
+    finally:
+        GT._RUN_OVERRIDE = None
+    ck("⑮b 在跑时表跟着走 (定格不是冻死)", _a != _b and not _head2.startswith("⏸"),
+       "在跑分支: 右下角总合力 %r → %r (应变化)" % (_a[:34], _b[:34]))
+    _w2.close()
     ck("⑭b 右下角字号 ≥ 表体且加粗 (老倪: 「右下角的字体太小了」)",
        _cf is not None and _cf.pixelSize() >= _w._fmt[1] and _cf.bold(),
        "右下角 %dpx 粗体 vs 表体 %dpx" % (_cf.pixelSize(), _w._fmt[1]) if _cf else "没有右下角格")

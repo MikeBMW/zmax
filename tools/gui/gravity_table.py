@@ -63,6 +63,30 @@ SRC_LIVE = {
 
 _NPZ_CACHE = {"key": None, "z": None}
 
+# 🚦 实跑判定: 只有**真在跑工程**时表才跟实时 (老倪 2026-10-16: 「现在什么都没有运行, 为什么合力还在变化」)
+#    为什么需要: 3D 场景面板自己会**回放**录制的 episode, trace_live.json 一直在走 ⇒ 照它刷表面上看"实时",
+#    其实没有实跑。判据 = 引擎认知块 (engine_latest/chunk_latest) 是否在写 (实跑时它 ≤ 1s 一写)。
+_RUN_FRESH_S = 30.0
+_RUN_OVERRIDE = None          # None=自动判定 (判据脚本用它跑"在跑/没跑"两分支)
+
+
+def run_state(now=None):
+    """(是否实跑, 判据说明)。实跑 = 引擎认知块新鲜 (engine_latest.json mtime ≤ 30s)。"""
+    if _RUN_OVERRIDE is not None:
+        return bool(_RUN_OVERRIDE), "override"
+    now = now or time.time()
+    ages = []
+    for nm in ("engine_latest.json", "chunk_latest.json"):
+        q = _p("zmax_data", "ss_live", nm)
+        try:
+            ages.append(now - os.path.getmtime(q))
+        except Exception:                                                    # noqa: BLE001
+            pass
+    if not ages:
+        return False, "引擎认知块缺失"
+    a = min(ages)
+    return (a <= _RUN_FRESH_S), ("引擎认知块 %s 前写过" % ("%.1fs" % a if a <= 60 else "%.0f 分钟" % (a / 60.0)))
+
 
 def _npz_cached(path):
     """按 (路径, mtime) 缓存 episode npz —— 每 0.7s 重解 851 帧没必要。"""
@@ -200,6 +224,8 @@ class GravityField(object):
 
     def __init__(self, src=None):
         self.src = src or SRC
+        self.running, self.run_note = True, ""      # 先给默认, reload() 末尾按引擎认知块新鲜度定
+        self.frozen_at = None
         self.reload()
 
     # ---- 读真源 (全部只读; 任何一步失败都留痕, 不抛) ----
@@ -232,6 +258,7 @@ class GravityField(object):
         self.ff_steps = self.chunk.get("ff") or []
         self.exec_axis = self._exec_axis()          # 每个阶段的真实运动方向 (真源 u_exec_vec)
         self.rows = self._build_rows()
+        self._mark_run()                            # 🚦 实跑判定 (没在跑 ⇒ 表定格, 不跟 3D 回放走)
 
     # ---- 🛰 活源: trace_live (当前帧) + episode npz (逐帧四路动作) ----
     def _load_live(self):
@@ -482,6 +509,12 @@ class GravityField(object):
         """这一项在元任务里归哪一层管 (状态空间口径; 执行项归 L2)。"""
         return "L2"
 
+    def _mark_run(self):
+        """末尾统一实跑判定 (reload 无论走哪条分支都调到)。没在跑 ⇒ 记定格时刻。"""
+        self.running, self.run_note = run_state()
+        self.frozen_at = None if self.running else time.strftime("%H:%M:%S")
+        return self.running
+
     def _main_layer(self, s, cells):
         """⚡ 主力 (老倪口径, 2026-10-16 纠正):
            **每一时刻只有一个主力** = 正在跑的那一项的 L2 执行收口 (例: 插拔时刻 插拔技能的 L2 是主力)。
@@ -537,6 +570,9 @@ class GravityField(object):
     def live_line(self):
         """🛰 活源一行: 当前帧/阶段/时刻 —— 老倪要能看出表是跟着工程在跑的。"""
         lv = getattr(self, "live", None) or {}
+        if getattr(self, "running", True) is False:
+            return ("⏸ 未运行 ⇒ 表**定格** (表内数字停在 %s, 不跟 3D 回放走 · 判据: %s)"
+                    % (self.frozen_at or "上刻", self.run_note or ""))
         if not lv.get("vecs"):
             return "🛰 活帧: 拿不到 (trace_live/episode npz 缺失 ⇒ 表退回标称口径)"
         return ("🛰 活帧 %s/%s · 阶段 %s · t=%.3fs · 参考速度 u_ref=%.4f · 每 0.7s 重读"
@@ -697,11 +733,22 @@ class GravityTableWidget(QWidget):
 
     def refresh(self):
         try:
-            self.field = GravityField()
+            _new = GravityField()
         except Exception as e:                                               # noqa: BLE001
             self.lbl_head.setText("万有引力: 真源读不到 (%s)" % e)
             return
-        f = self.field
+        # ⏸ 没在实跑 ⇒ **数据定格** (老倪: 「现在什么都没有运行, 为什么合力还在变化」)
+        #   为什么: 3D 场景面板自己会**回放**录制的 episode, trace_live 一直在走; 照它刷会把"回放"当成"实时"。
+        #   注意: 只冻"数据", 不冻界面 —— 号码字体/列宽仍随宽度重排 (否则拖窄再拖宽会留错字号)。
+        self._frozen = getattr(self, "field", None) is not None and not _new.running
+        if self._frozen:
+            f = self.field
+            f.running, f.run_note = False, _new.run_note
+            if f.frozen_at is None:
+                f.frozen_at = time.strftime("%H:%M:%S")
+        else:
+            self.field = _new
+            f = _new
         # ① 按当前宽度定格式 (一行四个数优先; 不够降小数位; 再不够 2×2) + 同步字号/行高
         self._fmt = self._pick_fmt()
         _dec, _px, _pair = self._fmt
@@ -711,7 +758,7 @@ class GravityTableWidget(QWidget):
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
         self.t.verticalHeader().setDefaultSectionSize(42 if _pair else 40)   # 合力列第二行写 Δ主 xx°
         self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
-        self.lbl_head.setText("🌍 " + f.header_line())
+        self.lbl_head.setText(("⏸ " if getattr(self, "_frozen", False) else "🌍 ") + f.header_line())
 
         rows = f.rows
         self.t.setRowCount(len(rows) + 1)                  # + 最下面一行 = 各列合力
@@ -818,9 +865,11 @@ class GravityTableWidget(QWidget):
         self.lbl_foot.setText(
             _tot_line + "\n" + _eq_line + "\n" + f.live_line() + "\n"
             + (f.age_line() + ("  ← 这几项不是本刻的, 上面格子的力是它们最后一拍的值\n" if stale else "\n"))
-            + "四元数 = 该层这一拍对该项的力: q=(cosθ/2, sinθ/2·û), θ=π·min(1,|F|/u_ref), u_ref=%.3f (本拍参考速度, 真源) · "
-              "★=主力 (正在跑的项 ⇒ L2 执行收口; 未在跑的项 ⇒ 影响力最大层) · 其余格子是赋能力 · "
-              "合力 = 主力 + Σ赋能力 (各层力**矢量相加**: F_i=|F_i|·û_i), 一致度 |ΣF|/Σ|F|。真源: meta_tasks/skill_latest/chunk_latest/engine_latest/ss_traj_last (只读) · 每 0.7s 重读一次"
+            + "力四元数 = (w, x, y, z) = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref) · u_ref=%.3f (满速基准, 真源) · "
+              "★=**本刻唯一主力** (正在跑的那一项 ⇒ 它的 L2 执行收口格) · 其余格都是赋能力 · "
+              "合力 = 主力 + Σ赋能力: 四个数**逐位相加** (行=本行四层相加, 右下角=全表所有格子相加) · 一致度 |ΣF|/Σ|F| · "
+              "L2/L3/L4 = 该帧 动作调制器/安全边界/前馈加速器 m/s (3D 面板同一帧快照), L5 = 规划方向 × |前馈速度| · "
+              "只读真源: trace_live/meta_tasks/skill_latest/engine_latest (每 0.7s 重读)"
             % f.u_ref)
 
     def refresh_if_visible(self):
