@@ -32,7 +32,7 @@ import math
 import os
 import time
 
-from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLabel,
+from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLabel, QSizePolicy,
                              QHeaderView)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
@@ -677,7 +677,12 @@ class GravityTableWidget(QWidget):
         from PyQt5.QtWidgets import QAbstractItemView as _AIV
         self.t.setSelectionMode(_AIV.NoSelection)
         self.t.setEditTriggers(_AIV.NoEditTriggers)
-        lay.addWidget(self.t, 1)
+        # 🚫 2026-10-16 老倪: 「右边不要有专门针对万有引力表格的拖动调, 直接显示完全就好了」
+        #   ⇒ 表不许有**自己的**滚动条/拖动条: 整块按内容高度显示 (装不下由外层页面滚, 不在这里给一条)
+        self.t.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.t.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.t.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        lay.addWidget(self.t, 0)
 
         self.lbl_foot = QLabel("")
         self.lbl_foot.setWordWrap(True)
@@ -839,6 +844,12 @@ class GravityTableWidget(QWidget):
                     break
             except Exception:                                                    # noqa: BLE001
                 break
+        # 表高 = 表头 + 全部行 + 边框 ⇒ 一次显示完全, 不出自己的滚动条
+        try:
+            _hh = self.t.horizontalHeader().height() or 26
+            self.t.setFixedHeight(_hh + sum(self.t.rowHeight(_r) for _r in range(self.t.rowCount())) + 4)
+        except Exception:                                                        # noqa: BLE001
+            pass
         fo = _big or QFont("Consolas")
         if _big is None:
             fo.setPixelSize(self._fmt[1])

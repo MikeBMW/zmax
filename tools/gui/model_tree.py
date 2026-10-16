@@ -1131,28 +1131,16 @@ class MasterParamMView(QWidget):
             _lb = QLabel("🌍 万有引力: 表建不起来 (%s)" % _e_gr)
             _lb.setStyleSheet("color:#f85149;font-size:11px;")
             self.tabs.addTab(_lb, "🌍 万有引力")
-        # 🌍 2026-10-16 老倪: 「上下也要可以用鼠标调整大小」⇒ 上半(太阳系/四面板)与下半(万有引力表)之间
-        #   放一条 7px 的可拖分隔条 (鼠标放上去变蓝); 拖过的比例落盘, 下次开机照旧。原来用 stretch 1:2 是死的。
-        self.split_m = QSplitter(Qt.Vertical)
-        self.split_m.setChildrenCollapsible(False)
-        self.split_m.setHandleWidth(10)          # 抓手加宽 + 上下描边 ⇒ 深色底也看得见 (老倪: 要有条能抓的)
-        self.split_m.setStyleSheet("QSplitter::handle{background:#30363d;"
-                                  "border-top:1px solid #484f58;border-bottom:1px solid #484f58;}"
-                                  "QSplitter::handle:hover{background:#1f6feb;}")
-        self.split_m.addWidget(self.viz_stack)
-        self.split_m.addWidget(self.tabs)
-        for _hi in (1, 2):                       # 抓手给提示: 鼠标放上去就知道这儿能拖
-            try:
-                self.split_m.handle(_hi).setToolTip("上下拖动: 调整「太阳系视图 / 万有引力表」的高度 (拖完自动记住)")
-            except Exception:                                                # noqa: BLE001
-                pass
-        self.split_m.setStretchFactor(0, 1)
-        self.split_m.setStretchFactor(1, 2)
-        _top = ui_state_get(MPARAM_SPLIT_KEY, 0)
-        self.split_m.setSizes([(_top if _top > 60 else 380), 100000])   # 只钉上半高度, 其余全给下半
-        self.split_m.splitterMoved.connect(
-            lambda *_: ui_state_put(MPARAM_SPLIT_KEY, self.split_m.sizes()[0]))
-        lay.addWidget(self.split_m, 1)
+        # 🌍 2026-10-16 老倪(改口径): 「右下角万有引力表, 右边不要有专门针对它的拖动调, 直接显示完全就好了」
+        #   ⇒ 撤掉原来那条"上下可拖的分隔条"(split_m): 太阳系拿走剩余空间, 表按**内容高度整块**显示,
+        #     表自己也不带滚动条 (见 gravity_table.py) ⇒ 一眼看全, 不用拖、不用滚。
+        _mv = QVBoxLayout()
+        _mv.setContentsMargins(0, 0, 0, 0)
+        _mv.setSpacing(6)
+        _mv.addWidget(self.viz_stack, 1)         # 上半: 太阳系/多面板 — 剩余高度全给它
+        _mv.addWidget(self.tabs, 0)              # 下半: 万有引力表 — 按内容整块显示, 不拉伸
+        lay.addLayout(_mv, 1)
+
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)

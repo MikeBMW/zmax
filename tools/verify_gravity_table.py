@@ -182,27 +182,32 @@ def main():
     R.append((len(R) + 1, "· 本拍是否实时 (信息, 不判失败)", True,
               "实时" if live else "非本刻: 临界真源最老 %.0fs ⇒ 表上 L3/L4 的力是引擎最后一拍的值 (判据只要求如实标注)" % max(crit or [0])))
 
-    # ⑪ 上下可用鼠标拖 + 拖过的比例落盘 (老倪 2026-10-16: 「上下也要可以用鼠标调整大小」)
-    from PyQt5.QtCore import QSettings
-    seg2 = src[max(0, src.find("self.split_m = QSplitter(Qt.Vertical)") - 200):
-               src.find("self.split_m = QSplitter(Qt.Vertical)") + 1400] \
-        if src.find("self.split_m = QSplitter(Qt.Vertical)") > 0 else ""
-    has_split = ("self.split_m = QSplitter(Qt.Vertical)" in seg2
-                 and "setChildrenCollapsible(False)" in seg2
-                 and "self.split_m.addWidget(self.viz_stack)" in seg2
-                 and "self.split_m.addWidget(self.tabs)" in seg2)
-    ck("⑪ 太阳系/万有引力表之间是可拖分隔条", has_split,
-       "QSplitter(Qt.Vertical) + 两半都 addWidget + 不许拖没 (childrenCollapsible False)")
-    ck("⑪b 分隔条看得见 (抓手宽度/描边/悬停高亮)", "setHandleWidth(10)" in seg2 and "QSplitter::handle:hover" in seg2
-       and "handle(_hi).setToolTip" in seg2,
-       "10px 抓手 + 上下描边 + 悬停变蓝 + 抓手带提示")
-    # 拖过的比例落盘 + 回读 (真写 QSettings 一次, 再读回来)
+    # ⑪🆕 2026-10-16 老倪(改口径): 「右下角万有引力表, 右边不要有专门针对它的拖动调, 直接显示完全就好了」
+    #     ⇒ 表不许带自己的滚动条/拖动条; 高度 = 内容 ⇒ 一次显示完全 (外层页面装不下才滚, 不在这里给一条)
+    _mt = ""
+    try:
+        _mt = open("tools/gui/model_tree.py", encoding="utf-8").read()
+    except Exception:                                                            # noqa: BLE001
+        pass
+    _mpage = _mt[_mt.index("🌍 2026-10-16 老倪(改口径)"): _mt.index("self.lbl_cmd = QLabel")] \
+        if "🌍 2026-10-16 老倪(改口径)" in _mt and "self.lbl_cmd = QLabel" in _mt else ""
+    _gsrc = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "gravity_table.py"),
+                 encoding="utf-8").read()
+    ck("⑪ 万有引力表**没有**自己专用的拖动条/滚动条",
+       ("setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)" in _gsrc
+        and "setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)" in _gsrc
+        and "self.split_m = QSplitter(Qt.Vertical)" not in _mpage),
+       "表禁自带滚动条 (纵横都 Off) + M 页已撤掉专给表的上下拖动条")
+    # ⑪c 太阳系视图的选择仍要落盘/可回读 (老倪的界面态不能因为撤掉分隔条而丢)
     import model_tree as MT                                                      # noqa: E402
-    MT.ui_state_put(MT.MPARAM_SPLIT_KEY, 421)
-    back = MT.ui_state_get(MT.MPARAM_SPLIT_KEY, -1)
-    QSettings(MT.UI_CFG_ORG, MT.UI_CFG_APP).remove(MT.MPARAM_SPLIT_KEY)
-    ck("⑪c 拖过的上下比例落盘可回读", back == 421 and "splitterMoved.connect" in seg2 and "MPARAM_SPLIT_KEY" in seg2,
-       "%s 写 421 → 读回 %s (读后已清干净, 不污染老倪的界面态)" % (MT.MPARAM_SPLIT_KEY, back))
+    _vk = getattr(MT, "MPARAM_VIZ_KEY", None)
+    if _vk:
+        _old = MT.ui_state_get(_vk, -1)
+        MT.ui_state_put(_vk, 3 if _old != 3 else 2)
+        _back = MT.ui_state_get(_vk, -1)
+        MT.ui_state_put(_vk, _old)
+        ck("⑪c 太阳系视图选择落盘可回读 (撤分隔条不影响界面态)", _back == (3 if _old != 3 else 2),
+           "%s 写/读回 %s (已还原 %s)" % (_vk, _back, _old))
     fsz = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "gravity_table.py"), encoding="utf-8").read()
     ck("⑪d 字号放大 + 宽度自适应 (老倪: 字太小看不到)", "font-size:14px" in fsz and "_pick_fmt" in fsz and "setMinimumWidth" in fsz,
        "表体默认 14px (窄了自适应降档) + 表头 13px/页脚 12px; _pick_fmt 按宽度选 3/2/1 位小数")
@@ -346,6 +351,11 @@ def main():
     ck("⑮b 在跑时表跟着走 (定格不是冻死)", _a != _b and not _head2.startswith("⏸"),
        "在跑分支: 右下角总合力 %r → %r (应变化)" % (_a[:34], _b[:34]))
     _w2.close()
+    _h_ok = _w.t.verticalScrollBarPolicy() == _Qt2.ScrollBarAlwaysOff \
+        and _w.t.horizontalScrollBarPolicy() == _Qt2.ScrollBarAlwaysOff
+    ck("⑪b 表高度 = 内容 (行全展开), 并排给足宽度", _h_ok,
+       "表高 %dpx = 表头+%d 行 (自带滚动条: 竖 %s / 横 %s)"
+       % (_w.t.height(), _w.t.rowCount(), _w.t.verticalScrollBarPolicy(), _w.t.horizontalScrollBarPolicy()))
     ck("⑭b 右下角字号 ≥ 表体且加粗 (老倪: 「右下角的字体太小了」)",
        _cf is not None and _cf.pixelSize() >= _w._fmt[1] and _cf.bold(),
        "右下角 %dpx 粗体 vs 表体 %dpx" % (_cf.pixelSize(), _w._fmt[1]) if _cf else "没有右下角格")
