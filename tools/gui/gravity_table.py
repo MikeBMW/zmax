@@ -704,8 +704,10 @@ class GravityTableWidget(QWidget):
 
         self.lbl_foot = QLabel("")
         self.lbl_foot.setWordWrap(True)
+        self.lbl_foot.setMaximumHeight(46)      # 🔒 锁两行 (高度省给太阳系)
         self.lbl_foot.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_foot.setWordWrap(True)
+        self.lbl_foot.setMaximumHeight(46)      # 🔒 锁两行 (高度省给太阳系)
         self.lbl_foot.setStyleSheet("color:#7ee787;font-size:10px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;")
         lay.addWidget(self.lbl_foot)
@@ -780,7 +782,7 @@ class GravityTableWidget(QWidget):
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:%dpx;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
-        self.t.verticalHeader().setDefaultSectionSize(24 if not _pair else 28)   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
+        self.t.verticalHeader().setDefaultSectionSize(22 if not _pair else 26)   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
         self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
         try:
             from PyQt5.QtCore import QTimer as _QT
@@ -897,7 +899,7 @@ class GravityTableWidget(QWidget):
                        % (" ".join("%+.3f" % x for x in _qtu), _qtss, _qtn) + "\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 84)    # 右下角: 5 行 × ~13px (视口只 460px, 高度省着用)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 78)    # 右下角: 5 行 × ~13px (页高有限, 省着用; 见 M 页高度账)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"
@@ -913,11 +915,11 @@ class GravityTableWidget(QWidget):
         #   行1 本刻系统合力 · 行2 主力/归一/平方和 · 行3 活帧+帧龄; 长口径全在 tooltip
         self.lbl_foot.setText(
             "★★ 本刻系统合力 (在跑项 %s = 主力 + Σ赋能力) %s · ‖q‖=%.2f ★★\n"
-            "主力 %s·%s · 残差 %.0e · 归一 q̂=[%s] 平方和=%.6f (全表32格和 ‖q‖=%.1f)\n"
-            "%s · %s"
+            "主力 %s·%s · 归一 q̂=[%s] 平方和=%.6f · 全表32格和 ‖q‖=%.1f · %s%s"
             % ((_cur[0]["stage"] if _cur else "无"), _fmt_q(_curq), _curn,
-               dn_s or "?", dn_k or "?", _res_max, " ".join("%+.2f" % x for x in _qu), _qss, _qn,
-               f.live_line(), f.age_line() + (" ⚠️非本刻" if stale else "")))
+               dn_s or "?", dn_k or "?", " ".join("%+.2f" % x for x in _qu), _qss, _qn,
+               f.live_line().replace("🛰 ", "").replace("⏸ ", ""),
+               (" ⚠️非本刻" if stale else "")))
         self.lbl_foot.setToolTip(
             "口径: 格子四个数 = 力四元数 (w=|F|/u_ref, xyz=方向分量/u_ref, **不归一** ⇒ 能逐位相加):\n"
             "  合力 = 主力 + Σ赋能力 —— 行合力 = 本行四层逐位相加; 右下角 = 全表所有格子逐位相加\n"

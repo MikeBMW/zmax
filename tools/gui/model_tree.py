@@ -996,9 +996,11 @@ class MasterParamMView(QWidget):
         lay.setSpacing(6)
 
         self.lbl_hd = QLabel("🧮 主参数 M  (测量 · 标定 · 诊断 · 配置)")
+        self.lbl_hd.setVisible(False)      # 🗜 标题与上方标签条重复 ⇒ 收起来, 高度让给太阳系/表
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
         self.lbl_node = QLabel("…")
+        self.lbl_node.setVisible(False)     # 🗜 与表格页头重复 ⇒ 收起 (高度让给太阳系)
         self.lbl_node.setWordWrap(True)
         self.lbl_node.setMaximumHeight(20)      # 🗜 让高度给太阳系 + 表 (老倪: 两个都要更大)
         self.lbl_node.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;"
@@ -1009,7 +1011,7 @@ class MasterParamMView(QWidget):
         mbar = QFrame()
         mbar.setStyleSheet("QFrame{background:#161b22;border:1px solid #30363d;border-radius:6px;}")
         ml = QHBoxLayout(mbar)
-        ml.setContentsMargins(8, 6, 8, 6)
+        ml.setContentsMargins(8, 3, 8, 3)
         ml.setSpacing(8)
         ml.addWidget(QLabel("主参数 M"))
         self.sp_M = QDoubleSpinBox()
@@ -1067,7 +1069,7 @@ class MasterParamMView(QWidget):
             self.viz.setWordWrap(True)
             self.viz.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
         try:
-            self.viz.setMinimumHeight(470)
+            self.viz.setMinimumHeight(150)      # 🐛 原 470 ⇒ 布局被"最小高"顶死, 太阳系被压成一条 (2026-10-16)
         except Exception:
             pass
         # ── 🪐 球心引力架构 (老倪 2026-10-16: 「在右侧侧面栏, 流形引擎是太阳, 前馈加速器是地球,
@@ -1083,13 +1085,13 @@ class MasterParamMView(QWidget):
                     sys.path.insert(0, _gdir2)
                 from orbital_arch import OrbitalArchView
             self.orbital = OrbitalArchView(root=self._root)
-            self.orbital.setMinimumHeight(470)
+            self.orbital.setMinimumHeight(150)  # 🐛 同上: 470 的最小高让这块永远装不下 ⇒ 渲染被压扁
         except Exception as _e2:
             self.orbital = QLabel("🪐 球心引力架构视图不可用: %s: %s" % (type(_e2).__name__, _e2))
             self.orbital.setWordWrap(True)
             self.orbital.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
         self.viz_stack = QStackedWidget()
-        self.viz_stack.setMinimumHeight(100)     # 页面不滚 ⇒ 高度差由太阳系这块吸收 (表永远整块可见)
+        self.viz_stack.setMinimumHeight(150)     # 🐛 原来 100/470 互相打架 ⇒ 统一 150 (页面不滚, 高度差由这块吸收; 表永远整块可见)
         self.viz_stack.addWidget(self.viz)          # 0 = 🧊 几何四面板 (默认, 不改变既有观感)
         self.viz_stack.addWidget(self.orbital)      # 1 = 🪐 球心引力架构
         self.cmb_viz_view = QComboBox()
@@ -1167,7 +1169,7 @@ class MasterParamMView(QWidget):
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
-        self.lbl_cmd.setMaximumHeight(46)       # 🗜 命令回显留两行够用
+        self.lbl_cmd.setMaximumHeight(24)       # 🗜 命令回显留一行 (高度让给太阳系/表)
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#7ee787;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
@@ -1207,7 +1209,16 @@ class MasterParamMView(QWidget):
                 need = max(int(_g.height()), int(_g.sizeHint().height()))
             # 🪐 2026-10-16 老倪: 「太阳系的窗口又太小了, 增大高度」—— 表已搬出滚动区(钉在底部),
             #   所以太阳系**不必再给表让高度**: 直接铺满滚动区 (只给上面那几行留 ~60px)。
-            self.viz_stack.setFixedHeight(300)      # 🪐 固定 300px: 太阳系给足高度 (老倪: 增大高度)
+            # 🪐 自动配平 (老倪 2026-10-16: 「太阳系和万有引力**都**显示不全, 增加高度」):
+            #   太阳系吃掉"表 + 上面几行"之外的全部高度 ⇒ 两窗都整块可见, 整页不用滚 (≥160px 保底)。
+            try:
+                _inner = self._scroll.widget()
+                _ih = int(_inner.height()) if _inner is not None else 0
+                _others = max(0, _ih - int(self.viz_stack.height()))
+                _new = max(196, min(int(vh) - _others, 620))
+            except Exception:                                                    # noqa: BLE001
+                _new = max(196, vh - 380)
+            self.viz_stack.setFixedHeight(_new)
             try:                      # 体检用: 把这一页的高度账记下来 (诊断"显示不全/一直在滚")
                 import json as _json, tempfile as _tf
                 _g2 = getattr(self, "gravity", None)
@@ -1220,6 +1231,15 @@ class MasterParamMView(QWidget):
                             "tab_h": int(getattr(self, "tabs").height()),
                             "page_h": int(self.height()),
                             "scroll_max": int(self._scroll.verticalScrollBar().maximum()),
+                            "rows": [(type(w).__name__, int(w.height()), (w.toolTip() or "")[:18])
+                                     for w in (self._scroll.widget().findChildren(object) if False else [])
+                                     if False],
+                            "inner": [("%s|%s|%s" % (type(w).__name__, str(getattr(w, "text", "") or "")[:52],
+                                                     str(getattr(w, "minimumHeight", lambda: "?")())),
+                                       int(w.height()),
+                                       int(w.minimumSizeHint().height()) if hasattr(w, "minimumSizeHint") else -1)
+                                      for w in (self._scroll.widget().children() if self._scroll.widget() else [])
+                                      if hasattr(w, "height")],
                             "chain": [(type(w).__name__, int(w.height()), (w.objectName() or ""))
                                       for w in ([self] + self._parents())]},
                            open("/tmp/zmax_mpage_fit.json", "w"))
@@ -1637,7 +1657,7 @@ class CalibTruthView(QWidget):
         lay.addWidget(self.tbl, 1)
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
-        self.lbl_cmd.setMaximumHeight(46)       # 🗜 命令回显留两行够用
+        self.lbl_cmd.setMaximumHeight(24)       # 🗜 命令回显留一行 (高度让给太阳系/表)
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#ffa657;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")

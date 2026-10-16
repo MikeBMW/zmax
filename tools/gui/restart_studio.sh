@@ -34,6 +34,14 @@ for i in $(seq 1 40); do
     WIN=$(DISPLAY="${DISPLAY:-:0}" wmctrl -l 2>/dev/null | grep -c 'XSpace ZMAX')
     if [ -n "$PID" ] && [ "$WIN" -gt 0 ]; then
         echo "✅ 新实例 pid=$PID · 'XSpace ZMAX' 窗口 $WIN 个 (第 $((i * 3))s)" | tee -a "$LOG"
+        # 🪟 2026-10-16 老倪: 「太阳系和万有引力都显示不全」—— 根因之一是窗口被存成了小尺寸
+        #   (1400×900 ⇒ M 页只有 ~509px)。 ⇒ 起来后**显式铺满屏幕**, 保证两窗有高度可用。
+        _wid=$(DISPLAY="${DISPLAY:-:0}" xdotool search --name 'XSpace ZMAX' 2>/dev/null | tail -1)
+        if [ -n "$_wid" ]; then
+            DISPLAY="${DISPLAY:-:0}" xdotool windowsize "$_wid" 1910 1060 2>/dev/null || true
+            DISPLAY="${DISPLAY:-:0}" xdotool windowmove "$_wid" 1925 20 2>/dev/null || true
+            echo "🪟 窗口已拉到 1910×1060 (M 页有高度了)" | tee -a "$LOG"
+        fi
         exit 0
     fi
     sleep 3
