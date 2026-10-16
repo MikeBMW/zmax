@@ -1965,6 +1965,22 @@
     "use_count": 1,
     "view_count": 1
   },
+  "qt-dash-line-and-pixel-judge": {
+    "archived_at": null,
+    "created_at": "2026-10-16T00:01:40.426107+00:00",
+    "created_by": "learn",
+    "first_seen_at": null,
+    "last_patched_at": null,
+    "last_reused_patch_generation": 0,
+    "last_used_at": null,
+    "last_viewed_at": null,
+    "patch_count": 0,
+    "patch_generation": 0,
+    "pinned": false,
+    "state": "active",
+    "use_count": 0,
+    "view_count": 0
+  },
   "qt-gl-rendering-pitfalls": {
     "archived_at": null,
     "created_at": "2026-09-07T13:23:41.428336+00:00",
