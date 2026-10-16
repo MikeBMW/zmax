@@ -98,8 +98,10 @@ def main():
         "条数 == 真源在职 SK 数 (>0)")
 
     # ═══ B 真连线 ═══
+    _bids_all = {x[1] for x in OA.BODIES}
+    _bb_keys = [(f, t) for f, t, _l in OA.KEY_EDGES if f in _bids_all and t in _bids_all]
     miss = [(f, t) for f, t, _l in OA.KEY_EDGES if (f, t) not in canvas_links]
-    chk("B1", "视图要画的 13 条连线在画布 links 真源里全都存在 (一条不缺)",
+    chk("B1", "视图要画的 **主体↔主体 5 条**连线在画布 links 真源里全都存在 (一条不缺; 体系外按老倪要求不再上图)",
         {"缺": miss, "真源连线总数": len(canvas_links)}, not miss, "缺 = []")
     twin = {"直连 VLM→DiT": ("ssvlm", "ssdec") in canvas_links,
             "经流形 VLM→接触流形": ("ssvlm", "ssmani_c") in canvas_links,
@@ -240,8 +242,8 @@ def main():
     _ex, _ey, _ = _pos["earth"]
     _scr = [math.hypot(x - _ex, y - _ey) for x, y, _z, _sk in _pos["_sat"]]
     _R = _pos["_R"]
-    chk("D4b", "屏幕上 (真渲染坐标) 卫星确实贴在地球旁: 屏距 ≈ 0.055R·投影 (不是散落在太阳系)",
-        {"屏距px": [round(x, 1) for x in _scr], "0.055R": round(0.055 * _R, 1),
+    chk("D4b", "屏幕上 (真渲染坐标) 卫星确实贴在地球旁: 屏距 ≈ SAT_R·投影 (不是散落在太阳系)",
+        {"屏距px": [round(x, 1) for x in _scr], "SAT_R·R": round(OA.OrbitalArchView.SAT_R * _R, 1),
          "最远卫星屏距 / 太阳半径px": round(max(_scr) / (0.052 * 2 * _R / 0.46 if _R else 1), 2)},
         max(_scr) < 0.16 * _R and min(_scr) > 0.01 * _R, "屏距在 0.01R~0.16R 之间 (贴着地球)")
 
@@ -412,19 +414,22 @@ def main():
     # 反向: 画布上所有"至少一端是主体"的连线, 都必须出现在视图里 (有相互作用就显示)
     _body_ids = {x[1] for x in OA.BODIES}
     _want = {(l.get("f"), l.get("t")) for l in data.links
-             if (l.get("f") in _body_ids or l.get("t") in _body_ids)}
+             if l.get("f") in _body_ids and l.get("t") in _body_ids}
     _got = {(e["f"], e["t"]) for e in ed}
-    chk("I1", "有相互作用就显示连线: 画布上所有「至少一端是主体的真连线」都画了 (无漏无造)",
-        {"视图线数": len(ed), "主体↔主体": len(_bb), "主体↔体系外": len(_ex2),
+    chk("I1", "只画主体↔主体真连线 (2026-10-16 老倪: 连线太多 ⇒ 体系外一条都不画) 且一条不漏一条不造",
+        {"视图线数": len(ed), "主体↔主体": len(_bb), "体系外(应为 0)": len(_ex2),
          "真源应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
-        _src_ok and _want == _got and len(ed) > 20, "真源===视图, 一条不漏一条不造")
+        _src_ok and _want == _got and len(_ex2) == 0 and len(ed) == len(_want), "真源===视图 (只有主体↔主体)")
     # I1b 像素级: 每条主体↔主体线在画面里**真的可见** (清单相等 ≠ 真画出来 —— 端点取不到会被静默跳过)
     _A1b = _arr(v3.grab().toImage())
     _rs1b = v3.label_rects()
     _p1b = v3.positions()
-    _cir = [(_p1b["_cx"], _p1b["_cy"], 0.052 * _p1b["_R"])]
+    _S1b = v3._geom()[2]
+    _cir = [(_p1b["_cx"], _p1b["_cy"], OA.OrbitalArchView.RAD["sun"] * _S1b)]
     for _k in ("mercury", "earth", "mars", "jupiter"):
-        _cir.append((_p1b[_k][0], _p1b[_k][1], OA.OrbitalArchView.RAD[_k] * _p1b["_R"]))
+        _cir.append((_p1b[_k][0], _p1b[_k][1], OA.OrbitalArchView.RAD[_k] * _S1b))
+    for _x3, _y3, _z3, _sk3 in _p1b["_sat"]:
+        _cir.append((_x3, _y3, OA.OrbitalArchView.RAD["sat"] * _S1b))
 
     def _visible(nid_a, nid_b, kind):
         def _pt(nid):
@@ -434,8 +439,14 @@ def main():
             return (t[0], t[1])
         ax, ay = _pt(nid_a)
         bx, by = _pt(nid_b)
-        col = {"condition": [0x39, 0xc5, 0xcf], "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
-               "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[kind]
+        # 2026-10-16: 线色按**信号种类** (geom/perf/drive), 不是按 label 归类 ⇒ 掩码要用 sig_kind
+        _k2 = None
+        for _e2 in v3._edges:
+            if _e2["f"] == nid_a and _e2["t"] == nid_b:
+                _k2 = _e2.get("sig_kind")
+        col = {"geom": [0x39, 0xc5, 0xcf], "condition": [0x39, 0xc5, 0xcf], "perf": [0xd2, 0x99, 0x22],
+               "semantic": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
+               "feedback": [0xa3, 0x71, 0xf7], "misc": [0x8b, 0x94, 0x9e]}[_k2 or kind]
         # 容差 320: 线压在金色引力井环上/浅角度抗锯齿时, 芯色会被混色 (掩码太紧会误判"线没了")
         mk = np.abs(_A1b - np.array(col)).sum(axis=2) < 320
         dx, dy = bx - ax, by - ay
@@ -465,10 +476,10 @@ def main():
         _vis["%s→%s" % (_e["f"], _e["t"])] = [int(_s2), int(_u)]
     _ratios = [(s / u) for s, u in _vis.values() if u]
     plot = (all(u >= 3 and s >= 1 for s, u in _vis.values())
-            and all((s / u) >= 0.5 for s, u in _vis.values() if u)
-            and (sum(_ratios) / max(1, len(_ratios))) >= 0.85)
-    chk("I1b", "像素级: 每条主体↔主体线在画面里**真的可见** (容差 320 抗混色; 文字块/球体遮挡处跳过)",
-        {"各线 命中/可用": _vis}, plot and len(_vis) == len(_bb), "每条线 ≥80% 命中 (端点取不到会被静默跳过 → 这条能抓)")
+            and all((s / u) >= 0.45 for s, u in _vis.values() if u)     # 虚线占空≈55% ⇒ 阈值 45%
+            and (sum(_ratios) / max(1, len(_ratios))) >= 0.60)
+    chk("I1b", "像素级: 每条主体↔主体虚线在画面里**真的可见** (虚线占空≈60% ⇒ 命中率阈 55%; 文字块/球体遮挡处跳过)",
+        {"各线 命中/可用": _vis}, plot and len(_vis) == len(_bb), "每条线 ≥45% 命中 (虚线占空≈55%; 端点取不到会被静默跳过 → 这条能抓)")
 
     # 线宽: 沿主体↔主体线取 7 个位置, 每处沿**法向**取剖面, 最长连续命中 ≈ 该处线宽。
     #   取中位数判定 (单点会被"线正好压在轨道虚线/光晕上"这类局部干扰打偏 —— 判据要稳, 不能时红时绿)。
@@ -506,7 +517,8 @@ def main():
                 for _v in _prof:
                     _run = _run + 1 if _v else 0
                     _best = max(_best, _run)
-                _runs.append(round(_best * 0.125, 3))
+                if _best > 0:                     # 2026-10-16: 线全改虚线 ⇒ 落在间隔里的剖面不计 (否则中位数被 0 拉低)
+                    _runs.append(round(_best * 0.125, 3))
             _mid = [round(_a[0] + _dx * 0.5, 1), round(_a[1] + _dy * 0.5, 1)]
     _med = float(np.median(_runs)) if _runs else 0.0
     chk("I2", "连线不细 (2026-10-16 看图: 2.2px 仍被判『丝线档』 ⇒ 加粗到 2.9px): 沿线 7 处法向剖面线宽中位数 ≥ 2.5px",
@@ -621,10 +633,9 @@ def main():
         {"球进底栏带": _in_band[:6], "底栏高": _padb}, not _in_band, "底栏干净")
     _tok = None
     for _t in v3._foot_lines(_Wk):
-        if "慢虚线" in _t:
-            for _cand in ("紫", "青", "金", "绿"):
-                if "慢虚线" + _cand in _t:
-                    _tok = _cand
+        for _cand in ("紫", "青", "金", "绿"):
+            if _cand + "=" in _t and ("虚线" in _t or "线义" in _t):
+                _tok = _tok or _cand
     _pal = {"紫": OA.VIOLET, "青": OA.CYAN, "金": OA.GOLD, "绿": OA.GREEN}
     _c = _pal.get(_tok)
     _ok_color = bool(_c is not None) and (
@@ -650,6 +661,137 @@ def main():
     chk("F2", "脚注含真源清单 + 帧龄 + 节点映射核对数 (可复核)",
         {"含真源": "真源:" in src, "含帧龄": "帧龄" in src, "含节点映射核对": "节点映射核对" in src},
         all(k in src for k in ("真源:", "帧龄", "节点映射核对")), "三项都在")
+
+    # ═══ L 本轮口径 (老倪 2026-10-16): 全虚线 · 颜色=信号 · 有才显示 · 轨道可见 · 卫星 SK01-08 ═══
+    _vL = OA.OrbitalArchView(root=_FREEZE)
+    _vL.resize(682, 1391)
+    _vL._phase = 0.0
+    _WL, _HL, _SL, _cxL, _cyL, _RL = _vL._geom()
+    _imgL = _vL.grab().toImage()
+    _aL = _arr(_imgL)
+    _bgL = np.array([OA.BG.red(), OA.BG.green(), OA.BG.blue()])
+    _pL = _vL.positions()
+    _rsL = _vL.label_rects()
+    _cirL = [(_pL["_cx"], _pL["_cy"], OA.OrbitalArchView.RAD["sun"] * _SL)]   # 球径 = S·RAD (不是 R·RAD!)
+    for _k in ("mercury", "earth", "mars", "jupiter"):
+        _cirL.append((_pL[_k][0], _pL[_k][1], OA.OrbitalArchView.RAD[_k] * _SL))
+    for _x2, _y2, _z2, _sk2 in _pL["_sat"]:
+        _cirL.append((_x2, _y2, OA.OrbitalArchView.RAD["sat"] * _SL))
+
+    def _ink_iso(x, y, col=None, tol=200):
+        if x < 0 or y < 0 or y >= _aIso.shape[0] or x >= _aIso.shape[1]:
+            return False
+        v2 = _aIso[int(y), int(x)]
+        if col is None:
+            return float(np.abs(v2 - np.array([OA.BG.red(), OA.BG.green(), OA.BG.blue()])).sum()) > 14
+        return float(np.abs(v2 - np.array(col)).sum()) < tol
+
+    def _ink(x, y, col=None, tol=200):
+        if x < 0 or y < 0 or y >= _aL.shape[0] or x >= _aL.shape[1]:
+            return False
+        v = _aL[int(y), int(x)]
+        if col is None:
+            return float(np.abs(v - _bgL).sum()) > 14
+        return float(np.abs(v - np.array(col)).sum()) < tol
+
+    # L1 全虚线: 沿线采样, 必须出现 ≥2 段"空档" (实线不可能有空档)
+    _e1L = [e for e in _vL.interactions() if e["f"] == "ss_mani_eng"][0]
+    # 只留这条线再抓图: 同向重叠的金线会把芯色盖掉 (水星/木星角度都为 0 时两条线共线),
+    # 用"隔离视图"量这条线自己的划/隔几何 —— 不靠混色猜。
+    _vIso = OA.OrbitalArchView(root=_FREEZE)
+    _vIso.resize(682, 1391)
+    _vIso._phase = 0.0
+    _vIso._edges = [_e1L]
+    _imgIso = _vIso.grab().toImage()
+    _aIso = _arr(_imgIso)
+    _pa, _pb = _vIso.positions()[OA.OrbitalArchView._key_of(_e1L["f"])], _vIso.positions()[OA.OrbitalArchView._key_of(_e1L["t"])]
+    _dxL, _dyL = _pb[0] - _pa[0], _pb[1] - _pa[1]
+    _colL = {"geom": [0x39, 0xc5, 0xcf], "perf": [0xd2, 0x99, 0x22], "drive": [0x3f, 0xb9, 0x50],
+             "feedback": [0xa3, 0x71, 0xf7]}.get(_e1L.get("sig_kind") or _e1L["kind"], [0x39, 0xc5, 0xcf])
+    _seq = []
+    for _f in [0.08 + 0.004 * _i for _i in range(210)]:
+        _qx, _qy = _pa[0] + _dxL * _f, _pa[1] + _dyL * _f
+        _qx, _qy = _pa[0] + _dxL * _f, _pa[1] + _dyL * _f
+        if any(r.adjusted(-3, -3, 3, 3).contains(QPointF(_qx, _qy)) for r in _rsL):
+            continue
+        if any(math.hypot(_qx - kx, _qy - ky) < kr + 2 for (kx, ky, kr) in _cirL):
+            continue
+        _seq.append(_ink_iso(_qx, _qy, _colL))
+    if os.environ.get("OA_DEBUG_L1"):
+        _cnt = {}
+        for _i2 in range(len(_seq)):
+            pass
+        for _f2 in [0.08 + 0.004 * _i for _i in range(210)]:
+            _xx, _yy = int(_pa[0] + _dxL * _f2), int(_pa[1] + _dyL * _f2)
+            _cc = tuple(int(z) for z in _aL[_yy, _xx])
+            _cnt[_cc] = _cnt.get(_cc, 0) + 1
+        print("   [dbg] top色", sorted(_cnt.items(), key=lambda kv: -kv[1])[:5], "| 采样", len(_seq))
+        print("   [dbg] pa=%s pb=%s len=%.1f col=%s duty_first10=%s" % (
+            [round(x, 1) for x in _pa[:2]], [round(x, 1) for x in _pb[:2]],
+            math.hypot(_dxL, _dyL), _colL,
+            [tuple(int(z) for z in _aL[int(_pa[1] + _dyL * (0.08 + 0.004 * i)), int(_pa[0] + _dxL * (0.08 + 0.004 * i))]) for i in range(0, 10, 3)]))
+    _gaps = _runs_hit = 0
+    _cur = 0
+    for _h in _seq:
+        if _h:
+            _runs_hit += 1
+            _cur = 0
+        else:
+            _cur += 1
+            if _cur == 2:
+                _gaps += 1
+    _duty = _runs_hit / max(1, len(_seq))
+    chk("L1", "全部连线是**虚线** (2026-10-16 老倪: 直线实线改成虚线): 沿线按线色采样出现 ≥2 段空档",
+        {"采样点": len(_seq), "线色占比": round(_duty, 3), "空档段数": _gaps, "线色": _e1L.get("sig_kind")},
+        _gaps >= 2 and 0.20 <= _duty <= 0.95, "虚线 (空档≥2) 且不是实线/不是全空")
+
+    # L2 颜色 = 信号种类 (几何青 · 性能金 · 动作绿), 且至少 2 种
+    _exp = {"geom": OA.CYAN, "condition": OA.CYAN, "perf": OA.GOLD, "semantic": OA.GOLD, "drive": OA.GREEN}
+    _cols = {}
+    for _e in _vL.interactions():
+        _t = _exp.get(_e.get("sig_kind") or _e["kind"])
+        if _t is not None:
+            _cols[_e.get("sig_kind") or _e["kind"]] = _t.name()
+    chk("L2", "线的颜色=信号种类 (青=几何条件 · 金=性能/集合 · 绿=动作/前馈 · 紫=反馈) 且 ≥2 种",
+        {"信号→色": _cols, "种数": len(set(_cols.values()))},
+        len(set(_cols.values())) >= 2 and all(OA.OrbitalArchView.SIG_OF.get((e["f"], e["t"]), (None,))[0] is not None
+                                              for e in _vL.interactions()),
+        "每条线都有信号归属 (SIG_OF), 颜色按信号")
+
+    # L3 门控: 信号没值 ⇒ 那条线不画 (有就显示, 没有就不显示)
+    _n_before = len(_vL.interactions())
+    _save = _vL.data.body["mercury"].get("progress")
+    _vL.data.body["mercury"]["progress"] = None
+    _n_after = len(_vL.interactions())
+    _gone = {(e["f"], e["t"]) for e in _vL._edges if not _vL._signal_ok(e, _vL.data.body)}
+    _vL.data.body["mercury"]["progress"] = _save
+    chk("L3", "「有就显示, 没有就不显示」: 撤掉信号值 ⇒ 依赖它的线**不画** (不是画假线)",
+        {"撤值前画出": _n_before, "撤值后画出": _n_after, "被撤下的线": sorted(_gone)},
+        _n_after < _n_before and _n_after == _n_before - len(_gone) and len(_gone) >= 2,
+        "几何条件信号缺失 ⇒ 2 条经接触流形的线消失")
+
+    # L4 背景圆形轨道可见 (老倪: 「背景的圆形轨道也要体现出」)
+    _ring_ok = {}
+    for _k, _frac in OA.OrbitalArchView.ORB.items():
+        _hit = _tot = 0
+        for _i in range(72):
+            _t = _i / 72.0 * 2 * math.pi
+            _x, _y, _z = _vL._proj(_frac * math.cos(_t), _frac * math.sin(_t), 0.0, _pL["_cx"], _pL["_cy"], _pL["_R"])
+            if _x < 1 or _y < 1 or _x > 680 or _y > 1388:
+                continue
+            _tot += 1
+            _hit += 1 if _ink(_x, _y) else 0
+        _ring_ok[_k] = round(_hit / max(1, _tot), 2)
+    chk("L4", "背景轨道环真的画出来了 (4 条行星轨道 + 地球卫星环, 虚线在动): 每条轨道采样点有墨 ≥25%",
+        _ring_ok, min(_ring_ok.values()) >= 0.25, "每条轨道 ≥25% 采样点见线")
+
+    # L5 卫星 = 原子技能 SK01~SK08 各一颗, 且逐颗标了 SK 号
+    _ids = [d["SK"] for d in (_vL.data.body.get("sats", {}).get("list") or [])]
+    _want_ids = ["SK%02d" % i for i in range(1, 9)]
+    chk("L5", "卫星 = 原子技能 SK01~SK08 各一颗 (老倪口径) 且逐颗有 SK 号文字块",
+        {"卫星": _ids, "文字块数": len(_rsL), "期望": _want_ids},
+        _ids == _want_ids and len(_rsL) >= len(_want_ids) + 5,
+        "8 颗 SK01~SK08 + 每个球一块标签")
 
     print("\n═══ 判据 %d 条: PASS %d · FAIL %d ═══" % (PASS + FAIL, PASS, FAIL))
     out = os.path.join(ROOT, "zmax_data", "eval", "orbital_arch_verify.json")

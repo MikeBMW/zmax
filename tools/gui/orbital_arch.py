@@ -278,8 +278,13 @@ class OrbitalArchData:
             n_cal = len([k for k in (_cal.get("skills") or {}) if str(k).startswith("SK")])
         except Exception:                                                    # noqa: BLE001
             n_cal = 0
+        # 2026-10-16 老倪: 「我看原子技能 SK01~SK08, 那就只是显示 8 个绕地球的卫星」
+        _want = ["SK%02d" % i for i in range(1, 9)]
+        _by = {d["SK"]: d for d in sats}
+        sats = [_by[k] for k in _want if k in _by]        # 真源里这 8 条的 stage/在职/偏差都保留
         self.body["sats"] = {"名": "原子技能", "真源": "skill_phys.json (在职 SK↔段) + skill_latest.json + 标定真源 zmax_skill_physics.json",
-                             "list": sats, "active": act.get("SK"), "n": len(sats), "n_calib": n_cal}
+                             "list": sats, "active": act.get("SK"), "n": len(sats), "n_calib": n_cal,
+                             "sk_ids": [d["SK"] for d in sats]}
         return {"checked": checked, "stage": stage, "mf": mf, "mf_note": mf.get("note", "")}
 
     def _active_skill(self, sk_phys):
@@ -309,6 +314,19 @@ class OrbitalArchView(QWidget):
          ⇒ 连线**全部来自画布 links 真源** (画布 state_space_obs.json 的 202 条连线):
             主体↔主体 的每一条真边都画; 主体↔体系外直接邻居 的边画到外圈小星点 (不隐形、也不编造)。
             没有真连线的一律不画 (缺哪条在脚注里可核)。
+      ⑤ 「现在的连线太多了, 而且实现不好看。背景的圆形轨道也要体现出, 直线实线改成虚线,
+         用不同的颜色表示不同的信号, 有就显示, 没有就不显示, 注意柔顺显示。显示要映射到实际的
+         代码逻辑, 每次显示都要从代码中触发。球体只保留 太阳/木星/火星/水星/地球/月球 +
+         地球上绕转的原子技能 SK01~SK08 (8 颗), 其它球体删掉」(2026-10-16)
+         ⇒ 本类改动: ① 只画 **主体↔主体** 的真连线 (体系外 38 条 + 外圈灰点全部删除);
+            ② 轨道环单独画亮 (4 条行星轨道 + 地球卫星环), 虚线随视角一起变换;
+            ③ **一条实线都不留** —— 全部虚线 (慢速相位流动, 柔顺不闪);
+            ④ 线色 = 信号种类 (青=几何条件 · 金=性能/集合条件 · 绿=动作/前馈 · 紫=反馈/回灌);
+            ⑤ **信号有值才画** (`_signal_ok`: 值由真节点函数当场算出, 缺值 ⇒ 那条线不画);
+            ⑥ 显示与代码同源: 线集来自画布 links 真源, 每条线的"有/无"由 `body` 里对应真源键
+               决定 (见 SIG_OF 的 file:line 注释), 不在视图里编一张静态表;
+            ⑦ 卫星 = 真源在职技能表的 SK01~SK08 各一颗 (逐颗标 SK 号), 亮球=在职, 金圈=当前在职。
+
       ④ 「连线要适合人眼睛的观察, 不要太细, 不要高频率闪烁, 不要很快消失。要注意平顺柔和」
          ⇒ 每条线两遍画 (外发光 6px 半透明 + 实芯 2.2px); 反馈线用**慢速流动**虚线 (相位连续推进,
             不会闪、不会消失); 全图**不做任何透明度脉冲/闪烁动画**, 帧间只做平顺位移。
@@ -343,7 +361,7 @@ class OrbitalArchView(QWidget):
         for _k in ("mercury", "earth", "mars", "jupiter"):
             self._grids.append([(self.ORB[_k] * math.cos(t / 72.0 * 2 * math.pi),
                                  self.ORB[_k] * math.sin(t / 72.0 * 2 * math.pi)) for t in range(73)])
-        self._ext = self._ext_nodes()     # 体系外直接邻居 (按 id 排序, 均布在外圈)
+        self._ext = []                    # 2026-10-16 老倪: 体系外的球/灰点全部删掉 (只留 7 类主体)
         self._edges = self._build_edges()
         self.setMinimumSize(300, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -359,17 +377,10 @@ class OrbitalArchView(QWidget):
         self._tm.start(self.TICK_MS)
 
     # ── 真源: 力的相互作用 (画布 links) ──────────────────────────────────────
-    def _ext_nodes(self):
-        """与 7 类主体有真连线的**体系外节点** (按 id 排序, 不编造)。"""
-        body_ids = {b[1] for b in BODIES}
-        nb = set()
-        for l in self.data.links:
-            f, t = l.get("f"), l.get("t")
-            if f in body_ids and t not in body_ids and t:
-                nb.add(t)
-            if t in body_ids and f not in body_ids and f:
-                nb.add(f)
-        return sorted(nb)
+    @staticmethod
+    def _ext_nodes():
+        """2026-10-16 老倪: 「其它球体删掉」⇒ 体系外节点一律不上图 (保留空实现供旧调用)。"""
+        return []
 
     @staticmethod
     def _kind(label):
@@ -385,8 +396,34 @@ class OrbitalArchView(QWidget):
             return "condition"
         return "misc"
 
+    # 每条 主体↔主体 连线 ↔ **真源信号** (值在场上由真节点函数算出, 不在视图里编表):
+    #   ss_mani_eng→ssmani_c : ContactManifold.decompose (manifold_layer.py:116) → progress
+    #   ss_mani_eng→ssmani_p : PerformanceManifold.evaluate (manifold_layer.py:181) → V_p
+    #   ssmani_c/ssmani_p→ssdec : 条件注入 (state_space_action_head.py:52 forward) + 动作模 action_norm
+    #   ssdec→ss_ff           : 动作块 → 前馈快路径 (parallel.py:143 forward) → req_mps
+    SIG_OF = {
+        ("ss_mani_eng", "ssmani_c"): ("geom", (("mercury", "progress"),)),
+        ("ss_mani_eng", "ssmani_p"): ("perf", (("jupiter", "V_p"),)),
+        ("ssmani_c", "ssdec"): ("geom", (("mercury", "progress"), ("mars", "action_norm"))),
+        ("ssmani_p", "ssdec"): ("perf", (("jupiter", "V_p"), ("mars", "action_norm"))),
+        ("ssdec", "ssff"): ("drive", (("earth", "req_mps"),)),
+    }
+
+    def _signal_ok(self, e, b):
+        """「有就显示, 没有就不显示」: 该线依赖的真源信号**全部有值**才画 (缺值 ⇒ 不画, 不画假线)。"""
+        sig = e.get("sig") or ()
+        for bk, fk in sig:
+            v = (b.get(bk) or {}).get(fk)
+            if not isinstance(v, (int, float)):
+                return False
+        return True
+
     def _build_edges(self):
-        """所有**真存在**的相互作用线: 主体↔主体 全部画; 主体↔体系外邻居 画到外圈星点。"""
+        """**只画主体↔主体**的真连线 (2026-10-16 老倪: 连线太多/其它球体删掉)。
+
+        每条边附 `sig` = 该相互作用依赖的真源信号键 (见 SIG_OF 的 file:line 注释),
+        绘制前用 `_signal_ok` 门控 —— 有就显示、没有就不显示, 且显示由真源代码驱动。
+        """
         body_ids = {b[1] for b in BODIES}
         out = []
         for l in self.data.links:
@@ -394,10 +431,12 @@ class OrbitalArchView(QWidget):
             if not f or not t:
                 continue
             fb, tb = f in body_ids, t in body_ids
-            if not (fb or tb):
+            if not (fb and tb):                       # 体系外一律不画 (删掉其它球体)
                 continue
-            out.append({"f": f, "t": t, "body_body": bool(fb and tb), "label": str(l.get("label") or ""),
-                        "kind": self._kind(l.get("label"))})
+            sig, keys = self.SIG_OF.get((f, t), (None, ()))
+            out.append({"f": f, "t": t, "body_body": True, "label": str(l.get("label") or ""),
+                        "kind": self._kind(l.get("label")), "sig": keys,
+                        "sig_kind": sig or self._kind(l.get("label"))})
         out.sort(key=lambda e: (not e["body_body"], e["f"], e["t"]))
         # 同一对节点在画布里可能有多条重边 (不同 label) —— 力只画一次, 不叠线 (老倪: 平顺柔和)
         seen, uniq = set(), []
@@ -410,8 +449,9 @@ class OrbitalArchView(QWidget):
         return uniq
 
     def interactions(self):
-        """给判据/自检用: 当前画的相互作用清单 (真源)。"""
-        return list(self._edges)
+        """给判据/自检用: 当前**真画出来**的相互作用清单 (真源边 + 信号门控通过)。"""
+        b = self.data.body
+        return [e for e in self._edges if self._signal_ok(e, b)]
 
     # ── 交互 ────────────────────────────────────────────────────────────────
     def mousePressEvent(self, e):
@@ -577,11 +617,28 @@ class OrbitalArchView(QWidget):
                    "🖱 拖动旋转 · 滚轮缩放 · 双击复位")
         # 引力井 (度量: 扁率按真特征值) + 轨道 (都在当前三维变换下)
         self._gravity_well(p, cx, cy, R, b.get("sun", {}))
-        p.setPen(QPen(GRID, 1, Qt.DashLine))
-        for ring in self._grids:
+        # 背景**圆形轨道** (2026-10-16 老倪: 「背景的圆形轨道也要体现出」):
+        #   每条行星轨道用自己的球色淡描 + 慢速虚线相位 (与力连线同相位 ⇒ 全图一张"脉搏", 不闪)
+        for ring, key in zip(self._grids, ("mercury", "earth", "mars", "jupiter")):
+            cring = QColor(self.COL[key]); cring.setAlpha(120)
+            pen = QPen(cring, 1.2, Qt.CustomDashLine)
+            pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([4.0, 5.0]); pen.setDashOffset(self._phase * 0.5)
+            p.setPen(pen)
             pt = [self._proj(x, y, 0.0, cx, cy, R) for x, y in ring]
             for j in range(len(pt) - 1):
                 p.drawLine(QPointF(pt[j][0], pt[j][1]), QPointF(pt[j + 1][0], pt[j + 1][1]))
+        # 地球的**卫星环** (原子技能公转轨道): 也让背景把"轨道"说清楚
+        _ea = self._angles(b).get("earth", 0.0)
+        _er = self.ORB["earth"]
+        cring = QColor(self.COL["sat"]); cring.setAlpha(110)
+        pen = QPen(cring, 1.1, Qt.CustomDashLine)
+        pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([3.0, 4.0]); pen.setDashOffset(self._phase * 0.5)
+        p.setPen(pen)
+        ring = [(self.SAT_R * math.cos(t / 72.0 * 2 * math.pi), self.SAT_R * math.sin(t / 72.0 * 2 * math.pi))
+                for t in range(73)]
+        pt = [self._proj(_er * math.cos(_ea) + x, _er * math.sin(_ea) + y, 0.0, cx, cy, R) for x, y in ring]
+        for j in range(len(pt) - 1):
+            p.drawLine(QPointF(pt[j][0], pt[j][1]), QPointF(pt[j + 1][0], pt[j + 1][1]))
         # 力的相互作用 (真源连线) —— 先画线, 再画球 (球压线, 视觉更干净)
         self._draw_forces(p, cx, cy, R, b)
         # 球体 (按深度排序: 远的先画)
@@ -639,58 +696,54 @@ class OrbitalArchView(QWidget):
                 p.drawLine(QPointF(pts[j][0], pts[j][1]), QPointF(pts[j + 1][0], pts[j + 1][1]))
 
     def _draw_forces(self, p, cx, cy, R, b, ghost=False):
-        """力的相互作用: 每条真源连线两遍画 (外发光 + 实芯); 反馈类虚线**慢速流动**。
+        """力的相互作用: **只画主体↔主体**的真连线, 全部**虚线** (柔顺慢速流动), 颜色=信号种类。
 
-        不做闪烁/脉冲 —— 线宽 2.2px 实芯 + 6px 半透明发光, 人眼友好; 虚线相位连续推进,
-        永远不会"整条消失"。
+        2026-10-16 老倪: 「连线太多了… 直线实线改成虚线, 用不同的颜色表示不同的信号,
+        有就显示, 没有就不显示, 注意柔顺显示」。所以:
+          · 体系外的线与灰点**全部删除** (只留 7 类主体之间的真边);
+          · 每一条都是虚线 (CustomDashLine, 相位连续慢推 ⇒ 在动, 但绝不闪、不断);
+          · 颜色按**信号种类**: 青=几何条件 · 金=性能/集合条件 · 绿=动作/前馈 · 紫=反馈/回灌;
+          · `_signal_ok` 门控 —— 该相互作用依赖的真源信号没值 ⇒ **这条线不画** (不画假线)。
         """
         pos = self.positions(cx, cy, R)
-        body_ids = {x[1] for x in BODIES}
-        extpos = self._ext_positions(cx, cy, R)
-        kind_style = {"condition": (CYAN, False), "semantic": (GOLD, False),
-                      "drive": (GREEN, False), "feedback": (VIOLET, True), "misc": (QColor("#8b949e"), True)}
+        col_of = {"geom": CYAN, "condition": CYAN, "perf": GOLD, "semantic": GOLD,
+                  "drive": GREEN, "feedback": VIOLET, "misc": QColor("#8b949e")}
         p.setRenderHint(QPainter.Antialiasing, True)
         for e in self._edges:
-            a, c = e["f"], e["t"]
-            pa = pos.get(self._key_of(a)) if a in body_ids else extpos.get(a)
-            pb = pos.get(self._key_of(c)) if c in body_ids else extpos.get(c)
-            if a not in body_ids and a not in extpos:
+            if not e["body_body"]:
                 continue
-            if c not in body_ids and c not in extpos:
+            if not self._signal_ok(e, b):            # 有就显示, 没有就不显示
                 continue
+            pa = pos.get(self._key_of(e["f"]))
+            pb = pos.get(self._key_of(e["t"]))
             if pa is None or pb is None:
                 continue
-            x1, y1 = float(pa[0]), float(pa[1])
-            x2, y2 = float(pb[0]), float(pb[1])
-            col, dashed = kind_style.get(e["kind"], (QColor("#8b949e"), False))
-            bb = e["body_body"]
-            if ghost:                                  # 文字块之上的"不断线"透描 (只描主体↔主体的实线)
-                if not bb or e["kind"] == "feedback":
-                    continue
-                c2 = QColor(col); c2.setAlpha(92)
-                p.setPen(QPen(c2, 2.9))
+            x1, y1, x2, y2 = float(pa[0]), float(pa[1]), float(pb[0]), float(pb[1])
+            col = col_of.get(e.get("sig_kind") or e["kind"], QColor("#8b949e"))
+            if ghost:
+                # 文字块**之下**先透描一遍 (字压线: 字仍可读, 线也没有"断"的错觉); 全部虚线, 同相位
+                c2 = QColor(col); c2.setAlpha(86)
+                g = QPen(c2, 2.9, Qt.CustomDashLine)
+                g.setCapStyle(Qt.FlatCap)
+                g.setDashPattern([7.0 / 2.9, 6.0 / 2.9]); g.setDashOffset((self._phase * 0.5) / 2.9)
+                p.setPen(g)
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
                 continue
-            core = QColor(col); core.setAlpha(232 if bb else 150)
-            glow = QColor(col); glow.setAlpha(58 if bb else 30)
-            pen_w = 2.9 if bb else 1.9        # 2026-10-16 看图: 2.2px 仍是丝线档 ⇒ 加粗 (人眼友好)
-            if dashed:
-                # 慢速流动 (相位连续): 虚线在动, 但绝不闪、不断 (老倪: 不要高频闪烁/不要很快消失)
-                pen_g = QPen(glow, pen_w + 4.4, Qt.CustomDashLine); pen_g.setDashPattern([3.0, 3.0]); pen_g.setDashOffset(self._phase * 0.5)
-                pen_c = QPen(core, pen_w, Qt.CustomDashLine); pen_c.setDashPattern([3.0, 3.0]); pen_c.setDashOffset(self._phase * 0.5)
-            else:
-                pen_g = QPen(glow, pen_w + 4.4)
-                pen_c = QPen(core, pen_w)
-            p.setPen(pen_g); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
-            p.setPen(pen_c); p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
-            if bb:                                     # 主体↔主体: 在中点前加一个小箭头 (方向可辨)
-                mx = x1 + (x2 - x1) * 0.62
-                my = y1 + (y2 - y1) * 0.62
-                self._arrow(p, x1, y1, x2, y2, mx, my, core, 3.4)
-        # 外圈星点 (体系外邻居)
-        for nid, (xx, yy) in extpos.items():
-            p.setPen(Qt.NoPen); p.setBrush(QColor(139, 148, 158, 150))
-            p.drawEllipse(QPointF(xx, yy), 1.8, 1.8)
+            core = QColor(col); core.setAlpha(236)
+            glow = QColor(col); glow.setAlpha(60)
+            pen_w = 2.9
+            # 慢速流动虚线: 长划 6px / 间隔 4px ⇒ 人眼看得清"是虚线", 相位每次 tick 走 0.5px (60ms/格)
+            _dash, _gap = 7.0, 6.0          # 像素单位 (与笔宽解耦: 两支笔的划/隔必须同一像素几何)
+            for pen, w in ((glow, pen_w + 4.4), (core, pen_w)):
+                q = QPen(pen, w, Qt.CustomDashLine)
+                q.setCapStyle(Qt.FlatCap)      # 关键: 默认方帽把每段划两端各外扩半个笔宽 ⇒ 间隔被吃掉
+                q.setDashPattern([max(0.15, _dash / w), max(0.15, _gap / w)])
+                q.setDashOffset((self._phase * 0.5) / w)
+                p.setPen(q)
+                p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+            mx = x1 + (x2 - x1) * 0.62                 # 方向箭头 (虚线也标方向)
+            my = y1 + (y2 - y1) * 0.62
+            self._arrow(p, x1, y1, x2, y2, mx, my, core, 3.4)
 
     def _arrow(self, p, x1, y1, x2, y2, x, y, col, size):
         ang = math.atan2(y2 - y1, x2 - x1)
@@ -750,10 +803,16 @@ class OrbitalArchView(QWidget):
             if e1 else "度量 g 未读 torque_live"
         nv = self.info.get("checked", {})
         miss = [k for k, v in nv.items() if not v.get("在")]
-        a = "力的相互作用 (画布真源): 主体↔主体 %d 条 · 主体↔体系外节点 %d 条 · 外圈灰点 = 体系外直接邻居 %d 个" % (
-            sum(1 for e in self._edges if e["body_body"]), sum(1 for e in self._edges if not e["body_body"]), len(self._ext))
-        bb = "线义: 实线青=几何条件 · 实线金=语义条件(直连) · 实线绿=动作/前馈 · 慢虚线紫=反馈/回灌(流动, 不闪)"
-        c = "角度映射: 水星←接触进度‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步λ · 木星←η · 月球与原子技能=地球相位(协同行进)"
+        _all_bb = [e for e in self._edges if e["body_body"]]
+        _live = self.interactions()
+        a = ("力的相互作用 (画布 links 真源): 主体↔主体 %d 条 · **信号有值才画** ⇒ 当前画出 %d 条 · "
+             "体系外节点/灰点已删 (老倪: 其它球体删掉)") % (len(_all_bb), len(_live))
+        bb = ("线义: **全部虚线** (长划6/隔4, 慢速流动, 不闪不断) · 青=几何条件 · 金=性能/集合条件 · "
+              "绿=动作/前馈 · 紫=反馈/回灌 · 缺值不画 (显示由真源代码触发: 见 SIG_OF 注释)")
+        c = ("角度映射: 水星←接触进度‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步λ · 木星←η · "
+             "月球与原子技能=地球相位(协同行进) · 卫星=原子技能 %s (真源 skill_phys; 亮=在职, 金圈=当前在职 %s)") % (
+            "SK01~SK%02d" % max(1, len(self.data.body.get("sats", {}).get("list") or [])),
+            self.data.body.get("sats", {}).get("active") or "—")
         d = "真源: engine_latest(帧龄 %s) · torque_live(%s) · skill_latest · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布 %d 节点/%d 连线 · 节点映射核对 %d/%d 全命中" % (
             ("%.1fs" % s["帧龄"]) if isinstance(s.get("帧龄"), (int, float)) else "—", mtxt,
             (self.data.frames or {}).get("n", 0), len(self.data.nodes), len(self.data.links), len(BODIES) - len(miss), len(BODIES))
@@ -811,7 +870,44 @@ class OrbitalArchView(QWidget):
                 ks.append((x, y, S * self.RAD["sat"] + 4))
             mx, my, _mz = pos["moon"]                    # 2026-10-16 看图: 漏了月球 ⇒ 标签曾压在月球上
             ks.append((mx, my, S * self.RAD["moon"] + 4))
+            for _blk2, _ln2, _c2, _s2 in out:             # 已放好的卫星 SK 号码也是障碍
+                ks.append((_blk2.center().x(), _blk2.center().y(),
+                           max(_blk2.width(), _blk2.height()) / 2.0 + 3.0))
             return ks
+
+        # 逐颗卫星写 SK 号 (2026-10-16 老倪: 「我看原子技能 SK01~SK08, 那就只是显示 8 个绕地球的卫星」)
+        #   布局是**确定性的**: 每颗号码放在该卫星的径向外侧 (环外), 半径奇偶错开 11px ⇒
+        #   相邻两颗的号码不会叠; 若撞到月球/地球/行星或已有块, 就绕角度 ±22.5° 再试 (最多 4 次)。
+        _ks_sat = keepouts()
+        for _i, (_x, _y, _z, _sk) in enumerate(pos["_sat"]):
+            _ux, _uy = _x - pos["earth"][0], _y - pos["earth"][1]
+            _n = math.hypot(_ux, _uy) or 1.0
+            # 环外偏移必须 ≥ 块的半宽(16) + 卫星 keepout(球半径+4) ⇒ 26px 起 (14.9px 时会差 1px 压到自己那颗卫星)
+            _rr0 = S * self.RAD["sat"] + 26.0 + (11.0 if _i % 2 else 0.0)
+            _blk = None
+            for _k in range(7):
+                _ang = (0.0, 0.3927, -0.3927, 0.7854, -0.7854, 1.1781, -1.1781)[_k]   # 0/±22.5°/±45°/±67.5°
+                _cs, _sn = math.cos(_ang), math.sin(_ang)
+                _vx = _ux / _n * _cs - _uy / _n * _sn
+                _vy = _ux / _n * _sn + _uy / _n * _cs
+                _cand = QRectF(_x + _vx * _rr0 - 16.0, _y + _vy * _rr0 - 7.0, 32.0, 14.0)
+                _cand = QRectF(min(max(_cand.x(), 2.0), W - 34.0),
+                               min(max(_cand.y(), pad_top + 2.0), H - pad_bot - 16.0), 32.0, 14.0)
+                _blk = _cand
+                if any(_cand.intersected(r).isEmpty() is False for r in placed):
+                    continue
+                _bad = False
+                for (kx, ky, kr) in _ks_sat:
+                    nx = max(_cand.x(), min(kx, _cand.x() + _cand.width()))
+                    ny = max(_cand.y(), min(ky, _cand.y() + _cand.height()))
+                    if math.hypot(nx - kx, ny - ky) < kr + 1:
+                        _bad = True
+                        break
+                if not _bad:
+                    break
+            _col = GOLD if _sk == b.get("sats", {}).get("active") else QColor("#9fe3d6")
+            out.append((_blk, [str(_sk)], _col, 8))
+            placed.append(_blk)
 
         def place_near(x, y, lines, color, size, ux, uy, own_r):
             """把文字块贴到 (x,y) 这颗球的**外侧**: 块的近边离球 own_r+12px, 朝 (ux,uy) 展开。
@@ -896,15 +992,6 @@ class OrbitalArchView(QWidget):
         slines = ["☀ 流形引擎"] + self._wrap(self._sun_text(b.get("sun", {})), w - 8, 9)
         place_near(cx, cy, slines, GOLD, 9, 0.0, 1.0, S * self.RAD["sun"])
         # 卫星群 (绕地球的那一圈的外侧)
-        if pos["_sat"]:
-            gx = sum(x for x, _y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
-            gy = sum(y for _x, y, _z, _sk in pos["_sat"]) / len(pos["_sat"])
-            nsk = len(pos["_sat"])
-            # 2026-10-16 看图: 锚点方向原为"地球→卫星群质心" —— 整圈时该向量近零 ⇒ 方向乱飞,
-            #   标签落到地球/卫星堆上 (地球区三条互压的元凶之一)。改**固定朝上**展开,
-            #   own_r = 卫星圈半径 + 14 ⇒ 块近边一定在卫星圈外。
-            place_near(gx, gy, ["🛰 原子技能 %d 颗 (绕地球公转)" % nsk], QColor("#7fd1c1"), 9,
-                       0.0, -1.0, self.SAT_R * R + 14)
         # 月球 (沿"离地球"方向往外)
         mx, my, _mz = pos["moon"]
         ux, uy = mx - pos["earth"][0], my - pos["earth"][1]
@@ -913,6 +1000,17 @@ class OrbitalArchView(QWidget):
         # 换成 (月球球半径 + 12) ⇒ 近边贴月球外侧 (2026-10-16)
         place_near(mx, my, ["🌙 校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n,
                    S * self.RAD["moon"] + 12)
+        # 收尾防撞 (2026-10-16 看图/判据 J1: 加了 8 个卫星 SK 号之后, 拥挤区可能仍有两块相交):
+        #   逐对检查, 相交的把**后一块**改放页边栏空槽; 槽位也撞就保持原位 (判据会报出来, 不藏着)。
+        for _i in range(len(out)):
+            for _j in range(_i + 1, len(out)):
+                _ri, _rj = out[_i][0], out[_j][0]
+                if _ri.intersected(_rj).isEmpty():
+                    continue
+                _rest = [t2[0] for _k2, t2 in enumerate(out) if _k2 not in (_i, _j)]
+                _slot = self._gutter_slot(out[_j][1], _rest, keepouts(), W, H, pad_top, pad_bot, _rj.width())
+                if _slot is not None:
+                    out[_j] = (_slot, out[_j][1], out[_j][2], out[_j][3])
         return out, placed
 
     def _gutter_slot(self, lines, placed, ks, W, H, pad_top, pad_bot, w):
@@ -943,8 +1041,10 @@ class OrbitalArchView(QWidget):
         """给判据用: 当前布局下所有文字块矩形 (两两不许重叠)。"""
         W, H, S, cx, cy, R = self._geom()
         pos = self.positions(cx, cy, R)
-        out, placed = self._label_blocks(pos, self.data.body, cx, cy, R, S, W, H)
-        return placed
+        out, _placed = self._label_blocks(pos, self.data.body, cx, cy, R, S, W, H)
+        # 2026-10-16: 返回**最终**矩形 (收尾防撞会改块位置 —— 之前返回 placed 会与真正画出来的不一致,
+        # 判据量到的是改前的旧位置)
+        return [t[0] for t in out]
 
     def _labels(self, p, pos, cx, cy, R, b, W, H, S):
         blocks, _placed = self._label_blocks(pos, b, cx, cy, R, S, W, H)
