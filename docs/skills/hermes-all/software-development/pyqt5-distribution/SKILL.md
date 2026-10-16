@@ -600,6 +600,8 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 
 | Symptom | Root cause | Fix |
 |---------|-----------|-----|
+| CI 任务几小时一直 `in_progress`、最后失败, **一条产物都没发** | 裸调打包产物 (`./App.exe --engine-selftest`) 且该步骤**没设超时** ⇒ exe 在 runner 上卡死, 后面的构建/上传步骤全 `pending` (实测 v5.50.74~736 连续十余个 tag 全栽在这一步, 而 mac 侧一直 success ⇒ Release 里只有 mac 资产) | ① 改**有界等待**: 后台起 + 轮询 (如 600s) + 超时 `taskkill` 收尸; ② 步骤加 `timeout-minutes`; ③ 产物侧**按关增量落盘** (`stage` 字段: 导入/建场景/渲染探针/导入链各环) —— 卡死没有 traceback, 只看得到"最后走到哪一关"; ④ 核验步 `continue-on-error: true` + `if: steps.<id>.outcome == 'success'` 门控**是否上传那一份产物**, 别让一个制品的核验掐死另一个制品的发布 |
+| Release 只有 mac 资产 / 正文空白 | 单文件 exe 的上传步在前一步失败后被跳过; Release 正文只挂在 windows 上传步 | 正文/release_name 也挂到 mac 上传步 (两侧一致), 版本号引用 `${{ steps.release_tag.outputs.tag }}` 而不是写死 |
 | Checkout fails: `invalid path ':Zone.Identifier'` | Windows ADS files in repo | `git rm --cached` + `*:Zone.Identifier` in `.gitignore` |
 | Release upload: "Resource not accessible" | Missing `permissions: contents: write` | Add permissions block to job |
 | Release upload: skipped on workflow_dispatch | `if: startsWith(github.ref, 'refs/tags/v')` doesn't match branches | Add `|| github.event_name == 'workflow_dispatch'` |
