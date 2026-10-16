@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import time
+import uuid
 
 import numpy as np
 
@@ -78,10 +79,21 @@ def _read_pose():
 
 def _atomic_json(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(obj, fh, ensure_ascii=False)
-    os.replace(tmp, path)
+    # 🐛 2026-10-16 实测 (快照判据红过一条): tmp 名固定成 `path + ".tmp"` 在**多写者**下必炸 ——
+    #   引擎 ticker 与本派发器同时写 skill_phys.json 时, 一方 os.replace 已把 tmp 搬走,
+    #   另一方 rename 就报 FileNotFoundError: '...skill_phys.json.tmp' (tmp 不存在), 看着像"文件丢了"。
+    #   修法: tmp 名带 pid + 随机后缀 (仍同目录 ⇒ 同文件系统, os.replace 依旧原子), 失败路径清残件。
+    tmp = "%s.tmp.%d.%s" % (path, os.getpid(), uuid.uuid4().hex[:8])
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except Exception:                                                # noqa: BLE001
+                pass
 
 
 def _norm(a):
