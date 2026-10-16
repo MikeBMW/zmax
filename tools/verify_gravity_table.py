@@ -77,8 +77,19 @@ def main():
             if abs(nn - 1.0) > 1e-9:
                 bad.append((r["stage"], k, nn))
     all_cells = len(f.rows) * len(GT.LAYERS)
-    ck("④ 每格一个单位四元数", not bad and unit > 0,
-       "%d/%d 格有真源且 |q|=1 (未算 %d 格, 都写明缺哪个真源); 非单位: %s" % (unit, all_cells, all_cells - unit, bad[:3]))
+    # ④ 力四元数定义式: q = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref) —— 可逐位相加 (老倪对账口径)
+    _q_bad = []
+    for _r in f.rows:
+        for _k, _n in GT.LAYERS:
+            _c = _r["cells"][_k]
+            if _c.get("q") is None or not _c.get("vec"):
+                continue
+            _exp = tuple([_c["mag"] / f.u_ref] + [x / f.u_ref for x in _c["vec"]])
+            if max(abs(a - b) for a, b in zip(_exp, _c["q"])) > 1e-12:
+                _q_bad.append((_r["stage"], _k))
+    ck("④ 每格 = 力四元数 (w=|F|/u_ref, xyz=方向分量/u_ref)", not _q_bad,
+       "%d 格全部满足定义式 (u_ref=%.4f) ⇒ 四个数可直接相加" % (sum(1 for _r in f.rows for _k, _n in GT.LAYERS
+                                                                 if _r["cells"][_k].get("q")), f.u_ref))
 
     # ⑤ 合力 = 主力 + Σ赋能力 (矢量相加), 逐格独立重算 + 等式残差直接量
     #    老倪 2026-10-16: 「合力是叠加了补偿微调的总和矢量力, 保证等式关系」
@@ -87,10 +98,10 @@ def main():
         _all = [r["cells"][k].get("vec") for k, _n in GT.LAYERS]
         _s = GT._vsum(_all)
         _res = GT._vnorm([r["vec"][i] - _s[i] for i in range(3)])
-        q_ref, _n, _u = GT.vec_to_quat(_s, f.u_ref)
+        q_ref = GT._qadd([r["cells"][k].get("q") for k, _n in GT.LAYERS])   # 四个数逐位相加
         if _res > 1e-12 or max(abs(a - b) for a, b in zip(q_ref, r["q"])) > 1e-12:
             _eq_bad.append((r["stage"], _res))
-    ck("⑤ 每行合力 = 主力 + Σ赋能力 (矢量等式, 独立重算)", not _eq_bad,
+    ck("⑤ 每行合力 = 主力 + Σ赋能力 (四个数逐位相加 + 矢量残差 0)", not _eq_bad,
        "8 行逐行核对通过, 最大残差 %.1e" % max([r.get("resid", 0.0) for r in f.rows] or [0.0])
        if not _eq_bad else "不成立: %s" % _eq_bad[:4])
     _res_max, _dev_max, _coh_all = f.equation()
@@ -100,9 +111,8 @@ def main():
        "在跑项的 主力(L2)↔合力 夹角 max %.1f° · 全表最大 %.1f° (没在跑的项 主力=影响力最大层, 被其它层拉开是正常的) · 全表一致度 %.3f"
        % (max(_run_dev) if _run_dev else 0.0, _dev_max, _coh_all))
     # 右下角总合力 = 所有格子力矢量相加 (独立重算)
-    _tv = GT._vsum([r["cells"][k].get("vec") for r in f.rows for k, _n in GT.LAYERS])
     qt, coht = f.total_resultant()
-    q_ref2, _n2, _u2 = GT.vec_to_quat(_tv, f.u_ref)
+    q_ref2 = GT._qadd([r["cells"][k].get("q") for r in f.rows for k, _n in GT.LAYERS])
     dmax = max(abs(a - b) for a, b in zip(q_ref2, qt))
     ck("⑤d 右下角 = 全表总合力 (独立重算对齐)", dmax < 1e-12,
        "总合力=%s (最大偏差 %.2e) · 全表一致度=%.3f · 参与格子 %d"
@@ -111,8 +121,7 @@ def main():
     # 列合力 = 该列力矢量相加
     _ok_col = True
     for k, _n in GT.LAYERS:
-        _vs = GT._vsum([r["cells"][k].get("vec") for r in f.rows])
-        _qr, _nn, _uu = GT.vec_to_quat(_vs, f.u_ref)
+        _qr = GT._qadd([r["cells"][k].get("q") for r in f.rows])
         _q, _c = f.col_resultant(k)
         if _q is None or max(abs(x - y) for x, y in zip(_qr, _q)) > 1e-12:
             _ok_col = False
@@ -133,11 +142,14 @@ def main():
           GT._fmt_q(_q1), GT._fmt_q(_q2)))
 
     # ⑥ 每行有且仅有一个主力
-    bad_main = [r["stage"] for r in f.rows if r["main"] is None or r["main"] not in [k for k, _ in GT.LAYERS]]
-    act_ok = all(r["main"] == "L2" for r in f.rows if r["active"] and r["cells"]["L2"].get("mag") is not None)
-    ck("⑥ 每行有且仅有一个主力", not bad_main, "8 行主力 = %s" % {r["stage"]: r["main"] for r in f.rows})
-    ck("⑥b 在跑的项 ⇒ L2 是主力 (其余是赋能力)", act_ok and bool([r for r in f.rows if r["active"]]),
-       "在跑项 = %s" % [r["stage"] for r in f.rows if r["active"]])
+    _mains = [r["stage"] for r in f.rows if r["main"]]
+    _run_rows = [r for r in f.rows if r["active"] and r["cells"]["L2"].get("mag") is not None]
+    ck("⑥ 每一时刻**只有一个**主力 (= 在跑项的 L2)", len(_mains) == len(_run_rows) and
+       all(r["main"] == "L2" for r in _run_rows),
+       "主力 = %s (在跑项 %s); 其余 %d 行 main=None ⇒ 不高亮 (都是赋能力)"
+       % (_mains, [r["stage"] for r in _run_rows], len(f.rows) - len(_mains)))
+    ck("⑥b 没在跑的项不叫主力 (影响力最大层只进 tooltip)", all(r["main"] is None for r in f.rows if not r["active"]),
+       "8 行里只有 %d 行有主力" % len(_mains))
 
     # ⑦ 老倪的例子: 插入时刻 插入技能的 L2 是主力 (前提: 真源当前阶段确实是插入)
     if f.stage_now == "插入":
@@ -275,20 +287,31 @@ def main():
     for _ in range(3):
         _app.processEvents()
     _t, _f13 = _w13.t, _w13.field
-    _col_bad, _star_ok = [], True
+    _col_bad, _star_ok, _n_hi = [], True, 0
     for _r, _row in enumerate(_f13.rows):
-        _k = _row["main"]
-        _j = [kk for kk, _n in GT.LAYERS].index(_k)
-        _it = _t.item(_r, 1 + _j)
-        _bg = _it.background().color() if _it is not None else None
-        if _it is None or _bg is None or _bg.alpha() < 60 or not _it.font().bold():
-            _col_bad.append((_row["stage"], _k, None if _bg is None else _bg.alpha(), _it.font().bold() if _it else None))
+        _hl = [kk for kk, _n in GT.LAYERS
+               if (_t.item(_r, 1 + [n for n, _x in GT.LAYERS].index(kk)) is not None)]
+        _j = [(kk, _t.item(_r, 1 + _i)) for _i, (kk, _n) in enumerate(GT.LAYERS)]
+        from PyQt5.QtCore import Qt as _Qt2
+        _hot = [(kk, _it) for kk, _it in _j
+                if _it is not None and _it.background().style() == _Qt2.SolidPattern]   # 只有实心刷才算"上色"
+        for _kk, _it in _hot:
+            _n_hi += 1
+            if not _it.font().bold():
+                _col_bad.append((_row["stage"], _kk, "上色了但没加粗"))
+            if _row["main"] != _kk:
+                _col_bad.append((_row["stage"], _kk, "不是主力却高亮 (主力=%s)" % _row["main"]))
+        if _row["main"] and not _hot:
+            _col_bad.append((_row["stage"], _row["main"], "主力却没高亮"))
         _c0 = _t.item(_r, 0)
-        if _c0 is None or not _c0.text().startswith("★"):
+        _want_star = bool(_row["main"])
+        if _c0 is None or _c0.text().startswith("★") != _want_star:
             _star_ok = False
     _w13.close()
-    ck("⑬ 主力格 = 实心色底 + 加粗, 首列带 ★", not _col_bad and _star_ok,
-       "%d 行主力格都上色加粗 (底色 alpha=%d), 首列 ★ 齐全" % (len(_f13.rows), _t.item(0, 1).background().color().alpha())
+    ck("⑬ 全表只有主力那一格高亮 (色底+加粗), ★ 只在主力行", not _col_bad and _star_ok,
+       "高亮格数 = %d, 主力行 = %s (底色 alpha=%d)"
+       % (_n_hi, [r["stage"] for r in _f13.rows if r["main"]] or "本刻无在跑项",
+          max([(_t.item(r, 2).background().color().alpha() if _t.item(r, 2) else 0) for r in range(_t.rowCount())] or [0]))
        if not _col_bad else "没上色/没加粗: %s" % _col_bad[:4])
     # ⑭ 右下角那格必须把「是合力不是主力」讲清楚 (老倪 2026-10-16 问过)
     _cnr = _t.item(_t.rowCount() - 1, _t.columnCount() - 1)
@@ -311,8 +334,29 @@ def main():
             th_ref = math.pi * min(1.0, float(c["mag"]) / f.u_ref)
             w_ref = math.cos(th_ref / 2.0)
             s_chk.append(abs(w_ref - c["q"][0]))
-    ck("⑩ 四元数由真源向量算出 (θ=π·|F|/u_ref 反推对齐)", s_chk and max(s_chk) < 1e-9,
-       "抽样 %d 格, 标量部分最大偏差 %.2e (u_ref=%.4f 来自真源 chunk_latest.u_norm0)" % (len(s_chk), max(s_chk) if s_chk else 9, f.u_ref))
+    # ⑩ 四个数**逐位相加** == 合力 (老倪: 「明显的没有把主力加上」⇒ 表上要能按数字对账)
+    _add_bad = []
+    for _r in f.rows:
+        _acc = [0.0] * 4
+        for _k, _n in GT.LAYERS:
+            _q = _r["cells"][_k].get("q")
+            if _q:
+                for _i in range(4):
+                    _acc[_i] += _q[_i]
+        if max(abs(a - b) for a, b in zip(_acc, _r["q"])) > 1e-12:
+            _add_bad.append(_r["stage"])
+    _acct = [0.0] * 4
+    for _r in f.rows:
+        for _k, _n in GT.LAYERS:
+            _q = _r["cells"][_k].get("q")
+            if _q:
+                for _i in range(4):
+                    _acct[_i] += _q[_i]
+    _qt, _ = f.total_resultant()
+    ck("⑩ 逐位相加: 行合力和 = Σ各层, 右下角 = Σ全表所有格", not _add_bad and
+       max(abs(a - b) for a, b in zip(_acct, _qt)) < 1e-12,
+       "8 行逐位相加全部对齐; 右下角 %s 与独立逐位相加最大偏差 %.1e"
+       % (GT._fmt_q(_qt), max(abs(a - b) for a, b in zip(_acct, _qt))))
 
     npass = sum(1 for _i, _t, ok, _m in R if ok)
     res = dict(when=time.strftime("%F %T"), task=f.task_id, task_name=f.task_name,

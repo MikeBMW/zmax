@@ -12924,6 +12924,7 @@ class StudioMainWindow(QMainWindow):
             print("📷 mparam_shot: 失败: %r" % _e)
 
     def _gt_dump_cmd(self):
+        from gravity_table import LAYERS as GT_LAYERS
         """🔎 命令通道 gt_dump: 打印活控制台「万有引力表」当下这一帧的总合力/一致度/主力/各格格值 (证明实时)。"""
         try:
             _sim = getattr(self, "simulink", None)
@@ -12945,6 +12946,21 @@ class StudioMainWindow(QMainWindow):
             print("  真源帧龄(s): " + " · ".join("%s %.1f" % (k, v) for k, v in f.age.items() if v is not None), flush=True)
             print("  逐行主力力度: " + " | ".join("%s:%s=%.3f" % (r["stage"], r["main"],
                   (r["cells"][r["main"]].get("mag") or 0.0) if r.get("main") else 0.0) for r in f.rows), flush=True)
+            _rr = [r for r in f.rows if r.get("main")] or [r for r in f.rows if r.get("active")]
+            if _rr:
+                _r0 = _rr[0]
+                print("  本刻行 %s 四层四元数 (w=|F|/u_ref, xyz=方向分量/u_ref):" % _r0["stage"], flush=True)
+                for _k, _n in GT_LAYERS:
+                    _q = _r0["cells"][_k].get("q")
+                    print("     %s %s" % (_n, ("[%s]" % ", ".join("%+.3f" % x for x in _q)) if _q else "未算"), flush=True)
+                _acc = [0.0] * 4
+                for _k, _n in GT_LAYERS:
+                    _q = _r0["cells"][_k].get("q")
+                    if _q:
+                        for _i in range(4):
+                            _acc[_i] += _q[_i]
+                print("     —— 逐位相加 [%s]  == 表上「合力」格 [%s]"
+                      % (", ".join("%+.3f" % x for x in _acc), ", ".join("%+.3f" % x for x in _r0["q"])), flush=True)
             print("  逐行合力: " + " | ".join("%s %.3f(Δ主%.0f°)" % (r["stage"], r.get("mag_res", 0.0), r.get("dev", 0.0))
                                             for r in f.rows), flush=True)
         except Exception as _e:                                              # noqa: BLE001

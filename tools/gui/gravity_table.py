@@ -121,25 +121,43 @@ def _angle_deg(a, b):
     return math.degrees(math.acos(max(-1.0, min(1.0, d))))
 
 
+def _qadd(qs):
+    """四元数**逐位相加** (老倪口径: 合力 = 主力 + Σ赋能力, 数上能直接对账)。空集 → 四个 0。"""
+    a = [0.0, 0.0, 0.0, 0.0]
+    for q in qs:
+        if not q:
+            continue
+        for i in range(4):
+            a[i] += float(q[i])
+    return tuple(a)
+
+
 def _resid(total, parts):
     """矢量等式残差: |合力 − Σ(主力 + 各赋能力)| —— 按定义应为 0 (量出来才算保证)。"""
     s = _vsum(parts)
     return _vnorm([float(total[i]) - s[i] for i in range(3)])
 
 
+_FORM_ADDITIVE = True     # 力四元数 = 可逐位相加的形式 (见下); 置 False 回旧的指数映射(不可相加)
+
+
 def vec_to_quat(v, u_ref):
-    """向量 → 单位四元数 (指数映射)。θ = π·min(1, |v|/u_ref), 轴 = v 的单位方向。"""
+    """力矢量 → **力的四元数** q = (w, x, y, z) = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref)。
+
+    🔴 2026-10-16 老倪: 「有的主力的实部都已经是 6 了, 合力的实部还是 0, 这明显没有把主力加上」
+       —— 旧写法把力度压进旋转角 θ=π·|F|/u_ref, w=cos(θ/2): 力度一满 w 就变 0 (看上去"没加")，
+          而且四元数**相乘**才是复合 ⇒ 四个数之间根本不相加, 老倪按数字对不上账。
+       改成**可相加**的力四元数: w=力度(归一), xyz=方向分量(归一) ⇒
+          q(合力) = Σ q_i  (逐位相加 == 矢量相加, 浮点级精确) ⇒ 表上能按行/按列直接加给他看。
+       注意: 这不是单位四元数 (w²+x²+y²+z² = 2·(|F|/u_ref)² 只在 θ≠π 时接近 1), 是"力的四元数"表示。
+    """
     v = [float(x) for x in (v or [0.0, 0.0, 0.0])]
     n = math.sqrt(sum(x * x for x in v)) if v else 0.0
     if n < 1e-12:
-        return (1.0, 0.0, 0.0, 0.0), 0.0, (0.0, 0.0, 0.0)
-    u = [x / n for x in v]
-    ratio = 1.0 if not u_ref else min(1.0, n / u_ref)
-    th = math.pi * ratio
-    s = math.sin(th / 2.0)
-    q = (math.cos(th / 2.0), u[0] * s, u[1] * s, u[2] * s)
-    nn = math.sqrt(sum(x * x for x in q))
-    return tuple(x / nn for x in q), n, tuple(u)
+        return (0.0, 0.0, 0.0, 0.0), 0.0, (0.0, 0.0, 0.0)
+    k = 1.0 / float(u_ref or 1.0)
+    q = (n * k, v[0] * k, v[1] * k, v[2] * k)
+    return q, n, tuple(x / n for x in v)
 
 
 def quat_sum(qs, weights=None):   # ⚠️ 已弃用 (2026-10-16 改矢量相加口径), 只留给老判据/别的调用方
@@ -202,6 +220,9 @@ class GravityField(object):
             self.stage_now = self.live["stage"]
         if self.live.get("u_ref"):
             self.u_ref = float(self.live["u_ref"])
+        _sn = (self.live or {}).get("snap") or {}
+        if _sn.get("阶段限速"):                       # 🎯 满速基准 = 该阶段限速 (在跑的那一项口径)
+            self.u_ref = float(_sn["阶段限速"])
         self.stage_idx = self.chunk.get("stage_idx")
         self.task_id = self.meta.get("task_id") or self.engine.get("task_id") or "?"
         self.task_name = self.meta.get("task_name") or self.engine.get("task_name") or "?"
@@ -222,6 +243,16 @@ class GravityField(object):
         out["t"] = tr.get("时间_s")
         out["stages"] = tr.get("八阶段表") or list(STAGES)
         out["end"] = tr.get("末端")
+        out["tr"] = tr
+        # 🎛 3D 面板 HUD 上那三个速度 (m/s) —— 这就是屏幕上显示的数, 表直接用它们 ⇒ 与 3D 场景同一帧同一批数
+        _snap = {}
+        for _nm, _suf in (("前馈速度", "前馈速度"), ("动作调制", "动作调制"), ("安全边界", "安全边界")):
+            _xyz = [tr.get("%s_x_mps" % _suf), tr.get("%s_y_mps" % _suf), tr.get("%s_z_mps" % _suf)]
+            if all(x is not None for x in _xyz):
+                _snap[_nm] = [float(x) for x in _xyz]
+        if tr.get("阶段限速_mps") is not None:
+            _snap["阶段限速"] = float(tr["阶段限速_mps"])
+        out["snap"] = _snap
         z = _npz_cached(SRC_LIVE["npz"])
         if not z:
             return out
@@ -250,10 +281,48 @@ class GravityField(object):
             pass
         return out
 
+    def _ref_at(self, fr):
+        """该帧的参考速度 = |u_fuse_vec[fr][:3]| (逐帧在动); 拿不到就用全局 u_ref。"""
+        z = getattr(self, "live", None) or {}
+        try:
+            import numpy as _np
+            a = _npz_cached(SRC_LIVE["npz"]).get("u_fuse_vec")
+            if a is not None:
+                return float(_np.linalg.norm(_np.asarray(a[int(fr)][:3], dtype=float)))
+        except Exception:                                                        # noqa: BLE001
+            pass
+        return float(self.u_ref)
+
     def _live_cells(self, s):
         """该状态空间项的四层力 —— 用**当前帧**(在跑的项) / 该阶段**末帧**(已跑过的项) 的真实动作矢量。
         L2=u_exec(执行收口) L3=u_limit(调度限幅后) L4=u_ff(认知前馈) L5=prior(意图规划)"""
         lv = getattr(self, "live", None) or {}
+        # ⚡ 本刻在跑的那一项: 直接用 3D 面板快照自己的三个速度 ⇒ 与 3D 场景**同一帧同一批数**
+        #   (L2=动作调制器 u_fuse 实际执行 · L3=安全边界 u_limit 调度限幅后 · L4=前馈加速器 u_ff 认知前馈;
+        #    L5 意图只给条件: 方向取规划方向, 力度=阶段限速_mps)
+        _sn = lv.get("snap") or {}
+        if s == self.stage_now and _sn.get("动作调制"):
+            _fr = lv.get("frame")
+            out = {}
+            for _lk, _nm in (("L2", "动作调制"), ("L3", "安全边界"), ("L4", "前馈速度")):
+                _v = _sn.get(_nm)
+                if not _v:
+                    continue
+                out[_lk] = dict(mag=math.sqrt(sum(x * x for x in _v)), vec=list(_v),
+                                src="trace_live.json.%s_{x,y,z}_mps (3D 面板同一帧快照 · 帧 %s · HUD 上就是这三个数)" % (_nm, _fr),
+                                note="帧 %s · 阶段 %s (与 3D 场景同一帧)" % (_fr, s))
+            # L5 意图规划: 方向 = 本拍**规划方向**; 力度按认知前馈的实际力度计 (意图只给条件/方向, 不给力度)
+            #   不用"阶段限速"当力度: 限速是上限 (> 实际), 会让 L5 一家独占合力, 与老倪「主力是快速动作、
+            #   其余是补偿微调」相悖 (实测 L5 w 恒为 1.000 ⇒ 行合力 w 里全是它)。
+            _d = _sn.get("动作调制") or [0.0, 0.0, 0.0]
+            _n = math.sqrt(sum(x * x for x in _d)) or 1.0
+            _ff = _sn.get("前馈速度") or _d
+            _fm = math.sqrt(sum(x * x for x in _ff)) or float(self.u_ref)
+            _v5 = [x / _n * _fm for x in _d]
+            out["L5"] = dict(mag=math.sqrt(sum(x * x for x in _v5)), vec=_v5,
+                             src="trace_live.json 规划方向 × |前馈速度|=%.4f m/s (意图只给条件 · 帧 %s)" % (_fm, _fr),
+                             note="意图=方向/条件 (本拍规划方向), 力度按认知前馈实际力度计")
+            return out or None
         vecs = lv.get("vecs")
         rng = (lv.get("ranges") or {}).get(s)
         if not vecs or not rng:
@@ -275,10 +344,11 @@ class GravityField(object):
                 #   prior_vec 是隐空间先验 (量级 ~0.6), 与执行/前馈的动作量级 (~0.01) 不同源,
                 #   直接矢量相加会让 L5 独占合力 (实测把"主力↔合力"夹角拉到 105°) ⇒ 归一成同尺度。
                 _n = math.sqrt(sum(x * x for x in v)) or 1.0
-                v = [x / _n * float(self.u_ref) for x in v]
+                _ref = self._ref_at(fr)
+                v = [x / _n * _ref for x in v]
             mg = math.sqrt(sum(x * x for x in v))
             out[lk] = dict(mag=mg, vec=v,
-                           src="reports/ss_episode_latest.npz.%s[%d] (当前帧真源 · %s)"
+                           src="reports/ss_episode_latest.npz.%s[%d] (对照: 上一段 rollout 的逐帧真值 · %s)"
                                % ({'L2': 'u_exec_vec', 'L3': 'u_limit_vec', 'L4': 'u_ff_vec', 'L5': 'prior_vec'}[lk], fr, _note),
                            note="帧 %d · 阶段 %s · t=%.3fs" % (fr, s, float(lv.get("t") or 0.0)))
         return out or None
@@ -394,7 +464,9 @@ class GravityField(object):
 
             _all = [cells[k].get("vec") for k, _ in LAYERS]          # 四层力 (主力 + 三个赋能力)
             _vs = _vsum(_all)                                        # 合力 = 主力 + Σ赋能力 (矢量相加)
-            row_q, _n, _u = vec_to_quat(_vs, self.u_ref)
+            row_q = _qadd([cells[k].get("q") for k, _ in LAYERS])   # 🔴 逐位相加 (四个数能按行加出来)
+            #   注意: 不能写成 vec_to_quat(Σvec) —— 那样 w=|ΣF|/u_ref, 会把方向相消的部分从 w 里扣掉,
+            #   老倪按数字一加就对不上 ("合力的实部还是 0, 明显没把主力加上")。矢量 Σvec 仍保留给夹角/几何用。
             _km = self._main_layer(s, cells)
             _vm = cells[_km].get("vec") if _km else None
             rows.append(dict(stage=s, axis=axis, cells=cells, q=row_q,
@@ -411,12 +483,17 @@ class GravityField(object):
         return "L2"
 
     def _main_layer(self, s, cells):
-        """主力判定 (老倪口径):
-           · 这一拍**正在跑**的项 ⇒ L2 执行收口是主力, 其余是赋能力 (例: 插拔时刻 插拔技能的 L2 是主力);
-           · 没在跑的项 ⇒ 该行里真实影响力最大的那一层 (未执行时决定权在上层)。
-        """
+        """⚡ 主力 (老倪口径, 2026-10-16 纠正):
+           **每一时刻只有一个主力** = 正在跑的那一项的 L2 执行收口 (例: 插拔时刻 插拔技能的 L2 是主力)。
+           其余格子都是赋能力 —— 所以别的行**不高亮** (原来给每行都标了"影响力最大层", 结果一屏 8 个高亮、
+           有的行亮在 L5 上, 老倪问「我选的是 L2, 为什么 L5 也高亮」—— 那是标错了语义)。
+           没在跑的项: main=None (不给主力名义), 该行影响力最大的层只写进 tooltip 备用。"""
         if s == self.stage_now and cells["L2"].get("mag") is not None:
             return "L2"
+        return None
+
+    def _influence_layer(self, s, cells):
+        """没在跑的项: 该行里真实影响力最大的那一层 (只作信息, 不当主力)。"""
         cand = [(k, cells[k].get("mag")) for k, _ in LAYERS if cells[k].get("mag") is not None]
         if not cand:
             return None
@@ -424,19 +501,17 @@ class GravityField(object):
 
     # ---- 合力 (行 / 列 / 总) ----
     def row_resultant(self, row):
-        """该行合力 = 该行四层力矢量相加 (主力 + 补偿微调); 第二个返回值 = 主力↔合力夹角(°)。"""
-        return row["q"], row.get("dev", 0.0)
+        """该行合力 = 该行四层力四元数**逐位相加** (= 矢量相加); 第二个返回值 = 主力↔合力夹角(°)。"""
+        return _qadd([row["cells"][k].get("q") for k, _ in LAYERS]), row.get("dev", 0.0)
 
     def col_resultant(self, layer):
         vecs = [r["cells"][layer].get("vec") for r in self.rows]
-        q, _n, _u = vec_to_quat(_vsum(vecs), self.u_ref)
-        return q, _coh(vecs)
+        return _qadd([r["cells"][layer].get("q") for r in self.rows]), _coh(vecs)
 
     def total_resultant(self):
-        """全表总合力 = 所有格子的力矢量相加 (右下角那格); 第二个返回值 = 全表一致度。"""
+        """全表总合力 = 所有格子四个数**逐位相加** (右下角那格); 第二个返回值 = 全表一致度。"""
         vecs = [r["cells"][k].get("vec") for r in self.rows for k, _ in LAYERS]
-        q, _n, _u = vec_to_quat(_vsum(vecs), self.u_ref)
-        return q, _coh(vecs)
+        return _qadd([r["cells"][k].get("q") for r in self.rows for k, _ in LAYERS]), _coh(vecs)
 
     def equation(self):
         """等式核对: 合力 = 主力 + Σ赋能力 (逐行矢量相加) —— 返回 (最大残差, 最大主↔合夹角°, 全表一致度)。"""
@@ -561,6 +636,11 @@ class GravityTableWidget(QWidget):
         for i in range(1, self.t.columnCount()):
             hh.setSectionResizeMode(i, QHeaderView.Stretch)
         self.t.setWordWrap(True)
+        # 2026-10-16 老倪: 「我选的是 L2, 为什么 L5 也有高亮」—— Qt 的 current/selected item 会自己画一块底色,
+        #   再叠上重建前的光标位置 ⇒ 看着像第二个主力。表格只读 ⇒ 直接关掉选中高亮, 全表只有"主力"一种亮色。
+        from PyQt5.QtWidgets import QAbstractItemView as _AIV
+        self.t.setSelectionMode(_AIV.NoSelection)
+        self.t.setEditTriggers(_AIV.NoEditTriggers)
         lay.addWidget(self.t, 1)
 
         self.lbl_foot = QLabel("")
@@ -640,6 +720,10 @@ class GravityTableWidget(QWidget):
                                                      r["tick"] if r["tick"] is not None else "-",
                                                      " 跑" if r["active"] else ""))
             it.setForeground(QColor("#e6edf3" if r["active"] else "#8b949e"))
+            _inf = f._influence_layer(r["stage"], r["cells"]) if r.get("main") is None else None
+            it.setToolTip(("⚡ 本刻主力 (L2 执行收口)" if r.get("main") else
+                           ("本刻不是主力 · 该行影响力最大层 = %s (只是信息, 不当主力)" % (_inf or "?")))
+                          + "\n主力口径: 每一时刻只有一个 —— 正在跑的那一项的 L2; 其余全是赋能力")
             self.t.setItem(i, 0, it)
             for j, (k, _n) in enumerate(LAYERS):
                 c = r["cells"][k]
@@ -690,8 +774,8 @@ class GravityTableWidget(QWidget):
         _main_vec = (_ar["cells"][_ar["main"]].get("vec") if _ar and _ar.get("main") else None)
         _dev_tot = _angle_deg(_main_vec, _vsum([r["cells"][k].get("vec") for r in rows for k, _ in LAYERS]))
         tot = QTableWidgetItem("总合力(全表)\n%s\n%s行合力\n%s\n致%.2f Δ主%.0f°\n主 %s·%s"
-                               % (_q_str(qt, 2), (_ar or {}).get("stage") or "本刻",
-                                  _q_str((_ar or {}).get("q") or (1.0, 0, 0, 0), 2),
+                               % (_q_str(qt, 1), (_ar or {}).get("stage") or "本刻",
+                                  _q_str((_ar or {}).get("q") or (0.0, 0, 0, 0), 1),
                                   coht, _dev_tot, dn_s or "?", dn_k or "?"))   # 2 位小数: 3 位在窄栏会被 Qt 打省略号
         tot.setForeground(QColor("#ffd33d"))
         fo = QFont("Consolas")
