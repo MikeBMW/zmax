@@ -15,6 +15,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md` · `console-title-and-debug-parity.md`(标题·调试同源)
 > 📄 球心引力架构视图(天体↔节点映射·只画主体↔主体·全虚线·颜色=信号·有信号才画·标签带天体名·改完四步): `orbital-arch-view.md`
+> 📐 「显示不全/增大高度」的高度账 (先量后改·子控件 setMinimumHeight 顶死布局的坑·自动配平公式·窗口几何会吃高度): `page-height-budget.md`
 > 🧠 `status-panel-and-model-engine-window.md` = 底栏面板一行 · 模型引擎窗口 L2~L5 (训练状态+控制+执行任务工程) · 模型配置接线 · GUI 硬约束判据 (不截断/一屏放得下)
 
 ## 🖥 界面文案 = 工程真值 (侧栏卡 / 首页架构图 / 模块卡)

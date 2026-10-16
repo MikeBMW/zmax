@@ -1,6 +1,6 @@
 ---
 name: gnome-desktop-launchers
-description: Use when GNOME桌面 .desktop 快捷方式有叉号/未信任/建桌面图标。DING缓存坑+修复序列。
+description: Use when GNOME .desktop 快捷方式叉号/未信任/双击没反应/启动两次。
 ---
 
 # GNOME 桌面 .desktop 快捷方式维护 (Ubuntu 24.04 + DING)
@@ -9,6 +9,7 @@ description: Use when GNOME桌面 .desktop 快捷方式有叉号/未信任/建�
 - 桌面 .desktop 快捷方式图标带叉号(未信任徽章), 或双击提示 "untrusted desktop file" / 无法启动
 - 新建桌面快捷方式后图标不对/打不开
 - 系统克隆/rsync 迁移后桌面快捷方式失效 (E盘迁移后 09-06 复现过)
+- 双击图标「第一次没反应 / 要点两次才开」/ 启动后几十秒才有窗口
 
 ## 叉号 = 什么
 Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersoft.com)** 渲染。
@@ -38,6 +39,36 @@ Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersof
   `--check`=只核验) ⇒ 以后再改路径不会丢图标。
 - 别只修桌面那份: `~/.local/share/applications/` 里常有一份**同名副本**(应用菜单用), 两份都要改, 否则"菜单里点还是打不开"。
 - 修完的实测证据: 他双击后 `studio.py` 进程真的起来了(记录 pid/时间), 不是"应该能开"。
+
+## 「第一次没反应 / 总是启动两次」= 慢启动 + 零反馈 + 单实例闸静默
+
+症状成套出现: 双击后桌面**几十秒没有任何反馈** ⇒ 人以为没点到, 再双击一次 ⇒ 第二次也“没反应”,
+最后窗口自己冒出来 ⇒ 主观结论“要点两次才开”。**多数情况只有一次进程启动**, 先别去查“起了两个进程”。
+三段根因, 逐段核:
+
+1. **慢启动**: 重应用常把「重模型权重/大数据加载」放在主窗口 `show()` **之前** ⇒ 进程 pid 早就有了,
+   主窗口要等几十秒才 map。量法(别猜): `pgrep -f '<锚定正则>'` 有 pid, 而同时
+   `DISPLAY=:0 xdotool search --onlyvisible --name '<窗口标题>'` 搜不到 ⇒ 就是“进程在、窗口没出来”的启动窗口期。
+   报时间用启动脚本的实测口径 (如“第 N 秒窗口 1 个”), 不要凭感觉说“大概几秒”。
+2. **`StartupNotify=true` 缺 `StartupWMClass`**: 桌面图标不显示“正在启动”的忙碌态、启动请求也永远收不到完成信号 ⇒ 零反馈。
+   **WM_CLASS 必须用 `xprop -id <win> WM_CLASS` 实测** —— 它常等于**脚本名**, 不等同于 `Name=` 或窗口标题; 照猜写 `StartupWMClass` 等于没写。
+3. **第二次点击被单实例闸静默吞掉**: 启动包装脚本命中 `pgrep` 后写命令通道 + 激活已有窗口,
+   而 `xdotool search --onlyvisible` 在窗口未 map 时**找不到** ⇒ 原实现直接 `exit 0`(零反馈)。
+   修: 找不到窗口时也 `notify-send`「正在启动中(约 N 秒), 请勿重复双击」; 新实例启动前同样先发一条。
+
+判“到底起没起两个进程”: ① `pgrep` 必须**锚定整条 cmdline** (`^[^ ]*<venv>/bin/python <app>\.py$`) ——
+子串匹配会把你自己刚敲的 `pgrep -af '...'` 当成实例; ② `systemctl --user status <unit>` 看 **Main PID** ——
+只有一个 ⇒ 就是“两次点击、一次启动”, 别写“启动两次”这种误导结论。
+
+别忘**第二条入口**: `systemctl --user cat <unit>` + `ls ~/.config/autostart/`。用户级自启单元
+(`WantedBy=default.target`) 的 `ExecStart` 往往就是**同一个** launch 脚本 ⇒ 桌面图标实际只做“确保在跑 + 激活窗口”,
+两路不是竞态。查启动延迟时也要去看那个单元的 `Environment=DISPLAY=:0 / XAUTHORITY=...` 是否齐全(服务起的实例没有桌面环境)。
+
+改 .desktop 必须改**三份**(桌面 / `~/.local/share/applications/` / 仓库真源), 改完走信任序列
+(`touch` + `gio set metadata::trusted true` + 重启 DING 扩展), 再 `desktop-file-validate` 收口。
+
+治本(单独一版做, 别和别的改动同批): 把模型/大数据加载从 `show()` 之前挪到之后 (`QTimer.singleShot`),
+窗口 2~3 秒出来, 剩余加载在界面里显示进度 —— 慢启动造成的“没反应”从根上消失。
 
 ## 修复序列 (08-23 与 09-06 两次实测有效)
 ```

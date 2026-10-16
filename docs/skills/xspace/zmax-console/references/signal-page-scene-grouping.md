@@ -34,6 +34,39 @@
 5. **页面的 JSON 源解析有 48 键上限**(`flatten_json(..., 48)`, AR 曾因此只进 48 条)。新写一帧流别超;
    数值以外的东西(字符串)不进目录; 元数据键(ts/t/age/meta/groups/schema)要排除。
 
+## 新建「本机文件源」= 五处登记 (少一处就静默少信号)
+
+以「万有引力表力信号」(`gravity.*`, 94 条 = 8 项×L2/L3/L4/L5×(力大小·实部) + 行/列/总合力 + 标量) 为例:
+1. `canoe_graphic.HOST_SOURCES` 加 `("前缀", "zmax_data/ss_live/xxx.json")`;
+2. `HostJsonSource.run` 里 —— **源条数可能 >48 就必须加「直取 s 键」分支**
+   (`if prefix == "xxx" and isinstance(raw.get("s"), dict): vals = {...raw["s"]...}`),
+   否则 `flatten_json(..., 48)` 静默截断: 实测 94 条只进 48 条, 页面看着像"一半的项没有信号"。
+   元数据 (ts/时间_s/运行/task_id/阶段) 放 `s` 之外 ⇒ 天然不进目录。
+3. `CanoeGraphicWidget.OUT_NODE_RULES` 加 `("前缀.", "输出节点名")` (否则"输出节点"列空);
+4. `CanoeGraphicWidget.DEFAULT_3D` 加 1~2 条每拍真在动的键 (首屏就有曲线);
+5. `sig_scene_tags.tag()` **最前面**加前缀直判 (`if k.startswith("xxx."): return "插拔场景"`) +
+   `_source_scenes()` 同步登记; **发布器侧只认 `task_id=TASK-01-FW*` 才发** ⇒ 场景标签不说谎。
+
+判据要卡三件事 (只卡"有信号"会漏 48 截断): 源文件条数 == store 条数 == 目标场景组下命中行数,
+且当前场景行**可勾选**。定式脚本 `tools/verify_gravity_signals.py` (9 条)。
+⚠️ `HOST_SOURCES`/源分支/OUT_NODE_RULES 都是**进程启动时读的** ⇒ 改完必须重启控制台,
+重启前先跑离屏判据 (真建同一个 `CanoeGraphicWidget` 类)。
+⚠️ 行匹配别只按文本: 目录里显示的是**去前缀短名**, 标量行 (一致度/主力层号/参考速度) 不含
+"力大小/实部" 这类词 ⇒ 判据要拿 `item.data(0, Qt.UserRole)` 的键归一后比 (实测按文本匹配少 4 行)。
+
+## 引擎"在跑"≠"学习在跑": 8799 渲染帧服务是 VLM 编码的前置
+
+实测 (2026-10-16): `zmax-fw-render.service` (8799, RealStateSpaceSim 渲染插拔场景 → `/frame.png`) 不在跑 ⇒
+引擎回路 `z_source` 写「成功 0 / 失败 254: URLError Connection refused」⇒ 潜表示**静默回退内建 PCA**;
+同时 `_run_pipeline` 的 `_pick_frame()` 拿不到帧就 `return {}` (**不计数**) ⇒ `pipe_calls` 恒 0、
+`layer_calls.jsonl` 停更。表面看服务全 active、Φ/∇Φ/M 都在动, 实际"学习"整条空转。
+
+核查三步 (任何"力/潜表示是不是真算的"都先过这三条):
+`curl -s 127.0.0.1:8799/status.json` (要 age_s<1 且 std>10 的非黑帧) ·
+`engine_latest.z_source` 含「L4 潜空间…成功 N」· `pipe_calls` 在涨且 `layer_calls.jsonl` mtime 新鲜。
+`systemctl start zmax-fw-render` 后实测: 编码成功 59、帧龄 0.3s、pipe_calls 0→44,
+L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 全 ok。
+
 ## 新话题接入 = 五处登记 (少一处静默收不到)
 
 `dds/ss_types.py`(类型) · `dds/zmax_node.py`(`_SS_TOPICS` + qos) · `src/lerobot/dataspace/topics.py`(`TOPICS` + `MODE_TOPICS`) ·
