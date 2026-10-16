@@ -421,7 +421,7 @@ class GravityTableWidget(QWidget):
         self.lbl_head.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;")
         lay.addWidget(self.lbl_head)
 
-        self.t = QTableWidget(0, 2 + len(LAYERS) + 1)
+        self.t = QTableWidget(0, 1 + len(LAYERS) + 1)   # 首列 + L2/L3/L4/L5 + 合力 = 6 列 (原来多出一列空列)
         heads = ["状态空间项 · 元任务"] + [n for _k, n in LAYERS] + ["合力"]
         self.t.setHorizontalHeaderLabels(heads)
         self.t.verticalHeader().setVisible(False)
@@ -554,17 +554,27 @@ class GravityTableWidget(QWidget):
             self.t.setItem(li, 1 + j, it)
         qt, coht = f.total_resultant()
         dn_s, dn_k = f.dominant_now()
-        tot = QTableWidgetItem("总合力\n%s\n致 %.2f\n主 %s·%s"
-                               % (self._q(qt), coht, dn_s or "?", dn_k or "?"))
+        # 老倪 2026-10-16 问「右下角带颜色的四元数是主力么? 加起来的和是右下角的合力么?」
+        #   ⇒ 右下角 = **加起来的和** (全表所有格子的力矢量相加), 不是主力; 主力是每行里那格琥珀色的。
+        #   这里把两个口径都摆出来, 免得再读错: 全表总合力 + 本刻在跑项那一行的合力 (主力 + Σ补偿)
+        _act_row = [r for r in rows if r.get("active")] or []
+        _ar = _act_row[0] if _act_row else None
+        _main_vec = (_ar["cells"][_ar["main"]].get("vec") if _ar and _ar.get("main") else None)
+        _dev_tot = _angle_deg(_main_vec, _vsum([r["cells"][k].get("vec") for r in rows for k, _ in LAYERS]))
+        tot = QTableWidgetItem("总合力(全表)\n%s\n%s行合力\n%s\n致%.2f Δ主%.0f°\n主 %s·%s"
+                               % (_q_str(qt, 2), (_ar or {}).get("stage") or "本刻",
+                                  _q_str((_ar or {}).get("q") or (1.0, 0, 0, 0), 2),
+                                  coht, _dev_tot, dn_s or "?", dn_k or "?"))   # 2 位小数: 3 位在窄栏会被 Qt 打省略号
         tot.setForeground(QColor("#ffd33d"))
         fo = QFont("Consolas")
         fo.setPixelSize(self._fmt[1])          # 与表体同字号 (别用 10pt/11pt 混排 ⇒ 量宽与实际不一致)
-        fo.setBold(True)
+        fo.setBold(False)                      # 不粗体: 3 位小数的四元数 + 粗体会宽 ~5%, 边缘那格会被 Qt 打省略号
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
-        tot.setToolTip("全表总合力 = 所有格子的力矢量相加 (主力 + Σ赋能力)")
+        tot.setToolTip("总合力(全表) = 所有格子的力矢量相加\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
+                       "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 82)                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 120)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"

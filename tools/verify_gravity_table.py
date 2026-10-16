@@ -267,6 +267,12 @@ def main():
     ck("⑬ 主力格 = 实心色底 + 加粗, 首列带 ★", not _col_bad and _star_ok,
        "%d 行主力格都上色加粗 (底色 alpha=%d), 首列 ★ 齐全" % (len(f.rows), _t.item(0, 1).background().color().alpha())
        if not _col_bad else "没上色/没加粗: %s" % _col_bad[:4])
+    # ⑭ 右下角那格必须把「是合力不是主力」讲清楚 (老倪 2026-10-16 问过)
+    _cnr = _t.item(_t.rowCount() - 1, _t.columnCount() - 1)
+    _ctxt = _cnr.text() if _cnr else ""
+    _need = ["总合力", "行合力", "主 "]
+    ck("⑭ 右下角 = 总合力 + 本刻行合力 + 主力 (不是把主力当合力)", all(w in _ctxt for w in _need) and "Δ主" in _ctxt,
+       "右下角逐行: " + " | ".join(_ctxt.split("\n")))
     _bad_tier = [x for x in _tiers if not x[4]]
     ck("⑫a 一格 = 一行四个数 (老倪: 「四元数不应该是 4 个数么?」)",
        bool(_nnum) and all((_k == 4) or (W < 1000 and _k == 2) for _k in _nnum) and (W < 1000 or _w._fmt[2] is False),
