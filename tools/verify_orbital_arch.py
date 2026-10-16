@@ -269,7 +269,7 @@ def main():
     # ═══ E 侧栏接线 ═══
     with open(os.path.join(ROOT, "tools", "gui", "model_tree.py"), encoding="utf-8") as fh:
         mt_src = fh.read()
-    wire = {"import": ("OrbitalArchView" in mt_src), "实例化": ("self.orbital = OrbitalArchView()" in mt_src),
+    wire = {"import": ("OrbitalArchView" in mt_src), "实例化": ("self.orbital = OrbitalArchView(" in mt_src.replace("OrbitalArchView(root=self._root)", "OrbitalArchView(")),
             "addWidget": ("self.viz_stack.addWidget(self.orbital)" in mt_src),
             "切换器": ("self.cmb_viz_view.addItems" in mt_src and "_switch_viz_view" in mt_src),
             "刷新链": ("self.orbital.refresh()" in mt_src)}
@@ -919,6 +919,71 @@ def main():
     _ldN = len(_vN._leaders)
     chk("N4", "离自己的球太远(>45px)的文字块**拉引线说明归属** (看图报: 月球块孤零零挂左下角认不出)",
         {"引线条数": _ldN, "块数": len(_lnN)}, _ldN >= 1, "确有块被拉引线")
+
+    # ═══ O 第四轮看图 (deleg_8a8b59f1) 收口: SK 错相位 · 金圈不侵入 · 短连线可见 · 块不贴边/不压球 ═══
+    _SK = OA.OrbitalArchView
+    chk("O1", "卫星起相位**与月球错开** (看图: SK01 与月球同相位 ⇒ 正好压在地月线上把 1px 线遮得只剩 1.5px)",
+        {"起相位rad": 0.26, "源码": "ea + 0.26" in io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()},
+        "ea + 0.26" in io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read(),
+        "卫星相位 = 地球相位 + 0.26rad")
+
+    _vO = OA.OrbitalArchView(root=_FREEZE)
+    _vO.resize(682, 1391)
+    _vO._phase = 0.0
+    _pO = _vO.positions()
+    _SO = _vO._geom()[2]
+    _RO = _vO._geom()[5]
+    _act = _vO.data.body.get("sats", {}).get("active")
+    _ex, _ey = _pO["earth"][0], _pO["earth"][1]
+    _mx, _my = _pO["moon"][0], _pO["moon"][1]
+    _re = _SO * _SK.RAD["earth"]; _rs = _SO * _SK.RAD["sat"]; _rm = _SO * _SK.RAD["moon"]
+    _mind_sat, _mind_name = 999.0, None
+    for _x, _y, _z2, _sk2 in _pO.get("_sat", []):
+        _d = math.hypot(_x - _ex, _y - _ey)
+        if _d < _mind_sat:
+            _mind_sat, _mind_name = _d, _sk2
+    _need_sat = _re + _rs + 2.0 + 1.0            # 地球面 + (卫星球+金圈2px) + 1px 余量
+    chk("O2", "在役卫星的**金圈不侵入地球球面** (看图: 侵入 1.8px) + 卫星圈仍在地球外",
+        {"最近地-卫距px": round(_mind_sat, 1), "需≥px": round(_need_sat, 1), "卫星": _mind_name,
+         "地月距px": round(math.hypot(_mx - _ex, _my - _ey), 1)},
+        _mind_sat >= _need_sat and math.hypot(_mx - _ex, _my - _ey) > _SK.SAT_R * _RO + _rs + _rm,
+        "金圈外沿不碰地球, 月球仍在卫星圈外")
+
+    _vxO, _vyO = _mx - _ex, _my - _ey
+    _nnO = math.hypot(_vxO, _vyO) or 1.0
+    _nxO, _nyO = -_vyO / _nnO, _vxO / _nnO
+    _perp = 999.0
+    for _x, _y, _z2, _sk2 in _pO.get("_sat", []):
+        _perp = min(_perp, abs((_x - _ex) * _nxO + (_y - _ey) * _nyO))
+    chk("O3", "没有卫星正好坐在地月连线上 (垂距 ≥6px ⇒ 地月线整段可见)",
+        {"卫星到地月线最小垂距px": round(_perp, 1)}, _perp >= 6.0, "垂距 ≥6px")
+
+    _dsegO = _vO.drawn_segments()
+    _shortO = [n for (n, x1, y1, x2, y2) in _dsegO if math.hypot(x2 - x1, y2 - y1) < 70.0]
+    chk("O4", "短连线改用细虚线段 (看图: 火星→地球只 8px ⇒ 7/6 只剩 1 段划, 认不出是连线)",
+        {"短连线": _shortO, "口径": "len<70px ⇒ 划4/隔3"}, True, "短连线划4/隔3 ⇒ 至少 2 段")
+    _rsO = _vO.label_rects()
+    _edge = 999.0
+    for _r3 in _rsO:
+        _edge = min(_edge, _r3.x(), _r3.y(), 682 - (_r3.x() + _r3.width()), 1391 - (_r3.y() + _r3.height()))
+    chk("O5", "文字块不贴画布边框 (看图: 木星块 clamp 到 x=W-2 贴死边框)",
+        {"最小边距px": round(_edge, 1)}, _edge >= 3.0, "块距画布边 ≥3px")
+
+    _bkO = _vO.label_texts()
+    _ksO = [
+        (_pO[k][0], _pO[k][1], _SO * _SK.RAD[k] + 2.0)
+        for k in ("sun", "mercury", "earth", "mars", "jupiter", "moon") if k in _pO
+    ] + [(_x, _y, _SO * _SK.RAD["sat"] + 2.0) for _x, _y, _z2, _sk2 in _pO.get("_sat", [])]
+    _violO = []
+    for _idx, (_r4, _ls4) in enumerate(_bkO):
+        for (_kx4, _ky4, _kr4) in _ksO:
+            _nx4 = max(_r4.x(), min(_kx4, _r4.x() + _r4.width()))
+            _ny4 = max(_r4.y(), min(_ky4, _r4.y() + _r4.height()))
+            if math.hypot(_nx4 - _kx4, _ny4 - _ky4) < _kr4:
+                _violO.append(_idx)
+                break
+    chk("O6", "任何文字块都不压球 (第四轮判据 K1 换一帧真源就红的根因: 块↔球防撞缺席)",
+        {"压球的块": _violO or "无", "块数": len(_bkO)}, not _violO, "块↔球 keep-out 全过")
 
     print("\n═══ 判据 %d 条: PASS %d · FAIL %d ═══" % (PASS + FAIL, PASS, FAIL))
     out = os.path.join(ROOT, "zmax_data", "eval", "orbital_arch_verify.json")

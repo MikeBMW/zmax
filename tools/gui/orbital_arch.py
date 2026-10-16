@@ -343,7 +343,7 @@ class OrbitalArchView(QWidget):
     # 2026-10-16 看图逐项校正 (都为"账算得出来"的量, 判据 K2/K3 逐条卡):
     #   · 卫星圈必须整体在地球球体之外: 投影后的最小地-卫距 ≥ r_earth + r_sat (+4px 余量)
     #   · 月球必须在卫星圈之外: 地-月距 ≥ 卫星圈半径 + r_sat + r_moon
-    SAT_R = 0.098
+    SAT_R = 0.116
     MOON_R = 0.182
     BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
@@ -570,8 +570,10 @@ class OrbitalArchView(QWidget):
         ex, ey = er * math.cos(ea), er * math.sin(ea)
         sats = (b.get("sats", {}).get("list") or [])
         pos["_sat"] = []
+        # 起相位 +0.26rad (2026-10-16 看图: 卫星 i=0 与月球同取地球相位 ⇒ SK01 正好坐在地月连线上,
+        #   球+金圈把 1px 地月线遮得只剩 1.5px, 看不出有连线)
         for i, d in enumerate(sats):
-            aa = ea + 2 * math.pi * i / max(1, len(sats))          # 与地球同向公转 (绕地球)
+            aa = ea + 0.26 + 2 * math.pi * i / max(1, len(sats))   # 与地球同向公转 (绕地球), 起相位错开
             pos["_sat"].append(self._proj(ex + self.SAT_R * math.cos(aa),
                                           ey + self.SAT_R * math.sin(aa), 0.0, cx, cy, R) + (d.get("SK"),))
         wob = self._wobble(b.get("moon", {}))
@@ -675,7 +677,7 @@ class OrbitalArchView(QWidget):
                 self._sphere(p, x, y, r, self.COL["sat"], 1.0 if (act and live) else (0.7 if live else 0.32))
                 if act:
                     p.setPen(QPen(GOLD, 1)); p.setBrush(Qt.NoBrush)
-                    p.drawEllipse(QPointF(x, y), r + 3, r + 3)
+                    p.drawEllipse(QPointF(x, y), r + 2, r + 2)      # r+3 → r+2 (看图: 金圈压进地球 1.8px)
                 continue
             ecol = self.COL[kind] if kind != "moon" else self.COL["moon"]
             dkey = "sun" if kind == "sun" else kind
@@ -701,7 +703,7 @@ class OrbitalArchView(QWidget):
             rr = 0.12 + 0.09 * i
             alpha = 62 - i * 12
             # 2026-10-16 看图: 原金褐色 (210,153,34) 与金线辉光几乎同色(差2), 1× 数不出圈数 ⇒ 改冷灰蓝
-            p.setPen(QPen(QColor(91, 107, 125, max(30, alpha + 22)), 1.15))
+            p.setPen(QPen(QColor(91, 107, 125, max(46, alpha + 40)), 1.30))   # 看图: 1× 下太淡只隐约可见
             pts = [self._proj(rr * math.cos(t / 60.0 * 2 * math.pi),
                               rr * ratio * math.sin(t / 60.0 * 2 * math.pi), 0.0, cx, cy, R)
                    for t in range(61)]
@@ -824,6 +826,9 @@ class OrbitalArchView(QWidget):
             pen_w = 2.9
             # 慢速流动虚线: 长划 6px / 间隔 4px ⇒ 人眼看得清"是虚线", 相位每次 tick 走 0.5px (60ms/格)
             _dash, _gap = 7.0, 6.0          # 像素单位 (与笔宽解耦: 两支笔的划/隔必须同一像素几何)
+            _slen = math.hypot(x2 - x1, y2 - y1)
+            if _slen < 70.0:                # 看图: 火星→地球只 8px ⇒ 7/6 只剩 1 段划, 认不出是线
+                _dash, _gap = 4.0, 3.0
             for pen, w in ((glow, pen_w + 4.4), (core, pen_w)):
                 q = QPen(pen, w, Qt.CustomDashLine)
                 q.setCapStyle(Qt.FlatCap)      # 关键: 默认方帽把每段划两端各外扩半个笔宽 ⇒ 间隔被吃掉
@@ -981,18 +986,19 @@ class OrbitalArchView(QWidget):
             _ux, _uy = _x - pos["earth"][0], _y - pos["earth"][1]
             _n = math.hypot(_ux, _uy) or 1.0
             # 环外偏移必须 ≥ 块的半宽(16) + 卫星 keepout(球半径+4) ⇒ 26px 起 (14.9px 时会差 1px 压到自己那颗卫星)
-            _rr0 = S * self.RAD["sat"] + 34.0 + (13.0 if _i % 2 else 0.0)
-            _blk = None
+            _rr0 = S * self.RAD["sat"] + 34.0 + (17.0 if _i % 2 else 0.0)
+            _blk, _clean = None, None
             for _k in range(7):
                 _ang = (0.0, 0.3927, -0.3927, 0.7854, -0.7854, 1.1781, -1.1781)[_k]   # 0/±22.5°/±45°/±67.5°
                 _cs, _sn = math.cos(_ang), math.sin(_ang)
                 _vx = _ux / _n * _cs - _uy / _n * _sn
                 _vy = _ux / _n * _sn + _uy / _n * _cs
                 _cand = QRectF(_x + _vx * _rr0 - 16.0, _y + _vy * _rr0 - 7.0, 32.0, 14.0)
-                _cand = QRectF(min(max(_cand.x(), 2.0), W - 34.0),
+                _cand = QRectF(min(max(_cand.x(), 6.0), W - 38.0),      # 边距 6px (判据 O5: 不贴边框)
                                min(max(_cand.y(), pad_top + 2.0), H - pad_bot - 16.0), 32.0, 14.0)
                 _blk = _cand
-                if any(_cand.intersected(r).isEmpty() is False for r in placed):
+                # 间隙要求 ≥3px (判据 M3: 两块只隔 1px 就算"贴住")
+                if any(_cand.adjusted(-3, -3, 3, 3).intersected(r).isEmpty() is False for r in placed):
                     continue
                 _bad = False
                 for (kx, ky, kr) in _ks_sat:
@@ -1002,7 +1008,12 @@ class OrbitalArchView(QWidget):
                         _bad = True
                         break
                 if not _bad:
+                    _clean = _cand
                     break
+            if _clean is None:
+                # 7 个候选全冲突 ⇒ 兜底进页边栏空槽 (2026-10-16: 否则最后一块会与邻块只隔 1px, 判据 M3 红)
+                _clean = self._gutter_slot([str(_sk)], placed, _ks_sat, W, H, pad_top, pad_bot, 32.0) or _cand
+            _blk = _clean
             _col = GOLD if _sk == b.get("sats", {}).get("active") else QColor("#9fe3d6")
             out.append((_blk, [str(_sk)], _col, 8))
             placed.append(_blk)
@@ -1053,10 +1064,10 @@ class OrbitalArchView(QWidget):
                     py = y + own_r + 12 if uy >= 0 else y - own_r - 12 - h
                     py += oy
                 r = QRectF(px, py, w, h)
-                if r.x() < 2:
-                    r.moveLeft(2)
-                if r.x() + r.width() > W - 2:
-                    r.moveLeft(max(2, W - 2 - r.width()))
+                if r.x() < 6:
+                    r.moveLeft(6)                                # 看图: 木星块 clamp 到 x=W-2 贴死边框
+                if r.x() + r.width() > W - 6:
+                    r.moveLeft(max(6, W - 6 - r.width()))
                 if r.y() < pad_top:
                     r.moveTop(pad_top)
                 if r.y() + r.height() > H - pad_bot:
@@ -1126,6 +1137,24 @@ class OrbitalArchView(QWidget):
                    S * self.RAD["moon"] + 12)
         # 收尾防撞 (2026-10-16 看图/判据 J1: 加了 8 个卫星 SK 号之后, 拥挤区可能仍有两块相交):
         #   逐对检查, 相交的把**后一块**改放页边栏空槽; 槽位也撞就保持原位 (判据会报出来, 不藏着)。
+        # 2026-10-16 第三轮看图: 判据 K1 换一帧真源就红(1 块压火星) ⇒ 块↔球也进防撞:
+        #   块到任一球面(球半径+8px keep-out)不足 ⇒ 同样改放页边栏空槽。
+        _ksF = keepouts()
+        for _i in range(len(out)):
+            _ri = out[_i][0]
+            _badF = False
+            for (_kx, _ky, _kr) in _ksF:
+                _nx3 = max(_ri.x(), min(_kx, _ri.x() + _ri.width()))
+                _ny3 = max(_ri.y(), min(_ky, _ri.y() + _ri.height()))
+                if math.hypot(_nx3 - _kx, _ny3 - _ky) < _kr + 4.0:
+                    _badF = True
+                    break
+            if not _badF:
+                continue
+            _rest = [t2[0] for _k2, t2 in enumerate(out) if _k2 != _i]
+            _slot = self._gutter_slot(out[_i][1], _rest, _ksF, W, H, pad_top, pad_bot, _ri.width())
+            if _slot is not None:
+                out[_i] = (_slot, out[_i][1], out[_i][2], out[_i][3])
         for _i in range(len(out)):
             for _j in range(_i + 1, len(out)):
                 _ri, _rj = out[_i][0], out[_j][0]
@@ -1146,7 +1175,7 @@ class OrbitalArchView(QWidget):
                 rect = QRectF(xg, y, w, h)
                 ok = True
                 for r in placed:
-                    if not rect.intersected(r).isEmpty():
+                    if not rect.adjusted(-3, -3, 3, 3).intersected(r).isEmpty():   # 槽位也要留 ≥3px
                         ok = False
                         break
                 if ok:
@@ -1158,7 +1187,7 @@ class OrbitalArchView(QWidget):
                             break
                 if ok:
                     return rect
-                y += 8.0
+                y += h + 4.0                 # 原为 8px 步进 < 块高 15 ⇒ 相邻槽位只隔 1px (判据 M3 红)
         return None
 
     def label_rects(self):

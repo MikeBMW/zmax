@@ -931,7 +931,23 @@ class MasterParamMView(QWidget):
         self.module = module
         # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把真源/工具路径拼错, 体检真踩到过)
         self._root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        lay = QVBoxLayout(self)
+        # 2026-10-16 看图: 小窗口 (392×492) 下视图被裁到 ~150px ⇒ "标签可见、球一个都看不见"。
+        # 正解: 整页套 QScrollArea (内部控件保住自己的 minimumHeight, 装不下就滚, 不再被裁)。
+        lay0 = QVBoxLayout(self)
+        lay0.setContentsMargins(0, 0, 0, 0)
+        lay0.setSpacing(0)
+        _scroll = QScrollArea()
+        _scroll.setWidgetResizable(True)
+        _scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        _scroll.setFrameShape(QFrame.NoFrame)
+        _scroll.setStyleSheet("QScrollArea{background:transparent;border:none;} "
+                              "QScrollBar:vertical{background:#0d1117;width:10px;}"
+                              "QScrollBar::handle:vertical{background:#30363d;border-radius:4px;}")
+        _inner = QWidget()
+        _inner.setStyleSheet("background:transparent;")
+        _scroll.setWidget(_inner)
+        lay0.addWidget(_scroll)
+        lay = QVBoxLayout(_inner)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
 
@@ -1021,7 +1037,7 @@ class MasterParamMView(QWidget):
                 if _gdir2 not in sys.path:
                     sys.path.insert(0, _gdir2)
                 from orbital_arch import OrbitalArchView
-            self.orbital = OrbitalArchView()
+            self.orbital = OrbitalArchView(root=self._root)
             self.orbital.setMinimumHeight(470)
         except Exception as _e2:
             self.orbital = QLabel("🪐 球心引力架构视图不可用: %s: %s" % (type(_e2).__name__, _e2))
