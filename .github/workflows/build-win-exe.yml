@@ -137,7 +137,7 @@ jobs:
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "dds_hw.py;." studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -178,30 +178,24 @@ jobs:
           cd tools/gui/dist
           OUT="$(pwd)/engine_selftest.json"
           rm -f "$OUT"
-          # 🔴 2026-10-16 卡死事故: 原先是**裸调 exe**(无任何上限) —— windows runner 上这一步卡死过
-          #   (v5.50.74~v5.50.736 连续多版), 任务一直 in_progress 直到 runner 被判死 ⇒ 一条产物都传不上去,
-          #   且没有 traceback 可查。现在改成: 后台起 + **有界等待**(MAX 秒) + 卡死即收尸,
-          #   并把 exe 侧按关增量落盘的 "stage" 打出来 ⇒ 下一轮直接看出卡在哪一关
-          #   (mujoco 导入 / metaworld 建场景 / **Renderer 渲染探针** / GUI 导入链的某一环)。
-          MAX=600
-          RC=""
-          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest &
-          EXEPID=$!
-          for i in $(seq 1 $((MAX/10))); do
-            if ! kill -0 "$EXEPID" 2>/dev/null; then wait "$EXEPID"; RC=$?; break; fi
-            sleep 10
-          done
+          # 🔴 2026-10-16 两次教训合起来才成型:
+          #   ① 裸调 exe 且无上限 ⇒ 真卡死时任务挂到 runner 被判死, 后面步骤一步都跑不到 (十余个 Windows 版本零产物);
+          #   ② 改成 `kill -0` 轮询判活后仍然错: **Git Bash 看不到原生 exe 已经死了** ⇒ exe 崩了(2s 内退出)
+          #      也被当成"卡死", 白等 10 分钟, 日志里只有"卡死"没有 traceback。
+          #   ⇒ 现在: 后台放一个"定时收尸"看门狗 + 前台**直接等 exe** ⇒ 崩了立刻拿到真实退出码与它的 traceback,
+          #      真卡死才由看门狗 taskkill 收尸 (两种情形日志里都分得清)。
+          MAX=480
+          ( sleep "$MAX"; taskkill //F //IM Z-MAX_Console.exe >/dev/null 2>&1 ) &
+          WPID=$!
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          kill "$WPID" 2>/dev/null || true
           STAGE=$(grep -m1 '"stage"' "$OUT" 2>/dev/null | sed 's/.*: "//; s/".*//')
-          echo "最后走到的阶段: ${STAGE:-（还没写出文件）}"
+          echo "exe 退出码: $RC · 最后走到的阶段: ${STAGE:-（没写出 json = 崩在写 json 之前, 看上面的 traceback）}"
           echo "--- engine_selftest.json ---"
           cat "$OUT" 2>/dev/null || echo "(无输出文件: exe 没跑到写文件那步)"
-          if [ -z "$RC" ]; then
-            echo "::error::冻结核验卡死 (${MAX}s 未返回, 最后阶段: ${STAGE:-未知}) — 不许静默挂到 runner 被判死"
-            taskkill //F //IM Z-MAX_Console.exe 2>/dev/null || true
-            exit 1
-          fi
           if [ "$RC" != "0" ]; then
-            echo "::error::冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-未知}) — 打包后的 exe 里引擎起不来, 不允许发版 (v5.6.4 的 mujoco 插件 DLL bug 就是这一步抓的)"
+            echo "::error::冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-崩在写 json 之前}) — 打包后的 exe 里引擎/启动链起不来, 不发这一份 (免解包版继续验)"
             exit 1
           fi
           echo "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用 (最后阶段 ${STAGE:-未知})"
@@ -214,7 +208,7 @@ jobs:
       - name: "Build 免解包版 (onedir, 不往 %TEMP% 解包)"
         run: |
           cd tools\gui
-          pyinstaller --onedir --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --distpath dist_nounpack --workpath build_nounpack --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onedir --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --distpath dist_nounpack --workpath build_nounpack --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "dds_hw.py;." studio.py
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::onedir 构建失败"; exit 1 }
           Get-ChildItem dist_nounpack\Z-MAX_Console | Select-Object -First 8 Name
 
@@ -242,26 +236,19 @@ jobs:
           rm -f zmax_startup.log
           OUT="$(pwd)/engine_selftest_nounpack.json"
           rm -f "$OUT"
-          # 与单文件版同一套有界等待 (2026-10-16: 裸调 exe 会在 runner 上静默挂住, 不许再出现)
-          MAX=600
-          RC=""
-          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest &
-          EXEPID=$!
-          for i in $(seq 1 $((MAX/10))); do
-            if ! kill -0 "$EXEPID" 2>/dev/null; then wait "$EXEPID"; RC=$?; break; fi
-            sleep 10
-          done
+          # 与单文件版同一套: 看门狗定时收尸 + 前台直接等 exe (崩了要拿到真实退出码与 traceback, 别把"崩"报成"卡死")
+          MAX=480
+          ( sleep "$MAX"; taskkill //F //IM Z-MAX_Console.exe >/dev/null 2>&1 ) &
+          WPID=$!
+          RC=0
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          kill "$WPID" 2>/dev/null || true
           STAGE=$(grep -m1 '"stage"' "$OUT" 2>/dev/null | sed 's/.*: "//; s/".*//')
-          echo "最后走到的阶段: ${STAGE:-（还没写出文件）}"
+          echo "exe 退出码: $RC · 最后走到的阶段: ${STAGE:-（没写出 json = 崩在写 json 之前）}"
           echo "--- engine_selftest_nounpack.json ---"
           cat "$OUT" 2>/dev/null || echo "(无输出文件)"
-          if [ -z "$RC" ]; then
-            echo "::error::免解包版冻结核验卡死 (${MAX}s 未返回, 最后阶段: ${STAGE:-未知})"
-            taskkill //F //IM Z-MAX_Console.exe 2>/dev/null || true
-            exit 1
-          fi
           if [ "$RC" != "0" ]; then
-            echo "::error::免解包版冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-未知})"
+            echo "::error::免解包版冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-崩在写 json 之前})"
             exit 1
           fi
           # 🔬 启动探测必须真跑过 (证明 startup_probe 进包了 + 真在 import 重依赖之前执行)
@@ -509,7 +496,7 @@ jobs:
           pyinstaller --windowed --icon logo.icns --name "Z-MAX_Console" \
             --runtime-hook pyi_rth_mujoco_dlls.py \
             --add-data "logo.png:." \
-            --add-data "$GITHUB_WORKSPACE/tools/gen_l4_demo_video.py:." --add-data "docs_sync.py:." \
+            --add-data "$GITHUB_WORKSPACE/tools/gen_l4_demo_video.py:." --add-data "docs_sync.py:." --add-data "$GITHUB_WORKSPACE/tools/proj_state.py:." \
             --add-data "ppt_engine.py:." --add-data "update_checker.py:." \
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/engineering:src/lerobot/engineering" \

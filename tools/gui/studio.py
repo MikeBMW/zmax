@@ -36,13 +36,37 @@ import time  # 硬件工具箱日志时间戳
 import threading  # ★ 2026-09-25: 硬件卡 DDS 采集器后台线程（必须模块级导入）
 import math  # 离线仿真正弦波
 
+# 🐛 2026-10-16 Windows 冻结包实测崩点 (卡了十余个版本的 Windows 发布): 启动早期任何一处**中文 print**
+#   在 cp1252 控制台抛 UnicodeEncodeError('charmap' codec can't encode ...) ⇒ 整进程退出码 2;
+#   --windowed 双击(无控制台)时 sys.stdout/stderr = None ⇒ print 抛 AttributeError, 一样崩。
+#   最阴的是**兜底分支**: "取不到就如实打一行" 的那行中文, 自己成了新的崩溃点 (本次现场:
+#   FileNotFoundError: ...Temp\proj_state.py 被 except 抓到 → except 里的 print 崩 → 用户看到"双击即崩")。
+#   ⇒ 顶部统一把标准流改成 utf-8 + errors=replace (拿不到标准流就跳过)。
+for _st_name in ("stdout", "stderr"):
+    _st = getattr(sys, _st_name, None)
+    try:
+        if _st is not None and hasattr(_st, "reconfigure"):
+            _st.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:                                                        # noqa: BLE001
+        pass
+
 # 📌 2026-10-11 老倪: 「你要自动保存这种状态到 proj 项目文件中, 下次我可以继续调试」
 #   开机自恢复工程状态: 场景真源 (ZMAX_SCENE_DIR) + 画布数据源 (src_state) + 存档里的活跃任务。
 #   实测: 控制台一重启, 画布 src_state 会被写成默认「真机」(22:39:24 那次), 老倪选的「摆盘场景」当场丢
 #   ⇒ 启动第一步从工程存档 (.proj 的 debug_state) 回填, 字节级只改那一个值 + 留 .bak, 后续 GUI 加载读到的就是对的。
 try:
     import importlib.util as _ilu_boot
-    _bp = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "proj_state.py")
+    # 🐛 2026-10-16: 原来只认 `studio.py/../proj_state.py` (源码树写法) —— 冻结包里 __file__ 不在源码树,
+    #   该文件又没被打进包 (workflow 的 --add-data 里漏了 proj_state.py) ⇒ FileNotFoundError (Windows 上
+    #   连兜底打印都崩, 见上)。改成**候选表**: 源码相对路径 → 冻结包根 (_MEIPASS) → 包根上一级;
+    #   打包侧同步把 tools/proj_state.py 放进包根 (`--add-data ...;.`)。
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _mp = getattr(sys, "_MEIPASS", "") or ""
+    _bp = next((c for c in (os.path.join(_here, os.pardir, "proj_state.py"),   # 源码: tools/gui/../proj_state.py
+                            os.path.join(_here, "proj_state.py"),              # 冻结(onedir/onefile): 与 studio 同级
+                            os.path.join(_mp, "proj_state.py"),                # 冻结: 包根
+                            os.path.join(_mp, os.pardir, "proj_state.py"))
+                if os.path.isfile(c)), os.path.join(_here, os.pardir, "proj_state.py"))
     _bs = _ilu_boot.spec_from_file_location("proj_state_boot", os.path.abspath(_bp))
     _bm = _ilu_boot.module_from_spec(_bs)
     _bs.loader.exec_module(_bm)
