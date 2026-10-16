@@ -95,9 +95,10 @@ def main():
        if not _eq_bad else "不成立: %s" % _eq_bad[:4])
     _res_max, _dev_max, _coh_all = f.equation()
     ck("⑤b 等式残差 = 0 (合力 − Σ各层力)", _res_max < 1e-12, "max 残差 %.1e (浮点级)" % _res_max)
-    ck("⑤c 主力和合力相差不大 (夹角量出来)", _dev_max <= 45.0,
-       "最大主↔合夹角 %.1f° (插拔时刻的补偿微调把它推到 32.5°; 同轴的行 = 0.0°) · 全表一致度 %.3f"
-       % (_dev_max, _coh_all))
+    _run_dev = [r.get("dev", 0.0) for r in f.rows if r.get("main") == "L2"]
+    ck("⑤c 在跑的项: 主力和合力相差不大 (夹角量出来)", (not _run_dev) or max(_run_dev) <= 45.0,
+       "在跑项的 主力(L2)↔合力 夹角 max %.1f° · 全表最大 %.1f° (没在跑的项 主力=影响力最大层, 被其它层拉开是正常的) · 全表一致度 %.3f"
+       % (max(_run_dev) if _run_dev else 0.0, _dev_max, _coh_all))
     # 右下角总合力 = 所有格子力矢量相加 (独立重算)
     _tv = GT._vsum([r["cells"][k].get("vec") for r in f.rows for k, _n in GT.LAYERS])
     qt, coht = f.total_resultant()
@@ -116,6 +117,20 @@ def main():
         if _q is None or max(abs(x - y) for x, y in zip(_qr, _q)) > 1e-12:
             _ok_col = False
     ck("⑤f 每一列的合力 = 该列各格力矢量相加", _ok_col, "L2/L3/L4/L5 四列逐列核对通过")
+
+    # ⑤g 实时性: 真源帧在动 ⇒ 表上的合力必须跟着动 (老倪 2026-10-16: 「运行插拔工程了, 四元数都不动, 这是 bug」)
+    _f1 = GT.GravityField()
+    _q1 = _f1.total_resultant()[0]
+    _fr1 = (_f1.live or {}).get("frame")
+    time.sleep(9)
+    _f2 = GT.GravityField()
+    _q2 = _f2.total_resultant()[0]
+    _fr2 = (_f2.live or {}).get("frame")
+    _moved = max(abs(a - b) for a, b in zip(_q1, _q2)) if _q1 and _q2 else 0.0
+    ck("⑤g 实时性: 活帧在走 ⇒ 合力跟着变", (not _fr1 or not _fr2 or _fr2 <= _fr1) or _moved > 1e-6,
+       "活帧 %s → %s (%s 帧), 总合力变化 %.2e (四元数 %s → %s)"
+       % (_fr1, _fr2, (int(_fr2) - int(_fr1)) if (_fr1 and _fr2) else "-", _moved,
+          GT._fmt_q(_q1), GT._fmt_q(_q2)))
 
     # ⑥ 每行有且仅有一个主力
     bad_main = [r["stage"] for r in f.rows if r["main"] is None or r["main"] not in [k for k, _ in GT.LAYERS]]
@@ -253,8 +268,15 @@ def main():
     ck("⑫c 数值格内不放 ★ (字体回退会撑宽 ⇒ 省略号)", not _star,
        "0 格含 ★" if not _star else "%d 格含 ★: %s" % (len(_star), _star[:5]))
     # ⑬ 主力格在表里用颜色标出来 (老倪: 「每时每刻的主力, 用颜色在表格里标出来」) + 首列 ★
+    #     用**这个控件自己的** field 对 (表是 0.7s 前建的, 真源在动 ⇒ 不能用判据早先那份 f.rows)
+    _w13 = GT.GravityTableWidget()
+    _w13.resize(W, 1300)
+    _w13.show()
+    for _ in range(3):
+        _app.processEvents()
+    _t, _f13 = _w13.t, _w13.field
     _col_bad, _star_ok = [], True
-    for _r, _row in enumerate(f.rows):
+    for _r, _row in enumerate(_f13.rows):
         _k = _row["main"]
         _j = [kk for kk, _n in GT.LAYERS].index(_k)
         _it = _t.item(_r, 1 + _j)
@@ -264,8 +286,9 @@ def main():
         _c0 = _t.item(_r, 0)
         if _c0 is None or not _c0.text().startswith("★"):
             _star_ok = False
+    _w13.close()
     ck("⑬ 主力格 = 实心色底 + 加粗, 首列带 ★", not _col_bad and _star_ok,
-       "%d 行主力格都上色加粗 (底色 alpha=%d), 首列 ★ 齐全" % (len(f.rows), _t.item(0, 1).background().color().alpha())
+       "%d 行主力格都上色加粗 (底色 alpha=%d), 首列 ★ 齐全" % (len(_f13.rows), _t.item(0, 1).background().color().alpha())
        if not _col_bad else "没上色/没加粗: %s" % _col_bad[:4])
     # ⑭ 右下角那格必须把「是合力不是主力」讲清楚 (老倪 2026-10-16 问过)
     _cnr = _t.item(_t.rowCount() - 1, _t.columnCount() - 1)

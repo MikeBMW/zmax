@@ -12923,6 +12923,33 @@ class StudioMainWindow(QMainWindow):
         except Exception as _e:                                              # noqa: BLE001
             print("📷 mparam_shot: 失败: %r" % _e)
 
+    def _gt_dump_cmd(self):
+        """🔎 命令通道 gt_dump: 打印活控制台「万有引力表」当下这一帧的总合力/一致度/主力/各格格值 (证明实时)。"""
+        try:
+            _sim = getattr(self, "simulink", None)
+            _dock = getattr(_sim, "model_tree", None) if _sim is not None else None
+            _page = getattr(_dock, "mparam", None) if _dock is not None else None
+            _g = getattr(_page, "gravity", None) if _page is not None else None
+            if _g is None or getattr(_g, "field", None) is None:
+                print("gt_dump: 没有万有引力表 (或还没读真源)", flush=True); return
+            f = _g.field
+            qt, coh = f.total_resultant()
+            _res, _dev, _coh_all = f.equation()
+            _dn_s, _dn_k = f.dominant_now()
+            def _q4(q):
+                return "[%s]" % ", ".join("%+.3f" % x for x in q)
+            _rd = [r.get("dev", 0.0) for r in f.rows if r.get("main") == "L2"]
+            print("gt_dump %s | 活帧 %s · 阶段 %s · 总合力 %s · 一致度 %.3f · 残差 %.1e · 在跑项主↔合 %.1f° · 主力 %s·%s"
+                  % (time.strftime("%H:%M:%S"), (f.live or {}).get("frame"), f.stage_now, _q4(qt), coh, _res,
+                     (max(_rd) if _rd else 0.0), _dn_s or "?", _dn_k or "?"), flush=True)
+            print("  真源帧龄(s): " + " · ".join("%s %.1f" % (k, v) for k, v in f.age.items() if v is not None), flush=True)
+            print("  逐行主力力度: " + " | ".join("%s:%s=%.3f" % (r["stage"], r["main"],
+                  (r["cells"][r["main"]].get("mag") or 0.0) if r.get("main") else 0.0) for r in f.rows), flush=True)
+            print("  逐行合力: " + " | ".join("%s %.3f(Δ主%.0f°)" % (r["stage"], r.get("mag_res", 0.0), r.get("dev", 0.0))
+                                            for r in f.rows), flush=True)
+        except Exception as _e:                                              # noqa: BLE001
+            print("gt_dump: 失败: %r" % _e)
+
     def _poll_nav_cmd(self):
         """📡 轮询外部命令文件 /tmp/zmax_nav_cmd (一行=一个命令)"""
         try:
@@ -12952,6 +12979,10 @@ class StudioMainWindow(QMainWindow):
                     #   用法: echo orbital > /tmp/zmax_nav_cmd
                     elif line == "orbital":
                         _oneshot(self, 1000, self._goto_orbital_cmd)
+                    # 🔎 2026-10-16 老倪「四元数不动」取证: 把活控制台里表当下这一帧的关键值打到日志 (可重复调用对比)
+                    #   用法: echo gt_dump > /tmp/zmax_nav_cmd
+                    elif line == "gt_dump":
+                        self._gt_dump_cmd()
                     elif line == "mparam_shot":
                         _oneshot(self, 1200, self._mparam_shot_cmd)
                     elif line == "ss_3d":

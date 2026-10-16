@@ -20,7 +20,8 @@
                         → 指数映射 q = (cos(θ/2), sin(θ/2)·û),  θ = π·min(1, |v| / u_ref)
   u_ref = chunk_latest.u_norm0 (本拍参考速度, 真源) ⇒ 满速 = 转 π (180°), 力越大转得越多;
   |F| 就是该层的真实幅值 (m/s 或 action 范数), 一并显示 ⇒ 「四元数 + 强度」两项都看得见。
-  合力 = 四元数归一化和 (Markley 平均): q_bar = Σq / |Σq|, 一致度 = |Σq| / n
+  合力 = 主力 + Σ赋能力 (各层力**矢量相加** F_i=|F_i|·û_i), 一致度 = |ΣF| / Σ|F| —— 2026-10-16 老倪口径
+  (旧的「四元数等权平均 Markley」已弃用: 那时 |F合| 恒为 0, 与老倪「主力和合力相差不大」矛盾)
     (1.0 = 四层完全同向使劲; →0 = 互相抵消, 谁也没推动)。
 """
 
@@ -51,6 +52,35 @@ SRC = {
     "engine": _p("zmax_data", "ss_live", "engine_latest.json"),
     "traj":   _p("data", "database", "zmax", "sources", "canvas", "ss_traj_last.json"),
 }
+
+# ── 活源 (2026-10-16: 老倪「运行插拔工程时四元数都不动」⇒ 表必须跟着当前帧动) ──
+#   trace_live.json: 秒级刷新, 给出**当前帧号/阶段**; ss_episode_latest.npz: 逐帧动作矢量
+#   (u_exec_vec=L2 执行 / u_limit_vec=L3 调度限幅 / u_ff_vec=L4 认知前馈 / prior_vec=L5 意图)
+SRC_LIVE = {
+    "trace": _p("zmax_data", "ss_live", "trace_live.json"),
+    "npz":   _p("reports", "ss_episode_latest.npz"),
+}
+
+_NPZ_CACHE = {"key": None, "z": None}
+
+
+def _npz_cached(path):
+    """按 (路径, mtime) 缓存 episode npz —— 每 0.7s 重解 851 帧没必要。"""
+    try:
+        key = (path, os.path.getmtime(path))
+    except Exception:                                                        # noqa: BLE001
+        return None
+    if _NPZ_CACHE["key"] == key:
+        return _NPZ_CACHE["z"]
+    try:
+        import numpy as _np
+        d = _np.load(path, allow_pickle=True)
+        z = {k: d[k] for k in d.files}
+    except Exception:                                                        # noqa: BLE001
+        return None
+    _NPZ_CACHE.update(key=key, z=z)
+    return z
+
 
 # 元任务链上的 8 个状态空间项 (顺序 = 执行顺序; 真源里 <项>_拍 给出拍序)
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
@@ -112,7 +142,7 @@ def vec_to_quat(v, u_ref):
     return tuple(x / nn for x in q), n, tuple(u)
 
 
-def quat_sum(qs, weights=None):
+def quat_sum(qs, weights=None):   # ⚠️ 已弃用 (2026-10-16 改矢量相加口径), 只留给老判据/别的调用方
     """四元数归一化和 (Markley 平均) → (q_bar, 一致度 |Σ|/n)。空集 → 单位四元数, 一致度 0。"""
     qs = [q for q in (qs or []) if q]
     if not qs:
@@ -162,9 +192,16 @@ class GravityField(object):
         self.engine = _read(self.src["engine"]) or {}
         self.traj = _read(self.src["traj"]) or {}
         self.age = {k: _age_s(p) for k, p in self.src.items()}
+        self.age.update({("帧" + k): _age_s(p) for k, p in SRC_LIVE.items()})
+        self.live = self._load_live()
 
         self.u_ref = float(self.chunk.get("u_norm0") or 0.0) or 0.1417      # 参考速度 (真源: 本拍首个动作范数)
         self.stage_now = self.chunk.get("stage") or None
+        # 🛰 活源优先: trace_live 的当前阶段 + 当前帧的参考速度 (u_fuse 的范数) —— 跑工程时这些秒级在动
+        if self.live.get("stage"):
+            self.stage_now = self.live["stage"]
+        if self.live.get("u_ref"):
+            self.u_ref = float(self.live["u_ref"])
         self.stage_idx = self.chunk.get("stage_idx")
         self.task_id = self.meta.get("task_id") or self.engine.get("task_id") or "?"
         self.task_name = self.meta.get("task_name") or self.engine.get("task_name") or "?"
@@ -174,6 +211,77 @@ class GravityField(object):
         self.ff_steps = self.chunk.get("ff") or []
         self.exec_axis = self._exec_axis()          # 每个阶段的真实运动方向 (真源 u_exec_vec)
         self.rows = self._build_rows()
+
+    # ---- 🛰 活源: trace_live (当前帧) + episode npz (逐帧四路动作) ----
+    def _load_live(self):
+        """读当前帧。返回 {} = 拿不到 (表就退回标称口径, 并在格里写明真源出处)。"""
+        out = {}
+        tr = _read(SRC_LIVE["trace"]) or {}
+        out["frame"] = tr.get("帧")
+        out["stage"] = ((tr.get("阶段") or "").split(" ")[0]) or None
+        out["t"] = tr.get("时间_s")
+        out["stages"] = tr.get("八阶段表") or list(STAGES)
+        out["end"] = tr.get("末端")
+        z = _npz_cached(SRC_LIVE["npz"])
+        if not z:
+            return out
+        try:
+            import numpy as _np
+            def _nm(x):
+                return str(x).replace("阶段 ", "").split(" ·")[0].strip()
+            _stg = [_nm(x) for x in z["stage"]]
+            fr = int(out["frame"]) if out.get("frame") is not None else 0
+            fr = max(0, min(fr, len(_stg) - 1))
+            out["frame"] = fr
+            out["vecs"] = {lk: z[key] for key, lk in (("u_exec_vec", "L2"), ("u_limit_vec", "L3"),
+                                                     ("u_ff_vec", "L4"), ("prior_vec", "L5"))
+                           if key in z}
+            rng = {}
+            for i, nm in enumerate(_stg):
+                if nm in rng:
+                    rng[nm][1] = i
+                else:
+                    rng[nm] = [i, i]
+            out["ranges"] = rng
+            out["n_frame"] = len(_stg)
+            if z.get("u_fuse_vec") is not None:
+                out["u_ref"] = float(_np.linalg.norm(_np.asarray(z["u_fuse_vec"][fr][:3], dtype=float)))
+        except Exception:                                                    # noqa: BLE001
+            pass
+        return out
+
+    def _live_cells(self, s):
+        """该状态空间项的四层力 —— 用**当前帧**(在跑的项) / 该阶段**末帧**(已跑过的项) 的真实动作矢量。
+        L2=u_exec(执行收口) L3=u_limit(调度限幅后) L4=u_ff(认知前馈) L5=prior(意图规划)"""
+        lv = getattr(self, "live", None) or {}
+        vecs = lv.get("vecs")
+        rng = (lv.get("ranges") or {}).get(s)
+        if not vecs or not rng:
+            return None
+        fr = lv.get("frame") if s == self.stage_now else rng[1]
+        try:
+            fr = max(rng[0], min(int(fr), rng[1]))
+        except Exception:                                                        # noqa: BLE001
+            fr = rng[1]
+        _note = "活帧 %d/%s (阶段区间 %d~%d)" % (fr, lv.get("n_frame") or "?", rng[0], rng[1])
+        out = {}
+        for lk in ("L2", "L3", "L4", "L5"):
+            a = vecs.get(lk)
+            if a is None:
+                continue
+            v = [float(a[fr][0]), float(a[fr][1]), float(a[fr][2])]
+            if lk == "L5":
+                # 🎯 L5「意图只给条件」: 方向取意图(prior)方向, 力度=本拍参考速度 u_ref ——
+                #   prior_vec 是隐空间先验 (量级 ~0.6), 与执行/前馈的动作量级 (~0.01) 不同源,
+                #   直接矢量相加会让 L5 独占合力 (实测把"主力↔合力"夹角拉到 105°) ⇒ 归一成同尺度。
+                _n = math.sqrt(sum(x * x for x in v)) or 1.0
+                v = [x / _n * float(self.u_ref) for x in v]
+            mg = math.sqrt(sum(x * x for x in v))
+            out[lk] = dict(mag=mg, vec=v,
+                           src="reports/ss_episode_latest.npz.%s[%d] (当前帧真源 · %s)"
+                               % ({'L2': 'u_exec_vec', 'L3': 'u_limit_vec', 'L4': 'u_ff_vec', 'L5': 'prior_vec'}[lk], fr, _note),
+                           note="帧 %d · 阶段 %s · t=%.3fs" % (fr, s, float(lv.get("t") or 0.0)))
+        return out or None
 
     # ---- 真实执行轴: ss_traj 逐帧 u_exec_vec 按阶段切段求均值方向 ----
     def _exec_axis(self):
@@ -272,6 +380,11 @@ class GravityField(object):
             else:
                 cells["L5"] = dict(mag=None, src="缺 engine_latest.confidence 或该阶段真实轴")
 
+            # 🛰 活源优先: 拿得到当前帧就覆盖 L2/L3/L4/L5 (跑工程时四元数跟着帧动)
+            _lv = self._live_cells(s)
+            if _lv:
+                cells.update(_lv)
+
             # 每格 → 四元数
             for k, c in cells.items():
                 if c.get("mag") is None or not c.get("vec"):
@@ -345,6 +458,14 @@ class GravityField(object):
                 if m is not None and (best is None or m > best[2]):
                     best = (r["stage"], k, m)
         return (best[0], best[1]) if best else (None, None)
+
+    def live_line(self):
+        """🛰 活源一行: 当前帧/阶段/时刻 —— 老倪要能看出表是跟着工程在跑的。"""
+        lv = getattr(self, "live", None) or {}
+        if not lv.get("vecs"):
+            return "🛰 活帧: 拿不到 (trace_live/episode npz 缺失 ⇒ 表退回标称口径)"
+        return ("🛰 活帧 %s/%s · 阶段 %s · t=%.3fs · 参考速度 u_ref=%.4f · 每 0.7s 重读"
+                % (lv.get("frame"), lv.get("n_frame") or "?", self.stage_now or "?", float(lv.get("t") or 0.0), self.u_ref))
 
     def header_line(self):
         nm = self.age.get("skill")
@@ -452,6 +573,13 @@ class GravityTableWidget(QWidget):
         self.field = None
         self._fmt = (2, 14, False)          # (小数位, 字号px, 是否 2×2) —— 由 _pick_fmt 按当前宽度定
         self.refresh()
+        # ⏱ 2026-10-16 老倪: 「我现在运行插拔工程了, 这些四元数都不动, 这个是 bug, 要实时反映系统当前的合力」
+        #   根因: 这张表原来只在「这一页被重建/切页」时才 refresh ⇒ 跑工程时一直显示切页那一拍的值。
+        #   ⇒ 自己挂 0.7s 心跳, 每次重读 5 个真源 (小文件, 只读) + 重绘; 页面不可见时 refresh_if_visible 直接返回 (零成本)。
+        self._tm = QTimer(self)
+        self._tm.setInterval(700)
+        self._tm.timeout.connect(self.refresh_if_visible)
+        self._tm.start()
 
     # ── 宽度自适应: 老倪要一行四个数看得见 ⇒ 先降小数位/字宽, 不够才 2×2 (绝不打省略号) ──
     def _pick_fmt(self, w=None):
@@ -585,14 +713,16 @@ class GravityTableWidget(QWidget):
         _tot_line = ("★★ 全表总合力 %s · 一致度 %.2f · 本刻主力 %s·%s ★★"
                      % (_fmt_q(qt), coht, dn_s or "?", dn_k or "?"))
         # 老倪 2026-10-16: 「主力是快速动作, 合力是叠加了补偿微调的总和矢量力, 保证等式关系」
-        _eq_line = ("✅ 等式: 合力 = 主力 + Σ赋能力 (矢量相加) · 逐行残差 max %.1e · 主力↔合力夹角 max %.1f° · "
-                    "全表一致度 %.2f" % (_res_max, _dev_max, _coh_all))
+        _run_dev = [r.get("dev", 0.0) for r in rows if r.get("main") == "L2"]
+        _eq_line = ("✅ 等式: 合力 = 主力 + Σ赋能力 (矢量相加) · 逐行残差 max %.1e · 在跑项 主↔合 %.1f° · "
+                    "全表最大 %.1f° · 全表一致度 %.2f"
+                    % (_res_max, (max(_run_dev) if _run_dev else 0.0), _dev_max, _coh_all))
         self.lbl_foot.setText(
-            _tot_line + "\n" + _eq_line + "\n"
+            _tot_line + "\n" + _eq_line + "\n" + f.live_line() + "\n"
             + (f.age_line() + ("  ← 这几项不是本刻的, 上面格子的力是它们最后一拍的值\n" if stale else "\n"))
             + "四元数 = 该层这一拍对该项的力: q=(cosθ/2, sinθ/2·û), θ=π·min(1,|F|/u_ref), u_ref=%.3f (本拍参考速度, 真源) · "
               "★=主力 (正在跑的项 ⇒ L2 执行收口; 未在跑的项 ⇒ 影响力最大层) · 其余格子是赋能力 · "
-              "合力 = 四元数归一化和 (Markley), 一致度 |Σq|/n。真源: meta_tasks/skill_latest/chunk_latest/engine_latest/ss_traj_last (只读)"
+              "合力 = 主力 + Σ赋能力 (各层力**矢量相加**: F_i=|F_i|·û_i), 一致度 |ΣF|/Σ|F|。真源: meta_tasks/skill_latest/chunk_latest/engine_latest/ss_traj_last (只读) · 每 0.7s 重读一次"
             % f.u_ref)
 
     def refresh_if_visible(self):
