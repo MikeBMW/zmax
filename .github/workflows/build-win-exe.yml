@@ -166,19 +166,45 @@ jobs:
           ls -la tools/gui/dist/Z-MAX_Console.exe
 
       - name: "冻结核验: 真跑打包产物 (import mujoco/metaworld + 建 L4 场景 + 步进) — 老倪「发版前先自证」"
+        id: onefile_selftest
+        # 🔴 2026-10-16: 这一步原先**硬失败**(裸调 exe, 无上限)。它在 windows runner 上卡死时,
+        #   连后面的免解包版构建/上传都跑不到 ⇒ Windows 一条产物都发不出去 (v5.50.74~736 连续多版如此)。
+        #   现在: ① 有界等待 (卡死即判失败并打最后阶段) ② 本步不再掐住后续步骤, 但**是否上传 exe 由它决定**
+        #   (见 Upload 步骤的 if) —— 单文件 exe 过不了冻结核验就不发它, 免解包版照发, 不做假绿。
+        continue-on-error: true
         shell: bash
+        timeout-minutes: 25
         run: |
           cd tools/gui/dist
           OUT="$(pwd)/engine_selftest.json"
-          RC=0
-          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          rm -f "$OUT"
+          # 🔴 2026-10-16 卡死事故: 原先是**裸调 exe**(无任何上限) —— windows runner 上这一步卡死过
+          #   (v5.50.74~v5.50.736 连续多版), 任务一直 in_progress 直到 runner 被判死 ⇒ 一条产物都传不上去,
+          #   且没有 traceback 可查。现在改成: 后台起 + **有界等待**(MAX 秒) + 卡死即收尸,
+          #   并把 exe 侧按关增量落盘的 "stage" 打出来 ⇒ 下一轮直接看出卡在哪一关
+          #   (mujoco 导入 / metaworld 建场景 / **Renderer 渲染探针** / GUI 导入链的某一环)。
+          MAX=600
+          RC=""
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest &
+          EXEPID=$!
+          for i in $(seq 1 $((MAX/10))); do
+            if ! kill -0 "$EXEPID" 2>/dev/null; then wait "$EXEPID"; RC=$?; break; fi
+            sleep 10
+          done
+          STAGE=$(grep -m1 '"stage"' "$OUT" 2>/dev/null | sed 's/.*: "//; s/".*//')
+          echo "最后走到的阶段: ${STAGE:-（还没写出文件）}"
           echo "--- engine_selftest.json ---"
           cat "$OUT" 2>/dev/null || echo "(无输出文件: exe 没跑到写文件那步)"
-          if [ "$RC" != "0" ]; then
-            echo "::error::冻结核验失败 (exit=$RC) — 打包后的 exe 里引擎起不来, 不允许发版 (v5.6.4 的 mujoco 插件 DLL bug 就是这一步抓的)"
+          if [ -z "$RC" ]; then
+            echo "::error::冻结核验卡死 (${MAX}s 未返回, 最后阶段: ${STAGE:-未知}) — 不许静默挂到 runner 被判死"
+            taskkill //F //IM Z-MAX_Console.exe 2>/dev/null || true
             exit 1
           fi
-          echo "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用"
+          if [ "$RC" != "0" ]; then
+            echo "::error::冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-未知}) — 打包后的 exe 里引擎起不来, 不允许发版 (v5.6.4 的 mujoco 插件 DLL bug 就是这一步抓的)"
+            exit 1
+          fi
+          echo "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用 (最后阶段 ${STAGE:-未知})"
 
       # ──────────── 免解包版 (onedir) ────────────
       # 2026-10-10 老倪 Windows exe 双击即崩: pyimod01_archive.extract -> MemoryError: Unable to allocate output buffer
@@ -210,16 +236,32 @@ jobs:
 
       - name: "冻结核验 (免解包版): 真跑 onedir 里的 exe + 断言启动探测已落盘"
         shell: bash
+        timeout-minutes: 25
         run: |
           cd tools/gui/dist_nounpack/Z-MAX_Console
           rm -f zmax_startup.log
           OUT="$(pwd)/engine_selftest_nounpack.json"
-          RC=0
-          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?
+          rm -f "$OUT"
+          # 与单文件版同一套有界等待 (2026-10-16: 裸调 exe 会在 runner 上静默挂住, 不许再出现)
+          MAX=600
+          RC=""
+          ZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest &
+          EXEPID=$!
+          for i in $(seq 1 $((MAX/10))); do
+            if ! kill -0 "$EXEPID" 2>/dev/null; then wait "$EXEPID"; RC=$?; break; fi
+            sleep 10
+          done
+          STAGE=$(grep -m1 '"stage"' "$OUT" 2>/dev/null | sed 's/.*: "//; s/".*//')
+          echo "最后走到的阶段: ${STAGE:-（还没写出文件）}"
           echo "--- engine_selftest_nounpack.json ---"
           cat "$OUT" 2>/dev/null || echo "(无输出文件)"
+          if [ -z "$RC" ]; then
+            echo "::error::免解包版冻结核验卡死 (${MAX}s 未返回, 最后阶段: ${STAGE:-未知})"
+            taskkill //F //IM Z-MAX_Console.exe 2>/dev/null || true
+            exit 1
+          fi
           if [ "$RC" != "0" ]; then
-            echo "::error::免解包版冻结核验失败 (exit=$RC)"
+            echo "::error::免解包版冻结核验失败 (exit=$RC, 最后阶段: ${STAGE:-未知})"
             exit 1
           fi
           # 🔬 启动探测必须真跑过 (证明 startup_probe 进包了 + 真在 import 重依赖之前执行)
@@ -239,6 +281,7 @@ jobs:
           Get-Item Z-MAX_Console-win64-nounpack.zip | Select-Object Name,Length
 
       - name: Upload artifact
+        if: steps.onefile_selftest.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: Z-MAX_Console-windows
@@ -246,7 +289,7 @@ jobs:
           compression-level: 0
 
       - name: Upload to Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && steps.onefile_selftest.outcome == 'success'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -260,9 +303,10 @@ jobs:
           body: |
             ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
 
-            > 版本号 5.50.730 · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
-            > 本版: 配置中心=北斗七星阵 (页签名=配置名) · 模型配置页=功能↔L2~L5 层模型映射 (与主控台模型矩阵同源) ·
-            > **专利**: 74 项功能逐条预留申请渠道 + 12 件发明专利内容设计 (层次/逻辑/真实数据/可落地) + 文档配置页专利导出预览。
+            > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
+            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
+            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
+            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
 
             桌面版下载 (双平台):
             - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用
@@ -552,3 +596,21 @@ jobs:
           asset_name: Z-MAX_Console-macOS.zip
           tag: ${{ steps.release_tag.outputs.tag }}
           overwrite: true
+          # 2026-10-16: 正文也挂到 mac 这一侧 —— 否则单文件 exe 没过冻结核验(不上传)时,
+          #   Release 就只有资产没有说明 (老倪看到的是空壳 Release)。
+          release_name: Z-MAX Console 北斗七星版 · ${{ steps.release_tag.outputs.tag }}
+          body: |
+            ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
+
+            > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
+            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
+            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
+            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
+
+            桌面版下载 (双平台):
+            - **macOS**: `Z-MAX_Console-macOS.zip` — 解压得到 `Z-MAX_Console.app` (Apple Silicon arm64;
+              未签名 → 首次打开: 右键 → 打开, 或 系统设置 → 隐私与安全性 → 仍要打开)
+            - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用 (过冻结核验才发)
+            - **Windows 免解包版**: `Z-MAX_Console-win64-nounpack.zip` — 机器内存紧 / TEMP 在 RAM 盘 / 系统盘满时用这个
+              (单文件版每次启动要把 ~337MB 解包到 `%TEMP%`, 分配不到内存时会崩在
+              `pyimod01_archive.extract → MemoryError`; zip 版不做运行时解包, 启动内存峰值低得多)

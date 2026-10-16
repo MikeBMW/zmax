@@ -103,12 +103,32 @@ if "--engine-selftest" in sys.argv:
     _sel = {"argv": sys.argv[:4], "frozen": bool(getattr(sys, "frozen", False)),
             "meipass": getattr(sys, "_MEIPASS", None)}
     _sel_rc = 1
+    # 🔴 2026-10-16: Windows CI 上这一步**卡死**过 (v5.50.74~v5.50.736 连续多版, 卡在同一句 exe 调用、
+    #   workflow 里没设上限 ⇒ 任务一直 in_progress 到 runner 被判死, 产物一个都传不上去)。
+    #   卡死没法在事后靠 traceback 定位 (traceback 只在异常时才有) ⇒ 每过一关就把 json 增量落盘一次,
+    #   外面用有界等待轮询/超时收尸时, 就能从 "stage" 直接看出是**哪一关**卡住 (mujoco? metaworld 建场景?
+    #   renderer? 还是 GUI 导入链的某一环?)。
+    _SEL_OUT = os.environ.get("ZMAX_SELFTEST_OUT", "engine_selftest.json")
+
+    def _sel_flush(stage):
+        _sel["stage"] = stage
+        _sel["stage_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(_SEL_OUT, "w", encoding="utf-8") as _f:
+                _sel_json.dump(_sel, _f, ensure_ascii=False, indent=1)
+                _f.flush()
+                os.fsync(_f.fileno())
+        except Exception:                                                    # noqa: BLE001
+            pass
+
+    _sel_flush("开始 (Qt 之前)")
     try:
         import mujoco as _sel_mj
 
         _sel["mujoco"] = _sel_mj.__version__
         _sel["plugin_handles"] = len(getattr(_sel_mj, "PLUGIN_HANDLES", []) or [])
         _sel["dll_fix"] = os.environ.get("ZMAX_MUJOCO_DLL_FIX", "")
+        _sel_flush("mujoco 已导入")
         import metaworld as _sel_mw
 
         _sel["metaworld"] = getattr(_sel_mw, "__version__", "n/a")
@@ -116,6 +136,7 @@ if "--engine-selftest" in sys.argv:
                             "sawyer_peg_insertion_side_l4.xml")
         _sel["xml"] = _xml
         _sel["xml_exists"] = os.path.isfile(_xml)
+        _sel_flush("metaworld 已导入")
         _m = _sel_mj.MjModel.from_xml_path(_xml)
         _d = _sel_mj.MjData(_m)
         for _ in range(5):
@@ -123,7 +144,9 @@ if "--engine-selftest" in sys.argv:
         _sel["nq"] = int(_m.nq)
         _sel["nbody"] = int(_m.nbody)
         _sel["qpos_sum"] = round(float(_d.qpos.sum()), 6)
+        _sel_flush("L4 场景已建 + 5 步步进完成")
         try:  # 渲染单独记录 (不判失败)
+            _sel_flush("渲染探针 Renderer 调用前 (卡死高发点)")
             _r = _sel_mj.Renderer(_m, 64, 64)
             _r.update_scene(_d)
             _sel["render_px"] = int(_r.render().mean())
@@ -132,6 +155,7 @@ if "--engine-selftest" in sys.argv:
         except Exception as _re:
             _sel["render_ok"] = False
             _sel["render_err"] = f"{type(_re).__name__}: {_re}"
+        _sel_flush("渲染探针完成 (失败也继续)")
 
         # 🔴 2026-10-08 打包回归闸 (老倪 Windows exe 双击即崩):
         #   studio.py:258 → simulink_module:26 → node_logic:25 `No module named 'lerobot'`
@@ -142,7 +166,9 @@ if "--engine-selftest" in sys.argv:
         _sel["node_logic_keys"] = len(getattr(_sel_nl, "NODE_LOGIC", {}) or {})
         _sel["logic_home"] = os.path.basename(getattr(_sel_nl, "LOGIC_HOME", "") or "")
         _sel["canvas_json"] = os.path.basename(getattr(_sel_nl, "CANVAS_JSON", "") or "")
+        _sel_flush("GUI 链: node_logic 已导入")
         import simulink_module as _sel_sm  # noqa: F401  (崩溃链的中间环: PyQt 在冻结包里也要能 import)
+        _sel_flush("GUI 链: simulink_module 已导入")
         import project_file as _sel_pf   # noqa: F401  (画布工程读写, 同样依赖工程包)
         import node_logic_dialog as _sel_nd  # noqa: F401
         _sel["gui_import_chain"] = True
@@ -156,8 +182,9 @@ if "--engine-selftest" in sys.argv:
         _sel["cause"] = repr(getattr(_sel_e, "__cause__", None))
         _sel["trace"] = _sel_tb.format_exc()
     _sel["rc"] = _sel_rc
+    _sel_flush("结束 (rc=%d)" % _sel_rc)
     try:
-        with open(os.environ.get("ZMAX_SELFTEST_OUT", "engine_selftest.json"), "w", encoding="utf-8") as _f:
+        with open(_SEL_OUT, "w", encoding="utf-8") as _f:
             _sel_json.dump(_sel, _f, ensure_ascii=False, indent=1)
     except Exception:
         pass
