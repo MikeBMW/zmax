@@ -12830,6 +12830,12 @@ class StudioMainWindow(QMainWindow):
                 print("📡 orbital: M 页没有视图切换器")
                 return
             cmb.setCurrentIndex(1)
+            # 🪐 2026-10-16: 命令通道也算"人给的意图" ⇒ 落盘, 关机再开还是太阳系 (人点下拉同理, 见 model_tree)
+            try:
+                from model_tree import ui_state_put, MPARAM_VIZ_KEY
+                ui_state_put(MPARAM_VIZ_KEY, 1)
+            except Exception:                                                # noqa: BLE001
+                pass
             orb = getattr(page, "orbital", None)
             print("📡 orbital: 已切到「%s」· 视图对象 %s" % (cmb.currentText(), type(orb).__name__))
         except Exception as _e:                                              # noqa: BLE001

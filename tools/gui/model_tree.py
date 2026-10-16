@@ -912,6 +912,39 @@ class RunConfigWidget(QWidget):
             pass
 
 
+# ══════════════ 🪐 侧栏「视图选择」落盘 (2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」) ══════════════
+#   根因: 「🧊 四面板 / 🪐 球心引力架构」这条下拉的选择**只活在内存里** ⇒ 控制台一重启就回到第 0 项,
+#   开机看到的是四面板, 关机前看的太阳系"不见了"(代码/真源没变, 只是没人记住选的是谁)。
+#   落盘在 QSettings("ZMAX","studio") —— 与窗口宽度/折叠态同一个文件; 写后立刻 sync() (关机立刻断电也不丢)。
+#   写口只认**人点的**(combo.activated) 与**命令通道** (studio.py `echo orbital`):
+#   程序化 setCurrentIndex (开机回选 / 判据脚本 verify_*.py) **不写盘**, 否则跑一次判据就把偏好刷成四面板。
+UI_CFG_ORG, UI_CFG_APP = "ZMAX", "studio"
+MPARAM_VIZ_KEY = "mparam/viz_view"      # 🧮 主参数 M 页: 0=🧊 几何四面板 · 1=🪐 球心引力架构
+
+
+def ui_state_get(key, default=0):
+    """读控制台界面态 (读不到/脏值一律回默认, 不抛)。"""
+    try:
+        from PyQt5.QtCore import QSettings
+        v = QSettings(UI_CFG_ORG, UI_CFG_APP).value(key, default)
+        v = int(str(v).strip())
+        return v
+    except Exception:                                                        # noqa: BLE001
+        return default
+
+
+def ui_state_put(key, value):
+    """写控制台界面态 + **立刻 sync() 落盘** (老倪关机很快, 不落盘=没记住)。"""
+    try:
+        from PyQt5.QtCore import QSettings
+        _q = QSettings(UI_CFG_ORG, UI_CFG_APP)
+        _q.setValue(key, int(value))
+        _q.sync()
+        return True
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
 class MasterParamMView(QWidget):
     """🧮 主参数 M · 测量 / 标定 / 诊断 / 配置 —— 状态空间工程 ←→ 配置中心的**唯一收口口**。
 
@@ -1053,11 +1086,18 @@ class MasterParamMView(QWidget):
         self.cmb_viz_view.setStyleSheet("QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
                                         "border-radius:4px;padding:2px 6px;font-size:12px;}")
         self.cmb_viz_view.currentIndexChanged.connect(self._switch_viz_view)
+        # 🪐 2026-10-16: **人点的**才落盘 (程序化切换不写, 见 ui_state_put 头上的说明)
+        self.cmb_viz_view.activated.connect(
+            lambda *_: ui_state_put(MPARAM_VIZ_KEY, self.cmb_viz_view.currentIndex()))
         _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0)
         _vrow.addWidget(QLabel("视图"), 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
         lay.addLayout(_vrow)
         lay.addWidget(self.viz_stack, 2)
+        # 🪐 2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」⇒ 开机按存值回选 (关机前是太阳系就还是太阳系)
+        _want = ui_state_get(MPARAM_VIZ_KEY, 0)
+        if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
+            self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读真源
 
         # ── 四视角页签 (测量/标定/诊断/配置) ──
         self.tabs = QTabWidget()
