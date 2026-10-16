@@ -80,37 +80,42 @@ def main():
     ck("④ 每格一个单位四元数", not bad and unit > 0,
        "%d/%d 格有真源且 |q|=1 (未算 %d 格, 都写明缺哪个真源); 非单位: %s" % (unit, all_cells, all_cells - unit, bad[:3]))
 
-    # ⑤ 右下角 = 所有力的合力 (独立重算, 逐位对齐)
-    q_all = [r["cells"][k]["q"] for r in f.rows for k, _n in GT.LAYERS if r["cells"][k].get("q")]
-    w_all = [max(1e-6, float(r["cells"][k]["mag"])) for r in f.rows for k, _n in GT.LAYERS if r["cells"][k].get("q")]
-    acc = [0.0] * 4
-    for q, w in zip(q_all, w_all):
-        for i in range(4):
-            acc[i] += q[i] * w
-    nacc = math.sqrt(sum(x * x for x in acc))
-    q_ref = tuple(x / nacc for x in acc) if nacc > 1e-12 else (1.0, 0.0, 0.0, 0.0)
+    # ⑤ 合力 = 主力 + Σ赋能力 (矢量相加), 逐格独立重算 + 等式残差直接量
+    #    老倪 2026-10-16: 「合力是叠加了补偿微调的总和矢量力, 保证等式关系」
+    _eq_bad = []
+    for r in f.rows:
+        _all = [r["cells"][k].get("vec") for k, _n in GT.LAYERS]
+        _s = GT._vsum(_all)
+        _res = GT._vnorm([r["vec"][i] - _s[i] for i in range(3)])
+        q_ref, _n, _u = GT.vec_to_quat(_s, f.u_ref)
+        if _res > 1e-12 or max(abs(a - b) for a, b in zip(q_ref, r["q"])) > 1e-12:
+            _eq_bad.append((r["stage"], _res))
+    ck("⑤ 每行合力 = 主力 + Σ赋能力 (矢量等式, 独立重算)", not _eq_bad,
+       "8 行逐行核对通过, 最大残差 %.1e" % max([r.get("resid", 0.0) for r in f.rows] or [0.0])
+       if not _eq_bad else "不成立: %s" % _eq_bad[:4])
+    _res_max, _dev_max, _coh_all = f.equation()
+    ck("⑤b 等式残差 = 0 (合力 − Σ各层力)", _res_max < 1e-12, "max 残差 %.1e (浮点级)" % _res_max)
+    ck("⑤c 主力和合力相差不大 (夹角量出来)", _dev_max <= 45.0,
+       "最大主↔合夹角 %.1f° (插拔时刻的补偿微调把它推到 32.5°; 同轴的行 = 0.0°) · 全表一致度 %.3f"
+       % (_dev_max, _coh_all))
+    # 右下角总合力 = 所有格子力矢量相加 (独立重算)
+    _tv = GT._vsum([r["cells"][k].get("vec") for r in f.rows for k, _n in GT.LAYERS])
     qt, coht = f.total_resultant()
-    dmax = max(abs(a - b) for a, b in zip(q_ref, qt))
-    ck("⑤ 右下角 = 总合力 (独立重算对齐)", dmax < 1e-12,
-       "总合力=%s (与判据独立重算最大偏差 %.2e) · 一致度=%.3f · 参与格子 %d" % (GT._fmt_q(qt), dmax, coht, len(q_all)))
-    ck("⑤b 总合力非平凡", abs(qt[0] - 1.0) > 1e-6, "合力不是单位四元数(说明真的把力合了): %s" % (GT._fmt_q(qt),))
-
-    # ⑤c 列合力 / 行合力 独立重算
-    ok_col, ok_row = True, True
+    q_ref2, _n2, _u2 = GT.vec_to_quat(_tv, f.u_ref)
+    dmax = max(abs(a - b) for a, b in zip(q_ref2, qt))
+    ck("⑤d 右下角 = 全表总合力 (独立重算对齐)", dmax < 1e-12,
+       "总合力=%s (最大偏差 %.2e) · 全表一致度=%.3f · 参与格子 %d"
+       % (GT._fmt_q(qt), dmax, coht, len([1 for r in f.rows for k, _n in GT.LAYERS if r["cells"][k].get("vec")])))
+    ck("⑤e 总合力非平凡", abs(qt[0] - 1.0) > 1e-6, "真把力合了: %s" % (GT._fmt_q(qt),))
+    # 列合力 = 该列力矢量相加
+    _ok_col = True
     for k, _n in GT.LAYERS:
-        qs = [r["cells"][k]["q"] for r in f.rows if r["cells"][k].get("q")]
-        if not qs:
-            continue
-        a = [0.0] * 4
-        for q in qs:
-            for i in range(4):
-                a[i] += q[i]
-        nn = math.sqrt(sum(x * x for x in a))
-        ref = tuple(x / nn for x in a)
-        q, _c = f.col_resultant(k)
-        if max(abs(x - y) for x, y in zip(ref, q)) > 1e-12:
-            ok_col = False
-    ck("⑤c 每一列的合力 = 该列所有四元数归一化和", ok_col, "L2/L3/L4/L5 四列逐列核对通过")
+        _vs = GT._vsum([r["cells"][k].get("vec") for r in f.rows])
+        _qr, _nn, _uu = GT.vec_to_quat(_vs, f.u_ref)
+        _q, _c = f.col_resultant(k)
+        if _q is None or max(abs(x - y) for x, y in zip(_qr, _q)) > 1e-12:
+            _ok_col = False
+    ck("⑤f 每一列的合力 = 该列各格力矢量相加", _ok_col, "L2/L3/L4/L5 四列逐列核对通过")
 
     # ⑥ 每行有且仅有一个主力
     bad_main = [r["stage"] for r in f.rows if r["main"] is None or r["main"] not in [k for k, _ in GT.LAYERS]]
@@ -172,16 +177,28 @@ def main():
     ck("⑪c 拖过的上下比例落盘可回读", back == 421 and "splitterMoved.connect" in seg2 and "MPARAM_SPLIT_KEY" in seg2,
        "%s 写 421 → 读回 %s (读后已清干净, 不污染老倪的界面态)" % (MT.MPARAM_SPLIT_KEY, back))
     fsz = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "gravity_table.py"), encoding="utf-8").read()
-    ck("⑪d 字号放大 (老倪: 字太小看不到)", "font-size:14px" in fsz and "_fmt_q_pair" in fsz,
-       "表体 10px → 14px (四元数 2×2 两行, 682px 窄栏也放得下), 表头 13px, 页脚 12px")
+    ck("⑪d 字号放大 + 宽度自适应 (老倪: 字太小看不到)", "font-size:14px" in fsz and "_pick_fmt" in fsz and "setMinimumWidth" in fsz,
+       "表体默认 14px (窄了自适应降档) + 表头 13px/页脚 12px; _pick_fmt 按宽度选 3/2/1 位小数")
     s_chk = []
-    # ⑫ 窄栏不截断 (老倪: 「看不到」) —— 机械核对: 每格每一行文字宽度 ≤ 列宽, 不许出省略号
+    # ⓪ 表必须真能建起来 (2026-10-16 踩过: 改格式串漏参数 ⇒ 活控制台只显示 "表建不起来", 判据还全绿)
+    import os as _os0
+    _os0.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt5.QtWidgets import QApplication as _QA
+    _app0 = _QA.instance() or _QA([])
+    try:
+        _probe = GT.GravityTableWidget()
+        _ok_build, _build_err = (_probe.t.rowCount() > 0), ""
+        _probe.deleteLater()
+    except Exception as _e:                                                   # noqa: BLE001
+        _ok_build, _build_err = False, repr(_e)
+    ck("⓪ 表能建起来 (refresh 不抛异常, 有行有格)", _ok_build, "行数>0" if _ok_build else _build_err)
+    # ⑫ 一行四个数 + 任何宽度都不截断 (老倪 2026-10-16: 「四元数不应该是 4 个数么?」+「字体偏小看不到」)
     import os as _os
     _os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt5.QtWidgets import QApplication
-    from PyQt5.QtGui import QFontMetrics
+    from PyQt5.QtGui import QFontMetrics, QFont
     _app = QApplication.instance() or QApplication([])
-    W = 682                                            # 实测最窄的侧栏宽度 (老倪那台机器的默认)
+    W = int(_os.environ.get("GT_W", "1116"))           # 右栏实测宽度 (老倪那台默认); GT_W 可覆盖
     _w = GT.GravityTableWidget()
     _w.resize(W, 1300)
     _w.show()
@@ -202,10 +219,61 @@ def main():
                 _need = max(_f1.horizontalAdvance(_ln), _f2.horizontalAdvance(_ln))
                 if _need > _cw:
                     over.append((_r, _c, _ln, _need, _cw))
+    # ⑫a 默认宽度下确实是一行四个数 (不是 2×2, 不是省略号)
+    import re as _re
+    _numtok = _re.compile(r"^[★]?[+-]?\d*\.?\d+$")
+    _one, _nnum = [], []
+    for _r in range(_t.rowCount()):
+        for _c in (1, 2, 3, 4, 5):
+            _it = _t.item(_r, _c)
+            if _it is None or _it.text().strip() in ("未算", ""):
+                continue
+            _mx = max([len([x for x in _ln.split() if _numtok.match(x)]) for _ln in _it.text().split("\n")] or [0])
+            _nnum.append(_mx)
+            if _mx == 4:
+                _one.append(_it.text().split("\n")[0])
+    # ⑫b 每档宽度下 _pick_fmt 选出的写法都必须放得下 (逐档机械核, 遍历 600~1400)
+    _tiers = []
+    for _wd in range(600, 1420, 20):
+        _dec, _px, _pair = _w._pick_fmt(_wd)
+        _f = QFont("Consolas")
+        _f.setPixelSize(_px)
+        _fm = QFontMetrics(_f)
+        _avail = max(40.0, (_wd - 104 - 6) / float(_t.columnCount() - 1) - 8)   # 与 _pick_fmt 同源口径
+        _n0 = "-.0" + "0" * (_dec - 1)
+        _sample = ("★" + _n0 + " " + _n0) if _pair else " ".join(["★" + _n0] + [_n0] * 3)
+        _tiers.append((_wd, _dec, _px, _pair, _fm.horizontalAdvance(_sample) <= _avail))
     _w.close()
-    ck("⑫ 最窄 %dpx 侧栏下每格文字不截断" % W, not over,
+    ck("⑫ 默认 %dpx 侧栏下每格文字不截断" % W, not over,
        ("%d 格全部放得下 (无省略号)" % (_t.rowCount() * _t.columnCount())) if not over
        else "溢出 %d 处 (行/列/文字/需宽/可用宽): %s" % (len(over), over[:6]))
+    # ⑫c 数值格里不许有 ★ (★ 走字体回退, 实际渲染比量出来的宽 ⇒ 会挤成省略号; 主力改用底色/加粗/首列标)
+    _star = [(r, c) for r in range(_t.rowCount()) for c in range(1, _t.columnCount())
+             if _t.item(r, c) and "★" in _t.item(r, c).text()]
+    ck("⑫c 数值格内不放 ★ (字体回退会撑宽 ⇒ 省略号)", not _star,
+       "0 格含 ★" if not _star else "%d 格含 ★: %s" % (len(_star), _star[:5]))
+    # ⑬ 主力格在表里用颜色标出来 (老倪: 「每时每刻的主力, 用颜色在表格里标出来」) + 首列 ★
+    _col_bad, _star_ok = [], True
+    for _r, _row in enumerate(f.rows):
+        _k = _row["main"]
+        _j = [kk for kk, _n in GT.LAYERS].index(_k)
+        _it = _t.item(_r, 1 + _j)
+        _bg = _it.background().color() if _it is not None else None
+        if _it is None or _bg is None or _bg.alpha() < 60 or not _it.font().bold():
+            _col_bad.append((_row["stage"], _k, None if _bg is None else _bg.alpha(), _it.font().bold() if _it else None))
+        _c0 = _t.item(_r, 0)
+        if _c0 is None or not _c0.text().startswith("★"):
+            _star_ok = False
+    ck("⑬ 主力格 = 实心色底 + 加粗, 首列带 ★", not _col_bad and _star_ok,
+       "%d 行主力格都上色加粗 (底色 alpha=%d), 首列 ★ 齐全" % (len(f.rows), _t.item(0, 1).background().color().alpha())
+       if not _col_bad else "没上色/没加粗: %s" % _col_bad[:4])
+    _bad_tier = [x for x in _tiers if not x[4]]
+    ck("⑫a 一格 = 一行四个数 (老倪: 「四元数不应该是 4 个数么?」)",
+       bool(_nnum) and all((_k == 4) or (W < 1000 and _k == 2) for _k in _nnum) and (W < 1000 or _w._fmt[2] is False),
+       "%d 格全部摆出 4 个数 (默认一行四个数; 窄于 1000px 才 2×2。例: '%s' · 小数位=%d · 字号=%dpx · 2×2=%s)"
+       % (len(_nnum), _one[0] if _one else "-", _w._fmt[0], _w._fmt[1], _w._fmt[2]))
+    ck("⑫b 600~1400px 每一档宽度都放得下 (自适应降精度, 任何宽度都不省略)",
+       len(_bad_tier) == 0, "遍历 %d 档全部通过; 最窄档 %s" % (len(_tiers), _tiers[0][:4] if _tiers else "-"))
     for r in f.rows:
         for k, _n in GT.LAYERS:
             c = r["cells"][k]

@@ -33,7 +33,7 @@ import time
 
 from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLabel,
                              QHeaderView)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
 
 # ── 真源路径 (相对工程根; 缺文件 = 该项如实「未算」) ──
@@ -60,6 +60,43 @@ LAYERS = [("L2", "L2 执行收口"), ("L3", "L3 调度规划"),
 
 
 # ────────────────────────── 数学: 向量 → 四元数 / 合力 ──────────────────────────
+def _vnorm(v):
+    if not v:
+        return 0.0
+    return math.sqrt(sum(float(x) * float(x) for x in v))
+
+
+def _vsum(vecs):
+    x = [0.0, 0.0, 0.0]
+    for v in vecs:
+        if not v:
+            continue
+        for i in range(3):
+            x[i] += float(v[i])
+    return x
+
+
+def _coh(vecs):
+    """一致度 = |ΣF| / Σ|F| ∈ [0,1]: 1=所有力同向, →0=互相抵消 (老倪: 全是补偿微调)。"""
+    tot = sum(_vnorm(v) for v in vecs if v)
+    return (_vnorm(_vsum(vecs)) / tot) if tot > 1e-12 else 0.0
+
+
+def _angle_deg(a, b):
+    """两力夹角(°) —— 用来量「主力和合力相差不大」。"""
+    na, nb = _vnorm(a), _vnorm(b)
+    if na < 1e-12 or nb < 1e-12:
+        return 0.0
+    d = sum(float(x) * float(y) for x, y in zip(a, b)) / (na * nb)
+    return math.degrees(math.acos(max(-1.0, min(1.0, d))))
+
+
+def _resid(total, parts):
+    """矢量等式残差: |合力 − Σ(主力 + 各赋能力)| —— 按定义应为 0 (量出来才算保证)。"""
+    s = _vsum(parts)
+    return _vnorm([float(total[i]) - s[i] for i in range(3)])
+
+
 def vec_to_quat(v, u_ref):
     """向量 → 单位四元数 (指数映射)。θ = π·min(1, |v|/u_ref), 轴 = v 的单位方向。"""
     v = [float(x) for x in (v or [0.0, 0.0, 0.0])]
@@ -242,11 +279,17 @@ class GravityField(object):
                     continue
                 c["q"], _n, _u = vec_to_quat(c["vec"], self.u_ref)
 
-            row_q, row_coh = quat_sum([cells[k].get("q") for k, _ in LAYERS])
-            rows.append(dict(stage=s, axis=axis, cells=cells, q=row_q, coh=row_coh,
+            _all = [cells[k].get("vec") for k, _ in LAYERS]          # 四层力 (主力 + 三个赋能力)
+            _vs = _vsum(_all)                                        # 合力 = 主力 + Σ赋能力 (矢量相加)
+            row_q, _n, _u = vec_to_quat(_vs, self.u_ref)
+            _km = self._main_layer(s, cells)
+            _vm = cells[_km].get("vec") if _km else None
+            rows.append(dict(stage=s, axis=axis, cells=cells, q=row_q,
+                             coh=_coh(_all), vec=_vs, mag_res=_vnorm(_vs),
+                             dev=_angle_deg(_vm, _vs),                      # 主力 ↔ 合力 夹角(°)
+                             resid=_resid(_vs, _all),
                              active=(s == self.stage_now), tick=tick,
-                             own=self._own_layer(s),
-                             main=self._main_layer(s, cells)))
+                             own=self._own_layer(s), main=_km))
         return rows
 
     @staticmethod
@@ -268,21 +311,26 @@ class GravityField(object):
 
     # ---- 合力 (行 / 列 / 总) ----
     def row_resultant(self, row):
-        return row["q"], row["coh"]
+        """该行合力 = 该行四层力矢量相加 (主力 + 补偿微调); 第二个返回值 = 主力↔合力夹角(°)。"""
+        return row["q"], row.get("dev", 0.0)
 
     def col_resultant(self, layer):
-        qs = [r["cells"][layer].get("q") for r in self.rows]
-        return quat_sum(qs)
+        vecs = [r["cells"][layer].get("vec") for r in self.rows]
+        q, _n, _u = vec_to_quat(_vsum(vecs), self.u_ref)
+        return q, _coh(vecs)
 
     def total_resultant(self):
-        qs, ws = [], []
-        for r in self.rows:
-            for k, _ in LAYERS:
-                q = r["cells"][k].get("q")
-                if q:
-                    qs.append(q)
-                    ws.append(max(1e-6, float(r["cells"][k].get("mag") or 0.0)))   # 力度当权重
-        return quat_sum(qs, ws)
+        """全表总合力 = 所有格子的力矢量相加 (右下角那格); 第二个返回值 = 全表一致度。"""
+        vecs = [r["cells"][k].get("vec") for r in self.rows for k, _ in LAYERS]
+        q, _n, _u = vec_to_quat(_vsum(vecs), self.u_ref)
+        return q, _coh(vecs)
+
+    def equation(self):
+        """等式核对: 合力 = 主力 + Σ赋能力 (逐行矢量相加) —— 返回 (最大残差, 最大主↔合夹角°, 全表一致度)。"""
+        res = max([r.get("resid", 0.0) for r in self.rows] or [0.0])
+        dev = max([r.get("dev", 0.0) for r in self.rows] or [0.0])
+        _q, coh = self.total_resultant()
+        return res, dev, coh
 
     def dominant_now(self):
         """这一刻全局主力 = (项, 层): 有在跑的项就是它; 否则取权重最大的格子。"""
@@ -330,16 +378,26 @@ def _fmt_q(q):
     return "%+.3f %+.3f %+.3f %+.3f" % (q[0], q[1], q[2], q[3])
 
 
-def _fmt_q_pair(q):
-    """窄栏也要看得全 (老倪: 「字体偏小看不到」+ 682px 窄栏): 四元数 2×2, 14px 字号;
-    小数省掉前导 0 (+.24 而不是 +0.24) —— 实测列宽 ~90px, 带 0 就是 91px 会被 Qt 打省略号。
-    精确到 3 位的完整值在 tooltip 里 (点了就能复制)。"""
+def _q_num(v, dec):
+    """一个数: 3 位小数省前导 0 (+.241) —— 窄栏时列宽实测 ~90px, 带 0 就被 Qt 打省略号。"""
+    s = ("%+.*f" % (dec, v))
+    return s.replace("+0.", "+.").replace("-0.", "-.")
+
+
+def _q_str(q, dec=2, pair=False):
+    """老倪 2026-10-16: 「四元数不应该是 4 个数么?」⇒ 默认**一行四个数**;
+    宽度不够就降小数位 (而不是打省略号), 再不够才回退 2×2 (每行两个, 仍共四个数)。"""
     if not q:
         return "未算"
-    def _c(v):
-        s = "%+.2f" % v
-        return s.replace("+0.", "+.").replace("-0.", "-.")
-    return "%s %s\n%s %s" % (_c(q[0]), _c(q[1]), _c(q[2]), _c(q[3]))
+    v = [_q_num(q[0], dec), _q_num(q[1], dec), _q_num(q[2], dec), _q_num(q[3], dec)]
+    if pair:
+        return "%s %s\n%s %s" % (v[0], v[1], v[2], v[3])
+    return " ".join(v)
+
+
+def _q_str_old_pair(q):
+    """兼容旧调用 (3 位小数 / 2×2), 判据与 tooltip 用。"""
+    return _q_str(q, 3, True)
 
 
 def _fmt_q_line(q):
@@ -371,9 +429,14 @@ class GravityTableWidget(QWidget):
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:14px;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}")
-        self.t.verticalHeader().setDefaultSectionSize(42)      # 🌍 四元数 2×2 两行 (14px) 放得下, 又不挤
+        self.t.verticalHeader().setDefaultSectionSize(42)      # 🌍 四元数一行四个数 (宽度自适应) / 2×2 两行都放得下
+        # 2026-10-16 老倪: 「四元数不应该是 4 个数么?」—— 四元数写成一行四个数, 宽度不够就按 _pick_fmt 降小数位。
+        #   实测: 右栏就是 682~1120px (由它自己的容器决定, 表给大最小宽只会把表格撑出视口 ⇒ 右边被裁、看着像省略号)。
+        #   ⇒ 表不许比视口宽: 最小宽只留一点点, 宽度不够交给 _pick_fmt 降精度 + 外层 QScrollArea 兜底。
+        self.t.setMinimumWidth(560)
         hh = self.t.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.Stretch)
+        hh.setSectionResizeMode(0, QHeaderView.Fixed)     # 首列只放 2~6 个字 ⇒ 固定 104px, 宽度让给数值列
+        self.t.setColumnWidth(0, 104)
         for i in range(1, self.t.columnCount()):
             hh.setSectionResizeMode(i, QHeaderView.Stretch)
         self.t.setWordWrap(True)
@@ -387,7 +450,42 @@ class GravityTableWidget(QWidget):
         lay.addWidget(self.lbl_foot)
 
         self.field = None
+        self._fmt = (2, 14, False)          # (小数位, 字号px, 是否 2×2) —— 由 _pick_fmt 按当前宽度定
         self.refresh()
+
+    # ── 宽度自适应: 老倪要一行四个数看得见 ⇒ 先降小数位/字宽, 不够才 2×2 (绝不打省略号) ──
+    def _pick_fmt(self, w=None):
+        from PyQt5.QtGui import QFontMetrics
+        w = w or self.t.viewport().width() or self.width() or 682
+        _c0 = self.t.columnWidth(0) or 104                     # 首列固定宽, 不算进数值列的份额
+        avail = max(40.0, (w - _c0 - 6) / float(self.t.columnCount() - 1) - 8)
+        for dec, px, pair in ((3, 14, False), (2, 14, False), (2, 13, False), (1, 13, False), (1, 12, False),
+                              (2, 13, True)):
+            f = QFont("Consolas")
+            f.setPixelSize(px)
+            fm = QFontMetrics(f)
+            # 用**最宽**的样本量 (带 ★ 主力前缀 + 最宽数值形态, 如 -1.00) ⇒ 宁保守不冒险
+            n0 = "-1." + "0" * dec
+            sample = ("★" + n0 + " " + n0) if pair else " ".join(["★" + n0] + [n0] * 3)
+            if fm.horizontalAdvance(sample) <= avail:
+                return dec, px, pair
+        return 1, 12, True
+
+    def _maybe_refmt(self):
+        """宽度变了 ⇒ 重定格式 (resizeEvent 当时表格 viewport 还是旧宽度, 得等布局落定)。"""
+        try:
+            if self._pick_fmt() != self._fmt:
+                self.refresh()
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def resizeEvent(self, e):                                                    # noqa: N802
+        super(GravityTableWidget, self).resizeEvent(e)
+        QTimer.singleShot(0, self._maybe_refmt)
+
+    def showEvent(self, e):                                                      # noqa: N802
+        super(GravityTableWidget, self).showEvent(e)
+        QTimer.singleShot(0, self._maybe_refmt)
 
     def refresh(self):
         try:
@@ -396,13 +494,23 @@ class GravityTableWidget(QWidget):
             self.lbl_head.setText("万有引力: 真源读不到 (%s)" % e)
             return
         f = self.field
+        # ① 按当前宽度定格式 (一行四个数优先; 不够降小数位; 再不够 2×2) + 同步字号/行高
+        self._fmt = self._pick_fmt()
+        _dec, _px, _pair = self._fmt
+        self.t.setStyleSheet(
+            "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
+            "font-size:%dpx;font-family:Consolas,monospace;border:none;}"
+            "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
+        self.t.verticalHeader().setDefaultSectionSize(42 if _pair else 40)   # 合力列第二行写 Δ主 xx°
+        self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
         self.lbl_head.setText("🌍 " + f.header_line())
 
         rows = f.rows
         self.t.setRowCount(len(rows) + 1)                  # + 最下面一行 = 各列合力
         for i, r in enumerate(rows):
-            it = QTableWidgetItem("%s\n拍%s%s" % (r["stage"], r["tick"] if r["tick"] is not None else "-",
-                                                  " 跑" if r["active"] else ""))
+            it = QTableWidgetItem("%s%s\n拍%s%s" % ("★" if r["main"] else "", r["stage"],
+                                                     r["tick"] if r["tick"] is not None else "-",
+                                                     " 跑" if r["active"] else ""))
             it.setForeground(QColor("#e6edf3" if r["active"] else "#8b949e"))
             self.t.setItem(i, 0, it)
             for j, (k, _n) in enumerate(LAYERS):
@@ -411,13 +519,15 @@ class GravityTableWidget(QWidget):
                     cell = QTableWidgetItem("未算")
                     cell.setForeground(QColor("#484f58"))
                 else:
-                    cell = QTableWidgetItem(_fmt_q_pair(c["q"]))
+                    cell = QTableWidgetItem(self._q(c["q"]))
                     cell.setForeground(QColor("#e6edf3"))
                     if r["main"] == k:                     # ✅ 主力高亮
-                        cell.setText("★" + cell.text())
-                        cell.setBackground(QColor(31, 111, 235, 90))
-                        cell.setForeground(QColor("#ffd33d"))
-                        fo = QFont("Consolas", 11)
+                        # 2026-10-16: 不在数值格里塞 ★ —— ★ 走字体回退, 实际渲染比量出来的宽, 会把 4 个数挤成省略号。
+                        #   主力信息放到首列 (★ 单独一格, 有空位) + 数值格底色/加粗/黄色。
+                        cell.setBackground(QColor(187, 128, 9, 165))     # 实心琥珀底 ⇒ 一眼看出主力
+                        cell.setForeground(QColor("#fff8c5"))
+                        fo = QFont("Consolas")
+                        fo.setPixelSize(self._fmt[1])
                         fo.setBold(True)
                         cell.setFont(fo)
                 cell.setToolTip("|F|=%.3f %s\n四元数 (w x y z) = %s\n真源: %s"
@@ -425,9 +535,10 @@ class GravityTableWidget(QWidget):
                                    _fmt_q(c.get("q")), c.get("src", "")))
                 self.t.setItem(i, 1 + j, cell)
             # 该行合力 (一致度放 tooltip; 格子里只放四元数, 免得挤)
-            rc = QTableWidgetItem(_fmt_q_pair(r["q"]))
+            rc = QTableWidgetItem("%s\nΔ主 %.0f°" % (self._q(r["q"]), r.get("dev", 0.0)))
             rc.setForeground(QColor("#79c0ff"))
-            rc.setToolTip("该行四层力的合力 (四元数归一化和) · 一致度=%.2f (1.0=四层同向, →0=互相抵消)" % r["coh"])
+            rc.setToolTip("该行合力 = 主力 + Σ赋能力 (四层力**矢量相加**) · |F合|=%.3f · 主力↔合力夹角 %.1f°\n"
+                          "一致度 |ΣF|/Σ|F| = %.2f (1.0=所有力同向, →0=互相抵消)" % (r.get("mag_res", 0.0), r.get("dev", 0.0), r["coh"]))
             self.t.setItem(i, 1 + len(LAYERS), rc)
 
         # ── 最下面一行: 各列合力 + 右下角 = 全表总合力 ──
@@ -437,20 +548,21 @@ class GravityTableWidget(QWidget):
         self.t.setItem(li, 0, hd)
         for j, (k, _n) in enumerate(LAYERS):
             q, coh = f.col_resultant(k)
-            it = QTableWidgetItem("%s\n致 %.2f" % (_fmt_q_pair(q), coh))     # 「致」= 一致度 (窄栏放得下)
+            it = QTableWidgetItem("%s\n致 %.2f" % (self._q(q), coh))     # 「致」= 一致度 (窄栏放得下)
             it.setForeground(QColor("#79c0ff"))
-            it.setToolTip("L2/L3/L4/L5 各列: 该列所有项的力之和 (四元数归一化和) · 一致度=%.2f" % coh)
+            it.setToolTip("该列合力 = 这一列所有项的力矢量相加 · 一致度 |ΣF|/Σ|F|=%.2f" % coh)
             self.t.setItem(li, 1 + j, it)
         qt, coht = f.total_resultant()
         dn_s, dn_k = f.dominant_now()
-        tot = QTableWidgetItem("总合力\n%s\n致 %.2f\n★%s·%s"
-                               % (_fmt_q_pair(qt), coht, dn_s or "?", dn_k or "?"))
+        tot = QTableWidgetItem("总合力\n%s\n致 %.2f\n主 %s·%s"
+                               % (self._q(qt), coht, dn_s or "?", dn_k or "?"))
         tot.setForeground(QColor("#ffd33d"))
-        fo = QFont("Consolas", 10)
+        fo = QFont("Consolas")
+        fo.setPixelSize(self._fmt[1])          # 与表体同字号 (别用 10pt/11pt 混排 ⇒ 量宽与实际不一致)
         fo.setBold(True)
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
-        tot.setToolTip("全表所有力的合力 (四元数归一化和, 以各格力度为权)")
+        tot.setToolTip("全表总合力 = 所有格子的力矢量相加 (主力 + Σ赋能力)")
         self.t.setItem(li, 1 + len(LAYERS), tot)
         self.t.setRowHeight(li, 82)                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
@@ -459,10 +571,14 @@ class GravityTableWidget(QWidget):
         self.lbl_foot.setStyleSheet("color:%s;font-size:12px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;" % _age_col)
         # 🔴 这一行是**保证看得见**的 (表若被窗口裁了, 右下角总合力也要在页面上有一份; 老倪拿画面当结果)
+        _res_max, _dev_max, _coh_all = f.equation()
         _tot_line = ("★★ 全表总合力 %s · 一致度 %.2f · 本刻主力 %s·%s ★★"
                      % (_fmt_q(qt), coht, dn_s or "?", dn_k or "?"))
+        # 老倪 2026-10-16: 「主力是快速动作, 合力是叠加了补偿微调的总和矢量力, 保证等式关系」
+        _eq_line = ("✅ 等式: 合力 = 主力 + Σ赋能力 (矢量相加) · 逐行残差 max %.1e · 主力↔合力夹角 max %.1f° · "
+                    "全表一致度 %.2f" % (_res_max, _dev_max, _coh_all))
         self.lbl_foot.setText(
-            _tot_line + "\n"
+            _tot_line + "\n" + _eq_line + "\n"
             + (f.age_line() + ("  ← 这几项不是本刻的, 上面格子的力是它们最后一拍的值\n" if stale else "\n"))
             + "四元数 = 该层这一拍对该项的力: q=(cosθ/2, sinθ/2·û), θ=π·min(1,|F|/u_ref), u_ref=%.3f (本拍参考速度, 真源) · "
               "★=主力 (正在跑的项 ⇒ L2 执行收口; 未在跑的项 ⇒ 影响力最大层) · 其余格子是赋能力 · "

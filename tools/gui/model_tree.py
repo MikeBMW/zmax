@@ -972,7 +972,8 @@ class MasterParamMView(QWidget):
         lay0.setSpacing(0)
         _scroll = QScrollArea()
         _scroll.setWidgetResizable(True)
-        _scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        _scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # 2026-10-16 老倪: 「四元数要一行四个数」
+        #   表给足最小宽度 ⇒ 窗口窄了横向可滚 (不出省略号/不被裁)
         _scroll.setFrameShape(QFrame.NoFrame)
         _scroll.setStyleSheet("QScrollArea{background:transparent;border:none;} "
                               "QScrollBar:vertical{background:#0d1117;width:10px;}"
@@ -1786,7 +1787,10 @@ class ModelTreeDock(QWidget):
     def __init__(self, module, parent=None):
         super().__init__(parent)
         self.setObjectName("ModelTreeDock")
-        self.setMinimumWidth(300)
+        # 2026-10-16 老倪: 「四元数不应该是 4 个数么?」—— 右栏默认只有 ~682px, 四个数一行摆不下
+        #   (M 页套在 QScrollArea 里, 里面表的宽度不会顶开外侧布局)。⇒ 直接把右栏最小宽提到 1080:
+        #   每列可用 ~155px ⇒ 13px 字号一行摆 4 个数; 他自己往右拖还能更宽 (到 1520 就能显 2 位小数)。
+        self.setMinimumWidth(1080)
         self.module = module
 
         root = QWidget()
