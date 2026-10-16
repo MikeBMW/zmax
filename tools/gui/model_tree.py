@@ -1093,13 +1093,18 @@ class MasterParamMView(QWidget):
         _vrow.addWidget(QLabel("视图"), 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
         lay.addLayout(_vrow)
-        lay.addWidget(self.viz_stack, 2)
+        lay.addWidget(self.viz_stack, 1)
+        # 🌍 2026-10-16 老倪: 太阳系下面那张「万有引力」表要看得全 (原来 2:1 ⇒ 表只剩 ~460px, 右下角总合力
+        #   被窗口底边切掉, 他用画面当结果) ⇒ 表给 2 份空间, 太阳系 1 份。
         # 🪐 2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」⇒ 开机按存值回选 (关机前是太阳系就还是太阳系)
         _want = ui_state_get(MPARAM_VIZ_KEY, 0)
         if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
             self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读真源
 
-        # ── 四视角页签 (测量/标定/诊断/配置) ──
+        # ── 🌍 万有引力 (老倪 2026-10-16: 「不要测量 标定 诊断 配置, 只要一个标签『万有引力』」) ──
+        #   太阳系下面就是这一张表: 行 = 当前配置的元任务的状态空间项, 列 = L2/L3/L4/L5/合力,
+        #   每格一个四元数, 主力高亮, 最下一行是各列合力, **右下角 = 所有力的总合力**。
+        #   (测量/标定/诊断/配置 四张表不再占页签; 数据照旧算出来放在 self.tbl 里, 只是不显示。)
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("QTabWidget::pane{border:1px solid #30363d;background:#0d1117;}"
                                 "QTabBar::tab{background:#161b22;color:#8b949e;padding:4px 10px;font-size:12px;}"
@@ -1116,8 +1121,16 @@ class MasterParamMView(QWidget):
                             "font-size:12px;font-family:Consolas,monospace;border:none;}"
                             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:3px;}")
             self.tbl[key] = t
-            self.tabs.addTab(t, name)
-        lay.addWidget(self.tabs, 1)
+        try:
+            from gravity_table import GravityTableWidget
+            self.gravity = GravityTableWidget()
+            self.tabs.addTab(self.gravity, "🌍 万有引力")
+        except Exception as _e_gr:                                               # noqa: BLE001
+            self.gravity = None
+            _lb = QLabel("🌍 万有引力: 表建不起来 (%s)" % _e_gr)
+            _lb.setStyleSheet("color:#f85149;font-size:11px;")
+            self.tabs.addTab(_lb, "🌍 万有引力")
+        lay.addWidget(self.tabs, 2)          # 🌍 表拿 2 份 (右下角总合力必须在本页看得见)
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
@@ -1287,6 +1300,12 @@ class MasterParamMView(QWidget):
                      f"· 段覆盖 {tl.get('段覆盖', '—')} 节点"),
             ("工单", snap.get("orders", "—")),
         ] + [("真源 " + k, v) for k, v in ent.items()])
+        # 🌍 万有引力表: 跟着这一页刷新一起重读真源 (老倪 2026-10-16: 主力/合力每拍都可能变)
+        if getattr(self, "gravity", None) is not None:
+            try:
+                self.gravity.refresh()
+            except Exception:                                                       # noqa: BLE001
+                pass
         # 🧹 2026-10-09 老倪「字数太多」: 命令行的 "python3 tools/" 前缀在**显示层**压掉 (节点/真源原串不动)
         self.lbl_cmd.setText(" · ".join(self._cmd_short(x) for x in (
             mv.get("命令"), cv.get("命令"), dv.get("命令"), tl.get("命令")) if x))
