@@ -978,7 +978,9 @@ class MasterParamMView(QWidget):
         #   ⇒ ① 整页**右侧滚动条保留** (AsNeeded, 就是您要的那条可拖的);
         #     ② 滚轮事件在 _scroll 上吃掉 (见 eventFilter) ⇒ 鼠标停在表上滚轮不会把表格推走 (= 表格不乱动);
         #     ③ 万有引力表按内容整块显示, 太阳系吸收高度差。要上下看就用右边那条拖。
-        _scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # 🪟 2026-10-16 老倪(定稿): 「主参数页面, 右侧整体增加一个拖动条」⇒ 整页右侧滚动条**常显**,
+        #   太阳系/表都给足高度, 看不全就拖这一条 (滚轮照旧就地吃掉: 表不会被滚轮推着乱动)。
+        _scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         _scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # 2026-10-16 老倪: 「四元数要一行四个数」
         #   表给足最小宽度 ⇒ 窗口窄了横向可滚 (不出省略号/不被裁)
         _scroll.setFrameShape(QFrame.NoFrame)
@@ -1099,12 +1101,12 @@ class MasterParamMView(QWidget):
         self.cmb_viz_view.setToolTip("切换可视化视图 (都在本页; 数据同源: engine_latest / ss_traj_last / "
                                      "torque_live / skill_* / 画布 state_space_obs.json 真连线)")
         self.cmb_viz_view.setStyleSheet("QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
-                                        "border-radius:4px;padding:2px 6px;font-size:12px;}")
+                                        "border-radius:3px;padding:0 4px;font-size:11px;}")
         self.cmb_viz_view.currentIndexChanged.connect(self._switch_viz_view)
         # 🪐 2026-10-16: **人点的**才落盘 (程序化切换不写, 见 ui_state_put 头上的说明)
         self.cmb_viz_view.activated.connect(
             lambda *_: ui_state_put(MPARAM_VIZ_KEY, self.cmb_viz_view.currentIndex()))
-        _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0)
+        _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0); _vrow.setSpacing(3)
         _vrow.addWidget(QLabel("视图"), 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
         lay.addLayout(_vrow)
@@ -1120,6 +1122,7 @@ class MasterParamMView(QWidget):
         #   每格一个四元数, 主力高亮, 最下一行是各列合力, **右下角 = 所有力的总合力**。
         #   (测量/标定/诊断/配置 四张表不再占页签; 数据照旧算出来放在 self.tbl 里, 只是不显示。)
         self.tabs = QTabWidget()
+        self.tabs.tabBar().setVisible(False)    # 🗜 只有一个「万有引力」页签 ⇒ 页签条藏掉 (省 ~26px 给太阳系)
         self.tabs.setStyleSheet("QTabWidget::pane{border:1px solid #30363d;background:#0d1117;}"
                                 "QTabBar::tab{background:#161b22;color:#8b949e;padding:4px 10px;font-size:12px;}"
                                 "QTabBar::tab:selected{background:#0d1117;color:#e6edf3;}")
@@ -1176,6 +1179,14 @@ class MasterParamMView(QWidget):
         lay.addWidget(self.lbl_cmd)
         self.refresh()
 
+    def _scroll_to_top(self, *_a):
+        """开页/换视图 ⇒ 翻到顶: 太阳系整块在视野里 (表往下拖一条即可)。"""
+        try:
+            _sb = self._scroll.verticalScrollBar()
+            _sb.setValue(0)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def _scroll_to_table(self, *_a):
         """把 M 页翻到底 ⇒ 万有引力表整块落在视野里 (老倪 2026-10-16: 「表格怎么没了」)。
         只翻一次 (开页/换视图时), 不跟着 0.7s 刷新翻 ⇒ 他用右边滚动条往上拖时不会被拽回来。"""
@@ -1215,10 +1226,18 @@ class MasterParamMView(QWidget):
                 _inner = self._scroll.widget()
                 _ih = int(_inner.height()) if _inner is not None else 0
                 _others = max(0, _ih - int(self.viz_stack.height()))
-                _new = max(196, min(int(vh) - _others, 620))
+                _new = max(270, min(int(vh) - _others, 620))
             except Exception:                                                    # noqa: BLE001
-                _new = max(196, vh - 380)
+                _new = max(270, vh - 380)
             self.viz_stack.setFixedHeight(_new)
+            # 🔒 表**永不被挤**: 页签块固定 = 表内容整块高 (含表头/页脚) ⇒ 最下面一行永远在块内,
+            #    空间不够时由整页右侧那条拖动条兜 (老倪: 「最下面一行看不到」)。
+            try:
+                _bh = int(self.gravity.block_height()) + (0 if self.tabs.tabBar().isHidden()
+                                                           else self.tabs.tabBar().sizeHint().height())
+                self.tabs.setFixedHeight(max(220, _bh))
+            except Exception:                                                    # noqa: BLE001
+                pass
             try:                      # 体检用: 把这一页的高度账记下来 (诊断"显示不全/一直在滚")
                 import json as _json, tempfile as _tf
                 _g2 = getattr(self, "gravity", None)
@@ -1234,6 +1253,20 @@ class MasterParamMView(QWidget):
                             "rows": [(type(w).__name__, int(w.height()), (w.toolTip() or "")[:18])
                                      for w in (self._scroll.widget().findChildren(object) if False else [])
                                      if False],
+                            "anc": [(type(_a).__name__,
+                                     [(type(_c).__name__, str(_c.objectName() or "")[:12], int(_c.height()),
+                                       bool(_c.isVisible())) for _c in _a.children() if hasattr(_c, "height")])
+                                    for _a in ([self.parent()]
+                                               + list(self.parent().parent().children() if self.parent() and self.parent().parent() else [])
+                                               + list(self.parent().parent().parent().children() if self.parent() and self.parent().parent() and self.parent().parent().parent() else []))[:3]],
+                            "sb": {"policy": int(self._scroll.verticalScrollBarPolicy()),
+                                   "visible": bool(self._scroll.verticalScrollBar().isVisible()),
+                                   "w": int(self._scroll.verticalScrollBar().width()),
+                                   "page": int(self._scroll.verticalScrollBar().pageStep()),
+                                   "max": int(self._scroll.verticalScrollBar().maximum()),
+                                   "val": int(self._scroll.verticalScrollBar().value()),
+                                   "vp_w": int(self._scroll.viewport().width()),
+                                   "page_w": int(self.width())},
                             "inner": [("%s|%s|%s" % (type(w).__name__, str(getattr(w, "text", "") or "")[:52],
                                                      str(getattr(w, "minimumHeight", lambda: "?")())),
                                        int(w.height()),
@@ -1262,7 +1295,9 @@ class MasterParamMView(QWidget):
         self._fit_heights()
         if not getattr(self, "_scrolled_once", False):
             self._scrolled_once = True
-            self._scroll_to_table()
+            # 🪐 2026-10-16 老倪: 「太阳系和万有引力都显示不全」⇒ 开页停在**顶部**(太阳系整块在视野里),
+            #   往下看表就拖右侧那条常显的滚动条 (不跟 0.7s 刷新翻, 拖到哪停哪)。
+            self._scroll_to_top()
 
     def eventFilter(self, obj, ev):
         """🚫 万有引力页**钉死**: 滚轮事件就地吃掉 (老倪 2026-10-16: 「用鼠标滚轮还是能调上下。要固定, 别乱动」)。
@@ -1527,6 +1562,7 @@ class MeasureHub(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
         self.tabs = QTabWidget()
+        self.tabs.tabBar().setVisible(False)    # 🗜 只有一个「万有引力」页签 ⇒ 页签条藏掉 (省 ~26px 给太阳系)
         self.tabs.setStyleSheet("QTabWidget::pane{border:1px solid #30363d;background:transparent;}"
                                 "QTabBar::tab{background:#161b22;color:#8b949e;padding:3px 9px;font-size:12px;}"
                                 "QTabBar::tab:selected{background:#0d1117;color:#e6edf3;}")
@@ -1935,6 +1971,10 @@ class ModelTreeDock(QWidget):
 
         self.cmb_view.currentIndexChanged.connect(self._switch_view)
         hdr.addWidget(self.cmb_view, 1)
+        # 🗜 2026-10-16 老倪: 「万有引力表格看不全, 增高」—— 头部这一行(下拉+两个按钮)压薄,
+        #   省下来的高度全给下面的表/太阳系 (正文一寸没删)。
+        self.cmb_view.setFixedHeight(24)
+        hdr.setContentsMargins(0, 0, 0, 0); hdr.setSpacing(4)
         # 🧩 导出能力库 Excel (2026-08-19 老倪: feature 导出 → datadrive.world 可下载)
         self.btn_export = QPushButton("导出")
         self.btn_export.setStyleSheet(
@@ -1943,6 +1983,7 @@ class ModelTreeDock(QWidget):
             "QPushButton:hover{background:#30363d;}")
         self.btn_export.setToolTip("导出能力库 feature.dbc → Excel, 上传 datadrive.world 可下载")
         self.btn_export.clicked.connect(self._export_feature)
+        self.btn_export.setFixedHeight(22)
         hdr.addWidget(self.btn_export)
         # 🧩 导入第三方模型 (2026-08-19 老倪: 标准格式一键导入 → 加载进平台)
         self.btn_import = QPushButton("导入")
@@ -1952,6 +1993,7 @@ class ModelTreeDock(QWidget):
             "QPushButton:hover{background:#30363d;}")
         self.btn_import.setToolTip("导入第三方模型包 (zip/目录, 标准格式 zmax-model-v1)")
         self.btn_import.clicked.connect(self._import_model)
+        self.btn_import.setFixedHeight(22)
         hdr.addWidget(self.btn_import)
         lay.addLayout(hdr)
 

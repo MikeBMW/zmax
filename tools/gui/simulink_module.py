@@ -5846,6 +5846,14 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+        # 🗜 2026-10-16 老倪: 「太阳系又变矮了 / 表格最后一行看不到」—— 画布顶部工具条压薄 (51→28),
+        #   功能一个不少 (按钮都在, 只是矮), 省下的高度给右栏 M 页的太阳系 + 万有引力表。
+        try:
+            tb.setMaximumHeight(28)
+            for _b in tb.findChildren(QPushButton):
+                _b.setFixedHeight(24)
+        except Exception:                                                        # noqa: BLE001
+            pass
         outer.addWidget(tb)
 
         # (2026-08-06 老倪: 「参考应用」整行删除 — 白色字体按钮与上方彩色工具栏
@@ -5976,6 +5984,13 @@ class SimulinkModule(QWidget):
         self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:10pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
         # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
+        # 🗜 2026-10-16 老倪: 「万有引力表格最下面一行看不到 / 太阳系又变矮了」—— 高度从这儿出:
+        #   日志面板原来吃掉 ~105px(比设的 60 大) ⇒ 钉成 46px (够看一行), 省下的全给右栏 M 页。
+        try:
+            self._log_panel.setMaximumHeight(46)
+            self._log_panel.setMinimumHeight(46)
+        except Exception:                                                        # noqa: BLE001
+            pass
         self._v_split.addWidget(self._log_panel)
         try:
             self._v_split.setStretchFactor(0, 1)
