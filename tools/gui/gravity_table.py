@@ -330,6 +330,25 @@ def _fmt_q(q):
     return "%+.3f %+.3f %+.3f %+.3f" % (q[0], q[1], q[2], q[3])
 
 
+def _fmt_q_pair(q):
+    """窄栏也要看得全 (老倪: 「字体偏小看不到」+ 682px 窄栏): 四元数 2×2, 14px 字号;
+    小数省掉前导 0 (+.24 而不是 +0.24) —— 实测列宽 ~90px, 带 0 就是 91px 会被 Qt 打省略号。
+    精确到 3 位的完整值在 tooltip 里 (点了就能复制)。"""
+    if not q:
+        return "未算"
+    def _c(v):
+        s = "%+.2f" % v
+        return s.replace("+0.", "+.").replace("-0.", "-.")
+    return "%s %s\n%s %s" % (_c(q[0]), _c(q[1]), _c(q[2]), _c(q[3]))
+
+
+def _fmt_q_line(q):
+    """一行版四元数 (老倪: 「字体偏小看不到」+ 侧栏已经够宽) —— 2 位小数, 14px 一行放得下。"""
+    if not q:
+        return "未算"
+    return "%+.2f %+.2f %+.2f %+.2f" % (q[0], q[1], q[2], q[3])
+
+
 class GravityTableWidget(QWidget):
     """一个标签「万有引力」+ 表格 (行=状态空间项, 列=L2/L3/L4/L5/合力, 右下角=总合力)。"""
 
@@ -341,7 +360,7 @@ class GravityTableWidget(QWidget):
 
         self.lbl_head = QLabel("")
         self.lbl_head.setWordWrap(True)
-        self.lbl_head.setStyleSheet("color:#8b949e;font-size:11px;font-family:Consolas,monospace;")
+        self.lbl_head.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;")
         lay.addWidget(self.lbl_head)
 
         self.t = QTableWidget(0, 2 + len(LAYERS) + 1)
@@ -350,9 +369,9 @@ class GravityTableWidget(QWidget):
         self.t.verticalHeader().setVisible(False)
         self.t.setStyleSheet(
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
-            "font-size:10px;font-family:Consolas,monospace;border:none;}"
-            "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:1px;font-size:10px;}")
-        self.t.verticalHeader().setDefaultSectionSize(30)
+            "font-size:14px;font-family:Consolas,monospace;border:none;}"
+            "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}")
+        self.t.verticalHeader().setDefaultSectionSize(42)      # 🌍 四元数 2×2 两行 (14px) 放得下, 又不挤
         hh = self.t.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.Stretch)
         for i in range(1, self.t.columnCount()):
@@ -383,31 +402,32 @@ class GravityTableWidget(QWidget):
         self.t.setRowCount(len(rows) + 1)                  # + 最下面一行 = 各列合力
         for i, r in enumerate(rows):
             it = QTableWidgetItem("%s\n拍%s%s" % (r["stage"], r["tick"] if r["tick"] is not None else "-",
-                                                  " · 在跑" if r["active"] else ""))
+                                                  " 跑" if r["active"] else ""))
             it.setForeground(QColor("#e6edf3" if r["active"] else "#8b949e"))
             self.t.setItem(i, 0, it)
             for j, (k, _n) in enumerate(LAYERS):
                 c = r["cells"][k]
                 if c.get("q") is None:
-                    cell = QTableWidgetItem("未算\n%s" % c.get("src", ""))
+                    cell = QTableWidgetItem("未算")
                     cell.setForeground(QColor("#484f58"))
                 else:
-                    cell = QTableWidgetItem("%s\n|F|=%.3f%s" % (_fmt_q(c["q"]), c["mag"],
-                                                                (" 爪%.2f" % c["gripper"]) if c.get("gripper") is not None else ""))
+                    cell = QTableWidgetItem(_fmt_q_pair(c["q"]))
                     cell.setForeground(QColor("#e6edf3"))
                     if r["main"] == k:                     # ✅ 主力高亮
-                        cell.setText("★ " + cell.text())
+                        cell.setText("★" + cell.text())
                         cell.setBackground(QColor(31, 111, 235, 90))
                         cell.setForeground(QColor("#ffd33d"))
-                        fo = QFont("Consolas", 8)
+                        fo = QFont("Consolas", 11)
                         fo.setBold(True)
                         cell.setFont(fo)
-                cell.setToolTip("%s\n真源: %s" % (c.get("note") or "", c.get("src", "")))
+                cell.setToolTip("|F|=%.3f %s\n四元数 (w x y z) = %s\n真源: %s"
+                                % (c.get("mag") if c.get("mag") is not None else -1, c.get("note") or "",
+                                   _fmt_q(c.get("q")), c.get("src", "")))
                 self.t.setItem(i, 1 + j, cell)
-            # 该行合力
-            rc = QTableWidgetItem("%s\n一致度=%.2f" % (_fmt_q(r["q"]), r["coh"]))
+            # 该行合力 (一致度放 tooltip; 格子里只放四元数, 免得挤)
+            rc = QTableWidgetItem(_fmt_q_pair(r["q"]))
             rc.setForeground(QColor("#79c0ff"))
-            rc.setToolTip("该行四层力的合力 (四元数归一化和) · 一致度 1.0=四层同向, →0=互相抵消")
+            rc.setToolTip("该行四层力的合力 (四元数归一化和) · 一致度=%.2f (1.0=四层同向, →0=互相抵消)" % r["coh"])
             self.t.setItem(i, 1 + len(LAYERS), rc)
 
         # ── 最下面一行: 各列合力 + 右下角 = 全表总合力 ──
@@ -417,25 +437,26 @@ class GravityTableWidget(QWidget):
         self.t.setItem(li, 0, hd)
         for j, (k, _n) in enumerate(LAYERS):
             q, coh = f.col_resultant(k)
-            it = QTableWidgetItem("%s\n一致度=%.2f" % (_fmt_q(q), coh))
+            it = QTableWidgetItem("%s\n致 %.2f" % (_fmt_q_pair(q), coh))     # 「致」= 一致度 (窄栏放得下)
             it.setForeground(QColor("#79c0ff"))
-            it.setToolTip("L2/L3/L4/L5 各列: 该列所有项的力之和 (四元数归一化和)")
+            it.setToolTip("L2/L3/L4/L5 各列: 该列所有项的力之和 (四元数归一化和) · 一致度=%.2f" % coh)
             self.t.setItem(li, 1 + j, it)
         qt, coht = f.total_resultant()
         dn_s, dn_k = f.dominant_now()
-        tot = QTableWidgetItem("总合力\n%s\n一致度=%.2f\n主力: %s · %s"
-                               % (_fmt_q(qt), coht, dn_s or "?", dn_k or "?"))
+        tot = QTableWidgetItem("总合力\n%s\n致 %.2f\n★%s·%s"
+                               % (_fmt_q_pair(qt), coht, dn_s or "?", dn_k or "?"))
         tot.setForeground(QColor("#ffd33d"))
-        fo = QFont("Consolas", 8)
+        fo = QFont("Consolas", 10)
         fo.setBold(True)
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
         tot.setToolTip("全表所有力的合力 (四元数归一化和, 以各格力度为权)")
         self.t.setItem(li, 1 + len(LAYERS), tot)
+        self.t.setRowHeight(li, 82)                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"
-        self.lbl_foot.setStyleSheet("color:%s;font-size:10px;font-family:Consolas,monospace;"
+        self.lbl_foot.setStyleSheet("color:%s;font-size:12px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;" % _age_col)
         # 🔴 这一行是**保证看得见**的 (表若被窗口裁了, 右下角总合力也要在页面上有一份; 老倪拿画面当结果)
         _tot_line = ("★★ 全表总合力 %s · 一致度 %.2f · 本刻主力 %s·%s ★★"

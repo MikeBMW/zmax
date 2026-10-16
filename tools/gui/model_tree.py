@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox, QStackedWi
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
-                             QScrollArea, QFileDialog,
+                             QScrollArea, QFileDialog, QSplitter,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QMenu, QDialog, QCheckBox, QApplication,
                              QLineEdit)                     # 🎛 2026-10-15 右侧栏「参数中心」页要用
@@ -920,6 +920,7 @@ class RunConfigWidget(QWidget):
 #   程序化 setCurrentIndex (开机回选 / 判据脚本 verify_*.py) **不写盘**, 否则跑一次判据就把偏好刷成四面板。
 UI_CFG_ORG, UI_CFG_APP = "ZMAX", "studio"
 MPARAM_VIZ_KEY = "mparam/viz_view"      # 🧮 主参数 M 页: 0=🧊 几何四面板 · 1=🪐 球心引力架构
+MPARAM_SPLIT_KEY = "mparam/split_top"   # 🌍 2026-10-16 老倪: 「上下也要可以用鼠标调整大小」⇒ 上半(太阳系)高度(px)也落盘
 
 
 def ui_state_get(key, default=0):
@@ -1093,9 +1094,8 @@ class MasterParamMView(QWidget):
         _vrow.addWidget(QLabel("视图"), 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
         lay.addLayout(_vrow)
-        lay.addWidget(self.viz_stack, 1)
         # 🌍 2026-10-16 老倪: 太阳系下面那张「万有引力」表要看得全 (原来 2:1 ⇒ 表只剩 ~460px, 右下角总合力
-        #   被窗口底边切掉, 他用画面当结果) ⇒ 表给 2 份空间, 太阳系 1 份。
+        #   被窗口底边切掉, 他用画面当结果) ⇒ 上下比例交给**可拖的分隔条**, 见下面的 split_m。
         # 🪐 2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」⇒ 开机按存值回选 (关机前是太阳系就还是太阳系)
         _want = ui_state_get(MPARAM_VIZ_KEY, 0)
         if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
@@ -1130,7 +1130,28 @@ class MasterParamMView(QWidget):
             _lb = QLabel("🌍 万有引力: 表建不起来 (%s)" % _e_gr)
             _lb.setStyleSheet("color:#f85149;font-size:11px;")
             self.tabs.addTab(_lb, "🌍 万有引力")
-        lay.addWidget(self.tabs, 2)          # 🌍 表拿 2 份 (右下角总合力必须在本页看得见)
+        # 🌍 2026-10-16 老倪: 「上下也要可以用鼠标调整大小」⇒ 上半(太阳系/四面板)与下半(万有引力表)之间
+        #   放一条 7px 的可拖分隔条 (鼠标放上去变蓝); 拖过的比例落盘, 下次开机照旧。原来用 stretch 1:2 是死的。
+        self.split_m = QSplitter(Qt.Vertical)
+        self.split_m.setChildrenCollapsible(False)
+        self.split_m.setHandleWidth(10)          # 抓手加宽 + 上下描边 ⇒ 深色底也看得见 (老倪: 要有条能抓的)
+        self.split_m.setStyleSheet("QSplitter::handle{background:#30363d;"
+                                  "border-top:1px solid #484f58;border-bottom:1px solid #484f58;}"
+                                  "QSplitter::handle:hover{background:#1f6feb;}")
+        self.split_m.addWidget(self.viz_stack)
+        self.split_m.addWidget(self.tabs)
+        for _hi in (1, 2):                       # 抓手给提示: 鼠标放上去就知道这儿能拖
+            try:
+                self.split_m.handle(_hi).setToolTip("上下拖动: 调整「太阳系视图 / 万有引力表」的高度 (拖完自动记住)")
+            except Exception:                                                # noqa: BLE001
+                pass
+        self.split_m.setStretchFactor(0, 1)
+        self.split_m.setStretchFactor(1, 2)
+        _top = ui_state_get(MPARAM_SPLIT_KEY, 0)
+        self.split_m.setSizes([(_top if _top > 60 else 380), 100000])   # 只钉上半高度, 其余全给下半
+        self.split_m.splitterMoved.connect(
+            lambda *_: ui_state_put(MPARAM_SPLIT_KEY, self.split_m.sizes()[0]))
+        lay.addWidget(self.split_m, 1)
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)

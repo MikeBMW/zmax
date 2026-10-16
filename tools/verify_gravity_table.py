@@ -150,8 +150,62 @@ def main():
     R.append((len(R) + 1, "· 本拍是否实时 (信息, 不判失败)", True,
               "实时" if live else "非本刻: 临界真源最老 %.0fs ⇒ 表上 L3/L4 的力是引擎最后一拍的值 (判据只要求如实标注)" % max(crit or [0])))
 
-    # ⑩ 四元数确实由真源向量算出来 (抽样反推: 用 u_ref 与 |F| 重算 θ, 看 q 的标量部分)
+    # ⑪ 上下可用鼠标拖 + 拖过的比例落盘 (老倪 2026-10-16: 「上下也要可以用鼠标调整大小」)
+    from PyQt5.QtCore import QSettings
+    seg2 = src[max(0, src.find("self.split_m = QSplitter(Qt.Vertical)") - 200):
+               src.find("self.split_m = QSplitter(Qt.Vertical)") + 1400] \
+        if src.find("self.split_m = QSplitter(Qt.Vertical)") > 0 else ""
+    has_split = ("self.split_m = QSplitter(Qt.Vertical)" in seg2
+                 and "setChildrenCollapsible(False)" in seg2
+                 and "self.split_m.addWidget(self.viz_stack)" in seg2
+                 and "self.split_m.addWidget(self.tabs)" in seg2)
+    ck("⑪ 太阳系/万有引力表之间是可拖分隔条", has_split,
+       "QSplitter(Qt.Vertical) + 两半都 addWidget + 不许拖没 (childrenCollapsible False)")
+    ck("⑪b 分隔条看得见 (抓手宽度/描边/悬停高亮)", "setHandleWidth(10)" in seg2 and "QSplitter::handle:hover" in seg2
+       and "handle(_hi).setToolTip" in seg2,
+       "10px 抓手 + 上下描边 + 悬停变蓝 + 抓手带提示")
+    # 拖过的比例落盘 + 回读 (真写 QSettings 一次, 再读回来)
+    import model_tree as MT                                                      # noqa: E402
+    MT.ui_state_put(MT.MPARAM_SPLIT_KEY, 421)
+    back = MT.ui_state_get(MT.MPARAM_SPLIT_KEY, -1)
+    QSettings(MT.UI_CFG_ORG, MT.UI_CFG_APP).remove(MT.MPARAM_SPLIT_KEY)
+    ck("⑪c 拖过的上下比例落盘可回读", back == 421 and "splitterMoved.connect" in seg2 and "MPARAM_SPLIT_KEY" in seg2,
+       "%s 写 421 → 读回 %s (读后已清干净, 不污染老倪的界面态)" % (MT.MPARAM_SPLIT_KEY, back))
+    fsz = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "gravity_table.py"), encoding="utf-8").read()
+    ck("⑪d 字号放大 (老倪: 字太小看不到)", "font-size:14px" in fsz and "_fmt_q_pair" in fsz,
+       "表体 10px → 14px (四元数 2×2 两行, 682px 窄栏也放得下), 表头 13px, 页脚 12px")
     s_chk = []
+    # ⑫ 窄栏不截断 (老倪: 「看不到」) —— 机械核对: 每格每一行文字宽度 ≤ 列宽, 不许出省略号
+    import os as _os
+    _os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt5.QtWidgets import QApplication
+    from PyQt5.QtGui import QFontMetrics
+    _app = QApplication.instance() or QApplication([])
+    W = 682                                            # 实测最窄的侧栏宽度 (老倪那台机器的默认)
+    _w = GT.GravityTableWidget()
+    _w.resize(W, 1300)
+    _w.show()
+    _app.processEvents()
+    _t = _w.t
+    over = []
+    for _r in range(_t.rowCount()):
+        for _c in range(_t.columnCount()):
+            _it = _t.item(_r, _c)
+            if _it is None:
+                continue
+            # 按字宽核 (取 item 字体与表字体里**更大**的那个, 不低估): 这是 Qt 决定省不省略的依据
+            _f1, _f2 = QFontMetrics(_it.font()), QFontMetrics(_t.font())
+            _cw = _t.columnWidth(_c) - 8
+            for _ln in _it.text().split("\n"):
+                if not _ln:
+                    continue
+                _need = max(_f1.horizontalAdvance(_ln), _f2.horizontalAdvance(_ln))
+                if _need > _cw:
+                    over.append((_r, _c, _ln, _need, _cw))
+    _w.close()
+    ck("⑫ 最窄 %dpx 侧栏下每格文字不截断" % W, not over,
+       ("%d 格全部放得下 (无省略号)" % (_t.rowCount() * _t.columnCount())) if not over
+       else "溢出 %d 处 (行/列/文字/需宽/可用宽): %s" % (len(over), over[:6]))
     for r in f.rows:
         for k, _n in GT.LAYERS:
             c = r["cells"][k]
