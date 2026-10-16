@@ -311,7 +311,8 @@ def main():
     chk("E5", "命令通道 orbital 真接线 (一句令: 画布页+M页+切到球心视图) + mparam_shot 抓当前显示页",
         nav, all(nav.values()), "四处都在: 分支/执行体/切视图/按视图命名落盘")
     src = open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
-    writes = [k for k in ('open(fpath, "w"', "open(p, \"w\"", "json.dump(", "np.save", ".save(") if k in src]
+    _src_nop = src.replace("p.save()", "").replace("_p.save()", "")   # QPainter.save 不是写文件口
+    writes = [k for k in ('open(fpath, "w"', "open(p, \"w\"", "json.dump(", "np.save", ".save(") if k in _src_nop]
     chk("E4", "视图是只读的 (源码里没有写文件口; 只读真源画图)", {"命中写口": writes}, not writes, "无写口")
 
     # ═══ 冻源: 现场有别的进程(控制台/引擎)每帧在写 zmax_data/ss_live/*.json ⇒
@@ -792,6 +793,76 @@ def main():
         {"卫星": _ids, "文字块数": len(_rsL), "期望": _want_ids},
         _ids == _want_ids and len(_rsL) >= len(_want_ids) + 5,
         "8 颗 SK01~SK08 + 每个球一块标签")
+
+    # ═══ M 第三轮看图 (deleg_8a68a5dd) 收口: 天体名 · 自适应宽 · 块间距 · 线不穿球 · 卫星环可见 ═══
+    _vM = OA.OrbitalArchView(root=_FREEZE)
+    _vM.resize(682, 1391)
+    _vM._phase = 0.0
+    _blocksM = _vM.label_texts()
+    _allM = " | ".join("".join(ln for ln in ls) for _r, ls in _blocksM)
+    _needN = {"太阳": "☀", "水星": "☿", "地球": "♁", "火星": "♂", "木星": "♃", "月球": "🌙"}
+    _missN = [k for k in _needN if k not in _allM]
+    chk("M1", "每个天体都有一块**带天体名**的标签 (老倪口径: 只有 太阳/木星/火星/水星/地球/月球 + SK 卫星)",
+        {"块数": len(_blocksM), "缺天体名": _missN or "无"},
+        not _missN, "六类天体名都出现在标签里")
+    _wide = [(round(r.width()), max(len(l) for l in ls)) for r, ls in _blocksM]
+    _over = [w for w, _n in _wide if w > 230]
+    chk("M2", "块宽**随文字自适应** (看图报: 统一 225px 导致右侧大片空白/贴边) —— 每块 ≤228px 且不等宽",
+        {"块宽": [w for w, _n in _wide], "种数": len({w for w, _n in _wide})},
+        not _over and len({w for w, _n in _wide}) >= 4, "宽度按文字定, 不再一律 228")
+
+    def _gapM(r1, r2):
+        dx = max(0.0, max(r1.x(), r2.x()) - min(r1.x() + r1.width(), r2.x() + r2.width()))
+        dy = max(0.0, max(r1.y(), r2.y()) - min(r1.y() + r1.height(), r2.y() + r2.height()))
+        return math.hypot(dx, dy)
+
+    _mind, _pair = 999.0, None
+    for _i in range(len(_blocksM)):
+        for _j in range(_i + 1, len(_blocksM)):
+            _g = _gapM(_blocksM[_i][0], _blocksM[_j][0])
+            if _g < _mind:
+                _mind, _pair = _g, (_i, _j)
+    chk("M3", "相邻文字块之间留 ≥2px 间隙 (看图报: 两框 0px 相贴/球底与框顶只 3px)",
+        {"最小间隙px": round(_mind, 1), "最近两块": _pair}, _mind >= 2.0, "块间最小间隙 ≥2px")
+
+    _AM = _arr(_vM.grab().toImage())
+    _pM = _vM.positions()
+    _SM = _vM._geom()[2]
+    _onball = {}
+    for _k, _col in (("mercury", [0x39, 0xc5, 0xcf]), ("earth", [0x3f, 0xb9, 0x50]),
+                     ("mars", [0x39, 0xc5, 0xcf]), ("jupiter", [0x3f, 0xb9, 0x50])):
+        _x, _y = int(_pM[_k][0]), int(_pM[_k][1])
+        _r = int(_SM * OA.OrbitalArchView.RAD[_k] * 0.8)
+        _pix = 0
+        for _dy2 in range(-_r, _r + 1):
+            for _dx2 in range(-_r, _r + 1):
+                if _dx2 * _dx2 + _dy2 * _dy2 > _r * _r:
+                    continue
+                _c = _AM[_y + _dy2, _x + _dx2]
+                if float(np.abs(_c - np.array(_col)).sum()) < 45:
+                    _pix += 1
+        _onball[_k] = _pix
+    chk("M4", "连线**不画在球面上** (看图报: 线穿过太阳/水星/火星球面 ⇒ z 序错; 透描已加球体裁剪)",
+        _onball, sum(_onball.values()) <= 6, "球心区几乎无线色像素")
+
+    _ringM = {}
+    _eaM = _vM._angles(_vM.data.body).get("earth", 0.0)
+    _erM = OA.OrbitalArchView.ORB["earth"]
+    _satrM = OA.OrbitalArchView.SAT_R
+    for _name, _fn in (("卫星环", lambda t: (_erM * math.cos(_eaM) + _satrM * math.cos(t),
+                                            _erM * math.sin(_eaM) + _satrM * math.sin(t))),):
+        _hit = _tot = 0
+        for _i in range(120):
+            _t = _i / 120.0 * 2 * math.pi
+            _fx, _fy = _fn(_t)
+            _x, _y, _z = _vM._proj(_fx, _fy, 0.0, _pM["_cx"], _pM["_cy"], _pM["_R"])
+            if _x < 1 or _y < 1 or _x > 680 or _y > 1388:
+                continue
+            _tot += 1
+            _hit += 1 if float(np.abs(_AM[int(_y), int(_x)] - np.array([OA.BG.red(), OA.BG.green(), OA.BG.blue()])).sum()) > 30 else 0
+        _ringM[_name] = round(_hit / max(1, _tot), 2)
+    chk("M5", "地球卫星环在深底上看得见 (看图报: 太暗几乎看不见 ⇒ α=170/宽1.4)", _ringM,
+        min(_ringM.values()) >= 0.25, "环上 ≥25% 采样点见线")
 
     print("\n═══ 判据 %d 条: PASS %d · FAIL %d ═══" % (PASS + FAIL, PASS, FAIL))
     out = os.path.join(ROOT, "zmax_data", "eval", "orbital_arch_verify.json")

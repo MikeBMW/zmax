@@ -362,6 +362,7 @@ class OrbitalArchView(QWidget):
             self._grids.append([(self.ORB[_k] * math.cos(t / 72.0 * 2 * math.pi),
                                  self.ORB[_k] * math.sin(t / 72.0 * 2 * math.pi)) for t in range(73)])
         self._ext = []                    # 2026-10-16 老倪: 体系外的球/灰点全部删掉 (只留 7 类主体)
+        self._leaders = []                # 被挤远的文字块 → 引线 (归属可辨)
         self._edges = self._build_edges()
         self.setMinimumSize(300, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -497,7 +498,7 @@ class OrbitalArchView(QWidget):
 
     def _tick(self):
         # 只推进"虚线流动相位" (慢, 连续) —— 不做透明度脉冲 (老倪: 不要高频闪烁)
-        self._phase = (self._phase + 0.06) % 12.0
+        self._phase = (self._phase + 0.18) % 12.0
         self.update()
 
     # ── 3D: 平面坐标 → 屏幕 (绕 Z 偏航 + 绕 X 俯仰 + 正交投影 + 深度微缩) ────
@@ -622,7 +623,7 @@ class OrbitalArchView(QWidget):
         for ring, key in zip(self._grids, ("mercury", "earth", "mars", "jupiter")):
             cring = QColor(self.COL[key]); cring.setAlpha(120)
             pen = QPen(cring, 1.2, Qt.CustomDashLine)
-            pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([4.0, 5.0]); pen.setDashOffset(self._phase * 0.5)
+            pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([4.0, 5.0]); pen.setDashOffset(self._phase * 1.6)
             p.setPen(pen)
             pt = [self._proj(x, y, 0.0, cx, cy, R) for x, y in ring]
             for j in range(len(pt) - 1):
@@ -630,9 +631,9 @@ class OrbitalArchView(QWidget):
         # 地球的**卫星环** (原子技能公转轨道): 也让背景把"轨道"说清楚
         _ea = self._angles(b).get("earth", 0.0)
         _er = self.ORB["earth"]
-        cring = QColor(self.COL["sat"]); cring.setAlpha(110)
-        pen = QPen(cring, 1.1, Qt.CustomDashLine)
-        pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([3.0, 4.0]); pen.setDashOffset(self._phase * 0.5)
+        cring = QColor(self.COL["sat"]); cring.setAlpha(170)      # 2026-10-16 看图: 110 太暗几乎看不见
+        pen = QPen(cring, 1.4, Qt.CustomDashLine)
+        pen.setCapStyle(Qt.FlatCap); pen.setDashPattern([3.0, 4.0]); pen.setDashOffset(self._phase * 1.6)
         p.setPen(pen)
         ring = [(self.SAT_R * math.cos(t / 72.0 * 2 * math.pi), self.SAT_R * math.sin(t / 72.0 * 2 * math.pi))
                 for t in range(73)]
@@ -675,7 +676,11 @@ class OrbitalArchView(QWidget):
         p.drawLine(QPointF(ex, ey), QPointF(mx, my))
         # 文字块是**半透明**底 (α=222) ⇒ 压住的线仍隐约可见 (老倪: 线不要很快消失);
         # 透描放在文字之前 —— 先透描再写字, 字才不会被线盖暗 (2026-10-16 看图: 数值行前半被压暗)。
+        p.save()
+        p.setClipRegion(self._ball_clip(p, pos, S))     # 透描不许画到球面上 (2026-10-16 看图: 线穿球面)
         self._draw_forces(p, cx, cy, R, b, ghost=True)
+        p.restore()
+        self._leaders = []
         self._labels(p, pos, cx, cy, R, b, W, H, S)
         self._legend(p, W, H, b)
         p.end()
@@ -685,15 +690,32 @@ class OrbitalArchView(QWidget):
         ratio = 1.0
         if e1 and e2 and float(e2) > 0:
             ratio = max(0.35, min(1.0, float(e1) / float(e2)))
-        for i in range(6):
-            rr = 0.10 + 0.055 * i
-            alpha = 88 - i * 11
+        for i in range(3):                                        # 6 圈→3 圈 (2026-10-16 看图: 与轨道环混淆)
+            rr = 0.12 + 0.09 * i
+            alpha = 62 - i * 12
             p.setPen(QPen(QColor(210, 153, 34, max(18, alpha)), 1))
             pts = [self._proj(rr * math.cos(t / 60.0 * 2 * math.pi),
                               rr * ratio * math.sin(t / 60.0 * 2 * math.pi), 0.0, cx, cy, R)
                    for t in range(61)]
             for j in range(len(pts) - 1):
                 p.drawLine(QPointF(pts[j][0], pts[j][1]), QPointF(pts[j + 1][0], pts[j + 1][1]))
+
+    def _ball_clip(self, p, pos, S):
+        """把球体从裁剪区里挖掉 (给"文字之上透描"用: 线不许画在球面上)。"""
+        from PyQt5.QtGui import QRegion
+        W, H, _S2, _cx, _cy, _R = self._geom()
+        reg = QRegion(0, 0, W, H)
+        for key in ("sun", "mercury", "earth", "mars", "jupiter", "moon"):
+            try:
+                x, y = float(pos[key][0]), float(pos[key][1])
+            except (KeyError, IndexError, TypeError):
+                continue
+            r = S * self.RAD[key] + 2.0
+            reg = reg.subtracted(QRegion(int(x - r), int(y - r), int(2 * r), int(2 * r), QRegion.Ellipse))
+        for x, y, _z, _sk in pos.get("_sat", []):
+            r = S * self.RAD["sat"] + 2.0
+            reg = reg.subtracted(QRegion(int(x - r), int(y - r), int(2 * r), int(2 * r), QRegion.Ellipse))
+        return reg
 
     def _draw_forces(self, p, cx, cy, R, b, ghost=False):
         """力的相互作用: **只画主体↔主体**的真连线, 全部**虚线** (柔顺慢速流动), 颜色=信号种类。
@@ -722,10 +744,11 @@ class OrbitalArchView(QWidget):
             col = col_of.get(e.get("sig_kind") or e["kind"], QColor("#8b949e"))
             if ghost:
                 # 文字块**之下**先透描一遍 (字压线: 字仍可读, 线也没有"断"的错觉); 全部虚线, 同相位
+                # 2026-10-16 看图: 这一遍画在球体之后 ⇒ 线穿过球面(z 序错)。用 clip 把球体挖掉。
                 c2 = QColor(col); c2.setAlpha(86)
                 g = QPen(c2, 2.9, Qt.CustomDashLine)
                 g.setCapStyle(Qt.FlatCap)
-                g.setDashPattern([7.0 / 2.9, 6.0 / 2.9]); g.setDashOffset((self._phase * 0.5) / 2.9)
+                g.setDashPattern([7.0 / 2.9, 6.0 / 2.9]); g.setDashOffset((self._phase * 1.6) / 2.9)
                 p.setPen(g)
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
                 continue
@@ -738,7 +761,7 @@ class OrbitalArchView(QWidget):
                 q = QPen(pen, w, Qt.CustomDashLine)
                 q.setCapStyle(Qt.FlatCap)      # 关键: 默认方帽把每段划两端各外扩半个笔宽 ⇒ 间隔被吃掉
                 q.setDashPattern([max(0.15, _dash / w), max(0.15, _gap / w)])
-                q.setDashOffset((self._phase * 0.5) / w)
+                q.setDashOffset((self._phase * 1.6) / w)
                 p.setPen(q)
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
             mx = x1 + (x2 - x1) * 0.62                 # 方向箭头 (虚线也标方向)
@@ -807,8 +830,16 @@ class OrbitalArchView(QWidget):
         _live = self.interactions()
         a = ("力的相互作用 (画布 links 真源): 主体↔主体 %d 条 · **信号有值才画** ⇒ 当前画出 %d 条 · "
              "体系外节点/灰点已删 (老倪: 其它球体删掉)") % (len(_all_bb), len(_live))
-        bb = ("线义: **全部虚线** (长划6/隔4, 慢速流动, 不闪不断) · 青=几何条件 · 金=性能/集合条件 · "
-              "绿=动作/前馈 · 紫=反馈/回灌 · 缺值不画 (显示由真源代码触发: 见 SIG_OF 注释)")
+        _kinds = []
+        for _e in _live:
+            _k = _e.get("sig_kind")
+            if _k and _k not in _kinds:
+                _kinds.append(_k)
+        _kname = {"geom": "青=几何条件", "perf": "金=性能/集合条件", "drive": "绿=动作/前馈", "feedback": "紫=反馈/回灌"}
+        _miss_k = [n for k, n in _kname.items() if k not in _kinds]
+        bb = ("线义 (**全部虚线** 长划7/隔6, 慢速流动): 本帧实画 %s%s · 缺值不画 (显示由真源代码触发: 见 SIG_OF 注释)") % (
+            " · ".join(_kname[k] for k in _kinds) or "无",
+            (" · 本帧无: " + " · ".join(_miss_k)) if _miss_k else "")
         c = ("角度映射: 水星←接触进度‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步λ · 木星←η · "
              "月球与原子技能=地球相位(协同行进) · 卫星=原子技能 %s (真源 skill_phys; 亮=在职, 金圈=当前在职 %s)") % (
             "SK01~SK%02d" % max(1, len(self.data.body.get("sats", {}).get("list") or [])),
@@ -909,6 +940,20 @@ class OrbitalArchView(QWidget):
             out.append((_blk, [str(_sk)], _col, 8))
             placed.append(_blk)
 
+        def _fmw(text, size=9):
+            _f = QFont("DejaVu Sans"); _f.setPixelSize(size)
+            return QFontMetrics(_f).width(text)
+
+        def _fit_lines(lines, size=9, cap=228.0, floor=90.0):
+            """块宽自适应: 先按最长行定宽 (上限 cap), 再按这个宽把过长的行折行; 返回 (宽, 行表)。"""
+            widest = max([_fmw(l, size) for l in lines] or [80])
+            w0 = min(cap, max(floor, float(widest) + 14.0))
+            out2 = []
+            for l in lines:
+                out2 += ([l] if _fmw(l, size) + 14.0 <= w0 else self._wrap(l, int(w0 - 10), size))
+            widest2 = max([_fmw(l, size) for l in out2] or [80])
+            return min(cap, max(floor, float(widest2) + 14.0)), out2
+
         def place_near(x, y, lines, color, size, ux, uy, own_r):
             """把文字块贴到 (x,y) 这颗球的**外侧**: 块的近边离球 own_r+12px, 朝 (ux,uy) 展开。
 
@@ -917,6 +962,7 @@ class OrbitalArchView(QWidget):
             所以径向偏移必须 ≥ 块在该方向上的半宽 + own_r。
             再在候选方向 (径向 → ±45° → ±90° → ±135° → 反向) 上 6px 步扫, 先 clamp 再判冲突。
             """
+            w, lines = _fit_lines(lines, size)
             h = 11 * len(lines) + 4
             ks = keepouts()
 
@@ -973,10 +1019,13 @@ class OrbitalArchView(QWidget):
                 return fb
             placed.append(best)
             out.append((best, lines, color, size))
+            if math.hypot(best.center().x() - x, best.center().y() - y) > 88.0:
+                self._leaders.append((best, float(x), float(y), color))
             return best
 
-        names = {"mercury": "☿ 接触流形", "earth": "♁ 前馈加速器", "mars": "♂ DiT 动作头",
-                 "jupiter": "♃ 性能流形"}
+        # 2026-10-16 看图: 画面只有节点名, 认不出天体 ⇒ 标题带上**天体名 + 结点名**
+        names = {"mercury": "☿ 水星 · 接触流形", "earth": "♁ 地球 · 前馈加速器",
+                 "mars": "♂ 火星 · DiT 动作头", "jupiter": "♃ 木星 · 性能流形"}
         for key in ("mercury", "mars", "jupiter", "earth"):
             x, y, _z = pos[key]
             ux, uy = x - cx, y - cy
@@ -989,7 +1038,7 @@ class OrbitalArchView(QWidget):
             place_near(x, y, lines, FG if key != "earth" else QColor("#cfe4ff"), 9,
                        ux, uy, S * self.RAD[key])
         # 太阳 (贴球底)
-        slines = ["☀ 流形引擎"] + self._wrap(self._sun_text(b.get("sun", {})), w - 8, 9)
+        slines = ["☀ 太阳 · 流形引擎"] + self._wrap(self._sun_text(b.get("sun", {})), w - 8, 9)
         place_near(cx, cy, slines, GOLD, 9, 0.0, 1.0, S * self.RAD["sun"])
         # 卫星群 (绕地球的那一圈的外侧)
         # 月球 (沿"离地球"方向往外)
@@ -998,7 +1047,7 @@ class OrbitalArchView(QWidget):
         n = math.hypot(ux, uy) or 1.0
         # own_r 原先写成 _mr/2.0 ⇒ 月球标签被推到"地球-月球连线中点之外", 结果压在卫星圈上;
         # 换成 (月球球半径 + 12) ⇒ 近边贴月球外侧 (2026-10-16)
-        place_near(mx, my, ["🌙 校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n,
+        place_near(mx, my, ["🌙 月球 · 状态校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n,
                    S * self.RAD["moon"] + 12)
         # 收尾防撞 (2026-10-16 看图/判据 J1: 加了 8 个卫星 SK 号之后, 拥挤区可能仍有两块相交):
         #   逐对检查, 相交的把**后一块**改放页边栏空槽; 槽位也撞就保持原位 (判据会报出来, 不藏着)。
@@ -1046,10 +1095,32 @@ class OrbitalArchView(QWidget):
         # 判据量到的是改前的旧位置)
         return [t[0] for t in out]
 
+    def label_texts(self):
+        """给判据用: [(矩形, 行表)] —— 核"每个天体都有带名字的块" / "块宽自适应"。"""
+        W, H, S, cx, cy, R = self._geom()
+        pos = self.positions(cx, cy, R)
+        out, _placed = self._label_blocks(pos, self.data.body, cx, cy, R, S, W, H)
+        return [(t[0], list(t[1])) for t in out]
+
     def _labels(self, p, pos, cx, cy, R, b, W, H, S):
         blocks, _placed = self._label_blocks(pos, b, cx, cy, R, S, W, H)
         for rect, lines, color, size in blocks:
             self._block(p, lines, rect.x(), rect.y(), rect.width(), color, size)
+        # 引线 (2026-10-16 看图: 性能流形块被挤到左上角, 认不出属于哪颗球 ⇒ 拉一根 1px 淡引线)
+        for rect, bx, by, col in getattr(self, "_leaders", []):
+            ccx, ccy = rect.center().x(), rect.center().y()
+            vx, vy = ccx - bx, ccy - by
+            nn = math.hypot(vx, vy) or 1.0
+            vx, vy = vx / nn, vy / nn
+            # 起点: 块边界 (沿方向缩到框外 2px); 终点: 球心外 6px
+            tx = (rect.width() / 2.0) / max(1e-6, abs(vx)) if abs(vx) > 1e-6 else 1e9
+            ty = (rect.height() / 2.0) / max(1e-6, abs(vy)) if abs(vy) > 1e-6 else 1e9
+            tt = min(tx, ty) + 3.0
+            x1, y1 = ccx - vx * tt, ccy - vy * tt
+            x2, y2 = bx + vx * 7.0, by + vy * 7.0
+            c2 = QColor(col); c2.setAlpha(120)
+            p.setPen(QPen(c2, 1))
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
     @staticmethod
     def _fit_text(p, text, width):
