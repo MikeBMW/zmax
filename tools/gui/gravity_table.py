@@ -156,6 +156,22 @@ def _qadd(qs):
     return tuple(a)
 
 
+def _qnorm(q):
+    """四元数归一 (老倪 2026-10-16: 「总合力的四元数, 各项平方和是不是也应该是 1」)。
+    🔴 两种口径要分清, 缺一个他都会觉得不对:
+       · **力四元数** (表里格子上的四个数) = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref) —— **故意不归一**,
+         因为它要能**逐位相加** (合力 = 主力 + Σ赋能力, 老倪要按数字对账);
+       · **归一四元数** q̂ = q/‖q‖ —— 各项平方和恰为 1 (真正的"单位四元数", 老倪问的这个)。
+       归一后**方向不变** (矢量部分与合力 F 同向), 丢掉的只是力度 (‖q‖ 里含着), 所以两个都要给。
+    """
+    q = [float(x) for x in (q or (0.0, 0.0, 0.0, 0.0))]
+    n = math.sqrt(sum(x * x for x in q))
+    if n < 1e-15:
+        return (0.0, 0.0, 0.0, 0.0), 0.0, 0.0
+    u = tuple(x / n for x in q)
+    return u, n, sum(x * x for x in u)
+
+
 def _resid(total, parts):
     """矢量等式残差: |合力 − Σ(主力 + 各赋能力)| —— 按定义应为 0 (量出来才算保证)。"""
     s = _vsum(parts)
@@ -825,8 +841,9 @@ class GravityTableWidget(QWidget):
         _ar = _act_row[0] if _act_row else None
         _main_vec = (_ar["cells"][_ar["main"]].get("vec") if _ar and _ar.get("main") else None)
         _dev_tot = _angle_deg(_main_vec, _vsum([r["cells"][k].get("vec") for r in rows for k, _ in LAYERS]))
-        tot = QTableWidgetItem("总合力(全表)\n%s\n%s行合力\n%s\n致%.2f Δ主%.0f°\n主 %s·%s"
-                               % (_q_str(qt, 1), (_ar or {}).get("stage") or "本刻",
+        _qtu, _qtn, _qtss = _qnorm(qt)
+        tot = QTableWidgetItem("总合力(全表) ‖q‖=%.2f\n%s\n%s行合力\n%s\n致%.2f Δ主%.0f°\n主 %s·%s"
+                               % (_qtn, _q_str(qt, 1), (_ar or {}).get("stage") or "本刻",
                                   _q_str((_ar or {}).get("q") or (0.0, 0, 0, 0), 1),
                                   coht, _dev_tot, dn_s or "?", dn_k or "?"))   # 2 位小数: 3 位在窄栏会被 Qt 打省略号
         tot.setForeground(QColor("#ffd33d"))
@@ -855,7 +872,8 @@ class GravityTableWidget(QWidget):
             fo.setPixelSize(self._fmt[1])
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
-        tot.setToolTip("总合力(全表) = 所有格子的力矢量相加\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
+        tot.setToolTip("归一四元数 q̂ = %s (各项平方和 = %.6f) · ‖q‖ = %.3f\n总合力(全表) = 所有格子的力矢量相加"
+                       % (" ".join("%+.3f" % x for x in _qtu), _qtss, _qtn) + "\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
         self.t.setRowHeight(li, 146)   # 右下角字号放大到 ~16px ⇒ 行高跟上   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
@@ -873,12 +891,16 @@ class GravityTableWidget(QWidget):
         _eq_line = ("✅ 等式: 合力 = 主力 + Σ赋能力 (矢量相加) · 逐行残差 max %.1e · 在跑项 主↔合 %.1f° · "
                     "全表最大 %.1f° · 全表一致度 %.2f"
                     % (_res_max, (max(_run_dev) if _run_dev else 0.0), _dev_max, _coh_all))
+        _qu, _qn, _qss = _qnorm(qt)
+        _norm_line = ("🔵 归一 (单位四元数): 右下角总合力 ‖q‖=%.2f ⇒ q̂ = %s · **各项平方和 = %.6f** (=1)"
+                      % (_qn, " ".join("%+.3f" % x for x in _qu), _qss))
         self.lbl_foot.setText(
-            _tot_line + "\n" + _eq_line + "\n" + f.live_line() + "\n"
+            _tot_line + "\n" + _eq_line + "\n" + _norm_line + "\n" + f.live_line() + "\n"
             + (f.age_line() + ("  ← 这几项不是本刻的, 上面格子的力是它们最后一拍的值\n" if stale else "\n"))
             + "力四元数 = (w, x, y, z) = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref) · u_ref=%.3f (满速基准, 真源) · "
               "★=**本刻唯一主力** (正在跑的那一项 ⇒ 它的 L2 执行收口格) · 其余格都是赋能力 · "
               "合力 = 主力 + Σ赋能力: 四个数**逐位相加** (行=本行四层相加, 右下角=全表所有格子相加) · 一致度 |ΣF|/Σ|F| · "
+              "格子四个数是**力四元数**(不归一 ⇒ 能逐位相加); 归一后才是单位四元数 (各项平方和=1, 见 🔵 行) · "
               "L2/L3/L4 = 该帧 动作调制器/安全边界/前馈加速器 m/s (3D 面板同一帧快照), L5 = 规划方向 × |前馈速度| · "
               "只读真源: trace_live/meta_tasks/skill_latest/engine_latest (每 0.7s 重读)"
             % f.u_ref)

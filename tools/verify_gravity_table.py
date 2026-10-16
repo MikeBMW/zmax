@@ -323,6 +323,14 @@ def main():
     _ctxt = _cnr.text() if _cnr else ""
     _need = ["总合力", "行合力", "主 "]
     _cf = _cnr.font() if _cnr else None
+    # ⑯ 归一四元数: 各项平方和 = 1 (老倪 2026-10-16: 「总合力的四元数, 各项平方和是不是也应该是 1」)
+    #    口径: 格子四个数 = 力四元数(不归一 ⇒ 能逐位相加); 归一后才是单位四元数 ⇒ 这里核归一那一份
+    _qu, _qn, _qss = GT._qnorm(qt)
+    _qss_bad = [(_r["stage"], abs(GT._qnorm(_r["q"])[2] - 1.0)) for _r in f.rows
+                if _r.get("q") and abs(GT._qnorm(_r["q"])[2] - 1.0) > 1e-12]
+    ck("⑯ 归一后各项平方和 = 1 (右下角 + 每行合力)", abs(_qss - 1.0) < 1e-12 and not _qss_bad,
+       "右下角 ‖q‖=%.3f ⇒ q̂=%s · w²+x²+y²+z²=%.10f (=1); 8 行归一后全部 =1" 
+       % (_qn, " ".join("%+.3f" % x for x in _qu), _qss))
     # ⑮ 没在实跑 ⇒ 表**定格** (老倪 2026-10-16: 「现在什么都没有运行, 为什么合力还在变化」)
     #    为什么必须测: 3D 场景面板自己会回放录制的 episode, trace_live 一直在走 ⇒ 不判实跑就会把"回放"当"实时"
     import time as _tm

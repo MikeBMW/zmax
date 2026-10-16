@@ -12925,6 +12925,7 @@ class StudioMainWindow(QMainWindow):
 
     def _gt_dump_cmd(self):
         from gravity_table import LAYERS as GT_LAYERS
+        from gravity_table import _qnorm as GT_QNORM
         """🔎 命令通道 gt_dump: 打印活控制台「万有引力表」当下这一帧的总合力/一致度/主力/各格格值 (证明实时)。"""
         try:
             _sim = getattr(self, "simulink", None)
@@ -12961,6 +12962,10 @@ class StudioMainWindow(QMainWindow):
                             _acc[_i] += _q[_i]
                 print("     —— 逐位相加 [%s]  == 表上「合力」格 [%s]"
                       % (", ".join("%+.3f" % x for x in _acc), ", ".join("%+.3f" % x for x in _r0["q"])), flush=True)
+            _qt = f.total_resultant()[0]
+            _qu, _qn, _qss = GT_QNORM(_qt)
+            print("  归一四元数 (单位四元数): ‖q‖=%.3f ⇒ q̂=[%s] · 各项平方和=%.10f"
+                  % (_qn, ", ".join("%+.3f" % x for x in _qu), _qss), flush=True)
             print("  逐行合力: " + " | ".join("%s %.3f(Δ主%.0f°)" % (r["stage"], r.get("mag_res", 0.0), r.get("dev", 0.0))
                                             for r in f.rows), flush=True)
         except Exception as _e:                                              # noqa: BLE001
