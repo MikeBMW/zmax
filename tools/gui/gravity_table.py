@@ -614,7 +614,7 @@ class GravityTableWidget(QWidget):
 
         self.lbl_head = QLabel("")
         self.lbl_head.setWordWrap(True)
-        self.lbl_head.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;")
+        self.lbl_head.setStyleSheet("color:#8b949e;font-size:13px;font-family:Consolas,monospace;")
         lay.addWidget(self.lbl_head)
 
         self.t = QTableWidget(0, 1 + len(LAYERS) + 1)   # 首列 + L2/L3/L4/L5 + 合力 = 6 列 (原来多出一列空列)
@@ -778,19 +778,33 @@ class GravityTableWidget(QWidget):
                                   _q_str((_ar or {}).get("q") or (0.0, 0, 0, 0), 1),
                                   coht, _dev_tot, dn_s or "?", dn_k or "?"))   # 2 位小数: 3 位在窄栏会被 Qt 打省略号
         tot.setForeground(QColor("#ffd33d"))
-        fo = QFont("Consolas")
-        fo.setPixelSize(self._fmt[1])          # 与表体同字号 (别用 10pt/11pt 混排 ⇒ 量宽与实际不一致)
-        fo.setBold(False)                      # 不粗体: 3 位小数的四元数 + 粗体会宽 ~5%, 边缘那格会被 Qt 打省略号
+        # 2026-10-16 老倪: 「右下角的字体太小了」⇒ 这一格在列宽内**尽量放大**(粗体 13~18px 自适应)
+        from PyQt5.QtGui import QFontMetrics as _QFM
+        _cw = self.t.columnWidth(self.t.columnCount() - 1) - 8
+        _big = None
+        for _px in range(18, 12, -1):
+            _f = QFont("Consolas")
+            _f.setPixelSize(_px)
+            _f.setBold(True)
+            try:
+                if max(_QFM(_f).horizontalAdvance(_l) for _l in tot.text().split("\n")) <= _cw:
+                    _big = _f
+                    break
+            except Exception:                                                    # noqa: BLE001
+                break
+        fo = _big or QFont("Consolas")
+        if _big is None:
+            fo.setPixelSize(self._fmt[1])
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
         tot.setToolTip("总合力(全表) = 所有格子的力矢量相加\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 120)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 146)   # 右下角字号放大到 ~16px ⇒ 行高跟上   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"
-        self.lbl_foot.setStyleSheet("color:%s;font-size:12px;font-family:Consolas,monospace;"
+        self.lbl_foot.setStyleSheet("color:%s;font-size:13px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;" % _age_col)
         # 🔴 这一行是**保证看得见**的 (表若被窗口裁了, 右下角总合力也要在页面上有一份; 老倪拿画面当结果)
         _res_max, _dev_max, _coh_all = f.equation()

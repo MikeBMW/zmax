@@ -317,6 +317,10 @@ def main():
     _cnr = _t.item(_t.rowCount() - 1, _t.columnCount() - 1)
     _ctxt = _cnr.text() if _cnr else ""
     _need = ["总合力", "行合力", "主 "]
+    _cf = _cnr.font() if _cnr else None
+    ck("⑭b 右下角字号 ≥ 表体且加粗 (老倪: 「右下角的字体太小了」)",
+       _cf is not None and _cf.pixelSize() >= _w._fmt[1] and _cf.bold(),
+       "右下角 %dpx 粗体 vs 表体 %dpx" % (_cf.pixelSize(), _w._fmt[1]) if _cf else "没有右下角格")
     ck("⑭ 右下角 = 总合力 + 本刻行合力 + 主力 (不是把主力当合力)", all(w in _ctxt for w in _need) and "Δ主" in _ctxt,
        "右下角逐行: " + " | ".join(_ctxt.split("\n")))
     _bad_tier = [x for x in _tiers if not x[4]]
