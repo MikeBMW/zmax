@@ -1,4 +1,4 @@
-[10:01:17] 派发 #1 · 块 1 个 · 技能 3 个在职 · 块帧龄 1792103732.09s
+[11:16:10] 派发 #1 · 块 1 个 · 技能 3 个在职 · 块帧龄 1792108225.64s
 ═══ 原子技能物理模型调用 判据 (老倪 2026-10-15「哪里是调用物理模型的?」) ═══
   ✅ ① 每个技能类里都有真调用语句 (clamp → apply_physics)  9/9 类: SK01Approach, SK02Align, SK03Descend, SK04Grasp, SK05Lift, SK06Transfer, SK07Insert, SK07Place, SK08Complete
   ✅ ② 基类 apply_physics 真调 InertiaLimiter.limit (唯一收口)  AST: limit 调用 在
