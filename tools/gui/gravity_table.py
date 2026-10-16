@@ -782,7 +782,7 @@ class GravityTableWidget(QWidget):
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:%dpx;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
-        self.t.verticalHeader().setDefaultSectionSize(26 if not _pair else 30)   # ⬆️ 老倪: 「万有引力表格增高」行高 24→26   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
+        self.t.verticalHeader().setDefaultSectionSize(32 if not _pair else 36)   # 行高 32 = 表体够高, 又给太阳系留出高度   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
         self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
         try:
             from PyQt5.QtCore import QTimer as _QT
@@ -899,7 +899,7 @@ class GravityTableWidget(QWidget):
                        % (" ".join("%+.3f" % x for x in _qtu), _qtss, _qtn) + "\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 92)    # 右下角: 5 行 × ~15px (字号优先; 老倪要更高)   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 112)   # 右下角: 5 行 × ~18px   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"

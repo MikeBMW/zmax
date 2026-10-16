@@ -15453,18 +15453,25 @@ def main():
         from PyQt5.QtGui import QGuiApplication
         scr = QGuiApplication.primaryScreen()
         geo = scr.availableGeometry() if scr else None
-        if geo is not None and geo.width() >= 2560 and not os.environ.get("ZMAX_FORCE_SMALL"):
+        # 🪟 2026-10-16 老倪: 「合力被遮挡看不到」真因 —— 应用默认开 1400x900, 而 M 页那两窗
+        #   (太阳系 + 万有引力表整块) 需要 ~500+368 的高度, 1400x900 必然装不下 ⇒ 要么表被切、
+        #   要么太阳系被压。改为**所有屏**都按可用工作区 96% 开窗 (原来只有 ≥2560 的屏才铺满),
+        #   再由 _fit_window_to_screen 夹进屏内 ⇒ 高度够、四边都在屏里。
+        if geo is not None and not os.environ.get("ZMAX_FORCE_SMALL"):
             # 🖥 2026-08-25 老倪 UI 重新适配: 3200x2000 屏上写死 1400x900 只占 27% 面积
             #   (工具栏被迫折行, 模块库 560px 挤画布) → 大屏直接铺满可用工作区并最大化
             # 🐛 2026-09-06: setGeometry 精确铺满可用区(3068x1936) + show → Mutter 误判最小化
             #   (state=1 WindowMinimized 实锤)。改为: resize 96% (留边不贴满) + show 后最大化
-            win.resize(int(geo.width() * 0.96), int(geo.height() * 0.96))
+            # 🪟 宽/高各再让 160/160: 窗管实测会自己偏移 (x+80) ⇒ 不留余量会把表格最右列
+            #   「合力」顶到屏幕右边缘外 (老倪: 「合力被遮挡」)。
+            win.resize(max(1200, int(geo.width()) - 170), max(720, int(geo.height()) - 170))
             win.move(geo.x() + 10, geo.y() + 10)
             # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug — setWindowState(Maximized)
             #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)
             #   → 最大化移到 _show_ready 内 show() 之后设置 (正确时序)
             # win.setWindowState(win.windowState() | Qt.WindowMaximized)
-            _want_max = True
+            _want_max = True      # 🪟 2026-10-16 老倪: 「增高太阳系和万有引力窗口」⇒ 所有屏都最大化
+                                  #   (最大化 = 可用工作区全高 ⇒ M 页 ~838px, 两窗同时整块可见)
         elif geo is not None:
             win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
                             1400, 900)
@@ -15514,6 +15521,16 @@ def main():
             else:
                 # 🖥 2026-09-29: 非最大化时, show 之后再按一次 (show 后才有真实 frameGeometry)
                 def _do_fit():
+                    try:
+                        # 🪟 2026-10-16 老倪: 「太阳系和万有引力表都要大 + 合力要看得到」——
+                        #   show 之前要的尺寸会被 WM 缩回去 (实测 1658x973 ⇒ M 页只 656, 太阳系被压到地板)。
+                        #   show 之后**再显式要一次** (窗口已 map, WM 会照办), 然后交给 fit 夹进屏内。
+                        from PyQt5.QtGui import QGuiApplication as _QGA3
+                        _ag = _QGA3.primaryScreen().availableGeometry()
+                        win.resize(max(1200, int(_ag.width()) - 170), max(760, int(_ag.height()) - 140))
+                        win.move(_ag.x() + 10, _ag.y() + 10)
+                    except Exception:
+                        pass
                     try:
                         _ch, _why = _fit_window_to_screen(win)
                         with open("/tmp/studio_show_diag.log", "a") as _df:

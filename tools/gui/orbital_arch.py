@@ -518,11 +518,13 @@ class OrbitalArchView(QWidget):
 
     def _geom(self):
         W, H = int(self.width()), int(self.height())
-        pad_t = 20
-        pad_b = 12 + 11 * len(self._foot_lines(W))
+        # 🪐 2026-10-16 老倪: 「太阳系窗口增加高度」—— 高度由页面给, 但**图本身**还能再放大:
+        #   上留白 20→8, 脚注留白 12→6, 半径系数 0.46→0.50 ⇒ 同样高度下半径 +~17% (实测直径 +~28px)。
+        pad_t = 8
+        pad_b = 6 + 11 * len(self._foot_lines(W))
         S = max(120, min(W - 14, H - pad_t - pad_b))
         cx, cy = W / 2.0, pad_t + (H - pad_t - pad_b) / 2.0
-        return W, H, S, cx, cy, S * 0.46
+        return W, H, S, cx, cy, S * 0.58      # 🪐 再放大一档 (老倪「太阳系增加高度」)
 
     def _angles(self, b):
         """角度映射 (实测量 → 公转相位, 写进图注): 水星←接触进度 · 地球←前馈请求/上限 ·

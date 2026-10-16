@@ -200,14 +200,15 @@ def main():
        "表禁自带滚动条 (纵横都 Off) + M 页已撤掉专给表的上下拖动条")
     # ⑰ 表格不乱动 + 整页右侧滚动条保留 (老倪 2026-10-16 两次纠正:
     #    「用鼠标滚轮还是能调上下。要固定, 别乱动」 → 「表格自己不要乱动, 整体右边的拖动条还是需要的」)
-    ck("⑰ 表格不乱动 (滚轮就地吃掉) + 整页右侧滚动条保留",
-       ("_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)" in _mt
+    ck("⑰ 表格不乱动 (滚轮就地吃掉) + 整页右侧那条拖动条**常显**",
+       ("_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)" in _mt
         and "installEventFilter(self)" in _mt and "def eventFilter" in _mt and "QEvent.Wheel" in _mt),
-       "M 页纵滚动条 AsNeeded (要的那条可拖的在) + _scroll/viewport 装 eventFilter + Wheel 就地 accept (滚轮推不走表格)")
-    ck("⑰b 开页/换视图先翻到底 => 表格整块在视野里 (不再「表格怎么没了」)",
-       ("def _scroll_to_table" in _mt and "def showEvent" in _mt
-        and "setValue(_sb.maximum())" in _mt and "_scroll_to_table()" in _mt),
-       "_scroll_to_table(): 开页翻一次 + 换视图再翻; 不跟 0.7s 刷新翻 (用滚动条往上拖不会被拽回)")
+       "M 页纵滚动条 AlwaysOn (老倪: 「主参数页面, 右侧整体增加一个拖动条」) + 滚轮就地 accept (表不被滚轮推走)")
+    ck("⑰b 开页停在**最要紧那头**(放得下停顶/放不下停底⇒合力先看见) + 开页只翻一次",
+       ("def _scroll_to_priority" in _mt and "def showEvent" in _mt
+        and "setValue(0 if _sb.maximum() <= 4 else _sb.maximum())" in _mt
+        and "_scroll_to_priority()" in _mt and "def _scroll_to_top" in _mt),
+       "showEvent→_scroll_to_priority (老倪: 「我要看到合力」⇒ 装不下就先给表+合力行); 不跟 0.7s 刷新翻")
     # ⑪c 太阳系视图的选择仍要落盘/可回读 (老倪的界面态不能因为撤掉分隔条而丢)
     import model_tree as MT                                                      # noqa: E402
     _vk = getattr(MT, "MPARAM_VIZ_KEY", None)
@@ -359,14 +360,32 @@ def main():
        "两次 refresh 后右下角总合力 %r → %r (应不变); 页头 %r" % (_t0[:34], _t1[:34], _head[:40]))
     # ⑮b 在跑时仍是实时 (两分支都测, 防"冻死")
     GT._RUN_OVERRIDE = True
+    # 🔬 判据要**可复现**: 不依赖外面有没有人在跑 (引擎/3D 面板停了这里会假红)。
+    #    做法: 把 trace_live 的帧号按次推进 ⇒ 采样到不同动作 ⇒ 表必须跟着变 (验的是"活帧→表"这条管子)。
+    _orig_read = GT._read
+    _cnt = {"n": 0}
+
+    def _fake_read(p):
+        _d = _orig_read(p)
+        if p == GT.SRC_LIVE["trace"] and isinstance(_d, dict) and _d:
+            _cnt["n"] += 37
+            _d = dict(_d)
+            try:
+                _d["帧"] = (int(_d.get("帧") or 0) + _cnt["n"]) % 780
+            except Exception:                                                    # noqa: BLE001
+                pass
+        return _d
+
+    GT._read = _fake_read
     try:
         _w2.refresh(); _a = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
-        _tm.sleep(1.2)
+        _tm.sleep(0.2)
         _w2.refresh(); _b = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
         _head2 = _w2.lbl_head.text()
     finally:
+        GT._read = _orig_read
         GT._RUN_OVERRIDE = None
-    ck("⑮b 在跑时表跟着走 (定格不是冻死)", _a != _b and not _head2.startswith("⏸"),
+    ck("⑮b 在跑时表跟着走 (定格不是冻死; 注入帧号推进, 不依赖外部有没有在跑)", _a != _b and not _head2.startswith("⏸"),
        "在跑分支: 右下角总合力 %r → %r (应变化)" % (_a[:34], _b[:34]))
     _w2.close()
     _h_ok = _w.t.verticalScrollBarPolicy() == _Qt2.ScrollBarAlwaysOff \

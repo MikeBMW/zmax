@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QComboBox, QStackedWidget,
+from PyQt5.QtWidgets import (QSizePolicy, QWidget, QFrame, QVBoxLayout, QComboBox, QStackedWidget,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
                              QHBoxLayout, QPushButton, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
@@ -999,6 +999,7 @@ class MasterParamMView(QWidget):
 
         self.lbl_hd = QLabel("🧮 主参数 M  (测量 · 标定 · 诊断 · 配置)")
         self.lbl_hd.setVisible(False)      # 🗜 标题与上方标签条重复 ⇒ 收起来, 高度让给太阳系/表
+        self.lbl_hd.setMaximumHeight(0)    # 连幽灵高度也不要 (实测它会报 480)
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
         self.lbl_node = QLabel("…")
@@ -1014,6 +1015,9 @@ class MasterParamMView(QWidget):
         mbar.setStyleSheet("QFrame{background:#161b22;border:1px solid #30363d;border-radius:6px;}")
         ml = QHBoxLayout(mbar)
         ml.setContentsMargins(8, 3, 8, 3)
+        # 🔒 2026-10-16 老倪「合力被遮挡 / 太阳系又变矮」真凶之一: 这一行(mbar) 会被纵向布局
+        #   当"松弛位"拉高 (实测 183px, 而它只要 38px) ⇒ 把 145px 全吃掉。钉死成 40。
+        mbar.setFixedHeight(40)
         ml.setSpacing(8)
         ml.addWidget(QLabel("主参数 M"))
         self.sp_M = QDoubleSpinBox()
@@ -1093,7 +1097,10 @@ class MasterParamMView(QWidget):
             self.orbital.setWordWrap(True)
             self.orbital.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
         self.viz_stack = QStackedWidget()
-        self.viz_stack.setMinimumHeight(150)     # 🐛 原来 100/470 互相打架 ⇒ 统一 150 (页面不滚, 高度差由这块吸收; 表永远整块可见)
+        self.viz_stack.setMinimumHeight(150)     # 🪐 伸缩项: 下限 150 (窗口再矮也不会挤掉表)
+        self.viz_stack.setMaximumHeight(620)     # 上限 620 (别把它拉成一张空图)
+        self.viz_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        # 🐛 原来 100/470 互相打架 ⇒ 统一 150 (页面不滚, 高度差由这块吸收; 表永远整块可见)
         self.viz_stack.addWidget(self.viz)          # 0 = 🧊 几何四面板 (默认, 不改变既有观感)
         self.viz_stack.addWidget(self.orbital)      # 1 = 🪐 球心引力架构
         self.cmb_viz_view = QComboBox()
@@ -1158,7 +1165,7 @@ class MasterParamMView(QWidget):
         #     ② 整页只有**一条**右侧滚动条 (表自己 = 关, 太阳系不另开) ⇒ 上下看就用那一条;
         #     ③ 滚轮照旧就地吃掉 ⇒ 表不会被滚轮带着乱动。
         self.viz_stack.setFixedHeight(300)
-        lay.addWidget(self.viz_stack, 0)         # 太阳系: 固定 300px (在滚动区里, 不另开滚动条)
+        lay.addWidget(self.viz_stack, 1)         # 🪐 太阳系 = 唯一伸缩项 (吃满剩余高度)
         lay.addWidget(self.tabs, 0)              # 🌍 万有引力表: 按内容整块 (自己的滚动条 = 关)
         try:
             # 滚轮停在表上/表区 ⇒ 就地吃掉 (表不会被滚轮推着乱动; 整页要滚就用右边那一条)
@@ -1172,18 +1179,29 @@ class MasterParamMView(QWidget):
 
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
-        self.lbl_cmd.setMaximumHeight(24)       # 🗜 命令回显留一行 (高度让给太阳系/表)
+        self.lbl_cmd.setMaximumHeight(20)       # 🗜 命令回显留一行 (高度让给太阳系/表)
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#7ee787;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
         lay.addWidget(self.lbl_cmd)
         self.refresh()
 
-    def _scroll_to_top(self, *_a):
-        """开页/换视图 ⇒ 翻到顶: 太阳系整块在视野里 (表往下拖一条即可)。"""
+    def _scroll_to_priority(self, *_a):
+        """开页/换视图 ⇒ 停到最要紧的那一头。
+
+        内容放得下 (max<=4) ⇒ 停顶 (太阳系整块在视野);
+        放不下 ⇒ 停底 —— 老倪的红线是**先看见合力** (表最后一行 + 最右一列), 太阳系往上拖。
+        """
         try:
             _sb = self._scroll.verticalScrollBar()
-            _sb.setValue(0)
+            _sb.setValue(0 if _sb.maximum() <= 4 else _sb.maximum())
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _scroll_to_top(self, *_a):
+        """翻到顶 (太阳系整块在视野)。"""
+        try:
+            self._scroll.verticalScrollBar().setValue(0)
         except Exception:                                                        # noqa: BLE001
             pass
 
@@ -1226,10 +1244,19 @@ class MasterParamMView(QWidget):
                 _inner = self._scroll.widget()
                 _ih = int(_inner.height()) if _inner is not None else 0
                 _others = max(0, _ih - int(self.viz_stack.height()))
-                _new = max(270, min(int(vh) - _others, 620))
+                _new = max(140, min(int(vh) - _others, 620))
             except Exception:                                                    # noqa: BLE001
-                _new = max(270, vh - 380)
-            self.viz_stack.setFixedHeight(_new)
+                _new = max(140, vh - 380)
+                # 🪐 结构定稿 (2026-10-16): 太阳系 = 唯一伸缩项 (stretch=1) + **动态上限**
+            #   = 视口 − (表块 + 头部)。两者配合: 它自动吃满剩余高度, 又不会把内容顶出视口
+            #   ⇒ 表整块(含合力行/合力列)始终在视野内, 太阳系尽可能大 (实测 300 而不是地板 140)。
+            try:
+                _inner = self._scroll.widget()
+                _ih = int(_inner.height()) if _inner is not None else 0
+                _others = max(0, _ih - int(self.viz_stack.height()))
+                self.viz_stack.setMaximumHeight(max(150, int(vh) - _others))
+            except Exception:                                                    # noqa: BLE001
+                self.viz_stack.setMaximumHeight(620)
             # 🔒 表**永不被挤**: 页签块固定 = 表内容整块高 (含表头/页脚) ⇒ 最下面一行永远在块内,
             #    空间不够时由整页右侧那条拖动条兜 (老倪: 「最下面一行看不到」)。
             try:
@@ -1295,9 +1322,10 @@ class MasterParamMView(QWidget):
         self._fit_heights()
         if not getattr(self, "_scrolled_once", False):
             self._scrolled_once = True
-            # 🪐 2026-10-16 老倪: 「太阳系和万有引力都显示不全」⇒ 开页停在**顶部**(太阳系整块在视野里),
-            #   往下看表就拖右侧那条常显的滚动条 (不跟 0.7s 刷新翻, 拖到哪停哪)。
-            self._scroll_to_top()
+            # 🪐 2026-10-16 老倪: 「我要看到合力, 现在的合力被遮挡了」⇒ 开页停在**最要紧的那一头**:
+            #   内容放得下 ⇒ 停顶(太阳系整块); 放不下 ⇒ 停底(**表 + 合力行/合力列整块先看见**),
+            #   想看太阳系往上拖 (右侧那条常显的拖动条; 不跟 0.7s 刷新翻, 拖到哪停哪)。
+            self._scroll_to_priority()
 
     def eventFilter(self, obj, ev):
         """🚫 万有引力页**钉死**: 滚轮事件就地吃掉 (老倪 2026-10-16: 「用鼠标滚轮还是能调上下。要固定, 别乱动」)。
@@ -1693,7 +1721,7 @@ class CalibTruthView(QWidget):
         lay.addWidget(self.tbl, 1)
         self.lbl_cmd = QLabel("")
         self.lbl_cmd.setWordWrap(True)
-        self.lbl_cmd.setMaximumHeight(24)       # 🗜 命令回显留一行 (高度让给太阳系/表)
+        self.lbl_cmd.setMaximumHeight(20)       # 🗜 命令回显留一行 (高度让给太阳系/表)
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_cmd.setStyleSheet("color:#ffa657;font-size:11px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
