@@ -1,2 +1,2 @@
-[collect] gpu=60% mem=3202MB cpu=30% disk=77% models=14 training=off | last=L5 v1014-2302 10-14 23:10 | assets=5
-[push] {"ok": true, "f": "zmax_status.json", "bytes": 7474, "ts": 1792102858}
+[collect] gpu=100% mem=3510MB cpu=29% disk=77% models=14 training=off | last=L5 v1014-2302 10-14 23:10 | assets=5
+[push] {"ok": true, "f": "zmax_status.json", "bytes": 7473, "ts": 1792112722}

@@ -17,6 +17,11 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 DATE="${SNAP_DATE:-20261016}"
+# 2026-10-16: 原先默认写死 v5.50.735 (版本升到 5.50.736 后快照目录名就报错版本)。改为从真源读。
+#   真源 = tools/gui/update_checker.py::CURRENT_VERSION (与 VERSION.md 历史表同步)。
+if [ -z "${SNAP_VER:-}" ]; then
+  SNAP_VER="$(sed -n 's/^CURRENT_VERSION = "\(.*\)"/\1/p' tools/gui/update_checker.py | head -1)"
+fi
 VER="${SNAP_VER:-v5.50.735}"
 LABEL="状态同步_${VER}_元任务性能物理值全链+场景迭代+球面归一化"
 SNAP="$ROOT/docs/data_snapshots/${DATE}_${LABEL}"

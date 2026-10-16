@@ -1,0 +1,8 @@
+记忆同步 (老倪: 一点不能丢)
+  MEMORY.md       本地 sha256 3a1b4b211f51da1c335bdd36c975c26f6a6d84fa076c1329a92d5168000bf5ab
+  备份(仓库) sha256 3a1b4b211f51da1c335bdd36c975c26f6a6d84fa076c1329a92d5168000bf5ab
+  逐行比对: 无差异(逐行一致)
+  USER.md         本地 sha256 946ca343800b14a31d838967a4c3cfc41610e0348c5c9d53fe148acbe0c935ec / 备份 946ca343800b14a31d838967a4c3cfc41610e0348c5c9d53fe148acbe0c935ec
+技能同步
+  本地技能 229 · hermes-all 全量镜像 229 · xspace 关键镜像 31
+  缺失项: 
