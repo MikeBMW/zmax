@@ -97,10 +97,16 @@ def topics():
                 typ = (_T.TOPICS.get(topic.split("/")[-1]) or {}).get("type") or ""
             except Exception:                                                # noqa: BLE001
                 typ = ""
-        out[topic] = {"topic": topic, "type": typ, "qos": "state",
-                      "hz": None, "hz_design": None, "count": 0,
+        # ⏱ 显示时间用 wall-clock - 帧龄: 文件里的 ts 是采集机时钟 (本机 NTP 回拨 8h 有偏差),
+        #   直接上屏会显示成 8 小时前的时刻。
+        _ts = time.time() - float(got.get("age_s") or 0.0)
+        out[topic] = {"topic": topic, "type": typ, "qos": "state", "ts": _ts,
+                      "src_ts": got.get("ts"),
+                      "hz": None,
+                      "hz_design": {"zmax/ss_state": 10.0, "zmax/ss_engine": 10.0,
+                                    "zmax/ss_torque": 5.0}.get(topic), "count": 0,
                       "age_s": got["age_s"], "fields": got["fields"],
-                      "ts": got["ts"], "source": src,
+                      "src_file_ts": got["ts"], "source": src,
                       "producer": "", "enabled": True,
                       "layer": "SYS"}
     _CACHE.update(t=now, data=out)

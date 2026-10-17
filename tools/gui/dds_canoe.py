@@ -429,6 +429,10 @@ class BusView(QWidget):
         head.addWidget(self.ed_search)
         head.addWidget(self._sm_btn("🗑 清屏", "只清 Trace 视图, 不动 trace.jsonl 原始记录", self._clear_trace))
         head.addWidget(self._sm_btn("📤 导出 CSV", "导出当前 Trace 表(Excel 可开)", self.export_trace))
+        self.lb_live = QLabel("⚡ 实时 —")
+        self.lb_live.setFont(QFont(MONO, 9))
+        self.lb_live.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
+        head.addWidget(self.lb_live)
 
         self.tb = QTableWidget(0, 12)   # Time · Layer · Name · Signal · Value · Unit · Phys · Type · Tx · Rx · QoS · Hz
         self.tb.setHorizontalHeaderLabels(
@@ -1002,7 +1006,7 @@ class BusView(QWidget):
             elif src:
                 import re as _re
                 names = [k for k, _v in _re.findall(
-                    r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', str(src))]
+                    r'"([^"]{1,40})"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', str(src))]
         except Exception:                                                       # noqa: BLE001
             names = []
         if not names:
@@ -1021,7 +1025,7 @@ class BusView(QWidget):
         if not s:
             return ""
         out = []
-        for k, v in _re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', s):
+        for k, v in _re.findall(r'"([^"]{1,40})"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', s):
             try:
                 f = float(v)
             except Exception:                                                   # noqa: BLE001
@@ -1360,19 +1364,33 @@ class BusView(QWidget):
                                                     or pin in str(t.get("type") or "").lower()))
         if pin:
             self._mark_search(n_hit, pin)
-        if _cur_topics:                     # 🔌 单步: 当前节点输出 topic 置顶
-            items.sort(key=lambda kv: (0 if (kv[0] in _cur_topics
-                                             or str(kv[1].get("topic") or kv[0]) in _cur_topics) else 1,
-                                       str(kv[1].get("topic") or kv[0])))
-        else:
-            items.sort(key=lambda kv: str(kv[1].get("topic") or kv[0]))
+        try:
+            from lerobot.middleware import live_signals as _ls2
+            _lv_now = _ls2.topics() or {}
+        except Exception:                                                # noqa: BLE001
+            _lv_now = {}
+
+        def _alive(_t, _key=""):
+            """排序口径: 帧龄小的置顶 (老倪打开 Trace 第一屏就该是**正在跳的数**)。
+            没有帧龄的一律靠后 —— 别让一条早就停了、字段还留着的单步话题压在最上面。"""
+            _tp = str(_t.get("topic") or _key)
+            _rv = _lv_now.get(_tp) or _lv_now.get(_tp.split("/")[-1]) or {}
+            try:
+                _age = float(_rv.get("age_s"))
+            except Exception:                                            # noqa: BLE001
+                _age = 1e9
+            return (0 if _age < 3.0 else 1, _age)
+        items.sort(key=lambda kv: (_alive(kv[1], kv[0]),
+                                   0 if (kv[0] in _cur_topics
+                                         or str(kv[1].get("topic") or kv[0]) in _cur_topics) else 1,
+                                   str(kv[1].get("topic") or kv[0])))
 
         # 🧪 2026-10-17 老倪: 「具体的信号再 Trace 窗口显示, 有物理量显示」
         #   一个话题展开成 N 行信号: Signal=字段名 · Value=数值 · Unit=单位 · Phys=物理判据(✔/✘ 原因)
         rows = []
         for k, t in items:
             f = (t.get("fields") or {}) or self._live_fields(k) or {}
-            ts = f.get("ts") if isinstance(f, dict) else None
+            ts = (f.get("ts") if isinstance(f, dict) else None) or t.get("ts")
             try:
                 tt = time.strftime("%H:%M:%S", time.localtime(float(ts))) if ts else "—"
             except Exception:                                               # noqa: BLE001
@@ -1466,6 +1484,20 @@ class BusView(QWidget):
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
+        # ⚡ 实时状态: 有几路在本拍真有数、最老帧龄多少 (老倪判"有没有在动"看这一行, 不用数格子)
+        try:
+            _lv = _livesig.topics() if "_livesig" in dir() else {}
+            if _lv:
+                _ages = [float(v.get("age_s") or 0) for v in _lv.values()]
+                _nsig = sum(len(v.get("fields") or {}) for v in _lv.values())
+                self.lb_live.setText("⚡ 实时 %d 话题 · %d 信号 · 帧龄 %.2fs"
+                                     % (len(_lv), _nsig, max(_ages) if _ages else 0))
+                self.lb_live.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
+            else:
+                self.lb_live.setText("⚡ 实时 0 话题 (live_signals 无数据)")
+                self.lb_live.setStyleSheet(f"color:{C_RED}; background:transparent; border:none;")
+        except Exception:                                                # noqa: BLE001
+            pass
         self._trace_frames = rows               # 给质量告警用: 最新一帧的逐信号值
         try:                                    # 存"上一帧值"给跳变判据
             self._prev_vals = {(r["name"], r["signal"]): float(r["value"]) for r in rows
@@ -1483,6 +1515,25 @@ class BusView(QWidget):
             return self.tb.rowCount()            # 文件没动 ⇒ 不重建(卡顿根因就是这里每秒重建)
         self._trace_sig_last = sig
         rows = self._read_trace()
+        # ⚡ 2026-10-17: 滚动模式也必须走实时源 —— 它原来只读 trace.jsonl (DDS 桥此刻 0 发布者),
+        #   用户切到「▶ 滚动」后看到的就是一潭死水。这里把 live_signals 的每一拍合成帧并入。
+        try:
+            from lerobot.middleware import live_signals as _ls
+            _recs = []
+            for _tp, _rv in (_ls.topics() or {}).items():
+                _recs.append({"_live": True, "t": float(_rv.get("ts") or 0.0), "topic": _tp,
+                              "type": str(_rv.get("type") or ""),
+                              "n": 0, "bytes": 0,
+                              "digest": json.dumps(_rv.get("fields") or {}, ensure_ascii=False)})
+            if _recs:
+                rows = _recs + [r for r in rows if str(r.get("topic")) not in
+                                {x["topic"] for x in _recs}]
+        except Exception:                                                # noqa: BLE001
+            pass
+        try:                        # 实时帧按时间排序 (后面统一"最新在顶", 不排序会被历史帧压到底部)
+            rows.sort(key=lambda r: float(r.get("t") or 0.0))
+        except Exception:                                                # noqa: BLE001
+            pass
         if not rows:
             self._trace_rows = []
             self.tb.setRowCount(1)
@@ -1522,7 +1573,7 @@ class BusView(QWidget):
         for r, rec in enumerate(rows[:150]):
             topic = str(rec.get("topic", "?"))
             key = topic.split("/")[-1]
-            live_t = topics.get(key) or topics.get(topic) or {}
+            live_t = {} if rec.get("_live") else (topics.get(key) or topics.get(topic) or {})
             try:
                 t = float(rec.get("t") or 0)
             except Exception:                                                # noqa: BLE001
@@ -1538,7 +1589,8 @@ class BusView(QWidget):
                 _f = self._live_fields(key)
                 if _f:
                     live_t = dict(live_t or {}, fields=_f)
-            vals = self._live_vals(live_t) or self._digest_vals(rec.get("digest"))
+            vals = (self._digest_vals(rec.get("digest")) if rec.get("_live") else None) \
+                or self._live_vals(live_t) or self._digest_vals(rec.get("digest"))
             _prev = (getattr(self, "_lv_last", {}) or {}).get(topic)
             _changed = bool(vals) and vals != _prev and vals != "—"
             _unit = "—"
