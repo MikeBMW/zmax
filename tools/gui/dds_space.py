@@ -30,6 +30,15 @@ REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 
 MODE_ORDER = ["prod", "diag", "calib", "test"]
 
+# 🐛 2026-10-17 老倪「全局数据空间怎么不实时更新了」根因: refresh() 里用了 _naming, 但 import 写在
+#   另一个函数内部 (局部作用域) ⇒ 每 2s 一次 NameError, 表格/状态行根本没刷新 (看着像"冻住")。
+#   这里提到模块级, 读不到就 None (仍打印, 不静默换名)。
+try:
+    from lerobot.middleware import naming as _naming
+except Exception:                                                             # noqa: BLE001
+    _naming = None
+    print("⚠️ dds_space: lerobot.middleware.naming 不可用 → 节点名回退工程库原名", flush=True)
+
 
 def _load(p):
     try:
@@ -136,10 +145,6 @@ def message_rows():
         return []
     lt = (_load(LIVE).get("topics") or {})
     # 🧹 2026-10-17 老倪: 「Tx Rx 只显示节点名字, 不要 L5/L4/箭头, 全局规范名称」
-    try:
-        from lerobot.middleware import naming as _naming
-    except Exception:                                                        # noqa: BLE001
-        _naming = None
     try:
         _rows = db.node_rows() or []
         _nm = (_naming.unique_map([(n["node_id"], n["name"]) for n in _rows]) if _naming
