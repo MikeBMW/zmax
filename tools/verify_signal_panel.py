@@ -24,8 +24,8 @@ from lerobot.middleware import live_signals as L
 
 w = CanoeGraphicWidget()
 hdr = [w.tree.headerItem().text(i) for i in range(w.tree.columnCount())]
-ck("列口径 = Name/Signal/Value/Type/Tx/Rx/Layer",
-   hdr == ["Name", "Signal", "Value", "Type", "Tx", "Rx", "Layer"], str(hdr))
+ck("列口径 = Name/Layer/Signal/Value/Type/Tx/Rx",
+   hdr == ["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"], str(hdr))
 ck("7 列全部可鼠标拖宽", all(w.tree.header().sectionResizeMode(i) == 0 for i in range(7)),
    str([w.tree.header().sectionResizeMode(i) for i in range(7)]))
 _ico = os.path.join(ROOT, "tools/gui/logo.png")
@@ -42,6 +42,14 @@ a = L.topics(); time.sleep(0.1); b = L.topics()
 ck("同一缓存窗口内数值一致", all(a[k]["fields"] == b[k]["fields"] for k in a),
    "%d 话题" % len(a))
 
+# Signal 列必须与数据空间 Trace 同一套英文变量名 (同一条信号 ⇒ 同一个名字)
+import re as _re
+from lerobot.middleware import signal_en as _SE
+ck("映射与 Trace 同口径 (end_x/grasp_prob/gravity)",
+   _SE.en_of("末端_x") == "end_x" and _SE.en_of("接触概率") == "grasp_prob"
+   and _SE.en_of("下降·L2 力大小_mps") == "descend_l2_force_mps",
+   repr((_SE.en_of("末端_x"), _SE.en_of("接触概率"))))
+
 # 行内容: 至少一行 7 列齐全且 Value 是数值
 w.show(); t0 = time.time()
 while time.time() - t0 < 2.5:
@@ -56,6 +64,10 @@ def walk(n):
             found.append([c.text(k) for k in range(7)])
 walk(w.tree.invisibleRootItem())
 ck("有数值行", len(found) > 100, "%d 行" % len(found))
+ck("Signal 全英文 (无非 ASCII)", not [r for r in found if _re.search(r"[^\x00-\x7f]", r[2])],
+   str([r[2] for r in found if _re.search(r"[^\x00-\x7f]", r[2])][:3]))
+ck("Layer 列有层值 (非全 SYS)", any(r[1] in ("L2", "L3", "L4", "L5") for r in found),
+   str(sorted({r[1] for r in found})))
 ck("每行 7 列都有内容", all(all(x.strip() for x in r) for r in found[:50]),
    str(found[:1]))
 print("\n%s" % ("✅ 全部通过" if not fails else "❌ 失败: %s" % fails))

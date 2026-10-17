@@ -1892,7 +1892,7 @@ class CanoeGraphicWidget(QWidget):
         # 🧭 2026-10-17 老倪: 「信号名称改成 signal; 当前值改成 value; 输出节点改 Tx; 来源节点改 Rx;
         #   增加 type 列; 增加 Layer 列; 增加中文名称列」⇒ 与数据空间 Trace 用同一套列名/口径
         self.tree.setColumnCount(7)
-        self.tree.setHeaderLabels(["Name", "Signal", "Value", "Type", "Tx", "Rx", "Layer"])
+        self.tree.setHeaderLabels(["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"])
         self.tree.setRootIsDecorated(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -2795,11 +2795,22 @@ class CanoeGraphicWidget(QWidget):
             name = self._cn_name(b.key)
         # 列2 = 输出节点 (老倪 2026-10-15: 删掉「帧龄」列, 换成"输出这个信号的节点名称");
         # 帧龄挪进 tooltip, 不丢信息。
-        it = QTreeWidgetItem([name, str(b.key), "-", self._sig_type(b.key),
-                              self._out_node(b.key), self._src_hint(b.key), self._sig_layer(b.key)])
+        # 🧭 2026-10-17 老倪: 「信号分析的 signal 列, 与 Trace 的 signal 保持一致」
+        #   Trace 那边 Signal = 英文变量名 (middleware.signal_en), 这里同口径 ⇒ 两个窗口同一个信号看到的是同一个名字。
+        _field = b.key.split(".", 1)[1] if "." in b.key else b.key
+        try:
+            from lerobot.middleware import signal_en as _sen
+            import re as _re2
+            _sig_txt = _sen.en_of(b.key)              # 带前缀 (ar.* / skill.* 的段名规则要用它)
+            if _re2.search(r"[^\x00-\x7f]", _sig_txt):
+                _sig_txt = _sen.en_of(_field)         # 退一步: 去掉数据源前缀 (sstrace.* / sseng.*)
+        except Exception:                                                  # noqa: BLE001
+            _sig_txt = str(b.key)
+        it = QTreeWidgetItem([name, self._sig_layer(b.key), _sig_txt, "-", self._sig_type(b.key),
+                              self._out_node(b.key), self._src_hint(b.key)])
         it.setToolTip(0, f"{b.key}\n中文名 {name}\nTx {self._out_node(b.key)}\n"
                          f"Rx {self._src_hint(b.key)} · 来源 {b.src} · 点数 {b.n}")
-        it.setToolTip(1, "程序里的真实信号键 (数据源原始键名)")
+        it.setToolTip(2, "英文变量名 (与数据空间 Trace 同口径) · 原始键: %s" % b.key)
         it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
@@ -2863,11 +2874,11 @@ class CanoeGraphicWidget(QWidget):
             h.setStretchLastSection(False)               # 否则最后一列把名字列空间又吃掉
             h.setMinimumSectionSize(28)                  # 样式表会把最小列宽抬到 80 ⇒ 先设小再逐列给宽
             # 🖱 2026-10-17 老倪: 「左侧的每列都可以用鼠标调整宽度」⇒ 7 列全部 Interactive (不再 Stretch 锁死)
-            _defaults = {0: 150, 1: 250, 2: 90, 3: 210, 4: 150, 5: 190, 6: 60}
+            _defaults = {0: 150, 1: 54, 2: 250, 3: 90, 4: 210, 5: 150, 6: 190}
             _saved = {}
             try:
                 from PyQt5.QtCore import QSettings
-                _raw = QSettings("zmax", "canoe").value("sig/tree_cols", "")
+                _raw = QSettings("zmax", "canoe").value("sig/tree_cols_v2", "")   # v2 = 列序改了, 老宽度作废
                 if _raw:
                     _saved = {int(a): int(b) for a, b in
                               (x.split(":") for x in str(_raw).split(",") if ":" in x)}
@@ -2889,7 +2900,7 @@ class CanoeGraphicWidget(QWidget):
         try:
             from PyQt5.QtCore import QSettings
             cur = ",".join("%d:%d" % (i, self.tree.columnWidth(i)) for i in range(7))
-            QSettings("zmax", "canoe").setValue("sig/tree_cols", cur)
+            QSettings("zmax", "canoe").setValue("sig/tree_cols_v2", cur)
         except Exception:                                                      # noqa: BLE001
             pass
 
@@ -2947,6 +2958,32 @@ class CanoeGraphicWidget(QWidget):
             return "—"
 
     def _sig_layer(self, key):
+        """该信号所属**生产节点**的层 (L2~L5; 没有节点的系统话题 = SYS)。
+
+        2026-10-17 老倪: 「信号分析 的 Layer 列呢？加上」—— 之前只有 ss.node.* 才查到层,
+        三路真值流 (sstrace/sseng/gravity) 全落 SYS (实测 554/556 行都是 SYS, 等于没用)。
+        真源: 这三份文件的发布者就是画布上的节点 (统一状态空间 / 流形引擎 / 万有引力表),
+        按节点 id 查工程库的 layer。
+        """
+        _key = str(key or "")
+        _pref = _key.split(".", 1)[0]
+        _NODE_BY_PREFIX = {"sstrace": "ssobs", "sseng": "ss_mani_eng", "gravity": "sscalib",
+                           "skillphys": "sssched", "skill": "sssched", "ar": "ssar"}
+        try:
+            import sys as _sys2
+            if os.path.join(ROOT, "src") not in _sys2.path:
+                _sys2.path.insert(0, os.path.join(ROOT, "src"))
+            from lerobot.middleware import db as _db3
+            if getattr(self, "_lvl_cache", None) is None:          # 工程库一个会话内不变
+                self._lvl_cache = {r["node_id"]: str(r.get("layer") or "")
+                                   for r in _db3.node_rows()}
+            _lv = self._lvl_cache
+            _nid = _NODE_BY_PREFIX.get(_pref)
+            if _nid and _nid in _lv:
+                lay = _lv[_nid]
+                return ("SYS" if lay == "meta" else lay) or "—"
+        except Exception:                                                      # noqa: BLE001
+            pass
         tp = self._sig_topic(key)
         if not tp:
             return "SYS"
@@ -3635,8 +3672,8 @@ class CanoeGraphicWidget(QWidget):
             _ck = (id(it), key)               # 🐛 同一 key 在多个场景组各有一行 ⇒ 缓存不能只按 key,
             if _cache.get(_ck) == (_txt, _tt):  #    否则第一行写完后, 第二行永远停在 "-" (实测)
                 continue                          # 🚀 这一行没变 ⇒ 一次 Qt 写入都不做
-            if it.text(2) != _txt:
-                it.setText(2, _txt)
+            if it.text(3) != _txt:            # 列序: Name|Layer|Signal|Value ⇒ Value = 3
+                it.setText(3, _txt)
             if _tt is not None:
                 it.setToolTip(0, _tt)
             _cache[_ck] = (_txt, _tt)

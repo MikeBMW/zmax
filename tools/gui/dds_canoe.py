@@ -36,6 +36,7 @@ except Exception:                                                        # noqa:
 
 try:                                     # 中文短名 / DDS 标准 QoS 显示
     from lerobot.middleware import cn_names as _cn_names
+    from lerobot.middleware import signal_en as _signal_en
     from lerobot.middleware import qos_names as _qos_names
 except Exception:                                                        # noqa: BLE001
     class _CN:
@@ -434,13 +435,13 @@ class BusView(QWidget):
         self.lb_live.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
         head.addWidget(self.lb_live)
 
-        self.tb = QTableWidget(0, 12)   # Time · Layer · Name · Signal · Value · Unit · Phys · Type · Tx · Rx · QoS · Hz
+        self.tb = QTableWidget(0, 11)   # Time · Layer · Signal · Value · Unit · Phys · Type · Tx · Rx · QoS · Hz
         self.tb.setHorizontalHeaderLabels(
             # 🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据, 给我高亮显示出来」
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
             #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
             # 🆕 2026-10-01 老倪: 「时间第一列, name第二列」+「默认 topic 固定、时间变动, 不要滚动」
-            ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+            ["Time·abs", "Layer", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
             f" font-family:{MONO}; font-size:10pt; }}"
@@ -454,11 +455,15 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 120), (1, 64), (2, 220), (3, 240), (4, 160), (5, 90), (6, 70),
-                     (7, 210), (8, 130), (9, 150), (10, 240), (11, 110)):
+        for i, w in ((0, 150), (1, 64), (2, 250), (3, 150), (4, 90), (5, 70),
+                     (6, 210), (7, 130), (8, 150), (9, 240), (10, 110)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
         th.setSectionsMovable(False)
+        # 🕒 2026-10-17 老倪: 「Time 要能显示和 3D 场景一样的相对时间, 同步时间显示; 当然也可以绝对时间;
+        #    要在 Time 列可以切换」⇒ 点 Time 表头切 相对/绝对 (同一根钟: 相对 = 快照里的 时间_s)
+        self._time_mode = "abs"
+        th.sectionClicked.connect(self._on_hdr_click)
         self._col_user = set()
         th.sectionResized.connect(self._on_col_resized)      # 🖱 用户拖过 ⇒ 以后不再自动适配
         self.tb.itemClicked.connect(self._on_trace_click)
@@ -1002,10 +1007,10 @@ class BusView(QWidget):
         names = []
         try:
             if isinstance(src, dict):
-                names = [str(k) for k in src.keys()]
+                names = [_signal_en.en_of(k) for k in src.keys()]
             elif src:
                 import re as _re
-                names = [k for k, _v in _re.findall(
+                names = [_signal_en.en_of(k) for k, _v in _re.findall(
                     r'"([^"]{1,40})"\s*:\s*(-?\d+\.?\d*(?:[eE][-+]?\d+)?)', str(src))]
         except Exception:                                                       # noqa: BLE001
             names = []
@@ -1032,7 +1037,7 @@ class BusView(QWidget):
                 continue
             if f == -1.0:                                    # -1 = 缺测(本仓约定)
                 continue
-            out.append("%s=%s" % (k, _f3(f)))
+            out.append("%s=%s" % (_signal_en.en_of(k), _f3(f)))   # 键也用英文变量名 (与 Signal 列一致)
             if len(out) >= 4:
                 break
         if out:
@@ -1155,6 +1160,21 @@ class BusView(QWidget):
         self._lv_last = {}
         self._fill_trace(force=True)
 
+    def _time_hdr(self):
+        return "Time·rel" if getattr(self, "_time_mode", "abs") == "rel" else "Time·abs"
+
+    def _on_hdr_click(self, idx):
+        """点 Time 表头 ⇒ 绝对/相对 切换 (混着看容易误判: 3D 场景 HUD 是相对秒)。"""
+        if idx != 0:
+            return
+        self._time_mode = "rel" if getattr(self, "_time_mode", "abs") == "abs" else "abs"
+        self._hdr_last = None                 # 逼表头重设 (改 Time 标题)
+        self._set_trace_header()
+        try:
+            self._fill_trace_fixed(force=True)
+        except Exception:                                                    # noqa: BLE001
+            pass
+
     def _set_trace_header(self, mode=None):
         """设置表头。🖱 2026-10-01: **表头没变就不要重设** —— setHorizontalHeaderLabels
         会把各列宽度复位 ⇒ 用户拖动过的列宽下一次刷新就被抹掉(表现=拖动不了)。"""
@@ -1163,7 +1183,7 @@ class BusView(QWidget):
         # 🧭 2026-10-17 老倪: 「trace 每列的中文改成英文, 控制字数, 不要写太多」→ 全英文短表头
         # 🧭 2026-10-17 老倪: 「trace 窗口都是 signal, 改成 Name 列…增加 Type / Tx / Rx,
         #    删 Lamp / Count / Age, QoS 要跟 DDS 标准对上」⇒ 固定行与滚动**同一套列**, 不再两套口径
-        _labs = ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys",
+        _labs = [self._time_hdr(), "Layer", "Signal", "Value", "Unit", "Phys",
                  "Type", "Tx", "Rx", "QoS", "Hz"]
         if _labs == getattr(self, "_hdr_last", None):
             return
@@ -1173,7 +1193,7 @@ class BusView(QWidget):
 
     def _set_trace_header0(self, mode=None):
         self.tb.setHorizontalHeaderLabels(
-            ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+            ["Time·abs", "Layer", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
 
     def _layer_map(self):
         """节点 id → 层 (L2~L5 / meta), 来自工程库。"""
@@ -1388,13 +1408,40 @@ class BusView(QWidget):
         # 🧪 2026-10-17 老倪: 「具体的信号再 Trace 窗口显示, 有物理量显示」
         #   一个话题展开成 N 行信号: Signal=字段名 · Value=数值 · Unit=单位 · Phys=物理判据(✔/✘ 原因)
         rows = []
+        # 🕒 相对时间的零点: 同一批实时帧里最早的那个 ts (与 3D 场景同源同一根钟;
+        #    有 时间_s 的话题直接用快照里的回放秒, 和 3D HUD 逐字一致)
+        if getattr(self, "_time_base", None) is None:
+            _tss = []
+            for _k, _t in items:
+                _v = _t.get("ts")
+                if isinstance(_v, (int, float)) and _v > 0:
+                    _tss.append(float(_v))
+            self._time_base = min(_tss) if _tss else None
+        # 🕒 3D 场景那根钟 = 快照里的 时间_s (ss_state)。所有行共用这一个时刻 ⇒
+        #    Trace 的相对时间与 3D HUD 逐字对得上 (各话题自己的 时间_s 有引擎开机秒, 不能直接用)
+        _scene_t = None
+        try:
+            _v0 = ((tp.get("zmax/ss_state") or {}).get("fields") or {}).get("时间_s")
+            if isinstance(_v0, (int, float)):
+                _scene_t = float(_v0)
+        except Exception:                                                # noqa: BLE001
+            _scene_t = None
+        self._scene_t = _scene_t
         for k, t in items:
             f = (t.get("fields") or {}) or self._live_fields(k) or {}
             ts = (f.get("ts") if isinstance(f, dict) else None) or t.get("ts")
-            try:
-                tt = time.strftime("%H:%M:%S", time.localtime(float(ts))) if ts else "—"
-            except Exception:                                               # noqa: BLE001
-                tt = "—"
+            tt = "—"
+            if getattr(self, "_time_mode", "abs") == "rel":
+                if getattr(self, "_scene_t", None) is not None:
+                    tt = "%.3f" % float(self._scene_t)      # 与 3D 场景同一拍
+                elif ts and getattr(self, "_time_base", None):
+                    tt = "%.3f" % (float(ts) - float(self._time_base))
+            else:
+                try:
+                    tt = (time.strftime("%H:%M:%S", time.localtime(float(ts))) + ".%03d"
+                          % int((float(ts) % 1) * 1000)) if ts else "—"
+                except Exception:                                           # noqa: BLE001
+                    tt = "—"
             age = t.get("age_s")
             hz, hzd = t.get("hz"), t.get("hz_design")
             _h = ("%s / %s" % (_f3(hz), _f3(hzd))) if (isinstance(hz, (int, float)) and hz >= 0) else "—"
@@ -1431,7 +1478,8 @@ class BusView(QWidget):
                     _pk = (nm, sn)
                     _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
                     rows.append(dict(base, name=_cn_names.cn_of_signal(sn, nm),
-                                     signal=sn, value=_f3(float(sv)),
+                                     signal=_signal_en.en_of(sn, nm), raw=sn,
+                                     cn=_cn_names.cn_of_signal(sn, nm), value=_f3(float(sv)),
                                      unit=((unit or "") + ("*" if _inferred else "")) or "—",
                                      lo=lo, hi=hi, prev=_prev,
                                      phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
@@ -1444,7 +1492,9 @@ class BusView(QWidget):
                 for _sn, _u, _src in _signals.signals_of(nm):
                     _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
-                    rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm), signal=_sn,
+                    rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm),
+                                     signal=_signal_en.en_of(_sn, nm), raw=_sn,
+                                     cn=_cn_names.cn_of_signal(_sn, nm),
                                      value=(_vals or "—"), unit=(_unit2 or "—"), lo=_lo2, hi=_hi2,
                                      prev=None, phys="?", bad=False, src=_src,
                                      why=("信号来源: %s · 当前无实测值 (总线未跑/未上线)" % _src)))
@@ -1452,35 +1502,35 @@ class BusView(QWidget):
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(len(rows))
         for r, x in enumerate(rows):
-            cells = [x["time"], x["layer"], x["name"], x["signal"], x["value"], x["unit"],
+            cells = [x["time"], x["layer"], x["signal"], x["value"], x["unit"],
                      x["phys"], x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 5, 7, 8, 9) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
+                if c == 2:                    # Signal 列 tooltip 保留中文名 (列删了, 词还得能查)
+                    item.setToolTip("%s\n中文: %s" % (x.get("raw") or x["signal"], x.get("cn") or ""))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:                                   # Layer
                     item.setForeground(QColor(C_YELLOW))
                     item.setTextAlignment(Qt.AlignCenter)
                 elif c == 2:
-                    item.setForeground(QColor("#7ee787" if x["pin"] else C_WHITE))
+                    item.setForeground(QColor("#7ee787" if x["pin"] else "#9db4d0"))
                 elif c == 3:
-                    item.setForeground(QColor("#9db4d0"))
-                elif c == 4:
                     item.setForeground(QColor(C_RED if x["bad"] else C_WHITE))
-                elif c == 5:
+                elif c == 4:
                     item.setForeground(QColor(C_GRAY))
-                elif c == 6:
+                elif c == 5:
                     item.setForeground(QColor(C_RED if x["phys"] == "✘" else
                                               C_YELLOW if x["phys"] == "🟡" else C_GREEN))
                     if x["why"]:
                         item.setToolTip(x["why"])
                 if x["step"]:
                     item.setBackground(QColor("#2b2611"))
-                    if c in (2, 4):
+                    if c in (2, 3):
                         item.setForeground(QColor("#ffd700"))
                 elif x["pin"]:
-                    item.setBackground(QColor("#1b2c1e") if c == 4 else QColor("#16202b"))
+                    item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
@@ -1500,7 +1550,7 @@ class BusView(QWidget):
             pass
         self._trace_frames = rows               # 给质量告警用: 最新一帧的逐信号值
         try:                                    # 存"上一帧值"给跳变判据
-            self._prev_vals = {(r["name"], r["signal"]): float(r["value"]) for r in rows
+            self._prev_vals = {(r.get("topic"), r.get("raw") or r["signal"]): float(r["value"]) for r in rows
                                if r.get("signal") not in (None, "—")}
         except Exception:                                                # noqa: BLE001
             pass
@@ -1582,7 +1632,9 @@ class BusView(QWidget):
                 p = prev_t.get(topic)
                 tt = _num(t - float(p), 3) if p and float(p) < t else "—"
             else:
-                tt = _rel(self._t0, t)
+                tt = ("%.3f" % float(self._scene_t)) if (getattr(self, "_time_mode", "abs") == "rel"
+                                                          and getattr(self, "_scene_t", None) is not None) \
+                    else _rel(self._t0, t)
             score = live_t.get("score")
             _vkey = "%s|%s" % (topic, str(rec.get("n", "")))
             if not (live_t or {}).get("fields"):                 # 上层没喂 self._live ⇒ 自己取
@@ -1599,7 +1651,6 @@ class BusView(QWidget):
             cells = [
                 tt,
                 self._layer_of(topic, live_t),          # 🏷 Layer (L2~L5 / SYS)
-                _cn_names.cn_of(topic),
                 self._sig_names((live_t.get("fields") or {}) or rec.get("digest")),
                 vals if vals else "—",
                 _unit,
@@ -1615,7 +1666,7 @@ class BusView(QWidget):
                                                    or _pin in str(rec.get("type", "")).lower()))
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 8, 10) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 7, 9) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:                                           # 话题名
