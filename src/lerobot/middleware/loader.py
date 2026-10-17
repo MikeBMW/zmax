@@ -130,9 +130,38 @@ def ensure_node_modules(specs, quiet=True, links=None):
 
 
 def load_project(canvas=None, product=None, bus=None, ns="default",
-                 ensure_modules=True, quiet=True):
-    """读工程 JSON → Project。bus 不给就按产品档自建 (550B=DDS)。"""
-    specs, links, meta = spec_mod.parse_canvas(canvas)
+                 ensure_modules=True, quiet=True, source="auto"):
+    """加载工程 → Project。
+
+    source:
+      "auto" (默认) —— 库与画布同源 (sha 一致) 就从**工程库**读 (mw_node/mw_port/mw_link);
+                       库过期或没有就解析画布 JSON 并**回写库**;
+      "json"        —— 强制按 JSON 解析 (调试/对比用);
+      "db"          —— 只认库, 库没有就抛错。
+    话题名统一来自 mw_topic (落库真源), 挂在 bus.topic_map 上供 Node 收发。
+    """
+    meta = {}
+    specs = links = None
+    _info = {}
+    if source in ("auto", "db"):
+        try:
+            from . import db as _mwdb                                  # noqa: PLC0415
+            _info = _mwdb.ensure_synced(canvas, quiet=quiet)
+            if _info.get("loaded_from") == "db" or source == "db":
+                specs, links, meta = _mwdb.load(canvas_path=canvas)
+            else:
+                specs, links, meta = spec_mod.parse_canvas(canvas)
+                meta["source"] = "json→db"
+        except Exception as _e:                                        # noqa: BLE001
+            if source == "db":
+                raise
+            specs, links, meta = spec_mod.parse_canvas(canvas)
+            meta["source"] = "json"
+            meta["db_error"] = "%s: %s" % (type(_e).__name__, _e)
+    else:
+        specs, links, meta = spec_mod.parse_canvas(canvas)
+        meta["source"] = "json"
+    meta.setdefault("source", "json")
     if ensure_modules:
         ensure_node_modules(specs, quiet=quiet, links=links)
     if bus is None:
@@ -147,6 +176,16 @@ def load_project(canvas=None, product=None, bus=None, ns="default",
         src = nodes.get(l["f"])
         if src is not None:
             src.dst_map.setdefault(l["f_port"], []).append((l["t"], l["t_port"]))
+    # 话题名: 落库注册表 → 挂到总线上, Node 收发都查它 (不再各拼各的字符串)
+    try:
+        from . import db as _mwdb2                                        # noqa: PLC0415
+        _canvas_path = spec_mod.find_canvas() if (canvas is None or isinstance(canvas, dict)) else canvas
+        _tmap = _mwdb2.topic_map(canvas_path=_canvas_path)
+        if _tmap:
+            bus.topic_map = _tmap
+            meta["topic_n"] = len(_tmap)
+    except Exception:                                                     # noqa: BLE001
+        pass
     order, feedback, cycles = topo_order(specs, links)
     meta = dict(meta)
     meta["cycles"] = cycles

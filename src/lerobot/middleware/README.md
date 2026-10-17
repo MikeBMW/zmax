@@ -7,7 +7,7 @@
 flows/state_space_obs.json  (工程真源: 75 节点 / 202 连线)
         │  parse_canvas()            端口 = 连线推出的 in/out
         ▼
-spec.NodeSpec ──► nodes/n_<id>.py  (每节点一个模块 · 生成物 · 打开就能看到输入输出)
+spec.NodeSpec ──► nodes/n_<单词>.py  (每节点一个模块 · 生成物 · 打开就能看到输入输出)
         │
         ▼
 loader.load_project() ──► Project (节点 + 连线路由表 + 拓扑序/SCC + 总线)
@@ -74,11 +74,45 @@ def compute(ctx):
 * **画布每个节点右下角** `◉DDS` / `◉内存` = 这个节点的模块加载在哪条总线上;
   悬停 tooltip 显示模块文件、输入→输出端口、实现绑定。
 * **加载工程时** 自动形成中间件工程 (`SimulinkModule._mw_build_project` → `self.mw_project`)。
-* **右键「打开工程」** 先进入 `nodes/n_<id>.py` (端口/compute 都在)，日志里同时给出真实现位置。
+* **右键「打开 node」** 进入 `nodes/n_<单词>.py` (端口/compute 都在)，日志里同时给出真实现位置。
 
 ## 加一个节点
 
 1. 画布上连线 (端口由此产生) → 保存工程 JSON
-2. `tools/gen_middleware_nodes.py` 生成/更新 `nodes/n_<id>.py`
+2. `tools/gen_middleware_nodes.py` 生成/更新 `nodes/n_<单词>.py`
 3. 视需要把该模块 `PURE` 打开并写 `compute()`
 4. `verify_middleware.py` 必须仍 10/10
+
+## 话题名 & 工程库 (db.py)
+
+话题名 = `ss.node.<节点id>.<端口>`（`bus.TOPIC_PREFIX` + `bus.topic()`）。
+以前这是**运行时拼出来的字符串**，磁盘上没有 ⇒ 外部工具（DDS 排查、监控、CI）想知道全量话题
+只能把工程跑起来。现在落库：
+
+```
+mw_project(project, canvas_sha, canvas_path, built_at, node_n, link_n, topic_n)
+mw_node(project,node_id,name,type,module,layer,exec_mode,impl_key,source,symbol,x,y,params_json)
+mw_port(project,node_id,port,dir,label,dtype)
+mw_link(project,link_id,f,f_port,t,t_port,label)
+mw_topic(project,node_id,port,dir,topic,qos,enabled)      ← 话题注册表 (真源)
+```
+库文件 = `data/database/zmax/zmax_engineering.db`（单文件一套工程；`ZMAX_MW_DB` 可覆盖）。
+
+加载路径
+```
+load_project(source="auto")   # 默认
+   ├─ db.ensure_synced(): 画布 sha256 == mw_project.canvas_sha ?
+   │     ├─ 是 → db.load()      (节点/端口/连线全部从库读)
+   │     └─ 否 → parse_canvas → db.sync() → 用 JSON 结果 (并把库刷成最新)
+   ├─ bus.topic_map = mw_topic 全量 {(node,port): topic}
+   └─ Node.topic(port) 查 topic_map, 查不到才回落 bus.topic()
+source="json"  强制 JSON  (对比/调试)
+source="db"    只认库, 没有就抛错
+```
+命令
+```
+python tools/mw_db.py status|sync|topics|node <id>|sql "<query>"
+PYTHONPATH=src python tools/verify_mw_db.py      # 7 项判据
+```
+判据要点: 话题名允许**只改库**（改 `mw_topic` 一行 → 重新 load → `Node.topic()` 立刻用新名），
+这条是"话题真从库来"的铁证；画布改名后 sha 变 ⇒ 自动回写，不会拿过期库跑工程。

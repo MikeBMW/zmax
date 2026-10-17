@@ -4345,23 +4345,19 @@ class SimCanvas(QGraphicsView):
         menu = QMenu()
         # 🐛 2026-08-12 老倪: 深色 QSS 在 VcXsrv 下渲染成黑屏无字 (border-radius 或
         # 背景色合成失败) → 完全去掉 QSS 用系统默认菜单; 菜单项去 emoji (字体缺字形→黑块)
-        a_logic = menu.addAction("查看/编辑节点逻辑")
+        # 🎯 2026-10-17 老倪「右键打开，删除 查看/编辑节点逻辑 查看数据集 运行 等功能；
+        #    保留和修改 打开源代码(直接打开模块源代码)；打开 node(打开中间件的 node, 看输入输出)」
+        #   ⇒ 菜单只留两个"看代码"入口 + 参数, 其余"跑一下/看面板"的项全部删掉
+        #     (查看/编辑节点逻辑 → 双击节点即可; 运行 → 画布 ⏭ 单步/▶ 运行; 查看数据集 → 打开 node 里的连线)
+        a_src = menu.addAction("打开源代码 (模块实现)")
+        a_node = menu.addAction("打开 node (中间件 · 输入输出)")
         a_param = menu.addAction("节点参数")
         # 2026-08-05 老倪: 训练节点右键 → 训练配置 (步数/batch/lr)
         a_train = None
         if "训练" in item.node.get("name", ""):
             a_train = menu.addAction("训练配置 (步数/batch/lr)")
-        # 📂 打开源代码 (2026-08-12 老倪: YOLO/双脑等节点 params.source 映射源码目录;
-        #   仅 src/ 开头显示 — 数据源节点的 source 是数据源标识非代码路径)
-        #   2026-08-17 老倪: 状态空间节点 source 也支持 tools/; 菜单项始终显示
-        #   (任何画布/节点右键都有「打开源代码」, 无映射时点击给明确提示)
-        a_src = menu.addAction("打开源代码")
-        # 📊 查看数据集 (2026-08-30 老倪: 数据源节点右键 → 直接链接真实数据源头)
-        a_ds = None
-        if item.node.get("params", {}).get("source") and not item.node.get("params", {}).get("insert_video") \
-                and not item.node.get("params", {}).get("insert_report"):
-            a_ds = menu.addAction("查看数据集")
-        a_run = menu.addAction("运行节点")
+        # 📂 打开源代码 / 打开 node 已提到菜单最前面 (2026-10-17)
+        # 📊 查看数据集 · 运行节点 · 打开 VSCode 调试 —— 2026-10-17 老倪要求删除
         # 🎥 2026-09-17 老倪: YOLO 目标检测节点右键 → 打开输入图像 (实时原始视频流)
         #   真机链路 = Orin UVC取帧+JPEG压缩(服务端) → ROS2 srv /zmax/live_frame
         #             → 本机 Docker 客户端落盘 → 本窗口轮询显示 (GUI 无需 rclpy)
@@ -4383,8 +4379,7 @@ class SimCanvas(QGraphicsView):
         if item.node.get("params", {}).get("src_switch"):
             a_srcsw = menu.addAction("切换数据源: 真机 → 插拔场景 → 摆盘场景 (当前 %s)"
                                      % _src_norm(item.node["params"].get("src_state")))
-        # 🚀 打开 VSCode 调试 (2026-08-30 老倪: 工程 + 自动虚拟环境, 断点单步)
-        a_vscode = menu.addAction("打开 VSCode 调试")
+        # 🚀 「打开 VSCode 调试」2026-10-17 删除: 上面「打开源代码」「打开 node」本身就是进 VSCode
         # 📥 Excel 导出 (2026-08-20 老倪: 🛠技能编排器 / 🎯YOLO 节点)
         a_export = None
         if item.node.get("params", {}).get("skill_composer") or item.node.get("params", {}).get("detection_targets"):
@@ -4424,24 +4419,16 @@ class SimCanvas(QGraphicsView):
             a_viz = menu.addAction("🔭 打开显示窗口 (波形/直方图/视图)")
         from PyQt5.QtGui import QCursor
         chosen = menu.exec_(QCursor.pos())  # 🐛 2026-08-10: 光标真实位置, 多屏不跑偏
-        if a_srcsw is not None and chosen == a_srcsw:
-            self.module.on_toggle_src(item.node)
-        elif chosen == a_logic:
-            self.module.on_show_node_logic(item.node)
+        if chosen == a_src:
+            self.module.open_node_source(item.node)          # 直接打开模块真实实现源码
+        elif chosen == a_node:
+            self.module.open_middleware_node(item.node)      # 打开中间件 node (输入输出/连线/compute)
         elif chosen == a_param:
             self.module.on_node_params(item.node)
+        elif a_srcsw is not None and chosen == a_srcsw:
+            self.module.on_toggle_src(item.node)
         elif a_train is not None and chosen == a_train:
             self.module.on_train_config(item.node)
-        elif a_src is not None and chosen == a_src:
-            self.module.open_node_source(item.node)
-        elif a_ds is not None and chosen == a_ds:
-            self.module.show_dataset_info(item.node)
-        elif chosen == a_run:
-            # 🆕 2026-08-30 老倪统一设计: 右键「运行节点」与 ⏭ 单步共用 _run_node_single
-            # (统一 金色高亮 + 状态色 + 终端输出; keep_active=False=运行完即绿, 不保留金色)
-            self.module._run_node_single(item.node, label="右键运行", keep_active=False)
-        elif chosen == a_vscode:
-            self.module.open_in_vscode(item.node)
         elif a_export is not None and chosen == a_export:
             self.module.on_export_tasks(item.node)
         elif a_rot is not None and chosen == a_rot:
@@ -5930,12 +5917,36 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
-        # 🗜 2026-10-16 老倪: 「太阳系又变矮了 / 表格最后一行看不到」—— 画布顶部工具条压薄 (51→28),
-        #   功能一个不少 (按钮都在, 只是矮), 省下的高度给右栏 M 页的太阳系 + 万有引力表。
+        # 🗜 2026-10-16 老倪: 「太阳系又变矮了」→ 工具条压薄 (51→28)。
+        # 🎯 2026-10-17 老倪: 「按钮的字显示不全, 太矮了, 字体只显示一半」——
+        #   上面那条把高度**硬写 24px**, 而 192DPI 下 10pt 字高 = 40px ⇒ 文字被裁掉整整一半
+        #   (实测: 按钮 h=24, 字高 40)。改成**按字高算高度**, 同时把字号/内边距收到 9pt / 1px 8px,
+        #   既保住"压薄"的初衷, 又保证任何 DPI 下文字完整显示。
         try:
-            tb.setMaximumHeight(28)
-            for _b in tb.findChildren(QPushButton):
-                _b.setFixedHeight(24)
+            import re as _tre
+            from PyQt5.QtGui import QFont as _QF, QFontMetrics as _QFM
+            _tbs = list(tb.findChildren(QPushButton)) + list(tb.findChildren(QCheckBox))
+            _fm9 = _QFM(_QF(_tbs[0].font().family() if _tbs else "Sans", 9))
+            _fh = _fm9.height()                      # 9pt 在 192DPI 下 ≈ 24px
+            _h = max(26, _fh + 6)                    # 上下各 3px 内边距 → 不裁字
+            for _w in _tbs:
+                # 🎯 2026-10-17 老倪「左侧怎么还有一些黑色的, 字, 背景也是黑色, 看不到, 是什么?」
+                #   实测: 工具栏里那两个勾选框 (🎯 跟随单步 / 🧮 核心居中) **从来没有套过样式**
+                #   (_style_chk 只套给了早已被搬走的另外 6 个), Qt 默认黑字画在 #0d1117 工具条上
+                #   ⇒ 对比度≈1:1, 就是他说"看不到的黑字"。这里补上同一套 pill 样式。
+                if isinstance(_w, QCheckBox) and not (_w.styleSheet() or "").strip():
+                    try:
+                        _style_chk(_w)
+                    except Exception:                                           # noqa: BLE001
+                        pass
+                _ss = _w.styleSheet() or ""
+                _ss = _tre.sub(r"font-size:\s*[0-9.]+pt", "font-size:9pt", _ss)
+                _ss = _tre.sub(r"padding:\s*[0-9]+px\s+[0-9]+px", "padding:1px 8px", _ss)
+                _ss = _tre.sub(r"padding:\s*[0-9]+px", "padding:1px", _ss)
+                if _ss:
+                    _w.setStyleSheet(_ss)
+                _w.setFixedHeight(_h)
+            tb.setMaximumHeight(_h + 12)
         except Exception:                                                        # noqa: BLE001
             pass
         outer.addWidget(tb)
@@ -7067,11 +7078,157 @@ class SimulinkModule(QWidget):
         self._log("🚀 打开 Z700 完整工程 (YOLO感知链 → 双脑+状态机 → 交付)…")
         self.load_flow_file(flow)
 
+    def open_middleware_node(self, node):
+        """🧩 打开 node (2026-10-17 老倪: 「打开 node, 这是打开中间件的 node, 看输入输出」)
+
+        落点 = src/lerobot/middleware/nodes/n_<节点id>.py, 停在 PORTS_IN 那一行:
+        文件头就是工程连线(输入←上游 / 输出→下游)、话题名、实现绑定、compute(ctx) 代码。
+        """
+        # 🎯 2026-10-17 老倪「右键打开 node 没有进到 node 的代码」:
+        #   若该节点不属于状态空间工程 (如 Z700 流程画的节点), 压根没有中间件模块
+        #   ⇒ 必须**明确告诉你**, 而不是悄悄打开别的东西 (看起来就像"没生效")。
+        try:
+            import sys as _sm
+            _r = self._repo_root()
+            _sd = os.path.join(_r, "src")
+            if _sd not in _sm.path:
+                _sm.path.insert(0, _sd)
+            from lerobot.middleware import resolve_open_target as _rotm        # noqa: PLC0415
+            _tm = _rotm(node, root=_r)
+            if _tm.get("kind") != "middleware-node":
+                self._log("⚠️ 该节点没有中间件 node 模块 (不在状态空间工程 flows/state_space_obs.json 里)"
+                          " → 打开的是它的实现源码; 要进 node 请用状态空间工程里的节点")
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self.open_in_vscode(node, target="node")
+
+    def _mw_module_path(self, node):
+        """节点 → 中间件模块文件路径: 文件名 = **一个英文单词** (与 spec.resolve_word 同一顺序)。
+
+        🎯 2026-10-17 老倪「n_n1792213069066aaw.py 怎么能出现这个文件? 用英文的文件名, 改」
+          ⇒ ① node_names.json 的 id → 单词  ② 同名节点复用同一单词
+             ③ 名字里的英文词  ④ 中文关键词表 (_词汇)  ⑤ node<4位哈希>
+             永远不会再出现 id 当文件名。
+        """
+        import re as _re2
+        import json as _json2
+        import hashlib as _hl
+        _root = self._repo_root()
+        _nd = os.path.join(_root, "src", "lerobot", "middleware", "nodes")
+        _nid = str((node or {}).get("id") or "")
+        _nm = str((node or {}).get("name") or "")
+        _cfg = {}
+        try:
+            with open(os.path.join(_root, "src", "lerobot", "middleware", "node_names.json"),
+                      encoding="utf-8") as _jf:
+                _cfg = _json2.load(_jf) or {}
+        except Exception:                                                       # noqa: BLE001
+            _cfg = {}
+        _w = str(_cfg.get(_nid) or "")                      # ①
+        if not _w:                                          # ② 同名 → 复用工程里已登记的单词
+            try:
+                with open(os.path.join(_root, "flows", "state_space_obs.json"), encoding="utf-8") as _cf:
+                    _flow = _json2.load(_cf)
+                _key = _nm.strip()
+                for _n in _flow.get("nodes") or []:
+                    if str(_n.get("name") or "").strip() == _key and _cfg.get(_n.get("id")):
+                        _w = str(_cfg[_n["id"]])
+                        break
+            except Exception:                                                   # noqa: BLE001
+                pass
+        if not _w:                                          # ③ 名字里的英文词
+            _toks = [t for t in _re2.split(r"[^0-9a-zA-Z]+", _nm) if t]
+            if _toks:
+                _toks.sort(key=len, reverse=True)
+                _w = _toks[0]
+        if not _w:                                          # ④ 中文关键词表
+            for _k, _v in (_cfg.get("_词汇") or {}).items():
+                if _k in _nm:
+                    _w = str(_v)
+                    break
+        if not _w:                                          # ⑤ 稳定英文兜底
+            _w = "node" + _hl.md5((_nid or _nm or "node").encode()).hexdigest()[:4]
+        _p = os.path.join(_nd, "n_" + _w.strip().lower() + ".py")
+        if os.path.isfile(_p):
+            return _p
+        if _nid and os.path.isdir(_nd):                     # 反查: 文件里 NODE_ID
+            _needle = "NODE_ID = %r" % _nid
+            for _fn in sorted(os.listdir(_nd)):
+                if not (_fn.startswith("n_") and _fn.endswith(".py")):
+                    continue
+                try:
+                    with open(os.path.join(_nd, _fn), encoding="utf-8", errors="ignore") as _ff:
+                        if _needle in _ff.read(4000):
+                            return os.path.join(_nd, _fn)
+                except Exception:                                               # noqa: BLE001
+                    continue
+        return _p
+
+    def _mw_write_module(self, node, path):
+        """现场给一个画布节点写 node 模块 —— 不在 flows/*.json 里也要能「打开 node」。
+
+        🎯 2026-10-17 老倪「不对, 没打开 node 中间件」: 只要节点有 id, 就必须有一个 node 文件可看,
+          否则右键只能退回实现源码。端口直接取画布节点自己的 inputs/outputs。
+        """
+        try:
+            _nid = str(node.get("id"))
+            _name = str(node.get("name") or _nid)
+            _ins = [str(q.get("id")) for q in (node.get("inputs") or []) if q.get("id")] or ["in1"]
+            _outs = [str(q.get("id")) for q in (node.get("outputs") or []) if q.get("id")] or ["out1"]
+            _impl = str((node.get("params") or {}).get("source") or "")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            L = []
+            L.append('"""🧩 中间件节点 %s · %s' % (_nid, _name))
+            L.append("")
+            L.append("📌 控制台右键「打开 node」现场生成 (该节点不在 flows/state_space_obs.json 里,")
+            L.append("   没走 tools/gen_middleware_nodes.py 的批量生成)。")
+            L.append("")
+            L.append("输入输出 = 画布节点自己的端口; 实现 = 节点 params.source。")
+            L.append('"""')
+            L.append("")
+            L.append("NODE_ID = %r" % _nid)
+            L.append("NODE_NAME = %r" % _name)
+            L.append("IMPL = %r" % _impl)
+            L.append("")
+            L.append("PORTS_IN = %r" % (_ins,))
+            L.append("PORTS_OUT = %r" % (_outs,))
+            L.append("")
+            L.append("")
+            L.append("def compute(ctx):")
+            L.append('    """一个节点一拍: 输入从总线取, 结果写回总线 (不伪造数值)。"""')
+            L.append("    vals = {p: ctx.get(p) for p in PORTS_IN}")
+            L.append("    if len(PORTS_OUT) == len(PORTS_IN):")
+            L.append("        return {o: vals.get(i) for o, i in zip(PORTS_OUT, PORTS_IN)}")
+            L.append("    return {p: None for p in PORTS_OUT}")
+            with open(path, "w", encoding="utf-8") as _f:
+                _f.write("\n".join(L) + "\n")
+            return True
+        except Exception as _e_w:                                               # noqa: BLE001
+            try:
+                self._log("⚠️ 现场生成 node 模块失败: %s: %s" % (type(_e_w).__name__, _e_w))
+            except Exception:                                                   # noqa: BLE001
+                pass
+            return False
+
     def open_node_source(self, node):
-        """📂 打开节点源代码 (2026-08-12 老倪: 右键 YOLO/双脑等节点)
-        🐛 WSL 路径 Windows 打不开 (UNC 被拒) → 复制到 C:\\zmax_src_view + explorer 打开
-        🆕 2026-08-18 老倪: 容器环境 (无 /mnt/c + 无 explorer.exe, WSL interop 断)
-        → 老链路必挂, 自动回落 SourceViewDialog 弹窗查看 (绝对路径+行号+复制路径)"""
+        """📂 打开源代码 (2026-10-17 老倪: 「保留和修改 打开源代码, 这是直接打开模块的源代码」)
+
+        落点 = 该节点绑定的**真实实现** (params.source 或注册表符号), VSCode 停在符号行。
+        与「打开 node」分工: 源代码=实现, 打开 node=中间件节点(输入输出)。
+        解析不到实现时才退回老链路 (WSL explorer / SourceViewDialog)。"""
+        try:
+            _root0 = self._repo_root()
+            import sys as _s3
+            _src_dir0 = os.path.join(_root0, "src")
+            if _src_dir0 not in _s3.path:
+                _s3.path.insert(0, _src_dir0)
+            from lerobot.middleware import resolve_open_target as _rot0         # noqa: PLC0415
+            _t0 = _rot0(node, root=_root0)
+            if _t0.get("impl_path"):
+                self.open_in_vscode(node, target="impl")
+                return
+        except Exception:                                                       # noqa: BLE001
+            pass
         src = node.get("params", {}).get("source", "")
         if not src:
             self._log("⚠️ 该节点无源码映射 (params.source 为空) — 仅状态空间/双脑等带源码的节点可打开")
@@ -16905,7 +17062,7 @@ class SimulinkModule(QWidget):
                 return (True, f"数据源激活: {n.get('params', {}).get('source', '?')}")
         return (True, f"数据源节点未找到: {name}")
 
-    def open_in_vscode(self, node=None):
+    def open_in_vscode(self, node=None, target="node"):
         """🚀 打开 VSCode 调试工程 (2026-08-30 老倪: 右键 → VSCode 单步调试)
         自动配置: .vscode/settings.json 默认解释器=gui-venv311 (Py3.11 GUI 环境);
         .vscode/launch.json 三个调试配置 (全新调试进程 / attach 现有控制台 / 工具脚本 lerobot-venv)
@@ -16975,9 +17132,42 @@ class SimulinkModule(QWidget):
         loc_desc = ""
         _loc = None
         _impl_desc = ""
+        _loc_kind = ""
+        _locerr = ""
         # 🚪 2026-10-17 老倪「右键打开工程, 要先进入这个对应的 node 代码, 能看到输入输出」:
         #   中间件节点模块 src/lerobot/middleware/nodes/<n_id>.py 才是"一个节点的家"
         #   (端口/工程连线/compute 全在里面), 真实现位置作为第二跳写进日志。
+        # 🎯 2026-10-17 老倪「动作调制器 右键 没有进入 node」——
+        #   「打开 node」不许依赖 `import lerobot.middleware` 成功与否: 在 GUI 进程里
+        #   sys.path 可能已被别的同名包/旧路径占住, import 一失败就被 except 吞掉,
+        #   于是静默退回 params.source = 打开的是实现源码, 看着就是"没进 node"。
+        #   ⇒ 先按**文件名直查** src/lerobot/middleware/nodes/n_<id>.py (不可能失败),
+        #     找不到才走 resolve_open_target / params.source。
+        if target == "node" and node is not None:
+            try:
+                _cand_n = self._mw_module_path(node)
+                if not os.path.isfile(_cand_n):
+                    # 🎯 2026-10-17 老倪「不对, 没打开 node 中间件」: 没有模块就**现场生成**,
+                    #   保证「打开 node」一定落到一个 node 文件 (输入输出/compute 都在里面)。
+                    try:
+                        if self._mw_write_module(node, _cand_n):
+                            _locerr = "已现场生成 node 模块"
+                    except Exception as _e_g:                                   # noqa: BLE001
+                        _locerr = "生成失败 %s: %s" % (type(_e_g).__name__, _e_g)
+                if os.path.isfile(_cand_n):
+                    _ln = 1
+                    with open(_cand_n, encoding="utf-8", errors="ignore") as _f2:
+                        for _i2, _l2 in enumerate(_f2, 1):
+                            if _l2.strip().startswith("PORTS_IN"):
+                                _ln = _i2
+                                break
+                    _loc = (_cand_n, _ln)
+                    _loc_kind = "middleware-node"
+            except Exception as _e_n:                                           # noqa: BLE001
+                try:
+                    self._log(f"⚠️ 中间件节点直查失败: {type(_e_n).__name__}: {_e_n}")
+                except Exception:                                              # noqa: BLE001
+                    pass
         try:
             import sys as _sys2
             _src_dir = os.path.join(root, "src")
@@ -16985,13 +17175,28 @@ class SimulinkModule(QWidget):
                 _sys2.path.insert(0, _src_dir)
             from lerobot.middleware import resolve_open_target as _rot     # noqa: PLC0415
             _t = _rot(node, root=root) if node is not None else {}
-            if _t.get("path"):
-                _loc = (_t["path"], _t.get("line") or 1)
+            # 🎯 2026-10-17: 直查已经定了 node 文件 (上面), 这里只补第二跳的实现位置;
+            #   没命中才按 target 走 resolve 结果 / 老兜底。
+            if _loc is not None:
                 if _t.get("impl_path"):
                     _impl_desc = " · 实现在 %s:%s" % (
                         os.path.relpath(_t["impl_path"], root), _t.get("impl_line") or 1)
-        except Exception:                                                   # noqa: BLE001
-            pass
+            elif target == "impl" and _t.get("impl_path"):
+                _loc = (_t["impl_path"], _t.get("impl_line") or 1)
+                _loc_kind = "impl"
+            elif _t.get("path"):
+                _loc = (_t["path"], _t.get("line") or 1)
+                _loc_kind = _t.get("kind") or ""
+                if _t.get("impl_path"):
+                    _impl_desc = " · 实现在 %s:%s" % (
+                        os.path.relpath(_t["impl_path"], root), _t.get("impl_line") or 1)
+        except Exception as _e_r:                                               # noqa: BLE001
+            # 不许静默: 以前这里 pass → 定位失败时悄悄落到 params.source, 用户只看到"没进 node"
+            _locerr = "%s: %s" % (type(_e_r).__name__, _e_r)
+            try:
+                self._log(f"⚠️ 中间件定位失败 (退回源码映射): {_locerr}")
+            except Exception:                                                   # noqa: BLE001
+                pass
         if node is not None and _loc is None:
             _p = dict(node.get("params", {}) or {})
             _src = str(_p.get("source") or "")
@@ -17058,8 +17263,39 @@ class SimulinkModule(QWidget):
         _isolated = _launch is not cmd and _spawn(_launch)
         if not _isolated:
             _spawn(cmd)                     # 兜底: 没有 systemd-run 时按老路开 (进同一 cgroup)
+        # 🎯 2026-10-17 老倪「右键打开 node 没有进到 node 的代码」——
+        #   ① 把每次点击的落点写进 ~/.cache/zmax/rightclick.log (右键到底进了哪个文件, 事后可查);
+        #   ② 起窗后 1.5s 用 xdotool 把窗口提到前台 (VSCode 窗口原来可能开在别的窗后面 ⇒ 看着像"没反应")。
+        try:
+            _trace_dir = os.path.expanduser("~/.cache/zmax")
+            os.makedirs(_trace_dir, exist_ok=True)
+            with open(os.path.join(_trace_dir, "rightclick.log"), "a", encoding="utf-8") as _tf:
+                _tf.write("%s target=%s kind=%s loc=%s spawn=%s%s\n" % (
+                    time.strftime("%Y-%m-%d %H:%M:%S"), target, _loc_kind or "-",
+                    ("%s:%s" % (_loc[0], _loc[1])) if _loc else "-",
+                    "isolated" if _isolated else "plain",
+                    (" err=" + _locerr) if _locerr else ""))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        if _loc and os.path.basename(_loc[0]).endswith(".py"):
+            def _focus(_base=os.path.basename(_loc[0])):
+                try:
+                    import subprocess as _sp3
+                    time.sleep(1.5)
+                    for _w in _sp3.run(["xdotool", "search", "--name", _base],
+                                       capture_output=True, text=True).stdout.split():
+                        _sp3.run(["xdotool", "windowactivate", "--sync", _w], timeout=5)
+                        break
+                except Exception:                                               # noqa: BLE001
+                    pass
+            try:
+                import threading as _th3
+                _th3.Thread(target=_focus, daemon=True).start()
+            except Exception:                                                   # noqa: BLE001
+                pass
         _where = "进入 " + _tgt_kind
-        self._log(f"🚀 VSCode: {_where}{loc_desc}{_impl_desc} · 解释器 gui-venv311 已配置 "
+        _mwk = {"middleware-node": "🧩 中间件节点 → ", "impl": "🧩 模块实现 → "}.get(_loc_kind, "")
+        self._log(f"🚀 VSCode: {_mwk}{_where}{loc_desc}{_impl_desc} · 解释器 gui-venv311 已配置 "
                   f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)"
                   + (" · 已独立进程组 (关控制台不再带走它)" if _isolated else ""))
 

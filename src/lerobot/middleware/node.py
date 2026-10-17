@@ -41,7 +41,9 @@ class Node:
             return None
 
     def topic(self, port):
-        return _topic(self.spec.id, port)
+        # 话题名以工程库 mw_topic 为准 (落库真源); 库不可用时才回落到字符串拼法
+        _m = getattr(self.bus, "topic_map", None) or {}
+        return _m.get((self.spec.id, port)) or _topic(self.spec.id, port)
 
     # ── 输入 / 输出 ───────────────────────────────────────────────────
     def pull(self):

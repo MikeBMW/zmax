@@ -1213,9 +1213,16 @@ class ConfigCenterPage(QWidget):
         self._sync_star_banner()
         sp.addWidget(self.star_host)
         self._tree_need = self._tree_need_width()
-        self.tree.setMinimumWidth(self._tree_need)
-        self.tree.setToolTip("左侧栏宽度可按内容自适应, 也可直接拖分隔条调整 (宽度会记住)")
-        sp.setSizes([self._tree_need, 1000])
+        # 🎯 2026-10-17 老倪二次反馈「左侧面栏还是宽」——真因 (真屏实测 192DPI):
+        #   最长条目「⛔ 7. 文档配置 · 瑶光」= 246px ⇒ 内容需求 302px; 而记忆里存着 366px
+        #   (旧逻辑 max(need, saved) 也吃它) ⇒ 打开就 366。现在:
+        #   ① 记忆宽度**只允许更窄**(< 内容需求才用), 不许把栏开得比内容还宽
+        #   ② 最小宽度放到 170px, 想拖窄就能拖窄 (字被省略号截, 全文仍在条目 tooltip)
+        #   ③ 一个数就能压死: 环境变量 ZMAX_CFG_TREE_W=240 (或 QSettings 的
+        #      config_center/tree_width_pin), 见 _tree_pin()/_tree_open_width()
+        self.tree.setMinimumWidth(min(self._tree_need, 120))
+        self.tree.setToolTip("左侧栏宽度: 可拖分隔条 (记住); 拖窄后条目用省略号, 全文在同一条目的 tooltip")
+        sp.setSizes([self._tree_open_width(), 1000])
         sp.setChildrenCollapsible(False)          # 不许把左栏拖成 0 宽(会看不见)
         sp.setHandleWidth(8)                      # 原来 4px 太细, 鼠标不好抓
         self.splitter = sp
@@ -1276,6 +1283,8 @@ class ConfigCenterPage(QWidget):
     # ── 左侧栏宽度: 适配内容 + 可拖 + 记住 (2026-10-12 老倪「无法更改宽度, 字体都挡住了」) ──
     _TREE_W_KEY = "config_center/tree_width"
     _TREE_W_SIG_KEY = "config_center/tree_width_sig"   # 记宽度时树长什么样 (树变了 ⇒ 旧记忆作废)
+    _TREE_W_PIN_KEY = "config_center/tree_width_pin"   # 用户指定宽度 (0=不固定); env ZMAX_CFG_TREE_W 优先
+    _TREE_W_DEF_MAX = 220                              # 默认打开宽度上限 (px) —— 老倪 10-17「太宽」
 
     # ── 右侧超宽说明行 ⇒ 允许换行 (2026-10-12「无法更改宽度」的真凶) ──
     #   实测(真机 192DPI): 页1「工程配置」里一条 **2621px 的单行 QLabel** 把 QTabWidget 的最小宽度顶到
@@ -1367,11 +1376,15 @@ class ConfigCenterPage(QWidget):
                 ("  · 真源改于 %s%s" % (_mt, " ⚠️内部 updated=%s 未同步" % _upd if _stale else ""))
                 if _mt else "")
             # 左树只留星名 (计数/当前值进 tooltip 与配置页) —— 2026-10-15 老倪口径
-            txt = "%s %s" % (mark, _ss.star_line("prod"))
+            # 🎯 2026-10-17 「太宽」: 行里只显示「序号+名称」, 星名进 data/tooltip (与 _fill_tree 一致)
+            _txt_full = "%s %s" % (mark, _ss.star_line("prod"))
+            txt = re.sub(r"\s*·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光).*$", "", _txt_full)
             for i in range(self.tree.topLevelItemCount()):
                 it = self.tree.topLevelItem(i)
                 if it is not None and "产品配置" in it.text(0):
                     it.setText(0, txt)
+                    it.setData(0, Qt.UserRole, "prod")
+                    it.setData(0, Qt.UserRole + 1, _txt_full)
                     it.setToolTip(0, "%s\n\n真源 %s (%s)\n 每次读文件现算 (mtime 变了才重解析); "
                                      "任何窗口/客户端改了 active_product 都会自动跟上。"
                                      % (_ss_star_tip(_ss.star_line("prod")), REL_PRODUCT, REL_PRODUCT))
@@ -1406,16 +1419,81 @@ class ConfigCenterPage(QWidget):
         # + 展开箭头/图标(~22) + 边框(4) + 竖直滚动条(18) + 左右余量(12)
         return int(max(150, need + 22 + 4 + 18 + 12))
 
+    def _tree_pin(self):
+        """左栏宽度的**固定值**(用户明确指定才算): 环境变量 ZMAX_CFG_TREE_W > QSettings pin。"""
+        v = (os.environ.get("ZMAX_CFG_TREE_W") or "").strip()
+        if v:
+            try:
+                return max(120, min(900, int(float(v))))
+            except Exception:                                                   # noqa: BLE001
+                pass
+        try:
+            p = int(QSettings("ZMAX", "Console").value(self._TREE_W_PIN_KEY, 0) or 0)
+            return max(120, min(900, p)) if p else 0
+        except Exception:                                                       # noqa: BLE001
+            return 0
+
+    def _tree_cfg_width(self):
+        """🎯 用户自己改的数: config/platform/zmax_ui_layout.json 的 config_center_left_width。
+
+        ★ 老倪 2026-10-17: 「我自己改配置中心的左侧栏宽度, 数值在哪里, 我自己改」
+          ⇒ 真源落成**一个可编辑的 JSON 数值** (不是代码常量), 打开配置中心即读, 不用重启。
+        返回 0 = 没配/配 0 ⇒ 表示"按内容自适应"。
+        """
+        try:
+            _root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                 "..", ".."))
+            p = os.path.join(_root, "config", "platform", "zmax_ui_layout.json")
+            if os.path.isfile(p):
+                with open(p, encoding="utf-8") as f:
+                    d = json.load(f)
+                v = d.get("config_center_left_width")
+                if v is not None:
+                    v = int(float(v))
+                    return max(120, min(900, v)) if v else 0      # 0=自适应; 有效范围 120~900 (老倪自己填的数)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return 0
+
+    def _tree_open_width(self):
+        """打开时左栏宽度 —— 内容需求为基准, 但**默认压到 210px** (老倪 2026-10-17「现在太宽了」)。
+
+        口径:
+            pin(ZMAX_CFG_TREE_W / QSettings pin, 用户明确给数) > 记忆宽度(且 < 需求) > min(需求, 210)
+        210px 的取舍: 192DPI 下树里一条「⛔ 7. 文档配置 · 瑶光」= 246px, 210 会让尾部「· 瑶光」
+        显示成省略号 —— 序号+名称(AI 判断真正要看的) 完整可见, 完整串在条目 tooltip 里;
+        QTreeWidget 存的是**全文**, 省略号只在绘制层, 所以点选/分派逻辑不受影响。
+        """
+        need = int(getattr(self, "_tree_need", 0) or 0)
+        pin = self._tree_pin()
+        if pin:
+            return pin
+        cfg = self._tree_cfg_width()          # ★ 用户自己在 config/platform/zmax_ui_layout.json 里改的数
+        if cfg:
+            return cfg
+        try:
+            s = QSettings("ZMAX", "Console")
+            saved = int(s.value(self._TREE_W_KEY, 0) or 0)
+            saved_sig = str(s.value(self._TREE_W_SIG_KEY, "") or "")
+        except Exception:                                                       # noqa: BLE001
+            saved, saved_sig = 0, ""
+        if saved and saved < need and saved_sig == self._tree_sig():
+            return saved
+        return min(need, self._TREE_W_DEF_MAX) if need else self._TREE_W_DEF_MAX
+
     def _on_tree_split_moved(self, _pos, _idx):
         """用户拖动分隔条 ⇒ 记住宽度(下次开这个页面沿用)。
 
         🔴 2026-10-17 老倪「配置中心打开时左侧边栏太宽」——真因: 只记宽度不记**当时树长什么样**,
         历史遗留(8 项旧树/误拖)的 254px 被当成有效值每次沿用, 而 7 颗星的文本需求只要 184px。
-        现在同时记一份"树指纹"(条目数 + 最长条目像素/文本), 指纹一致才算有效记忆。"""
+        现在同时记一份"树指纹"(条目数 + 最长条目像素/文本), 指纹一致才算有效记忆;
+        且**记忆只有在比内容需求更窄时**才用于打开 (_tree_open_width), 拖动本身一律生效于当前窗口。
+        """
         try:
             s = QSettings("ZMAX", "Console")
             s.setValue(self._TREE_W_KEY, int(self.tree.width()))
             s.setValue(self._TREE_W_SIG_KEY, self._tree_sig())
+            s.setValue(self._TREE_W_PIN_KEY, 0)      # 手动拖过 ⇒ 清掉固定值, 以拖动结果为准
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -1439,18 +1517,24 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             return ""
 
-    def _apply_tree_width(self):
-        """落定左栏宽度: **树没变**才沿用用户拖过的宽度, 否则回到内容需求宽度 (默认就是合适的, 不开太宽)."""
+    def _reapply_tree_width(self):
+        """重读配置并重落宽度 —— 只在 (内容需求 / 配置数 / pin) 变了时才动, 避免把手拖结果冲掉。"""
         try:
-            s = QSettings("ZMAX", "Console")
-            saved = int(s.value(self._TREE_W_KEY, 0) or 0)
-            saved_sig = str(s.value(self._TREE_W_SIG_KEY, "") or "")
+            need = self._tree_need_width()
+            sig = (need, self._tree_cfg_width(), self._tree_pin())
+            if getattr(self, "_tree_applied_sig", None) == sig:
+                return
+            self._tree_need = need
+            self._tree_applied_sig = sig
+            self._apply_tree_width()
         except Exception:                                                       # noqa: BLE001
-            saved, saved_sig = 0, ""
+            pass
+
+    def _apply_tree_width(self):
+        """落定左栏宽度 —— 内容需求 / 更窄的记忆 / 用户 pin (见 _tree_open_width)。"""
         total = max(self.width(), self.splitter.width())
-        use_saved = bool(saved) and saved_sig == self._tree_sig()
-        want = saved if use_saved else self._tree_need
-        want = min(want, max(self._tree_need, int(total * 0.5)))                # 别把右栏挤没
+        want = int(self._tree_open_width())
+        want = max(min(self._tree_need, 120), min(want, max(self._tree_need, int(total * 0.5))))
         self.splitter.setSizes([want, max(1, total - want)])
 
     # ── 左侧域树 ──
@@ -1522,7 +1606,15 @@ class ConfigCenterPage(QWidget):
         self.tree.clear()
         for label, mark, kids in doms:
             _short = re.sub(r"\s{2,}.*$", "", label)          # 掉掉计数尾巴, 只留「N. 名称 · 星名」
-            it = QTreeWidgetItem([f"{mark} {_short}"])
+            # 🎯 2026-10-17 老倪「现在太宽了」: 行里只显示「序号 + 名称」, 去掉尾部「· 星名」
+            #   (星名在顶部阵图条与条目 tooltip 里都有)。全文仍存 QTreeWidget (只影响绘制层),
+            #   并把"全文/星 key"存进 item data ⇒ 点选分派逻辑照旧按全文走, 不会因为少了星名而点不动。
+            # 行文: 去掉「· 天枢/天璇/…」星名段 (及其后内容); 星名仍在阵图条与 tooltip
+            _row = re.sub(r"\s*·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光).*$", "", _short)
+            it = QTreeWidgetItem([f"{mark} {_row}"])
+            _k0 = _ss.key_for_label(label)
+            it.setData(0, Qt.UserRole, _k0)
+            it.setData(0, Qt.UserRole + 1, f"{mark} {_short}")   # 全文 (含 · 星名) —— 分派/复制用
             _tip = _ss_star_tip(label)
             _k = _ss.key_for_label(label)
             _det = ""
@@ -2032,6 +2124,14 @@ class ConfigCenterPage(QWidget):
 
     def _on_tree(self, item, _col):
         txt = item.text(0)
+        # 🎯 2026-10-17: 行里显示的是短版 (无「· 星名」), 分派/过滤一律用存下来的**全文**
+        #   (item data UserRole+1); 这样"左栏变窄"不影响任何点选语义。
+        try:
+            _full = item.data(0, Qt.UserRole + 1)
+            if _full:
+                txt = str(_full)
+        except Exception:                                                       # noqa: BLE001
+            pass
         # ⭐ 北斗七星阵顶层项 (2026-10-15): 先按**星名**分派到各自配置页。
         #   为什么必须放最前 —— 实测 bug: 序号 "2." 里有一个点, 下面的「参数 ID 分支」把
         #   「⛔ 2. 任务配置 · 天璇」当成参数 ID, 真源里查不到就只打印一行"配置中心里没有参数…",
@@ -3835,6 +3935,15 @@ class ConfigCenterPage(QWidget):
         # 🆕 2026-10-15 老倪「元任务窗口太矮了, 调高适配」——
         #   分隔条现在靠**两舱的最小高度**定尺寸 (在 _build_tabs 里设的), 不依赖"显示后补算",
         #   所以这里不再需要一次性 seed; 只有"老倪自己拖过"这个标记要留着 (见 _on_tm_split_moved)。
+        # 🎯 2026-10-17 老倪「宽度我改成 170 / 100 / 120 都没生效」——
+        #   配置中心窗口是**复用**的 (再点不新开第二个), 宽度只在**构造**时读一次
+        #   config/platform/zmax_ui_layout.json ⇒ 改完数值再点开 = 同一个 page, 不重读。
+        #   这里每次显示/切回都重读一次 (数没变就不动, 保留手拖的结果)。
+        try:
+            from PyQt5.QtCore import QTimer as _QT2
+            _QT2.singleShot(0, self._reapply_tree_width)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _on_tm_split_moved(self, *_a):
         """老倪自己拖过 ⇒ 记下来, 不再被自动覆盖。"""

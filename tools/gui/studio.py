@@ -986,7 +986,8 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.737")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.738")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
                        "断点调试: VSCode F5「🚀 全新调试进程」= 同一份 studio.py 新实例; F5 目标与本实例同源 (md5 已自检)")
@@ -994,6 +995,16 @@ class SystemSidebar(QFrame):
         logo_row.addWidget(ver)
         logo_row.addStretch()
         layout.addLayout(logo_row)
+        # 🎯 2026-10-17 老倪: 「主控制台的左侧栏, 太窄了, 版本号都没有显示全, 宽一些」
+        #   实测 (192DPI): 栏宽 200 → 版本文本只有 136px 可用, 而 "Z-MAX v5.50.73x" 要 ~155px
+        #   ⇒ 被裁掉 18px (他看到的 "版本号没显示全")。改为**按版本文本实测宽度算栏宽**:
+        #   ◀按钮 34 + 间距 6 + 文本 + 左右留白 24 + 右边框 1 + 余量 16 (给将来 v5.50.1000 这类 4 位小版本)
+        try:
+            ver.setMinimumWidth(ver.sizeHint().width())   # 标签自己也不许被压窄
+            _need = 34 + 6 + ver.sizeHint().width() + 24 + 1 + 16
+            self.setFixedWidth(max(200, _need))
+        except Exception:                                                        # noqa: BLE001
+            pass
 
         # 返回按钮
         home_btn = QPushButton("← 返回首页")
@@ -12091,6 +12102,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.738: 主控制台左侧栏改按版本文本实测算宽 (200→235px, 版本号不再被裁) · 画布顶栏 14 个按钮高度改按字高算 (9pt / 41px, 不再裁掉一半字) · 工具栏左侧 🎯跟随单步 / 🧮核心居中 两个勾选框补深色 pill 样式 (原来黑底黑字看不见) · 中间件话题名落库 mw_topic + tools/mw_db.py (status/sync/node/topics, 75 节点 273 话题可查可改, verify_mw_db 7/7)
         # v5.50.737: 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按老倪看图四轮收口: 只留 6 球+8 颗 SK 卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画 · 标签带天体名且不压球/不硬截断 · M 页套 QScrollArea(小窗不再把视图裁成 150px); 新增**视图选择落盘**(QSettings ZMAX/studio mparam/viz_view, 写后立刻 sync) — 根因: 下拉选择只在内存 ⇒ 控制台一重启回到第 0 项, 老倪开机看到的是四面板, 以为太阳系丢了(代码/真源没变, 球心引力判据 64/64); 配套新增元任务链执行器 (L2 功能→元任务→L3→L4 工单) 与 DiT 假接入留痕 (画布 ssdec 名写 DiT、实绑 MLP)
         # v5.50.736: 六节点代码 review + 单步调试器 (550B 可 debug/可单步/看到实际代码): 新增 tools/node_debug.py = 流形引擎/流形专家/接触流形/性能流形/DiT/加速器 六节点的真实单步执行器 — 每步调的都是节点自己在跑的那个函数 (manifold_engine.project/gradient_flow/navigate/step/feedback_update · manifold_layer.ContactManifold._error/channel_axis/decompose · PerformanceManifold.evaluate · predictor_layer.LatentPredictor/ManifoldReadout · state_space_action_head.StateSpaceActionHead.forward · parallel.FeedforwardAccelerator.forward/analytic_forward), 输入取真源 (画布落盘 ss_traj_last.json 357×43 + u_exec_vec · engine_latest.json · models/manifold_engine.npz), 每步打印 输入→输出→真源→耗时 + 不变量自检; --step 回车单步 · --pdb (pdb.set_trace 真进源码, 亦可用 ZMAX_DEBUG_BREAK=1, 与画布「右键源码→VSCode 断点」同口径) · --src 打印每个环节的绝对路径+行号 (code -g 直接断点) · --all --json 写全轨迹; 档位门: 只有 550B 标定/调试档允许深调试 (550A/550C 拒绝并说明)。 review 抓到并修掉三处真缺陷 (均带 2026-10-16 回溯注释): ① manifold_engine.gradient_flow 在 goal_point=None 时 φ 与梯度静默恒 0 —— 调用方分不清「已到目标」与「根本没设目标」, 现在给 no_goal 显式标记 + note (数值口径不变) ② PerformanceManifold.evaluate 键名两套 (Vp vs 文档/消费侧 V_p) ⇒ 同时给 V_p 别名 (同一份数, 向后兼容) ③ docs/design/zmax_intent_bundle_3layer.md 写接触流形势 V=½‖e⊥‖², 与代码 V=½‖e‖² (manifold_layer.py:141 总误差势; 自由空间段 e∥=e、风险=0) 不一致 ⇒ 按代码校正。 新增判据 tools/verify_node_debug.py 33/33 (结构/真源/执行/档位/调试能力/诚实性六段): 入口 file:line 逐条真命中 def node_* · 四种连接方式锚点符号真存在 · 观测通道划分与 su2.py:253 注释逐字一致 · 六节点真跑不变量 6/6 · 引擎投影 ‖p‖=1.000000000 · 接触流形独立重算与 decompose 逐位一致 (进度 0.1250/0.1250 · V 0.0078/0.0078) · 性能流形 V_p/η/∇V_p 三项一致 (0.1290/0.1290) · 前馈方向 == 误差方向 cos=0.9980 · DiT z⁷ 7 维 + 动作块 4×7 · 专家流形读出 6 维 · 550B 允许深调试而 550A/550C 真拦 (exit=2) · 真源缺失/未训练权重一律如实报 (不填 0 不冒充在役)。 文档 docs/design/节点代码review_流形链路_v5.50.736.md (逐条带源码行号 + 四种连接方式锚点 + 遗留如实记录: DiT/专家未加载 ckpt ⇒ 只证结构可执行; DiT 5 路条件值 engine_latest.json 无字段 ⇒ 报未测)
         # v5.50.735: 原子技能物理惯性/质量变化率约束 + 偏差 error 分流: ⚖ 物理闸进每个 L2 技能 (①速度 ②加速度 ③加加速度 ④动量/质量变化率), 不可执行即发偏差 error → 小偏差进状态校正器 / 大偏差经融合定位 → 流形引擎顶层结构补偿  老倪: 「所有 L2 层的原子动作, 都要有物理质量变化率的约束 … 每个技能都清楚的知道自己动作的惯性 … 如果不能执行, 可以发出偏差 error, 这个 error 可以反馈给状态校正节点; 如果误差太大, 则可以通过融合定位节点, 将大偏差先直接反馈给流形引擎节点, 从而改变顶层结构, 修复补偿偏差」  ① 盘查 9/9: 每技能带 m/F_max/v_cap/a_max/jerk_max/dm·dt⁻¹ 且 a_max==F/m 自洽 (真源 execution.py 臂段质量 1.20/1.35kg + FORCE_LIMIT 5N + 金手指保护 ≤2N) ② 技能派发服务每拍过闸: 过闸 15.3 万次, 削因 速度 87330/加加速度 222/加速度 4 ③ 偏差进状态校正器 state_correction(err=, w_err=) 已接线 ④ 大偏差 → 融合定位核对 (帧龄 ≤2s + 连续 ≥3 拍) → 流形引擎目标点补偿 2mm/次 累计封顶 20mm, 拒绝/等持续/补偿/到顶四态都落 trace ⑤ 画布新增 ⚖物理约束闸 节点 + 12 条连线 (8 技能→闸 · 闸→安全边界 · 闸→校正器 · 闸→融合定位), 90 节点/202 连线渲染一致  实测: 插入请求 0.112→可行 0.085 (偏差 62mm/s) · 完成偏差 100mm/s · 判据 verify_physics_constraints 34 条全过 · 盘查 audit_skill_inertia 9/9 过 · 引擎 action 零回归
@@ -12809,7 +12821,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.737  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.738  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15124,7 +15136,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.737</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.738</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
@@ -15716,7 +15728,17 @@ def main():
         _qtimer_q.start()
     except Exception as _e:                                                  # noqa: BLE001
         print("⚠️ 信号处理挂钩异常(不影响控制台): %s" % _e, flush=True)
-    sys.exit(app.exec_())
+    _rc = app.exec_()
+    # 🎯 2026-10-17 老倪关窗口时控制台崩: 「QThread: Destroyed while thread is still running」
+    #   + Fatal Python error: Aborted (exit -6 + core dump)。Qt 事件循环已退出, 但信号页回放/
+    #   3D/看门狗这些 QThread 还没 join ⇒ 解释器 finalize 阶段回收 = abort (日志里每次都留一段堆栈)。
+    #   直接 os._exit 跳过 finalize (和 SIGTERM 通道同款处置)。
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:                                                       # noqa: BLE001
+        pass
+    os._exit(int(_rc) if isinstance(_rc, int) else 0)
 
 
 
