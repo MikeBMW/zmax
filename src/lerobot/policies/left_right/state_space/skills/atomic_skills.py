@@ -197,7 +197,7 @@ class AtomicSkill:
         return [0.0, 0.0, z]
 
     @classmethod
-    def next_target(cls, ctx=None, points=None, spec=None, with_phys=False):
+    def next_target(cls, ctx=None, points=None, spec=None, with_phys=False, cur=None):
         """🎯 本段目标位姿 — 唯一定义处。
 
         ctx:    仿真几何 {"peg":[3], "head_off":[3], "table_z":f, "hole_mouth":[3], "hole":[3]}
@@ -229,6 +229,17 @@ class AtomicSkill:
                 xyz = _pos + off
             quat = list(_p["quat"]) if _p.get("quat") else None
             src = "taught_points[%s]" % _name
+        elif ref == "rel":                                    # 真机 line_rel: 当前位姿 + 轴偏移
+            if cur is None:
+                return None
+            _ax = str((spec or {}).get("axis") or r.get("axis") or "z_pos")
+            _d = float((spec or {}).get("d_m") or 0.0)
+            _v = np.asarray(cur, dtype=float).ravel()[:3].copy()
+            _i = {"x": 0, "y": 1, "z": 2}.get(_ax[0].lower(), 2)
+            _sgn = -1.0 if _ax.lower().endswith("neg") else 1.0
+            _v[_i] += _sgn * abs(_d)
+            xyz = _v
+            src = "cur+%s%.3fm" % (_ax, abs(_d))
         elif ref == "point":                                  # 声明只认点位, 但点位不在库 ⇒ 不编
             return None
         else:                                                 # 仿真: 几何上下文
@@ -675,6 +686,35 @@ def bind_limiter(lim):
     """
     AtomicSkill._LIMITER = lim
     return lim
+
+
+def rule_for_skill(sk):
+    """registry 技能 (data/skills/l2_atomic/registry.json) → 目标规则。**97 条全覆盖**。
+
+      · ros=line_abs / 多阶段技能的阶段 to ⇒ {"ref":"point"}  (点位库 + 偏置 0)
+      · ros=line_rel                      ⇒ {"ref":"rel", "axis": …}  (当前位姿 + 轴偏移)
+      · 服务型 (ros=service/url 调用, 如 AOI 接口) ⇒ None (它不产生位姿目标, 别硬塞)
+    返回 None = 该技能没有位姿目标 (调用方如实退回原逻辑)。
+    """
+    if not isinstance(sk, dict):
+        return None
+    _ros = str(sk.get("ros") or "").strip().lower()
+    if _ros == "line_abs":
+        return {"ref": "point"}
+    if _ros == "line_rel":
+        return {"ref": "rel", "axis": str(sk.get("axis") or "z_pos")}
+    return None
+
+
+def target_of_skill(sk, points=None, spec=None, cur=None):
+    """按 registry 技能定义解析目标位姿 (不依赖具体 SK 类): {xyz,quat,ref,src} 或 None。"""
+    r = rule_for_skill(sk)
+    if not r:
+        return None
+    # 一次性子类承载规则 (不改任何具体技能类的 TARGET, 也不动全局状态)
+    _tmp = type("SKTmp", (AtomicSkill,),
+                {"TARGET": r, "stage": str(sk.get("id") or ""), "params": {}})
+    return _tmp.next_target(points=points, spec=spec, cur=cur)
 
 
 def skill_for(stage):

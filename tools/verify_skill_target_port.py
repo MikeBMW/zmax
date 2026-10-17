@@ -198,6 +198,45 @@ def main() -> int:
        f"远端 ‖u‖={np.linalg.norm(far['u']):.4f} m/s (v_cap {cap}) · 方向同目标={bool(d_far)} · "
        f"到点 ‖u‖={np.linalg.norm(near['u'])} · 走完段={len(eng.stages_visited) if hasattr(eng,'stages_visited') else '—'}")
 
+    # ── ⑧ 97 条真机技能全覆盖: 技能口解析 == 旧 build_move 口径 (逐位) ────────────
+    sys.path.insert(0, os.path.join(REPO, "tools"))
+    _ld = _load_by_path("vsk_l2daemon", os.path.join(REPO, "tools/l2_daemon.py"))
+    _ld._ASKILLS = SK                      # 直接复用已加载的技能库, 不重复 exec
+    _cur = [0.648842, 0.498298, 0.110398]
+    _curq = [-0.7392228, 0.0034525, -0.6733947, 0.0087927]
+    n_checked = n_eq = n_none = n_both_none = 0
+    diffs = []
+    for sid, sk in items:
+        if not isinstance(sk, dict):
+            continue
+        n_checked += 1
+        spec = {"d_mm": 50}
+        old = _ld.build_move(sk, spec, pts, cur=_cur, curq=_curq)
+        r = SK.rule_for_skill(sk)
+        if r is None:
+            n_none += 1                            # 无位姿目标 (服务型) — 如实登记, 不算失败
+            continue
+        if r["ref"] == "point":
+            name = (sk.get("point") if sk.get("point_locked") and sk.get("point")
+                    else spec.get("point") or ((sk.get("param") or {}).get("point") or {}).get("default")
+                    or sk.get("point") or "home")
+            new = SK.target_of_skill(sk, points=pts, spec={"point": name}, cur=_cur)
+        else:
+            new = SK.target_of_skill(sk, points=pts, spec={"axis": sk.get("axis"), "d_m": 0.05}, cur=_cur)
+        if old is None or new is None:
+            n_both_none += 1 if (old is None and new is None) else 0
+            if (old is None) != (new is None):
+                diffs.append((sid, "一边有目标一边没有"))
+            continue
+        d = float(np.max(np.abs(np.asarray(new["xyz"]) - np.asarray(old[0]))))
+        if d < 1e-12:
+            n_eq += 1
+        else:
+            diffs.append((sid, d))
+    ck("⑧97 条技能全覆盖且与旧口径一致", not diffs and n_eq > 0,
+       f"检查 {n_checked} 条 · 逐位一致 {n_eq} · 两边都拒(点位不在库) {n_both_none} · "
+       f"无位姿目标(服务型) {n_none} · 不一致 {diffs[:3] or '无'}")
+
     n_pass = sum(1 for r in ROWS if r["结果"] == "PASS")
     print("\n" + "=" * 80)
     print(f"判据 {n_pass}/{len(ROWS)} PASS")

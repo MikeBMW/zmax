@@ -39,6 +39,52 @@ _REPO = os.path.dirname(_HERE)
 TAUGHT = os.path.join(_REPO, "data", "skills", "l2_atomic", "taught_points.json")
 
 
+# ── 🎯 2026-10-16 技能执行口: MoveIt 的目标改由原子技能给 (老倪: 「MoveIt 怎么选实际的原子任务动作」)
+#   以前: 目标只能人工给 (--to 示教点 / --goal-xyz)。现在: 技能选段 + 技能口算目标位姿
+#   (点位 + 本段偏置, 与仿真/真机共用同一份规则), MoveIt 只负责把目标规划成轨迹。
+#   目标来源三档: ①--goal-xyz 人工直接给 ②--stage/--auto 技能口给 ③--to 示教点 (原行为)
+SKILLS_PY = os.path.join(_REPO, "src", "lerobot", "policies", "left_right", "state_space",
+                         "skills", "atomic_skills.py")
+GATE_F = os.path.join(SS_REMOTE, "skill_gate.json")
+GATE_MAX_AGE = float(os.environ.get("SS_GATE_MAX_AGE", "10.0"))   # 段来源的时效 (秒), 超时报帧龄
+
+
+def _atomic():
+    """按路径加载技能库 (与引擎同一份文件; 失败返回 None, 调用方如实退回原行为)"""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("zmax_atomic_skills", SKILLS_PY)
+        m = importlib.util.module_from_spec(spec)
+        sys.modules["zmax_atomic_skills"] = m
+        spec.loader.exec_module(m)
+        return m
+    except Exception as e:                                          # noqa: BLE001
+        print("⚠ 技能库加载失败 (%s) → 只能用 --to/--goal-xyz" % e)
+        return None
+
+
+def _stage_of(a):
+    """当前原子技能段: --stage 直接给; --auto 读引擎发布的 skill_gate.json (带帧龄)"""
+    if a.stage:
+        return str(a.stage), "cli(--stage)"
+    if not a.auto:
+        return None, ""
+    if not os.path.exists(GATE_F):
+        print("… 未找到 %s (引擎还没发布过闸/段真值) → 无法 --auto" % GATE_F)
+        return None, ""
+    try:
+        d = json.load(open(GATE_F, encoding="utf-8"))
+    except Exception as e:                                          # noqa: BLE001
+        print("… %s 读不了: %s" % (GATE_F, e))
+        return None, ""
+    age = time.time() - float(d.get("ts") or 0)
+    if age > GATE_MAX_AGE:
+        print("… 段真值陈旧: %s 帧龄 %.1fs (>%.0fs) → 不猜, 退回人工 --stage/--to" % (
+            d.get("stage"), age, GATE_MAX_AGE))
+        return None, ""
+    return str(d.get("stage") or ""), "engine(skill_gate.json, 帧龄%.1fs)" % age
+
+
 def newest(pat):
     fs = glob.glob(pat)
     return max(fs, key=os.path.getmtime) if fs else None
@@ -123,14 +169,40 @@ def main():
     ap.add_argument("--to", default="slot7", help="示教点名(默认 slot7)")
     ap.add_argument("--goal-xyz", nargs=3, type=float, default=None, help="直接给目标位置(m)")
     ap.add_argument("--goal-quat", nargs=4, type=float, default=None, help="目标姿态 xyzw")
+    ap.add_argument("--stage", default=None,
+                    help="原子技能段 (接近/对位/下降/抓取/抬起/转移/插入/完成): 目标由技能口给")
+    ap.add_argument("--auto", action="store_true",
+                    help="当前段从引擎发布的 ss_live/skill_gate.json 取 (超时报帧龄, 不猜)")
     ap.add_argument("--interval", type=float, default=1.0)
     ap.add_argument("--watch", action="store_true", help="常驻, 每 interval 秒刷新真机状态")
     ap.add_argument("--once", action="store_true")
     a = ap.parse_args()
 
+    st_name, st_src = _stage_of(a)
     if a.goal_xyz and a.goal_quat:
         goal, gq = [float(x) for x in a.goal_xyz], [float(x) for x in a.goal_quat]
         gname = "cli"
+    elif st_name:
+        # 🎯 技能口: 目标位姿 = 示教点(--to) + 本段偏置 (与仿真/真机同一份规则)
+        _sk = _atomic()
+        _cls = getattr(_sk, "skill_for", lambda *_: None)(st_name) if _sk is not None else None
+        if _cls is None or not getattr(_cls, "TARGET", None):
+            print("✗ 段「%s」没有技能类或没声明目标规则 (拔出/AOI 等 5 段尚未接) → 用 --to/--goal-xyz" % st_name)
+            return 2
+        _t = taught(a.to)
+        if not _t:
+            print("✗ 示教点不存在: %s (见 %s)" % (a.to, TAUGHT))
+            return 2
+        _pts = {a.to: {"pos": [float(v) for v in _t[0]], "quat": [float(v) for v in _t[1]]}}
+        _tg = _cls.next_target(points=_pts, spec={"point": a.to})
+        if _tg is None:
+            print("✗ 技能口解不出目标 (段 %s @ %s)" % (st_name, a.to))
+            return 2
+        goal, gq = [float(v) for v in _tg["xyz"]], [float(v) for v in (_tg.get("quat") or _t[1])]
+        gname = "skill:%s@%s" % (getattr(_cls, "code", "?"), a.to)
+        print("🎯 段=%s (来源 %s) · 技能口参考=%s · 偏置=%s mm" % (
+            st_name, st_src, _tg.get("src"),
+            [round(float(v) * 1000, 1) for v in _tg.get("off", [0, 0, 0])]))
     else:
         t = taught(a.to)
         if not t:
@@ -146,6 +218,9 @@ def main():
         st = real_state()
         if st:
             rec = {"ts": time.time(), "goal_name": gname, "goal_xyz": goal, "goal_quat": gq,
+                   "goal_src": ("skill" if str(gname).startswith("skill:") else
+                                ("cli" if gname == "cli" else "taught")),
+                   "goal_stage": st_name or "",
                    "jpos": st["jpos"], "tcp": st["tcp"], "tcp_quat": st["tcp_quat"],
                    "real_t": st.get("t"), "src": "real(tap readonly)"}
             tmp = REQ + ".tmp"

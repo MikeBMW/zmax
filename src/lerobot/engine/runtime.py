@@ -1010,8 +1010,47 @@ class RealStateSpaceSim:
                 self.lim = None
                 self.log(f"⚠ 原子技能物理闸未接入 ({type(_e).__name__}: {_e}) — 回退旧的阶段等比缩放")
         self._gate_pub_last = 0.0
+        # 🎯 2026-10-16 原子技能驱动动作 (真物理路): ZMAX_SKILL_FF=1 ⇒ u_ff 由技能自己产出
+        #   u = k·(本段目标 − 末端), 限本段 v_cap, 到容差→0; 目标仍取 _stage_target() (真物理路
+        #   的阶段目标带抓取自适应/螺旋搜索等现场策略, 不搬到技能类, 技能类只负责"给动作")。
+        self.skill_ff = os.environ.get("ZMAX_SKILL_FF", "0") not in ("0", "false", "off")
+        self.skill_k = float(os.environ.get("ZMAX_SKILL_K") or 6.0)
+        self.skill_cmd = None
 
     # ══════════════════════════════════════════════════════════════════════════
+    def _skill_ff(self, u_ff):
+        """🎯 原子技能驱动: u_ff[:3] ← k·(本段目标 − 末端), 限本段 v_cap, 到容差→0。
+
+        只在 ZMAX_SKILL_FF=1 时被调用; 夹爪维原样保留 (仍由状态机 gripper_cmd 决定)。
+        目标 = `_stage_target()` (真物理路的阶段目标, 含抓取自适应/两段式插入/螺旋搜索),
+        技能类在这里的职责是"把目标变成动作"(与仿真同一个执行口约定), 不复制目标策略。
+        出错 → 原样返回加速器给的 u_ff (不静默变成零动作)。
+        """
+        try:
+            _st = self.sched.stage()
+            _tgt = np.asarray(self._stage_target(), dtype=float).ravel()[:3]
+            _x = np.asarray(self.x, dtype=float).ravel()[:3]
+            _e = _tgt - _x
+            _d = float(np.linalg.norm(_e))
+            _cap = float((self.sched.v_cap or {}).get(_st) or 0.0)
+            _tol = float(os.environ.get("ZMAX_SKILL_TOL") or 0.002)
+            if _d <= _tol:
+                _u = np.zeros(3)
+            else:
+                _u = self.skill_k * _e
+                _n = float(np.linalg.norm(_u))
+                if _cap > 0 and _n > _cap:
+                    _u = _u * (_cap / _n)
+            _out = np.asarray(u_ff, dtype=float).copy().ravel()
+            _out[:3] = _u
+            self.skill_cmd = {"stage": _st, "target": [round(float(v), 5) for v in _tgt],
+                              "err_m": round(_d, 5), "u": [round(float(v), 5) for v in _u],
+                              "v_cap": _cap, "reached": bool(_d <= _tol)}
+            return _out
+        except Exception as _e:                                        # noqa: BLE001
+            self.skill_cmd = {"err": "%s: %s" % (type(_e).__name__, _e)}
+            return u_ff
+
     def _publish_gate(self, stage=""):
         """⚖ 原子技能物理闸发布 (2026-10-16): 本拍闸门结果 → `zmax_data/ss_live/skill_gate.json`
 
@@ -3352,6 +3391,9 @@ class RealStateSpaceSim:
                 tr.setdefault("il_u_ff_vec", []).append(np.asarray(_ui, float).copy())
                 tr.setdefault("il_manifold_vec", []).append(
                     np.asarray(_ii.get("manifold"), float).copy())
+            # 🎯 2026-10-16 原子技能驱动动作 (ZMAX_SKILL_FF=1): u_ff 由技能口产出
+            if getattr(self, "skill_ff", False):
+                u_ff = self._skill_ff(u_ff)
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
             # ⚖ 原子技能物理闸逐拍取证 + 5Hz 发布 (2026-10-16)
             #   闸在 decide 内部完成 (u_ff → SK01-08 段包络 → 五条物理约束 → 削后 u);

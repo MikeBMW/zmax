@@ -254,6 +254,18 @@ def build_move(sk, spec, pts, cur=None, curq=None):
             t[0] = p[0] + d
         elif a == "y":
             t[1] = p[1] + d
+        # 🎯 2026-10-16 原子技能执行口 (opt-in, 相对运动): 技能声明 "atomic_rel":"SK0x" ⇒
+        #   目标位姿由技能口算 (当前位姿 + 轴偏移), 与上面逐个 if 同一口径;
+        #   没这个字段的技能 (在役全部) 行为逐位不变。
+        _ar = str(sk.get("atomic_rel") or "")
+        if _ar:
+            _m = _atomic_skills()
+            _cls = getattr(_m, _ar, None) if _m is not None else None
+            if _cls is not None and getattr(_cls, "TARGET", None):
+                _tg = _cls.next_target(cur=p, spec={"axis": a, "d_m": d})
+                if _tg is not None:
+                    t = list(_tg["xyz"])
+                    log("🎯 %s 目标位姿 ← %s (原子技能执行口·相对, %s)" % (sk.get("id"), _ar, _tg.get("src")))
     elif sk["ros"] == "line_abs":
         # 🛡 2026-09-20 事故修复: 技能可用 point_locked 把目标点锁死在技能定义里 —
         #   收到 spec.point 一律忽略(防 GUI/调用方误送别的点), 并记一条告警。
