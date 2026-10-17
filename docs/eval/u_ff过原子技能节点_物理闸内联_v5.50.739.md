@@ -109,6 +109,7 @@ cd /home/ubuntu/zmax
 ./gui-venv311/bin/python tools/ab_l2_inline_gate.py                       # 解析引擎 A/B + 四条判据
 ./gui-venv311/bin/python tools/ab_l2_inline_gate_real.py --seeds 104,11,105 --steps 500   # 真物理 A/B
 ./gui-venv311/bin/python tools/ablate_l2_gate_real.py --seed 104 --steps 500              # 逐条约束消融
+./gui-venv311/bin/python tools/sweep_l2_gate_jerk.py --seed 104 --steps 500                # jerk 上限倍率扫描
 ./gui-venv311/bin/python -c "import sys;sys.path.insert(0,'src');from lerobot.middleware.nodes import gate_truth as g;print(g.one_line())"
 ```
 落盘：`zmax_data/eval/ab_l2_inline_gate.json`、`ab_l2_inline_gate_real.json`、
