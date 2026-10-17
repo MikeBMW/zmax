@@ -148,6 +148,14 @@ HOST_SOURCES = [
     #   v_cap/a_max/jerk_max/s_step/s_max/m/F 物理包络) = 每条一行, 「实测曲线 vs 物理上限」可同图叠。
     #   DDS 侧同一份数据的通道 = zmax/skill_sk01 … zmax/skill_sk08 (类型 zmax::SSSkillPhys)。
     ("skillphys", "zmax_data/ss_live/skill_phys.json"),
+    # 🌍 万有引力表 (主参数 M 页) 的力 —— 老倪 2026-10-16: 「将万有引力的所有信号, 都加到插拔场景的
+    #   信号分析窗口, 我要运行检查」+「集中显示力的大小」(改口径) +「力的大小, 和力的实部即可」。
+    #   真源 = 表自己的数据层 tools/gui/gravity_table.py::GravityField (同一拍同一批真源 ⇒ 波形与
+    #   屏幕上那张表同源), 由常驻发布器 tools/gravity_trace_pub.py 每拍写一帧 (只认 TASK-01-FW* ⇒
+    #   固定标「插拔场景·绿」)。只发两个口径: 力的大小 |F| · 力的实部 w (=|F|/u_ref), 不铺四元数四个分量。
+    #   ⚠️ 94 条信号 ≫ flatten_json 的 48 键上限 ⇒ 走下面的 `s` 直取分支 (与 skillphys/ar 同款),
+    #      绝不许回落 flatten (回落会静默只进 48 条, 看着像"部分项没有力")。
+    ("gravity", "zmax_data/ss_live/gravity_trace.json"),
     # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
     #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
     #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
@@ -450,7 +458,14 @@ class HostJsonSource(threading.Thread):
                 # 🥽 AR/AOI 源(ar_aoi_live.json): 它的信号表就在 `s` 里(86 条), 而且 groups 的组名就是信号名
                 #   ⇒ 直接取 s 的键, 不走 flatten。**踩过的坑**: flatten_json 有 48 键上限, 原来 AR 的 86 条
                 #   只进来 48 条(老倪: 「AR场景的信号呢?」), 且键名前缀会多出 "s."(组名对不上, 全掉进"其它信号")。
-                if prefix == "skillphys" and isinstance(raw.get("skills"), dict):
+                if prefix == "gravity" and isinstance(raw.get("s"), dict):
+                    # 🌍 万有引力表 (主参数 M 页) 的力: 94 条 (8 项×4 层×(力大小·实部) + 行/列/总合力 + 标量)
+                    #   ⚠️ 必须走这条**直取 s 键**的分支 —— flatten_json 封顶 48 键, 实测回落时只有 48 条进
+                    #   目录(判据⑦抓到: "store 48 条"), 页面看着就像"一半的项没有力"(与 AR 源 86 条那次同一个坑)。
+                    #   元数据键 (ts/时间_s/运行/task_id/阶段) 不在 s 里 ⇒ 天然不进目录。
+                    vals = {str(k): float(v) for k, v in raw["s"].items()
+                            if isinstance(v, (int, float)) and not isinstance(v, bool)}
+                elif prefix == "skillphys" and isinstance(raw.get("skills"), dict):
                     # ⚖ 原子技能物理量: 键 = "<SK号> <阶段> · <物理量> <单位>" ⇒ 一行一条自解释, 目录里搜 "SK01"
                     #   就是这一个技能的全部物理量。**不走 flatten_json**: 它 48 键封顶(AR 源踩过这个坑),
                     #   这里是 8 技能 × 17 条 = 136 条, 截断会变成"一部分技能有信号、一部分没有"的静默缺项。
@@ -1957,7 +1972,11 @@ class CanoeGraphicWidget(QWidget):
                   #   top1 = 最高分元任务得分; spread = top1−top2 (区分度, 越大越"选得准");
                   #   ⚠️ 驱动扭矩恒定时 (frozen=1) spread 恒小 ⇒ 如实标注"预测无区分度", 不吹成有预测力。
                   "ds.zmax/ss_meta_pred.mt1", "ds.zmax/ss_meta_pred.mt2",
-                  "ds.zmax/ss_meta_pred.mt3", "ds.zmax/ss_meta_pred.spread")
+                  "ds.zmax/ss_meta_pred.mt3", "ds.zmax/ss_meta_pred.spread",
+                  # 🌍 2026-10-16 老倪「将万有引力的所有信号都加到插拔场景的信号分析窗口」:
+                  #   万有引力表 (主参数 M 页) 的力 —— 只发两个口径: 力的大小 |F| + 力的实部 w。
+                  #   真源 = tools/gravity_trace_pub.py 每拍搬表自己的 GravityField (与屏幕上那张表同源)。
+                  "gravity.插入·L2 力大小_mps", "gravity.总合力 实部")
 
     def _apply_watch(self):
         """被「➕ 增加信号话题」点名但当时还没出帧的话题: 一有字段出现就自动勾上"""
@@ -2542,6 +2561,7 @@ class CanoeGraphicWidget(QWidget):
     #     动作调制/前馈/安全边界 = 画布同名节点; 末端 = 真机 TCP; 光模块类 = YOLO→2D→3D 解算链。
     # 没进表的按"来源族"给最保守的节点名(画布数据源 / 本机真值流), 绝不编造节点。
     OUT_NODE_RULES = (                       # 顺序要紧: 长的/具体的排前面
+        ("gravity.", "🌍 万有引力表 (主参数 M 页 · 力的大小/实部)"),
         ("sseng.势能_phi", "🧮 流形引擎 (Manifold Engine)"),
         ("sseng.梯度范数", "🧮 流形引擎 (Manifold Engine)"),
         ("sseng.动量M", "🧮 流形引擎 (度规/等效惯量)"),
