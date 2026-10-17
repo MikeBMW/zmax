@@ -1713,39 +1713,31 @@ class CanoeGraphicWidget(QWidget):
                                                 self._log("📌 已清掉手动标记线")))
         # (pin_cb 挂在 wave 建好之后)
 
-        # 第一行: 运行控制 + 时间/光标/缩放
+        # 🧹 2026-10-17 老倪: 「按钮合并成一行, 按钮的第二行没有用的都删掉」
+        #    留下的都是每次真会点的; 其余控件仍构造 (代码里还在引用 .isChecked()), 只是不上面板。
         for w in (self.b_start, self.b_pause, self.b_stop, self.b_clear):
             bar.addWidget(w)
         bar.addSpacing(8)
         bar.addWidget(self.win_combo)
         bar.addWidget(self.b_follow)
         bar.addSpacing(8)
-        for w in (self.b_cursor, self.b_diff, self.b_fit, self.b_zin, self.b_zout):
-            bar.addWidget(w)
-        bar.addSpacing(6)
-        for w in (self.b_pan_l, self.b_pan_r, self.b_pan_u, self.b_pan_d):
-            bar.addWidget(w)
-        bar.addWidget(self.b_bold)
+        bar.addWidget(self.b_fit)
+        bar.addWidget(self.ymode)
+        bar.addWidget(self.scope_combo)
+        bar.addWidget(self.b_list)
+        bar.addSpacing(8)
+        bar.addWidget(self.b_pin)
+        bar.addWidget(self.b_csv)
         bar.addStretch()
         root.addLayout(bar)
 
-        # 第二行: 显示选项 + Signal Logging / 导出
-        bar2 = QHBoxLayout()
-        bar2.setSpacing(6)
-        bar2.addWidget(self.ymode)
-        bar2.addWidget(self.scope_combo)
-        bar2.addWidget(self.b_add)
-        bar2.addSpacing(8)
-        for w in (self.b_grid, self.b_pts, self.b_list, self.b_yrange):
-            bar2.addWidget(w)
-        bar2.addSpacing(8)
-        for w in (self.b_abs, self.b_pin, self.b_pinclear):
-            bar2.addWidget(w)
-        bar2.addSpacing(8)
-        for w in (self.b_log, self.b_imp, self.b_csv, self.b_png):
-            bar2.addWidget(w)
-        bar2.addStretch()
-        root.addLayout(bar2)
+        _UNUSED = (self.b_cursor, self.b_diff, self.b_zin, self.b_zout, self.b_pan_l,
+                   self.b_pan_r, self.b_pan_u, self.b_pan_d, self.b_bold, self.b_grid,
+                   self.b_pts, self.b_yrange, self.b_add, self.b_log, self.b_imp,
+                   self.b_abs, self.b_pinclear, self.b_png)
+        for _w in _UNUSED:              # 不上面板, 但保持对象活着 (别的地方还在读它的状态)
+            _w.setParent(self)
+            _w.hide()
 
         for b, fn in ((self.b_start, self.start), (self.b_stop, self.stop),
                       (self.b_clear, self.clear), (self.b_fit, self._fit),
@@ -1783,7 +1775,9 @@ class CanoeGraphicWidget(QWidget):
         self.lb_legend.setTextFormat(Qt.RichText)
         self.lb_legend.setStyleSheet(f"font-size:13px;")
         st.addWidget(self.lb_legend)
-        root.addLayout(st)
+        for _w in (self.lb_state, self.lb_info, self.lb_legend):   # 文字行只留八阶段
+            _w.setParent(self)
+            _w.hide()
 
         # ── 八阶段状态机: **文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」) ──
         #    八段名 = 真源 ActionModulator.STAGES 的插拔八段 (由 3D 面板随快照发下来的「八阶段表」),
@@ -1816,7 +1810,8 @@ class CanoeGraphicWidget(QWidget):
         self.lb_meta.setToolTip("元任务预测 = 🧾 元任务预测节点 (驱动扭矩 T_drive=M·(−∇Φ) → 逐元任务得分);\n"
                                 "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 真源 zmax_data/ss_live/meta_pred.json\n"
                                 "生成: gui-venv311/bin/python tools/ss_meta_predict.py --scene SCN-01-FW --write")
-        root.addWidget(self.lb_meta)
+        self.lb_meta.setParent(self)     # 老倪: 八阶段之外的文字行全删
+        self.lb_meta.hide()
 
         # ── 🧩 动作块: **文字**一行 (老倪 2026-10-15「Flow Matching Action Head 的输出是个 chunk action …
         #    应该有输出 topic, 在信号分析里显示」) ──
@@ -1835,7 +1830,8 @@ class CanoeGraphicWidget(QWidget):
                                  "话题 zmax/ss_action_chunk (type zmax::SSActionChunk) · "
                                  "真源 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写)\n"
                                  "技能派发循环服务: systemctl status zmax-ss-skill-dispatch (60Hz)")
-        root.addWidget(self.lb_chunk)
+        self.lb_chunk.setParent(self)    # 老倪: 八阶段之外的文字行全删
+        self.lb_chunk.hide()
 
         # ── 主体: 左信号栏 + 右波形 ──
         split = QSplitter(Qt.Horizontal)
@@ -1869,7 +1865,10 @@ class CanoeGraphicWidget(QWidget):
         sc_row.addStretch(1)
         self._scene_lab = QLabel("")
         self._scene_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px")
-        sc_row.addWidget(self._scene_lab)
+        # 🧹 2026-10-17 老倪: 「上边好几行文字, 除了八阶段那行, 全都删掉」
+        #   「场景排序: … 当前数据源场景: … 计数 …」这行也是文字行 ⇒ 不上面板 (对象保留, 状态照算)
+        self._scene_lab.setParent(self)
+        self._scene_lab.hide()
         lv.addLayout(sc_row)
         self._scene_sync_lab()
 
@@ -1881,7 +1880,8 @@ class CanoeGraphicWidget(QWidget):
         self._cfg_lab.setTextFormat(Qt.RichText)
         self._cfg_lab.setWordWrap(True)
         self._cfg_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px; padding:2px 3px;")
-        lv.addWidget(self._cfg_lab)
+        self._cfg_lab.setParent(self)     # 「当前配置 …」整行文字 ⇒ 不上面板
+        self._cfg_lab.hide()
         self._fill_cfg()
         self._cfg_timer = QTimer(self)
         self._cfg_timer.setInterval(5000)
