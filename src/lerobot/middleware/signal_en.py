@@ -202,3 +202,25 @@ def is_mapped(field):
 def unmapped(keys):
     """给定一批中文键, 返回没英文名的那些 (判据/巡检用)。"""
     return [k for k in keys if not is_mapped(k)]
+
+
+# ── 元数据键: 不是"信号", 不该出现在 Signal 列 (老倪 2026-10-17: 「怎么还有 topic ts json 这样的名字」) ──
+_META_NAMES = frozenset((
+    "ts", "t", "time", "count", "bytes", "n", "seq", "age_s", "frame", "frames", "total",
+    "topic", "type", "src", "json", "payload", "digest", "msg", "header", "stamp", "size",
+    "reset_n", "样本", "计数",
+))
+
+
+def is_meta(name):
+    """True = 文件/元数据字段 (ts、topic、json、src、count…), 不是状态空间信号, 两个窗口都不列。"""
+    k = str(name or "").strip().lower()
+    if not k:
+        return True
+    if k in _META_NAMES:
+        return True
+    if "." in k and k.rsplit(".", 1)[-1] in _META_NAMES:      # space.topics.heartbeat.bytes 这类
+        return True
+    if k.endswith(".json") or k.endswith(".jsonl") or k.endswith(".py"):
+        return True
+    return False

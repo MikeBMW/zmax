@@ -1610,6 +1610,7 @@ class CanoeGraphicWidget(QWidget):
         self._watch_prefixes = set()   # 「增加信号话题」点名但暂无帧的话题: 出帧即自动画
         self.catalog = None            # {topic: {type, fields}}
         self.selected = []             # 画在波形里的信号 key (有序, 决定颜色)
+        self._auto_off = False         # 🧹 点过「清空」后置 True: 停止自动勾选场景信号
         self.running = False
         self.paused = False
         self.follow = True
@@ -1996,11 +1997,35 @@ class CanoeGraphicWidget(QWidget):
         self._log("■ 采样停止")
 
     def clear(self):
+        """🧹 清空 = 把列表里**所有打过勾的信号全部取消** + 清掉已采数据。
+
+        老倪 2026-10-17: 「清空按钮, 要清空所有打 tick 对好的信号, 即全都不显示了,
+        我要根据需求, 增加对号, 添加信号」—— 原来只清缓冲、勾选还在, 下一拍又全画回来。
+        清完把自动补勾也停掉 (否则建树/下一拍又把 278 条顶回来), 之后按需自己打勾即可。
+        """
         self.store.clear()
         for b in self.store.bufs.values():
             b.clear()
-        self.wave.set_curves(self.selected)
-        self._log("🧹 已清空数据")
+        _n = 0
+        self.tree.blockSignals(True)
+        stack = [self.tree.invisibleRootItem()]
+        while stack:
+            cur = stack.pop()
+            for j in range(cur.childCount()):
+                ch = cur.child(j)
+                if ch.childCount():
+                    stack.append(ch)
+                    continue
+                if ch.flags() & Qt.ItemIsUserCheckable and ch.checkState(0) != Qt.Unchecked:
+                    ch.setCheckState(0, Qt.Unchecked)
+                    _n += 1
+        self.tree.blockSignals(False)
+        self._auto_checked |= set(self.selected)      # 这些别再自动补勾
+        self._auto_off = True                         # 关闭自动补勾, 完全按用户打勾来
+        self.selected = []
+        self.wave.set_curves([])
+        self._log(f"🧹 已清空 {_n} 个勾选 (波形全空) · 自动补勾已停: 要哪条就在列表里打勾, "
+                  f"信号太多先用表头过滤 Layer/Type")
 
     def _on_bold(self, on):
         """选中信号加粗 (CANoe: Highlight)"""
@@ -2148,6 +2173,8 @@ class CanoeGraphicWidget(QWidget):
         (用户手动取消的不会被顶回来)。
         """
         self._apply_watch()
+        if getattr(self, "_auto_off", False):
+            return                        # 用户点过「清空」⇒ 不再自动补勾, 只按他手动打勾的画
         if self.scope != "3d":
             return
         # 🟢 2026-10-17 老倪: 「插拔绿色的信号, 要显示所有在场景中我可以观察到的信号, 包括 8 个状态、
@@ -2438,7 +2465,8 @@ class CanoeGraphicWidget(QWidget):
         except Exception:                                                      # noqa: BLE001
             pass
         # 1) 本机真值流: 按打标落到 插拔 / 摆盘 / 基础 三组 (AR 有二级分组, 见下)
-        host_bufs = [b for b in self.store.bufs.values() if b.src not in ("ros", "ds", "file")]
+        host_bufs = [b for b in self.store.bufs.values()
+                     if b.src not in ("ros", "ds", "file") and not self._meta_key(b.key)]
         _n_host = 0
         for b in sorted(host_bufs, key=lambda x: (self._scene_rank(x.key), x.key)):
             if filt and filt not in b.key.lower():
@@ -2498,7 +2526,8 @@ class CanoeGraphicWidget(QWidget):
             for topic, meta in sorted(self.catalog.items()):
                 tnode = QTreeWidgetItem([f"{topic}  ({meta['type'].split('/')[-1]})", "", ""])
                 tnode.setForeground(0, QColor(C_DIM))
-                rows = [f for f in meta["fields"] if not filt or filt in (topic + "." + f).lower()]
+                rows = [f for f in meta["fields"] if (not filt or filt in (topic + "." + f).lower())
+                        and not self._meta_key(f)]
                 if filt and not rows:
                     continue
                 for f in rows:
@@ -2555,6 +2584,8 @@ class CanoeGraphicWidget(QWidget):
                 tnode = QTreeWidgetItem([f"{topic}  ({typ}){extra}", "", ""])
                 tnode.setForeground(0, QColor(C_DIM))
                 for k in sorted(keys):
+                    if self._meta_key(k):
+                        continue
                     tnode.addChild(self._make_item(self.store.get(k, "ds"), checked=k in self.selected))
                 if not keys:
                     tnode.addChild(QTreeWidgetItem(["（该话题此刻没有数据帧）", "", ""]))
@@ -2927,6 +2958,16 @@ class CanoeGraphicWidget(QWidget):
         self._scene_sync_lab()
         self._fill_tree()
 
+    @staticmethod
+    def _meta_key(key):
+        """ts/topic/json/src/count 这些是文件元数据, 不是状态空间信号 ⇒ 不建行 (两个窗口同一口径)。"""
+        try:
+            from lerobot.middleware import signal_en as _sen
+            f = str(key).split(".", 1)[1] if "." in str(key) else str(key)
+            return _sen.is_meta(f)
+        except Exception:                                                     # noqa: BLE001
+            return False
+
     def _make_item(self, b, checked=False, label=None, scene=None, interactive=True):
         # 🀄 Name 列 = 中文短名 (≤5 字, 与数据空间 Trace 同口径); 拉不到就退回短键名
         if label:
@@ -2941,9 +2982,13 @@ class CanoeGraphicWidget(QWidget):
         try:
             from lerobot.middleware import signal_en as _sen
             import re as _re2
-            _sig_txt = _sen.en_of(b.key)              # 带前缀 (ar.* / skill.* 的段名规则要用它)
+            # 🎯 2026-10-17 老倪: 「Trace 和信号分析的 signal 名字对不上」——真因: 这里先用**带前缀**的键
+            #   映射, ASCII 键 (sseng.chunk.H) 被原样留下 ⇒ 面板 "sseng.chunk.H" / Trace "chunk.H"。
+            #   口径改为: 先按去掉数据源前缀的字段名映射 (与 Trace 完全同一次调用), 只有映射不出/留中文
+            #   时才退回带前缀的整键 (ar.* / skill.* 那种段名规则)。
+            _sig_txt = _sen.en_of(_field)
             if _re2.search(r"[^\x00-\x7f]", _sig_txt):
-                _sig_txt = _sen.en_of(_field)         # 退一步: 去掉数据源前缀 (sstrace.* / sseng.*)
+                _sig_txt = _sen.en_of(b.key)
         except Exception:                                                  # noqa: BLE001
             _sig_txt = str(b.key)
         it = QTreeWidgetItem([name, self._sig_layer(b.key), _sig_txt, "-", self._sig_type(b.key),

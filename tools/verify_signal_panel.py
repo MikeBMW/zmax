@@ -8,6 +8,7 @@
 import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools", "gui"))
@@ -175,6 +176,48 @@ _v2 = visible_rows()
 ck("再叠 Type 过滤", len(_v2) > 0 and len({r[4] for r in _v2}) == 1,
    "%d 行, 类型=%s" % (len(_v2), sorted({r[4] for r in _v2})))
 _QMenu.exec_ = _orig
+
+# 🧹 清空 = 取消所有勾选并停掉自动补勾 (老倪: 「清空按钮, 要清空所有打 tick 对好的信号, 都全不显示了」)
+def _ticked():
+    n = 0
+    _st = [w.tree.invisibleRootItem()]
+    while _st:
+        _c = _st.pop()
+        for _j in range(_c.childCount()):
+            _ch = _c.child(_j)
+            if _ch.childCount():
+                _st.append(_ch)
+            elif (_ch.flags() & Qt.ItemIsUserCheckable) and _ch.checkState(0) == 2:
+                n += 1
+    return n
+_before = len(w.selected)
+w.clear()
+app.processEvents()
+ck("清空后勾选/波形全空", len(w.selected) == 0 and len(w.wave.curves) == 0 and _ticked() == 0,
+   "清空前 %d 条 → 已选 %d / 绘制 %d / 勾选行 %d"
+   % (_before, len(w.selected), len(w.wave.curves), _ticked()))
+w._fill_tree()
+for _ in range(6):
+    app.processEvents(); time.sleep(0.2)
+ck("清空后不会被自动补勾顶回来", len(w.selected) == 0 and _ticked() == 0,
+   "等 1.2s + 重建树 · 已选 %d" % len(w.selected))
+_tgt = None
+_st = [w.tree.invisibleRootItem()]
+while _st and _tgt is None:
+    _c = _st.pop()
+    for _j in range(_c.childCount()):
+        _ch = _c.child(_j)
+        if _ch.childCount():
+            _st.append(_ch)
+        elif (str(_ch.data(0, 0x0100)) == "sstrace.末端_x"
+              and (_ch.flags() & Qt.ItemIsUserCheckable)):
+            _tgt = _ch            # 同名信号在插拔/摆盘各有一行, 只能拿**可勾选**那份
+            break
+if _tgt is not None:
+    _tgt.setCheckState(0, Qt.Checked)
+    app.processEvents()
+ck("按需手动打勾 = 只加这一条", w.selected == ["sstrace.末端_x"] and w.wave.curves == ["sstrace.末端_x"],
+   str(w.selected))
 
 print("\n%s" % ("✅ 全部通过" if not fails else "❌ 失败: %s" % fails))
 sys.exit(0 if not fails else 1)

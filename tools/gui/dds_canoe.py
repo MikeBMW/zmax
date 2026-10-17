@@ -1535,7 +1535,7 @@ class BusView(QWidget):
             _META = {"ts", "t", "count", "bytes", "n", "age_s", "seq", "sample_info", "__ts"}
             sig_fields = [(str(sn), sv) for sn, sv in (f or {}).items()
                           if isinstance(sv, (int, float)) and not isinstance(sv, bool)
-                          and str(sn).lower() not in _META]
+                          and str(sn).lower() not in _META and not _signal_en.is_meta(sn)]
             if pin:
                 if _is_hit:                   # 话题命中 ⇒ 该话题下所有信号都显示
                     pass
@@ -1574,6 +1574,8 @@ class BusView(QWidget):
                 #   每个信号逐条列出来: 名字来自 端口标签/实现/上游继承, 值显 — 并标"未实测"。
                 _vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest")) or ""
                 for _sn, _u, _src in _signals.signals_of(nm):
+                    if _signal_en.is_meta(_sn):        # ts/topic/json/src 不是信号, 不列
+                        continue
                     _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
                     _ak2 = _attrib.key_of(nm, _sn)
@@ -1642,10 +1644,15 @@ class BusView(QWidget):
                 txt = str(txt)
                 if item.text() != txt:
                     item.setText(txt)
+                if c == 2:
+                    _tip = "%s\n话题: %s\n中文: %s" % (x.get("raw") or x["signal"],
+                                                      x.get("topic") or "", x.get("cn") or "")
+                    if item.toolTip() != _tip:
+                        item.setToolTip(_tip)
                 if not _restyle:
                     continue
-                if c == 2:                    # Signal 列 tooltip 保留中文名 (列删了, 词还得能查)
-                    item.setToolTip("%s\n中文: %s" % (x.get("raw") or x["signal"], x.get("cn") or ""))
+                if c == 2:                    # tooltip 已在上面按内容更新 (行复用时不会留旧信号名)
+                    pass
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:                                   # Layer
@@ -1659,7 +1666,7 @@ class BusView(QWidget):
                 elif c == 5:
                     item.setForeground(QColor(C_RED if x["phys"] == "✘" else
                                               C_YELLOW if x["phys"] == "🟡" else C_GREEN))
-                    if x["why"]:
+                    if x["why"] and item.toolTip() != x["why"]:
                         item.setToolTip(x["why"])
                 if x["step"]:
                     item.setBackground(QColor("#2b2611"))
