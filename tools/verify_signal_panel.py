@@ -40,7 +40,8 @@ ck("sstrace/sseng/gravity 走同一 provider",
    str(getattr(w, "_PROV", {})))
 
 # 同值: 缓存窗口内两次读一致 (两个窗口都读这份)
-a = L.topics(); time.sleep(0.1); b = L.topics()
+L._CACHE.update(t=0.0, data=None)          # 强制取一次新快照, 再连读两拍 —— 测的是"缓存窗口内一致"
+a = L.topics(); b = L.topics()
 # NaN != NaN ⇒ 用 repr 比 (同一份缓存对象必须逐字相同, 包括 NaN 位置)
 ck("同一缓存窗口内数值一致", all(repr(a[k]["fields"]) == repr(b[k]["fields"]) for k in a),
    "%d 话题" % len(a))
