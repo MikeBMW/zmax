@@ -78,6 +78,28 @@ gnome-extensions disable ding@rastersoft.com && sleep 1 && gnome-extensions enab
 ```
 只重启 DING 扩展即可; **勿重启 gnome-shell**(整屏闪、丢用户 GUI 状态)。
 
+## 给「打开某个工程/工作区」做快捷方式 (文件型入口不需要包装脚本)
+
+`.code-workspace` / `.zmaxproj` 这类**文件型入口**, 双击由文件关联直接打开 —— 不需要写包装脚本:
+可先放一个软链到桌面试 (`ln -s /home/ubuntu/zmax/ZMAX.code-workspace ~/Desktop/`),
+实测双击即开 VSCode 工作区, 重复双击只聚焦已有窗口、不会起第二个实例。
+要中文名/带图标就写 .desktop(与其它快捷方式同一套安装+信任序列):
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Z-MAX 工程
+Exec=/usr/bin/code /home/ubuntu/zmax/ZMAX.code-workspace
+Icon=/usr/share/code/resources/app/resources/linux/code.png
+Terminal=false
+Categories=Development;IDE;
+StartupNotify=true
+StartupWMClass=code
+```
+
+`StartupWMClass` 同样要用 `xprop` 实测(这里的窗口 WM_CLASS 是 `code`); 图标不存在就退成主题图标名。
+验证执行链别再造一个:`timeout 20 /usr/bin/code <工作区文件>` 跑一次 —— 窗口应仍在(单例聚焦), 不是又开一个。
+
 ## 环境专属知识 (老倪这台 E盘 Ubuntu)
 - LiveUSB 迁移残留: `ubuntu-desktop-bootstrap*.desktop` = "Install Ubuntu" 安装向导入口。它在桌面上带叉号属正常(本来就不是日常应用), 误点会启动安装向导; 处理 = 改名 `.bak` 隐藏保留(老倪铁律: 删东西先改名, 不真删)
 - 标准桌面配套: .desktop 的 Exec 指向仓库内启动脚本(如 `tools/gui/launch_studio.sh`), 脚本硬编码 venv python 并防重复启动 — 相关 GUI 工程细节见 zmax-console 技能

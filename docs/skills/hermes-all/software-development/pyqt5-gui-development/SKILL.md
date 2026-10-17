@@ -215,6 +215,16 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **回归证据 = 和"改动前"逐条比对, 不是只看"全绿"**: `git stash push -- <改动文件>` → 跑既有 verify 套件 → `git stash pop`,
   这样能分清哪条 FAIL 是本来就有的; 用户要的是"没回退"。
 
+### 18. 「反应非常慢 / 点一下要等」= 先 py-spy dump 定主线程栈, 别猜机器慢 (2026-10-17 实测)
+- **判据顺序 (30 秒出结论)**: ①`ps -o pid,pcpu,nlwp,etime -p <pid>` 看主进程 %CPU 与 **TIME+ / elapsed 比例** — 接近 1.0 就是"自始就在烧一个核"(与"某次点击后变慢"完全不同的病); ②`top -H -b -n1 -p <pid>` 看哪个线程热(通常 MainThread 99.9%, 其它 sleeping); ③**连打 8 次 `py-spy dump --pid <pid>`(间隔 0.4s) 只取 MainThread 前 6 行** —— 8/8 同一条栈才算定死, 单次采样会被一次偶发回调骗; ④`py-spy record -d 6 -f raw` 的 leaf frame 分布**分散时不要采信**(json/socket/subprocess 各 1~3% = 你在看一堆无关定时器), 递归栈才是热点; ⑤应用日志增速也能量: `wc -c <log>` 隔 5s 再量, 增长 0 = 卡在主线程而非日志刷屏。
+- **本机 py-spy 在 Hermes 自带工具目录**(`which py-spy` 指到 `~/.hermes/tools/...`), 读别的进程要 `sudo`; `py-spy top` 需 tty(非交互会 `Not a tty`), 用 `dump` 循环代替。
+- 🔴 **QTreeWidget/QTableWidget「刷新显示值」会伪装成用户操作**: `QTreeWidgetItem.setText(col, …)` **和 `setToolTip(col, …)` 都会发 `itemChanged(item, col)`** —— tooltip 走的是 `setData(ToolTipRole)` ⇒ **col=0**, 于是任何"只处理勾选/选中变化"的槽都会**照单全收**: 每拍 × 每行 各跑一次全树递归 + `set_curves()` 重建曲线 ⇒ O(行数²)。实测 460 行 × 4Hz ⇒ 主线程 **99.9%**, GUI 事件全排后面。
+  - **修法两层都要**: ①槽里先做**状态相等即返回** (`if checked == (key in self.selected): return`), 不再假设 "走到这个槽 = 真的变了"; ②刷新循环**逐行缓存** (值文本+tooltip 拼好先比对, 相同就一次 Qt 写都不做), 稳态一拍 0 次写入。
+  - **量化口径**: 单次全树递归 + 重建 = 0.53ms × 460 行 = **247ms/拍**; 缓存后整拍 **1.84ms** ⇒ 4Hz 下 99% 核 → 0.74%。汇报用"ms/拍 + 折算核占用", 别只说"优化了"。
+  - **回归判据**: offscreen 真建该 widget + 造同量级行数(与线上 400+ 同级), 用计数器包住 `_ordered_selected`/`set_curves` 数调用次数(稳态必须 0), 然后**真 `setCheckState`** 验证勾选/取消仍生效 —— 缓存和早退最容易把功能改死, 这条不能省。工具有现成的: `scripts/qt_tree_refresh_cost_probe.py <行数> <Hz>` 一份跑出旧写法/缓存写法的 ms/拍 与每拍 itemChanged 次数 (项目里换成真 widget 就是正式判据)。
+- 同类隐形风暴: 一次 tick 里做**文件 JSON 读+解析**(`_chunk_text()`/状态文件)4Hz 也在 json decoder 里烫 CPU ⇒ 不变的内容同样要缓存 (按 mtime 或内容签名), 别每拍重读。
+- 汇报口径: 给出"根因栈 + 每秒触发次数 + 折算 CPU"三件, 再说"要重启才生效"; 用户正在操作时**不要擅自杀 GUI**(先看 GUI 日志最近 1~2 分钟的点击/切页留痕判断是否在用)。
+
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
   也会被判「你怎么把表格全给改了? 只是让你增加 X 列」并要求改回去: 白做一轮 + 多一次回退版本。
@@ -277,6 +287,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 ## 多会话协作（飞书端/其他会话改同一文件）— 对账流程
 Z-MAX 有多个会话（CLI + 飞书 gateway）会改同一份本地代码，症状: 用户"飞书端说改了，我没看到"。
 - **根因**: 另一会话改了本地文件但**未 git 提交 + GUI 未重启**（画布还是旧代码）
+- **「代码里明明是 X, 界面还是 Y」= 先证进程比改动旧, 再谈第二遍改代码**: `ps -o lstart= -p <pid>` 与 `stat -c %y <改的文件>` 一比 —— 启动时间早于文件 mtime 就结案 (Python 启动即把源码读进内存, 改文件对活进程零影响)。同时 `grep -n "<符号>" <file>` 把**处理器里的那一行**和**启动默认那一行**分开数清: 用户常把"点按钮时的 `set_collapsed(True)`"误读成"启动默认就是 True", 这两处行号必须都报给他。
 - 对账: `git status --short tools/gui/` 查未提交改动 → 检查关键注册（类型表/icon 字典/node_logic）完整性 → 补全后**重启 GUI** 才生效
 - 外部会话产物（训练目录 act_peg_overlay 等）先 `ls -t outputs/train/` 确认，别动其进行中的训练
 

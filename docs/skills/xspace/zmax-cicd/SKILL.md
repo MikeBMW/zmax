@@ -21,6 +21,22 @@ Orin(192.168.23.10:8765 采集) → 小芳Mac(collect_upload.py) → ECS中转 �
   2. 创建 Release: `POST https://api.github.com/repos/MikeBMW/lerobot-smolvla-lew/releases`，header `Authorization: token <token>`（token 从 ~/.git-credentials 正则 `https://([^:]+):([^@]+)@github.com` 提取），body 含 `tag_name/name/body`
   3. 上传附件: `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<release_id>/assets?name=<file>`，`Content-Type: text/html`，--data-binary @file；release_id 先 `GET .../releases/tags/<tag>` 取 `id`
 
+## GitHub Actions 启动 (本仓目前只上线 1 条 workflow)
+
+- **本地有文件 ≠ GitHub 能跑**: `.gitignore` 若忽略 `.github/`, 未入库的 workflow 在 Actions 页**根本不出现** (本地十几个 yml 也一样看不见)。
+  只读核对: `GET /repos/<o>/<r>/actions/workflows` (已注册的有哪些) + `GET /actions/runs?per_page=5` (最近 run 的 status/conclusion)。
+  要启用被忽略的 workflow: 在 `.gitignore` 放行 `!.github/workflows/*` → `git add .github/workflows/` → 提交。
+- 三条启动途径 (都能让老倪自己按):
+  1. **网页**: `https://github.com/<o>/<r>/actions/workflows/<file>.yml` → Run workflow → 填 inputs (如 `tag`, 默认 dev-snapshot)。
+  2. **REST API (无需 gh CLI)**: token 从 `~/.git-credentials` 取且**不打印**;
+     `POST /repos/<o>/<r>/actions/workflows/<file>.yml/dispatches`, body `{"ref":"main","inputs":{…}}` → 无输出(204) 即已触发;
+     目标 workflow 必须声明 `workflow_dispatch` (否则 404), 进度查 `GET /actions/runs?per_page=1`。
+  3. **发版打 tag**: `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` ⇒ `on: push: tags: 'v*'` 的构建流水线自动跑, 产物挂同名 Release
+     (版本号只按老倪指定, 不自主升)。
+- **触发 CI 有副作用** (耗 Actions 额度 · 真出 Release): 把命令给老倪让他自己按; 要代跑先确认。
+- 别把两件事混为一谈: 本机判据套件 (`bash tools/run_gui_verifiers.sh` + `tools/verify_*.py` + `tools/ci/integrity_check.py`)
+  是"改完代码先本地验"那一环, 与 GitHub Actions 无关 —— 老倪说"启动 cicd"时先分清指哪一个, 或两个都给他。
+
 ## 端侧部署 VEH.2.26（2026-08-09 老倪"点击端侧部署，部署ACT模型到Orin，通过Mac"）
 
 真实链路 = **静态 URL 覆盖即部署**（`[4060] → [ECS静态URL] → [Orin监听器轮询哈希] → [Orin /models/ 热加载]`），不是容器推送也不是 relay 弹栈：

@@ -252,6 +252,29 @@
 * 离线可跑的列宽/可读性判据: `verify_tree_contrast.py` (浅色像素占比 <2% + 每行"深底+笔画"可读行数) ──
   比"看截图”靠谱。
 
+## 🔥 整页「反应非常慢」= `_tick` 里的 itemChanged 风暴 (2026-10-17 实测, 主线程 99.9%)
+
+* **症状**: 控制台点什么都等; 进程 `%CPU≈100`, `TIME+ / elapsed ≈ 0.96` ⇒ 不是某次点击变慢, 是**自启动就在烧一个核**。
+* **定栈**: `sudo py-spy dump --pid <pid>` 连打 8 次 (间隔 0.4s) 只取 MainThread 前 6 行。8/8 同一条栈才算定死:
+  `_tick(3178) → _update_tree_values → _on_item_changed → _ordered_selected → _all_items`。
+  `py-spy top` 需要 tty(非交互报 `Not a tty`); `record -f raw` 的 leaf frame 分布很分散时不要采信。
+* 🔴 **根因**: `_update_tree_values` 每拍(4Hz)对每行 `setText(1,…)` **和 `setToolTip(0,…)`**;
+  Qt 里 `setToolTip` 走 `setData(ToolTipRole)` ⇒ **发 `itemChanged(item, 0)`** ⇒ 槽里"只处理勾选变化"的 col==0 判据照收,
+  于是每行都跑一次 `_ordered_selected()` (全树递归) + `wave.set_curves()` (重建曲线) = O(行数²)。
+* **量化** (离屏真建 `CanoeGraphicWidget` + 460 行树): 单次全树递归 0.534ms ⇒ 460 行 = **247ms/拍 ⇒ 4Hz ≈ 99% 一个核**;
+  修后整拍 **1.84ms ⇒ 0.74%**。汇报写"ms/拍 + 折算核占用", 别说"优化了"。
+* **修法两层都要**: ① `_on_item_changed` 开头 `if checked == (key in self.selected): return` —— 勾选态没变就不是勾选事件;
+  ② 刷新循环逐行缓存 `self._tv_cache[key] = (值文本, tooltip)`, 相同就一次 Qt 写都不做。
+  另顺手修同一函数里 `b.last_val * _sc` 的 `TypeError: NoneType*float`: **只读一次** `_last = b.last_val` 再判空
+  (工作线程可能在判空与使用之间把它置空, 日志里已抛过)。
+* **回归判据**: 计数器包住 `_ordered_selected`/`set_curves` 数调用次数 (稳态必须 0), 再**真 `setCheckState`** 验
+  勾选→进 `selected`、取消→移出 —— 早退+缓存最容易把功能改死。
+* 同类隐形开销: `_update_status` 里 4Hz 读并解析 `chunk_latest.json`/`skill_latest.json` (json decoder 烫 CPU) ⇒
+  内容不变就按 mtime/签名缓存, 别每拍重读。
+* 现场纪律: 这个修复**必须重启控制台**才生效; 用户正在操作 (看 `wbctrl -l` + GUI 日志最近 1~2 分钟的点击/切页留痕)
+  就不要擅自杀进程。答"为什么改了还是展开/还是慢"时先 `ps -o lstart= -p <pid>` 对比 `stat -c %y <文件>`:
+  进程比改动早就结案; 再把"按钮处理器里的 `set_…`"与"启动默认那一行"两个行号分别报给他 (他常把前者当默认值)。
+
 ## 复刻了哪些 CANoe Graphic 能力
 
 信号目录(名/当前值/Min/Max/帧龄列) · 多信号波形 · Y轴三模式(共用/每信号独立Y轴/每信号独立图) ·

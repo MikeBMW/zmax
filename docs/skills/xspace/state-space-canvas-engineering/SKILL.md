@@ -392,7 +392,29 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 3. 遇到"接了但没人消费"的 (例: `工程需求` 8 个输入框写 `module._eng_req`, 全仓只有本面板自己读) ——
    **不要默默删**, 删了会丢需求基线; 在界面上**如实标注**"这些值暂只喂本面板验收口径, 引擎不读"。
 
-## 工程文件: 保存/加载整个「状态空间工程」(2026-10-08 老倪: 文件菜单)
+## 画布两栏的默认开合状态 (左侧模块库 / 右侧面板)
+用户说「左侧模块栏默认关闭 / 默认打开」这类话时, 改的是**一处默认值, 不是行为逻辑**:
+- 左侧模块库只有**一个真源**: `SimulinkModule.__init__` 里建完 `self.library = LibraryPanel(self)` 之后那句
+  `self.library.set_collapsed(<bool>)`。**别去改 `LibraryPanel.set_collapsed` 本身** —— 它同时服务 ◀ 按钮 /
+  双击「📚 模块库」标题 / 工具栏三条路, 动它会连带坏交互。
+- 收起态 = `setFixedWidth(LIB_W_COLLAPSED=20)` + 隐藏标题/列表/提示, 只留 ▶(`expand_requested`);
+  展开态回 `LIB_W=560`。**控件对象与 `_lib_btns`(454 条)一律不删** ⇒ 拖拽落画布 / 模块引导高亮 /
+  「💾 存为新工程」全部照旧 (撤下显示 ≠ 删对象, 与右侧栏同一条规矩)。
+- 这个默认值历史上被改成过强制展开 (为修「打开画布看不到模块库」) ⇒ 用户这次要的默认收起**不是回归**,
+  别顺手再改回去; 收起态本身就保留 ▶ 且 tooltip 写明, 用户一点就开。
+- 判据 (离屏真建, 别只看源码; 脚本 `scripts/probe_canvas_left_panel.py`): 断言 `_collapsed is True` ·
+  `width()==20` · `_btn_expand.isVisibleTo(lib)` · `scroll.isVisibleTo(lib) is False` · `len(_lib_btns)>0`;
+  再 `_expand_library()` → 560 + 列表可见、`_collapse_library()` → 回 20 —— 只验默认态不验回程, 等于没验可逆性。
+- 交付口径: 明说**重启控制台才生效**; 正在跑的控制台**不要自己重启/杀掉**(可能是现场演示),
+  先让用户目检, 目检过再 commit。
+- 🔴 用户反驳「我本来就是 true 啊, 怎么打开还是展开」时, 先分清**两处同名写法**再用证据结案:
+  `git show HEAD:tools/gui/simulink_module.py | grep -n "set_collapsed"` 一次列全三行 ——
+  启动默认(在 `__init__` 里建完 `self.library` 那一句后面) · `_collapse_library()` 里的 `True`(◀ 按钮处理器) ·
+  `_expand_library()` 里的 `False`(▶ 按钮); 用户常把处理器里的 `True` 当成默认值。
+  再用 `ps -o lstart= -p <pid>` 对比 `stat -c %y <改的文件>`: 启动时间早于文件 mtime ⇒ **只是没重启**,
+  不要改第二遍代码 (Python 启动时已把源码读进内存, 改文件对活进程零影响, 日志里还能看到他刚手动点过 ◀/▶)。
+
+## 工程文件: 保存/加载整个「状态空间工程」 (2026-10-08 老倪: 文件菜单)
 老倪: 「在控制台，文件下拉菜单，增加一个保存工程文件的功能，这样，我下次进入控制台，直接加载这个工程文件，就可以继续调试状态空间工程了。」
 - 实现: `tools/gui/project_file.py`(逻辑, 可命令行自检) + `studio.py` 文件菜单两项
   (`💾 保存工程文件…` Ctrl+S · `📂 加载工程文件…` Ctrl+Shift+O)。

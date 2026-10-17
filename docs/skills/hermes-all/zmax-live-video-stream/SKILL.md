@@ -50,6 +50,28 @@ metadata:
 5. **浏览器取证时, 元素在视口外 → a11y 点击会静默不生效**(表现为"点了没反应/没报错", 页面自身没毛病)。
    先 `el.scrollIntoView({block:'center'})` 再点, 然后用 `#lsrc button.on` + `#lsrc_msg` + `#m_local` 三个值复核。
 
+## 🔌 笔记本这一路要有**显式「关闭」档**, 否则它会一直独占内置摄像头 (老倪: 「你为什么占用我笔记本内置摄像头? 我用微信都打不开摄像头」)
+
+「选中的那台不在位 ⇒ 退回内置(不黑屏)」在相机单独用的时候是好设计; 但**用户要用同一台相机开会/微信时就是灾难**:
+配置落盘 `usb` + USB 相机没插 ⇒ `cam_live_stream.py` 每轮都退回 `/dev/video0`(笔记本内置) 并**独占**,
+会议软件只能 open 不能推流 ⇒ 表现为「摄像头打不开」。而且不是一次性的: `crontab` 里 `*/5` 的 `cam_stream_guard.sh`
+会**把任何被停掉的实例再拉回来** —— 手动 kill 只换来 5 分钟清静。
+
+定式(**四处收口, 缺一处就漏**):
+1. **给出第三档**: `cam_local_src.json` 的 `kind: "off"`(与 `builtin|usb` 并列) —— 用户意图要能表达"本机那一路别开"。
+2. **启动器**: `tools/start_station_stream.sh` 读 kind, `off` ⇒ 传 `--no-local --no-local2`(这两个参数本来就存在, 不用改 `cam_live_stream.py`)。
+3. **每个拉起推流的地方都要收口, 不只启动器**: 控制台「🛰 工位总览」「🧩 场景叠加」两个按钮在 `simulink_module.py` 里
+   **各自拼了一份 cam_live_stream 命令行** ⇒ 只改 shell 启动器 = 用户一点按钮又占回去。收口成一个 helper(读 config 返回参数列表)供两处共用。
+4. **守卫必须认识这个状态**: `cam_stream_guard.py` 的 `proc_cmdline()` 找不到 `--local-dev` 时原来返回 None ⇒ 被判成"推流没跑"
+   ⇒ 按占摄像头的方式拉回来。要 ①`--no-local` 的进程单独标记 ②`kind=off` 时只要求"进程带 --no-local";
+   反之发现有人手动起了占摄像头的实例就重启释放 —— 这条顺带变成"释放被占相机"的自愈。
+
+复核(实测口径, 缺一不算好): `sudo fuser -v /dev/video0` 只剩会议软件 · `8791/stats` 里 local/local2 未启用而 arm/depth/aoi 照常 ·
+手跑一次守卫应**只报告不重启**(pid 不变)。
+取证别只信 `fuser`: 先 `v4l2-ctl -d /dev/video0 --info` 认卡名(`Integrated RGB Camera` = 笔记本内置),
+再看 `/proc/<pid>/fd` 里它开的是哪个 video 节点 —— 带 `--local-dev N` 的进程直接给出答案。
+**代价要说清**: `off` 之后工位页「笔记本」那格没画面, 页面点 `[内置]/[USB]` 可随时开回(落盘即生效)。
+
 ## 🌈 深度格(及任何"容器里生产、宿主读文件"的路)冻结 —— 看着像"没反映", 其实是生产者死了
 
 8791 的深度格**不直连相机**: 真源是**容器 `ss-remote-tap` 内常驻的 `tools/ros_depth_stream.py`** 落的
