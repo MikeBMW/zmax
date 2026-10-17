@@ -269,11 +269,31 @@ def channel_rows():
 
 
 def alerts():
-    """质量告警流: 频道规则不过 (闭环页已按老倪要求删除, 不再混入)。"""
+    """质量告警流: ① 总线规则 ② **物理量** (超上限/低于下限/NaN/概率越界/无单位/跳变)。
+
+    老倪 2026-10-17: 「质量告警窗口有功能么? 你真的在报警么? 报警要面向物理值不符合物理规律,
+       超过最大值 / 过最小值等」 ⇒ 不再只看 QoS/频率, 逐信号判值。
+    """
     out = []
     for r in channel_rows():
         if r["bad"]:
             out.append((r["verdict"], r["topic"], r["bad"], r["age_s"]))
+    # 物理层: 用 live.json 里各话题的 fields (真值) 逐信号判
+    try:
+        from lerobot.middleware import quality as _q
+        frames = []
+        for k, v in ((_load(LIVE).get("topics") or {})).items():
+            f = (v or {}).get("fields") or {}
+            if not isinstance(f, dict):
+                continue
+            for sn, sv in f.items():
+                if isinstance(sv, (int, float)) and not isinstance(sv, bool):
+                    frames.append({"topic": (v or {}).get("topic") or k, "name": sn,
+                                   "value": sv, "unit": _q.infer_unit(sn)})
+        for a in _q.scan_frames(frames):
+            out.append((a.get("level", "warn"), a.get("object", "—"), a.get("msg", ""), None))
+    except Exception:                                                        # noqa: BLE001
+        pass
     return sorted(out, key=lambda x: {"fail": 0, "veto": 0, "warn": 1}.get(x[0], 2))
 
 

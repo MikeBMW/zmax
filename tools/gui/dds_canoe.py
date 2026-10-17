@@ -25,6 +25,19 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "src"))
+try:                                     # 物理量质检 (质量告警真依据)
+    from lerobot.middleware import quality as _quality
+except Exception:                                                        # noqa: BLE001
+    class _QualityFallback:
+        @staticmethod
+        def check_field(name, value, unit=None, vmin=None, vmax=None):
+            return "unknown", ""
+
+        @staticmethod
+        def scan_frames(frames, jump_span=10.0):
+            return []
+    _quality = _QualityFallback()
+
 try:                                     # 节点名归一 (Tx/Rx 只放本名)
     from lerobot.middleware import naming as _naming
 except Exception:                                                        # noqa: BLE001
@@ -1063,67 +1076,9 @@ class BusView(QWidget):
             lyr.setExpanded(ly in ("L5", "L4"))     # 先展开最上两层, 下层按需点开
         root_m.setExpanded(True)
 
-        sigs = db.get("signals") or []
-        by_layer = {}
-        for s in sigs:
-            by_layer.setdefault(s.get("layer") or "meta", []).append(s)
-        root_s = QTreeWidgetItem(["🔗 信号 %d" % len(sigs), "", "", "", "", "", "", ""])
-        root_s.setFont(0, f_tr)
-        root_s.setForeground(0, QColor(C_GREEN))
-        self.tree.addTopLevelItem(root_s)
-        order = ["L5", "L4", "L3", "L2", "meta"]
-        for ly in [x for x in order if x in by_layer] + [x for x in sorted(by_layer) if x not in order]:
-            items = by_layer[ly]
-            lyr = QTreeWidgetItem(["%s · %d" % (ly, len(items)), "", "", "", "", "", "", ""])
-            lyr.setFont(0, QFont(UI, 10, QFont.Bold))
-            lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
-            root_s.addChild(lyr)
-            for s in items:
-                # 老倪嫌箭头乱: 连线名用**标签主名** (无标签才退回 "源→目的")
-                name = _naming.clean(s.get("label") or "", fallback="")
-                if not name:
-                    name = "%s→%s" % (_naming.clean(s.get("src_name", s.get("src", "?"))),
-                                      _naming.clean(s.get("dst_name", s.get("dst", "?"))))
-                _sf = str(s.get("src_name") or s.get("src") or "—")
-                _df = str(s.get("dst_name") or s.get("dst") or "—")
-                _sig_type = str(((db.get("messages") or {}).get("link_value") or {}).get("type") or "zmax::LinkValue")
-                it = QTreeWidgetItem(["%s %s" % (s.get("sid", "?"), name), _sig_type,
-                                      "—", "—", "—", "—",
-                                      _naming.clean(_sf, fallback=str(s.get("src", "—"))),
-                                      _naming.clean(_df, fallback=str(s.get("dst", "—")))])
-                it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
-                self._align_item(it, {0: "topic: %s" % (s.get("topic") or "—"),
-                                      1: "type: %s" % _sig_type,
-                                      6: "Tx: %s" % _sf, 7: "Rx: %s" % _df})
-                it.setToolTip(0, "连线 %s · 端口 %s→%s\n标签 %s\n话题 %s" % (
-                    s.get("link_id", "—"), s.get("src_port", "?"), s.get("dst_port", "?"),
-                    s.get("label", "—"), s.get("topic", "—")))
-                lyr.addChild(it)
-        root_s.setExpanded(False)
-
-        nodes = db.get("nodes") or {}
-        by_ly = {}
-        for nid, n in nodes.items():
-            by_ly.setdefault(n.get("layer") or "meta", []).append((nid, n))
-        root_n = QTreeWidgetItem(["🧩 节点 (Nodes %d)" % len(nodes), "", "", "", ""])
-        root_n.setFont(0, f_tr)
-        root_n.setForeground(0, QColor(C_PURPLE))
-        self.tree.addTopLevelItem(root_n)
-        for ly in [x for x in order if x in by_ly] + [x for x in sorted(by_ly) if x not in order]:
-            lyr = QTreeWidgetItem(["%s  节点 %d" % (ly, len(by_ly[ly])), "", "", "", ""])
-            lyr.setFont(0, QFont(UI, 10, QFont.Bold))
-            lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
-            root_n.addChild(lyr)
-            for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
-                _nfull = "%s %s" % (n.get("icon", ""), n.get("name", nid))
-                it = QTreeWidgetItem([_naming.clean(_nfull, fallback=str(n.get("node_id"))), "—", "—", "—", "—", "—",
-                                      "Tx %d" % (n.get("tx", 0)), "Rx %d" % (n.get("rx", 0))])
-                it.setData(0, Qt.UserRole, ("node", nid))
-                self._align_item(it, {0: "%s · type %s" % (_nfull, n.get("type") or "—")})
-                it.setToolTip(0, "id %s · 类型 %s · 画布坐标 (%s,%s)" % (
-                    nid, n.get("type", "—"), n.get("x"), n.get("y")))
-                lyr.addChild(it)
-        root_n.setExpanded(False)
+        # ✂️ 2026-10-17 老倪: 「信号列表, 没必要再显示 信号和节点, 都删掉; 具体的信号再 Trace 窗口显示」
+        #   口径: Data 面板只留**报文** (一个输出端口一条); 信号级明细在 Trace (带单位/物理量);
+        #        节点的收发关系在 Tx / Rx 两列与详情面板里, 不再单独开一个"节点"树占地方。
         self._fit_columns()          # 树建完再按当前面板宽收窄/隐藏次要列
         self._apply_find()          # 🔎 树重建后(含「只看活报文」勾选) 立刻重放搜索词, 不让筛选丢
 
@@ -1378,8 +1333,8 @@ class BusView(QWidget):
         mode = mode or getattr(self, "_mode", "fixed")
         # 🆕 2026-10-11 老倪: 「在 trace 里, 增加 信号名称 列」—— 该行这一帧/这个话题携带的信号名 (Name=topic, 信号名称=里面的信号)
         # 🧭 2026-10-17 老倪: 「trace 每列的中文改成英文, 控制字数, 不要写太多」→ 全英文短表头
-        _labs = (["Time", "Name", "Signal", "Value", "Class", "Hz", "Count",
-                  "Age s", "QoS", "Lamp", "Note"] if mode == "fixed" else
+        _labs = (["Time", "Name", "Signal", "Value", "Unit", "Phys", "Hz", "Count",
+                  "Age s", "QoS", "Lamp"] if mode == "fixed" else
                  ["Time", "Name", "Signal", "Value", "Type", "Class",
                   "Prob %", "Sender", "Sender Id", "Track Id", "Group"])
         if _labs == getattr(self, "_hdr_last", None):
@@ -1397,6 +1352,27 @@ class BusView(QWidget):
             self.tb.setHorizontalHeaderLabels(
                 ["Time", "Name", "Value", "Type", "Class", "Prob %", "Sender", "Sender Id",
                  "Track Id", "Group"])
+
+    def _sig_meta(self, topic, sig):
+        """(unit, vmin, vmax) —— 单位/量程只从工程库 mw_signal 取 (参数中心同源), 不猜。"""
+        if getattr(self, "_sigm", None) is None:
+            self._sigm, self._sigm_by_name = {}, {}
+            try:
+                from lerobot.middleware import db as _db
+                for r in _db.signals():
+                    key = (str(r.get("node_id")), str(r.get("port")), str(r.get("signal")))
+                    val = (r.get("unit"), r.get("vmin"), r.get("vmax"))
+                    self._sigm[key] = val
+                    self._sigm_by_name.setdefault(str(r.get("signal")), val)
+            except Exception:                                            # noqa: BLE001
+                pass
+        t = str(topic or "")
+        if t.startswith("ss.node."):
+            rest = t[len("ss.node."):]
+            if "." in rest:
+                nid, port = rest.rsplit(".", 1)
+                return self._sigm.get((nid, port, str(sig)), (None, None, None))
+        return self._sigm_by_name.get(str(sig), (None, None, None))
 
     def _fill_trace_fixed(self, force=False):
         """📌 固定行模式(默认): 一行一个话题, **位置不动**, 只有时间/数值在变。
@@ -1457,85 +1433,98 @@ class BusView(QWidget):
             return
         pin = (self._filter or "").strip().lower()
         items = list(tp.items())
-
-        def _rank(kv):
-            k, t = kv
-            nm = str(t.get("topic") or k).lower()
-            ty = str(t.get("type") or "").lower()
-            hit = 0 if (pin and (pin in nm or pin in ty)) else 1
-            return (hit, str(k))
-
-        items.sort(key=_rank)
-        self._fit_name_col([str(t.get("topic") or k) for k, t in items])   # 📏 Name 列按内容适配
         n_hit = sum(1 for k, t in items if pin and (pin in str(t.get("topic") or k).lower()
                                                     or pin in str(t.get("type") or "").lower()))
         if pin:
             self._mark_search(n_hit, pin)
-        if _cur_topics:                     # 🔌 单步: 当前节点输出 topic **置顶** (与搜索命中共用一套观感)
+        if _cur_topics:                     # 🔌 单步: 当前节点输出 topic 置顶
             items.sort(key=lambda kv: (0 if (kv[0] in _cur_topics
                                              or str(kv[1].get("topic") or kv[0]) in _cur_topics) else 1,
                                        str(kv[1].get("topic") or kv[0])))
-        self.tb.setUpdatesEnabled(False)
-        self.tb.setRowCount(len(items))
-        lv = getattr(self, "_lv_last", None) or {}
-        for r, (k, t) in enumerate(items):
-            f = (t.get("fields") or {}) or self._live_fields(k)
-            ts = f.get("ts")
+        else:
+            items.sort(key=lambda kv: str(kv[1].get("topic") or kv[0]))
+
+        # 🧪 2026-10-17 老倪: 「具体的信号再 Trace 窗口显示, 有物理量显示」
+        #   一个话题展开成 N 行信号: Signal=字段名 · Value=数值 · Unit=单位 · Phys=物理判据(✔/✘ 原因)
+        rows = []
+        for k, t in items:
+            f = (t.get("fields") or {}) or self._live_fields(k) or {}
+            ts = f.get("ts") if isinstance(f, dict) else None
             try:
                 tt = time.strftime("%H:%M:%S", time.localtime(float(ts))) if ts else "—"
-            except Exception:                                                   # noqa: BLE001
+            except Exception:                                               # noqa: BLE001
                 tt = "—"
             age = t.get("age_s")
-            vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest"))
-            prev = lv.get("__fixed__" + str(k))
-            changed = bool(vals) and vals != "—" and vals != prev
-            lv["__fixed__" + str(k)] = vals
             hz, hzd = t.get("hz"), t.get("hz_design")
             _h = ("%s / %s" % (_f3(hz), _f3(hzd))) if (isinstance(hz, (int, float)) and hz >= 0) else "—"
             nm = str(t.get("topic") or k)
             _is_hit = bool(pin) and (pin in nm.lower() or pin in str(t.get("type") or "").lower())
-            _is_step = (k in _cur_topics) or (nm in _cur_topics)      # 🔌 单步当前节点的输出 topic
-            _sig = self._sig_names(f if isinstance(f, dict) and f else t.get("digest"))
-            cells = [tt, nm, _sig, vals or "—", str(t.get("verdict") or "—"), _h,
-                     str(t.get("count", "—")),
-                     (_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
-                     str(t.get("qos") or "—"), str(t.get("lamp") or "—"), str(t.get("lamp_reason") or "")[:28]]
+            _is_step = (k in _cur_topics) or (nm in _cur_topics)
+            base = dict(time=tt, name=nm, hz=_h, count=str(t.get("count", "—")),
+                        age=(_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
+                        qos=str(t.get("qos") or "—"), lamp=str(t.get("lamp") or "—"),
+                        pin=_is_hit, step=_is_step, key=k)
+            _META = {"ts", "t", "count", "bytes", "n", "age_s", "seq", "sample_info", "__ts"}
+            sig_fields = [(str(sn), sv) for sn, sv in (f or {}).items()
+                          if isinstance(sv, (int, float)) and not isinstance(sv, bool)
+                          and str(sn).lower() not in _META]
+            if sig_fields:
+                for sn, sv in sorted(sig_fields):
+                    unit, lo, hi = self._sig_meta(nm, sn)
+                    _inferred = False
+                    if not unit:                        # 没声明单位 → 按名字后缀推断, 显示加 * 标明
+                        unit = _quality.infer_unit(sn)
+                        _inferred = bool(unit)
+                    verdict, why = _quality.check_field(sn, sv, unit, lo, hi)
+                    _pk = (nm, sn)
+                    _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
+                    rows.append(dict(base, signal=sn, value=_f3(float(sv)),
+                                     unit=((unit or "") + ("*" if _inferred else "")) or "—",
+                                     lo=lo, hi=hi, prev=_prev,
+                                     phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
+                                     why=why, bad=verdict in ("warn", "fail")))
+            else:
+                vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest")) or "—"
+                rows.append(dict(base, signal="—", value=vals, unit="—", phys="?", why="", bad=False))
+
+        self.tb.setUpdatesEnabled(False)
+        self.tb.setRowCount(len(rows))
+        for r, x in enumerate(rows):
+            cells = [x["time"], x["name"], x["signal"], x["value"], x["unit"], x["phys"],
+                     x["hz"], x["count"], x["age"], x["qos"], x["lamp"]]
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 5, 6, 7) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:
-                    item.setForeground(QColor("#7ee787" if _is_hit else C_WHITE))
-                    item.setToolTip(str(t.get("type") or "") + "  ·  " + str(t.get("lamp_reason") or ""))
-                elif c == 2:                                           # 🆕 信号名称
+                    item.setForeground(QColor("#7ee787" if x["pin"] else C_WHITE))
+                elif c == 2:
                     item.setForeground(QColor("#9db4d0"))
-                    item.setToolTip("这一话题此刻携带的信号名:\n%s" % str(txt))
                 elif c == 3:
-                    item.setForeground(QColor("#7ee787" if (changed or _is_hit) else C_GRAY))
-                    item.setToolTip("实时值 (live.json fields)\n"
-                                    + ("★ 刚变化 ⇒ 动态数据在跑" if changed else "与上次相同"))
+                    item.setForeground(QColor(C_RED if x["bad"] else C_WHITE))
                 elif c == 4:
-                    item.setForeground(QColor(C_GREEN if str(txt) == "ok" else
-                                              C_RED if str(txt) in ("fail", "error") else C_YELLOW))
-                if _is_step:                                       # 🔌 单步: 金色高亮 (与画布单步节点同色)
+                    item.setForeground(QColor(C_GRAY))
+                elif c == 5:
+                    item.setForeground(QColor(C_RED if x["phys"] == "✘" else
+                                              C_YELLOW if x["phys"] == "🟡" else C_GREEN))
+                    if x["why"]:
+                        item.setToolTip(x["why"])
+                if x["step"]:
                     item.setBackground(QColor("#2b2611"))
                     if c in (1, 3):
                         item.setForeground(QColor("#ffd700"))
-                    if c == 1:
-                        item.setToolTip("🔌 单步调试: 这是**当前单步节点**输出的 topic\n"
-                                        "节点: %s\n载荷: 已真序列化 (单步是为了标定系统)\n"
-                                        "真源出线 topic: %s" % ((self._cur_step or {}).get("node_name")
-                                                              or (self._cur_step or {}).get("node_id") or "—",
-                                                              (self._cur_step or {}).get("link_topics") or []))
-                    elif c == 3:
-                        item.setToolTip("🔌 单步该节点输出的真实载荷 (来自 step_current.json)")
-                elif _is_hit:
+                elif x["pin"]:
                     item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
-        self._lv_last = lv
+        self._trace_frames = rows               # 给质量告警用: 最新一帧的逐信号值
+        try:                                    # 存"上一帧值"给跳变判据
+            self._prev_vals = {(r["name"], r["signal"]): float(r["value"]) for r in rows
+                               if r.get("signal") not in (None, "—")}
+        except Exception:                                                # noqa: BLE001
+            pass
         self.tb.setUpdatesEnabled(True)
 
     def _fill_trace(self, force=False):
@@ -1660,11 +1649,24 @@ class BusView(QWidget):
 
     def _fill_alerts(self):
         alerts = []
+        # ① 总线层 (频率/丢包/配对/帧龄)
         for key, t in (self._topics() or {}).items():
             for r in (t.get("rules") or []):
                 if not r.get("ok"):
                     alerts.append((r.get("level", "warn"), t.get("topic", key),
                                    "%s: %s" % (r.get("rule", "—"), r.get("msg", ""))))
+        # ② 物理层 (2026-10-17 老倪: 「报警要面向物理值不符合物理规律, 超最大/最小值」)
+        try:
+            frames = [{"topic": r["name"], "name": r["signal"], "value": r["value"],
+                       "unit": None if r.get("unit") in (None, "—") else r["unit"],
+                       "vmin": r.get("lo"), "vmax": r.get("hi"), "prev": r.get("prev")}
+                      for r in (getattr(self, "_trace_frames", None) or [])
+                      if r.get("signal") not in (None, "—")]
+            for a in _quality.scan_frames(frames):
+                alerts.append((a.get("level", "warn"), a.get("object", "—"),
+                               "%s: %s" % (a.get("rule", "rule"), a.get("msg", ""))))
+        except Exception:                                                    # noqa: BLE001
+            pass
         seen, uniq = set(), []
         for a in alerts:                                                       # 质检: 同一规则+同文本重复出现 ⇒ 去重
             k = (a[0], a[1], a[2])
