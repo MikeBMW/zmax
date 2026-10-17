@@ -519,7 +519,15 @@ class HostJsonSource(threading.Thread):
                     #   不清的话: 第 1 趟和第 2 趟的点叠在同一个 x 上, 连成折线在两趟之间上下跳 ⇒
                     #   目检就像"噪声/一块面积/跳变到 5 6"(老倪 2026-10-15 报的就是这个)。
                     _prev = getattr(self, "_pb_t_prev", None)
-                    if _prev is not None and float(_st) < _prev - 2.0:
+                    # 🔴 2026-10-17 老倪「反应非常慢」第二个真因(实测干净启动 9 趟/秒):
+                    #   3D 快照的 时间_s 在多源之间抖动 (9.7↔6.0), 每次都满足"回跳 > 2s"
+                    #   ⇒ 每秒清 9 次缓冲、每次清掉 288~384 条波形再重铺 ⇒ 信号页空转烧 CPU。
+                    #   真回绕是"满窗 → 回起点"的偶发事件, 不可能是 9Hz ⇒ 加墙钟去抖 (≥2s 才算新一趟)。
+                    _lap_wall = getattr(self, "_pb_lap_wall", 0.0)
+                    _now_wall = time.time()
+                    if (_prev is not None and float(_st) < _prev - 2.0
+                            and (_now_wall - _lap_wall) > 2.0):
+                        self._pb_lap_wall = _now_wall
                         _hit = self.store.clear_scene("新一趟回放/拖回看")
                         self.store.lap += 1
                         try:
@@ -2818,6 +2826,13 @@ class CanoeGraphicWidget(QWidget):
         if not key:
             return
         checked = item.checkState(0) == Qt.Checked
+        # 🔴 2026-10-17 老倪「反应非常慢」真因(实测 8/8 py-spy 采样全卡在这里):
+        #   `_update_tree_values` 里对每一行 setToolTip(0) ⇒ QTreeWidgetItem::setData(ToolTipRole)
+        #   **也会发 itemChanged(col=0)** ⇒ 每拍 460 行 × 4Hz = 每秒约 1800 次
+        #   `_ordered_selected()` 全树递归 + `wave.set_curves()` 重建曲线 ⇒ 主线程 100% 占用、GUI 卡死。
+        #   勾选状态没变就不是"勾选事件"(文本/tooltip/配色刷新都走这条路), 直接返回。
+        if checked == (key in self.selected):
+            return
         if checked and key not in self.selected:
             self.selected.append(key)
         elif not checked and key in self.selected:
@@ -3385,47 +3400,64 @@ class CanoeGraphicWidget(QWidget):
         parts = []
         for k in keys[:8]:
             b = self.store.bufs.get(k)
-            if b is None or b.last_val is None:
+            _last = b.last_val if b is not None else None
+            if _last is None:            # 🔴 2026-10-17: 只读一次 —— 工作线程可能在判空与使用之间把它置空,
+            #                              改前这里曾抛 TypeError: NoneType * float (实测日志 2 次)
                 continue
             # 🧮 速度键按 mm/s 显示; 色块用场景/角色色 (与曲线同口径, 老倪: 应该只是绿色的信号)
             _sc = self._unit_scale(k)
             try:
                 _col = self.wave._kcolor(k)
             except Exception:                                                  # noqa: BLE001
-                _col = b.color
+                _col = getattr(b, "color", "#888")
             parts.append(f"<span style='color:{_col}'>■</span> {self._disp_name(k)} "
-                         f"<b>{b.last_val * _sc:.4f}</b>")
+                         f"<b>{_last * _sc:.4f}</b>")
         self.lb_legend.setText("   ".join(parts))
 
     def _update_tree_values(self):
         if self.tree.topLevelItemCount() == 0:
             return
+        # 🔴 2026-10-17: 只写"变了"的行 (值/tooltip 逐行缓存)。改前每拍把 460 行全部 setText+setToolTip,
+        #   每次 setToolTip 都会发 itemChanged(col=0) ⇒ 触发全树递归 + 曲线重建 (见 _on_item_changed 的注释)。
+        #   缓存后: 稳态一拍 0 次写盘级调用, 只在数值真变化的那几行动。
+        _cache = getattr(self, "_tv_cache", None)
+        if _cache is None:
+            _cache = self._tv_cache = {}
         for it in self._all_items():
             key = it.data(0, Qt.UserRole)
             if not key:
                 continue
             b = self.store.bufs.get(key)
-            if b is None or b.last_val is None:
+            if b is None:                        # 行还没有对应缓冲
                 continue
             v = b.last_val
+            if v is None:                        # 真值缺失 (工作线程可能正好把它置空) —— 不写, 也不炸
+                continue
             # 🧮 速度键按 mm/s 显示 (真源 m/s ×1000)
             _sc = self._unit_scale(key)
             _v = v * _sc
-            it.setText(1, f"{_v:.4g}" if abs(_v) < 1e5 else f"{_v:.3g}")   # 紧凑: 1.79e+09 不再撑列
+            _txt = f"{_v:.4g}" if abs(_v) < 1e5 else f"{_v:.3g}"  # 紧凑: 1.79e+09 不再撑列
             # 列2 = 输出节点 (静态, 建行时写好) —— 这里**不再**覆盖, 帧龄挪进 tooltip (老倪 2026-10-15)
             _age = "-" if b.age < 0 else f"{b.age:.2f}s"
             try:                                    # Min/Max + 帧龄 收进 tooltip, 不再占列宽
                 _mn = (b.vmin * _sc) if b.vmin is not None else None
                 _mx = (b.vmax * _sc) if b.vmax is not None else None
-                it.setToolTip(0, f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
-                                 f"\n来源 {b.src} · 点数 {b.n}"
-                                 f" · Min {_mn:.4g} · Max {_mx:.4g}"
-                                 f" ({'mm/s' if _sc != 1.0 else '原值'})"
-                                 if b.vmin is not None else
-                                 f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
-                                 f"\n来源 {b.src} · 点数 {b.n}")
+                _tt = (f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
+                       f"\n来源 {b.src} · 点数 {b.n}"
+                       f" · Min {_mn:.4g} · Max {_mx:.4g}"
+                       f" ({'mm/s' if _sc != 1.0 else '原值'})"
+                       if b.vmin is not None else
+                       f"{b.key}\n输出节点 {self._out_node(b.key)}\n帧龄 {_age}"
+                       f"\n来源 {b.src} · 点数 {b.n}")
             except Exception:
-                pass
+                _tt = None
+            if _cache.get(key) == (_txt, _tt):
+                continue                          # 🚀 这一行没变 ⇒ 一次 Qt 写入都不做
+            if it.text(1) != _txt:
+                it.setText(1, _txt)
+            if _tt is not None:
+                it.setToolTip(0, _tt)
+            _cache[key] = (_txt, _tt)
 
     def _log(self, msg):
         line = f"[{time.strftime('%H:%M:%S')}] {msg}"

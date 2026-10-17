@@ -1275,6 +1275,7 @@ class ConfigCenterPage(QWidget):
 
     # ── 左侧栏宽度: 适配内容 + 可拖 + 记住 (2026-10-12 老倪「无法更改宽度, 字体都挡住了」) ──
     _TREE_W_KEY = "config_center/tree_width"
+    _TREE_W_SIG_KEY = "config_center/tree_width_sig"   # 记宽度时树长什么样 (树变了 ⇒ 旧记忆作废)
 
     # ── 右侧超宽说明行 ⇒ 允许换行 (2026-10-12「无法更改宽度」的真凶) ──
     #   实测(真机 192DPI): 页1「工程配置」里一条 **2621px 的单行 QLabel** 把 QTabWidget 的最小宽度顶到
@@ -1406,20 +1407,49 @@ class ConfigCenterPage(QWidget):
         return int(max(150, need + 22 + 4 + 18 + 12))
 
     def _on_tree_split_moved(self, _pos, _idx):
-        """用户拖动分隔条 ⇒ 记住宽度(下次开这个页面沿用)。"""
+        """用户拖动分隔条 ⇒ 记住宽度(下次开这个页面沿用)。
+
+        🔴 2026-10-17 老倪「配置中心打开时左侧边栏太宽」——真因: 只记宽度不记**当时树长什么样**,
+        历史遗留(8 项旧树/误拖)的 254px 被当成有效值每次沿用, 而 7 颗星的文本需求只要 184px。
+        现在同时记一份"树指纹"(条目数 + 最长条目像素/文本), 指纹一致才算有效记忆。"""
         try:
-            QSettings("ZMAX", "Console").setValue(self._TREE_W_KEY, int(self.tree.width()))
+            s = QSettings("ZMAX", "Console")
+            s.setValue(self._TREE_W_KEY, int(self.tree.width()))
+            s.setValue(self._TREE_W_SIG_KEY, self._tree_sig())
         except Exception:                                                       # noqa: BLE001
             pass
 
-    def _apply_tree_width(self):
-        """落定左栏宽度: 用过记过的值(但不得小于内容需求), 没记过就用需求宽度。"""
+    def _tree_sig(self):
+        """左树指纹 = 条目数 | 最长条目像素 | 最长条目文本(前 40 字)。树变了 ⇒ 旧宽度记忆作废。"""
         try:
-            saved = int(QSettings("ZMAX", "Console").value(self._TREE_W_KEY, 0) or 0)
+            fm = self.tree.fontMetrics()
+            longest, px, n = "", -1, 0
+            stack = [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
+            while stack:
+                it = stack.pop()
+                if it is None:
+                    continue
+                n += 1
+                t = it.text(0)
+                w = fm.horizontalAdvance(t)
+                if w > px:
+                    longest, px = t, w
+                stack.extend(it.child(i) for i in range(it.childCount()))
+            return "%d|%d|%s" % (n, px, longest[:40])
         except Exception:                                                       # noqa: BLE001
-            saved = 0
+            return ""
+
+    def _apply_tree_width(self):
+        """落定左栏宽度: **树没变**才沿用用户拖过的宽度, 否则回到内容需求宽度 (默认就是合适的, 不开太宽)."""
+        try:
+            s = QSettings("ZMAX", "Console")
+            saved = int(s.value(self._TREE_W_KEY, 0) or 0)
+            saved_sig = str(s.value(self._TREE_W_SIG_KEY, "") or "")
+        except Exception:                                                       # noqa: BLE001
+            saved, saved_sig = 0, ""
         total = max(self.width(), self.splitter.width())
-        want = max(self._tree_need, saved)
+        use_saved = bool(saved) and saved_sig == self._tree_sig()
+        want = saved if use_saved else self._tree_need
         want = min(want, max(self._tree_need, int(total * 0.5)))                # 别把右栏挤没
         self.splitter.setSizes([want, max(1, total - want)])
 

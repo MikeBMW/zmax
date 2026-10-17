@@ -2975,6 +2975,35 @@ class PipelinePanel(QDialog):
 # ════════════════════════════════════════════════════════════════
 # 画布节点 (QGraphicsItem)
 # ════════════════════════════════════════════════════════════════
+# 🧩 2026-10-17 老倪「状态空间每个模块, 要在每个 node 里显示加载, 模块从 DDS 总线中获取数据,
+#    并将结果发到 DDS 总线」—— 画布每个节点都对应 src/lerobot/middleware/nodes/ 里的一个模块,
+#    这里做一次缓存查询: 节点 id → 规格(端口/实现) + 当前总线 (550B=DDS / A·C=共享内存)。
+_MW_STATUS = {"ready": False, "by_id": {}, "bus": "?", "enabled": False, "why": ""}
+
+
+def _mw_status_map():
+    if _MW_STATUS["ready"]:
+        return _MW_STATUS
+    _MW_STATUS["ready"] = True
+    try:
+        import sys as _s
+        _root = _os_mod.path.abspath(_os_mod.path.join(
+            _os_mod.path.dirname(_os_mod.path.abspath(__file__)), "..", ".."))
+        _src = _os_mod.path.join(_root, "src")
+        if _src not in _s.path:
+            _s.path.insert(0, _src)
+        from lerobot.middleware import bus_enabled, parse_canvas      # noqa: PLC0415
+        _specs, _links, _meta = parse_canvas()
+        _ok, _why = bus_enabled()
+        _MW_STATUS["by_id"] = {s.id: s for s in _specs}
+        _MW_STATUS["enabled"] = bool(_ok)
+        _MW_STATUS["bus"] = "DDS (550B 标定版)" if _ok else "共享内存总线 (550A/550C)"
+        _MW_STATUS["why"] = _why
+    except Exception as e:                                             # noqa: BLE001
+        _MW_STATUS["why"] = "%s: %s" % (type(e).__name__, e)
+    return _MW_STATUS
+
+
 class SimNodeItem(QGraphicsObject):
     def __init__(self, node, scene_ref):
         super().__init__()
@@ -3038,6 +3067,11 @@ class SimNodeItem(QGraphicsObject):
         return QRectF(0, 0, self.w, self.h).adjusted(-12, -18, 12, 12)
 
     def paint(self, painter, opt, widget=None):
+        # 🧩 2026-10-17: 画完节点本体后统一盖"中间件加载态"徽标 (所有节点类型都覆盖)
+        self._paint_core(painter, opt, widget)
+        self._mw_badge(painter)
+
+    def _paint_core(self, painter, opt, widget=None):
         t = self.node["type"]
         # 🎨 背景行节点 (Model Zoo): 整行彩色半透明色带 + 左侧大字模型名
         # 可编辑: 右键参数框改 name (大字)/ params.bg (背景色); 不与普通节点同规格绘制
@@ -3671,6 +3705,39 @@ class SimNodeItem(QGraphicsObject):
         painter.setPen(QPen(QColor(pal["port_edge"]), 1))
         painter.drawEllipse(QPointF(0, h / 2), 6, 6)
         painter.drawEllipse(QPointF(w, h / 2), 6, 6)
+
+    def _mw_badge(self, painter):
+        """🧩 2026-10-17 老倪: 「状态空间每个模块, 要在每个 node 里显示加载」——
+
+        每个画布节点在 src/lerobot/middleware/nodes/ 里都有一个模块; 右下角显示它**加载在哪条总线上**:
+            绿 ◉DDS  = 550B 标定版 (DDS 总线)
+            灰 ◉内存 = 550A / 550C (共享内存总线)
+        没有规格的节点 (背景色带/装饰) 不画, 不干扰画面。
+        """
+        try:
+            if self.node.get("type") in ("row_bg", "bg"):
+                return
+            _mw = _mw_status_map()
+            _sp = _mw["by_id"].get(self.node.get("id") or "")
+            if _sp is None:
+                return
+            w, h = self.w, self.h
+            _on = bool(_mw["enabled"])
+            painter.save()
+            painter.setPen(QColor("#3fb950") if _on else QColor("#8b949e"))
+            painter.setFont(_node_font(max(6, NODE_SUB_PT - 1)))
+            painter.drawText(QRectF(max(6, w - 68), h - 15, 62, 12),
+                             Qt.AlignVCenter | Qt.AlignRight, "◉" + ("DDS" if _on else "内存"))
+            painter.restore()
+            _tip = ("%s\n🧩 中间件模块: %s\n输入 %s → 输出 %s\n实现: %s\n总线: %s"
+                    % (self.node.get("name", ""), _sp.module_name + ".py",
+                       ",".join(_sp.inputs) or "-", ",".join(_sp.outputs) or "-",
+                       _sp.impl_key or "(未绑定)", _mw["bus"]))
+            if getattr(self, "_mw_tip", "") != _tip:
+                self._mw_tip = _tip
+                self.setToolTip(_tip)
+        except Exception:                                                      # noqa: BLE001
+            pass
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionChange:
@@ -5927,10 +5994,11 @@ class SimulinkModule(QWidget):
         # 首次打开铺满 MDI 操作区 (老倪: 窗口应充满嵌入的原来空间, 不露背景; 可还原/缩放)
         self._canvas_win.showMaximized()
         self.library = LibraryPanel(self)
-        # 📚 2026-10-09 老倪: 「全面检查模块库」 ⇒ 画布起来时模块库必须是**展开可看见**的默认态
-        #   (之前有过遗留的收起态 → 打开画布看不到模块库, 得自己找左缘 ▶)
+        # 📚 2026-10-17 老倪: 「画布左侧模块栏默认关闭」 ⇒ 起来就是收起态 (20px, 左缘 ▶ 一点展开),
+        #   画布默认占满; 展开/收起仍是同一套 set_collapsed (改前是强制展开: 2026-10-09 曾经修过
+        #   "看不到模块库"的老问题 — 现在收起态留 ▶ 且 tooltip 写明, 不会再"找不到")。
         try:
-            self.library.set_collapsed(False)
+            self.library.set_collapsed(True)
         except Exception:                                                         # noqa: BLE001
             pass
         # 📚 左侧栏折叠/展开 (2026-08-22 老倪: 去掉独立 16px 空扩展条 → library 自收窄 20px)
@@ -8581,6 +8649,40 @@ class SimulinkModule(QWidget):
             except Exception as ex:
                 self._qmsg_info("加载失败", str(ex))
 
+    def _mw_build_project(self, flow):
+        """把刚加载的画布 flow 形成**中间件完整工程** (每节点一个模块 + 总线路由)。
+
+        🧩 2026-10-17 老倪: 「加载工程的时候, 能够读取状态空间工程的 JSON 配置连线文件, 形成完整工程」
+        失败不阻断画布: 只记日志并置 self.mw_project=None。
+        """
+        try:
+            old = getattr(self, "mw_project", None)
+            if old is not None:
+                try:
+                    old.close()
+                except Exception:                                          # noqa: BLE001
+                    pass
+            import sys as _s
+            _root = _os_mod.path.abspath(_os_mod.path.join(
+                _os_mod.path.dirname(_os_mod.path.abspath(__file__)), "..", ".."))
+            _src = _os_mod.path.join(_root, "src")
+            if _src not in _s.path:
+                _s.path.insert(0, _src)
+            from lerobot.middleware import load_project as _lp             # noqa: PLC0415
+            prj = _lp(canvas=flow, ensure_modules=True, quiet=True)
+            self.mw_project = prj
+            st = prj.stats()
+            _log = getattr(self, "_log", None)
+            if callable(_log):
+                _log("🧩 中间件工程已形成: %d 节点 · %d 连线 · %d 个节点模块就位 · 总线 %s"
+                     % (st["nodes"], st["links"], st["module_ok"],
+                        prj.bus_info.get("backend")))
+        except Exception as e:                                            # noqa: BLE001
+            self.mw_project = None
+            _log = getattr(self, "_log", None)
+            if callable(_log):
+                _log("⚠️ 中间件工程加载失败: %s: %s" % (type(e).__name__, e))
+
     def load_flow(self, flow):
         self.clear()
         for n in flow.get("nodes", []):
@@ -8615,6 +8717,9 @@ class SimulinkModule(QWidget):
             self.canvas._scene.addItem(item)
         for l in flow.get("links", []):
             self.links.append(dict(l))
+        # 🧩 2026-10-17 老倪「加载工程的时候, 能够读取状态空间工程的 JSON 配置连线文件, 形成完整工程」
+        #   画布一加载完就把中间件工程建起来: 每个节点一个模块, 端口/连线 = 总线路由表。
+        self._mw_build_project(flow)
         # 🐛 2026-08-22 老倪: 统一左移 row_bg, 模型名区固定 250px 宽 (不遮挡节点列)
         #   (状态空间/原子条件等 JSON 画布 row_bg x=-20, 节点 x=100/0 → 模型名区仅 112px 被节点盖住)
         try:
@@ -16851,7 +16956,17 @@ class SimulinkModule(QWidget):
         if not code:
             self._log("⚠️ 未找到 code 命令 (VSCode 未装或 PATH 无) — 配置已写入 .vscode/")
             return
-        cmd = [code, root]
+        _ws_file = os.path.join(root, "ZMAX.code-workspace")
+        # 🚪 2026-10-17 老倪「右键怎么又打开一个 VSCode? 应该进 zmax 工作空间的 vscode」:
+        #   原来 cmd = [code, root] 传**文件夹**。他的 VSCode 开的是**工作区**(ZMAX.code-workspace, 4 根),
+        #   而"文件夹根"和"工作区根"在 VSCode 里不是同一个东西 ⇒ 判定为新工程 ⇒ 又开一个窗 (且只有 1 根)。
+        #   实测(`code --status` 取证): 工作区窗 = 4 个 Folder(gui/lerobot/docs/zmax)、标题**没有** " - <目录> - "
+        #   段; 而 `code <工作区文件> -g <文件>:<行>` 会被 VSCode 直接投送到**已开的同一个工作区窗**
+        #   (窗口数不变, 已实测 2→2) ⇒ 一律投工作区文件, 别再投文件夹。
+        _target = _ws_file if os.path.isfile(_ws_file) else root
+        _tgt_kind = ("Z-MAX 工作区 (ZMAX.code-workspace → 4 根: 框架/控制台/文档/工程)"
+                     if _target == _ws_file else "仓库文件夹 (未找到工作区文件)")
+        cmd = [code, _target]
         # 🐛 2026-08-30 老倪: 打开当前节点实际源代码并定位 (node_logic 映射/外部源码)
         # 🐛 2026-09-13 老倪: 「INTACT意图解码器 右键打开还是原来的 GUI, 没跳到 src/lerobot/policies」
         #   → 原来只认 node_logic 映射, 未映射的键退回 node_logic.py 自身 → 看起来"没跳"。
@@ -16859,7 +16974,25 @@ class SimulinkModule(QWidget):
         #   找不到才退回 node_logic 映射 (老节点行为不变)。
         loc_desc = ""
         _loc = None
-        if node is not None:
+        _impl_desc = ""
+        # 🚪 2026-10-17 老倪「右键打开工程, 要先进入这个对应的 node 代码, 能看到输入输出」:
+        #   中间件节点模块 src/lerobot/middleware/nodes/<n_id>.py 才是"一个节点的家"
+        #   (端口/工程连线/compute 全在里面), 真实现位置作为第二跳写进日志。
+        try:
+            import sys as _sys2
+            _src_dir = os.path.join(root, "src")
+            if _src_dir not in _sys2.path:
+                _sys2.path.insert(0, _src_dir)
+            from lerobot.middleware import resolve_open_target as _rot     # noqa: PLC0415
+            _t = _rot(node, root=root) if node is not None else {}
+            if _t.get("path"):
+                _loc = (_t["path"], _t.get("line") or 1)
+                if _t.get("impl_path"):
+                    _impl_desc = " · 实现在 %s:%s" % (
+                        os.path.relpath(_t["impl_path"], root), _t.get("impl_line") or 1)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        if node is not None and _loc is None:
             _p = dict(node.get("params", {}) or {})
             _src = str(_p.get("source") or "")
             # 🐛 2026-09-14 老倪:「DiT 的右键怎么没有进入源代码」→ 两个真因:
@@ -16925,7 +17058,8 @@ class SimulinkModule(QWidget):
         _isolated = _launch is not cmd and _spawn(_launch)
         if not _isolated:
             _spawn(cmd)                     # 兜底: 没有 systemd-run 时按老路开 (进同一 cgroup)
-        self._log(f"🚀 VSCode 已打开 {root}{loc_desc} · 解释器 gui-venv311 已配置 "
+        _where = "进入 " + _tgt_kind
+        self._log(f"🚀 VSCode: {_where}{loc_desc}{_impl_desc} · 解释器 gui-venv311 已配置 "
                   f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)"
                   + (" · 已独立进程组 (关控制台不再带走它)" if _isolated else ""))
 
