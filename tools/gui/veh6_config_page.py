@@ -840,8 +840,12 @@ def _mk_table(headers, rows, theme, widths=None):
 def _btn(text, theme):
     b = QPushButton(text)
     b.setFont(QFont("Arial", 10))
-    b.setStyleSheet(f"background:{theme['C_CARD']};color:{theme['C_WHITE']};"
-                    f"border:1px solid {theme['C_BORDER']};border-radius:4px;padding:5px 12px;")
+    # 🐛 2026-10-17: 原来这里是**裸声明** (background:...;padding:...;) 没有 QPushButton{} 包起来。
+    #    下面 3581 行又在同一串后面拼 "QPushButton:checked{...}" ⇒ 裸声明后面直接跟选择器,
+    #    Qt 解析失败, 每次 repolish 都刷 "Could not parse stylesheet of object QPushButton(...)"
+    #    (实测 3 个按钮 功能配置/性能配置/模型配置, 5s 内 18 条)。包成规则块后拼接合法。
+    b.setStyleSheet(f"QPushButton{{background:{theme['C_CARD']};color:{theme['C_WHITE']};"
+                    f"border:1px solid {theme['C_BORDER']};border-radius:4px;padding:5px 12px;}}")
     return b
 
 

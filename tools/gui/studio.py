@@ -15378,6 +15378,23 @@ def main():
     #   QApplication 前强制清除, 恢复 PyQt5 自带插件路径 (对任何来源的污染都有效)。
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
     app = QApplication(sys.argv)
+    # 🔇 2026-10-17 老倪: 「Could not parse stylesheet of object QPushButton(...) 这是啥? 不要显示这个无用信息」
+    #    真根因已修 (veh6_config_page._btn 裸声明后面拼选择器 ⇒ 每次 repolish 解析失败);
+    #    这里再兜一层: 以后哪张表写坏了也不许刷终端; 其他 Qt 消息照常打印。
+    try:
+        from PyQt5.QtCore import qInstallMessageHandler as _qimh
+        def _qt_msg(_mode, _ctx, _msg):
+            if ("Could not parse stylesheet" in _msg) or ("propagateSizeHints" in _msg):
+                return
+            import sys as _sys
+            try:                        # 中文消息不能走 print (GUI 的 stderr 编码可能是 ascii)
+                _sys.stderr.buffer.write((_msg + "\n").encode("utf-8", "replace"))
+                _sys.stderr.flush()
+            except Exception:
+                pass
+        _qimh(_qt_msg)
+    except Exception:
+        pass
     # 🐛 2026-09-02 老倪: YOLO 预热防 not responding — 首次播放时主线程同步加载 YOLO
     # 卡 10-40s 弹 "studio.py is not responding"。⚠️ 教训: 后台线程 import metaworld
     # (gymnasium→cv2 Qt 链) 会 QObject::moveToThread + debugpy abort (GUI 启动崩, 已回滚);
