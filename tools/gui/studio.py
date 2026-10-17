@@ -86,7 +86,11 @@ except Exception as _be:                                                        
 #     · 失败不拦启动, 只如实打一行 (取不到就说取不到, 不编)
 try:
     import importlib as _il_boot
-    _src_boot = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+    # 🐛 2026-10-17 修: 这里原来只有两层 dirname ⇒ 算出 <repo>/tools/src (不存在) ⇒ os.path.isdir=False
+    #   ⇒ 没插 sys.path ⇒ import lerobot 必抛 ModuleNotFoundError ⇒ 预读**从来没成功过**,
+    #   连带 config_import.py:142 那个断点在启动期永不命中 (10-14 的验收要求落空)。
+    #   正确 = 仓库根 + /src (与本文件 _db_file() 的三层 dirname 同口径)。
+    _src_boot = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "src")
     if os.path.isdir(_src_boot) and _src_boot not in sys.path:
         sys.path.insert(0, _src_boot)
     _ci_boot = _il_boot.import_module("lerobot.engineering.config_import")
