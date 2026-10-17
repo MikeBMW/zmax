@@ -220,7 +220,9 @@ class BusView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)
-        root.addWidget(self._measure_bar())
+        # ✂️ 2026-10-17 老倪: 「数据空间上面的一排字, 档位 拍照 灯 这些字, 有用么? 都删掉;
+        #    start stop 按钮也删掉; 只保留一个搜索信号功能, 放在 trace 窗口的按钮区」
+        #   ⇒ 顶部测量条整行移除; 搜索统一到 Trace 工具条 (见 _trace_panel)。
 
         vs = QSplitter(Qt.Vertical)
         vs.setChildrenCollapsible(False)
@@ -275,205 +277,7 @@ class BusView(QWidget):
         b.clicked.connect(fn)
         return b
 
-    def _measure_bar(self):
-        """CANoe 顶部测量组: Start(黄闪电)/Stop(灰八边形) 大按钮 + 计数/灯 + 计时"""
-        bar = QFrame()
-        bar.setStyleSheet(f"QFrame {{ background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:6px; }}")
-        lay = QHBoxLayout(bar)
-        lay.setContentsMargins(10, 8, 10, 8)
-        lay.setSpacing(16)
-
-        self.btn_start = QPushButton("⚡\nStart")
-        self.btn_start.setFont(QFont(UI, 10, QFont.Bold))
-        self.btn_start.setFixedSize(76, 54)
-        self.btn_start.setToolTip("开始: 恢复 Trace 滚动并立刻重读总线(live.json / trace.jsonl) — 等价 CANoe Start")
-        self.btn_start.setStyleSheet(
-            f"QPushButton {{ background:{C_CARD}; color:{C_YELLOW}; border:2px solid {C_YELLOW};"
-            f" border-radius:5px; }} QPushButton:hover {{ background:#2a2312; }}")
-        self.btn_start.clicked.connect(self._on_start)
-        lay.addWidget(self.btn_start)
-
-        self.btn_stop = QPushButton("⬢\nStop")
-        self.btn_stop.setFont(QFont(UI, 10, QFont.Bold))
-        self.btn_stop.setFixedSize(76, 54)
-        self.btn_stop.setToolTip("停止: 冻结 Trace 视图(总线与数据源照收, 等价 CANoe Stop)")
-        self.btn_stop.setStyleSheet(
-            f"QPushButton {{ background:{C_CARD}; color:{C_GRAY}; border:2px solid {C_GRAY};"
-            f" border-radius:5px; }} QPushButton:hover {{ color:{C_WHITE}; border-color:{C_WHITE}; }}")
-        self.btn_stop.clicked.connect(self._on_stop)
-        self.btn_stop.setEnabled(False)
-        lay.addWidget(self.btn_stop)
-
-        self.lb_state = QLabel("● 测量 运行中")
-        self.lb_state.setFont(QFont(UI, 11, QFont.Bold))
-        self.lb_state.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
-        self.lb_mode = QLabel("档位 —")
-        self.lb_mode.setFont(QFont(MONO, 10))
-        self.lb_mode.setStyleSheet(f"color:{C_BLUE}; background:transparent; border:none;")
-        self.lb_fresh = QLabel("刷新龄 —")
-        self.lb_fresh.setFont(QFont(MONO, 10))
-        self.lb_fresh.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-        self.lb_msgs = QLabel("报文 —")
-        self.lb_msgs.setFont(QFont(MONO, 10))
-        self.lb_msgs.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        self.lb_lamps = QLabel("灯 —")
-        self.lb_lamps.setFont(QFont(UI, 11))
-        self.lb_lamps.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        self.lb_clock = QLabel("0:00:00")
-        self.lb_clock.setFont(QFont(MONO, 10, QFont.Bold))
-        self.lb_clock.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none;")
-        for w in (self.lb_state, self.lb_mode, self.lb_fresh, self.lb_msgs, self.lb_lamps, self.lb_clock):
-            lay.addWidget(w)
-        lay.addStretch()
-        self.lb_mid = QLabel("—")
-        self.lb_mid.setFont(QFont(MONO, 9))
-        self.lb_mid.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-        lay.addWidget(self.lb_mid)
-        lay.addStretch()
-        lay.addWidget(self._sm_btn("🔄 刷新", "立刻重读 live.json / trace.jsonl",
-                                   lambda: self.reload(force_tree=True)))
-        self.btn_classic = self._sm_btn("🗂 经典视图", "切回原来的 12 个 Tab 视图(旧入口不丢)",
-                                        self._toggle_classic, color=C_GRAY, checkable=True)
-        if self.standalone:                      # 独立窗口里没有主窗口那套 Tab 视图 → 不显示该开关
-            self.btn_classic.setVisible(False)
-        lay.addWidget(self.btn_classic)
-
-        # 🔎 右上角**全局搜索** (2026-09-30 老倪: 「在全局数据空间, 右上角增加搜索功能」)
-        #    搜的是**信号表里的条目**(报文/信号/节点), 不是 Trace。输入即筛: 不匹配的行隐藏、
-        #    组内无匹配自动收起, 组标题显示 匹配 n/m; 回车 ⇒ 选中第一条命中并滚过去(右侧详情跟着出)。
-        #    可搜: 话题 key(ss_plan) · 全名(zmax/ss_plan) · 类型(zmax::SSPlan) · 节点名 · 层名。
-        self._find_saved = None                  # 清空时还原各组展开状态
-        self.ed_find = QLineEdit()
-        self.ed_find.setPlaceholderText("🔎 搜索 (信号表 + Trace 置顶)")
-        self.ed_find.setFont(QFont(MONO, 10))
-        self.ed_find.setFixedWidth(230)
-        self.ed_find.setClearButtonEnabled(True)
-        self.ed_find.setToolTip("按名字筛信号表: 话题 key(如 ss_plan) / 全名(zmax/ss_plan) / "
-                                "类型(zmax::SSPlan) / 节点名 / 层名。边打边筛, 回车跳到第一条命中。")
-        self.ed_find.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE};"
-                                   f" border:1px solid {C_YELLOW}; border-radius:4px; padding:4px 8px; }}")
-        self.ed_find.textChanged.connect(self._apply_find)
-        self.ed_find.returnPressed.connect(self._find_jump)
-        lay.addWidget(self.ed_find)
-        self.lb_find = QLabel("")
-        self.lb_find.setFont(QFont(MONO, 9))
-        self.lb_find.setStyleSheet(f"color:{C_YELLOW}; background:transparent; border:none;")
-        lay.addWidget(self.lb_find)
-        return bar
-
-    # ─────────────────── 🔎 右上角全局搜索: 筛信号表(报文/信号/节点) ───────────────────
-    def _find_haystack(self, item):
-        """一行的可搜文本 = 各列文字 + 悬浮提示 + UserRole 数据(话题 key/类型 常在这里)。"""
-        parts = [item.text(c) for c in range(item.columnCount())]
-        for c in range(item.columnCount()):
-            tt = item.toolTip(c)
-            if tt:
-                parts.append(tt)
-        d = item.data(0, Qt.UserRole)
-        if d:
-            parts.append(str(d))
-        return " ".join(parts).lower()
-
-    def _find_walk(self, item, q):
-        """递归设 hidden; 返回 (命中叶子数, 叶子总数)。"""
-        n = item.childCount()
-        if n == 0:
-            hit = q in self._find_haystack(item)
-            item.setHidden(not hit)
-            return (1 if hit else 0), 1
-        hit = tot = 0
-        for i in range(n):
-            h, a = self._find_walk(item.child(i), q)
-            hit += h
-            tot += a
-        item.setHidden(hit == 0)
-        if hit:
-            item.setExpanded(True)               # 搜索时展开, 保证命中可见
-        return hit, tot
-
-    def _apply_find(self):
-        try:
-            q = (self.ed_find.text() or "").strip().lower()
-            # 🆕 2026-10-01 老倪实测: 他把关键词打在**这个框**(顶部全局框), Trace 自己的框是空的
-            #   ⇒ Trace 完全不反应 = 「我搜索 plan 了, 啥都没有」。让两个框等效: 这里也置顶 Trace。
-            self._filter = q
-            try:
-                self._fill_trace(force=True)
-            except Exception:                                                   # noqa: BLE001
-                pass
-            n_hit = n_all = 0
-            if not q:                            # 清空 ⇒ **整树复位**(根+叶子全部取消隐藏),
-                self._unhide_all()               #    否则组显示出来了、叶子还藏着(实测踩过)
-            if q and self._find_saved is None:   # 首次进入搜索: **先**存各组展开状态(后面会被展开)
-                self._find_saved = [self.tree.topLevelItem(i).isExpanded()
-                                    for i in range(self.tree.topLevelItemCount())]
-            for gi in range(self.tree.topLevelItemCount()):
-                root = self.tree.topLevelItem(gi)
-                if not q:
-                    root.setHidden(False)
-                    continue
-                h, a = self._find_walk(root, q)
-                n_hit += h
-                n_all += a
-            if not q and self._find_saved is not None:   # 清空: 还原展开状态
-                for i, was in enumerate(self._find_saved):
-                    it = self.tree.topLevelItem(i)
-                    if it is not None:
-                        it.setExpanded(was)
-                self._find_saved = None
-            _gh, _ga = self._group_counts(q)
-            self.lb_find.setText("" if not q else ("匹配 %d/%d · 组 %d/%d" % (n_hit, n_all, _gh, _ga)
-                                                   + ("" if n_hit else " · 无命中(试试 ss_plan)")))
-        except Exception as e:                                                   # noqa: BLE001
-            try:
-                self.lb_find.setText("搜索异常: %s" % str(e)[:40])
-            except Exception:                                                    # noqa: BLE001
-                pass
-
-    def _unhide_all(self):
-        """整树取消隐藏(清空搜索时用): 根与所有叶子一起复位。"""
-        def walk(it):
-            it.setHidden(False)
-            for i in range(it.childCount()):
-                walk(it.child(i))
-        for gi in range(self.tree.topLevelItemCount()):
-            walk(self.tree.topLevelItem(gi))
-
-    def _group_counts(self, q):
-        """命中的组数/组总数(空查询 ⇒ 全算命中) —— 只读, 不改可见性。"""
-        gh = ga = 0
-        for gi in range(self.tree.topLevelItemCount()):
-            root = self.tree.topLevelItem(gi)
-            ga += 1
-            if not q or (not root.isHidden()):
-                gh += 1
-        return gh, ga
-
-    def _visible_leaves(self):
-        """当前可见(未被搜索/存活筛掉)的叶子, 供回车跳转用。"""
-        out = []
-
-        def walk(it):
-            if it.isHidden():
-                return
-            if it.childCount() == 0:
-                out.append(it)
-            else:
-                for i in range(it.childCount()):
-                    walk(it.child(i))
-        for gi in range(self.tree.topLevelItemCount()):
-            walk(self.tree.topLevelItem(gi))
-        return out
-
-    def _find_jump(self):
-        """回车: 选中第一条命中 + 滚过去 ⇒ 右侧详情立刻显示该条目(老倪要"名字一搜就出来")。"""
-        vs = self._visible_leaves()
-        if not vs:
-            self.lb_find.setText("无命中 · 试试 ss_plan")
-            return
-        self.tree.setCurrentItem(vs[0])
-        self.tree.scrollToItem(vs[0])
-        self._on_tree_click(vs[0], 0)
+    # (顶部测量条已删: Start/Stop/档位/拍照/灯/计时 —— 老倪 2026-10-17)
 
     def _data_panel(self):
         """CANoe 的 Data 面板: 信号表(Name | Value | Unit | Last Value Time [s] | Bar)"""
@@ -587,9 +391,9 @@ class BusView(QWidget):
         self.btn_dt = self._sm_btn("Δt", "Time 列切「与同话题上一帧的时间差」(CANoe Δt)",
                                    self._toggle_dt, checkable=True)
         self.ed_search = QLineEdit()
-        self.ed_search.setPlaceholderText("📌 Trace 置顶: 输入话题 (如 ss_plan)")
+        self.ed_search.setPlaceholderText("🔎 搜索信号 / topic (如 ss_plan · grasp_prob · tcp_x)")
         self.ed_search.setFont(QFont(MONO, 9))
-        self.ed_search.setFixedWidth(320)
+        self.ed_search.setFixedWidth(360)
         self.ed_search.setStyleSheet(f"QLineEdit {{ background:{C_BG}; color:{C_WHITE};"
                                      f" border:1px solid {C_BORDER}; border-radius:4px; padding:4px 8px; }}")
         self.ed_search.textChanged.connect(self._on_filter)
@@ -654,10 +458,7 @@ class BusView(QWidget):
             tabrow.addWidget(b)
         self._btns["alert"].setChecked(True)
         tabrow.addStretch()
-        self.lb_stamp = QLabel("拍照 —")
-        self.lb_stamp.setFont(QFont(MONO, 9))
-        self.lb_stamp.setStyleSheet(f"color:{C_GRAY}; background:transparent; border:none;")
-        tabrow.addWidget(self.lb_stamp)
+        # ✂️ 2026-10-17 老倪: 「拍照 … 这些字都删掉」—— 底部右角的"拍照 <时刻>"也一并去掉
         lay.addLayout(tabrow)
 
         self.tb_alert = QTableWidget(0, 3)
@@ -694,27 +495,10 @@ class BusView(QWidget):
             if r:
                 r.setExpanded(want)
 
-    def _on_start(self):
-        self.btn_pause.setChecked(False)
-        self.btn_pause.setText("⏸ 暂停")
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.lb_state.setText("● 测量 运行中")
-        self.reload(force_tree=True)
-
-    def _on_stop(self):
-        self.btn_pause.setChecked(True)
-        self.btn_pause.setText("▶ 继续")
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.lb_state.setText("■ 测量 已停止")
-
     def _toggle_pause(self):
+        """暂停/继续 Trace 视图 (顶部测量条已删: 不再联动 Start/Stop/状态灯)。"""
         on = self.btn_pause.isChecked()
         self.btn_pause.setText("▶ 继续" if on else "⏸ 暂停")
-        self.btn_start.setEnabled(on)
-        self.btn_stop.setEnabled(not on)
-        self.lb_state.setText("■ 测量 已停止" if on else "● 测量 运行中")
         if not on:
             self.reload()
 
@@ -787,7 +571,7 @@ class BusView(QWidget):
                     if _d:
                         self._sel_kind, self._sel_obj = _d
                         self._it_default = _it
-            self._fill_measure_bar()
+            # (顶部测量条已删: 不再刷新档位/拍照/灯/计时)
             if not self.btn_pause.isChecked():
                 self._fill_trace(force=bool(force_tree))
             self._fill_alerts()
@@ -1128,35 +912,6 @@ class BusView(QWidget):
             it.setForeground(2, QColor(VERDICT_COLOR.get(t.get("verdict", "unknown"), C_WHITE)))
             it.setForeground(4, QColor(C_GRAY))
 
-    def _fill_measure_bar(self):
-        live = self._live or {}
-        age = time.time() - float(live.get("ts") or 0) if live.get("ts") else None
-        self.lb_mode.setText("档位 %s" % (live.get("mode") or "—"))
-        self.lb_mode.setToolTip(live.get("mode_desc", ""))
-        self.lb_fresh.setText("刷新龄 %s · 拍照 %s" % (
-            ("%.1fs" % age) if age is not None else "—", _hhmmss(live.get("ts"))))
-        self.lb_msgs.setText("报文 活跃%s/允许%s/注册%s" % (
-            live.get("n_topic_alive", "—"), live.get("n_topics_allowed", "—"),
-            live.get("n_topics_registered", "—")))
-        tally = live.get("lamp_tally") or {}
-        txt = "  ".join(f"{LAMP_ICON.get(k, '')}{tally.get(k, 0)}"
-                        for k in ("green", "yellow", "red", "black"))
-        self.lb_lamps.setText("灯 " + (txt if txt.strip() else "—"))
-        st_col = C_GREEN if (age is not None and age < 5) else (C_YELLOW if age is not None and age < 30 else C_RED)
-        self.lb_state.setStyleSheet(f"color:{st_col}; background:transparent; border:none;")
-        if self._t0:
-            el = int(time.time() - self._t0)
-            self.lb_clock.setText("%d:%02d:%02d" % (el // 3600, (el % 3600) // 60, el % 60))
-        self.lb_stamp.setText("拍照 %s" % _hhmmss(live.get("ts")))
-        try:                                    # 中段读数(质检: 顶栏 733px 死区)
-            self.lb_mid.setText("Trace %d 行 · 📌置顶 %s · Δt %s · 帧龄 %s"
-                                % (self.tb.rowCount(), ("'%s'" % self._filter) if self._filter else "关",
-                                   "开" if self._dt_mode else "关",
-                                   _num((live.get("topics") or {}).get(
-                                       next(iter(self._topics()), ""), {}).get("age_s"), 2, "s")))
-        except Exception:                                                       # noqa: BLE001
-            pass
-
     def _trace_sig(self):
         try:
             st = os.stat(TRACE)
@@ -1468,6 +1223,13 @@ class BusView(QWidget):
             sig_fields = [(str(sn), sv) for sn, sv in (f or {}).items()
                           if isinstance(sv, (int, float)) and not isinstance(sv, bool)
                           and str(sn).lower() not in _META]
+            if pin:
+                if _is_hit:                   # 话题命中 ⇒ 该话题下所有信号都显示
+                    pass
+                else:                         # 只留信号名命中的那几行
+                    sig_fields = [(sn, sv) for sn, sv in sig_fields if pin in sn.lower()]
+                    if not sig_fields:
+                        continue
             if sig_fields:
                 for sn, sv in sorted(sig_fields):
                     unit, lo, hi = self._sig_meta(nm, sn)
@@ -1674,11 +1436,14 @@ class BusView(QWidget):
                 seen.add(k)
                 uniq.append(a)
         alerts = uniq
-        rank = {"fail": 0, "error": 0, "warn": 1, "unknown": 2}
+        if not alerts:      # 空表要说清"是真没有, 不是没接上" —— 否则没人信这个窗口在工作
+            alerts = [("info", "—", "无告警 · 判据: 超上限/低于下限(声明量程) · 物理规律(概率≤1·质量≥0·"
+                                 "温度≥-273.15·压力≥0·角度|≤720|) · NaN/inf/非数值 · 无单位 · 跳变")]
+        rank = {"fail": 0, "error": 0, "warn": 1, "unknown": 2, "info": 3}
         alerts.sort(key=lambda a: rank.get(a[0], 9))
         self.tb_alert.setRowCount(len(alerts))
         for i, (lvl, obj, msg) in enumerate(alerts):
-            icon = {"fail": "🔴", "error": "🔴", "warn": "🟡"}.get(lvl, "⚪")
+            icon = {"fail": "🔴", "error": "🔴", "warn": "🟡", "info": "⚪"}.get(lvl, "⚪")
             col = {"fail": C_RED, "error": C_RED, "warn": C_YELLOW}.get(lvl, C_GRAY)
             for c, txt in enumerate([f"{icon} {lvl}", obj, msg]):
                 item = QTableWidgetItem(str(txt)[:300])
@@ -1687,7 +1452,8 @@ class BusView(QWidget):
                 if c == 1:
                     item.setFont(QFont(MONO, 9))
                 self.tb_alert.setItem(i, c, item)
-        self._btns["alert"].setText("⚠ 质量告警 (%d)" % len(alerts))
+        _n_bad = sum(1 for a in alerts if a[0] in ("fail", "error", "warn"))
+        self._btns["alert"].setText("⚠ 质量告警 (%d)" % _n_bad)    # info 行不算"有告警"
 
     # ─────────────────── 选中 → 详情 ───────────────────
     def _on_tree_click(self, it, _col):
