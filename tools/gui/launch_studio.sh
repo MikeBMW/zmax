@@ -44,11 +44,23 @@ export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
 #   都会被当成"控制台已在跑" ⇒ 本脚本 exit 0 不干活 ⇒ **服务报启动成功但一个窗口都没有**(实测踩到)。
 #   ⇒ 改成锚定整条 cmdline: 只有"就是那个解释器在跑 studio.py"才算实例。
 STUDIO_RE='^[^ ]*gui-venv311/bin/python studio\.py$'
+# 🔔 2026-10-16 老倪「第一次总是没反应」: studio.py 从进程起来到**主窗口 map 出来**要 ≈50s
+#   (启动期预读配置真源 + 自动加载 L2 YOLO 2.4s / L3 SmolVLA 18.5s · 1289MB / L4 INTACT 5.9s),
+#   这段时间桌面**一点反馈都没有** ⇒ 人会以为没点到、再双击一次。这里补两条可见反馈:
+#   · 新实例: 立刻弹一条"正在启动"通知 (告诉他大概要等多久, 别急着再点)
+#   · 已有实例但窗口还没出来: 也弹一条 —— 原来这里是静默 exit 0, 正是"第二次点了也没反应"的由来
+_notify() {   # $1=标题 $2=正文
+    command -v notify-send >/dev/null 2>&1 || return 0
+    notify-send -a "XSpace Studio" -i "$GUI_DIR/logo.png" -- "$1" "$2" >/dev/null 2>&1 || true
+}
 if pgrep -f "$STUDIO_RE" >/dev/null 2>&1; then
     printf '%s\n' "$ZMAX_BOOT_PAGE" > /tmp/zmax_nav_cmd 2>/dev/null || true
     WIN=$(DISPLAY="$DISPLAY" xdotool search --onlyvisible --name "XSpace ZMAX" 2>/dev/null | head -1)
     if [ -n "$WIN" ]; then
         DISPLAY="$DISPLAY" xdotool windowactivate "$WIN" 2>/dev/null
+    else
+        # 进程在、窗口还没 map ⇒ 正在启动中 (不是没反应)
+        _notify "控制台正在启动中" "进程已在运行, 主窗口还没出来 (还要等 30~50 秒, 加载模型/画布中)。请勿重复双击。"
     fi
     exit 0
 fi
@@ -59,6 +71,8 @@ fi
 : > /tmp/zmax_nav_cmd 2>/dev/null || true
 
 cd "$GUI_DIR" || exit 1
+# 🔔 新实例: 先给一条可见反馈再 exec (窗口 ≈50s 后才出来, 这段空窗期正是"第一次没反应"的由来)
+_notify "XSpace Studio 正在启动" "正在加载工程库/画布 + L2/L3/L4 模型, 主窗口约 50 秒后出现。请勿重复双击。"
 # 只启动控制台本体: 不设任何自动开窗开关 (ZMAX_AUTO_RUN/ZMAX_AUTO_SS/ZMAX_AUTO_SS_RUN/ZMAX_AUTO_TEST
 # 一律不导出) —— 双击图标 = 落到配置中心, 由老倪自己检查任务配置后点「🚀 启动工程 · 信号 · 场景」。
 unset ZMAX_AUTO_RUN ZMAX_AUTO_SS ZMAX_AUTO_SS_RUN ZMAX_AUTO_SS_3D ZMAX_AUTO_TEST

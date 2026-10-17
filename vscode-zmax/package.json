@@ -1,0 +1,177 @@
+{
+  "name": "zmax550b",
+  "displayName": "Z-MAX 550B 工位",
+  "description": "Z-MAX 550B 调试档的 VSCode 版: 标定 / 测量 / 诊断 / 配置。真源 = 本机 8793 只读接口 + 仓库配置真源, 不复制任何业务逻辑。",
+  "version": "0.1.0",
+  "publisher": "zmax",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Z-MAX 550B",
+      "properties": {
+        "zmax550b.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8793",
+          "description": "工位控制服务 (8793, cam_live_stream.py) 基址 —— 只读状态 /station/status 与授权闸都在这。"
+        },
+        "zmax550b.arUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8797",
+          "description": "AR / 3D 视图服务基址。"
+        },
+        "zmax550b.refreshSeconds": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 60,
+          "description": "状态轮询间隔 (秒)。状态栏数值一律带帧龄, 不隐藏新鲜度。"
+        },
+        "zmax550b.repoRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Z-MAX 仓库根 (留空则自动从工作区向上探测 config/platform/zmax_product.json)。"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "zmax550b",
+          "title": "Z-MAX 550B",
+          "icon": "media/zmax.svg"
+        }
+      ]
+    },
+    "views": {
+      "zmax550b": [
+        {
+          "id": "zmax550b.diagnose",
+          "name": "诊断 (链路 / 闸门 / 事件)"
+        },
+        {
+          "id": "zmax550b.measure",
+          "name": "测量 (相机 / TCP / 深度 / AOI)"
+        },
+        {
+          "id": "zmax550b.calib",
+          "name": "标定 (真源 / 点位 / 建图)"
+        },
+        {
+          "id": "zmax550b.config",
+          "name": "配置 (档位 / 相机源 / 参数)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "zmax550b.refresh",
+        "title": "刷新全部",
+        "category": "Z-MAX 550B",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zmax550b.status.json",
+        "title": "打开原始状态 JSON (可复制/导出)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.openStation",
+        "title": "打开工位总览页 (8793)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.open3d",
+        "title": "打开 AR / 3D 视图 (8797)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.measure.panel",
+        "title": "测量面板 (四路画面 + 数值)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.measure.snapshot",
+        "title": "抓一帧快照",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.diagnose.chain",
+        "title": "诊断: 跑链路核验判据",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.diagnose.tail",
+        "title": "诊断: 尾随控制台日志",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.diagnose.ledger",
+        "title": "诊断: 打开动作台账 (8793 /station/ledger)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.calib.openData",
+        "title": "标定: 打开标定真源 JSON",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.calib.openSource",
+        "title": "标定: 打开标定实现源码",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.calib.recordPoint",
+        "title": "标定: 记录当前点位 (需授权)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.calib.clearPoint",
+        "title": "标定: 清除已记录点位 (需授权)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.calib.gsMap",
+        "title": "标定: 增量建图一轮 (需授权)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.config.openProfile",
+        "title": "配置: 打开产品档位真源",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.config.openParamSpec",
+        "title": "配置: 打开参数规格真源",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.config.camSrc",
+        "title": "配置: 查看/切换相机源 (8793 /cam/src)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.gate.arm",
+        "title": "授权真动 (两步确认 · 5 分钟窗口)",
+        "category": "Z-MAX 550B"
+      },
+      {
+        "command": "zmax550b.gate.disarm",
+        "title": "立即撤销授权",
+        "category": "Z-MAX 550B"
+      }
+    ]
+  },
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package --allow-missing-repository"
+  }
+}

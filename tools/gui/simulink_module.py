@@ -16880,9 +16880,35 @@ class SimulinkModule(QWidget):
         if _loc:
             cmd += ["-g", f"{_loc[0]}:{_loc[1] or 1}"]
             loc_desc = f" · 已定位 {os.path.relpath(_loc[0], root)}:{_loc[1] or 1}"
-        _sp.Popen(cmd, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        # 🛡 2026-10-17 老倪「vscode 卡住了」根因之一: VSCode 原来是本进程直接 Popen ⇒
+        #   落在 zmax-studio.service 的 **cgroup** 里。控制台一旦停/崩, systemd 按 cgroup 把
+        #   VSCode 一起收走 —— 实测 06:57:45 两者同秒双双消失 (code 还留下 SIGTRAP core),
+        #   用户看到的就是"VSCode 卡住不动"。
+        #   改: 经 `systemd-run --user --scope` 起在**独立 transient scope**
+        #   (单元 = user@1000.service/app.slice/zmax-vscode-<ts>.scope, 已实测),
+        #   与控制台 cgroup 解耦 ⇒ 以后关/崩控制台都不再带走 VSCode。
+        _launch = cmd
+        try:
+            if _sh.which("systemd-run"):
+                _launch = ["systemd-run", "--user", "--scope", "--collect",
+                           f"--unit=zmax-vscode-{int(time.time())}"] + cmd
+        except Exception:                                                       # noqa: BLE001
+            _launch = cmd
+
+        def _spawn(argv):
+            try:
+                _sp.Popen(argv, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                return True
+            except Exception as _ex:                                            # noqa: BLE001
+                print("[VSCode] 启动失败:", _ex)
+                return False
+
+        _isolated = _launch is not cmd and _spawn(_launch)
+        if not _isolated:
+            _spawn(cmd)                     # 兜底: 没有 systemd-run 时按老路开 (进同一 cgroup)
         self._log(f"🚀 VSCode 已打开 {root}{loc_desc} · 解释器 gui-venv311 已配置 "
-                  f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)")
+                  f"(F5 调试, 断点单步; 调试器选「Z-MAX 控制台」或「工具脚本」)"
+                  + (" · 已独立进程组 (关控制台不再带走它)" if _isolated else ""))
 
     def show_dataset_info(self, node):
         """📊 查看数据集 (2026-08-30 老倪): 右键数据源节点 → 数据集信息对话框

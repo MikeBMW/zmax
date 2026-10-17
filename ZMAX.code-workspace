@@ -1,0 +1,59 @@
+{
+  "folders": [
+    { "name": "框架  (~/zmax/src/lerobot)", "path": "src/lerobot" },
+    { "name": "控制台  (~/zmax/tools/gui)", "path": "tools/gui" },
+    { "name": "文档  (~/zmax/docs)", "path": "docs" },
+    { "name": "工程  (/home/ubuntu/zmax)", "path": "." }
+  ],
+  "settings": {
+    "window.title": "${activeEditorLong}${separator}${appName}",
+    "breadcrumbs.enabled": true,
+    "files.watcherExclude": {
+      "**/.git/**": true,
+      "**/__pycache__/**": true,
+      "**/*.pyc": true,
+      "**/reports/**": true,
+      "**/zmax_data/**": true,
+      "**/data/**": true,
+      "**/runs/**": true,
+      "**/outputs/**": true,
+      "**/external/**": true,
+      "**/models/**": true,
+      "**/gui-venv311/**": true,
+      "**/*.jsonl": true,
+      "**/*.mp4": true,
+      "**/*.npz": true,
+      "**/*.pt": true,
+      "**/*.pth": true
+    },
+    "search.exclude": {
+      "**/reports/**": true,
+      "**/zmax_data/**": true,
+      "**/data/**": true,
+      "**/runs/**": true,
+      "**/outputs/**": true,
+      "**/external/**": true,
+      "**/models/**": true,
+      "**/gui-venv311/**": true,
+      "**/*.jsonl": true
+    },
+    "python.analysis.exclude": [
+      "**/reports/**",
+      "**/zmax_data/**",
+      "**/data/**",
+      "**/runs/**",
+      "**/outputs/**",
+      "**/external/**",
+      "**/models/**",
+      "**/gui-venv311/**"
+    ],
+    "python.analysis.diagnosticMode": "openFilesOnly",
+    "python.defaultInterpreterPath": "/home/ubuntu/zmax/gui-venv311/bin/python",
+    "git.autoRepositoryDetection": "openEditors",
+    "git.repositoryScanMaxDepth": 1,
+    "git.autorefresh": false,
+    "search.followSymlinks": false,
+    "telemetry.telemetryLevel": "off",
+    "files.maxMemoryForLargeFilesMB": 4096
+  }
+}

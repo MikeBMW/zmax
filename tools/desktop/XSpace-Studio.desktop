@@ -8,3 +8,8 @@ Path=/home/ubuntu/zmax
 Terminal=false
 Categories=Development;
 StartupNotify=true
+# 🖥 2026-10-16 老倪: 「为什么总是启动两次? 第一次总是没反应」——
+#   真根因之一就是这里缺 StartupWMClass: StartupNotify=true 时 GNOME 要靠 WM_CLASS 把"这次启动"
+#   与 studio.py 的窗口绑上 (实测窗口 WM_CLASS = "studio.py")。不写 ⇒ 图标不会显示"正在启动"的忙碌态、
+#   启动请求永远收不到"完成"信号 ⇒ 第一次双击后 50 秒黑屏期看起来像"没反应" ⇒ 再点一次。
+StartupWMClass=studio.py
