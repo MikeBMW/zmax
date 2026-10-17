@@ -22,7 +22,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 STUDIO = REPO / "tools" / "gui" / "studio.py"
 UPDATER = REPO / "tools" / "gui" / "update_checker.py"
-DOCSYNC = REPO / "tools" / "gui" / "docs_sync.py"
+# 2026-10-17 归位: docs_sync 真身迁到 src/lerobot/ops/docs_sync.py (tools/gui 里只剩别名 shim)
+DOCSYNC = REPO / "src" / "lerobot" / "ops" / "docs_sync.py"
+DOCSYNC_SHIM = REPO / "tools" / "gui" / "docs_sync.py"
+if not DOCSYNC.is_file():
+    DOCSYNC = DOCSYNC_SHIM
 
 EXPECTED_VERSION = "v5.50.739"
 
