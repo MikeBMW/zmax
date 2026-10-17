@@ -393,6 +393,7 @@ from PyQt5.QtGui import (
     QFont, QColor, QCursor, QPainter, QLinearGradient, QBrush,
     QPainterPath, QPen, QDesktopServices, QPixmap,  # 新增 QCursor, QDesktopServices, QPixmap
     QKeySequence,  # 2026-10-15 评估分析页: Ctrl+C
+    QIcon,         # 2026-10-17 信号分析页签/窗口图标
 )
 
 # Z-MAX 版本同步模块
@@ -10788,7 +10789,10 @@ class MonitorModule(SubModuleWidget):
                 f"border-top-right-radius:6px; margin-right:2px;}}"
                 f"QTabBar::tab:selected{{color:{C_WHITE}; background:{C_BG};"
                 f"border-bottom:2px solid {C_BLUE};}}")
-            _tabs.addTab(self.graphic, "📈 实时监控 · 信号分析")
+            _ico = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
+            _qic = QIcon(_ico) if os.path.exists(_ico) else QIcon()
+            self.graphic.setWindowIcon(_qic)                 # 🖼 老倪: 「信号分析的窗口为什么没有图标」
+            _tabs.addTab(self.graphic, _qic, "📈 实时监控 · 信号分析")
             _tabs.addTab(body, "🌐 同源实采 / Orin 状态")
             host = _tabs
         except Exception as _e:

@@ -85,11 +85,18 @@ def topics():
         got = _one(rel, kind)
         if not got or not got["fields"]:
             continue
+        typ = ""
         try:
             from lerobot.middleware import topic_types as _tt
-            typ = _tt.type_of_topic(topic)
+            typ = _tt.type_of_topic(topic) or ""
         except Exception:                                                    # noqa: BLE001
-            typ = "zmax::SSState"
+            typ = ""
+        if not typ:                                   # 语义注册表没登记 ⇒ 用 DDS 话题注册表的类型
+            try:
+                from lerobot.dataspace import topics as _T
+                typ = (_T.TOPICS.get(topic.split("/")[-1]) or {}).get("type") or ""
+            except Exception:                                                # noqa: BLE001
+                typ = ""
         out[topic] = {"topic": topic, "type": typ, "qos": "state",
                       "hz": None, "hz_design": None, "count": 0,
                       "age_s": got["age_s"], "fields": got["fields"],

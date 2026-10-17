@@ -436,25 +436,56 @@ class HostJsonSource(threading.Thread):
     def stop(self):
         self._stop.set()
 
+    _PROV = {"sstrace": "zmax/ss_state", "sseng": "zmax/ss_engine", "gravity": "zmax/ss_torque"}
+
     def run(self):
         last_mtime = {}
         while not self._stop.is_set():
             t_start = time.monotonic()
+            # ⚡ 2026-10-17 老倪: 「与数据空间的 trace 窗口数据同步」——
+            #   这三路不再各自读文件 (两处各读一次 ⇒ 采样时刻差 0.1~0.2s, 数值对不上),
+            #   统一走 middleware/live_signals 的**同一份缓存快照** (数据空间 Trace 用的也是它)。
+            _prov = None
+            for prefix in self._PROV:
+                if any(pf == prefix for pf, _p in self.sources):
+                    try:
+                        import sys as _sys
+                        _s = os.path.join(ROOT, "src")
+                        if _s not in _sys.path:
+                            _sys.path.insert(0, _s)
+                        from lerobot.middleware import live_signals as _ls
+                        _prov = _ls.topics()
+                    except Exception:                                          # noqa: BLE001
+                        _prov = None
+                    break
             for prefix, path in self.sources:
                 if self._stop.is_set():
                     break
-                try:
-                    st = os.stat(path)
-                except OSError:
-                    continue
-                if last_mtime.get(path) == st.st_mtime:
-                    continue
-                last_mtime[path] = st.st_mtime
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        raw = json.load(f)
-                except Exception:
-                    continue
+                _prov_raw = None
+                if prefix in self._PROV and _prov:
+                    rec = _prov.get(self._PROV[prefix]) or {}
+                    flds = {k: v for k, v in (rec.get("fields") or {}).items()
+                            if isinstance(v, (int, float)) and not isinstance(v, bool)}
+                    if flds:
+                        _prov_raw = dict(flds)
+                        _prov_raw["ts"] = rec.get("ts")
+                        _prov_age = float(rec.get("age_s") or 0.0)
+                if _prov_raw is not None:
+                    raw = _prov_raw
+                    st = type("_St", (), {"st_mtime": time.time() - _prov_age})()
+                else:
+                    try:
+                        st = os.stat(path)
+                    except OSError:
+                        continue
+                    if last_mtime.get(path) == st.st_mtime:
+                        continue
+                    last_mtime[path] = st.st_mtime
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            raw = json.load(f)
+                    except Exception:
+                        continue
                 # 🥽 AR/AOI 源(ar_aoi_live.json): 它的信号表就在 `s` 里(86 条), 而且 groups 的组名就是信号名
                 #   ⇒ 直接取 s 的键, 不走 flatten。**踩过的坑**: flatten_json 有 48 键上限, 原来 AR 的 86 条
                 #   只进来 48 条(老倪: 「AR场景的信号呢?」), 且键名前缀会多出 "s."(组名对不上, 全掉进"其它信号")。
@@ -1419,8 +1450,52 @@ class DataSpaceTraceSource(threading.Thread):
         except Exception:
             pass
 
+    def _feed_live(self):
+        """⚡ 2026-10-17 老倪: 「信号分析与数据空间 trace 的数据同步」——
+        直接读 middleware/live_signals (数据空间 Trace 用的同一份文件/同一拍),
+        推 ds.<topic>.<field>; 不再依赖 trace.jsonl (DDS 桥此刻 0 发布者, 那条路不动)。"""
+        try:
+            import sys as _sys
+            _src = os.path.join(ROOT, "src")
+            if _src not in _sys.path:
+                _sys.path.insert(0, _src)
+            from lerobot.middleware import live_signals as _ls
+            tps = _ls.topics()
+        except Exception:                                                      # noqa: BLE001
+            return
+        if not tps:
+            return
+        _anc = getattr(self.store, "pb_anchor", None)
+        for topic, rec in tps.items():
+            vals = {k: v for k, v in (rec.get("fields") or {}).items()
+                    if isinstance(v, (int, float)) and not isinstance(v, bool)}
+            if not vals:
+                continue
+            if _anc is not None:
+                x = float(_anc[1]) + (float(rec.get("ts") or 0.0) - float(_anc[0]))
+                if x < -0.5:
+                    continue
+            else:
+                x = None                                     # 还没锚点 ⇒ 不推 (防两根钟), 与 _feed 同规则
+            if x is None:
+                # 没有 3D 锚点时用**本源自己的第一拍**当 0 点 (单调, 不与 wall clock 混) ——
+                # 否则信号分析里 ds.* 永远空着, 用户看到的就是"数据空间有数、这边没有"。
+                if getattr(self, "_live_t0", None) is None:
+                    self._live_t0 = float(rec.get("ts") or 0.0)
+                x = float(rec.get("ts") or 0.0) - float(self._live_t0)
+            pref = "ds." + topic.lstrip("/") + "."
+            try:
+                self.store.push_many({pref + k: float(v) for k, v in vals.items()},
+                                     x, src="ds", scene=True)
+            except Exception:                                                  # noqa: BLE001
+                pass
+
     def run(self):
         while not self.stop_ev.is_set():
+            try:
+                self._feed_live()          # 实时真值 (与数据空间同源) 优先
+            except Exception:                                                  # noqa: BLE001
+                pass
             try:
                 if os.path.isfile(self.path):
                     sz = os.path.getsize(self.path)
@@ -1811,8 +1886,10 @@ class CanoeGraphicWidget(QWidget):
         self._cfg_timer.start()
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels(["信号名称", "当前值", "输出节点", "来源话题"])
+        # 🧭 2026-10-17 老倪: 「信号名称改成 signal; 当前值改成 value; 输出节点改 Tx; 来源节点改 Rx;
+        #   增加 type 列; 增加 Layer 列; 增加中文名称列」⇒ 与数据空间 Trace 用同一套列名/口径
+        self.tree.setColumnCount(7)
+        self.tree.setHeaderLabels(["Name", "Signal", "Value", "Type", "Tx", "Rx", "Layer"])
         self.tree.setRootIsDecorated(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -2708,11 +2785,18 @@ class CanoeGraphicWidget(QWidget):
         self._fill_tree()
 
     def _make_item(self, b, checked=False, label=None, scene=None, interactive=True):
-        name = label or self._disp_name(b.key)
+        # 🀄 Name 列 = 中文短名 (≤5 字, 与数据空间 Trace 同口径); 拉不到就退回短键名
+        if label:
+            name = label
+        else:
+            name = self._cn_name(b.key)
         # 列2 = 输出节点 (老倪 2026-10-15: 删掉「帧龄」列, 换成"输出这个信号的节点名称");
         # 帧龄挪进 tooltip, 不丢信息。
-        it = QTreeWidgetItem([name, "-", self._out_node(b.key), self._src_hint(b.key)])
-        it.setToolTip(0, f"{b.key}\n输出节点 {self._out_node(b.key)}\n来源 {b.src} · 点数 {b.n}")
+        it = QTreeWidgetItem([name, str(b.key), "-", self._sig_type(b.key),
+                              self._out_node(b.key), self._src_hint(b.key), self._sig_layer(b.key)])
+        it.setToolTip(0, f"{b.key}\n中文名 {name}\nTx {self._out_node(b.key)}\n"
+                         f"Rx {self._src_hint(b.key)} · 来源 {b.src} · 点数 {b.n}")
+        it.setToolTip(1, "程序里的真实信号键 (数据源原始键名)")
         it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
         it.setCheckState(0, Qt.Checked if (checked or b.key in self.selected) else Qt.Unchecked)
         it.setData(0, Qt.UserRole, b.key)
@@ -2774,13 +2858,107 @@ class CanoeGraphicWidget(QWidget):
         try:
             h = self.tree.header()
             h.setStretchLastSection(False)               # 否则最后一列把名字列空间又吃掉
-            h.setMinimumSectionSize(28)                  # 样式表会把最小列宽抬到 80 ⇒ 设的 54/68 全被夹成 80, 5 列均分
-            h.setSectionResizeMode(0, QHeaderView.Stretch)
-            for i, w in ((1, 78), (2, 226), (3, 168)):  # 值 / **输出节点** / 来源话题 (帧龄·Min·Max 移进 tooltip)
+            h.setMinimumSectionSize(28)                  # 样式表会把最小列宽抬到 80 ⇒ 先设小再逐列给宽
+            # 🖱 2026-10-17 老倪: 「左侧的每列都可以用鼠标调整宽度」⇒ 7 列全部 Interactive (不再 Stretch 锁死)
+            _defaults = {0: 150, 1: 250, 2: 90, 3: 210, 4: 150, 5: 190, 6: 60}
+            _saved = {}
+            try:
+                from PyQt5.QtCore import QSettings
+                _raw = QSettings("zmax", "canoe").value("sig/tree_cols", "")
+                if _raw:
+                    _saved = {int(a): int(b) for a, b in
+                              (x.split(":") for x in str(_raw).split(",") if ":" in x)}
+            except Exception:                                                  # noqa: BLE001
+                _saved = {}
+            for i in range(7):
                 h.setSectionResizeMode(i, QHeaderView.Interactive)
-                self.tree.setColumnWidth(i, w)
+                self.tree.setColumnWidth(i, int(_saved.get(i, _defaults.get(i, 120))))
+            try:
+                h.sectionResized.disconnect()
+            except Exception:                                                  # noqa: BLE001
+                pass
+            h.sectionResized.connect(self._save_col_widths)
         except Exception:
             pass
+
+    def _save_col_widths(self, *_a):
+        """用户拖过列宽 ⇒ 立刻记住 (下次开窗/重启保持)。"""
+        try:
+            from PyQt5.QtCore import QSettings
+            cur = ",".join("%d:%d" % (i, self.tree.columnWidth(i)) for i in range(7))
+            QSettings("zmax", "canoe").setValue("sig/tree_cols", cur)
+        except Exception:                                                      # noqa: BLE001
+            pass
+
+    # ── 信号键 → 话题 / 类型 / 层 / 中文名 (与数据空间 Trace 同一口径) ──
+    _KEY_TOPIC = (("sstrace.", "zmax/ss_state"), ("sseng.", "zmax/ss_engine"),
+                  ("gravity.", "zmax/ss_torque"))
+
+    def _sig_topic(self, key):
+        k = str(key or "")
+        if k.startswith("ds."):
+            rest = k[3:]
+            return rest.rsplit(".", 1)[0] if "." in rest else rest
+        for pre, tp in self._KEY_TOPIC:
+            if k.startswith(pre):
+                return tp
+        return ""
+
+    def _cn_name(self, key):
+        """信号键 → 中文短名 (≤5 字)。
+
+        源键本身是中文时 (如 gravity 的「下降·L2 力大小_mps」) 直接裁短, 比翻成「扭矩」有用;
+        英文键 (末端_x / grasp_prob) 走 cn_names 的词典+后缀规则。
+        """
+        k = str(key or "")
+        field = k.rsplit(".", 1)[-1]
+        for pre in ("sstrace.", "sseng.", "gravity.", "ds.", "ar.", "ros.", "catalog."):
+            if k.startswith(pre):
+                field = k[len(pre):].rsplit(".", 1)[-1]
+                break
+        field2 = field.replace("_mps", "").strip()
+        if any("\u4e00" <= ch <= "\u9fff" for ch in field2):
+            tail = field2.split("·")[-1].replace(" ", "")
+            return tail[:5]
+        try:
+            from lerobot.middleware import cn_names as _cn
+            return _cn.cn_of_signal(field, self._sig_topic(k)) or self._disp_name(k)
+        except Exception:                                                      # noqa: BLE001
+            return self._disp_name(k)
+
+    def _sig_type(self, key):
+        tp = self._sig_topic(key)
+        if not tp:
+            return "—"
+        try:
+            from lerobot.middleware import topic_types as _tt
+            t = _tt.type_of_topic(tp)
+            if t:
+                return t
+        except Exception:                                                      # noqa: BLE001
+            pass
+        try:                                    # 语义注册表没登记 ⇒ DDS 话题注册表 (zmax::SSState 等)
+            from lerobot.dataspace import topics as _T
+            return (_T.TOPICS.get(tp.split("/")[-1]) or {}).get("type") or "—"
+        except Exception:                                                      # noqa: BLE001
+            return "—"
+
+    def _sig_layer(self, key):
+        tp = self._sig_topic(key)
+        if not tp:
+            return "SYS"
+        try:
+            import sys as _sys
+            if os.path.join(ROOT, "src") not in _sys.path:
+                _sys.path.insert(0, os.path.join(ROOT, "src"))
+            from lerobot.middleware import db as _db
+            if tp.startswith("ss.node."):
+                nid = tp[len("ss.node."):].split(".")[0]
+                lay = {r["node_id"]: str(r.get("layer") or "") for r in _db.node_rows()}.get(nid, "")
+                return ("SYS" if lay == "meta" else lay) or "—"
+        except Exception:                                                      # noqa: BLE001
+            pass
+        return "SYS"
 
     def showEvent(self, e):
         super().showEvent(e)
@@ -3451,13 +3629,14 @@ class CanoeGraphicWidget(QWidget):
                        f"\n来源 {b.src} · 点数 {b.n}")
             except Exception:
                 _tt = None
-            if _cache.get(key) == (_txt, _tt):
+            _ck = (id(it), key)               # 🐛 同一 key 在多个场景组各有一行 ⇒ 缓存不能只按 key,
+            if _cache.get(_ck) == (_txt, _tt):  #    否则第一行写完后, 第二行永远停在 "-" (实测)
                 continue                          # 🚀 这一行没变 ⇒ 一次 Qt 写入都不做
-            if it.text(1) != _txt:
-                it.setText(1, _txt)
+            if it.text(2) != _txt:
+                it.setText(2, _txt)
             if _tt is not None:
                 it.setToolTip(0, _tt)
-            _cache[key] = (_txt, _tt)
+            _cache[_ck] = (_txt, _tt)
 
     def _log(self, msg):
         line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -3483,6 +3662,10 @@ if __name__ == "__main__":
     app = QApplication.instance() or QApplication(sys.argv)
     win = QMainWindow()
     win.setWindowTitle("📈 实时监控 · Graphic 信号分析")
+    _ico = os.path.join(ROOT, "tools", "gui", "logo.png")
+    if os.path.exists(_ico):
+        from PyQt5.QtGui import QIcon
+        win.setWindowIcon(QIcon(_ico))
     w = CanoeGraphicWidget()
     w.log.connect(lambda s: print(s, flush=True))
     win.setCentralWidget(w)
