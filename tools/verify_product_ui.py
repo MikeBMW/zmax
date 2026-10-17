@@ -416,9 +416,13 @@ def main() -> int:
             .execute("select count(*) from canvas_links").fetchone()[0]
     except Exception:                                                           # noqa: BLE001
         _db_links = -1
-    chk("⑨", "画布节点/连线数 == 画布真源 (89 / 190) 且与工程库同源",
-        len(cv["nodes"]) == 89 and len(cv.get("links") or []) == 190 and _db_links == 190,
-        "%d 节点 / %d 连线 · md5 未参与本次改动" % (len(cv["nodes"]), len(cv.get("links") or [])))
+    # 🐛 2026-10-17: 原来把 89/190 写死在图里 ⇒ 画布真源一增删连线判据就误报 (实测 2026-10-17
+    #   真源 90 节点 / 201 连线, 删掉 ssff.out2→ssintact.in3 后为 201)。口径改成「真源 ↔ 工程库 ↔
+    #   渲染 三方同源」, 数量以真源自报, 判的是同源而不是某个常数。
+    _n_nodes, _n_links = len(cv["nodes"]), len(cv.get("links") or [])
+    chk("⑨", "画布节点/连线数 真源 ↔ 工程库同源 (=%d / %d)" % (_n_nodes, _n_links),
+        _db_links == _n_links,
+        "%d 节点 / %d 连线 · 工程库 canvas_links=%d · md5 未参与本次改动" % (_n_nodes, _n_links, _db_links))
     node = next((n for n in cv["nodes"] if n.get("id") == "ss_mani_eng"), {})
     chk("⑨", "流形引擎节点仍在本节点 (核心标识 core=true 未动)",
         bool((node.get("params") or {}).get("core")) and node.get("params", {}).get("core_color") == "#FFC53D",

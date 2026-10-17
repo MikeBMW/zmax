@@ -30,7 +30,9 @@ REPO = os.environ.get("ZMAX_REPO") or "/home/ubuntu/zmax"
 #   口径: 真源 = worktree; 需要改别的树就显式 --repo / ZMAX_REPO。
 STUDIO = os.path.join(REPO, "tools/gui/studio.py")
 UPD = os.path.join(REPO, "tools/gui/update_checker.py")
-DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
+DOCS = os.path.join(REPO, "src/lerobot/ops/docs_sync.py")
+if not os.path.isfile(DOCS):                    # 归位兜底 (2026-10-17)
+    DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
 VSYNC = os.path.join(REPO, "tools/gui/version_sync.py")
 VM = os.path.join(REPO, "VERSION.md")
 
@@ -52,7 +54,9 @@ def main() -> int:
         REPO = a.repo
         STUDIO = os.path.join(REPO, "tools/gui/studio.py")
         UPD = os.path.join(REPO, "tools/gui/update_checker.py")
-        DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
+        DOCS = os.path.join(REPO, "src/lerobot/ops/docs_sync.py")
+        if not os.path.isfile(DOCS):
+            DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
         VSYNC = os.path.join(REPO, "tools/gui/version_sync.py")
         VM = os.path.join(REPO, "VERSION.md")
     new, nv = a.to, "v" + a.to

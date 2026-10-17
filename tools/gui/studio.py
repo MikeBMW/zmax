@@ -987,7 +987,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.739")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.740")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12112,6 +12112,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.740: 核心归位+跨平台: RealStateSpaceSim 与 22 个零 Qt 核心模块迁入 src/ (tools/gui 只留 GUI 与 ≤40 行别名 shim, 删 3 个死文件含 15819 行逐字节重复文件); 新增 verify_src_layering(27 项)/verify_engine_location(7 项) 判据; 调试期停 _HwFetcher/_StatusLightFetcher + 线程异常只落盘 (VSCode 断点 Call Stack 不再跳); pyqtgraph 绘制 skipFiniteCheck + refresh 重入闸 (修 RecursionError); shim 路径探测兼容 _MEIPASS, Windows/macOS 打包 job 补 engine/ops/serving/features/skills/perception/middleware + tools/gen
         # v5.50.739: 信号表: 列宽可拖且记住(不再自动还原, 新增↺列宽复位) · 新增 Type 列显示 topic 全名 · 表头全英文短名 Name/Type/Value/Unit/Age s/Bar/Tx/Rx · Trace 表头全英文(Time/Name/Signal/Value/Class/Hz/Count/Age s/QoS/Lamp/Note) · 面板标题去括号简化(Data/Detail/Trace)
         # v5.50.738: 主控制台左侧栏改按版本文本实测算宽 (200→235px, 版本号不再被裁) · 画布顶栏 14 个按钮高度改按字高算 (9pt / 41px, 不再裁掉一半字) · 工具栏左侧 🎯跟随单步 / 🧮核心居中 两个勾选框补深色 pill 样式 (原来黑底黑字看不见) · 中间件话题名落库 mw_topic + tools/mw_db.py (status/sync/node/topics, 75 节点 273 话题可查可改, verify_mw_db 7/7)
         # v5.50.737: 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按老倪看图四轮收口: 只留 6 球+8 颗 SK 卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画 · 标签带天体名且不压球/不硬截断 · M 页套 QScrollArea(小窗不再把视图裁成 150px); 新增**视图选择落盘**(QSettings ZMAX/studio mparam/viz_view, 写后立刻 sync) — 根因: 下拉选择只在内存 ⇒ 控制台一重启回到第 0 项, 老倪开机看到的是四面板, 以为太阳系丢了(代码/真源没变, 球心引力判据 64/64); 配套新增元任务链执行器 (L2 功能→元任务→L3→L4 工单) 与 DiT 假接入留痕 (画布 ssdec 名写 DiT、实绑 MLP)
@@ -12832,7 +12833,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.739  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.740  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15150,7 +15151,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.739</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.740</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

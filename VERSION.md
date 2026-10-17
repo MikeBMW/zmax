@@ -20,6 +20,7 @@
 
 ## 版本历史
 
+| **v5.50.740** | 10-17 | 核心归位+跨平台: RealStateSpaceSim 与 22 个零 Qt 核心模块迁入 src/ (tools/gui 只留 GUI 与 ≤40 行别名 shim, 删 3 个死文件含 15819 行逐字节重复文件); 新增 verify_src_layering(27 项)/verify_engine_location(7 项) 判据; 调试期停 _HwFetcher/_StatusLightFetcher + 线程异常只落盘 (VSCode 断点 Call Stack 不再跳); pyqtgraph 绘制 skipFiniteCheck + refresh 重入闸 (修 RecursionError); shim 路径探测兼容 _MEIPASS, Windows/macOS 打包 job 补 engine/ops/serving/features/skills/perception/middleware + tools/gen |
 | **v5.50.739** | 10-17 | 信号表: 列宽可拖且记住(不再自动还原, 新增↺列宽复位) · 新增 Type 列显示 topic 全名 · 表头全英文短名 Name/Type/Value/Unit/Age s/Bar/Tx/Rx · Trace 表头全英文(Time/Name/Signal/Value/Class/Hz/Count/Age s/QoS/Lamp/Note) · 面板标题去括号简化(Data/Detail/Trace) |
 | **v5.50.738** | 10-17 | 主控制台左侧栏改按版本文本实测算宽 (200→235px, 版本号不再被裁) · 画布顶栏 14 个按钮高度改按字高算 (9pt / 41px, 不再裁掉一半字) · 工具栏左侧 🎯跟随单步 / 🧮核心居中 两个勾选框补深色 pill 样式 (原来黑底黑字看不见) · 中间件话题名落库 mw_topic + tools/mw_db.py (status/sync/node/topics, 75 节点 273 话题可查可改, verify_mw_db 7/7) |
 | **v5.50.737** | 10-16 | 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按老倪看图四轮收口: 只留 6 球+8 颗 SK 卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画 · 标签带天体名且不压球/不硬截断 · M 页套 QScrollArea(小窗不再把视图裁成 150px); 新增**视图选择落盘**(QSettings ZMAX/studio mparam/viz_view, 写后立刻 sync) — 根因: 下拉选择只在内存 ⇒ 控制台一重启回到第 0 项, 老倪开机看到的是四面板, 以为太阳系丢了(代码/真源没变, 球心引力判据 64/64); 配套新增元任务链执行器 (L2 功能→元任务→L3→L4 工单) 与 DiT 假接入留痕 (画布 ssdec 名写 DiT、实绑 MLP) |

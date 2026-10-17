@@ -48,12 +48,28 @@ def write_active(pid: str) -> None:
     os.replace(tmp, PRODUCT_J)
 
 
-def tree_line(page) -> str:
-    for i in range(page.tree.topLevelItemCount()):
-        it = page.tree.topLevelItem(i)
-        if it is not None and "产品配置" in it.text(0):
-            return it.text(0)
-    return ""
+def tree_line(page):
+    """左树 + tooltip + 星图条摘要 (2026-10-17 修: 「当前 X」已从左树文本移到 _star_facts 摘要,
+    只读 tree.text(0) 会永远判红 —— 判据要跟着真实现走, 不能钉死一种呈现位置)。"""
+    parts = []
+    try:
+        t = page.tree
+        for i in range(t.topLevelItemCount()):
+            it = t.topLevelItem(i)
+            parts.append(it.text(0))
+            parts.append(it.toolTip(0))
+            for k in range(it.childCount()):
+                c = it.child(k)
+                parts.append(c.text(0))
+                parts.append(c.toolTip(0))
+    except Exception as e:                                                       # noqa: BLE001
+        parts.append("树读取失败 %s" % type(e).__name__)
+    try:
+        import veh6_config_page as V
+        parts.append(str((V._star_facts() or {}).get("prod") or ""))
+    except Exception as e:                                                       # noqa: BLE001
+        parts.append("星图摘要读取失败 %s" % type(e).__name__)
+    return " | ".join([x for x in parts if x])
 
 
 def main() -> int:
@@ -79,7 +95,7 @@ def main() -> int:
         p1._sync_tree_product(force=True)
         l1b = tree_line(p1)
         checks.append(("③ 别处改成 550B 后同步 ⇒ 左树变 550B (本次修复点)",
-                       "当前 550B" in l1b and "550A" not in l1b, l1b))
+                       "当前 550B" in l1b and "当前 550A" not in l1b, l1b))
 
         # ④ 真源=550B, 新建页面冷启动
         p2 = V.ConfigCenterPage()

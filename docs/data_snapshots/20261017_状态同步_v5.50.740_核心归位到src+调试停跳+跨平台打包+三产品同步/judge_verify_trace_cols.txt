@@ -1,0 +1,23 @@
+✅ 11 列且无 Name 列 · ['Time·abs', 'Layer', 'Signal', 'Value', 'Unit', 'Phys', 'Type', 'Tx', 'Rx', 'QoS', 'Hz']
+✅ Signal 列在(第3列) · Signal
+✅ 默认 Time·abs · Time·abs
+✅ 有数值行 · 1612 行
+✅ Signal 全 ASCII (英文变量名) · 非英文 0 例: []
+✅ Signal 无中文键
+✅ 映射规则: gravity · descend_l2_force_mps
+✅ 映射规则: 统一状态 · ('end_x', 'grasp_prob')
+✅ 映射规则: 引擎 · ('phi', 'homeo_veto')
+✅ 绝对时间 HH:MM:SS.mmm · 22:32:31.296
+✅ 点 Time 表头 → Time·rel · Time·rel
+✅ 相对时间是秒(3 位小数) · 8.950
+✅ 相对时间 == 3D 快照 时间_s (±0.5s) · Trace 8.950 / 文件 8.95
+✅ 再点回 Time·abs · Time·abs ▾
+✅ 整表刷新 < 0.25s (原 0.62s) · 0.05s · 1612 行
+✅ 鼠标滚轮能上下滚 · 滚动值 270 / 最大 49542
+✅ 刷新后滚动位置不跳 · 40000→40000 顶部行 1291→1291
+✅ 表头过滤 Layer=L4 · 1612 → 626 行 · 表头 Layer ▾ L4
+✅ 过滤后只剩 L4
+✅ 刷新后过滤仍生效 · 626 行
+✅ 清除过滤恢复全部 · 1612 行
+
+✅ 全部通过

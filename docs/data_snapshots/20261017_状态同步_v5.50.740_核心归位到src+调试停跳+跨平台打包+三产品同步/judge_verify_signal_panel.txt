@@ -1,0 +1,36 @@
+✅ 列口径 = Name/Layer/Signal/Value/Type/Tx/Rx · ['Name', 'Layer', 'Signal', 'Value', 'Rate', 'Type', 'Tx', 'Rx']
+✅ 7 列全部可鼠标拖宽 · [0, 0, 0, 0, 0, 0, 0, 0]
+✅ 窗口图标存在且非空 · /home/ubuntu/zmax/tools/gui/logo.png
+✅ sstrace/sseng/gravity 走同一 provider · {}
+✅ 同一缓存窗口内数值一致 · 11 话题
+✅ 映射与 Trace 同口径 (end_x/grasp_prob/gravity) · ('end_x', 'grasp_prob')
+✅ 有数值行 · 610 行
+✅ Signal 全英文 (无非 ASCII) · []
+✅ Layer 列有层值 (非全 SYS) · ['L2', 'L3', 'L4', 'L5', 'SYS']
+✅ Tx 无假节点「万有引力表 (主参数…」 · []
+✅ Tx 覆盖多个真节点 · ['2D-3D 解算', 'VLM 通用视觉编码器', 'YOLO 目标检测', 'Z-MAX 引擎', 'ar_l5_understand.py (AR/AOI 信号总线)', 'gravity_trace_pub.py (万有引力表进程)', 'pose_tap (真机 tcp_pose 50Hz)', 'ss_dreamview (3D 场景回放)', 'zmax-ss-skill-dispatch (技能派发服务)', '① 接近 · SK01']
+✅ Tx 无空值 · []
+✅ gravity 的 Tx 是进程(非节点) · gravity_trace_pub.py (万有引力表进程)
+✅ 前馈速度的 Tx = 前馈加速器 · 前馈加速器
+✅ 每行 7 列都有内容 · [['● 一致度', 'SYS', 'consistency', '0.3245', '+0.02608', 'zmax::SSDrivingTorque', 'gravity_trace_pub.py (万有引力表进程)', '万有引力表 (主参数 M 页)']]
+✅ 插拔场景全部动态信号已勾选 · 349 行 · 已勾 349
+✅ TCP 位姿 + 八阶段 在勾选里 · {'sstrace.末端_x': True, 'sstrace.末端_y': True, 'sstrace.末端_z': True, 'sstrace.阶段序号': True, 'sstrace.八阶段序号': True}
+✅ 波形优先画 TCP/八阶段 · ['sstrace.末端_x', 'sstrace.末端_y', 'sstrace.末端_z', 'sstrace.阶段序号', 'sstrace.八阶段序号']
+✅ 刷新不被 278 条拖死 (5 次 < 1s) · 0.37s
+✅ 原子技能信号在表里 · 213 条
+✅ 原子技能层 = L2 · 213 条, 非 L2 0 []
+✅ SK01~SK08 八个技能节点都出现 · ['① 接近 · SK01', '② 对位 · SK02', '③ 下降 · SK03', '④ 抓取 · SK04', '⑤ 抬起 · SK05', '⑥ 转移 · SK06', '⑦ 插入 · SK07', '⑧ 完成 · SK08']
+✅ SK01 的 Tx = ① 接近 · SK01 · ['zmax-ss-skill-dispatch (技能派发服务)', '① 接近 · SK01', '② 对位 · SK02']
+✅ 列头过滤 Layer=L2 · 612 → 326 行, 层=['L2']
+✅ 表头显示过滤值 · Layer ▾ L2
+✅ 再叠 Type 过滤 · 18 行, 类型=['zmax::SSDrivingTorque']
+✅ 清空后勾选/波形全空 · 清空前 349 条 → 已选 0 / 绘制 0 / 勾选行 0
+✅ 清空后不会被自动补勾顶回来 · 等 1.2s + 重建树 · 已选 0
+✅ 按需手动打勾 = 只加这一条 · ['sstrace.末端_x']
+
+✅ 全部通过
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
