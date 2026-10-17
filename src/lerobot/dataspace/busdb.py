@@ -55,8 +55,101 @@ def _level_map():
         return {}
 
 
+def _build_from_db():
+    """从工程库派生 DBC (节点/连线信号/节点端口报文/信号)。库不可用 → None (回落画布)。"""
+    try:
+        import sys
+        if os.path.join(REPO, "src") not in sys.path:
+            sys.path.insert(0, os.path.join(REPO, "src"))
+        from lerobot.middleware import db as mw
+        mw.ensure_synced(quiet=True)
+        nrows = mw.node_rows()
+        if not nrows:
+            return None
+        lks = mw.links()
+        msgs = mw.message_rows()
+        st = mw.status()
+        sha = (st[0].get("canvas_sha") if st else "") or ""
+        proj = (st[0].get("project") if st else "") or ""
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+    lv = _level_map()
+    nodes = {}
+    for n in nrows:
+        nodes[n["node_id"]] = {
+            "id": n["node_id"], "name": (n["name"] or "").strip(), "type": n["type"],
+            "layer": n["layer"] or lv.get(n["node_id"], "meta"), "icon": "",
+            "module": n["module"], "exec_mode": n["exec_mode"], "impl_key": n["impl_key"],
+            "tx": len(n["outs"]), "rx": len(n["ins"]),
+            "in_topics": [x["topic"] for x in n["ins"]],
+            "out_topics": [x["topic"] for x in n["outs"]],
+        }
+
+    # 信号 = 画布的一条连线 (CANoe: 报文里承载的信号; 这里 link_value 报文承载全部连线值)
+    sigs = []
+    for i, l in enumerate(lks):
+        f, t = l.get("f"), l.get("t")
+        if f not in nodes or t not in nodes:
+            continue
+        sigs.append({
+            "sid": "S%03d" % (i + 1), "link_id": l.get("link_id"),
+            "src": f, "src_name": nodes[f]["name"], "src_port": l.get("f_port"),
+            "dst": t, "dst_name": nodes[t]["name"], "dst_port": l.get("t_port"),
+            "label": l.get("label") or "", "layer": nodes[f]["layer"],
+            "topic": "zmax/link_value",
+        })
+
+    # 报文: ① DDS 注册表里的类型化话题 ② 每个输出端口一条 node_port 报文 (带信号清单)
+    try:
+        from lerobot.dataspace import topics as T
+        typed = {k: {"topic": T.full_name(k), "type": T.TOPICS[k]["type"],
+                     "hz_design": T.TOPICS[k]["rate_hz"], "qos": T.TOPICS[k]["qos"],
+                     "kind": "typed", "producer": T.TOPICS[k].get("producer", "")[:70]}
+                 for k in T.TOPICS}
+    except Exception:                                                        # noqa: BLE001
+        typed = {}
+    messages = dict(typed)
+    for m in msgs:
+        messages["np_" + m["topic"]] = {
+            "topic": m["topic"], "type": "zmax::SSNodePort", "hz_design": None,
+            "qos": m["qos"], "kind": "node_port", "producer": "%s.%s" % (m["node_id"], m["port"]),
+            "n_signals": m["n_signal"], "consumers": m["consumers"],
+            "signals": [{"name": x["signal"], "unit": x["unit"], "min": x["vmin"],
+                         "max": x["vmax"], "src": x["src"], "param_id": x["param_id"]}
+                        for x in m["signals"]],
+        }
+    messages["link_value"] = {"topic": "zmax/link_value", "type": "zmax::LinkValue",
+                              "hz_design": 5.0, "qos": "beat", "kind": "canvas_link",
+                              "n_signals": len(sigs),
+                              "signals_by_layer": {l: sum(1 for s in sigs if s["layer"] == l) for l in LAYERS},
+                              "producer": "画布连线总线(dds_link_bus) / 工程回灌器(dds_bus --simulate)"}
+    by_layer = {}
+    for nid, n in nodes.items():
+        by_layer.setdefault(n["layer"], []).append(nid)
+    return {
+        "format": "zmax-dds-busdb", "version": "1.1.0", "built": time.time(),
+        "canvas": {"file": "engineering_db:%s" % proj, "sha": sha, "source": "工程库(mw_*)",
+                   "format_note": "由画布保存时同口落库; 本文件是它的 CANoe 视图"},
+        "counts": {"nodes": len(nodes), "signals": len(sigs), "messages": len(messages),
+                   "node_ports": len(msgs),
+                   "links_dropped": len(lks) - len(sigs),
+                   "nodes_by_layer": {k: len(v) for k, v in sorted(by_layer.items())}},
+        "nodes": nodes, "signals": sigs, "messages": messages,
+    }
+
+
 def build(canvas=CANVAS):
-    """构建总线数据库: 节点 / 信号 / 报文(话题)"""
+    """构建总线数据库: 节点 / 信号 / 报文(话题)。
+
+    🎯 2026-10-17 老倪: 「数据空间的显示, 要根据配置中心的参数中心的**数据库**的数据进行实际配置」
+    ⇒ 真源改为 **状态空间工程库** (zmax_engineering.db 的 mw_node/mw_port/mw_link/mw_topic/mw_signal,
+    由画布保存时同一口落库); 库不可用才回落画布 JSON。
+    这样数据空间看到的 = 画布实际配置, 不再是 10-13 那份手工生成的旧 busdb。
+    """
+    db_ = _build_from_db()
+    if db_ is not None:
+        return db_
     with open(canvas, encoding="utf-8") as f:
         d = json.load(f)
     lv = _level_map()

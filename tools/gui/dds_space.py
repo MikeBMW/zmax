@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🌐 全局数据空间 · 控制台视图 (对标 Apollo DreamView 的 channel/频道清单)
+"""🌐 全局数据空间 · 控制台视图 (对标 Apollo DreamView / CANoe 的 channel·message·signal)
 
-设计口径(2026-09-29 老倪: 「全链路 topic 可视化 + 全面数据质量管理 + 数据闭环」):
-  · **不做第 13 个模块卡**(老倪投诉过功能重复入口) ⇒ 作为「🌐 全局数据空间」页里的一个 Tab
+🎯 2026-10-17 老倪三条口径 (本版按它重写):
+  ① 「删除 数据闭环 页面」            → 只留 频道 / 状态空间工程 / 报文·信号 / 质量告警 / 字段真值
+  ② 「数据空间的显示, 要根据配置中心的参数中心的数据库的数据进行实际配置」
+                                    → 话题/端口/信号**全部从工程库读** (mw_node/mw_port/mw_topic/mw_signal),
+                                      单位/量程向参数中心 (params 表) 取; 注册表只作为"另一来源"并列显示
+  ③ 「状态空间工程的所有连接关系…保存到状态空间的工程数据库」
+                                    → 画布写盘 (engineering/flows.save_canvas) 同一口同步 mw_* 表;
+                                      本页只读库 ⇒ 画布改了、库没同步 = 显式标「⚠ 库过期」
   · 数据源全部是**已落盘的事实**, 本页不自己采数据(免得又一处口径):
-      /home/ubuntu/zmax/zmax_data/dataspace/live.json  ← DDS 全链路探针(频率/帧龄/配对/字段真值/质量裁决)
-      /home/ubuntu/zmax/zmax_data/dataspace/loop.json  ← 闭环九环节证据(pass/fail/unknown)
-      src/lerobot/dataspace/topics.py             ← 注册表(话题/类型/QoS/生产者/消费者/门)
+      data/database/zmax/zmax_engineering.db  ← 工程库(节点/端口/连线/话题/信号) + 参数中心(params)
+      zmax_data/dataspace/live.json           ← DDS 全链路探针(频率/帧龄/配对/字段真值/质量裁决)
+      src/lerobot/dataspace/topics.py         ← DDS 注册表(话题/类型/QoS/生产者/消费者/门)
   · 老倪要求: 内容可复制可导出(JSON/CSV)、字少不挤不截断、指标不夸大
-  · prod 档是"静默正确"(不发=预期) ⇒ 页面必须显式标出当前档位与"本档不发"的原因, 别让人以为是坏了
+  · prod 档是"静默正确"(不发=预期) ⇒ 页面必须显式标出当前档位与"本档不发"的原因
 """
 import csv
 import io
 import json
 import os
+import sys
 import time
 
 LIVE = os.environ.get("ZMAX_DATASPACE_LIVE", "/home/ubuntu/zmax/zmax_data/dataspace/live.json")
-LOOP = os.environ.get("ZMAX_DATASPACE_LOOP", "/home/ubuntu/zmax/zmax_data/dataspace/loop.json")
 MODE_FILE = os.path.join(os.path.expanduser("~"), ".zmax_telemetry_mode")
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 
@@ -34,13 +40,23 @@ def _load(p):
 
 
 def registry():
-    """注册表(话题/规则/闭环门/模式) —— 从包里读, 不复制一份"""
+    """DDS 注册表(话题/规则/模式) —— 从包里读, 不复制一份"""
     try:
-        import sys
         if os.path.join(REPO, "src") not in sys.path:
             sys.path.insert(0, os.path.join(REPO, "src"))
         from lerobot.dataspace import topics as T
         return T
+    except Exception:                                                        # noqa: BLE001
+        return None
+
+
+def mwdb():
+    """工程库接口 (lerobot.middleware.db) —— 不在包路径上时返回 None, 页面显式标"库不可用"。"""
+    try:
+        if os.path.join(REPO, "src") not in sys.path:
+            sys.path.insert(0, os.path.join(REPO, "src"))
+        from lerobot.middleware import db as _db
+        return _db
     except Exception:                                                        # noqa: BLE001
         return None
 
@@ -73,51 +89,151 @@ def set_mode(mode):
     return True, "已切到 %s (守护 2s 内跟随)" % mode
 
 
-# ─────────────────────────── 纯数据(不依赖 Qt, 便于自检) ───────────────────────────
+# ─────────────────────────── 工程库 (画布实际配置) ───────────────────────────
+def project_status():
+    """工程库状态: 哪套工程 / 行数 / 与画布是否同源 (过期=画布改过没落库)。"""
+    db = mwdb()
+    if db is None:
+        return {"ok": False, "why": "工程库接口不可用 (lerobot.middleware.db 导入失败)"}
+    try:
+        st = db.status()
+    except Exception as e:                                                   # noqa: BLE001
+        return {"ok": False, "why": "%s: %s" % (type(e).__name__, e)}
+    if not st:
+        return {"ok": False, "why": "库里还没有工程 (先保存一次画布)"}
+    s = st[0]
+    return {"ok": True, "project": s["project"], "canvas_path": s.get("canvas_path"),
+            "sha": s.get("canvas_sha"), "built_at": s.get("built_at"),
+            "nodes": s.get("node_n"), "links": s.get("link_n"), "topics": s.get("topic_n"),
+            "stale": bool(s.get("stale")),
+            "signals": len(db.signals(s["project"]) or [])}
+
+
+def node_rows():
+    """节点 → 输入/输出话题 (画布实际连线) —— 数据空间跟画布对齐的那张表。"""
+    db = mwdb()
+    if db is None:
+        return []
+    try:
+        return db.node_rows()
+    except Exception:                                                        # noqa: BLE001
+        return []
+
+
+def message_rows():
+    """报文 (输出话题) + 它承载的信号。
+
+    信号两层来源 (合并显示, 不互相覆盖):
+      ① 声明/占位: mw_signal (来自节点模块或画布 params 的 _signals; 单位/量程由参数中心补齐)
+      ② 实测: live.json 里该话题的 fields —— 实测字段优先展示 (真在线上跑的就是它), 标 src=实测
+    """
+    db = mwdb()
+    if db is None:
+        return []
+    try:
+        rows = db.message_rows()
+    except Exception:                                                        # noqa: BLE001
+        return []
+    lt = (_load(LIVE).get("topics") or {})
+    for r in rows:
+        lv = {}
+        for k, v in lt.items():                       # live 键可能是短名, 也可能是全路径
+            if k == r["topic"] or (v or {}).get("topic") == r["topic"] or k == r["node_id"]:
+                lv = v or {}
+                break
+        f = lv.get("fields") or {}
+        if isinstance(f, dict) and f:
+            r["signals"] = [{"signal": k,
+                             "unit": (v.get("unit") if isinstance(v, dict) else "") or "",
+                             "vmin": (v.get("min") if isinstance(v, dict) else None),
+                             "vmax": (v.get("max") if isinstance(v, dict) else None),
+                             "src": "实测", "param_id": ""}
+                            for k, v in f.items()]
+            r["n_signal"] = len(f)
+        r["hz"] = lv.get("hz", -1.0)
+        r["age_s"] = lv.get("age_s")
+    return rows
+
+
+# ─────────────────────────── 频道 (工程库 ∪ DDS 注册表) ───────────────────────────
+def _live_match(topic, node_id, lt):
+    """实测条目匹配: live.json 的键是注册表名(如 ss_state), 工程库是 ss.node.<id>.<port>。"""
+    for k, v in (lt or {}).items():
+        if k == topic or (v or {}).get("topic") == topic:
+            return k, v or {}
+        if node_id and k == node_id:
+            return k, v or {}
+        if node_id and isinstance(k, str) and topic.endswith("." + k):
+            return k, v or {}
+    return None, {}
+
+
 def channel_rows():
-    """频道清单: 注册表 × 实测(live.json) 合并成一张表"""
+    """频道清单: **工程库为主体** (画布实际配置) + DDS 注册表并列。"""
     T = registry()
     live = _load(LIVE)
     lt = live.get("topics") or {}
-    rows = []
-    keys = list(T.TOPICS) if T else list(lt)
-    for k in keys:
-        reg = (T.TOPICS.get(k) if T else {}) or {}
+    mode = live.get("mode") or current_mode()[0]
+    rows, seen = [], set()
+
+    db = mwdb()
+    if db is not None:
+        try:
+            tps = db.topics()
+            sig_n = {}
+            for s_ in (db.signals() or []):
+                sig_n[(s_["node_id"], s_["port"])] = sig_n.get((s_["node_id"], s_["port"]), 0) + 1
+        except Exception:                                                    # noqa: BLE001
+            tps, sig_n = [], {}
+        for t in tps:
+            live_key, lv = _live_match(t["topic"], t["node_id"], lt)
+            rules = lv.get("rules") or []
+            bad = [r for r in rules if not r.get("ok")]
+            rows.append({
+                "topic": t["topic"], "src": "工程库",
+                "node": t["node_id"], "port": t["port"], "dir": t["dir"],
+                "type": "SSNodePort", "qos": t["qos"],
+                "hz": lv.get("hz", -1.0), "hz_design": lv.get("hz_design"),
+                "age_s": lv.get("age_s"), "count": lv.get("count", 0),
+                "matched": lv.get("matched_pubs"),
+                "verdict": lv.get("verdict", "-"), "score": lv.get("score", -1.0),
+                "bad": "; ".join("%s(%s)" % (r.get("rule"), r.get("msg")) for r in bad),
+                "producer": t["node_id"], "consumers": "",
+                "fields": lv.get("fields") or {}, "signals_n": sig_n.get((t["node_id"], t["port"]), 0),
+                "allowed": (live_key in T.topics_for_mode(mode)) if (T and live_key) else None,
+            })
+            seen.add(t["topic"])
+
+    # DDS 注册表里另有、工程库没覆盖到的 (板级/真机遥测等) —— 也列出, 标来源
+    for k, reg in (list(T.TOPICS.items()) if T else []):
+        name = "zmax/" + k
+        if name in seen or k in seen:
+            continue
         lv = lt.get(k) or {}
         rules = lv.get("rules") or []
         bad = [r for r in rules if not r.get("ok")]
         rows.append({
-            "topic": "zmax/" + k,
-            "type": (reg.get("type") or "").split("::")[-1],
-            "qos": reg.get("qos"),
-            "hz": lv.get("hz", -1.0), "hz_design": reg.get("rate_hz"),
+            "topic": name, "src": "注册表", "node": "-", "port": "-", "dir": "-",
+            "type": (reg.get("type") or "").split("::")[-1], "qos": reg.get("qos"),
+            "hz": lv.get("hz", -1.0), "hz_design": reg.get("rate_hz") or lv.get("hz_design"),
             "age_s": lv.get("age_s"), "count": lv.get("count", 0),
             "matched": lv.get("matched_pubs"),
             "verdict": lv.get("verdict", "-"), "score": lv.get("score", -1.0),
             "bad": "; ".join("%s(%s)" % (r.get("rule"), r.get("msg")) for r in bad),
             "producer": (reg.get("producer") or "")[:60],
             "consumers": ", ".join(reg.get("consumers") or [])[:60],
-            "fields": lv.get("fields") or {},
-            "allowed": (k in T.topics_for_mode(live.get("mode") or "prod")) if T else None,
+            "fields": lv.get("fields") or {}, "signals_n": 0,
+            "allowed": (k in T.topics_for_mode(mode)) if T else None,
         })
     return rows
 
 
-def loop_rows():
-    d = _load(LOOP)
-    return d.get("stages") or [], d.get("counts") or {}, d.get("stuck_at")
-
-
 def alerts():
-    """质量告警流: 频道规则不过 + 闭环环节 fail"""
+    """质量告警流: 频道规则不过 (闭环页已按老倪要求删除, 不再混入)。"""
     out = []
     for r in channel_rows():
         if r["bad"]:
             out.append((r["verdict"], r["topic"], r["bad"], r["age_s"]))
-    st, _c, _s = loop_rows()
-    for s in st:
-        if s.get("status") == "fail":
-            out.append(("fail", s.get("id", ""), s.get("evidence", "")[:110], None))
     return sorted(out, key=lambda x: {"fail": 0, "veto": 0, "warn": 1}.get(x[0], 2))
 
 
@@ -125,17 +241,14 @@ def summary_line():
     T = registry()
     live = _load(LIVE)
     mode, src = current_mode()
-    n_allowed = live.get("n_topics_allowed")
-    n_reg = live.get("n_topics_registered")
-    alive = live.get("n_topic_alive")
     age = (time.time() - live["ts"]) if live.get("ts") else None
-    st, cnt, stuck = loop_rows()
+    ps = project_status()
     return {
         "mode": mode, "mode_src": src, "mode_desc": (T.MODE_DESC.get(mode, "") if T else ""),
-        "n_allowed": n_allowed, "n_reg": n_reg, "alive": alive,
+        "n_allowed": live.get("n_topics_allowed"), "n_reg": live.get("n_topics_registered"),
+        "alive": live.get("n_topic_alive"),
         "live_age_s": round(age, 1) if age is not None else None,
-        "loop": cnt, "stuck_at": stuck,
-        "n_alerts": len(alerts()),
+        "project": ps, "n_alerts": len(alerts()),
         "registry_v": live.get("registry_version") or (T.VERSION if T else None),
     }
 
@@ -144,24 +257,29 @@ def export_csv(rows=None):
     rows = rows or channel_rows()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["topic", "类型", "QoS", "实测Hz", "设计Hz", "帧龄s", "条数", "配对", "裁决", "本档允许", "问题"])
+    w.writerow(["topic", "来源", "节点", "端口", "方向", "类型", "QoS", "实测Hz", "设计Hz",
+                "帧龄s", "条数", "配对", "裁决", "本档允许", "信号数", "问题"])
     for r in rows:
-        w.writerow([r["topic"], r["type"], r["qos"], r["hz"], r["hz_design"], r["age_s"], r["count"],
-                    r["matched"], r["verdict"], r["allowed"], r["bad"]])
+        w.writerow([r["topic"], r["src"], r["node"], r["port"], r["dir"], r["type"], r["qos"],
+                    r["hz"], r["hz_design"], r["age_s"], r["count"], r["matched"], r["verdict"],
+                    r["allowed"], r["signals_n"], r["bad"]])
     return buf.getvalue()
 
 
 def export_json():
-    return json.dumps({"ts": time.time(), "summary": summary_line(), "channels": channel_rows(),
-                       "loop": loop_rows()[0], "alerts": alerts()}, ensure_ascii=False, indent=1)
+    """可复制/可导出: 频道 + 节点 in/out + 报文/信号 一把给全 (供脚本/CI 直接吃)。"""
+    return json.dumps({"ts": time.time(), "summary": summary_line(),
+                       "channels": channel_rows(),
+                       "nodes": node_rows(), "messages": message_rows(),
+                       "alerts": alerts()}, ensure_ascii=False, indent=1)
 
 
 # ─────────────────────────── Qt 视图(被 studio 嵌入) ───────────────────────────
 def build_widget(parent=None, into_tabs=None):
-    """返回本页的"头部条"(档位/刷新/导出)。
+    """返回本页的头部条(档位/刷新/导出)。
 
     into_tabs=None  → 自己带一个 QTabWidget(独立查看用)
-    into_tabs=<QTabWidget> → 把自己的 4 个 Tab 塞进调用方那一个 Tab 栏里
+    into_tabs=<QTabWidget> → 把 5 个 Tab 塞进调用方那一个 Tab 栏里
                             (老倪: 一个功能一个入口, 不做第 13 个模块卡, 也不做嵌套 Tab)
     """
     from PyQt5.QtCore import Qt, QTimer
@@ -171,14 +289,14 @@ def build_widget(parent=None, into_tabs=None):
                                  QTextEdit, QVBoxLayout, QWidget)
 
     DARK = "background:#0d1117; color:#c9d1d9;"
-    OK, WARN, BAD, DIM = "#3fb950", "#d29922", "#f85149", "#8b949e"
+    OK, WARN, BAD, DIM, BLUE = "#3fb950", "#d29922", "#f85149", "#8b949e", "#58a6ff"
     MONO = QFont("DejaVu Sans Mono", 9)
 
     class DataSpaceView(QWidget):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setStyleSheet(DARK)
-            self.setAttribute(Qt.WA_StyledBackground, True)   # ★ 同上: 否则整条工具条漏出调色板亮底
+            self.setAttribute(Qt.WA_StyledBackground, True)   # 否则整条工具条漏出调色板亮底
             self.setAutoFillBackground(False)
             v = QVBoxLayout(self)
             v.setContentsMargins(8, 6, 8, 6)
@@ -202,32 +320,50 @@ def build_widget(parent=None, into_tabs=None):
 
             self.tabs = into_tabs if into_tabs is not None else QTabWidget()
             _own = into_tabs is None
-            # ① 频道
-            self.t_ch = QTableWidget(0, 9)
-            self.t_ch.setHorizontalHeaderLabels(["话题", "类型", "实测Hz/设计", "帧龄s", "条数",
-                                                 "配对", "裁决", "本档", "问题"])
+
+            # ① 频道 (工程库 ∪ 注册表)
+            self.t_ch = QTableWidget(0, 10)
+            self.t_ch.setHorizontalHeaderLabels(["话题", "来源", "方向", "类型/QoS", "实测Hz/设计",
+                                                 "帧龄s", "条数", "信号", "裁决", "问题"])
             self.t_ch.setFont(MONO)
             self.t_ch.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            self.t_ch.horizontalHeader().setSectionResizeMode(8, QHeaderView.Stretch)
+            self.t_ch.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
             self.t_ch.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ch.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.t_ch.itemSelectionChanged.connect(self._show_fields)
             self.tabs.addTab(self.t_ch, "📡 频道 (topic)")
-            # ② 闭环
-            self.t_lp = QTableWidget(0, 4)
-            self.t_lp.setHorizontalHeaderLabels(["环节", "裁决", "门", "证据"])
-            self.t_lp.setFont(MONO)
-            self.t_lp.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-            self.t_lp.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            self.tabs.addTab(self.t_lp, "🔁 数据闭环")
-            # ③ 告警
+
+            # ② 状态空间工程: 节点 × 输入/输出话题 (画布实际连线)
+            self.t_pj = QTableWidget(0, 5)
+            self.t_pj.setHorizontalHeaderLabels(["节点", "类型 / 层", "输入 topic (端口 ← 上游)",
+                                                 "输出 topic (端口 → 下游)", "信号"])
+            self.t_pj.setFont(MONO)
+            self.t_pj.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+            self.t_pj.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+            self.t_pj.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.t_pj.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.t_pj.itemSelectionChanged.connect(self._show_node)
+            self.tabs.addTab(self.t_pj, "🧩 状态空间工程")
+
+            # ③ 报文 / 信号 (message ↔ signal)
+            self.t_ms = QTableWidget(0, 5)
+            self.t_ms.setHorizontalHeaderLabels(["报文 (topic)", "节点.端口", "QoS",
+                                                 "下游 (消费者)", "信号 (名 · 单位 · 量程)"])
+            self.t_ms.setFont(MONO)
+            self.t_ms.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+            self.t_ms.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.t_ms.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.tabs.addTab(self.t_ms, "📨 报文 / 信号")
+
+            # ④ 告警
             self.t_al = QTableWidget(0, 3)
             self.t_al.setHorizontalHeaderLabels(["级别", "对象", "问题"])
             self.t_al.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
             self.t_al.setFont(MONO)
             self.t_al.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.tabs.addTab(self.t_al, "⚠ 质量告警")
-            # ④ 字段真值
+
+            # ⑤ 字段真值
             self.txt = QTextEdit()
             self.txt.setReadOnly(True)
             self.txt.setFont(MONO)
@@ -241,18 +377,26 @@ def build_widget(parent=None, into_tabs=None):
             self.btn_json.clicked.connect(self._json)
             self.refresh()
             self.timer = QTimer(self)
-            self.timer.timeout.connect(self.refresh)      # 只读本地 JSON ⇒ 主线程直接刷(无网络)
+            self.timer.timeout.connect(self.refresh)      # 只读本地库/JSON ⇒ 主线程直接刷(无网络)
             self.timer.start(2000)
 
         # ── 渲染 ──────────────────────────────────────────────
         def refresh(self):
             s = summary_line()
-            color = {"prod": DIM, "diag": OK, "calib": WARN, "test": "#58a6ff"}.get(s["mode"], DIM)
+            color = {"prod": DIM, "diag": OK, "calib": WARN, "test": BLUE}.get(s["mode"], DIM)
+            ps = s.get("project") or {}
+            if ps.get("ok"):
+                pj = ("工程库 <b>%s</b> · 节点 %s / 连线 %s / 话题 %s / 信号 %s · 建于 %s%s"
+                      % (ps["project"], ps["nodes"], ps["links"], ps["topics"], ps["signals"],
+                         ps["built_at"], " <span style='color:%s'>⚠ 库过期(画布改过没落库)</span>" % WARN
+                         if ps.get("stale") else " · 与画布同源"))
+            else:
+                pj = "<span style='color:%s'>工程库不可用: %s</span>" % (BAD, ps.get("why"))
             self.lbl.setText(
-                "档位 <b style='color:%s'>%s</b>(%s) · 本档允许 <b>%s</b>/注册 %s 话题 · 活着 %s · "
-                "live.json 龄 %ss · 闭环 pass %s/9(卡在 %s) · 告警 %s 条"
+                "档位 <b style='color:%s'>%s</b>(%s) · 本档允许 <b>%s</b>/注册 %s · 活着 %s · "
+                "live 龄 %ss · 告警 %s 条<br>%s"
                 % (color, s["mode"], s["mode_src"], s["n_allowed"], s["n_reg"], s["alive"],
-                   s["live_age_s"], (s["loop"] or {}).get("pass", "?"), s["stuck_at"], s["n_alerts"]))
+                   s["live_age_s"], s["n_alerts"], pj))
             self.lbl.setTextFormat(Qt.RichText)
             self.cmb.setCurrentText(s["mode"] if s["mode"] in MODE_ORDER else "prod")
 
@@ -260,26 +404,52 @@ def build_widget(parent=None, into_tabs=None):
             self.t_ch.setRowCount(len(rows))
             for i, r in enumerate(rows):
                 vcol = {"ok": OK, "warn": WARN, "veto": BAD, "-": DIM}.get(r["verdict"], DIM)
-                cells = [r["topic"], r["type"],
-                         "%.2f / %s" % (r["hz"], r["hz_design"]),
+                cells = [r["topic"], r["src"], r["dir"],
+                         "%s / %s" % (r["type"], r["qos"]),
+                         "%.2f / %s" % (r["hz"], r["hz_design"] if r["hz_design"] is not None else "—"),
                          "%.1f" % r["age_s"] if r["age_s"] is not None else "—",
-                         str(r["count"]), str(r["matched"]), r["verdict"],
-                         "✓" if r["allowed"] else "✗", r["bad"]]
+                         str(r["count"]), str(r["signals_n"]), r["verdict"], r["bad"]]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
-                    if c == 6:
+                    if c == 8:
                         it.setForeground(QColor(vcol))
-                    elif c == 3 and r["age_s"] is not None and r["age_s"] > 5:
+                    elif c == 1:
+                        it.setForeground(QColor(BLUE if r["src"] == "工程库" else DIM))
+                    elif c == 5 and r["age_s"] is not None and r["age_s"] > 5:
                         it.setForeground(QColor(WARN))
                     self.t_ch.setItem(i, c, it)
 
-            stages, cnt, stuck = loop_rows()
-            self.t_lp.setRowCount(len(stages))
-            for i, st in enumerate(stages):
-                icon = {"pass": "✅ 过", "fail": "❌ 未过", "unknown": "❔ 缺证据"}.get(st.get("status"), "?")
-                for c, t in enumerate([ "%s %s" % (st.get("id"), st.get("name")), icon,
-                                       st.get("gate", "")[:70], st.get("evidence", "")]):
-                    self.t_lp.setItem(i, c, QTableWidgetItem(t))
+            nr = node_rows()
+            ms = message_rows()
+            _sig_by_node = {}
+            for m in ms:
+                _sig_by_node[m["node_id"]] = _sig_by_node.get(m["node_id"], 0) + m["n_signal"]
+            self.t_pj.setRowCount(len(nr))
+            for i, n in enumerate(nr):
+                ins = "  ".join("%s ← %s" % (x["port"], ",".join(x["from"]) or "-") for x in n["ins"]) or "—"
+                outs = "  ".join("%s → %s" % (x["port"], ",".join(x["to"]) or "-") for x in n["outs"]) or "—"
+                n_sig = _sig_by_node.get(n["node_id"], 0)
+                cells = ["%s (%s)" % (n["name"], n["module"]),
+                         "%s / %s" % (n["type"], n["layer"] or "—"), ins, outs, str(n_sig)]
+                for c, t in enumerate(cells):
+                    it = QTableWidgetItem(t)
+                    if c == 4:
+                        it.setForeground(QColor(DIM))
+                    self.t_pj.setItem(i, c, it)
+
+            self.t_ms.setRowCount(len(ms))
+            for i, m in enumerate(ms):
+                sigs = "; ".join(
+                    "%s%s%s" % (x["signal"],
+                                (" · " + x["unit"]) if x.get("unit") else "",
+                                (" [%s~%s]" % (x["vmin"], x["vmax"]))
+                                if x.get("vmin") is not None and x.get("vmax") is not None else "")
+                    for x in m["signals"]) or "—"
+                cells = [m["topic"], "%s.%s" % (m["node_id"], m["port"]), str(m["qos"]),
+                         ", ".join(m["consumers"]) or "—", sigs]
+                for c, t in enumerate(cells):
+                    self.t_ms.setItem(i, c, QTableWidgetItem(t))
+
             al = alerts()
             self.t_al.setRowCount(len(al))
             for i, (lv, obj, msg, _a) in enumerate(al):
@@ -293,11 +463,27 @@ def build_widget(parent=None, into_tabs=None):
                 return
             x = rows[r]
             self.txt.setPlainText(json.dumps({
-                "话题": x["topic"], "类型": x["type"], "QoS": x["qos"],
+                "话题": x["topic"], "来源": x["src"], "节点": x["node"], "端口": x["port"],
+                "方向": x["dir"], "类型": x["type"], "QoS": x["qos"],
                 "实测Hz": x["hz"], "设计Hz": x["hz_design"], "帧龄s": x["age_s"],
                 "发布者": x["producer"], "消费者": x["consumers"],
-                "最新字段真值": x["fields"],
+                "信号数": x["signals_n"], "最新字段真值": x["fields"],
                 "质量问题": x["bad"] or "无",
+            }, ensure_ascii=False, indent=1))
+
+        def _show_node(self):
+            """点节点 → 在真值页给出该节点的完整 in/out 报文 (可复制)。"""
+            r = self.t_pj.currentRow()
+            nr = node_rows()
+            if r < 0 or r >= len(nr):
+                return
+            n = nr[r]
+            ms = [m for m in message_rows() if m["node_id"] == n["node_id"]]
+            self.txt.setPlainText(json.dumps({
+                "节点": n["name"], "id": n["node_id"], "模块": n["module"],
+                "类型": n["type"], "层": n["layer"], "执行口径": n["exec_mode"],
+                "实现绑定": n["impl_key"], "实现源码": n["source"],
+                "输入报文": n["ins"], "输出报文": n["outs"], "报文明细": ms,
             }, ensure_ascii=False, indent=1))
 
         def _do_mode(self):
@@ -320,10 +506,10 @@ def build_widget(parent=None, into_tabs=None):
 
 
 if __name__ == "__main__":          # 自检/独立查看: QT_QPA_PLATFORM=offscreen python dds_space.py --dump
-    import sys
     if "--dump" in sys.argv:
-        print(json.dumps({"summary": summary_line(), "channels": channel_rows()},
-                         ensure_ascii=False, indent=1)[:2600])
+        print(json.dumps({"summary": summary_line(), "nodes": len(node_rows()),
+                          "messages": len(message_rows()), "channels": len(channel_rows())},
+                         ensure_ascii=False, indent=1)[:2000])
     else:
         from PyQt5.QtWidgets import QApplication
         app = QApplication(sys.argv)

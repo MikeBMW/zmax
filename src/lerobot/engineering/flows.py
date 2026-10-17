@@ -115,6 +115,20 @@ def save_canvas(d, name=paths.CANVAS_DEFAULT, reason="edit", backup=True):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=2)
     os.replace(tmp, p)
+    # 🗄 2026-10-17 老倪: 「状态空间工程的所有连接关系, 那个可以保存的 json 文件, 要保存到状态空间的工程数据库」
+    #   画布 JSON 仍是**人编辑的真源**; 写盘成功的同一个口把 节点/端口/连线/话题/信号 同步进
+    #   zmax_engineering.db (mw_* 表) ⇒ 全局数据空间/监控/CI 只读库就能看到"画布实际配置",
+    #   不再靠运行时拼话题名, 也不会出现"库里是上一版"的静默漂移。
+    #   库写失败**不回滚画布**(画布已原子落盘), 但必须留痕, 不许静默。
+    try:
+        from lerobot.middleware import db as _mwdb
+        from lerobot.middleware import spec as _mwspec
+        _specs, _links, _meta = _mwspec.parse_canvas(p)
+        _st = _mwdb.sync(_specs, _links, p)
+        print("   🗄 工程库已同步: %s · 节点 %d · 连线 %d · 话题 %d · 信号 %d (sha %s)"
+              % (_st["project"], _st["nodes"], _st["links"], _st["topics"], _st.get("signals", 0), _st["sha"]))
+    except Exception as _e:                                                    # noqa: BLE001
+        print("   ⚠️ 工程库同步失败(画布已保存, 库里可能过期): %s: %s" % (type(_e).__name__, _e))
     if bak:
         print("   ↩️ 还原: cp %s %s" % (bak, p))
     return p, bak

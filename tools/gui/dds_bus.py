@@ -418,7 +418,7 @@ class BusPanel:
 
     def _refresh(self):
         self.live = _j(LIVE, {}) or {}
-        self.loop = _j(LOOP, {}) or {}
+        self.loop = {}      # 🗑 闭环页已删, 不再读 loop.json
         if not self.db:
             self.db = _j(BUSDB, {}) or {}
         if not self.paused:
@@ -596,23 +596,7 @@ class BusPanel:
         if not n_bad:
             out.append("  ✔ 无")
         out.append("")
-        out.append("═══ 数据闭环 9 环节  灯语: 🟢 pass · 🔴 fail · 🟡 warn · ⚫ unknown(没证据, 不猜) ═══")
-        lp = (self.loop.get("stages") or [])
-        if isinstance(lp, dict):                     # 兼容两种落盘形态(字典/列表)
-            lp = [dict(v, sid=k) for k, v in lp.items()]
-        if not lp:
-            out.append("  (loop.json 缺失 —— zmax-dataspaces-loop.service 在跑吗?)")
-        for s in lp:
-            gates = s.get("gates") or []
-            npass = sum(1 for g in gates if g.get("ok") is True) if gates else s.get("n_pass")
-            _st = str(s.get("status", "?")).lower()
-            _ic = {"pass": "🟢", "ok": "🟢", "fail": "🔴", "warn": "🟡", "unknown": "⚫"}.get(_st, "⚫")
-            _gt = ("%d/%d" % (npass, len(gates))) if gates else (
-                ("%s/%s" % (s.get("n_pass"), s.get("n_gate"))) if s.get("n_gate") else "-")
-            out.append("  %s %-3s %-20s %-8s 门禁 %-7s %s" %
-                       (_ic, str(s.get("id") or s.get("sid") or ""), str(s.get("name", ""))[:20],
-                        str(s.get("status", "?")), _gt,
-                        str(s.get("evidence") or s.get("detail") or "")[:70]))
+        # 🗑 2026-10-17 老倪「全局数据空间, 删除 数据闭环 页面」⇒ 质量告警文本不再混入闭环 9 环节
         self.tx_qual.setPlainText("\n".join(out))
 
     # ---------- 交互 ----------

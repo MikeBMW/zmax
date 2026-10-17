@@ -8,9 +8,12 @@
   · 上排右 详情/判据面板
   · 中 **Trace 整宽** (CANoe 列: Time | Name | Object Type | Classification | Probability [%] |
                         Sender Name | Sender Id | Tracking Id | Group) + 面板工具条(⏸/Δt/🔍/🗑/导出)
-  · 底 标签栏 (CANoe: Configuration | Measurement | Data Window) → 数据闭环 | 质量告警 + 右下计时/拍照
+  · 底 标签栏 (CANoe: Configuration | Measurement | Data Window) → 质量告警 + 右下计时/拍照
+    (🗑 2026-10-17 老倪: 「全局数据空间, 删除 数据闭环 页面」⇒ 闭环页签已删;
+     只留质量告警 —— 闭环门本来就是质量判据的一部分, 数据面不再单开一页)
 数据全真实: busdb.json(画布 DBC 74节点/182信号/14报文) · live.json(每话题质量) ·
-trace.jsonl(总线帧) · loop.json(闭环阶段)。缺测一律 '—' (不许 0 冒充); 实时量带帧龄与拍照时间。
+trace.jsonl(总线帧)。缺测一律 '—' (不许 0 冒充); 实时量带帧龄与拍照时间。
+busdb 的真源是**状态空间工程库**(mw_*) —— 画布保存时同口落库, 数据空间只读库, 不再另抄一份。
 """
 from __future__ import annotations
 
@@ -534,7 +537,7 @@ class BusView(QWidget):
         tabrow = QHBoxLayout()
         tabrow.setSpacing(6)
         self._btns = {}
-        for key, txt in (("loop", "🔁 数据闭环"), ("alert", "⚠ 质量告警")):
+        for key, txt in (("alert", "⚠ 质量告警"),):        # 🗑 数据闭环页已删 (老倪 2026-10-17)
             b = QPushButton(txt)
             b.setFont(QFont(UI, 10, QFont.Bold))
             b.setCheckable(True)
@@ -545,7 +548,7 @@ class BusView(QWidget):
             b.clicked.connect(lambda _=False, k=key: self._show_bottom(k))
             self._btns[key] = b
             tabrow.addWidget(b)
-        self._btns["loop"].setChecked(True)
+        self._btns["alert"].setChecked(True)
         tabrow.addStretch()
         self.lb_stamp = QLabel("拍照 —")
         self.lb_stamp.setFont(QFont(MONO, 9))
@@ -553,11 +556,9 @@ class BusView(QWidget):
         tabrow.addWidget(self.lb_stamp)
         lay.addLayout(tabrow)
 
-        self.tb_loop = QTableWidget(0, 5)
-        self.tb_loop.setHorizontalHeaderLabels(["阶段", "名称", "质量门 (gate)", "owner", "状态 / 证据"])
         self.tb_alert = QTableWidget(0, 3)
         self.tb_alert.setHorizontalHeaderLabels(["级别", "对象", "问题 (规则: 实测)"])
-        for t in (self.tb_loop, self.tb_alert):
+        for t in (self.tb_alert,):
             t.setStyleSheet(
                 f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
                 f" font-family:{UI}; font-size:9pt; }}"
@@ -568,26 +569,19 @@ class BusView(QWidget):
             t.setEditTriggers(QAbstractItemView.NoEditTriggers)
             t.setSelectionBehavior(QAbstractItemView.SelectRows)
             lay.addWidget(t, 1)
-        self.tb_loop.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.tb_alert.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        lh = self.tb_loop.horizontalHeader()
-        for i, w in ((0, 110), (1, 240), (2, 340), (3, 160)):   # 🐛 ResizeToContents → 固定宽
-            lh.setSectionResizeMode(i, QHeaderView.Interactive)
-            self.tb_loop.setColumnWidth(i, w)
-        lh.setSectionResizeMode(4, QHeaderView.Stretch)
         ah = self.tb_alert.horizontalHeader()
         for i, w in ((0, 130), (1, 280)):
             ah.setSectionResizeMode(i, QHeaderView.Interactive)
             self.tb_alert.setColumnWidth(i, w)
         ah.setSectionResizeMode(2, QHeaderView.Stretch)
-        self.tb_alert.hide()
+        self.tb_alert.show()
         return box
 
     def _show_bottom(self, key):
         for k, b in self._btns.items():
             b.setChecked(k == key)
-        self.tb_loop.setVisible(key == "loop")
-        self.tb_alert.setVisible(key == "alert")
+        self.tb_alert.setVisible(True)      # 唯一保留的页: 质量告警
 
     def _toggle_all(self):
         roots = [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
@@ -672,7 +666,7 @@ class BusView(QWidget):
             return
         try:
             self._live = _j(LIVE, {}) or {}
-            self._loop = _j(LOOP, {}) or {}
+            self._loop = {}      # 🗑 闭环页已删, 不再读 loop.json
             if force_tree or self.tree.topLevelItemCount() == 0:
                 if not self._busdb:
                     self._busdb = _j(BUSDB, {})
@@ -690,7 +684,6 @@ class BusView(QWidget):
             self._fill_measure_bar()
             if not self.btn_pause.isChecked():
                 self._fill_trace(force=bool(force_tree))
-            self._fill_loop()
             self._fill_alerts()
             if self._sel_obj:
                 self._fill_detail()
@@ -879,14 +872,11 @@ class BusView(QWidget):
             self.lb_clock.setText("%d:%02d:%02d" % (el // 3600, (el % 3600) // 60, el % 60))
         self.lb_stamp.setText("拍照 %s" % _hhmmss(live.get("ts")))
         try:                                    # 中段读数(质检: 顶栏 733px 死区)
-            self.lb_mid.setText("Trace %d 行 · 📌置顶 %s · Δt %s · 帧龄 %s · 闭环 %s"
+            self.lb_mid.setText("Trace %d 行 · 📌置顶 %s · Δt %s · 帧龄 %s"
                                 % (self.tb.rowCount(), ("'%s'" % self._filter) if self._filter else "关",
                                    "开" if self._dt_mode else "关",
                                    _num((live.get("topics") or {}).get(
-                                       next(iter(self._topics()), ""), {}).get("age_s"), 2, "s"),
-                                   "%s/%s" % (sum(1 for s in ((self._loop or {}).get("stages") or [])
-                                                  if s.get("status") in ("pass", "ok")),
-                                              len(((self._loop or {}).get("stages") or [])))))
+                                       next(iter(self._topics()), ""), {}).get("age_s"), 2, "s")))
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -1345,24 +1335,6 @@ class BusView(QWidget):
                 lv[topic] = vals
                 self._lv_last = lv
         self.tb.setUpdatesEnabled(True)
-
-    def _fill_loop(self):
-        stages = (self._loop or {}).get("stages") or []
-        self.tb_loop.setRowCount(len(stages))
-        for i, s in enumerate(stages):
-            st = s.get("status", "unknown")
-            cells = [s.get("id", "—"), s.get("name", "—"), s.get("gate", "—"), s.get("owner", "—"),
-                     "%s %s" % (st, s.get("evidence", ""))]
-            for c, txt in enumerate(cells):
-                item = QTableWidgetItem(str(txt)[:300])
-                if c == 4:
-                    item.setForeground(QColor(VERDICT_COLOR.get(st, C_GRAY)))
-                elif c == 0:
-                    item.setForeground(QColor(C_BLUE))
-                    item.setFont(QFont(MONO, 9, QFont.Bold))
-                if c == 2:
-                    item.setToolTip(str(txt))
-                self.tb_loop.setItem(i, c, item)
 
     def _fill_alerts(self):
         alerts = []

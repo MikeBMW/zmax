@@ -95,7 +95,21 @@ CREATE TABLE IF NOT EXISTS mw_topic (
     enabled  INTEGER DEFAULT 1,
     PRIMARY KEY (project, node_id, port, dir)
 );
+CREATE TABLE IF NOT EXISTS mw_signal (
+    project   TEXT,
+    node_id   TEXT,
+    port      TEXT,
+    signal    TEXT,
+    unit      TEXT,
+    vmin      REAL,
+    vmax      REAL,
+    dtype     TEXT,
+    src       TEXT,                     -- 声明 | 实测 | 参数中心 | 端口整体值(未声明)
+    param_id  TEXT,                     -- 参数中心里对应的参数 (unit/range 来源)
+    PRIMARY KEY (project, node_id, port, signal)
+);
 CREATE INDEX IF NOT EXISTS ix_mw_topic_name ON mw_topic(topic);
+CREATE INDEX IF NOT EXISTS ix_mw_signal_name ON mw_signal(project, node_id, port);
 """
 
 
@@ -156,7 +170,8 @@ def sync(specs, links, canvas_path=None, project=None, quiet=True):
         cur.execute("DELETE FROM mw_port  WHERE project=?", (project,))
         cur.execute("DELETE FROM mw_link  WHERE project=?", (project,))
         cur.execute("DELETE FROM mw_topic WHERE project=?", (project,))
-        n_port = n_topic = 0
+        cur.execute("DELETE FROM mw_signal WHERE project=?", (project,))
+        n_port = n_topic = n_sig = 0
         for s in specs:
             cur.execute(
                 "INSERT INTO mw_node VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -171,6 +186,25 @@ def sync(specs, links, canvas_path=None, project=None, quiet=True):
                                 (project, s.id, p, d, _topic(s.id, p), qos, 1 if dds_on else 0))
                     n_port += 1
                     n_topic += 1
+        # 📨 信号登记: 端口是报文, 报文里的字段才是信号。
+        #   来源优先级: 节点模块/画布 params 里的 _signals (声明) > 端口整体值 (未声明, 占位一条)。
+        #   单位/量程由**参数中心** (params 表) 补齐 —— 见 _param_meta()。
+        for s_ in specs:
+            for p_ in s_.outputs:
+                sigs = ((s_.params or {}).get("_signals") or {}).get(p_) or []
+                if not sigs:
+                    sigs = [{"name": "value", "dtype": "any", "src": "端口整体值(未声明)"}]
+                for sg in sigs:
+                    nm = str(sg.get("name") or "value")
+                    unit, vmin, vmax, pid = _param_meta(".".join([s_.id, p_, nm]),
+                                                       getattr(s_, "impl_key", "") or "", nm)
+                    cur.execute("INSERT OR REPLACE INTO mw_signal VALUES (?,?,?,?,?,?,?,?,?,?)",
+                                (project, s_.id, p_, nm, sg.get("unit") or unit,
+                                 sg.get("vmin", vmin), sg.get("vmax", vmax),
+                                 str(sg.get("dtype") or "any"),
+                                 str(sg.get("src") or ("声明" if sg.get("unit") else "端口整体值(未声明)")),
+                                 pid))
+                    n_sig += 1
         for l in links:
             cur.execute("INSERT INTO mw_link VALUES (?,?,?,?,?,?,?)",
                         (project, str(l.get("id") or "%s.%s->%s.%s" % (l["f"], l["f_port"], l["t"], l["t_port"])),
@@ -183,9 +217,129 @@ def sync(specs, links, canvas_path=None, project=None, quiet=True):
             print("💾 落库 %s: 节点 %d · 连线 %d · 端口 %d · 话题 %d (sha %s)"
                   % (project, len(specs), len(links), n_port, n_topic, sha))
         return {"project": project, "nodes": len(specs), "links": len(links),
-                "ports": n_port, "topics": n_topic, "sha": sha}
+                "ports": n_port, "topics": n_topic, "signals": n_sig, "sha": sha}
     finally:
         conn.close()
+
+
+def _param_meta(key, impl_key="", sig=""):
+    """参数中心 (params 表) 里给某个信号找 单位/量程: 返回 (unit, vmin, vmax, param_id)。
+
+    🔴 只认**有区分度**的键: 端口整体值占位 (signal='value') 不参与匹配 ——
+    实测过它会乱命中 (value → calib:plane_z.value), 那种"凑出来的单位"比空着更坏。
+    """
+    keys = []
+    if sig and sig not in ("value",):
+        keys.append(key)                     # <node>.<port>.<signal>
+        if impl_key:
+            keys.append("%s.%s" % (impl_key, sig))   # ss_sched.phase
+            keys.append(impl_key)                    # 节点级参数 (impl 名下)
+    if not keys:
+        return "", None, None, ""
+    try:
+        conn = connect()
+        try:
+            for k in keys:
+                r = conn.execute(
+                    "SELECT unit, min, max, param_id FROM params "
+                    "WHERE lower(param_id) LIKE ? ORDER BY length(param_id) LIMIT 1",
+                    ("%" + k.lower() + "%",)).fetchone()
+                if r:
+                    return (r[0] or ""), (r[1] if r[1] is not None else None), \
+                           (r[2] if r[2] is not None else None), (r[3] or "")
+        finally:
+            conn.close()
+    except Exception:                                          # noqa: BLE001
+        pass
+    return "", None, None, ""
+
+
+def links(project=None, canvas_path=None):
+    """连线表 (画布实际连线, 已落库)。"""
+    project = project or project_of(canvas_path)
+    conn = connect()
+    try:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM mw_link WHERE project=? ORDER BY link_id", (project,))]
+    finally:
+        conn.close()
+
+
+def signals(project=None, canvas_path=None):
+    """信号注册表: 每个信号一行 (报文=node.port, 信号=字段)。"""
+    project = project or project_of(canvas_path)
+    conn = connect()
+    try:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM mw_signal WHERE project=? ORDER BY node_id, port, signal", (project,))]
+    finally:
+        conn.close()
+
+
+def node_rows(project=None, canvas_path=None):
+    """每个节点一行: 输入话题 (端口 ← 上游) / 输出话题 (端口 → 下游)。
+
+    这张表就是「全局数据空间」跟画布实际配置对齐的那张 ——
+    老倪口径: 数据空间显示的必须是画布/配置中心里的实际配置, 不是另抄一份。
+    """
+    project = project or project_of(canvas_path)
+    conn = connect()
+    try:
+        conn.row_factory = sqlite3.Row
+        nodes = {r["node_id"]: dict(r) for r in conn.execute(
+            "SELECT * FROM mw_node WHERE project=?", (project,))}
+        tps = [dict(r) for r in conn.execute(
+            "SELECT * FROM mw_topic WHERE project=? ORDER BY dir, port", (project,))]
+        lks = [dict(r) for r in conn.execute(
+            "SELECT * FROM mw_link WHERE project=?", (project,))]
+    finally:
+        conn.close()
+    up = {}          # (dst_node, dst_in_port) → [src_node]
+    down = {}        # (src_node, src_out_port) → [dst_node]
+    for l in lks:
+        up.setdefault((l["t"], l["t_port"]), []).append(l["f"])
+        down.setdefault((l["f"], l["f_port"]), []).append(l["t"])
+    rows = []
+    for nid, n in sorted(nodes.items()):
+        ins, outs = [], []
+        for t in tps:
+            if t["node_id"] != nid:
+                continue
+            if t["dir"] == "in":
+                ins.append({"port": t["port"], "topic": t["topic"], "qos": t["qos"],
+                            "enabled": t["enabled"], "from": up.get((nid, t["port"]), [])})
+            else:
+                outs.append({"port": t["port"], "topic": t["topic"], "qos": t["qos"],
+                             "enabled": t["enabled"], "to": down.get((nid, t["port"]), [])})
+        rows.append({"node_id": nid, "name": n["name"], "module": n["module"], "type": n["type"],
+                     "layer": n.get("layer") or "", "exec_mode": n.get("exec_mode") or "",
+                     "impl_key": n.get("impl_key") or "", "source": n.get("source") or "",
+                     "ins": ins, "outs": outs})
+    return rows
+
+
+def message_rows(project=None, canvas_path=None):
+    """报文视图: 每个**输出话题**一条 message, 带它的信号清单。
+
+    message (报文) = 一个端口的一帧 (topic, 周期=节点节拍, 载荷=JSON)
+    signal  (信号) = 载荷里的一个字段 (名/单位/量程来自 参数中心, 值来自实测)
+    """
+    project = project or project_of(canvas_path)
+    sigs = {}
+    for s_ in signals(project):
+        sigs.setdefault((s_["node_id"], s_["port"]), []).append(s_)
+    rows = []
+    for n in node_rows(project):
+        for o in n["outs"]:
+            rows.append({
+                "topic": o["topic"], "node_id": n["node_id"], "node": n["name"],
+                "port": o["port"], "qos": o["qos"], "enabled": o["enabled"],
+                "consumers": o["to"], "n_signal": len(sigs.get((n["node_id"], o["port"]), [])),
+                "signals": sigs.get((n["node_id"], o["port"]), []),
+            })
+    return rows
 
 
 # ─────────────────────────── 库 → 规格 ───────────────────────────
@@ -274,7 +428,19 @@ def ensure_synced(canvas_path=None, quiet=True):
     """保证库与画布同源: sha 一致直接返回 (source=db); 不一致就重新解析画布并落库。"""
     project = project_of(canvas_path)
     for st in status(project):
-        if not st.get("stale"):
+        if st.get("stale"):
+            continue
+        # 🔴 2026-10-17: 只看 sha 不够 —— 新增 mw_signal 这类**派生表**时, 老库 sha 仍然对得上,
+        #   于是永远不同步, 信号表永远空 (实测: 113 个输出端口 / 0 条信号)。派生表也要当判据。
+        _conn = connect()
+        try:
+            _n_out = _conn.execute("SELECT COUNT(*) FROM mw_port WHERE project=? AND dir='out'",
+                                   (project,)).fetchone()[0]
+            _n_sig = _conn.execute("SELECT COUNT(*) FROM mw_signal WHERE project=?",
+                                   (project,)).fetchone()[0]
+        finally:
+            _conn.close()
+        if _n_sig >= _n_out and _n_out > 0:
             return {"project": project, "loaded_from": "db", "sha": st["canvas_sha"]}
     specs, links, _meta = spec_mod.parse_canvas(canvas_path)
     info = sync(specs, links, canvas_path=canvas_path, project=project, quiet=quiet)
