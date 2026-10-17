@@ -85,6 +85,47 @@ metadata:
 - 取证: `tools/verify_skill_physics_calls.py` (判据 12 条: 类体内真调用 / 基类收口 / 超限真削 /
   合法不削 / 每拍过闸 / 技能口 / 批次同一闸 / 计数落盘)。
 
+## 把闸搬进"关键路径"(u_ff → SK 段包络 → 仿真器), 而不是只做旁路观测
+
+派发服务里的闸是**旁路**: 削出来的偏差写文件给状态校正器, 引擎的 `u` 根本没被削过。
+老倪一旦问「u_ff 经过 接近/对位 等原子技能节点再给仿真器, 可以么」, 他要的是**关键路径上真削**。
+落地 (Z-MAX 2026-10-16): `cognition.ActionModulator.decide()` 里把 `STAGE_V_CAP` 等比缩放换成
+`InertiaLimiter.limit()`; 引擎 (`engine/sim.py` 解析 / `engine/runtime.py` metaworld) 构造闸挂到 `sched`;
+画布 ①..⑧ SK 与 ⚖闸节点改读 `ss_live/skill_gate.json` (引擎 5Hz 落盘的关键路径真值)。
+
+**四条铁律**:
+1. **单点削**: 闸调用次数必须 == 拍数。两处都削 = 二次削 + 削因台账翻倍, 失去可诊断性。
+2. **开关默认关**: `ZMAX_L2_GATE` 默认 0, 旧行为逐位不变; A/B 靠它切臂。
+3. **Δt 用标定口径**: 真源 `zmax_skill_physics.json` 的 `dt`(0.1s) 才是表里 `s_step = v·dt` 的出处。
+   改成引擎 dt(0.02) 等于把五条约束整体收紧 5 倍 ⇒ 解析引擎还能跑完但慢 6.5%, 真物理直接失败。
+4. **判成功只看几何真值**: `ss_insert_metrics` 的 depth_mm/lateral_mm; 别用 `tr["mani_rem"]`
+   (那是性能流形 d_axial, 不是插深 —— 拿它会得出"插了 171mm"这种假数)。
+
+### 最重要的一条坑: `jerk_max` 标定普遍偏小 2~4 倍
+真物理 seed104 实测 (metaworld peg-insert-side-v3, 500 步):
+
+| jerk_max × | 完成 | 拍 | 插深 | 加加速度削拍 |
+|---|---|---|---|---|
+| ×1 (现标定) | ❌ | 500 | −2.3mm (没进孔) | 31 |
+| ×2 | ✅ | 349 | 64.9mm | 2 |
+| ×4 起 | ✅ | 348 | 64.3mm (与旧链逐位一致) | 0 |
+
+消融证明真凶就是③: 只跳过加加速度, 其余四条全开 ⇒ 与不开闸**逐位相同**。
+原因: 毫米级插孔靠的是每拍微修正, 加速度变化率恰好卡在 `jerk_max·dt` 上被抹平 → 伺服变迟钝 → 对不上孔口。
+**结论**: jerk 不是"越小越安全", 它是**平顺性 vs 贴合精度**的权衡; 关掉或放宽到 ×2~4 前, 别指望闸能默认开。
+
+### 消融/诊断开关 (默认不改行为)
+```bash
+ZMAX_L2_GATE=1 ZMAX_GATE_JERK_X=2 ./gui-venv311/bin/python <入口>      # 放宽 jerk 到 ×2
+ZMAX_L2_GATE=1 ZMAX_GATE_SKIP="加加速度" ...                          # 逐条约束消融
+ZMAX_GATE_DT=0.02 ...                                                # 切物理真实时间步口径
+./gui-venv311/bin/python tools/ab_l2_inline_gate.py                   # 解析引擎 A/B (四条判据)
+./gui-venv311/bin/python tools/ab_l2_inline_gate_real.py --seeds 104 --steps 500
+./gui-venv311/bin/python tools/ablate_l2_gate_real.py --seed 104 --steps 500
+```
+判据里的①要按 `stage_u`(decide 实际用的段) 归因, 不是 `stage`(本步结束贴的标签): 换段那一拍两者差一段,
+会误报"抓取 0.09 > cap 0.04"(其实是下降段 0.09 的合法值)。
+
 ## 物理参数标定 (v / a / s + 物理上下限)
 
 每个物理量的**标定真源** = `config/calib/zmax_skill_physics.json`, 每项写成

@@ -97,6 +97,17 @@ ren.update_scene(d, camera=cam); frame = ren.render()
 3. **释放时机决定横向残差**: 距落座 6mm 就断真空/开爪 ⇒ 件自由落体时横向漂 2.2mm 撞壁;
    收到 1.5mm 内再放, 残差 ≤0.5mm。判据要按工艺配方定 (单边 ≤1mm / 姿态 ≤1°), 别自己放宽。
 
+## 10. 动作不以「速度」身份进 MuJoCo — 只写 mocap 目标, dt 口径必须先量
+
+被问「引擎/前馈的速度是直接进 mujoco 么」时, 先看清写入目标 —— 答案通常是否:
+
+- metaworld `set_xyz_action` 只做 `data.mocap_pos += act × action_scale`（目标点), 再靠 mocap weld + 关节执行器 `mj_step` 驱臂。**qvel 由 MuJoCo 动力学算, 不从外部写**。要判「速度语义准不准」只能量每步稳态位移, 不能看代码推算。
+- 一个 `env.step` 的真实物理时长 = `frame_skip × model.opt.timestep`（metaworld 常见 5×0.0025=**12.5ms**, 不是 20ms 也不是 0.1s)。任何 `K_ACT = act/m·s⁻¹` 类的标定都隐含一个 dt; dt 算错就整体偏倍。实测: 名义 0.5 的 K_ACT（隐含 20ms）在 12.5ms 步下中小段实际 **1.6×** 指令, act 到顶时因臂饱和回落到 ~1.07×。
+- 引擎侧还有个独立的 `DT_ENV` 常量常与真实步长差数量级 (实测 0.1s vs 12.5ms) ⇒ 凡折速度/步数预算的地方都偏, 必须跟 `frame_skip×timestep` 对齐后再用。
+- 解析仿真路（无 mujoco, `v ← v+(u−v)dt/τ; x += v·dt`) 与真物理路的「速度」语义不同源, 对比两路数据前先声明用哪一条。
+
+口径表/两路链路/改法见 `references/action-to-physics-mapping.md`; 量它用 `scripts/probe_action_mapping.py`（一条命令打 action_scale/frame_skip/timestep + 各 act 的稳态位移与真实速度）。
+
 ## 关联
 
 - 肌肉记忆标杆必须绑定摆放指纹 (布局变则失效关快通道) — 见 user-owned zmax-muscle-memory 坑 8。
