@@ -240,7 +240,7 @@ class BusView(QWidget):
         self.reload(force_tree=True)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.reload)
-        self._timer.start(1500)
+        self._timer.start(800)      # ⚡ 实时: 0.8s 一拍 (老倪要「实时运行」)
 
     # ─────────────────── 骨架 ───────────────────
     def _build(self):
@@ -573,6 +573,8 @@ class BusView(QWidget):
 
     # ─────────────────── 数据刷新 ───────────────────
     def reload(self, force_tree=False):
+        if not self.isVisible():
+            return                              # 页面没显示就不重绘 (0.8s 一拍时更要省 CPU)
         # 🐛 2026-09-29 老倪「全局数据空间怎么卡住了」真根因: 1s 定时器**无条件**重建 500 行×9 列的表
         #   (每轮 4500 个 QTableWidgetItem + 整页重排) ⇒ 进程 CPU 实测 81.7%, 页面像冻住。
         #   修法三条: ①不在看的页直接不刷新 ②trace 没变(体积+mtime)就整轮跳过 ③行数 500→150。
@@ -1288,6 +1290,24 @@ class BusView(QWidget):
                            "enabled": bool(r.get("enabled"))}
         except Exception:                                                # noqa: BLE001
             pass
+        # ⚡ 2026-10-17 老倪: 「数据空间的信号怎么不动? 要实时运行啊」+「与信号分析窗口的数据保持一致」
+        #   实时源 = 「信号分析」窗口正在读的那三份本机文件 (trace_live / engine_trace / gravity_trace),
+        #   同一个模块读同一拍数据 ⇒ 两个窗口数值天然一致, 不再等 DDS 桥 (那边此刻 0 发布者)。
+        try:
+            from lerobot.middleware import live_signals as _livesig
+            _rs = _livesig.topics()
+            if _rs:
+                _short = {t.split("/")[-1] for t in _rs}
+                _keep = {}
+                for _k, _v in tp.items():
+                    _nm = str(_v.get("topic") or _k)
+                    if _nm in _rs or _k in _rs or _nm.split("/")[-1] in _short or _k in _short:
+                        continue                     # 同名话题让位给实时源, 不出现两行
+                    _keep[_k] = _v
+                _keep.update(_rs)
+                tp = _keep
+        except Exception:                                                # noqa: BLE001
+            pass
         self._set_trace_header("fixed")
         if not tp:
             self.tb.setRowCount(1)
@@ -1551,11 +1571,14 @@ class BusView(QWidget):
                                    "%s: %s" % (r.get("rule", "—"), r.get("msg", ""))))
         # ② 物理层 (2026-10-17 老倪: 「报警要面向物理值不符合物理规律, 超最大/最小值」)
         try:
+            # 只对**实测数值**做物理判据: 占位/信封(未上线)与 "—" 不是越界, 否则整表刷红 (实测 1429 条假警)
             frames = [{"topic": r["name"], "name": r["signal"], "value": r["value"],
                        "unit": None if r.get("unit") in (None, "—") else r["unit"],
                        "vmin": r.get("lo"), "vmax": r.get("hi"), "prev": r.get("prev")}
                       for r in (getattr(self, "_trace_frames", None) or [])
-                      if r.get("signal") not in (None, "—")]
+                      if r.get("signal") not in (None, "—", "value")
+                      and r.get("src") not in ("占位", "信封")
+                      and str(r.get("value")) not in ("—", "")]
             for a in _quality.scan_frames(frames):
                 alerts.append((a.get("level", "warn"), a.get("object", "—"),
                                "%s: %s" % (a.get("rule", "rule"), a.get("msg", ""))))
