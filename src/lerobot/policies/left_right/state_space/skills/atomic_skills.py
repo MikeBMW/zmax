@@ -8,10 +8,12 @@
 画布 SK01-08 节点 (sssk1-8) 右键源码指向本文件的技能类; node_logic 播放展示
 读本文件模板 + 引擎轨迹当前帧 (stage=当前技能 / target=决策赋值 / u_exec_vec=实际下发)。
 
-⚠️ 数值同源契约 (勿改单边): 模板参数与引擎执行常量保持一致 —
-  简化引擎 tools/gui/state_space_sim.py · 真实化 tools/gui/state_space_sim_real.py
-  (STAGE_* / cognition.py ActionModulator.STAGE_V_CAP / insert_depth / grasp_th)。
-  改技能参数 = 同步引擎常量 (或后续把引擎改为直接 import 本文件, 本文件即唯一真源)。
+✅ 数值同源契约 (2026-10-16 起**本文件即唯一真源**): 引擎不再自带一份阶段偏置 ——
+  src/lerobot/engine/sim.py 的 STAGE_APPROACH_H/STAGE_ALIGN_H/STAGE_DESCEND_H/STAGE_LIFT
+  直接取自本文件各类的 params (hover_h/descend_h/lift_h), `_stage_target()` 走
+  `SK0x.next_target(ctx=几何)`; 真机 `tools/l2_daemon.py::build_move()` 走
+  `next_target(points=点位库, spec=阶段)`。两处消费同一份规则, 不再各算一遍。
+  改偏置 ⇒ 改这里一处 (判据 tools/verify_skill_target_port.py 会核逐位一致)。
 
 夹爪语义契约: 引擎/3D: 0=张开 1=夹紧; metaworld obs 反 (1=张开 0=闭合), 记录层 1−obs。
 任务链: SK01-08 = 插装 8 段 (mode=insert); mode=full 追加 拔出/AOI转移/AOI检测/回程/放下
@@ -170,6 +172,123 @@ class AtomicSkill:
         """
         return self.limiter().limit(self.stage, u, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt, dt=dt)
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # 🎯 执行口: **本段目标位姿** (单一真源, 2026-10-16)
+    #   老倪: 「这些原子任务都有输出么? 最终的 MoveIt 是怎么选择实际的原子任务动作的」
+    #   ⇒ 技能类必须能**输出目标**, 而不是只把别人给的动作削一遍。规则写在类属性 TARGET 里
+    #     (ref = 参考点语义, off_key = 取 params 里哪个偏置), 由本方法解析成绝对位姿。
+    #   两个消费者, 同一份规则 —— 引擎与真机不再各算一遍:
+    #     仿真 src/lerobot/engine/sim.py::_stage_target()  → next_target(ctx=几何)
+    #     真机 tools/l2_daemon.py::build_move()            → next_target(points=点位库, spec=阶段)
+    #   缺上下文/未知段 ⇒ 返回 None (调用方显示"未生成"), **绝不编一个 0 目标**。
+    TARGET = None
+
+    @classmethod
+    def target_rule(cls):
+        """本段目标规则 {ref, off_key, tol_key?}; 没声明 = 本技能不产出目标。"""
+        return dict(cls.TARGET) if isinstance(cls.TARGET, dict) else None
+
+    @classmethod
+    def _off_vec(cls):
+        """从 params 取偏置向量 (off_key 指定键; 缺 → [0,0,0], 不猜)。"""
+        r = cls.target_rule() or {}
+        k = r.get("off_key")
+        z = float(cls.params.get(k, 0.0)) if k else 0.0
+        return [0.0, 0.0, z]
+
+    @classmethod
+    def next_target(cls, ctx=None, points=None, spec=None, with_phys=False):
+        """🎯 本段目标位姿 — 唯一定义处。
+
+        ctx:    仿真几何 {"peg":[3], "head_off":[3], "table_z":f, "hole_mouth":[3], "hole":[3]}
+        points: 真机点位库 {name: {"pos":[3], "quat":[4]}}
+        spec:   真机调用参数 (点名称覆盖用, 与 l2_daemon 同口径)
+
+        返回 {stage, skill, ref, off, xyz, quat, tol_m, v_cap, a_max, jerk_max, s_step, src}
+        解析不了 → None。
+        """
+        import numpy as np                                  # 局部导入: 本模块也被无 numpy 的 venv 按需加载
+        r = cls.target_rule()
+        if not r:
+            return None
+        ref = str(r.get("ref") or "")
+        off = np.asarray(cls._off_vec(), dtype=float)
+        xyz = None
+        quat = None
+        src = ""
+        # ① 点位库上下文优先 (真机): 有 points + 可解析点名 ⇒ 点位 + 本段偏置。
+        #    这就是"原子技能给真机/MoveIt 的目标": 同一段在仿真里按几何(peg/hole)算, 在真机上按
+        #    点位库(taught_points: slot1/insert_pose/…)算 —— 偏置/语义只有一份, 参考点按环境换。
+        _name = ((spec or {}).get("point") or r.get("point") or cls.params.get("point"))
+        if points and _name and str(_name) in points and (points.get(str(_name)) or {}).get("pos"):
+            _p = points[str(_name)]
+            _pos = np.asarray(_p["pos"], dtype=float)
+            if ref == "peg_xy_table":       # 抬起: 只抬 z (xy 留在点位上), 与几何口径同构
+                xyz = np.array([_pos[0], _pos[1], _pos[2] + off[2]])
+            else:
+                xyz = _pos + off
+            quat = list(_p["quat"]) if _p.get("quat") else None
+            src = "taught_points[%s]" % _name
+        elif ref == "point":                                  # 声明只认点位, 但点位不在库 ⇒ 不编
+            return None
+        else:                                                 # 仿真: 几何上下文
+            c = ctx or {}
+            if ref == "peg":
+                if c.get("peg") is None:
+                    return None
+                xyz = np.asarray(c["peg"], dtype=float) + off
+            elif ref == "peg_xy_table":                       # [peg.x, peg.y, table_z + off_z]
+                if c.get("peg") is None or c.get("table_z") is None:
+                    return None
+                xyz = np.array([float(c["peg"][0]), float(c["peg"][1]), float(c["table_z"]) + off[2]])
+            elif ref in ("hole_mouth", "hole"):               # 末端 = 孔口/孔底 − 真实夹持偏移 + 偏置
+                base = c.get(ref)
+                hoff = c.get("head_off")
+                if base is None or hoff is None:
+                    return None
+                xyz = np.asarray(base, dtype=float) - np.asarray(hoff, dtype=float) + off
+            else:
+                return None
+            src = "ctx[%s]" % ref
+        ph = (cls.phys() or {}) if with_phys else {}      # 包络按需 (默认只给目标, 不读标定真源)
+        return {"stage": cls.stage, "skill": cls.code, "ref": ref, "off": [float(x) for x in off],
+                "xyz": [float(x) for x in np.asarray(xyz, dtype=float).ravel()[:3]],
+                "quat": quat,
+                "tol_m": float(cls.params.get("tol_m", 0.002)),
+                "v_cap": float(ph.get("v") or cls.ctrl.get("v_cap") or 0.0),
+                "v_min": float(ph.get("v_min") or cls.ctrl.get("v_min") or 0.0),
+                "a_max": float(ph.get("a_max") or 0.0),
+                "jerk_max": float(ph.get("jerk_max") or 0.0),
+                "s_step": float(ph.get("s_step") or 0.0),
+                "phys_src": (ph.get("src") if with_phys else None),
+                "src": src}
+
+    @classmethod
+    def command(cls, ctx=None, x=None, k=6.0, v_cap=None, points=None, spec=None):
+        """🎯 目标驱动期望速度 (原子技能自己产出动作): u = k·(target − x), 限 v_cap, 到 tol 内→0。
+
+        返回 {"u":[3], "target":[3], "err_m":f, "reached":bool, "rule":...}; 无目标 → None。
+        这就是"原子任务输出动作"的执行口 —— 引擎 decide() 在 ZMAX_SKILL_FF=1 时用它当 u_ff。
+        """
+        import numpy as np                                  # 局部导入 (同 next_target)
+        t = cls.next_target(ctx=ctx, points=points, spec=spec)
+        if not t or x is None:
+            return None
+        x = np.asarray(x, dtype=float).ravel()[:3]
+        e = np.asarray(t["xyz"], dtype=float) - x
+        d = float(np.linalg.norm(e))
+        cap = float(v_cap if v_cap is not None else (t.get("v_cap") or 0.0))
+        if d <= float(t.get("tol_m") or 0.0):
+            u = np.zeros(3)
+        else:
+            u = float(k) * e
+            n = float(np.linalg.norm(u))
+            if cap > 0 and n > cap:
+                u = u * (cap / n)
+        return {"u": [float(v) for v in u], "target": t["xyz"], "err_m": round(d, 6),
+                "reached": bool(d <= float(t.get("tol_m") or 0.0)), "rule": t["ref"],
+                "v_cap": cap, "src": t["src"]}
+
     @classmethod
     def show_phys(cls):
         """把本技能的物理模型打印出来 (人看/交付: 打开哪个技能, 就看到它自己的方程和数字)。"""
@@ -192,6 +311,8 @@ class AtomicSkill:
 class SK01Approach(AtomicSkill):
     """① 接近 — 从初始位移动到光模块抓握点正上方 (悬停, 不触碰)"""
     code = "SK01"
+    # 🎯 目标: 光模块抓握点正上方悬停 (peg + 0,0,params.hover_h)
+    TARGET = {"ref": "peg",         "off_key": "hover_h"}
     stage = "接近"
     name = "① 接近"
     desc = "夹爪移动到光模块抓握点正上方悬停 (水平粗对准)"
@@ -221,6 +342,8 @@ class SK01Approach(AtomicSkill):
 class SK02Align(AtomicSkill):
     """② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"""
     code = "SK02"
+    # 🎯 目标: 精对位高度 (peg + 0,0,params.hover_h)
+    TARGET = {"ref": "peg",         "off_key": "hover_h"}
     stage = "对位"
     name = "② 对位"
     desc = "降到光模块上方精对位高度, 消除水平残差"
@@ -250,6 +373,8 @@ class SK02Align(AtomicSkill):
 class SK03Descend(AtomicSkill):
     """③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"""
     code = "SK03"
+    # 🎯 目标: 贴到抓握点 (peg + 0,0,params.descend_h)
+    TARGET = {"ref": "peg",         "off_key": "descend_h"}
     stage = "下降"
     name = "③ 下降"
     desc = "张开的夹爪垂直下降到抓握点 (包住光模块两侧)"
@@ -280,6 +405,8 @@ class SK03Descend(AtomicSkill):
 class SK04Grasp(AtomicSkill):
     """④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"""
     code = "SK04"
+    # 🎯 目标: 原地 (peg), 只闭爪不改位置
+    TARGET = {"ref": "peg",         "off_key": None}
     stage = "抓取"
     name = "④ 抓取"
     desc = "夹爪闭合深夹光模块 → 锁存夹持偏移 (真机同构: 编码器锚定)"
@@ -310,6 +437,8 @@ class SK04Grasp(AtomicSkill):
 class SK05Lift(AtomicSkill):
     """⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"""
     code = "SK05"
+    # 🎯 目标: [peg.x, peg.y, table_z + params.lift_h] (提到台面之上 lift_h)
+    TARGET = {"ref": "peg_xy_table", "off_key": "lift_h"}
     stage = "抬起"
     name = "⑤ 抬起"
     desc = "垂直抬升光模块离台面到转移高度 (夹持质量由随动判定)"
@@ -339,6 +468,8 @@ class SK05Lift(AtomicSkill):
 class SK06Transfer(AtomicSkill):
     """⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"""
     code = "SK06"
+    # 🎯 目标: 孔口前方上方 (hole_mouth − 真实夹持偏移 + 0,0,params.hover)
+    TARGET = {"ref": "hole_mouth",  "off_key": "hover"}
     stage = "转移"
     name = "⑥ 转移"
     desc = "夹持光模块水平转移到带孔盒孔口正上方 (工艺定位)"
@@ -369,6 +500,8 @@ class SK06Transfer(AtomicSkill):
 class SK07Insert(AtomicSkill):
     """⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"""
     code = "SK07"
+    # 🎯 目标: 插到孔底 (hole − 真实夹持偏移)
+    TARGET = {"ref": "hole",        "off_key": None}
     stage = "插入"
     name = "⑦ 插入"
     desc = "光模块头对心孔口 → 沿孔轴推入孔底 (接触段, 禁肌肉记忆快通道)"
@@ -404,6 +537,8 @@ class SK07Place(AtomicSkill):
     与 SK07Insert 同编号同"决策层选定第 7 段"语义 —— **由任务配置选哪一支** (配置改变功能)。
     """
     code = "SK07"
+    # 🎯 目标: 点位库的摆放点 (真机点位上下文; 仿真无点位库时返回 None)
+    TARGET = {"ref": "point", "off_key": None}
     stage = "放入"          # 摆盘链里对应状态机的「放下」段 (ActionModulator.PLACE_IDX)
     name = "⑦ 放入"
     desc = "件吊到目标槽位上方 → 垂直下放到槽底 → 开爪释放 (低速触底, 不压伤)"
@@ -436,6 +571,8 @@ class SK07Place(AtomicSkill):
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
     code = "SK08"
+    # 🎯 目标: 保持在插入终点 (hole − 真实夹持偏移)
+    TARGET = {"ref": "hole",        "off_key": None}
     stage = "完成"
     name = "⑧ 完成"
     desc = "插入深度达标 → 任务完成 (mode=insert 终点; full 模式插入后进入拔出链)"

@@ -194,6 +194,35 @@ def _dir_label(dx, dy, dz):
     return "→平动"
 
 
+_ASKILLS = None
+
+
+def _atomic_skills():
+    """🎯 原子技能库 (2026-10-16): 按**文件路径**加载, 与引擎 src/lerobot/engine/sim.py 同源。
+
+    不 `from lerobot...` import —— 那会拉起包级 torch 依赖 (执行器里只做点位解析, 不需要)。
+    注册进 sys.modules 让断点能进 (与 _load 同修法)。失败 → None, 老路径照常可用。
+    """
+    global _ASKILLS
+    if _ASKILLS is not None:
+        return _ASKILLS or None
+    try:
+        import types as _types
+        _p = os.path.join(REPO, "src", "lerobot", "policies", "left_right", "state_space",
+                          "skills", "atomic_skills.py")
+        with open(_p, encoding="utf-8") as _f:
+            _src = _f.read()
+        _m = _types.ModuleType("zmax_atomic_skills")
+        _m.__file__ = _p
+        sys.modules["zmax_atomic_skills"] = _m
+        exec(compile(_src, _p, "exec"), _m.__dict__)
+        _ASKILLS = _m
+    except Exception as _e:                                            # noqa: BLE001
+        log("⚠ 原子技能库加载失败 (%s: %s) → 目标位姿退回原点位解析" % (type(_e).__name__, _e))
+        _ASKILLS = False
+    return _ASKILLS or None
+
+
 def build_move(sk, spec, pts, cur=None, curq=None):
     # ⚠️ 相对运动的目标 = 真实当前位姿 + 偏移 → 位姿必须直读(常驻流缓存会滞后整分钟级,
     #    会把这 50mm 累加成错的落点); cur/curq 由调用方传入可避免重复直读。
@@ -239,6 +268,21 @@ def build_move(sk, spec, pts, cur=None, curq=None):
         if name not in pts:
             log("拒绝: 点位 %s 不在点位库" % name)
             return None
+        # 🎯 2026-10-16 原子技能执行口 (opt-in): 技能声明 "atomic":"SK0x" ⇒ 目标位姿由技能类给
+        #   (SK0x.next_target(points=点位库, spec=阶段)), 点位名解析口径与上面完全一致;
+        #   没这个字段的技能 (97 条在役全都没有) 行为**逐位不变**。
+        _ak = str(sk.get("atomic") or "")
+        if _ak:
+            _m = _atomic_skills()
+            _cls = getattr(_m, _ak, None) if _m is not None else None
+            if _cls is not None and getattr(_cls, "TARGET", None):
+                _tg = _cls.next_target(points=pts, spec={"point": name})
+                if _tg is not None:
+                    # 只覆盖位置; 姿态仍走下面的既定规则 (技能标 quat:"taught" 才取示教姿态)
+                    t = list(_tg["xyz"])
+                    log("🎯 %s 目标位姿 ← %s (原子技能执行口, %s)" % (sk.get("id"), _ak, _tg.get("src")))
+                    _ak = ""                     # 已用技能口 ⇒ 不再走"退回原点位解析"那条日志
+                log("⚠ %s 原子技能 %s 没给出目标 (点位 %s) → 退回原点位解析" % (sk.get("id"), _ak, name))
         t = list(pts[name]["pos"])
         # 2026-09-20 老倪: "回到能看清光模块的位姿" = 位置+姿态都要回到示教点。
         # 默认沿用旧行为(位置用示教点 · 姿态保持当前), 技能上标 "quat":"taught" 才恢复示教姿态

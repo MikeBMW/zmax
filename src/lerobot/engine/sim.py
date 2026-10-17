@@ -137,6 +137,31 @@ def _load(name):
     return m
 
 
+# ── 🎯 原子技能库 (2026-10-16: 阶段目标/偏置的真源搬进技能类, 引擎不再自带一份) ──────────
+_SKILLS_MOD = None
+
+
+def _skills_mod():
+    """惰性加载 atomic_skills (纯类定义, 无重依赖); 失败 → None, 阶段目标退回内置公式。"""
+    global _SKILLS_MOD
+    if _SKILLS_MOD is None:
+        try:
+            _SKILLS_MOD = _load("skills/atomic_skills.py")
+        except Exception as _e:                                        # noqa: BLE001
+            print(f"⚠ 原子技能库加载失败 ({type(_e).__name__}: {_e}) → 阶段目标退回内置公式")
+            _SKILLS_MOD = False
+    return _SKILLS_MOD or None
+
+
+def _sk_param(code, key, default):
+    """从技能类 params 取真源值 (取不到才用内置兜底, 兜底值由判据卡住不许漂)。"""
+    m = _skills_mod()
+    try:
+        return float(getattr(m, code).params[key])
+    except Exception:                                                  # noqa: BLE001
+        return float(default)
+
+
 def _load_planner():
     """加载大模型层 planner.py (失败返回 None — 慢决策缺席不影响实时回路)"""
     try:
@@ -166,10 +191,12 @@ K_CONTACT = 6.0                           # 接触力增益
 DT = 0.02
 T_END = 32.0                              # 完整插拔 (接近→对位→下降→抓取→抬起→转移→插入→完成) 需要更长
 # 各阶段末端子目标 (感知层把"当前阶段目标"写进 obs[36:39] — 前馈层就是按它比例引导)
-STAGE_LIFT = 0.16                         # 抬起目标高度 (台面之上)
-STAGE_APPROACH_H = 0.09                   # 接近: 光模块上方悬停高度
-STAGE_ALIGN_H = 0.05                      # 对位: 精对位高度
-STAGE_DESCEND_H = 0.004                   # 下降: 贴到抓握点
+# 🎯 2026-10-16: 这四个偏置的**真源已搬到技能类** (SK0x.params), 这里只是取值的别名 ——
+#   改偏置改 atomic_skills.py 一处即可; 括号里是兜底值 (技能库加载失败时用), 判据卡住不许漂。
+STAGE_LIFT = _sk_param("SK05Lift", "lift_h", 0.16)                    # 抬起目标高度 (台面之上)
+STAGE_APPROACH_H = _sk_param("SK01Approach", "hover_h", 0.09)         # 接近: 光模块上方悬停高度
+STAGE_ALIGN_H = _sk_param("SK02Align", "hover_h", 0.05)               # 对位: 精对位高度
+STAGE_DESCEND_H = _sk_param("SK03Descend", "descend_h", 0.004)        # 下降: 贴到抓握点
 
 
 class StateSpaceSim:
@@ -220,6 +247,12 @@ class StateSpaceSim:
             except Exception:                                            # noqa: BLE001
                 self.lim = None                                          # 取不到就回旧行为, 不静默假装接上了
         self._gate_pub_last = 0.0
+        # 🎯 2026-10-16 原子技能执行口: ZMAX_SKILL_FF=1 ⇒ 本段期望速度由技能类自己产出
+        #   (SK0x.command: u = k·(target − x), 限本段 v_cap, 到容差内 → 0), 前馈加速器退为对照/探针。
+        self.skill_ff = os.environ.get("ZMAX_SKILL_FF", "0") not in ("0", "false", "off")
+        self.skill_k = float(os.environ.get("ZMAX_SKILL_K") or 6.0)
+        self.skill_cmd = None
+        self._target_src = ""
         self.execr = self.execution.RobotExecutor()
         self.world = self.execution.PhysicalWorld()
         # 物理世界状态
@@ -249,11 +282,31 @@ class StateSpaceSim:
         return PEG_HEAD_OFF.copy()
 
     # ── 阶段子目标 (感知层写进 obs[36:39], 前馈层按它比例引导) ──
+    def _geom_ctx(self):
+        """给技能执行口的几何上下文 (仿真侧): 参考点 + 真实夹持偏移。"""
+        return {"peg": self.peg, "head_off": self._head_off(), "table_z": TABLE_Z,
+                "hole_mouth": HOLE_MOUTH, "hole": HOLE_POS}
+
     def _stage_target(self):
-        """当前阶段的末端目标位置 — 八阶段插拔流程:
-        接近(光模块上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) → 抓取(原地闭合)
-        → 抬起(提到 STAGE_LIFT) → 转移(光模块头对准孔口上方) → 插入(光模块头推到 goal) → 完成"""
+        """当前阶段的末端目标位置 — **真源 = 原子技能 SK0x.next_target()** (2026-10-16)。
+
+        八阶段插拔流程: 接近(光模块上方悬停) → 对位(降到精对位高度) → 下降(贴抓握点) →
+        抓取(原地闭合) → 抬起(提到 lift_h) → 转移(光模块头对准孔口上方) → 插入(推到孔底) → 完成。
+        偏置/参考点语义全在 atomic_skills.py 的 TARGET + params 里; 本节只给几何上下文,
+        取不到技能类才走下面同源的兜底公式 (常量也是从技能类取的, 不会漂)。
+        """
         st = self.sched.stage()
+        _m = _skills_mod()
+        if _m is not None:
+            try:
+                _sk = _m.skill_for(st)
+                if _sk is not None:
+                    _t = _sk.next_target(ctx=self._geom_ctx())
+                    if _t is not None:
+                        self._target_src = _t.get("src", "")
+                        return np.asarray(_t["xyz"], dtype=float)
+            except Exception as _e:                                    # noqa: BLE001
+                self._target_src = "fallback(%s)" % type(_e).__name__
         if st == "接近":
             return self.peg + np.array([0.0, 0.0, STAGE_APPROACH_H])
         if st == "对位":
@@ -370,6 +423,23 @@ class StateSpaceSim:
             obs = self._build_obs(force)
             # ③ 快通道: 前馈加速器
             u_ff = self.accel.forward(obs)
+            # 🎯 2026-10-16 原子技能执行口 (老倪: 「这些原子任务都有输出么」):
+            #   ZMAX_SKILL_FF=1 ⇒ 本段动作**由技能类自己产出** (u = k·(target−x), 限本段 v_cap,
+            #   到容差内→0), 加速器输出留作对照/探针; 夹爪维仍由状态机给 (u_ff[3] 不动)。
+            if self.skill_ff:
+                try:
+                    _m = _skills_mod()
+                    _sk = _m.skill_for(self.sched.stage()) if _m is not None else None
+                    if _sk is not None:
+                        _c = _sk.command(ctx=self._geom_ctx(), x=self.x, k=self.skill_k,
+                                         v_cap=self.sched.v_cap.get(self.sched.stage()))
+                        if _c is not None:
+                            _u = np.asarray(u_ff, dtype=float).copy().ravel()
+                            _u[:3] = np.asarray(_c["u"], dtype=float)
+                            u_ff = _u
+                            self.skill_cmd = _c
+                except Exception as _e:                                # noqa: BLE001
+                    self.skill_cmd = {"err": "%s: %s" % (type(_e).__name__, _e)}
             # ④ 反馈校正/调度 (stage 先于探针快照, 让直方图窗口拿到每帧阶段)
             # 🐛 卡尔曼预测的控制输入必须是**上一步真正下发给执行器的量** (u_exec),
             #   原来用 u_ff (前馈建议) — 实测两者模长差 3.12 倍 ⇒ 预测拿"没执行的动作"外推,
