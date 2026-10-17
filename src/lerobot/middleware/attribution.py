@@ -55,6 +55,14 @@ OUT_NODE = (
     ("sstrace.八阶段序号", "sssched", ""),
     ("sstrace.安全边界", "sslimit", ""),
     ("sstrace.接触概率", "ssinnov", ""),
+    # 🧭 2026-10-17 老倪: 「实际上也没有连线啊, 没有这个连接」—— 闭环内部算出来的量, 归到真正算它的
+    #   L2 节点 (估计器/校正器) 或真正写这份快照的进程 (3D 回放), 不再一律糊成 catch-all「Z-MAX 引擎」。
+    ("sstrace.估计", "ssest", ""),
+    ("sstrace.残差", "ssinnov", ""),
+    ("sstrace.净接触", "ssinnov", ""),
+    ("sstrace.帧", None, "ss_dreamview (3D 场景回放)"),
+    ("sstrace.总帧", None, "ss_dreamview (3D 场景回放)"),
+    ("sstrace.时间_s", None, "ss_dreamview (3D 场景回放)"),
     ("sstrace.光模块头", "ss2d3d", ""),
     ("sstrace.吸嘴到槽位", "ss2d3d", ""),
     ("sstrace.光模块", "ssyolo", ""),
@@ -273,7 +281,10 @@ def rx_of(key):
         for pre, s in SS_TRACE_SRC:
             if n.startswith(pre):
                 return s
-        return "L2 状态空间引擎 (无话题)"
+        # 🚫 2026-10-17 老倪: 「实际上也没有连线啊, 在 Rx 里删掉 L2 状态空间引擎, 没有这个连接」
+        #   帧号/残差/接触概率/估计误差这些是闭环进程内部算的量, 画布上**没有任何一条线**进来 ⇒
+        #   Rx 就该空着 (—), 不许写一个看起来像连接的来源。
+        return "—"
     if k.startswith("ros."):
         return "Orin ROS2"
     if k.startswith("ds."):
