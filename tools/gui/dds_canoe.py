@@ -25,6 +25,15 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "src"))
+try:                                     # 话题 → 信号清单 (实测/声明/画布/占位 四级证据)
+    from lerobot.middleware import signals as _signals
+except Exception:                                                        # noqa: BLE001
+    class _SG:
+        @staticmethod
+        def signals_of(topic):
+            return [("value", "", "占位")]
+    _signals = _SG()
+
 try:                                     # 中文短名 / DDS 标准 QoS 显示
     from lerobot.middleware import cn_names as _cn_names
     from lerobot.middleware import qos_names as _qos_names
@@ -1141,6 +1150,8 @@ class BusView(QWidget):
     def _tx_of(self, topic, t):
         """Tx = 主发送节点的中文短名 (注册表类话题没有节点, 用它自己的中文名)。"""
         prod = str((t or {}).get("producer") or "")
+        if prod.startswith("ss.node."):
+            return _cn_names.cn_of_node(prod[len("ss.node."):].split(".")[0], prod)
         if prod and "." in prod and " " not in prod and not prod.startswith("画布"):
             return _cn_names.cn_of_node(prod.split(".")[0], prod.split(".")[0])
         return _cn_names.cn_of(topic)
@@ -1232,6 +1243,26 @@ class BusView(QWidget):
                               "link_topics": _cur.get("link_topics") or []}
         except Exception:                                                  # noqa: BLE001
             pass
+        # 🗂 2026-10-17 老倪: 「怎么就这么少的信号? L1~L5 层所有的 topic 的所有信号, 都要加载」
+        #   ⇒ Trace 不再只显示"有实时流量"的 topic, 工程库里注册的全部话题 (含入口) 都进表;
+        #     没数据的话题照常列信号名, 值显 "—" (未实测), 不隐藏。
+        try:
+            from lerobot.middleware import db as _db2
+            _lvl = {r["node_id"]: str(r.get("layer") or "") for r in _db2.node_rows()}
+            tp = dict(tp)
+            for r in _db2.topics():
+                tpc = str(r.get("topic") or "")
+                if not tpc or tpc in tp:
+                    continue
+                _is_out = str(r.get("dir") or "") == "out"
+                tp[tpc] = {"topic": tpc, "type": r.get("type"), "qos": r.get("qos"),
+                           "hz": -1.0, "hz_design": None, "count": 0, "age_s": -1.0,
+                           "fields": {}, "layer": _lvl.get(str(r.get("node_id")), ""),
+                           "dir": str(r.get("dir") or ""),
+                           "producer": ("ss.node.%s" % r.get("node_id")) if _is_out else "",
+                           "enabled": bool(r.get("enabled"))}
+        except Exception:                                                # noqa: BLE001
+            pass
         self._set_trace_header("fixed")
         if not tp:
             self.tb.setRowCount(1)
@@ -1303,8 +1334,17 @@ class BusView(QWidget):
                                      phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
                                      why=why, bad=verdict in ("warn", "fail")))
             else:
-                vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest")) or "—"
-                rows.append(dict(base, signal="—", value=vals, unit="—", phys="?", why="", bad=False))
+                # 📋 2026-10-17 老倪: 「signal列的信号呢? 每个 topic 的 signal 哪里去了? 添加」
+                #   +「L1~L5 层所有的 topic 的所有信号, 都要加载」⇒ 没有实时载荷也把该话题的
+                #   每个信号逐条列出来: 名字来自 端口标签/实现/上游继承, 值显 — 并标"未实测"。
+                _vals = self._live_vals({"fields": f}) or self._digest_vals(t.get("digest")) or ""
+                for _sn, _u, _src in _signals.signals_of(nm):
+                    _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
+                    _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
+                    rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm), signal=_sn,
+                                     value=(_vals or "—"), unit=(_unit2 or "—"), lo=_lo2, hi=_hi2,
+                                     prev=None, phys="?", bad=False, src=_src,
+                                     why=("信号来源: %s · 当前无实测值 (总线未跑/未上线)" % _src)))
 
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(len(rows))
