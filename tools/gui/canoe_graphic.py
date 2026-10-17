@@ -2787,57 +2787,31 @@ class CanoeGraphicWidget(QWidget):
         ("catalog.", None, "catalog_worker (话题目录)"),
     )
 
+    def _attrib(self):
+        """归属真源 (middleware.attribution): 与数据空间 Trace **同一份** Tx/Rx/Layer 映射。"""
+        from lerobot.middleware import attribution as _at
+        return _at
+
     def _out_node(self, key):
-        """Tx = 发送这个信号的**节点名** (归一后只有本名)。
-
-        有画布节点 ⇒ 工程库里的节点名 (naming.clean: 去 emoji / 去「· 解释」/ 去括号);
-        没有画布节点 ⇒ 写**发布进程名** (带 .py 或 service 名), 绝不拿像节点的假名字顶上。
-        """
-        k = str(key or "")
-        if not k:
-            return ""
-        _nid, _proc = None, ""
-        for pre, nid, proc in self.OUT_NODE_RULES:
-            if k.startswith(pre):
-                _nid, _proc = nid, proc
-                break
-        if _nid:
-            nm = self._node_name(_nid)
-            if nm:
-                return nm
-        return _proc or "本机真值流"
-
-    def _node_name(self, node_id):
-        """节点 id → 归一显示名 (工程库; 查不到返回空)。"""
-        if getattr(self, "_nm_cache", None) is None:
-            self._nm_cache = {}
-            try:
-                import sys as _sys
-                if os.path.join(ROOT, "src") not in _sys.path:
-                    _sys.path.insert(0, os.path.join(ROOT, "src"))
-                from lerobot.middleware import db as _db
-                from lerobot.middleware import naming as _naming
-                rows = _db.node_rows()
-                _m = _naming.unique_map([(r["node_id"], str(r.get("name") or r["node_id"])) for r in rows])
-                self._nm_cache = _m
-            except Exception:                                              # noqa: BLE001
-                self._nm_cache = {}
-        return self._nm_cache.get(node_id, "")
+        """Tx = 发送这个信号的节点名 (无画布节点 ⇒ 进程名)。"""
+        try:
+            return self._attrib().tx_of(key)
+        except Exception:                                                       # noqa: BLE001
+            return "本机真值流"
 
     def _src_hint(self, key):
-        if key.startswith("ar."):
-            return "🥽 AR/AOI 信号总线 · " + self._ar_groups().get(key[3:], "AR 场景")
-        if key.startswith("sstrace."):
-            n = key[8:]
-            for pre, s in self.SS_TRACE_SRC:
-                if n.startswith(pre):
-                    return s
-            return "L2 状态空间引擎 (无话题)"
-        if key.startswith("ros."):
-            return "Orin ROS2" + (" · " + key[4:].split(".")[0] if "/" in key[:24] else "")
-        if key.startswith("ds."):
-            return "DDS · " + key[3:].split(".")[0]
-        return "本机真值流 (JSON)"
+        """Rx = 上游来源 (与 Trace 同口径)。"""
+        try:
+            return self._attrib().rx_of(key)
+        except Exception:                                                       # noqa: BLE001
+            return "本机真值流 (JSON)"
+
+    def _sig_layer(self, key):
+        """Layer = 生产节点所在层 (与 Trace 同口径)。"""
+        try:
+            return self._attrib().layer_of(key)
+        except Exception:                                                       # noqa: BLE001
+            return "SYS"
 
     def _scene_rank(self, key):
         """排序秩: 当前选中色 = 0(置顶), 其余 = 1(仍显示, 不隐藏)。白(未选) ⇒ 全部同级(不排序)。"""
@@ -3061,49 +3035,6 @@ class CanoeGraphicWidget(QWidget):
             return (_T.TOPICS.get(tp.split("/")[-1]) or {}).get("type") or "—"
         except Exception:                                                      # noqa: BLE001
             return "—"
-
-    def _sig_layer(self, key):
-        """该信号所属**生产节点**的层 (L2~L5; 没有节点的系统话题 = SYS)。
-
-        2026-10-17 老倪: 「信号分析 的 Layer 列呢？加上」—— 之前只有 ss.node.* 才查到层,
-        三路真值流 (sstrace/sseng/gravity) 全落 SYS (实测 554/556 行都是 SYS, 等于没用)。
-        真源: 这三份文件的发布者就是画布上的节点 (统一状态空间 / 流形引擎 / 万有引力表),
-        按节点 id 查工程库的 layer。
-        """
-        _key = str(key or "")
-        _pref = _key.split(".", 1)[0]
-        _NODE_BY_PREFIX = {"sstrace": "ssobs", "sseng": "ss_mani_eng", "gravity": "sscalib",
-                           "skillphys": "sssched", "skill": "sssched", "ar": "ssar"}
-        try:
-            import sys as _sys2
-            if os.path.join(ROOT, "src") not in _sys2.path:
-                _sys2.path.insert(0, os.path.join(ROOT, "src"))
-            from lerobot.middleware import db as _db3
-            if getattr(self, "_lvl_cache", None) is None:          # 工程库一个会话内不变
-                self._lvl_cache = {r["node_id"]: str(r.get("layer") or "")
-                                   for r in _db3.node_rows()}
-            _lv = self._lvl_cache
-            _nid = _NODE_BY_PREFIX.get(_pref)
-            if _nid and _nid in _lv:
-                lay = _lv[_nid]
-                return ("SYS" if lay == "meta" else lay) or "—"
-        except Exception:                                                      # noqa: BLE001
-            pass
-        tp = self._sig_topic(key)
-        if not tp:
-            return "SYS"
-        try:
-            import sys as _sys
-            if os.path.join(ROOT, "src") not in _sys.path:
-                _sys.path.insert(0, os.path.join(ROOT, "src"))
-            from lerobot.middleware import db as _db
-            if tp.startswith("ss.node."):
-                nid = tp[len("ss.node."):].split(".")[0]
-                lay = {r["node_id"]: str(r.get("layer") or "") for r in _db.node_rows()}.get(nid, "")
-                return ("SYS" if lay == "meta" else lay) or "—"
-        except Exception:                                                      # noqa: BLE001
-            pass
-        return "SYS"
 
     def showEvent(self, e):
         super().showEvent(e)

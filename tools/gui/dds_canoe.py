@@ -37,6 +37,7 @@ except Exception:                                                        # noqa:
 try:                                     # 中文短名 / DDS 标准 QoS 显示
     from lerobot.middleware import cn_names as _cn_names
     from lerobot.middleware import signal_en as _signal_en
+    from lerobot.middleware import attribution as _attrib
     from lerobot.middleware import qos_names as _qos_names
 except Exception:                                                        # noqa: BLE001
     class _CN:
@@ -1384,26 +1385,23 @@ class BusView(QWidget):
                                                     or pin in str(t.get("type") or "").lower()))
         if pin:
             self._mark_search(n_hit, pin)
-        try:
-            from lerobot.middleware import live_signals as _ls2
-            _lv_now = _ls2.topics() or {}
-        except Exception:                                                # noqa: BLE001
-            _lv_now = {}
+        # 🧷 2026-10-17 老倪: 「固定行模式, 每行是固定的, 你不要乱动每个 signal, 别跳」
+        #   以前按帧龄排序 ⇒ 每拍 age 变、行序跟着变 (看着像信号在跳)。现在行序**只由常量决定**:
+        #   ① 三路实时源恒定置顶 ② 层 L2→L5→SYS ③ 话题名; 与时间/数值完全无关。
+        _LAY_ORDER = {"L1": 1, "L2": 2, "L3": 3, "L4": 4, "L5": 5, "SYS": 9}
 
         def _alive(_t, _key=""):
-            """排序口径: 帧龄小的置顶 (老倪打开 Trace 第一屏就该是**正在跳的数**)。
-            没有帧龄的一律靠后 —— 别让一条早就停了、字段还留着的单步话题压在最上面。"""
             _tp = str(_t.get("topic") or _key)
-            _rv = _lv_now.get(_tp) or _lv_now.get(_tp.split("/")[-1]) or {}
-            try:
-                _age = float(_rv.get("age_s"))
-            except Exception:                                            # noqa: BLE001
-                _age = 1e9
-            return (0 if _age < 3.0 else 1, _age)
-        items.sort(key=lambda kv: (_alive(kv[1], kv[0]),
-                                   0 if (kv[0] in _cur_topics
-                                         or str(kv[1].get("topic") or kv[0]) in _cur_topics) else 1,
-                                   str(kv[1].get("topic") or kv[0])))
+            _live = 0 if _tp in _attrib.LIVE_TOPICS else 1
+            _lay = str(_t.get("layer") or "")
+            _lay = "SYS" if _lay in ("", "meta") else _lay
+            if _tp in _attrib.LIVE_TOPICS:               # 实时话题的层按生产节点取 (与信号分析一致)
+                try:
+                    _lay = _attrib.layer_of(_attrib.LIVE_PREFIX[_tp] + ".")
+                except Exception:                                        # noqa: BLE001
+                    pass
+            return (_live, _LAY_ORDER.get(_lay, 8), _tp)
+        items.sort(key=lambda kv: _alive(kv[1], kv[0]))       # 只按常量排, 行序不随时间变
 
         # 🧪 2026-10-17 老倪: 「具体的信号再 Trace 窗口显示, 有物理量显示」
         #   一个话题展开成 N 行信号: Signal=字段名 · Value=数值 · Unit=单位 · Phys=物理判据(✔/✘ 原因)
@@ -1477,9 +1475,17 @@ class BusView(QWidget):
                     verdict, why = _quality.check_field(sn, sv, unit, lo, hi)
                     _pk = (nm, sn)
                     _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
+                    _ak = _attrib.key_of(nm, sn)
+                    _vtxt = _attrib.fmt_value(sv, _ak) if _ak else _f3(float(sv))
+                    if _ak:
+                        unit = _attrib.display_unit(_ak, unit)
+                        _inferred = False
                     rows.append(dict(base, name=_cn_names.cn_of_signal(sn, nm),
                                      signal=_signal_en.en_of(sn, nm), raw=sn,
-                                     cn=_cn_names.cn_of_signal(sn, nm), value=_f3(float(sv)),
+                                     cn=_cn_names.cn_of_signal(sn, nm), value=_vtxt, vraw=float(sv),
+                                     layer=(_attrib.layer_of(_ak) if _ak else base["layer"]),
+                                     tx=(_attrib.tx_of(_ak) if _ak else base["tx"]),
+                                     rx=(_attrib.rx_of(_ak) if _ak else base["rx"]),
                                      unit=((unit or "") + ("*" if _inferred else "")) or "—",
                                      lo=lo, hi=hi, prev=_prev,
                                      phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
@@ -1492,9 +1498,13 @@ class BusView(QWidget):
                 for _sn, _u, _src in _signals.signals_of(nm):
                     _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
+                    _ak2 = _attrib.key_of(nm, _sn)
                     rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm),
                                      signal=_signal_en.en_of(_sn, nm), raw=_sn,
                                      cn=_cn_names.cn_of_signal(_sn, nm),
+                                     layer=(_attrib.layer_of(_ak2) if _ak2 else base["layer"]),
+                                     tx=(_attrib.tx_of(_ak2) if _ak2 else base["tx"]),
+                                     rx=(_attrib.rx_of(_ak2) if _ak2 else base["rx"]),
                                      value=(_vals or "—"), unit=(_unit2 or "—"), lo=_lo2, hi=_hi2,
                                      prev=None, phys="?", bad=False, src=_src,
                                      why=("信号来源: %s · 当前无实测值 (总线未跑/未上线)" % _src)))
@@ -1550,7 +1560,8 @@ class BusView(QWidget):
             pass
         self._trace_frames = rows               # 给质量告警用: 最新一帧的逐信号值
         try:                                    # 存"上一帧值"给跳变判据
-            self._prev_vals = {(r.get("topic"), r.get("raw") or r["signal"]): float(r["value"]) for r in rows
+            self._prev_vals = {(r.get("topic"), r.get("raw") or r["signal"]):
+                               float(r.get("vraw", r["value"])) for r in rows
                                if r.get("signal") not in (None, "—")}
         except Exception:                                                # noqa: BLE001
             pass
