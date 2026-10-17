@@ -92,6 +92,7 @@ OUT_NODE = (
 )
 
 # sstrace.* 具体信号 ← 上游来源 (顺序要紧: 长前缀在前)
+# 📚 仅存档: 当年各信号的取数来源 (2026-10-17 老倪要求 Rx 全部清空, 下表不再参与显示)
 SS_TRACE_SRC = (
     ("光模块头到孔", "L2 引擎 (孔口 objects3d.json)"),
     ("吸嘴到槽位", "L2 引擎 (槽位 objects3d.json) · 摆盘"),
@@ -252,7 +253,8 @@ def tx_of(key):
     if _p:
         _nid, _port, _dir, _peers = _p
         if _dir == "in" and _peers:
-            return " / ".join(_peer_name(x) for x in _peers[:4])      # 入端口: 上游 fan-in 节点
+            _u = list(dict.fromkeys(_peers))                              # 去重: 工程里 ssff.out1 的
+            return " / ".join(_peer_name(x) for x in _u[:4])              # consumers 写了两遍同一个
         return _load_nodes().get(_nid) or _nid                          # 出端口: 本节点
     nid, proc = _rule(key)
     if nid:
@@ -270,20 +272,17 @@ def rx_of(key):
     if _p:
         _nid, _port, _dir, _peers = _p
         if _dir == "out" and _peers:
-            return " / ".join(_peer_name(x) for x in _peers[:4])          # 出端口: 下游接收节点
+            _u = list(dict.fromkeys(_peers))
+            return " / ".join(_peer_name(x) for x in _u[:4])              # 出端口: 下游接收节点
         if _dir == "in":
             return _load_nodes().get(_nid) or _nid                        # 入端口: 本节点收
 
     if k.startswith("ar."):
         return "🥽 AR/AOI 信号总线 · AR 场景"
     if k.startswith("sstrace."):
-        n = k[8:]
-        for pre, s in SS_TRACE_SRC:
-            if n.startswith(pre):
-                return s
-        # 🚫 2026-10-17 老倪: 「实际上也没有连线啊, 在 Rx 里删掉 L2 状态空间引擎, 没有这个连接」
-        #   帧号/残差/接触概率/估计误差这些是闭环进程内部算的量, 画布上**没有任何一条线**进来 ⇒
-        #   Rx 就该空着 (—), 不许写一个看起来像连接的来源。
+        # 🚫 2026-10-17 老倪: 「实际上也没有连线啊 … 都清掉」
+        #   3D 插拔场景这一族信号 (sstrace.*) 在画布上没有一条实连线 ⇒ Rx 全部空着, 不写来源。
+        #   SS_TRACE_SRC 只作历史存档 (知道当年这些数是从哪路取的), **不进 Rx 显示**。
         return "—"
     if k.startswith("ros."):
         return "Orin ROS2"
