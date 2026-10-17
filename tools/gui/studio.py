@@ -13,6 +13,10 @@ Z-MAX 多模态动作专家 · Sys-0 / Sys-11 / Sys-12 / System 2
 import sys
 import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
+import time as _time
+# ⏱ 2026-10-17 老倪: 「控制台的启动最多 10 秒」—— 先量再改。这里记下进程启动的时刻,
+#   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
+_BOOT_T0 = _time.time()
 
 # 🔴 2026-09-27 老倪: 「点了场景叠加什么都没打开」的**真根因**(实测复现):
 #   控制台从终端/服务启动时会带 `DBUS_SESSION_BUS_ADDRESS=disabled:`(本机实测就是这样),
@@ -72,11 +76,16 @@ try:
     _bs.loader.exec_module(_bm)
     _br = _bm.restore(respect_newer_binding=True)
     _ba = _br.get("applied") or {}
-    print("📌 工程状态自恢复: 场景 %s · 数据源回写 %s · 存档任务 %s / 当前 %s"
-          % (_ba.get("scene_dir") or "—", _ba.get("src_state_written") or "无需改",
+    # 🗣 2026-10-17 老倪: 启动日志要"平滑朴素的说明, 完整句子, 整个完整段落" —— 不许用
+    #   「标题: 名词短语 · 名词短语 · 名词短语」这种词块堆砌。以后按这个写法来。
+    print("📌 上次的工作状态已经自动接上了：场景仍然是 %s；画布上的数据源%s；存档的任务是 %s，"
+          "这次实际要做的任务也是 %s。"
+          % (_ba.get("scene_dir") or "—",
+             "和上次一样，不用改" if (_ba.get("src_state_written") or "无需改") == "无需改"
+             else "被回填成了 %s" % _ba.get("src_state_written"),
              _ba.get("active_task_saved") or "—", _ba.get("active_task_now") or "—"))
 except Exception as _be:                                                        # noqa: BLE001
-    print("工程状态自恢复跳过: %r" % (_be,))
+    print("上次的工作状态这次没能自动接上，原因是：%r" % (_be,))
 
 # 🧮 2026-10-14 老倪: 「必须能进入这个断点 (config_import.py:142 `db = _read_db(...)`) —— 改」
 #   真因: config_import 原来只在**主参数节点执行**/CLI 时才被惰性 import ⇒ 启动期这个文件根本不在进程里,
@@ -98,12 +107,13 @@ try:
     _nm_boot = [str(f.get("name")) for f in (_cf_boot.get("files") or []) if f.get("name")]
     _db_boot = (_cf_boot.get("db") or {})
     _tc_boot = _cf_boot.get("task_cfg") or {}          # 🧮 实际任务配置 (一个变量看全)
-    print("📚 启动期配置真源预读: 配置 %d 项 (%s) · 工程库 %s · 实际任务 %s %s"
-          % (len(_nm_boot), " · ".join(_nm_boot),
-             "✅ 在位" if _db_boot.get("exists") else "❌ 取不到",
+    print("📚 启动的时候，我已经把这 %d 项配置从它们各自的正式来源读进来了，依次是：%s。"
+          "工程库%s；这次实际要做的任务是 %s %s。"
+          % (len(_nm_boot), "、".join(_nm_boot),
+             "在位" if _db_boot.get("exists") else "没能取到",
              _tc_boot.get("active_task") or "—", _tc_boot.get("active_name") or ""))
 except Exception as _ce:                                                        # noqa: BLE001
-    print("启动期配置真源预读跳过: %r" % (_ce,))
+    print("启动的时候配置没能读进来，原因是：%r" % (_ce,))
 
 # 🔬 2026-10-10 启动探测 (老倪 Windows exe 双击报 `MemoryError: Unable to allocate output buffer`):
 #   实测那行字 = **zlib 解包时分配不到内存**(CPython `_BlocksOutputBuffer`), 即启动那几秒进程拿不到内存,
@@ -114,7 +124,10 @@ except Exception as _ce:                                                        
 try:
     import startup_probe as _zmax_probe
 
+    _probe_t0 = _time.time()
     _zmax_probe.run("studio-startup")
+    print("⏱ 启动计时：探测这台机器还能给多少内存并落盘留证，用了 %.2f 秒。"
+          % (_time.time() - _probe_t0), flush=True)
 except Exception:  # noqa: BLE001  探测失败不许影响控制台
     pass
 
@@ -949,7 +962,8 @@ class SystemSidebar(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(240)
+        # 🎨 2026-10-17 老倪: 「左侧栏启动的时候太宽了, 要变窄一些」240 → 200
+        self.setFixedWidth(200)
         self.setStyleSheet(f"background:{C_BG2}; border-right:1px solid {C_BORDER};")
         self._build()
 
@@ -8515,7 +8529,8 @@ class HardwareModule(SubModuleWidget):
         self.detail_stack.addWidget(self._build_force_detail())
         self.detail_stack.addWidget(self._build_io_detail())
         splitter.addWidget(self.detail_stack)
-        splitter.setSizes([280, 680])
+        # 🎨 2026-10-17 左栏(设备树)收窄: 280 → 210, 详情区让出空间
+        splitter.setSizes([210, 750])
         
         # ── 🎛️ 硬件总线 (CANoe风格) ──
         self.log = QTextEdit()
@@ -15450,7 +15465,10 @@ def main():
         except Exception:
             _splash = None
 
+    _win_t0 = _time.time()
     win = StudioMainWindow()
+    print("⏱ 启动计时：把主窗口连它里面的所有页面一起搭起来，用了 %.2f 秒。"
+          % (_time.time() - _win_t0), flush=True)
     _want_max = False  # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (Mutter Iconic bug)
     # 🐛 2026-08-09 老倪: 强制窗口进屏幕 (WSLg Xwayland 偶发坐标飞到屏幕外 -32692,-32650 → 窗口不可见)
     try:
@@ -15512,6 +15530,8 @@ def main():
             win.show()
             win.raise_()
             win.activateWindow()
+            print("⏱ 启动计时：控制台主窗口已经显示出来，从进程启动算起一共用了 %.2f 秒。"
+                  % (_time.time() - _BOOT_T0), flush=True)
             # 🐛 2026-09-06: 大屏最大化延迟到 show 后 (show 前 setWindowState → Mutter Iconic)
             #   注: show 后立即 setWindowState 也可能触发 UNMAP — 用 QTimer 延后到 800ms 稳定后
             if _want_max:

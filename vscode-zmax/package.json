@@ -1,8 +1,8 @@
 {
   "name": "zmax550b",
   "displayName": "Z-MAX 550B 工位",
-  "description": "Z-MAX 550B 调试档的 VSCode 版: 标定 / 测量 / 诊断 / 配置。真源 = 本机 8793 只读接口 + 仓库配置真源, 不复制任何业务逻辑。",
-  "version": "0.1.0",
+  "description": "把 Z-MAX 控制台 (studio.py 的 PyQt 界面) 嵌进 VSCode 编辑器标签页 (本地 x11vnc + noVNC), 外加 8793 只读状态栏与操作命令。",
+  "version": "0.2.0",
   "publisher": "zmax",
   "license": "MIT",
   "engines": {
@@ -43,36 +43,13 @@
         }
       }
     },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "zmax550b",
-          "title": "Z-MAX 550B",
-          "icon": "media/zmax.svg"
-        }
-      ]
-    },
-    "views": {
-      "zmax550b": [
-        {
-          "id": "zmax550b.diagnose",
-          "name": "诊断 (链路 / 闸门 / 事件)"
-        },
-        {
-          "id": "zmax550b.measure",
-          "name": "测量 (相机 / TCP / 深度 / AOI)"
-        },
-        {
-          "id": "zmax550b.calib",
-          "name": "标定 (真源 / 点位 / 建图)"
-        },
-        {
-          "id": "zmax550b.config",
-          "name": "配置 (档位 / 相机源 / 参数)"
-        }
-      ]
-    },
     "commands": [
+      {
+        "command": "zmax550b.console.embed",
+        "title": "在 VSCode 里打开控制台 (嵌入编辑器标签页)",
+        "category": "Z-MAX 550B",
+        "icon": "$(device-desktop)"
+      },
       {
         "command": "zmax550b.refresh",
         "title": "刷新全部",
@@ -168,6 +145,13 @@
         "command": "zmax550b.gate.disarm",
         "title": "立即撤销授权",
         "category": "Z-MAX 550B"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "zmax550b.console.embed",
+        "key": "ctrl+alt+z",
+        "mac": "cmd+alt+z"
       }
     ]
   },

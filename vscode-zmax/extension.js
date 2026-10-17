@@ -14,6 +14,7 @@ const vscode = require('vscode');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const childProcess = require('child_process');
 const path = require('path');
 
 let out = null;
@@ -152,87 +153,6 @@ function renderStatusBar() {
     statusBar.backgroundColor = armed ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
 }
 
-/* ------------------------------------------------------------------ 树辅助 */
-function item(label, opts) {
-    const o = opts || {};
-    const it = new vscode.TreeItem(label, o.state === undefined ? vscode.TreeItemCollapsibleState.None : o.state);
-    if (o.desc !== undefined) it.description = o.desc;
-    if (o.tip !== undefined) it.tooltip = o.tip;
-    if (o.icon) it.iconPath = new vscode.ThemeIcon(o.icon);
-    if (o.cmd) it.command = o.cmd;
-    if (o.ctx) it.contextValue = o.ctx;
-    if (o.color) it.iconPath = new vscode.ThemeIcon(o.icon || 'circle-filled', new vscode.ThemeColor(o.color));
-    return it;
-}
-function yes(ok) { return ok ? '$(pass-filled)' : '$(error)'; }
-
-/* ------------------------------------------------------------------ 1. 诊断 */
-class DiagnoseProvider {
-    constructor() { this._em = new vscode.EventEmitter(); this.onDidChangeTreeData = this._em.event; }
-    refresh() { this._em.fire(); }
-    getTreeItem(e) { return e; }
-    async getChildren(el) {
-        if (el && el._kids) return el._kids;
-        const c = ctl();
-        const exec = c.exec || {};
-        const gate = c.gate || {};
-        const coll = Array.isArray(c.collisions) ? c.collisions : [];
-        const last = c.last_cmd || {};
-        const robot = c.robot || {};
-        const kids = [];
-
-        kids.push(item(`工位控制 8793`, {
-            desc: status.ok ? `✅ ${status.bytes}B / ${status.latencyMs}ms / 状态 ${cacheAgeStr()}` : `❌ ${status.err}`,
-            icon: status.ok ? 'pass-filled' : 'error',
-            tip: `${baseUrl()}/station/status\n状态本身也有新鲜度: ${cacheAgeStr()}`,
-            cmd: { command: 'zmax550b.status.json', title: '打开原始 JSON' },
-        }));
-        kids.push(item(`控制台 exec`, {
-            desc: exec.online === false ? `停` : `在 · pid ${exec.pid || '?'} · 技能 ${exec.skills || '?'} · 日志帧龄 ${ageStr(exec.log_age_s)}`,
-            icon: exec.online === false ? 'circle-slash' : 'play-circle',
-            tip: 'exec = 执行侧进程 (l2_daemon / 引擎) 的存活与日志新鲜度',
-        }));
-        kids.push(item(`安全闸 gate`, {
-            desc: `fast=${gate.fast} warn_only=${gate.warn_only} slow=${gate.slow_enabled}`,
-            icon: 'shield',
-            tip: gate.line || '闸门分层状态; 动作被拦时先看这里',
-        }));
-        kids.push(item(`真机 TCP 真值`, {
-            desc: `帧龄 ${ageStr((c.tcp || {}).age_s)} · xyz=(${((c.tcp || {}).xyz || []).map((v) => Number(v).toFixed(4)).join(', ') || '—'})`,
-            icon: 'location', tip: '位姿真源 tcp_out/latest.json; 全 0 = 陈旧, 不能当"臂给面子"的依据',
-        }));
-        kids.push(item(`机械臂状态`, {
-            desc: `${robot.ok ? 'ok' : '异常'} · power=${robot.power} · ${robot.operation || ''}${robot.error_code ? ` · err ${robot.error_code}` : ''}`,
-            icon: robot.ok && !robot.has_error ? 'pass-filled' : 'warning',
-        }));
-        kids.push(item(`动作台账 ledger`, {
-            desc: '8793 /station/ledger (与动作同一时间线)',
-            icon: 'history', cmd: { command: 'zmax550b.diagnose.ledger', title: '打开台账' },
-        }));
-        const collKids = coll.slice(0, 12).map((x, i) => item(`#${i + 1}`, {
-            desc: typeof x === 'string' ? x : JSON.stringify(x).slice(0, 90),
-            icon: 'warning',
-        }));
-        kids.push(item(`撞车候选 ${coll.length}`, { state: collKids.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None, icon: 'warning', _kids: collKids, desc: coll.length ? '点开看明细' : '无' }));
-        kids.push(item(`最近一条指令`, {
-            desc: last.t ? `${last.t} · ${last.skill} · dry=${last.dry} · ok=${last.ok}` : '无',
-            tip: last.msg || '', icon: 'terminal',
-        }));
-        const scripts = listVerifyScripts();
-        const scKids = scripts.map((s) => item(path.basename(s), {
-            desc: '点击运行 (集成终端)',
-            icon: 'beaker',
-            cmd: { command: 'zmax550b.diagnose.chain', title: '跑', arguments: [s] },
-        }));
-        kids.push(item(`判据脚本 ${scripts.length} 个`, {
-            state: scKids.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-            icon: 'beaker', _kids: scKids, desc: 'tools/verify_*.py',
-            tip: '链路核验判据 (只读断言脚本), 在集成终端里跑, 输出可复制',
-        }));
-        kids.push(item(`尾随控制台日志`, { icon: 'output', cmd: { command: 'zmax550b.diagnose.tail', title: '尾随' } }));
-        return kids;
-    }
-}
 function listVerifyScripts() {
     try {
         const dir = repoFile('tools');
@@ -243,179 +163,6 @@ function listVerifyScripts() {
     } catch (e) { return []; }
 }
 
-/* ------------------------------------------------------------------ 2. 测量 */
-class MeasureProvider {
-    constructor() { this._em = new vscode.EventEmitter(); this.onDidChangeTreeData = this._em.event; }
-    refresh() { this._em.fire(); }
-    getTreeItem(e) { return e; }
-    async getChildren(el) {
-        if (el && el._kids) return el._kids;
-        const s = S(); const c = ctl();
-        const stats = s.stats || {};
-        const kids = [];
-        kids.push(item(`测量面板 (四路画面 + 数值)`, {
-            icon: 'open-preview', desc: '在编辑器里看实时画面',
-            cmd: { command: 'zmax550b.measure.panel', title: '打开' },
-        }));
-        kids.push(item(`抓一帧快照`, { icon: 'device-camera', cmd: { command: 'zmax550b.measure.snapshot', title: '抓帧' } }));
-        const camKids = [];
-        for (const [k, v] of Object.entries(stats)) {
-            const st = v || {};
-            const camLabel = ((s.labels || {})[k]) || k;
-            camKids.push(item(`${k}${camLabel && camLabel !== k ? ` · ${camLabel}` : ''}`, {
-                desc: st.online ? `${st.fps}fps · 帧 ${ageStr(st.age_s)} · ${st.kb_per_frame}kB ÷${st.compress_x || '—'}` : `离线 · 帧 ${ageStr(st.age_s)}`,
-                icon: st.online ? 'pass-filled' : 'circle-slash',
-                tip: `每帧 ${st.kb_per_frame}kB (原始 ${st.raw_kb_per_frame}kB, 压缩 ${st.compress_x}x) · 帧龄 ${ageStr(st.age_s)}`,
-                cmd: { command: 'zmax550b.measure.snapshot', title: '抓帧', arguments: [k] },
-            }));
-        }
-        kids.push(item(`相机 ${Object.keys(stats).length} 路`, { state: vscode.TreeItemCollapsibleState.Expanded, icon: 'device-camera', _kids: camKids, desc: '带帧龄' }));
-        const tcp = c.tcp || {};
-        const xyz = (tcp.xyz || []).map((v) => Number(v).toFixed(4)).join(', ');
-        kids.push(item(`TCP 位姿`, {
-            desc: `xyz=(${xyz || '—'}) · 帧龄 ${ageStr(tcp.age_s)}`,
-            tip: `abc(rad)=${(tcp.abc_rad || []).join(', ')}\nabc(deg)=${(tcp.abc_deg || []).join(', ')}\nsrc=${tcp.abc_src || '?'}`,
-            icon: 'location',
-        }));
-        const d = c.depth || {};
-        kids.push(item(`深度`, {
-            desc: d.depth_scale ? `${d.w}x${d.h} · unit ${d.depth_scale}mm · ${d.fps}fps · ${d.frames}帧` : '—',
-            icon: 'ruler',
-            tip: 'D405 深度单位 0.1mm (4013 = 401mm); 帧龄见相机行',
-        }));
-        const aoi = s.aoi || {};
-        const aoiKids = Object.entries(aoi).map(([k, v]) => {
-            const vv = v || {};
-            return item(`${k}`, {
-                desc: vv.ok ? `✅ ${vv.src || ''} ${vv.http || ''} · ${vv.t || ''}` : `❌ ${vv.err || ''}`,
-                icon: vv.ok ? 'pass-filled' : 'error',
-                tip: `url=${vv.url || '—'}\nerr=${vv.err || '—'}`,
-            });
-        });
-        kids.push(item(`AOI 检测 (金手指/表面)`, { state: aoiKids.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None, icon: 'eye', _kids: aoiKids, desc: '8793 代理的远端判定' }));
-        const m = c.motion || {};
-        kids.push(item(`运动状态`, { desc: m.ok ? `${m.skill} · dir=${m.dir} · Δ${m.delta} · 帧龄 ${ageStr(m.age_s)}` : '空闲/无', icon: 'symbol-event' }));
-        return kids;
-    }
-}
-
-/* ------------------------------------------------------------------ 3. 标定 */
-const CALIB_CANDIDATES = [
-    'flows/calib_closure.json',
-    'zmax_data/calib.json',
-    'zmax_data/params/calib.json',
-    'config/calib.json',
-];
-class CalibProvider {
-    constructor() { this._em = new vscode.EventEmitter(); this.onDidChangeTreeData = this._em.event; }
-    refresh() { this._em.fire(); }
-    getTreeItem(e) { return e; }
-    async getChildren(el) {
-        if (el && el._kids) return el._kids;
-        const kids = [];
-        const found = CALIB_CANDIDATES.map((r) => repoFile(r)).find((p) => fs.existsSync(p));
-        if (found) {
-            let obj = null;
-            try { obj = JSON.parse(fs.readFileSync(found, 'utf8')); } catch (e) { /* 非法 JSON */ }
-            kids.push(item(`标定真源 ${path.relative(repoRoot(), found)}`, {
-                desc: obj ? `${Object.keys(obj).length} 个顶层键 · ${(fs.statSync(found).size / 1024).toFixed(1)}kB` : '解析失败',
-                icon: 'json',
-                cmd: { command: 'vscode.open', title: '打开', arguments: [vscode.Uri.file(found)] },
-                tip: '标定真源: 引擎每次运行按真源重载 (改真源 → 下次运行生效)',
-            }));
-            if (obj) kids.push(...jsonKids(obj, '  '));
-        } else {
-            kids.push(item(`未找到标定真源`, { desc: CALIB_CANDIDATES.join(' / '), icon: 'warning', tip: `在 ${repoRoot()} 下未找到候选路径; 用命令"标定: 打开标定真源"手工定位` }));
-        }
-        const impl = repoFile('src/lerobot/calibration/calibration_layer.py');
-        kids.push(item(`标定实现 calibration_layer.py`, {
-            desc: fs.existsSync(impl) ? `${(fs.statSync(impl).size / 1024).toFixed(1)}kB` : '未找到',
-            icon: 'code', cmd: { command: 'zmax550b.calib.openSource', title: '打开源码' },
-            tip: 'apply_to_engine: 精确写回引擎源码字面量 (Kp / u_clip / STAGE_V_CAP / 校正K ...)',
-        }));
-        const pts = [
-            item(`记录当前点位`, { icon: 'add', desc: '8793 /ctl/record_point (需授权)', cmd: { command: 'zmax550b.calib.recordPoint', title: '记录' } }),
-            item(`清除已记录点位`, { icon: 'trash', desc: '8793 /ctl/clear_point (需授权)', cmd: { command: 'zmax550b.calib.clearPoint', title: '清除' } }),
-            item(`增量建图 45s/轮`, { icon: 'map', desc: '8793 /ctl/gs_map (需授权)', cmd: { command: 'zmax550b.calib.gsMap', title: '建图' } }),
-        ];
-        kids.push(item(`点位 / 建图 (真机)`, { state: vscode.TreeItemCollapsibleState.Expanded, icon: 'map', _kids: pts, desc: '写操作走 8793 授权闸' }));
-        const a = ctl().auth || {};
-        kids.push(item(`当前授权`, {
-            desc: a.armed ? `已授权 ${Math.round(a.left_s || 0)}s · ip=${a.ip || '?'}` : '未授权 (点方向键只算目标, 臂不动)',
-            icon: a.armed ? 'unlock' : 'lock',
-            tip: '授权默认关闭, 两步确认, 5 分钟自动失效; 撤销随时可用',
-        }));
-        return kids;
-    }
-}
-function jsonKids(obj, indent, depth) {
-    const d = depth === undefined ? 0 : depth;
-    const kids = [];
-    if (d > 2) return kids;
-    for (const [k, v] of Object.entries(obj)) {
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-            const sub = jsonKids(v, indent, d + 1);
-            const it = item(`${indent}${k}`, { state: vscode.TreeItemCollapsibleState.Collapsed, icon: 'symbol-field', desc: `{${Object.keys(v).length}}` });
-            it._kids = sub;
-            kids.push(it);
-        } else if (Array.isArray(v)) {
-            const sub = v.slice(0, 20).map((x, i) => item(`[${i}]`, { desc: typeof x === 'object' ? JSON.stringify(x).slice(0, 80) : String(x) }));
-            const it = item(`${indent}${k}`, { state: vscode.TreeItemCollapsibleState.Collapsed, icon: 'symbol-array', desc: `[${v.length}]` });
-            it._kids = sub;
-            kids.push(it);
-        } else {
-            kids.push(item(`${indent}${k}`, { desc: String(v) }));
-        }
-    }
-    return kids;
-}
-
-/* ------------------------------------------------------------------ 4. 配置 */
-class ConfigProvider {
-    constructor() { this._em = new vscode.EventEmitter(); this.onDidChangeTreeData = this._em.event; }
-    refresh() { this._em.fire(); }
-    getTreeItem(e) { return e; }
-    async getChildren(el) {
-        if (el && el._kids) return el._kids;
-        const kids = [];
-        const pf = repoFile('config/platform/zmax_product.json');
-        let prof = null, prod = null;
-        if (fs.existsSync(pf)) {
-            try {
-                const raw = JSON.parse(fs.readFileSync(pf, 'utf8'));
-                prod = raw.products || raw;
-                const cur = raw.current || raw.active || null;
-                prof = (prod && (prod['550B'] || prod[cur])) || null;
-            } catch (e) { /* ignore */ }
-        }
-        const dp = (prof && (prof.dev_profile || prof)) || {};
-        const swKids = Object.entries(dp).map(([k, v]) => item(k, { desc: String(v), icon: 'settings-gear' }));
-        kids.push(item(`产品档位 550B (调试档)`, {
-            desc: dp && dp.topics ? `topics=${dp.topics} comm=${dp.comm}` : (fs.existsSync(pf) ? '解析失败' : '未找到真源'),
-            state: swKids.length ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
-            icon: 'symbol-enum', _kids: swKids,
-            tip: '真源 config/platform/zmax_product.json (人可编·进 git);\n读取口 tools/zmax_profile.py; 本扩展只对 550B 生效',
-        }));
-        kids.push(item(`打开档位真源`, { icon: 'json', cmd: { command: 'zmax550b.config.openProfile', title: '打开' } }));
-        kids.push(item(`参数规格 param_spec.json`, {
-            desc: fs.existsSync(repoFile('config/platform/param_spec.json')) ? `${(fs.statSync(repoFile('config/platform/param_spec.json')).size / 1024).toFixed(0)}kB` : '未找到',
-            icon: 'list-unordered', cmd: { command: 'zmax550b.config.openParamSpec', title: '打开' },
-        }));
-        const cs = S().cam_src || {};
-        kids.push(item(`相机源`, {
-            desc: cs.ok ? `${cs.ch || ''} · ${cs.label || cs.name || ''} (dev ${cs.dev}) · ${cs.kind || ''}` : '未取到',
-            icon: 'device-camera-video',
-            cmd: { command: 'zmax550b.config.camSrc', title: '查看/切换' },
-            tip: cs.note || '8793 /cam/src —— 切换是写操作, 扩展只给命令与确认, 不静默改',
-        }));
-        const ap = S().aoi_auto || {};
-        kids.push(item(`AOI 自动取景`, { desc: Object.entries(ap).map(([k, v]) => `${k}=${v ? '开' : '关'}`).join(' · ') || '—', icon: 'sync' }));
-        return kids;
-    }
-}
-
-/* ------------------------------------------------------------------ 测量面板 (Webview) */
-let panel = null;
 function openMeasurePanel(context) {
     if (panel) { panel.reveal(); return; }
     panel = vscode.window.createWebviewPanel('zmax550bMeasure', 'Z-MAX 测量面板', vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
@@ -470,6 +217,30 @@ ${row('状态本身', `${ageStr((Date.now() - status.ts) / 1000)} 前 · ${statu
 </table>
 <p style="font-size:11px;opacity:.7">帧龄是判断"画面还活着"的唯一依据; 快照为 8793 /snapshot/*.jpg 即时抓取。</p>
 </body></html>`;
+}
+
+/* ---------------------------------------------- 控制台嵌入 (x11vnc + noVNC → 编辑器标签页) */
+function ensureConsoleVnc() {
+    const script = repoFile('tools/gui/vscode_console_vnc.sh');
+    if (!fs.existsSync(script)) return { ok: false, err: `缺脚本 ${script}` };
+    const r = childProcess.spawnSync('bash', [script], { encoding: 'utf8', timeout: 40000 });
+    const lines = String(r.stdout || '').trim().split('\n').filter(Boolean);
+    const url = lines.reverse().find((l) => /^http:\/\//.test(l));
+    if (!url) {
+        const tail = String(r.stderr || '').trim().split('\n').slice(-3).join(' | ');
+        return { ok: false, err: tail || `脚本没给出 URL (exit ${r.status})` };
+    }
+    return { ok: true, url };
+}
+async function openConsoleEmbed() {
+    const r = ensureConsoleVnc();
+    if (!r.ok) { log(`控制台嵌入失败: ${r.err}`); return vscode.window.showErrorMessage(`控制台嵌入失败: ${r.err}`); }
+    log(`控制台嵌入 → ${r.url}`);
+    try { await vscode.commands.executeCommand('simpleBrowser.show', r.url); }
+    catch (e) {
+        try { await vscode.commands.executeCommand('simpleBrowser.api.open', r.url, { preserveFocus: false }); }
+        catch (e2) { await vscode.env.openExternal(vscode.Uri.parse(r.url)); }
+    }
 }
 
 /* ------------------------------------------------------------------ 命令 */
@@ -603,6 +374,8 @@ function registerCommands(context) {
         });
     });
 
+    reg('zmax550b.console.embed', () => openConsoleEmbed());
+
     reg('zmax550b.gate.arm', async () => { await guardAuthorize(context); renderStatusBar(); });
     reg('zmax550b.gate.disarm', async () => {
         const r = await httpJson('POST', `${baseUrl()}/ctl/arm`, { on: false, note: 'VSCode 550B 扩展撤销' }, 8000);
@@ -618,15 +391,12 @@ function activate(context) {
     log(`激活 · 工位 ${baseUrl()} · 仓库 ${repoRoot()}`);
     buildStatusBar(context);
 
-    const mk = (id, prov) => {
-        providers[id] = prov;
-        const view = vscode.window.createTreeView(id, { treeDataProvider: prov, showCollapseAll: true });
-        context.subscriptions.push(view);
-    };
-    mk('zmax550b.diagnose', new DiagnoseProvider());
-    mk('zmax550b.measure', new MeasureProvider());
-    mk('zmax550b.calib', new CalibProvider());
-    mk('zmax550b.config', new ConfigProvider());
+    const consoleBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+    consoleBtn.text = '$(device-desktop) 控制台';
+    consoleBtn.tooltip = '在 VSCode 编辑器标签页里打开控制台 (本地 x11vnc + noVNC, 只监听 127.0.0.1)';
+    consoleBtn.command = 'zmax550b.console.embed';
+    consoleBtn.show();
+    context.subscriptions.push(consoleBtn);
 
     registerCommands(context);
 

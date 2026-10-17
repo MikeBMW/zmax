@@ -58,6 +58,15 @@ def local_src_kind():
 def local_expected():
     """按用户在页面上的「换源」选择, 返回 local 那格**应该**看到的卡名关键字。"""
     return USB_KEY if local_src_kind() == "usb" else RGB_KEY
+
+
+def local_src_off():
+    """用户在页面选了「关闭笔记本那一路」(kind=off)。
+
+    2026-10-17 老倪: 笔记本内置摄像头要留给微信/会议软件, Z-MAX 不再独占 /dev/video0。
+    此时: 不校验 local 卡名, 且推流进程必须是 --no-local (否则重启纠正 = 释放设备)。
+    """
+    return local_src_kind() == "off"
 # 🌈 深度源: 由**容器内常驻**的 ros_depth_stream.py 落盘 (宿主只读它的 npy)
 DEPTH_NPY = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy"
 DEPTH_DEAD_S = float(os.environ.get("ZMAX_DEPTH_DEAD_S", "20"))
@@ -99,6 +108,8 @@ def user_src_absent(devs):
     `8793/station` 短暂 000、公网 `/st/` 短暂 502), **而且永远修不好** —— 相机没插回来就无解。
     口径(与深度/TCP 那两路一致): 环境缺失 ≠ 服务故障 ⇒ 不重启, 只报告。
     """
+    if local_src_off():
+        return True, "用户已关闭笔记本那一路 (cam_local_src.json kind=off ⇒ 不占用本机摄像头)"
     if not devs or len(devs) < 3:
         return False, ""
     usb = devs[2]
@@ -137,6 +148,10 @@ def proc_cmdline():
         for i, a in enumerate(argv):
             if a in ("--local-dev", "--local2-dev") and i + 1 < len(argv):
                 out[a.lstrip("-")] = int(argv[i + 1]) if argv[i + 1].lstrip("-").isdigit() else None
+        if "--no-local" in argv:
+            # 2026-10-17: 用户主动关掉笔记本那一路 (cam_local_src.json kind=off) ⇒ 进程天然没有
+            #   设备号参数。**不能**当成「推流没跑」(否则守卫每 5 分钟把它按占摄像头的方式拉回来)。
+            out["no-local"] = True
         if out:
             return out
     return None
@@ -159,10 +174,17 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
     """
     if cmd_devs is None and st is None:
         return False, "8791 不可达且没有推流进程(推流没跑)"
+    if local_src_off():
+        # 用户关了笔记本那一路 ⇒ 进程应当是 --no-local; 若仍在开本机摄像头, 重启纠正(把设备释放掉)
+        if cmd_devs is not None and not cmd_devs.get("no-local"):
+            return False, ("用户已关闭笔记本那一路(kind=off), 但进程仍在按 local-dev=%s 开本机摄像头"
+                           " → 需按 off 重启释放" % cmd_devs.get("local-dev"))
     if expect:
         lo_e, l2_e = expect[0], expect[1]
         if cmd_devs is None:
             return False, "进程不在(推流没跑)"
+        if cmd_devs.get("no-local"):
+            return True, "ok (用户已关闭笔记本那一路 kind=off)"
         if cmd_devs.get("local-dev") != lo_e or cmd_devs.get("local2-dev") != l2_e:
             return False, ("进程用的是 local-dev=%s local2-dev=%s, 实测解析应为 local=%s local2=%s"
                            % (cmd_devs.get("local-dev"), cmd_devs.get("local2-dev"), lo_e, l2_e))

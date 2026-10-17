@@ -23,7 +23,19 @@ _l2=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL2=/
 _lu=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');   [ -n "$_lu" ] || _lu=-1
 [ "$_l2" = "$_ld" ] && _l2=-1        # 绝不把两路指到同一台设备(独占会打不开)
 
-_pid_by_port() { ss -tlnp 2>/dev/null | sed -n "s/.*:${1} .*pid=\([0-9]*\).*/\1/p" | head -1; }
+# ── 🎥 2026-10-17: 笔记本那一路的开关 —— 由页面落盘的 cam_local_src.json 决定 ─────────
+#   kind=off ⇒ **完全不打开笔记本摄像头**（老倪要用内置摄像头开微信; Z-MAX 不能再独占 /dev/video0）。
+#   背景: 配置落盘为 usb 但 USB 相机不在位时, cam_live_stream 会「退回内置」(不黑屏的设计)
+#   ⇒ 结果是把笔记本内置摄像头一直占着。off 就是显式关掉这一路, 页面点 [内置]/[USB] 可随时开回。
+_src_kind=$(python3 -c "import json;print(json.load(open('$ROOT/zmax_data/cam_local_src.json')).get('kind','builtin'))" 2>/dev/null || echo builtin)
+LOCAL_ARGS=(--local-dev "$_ld" --local2-dev "$_l2")
+if [ "$_src_kind" = "off" ]; then
+  LOCAL_ARGS=(--no-local --no-local2)
+  echo "  ⏸ 笔记本那一路: 已关闭 (cam_local_src.json kind=off)"
+  echo "     ⇒ 不打开本机摄像头, 内置摄像头留给微信/会议软件 (页面点 [内置]/[USB] 可开回)"
+fi
+
+_pid_by_port() { ss -tlnp 2>/dev/null | sed -n "s/.*:${1} .*pid=\\([0-9]*\\).*/\\1/p" | head -1; }
 
 if [ "${1:-}" = "--check" ]; then
   p=$(_pid_by_port $PORT)
@@ -61,7 +73,7 @@ except Exception:
 os.closerange(3,65536)
 os.execv(sys.argv[1], sys.argv[1:])' "$PY" tools/cam_live_stream.py --port $PORT --quality 72 --fps 30 \
   --arm-http "http://$ORIN_HOST:8792/frame.jpg" --arm-fps 30 \
-  --local-dev "$_ld" --local2-dev "$_l2" \
+  "${LOCAL_ARGS[@]}" \
   --depth-fps 4 --aoi-fps 0.25 --ctl-motion --station-port $STATION \
   --overlay --overlay-src all --overlay-fps 10 >> "$LOG" 2>&1 &
 

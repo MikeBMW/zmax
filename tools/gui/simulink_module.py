@@ -1432,6 +1432,23 @@ def _tool_script(name):
             return os.path.abspath(_c)
     return os.path.join(_root, "tools", name)
 
+def _local_src_args(owner, ld, l2):
+    """笔记本那一路的启动参数 —— 2026-10-17
+
+    页面「换源」落盘在 zmax_data/cam_local_src.json: kind = builtin / usb / off。
+      · off ⇒ **完全不打开本机摄像头**(--no-local --no-local2) —— 老倪: 内置摄像头要留给微信/会议软件;
+        以前 USB 相机不在位时会"退回内置", 结果把笔记本内置摄像头一直独占, 微信抢不到。
+    """
+    try:
+        with open(os.path.join(owner._repo_root(), "zmax_data", "cam_local_src.json"), encoding="utf-8") as f:
+            kind = json.load(f).get("kind") or "builtin"
+    except Exception:
+        kind = "builtin"
+    if kind == "off":
+        return ["--no-local", "--no-local2"]
+    return ["--local-dev", str(ld), "--local2-dev", str(l2)]
+
+
 def _resolve_cam_devs():
     """按 **卡名+能力** 解析本机两路相机设备号 (笔记本彩色=MJPG / 顶视=MAXHUB) —— 别写死索引。
 
@@ -9115,12 +9132,13 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")
                 orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
                 _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再写死 2/0(串线+IR近黑)
+                _local_args = _local_src_args(self, _ld, _l2)   # 2026-10-17: kind=off ⇒ 不打开本机摄像头
                 self.log_signal.emit("🛰 相机映射: 笔记本彩色 /dev/video%d · MAXHUB 顶视 %s"
                                      % (_ld, ("/dev/video%d" % _l2) if _l2 >= 0 else "(未找到)"))
                 cmd = [sys.executable, os.path.join(self._repo_root(), "tools", "cam_live_stream.py"),
                        "--port", str(self.OV_LIVE_PORT), "--quality", "72", "--fps", "30",
                        "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
-                       "--local-dev", str(_ld), "--local2-dev", str(_l2),
+                       *_local_args,
                        "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
                        # 总览页自己的端口 —— 漏了它 /station 就 404(总览页"消失"的真根因之一)
                        "--station-port", "8793",
@@ -9436,6 +9454,7 @@ class SimulinkModule(QWidget):
                 self.log_signal.emit("🧩 场景叠加: 视频流未运行 → 自动启动 (含叠加) …")
                 orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
                 _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再写死 2/0(串线+IR近黑)
+                _local_args = _local_src_args(self, _ld, _l2)   # 2026-10-17: kind=off ⇒ 不打开本机摄像头
                 self.log_signal.emit("🧩 相机映射: 笔记本彩色 /dev/video%d · MAXHUB 顶视 %s"
                                      % (_ld, ("/dev/video%d" % _l2) if _l2 >= 0 else "(未找到)"))
                 cmd = [sys.executable, os.path.join(self._repo_root(), "tools", "cam_live_stream.py"),
@@ -9443,7 +9462,7 @@ class SimulinkModule(QWidget):
                        "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
                        # 🎥 2026-09-27 三相机: ①臂上(Orin) ②笔记本内置(彩色 MJPG 那一路) ③MAXHUB 电视顶摄
                        #   ⚠️ 设备号来自 _resolve_cam_devs() 实测解析 —— 写死 2/0 会选中 IR(近黑)并让两格串线
-                       "--local-dev", str(_ld), "--local2-dev", str(_l2),
+                       *_local_args,
                        # 🛰 2026-09-27 工位总览 6 窗: 深度源 + 工控机金手指/表面检测 + 手动控制区
                        "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
                        # 🔴 2026-09-27 老倪: 「6 个窗口那个网页怎么搞丢了?」——
