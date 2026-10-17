@@ -55,6 +55,8 @@
 | 105 | 未 done · −15.4 mm | 未 done · −16.0 mm |
 
 ①②③ PASS（闸 P50 23.8 µs；闸调用 == 拍数），**④ FAIL：seed104 回退**（唯一旧链能成功的 seed 被打破）。
+物理口径 `ZMAX_GATE_DT=0.02` 同样在 seed104 失败（`ab_l2_inline_gate_real_dt20ms.json`：A done / B 未 done，7 段），
+即回退不是 Δt 选大选小造成的，是约束本身（下面消融定位到③）。
 ⚠ 注意：判成功只看项目自己的几何真值 `ss_insert_metrics`（沿孔轴 depth_mm / 横向 lateral_mm），
 不要用 `tr["mani_rem"]` —— 那是性能流形的 d_axial，不是插深。
 
