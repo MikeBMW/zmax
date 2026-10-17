@@ -34,6 +34,12 @@ python3 -m venv ~/dds-venv
 | 指令（部署/回滚）| RELIABLE · **KEEP_ALL** | 指令**不许丢** |
 | 心跳/存活 | **BEST_EFFORT** · KEEP_LAST(1) | 丢一两个无所谓，别为它重传拖累总线 |
 
+**显示口径：QoS 要写成 DDS 标准策略名，不要暴露内部简写。** 内部 `beat/state/cmd` 与库里的
+`reliable/transient_local` 只是别名；UI/日志/导出一律翻成 `BEST_EFFORT|RELIABLE · KEEP_LAST(n)|KEEP_ALL ·
+VOLATILE|TRANSIENT_LOCAL`。非 DDS 后端 (shm / 单步调试) 明确标「非 DDS」，解析不了写 `❌ 未知: <原值>`。
+一个 `middleware/qos_names.py` (`standard()/valid()`) 供所有入口共用 —— 在表格里各拼一份，必然出现
+同一话题两处 QoS 写法不同。
+
 **约定：未测到的量 = `-1.0`，不用 0 冒充。** 0 是合法实测值（GPU 真空闲）；把"测不到"写成 0
 会让下游把"没数据"当"真的零负载"。字段名带单位（`util_pct` / `mem_used_mb` / `power_w`）。
 
@@ -77,6 +83,33 @@ UI 读 JSON。**两端互不污染，任一端可单独重启。**
 4. **新鲜度必须显示**：UI 上每个节点带 `age_s` 与 `stale`（超时未更新 → 明确标"停 X 秒"），
    否则读者会把几小时前的旧值当成现在
 5. 诊断 route/模式类参数时：**发布与订阅的配置必须一致**，否则测的不是真实行为
+
+## 数据质量: 告警必须判**值**, 不判心跳
+
+只统计 QoS/频率/丢包/配对数的"告警"本质是心跳监视: 总线安静时表里空着,
+于是"真的没故障"和"根本没接上"长得一模一样。真告警要面向**物理量**:
+
+```
+超上限 / 低于下限   声明量程 (signal meta → 参数中心); 无声明时按物理规律兜底
+物理规律           概率/比例∈[0,1] · 百分比≤100 · 质量/刚度/阻尼≥0 · 温度≥-273.15°C ·
+                  压力≥0 · 角度|x|≤720 · 速度|x|≤1000
+数值有效性         NaN / inf / 非数值 —— **只对实测数值**; 占位/信封行与 "—" 属于"无实测",
+                  不是"非数值故障", 必须在喂判据前剔除
+单位               有值无单位 ⇒ warn (物理量不许裸数; 推断单位要加 * 标明)
+跳变               相邻帧 Δ > 量程×10 或 >1e6 ⇒ warn (多为单位错/串帧)
+```
+
+- 告警事件要带 `rule` id + **实际值/限值/依据** (`range_high: 999 > 720 deg (物理规律)`),
+  "越界"两个字不构成告警; 级别只留 fail / warn / info。
+- 空告警表必须显式输出一行 info 列出判据清单, 否则用户无法分辨"无告警"与"未接入";
+  计数只算 fail/warn。
+- **验证靠注入越界帧**, 不是靠页面能打开: 造 `{grasp_prob:1.4, joint1_deg:999}` 必须出两条 fail,
+  正常帧必须零告警 (不造假警)。同一条判据所有入口共用一份 `quality.py`, 否则一个页面改了另一个还是旧逻辑。
+- 覆盖缺口如实报: 端口信号还是占位 (0 单位/0 量程) 时只能靠物理规律 —— 要按设计量程报警,
+  先在节点模块里声明 `SIGNALS`, 别把推断讲成设计判据。
+
+界面侧的落地规则 (Trace 一行一个信号带 Unit/Phys、空表 info 行、页签计数) 见 `zmax-console` 技能中
+数据空间那份参考的 §9。
 
 ## 跨公网额外事项
 - 安全组/防火墙：未固定端口时需放行 **UDP 动态端口段**；若现场只能开固定端口，
@@ -144,6 +177,104 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 两条都**不报错退出**, 只是丢帧 + 刷告警, 最容易被当成"网络抖动"放过 ⇒ 加完线程的第一次验证必须**翻守护日志**找这两行。
 判据: 重启守护后日志里"允许 N 话题"的 N 必须比你加线程前**多出**新话题 (不涨 = 登记表漏了)。
 
+## 话题名要落库成注册表（别只在运行时拼字符串）
+
+**症状**: 话题名是 `"<prefix>.<node>.<port>"` 现场拼出来的, 磁盘上不存在 ⇒ 监控/CI/DDS 排查
+拿不到全量话题清单, 改个命名前缀没人知道会打断谁。
+
+**规则**
+1. 话题名由**工程源**(节点/端口/连线)派生, 但必须落成注册表: 一行 = (project, node, port, dir, topic, qos, enabled),
+   带唯一索引。工程文件内容 sha256 也落库 (project 行), 作为“库是否同源”的判据。
+2. 加载: **库优先 + sha 守卫** —— sha 一致就从库读节点/端口/连线; 不一致就解析源文件并**回写库**
+   (绝不拿过期库跑工程)。强制模式 `source=json|db` 保留给对照与 CI。
+3. 运行时不用拼, 用注册表: 总线挂一个 `topic_map {(node,port): topic}`, 发布/订阅都查它,
+   查不到才回落派生式 —— 否则“只改库”永远不生效, 注册表就退化成缓存。
+4. 新表用 `CREATE TABLE IF NOT EXISTS` + 按 project 建索引; 抓快照/改副本要改临时文件, 别动真源。
+
+**判据 (缺一就不算真源)**
+- 改注册表里**一行**话题名 → 重新 load → 发布/订阅端立刻用新名; 改回 → 复原。
+- 源文件改过 → sha 变 → 判过期并自动回写; 再 load 直接认库。
+- 库读回的节点/端口 == 源文件解析结果 (逐节点比对), 两种 source 模式节点集合一致。
+
+细节 (表结构/加载路径/CLI/七项判据) 见 `references/topic-registry-and-loading.md`。
+
+## topic 的 type 必须是**数据语义**, 不是信封名 (2026-10-17 老倪现场纠正)
+
+**症状**: 信号表/数据空间里 113 条报文的 Type 全叫 `zmax::SSNodePort` —— 那是 DDS 信封
+(topic/ts/json 三字段), 与数据是什么毫无关系。老倪原话:「type 太随意…例如前馈加速器
+你的 topic 类型是 SSNodePort, 这根本看不出有什么含义」, 并要求「与主要发送 Tx 节点关联」。
+
+**真根因**: 类型字符串在**消费端写死** (本次是 busdb 生成报文处 + 数据空间表各一处), 与工程
+结构脱钩 ⇒ 所有话题自然长同一个名字。改 UI 文案没用, 必须把类型做成**从工程派生的注册表**。
+
+**做法** (可照抄)
+1. 生成器 `tools/gen_topic_types.py` 读画布 (节点/端口/连线) + 节点模块的 `PORT_LABELS`,
+   产出真源 `config/platform/dds_topic_types.json` (node → outs/ins → type/cn/consumers)。
+2. 命名口径: 出口 = 主 Tx 节点语义 (`ssff.out2 → zmax::FeedforwardAction`); 一个节点多出口
+   → `Stem2/Stem3` (有 PORT_LABELS 用语义词); 入口 = **唯一上游出口的类型** (同一份数据不另起名),
+   多上游 fan-in 才用 `<Stem>In` 并把生产者清单记进 JSON。
+3. 运行时模块 `middleware/topic_types.py` (mtime 热加载) 供 bus/DB/UI 共用; `mw_topic` 加 `type` 列,
+   `db.sync()` 写入 —— 老库要 `ALTER TABLE` 补列, 且 **INSERT 必须写列名**
+   (ALTER 加的列在表末尾, `INSERT INTO t VALUES(8 个)` 会把类型塞进 qos, 实测踩过)。
+4. UI 侧仍以注册表为准: busdb.json 是快照, 可能还是旧类型 ⇒ 渲染时 `type = registry or snapshot`。
+   非 `ss.node.*` 形态的话题 (heartbeat 等) 不要硬套注册表, **保留它自己声明的类型**,
+   否则会把已知类型降级成 `Unknown` (本次 44 条)。
+5. 🔴 **入口类型只能按连线解析**: 用 `db.links()` 的 `(f, f_port) → (t, t_port)` 取上游那一个
+   **具体出口**的类型。只看节点级 `from` 列表 (丢失端口) 时, 多出口节点的下游会被判成"多上游语义不同"
+   ⇒ 生成器狂报 fan-in, 而现场其实是一条干净的直连。生成器与审计脚本必须走**同一条**解析路径,
+   两套各自算就会互相判失败 (本次先出现一波假的 33 条 fan-in 报错)。
+6. 审计里比上游类型用 `w == u or w.startswith(u + ".")`: 只写前缀会漏掉"恰好等于"的情况,
+   表现为"多上游 0 种"满屏报错; 只看前缀又把 `ss_a.out1` 与 `ss_a.out10` 混淆。
+
+**判据** `tools/verify_topic_types.py` (6 项, 全绿才算完): 覆盖 (每个端口都有类型) · 出口类型唯一主 Tx ·
+入口 == 上游 · 库与注册表逐条一致 · 零 `SSNodePort` · 命名 `^zmax::[A-Z][A-Za-z0-9]*$`。
+改画布/连线后必须重跑生成器再验, 否则注册表过期 (加 `--check` 进 CI)。
+
+## Signal 列不能空: 话题 → 信号清单要按证据分级加载
+
+**症状**: Trace/信号表只有 Signal 名字却没内容, 或只显示有实时流量的少数话题 —— 老倪原话
+「signal列的信号呢? 这些信号, 是每个 topic 的 signal 哪里去了?」/「L1~L5 层所有的 topic 的所有
+信号, 都要加载」。根因: 端口 `mw_signal` 里 113 条全是占位 `value`(端口未声明), 而 UI 只渲染
+live.json 里有流量的那 24 个话题 ⇒ 看起来"信号很少"。
+
+**做法**: 单独一层 `middleware/signals.py`, 一个 `signals_of(topic)` 按证据强弱合并四级:
+```
+① 实测   live/busdb/trace.jsonl 里真实出现过的载荷字段 (程序真发过)
+② 声明   工程库 mw_signal (排除端口占位 value)
+③ 端口标签/实现  画布 params._port_labels 的英文标识; 从实现文件抽 return 字典的字符串键
+                (单输出=端口级; 多输出归属不明 ⇒ 标 impl_node 节点级, 不假装精确)
+④ 上游继承  入口 topic 按 mw_link (f,f_port)→(t,t_port) 继承上游出口信号, fan-in 取并集
+⑤ 信封兜底  仍无证据的节点端口列 DDS 信封真字段 topic/ts/json, 不硬造 payload 名字
+```
+UI 侧同时要改**话题集合**: Trace 不能只遍历 live.json, 必须并入工程库全部话题 (含入口),
+否则"没流量就等于不存在"。实测 273 话题 / 1768 信号行 / 填充 0.10s。
+
+**判据** `tools/verify_signal_coverage.py`: 话题总数==工程库 · 每层都有 · 0 个只剩占位 ·
+信号数≥1000 · 四级来源分级 · 中文名≤5 · 英文名是合法程序变量 · 入口有上游继承。
+反模式: 静态抽取时把实现里**所有** dict 键都收进来(会把 path/size/mtime 等无关键混进来) ——
+只认 `return {...}` 与惯用返回变量, 并保留 src 让用户能追溯。
+
+## 显示层"不动"先查 publisher 配对, 别先调刷新率
+
+**症状**: 用户说数据/信号一直不动, 要求"实时"。先别改 Timer 间隔 —— 先证明总线在发。
+
+```bash
+# 桥/探针产物的三列就是诊断结论
+python -c "import json;d=json.load(open('…/live.json'));\
+print({k:(v.get('hz'),v.get('matched_pubs'),bool(v.get('fields'))) for k,v in d['topics'].items()})"
+journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
+```
+`matched_pubs == 0` + `fields` 空 ⇒ **发布端没配上** (或 mode=prod 允许 0 话题), 与 UI 刷新无关;
+这时把 1.5s 改成 0.8s 只是让空白表刷新得更快。
+
+**两个窗口必须同源时, 用共享 provider, 不要各自采集**: 如果另一个窗口 (曲线/信号分析) 已经在读
+本机真值文件并且是活的, 就让新窗口读**同一批文件** (`middleware/live_signals.py` 之类 0.25s 缓存,
+带 `ts/age_s`), 按话题覆盖字段; 两边是同一拍数据的两个视图, 数值天然相等, 不存在漂移。
+判据: 两边读的文件路径逐一相同 · provider 与文件逐信号相等 · 1.3s 内 ≥10 个信号在变 · 帧龄 <3s。
+
+**边界要说清**: 换文件源只让**显示**实时, DDS 若仍 0 发布者, 要单独查 daemon 话题登记/配对
+(单播配置、mode、QoS 兼容性), 不能把"显示动了"当成"DDS 通了"。
+
 ## Pitfalls 汇总
 ```
 ✗ 多网卡下不配单播 → 发得出去收不到（最高频, 且日志完全正常, 极易误判成"代码逻辑没问题"）
@@ -155,9 +286,12 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 ✗ 手改 .vscode/launch.json 或画布 JSON 而不改生成器 → 下次"打开 VSCode"/保存画布被整体重写抹掉
 ✗ 状态类话题不用 TRANSIENT_LOCAL → 订阅者后上线要干等下一个周期
 ✗ 把 DDS 装进业务 venv → 依赖互相绑架; 用独立 venv + JSON 桥解耦
+✗ 显示不动就去调刷新 Timer → 真因多是 matched_pubs=0 / mode 允许 0 话题, 先查发布端
+✗ 占位/"—" 行喂给物理判据 → 一次刷出上千条假 fail, 真告警被淹没
 ```
 
 ## 相关文件
+- `references/topic-registry-and-loading.md` — 话题注册表 + 库优先加载 (表结构/sha 守卫/CLI/判据)
 - `references/cyclonedds-python-api-notes.md` — API 细节与可抄代码
 - `templates/cyclonedds_unicast.xml` — 实测可用的单播/跨网配置（含"勿回退"注释）
 - `scripts/dds_pubsub_selftest.py` — 同进程 pub→sub 自检

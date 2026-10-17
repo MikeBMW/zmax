@@ -70,7 +70,7 @@ metadata:
   再跑 `verify_canvas_render.py` 看「文件 N / 渲染 M」。
 * 顺带: 往行里插节点会挪 `fn_id` (描述真源 `function_notes.json`/`config_meta.json` 静默错挂,
   判据只看得见"空描述"看不到"错挂")——修法 `tools/fix_function_notes_align.py` + `tools/config_meta.py build`,
-  细节见 zmax-console::references/canvas-insert-shifts-fn-id.md。
+  细节见 zmax-console::references/canvas-insert-shifts-fn-id.md
 
 - **端口一律字符串列表** (`["in1","out1"]`); 历史遗留的 `[{'id':'out1','label':...}]` 字典格式要先归一(原标签存 `params._port_labels`)。
 - **新线必须前向**: `f.x + f.w <= t.x`(源节点右边界 ≤ 目标节点左边界), 否则渲染成交叉/反向线, 被断言拦下。
@@ -606,6 +606,8 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
 反假训练三道闸门与槽位标注工具: `references/l5-annotate-train-loop.md`。
 画布上「配置/标定/诊断」接口节点(参数注册表 → 描述文件 → 面板/远程/诊断)的设计约定与 ASAM-MCD 类比:
 `references/mcd-param-node-design.md`(完整方案: 仓库 `docs/design/manifold_mcd_master_param_M_20261009.md`)。
+把画布连接关系落成**可查注册表**(报文/信号/Tx-Rx/单位量程)的口径与三个坑:
+`references/message-signal-db.md`。
 
 ## 节点改名 / 新增任务 = 真源三件套 + 生成器, 别手改生成物 (2026-10-12 实测)
 

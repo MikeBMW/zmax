@@ -20,6 +20,19 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 修复: 用 `rgba(r,g,b,0.40)` 或 6 位全色 hex；**绝不用 8 位 hex 做半透明**
 - 排查: 检查 styleSheet 里的 `#RRGGBBAA` 写法（Qt 只认 `#AARRGGBB`）
 
+### 1b. QSS 报错刷屏两种典型写法 (2026-10-17 实测, 控制台启动刷 14~18 条)
+- **`Could not parse stylesheet of object QPushButton(0x…)`**: 样式表里**裸声明后面直接跟选择器** ——
+  `f"background:{c};padding:4px 12px;" + "QPushButton:checked{…}"`。裸声明（无 `QPushButton{}` 包裹）本身合法,
+  但拼上规则块后整串解析失败; 每次 repolish 打一条。修法: 基础样式一律包成 `QPushButton{…}`, 再拼 `:checked{…}`。
+- **`Unknown property cursor`**: Qt QSS **不支持 `cursor:`**（那是网页 CSS）。指针形状用控件方法
+  `btn.setCursor(Qt.PointingHandCursor)`, 不写进样式表。
+- **定位手法（比读代码快）**: `qInstallMessageHandler` 抓消息里的 `(0x…)` 地址 → 遍历 `findChildren(QPushButton)`
+  用 `int(sip.unwrapinstance(b))` 比对 → 直接打 `b.text()` + `b.styleSheet()` 就是罪魁; 再用
+  monkeypatch 包 `QWidget.setStyleSheet` 记录“调用期间是否出告警”可定位到行。
+- **兜底**: 主程序 `main()` 里装消息过滤器只吞这两类（`Could not parse stylesheet` / `Unknown property *` /
+  `propagateSizeHints`）, 其他 Qt 消息照常打印; 中文消息写 `sys.stderr.buffer.write(msg.encode("utf-8","replace"))`,
+  否则 GUI 的 ascii stderr 会抛 UnicodeEncodeError。
+
 ### 2. WSLg 弹窗: exec_() 模态假死
 - WSLg 下 `QDialog.exec_()` 模态窗口不显示/假死 → 一律非模态 (`show()`)
 - 小窗口/气泡也禁用；反馈用 按钮+日志框+气泡，不用弹窗
@@ -224,6 +237,38 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   - **回归判据**: offscreen 真建该 widget + 造同量级行数(与线上 400+ 同级), 用计数器包住 `_ordered_selected`/`set_curves` 数调用次数(稳态必须 0), 然后**真 `setCheckState`** 验证勾选/取消仍生效 —— 缓存和早退最容易把功能改死, 这条不能省。工具有现成的: `scripts/qt_tree_refresh_cost_probe.py <行数> <Hz>` 一份跑出旧写法/缓存写法的 ms/拍 与每拍 itemChanged 次数 (项目里换成真 widget 就是正式判据)。
 - 同类隐形风暴: 一次 tick 里做**文件 JSON 读+解析**(`_chunk_text()`/状态文件)4Hz 也在 json decoder 里烫 CPU ⇒ 不变的内容同样要缓存 (按 mtime 或内容签名), 别每拍重读。
 - 汇报口径: 给出"根因栈 + 每秒触发次数 + 折算 CPU"三件, 再说"要重启才生效"; 用户正在操作时**不要擅自杀 GUI**(先看 GUI 日志最近 1~2 分钟的点击/切页留痕判断是否在用)。
+
+### 19. 「表里没数据 / 那一列怎么不见了」先查**可见性**, 再查数据源
+- **活数据排在表尾 = 看着像死了**: 表按话题名/字典序排时, 正在跳的那几行常常排在几千行最后,
+  第一屏全是 `—`。口径: **按新鲜度排序**(帧龄 <3s 置顶, 没有帧龄的靠后), 并在工具条给一行
+  `⚡ 实时 3 话题 · 182 信号 · 帧龄 0.06s`(绿/红) —— 用户判"有没有在动"看这一行, 不用数格子。
+  别拿"fields 非空"当活跃判据: 停掉的话题 fields 里还留着 `state=[] count=0`。
+- **关键列放最后一列 => 看不见**: 左侧面板窄(实测视口 440~510px)时, 靠后的列被挤出视口,
+  用户只会问「XX 列呢?」。重要的分类列(Layer/Type)放第 1~2 列, 权重列放最后。
+- **同一份数据两个窗口数值对不上**: 各自 parse 同一文件会差半个采样周期。做法是两边都读
+  同一个 provider 的**同一份 TTL 缓存快照**; 判据写成"同一缓存窗口内两次读逐值相等",
+  而不是"两个窗口各读一次再比"(后者必然偶发不等)。
+- **正则抠 JSON 键只认 `[A-Za-z_]\w*` 会漏掉中文键**: `"末端_x": 1.2` 一个都匹配不到,
+  结果整列退化成"全缺测"。改用 `"([^"]{1,40})"\s*:\s*(数值)`。
+- **逐行值缓存不能只按业务 key**: 同一条信号在两个分组各有一行时, 第一行写完后第二行永远停在
+  `-`。键要带控件身份: `(id(item), key)`。
+
+### 20. 列头按值过滤 (不另加一行下拉) + 可测法
+- `header().setSectionsClickable(True)` + `sectionClicked` → 收集该列取值与条数 → `QMenu`
+  (`QActionGroup` 单选, 首项「全部」+ 末项「清除所有列的过滤」) → 递归 `setHidden` 不匹配的叶子行;
+  子行全被隐藏的分组也一起藏。列头常显 `▾` 提示可点, 生效时显示 `Layer ▾ L2`;
+  **重建/刷新树之后要再套一遍过滤**, 否则刷一拍就恢复全量。
+- 判据(离屏可跑): 劫持 `QMenu.exec_` 返回 `data == "L2"` 的 action, 调 `_on_header_filter(1)`,
+  断言可见行数从 N 降到 M 且该列只剩 `L2`; 再叠第二列过滤只清第一列, 断言第二列过滤仍在。
+- 改列序要同步 **QSettings 列宽键换版本**(`...cols` → `...cols_v2`), 旧键按下标记宽, 顺序一变就套错列。
+
+### 21. 「删按钮/删文字行」: 删可见性, 不删对象
+- 别处还在读 `btn.isChecked()` / `btn.toggled` / `label.setText()`, 直接删控件就是 AttributeError。
+  一律 `w.setParent(self); w.hide()`。
+- 🔴 未上布局又没 `setParent` 的控件会变成**漂浮的顶层窗口**; 探针用
+  `[x for x in QApplication.topLevelWidgets() if x is not w and x.isVisible()]` 确认干净。
+- 取证三件: 可见按钮/标签列表 · 按 `mapTo(w, rect().topLeft()).y()//10*10` 分行(只应剩一行) ·
+  最右 `mapTo(w, rect().topRight()).x()` < 窗口宽(不溢出/不折行)。
 
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,

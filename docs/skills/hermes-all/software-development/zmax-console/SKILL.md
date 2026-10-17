@@ -9,6 +9,44 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
 
+> 📄 **两窗口同源 (信号分析 ⇄ 数据空间 Trace)**: 同文件 **§11 / §13③~⑦ / §14** —— Tx/Rx/Layer/单位/数值/变化率
+> 只许一份真源 `middleware/attribution.py`；固定行不许按帧龄等衍生量重排（行会跳）；
+> 场景组默认勾满全部动态信号，波形同时只画 24 条（278 条实测一次刷新 14.5s）。
+> 📄 同文件 **§14** = 固定行的最后一公里：字段一拍有一拍没 ⇒ 老行保序 + 缺键保留上拍 ≤60s，
+> 判据必须走增量路径（`force=True` 会掩盖问题）；同源只认冻结快照逐字比对（面板每个前缀都要走
+> 同一 `live_signals` 快照，否则快变量差一拍）；位姿无真值就写 -1 + QoS 告警，禁止按动画推角度。
+> 📄 **表格类 UI 硬规矩**: `references/dataspace-message-signal.md` §7 —— 用户手拖过列宽后，
+> 刷新心跳里的 `_fit_columns()` 必须停手（它就是“拖完又自动还原”的真根因），复位只给 `↺` 按钮；
+> 列宽按 `ensurePolished()` 后的表头字宽 + **该列最长文本**算；**不许省略号**（`ElideNone`，放不下就横向滚动）；Tx/Rx 只放 `middleware/naming.py` 归一后的节点本名（无 emoji/层号/序号/箭头）；右侧详情与表格必须同一个类型真源；
+> 表头一列一个英文短词，不加中文/括号/解释（解释进 tooltip），面板标题就一个词。
+> 同文件的 **§8** = Tx/Rx 只放 `naming.py` 归一后的本名 + 表格与详情必须同一个类型真源；
+> **§9** = 质量告警必须判物理值（超上限/低于下限/NaN/无单位/跳变），Trace 一行一个信号带 `Unit`+`Phys`，
+> 顶部工具条只留一个搜索（放在 Trace 按钮区）且**删控件前先 grep 引用**（否则暂停键联动已删按钮 → AttributeError）。
+> 同文件的 **§11** = 信号分析窗口(canoe_graphic) 与数据空间同口径: 7 列 `Name|Layer|Signal|Value|Type|Tx|Rx`（Layer 必须在第2列，放最后窄栏就看不见）、
+> 全列 `Interactive` + QSettings 拖宽记忆（原来第0列 Stretch 所以拖不动）、三路真值走 `live_signals` **同一份缓存**才叫同源同值、
+> 值缓存键 `(id(item), key)`、按帧龄排序置顶、中文键正则、时间列用 wall-clock−帧龄；**§13** = Tx 必须是真 node_id（无节点就写进程名，不许拿"像节点的名字"顶上）+ 列头按值过滤 Layer/Type；
+> **§12** = 面板瘦身（按钮并一行 / 只留八阶段一行文字；隐藏控件用 `setParent+hide`，不许删除构造）。
+> Qt 样式表告警定位（message handler + `sip.unwrapinstance` 地址反查）、隐藏控件不漂浮、终端噪声开关 → `references/qt-ui-forensics.md`。
+> Trace 列口径 = `Time | Layer | Name(中文≤5) | Signal(程序真实变量) | Value | Unit | Phys | Type | Tx | Rx | QoS | Hz`，
+> Layer 只有 `L2~L5` + `SYS`(meta / 注册表类话题)；本工程没有 L1，**不许为了凑 L1~L5 编层**；
+> Trace 必须遍历**工程库全部话题**(含入口, 实测 273 个)，不能只显示 live.json 里有流量的那几个(24)；
+> QoS 必须显示 DDS 标准策略名（不是内部 beat/state），空值直接 `—` 不要 `❌ 未知: —`；改列前先 grep 旧列名（表头在构造 + 两处 setter 共三处写死），并同步 `QTableWidget(0, N)` 的列数与所有按列号取值的代码（选中行取 Name、`_fit_name_col` 的目标列）。
+
+> 📄 画布节点右键「打开代码」落点 / “点了没反应” 分诊: `references/gui-rightclick-and-code-jump.md` ——
+> 先读 `~/.cache/zmax/rightclick.log` 的 `kind=`/`loc=`/`err=`，再谈改代码；落点解析不许依赖 import
+> (直查 `middleware/nodes/n_<单词>.py` 的 `PORTS_IN` 行 —— 单词来自 `middleware/node_names.json`,
+> 文件名**不用 id 也不用中文**，见同文件 §2.6)；没模块就**现场生成**再打开 (绝不允许“打开 node 却给了别的文件”)；
+> 两入口 target=`impl`/`node` 别搞反；起窗后 xdotool 抢前台。
+
+> 📄 控制台生命周期 (`references/console-lifecycle-and-exit.md`): **别自作主张重启用户的控制台** (改完给命令/问他);
+> 关窗不能崩 (`sys.exit(app.exec_())` → `os._exit()`, 否则 QThread Destroyed → Aborted/-6), 判据用
+> `wmctrl -ic` 真关窗比 `Fatal Python error` 计数, 离屏验不了; 配置窗口是复用的 ⇒ 改 json 后必须在 showEvent 重读。
+
+> 📄 全局数据空间 / 报文·信号 (`references/dataspace-message-signal.md`): 数据空间只读**工程库**
+> (mw_project/node/port/link/topic/signal), 话题=报文、payload 字段=信号; 画布保存同一口落库;
+> 报文按 **L5→L1→系统** 分层分组 (不造空组), 信号表带 **Tx / Rx** (由 mw_link 派生, 没连线写 —);
+> 未声明信号不许假装存在, 单位/量程只从参数中心取。
+
 > 📄 UI 宽度/几何: `references/ui-width-and-geometry.md` —— 「某栏太宽/拖不动/字被挡」的固定口径:
 > 宽度**必须在真屏 (DISPLAY=:0) 量**, 离屏 fontMetrics 与 192DPI 真屏差一倍; 打开宽度 =
 > pin > 更窄的记忆 > 内容需求 (记忆只许更窄, 配树指纹); 最小宽度别拿内容需求当地板 (否则拖不窄);

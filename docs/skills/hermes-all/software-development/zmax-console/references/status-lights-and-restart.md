@@ -35,7 +35,42 @@
 两处统一用 `PAT='^[^ ]*gui-venv311/bin/python studio\.py$'` (`tools/gui/launch_studio.sh` + `tools/gui/restart_studio.sh`)。
 同类规则: 凡用 `pgrep -f`/`pkill -f` 判“某进程在不在”，先问一句“我自己这条命令的 cmdline 里有没有这串字”。
 
-## 3. 验证界面的取证坑 (踩过的)
+## 3. 关窗口时进程 abort (exit -6) — 已修, 别再退回 `sys.exit(app.exec_())`
+
+现象: 关掉控制台窗口, 日志末尾 `QThread: Destroyed while thread is still running` +
+`Fatal Python error: Aborted`, 退出码 -6 并留 core。历史日志里能数出多条同样堆栈 —— 不是新毛病。
+
+机制: `sys.exit(app.exec_())` 返回后解释器进入 finalize, 信号页回放 / 3D / 看门狗这些 QThread 还没停
+就被析构 ⇒ qFatal abort。Qt 事件循环已经退出, 本来就不需要 Python 再清理。
+
+修法 (与 SIGTERM 通道同款): `_rc = app.exec_()` 之后 flush 两个流, 再 `os._exit(int(_rc))` 跳过 finalize。
+
+验收要在**真屏**做, 看 Fatal 计数而不是看退出码:
+
+```bash
+B=$(grep -c 'Fatal Python error' /tmp/studio_launch.log)
+DISPLAY=:0 wmctrl -ic "$(DISPLAY=:0 wmctrl -l | grep 'XSpace ZMAX' | awk '{print $1}')"
+sleep 8; echo "进程数 $(ps -eo args | grep -c '[s]tudio.py') · Fatal $B → $(grep -c 'Fatal Python error' /tmp/studio_launch.log)"
+```
+
+Fatal 数不变 + 进程 0 + 日志尾没有堆栈 = 干净退出。
+
+## 4. 重启/关停的权限边界
+
+**不许自主重启控制台** —— 用户明确制止过 (「你不要自己重启啊」)。他的窗口可能正在调试/录屏/目检,
+我 kill + 拉起会把状态、断点、正在看的页面一起弄丢, 而且他分不清是崩了还是被我重启了。
+
+- 改完代码只给命令: `bash tools/gui/launch_studio.sh` (或 VSCode F5), 由他决定何时重启。
+- 为了自己验收而起的实例, 验完**立刻 kill 自己那一个**, 并在回复里说明「我起的那个已停」。
+- 必要时先问一句再动; 宁可多等一轮, 不要自主重启。
+- **他会几秒内自己按 F5**: 我拉起脚本后 ~7s 他也重启了一次 ⇒ 桌面上两个控制台。识别办法:
+  `ps -eo pid,lstart,args | grep '[s]tudio.py'` —— 带 `/home/ubuntu/.vscode/extensions/ms-python.debugpy…`
+  那一对是他的 F5 调试进程, 纯 `gui-venv311/bin/python studio.py` 是我起的; 只 kill 后者。
+- 判断“他现在有没有控制台”: 不光看进程, 还要看窗口 `/proc/<pid>/cwd` +
+  `DISPLAY=:0 wmctrl -l | grep 'XSpace ZMAX'` —— 窗口才是他在用的那个。
+
+
+## 5. 验证界面的取证坑 (踩过的)
 
 - **截图区域别用 `wmctrl -lG` 的 y 当客户区顶** —— 实测该 y 比真实客户区顶低 ~48px，
   按它裁出来正好从菜单栏下方开始: 会以为"菜单栏/品牌/三灯没渲染"。
