@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 
 from PyQt5.QtCore import Qt, QRectF, QTimer
@@ -184,7 +185,11 @@ class BusView(QWidget):
         hs.addWidget(self._detail_panel())
         hs.setStretchFactor(0, 3)
         hs.setStretchFactor(1, 2)
-        hs.setSizes([1620, 1080])
+        hs.setSizes([1700, 1000])
+        # 🎯 2026-10-17 老倪「信号表这些列要对齐, 字都显示不全, 太乱」——
+        #   真根因之一: Data 面板在 3:2 分栏里只有 ~640px, 7 列(其中 Tx/Rx 是中文节点名)根本放不下。
+        #   给面板一个**下限宽度**(920px): 窗口够宽时按 3:2, 不够时优先保住信号表, 详情面板让位。
+        self._data_panel_widget = hs.widget(0) if hasattr(hs, "widget") else None
         vs.addWidget(hs)
         vs.addWidget(self._trace_panel())
         vs.addWidget(self._bottom_tabs())
@@ -434,27 +439,58 @@ class BusView(QWidget):
         self.chk_only_alive.stateChanged.connect(lambda *_: self.reload(force_tree=True))
         head.addWidget(self.chk_only_alive)
         head.addWidget(self._sm_btn("展开/收起", "展开或收起 报文/信号/节点 三组", self._toggle_all))
+        _hint = QLabel("列可拖动 · 悬停看全文")
+        _hint.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
+        _hint.setFont(QFont(UI, 8))
+        _hint.setToolTip("列宽可拖; 单元格放不下的字只是显示省略, 悬停即显示全文 (数据本身不被截断)")
+        head.addWidget(_hint)
         self.tree = QTreeWidget()
-        # 🧭 2026-10-17 老倪: 「信号表, 增加 Tx Rx 两列, 表示 发送节点和接收节点」
-        #   CANoe 原 5 列(Name|Value|Unit|Last Value Time|Bar) 保持不动, Tx/Rx 接在后面 ——
-        #   报文行 Tx=生产者节点 / Rx=消费节点(取自工程库 mw_link), 连线信号行 Tx=源 / Rx=目的。
+        # 🧭 2026-10-17 老倪: 「信号表, 增加 Tx Rx 两列」+ 随后「这些列要对齐啊…字都显示不全, 太乱了」
+        #   实测病根三条 (改前): ① 7 列列宽和 1122 > 面板 1043 ⇒ 挤压 + 横向滚动;
+        #   ② 表头 "Last Value Time [s]" 要 224px 却只给 180 ⇒ 表头自己就被裁;
+        #   ③ 数值列左对齐 + 空 Cells, 数字和单位看起来"各在各的" ⇒ 根本对不上。
+        #   改法: 短表头(全称进 tooltip) + 按内容定宽(总和 < 面板宽) + 数值右对齐/单位居中
+        #        + 单元格 ElideRight 且**每格都带全文 tooltip** (裁的是显示, 不是数据)。
+        #   CANoe 原 5 列语义不动, Tx/Rx 接在后面。
         self.tree.setColumnCount(7)
-        self.tree.setHeaderLabels(["Name", "Value", "Unit", "Last Value Time [s]",
-                                   "Bar  实测/设计", "Tx 发送节点", "Rx 接收节点"])
+        self._cols = ["Name", "Value", "Unit", "帧龄", "Bar", "Tx 发送", "Rx 接收"]
+        self._col_tt = ["名字 (报文 topic / 连线 源→目的 / 节点)",
+                        "Value 实测值 (报文 = 实测 Hz)",
+                        "Unit 单位 (报文 = Hz)",
+                        "帧龄 s = 最后一帧距现在多少秒",
+                        "Bar = 实测/设计 (条满 = 100%)",
+                        "Tx 发送节点 (报文产生者 / 连线源 / 节点发包数)",
+                        "Rx 接收节点 (报文消费者 / 连线目的 / 节点收包数)"]
+        _fm = self.tree.fontMetrics() if hasattr(self, "tree") else None
+        self.tree.setHeaderLabels(self._cols)
+        for _i, _t in enumerate(self._col_tt):
+            self.tree.headerItem().setToolTip(_i, _t)
+        self.tree.setTextElideMode(Qt.ElideRight)
+        self.tree.setWordWrap(False)
         self.tree.setStyleSheet(
-            f"QTreeWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; font-family:{UI}; font-size:10pt; }}"
+            f"QTreeWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; font-family:{UI}; font-size:9pt; }}"
             f"QTreeWidget::item {{ padding:6px 2px; }}"                        # 行高与 Trace/闭环表齐(质检: 46.5px vs 60px)
             f"QTreeWidget::item:selected {{ background:{C_SEL}; }}"
             f"QHeaderView::section {{ background:{C_CARD}; color:{C_HEAD}; border:none; padding:4px; }}")
         self.tree.setUniformRowHeights(True)
-        self.tree.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)   # 列头左对齐=与内容同列
         self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
         h = self.tree.header()
-        h.setSectionResizeMode(0, QHeaderView.Stretch)
-        for i, w in ((1, 120), (2, 80), (3, 180), (4, 160), (5, 230), (6, 230)):
+        h.setStretchLastSection(False)
+        h.setMinimumSectionSize(40)
+        _fm = self.tree.fontMetrics()
+        # 每列至少放得下表头 (实测过 "Last Value Time[s]" 给 180px 就自己裁掉一半)
+        # 最小值按**表头实测宽**给 (9pt 下 7 列合计 631px ⇒ 640px 宽的 Data 面板正好放得下, 表头永不裁)
+        # 🐛 必须在样式表(polish)之后量, 否则量的是默认字体的宽度 ⇒ 列比表头还窄 (实测 Value/Unit/Bar 又被裁)
+        self.tree.ensurePolished()
+        _fm = self.tree.header().fontMetrics()
+        self._col_min = [max(180, _fm.width(self._cols[0]) + 16)] + \
+                        [_fm.width(self._cols[i]) + 16 for i in range(1, 7)]
+        for i in range(7):
             h.setSectionResizeMode(i, QHeaderView.Interactive)   # 🐛 卡顿真根因: ResizeToContents
-            self.tree.setColumnWidth(i, w)                       #   每秒重建时逐格重算列宽(192DPI 极贵)
+            self.tree.setColumnWidth(i, self._col_min[i])
+        self.tree.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        box.setMinimumWidth(920)          # 7 列 (Name/Value/Unit/帧龄/Bar/Tx/Rx) 的最小可用宽度
         self.tree.itemClicked.connect(self._on_tree_click)
         lay.addWidget(self.tree, 1)
         return box
@@ -668,9 +704,11 @@ class BusView(QWidget):
         if not self.isVisible():
             return
         try:
+            self._fit_columns()      # 每拍都按当前面板宽校正 (树被分栏改宽时不一定有 resizeEvent)
             self._live = _j(LIVE, {}) or {}
             self._loop = {}      # 🗑 闭环页已删, 不再读 loop.json
             if force_tree or self.tree.topLevelItemCount() == 0:
+                self._fit_columns()
                 if not self._busdb:
                     self._busdb = _j(BUSDB, {})
                 self._fill_tree()
@@ -727,6 +765,64 @@ class BusView(QWidget):
             out[t] = rec.get("t")                       # 全路径 zmax/xxx
             out[str(t).split("/")[-1]] = rec.get("t")   # 🐛 短名 xxx —— live.json 的键是短名(质检: 整列 '—')
         return out
+
+    def _fit_columns(self):
+        """按当前可用宽度分配列宽: 表头/内容不给裁; Name 吃剩余, 富余再分给 Tx/Rx。
+
+        🎯 2026-10-17 (老倪: 列对不上/字显示不全): 面板 < 820px 时 7 列 + 中文节点名**物理上放不下**,
+        与其全挤成省略号, 不如把次要列(Unit / Bar, 更窄时连帧龄)先收起来 —— 宽了就自动回来。
+        数据本身不丢: 隐藏列的语义都在 tooltip 与"详情"面板里。
+        """
+        try:
+            avail = max(320, self.tree.viewport().width() - 2)
+            _hide = {2: avail < 820, 4: avail < 820, 3: avail < 700}
+            for _c, _h in _hide.items():
+                self.tree.setColumnHidden(_c, bool(_h))
+            mins = list(getattr(self, "_col_min", [])) or [240, 90, 60, 90, 120, 160, 170]
+            vis = [i for i in range(7) if not self.tree.isColumnHidden(i)]
+            _sum_vis = sum(mins[i] for i in vis)
+            if _sum_vis < avail:                     # 隐藏列让出的宽度: 一半给 Name(封顶 320), 其余给 Tx/Rx
+                _free = avail - _sum_vis
+                _to0 = min(int(_free * 0.5), max(0, 320 - mins[0]))
+                mins[0] += _to0
+                mins[5] += int((_free - _to0) * 0.5)
+                mins[6] += (_free - _to0) - int((_free - _to0) * 0.5)
+            w = list(mins)
+            spare = avail - sum(mins)
+            if spare > 0:                       # 富余: Name 先加到 380 封顶, 剩下给 Tx/Rx
+                _add0 = min(int(spare * 0.5), max(0, 520 - w[0]))
+                w[0] += _add0
+                _rest = spare - _add0
+                w[5] += int(_rest * 0.5)
+                w[6] += int(_rest * 0.5)
+            for i in range(7):
+                self.tree.setColumnWidth(i, int(w[i]))
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._fit_columns()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        # 树是懒布局的: 显示后再量一次 (否则量到的是"还没分配宽度"的值, 隐藏列/列宽都不生效)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(0, self._fit_columns)
+        QTimer.singleShot(250, self._fit_columns)
+
+    _ALIGN = {0: Qt.AlignLeft | Qt.AlignVCenter, 1: Qt.AlignRight | Qt.AlignVCenter,
+              2: Qt.AlignHCenter | Qt.AlignVCenter, 3: Qt.AlignRight | Qt.AlignVCenter,
+              4: Qt.AlignHCenter | Qt.AlignVCenter, 5: Qt.AlignLeft | Qt.AlignVCenter,
+              6: Qt.AlignLeft | Qt.AlignVCenter}
+
+    def _align_item(self, it, tips=None):
+        """每列对齐规则 + 全文 tooltip (列宽只影响显示, 数据永远看得到)。"""
+        for c in range(self.tree.columnCount()):
+            it.setTextAlignment(c, self._ALIGN.get(c, Qt.AlignLeft | Qt.AlignVCenter))
+            t = it.text(c)
+            if t and t != "—":
+                it.setToolTip(c, (tips or {}).get(c, t))
 
     def _fill_tree(self):
         """CANoe 的 Symbols 树: 报文(话题) → 信号(画布连线, 按层) → 节点(按层)"""
@@ -786,18 +882,22 @@ class BusView(QWidget):
                                    "", "", "", ""])
             lyr.setFont(0, QFont(UI, 10, QFont.Bold))
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
+            self._align_item(lyr)
             root_m.addChild(lyr)
             for key in keys:
                 m = msgs[key] or {}
-                _tx = str(m.get("producer") or "—")
-                if "." in _tx:                       # producer 形如 n_dsvl.out1 → 换成节点名
-                    _pre = _tx.split(".", 1)[0]
-                    _tx = "%s (%s)" % (_names.get(_pre, _pre), _tx.split(".", 1)[1])
-                _rx = ", ".join(_names.get(x, x) for x in (m.get("consumers") or [])) or _rx_by_topic.get(m.get("topic"), "—")
-                it = QTreeWidgetItem([str(m.get("topic", key)), "", "", "", "",
-                                      _tx, _rx])
+                _tx_full = str(m.get("producer") or "—")
+                if "." in _tx_full:                  # producer 形如 n_dsvl.out1 → 换成节点名
+                    _pre = _tx_full.split(".", 1)[0]
+                    _tx_full = "%s · %s" % (_names.get(_pre, _pre), _tx_full.split(".", 1)[1])
+                _rx_full = ", ".join(_names.get(x, x) for x in (m.get("consumers") or [])) or _rx_by_topic.get(m.get("topic"), "—")
+                _tx = ", ".join(short_name(x, 8) for x in _tx_full.split(", "))
+                _rxl = [short_name(x, 8) for x in _rx_full.split(", ") if x and x != "—"]
+                _rx = (_rxl[0] + (" +%d" % (len(_rxl) - 1) if len(_rxl) > 1 else "")) if _rxl else "—"
+                it = QTreeWidgetItem([str(m.get("topic", key)), "—", "—", "—", "—", _tx, _rx])
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
+                self._align_item(it, {5: "Tx 发送节点: %s" % _tx_full, 6: "Rx 接收节点: %s" % _rx_full})
                 _n_sig = m.get("n_signals")
                 it.setToolTip(0, "层 %s · 类型 %s · 设计 %sHz · QoS %s\n信号 %s · 生产者 %s" % (
                     m.get("layer", "—"), m.get("type", "—"),
@@ -823,12 +923,14 @@ class BusView(QWidget):
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
             root_s.addChild(lyr)
             for s in items:
-                name = "%s → %s" % (str(s.get("src_name", s.get("src", "?")))[:30],
-                                    str(s.get("dst_name", s.get("dst", "?")))[:30])
-                it = QTreeWidgetItem(["%s  %s" % (s.get("sid", "?"), name), "", "", "", "",
-                                      str(s.get("src_name") or s.get("src") or "—"),
-                                      str(s.get("dst_name") or s.get("dst") or "—")])
+                name = "%s → %s" % (short_name(s.get("src_name", s.get("src", "?")), 12),
+                                    short_name(s.get("dst_name", s.get("dst", "?")), 12))
+                _sf = str(s.get("src_name") or s.get("src") or "—")
+                _df = str(s.get("dst_name") or s.get("dst") or "—")
+                it = QTreeWidgetItem(["%s  %s" % (s.get("sid", "?"), name), "—", "—", "—", "—",
+                                      short_name(_sf, 10), short_name(_df, 10)])
                 it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
+                self._align_item(it, {5: "Tx 源节点: %s" % _sf, 6: "Rx 目的节点: %s" % _df})
                 it.setToolTip(0, "连线 %s · 端口 %s→%s\n标签 %s\n话题 %s" % (
                     s.get("link_id", "—"), s.get("src_port", "?"), s.get("dst_port", "?"),
                     s.get("label", "—"), s.get("topic", "—")))
@@ -849,13 +951,16 @@ class BusView(QWidget):
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
             root_n.addChild(lyr)
             for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
-                it = QTreeWidgetItem(["%s %s" % (n.get("icon", ""), n.get("name", nid)), "", "", "", "",
+                _nfull = "%s %s" % (n.get("icon", ""), n.get("name", nid))
+                it = QTreeWidgetItem([short_name(_nfull, 12), "—", "—", "—", "—",
                                       "发 %d" % (n.get("tx", 0)), "收 %d" % (n.get("rx", 0))])
                 it.setData(0, Qt.UserRole, ("node", nid))
+                self._align_item(it, {0: _nfull})
                 it.setToolTip(0, "id %s · 类型 %s · 画布坐标 (%s,%s)" % (
                     nid, n.get("type", "—"), n.get("x"), n.get("y")))
                 lyr.addChild(it)
         root_n.setExpanded(False)
+        self._fit_columns()          # 树建完再按当前面板宽收窄/隐藏次要列
         self._apply_find()          # 🔎 树重建后(含「只看活报文」勾选) 立刻重放搜索词, 不让筛选丢
 
     def _update_values(self):
@@ -876,6 +981,10 @@ class BusView(QWidget):
             t = topics.get(key) or {}
             m = ((self._busdb.get("messages") or {}).get(key) or {})
             hz_d = float(m.get("hz_design") or 0) or 0.0
+            it.setTextAlignment(1, self._ALIGN[1])
+            it.setTextAlignment(2, self._ALIGN[2])
+            it.setTextAlignment(3, self._ALIGN[3])
+            it.setTextAlignment(4, self._ALIGN[4])
             if not t:
                 it.setText(1, "—")
                 it.setText(2, "Hz")
@@ -1505,6 +1614,16 @@ class BusView(QWidget):
             self.detail.setToolTip("已复制到剪贴板")
         except Exception:                                                    # noqa: BLE001
             pass
+
+
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F]")
+
+
+def short_name(x, n=12):
+    """节点名压短: 去 emoji / 去括号注释 / 超长截断 —— 列里只放得住这么点字 (全文走 tooltip)。"""
+    t = _EMOJI.sub("", str(x or "")).strip()
+    t = t.split("(")[0].split("（")[0].strip()
+    return t if len(t) <= n else t[: n - 1] + "…"
 
 
 def build_view(main_win=None, standalone=False) -> QWidget:

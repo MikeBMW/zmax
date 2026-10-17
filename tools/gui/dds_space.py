@@ -376,7 +376,13 @@ def build_widget(parent=None, into_tabs=None):
                                                  "Tx 发送节点", "Rx 接收节点",
                                                  "信号 (名 · 单位 · 量程)"])
             self.t_ms.setFont(MONO)
-            self.t_ms.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+            # 🎯 2026-10-17 老倪「这些列要对齐, 字显示不全, 太乱」—— 固定可拖列宽 + 右侧省略 + 每格全文 tooltip
+            _mh = self.t_ms.horizontalHeader()
+            for _i, _w in ((0, 56), (1, 300), (2, 78), (3, 168), (4, 220), (5, 220)):
+                _mh.setSectionResizeMode(_i, QHeaderView.Interactive)
+                self.t_ms.setColumnWidth(_i, _w)
+            _mh.setSectionResizeMode(6, QHeaderView.Stretch)
+            self.t_ms.setTextElideMode(Qt.ElideRight)
             self.t_ms.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ms.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.tabs.addTab(self.t_ms, "📨 报文 / 信号")
@@ -477,6 +483,8 @@ def build_widget(parent=None, into_tabs=None):
                          str(m["qos"]), m.get("tx") or "—", m.get("rx") or "—", sigs]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
+                    it.setToolTip(t)                       # 列宽只影响显示, 全文永远看得到
+                    it.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                     if c == 0:
                         it.setForeground(QColor("#d2a8ff" if (m.get("layer") or "meta") != "meta" else DIM))
                     self.t_ms.setItem(i, c, it)
