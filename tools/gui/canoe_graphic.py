@@ -440,7 +440,11 @@ class HostJsonSource(threading.Thread):
     def stop(self):
         self._stop.set()
 
-    _PROV = {"sstrace": "zmax/ss_state", "sseng": "zmax/ss_engine", "gravity": "zmax/ss_torque"}
+    # 前缀 → 全局快照话题 (与数据空间 Trace 同一个 live_signals 快照; 全部前缀都走它 ⇒ 同源)
+    _PROV = {"sstrace": "zmax/ss_state", "sseng": "zmax/ss_engine", "gravity": "zmax/ss_torque",
+             "skill": "zmax/ss_skill", "skillphys": "zmax/ss_skill_phys",
+             "pose": "zmax/tcp_pose", "state": "zmax/tcp_state", "safety": "zmax/vl_safety",
+             "yolo": "zmax/yolo_det", "space": "zmax/dataspace_live", "ar": "zmax/ar_aoi"}
 
     def run(self):
         last_mtime = {}
@@ -1872,7 +1876,8 @@ class CanoeGraphicWidget(QWidget):
         # 🧭 2026-10-17 老倪: 「信号名称改成 signal; 当前值改成 value; 输出节点改 Tx; 来源节点改 Rx;
         #   增加 type 列; 增加 Layer 列; 增加中文名称列」⇒ 与数据空间 Trace 用同一套列名/口径
         self.tree.setColumnCount(7)
-        self.tree.setHeaderLabels(["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"])
+        # 📈 2026-10-17 老倪: 「每个信号，我都要在信号分析看到变化率」⇒ Value 后面加 Rate (单位/秒)
+        self.tree.setHeaderLabels(["Name", "Layer", "Signal", "Value", "Rate", "Type", "Tx", "Rx"])
         self.tree.setRootIsDecorated(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -1894,7 +1899,7 @@ class CanoeGraphicWidget(QWidget):
         # 🎚 2026-10-17 老倪: 「信号分析的列表头, 增加一个过滤功能, 例如 Layer 可以只选 L2;
         #    Type 可以只显示某一个 type 的 topic」⇒ **点列头**弹该列取值菜单 (带条数), 单选过滤,
         #    列头显示 "Layer ▾ L2"; 再点一次选「全部」即取消。
-        self._col_base_hdr = ["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"]
+        self._col_base_hdr = ["Name", "Layer", "Signal", "Value", "Rate", "Type", "Tx", "Rx"]
         self._col_filters = {}
         _h = self.tree.header()
         _h.setSectionsClickable(True)
@@ -2957,12 +2962,10 @@ class CanoeGraphicWidget(QWidget):
             #   映射, ASCII 键 (sseng.chunk.H) 被原样留下 ⇒ 面板 "sseng.chunk.H" / Trace "chunk.H"。
             #   口径改为: 先按去掉数据源前缀的字段名映射 (与 Trace 完全同一次调用), 只有映射不出/留中文
             #   时才退回带前缀的整键 (ar.* / skill.* 那种段名规则)。
-            _sig_txt = _sen.en_of(_field)
-            if _re2.search(r"[^\x00-\x7f]", _sig_txt):
-                _sig_txt = _sen.en_of(b.key)
+            _sig_txt = _sen.en_of_key(b.key.split(".", 1)[0] if "." in b.key else "", _field)
         except Exception:                                                  # noqa: BLE001
             _sig_txt = str(b.key)
-        it = QTreeWidgetItem([name, self._sig_layer(b.key), _sig_txt, "-", self._sig_type(b.key),
+        it = QTreeWidgetItem([name, self._sig_layer(b.key), _sig_txt, "-", "-", self._sig_type(b.key),
                               self._out_node(b.key), self._src_hint(b.key)])
         it.setToolTip(0, f"{b.key}\n中文名 {name}\nTx {self._out_node(b.key)}\n"
                          f"Rx {self._src_hint(b.key)} · 来源 {b.src} · 点数 {b.n}")
@@ -3034,7 +3037,7 @@ class CanoeGraphicWidget(QWidget):
             _saved = {}
             try:
                 from PyQt5.QtCore import QSettings
-                _raw = QSettings("zmax", "canoe").value("sig/tree_cols_v2", "")   # v2 = 列序改了, 老宽度作废
+                _raw = QSettings("zmax", "canoe").value("sig/tree_cols_v3", "")   # v2 = 列序改了, 老宽度作废
                 if _raw:
                     _saved = {int(a): int(b) for a, b in
                               (x.split(":") for x in str(_raw).split(",") if ":" in x)}
@@ -3056,7 +3059,7 @@ class CanoeGraphicWidget(QWidget):
         try:
             from PyQt5.QtCore import QSettings
             cur = ",".join("%d:%d" % (i, self.tree.columnWidth(i)) for i in range(7))
-            QSettings("zmax", "canoe").setValue("sig/tree_cols_v2", cur)
+            QSettings("zmax", "canoe").setValue("sig/tree_cols_v3", cur)
         except Exception:                                                      # noqa: BLE001
             pass
 
@@ -3768,6 +3771,17 @@ class CanoeGraphicWidget(QWidget):
             _sc = self._unit_scale(key)
             _v = v * _sc
             _txt = f"{_v:.4g}" if abs(_v) < 1e5 else f"{_v:.3g}"  # 紧凑: 1.79e+09 不再撑列
+            # 📈 变化率 = 末两点差分 / 时间差 (按显示单位, 每秒): 老倪「每个信号都要看到变化率」
+            _rtxt = "-"
+            try:
+                if b.n >= 2:
+                    _tarr, _varr = b.arrays()
+                    _dt = float(_tarr[b.n - 1] - _tarr[b.n - 2])
+                    if _dt > 1e-6:
+                        _rv = (float(_varr[b.n - 1]) - float(_varr[b.n - 2])) * _sc / _dt
+                        _rtxt = (f"{_rv:+.4g}" if abs(_rv) < 1e5 else f"{_rv:+.3g}")
+            except Exception:                                         # noqa: BLE001
+                _rtxt = "-"
             # 列2 = 输出节点 (静态, 建行时写好) —— 这里**不再**覆盖, 帧龄挪进 tooltip (老倪 2026-10-15)
             _age = "-" if b.age < 0 else f"{b.age:.2f}s"
             try:                                    # Min/Max + 帧龄 收进 tooltip, 不再占列宽
@@ -3783,13 +3797,15 @@ class CanoeGraphicWidget(QWidget):
             except Exception:
                 _tt = None
             _ck = (id(it), key)               # 🐛 同一 key 在多个场景组各有一行 ⇒ 缓存不能只按 key,
-            if _cache.get(_ck) == (_txt, _tt):  #    否则第一行写完后, 第二行永远停在 "-" (实测)
+            if _cache.get(_ck) == (_txt, _tt, _rtxt):  # 否则第一行写完后, 第二行永远停在 "-" (实测)
                 continue                          # 🚀 这一行没变 ⇒ 一次 Qt 写入都不做
-            if it.text(3) != _txt:            # 列序: Name|Layer|Signal|Value ⇒ Value = 3
+            if it.text(3) != _txt:            # 列序: Name|Layer|Signal|Value|Rate ⇒ Value=3 / Rate=4
                 it.setText(3, _txt)
+            if it.text(4) != _rtxt:
+                it.setText(4, _rtxt)
             if _tt is not None:
                 it.setToolTip(0, _tt)
-            _cache[_ck] = (_txt, _tt)
+            _cache[_ck] = (_txt, _tt, _rtxt)
 
     def _log(self, msg):
         line = f"[{time.strftime('%H:%M:%S')}] {msg}"

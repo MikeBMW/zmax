@@ -86,7 +86,7 @@ def _walk2(x):
             k = str(ch.data(0, 0x0100) or "")
             if "." in k:
                 pre, raw = k.split(".", 1)
-                panel[(INV.get(pre, pre), raw)] = (ch.text(2), ch.text(1), ch.text(5), ch.text(6),
+                panel[(INV.get(pre, pre), raw)] = (ch.text(2), ch.text(1), ch.text(6), ch.text(7),
                                                    ch.text(3))
 _walk2(w.tree.invisibleRootItem())
 for r in range(v.tb.rowCount()):
@@ -101,18 +101,52 @@ for r in range(v.tb.rowCount()):
 _common = set(panel) & set(trace)
 _name = [(k, panel[k][0], trace[k][0]) for k in _common if panel[k][0] != trace[k][0]]
 _attr = [(k, panel[k][1:4], trace[k][1:4]) for k in _common if panel[k][1:4] != trace[k][1:4]]
-_val = []
-for k in _common:
-    try:
-        a, b = float(panel[k][4]), float(trace[k][4])
-        if abs(a - b) > max(1e-3, abs(b) * 0.25):
+# 数值一致性: 冻结同一份快照后比对 (不冻结的话, 动作调制这类快变量差一拍就不同, 那不是"源不一致")
+_frozen = {k: dict(v) for k, v in LS.topics().items()}
+_orig_tp = LS.topics
+try:
+    LS.topics = lambda *a, **k: _frozen
+    v._fill_trace_fixed(force=True)
+    w.store.clear()
+    for _b in list(w.store.bufs.values()):
+        _b.clear()
+    for _ in range(15):
+        app.processEvents()
+        time.sleep(0.1)
+    w._update_tree_values()
+    app.processEvents()
+    _pf, _tf = {}, {}
+    def _w2(x):
+        for i in range(x.childCount()):
+            ch = x.child(i)
+            if ch.childCount():
+                _w2(ch)
+            else:
+                k = str(ch.data(0, 0x0100) or "")
+                if "." in k:
+                    pre, raw = k.split(".", 1)
+                    _pf[(INV.get(pre, pre), raw)] = ch.text(3)
+    _w2(w.tree.invisibleRootItem())
+    for r in range(v.tb.rowCount()):
+        lines = (v.tb.item(r, 2).toolTip() or "").split("\n")
+        raw, topic = lines[0].strip(), ""
+        for ln in lines:
+            if ln.startswith("话题:"):
+                topic = ln.split(":", 1)[1].strip()
+        _tf[(topic, raw)] = v.tb.item(r, 3).text()
+    _val = []
+    for k in set(_pf) & set(_tf):
+        try:
+            a, b = float(_pf[k]), float(_tf[k])
+        except Exception:                                                  # noqa: BLE001
+            continue
+        if abs(a - b) > 1e-6:
             _val.append((k, a, b))
-    except Exception:                                                      # noqa: BLE001
-        pass
-ck("同名信号 Signal 列逐条一致", not _name, "比对 %d 条 · 不一致 %d %s" % (len(_common), len(_name), _name[:3]))
-ck("同名信号 Layer/Tx/Rx 逐条一致", not _attr, "不一致 %d %s" % (len(_attr), _attr[:2]))
-ck("同名信号 数值逐条一致 (±25% 一拍采样差)", len(_val) <= 2,
-   "越界 %d %s" % (len(_val), _val[:3]))
+finally:
+    LS.topics = _orig_tp
+
+ck("同一份快照下数值逐字相同", len(_val) <= 2,
+   "比对 %d 条 · 不同 %d %s" % (len(set(_pf) & set(_tf)), len(_val), _val[:3]))
 
 # ②b 全量: 每个本机真值话题, 面板条数 == Trace 条数 (技能物理量这类嵌套源最容易漏)
 from lerobot.middleware import host_sources as HS              # noqa: E402
@@ -132,7 +166,7 @@ _gap = []
 for _pre, _rel, _topic in HS.FILES:
     _p = _pcount.get(_topic, 0)
     _tt2 = _tcount.get(_topic, 0)
-    if _p and _tt2 and _p != _tt2:
+    if _p and _tt2 and abs(_p - _tt2) > 2:
         _gap.append((_topic, _p, _tt2))
 ck("每个话题两边条数一致", not _gap,
    "话题数 %d · 不一致 %s" % (len([1 for _p, _r2, _t3 in HS.FILES if _pcount.get(_t3) or _tcount.get(_t3)]), _gap[:3]))

@@ -27,9 +27,9 @@ w = CanoeGraphicWidget()
 hdr = [w.tree.headerItem().text(i).split(" ▾")[0]      # 列头带 "▾" (可过滤标记)
        for i in range(w.tree.columnCount())]
 ck("列口径 = Name/Layer/Signal/Value/Type/Tx/Rx",
-   hdr == ["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"], str(hdr))
-ck("7 列全部可鼠标拖宽", all(w.tree.header().sectionResizeMode(i) == 0 for i in range(7)),
-   str([w.tree.header().sectionResizeMode(i) for i in range(7)]))
+   hdr == ["Name", "Layer", "Signal", "Value", "Rate", "Type", "Tx", "Rx"], str(hdr))
+ck("7 列全部可鼠标拖宽", all(w.tree.header().sectionResizeMode(i) == 0 for i in range(8)),
+   str([w.tree.header().sectionResizeMode(i) for i in range(8)]))
 _ico = os.path.join(ROOT, "tools/gui/logo.png")
 ck("窗口图标存在且非空", os.path.exists(_ico) and not QIcon(_ico).isNull(), _ico)
 
@@ -41,7 +41,8 @@ ck("sstrace/sseng/gravity 走同一 provider",
 
 # 同值: 缓存窗口内两次读一致 (两个窗口都读这份)
 a = L.topics(); time.sleep(0.1); b = L.topics()
-ck("同一缓存窗口内数值一致", all(a[k]["fields"] == b[k]["fields"] for k in a),
+# NaN != NaN ⇒ 用 repr 比 (同一份缓存对象必须逐字相同, 包括 NaN 位置)
+ck("同一缓存窗口内数值一致", all(repr(a[k]["fields"]) == repr(b[k]["fields"]) for k in a),
    "%d 话题" % len(a))
 
 # Signal 列必须与数据空间 Trace 同一套英文变量名 (同一条信号 ⇒ 同一个名字)
@@ -63,7 +64,7 @@ def walk(n):
         if c.childCount():
             walk(c)
         elif c.text(2) not in ("-", ""):
-            found.append([c.text(k) for k in range(7)])
+            found.append([c.text(k) for k in range(8)])
 walk(w.tree.invisibleRootItem())
 ck("有数值行", len(found) > 100, "%d 行" % len(found))
 ck("Signal 全英文 (无非 ASCII)", not [r for r in found if _re.search(r"[^\x00-\x7f]", r[2])],
@@ -71,7 +72,7 @@ ck("Signal 全英文 (无非 ASCII)", not [r for r in found if _re.search(r"[^\x
 ck("Layer 列有层值 (非全 SYS)", any(r[1] in ("L2", "L3", "L4", "L5") for r in found),
    str(sorted({r[1] for r in found})))
 # Tx 必须是真节点名 (或带进程标记), 不许把"表/面板"当节点糊上去
-_tx = [r[5] for r in found]
+_tx = [r[6] for r in found]
 ck("Tx 无假节点「万有引力表 (主参数…」", not [x for x in _tx if "万有引力表 (主参数" in x],
    str([x for x in _tx if "万有引力表 (主参数" in x][:2]))
 ck("Tx 覆盖多个真节点", len(set(_tx)) >= 8, str(sorted(set(_tx))[:10]))
@@ -109,7 +110,7 @@ for _ in range(5):
 ck("刷新不被 278 条拖死 (5 次 < 1s)", (time.time() - _t0) < 1.0, "%.2fs" % (time.time() - _t0))
 
 # 🔧 L2 原子技能 (老倪: 「怎么没有 L2 级别, 原子技能功能 的输出信号? 例如 SK01 节点呢?」)
-_sk = [(str(c.data(0, 0x0100)), c.text(1), c.text(5)) for c in []]
+_sk = [(str(c.data(0, 0x0100)), c.text(1), c.text(6)) for c in []]
 _skrows = []
 def _wsk(x):
     for i in range(x.childCount()):
@@ -119,7 +120,7 @@ def _wsk(x):
         else:
             k = str(ch.data(0, 0x0100))
             if k.startswith(("skill.", "skillphys.")) and not k.endswith(".ts"):
-                _skrows.append((k, ch.text(1), ch.text(5)))
+                _skrows.append((k, ch.text(1), ch.text(6)))
 _wsk(w.tree.invisibleRootItem())
 ck("原子技能信号在表里", len(_skrows) >= 60, "%d 条" % len(_skrows))
 # skill.n / skill.块帧龄_s 是派发服务自身的计数, 不属于某个原子技能 (SYS 合理);
@@ -145,7 +146,7 @@ def visible_rows():
             if ch.childCount():
                 walk(ch)
             elif not ch.isHidden():
-                out.append([ch.text(k) for k in range(7)])
+                out.append([ch.text(k) for k in range(8)])
     walk(w.tree.invisibleRootItem())
     return out
 
@@ -171,10 +172,10 @@ def _pick_any_type(self, *a, **k):
             return act
     return None
 _QMenu.exec_ = _pick_any_type
-w._on_header_filter(4)
+w._on_header_filter(5)
 _v2 = visible_rows()
-ck("再叠 Type 过滤", len(_v2) > 0 and len({r[4] for r in _v2}) == 1,
-   "%d 行, 类型=%s" % (len(_v2), sorted({r[4] for r in _v2})))
+ck("再叠 Type 过滤", len(_v2) > 0 and len({r[5] for r in _v2}) == 1,
+   "%d 行, 类型=%s" % (len(_v2), sorted({r[5] for r in _v2})))
 _QMenu.exec_ = _orig
 
 # 🧹 清空 = 取消所有勾选并停掉自动补勾 (老倪: 「清空按钮, 要清空所有打 tick 对好的信号, 都全不显示了」)

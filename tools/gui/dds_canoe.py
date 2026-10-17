@@ -167,17 +167,10 @@ def _rel(t0, t):
 
 
 def _en_name(topic, field):
-    """与「信号分析」完全同一算法: 先映射字段名, 还留中文就退回「前缀.字段」。"""
+    """与「信号分析」完全同一个取名函数 (middleware.signal_en.en_of_key)。"""
     try:
         from lerobot.middleware import attribution as _A2
-        out = _signal_en.en_of(field, topic)
-        if any(ord(c) > 127 for c in str(out)):
-            pre = _A2.LIVE_PREFIX.get(str(topic))
-            if pre:
-                out2 = _signal_en.en_of("%s.%s" % (pre, field), topic)
-                if not any(ord(c) > 127 for c in str(out2)):
-                    return out2
-        return out
+        return _signal_en.en_of_key(_A2.LIVE_PREFIX.get(str(topic), ""), field)
     except Exception:                                                   # noqa: BLE001
         return _signal_en.en_of(field, topic)
 
@@ -1899,6 +1892,19 @@ class BusView(QWidget):
             for a in _quality.scan_frames(frames):
                 alerts.append((a.get("level", "warn"), a.get("object", "—"),
                                "%s: %s" % (a.get("rule", "rule"), a.get("msg", ""))))
+        except Exception:                                                    # noqa: BLE001
+            pass
+        # ③ 3D 场景 ↔ 原子技能位姿一致性 (老倪 2026-10-17: 「每个信号如果与 3D 动画不符合,
+        #    都要在全局数据空间 QoS 报警」) —— 判据在 middleware/pose_check.py, 可单测。
+        try:
+            from lerobot.middleware import pose_check as _pc
+            _ss = os.path.join(os.path.dirname(DS_DIR), "ss_live")
+            with open(os.path.join(_ss, "trace_live.json"), encoding="utf-8") as _f:
+                _tl = json.load(_f)
+            with open(os.path.join(_ss, "skill_phys.json"), encoding="utf-8") as _f:
+                _sp = json.load(_f)
+            for _lv, _ob, _msg in _pc.check(_tl, _sp, tol_mm=5.0):
+                alerts.append((_lv, _ob, _msg))
         except Exception:                                                    # noqa: BLE001
             pass
         seen, uniq = set(), []

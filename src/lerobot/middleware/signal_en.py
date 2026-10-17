@@ -64,6 +64,11 @@ FIELD_EN = {
     "chunk.首个动作_mps": "chunk.first_action_mps",
     "chunk.块耗时_ms": "chunk.build_ms",
     # ── 技能派发 ──
+    "skill.接近.最新_mps": "skill.approach_latest_mps",
+    "skill.对位.最新_mps": "skill.align_latest_mps",
+    "skill.下降.最新_mps": "skill.descend_latest_mps",
+    "skill.抓取.最新_mps": "skill.grasp_latest_mps",
+    "skill.抬起.最新_mps": "skill.lift_latest_mps",
     "skill.转移.最新_mps": "skill.transfer_latest_mps",
     "skill.插入.最新_mps": "skill.insert_latest_mps",
     "skill.完成.最新_mps": "skill.finish_latest_mps",
@@ -224,3 +229,28 @@ def is_meta(name):
     if k.endswith(".json") or k.endswith(".jsonl") or k.endswith(".py"):
         return True
     return False
+
+
+def en_of_key(prefix, field):
+    """数据源前缀 + 字段名 → 界面 Signal 列的**唯一**名字 (两个窗口都调它)。
+
+    规则: 先按字段名映射; 还留非 ASCII 就退回 "前缀.字段" 的整键映射; 两个都不是纯 ASCII
+    ⇒ 用字段名本身 (不带前缀, 保证两边逐字相同)。
+    """
+    def _ascii(x):
+        return bool(x) and all(ord(c) < 128 for c in str(x))
+
+    cands = []
+    try:
+        cands.append(en_of(field, ""))
+    except Exception:                                                     # noqa: BLE001
+        pass
+    if prefix:
+        try:
+            cands.append(en_of("%s.%s" % (prefix, field), ""))
+        except Exception:                                                 # noqa: BLE001
+            pass
+    for c in cands:
+        if _ascii(c):
+            return c
+    return cands[0] if cands else str(field)

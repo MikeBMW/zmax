@@ -43,6 +43,7 @@ _SKILL_FIELDS = (
     ("jerk_max", "jerk_max 加加速度上限 m/s³"),
     ("s_step", "s_step 单拍位移上限 m"), ("s_max", "s_max 段行程上限 m"),
     ("m_kg", "m 运动质量 kg"), ("f_max", "F_max 力上限 N"),
+    ("a", "a 姿态角 rx deg"), ("b", "b 姿态角 ry deg"), ("c", "c 姿态角 rz deg"),
     ("在职", "在职 1=在0=不在"), ("step", "step 块内拍号"), ("pose_age_s", "位姿帧龄 s"),
 )
 

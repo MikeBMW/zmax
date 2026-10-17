@@ -79,8 +79,11 @@ def _read_scene_pose():
     if _SCENE_PREV["t"] is not None and tsec == _SCENE_PREV["t"] and age > 0.5:
         return None                        # 场景时钟不走了 ⇒ 冻结快照, 不能当现位姿
     _SCENE_PREV["t"] = tsec
+    # ⚠️ 3D 场景出口只有位置 (ss_dreamview 3757 行: 姿态不在这条出口) ⇒ a/b/c 不下发假值, 记 -1,
+    #   由质量告警标「姿态不可观测 (源停更)」; 真姿态要等 tap/Orin tcp_pose 恢复。
     out = {"x": round(float(ex) * 1000.0, 3), "y": round(float(ey) * 1000.0, 3),
            "z": round(float(ez) * 1000.0, 3), "angle": -1.0,
+           "a": -1.0, "b": -1.0, "c": -1.0,
            "pose_age_s": round(age, 3), "src": "trace_live(3D 场景真值·m→mm)"}
     _LAST_POSE.update(v=dict(out), wall=time.time())
     return out
@@ -128,13 +131,24 @@ def _read_pose():
         return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": age, "stale": 1}
     tcp = [float(v) for v in (d.get("tcp") or [])]
     q = [float(v) for v in (d.get("tcp_quat") or [])]
+    _rpy = d.get("tcp_rpy") or d.get("rpy") or []
     ang = -1.0
     if len(q) >= 4:
         import math as _m
         w = max(-1.0, min(1.0, abs(q[3])))
         ang = round(2.0 * _m.degrees(_m.acos(w)), 3)
+    import math as _m2
+    _a = _b = _c = -1.0
+    if len(_rpy) >= 3:                       # tap 直接给欧拉角 (deg)
+        _a, _b, _c = (float(_rpy[0]), float(_rpy[1]), float(_rpy[2]))
+    elif len(q) >= 4:                        # 四元数 → ZYX 欧拉角 (deg)
+        _w, _x, _y, _z = (float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+        _a = _m2.degrees(_m2.atan2(2 * (_w * _x + _y * _z), 1 - 2 * (_x * _x + _y * _y)))
+        _b = _m2.degrees(_m2.asin(max(-1.0, min(1.0, 2 * (_w * _y - _z * _x)))))
+        _c = _m2.degrees(_m2.atan2(2 * (_w * _z + _x * _y), 1 - 2 * (_y * _y + _z * _z)))
     return {"x": (tcp[0] if len(tcp) > 0 else -1.0), "y": (tcp[1] if len(tcp) > 1 else -1.0),
-            "z": (tcp[2] if len(tcp) > 2 else -1.0), "angle": ang, "pose_age_s": round(age, 3)}
+            "z": (tcp[2] if len(tcp) > 2 else -1.0), "angle": ang,
+            "a": _a, "b": _b, "c": _c, "pose_age_s": round(age, 3)}
 
 
 def _atomic_json(path, obj):
@@ -321,6 +335,9 @@ class Dispatcher:
                 "z": (_pose["z"] if _pv else -1.0),
                 "angle": (_pose["angle"] if (_pv and _pose.get("angle", -1.0) != -1.0) else -1.0),
                 "pose_age_s": _pose["pose_age_s"],
+                "a": (_pose.get("a", -1.0) if _pv else -1.0),
+                "b": (_pose.get("b", -1.0) if _pv else -1.0),
+                "c": (_pose.get("c", -1.0) if _pv else -1.0),
                 "pose_src": _pose.get("src") or "tap(state_*.jsonl)",   # 位姿出处: 可审计, 不混用
                 "v_mms": (float(np.linalg.norm(np.asarray(_v["action"], float)[:3])) * 1000.0
                           if _v else -1.0),                                    # 速度 mm/s (不四舍五入: 界面负责显示)
