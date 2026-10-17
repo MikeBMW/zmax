@@ -67,7 +67,7 @@ def walk(x):
             walk(ch)
         else:
             raw = str(ch.data(0, 0x0100) or "")
-            if raw and not raw.endswith(".ts"):
+            if raw and not raw.endswith(".ts") and ch.text(1) != "SYS":
                 panel.setdefault(raw, set()).add((ch.text(1), ch.text(5), ch.text(6)))
 walk(w.tree.invisibleRootItem())
 

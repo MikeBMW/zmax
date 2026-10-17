@@ -109,6 +109,29 @@ def topics():
                       "src_file_ts": got["ts"], "source": src,
                       "producer": "", "enabled": True,
                       "layer": "SYS"}
+    # 🧩 2026-10-17 老倪: 「信号分析里 L2 信号 Tx 是 ① 接近 · SK01 有十多个, Trace 里 L2 Tx 接近就没有」
+    #   根因: 数据空间只看这 3 路实时快照, 技能物理量/技能派发/位姿/状态/安全/YOLO/数据空间这些
+    #   本机真值文件根本没进来。这里把 host_sources.FILES 里其余文件一并并进来 (同一份读法),
+    #   两个窗口的话题/字段集合从此一致。
+    try:
+        from lerobot.middleware import host_sources as _hs
+        for topic, rec in _hs.topics().items():
+            if topic in out:
+                continue                              # 前三路由上面的实时快照负责 (帧龄更准)
+            typ = ""
+            try:
+                from lerobot.middleware import topic_types as _tt
+                typ = _tt.type_of_topic(topic) or ""
+            except Exception:                                           # noqa: BLE001
+                typ = ""
+            out[topic] = {"topic": topic, "type": typ, "qos": "state",
+                          "ts": time.time() - float(rec.get("age_s") or 0.0),
+                          "src_ts": rec.get("ts"), "hz": None, "hz_design": None, "count": 0,
+                          "age_s": rec.get("age_s"), "fields": rec["fields"],
+                          "src_file_ts": rec.get("ts"), "source": rec.get("prefix"),
+                          "producer": "", "enabled": True, "layer": "SYS"}
+    except Exception:                                                   # noqa: BLE001
+        pass
     _CACHE.update(t=now, data=out)
     return out
 

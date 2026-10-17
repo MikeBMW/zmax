@@ -56,6 +56,8 @@ for r in range(v.tb.rowCount()):
     raw = (v.tb.item(r, 2).toolTip() or "").split("\n")[0].strip()
     if META_RE.search(raw or ""):
         _trace_meta.append(raw)
+_sys = sum(1 for _r in range(v.tb.rowCount()) if str(v.tb.item(_r, 1).text()).upper() == "SYS")
+ck("Trace 不再有 SYS 层", _sys == 0, "%d 行" % _sys)
 ck("Trace Signal 列没有 ts/topic/json 这类名字", not _trace_meta,
    "残留 %d %s" % (len(_trace_meta), _trace_meta[:5]))
 
@@ -111,6 +113,39 @@ ck("同名信号 Signal 列逐条一致", not _name, "比对 %d 条 · 不一致
 ck("同名信号 Layer/Tx/Rx 逐条一致", not _attr, "不一致 %d %s" % (len(_attr), _attr[:2]))
 ck("同名信号 数值逐条一致 (±25% 一拍采样差)", len(_val) <= 2,
    "越界 %d %s" % (len(_val), _val[:3]))
+
+# ②b 全量: 每个本机真值话题, 面板条数 == Trace 条数 (技能物理量这类嵌套源最容易漏)
+from lerobot.middleware import host_sources as HS              # noqa: E402
+_pcount = {}
+for (_t, _raw), _v in panel.items():
+    if str(_v[1] or "").upper() == "SYS":
+        continue                      # Trace 侧已按老倪要求删掉 SYS 层, 比条数时对齐口径
+    _pcount[_t] = _pcount.get(_t, 0) + 1
+_tcount = {}
+for _r in range(v.tb.rowCount()):
+    _lines = (v.tb.item(_r, 2).toolTip() or "").split("\n")
+    for _ln in _lines:
+        if _ln.startswith("话题:"):
+            _tp2 = _ln.split(":", 1)[1].strip()
+            _tcount[_tp2] = _tcount.get(_tp2, 0) + 1
+_gap = []
+for _pre, _rel, _topic in HS.FILES:
+    _p = _pcount.get(_topic, 0)
+    _tt2 = _tcount.get(_topic, 0)
+    if _p and _tt2 and _p != _tt2:
+        _gap.append((_topic, _p, _tt2))
+ck("每个话题两边条数一致", not _gap,
+   "话题数 %d · 不一致 %s" % (len([1 for _p, _r2, _t3 in HS.FILES if _pcount.get(_t3) or _tcount.get(_t3)]), _gap[:3]))
+_sk_p = _pcount.get("zmax/ss_skill_phys", 0)
+_sk_t = _tcount.get("zmax/ss_skill_phys", 0)
+ck("原子技能物理量两边都有 (SK01~08 × 物理量)", _sk_p >= 100 and _sk_p == _sk_t,
+   "面板 %d / Trace %d" % (_sk_p, _sk_t))
+_sk01 = []
+for _r in range(v.tb.rowCount()):
+    if v.tb.item(_r, 7).text() == "① 接近 · SK01" and v.tb.item(_r, 1).text() == "L2":
+        _sk01.append(v.tb.item(_r, 2).text())
+ck("Trace 里 L2 + Tx「① 接近 · SK01」的行在", len(_sk01) >= 10,
+   "%d 行 %s" % (len(_sk01), _sk01[:4]))
 
 # ③ 单源证明: 把 live_signals.topics() 换成哨兵值后, 两个窗口必须跟着变成同一个新值
 def _read_trace(field):

@@ -166,6 +166,22 @@ def _rel(t0, t):
         return "—"
 
 
+def _en_name(topic, field):
+    """与「信号分析」完全同一算法: 先映射字段名, 还留中文就退回「前缀.字段」。"""
+    try:
+        from lerobot.middleware import attribution as _A2
+        out = _signal_en.en_of(field, topic)
+        if any(ord(c) > 127 for c in str(out)):
+            pre = _A2.LIVE_PREFIX.get(str(topic))
+            if pre:
+                out2 = _signal_en.en_of("%s.%s" % (pre, field), topic)
+                if not any(ord(c) > 127 for c in str(out2)):
+                    return out2
+        return out
+    except Exception:                                                   # noqa: BLE001
+        return _signal_en.en_of(field, topic)
+
+
 def _f3(v):
     """纯数值格式化 — **不能**用 _num(): 那个把负值当"缺测"返回 '—',
     会吃掉 -0.233 这种完全正常的坐标/tcp_path 数值。
@@ -1559,7 +1575,7 @@ class BusView(QWidget):
                         unit = _attrib.display_unit(_ak, unit)
                         _inferred = False
                     rows.append(dict(base, name=_cn_names.cn_of_signal(sn, nm),
-                                     signal=_signal_en.en_of(sn, nm), raw=sn,
+                                     signal=_en_name(nm, sn), raw=sn,
                                      cn=_cn_names.cn_of_signal(sn, nm), value=_vtxt, vraw=float(sv),
                                      layer=(_attrib.layer_of(_ak) if _ak else base["layer"]),
                                      tx=(_attrib.tx_of(_ak) if _ak else base["tx"]),
@@ -1580,7 +1596,7 @@ class BusView(QWidget):
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
                     _ak2 = _attrib.key_of(nm, _sn)
                     rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm),
-                                     signal=_signal_en.en_of(_sn, nm), raw=_sn,
+                                     signal=_en_name(nm, _sn), raw=_sn,
                                      cn=_cn_names.cn_of_signal(_sn, nm),
                                      layer=(_attrib.layer_of(_ak2) if _ak2 else base["layer"]),
                                      tx=(_attrib.tx_of(_ak2) if _ak2 else base["tx"]),
@@ -1621,6 +1637,14 @@ class BusView(QWidget):
             return
         self._trace_sig = _sig
         self.tb.setUpdatesEnabled(False)
+        # 🗑 2026-10-17 老倪: 「Trace 的 SYS 层是啥? 没有用, 删掉」
+        #   SYS = 没有画布节点的信号 (派发服务计数/文件元数据/未归属话题) —— 对现场判读没用, 直接不列。
+        _pre_n = len(rows)
+        try:
+            rows = [x for x in rows if str(x.get("layer") or "").upper() != "SYS"]
+        except Exception:                                                     # noqa: BLE001
+            pass
+        self._trace_dropped = _pre_n - len(rows)
         self.tb.setRowCount(len(rows))
         # ♻️ 2026-10-17: 重建时**复用已有 item** (只 setText), 不再每拍 new 2 万个 QTableWidgetItem。
         #   颜色/字体只在首建或状态位 (bad/phys/pin/step) 变化时重设。
@@ -1683,10 +1707,13 @@ class BusView(QWidget):
         try:
             _lv = _livesig.topics() if "_livesig" in dir() else {}
             if _lv:
-                _ages = [float(v.get("age_s") or 0) for v in _lv.values()]
-                _nsig = sum(len(v.get("fields") or {}) for v in _lv.values())
+                _fresh = {k2: v for k2, v in _lv.items() if float(v.get("age_s") or 0) < 60}
+                _ages = [float(v.get("age_s") or 0) for v in _fresh.values()]
+                _nsig = sum(len(v.get("fields") or {}) for v in _fresh.values())
                 self.lb_live.setText("⚡ 实时 %d 话题 · %d 信号 · 帧龄 %.2fs"
-                                     % (len(_lv), _nsig, max(_ages) if _ages else 0))
+                                     % (len(_fresh), _nsig, max(_ages) if _ages else 0)
+                                     + ((" · 另有 %d 个旧文件源 (龄>60s)" % (len(_lv) - len(_fresh)))
+                                        if len(_lv) > len(_fresh) else ""))
                 self.lb_live.setStyleSheet(f"color:{C_GREEN}; background:transparent; border:none;")
             else:
                 self.lb_live.setText("⚡ 实时 0 话题 (live_signals 无数据)")

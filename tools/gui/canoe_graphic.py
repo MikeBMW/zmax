@@ -493,47 +493,18 @@ class HostJsonSource(threading.Thread):
                 # 🥽 AR/AOI 源(ar_aoi_live.json): 它的信号表就在 `s` 里(86 条), 而且 groups 的组名就是信号名
                 #   ⇒ 直接取 s 的键, 不走 flatten。**踩过的坑**: flatten_json 有 48 键上限, 原来 AR 的 86 条
                 #   只进来 48 条(老倪: 「AR场景的信号呢?」), 且键名前缀会多出 "s."(组名对不上, 全掉进"其它信号")。
-                if prefix == "gravity" and isinstance(raw.get("s"), dict):
-                    # 🌍 万有引力表 (主参数 M 页) 的力: 94 条 (8 项×4 层×(力大小·实部) + 行/列/总合力 + 标量)
-                    #   ⚠️ 必须走这条**直取 s 键**的分支 —— flatten_json 封顶 48 键, 实测回落时只有 48 条进
-                    #   目录(判据⑦抓到: "store 48 条"), 页面看着就像"一半的项没有力"(与 AR 源 86 条那次同一个坑)。
-                    #   元数据键 (ts/时间_s/运行/task_id/阶段) 不在 s 里 ⇒ 天然不进目录。
-                    vals = {str(k): float(v) for k, v in raw["s"].items()
-                            if isinstance(v, (int, float)) and not isinstance(v, bool)}
-                elif prefix == "skillphys" and isinstance(raw.get("skills"), dict):
-                    # ⚖ 原子技能物理量: 键 = "<SK号> <阶段> · <物理量> <单位>" ⇒ 一行一条自解释, 目录里搜 "SK01"
-                    #   就是这一个技能的全部物理量。**不走 flatten_json**: 它 48 键封顶(AR 源踩过这个坑),
-                    #   这里是 8 技能 × 17 条 = 136 条, 截断会变成"一部分技能有信号、一部分没有"的静默缺项。
-                    # ⚠️ 键名必须与 skill_phys.json 里的真名一致 (踩过: 照 DDS 消息的字段名去读,
-                    #    结果 v/a/s/err/x/y/z/angle 八个全读空 ⇒ 目录里只剩包络 ⇒ 看着"没有物理量")。
-                    _F = (("x", "x 位置 mm"), ("y", "y 位置 mm"), ("z", "z 位置 mm"),
-                          ("v_mms", "v 速度 mm/s"), ("a_mms2", "a 加速度 mm/s²"), ("s_mm", "s 段行程 mm"),
-                          ("angle", "angle 姿态角 deg"), ("err_mms", "err 削出偏差 mm/s"),
-                          ("v_cap", "v_cap 限速 m/s"), ("a_max", "a_max 加速度上限 m/s²"),
-                          ("jerk_max", "jerk_max 加加速度上限 m/s³"),
-                          ("s_step", "s_step 单拍位移上限 m"), ("s_max", "s_max 段行程上限 m"),
-                          ("m_kg", "m 运动质量 kg"), ("f_max", "F_max 力上限 N"))
-                    vals = {}
-                    for _code, _r in sorted(raw["skills"].items()):
-                        if not str(_code).startswith("SK") or not isinstance(_r, dict):
-                            continue                      # "_元" = 元数据, 不是信号
-                        _tag = "%s %s" % (_code, str(_r.get("stage") or ""))
-                        for _k, _lab in _F:
-                            _v = _r.get(_k)
-                            if isinstance(_v, (int, float)) and not isinstance(_v, bool):
-                                vals["%s · %s" % (_tag, _lab)] = float(_v)
-                        for _k, _lab in (("在职", "在职 1=在0=不在"), ("step", "step 块内拍号"),
-                                         ("pose_age_s", "位姿帧龄 s")):
-                            _v = _r.get(_k)
-                            if isinstance(_v, (int, float)) and not isinstance(_v, bool):
-                                vals["%s · %s" % (_tag, _lab)] = float(_v)
-                elif prefix == "ar" and isinstance(raw.get("s"), dict):
-                    _meta = ("ts", "t", "age", "meta", "groups", "schema")     # 元数据不是信号, 别混进目录
-                    vals = {str(k): v for k, v in raw["s"].items()
-                            if isinstance(v, (int, float)) and not isinstance(v, bool)
-                            and str(k).split(".")[0] not in _meta}
+                # 🧩 2026-10-17: 解析逻辑挪到 middleware/host_sources.py 一份 (数据空间 Trace 也用它),
+                #   两个窗口的字段名/条数从此不可能再漂 (老倪: 「信号要数据同步」)。
+                if _prov_raw is not None:
+                    # 实时快照里已经是扁平 fields (95 条力的表也在其中) ⇒ 不能再按 48 键封顶截断
+                    vals = {k: v for k, v in raw.items()
+                            if isinstance(v, (int, float)) and not isinstance(v, bool) and k != "ts"}
                 else:
-                    vals = flatten_json(raw, "", {}, 0, 48)
+                    try:
+                        from lerobot.middleware import host_sources as _hs
+                        vals = _hs.read(prefix, raw)
+                    except Exception:                                      # noqa: BLE001
+                        vals = flatten_json(raw, "", {}, 0, 48)
                 age = max(0.0, time.time() - st.st_mtime)      # 源侧帧龄 = 文件写龄
                 # 🕒 **横轴 = 3D 回放进度 (场景时刻秒)** —— 老倪 2026-10-15 两次口径合并后的结论:
                 #   · 「时间轴怎么不同步呢? 八阶段序号单独跑, 下面几个信号一起跑」⇒ 各源必须**同一根钟**

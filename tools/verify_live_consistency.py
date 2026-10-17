@@ -23,8 +23,9 @@ for key, (rel, tag, _k) in L.SOURCES.items():
 # ② 实时: 三份文件都在 3s 内更新
 tp = L.topics()
 ck("实时话题 ≥3", len(tp) >= 3, str({k: len(v['fields']) for k, v in tp.items()}))
-ck("帧龄都 <3s", all(v["age_s"] < 3.0 for v in tp.values()),
-   str({k: v["age_s"] for k, v in tp.items()}))
+_fresh_topics = ("zmax/ss_state", "zmax/ss_engine", "zmax/ss_torque")
+_bad = {k: v.get("age_s") for k, v in tp.items() if k in _fresh_topics and float(v.get("age_s") or 0) >= 3}
+ck("三路实时源帧龄 <3s", not _bad, str(_bad))
 
 # ③ 同值: 直接读文件 vs provider, 逐信号相等
 p = os.path.join(L.ROOT, "zmax_data/ss_live/trace_live.json")

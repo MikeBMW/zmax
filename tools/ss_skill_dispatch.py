@@ -43,6 +43,60 @@ DT = 0.1                      # 块内每拍时长 (与回路 10Hz 同口径)
 POSE_STALE_S = float(os.environ.get("ZMAX_SKILL_POSE_STALE_S", "5.0"))   # 位姿停更阈值 (= 发布守护同口径)
 
 
+_SCENE_PREV = {"t": None}
+_LAST_POSE = {"v": None, "wall": 0.0}
+POSE_HOLD_S = 3.0        # 场景快照短暂停更 (3D 暂停/掉一拍) 时沿用上一次真值, 超过就老实回 -1
+
+
+def _read_scene_pose():
+    """回落位姿: 3D 场景真值 (trace_live.json 末端_x/y/z, m → mm)。
+
+    为什么需要 (老倪 2026-10-17: 「3D 场景光模块都抓起来了、插拔也成功了, 为什么抓取的 x 位置、
+    接近的 x 位置一直不变?」): tap 位姿 state_*.jsonl 已停更 (实测最后一份 10-16 09:11, 30+ 小时),
+    _read_pose 按"不许拿旧位姿当现在"的口径一律填 -1.0 ⇒ 8 个技能的 x/y/z 全是常量 -1。
+    而 3D 面板同一时刻用的是 trace_live.json 的真值末端 (活, 10Hz) —— 用同一份数据回落,
+    界面上"场景里看到的位姿"与"信号分析里的技能位姿"就是同一个数。
+
+    红线: 只在**文件新鲜 + 场景时钟在推进**时才回落; 冻结快照一律不用 (照样返回 None → -1.0)。
+    """
+    import json as _json
+    p = os.path.join(LIVE, "trace_live.json")
+    try:
+        st = os.stat(p)
+        age = time.time() - st.st_mtime
+        if age > 2.0:
+            return None
+        with open(p, encoding="utf-8") as fh:
+            d = _json.load(fh)
+    except Exception:                                                             # noqa: BLE001
+        return None
+    ex, ey, ez = d.get("末端_x"), d.get("末端_y"), d.get("末端_z")
+    if ex is None and isinstance(d.get("末端"), (list, tuple)) and len(d["末端"]) >= 3:
+        ex, ey, ez = d["末端"][0], d["末端"][1], d["末端"][2]
+    if not all(isinstance(v, (int, float)) for v in (ex, ey, ez)):
+        return None
+    tsec = d.get("时间_s")
+    if _SCENE_PREV["t"] is not None and tsec == _SCENE_PREV["t"] and age > 0.5:
+        return None                        # 场景时钟不走了 ⇒ 冻结快照, 不能当现位姿
+    _SCENE_PREV["t"] = tsec
+    out = {"x": round(float(ex) * 1000.0, 3), "y": round(float(ey) * 1000.0, 3),
+           "z": round(float(ez) * 1000.0, 3), "angle": -1.0,
+           "pose_age_s": round(age, 3), "src": "trace_live(3D 场景真值·m→mm)"}
+    _LAST_POSE.update(v=dict(out), wall=time.time())
+    return out
+
+
+def _held_pose():
+    """上一次有效位姿 (≤POSE_HOLD_S) —— 快照停一两拍时不至于把 x 抖成 -1。"""
+    v = _LAST_POSE.get("v")
+    if v and (time.time() - float(_LAST_POSE.get("wall") or 0)) <= POSE_HOLD_S:
+        out = dict(v)
+        out["pose_age_s"] = round(time.time() - float(_LAST_POSE["wall"]) + float(v.get("pose_age_s") or 0), 3)
+        out["src"] = v.get("src", "") + "·保持"
+        return out
+    return None
+
+
 def _read_pose():
     """真机 tap 位姿 (x/y/z mm + 姿态角 deg) —— 尾读最新 state_*.jsonl 的**最后一行** (不整文件读入)。
 
@@ -52,6 +106,9 @@ def _read_pose():
     import glob as _g
     c = _g.glob(os.path.join(LIVE, "state_*.jsonl"))
     if not c:
+        _sc0 = _read_scene_pose() or _held_pose()
+        if _sc0 is not None:
+            return _sc0
         return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": -1.0}
     p = max(c, key=os.path.getmtime)
     age = time.time() - os.path.getmtime(p)
@@ -65,6 +122,9 @@ def _read_pose():
     except Exception:                                                             # noqa: BLE001
         return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": age}
     if age > POSE_STALE_S:
+        _sc = _read_scene_pose() or _held_pose()
+        if _sc is not None:
+            return _sc                     # tap 停更 ⇒ 用 3D 场景同一拍真值 (标注 src)
         return {"x": -1.0, "y": -1.0, "z": -1.0, "angle": -1.0, "pose_age_s": age, "stale": 1}
     tcp = [float(v) for v in (d.get("tcp") or [])]
     q = [float(v) for v in (d.get("tcp_quat") or [])]
@@ -250,12 +310,18 @@ class Dispatcher:
                     if isinstance(_x, (int, float)):
                         return float(_x)
                 return -1.0
+            _pv = isinstance(_pose.get("x"), (int, float)) and float(_pose.get("x")) != -1.0
             _ph["skills"][_code] = {
                 "stage": _st, "在职": 1 if _v else 0,
                 "step": (_v["step"] if _v else -1),
-                "x": (_pose["x"] if _v else -1.0), "y": (_pose["y"] if _v else -1.0),
-                "z": (_pose["z"] if _v else -1.0), "angle": (_pose["angle"] if _v else -1.0),
+                # 位置 = **当前 TCP 真值**, 与"这个技能此刻是否在派发(在职)"无关:
+                # 老倪 2026-10-17「抓取的 x 位置一直不变」—— 原来 在职=0 就填 -1, 8 条里 5 条恒为 -1,
+                # 看着像信号坏了。在职只决定 v/a/s/err 这些**本技能的过程量**有没有值。
+                "x": (_pose["x"] if _pv else -1.0), "y": (_pose["y"] if _pv else -1.0),
+                "z": (_pose["z"] if _pv else -1.0),
+                "angle": (_pose["angle"] if (_pv and _pose.get("angle", -1.0) != -1.0) else -1.0),
                 "pose_age_s": _pose["pose_age_s"],
+                "pose_src": _pose.get("src") or "tap(state_*.jsonl)",   # 位姿出处: 可审计, 不混用
                 "v_mms": (float(np.linalg.norm(np.asarray(_v["action"], float)[:3])) * 1000.0
                           if _v else -1.0),                                    # 速度 mm/s (不四舍五入: 界面负责显示)
                 "a_mms2": (_v["a_mms2"] if _v else -1.0),                      # 加速度 mm/s²

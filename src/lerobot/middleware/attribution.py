@@ -23,7 +23,13 @@ if os.path.join(ROOT, "src") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "src"))
 
 # 三份实时文件 ↔ 话题 (Trace 侧按话题取归属, 信号分析侧按文件前缀取归属)
-LIVE_PREFIX = {"zmax/ss_state": "sstrace", "zmax/ss_engine": "sseng", "zmax/ss_torque": "gravity"}
+LIVE_PREFIX = {
+    "zmax/ss_state": "sstrace", "zmax/ss_engine": "sseng", "zmax/ss_torque": "gravity",
+    # 2026-10-17: 技能物理量/派发/位姿/状态/安全/YOLO/数据空间也进了全局快照 ⇒ 同一套归属规则
+    "zmax/ss_skill": "skill", "zmax/ss_skill_phys": "skillphys",
+    "zmax/tcp_pose": "pose", "zmax/tcp_state": "state", "zmax/vl_safety": "safety",
+    "zmax/yolo_det": "yolo", "zmax/dataspace_live": "space", "zmax/ar_aoi": "ar",
+}
 LIVE_TOPICS = set(LIVE_PREFIX)
 
 # (键前缀, 画布 node_id 或 None, 无节点时的进程名) —— 顺序要紧: 长的/具体的排前面
