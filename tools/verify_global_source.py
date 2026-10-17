@@ -209,10 +209,10 @@ def _f(x):
         return None
 
 
-_pre_t, _pre_p = _f(_read_trace("末端_x")), _f(_read_panel("sstrace.末端_x"))
+_pre_t, _pre_p = _f(_read_trace("接近_mps")), _f(_read_panel("skill.接近_mps"))
 _orig = LS.topics
-_sent = {"zmax/ss_state": {"fields": {"末端_x": -0.5}, "age_s": 0.01, "count": 1,
-                          "type": "zmax::SSState", "qos": "state"}}
+_sent = {"zmax/ss_skill": {"fields": {"接近_mps": -0.5}, "age_s": 0.01, "count": 1,
+                          "type": "zmax::SSSkill", "qos": "beat"}}
 try:
     LS.topics = lambda *a, **k: _sent
     v._fill_trace_fixed(force=True)
@@ -225,11 +225,11 @@ try:
         time.sleep(0.12)
     w._update_tree_values()
     app.processEvents()
-    _t2, _p2 = _f(_read_trace("末端_x")), _f(_read_panel("sstrace.末端_x"))
+    _t2, _p2 = _f(_read_trace("接近_mps")), _f(_read_panel("skill.接近_mps"))
     ck("单源: 换 live_signals 后 Trace 跟着变", _t2 is not None and _pre_t is not None and abs(_t2 - _pre_t) > 1e-9,
-       "Trace 末端_x %s → %s" % (_pre_t, _t2))
+       "Trace 接近_mps %s → %s" % (_pre_t, _t2))
     ck("单源: 换 live_signals 后信号分析跟着变", _p2 is not None and _pre_p is not None and abs(_p2 - _pre_p) > 1e-9,
-       "面板 末端_x %s → %s" % (_pre_p, _p2))
+       "面板 接近_mps %s → %s" % (_pre_p, _p2))
     ck("单源: 两窗口同一拍读到同一个值", _t2 is not None and _t2 == _p2,
        "Trace %s / 面板 %s" % (_t2, _p2))
 finally:

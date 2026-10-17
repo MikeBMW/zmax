@@ -69,7 +69,7 @@ chk("② live_signals 读到的 == 库内容", same_keys and not val_diff and ab
     f"{len(live)} 话题 · 信号 {n_live} vs 库 {n_db} (容差 {tol}) · 值差异 {len(val_diff)} {val_diff[:2]}")
 
 # ③④ 只在库里塞探针 ⇒ 两个窗口都能看到 (再删掉 ⇒ 都消失)
-FIELD, PROBE_V = "末端_x", 0.424242
+FIELD, PROBE_V = "接近_mps", 0.424242
 import signal as _sig                                                            # noqa: E402
 import sqlite3                                                                  # noqa: E402
 
@@ -162,7 +162,7 @@ def panel_val(name):
             for i in range(node.topLevelItemCount()):
                 walk(node.topLevelItem(i))
         else:
-            if str(node.data(0, 0x0100) or "") == "sstrace." + name:   # 面板键是 sstrace.<字段>
+            if str(node.data(0, 0x0100) or "") == "skill." + name:   # 面板键是 sstrace.<字段>
                 found.append(node.text(3) or "")
             for j in range(node.childCount()):
                 walk(node.child(j))
@@ -182,12 +182,15 @@ try:
     LS._CACHE.update(t=0.0, data=None)
     poke()
     tv, pv = trace_val(FIELD), panel_val(FIELD)
-    _near = lambda x: x is not None and abs(x - PROBE_V) < 5e-5     # 表格按 4 位有效数字显示
-    chk("③ 库里改一个既有信号值 ⇒ Trace 立刻显示同一个值",
-        _near(_num(tv)), f"库 {PROBE_V} · Trace {tv!r} · 改到 {rows} 行")
+    # 显示口径会做单位换算 (接近_mps: m/s → mm/s ×1000), 所以判"两边同值 + 相对改前变了"
+    _near = lambda a, b: a is not None and b is not None and abs(a - b) < max(1e-6, abs(b) * 1e-3)
+    chk("③ 库里改一个既有信号值 ⇒ Trace 立刻跟着变 (非空且与库一致到换算)",
+        _num(tv) is not None and abs(_num(tv) - PROBE_V * 1000) < 1.0,
+        f"库 {PROBE_V} m/s · Trace {tv!r} (显示 ×1000 mm/s) · 改到 {rows} 行")
     chk("③ 同一改动 ⇒ 信号分析也显示同一个值",
-        _near(_num(pv)), f"库 {PROBE_V} · 面板 {pv!r}")
-    chk("③ 两边读到的是同一个值", _near(_num(tv)) and _near(_num(pv)),
+        _num(pv) is not None and abs(_num(pv) - PROBE_V * 1000) < 1.0,
+        f"库 {PROBE_V} m/s · 面板 {pv!r}")
+    chk("③ 两边读到的是同一个值", _num(tv) is not None and _num(tv) == _num(pv),
         f"Trace {tv!r} / 面板 {pv!r}")
 finally:
     _stop.set()

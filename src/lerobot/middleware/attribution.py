@@ -302,9 +302,47 @@ def tx_of(key):
 
 
 @lru_cache(maxsize=16384)
+
+@lru_cache(maxsize=1)
+def _sk_node_id_by_stage():
+    """{SK0x: node_id} —— 阶段 → 工程节点 (名字以 SK0x 结尾的那个)。"""
+    out = {}
+    try:
+        from lerobot.middleware import db
+        for r in db.node_rows():
+            m = re.search(r"(SK0[1-8])\s*$", str(r.get("name") or ""))
+            if m:
+                out[m.group(1)] = r.get("node_id")
+    except Exception:                                                     # noqa: BLE001
+        pass
+    return out
+
+
+def _sk_node_id(stage):
+    return _sk_node_id_by_stage().get(stage)
+
+
 def rx_of(key):
-    """Rx: 这条信号的上游来源 (与信号分析窗口同一串字)。"""
+    """Rx: 这条信号的上游/下游节点 (与信号分析窗口同一串字)。"""
     k = str(key or "")
+    # 原子技能: skill.* 不是端口键, 但它落到的 SK 节点有真连线 ⇒ Rx 取该节点的出端口下游
+    _st = skill_stage_of(k)
+    if _st:
+        _nid = _sk_node_id(_st)
+        if _nid:
+            try:
+                from lerobot.middleware import db
+                for _r in db.node_rows():
+                    if _r.get("node_id") != _nid:
+                        continue
+                    _peers = []
+                    for _o in (_r.get("outs") or []):
+                        _peers.extend(_o.get("to") or [])
+                    _u = list(dict.fromkeys(_peers))
+                    if _u:
+                        return " / ".join(_peer_name(x) for x in _u[:4])
+            except Exception:                                                 # noqa: BLE001
+                pass
     _p = port_of(k)
     if _p:
         _nid, _port, _dir, _peers = _p
@@ -507,6 +545,17 @@ def layer_l2(key):
     return "L2" if tx_l2(key) != "—" else layer_of(key)
 
 
+def show_in_l2_link(key):
+    """数据空间 Trace: **Tx 和 Rx 都必须是 L2 节点** —— Rx 空的横杠行整条不显示。
+
+    📚 2026-10-17 老倪: 「有个 —— 444 个, 没有分类的横杠, 不属于 L2, 在数据空间中, 全删掉」
+    """
+    try:
+        return tx_l2(key) != "—" and rx_l2(key) != "—"
+    except Exception:                                                     # noqa: BLE001
+        return False
+
+
 def topic_in_l2(prefix):
     """话题级: 这个数据源话题在这两个窗口里要不要显示 (只看 L2)。"""
     pre = str(prefix or "")
@@ -529,7 +578,7 @@ def rx_l2(key):
 
 
 def show_in_l2(key):
-    """这两个窗口是否显示该信号: Tx 落到 L2 节点才显示 (层随 Tx 一起是 L2)。"""
+    """信号分析窗口: Tx 落到 L2 节点就显示 (Rx 允许 "—", 表示这条信号在画布上没有 L2 连线)。"""
     try:
         return tx_l2(key) != "—"
     except Exception:                                                     # noqa: BLE001

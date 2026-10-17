@@ -117,8 +117,9 @@ chk("③ Layer 全是 L2", not bad_layer, f"{len(bad_layer)} 违规 {bad_layer[:
 chk("④ Topic 都在工程里定义 (mw_topic 或真值流归属节点 L2~L5)", not bad_topic,
     f"{len(bad_topic)} 违规 {bad_topic[:3]}")
 chk("⑤ Tx 全是 L2 节点名", not bad_tx, f"{len(bad_tx)} 违规 {bad_tx[:3]}")
-chk("⑥ Rx 是 L2 节点名或 —", not bad_rx,
-    f"{len(bad_rx)} 违规 {bad_rx[:3]} · 节点 {n_rx_node} / — {n_rx_dash}")
+# 📚 2026-10-17 老倪: 「有个 —— 444 个, 没有分类的横杠, 不属于 L2, 在数据空间中, 全删掉」
+chk("⑥ Rx 全是 L2 节点名 (没有横杠行)", not bad_rx and n_rx_dash == 0,
+    f"{len(bad_rx)} 违规 {bad_rx[:3]} · 节点 {n_rx_node} / 横杠 {n_rx_dash}")
 
 # ⑦ 可视化层/非 L2 节点不许出现在 Tx/Rx (老倪点名的 物理约束 / 前馈直方图)
 _leaked = sorted({(tp, p) for tp, bad in ((b[0], b[1]) for b in bad_tx + bad_rx)

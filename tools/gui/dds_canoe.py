@@ -1590,7 +1590,7 @@ class BusView(QWidget):
                     _pk = (nm, sn)
                     _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
                     _ak = _attrib.key_of(nm, sn)
-                    if _ak and not _attrib.show_in_l2(_ak):      # 只显示 L2 信号
+                    if _ak and not _attrib.show_in_l2_link(_ak):  # Trace: Tx+Rx 都要 L2 (无横杠行)
                         continue
                     _vtxt = _attrib.fmt_value(sv, _ak) if _ak else _f3(float(sv))
                     if _ak:
@@ -1617,7 +1617,7 @@ class BusView(QWidget):
                     _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
                     _ak2 = _attrib.key_of(nm, _sn)
-                    if _ak2 and not _attrib.show_in_l2(_ak2):        # 只显示 L2 信号
+                    if _ak2 and not _attrib.show_in_l2_link(_ak2):    # Trace: Tx+Rx 都要 L2 (无横杠行)
                         continue
                     rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm),
                                      signal=_en_name(nm, _sn), raw=_sn,

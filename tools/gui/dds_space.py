@@ -502,7 +502,11 @@ def build_widget(parent=None, into_tabs=None):
             # 节点表同样只留 L2 (Tx/Rx 只能是 L2 节点)
             nr = [n for n in node_rows() if (n.get("layer") or "") == "L2"]
             nr.sort(key=lambda n: (_lrank(n.get("layer")), str(n["node_id"])))
-            ms = [m for m in message_rows() if (m.get("layer") or "") == "L2"]   # 只留 L2 报文
+            # 📚 2026-10-17 老倪: 「没有分类的横杠不属于 L2, 全删掉」⇒ Tx/Rx 缺一不显示
+            ms = [m for m in message_rows()
+                  if (m.get("layer") or "") == "L2"
+                  and (m.get("tx") or "—") not in ("", "—")
+                  and (m.get("rx") or "—") not in ("", "—")]
             _sig_by_node = {}
             for m in ms:
                 _sig_by_node[m["node_id"]] = _sig_by_node.get(m["node_id"], 0) + m["n_signal"]
