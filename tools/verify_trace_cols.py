@@ -113,15 +113,20 @@ ck("刷新后滚动位置不跳", _sb.value() == _b and v.tb.rowAt(30) == _topb,
 def _vis():
     return sum(0 if v.tb.isRowHidden(r) else 1 for r in range(v.tb.rowCount()))
 _tot = v.tb.rowCount()
+# 📚 2026-10-17 老倪: 这两个窗口只保留 L2 ⇒ 过滤 L4 必须 0 行, 过滤 L2 必须全部命中
 v._tb_filters = {1: "L4"}
 v._apply_col_filters()
 _v4 = _vis()
-ck("表头过滤 Layer=L4", 0 < _v4 < _tot, "%d → %d 行 · 表头 %s"
+ck("表头过滤 Layer=L4 ⇒ 0 行 (窗口只有 L2)", _v4 == 0, "%d → %d 行 · 表头 %s"
    % (_tot, _v4, v.tb.horizontalHeaderItem(1).text()))
-_allsame = all(v.tb.isRowHidden(r) or v.tb.item(r, 1).text() == "L4" for r in range(_tot))
-ck("过滤后只剩 L4", _allsame, "")
+v._tb_filters = {1: "L2"}
+v._apply_col_filters()
+_v2 = _vis()
+ck("表头过滤 Layer=L2 ⇒ 全部行", _v2 == _tot, "%d → %d 行" % (_tot, _v2))
+_allsame = all(v.tb.isRowHidden(r) or v.tb.item(r, 1).text() == "L2" for r in range(_tot))
+ck("过滤后只剩 L2", _allsame, "")
 v._fill_trace_fixed(); app.processEvents()
-ck("刷新后过滤仍生效", _vis() == _v4, "%d 行" % _vis())
+ck("刷新后过滤仍生效 (L2 全命中)", _vis() == _v2, "%d 行" % _vis())
 v._tb_filters.clear(); v._apply_col_filters()
 ck("清除过滤恢复全部", _vis() == _tot, "%d 行" % _vis())
 

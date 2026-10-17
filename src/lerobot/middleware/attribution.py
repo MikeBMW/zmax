@@ -194,7 +194,7 @@ def _nodes_by_name():
         _clean = naming.unique_map([(r.get("node_id"), r.get("name")) for r in _rows])
         for r in _rows:
             nm = str(r.get("name") or "")
-            m = re.search(r"(SK0[1-8])", nm)
+            m = re.search(r"(SK0[1-8])\s*$", nm)      # 只认阶段节点本身, 不认 "(SK01-08)" 这种说明
             if m:
                 lay = str(r.get("layer") or "")
                 out[m.group(1)] = (_clean.get(r.get("node_id")) or nm,
@@ -377,7 +377,9 @@ def _name_layer():
                 continue
             lay = str(r.get("layer") or "")
             # 8 个原子技能节点在工程库里是 meta 容器, 但信号层归 L2 (与 _nodes_by_name 同口径)
-            if lay == "meta" and re.search(r"SK0[1-8]", str(r.get("name") or "")):
+            # 只对"阶段节点"本身 (名字以 SK0x 结尾) 把 meta 归一成 L2;
+            # 「⚖ 物理约束 · 惯性/质量率闸 (SK01-08)」这种**不是**阶段节点, 仍是 meta (可视化/约束层)
+            if lay == "meta" and re.search(r"SK0[1-8]\s*$", str(r.get("name") or "")):
                 lay = "L2"
             out[nm] = lay
         return out
@@ -457,3 +459,78 @@ def key_of(topic, field):
     if not pref:
         return None
     return "%s.%s" % (pref, field)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 📚 2026-10-17 老倪: 「数据空间和信号分析这两个独立窗口…只保留 L2 层的 topic, 删除其它层的
+#   topic; 信号也只能显示 L2 层的信号 (signal 是 topic 的组成单元); Tx Rx 节点只能是 L2 层节点,
+#   其它层都删掉」+「Rx 怎么还有 物理约束呢? 也没有这个节点啊; 前馈直方图是可视化层」。
+#
+#   ⇒ 这两个窗口的**显示口径**在这里收一次口, 面板不各自写判断:
+#     · 行层必须是 L2
+#     · Tx 必须是 L2 节点 (没有 L2 归属的行直接不显示, 不是显示 "—")
+#     · Rx 只保留 L2 节点, 一个都没有就 "—" (meta/可视化层的节点不许出现在 Tx/Rx)
+#   注意: 这只是"这两个窗口"的显示过滤, 工程库/画布本身一行没删。
+# ─────────────────────────────────────────────────────────────────────────────
+
+@lru_cache(maxsize=1)
+def l2_names():
+    """{L2 节点显示名} —— 由工程库 + naming 生成。"""
+    return {nm for nm, lay in _name_layer().items() if lay == "L2"}
+
+
+def names_l2(txt):
+    """把 "A / B / C" 里非 L2 的名字删掉 (其它层都删); 一个不剩 ⇒ "—"。"""
+    keep = [p.strip() for p in str(txt or "").split(" / ") if p.strip() in l2_names()]
+    return " / ".join(keep) if keep else "—"
+
+
+def tx_l2(key):
+    """L2 窗口的 Tx: 只留 L2 节点。
+
+    规则节点不是 L2 (例如 sstrace.末端_* 的规则指向 Z-MAX 引擎 L4) 但该真值流有 L2 属主
+    (自适应状态估计器) 时, 用 L2 属主 —— 这两份数据本来就是喂给 L2 状态估计的。
+    """
+    tx = str(tx_of(key))
+    keep = [p.strip() for p in tx.split(" / ") if p.strip() in l2_names()]
+    if keep:
+        return " / ".join(keep)
+    own = PREFIX_OWNER.get(str(key or "").split(".", 1)[0])
+    if own:
+        nm = _load_nodes().get(own) or ""
+        if nm in l2_names():
+            return nm
+    return "—"
+
+
+def layer_l2(key):
+    """L2 窗口显示的层: 能显示就是 L2, 否则回落到真实层。"""
+    return "L2" if tx_l2(key) != "—" else layer_of(key)
+
+
+def topic_in_l2(prefix):
+    """话题级: 这个数据源话题在这两个窗口里要不要显示 (只看 L2)。"""
+    pre = str(prefix or "")
+    if pre in ("skill", "skillphys"):
+        return True            # 技能话题按阶段落到 8 个 L2 阶段节点 (行级再逐条判)
+    own = PREFIX_OWNER.get(pre, "__none__")
+    if own is None:
+        return False
+    if not own:
+        return False
+    nm = _load_nodes().get(own) or ""
+    return nm in l2_names()
+
+
+def rx_l2(key):
+    """Rx 只留 L2 节点; 没有就 "—" (非 L2 的连线对象不显示)。"""
+    rx = str(rx_of(key))
+    keep = [p.strip() for p in rx.split(" / ") if p.strip() in l2_names()]
+    return " / ".join(keep) if keep else "—"
+
+
+def show_in_l2(key):
+    """这两个窗口是否显示该信号: Tx 落到 L2 节点才显示 (层随 Tx 一起是 L2)。"""
+    try:
+        return tx_l2(key) != "—"
+    except Exception:                                                     # noqa: BLE001
+        return False

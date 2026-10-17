@@ -1263,18 +1263,30 @@ class BusView(QWidget):
         return self._consmap
 
     def _tx_of(self, topic, t):
-        """Tx = 主发送节点的中文短名 (注册表类话题没有节点, 用它自己的中文名)。"""
+        """Tx = 主发送节点, **只留 L2 节点** (老倪 2026-10-17: 这两个窗口只要 L2)。"""
         prod = str((t or {}).get("producer") or "")
         if prod.startswith("ss.node."):
-            return _cn_names.cn_of_node(prod[len("ss.node."):].split(".")[0], prod)
-        if prod and "." in prod and " " not in prod and not prod.startswith("画布"):
-            return _cn_names.cn_of_node(prod.split(".")[0], prod.split(".")[0])
-        return _cn_names.cn_of(topic)
+            _nm = _cn_names.cn_of_node(prod[len("ss.node."):].split(".")[0], prod)
+        elif prod and "." in prod and " " not in prod and not prod.startswith("画布"):
+            _nm = _cn_names.cn_of_node(prod.split(".")[0], prod.split(".")[0])
+        else:
+            _nm = _cn_names.cn_of(topic)
+        try:
+            from lerobot.middleware import attribution as _at4
+            return _at4.names_l2(_nm)
+        except Exception:                                                    # noqa: BLE001
+            return _nm
 
     def _rx_of(self, topic, t):
+        """Rx = 下游节点, **只留 L2** (物理约束/前馈直方图这类可视化、meta 节点不显示)。"""
         cons = (t or {}).get("consumers") or self._cons_map().get(topic) or []
         names = [_cn_names.cn_of_node(str(x), str(x)) for x in cons]
-        return ", ".join(names) if names else "—"
+        txt = " / ".join(names) if names else "—"
+        try:
+            from lerobot.middleware import attribution as _at5
+            return _at5.names_l2(txt)
+        except Exception:                                                    # noqa: BLE001
+            return txt
 
     def _type_of(self, topic, t):
         try:
@@ -1518,6 +1530,11 @@ class BusView(QWidget):
             _scene_t = None
         self._scene_t = _scene_t
         for k, t in items:
+            # 📚 2026-10-17 老倪: 这两个窗口只保留 L2 层的 topic (其它层整块不显示)
+            _tp_key = str(t.get("topic") or k)
+            _tp_ak = _attrib.LIVE_PREFIX.get(_tp_key)
+            if _tp_ak and not _attrib.topic_in_l2(_tp_ak):
+                continue
             f = (t.get("fields") or {}) or self._live_fields(k) or {}
             ts = (f.get("ts") if isinstance(f, dict) else None) or t.get("ts")
             tt = "—"
@@ -1540,7 +1557,12 @@ class BusView(QWidget):
             _is_step = (k in _cur_topics) or (nm in _cur_topics)
             # 🏷 2026-10-17 老倪: 「Name 列给中文名 (≤5 字); Signal 是程序里的真实变量;
             #    增加 Type (对应 topic 的类型) 和 Tx / Rx; 删 Lamp/Count/Age; QoS 要跟 DDS 标准对上」
-            base = dict(time=tt, layer=self._layer_of(nm, t), name=_cn_names.cn_of(nm, ""), topic=nm,
+            _lay_row = self._layer_of(nm, t)
+            if _tp_ak is None and _lay_row != "L2":
+                # 📚 2026-10-17 老倪: 这两个窗口只保留 L2 —— 工程库话题按自身层过滤;
+                #   真值流话题的层由信号归属决定 (行级 show_in_l2 已判), 这里不能提前砍
+                continue
+            base = dict(time=tt, layer=_lay_row, name=_cn_names.cn_of(nm, ""), topic=nm,
                         hz=_h, count=str(t.get("count", "—")),
                         age=(_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
                         qos=_qos_names.standard(t.get("qos")),
@@ -1568,6 +1590,8 @@ class BusView(QWidget):
                     _pk = (nm, sn)
                     _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
                     _ak = _attrib.key_of(nm, sn)
+                    if _ak and not _attrib.show_in_l2(_ak):      # 只显示 L2 信号
+                        continue
                     _vtxt = _attrib.fmt_value(sv, _ak) if _ak else _f3(float(sv))
                     if _ak:
                         unit = _attrib.display_unit(_ak, unit)
@@ -1575,9 +1599,9 @@ class BusView(QWidget):
                     rows.append(dict(base, name=_cn_names.cn_of_signal(sn, nm),
                                      signal=_en_name(nm, sn), raw=sn,
                                      cn=_cn_names.cn_of_signal(sn, nm), value=_vtxt, vraw=float(sv),
-                                     layer=(_attrib.layer_of(_ak) if _ak else base["layer"]),
-                                     tx=(_attrib.tx_of(_ak) if _ak else base["tx"]),
-                                     rx=(_attrib.rx_of(_ak) if _ak else base["rx"]),
+                                     layer=(_attrib.layer_l2(_ak) if _ak else base["layer"]),
+                                     tx=(_attrib.tx_l2(_ak) if _ak else base["tx"]),
+                                     rx=(_attrib.rx_l2(_ak) if _ak else base["rx"]),
                                      unit=((unit or "") + ("*" if _inferred else "")) or "—",
                                      lo=lo, hi=hi, prev=_prev,
                                      phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
@@ -1593,12 +1617,14 @@ class BusView(QWidget):
                     _unit2, _lo2, _hi2 = self._sig_meta(nm, _sn)
                     _unit2 = _unit2 or _u or _quality.infer_unit(_sn)
                     _ak2 = _attrib.key_of(nm, _sn)
+                    if _ak2 and not _attrib.show_in_l2(_ak2):        # 只显示 L2 信号
+                        continue
                     rows.append(dict(base, name=_cn_names.cn_of_signal(_sn, nm),
                                      signal=_en_name(nm, _sn), raw=_sn,
                                      cn=_cn_names.cn_of_signal(_sn, nm),
-                                     layer=(_attrib.layer_of(_ak2) if _ak2 else base["layer"]),
-                                     tx=(_attrib.tx_of(_ak2) if _ak2 else base["tx"]),
-                                     rx=(_attrib.rx_of(_ak2) if _ak2 else base["rx"]),
+                                     layer=(_attrib.layer_l2(_ak2) if _ak2 else base["layer"]),
+                                     tx=(_attrib.tx_l2(_ak2) if _ak2 else base["tx"]),
+                                     rx=(_attrib.rx_l2(_ak2) if _ak2 else base["rx"]),
                                      value=(_vals or "—"), unit=(_unit2 or "—"), lo=_lo2, hi=_hi2,
                                      prev=None, phys="?", bad=False, src=_src,
                                      why=("信号来源: %s · 当前无实测值 (总线未跑/未上线)" % _src)))

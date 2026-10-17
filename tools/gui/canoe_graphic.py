@@ -2489,12 +2489,12 @@ class CanoeGraphicWidget(QWidget):
                 continue                        # AR 单独成组(二级), 见 1b
             if b.key.startswith("sstrace."):
                 for _sc in _TRACE_SCENES:       # 重名信号: 每个场景区域重新加载一份
-                    roots[_sc].addChild(self._make_item(b, scene=_sc,
-                                                        interactive=((not _act) or _act == _sc)))
+                    self._add_to(roots[_sc], b, scene=_sc,
+                                 interactive=((not _act) or _act == _sc))
                 _n_host += 1
                 continue
             _sc = _scene_of(b.key)
-            roots[_sc if _sc in roots else "基础场景"].addChild(self._make_item(b))
+            self._add_to(roots[_sc if _sc in roots else "基础场景"], b)
             _n_host += 1
         if not _n_host:
             _it = QTreeWidgetItem(["（暂无本机真值流数据 — 在画布点 ▶运行 跑一轮；真机位姿/安全等未分类信号会进「基础场景」组）",
@@ -2521,7 +2521,7 @@ class CanoeGraphicWidget(QWidget):
                 gnode.setForeground(0, QColor(SCENE_COLORS["AR场景"]))   # 二级标题也用场景色(老倪: AR 下面别是白的)
                 gnode.setData(0, Qt.UserRole + 1, _sid)
                 for b in by_g[g]:
-                    gnode.addChild(self._make_item(b, checked=b.key in self.selected))
+                    self._add_to(gnode, b, checked=b.key in self.selected)
                 _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
                 gnode.setExpanded(False if _sid in self._collapsed
                                   else bool(filt) or _inuse or _sid in self._expanded)
@@ -2552,13 +2552,12 @@ class CanoeGraphicWidget(QWidget):
                         for i in range(16):
                             key = "ros." + (f"{topic}.{f[:-3]}[{i}]").lstrip("/")
                             b = self.store.get(key, "ros")
-                            fnode.addChild(self._make_item(b, checked=key in self.selected,
-                                                           label=f"[{i}]"))
+                            self._add_to(fnode, b, checked=key in self.selected, label=f"[{i}]")
                         tnode.addChild(fnode)
                     else:
                         key = "ros." + (topic + "." + f).lstrip("/")
                         b = self.store.get(key, "ros")
-                        tnode.addChild(self._make_item(b, checked=key in self.selected))
+                        self._add_to(tnode, b, checked=key in self.selected)
                 _inuse = any(k.startswith("ros." + topic.lstrip("/") + ".") for k in self.selected)
                 tnode.setExpanded(bool(filt) or _inuse or tnode.text(0) in self._expanded)
                 ros_root.addChild(tnode)
@@ -2600,7 +2599,7 @@ class CanoeGraphicWidget(QWidget):
                 for k in sorted(keys):
                     if self._meta_key(k):
                         continue
-                    tnode.addChild(self._make_item(self.store.get(k, "ds"), checked=k in self.selected))
+                    self._add_to(tnode, self.store.get(k, "ds"), checked=k in self.selected)
                 if not keys:
                     tnode.addChild(QTreeWidgetItem(["（该话题此刻没有数据帧）", "", ""]))
                 _inuse = any(k.startswith(pref) for k in self.selected)
@@ -2899,23 +2898,23 @@ class CanoeGraphicWidget(QWidget):
         return _at
 
     def _out_node(self, key):
-        """Tx = 发送这个信号的节点名 (无画布节点 ⇒ 进程名)。"""
+        """Tx = 发送节点, **只保留 L2 节点** (老倪 2026-10-17: 这两个窗口只要 L2)。"""
         try:
-            return self._attrib().tx_of(key)
+            return self._attrib().tx_l2(key)
         except Exception:                                                       # noqa: BLE001
-            return "本机真值流"
+            return "—"
 
     def _src_hint(self, key):
-        """Rx = 上游来源 (与 Trace 同口径)。"""
+        """Rx = 上游, **只保留 L2 节点**, 没有就 "—" (与 Trace 同口径)。"""
         try:
-            return self._attrib().rx_of(key)
+            return self._attrib().rx_l2(key)
         except Exception:                                                       # noqa: BLE001
-            return "本机真值流 (JSON)"
+            return "—"
 
     def _sig_layer(self, key):
-        """Layer = 生产节点所在层 (与 Trace 同口径)。"""
+        """Layer = L2 窗口显示的层 (能显示就是 L2, 与 Trace 同口径)。"""
         try:
-            return self._attrib().layer_of(key)
+            return self._attrib().layer_l2(key)
         except Exception:                                                       # noqa: BLE001
             return "SYS"
 
@@ -2982,7 +2981,22 @@ class CanoeGraphicWidget(QWidget):
         except Exception:                                                     # noqa: BLE001
             return False
 
+    def _add_to(self, parent, *a, **k):
+        """安全挂行: L2 闸可能返回 None, 直接 addChild(None) 会崩。"""
+        it = self._make_item(*a, **k)
+        if it is not None:
+            parent.addChild(it)
+        return it
+
     def _make_item(self, b, checked=False, label=None, scene=None, interactive=True):
+        # 📚 2026-10-17 老倪: 「信号也只能显示 L2 层的信号, Tx Rx 只能是 L2 节点, 其它层都删掉」
+        #   非 L2 的信号直接不建行 (调用方会跳过 None)。工程库本身不动, 只是这两个窗口的显示口径。
+        try:
+            from lerobot.middleware import attribution as _at3
+            if not _at3.show_in_l2(b.key):
+                return None
+        except Exception:                                                       # noqa: BLE001
+            pass
         # 🀄 Name 列 = 中文短名 (≤5 字, 与数据空间 Trace 同口径); 拉不到就退回短键名
         if label:
             name = label

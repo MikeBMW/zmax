@@ -22,6 +22,7 @@ def ck(n, ok, info=""):
 app = QApplication.instance() or QApplication([])
 from canoe_graphic import CanoeGraphicWidget, ROOT
 from lerobot.middleware import live_signals as L
+from lerobot.middleware import attribution as _at
 
 w = CanoeGraphicWidget()
 hdr = [w.tree.headerItem().text(i).split(" ▾")[0]      # 列头带 "▾" (可过滤标记)
@@ -82,9 +83,11 @@ ck("Tx 无空值", all(x.strip() for x in _tx), str([x for x in _tx if not x.str
 #   ⇒ 口径反转: gravity 没有画布节点, Tx 必须写 "—" (旧判据"Tx 是进程名"正是在要求假节点)
 # 📚 2026-10-17 老倪: 「万有引力表进程, 怎么能在 Tx 的发送节点呢」+「Tx 都是 L2~L5 的 node 节点」
 #   万有引力表 = 标定诊断测量·主参数 M 的输出 ⇒ Tx 必须是那个工程节点, 不是进程名也不是 "—"
-ck("gravity 的 Tx = 标定诊断测量 (工程节点)",
-   w._out_node("gravity.下降·L2 力大小_mps") == "标定诊断测量",
-   w._out_node("gravity.下降·L2 力大小_mps"))
+# 📚 2026-10-17 老倪: 这两个窗口只保留 L2 ⇒ 万有引力表(标定诊断测量, L4)整体不进来
+ck("gravity 不在这两个窗口 (L4, Tx 无 L2 节点)",
+   w._out_node("gravity.下降·L2 力大小_mps") == "—"
+   and not _at.show_in_l2("gravity.下降·L2 力大小_mps"),
+   f"Tx={w._out_node('gravity.下降·L2 力大小_mps')} 显示={_at.show_in_l2('gravity.下降·L2 力大小_mps')}")
 ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps") == "前馈加速器",
    w._out_node("sstrace.前馈速度_mps"))
 ck("每行 7 列都有内容", all(all(x.strip() for x in r) for r in found[:50]),

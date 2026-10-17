@@ -476,7 +476,9 @@ def build_widget(parent=None, into_tabs=None):
             self.lbl.setTextFormat(Qt.RichText)
             self.cmb.setCurrentText(s["mode"] if s["mode"] in MODE_ORDER else "prod")
 
-            rows = sorted(channel_rows(), key=lambda r: (_lrank(r.get("layer")), str(r["topic"])))
+            # 📚 2026-10-17 老倪: 「数据空间中，只保留 L2 层的 topic，删除其它层的 topic」
+            rows = [r for r in channel_rows() if (r.get("layer") or "") == "L2"]
+            rows.sort(key=lambda r: (_lrank(r.get("layer")), str(r["topic"])))
             self.t_ch.setRowCount(len(rows))
             for i, r in enumerate(rows):
                 vcol = {"ok": OK, "warn": WARN, "veto": BAD, "-": DIM}.get(r["verdict"], DIM)
@@ -497,8 +499,10 @@ def build_widget(parent=None, into_tabs=None):
                         it.setForeground(QColor(WARN))
                     self.t_ch.setItem(i, c, it)
 
-            nr = sorted(node_rows(), key=lambda n: (_lrank(n.get("layer")), str(n["node_id"])))
-            ms = message_rows()
+            # 节点表同样只留 L2 (Tx/Rx 只能是 L2 节点)
+            nr = [n for n in node_rows() if (n.get("layer") or "") == "L2"]
+            nr.sort(key=lambda n: (_lrank(n.get("layer")), str(n["node_id"])))
+            ms = [m for m in message_rows() if (m.get("layer") or "") == "L2"]   # 只留 L2 报文
             _sig_by_node = {}
             for m in ms:
                 _sig_by_node[m["node_id"]] = _sig_by_node.get(m["node_id"], 0) + m["n_signal"]
