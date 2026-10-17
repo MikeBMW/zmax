@@ -385,13 +385,15 @@ def build_widget(parent=None, into_tabs=None):
                                                  "Tx 发送节点", "Rx 接收节点",
                                                  "信号 (名 · 单位 · 量程)"])
             self.t_ms.setFont(MONO)
-            # 🎯 2026-10-17 老倪「这些列要对齐, 字显示不全, 太乱」—— 固定可拖列宽 + 右侧省略 + 每格全文 tooltip
+            # 🎯 2026-10-17 老倪: 「这些列要对齐, 字显示不全」+「Tx Rx 都看不全, 不要截断省略」
+            #   ⇒ 列宽按**内容**铺 (ResizeToContents), 不省略; 表比面板宽就横向滚动
             _mh = self.t_ms.horizontalHeader()
-            for _i, _w in ((0, 56), (1, 300), (2, 78), (3, 168), (4, 220), (5, 220)):
-                _mh.setSectionResizeMode(_i, QHeaderView.Interactive)
-                self.t_ms.setColumnWidth(_i, _w)
+            for _i in range(6):
+                _mh.setSectionResizeMode(_i, QHeaderView.ResizeToContents)
             _mh.setSectionResizeMode(6, QHeaderView.Stretch)
-            self.t_ms.setTextElideMode(Qt.ElideRight)
+            self.t_ms.setTextElideMode(Qt.ElideNone)
+            self.t_ms.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+            self.t_ms.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self.t_ms.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ms.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.tabs.addTab(self.t_ms, "📨 报文 / 信号")
