@@ -432,14 +432,15 @@ class BusView(QWidget):
 
     def _data_panel(self):
         """CANoe 的 Data 面板: 信号表(Name | Value | Unit | Last Value Time [s] | Bar)"""
-        box, lay, head = self._panel("📋 Data — 信号表 (报文 / 信号 / 节点)", C_BLUE)
+        box, lay, head = self._panel("📋 Data", C_BLUE)
         self.chk_only_alive = QCheckBox("只看活报文")
         self.chk_only_alive.setFont(QFont(UI, 9))
         self.chk_only_alive.setStyleSheet(f"color:{C_GRAY}; background:transparent;")
         self.chk_only_alive.stateChanged.connect(lambda *_: self.reload(force_tree=True))
         head.addWidget(self.chk_only_alive)
         head.addWidget(self._sm_btn("展开/收起", "展开或收起 报文/信号/节点 三组", self._toggle_all))
-        _hint = QLabel("列可拖动 · 悬停看全文")
+        head.addWidget(self._sm_btn("↺ 列宽", "恢复自动列宽 (手动拖过的宽度会失效)", self._reset_cols))
+        _hint = QLabel("Drag · hover")
         _hint.setStyleSheet(f"color:{C_DIM}; background:transparent; border:none;")
         _hint.setFont(QFont(UI, 8))
         _hint.setToolTip("列宽可拖; 单元格放不下的字只是显示省略, 悬停即显示全文 (数据本身不被截断)")
@@ -452,15 +453,18 @@ class BusView(QWidget):
         #   改法: 短表头(全称进 tooltip) + 按内容定宽(总和 < 面板宽) + 数值右对齐/单位居中
         #        + 单元格 ElideRight 且**每格都带全文 tooltip** (裁的是显示, 不是数据)。
         #   CANoe 原 5 列语义不动, Tx/Rx 接在后面。
-        self.tree.setColumnCount(7)
-        self._cols = ["Name", "Value", "Unit", "帧龄", "Bar", "Tx 发送", "Rx 接收"]
-        self._col_tt = ["名字 (报文 topic / 连线 源→目的 / 节点)",
-                        "Value 实测值 (报文 = 实测 Hz)",
-                        "Unit 单位 (报文 = Hz)",
-                        "帧龄 s = 最后一帧距现在多少秒",
-                        "Bar = 实测/设计 (条满 = 100%)",
-                        "Tx 发送节点 (报文产生者 / 连线源 / 节点发包数)",
-                        "Rx 接收节点 (报文消费者 / 连线目的 / 节点收包数)"]
+        # 🧭 2026-10-17 老倪: 「增加一个 type 列, 显示 topic 的名字; 发送/接收的中文去掉; 控制字数, 简单清晰」
+        #   8 列全英文短名: Name(短名) · Type(topic 全名) · Value · Unit · Age s · Bar · Tx · Rx
+        self.tree.setColumnCount(8)
+        self._cols = ["Name", "Type", "Value", "Unit", "Age s", "Bar", "Tx", "Rx"]
+        self._col_tt = ["Name — 短名 (报文=节点.端口 / 连线=源→目的 / 节点=名字)",
+                        "Type — topic 全名",
+                        "Value — 实测值 (报文 = 实测 Hz)",
+                        "Unit — 单位 (报文 = Hz)",
+                        "Age s — 最后一帧距现在多少秒",
+                        "Bar — 实测/设计, 满格 = 100%",
+                        "Tx — 发送节点 (报文产生者 / 连线源 / 节点发包数)",
+                        "Rx — 接收节点 (报文消费者 / 连线目的 / 节点收包数)"]
         _fm = self.tree.fontMetrics() if hasattr(self, "tree") else None
         self.tree.setHeaderLabels(self._cols)
         for _i, _t in enumerate(self._col_tt):
@@ -473,7 +477,7 @@ class BusView(QWidget):
             f"QTreeWidget::item:selected {{ background:{C_SEL}; }}"
             f"QHeaderView::section {{ background:{C_CARD}; color:{C_HEAD}; border:none; padding:4px; }}")
         self.tree.setUniformRowHeights(True)
-        self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
+        self.tree.setItemDelegateForColumn(5, BarDelegate(self.tree))
         h = self.tree.header()
         h.setStretchLastSection(False)
         h.setMinimumSectionSize(40)
@@ -483,20 +487,36 @@ class BusView(QWidget):
         # 🐛 必须在样式表(polish)之后量, 否则量的是默认字体的宽度 ⇒ 列比表头还窄 (实测 Value/Unit/Bar 又被裁)
         self.tree.ensurePolished()
         _fm = self.tree.header().fontMetrics()
-        self._col_min = [max(180, _fm.width(self._cols[0]) + 16)] + \
-                        [_fm.width(self._cols[i]) + 16 for i in range(1, 7)]
+        self._col_min = [max(170, _fm.width(self._cols[0]) + 16), max(120, _fm.width("Type") + 90)] + \
+                        [_fm.width(self._cols[i]) + 16 for i in range(2, 8)]
         for i in range(7):
             h.setSectionResizeMode(i, QHeaderView.Interactive)   # 🐛 卡顿真根因: ResizeToContents
             self.tree.setColumnWidth(i, self._col_min[i])
         self.tree.header().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        # 🖱 2026-10-17 老倪: 「用鼠标调整, 怎么调整完了又自动还原了? 要能用鼠标调整每列宽度」
+        #   真根因: 每拍 reload() 都调 _fit_columns() 重算列宽 ⇒ 手拖的结果一秒钟就被抹掉。
+        #   口径: 用户拖过 = 以用户为准 (写 QSettings 持久化), 自动分配只在"用户没拖过"时生效;
+        #        想回到自动就给一个明确的 ↺ 按钮, 不再偷偷还原。
+        self._user_cols = {}
+        self._applying_cols = False
+        try:
+            from PyQt5.QtCore import QSettings
+            _v = QSettings("ZMAX", "studio").value("canoe/data_cols")
+            if isinstance(_v, str):
+                _v = [int(x) for x in _v.split(",") if x.strip().isdigit()]
+            if _v and len(_v) == 8:
+                self._user_cols = {i: int(x) for i, x in enumerate(_v) if int(x) > 0}
+        except Exception:                                                        # noqa: BLE001
+            self._user_cols = {}
+        self.tree.header().sectionResized.connect(self._on_data_col_resized)
         box.setMinimumWidth(920)          # 7 列 (Name/Value/Unit/帧龄/Bar/Tx/Rx) 的最小可用宽度
         self.tree.itemClicked.connect(self._on_tree_click)
         lay.addWidget(self.tree, 1)
         return box
 
     def _detail_panel(self):
-        box, lay, head = self._panel("🔎 详情 — 选中对象 (属性 + 质量判据)", C_YELLOW)
+        box, lay, head = self._panel("🔎 Detail", C_YELLOW)
         head.addWidget(self._sm_btn("📋 复制", "复制右侧详情文本(可直接粘到 CLI / 邮件)", self.copy_detail))
         self.detail = QTextEdit()
         self.detail.setReadOnly(True)
@@ -508,7 +528,7 @@ class BusView(QWidget):
 
     def _trace_panel(self):
         """CANoe 的 Trace 面板: 整宽 + 自带工具条(刷新/清除/暂停/Δt/搜索/导出)"""
-        box, lay, head = self._panel("📋 Trace — 总线帧流 (最新在顶 · 测量时间)", C_GREEN)
+        box, lay, head = self._panel("📋 Trace", C_GREEN)
         # 🆕 2026-10-01 老倪: 「默认是 topic 固定, 时间变动; 现在的滚动模式看着太累了, 默认不滚动」
         self._mode = "fixed"
         self.btn_mode = self._sm_btn("📌 固定行",
@@ -540,8 +560,8 @@ class BusView(QWidget):
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
             #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
             # 🆕 2026-10-01 老倪: 「时间第一列, name第二列」+「默认 topic 固定、时间变动, 不要滚动」
-            ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification", "Probability [%]",
-             "Sender Name", "Sender Id", "Tracking Id", "Group"])
+            ["Time", "Name", "Signal", "Value", "Type", "Class", "Prob %",
+             "Sender", "Sender Id", "Track Id", "Group"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
             f" font-family:{MONO}; font-size:10pt; }}"
@@ -596,7 +616,7 @@ class BusView(QWidget):
         lay.addLayout(tabrow)
 
         self.tb_alert = QTableWidget(0, 3)
-        self.tb_alert.setHorizontalHeaderLabels(["级别", "对象", "问题 (规则: 实测)"])
+        self.tb_alert.setHorizontalHeaderLabels(["Level", "Object", "Issue"])
         for t in (self.tb_alert,):
             t.setStyleSheet(
                 f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
@@ -766,6 +786,40 @@ class BusView(QWidget):
             out[str(t).split("/")[-1]] = rec.get("t")   # 🐛 短名 xxx —— live.json 的键是短名(质检: 整列 '—')
         return out
 
+    def _on_data_col_resized(self, idx, old, new):
+        """用户手动拖列宽 → 记住 (写 QSettings), 之后自动分配不再覆盖。"""
+        if getattr(self, "_applying_cols", False) or new <= 0:
+            return
+        if not self._user_cols:                      # 第一次拖动: 先把当前 8 列全部快照, 免得其余列被自动改
+            snap = {}
+            try:
+                from PyQt5.QtCore import QSettings
+                _v = QSettings("ZMAX", "studio").value("canoe/data_cols")
+                if isinstance(_v, str):
+                    _v = [int(x) for x in _v.split(",") if x.strip().isdigit()]
+                if _v and len(_v) == 8:
+                    snap = {i: int(x) for i, x in enumerate(_v) if int(x) > 0}
+            except Exception:                                                    # noqa: BLE001
+                snap = {}
+            self._user_cols = snap or {i: self.tree.columnWidth(i) for i in range(8)}
+        self._user_cols[idx] = int(new)
+        try:
+            from PyQt5.QtCore import QSettings
+            QSettings("ZMAX", "studio").setValue(
+                "canoe/data_cols", ",".join(str(self._user_cols.get(i, 0)) for i in range(8)))
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _reset_cols(self):
+        """↺ 列宽: 清掉手动列宽, 回到自动分配。"""
+        self._user_cols = {}
+        try:
+            from PyQt5.QtCore import QSettings
+            QSettings("ZMAX", "studio").remove("canoe/data_cols")
+        except Exception:                                                        # noqa: BLE001
+            pass
+        self._fit_columns()
+
     def _fit_columns(self):
         """按当前可用宽度分配列宽: 表头/内容不给裁; Name 吃剩余, 富余再分给 Tx/Rx。
 
@@ -774,29 +828,42 @@ class BusView(QWidget):
         数据本身不丢: 隐藏列的语义都在 tooltip 与"详情"面板里。
         """
         try:
+            if getattr(self, "_user_cols", None):
+                self._applying_cols = True
+                try:
+                    for _i, _w in self._user_cols.items():
+                        if 0 <= _i < self.tree.columnCount():
+                            self.tree.setColumnWidth(_i, int(_w))
+                finally:
+                    self._applying_cols = False
+                return                        # 用户拖过 ⇒ 一个像素都不许自己动
             avail = max(320, self.tree.viewport().width() - 2)
-            _hide = {2: avail < 820, 4: avail < 820, 3: avail < 700}
+            _hide = {3: avail < 820, 5: avail < 820, 4: avail < 700}
             for _c, _h in _hide.items():
                 self.tree.setColumnHidden(_c, bool(_h))
             mins = list(getattr(self, "_col_min", [])) or [240, 90, 60, 90, 120, 160, 170]
-            vis = [i for i in range(7) if not self.tree.isColumnHidden(i)]
+            vis = [i for i in range(8) if not self.tree.isColumnHidden(i)]
             _sum_vis = sum(mins[i] for i in vis)
             if _sum_vis < avail:                     # 隐藏列让出的宽度: 一半给 Name(封顶 320), 其余给 Tx/Rx
                 _free = avail - _sum_vis
                 _to0 = min(int(_free * 0.5), max(0, 320 - mins[0]))
                 mins[0] += _to0
-                mins[5] += int((_free - _to0) * 0.5)
-                mins[6] += (_free - _to0) - int((_free - _to0) * 0.5)
+                mins[6] += int((_free - _to0) * 0.5)
+                mins[7] += (_free - _to0) - int((_free - _to0) * 0.5)
             w = list(mins)
             spare = avail - sum(mins)
             if spare > 0:                       # 富余: Name 先加到 380 封顶, 剩下给 Tx/Rx
                 _add0 = min(int(spare * 0.5), max(0, 520 - w[0]))
                 w[0] += _add0
                 _rest = spare - _add0
-                w[5] += int(_rest * 0.5)
                 w[6] += int(_rest * 0.5)
-            for i in range(7):
-                self.tree.setColumnWidth(i, int(w[i]))
+                w[7] += int(_rest * 0.5)
+            self._applying_cols = True
+            try:
+                for i in range(8):
+                    self.tree.setColumnWidth(i, int(w[i]))
+            finally:
+                self._applying_cols = False
         except Exception:                                                        # noqa: BLE001
             pass
 
@@ -811,10 +878,14 @@ class BusView(QWidget):
         QTimer.singleShot(0, self._fit_columns)
         QTimer.singleShot(250, self._fit_columns)
 
-    _ALIGN = {0: Qt.AlignLeft | Qt.AlignVCenter, 1: Qt.AlignRight | Qt.AlignVCenter,
-              2: Qt.AlignHCenter | Qt.AlignVCenter, 3: Qt.AlignRight | Qt.AlignVCenter,
-              4: Qt.AlignHCenter | Qt.AlignVCenter, 5: Qt.AlignLeft | Qt.AlignVCenter,
-              6: Qt.AlignLeft | Qt.AlignVCenter}
+    _ALIGN = {0: Qt.AlignLeft | Qt.AlignVCenter,      # Name
+              1: Qt.AlignLeft | Qt.AlignVCenter,      # Type (topic)
+              2: Qt.AlignRight | Qt.AlignVCenter,     # Value
+              3: Qt.AlignHCenter | Qt.AlignVCenter,   # Unit
+              4: Qt.AlignRight | Qt.AlignVCenter,     # Age s
+              5: Qt.AlignHCenter | Qt.AlignVCenter,   # Bar
+              6: Qt.AlignLeft | Qt.AlignVCenter,      # Tx
+              7: Qt.AlignLeft | Qt.AlignVCenter}      # Rx
 
     def _align_item(self, it, tips=None):
         """每列对齐规则 + 全文 tooltip (列宽只影响显示, 数据永远看得到)。"""
@@ -894,7 +965,8 @@ class BusView(QWidget):
                 _tx = ", ".join(short_name(x, 8) for x in _tx_full.split(", "))
                 _rxl = [short_name(x, 8) for x in _rx_full.split(", ") if x and x != "—"]
                 _rx = (_rxl[0] + (" +%d" % (len(_rxl) - 1) if len(_rxl) > 1 else "")) if _rxl else "—"
-                it = QTreeWidgetItem([str(m.get("topic", key)), "—", "—", "—", "—", _tx, _rx])
+                _short = str(m.get("producer") or m.get("topic", key))     # 例: n_dsvl.out1 (短且唯一)
+                it = QTreeWidgetItem([_short, str(m.get("topic", key)), "—", "—", "—", "—", _tx, _rx])
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
                 self._align_item(it, {5: "Tx 发送节点: %s" % _tx_full, 6: "Rx 接收节点: %s" % _rx_full})
@@ -923,12 +995,13 @@ class BusView(QWidget):
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
             root_s.addChild(lyr)
             for s in items:
-                name = "%s → %s" % (short_name(s.get("src_name", s.get("src", "?")), 12),
-                                    short_name(s.get("dst_name", s.get("dst", "?")), 12))
+                name = "%s→%s" % (short_name(s.get("src_name", s.get("src", "?")), 6),
+                                  short_name(s.get("dst_name", s.get("dst", "?")), 6))
                 _sf = str(s.get("src_name") or s.get("src") or "—")
                 _df = str(s.get("dst_name") or s.get("dst") or "—")
-                it = QTreeWidgetItem(["%s  %s" % (s.get("sid", "?"), name), "—", "—", "—", "—",
-                                      short_name(_sf, 10), short_name(_df, 10)])
+                it = QTreeWidgetItem(["%s %s" % (s.get("sid", "?"), name), str(s.get("topic") or "—"),
+                                      "—", "—", "—", "—",
+                                      short_name(_sf, 8), short_name(_df, 8)])
                 it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
                 self._align_item(it, {5: "Tx 源节点: %s" % _sf, 6: "Rx 目的节点: %s" % _df})
                 it.setToolTip(0, "连线 %s · 端口 %s→%s\n标签 %s\n话题 %s" % (
@@ -952,8 +1025,8 @@ class BusView(QWidget):
             root_n.addChild(lyr)
             for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
                 _nfull = "%s %s" % (n.get("icon", ""), n.get("name", nid))
-                it = QTreeWidgetItem([short_name(_nfull, 12), "—", "—", "—", "—",
-                                      "发 %d" % (n.get("tx", 0)), "收 %d" % (n.get("rx", 0))])
+                it = QTreeWidgetItem([short_name(_nfull, 12), str(n.get("type") or "—"), "—", "—", "—", "—",
+                                      "Tx %d" % (n.get("tx", 0)), "Rx %d" % (n.get("rx", 0))])
                 it.setData(0, Qt.UserRole, ("node", nid))
                 self._align_item(it, {0: _nfull})
                 it.setToolTip(0, "id %s · 类型 %s · 画布坐标 (%s,%s)" % (
@@ -981,35 +1054,33 @@ class BusView(QWidget):
             t = topics.get(key) or {}
             m = ((self._busdb.get("messages") or {}).get(key) or {})
             hz_d = float(m.get("hz_design") or 0) or 0.0
-            it.setTextAlignment(1, self._ALIGN[1])
-            it.setTextAlignment(2, self._ALIGN[2])
-            it.setTextAlignment(3, self._ALIGN[3])
-            it.setTextAlignment(4, self._ALIGN[4])
+            for _c in (2, 3, 4, 5):
+                it.setTextAlignment(_c, self._ALIGN[_c])
             if not t:
-                it.setText(1, "—")
-                it.setText(2, "Hz")
-                it.setText(3, "—")
-                it.setText(4, "")
-                it.setData(4, Qt.UserRole, -1.0)
-                it.setForeground(1, QColor(C_DIM))
-                it.setForeground(3, QColor(C_DIM))
+                it.setText(2, "—")
+                it.setText(3, "Hz")
+                it.setText(4, "—")
+                it.setText(5, "")
+                it.setData(5, Qt.UserRole, -1.0)
+                it.setForeground(2, QColor(C_DIM))
+                it.setForeground(4, QColor(C_DIM))
                 continue
             hz = float(t.get("hz") or -1)
-            it.setText(1, _num(hz, 2))
-            it.setText(2, "Hz")
+            it.setText(2, _num(hz, 2))
+            it.setText(3, "Hz")
             tsp = last.get(key)
             if tsp:
                 age = time.time() - float(tsp)
-                it.setText(3, _num(age, 2) if age >= 0 else "—")
-                it.setToolTip(3, "最后一帧 %s" % _hhmmss(tsp))
+                it.setText(4, _num(age, 2) if age >= 0 else "—")
+                it.setToolTip(4, "last frame %s" % _hhmmss(tsp))
             else:
-                it.setText(3, "—")
-                it.setToolTip(3, "本窗口内没抓到该话题的帧")
+                it.setText(4, "—")
+                it.setToolTip(4, "no frame in window")
             ratio = (hz / hz_d) if (hz > 0 and hz_d > 0) else -1.0
-            it.setData(4, Qt.UserRole, ratio)
-            it.setText(4, "%d%%" % int(min(1.0, ratio) * 100) if ratio > 0 else "")
-            it.setForeground(1, QColor(VERDICT_COLOR.get(t.get("verdict", "unknown"), C_WHITE)))
-            it.setForeground(3, QColor(C_GRAY))
+            it.setData(5, Qt.UserRole, ratio)
+            it.setText(5, "%d%%" % int(min(1.0, ratio) * 100) if ratio > 0 else "")
+            it.setForeground(2, QColor(VERDICT_COLOR.get(t.get("verdict", "unknown"), C_WHITE)))
+            it.setForeground(4, QColor(C_GRAY))
 
     def _fill_measure_bar(self):
         live = self._live or {}
@@ -1215,10 +1286,11 @@ class BusView(QWidget):
         会把各列宽度复位 ⇒ 用户拖动过的列宽下一次刷新就被抹掉(表现=拖动不了)。"""
         mode = mode or getattr(self, "_mode", "fixed")
         # 🆕 2026-10-11 老倪: 「在 trace 里, 增加 信号名称 列」—— 该行这一帧/这个话题携带的信号名 (Name=topic, 信号名称=里面的信号)
-        _labs = (["Time", "Name", "信号名称", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
-                  "帧龄 (s)", "QoS", "lamp", "备注"] if mode == "fixed" else
-                 ["Time", "Name", "信号名称", "实时值 · 边跑边变", "Object Type", "Classification",
-                  "Probability [%]", "Sender Name", "Sender Id", "Tracking Id", "Group"])
+        # 🧭 2026-10-17 老倪: 「trace 每列的中文改成英文, 控制字数, 不要写太多」→ 全英文短表头
+        _labs = (["Time", "Name", "Signal", "Value", "Class", "Hz", "Count",
+                  "Age s", "QoS", "Lamp", "Note"] if mode == "fixed" else
+                 ["Time", "Name", "Signal", "Value", "Type", "Class",
+                  "Prob %", "Sender", "Sender Id", "Track Id", "Group"])
         if _labs == getattr(self, "_hdr_last", None):
             return
         self.tb.setHorizontalHeaderLabels(_labs)
@@ -1229,12 +1301,11 @@ class BusView(QWidget):
         mode = mode or getattr(self, "_mode", "fixed")
         if mode == "fixed":
             self.tb.setHorizontalHeaderLabels(
-                ["Time", "Name", "实时值 · 边跑边变", "分类", "hz 实测/设计", "count",
-                 "帧龄 (s)", "QoS", "lamp", "备注"])
+                ["Time", "Name", "Value", "Class", "Hz", "Count", "Age s", "QoS", "Lamp", "Note"])
         else:
             self.tb.setHorizontalHeaderLabels(
-                ["Time", "Name", "实时值 · 边跑边变", "Object Type", "Classification",
-                 "Probability [%]", "Sender Name", "Sender Id", "Tracking Id", "Group"])
+                ["Time", "Name", "Value", "Type", "Class", "Prob %", "Sender", "Sender Id",
+                 "Track Id", "Group"])
 
     def _fill_trace_fixed(self, force=False):
         """📌 固定行模式(默认): 一行一个话题, **位置不动**, 只有时间/数值在变。
