@@ -538,6 +538,7 @@ class BusView(QWidget):
         搜索必须**立即重填**。"""
         self._filter = (txt or "").strip().lower()
         self._fill_trace(force=True)
+        self._apply_find()          # Data 树同步过滤 (左表/右表同一个搜索词)
 
     def _clear_trace(self):
         self.tb.setRowCount(0)
@@ -573,8 +574,9 @@ class BusView(QWidget):
 
     # ─────────────────── 数据刷新 ───────────────────
     def reload(self, force_tree=False):
-        if not self.isVisible():
-            return                              # 页面没显示就不重绘 (0.8s 一拍时更要省 CPU)
+        # 注意: 不能在"不可见"时直接 return —— 构建期 (还没 show) 会把首刷也吃掉,
+        # 表现为打开数据空间是空表。省 CPU 只在**值刷新**上做, 骨架/树照建。
+
         # 🐛 2026-09-29 老倪「全局数据空间怎么卡住了」真根因: 1s 定时器**无条件**重建 500 行×9 列的表
         #   (每轮 4500 个 QTableWidgetItem + 整页重排) ⇒ 进程 CPU 实测 81.7%, 页面像冻住。
         #   修法三条: ①不在看的页直接不刷新 ②trace 没变(体积+mtime)就整轮跳过 ③行数 500→150。
@@ -893,6 +895,44 @@ class BusView(QWidget):
         #        节点的收发关系在 Tx / Rx 两列与详情面板里, 不再单独开一个"节点"树占地方。
         self._fit_columns()          # 树建完再按当前面板宽收窄/隐藏次要列
         self._apply_find()          # 🔎 树重建后(含「只看活报文」勾选) 立刻重放搜索词, 不让筛选丢
+
+    def _apply_find(self):
+        """按搜索词/「只看活报文」过滤 Data 树 (重建后立刻重放, 筛选不丢)。
+
+        🐛 2026-10-17 修: 删「信号/节点」两组时把本方法一起删了 ⇒ Trace 面板 reload 抛
+        AttributeError('BusView' object has no attribute '_apply_find'), 页面直接不刷新。
+        """
+        q = (getattr(self, "_filter", "") or "").strip().lower()
+        try:
+            only_alive = bool(self.chk_only_alive.isChecked())
+        except Exception:                                                    # noqa: BLE001
+            only_alive = False
+        live = self._topics() or {}
+        root = self.tree.topLevelItem(0)
+        if root is None:
+            return
+        alive_keys = set()
+        for k, t in live.items():
+            if (isinstance(t.get("hz"), (int, float)) and t.get("hz") >= 0) or (t.get("count") or 0) > 0:
+                alive_keys.add(str(t.get("topic") or k))
+                alive_keys.add(str(k))
+        for i in range(root.childCount()):
+            lyr = root.child(i)
+            shown = 0
+            for j in range(lyr.childCount()):
+                it = lyr.child(j)
+                data = it.data(0, Qt.UserRole) or ()
+                key = str(data[1]) if len(data) > 1 else ""
+                txt = " ".join(it.text(c) for c in range(min(3, self.tree.columnCount()))).lower()
+                ok = (not q) or (q in txt) or (q in key.lower())
+                if ok and only_alive:
+                    ok = key in alive_keys
+                it.setHidden(not ok)
+                shown += 0 if not ok else 1
+            lyr.setHidden(shown == 0)
+            if q and shown:
+                lyr.setExpanded(True)
+        root.setHidden(all(lyr.isHidden() for lyr in (root.child(i) for i in range(root.childCount()))))
 
     def _update_values(self):
         if not self._trace_rows:                   # 🐛 质检: Last Value Time 整列 '—' —— 首刷顺序问题
