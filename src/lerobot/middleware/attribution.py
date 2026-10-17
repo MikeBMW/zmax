@@ -32,6 +32,23 @@ LIVE_PREFIX = {
 }
 LIVE_TOPICS = set(LIVE_PREFIX)
 
+# 📚 2026-10-17 老倪: 「所有的 Topic, 都在 L2~L5 层定义, Tx Rx 节点都是 L2~L5 层的 node 节点,
+#   与状态空间的工程都是同一个数据源, 保证 node 的严格相同」
+#   ⇒ 本机真值流 (zmax_data/ss_live/*.json) 的每个前缀, 都归到工程里**真正拥有这份数据**的节点;
+#     归属关系写在这里, 由工程库 node_id 解释层与显示名 —— 不另造节点, 也不拿进程名顶上。
+#     space (zmax/dataspace_live 是探针自己的快照, 不是总线信号) ⇒ 无节点, 不进 Trace。
+PREFIX_OWNER = {
+    "sstrace": "ssest",        # 3D 插拔场景状态 (末端/光模块/夹持) ← 自适应状态估计器 L2
+    "sseng": "ss_mani_eng",    # 流形引擎周期回路出口 (势能/动量M/动作调制) L4
+    "gravity": "n_calib_mani",  # 万有引力表 = 标定诊断测量·主参数 M 的力矩阵 L4
+    "pose": "ssest",           # 真机 tcp_pose tap → 状态估计 L2
+    "state": "ssest",          # 真机 tcp_state tap → 状态估计 L2
+    "yolo": "ssyolo",          # YOLO 目标检测 L2
+    "safety": "sslimit",       # 安全执行边界 (项目内 meta 节点, 有层就有归属)
+    "ar": "ssaoi",             # AR/AOI 信号总线 → 光学质量检测 L2
+    "space": None,             # 数据空间探针快照: 不是总线话题, 不入 Trace
+}
+
 # (键前缀, 画布 node_id 或 None, 无节点时的进程名) —— 顺序要紧: 长的/具体的排前面
 OUT_NODE = (
     ("gravity.", None, "gravity_trace_pub.py (万有引力表进程)"),
@@ -164,16 +181,24 @@ def skill_stage_of(key):
 
 
 def _nodes_by_name():
-    """{SK0x: (显示名, 层)} —— 从工程库节点名里认 '① 接近 · SK01' 这种。"""
+    """{SK0x: (显示名, 层)} —— 从工程库节点名里认 '① 接近 · SK01' 这种。
+
+    📚 2026-10-17 老倪: 「与状态空间的工程都是同一个数据源，保证 node 的严格相同」
+    ⇒ 显示名统一走 naming.unique_map (面板/Trace/数据空间同一个词表, 且 75 个节点一一对应),
+      不再这里另拼 "① 接近 · SK01" —— 那是工程库原名, 与其它面板显示名不同源。
+    """
     out = {}
     try:
-        from lerobot.middleware import db
-        for r in db.node_rows():
+        from lerobot.middleware import db, naming
+        _rows = db.node_rows()
+        _clean = naming.unique_map([(r.get("node_id"), r.get("name")) for r in _rows])
+        for r in _rows:
             nm = str(r.get("name") or "")
             m = re.search(r"(SK0[1-8])", nm)
             if m:
                 lay = str(r.get("layer") or "")
-                out[m.group(1)] = (nm, "L2" if lay == "meta" else (lay or "L2"))
+                out[m.group(1)] = (_clean.get(r.get("node_id")) or nm,
+                                   "L2" if lay == "meta" else (lay or "L2"))
     except Exception:                                                     # noqa: BLE001
         pass
     return out
@@ -243,7 +268,10 @@ def _rule(key):
 
 @lru_cache(maxsize=16384)
 def tx_of(key):
-    """Tx: 发送这条信号的节点名; 没有画布节点就写进程名 (不编节点)。"""
+    """Tx: 发送这条信号的工程节点名; 没有节点写 "—" (绝不写进程名)。"""
+    # 明确不属于工程的前缀 (如 space = 数据空间探针自己的快照) ⇒ 直接不给 Tx ⇒ 层 SYS ⇒ 不进 Trace
+    if PREFIX_OWNER.get(str(key or "").split(".", 1)[0], "__none__") is None:
+        return "—"
     _st = skill_stage_of(key)
     if _st:
         _nm = _nodes_by_name().get(_st, ("", ""))[0]
@@ -256,14 +284,20 @@ def tx_of(key):
             _u = list(dict.fromkeys(_peers))                              # 去重: 工程里 ssff.out1 的
             return " / ".join(_peer_name(x) for x in _u[:4])              # consumers 写了两遍同一个
         return _load_nodes().get(_nid) or _nid                          # 出端口: 本节点
+    # 本机真值流前缀: 先按 PREFIX_OWNER 认工程节点 (真值流不是画布端口, 但数据有归属)
+    # 先看字段级规则 (sstrace.前馈速度 → 前馈加速器 这种具体归属), 规则里没节点才用前缀属主
     nid, proc = _rule(key)
+    _own = PREFIX_OWNER.get(str(key).split(".", 1)[0], "__none__")
     if nid:
         nm = _load_nodes().get(nid)
         if nm:
             return nm
-    # 📚 2026-10-17 老倪: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
-    #   Tx 列只放**画布节点名** —— 进程名 (.py / 服务名 / 括号说明) 不是节点, 不许出现在 Tx。
-    #   没有画布节点就是 "—" (与 Rx 同一口径), 进程名只留在 source_of() 的"来源"里。
+    # _own 已在上面取过 (可能为 None = 明确不入 Trace)
+    if _own:
+        _nm = _load_nodes().get(_own)
+        if _nm:
+            return _nm
+    # 仍然没有工程节点 ⇒ "—" (绝不拿进程名冒充; 进程名只留在 source_of 的"来源")
     return "—"
 
 
@@ -298,7 +332,9 @@ def rx_of(key):
         return "—"
     if k.startswith("gravity."):
         return "—"
-    return "本机真值流 (JSON)"
+    # 📚 2026-10-17 老倪: 「Tx Rx 节点都是 L2~L5 层的 node 节点」⇒ Rx 只认真连线;
+    #   没有上游节点就 "—", 不再回落到 "本机真值流 (JSON)" 这种非节点字符串。
+    return "—"
 
 
 @lru_cache(maxsize=16384)
@@ -327,6 +363,28 @@ def source_of(key):
     return "本机真值流 (JSON)"
 
 
+@lru_cache(maxsize=1)
+def _name_layer():
+    """{显示名: 层} —— 由工程库 + naming 生成, 与 Tx 显示的字符串同一份词表。"""
+    try:
+        from lerobot.middleware import db, naming
+        _rows = db.node_rows()
+        _c = naming.unique_map([(r.get("node_id"), r.get("name")) for r in _rows])
+        out = {}
+        for r in _rows:
+            nm = _c.get(r["node_id"]) or ""
+            if not nm:
+                continue
+            lay = str(r.get("layer") or "")
+            # 8 个原子技能节点在工程库里是 meta 容器, 但信号层归 L2 (与 _nodes_by_name 同口径)
+            if lay == "meta" and re.search(r"SK0[1-8]", str(r.get("name") or "")):
+                lay = "L2"
+            out[nm] = lay
+        return out
+    except Exception:                                                     # noqa: BLE001
+        return {}
+
+
 def layer_of(key):
     """Layer: 生产节点所在的层 (L2~L5), 查不到 = SYS。
 
@@ -334,6 +392,19 @@ def layer_of(key):
     那张表每格就是「某层对本元任务的力」, 用键里的层比拿节点层更准。
     """
     k = str(key or "")
+    # 📚 2026-10-17 老倪: 「Tx Rx 节点都是 L2~L5 的 node 节点, 保证 node 的严格相同」
+    #   ⇒ Layer 必须和 Tx 是同一个节点算出来的 (以前两条路径各查各的, 会出现
+    #     "Tx=Z-MAX 引擎(L4) 但 Layer=L2" 这种自相矛盾)。
+    _nm = str(tx_of(k)).split(" / ")[0].strip()
+    _lay = _name_layer().get(_nm)
+    if _lay:
+        return "SYS" if _lay == "meta" else _lay
+    # 真值流: 层 = 拥有这份数据的工程节点的层 (与 Tx 同一节点, 不许两头不一致)
+    _own = PREFIX_OWNER.get(k.split(".", 1)[0], "__none__")
+    if _own != "__none__":
+        if not _own:
+            return "SYS"                      # 无归属 (如数据空间探针快照) ⇒ SYS ⇒ Trace 不显示
+        return _node_layer(_own)
     if k.startswith("gravity."):
         _m = re.search(r"(?:·|列)(L[2-5])", k)
         return _m.group(1) if _m else "SYS"

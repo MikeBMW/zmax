@@ -176,9 +176,9 @@ ck("原子技能物理量两边都有 (SK01~08 × 物理量)", _sk_p >= 100 and 
    "面板 %d / Trace %d" % (_sk_p, _sk_t))
 _sk01 = []
 for _r in range(v.tb.rowCount()):
-    if v.tb.item(_r, 7).text() == "① 接近 · SK01" and v.tb.item(_r, 1).text() == "L2":
+    if v.tb.item(_r, 7).text() == "接近" and v.tb.item(_r, 1).text() == "L2":
         _sk01.append(v.tb.item(_r, 2).text())
-ck("Trace 里 L2 + Tx「① 接近 · SK01」的行在", len(_sk01) >= 10,
+ck("Trace 里 L2 + Tx「接近」(SK01 节点) 的行在", len(_sk01) >= 10,
    "%d 行 %s" % (len(_sk01), _sk01[:4]))
 
 # ③ 单源证明: 把 live_signals.topics() 换成哨兵值后, 两个窗口必须跟着变成同一个新值

@@ -80,7 +80,10 @@ ck("Tx 覆盖多个真节点", len(set(_tx)) >= 8, str(sorted(set(_tx))[:10]))
 ck("Tx 无空值", all(x.strip() for x in _tx), str([x for x in _tx if not x.strip()][:3]))
 # 📚 2026-10-17 老倪: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
 #   ⇒ 口径反转: gravity 没有画布节点, Tx 必须写 "—" (旧判据"Tx 是进程名"正是在要求假节点)
-ck("gravity 的 Tx 是 — (无此节点, 不许挂进程名)", w._out_node("gravity.下降·L2 力大小_mps") == "—",
+# 📚 2026-10-17 老倪: 「万有引力表进程, 怎么能在 Tx 的发送节点呢」+「Tx 都是 L2~L5 的 node 节点」
+#   万有引力表 = 标定诊断测量·主参数 M 的输出 ⇒ Tx 必须是那个工程节点, 不是进程名也不是 "—"
+ck("gravity 的 Tx = 标定诊断测量 (工程节点)",
+   w._out_node("gravity.下降·L2 力大小_mps") == "标定诊断测量",
    w._out_node("gravity.下降·L2 力大小_mps"))
 ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps") == "前馈加速器",
    w._out_node("sstrace.前馈速度_mps"))
@@ -133,9 +136,12 @@ _bad_lay = [(_k, l) for _k, l, _t in _skrows if l != "L2" and _at.skill_stage_of
 ck("原子技能层 = L2", not _bad_lay,
    "%d 条, 非 L2 %d %s" % (len(_skrows), len(_bad_lay), str(_bad_lay[:3])))
 _txs = sorted({t for _k, _l, t in _skrows})
-ck("SK01~SK08 八个技能节点都出现", len([t for t in _txs if "SK0" in t]) >= 8,
-   str([t for t in _txs if "SK0" in t]))
-ck("SK01 的 Tx = ① 接近 · SK01", any(t == "① 接近 · SK01" for t in _txs), str(_txs[:3]))
+# 📚 2026-10-17 老倪: 「与状态空间的工程同一个数据源, 保证 node 的严格相同」
+#   节点名统一走 naming.unique_map ⇒ SK 节点的显示名是 接近/对位/… (工程库原名 "① 接近 · SK01")
+_SK_NAMES = {"接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"}
+ck("SK01~SK08 八个技能节点都出现", len(set(_txs) & _SK_NAMES) >= 8,
+   str(sorted(set(_txs) & _SK_NAMES)))
+ck("SK01 的 Tx = 接近 (工程节点名)", "接近" in _txs, str(_txs[:3]))
 
 # 🎚 列头过滤: Layer 只选 L2 / Type 只选一个类型
 from PyQt5.QtWidgets import QMenu as _QMenu
@@ -169,9 +175,14 @@ ck("列头过滤 Layer=L2", len(_v1) > 0 and {r[1] for r in _v1} == {"L2"},
 ck("表头显示过滤值", "L2" in w.tree.headerItem().text(1), w.tree.headerItem().text(1))
 
 def _pick_any_type(self, *a, **k):
+    # 挑"当前 L2 过滤下真实存在的类型" (类型词表随话题变, 钉死 zmax:: 前缀会假红)
     for act in self.actions():
         d = act.data()
-        if d and str(d).startswith("zmax::"):
+        if d and not str(d).startswith("__all") and (_v1 and any(r[5] == str(d) for r in _v1)):
+            return act
+    for act in self.actions():
+        d = act.data()
+        if d and not str(d).startswith("__all"):
             return act
     return None
 _QMenu.exec_ = _pick_any_type
