@@ -40,7 +40,7 @@ _ALIASES = {
 def parse(qos):
     """qos 字符串 → dict(reliability, history, depth, durability) 或 None (非 DDS / 未知)。"""
     raw = str(qos or "").strip()
-    if not raw:
+    if not raw or raw in ("—", "-", "None", "null"):
         return None
     low = raw.lower()
     if low in ("shm", "shared_memory", "step"):
@@ -81,6 +81,8 @@ def standard(qos) -> str:
     d = parse(qos)
     if not d:
         raw = str(qos or "").strip()
+        if not raw or raw in ("—", "-", "None", "null"):
+            return "—"
         if raw.lower() in ("shm", "shared_memory"):
             return "SHM (非 DDS)"
         if raw.lower() == "step":

@@ -430,13 +430,13 @@ class BusView(QWidget):
         head.addWidget(self._sm_btn("🗑 清屏", "只清 Trace 视图, 不动 trace.jsonl 原始记录", self._clear_trace))
         head.addWidget(self._sm_btn("📤 导出 CSV", "导出当前 Trace 表(Excel 可开)", self.export_trace))
 
-        self.tb = QTableWidget(0, 11)
+        self.tb = QTableWidget(0, 12)   # Time · Layer · Name · Signal · Value · Unit · Phys · Type · Tx · Rx · QoS · Hz
         self.tb.setHorizontalHeaderLabels(
             # 🆕 2026-10-01 老倪: 「trace里得实时显示数值啊…不是静态的变量, 是动态的数据, 给我高亮显示出来」
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
             #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
             # 🆕 2026-10-01 老倪: 「时间第一列, name第二列」+「默认 topic 固定、时间变动, 不要滚动」
-            ["Time", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+            ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
             f" font-family:{MONO}; font-size:10pt; }}"
@@ -450,8 +450,8 @@ class BusView(QWidget):
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         th = self.tb.horizontalHeader()
-        for i, w in ((0, 130), (1, 165), (2, 250), (3, 430), (4, 110), (5, 120), (6, 90),
-                     (7, 90), (8, 80), (9, 80), (10, 200)):
+        for i, w in ((0, 120), (1, 64), (2, 220), (3, 240), (4, 160), (5, 90), (6, 70),
+                     (7, 210), (8, 130), (9, 150), (10, 240), (11, 110)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
         th.setSectionsMovable(False)
@@ -1009,13 +1009,14 @@ class BusView(QWidget):
         夹在 90~340; 用户拖过(在 _col_user 里)就不动。
         ⚠️ 绝不用 `ResizeToContents` —— 高频表逐格量列宽会烧 CPU(实测 81%), 这是本文件记过的坑。
         """
-        if 1 in (getattr(self, "_col_user", None) or set()):
+        self.tb.setColumnWidth(1, 64)        # 🏷 Layer 列恒窄 (只有 L2~L5/SYS)
+        if 2 in (getattr(self, "_col_user", None) or set()):
             return
         try:
             from PyQt5.QtGui import QFontMetrics                     # noqa: PLC0415
             fm = QFontMetrics(QFont(MONO, 10))
             ws = [fm.horizontalAdvance(str(x)) for x in names if x] or [0]
-            self.tb.setColumnWidth(1, max(90, min(340, max(ws) + 24)))
+            self.tb.setColumnWidth(2, max(90, min(340, max(ws) + 24)))
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -1116,7 +1117,7 @@ class BusView(QWidget):
         # 🧭 2026-10-17 老倪: 「trace 每列的中文改成英文, 控制字数, 不要写太多」→ 全英文短表头
         # 🧭 2026-10-17 老倪: 「trace 窗口都是 signal, 改成 Name 列…增加 Type / Tx / Rx,
         #    删 Lamp / Count / Age, QoS 要跟 DDS 标准对上」⇒ 固定行与滚动**同一套列**, 不再两套口径
-        _labs = ["Time", "Name", "Signal", "Value", "Unit", "Phys",
+        _labs = ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys",
                  "Type", "Tx", "Rx", "QoS", "Hz"]
         if _labs == getattr(self, "_hdr_last", None):
             return
@@ -1126,7 +1127,31 @@ class BusView(QWidget):
 
     def _set_trace_header0(self, mode=None):
         self.tb.setHorizontalHeaderLabels(
-            ["Time", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+            ["Time", "Layer", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+
+    def _layer_map(self):
+        """节点 id → 层 (L2~L5 / meta), 来自工程库。"""
+        if getattr(self, "_lvlmap", None) is None:
+            m = {}
+            try:
+                from lerobot.middleware import db as _db
+                for r in _db.node_rows():
+                    m[str(r.get("node_id"))] = str(r.get("layer") or "")
+            except Exception:                                                # noqa: BLE001
+                pass
+            self._lvlmap = m
+        return self._lvlmap
+
+    def _layer_of(self, topic, t=None):
+        """话题的层: 话题自带 layer 优先; ss.node.* 查节点; 注册表类话题 = SYS。"""
+        lay = str((t or {}).get("layer") or "")
+        if lay:
+            return "SYS" if lay == "meta" else lay
+        tp = str(topic or "")
+        if tp.startswith("ss.node."):
+            lay = self._layer_map().get(tp[len("ss.node."):].split(".")[0], "")
+            return ("SYS" if lay == "meta" else lay) or "—"
+        return "SYS"
 
     def _cons_map(self):
         """话题 → 下游节点 id 清单 (来自 busdb 的 consumers; 没有就空)。"""
@@ -1300,7 +1325,7 @@ class BusView(QWidget):
             _is_step = (k in _cur_topics) or (nm in _cur_topics)
             # 🏷 2026-10-17 老倪: 「Name 列给中文名 (≤5 字); Signal 是程序里的真实变量;
             #    增加 Type (对应 topic 的类型) 和 Tx / Rx; 删 Lamp/Count/Age; QoS 要跟 DDS 标准对上」
-            base = dict(time=tt, name=_cn_names.cn_of(nm, ""), topic=nm,
+            base = dict(time=tt, layer=self._layer_of(nm, t), name=_cn_names.cn_of(nm, ""), topic=nm,
                         hz=_h, count=str(t.get("count", "—")),
                         age=(_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
                         qos=_qos_names.standard(t.get("qos")),
@@ -1349,32 +1374,35 @@ class BusView(QWidget):
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(len(rows))
         for r, x in enumerate(rows):
-            cells = [x["time"], x["name"], x["signal"], x["value"], x["unit"], x["phys"],
-                     x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
+            cells = [x["time"], x["layer"], x["name"], x["signal"], x["value"], x["unit"],
+                     x["phys"], x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
+                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 5, 7, 8, 9) else UI, 10))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
-                elif c == 1:
-                    item.setForeground(QColor("#7ee787" if x["pin"] else C_WHITE))
+                elif c == 1:                                   # Layer
+                    item.setForeground(QColor(C_YELLOW))
+                    item.setTextAlignment(Qt.AlignCenter)
                 elif c == 2:
-                    item.setForeground(QColor("#9db4d0"))
+                    item.setForeground(QColor("#7ee787" if x["pin"] else C_WHITE))
                 elif c == 3:
-                    item.setForeground(QColor(C_RED if x["bad"] else C_WHITE))
+                    item.setForeground(QColor("#9db4d0"))
                 elif c == 4:
-                    item.setForeground(QColor(C_GRAY))
+                    item.setForeground(QColor(C_RED if x["bad"] else C_WHITE))
                 elif c == 5:
+                    item.setForeground(QColor(C_GRAY))
+                elif c == 6:
                     item.setForeground(QColor(C_RED if x["phys"] == "✘" else
                                               C_YELLOW if x["phys"] == "🟡" else C_GREEN))
                     if x["why"]:
                         item.setToolTip(x["why"])
                 if x["step"]:
                     item.setBackground(QColor("#2b2611"))
-                    if c in (1, 3):
+                    if c in (2, 4):
                         item.setForeground(QColor("#ffd700"))
                 elif x["pin"]:
-                    item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
+                    item.setBackground(QColor("#1b2c1e") if c == 4 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
                 self.tb.setItem(r, c, item)
@@ -1458,6 +1486,7 @@ class BusView(QWidget):
             _hz = live_t.get("hz")
             cells = [
                 tt,
+                self._layer_of(topic, live_t),          # 🏷 Layer (L2~L5 / SYS)
                 _cn_names.cn_of(topic),
                 self._sig_names((live_t.get("fields") or {}) or rec.get("digest")),
                 vals if vals else "—",
@@ -1567,7 +1596,7 @@ class BusView(QWidget):
         self._fill_detail()
 
     def _on_trace_click(self, it):
-        top = self.tb.item(it.row(), 1)
+        top = self.tb.item(it.row(), 2)
         if top is not None:
             self._sel_kind, self._sel_obj = "topic", top.text()
             self._fill_detail()
