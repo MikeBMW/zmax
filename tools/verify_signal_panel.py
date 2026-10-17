@@ -23,7 +23,8 @@ from canoe_graphic import CanoeGraphicWidget, ROOT
 from lerobot.middleware import live_signals as L
 
 w = CanoeGraphicWidget()
-hdr = [w.tree.headerItem().text(i) for i in range(w.tree.columnCount())]
+hdr = [w.tree.headerItem().text(i).split(" ▾")[0]      # 列头带 "▾" (可过滤标记)
+       for i in range(w.tree.columnCount())]
 ck("列口径 = Name/Layer/Signal/Value/Type/Tx/Rx",
    hdr == ["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"], str(hdr))
 ck("7 列全部可鼠标拖宽", all(w.tree.header().sectionResizeMode(i) == 0 for i in range(7)),
@@ -68,7 +69,61 @@ ck("Signal 全英文 (无非 ASCII)", not [r for r in found if _re.search(r"[^\x
    str([r[2] for r in found if _re.search(r"[^\x00-\x7f]", r[2])][:3]))
 ck("Layer 列有层值 (非全 SYS)", any(r[1] in ("L2", "L3", "L4", "L5") for r in found),
    str(sorted({r[1] for r in found})))
+# Tx 必须是真节点名 (或带进程标记), 不许把"表/面板"当节点糊上去
+_tx = [r[5] for r in found]
+ck("Tx 无假节点「万有引力表 (主参数…」", not [x for x in _tx if "万有引力表 (主参数" in x],
+   str([x for x in _tx if "万有引力表 (主参数" in x][:2]))
+ck("Tx 覆盖多个真节点", len(set(_tx)) >= 8, str(sorted(set(_tx))[:10]))
+ck("Tx 无空值", all(x.strip() for x in _tx), str([x for x in _tx if not x.strip()][:3]))
+ck("gravity 的 Tx 是进程(非节点)", w._out_node("gravity.下降·L2 力大小_mps").startswith("gravity_trace_pub"),
+   w._out_node("gravity.下降·L2 力大小_mps"))
+ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps") == "前馈加速器",
+   w._out_node("sstrace.前馈速度_mps"))
 ck("每行 7 列都有内容", all(all(x.strip() for x in r) for r in found[:50]),
    str(found[:1]))
+# 🎚 列头过滤: Layer 只选 L2 / Type 只选一个类型
+from PyQt5.QtWidgets import QMenu as _QMenu
+
+
+def visible_rows():
+    out = []
+    def walk(x):
+        for i in range(x.childCount()):
+            ch = x.child(i)
+            if ch.childCount():
+                walk(ch)
+            elif not ch.isHidden():
+                out.append([ch.text(k) for k in range(7)])
+    walk(w.tree.invisibleRootItem())
+    return out
+
+
+_n0 = len(visible_rows())
+_orig = _QMenu.exec_
+def _pick_l2(self, *a, **k):
+    for act in self.actions():
+        if act.data() == "L2":
+            return act
+    return None
+_QMenu.exec_ = _pick_l2
+w._on_header_filter(1)
+_v1 = visible_rows()
+ck("列头过滤 Layer=L2", len(_v1) > 0 and {r[1] for r in _v1} == {"L2"},
+   "%d → %d 行, 层=%s" % (_n0, len(_v1), sorted({r[1] for r in _v1})))
+ck("表头显示过滤值", "L2" in w.tree.headerItem().text(1), w.tree.headerItem().text(1))
+
+def _pick_any_type(self, *a, **k):
+    for act in self.actions():
+        d = act.data()
+        if d and str(d).startswith("zmax::"):
+            return act
+    return None
+_QMenu.exec_ = _pick_any_type
+w._on_header_filter(4)
+_v2 = visible_rows()
+ck("再叠 Type 过滤", len(_v2) > 0 and len({r[4] for r in _v2}) == 1,
+   "%d 行, 类型=%s" % (len(_v2), sorted({r[4] for r in _v2})))
+_QMenu.exec_ = _orig
+
 print("\n%s" % ("✅ 全部通过" if not fails else "❌ 失败: %s" % fails))
 sys.exit(0 if not fails else 1)

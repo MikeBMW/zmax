@@ -29,8 +29,9 @@ import threading
 import time
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QCursor
 from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QFrame,
+from PyQt5.QtWidgets import (QAbstractItemView, QActionGroup, QCheckBox, QComboBox, QDialog, QFileDialog, QFrame,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
                              QListWidgetItem, QMenu, QPushButton, QSizePolicy, QSplitter,
                              QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -1911,6 +1912,15 @@ class CanoeGraphicWidget(QWidget):
         self._apply_col_widths()
         QTimer.singleShot(0, self._apply_col_widths)     # 显示后再来一次 (样式表 polish 会重置)
         QTimer.singleShot(1200, self._apply_col_widths)
+        # 🎚 2026-10-17 老倪: 「信号分析的列表头, 增加一个过滤功能, 例如 Layer 可以只选 L2;
+        #    Type 可以只显示某一个 type 的 topic」⇒ **点列头**弹该列取值菜单 (带条数), 单选过滤,
+        #    列头显示 "Layer ▾ L2"; 再点一次选「全部」即取消。
+        self._col_base_hdr = ["Name", "Layer", "Signal", "Value", "Type", "Tx", "Rx"]
+        self._col_filters = {}
+        _h = self.tree.header()
+        _h.setSectionsClickable(True)
+        _h.setToolTip("点列头 → 按该列取值过滤 (Layer 只选 L2 / Type 只选某个 topic 类型)")
+        _h.sectionClicked.connect(self._on_header_filter)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._tree_menu)
@@ -2528,6 +2538,78 @@ class CanoeGraphicWidget(QWidget):
         self.wave.set_curves(list(self.selected))
         self._apply_default_selection()
         self._update_tree_values()
+        self._apply_col_filters()        # 重建树后列过滤仍然生效
+
+    # ── 🎚 列头过滤 (Layer/Type/Name/Value/Tx/Rx/Signal 任意列) ──
+    def _on_header_filter(self, idx):
+        """点列头: 列出该列所有取值 + 条数 ⇒ 单选过滤; 选「全部」取消。"""
+        vals = {}
+        for it in self._all_items():
+            if it.childCount():
+                continue
+            t = it.text(idx)
+            vals[t] = vals.get(t, 0) + 1
+        if not vals:
+            return
+        _cur = self._col_filters.get(idx)
+        m = QMenu(self)
+        ag = QActionGroup(m)
+        ag.setExclusive(True)
+        a_all = m.addAction("全部 (%d)" % sum(vals.values()))
+        a_all.setCheckable(True)
+        a_all.setChecked(_cur is None)
+        a_all.setData(None)
+        ag.addAction(a_all)
+        m.addSeparator()
+        for v, c in sorted(vals.items(), key=lambda kv: (-kv[1], kv[0]))[:80]:
+            a = m.addAction("%s (%d)" % (v if v else "—", c))
+            a.setCheckable(True)
+            a.setChecked(_cur == v)
+            a.setData(v)
+            ag.addAction(a)
+        m.addSeparator()
+        a_clr = m.addAction("✖ 清除所有列的过滤")
+        act = m.exec_(QCursor.pos())
+        if act is None:
+            return
+        if act is a_clr:
+            self._col_filters.clear()
+        else:
+            v = act.data()
+            if v is None:
+                self._col_filters.pop(idx, None)
+            else:
+                self._col_filters[idx] = v
+        self._apply_col_filters()
+
+    def _apply_col_filters(self):
+        """按 _col_filters 隐藏不匹配的叶子行; 列头标注当前过滤值。"""
+        try:
+            for i, base in enumerate(self._col_base_hdr):
+                v = self._col_filters.get(i)
+                self.tree.headerItem().setText(i, base + ((" ▾ %s" % v) if v is not None else " ▾"))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self._filter_branch(self.tree.invisibleRootItem())
+
+    def _filter_branch(self, parent):
+        """递归隐藏: 子节点全被过滤掉的分组也一起藏。返回该分支是否全隐藏。"""
+        all_hidden = True
+        for i in range(parent.childCount()):
+            ch = parent.child(i)
+            if ch.childCount():
+                hid = self._filter_branch(ch)
+                ch.setHidden(hid)
+            else:
+                hid = False
+                for col, v in self._col_filters.items():
+                    if ch.text(col) != v:
+                        hid = True
+                        break
+                ch.setHidden(hid)
+            if not hid:
+                all_hidden = False
+        return all_hidden
 
     def _ar_groups(self):
         """🥽 AR/AOI 信号总线 live 文件里的 信号→组 映射 (按 mtime 缓存; 读不到就空 —— 静默降级)。"""
@@ -2648,76 +2730,99 @@ class CanoeGraphicWidget(QWidget):
     #   · sstrace.* = 3D 面板发布的那一帧画布场景快照 (ss_dreamview.publish_trace_live); 具体到节点:
     #     动作调制/前馈/安全边界 = 画布同名节点; 末端 = 真机 TCP; 光模块类 = YOLO→2D→3D 解算链。
     # 没进表的按"来源族"给最保守的节点名(画布数据源 / 本机真值流), 绝不编造节点。
+    # Tx = **真正发送这个信号的节点** (画布节点 id) —— 2026-10-17 老倪:
+    #   「信号分析窗口, Tx 是发送的节点, 状态空间, 没有 完有引力节点啊? 检查, 修改」
+    #   旧表写的是**描述性标签**(「🌍 万有引力表 (主参数 M 页 …)」), 画布上根本没有这个节点;
+    #   现在每项都指向工程库里的 node_id, 显示用 naming.clean() 归一 (无 emoji/括号/长解释);
+    #   真没有画布节点的 (万有引力表发布器 / 技能派发服务 / ROS 桥 …) 写**进程名**并标 non-node,
+    #   不再拿一个像节点的名字糊上去。
+    #   结构: (键前缀, 节点 id 或 None, 无节点时的进程名)
     OUT_NODE_RULES = (                       # 顺序要紧: 长的/具体的排前面
-        ("gravity.", "🌍 万有引力表 (主参数 M 页 · 力的大小/实部)"),
-        ("sseng.势能_phi", "🧮 流形引擎 (Manifold Engine)"),
-        ("sseng.梯度范数", "🧮 流形引擎 (Manifold Engine)"),
-        ("sseng.动量M", "🧮 流形引擎 (度规/等效惯量)"),
-        ("sseng.置信度", "🧮 流形引擎 (解码置信)"),
-        ("sseng.元任务数", "🧮 流形引擎 (元任务解码)"),
-        ("sseng.内稳态", "🧮 流形引擎 (内稳态)"),
-        ("sseng.潜表示", "🚀 L3 · VLM 编码 + Flow (潜表示)"),
-        ("sseng.动作调制", "🧭 动作调制器"),
-        ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 得分)"),
-        ("sseng.skill闸.", "⚖ 原子技能物理闸 (惯性/质量变化率 · 偏差 error)"),
-        ("sseng.顶层补偿", "📡 融合定位 → 🧮 流形引擎 · 顶层结构补偿"),
-        ("sseng.", "🧩 SU(2) 状态空间 · 常驻回路 (ss_engine_loop)"),
-        ("sstrace.前馈速度", "⚡ 前馈加速器"),
-        ("sstrace.动作调制", "🧭 动作调制器"),
-        ("sstrace.阶段序号", "🧭 动作调制器 · 八阶段状态机"),
-        ("sstrace.八阶段序号", "🧭 动作调制器 · 八阶段状态机"),
-        ("sstrace.阶段限速_mps", "🧭 动作调制器 · 八阶段状态机 (阶段限速表)"),
-        ("sstrace.安全边界", "🛡 安全执行边界 (饱和限幅)"),
-        ("sstrace.接触概率", "🧪 状态校正器 (接触判别)"),
-        ("sstrace.末端", "📦 数据源 · 真机 TCP 位姿"),
-        ("sstrace.光模块头", "📐 2D→3D 解算 (YOLO 孔口)"),
-        ("sstrace.光模块", "🎯 YOLO 目标检测"),
-        ("sstrace.吸嘴到槽位", "📐 2D→3D 解算 (槽位 · 摆盘)"),
-        ("sstrace.真空吸持", "🤖 机器人执行器 (真空吸盘 · 摆盘)"),
-        ("sstrace.夹爪", "🤖 机器人执行器 (夹爪)"),
-        ("sstrace.环境接触", "🖐 触觉感知"),
-        ("sstrace.吸附力", "🖐 触觉感知"),
-        ("sstrace.夹持", "🖐 触觉感知"),
-        ("sstrace.光学质量检测", "🔍 光学质量检测"),
-        ("sstrace.AOI", "🔍 光学质量检测"),
-        ("sstrace.", "📦 数据源 (画布场景快照)"),
-        # 🧾 2026-10-15 老倪「元任务预测这个节点是输出 topic，是什么？要加入到实时监控的信号分析」
-        #   真源: 画布节点 🧾 元任务预测 (n_intent_direct) ← 输入=流形引擎驱动扭矩 T_drive=M·(−∇Φ)
-        #   出口话题 zmax/ss_meta_pred (SSMetaPred, ss_daemon 5s 转发) ⇒ 信号页 ds.* 一路可画。
-        ("ds.zmax/ss_meta_pred", "🧾 元任务预测 (驱动扭矩 → 逐元任务得分)"),
-        # 🧩 块 (老倪 2026-10-15): 块步 → 前馈 → 加权 → 逐拍调制/安全 → 技能派发, 每段都可画
-        ("sseng.chunk.块步", "🧩 动作块 (引擎规划 a_t…a_t+H-1)"),
-        ("sseng.chunk.λ", "🧩 块权重 λ (近步小 → 远步大)"),
-        ("sseng.chunk.", "🧩 动作块 chunk action"),
-        ("skill.", "🦾 技能派发 (肌肉记忆 · 每技能最新一拍)"),
-        ("ds.zmax/ss_action_chunk", "🧩 动作块 (话题 zmax/ss_action_chunk)"),
-        ("ros./robot/tcp_pose", "📦 数据源 · 真机 TCP 位姿"),
-        ("ros./robot/force_torque", "🖐 触觉感知"),
-        ("ros./gripper_pos", "🤖 机器人执行器"),
-        ("ros.", "Orin ROS2 (真机)"),
-        ("ds.", "📦 数据源 (DDS 全局数据空间)"),
-        ("yolo.", "🎯 YOLO 目标检测"),
-        ("sseng.chunk.", "🧩 动作块 chunk action"),
-        ("skill.", "🦾 技能派发 (肌肉记忆)"),
-        ("space.", "📡 融合定位建图"),
-        ("safety.", "🛡 安全执行边界 (饱和限幅)"),
-        ("pose.", "📦 数据源 · 真机 TCP 位姿"),
-        ("aoi.", "🔍 光学质量检测"),
-        ("光学质量检测.", "🔍 光学质量检测"),
-        ("AOI.", "🔍 光学质量检测"),
+        ("gravity.", None, "gravity_trace_pub.py (万有引力表进程)"),
+        ("sseng.势能_phi", "ss_mani_eng", ""),
+        ("sseng.梯度范数", "ss_mani_eng", ""),
+        ("sseng.动量M", "ss_mani_eng", ""),
+        ("sseng.置信度", "ss_mani_eng", ""),
+        ("sseng.元任务数", "ss_mani_eng", ""),
+        ("sseng.内稳态", "ss_mani_eng", ""),
+        ("sseng.顶层补偿", "ss_mani_eng", ""),
+        ("sseng.动作调制", "sssched", ""),
+        ("sseng.skill闸.", "ssphys", ""),
+        ("sseng.潜表示", "ssvlm", ""),
+        ("sseng.chunk.", "ss_mani_eng", ""),
+        ("sseng.", "ss_mani_eng", ""),
+        ("ds.zmax/ss_meta_pred", "n_intent_direct", ""),
+        ("ds.zmax/ss_action_chunk", "ss_mani_eng", ""),
+        ("sstrace.前馈速度", "ssff", ""),
+        ("sstrace.动作调制", "sssched", ""),
+        ("sstrace.阶段", "sssched", ""),
+        ("sstrace.八阶段序号", "sssched", ""),
+        ("sstrace.安全边界", "sslimit", ""),
+        ("sstrace.接触概率", "ssinnov", ""),
+        ("sstrace.光模块头", "ss2d3d", ""),
+        ("sstrace.吸嘴到槽位", "ss2d3d", ""),
+        ("sstrace.光模块", "ssyolo", ""),
+        ("sstrace.真空吸持", "ssact", ""),
+        ("sstrace.夹爪", "ssact", ""),
+        ("sstrace.夹持", "sstactile", ""),
+        ("sstrace.环境接触", "sstactile", ""),
+        ("sstrace.吸附力", "sstactile", ""),
+        ("sstrace.光学质量检测", "ssaoi", ""),
+        ("sstrace.AOI", "ssaoi", ""),
+        ("sstrace.末端", "swworld", ""),
+        ("sstrace.", "swworld", ""),
+        ("skillphys.", None, "zmax-ss-skill-dispatch (技能派发服务)"),
+        ("skill.", None, "zmax-ss-skill-dispatch (技能派发服务)"),
+        ("ros./robot/tcp_pose", None, "ros_bridge (Orin ROS2)"),
+        ("ros.", None, "ros_bridge (Orin ROS2)"),
+        ("ds.", None, "dds_bridge (全局数据空间)"),
+        ("yolo.", "ssyolo", ""),
+        ("space.", "sssensor", ""),
+        ("safety.", "sslimit", ""),
+        ("pose.", None, "pose_tap (真机 tcp_pose 50Hz)"),
+        ("aoi.", "ssaoi", ""),
+        ("光学质量检测.", "ssaoi", ""),
+        ("AOI.", "ssaoi", ""),
+        ("ar.", None, "ar_l5_understand.py (AR/AOI 信号总线)"),
+        ("catalog.", None, "catalog_worker (话题目录)"),
     )
 
     def _out_node(self, key):
-        """这个信号是哪个**节点**输出的 (画布节点名; 无对应节点就写数据源/进程名, 不编造)。"""
+        """Tx = 发送这个信号的**节点名** (归一后只有本名)。
+
+        有画布节点 ⇒ 工程库里的节点名 (naming.clean: 去 emoji / 去「· 解释」/ 去括号);
+        没有画布节点 ⇒ 写**发布进程名** (带 .py 或 service 名), 绝不拿像节点的假名字顶上。
+        """
         k = str(key or "")
         if not k:
             return ""
-        if k.startswith("ar.") or k.startswith("catalog."):
-            return "🔍 光学质量检测 / 🥽 AR 信号总线"
-        for pre, node in self.OUT_NODE_RULES:
+        _nid, _proc = None, ""
+        for pre, nid, proc in self.OUT_NODE_RULES:
             if k.startswith(pre):
-                return node
-        return "本机真值流 (JSON)"
+                _nid, _proc = nid, proc
+                break
+        if _nid:
+            nm = self._node_name(_nid)
+            if nm:
+                return nm
+        return _proc or "本机真值流"
+
+    def _node_name(self, node_id):
+        """节点 id → 归一显示名 (工程库; 查不到返回空)。"""
+        if getattr(self, "_nm_cache", None) is None:
+            self._nm_cache = {}
+            try:
+                import sys as _sys
+                if os.path.join(ROOT, "src") not in _sys.path:
+                    _sys.path.insert(0, os.path.join(ROOT, "src"))
+                from lerobot.middleware import db as _db
+                from lerobot.middleware import naming as _naming
+                rows = _db.node_rows()
+                _m = _naming.unique_map([(r["node_id"], str(r.get("name") or r["node_id"])) for r in rows])
+                self._nm_cache = _m
+            except Exception:                                              # noqa: BLE001
+                self._nm_cache = {}
+        return self._nm_cache.get(node_id, "")
 
     def _src_hint(self, key):
         if key.startswith("ar."):
