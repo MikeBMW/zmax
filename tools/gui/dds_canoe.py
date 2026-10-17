@@ -455,11 +455,20 @@ class BusView(QWidget):
         self.tb.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tb.setShowGrid(True)
         self.tb.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        # 🖱 2026-10-17 老倪: 「用鼠标滚轮, 要可以上下滚动窗口」
+        #   默认 ScrollPerItem 在 1946 行时一滚就跳一格、且体感像没动; 按像素滚才跟手。
+        self.tb.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tb.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self._tb_filters = {}
         th = self.tb.horizontalHeader()
         for i, w in ((0, 150), (1, 64), (2, 250), (3, 150), (4, 90), (5, 70),
                      (6, 210), (7, 130), (8, 150), (9, 240), (10, 110)):
             th.setSectionResizeMode(i, QHeaderView.Interactive)  # 🐛 同上(卡死根因)
             self.tb.setColumnWidth(i, w)
+        # 🎚 2026-10-17 老倪: 「列表头, 要增加信号滤波功能, 现在信号太多了, 不好选择」
+        #   点任一列头 ⇒ 弹该列所有取值+条数 ⇒ 选中即过滤 (可叠列);「全部」取消, 支持清空。
+        th.setSectionsClickable(True)
+        th.sectionClicked.connect(self._on_header_filter)
         th.setSectionsMovable(False)
         # 🕒 2026-10-17 老倪: 「Time 要能显示和 3D 场景一样的相对时间, 同步时间显示; 当然也可以绝对时间;
         #    要在 Time 列可以切换」⇒ 点 Time 表头切 相对/绝对 (同一根钟: 相对 = 快照里的 时间_s)
@@ -1284,6 +1293,75 @@ class BusView(QWidget):
                 return self._sigm.get((nid, port, str(sig)), (None, None, None))
         return self._sigm_by_name.get(str(sig), (None, None, None))
 
+    _TB_HDR = ["Time·abs", "Layer", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"]
+    _TB_FILTERABLE = (1, 2, 4, 6, 7, 8, 9)      # 能过滤的列 (时间/数值不列)
+
+    def _on_header_filter(self, idx):
+        """点列头 → 选一个取值 → 只看这些行 (与信号分析窗口同一套交互)。"""
+        if idx not in self._TB_FILTERABLE:
+            self._log("这一列不适合过滤 (时间是逐帧变的); 点 Layer / Signal / Unit / Type / Tx / Rx / QoS")
+            return
+        cnt = {}
+        for r in range(self.tb.rowCount()):
+            it = self.tb.item(r, idx)
+            v = it.text() if it is not None else ""
+            cnt[v] = cnt.get(v, 0) + 1
+        if not cnt:
+            return
+        from PyQt5.QtWidgets import QMenu
+        m = QMenu(self.tb)
+        a_all = m.addAction("全部 (%d)" % sum(cnt.values()))
+        a_all.setData(None)
+        m.addSeparator()
+        acts = []
+        for v, n in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))[:80]:
+            a = m.addAction("%s (%d)" % (v or "—", n))
+            a.setData(v)
+            acts.append(a)
+        m.addSeparator()
+        a_clr = m.addAction("清除所有列的过滤")
+        cur = self._tb_filters.get(idx)
+        if cur is not None:
+            for a in acts:
+                if a.data() == cur:
+                    a.setText("● " + a.text())
+        pick = m.exec_(self.tb.mapToGlobal(self.tb.rect().topLeft()))
+        if pick is a_clr:
+            self._tb_filters.clear()
+        elif pick in acts or pick is a_all:
+            v = pick.data()
+            if v is None:
+                self._tb_filters.pop(idx, None)
+            else:
+                self._tb_filters[idx] = v
+        else:
+            return
+        self._apply_col_filters()
+
+    def _apply_col_filters(self):
+        """按列过滤条件隐藏行 + 列头标注当前值 (行集合变了也保持过滤)。"""
+        th = self.tb.horizontalHeader()
+        for c in range(self.tb.columnCount()):
+            it = self.tb.horizontalHeaderItem(c)
+            if it is None:
+                continue
+            # Time 列的表头是 Time·abs / Time·rel 可切的 ⇒ 以当前文本为底, 别被固定表覆盖
+            base = (it.text().split(" ▾")[0] if c == 0 else self._TB_HDR[c])
+            v = self._tb_filters.get(c)
+            it.setText(base + (" ▾ %s" % v if v else " ▾"))
+        if not getattr(self, "_tb_filters", None):
+            for r in range(self.tb.rowCount()):
+                self.tb.setRowHidden(r, False)
+            return
+        for r in range(self.tb.rowCount()):
+            hide = False
+            for c, v in self._tb_filters.items():
+                it = self.tb.item(r, c)
+                if it is None or it.text() != v:
+                    hide = True
+                    break
+            self.tb.setRowHidden(r, hide)
+
     def _fill_trace_fixed(self, force=False):
         """📌 固定行模式(默认): 一行一个话题, **位置不动**, 只有时间/数值在变。
 
@@ -1509,21 +1587,69 @@ class BusView(QWidget):
                                      prev=None, phys="?", bad=False, src=_src,
                                      why=("信号来源: %s · 当前无实测值 (总线未跑/未上线)" % _src)))
 
+        # ⚡ 2026-10-17 老倪: 「Trace 窗口的操作, 为什么延迟这么大?」
+        #   根因: 每拍 (0.8s) 把 1946 行 × 11 格全部 delete+重建 (≈2.1 万 item), 单次 0.62s,
+        #   占空比 75% ⇒ 滚轮/点行都在等主线程。行序已固定, 行集合没变时只改 5 个会变的格子。
+        _sig = tuple((x.get("topic"), x.get("raw") or x.get("signal")) for x in rows)
+        _same = (_sig == getattr(self, "_trace_sig", None)
+                 and self.tb.rowCount() == len(rows)
+                 and self.tb.columnCount() == 11)
+        if _same:
+            self.tb.setUpdatesEnabled(False)
+            for r, x in enumerate(rows):
+                for c, key in ((0, "time"), (3, "value"), (5, "phys"), (9, "qos"), (10, "hz")):
+                    it = self.tb.item(r, c)
+                    if it is None:
+                        continue
+                    txt = str(x[key])
+                    if it.text() != txt:
+                        it.setText(txt)
+                it3 = self.tb.item(r, 3)
+                if it3 is not None:
+                    _fg = C_RED if x["bad"] else C_WHITE
+                    if it3.foreground().color().name() != QColor(_fg).name():
+                        it3.setForeground(QColor(_fg))
+                it5 = self.tb.item(r, 5)
+                if it5 is not None:
+                    _fg5 = (C_RED if x["phys"] == "✘" else C_YELLOW if x["phys"] == "🟡" else C_GREEN)
+                    if it5.foreground().color().name() != QColor(_fg5).name():
+                        it5.setForeground(QColor(_fg5))
+            self.tb.setUpdatesEnabled(True)
+            self._apply_col_filters()
+            return
+        self._trace_sig = _sig
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(len(rows))
+        # ♻️ 2026-10-17: 重建时**复用已有 item** (只 setText), 不再每拍 new 2 万个 QTableWidgetItem。
+        #   颜色/字体只在首建或状态位 (bad/phys/pin/step) 变化时重设。
+        _prev_flags = getattr(self, "_trace_flags", [])
+        _new_flags = []
         for r, x in enumerate(rows):
             cells = [x["time"], x["layer"], x["signal"], x["value"], x["unit"],
                      x["phys"], x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
+            _flags = (bool(x["bad"]), x["phys"], bool(x["pin"]), bool(x["step"]))
+            _restyle = (r >= len(_prev_flags)) or (_prev_flags[r] != _flags)
+            _new_flags.append(_flags)
             for c, txt in enumerate(cells):
-                item = QTableWidgetItem(str(txt))
-                item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
+                item = self.tb.item(r, c)
+                if item is None:
+                    item = QTableWidgetItem()
+                    item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
+                    if c == 1:
+                        item.setTextAlignment(Qt.AlignCenter)
+                    self.tb.setItem(r, c, item)
+                    _restyle = True
+                txt = str(txt)
+                if item.text() != txt:
+                    item.setText(txt)
+                if not _restyle:
+                    continue
                 if c == 2:                    # Signal 列 tooltip 保留中文名 (列删了, 词还得能查)
                     item.setToolTip("%s\n中文: %s" % (x.get("raw") or x["signal"], x.get("cn") or ""))
                 if c == 0:
                     item.setForeground(QColor(C_BLUE))
                 elif c == 1:                                   # Layer
                     item.setForeground(QColor(C_YELLOW))
-                    item.setTextAlignment(Qt.AlignCenter)
                 elif c == 2:
                     item.setForeground(QColor("#7ee787" if x["pin"] else "#9db4d0"))
                 elif c == 3:
@@ -1543,7 +1669,9 @@ class BusView(QWidget):
                     item.setBackground(QColor("#1b2c1e") if c == 3 else QColor("#16202b"))
                 elif r % 2:
                     item.setBackground(QColor("#12171e"))
-                self.tb.setItem(r, c, item)
+                else:
+                    item.setBackground(QColor(C_BG))
+        self._trace_flags = _new_flags
         # ⚡ 实时状态: 有几路在本拍真有数、最老帧龄多少 (老倪判"有没有在动"看这一行, 不用数格子)
         try:
             _lv = _livesig.topics() if "_livesig" in dir() else {}
@@ -1566,6 +1694,7 @@ class BusView(QWidget):
         except Exception:                                                # noqa: BLE001
             pass
         self.tb.setUpdatesEnabled(True)
+        self._apply_col_filters()        # 重建后保持列头过滤
 
     def _fill_trace(self, force=False):
         if getattr(self, "_mode", "fixed") == "fixed":         # 📌 默认固定行(不滚动)

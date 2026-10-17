@@ -107,6 +107,31 @@ for _ in range(5):
     w._update_tree_values(); app.processEvents()
 ck("刷新不被 278 条拖死 (5 次 < 1s)", (time.time() - _t0) < 1.0, "%.2fs" % (time.time() - _t0))
 
+# 🔧 L2 原子技能 (老倪: 「怎么没有 L2 级别, 原子技能功能 的输出信号? 例如 SK01 节点呢?」)
+_sk = [(str(c.data(0, 0x0100)), c.text(1), c.text(5)) for c in []]
+_skrows = []
+def _wsk(x):
+    for i in range(x.childCount()):
+        ch = x.child(i)
+        if ch.childCount():
+            _wsk(ch)
+        else:
+            k = str(ch.data(0, 0x0100))
+            if k.startswith(("skill.", "skillphys.")) and not k.endswith(".ts"):
+                _skrows.append((k, ch.text(1), ch.text(5)))
+_wsk(w.tree.invisibleRootItem())
+ck("原子技能信号在表里", len(_skrows) >= 60, "%d 条" % len(_skrows))
+# skill.n / skill.块帧龄_s 是派发服务自身的计数, 不属于某个原子技能 (SYS 合理);
+# 键里点得出 SK0x / 阶段名的, 必须落在 L2 原子技能上。
+from lerobot.middleware import attribution as _at            # noqa: E402
+_bad_lay = [(_k, l) for _k, l, _t in _skrows if l != "L2" and _at.skill_stage_of(_k)]
+ck("原子技能层 = L2", not _bad_lay,
+   "%d 条, 非 L2 %d %s" % (len(_skrows), len(_bad_lay), str(_bad_lay[:3])))
+_txs = sorted({t for _k, _l, t in _skrows})
+ck("SK01~SK08 八个技能节点都出现", len([t for t in _txs if "SK0" in t]) >= 8,
+   str([t for t in _txs if "SK0" in t]))
+ck("SK01 的 Tx = ① 接近 · SK01", any(t == "① 接近 · SK01" for t in _txs), str(_txs[:3]))
+
 # 🎚 列头过滤: Layer 只选 L2 / Type 只选一个类型
 from PyQt5.QtWidgets import QMenu as _QMenu
 

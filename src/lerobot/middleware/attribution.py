@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from functools import lru_cache
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if os.path.join(ROOT, "src") not in sys.path:
@@ -104,6 +105,11 @@ def _load_nodes():
         rows = db.node_rows()
         m = naming.unique_map([(r["node_id"], str(r.get("name") or r["node_id"])) for r in rows])
         _NODES.update(sig=sig, map=m)
+        for _f in (tx_of, layer_of, rx_of):        # 工程库变了 ⇒ 归属缓存作废
+            try:
+                _f.cache_clear()
+            except Exception:                                             # noqa: BLE001
+                pass
         return m
     except Exception:                                                     # noqa: BLE001
         return _NODES["map"]
@@ -121,6 +127,43 @@ def _node_layer(node_id):
     return "SYS"
 
 
+# 🔧 原子技能 (L2): 画布上真有这 8 个节点 ——「① 接近 · SK01」…「⑧ 完成 · SK08」。
+#   老倪 2026-10-17: 「信号分析窗口, 怎么没有 L2 级别, 原子技能功能 的输出信号? 例如 SK01 节点呢?」
+#   原来 skill./skillphys. 统一落到进程名 zmax-ss-skill-dispatch + SYS 层 ⇒ 按 L2 过滤就看不见了。
+SKILL_STAGE = (("接近", "SK01"), ("对位", "SK02"), ("下降", "SK03"), ("抓取", "SK04"),
+               ("抬起", "SK05"), ("转移", "SK06"), ("插入", "SK07"), ("完成", "SK08"))
+
+
+def skill_stage_of(key):
+    """从键里认出是哪个原子技能: 'skill.转移.action_x' / 'skillphys.SK01 接近 · …' ⇒ SK0x。"""
+    k = str(key or "")
+    if not k.startswith(("skill.", "skillphys.", "skill_dispatch.")):
+        return None
+    m = re.search(r"SK0([1-8])", k)
+    if m:
+        return "SK0" + m.group(1)
+    for name, sk in SKILL_STAGE:
+        if name in k:
+            return sk
+    return None
+
+
+def _nodes_by_name():
+    """{SK0x: (显示名, 层)} —— 从工程库节点名里认 '① 接近 · SK01' 这种。"""
+    out = {}
+    try:
+        from lerobot.middleware import db
+        for r in db.node_rows():
+            nm = str(r.get("name") or "")
+            m = re.search(r"(SK0[1-8])", nm)
+            if m:
+                lay = str(r.get("layer") or "")
+                out[m.group(1)] = (nm, "L2" if lay == "meta" else (lay or "L2"))
+    except Exception:                                                     # noqa: BLE001
+        pass
+    return out
+
+
 def _rule(key):
     k = str(key or "")
     for pre, nid, proc in OUT_NODE:
@@ -129,8 +172,14 @@ def _rule(key):
     return None, ""
 
 
+@lru_cache(maxsize=16384)
 def tx_of(key):
     """Tx: 发送这条信号的节点名; 没有画布节点就写进程名 (不编节点)。"""
+    _st = skill_stage_of(key)
+    if _st:
+        _nm = _nodes_by_name().get(_st, ("", ""))[0]
+        if _nm:
+            return _nm
     nid, proc = _rule(key)
     if nid:
         nm = _load_nodes().get(nid)
@@ -139,6 +188,7 @@ def tx_of(key):
     return proc or "本机真值流"
 
 
+@lru_cache(maxsize=16384)
 def rx_of(key):
     """Rx: 这条信号的上游来源 (与信号分析窗口同一串字)。"""
     k = str(key or "")
@@ -161,6 +211,7 @@ def rx_of(key):
     return "本机真值流 (JSON)"
 
 
+@lru_cache(maxsize=16384)
 def layer_of(key):
     """Layer: 生产节点所在的层 (L2~L5), 查不到 = SYS。
 
@@ -171,6 +222,9 @@ def layer_of(key):
     if k.startswith("gravity."):
         _m = re.search(r"(?:·|列)(L[2-5])", k)
         return _m.group(1) if _m else "SYS"
+    _st = skill_stage_of(key)
+    if _st:
+        return _nodes_by_name().get(_st, ("", "L2"))[1]
     nid, _proc = _rule(key)
     if nid:
         return _node_layer(nid)
