@@ -152,10 +152,18 @@ def message_rows():
             r["n_signal"] = len(f)
         r["hz"] = lv.get("hz", -1.0)
         r["age_s"] = lv.get("age_s")
+    rows.sort(key=lambda r: (_lrank(r.get("layer")), str(r["topic"])))   # L5→L1→系统
     return rows
 
 
 # ─────────────────────────── 频道 (工程库 ∪ DDS 注册表) ───────────────────────────
+LAYER_SEQ = {"L5": 0, "L4": 1, "L3": 2, "L2": 3, "L1": 4, "meta": 5}
+
+
+def _lrank(ly):
+    return LAYER_SEQ.get(ly or "meta", 9)
+
+
 def _live_match(topic, node_id, lt):
     """实测条目匹配: live.json 的键是注册表名(如 ss_state), 工程库是 ss.node.<id>.<port>。"""
     for k, v in (lt or {}).items():
@@ -185,12 +193,18 @@ def channel_rows():
                 sig_n[(s_["node_id"], s_["port"])] = sig_n.get((s_["node_id"], s_["port"]), 0) + 1
         except Exception:                                                    # noqa: BLE001
             tps, sig_n = [], {}
+        _ly = {}
+        try:
+            _ly = {n["node_id"]: n["layer"] for n in (db.node_rows() or [])}
+        except Exception:                                                    # noqa: BLE001
+            _ly = {}
         for t in tps:
             live_key, lv = _live_match(t["topic"], t["node_id"], lt)
             rules = lv.get("rules") or []
             bad = [r for r in rules if not r.get("ok")]
             rows.append({
                 "topic": t["topic"], "src": "工程库",
+                "layer": _ly.get(t["node_id"], "meta"),
                 "node": t["node_id"], "port": t["port"], "dir": t["dir"],
                 "type": "SSNodePort", "qos": t["qos"],
                 "hz": lv.get("hz", -1.0), "hz_design": lv.get("hz_design"),
@@ -213,7 +227,7 @@ def channel_rows():
         rules = lv.get("rules") or []
         bad = [r for r in rules if not r.get("ok")]
         rows.append({
-            "topic": name, "src": "注册表", "node": "-", "port": "-", "dir": "-",
+            "topic": name, "src": "注册表", "layer": "meta", "node": "-", "port": "-", "dir": "-",
             "type": (reg.get("type") or "").split("::")[-1], "qos": reg.get("qos"),
             "hz": lv.get("hz", -1.0), "hz_design": reg.get("rate_hz") or lv.get("hz_design"),
             "age_s": lv.get("age_s"), "count": lv.get("count", 0),
@@ -257,10 +271,11 @@ def export_csv(rows=None):
     rows = rows or channel_rows()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["topic", "来源", "节点", "端口", "方向", "类型", "QoS", "实测Hz", "设计Hz",
+    w.writerow(["topic", "层", "来源", "节点", "端口", "方向", "类型", "QoS", "实测Hz", "设计Hz",
                 "帧龄s", "条数", "配对", "裁决", "本档允许", "信号数", "问题"])
     for r in rows:
-        w.writerow([r["topic"], r["src"], r["node"], r["port"], r["dir"], r["type"], r["qos"],
+        w.writerow([r["topic"], r.get("layer") or "meta", r["src"], r["node"], r["port"], r["dir"],
+                    r["type"], r["qos"],
                     r["hz"], r["hz_design"], r["age_s"], r["count"], r["matched"], r["verdict"],
                     r["allowed"], r["signals_n"], r["bad"]])
     return buf.getvalue()
@@ -322,12 +337,12 @@ def build_widget(parent=None, into_tabs=None):
             _own = into_tabs is None
 
             # ① 频道 (工程库 ∪ 注册表)
-            self.t_ch = QTableWidget(0, 10)
-            self.t_ch.setHorizontalHeaderLabels(["话题", "来源", "方向", "类型/QoS", "实测Hz/设计",
+            self.t_ch = QTableWidget(0, 11)
+            self.t_ch.setHorizontalHeaderLabels(["话题", "层", "来源", "方向", "类型/QoS", "实测Hz/设计",
                                                  "帧龄s", "条数", "信号", "裁决", "问题"])
             self.t_ch.setFont(MONO)
             self.t_ch.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            self.t_ch.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
+            self.t_ch.horizontalHeader().setSectionResizeMode(10, QHeaderView.Stretch)
             self.t_ch.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ch.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.t_ch.itemSelectionChanged.connect(self._show_fields)
@@ -346,11 +361,11 @@ def build_widget(parent=None, into_tabs=None):
             self.tabs.addTab(self.t_pj, "🧩 状态空间工程")
 
             # ③ 报文 / 信号 (message ↔ signal)
-            self.t_ms = QTableWidget(0, 5)
-            self.t_ms.setHorizontalHeaderLabels(["报文 (topic)", "节点.端口", "QoS",
+            self.t_ms = QTableWidget(0, 6)
+            self.t_ms.setHorizontalHeaderLabels(["层", "报文 (topic)", "节点.端口", "QoS",
                                                  "下游 (消费者)", "信号 (名 · 单位 · 量程)"])
             self.t_ms.setFont(MONO)
-            self.t_ms.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+            self.t_ms.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
             self.t_ms.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ms.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.tabs.addTab(self.t_ms, "📨 报文 / 信号")
@@ -400,26 +415,28 @@ def build_widget(parent=None, into_tabs=None):
             self.lbl.setTextFormat(Qt.RichText)
             self.cmb.setCurrentText(s["mode"] if s["mode"] in MODE_ORDER else "prod")
 
-            rows = channel_rows()
+            rows = sorted(channel_rows(), key=lambda r: (_lrank(r.get("layer")), str(r["topic"])))
             self.t_ch.setRowCount(len(rows))
             for i, r in enumerate(rows):
                 vcol = {"ok": OK, "warn": WARN, "veto": BAD, "-": DIM}.get(r["verdict"], DIM)
-                cells = [r["topic"], r["src"], r["dir"],
+                cells = [r["topic"], r.get("layer") or "meta", r["src"], r["dir"],
                          "%s / %s" % (r["type"], r["qos"]),
                          "%.2f / %s" % (r["hz"], r["hz_design"] if r["hz_design"] is not None else "—"),
                          "%.1f" % r["age_s"] if r["age_s"] is not None else "—",
                          str(r["count"]), str(r["signals_n"]), r["verdict"], r["bad"]]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
-                    if c == 8:
+                    if c == 9:
                         it.setForeground(QColor(vcol))
                     elif c == 1:
+                        it.setForeground(QColor("#d2a8ff" if (r.get("layer") or "meta") != "meta" else DIM))
+                    elif c == 2:
                         it.setForeground(QColor(BLUE if r["src"] == "工程库" else DIM))
-                    elif c == 5 and r["age_s"] is not None and r["age_s"] > 5:
+                    elif c == 6 and r["age_s"] is not None and r["age_s"] > 5:
                         it.setForeground(QColor(WARN))
                     self.t_ch.setItem(i, c, it)
 
-            nr = node_rows()
+            nr = sorted(node_rows(), key=lambda n: (_lrank(n.get("layer")), str(n["node_id"])))
             ms = message_rows()
             _sig_by_node = {}
             for m in ms:
@@ -430,7 +447,7 @@ def build_widget(parent=None, into_tabs=None):
                 outs = "  ".join("%s → %s" % (x["port"], ",".join(x["to"]) or "-") for x in n["outs"]) or "—"
                 n_sig = _sig_by_node.get(n["node_id"], 0)
                 cells = ["%s (%s)" % (n["name"], n["module"]),
-                         "%s / %s" % (n["type"], n["layer"] or "—"), ins, outs, str(n_sig)]
+                         "%s · %s" % (n.get("layer") or "meta", n["type"]), ins, outs, str(n_sig)]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
                     if c == 4:
@@ -445,10 +462,13 @@ def build_widget(parent=None, into_tabs=None):
                                 (" [%s~%s]" % (x["vmin"], x["vmax"]))
                                 if x.get("vmin") is not None and x.get("vmax") is not None else "")
                     for x in m["signals"]) or "—"
-                cells = [m["topic"], "%s.%s" % (m["node_id"], m["port"]), str(m["qos"]),
-                         ", ".join(m["consumers"]) or "—", sigs]
+                cells = [m.get("layer") or "meta", m["topic"], "%s.%s" % (m["node_id"], m["port"]),
+                         str(m["qos"]), ", ".join(m["consumers"]) or "—", sigs]
                 for c, t in enumerate(cells):
-                    self.t_ms.setItem(i, c, QTableWidgetItem(t))
+                    it = QTableWidgetItem(t)
+                    if c == 0:
+                        it.setForeground(QColor("#d2a8ff" if (m.get("layer") or "meta") != "meta" else DIM))
+                    self.t_ms.setItem(i, c, it)
 
             al = alerts()
             self.t_al.setRowCount(len(al))
@@ -463,7 +483,8 @@ def build_widget(parent=None, into_tabs=None):
                 return
             x = rows[r]
             self.txt.setPlainText(json.dumps({
-                "话题": x["topic"], "来源": x["src"], "节点": x["node"], "端口": x["port"],
+                "话题": x["topic"], "层": x.get("layer") or "meta", "来源": x["src"],
+                "节点": x["node"], "端口": x["port"],
                 "方向": x["dir"], "类型": x["type"], "QoS": x["qos"],
                 "实测Hz": x["hz"], "设计Hz": x["hz_design"], "帧龄s": x["age_s"],
                 "发布者": x["producer"], "消费者": x["consumers"],

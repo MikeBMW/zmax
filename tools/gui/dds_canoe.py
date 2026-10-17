@@ -734,9 +734,16 @@ class BusView(QWidget):
         f_tr = QFont(UI, 10, QFont.Bold)
 
         msgs = db.get("messages") or {}
-        root_m = QTreeWidgetItem(["🚌 报文 (Messages %d)" % len(msgs), "", "", "", ""])
+        _c = {}
+        for _m in msgs.values():
+            _c[(_m or {}).get("layer") or "meta"] = _c.get((_m or {}).get("layer") or "meta", 0) + 1
+        _brk = " · ".join("%s %d" % (k if k != "meta" else "系统", _c[k])
+                          for k in ["L5", "L4", "L3", "L2", "L1", "meta"] if k in _c)
+        root_m = QTreeWidgetItem(["🚌 报文 (Messages %d)   [%s]" % (len(msgs), _brk), "", "", "", ""])
         root_m.setFont(0, f_tr)
         root_m.setForeground(0, QColor(C_BLUE))
+        root_m.setToolTip(0, "按层分组 (层 = 端口所属节点在工程里的层):\n"
+                             "L5 造数据 · L4 认知 · L3 调度 · L2 检测 · L1 硬件(本工程未用该分组) · 系统=meta 功能节点")
         self.tree.addTopLevelItem(root_m)
         # 🔴 活跃在前: 左面板高度有限(实测只放得下 ~8 行/15 条), 纯字母序会把正在跑的 ss_plan
         #   排到第 12 行 ⇒ 老倪在页面上根本看不到他要"逐帧对"的那条。活跃的排前面,
@@ -746,16 +753,37 @@ class BusView(QWidget):
             _hz = _t.get("hz")
             return (0 if isinstance(_hz, (int, float)) and _hz > 0 else 1, str(k))
 
-        for key in sorted(msgs, key=_alive_rank):
-            m = msgs[key] or {}
+        # 🗂 2026-10-17 老倪: 「报文也应该先按照 L1~L5 分类, 要不不好找」
+        #   报文 = 输出端口, 层 = 该端口所属节点所在的层 ⇒ 报文天生带层, 直接按层分组。
+        #   组顺序 L5→L1 + 系统(meta); 层内仍"活跃在前, 再字母序"。
+        _by_m = {}
+        for key, m in msgs.items():
             if only_alive and not topics.get(key):
                 continue
-            it = QTreeWidgetItem([str(m.get("topic", key)), "", "", "", ""])
-            it.setData(0, Qt.UserRole, ("topic", key))
-            it.setFont(0, QFont(MONO, 10))
-            it.setToolTip(0, "类型 %s · 设计 %.2fHz · QoS %s\n生产者 %s" % (
-                m.get("type", "—"), float(m.get("hz_design") or 0), m.get("qos", "—"), m.get("producer", "—")))
-            root_m.addChild(it)
+            _by_m.setdefault((m or {}).get("layer") or "meta", []).append(key)
+        # L1: 只有真有 L1 报文时才出现 (本工程层分组里没有 L1, 硬造一个空组只会更难找)
+        _order = ["L5", "L4", "L3", "L2", "L1", "meta"]
+        _seen = [x for x in _order if x in _by_m]
+        _seen += [x for x in sorted(_by_m) if x not in _order]
+        for ly in _seen:
+            keys = sorted(_by_m[ly], key=_alive_rank)
+            lyr = QTreeWidgetItem(["%s  层内报文 %d" % (ly if ly != "meta" else "系统 (meta)", len(keys)),
+                                   "", "", "", ""])
+            lyr.setFont(0, QFont(UI, 10, QFont.Bold))
+            lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
+            root_m.addChild(lyr)
+            for key in keys:
+                m = msgs[key] or {}
+                it = QTreeWidgetItem([str(m.get("topic", key)), "", "", "", ""])
+                it.setData(0, Qt.UserRole, ("topic", key))
+                it.setFont(0, QFont(MONO, 10))
+                _n_sig = m.get("n_signals")
+                it.setToolTip(0, "层 %s · 类型 %s · 设计 %sHz · QoS %s\n信号 %s · 生产者 %s" % (
+                    m.get("layer", "—"), m.get("type", "—"),
+                    ("%.2f" % float(m["hz_design"])) if m.get("hz_design") else "—",
+                    m.get("qos", "—"), _n_sig if _n_sig is not None else "—", m.get("producer", "—")))
+                lyr.addChild(it)
+            lyr.setExpanded(ly in ("L5", "L4"))     # 先展开最上两层, 下层按需点开
         root_m.setExpanded(True)
 
         sigs = db.get("signals") or []

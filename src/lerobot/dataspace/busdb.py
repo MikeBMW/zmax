@@ -109,10 +109,13 @@ def _build_from_db():
                  for k in T.TOPICS}
     except Exception:                                                        # noqa: BLE001
         typed = {}
+    for k in typed:                     # 类型化话题(心跳/规划/动作…) 属系统级, 归 meta 组
+        typed[k]["layer"] = "meta"
     messages = dict(typed)
     for m in msgs:
         messages["np_" + m["topic"]] = {
             "topic": m["topic"], "type": "zmax::SSNodePort", "hz_design": None,
+            "layer": (nodes.get(m["node_id"]) or {}).get("layer") or "meta",
             "qos": m["qos"], "kind": "node_port", "producer": "%s.%s" % (m["node_id"], m["port"]),
             "n_signals": m["n_signal"], "consumers": m["consumers"],
             "signals": [{"name": x["signal"], "unit": x["unit"], "min": x["vmin"],
@@ -120,7 +123,7 @@ def _build_from_db():
                         for x in m["signals"]],
         }
     messages["link_value"] = {"topic": "zmax/link_value", "type": "zmax::LinkValue",
-                              "hz_design": 5.0, "qos": "beat", "kind": "canvas_link",
+                              "hz_design": 5.0, "qos": "beat", "kind": "canvas_link", "layer": "meta",
                               "n_signals": len(sigs),
                               "signals_by_layer": {l: sum(1 for s in sigs if s["layer"] == l) for l in LAYERS},
                               "producer": "画布连线总线(dds_link_bus) / 工程回灌器(dds_bus --simulate)"}

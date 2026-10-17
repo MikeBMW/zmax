@@ -278,6 +278,23 @@ def signals(project=None, canvas_path=None):
         conn.close()
 
 
+LAYER_ORDER = ("L1", "L2", "L3", "L4", "L5", "meta")
+
+
+def _level_map():
+    """节点 id → 层 (画布节点的 layer 字段为空时用它兜底; 真源 = 工程档位索引)。"""
+    try:
+        from lerobot.engineering.nodes.by_level import LEVELS_INDEX
+        m = {}
+        for lv, items in LEVELS_INDEX.items():
+            for it in items:
+                if it and it[0]:
+                    m[it[0]] = lv
+        return m
+    except Exception:                                          # noqa: BLE001
+        return {}
+
+
 def node_rows(project=None, canvas_path=None):
     """每个节点一行: 输入话题 (端口 ← 上游) / 输出话题 (端口 → 下游)。
 
@@ -301,6 +318,7 @@ def node_rows(project=None, canvas_path=None):
     for l in lks:
         up.setdefault((l["t"], l["t_port"]), []).append(l["f"])
         down.setdefault((l["f"], l["f_port"]), []).append(l["t"])
+    lvmap = _level_map()
     rows = []
     for nid, n in sorted(nodes.items()):
         ins, outs = [], []
@@ -314,7 +332,7 @@ def node_rows(project=None, canvas_path=None):
                 outs.append({"port": t["port"], "topic": t["topic"], "qos": t["qos"],
                              "enabled": t["enabled"], "to": down.get((nid, t["port"]), [])})
         rows.append({"node_id": nid, "name": n["name"], "module": n["module"], "type": n["type"],
-                     "layer": n.get("layer") or "", "exec_mode": n.get("exec_mode") or "",
+                     "layer": (n.get("layer") or lvmap.get(nid) or "meta"), "exec_mode": n.get("exec_mode") or "",
                      "impl_key": n.get("impl_key") or "", "source": n.get("source") or "",
                      "ins": ins, "outs": outs})
     return rows
@@ -335,6 +353,7 @@ def message_rows(project=None, canvas_path=None):
         for o in n["outs"]:
             rows.append({
                 "topic": o["topic"], "node_id": n["node_id"], "node": n["name"],
+                "layer": n.get("layer") or "meta",
                 "port": o["port"], "qos": o["qos"], "enabled": o["enabled"],
                 "consumers": o["to"], "n_signal": len(sigs.get((n["node_id"], o["port"]), [])),
                 "signals": sigs.get((n["node_id"], o["port"]), []),
