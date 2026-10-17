@@ -81,6 +81,32 @@ ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps
    w._out_node("sstrace.前馈速度_mps"))
 ck("每行 7 列都有内容", all(all(x.strip() for x in r) for r in found[:50]),
    str(found[:1]))
+# 🟢 插拔场景: 全部动态信号都在"显示状态" (勾上), 波形优先画 TCP/八阶段
+_green_rows = []
+def _walk_green(x):
+    for i in range(x.childCount()):
+        ch = x.child(i)
+        if ch.childCount():
+            _walk_green(ch)
+        else:
+            _green_rows.append(ch)
+for _gi in range(w.tree.topLevelItemCount()):
+    _g = w.tree.topLevelItem(_gi)
+    if _g.text(0).startswith("🟢"):
+        _walk_green(_g)
+_checked = [c for c in _green_rows if c.checkState(0) == 2]
+ck("插拔场景全部动态信号已勾选", len(_checked) >= len(_green_rows) - 8,
+   "%d 行 · 已勾 %d" % (len(_green_rows), len(_checked)))
+_need = ["sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
+         "sstrace.阶段序号", "sstrace.八阶段序号"]
+ck("TCP 位姿 + 八阶段 在勾选里", all(k in w.selected for k in _need),
+   str({k: (k in w.selected) for k in _need}))
+ck("波形优先画 TCP/八阶段", all(k in w.wave.curves for k in _need), str(w.wave.curves[:5]))
+_t0 = time.time()
+for _ in range(5):
+    w._update_tree_values(); app.processEvents()
+ck("刷新不被 278 条拖死 (5 次 < 1s)", (time.time() - _t0) < 1.0, "%.2fs" % (time.time() - _t0))
+
 # 🎚 列头过滤: Layer 只选 L2 / Type 只选一个类型
 from PyQt5.QtWidgets import QMenu as _QMenu
 

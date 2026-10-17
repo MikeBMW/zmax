@@ -1312,7 +1312,14 @@ class WaveArea(QWidget):
         self._sync_vb_geometry()
 
     # ---- 数据 ----
+    # 🖼 2026-10-17: 一次画几百条曲线会把界面拖死 (实测 278 条 ⇒ 一次刷新 14.5s)。
+    #   口径: **列表里全部显示/全部实时刷新** (勾选状态保留), 波形同时绘制前 24 条 (按树上顺序);
+    #   要看某条具体的波形, 在列表里点它或用过滤 (Layer/Type) 收窄即可。
+    MAX_DRAW = 24
+
     def set_curves(self, keys):
+        self.curves_all = list(keys)
+        keys = list(keys)[:self.MAX_DRAW]
         changed = list(keys) != list(self.curves)
         self.curves = list(keys)
         if changed:
@@ -2087,6 +2094,50 @@ class CanoeGraphicWidget(QWidget):
             if hit:
                 self.wave.set_curves(self.selected)
 
+    # 波形同时只画 24 条 (性能上限), 优先把场景里最该看的排前面:
+    # TCP 位姿 → 八阶段 → 接触/夹持 → 前馈/调制/安全 → 其余
+    DRAW_PRIORITY = (
+        "sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
+        "sstrace.阶段序号", "sstrace.八阶段序号", "sstrace.阶段限速_mps",
+        "sstrace.接触概率", "sstrace.环境接触", "sstrace.夹持", "sstrace.夹爪",
+        "sstrace.光模块头到孔_mm", "sstrace.光模块_x", "sstrace.光模块_y", "sstrace.光模块_z",
+        "sstrace.前馈速度_mps", "sstrace.动作调制_mps", "sstrace.安全边界_mps",
+        "sstrace.前馈速度_x_mps", "sstrace.前馈速度_y_mps", "sstrace.前馈速度_z_mps",
+        "sstrace.动作调制_x_mps", "sstrace.动作调制_y_mps", "sstrace.动作调制_z_mps",
+        "sstrace.估计误差_mm",
+    )
+
+    def _draw_order(self):
+        """给波形用的顺序: 先按 DRAW_PRIORITY 排, 其余保持树上顺序。"""
+        keys = [str(k) for k in self.selected]
+        rank = {k: i for i, k in enumerate(self.DRAW_PRIORITY)}
+        return sorted(keys, key=lambda k: (rank.get(k, 999), keys.index(k)))
+
+    def _scene_default_keys(self):
+        """插拔场景组里所有**动态信号**的键 (排除 .ts 时间戳行)。"""
+        out = []
+        root = self.tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            g = root.child(i)
+            if not g.text(0).startswith("🟢"):
+                continue
+            stack = [g]
+            while stack:
+                cur = stack.pop()
+                for j in range(cur.childCount()):
+                    ch = cur.child(j)
+                    if ch.childCount():
+                        stack.append(ch)
+                        continue
+                    k = ch.data(0, Qt.UserRole)
+                    if not k or str(k).endswith(".ts"):
+                        continue
+                    if not (ch.flags() & Qt.ItemIsUserCheckable):
+                        continue
+                    if k in self.store.bufs:
+                        out.append(str(k))
+        return out
+
     def _apply_default_selection(self):
         """首屏默认: 只显示 3D 场景数据, 并自动勾上代表曲线 (打开就有波形看)
 
@@ -2099,12 +2150,21 @@ class CanoeGraphicWidget(QWidget):
         self._apply_watch()
         if self.scope != "3d":
             return
-        keys = [k for k in self.DEFAULT_3D if k in self.store.bufs]
+        # 🟢 2026-10-17 老倪: 「插拔绿色的信号, 要显示所有在场景中我可以观察到的信号, 包括 8 个状态、
+        #   TCP 位姿, 即场景中的动态信号, 你给整理都变成显示状态」
+        #   口径: 默认勾选 = **插拔场景组里的全部动态信号** (sstrace/gravity/skill/skillphys,
+        #   去掉 .ts 这种时间戳), 不再只勾 10 条代表曲线。增量补勾逻辑不变 (手动取消的不顶回来)。
+        keys = self._scene_default_keys()
+        if len(keys) < 3:
+            keys = [k for k in self.DEFAULT_3D if k in self.store.bufs]
         if len(keys) < 3:
             return                      # 3D 场景还没跑过 (快照未落) → 下次建树再试
         _new = [k for k in keys if k not in self._auto_checked]
         if not _new:
             self._default_done = True
+            # 🐛 曲线顺序/集合不跟着更新 ⇒ 先勾上的 gravity 一直占着前 24 个绘图位,
+            #    TCP 位姿/八阶段反而画不出来。这里补一次同步 (set_curves 内部有 changed 判断, 不重建就不动)。
+            self.wave.set_curves(self._draw_order())
             return
         for it in self._all_items():
             if not (it.flags() & Qt.ItemIsUserCheckable):
@@ -2122,11 +2182,11 @@ class CanoeGraphicWidget(QWidget):
         self._default_done = not [k for k in keys if k not in self._auto_checked]
         # 子图顺序 = 树上顺序(老倪 2026-10-15)
         self.selected = self._ordered_selected(self.selected)
-        self.wave.set_curves(list(self.selected))
+        self.wave.set_curves(self._draw_order())
         self.ymode.setCurrentIndex(2)       # 每信号独立图
-        _names = " · ".join(x.replace("sstrace.", "").replace("sseng.", "") for x in _new[:4])
-        self._log(f"🎬 首屏: 只显示 3D 场景数据, 本轮补勾 {len(_new)} 条 ({_names}) · 已选共 {len(self.selected)} 条 "
-                  f"· 要加别的话题点「➕ 增加信号话题」")
+        self._log(f"🟢 插拔场景: 本轮补勾 {len(_new)} 条 · 已选共 {len(self.selected)} 条 "
+                  f"(列表全部实时刷新; 波形同时绘制前 {WaveArea.MAX_DRAW} 条, 优先 TCP 位姿/八阶段)"
+                  f" · 要看具体的用列头过滤 Layer/Type")
 
     def _add_topic_dialog(self):
         """➕ 增加信号话题: 从 全局数据空间(DDS) / Orin ROS2 / 本机真值流 里挑话题加进波形"""
@@ -2535,8 +2595,9 @@ class CanoeGraphicWidget(QWidget):
         # 建完树先把"已勾信号"按树上顺序重排一次 (老倪 2026-10-15: 子图顺序要跟信号上下顺序一致),
         # 再走首屏默认补勾 (补勾也会重排)。
         self.selected = self._ordered_selected(self.selected)
-        self.wave.set_curves(list(self.selected))
+        self.wave.set_curves(self._draw_order())
         self._apply_default_selection()
+        self.wave.set_curves(self._draw_order())   # 建树后强制按优先级同步绘图集合
         self._update_tree_values()
         self._apply_col_filters()        # 重建树后列过滤仍然生效
 
@@ -3093,7 +3154,7 @@ class CanoeGraphicWidget(QWidget):
             self.selected.remove(key)
         # 🔴 老倪 2026-10-15: 子图/配色顺序 = 目录树自上而下的顺序(不是点击顺序)
         self.selected = self._ordered_selected(self.selected)
-        self.wave.set_curves(list(self.selected))
+        self.wave.set_curves(self._draw_order())
         if self.catalog and any(k.startswith("ros.") for k in self.selected) and self.running:
             topics_now = self._ros_topics()
             if self.ros_src is None or sorted(self.ros_src.topics) != topics_now:
@@ -3143,7 +3204,7 @@ class CanoeGraphicWidget(QWidget):
                 b = self.store.get(k)
                 idx = (TRACE_COLORS.index(b.color) + 1) % len(TRACE_COLORS) if b.color in TRACE_COLORS else 0
                 b.color = TRACE_COLORS[idx]
-            self.wave.set_curves(list(self.selected))
+            self.wave.set_curves(self._draw_order())
             self._log("换颜色")
         elif act == a_clr:
             for k in list(self.selected):
@@ -3272,7 +3333,7 @@ class CanoeGraphicWidget(QWidget):
                 self.store.bufs[k] = b
         self.selected = list(data.keys())
         self._fill_tree()
-        self.wave.set_curves(list(self.selected))
+        self.wave.set_curves(self._draw_order())
         self.wave.fit_y()
         self._log(f"⤓ 已导入 {p} · {sum(len(v) for v in data.values())} 点 / {len(data)} 信号")
 
