@@ -62,17 +62,22 @@ def live_age():
 
 
 e2 = ""
-a1 = live_age()
-time.sleep(3.0)
-app.processEvents()
-try:
-    w.refresh()
-    app.processEvents()
-except Exception as e:                                                        # noqa: BLE001
-    e2 = f"{type(e).__name__}: {e}"
+# 采样多拍: 只看"严格递减"会被 2s 写盘点位骗 (正好跨在写前/写后) —— 判定标准改成
+# "多拍里出现不同值 且 最小龄 < 2.5s" (证明读的是现写文件, 不是冻住的常量)
+ages = []
+for _ in range(8):
+    try:
+        w.refresh()
+        app.processEvents()
+    except Exception as e:                                                    # noqa: BLE001
+        e2 = f"{type(e).__name__}: {e}"
+        break
+    ages.append(live_age())
+    time.sleep(0.8)
 chk("② 连续刷新不抛异常", not e2, e2 or "OK")
-a2 = live_age()
-chk("③ live 龄在变小 (真刷新)", a2 >= 0 and a1 >= 0 and a2 < a1, f"{a1}s → {a2}s")
+chk("③ live 龄在跟着源走 (多拍有变化, 最小 < 2.5s)",
+    all(a >= 0 for a in ages) and len(set(ages)) > 1 and min(ages) < 2.5,
+    f"采样 {ages}")
 
 tabs = w.findChildren(QTableWidget)
 rows = [t.rowCount() for t in tabs]

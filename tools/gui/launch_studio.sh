@@ -76,4 +76,13 @@ _notify "XSpace Studio 正在启动" "正在加载工程库/画布 + L2/L3/L4 �
 # 只启动控制台本体: 不设任何自动开窗开关 (ZMAX_AUTO_RUN/ZMAX_AUTO_SS/ZMAX_AUTO_SS_RUN/ZMAX_AUTO_TEST
 # 一律不导出) —— 双击图标 = 落到配置中心, 由老倪自己检查任务配置后点「🚀 启动工程 · 信号 · 场景」。
 unset ZMAX_AUTO_RUN ZMAX_AUTO_SS ZMAX_AUTO_SS_RUN ZMAX_AUTO_SS_3D ZMAX_AUTO_TEST
+# 📚 2026-10-17 老倪: 「Trace 的 signal 与信号分析的 signal 都要来自统一的数据库」
+#   统一信号库守护: 把本机真值文件并成 zmax_data/dataspace/signals.db (2Hz, 单实例自锁)。
+#   控制台起之前先确保它在跑 —— 否则两个窗口会回落到"各自读文件"(虽有告警, 但就不算同库了)。
+if ! pgrep -f "signal_store_daemon.py" >/dev/null 2>&1; then
+    nohup "$VENV_PY" "$REPO_ROOT/tools/signal_store_daemon.py" --hz 2 \
+        >> "$REPO_ROOT/zmax_data/dataspace/signal_store.log" 2>&1 &
+    echo "📚 统一信号库已启动 (signals.db · 2Hz)"
+fi
+
 exec nice -n 10 "$VENV_PY" studio.py >> "$LOG" 2>&1

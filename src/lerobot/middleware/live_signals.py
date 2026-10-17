@@ -75,11 +75,12 @@ def _one(path, kind):
             "mtime": st.st_mtime}
 
 
-def topics():
-    """{topic: {topic, fields, ts, age_s, hz, qos, type, source}} —— 0.25s 缓存。"""
-    now = time.time()
-    if _CACHE["data"] is not None and (now - _CACHE["t"]) < _TTL:
-        return _CACHE["data"]
+def topics_from_files():
+    """读本机真值文件拼成快照 (唯一读取口径; 不再有第二套解析)。
+
+    2026-10-17 起这是**写库方**用的入口 (tools/signal_store_daemon.py), 不做 0.25s 缓存 ——
+    守护每拍都要最新值, 缓存会把同一拍写两遍。
+    """
     out = {}
     for topic, (rel, src, kind) in SOURCES.items():
         got = _one(rel, kind)
@@ -132,6 +133,37 @@ def topics():
                           "producer": "", "enabled": True, "layer": "SYS"}
     except Exception:                                                   # noqa: BLE001
         pass
+    return out
+
+
+_FALLBACK_WARN = [0.0]
+
+
+def topics():
+    """{topic: {...}} —— **优先读统一信号库** (zmax_data/dataspace/signals.db), 0.25s 缓存。
+
+    老倪 2026-10-17: 「Trace 窗口的 signal, 与信号分析的 signal, 都要来自统一的数据库」
+      · 库新鲜 (<3s) ⇒ 两个窗口读到的就是同一张表里的同一拍, 不存在"谁先谁后"
+      · 库不在/过期 ⇒ 回落文件直读, 并打印一行 (不静默降级成"两个窗口各读各的")
+      · ZMAX_SIGNAL_DB_OFF=1 可强制走旧路 (排障用)
+    """
+    now = time.time()
+    if _CACHE["data"] is not None and (now - _CACHE["t"]) < _TTL:
+        return _CACHE["data"]
+    snap = None
+    if os.environ.get("ZMAX_SIGNAL_DB_OFF") != "1":
+        try:
+            from lerobot.dataspace import signal_store as _ss
+            snap = _ss.read_snapshot(max_age=3.0)
+        except Exception:                                                # noqa: BLE001
+            snap = None
+    if snap:
+        _CACHE.update(t=now, data=snap)
+        return snap
+    if now - _FALLBACK_WARN[0] > 30:
+        _FALLBACK_WARN[0] = now
+        print("⚠️ 统一信号库不可用/过期 → 回落文件直读 (先起 tools/signal_store_daemon.py)", flush=True)
+    out = topics_from_files()
     _CACHE.update(t=now, data=out)
     return out
 
