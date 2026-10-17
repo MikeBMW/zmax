@@ -1638,6 +1638,46 @@ class BusView(QWidget):
         except Exception:                                                     # noqa: BLE001
             pass
         self._trace_dropped = _pre_n - len(rows)
+        # 📌 2026-10-17 老倪: 「固定行模式, 每行是固定的, 你不要乱动每个 signal, 别跳」
+        #   实测漏洞: 文件里某个字段一拍有一拍没 (NaN/可选键) ⇒ 排序后整表下移, 10s 内 1444 行跳位。
+        #   改法: 老行按**上次的顺序**原样排, 新行只插到它同话题的末尾; 绝不让已存在的行换位置。
+        if not force:
+            _prev = getattr(self, "_trace_order", None)
+            _keep = getattr(self, "_trace_keep", None) or {}
+            _now = time.time()
+            if _prev:
+                _cur = {(x.get("topic"), x.get("raw") or x.get("signal")): x for x in rows}
+                _new = []
+                for k in _prev:
+                    if k in _cur:
+                        _x = _cur.pop(k)
+                        _x["_miss"] = 0
+                        _keep[k] = (_x, _now)
+                        _new.append(_x)
+                    elif k in _keep and (_now - _keep[k][1]) < 60.0:
+                        # 这一拍文件里没有这个字段 ⇒ 保留上一拍的行 (值不动, 标记陈旧), 不删行
+                        _x = dict(_keep[k][0])
+                        _x["_stale"] = True
+                        _new.append(_x)
+                for k in sorted(_cur, key=lambda kv: (str(kv[0]), str(kv[1]))):
+                    x = _cur[k]
+                    x["_miss"] = 0
+                    _keep[k] = (x, _now)
+                    _pos = len(_new)
+                    for i in range(len(_new) - 1, -1, -1):
+                        if _new[i].get("topic") == x.get("topic"):
+                            _pos = i + 1
+                            break
+                    _new.insert(_pos, x)
+                # 过期条目清掉 (60s 没再出现)
+                _keep = {k: v for k, v in _keep.items() if (_now - v[1]) < 60.0}
+                self._trace_keep = _keep
+                rows = _new
+        elif force:
+            # 首次/强制重建: 把当前行记成"基线", 之后掉的字段按 keep 规则保留 (否则第二拍就掉一行, 整表下移)
+            self._trace_keep = {(x.get("topic"), x.get("raw") or x.get("signal")): (dict(x), time.time())
+                                for x in rows}
+        self._trace_order = [(x.get("topic"), x.get("raw") or x.get("signal")) for x in rows]
         self.tb.setRowCount(len(rows))
         # ♻️ 2026-10-17: 重建时**复用已有 item** (只 setText), 不再每拍 new 2 万个 QTableWidgetItem。
         #   颜色/字体只在首建或状态位 (bad/phys/pin/step) 变化时重设。

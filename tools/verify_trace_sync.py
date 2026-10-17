@@ -42,7 +42,7 @@ def attr_rows():
 
 a = attr_rows()
 time.sleep(1.5)
-v._fill_trace_fixed(force=True)
+v._fill_trace_fixed()          # 固定行模式走增量路径 (force=True 是用户点"刷新", 允许重排)
 b = attr_rows()
 _chg = [(x, y) for x, y in zip(a, b) if x != y]
 ck("固定行模式: 行序/归属 1.5s 内不变", len(a) == len(b) and not _chg,
