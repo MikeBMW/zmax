@@ -1,3 +1,16 @@
+
+def _sem_type(topic):
+    """topic → 语义类型 (由主要发送节点决定; 真源 config/platform/dds_topic_types.json)。
+
+    老倪 2026-10-17: 「type 太随意…例如前馈加速器 你的 topic 类型是 SSNodePort, 看不出含义」。
+    这里兜底才用信封名, 正常应该全部命中注册表。
+    """
+    try:
+        from lerobot.middleware import topic_types as _tt
+        return _tt.type_of_topic(topic) or "zmax::SSNodePort"
+    except Exception:                                                        # noqa: BLE001
+        return "zmax::SSNodePort"
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """🚌 DDS 总线数据库 (Bus Database) —— 对标 Vector CANoe 的 DBC/数据库视图
@@ -114,7 +127,7 @@ def _build_from_db():
     messages = dict(typed)
     for m in msgs:
         messages["np_" + m["topic"]] = {
-            "topic": m["topic"], "type": "zmax::SSNodePort", "hz_design": None,
+            "topic": m["topic"], "type": _sem_type(m["topic"]), "hz_design": None,
             "layer": (nodes.get(m["node_id"]) or {}).get("layer") or "meta",
             "qos": m["qos"], "kind": "node_port", "producer": "%s.%s" % (m["node_id"], m["port"]),
             "n_signals": m["n_signal"], "consumers": m["consumers"],

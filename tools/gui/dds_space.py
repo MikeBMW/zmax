@@ -185,6 +185,15 @@ def _live_match(topic, node_id, lt):
     return None, {}
 
 
+def _sem_type_topic(topic, default="zmax::SSNodePort"):
+    """topic → 语义类型 (注册表: config/platform/dds_topic_types.json)。"""
+    try:
+        from lerobot.middleware import topic_types as _tt
+        return _tt.type_of_topic(topic) or default
+    except Exception:                                                    # noqa: BLE001
+        return default
+
+
 def channel_rows():
     """频道清单: **工程库为主体** (画布实际配置) + DDS 注册表并列。"""
     T = registry()
@@ -215,7 +224,7 @@ def channel_rows():
                 "topic": t["topic"], "src": "工程库",
                 "layer": _ly.get(t["node_id"], "meta"),
                 "node": t["node_id"], "port": t["port"], "dir": t["dir"],
-                "type": "SSNodePort", "qos": t["qos"],
+                "type": t.get("type") or _sem_type_topic(t["topic"]), "qos": t["qos"],
                 "hz": lv.get("hz", -1.0), "hz_design": lv.get("hz_design"),
                 "age_s": lv.get("age_s"), "count": lv.get("count", 0),
                 "matched": lv.get("matched_pubs"),

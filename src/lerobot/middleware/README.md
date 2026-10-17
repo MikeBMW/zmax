@@ -116,3 +116,24 @@ PYTHONPATH=src python tools/verify_mw_db.py      # 7 项判据
 ```
 判据要点: 话题名允许**只改库**（改 `mw_topic` 一行 → 重新 load → `Node.topic()` 立刻用新名），
 这条是"话题真从库来"的铁证；画布改名后 sha 变 ⇒ 自动回写，不会拿过期库跑工程。
+
+## 话题的语义类型 (topic_types.py)
+
+`mw_topic.type` 不再是 DDS 信封名 `zmax::SSNodePort`, 而是**数据语义类型** —— 由主要发送
+(Tx) 节点决定, 例如:
+
+| topic | type | 含义 |
+|---|---|---|
+| `ss.node.ssff.out1` | `zmax::FeedforwardProbe` | 前馈加速器 · 激活探针 |
+| `ss.node.ssff.out2` | `zmax::FeedforwardAction` | 前馈加速器 · u_ff 建议动作 |
+| `ss.node.sssched.out1` | `zmax::ModulatedAction` | 动作调制器输出的动作 |
+| `ss.node.ssyolo.out1` | `zmax::YoloDetections` | YOLO 检测结果 |
+
+规则:
+1. **真源** `config/platform/dds_topic_types.json` ← `tools/gen_topic_types.py` (从画布+节点模块 PORT_LABELS 生成)。
+2. 出口 = 节点语义名; 一个节点多出口 → `Stem2/Stem3` (声明了 PORT_LABELS 的用语义词)。
+3. 入口 = 唯一上游出口的类型 (同一份数据不另起名); 多上游 (fan-in) → `zmax::<Stem>In` + 生产者清单。
+4. 线上 DDS 信封仍是 `SSNodePort` (topic/ts/json), 语义类型只用于**数据意义**与 UI 展示。
+5. 判据: `tools/verify_topic_types.py` (覆盖/唯一主 Tx/入口一致/落库一致/命名规范)。
+
+改节点名或连线后: `python tools/gen_topic_types.py && python tools/verify_topic_types.py`

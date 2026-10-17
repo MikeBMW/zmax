@@ -36,6 +36,7 @@ import sqlite3
 import time
 
 from . import spec as spec_mod
+from . import topic_types as tt
 from .bus import TOPIC_PREFIX, bus_enabled
 
 DEFAULT_DB = "data/database/zmax/zmax_engineering.db"
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS mw_topic (
     port     TEXT,
     dir      TEXT,
     topic    TEXT,
+    type     TEXT,                     -- 语义类型 (来自 topic_types 注册表; 由主要发送节点决定)
     qos      TEXT,
     enabled  INTEGER DEFAULT 1,
     PRIMARY KEY (project, node_id, port, dir)
@@ -134,6 +136,14 @@ def connect(path=None):
     os.makedirs(os.path.dirname(p), exist_ok=True)
     conn = sqlite3.connect(p, timeout=10)
     conn.executescript(SCHEMA)
+    # 老库加列 (2026-10-17): mw_topic 之前只有 DDS 信封类型, 没有语义类型
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(mw_topic)")}
+        if "type" not in cols:
+            conn.execute("ALTER TABLE mw_topic ADD COLUMN type TEXT")
+            conn.commit()
+    except sqlite3.Error:
+        pass
     return conn
 
 
@@ -182,8 +192,11 @@ def sync(specs, links, canvas_path=None, project=None, quiet=True):
                 for p in ports:
                     cur.execute("INSERT INTO mw_port VALUES (?,?,?,?,?,?)",
                                 (project, s.id, p, d, (s.port_labels or {}).get(p, ""), "any"))
-                    cur.execute("INSERT INTO mw_topic VALUES (?,?,?,?,?,?,?)",
-                                (project, s.id, p, d, _topic(s.id, p), qos, 1 if dds_on else 0))
+                    cur.execute("INSERT INTO mw_topic "
+                                "(project,node_id,port,dir,topic,type,qos,enabled) "
+                                "VALUES (?,?,?,?,?,?,?,?)",
+                                (project, s.id, p, d, _topic(s.id, p),
+                                 tt.type_for_port(s.id, p), qos, 1 if dds_on else 0))
                     n_port += 1
                     n_topic += 1
         # 📨 信号登记: 端口是报文, 报文里的字段才是信号。
@@ -353,6 +366,8 @@ def message_rows(project=None, canvas_path=None):
         for o in n["outs"]:
             rows.append({
                 "topic": o["topic"], "node_id": n["node_id"], "node": n["name"],
+                "type": tt.type_for_port(n["node_id"], o["port"]),
+                "type_cn": tt.describe(o["topic"]).get("cn") or "",
                 "layer": n.get("layer") or "meta",
                 "port": o["port"], "qos": o["qos"], "enabled": o["enabled"],
                 "consumers": o["to"], "n_signal": len(sigs.get((n["node_id"], o["port"]), [])),
@@ -415,7 +430,7 @@ def topics(project=None, canvas_path=None):
     try:
         conn.row_factory = sqlite3.Row
         return [dict(r) for r in conn.execute(
-            "SELECT node_id,port,dir,topic,qos,enabled FROM mw_topic WHERE project=? "
+            "SELECT node_id,port,dir,topic,type,qos,enabled FROM mw_topic WHERE project=? "
             "ORDER BY node_id, dir, port", (project,))]
     finally:
         conn.close()

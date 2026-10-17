@@ -458,7 +458,7 @@ class BusView(QWidget):
         self.tree.setColumnCount(8)
         self._cols = ["Name", "Type", "Value", "Unit", "Age s", "Bar", "Tx", "Rx"]
         self._col_tt = ["Name — 短名 (报文=节点.端口 / 连线=源→目的 / 节点=名字)",
-                        "Type — topic 的数据类型 (如 zmax::SSNodePort)",
+                        "Type — topic 的语义类型 (由主要发送节点决定, 例 zmax::FeedforwardAction)",
                         "Value — 实测值 (报文 = 实测 Hz)",
                         "Unit — 单位 (报文 = Hz)",
                         "Age s — 最后一帧距现在多少秒",
@@ -968,12 +968,22 @@ class BusView(QWidget):
                 _short = str(m.get("producer") or m.get("topic", key))     # 例: n_dsvl.out1 (短且唯一)
                 # 🎯 2026-10-17 老倪: 「type 列显示的不对, 应该是 topic 的类型」
                 #   Type = 数据类型 (zmax::SSNodePort 等); topic 全名放 Name 的 tooltip, 不占列
-                _type = str(m.get("type") or "—")
+                # 🔴 类型以**语义注册表**为准 (busdb.json 是快照, 可能还是旧的 SSNodePort)
+                #    真源: config/platform/dds_topic_types.json ← tools/gen_topic_types.py
+                _type, _type_cn = str(m.get("type") or "—"), ""
+                try:
+                    from lerobot.middleware import topic_types as _tt
+                    _d = _tt.describe(m.get("topic") or key)
+                    _type = _d.get("type") or _type          # 非节点话题: 用它自己的声明类型
+                    _type_cn = (_d.get("cn") or "") if _d.get("type") else ""
+                except Exception:                                        # noqa: BLE001
+                    pass
                 it = QTreeWidgetItem([_short, _type, "—", "—", "—", "—", _tx, _rx])
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
                 self._align_item(it, {0: "topic: %s" % m.get("topic", key), 1: "type: %s" % _type,
                                       6: "Tx: %s" % _tx_full, 7: "Rx: %s" % _rx_full})
+                it.setToolTip(1, "type %s\n%s" % (_type, _type_cn or "—"))
                 _n_sig = m.get("n_signals")
                 it.setToolTip(0, "topic %s\n层 %s · 类型 %s · 设计 %sHz · QoS %s\n信号 %s · 生产者 %s" % (
                     m.get("topic", key),
