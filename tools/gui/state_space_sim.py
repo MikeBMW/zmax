@@ -93,9 +93,31 @@ def _load_manifold():
 
 
 def _load(name):
-    """按文件路径加载六层模块 (避开 lerobot 包级 torch 依赖)"""
+    """按文件路径加载六层模块 (避开 lerobot 包级 torch 依赖)。
+
+    🐛 2026-10-17 老倪: 「为什么断点不进入 return self._ff(obs)」—— 根因之三在这里:
+    `spec_from_file_location` 加载的模块**不进 sys.modules**, debugpy 解析不到 ⇒ 函数真在跑,
+    VSCode 却不停 (与 state_space_sim_real.py:_load 同一个坑, 那边早已改成 exec+sys.modules)。
+    这里补齐同一修法: exec(compile(src, 真实绝对路径)) + 注入 __file__/__name__ + 注册 sys.modules;
+    失败退回 spec 加载 (不静默改变语义)。
+    """
     path = os.path.join(_SS_DIR, name)
-    spec = importlib.util.spec_from_file_location(f"state_space.{name[:-3]}", path)
+    mod_name = f"state_space.{name[:-3]}"
+    if os.path.isfile(path):
+        try:
+            import sys as _sys
+            import types as _types
+            with open(path, encoding="utf-8") as _f:
+                _src = _f.read()
+            _m = _types.ModuleType(mod_name)
+            _m.__file__ = os.path.abspath(path)
+            _m.__name__ = mod_name
+            _sys.modules[mod_name] = _m
+            exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
+            return _m
+        except Exception as _e:                                       # noqa: BLE001
+            print(f"⚠️ _load exec 路径失败 ({name}): {type(_e).__name__}: {_e} → 退回 spec 加载")
+    spec = importlib.util.spec_from_file_location(mod_name, path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
