@@ -226,9 +226,11 @@ def signals_of(topic):
         push(nm, "", "上游")
     if not out:
         if t.startswith("ss.node."):
-            # 节点端口线上就是 DDS 信封 zmax::SSNodePort = {topic, ts, json} (真字段, 不是编的);
-            # 端口自己没声明信号时, 只能列这三条 + 说明, 不硬造 payload 里的名字。
-            out.extend([("topic", "", "信封"), ("ts", "", "信封"), ("json", "", "信封")])
+            # 📌 2026-10-17 老倪: 「moveit 节点输出的信号呢? topic 怎么不在 trace L2 层里?」
+            #   原来这里给的是信封字段 topic/ts/json —— 全是元数据, 被 is_meta() 全滤掉 ⇒ 整个端口
+            #   一行都不剩 (out1 就这么消失的)。端口没声明信号时, 用**端口名**占一行 (值 —, 标未实测),
+            #   至少让人看得到"这个节点有这个输出口、这拍没数据", 不硬造 payload 里的字段名。
+            out.append((t.split(".")[-1], "", "端口(未声明信号)"))
         else:
             out.append(("value", "", "占位"))
     return out

@@ -170,8 +170,62 @@ def _nodes_by_name():
     return out
 
 
+
+@lru_cache(maxsize=1)
+def _node_ports():
+    """节点端口话题 → (node_id, port, dir, peers)。真源 config/platform/dds_topic_types.json。
+
+    老倪 2026-10-17: 「moveit 节点输出的信号呢? topic 怎么不在 trace L2 层里?」
+    根因: ss.node.<id>.<port> 没有归属规则 ⇒ layer_of() 一律 SYS, 而 Trace 已把 SYS 删了 ⇒ 整行消失。
+    """
+    import json as _j
+    path = os.path.join(ROOT, "config/platform/dds_topic_types.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            nodes = (_j.load(f) or {}).get("nodes") or {}
+    except Exception:                                                    # noqa: BLE001
+        return {}
+    m = {}
+    for nid, rec in nodes.items():
+        for port, pr in (rec.get("ins") or {}).items():
+            t = pr.get("topic") or ("ss.node.%s.%s" % (nid, port))
+            m[t] = (nid, port, "in", tuple(pr.get("producers") or ()))
+        for port, pr in (rec.get("outs") or {}).items():
+            t = pr.get("topic") or ("ss.node.%s.%s" % (nid, port))
+            m[t] = (nid, port, "out", tuple(pr.get("consumers") or ()))
+    return m
+
+
+def port_of(key):
+    """'ss.node.n_moveit.out1' / 'ss.node.n_moveit.out1.code' → (nid, port, dir, peers) 或 None。"""
+    k = str(key or "")
+    if not k.startswith("ss.node."):
+        return None
+    parts = k.split(".")
+    if len(parts) < 4:
+        return None
+    t = ".".join(parts[:4])
+    return _node_ports().get(t)
+
+
+def _peer_name(pid):
+    """'ssact.out1' → 画布节点名 (没有就用节点 id / 进程名, 不编)。"""
+    nid = str(pid or "").split(".")[0]
+    nm = _load_nodes().get(nid)
+    if nm:
+        return nm
+    try:
+        from lerobot.middleware import cn_names
+        return cn_names.cn_of_node(nid, nid)
+    except Exception:                                                    # noqa: BLE001
+        return nid
+
+
 def _rule(key):
     k = str(key or "")
+    _p = port_of(k)
+    if _p:
+        return _p[0], ""                      # ss.node.* 端口话题 ⇒ 归属到该节点 (Layer/Tx/Rx 全套)
     for pre, nid, proc in OUT_NODE:
         if k.startswith(pre):
             return nid, proc
@@ -186,6 +240,12 @@ def tx_of(key):
         _nm = _nodes_by_name().get(_st, ("", ""))[0]
         if _nm:
             return _nm
+    _p = port_of(key)
+    if _p:
+        _nid, _port, _dir, _peers = _p
+        if _dir == "in" and _peers:
+            return " / ".join(_peer_name(x) for x in _peers[:4])      # 入端口: 上游 fan-in 节点
+        return _load_nodes().get(_nid) or _nid                          # 出端口: 本节点
     nid, proc = _rule(key)
     if nid:
         nm = _load_nodes().get(nid)
@@ -198,6 +258,14 @@ def tx_of(key):
 def rx_of(key):
     """Rx: 这条信号的上游来源 (与信号分析窗口同一串字)。"""
     k = str(key or "")
+    _p = port_of(k)
+    if _p:
+        _nid, _port, _dir, _peers = _p
+        if _dir == "out" and _peers:
+            return " / ".join(_peer_name(x) for x in _peers[:4])          # 出端口: 下游接收节点
+        if _dir == "in":
+            return _load_nodes().get(_nid) or _nid                        # 入端口: 本节点收
+
     if k.startswith("ar."):
         return "🥽 AR/AOI 信号总线 · AR 场景"
     if k.startswith("sstrace."):
@@ -265,8 +333,15 @@ def display_unit(key, unit):
 
 
 def key_of(topic, field):
-    """Trace 侧: 话题 + 信号键 → 归属键 (实时三话题才做映射; 其它返回 None)。"""
-    pref = LIVE_PREFIX.get(str(topic or ""))
+    """Trace 侧: 话题 + 信号键 → 归属键。
+
+    节点端口话题 (ss.node.<id>.<port>) 也返回归属键 ⇒ Trace 的 Layer/Tx/Rx 与信号分析同口径,
+    否则 in 口会被写成"本节点发的"、out 口 Rx 空 (老倪 2026-10-17 问的就是 out1 看不见/归属不对)。
+    """
+    t = str(topic or "")
+    if t.startswith("ss.node.") and len(t.split(".")) >= 4:
+        return ".".join(t.split(".")[:4])
+    pref = LIVE_PREFIX.get(t)
     if not pref:
         return None
     return "%s.%s" % (pref, field)
