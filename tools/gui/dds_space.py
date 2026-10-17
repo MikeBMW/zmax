@@ -135,7 +135,12 @@ def message_rows():
     except Exception:                                                        # noqa: BLE001
         return []
     lt = (_load(LIVE).get("topics") or {})
+    try:
+        _nm = {n["node_id"]: n["name"] for n in (db.node_rows() or [])}
+    except Exception:                                                        # noqa: BLE001
+        _nm = {}
     for r in rows:
+        r["_names"] = _nm
         lv = {}
         for k, v in lt.items():                       # live 键可能是短名, 也可能是全路径
             if k == r["topic"] or (v or {}).get("topic") == r["topic"] or k == r["node_id"]:
@@ -150,6 +155,10 @@ def message_rows():
                              "src": "实测", "param_id": ""}
                             for k, v in f.items()]
             r["n_signal"] = len(f)
+        _nm = r.get("_names") or {}
+        r["tx"] = r.get("node") or r["node_id"]
+        r["rx"] = ", ".join(_nm.get(x, x) for x in (r.get("consumers") or [])) or "—"
+        r.pop("_names", None)
         r["hz"] = lv.get("hz", -1.0)
         r["age_s"] = lv.get("age_s")
     rows.sort(key=lambda r: (_lrank(r.get("layer")), str(r["topic"])))   # L5→L1→系统
@@ -361,11 +370,13 @@ def build_widget(parent=None, into_tabs=None):
             self.tabs.addTab(self.t_pj, "🧩 状态空间工程")
 
             # ③ 报文 / 信号 (message ↔ signal)
-            self.t_ms = QTableWidget(0, 6)
-            self.t_ms.setHorizontalHeaderLabels(["层", "报文 (topic)", "节点.端口", "QoS",
-                                                 "下游 (消费者)", "信号 (名 · 单位 · 量程)"])
+            # 🧭 2026-10-17 老倪「信号表增加 Tx Rx 两列」—— 这张表同样给出 发送节点/接收节点
+            self.t_ms = QTableWidget(0, 7)
+            self.t_ms.setHorizontalHeaderLabels(["层", "报文 (topic)", "端口", "QoS",
+                                                 "Tx 发送节点", "Rx 接收节点",
+                                                 "信号 (名 · 单位 · 量程)"])
             self.t_ms.setFont(MONO)
-            self.t_ms.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+            self.t_ms.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
             self.t_ms.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.t_ms.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.tabs.addTab(self.t_ms, "📨 报文 / 信号")
@@ -462,8 +473,8 @@ def build_widget(parent=None, into_tabs=None):
                                 (" [%s~%s]" % (x["vmin"], x["vmax"]))
                                 if x.get("vmin") is not None and x.get("vmax") is not None else "")
                     for x in m["signals"]) or "—"
-                cells = [m.get("layer") or "meta", m["topic"], "%s.%s" % (m["node_id"], m["port"]),
-                         str(m["qos"]), ", ".join(m["consumers"]) or "—", sigs]
+                cells = [m.get("layer") or "meta", m["topic"], m["port"],
+                         str(m["qos"]), m.get("tx") or "—", m.get("rx") or "—", sigs]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
                     if c == 0:

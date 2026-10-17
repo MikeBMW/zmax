@@ -435,9 +435,12 @@ class BusView(QWidget):
         head.addWidget(self.chk_only_alive)
         head.addWidget(self._sm_btn("展开/收起", "展开或收起 报文/信号/节点 三组", self._toggle_all))
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(5)
+        # 🧭 2026-10-17 老倪: 「信号表, 增加 Tx Rx 两列, 表示 发送节点和接收节点」
+        #   CANoe 原 5 列(Name|Value|Unit|Last Value Time|Bar) 保持不动, Tx/Rx 接在后面 ——
+        #   报文行 Tx=生产者节点 / Rx=消费节点(取自工程库 mw_link), 连线信号行 Tx=源 / Rx=目的。
+        self.tree.setColumnCount(7)
         self.tree.setHeaderLabels(["Name", "Value", "Unit", "Last Value Time [s]",
-                                   "Bar  实测/设计"])
+                                   "Bar  实测/设计", "Tx 发送节点", "Rx 接收节点"])
         self.tree.setStyleSheet(
             f"QTreeWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; font-family:{UI}; font-size:10pt; }}"
             f"QTreeWidget::item {{ padding:6px 2px; }}"                        # 行高与 Trace/闭环表齐(质检: 46.5px vs 60px)
@@ -448,7 +451,7 @@ class BusView(QWidget):
         self.tree.setItemDelegateForColumn(4, BarDelegate(self.tree))
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.Stretch)
-        for i, w in ((1, 120), (2, 80), (3, 180), (4, 160)):
+        for i, w in ((1, 120), (2, 80), (3, 180), (4, 160), (5, 230), (6, 230)):
             h.setSectionResizeMode(i, QHeaderView.Interactive)   # 🐛 卡顿真根因: ResizeToContents
             self.tree.setColumnWidth(i, w)                       #   每秒重建时逐格重算列宽(192DPI 极贵)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -734,6 +737,18 @@ class BusView(QWidget):
         f_tr = QFont(UI, 10, QFont.Bold)
 
         msgs = db.get("messages") or {}
+        # Tx/Rx 名字表: 节点 id → 节点名; 话题 → 下游节点名 (工程库连线派生, 供没有 consumers 字段的报文用)
+        _names = {k2: (v2 or {}).get("name", k2) for k2, v2 in (db.get("nodes") or {}).items()}
+        _rx_by_topic = {}
+        for _sg in (db.get("signals") or []):
+            _t = _sg.get("topic")
+            if not _t:
+                continue
+            _d = _names.get(_sg.get("dst"), _sg.get("dst"))
+            _l = _rx_by_topic.setdefault(_t, [])
+            if _d and _d not in _l:
+                _l.append(_d)
+        _rx_by_topic = {k: ", ".join(v) for k, v in _rx_by_topic.items()}
         _c = {}
         for _m in msgs.values():
             _c[(_m or {}).get("layer") or "meta"] = _c.get((_m or {}).get("layer") or "meta", 0) + 1
@@ -774,7 +789,13 @@ class BusView(QWidget):
             root_m.addChild(lyr)
             for key in keys:
                 m = msgs[key] or {}
-                it = QTreeWidgetItem([str(m.get("topic", key)), "", "", "", ""])
+                _tx = str(m.get("producer") or "—")
+                if "." in _tx:                       # producer 形如 n_dsvl.out1 → 换成节点名
+                    _pre = _tx.split(".", 1)[0]
+                    _tx = "%s (%s)" % (_names.get(_pre, _pre), _tx.split(".", 1)[1])
+                _rx = ", ".join(_names.get(x, x) for x in (m.get("consumers") or [])) or _rx_by_topic.get(m.get("topic"), "—")
+                it = QTreeWidgetItem([str(m.get("topic", key)), "", "", "", "",
+                                      _tx, _rx])
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
                 _n_sig = m.get("n_signals")
@@ -804,7 +825,9 @@ class BusView(QWidget):
             for s in items:
                 name = "%s → %s" % (str(s.get("src_name", s.get("src", "?")))[:30],
                                     str(s.get("dst_name", s.get("dst", "?")))[:30])
-                it = QTreeWidgetItem(["%s  %s" % (s.get("sid", "?"), name), "", "", "", ""])
+                it = QTreeWidgetItem(["%s  %s" % (s.get("sid", "?"), name), "", "", "", "",
+                                      str(s.get("src_name") or s.get("src") or "—"),
+                                      str(s.get("dst_name") or s.get("dst") or "—")])
                 it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
                 it.setToolTip(0, "连线 %s · 端口 %s→%s\n标签 %s\n话题 %s" % (
                     s.get("link_id", "—"), s.get("src_port", "?"), s.get("dst_port", "?"),
@@ -826,8 +849,8 @@ class BusView(QWidget):
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
             root_n.addChild(lyr)
             for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
-                it = QTreeWidgetItem(["%s %s" % (n.get("icon", ""), n.get("name", nid)), "", "", "",
-                                      "tx%d rx%d" % (n.get("tx", 0), n.get("rx", 0))])
+                it = QTreeWidgetItem(["%s %s" % (n.get("icon", ""), n.get("name", nid)), "", "", "", "",
+                                      "发 %d" % (n.get("tx", 0)), "收 %d" % (n.get("rx", 0))])
                 it.setData(0, Qt.UserRole, ("node", nid))
                 it.setToolTip(0, "id %s · 类型 %s · 画布坐标 (%s,%s)" % (
                     nid, n.get("type", "—"), n.get("x"), n.get("y")))
