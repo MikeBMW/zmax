@@ -16,6 +16,24 @@
 3. **要能运行**: 该节点已有逻辑 `node_ss_calib_mani` (key `n_calib_mani`) —— 把 `config_import.load_config()`
    接进它 (右键「运行节点」/双击 = 真加载 8 真源 + 真写回), 原主参数 M 两臂对比不受影响。
 
+## 启动期预读 (让 config_import 的断点在启动时就绑得上)
+
+`import_config_files()` 默认只在**主参数节点执行 / CLI** 时才被惰性 import ⇒ 启动期这个文件根本不在进程里,
+VSCode 里 `config_import.py` 的断点是空心的 (Unbound), 按多少次 F5 都不停。
+⇒ studio.py 启动流程里主动预读一次 (**只读**, 不写画布节点): 先把 `<repo>/src` 插进 `sys.path`, 再
+`importlib.import_module("lerobot.engineering.config_import")` → `import_config_files(verbose=False)`;
+成功打 `📚 启动期配置真源预读: 配置 N 项 (…) · 工程库 ✅ 在位 · 实际任务 <TASK> <NAME>`, 失败被 except 兜住只打一行「跳过」。
+
+- **路径层数**: studio.py 在 `tools/gui/` 下, 到仓库根要**三层** `os.path.dirname` —— 写成两层会算出 `<repo>/tools/src`
+  (不存在) ⇒ `os.path.isdir()` 判 False ⇒ 静默不插 sys.path ⇒ `import lerobot` 抛 `ModuleNotFoundError('lerobot')`。
+  同文件里拼 `data/database/zmax/zmax_engineering.db` 用的就是三层, 照它抄。
+- **一行「跳过」= 那段功能从来没生效过**, 不是「可选优化」: 被 except 吞掉的异常要**先算一遍路径**再放过 ——
+  `python -c "import os; print(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath('<studio.py>'))),'src'))"`,
+  实测算出 `…/tools/src` 而不是 `…/src` ⇒ 这是真 bug, 要定位到行、改掉、回读验证。
+- **改完必须重启调试会话**才生效 (改的是 studio.py 本体, 跑着的进程是旧代码。
+  生效硬证据 = 启动日志出现 `📚 启动期配置真源预读: …` 且断点在启动 3 秒内停在 `_read_db(...)` 那行)。
+- 常驻服务与桌面启动走同一份代码同一算法 ⇒ 服务方式一样跳过 (unit 里**没有** `PYTHONPATH`, 别指望它兜住)。
+
 ## 坑 (踩过)
 - **符号定位撞注释**: `source_symbol` 的搜索是"第一行含该子串"。docstring/注释里也写了 `def <fn>(`
   就会定位到那一行 (实测落 10 而不是 94) ⇒ 注释里别写 `def <fn>(`, 或把符号写得唯一。

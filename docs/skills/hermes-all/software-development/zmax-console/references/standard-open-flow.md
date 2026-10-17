@@ -27,6 +27,13 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 - 桌面图标 `~/Desktop/XSpace-Studio.desktop` → `tools/gui/launch_studio.sh`; 脚本导出 `ZMAX_BOOT_PAGE` (默认 config),
   新实例由 studio.py `QTimer.singleShot(3200, _on_nav(bp))` 跳页; **已有实例**则把 `$ZMAX_BOOT_PAGE` 写进
   `/tmp/zmax_nav_cmd` 再 `xdotool windowactivate` ⇒ 双击图标永远落到配置中心、不起第二个进程。
+  - `ZMAX_BOOT_PAGE` 定义在 `tools/gui/launch_studio.sh`: `export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"` —— `${VAR:-默认}`
+    ⇒ 外部先 export 可覆盖。取值**必须命中 studio 的 `self.modules` 键**, 否则静默不跳 (没有报错):
+    `home · dataset · training · evaluation · hardware · config · monitor · plugging · version · inference · simulink · dataspace · architecture · spec · params`。
+    **3D 场景 与 状态空间画布不在表里** (独立窗口, 不是 stack 页) ⇒ `ZMAX_BOOT_PAGE=canvas` 开不出来, 别拿它当「打开画布」的开关。
+  - **默认值 `config` 不许改**: 它是标准打开流程第一步, 判据 `tools/verify_no_autostart.py` 卡「启动 45s 内不得出现 3D/信号/画布窗口」。
+    临时换页用 `ZMAX_BOOT_PAGE=<page> tools/gui/launch_studio.sh`; 要固定入口就改 `tools/desktop/XSpace-Studio.desktop` 的 `Exec`,
+    再跑 `tools/desktop/install_launchers.sh` 同步 (桌面/应用菜单/仓库源**三份是拷贝, 不是软链**, 只改一份不联动)。
 - 任务配置表列: 任务ID/类型/**工程**/**3D场景**/**实时监控**/工艺步骤/… —— 工程=工程名+项目启动文件真名真路径
   (tooltip 给绝对路径, 判据会 `os.path.isfile` 校真); 实时监控=`#hex 场景 ×N` + `基础/未分类 白 #ffffff`
   (真源 `config/topics/scene_tags.json`); 3D场景=场景名+场景ID (`插拔场景 · SCN-01-FW`)。

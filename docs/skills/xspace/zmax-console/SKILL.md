@@ -13,7 +13,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 > 📄 Roadmap Phase 卡(描述由工程库生成·点开可编辑·主指标整齐 + 真窗几何取证 + 整页横向溢出陷阱 + **卡面不许写解释性横幅文字: 状态用图标/说明进 tooltip**): `references/roadmap-phase-cards.md`
 
-> 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md` · `console-title-and-debug-parity.md`(标题·调试同源)
+> 📄 其它: `canoe-graphic-signal-analysis.md` · `monitor-live-source.md` · `standard-open-flow.md` · `3d-scene-render-forensics.md` · `config-import-node.md` · `console-title-and-debug-parity.md`(标题·调试同源) · `console-child-processes-and-crash-forensics.md`(子进程 cgroup 连带·崩溃现场取证·VSCode SIGTRAP) · `vscode-debug-breakpoints.md`(断点空心三类根因: 惰性import / 路径少一层 dirname / 引擎加载方式 + 必停四前提 + 取证命令)
 > 📄 球心引力架构视图(天体↔节点映射·只画主体↔主体·全虚线·颜色=信号·有信号才画·标签带天体名·改完四步): `orbital-arch-view.md`
 > 📐 「显示不全/增大高度」的高度账 (先量后改·子控件 setMinimumHeight 顶死布局的坑·自动配平公式·窗口几何会吃高度): `page-height-budget.md`
 > 🧠 `status-panel-and-model-engine-window.md` = 底栏面板一行 · 模型引擎窗口 L2~L5 (训练状态+控制+执行任务工程) · 模型配置接线 · GUI 硬约束判据 (不截断/一屏放得下)
