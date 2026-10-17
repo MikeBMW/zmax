@@ -458,7 +458,7 @@ class BusView(QWidget):
         self.tree.setColumnCount(8)
         self._cols = ["Name", "Type", "Value", "Unit", "Age s", "Bar", "Tx", "Rx"]
         self._col_tt = ["Name — 短名 (报文=节点.端口 / 连线=源→目的 / 节点=名字)",
-                        "Type — topic 全名",
+                        "Type — topic 的数据类型 (如 zmax::SSNodePort)",
                         "Value — 实测值 (报文 = 实测 Hz)",
                         "Unit — 单位 (报文 = Hz)",
                         "Age s — 最后一帧距现在多少秒",
@@ -966,12 +966,17 @@ class BusView(QWidget):
                 _rxl = [short_name(x, 8) for x in _rx_full.split(", ") if x and x != "—"]
                 _rx = (_rxl[0] + (" +%d" % (len(_rxl) - 1) if len(_rxl) > 1 else "")) if _rxl else "—"
                 _short = str(m.get("producer") or m.get("topic", key))     # 例: n_dsvl.out1 (短且唯一)
-                it = QTreeWidgetItem([_short, str(m.get("topic", key)), "—", "—", "—", "—", _tx, _rx])
+                # 🎯 2026-10-17 老倪: 「type 列显示的不对, 应该是 topic 的类型」
+                #   Type = 数据类型 (zmax::SSNodePort 等); topic 全名放 Name 的 tooltip, 不占列
+                _type = str(m.get("type") or "—")
+                it = QTreeWidgetItem([_short, _type, "—", "—", "—", "—", _tx, _rx])
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
-                self._align_item(it, {5: "Tx 发送节点: %s" % _tx_full, 6: "Rx 接收节点: %s" % _rx_full})
+                self._align_item(it, {0: "topic: %s" % m.get("topic", key), 1: "type: %s" % _type,
+                                      6: "Tx: %s" % _tx_full, 7: "Rx: %s" % _rx_full})
                 _n_sig = m.get("n_signals")
-                it.setToolTip(0, "层 %s · 类型 %s · 设计 %sHz · QoS %s\n信号 %s · 生产者 %s" % (
+                it.setToolTip(0, "topic %s\n层 %s · 类型 %s · 设计 %sHz · QoS %s\n信号 %s · 生产者 %s" % (
+                    m.get("topic", key),
                     m.get("layer", "—"), m.get("type", "—"),
                     ("%.2f" % float(m["hz_design"])) if m.get("hz_design") else "—",
                     m.get("qos", "—"), _n_sig if _n_sig is not None else "—", m.get("producer", "—")))
@@ -999,11 +1004,14 @@ class BusView(QWidget):
                                   short_name(s.get("dst_name", s.get("dst", "?")), 6))
                 _sf = str(s.get("src_name") or s.get("src") or "—")
                 _df = str(s.get("dst_name") or s.get("dst") or "—")
-                it = QTreeWidgetItem(["%s %s" % (s.get("sid", "?"), name), str(s.get("topic") or "—"),
+                _sig_type = str(((db.get("messages") or {}).get("link_value") or {}).get("type") or "zmax::LinkValue")
+                it = QTreeWidgetItem(["%s %s" % (s.get("sid", "?"), name), _sig_type,
                                       "—", "—", "—", "—",
                                       short_name(_sf, 8), short_name(_df, 8)])
                 it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
-                self._align_item(it, {5: "Tx 源节点: %s" % _sf, 6: "Rx 目的节点: %s" % _df})
+                self._align_item(it, {0: "topic: %s" % (s.get("topic") or "—"),
+                                      1: "type: %s" % _sig_type,
+                                      6: "Tx: %s" % _sf, 7: "Rx: %s" % _df})
                 it.setToolTip(0, "连线 %s · 端口 %s→%s\n标签 %s\n话题 %s" % (
                     s.get("link_id", "—"), s.get("src_port", "?"), s.get("dst_port", "?"),
                     s.get("label", "—"), s.get("topic", "—")))
@@ -1025,10 +1033,10 @@ class BusView(QWidget):
             root_n.addChild(lyr)
             for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
                 _nfull = "%s %s" % (n.get("icon", ""), n.get("name", nid))
-                it = QTreeWidgetItem([short_name(_nfull, 12), str(n.get("type") or "—"), "—", "—", "—", "—",
+                it = QTreeWidgetItem([short_name(_nfull, 12), "—", "—", "—", "—", "—",
                                       "Tx %d" % (n.get("tx", 0)), "Rx %d" % (n.get("rx", 0))])
                 it.setData(0, Qt.UserRole, ("node", nid))
-                self._align_item(it, {0: _nfull})
+                self._align_item(it, {0: "%s · type %s" % (_nfull, n.get("type") or "—")})
                 it.setToolTip(0, "id %s · 类型 %s · 画布坐标 (%s,%s)" % (
                     nid, n.get("type", "—"), n.get("x"), n.get("y")))
                 lyr.addChild(it)
