@@ -356,10 +356,13 @@ class SignalStore:
         """📢 给老倪看的一行说明 (趟号/清空/对不齐这种"波形为什么变了"必须说出来, 不许静默)"""
         with self.lock:
             self.notes.append(msg)
-        try:
-            print("[信号页] " + msg, flush=True)
-        except Exception:
-            pass
+        # ✂️ 2026-10-17 老倪: 「这些是什么? 没用, 不要在终端输出」
+        #   趟号/清空这类信息页内已有状态行可看, 不再刷终端; 要排障时设 ZMAX_SIG_DEBUG=1 才打印。
+        if os.environ.get("ZMAX_SIG_DEBUG") == "1":
+            try:
+                print("[信号页] " + msg, flush=True)
+            except Exception:
+                pass
 
     def clear_scene(self, why=""):
         """新一趟回放 (或拖进度条回看) 时清掉**场景钟**的缓冲: 避免两趟点叠在同一 x 上画成"噪声"。
