@@ -30,6 +30,27 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
 - **建页时抛异常 ⇒ 遗留线程 ⇒ `Fatal Python error: Aborted` (core dumped)**: 用了布局没有的 API（`QFormLayout` 只有 `addRow`，没有 `addLayout`/`addWidget`）会 AttributeError，崩栈里赫然是 DDS/mujoco/PyQt 线程在陪葬 —— **先读 `Aborted` 上面那段 Python 异常**，别去怀疑那些线程。挂控件按布局类型自适应: `if hasattr(layout, "addRow"): layout.addRow(w) else: layout.addWidget(w)`。
 - 离屏探针退出时可能因残留后台线程 abort（与结论无关）⇒ 探针结尾用 `os._exit(0)`，别让 teardown 崩掉掩盖前面打印的结论。
 
+## 判据必须跟着「界面结构」和「真实交互路径」走
+- **取列按列头名, 不按硬编码下标**。表格加/删一列 (`Value` 后插 `Rate`) ⇒ 所有 `item(r, c).text()` 往右错位,
+  判据会把 Type 当 Tx 读, 输出成"不一致 398 处"的**假故障**, 白白排一小时。改列结构时: 判据先找 `headerItem().text(i)`
+  定位再取值; 顺手把列宽记忆键换代 (`sig/tree_cols_v2` → `v3`), 否则旧宽度错位。
+- **判据要走用户真正走的那条分支**。窗口内部常有 "增量刷新" 与 "强制重建/刷新按钮" 两条: 用 force 分支测
+  "行序稳不稳"测不到增量路径的保行逻辑 (实测 force 每拍重排 ⇒ 永远报跳位), 反之只测增量又会放过"点刷新就乱"。
+  一条判据 = 一条真实路径, 并在注释里写明它测的是哪条。
+- **判据注入错误输入才算验过**。只断言"函数返回了列表/字段存在"等于没验: 对报警/一致性类判据, deepcopy 一份真数据、
+  把某个值改到越界, 断言拿到预期级别的报警, 再去控件里读回那几行证明真的上屏。
+- **判据的期望值必须来自真源, 不许抄当前实现**。曾有一条判据写死"某列的取值是进程名(非节点)", 把假数据固化成契约,
+  代码改对后反而判红, 下一个人会照着它把 bug 改回去。同理别硬编码行数/条目数 (89 个 → 加到 90 就假红):
+  断言"不少于基线"或直接从真源取期望。词表/口径变了就同步改判据, 并在注释里写明口径出处。
+- **按"原始身份"定位, 不按显示文本**。表格显示的是友好名 + 4 位有效数字 (`0.424242` 显示成 `0.4242`), 原始字段名常在
+  单元格 tooltip 第一行; 树的 key 常放在 `data(0, Qt.UserRole)`。匹配显示文本会在格式化后失配; 数值比对要留容差
+  (`abs(a-b) < 5e-5` 而非 `==`)。
+- **懒填控件必须先 `show()` 再读**。树/表常"可见才填充": offscreen 不 show 时 `topLevelItemCount()==0`、表格 0 行,
+  很容易被误读成"数据源坏了"。读前: `w.show()` → pump 3s `processEvents()` → 调一次刷新入口
+  (`_fill_trace_fixed(force=True)` / `_update_tree_values()`)。
+- **递归遍历树要分 QTreeWidget 与 QTreeWidgetItem**: `topLevelItemCount()` 只存在于 widget, 对 item 调直接
+  `AttributeError`。递归函数先 `hasattr(node, "topLevelItemCount")` 分支, item 侧用 `childCount()/child(j)`。
+
 ## 截图读屏复核 → 当场固化成判据
 自己看不到像素时, 把 PNG 交给**一个专门的读屏子代理**, 并给它逐字清单 (别问“这图有问题吗”):
 标题/页顶行 · 表头 · 每行每列文字 · 按钮文字 · **每一处省略号的位置与被截文字** · 裁边/重叠/空白块。要求它

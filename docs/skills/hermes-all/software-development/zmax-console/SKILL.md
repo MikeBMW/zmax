@@ -8,9 +8,13 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 # Z-MAX Console — 维护指南
 
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
+> 📄 **发版/保存数据**: `references/version-bump-and-release-archive.md` —— 版本号只按用户指定升 · `bump_version.py` 一次改齐 9 处
+> (归位后 docs_sync 路径变了, 不改就静默漏改) · tag 已推后同版本内修 bug 用 `git tag -f` 移动而不是自主 bump ·
+> 归档两份 (`docs/data_snapshots` + `zmax_data/release_<ver>_<date>`) 并用 `sha256sum -c` 回读 · 跨平台只说"配置已验, 产物由 CI 出"。
 
-> 📄 **两窗口同源 (信号分析 ⇄ 数据空间 Trace)**: 同文件 **§11 / §13③~⑦ / §14** —— Tx/Rx/Layer/单位/数值/变化率
+> 📄 **两窗口同源 (信号分析 ⇄ 数据空间 Trace)**: 同文件 **§11 / §13③~⑦ / §14 / §15 只留 L2 收口 / §16 统一信号库** —— Tx/Rx/Layer/单位/数值/变化率
 > 只许一份真源 `middleware/attribution.py`；固定行不许按帧龄等衍生量重排（行会跳）；
+> §15: Tx/Rx 只认工程节点名（禁进程名·数据空间禁横杠行）；§16: 两窗口读 `signals.db` 而不是各读 JSON。
 > 场景组默认勾满全部动态信号，波形同时只画 24 条（278 条实测一次刷新 14.5s）。
 > 📄 同文件 **§14** = 固定行的最后一公里：字段一拍有一拍没 ⇒ 老行保序 + 缺键保留上拍 ≤60s，
 > 判据必须走增量路径（`force=True` 会掩盖问题）；同源只认冻结快照逐字比对（面板每个前缀都要走

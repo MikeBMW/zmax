@@ -14,6 +14,12 @@ description: "Use when 状态空间画布 debug — 字段来源(预定义vs预�
   仿真里 target/孔位 = **HOLE_POS 预定义常量** (metaworld goal) + `_stage_target()` 阶段子目标,
   由感知层写进 obs[36:39]; 真机同构 (gen_insert_video.py) = `aligner.detect_3d`(YOLO 检测+3D
   反投影解算) 写 obs[36:39]。
+  **obs43 的确切布局** (`fuse_sensors` = `K_obs×visual39 + tactile4`, K_obs=1.0):
+  `0-2 hand xyz · 3 gripper · 4-6 v_est · 7-9 peg · 10-12 goal · 13-15/16-17 预留 0`
+  `| 18-35 上一拍同一组 (18-20 hand,21 grip,22-24 v,25-27 peg,28-30 goal,31-35 预留)`
+  `| 36-38 target · 39 gripper · 40 contact · 41-42 预留`。前馈 MLP **只吃前 39 维**, 触觉 4 维不进网络。
+  自证三式 (随口报数前先算): `v_est ≈ (hand_cur - hand_prev)/ctrl_dt` · `goal` 当前与上一拍逐位相等 (常量) ·
+  `target - peg` 的 z 偏移量 = 当前阶段悬高 (如 0.1m ⇒ 接近段)。
 - **并行层** (state_space/parallel.py): FeedforwardAccelerator (obs→u_ff) + AdaptiveStateEstimator
   (递归潜状态+卡尔曼)。**只读 obs, 不产 target**。
 - **认知层** (state_space/cognition.py): 调度器 u = w_ff·u_ff + (1−w_ff)·u_fb + 状态机。
@@ -420,6 +426,10 @@ anisotropy/status/trend); 阈值真源 `config/calib/zmax_health.json`(现场可
 - 启动脚本用 `nice` 包一层, 所以 **argv[1] ≠ 解释器**; 匹配要"任一段是解释器 且 任一段是 studio.py"。
 - 改 `node_logic.py` / 画布 JSON 后: 先 `studio_ctl.sh stop` → 改 → `studio_ctl.sh start`;
   GUI 存活核验 `xdotool getwindowgeometry $(xdotool search --onlyvisible --name "XSpace Studio"|head -1)`。
+- **同一份 live JSON 的发布器只许 1 个实例**: 两个 `ss_skill_dispatch` 同时在写 `skill_phys.json`, 老实例会把新实例
+  刚加的字段覆盖没 (实测 a/b/c 周期性消失, 误判成"代码没生效")。重启脚本两件事必须同时做:
+  ① 杀进程只认 `cat /proc/<pid>/comm` 以 `python` 开头 —— 宽泛 `pgrep -f <脚本名>` 会命中**自己的 bash 包装**
+  (命令行里就有那个字符串) 把自己 SIGTERM 掉, 实测连杀两次; ② 起完回读实例数必须 == 1。
 
 ## 🐞 「断点打不进」的真相 = 分层生效, 不是 bug (2026-09-29 老倪现场: 跑L5时 move_pose 进不了断点)
 - **画布 L5 档不下发真机动作**: `node_l5_loop`(src/lerobot/engineering/nodes/library.py:4643) 只读状态+触发 VLM 标注→训练; 节点 `n_moveit`(同文件 2990-2999) 只 `precheck()` + `MoveItPlan.plan(...)`, **一行 move_pose 都没有** ⇒ 断在 `arm_control.ArmController.move_pose`(src/lerobot/arm/arm_control.py:165) 永远不命中。上层只给意图/条件、执行由 L2 收口 —— 看到这现象先想"分层对", 别去改画布节点代码。
@@ -428,6 +438,7 @@ anisotropy/status/trend); 阈值真源 `config/calib/zmax_health.json`(现场可
 - **契约式退出码 ≠ 崩溃**: `raise SystemExit(main())` 得 1/2 = 工具按判据拒绝(VSCode 报成 "Exception has occurred: SystemExit")。真原因打在 traceback **上面**; 判断他跑了哪个模式看产物 mtime, 不要猜。
 - **L5 槽位工具 0 框退出码**: `tools/l5_slot_tool.py --build-dataset` 默认只收 `status=已记录`; VLM 复核不一致 / 无 TCP 真值 / 深度未上线 → 一律停 `待确认` ⇒ 0 框 ⇒ exit 1(不是崩)。跑通管线用 `--include-pending`(仅供冒烟, 报告标注); 要真标签必须现场 `--record --slot N`(判据: 投影 ok + TCP≤3s + VLM 一致)。
 - 现场拖动时的实时叠加三件套见 `sim-real-scene-overlay`: 50Hz 录制真关节+TCP(`tools/live_motion_recorder.py`) · 停顿点自动打点+实测轨迹层(`live_pause_marker.py`, origin=`trace` 黄) · 同源规划段(`live_plan_segment.py`, 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/≤10°分段)。
+- **断在具体某一召却不停 (上条的镜像)**: 三因按序分离 —— ①方法被**实例属性覆盖** (`self.accel.forward = analytic_forward`，门是 `SS_USE_MLP`) ②跑这段的是**另一个常驻进程** (引擎 loop 无 pydevd) ③模块是 `spec_from_file_location` 动态加载、**不进 `sys.modules`** ⇒ debugpy 解析不到。修法与自证见 `references/breakpoint-and-realization-notes.md` 末节 (含断点友好加载器、`真身执行 #N` 执行证据、`SS_FF_BREAK=1` 硬停)。
 
 ## 三级能力测试(L2/L3/L4)运行口径 (2026-09-29 实测)
 
@@ -442,14 +453,94 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - **节点逻辑迁 `src/lerobot/engineering/` 后验证层会假失败**: 审计/映射仍指旧壳 `tools/gui/node_logic.py`(已不含逻辑)。
   · `verification_layer._audit()` 用 `_MIGRATED_SRC` 同时扫【旧壳 ∪ 新真源】, 命中任一即过。
   · `_EXTERNAL_LOC` 行号随真源漂移, 须按真源实测校正: n_web_agent 1→93 · n_hil 1→157 · ss_test 111→123 · ssa/ssb/ssc 3900→3533 · ss_lat 58→55 · ss_moe 42→50 · ss_mani_eng 395→403。
-- **L4 `t_sched_real` 必须放在子进程里跑**(已改, 否则套件内假失败): 它调 `tools/gui/state_space_sim_real.quick_run(n_episodes=2, vision=False)`, 判据 **2 集 ≥1 完成**。
+- **L4 `t_sched_real` 必须放在子进程里跑**(已改, 否则套件内假失败): 它调 `lerobot.engine.runtime.quick_run(n_episodes=2, vision=False)`(真身; `tools/gui/state_space_sim_real.py`
+  已是 27 行别名 shim, 老 import 路径照旧可用), 判据 **2 集 ≥1 完成**。
   同进程内跑过前面一堆用例后两集都折在 1000 步(❌ 0/2); **单独子进程跑 = 1/2 ✓**(完成那集只 395 步、夹持=True)。
   静机复跑仍然 ❌ ⇒ **不是资源竞争, 是同进程状态污染的顺序敏感性**。
   定式: `subprocess.run(["xvfb-run","-a",sys.executable,"-c",<跑 quick_run 并 print N_OK=>], cwd=REPO_ROOT, timeout=900)`,
   解析 `N_OK=` 判 ≥1 ⇒ 既保留"真跑/真渲染/env.step"的强度, 又消掉顺序敏感性(改后 L4 178/178 全过)。
   同类启示: 任何**带真环境/真渲染的合成断言**都优先子进程隔离, 别在同一个长套件里前后串着跑。
 
+## 📊 数据空间 Trace ↔ 信号分析: 同源/固定行/归属/位姿 (2026-10-17)
+
+两窗口 (`dds_canoe.py` / `canoe_graphic.py`) 用户会拿任意一行对账。铁律:
+
+1. **同源 = 所有前缀都走 `live_signals.topics()` 一份快照**。面板自己读文件 ⇒ 差一拍 ⇒ 快变量看起来"不一致"。
+   判据用**冻结快照后逐字比对**, 不要用 ±25% 容差 (那是给实时两窗口的假报警)。
+2. **固定行: 行集合必须稳**。老行按上拍顺序、新行插同话题末尾、本拍缺失字段保留上一拍那行 (标陈旧 60s)
+   判据走**增量路径**, `force=True` 是用户点刷新, 允许重排。
+   同一份带 TTL 缓存 (0.25s) 的真源, 判据**不许 `sleep()` 跳窗口**: `a=read(); sleep(0.1); b=read()` 会随机跨边界 ⇒
+   单跑必过、批量偶红 (实测), 看起来像被测代码出了问题。修法: **强制刷新一次缓存 → 紧接着连读两拍**再比。
+3. **删层前先补归属**: `ss.node.<id>.<port>` 没规则 ⇒ 判 SYS ⇒ 删 SYS 时整类话题消失。
+   真源 `config/platform/dds_topic_types.json -> nodes.<id>` (ins.producers/outs.consumers/layer);
+   in 口 Tx=上游、out 口 Tx=本节点/Rx=下游 consumer。
+4. **给表加列 = 所有 `verify_*.py` 的列下标位移** ⇒ 判据会读出"不一致 398 处"的假故障; 加列必须同步改下标或改成按列头名取列。
+5. **元数据过滤会把"只有信封字段"的端口整行滤掉** ⇒ 兜底用端口名占一行, 不回信封、不编 payload 字段。
+6. **位姿信号**: x/y/z 是当前 TCP (不是每技能规划点); tap 停更时用 `trace_live.末端_x/y/z`(m→mm) 代偿并写
+   `pose_src/age`; 3D 出口无姿态 ⇒ a/b/c 发 -1 + 一条 QoS warn, 不许凑。偏差 >5mm 走 fail 报警, 判据要注错值验。
+7. **"3D 里位姿谁规划的" = 没人规划**, 是回放 `reports/ss_episode_latest.npz` (蒸馏 MLP + 八阶段状态机 +
+   L4 闸 + MuJoCo 积分); `n_moveit` 不在环里 (`PURE=False` 只直通)。先看 `npz['meta']` 再说结论。
+   **物理引擎每步只吃 4 维动作** (3 轴笛卡尔增量 → mocap 位移 + 夹爪 ±1), 8 阶段不进物理 ——
+   它只在上游给 target/限速/夹爪时序。契约与换算 (a_gain=ctrl_dt/action_scale, mocap 工作空间 clip)
+   见 `references/metaworld-closed-loop-contracts.md` 末两节（含**四段动作 u_ff/u/u_sat/u_exec 的落点**：
+   哪些有实时字段、哪些只有 npz、DDS Action 话题图上有但无 publisher）。
+
+8. **没有连线就不许写来源** (老倪: 「实际上也没有连线啊, 在 Rx 里删掉…没有这个连接」): 闭环内部算出来的量
+   (帧/总帧/时间_s/估计值/估计误差/估计抖动/残差/残差系统偏差/接触概率/净接触) 画布上没有任何一条线 ⇒
+   Rx 返回 `—`; 同时**不许用 catch-all 前缀规则**把它们糊给某个节点 (实测 `sstrace.*` 兜底把残差/帧全判成
+   「Z-MAX 引擎」)。能指到真正算它的 L2 节点就指 (估计→`ssest` · 残差/净接触→`ssinnov`), 纯簿记量指进程
+   (帧/总帧/时间_s→`ss_dreamview`)。归属表里出现「(无话题)/(无节点)」这类后缀 = 编造连接的痕迹, 直接清掉。
+   最终口径比逐条判断更简单: 3D 场景那族 (`sstrace.*`) **整族 Rx 全清成 `—`** (全空不辩), 取数来源表
+   (`SS_TRACE_SRC`) 只作历史存档, 不参与显示; 只有真有连线的 `ss.node.<id>.<port>` 才写 Tx/Rx。
+
+9. **工程连线 ≠ 被消费**: 回答"某节点用这个输入干什么"必须看节点函数有没有读该端口 (`ctx.get("inN")` /
+   `PORTS_IN` / `compute()` 里出现), 不能凭 `dds_topic_types.json` 的 producers/consumers 答。实测
+   `ssintact.in3` 声明了 `ssff.out2`(`zmax::FeedforwardAction`), 但 `node_intact(ctx)` 只用 `ctx["log"]`/`ctx.get("root")`,
+   端口值一次都没被读; 而且方向是反的 —— `u_ff` 是 INTACT 的**输出**(`policies/intact/decoder.py` 用
+   `act×K_ACT` 算), 引擎侧 `SS_L4_INTACT=1` 走的是 L4→L3 注入。凭连线答"在用它"就是编造: 要么如实说
+   "画了线但实现不读", 要么提出删线 (flows JSON + dds_topic_types + 工程库三处一起改)。
+   **删线的落地顺序与坑** (`engineering_db.py build` 不重建 `mw_*` 表、`busdb.json` 必须单独重建,
+   否则数据空间 Trace 还显示旧线) 见 `references/trace-signal-panel-consistency.md` §11。
+   顺带: 工程 JSON 的 consumers 常有重复项 (实测 `ssff.out1` 写了两遍) ⇒ 显示前 `dict.fromkeys` 去重,
+   否则 Rx 出现 "A / A" 这种一眼假的样子。
+
+10. **Tx / Rx / Layer 必须是同一个工程节点算出来的, 且这两个窗口只留 L2** (老倪最终口径:
+   「数据空间和信号分析…只保留 L2 层的 topic, 删除其它层的 topic; 信号也只能显示 L2 层的信号,
+   signal 是 topic 的组成单元; Tx Rx 节点只能是 L2 层节点, 其它层都删掉」)。
+   · `layer_of(key)` 先取 `tx_of(key)` 的第一段再查层 —— 两条独立路径会出现「Tx=Z-MAX 引擎(L4) 但 Layer=L2」。
+   · Tx/Rx 不许出现进程名/服务名/`.py`/总线标签/「本机真值流 (JSON)」; 没节点就 `—`; 出处只进 tooltip「来源:」。
+   · 显示名统一走 `naming.unique_map` (75 节点 ↔ 75 唯一名, 判据断言单射); SK 节点库里是 meta、信号层按 L2,
+     但归一化只认**名字以 `SK0x` 结尾**的阶段节点 (散着出现 "(SK01-08)" 的是「物理约束」, 仍是 meta)。
+   · 真值流话题在画布上没端口 ⇒ 用显式 `PREFIX_OWNER` 前缀→node_id 表; **字段级规则优先**
+     (`sstrace.前馈速度` 归前馈加速器, 不归前缀属主); 前缀映射 None = 不是总线话题 ⇒ SYS ⇒ 不进 Trace。
+   · L2 口径只在 `attribution` 收一次 (`l2_names/tx_l2/rx_l2/layer_l2/topic_in_l2/show_in_l2`), 面板不各写判断;
+     规则节点不是 L2 但前缀属主是 L2 ⇒ 用属主 (`sstrace.末端_*` 归状态估计, 不归 L4 Z-MAX 引擎)。
+   判据 `tools/verify_layer_node_strict.py` (8 项, 含数据空间页三张表) 一轮锁死, 细节见 reference §13/§17。
+11. **同源快照 ≠ 统一数据库**: 要"同一个数据库"就落 SQLite `zmax_data/dataspace/signals.db`
+   (`src/lerobot/dataspace/signal_store.py` + 2Hz 守护 `tools/signal_store_daemon.py`), `live_signals.topics()`
+   先读库 (新鲜 <3s), 过期才回落文件并打印一行, `ZMAX_SIGNAL_DB_OFF=1` 强制旧路。
+   单源证明用「停守护 → 改库一行 → 续期 `meta.updated` → 两窗口同值 → 恢复真值」, 别只比对冻结快照。
+   细节 (含为什么必须续期 meta、判据容差) 见 reference §14。
+12. **每行重查全表 = 刷新卡死的隐形大坑**: `db.node_rows()` 无缓存被 1936 次调用累计 5.6s ⇒ 整表刷新 4.6s;
+   按源文件 (mtime_ns, size) 做 `lru_cache` 键 (库重建自动失效, 返回副本) ⇒ **0.12s**。先 `cProfile` 再优化。
+13. **"面板不实时更新"先查 refresh 有没有每拍抛异常, 别先怀疑数据源**: 实测 `dds_space.refresh()` 里用了
+   `_naming`, 而它的 import 写在另一个函数的局部作用域 ⇒ 每 2s 一次 `NameError` ⇒ 页面冻在第一次内容,
+   而 live.json/trace.jsonl 一直 1s 新鲜。凡 `refresh()/timer` 里用到的模块一律**模块级安全导入**
+   (`try: from ... import x as _x / except: _x = None`), 并加一条判据: 连刷多拍不抛 + 「live 龄」跟着源变
+   (`tools/verify_dds_space_live.py`)。
+14. **取值/探针必须用界面真实的字段名口径**: Trace 行显示的是中文友好名, **原始字段名在 tooltip 第一行**
+   (`话题:`/`来源:` 同行); 信号分析树的原始键在 `item.data(0, Qt.UserRole)` 且带前缀 (`sstrace.<字段>`);
+   树只在 `show()` 之后才填充, 判据里要 `panel.show()` + 泵事件 3~4s 再读。探针写错名字 (`末端.x` vs `末端_x`)
+   会安静地读到 `None`, 看起来像功能坏了。
+
+全过程 (判据代码骨架、实测数字、报警注入法、归属单链、统一库、刷新性能、**L2-only 收口与闸门顺序**) →
+`references/trace-signal-panel-consistency.md` §1–§17
+
 ## 关键文件
+- src/lerobot/engine/runtime.py (闭环总装 `RealStateSpaceSim`, 4240 行零 Qt; 原 `tools/gui/state_space_sim_real.py`,
+  那边现在只剩别名 shim `sys.modules[__name__] = 真身`。**三层身份别混**: 总装 runtime ≠ 流形引擎节点
+  `ss_mani_eng`→`src/lerobot/manifold/manifold_engine.py` ≠ 物理积分(metaworld/MuJoCo 内建)。
+  改物理保真度动 metaworld 参数与动作缩放 `a_gain`/`action_scale`; 改控制律/阶段时序才动 runtime.py)
 - src/lerobot/policies/left_right/state_space/{parallel,perception,cognition,dynamics,execution,safety}.py
 - tools/gui/state_space_sim.py (HOLE_POS 常量 + ff_forward 真权重 + _stage_target)
 - tools/gui/node_logic.py (node_ss_s2 分派 + _EXTERNAL_LOC 映射, 行 2062-2075)

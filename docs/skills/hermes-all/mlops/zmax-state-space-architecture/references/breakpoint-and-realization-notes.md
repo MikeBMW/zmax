@@ -50,3 +50,51 @@
   未随 seed 变) + 控制器对当轮布局敏感 (抬起段夹持丢失回退循环); GUI 接入未做。
   探针12 流程是抓取金标准 (悬停 z=销+8cm 对准→垂直降被销顶住→闭合 20-30 步→抬升 act 0.5)。
 - 12 发探针全部保留: tools/probes_real/probe_mw_real*.py (标定工具)。
+
+## 🔴 「断点不进函数体 / 进了却不停」的三因 (2026-10-17, 与上面三条互补)
+
+问的是**具体某一行**(如 `return self._ff(obs)`), 且代码看着没问题。按序分离, 每步都有便宜证据:
+
+1. **那行根本没执行** — 方法被**实例属性**整体覆盖掉了:
+   `self.accel.forward = self.accel.analytic_forward` (门是 `SS_USE_MLP != "1"`) ⇒ `FeedforwardAccelerator.forward`
+   的方法体对那个对象是死代码, 断点放哪都不停 (与上面第 3 条同类: 死代码不属于"跑得到"的范围)。
+   证据: `print(obj.forward.__qualname__)` · `tr '\0' '\n' < /proc/<pid>/environ | grep SS_USE_MLP`。
+   同类: `PURE=False` 只直通的薄壳、feature flag 的早退分支。
+2. **跑这段的是另一个进程** — 常驻引擎 (`ss_engine_loop.py run --hz 10`) 是独立 pid, cmdline 里**没有 pydevd**;
+   在 studio 的 F5 会话里设的断点对它零作用。证据: `pgrep -af "debugpy|pydevd"` + 目标 pid 的 cmdline,
+   再 `ps -o lstart= -p <pid>` 比文件 mtime。修法: `debugpy --listen 127.0.0.1:5678 --pid <引擎pid>` 或改在 studio 进程内跑。
+3. **模块是动态加载的, debugpy 解析不到** — `importlib.util.spec_from_file_location(...)` + `exec_module()`
+   **不把模块放进 `sys.modules`** ⇒ 函数真在跑、VSCode 不停 (本仓已多次中招)。
+
+断点友好的加载器 (每次按路径加载都要用; 仓库里**每个** `_load()` 都要改, 只改一个文件另一条路照旧不停):
+
+```python
+import sys, types
+src = open(path, encoding="utf-8").read()
+m = types.ModuleType(mod_name)
+m.__file__, m.__name__ = os.path.abspath(path), mod_name
+sys.modules[mod_name] = m
+exec(compile(src, m.__file__, "exec"), m.__dict__)      # co_filename = 真实绝对路径
+```
+
+失败再退回 spec 加载并打一行提示 (不静默改变语义)。加载完自证:
+`m.__name__ in sys.modules` · `cls.method.__code__.co_filename == os.path.abspath(path)`。
+`state_space_sim_real._load` 早已是这个写法, `state_space_sim._load` 直到 2026-10-17 才补齐 ——
+**看到同类 `spec_from_file_location` 就顺手对齐**, 别等下次再问一遍。
+
+调试器无关的兜底 (断点绑定失败也能拿到"到底跑了没"):
+
+```python
+if os.environ.get("SS_FF_BREAK") == "1":
+    try:
+        import debugpy
+        if debugpy.is_client_connected():
+            debugpy.breakpoint()
+    except Exception:
+        pass
+if self.n_calls % 100 == 1:
+    print(f"🧠 前馈加速器: MLP 真身执行 #{self.n_calls} (域内 {self.n_mlp} · 守卫 {self.n_guard}) · loaded={self.loaded}", flush=True)
+```
+
+判读: 这行 `真身执行 #N` **不出现 = 路径没跑**(去查开关/装配), **出现但断点不停 = 绑定问题**(查进程/加载器)。
+交付口径: 先把这三条按序报给用户并给命令, 再说"改了什么"; 控制台/引擎重启只给命令, 不自己重启。

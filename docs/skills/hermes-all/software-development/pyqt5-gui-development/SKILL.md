@@ -158,8 +158,18 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **代码侧**: 应用自己的"逐行执行/变量数值变化"功能常用 `sys.settrace()` 实现 ⇒ 它会**覆盖 debugpy 的 tracer**, 断点静默不命中。
   这类代码多半在 `finally: sys.settrace(None)` 清理 ⇒ **函数返回后再读 `sys.gettrace()` 永远是 None**(最易把排查带偏)。
   判据必须在**被追踪函数体内部**记录 `sys.gettrace()`: 未 attach = 有 tracer 对象; 已 attach = None(把断点交还调试器)。
-- **装载方式侧**: 按路径 `spec_from_file_location` + `module_from_spec` + `exec_module`(不走 sys.modules)装载的模块**能**命中断点, 只要 `os.path.realpath(文件)` 与工作区路径一致(先 `readlink -f` 核对路径里有没软链成分); 这类模块每次调用都重新从磁盘 exec ⇒ **改文件不必重启进程**。
-- 触发路径: 只在"▶运行/单步/右键运行"里执行的代码跑在 Qt **主线程**(不是 worker 线程) ⇒ attach 后主线程断点正常命中; 光改文件不点运行, 永远不会经过断点。
+- **装载方式侧**: 按路径 `spec_from_file_location` + `module_from_spec` + `exec_module` 且**不注册 `sys.modules`** 的模块, debugpy 解析不到 ⇒ **断点不绑定**(函数真跑、编辑器不停), 且同一份文件被 canonical import 过的另一处断点看起来正常, 最容易把人带偏。
+  修法(已实测): `exec(compile(src, os.path.abspath(path), "exec"), m.__dict__)` + `types.ModuleType(mod_name)` + `sys.modules[mod_name] = m` + 注入 `__file__/__name__`, 失败再退回 spec 装载。
+  判据三条一起看: `m.__name__` 对 · `mod_name in sys.modules` 为 True · 目标方法的 `__code__.co_filename` == `realpath(该文件)`(先 `readlink -f` 核对路径里有没软链成分)。这类模块每次调用都重新从磁盘 exec ⇒ **改文件不必重启进程**。
+- **实例属性顶掉方法 (第四成因, 最不像 bug)**: 装配期常有 `self.obj.method = self.obj.analytic_forward` 这类替换,
+  多见于"降级/旁路档"开关(例: 环境变量未设 `SS_USE_MLP` 时 `accel.forward` 被换成解析律) ⇒ 类里那个函数体
+  **一次都不会执行**, 断点当然不命中, 而调试器本身完全正常。
+  判据: `getattr(obj.method, "__qualname__")` 与 `obj.method.__func__ is type(obj).method` —— 不是就说明被替换;
+  或在目标函数首行加"每 N 次打一行"的 print, 那行不出现即证明是路径/替换问题, 不是断点绑定问题。
+- **第五成因: 代码跑在另一个进程** —— GUI 里的 F5 只调 GUI 进程; 常驻引擎/服务(如 `ss_engine_loop.py`)是另一 pid,
+  在编辑器里设的断点对它零作用。判据: `pgrep -af "<脚本>"` 看被调试 pid 与真正干活的 pid 是否同一个
+  (另一个 pid 的 `/proc/<pid>/task/*/comm` 里没有 pydevd/GUI 线程)。解决: attach 那个 pid, 或让引擎在 GUI 进程内跑(▶运行 路径)。
+- 触发路径: 只在"▶运行/单步/右键运行"里执行的代码跑在 Qt **主线程**(不是 worker 线程) ⇒ attach 后主线程断点正常命中; 光改文件不点运行, 永远不会经过断点.
 
 ### 14. `Destroyed while ... is still running` + `Fatal Python error: Aborted` (QThread / QProcess 同族)
 - 典型成因: `QThread`(子类)实例只活在局部变量里 —— `.start()` 返回后 Python 包装对象被 GC, 而 C++ 侧线程还在跑 ⇒ Qt 直接 abort, **窗口整体消失**(应用日志里没有 Traceback)。
@@ -269,6 +279,20 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   `[x for x in QApplication.topLevelWidgets() if x is not w and x.isVisible()]` 确认干净。
 - 取证三件: 可见按钮/标签列表 · 按 `mapTo(w, rect().topLeft()).y()//10*10` 分行(只应剩一行) ·
   最右 `mapTo(w, rect().topRight()).x()` < 窗口宽(不溢出/不折行)。
+
+### 22. 断点已停住, Call Stack 还在不断变化 = 别的线程在抢焦点
+- 机制: 命中断点只冻结**命中那个线程**; VSCode 的 Call Stack 面板显示"当前选中线程", 别的线程再命中断点/线程内未捕获异常都会发 stopped 事件 ⇒ 编辑器自动切线程, 面板里整套帧换掉, 看着像"栈一直在变"。
+- 先量再改: `ls /proc/<pid>/task | wc -l` + `cat /proc/<pid>/task/*/comm` —— 控制台类 GUI 常态 20~60+ 线程 (Qt 事件队列/QDBus/缓存/每个 2s 轮询器各占几个)。
+- 修法三件(应用侧做, 已实测): ① **调试期不启动后台轮询线程** —— `debugpy.is_client_connected()` 或 `sys.gettrace() is not None` 判定, 另留 `ZMAX_DEBUG_QUIET=1` 强制; ② `threading.excepthook` 改成写日志文件、不抛回解释器; ③ 用户侧兜底: 断点右键 → Edit Breakpoint → `Hit Count=1` 或条件表达式, 只停一拍。
+- 实测: 同一 GUI 正常 24 线程 → 静默 16 线程, 断点处 Call Stack 定住。
+- 反向判据: 代码里周期打印的"真身执行 #N"一行不出现 ⇒ 是路径没走/被替换(见 §13), 不是断点绑定问题。
+- 三成因清单 + 逐条取证命令: `references/gui-not-responding-popup-and-debug-blocks.md` §4/§5。
+
+### 23. pyqtgraph `dataRect → np.min` 抛 RecursionError = 栈被信号级联压满, 不是 np.min 递归
+- 现象: 波形/曲线面板刷新时抛 `RecursionError: maximum recursion depth exceeded in comparison`, 栈顶在 `PlotDataItem._getDisplayDataset → dataRect → _getArrayBounds → np.min`。别去质数 numpy。
+- 机制: 刷新里 `setData` / `setYRange` / `linkedViewChanged` 互相触发, 每个 ViewBox 收到新范围立即重绘, paint 又回头算 dataRect 扫数组; 多子图/叠加模式下叠到 ~1000 层就崩在随手一个 `np.min` 上。
+- 修法四件(缺一条就还能复发): ① `setData(..., skipFiniteCheck=True)` —— 数据已知有限, 不让 paint 每帧扫数组(直接去掉报错那行); ② 刷新函数加重入闸 `_in_refresh`(级联不叠栈); ③ 每帧 `setYRange` 只在量程真变时才调(缓存上次量程, 容差 1e-9); ④ `except RecursionError` 里把完整栈写日志再 raise(留证据不吞错)。
+- 判据: `sys.setrecursionlimit(250)` 压低后, 全选 1000+ 条缓冲 × 三种模式(同轴/9 子图/叠加) 各跑 25 拍 0 异常; 改前必炸。绘制条数上限(MAX_DRAW 之类)保留, 别为了"全画"把级联放大。
 
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,

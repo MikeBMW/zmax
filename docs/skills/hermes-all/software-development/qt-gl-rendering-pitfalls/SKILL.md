@@ -1,8 +1,8 @@
 ---
 name: qt-gl-rendering-pitfalls
 title: "Qt/pyqtgraph GL 渲染坑与 QPainter 2.5D 替代"
-description: "Use when pyqtgraph GL 渲染空白/报 GLError/第二窗口崩, 或要画曲面."
-trigger: "pyqtgraph GLViewWidget 渲染失败、'Error while drawing item'、glGetAttribLocation、第二/多 GL 窗口、曲面/碗可视化、QPainter 投影自绘"
+description: "Use when pyqtgraph 渲染坑: GL 空白/GLError/曲线 RecursionError/曲面."
+trigger: "pyqtgraph GLViewWidget 渲染失败、'Error while drawing item'、glGetAttribLocation、第二/多 GL 窗口、曲面/碗可视化、QPainter 投影自绘、PlotDataItem dataRect/np.min RecursionError、曲线刷新卡死/白屏"
 ---
 
 # Qt/pyqtgraph GL 渲染坑与 2.5D 替代 (2026-09-07 实测)
@@ -26,6 +26,26 @@ trigger: "pyqtgraph GLViewWidget 渲染失败、'Error while drawing item'、glG
   再加**单元阴性对照** (`fm.elidedText(..., 300.0)` 应抛 / `..., 300` 应正常) 钉死根因。
 - 只在特定数据下崩 (如"某个标题刚好需要省略号才崩") = 分支触发型 bug: 修复要放在
   **函数入口做类型归一**, 而不是只改那一个调用点。
+
+## 坑 0b: 2D 曲线的 `RecursionError` 落在 `PlotDataItem.dataRect → np.min` (不是 np.min 递归)
+
+- 症状: 栈尾 `pyqtgraph/graphicsItems/PlotDataItem.py … _getDisplayDataset → dataRect → _getDataBounds → np.min(arr)`
+  报 `RecursionError: maximum recursion depth exceeded in comparison`, 界面卡/白。
+- 机制: `np.min` 自己不会递归 —— 它只是**栈已经被信号级联压满后倒在哪一行**。
+  刷新路径 `item.setData(...)` / `vb.setYRange(...)` / `linkedViewChanged(...)` 三者互相触发,
+  每个 ViewBox 收到新量程就立即重绘, 重绘里又要 `dataRect` 扫数组 ⇒ 一帧叠一层栈, ~1000 层就炸在 np.min。
+  只设一处范围 (如 "X 范围只设一次") 只能治当年那条路径; 多子图联动 + 每帧按曲线 `setYRange` 的组合会再犯。
+- 四道闸 (都在 `tools/gui/canoe_graphic.py` 已落地, 换别的绘图窗照抄):
+  1. `item.setData(x, y, skipFiniteCheck=True)` —— 从绘制路径里**彻底去掉** `np.min` 扫描 (报错那行不执行);
+     数据在环形缓冲里已保证有限 (NaN/inf 在入口过滤), 可以安全跳过。
+  2. 刷新函数加**重入闸** (`_in_refresh` + `_refresh_pending`): 正在刷新就不再进, 级联不会叠栈。
+  3. `setYRange` 只在**量程真变**时才调 (缓存上一帧 lo/hi, 容差 1e-9) —— 绝大多数帧量程不变, 根本不发 `sigRangeChanged`。
+  4. `except RecursionError:` **不吞错**, 把完整栈追加到 `zmax_data/graphic_logs/gui_recursion.log`
+     (带时间/曲线数/模式) 再 raise —— 下次复发直接看栈, 不用重现。
+- 验证手法: 把 `sys.setrecursionlimit()` **故意压到 250** 后跑压力路径 (全选缓冲 × 三种布局 × 25 拍)。
+  默认 1000 层时小规模跑必过, 压到 250 有一点深层重入就立刻暴露 —— 这是最便宜的回归判据。
+- 现象判读: 即使这次不炸, 报错行也说明绘制走了一条很深的**重入**路径; 先切「同轴单图」看是否消失,
+  能立刻区分是"联动级联"还是"单图数据量"问题。
 
 ## 核心坑 1: pyqtgraph shader 全局缓存绑「第一个」GL 上下文
 

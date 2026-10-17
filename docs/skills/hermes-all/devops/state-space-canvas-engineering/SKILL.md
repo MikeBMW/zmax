@@ -142,6 +142,25 @@ metadata:
 导致「📈 先验动力学预测器」长期不可执行)。每加节点/改关键字后跑 `levels.check()` 或
 `match_node(<画布节点名>)` 验证返回非 None。
 
+### 第三个核心体归位: 闭环总装 runtime 搬出 GUI 目录
+`RealStateSpaceSim`(L2/L3/L4 闭环总装, 原 `tools/gui/state_space_sim_real.py`, 4240 行) **零 Qt 依赖却住在 GUI 目录**
+⇒ 真身已迁 `src/lerobot/engine/runtime.py`。搬这类"被一堆脚本按裸模块名 import"的大模块, 四步缺一就断:
+
+1. **先证它不属于界面**: `grep -cE "PyQt5|pyqtgraph|pyqtSignal|QWidget" <文件>` == 0 才搬 —— 真碰 Qt 控件的是界面件, 留在 `tools/gui`。
+2. **留别名 shim, 不用 `from ... import *`**: 老路径留 ~30 行 `sys.modules[__name__] = _runtime`(先 `sys.path.insert(0, <repo>/src)`)。
+   星号转发会把模块级全局(`SS_LIVE_FRAME`/`_SS_STATE`)复制成第二份 ⇒ 读写各走一份 = 假一致;
+   别名替换后老写法 `import state_space_sim_real` / `from state_space_sim_real import X` 拿到**真身同一对象**, 类身份与 isinstance 不变。
+3. **`__file__` 相对根推断必须全换**: 这类文件常有 6~9 处 `dirname×3(__file__)` 去拼 `models/`、`tools/`、`src/lerobot/...`,
+   层级一变全指到 `src/lerobot`。改成一个**按标记向上找**的 `_repo_root()`(同一目录下同时有 `src/lerobot` 与 `tools`), 并把数量写进验收。
+4. **加位置判据** `tools/verify_engine_location.py`: 真身在 `src/` · `tools/gui` 只剩 shim(≤40 行、无实现体) · 零 Qt ·
+   两条 import 同一对象 · `_repo_root()` 命中仓库根 · `tools/` 与六层源码目录定位可用 · 类身份一致。
+
+搬完的 smoke 必须**真跑**: 实例化 → `_reset(0)` → `run(max_steps=12)`(看 env 是 `SawyerPegInsertionSideEnvV3`、步数与耗时); 只 import 不跑等于没验。
+
+**三层身份别混** (用户会问"这不就是流形引擎节点吗"): 闭环总装 `src/lerobot/engine/runtime.py` ≠ 流形引擎节点
+(`node_ss_mani_eng` → `src/lerobot/manifold/manifold_engine.py`) ≠ 物理积分(metaworld/MuJoCo 内建)。
+改物理保真度动 metaworld 参数与动作缩放(`a_gain`/`action_scale`); 改控制律/阶段时序才动 runtime.py。
+
 ## 执行派发链本身会"静默死" (迁移后必查 runtime.py)
 - 2026-09-28 `node_logic.py` → 包 的迁移**漏搬两处依赖**: `runtime.py` 用了 `os.environ` 却没有 `import os`(NameError),
   `_demo_node_output` 还引用着留在 `nodes/library.py` 的 `_YOLO_CACHE`(**悬空引用**)。
@@ -447,6 +466,13 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   → ⑤ `engineering_db.py build` → ⑥ `ss_task_bind.py --check` + `engineering_db.py check`(+ 工程库服务 restart)。
   为什么卡这个序: ⑤必须在④之后 —— 先 build 再 save, 库就比总工程旧, `check` 每次都报 `drift ['project']`(实测反复中招);
   ④必须在③之后 —— 快照里落的是任务绑定指纹, 早了存的是旧的。画布 md5 一变, `ss_task_bind --check` 就会报"需重绑定"。
+- 🔴 **增删/改接线（删一条线同理）还要多两步** (漏了就留旧线): `engineering_db.py build` **不重建** `mw_link/mw_port`
+  ⇒ 必须单跑 `tools/mw_db.py sync`, 再重建 `busdb.json`
+  (`PYTHONPATH=src python -c "from lerobot.dataspace import busdb; db=busdb.build(); busdb.save(db)"`),
+  否则数据空间 Trace 里那条线/那个端口行照旧在。回读断言: `mw_link` 里该 link_id **0 行**且 `mw_port` 无该 in 口,
+  Trace 里该 `ss.node.<id>.<port>` 话题 **0 行**; 对端 `outs.<port>.consumers` 要一并去掉被删节点。
+  `data/` 与 `config/` 都在 `.gitignore` ⇒ 这步通常**没有 git 提交**, 别拿"git status 干净"当没生效。
+  七步完整顺序 (含备份位置/symlink 同 inode/判据清单): `zmax-state-space-architecture::references/trace-signal-panel-consistency.md` §11。
 - ### 两条入口打开"同一个工程"为什么看起来不一样 (先证内容同源, 再量加载后几何)
 用户报「画布的状态空间按钮打开的工程，和文件加载工程文件，打开的不一样」时, 默认**不是两个工程**, 而是同一份真源的两种加载姿势。
 

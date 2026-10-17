@@ -347,14 +347,14 @@ OUT_NODE_RULES = (键前缀, 工程库 node_id, 无节点时的进程名)
   接触概率 → ssinnov · 光模块 → ssyolo · 光模块头/吸嘴 → ss2d3d · 夹爪 → ssact ·
   触觉类 → sstactile · 光学/AOI → ssaoi · sseng.* → ss_mani_eng · 潜表示 → ssvlm ·
   skill闸 → ssphys · ds.ss_meta_pred → n_intent_direct · 默认 → swworld
-有 node_id ⇒ 工程库名字过 naming.clean() (只剩本名)
-无 node_id ⇒ 写进程名并自证不是节点:
-  gravity_trace_pub.py(万有引力表进程) · zmax-ss-skill-dispatch(技能派发服务) ·
-  ar_l5_understand.py · pose_tap · ros_bridge · dds_bridge
+有 node_id ⇒ 工程库名字过 naming.unique_map() (只剩本名, 与所有面板同一词表)
+无 node_id ⇒ Tx 写 "—" —— 进程名 / 服务名 / .py 一律不许出现在 Tx/Rx 列;
+             出处只进 source_of() 的 tooltip「来源:」行
 ```
 
-判据: Tx 里 0 条 `万有引力表 (主参数…`; 不同 Tx ≥8 种; 无空值; `gravity.*` 的 Tx 以
-`gravity_trace_pub` 开头; `sstrace.前馈速度_mps` 的 Tx 恰好是 `前馈加速器`。
+判据 (`tools/verify_tx_real_nodes.py`): Tx 里 0 条 `.py`/进程/服务字样; 每个 Tx 取值 ∈ 工程节点词表
+(或阶段标签/`—`); `sstrace.前馈速度_mps` 的 Tx 恰好是 `前馈加速器`。再加 `verify_layer_node_strict.py`
+核 Tx/Rx 与工程库节点名单射、Layer 全 L2、横杠行 = 0。
 
 **② 列头过滤 (Layer 只选 L2 / Type 只选一个类型).** 用表头, 不另加一行下拉:
 `header().setSectionsClickable(True)` + `sectionClicked` → 该列取值 + 条数生成 `QMenu`
@@ -375,8 +375,11 @@ tx_of(key) / rx_of(key) / layer_of(key)      两窗口都调这三个, 别各自
 fmt_value(v, key) / display_unit(key, unit)  数值与单位也走同一份
 ```
 
-- `gravity.*` 的层取**键里那段 L2~L5** (表里每格就是某层对某元任务的力), 不是一律 L4 或 SYS;
-  没画布节点的 (gravity/skill/ar/pose/ros/ds) Tx 写真进程名, 有节点才 write `naming.clean()` 后的本名。
+- 层必须由 **Tx 那个节点**算 (`layer_of` 先取 `tx_of`, 再查该节点的层) —— 两条路径各查各的就会出现
+  「Tx=Z-MAX 引擎(L4) 但 Layer=L2」的自相矛盾。`gravity.*` 键里带的那段 L2~L5 是「哪个层对元任务施加的力」,
+  不是生产者层, 别拿它当 Layer。
+- 键前缀 → 工程节点归属写在 `PREFIX_OWNER` (sstrace→ssest · sseng→ss_mani_eng · gravity→n_calib_mani ·
+  yolo→ssyolo · ar→ssaoi …); 字段级规则优先, 规则无节点才用前缀属主, 都没有 ⇒ `—`。
 - 判据 `tools/verify_trace_sync.py`: 面板每一个信号键在 Trace 里都要找到 (Layer,Tx,Rx) 完全相同的行
   (实测 506 键, 不一致 0); 再叠「行不跳 / 单位 mm/s / 数值同量级」三项。
 
@@ -457,3 +460,66 @@ x 加 25mm, 判据必须出 `fail SK04 抓取 · x ... Δ25.00 > 5.0`, 再读真
   只杀 `cat /proc/<pid>/comm` 以 `python` 开头的进程。
 - 🔴 **多实例同写一份 JSON 会让 schema 回退**: 老实例没有新字段, 后写覆盖先写 ⇒ 新加的 `a/b/c` 看着像没生效。
   启动后立刻 `pgrep` 数实例数并**回读关键字段**, 不是"启动成功"就算完。
+
+## 15. 只留 L2 + Tx/Rx 只认工程节点 (两个窗口的最终收口)
+
+口径会一路收窄 (先"L2~L5"再"只保留 L2 层 topic"), **以最后一条为准**, 并且旧判据要同批翻转 ——
+旧判据往往正把旧行为钉死 (`gravity.*` 的 Tx 必须是 `gravity_trace_pub` 就是在要求假节点)。
+
+### ① 过滤只写在 `middleware/attribution.py`, GUI 不许各写一套
+
+```
+l2_names() / names_l2(n) / topic_in_l2(t) / layer_l2(t) / tx_l2(k) / rx_l2(k)
+show_in_l2(k)       信号分析: Tx 是 L2 节点就显示 —— Rx 允许 "—" (画布上确实没连线)
+show_in_l2_link(k)  数据空间 Trace: Tx 与 Rx 都必须是 L2 节点 ⇒ 横杠行整条不显示
+```
+
+- 两个窗口对同一类行给不同待遇是故意的: Trace 是连线视图, 信号分析是信号清单。改口径时先问
+  "这条要不要在数据空间出现", 别把两处合成一个布尔。
+- 删横杠行是**过滤**, 不是把 `—` 改成空串; 判据写"横杠数必须 = 0", 否则下一轮又漂回来。
+
+### ② 阶段节点 (SK) 归一化只认名字以 SK0x 结尾
+
+画布上同时存在 SK 阶段节点 (`SK03 下降`) 和 meta 容器 (`⚖ 物理约束 · 惯性/质量率闸 (SK01-08)`):
+按"名字里出现 SK 就算阶段"会把 meta 容器漏进 Tx/Rx。判据会当场报出来:
+`物理约束 in l2_names(): False` / `接近: True` / `前馈直方图: False`。
+
+- SK 信号的 Rx 走 SK 节点的**真连线** (`sssk*.out1 → n_moveit`), 不要因为键不是端口形态就写 `—`;
+- 没有连线的 (3D 场景 `sstrace.*`: 末端/八阶段) 老实不显示, 不要为了填满 Rx 编一个下游。
+  代价要当面讲清: 这两类信号会从数据空间消失, 只在信号分析里可见。
+
+### ③ 判据白名单要用显示名真源, 不要用工程库原始名
+
+原始节点名带 emoji / `L2~L5` 前缀 / 圈号 / SK 编号 / `· 解释`, 逐字比对必报几百条假违规
+(实测 202 条)。白名单一律 `A.l2_names()` 或 `naming.unique_map()` 的输出 (75 节点 ↔ 75 唯一名)。
+
+### ④ 逐行算属性 ⇒ 工程库查询必须缓存
+
+Trace 每行都要 Layer/Tx/Rx, 若每次都 `db.node_rows()` 全表重查: 1618 行 ⇒ 1936 次调用 / 5.6s
+(整表刷新 4.6s)。做法: 按工程库文件 **mtime+size** 做 `lru_cache(maxsize=8)` 并**返回副本**
+(库重建自动失效, 调用方改不动缓存); 修后 0.12s, 判据阈值 0.25s。
+
+### ⑤ 判据纪律: 别钉死数量和显示串
+
+- 节点数写死 (89) ⇒ 画布加到 90 就假红; 用 `>=` 或直接读画布真源。
+- 显示文案 (SK 编号) 会被统一改一次 ⇒ 改成按集合/前缀比。
+- 列头过滤判据要跟口径一起改: 窗口只剩 L2 时"过滤 L4 应 0 行"成立, 但"过滤后刷新仍保持"要看
+  刷新路径有没有重套过滤 (`reload` 重建整表会冲掉过滤)。
+- 离屏探针: 控件要 `show()` 才建树; Trace 的**原始字段名只在 tooltip 第一行**, 显示文本是中文短名
+  —— 按显示文本取值会取错 (同名短名还会撞)。
+
+## 16. 两窗口同值: 统一信号库 (SQLite) 而不是各读各的 JSON
+
+```
+单写者 daemon (2Hz, pidfile 自锁)  live_signals.topics_from_files()  --整份-->  zmax_data/dataspace/signals.db
+读侧  live_signals.topics()  优先读库, 要求 meta.updated < 3s; 过期回落文件直读 + 打印一行告警
+```
+
+- 库: WAL + 三表 (`topics`/`signals`/`meta.updated`), **单事务整份替换** —— 逐条 upsert 会留下
+  半新半旧的快照, 两个窗口读到的不是同一拍。
+- 写库要把 `topics_from_files()` 的字段**全部回填** (src_file_ts/count/type/qos/unit…), 少一个键
+  就会出现"值全空"或整行消失。
+- 不静默降级: 回落文件必须打印告警; 保留 `ZMAX_SIGNAL_DB_OFF=1` 走旧路排障。
+- 判据: 库里改一行既有信号 ⇒ 两个窗口同拍都变; 守护恢复后回真值; 关库有告警。
+  **按换换算比判** (m/s 显示 ×1000 mm/s), 直接比原值必假红。
+- 跨窗口哨兵要选**两个窗口都有**的信号: 只属于 3D 场景的键在收口到 L2 后可能已不在 Trace 里。

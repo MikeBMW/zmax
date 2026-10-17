@@ -65,3 +65,51 @@ gui-venv311 环境, DISPLAY=:0, MUJOCO_GL=glfw。这些数字都是实测, 不�
 - 单轮全流程跑通 (seed 100): 八阶段完成, 真夹持 gf=1。遗留: 多轮 0/8 (布局敏感)。
 - 引擎语义 39D 与 metaworld 39D 段位冲突 ([4:7]=v vs peg) — 前馈解析律只吃 [0:3]/[36:39]
   相对量不受影响; 挂训练 MLP 前必须统一语义 (R1 决策点)。
+
+## 物理引擎每步到底吃什么 (闭环 episode 口径)
+
+“MuJoCo 的解算输入是什么? 只是 8 个状态么?” —— 不是。**8 阶段从不进物理引擎**，它只在
+上游决定子目标/限速/夹爪时序；进物理的只有 4 维动作。
+
+```
+u_exec (4D: 3 轴速度 m/s + 夹爪)
+  → action[:3] = clip(u_exec[:3] * a_gain, -1, 1)      a_gain = ctrl_dt / env.action_scale(=0.01 m)
+  → action[3]  = +1 if u_exec[3] > 0.5 else -1
+  → env.step(action)
+```
+
+metaworld 内部 (`sawyer_xyz_env.py::set_xyz_action`): `mocap_pos += action[:3]*action_scale`，
+再 clip 到 `[mocap_low, mocap_high]`；夹爪走 `data.ctrl`；然后 `mj_step × frame_skip`
+(`ctrl_dt = timestep × frame_skip`，实测 12.5ms)。臂是靠 mocap 约束伺服过去的，**不下发关节力矩**。
+
+- 物理只**输出**、不接收观测: qpos/qvel/site_xpos(`pegGrasp`/`pegHead`/`hand`)/接触力/`dist`。
+- 8 阶段的三个真实作用: ① 子目标 `target` (接近 `peg+z(H_APPROACH)`、对位 `H_ALIGN`、下降/抓取
+  `H_GRASP_POSE`、抬起 `peg_z0+H_LIFT`、转移 `hole_mouth-head_off+3cm`、插入两段式、完成 `goal-head_off`);
+  ② `obs` 第 37~39 维就是这个 target (`visual39 = 当前18 | 上一拍18 | target3`)；③ 每阶段限速 + 夹爪时序。
+- 传感器融合后的 `obs43 = visual39 + force6 融合 + tactile4`，喂策略而不是喂物理。
+- 回答这类问题先读 episode 生成脚本的控制尾段 (`gen_ss_metaworld_episode.py` 的 action 构造) + 
+  metaworld 的 `set_xyz_action`，别从观测维度反推动作契约。
+
+## 四段动作 u_ff → u → u_sat → u_exec: 谁产出 · 有实时字段还是有 DDS 话题
+
+问"这个动作信号在哪 / 有 topic 吗"先查这张表, 别凭工程图回答 (图上有连线 ≠ 有发布者)。
+
+| 段 | 产出代码 | 实时可观测 |
+|---|---|---|
+| `u_ff` 前馈 | `state_space/parallel.py::FeedforwardAccelerator.forward` | `zmax/ss_state`: `前馈速度_mps`(模长) + `前馈速度_x/_y/_z_mps`; **夹爪通道不发** |
+| `u` 调制 | `cognition.py::ActionModulator.decide` | `zmax/ss_engine`: `动作调制_x/_y/_z_mps` + `动作调制_夹爪` |
+| `u_sat` 限幅 | `safety.py::saturate` | `zmax/ss_state`: `安全边界_mps` + `安全边界_x/_y/_z_mps` |
+| `u_exec` 执行 | `execution.py::execute` | **无实时字段、无 topic**; 只在 episode `npz['u_exec_vec']`(4D) |
+
+`u_ff` 的完整输出面 (问"前馈都输出什么"就按这四层答):
+1. 返回值 `[vx,vy,vz,grip]` —— MLP 路径 `u_norm*astd+am` → clip **±0.6**; 解析路径 `Kp=1.2*(target-pos)`
+   → clip **±0.5**, 水平距 <3cm 再叠 `+0.03` 最小推力; `grip` 是**规则**(水平距 <3cm→1)不是网络学的。
+2. 可追溯计数: `loaded` / `n_calls` / `n_mlp`(域内) / `n_guard`(解析兜底); 域判据 = 3D 距 ≤0.25m
+   **且** 归一化逐通道 |x| ≤4σ。
+3. `self.probe`: `_seq` · `obs{hand,target,d_h,d_xy,gripper}` · `layers[3]{act_l2,active,dim,top3}` ·
+   `out_contrib`(输出归因) · `u_ff` · `act_raw`(3×512) —— 只进 GUI 探针窗口, 不进信号页。
+4. 落盘: `npz['u_ff_vec']` 是唯一带夹爪的 4 维记录。
+
+DDS 动作话题 `ss.node.ssff/ssdec/sslimit/ssact.out1` (`zmax::Action*`) **工程图里有、当前无 publisher**:
+`matched_pubs=0` + `fields` 空 ⇒ Trace 显 `—`。答这类问题必须给出"图上定义了 / 实际没跑"两句,
+并指向真正在流动的字段, 否则用户会去搜一个永远空的话题。
