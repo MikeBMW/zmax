@@ -9289,7 +9289,9 @@ class SimulinkModule(QWidget):
                 w = QMainWindow(None)
                 w.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint
                                  | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint)
-                w.setWindowTitle("🌐 Z-MAX 全局数据空间 · 独立窗口 (CANoe 范式)")
+                # 🧹 2026-10-17 老倪: 「从画布打开的独立窗口, 删除最上边的 独立窗口 CANoe 范式」
+                #   标题只留功能名, 不写实现范式 (标题栏是给人看"这是什么", 不是看"照谁做的")
+                w.setWindowTitle("🌐 全局数据空间")
                 cw = QWidget()
                 lay = QVBoxLayout(cw)
                 lay.setContentsMargins(6, 6, 6, 6)
