@@ -261,7 +261,10 @@ def tx_of(key):
         nm = _load_nodes().get(nid)
         if nm:
             return nm
-    return proc or "本机真值流"
+    # 📚 2026-10-17 老倪: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
+    #   Tx 列只放**画布节点名** —— 进程名 (.py / 服务名 / 括号说明) 不是节点, 不许出现在 Tx。
+    #   没有画布节点就是 "—" (与 Rx 同一口径), 进程名只留在 source_of() 的"来源"里。
+    return "—"
 
 
 @lru_cache(maxsize=16384)
@@ -277,13 +280,38 @@ def rx_of(key):
         if _dir == "in":
             return _load_nodes().get(_nid) or _nid                        # 入端口: 本节点收
 
+    # 📚 2026-10-17 老倪: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
+    #   Tx/Rx 两列都只放**画布上的真节点名**; 总线/进程/服务这类标签不进这两列 (它们不是节点,
+    #   也不是画布连线), 没有真连线一律 "—"。同一口径同样套用下面的 ros./ds./skill./gravity.。
     if k.startswith("ar."):
-        return "🥽 AR/AOI 信号总线 · AR 场景"
+        return "—"
     if k.startswith("sstrace."):
         # 🚫 2026-10-17 老倪: 「实际上也没有连线啊 … 都清掉」
         #   3D 插拔场景这一族信号 (sstrace.*) 在画布上没有一条实连线 ⇒ Rx 全部空着, 不写来源。
         #   SS_TRACE_SRC 只作历史存档 (知道当年这些数是从哪路取的), **不进 Rx 显示**。
         return "—"
+    if k.startswith("ros."):
+        return "—"
+    if k.startswith("ds."):
+        return "—"
+    if k.startswith("skill.") or k.startswith("skillphys."):
+        return "—"
+    if k.startswith("gravity."):
+        return "—"
+    return "本机真值流 (JSON)"
+
+
+@lru_cache(maxsize=16384)
+@lru_cache(maxsize=8192)
+def source_of(key):
+    """这条信号的**实际出处** (总线/进程/服务/DDS 路由)。
+
+    老倪 2026-10-17: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
+    ⇒ Tx/Rx 只放画布节点名; 出处这类说明只进行 tooltip 的「来源:」, 不再冒充节点。
+    """
+    k = str(key or "")
+    if k.startswith("ar."):
+        return "🥽 AR/AOI 信号总线 · AR 场景"
     if k.startswith("ros."):
         return "Orin ROS2"
     if k.startswith("ds."):
@@ -292,10 +320,13 @@ def rx_of(key):
         return "技能派发服务 (每技能最新一拍)"
     if k.startswith("gravity."):
         return "万有引力表 (主参数 M 页)"
+    if k.startswith("sstrace."):
+        return SS_TRACE_SRC or "3D 场景回放 (ss_dreamview)"
+    if port_of(k):
+        return "画布端口 (工程库)"
     return "本机真值流 (JSON)"
 
 
-@lru_cache(maxsize=16384)
 def layer_of(key):
     """Layer: 生产节点所在的层 (L2~L5), 查不到 = SYS。
 

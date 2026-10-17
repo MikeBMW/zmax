@@ -78,7 +78,9 @@ ck("Tx 无假节点「万有引力表 (主参数…」", not [x for x in _tx if 
    str([x for x in _tx if "万有引力表 (主参数" in x][:2]))
 ck("Tx 覆盖多个真节点", len(set(_tx)) >= 8, str(sorted(set(_tx))[:10]))
 ck("Tx 无空值", all(x.strip() for x in _tx), str([x for x in _tx if not x.strip()][:3]))
-ck("gravity 的 Tx 是进程(非节点)", w._out_node("gravity.下降·L2 力大小_mps").startswith("gravity_trace_pub"),
+# 📚 2026-10-17 老倪: 「万有引力表进程，怎么能在 Tx 的发送节点呢？也没有万有引力这个节点啊」
+#   ⇒ 口径反转: gravity 没有画布节点, Tx 必须写 "—" (旧判据"Tx 是进程名"正是在要求假节点)
+ck("gravity 的 Tx 是 — (无此节点, 不许挂进程名)", w._out_node("gravity.下降·L2 力大小_mps") == "—",
    w._out_node("gravity.下降·L2 力大小_mps"))
 ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps") == "前馈加速器",
    w._out_node("sstrace.前馈速度_mps"))

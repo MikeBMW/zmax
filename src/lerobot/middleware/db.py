@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from functools import lru_cache
 import sqlite3
 import time
 
@@ -308,13 +309,8 @@ def _level_map():
         return {}
 
 
-def node_rows(project=None, canvas_path=None):
-    """每个节点一行: 输入话题 (端口 ← 上游) / 输出话题 (端口 → 下游)。
-
-    这张表就是「全局数据空间」跟画布实际配置对齐的那张 ——
-    老倪口径: 数据空间显示的必须是画布/配置中心里的实际配置, 不是另抄一份。
-    """
-    project = project or project_of(canvas_path)
+def _node_rows_build(project):
+    """真正查库拼表的那部分 (不带缓存)。"""
     conn = connect()
     try:
         conn.row_factory = sqlite3.Row
@@ -480,3 +476,27 @@ def ensure_synced(canvas_path=None, quiet=True):
     info = sync(specs, links, canvas_path=canvas_path, project=project, quiet=quiet)
     info["loaded_from"] = "json→db"
     return info
+
+@lru_cache(maxsize=8)
+def _node_rows_cached(project, _mtime_ns, _size):
+    return tuple(_node_rows_build(project))
+
+
+def node_rows(project=None, canvas_path=None):
+    """每个节点一行: 输入话题 (端口 ← 上游) / 输出话题 (端口 → 下游)。
+
+    这张表就是「全局数据空间」跟画布实际配置对齐的那张 ——
+    老倪口径: 数据空间显示的必须是画布/配置中心里的实际配置, 不是另抄一份。
+
+    ⚡ 2026-10-17 实测: Trace 整表刷新 4.6s, cProfile 显示 `node_rows()` 被调 1936 次
+    (每行一次 layer_of → _node_layer → node_rows 全表重查 75 行) —— 单次 3ms 不显眼,
+    乘以 1613 行就是 4 秒。这里按**库文件 mtime+size** 缓存: 工程库重建后键就变, 自动失效,
+    不会读到旧配置; 每次返回副本, 调用方改了也不污染缓存。
+    """
+    project = project or project_of(canvas_path)
+    try:
+        st = os.stat(db_path())
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = (0, 0)
+    return [dict(r) for r in _node_rows_cached(project, *key)]

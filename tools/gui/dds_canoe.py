@@ -23,6 +23,11 @@ import re
 import sys
 import time
 
+try:                                        # 出处 (tooltip 来源行): 模块级导入一次, 别在 1600 行循环里 import
+    from lerobot.middleware import attribution as _AT
+except Exception:                                                             # noqa: BLE001
+    _AT = None
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "src"))
 try:                                     # 话题 → 信号清单 (实测/声明/画布/占位 四级证据)
@@ -1702,8 +1707,15 @@ class BusView(QWidget):
                 if item.text() != txt:
                     item.setText(txt)
                 if c == 2:
-                    _tip = "%s\n话题: %s\n中文: %s" % (x.get("raw") or x["signal"],
-                                                      x.get("topic") or "", x.get("cn") or "")
+                    _src = ""
+                    try:
+                        _src = (_AT.source_of(x.get("key") or x.get("raw") or "") or "") if _AT else ""
+                    except Exception:                                            # noqa: BLE001
+                        _src = ""
+                    _tip = "%s\n话题: %s\n中文: %s%s" % (
+                        x.get("raw") or x["signal"], x.get("topic") or "", x.get("cn") or "",
+                        ("\n来源: " + _src) if (_src and _src != "—"
+                                                 and os.environ.get("ZMAX_TRACE_SRC_TIP", "1") == "1") else "")
                     if item.toolTip() != _tip:
                         item.setToolTip(_tip)
                 if not _restyle:

@@ -139,7 +139,8 @@ def main():
     node = next((n for n in d["nodes"] if "质量检测" in (n.get("name") or "")), None)
     ck("画布真源节点名 = 🔍 光学质量检测", node is not None and node["name"] == "🔍 光学质量检测",
        node["name"] if node else None)
-    ck("画布 89 节点未变", len(d["nodes"]) == 89, len(d["nodes"]))
+    # 2026-10-17: 画布已 90 节点 (新增 1); 这里判"没被删"而不是钉死数字, 钉死会天天假红
+    ck("画布节点未被删 (≥89)", len(d["nodes"]) >= 89, f"现 {len(d['nodes'])} 个")
     from lerobot.engineering import registry
     ck("注册匹配 🔍 光学质量检测 → ss_aoi", registry.match_node("🔍 光学质量检测") == "ss_aoi")
     ck("旧名仍可匹配 (向后兼容)", registry.match_node("🔍 外观质量检测") == "ss_aoi")
@@ -192,8 +193,10 @@ def main():
     cg = open(os.path.join(ROOT, "tools", "gui", "canoe_graphic.py"), encoding="utf-8").read()
     ck("HOST_SOURCES 含 ar 源 (ar_llive.json)" if False else
        "HOST_SOURCES 含 ar 源 (ar_aoi_live.json)", '("ar", "zmax_data/ar_live/ar_aoi_live.json")' in cg)
-    ck("显示名去 ar. 前缀 + 来源提示", 'for pre in ("sstrace.", "ds.", "ar.")' in cg
-       and 'return "🥽 AR/AOI 信号总线 · "' in cg)
+    # 📚 2026-10-17 老倪: Tx/Rx 只放真节点名 ⇒ AR 的"来源"从 Rx 移到 tooltip 的来源行
+    ck("显示名去 ar. 前缀 + 来源提示 (tooltip 来源行)", 'for pre in ("sstrace.", "ds.", "ar.")' in cg
+       and "source_of" in open(os.path.join(ROOT, "src", "lerobot", "middleware", "attribution.py"),
+                               encoding="utf-8").read())
     ck("AR 分组树 (组名来自注册表)", "_ar_groups" in cg and "🥽 AR 场景 · 空间点位 / AOI 话题" in cg)
 
     print("=== ⑧ 生成器一致 (task_build --check) ===")
