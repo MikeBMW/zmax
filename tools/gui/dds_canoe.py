@@ -20,7 +20,23 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))), "src"))
+try:                                     # 节点名归一 (Tx/Rx 只放本名)
+    from lerobot.middleware import naming as _naming
+except Exception:                                                        # noqa: BLE001
+    class _NamingFallback:                       # 兜底: 至少有 clean/unique_map 两个口
+        @staticmethod
+        def clean(x, fallback=""):
+            return str(x or fallback)
+
+        @staticmethod
+        def unique_map(pairs):
+            return {k: v for k, v in pairs}
+    _naming = _NamingFallback()
 
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtGui import QColor, QFont, QGuiApplication, QPainter
@@ -939,7 +955,16 @@ class BusView(QWidget):
 
         msgs = db.get("messages") or {}
         # Tx/Rx 名字表: 节点 id → 节点名; 话题 → 下游节点名 (工程库连线派生, 供没有 consumers 字段的报文用)
-        _names = {k2: (v2 or {}).get("name", k2) for k2, v2 in (db.get("nodes") or {}).items()}
+        # 🧹 2026-10-17 老倪: 「Tx Rx 显示节点的名字, 太乱了, 怎么 L5 L4 都冒出来了? 还有横向箭头;
+        #    改清晰, 只要这个节点的名字; 全局搜索, 规范名称」
+        #    真根因: Tx/Rx 直接用画布**长名** (带 emoji / L2~L5 前缀 / ①序号 / " · 解释" / "→ 下游")。
+        #    口径: 统一走 middleware.naming.clean() —— 只留节点本名, 重名补短 id; 端口说明不进 Tx/Rx。
+        try:
+            from lerobot.middleware import naming as _naming
+            _names = _naming.unique_map([(k2, (v2 or {}).get("name", k2))
+                                         for k2, v2 in (db.get("nodes") or {}).items()])
+        except Exception:                                                    # noqa: BLE001
+            _names = {k2: (v2 or {}).get("name", k2) for k2, v2 in (db.get("nodes") or {}).items()}
         _rx_by_topic = {}
         for _sg in (db.get("signals") or []):
             _t = _sg.get("topic")
@@ -992,16 +1017,21 @@ class BusView(QWidget):
             for key in keys:
                 m = msgs[key] or {}
                 _tx_full = str(m.get("producer") or "—")
-                if "." in _tx_full:                  # producer 形如 n_dsvl.out1 → 换成节点名
-                    _pre = _tx_full.split(".", 1)[0]
-                    _tx_full = "%s · %s" % (_names.get(_pre, _pre), _tx_full.split(".", 1)[1])
+                _tx_port = ""
+                if "." in _tx_full:                  # producer 形如 n_dsvl.out1 → 只取节点名
+                    _pre, _tx_port = _tx_full.split(".", 1)
+                    _tx_full = _names.get(_pre, _pre)
+                else:                                # 注册表类话题的 producer 是一句说明, 只留主名
+                    _tx_full = _naming.clean(_tx_full, fallback=_tx_full)
+                _tx_full = _naming.clean(_tx_full, fallback=_tx_full)   # 兜底: 任何残留说明都砍掉
                 _rx_full = ", ".join(_names.get(x, x) for x in (m.get("consumers") or [])) or _rx_by_topic.get(m.get("topic"), "—")
-                _tx = ", ".join(short_name(x) for x in _tx_full.split(", "))
+                _tx = _tx_full            # 已是归一后的短名, 不再拼端口/不再截断
                 _rxl = [short_name(x) for x in _rx_full.split(", ") if x and x != "—"]
                 # 下游 ≤6 个: 全部列出 (不省略); 更多就是一个广播话题 (实测有 100+ 个消费者),
                 # 逐个列出来 14000px 也读不了 ⇒ 只给个数, 全名单在 tooltip 里 (这是聚合不是截断)
                 _rx = (", ".join(_rxl) if len(_rxl) <= 6 else "%d 个下游" % len(_rxl)) if _rxl else "—"
-                _short = str(m.get("producer") or m.get("topic", key))     # 例: n_dsvl.out1 (短且唯一)
+                _short = _naming.clean(str(m.get("producer") or m.get("topic", key)),
+                                       fallback=str(key))                  # 例: n_dsvl.out1
                 # 🎯 2026-10-17 老倪: 「type 列显示的不对, 应该是 topic 的类型」
                 #   Type = 数据类型 (zmax::SSNodePort 等); topic 全名放 Name 的 tooltip, 不占列
                 # 🔴 类型以**语义注册表**为准 (busdb.json 是快照, 可能还是旧的 SSNodePort)
@@ -1018,7 +1048,8 @@ class BusView(QWidget):
                 it.setData(0, Qt.UserRole, ("topic", key))
                 it.setFont(0, QFont(MONO, 10))
                 self._align_item(it, {0: "topic: %s" % m.get("topic", key), 1: "type: %s" % _type,
-                                      6: "Tx: %s" % _tx_full, 7: "Rx: %s" % _rx_full})
+                                      6: "Tx: %s%s" % (_tx_full, (" · " + _tx_port) if _tx_port else ""),
+                                      7: "Rx: %s" % _rx_full})
                 if len(_rxl) > 6:
                     it.setToolTip(7, "Rx 共 %d 个:\n%s" % (len(_rxl), _rx_full))
                 it.setToolTip(1, "type %s\n%s" % (_type, _type_cn or "—"))
@@ -1048,14 +1079,18 @@ class BusView(QWidget):
             lyr.setForeground(0, QColor(LV_COLOR.get(ly, C_GRAY)))
             root_s.addChild(lyr)
             for s in items:
-                name = "%s→%s" % (short_name(s.get("src_name", s.get("src", "?"))),
-                                  short_name(s.get("dst_name", s.get("dst", "?"))))
+                # 老倪嫌箭头乱: 连线名用**标签主名** (无标签才退回 "源→目的")
+                name = _naming.clean(s.get("label") or "", fallback="")
+                if not name:
+                    name = "%s→%s" % (_naming.clean(s.get("src_name", s.get("src", "?"))),
+                                      _naming.clean(s.get("dst_name", s.get("dst", "?"))))
                 _sf = str(s.get("src_name") or s.get("src") or "—")
                 _df = str(s.get("dst_name") or s.get("dst") or "—")
                 _sig_type = str(((db.get("messages") or {}).get("link_value") or {}).get("type") or "zmax::LinkValue")
                 it = QTreeWidgetItem(["%s %s" % (s.get("sid", "?"), name), _sig_type,
                                       "—", "—", "—", "—",
-                                      short_name(_sf), short_name(_df)])
+                                      _naming.clean(_sf, fallback=str(s.get("src", "—"))),
+                                      _naming.clean(_df, fallback=str(s.get("dst", "—")))])
                 it.setData(0, Qt.UserRole, ("signal", s.get("sid")))
                 self._align_item(it, {0: "topic: %s" % (s.get("topic") or "—"),
                                       1: "type: %s" % _sig_type,
@@ -1081,7 +1116,7 @@ class BusView(QWidget):
             root_n.addChild(lyr)
             for nid, n in sorted(by_ly[ly], key=lambda x: x[0]):
                 _nfull = "%s %s" % (n.get("icon", ""), n.get("name", nid))
-                it = QTreeWidgetItem([short_name(_nfull), "—", "—", "—", "—", "—",
+                it = QTreeWidgetItem([_naming.clean(_nfull, fallback=str(n.get("node_id"))), "—", "—", "—", "—", "—",
                                       "Tx %d" % (n.get("tx", 0)), "Rx %d" % (n.get("rx", 0))])
                 it.setData(0, Qt.UserRole, ("node", nid))
                 self._align_item(it, {0: "%s · type %s" % (_nfull, n.get("type") or "—")})

@@ -135,8 +135,15 @@ def message_rows():
     except Exception:                                                        # noqa: BLE001
         return []
     lt = (_load(LIVE).get("topics") or {})
+    # 🧹 2026-10-17 老倪: 「Tx Rx 只显示节点名字, 不要 L5/L4/箭头, 全局规范名称」
     try:
-        _nm = {n["node_id"]: n["name"] for n in (db.node_rows() or [])}
+        from lerobot.middleware import naming as _naming
+    except Exception:                                                        # noqa: BLE001
+        _naming = None
+    try:
+        _rows = db.node_rows() or []
+        _nm = (_naming.unique_map([(n["node_id"], n["name"]) for n in _rows]) if _naming
+               else {n["node_id"]: n["name"] for n in _rows})
     except Exception:                                                        # noqa: BLE001
         _nm = {}
     for r in rows:
@@ -156,7 +163,8 @@ def message_rows():
                             for k, v in f.items()]
             r["n_signal"] = len(f)
         _nm = r.get("_names") or {}
-        r["tx"] = r.get("node") or r["node_id"]
+        r["tx"] = (_naming.clean(r.get("node") or "", fallback=r["node_id"]) if _naming
+                   else (r.get("node") or r["node_id"]))
         r["rx"] = ", ".join(_nm.get(x, x) for x in (r.get("consumers") or [])) or "—"
         r.pop("_names", None)
         r["hz"] = lv.get("hz", -1.0)
@@ -474,7 +482,8 @@ def build_widget(parent=None, into_tabs=None):
                 ins = "  ".join("%s ← %s" % (x["port"], ",".join(x["from"]) or "-") for x in n["ins"]) or "—"
                 outs = "  ".join("%s → %s" % (x["port"], ",".join(x["to"]) or "-") for x in n["outs"]) or "—"
                 n_sig = _sig_by_node.get(n["node_id"], 0)
-                cells = ["%s (%s)" % (n["name"], n["module"]),
+                cells = ["%s (%s)" % ((_naming.clean(n["name"], fallback=n["node_id"]) if _naming else n["name"]),
+                                      n["module"]),
                          "%s · %s" % (n.get("layer") or "meta", n["type"]), ins, outs, str(n_sig)]
                 for c, t in enumerate(cells):
                     it = QTableWidgetItem(t)
@@ -531,7 +540,8 @@ def build_widget(parent=None, into_tabs=None):
             n = nr[r]
             ms = [m for m in message_rows() if m["node_id"] == n["node_id"]]
             self.txt.setPlainText(json.dumps({
-                "节点": n["name"], "id": n["node_id"], "模块": n["module"],
+                "节点": (_naming.clean(n["name"], fallback=n["node_id"]) if _naming else n["name"]),
+                "节点全名": n["name"], "id": n["node_id"], "模块": n["module"],
                 "类型": n["type"], "层": n["layer"], "执行口径": n["exec_mode"],
                 "实现绑定": n["impl_key"], "实现源码": n["source"],
                 "输入报文": n["ins"], "输出报文": n["outs"], "报文明细": ms,
