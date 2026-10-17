@@ -25,6 +25,24 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "src"))
+try:                                     # 中文短名 / DDS 标准 QoS 显示
+    from lerobot.middleware import cn_names as _cn_names
+    from lerobot.middleware import qos_names as _qos_names
+except Exception:                                                        # noqa: BLE001
+    class _CN:
+        @staticmethod
+        def cn_of(topic, port=""):
+            return str(topic or "").split("/")[-1][:5]
+
+        @staticmethod
+        def cn_of_node(nid, fallback=""):
+            return (fallback or str(nid))[:5]
+    class _QN:
+        @staticmethod
+        def standard(qos):
+            return str(qos or "—")
+    _cn_names, _qos_names = _CN(), _QN()
+
 try:                                     # 物理量质检 (质量告警真依据)
     from lerobot.middleware import quality as _quality
 except Exception:                                                        # noqa: BLE001
@@ -409,8 +427,7 @@ class BusView(QWidget):
             #   ⇒ 第 2 列「实时值」= live.json 里该话题的 fields 压成一行, 值变了变绿(动态), 没变灰;
             #   「搜索之后就在 trace 窗口里置顶」⇒ 命中关键词的话题帧永远排在最上面 + 整行高亮。
             # 🆕 2026-10-01 老倪: 「时间第一列, name第二列」+「默认 topic 固定、时间变动, 不要滚动」
-            ["Time", "Name", "Signal", "Value", "Type", "Class", "Prob %",
-             "Sender", "Sender Id", "Track Id", "Group"])
+            ["Time", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
         self.tb.setStyleSheet(
             f"QTableWidget {{ background:{C_BG}; color:{C_WHITE}; border:none; gridline-color:#21262d;"
             f" font-family:{MONO}; font-size:10pt; }}"
@@ -1088,10 +1105,10 @@ class BusView(QWidget):
         mode = mode or getattr(self, "_mode", "fixed")
         # 🆕 2026-10-11 老倪: 「在 trace 里, 增加 信号名称 列」—— 该行这一帧/这个话题携带的信号名 (Name=topic, 信号名称=里面的信号)
         # 🧭 2026-10-17 老倪: 「trace 每列的中文改成英文, 控制字数, 不要写太多」→ 全英文短表头
-        _labs = (["Time", "Name", "Signal", "Value", "Unit", "Phys", "Hz", "Count",
-                  "Age s", "QoS", "Lamp"] if mode == "fixed" else
-                 ["Time", "Name", "Signal", "Value", "Type", "Class",
-                  "Prob %", "Sender", "Sender Id", "Track Id", "Group"])
+        # 🧭 2026-10-17 老倪: 「trace 窗口都是 signal, 改成 Name 列…增加 Type / Tx / Rx,
+        #    删 Lamp / Count / Age, QoS 要跟 DDS 标准对上」⇒ 固定行与滚动**同一套列**, 不再两套口径
+        _labs = ["Time", "Name", "Signal", "Value", "Unit", "Phys",
+                 "Type", "Tx", "Rx", "QoS", "Hz"]
         if _labs == getattr(self, "_hdr_last", None):
             return
         self.tb.setHorizontalHeaderLabels(_labs)
@@ -1099,14 +1116,49 @@ class BusView(QWidget):
         return
 
     def _set_trace_header0(self, mode=None):
-        mode = mode or getattr(self, "_mode", "fixed")
-        if mode == "fixed":
-            self.tb.setHorizontalHeaderLabels(
-                ["Time", "Name", "Value", "Class", "Hz", "Count", "Age s", "QoS", "Lamp", "Note"])
-        else:
-            self.tb.setHorizontalHeaderLabels(
-                ["Time", "Name", "Value", "Type", "Class", "Prob %", "Sender", "Sender Id",
-                 "Track Id", "Group"])
+        self.tb.setHorizontalHeaderLabels(
+            ["Time", "Name", "Signal", "Value", "Unit", "Phys", "Type", "Tx", "Rx", "QoS", "Hz"])
+
+    def _cons_map(self):
+        """话题 → 下游节点 id 清单 (来自 busdb 的 consumers; 没有就空)。"""
+        if getattr(self, "_consmap", None) is None:
+            m = {}
+            try:                        # 真源: 工程库连线 (node_rows.outs[].to) —— 不依赖 busdb 是否已加载
+                from lerobot.middleware import db as _db
+                for r in _db.node_rows():
+                    for o in (r.get("outs") or []):
+                        if o.get("topic") and o.get("to"):
+                            m[str(o["topic"])] = list(o["to"])
+            except Exception:                                                # noqa: BLE001
+                pass
+            for _k, v in ((self._busdb or {}).get("messages") or {}).items():
+                tpc = (v or {}).get("topic")
+                if tpc and (v or {}).get("consumers") and tpc not in m:
+                    m[tpc] = list(v["consumers"])
+            self._consmap = m
+        return self._consmap
+
+    def _tx_of(self, topic, t):
+        """Tx = 主发送节点的中文短名 (注册表类话题没有节点, 用它自己的中文名)。"""
+        prod = str((t or {}).get("producer") or "")
+        if prod and "." in prod and " " not in prod and not prod.startswith("画布"):
+            return _cn_names.cn_of_node(prod.split(".")[0], prod.split(".")[0])
+        return _cn_names.cn_of(topic)
+
+    def _rx_of(self, topic, t):
+        cons = (t or {}).get("consumers") or self._cons_map().get(topic) or []
+        names = [_cn_names.cn_of_node(str(x), str(x)) for x in cons]
+        return ", ".join(names) if names else "—"
+
+    def _type_of(self, topic, t):
+        try:
+            from lerobot.middleware import topic_types as _tt
+            d = _tt.describe(topic)
+            if d.get("type"):
+                return d["type"]
+        except Exception:                                                    # noqa: BLE001
+            pass
+        return str((t or {}).get("type") or "—")
 
     def _sig_meta(self, topic, sig):
         """(unit, vmin, vmax) —— 单位/量程只从工程库 mw_signal 取 (参数中心同源), 不猜。"""
@@ -1215,10 +1267,14 @@ class BusView(QWidget):
             nm = str(t.get("topic") or k)
             _is_hit = bool(pin) and (pin in nm.lower() or pin in str(t.get("type") or "").lower())
             _is_step = (k in _cur_topics) or (nm in _cur_topics)
-            base = dict(time=tt, name=nm, hz=_h, count=str(t.get("count", "—")),
+            # 🏷 2026-10-17 老倪: 「Name 列给中文名 (≤5 字); Signal 是程序里的真实变量;
+            #    增加 Type (对应 topic 的类型) 和 Tx / Rx; 删 Lamp/Count/Age; QoS 要跟 DDS 标准对上」
+            base = dict(time=tt, name=_cn_names.cn_of(nm, ""), topic=nm,
+                        hz=_h, count=str(t.get("count", "—")),
                         age=(_f3(age) if isinstance(age, (int, float)) and age >= 0 else "—"),
-                        qos=str(t.get("qos") or "—"), lamp=str(t.get("lamp") or "—"),
-                        pin=_is_hit, step=_is_step, key=k)
+                        qos=_qos_names.standard(t.get("qos")),
+                        pin=_is_hit, step=_is_step, key=k,
+                        tx=self._tx_of(nm, t), rx=self._rx_of(nm, t), type=self._type_of(nm, t))
             _META = {"ts", "t", "count", "bytes", "n", "age_s", "seq", "sample_info", "__ts"}
             sig_fields = [(str(sn), sv) for sn, sv in (f or {}).items()
                           if isinstance(sv, (int, float)) and not isinstance(sv, bool)
@@ -1240,7 +1296,8 @@ class BusView(QWidget):
                     verdict, why = _quality.check_field(sn, sv, unit, lo, hi)
                     _pk = (nm, sn)
                     _prev = (getattr(self, "_prev_vals", None) or {}).get(_pk)
-                    rows.append(dict(base, signal=sn, value=_f3(float(sv)),
+                    rows.append(dict(base, name=_cn_names.cn_of_signal(sn, nm),
+                                     signal=sn, value=_f3(float(sv)),
                                      unit=((unit or "") + ("*" if _inferred else "")) or "—",
                                      lo=lo, hi=hi, prev=_prev,
                                      phys={"ok": "✔", "warn": "🟡", "fail": "✘", "unknown": "?"}.get(verdict, "?"),
@@ -1253,7 +1310,7 @@ class BusView(QWidget):
         self.tb.setRowCount(len(rows))
         for r, x in enumerate(rows):
             cells = [x["time"], x["name"], x["signal"], x["value"], x["unit"], x["phys"],
-                     x["hz"], x["count"], x["age"], x["qos"], x["lamp"]]
+                     x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
             for c, txt in enumerate(cells):
                 item = QTableWidgetItem(str(txt))
                 item.setFont(QFont(MONO if c in (0, 1, 2, 3, 4, 6, 7, 8) else UI, 10))
@@ -1324,6 +1381,13 @@ class BusView(QWidget):
                 rows = _hit + [r for r in rows if r not in _hit]
             self._mark_search(len(_hit), _pin)                 # 🆕 搜索框自己报命中数
         topics = self._topics()
+        _cur_topics = set()
+        try:
+            _bt = getattr(self, "_bt", None)
+            if _bt is not None and hasattr(_bt, "highlight_topics"):
+                _cur_topics = _bt.highlight_topics()
+        except Exception:                                                    # noqa: BLE001
+            _cur_topics = set()
         self._fit_name_col([str(x.get("topic", "")) for x in rows[:150]])    # 📏 Name 列按内容适配
         self.tb.setUpdatesEnabled(False)
         self.tb.setRowCount(min(len(rows), 150))
@@ -1349,22 +1413,21 @@ class BusView(QWidget):
             vals = self._live_vals(live_t) or self._digest_vals(rec.get("digest"))
             _prev = (getattr(self, "_lv_last", {}) or {}).get(topic)
             _changed = bool(vals) and vals != _prev and vals != "—"
+            _unit = "—"
+            _phys = str(live_t.get("verdict") or "—")
+            _hz = live_t.get("hz")
             cells = [
                 tt,
-                topic,
-                self._sig_names((live_t.get("fields") or {}) or rec.get("digest")),   # 🆕 信号名称
+                _cn_names.cn_of(topic),
+                self._sig_names((live_t.get("fields") or {}) or rec.get("digest")),
                 vals if vals else "—",
-                str(rec.get("type", "—")),
-                str(live_t.get("verdict", "—")),
-                _num(score * 100 if isinstance(score, (int, float)) and score >= 0 else -1, 1)
-                if score is not None else "—",
-                str(live_t.get("producer") or live_t.get("source")
-                    or ((self._busdb.get("messages") or {}).get(key) or {}).get("producer")
-                    or "—")[:24],
-                str(((self._busdb.get("messages") or {}).get(key) or {}).get("sender")
-                    or live_t.get("publisher") or key or "—")[:22],
-                str(rec.get("n", "—")),
-                str(live_t.get("qos") or "—"),
+                _unit,
+                _phys,
+                self._type_of(topic, live_t),
+                self._tx_of(topic, live_t),
+                self._rx_of(topic, live_t),
+                _qos_names.standard(live_t.get("qos")),
+                ("%.1f" % _hz) if isinstance(_hz, (int, float)) else "—",
             ]
             _step_hit = topic in _cur_topics                         # 🔌 单步当前节点的输出 topic
             _hitrow = _step_hit or (bool(_pin) and (_pin in topic.lower()
