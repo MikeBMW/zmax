@@ -119,6 +119,17 @@ class ActionModulator:
         self.w_ff = w_ff                # (保留兼容: fuse() 仍可用凸组合)
         self.k_fb = float(k_fb)         # 反馈增益 (相加式: u = u_ff + k_fb·u_fb)
         self.v_cap = dict(self.STAGE_V_CAP if v_cap is None else v_cap)   # 阶段限速 m/s
+        # ⚖ 2026-10-16 (老倪「u_ff 经过 接近/对位 等原子技能节点, 再给仿真器」):
+        #   收口点从本类的 STAGE_V_CAP **等比缩放** 搬到「原子技能 SK01-08 + 物理约束闸」——
+        #   真件就是 physics_constraints.InertiaLimiter.limit (画布节点「⚖ 物理约束 · 惯性/质量率闸」,
+        #   source = .../physics_constraints.py::InertiaLimiter.limit), 同一份 v_cap 真源, 但多出
+        #   ②加速度 ③加加速度 ④动量/质量变化率 ⑤位移/行程 四条约束 + 逐拍削因取证。
+        #   limiter=None ⇒ 逐位回退旧的等比缩放 (零回归开关; A/B 对照臂也用 None)。
+        self.limiter = None
+        self.gate_dt = 0.02        # 闸的 Δt (秒) — 必须等于 u 的单位所对应的时间步 (见各引擎赋值处)
+        self.gate = None           # 最近一次闸门结果 (u/v_req/err/big/why/phys) — 引擎与画布读它
+        self._g_v = None           # 上一拍闸后速度 (②加速度约束要比)
+        self._g_a = None           # 上一拍加速度 (③加加速度约束要比)
         self.v_min = dict(self.STAGE_V_MIN)      # 阶段最小趋近速度 (防末端磨蹭)
         self.confirm_n = 2          # 状态切换需连续 N 帧证据成立 (防噪声抖动误触发)
         self._pend = {}             # {目标阶段: 连续成立帧数}
@@ -274,13 +285,40 @@ class ActionModulator:
         self.veto_count = 0
         st = self.stage()
         u = np.asarray(u_ff, dtype=float) + self.k_fb * np.asarray(u_fb, dtype=float)
-        n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
+        # ── ③ 阶段限速 ─────────────────────────────────────────────────────────
+        #   limiter 存在 ⇒ **经过原子技能 SK01-08 + 物理约束闸** (五条约束, 单点削, 出削因/偏差)
+        #   limiter=None ⇒ 旧行为: 按 STAGE_V_CAP 等比缩放 (零回归对照臂)
         cap = self.v_cap.get(st)
-        if cap is not None and n > cap > 0:
-            u = u * (cap / n)              # 等比缩放: 保方向, 只削速度
-            n = cap
+        if self.limiter is not None:
+            _v0 = self._g_v if self._g_v is not None else np.zeros(3)
+            _a0 = self._g_a if self._g_a is not None else np.zeros(3)
+            try:
+                _g = self.limiter.limit(st, u, v_prev=_v0, a_prev=_a0, dt=self.gate_dt)
+                u = np.asarray(_g["u"], dtype=float)
+                self.gate = _g
+                _vnew = np.asarray(u[:3], dtype=float).copy()
+                self._g_v = _vnew
+                self._g_a = (_vnew - np.asarray(_v0, dtype=float)) / max(1e-9, float(self.gate_dt))
+                n = float(np.linalg.norm(_vnew))
+                if cap is not None and n > cap > 0:      # 兜底: 闸的真源 v 与 STAGE_V_CAP 同表, 理论上不会更松
+                    u = u * (cap / n)
+                    n = cap
+                    self.gate = dict(self.gate, u=[float(x) for x in u],
+                                     why=(self.gate.get("why") or "可行") + "+v_cap兜底")
+            except Exception:                                        # noqa: BLE001
+                self.gate = None                                     # 闸不可用 → 退回旧缩放 (不静默失败)
+                n = float(np.linalg.norm(u[:3]))
+                if cap is not None and n > cap > 0:
+                    u = u * (cap / n)
+                    n = cap
+        else:
+            self.gate = None
+            n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
+            if cap is not None and n > cap > 0:
+                u = u * (cap / n)              # 等比缩放: 保方向, 只削速度
+                n = cap
         vmin = self.v_min.get(st)
-        if vmin is not None and 1e-6 < n < vmin:
+        if vmin is not None and 1e-6 < n < vmin and (cap is None or vmin <= cap):
             u = u * (vmin / n)             # 最小趋近速度: 证据未达标时别在末端磨 (同样保方向)
         # ── ④ 🧾 元任务预测门控 (默认关; 只削幅) ─────────────────────────────
         _mtag = ""

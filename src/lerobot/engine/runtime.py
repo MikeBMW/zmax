@@ -983,6 +983,72 @@ class RealStateSpaceSim:
         # 插入阶段最小推力: 光模块头进孔后摩擦阻力大, 比例项趋零 → 无 v_min 会磨死在孔口
         #   (ep3 插到 13mm 推不动 96 步实锤; 引擎 STAGE_V_MIN 无插入, 真实物理需要)
         self.sched.v_min["插入"] = 0.02
+        # ⚖ 2026-10-16 (老倪「u_ff 经过 接近/对位 等原子技能节点, 再给仿真器」):
+        #   真物理路 (metaworld) 也把 u 先交给「SK01-08 + 物理约束闸」(五条约束, 单点削),
+        #   闸 = physics_constraints.InertiaLimiter, 真源 config/calib/zmax_skill_physics.json。
+        #   Δt 口径 = u 的单位所对应的任务步 = action_scale/K_ACT = 0.01/0.5 = 0.02s
+        #   (metaworld 内部 timestep×frame_skip = 12.5ms 是压缩过的物理时间, 不是 u 的时间刻度;
+        #    见 2026-10-16 实测: act=0.24 → mocap 每步 +2.40mm = 0.12m/s × 0.02s)。
+        #   默认**关** (2026-10-16 真物理 A/B: seed104 插深 64.3mm → -2.3mm 未插入 ⇒ 回退,
+        #   按「未证明提升不得进默认档」不切默认); ZMAX_L2_GATE=1 打开, ZMAX_GATE_DT 覆盖 Δt。
+        self.l2_gate_on = os.environ.get("ZMAX_L2_GATE", "0") not in ("0", "false", "off")
+        self.lim = None
+        if self.l2_gate_on:
+            try:
+                from lerobot.policies.left_right.state_space.physics_constraints import InertiaLimiter as _IL
+                # Δt 默认 = **标定口径** (真源 config/calib/zmax_skill_physics.json 的 dt = 0.1s:
+                # 表里 s_step = v·dt 正是按 0.1s 算的)。按物理真实时间步(20ms)跑会把五条约束
+                # 整体收紧 5 倍 → 插入段明显变慢 (见 tools/ab_l2_inline_gate_real.py 对照数)。
+                # 要切物理口径: ZMAX_GATE_DT=0.02。
+                _gdt = float(os.environ.get("ZMAX_GATE_DT") or 0.0)
+                self.lim = _IL(dt=_gdt) if _gdt > 0 else _IL()
+                self.sched.limiter = self.lim
+                self.sched.gate_dt = float(self.lim.dt)
+                self.log(f"⚖ 原子技能物理闸已接入关键路径 (u_ff → SK01-08 → 物理闸 → 安全限幅 → 仿真器): "
+                         f"Δt={float(self.lim.dt) * 1000:.1f}ms · 五条约束 · 单点削 (ZMAX_L2_GATE=0 可关)")
+            except Exception as _e:                                        # noqa: BLE001
+                self.lim = None
+                self.log(f"⚠ 原子技能物理闸未接入 ({type(_e).__name__}: {_e}) — 回退旧的阶段等比缩放")
+        self._gate_pub_last = 0.0
+
+    # ══════════════════════════════════════════════════════════════════════════
+    def _publish_gate(self, stage=""):
+        """⚖ 原子技能物理闸发布 (2026-10-16): 本拍闸门结果 → `zmax_data/ss_live/skill_gate.json`
+
+        画布 SK01-08 / ⚖物理约束闸 / 信号分析读这份**关键路径上**的真值 (不再读派发服务旁路副本)。
+        5Hz 落盘 (闸每拍算, 落盘只取证); 任何异常不打断引擎。
+        """
+        now = time.time()
+        if now - getattr(self, "_gate_pub_last", 0.0) < 0.2:
+            return
+        self._gate_pub_last = now
+        g = getattr(self.sched, "gate", None) or {}
+        p = g.get("phys") or {}
+        try:
+            d = {"ts": now,
+                 "stage": str(stage).replace("阶段 ", "").split("·")[0].strip(),
+                 "on": bool(self.lim is not None),
+                 "dt": float(getattr(self.sched, "gate_dt", 0.0) or 0.0),
+                 "u_req": [round(float(x), 6) for x in (g.get("v_req") or [])],
+                 "u_now": [round(float(x), 6) for x in (g.get("u") or [])],
+                 "err": [round(float(x), 6) for x in (g.get("err") or [])],
+                 "err_norm": round(float(g.get("err_norm") or 0.0), 6),
+                 "big": int(g.get("big") or 0),
+                 "why": str(g.get("why") or ""),
+                 "phys": {k: (round(v, 6) if isinstance(v, (int, float)) else v) for k, v in p.items()},
+                 "n_cut": {str(k): int(v) for k, v in (getattr(self.lim, "n_cut", {}) or {}).items()},
+                 "n": int(getattr(self.lim, "n", 0) or 0),
+                 "provider": "metaworld 真物理",
+                 "src": "engine 内联闸 · physics_constraints.InertiaLimiter (单点削)",
+                 "switch": "ZMAX_L2_GATE"}
+            _dir = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"), "zmax_data", "ss_live")
+            os.makedirs(_dir, exist_ok=True)
+            _tmp = os.path.join(_dir, ".skill_gate.json.tmp")
+            with open(_tmp, "w", encoding="utf-8") as _f:
+                json.dump(d, _f, ensure_ascii=False)
+            os.replace(_tmp, os.path.join(_dir, "skill_gate.json"))
+        except Exception:                                              # noqa: BLE001
+            pass
 
     # ── 🎯 L4 干扰注入 (2026-09-09): 拿起前光模块被移动位置+转换角度 ──
     #   peg = mujoco free body (qpos 7 维: 平移3+四元数4); 注入后 mj_forward →
@@ -3287,6 +3353,19 @@ class RealStateSpaceSim:
                 tr.setdefault("il_manifold_vec", []).append(
                     np.asarray(_ii.get("manifold"), float).copy())
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)
+            # ⚖ 原子技能物理闸逐拍取证 + 5Hz 发布 (2026-10-16)
+            #   闸在 decide 内部完成 (u_ff → SK01-08 段包络 → 五条物理约束 → 削后 u);
+            #   这里只做取证落盘, **不再二次削** (单点削铁律)。
+            _g = getattr(self.sched, "gate", None) or {}
+            _gp = _g.get("phys") or {}
+            tr.setdefault("gate_why", []).append(str(_g.get("why") or ""))
+            tr.setdefault("gate_err", []).append(float(_g.get("err_norm") or 0.0))
+            tr.setdefault("gate_vcap", []).append(float(_gp.get("v_cap") or 0.0))
+            tr.setdefault("gate_big", []).append(int(_g.get("big") or 0))
+            try:
+                self._publish_gate(stage)
+            except Exception:                                              # noqa: BLE001
+                pass
             # 🔭 2026-09-05: 真实化探针快照(含阶段) — 播放逐帧同步直方图/归因/阶段色带
             # 🧠 前馈探针 (真实 MLP 激活, 诊断通道): 2026-09-08 老倪目检实锤 — 真实化主路径
             #   是解析伺服 (09-06 决策, 布局域外 MLP 输出反向), accel.probe 恒空 → 前馈激活

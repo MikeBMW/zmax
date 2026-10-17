@@ -193,6 +193,9 @@ class InertiaLimiter:
         self.n_over = 0             # 行程超上限的拍数 (只报不杀, 见 ⑤)
         self.n_clamp = 0            # 标定值被上下限夹回的次数 (取证) 
         self.n_unknown = 0          # 段名不在真源里的拍数 (静默降级 → 现在可见)
+        # 🧪 诊断开关 (2026-10-16): ZMAX_GATE_SKIP="加加速度,位移" 跳过指定约束做消融;
+        #   默认空集 = 五条全开, 行为与加开关前**逐位相同**。
+        self.skip = {s.strip() for s in os.environ.get("ZMAX_GATE_SKIP", "").split(",") if s.strip()}
 
     def reset_stage(self, stage=None):
         """手动清某段 (或全部) 累计行程。"""
@@ -219,22 +222,25 @@ class InertiaLimiter:
         why = []
         # ① 速度上限
         n = float(np.linalg.norm(v))
-        if n > p["v"] > 0:
+        if "速度" not in self.skip and n > p["v"] > 0:
             v = v * (p["v"] / n)
             why.append("速度")
         # ② 加速度上限 (F = m·a)
         dv = v - v0
         a_lim = p["a_max"] * p["dt"]
         n_dv = float(np.linalg.norm(dv))
-        if n_dv > a_lim > 0:
+        if "加速度" not in self.skip and n_dv > a_lim > 0:
             v = v0 + dv * (a_lim / n_dv)
             why.append("加速度")
         # ③ 加加速度上限 (平顺: 不许在本拍把加速度整个翻过来)
         a_new = (v - v0) / p["dt"]
         da = a_new - a0
-        j_lim = p["jerk_max"] * p["dt"]
+        # 🧪 诊断: ZMAX_GATE_JERK_X 对 jerk 上限做倍率 (默认 1.0 = 逐位不变)。
+        #   实测 (seed104 真物理): jerk 闸全开时插入失败 (-2.3mm), 关掉即恢复 (64.3mm) —
+        #   jerk_max 标定值与毫米级插孔的微修正需求冲突, 倍率用来找可用值。
+        j_lim = p["jerk_max"] * p["dt"] * float(os.environ.get("ZMAX_GATE_JERK_X") or 1.0)
         n_da = float(np.linalg.norm(da))
-        if n_da > j_lim > 0:
+        if "加加速度" not in self.skip and n_da > j_lim > 0:
             a_new = a0 + da * (j_lim / n_da)
             v = v0 + a_new * p["dt"]
             why.append("加加速度")
@@ -242,14 +248,14 @@ class InertiaLimiter:
         f_lim = p["F"] * p["dt"]
         f_need = p["m"] * (v - v0) + v * (_dmdt * p["dt"])
         n_f = float(np.linalg.norm(f_need))
-        if n_f > f_lim > 0:
+        if "动量/质量率" not in self.skip and n_f > f_lim > 0:
             v = v0 + (v - v0) * (f_lim / max(n_f, 1e-9))
             why.append("动量/质量率")
         # ⑤ 位移: ‖v‖·dt ≤ s_step (单拍位移封顶) + 段累计行程 ≤ s_max (位置 = 速度的积分)
         s_step = float(p.get("s_step") or 0.0)
         if s_step > 0:
             d_now = float(np.linalg.norm(v)) * p["dt"]
-            if d_now > s_step * (1.0 + 1e-12):
+            if "位移" not in self.skip and d_now > s_step * (1.0 + 1e-12):
                 v = v * (s_step / max(d_now, 1e-12))
                 why.append("位移")
         _key = str(stage)

@@ -70,7 +70,13 @@ def compute(ctx):
     """
     global LAST_STATUS
     if not PURE:
-        LAST_STATUS = "直通 (PURE=False: 只走数据面)"
+        # ⚖ 2026-10-16: 显示**关键路径**上的闸门真值 (引擎内联闸同一拍, 见 gate_truth.py)
+        try:
+            from lerobot.middleware.nodes import gate_truth as _gt
+            _kp = _gt.one_line()
+            LAST_STATUS = "直通 (PURE=False) · " + (_kp or "关键路径闸尚未生成 (引擎未跑 / 帧龄超 5s)")
+        except Exception:                                              # noqa: BLE001
+            LAST_STATUS = "直通 (PURE=False: 只走数据面)"
         return _passthrough(ctx)
     try:
         from lerobot.engineering import registry as _reg

@@ -198,6 +198,28 @@ class StateSpaceSim:
         self.u_prev = np.zeros(4)      # 上一步"实际下发"的控制量 (卡尔曼预测必须用它)
         self.dyn = self.dynamics.PriorDynamicsPredictor(A=1.0, B=dt)
         self.sched = self.cognition.ActionModulator()
+        # ⚖ 2026-10-16 (老倪「u_ff 经过 接近/对位 等原子技能节点, 再给仿真器」):
+        #   把画布上「🛡安全限幅 → ①..⑧ SK01-08 → ⚖物理约束闸(五条约束) → 小偏差→状态校正器/大偏差→融合定位」
+        #   这条链真正接进引擎关键路径。闸 = physics_constraints.InertiaLimiter (真源
+        #   config/calib/zmax_skill_physics.json, v_cap 与 STAGE_V_CAP 同表)。
+        #   默认**关** (2026-10-16 A/B 判据: 解析引擎零回退 4/4 PASS, 但 metaworld 真物理
+        #   seed104 插深 64.3mm → -2.3mm 未插入 ⇒ 按「未证明提升不得进默认档」先不切默认)。
+        #   ZMAX_L2_GATE=1 打开; =0 保持旧等比缩放 (逐位零回归)。
+        self.l2_gate_on = os.environ.get("ZMAX_L2_GATE", "0") not in ("0", "false", "off")
+        self.lim = None
+        if self.l2_gate_on:
+            try:
+                from lerobot.policies.left_right.state_space.physics_constraints import InertiaLimiter as _IL
+                # 闸的 Δt 默认 = **标定口径** (config/calib/zmax_skill_physics.json 的 dt = 0.1s;
+                # 该表里 s_step = v·dt 就是按 0.1s 算的, 换成引擎 dt 会让五条约束整体收紧 5 倍)。
+                # 想按"物理真实时间步"跑就用 ZMAX_GATE_DT=0.02 做 A/B —— 两条口径的数分开报。
+                _gdt = float(os.environ.get("ZMAX_GATE_DT") or 0.0)
+                self.lim = _IL(dt=_gdt) if _gdt > 0 else _IL()
+                self.sched.limiter = self.lim
+                self.sched.gate_dt = float(self.lim.dt)
+            except Exception:                                            # noqa: BLE001
+                self.lim = None                                          # 取不到就回旧行为, 不静默假装接上了
+        self._gate_pub_last = 0.0
         self.execr = self.execution.RobotExecutor()
         self.world = self.execution.PhysicalWorld()
         # 物理世界状态
@@ -311,7 +333,9 @@ class StateSpaceSim:
         diag_done = False
         last_io = {}
         tr = {"t": [], "dist": [], "u_ff": [], "residual": [], "contact_p": [],
-              "u_sat": [], "stage": [], "done": [],
+              "u_sat": [], "stage": [], "done": [], "stage_u": [],
+              # ⚖ 2026-10-16 原子技能物理闸逐拍取证 (削因/削出偏差/本段 v_cap/是否大偏差)
+              "gate_why": [], "gate_err": [], "gate_vcap": [], "gate_big": [], "gate_on": [],
               "x": [], "gripper": [], "force": [],
               # 🔩 2026-08-25 完整插拔: 光模块独立轨迹 + 每步阶段子目标 (3D 视图渲染用)
               "peg": [], "peg_head": [], "target": [], "grasped": [],
@@ -361,7 +385,14 @@ class StateSpaceSim:
             z_k = np.concatenate([self.world.observe(self.x), [force_norm]])
             # ⑦ 状态校正: 残差 + 接触概率
             # ⚖ 原子技能物理闸来的偏差 (小偏差就地修; 大偏差在引擎侧走融合定位→顶层补偿, 不在本函数里修)
-            _serr = self._skill_err_snapshot()
+            #   🆕 2026-10-16: **内联闸优先** (上一拍 decide 里刚算的那份 = 单点真源);
+            #   没有内联闸 (ZMAX_L2_GATE=0 或取不到闸件) 才读技能派发服务的文件 (旧路径, 保持可用)。
+            _pg = getattr(self.sched, "gate", None)
+            _serr = None
+            if _pg and not int(_pg.get("big") or 0):
+                _serr = [float(x) for x in (_pg.get("err") or [])] or None
+            if _serr is None:
+                _serr = self._skill_err_snapshot()
             corrected, residual = self.cognition.state_correction(prior, z_k, K=0.5, err=_serr)
             residual = np.asarray(residual, dtype=float).copy()
             # 力残差 = 实测接触力 (接触力是外部事件不可预测, 预测力恒 0 —
@@ -481,6 +512,18 @@ class StateSpaceSim:
             tr["stage"].append(stage if self.sched.stage() in stage
                                else f"阶段 {self.sched.stage()}")
             tr["done"].append(done)
+            # 本拍 u **实际按哪一段的包络/物理约束削的** (decide() 用的是本步开始时的阶段;
+            # tr["stage"] 记的是本步结束时的阶段 → 换段那一拍两者差一段, 提速归因必须用 stage_u)
+            tr["stage_u"].append(str(stage))
+            # ⚖ 原子技能物理闸逐拍取证 (单点削: 本拍 u_req → 闸后 u; 削因/偏差/本段 v_cap)
+            _g = getattr(self.sched, "gate", None) or {}
+            _gp = _g.get("phys") or {}
+            tr["gate_why"].append(str(_g.get("why") or ""))
+            tr["gate_err"].append(float(_g.get("err_norm") or 0.0))
+            tr["gate_vcap"].append(float(_gp.get("v_cap") or 0.0))
+            tr["gate_big"].append(int(_g.get("big") or 0))
+            tr["gate_on"].append(1 if self.lim is not None else 0)
+            self._publish_gate(str(tr["stage"][-1]))
             # 🧮 流形层逐帧发布 (2026-09-03): 接触/性能流形每步实算 → io channel + 全程序列
             _ms = str(tr["stage"][-1]).replace("阶段 ", "").split("·")[0].strip()
             if self._mani_cm is not None:
@@ -566,6 +609,44 @@ class StateSpaceSim:
                 break
         tr["io"] = last_io
         return tr
+
+    def _publish_gate(self, stage=""):
+        """⚖ 原子技能物理闸发布 (2026-10-16 老倪「u_ff 经过 接近/对位 等原子技能节点, 再给仿真器」):
+
+        把**关键路径上**本拍的闸门结果写到 `zmax_data/ss_live/skill_gate.json`
+        —— 画布 SK01-08 / ⚖物理约束闸 / 信号分析读这份真值, 不再读派发服务的旁路副本。
+        5Hz 落盘 (闸本身每拍算, 落盘只是取证); 任何异常都不打断引擎。
+        """
+        now = time.time()
+        if now - getattr(self, "_gate_pub_last", 0.0) < 0.2:
+            return
+        self._gate_pub_last = now
+        g = getattr(self.sched, "gate", None) or {}
+        p = g.get("phys") or {}
+        try:
+            d = {"ts": now,
+                 "stage": str(stage).replace("阶段 ", "").split("·")[0].strip(),
+                 "on": bool(self.lim is not None),
+                 "dt": float(getattr(self.sched, "gate_dt", 0.0) or 0.0),
+                 "u_req": [round(float(x), 6) for x in (g.get("v_req") or [])],
+                 "u_now": [round(float(x), 6) for x in (g.get("u") or [])],
+                 "err": [round(float(x), 6) for x in (g.get("err") or [])],
+                 "err_norm": round(float(g.get("err_norm") or 0.0), 6),
+                 "big": int(g.get("big") or 0),
+                 "why": str(g.get("why") or ""),
+                 "phys": {k: (round(v, 6) if isinstance(v, (int, float)) else v) for k, v in p.items()},
+                 "n_cut": {str(k): int(v) for k, v in (getattr(self.lim, "n_cut", {}) or {}).items()},
+                 "n": int(getattr(self.lim, "n", 0) or 0),
+                 "src": "engine 内联闸 · physics_constraints.InertiaLimiter (单点削)",
+                 "switch": "ZMAX_L2_GATE"}
+            _dir = os.path.join(os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax"), "zmax_data", "ss_live")
+            os.makedirs(_dir, exist_ok=True)
+            _tmp = os.path.join(_dir, ".skill_gate.json.tmp")
+            with open(_tmp, "w", encoding="utf-8") as _f:
+                json.dump(d, _f, ensure_ascii=False)
+            os.replace(_tmp, os.path.join(_dir, "skill_gate.json"))
+        except Exception:                                          # noqa: BLE001
+            pass
 
     def _skill_err_snapshot(self, ttl=1.0):
         """⚖ 原子技能物理偏差 (真源 zmax_data/ss_live/skill_error.json, 由技能派发服务写)。
