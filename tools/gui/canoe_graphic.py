@@ -1303,6 +1303,37 @@ class WaveArea(QWidget):
                 self._sync_vb_geometry()
 
     def refresh(self, x_range=None, fit_y=False):
+        # 🐛 2026-10-17 老倪贴的 RecursionError 根因面: pyqtgraph 每次 paint 都会
+        #   PlotDataItem._getDisplayDataset → dataRect → np.min(x) 扫数组; 信号级联
+        #   (setYRange ↔ linkedView ↔ paint) 把栈压到极限时, 就崩在这行 np.min 上。
+        #   两道闸: ① 重入闸 —— 正在刷新就不再进来 (级联不会叠栈);
+        #          ② skipFiniteCheck=True —— 数据在缓冲里已保证有限, 不再每帧扫一遍。
+        if getattr(self, "_in_refresh", False):
+            self._refresh_pending = True
+            return
+        self._in_refresh = True
+        try:
+            self._refresh_inner(x_range=x_range, fit_y=fit_y)
+        except RecursionError:
+            # 🔎 只留证据不吞错: 下次真复发时, 完整栈落盘 (老倪要"根因", 不要猜)
+            try:
+                import traceback, time as _t, os as _os
+                _d = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+                    _os.path.abspath(__file__)))), "zmax_data", "graphic_logs")
+                _os.makedirs(_d, exist_ok=True)
+                with open(_os.path.join(_d, "gui_recursion.log"), "a", encoding="utf-8") as _f:
+                    _f.write("\n===== %s 曲线 %d · 模式 %s =====\n%s\n"
+                             % (_t.strftime("%Y-%m-%d %H:%M:%S"), len(getattr(self, "curves", {})),
+                                getattr(self, "mode", "?"), traceback.format_exc()))
+            except Exception:                                              # noqa: BLE001
+                pass
+            raise
+        finally:
+            self._in_refresh = False
+            if getattr(self, "_refresh_pending", False):
+                self._refresh_pending = False
+
+    def _refresh_inner(self, x_range=None, fit_y=False):
         store = self.store
         for k, item in list(self.items.items()):
             b = store.bufs.get(k)
@@ -1316,16 +1347,22 @@ class WaveArea(QWidget):
             if not b.scene:
                 t = t - store.t0      # ⏱ 到达时刻源: x = 相对秒 (t - t0); 场景源 x 就是场景时刻
             if self.mode == self.MODE_MULTI and k in self.extra_vbs:
-                item.setData(t, v)
+                item.setData(t, v, skipFiniteCheck=True)
                 vb, _ = self.extra_vbs[k]
                 # 每条曲线按自己的 Y 量程自动缩放 (CANoe: 每信号独立 Y 轴), 常量值给个最小跨度
                 lo, hi = float(np.min(v)), float(np.max(v))
                 if hi - lo < 1e-12:
                     lo, hi = lo - 1.0, hi + 1.0
                 pad = (hi - lo) * 0.08
-                vb.setYRange(lo - pad, hi + pad, padding=0)
+                _rng = (lo - pad, hi + pad)
+                _prev = (getattr(self, "_yr_cache", None) or {}).get(k)
+                if _prev is None or abs(_prev[0] - _rng[0]) > 1e-9 or abs(_prev[1] - _rng[1]) > 1e-9:
+                    if not hasattr(self, "_yr_cache"):
+                        self._yr_cache = {}
+                    self._yr_cache[k] = _rng
+                    vb.setYRange(_rng[0], _rng[1], padding=0)
             else:
-                item.setData(t, v, symbol=None)
+                item.setData(t, v, symbol=None, skipFiniteCheck=True)
         if self.mode == self.MODE_MULTI:
             self._sync_vb_geometry()      # 尺寸/布局每帧对齐, 否则副轴曲线会画到框外
         self._refresh_marks()             # 🕒 最新时刻标记线跟着最新样本走
@@ -1383,7 +1420,8 @@ class WaveArea(QWidget):
         self.show_points = on
         for k, item in self.items.items():
             try:
-                item.setData(item.xData, item.yData, symbol="o" if on else None, symbolSize=4)
+                item.setData(item.xData, item.yData, symbol="o" if on else None, symbolSize=4,
+                             skipFiniteCheck=True)
             except Exception:
                 pass
 
