@@ -2118,7 +2118,10 @@ class HardwareCard(QFrame):
         self._last = {}
         self._worker = _HwFetcher(self, interval=2.0)
         self._worker.got.connect(self._on_fetched)
-        self._worker.start()
+        if _dbg_attached():
+            print("🐞 调试模式: 硬件轮询线程未启动 (免得 Call Stack 跳; 关掉调试器即恢复)", flush=True)
+        else:
+            self._worker.start()
 
     @staticmethod
     def _sh(cmd, timeout=8):
@@ -14722,7 +14725,10 @@ class StudioMainWindow(QMainWindow):
         # 采样线程 (2s, 阻塞 I/O 全在后台) + 渲染定时器 (250ms, 只为闪烁相位)
         self._light_fetcher = _StatusLightFetcher(self, interval=2.0)
         self._light_fetcher.got.connect(self._on_light_state)
-        self._light_fetcher.start()
+        if _dbg_attached():
+            print("🐞 调试模式: 状态灯采样线程未启动 (渲染定时器保留)", flush=True)
+        else:
+            self._light_fetcher.start()
         self._light_timer = QTimer(self)
         self._light_timer.timeout.connect(self._render_lights)
         self._light_timer.start(250)
@@ -15329,7 +15335,47 @@ def _fit_window_to_screen(win, margin=8):
         return False, f"err {e}"
 
 
+
+# 🐞 2026-10-17 老倪: 「你帮我修好，别跳了，我得调试」
+#   现象: VSCode 断点已经停住, Call Stack 面板还在不断变化 (焦点被别的线程抢走)。
+#   根因: 进程里有 60+ 线程, debugpy 每收到一次 stopped (别的线程命中断点 / 线程里异常没接住)
+#         VSCode 就往那个线程跳。调试期间把后台轮询线程停掉 + 线程异常只落盘, 栈就定住。
+def _dbg_attached():
+    """是否在调试器下 (VSCode/debugpy) —— 也可用 ZMAX_DEBUG_QUIET=1 强制。"""
+    if os.environ.get("ZMAX_DEBUG_QUIET") == "1":
+        return True
+    try:
+        import debugpy
+        if debugpy.is_client_connected():
+            return True
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return sys.gettrace() is not None
+
+
+def _install_thread_guard():
+    """线程内未捕获异常不再抛回解释器 (那会触发调试器 stopped ⇒ 抢焦点), 只写日志。"""
+    def _hook(args):
+        try:
+            import traceback as _tb
+            p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))), "zmax_data", "graphic_logs", "thread_exc.log")
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "a", encoding="utf-8") as f:
+                f.write("[%s] 线程 %s 异常 %s: %s\n%s\n" % (
+                    time.strftime("%F %T"), getattr(args.thread, "name", "?"),
+                    getattr(args.exc_type, "__name__", "?"), args.exc_value,
+                    "".join(_tb.format_exception(args.exc_type, args.exc_value, args.exc_traceback))))
+        except Exception:                                                   # noqa: BLE001
+            pass
+    try:
+        threading.excepthook = _hook
+    except Exception:                                                       # noqa: BLE001
+        pass
+
+
 def main():
+    _install_thread_guard()          # 🐞 调试期线程异常只落盘, 不抢断点焦点
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
     # 🐛 2026-08-31 老倪: 找不到 attach → F5 默认「🚀 全新调试进程」新实例断点;
