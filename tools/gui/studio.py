@@ -2729,7 +2729,10 @@ class HomeWidget(QWidget):
         # ====== 分享按钮 ======
         share_btn = QPushButton("📱 分享")
         share_btn.setFont(QFont("Arial", 12, QFont.Bold))
-        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0; cursor:pointer;")
+        # 🐛 2026-10-17 老倪: 「Unknown property cursor … 这些无用信息, 不要显示」
+        #   Qt 样式表**不支持 cursor** (那是网页 CSS) ⇒ 每次 repolish 刷一条 "Unknown property cursor"。
+        #   指针形状改用 setCursor 设。
+        share_btn.setStyleSheet(f"background:{C_PURPLE}; color:white; border-radius:10px; padding:4px 12px; margin:0;")
         share_btn.setCursor(Qt.PointingHandCursor)
         share_btn.setToolTip("生成二维码 · 扫码查看Z-MAX项目")
         share_btn.clicked.connect(self._show_share_qr)
@@ -15384,7 +15387,8 @@ def main():
     try:
         from PyQt5.QtCore import qInstallMessageHandler as _qimh
         def _qt_msg(_mode, _ctx, _msg):
-            if ("Could not parse stylesheet" in _msg) or ("propagateSizeHints" in _msg):
+            if ("Could not parse stylesheet" in _msg) or ("propagateSizeHints" in _msg) \
+                    or _msg.startswith("Unknown property "):
                 return
             import sys as _sys
             try:                        # 中文消息不能走 print (GUI 的 stderr 编码可能是 ascii)
