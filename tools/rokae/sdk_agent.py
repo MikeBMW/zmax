@@ -322,7 +322,15 @@ def do_path(r, req):
         out["verdict"] = "ABORT 前置条件: %s" % bad
         return 3, out
     p0 = C.read_pose(r)
-    rpy = list(p0["rpy"])
+    # 可选: 显式指定末端姿态 (deg)。实测同一段直线换个腕部构型就过不去 (走到一半停),
+    # 线元素里记一个"走得通的姿态"比每次沿用当前姿态可靠
+    rpy_req = req.get("rpy_deg")
+    if rpy_req and len(rpy_req) == 3:
+        import math as _m
+        rpy = [_m.radians(float(v)) for v in rpy_req]
+        out["rpy_deg_used"] = [float(v) for v in rpy_req]
+    else:
+        rpy = list(p0["rpy"])
     base = list(p0["tcp"])
     gbox = req.get("guard_box")
     ec = {}

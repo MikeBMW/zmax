@@ -112,6 +112,11 @@ def update(fid: str, **kw) -> dict:
                     it[k] = str(kw[k])
             if kw.get("enabled") is not None:
                 it["enabled"] = bool(kw["enabled"])
+            # 直线元素记住"走得通的末端姿态(deg)": 同一段直线换个腕部构型会走到一半停,
+            # 记下成功那次的 abc_deg, 下次 Follow 直接沿用
+            if "rpy_deg" in kw:
+                v = kw["rpy_deg"]
+                it["rpy_deg"] = [round(float(x), 3) for x in v] if v else None
             _save(d)
             return it
         raise KeyError("没有这个围栏: %s" % fid)

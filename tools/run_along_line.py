@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 
@@ -56,6 +57,21 @@ def preflight():
     return (not bad), bad, s, rb
 
 
+_MAXDEV = [0.0]          # 运行期间相对起点的最大偏离 mm (来回一圈净位移=0, 不能靠净位移判"有没有动")
+
+
+def _sampler(stop_evt, p0, period=0.4):
+    while not stop_evt.is_set():
+        try:
+            p = [float(v) for v in _get("/pose")["xyz"]]
+            d = 1000.0 * sum((p[i] - p0[i]) ** 2 for i in range(3)) ** 0.5
+            if d > _MAXDEV[0]:
+                _MAXDEV[0] = d
+        except Exception:                                                   # noqa: BLE001
+            pass
+        stop_evt.wait(period)
+
+
 def send(req, wait=90.0):
     """写 FIFO → 等 SDK agent 回执 (它按 id 回)"""
     rid = req.setdefault("id", "line_%d" % int(time.time() * 1000))
@@ -89,6 +105,8 @@ def main():
     ap.add_argument("--id", default="", help="按 id 指定 (页面 Follow 按钮走这个)")
     ap.add_argument("--speed", type=float, default=20.0, help="mm/s (1~100)")
     ap.add_argument("--npts", type=int, default=40, help="直线段上取几个点 (点越多越平顺)")
+    ap.add_argument("--rpy", default=None,
+                    help="末端姿态 abc_deg, 逗号分隔 (缺省用元素里记的, 再缺省用当前姿态)")
     ap.add_argument("--zone", type=float, default=5.0, help="过渡区 mm (越小越贴线, 停顿越多)")
     ap.add_argument("--reverse", action="store_true", help="从 B 端走到 A 端")
     ap.add_argument("--chunk", type=float, default=0.0,
@@ -99,6 +117,8 @@ def main():
                     help="来回走 N 次 (2N 段)。一次性下发 2N 个端点 (<=18 点不触控制器队列上限), zone 混合 ⇒ 端点不停")
     ap.add_argument("--dry-run", action="store_true", help="只算不发")
     a = ap.parse_args()
+    if a.rpy:                                   # "a,b,c" → [a,b,c] (deg)
+        a.rpy = [float(x) for x in str(a.rpy).replace(" ", "").split(",") if x != ""]
 
     import fence_store as FS
     items = FS.listing()["items"]
@@ -162,19 +182,32 @@ def main():
         tt = max(0.0, min(1.0, sum((cur[i] - A[i]) * v[i] for i in range(3)) / L2))
         near = [A[i] + v[i] * tt for i in range(3)]
         off = 1000.0 * sum((cur[i] - near[i]) ** 2 for i in range(3)) ** 0.5
-        if off < 25.0 and tt > 0.5:            # 停在 B 端 ⇒ 先去 A
-            start_pt, first = B, A
-        elif off < 25.0:                        # 停在 A 端 ⇒ 先去 B
-            start_pt, first = A, B
-        else:                                   # 不在线上 ⇒ 先归位到近端
-            start_pt = A if tt < 0.5 else B
-            first = B if tt < 0.5 else A
-        pts2 = [start_pt]
-        tgt = first
-        for k in range(2 * a.loops):
+        # ⚠ 第一个点必须是"当前位姿": do_path 是相对增量, 起点若按线的端点算,
+        #   末端不在线上时会把整条路径平移出去 (实测末端偏 42mm ⇒ 目标落到 0.83m, 超工作空间, 一步没动)
+        pts2 = [list(cur)]
+        # 先横向贴到线上 (垂足), 再沿线段跑 —— 直接从 42mm 外斜插到端点, 实测控制器会
+        # 回 PATH DONE 但一步不动 (IK 解不出来), 先贴线就正常
+        foot = [A[i] + (B[i] - A[i]) * tt for i in range(3)]
+        if 1000.0 * sum((cur[i] - foot[i]) ** 2 for i in range(3)) ** 0.5 > 2.0:
+            pts2.append(foot)
+        near_end = A if tt < 0.5 else B        # 先去近的那一端
+        tgt = near_end
+        # 多给一个端点: 起点恰好压在端点时第一个目标与起点重合 (会被当重复点丢掉),
+        # 少给一个就变成 2N-1 段, 走不够来回次数
+        for k in range(2 * a.loops + 1):
             pts2.append(list(tgt))
-            tgt = A if tgt is B else B
+            tgt = B if tgt is A else A
         abs_pts = pts2
+        # ⚠ 去掉原地不动的点 (相邻两点重合 ⇒ 增量 0): 控制器收到 0 长度 MoveL 后
+        #   后面整队只走第一段就停 (实测 6 段只走 1 段; 去掉重复点后 6 段全走完)
+        _clean = [abs_pts[0]]
+        for _p in abs_pts[1:]:
+            if 1000.0 * sum((_p[i] - _clean[-1][i]) ** 2 for i in range(3)) ** 0.5 > 0.5:
+                _clean.append(_p)
+        if len(_clean) != len(abs_pts):
+            print("ℹ 去掉 %d 个重复点 (原地不动的点会让后续整队只走第一段)"
+                  % (len(abs_pts) - len(_clean)))
+        abs_pts = _clean
         total_mm = 1000.0 * sum(
             sum((abs_pts[k][i] - abs_pts[k - 1][i]) ** 2 for i in range(3)) ** 0.5
             for k in range(1, len(abs_pts)))
@@ -193,6 +226,31 @@ def main():
     if a.dry_run:
         print("DRY-RUN: 共 %d 个点, 前 3 个: %s" % (len(abs_pts), [[round(v * 1000) for v in p] for p in abs_pts[:3]]))
         return 0
+
+    # 工作空间预检: TCP 离基座 >0.80m 大概率够不到 (实测 0.83m 时控制器回 PATH DONE 但一步不动)
+    # ⚠ 去掉"原地不动"的点 (两个相邻点重合 ⇒ 增量 0)。控制器收到 0 长度 MoveL 后,
+    #   后面整队 MoveL 只走第一段就停 (实测: 6 段只走 1 段; 去掉重复点后 6 段全走完)
+    clean = [abs_pts[0]]
+    for _p in abs_pts[1:]:
+        if 1000.0 * sum((_p[i] - clean[-1][i]) ** 2 for i in range(3)) ** 0.5 > 0.5:
+            clean.append(_p)
+    if len(clean) != len(abs_pts):
+        print("ℹ 去掉 %d 个重复点 (原地不动会让后续整队只走第一段)" % (len(abs_pts) - len(clean)))
+    abs_pts = clean
+
+    # 实测口径: 0.81m 的两端能到; 0.83m 的斜点控制器直接不动 ⇒ 0.82 起警告, >0.90 才拒发
+    dists = [sum(v * v for v in p) ** 0.5 for p in abs_pts]
+    far = [(k, [round(v * 1000) for v in abs_pts[k]]) for k, d in enumerate(dists) if d > 0.90]
+    if far:
+        print("⛔ 这些目标点离基座超过 0.90m (实测够不到) ⇒ 不发:")
+        for k, q in far[:5]:
+            print("   第 %d 点 %s mm (%.2fm)" % (k, q, dists[k]))
+        if not a.dry_run:
+            _write_status("error", it, a, err="目标点离基座 >0.90m, 超出可达范围")
+            return 5
+    if max(dists) > 0.82:
+        print("⚠ 最远目标点 %.2fm —— 实测 0.83m 时控制器会'接受但不执行', 若这一步没动就先把末端挪近些"
+              % max(dists))
 
     # 转成"相对当前位姿"的增量 (do_path 从发送瞬间的真值位姿累加)
     deltas = []
@@ -219,10 +277,19 @@ def main():
               % (len(deltas), len(chunks), a.speed, a.zone))
         for ci, ck in enumerate(chunks):
             p0 = [float(x) for x in _get("/pose")["xyz"]]
-            out = send({"cmd": "path", "points": ck, "speed": a.speed, "zone": a.zone,
-                        "id": "line_%d_%d" % (int(time.time()), ci)},
+            req = {"cmd": "path", "points": ck, "speed": a.speed, "zone": a.zone,
+                   "id": "line_%d_%d" % (int(time.time()), ci)}
+            rp = (it.get("rpy_deg") if isinstance(it, dict) else None) or a.rpy
+            if rp:
+                req["rpy_deg"] = [float(x) for x in rp]      # 用上次走得通的腕部构型
+            print("   → 发给控制器: %s" % json.dumps(req))
+            _stop = threading.Event()
+            _th = threading.Thread(target=_sampler, args=(_stop, p0), daemon=True)
+            _th.start()
+            out = send(req,
                        wait=max(30.0, sum((d[0] ** 2 + d[1] ** 2 + d[2] ** 2) ** 0.5 for d in ck)
                                 / max(1.0, a.speed) + 20.0))
+            _stop.set()
             time.sleep(0.6)
             p1 = [float(x) for x in _get("/pose")["xyz"]]
             got = 1000 * sum((p1[i] - p0[i]) ** 2 for i in range(3)) ** 0.5
@@ -241,8 +308,23 @@ def main():
 
     end = [float(x) for x in _get("/pose")["xyz"]]
     d = [1000 * (end[i] - cur[i]) for i in range(3)]
-    print("终点 TCP = [%.1f, %.1f, %.1f] mm · 实际位移 [%.1f, %.1f, %.1f] mm"
-          % (end[0] * 1000, end[1] * 1000, end[2] * 1000, d[0], d[1], d[2]))
+    print("终点 TCP = [%.1f, %.1f, %.1f] mm · 实际位移 [%.1f, %.1f, %.1f] mm · 运行中最大偏离 %.1fmm"
+          % (end[0] * 1000, end[1] * 1000, end[2] * 1000, d[0], d[1], d[2], _MAXDEV[0]))
+    moved = 1000 * sum((end[i] - cur[i]) ** 2 for i in range(3)) ** 0.5
+    moved_ok = max(moved, _MAXDEV[0]) >= 1.0
+    if not moved_ok and (appr_mm + line_mm) > 10.0:
+        print("⚠ 控制器回 PATH DONE 但末端一步没动 (s=%s) ⇒ 多半是目标点够不到/被控制器忽略" % moved)
+        _write_status("error", it, a, end=end, err="控制器接受了路径但一步没动 (目标可能超出工作空间)")
+    # 把这次成功用的末端姿态记进元素, 下次 Follow 直接沿用 (reports 里也看得到)
+    try:
+        pc = _get("/pose")
+        abc = [round(float(v), 2) for v in pc.get("abc_deg") or []]
+        if len(abc) == 3 and moved_ok:
+            import fence_store as _FS
+            _FS.update(it["id"], rpy_deg=abc)
+            print("📌 记下这条线走得通的末端姿态 abc_deg = %s" % abc)
+    except Exception as ex:                                              # noqa: BLE001
+        print("(姿态记录跳过: %s)" % ex)
     errA = 1000 * sum((end[i] - A[i]) ** 2 for i in range(3)) ** 0.5
     errB = 1000 * sum((end[i] - B[i]) ** 2 for i in range(3)) ** 0.5
     print("离 A 端 %.1fmm · 离 B 端 %.1fmm" % (errA, errB))
