@@ -337,6 +337,21 @@ def _atomic_skills():
 _PLAN_FILE = os.path.expanduser("~/zmax/zmax_data/runtime/plan/plan_latest.json")
 
 
+def _rpy_of(q):
+    """quat(qx,qy,qz,qw) → (rx,ry,rz) 度; 拿不到就 None。姿态在计划里是"保持不变"或示教姿态。"""
+    try:
+        import math as _m
+        x, y, z, w = [float(v) for v in (q or [])[:4]]
+        n = (x * x + y * y + z * z + w * w) ** 0.5 or 1.0
+        x, y, z, w = x / n, y / n, z / n, w / n
+        rx = _m.degrees(_m.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)))
+        ry = _m.degrees(_m.asin(max(-1.0, min(1.0, 2 * (w * y - z * x)))))
+        rz = _m.degrees(_m.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)))
+        return (round(rx, 2), round(ry, 2), round(rz, 2))
+    except Exception:                                                        # noqa: BLE001
+        return (None, None, None)
+
+
 def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_pos=None):
     """把段表写成 plan_latest.json (只读产物; 失败绝不影响执行)。"""
     try:
@@ -350,6 +365,7 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_po
                          "speed": pl.get("speed"),
                          "dir": pl.get("dir"),
                          "lin_mm": pl.get("lin"),
+                         "quat": pl.get("quat"),
                          "service": bool(pl.get("service"))})
         _sp = [float(x["speed"]) for x in segs if x.get("speed")]
         _ln = [float(x["lin_mm"]) for x in segs if x.get("lin_mm")]
@@ -388,6 +404,10 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_po
                "target_x_mm": (round(float(segs[-1]["pos"][0]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
                "target_y_mm": (round(float(segs[-1]["pos"][1]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
                "target_z_mm": (round(float(segs[-1]["pos"][2]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
+               # 📚 2026-10-18 老倪: 「位姿应该是 6 个自由度, 角度呢?」—— 目标姿态也要给, 用欧拉角(度)说人话
+               "target_rx_deg": _rpy_of(segs[-1].get("quat"))[0] if segs else None,
+               "target_ry_deg": _rpy_of(segs[-1].get("quat"))[1] if segs else None,
+               "target_rz_deg": _rpy_of(segs[-1].get("quat"))[2] if segs else None,
                "req_manual_point": (1 if _req.get("manual_point") else 0),
                "req_auth_epoch": _req.get("auth_epoch"),
                "req_src": _req.get("src") or _req.get("from") or "station",
