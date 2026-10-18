@@ -31,6 +31,7 @@ LIVE_PREFIX = {
     "zmax/yolo_det": "yolo", "zmax/dataspace_live": "space", "zmax/ar_aoi": "ar",
     # ⚙️ 2026-10-18: 执行器实时状态 (l2_daemon 5Hz) —— 节点 n_exec, L2
     "zmax/ss_exec": "ss_exec",
+    "zmax/plan_live": "planlive",
 }
 LIVE_TOPICS = set(LIVE_PREFIX)
 
@@ -42,6 +43,7 @@ LIVE_TOPICS = set(LIVE_PREFIX)
 PREFIX_OWNER = {
     "sstrace": "ssest",        # 3D 插拔场景状态 (末端/光模块/夹持) ← 自适应状态估计器 L2
     "ss_exec": "n_exec",       # ⚙️ 执行器实时状态 (2026-10-18 新增节点) L2
+    "planlive": "n_moveit",    # 🧭 段表 = 运动规划节点的输出 (2026-10-18)
     "sseng": "ss_mani_eng",    # 流形引擎周期回路出口 (势能/动量M/动作调制) L4
     "gravity": "n_calib_mani",  # 万有引力表 = 标定诊断测量·主参数 M 的力矩阵 L4
     "pose": "ssest",           # 真机 tcp_pose tap → 状态估计 L2
@@ -349,11 +351,11 @@ def rx_of(key):
     # ⚙️ 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」——
     #   执行器实时状态 ss_exec.* 不是端口键, 但归属节点 n_exec 的出端口有真连线 (n_exec.out1 → 机器人执行器)
     #   ⇒ Rx 取该节点的下游; 没有连线就仍是 "—"(不编)。
-    if k.startswith("ss_exec."):
+    if k.startswith(("ss_exec.", "planlive.")):
         try:
             from lerobot.middleware import db as _db2
             for _r in _db2.node_rows():
-                if _r.get("node_id") != "n_exec":
+                if _r.get("node_id") != ("n_exec" if k.startswith("ss_exec.") else "n_moveit"):
                     continue
                 _peers = []
                 for _o in (_r.get("outs") or []):

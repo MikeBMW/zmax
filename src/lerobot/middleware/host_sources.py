@@ -34,6 +34,8 @@ FILES = (
     ("ar", "zmax_data/ar_live/ar_aoi_live.json", "zmax/ar_aoi"),
     # 📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」—— 执行器真值 5Hz
     ("ss_exec", "zmax_data/ss_live/exec_state.json", "zmax/ss_exec"),
+    # 🧭 2026-10-18: 段表 (plan 节点 n_moveit 的输出真值)
+    ("planlive", "zmax_data/runtime/plan/plan_latest.json", "zmax/plan_live"),
 )
 
 # 原子技能物理量: 键名 = "<SK号> <阶段> · <物理量> <单位>"

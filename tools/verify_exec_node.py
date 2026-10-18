@@ -124,6 +124,26 @@ def main():
                           for r in range(v.tb.rowCount())
                           if "ss_exec" in (v.tb.item(r, 2).toolTip() or "")), "动作执行器")
 
+    print("⑧ 段表 (plan 节点输出)")
+    pf = os.path.expanduser("~/zmax/zmax_data/runtime/plan/plan_latest.json")
+    pl = {}
+    try:
+        pl = json.load(open(pf, encoding="utf-8"))
+    except Exception as e:                                               # noqa: BLE001
+        chk("plan_latest.json 可读", False, str(e)[:60])
+    if pl:
+        chk("段表有段且后端明确", int(pl.get("n") or 0) >= 1 and pl.get("backend") in ("rule", "moveit"),
+            "n=%s backend=%s skill=%s" % (pl.get("n"), pl.get("backend"), pl.get("skill")))
+        chk("段表有目标/speed", all(x.get("pos") and x.get("speed") for x in (pl.get("segs") or [])),
+            "segs=%d" % len(pl.get("segs") or []))
+    # 段表只在"规划那一刻"更新 (不跑命令就不变) ⇒ 判据看归属链路是否成立,
+    # 不去追 Trace 里的实时值 (那会因帧龄自然消失, 属于正确行为, 不是缺陷)。
+    from lerobot.middleware import attribution as attr
+    chk("段表归属 运动规划 → 动作执行器",
+        attr.tx_of("planlive.n") == "运动规划" and attr.rx_of("planlive.n") == "动作执行器"
+        and attr.layer_of("planlive.n") == "L2",
+        "%s → %s · %s" % (attr.tx_of("planlive.n"), attr.rx_of("planlive.n"), attr.layer_of("planlive.n")))
+
     print("\n%s (%d 项 · 红 %d)" % ("✅ 全部通过" if BAD == 0 else "❌ 有红", OK + BAD, BAD))
     return 0 if BAD == 0 else 1
 

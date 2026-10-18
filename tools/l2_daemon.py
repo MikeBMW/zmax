@@ -317,6 +317,43 @@ def _atomic_skills():
     return _ASKILLS or None
 
 
+# ─────────────────── 🧭 段表落盘 (plan 节点 n_moveit 的真数据源, 2026-10-18) ───────────────────
+# 📚 老倪: 「将 moveit 节点改为 plan 节点, 迁移 l2_daemon 的规划能力」——
+#   规划能力仍在执行器里(它最懂闸门/奇异/点位), 但**段表必须可被看见**:
+#   每次算完段表先落盘, plan 节点/信号分析读的就是"马上要执行的那张表", 不是另算一份。
+_PLAN_FILE = os.path.expanduser("~/zmax/zmax_data/runtime/plan/plan_latest.json")
+
+
+def plan_dump(skill, plans, backend="rule", src="l2_daemon"):
+    """把段表写成 plan_latest.json (只读产物; 失败绝不影响执行)。"""
+    try:
+        segs = []
+        for i, pl in enumerate(plans, 1):
+            if not isinstance(pl, dict):
+                continue
+            segs.append({"id": i,
+                         "name": pl.get("name") or ("gripper" if pl.get("service") else ""),
+                         "pos": pl.get("pos"),
+                         "speed": pl.get("speed"),
+                         "dir": pl.get("dir"),
+                         "lin_mm": pl.get("lin"),
+                         "service": bool(pl.get("service"))})
+        _sp = [float(x["speed"]) for x in segs if x.get("speed")]
+        _ln = [float(x["lin_mm"]) for x in segs if x.get("lin_mm")]
+        rec = {"skill": skill, "backend": backend, "src": src, "n": len(segs), "segs": segs,
+               "speed": (sum(_sp) / len(_sp)) if _sp else 0.0,
+               "lin_total_mm": sum(_ln) if _ln else 0.0,
+               "t": time.time(), "t_pub": time.time()}
+        os.makedirs(os.path.dirname(_PLAN_FILE), exist_ok=True)
+        _tmp = _PLAN_FILE + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as f:
+            json.dump(rec, f, ensure_ascii=False)
+        os.replace(_tmp, _PLAN_FILE)
+        log("🧭 段表已落盘: %s · %d 段 · 后端 %s" % (skill, len(segs), backend))
+    except Exception as e:                                                    # noqa: BLE001
+        log("⚠️ 段表落盘失败(不影响执行): %s" % str(e)[:80])
+
+
 def build_move(sk, spec, pts, cur=None, curq=None):
     # ⚠️ 相对运动的目标 = 真实当前位姿 + 偏移 → 位姿必须直读(常驻流缓存会滞后整分钟级,
     #    会把这 50mm 累加成错的落点); cur/curq 由调用方传入可避免重复直读。
@@ -1322,6 +1359,8 @@ def run_stages(sk, spec, chan, pts):
             % (i, n, st.get("note", ""), pl["name"], pl["pos"][0], pl["pos"][1], pl["pos"][2],
                pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"],
                _stage_timeout(st, pl["lin"], pl["speed"])))
+    # 🧭 2026-10-18 老倪: 「plan 节点的输出要是段表」⇒ 规划完先落盘, 再执行
+    plan_dump(spec.get("skill") or "?", plans, backend="rule", src="l2_daemon.run_stages")
     if spec.get("dry"):
         for i, pl in enumerate(plans, 1):
             if pl.get("service"):
