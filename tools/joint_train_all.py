@@ -106,7 +106,11 @@ def build_stages(a) -> list:
     mroot = os.path.join(ROOT, "reports", f"joint_train_{ts}")
 
     # L4: INTACT 续训 (+LoRA)
-    l4_name = f"intact_goal_optical_insert_v6lora_{a.steps}"
+    # 🐛 2026-10-18 实测事故: 原来只有 {steps} 作名字 ⇒ 重跑**直接覆盖**上一次产物
+    #   (09-30 的 intact_..._v6lora_200/weights_epoch_1.pt 被 10-18 的权重改写)。
+    #   在役权重 intact_goal_optical_insert_v6d9_s3072 未被碰, 但"不覆盖旧产物"的红线必须守住
+    #   ⇒ 名字带上本次跑的时间戳 (与 L3 的 _r2 自动改名同口径)。
+    l4_name = f"intact_goal_optical_insert_v6lora_{a.steps}_{ts}"
     l4_cmd = [
         PY_INTACT, "train.py",
         "--config-name=intact_goal_optical_insert_v6", "data=zmax_v6",
