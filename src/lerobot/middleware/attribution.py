@@ -384,9 +384,27 @@ def rx_of(key):
     if k.startswith("ar."):
         return "—"
     if k.startswith("sstrace."):
-        # 🚫 2026-10-17 老倪: 「实际上也没有连线啊 … 都清掉」
-        #   3D 插拔场景这一族信号 (sstrace.*) 在画布上没有一条实连线 ⇒ Rx 全部空着, 不写来源。
-        #   SS_TRACE_SRC 只作历史存档 (知道当年这些数是从哪路取的), **不进 Rx 显示**。
+        # 🛡 2026-10-18 (老倪: 「Tx 还是没有 安全执行边界 这个节点」) —— 原规则是 10-17 定的
+        #   「sstrace 在画布上没有一条实连线 ⇒ Rx 全部空着」。现在画布有真连线了
+        #   (动作调制器 → 安全执行边界 → ① 接近~⑧ …SK) ⇒ Rx 按该节点的出端口取真下游;
+        #   确实没有下游的 (例如 前馈加速器之外的可视化量) 才留 "—"。
+        #   Rx 为 "—" 会被 show_in_l2_link 整行丢掉 —— 这就是「数据空间看不到安全执行边界」的根因。
+        try:
+            _nid_s, _pr_s = _rule(k)
+            if _nid_s:
+                from lerobot.middleware import db as _db3
+                for _r in _db3.node_rows():
+                    if _r.get("node_id") != _nid_s:
+                        continue
+                    _peers = []
+                    for _o in (_r.get("outs") or []):
+                        _peers.extend(_o.get("to") or [])
+                    _u3 = list(dict.fromkeys(_peers))
+                    if _u3:
+                        return " / ".join(_peer_name(x) for x in _u3[:4])
+                    break
+        except Exception:                                                 # noqa: BLE001
+            pass
         return "—"
     if k.startswith("ros."):
         return "—"
