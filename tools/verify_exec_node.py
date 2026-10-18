@@ -74,6 +74,7 @@ def main():
             tt.type_of_topic("ss.node.n_exec.in1"))
         chk("out1 类型 ActuationCommand", "ActuationCommand" in (tt.type_of_topic("ss.node.n_exec.out1") or ""),
             tt.type_of_topic("ss.node.n_exec.out1"))
+        chk("端口含 out2 (执行结果)", "out2" in outs, str(sorted(outs)))
 
     print("③ 连线 (真连线, 不是装饰)")
     if ne:
@@ -82,6 +83,10 @@ def main():
         chk("n_moveit → n_exec.in1", "n_moveit" in ins.get("in1", []), str(ins.get("in1")))
         chk("sslimit → n_exec.in2", "sslimit" in ins.get("in2", []), str(ins.get("in2")))
         chk("n_exec.out1 → ssact", "ssact" in outs.get("out1", []), str(outs.get("out1")))
+        # 📚 2026-10-18 老倪: 「建议接状态校正器，按照你的建议做」
+        chk("n_exec.out2 → ssinnov (状态校正器)", "ssinnov" in outs.get("out2", []), str(outs.get("out2")))
+        chk("out2 类型 ExecResult", "ExecResult" in (tt.type_of_topic("ss.node.n_exec.out2") or ""),
+            tt.type_of_topic("ss.node.n_exec.out2"))
 
     print("④ plan 节点语义")
     nm = rows.get("n_moveit") or {}

@@ -95,7 +95,7 @@ class LivePlanner(Node):
         self._wait(self.fk_cli, "/compute_fk")
         req = GetPositionFK.Request()
         req.header.frame_id = self.base
-        req.fk_link_names = ["tool0"]
+        req.fk_link_names = ["tool1"]
         rs = RobotState()
         rs.joint_state.name = list(joints.keys())
         rs.joint_state.position = [float(v) for v in joints.values()]
@@ -126,7 +126,7 @@ class LivePlanner(Node):
         con = Constraints()
         pc = PositionConstraint()
         pc.header.frame_id = self.base
-        pc.link_name = "tool0"
+        pc.link_name = "tool1"
         bv = BoundingVolume()
         sp = SolidPrimitive()
         sp.type = SolidPrimitive.SPHERE
@@ -137,7 +137,7 @@ class LivePlanner(Node):
         pc.weight = 1.0
         oc = OrientationConstraint()
         oc.header.frame_id = self.base
-        oc.link_name = "tool0"
+        oc.link_name = "tool1"
         oc.orientation = self._pose(xyz, quat).orientation
         oc.absolute_x_axis_tolerance = 0.05
         oc.absolute_y_axis_tolerance = 0.05
