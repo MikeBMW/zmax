@@ -70,6 +70,10 @@ def handle(r, req):
                    "sampler": C.sampler_pose(), "pose": C.read_pose(r)}
     if cmd == "pose":
         return 0, {"cmd": "pose", "pose": C.read_pose(r), "sampler": C.sampler_pose()}
+    if cmd == "follow":
+        if req.get("on"):
+            return follow_on(r, req)
+        return follow_off()
     if cmd == "stop":
         ec = {}
         r.stop(ec)
@@ -129,6 +133,154 @@ def handle(r, req):
             C.log("📏 整段平均速率算不出(%s)" % str(_e)[:60])
         return rc, out
     return 1, {"cmd": cmd, "verdict": "未知命令: %s" % cmd}
+
+
+FOLLOW_ST = {"on": False, "n": 0}
+FOLLOW_DIR = "/sdk/follow/dir.json"
+FOLLOW_STF = "/sdk/follow/status.json"
+
+
+def _follow_dump():
+    try:
+        os.makedirs("/sdk/follow", exist_ok=True)
+        with open(FOLLOW_STF, "w", encoding="utf-8") as f:
+            json.dump({k: v for k, v in FOLLOW_ST.items() if k != "thread"}, f, ensure_ascii=False)
+    except Exception:                                                       # noqa: BLE001
+        pass
+
+
+def follow_on(r, req):
+    """🌊 流式跟随: 按 dir.json 的方向**连续追加** 2mm 小段 (moveAppend + 转角区),
+    走出平顺的慢速运动; 总行程被 band_mm 死死卡住 (老倪: 「不要走那么远, 先短距离」)。
+
+    硬化上限: 速度 ≤10mm/s · 带宽 ≤40mm · 单点 ≤5mm —— 改这里才能改, 不接受请求放大。
+    安全: dir.json 里 armed=false / on=false / 时间戳旧 >1.5s ⇒ 立即 stop(); 报警/急停/碰撞 ⇒ 立即 stop()。
+    """
+    if FOLLOW_ST.get("on"):
+        return 0, {"cmd": "follow", "verdict": "已在跟随中"}
+    speed = max(1.0, min(float(req.get("speed") or 10.0), C.MAX_SPEED_MM_S, 10.0))
+    band = max(5.0, min(float(req.get("band_mm") or 20.0), 40.0))
+    step = max(0.5, min(float(req.get("step_mm") or 2.0), 5.0))
+    zone = max(1.0, min(float(req.get("zone_mm") or 3.0), 20.0))
+    p0 = C.read_pose(r)
+    st = FOLLOW_ST
+    st.update({"on": True, "n": 0, "why": "", "speed": speed, "band": band, "step": step,
+               "anchor": list(p0["tcp"]), "rpy": list(p0["rpy"]), "pose": list(p0["tcp"]),
+               "commit": list(p0["tcp"]), "t0": time.time(), "started": False})
+    ec = {}
+    r.setDefaultSpeed(speed, ec)
+    st["setDefaultSpeed_ec"] = dict(ec)
+    ec = {}
+    r.setDefaultZone(int(zone), ec)
+    st["setDefaultZone_ec"] = dict(ec)
+    ec = {}
+    r.setDefaultConfOpt(False, ec)
+    ec = {}
+    r.moveReset(ec)
+    C.log("🌊 follow 开: 速度%.1fmm/s 带宽%.0fmm 单点%.1fmm 转角区%.0fmm" % (speed, band, step, zone))
+
+    import threading
+
+    def _loop():
+        last = list(st["anchor"])
+        t_chk = 0.0
+        try:
+            while st.get("on"):
+                now = time.time()
+                try:
+                    with open(FOLLOW_DIR, encoding="utf-8") as f:
+                        d = json.load(f)
+                except Exception:                                           # noqa: BLE001
+                    d = {}
+                age = now - float(d.get("ts") or 0.0)
+                st["dir_age_s"] = round(age, 2)
+                if not d.get("on"):
+                    st["why"] = "桥接开关已关"
+                    break
+                if not d.get("armed"):
+                    st["why"] = "真动授权未开/已撤"
+                    break
+                if age > 1.5:
+                    st["why"] = "方向流超时 %.1fs" % age
+                    break
+                if now - t_chk > 1.0:            # 每秒复查控制器状态
+                    t_chk = now
+                    try:
+                        _s = C.read_state(r)
+                        st["state"] = _s
+                        if _s.get("has_error") or _s.get("estop") or _s.get("collision"):
+                            st["why"] = "控制器异常(报警/急停/碰撞)"
+                            break
+                    except Exception:                                       # noqa: BLE001
+                        pass
+                v = [float(x) for x in (d.get("v") or [0, 0, 0])][:3]
+                mag = math.sqrt(sum(x * x for x in v))
+                if mag < 0.5:
+                    time.sleep(0.05)
+                    continue
+                u = [x / mag for x in v]
+                nxt = [last[i] + u[i] * st["step"] / 1000.0 for i in range(3)]
+                dev = max(abs(nxt[i] - st["anchor"][i]) * 1000.0 for i in range(3))
+                if dev > st["band"]:
+                    # 到带宽 ⇒ 不再往外追加, 等方向反过来 (绝不越走越远)
+                    st["why"] = "已到带宽 %.0fmm (累计 %d 点), 等方向反向" % (st["band"], st["n"])
+                    _follow_dump()
+                    time.sleep(0.1)
+                    continue
+                cp = C.x.CartesianPosition(list(nxt), list(st["rpy"]))
+                mc = C.x.MoveLCommand(cp, st["speed"], -1)
+                ec = {}
+                r.moveAppend(mc, C.x.PyString("flw_%d" % st["n"]), ec)
+                if ec.get("ec", 0) != 0:
+                    st["why"] = "moveAppend ec=%s" % ec
+                    break
+                if not st["started"]:
+                    ec2 = {}
+                    r.moveStart(ec2)
+                    st["started"] = True
+                    st["moveStart_ec"] = dict(ec2)
+                st["n"] += 1
+                last = nxt
+                st["commit"] = nxt
+                st["why"] = "跟随中"
+                try:
+                    st["pose"] = list(C.read_pose(r)["tcp"])
+                except Exception:                                           # noqa: BLE001
+                    pass
+                _follow_dump()
+                time.sleep(max(0.02, st["step"] / st["speed"]))   # 2mm @10mm/s = 0.2s 一点
+        finally:
+            st["on"] = False
+            try:
+                ec = {}
+                r.stop(ec)
+                st["stop_ec"] = dict(ec)
+            except Exception as e:                                          # noqa: BLE001
+                st["stop_err"] = str(e)[:100]
+            try:
+                st["final_pose"] = list(C.read_pose(r)["tcp"])
+                st["travel_mm"] = round(max(abs(st["final_pose"][i] - st["anchor"][i]) * 1000.0
+                                            for i in range(3)), 1)
+            except Exception:                                               # noqa: BLE001
+                pass
+            _follow_dump()
+            C.log("🛑 follow 结束: %s · 追加 %d 点 · 行程 %smm"
+                  % (st.get("why"), st.get("n"), st.get("travel_mm")))
+
+    th = threading.Thread(target=_loop, daemon=True)
+    th.start()
+    st["thread"] = th
+    _follow_dump()
+    return 0, {"cmd": "follow", "verdict": "FOLLOW ON", "speed_mm_s": speed, "band_mm": band,
+               "step_mm": step, "zone_mm": zone, "anchor": st["anchor"]}
+
+
+def follow_off():
+    FOLLOW_ST["on"] = False
+    FOLLOW_ST["why"] = "收到停止指令"
+    _follow_dump()
+    return 0, {"cmd": "follow", "verdict": "FOLLOW OFF", "n": FOLLOW_ST.get("n"),
+               "travel_mm": FOLLOW_ST.get("travel_mm"), "why": FOLLOW_ST.get("why")}
 
 
 def main():

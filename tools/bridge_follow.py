@@ -36,7 +36,9 @@ BT = os.path.join(REPO, "zmax_data", "ss_live", "bridge_target.json")
 LOG = os.path.join(REPO, "zmax_data", "ss_live", "bridge_follow.jsonl")
 BASE = "http://127.0.0.1:8793"
 SPEED_CAP_MMS = 10.0          # ⛔ 真机硬上限 (现场口径)
-STEP_MAX_MM = 5.0             # 单步上限
+STEP_MAX_MM = 100.0           # 单段行程上限 (2026-10-18 老倪「虽然慢, 但是要连续」:
+                              #   5mm/段 ⇒ 1.5s 走完 + 2s 等执行腿空闲 = 走走停停;
+                              #   50mm/段 @10mm/s ⇒ 一段连续 5s, 只在一段结束时换方向)
 AXIS = {                      # v_ff 分量 → (技能, 符号)
     "x+": ("L2.forward", 1), "x-": ("L2.backward", 1),
     "y+": ("L2.left", 1), "y-": ("L2.right", 1),
@@ -75,19 +77,29 @@ def _log(rec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--step", type=float, default=STEP_MAX_MM, help="单步 mm (默认 5)")
+    ap.add_argument("--step", type=float, default=STEP_MAX_MM, help="单段 mm (默认 100, 慢速连续)")
     ap.add_argument("--speed", type=float, default=SPEED_CAP_MMS, help="速度 mm/s (默认 10)")
-    ap.add_argument("--max-steps", type=int, default=40, help="最多走几步 (默认 40)")
+    ap.add_argument("--max-steps", type=int, default=40, help="最多走几段 (0=常驻, 默认 40)")
     ap.add_argument("--min-gap", type=float, default=0.8, help="两步之间最短间隔 s (默认 0.8)")
     ap.add_argument("--deadband", type=float, default=3.0, help="v_ff 小于它就不动 mm/s")
     ap.add_argument("--dry", action="store_true", help="只算不发 (arm=false)")
     a = ap.parse_args()
     step = max(1.0, min(STEP_MAX_MM, a.step))
     spd = max(1.0, min(SPEED_CAP_MMS, a.speed))
-    print("🚶 bridge_follow: 单步 %.1fmm · 速度 %.1fmm/s · 上限 %d 步 · %s"
+    # 🎯 人调好的位置就是锚: 下降不超过 BAND_DOWN, 上升不超过 BAND_UP, X/Y 不超出 BAND_XY
+    #    (2026-10-18 现场: 「刚才的位置太低了, 我调整的」⇒ 跟随不能再自己往下沉)
+    BAND_DOWN, BAND_UP, BAND_XY = 20.0, 150.0, 120.0
+    try:
+        _p = _get("/pose")
+        anchor = [float(x) for x in _p["xyz"]]
+    except Exception:                                                    # noqa: BLE001
+        anchor = [0.0, 0.0, 0.0]
+    print("🚶 bridge_follow: 单段 %.1fmm · 速度 %.1fmm/s · 步数上限 %d · %s"
           % (step, spd, a.max_steps, "DRY(只算不发)" if a.dry else "真发"), flush=True)
+    print("   锚点(人调好的位置)=(%.4f, %.4f, %.4f) · 下探≤%.0fmm 上升≤%.0fmm XY≤±%.0fmm"
+          % (anchor[0], anchor[1], anchor[2], BAND_DOWN, BAND_UP, BAND_XY), flush=True)
     n = 0
-    while n < a.max_steps:
+    while a.max_steps == 0 or n < a.max_steps:
         st = _get("/ctl/status")
         armed = bool(st.get("motion_armed"))
         rob = st.get("robot") or {}
@@ -116,7 +128,30 @@ def main():
         skill, _s = AXIS[key]
         p0 = _get("/pose")
         xyz0 = [float(x) for x in p0["xyz"]]
-        body = {"skill": skill, "d_mm": step, "speed_mm_s": spd, "arm": (not a.dry)}
+        # 🚧 band: 该方向会带出界 ⇒ 这一段不发, 等仿真阶段换向
+        _dz = (xyz0[2] - anchor[2]) * 1000.0
+        _out = ""
+        if ax == 2 and vc[2] < 0 and _dz <= -BAND_DOWN:
+            _out = "已在下界 (z 比锚点低 %.0fmm)" % (-_dz)
+        elif ax == 2 and vc[2] > 0 and _dz >= BAND_UP:
+            _out = "已在上界 (z 比锚点高 %.0fmm)" % _dz
+        elif ax < 2 and abs((xyz0[ax] - anchor[ax]) * 1000.0) >= BAND_XY and (xyz0[ax] - anchor[ax]) * vc[ax] > 0:
+            _out = "%s 已到 ±%.0fmm 边界" % ("XY"[ax], BAND_XY)
+        if _out:
+            print("🚧 跳过 %s: %s ⇒ 等阶段换向" % (skill, _out), flush=True)
+            time.sleep(1.0)
+            continue
+        # 📏 段长按剩余带宽收 (否则一段 100mm 就能把它带出界)
+        if ax == 2:
+            _room = (BAND_DOWN + _dz) if vc[2] < 0 else (BAND_UP - _dz)
+        else:
+            _room = BAND_XY - abs((xyz0[ax] - anchor[ax]) * 1000.0)
+        step_eff = max(0.0, min(step, _room))
+        if step_eff < 2.0:
+            print("🚧 %s 剩余带宽只剩 %.1fmm ⇒ 等阶段换向" % (skill, step_eff), flush=True)
+            time.sleep(1.0)
+            continue
+        body = {"skill": skill, "d_mm": round(step_eff, 1), "speed_mm_s": spd, "arm": (not a.dry)}
         t0 = time.time()
         try:
             r = _post("/ctl/move", body)
@@ -131,7 +166,7 @@ def main():
         moved = 0.0
         t_wait = time.time()
         t_last_change = time.time()
-        while time.time() - t_wait < 30.0:
+        while time.time() - t_wait < 90.0:   # 50mm@10mm/s ≈ 5s, 给足余量 (长段)
             time.sleep(0.2)
             try:
                 p1 = _get("/pose")
@@ -143,19 +178,29 @@ def main():
             if mv > moved + 0.05:
                 moved = mv
                 t_last_change = time.time()
-            if moved >= step * 0.9:
+            if moved >= step_eff * 0.95:
                 break
             # 停稳 2s 才认为这一条走完 (执行腿"上一条还在执行"会直接拒下一条 —— 就是这里踩的坑)
-            if moved > 0.2 and (time.time() - t_last_change) > 2.0:
+            if moved > 0.2 and (time.time() - t_last_change) > 3.0:
                 break
-        time.sleep(0.5)                                                  # 让执行腿彻底 idle, 再发下一条
+        # 等执行腿回到 idle 再走下一段 (腿的 busy 标志比"位姿到位"晚约 0.6~1s ⇒ 不等就必被拒)
+        t_idle = time.time()
+        while time.time() - t_idle < 12.0:
+            try:
+                if str(((_get("/ctl/status").get("robot") or {}).get("operation") or "")).lower() == "idle":
+                    break
+            except Exception:                                            # noqa: BLE001
+                pass
+            time.sleep(0.2)
+        time.sleep(0.2)
         dt = time.time() - t0
         _txt = " ".join(str(x) for x in (r.get("lines") or [])) + " " + str(r.get("msg") or "")
         _blocked = ("被拦" in _txt) or ("拒(不排队)" in _txt) or ("不在手动控制白名单" in _txt)
         ok = bool(r.get("ok")) and not r.get("denied") and not _blocked
-        print("步骤 %2d · %s %.1fmm@%.0fmm/s · 回执 ok=%s · 耗时%.1fs · 实测Δ=%s mm (最大 %.1f)"
-              % (n + 1, skill, step, spd, ok, dt, d_mm, moved), flush=True)
-        _log({"ts": time.time(), "n": n + 1, "skill": skill, "step_mm": step, "speed_mm_s": spd,
+        print("段 %2d · %s %.1fmm@%.0fmm/s · ok=%s · 连续%.1fs · 实测Δ=%s mm (最大 %.1f, 速率 %.1fmm/s)"
+              % (n + 1, skill, step_eff, spd, ok, dt, d_mm, moved,
+                 (moved / dt) if dt > 0 else 0.0), flush=True)
+        _log({"ts": time.time(), "n": n + 1, "skill": skill, "step_mm": round(step_eff, 1), "speed_mm_s": spd,
               "ok": ok, "denied": bool(r.get("denied")), "took_s": round(dt, 2),
               "tcp0": xyz0, "tcp1": xyz1, "delta_mm": d_mm, "msg": str(r.get("msg") or "")[:200],
               "dry": a.dry})
@@ -167,8 +212,8 @@ def main():
         if not ok:
             print("⛔ 回执不 ok ⇒ 停手。原因: %s" % str(r.get("msg") or r)[:200], flush=True)
             return
-        if not a.dry and moved < step * 0.3:
-            print("⚠️ 命令 %.1fmm 实测只动 %.1fmm ⇒ 可能被闸门拦下/未到位, 停手核对" % (step, moved), flush=True)
+        if not a.dry and moved < step_eff * 0.70:
+            print("⚠️ 命令 %.1fmm 实测只动 %.1fmm (<70%%) ⇒ 可能被闸门拦下/未到位, 停手核对" % (step_eff, moved), flush=True)
             return
         time.sleep(max(0.0, a.min_gap - dt))
     print("✅ 到达步数上限 %d 步, 正常结束" % n, flush=True)
