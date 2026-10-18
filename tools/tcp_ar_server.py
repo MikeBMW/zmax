@@ -644,6 +644,19 @@ class H(BaseHTTPRequestHandler):
             if o in out and b.get("pts3d"):
                 out[o] = b["pts3d"]
                 out[o + "_label"] = str(b.get("label") or "")
+        # 🆕 真机实际走过的 TCP 轨迹 (bridge_path_recorder.py 录的实测点), 与仿真 trace/plan 分开画
+        try:
+            rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
+            rj = json.load(open(rp, encoding="utf-8"))
+            out["real"] = rj.get("pts") or []
+            out["real_n"] = rj.get("n")
+            out["real_len_mm"] = rj.get("len_mm")
+            out["real_age_s"] = round(time.time() - os.path.getmtime(rp), 1)
+            out["real_stage"] = rj.get("stage")
+            out["real_label"] = "真机跟随轨迹(实测 %s 点 · %smm · 阶段 %s)" % (
+                rj.get("n"), rj.get("len_mm"), rj.get("stage") or "?")
+        except Exception:                                                          # noqa: BLE001
+            out["real"] = []
         out["ok"] = True
         out["at"] = time.strftime("%H:%M:%S")
         return out

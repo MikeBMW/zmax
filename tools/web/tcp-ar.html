@@ -144,6 +144,7 @@
 </main>
 <footer>
   数据来源: TCP 真值 = 珞石 SDK 直采 5Hz(<code>~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json</code>) ·
+  <b style="color:#ff9f1c">橙色 = 真机实际走过的轨迹</b>(SDK endInRef 实测, 每秒 10 次采样; 与仿真绿/蓝分开画) ·
   轨迹 3D 点 = 叠加规格 <code>cameras.arm</code> 里 <code>origin=trace/plan</code> 的 <code>pts3d</code> ·
   AR 底图 = 固定相机(顶部可切)。<b>默认用状态空间工程视频源(🦾 手臂 D405)</b>: 老倪 2026-10-12「AR 场景背景的真实图像应该是状态空间工程的视频数据源」;
 笔记本 640×480 那路末端工具直接出画、且被臂体和操作员挡住大半工作区, 拿它叠轨迹会误导;
@@ -387,6 +388,15 @@ function drawVR(){
   }
   const nPl=tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20);
   const nTr=(TRAJ.trace&&TRAJ.trace.length>1)?tube(TRAJ.trace,(f)=>'rgba(140,230,120,.9)',7,0.6,8):0;
+  // 🆕 真机实际走过的轨迹(实测 TCP) —— 橙色, 画在最上层
+  const nReal=(TRAJ.real&&TRAJ.real.length>1)?tube(TRAJ.real,(f)=>'rgba(255,159,28,.95)',6,0.85,12):0;
+  let realTxt='';
+  if(nReal){
+    const q=pr(TRAJ.real[TRAJ.real.length-1]);
+    if(q){ g.fillStyle='#ff9f1c'; g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fill();
+      realTxt=`真机轨迹 ${TRAJ.realN} 点 · ${(TRAJ.realLen||0).toFixed(0)}mm${TRAJ.realAge!=null?(' · '+TRAJ.realAge.toFixed(0)+'s前'):''}`;
+      g.font='12px monospace'; g.fillStyle='#ff9f1c'; g.fillText(realTxt,q.u+8,q.v+14); }
+  }
   let tcpTxt='';
   if(TCP&&TCP.ok){ const q=pr([TCP.x,TCP.y,TCP.z]);
     if(q){ g.fillStyle='#ffd166'; g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fill();
@@ -564,7 +574,7 @@ function drawIfChanged(){
 async function refresh(){
   try{
     const [t,st]=await Promise.all([fetch('/api/traj').then(r=>r.json()), fetch('/api/traj/state').then(r=>r.json())]);
-    TRAJ={trace:t.trace||[],plan:t.plan||[]}; }
+    TRAJ={trace:t.trace||[],plan:t.plan||[],real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s}; }
   catch(e){}
   try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok) $('tAge').textContent='帧龄 '+TCP.age_s.toFixed(2)+'s'; }catch(e){}
   if(CAM==='rs'){ try{ const ri=await fetch('/api/rs_info').then(r=>r.json());
