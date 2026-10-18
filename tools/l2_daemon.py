@@ -23,7 +23,10 @@ except Exception as _e:                                                 # noqa: 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST = "tashan@192.168.23.66"
-FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
+# 🐛 2026-10-18 老倪: 「l2_daemon.py 我怎么 debug，断点放在哪里？」
+#   调试版必须能**用另一条 FIFO** 起，绝不和线上执行器抢同一条管道 (两个读者会分走命令)。
+#   默认路径与行为完全不变；只在你显式设 ZMAX_L2_FIFO 时才换。
+FIFO = os.path.expanduser(os.environ.get("ZMAX_L2_FIFO") or "~/zmax/zmax_data/l2_cmd.fifo")
 # 🖐 2026-10-12 老倪点头:「手动回已记的点这类点击不再硬拦(保留慢速 + 提示)」——
 #   页面点"已记的点"时会带 manual_point=1: 抬升闸不硬拦 + 相对下向守卫不拦 + 本条速度档封到这个上限
 #   ("慢一些", 依据他 2026-10-09 现场指令「也可以抬升, 但要慢一些, 而且要发出警报声」)。
@@ -2091,7 +2094,8 @@ def _single_instance():
     命令被某个已卡死的实例吃掉, 界面显示「已下发」而臂不动, 排查了一小时。
     规则: **新实例赢** —— 拿到锁的活着, 老实例礼貌退场(避免两个实例分食命令)。"""
     import fcntl, signal
-    lf = os.path.expanduser("~/zmax/zmax_data/l2_daemon.lock")
+    # 🐛 2026-10-18: 调试实例用另一把锁 (ZMAX_L2_LOCK), 否则它会按"新实例赢"把线上执行器 SIGTERM 掉
+    lf = os.path.expanduser(os.environ.get("ZMAX_L2_LOCK") or "~/zmax/zmax_data/l2_daemon.lock")
     try:
         fd = os.open(lf, os.O_RDWR | os.O_CREAT, 0o644)
     except Exception as e:
@@ -2187,6 +2191,12 @@ def main():
                                 % (_s0, MANUAL_SPEED_UNITS, 0.0935 * MANUAL_SPEED_UNITS))
                     except (TypeError, ValueError):
                         pass
+                # 🐛 2026-10-18 老倪: 「我怎么 debug」—— 调试实例(ZMAX_L2_DEBUG_DRY=1)收到的**任何**命令
+                #   一律强制 dry: 计划照算、守卫照过、日志照打，就是不下发。断点停住也不会让臂动。
+                if os.environ.get("ZMAX_L2_DEBUG_DRY", "").strip() in ("1", "true", "True", "yes"):
+                    if not spec.get("dry"):
+                        spec["dry"] = True
+                        log("🐛 调试实例: 命令已强制 dry (不下发) — skill=%s" % (spec.get("skill") or ""))
                 # 🔐 记下本条命令**签发时**的授权 epoch: 撤销会 +1 ⇒ 旧 epoch 的命令在执行层一律作废
                 _CUR.update({"epoch": spec.get("auth_epoch"), "skill": spec.get("skill") or "", "t": time.time()})
                 try:
