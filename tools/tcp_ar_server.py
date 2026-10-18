@@ -187,6 +187,24 @@ def _R_col(R, j):
     return [R[0][j], R[1][j], R[2][j]]
 
 
+_URDF_CACHE = {}
+
+
+def _urdf_payload():
+    """URDF 外形: 首次调用解析 URDF+STL 并缓存 (47KB 左右), 之后直接返回"""
+    if _URDF_CACHE.get("ok"):
+        return _URDF_CACHE["data"]
+    try:
+        import urdf_proxy
+        d = urdf_proxy.load()
+        d["ok"] = True
+        _URDF_CACHE["ok"] = True
+        _URDF_CACHE["data"] = d
+        return d
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+
+
 def read_tcp():
     try:
         with open(TCP_JSON) as f:
@@ -197,6 +215,9 @@ def read_tcp():
                "quat": [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")],
                "tool01_const": {"rpy": list(TOOL01_RPY), "xyz": list(TOOL01_XYZ),
                                 "dist_mm": round(1000 * sum(v * v for v in TOOL01_XYZ) ** 0.5, 1)}}
+        jp = d.get("joint")                       # 🦾 URDF 外形要用真关节角 (前 6 个, rad)
+        if isinstance(jp, list) and len(jp) >= 6:
+            out["joints"] = [round(float(v), 6) for v in jp[:6]]
         fr = _frames(d)
         if fr:
             out["frames"] = fr
@@ -529,6 +550,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p == "/api/urdf":             # 🦾 机器人 URDF 外形(降采样点云 + 关节链), 页面一次拉取缓存
+                self._json(_urdf_payload())
             elif p == "/api/traj":
                 self._json(self._traj())
             elif p == "/api/stable":
