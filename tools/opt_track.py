@@ -106,7 +106,9 @@ def main():
                             "box2d": r["box2d"], "box2d_det": r.get("box2d_det"),
                             "clipped": r.get("clipped") or [], "refine": r.get("refine"),
                             "conf": r["conf"], "cls": r["class"],
-                            "vis_px": round(r["box2d"][3] - r["box2d"][1], 1)})
+                            "vis_px": round(r["box2d"][3] - r["box2d"][1], 1),
+                            "jump": ((r.get("continuity") or {}).get("jump")),
+                            "extent": r.get("extent_note")})
                 mods.append(pm)
                 rels.append(rel)
                 tcps.append(t_tcp)

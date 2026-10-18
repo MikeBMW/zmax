@@ -1253,15 +1253,29 @@ function frameAgeText(){
 function pumpTick(){
   if(FPUMP.busy) return;
   FPUMP.busy=true;
+  // 🦾 臂相机 + 开3D框时: 一次请求拿回"被分析的那一帧 + 对应的框" ⇒ 画面和标注永远是同一时刻,
+  // 不会出现框比画面滞后(老倪: 「画面延迟挺大的, 注意画面的理解」)。
+  if(CAM==='arm' && MOD3ON){
+    fetch('/api/module3d?img=1').then(r=>r.json()).then(async d=>{
+      if(!d||!d.jpg_b64){ FPUMP.busy=false; return; }
+      const im=new Image();
+      await new Promise((res,rej)=>{ im.onload=res; im.onerror=rej; im.src='data:image/jpeg;base64,'+d.jpg_b64; }).catch(()=>{});
+      if(!im.naturalWidth){ FPUMP.busy=false; return; }
+      drawFrameToVid(im);
+      MOD3=d;
+      FPUMP.ok++; FPUMP.err=0;
+      FPUMP.last=performance.now()-(d.result_age_s||0)*1000;
+      const t=$('tAge'); if(t) t.textContent=frameAgeText();
+      try{ drawIfChanged(); }catch(e){}
+      FPUMP.busy=false;
+    }).catch(()=>{ FPUMP.busy=false; FPUMP.err++; });
+    return;
+  }
   const im=new Image();
   im.onload=()=>{
     FPUMP.busy=false;
-    const v=$('vid');
-    if(v && im.naturalWidth>1 && im.naturalHeight>1){
-      // 🔴 不能改 <img src>: 每换一次 src, 浏览器会先清空再解码 —— 实测 30% 的采样点拿到 0×0,
-      // 现场看到的就是"一会黑屏一下"。改成 canvas: 只有新帧解码成功才 drawImage, 期间屏幕上是上一帧。
-      if(v.width!==im.naturalWidth || v.height!==im.naturalHeight){ v.width=im.naturalWidth; v.height=im.naturalHeight; }
-      try{ v.getContext('2d').drawImage(im,0,0); }catch(e){}
+    if(im.naturalWidth>1 && im.naturalHeight>1){
+      drawFrameToVid(im);
       FPUMP.ok++; FPUMP.last=performance.now(); FPUMP.err=0;
       const t=$('tAge'); if(t) t.textContent=frameAgeText();
     }
@@ -1270,6 +1284,13 @@ function pumpTick(){
     const t=$('tAge'); if(t){ const a=FPUMP.last?((performance.now()-FPUMP.last)/1000).toFixed(1):'—';
       t.textContent=' · 取帧失败×'+FPUMP.err+' · 显示上一帧(帧龄 '+a+'s)'; } };
   im.src='/snap/'+encodeURIComponent(CAM)+'.jpg?t='+Date.now();
+}
+function drawFrameToVid(im){
+  const v=$('vid'); if(!v) return;
+  // 🔴 不能改 <img src>: 每换一次 src, 浏览器会先清空再解码 —— 实测 30% 的采样点拿到 0×0,
+  // 现场看到的就是"一会黑屏一下"。改成 canvas: 只有新帧解码成功才 drawImage, 期间屏幕上是上一帧。
+  if(v.width!==im.naturalWidth || v.height!==im.naturalHeight){ v.width=im.naturalWidth; v.height=im.naturalHeight; }
+  try{ v.getContext('2d').drawImage(im,0,0); }catch(e){}
 }
 function startPump(){
   if(FPUMP.timer) return;

@@ -554,7 +554,7 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/tcp":
                 self._json(read_tcp())
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
-                self._json(self._module3d())
+                self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
                 self._json(FS.listing())
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
@@ -777,27 +777,33 @@ class H(BaseHTTPRequestHandler):
         out["at"] = time.strftime("%H:%M:%S")
         return out
 
-    def _module3d(self):
-        """🔍 光模块 3D 框: 检测器 + 内参 + 手眼 + TCP 真值 (只读, 不触发动作)。
-        结果缓存 1.5s, 免得页面每次轮询都跑一遍推理。"""
-        now = time.time()
-        c = getattr(self, "_mod3_cache", None)
-        if c and now - c[0] < 1.5:
-            return c[1]
+    MOD3_STATE = "/dev/shm/mod3_latest.json"
+    MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
+
+    def _module3d(self, want_img=False):
+        """🔍 光模块 3D 框: 直接读**后台线程**算好的最新结果(请求路径上不跑推理)。
+
+        🔴 2026-10-18 现场: 原来每个请求在 fork 出来的子进程里跑一次 YOLO, 实测 969ms
+        (其中 ~900ms 是子进程重新装载权重), 而且 fork 后多子进程并发推理会卡死(实测请求 25s 不返回,
+        页面就"没有绿框")。现在改成: 父进程里一个常驻线程持续算(约 6Hz), 请求只读 /dev/shm 的结果。
+        """
         try:
-            b, fsrc = frame_bytes("arm")
-            img = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
-            if img is None:
-                return {"ok": False, "err": "臂相机帧解码失败"}
-            tcp = read_tcp()
-            r = OB3.build(img, tcp)
-            r["frame_src"] = fsrc
-            r["frame_bytes"] = len(b)
-            r["tcp_age_s"] = tcp.get("age_s")
-            r["edges"] = OB3.EDGES
-        except Exception as e:                                                 # noqa: BLE001
-            r = {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
-        self._mod3_cache = (now, r)
+            with open(self.MOD3_STATE, encoding="utf-8") as f:
+                r = json.load(f)
+        except Exception:                                                   # noqa: BLE001
+            return {"ok": False, "err": "光模块检测线程还没出结果(刚启动? 看服务日志)"}
+        try:
+            r["result_age_s"] = round(time.time() - float(r.get("ts") or 0), 2)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        if want_img:
+            try:
+                import base64
+                with open(self.MOD3_FRAME, "rb") as f:
+                    r["jpg_b64"] = base64.b64encode(f.read()).decode()
+                r["frame_file_ts"] = os.path.getmtime(self.MOD3_FRAME)
+            except Exception as e:                                          # noqa: BLE001
+                r["img_err"] = str(e)
         return r
 
     def _traj_state(self):
@@ -1088,6 +1094,12 @@ def main():
         allow_reuse_address = True
         daemon_threads = True
         max_children = 24
+    try:                                    # 🔴 光模块检测线程: 父进程常驻, 请求只读结果(不在请求里跑推理)
+        OB3.warm()
+        threading.Thread(target=_mod3_worker, name="mod3", daemon=True).start()
+        print("  🔍 光模块检测线程: 已启动 (结果 → /dev/shm/mod3_latest.json, 供 /api/module3d 读)")
+    except Exception as _e:                                                 # noqa: BLE001
+        print("  🔍 光模块检测线程启动失败: %s" % _e)
     srv = _ForkingSrv(("0.0.0.0", PORT), H)
     print("═══ TCP 轨迹 AR/VR 服务 ═══")
     print("  AR 页:      http://0.0.0.0:%d/          (手机/PC 同网可开)" % PORT)
@@ -1100,6 +1112,34 @@ def main():
     except KeyboardInterrupt:
         print("\n退出")
     return 0
+
+
+
+# ═══ 光模块检测线程 (2026-10-18) ═══
+# 每 ~6Hz: 取臂相机一帧 → 检测+3D → 结果写 /dev/shm/mod3_latest.json, 原帧写 /dev/shm/mod3_frame.jpg
+# 请求路径只读文件 ⇒ 页面拿到的是"同一帧 + 对应的框", 不会出现框比画面滞后
+MOD3_STATE = "/dev/shm/mod3_latest.json"
+MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
+
+
+def _mod3_worker(period=0.15):
+    while True:
+        try:
+            _b, _src = frame_bytes("arm")
+            _img = cv2.imdecode(np.frombuffer(_b, np.uint8), cv2.IMREAD_COLOR)
+            if _img is not None:
+                _r = OB3.build(_img, read_tcp())
+                _r.update({"frame_src": _src, "frame_bytes": len(_b), "edges": OB3.EDGES,
+                           "ts": time.time(), "t": time.strftime("%H:%M:%S")})
+                with open(MOD3_FRAME, "wb") as _f:
+                    _f.write(_b)
+                _tmp = MOD3_STATE + ".%d.tmp" % os.getpid()
+                with open(_tmp, "w", encoding="utf-8") as _f:
+                    json.dump(_r, _f, ensure_ascii=False)
+                os.replace(_tmp, MOD3_STATE)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        time.sleep(period)
 
 
 if __name__ == "__main__":

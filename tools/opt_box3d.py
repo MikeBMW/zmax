@@ -36,6 +36,7 @@ _YOLO = None
 _YOLO_LOCK = threading.Lock()
 _LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(框贴边时沿用)
 _CONT = {"d_mm": None, "h_px": None, "w_px": None, "base_mm": None, "t": 0.0}   # 连续性闸: 上一次被接受的观测
+_SMO = {"c": None, "H": None, "t": 0.0}   # 输出平滑: 上一次画出去的框(中心/H), 老倪「别突然变化」
 
 
 def _yolo():
@@ -45,6 +46,44 @@ def _yolo():
             from ultralytics import YOLO
             _YOLO = YOLO(YOLO_PT)
         return _YOLO
+
+
+
+def warm():
+    """在**父进程**里把权重装好并跑一次空推 —— AR 服务是 fork-per-request,
+    父进程预先装载后子进程按 COW 直接继承; 否则每个请求都要重装权重(实测 ~900ms, 现场感知就是"画面延迟大")。"""
+    try:
+        import numpy as _np
+        m = _yolo()
+        m.predict(_np.zeros((480, 640, 3), _np.uint8), conf=0.9, imgsz=int(os.environ.get("ZMAX_YOLO_IMGSZ", "640")),
+                  device=os.environ.get("ZMAX_YOLO_DEVICE", "cpu"), verbose=False)
+        return True
+    except Exception:                                                       # noqa: BLE001
+        return False
+
+
+_STATE_F = os.environ.get("ZMAX_MOD_STATE", "/dev/shm/zmax_mod_state.json")
+
+
+def _state_load():
+    """AR 服务是 fork-per-request(每请求一个子进程) ⇒ 模块级变量**不跨请求**。
+    连续性闸/平滑必须靠外部状态, 否则每个请求都是"第一次", 闸等于没装。
+    放 /dev/shm(内存盘), 原子替换写, 读失败一律返回空(不阻断检测)。"""
+    try:
+        with open(_STATE_F, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:                                                       # noqa: BLE001
+        return {}
+
+
+def _state_save(d):
+    try:
+        tmp = _STATE_F + ".%d.tmp" % os.getpid()
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f)
+        os.replace(tmp, _STATE_F)
+    except Exception:                                                       # noqa: BLE001
+        pass
 
 
 def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32, max_extend=100,
@@ -131,7 +170,10 @@ def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32, max_extend=100
 def detect_boxes(img_bgr, conf=CONF_MIN):
     """返回 [{name, conf, xyxy}] —— 在役权重 (peg / OPT_Gold)。"""
     m = _yolo()
-    r = m.predict(img_bgr, conf=conf, imgsz=960, verbose=False)[0]
+    # 🔴 2026-10-18: imgsz 960→640 + 默认 CPU(实测 60ms; GPU 7ms 但 fork 后不能复用 CUDA 上下文)
+    # 之前慢的真正原因不是 imgsz, 是**每个请求都在子进程里重新 YOLO(...) 装载权重(~900ms)** ⇒ 见 warm()
+    r = m.predict(img_bgr, conf=conf, imgsz=int(os.environ.get("ZMAX_YOLO_IMGSZ", "640")),
+                  device=os.environ.get("ZMAX_YOLO_DEVICE", "cpu"), verbose=False)[0]
     out = []
     for b in r.boxes:
         out.append({"name": m.names[int(b.cls[0])], "conf": float(b.conf[0]),
@@ -205,6 +247,11 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
                conf, class, src, warn[]
     """
     warn = []
+    _st = _state_load()                     # fork-per-request ⇒ 状态必须从 /dev/shm 取回
+    if _st:
+        _LAST.update(_st.get("last") or {})
+        _CONT.update(_st.get("cont") or {})
+        _SMO.update(_st.get("smo") or {})
     K, dist = intrinsics()
     items = detect_boxes(img_bgr, conf)
     if not items:
@@ -275,6 +322,16 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     else:
         if fresh and _CONT["d_mm"]:
             D = 0.6 * D + 0.4 * float(_CONT["d_mm"])          # 轻度平滑, 压抖动
+            # 🔴 2026-10-18 老倪(抬升时): 「你的光模块别扩大啊」
+            # 相机装在腕上、模块被夹爪夹住 ⇒ 两者的距离是**刚性常量**, 抬臂时不该变。
+            # 变化只可能来自"可见高度变多/变少"(只看到小头/整支)这种成像假象 ⇒ 限幅 3mm/s,
+            # 让距离只能慢慢追随, 不会因为画面里多露一截就把框撑大。
+            _dt = max(0.05, _now - _CONT["t"])
+            _lim = 3.0 * _dt
+            _prev = float(_CONT["d_mm"])
+            D = min(max(D, _prev - _lim), _prev + _lim)
+            if abs(D - _prev) >= _lim - 1e-6:
+                warn.append("距离变化率被限幅(≤3mm/s): 抓着模块抬升时距离是刚性的, 不让框跟着变大/变小")
         _CONT.update(d_mm=float(D), h_px=float(h_px), w_px=float(w_px), t=_now)
     if not clipped and depth_mm is None:
         _LAST["d_mm"] = D
@@ -292,12 +349,13 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     ey = np.array([0, 1.0, 0])                 # 相机 y = 画面竖 (长轴)
     ez = np.array([0, 0, 1.0])                 # 相机 z = 视线
 
-    def _corners(Hv):
+    def _corners(Hv, ctr=None):
+        c0 = c_cam if ctr is None else ctr
         cc, cb, cp = [], [], []
         for sx in (-1, 1):
             for sy in (-1, 1):
                 for sz in (-1, 1):
-                    p = c_cam + ex * (sx * W / 2) + ey * (sy * Hv / 2) + ez * (sz * float(t_mm) / 2)
+                    p = c0 + ex * (sx * W / 2) + ey * (sy * Hv / 2) + ez * (sz * float(t_mm) / 2)
                     cc.append(p)
                     cb.append(Rcb @ p + o)
                     pc = p / p[2]
@@ -316,6 +374,23 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         H *= float(h_px) / proj
         corners_cam, corners_base, corners_px = _corners(H)
     center_base = Rcb @ c_cam + o
+
+    # ── 输出平滑 ── 老倪 2026-10-18: 「别突然变化，记住了」
+    # 连续性闸只管"明显算错"的帧; 真实的抖动(检测框 1~2px)仍会让框小幅跳。
+    # 这里对**画出去的中心和高度**做指数平滑(默认 0.55 新值), 让框看上去是连续的移动。
+    # 注意: 平滑只作用于显示用的中心/尺寸, 不影响 dist_mm 与 tool1 关系的统计口径。
+    smooth_applied = False
+    _t2 = time.time()
+    if _SMO["c"] is not None and (_t2 - _SMO["t"]) < 1.5:
+        _a = float(os.environ.get("ZMAX_MOD_SMOOTH", "0.55"))
+        c_s = _a * center_base + (1.0 - _a) * np.array(_SMO["c"])
+        H_s = _a * H + (1.0 - _a) * float(_SMO["H"])
+        c_cam_s = Rcb.T @ (c_s - o)
+        corners_cam, corners_base, corners_px = _corners(H_s, c_cam_s)
+        center_base, H, smooth_applied = c_s, H_s, True
+    _SMO.update(c=[float(v) for v in center_base], H=float(H), t=_t2)
+    _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO})
+
     _CONT["base_mm"] = [float(v) for v in center_base]
     return {
         "ok": True,
@@ -335,7 +410,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "depth_available": bool(depth_mm),
         "clipped": clipped,
         "extent_note": ("只框可见部分(头部出画)" if clipped else "整支"),
-        "continuity": {"jump": jump, "smoothed": bool(fresh and not jump)},
+        "continuity": {"jump": jump, "smoothed": bool(fresh and not jump), "display_smooth": smooth_applied},
         "warn": warn,
     }
 
