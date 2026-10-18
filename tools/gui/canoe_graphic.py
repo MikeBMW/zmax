@@ -55,7 +55,17 @@ C_PURPLE = "#bc8cff"
 TRACE_COLORS = ["#4FC3F7", "#FFB74D", "#81C784", "#F06292", "#BA68C8", "#4DD0E1",
                 "#FFD54F", "#E57373", "#A1887F", "#90A4AE", "#AED581", "#7986CB"]
 
-CAP = 200000          # 每信号环形缓冲容量 (点数)
+CAP = 200000          # 每信号环形缓冲**上限** (点数)
+# 🐛 2026-10-18 根治: 原实现每个信号 `np.zeros(CAP)×2` 预分配 = 3.2MB/信号。
+#   信号 key 来自各源 JSON 的全部叶子字段 (dataspace/live.json 的 topics.* 就 829 个, 合计 ~1013 key)
+#   ⇒ 3.2GB 常驻; 话题/字段继续增 ⇒ 8h53m 后 20.2GB, 把内存+swap 吃满导致整机卡死。
+#   改为**惰性扩容**: 初始 CAP_MIN 点, 写满才翻倍到 CAP; 没人看的信号只占 64KB。
+CAP_MIN = 4096        # 惰性初始容量 (点数) → 2×4096×8B = 64KB/信号
+CAP_SOFT = 32768      # **没在显示**的信号上限 (30Hz ≈ 18 分钟历史, 512KB/信号)
+#   ⚠️ 只做惰性扩容还不够: 元数据信号 (topics.*.hz/count…) 每秒也在更新, 8 小时照样写满 CAP
+#   ⇒ 1013 信号 × 3.05MB 又是 3.1GB。所以只有 `arrays()` 真被调用过 (正在画在屏上) 的信号
+#   才允许长到 CAP; 其余的封顶 CAP_SOFT。产品语义不变: 你在看的曲线历史长度一点没少。
+MAX_KEYS = 4000       # 信号 key 上限 (超了拒绝新增并记 note, 不静默吞)
 HOST_POLL_HZ = 50     # 本机文件源轮询频率
 # ▶ 3D 场景播放进度真源 (与 ss_dreamview.publish_trace_live 同一份: 帧/总帧/场景时刻 时间_s/时刻 ts)
 PLAYBACK_FILE = os.path.join(
@@ -274,12 +284,15 @@ class SignalBuffer:
     """单条曲线的环形缓冲 (numpy 预分配, 供 pyqtgraph setData 直接用视图)"""
 
     __slots__ = ("key", "t", "v", "n", "head", "color", "bold", "x_axis_of",
-                 "last_val", "vmin", "vmax", "age", "wall", "src", "scene")
+                 "last_val", "vmin", "vmax", "age", "wall", "src", "scene", "_cap", "_used")
 
     def __init__(self, key, color=None, src=""):
         self.key = key
-        self.t = np.zeros(CAP, dtype=np.float64)
-        self.v = np.zeros(CAP, dtype=np.float64)
+        # 🐛 2026-10-18: 惰性分配 (原 np.zeros(CAP)=3.2MB/信号 ⇒ 1000+ 信号就 3.2GB)
+        self._cap = min(CAP_MIN, CAP)
+        self._used = False           # True = 有人正在画它 (arrays() 被调用过) ⇒ 允许长到 CAP
+        self.t = np.zeros(self._cap, dtype=np.float64)
+        self.v = np.zeros(self._cap, dtype=np.float64)
         self.n = 0
         self.head = 0
         self.color = color or TRACE_COLORS[0]
@@ -297,16 +310,19 @@ class SignalBuffer:
         # 🔁 去重: 同一个 key 连续两次 (x, v) 完全相同 ⇒ 不再入缓冲。
         #   30Hz 轮询同一份快照会重复写同一点, 画出来只是把线加粗、视觉上更像"噪点团"。
         if self.n and self.last_val is not None and v == self.last_val:
-            _j = (self.head - 1) % CAP
+            _j = (self.head - 1) % self._cap
             if self.t[_j] == t:
                 self.age = age
                 self.wall = time.time()
                 return
+        _lim = CAP if self._used else min(CAP_SOFT, CAP)
+        if self.n >= self._cap and self._cap < _lim:
+            self._grow(_lim)                 # 写满才翻倍 (摊还 O(1), 语义不变)
         i = self.head
         self.t[i] = t
         self.v[i] = v
-        self.head = (i + 1) % CAP
-        if self.n < CAP:
+        self.head = (i + 1) % self._cap
+        if self.n < self._cap:
             self.n += 1
         self.last_val = v
         self.age = age
@@ -316,13 +332,37 @@ class SignalBuffer:
         if self.vmax is None or v > self.vmax:
             self.vmax = v
 
+    def _grow(self, limit=None):
+        """容量翻倍 (不超过 limit)。已回绕时把**按时间顺序**的 n 个点搬到新数组头上。
+
+        只在 push 里、写满时调用; 判据: 与朴素 list 实现逐点一致 (tools/verify_signal_buffer_grow.py)。
+        """
+        new = min(self._cap * 2, CAP if limit is None else limit)
+        if new <= self._cap:
+            return
+        t2 = np.zeros(new, dtype=np.float64)
+        v2 = np.zeros(new, dtype=np.float64)
+        if self.n < self._cap:               # 未回绕: 数据就在前 n 个
+            t2[:self.n] = self.t[:self.n]
+            v2[:self.n] = self.v[:self.n]
+        else:                                 # 已回绕: head 处最旧
+            h = int(self.head)
+            t2[:self.n] = np.concatenate((self.t[h:], self.t[:h]))
+            v2[:self.n] = np.concatenate((self.v[h:], self.v[:h]))
+        self.t, self.v = t2, v2
+        self._cap = int(new)
+        self.head = self.n % self._cap
+
     def arrays(self):
-        if self.n < CAP:
+        # 被画到屏上的信号 ⇒ 允许长历史 (未显示的封顶 CAP_SOFT, 见文件头 2026-10-18 说明)
+        self._used = True
+        if self.n < self._cap:
             t, v = self.t[:self.n], self.v[:self.n]
         else:
             i = self.head
             t = np.concatenate((self.t[i:], self.t[:i]))
             v = np.concatenate((self.v[i:], self.v[:i]))
+        # ↑ 容量已按需扩到 _cap; 满 _cap 时 head 处最旧 ⇒ 上面的拼接即时间顺序
         if self.scene and len(t) > 1:
             # 🎬 回放场景时刻作 x: 拖滑条往回走会写入更小的 x ⇒ 按 x 排序, 曲线才是单值函数、不成锯齿
             o = np.argsort(t, kind="stable")
@@ -334,6 +374,9 @@ class SignalBuffer:
         self.head = 0
         self.vmin = self.vmax = None
         self.last_val = None
+
+
+_SINK = {"b": None}          # 超 MAX_KEYS 后的丢弃缓冲 (只占 1 点, 不预支内存)
 
 
 class SignalStore:
@@ -379,14 +422,33 @@ class SignalStore:
             self.lap_clears += 1
         return hit
 
+    def _new_buf(self, key, src=""):
+        """新建信号缓冲 (受 MAX_KEYS 约束)。超限 ⇒ 投递到 sink(丢弃) 并在 notes 说清楚, 不静默吞。"""
+        if len(self.bufs) >= MAX_KEYS:
+            self._drop_n = getattr(self, "_drop_n", 0) + 1
+            if self._drop_n in (1, 100, 1000) or self._drop_n % 5000 == 0:
+                try:
+                    self.notes.append("⚠ 信号 key 已达上限 %d, 新键「%s」及其同类被丢弃 (共 %d 个)"
+                                      % (MAX_KEYS, key, self._drop_n))
+                except Exception:
+                    pass
+            if _SINK["b"] is None:
+                _SINK["b"] = SignalBuffer("__dropped__")
+                _SINK["b"]._cap = 1
+                _SINK["b"].t = np.zeros(1)
+                _SINK["b"].v = np.zeros(1)
+            return _SINK["b"]
+        return SignalBuffer(key, TRACE_COLORS[len(self.bufs) % len(TRACE_COLORS)], src)
+
     def get(self, key, src=""):
         b = self.bufs.get(key)
         if b is None:
             with self.lock:
                 b = self.bufs.get(key)
                 if b is None:
-                    b = SignalBuffer(key, TRACE_COLORS[len(self.bufs) % len(TRACE_COLORS)], src)
-                    self.bufs[key] = b
+                    b = self._new_buf(key, src)
+                    if getattr(b, "key", "") != "__dropped__":
+                        self.bufs[key] = b
         return b
 
     def push(self, key, t, v, age=-1.0, src=""):
@@ -401,8 +463,9 @@ class SignalStore:
             for k, v in values.items():
                 b = self.bufs.get(k)
                 if b is None:
-                    b = SignalBuffer(k, TRACE_COLORS[len(self.bufs) % len(TRACE_COLORS)], src)
-                    self.bufs[k] = b
+                    b = self._new_buf(k, src)
+                    if getattr(b, "key", "") != "__dropped__":
+                        self.bufs[k] = b
                 a = ages.get(k, -1.0) if ages else -1.0
                 if scene:
                     b.scene = True          # 🎬 该信号 x 轴 = 场景时刻 (回放进度)
@@ -3422,12 +3485,21 @@ class CanoeGraphicWidget(QWidget):
             self._log(f"⚠️ 导入失败: {e}")
             return
         base = time.monotonic()
+        _ks = list(data.keys())
+        _dropped = 0
+        if len(_ks) > MAX_KEYS:                    # 🛡 key 上限: 超了截断并说清楚 (不静默)
+            _dropped = len(_ks) - MAX_KEYS
+            _ks = _ks[:MAX_KEYS]
         with self.store.lock:
-            for k, rows in data.items():
+            for k in _ks:
+                rows = data[k]
                 b = SignalBuffer(k, TRACE_COLORS[len(self.store.bufs) % len(TRACE_COLORS)], "file")
+                b._used = True                     # 导入 = 用户明确要看 ⇒ 允许长到 CAP (不被 CAP_SOFT 截断)
                 for tt, vv, ag in rows:
                     b.push(base + (tt - t0), vv, ag)
                 self.store.bufs[k] = b
+        if _dropped:
+            self._log(f"⚠️ 信号数超过上限 {MAX_KEYS}, 后 {_dropped} 条未导入")
         self.selected = list(data.keys())
         self._fill_tree()
         self.wave.set_curves(self._draw_order())
