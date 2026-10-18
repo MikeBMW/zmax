@@ -82,19 +82,60 @@ metadata:
   而不是旧模块 —— 这一步同时把"服务僵死显示旧图"和"代码没生效"两个假象一次排除。
 
 ## 5b. 轨迹的"正源"= 状态空间画布的 🧭 MoveIt 节点 —— 但用之前必须过同源闸
-用户会追问「轨迹线应该是状态空间工程里 moveit 节点规划出来的, 对不」⇒ **架构上对**: 画布里
+
+**先分清哪条链路有规划、哪条没有**(现场问「方向键/回点位是 moveit 规划的么」时必须一句话答对):
+
+```
+方向键 / 空间点 / 号位回点 → POST /ctl/move → l2_cmd.fifo → l2_daemon → SDK 腿    ← 不经过 MoveIt
+grep -c moveit tools/l2_daemon.py  == 0                                            ← 硬判据
+空间点 = l2_daemon 自己按规矩分 3~4 段: 竖直抬到该点 z+40mm → keep_z 纯水平 → 竖直下落(禁下压)
+MoveIt 只出现在 /station/plan(plan_req.json → live_plan_latest.json) —— 只出计划; exec_plan 选段仍回同一条 FIFO
+```
+
+- 🔴 **规划层与执行层不要合并成一个节点/一个进程**: 用户说「轨迹应该是 MoveIt 节点规划出来的」时, 正确形态是
+  **规划层只产出段表(segments: id/pos/quat/speed/tol/backend)**, 执行层保留 **授权 epoch / 逐段闸 / 下发 / 等真值 / 台账**;
+  段表先落盘(`runtime/plan/plan_latest.json`)再执行, 这样规划结果可被看见又不用把执行器搬走。
+  把执行器整包搬进 GUI/规划进程的代价: GUI 卡一下或重启就断运动, 且“谁能动臂”多出第二个入口(绕过授权与审计)。
+  合并前先量四个口: **输出形态**(单点目标 vs 上百点带时间参数关节轨迹) · **下发口粒度**(只有单点 move-rel/abs) ·
+  **闸门是逐段笛卡尔还是关节**(关节轨迹中间点无笛卡尔目标可判) · **口径**(tip_link/坐标系)。四个都对不上就别合, 做段表交接。
+- 用户会追问「轨迹线应该是状态空间工程里 moveit 节点规划出来的, 对不」⇒ **架构上对**:
 `sslimit → sssk1..8 → n_moveit → ssact` 就是"任何执行通路都经 MoveIt"。别把手写折线当终态交出去,
 但**也不要在没验运动学之前就把 MoveIt 的轨迹贴到真机画面上** —— 那和编一个没有区别。
 - 拉起与调用配方(镜像/配置/plan-only launch/服务调用/坑)见 `references/moveit-plan-only.md`;
   入口工具 `tools/moveit_plan_only.py`。
-- 🔴 **同源闸(唯一硬判据)**: 拿**真机关节角**当 MoveIt 起点, 比 `FK(真关节)` 与真 `/robot/tcp_pose` ——
-  实测差 **261.5mm、姿态差 137.5°, 两次独立复现数值一致** ⇒ 该 URDF 的运动学与真机**不同源**,
-  它规划的轨迹是**它自己模型里**的, 不能当真轨迹画到实机画面上。判据: **位置 < 5mm 且姿态 < 2°** 才敢用。
+- 🔴 **同源闸(唯一硬判据)**: 拿**真机关节角**当 MoveIt 起点, 比 `FK(真关节)` 与真 `/robot/tcp_pose`。
+  判据: **位置 < 5mm 且姿态 < 2°** 才敢用。**姿态一律用符号无关的四元数夹角** `2·acos(|dot|)`
+  —— 忘了取 abs 会把同一个姿态算成 137° 这种假差异(旧结论就是这么来的)。
+- 🔴🔴 **对不上时先排"工具坐标系口径", 不要一上来就怀疑关节零位**。实测(154 个 50Hz 真值样本):
+  `FK(tool0 法兰)` vs 真机 TCP = **259.2mm**; `FK(tool1 夹爪尖)` = **3.05mm / 姿态 3.66°**。
+  根因是配置行不是标定: `config/moveit_xms5/config/*.srdf` 的 `<chain ... tip_link="tool0"/>`(规划尖端=法兰),
+  而 URDF 里 `joint_tool1 origin z = 0.2587`(法兰→夹爪尖 259.8mm); 对比脚本拿法兰 FK 去比夹爪 TCP ⇒ 假警报。
+  ⇒ **改 `tip_link` 再算一遍**, 残差才是有意义的那个数。
+  改完用 643 个样本复测: **位置残差 0.00mm** —— 位置本来就对, 早先那个 3.05mm 是混了动/停帧的抽样值;
+  **只剩姿态 3.65°(max 3.71°) 的常值偏置** ⇒ 精度问题**全在姿态**, 别去拟合一个不存在的平移。
+- 🔴 **常值偏置要拟合成一个固定的 TCP 变换, 不要每次现算**: 用真值 tap 批量拟合 (只读, 零风险, 不需要动臂):
+  平移 `p_real - p_fk = R_fk · t` 最小二乘; 旋转 `mean(R_fkᵀ · R_real)` 做 SVD 投到 SO(3);
+  实测 `t_off=[-1.39,1.80,-1.99]mm` · `rpy_off=[-1.35,-3.27,-0.89]°`, 姿态残差 **3.65° → 0.06°(max 0.22°)**。
+  现成工具 `tools/fit_tcp_offset.py`(样本数/拟合前后残差/偏置一起落 `runtime/moveit_plan/tcp_offset_fit.json`)。
+  用的时候把偏置**应用到规划目标姿态** `R_goal_moveit = R_real_target · R_offᵀ`(以及 `fk_link_names`/pose 参考 link/碰撞 link
+  三处都改 tool1), 否则 IK 解出来的姿态仍差那 3.6°。
+- ⚠️ **50Hz 真值 tap 的字段是 `x/y/z + qx/qy/qz/qw + joint[12]`, 不是 `tcp`/`quat`**:
+  按猜的键写 parser 不看真文件 ⇒ `样本太少: 0`, 看起来像"tap 坏了"。先 `head -c 400` 读首行定字段,
+  且记住 joint 是 12 元素(后 6 个是 0), FK 只用前 6。
+- 怎么定性残差: 把误差向量换到 base 系统计 **均值 vs std** —— 均值≫std ⇒ **常值偏置**(tool/frame 偏移可修);
+  随位形明显变 ⇒ 才是关节零位/连杆标定(采 (关节角, TCP) 配对拟合 6 个 offset)。
+  现成工具(只读, 零风险): `tools/fk_check_tool_frame.py`(tool0/tool1 对拍) ·
+  `tools/fk_urdf_vs_real.py --every 120`(整天 `tcp_out/tcp_direct_*.jsonl` 批量统计, 输出均值/中位/95%/最大 + 偏置判定)。
+- 同源之后的精度方案: 只在**静止**时规划(`|v|<0.2mm/s` + jpos 极差<1e-4 连续 6 帧) → 129 点轨迹按
+  ≤2°/段 或 ≤5mm/段 抽稀 → 逐段 `move-abs` 走现有 SDK 腿 → 每段真值核对(≤1mm/0.5°) → 到点残差 >0.5mm 补偿一次。
+  规划器本身不提高绝对精度, 精度来自口径统一 + 分段执行 + 闭环。
+  完整配方(实测数字/配置行/分段与闸门/验收梯度 V1~V4/汇报口径)见 `references/moveit-precision-control.md`。
 - 两个现成入口(别每次都现写脚本): `tools/moveit_real_state_probe.py`(domain0 只读抓真机状态,
   BEST_EFFORT 双订阅) + `tools/moveit_same_source_check.py`(同源闸, 落独立证据 JSON, 退出码 5=不同源);
   证据落 `reports/moveit/`(`real_state.json` / `same_source_check.json` / `plan_slot7.json`)。
-- 不同源的常见原因是厂家 **CAD URDF 的关节零位/符号口径** ≠ 控制器(SDK)报的关节值 ⇒ 别把矛头指向"图纸拿错",
-  URDF 往往就是从产线工作空间拷来的; 要对齐的是**零位**。修法 = 采真机 (关节角, TCP) 配对拟合 6 个零位偏移。
+- 不同源的排查顺序: ①`tip_link` / tool 坐标系口径(最常见, 一个字段) ②`base_frame` 与真值坐标系 ③仅差常值偏置 ⇒ 拟合 tool 偏移
+  ④残余随位形变 ⇒ 才轮到厂家 CAD URDF 的**关节零位/符号** ≠ 控制器报的关节值, 采真机 (关节角, TCP) 配对拟合 6 个零位偏移。
+  别一上来就指"图纸拿错": URDF 往往就是从产线工作空间拷来的。
 - 未过闸时的答法: **架构上认同 + 如实说现在出不来真轨迹** + 说清那条手写折线的真实身份(由示教位姿 + 真机 TCP 推出),
   不要含糊成"这就是规划结果"。
 
@@ -177,6 +218,7 @@ metadata:
 | 参考点只看"静止≥N 秒" | 起始位姿立刻冒出假 P1, 同姿态重复停顿重复打点 | 加"离上一点 ≥20mm"的位移门限 |
 | 折线点不抽稀/不设上限 | 渲染拖死、线成糊团 | 空间间隔 >2mm 才留, 上限 ~1500 点 |
 | 把 MoveIt 规划出的轨迹直接当真机轨迹 | 画面对不上真机 | 先过同源闸: `FK(真关节)` vs 真 `/robot/tcp_pose` < 5mm 才敢用 |
+| 按猜的键名写真值 tap 的 parser | 报"样本太少: 0", 像 tap 坏了 | 先读首行: 字段是 `x/y/z + qx/qy/qz/qw + joint[12]` |
 | 在 `moveit_msgs/action/MoveGroup` 的 *topic* 上找规划出来的 xyzabc | 找不到, 误判"规划没输出" | 结果走 `.../get_result` **服务**, topic 上只有 `/_action/feedback`(state/pipeline_stage) 与 `/_action/status`; 逐路点 xyzabc 在 plan 文件的 `tcp_path` 里 |
 | 在默认域里列规划容器的 action/service | 全空 ⇒ 误判"没有 action" | 规划容器是独立 `ROS_DOMAIN_ID=42`; 且 action 的 topic 默认隐藏, 要 `ros2 topic list -t --include-hidden-topics` |
 | 用 RPY 三元组比两个姿态 | 假差异(实测按 RPY 比出差 25°, 四元数夹角只有 2.29°) | 姿态一律用四元数夹角 `2*acos(|dot(q1,q2)|)`; 报告同时给位置差(mm)与姿态差(deg) |

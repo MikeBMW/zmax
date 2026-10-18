@@ -126,6 +126,70 @@ ZMAX_GATE_DT=0.02 ...                                                # 切物理
 判据里的①要按 `stage_u`(decide 实际用的段) 归因, 不是 `stage`(本步结束贴的标签): 换段那一拍两者差一段,
 会误报"抓取 0.09 > cap 0.04"(其实是下降段 0.09 的合法值)。
 
+## 技能要能「输出目标」, 不能只会削动作 (2026-10-16)
+
+老倪: 「这些原子任务都有输出么? 最终的 MoveIt 是怎么选择实际的原子任务动作的」——
+查出来的真事: 仿真 u 来自前馈加速器 (engine 里 `atomic_skills` **0 引用**)、真机动作由 `l2_daemon.build_move()`
+按点位下发 (`grep moveit` = 0 次)、MoveIt 只是 plan-only 容器 (`allow_trajectory_execution=False`),
+目标靠人给。三环各走各的 — 缺的是**技能执行口**。
+
+落地 (`atomic_skills.py`): 每类声明 `TARGET = {"ref": "peg|peg_xy_table|hole_mouth|hole|point", "off_key": "params 里的偏置键"}`,
+基类给两个方法:
+- `next_target(ctx=几何, points=点位库, spec=阶段)` → 目标位姿; **两种上下文同一份规则**
+  (仿真按 peg/hole 算, 真机按 taught_points 点位 + 偏置算)
+- `command(ctx, x, k, v_cap)` → 期望速度 `u = k·(target−x)`, 限本段 v_cap, 到容差→0
+- 解不出/未知段 → **None**, 绝不返回 0 目标
+
+三条铁律:
+1. **偏置只能有一份**: 引擎的 `STAGE_APPROACH_H/ALIGN/DESCEND/LIFT` 改成 `_sk_param("SK01Approach","hover_h",…)
+   从技能类取, 判据卡 `最大偏差 < 1e-12` (实测 0.0e+00, 1107 拍零兜底)。
+2. **真机侧 opt-in**: `build_move` 只在技能声明 `"atomic":"SK0x"` 时走技能口 ⇒ 97 条在役技能行为逐位不变。
+3. **两套上下文都要测**: 空 ctx 下 8/8 段返回 None; 有点位库时 8/8 段 = 点位 + 本段偏置。
+
+A/B 实测 (解析引擎, `tools/ab_skill_ff.py`): 技能驱动 u_ff (k=6) → **183 拍 vs 现状 369 拍 (快 2×)**,
+末端 65.77 vs 65.95mm, 单拍开销不变; **k=3 推不动** (1600 拍未完成) ⇒ 增益是刚度不是精度旋钮, 必须 ≥6。
+
+### 边界: 「技能驱动动作」只能用在解析引擎, 不能用在接触物理 (2026-10-18 实测)
+metaworld 真物理路开同一个开关 = **失败**, 默认关:
+| 臂 | done | 拍 | 插深 | 横向 |
+|---|---|---|---|---|
+| A 现状 (解析伺服+反馈) | ✅ | 348 | 64.3mm | 2.5mm |
+| C 技能驱动 k=6 | ❌ | 500(上限) | 41.9mm | 18.9mm |
+| C 技能驱动 k=10 | ❌ | 500(上限) | 34.4mm | 14.3mm |
+根因: 纯 P 到**名义**目标即停 (`reached=True, u=0`), 而插孔靠的是接触后自适应 (两段式垂直降→横推、
+遇阻螺旋搜索、夹持 `gap_z` 锁存) —— 长在「现场阶段目标 + 反馈」里, 覆盖 u_ff 等于丢掉它们。
+⇒ 技能类在真物理路的职责是**给目标** (与引擎逐拍零差), 不是给动作; 解析引擎的快 2× 不可外推。
+
+### 真物理目标对照的坑
+`geom["head_off"]` = 「头 − **抓握点**」(复位时), 引擎里的 `off` = 「头 − **末端**」, 参考点差 ~2cm。
+对照必须用 `peg_head() − self.x`, 否则转移/插入会假报 21mm 差 (自证伪信号)。
+176 拍零差 (接近/对位/下降/转移) = 技能口与真物理路同一份目标语义; 差异只在抓取(-4mm 下探)/
+抬起(-21.3mm 锁存 gap_z)/插入(段①+螺旋)。
+
+### 无阶段/服务型技能要全覆盖且不硬塞
+`rule_for_skill(sk)`: `line_abs` → `{"ref":"point"}`; `line_rel` → `{"ref":"rel","axis":…}`;
+服务型 (AOI 接口) → **None (无位姿目标)**。判据口径分开数三类: 逐位一致 + 两边都拒 + 无位姿目标,
+只卡「不一致 = 0」(97 条实测 60/14/23)。
+
+### MoveIt 只规划, 目标可以由技能口给 — 但先查 systemd 常驻 writer
+`moveit_plan_req.py --stage <段> --to <示教点>` ⇒ 目标 = 点位 + 本段偏置 (SK 口算), plan_req 带
+`goal_src=skill/goal_stage`; `--auto` 从 5Hz 的 `ss_live/skill_gate.json` 取当前段 (超时报**帧龄**, 不猜);
+无技能类的段 (拔出/AOI 等 5 段) 明确拒绝。
+
+**两个坑**:
+1. `moveit_plan_req.py --watch` 是 **systemd 常驻服务** (`zmax-moveit-plan-req.service`, `Restart=always`)。
+   直接 kill 会被立刻拉起并**每秒覆盖 plan_req.json** ⇒ 你写的技能口目标根本进不了规划器。
+   正确姿势: `systemctl stop` → 写请求 → 改 unit drop-in (`--auto --to …`) → `daemon-reload` + `restart`。
+   判据要看 `live_plan_latest.json` 里的 `goal_xyz`, 而不是 `plan_req.json` (后者可能是别的 writer 写的)。
+2. 容器内时间 = UTC (比 CST 少 8h), 对日志时间戳时必须换算, 否则会误判"没跑"。
+
+### 内存撑不住时的排查顺序 (别先怪 LSP)
+看到“某 python 占 20GB”先 `tr '\0' ' ' < /proc/<pid>/cmdline` 看**完整命令行**:
+实测那个 20.2GB 是 `studio.py` 控制台 GUI (VSCode debugpy 拉起、跑 8h53m 泄漏), 不是 Pylance。
+处置前必须核实两件事: ①该进程**无子进程** ②在役守护都是 `ppid=1` ⇒ 杀了不影响引擎;
+然后 SIGTERM → 停 Restarting 崩溃容器 → `drop_caches` → `swapoff/swapon` 重置。实测 available 475MB→13GB, swap 满→0。
+重跑控制台会再泄漏: 先看 RSS 再决定起不起。
+
 ## 物理参数标定 (v / a / s + 物理上下限)
 
 每个物理量的**标定真源** = `config/calib/zmax_skill_physics.json`, 每项写成

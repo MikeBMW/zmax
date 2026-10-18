@@ -64,6 +64,29 @@ ls -lt <repo>/reports/<名>_*.jsonl       # 真产物: 每跑一次追加一行�
 | 只测一条链路就下结论 | 本地 ok / 经代理失败 | 本地与服务状态都绿时, **先查中间层自己的状态**(隧道日志里的当前 URL、代理日志里的拒绝原因)——中间层会自己换地址/自己拒绝, 不是被服务的错 |
 | **见到 `failed (Result: timeout)` 就赶紧重启** | 其实活已经干完了, 重启白折腾还把在跑的东西拆掉; 或反过来把 failed 当成"服务挂了"报给用户 | 超时判 failed ≠ 没干成: 长链 oneshot(起容器 + `docker exec` 拉常驻进程 + `systemctl restart` 别的单元)最容易在**最后一步**撞 start 超时被 TERM, 而前面几步的产物全在。先取证真实产物 `docker ps` + `docker exec <容器> ps -eo pid,etime,cmd \| grep <目标进程>`, 在跑 ⇒ 只 `sudo systemctl reset-failed <unit>` 清状态即可(**reset-failed 不重启任何东西**)。报"单元全绿/没有故障"之前也要跑这一步, 否则会把清理态当故障、或把 failed 当成已修 |
 
+## 4b. 在别人的设备上装 unit: 本体放项目隐藏目录, `/etc` 只放软链
+
+用户要求「不要在 X 上新建文件, 所有文件都放项目那一个隐藏目录」时, 仍能正经开自启:
+
+```bash
+# 脚本 + unit 本体全在那个隐藏目录 (例: /home/<user>/.zmax/{rs,systemd,logs})
+sudo systemctl link /home/<user>/.zmax/systemd/<svc>.service    # /etc/systemd/system/ 下只生成一个 symlink
+sudo systemctl enable --now <svc>.service
+ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .zmax/... 的链接, 不是拷贝
+```
+
+- `systemctl link` + `enable` = 开机会起 (`multi-user.target.wants/` 里出现链接), 而实体文件不在系统目录 ——
+  满足"单一路径"要求; **报告时把这条说清楚** (systemd 强制要求在 `/etc/systemd/system` 有个入口, 软链不算放文件)。
+- **没有上游就不空转用 `Requires=`**: 汇总/转发类服务 `Requires=<数据源服务>` + `After=`, 源死它也停
+  (实测 D405 发布件被 kill 时, 转发件跟着停, 不会挂着个 8792 回空)。
+- **自愈要当场验**, 不要只写 `Restart=always`: `pkill -f '<脚本>'` → `sleep 6` → `systemctl is-active` +
+  端口 `curl` 回 200 + 新 pid 存活 = 真自愈。不能重启整机验开机时, 用 `is-enabled` + `wants/` 链接存在作开机证据。
+- **目标机刚重启过、原来那套栈没自启时, 先量三样再动手**: `ros2 topic list | wc -l` (=0 就是没发布者)、
+  `ss -ltn | grep <端口>`、`systemctl list-units | grep -i <关键字>`。别急着改自己的消费者代码。
+- **缺发布者时用直采补件, 别去装 ROS 包**: 相机这类用 `pyrealsense2` 直采 + `sensor_msgs/Image` 发到原话题名
+  (20 行脚本, 与原有转发件同住隐藏目录), 再用 `lsusb` 确认硬件在位 (例 `8086:0b5b` = Intel RealSense)。
+  注意 `python3 -c 'import rclpy'` 要 source 过 ROS 才通; 找不到 `realsense2_camera` 包是常态, 不影响这条路。
+
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。
 - 不许写"已配置完成/已优化"而无数字; 未实测的东西标明"未证明"。

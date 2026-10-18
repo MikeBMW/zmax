@@ -254,6 +254,28 @@ UI 侧同时要改**话题集合**: Trace 不能只遍历 live.json, 必须并�
 反模式: 静态抽取时把实现里**所有** dict 键都收进来(会把 path/size/mtime 等无关键混进来) ——
 只认 `return {...}` 与惯用返回变量, 并保留 src 让用户能追溯。
 
+## 信号名必须是语义名, 不是端口 id (`out1` / `in1`)
+
+**症状**: Trace / 信号表的 Signal 列写 `out1`、`in1` —— 看不出这条线运的是什么。
+**真根因**: 端口名是画布的机械名; 取名函数对"未声明字段"的端口**原样返回端口 id**。
+
+**做法(一处收口, 三个窗口同时生效)**
+1. `middleware/signal_en.py`: 加 `TYPE_SIGNAL_EN`(类型→短名: `MotionPlan→plan`、`PlanIn→plan_in`、
+   `RobotActionIn→action_in`、`SceneUnderstanding→scene`、`OpticalInspection→aoi` …) +
+   `type_signal_name()`(表里没有则 CamelCase→snake_case 兜底) + `port_signal(field, mtype)`
+   (只对 `^(in|out)(\d+)$` 生效; 同一类型多条入口按序号区分 `plan_in` / `plan_in_2`, 不编随机后缀)。
+2. `en_of_key(prefix, field, mtype=None)` / `en_of(field, mtype=None)` 透传类型; 类型真源 = `mw_topic.type`
+   (`attribution.type_of_topic(topic)`), **topic 查不到时用行自带的 `type` 兜底**, 否则那几行仍是端口 id。
+3. 渲染前**一次性**改名(数据空间/信号表/曲线名共用同一函数), 原始端口名留在 `raw`/tooltip 可追溯。
+4. 判据 `tools/verify_signal_names.py`: 全端口 0 条裸 `^(in|out)\d+$` · Trace 每行 Signal 都不是裸端口 ·
+   抽查关键口 → 目标短名(实测 272 端口 0 裸名 · Trace 413 行 0 裸名)。
+
+**坑**
+- 改名循环别复用外层 `for r, x in enumerate(rows)` 的 `x`: 内层 `for x in rows` 会把 x 覆盖成最后一行,
+  整表每行渲染成同一行内容(实测 413 行全变 `out1`)。用独立变量名, 且放在渲染循环**之前**。
+- 端口正则必须两个捕获组 `^(in|out)(\d+)$`; 只写一个组会在取序号时抛异常并被兜底吞掉, 静默回落成原名。
+- 同一话题类型在多个入口重复出现是常态 ⇒ 序号后缀要可预测(第 1 个裸名, 其余 `_2/_3`)。
+
 ## 显示层"不动"先查 publisher 配对, 别先调刷新率
 
 **症状**: 用户说数据/信号一直不动, 要求"实时"。先别改 Timer 间隔 —— 先证明总线在发。

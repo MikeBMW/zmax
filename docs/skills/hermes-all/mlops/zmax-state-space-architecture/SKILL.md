@@ -297,6 +297,11 @@ src/lerobot/engineering/
 | `SS_L4_INTACT_GATE=1` | 开 | L2 收口闸 (cos<0 或幅度>1.5× 否决) | 上层越界提案直接进执行 |
 | `SS_L4_INTENT_LINE=1` + `_W` | 关 | 直连线注入 (另一条注入通路) | 只有直驱一条通路 |
 | `SS_INTACT=1` | 关 | 标定映射接入 (需 `models/intact_action_map.json`, R² 负 → 全拒) | 用 SS_L4_INTACT 那条 |
+| `ZMAX_SKILL_FF=1` | 关 | 走技能口分支 (u_ff 过原子技能) 并**每拍落 `zmax_data/ss_live/skill_gate.json`** | 闸文件永远停在旧时刻, 读它的 `moveit_plan_req.py --auto` 只能退回示教点(不报错) |
+
+⚠️ 这两条一起才叫“引擎在发闸”: ① env 开关 ② L4 帧源 `fw_render_server`(8799 `/frame.png`) 在跑。
+帧源不在 ⇒ 引擎每拍 `safe_stop`、`‖a‖=0`, 日志照打 (看着正常), 但**闸文件不更新**。
+联调顺序: 先起帧源 `tools/fw_render_server.py --port 8799 --hz 2` → 带 `ZMAX_SKILL_FF=1` 重启引擎 → 回读闸文件帧龄 <1s。
 
 **实测 (2026-09-24, 在役 `intact_l4_current`, 90 步 direct 臂)**:
 `SS_L4_ALIGN=1` ⇒ 闸门 **90/90 全过** · cos 中位 −0.605→**0.963** · 幅度比 0.86 (0 帧超标) · blend **90/90** (原 0)。
@@ -516,6 +521,18 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    · L2 口径只在 `attribution` 收一次 (`l2_names/tx_l2/rx_l2/layer_l2/topic_in_l2/show_in_l2`), 面板不各写判断;
      规则节点不是 L2 但前缀属主是 L2 ⇒ 用属主 (`sstrace.末端_*` 归状态估计, 不归 L4 Z-MAX 引擎)。
    判据 `tools/verify_layer_node_strict.py` (8 项, 含数据空间页三张表) 一轮锁死, 细节见 reference §13/§17。
+   · 两个窗口的显示口径**不一样时**, 用一个谓词族而不是各写一份:
+     **数据空间 Trace = Tx 与 Rx 都是 L2 节点** (`show_in_l2_link`), **信号分析 = Tx 是 L2** (`show_in_l2`, Rx 允许 `—`);
+     判据就按“Trace 里横杠数 == 0、面板可以有”写, 别把两个窗口的硬约束混成一条。
+   · ⚠️ 闸门放错层级会把整表清空: 把“Rx 必须非 `—`”加到**话题级**过滤 ⇒ in 口话题的 Rx 天生是 `—` ⇒ **0 行**。
+     闸门只放在**信号/行级**; 话题级只判 Tx/Layer。现象指纹: 改完 Trace 一行不剩, 而过滤器看起来“很合理”。
+   · SK 类信号 (`skill.*`) 的键不是节点端口键 ⇒ `rx_of` 天然解不出 ⇒ 整族被当横杠删掉。
+     要用 SK 节点的**真连线**解析 (sssk*.out1 → n_moveit), 不要就地补个“—”。
+   · 删完横杠行后, **跨窗口同源探针得换信号**: 原来探的 `sstrace.*` 已不在这两个窗口里,
+     改成两窗口都存在的 (实测 `接近_mps`, 两窗口共用 203 个同名信号); 且显示可能带单位换算
+     (m/s → 屏上 mm/s), 断言要按换算比而不是字面值。
+   · 真实数字约定: Trace 413 行 / 61 话题 · Rx 横杠 0 · 数据空间页 话题 97 / 节点 29 / 报文 45;
+     一次性回退判据: 横杠 > 0 或出现非 L2 名 ⇒ 口径被破坏。
 11. **同源快照 ≠ 统一数据库**: 要"同一个数据库"就落 SQLite `zmax_data/dataspace/signals.db`
    (`src/lerobot/dataspace/signal_store.py` + 2Hz 守护 `tools/signal_store_daemon.py`), `live_signals.topics()`
    先读库 (新鲜 <3s), 过期才回落文件并打印一行, `ZMAX_SIGNAL_DB_OFF=1` 强制旧路。
@@ -532,6 +549,18 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    (`话题:`/`来源:` 同行); 信号分析树的原始键在 `item.data(0, Qt.UserRole)` 且带前缀 (`sstrace.<字段>`);
    树只在 `show()` 之后才填充, 判据里要 `panel.show()` + 泵事件 3~4s 再读。探针写错名字 (`末端.x` vs `末端_x`)
    会安静地读到 `None`, 看起来像功能坏了。
+
+15. **信号名必须表意: 端口名 (out1/in1) 不许直接上屏** (老倪: 「out1 in1 根本看不出来是什么意思」)。
+   端口名是画布的机械命名, 语义在**报文类型**里 ⇒ 真源 `mw_topic.type`, 不是端口名、也不是话题名猜。
+   · 名字只在**一个函数**里生成: `src/lerobot/middleware/signal_en.py::en_of_key(prefix, field, mtype)`。
+     两张窗口 (Trace / 信号分析) 都走它, 别各写一份映射 —— 各写一份必分叉。
+   · 规则顺序: `TYPE_SIGNAL_EN` 人工短名 (`MotionPlan→plan` · `MotionPlanIn→plan_in` · `RobotActionIn→action_in`
+     · `OpticalInspection→aoi` · `MuscleSkillBank→muscle_bank`) → 表里没有就 CamelCase→snake_case 兜底;
+     **拿不到类型就不编**, 保留原端口名。同一类型多条入口 (`in1/in2`) 只有第一条用裸名, 其余带序号 (`plan_in_2`)。
+   · 类型查不到时用**行自带的 `type`** 兜底 (`type_of_topic()` 只对 `ss.node.<id>.<port>` 命中; 直播话题/别名不带)。
+   · 改名放在**渲染前一次**, 原始端口名留在 `raw`/tooltip 可追溯; 别在每行的渲染循环里做 (会撞上变量复用坑)。
+   · 判据 `tools/verify_signal_names.py`: 全端口 (272) 裸端口名 == 0 · Trace 行裸端口名 == 0 · 点名口对照
+     (`n_moveit.out1→plan` / `in1→plan_in`)。回退指纹: 屏上再出现 `out1`/`in1` 就是口径被破坏。
 
 全过程 (判据代码骨架、实测数字、报警注入法、归属单链、统一库、刷新性能、**L2-only 收口与闸门顺序**) →
 `references/trace-signal-panel-consistency.md` §1–§17
