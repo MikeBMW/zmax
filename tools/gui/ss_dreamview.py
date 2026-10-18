@@ -51,6 +51,161 @@ def clock_str(epoch, ms=True):
 SS_TRACE_LIVE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "zmax_data", "ss_live", "trace_live.json")
+
+# 🧭 2026-10-18 老倪: 「在 plan 节点增加一个, 根据仿真 v_ff 计算出来的、不用考虑旋转的末端执行器位姿」
+#   口径: p_k = p_anchor + Σ v_ff·dt (只有位置; 旋转显式未建模, 不写 0° 冒充已知)
+SS_PLAN_VFF = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "zmax_data", "ss_live", "plan_from_vff.json")
+_PLAN_VFF = {"scene": None, "i_prev": -1, "p": None, "path": [], "t_pub": 0.0}
+
+# 🌉 2026-10-18 老倪: 「在 plan 这个 node 节点上, 设计一个桥接开关, 连接插拔场景的 v_ff 与机器人的位姿。
+#   但是真正输出的速度, 你要控制, 不能用仿真的速度直接输出。你要慢, 只要根据 v_ff 的方向, 慢速动作即可」
+#   口径: 开关真源 = 画布 plan 节点 (n_moveit) 的 params.bridge_vff; 输出速度 = min(|v_ff|, cap) 且带死区;
+#         关掉时仍照原样显示积分位姿 (只显示, 不慢动)。
+SS_CANVAS = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "database", "zmax", "sources", "canvas", "state_space_obs.json")
+# ⛔ 硬上限 (老倪 2026-10-18: 「插拔场景桥接到真机场景的速度上限, 速度不要超过 10mm/s」):
+#   配置写多大都不算 —— 真机桥接的**实际输出**永远 ≤ 这个数。改这里要老倪点头。
+BRIDGE_CAP_HARD_MMS = 10.0
+_BRIDGE = {"mtime": 0.0, "on": False, "cap": BRIDGE_CAP_HARD_MMS, "dead": 3.0}
+
+
+def bridge_cfg():
+    """读 plan 节点上的桥接开关 (唯一真源 = 画布 JSON; 文件改了才重读)。"""
+    st = _BRIDGE
+    try:
+        mt = os.path.getmtime(SS_CANVAS)
+        if mt != st["mtime"]:
+            with open(SS_CANVAS, encoding="utf-8") as f:
+                d = json.load(f)
+            for n in (d.get("nodes") or []):
+                if n.get("id") == "n_moveit":
+                    pr = n.get("params") or {}
+                    _cap_cfg = float(pr.get("bridge_vff_cap_mms", BRIDGE_CAP_HARD_MMS))
+                    _cap = min(_cap_cfg, BRIDGE_CAP_HARD_MMS)          # ⛔ 硬上限收口
+                    if _cap_cfg > BRIDGE_CAP_HARD_MMS:
+                        print("[plan/bridge] 配置上限 %.1fmm/s 超过真机硬上限 %.1fmm/s ⇒ 按 %.1fmm/s 执行"
+                              % (_cap_cfg, BRIDGE_CAP_HARD_MMS, _cap))
+                    st.update(on=bool(pr.get("bridge_vff", False)), cap=_cap,
+                              cap_cfg=_cap_cfg,
+                              dead=float(pr.get("bridge_vff_deadband_mms", 3.0)),
+                              mtime=mt)
+                    break
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return st
+
+
+def bridge_set(on):
+    """开关写回 plan 节点 (原子替换 + 备份), 让画布与面板看到同一个状态。"""
+    try:
+        with open(SS_CANVAS, encoding="utf-8") as f:
+            d = json.load(f)
+        for n in (d.get("nodes") or []):
+            if n.get("id") == "n_moveit":
+                pr = n.setdefault("params", {})
+                pr["bridge_vff"] = bool(on)
+                pr.setdefault("bridge_vff_cap_mms", BRIDGE_CAP_HARD_MMS)
+                pr.setdefault("bridge_vff_deadband_mms", 3.0)
+        tmp = SS_CANVAS + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, SS_CANVAS)
+        _BRIDGE["on"] = bool(on)
+        _BRIDGE["mtime"] = os.path.getmtime(SS_CANVAS)
+        return True
+    except Exception as e:                                                  # noqa: BLE001
+        print("[plan/bridge] 写回开关失败:", type(e).__name__, e)
+        return False
+
+
+def publish_plan_from_vff(scene, i, t, x_truth, u_ff, min_interval=0.10):
+    """由仿真前馈速度 v_ff 积分出末端**位置**轨迹 → 写 plan 节点的位姿快照。
+
+    · 起点 = 本集第 0 帧仿真真值末端位置 (锚点不编); 帧号回退/换场景 ⇒ 重锚 + 清轨迹
+    · dt = 帧间隔 (本集 80Hz ⇒ 0.0125s); v_ff 单位 m/s
+    · 同时算 drift_mm = |p_k − 仿真真值| —— 这是积分位姿, 会漂, 必须诚实标出来
+    · 旋转一律 None + rotation="未建模" (老倪明确: 先不考虚旋转)
+    """
+    try:
+        i = int(i)
+        # 🔴 numpy 数组不能用 `or` 兜底 (真值数组 ⇒ "truth value of an array is ambiguous"),
+        #   首帧就抛异常被下面的 except 吃掉 ⇒ 文件永远不生成。必须显式判 None。
+        x_truth = [float(v) for v in (x_truth if x_truth is not None else [])][:3]
+        u = [float(v) for v in (u_ff if u_ff is not None else [])][:3]
+        if len(x_truth) < 3 or len(u) < 3:
+            return False
+        st = _PLAN_VFF
+        _reset = False
+        if st["scene"] != scene or i <= st["i_prev"]:
+            st.update(scene=scene, i_prev=-1, p=list(x_truth), path=[list(x_truth)], walked=0.0)
+            _reset = True
+        # 🌉 桥接: 开 ⇒ 只跟 v_ff 的**方向**, 幅值压到 cap 并过死区 (仿真速度绝不直接输出)
+        _bg = bridge_cfg()
+        spd = math.sqrt(u[0] ** 2 + u[1] ** 2 + u[2] ** 2)          # m/s
+        v_cmd = list(u)
+        if _bg["on"]:
+            if spd * 1000.0 < _bg["dead"]:
+                v_cmd = [0.0, 0.0, 0.0]                              # 死区内 ⇒ 不动 (防噪声蠕动)
+            else:
+                k = min(1.0, (_bg["cap"] / 1000.0) / spd)
+                v_cmd = [u[j] * k for j in range(3)]
+        dt = 0.0125
+        if st["i_prev"] >= 0:
+            step = max(0, i - st["i_prev"])
+            dt = 0.0125 * step if step else 0.0125
+            st["p"] = [st["p"][j] + v_cmd[j] * dt for j in range(3)]
+            st["path"].append(list(st["p"]))
+            st["walked"] = float(st.get("walked", 0.0)) + math.sqrt(
+                sum((v_cmd[j] * dt) ** 2 for j in range(3))) * 1000.0     # 累计行走 mm
+            if len(st["path"]) > 4000:                     # 有界: 长 episode 不无限涨
+                st["path"] = st["path"][-4000:]
+        st["i_prev"] = i
+        now = time.time()
+        if now - st["t_pub"] < min_interval:
+            return True
+        st["t_pub"] = now
+        pcur = st["p"] or x_truth
+        drift = math.sqrt(sum((pcur[j] - x_truth[j]) ** 2 for j in range(3))) * 1000.0
+        payload = {
+            "ts": now, "source": "vff_integrate(仿真)", "scene": str(scene or ""),
+            "frame": i, "base_frame": "base", "pos_only": True, "rotation": "未建模",
+            "dt_s": round(dt, 5), "n_points": len(st["path"]),
+            "tcp_pose": {"x": round(pcur[0], 6), "y": round(pcur[1], 6), "z": round(pcur[2], 6),
+                         "rx": None, "ry": None, "rz": None},
+            "goal_xyz": [round(pcur[0], 6), round(pcur[1], 6), round(pcur[2], 6)],
+            "anchor_xyz": [round(v, 6) for v in st["path"][0]],
+            "u_ff_mms": [round(u[j] * 1000.0, 2) for j in range(3)],
+            "bridge": bool(_bg["on"]), "cap_mms": float(_bg["cap"]),
+            "cap_hard_mms": float(BRIDGE_CAP_HARD_MMS),
+            "deadband_mms": float(_bg["dead"]),
+            "v_cmd_mms": [round(v_cmd[j] * 1000.0, 2) for j in range(3)],
+            "speed_cmd_mms": round(math.sqrt(sum(v * v for v in v_cmd)) * 1000.0, 2),
+            "speed_ff_mms": round(spd * 1000.0, 2),
+            "drift_mm": round(drift, 2),
+            "anchor_reset": bool(_reset),                 # 本帧重锚 (换集/回绕) ⇒ 位移会跳, 判据要排除
+            "walked_mm": round(float(st.get("walked", 0.0)), 1),
+            "truth_xyz": [round(v, 6) for v in x_truth],
+            "tcp_path": [round(v, 6) for pt in st["path"] for v in pt],
+            "note": (("桥接已开: 只取 v_ff 方向, 输出限速 ≤%.1fmm/s (仿真 %.1f ⇒ 输出 %.1f mm/s); "
+                      "累计行走 %.1fmm; 无旋转 (未建模)")
+                     % (_bg["cap"], spd * 1000.0,
+                        math.sqrt(sum(v * v for v in v_cmd)) * 1000.0,
+                        float(st.get("walked", 0.0)))) if _bg["on"] else
+                    ("桥接关: 位置按仿真 v_ff 原速积分 (只显示, 不驱动); 无旋转 (未建模); "
+                     "与仿真真值偏差 %.1fmm" % drift),
+        }
+        tmp = SS_PLAN_VFF + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(tmp, SS_PLAN_VFF)
+        return True
+    except Exception:                                                        # noqa: BLE001
+        import traceback
+        print("[plan/vff] 积分位姿发布失败:", traceback.format_exc(limit=2))
+        return False
 _TRACE_PUB_LAST: dict = {"t": 0.0}      # t/frame=节流状态; blocked/took_over=场景串台取证 (字符串)
 
 _STAGE_MAPS = None
@@ -1584,6 +1739,28 @@ class DreamView3D(QWidget):
             self._chk[key] = cb
             self._layer_on[key] = on
             pl.addWidget(cb)
+        # 🌉 2026-10-18 老倪: plan 节点上的"桥接开关" —— 连接插拔场景 v_ff 与机器人位姿;
+        #   打开后**只跟方向**, 真正输出的速度被压到 cap (默认 20mm/s), 仿真速度绝不直接输出。
+        pl.addSpacing(8)
+        _bc = bridge_cfg()
+        self.chk_bridge = QCheckBox("🌉 桥接 v_ff → 位姿 (plan 节点 · 只跟方向 · 真机 ≤10mm/s)")
+        self.chk_bridge.setChecked(bool(_bc["on"]))
+        self.chk_bridge.setToolTip(
+            "打开: 按插拔场景 v_ff 的**方向**慢速驱动 plan 节点的末端位姿\n"
+            "  · 输出速度上限 %.0f mm/s —— **真机硬上限, 配置写更大也按它执行**\n"
+            "    (画布 n_moveit.params.bridge_vff_cap_mms, 硬上限常量 BRIDGE_CAP_HARD_MMS)\n"
+            "  · 死区 %.0f mm/s: 仿真速度低于它就不动 (防噪声蠕动)\n"
+            "  · 旋转未建模, 只有位置\n"
+            "关闭: 只显示按仿真 v_ff 原速积分的位姿, 不驱动" % (_bc["cap"], _bc["dead"]))
+        self.chk_bridge.setStyleSheet(
+            "QCheckBox{color:#ffd166; font-size:13px; font-weight:600;} "
+            "QCheckBox::indicator{width:15px;height:15px;}")
+        self.chk_bridge.toggled.connect(self._toggle_bridge)
+        pl.addWidget(self.chk_bridge)
+        self.lbl_bridge = QLabel("桥接: 关 (只显示积分位姿)")
+        self.lbl_bridge.setStyleSheet("color:#8b949e; font-size:11px;")
+        self.lbl_bridge.setWordWrap(True)
+        pl.addWidget(self.lbl_bridge)
         pl.addStretch(1)
 
         # 底部时间轴信息
@@ -3081,6 +3258,25 @@ class DreamView3D(QWidget):
         except Exception:
             pass
 
+    def _toggle_bridge(self, checked):
+        """🌉 桥接开关: 写回 plan 节点参数 (唯一真源), 并在面板上显示当前限速口径。"""
+        ok = bridge_set(bool(checked))
+        try:
+            c = bridge_cfg()
+            self.lbl_bridge.setText(
+                ("桥接: 开 · 只跟 v_ff 方向 · 输出 ≤%.0fmm/s (硬上限 %.0f) · 死区 %.0fmm/s"
+                 % (c["cap"], BRIDGE_CAP_HARD_MMS, c["dead"]))
+                if checked else "桥接: 关 (只显示积分位姿)")
+        except Exception:                                                   # noqa: BLE001
+            pass
+        print("[plan/bridge] 桥接开关 → %s%s" % ("开" if checked else "关",
+                                              "" if ok else " (写回失败)"))
+        try:
+            if getattr(self, "_n", 0) > 0:
+                self._update_frame(self._idx)
+        except Exception:                                                   # noqa: BLE001
+            pass
+
     def _toggle_layer(self, key, checked):
         """图层开关 → GL 元素可见性 + **重建文字标注**。
         🐛 2026-08-25 老倪「图像层都关了以后, 文字没有消失; 文字要绑定图层」根因:
@@ -3725,6 +3921,13 @@ class DreamView3D(QWidget):
             f"前馈加速器  {u_ff_m * 1000:6.1f} mm/s\n"
             f"动作调制器  {u_fu_m * 1000:6.1f} mm/s\n"
             f"安全边界    {u_li_m * 1000:6.1f} mm/s")
+        # 🧭 2026-10-18: 同一帧用仿真 v_ff 积分出末端**位置**位姿 → plan 节点那份快照
+        #   (老倪: 「在 plan 节点增加一个根据仿真 v_ff 计算出来的、不用考虑旋转的末端执行器位姿」)
+        try:
+            publish_plan_from_vff(getattr(self, "scene_id", "") or "", i, t, x,
+                                  np.asarray(tr["u_ff_vec"][i], dtype=float)[:3])
+        except Exception as _epv:                                            # noqa: BLE001
+            print("[plan/vff] 积分位姿发布失败:", type(_epv).__name__, _epv)
         # 📡 同一帧数值落快照 ⇒ 实时监控波形页 / 外部核对读的就是屏幕上这些数 (单一真源)
         _ri = getattr(self, "_res_info", (0, 0, 0))
         publish_trace_live({

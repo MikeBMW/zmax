@@ -57,6 +57,15 @@ SS_REMOTE = os.environ.get("SS_REMOTE_DIR") or (_TAP_CANON if os.path.isdir(_TAP
 #    本守护读最新一行 → 发 ss_plan。只规划不执行(容器 allow_trajectory_execution=False)。
 PLAN_DIR = os.environ.get("SS_PLAN_DIR", os.path.join(HOME, "zmax_moveit_plan"))
 PLAN_FILE = os.path.join(PLAN_DIR, "live_plan.jsonl")
+# 🧭 2026-10-18 老倪: 「在 plan 节点增加一个, 根据仿真 v_ff 计算出来的, 不用考虑旋转的末端执行器位姿」
+#   生产者 = 控制台 (tools/gui/ss_dreamview.publish_plan_from_vff), 每帧按 p += v_ff·dt 积分;
+#   MoveIt 规划缺失/陈旧时, 本守护改发这一份 (source 标明 vff_integrate, 不冒充 MoveIt 规划)。
+PLAN_VFF_FILE = os.path.join(_TAP_CANON, "plan_from_vff.json")
+# 积分位姿是**显示/画布用**的, 不是 10Hz 真值流 ⇒ 2Hz + 末 1500 点 (否则大报文把 DDS 打满:
+#   实测 8.6Hz × 621~4000 点 ⇒ live.json 报 loss 91%)。
+PLAN_VFF_HZ = 2.0
+PLAN_VFF_MAXPTS = 1500
+_PLAN_VFF_LAST = {"t": 0.0}
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")   # ★ 单一工程根(2026-09-29 整治: 原来错指 mac-hw 共享检出)
 MODELS = os.path.join(REPO, "models")
 REPORTS = os.path.join(REPO, "reports")
@@ -679,13 +688,67 @@ class SSDaemon:
                                                   (yaw.get("ok") if isinstance(yaw, dict) else yaw))))
         return True
 
+    def _pub_plan_vff(self):
+        """🧭 仿真 v_ff 积分出的末端**位置**位姿 → DDS ss_plan (无旋转; 不冒充 MoveIt 规划)
+
+        老倪 2026-10-18: 「先不考虑旋转, 在 plan 节点增加一个根据仿真 v_ff 计算出来的末端执行器位姿」
+          · 位置 = Σ v_ff·dt, 起点锚在仿真真值 (生产者 ss_dreamview.publish_plan_from_vff)
+          · 旋转 = 未建模 ⇒ gate_same_source=0, gate_reason/note 里写明
+          · tcp_path 就是积分出来的位置轨迹 (画布 plan 节点可直接画线)
+        """
+        from ss_types import SSPlan                                     # noqa: PLC0415
+        p = PLAN_VFF_FILE if os.path.isfile(PLAN_VFF_FILE) else None
+        if not p:
+            return False
+        age = time.time() - os.path.getmtime(p)
+        if age > max(STALE_S, 10.0):
+            return False
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f) or {}
+        except Exception:                                               # noqa: BLE001
+            return False
+        now = time.time()
+        if now - _PLAN_VFF_LAST["t"] < 1.0 / PLAN_VFF_HZ:      # 节流: 显示用信号, 2Hz 够
+            return True
+        _PLAN_VFF_LAST["t"] = now
+        tp = [float(x) for x in (d.get("tcp_path") or [])]
+        if len(tp) > PLAN_VFF_MAXPTS * 3:                       # 只发最近 1500 点, 限报文长度
+            tp = tp[-PLAN_VFF_MAXPTS * 3:]
+        gx = [float(x) for x in (d.get("goal_xyz") or [])][:3]
+        if not gx:
+            return False
+        drift = float(d.get("drift_mm", -1.0))
+        brg = bool(d.get("bridge"))
+        vcmd = float(d.get("speed_cmd_mms", -1.0))
+        vff = float(d.get("speed_ff_mms", -1.0))
+        cap = float(d.get("cap_mms", -1.0))
+        why = ("仿真 v_ff 积分位姿(只有位置, 旋转未建模) · 与真机关节不同源 · "
+               "与仿真真值偏差 %.1fmm" % drift) if drift >= 0 else "仿真 v_ff 积分位姿(位置, 旋转未建模)"
+        if brg:
+            why = ("桥接开(只跟 v_ff 方向, 输出限速 ≤%.0fmm/s: 仿真 %.1f ⇒ 输出 %.1f mm/s) · "
+                   % (cap, vff, vcmd)) + why
+        else:
+            why = "桥接关(只显示积分位姿, 不驱动) · " + why
+        self.publish("ss_plan", SSPlan(
+            ts=time.time(), source=str(d.get("source") or "vff_integrate(仿真)"),
+            group="", base_frame=str(d.get("base_frame") or "base"), plan_code=1,
+            n_points=int(d.get("n_points") or (len(tp) // 3) or 0),
+            plan_time_s=round(float(len(tp) // 3) * float(d.get("dt_s") or 0.0125), 3),
+            joints_path=[], tcp_path=tp, start_joints=[], goal_xyz=gx,
+            end_err_mm=drift, fk_start_pos_err_mm=-1.0,
+            gate_same_source=0, gate_reason=why + " · 帧龄 %.1fs" % age,
+            frame_age_s=round(age, 2),
+            note=str(d.get("note") or "位置由仿真 v_ff 积分, 无旋转")))
+        return True
+
     def pub_plan(self):
         """🧭 MoveIt plan-only 轨迹 → DDS ss_plan (只规划不执行; 带同源闸)"""
         from ss_types import SSPlan                                 # noqa: PLC0415
         d, mt = read_plan()
         age = (time.time() - mt) if mt else -1.0
         if not d or age > max(STALE_S, 30.0):      # 规划比状态慢, 给到 30s 帧龄
-            return False
+            return self._pub_plan_vff()            # MoveIt 没规划 ⇒ 发仿真 v_ff 积分的末端位置位姿
         jp = [float(x) for x in (d.get("joints_path") or [])]
         tp = [float(x) for x in (d.get("tcp_path") or [])]
         n = int(d.get("n_points") or (len(jp) // 6) or -1)
