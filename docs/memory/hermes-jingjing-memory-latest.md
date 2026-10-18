@@ -68,6 +68,6 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=人工走点(8793按钮已切manual, 全程采帧+45s/轮增量); GS_MAP_MODE=auto回旧
 §
-版本号不自主升级(只按老倪指定); 当前5.50.739; tag已推远程
+版本号只按老倪指定; 当前5.50.745(tag已推)
 §
 专利12件·功能渠道74/74; 真源config/patents/patent_registry.json; patent_center.py --coverage/--export; 文档docs/patents

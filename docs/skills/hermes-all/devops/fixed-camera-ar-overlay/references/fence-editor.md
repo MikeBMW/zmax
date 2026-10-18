@@ -99,3 +99,53 @@ $('fAdd').click();                          // 之后轮询 FENCES[last]
   `mouseup`(Shift 版带 `shiftKey:true`) ⇒ 看输入框被填成合理 mm 值。
 - 离线四类路径判定(拒/拒/放行/放行) 用 `fence_store` 直接跑，别等现场。
 - 测完 **清空**(`/api/fence/clear` 或逐条 delete) —— 留着假围栏会真的拦住后续动作。
+
+## 选中 / 拖动 / 改尺寸 (画布交互层)
+
+状态：`FSEL`(选中 id) · `FDR`(拖拽中) · `VIEW.pr`(每帧投影函数)。
+
+### 命中测试
+
+```js
+// 6 个面(投影多边形含点) + 12 条棱(像素距离<6) ; 直线: 点到线段<9px
+function fenceHit(u,v){ … 取平均深度最小的命中条目 … }
+function _cornerHit(it,u,v){                 // 只对“已选中 且 投影>36px”的盒子
+  if(it.id!==FSEL) return -1;
+  const C=_boxCorners(it,FMARGIN/1000).map(VIEW.pr);
+  if(Math.min(w,h)<36) return -1;
+  for(let i=0;i<8;i++) if(Math.hypot(C[i].u-u,C[i].v-v)<8) return i;
+  return -1;
+}
+```
+
+`_boxCorners(it,mgn)` 的 8 个点顺序为 `[lo,lo,lo] [hi,lo,lo] [hi,hi,lo] [lo,hi,lo]
+[lo,lo,hi] [hi,lo,hi] [hi,hi,hi] [lo,hi,hi]` —— **不是**规整二进制，不要用位运算推各轴归属。
+
+### 拖拽
+
+- **平移**：在 `z = 盒子中心 z` 的水平面取两次射线交点，把差值加到 p1/p2 两端（尺寸不变）。
+- **Shift+拖**：竖直平面取交点（法向 = 相机水平视线 `[fwd.x,fwd.y,0]` 归一），只改 z。
+- **拖角点**：水平面取交点，只改该角点所在那一端的两个水平轴；改完做 min/max 归一化，
+  这样拖过头也不会出现负尺寸。
+- 指针坐标统一用 `getBoundingClientRect()` 推 `(clientX-left, clientY-top)`，**不要用 `e.offsetX/offsetY`**
+  （对合成事件不可靠，且窗口缩放/滚动时口径不统一）。
+- 鼠标抬起才落盘（`fenceCommit` → `/api/fence/update`），拖动过程只改本地 + 重画（否则每像素一次 HTTP）。
+- 键盘：方向键 1mm / Shift+方向键 10mm / PgUp·PgDn 抬降 Z / Delete 删（同样走 `fenceCommit`）。
+
+### 多客户端同时编辑（现场真的会发生）
+
+用户可能正开着页面在拖盒子/点「清空全部」，而你的自动化脚本也在同一个真源上写 ⇒ 日志里会出现
+“自己没发过的 clear/update”，本地对象也会被轮询替换。定式：
+- 验收时**新建自己的测试条目**（名字带 ★ 前缀）→ 验完立刻 delete，**绝不拿用户的条目做写测试**。
+- 写操作审计 `zmax_data/ar_rs/fences_audit.jsonl` 是唯一能事后说清“谁删的”的东西，排查先看它。
+
+### 验收口径（错一步就会误判成功能坏了）
+
+- **每步都回读 `/api/fence`**，不要断言本地 `FENCES[i]` 或先前捕获的 `it` —— 轮询会把对象换成新实例，
+  你会看到“尺寸没变/坐标没动”的假失败（实测踩过：真值早就改对了）。
+- 自动化点拖前先把相机定住：`VR.auto=false; drawVR();` 再算角点像素坐标 —— 自动环绕时两帧之间相机就转了，
+  算出来的像素位置已经偏开。
+- 一对可复现的数值判据：拖动后**尺寸逐轴不变**、位移方向与屏幕拖动方向一致；
+  拖 hi 角点后 **p1 不变、p2 变**且尺寸变大（实测：150×150×150 拖动后仍 150×150×150，位移 -111/-51/0mm；
+  拖 6 号角点后 p1 不动、p2 490,10 → 272,-18，尺寸 150³ → 42×173×150）。
+- 选中态要有像素证据（白色手柄 `R,G,B>235` 计数 >0，实测 915px），不能只看 `FSEL` 有值。
