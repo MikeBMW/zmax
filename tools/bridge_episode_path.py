@@ -185,9 +185,26 @@ def main():
 
         # ── 回执: 上一条 path 完成了才允许发下一条 ──
         if pending:
-            if str(_j(RES).get("id") or "") == pending:
+            _rj = _j(RES)
+            if str(_rj.get("id") or "") == pending:
+                _vd = str((_rj.get("out") or {}).get("verdict") or "")
                 pending = None
                 still_since = time.time()
+                # 🛟 手臂被手动挪/上一轮飘出包络 ⇒ 腿上"扫掠越界"会把每条都拒掉 (实测连拒 150 轮)
+                #    这时必须以**当前位置**重新锚定, 而不是拿旧锚点死磕
+                # 腿前置条件不满足 (手动模式/点动中/报警) ⇒ 别死磕刷屏, 退避 1s 并说清原因
+                if "前置条件" in _vd:
+                    print("⏸ 腿拒绝: %s ⇒ 等 1s 再试" % _vd, flush=True)
+                    time.sleep(1.0)
+                if "越界" in _vd or "包络" in _vd:
+                    try:
+                        anchor[:] = [float(x) for x in _get("/pose")["xyz"]]
+                        gbox = {ax: [anchor[i] - a.band / 1000.0, anchor[i] + a.band / 1000.0]
+                                for i, ax in enumerate("xyz")}
+                        print("↺ 腿回报\"%s\" ⇒ 以当前位置 (%.4f,%.4f,%.4f) ±%.0fmm 重新锚定"
+                              % (_vd, *anchor, a.band), flush=True)
+                    except Exception:                                     # noqa: BLE001
+                        pass
 
         if not tpl or pending or (time.time() - still_since) < 0.35 or (time.time() - last_send) < 0.3:
             continue
