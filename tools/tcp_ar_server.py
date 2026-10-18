@@ -490,7 +490,20 @@ def l5_understand(cam: str = None, hint: str = "") -> dict:
             pass
 
 
-def toolframe_px(length_mm=60.0):
+def frozen_box_center():
+    """读钉住/实时的标注框中心(像素)。老倪: 坐标系就画在标注的光模块头顶中心点上。"""
+    for p in ("/dev/shm/mod3_freeze.json", "/dev/shm/mod3_latest.json"):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            b = d.get("box2d")
+            if d.get("ok") and b:
+                return [(b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0], b
+        except Exception:                                               # noqa: BLE001
+            continue
+    return None, None
+
+
+def toolframe_px(length_mm=60.0, align_box=True):
     """tool1 坐标系投影到臂相机像素。相机在腕上 ⇒ 这套像素是**固定**的(不随位姿变)。
     数据: models/handeye_state.json(相机在 tool 系的位姿; 矩阵平移单位是米) + real_cam_calib.json 的 K/dist。"""
     import json as _j
@@ -514,9 +527,22 @@ def toolframe_px(length_mm=60.0):
         uv = uv.reshape(-1, 2)
         if float(Pc[0, 2]) <= 5:
             return {"ok": False, "err": "tool1 原点在相机背后", "cam_z_mm": float(Pc[0, 2])}
-        return {"ok": True, "origin": [float(uv[0][0]), float(uv[0][1])],
-                "axes": {"X": [float(uv[1][0]), float(uv[1][1])], "Y": [float(uv[2][0]), float(uv[2][1])],
-                         "Z": [float(uv[3][0]), float(uv[3][1])]},
+        org = [float(uv[0][0]), float(uv[0][1])]
+        ax = {"X": [float(uv[1][0]), float(uv[1][1])], "Y": [float(uv[2][0]), float(uv[2][1])],
+              "Z": [float(uv[3][0]), float(uv[3][1])]}
+        delta = [0.0, 0.0]
+        # 🔴 老倪 2026-10-18「坐标系就在你标注的光模块头顶中心点」:
+        # 手眼投出来的原点和标注框中心有 ~12px(≈5mm) 的固定偏差 ⇒ 按现场口径把原点平移到标注点上,
+        # 三轴整体平移(姿态不变), 偏差如实报出来, 不藏着。
+        if align_box:
+            bc, _b = frozen_box_center()
+            if bc:
+                delta = [bc[0] - org[0], bc[1] - org[1]]
+                org = [org[0] + delta[0], org[1] + delta[1]]
+                for k in ax:
+                    ax[k] = [ax[k][0] + delta[0], ax[k][1] + delta[1]]
+        return {"ok": True, "origin": org, "align_shift_px": [round(delta[0], 2), round(delta[1], 2)],
+                "axes": ax,
                 "length_mm": length_mm, "cam_z_mm": float(Pc[0, 2]), "img": [640, 480],
                 "src": "handeye_state.json(残差0.06mm) + real_cam_calib K(camera_info)"}
     except Exception as e:                                               # noqa: BLE001
@@ -597,7 +623,7 @@ class H(BaseHTTPRequestHandler):
                     L = float(qs.get("len", "60") or 60)
                 except Exception:                                       # noqa: BLE001
                     L = 60.0
-                self._json(toolframe_px(L))
+                self._json(toolframe_px(L, align_box=(qs.get("align", "box") != "0")))
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
                 self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
@@ -837,7 +863,7 @@ class H(BaseHTTPRequestHandler):
             if img is None:
                 self._send(503, "text/plain; charset=utf-8", "臂相机取帧失败".encode())
                 return
-            tf = toolframe_px(L)
+            tf = toolframe_px(L, align_box=True)
             if not tf.get("ok"):
                 self._send(200, "application/json", json.dumps(tf, ensure_ascii=False).encode())
                 return
