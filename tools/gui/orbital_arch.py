@@ -40,6 +40,33 @@ from PyQt5.QtWidgets import QSizePolicy, QWidget
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ── 字体/量宽缓存 (2026-10-18 实测: paintEvent 每次重绘都为每个文字块新建 QFont+QFontMetrics,
+#    单帧几十次 ⇒ 主线程烧满一个核、界面发涩。QFont/QFontMetrics 按 (字号,粗体) 复用时结果等价。)
+_FONT_CACHE = {}
+_FM_CACHE = {}
+_WRAP_CACHE = {}
+_FM_W = {}
+
+
+def _cached_font(size, bold=False):
+    k = (int(size), bool(bold))
+    f = _FONT_CACHE.get(k)
+    if f is None:
+        f = QFont("DejaVu Sans")
+        f.setPixelSize(int(size))
+        f.setBold(bool(bold))
+        _FONT_CACHE[k] = f
+    return f
+
+
+def _cached_fm(size, bold=False):
+    k = (int(size), bool(bold))
+    fm = _FM_CACHE.get(k)
+    if fm is None:
+        fm = QFontMetrics(_cached_font(size, bold))
+        _FM_CACHE[k] = fm
+    return fm
+
 # 配色 (与画布/侧栏同族, 暗底)
 BG = QColor("#0d1117")
 GRID = QColor("#243040")
@@ -614,10 +641,10 @@ class OrbitalArchView(QWidget):
         p.fillRect(0, 0, W, H, BG)
         b = self.data.body
         p.setPen(FG)
-        f = QFont("DejaVu Sans"); f.setPixelSize(12); f.setBold(True); p.setFont(f)
+        p.setFont(_cached_font(12, True))
         p.drawText(QRectF(6, 2, W - 160, 18), Qt.AlignLeft | Qt.AlignVCenter,
                    "🪐 球心引力架构 (太阳系映射)")
-        p.setPen(DIM); f2 = QFont("DejaVu Sans"); f2.setPixelSize(9); p.setFont(f2)
+        p.setPen(DIM); p.setFont(_cached_font(9))
         p.drawText(QRectF(max(0, W - 190), 2, 184, 18), Qt.AlignRight | Qt.AlignVCenter,
                    "🖱 拖动旋转 · 滚轮缩放 · 双击复位")
         # 引力井 (度量: 扁率按真特征值) + 轨道 (都在当前三维变换下)
@@ -870,13 +897,14 @@ class OrbitalArchView(QWidget):
 
     # ── 文字: 量宽 · 按分隔符换行 (宁可换行也不"…"截断) · 带底文字块 (防被线/球压) ─────
     def _fm(self, size, bold=False):
-        f = QFont("DejaVu Sans")
-        f.setPixelSize(int(size))
-        f.setBold(bool(bold))
-        return QFontMetrics(f)
+        return _cached_fm(size, bold)
 
     def _wrap(self, text, width, size=9, sep=" · "):
         """按 `sep` 切段塞进 width 像素 (量宽用 QFontMetrics) —— 塞不下不截断, 交给下一行。"""
+        _k = (str(text), round(float(width), 1), int(size), sep)
+        _hit = _WRAP_CACHE.get(_k)
+        if _hit is not None:
+            return list(_hit)                      # 值在变但行只跟 (文本,宽,字号) 有关 ⇒ 同帧复用
         fm = self._fm(size)
         words, lines, cur = [], [], ""
         for part in str(text).split(sep):
@@ -890,7 +918,11 @@ class OrbitalArchView(QWidget):
                 cur += piece
         if cur:
             lines.append(cur)
-        return lines or [""]
+        _out = lines or [""]
+        if len(_WRAP_CACHE) > 3000:          # 值在变 ⇒ 键会一直新增, 必须设上限, 否则自己变成泄漏源
+            _WRAP_CACHE.clear()
+        _WRAP_CACHE[_k] = tuple(_out)
+        return list(_out)
 
     def _foot_lines(self, W):
         """底部图注 (完整, 自动换行) —— 判据 J2 核"不许截断"。"""
@@ -943,7 +975,7 @@ class OrbitalArchView(QWidget):
             p.setBrush(QColor(13, 17, 23, 222))     # 222: 既压得住线, 又让线隐约透出来
             p.drawRoundedRect(rect, 3, 3)
         p.setPen(color)
-        f = QFont("DejaVu Sans"); f.setPixelSize(int(size)); p.setFont(f)
+        p.setFont(_cached_font(size))
         for i, t in enumerate(lines):
             p.drawText(QRectF(rect.x() + 3, rect.y() + 2 + i * 11, rect.width() - 6, 11),
                        Qt.AlignLeft | Qt.AlignVCenter, t)
@@ -1021,8 +1053,14 @@ class OrbitalArchView(QWidget):
             placed.append(_blk)
 
         def _fmw(text, size=9):
-            _f = QFont("DejaVu Sans"); _f.setPixelSize(size)
-            return QFontMetrics(_f).width(text)
+            _k = (str(text), int(size))
+            _w = _FM_W.get(_k)
+            if _w is None:
+                _w = _cached_fm(size).horizontalAdvance(str(text))
+                if len(_FM_W) > 20000:
+                    _FM_W.clear()
+                _FM_W[_k] = _w
+            return _w
 
         def _fit_lines(lines, size=9, cap=228.0, floor=90.0):
             """块宽自适应: 先按最长行定宽 (上限 cap), 再按这个宽把过长的行折行; 返回 (宽, 行表)。"""
@@ -1239,7 +1277,7 @@ class OrbitalArchView(QWidget):
         """底部图注: **完整** (自动换行, 不省略号截断) —— 行数已经算进 _geom 的底栏高度。"""
         lines = self._foot_lines(W)
         p.setPen(FOOT)
-        f = QFont("DejaVu Sans"); f.setPixelSize(9); p.setFont(f)
+        p.setFont(_cached_font(9))
         y0 = H - 8 - 11 * len(lines)
         for i, t in enumerate(lines):
             p.drawText(QRectF(4, y0 + i * 11, W - 8, 11), Qt.AlignLeft | Qt.AlignVCenter, t)

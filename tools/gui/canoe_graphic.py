@@ -71,7 +71,9 @@ MAX_KEYS = 4000       # 信号 key 上限 (超了拒绝新增并记 note, 不静
 #   "正在显示的曲线" ⇒ 每条长到 CAP=3.05MB ⇒ 829×3.05MB ≈ 2.5GB。实测 RSS 3.67GB 的主体就是它。
 #   一屏也画不下 64 条以上曲线 ⇒ 直接给"同时显示"设上限, 其余信号仍按 CAP_SOFT(512KB) 留短历史。
 MAX_CURVES = 64       # 同时画在波形页上的曲线数上限
-HOST_POLL_HZ = 50     # 本机文件源轮询频率
+HOST_POLL_HZ = 20     # 本机文件源轮询频率 (2026-10-18: 50 → 20。
+#   实测 50Hz 时这一个线程烧 ~0.25 核, 而人眼在曲线上分辨不出 50Hz 与 20Hz 的差别;
+#   数据真值不丢: 落盘文件仍按生产者节拍写, 只是进曲线库的采样密度降到 20Hz。)
 # ▶ 3D 场景播放进度真源 (与 ss_dreamview.publish_trace_live 同一份: 帧/总帧/场景时刻 时间_s/时刻 ts)
 PLAYBACK_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
