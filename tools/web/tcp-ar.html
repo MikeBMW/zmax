@@ -356,6 +356,15 @@ function drawModBox(g){
   const lx=Math.max(2,Math.min(IMG_W-tw-8,bx[0]-4)), ly=Math.max(14,bx[1]-8);
   g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(lx-3,ly-13,tw+8,17);
   g.fillStyle='#00e676'; g.fillText(lab,lx,ly);
+  // ⚠ 头部出画: 3D 框的角点 y<0 / 贴顶边 ⇒ 画面上只看到半支, 用向上箭头明确标出来
+  const cl=MOD3.clipped||[], cxp=(bx[0]+bx[2])/2;
+  if(cl.indexOf('top')>=0 || Math.min(...P.map(p=>p[1]))<-2){
+    g.strokeStyle='#ffd166'; g.fillStyle='#ffd166'; g.lineWidth=2;
+    g.beginPath(); g.moveTo(cxp,6); g.lineTo(cxp,34); g.stroke();
+    g.beginPath(); g.moveTo(cxp,2); g.lineTo(cxp-6,14); g.lineTo(cxp+6,14); g.closePath(); g.fill();
+    g.font='12px monospace';
+    g.fillText('头部出画(在画幅上方)', cxp+8, 20);
+  }
   g.restore();
   return 12;
 }
