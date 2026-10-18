@@ -348,7 +348,9 @@ function drawVR(){
   const up=[0,0,1];
   const rx=[fwd[1]*up[2]-fwd[2]*up[1], fwd[2]*up[0]-fwd[0]*up[2], fwd[0]*up[1]-fwd[1]*up[0]];
   const nl=Math.hypot(...rx)||1; const R=[rx[0]/nl,rx[1]/nl,rx[2]/nl];
-  const U=[fwd[1]*R[2]-fwd[2]*R[1], fwd[2]*R[0]-fwd[0]*R[2], fwd[0]*R[1]-fwd[1]*R[0]];
+  // ⬆ U = R × fwd (老倪 2026-10-18: 「地平面上天了」 —— 原来写成 fwd × R, pitch=0 时算出
+  //    U=(0,0,-1) 朝下, 整个视图上下颠倒; 这里改成右手系 R×fwd, U 才是真'上')
+  const U=[R[1]*fwd[2]-R[2]*fwd[1], R[2]*fwd[0]-R[0]*fwd[2], R[0]*fwd[1]-R[1]*fwd[0]];
   const F=520, CX=w/2, CY=h/2;
   function pr(P){
     const dx=P[0]-eye[0],dy=P[1]-eye[1],dz=P[2]-eye[2];
