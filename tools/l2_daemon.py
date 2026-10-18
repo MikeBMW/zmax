@@ -914,6 +914,36 @@ def _service_call(st):
     return ok, "%.1fs · success=%s · %s" % (dt, ok, (m.group(1) if m else "")[:400])
 
 
+_GRIP_SVC = {"name": None, "t": 0.0}
+
+
+def _gripper_svc_name():
+    """实际夹爪服务名 —— 现场会变：2026-10-12 是 /gripper_driver，2026-10-18 实测是 /gripper_srv。
+    写死名字 ⇒ `ros2 service call` 永远卡在 "waiting for service to become available"（实测 25~30s 后
+    报 rcl context invalid），现场表现就是"点关闭夹爪没反应"。⇒ 运行时探一次并缓存 60s。"""
+    env = os.environ.get("ZMAX_GRIPPER_SRV")
+    if env:
+        return env
+    now = time.time()
+    if _GRIP_SVC["name"] and (now - _GRIP_SVC["t"]) < 60:
+        return _GRIP_SVC["name"]
+    name = "/gripper_srv"
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST,
+                            PRE + "ros2 service list 2>/dev/null | grep -E '^/gripper'"],
+                           capture_output=True, text=True, timeout=20)
+        cands = [l.strip() for l in (r.stdout or "").splitlines() if l.strip().startswith("/gripper")]
+        if cands:
+            name = "/gripper_srv" if "/gripper_srv" in cands else cands[0]
+        else:
+            log("⚠️ 远端没列出任何 /gripper* 服务 ⇒ 按默认 %s 试（多半是夹爪驱动没起）" % name)
+    except Exception as e:                                                   # noqa: BLE001
+        log("⚠️ 探夹爪服务名失败(%s) ⇒ 按默认 %s" % (str(e)[:60], name))
+    _GRIP_SVC.update(name=name, t=now)
+    log("🤏 夹爪服务名 = %s" % name)
+    return name
+
+
 def _gripper_cmd(st):
     """夹爪步 → 远端命令行 (字段与产线 SetGripperPosition 同口径: pos/speed/force/acc/push_length/push_speed)
 
@@ -922,9 +952,9 @@ def _gripper_cmd(st):
     加 `timeout N`(timeout_s+10) 硬上限: 超时即返回失败, 通道立刻放行。
     注意口径: 客户端超时 ≠ 动作没下发 —— 判完成仍只看真值/回执(绝不重发)。
     """
-    return ('timeout %d ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
+    return ('timeout %d ros2 service call %s interfaces/srv/GripperSrv "{target_pos: %.1f, target_speed: %.1f, '
             'target_force: %.1f, target_acc: %.1f, target_push_length: %.1f, target_push_speed: %.1f}"'
-            % (int(float(st.get("timeout_s", 30)) + 10),
+            % (int(float(st.get("timeout_s", 30)) + 10), _gripper_svc_name(),
                float(st.get("pos", 1000.0)), float(st.get("speed", -1.0)), float(st.get("force", -1.0)),
                float(st.get("acc", -1.0)), float(st.get("push_length", 0.0)), float(st.get("push_speed", 40.0))))
 
@@ -1639,13 +1669,13 @@ def dispatch(reg, spec, chan):
         _dir = "夹爪"
         if "close" in sid:
             fo = float(spec.get("force", sk["param"]["force"].get("default", 40)))
-            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 0.0, '
+            call = ('timeout 30 ros2 service call %s interfaces/srv/GripperSrv "{target_pos: 0.0, '
                     'target_speed: -1.0, target_force: %s, target_acc: -1.0, target_push_length: -1.0, '
-                    'target_push_speed: -1.0}"' % fo)
+                    'target_push_speed: -1.0}"' % (_gripper_svc_name(), fo))
         else:
-            call = ('timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "{target_pos: 1000.0, '
+            call = ('timeout 30 ros2 service call %s interfaces/srv/GripperSrv "{target_pos: 1000.0, '
                     'target_speed: -1.0, target_force: -1.0, target_acc: -1.0, target_push_length: -1.0, '
-                    'target_push_speed: -1.0}"')
+                    'target_push_speed: -1.0}"' % _gripper_svc_name())
     else:
         # 点位来源: ①演示学习轨迹点 ②L2 传授点库 taught_points.json (2026-09-20 起,
         #   供"进入金手指AOI检测区"这类按现场示教的绝对点回点; 同名以传授点库为准)
