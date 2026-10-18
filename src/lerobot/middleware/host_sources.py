@@ -120,18 +120,42 @@ def read(prefix, raw):
     return flatten_json(raw, "", {}, 0, 48)
 
 
+# 🐛 2026-10-18 整机 OOM 事故的**真根因**(bpftrace 抓到的调用栈):
+#   `_PyObject_ArenaMmap ← _PyObject_Malloc ← PyDict_SetItem ← scan_once_unicode` = 高频 json 解析。
+#   信号页主循环按 ~10Hz 调 topics(), 而 topics() 对 FILES 里 14 个文件**每个都全量 json.load +
+#   flatten**, 不管文件有没有变 ⇒ 每秒上百次解析、上万个临时 dict/str ⇒ CPython 的 pymalloc arena
+#   里永远有活对象 ⇒ arena 只增不减 (实测控制台 8h53m 涨到 20.2GB / RSS 5GB/h)。
+#   修法: 按 (mtime_ns, size) 缓存解析结果 —— 文件没变就零解析, 只刷新 age_s(帧龄)。
+_RF_CACHE = {}          # abs path -> ((mtime_ns, size), {"fields", "ts"})
+_RF_CACHE_MAX = 256
+
+
 def read_file(prefix, rel, ttl=0.0):
-    """读文件 → {fields, ts, age_s} (ttl>0 时按 ttl 缓存)。"""
+    """读文件 → {fields, ts, age_s}。文件没变时**零解析**(用 mtime_ns+size 做键, 比 ttl 更准)。"""
     p = os.path.join(ROOT, rel)
     try:
         st = os.stat(p)
+    except OSError:
+        return None
+    key = (st.st_mtime_ns, st.st_size)
+    hit = _RF_CACHE.get(p)
+    if hit is not None and hit[0] == key:
+        # 命中: 只刷新帧龄 (数据没变, 复用上次解析出的 fields/ts)
+        # 返回 fields 的**浅拷贝**: 下游改自己的副本也不会污染缓存
+        return {"fields": dict(hit[1]["fields"]), "ts": hit[1]["ts"],
+                "age_s": round(max(0.0, time.time() - st.st_mtime), 2)}
+    try:
         with open(p, encoding="utf-8") as f:
             raw = json.load(f)
     except Exception:                                                       # noqa: BLE001
         return None
     fields = read(prefix, raw)
     ts = raw.get("ts") if isinstance(raw.get("ts"), (int, float)) else st.st_mtime
-    return {"fields": fields, "ts": float(ts), "age_s": round(max(0.0, time.time() - st.st_mtime), 2)}
+    if len(_RF_CACHE) >= _RF_CACHE_MAX:
+        _RF_CACHE.clear()
+    _RF_CACHE[p] = (key, {"fields": fields, "ts": float(ts)})
+    return {"fields": dict(fields), "ts": float(ts),
+            "age_s": round(max(0.0, time.time() - st.st_mtime), 2)}
 
 
 def topics(now=None):

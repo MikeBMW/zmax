@@ -88,7 +88,7 @@ def main() -> int:
     # ② 与 oracle 逐点一致 (含回绕/去重)
     random.seed(7)
     b2 = CG.SignalBuffer("r")
-    b2.arrays()                                   # 模拟"这条曲线正在显示" ⇒ 允许长到 CAP
+    b2._used = True                               # 模拟"这条曲线正在显示" ⇒ 允许长到 CAP
     orc = Oracle(10 ** 9)                         # 不截断: 判据比较"技能是 oracle 的尾巴"
     for i in range(60000):
         t = float(i // 3)                          # 制造重复 x (触发去重)
@@ -106,7 +106,7 @@ def main() -> int:
 
     # ③ 长跑: 超过 CAP 只留最后 CAP 个, 顺序正确
     b3 = CG.SignalBuffer("long")
-    b3.arrays()                                   # 在显示 ⇒ 允许长到 CAP (未显示封顶 CAP_SOFT)
+    b3._used = True                               # 在显示 ⇒ 允许长到 CAP (未显示封顶 CAP_SOFT)
     n = CAP + 1234
     for i in range(n):
         b3.push(float(i), float(i * 2))
@@ -146,7 +146,7 @@ def main() -> int:
     for i in range(CAP_SOFT + 5000):
         b6.push(float(i), float(i % 7))
     quiet_cap = len(b6.t)
-    b6.arrays()                                  # 有人开始画它
+    b6._used = True                              # 等价于被 _refresh_inner 真正画到屏上
     for i in range(CAP_SOFT + 5000, 2 * CAP_SOFT + 5000):
         b6.push(float(i), float(i % 7))
     used_cap = len(b6.t)
@@ -175,6 +175,23 @@ def main() -> int:
     ck("⑦8 小时写满后总占用 < 1.5GB (旧实现 20GB+)", tot_mb < 1536,
        f"新 {tot_mb:.0f}MB vs 旧全满 {old_mb / 1024:.1f}GB")
 
+    # ⑨ arrays() 本身不得标 _used (否则树刷新/状态栏会把 1013 个信号全变成"在显示" ⇒ 又是 3.1GB)
+    b9 = CG.SignalBuffer("tree")
+    for i in range(5000):
+        b9.push(float(i), float(i))
+    b9.arrays()
+    b9.arrays()
+    ck("⑨arrays() 不污染 _used (只有渲染路径能标)", b9._used is False
+       and len(b9.t) <= CG.CAP_SOFT, f"_used={b9._used} 容量={len(b9.t)}(≤CAP_SOFT {CG.CAP_SOFT})")
+
+    # ⑩ 树刷新/状态栏取值走直接索引 (末两点变化率) —— 与 arrays() 结果一致
+    _c = b9._cap
+    _i1, _i0 = (b9.head - 1) % _c, (b9.head - 2) % _c
+    _t_orc, _v_orc = b9.arrays()
+    ck("⑩末两点直接索引 == arrays() 末两点", float(b9.t[_i1]) == float(_t_orc[-1])
+       and float(b9.v[_i0]) == float(_v_orc[-2]),
+       f"t[-1] {float(b9.t[_i1]):.0f} vs {float(_t_orc[-1]):.0f}")
+
     # ⑧ CSV 导入不被截断 (导入=用户明确要看 ⇒ 允许长到 CAP)
     b8 = CG.SignalBuffer("csv", None, "file")
     b8._used = True
@@ -183,6 +200,20 @@ def main() -> int:
     t8, _ = b8.arrays()
     ck("⑧CSV 导入 10 万点不被 CAP_SOFT 截断", len(t8) == 100000 and len(b8.t) >= 131072,
        f"{len(t8)} 点 · 容量 {len(b8.t)}")
+
+    # ⑪ arrays() 零分配: 数据没变时复用同一缓冲 (旧实现每次 concatenate 新建 n×8 字节)
+    b11 = CG.SignalBuffer("zeroalloc")
+    b11._used = True
+    for i in range(50000):
+        b11.push(float(i), float(i))
+    t_a1, _ = b11.arrays()
+    t_a2, _ = b11.arrays()
+    same_buf = t_a1 is t_a2 or (t_a1.base is t_a2.base and t_a1.base is not None)
+    b11.push(50000.0, 50000.0)
+    t_a3, _ = b11.arrays()
+    ok11 = same_buf and float(t_a3[-1]) == 50000.0 and len(t_a3) == len(t_a1) + 1
+    ck("⑪arrays() 零分配(复用缓冲)+push 后仍正确", ok11,
+       f"同一缓冲={same_buf} · push 后点数 {len(t_a1)}→{len(t_a3)}")
 
     n_pass = sum(1 for r in ROWS if r["结果"] == "PASS")
     print("\n" + "=" * 78)
