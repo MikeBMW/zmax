@@ -1569,7 +1569,7 @@ class DreamView3D(QWidget):
              "关掉本层 = 只看控制, 不看流形几何"),
             # ── 辅助参考 ──
             ("grid",      "▦ 地面网格 (参考)",           True,  "z=0 台面参考网格 (5cm 一格)"),
-            ("axis",      "🧭 坐标轴 XYZ (参考)",        False,
+            ("axis",      "🧭 坐标轴 XYZ (参考)",        True,
              "世界坐标轴指示器 (pyqtgraph GLAxisItem), 画在原点 = 机器人底座:\n"
              "  绿 = Z 轴 (垂直向上)   黄 = Y 轴 (指向工作台)   蓝 = X 轴\n"
              "⚠️ 原点在画面外时看不到 (实测: 自动取景/俯视档 0px, 「🎥 视频同框」档可见)"),
@@ -2161,7 +2161,18 @@ class DreamView3D(QWidget):
         ax = gl.GLAxisItem()
         ax.setSize(0.20, 0.20, 0.20)
         self.view.addItem(ax)
-        self._gl_items["axis"] = [ax]      # X/Y/Z 字样由 LabelOverlay 画
+
+        # 🧭 2026-10-18 老倪: 「将坐标系 x y z 标出来, 在图上」
+        #   原点在机器人底座 (0,0,0), 自动取景/俯视档常被裁到画面外 ⇒ 只看得到一小截线。
+        #   做法: 在**交互点 (孔口) 旁**再放一套同向的小三轴 (只是平移, 不是第二套坐标),
+        #   两套三轴的 X/Y/Z 完全平行, 取景怎么变都能读到指向。
+        self._axis_anchor = np.asarray(_HOLE_MOUTH, float) + np.array([0.0, -0.125, 0.055])
+        ax2 = gl.GLAxisItem()
+        ax2.setSize(0.10, 0.10, 0.10)
+        ax2.translate(float(self._axis_anchor[0]), float(self._axis_anchor[1]),
+                      float(self._axis_anchor[2]))
+        self.view.addItem(ax2)
+        self._gl_items["axis"] = [ax, ax2]      # X/Y/Z 字样由 LabelOverlay 画
 
         # 场景层 (静态几何: 台面 + 带孔盒 + 孔口; 光模块/夹爪动态, 见 _update_frame)
         # 🔴 2026-10-12 老倪: 「摆盘…tray盘也太小了, 目测明显放不下」
@@ -3543,10 +3554,18 @@ class DreamView3D(QWidget):
                     _add(np.asarray(self._prior_now) + [0, 0, 0.02],
                          "先验动力学预测器 x̂⁻", (0.20, 0.90, 0.85))
             if self._layer_on.get("axis", False):
+                # 配色与 GLAxisItem 源码一致: 蓝=X 黄=Y 绿=Z
                 for _t, _p, _c in (("Z↑", (0, 0, 0.21), (0.30, 1.0, 0.30)),
                                    ("Y", (0, 0.21, 0), (1.0, 1.0, 0.35)),
                                    ("X", (0.21, 0, 0), (0.45, 0.55, 1.0))):
                     _add(_p, _t, _c)
+                _an = np.asarray(getattr(self, "_axis_anchor", _HOLE_MOUTH), float)
+                for _t, _d, _c in (("X+ 离孔位", (0.115, 0, 0), (0.45, 0.55, 1.0)),
+                                   ("Y+ 朝台面外", (0, 0.115, 0), (1.0, 1.0, 0.35)),
+                                   ("Z+ 竖直向上", (0, 0, 0.115), (0.30, 1.0, 0.30))):
+                    _add(_an + np.asarray(_d, float), _t, _c, False)
+                _add(_an + np.array([0.0, 0.0, -0.032]),
+                     "基座坐标系 · 原点=机器人底座 (z=0 台面上表面) · 插入方向 = −X", (0.85, 0.88, 0.92), False)
             # 四层动作: 箭尖旁标 名称 + 速度 + 方向
             for _k in ("uff", "ufb", "ufuse", "ulimit"):
                 if not self._layer_on.get(_k, False):
