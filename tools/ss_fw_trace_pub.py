@@ -75,15 +75,15 @@ def build_frame(d: dict, t_s: float) -> dict:
         "置信度": _f(d.get("confidence")),
         "内稳态紧迫度": _f(d.get("hom_urgency")),
         "内稳态否决": 1.0 if d.get("hom_veto") else 0.0,
-        "动作调制_mps": round(an, 6),
+        "动作调制_mms": round(an * 1000.0, 2),   # 🔢 mm/s (原 m/s ×1000)
         # 🔴 2026-10-15 老倪: 「动作调制器要变成 action, 至少有 x y z a b c, 怎么就一个 mps?」
         #   上面的 动作调制_mps 只是**模长** ‖action[:3]‖; 完整动作是 **4 维**
         #   [vx, vy, vz (m/s), 夹爪 0/1] (engine_latest.action, 真源 ss_engine_loop 每周期输出)。
         #   拆成分量发出来, 面板上才是真正的动作向量。姿态(rx/ry/rz)不在本出口 (由 L2 状态机/技能段 +
         #   执行器内环负责)。
-        "动作调制_x_mps": _f(act[0]) if len(act) > 0 else None,
-        "动作调制_y_mps": _f(act[1]) if len(act) > 1 else None,
-        "动作调制_z_mps": _f(act[2]) if len(act) > 2 else None,
+        "动作调制_x_mms": round(_f(act[0]) * 1000.0, 2) if len(act) > 0 else None,
+        "动作调制_y_mms": round(_f(act[1]) * 1000.0, 2) if len(act) > 1 else None,
+        "动作调制_z_mms": round(_f(act[2]) * 1000.0, 2) if len(act) > 2 else None,
         "动作调制_夹爪": _f(act[3]) if len(act) > 3 else None,
         # 🧩 动作块 (老倪 2026-10-15): 常驻回路平铺的块键 (chunk.H / chunk.块步N_mps / chunk.λN / 平滑_转角…)
         #   原样搬过来 ⇒ 信号分析里块与其它曲线同一根钟、同一画法。回路没出块 (ZMAX_CHUNK_H<=1) 时这里为空。

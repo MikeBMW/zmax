@@ -66,6 +66,11 @@ CAP_SOFT = 32768      # **没在显示**的信号上限 (30Hz ≈ 18 分钟历�
 #   ⇒ 1013 信号 × 3.05MB 又是 3.1GB。所以只有 `arrays()` 真被调用过 (正在画在屏上) 的信号
 #   才允许长到 CAP; 其余的封顶 CAP_SOFT。产品语义不变: 你在看的曲线历史长度一点没少。
 MAX_KEYS = 4000       # 信号 key 上限 (超了拒绝新增并记 note, 不静默吞)
+# 🐛 2026-10-18 三次根治的最后一环: 信号页会把 `ds.<话题>` 前缀下**全部字段**一次全选
+#   (dataspace/live.json 的 topics.* 有 829 个: hz/count/qos/allowed/hz_design…), 而这些都被当成
+#   "正在显示的曲线" ⇒ 每条长到 CAP=3.05MB ⇒ 829×3.05MB ≈ 2.5GB。实测 RSS 3.67GB 的主体就是它。
+#   一屏也画不下 64 条以上曲线 ⇒ 直接给"同时显示"设上限, 其余信号仍按 CAP_SOFT(512KB) 留短历史。
+MAX_CURVES = 64       # 同时画在波形页上的曲线数上限
 HOST_POLL_HZ = 50     # 本机文件源轮询频率
 # ▶ 3D 场景播放进度真源 (与 ss_dreamview.publish_trace_live 同一份: 帧/总帧/场景时刻 时间_s/时刻 ts)
 PLAYBACK_FILE = os.path.join(
@@ -284,13 +289,17 @@ class SignalBuffer:
     """单条曲线的环形缓冲 (numpy 预分配, 供 pyqtgraph setData 直接用视图)"""
 
     __slots__ = ("key", "t", "v", "n", "head", "color", "bold", "x_axis_of",
-                 "last_val", "vmin", "vmax", "age", "wall", "src", "scene", "_cap", "_used")
+                 "last_val", "vmin", "vmax", "age", "wall", "src", "scene", "_cap", "_used",
+                 "_ct", "_cv", "_cver")
 
     def __init__(self, key, color=None, src=""):
         self.key = key
         # 🐛 2026-10-18: 惰性分配 (原 np.zeros(CAP)=3.2MB/信号 ⇒ 1000+ 信号就 3.2GB)
         self._cap = min(CAP_MIN, CAP)
-        self._used = False           # True = 有人正在画它 (arrays() 被调用过) ⇒ 允许长到 CAP
+        self._used = False           # True = 真在屏上画 (只有 _refresh_inner 标) ⇒ 允许长到 CAP
+        self._ct = None              # arrays() 的**连续输出缓冲** (懒分配, 复用 ⇒ 每次刷新零分配)
+        self._cv = None
+        self._cver = None
         self.t = np.zeros(self._cap, dtype=np.float64)
         self.v = np.zeros(self._cap, dtype=np.float64)
         self.n = 0
@@ -354,15 +363,34 @@ class SignalBuffer:
         self.head = self.n % self._cap
 
     def arrays(self):
-        # 被画到屏上的信号 ⇒ 允许长历史 (未显示的封顶 CAP_SOFT, 见文件头 2026-10-18 说明)
-        self._used = True
-        if self.n < self._cap:
-            t, v = self.t[:self.n], self.v[:self.n]
-        else:
-            i = self.head
-            t = np.concatenate((self.t[i:], self.t[:i]))
-            v = np.concatenate((self.v[i:], self.v[:i]))
-        # ↑ 容量已按需扩到 _cap; 满 _cap 时 head 处最旧 ⇒ 上面的拼接即时间顺序
+        """按时间顺序返回 (t, v)。**零分配**: 复用连续输出缓冲 + 版本缓存。
+
+        🐛 2026-10-18 二次根治: 原来回绕时 `np.concatenate` 每次都新建 n×8 字节数组
+        (实测 strace 里 1MB 级 mmap 5.7 次/秒), 波形页每刷新一次就摊一次 ⇒ RSS 只涨不落
+        (实测 5GB/h)。改成把环形内容 copyto 进**预分配**缓冲并缓存版本 ⇒ 数据没变时零工作。
+        ⚠️ 这里**不**标 _used: 树刷新/状态栏也会调 arrays(), 若在此标记 1013 个信号全被当成
+        "在显示" ⇒ 全部长到 CAP 又是 3.1GB。标记只由真正渲染曲线的 _refresh_inner 设置。
+        """
+        cap = self._cap
+        n = self.n
+        if self._ct is None or len(self._ct) != cap:
+            self._ct = np.zeros(cap, dtype=np.float64)
+            self._cv = np.zeros(cap, dtype=np.float64)
+            self._cver = None
+        ver = (n, self.head, cap)
+        if self._cver != ver:
+            if n < cap:
+                self._ct[:n] = self.t[:n]
+                self._cv[:n] = self.v[:n]
+            else:
+                h = int(self.head)
+                if h:
+                    self._ct[:cap - h] = self.t[h:]
+                    self._cv[:cap - h] = self.v[h:]
+                self._ct[cap - h:cap] = self.t[:h]
+                self._cv[cap - h:cap] = self.v[:h]
+            self._cver = ver
+        t, v = self._ct[:n], self._cv[:n]
         if self.scene and len(t) > 1:
             # 🎬 回放场景时刻作 x: 拖滑条往回走会写入更小的 x ⇒ 按 x 排序, 曲线才是单值函数、不成锯齿
             o = np.argsort(t, kind="stable")
@@ -1151,7 +1179,9 @@ class WaveArea(QWidget):
     def _klab(k):
         """Y 轴名: 键名尾部 `_mps` ⇒ `(mm/s)` (老倪 2026-10-15: 界面不要出现 mps, 用 mm/s 毫米/秒)。"""
         _n = str(k).split(".")[-1]
-        if str(k).endswith("_mps"):
+        if str(k).endswith("_mms"):
+            _n = _n[:-4].strip() + " (mm/s)"
+        elif str(k).endswith("_mps"):      # 兼容旧快照
             _n = _n[:-4].strip() + " (mm/s)"
         return _n
 
@@ -1402,10 +1432,11 @@ class WaveArea(QWidget):
             b = store.bufs.get(k)
             if b is None or b.n == 0:
                 continue
+            b._used = True          # 🎯 真在屏上画 ⇒ 允许长到 CAP (其余信号封顶 CAP_SOFT)
             t, v = b.arrays()
             # 🧮 速度键 (键名带 _mps) 的**曲线与 Y 量程**都按 mm/s 显示 (真源 m/s ×1000;
             #   老倪: 「不要出现 mps…就是 mm/s 毫米/秒」) —— 与列表/图例/状态栏同一口径。
-            if "_mps" in str(k):
+            if str(k).endswith("_mps"):      # 🔢 只有旧口径 _mps 才 ×1000; 新口径 _mms 已是 mm/s
                 v = v * 1000.0
             if not b.scene:
                 t = t - store.t0      # ⏱ 到达时刻源: x = 相对秒 (t - t0); 场景源 x 就是场景时刻
@@ -2173,13 +2204,13 @@ class CanoeGraphicWidget(QWidget):
     #   命名真源 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
     DEFAULT_3D = ("sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
                   "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
-                  "sstrace.接触概率", "sstrace.安全边界_mps",
+                  "sstrace.接触概率", "sstrace.安全边界_mms",
                   # 🎛 2026-10-15 老倪「动作调制器 还有 八阶段状态机, 在哪里?」+「八个状态, 是哪个 topic
                   #   发出来的? 你要放到信号分析的窗口里显示」:
                   #     · ds.zmax/ss_stage.idx8 = 走 **DDS 话题** zmax/ss_stage 的八阶段序号(0..7)
                   #       (话题 → 数据空间探针 → trace.jsonl → 本页 ds.* 信号; 老倪要的"话题里显示")
-                  #     · sstrace.阶段限速_mps = 3D 面板快照里的本阶段限速 m/s (调制器限幅表)
-                  "ds.zmax/ss_stage.idx8", "sstrace.阶段限速_mps",
+                  #     · sstrace.阶段限速_mms = 3D 面板快照里的本阶段限速 m/s (调制器限幅表)
+                  "ds.zmax/ss_stage.idx8", "sstrace.阶段限速_mms",
                   # ⚡ 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: 上面 7 条来自 3D 面板快照
                   #   (trace_live.json), 3D 不播放 ⇒ 每键 1 个样本 ⇒ 画不出线。下面 3 条来自**常驻
                   #   引擎回路**的 10Hz 真值帧流 (sseng.*), 打开页面就有连续波形(每周期真值都在动)。
@@ -2210,17 +2241,35 @@ class CanoeGraphicWidget(QWidget):
     # TCP 位姿 → 八阶段 → 接触/夹持 → 前馈/调制/安全 → 其余
     DRAW_PRIORITY = (
         "sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
-        "sstrace.阶段序号", "sstrace.八阶段序号", "sstrace.阶段限速_mps",
+        "sstrace.阶段序号", "sstrace.八阶段序号", "sstrace.阶段限速_mms",
         "sstrace.接触概率", "sstrace.环境接触", "sstrace.夹持", "sstrace.夹爪",
         "sstrace.光模块头到孔_mm", "sstrace.光模块_x", "sstrace.光模块_y", "sstrace.光模块_z",
-        "sstrace.前馈速度_mps", "sstrace.动作调制_mps", "sstrace.安全边界_mps",
-        "sstrace.前馈速度_x_mps", "sstrace.前馈速度_y_mps", "sstrace.前馈速度_z_mps",
-        "sstrace.动作调制_x_mps", "sstrace.动作调制_y_mps", "sstrace.动作调制_z_mps",
+        "sstrace.前馈速度_mms", "sstrace.动作调制_mms", "sstrace.安全边界_mms",
+        "sstrace.前馈速度_x_mms", "sstrace.前馈速度_y_mms", "sstrace.前馈速度_z_mms",
+        "sstrace.动作调制_x_mms", "sstrace.动作调制_y_mms", "sstrace.动作调制_z_mms",
         "sstrace.估计误差_mm",
     )
 
+    def _trim_selected(self, added=0):
+        """同时显示的曲线数超过 MAX_CURVES ⇒ 只保留前 MAX_CURVES 条 (说清楚, 不静默)。"""
+        if len(self.selected) <= MAX_CURVES:
+            return 0
+        cut = len(self.selected) - MAX_CURVES
+        self.selected = self.selected[:MAX_CURVES]
+        try:
+            self._log(f"⚠️ 同时显示上限 {MAX_CURVES} 条曲线, 已裁掉后 {cut} 条"
+                      f" (其余信号仍在树里看最新值/帧龄)")
+        except Exception:
+            pass
+        return cut
+
     def _draw_order(self):
-        """给波形用的顺序: 先按 DRAW_PRIORITY 排, 其余保持树上顺序。"""
+        """给波形用的顺序: 先按 DRAW_PRIORITY 排, 其余保持树上顺序。
+
+        🎯 这里是"同时显示"的唯一收口: 超过 MAX_CURVES 先裁掉 (否则 829 个 DDS 元数据字段
+        全被当曲线画, 每条 3.05MB ⇒ 2.5GB, 2026-10-18 实测)。
+        """
+        self._trim_selected()
         keys = [str(k) for k in self.selected]
         rank = {k: i for i, k in enumerate(self.DRAW_PRIORITY)}
         return sorted(keys, key=lambda k: (rank.get(k, 999), keys.index(k)))
@@ -2424,6 +2473,7 @@ class CanoeGraphicWidget(QWidget):
                                 self.selected.remove(k); removed += 1
                         elif k not in self.selected:
                             self.selected.append(k); added += 1
+        self._trim_selected()
         if watch:
             self._watch_prefixes.update(watch)
         if self.scope == "3d" and (added or removed):
@@ -2881,7 +2931,9 @@ class CanoeGraphicWidget(QWidget):
                 if key.startswith(pre):
                     name = key[len(pre):]
                     break
-        if self._is_ms(key):
+        if str(key).endswith("_mms") or "_mms." in str(key):
+            name = name.replace("_mms", "").strip() + " (mm/s)"
+        elif self._is_ms(key):
             name = name.replace("_mps", "").strip() + " (mm/s)"
         return name
 
@@ -3774,7 +3826,7 @@ class CanoeGraphicWidget(QWidget):
     def _stage_now(self):
         """🎛 八阶段状态机现状 —— 老倪 2026-10-15: 「是八阶段信号么? 也没有显示状态啊」
 
-        真源 = 3D 面板快照 trace_live.json 的 阶段 / 八阶段序号 / 阶段限速_mps
+        真源 = 3D 面板快照 trace_live.json 的 阶段 / 八阶段序号 / 阶段限速_mms
         (阶段名 = ActionModulator.STAGES, 真源 cognition.py:31)。按 mtime 缓存 0.1s 省 IO。
         **停更就明说停更 + 帧龄**, 不拿旧阶段冒充"现在"。
         返回 (文本, 是否新鲜)。
@@ -3796,7 +3848,7 @@ class CanoeGraphicWidget(QWidget):
             self._stage_d = d
             nm = str(d.get("阶段") or "?").split(" ·")[0].strip() or "?"
             i8 = d.get("八阶段序号")
-            cap = d.get("阶段限速_mps")
+            cap = d.get("阶段限速_mms")
             age = time.time() - mt
             fresh = age < 5.0
             txt = "🎛 状态机: %s (%s/7)" % (nm, ("%d" % i8) if isinstance(i8, (int, float)) and i8 >= 0 else "?")
@@ -3837,9 +3889,9 @@ class CanoeGraphicWidget(QWidget):
         for k in keys:
             _b = self.store.bufs.get(k)
             if _b is not None and _b.n:
-                _t, _ = _b.arrays()
-                if len(_t):
-                    newest = float(_t[-1]) if newest is None else max(newest, float(_t[-1]))
+                # 🐛 2026-10-18: 同上, 只看最新的 t ⇒ 直接索引 (原 arrays() 每帧 × 每个 key 一次分配)
+                _tl = float(_b.t[(_b.head - 1) % _b._cap])
+                newest = _tl if newest is None else max(newest, _tl)
         clk = f" · 🕒 数据时刻 {clock_str(newest)}" if newest is not None else ""
         pb = getattr(self, "pb", None) or {}
         if pb.get("fresh") and pb.get("t_s") is not None:
@@ -3925,10 +3977,14 @@ class CanoeGraphicWidget(QWidget):
             _rtxt = "-"
             try:
                 if b.n >= 2:
-                    _tarr, _varr = b.arrays()
-                    _dt = float(_tarr[b.n - 1] - _tarr[b.n - 2])
+                    # 🐛 2026-10-18: 原来为了算"变化率"调 arrays() ⇒ 每帧对每个信号做一次
+                    #   concatenate(1.6MB)。改成直接索引末两点: 零分配 O(1), 也不触发 _used。
+                    _c = b._cap
+                    _i1 = (b.head - 1) % _c
+                    _i0 = (b.head - 2) % _c
+                    _dt = float(b.t[_i1] - b.t[_i0])
                     if _dt > 1e-6:
-                        _rv = (float(_varr[b.n - 1]) - float(_varr[b.n - 2])) * _sc / _dt
+                        _rv = (float(b.v[_i1]) - float(b.v[_i0])) * _sc / _dt
                         _rtxt = (f"{_rv:+.4g}" if abs(_rv) < 1e5 else f"{_rv:+.3g}")
             except Exception:                                         # noqa: BLE001
                 _rtxt = "-"

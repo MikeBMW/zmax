@@ -30,7 +30,7 @@ STAGE_EN = {
 FIELD_EN = {
     # ── 帧/时钟 ──
     "帧": "frame_idx", "总帧": "frame_total", "时间_s": "t_s", "阶段": "stage",
-    "阶段序号": "stage_idx", "八阶段序号": "stage8_idx", "阶段限速_mps": "stage_speed_limit",
+    "阶段序号": "stage_idx", "八阶段序号": "stage8_idx", "阶段限速_mms": "stage_speed_limit",
     # ── 末端位姿 (生产者: ss_dreamview.publish_trace_live 的 x[0..2] / peg_grasp / peg_h) ──
     "末端_x": "end_x", "末端_y": "end_y", "末端_z": "end_z", "末端_len": "end_norm",
     "光模块_x": "peg_x", "光模块_y": "peg_y", "光模块_z": "peg_z",
@@ -44,14 +44,14 @@ FIELD_EN = {
     "残差": "residual", "残差系统偏差_mm": "residual_bias_mm",
     "残差系统占比_pct": "residual_bias_pct",
     # ── 前馈加速器 / 动作调制器 / 安全层 (真源: u_ff_vec / u_fuse_vec / u_limit_vec) ──
-    "前馈速度_mps": "u_ff_norm", "前馈速度_x_mps": "u_ff_x",
-    "前馈速度_y_mps": "u_ff_y", "前馈速度_z_mps": "u_ff_z",
+    "前馈速度_mms": "u_ff_norm", "前馈速度_x_mms": "u_ff_x",
+    "前馈速度_y_mms": "u_ff_y", "前馈速度_z_mms": "u_ff_z",
     "前馈速度_夹爪": "u_ff_gripper",
-    "动作调制_mps": "u_fuse_norm", "动作调制_x_mps": "u_fuse_x",
-    "动作调制_y_mps": "u_fuse_y", "动作调制_z_mps": "u_fuse_z",
+    "动作调制_mms": "u_fuse_norm", "动作调制_x_mms": "u_fuse_x",
+    "动作调制_y_mms": "u_fuse_y", "动作调制_z_mms": "u_fuse_z",
     "动作调制_夹爪": "u_fuse_gripper",
-    "安全边界_mps": "u_limit_norm", "安全边界_x_mps": "u_limit_x",
-    "安全边界_y_mps": "u_limit_y", "安全边界_z_mps": "u_limit_z",
+    "安全边界_mms": "u_limit_norm", "安全边界_x_mms": "u_limit_x",
+    "安全边界_y_mms": "u_limit_y", "安全边界_z_mms": "u_limit_z",
     # ── 流形引擎 (zmax/ss_engine) ──
     "控制周期": "ctrl_period_s", "循环耗时_ms": "loop_ms", "控制环_hz": "loop_hz",
     "势能_phi": "phi", "梯度范数": "grad_norm", "动量M": "momentum_M",
@@ -80,9 +80,9 @@ FIELD_EN = {
 
 # 证据: 这些英文名不是翻出来的, 是生产者代码里就有的标识 (改代码时同步这里)
 _EVIDENCE = {
-    "u_ff_norm": "ss_dreamview.publish_trace_live: 前馈速度_mps = ‖u_ff_vec[:3]‖",
-    "u_fuse_norm": "同上: 动作调制_mps = ‖u_fuse_vec[:3]‖",
-    "u_limit_norm": "同上: 安全边界_mps = ‖u_limit_vec[:3]‖",
+    "u_ff_norm": "ss_dreamview.publish_trace_live: 前馈速度_mms = ‖u_ff_vec[:3]‖ (mm/s, 生产者已 ×1000)",
+    "u_fuse_norm": "同上: 动作调制_mms = ‖u_fuse_vec[:3]‖ (mm/s)",
+    "u_limit_norm": "同上: 安全边界_mms = ‖u_limit_vec[:3]‖ (mm/s)",
     "grasp_prob": "同上: 接触概率 = cp (状态校正器输出的接触概率)",
     "phi": "ss_engine: 势能 φ (Lyapunov)", "grad_norm": "ss_engine: ∇φ 范数",
 }

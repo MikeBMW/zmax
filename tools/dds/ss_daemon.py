@@ -1008,7 +1008,7 @@ class SSDaemon:
         idx8 = _i(d.get("八阶段序号"), -1)
         self.publish("ss_stage", SSStage(
             ts=time.time(), idx=int(idx), idx8=int(idx8), name=name[:32],
-            v_cap=_f(d.get("阶段限速_mps"), -1.0), done=1 if name == "完成" else 0,
+            v_cap=_f(d.get("阶段限速_mms"), -1000.0) / 1000.0, done=1 if name == "完成" else 0,  # 🔢 快照 mm/s ⇒ DDS 口径仍 m/s
             age_s=float(age), source="zmax_data/ss_live/trace_live.json (3D 面板快照)",
             note="真源 ActionModulator.STAGES (cognition.py:31) · 十三段 idx=%d · 插拔八段 idx8=%d"
                  % (idx, idx8)))

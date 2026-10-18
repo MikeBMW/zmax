@@ -3745,9 +3745,9 @@ class DreamView3D(QWidget):
             "净接触": round(max(0.0, min(1.0, (cp - 0.58) / 0.42)), 4),
             "残差系统偏差_mm": round(float(_ri[1]), 3),
             "残差系统占比_pct": round(float(_ri[2]) * 100, 1),
-            "前馈速度_mps": round(float(u_ff_m), 5),
-            "动作调制_mps": round(float(u_fu_m), 5),
-            "安全边界_mps": round(float(u_li_m), 5),
+            "前馈速度_mms": round(float(u_ff_m) * 1000.0, 2),   # 🔢 2026-10-18 老倪: 速度口径统一 mm/s (不再出现 mps)
+            "动作调制_mms": round(float(u_fu_m) * 1000.0, 2),
+            "安全边界_mms": round(float(u_li_m) * 1000.0, 2),
             # 🔴 2026-10-15 老倪: 「动作调制器的输出这个 mps 怎么理解? 要变成 action, 至少有 x y z a b c,
             #   怎么就一个 mps?」—— mps 只是**模长** ‖u[:3]‖(合速度大小), 不是动作本身。
             #   真源里动作是 **4 维**: u = [vx, vy, vz 速度(m/s), 夹爪 0/1]
@@ -3755,16 +3755,16 @@ class DreamView3D(QWidget):
             #    2876 行 `u_ff = np.concatenate([_m3, [u_ff[3]]])` 也是 3 平移 + 1 夹爪)。
             #   这里把分量拆开发 ⇒ 面板上能看到完整动作向量, 而不是只有一个模长。
             #   姿态(rx/ry/rz)不在这条出口: 姿态由 L2 状态机/技能段 + 执行器内环(真机 tcp_pose 50Hz)负责。
-            **{"前馈速度_%s_mps" % _ax: round(float(np.asarray(tr["u_ff_vec"][i], dtype=float)[_j]), 6)
+            **{"前馈速度_%s_mms" % _ax: round(float(np.asarray(tr["u_ff_vec"][i], dtype=float)[_j]) * 1000.0, 2)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
-            **{"动作调制_%s_mps" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]), 6)
+            **{"动作调制_%s_mms" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]) * 1000.0, 2)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
             "动作调制_夹爪": round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[3]), 4),
             # 🎛 八阶段状态机 (数值通道, 让状态机在波形上看得到; 真源见 _stage_maps())
             "阶段序号": float(_sidx),
             "八阶段序号": float(_p8idx),
-            "阶段限速_mps": (round(float(_cap_d[_stg_key]), 4) if _stg_key in _cap_d else None),
-            **{"安全边界_%s_mps" % _ax: round(float(np.asarray(tr["u_limit_vec"][i], dtype=float)[_j]), 6)
+            "阶段限速_mms": (round(float(_cap_d[_stg_key]) * 1000.0, 1) if _stg_key in _cap_d else None),
+            **{"安全边界_%s_mms" % _ax: round(float(np.asarray(tr["u_limit_vec"][i], dtype=float)[_j]) * 1000.0, 2)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
         })
         self.lbl_t.setText(f"数据源: {self._src}")

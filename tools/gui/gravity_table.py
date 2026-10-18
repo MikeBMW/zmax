@@ -294,8 +294,8 @@ class GravityField(object):
             _xyz = [tr.get("%s_x_mps" % _suf), tr.get("%s_y_mps" % _suf), tr.get("%s_z_mps" % _suf)]
             if all(x is not None for x in _xyz):
                 _snap[_nm] = [float(x) for x in _xyz]
-        if tr.get("阶段限速_mps") is not None:
-            _snap["阶段限速"] = float(tr["阶段限速_mps"])
+        if tr.get("阶段限速_mms") is not None:
+            _snap["阶段限速"] = float(tr["阶段限速_mms"]) / 1000.0   # 🔢 快照 mm/s ⇒ 内部 m/s
         out["snap"] = _snap
         z = _npz_cached(SRC_LIVE["npz"])
         if not z:

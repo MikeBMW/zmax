@@ -88,8 +88,8 @@ ck("gravity 不在这两个窗口 (L4, Tx 无 L2 节点)",
    w._out_node("gravity.下降·L2 力大小_mps") == "—"
    and not _at.show_in_l2("gravity.下降·L2 力大小_mps"),
    f"Tx={w._out_node('gravity.下降·L2 力大小_mps')} 显示={_at.show_in_l2('gravity.下降·L2 力大小_mps')}")
-ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mps") == "前馈加速器",
-   w._out_node("sstrace.前馈速度_mps"))
+ck("前馈速度的 Tx = 前馈加速器", w._out_node("sstrace.前馈速度_mms") == "前馈加速器",
+   w._out_node("sstrace.前馈速度_mms"))
 ck("每行 7 列都有内容", all(all(x.strip() for x in r) for r in found[:50]),
    str(found[:1]))
 # 🟢 插拔场景: 全部动态信号都在"显示状态" (勾上), 波形优先画 TCP/八阶段

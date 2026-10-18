@@ -28,7 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
 GREEN = "#2e8b57"
-MOD = ["动作调制_mps", "前馈速度_mps", "安全边界_mps"]
+MOD = ["动作调制_mms", "前馈速度_mms", "安全边界_mms"]
 SHARED = ["光模块_x", "末端_x", "接触概率", "时间_s", "帧"]
 
 
@@ -254,7 +254,7 @@ def main() -> int:
             if not os.path.exists(_p):
                 return None
             _d = json.load(open(_p, encoding="utf-8"))
-            _need = ["动作调制_x_mps", "动作调制_y_mps", "动作调制_z_mps", "动作调制_夹爪"]
+            _need = ["动作调制_x_mms", "动作调制_y_mms", "动作调制_z_mms", "动作调制_夹爪"]
             if not all(k in _d for k in _need):
                 # 兼容不带 _mps 的旧写法 (面板早期版本)
                 _need = ["动作调制_x", "动作调制_y", "动作调制_z", "动作调制_夹爪"]
@@ -262,9 +262,9 @@ def main() -> int:
                     return None
             _v = [float(_d[k]) for k in _need[:3]]
             _m = math.sqrt(sum(x * x for x in _v))
-            _pub = float(_d.get("动作调制_mps") or 0.0)
+            _pub = float(_d.get("动作调制_mms") or 0.0)
             _good = abs(_m - _pub) < 1e-4
-            print("   %s [%s] ‖(x,y,z)‖ = %.6f == 动作调制_mps %.6f · 夹爪 %s" % (
+            print("   %s [%s] ‖(x,y,z)‖ = %.6f == 动作调制_mms %.6f · 夹爪 %s" % (
                 "✅" if _good else "❌", _tag, _m, _pub, _d["动作调制_夹爪"]))
             return _good
         _eng = _mag_ok(os.path.join(_j, "engine_trace.json"), "常驻回路")

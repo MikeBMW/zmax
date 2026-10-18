@@ -116,9 +116,9 @@ for r in range(t.rowCount()):
         pass
 ck("数值口径一致 (±25%, 允许一拍采样差)", len(_num_bad) <= 3,
    "越界 %d 例 %s" % (len(_num_bad), _num_bad[:3]))
-ck("同一条信号两窗口同名", A.tx_of("sstrace.前馈速度_mps") == "前馈加速器"
-   and A.rx_of("sstrace.前馈速度_mps") == w._src_hint("sstrace.前馈速度_mps"),
-   (A.tx_of("sstrace.前馈速度_mps"), A.rx_of("sstrace.前馈速度_mps")))
+ck("同一条信号两窗口同名", A.tx_of("sstrace.前馈速度_mms") == "前馈加速器"
+   and A.rx_of("sstrace.前馈速度_mms") == w._src_hint("sstrace.前馈速度_mms"),
+   (A.tx_of("sstrace.前馈速度_mms"), A.rx_of("sstrace.前馈速度_mms")))
 
 print("\n%s" % ("✅ 全部通过" if not FAIL else "❌ 失败: %s" % FAIL))
 sys.exit(0 if not FAIL else 1)
