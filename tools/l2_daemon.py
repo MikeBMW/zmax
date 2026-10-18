@@ -284,6 +284,7 @@ def build_move(sk, spec, pts, cur=None, curq=None):
         #   (SK0x.next_target(points=点位库, spec=阶段)), 点位名解析口径与上面完全一致;
         #   没这个字段的技能 (97 条在役全都没有) 行为**逐位不变**。
         _ak = str(sk.get("atomic") or "")
+        _atomic_hit = False
         if _ak:
             _m = _atomic_skills()
             _cls = getattr(_m, _ak, None) if _m is not None else None
@@ -292,10 +293,15 @@ def build_move(sk, spec, pts, cur=None, curq=None):
                 if _tg is not None:
                     # 只覆盖位置; 姿态仍走下面的既定规则 (技能标 quat:"taught" 才取示教姿态)
                     t = list(_tg["xyz"])
-                    log("🎯 %s 目标位姿 ← %s (原子技能执行口, %s)" % (sk.get("id"), _ak, _tg.get("src")))
-                    _ak = ""                     # 已用技能口 ⇒ 不再走"退回原点位解析"那条日志
-                log("⚠ %s 原子技能 %s 没给出目标 (点位 %s) → 退回原点位解析" % (sk.get("id"), _ak, name))
-        t = list(pts[name]["pos"])
+                    _atomic_hit = True
+                    log("🎯 %s 目标位姿 ← %s (原子技能执行口, %s · 偏置 %s mm)" % (
+                        sk.get("id"), _ak, _tg.get("src"),
+                        [round(float(v) * 1000, 1) for v in (_tg.get("off") or [0, 0, 0])]))
+                else:
+                    log("⚠ %s 原子技能 %s 没给出目标 (点位 %s) → 退回原点位解析" % (sk.get("id"), _ak, name))
+        # 2026-10-18: 只有技能口**没**给目标才落回点位库 —— 原来这行无条件覆盖, 技能口等于白算
+        if not _atomic_hit:
+            t = list(pts[name]["pos"])
         # 2026-09-20 老倪: "回到能看清光模块的位姿" = 位置+姿态都要回到示教点。
         # 默认沿用旧行为(位置用示教点 · 姿态保持当前), 技能上标 "quat":"taught" 才恢复示教姿态
         # —— 不改既有 goto_point/home 的行为(避免给老技能加姿态旋转风险)。

@@ -181,37 +181,46 @@ def main():
     a = ap.parse_args()
 
     st_name, st_src = _stage_of(a)
-    if a.goal_xyz and a.goal_quat:
-        goal, gq = [float(x) for x in a.goal_xyz], [float(x) for x in a.goal_quat]
-        gname = "cli"
-    elif st_name:
-        # 🎯 技能口: 目标位姿 = 示教点(--to) + 本段偏置 (与仿真/真机同一份规则)
-        _sk = _atomic()
-        _cls = getattr(_sk, "skill_for", lambda *_: None)(st_name) if _sk is not None else None
-        if _cls is None or not getattr(_cls, "TARGET", None):
-            print("✗ 段「%s」没有技能类或没声明目标规则 (拔出/AOI 等 5 段尚未接) → 用 --to/--goal-xyz" % st_name)
-            return 2
-        _t = taught(a.to)
-        if not _t:
-            print("✗ 示教点不存在: %s (见 %s)" % (a.to, TAUGHT))
-            return 2
-        _pts = {a.to: {"pos": [float(v) for v in _t[0]], "quat": [float(v) for v in _t[1]]}}
-        _tg = _cls.next_target(points=_pts, spec={"point": a.to})
-        if _tg is None:
-            print("✗ 技能口解不出目标 (段 %s @ %s)" % (st_name, a.to))
-            return 2
-        goal, gq = [float(v) for v in _tg["xyz"]], [float(v) for v in (_tg.get("quat") or _t[1])]
-        gname = "skill:%s@%s" % (getattr(_cls, "code", "?"), a.to)
-        print("🎯 段=%s (来源 %s) · 技能口参考=%s · 偏置=%s mm" % (
-            st_name, st_src, _tg.get("src"),
-            [round(float(v) * 1000, 1) for v in _tg.get("off", [0, 0, 0])]))
-    else:
-        t = taught(a.to)
-        if not t:
-            print("✗ 示教点不存在: %s (见 %s)" % (a.to, TAUGHT))
-            return 2
-        goal, gq = t
-        gname = a.to
+    def _resolve(st_name, st_src):
+        """🎯 2026-10-18 老倪: 「引擎跑起来发布 skill_gate.json → MoveIt 目标自动切技能口」
+        --auto 每拍重解一次段; 解不出返回 None (保持上一拍目标, 不猜)."""
+        if a.goal_xyz and a.goal_quat:
+            goal, gq = [float(x) for x in a.goal_xyz], [float(x) for x in a.goal_quat]
+            gname = "cli"
+        elif st_name:
+            # 🎯 技能口: 目标位姿 = 示教点(--to) + 本段偏置 (与仿真/真机同一份规则)
+            _sk = _atomic()
+            _cls = getattr(_sk, "skill_for", lambda *_: None)(st_name) if _sk is not None else None
+            if _cls is None or not getattr(_cls, "TARGET", None):
+                print("✗ 段「%s」没有技能类或没声明目标规则 (拔出/AOI 等 5 段尚未接) → 用 --to/--goal-xyz" % st_name)
+                return None
+            _t = taught(a.to)
+            if not _t:
+                print("✗ 示教点不存在: %s (见 %s)" % (a.to, TAUGHT))
+                return None
+            _pts = {a.to: {"pos": [float(v) for v in _t[0]], "quat": [float(v) for v in _t[1]]}}
+            _tg = _cls.next_target(points=_pts, spec={"point": a.to})
+            if _tg is None:
+                print("✗ 技能口解不出目标 (段 %s @ %s)" % (st_name, a.to))
+                return None
+            goal, gq = [float(v) for v in _tg["xyz"]], [float(v) for v in (_tg.get("quat") or _t[1])]
+            gname = "skill:%s@%s" % (getattr(_cls, "code", "?"), a.to)
+            print("🎯 段=%s (来源 %s) · 技能口参考=%s · 偏置=%s mm" % (
+                st_name, st_src, _tg.get("src"),
+                [round(float(v) * 1000, 1) for v in _tg.get("off", [0, 0, 0])]))
+        else:
+            t = taught(a.to)
+            if not t:
+                print("✗ 示教点不存在: %s (见 %s)" % (a.to, TAUGHT))
+                return None
+            goal, gq = t
+            gname = a.to
+        return goal, gq, gname
+
+    _r = _resolve(st_name, st_src)
+    if _r is None:
+        return 2
+    goal, gq, gname = _r
     os.makedirs(PLAN_DIR, exist_ok=True)
     print("🎯 目标 = 示教点 %s · xyz=%s quat=%s" % (gname, [round(v, 5) for v in goal],
                                                     [round(v, 5) for v in gq]))
@@ -229,6 +238,14 @@ def main():
             return 2
     n = 0
     while True:
+        if a.auto:                                    # 🎯 段跟着引擎走 (原来只在启动时读一次)
+            _s2, _src2 = _stage_of(a)
+            if _s2 and _s2 != st_name:
+                _r2 = _resolve(_s2, _src2)
+                if _r2 is not None:
+                    st_name, st_src = _s2, _src2
+                    goal, gq, gname = _r2
+                    print("🎯 段切换 → %s (来源 %s) · 目标 = %s" % (st_name, st_src, gname))
         st = _hist or real_state()
         if st:
             rec = {"ts": time.time(), "goal_name": gname, "goal_xyz": goal, "goal_quat": gq,

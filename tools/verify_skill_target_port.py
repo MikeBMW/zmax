@@ -178,10 +178,23 @@ def main() -> int:
             e = base + np.asarray(_exp[st], dtype=float)
             if float(np.max(np.abs(np.asarray(t["xyz"]) - e))) > 1e-12:
                 pt_ok = False
+    # 📚 2026-10-18 老倪: 「选 slot1 一条技能加 atomic 字段, 在真机上小范围验技能口」
+    #   opt-in 口径不变: 只有 L2.slot1 声明 atomic (SK03Descend), 其余 96 条逐位不变;
+    #   声明了就必须**真的**走技能口 (目标 = 点位 + descend_h), 不许被点位库覆盖。
+    _dm = _load_by_path("l2d_verify", os.path.join(REPO, "tools/l2_daemon.py"))
+    _at_ok, _at_msg = True, ""
+    if len(with_atomic) == 1:
+        _sid = with_atomic[0]
+        _sk = [s for _, s in items if isinstance(s, dict) and s.get("id") == _sid][0]
+        _res = _dm.build_move(_sk, {"point": _sk.get("point")}, _dm._load_points())
+        _p0 = [float(v) for v in _dm._load_points()[_sk["point"]]["pos"]]
+        _exp_z = SK.SK03Descend.params["descend_h"]
+        _at_ok = _res is not None and abs((float(_res[0][2]) - _p0[2]) - _exp_z) < 1e-9
+        _at_msg = f"{_sid} → {_sk.get('atomic')} · 目标 z 偏置 {(float(_res[0][2]) - _p0[2]) * 1000:.1f}mm (应 {_exp_z * 1000:.1f}mm)" if _res else f"{_sid} 解不出目标"
     ck("⑥真机点位解析 (opt-in 才变) 成立",
-       len(with_atomic) == 0 and n_abs > 0 and pt_ok,
-       f"在役技能 {len(items)} 条 · 声明 atomic 的 {len(with_atomic)} 条 (0=行为不变) · "
-       f"line_abs {n_abs} 条 · 点库解析一致 {pt_ok}")
+       len(with_atomic) == 1 and with_atomic == ["L2.slot1"] and _at_ok and n_abs > 0 and pt_ok,
+       f"在役技能 {len(items)} 条 · 声明 atomic 的 {len(with_atomic)} 条 {with_atomic} · "
+       f"line_abs {n_abs} 条 · 点库解析一致 {pt_ok} · {_at_msg}")
 
     # ── ⑦ command 可用 (指向目标/到容差归零/不超 v_cap) ─────────────────
     ctx = {"peg": np.array([0.1, 0.2, 0.03]), "head_off": np.asarray(PEG_HEAD_OFF), "table_z": TABLE_Z,
@@ -204,10 +217,15 @@ def main() -> int:
     _ld._ASKILLS = SK                      # 直接复用已加载的技能库, 不重复 exec
     _cur = [0.648842, 0.498298, 0.110398]
     _curq = [-0.7392228, 0.0034525, -0.6733947, 0.0087927]
-    n_checked = n_eq = n_none = n_both_none = 0
+    n_checked = n_eq = n_none = n_both_none = n_atomic = 0
     diffs = []
     for sid, sk in items:
         if not isinstance(sk, dict):
+            continue
+        if sk.get("atomic"):
+            # opt-in 声明的技能本来就该变 (目标 = 点位 + 本段偏置) —— 不参与"逐位不变"比对,
+            # 它的偏移由 ⑥ 单独验 (L2.slot1 → SK03Descend +4.0mm)
+            n_atomic += 1
             continue
         n_checked += 1
         spec = {"d_mm": 50}
@@ -233,8 +251,8 @@ def main() -> int:
             n_eq += 1
         else:
             diffs.append((sid, d))
-    ck("⑧97 条技能全覆盖且与旧口径一致", not diffs and n_eq > 0,
-       f"检查 {n_checked} 条 · 逐位一致 {n_eq} · 两边都拒(点位不在库) {n_both_none} · "
+    ck("⑧97 条技能全覆盖且与旧口径一致", not diffs and n_eq > 0 and n_atomic == len(with_atomic),
+       f"检查 {n_checked} 条 · 逐位一致 {n_eq} · opt-in(不参与逐位) {n_atomic} · 两边都拒(点位不在库) {n_both_none} · "
        f"无位姿目标(服务型) {n_none} · 不一致 {diffs[:3] or '无'}")
 
     n_pass = sum(1 for r in ROWS if r["结果"] == "PASS")
