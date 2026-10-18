@@ -735,6 +735,20 @@ class H(BaseHTTPRequestHandler):
             except Exception:                                                      # noqa: BLE001
                 pass
             TD.set_state(baseline_n=rec)
+            # 🧹 真机实测轨迹(橙色)也要清: 只清仿真 trace 的话, 橙色线还在 ⇒ 按钮看着"点了没用"
+            #    ① 立刻把 JSON 清空(页面下一次轮询就看不到)
+            #    ② 写控制文件通知录制器丢缓冲(不然它 1s 后又把内存里的点写回来)
+            try:
+                _rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
+                _now = time.time()
+                with open(_rp + ".ctl", "w", encoding="utf-8") as _f:
+                    json.dump({"clear_at": _now}, _f)
+                with open(_rp, "w", encoding="utf-8") as _f:
+                    json.dump({"ok": 1, "src": "已清除", "n": 0, "pts": [], "t0": None, "t1": None,
+                               "len_mm": 0.0, "stage": "", "at": time.strftime("%H:%M:%S")},
+                              _f, ensure_ascii=False)
+            except Exception:                                                      # noqa: BLE001
+                pass
             pub = self._publish_once(True) if TD.get_state()["show"] else None
             # 🔴 2026-09-29 现场「删除轨迹删不掉」的真根因: 这条路**只改了清除线**, 真正把折线从叠加规格里
             #    挪走的是发布器(live_trace_publisher); 而发布器要读录制器(容器内)落的 /tmp/live_trace.json,

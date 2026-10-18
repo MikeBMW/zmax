@@ -43,6 +43,7 @@ def main():
     if "--hz" in sys.argv:
         hz = float(sys.argv[sys.argv.index("--hz") + 1])
     pts, ts = [], []
+    _last_clear = 0.0
     t_last_write = 0.0
     last = None
     print("🎯 录真机 TCP 轨迹 → %s (%.0fHz, 移动阈值 %.1fmm)" % (OUT, hz, MOVE_MM), flush=True)
@@ -61,6 +62,17 @@ def main():
             if len(pts) > MAXN:
                 pts = pts[-MAXN:]
                 ts = ts[-MAXN:]
+        # 🧹 页面点『清除轨迹』会写 .ctl 控制文件 ⇒ 这里丢掉缓冲, 否则 1 秒后又把旧点写回去
+        try:
+            _ctl = json.load(open(OUT + ".ctl", encoding="utf-8"))
+            _ca = float(_ctl.get("clear_at") or 0)
+            if _ca > _last_clear:
+                _last_clear = _ca
+                pts, ts = [], []
+                last = None
+                print("🧹 收到清除指令 (%.0f) ⇒ 轨迹缓冲已清" % _ca, flush=True)
+        except Exception:                                                         # noqa: BLE001
+            pass
         now = time.time()
         if now - t_last_write >= 1.0:
             t_last_write = now
