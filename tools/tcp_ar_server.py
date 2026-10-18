@@ -586,6 +586,12 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p in ("/toolframe.jpg", "/toolframe.png"):   # ▣ 画好 tool1 坐标系的臂相机图(直接看图, 不用等页面刷新)
+                try:
+                    L = float(qs.get("len", "60") or 60)
+                except Exception:                                       # noqa: BLE001
+                    L = 60.0
+                self._toolframe_img(L)
             elif p == "/api/toolframe":                    # ▣ tool1 坐标系(臂相机像素, 固定)
                 try:
                     L = float(qs.get("len", "60") or 60)
@@ -818,6 +824,43 @@ class H(BaseHTTPRequestHandler):
 
     MOD3_STATE = "/dev/shm/mod3_latest.json"
     MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
+
+    def _toolframe_img(self, L=60.0):
+        """现场最直观的一张图: 当前臂相机帧 + tool1 三轴。直接 GET /toolframe.jpg 就能看。"""
+        try:
+            img = None
+            try:
+                b = urllib.request.urlopen("http://127.0.0.1:8791/snapshot/arm.jpg", timeout=6).read()
+                img = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
+            except Exception:                                               # noqa: BLE001
+                pass
+            if img is None:
+                self._send(503, "text/plain; charset=utf-8", "臂相机取帧失败".encode())
+                return
+            tf = toolframe_px(L)
+            if not tf.get("ok"):
+                self._send(200, "application/json", json.dumps(tf, ensure_ascii=False).encode())
+                return
+            S = 2
+            big = cv2.resize(img, None, fx=S, fy=S, interpolation=cv2.INTER_CUBIC)
+            O = tuple(int(round(v * S)) for v in tf["origin"])
+            for k, col in (("X", (60, 60, 235)), ("Y", (60, 210, 60)), ("Z", (235, 140, 40))):
+                T = tuple(int(round(v * S)) for v in tf["axes"][k])
+                cv2.arrowedLine(big, O, T, col, 3, cv2.LINE_AA, tipLength=0.12)
+                cv2.putText(big, "%s %.0fmm" % (k, L), (T[0] + 6, T[1] - 6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2, cv2.LINE_AA)
+            cv2.circle(big, O, 7, (255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(big, O, 7, (30, 30, 30), 2, cv2.LINE_AA)
+            cv2.putText(big, "tool1 (%d,%d)  z=%.0fmm  ·  %s" % (
+                tf["origin"][0], tf["origin"][1], tf["cam_z_mm"], time.strftime("%H:%M:%S")),
+                (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+            ok, jpg = cv2.imencode(".jpg", big, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+            if not ok:
+                self._send(500, "text/plain; charset=utf-8", b"encode failed")
+                return
+            self._send(200, "image/jpeg", jpg.tobytes())
+        except Exception as e:                                              # noqa: BLE001
+            self._send(500, "text/plain; charset=utf-8", ("toolframe 图失败: %s" % e).encode())
 
     def _module3d(self, want_img=False):
         """🔍 光模块 3D 框: 直接读**后台线程**算好的最新结果(请求路径上不跑推理)。
