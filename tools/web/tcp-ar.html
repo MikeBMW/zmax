@@ -108,6 +108,46 @@
       </div>
       <pre id="pTraj">—</pre>
     </div>
+    <div class="card" id="cardFence">
+      <h2>🧱 3D 围栏 (base 世界系 · 机器人不能碰) <span id="tFence" class="tag">0 个</span></h2>
+      <div class="row">
+        <button id="fBox" class="sm on">▭ 长方体 / 正方体</button>
+        <button id="fLine" class="sm">╱ 直线</button>
+        <button id="fPick" class="sm" title="打开后在三维视图里点一下, 就按那个位置(落在水平面 z=下面那个 Z)取点">🖱 点图取点</button>
+      </div>
+      <div class="row" style="margin-top:6px;font-size:12px;color:#8b949e">
+        对角两点 (mm, base 系) — 长方体/正方体用两点做包围盒, 直线用两点做端点
+      </div>
+      <div class="row" style="margin-top:4px">
+        <label style="font-size:12px">①<input id="fX1" type="number" step="1" style="width:64px" value="0">,
+          <input id="fY1" type="number" step="1" style="width:64px" value="0">,
+          <input id="fZ1" type="number" step="1" style="width:64px" value="300"> mm
+          <button id="fUseTcp1" class="sm" title="用当前 TCP 位置填第①点">=TCP</button></label>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <label style="font-size:12px">②<input id="fX2" type="number" step="1" style="width:64px" value="0">,
+          <input id="fY2" type="number" step="1" style="width:64px" value="0">,
+          <input id="fZ2" type="number" step="1" style="width:64px" value="400"> mm
+          <button id="fUseTcp2" class="sm" title="用当前 TCP 位置填第②点">=TCP</button></label>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <label style="font-size:12px">边长<input id="fSide" type="number" step="5" style="width:60px" value="80">mm
+          <button id="fCube" class="sm" title="以第①点为角点, 生成正方体第②点">正方体</button></label>
+        <input id="fName" placeholder="名字(可不填)" style="flex:1;min-width:90px">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="fAdd" class="primary">➕ 添加围栏</button>
+        <button id="fEditSave" class="sm" disabled>💾 保存修改</button>
+        <button id="fClearAll" class="danger sm">清空全部</button>
+      </div>
+      <div class="row" style="margin-top:4px;font-size:12px;color:#8b949e">
+        外扩余量<input id="fMargin" type="number" step="1" style="width:56px" value="10">mm
+        <button id="fMarginSave" class="sm">保存</button>
+        <span id="fWarn" style="color:#ff9f1c;margin-left:6px"></span>
+      </div>
+      <div id="fList" style="margin-top:8px;max-height:190px;overflow:auto"></div>
+      <pre id="pFence">—</pre>
+    </div>
     <div class="card">
       <h2>🔍 联合工控机 AOI (金手指 10082)</h2>
       <div class="row">
@@ -168,6 +208,8 @@ let CAMS={arm:{w:640,h:480,label:'🦾 机器人手臂 RealSense D405 (Orin 臂�
 const ARPURPLE='#8957e5';   // 🥽 与 3D 场景「🥽 AR」按钮同色(插拔 #2e8b57 绿 / 摆盘 #1f6feb 蓝 / AR 紫)
 const FOUR=['arm','gold','surface','rs'];   // 老倪点名的 4 台相机(同一场景 4 视角)
 let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运动学结果
+// 🧱 3D 围栏状态 (必须在这里声明: 初始化阶段 applyRot() 就会调 drawVR(), 晚声明会踩 TDZ 把整个脚本打死)
+let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
     VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true};
 
@@ -426,6 +468,153 @@ function drawUrdf(g,pr){
   }
   return drawn;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  🧱 3D 围栏: 长方体/正方体/直线 (base 世界系, mm 输入) —— 机器人不能碰撞
+//     老倪 2026-10-18: 「画 3D 对象(长方体/正方体: 输入对角线两点; 直线: 可编辑起终点),
+//     坐标在 base 世界系; 这些东西是你的地图围栏, 不能碰撞」
+//     真源: 服务端 tools/fence_store.py → zmax_data/ar_rs/fences.json
+// ══════════════════════════════════════════════════════════════════════════
+// (状态声明挪到脚本最前面的 URDF 那行旁边 —— drawVR 在初始化阶段就会被调用, 这里声明会踩 TDZ)
+function _mm(v){ return (Number(v)||0)/1000.0; }
+function _fnum(id){ const e=$(id); return e?(Number(e.value)||0):0; }
+function _fset(id,v){ const e=$(id); if(e) e.value=Math.round(v); }
+function _p1(){ return [_mm(_fnum('fX1')),_mm(_fnum('fY1')),_mm(_fnum('fZ1'))]; }
+function _p2(){ return [_mm(_fnum('fX2')),_mm(_fnum('fY2')),_mm(_fnum('fZ2'))]; }
+function _setP(prefix,p){ _fset(prefix+'X'+(prefix==='f'?'1':'1'),p[0]*1000); }
+function fillP1(p){ _fset('fX1',p[0]*1000); _fset('fY1',p[1]*1000); _fset('fZ1',p[2]*1000); }
+function fillP2(p){ _fset('fX2',p[0]*1000); _fset('fY2',p[1]*1000); _fset('fZ2',p[2]*1000); }
+
+async function fencePost(path,obj){
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj||{})}).then(x=>x.json());
+  if(!r.ok) { $('pFence').textContent='❌ '+(r.err||'失败'); }
+  await loadFences();
+  return r;
+}
+async function loadFences(){
+  try{
+    const r=await fetch('/api/fence').then(x=>x.json());
+    FENCES=r.items||[]; FMARGIN=(r.margin_mm!=null?r.margin_mm:10);
+    if($('fMargin') && document.activeElement!==$('fMargin')) $('fMargin').value=Math.round(FMARGIN);
+    $('tFence').textContent=FENCES.length+' 个';
+    $('tFence').className='tag'+(FENCES.length?' on':'');
+    renderFenceList(); drawVR();
+  }catch(e){ $('pFence').textContent='围栏读失败: '+e; }
+}
+function renderFenceList(){
+  const box=$('fList'); if(!box) return;
+  if(!FENCES.length){ box.innerHTML='<div style="font-size:12px;color:#8b949e">还没有围栏。上面填两点 → ➕ 添加。</div>'; return; }
+  box.innerHTML=FENCES.map(it=>{
+    const p1=it.p1.map(v=>Math.round(v*1000)), p2=it.p2.map(v=>Math.round(v*1000));
+    const dim=(it.type==='box')?p1.map((v,i)=>Math.abs(p2[i]-v)).join('×')+'mm':('长度 '+
+      Math.round(Math.hypot(p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2]))+'mm');
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #1b2430;font-size:12px">
+      <input type="checkbox" ${it.enabled?'checked':''} onchange="fenceToggle('${it.id}',this.checked)" title="启用/停用">
+      <span style="width:10px;height:10px;border-radius:2px;background:${it.color};display:inline-block"></span>
+      <b style="color:#c9d1d9">${it.name}</b>
+      <span style="color:#8b949e">${it.type==='box'?'▭':'╱'} ${dim}</span>
+      <span style="color:#6b7a8d">[${p1.join(',')}]→[${p2.join(',')}]</span>
+      <button class="sm" style="margin-left:auto" onclick="fenceEdit('${it.id}')">编辑</button>
+      <button class="sm danger" onclick="fenceDel('${it.id}')">删</button>
+    </div>`;}).join('');
+}
+function fenceToggle(id,on){ fencePost('/api/fence/update',{id:id,enabled:on}); }
+function fenceDel(id){ fencePost('/api/fence/delete',{id:id}); }
+function fenceEdit(id){
+  const it=FENCES.find(x=>x.id===id); if(!it) return;
+  FEDIT=id; FTYPE=it.type;
+  $('fBox').classList.toggle('on',it.type==='box'); $('fLine').classList.toggle('on',it.type==='line');
+  fillP1(it.p1); fillP2(it.p2); $('fName').value=it.name;
+  $('fEditSave').disabled=false; $('fAdd').textContent='➕ 添加(新)';
+  $('pFence').textContent='编辑中: '+it.name+' ⇒ 改完点『💾 保存修改』';
+}
+async function fenceAdd(){
+  const body={type:FTYPE,p1:_p1(),p2:_p2(),name:$('fName').value||''};
+  const r=await fencePost('/api/fence/add',body);
+  if(r.ok){ $('pFence').textContent='✅ 已加 '+r.item.name+' · 共 '+r.n+' 个 (机器人路径会避开)'; $('fName').value=''; }
+}
+async function fenceSaveEdit(){
+  if(!FEDIT) return;
+  const r=await fencePost('/api/fence/update',{id:FEDIT,p1:_p1(),p2:_p2(),name:$('fName').value||null});
+  if(r.ok){ $('pFence').textContent='✅ 已保存 '+r.item.name; FEDIT=null; $('fEditSave').disabled=true; }
+}
+function drawFences(g,pr){
+  const items=FENCES.filter(it=>it.enabled);
+  if(!items.length) return;
+  const mg=FMARGIN/1000;
+  for(const it of items){
+    const p1=it.p1,p2=it.p2;
+    if(it.type==='line'){
+      const A=pr(p1),B=pr(p2); if(!A||!B) continue;
+      g.strokeStyle=it.color; g.lineWidth=3; g.globalAlpha=0.95;
+      g.beginPath(); g.moveTo(A.u,A.v); g.lineTo(B.u,B.v); g.stroke();
+      g.globalAlpha=1;
+      [A,B].forEach((q,k)=>{ g.fillStyle=it.color; g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fill();
+        g.fillStyle='#c9d1d9'; g.font='11px monospace';
+        g.fillText((k?'B ':'A ')+it.name, q.u+6, q.v-5); });
+      continue;
+    }
+    const lo=[0,1,2].map(i=>Math.min(p1[i],p2[i])-mg), hi=[0,1,2].map(i=>Math.max(p1[i],p2[i])+mg);
+    const C=[[lo[0],lo[1],lo[2]],[hi[0],lo[1],lo[2]],[hi[0],hi[1],lo[2]],[lo[0],hi[1],lo[2]],
+             [lo[0],lo[1],hi[2]],[hi[0],lo[1],hi[2]],[hi[0],hi[1],hi[2]],[lo[0],hi[1],hi[2]]].map(pr);
+    const F=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[1,2,6,5],[0,3,7,4]];
+    const faces=F.map(f=>({f:f,z:f.reduce((s,i)=>s+(C[i]?C[i].z:0),0)/4})).sort((a,b)=>b.z-a.z);
+    for(const {f} of faces){
+      if(f.some(i=>!C[i])) continue;
+      g.beginPath(); g.moveTo(C[f[0]].u,C[f[0]].v);
+      for(let i=1;i<4;i++) g.lineTo(C[f[i]].u,C[f[i]].v);
+      g.closePath();
+      g.globalAlpha=0.13; g.fillStyle=it.color; g.fill();
+      g.globalAlpha=0.85; g.strokeStyle=it.color; g.lineWidth=1.4; g.stroke();
+    }
+    g.globalAlpha=1;
+    const L=C[0];
+    if(L){ g.fillStyle=it.color; g.font='11px monospace';
+      g.fillText(it.name+' '+Math.round((hi[0]-lo[0])*1000)+'×'+Math.round((hi[1]-lo[1])*1000)+'×'
+                 +Math.round((hi[2]-lo[2])*1000)+'mm', L.u+4, L.v-4); }
+  }
+}
+function _pickPlane(u,v,zPlane){
+  if(!VIEW) return null;
+  const {eye,R,U,fwd,F,CX,CY}=VIEW;
+  const d=[fwd[0]+R[0]*(u-CX)/F+U[0]*(CY-v)/F,
+           fwd[1]+R[1]*(u-CX)/F+U[1]*(CY-v)/F,
+           fwd[2]+R[2]*(u-CX)/F+U[2]*(CY-v)/F];
+  if(Math.abs(d[2])<1e-6) return null;
+  const tt=(zPlane-eye[2])/d[2];
+  if(!(tt>0)) return null;
+  return [eye[0]+d[0]*tt, eye[1]+d[1]*tt, zPlane];
+}
+function fenceBind(){
+  $('fBox').addEventListener('click',()=>{FTYPE='box'; $('fBox').classList.add('on'); $('fLine').classList.remove('on');});
+  $('fLine').addEventListener('click',()=>{FTYPE='line'; $('fLine').classList.add('on'); $('fBox').classList.remove('on');});
+  $('fPick').addEventListener('click',()=>{ FPICK=!FPICK; $('fPick').classList.toggle('on',FPICK);
+    $('pFence').textContent=FPICK?'🖱 取点模式: 在三维视图里点一下 ⇒ 第①点; Shift+点 ⇒ 第②点 (取在当前 Z 高度的水平面上)':'取点模式已关'; });
+  $('fUseTcp1').addEventListener('click',()=>{ if(TCP&&TCP.ok){ fillP1([TCP.x,TCP.y,TCP.z]); $('pFence').textContent='① = 当前 TCP'; } });
+  $('fUseTcp2').addEventListener('click',()=>{ if(TCP&&TCP.ok){ fillP2([TCP.x,TCP.y,TCP.z]); $('pFence').textContent='② = 当前 TCP'; } });
+  $('fCube').addEventListener('click',()=>{ const s=_mm(_fnum('fSide')); const p=_p1();
+    fillP2([p[0]+s,p[1]+s,p[2]+s]); $('pFence').textContent='② = ① + '+Math.round(s*1000)+'mm (正方体)'; });
+  $('fAdd').addEventListener('click',fenceAdd);
+  $('fEditSave').addEventListener('click',fenceSaveEdit);
+  $('fClearAll').addEventListener('click',()=>fencePost('/api/fence/clear',{}));
+  $('fMarginSave').addEventListener('click',()=>fencePost('/api/fence/margin',{mm:_fnum('fMargin')}));
+  const c=$('vr');
+  c.addEventListener('mousedown',e=>{ FDRAG={u:e.offsetX,v:e.offsetY,t:Date.now()}; });
+  c.addEventListener('mouseup',e=>{
+    if(!FPICK||!FDRAG) { FDRAG=null; return; }
+    const moved=Math.hypot(e.offsetX-FDRAG.u, e.offsetY-FDRAG.v);
+    if(moved<6){
+      const zPlane=_mm(_fnum(e.shiftKey?'fZ2':'fZ1'));
+      const p=_pickPlane(e.offsetX,e.offsetY,zPlane);
+      if(p){ const mm=[Math.round(p[0]*1000),Math.round(p[1]*1000),Math.round(p[2]*1000)];
+        if(e.shiftKey){ fillP2(p); $('pFence').textContent='② = ['+mm.join(', ')+'] mm'; }
+        else { fillP1(p); $('pFence').textContent='① = ['+mm.join(', ')+'] mm (Shift+点取第二点)'; } }
+      else $('pFence').textContent='这个方向与水平面平行, 取不到点 —— 换个角度拖一下视图';
+    }
+    FDRAG=null;
+  });
+  loadFences();
+}
 function drawVR(){
   const c=$('vr'), g=c.getContext('2d');
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
@@ -464,11 +653,14 @@ function drawVR(){
   // 基座竖轴(看方向)
   const o1=pr([0.7,0.2,0.12]), o2=pr([0.7,0.2,0.42]);
   if(o1&&o2){g.strokeStyle='#8b949e';g.beginPath();g.moveTo(o1.u,o1.v);g.lineTo(o2.u,o2.v);g.stroke();}
+  VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY};      // 🖱 点图取点要用(反投影)
   // 🦾 URDF 外形: 真关节角正运动学 (5Hz 跟随) → 凸包填充
   if(VR.urdf && URDF){
     LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null);
     drawUrdf(g,pr);
   }
+  // 🧱 3D 围栏 (画在机器人之上, 轨迹之下)
+  if(typeof FENCES!=='undefined' && FENCES.length) drawFences(g,pr);
   // 轨迹(VR 里也按 3D 管道画)
   function tube(pts,color,baseW,alpha,ring){
     if(!pts||pts.length<2) return 0;
@@ -892,6 +1084,7 @@ async function loadUrdf(){
   }catch(e){ console.warn('URDF 取失败', e); }
 }
 loadUrdf();
+fenceBind();
 async function loadCalib(){
   try{ const r=await fetch('/api/calib?cam='+CAM).then(x=>x.json());
     if(r.cams&&!Object.keys(CAMS).length) CAMS=r.cams;

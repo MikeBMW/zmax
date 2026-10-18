@@ -24,10 +24,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 import urllib.request
 
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+sys.path.insert(0, os.path.join(REPO, "tools"))
+try:
+    import fence_store as FS          # 🧱 3D 围栏(页面画的) —— 路径不许进
+except Exception:                                                     # noqa: BLE001
+    FS = None
 TR = os.path.join(REPO, "zmax_data", "ss_live", "trace_live.json")
 VFF = os.path.join(REPO, "zmax_data", "ss_live", "plan_from_vff.json")
 FIFO = os.path.join(REPO, "zmax_data", "rokae_sdk", "cmd_arm.fifo")
@@ -214,6 +220,34 @@ def main():
         segs, total = _build_segs(tpl, a.scale, a.max_path, a.npts)
         if not segs or total < 3.0:
             continue
+        # 🧱 围栏闸: 这一段路径(绝对坐标 = 当前 TCP + 逐点累加)只要有一点落进围栏就整段不发
+        if FS is not None:
+            try:
+                cur = [float(x) for x in _get("/pose")["xyz"]]
+                acc, abspts = [0.0, 0.0, 0.0], []
+                for q in segs:
+                    acc = [acc[i] + q[i] / 1000.0 for i in range(3)]
+                    abspts.append([cur[i] + acc[i] for i in range(3)])
+                now_in = FS.check_point(cur)
+                rc = FS.check_points(abspts)
+                if rc.get("hit"):
+                    # 起点已经在围栏里时, 只放行"往外走"的段 (末点已在围栏外 = 脱困)
+                    if now_in.get("hit") and not FS.check_point(abspts[-1]).get("hit"):
+                        _n = (now_in.get("inside") or [{}])[0].get("name") or "?"
+                        print("🆘 当前在围栏「%s」里, 这一段是往外走 ⇒ 放行脱困" % _n, flush=True)
+                    else:
+                        hit = (rc.get("first") or {}).get("by") or []
+                        nm = hit[0].get("name") if hit else "?"
+                        print("⛔ 路径会进围栏「%s」⇒ 这一段不发 (第 %s 点 / 共 %s 点)"
+                              % (nm, (rc.get("first") or {}).get("i"), rc.get("n_pts")), flush=True)
+                        still_since = time.time()
+                        time.sleep(1.0)
+                        continue
+                elif now_in.get("hit"):
+                    _n = (now_in.get("inside") or [{}])[0].get("name") or "?"
+                    print("⚠ 当前 TCP 已在围栏「%s」里 —— 只允许往外走" % _n, flush=True)
+            except Exception:                                             # noqa: BLE001
+                pass
         dur_eff = max(1.0, tpl_dur * a.dur_scale)
         spd = max(2.0, min(100.0, total / dur_eff))
         _fifo({"id": "rst_%d" % int(time.time() * 1000), "cmd": "reset"})    # 清旧队列

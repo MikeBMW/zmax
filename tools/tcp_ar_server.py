@@ -42,7 +42,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import laptop_cam_solve as LS                                                    # noqa: E402
-import traj_display as TD                                                        # noqa: E402
+import traj_display as TD
+import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 真源 + 碰撞判定                                                        # noqa: E402
 
 try:                                      # 🔍 工控机 AOI 客户端 (10082 金手指 / 10083 表面)
     import aoi_link as AOI
@@ -550,6 +551,14 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p == "/api/fence":            # 🧱 3D 围栏列表 (页面画 + 编辑用)
+                self._json(FS.listing())
+            elif p == "/api/fence/check":      # 🧱 某点是否在围栏里
+                try:
+                    q = [float(qs.get("x") or 0), float(qs.get("y") or 0), float(qs.get("z") or 0)]
+                    self._json(FS.check_point(q))
+                except Exception as e:                                                 # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
             elif p == "/api/urdf":             # 🦾 机器人 URDF 外形(降采样点云 + 关节链), 页面一次拉取缓存
                 self._json(_urdf_payload())
             elif p == "/api/traj":
@@ -742,6 +751,31 @@ class H(BaseHTTPRequestHandler):
             self._json(self._aoi_inspect(port=int(body.get("port") or 10082)))
         elif p == "/api/calib":
             self._json(self._do_calib(body))
+        elif p == "/api/fence/add":        # 🧱 加长方体/正方体/直线 (对角两点, base 系, 米)
+            try:
+                it = FS.add(body.get("type") or "box", body.get("p1"), body.get("p2"),
+                            name=body.get("name") or "", color=body.get("color") or "",
+                            note=body.get("note") or "")
+                self._json({"ok": True, "item": it, "n": len(FS.listing()["items"])})
+            except Exception as e:                                                 # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+        elif p == "/api/fence/update":     # 🧱 改端点/名字/开关
+            try:
+                it = FS.update(str(body.get("id") or ""), p1=body.get("p1"), p2=body.get("p2"),
+                               name=body.get("name"), color=body.get("color"),
+                               enabled=body.get("enabled"), note=body.get("note"))
+                self._json({"ok": True, "item": it})
+            except Exception as e:                                                 # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+        elif p == "/api/fence/delete":
+            try:
+                self._json(dict(ok=True, **FS.delete(str(body.get("id") or ""))))
+            except Exception as e:                                                 # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+        elif p == "/api/fence/clear":
+            self._json(dict(ok=True, **FS.clear()))
+        elif p == "/api/fence/margin":
+            self._json(dict(ok=True, **FS.set_margin(float(body.get("mm") or 0))))
         elif p == "/api/traj/show":
             show = bool(body.get("show"))
             r = TD.apply(show)

@@ -1,0 +1,178 @@
+# -*- coding: utf-8 -*-
+"""fence_store.py — AR 三维视图里画的 3D 围栏 (长方体 / 直线) 的真源 + 碰撞判定
+
+老倪 2026-10-18: 「我需要在上面画 3D 对象, 例如长方体、正方体(输入对角线点的坐标)、直线(可编辑
+起点和终点); 坐标在 base 世界系里; 这些东西是你的地图围栏, 不能碰撞」
+
+坐标口径: **base 世界系, 单位米** (与 /api/tcp 的 x/y/z 同系)。页面上按毫米输入, 这里统一存米。
+
+数据: zmax_data/ar_rs/fences.json
+  {"items": [{"id","type":"box|line","name","p1":[x,y,z],"p2":[x,y,z],
+              "color","enabled":true,"note","at"}],
+   "margin_mm": 10, "at": "HH:MM:SS"}
+
+判定:
+  · box   —— 轴对齐包围盒 (AABB): 取两对角点各轴 min/max, 再按 margin 外扩
+  · line  —— 线段: 点到线段距离 < radius(margin) 视为碰撞
+"""
+from __future__ import annotations
+
+import json
+import math
+import os
+import threading
+import time
+import uuid
+
+REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+PATH = os.path.join(REPO, "zmax_data", "ar_rs", "fences.json")
+_LOCK = threading.Lock()
+
+
+def _load() -> dict:
+    try:
+        with open(PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        if not isinstance(d.get("items"), list):
+            d["items"] = []
+        d.setdefault("margin_mm", 10.0)
+        return d
+    except Exception:                                                             # noqa: BLE001
+        return {"items": [], "margin_mm": 10.0}
+
+
+def _save(d: dict) -> None:
+    os.makedirs(os.path.dirname(PATH), exist_ok=True)
+    d["at"] = time.strftime("%H:%M:%S")
+    tmp = PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, PATH)
+
+
+def _f3(v):
+    if v is None or len(v) < 3:
+        raise ValueError("需要 3 个坐标")
+    return [round(float(v[0]), 6), round(float(v[1]), 6), round(float(v[2]), 6)]
+
+
+def _box_bounds(it, margin_m):
+    p1, p2 = it["p1"], it["p2"]
+    lo = [min(p1[i], p2[i]) - margin_m for i in range(3)]
+    hi = [max(p1[i], p2[i]) + margin_m for i in range(3)]
+    return lo, hi
+
+
+def _pt_seg_dist(p, a, b):
+    ab = [b[i] - a[i] for i in range(3)]
+    ap = [p[i] - a[i] for i in range(3)]
+    den = sum(v * v for v in ab)
+    t = 0.0 if den <= 1e-12 else max(0.0, min(1.0, sum(ap[i] * ab[i] for i in range(3)) / den))
+    q = [a[i] + ab[i] * t for i in range(3)]
+    return math.dist(p, q)
+
+
+# ─────────────────────────── CRUD ───────────────────────────
+def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "") -> dict:
+    kind = (kind or "box").lower()
+    if kind not in ("box", "line"):
+        raise ValueError("type 只能是 box 或 line")
+    with _LOCK:
+        d = _load()
+        it = {"id": "F" + uuid.uuid4().hex[:6], "type": kind,
+              "name": name or ("长方体" if kind == "box" else "直线") + "-%d" % (len(d["items"]) + 1),
+              "p1": _f3(p1), "p2": _f3(p2),
+              "color": color or ("#ff9f1c" if kind == "box" else "#ff5d9e"),
+              "enabled": True, "note": note, "at": time.strftime("%F %T")}
+        d["items"].append(it)
+        _save(d)
+        return it
+
+
+def update(fid: str, **kw) -> dict:
+    with _LOCK:
+        d = _load()
+        for it in d["items"]:
+            if it["id"] != fid:
+                continue
+            for k in ("p1", "p2"):
+                if kw.get(k) is not None:
+                    it[k] = _f3(kw[k])
+            for k in ("name", "color", "note"):
+                if kw.get(k) is not None:
+                    it[k] = str(kw[k])
+            if kw.get("enabled") is not None:
+                it["enabled"] = bool(kw["enabled"])
+            _save(d)
+            return it
+        raise KeyError("没有这个围栏: %s" % fid)
+
+
+def delete(fid: str) -> dict:
+    with _LOCK:
+        d = _load()
+        n0 = len(d["items"])
+        d["items"] = [it for it in d["items"] if it["id"] != fid]
+        _save(d)
+        return {"deleted": n0 - len(d["items"]), "id": fid}
+
+
+def clear() -> dict:
+    with _LOCK:
+        d = _load()
+        n = len(d["items"])
+        d["items"] = []
+        _save(d)
+        return {"cleared": n}
+
+
+def set_margin(mm: float) -> dict:
+    with _LOCK:
+        d = _load()
+        d["margin_mm"] = max(0.0, float(mm))
+        _save(d)
+        return d
+
+
+def listing() -> dict:
+    d = _load()
+    d["ok"] = True
+    d["n"] = len(d["items"])
+    return d
+
+
+# ─────────────────────────── 判定 ───────────────────────────
+def check_point(p, margin_mm: float | None = None) -> dict:
+    """点是否落进任何启用的围栏 ⇒ {inside:[{id,name,type,dist_mm}], hit:bool}"""
+    d = _load()
+    mg = (d.get("margin_mm", 10.0) if margin_mm is None else float(margin_mm)) / 1000.0
+    inside = []
+    for it in d["items"]:
+        if not it.get("enabled", True):
+            continue
+        if it["type"] == "box":
+            lo, hi = _box_bounds(it, mg)
+            if all(lo[i] <= p[i] <= hi[i] for i in range(3)):
+                # 到盒子表面最近距离 (负=在内部)
+                dd = min(min(p[i] - lo[i], hi[i] - p[i]) for i in range(3))
+                inside.append({"id": it["id"], "name": it["name"], "type": "box",
+                               "dist_mm": round(dd * 1000, 2)})
+        else:
+            dist = _pt_seg_dist(p, it["p1"], it["p2"])
+            if dist <= mg:
+                inside.append({"id": it["id"], "name": it["name"], "type": "line",
+                               "dist_mm": round(dist * 1000, 2)})
+    return {"ok": True, "hit": bool(inside), "inside": inside, "n_fences": len(d["items"])}
+
+
+def check_points(pts, margin_mm: float | None = None) -> dict:
+    """一批点(路径)逐点判定; 返回首个命中的点序号 + 统计"""
+    hits = []
+    for i, p in enumerate(pts):
+        r = check_point(p, margin_mm)
+        if r["hit"]:
+            hits.append({"i": i, "p": [round(float(v), 4) for v in p[:3]], "by": r["inside"]})
+            if len(hits) >= 5:
+                break
+    return {"ok": True, "hit": bool(hits), "first": hits[0] if hits else None,
+            "n_hits": len(hits), "n_pts": len(pts)}
