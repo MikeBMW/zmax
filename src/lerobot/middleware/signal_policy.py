@@ -45,6 +45,10 @@ NODE_ALLOW = {
         "stage_now": "stage_now",            # 当前第几段
         "stage_total": "stage_total",        # 共几段
         "arrive_error_mm": "arrive_error_mm",  # 到位残差
+        # 真机实时位姿 (tcp_out/latest.json · 50Hz 真值): 6 个自由度, 全单位化成 mm/deg
+        "x": ("pose_x_mm", 1000.0), "y": ("pose_y_mm", 1000.0), "z": ("pose_z_mm", 1000.0),
+        "rx": ("pose_rx_deg", 57.29577951308232), "ry": ("pose_ry_deg", 57.29577951308232),
+        "rz": ("pose_rz_deg", 57.29577951308232),
     },
     "前馈加速器": {"u_ff": "feedforward_cmd"},
     "光学质量检测": {"aoi": "quality_score"},
@@ -92,7 +96,8 @@ def decide_topic(topic: str, raw: str):
     try:
         from lerobot.middleware import attribution as _a
         key = "%s.%s" % (str(topic or "").replace("zmax/", ""), raw)
-        return decide(_a.tx_of(key), raw)
+        _d = decide(_a.tx_of(key), raw)
+        return _d[0] if isinstance(_d, tuple) else _d
     except Exception:                                                        # noqa: BLE001
         return None
 
@@ -106,6 +111,9 @@ def filter_rows(rows):
         clean = decide(tx, x.get("raw") or x.get("signal") or "")
         if not clean:
             continue
+        _k = 1.0
+        if isinstance(clean, tuple):
+            clean, _k = clean
         if per_node.get(tx, 0) >= MAX_PER_NODE:
             continue
         k = (tx, clean)
@@ -119,6 +127,14 @@ def filter_rows(rows):
         y["name"] = clean
         y["signal"] = clean
         y["cn"] = clean
+        if _k != 1.0:                        # 单位换算 (m→mm / rad→deg): 显示值同步改, 不装原数
+            try:
+                _v = float(x.get("vraw"))
+                y["vraw"] = _v * _k
+                y["value"] = ("%.1f" % (_v * _k)) if _k > 100 else ("%.2f" % (_v * _k))
+                y["unit"] = "mm" if _k > 100 else "deg"
+            except Exception:                                                # noqa: BLE001
+                pass
         y["why"] = "信号来源: %s (原始字段 %s)" % (x.get("why") or "", x.get("raw") or "")
         out.append(y)
     return out

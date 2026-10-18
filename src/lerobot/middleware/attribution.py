@@ -46,7 +46,7 @@ PREFIX_OWNER = {
     "planlive": "n_moveit",    # 🧭 段表 = 运动规划节点的输出 (2026-10-18)
     "sseng": "ss_mani_eng",    # 流形引擎周期回路出口 (势能/动量M/动作调制) L4
     "gravity": "n_calib_mani",  # 万有引力表 = 标定诊断测量·主参数 M 的力矩阵 L4
-    "pose": "ssest",           # 真机 tcp_pose tap → 状态估计 L2
+    "pose": "n_exec",          # 真机 tcp_pose tap → 动作执行器 (真值回读, 2026-10-18 老倪问"实时位姿谁显示")
     "state": "ssest",          # 真机 tcp_state tap → 状态估计 L2
     "yolo": "ssyolo",          # YOLO 目标检测 L2
     "safety": "sslimit",       # 安全执行边界 (项目内 meta 节点, 有层就有归属)
@@ -330,6 +330,10 @@ def _sk_node_id(stage):
 def rx_of(key):
     """Rx: 这条信号的上游/下游节点 (与信号分析窗口同一串字)。"""
     k = str(key or "")
+    # 📚 2026-10-18 老倪: 「实时位姿是谁显示?」—— 真机 tcp_pose 是 SDK 回读量, 由动作执行器自己消费
+    #   (闭环/闸/到位判定都用它), 没有第二个画布节点 ⇒ Rx 记成自己, 不写"—" (Rx 空会被 Trace 丢掉)
+    if k.split(".", 1)[0] == "pose":
+        return "动作执行器"
     # 原子技能: skill.* 不是端口键, 但它落到的 SK 节点有真连线 ⇒ Rx 取该节点的出端口下游
     _st = skill_stage_of(k)
     if _st:
