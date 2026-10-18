@@ -141,6 +141,15 @@ def main():
             "n=%s backend=%s skill=%s" % (pl.get("n"), pl.get("backend"), pl.get("skill")))
         chk("段表有目标/speed", all(x.get("pos") and x.get("speed") for x in (pl.get("segs") or [])),
             "segs=%d" % len(pl.get("segs") or []))
+        # 📚 2026-10-18 老倪: 「真实节点 选择 plan 节点」—— station 的配置(速度/点位/授权)挂在 plan 上,
+        #   判据: 段表里必须同时留"请求值", 否则看不出页面设的值有没有真用上。
+        chk("段表带请求值 (速度/点位/授权)",
+            ("req_speed" in pl) and ("req_manual_point" in pl) and ("req_auth_epoch" in pl),
+            "req_speed=%s req_manual_point=%s req_auth_epoch=%s"
+            % (pl.get("req_speed"), pl.get("req_manual_point"), pl.get("req_auth_epoch")))
+        chk("请求速度 vs 实际速度 可对账",
+            pl.get("req_speed") is None or abs(float(pl["req_speed"]) - float(pl.get("speed") or 0)) < 1e-6,
+            "req=%s 实际=%s" % (pl.get("req_speed"), pl.get("speed")))
     # 段表只在"规划那一刻"更新 (不跑命令就不变) ⇒ 判据看归属链路是否成立,
     # 不去追 Trace 里的实时值 (那会因帧龄自然消失, 属于正确行为, 不是缺陷)。
     from lerobot.middleware import attribution as attr

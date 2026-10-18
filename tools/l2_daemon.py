@@ -324,7 +324,7 @@ def _atomic_skills():
 _PLAN_FILE = os.path.expanduser("~/zmax/zmax_data/runtime/plan/plan_latest.json")
 
 
-def plan_dump(skill, plans, backend="rule", src="l2_daemon"):
+def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None):
     """把段表写成 plan_latest.json (只读产物; 失败绝不影响执行)。"""
     try:
         segs = []
@@ -340,7 +340,15 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon"):
                          "service": bool(pl.get("service"))})
         _sp = [float(x["speed"]) for x in segs if x.get("speed")]
         _ln = [float(x["lin_mm"]) for x in segs if x.get("lin_mm")]
+        # 📚 2026-10-18 老倪: 「真实节点 选择 plan 节点」——
+        #   station 上的速度/步长/点位/回点, 本质是**段表的输入**; 把它们和"实际用的"放同一张表,
+        #   才能一眼看出"页面设 32 但这段实际用了 10" 这种不一致。
+        _req = spec or {}
         rec = {"skill": skill, "backend": backend, "src": src, "n": len(segs), "segs": segs,
+               "req_speed": _req.get("speed"),
+               "req_manual_point": (1 if _req.get("manual_point") else 0),
+               "req_auth_epoch": _req.get("auth_epoch"),
+               "req_src": _req.get("src") or _req.get("from") or "station",
                "speed": (sum(_sp) / len(_sp)) if _sp else 0.0,
                "lin_total_mm": sum(_ln) if _ln else 0.0,
                "t": time.time(), "t_pub": time.time()}
@@ -1360,7 +1368,7 @@ def run_stages(sk, spec, chan, pts):
                pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"],
                _stage_timeout(st, pl["lin"], pl["speed"])))
     # 🧭 2026-10-18 老倪: 「plan 节点的输出要是段表」⇒ 规划完先落盘, 再执行
-    plan_dump(spec.get("skill") or "?", plans, backend="rule", src="l2_daemon.run_stages")
+    plan_dump(spec.get("skill") or "?", plans, backend="rule", src="l2_daemon.run_stages", spec=spec)
     if spec.get("dry"):
         for i, pl in enumerate(plans, 1):
             if pl.get("service"):
