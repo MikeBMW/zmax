@@ -384,6 +384,10 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_po
                "req_speed_units_raw": _req.get("_speed_units_raw"),
                "speed_mm_s_actual": round(0.0935 * ((sum(_sp) / len(_sp)) if _sp else 0.0), 2),
                "lift_mm": round(_lift, 2), "traverse_mm": round(_trav, 2), "descend_mm": round(_desc, 2),
+               # 🎯 2026-10-18 老倪: 「不就是 plan 一个目标点么」—— 对, 核心就是它: 这条命令最终落在哪 (mm)
+               "target_x_mm": (round(float(segs[-1]["pos"][0]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
+               "target_y_mm": (round(float(segs[-1]["pos"][1]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
+               "target_z_mm": (round(float(segs[-1]["pos"][2]) * 1000.0, 1) if segs and segs[-1].get("pos") else None),
                "req_manual_point": (1 if _req.get("manual_point") else 0),
                "req_auth_epoch": _req.get("auth_epoch"),
                "req_src": _req.get("src") or _req.get("from") or "station",

@@ -95,22 +95,20 @@ def read(prefix, raw):
     # 🧭 2026-10-18 老倪: 「signal 的命名全错了，要表达出这个信号的功能，全部重改」
     #   命名规则: 名词说明"是什么量", 后缀 _mm/_mms 说明单位; 不再用 n / v_page / seg1 这种看不出功能的短名。
     #   · 分段距离按**动作角色**归类 (抬升/横移/下落), 而不是按序号 —— 序号说不出它在干什么。
+    # 🎯 2026-10-18 老倪: 「不就是 plan 一个目标点么? 搞那么多给谁看?」—— 对, 砍到 5 条:
+    #   目标点在哪(3) + 总共多远(1) + 速度有没有被压(1)。段数/单位换算这些都别占屏幕。
     if prefix == "planlive":
-        # 2026-10-18 老倪: 名字要表达功能 —— 直接取执行器算好的 抬升/横移/下落 (按相邻目标点位移算)
-        _o = {"seg_count": raw.get("n"), "travel_mm": raw.get("lin_total_mm"),
-              "lift_mm": raw.get("lift_mm"), "traverse_mm": raw.get("traverse_mm"),
-              "descend_mm": raw.get("descend_mm"),
-              "speed_req_mms": raw.get("req_speed_mm_s"), "speed_real_mms": raw.get("speed_mm_s_actual"),
-              "units_req": raw.get("req_speed_units_raw"), "units_applied": raw.get("req_speed"),
-              "manual_recall": raw.get("req_manual_point"),
+        _req, _real = raw.get("req_speed_mm_s"), raw.get("speed_mm_s_actual")
+        _o = {"target_x_mm": raw.get("target_x_mm"), "target_y_mm": raw.get("target_y_mm"),
+              "target_z_mm": raw.get("target_z_mm"), "travel_mm": raw.get("lin_total_mm"),
+              # 100 = 你设的速度全用上; 58 = 被压到 58% (例如 32→18.7mm/s)
+              "speed_kept_pct": (round(100.0 * float(_real) / float(_req), 1) if _req else None),
               "plan_age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
         return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    # ⚙️ 执行器只留"走到哪/差多少/新不新" 5 条
     if prefix == "ss_exec":
         _o = {"exec_phase": raw.get("phase_code"), "stage_now": raw.get("seg"), "stage_total": raw.get("n_seg"),
-              "arrive_error_mm": raw.get("residual_mm"), "exec_speed_mms": raw.get("speed_mm_s"),
-              "target_x_mm": (round(float(raw["target_x"]) * 1000.0, 2) if raw.get("target_x") is not None else None),
-              "target_y_mm": (round(float(raw["target_y"]) * 1000.0, 2) if raw.get("target_y") is not None else None),
-              "target_z_mm": (round(float(raw["target_z"]) * 1000.0, 2) if raw.get("target_z") is not None else None),
+              "arrive_error_mm": raw.get("residual_mm"),
               "exec_age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
         return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     if prefix in ("ar", "sskill") and isinstance(raw.get("s"), dict):
