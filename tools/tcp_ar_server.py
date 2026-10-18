@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess          # 🏃 Follow: 后台拉起 run_along_line.py
 import sys
 import threading
 import time
@@ -551,8 +552,10 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
-            elif p == "/api/fence":            # 🧱 3D 围栏列表 (页面画 + 编辑用)
+            elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
                 self._json(FS.listing())
+            elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
+                self._json(self._follow_status())
             elif p == "/api/fence/check":      # 🧱 某点是否在围栏里
                 try:
                     q = [float(qs.get("x") or 0), float(qs.get("y") or 0), float(qs.get("z") or 0)]
@@ -680,6 +683,68 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                     # noqa: BLE001
             pass
 
+    # ── 跟随一条直线元素 (往复 N 次) ─────────────────────────
+    FOLLOW_ST = os.path.join(REPO, "zmax_data", "ar_rs", "follow_status.json")
+    FOLLOW_LOG = os.path.join(REPO, "zmax_data", "ar_rs", "follow_last.log")
+
+    def _follow_status(self):
+        try:
+            d = json.load(open(self.FOLLOW_ST, encoding="utf-8"))
+        except Exception:                                                     # noqa: BLE001
+            d = {"state": "idle"}
+        d["log_tail"] = ""
+        try:
+            with open(self.FOLLOW_LOG, encoding="utf-8") as f:
+                d["log_tail"] = "".join(f.readlines()[-8:])
+        except Exception:                                                     # noqa: BLE001
+            pass
+        return d
+
+    def _follow_stop(self):
+        import signal as _sig
+        try:
+            d = json.load(open(self.FOLLOW_ST, encoding="utf-8"))
+            pid = int(d.get("pid") or 0)
+            if pid > 0:
+                os.kill(pid, _sig.SIGTERM)
+                return {"ok": True, "msg": "已终止 pid=%d" % pid}
+        except Exception as e:                                                # noqa: BLE001
+            return {"ok": False, "err": str(e)}
+        return {"ok": False, "err": "没有在跑的跟随进程"}
+
+    def _follow_line(self, body):
+        """POST /api/fence/follow {id, loops, speed} ⇒ 后台跑 run_along_line.py"""
+        fid = str(body.get("id") or "")
+        loops = int(body.get("loops") or 3)
+        speed = float(body.get("speed") or 100.0)
+        st = self._follow_status()
+        if st.get("state") == "running":
+            pid = int(st.get("pid") or 0)
+            if pid and os.path.exists("/proc/%d" % pid):
+                self._json({"ok": False, "err": "已经在跟随中 (pid=%d)" % pid})
+                return
+        try:
+            it = next((x for x in FS.listing()["items"] if x["id"] == fid), None)
+        except Exception:                                                     # noqa: BLE001
+            it = None
+        if not it or it.get("type") != "line":
+            self._json({"ok": False, "err": "只有直线元素能 Follow"})
+            return
+        log = open(self.FOLLOW_LOG, "w", encoding="utf-8")
+        cmd = [os.path.join(REPO, "gui-venv311", "bin", "python"),
+               os.path.join(REPO, "tools", "run_along_line.py"),
+               "--id", fid, "--loops", str(loops), "--speed", str(speed),
+               "--zone", "5", "--npts", "1", "--chunk", "0"]
+        pr = subprocess.Popen(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
+                              start_new_session=True)
+        json.dump({"state": "running", "pid": pr.pid, "id": fid, "name": it.get("name"),
+                   "loops": loops, "speed": speed,
+                   "started": time.strftime("%F %T")},
+                  open(self.FOLLOW_ST, "w", encoding="utf-8"), ensure_ascii=False)
+        self._fence_audit("/api/fence/follow", fid, {"loops": loops, "speed": speed})
+        self._json({"ok": True, "pid": pr.pid,
+                    "msg": "开始跟随「%s」· 往复 %d 次 · %.0fmm/s" % (it.get("name"), loops, speed)})
+
     # ── 数据 ────────────────────────────────────────────────
     def _traj(self):
         d = json.loads(_get("/scene.json"))
@@ -791,6 +856,12 @@ class H(BaseHTTPRequestHandler):
                 self._json(dict(ok=True, **FS.delete(str(body.get("id") or ""))))
             except Exception as e:                                                 # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+        elif p == "/api/fence/follow":     # 🏃 让 tool1 跟着这条直线元素往复走 (真机动作)
+            self._follow_line(body)
+        elif p == "/api/fence/follow/status":
+            self._json(self._follow_status())
+        elif p == "/api/fence/follow/stop":
+            self._json(self._follow_stop())
         elif p == "/api/fence/clear":
             r = FS.clear()
             self._fence_audit("/api/fence/clear", "-", body)

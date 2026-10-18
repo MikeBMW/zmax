@@ -85,7 +85,8 @@ def send(req, wait=90.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--name", default="小红", help="要沿着的直线围栏的名字")
+    ap.add_argument("--name", default="小红", help="要沿着的直线元素的名字")
+    ap.add_argument("--id", default="", help="按 id 指定 (页面 Follow 按钮走这个)")
     ap.add_argument("--speed", type=float, default=20.0, help="mm/s (1~100)")
     ap.add_argument("--npts", type=int, default=40, help="直线段上取几个点 (点越多越平顺)")
     ap.add_argument("--zone", type=float, default=5.0, help="过渡区 mm (越小越贴线, 停顿越多)")
@@ -100,9 +101,14 @@ def main():
     a = ap.parse_args()
 
     import fence_store as FS
-    it = next((x for x in FS.listing()["items"] if x["name"] == a.name), None)
+    items = FS.listing()["items"]
+    it = None
+    if a.id:
+        it = next((x for x in items if x["id"] == a.id), None)
+    if it is None:
+        it = next((x for x in items if x["name"] == a.name), None)
     if not it or it["type"] != "line":
-        print("⛔ 没找到叫「%s」的直线围栏" % a.name)
+        print("⛔ 没找到直线元素 (id=%s name=%s)" % (a.id, a.name))
         return 2
     A, B = list(it["p1"]), list(it["p2"])
     if a.reverse:
@@ -115,6 +121,7 @@ def main():
         print("⛔ 前置条件不满足 ⇒ 一行都不发:")
         for b in bad:
             print("   ·", b)
+        _write_status("error", it, a, err="; ".join(bad))
         return 3
 
     pose = _get("/pose")
@@ -239,7 +246,31 @@ def main():
     errA = 1000 * sum((end[i] - A[i]) ** 2 for i in range(3)) ** 0.5
     errB = 1000 * sum((end[i] - B[i]) ** 2 for i in range(3)) ** 0.5
     print("离 A 端 %.1fmm · 离 B 端 %.1fmm" % (errA, errB))
+    _write_status("done", it, a, end=end, errs=(errA, errB))
     return 0
+
+
+def _write_status(state, it, a, end=None, errs=None, err=""):
+    """给页面轮询用: zmax_data/ar_rs/follow_status.json"""
+    try:
+        p = os.path.join(REPO, "zmax_data", "ar_rs", "follow_status.json")
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+        except Exception:                                                   # noqa: BLE001
+            d = {}
+        d.update({"state": state, "id": it.get("id"), "name": it.get("name"),
+                  "loops": a.loops, "speed": a.speed,
+                  "at": time.strftime("%F %T")})
+        if end:
+            d["end_xyz_mm"] = [round(x * 1000, 1) for x in end]
+        if errs:
+            d["err_a_mm"], d["err_b_mm"] = round(errs[0], 1), round(errs[1], 1)
+        if err:
+            d["err"] = err
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False)
+    except Exception:                                                       # noqa: BLE001
+        pass
 
 
 if __name__ == "__main__":

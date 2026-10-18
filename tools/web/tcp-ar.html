@@ -109,7 +109,7 @@
       <pre id="pTraj">—</pre>
     </div>
     <div class="card" id="cardFence">
-      <h2>🧱 3D 围栏 (base 世界系 · 机器人不能碰) <span id="tFence" class="tag">0 个</span></h2>
+      <h2>🧱 3D 元素 (base 世界系) · 盒子=围栏 · 直线=轨迹 <span id="tFence" class="tag">0 个</span></h2>
       <div class="row">
         <button id="fBox" class="sm on">▭ 长方体 / 正方体</button>
         <button id="fLine" class="sm">╱ 直线</button>
@@ -136,7 +136,7 @@
         <input id="fName" placeholder="名字(可不填)" style="flex:1;min-width:90px">
       </div>
       <div class="row" style="margin-top:8px">
-        <button id="fAdd" class="primary">➕ 添加围栏</button>
+        <button id="fAdd" class="primary">➕ 添加元素</button>
         <button id="fEditSave" class="sm" disabled>💾 保存修改</button>
         <button id="fClearAll" class="danger sm">清空全部</button>
       </div>
@@ -147,6 +147,7 @@
       </div>
       <div id="fList" style="margin-top:8px;max-height:190px;overflow:auto"></div>
       <pre id="pFence">—</pre>
+      <div id="pFollow" style="font-size:12px;color:#8b949e;margin-top:4px"></div>
     </div>
     <div class="card">
       <h2>🔍 联合工控机 AOI (金手指 10082)</h2>
@@ -505,7 +506,7 @@ async function loadFences(){
 }
 function renderFenceList(){
   const box=$('fList'); if(!box) return;
-  if(!FENCES.length){ box.innerHTML='<div style="font-size:12px;color:#8b949e">还没有围栏。上面填两点 → ➕ 添加。</div>'; return; }
+  if(!FENCES.length){ box.innerHTML='<div style="font-size:12px;color:#8b949e">还没有元素。上面填两点 → ➕ 添加元素。</div>'; return; }
   box.innerHTML=FENCES.map(it=>{
     const p1=it.p1.map(v=>Math.round(v*1000)), p2=it.p2.map(v=>Math.round(v*1000));
     const dim=(it.type==='box')?p1.map((v,i)=>Math.abs(p2[i]-v)).join('×')+'mm':('长度 '+
@@ -517,6 +518,7 @@ function renderFenceList(){
       <span style="color:#8b949e">${it.type==='box'?'▭':'╱'} ${dim}</span>
       <span style="color:#6b7a8d">[${p1.join(',')}]→[${p2.join(',')}]</span>
       <button class="sm" style="margin-left:auto" onclick="fenceEdit('${it.id}')">编辑</button>
+      ${it.type==='line'?`<button class="sm" style="border-color:#3fb950;color:#3fb950" title="让 tool1 沿这条线往复走" onclick="followLine('${it.id}')">▶ Follow</button>`:''}
       <button class="sm danger" onclick="fenceDel('${it.id}')">删</button>
     </div>`;}).join('');
 }
@@ -713,6 +715,38 @@ function _pickVert(u,v,zRef){
   const tt=((c[0]-eye[0])*n[0]+(c[1]-eye[1])*n[1])/den;
   if(!(tt>0)) return null;
   return [eye[0]+d[0]*tt, eye[1]+d[1]*tt, eye[2]+d[2]*tt];
+}
+async function followLine(id){
+  const loops=+(prompt('往复几次?', '3')||0);
+  if(!loops||loops<1){ $('pFence').textContent='已取消'; return; }
+  const speed=+(prompt('直线速度 mm/s?', '100')||0);
+  if(!speed||speed<1||speed>300){ $('pFence').textContent='速度要在 1~300 mm/s'; return; }
+  const it=FENCES.find(x=>x.id===id);
+  $('pFence').textContent='▶ 正在让 tool1 沿「'+(it?it.name:'')+'」往复 '+loops+' 次 · '+speed+'mm/s ...';
+  const r=await fencePost('/api/fence/follow',{id:id,loops:loops,speed:speed});
+  $('pFence').textContent = r.ok ? ('✅ '+r.msg+' (pid '+r.pid+')') : ('⛔ '+r.err);
+  if(r.ok) followPoll();
+}
+let FOLLOW_T=null;
+async function followPoll(){
+  clearTimeout(FOLLOW_T);
+  try{
+    const s=await fetch('/api/fence/follow/status').then(x=>x.json());
+    if(s.state==='running'){
+      $('pFollow').textContent='▶ 跟随中: '+(s.name||'')+' · '+(s.loops||'')+' 次 · '+(s.speed||'')+'mm/s (pid '+(s.pid||'')+')';
+      $('pFollow').style.color='#3fb950';
+      FOLLOW_T=setTimeout(followPoll,1500);
+    } else if(s.state==='done'){
+      $('pFollow').textContent='✅ 走完: '+(s.name||'')+' · '+(s.loops||'')+' 次 · 终点 '+(s.end_xyz_mm?('['+s.end_xyz_mm.join(', ')+']mm'):'')
+        +' · 离两端 '+(s.err_a_mm!=null?(s.err_a_mm+' / '+s.err_b_mm+'mm'):'');
+      $('pFollow').style.color='#3fb950';
+    } else if(s.state==='error'){
+      $('pFollow').textContent='⛔ '+(s.err||'失败');
+      $('pFollow').style.color='#e05252';
+    } else {
+      $('pFollow').textContent='';
+    }
+  }catch(e){}
 }
 async function fenceCommit(it){
   fillP1(it.p1); fillP2(it.p2);        // 拖完把面板里的数字同步刷新 (眼睛看得到"改成了多少")
@@ -1270,7 +1304,7 @@ async function loadUrdf(){
   }catch(e){ console.warn('URDF 取失败', e); }
 }
 loadUrdf();
-fenceBind(); fenceAutoFill();   // ①=当前 TCP, ②=①+80mm (别让空输入框出 800mm 大盒子)
+fenceBind(); fenceAutoFill(); followPoll();   // ①=当前 TCP, ②=①+80mm (别让空输入框出 800mm 大盒子)
 async function loadCalib(){
   try{ const r=await fetch('/api/calib?cam='+CAM).then(x=>x.json());
     if(r.cams&&!Object.keys(CAMS).length) CAMS=r.cams;
