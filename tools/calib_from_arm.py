@@ -57,7 +57,10 @@ def wait_idle(timeout=60.0):
 
 
 def d435():
-    b = urllib.request.urlopen("http://127.0.0.1:8791/snapshot/local2.jpg", timeout=8).read()
+    """真 D435 = 8791 的 'local' (640×480)。
+    🔴 2026-10-18 踩坑: 'local2'(1280×720) 是 MAXHUB 顶摄, 不是 D435 —— 用错流会得
+    "臂只有 90px、离 2.5~3m" 的荒谬结论。判据: 不动机器人时两帧差 0.01%(local) vs 0.93%(local2)。"""
+    b = urllib.request.urlopen("http://127.0.0.1:8791/snapshot/local.jpg", timeout=8).read()
     return cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
 
 
@@ -77,10 +80,33 @@ def move_to(p, speed, step, pause):
                     "z": float(st[2] / 1000), "speed": speed, "motion": "J",
                     "allow_movej_retry": True}, wait=60)
         if "PASS" not in str(r.get("verdict", "")):
-            print("   被拒(%.0fmm): %s" % (math.dist(st, c0), str(r.get("verdict"))[:70]))
-            return False
+            print("   被拒(%.0fmm): %s ⇒ 抬 z 再试" % (math.dist(st, c0), str(r.get("verdict"))[:60]))
+            lift = c0.copy()
+            lift[2] += 40.0
+            r2 = G.send({"cmd": "move-abs", "x": lift[0] / 1000, "y": lift[1] / 1000, "z": lift[2] / 1000,
+                         "speed": speed, "motion": "J", "allow_movej_retry": True}, wait=60)
+            if "PASS" not in str(r2.get("verdict", "")):
+                print("   抬 z 也被拒 ⇒ 放弃本段")
+                return False
+            G.wait_settle(c0 / 1000.0, 40.0, timeout=40, min_frac=0.5)
+            if not wait_idle(10):
+                return False
+            time.sleep(pause)
+            c1 = np.array(G.pose()[0]) * 1000.0
+            r3 = G.send({"cmd": "move-abs", "x": st[0] / 1000, "y": st[1] / 1000, "z": st[2] / 1000,
+                         "speed": speed, "motion": "J", "allow_movej_retry": True}, wait=60)
+            if "PASS" not in str(r3.get("verdict", "")):
+                print("   绕行后仍被拒 ⇒ 放弃本段")
+                return False
+            G.wait_settle(c1 / 1000.0, float(math.dist(st, c1)), timeout=40, min_frac=0.5)
+            if not wait_idle(10):
+                return False
+            time.sleep(pause)
         G.wait_settle(c0 / 1000.0, float(math.dist(st, c0)), timeout=40, min_frac=0.5)
-        if not wait_idle(60):
+        if not wait_idle(10):
+            # 🔴 实测: 一条被拒的 move 后控制器会一直停在 "moving" ⇒ 不能傻等 60s, 10s 不动就判死,
+            #    否则整轮 8 个位姿全空转(现场见过 "不空闲(moving)" 连报 7 次)。
+            print("   等不到 idle(10s) ⇒ 本轮作废")
             return False
         time.sleep(pause)
     return math.dist(np.array(G.pose()[0]) * 1000.0, tgt) < 12
@@ -120,7 +146,7 @@ def main():
     ap.add_argument("--deadzone", type=float, default=8.0, help="每个位姿的微动 mm(用来抠出该位姿的臂轮廓)")
     ap.add_argument("--margin", type=float, default=120.0)
     ap.add_argument("--xs", default="500,610")
-    ap.add_argument("--ys", default="100,280")
+    ap.add_argument("--ys", default="180,340")
     ap.add_argument("--zs", default="220,330")
     ap.add_argument("--save", default=os.path.join(REPO, "data", "scene", "cam_calib.json"))
     ap.add_argument("--key", default="local2")
@@ -175,7 +201,7 @@ def main():
         return 3
 
     P3 = np.array([r["tcp_mm"] for r in recs])
-    H, W = 720, 1280
+    H, W = 480, 640
     tip = [list(r["centroid"]) for r in recs]
     best = None
     for it in range(4):

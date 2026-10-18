@@ -20,6 +20,7 @@
 
 ## 版本历史
 
+| **v5.50.745** | 10-18 | 臂相机画 tool1 坐标系(原点=标注的模块头顶中心, /api/toolframe + 页面『▣ tool1系』) · 绿框钉死不动+竖向硬夹不拉长 · 光模块放回槽位走反向抓取(姿态分步 4°+纯姿态被控制器静默忽略故加 z 抖动) ; 根因三条: 手眼矩阵平移单位是米、local2 是 MAXHUB 非 D435、纯姿态 move-abs 回 PASS 但不动 |
 | **v5.50.741** | 10-18 | AR 三维视图画真机实测轨迹(橙色·10Hz SDK endInRef) + 修视图上下颠倒(相机 up 用 R×fwd, 原 fwd×R 算出 U=(0,0,-1) 朝下, 地平面上天) + 清除轨迹同时清橙色序列并通知录制器丢缓冲 + 插拔/摆盘桥接改整轮一条多点路径(一次 moveStart 一口气走完, 实测 32mm/4.3s、40mm/15.2s) + 严格串行不许叠队(叠两条会越走越快跑远、顶穿包络闸, 实测连拒 150 轮) + 模板防自我衰减(改由仿真真值录 696mm/42s 模板, 只接受更长模板) + 腿报扫掠越界以当前位置重锚定、前置条件(手动/点动)不满足时退避并打印原因 + 实时性实测(控制器 RTT 0.14ms/0%丢包, 命令往返 11ms±0.3ms, 跟随进程 nice -15 + 独占 28-31 核) |
 | **v5.50.740** | 10-17 | 核心归位+跨平台: RealStateSpaceSim 与 22 个零 Qt 核心模块迁入 src/ (tools/gui 只留 GUI 与 ≤40 行别名 shim, 删 3 个死文件含 15819 行逐字节重复文件); 新增 verify_src_layering(27 项)/verify_engine_location(7 项) 判据; 调试期停 _HwFetcher/_StatusLightFetcher + 线程异常只落盘 (VSCode 断点 Call Stack 不再跳); pyqtgraph 绘制 skipFiniteCheck + refresh 重入闸 (修 RecursionError); shim 路径探测兼容 _MEIPASS, Windows/macOS 打包 job 补 engine/ops/serving/features/skills/perception/middleware + tools/gen |
 | **v5.50.739** | 10-17 | 信号表: 列宽可拖且记住(不再自动还原, 新增↺列宽复位) · 新增 Type 列显示 topic 全名 · 表头全英文短名 Name/Type/Value/Unit/Age s/Bar/Tx/Rx · Trace 表头全英文(Time/Name/Signal/Value/Class/Hz/Count/Age s/QoS/Lamp/Note) · 面板标题去括号简化(Data/Detail/Trace) |

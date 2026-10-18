@@ -144,13 +144,20 @@ def solve_extrinsics(pts3, pts2, W, H):
     s2 = np.sqrt(2) / max(1e-9, np.mean(np.linalg.norm(P2 - c2, axis=1)))
     T2 = np.array([[s2, 0, -s2 * c2[0]], [0, s2, -s2 * c2[1]], [0, 0, 1]])
     A = []
-    for (X, Y, Z, _), (u, v) in zip((T3 @ np.hstack([P3, np.ones((len(P3), 1))]).T).T, (T2 @ np.hstack([P2, np.ones((len(P2), 1))]).T).T):
+    H3 = (T3 @ np.hstack([P3, np.ones((len(P3), 1))]).T).T          # (N,3) 归一化后的 3D
+    H2 = (T2 @ np.hstack([P2, np.ones((len(P2), 1))]).T).T          # (N,2) 归一化后的 2D
+    for (X, Y, Z, _w3), (u, v, _w2) in zip(H3, H2):
         A.append([X, Y, Z, 1, 0, 0, 0, 0, -u * X, -u * Y, -u * Z, -u])
         A.append([0, 0, 0, 0, X, Y, Z, 1, -v * X, -v * Y, -v * Z, -v])
     _, _, Vt = np.linalg.svd(np.array(A))
     Pn = Vt[-1].reshape(3, 4)
     P = np.linalg.inv(T2) @ Pn @ T3
-    K, R = cv2.RQDecomp3x3(P[:, :3])[:2]
+    _rq = cv2.RQDecomp3x3(P[:, :3])
+    # 🔴 OpenCV 5.0 返回 (retval, K, R, Qx, Qy, Qz); 4.x 返回 (K, R, Qx, Qy, Qz) —— 两种都得认
+    if len(_rq) >= 6:
+        K, R = _rq[1], _rq[2]
+    else:
+        K, R = _rq[0], _rq[1]
     f = float((K[0, 0] + K[1, 1]) / 2.0)
     t = np.linalg.solve(K, P[:, 3])
 
