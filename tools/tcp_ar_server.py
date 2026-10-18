@@ -490,6 +490,39 @@ def l5_understand(cam: str = None, hint: str = "") -> dict:
             pass
 
 
+def toolframe_px(length_mm=60.0):
+    """tool1 坐标系投影到臂相机像素。相机在腕上 ⇒ 这套像素是**固定**的(不随位姿变)。
+    数据: models/handeye_state.json(相机在 tool 系的位姿; 矩阵平移单位是米) + real_cam_calib.json 的 K/dist。"""
+    import json as _j
+    import os as _os
+    import numpy as _np
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    try:
+        he = _j.load(open(_os.path.join(root, "models", "handeye_state.json"), encoding="utf-8"))
+        cal = _j.load(open(_os.path.join(root, "models", "real_cam_calib.json"), encoding="utf-8"))
+        T = _np.array(he["T_cam2tool"], float)
+        if _np.linalg.norm(T[:3, 3]) < 2.0:
+            T[:3, 3] *= 1000.0
+        Ti = _np.linalg.inv(T)
+        K = _np.array(cal["K"], float).reshape(3, 3)
+        dist = _np.array(cal.get("dist") or [0, 0, 0, 0, 0], float).ravel()
+        pts = [_np.zeros(3), _np.array([length_mm, 0, 0.0]), _np.array([0, length_mm, 0.0]),
+               _np.array([0, 0, length_mm])]
+        Pc = _np.array([Ti[:3, :3] @ q + Ti[:3, 3] for q in pts])
+        rvec, _ = cv2.Rodrigues(_np.eye(3))
+        uv, _ = cv2.projectPoints(Pc.reshape(-1, 1, 3), rvec, _np.zeros(3), K, dist)
+        uv = uv.reshape(-1, 2)
+        if float(Pc[0, 2]) <= 5:
+            return {"ok": False, "err": "tool1 原点在相机背后", "cam_z_mm": float(Pc[0, 2])}
+        return {"ok": True, "origin": [float(uv[0][0]), float(uv[0][1])],
+                "axes": {"X": [float(uv[1][0]), float(uv[1][1])], "Y": [float(uv[2][0]), float(uv[2][1])],
+                         "Z": [float(uv[3][0]), float(uv[3][1])]},
+                "length_mm": length_mm, "cam_z_mm": float(Pc[0, 2]), "img": [640, 480],
+                "src": "handeye_state.json(残差0.06mm) + real_cam_calib K(camera_info)"}
+    except Exception as e:                                               # noqa: BLE001
+        return {"ok": False, "err": str(e)}
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-tcp-ar/1.0"
@@ -553,6 +586,12 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p == "/api/toolframe":                    # ▣ tool1 坐标系(臂相机像素, 固定)
+                try:
+                    L = float(qs.get("len", "60") or 60)
+                except Exception:                                       # noqa: BLE001
+                    L = 60.0
+                self._json(toolframe_px(L))
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
                 self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)

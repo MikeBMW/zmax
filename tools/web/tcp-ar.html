@@ -57,6 +57,7 @@
   <span style="display:flex;gap:6px;align-items:center">
     <button id="bRotL" class="sm" title="整幅画面向左旋转 90°(逆时针)">↺ 左旋90°</button>
     <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
+    <button id="bTf" class="sm" title="在臂相机画面上画 tool1 坐标系(手眼 0.06mm + 内参; 相机装腕上, 像素固定)">▣ tool1系</button>
     <button id="bMod3" class="sm" title="在臂相机画面上叠光模块 3D 框(检测器 + 内参 + 手眼 + TCP)">🔍 光模块3D框</button>
     <span class="tag" id="tRot">旋转 0°</span>
   </span>
@@ -273,6 +274,12 @@ $('bMod3').addEventListener('click',()=>{ MOD3ON=!MOD3ON;
   $('bMod3').textContent=MOD3ON?'🔍 光模块3D框':'🔍 光模块3D框(关)';
   $('bMod3').className='sm'+(MOD3ON?' primary':''); SIG=''; drawOv(); });
 $('bRotR').addEventListener('click',()=>setRot(+90));  // 右旋 = 顺时针
+$('bTf').addEventListener('click',()=>{ TFON=!TFON;
+  $('bTf').textContent=TFON?'▣ tool1系':'▣ tool1系(关)';
+  $('bTf').className='sm'+(TFON?' primary':'');
+  if(TFON&&!TF) loadToolFrame(); SIG=''; drawOv(); });
+$('bTf').className='sm primary';
+loadToolFrame();
 
 // 🆕 2026-10-12 老倪: 「VR 三维视图要跟相机的窗口一样大」⇒ 画布高 = 相机窗口高(宽靠 CSS 通宽)
 //    尺寸没变就不碰 DOM(重设 canvas 尺寸 = 清空, 会闪)
@@ -370,9 +377,41 @@ function drawModBox(g){
   g.restore();
   return 12;
 }
+// ▣ tool1 坐标系 (2026-10-18 老倪: 「你现在把 tool1 的坐标系，在你的手臂相机上画出来」)
+// 相机装在手爪上 ⇒ tool1 在画面里的像素位置是**常量**, 一次取回即可, 每帧只是重画, 零成本。
+let TF=null, TFON=true, TFN=0;
+async function loadToolFrame(){
+  try{ const d=await fetch('/api/toolframe?len=60').then(r=>r.json());
+    if(d&&d.ok){ TF=d; SIG=''; drawOv(); } }catch(e){}
+  setTimeout(loadToolFrame, 30000);                // 30s 复核一次(手眼重标后自动跟上)
+}
+function drawToolFrame(g){
+  if(!TFON||!TF||!TF.ok) return 0;
+  const sx=IMG_W/((TF.img&&TF.img[0])||640), sy=IMG_H/((TF.img&&TF.img[1])||480);
+  const P=q=>[q[0]*sx, q[1]*sy];
+  const O=P(TF.origin);
+  const AX=[['X',TF.axes.X,'#ff5c5c'],['Y',TF.axes.Y,'#4dd24d'],['Z',TF.axes.Z,'#4da3ff']];
+  g.save(); g.lineWidth=3; g.font='bold 15px system-ui';
+  AX.forEach(([k,q,c])=>{
+    const T=P(q);
+    g.strokeStyle=c; g.fillStyle=c;
+    g.beginPath(); g.moveTo(O[0],O[1]); g.lineTo(T[0],T[1]); g.stroke();
+    const a=Math.atan2(T[1]-O[1],T[0]-O[0]), hl=13;
+    g.beginPath(); g.moveTo(T[0],T[1]);
+    g.lineTo(T[0]-hl*Math.cos(a-0.4),T[1]-hl*Math.sin(a-0.4));
+    g.lineTo(T[0]-hl*Math.cos(a+0.4),T[1]-hl*Math.sin(a+0.4));
+    g.closePath(); g.fill();
+    g.fillText(k+' '+((TF.length_mm||60)|0)+'mm', T[0]+6, T[1]-6);
+  });
+  g.fillStyle='#fff'; g.beginPath(); g.arc(O[0],O[1],6,0,7); g.fill();
+  g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
+  g.fillStyle='#fff'; g.fillText('tool1 ('+O[0].toFixed(0)+', '+O[1].toFixed(0)+')  z='+(TF.cam_z_mm||0).toFixed(0)+'mm', O[0]+10, O[1]+20);
+  g.restore(); return 3;
+}
 function drawOv(){
   const c=$('ov'), g=c.getContext('2d');
   g.clearRect(0,0,IMG_W,IMG_H);
+  const nTf=drawToolFrame(g);                      // ▣ tool1 坐标系(臂相机, 像素固定)
   const nMod=drawModBox(g);                        // 🔍 光模块 3D 框先画(不吃 AR 标定)
   if(!CALIB){ $('hint').textContent=nMod?('光模块 3D 框已画 ('+nMod+' 条棱) · AR 叠加需要先标定 '+(CAMS[CAM]||{}).label||CAM)
              :`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`; return; }

@@ -81,6 +81,16 @@ def _state_load():
         return {}
 
 
+def _freeze_load():
+    """读钉住的结果(/dev/shm/mod3_freeze.json); 没有就返回 None。"""
+    try:
+        with open("/dev/shm/mod3_freeze.json", encoding="utf-8") as f:
+            d = json.load(f)
+        return d if d.get("ok") else None
+    except Exception:                                                       # noqa: BLE001
+        return None
+
+
 def _state_save(d):
     try:
         tmp = _STATE_F + ".%d.tmp" % os.getpid()
@@ -260,6 +270,17 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         _LASTBOX.update(_st.get("lastbox") or {})
         _JUMP.update(_st.get("jump") or {})
     K, dist = intrinsics()
+    # 🔴 老倪 2026-10-18「绿色标注框，在画面中的位置，保持不动都可以」:
+    # 相机在腕上、模块被夹住 ⇒ 刚体关系, 像素位置本该是常量。钉住后不再每帧追,
+    # 画面继续刷新(帧龄是真的), 但框的位置/尺寸/角点全部原样返回。
+    _fr = _freeze_load()
+    if _fr is not None:
+        out = dict(_fr)
+        out["ts"] = time.time()
+        out["frozen"] = True
+        out["frame_ts"] = time.time()
+        return out
+
     items = detect_boxes(img_bgr, conf)
     det_src = "yolo" if items else None
     if not items:
@@ -503,6 +524,20 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         c_cam_s = Rcb.T @ (c_s - o)
         corners_cam, corners_base, corners_px = _corners(H_s, c_cam_s)
         center_base, H, smooth_applied = c_s, H_s, True
+    # 🔴 老倪 2026-10-18「标注框不要变长」:
+    # 自洽迭代/斜视投影/平滑 都可能把框在竖向撑长(现场看到"框比物体长一截")。
+    # 最后上一道**硬夹**: 画出去的竖向跨度不许超过检测框(1.02 容差), 超了按比例把 H 收回。
+    try:
+        _ys = [q[1] for q in corners_px]
+        _span = max(_ys) - min(_ys)
+        if h_px >= 3 and _span > float(h_px) * 1.02:
+            H *= (float(h_px) * 1.02) / _span
+            _ctr = c_cam_s if smooth_applied else None
+            corners_cam, corners_base, corners_px = _corners(H, _ctr)
+            center_base = Rcb @ (c_cam_s if smooth_applied else c_cam) + o
+            warn.append("框竖向被夹回可见高度 %.0f→%.0fpx" % (_span, float(h_px) * 1.02))
+    except Exception:                                                       # noqa: BLE001
+        pass
     if det_src == "yolo":
         _LASTBOX.update(box2d=[float(x1), float(y1), float(x2), float(y2)], t=time.time())
     try:                                     # 存"上一次成功的框内图像"当模板(模板匹配的素材)
