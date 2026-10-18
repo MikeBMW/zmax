@@ -166,7 +166,10 @@
         <button id="bRsPose" class="sm">📦 目标位姿(相机系)</button>
         <button id="bRsExp" class="sm">💡 曝光</button>
       </div>
-      <pre id="pRs">🥽 RealSense D435: 点『🔎 找光模块』在 AR 相机帧里跑**在役权重**(models/yolo_peg_live.pt) —— 这就是「光模块的标定能力」第一步: 检测框中心 + 深度 → 相机系 3D, 与 TCP/base 真值配对后即可解外参。</pre>
+      <pre id="pRs">🥽 RealSense D435: 点『🔎 找光模块』在 AR 相机帧里跑**在役权重**(models/yolo_peg_live.pt)。
+⚠ 实测提醒(2026-10-18): 这套权重只认腕相机(D405)的视角与尺度; 在 D435 上会**误检静止杂物**
+(臂横移 110mm 而框像素不动 0px, 已证伪) ⇒ **不能**用它当固定相机标定的靶标。
+标定请走下面『🎯 进入标定(点夹爪尖)』, 或把相机推到离臂 ≤1m 后由脚本做臂型/标记拟合。</pre>
     </div>
     <div class="card">
       <h2>AR 叠加标定(所选固定相机的外参)</h2>
