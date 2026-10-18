@@ -104,7 +104,9 @@ def read(prefix, raw):
               "target_rx_deg": raw.get("target_rx_deg"), "target_ry_deg": raw.get("target_ry_deg"),
               "target_rz_deg": raw.get("target_rz_deg"),
               "travel_mm": raw.get("lin_total_mm"),
-              "speed_kept_pct": (round(100.0 * float(_real) / float(_req), 1) if _req else None)}
+              # 📚 2026-10-18 老倪: 「这个不就是速度的增益么? 别乱起名字」—— 就是增益: 实际/请求
+              #   1.0 = 你设的全都用上; 0.58 = 被压到 58% (32mm/s → 18.7mm/s)
+              "speed_gain": (round(float(_real) / float(_req), 3) if _req else None)}
         return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     if prefix == "ss_exec":
         _o = {"exec_phase": raw.get("phase_code"), "stage_now": raw.get("seg"), "stage_total": raw.get("n_seg"),
