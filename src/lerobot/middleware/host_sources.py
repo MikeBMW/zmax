@@ -32,6 +32,8 @@ FILES = (
     ("yolo", "zmax_data/ss_bypass/yolo_detections.json", "zmax/yolo_det"),
     ("space", "zmax_data/dataspace/live.json", "zmax/dataspace_live"),
     ("ar", "zmax_data/ar_live/ar_aoi_live.json", "zmax/ar_aoi"),
+    # 📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」—— 执行器真值 5Hz
+    ("ss_exec", "zmax_data/ss_live/exec_state.json", "zmax/ss_exec"),
 )
 
 # 原子技能物理量: 键名 = "<SK号> <阶段> · <物理量> <单位>"

@@ -40,7 +40,10 @@ NODES = {
     "n_intent_direct": ("MetaTaskPrediction", "元任务预测",         {}),
     "n_l2_muscle":     ("MuscleSkillBank",   "肌肉记忆技能库",      {}),
     "n_mem_links":     ("MemoryLinks",       "跨层连接",            {}),
-    "n_moveit":        ("MotionPlan",        "MoveIt 运动规划",     {}),
+    # 📚 2026-10-18 老倪: 「将 moveit 节点更改为 plan 节点」—— out1 现在是**段表** (PlanSegments)
+    "n_moveit":        ("PlanSegments",     "运动规划 (plan)",     {}),
+    # 📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」—— 执行器出口: 命令/结果
+    "n_exec":          ("Exec",             "动作执行器 (l2_daemon)", {"out1": "ActuationCommand", "out2": "ExecResult"}),
     "n_realscene":     ("RealSceneOverlay",  "真实场景叠加",        {}),
     "n_skill_dict":    ("SkillDictionary",   "技能词典",            {}),
     "n_vlm_llm":       ("VlmSceneText",      "视觉语言场景理解",    {}),

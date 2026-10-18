@@ -147,6 +147,97 @@ def log(msg):
         f.write(line + "\n")
     if ("SDK 腿失败" in msg) or ("⛔ ABORT" in msg):
         _LEG_FAIL.update(t=time.time(), why=msg.strip())
+    # ⚙️ 2026-10-18: 执行器节流观察 (n_exec 节点真值源) — 只读日志文本, 不改控制逻辑
+    try:
+        _exec_observe(msg)
+        if msg.startswith("受理:") or msg.startswith("拒绝") or "被拦" in msg or "到位" in msg:
+            _exec_event(msg)
+    except Exception:                                                    # noqa: BLE001
+        pass
+
+
+# ─────────────────── ⚙️ 执行器实时状态 (节点 n_exec 的真数据源, 2026-10-18) ───────────────────
+# 📚 老倪: 「l2_daemon 也要做一个节点，我要看到」—— 节点不能是装饰, 必须有真值。
+#   落两个文件 (画布节点 n_exec 的信号源; 由 host_sources 汇入统一信号库 signals.db):
+#     exec_state.json   5Hz: 段号/阶段/目标/实测/残差/速度/传输/授权epoch/被谁拦
+#     exec_events.jsonl 每条命令一行: 受理/拒绝/到位/失败 (可追溯, 追加写)
+_EXEC_STATE = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_state.json")
+_EXEC_EVENTS = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_events.jsonl")
+_EXEC = {"phase": "idle", "seg": 0, "n_seg": 0, "skill": "", "target": None, "pos": None,
+         "residual_mm": None, "speed_mm_s": None, "transport": "", "blocked_by": "",
+         "auth_epoch": None, "t": 0.0}
+
+
+def exec_state(**kw):
+    """更新执行器状态 (只读发布, 不影响控制逻辑)。
+
+    数值型字段才会进信号库 ⇒ 目标位姿/残差/速度都摊平成标量 (target_x/y/z, pos_x …, residual_mm)。
+    """
+    _EXEC.update(kw)
+    for _k, _p in (("target", "target"), ("pos", "pos")):
+        _v = kw.get(_k)
+        if isinstance(_v, (list, tuple)) and len(_v) >= 3:
+            _EXEC["%s_x" % _p] = float(_v[0])
+            _EXEC["%s_y" % _p] = float(_v[1])
+            _EXEC["%s_z" % _p] = float(_v[2])
+    _EXEC["t"] = time.time()
+
+
+def _exec_observe(msg):
+    """从日志行里抽取状态 (不动控制流): 阶段/目标/到位/拒绝。"""
+    import re as _re
+    try:
+        m = _re.search(r"阶段 (\d+)/(\d+)「[^」]*」点=(\S+) pos=\(([-\d.]+), ([-\d.]+), ([-\d.]+)\)", msg)
+        if m:
+            exec_state(phase="planned", seg=int(m.group(1)), n_seg=int(m.group(2)),
+                       target=[float(m.group(4)), float(m.group(5)), float(m.group(6))])
+        m = _re.search(r"已下发 阶段 (\d+)/(\d+)", msg)
+        if m:
+            exec_state(phase="dispatching", seg=int(m.group(1)), n_seg=int(m.group(2)))
+        m = _re.search(r"✅ 阶段 (\d+)/(\d+) 到位 · 真值偏差 ([\d.]+)mm", msg)
+        if m:
+            exec_state(phase="arrived", seg=int(m.group(1)), n_seg=int(m.group(2)),
+                       residual_mm=float(m.group(3)))
+        m = _re.search(r"SDK 腿下发: .*pos=\(([-\d.]+), ([-\d.]+), ([-\d.]+)\).*speed=([\d.]+)mm/s", msg)
+        if m:
+            exec_state(transport="move-abs/rel", pos=[float(m.group(1)), float(m.group(2)), float(m.group(3))],
+                       speed_mm_s=float(m.group(4)))
+        # ⚠️ 只认**真的被拦**: 阶段标签里也可能出现"拒发"这个词(如"斜线会被 50102 奇异点拒发"),
+        #    按子串判会把正常阶段当成拦截 — 实测踩过。
+        # ⚠️ 不能只判 "🛡" 开头: 启动横幅「🛡 安全层: …」也会命中 ⇒ 实测把空闲状态误标成 blocked
+        if msg.startswith(("拒绝", "🛡 阶段", "🛡 视觉门", "🛑", "⛔")) or ("被拦(" in msg) or ("拒发:" in msg):
+            exec_state(phase="blocked", blocked_by=msg.strip()[:160])
+        if msg.startswith("受理:"):
+            exec_state(phase="accepted")
+    except Exception:                                                    # noqa: BLE001
+        pass
+
+
+def _exec_event(msg):
+    """每条受理/拒绝/到位/失败写一行台账 (追加)。"""
+    try:
+        rec = {"t": round(time.time(), 3), "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "msg": msg[:400],
+               "phase": _EXEC.get("phase"), "seg": _EXEC.get("seg")}
+        with open(_EXEC_EVENTS, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:                                                    # noqa: BLE001
+        pass
+
+
+def _exec_pub_thread():
+    """5Hz 把 _EXEC 写进 exec_state.json (原子替换, 读方永不见半截文件)。"""
+    while True:
+        try:
+            _tmp = _EXEC_STATE + ".tmp"
+            os.makedirs(os.path.dirname(_EXEC_STATE), exist_ok=True)
+            _EXEC["t_pub"] = time.time()          # 发布时刻 (帧龄判据); t 保留"最后一次事件"时刻
+            with open(_tmp, "w", encoding="utf-8") as f:
+                json.dump(_EXEC, f, ensure_ascii=False)
+            os.replace(_tmp, _EXEC_STATE)
+        except Exception:                                                # noqa: BLE001
+            pass
+        time.sleep(0.2)
+
 
 def state_thread():
     """常驻位姿流(ssh + ROS 一次性 echo 循环) → `_pose` 缓存。
@@ -2163,6 +2254,9 @@ def main():
     chan = _spawn_chan(force=True)
     threading.Thread(target=chan_watchdog, daemon=True).start()
     log("L2 常驻执行器启动 · FIFO=%s · 原子技能 %d 个" % (FIFO, len(reg["skills"])))
+    # ⚙️ 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」⇒ 5Hz 发布执行器状态供节点读取
+    threading.Thread(target=_exec_pub_thread, daemon=True).start()
+    exec_state(phase="idle", skill="")
     # 🛡 安全层口径(启动时明示, 免得事后说不清谁关了什么): 慢层可停用, 快层永远强制
     log("🛡 安全层: %s · 快层(本地 5Hz 遮挡/糊化反射)=**强制**(任何开关都不越过它)" % _vl_slow_status())
     while True:
@@ -2199,6 +2293,10 @@ def main():
                         log("🐛 调试实例: 命令已强制 dry (不下发) — skill=%s" % (spec.get("skill") or ""))
                 # 🔐 记下本条命令**签发时**的授权 epoch: 撤销会 +1 ⇒ 旧 epoch 的命令在执行层一律作废
                 _CUR.update({"epoch": spec.get("auth_epoch"), "skill": spec.get("skill") or "", "t": time.time()})
+                # ⚙️ 2026-10-18: 每条命令进来先把状态清成"新命令", 免得沿用上一条的段号/拦截原因
+                exec_state(phase="accepted", skill=spec.get("skill") or "", seg=0, n_seg=0,
+                           blocked_by="", residual_mm=None, target=None,
+                           auth_epoch=spec.get("auth_epoch"))
                 try:
                     log("受理: " + dispatch(reg, spec, chan))
                 except Exception as e:

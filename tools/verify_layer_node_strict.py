@@ -6,7 +6,7 @@
 另: 「Rx 怎么还有 物理约束呢？也没有这个节点啊」「前馈直方图，是可视化层，也不属于 L2~L5 层」
 
 检查项 (离屏, 不碰在跑的控制台):
-  ① 工程库节点名严格一一对应 (75 节点 → 75 个唯一显示名, naming.unique_map 是单射)
+  ① 工程库节点名严格一一对应 (N 节点 → N 个唯一显示名, naming.unique_map 是单射)
   ② attribution 用的节点表 == 工程库 + naming 的同一份 (不是另抄一份)
   ③ Trace 每行 Layer ∈ L2~L5 (SYS 行不会进表)
   ④ 每行 topic: 工程库 mw_topic 里定义, 或是本机真值流话题且归属节点在 L2~L5
@@ -49,7 +49,7 @@ L2SET = set(A.l2_names())     # 与面板/数据空间同一份 L2 词表 (含�
 META_SET = {nm for nm, lay in LAYER_OF.items() if lay not in ("L2", "L3", "L4", "L5")}
 
 # ① 单射
-chk("① 工程节点名一一对应 (单射)", len(NAMESET) == len(rows) == 75, f"{len(NAMESET)} 名 / {len(rows)} 节点")
+chk("① 工程节点名一一对应 (单射)", len(NAMESET) == len(rows), f"{len(NAMESET)} 名 / {len(rows)} 节点")
 
 # ② 同一数据源
 chk("② attribution 节点表 == 工程库+命名真源", dict(A._load_nodes()) == {k: CLEAN[k] for k in CLEAN if CLEAN.get(k)},

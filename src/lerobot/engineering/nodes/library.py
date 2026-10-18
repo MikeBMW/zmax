@@ -3072,6 +3072,47 @@ def node_moveit(ctx):
     print("[MoveIt 节点] " + _json.dumps(out, ensure_ascii=False)[:400])
     return out
 
+def node_exec(ctx):
+    """⚙️ 动作执行器 (l2_daemon) — 真执行函数: 读执行器真值状态与最近事件 (本节点**不下发**任何动作)。
+
+    📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」
+    真源: zmax_data/ss_live/exec_state.json  (l2_daemon 每 5Hz 写: 段号/目标/实测/残差/闸/授权)
+          zmax_data/ss_live/exec_events.jsonl (每命令一行: 受理/拒绝/到位/失败)
+    职责边界: 规划在 n_moveit(plan) 节点, 本节点只做"段表 → 实时闸 → 下发 → 等真位"。
+    """
+    import json as _json
+    import os as _os
+    import time as _time
+    out = {"node": "n_exec"}
+    base = _os.path.expanduser("~/zmax/zmax_data/ss_live")
+    sp = _os.path.join(base, "exec_state.json")
+    try:
+        st = _json.load(open(sp, encoding="utf-8"))
+        age = _time.time() - float(st.get("t_pub") or st.get("t") or 0.0)
+        out.update({"phase": st.get("phase"), "seg": st.get("seg"), "n_seg": st.get("n_seg"),
+                    "skill": st.get("skill"), "target": st.get("target"), "pos": st.get("pos"),
+                    "residual_mm": st.get("residual_mm"), "speed_mm_s": st.get("speed_mm_s"),
+                    "transport": st.get("transport"), "blocked_by": st.get("blocked_by") or "",
+                    "auth_epoch": st.get("auth_epoch"), "age_s": round(age, 2)})
+    except Exception as e:
+        out["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:80])
+    try:
+        ev = _os.path.join(base, "exec_events.jsonl")
+        tail = []
+        with open(ev, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4096))
+            for ln in f.read().decode("utf-8", "ignore").splitlines()[-3:]:
+                try:
+                    tail.append(_json.loads(ln))
+                except Exception:
+                    pass
+        out["last_events"] = tail
+    except Exception:
+        pass
+    print("[执行器节点] " + _json.dumps(out, ensure_ascii=False)[:400])
+    return out
+
 def node_hil(ctx):
     """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
 
@@ -3370,10 +3411,12 @@ _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_ag
 _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
 _EXTERNAL_LOC["n_moveit"] = (os.path.join(_ARM_DIR, "arm_control.py"), 133, "class ArmController")   # 🦾 2026-09-26: MoveIt 规划 + 双后端 (Orin SDK 桥默认 / ROS2 SRV 兼容)
+_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools", "l2_daemon.py"), 2143, "def main")
 
 _EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 157, "build_snapshot")  # 行号按真源实测(2026-09-29)
 
 _reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin) — MoveIt2 规划 + 双后端执行(Orin SDK 桥 默认 / ROS2 SRV 兼容); 安全闸 dry-run 默认 (源码 arm_control.py)", node_moveit)
+_reg("n_exec", ["执行器", "l2_daemon", "下发", "dispatch", "闸"], "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位) — 段表→实时闸→下发→等真位→台账; 唯一能碰执行器的一层 (源码 tools/l2_daemon.py)", node_exec)
 
 _reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],
      "🙋 HIL 人机在环 · 状态↔指示 — 状态→ECS web(hil.html) + 收人的指示; 动作类拒答 (源码 hil_bridge.py)",
