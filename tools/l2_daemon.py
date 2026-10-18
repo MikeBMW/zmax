@@ -346,6 +346,12 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None):
         _req = spec or {}
         rec = {"skill": skill, "backend": backend, "src": src, "n": len(segs), "segs": segs,
                "req_speed": _req.get("speed"),
+               # 📚 2026-10-18 老倪: 「步长」——页面按 d_mm 发(seg('sX') → payload d_mm),
+               #   所以"设的步长"就在 d_mm 里; 与段表 lin_mm 对账即可看出 设 X 实际走 Y。
+               "req_step_mm": _req.get("d_mm"),
+               "req_speed_mm_s": _req.get("speed_mm_s"),
+               "req_speed_units_raw": _req.get("_speed_units_raw"),
+               "speed_mm_s_actual": round(0.0935 * ((sum(_sp) / len(_sp)) if _sp else 0.0), 2),
                "req_manual_point": (1 if _req.get("manual_point") else 0),
                "req_auth_epoch": _req.get("auth_epoch"),
                "req_src": _req.get("src") or _req.get("from") or "station",
@@ -1638,6 +1644,10 @@ def dispatch(reg, spec, chan):
                     % (float(_gd), -dz))
                 return "🛡 已拒绝: 向下 %.0fmm 超过守卫 %.0fmm" % (-dz, float(_gd))
         sp = float(spec.get("speed", 60))
+        # 🧭 2026-10-18: 方向键/单点走 build_move, 以前不落段表 ⇒ plan 节点只有空间点才有信号
+        plan_dump(sid, [{"name": sk.get("id") or sid, "pos": [x, y, z], "speed": sp,
+                         "dir": _dir, "lin": (dx * dx + dy * dy + dz * dz) ** 0.5}],
+                  backend="rule", src="l2_daemon.build_move", spec=spec)
         # 🔄 旋转走 /move_pose (与 tools/l2_pose_rot.py 已验证通道一致); 平移仍走 /move_line
         _srv = "/move_pose" if _rot else "/move_line"
         _to = int(max(90, 20 + abs(float(_rot["deg"])) * 3)) if _rot else 90
@@ -2324,6 +2334,11 @@ def main():
                 # 🖐 2026-10-12 老倪点头: 手动回已记的点不再硬拦, 但**要慢一些** ⇒ 人工回位这一单
                 #   统一下调速度档(老倪口径: 慢速 + 警报在先; 报警由监控侧 motion_beep 发声)。
                 if spec.get("manual_point"):
+                    # 🧭 2026-10-18: 留一份**限速前**的页面原始速度, 段表用它做"请求 vs 实际"对账
+                    try:
+                        spec["_speed_units_raw"] = float(spec.get("speed", 0) or 0)
+                    except (TypeError, ValueError):
+                        pass
                     try:
                         _s0 = float(spec.get("speed", 0) or 0)
                         if _s0 > MANUAL_SPEED_UNITS:

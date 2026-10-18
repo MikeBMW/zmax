@@ -2580,6 +2580,15 @@ class CanoeGraphicWidget(QWidget):
                 all_keys = self.store.keys()
             except Exception:
                 all_keys = []
+            # 🧭 2026-10-18 老倪: 「要在 trace 和信号分析看到 plan 节点的信号」——
+            #   本机真值流 (plan_live/ss_exec 这类) 不是 DDS 声明话题, 只在 store 里有 ds.<topic>.<field>
+            #   ⇒ 原来树里看不到。这里把 store 里出现、而 DDS 目录没声明的话题补进目录 (去重, 不改 DDS 区)。
+            for _k in all_keys:
+                if not str(_k).startswith("ds."):
+                    continue
+                _tp = str(_k)[3:].split(".", 1)[0]
+                if _tp and _tp not in ds_topics:
+                    ds_topics[_tp] = {"type": "live", "hz": None, "pubs": None, "wall": 0.0}
             for topic, meta in sorted(ds_topics.items()):
                 pref = "ds." + topic.lstrip("/") + "."
                 keys = [k for k in all_keys if k.startswith(pref)]

@@ -158,6 +158,26 @@ def main():
         and attr.layer_of("planlive.n") == "L2",
         "%s → %s · %s" % (attr.tx_of("planlive.n"), attr.rx_of("planlive.n"), attr.layer_of("planlive.n")))
 
+    print("⑨ 信号分析能看到 plan 节点的信号")
+    try:
+        from canoe_graphic import CanoeGraphicWidget
+        w2 = CanoeGraphicWidget()
+        w2.scope = "all"                       # 默认 3D 范围不建 DDS/ROS 目录 ⇒ 用全量
+        w2.store.push_many({"ds.zmax/plan_live.req_step_mm": 10.0}, 0.0, src="ds", scene=True)
+        w2._fill_tree()
+        app.processEvents()
+        found = []
+        def _walk(it):
+            for i in range(it.childCount()):
+                c = it.child(i)
+                if "plan_live" in c.text(0):
+                    found.append(c.text(0))
+                _walk(c)
+        _walk(w2.tree.invisibleRootItem())
+        chk("信号分析树里有 zmax/plan_live", bool(found), str(found[:2]))
+    except Exception as e:                                               # noqa: BLE001
+        chk("信号分析树里有 zmax/plan_live", False, str(e)[:70])
+
     print("\n%s (%d 项 · 红 %d)" % ("✅ 全部通过" if BAD == 0 else "❌ 有红", OK + BAD, BAD))
     return 0 if BAD == 0 else 1
 
