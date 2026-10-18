@@ -173,6 +173,8 @@ def main():
                     help="原子技能段 (接近/对位/下降/抓取/抬起/转移/插入/完成): 目标由技能口给")
     ap.add_argument("--auto", action="store_true",
                     help="当前段从引擎发布的 ss_live/skill_gate.json 取 (超时报帧龄, 不猜)")
+    ap.add_argument("--state-from", default=None,
+                    help="无真机时用历史状态/上一次请求文件里的 jpos 作起点 (会打印帧龄, 不假装实时)")
     ap.add_argument("--interval", type=float, default=1.0)
     ap.add_argument("--watch", action="store_true", help="常驻, 每 interval 秒刷新真机状态")
     ap.add_argument("--once", action="store_true")
@@ -213,16 +215,29 @@ def main():
     os.makedirs(PLAN_DIR, exist_ok=True)
     print("🎯 目标 = 示教点 %s · xyz=%s quat=%s" % (gname, [round(v, 5) for v in goal],
                                                     [round(v, 5) for v in gq]))
+    _hist = None
+    if a.state_from:
+        try:
+            _d = json.load(open(a.state_from, encoding="utf-8"))
+            _age = time.time() - float(_d.get("real_t") or _d.get("ts") or 0)
+            _hist = {"jpos": _d["jpos"], "tcp": _d.get("tcp"), "tcp_quat": _d.get("tcp_quat"),
+                     "t": float(_d.get("real_t") or _d.get("ts") or 0)}
+            print("⚠ 起点用历史状态 %s · 帧龄 %.1fh (不是实时真机, 规划仍真实)" % (
+                os.path.basename(a.state_from), _age / 3600.0))
+        except Exception as e:                                       # noqa: BLE001
+            print("✗ --state-from 读不了: %s" % e)
+            return 2
     n = 0
     while True:
-        st = real_state()
+        st = _hist or real_state()
         if st:
             rec = {"ts": time.time(), "goal_name": gname, "goal_xyz": goal, "goal_quat": gq,
                    "goal_src": ("skill" if str(gname).startswith("skill:") else
                                 ("cli" if gname == "cli" else "taught")),
                    "goal_stage": st_name or "",
                    "jpos": st["jpos"], "tcp": st["tcp"], "tcp_quat": st["tcp_quat"],
-                   "real_t": st.get("t"), "src": "real(tap readonly)"}
+                   "real_t": st.get("t"), "src": ("replay(history: %s)" % os.path.basename(a.state_from)) if _hist
+        else "real(tap readonly)"}
             tmp = REQ + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(rec, f, ensure_ascii=False)
