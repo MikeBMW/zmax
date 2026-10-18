@@ -39,6 +39,7 @@ _LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(
 _CONT = {"d_mm": None, "h_px": None, "w_px": None, "base_mm": None, "t": 0.0}   # 连续性闸: 上一次被接受的观测
 _SMO = {"c": None, "H": None, "t": 0.0}   # 输出平滑: 上一次画出去的框(中心/H), 老倪「别突然变化」
 _LASTBOX = {"box2d": None, "t": 0.0}     # 上一次检出的 2D 框: 全图检不到时在它附近局部重检(别丢模块)
+_JUMP = {"box": None, "n": 0}           # 位置跳变待确认计数: 模块是连续的, 一帧跳半屏必然错检
 _PATCH_F = os.environ.get("ZMAX_MOD_PATCH", "/dev/shm/mod3_patch.png")   # 上一次成功框内的灰度模板(跨 fork)
 det_name_fallback = "peg"               # 模板接住时沿用的类名(与在役权重同口径)
 
@@ -257,8 +258,10 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         _CONT.update(_st.get("cont") or {})
         _SMO.update(_st.get("smo") or {})
         _LASTBOX.update(_st.get("lastbox") or {})
+        _JUMP.update(_st.get("jump") or {})
     K, dist = intrinsics()
     items = detect_boxes(img_bgr, conf)
+    det_src = "yolo" if items else None
     if not items:
         # 🔴 老倪 2026-10-18「稳住，别丢光模块」: 只剩小头/被遮挡时全图 YOLO 会漏(实测连丢 13 帧)。
         # 模块是连续的、跑不掉 —— 就在上一次框的邻域里裁一块放大 2× 重检, 命中后映射回全图坐标。
@@ -290,6 +293,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
                         items = [{"name": det_name_fallback, "conf": float(mxv),
                                   "xyxy": [float(bx1), float(by1),
                                            float(bx1 + tpl.shape[1]), float(by1 + tpl.shape[0])]}]
+                        det_src = "template"
                         warn.append("YOLO 漏检 ⇒ 模板匹配接住(相似度 %.2f), 模块未丢" % mxv)
             if not items and cx2 - cx1 > 16 and cy2 - cy1 > 16:
                 # ② 再退一步: 邻域放大重检(对小目标有时有效; 实测本例多数无效, 所以放在模板之后)
@@ -300,10 +304,32 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
                     _b = dict(hit[0])
                     _b["xyxy"] = [cx1 + v / 2.0 for v in _b["xyxy"]]
                     items = [_b]
+                    det_src = "roi"
                     warn.append("全图未检出 ⇒ 邻域放大 2× 重检命中(conf %.2f), 模块未丢" % _b["conf"])
     if not items:
         return {"ok": False, "err": "画面里没检出目标 (在役权重 peg/OPT_Gold)", "warn": warn}
+    # ── 选哪一个检测 ── 老倪 2026-10-18「光模块的位置标记错了」:
+    # 实测低置信度时最高分那只可能是画面另一头的物体。规则:
+    #   ① 有上一次框(3s 内) ⇒ 取**离它最近**、且 conf ≥ 0.15 的那只(模块是连续的, 不会跳到别处)
+    #   ② 冷启动 ⇒ 取离画面中心最近的(相机装在手爪上, 爪口与模块就在光轴附近)
+    #   ③ 都没有 ⇒ 退回最高分(并如实标注)
     det = items[0]
+    if len(items) > 1:
+        def _ctr(it):
+            a = it["xyxy"]
+            return ((a[0] + a[2]) / 2.0, (a[1] + a[3]) / 2.0)
+        _lb = _LASTBOX.get("box2d")
+        if _lb and (time.time() - float(_LASTBOX.get("t") or 0)) < 3.0:
+            _ref = ((_lb[0] + _lb[2]) / 2.0, (_lb[1] + _lb[3]) / 2.0)
+            _cand = [it for it in items if it["conf"] >= 0.15]
+            if _cand:
+                det = min(_cand, key=lambda it: math.hypot(_ctr(it)[0] - _ref[0], _ctr(it)[1] - _ref[1]))
+        else:
+            _hc = (img_bgr.shape[1] / 2.0, img_bgr.shape[0] / 2.0)
+            det = min(items, key=lambda it: math.hypot(_ctr(it)[0] - _hc[0], _ctr(it)[1] - _hc[1]))
+        if det is not items[0]:
+            warn.append("多检出 %d 只: 按%s选了 conf %.2f 的那只(不是最高分)" % (
+                len(items), "就近" if _lb else "离画面中心最近", det["conf"]))
     if det["name"] != "OPT_Gold":
         warn.append("检出的类别是 %s, 不是 OPT_Gold (光模块类) —— 按同一位置给框" % det["name"])
     x1, y1, x2, y2 = det["xyxy"]
@@ -369,6 +395,30 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         D = f * float(h_mm) / h_px
         src = "size(已知件长 %.1fmm ↔ 画面 %.0fpx)" % (h_mm, h_px)
         warn.append("无深度: 距离由已知件长反解, 误差 ~5%; 换品种要把 ZMAX_MOD_H_MM 设成真实长度")
+    # ── 位置闸 ── 老倪 2026-10-18: 「光模块的位置标记错了」
+    # 实测: 低置信度(0.25)时 YOLO 会跳到画面另一头的物体上(框从 [314,0,347,59] 跳到 [272,414,306,479]),
+    # 尺寸闸拦不住(尺寸本身差不多)。模块是连续的 ⇒ 相邻帧中心不可能跳半屏。
+    # 规则: 跳得太远 ⇒ 这一帧判失败(沿用上次框), 但**连续 5 帧都指向同一新位置**才认(允许真的重新捕获)。
+    _lb = _LASTBOX.get("box2d")
+    if _lb and (time.time() - float(_LASTBOX.get("t") or 0)) < 3.0:
+        _c0 = ((_lb[0] + _lb[2]) / 2.0, (_lb[1] + _lb[3]) / 2.0)
+        _c1 = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+        _jump_px = math.hypot(_c1[0] - _c0[0], _c1[1] - _c0[1])
+        _lim = max(60.0, 1.5 * math.hypot(_lb[2] - _lb[0], _lb[3] - _lb[1]))
+        if _jump_px > _lim:
+            _nb = _JUMP.get("box")
+            if _nb and math.hypot(_c1[0] - (_nb[0] + _nb[2]) / 2.0, _c1[1] - (_nb[1] + _nb[3]) / 2.0) < 25.0:
+                _JUMP["n"] = int(_JUMP.get("n") or 0) + 1
+            else:
+                _JUMP["box"] = [x1, y1, x2, y2]
+                _JUMP["n"] = 1
+            if int(_JUMP["n"]) < 5:
+                _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO, "lastbox": _LASTBOX, "jump": _JUMP})
+                return {"ok": False,
+                        "err": "位置跳变 %.0fpx > 限 %.0fpx ⇒ 判为错检, 沿用上次框(确认 %d/5)"
+                               % (_jump_px, _lim, int(_JUMP["n"])), "warn": warn}
+            warn.append("位置跳变 %.0fpx, 但已连续 5 帧稳定指向新位置 ⇒ 接受(重新捕获)" % _jump_px)
+
     # ── 连续性闸 ── 老倪 2026-10-18: 「光模块不可能突然变化很大的, 它是一个连续的模块」
     # 同一支模块相邻两帧的画面尺寸不会翻倍/减半, 距离也不会凭空跳。
     # 越界 ⇒ 这一帧必然是算错了(遮挡/裁切/误检), 沿用上一次可信值, 并显式标注, 不许"看起来像"就画出来。
@@ -453,17 +503,19 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         c_cam_s = Rcb.T @ (c_s - o)
         corners_cam, corners_base, corners_px = _corners(H_s, c_cam_s)
         center_base, H, smooth_applied = c_s, H_s, True
-    _LASTBOX.update(box2d=[float(x1), float(y1), float(x2), float(y2)], t=time.time())
+    if det_src == "yolo":
+        _LASTBOX.update(box2d=[float(x1), float(y1), float(x2), float(y2)], t=time.time())
     try:                                     # 存"上一次成功的框内图像"当模板(模板匹配的素材)
         import cv2 as _cv2
         _px1, _py1 = int(max(0, x1)), int(max(0, y1))
         _px2, _py2 = int(min(img_bgr.shape[1], x2)), int(min(img_bgr.shape[0], y2))
-        if _px2 - _px1 >= 8 and _py2 - _py1 >= 8:
+        if det_src == "yolo" and _px2 - _px1 >= 8 and _py2 - _py1 >= 8:
+            # 🔴 只有 YOLO 检出的框才配当模板。用模板自己的结果再存模板 = 自锁(实测错框被 1.00 相似度锁死)
             _cv2.imwrite(_PATCH_F, _cv2.cvtColor(img_bgr[_py1:_py2, _px1:_px2], _cv2.COLOR_BGR2GRAY))
     except Exception:                                                       # noqa: BLE001
         pass
     _SMO.update(c=[float(v) for v in center_base], H=float(H), t=_t2)
-    _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO, "lastbox": _LASTBOX})
+    _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO, "lastbox": _LASTBOX, "jump": _JUMP})
 
     _CONT["base_mm"] = [float(v) for v in center_base]
     return {
@@ -484,6 +536,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "depth_available": bool(depth_mm),
         "clipped": clipped,
         "extent_note": ("只框可见部分(头部出画)" if clipped else "整支"),
+        "det_src": det_src,
         "continuity": {"jump": jump, "smoothed": bool(fresh and not jump), "display_smooth": smooth_applied},
         "warn": warn,
     }
