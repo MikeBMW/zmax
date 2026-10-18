@@ -1131,6 +1131,13 @@ def _mod3_write(r, frame_b=None):
             with open(MOD3_FRAME, "wb") as f:
                 f.write(frame_b)
     else:
+        # 画面必须继续走(否则整幅冻住), 只是框沿用上一次并标 stale —— 图像是新的, 框是旧的, 页面上明说
+        if frame_b is not None:
+            try:
+                with open(MOD3_FRAME, "wb") as f:
+                    f.write(frame_b)
+            except Exception:                                               # noqa: BLE001
+                pass
         prev = None
         try:
             with open(MOD3_STATE, encoding="utf-8") as f:

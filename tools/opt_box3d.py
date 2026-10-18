@@ -38,6 +38,9 @@ _YOLO_LOCK = threading.Lock()
 _LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(框贴边时沿用)
 _CONT = {"d_mm": None, "h_px": None, "w_px": None, "base_mm": None, "t": 0.0}   # 连续性闸: 上一次被接受的观测
 _SMO = {"c": None, "H": None, "t": 0.0}   # 输出平滑: 上一次画出去的框(中心/H), 老倪「别突然变化」
+_LASTBOX = {"box2d": None, "t": 0.0}     # 上一次检出的 2D 框: 全图检不到时在它附近局部重检(别丢模块)
+_PATCH_F = os.environ.get("ZMAX_MOD_PATCH", "/dev/shm/mod3_patch.png")   # 上一次成功框内的灰度模板(跨 fork)
+det_name_fallback = "peg"               # 模板接住时沿用的类名(与在役权重同口径)
 
 
 def _yolo():
@@ -253,8 +256,51 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         _LAST.update(_st.get("last") or {})
         _CONT.update(_st.get("cont") or {})
         _SMO.update(_st.get("smo") or {})
+        _LASTBOX.update(_st.get("lastbox") or {})
     K, dist = intrinsics()
     items = detect_boxes(img_bgr, conf)
+    if not items:
+        # 🔴 老倪 2026-10-18「稳住，别丢光模块」: 只剩小头/被遮挡时全图 YOLO 会漏(实测连丢 13 帧)。
+        # 模块是连续的、跑不掉 —— 就在上一次框的邻域里裁一块放大 2× 重检, 命中后映射回全图坐标。
+        lb = _LASTBOX.get("box2d")
+        if lb and (time.time() - float(_LASTBOX.get("t") or 0)) < 30.0:
+            Hh, Ww = img_bgr.shape[:2]
+            mx, my = max(24, (lb[2] - lb[0])), max(24, (lb[3] - lb[1]))
+            cx1 = int(max(0, lb[0] - mx)); cx2 = int(min(Ww, lb[2] + mx))
+            cy1 = int(max(0, lb[1] - my)); cy2 = int(min(Hh, lb[3] + my))
+            import cv2
+            # ① 模板匹配(纯 CV): 模块是刚性跟着相机走的, 图像里位置几乎不变 ⇒ 上一次的框内图像
+            #    就是最好的模板。实测模型在"只剩小头/暗光"时会彻底漏检, 而模板匹配仍能跟上。
+            tpl_f = _PATCH_F
+            try:
+                tpl = cv2.imread(tpl_f, cv2.IMREAD_GRAYSCALE)
+            except Exception:                                               # noqa: BLE001
+                tpl = None
+            if tpl is not None and tpl.size > 64:
+                sx1 = int(max(0, lb[0] - 0.6 * (lb[2] - lb[0]) - 12))
+                sy1 = int(max(0, lb[1] - 0.6 * (lb[3] - lb[1]) - 12))
+                sx2 = int(min(Ww, lb[2] + 0.6 * (lb[2] - lb[0]) + 12))
+                sy2 = int(min(Hh, lb[3] + 0.6 * (lb[3] - lb[1]) + 12))
+                win = img_bgr[sy1:sy2, sx1:sx2]
+                if win.shape[0] >= tpl.shape[0] and win.shape[1] >= tpl.shape[1]:
+                    res = cv2.matchTemplate(cv2.cvtColor(win, cv2.COLOR_BGR2GRAY), tpl, cv2.TM_CCOEFF_NORMED)
+                    _, mxv, _, mxl = cv2.minMaxLoc(res)
+                    if mxv >= 0.55:
+                        bx1 = sx1 + mxl[0]; by1 = sy1 + mxl[1]
+                        items = [{"name": det_name_fallback, "conf": float(mxv),
+                                  "xyxy": [float(bx1), float(by1),
+                                           float(bx1 + tpl.shape[1]), float(by1 + tpl.shape[0])]}]
+                        warn.append("YOLO 漏检 ⇒ 模板匹配接住(相似度 %.2f), 模块未丢" % mxv)
+            if not items and cx2 - cx1 > 16 and cy2 - cy1 > 16:
+                # ② 再退一步: 邻域放大重检(对小目标有时有效; 实测本例多数无效, 所以放在模板之后)
+                crop = img_bgr[cy1:cy2, cx1:cx2]
+                crop2 = cv2.resize(crop, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                hit = detect_boxes(crop2, max(0.12, conf * 0.6))
+                if hit:
+                    _b = dict(hit[0])
+                    _b["xyxy"] = [cx1 + v / 2.0 for v in _b["xyxy"]]
+                    items = [_b]
+                    warn.append("全图未检出 ⇒ 邻域放大 2× 重检命中(conf %.2f), 模块未丢" % _b["conf"])
     if not items:
         return {"ok": False, "err": "画面里没检出目标 (在役权重 peg/OPT_Gold)", "warn": warn}
     det = items[0]
@@ -407,8 +453,17 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         c_cam_s = Rcb.T @ (c_s - o)
         corners_cam, corners_base, corners_px = _corners(H_s, c_cam_s)
         center_base, H, smooth_applied = c_s, H_s, True
+    _LASTBOX.update(box2d=[float(x1), float(y1), float(x2), float(y2)], t=time.time())
+    try:                                     # 存"上一次成功的框内图像"当模板(模板匹配的素材)
+        import cv2 as _cv2
+        _px1, _py1 = int(max(0, x1)), int(max(0, y1))
+        _px2, _py2 = int(min(img_bgr.shape[1], x2)), int(min(img_bgr.shape[0], y2))
+        if _px2 - _px1 >= 8 and _py2 - _py1 >= 8:
+            _cv2.imwrite(_PATCH_F, _cv2.cvtColor(img_bgr[_py1:_py2, _px1:_px2], _cv2.COLOR_BGR2GRAY))
+    except Exception:                                                       # noqa: BLE001
+        pass
     _SMO.update(c=[float(v) for v in center_base], H=float(H), t=_t2)
-    _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO})
+    _state_save({"last": _LAST, "cont": _CONT, "smo": _SMO, "lastbox": _LASTBOX})
 
     _CONT["base_mm"] = [float(v) for v in center_base]
     return {
