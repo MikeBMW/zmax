@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX Orin D405 JPEG relay (:8792 /frame.jpg)
+# 📚 2026-10-18 老倪: 唯一路径 /home/tashan/.zmax —— 脚本与 unit 本体都在这里
+After=d405-color-pub.service network-online.target
+Wants=d405-color-pub.service
+Requires=d405-color-pub.service
+
+[Service]
+Type=simple
+User=tashan
+Group=tashan
+Environment=ROS_DOMAIN_ID=0
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/home/tashan/.zmax
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && exec /usr/bin/python3 /home/tashan/.zmax/rs/rs_fast_node.py'
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/tashan/.zmax/logs/rs_fast_node.log
+StandardError=append:/home/tashan/.zmax/logs/rs_fast_node.log
+
+[Install]
+WantedBy=multi-user.target

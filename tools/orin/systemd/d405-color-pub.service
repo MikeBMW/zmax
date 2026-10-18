@@ -1,0 +1,22 @@
+[Unit]
+Description=Z-MAX Orin D405 color publisher (/realsense/color/image_raw)
+# 📚 2026-10-18 老倪: 「新增两个 unit；不要在 orin 上新建文件，所有文件都放在 zmax 的隐藏文件夹里」
+#   唯一路径 = /home/tashan/.zmax  (脚本 + unit 本体都在这下面; /etc 里只放 systemd 强制的软链)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tashan
+Group=tashan
+Environment=ROS_DOMAIN_ID=0
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/home/tashan/.zmax
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && exec /usr/bin/python3 /home/tashan/.zmax/rs/d405_color_pub.py'
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/tashan/.zmax/logs/d405_color_pub.log
+StandardError=append:/home/tashan/.zmax/logs/d405_color_pub.log
+
+[Install]
+WantedBy=multi-user.target
