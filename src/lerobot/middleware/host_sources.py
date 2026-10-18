@@ -92,22 +92,26 @@ def read(prefix, raw):
     # 🧭 2026-10-18 老倪: 「运动规划这些信号…感觉没啥用呢?」——
     #   原来整份段表 flatten 出 21 条 (含 t / segs.N.id / segs.N.service 这类恒等值), 屏幕全是噪音。
     #   这里只出**能回答问题的 11 条**: 几段/多远/多快(页面vs实际)/有没有被限速/是不是人工回点/每段多远/数据多新。
+    # 🧭 2026-10-18 老倪: 「signal 的命名全错了，要表达出这个信号的功能，全部重改」
+    #   命名规则: 名词说明"是什么量", 后缀 _mm/_mms 说明单位; 不再用 n / v_page / seg1 这种看不出功能的短名。
+    #   · 分段距离按**动作角色**归类 (抬升/横移/下落), 而不是按序号 —— 序号说不出它在干什么。
     if prefix == "planlive":
-        _segs = raw.get("segs") or []
-        _o = {"n_segs": raw.get("n"), "total_mm": raw.get("lin_total_mm"),
-              "v_page_mms": raw.get("req_speed_mm_s"), "v_actual_mms": raw.get("speed_mm_s_actual"),
-              "v_units_req": raw.get("req_speed_units_raw"), "v_units_used": raw.get("req_speed"),
-              "manual": raw.get("req_manual_point")}
-        for _i, _s in enumerate(_segs[:4], 1):
-            _o["seg%d_mm" % _i] = (_s or {}).get("lin_mm")
-        _o["age_s"] = max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))
+        # 2026-10-18 老倪: 名字要表达功能 —— 直接取执行器算好的 抬升/横移/下落 (按相邻目标点位移算)
+        _o = {"seg_count": raw.get("n"), "travel_mm": raw.get("lin_total_mm"),
+              "lift_mm": raw.get("lift_mm"), "traverse_mm": raw.get("traverse_mm"),
+              "descend_mm": raw.get("descend_mm"),
+              "speed_req_mms": raw.get("req_speed_mm_s"), "speed_real_mms": raw.get("speed_mm_s_actual"),
+              "units_req": raw.get("req_speed_units_raw"), "units_applied": raw.get("req_speed"),
+              "manual_recall": raw.get("req_manual_point"),
+              "plan_age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
         return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
-    # ⚙️ 2026-10-18: 执行器同理 —— 只留"进度/残差/速度/目标/新鲜度" 8 条
     if prefix == "ss_exec":
-        _o = {"phase_code": raw.get("phase_code"), "seg": raw.get("seg"), "n_seg": raw.get("n_seg"),
-              "residual_mm": raw.get("residual_mm"), "v_mms": raw.get("speed_mm_s"),
-              "tgt_x": raw.get("target_x"), "tgt_y": raw.get("target_y"), "tgt_z": raw.get("target_z"),
-              "age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
+        _o = {"exec_phase": raw.get("phase_code"), "stage_now": raw.get("seg"), "stage_total": raw.get("n_seg"),
+              "arrive_error_mm": raw.get("residual_mm"), "exec_speed_mms": raw.get("speed_mm_s"),
+              "target_x_mm": (round(float(raw["target_x"]) * 1000.0, 2) if raw.get("target_x") is not None else None),
+              "target_y_mm": (round(float(raw["target_y"]) * 1000.0, 2) if raw.get("target_y") is not None else None),
+              "target_z_mm": (round(float(raw["target_z"]) * 1000.0, 2) if raw.get("target_z") is not None else None),
+              "exec_age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
         return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     if prefix in ("ar", "sskill") and isinstance(raw.get("s"), dict):
         meta = ("ts", "t", "age", "meta", "groups", "schema")

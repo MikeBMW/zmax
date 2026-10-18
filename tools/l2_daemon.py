@@ -337,7 +337,7 @@ def _atomic_skills():
 _PLAN_FILE = os.path.expanduser("~/zmax/zmax_data/runtime/plan/plan_latest.json")
 
 
-def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None):
+def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_pos=None):
     """把段表写成 plan_latest.json (只读产物; 失败绝不影响执行)。"""
     try:
         segs = []
@@ -356,6 +356,24 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None):
         # 📚 2026-10-18 老倪: 「真实节点 选择 plan 节点」——
         #   station 上的速度/步长/点位/回点, 本质是**段表的输入**; 把它们和"实际用的"放同一张表,
         #   才能一眼看出"页面设 32 但这段实际用了 10" 这种不一致。
+        # 🧭 2026-10-18 老倪: 「signal 要表达功能」——抬升/横移/下落按**相邻目标点位移**归集,
+        #   不看阶段标签(实测 seg1 标签写"↓下降"但实际是竖直段, 按标签分类会归错)。
+        _lift = _trav = _desc = 0.0
+        _prev = [float(x) for x in (start_pos or [])][:3] or None
+        for _sg in segs:
+            _pp = _sg.get("pos")
+            if not _pp or len(_pp) < 3:
+                continue
+            _pp = [float(x) for x in _pp[:3]]
+            if _prev:
+                _dz = (_pp[2] - _prev[2]) * 1000.0
+                _dxy = (((_pp[0] - _prev[0]) ** 2 + (_pp[1] - _prev[1]) ** 2) ** 0.5) * 1000.0
+                _trav += _dxy
+                if _dz > 0.5:
+                    _lift += _dz
+                elif _dz < -0.5:
+                    _desc += -_dz
+            _prev = _pp
         _req = spec or {}
         rec = {"skill": skill, "backend": backend, "src": src, "n": len(segs), "segs": segs,
                "req_speed": _req.get("speed"),
@@ -365,6 +383,7 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None):
                "req_speed_mm_s": _req.get("speed_mm_s"),
                "req_speed_units_raw": _req.get("_speed_units_raw"),
                "speed_mm_s_actual": round(0.0935 * ((sum(_sp) / len(_sp)) if _sp else 0.0), 2),
+               "lift_mm": round(_lift, 2), "traverse_mm": round(_trav, 2), "descend_mm": round(_desc, 2),
                "req_manual_point": (1 if _req.get("manual_point") else 0),
                "req_auth_epoch": _req.get("auth_epoch"),
                "req_src": _req.get("src") or _req.get("from") or "station",
@@ -1271,6 +1290,7 @@ def run_stages(sk, spec, chan, pts):
         cur, csrc = [0.0, 0.0, 0.0], "none(非运动步, 无需位姿)"
     log("当前位姿(来源 %s): (%.4f, %.4f, %.4f)" % (csrc, cur[0], cur[1], cur[2]))
     plans, c = [], list(cur)
+    _p_start = list(cur)          # 🧭 段表起点 (算 抬升/横移/下落 的基准, 也给 plan_latest 用)
     # 🧗 运动段计数(2026-10-01 碰撞事故: 多段"设计出来的转移"才校验爬升; 单击回点位不动)
     _n_motion = sum(1 for _s in steps if _s.get("op") not in ("service", "gripper"))
     # 🚀 计划级自适应抬升豁免 (2026-10-08): 本计划若含 adapt_point 段(= 「去某个空间点」型转移),
@@ -1387,7 +1407,7 @@ def run_stages(sk, spec, chan, pts):
                pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], pl["speed"],
                _stage_timeout(st, pl["lin"], pl["speed"])))
     # 🧭 2026-10-18 老倪: 「plan 节点的输出要是段表」⇒ 规划完先落盘, 再执行
-    plan_dump(spec.get("skill") or "?", plans, backend="rule", src="l2_daemon.run_stages", spec=spec)
+    plan_dump(spec.get("skill") or "?", plans, backend="rule", src="l2_daemon.run_stages", spec=spec, start_pos=_p_start)
     if spec.get("dry"):
         for i, pl in enumerate(plans, 1):
             if pl.get("service"):
@@ -1660,7 +1680,7 @@ def dispatch(reg, spec, chan):
         # 🧭 2026-10-18: 方向键/单点走 build_move, 以前不落段表 ⇒ plan 节点只有空间点才有信号
         plan_dump(sid, [{"name": sk.get("id") or sid, "pos": [x, y, z], "speed": sp,
                          "dir": _dir, "lin": (dx * dx + dy * dy + dz * dz) ** 0.5}],
-                  backend="rule", src="l2_daemon.build_move", spec=spec)
+                  backend="rule", src="l2_daemon.build_move", spec=spec, start_pos=_cur)
         # 🔄 旋转走 /move_pose (与 tools/l2_pose_rot.py 已验证通道一致); 平移仍走 /move_line
         _srv = "/move_pose" if _rot else "/move_line"
         _to = int(max(90, 20 + abs(float(_rot["deg"])) * 3)) if _rot else 90
