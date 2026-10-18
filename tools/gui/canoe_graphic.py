@@ -1508,8 +1508,18 @@ class DataSpaceTraceSource(threading.Thread):
                     self._live_t0 = float(rec.get("ts") or 0.0)
                 x = float(rec.get("ts") or 0.0) - float(self._live_t0)
             pref = "ds." + topic.lstrip("/") + "."
+            # 🎛 2026-10-18 老倪: 「整改所有 signal 的命名」——信号分析也用同一张准入/命名表
+            _clean = {}
             try:
-                self.store.push_many({pref + k: float(v) for k, v in vals.items()},
+                from lerobot.middleware import signal_policy as _spol2
+                for _k, _v in vals.items():
+                    _c = _spol2.decide_topic(topic, _k)
+                    if _c:
+                        _clean[_c] = float(_v)
+            except Exception:                                                # noqa: BLE001
+                _clean = {k: float(v) for k, v in vals.items()}
+            try:
+                self.store.push_many({pref + k: v for k, v in _clean.items()},
                                      x, src="ds", scene=True)
             except Exception:                                                  # noqa: BLE001
                 pass

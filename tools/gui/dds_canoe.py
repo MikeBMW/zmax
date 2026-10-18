@@ -1643,6 +1643,12 @@ class BusView(QWidget):
         # ⚡ 2026-10-17 老倪: 「Trace 窗口的操作, 为什么延迟这么大?」
         #   根因: 每拍 (0.8s) 把 1946 行 × 11 格全部 delete+重建 (≈2.1 万 item), 单次 0.62s,
         #   占空比 75% ⇒ 滚轮/点行都在等主线程。行序已固定, 行集合没变时只改 5 个会变的格子。
+        # 🎛 2026-10-18 老倪: 「每个节点 ≤10 个, 总 L2 ≤100 个, 名字要表达功能」⇒ 统一准入 (唯一一处策略)
+        try:
+            from lerobot.middleware import signal_policy as _spol
+            rows = _spol.filter_rows(rows)
+        except Exception as _e:                                              # noqa: BLE001
+            print("signal_policy 未生效: %s" % _e)
         _sig = tuple((x.get("topic"), x.get("raw") or x.get("signal")) for x in rows)
         _same = (_sig == getattr(self, "_trace_sig", None)
                  and self.tb.rowCount() == len(rows)
