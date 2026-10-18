@@ -94,6 +94,8 @@ def main():
                     help="分块长度 mm (0=整条一次下发)。实测控制器一次只执行队列前 ~18 点, 长路径会中途停住 ⇒ 默认按 100mm 分块接力")
     ap.add_argument("--from-here", action="store_true",
                     help="末端已经在这条线上时, 从最近点续走 (不退回 A 端)")
+    ap.add_argument("--loops", type=int, default=0,
+                    help="来回走 N 次 (2N 段)。一次性下发 2N 个端点 (<=18 点不触控制器队列上限), zone 混合 ⇒ 端点不停")
     ap.add_argument("--dry-run", action="store_true", help="只算不发")
     a = ap.parse_args()
 
@@ -138,12 +140,39 @@ def main():
 
     # 绝对目标点: 过渡段 + 直线段
     abs_pts = [cur]
-    for k in range(1, 9):                       # 过渡: 8 段
-        t = k / 8.0
-        abs_pts.append([cur[i] + (A[i] - cur[i]) * t for i in range(3)])
+    if appr_mm > 2.0:                           # 需要过渡才插点; 已经在 A 端/线上就别插零位移点
+        for k in range(1, 9):
+            t = k / 8.0
+            abs_pts.append([cur[i] + (A[i] - cur[i]) * t for i in range(3)])
     for k in range(1, a.npts + 1):              # 沿线: A → B
         t = k / float(a.npts)
         abs_pts.append([A[i] + (B[i] - A[i]) * t for i in range(3)])
+
+    if a.loops and a.loops > 0:
+        # 来回 N 次: 起点先归到 A(或最近的端点), 之后每段一个端点 ⇒ 2N 个点一次性下发
+        v = [B[i] - A[i] for i in range(3)]
+        L2 = sum(x * x for x in v) or 1e-9
+        tt = max(0.0, min(1.0, sum((cur[i] - A[i]) * v[i] for i in range(3)) / L2))
+        near = [A[i] + v[i] * tt for i in range(3)]
+        off = 1000.0 * sum((cur[i] - near[i]) ** 2 for i in range(3)) ** 0.5
+        if off < 25.0 and tt > 0.5:            # 停在 B 端 ⇒ 先去 A
+            start_pt, first = B, A
+        elif off < 25.0:                        # 停在 A 端 ⇒ 先去 B
+            start_pt, first = A, B
+        else:                                   # 不在线上 ⇒ 先归位到近端
+            start_pt = A if tt < 0.5 else B
+            first = B if tt < 0.5 else A
+        pts2 = [start_pt]
+        tgt = first
+        for k in range(2 * a.loops):
+            pts2.append(list(tgt))
+            tgt = A if tgt is B else B
+        abs_pts = pts2
+        total_mm = 1000.0 * sum(
+            sum((abs_pts[k][i] - abs_pts[k - 1][i]) ** 2 for i in range(3)) ** 0.5
+            for k in range(1, len(abs_pts)))
+        print("🔁 来回 %d 次 (%d 段) · 共 %.1fmm · 速度 %.0fmm/s ⇒ 约 %.0fs"
+              % (a.loops, 2 * a.loops, total_mm, a.speed, total_mm / max(1.0, a.speed)))
 
     # 围栏闸: 只豁免这条线本身
     hit = FS.check_points(abs_pts[1:])
@@ -193,7 +222,9 @@ def main():
             print("   块 %d/%d: %d 点 · 走 %.1fmm · 收尾 [%.0f, %.0f, %.0f] · %s"
                   % (ci + 1, len(chunks), len(ck), got, p1[0] * 1000, p1[1] * 1000, p1[2] * 1000,
                      (out.get("verdict") or "")[:60]))
-            if got < 1.0:
+            ok_done = "PATH DONE" in (out.get("verdict") or "")
+            # 来回跑的净位移本来就接近 0 (回到起点), 不能拿净位移判"没动"
+            if got < 1.0 and not ok_done:
                 print("   ⚠ 这一块没动 ⇒ 停下, 不叠队")
                 break
     finally:

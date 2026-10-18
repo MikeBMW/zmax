@@ -313,7 +313,8 @@ def do_path(r, req):
     pts = [[float(x) for x in p][:3] for p in (req.get("points") or [])]
     if not pts or len(pts) > 200:
         return 2, {"cmd": "path", "verdict": "点数非法 (1~200)"}
-    speed = max(1.0, min(float(req.get("speed") or 50.0), C.MAX_SPEED_MM_S, 100.0))
+    # 2026-10-18 老倪「提速到 200mm/s」: 原来这里硬卡 100, 改成到 MAX_SPEED_MM_S 的 300 (再高就让它显式调)
+    speed = max(1.0, min(float(req.get("speed") or 50.0), C.MAX_SPEED_MM_S, 300.0))
     zone = max(0.0, min(float(req.get("zone") or 5.0), 30.0))
     out = {"cmd": "path", "n_points": len(pts), "speed_mm_s": speed, "zone_mm": zone}
     bad = C.precheck(r, out)
