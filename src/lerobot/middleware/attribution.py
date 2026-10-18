@@ -583,3 +583,25 @@ def show_in_l2(key):
         return tx_l2(key) != "—"
     except Exception:                                                     # noqa: BLE001
         return False
+
+# ───────────────────────── 话题语义类型 (2026-10-18) ─────────────────────────
+# 老倪: 「out1 in1 根本看不出来是什么意思。全局搜索，signal 要能表达出这个信号的基本含义」
+# 端口名是画布机械名 (out1/in1)，人要的是"这条线运的是什么东西" ⇒ 类型是真源 (mw_topic.type)。
+_TYPE_BY_TOPIC = None
+
+
+def type_of_topic(topic):
+    """话题全名 → 语义类型 (如 zmax::MotionPlan)。查不到返回 ''。"""
+    global _TYPE_BY_TOPIC
+    if _TYPE_BY_TOPIC is None:
+        m = {}
+        try:
+            from lerobot.middleware import db as _db      # 本模块只在函数里导入 db (无模块级 db)
+            for r in _db.topics():
+                tp = str(r.get("topic") or "")
+                if tp:
+                    m[tp] = str(r.get("type") or "")
+        except Exception:                                                # noqa: BLE001
+            m = {}
+        _TYPE_BY_TOPIC = m
+    return _TYPE_BY_TOPIC.get(str(topic), "")

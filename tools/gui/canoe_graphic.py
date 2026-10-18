@@ -3014,7 +3014,14 @@ class CanoeGraphicWidget(QWidget):
             #   映射, ASCII 键 (sseng.chunk.H) 被原样留下 ⇒ 面板 "sseng.chunk.H" / Trace "chunk.H"。
             #   口径改为: 先按去掉数据源前缀的字段名映射 (与 Trace 完全同一次调用), 只有映射不出/留中文
             #   时才退回带前缀的整键 (ar.* / skill.* 那种段名规则)。
-            _sig_txt = _sen.en_of_key(b.key.split(".", 1)[0] if "." in b.key else "", _field)
+            _mt2 = ""
+            try:
+                if str(_field)[:2] in ("in", "ou") and str(_field)[2:].isdigit():
+                    from lerobot.middleware import attribution as _A3
+                    _mt2 = _A3.type_of_topic(getattr(b, "key", "") or "")
+            except Exception:                                            # noqa: BLE001
+                _mt2 = ""
+            _sig_txt = _sen.en_of_key(b.key.split(".", 1)[0] if "." in b.key else "", _field, _mt2)
         except Exception:                                                  # noqa: BLE001
             _sig_txt = str(b.key)
         it = QTreeWidgetItem([name, self._sig_layer(b.key), _sig_txt, "-", "-", self._sig_type(b.key),

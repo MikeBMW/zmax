@@ -122,11 +122,15 @@ _GRAV_SUM = re.compile(r"^(?P<stage>[^·]+)·合力 (?:力大小_mps|实部)$")
 _GRAV_COL = re.compile(r"^列(?P<layer>L[2-5])·合力 (?:力大小_mps|实部)$")
 
 
-def en_of(field, topic=""):
-    """中文键 → 英文变量名; ASCII 原样; 没收录原样返回 (不编)。"""
+def en_of(field, topic="", mtype=None):
+    """中文键 → 英文变量名; ASCII 原样; 没收录原样返回 (不编)。
+    mtype: 报文类型 (zmax::MotionPlan) —— 只有裸端口名 in1/out1 会用到它。"""
     k = str(field or "")
     if not k:
         return ""
+    _ps = port_signal(k, mtype)
+    if _ps:
+        return _ps
     if k in FIELD_EN:
         return FIELD_EN[k]
     if _ASCII.match(k):                      # 已经是 ASCII (chunk.H / λ0 / joint_1 …)
@@ -231,7 +235,7 @@ def is_meta(name):
     return False
 
 
-def en_of_key(prefix, field):
+def en_of_key(prefix, field, mtype=None):
     """数据源前缀 + 字段名 → 界面 Signal 列的**唯一**名字 (两个窗口都调它)。
 
     规则: 先按字段名映射; 还留非 ASCII 就退回 "前缀.字段" 的整键映射; 两个都不是纯 ASCII
@@ -242,7 +246,7 @@ def en_of_key(prefix, field):
 
     cands = []
     try:
-        cands.append(en_of(field, ""))
+        cands.append(en_of(field, "", mtype))
     except Exception:                                                     # noqa: BLE001
         pass
     if prefix:
@@ -254,3 +258,70 @@ def en_of_key(prefix, field):
         if _ascii(c):
             return c
     return cands[0] if cands else str(field)
+
+# ───────────────── 裸端口名 (out1 / in1 / out2 …) → 语义名 (2026-10-18) ─────────────────
+# 老倪: 「你看信号 out1 in1，根本看不出来是什么意思。全局搜索，signal 要能表达出这个信号的基本含义，
+#        简单明了。全局修改信号的英文字符串」
+# 规则: 端口本身没有语义 ⇒ 用**报文类型**命名 (mw_topic.type 是真源), 表里有就用手挑的短名,
+#       没有就 CamelCase→snake_case 兜底; 还取不到类型就保留端口名 (不编)。
+_PORT_RE = re.compile(r"^(in|out)(\d+)$")
+
+TYPE_SIGNAL_EN = {
+    "MotionPlan": "plan",
+    "MotionPlanIn": "plan_in",
+    "RobotAction": "action",
+    "RobotActionIn": "action_in",
+    "MotionState": "motion_state",
+    "SceneUnderstanding": "scene",
+    "EngineeringMemory": "memory",
+    "HumanInLoop": "hil_action",
+    "MemoryLinks": "mem_links",
+    "VlmSceneText": "vlm_text",
+    "WebAgentBridge": "web_agent",
+    "L5AutoLabel": "auto_label",
+    "L5AutoLabel2": "auto_label_2",
+    "L5AutoLabel3": "auto_label_3",
+    "JointStates": "joints",
+    "JointState": "joints",
+    "TcpPose": "tcp_pose",
+    "GripperState": "gripper",
+    "ForceTorque": "force_torque",
+    "SafetyGate": "safety_gate",
+    "SkillRequest": "skill_req",
+    "SkillState": "skill_state",
+    "MuscleSkillBank": "muscle_bank",
+    "SkillDictionary": "skill_dict",
+    "L2MuscleRecall": "muscle_recall",
+    "Pose3D": "pose3d",
+    "OpticalInspection": "aoi",
+    "CapabilityLevel": "capability",
+    "HardwareState": "hw_state",
+    "BoardFrame": "board_frame",
+    "BoardFrameIn": "board_frame_in",
+    "SceneText": "scene_text",
+}
+
+
+def type_signal_name(mtype):
+    """'zmax::MotionPlan' → 'plan' (表里没有则 CamelCase→snake_case)。"""
+    t = str(mtype or "").split("::")[-1].strip()
+    if not t:
+        return ""
+    if t in TYPE_SIGNAL_EN:
+        return TYPE_SIGNAL_EN[t]
+    s2 = re.sub(r"(?<!^)(?=[A-Z])", "_", t).lower()
+    return s2
+
+
+def port_signal(field, mtype=None):
+    """裸端口 (out1/in1) → 语义名; 不是裸端口或拿不到类型 → None (保留原样)。"""
+    f = str(field or "")
+    m = _PORT_RE.match(f)
+    if not m:
+        return None
+    base = type_signal_name(mtype)
+    if not base:
+        return None
+    # 同一个话题类型常有多条入口 (in1/in2 …) ⇒ 只有第 1 个用裸名, 其余带序号区分 (plan_in / plan_in_2)
+    idx = str(m.group(2))
+    return base if idx == "1" else "%s_%s" % (base, idx)

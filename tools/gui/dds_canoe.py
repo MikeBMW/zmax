@@ -172,10 +172,18 @@ def _rel(t0, t):
 
 
 def _en_name(topic, field):
-    """与「信号分析」完全同一个取名函数 (middleware.signal_en.en_of_key)。"""
+    """与「信号分析」完全同一个取名函数 (middleware.signal_en.en_of_key)。
+
+    📚 2026-10-18 老倪: 「你看信号 out1 in1，根本看不出来是什么意思 ⇒ signal 要能表达基本含义」
+      裸端口 out1/in1 没有语义 ⇒ 取该话题的报文类型 (mw_topic.type) 生成 plan / action_in 这类短名。
+    """
     try:
         from lerobot.middleware import attribution as _A2
-        return _signal_en.en_of_key(_A2.LIVE_PREFIX.get(str(topic), ""), field)
+        _mt = ""
+        _f = str(field or "")
+        if _f[:2] in ("in", "ou") and _f[2:].isdigit():
+            _mt = _A2.type_of_topic(topic)
+        return _signal_en.en_of_key(_A2.LIVE_PREFIX.get(str(topic), ""), field, _mt)
     except Exception:                                                   # noqa: BLE001
         return _signal_en.en_of(field, topic)
 
@@ -1714,6 +1722,22 @@ class BusView(QWidget):
         #   颜色/字体只在首建或状态位 (bad/phys/pin/step) 变化时重设。
         _prev_flags = getattr(self, "_trace_flags", [])
         _new_flags = []
+        # 📚 2026-10-18 老倪: 「out1 in1 根本看不出来是什么意思 ⇒ 全局修改信号的英文字符串」
+        #   渲染前统一改名 (一次), 任何分支造出的行只要 Signal 还是裸端口, 就按报文类型换成语义名
+        #   (plan / plan_in / action_in …); 原始端口名留在 raw, tooltip 仍可追溯。⚠ 变量名不能复用 x。
+        try:
+            import re as _re2
+            for _row2 in rows:
+                _sv = str(_row2.get("signal") or "")
+                if _re2.fullmatch(r"(in|out)\d+", _sv):
+                    _mt2 = _row2.get("type") or ""
+                    _nv = _en_name(_row2.get("topic") or "", _sv)
+                    if (not _nv or _nv == _sv) and _mt2:
+                        _nv = _signal_en.en_of_key("", _sv, _mt2)
+                    if _nv and _nv != _sv:
+                        _row2["signal"] = _nv
+        except Exception:                                                # noqa: BLE001
+            pass
         for r, x in enumerate(rows):
             cells = [x["time"], x["layer"], x["signal"], x["value"], x["unit"],
                      x["phys"], x["type"], x["tx"], x["rx"], x["qos"], x["hz"]]
