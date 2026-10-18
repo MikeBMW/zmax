@@ -210,6 +210,7 @@ const FOUR=['arm','gold','surface','rs'];   // 老倪点名的 4 台相机(同�
 let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运动学结果
 // 🧱 3D 围栏状态 (必须在这里声明: 初始化阶段 applyRot() 就会调 drawVR(), 晚声明会踩 TDZ 把整个脚本打死)
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
+let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
     VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true};
 
@@ -492,6 +493,7 @@ async function fencePost(path,obj){
   return r;
 }
 async function loadFences(){
+  if(FDR) return;                 // 正在拖的时候别刷 —— 一刷 FENCES 里的对象就换了, 拖到一半会断/跳
   try{
     const r=await fetch('/api/fence').then(x=>x.json());
     FENCES=r.items||[]; FMARGIN=(r.margin_mm!=null?r.margin_mm:10);
@@ -529,7 +531,17 @@ function fenceEdit(id){
   $('pFence').textContent='编辑中: '+it.name+' ⇒ 改完点『💾 保存修改』';
 }
 async function fenceAdd(){
-  const body={type:FTYPE,p1:_p1(),p2:_p2(),name:$('fName').value||''};
+  const p1=_p1(), p2=_p2();
+  // 校验: 两点重合/太小 ⇒ 不出盒子 (之前空输入框一点"添加"就冒出 800mm 的大方块)
+  const d=[0,1,2].map(i=>Math.abs(p2[i]-p1[i])*1000);
+  if(FTYPE==='box' && (d[0]<5||d[1]<5||d[2]<5)){
+    $('pFence').textContent='⚠ 盒子太小: '+d.map(v=>Math.round(v)).join('×')+'mm —— 每个方向至少 5mm, 或者用「正方体」按边长生成';
+    return;
+  }
+  if(FTYPE==='line' && Math.hypot(p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2])*1000<5){
+    $('pFence').textContent='⚠ 直线长度 <5mm, 没加'; return;
+  }
+  const body={type:FTYPE,p1:p1,p2:p2,name:$('fName').value||''};
   const r=await fencePost('/api/fence/add',body);
   if(r.ok){ $('pFence').textContent='✅ 已加 '+r.item.name+' · 共 '+r.n+' 个 (机器人路径会避开)'; $('fName').value=''; }
 }
@@ -544,6 +556,7 @@ function drawFences(g,pr){
   const mg=FMARGIN/1000;
   for(const it of items){
     const p1=it.p1,p2=it.p2;
+    const sel=(it.id===FSEL);
     if(it.type==='line'){
       const A=pr(p1),B=pr(p2); if(!A||!B) continue;
       g.strokeStyle=it.color; g.lineWidth=3; g.globalAlpha=0.95;
@@ -564,12 +577,16 @@ function drawFences(g,pr){
       g.beginPath(); g.moveTo(C[f[0]].u,C[f[0]].v);
       for(let i=1;i<4;i++) g.lineTo(C[f[i]].u,C[f[i]].v);
       g.closePath();
-      g.globalAlpha=0.13; g.fillStyle=it.color; g.fill();
-      g.globalAlpha=0.85; g.strokeStyle=it.color; g.lineWidth=1.4; g.stroke();
+      g.globalAlpha=sel?0.22:0.13; g.fillStyle=it.color; g.fill();
+      g.globalAlpha=sel?1:0.85; g.strokeStyle=sel?'#ffffff':it.color; g.lineWidth=sel?2.4:1.4; g.stroke();
     }
     g.globalAlpha=1;
+    if(sel){                                  // 白色角点手柄: 拖它改尺寸
+      g.fillStyle='#ffffff'; g.strokeStyle='#111';
+      for(const q of C){ if(!q) continue; g.fillRect(q.u-4,q.v-4,8,8); g.strokeRect(q.u-4,q.v-4,8,8); }
+    }
     const L=C[0];
-    if(L){ g.fillStyle=it.color; g.font='11px monospace';
+    if(L){ g.fillStyle=sel?'#ffffff':it.color; g.font='11px monospace';
       g.fillText(it.name+' '+Math.round((hi[0]-lo[0])*1000)+'×'+Math.round((hi[1]-lo[1])*1000)+'×'
                  +Math.round((hi[2]-lo[2])*1000)+'mm', L.u+4, L.v-4); }
   }
@@ -584,6 +601,148 @@ function _pickPlane(u,v,zPlane){
   const tt=(zPlane-eye[2])/d[2];
   if(!(tt>0)) return null;
   return [eye[0]+d[0]*tt, eye[1]+d[1]*tt, zPlane];
+}
+// ── 命中测试: 鼠标点到的围栏 (盒: 任一投影面内含 / 边距 6px; 线: 距线段 <8px) ──
+function _boxCorners(it,mgn){
+  const p1=it.p1,p2=it.p2,mg=(mgn==null?0:mgn);
+  const lo=[0,1,2].map(i=>Math.min(p1[i],p2[i])-mg), hi=[0,1,2].map(i=>Math.max(p1[i],p2[i])+mg);
+  return [[lo[0],lo[1],lo[2]],[hi[0],lo[1],lo[2]],[hi[0],hi[1],lo[2]],[lo[0],hi[1],lo[2]],
+          [lo[0],lo[1],hi[2]],[hi[0],lo[1],hi[2]],[hi[0],hi[1],hi[2]],[lo[0],hi[1],hi[2]]];
+}
+function _inPoly(q,poly){
+  let c=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[i],b=poly[j];
+    if(((a.v>q.v)!==(b.v>q.v))&&(q.u<(b.u-a.u)*(q.v-a.v)/(b.v-a.v+1e-12)+a.u)) c=!c;
+  }
+  return c;
+}
+function _segDist(q,a,b){
+  const dx=b.u-a.u,dy=b.v-a.v;const L=dx*dx+dy*dy;let tt=0;
+  if(L>1e-9) tt=Math.max(0,Math.min(1,((q.u-a.u)*dx+(q.v-a.v)*dy)/L));
+  const x=a.u+dx*tt,y=a.v+dy*tt;return Math.hypot(q.u-x,q.v-y);
+}
+function _uv(e){const r=$('vr').getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
+function fenceHit(u,v){
+  if(!VIEW||!VIEW.pr) return null;
+  const pr=VIEW.pr, faces=[[0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[1,2,6,5],[0,3,7,4]];
+  let best=null;
+  for(const it of FENCES){
+    if(!it.enabled) continue;
+    if(it.type==='line'){
+      const A=pr(it.p1),B=pr(it.p2); if(!A||!B) continue;
+      if(_segDist({u:u,v:v},A,B)<9) { const z=(A.z+B.z)/2; if(!best||z<best.z) best={it:it,z:z}; }
+      continue;
+    }
+    const C=_boxCorners(it,FMARGIN/1000).map(pr);
+    if(C.some(q=>!q)) continue;
+    let hit=false;
+    for(const f of faces){ const poly=f.map(i=>C[i]); if(_inPoly({u:u,v:v},poly)){ hit=true; break; } }
+    if(!hit){ for(const [a,b] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]])
+      if(_segDist({u:u,v:v},C[a],C[b])<6){ hit=true; break; } }
+    if(hit){ const z=C.reduce((s,q)=>s+q.z,0)/8; if(!best||z<best.z) best={it:it,z:z}; }
+  }
+  return best?best.it:null;
+}
+function _cornerHit(it,u,v){
+  // 只有"已选中"的盒子才出角点手柄; 而且投影足够大(>36px)才认 —— 小盒子四个角挤在一起,
+  // 否则点中心也会被当成拖角点, 一拖就把盒子压扁 (2026-10-18 实测踩到)
+  if(!VIEW||!VIEW.pr||it.type!=='box'||it.id!==FSEL) return -1;
+  const C=_boxCorners(it,FMARGIN/1000).map(VIEW.pr); if(C.some(q=>!q)) return -1;
+  const us=C.map(q=>q.u), vs=C.map(q=>q.v);
+  const w=Math.max(...us)-Math.min(...us), h=Math.max(...vs)-Math.min(...vs);
+  if(Math.min(w,h)<36) return -1;
+  for(let i=0;i<8;i++) if(Math.hypot(C[i].u-u,C[i].v-v)<8) return i;
+  return -1;
+}
+function fenceSelect(it){
+  FSEL=it?it.id:null;
+  if(it){ fillP1(it.p1); fillP2(it.p2); $('fName').value=it.name; FEDIT=it.id;
+          $('fEditSave').disabled=false; $('fAdd').textContent='➕ 添加(新)';
+          $('pFence').textContent='已选中「'+it.name+'」: 直接拖它=平移; 拖白色角点=改尺寸; 方向键微调 1mm (Shift=10mm)'; }
+  renderFenceList(); drawVR();
+}
+// ── 拖拽: 平移(水平面) / 角点改尺寸 / Shift+拖=上下 ──
+function fenceDragStart(it,u,v,shift,allowCorner){
+  const cen=[0,1,2].map(i=>(it.p1[i]+it.p2[i])/2);
+  const ci=(allowCorner===false?-1:_cornerHit(it,u,v));
+  const c0=ci>=0?_boxCorners(it,FMARGIN/1000)[ci]:null;
+  // 角点各轴属于 min 端还是 max 端: 直接和盒子里点比, 不靠序号位运算 (序号顺序不是规整二进制, 踩过坑)
+  const hiEnd=c0?[0,1,2].map(i=>c0[i]>((it.p1[i]+it.p2[i])/2)?1:0):null;
+  FDR={id:it.id,type:it.type,u0:u,v0:v,shift:!!shift,planeZ:cen[2],
+       p1:it.p1.slice(),p2:it.p2.slice(),corner:ci,
+       c0:c0, hiEnd:hiEnd,
+       it:it};
+}
+function fenceDragMove(u,v){
+  if(!FDR) return null;
+  const it=FDR.it;
+  if(FDR.corner>=0){                       // 拖角点: 只改水平面内那两个轴到点到的位置
+    // 角点序号 → 各轴该改哪一端 (bit1=x, bit0=y, bit2=z; 见 _boxCorners 的顺序)
+    const hi=FDR.hiEnd||[0,0,0];
+    const p=_pickPlane(u,v,FDR.c0[2]); if(!p) return null;
+    const np1=it.p1.slice(), np2=it.p2.slice();
+    for(let i=0;i<2;i++){ if(hi[i]) np2[i]=p[i]; else np1[i]=p[i]; }   // 水平面内拖: x/y
+    // 归一化: 保证 p1 是 min, p2 是 max (拖过头也不会把盒子翻成负尺寸)
+    it.p1=[Math.min(np1[0],np2[0]),Math.min(np1[1],np2[1]),it.p1[2]];
+    it.p2=[Math.max(np1[0],np2[0]),Math.max(np1[1],np2[1]),it.p2[2]];
+  } else {
+    if(FDR.shift){                         // 上下拖: 竖直平面
+      const a=_pickVert(FDR.u0,FDR.v0,FDR.planeZ), b=_pickVert(u,v,FDR.planeZ);
+      if(!a||!b) return null;
+      const dz=b[2]-a[2]; it.p1=[FDR.p1[0],FDR.p1[1],FDR.p1[2]+dz]; it.p2=[FDR.p2[0],FDR.p2[1],FDR.p2[2]+dz];
+    } else {                               // 水平拖
+      const a=_pickPlane(FDR.u0,FDR.v0,FDR.planeZ), b=_pickPlane(u,v,FDR.planeZ);
+      if(!a||!b) return null;
+      const d=[b[0]-a[0],b[1]-a[1],0];
+      it.p1=[FDR.p1[0]+d[0],FDR.p1[1]+d[1],FDR.p1[2]]; it.p2=[FDR.p2[0]+d[0],FDR.p2[1]+d[1],FDR.p2[2]];
+    }
+  }
+  return it;
+}
+function FAM(){ const it=FDR&&FDR.it; return it?it:{p1:[0,0,0],p2:[0,0,0]}; }
+function _pickVert(u,v,zRef){
+  if(!VIEW) return null; const {eye,R,U,fwd,F,CX,CY}=VIEW;
+  const d=[fwd[0]+R[0]*(u-CX)/F+U[0]*(CY-v)/F, fwd[1]+R[1]*(u-CX)/F+U[1]*(CY-v)/F,
+           fwd[2]+R[2]*(u-CX)/F+U[2]*(CY-v)/F];
+  // 竖直平面: 过 (eye + 水平朝向 zRef 的点), 法向 = 相机的水平视线
+  const n=[fwd[0],fwd[1],0]; const nl=Math.hypot(n[0],n[1])||1; n[0]/=nl; n[1]/=nl;
+  const c=[eye[0],eye[1],zRef];
+  const den=d[0]*n[0]+d[1]*n[1];
+  if(Math.abs(den)<1e-6) return null;
+  const tt=((c[0]-eye[0])*n[0]+(c[1]-eye[1])*n[1])/den;
+  if(!(tt>0)) return null;
+  return [eye[0]+d[0]*tt, eye[1]+d[1]*tt, eye[2]+d[2]*tt];
+}
+async function fenceCommit(it){
+  fillP1(it.p1); fillP2(it.p2);        // 拖完把面板里的数字同步刷新 (眼睛看得到"改成了多少")
+  const r=await fencePost('/api/fence/update',{id:it.id,p1:it.p1,p2:it.p2});
+  if(r.ok) $('pFence').textContent='✅ 已保存「'+r.item.name+'」: ['+r.item.p1.map(v=>Math.round(v*1000)).join(', ')
+    +'] → ['+r.item.p2.map(v=>Math.round(v*1000)).join(', ')+'] mm';
+}
+document.addEventListener('keydown',e=>{
+  if(!FSEL) return;
+  const it=FENCES.find(x=>x.id===FSEL); if(!it) return;
+  const st=e.shiftKey?0.01:0.001; let d=null;
+  if(e.key==='ArrowLeft') d=[-st,0,0]; else if(e.key==='ArrowRight') d=[st,0,0];
+  else if(e.key==='ArrowUp') d=[0,st,0]; else if(e.key==='ArrowDown') d=[0,-st,0];
+  else if(e.key==='PageUp') d=[0,0,st]; else if(e.key==='PageDown') d=[0,0,-st];
+  else if(e.key==='Delete'){ fenceDel(it.id); FSEL=null; return; }
+  if(!d) return;
+  e.preventDefault();
+  it.p1=[it.p1[0]+d[0],it.p1[1]+d[1],it.p1[2]+d[2]];
+  it.p2=[it.p2[0]+d[0],it.p2[1]+d[1],it.p2[2]+d[2]];
+  fillP1(it.p1); fillP2(it.p2); drawVR(); fenceCommit(it);
+});
+function fenceAutoFill(){          // 打开页面时给个合理起点: ①=当前 TCP, ②=①+80mm, 免得空输入框出 800mm 大盒子
+  try{
+    if(!TCP||!TCP.ok) return;
+    const x=Math.round(TCP.x*1000), y=Math.round(TCP.y*1000), z=Math.round(TCP.z*1000);
+    if(+$('fX1').value===0 && +$('fY1').value===0 && (+$('fZ1').value===300||+$('fZ1').value===0)){
+      $('fX1').value=x; $('fY1').value=y; $('fZ1').value=z;
+      $('fX2').value=x+80; $('fY2').value=y+80; $('fZ2').value=z+80;
+    }
+  }catch(e){}
 }
 function fenceBind(){
   $('fBox').addEventListener('click',()=>{FTYPE='box'; $('fBox').classList.add('on'); $('fLine').classList.remove('on');});
@@ -653,7 +812,7 @@ function drawVR(){
   // 基座竖轴(看方向)
   const o1=pr([0.7,0.2,0.12]), o2=pr([0.7,0.2,0.42]);
   if(o1&&o2){g.strokeStyle='#8b949e';g.beginPath();g.moveTo(o1.u,o1.v);g.lineTo(o2.u,o2.v);g.stroke();}
-  VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY};      // 🖱 点图取点要用(反投影)
+  VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY,pr:pr};   // 🖱 点图取点(反投影) / 鼠标选中命中测试
   // 🦾 URDF 外形: 真关节角正运动学 (5Hz 跟随) → 凸包填充
   if(VR.urdf && URDF){
     LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null);
@@ -725,11 +884,27 @@ function drawVR(){
   $('pVr').textContent=(SHOW?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点 · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 let drag=null;
-$('vr').addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};VR.auto=false;$('vr').setPointerCapture(e.pointerId);});
-$('vr').addEventListener('pointermove',e=>{ if(!drag) return;
+$('vr').addEventListener('pointerdown',e=>{
+  // 🧱 先看是不是点在围栏上: 命中就选中并开始拖 (此时不转视角)
+  if(!FPICK){
+    const uu=_uv(e)[0], vv=_uv(e)[1];
+    const it=fenceHit(uu,vv);
+    if(it){
+      const wasSel=(FSEL===it.id);                        // 必须先判角点再选中: 选中会把手柄点亮, 反过来就每次都拖到角点
+      if(!wasSel) fenceSelect(it);
+      fenceDragStart(it,uu,vv,e.shiftKey,wasSel);
+      $('vr').setPointerCapture(e.pointerId); VR.auto=false; return; }
+    if(FSEL){ FSEL=null; renderFenceList(); drawVR(); }
+  }
+  drag={x:e.clientX,y:e.clientY};VR.auto=false;$('vr').setPointerCapture(e.pointerId);});
+$('vr').addEventListener('pointermove',e=>{
+  if(FDR){ const uu=_uv(e); const it=fenceDragMove(uu[0],uu[1]); if(it) drawVR(); return; }
+  if(!drag) return;
   VR.yaw-=(e.clientX-drag.x)*0.01; VR.pitch=Math.max(-0.2,Math.min(1.45,VR.pitch+(e.clientY-drag.y)*0.008));
   drag={x:e.clientX,y:e.clientY}; drawVR(); });
-$('vr').addEventListener('pointerup',()=>{drag=null;});
+$('vr').addEventListener('pointerup',()=>{
+  if(FDR){ const it=FDR.it; FDR=null; fenceCommit(it); return; }
+  drag=null;});
 $('bFit').addEventListener('click',()=>{ VR.auto=true; drawVR(); });
 $('bFrames').addEventListener('click',()=>{ VR.frames=!VR.frames; VR.auto=true;
   $('bFrames').classList.toggle('on',VR.frames); drawVR(); });
@@ -1084,7 +1259,7 @@ async function loadUrdf(){
   }catch(e){ console.warn('URDF 取失败', e); }
 }
 loadUrdf();
-fenceBind();
+fenceBind(); fenceAutoFill();   // ①=当前 TCP, ②=①+80mm (别让空输入框出 800mm 大盒子)
 async function loadCalib(){
   try{ const r=await fetch('/api/calib?cam='+CAM).then(x=>x.json());
     if(r.cams&&!Object.keys(CAMS).length) CAMS=r.cams;

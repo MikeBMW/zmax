@@ -50,6 +50,12 @@ def _save(d: dict) -> None:
     os.replace(tmp, PATH)
 
 
+def _norm(p1, p2):
+    """盒子两对角点归一化: p1=min, p2=max (手填反/拖过头都不会出负尺寸)"""
+    a, b = _f3(p1), _f3(p2)
+    return [min(a[i], b[i]) for i in range(3)], [max(a[i], b[i]) for i in range(3)]
+
+
 def _f3(v):
     if v is None or len(v) < 3:
         raise ValueError("需要 3 个坐标")
@@ -81,7 +87,8 @@ def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "") -> d
         d = _load()
         it = {"id": "F" + uuid.uuid4().hex[:6], "type": kind,
               "name": name or ("长方体" if kind == "box" else "直线") + "-%d" % (len(d["items"]) + 1),
-              "p1": _f3(p1), "p2": _f3(p2),
+              "p1": _norm(p1, p2)[0] if kind == "box" else _f3(p1),
+              "p2": _norm(p1, p2)[1] if kind == "box" else _f3(p2),
               "color": color or ("#ff9f1c" if kind == "box" else "#ff5d9e"),
               "enabled": True, "note": note, "at": time.strftime("%F %T")}
         d["items"].append(it)
@@ -98,6 +105,8 @@ def update(fid: str, **kw) -> dict:
             for k in ("p1", "p2"):
                 if kw.get(k) is not None:
                     it[k] = _f3(kw[k])
+            if it.get("type") == "box":                 # 盒子两端点归一化成 min/max (拖过头/手填反都不出错)
+                it["p1"], it["p2"] = _norm(it["p1"], it["p2"])
             for k in ("name", "color", "note"):
                 if kw.get(k) is not None:
                     it[k] = str(kw[k])

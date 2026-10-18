@@ -654,6 +654,8 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", r.headers.get("Content-Type", "multipart/x-mixed-replace"))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
+
+
                 while True:
                     chunk = r.read(8192)
                     if not chunk:
@@ -663,6 +665,20 @@ class H(BaseHTTPRequestHandler):
             pass
         except Exception as e:                                                    # noqa: BLE001
             self.log_message("stream err %s", e)
+
+    def _fence_audit(self, route, fid, body):        # 🧱 围栏写操作审计: 谁/何时/改了什么
+        try:
+            import json as _j
+            import time as _t
+            rec = {"ts": _t.strftime("%Y-%m-%d %H:%M:%S"), "route": route, "id": fid,
+                   "client": self.client_address[0] if self.client_address else "-",
+                   "body": body}
+            os.makedirs(os.path.join(REPO, "zmax_data", "ar_rs"), exist_ok=True)
+            with open(os.path.join(REPO, "zmax_data", "ar_rs", "fences_audit.jsonl"), "a",
+                      encoding="utf-8") as f:
+                f.write(_j.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:                                                     # noqa: BLE001
+            pass
 
     # ── 数据 ────────────────────────────────────────────────
     def _traj(self):
@@ -753,6 +769,7 @@ class H(BaseHTTPRequestHandler):
             self._json(self._do_calib(body))
         elif p == "/api/fence/add":        # 🧱 加长方体/正方体/直线 (对角两点, base 系, 米)
             try:
+                self._fence_audit("/api/fence/add", "-", body)
                 it = FS.add(body.get("type") or "box", body.get("p1"), body.get("p2"),
                             name=body.get("name") or "", color=body.get("color") or "",
                             note=body.get("note") or "")
@@ -761,6 +778,7 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
         elif p == "/api/fence/update":     # 🧱 改端点/名字/开关
             try:
+                self._fence_audit("/api/fence/update", str(body.get("id") or ""), body)
                 it = FS.update(str(body.get("id") or ""), p1=body.get("p1"), p2=body.get("p2"),
                                name=body.get("name"), color=body.get("color"),
                                enabled=body.get("enabled"), note=body.get("note"))
@@ -769,11 +787,14 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
         elif p == "/api/fence/delete":
             try:
+                self._fence_audit("/api/fence/delete", str(body.get("id") or ""), body)
                 self._json(dict(ok=True, **FS.delete(str(body.get("id") or ""))))
             except Exception as e:                                                 # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
         elif p == "/api/fence/clear":
-            self._json(dict(ok=True, **FS.clear()))
+            r = FS.clear()
+            self._fence_audit("/api/fence/clear", "-", body)
+            self._json(dict(ok=True, **r))
         elif p == "/api/fence/margin":
             self._json(dict(ok=True, **FS.set_margin(float(body.get("mm") or 0))))
         elif p == "/api/traj/show":
