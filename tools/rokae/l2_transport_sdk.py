@@ -31,6 +31,9 @@ import os
 #    只在"下降/纯平移被拒"这类目标 z ≤ 当前 z + 30mm 的场景, 才用 env ZMAX_MOVEJ_RETRY=1 显式打开;
 #    升高类动作永远不许开这个闸。
 MOVEJ_RETRY = os.environ.get("ZMAX_MOVEJ_RETRY", "0").strip() in ("1", "true", "True", "yes")
+# 📚 2026-10-18 老倪: 「选C」(moveJ) —— 姿态差大的转移在笛卡尔直线上会被 50102/50120 奇异点拒,
+#   开关一开: 每条 move-abs 直接要关节空间 MoveJ (代理侧仍带 guard_box 实时包络闸)。
+FORCE_J = os.environ.get("ZMAX_L2_FORCE_J", "0").strip() in ("1", "true", "True", "yes")
 import re
 import sys
 import threading
@@ -343,7 +346,8 @@ def _run_abs(tgt, rpy, sp_mm, meta, logf, ang=None):
            #    特征是 moveStart ec=0 但臂**一动不动**(实测: 位移 411mm/姿态差 173.9° 的直线被拒,
            #    Δ=0.001mm · 5~7s 后残差=全量)。代理里已有控制器手册修法②(MoveL→关节空间 MoveJ 重试一次),
            #    但**一直没开闸**(主机侧没带这个键) ⇒ 现场表现就是"点了卡住不动"。现开闸; 重试仍带 guard_box。
-           "allow_movej_retry": MOVEJ_RETRY}
+           "allow_movej_retry": MOVEJ_RETRY,
+           **({"motion": "J"} if FORCE_J else {})}
     r = send_agent(req, wait, logf)
     p1 = read_pose()
     err = [round((p1["pos"][i] - tgt[i]) * 1000.0, 2) for i in range(3)]
