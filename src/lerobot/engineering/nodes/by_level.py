@@ -17,6 +17,7 @@ LEVELS_INDEX = {
         ("sspred", "📈 先验动力学预测器", 'ss_dyn', "library.py", 'node_ss_dyn'),
         ("ssinnov", "🧪 状态校正器", 'ss_correct', "library.py", 'node_ss_dyn'),
         ("sssched", "🧭 动作调制器", 'ss_sched', "library.py", 'node_ss_s3'),
+        ("sslimit", "🛡 安全执行边界", 'ss_limit', "library.py", 'node_ss_s3'),   # 🔢 2026-10-18: 归 L2 (执行由 L2 收口; 原缺索引 ⇒ 层算出 meta ⇒ Trace 里看不到这个 Tx)
         ("ssact", "🤖 机器人执行器", 'ss_act', "library.py", 'node_ss_exec'),
         ("ssworld", "🌍 物理世界", 'ss_world', "library.py", 'node_ss_exec'),
         ("ssyolo", "🎯 YOLO 目标检测", 'ss_yolo', "library.py", 'node_ss_yolo'),
