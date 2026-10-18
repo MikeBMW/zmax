@@ -137,6 +137,14 @@ STAGE_KEYS = ("encode", "project", "metric", "navigate", "feedback")
 MANIFOLD_M_DEFAULT = 1.0                       # 默认等效惯量尺度 (inertia 关闭时不影响行为)
 MANIFOLD_M_RANGE = (0.0, 8.0)                  # 现场可标定范围 (M=0 ⇒ 无惯性/过阻尼极限)
 MANIFOLD_M_UNIT = "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)"
+
+# ── 度规势的近/远混合阈值 (2026-10-19) ──
+#   夹角余弦 |⟨p̂,ĝ⟩| ≥ HI ⇒ 纯度规势 (方向最准, 实测 cos=1.0000)
+#   ≤ LO ⇒ 纯欧氏势 (度规势在正交点有驻点, ‖∇Φ‖→0)
+#   中间 smoothstep 过渡。LO=0.10 的依据: 实测 c=0.1 时度规势 cos 仍 1.0000,
+#   而 c=0.001 起 ‖∇Φ‖ 已异常增高、c=0 直接塌陷 ⇒ 把"纯度规"的边界放在 0.1 是保守取值。
+PHI_METRIC_C_LO = 0.10
+PHI_METRIC_C_HI = 0.35
 M_EPS = 1e-9                                   # M ≤ M_EPS 视为无惯性 (过阻尼极限)
 
 
@@ -298,11 +306,22 @@ class ManifoldProjector:
                                "note": f"{t} 未实现 (status={MANIFOLD_REGISTRY[t]['status']})"}
 
 
+def _env_flag(name: str, explicit=None) -> bool:
+    """显式参数优先, 否则读环境变量 (默认关 ⇒ 零回归)。"""
+    if explicit is not None:
+        return bool(explicit)
+    return str(os.environ.get(name, "0")).strip().lower() in ("1", "true", "yes", "on")
+
+
 class MetricCalculator:
     """流形上的距离 (按类型真公式) + 切空间梯度 (数值中心差分 + 切空间投影)"""
 
-    def __init__(self, manifold_type: str = "sphere") -> None:
+    def __init__(self, manifold_type: str = "sphere", su2_tangent: bool = False) -> None:
         self.type = manifold_type
+        # 🐛 2026-10-19: 旧版只对 sphere 做切空间投影, 而 SU(2)≅S³ 同样在单位球面上 ⇒
+        #   su2 的 ∇Φ 一直带法向分量, 这部分下降在下一拍被 project() 吃回去 (白做功)。
+        #   默认关 = 与旧版逐位相同; ZMAX_MANIFOLD_SU2_TANGENT=1 打开。
+        self.su2_tangent = bool(su2_tangent)
 
     def distance(self, p: np.ndarray, q: np.ndarray) -> float:
         p, q = np.asarray(p, float).ravel(), np.asarray(q, float).ravel()
@@ -341,8 +360,10 @@ class MetricCalculator:
             e = np.zeros_like(p)
             e[i] = h
             g[i] = (float(phi(p + e)) - float(phi(p - e))) / (2 * h)
-        if self.type == "sphere":
-            g = g - p * float(np.dot(g, p)) / max(float(np.dot(p, p)), 1e-12)     # 去掉法向分量
+        _tangent_types = ("sphere", "su2") if getattr(self, "su2_tangent", False) else ("sphere",)
+        if self.type in _tangent_types:
+            # 去掉法向分量: T_p S^n = {v | ⟨v,p⟩=0}; SU(2) 的单位四元数点同构于 S³, 同式适用
+            g = g - p * float(np.dot(g, p)) / max(float(np.dot(p, p)), 1e-12)
         return g
 
 
@@ -538,7 +559,8 @@ class ManifoldEngine:
                  state_dim: int = 43, action_dim: int = 4, gain: float = 0.3,
                  max_step: float = 0.05, manifold_M: float = MANIFOLD_M_DEFAULT,
                  inertia: bool = False, homeostasis: bool = True,
-                 latent_provider=None, latent_provider_note: str = "") -> None:
+                 latent_provider=None, latent_provider_note: str = "",
+                 phi_metric: bool | None = None, su2_tangent: bool | None = None) -> None:
         self.manifold_type = manifold_type
         self.latent_dim = int(latent_dim)
         self.state_dim = int(state_dim)
@@ -558,8 +580,16 @@ class ManifoldEngine:
         self.latent_provider = latent_provider
         self.latent_provider_note = str(latent_provider_note or "")
         self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
+        # ── 几何完备性开关 (2026-10-19) — 默认两个都关 ⇒ 与旧版逐位相同 ──
+        #   ① phi_metric : 势函数换成**各度规自身距离** Φ=½·d_M(q,goal)²
+        #      旧行为 Φ=½‖q−goal‖² (欧氏) ⇒ su2/sphere 的度规只在 distance() 里生效,
+        #      梯度流仍被欧氏驱动 (相当于给欧氏基线开外挂, 度规收益吃不到)。
+        #   ② su2_tangent: SU(2)≅S³ 的切空间投影 (旧版只有 sphere 分支有)
+        #   env: ZMAX_MANIFOLD_PHI_METRIC / ZMAX_MANIFOLD_SU2_TANGENT
+        self.phi_metric = _env_flag("ZMAX_MANIFOLD_PHI_METRIC", phi_metric)
+        self.su2_tangent = _env_flag("ZMAX_MANIFOLD_SU2_TANGENT", su2_tangent)
         self.projector = ManifoldProjector(manifold_type)
-        self.metric = MetricCalculator(manifold_type)
+        self.metric = MetricCalculator(manifold_type, su2_tangent=self.su2_tangent)
         self.navigator = Navigator(manifold_type)
         self.feedback = FeedbackLoop(gain=gain, max_step=max_step)
         self.readout: np.ndarray | None = None      # 解码: 流形坐标 → 动作 (ridge 真拟合)
@@ -750,9 +780,35 @@ class ManifoldEngine:
         p = self.current_manifold_point if p is None else np.asarray(p, float).ravel()
         if p is None:
             raise RuntimeError("先 project()")
-        phi = potential_fn if potential_fn is not None else \
-            (lambda q: 0.5 * float(np.dot(q - self.goal_point, q - self.goal_point))
-             if self.goal_point is not None else 0.0)
+        if potential_fn is not None:
+            phi = potential_fn
+        elif self.goal_point is None:
+            phi = lambda q: 0.0                                   # noqa: E731
+        elif self.phi_metric:
+            # 势函数用**该度规自身**的距离 Φ=½·d_M(q,goal)², 但必须混合欧氏兜底 ——
+            # 2026-10-19 实测 (tools/diag_metric_phi.py): 度规势的方向在 c=⟨p̂,ĝ⟩∈[0.001,0.999] 上
+            #   **全程 cos=1.0000** (欧氏势只有 0.707~0.9997 ⇒ 越远越偏), 但 c→0 处 Fubini–Study
+            #   的 |⟨p,q⟩| 有尖点: c=0 时 ‖∇Φ‖ 塌到 5.9e-05 (驻点) ⇒ 方向由数值噪声决定。
+            #   而 project() 的 bounded_rotvec(gain=2.0) 把远距离状态映射到接近 π 的旋转,
+            #   真实轨迹 k=150 时大量点正好落在这个驻点上 (实测 cos 掉到 0.28)。
+            # ⇒ 近距离 (c 大, 度规方向准) 用度规势; 远处 (c 小, 易驻点) 平滑过渡到欧氏势。
+            _g = np.asarray(self.goal_point, float).ravel()
+            _m = self.metric
+            _glen = max(float(np.linalg.norm(_g)), 1e-12)
+
+            def phi(q, _g=_g, _m=_m, _glen=_glen):
+                _qv = np.asarray(q, float).ravel()
+                _d = float(_m.distance(_qv, _g))
+                _eu = 0.5 * float(np.dot(_qv - _g, _qv - _g))
+                _qlen = float(np.linalg.norm(_qv))
+                if _qlen < 1e-12:
+                    return _eu
+                _c = abs(float(np.dot(_qv, _g)) / (_qlen * _glen))       # |cos| 夹角余弦
+                _w = float(np.clip((_c - PHI_METRIC_C_LO) / (PHI_METRIC_C_HI - PHI_METRIC_C_LO), 0.0, 1.0))
+                _w = _w * _w * (3.0 - 2.0 * _w)                          # smoothstep, 避免硬切换
+                return _w * (0.5 * _d * _d) + (1.0 - _w) * _eu
+        else:
+            phi = lambda q: 0.5 * float(np.dot(q - self.goal_point, q - self.goal_point))
         g = self.metric.tangent_gradient(phi, p)
         d = -g
         self.lat["metric"].append((time.perf_counter() - t0) * 1e3)
@@ -836,6 +892,8 @@ class ManifoldEngine:
                "confidence": r["confidence"], "anomaly": r["anomaly"],
                "residual": r["residual"], "feedback": fb, "decode_src": dec_src,
                "M": self.M, "inertia": self.inertia,
+               # 🧭 几何完备性: 势函数是否用度规距离 / su2 是否做切空间投影 (缺一即收益打折)
+               "phi_metric": bool(self.phi_metric), "su2_tangent": bool(self.su2_tangent),
                "momentum": (None if self.velocity is None else float(np.linalg.norm(self.velocity))),
                "t_encode_ms": r["t_encode_ms"], "t_project_ms": r["t_project_ms"],
                "t_grad_ms": gf["t_ms"], "manifold": r["manifold"], "status": r["status"],
