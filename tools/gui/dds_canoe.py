@@ -264,7 +264,10 @@ class BusView(QWidget):
         self.reload(force_tree=True)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.reload)
-        self._timer.start(800)      # ⚡ 实时: 0.8s 一拍 (老倪要「实时运行」)
+        # 📚 2026-10-18 老倪: 「现在的数据空间窗口，为什么反映这么慢？」——
+        #   数据侧: l2_daemon 5Hz 写文件 → signal_store 2Hz 落库 (≤0.5s) → 本窗口 tick 0.8s
+        #   ⇒ 端到端最坏 ~1.3s, 看着"慢半拍"。实测重建 469 行只要 80~340ms ⇒ tick 收到 0.5s 不会卡。
+        self._timer.start(500)      # ⚡ 实时: 0.5s 一拍 (2026-10-18 由 800ms 收紧)
 
     # ─────────────────── 骨架 ───────────────────
     def _build(self):

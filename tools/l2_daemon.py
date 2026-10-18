@@ -183,6 +183,13 @@ def exec_state(**kw):
     _EXEC["t"] = time.time()
 
 
+_PHASE_CODE = {"idle": 0, "accepted": 1, "planned": 2, "dispatching": 3, "arrived": 4, "done": 5, "blocked": 9}
+
+
+def _phase_code():
+    return _PHASE_CODE.get(str(_EXEC.get("phase") or ""), -1)
+
+
 def _exec_observe(msg):
     """从日志行里抽取状态 (不动控制流): 阶段/目标/到位/拒绝。"""
     import re as _re
@@ -208,7 +215,12 @@ def _exec_observe(msg):
         if msg.startswith(("拒绝", "🛡 阶段", "🛡 视觉门", "🛑", "⛔")) or ("被拦(" in msg) or ("拒发:" in msg):
             exec_state(phase="blocked", blocked_by=msg.strip()[:160])
         if msg.startswith("受理:"):
-            exec_state(phase="accepted")
+            # ⚠️ 实测踩坑: 收尾那行也是 "受理: ✅ 全部 3 阶段完成" ⇒ 一律当 accepted 会把状态打回起点,
+            #    窗口上看着"动完了还是受理中"。这里把"全部完成"单独记成 done。
+            if ("全部" in msg) and ("完成" in msg):
+                exec_state(phase="done")
+            else:
+                exec_state(phase="accepted")
     except Exception:                                                    # noqa: BLE001
         pass
 
@@ -231,6 +243,7 @@ def _exec_pub_thread():
             _tmp = _EXEC_STATE + ".tmp"
             os.makedirs(os.path.dirname(_EXEC_STATE), exist_ok=True)
             _EXEC["t_pub"] = time.time()          # 发布时刻 (帧龄判据); t 保留"最后一次事件"时刻
+            _EXEC["phase_code"] = _phase_code()   # 0 idle ·1 受理 ·2 已规划 ·3 下发中 ·4 到位 ·5 完成 ·9 被拦
             with open(_tmp, "w", encoding="utf-8") as f:
                 json.dump(_EXEC, f, ensure_ascii=False)
             os.replace(_tmp, _EXEC_STATE)

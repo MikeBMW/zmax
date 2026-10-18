@@ -24,7 +24,7 @@ sys.path[:0] = ["tools/gui", "src", "."]
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 OK = BAD = 0
-PHASES = {"idle", "accepted", "planned", "dispatching", "arrived", "blocked"}
+PHASES = {"idle", "accepted", "planned", "dispatching", "arrived", "done", "blocked"}
 
 
 def chk(tag, cond, detail=""):
@@ -109,6 +109,8 @@ def main():
         chk("帧龄 ≤5s", age <= 5.0, "%.2fs" % age)
         chk("phase 合法", str(st.get("phase")) in PHASES, str(st.get("phase")))
         chk("有 seg/n_seg 字段", "seg" in st and "n_seg" in st, "seg=%s n_seg=%s" % (st.get("seg"), st.get("n_seg")))
+        # ⚙️ 2026-10-18: 进度要能被窗口用数值看到 (字符串不进信号库)
+        chk("有 phase_code", isinstance(st.get("phase_code"), int), "phase=%s code=%s" % (st.get("phase"), st.get("phase_code")))
 
     print("⑦ Trace 里有实测值")
     import dds_canoe
