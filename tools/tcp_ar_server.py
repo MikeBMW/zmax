@@ -1122,6 +1122,37 @@ MOD3_STATE = "/dev/shm/mod3_latest.json"
 MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
 
 
+def _mod3_write(r, frame_b=None):
+    """把一次检测结果落盘。**检测失败时不要用空结果覆盖** —— 老倪 2026-10-18「别丢光模块」:
+    只要之前检出过, 就继续显示上一帧的框, 并用 stale/detect_lost 明确告诉页面"这是沿用的旧结果"。"""
+    if r.get("ok"):
+        r["detect_lost"] = 0
+        if frame_b is not None:
+            with open(MOD3_FRAME, "wb") as f:
+                f.write(frame_b)
+    else:
+        prev = None
+        try:
+            with open(MOD3_STATE, encoding="utf-8") as f:
+                prev = json.load(f)
+        except Exception:                                                   # noqa: BLE001
+            prev = None
+        if not (prev and prev.get("ok")):
+            r["ts"] = time.time()
+            r["t"] = time.strftime("%H:%M:%S")
+        else:
+            prev = dict(prev)
+            prev["stale"] = True
+            prev["detect_lost"] = int(prev.get("detect_lost") or 0) + 1
+            prev["last_ts"] = prev.get("ts")          # 保留真实采集时间, 不许用新时间冒充
+            prev["err"] = r.get("err") or "本帧未检出"
+            r = prev
+    _tmp = MOD3_STATE + ".%d.tmp" % os.getpid()
+    with open(_tmp, "w", encoding="utf-8") as f:
+        json.dump(r, f, ensure_ascii=False)
+    os.replace(_tmp, MOD3_STATE)
+
+
 def _mod3_worker(period=0.15):
     while True:
         try:
@@ -1131,12 +1162,7 @@ def _mod3_worker(period=0.15):
                 _r = OB3.build(_img, read_tcp())
                 _r.update({"frame_src": _src, "frame_bytes": len(_b), "edges": OB3.EDGES,
                            "ts": time.time(), "t": time.strftime("%H:%M:%S")})
-                with open(MOD3_FRAME, "wb") as _f:
-                    _f.write(_b)
-                _tmp = MOD3_STATE + ".%d.tmp" % os.getpid()
-                with open(_tmp, "w", encoding="utf-8") as _f:
-                    json.dump(_r, _f, ensure_ascii=False)
-                os.replace(_tmp, MOD3_STATE)
+                _mod3_write(_r, _b)
         except Exception:                                                   # noqa: BLE001
             pass
         time.sleep(period)

@@ -352,7 +352,8 @@ function drawModBox(g){
   P.forEach(p=>{ g.beginPath(); g.arc(p[0],p[1],2.2,0,Math.PI*2); g.fill(); });
   // 标签
   const bx=MOD3.box2d||[0,0,0,0];
-  const lab='光模块 3D · '+MOD3.dims_mm.map(v=>v.toFixed(0)).join('×')+'mm · d='+MOD3.dist_mm.toFixed(0)+'mm';
+  const lab='光模块 3D · '+MOD3.dims_mm.map(v=>v.toFixed(0)).join('×')+'mm · d='+MOD3.dist_mm.toFixed(0)+'mm'
+    +(MOD3.stale?(' · ⚠沿用上次框(连续 '+MOD3.detect_lost+' 帧未检出)'):'');
   g.font='12px monospace'; const tw=g.measureText(lab).width;
   const lx=Math.max(2,Math.min(IMG_W-tw-8,bx[0]-4)), ly=Math.max(14,bx[1]-8);
   g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(lx-3,ly-13,tw+8,17);
