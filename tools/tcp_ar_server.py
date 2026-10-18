@@ -44,7 +44,8 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import laptop_cam_solve as LS                                                    # noqa: E402
 import traj_display as TD
-import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 真源 + 碰撞判定                                                        # noqa: E402
+import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 真源 + 碰撞判定
+import opt_box3d as OB3      # 🔍 光模块 3D 框 (2D 检测 → 相机系立方体 → 基座系 + 像素投影)                       # noqa: E402                                                        # noqa: E402
 
 try:                                      # 🔍 工控机 AOI 客户端 (10082 金手指 / 10083 表面)
     import aoi_link as AOI
@@ -552,6 +553,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
+                self._json(self._module3d())
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
                 self._json(FS.listing())
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
@@ -773,6 +776,29 @@ class H(BaseHTTPRequestHandler):
         out["ok"] = True
         out["at"] = time.strftime("%H:%M:%S")
         return out
+
+    def _module3d(self):
+        """🔍 光模块 3D 框: 检测器 + 内参 + 手眼 + TCP 真值 (只读, 不触发动作)。
+        结果缓存 1.5s, 免得页面每次轮询都跑一遍推理。"""
+        now = time.time()
+        c = getattr(self, "_mod3_cache", None)
+        if c and now - c[0] < 1.5:
+            return c[1]
+        try:
+            b, fsrc = frame_bytes("arm")
+            img = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                return {"ok": False, "err": "臂相机帧解码失败"}
+            tcp = read_tcp()
+            r = OB3.build(img, tcp)
+            r["frame_src"] = fsrc
+            r["frame_bytes"] = len(b)
+            r["tcp_age_s"] = tcp.get("age_s")
+            r["edges"] = OB3.EDGES
+        except Exception as e:                                                 # noqa: BLE001
+            r = {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+        self._mod3_cache = (now, r)
+        return r
 
     def _traj_state(self):
         st = TD.get_state()

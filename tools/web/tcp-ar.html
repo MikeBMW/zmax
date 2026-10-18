@@ -56,6 +56,7 @@
   <span style="display:flex;gap:6px;align-items:center">
     <button id="bRotL" class="sm" title="整幅画面向左旋转 90°(逆时针)">↺ 左旋90°</button>
     <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
+    <button id="bMod3" class="sm" title="在臂相机画面上叠光模块 3D 框(检测器 + 内参 + 手眼 + TCP)">🔍 光模块3D框</button>
     <span class="tag" id="tRot">旋转 0°</span>
   </span>
 </header>
@@ -213,6 +214,7 @@ let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运�
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
+    MOD3=null, MOD3ON=true,
     VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true};
 
 // ── 图像实际渲染矩形(= object-fit:contain 后画面占的位置), 叠加层必须贴这个矩形 ──
@@ -266,6 +268,9 @@ function setRot(d){
   LASTOROT=''; applyRot();
 }
 $('bRotL').addEventListener('click',()=>setRot(-90));  // 左旋 = 逆时针
+$('bMod3').addEventListener('click',()=>{ MOD3ON=!MOD3ON;
+  $('bMod3').textContent=MOD3ON?'🔍 光模块3D框':'🔍 光模块3D框(关)';
+  $('bMod3').className='sm'+(MOD3ON?' primary':''); SIG=''; drawOv(); });
 $('bRotR').addEventListener('click',()=>setRot(+90));  // 右旋 = 顺时针
 
 // 🆕 2026-10-12 老倪: 「VR 三维视图要跟相机的窗口一样大」⇒ 画布高 = 相机窗口高(宽靠 CSS 通宽)
@@ -333,10 +338,33 @@ function drawTube(g, pts, opt){
   if(s1){ g.fillStyle='#ffd166'; g.beginPath(); g.arc(s1.u,s1.v,5,0,Math.PI*2); g.fill(); }
   return {n:seg.length, zmin, zmax};
 }
+function drawModBox(g){
+  if(!MOD3||!MOD3.ok||!MOD3ON) return 0;
+  const P=MOD3.corners_px||[], E=(MOD3.edges||[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]);
+  g.save();
+  g.lineWidth=2; g.strokeStyle='#00e676'; g.shadowColor='#00e676'; g.shadowBlur=6;
+  E.forEach(([i,j])=>{ const a=P[i], b=P[j]; if(!a||!b) return;
+    g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); });
+  g.shadowBlur=0;
+  // 8 个角点
+  g.fillStyle='#00e676';
+  P.forEach(p=>{ g.beginPath(); g.arc(p[0],p[1],2.2,0,Math.PI*2); g.fill(); });
+  // 标签
+  const bx=MOD3.box2d||[0,0,0,0];
+  const lab='光模块 3D · '+MOD3.dims_mm.map(v=>v.toFixed(0)).join('×')+'mm · d='+MOD3.dist_mm.toFixed(0)+'mm';
+  g.font='12px monospace'; const tw=g.measureText(lab).width;
+  const lx=Math.max(2,Math.min(IMG_W-tw-8,bx[0]-4)), ly=Math.max(14,bx[1]-8);
+  g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(lx-3,ly-13,tw+8,17);
+  g.fillStyle='#00e676'; g.fillText(lab,lx,ly);
+  g.restore();
+  return 12;
+}
 function drawOv(){
   const c=$('ov'), g=c.getContext('2d');
   g.clearRect(0,0,IMG_W,IMG_H);
-  if(!CALIB){ $('hint').textContent=`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`; return; }
+  const nMod=drawModBox(g);                        // 🔍 光模块 3D 框先画(不吃 AR 标定)
+  if(!CALIB){ $('hint').textContent=nMod?('光模块 3D 框已画 ('+nMod+' 条棱) · AR 叠加需要先标定 '+(CAMS[CAM]||{}).label||CAM)
+             :`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`; return; }
   if(!SHOW){ $('hint').textContent='轨迹已隐藏(默认不显示) —— 点『显示轨迹』'; return; }
   let n1=0,n2=0;
   if(TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
@@ -1085,7 +1113,8 @@ function drawIfChanged(){
   const _q=(TCP&&TCP.quat)||[0,0,0,0];
   const tcpK=(TCP&&TCP.ok)?[TCP.x.toFixed(3),TCP.y.toFixed(3),TCP.z.toFixed(3),
       _q.slice(0,4).map(v=>(v||0).toFixed(2)).join(',')].join(','):'-';
-  const s=[(TRAJ.trace||[]).length,(TRAJ.plan||[]).length,tcpK,SHOW?1:0,CALIB?1:0].join('|');
+  const s=[(TRAJ.trace||[]).length,(TRAJ.plan||[]).length,tcpK,SHOW?1:0,CALIB?1:0,
+           (MOD3&&MOD3.ok)?(MOD3.dist_mm+','+(MOD3.corners_px||[]).map(p=>p[0].toFixed(0)+':'+p[1].toFixed(0)).join('|')):'-'].join('|');
   if(s===SIG) return;
   SIG=s; drawOv(); drawVR();
 }
@@ -1095,6 +1124,9 @@ async function refresh(){
     TRAJ={trace:t.trace||[],plan:t.plan||[],real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s}; }
   catch(e){}
   try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok) $('tAge').textContent='帧龄 '+TCP.age_s.toFixed(2)+'s'; }catch(e){}
+  if(CAM==='arm'){                       // 🔍 光模块 3D 框 (只在臂相机这一路拉)
+    try{ MOD3=await fetch('/api/module3d').then(r=>r.json()); }catch(e){}
+  } else { MOD3=null; }
   if(CAM==='rs'){ try{ const ri=await fetch('/api/rs_info').then(r=>r.json());
     $('tAge').textContent='RealSense 帧 '+(ri.frames||0)+' · 帧龄 '+(ri.age_s==null?'—':ri.age_s)+'s · 深度中位 '+(((ri.depth||{}).median_mm)||'—')+'mm';
     $('tAge').className='tag'+(ri.ok?' on':''); }catch(e){} }
