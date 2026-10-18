@@ -70,6 +70,8 @@ def handle(r, req):
                    "sampler": C.sampler_pose(), "pose": C.read_pose(r)}
     if cmd == "pose":
         return 0, {"cmd": "pose", "pose": C.read_pose(r), "sampler": C.sampler_pose()}
+    if cmd == "path":
+        return do_path(r, req)
     if cmd == "follow":
         if req.get("on"):
             return follow_on(r, req)
@@ -158,9 +160,12 @@ def follow_on(r, req):
     """
     if FOLLOW_ST.get("on"):
         return 0, {"cmd": "follow", "verdict": "已在跟随中"}
-    speed = max(1.0, min(float(req.get("speed") or 10.0), C.MAX_SPEED_MM_S, 10.0))
+    # ⚡ 速度上限 80mm/s (2026-10-18 现场: 「你的频率太慢了…跟上节奏啊」——
+    #    仿真一个动作 30~80mm, 我们幅度只有 15mm; 若还按 10mm/s, 走完 15mm 要 1.5s,
+    #    必然永远滞后一个节拍。跟节奏 = 速度取仿真当期速度, 幅度靠 band 卡小。)
+    speed = max(1.0, min(float(req.get("speed") or 10.0), C.MAX_SPEED_MM_S, 80.0))
     band = max(5.0, min(float(req.get("band_mm") or 20.0), 40.0))
-    step = max(0.5, min(float(req.get("step_mm") or 2.0), 5.0))
+    step = max(0.5, min(float(req.get("step_mm") or 2.0), 6.0))
     zone = max(1.0, min(float(req.get("zone_mm") or 3.0), 20.0))
     p0 = C.read_pose(r)
     st = FOLLOW_ST
@@ -213,20 +218,46 @@ def follow_on(r, req):
                             break
                     except Exception:                                       # noqa: BLE001
                         pass
-                v = [float(x) for x in (d.get("v") or [0, 0, 0])][:3]
-                mag = math.sqrt(sum(x * x for x in v))
-                if mag < 0.5:
+                # 🎯 追「按比例缩小的仿真轨迹」: dir.json 给的是相对 anchor 的目标偏移(mm),
+                #    agent 每 0.2s 往目标方向追加 2mm ⇒ 方向/频率与仿真一致, 幅度由宿主侧缩放卡死。
+                tgt_mm = d.get("target_mm") or [0.0, 0.0, 0.0]
+                tgt = [st["anchor"][i] + float(tgt_mm[i]) / 1000.0 for i in range(3)]
+                st["target"] = tgt
+                # 🎯 用**实测位姿**当起点 (不能用自己记的 commit: 控制器没执行时 commit 会跑飞,
+                #    表现成"以为到位了、其实臂没动" —— 2026-10-18 现场踩过)
+                try:
+                    st["pose"] = list(C.read_pose(r)["tcp"])
+                except Exception:                                       # noqa: BLE001
+                    pass
+                cur = st["pose"]
+                del_ = [tgt[i] - cur[i] for i in range(3)]
+                norm_mm = max(abs(x) * 1000.0 for x in del_)
+                # 🩺 卡住检测: 有目标但 1.2s 没动 ⇒ 补一次 moveStart (控制器队列没跑起来的那种)
+                if st.get("last_norm") is not None and abs(norm_mm - st["last_norm"]) < 0.3:
+                    st["still"] = int(st.get("still") or 0) + 1
+                else:
+                    st["still"] = 0
+                st["last_norm"] = norm_mm
+                if st.get("still") == 6 and st.get("started"):
+                    ec3 = {}
+                    r.moveStart(ec3)
+                    st["restart_ec"] = dict(ec3)
+                    C.log("🩺 follow 卡住 ⇒ 补一次 moveStart ec=%s" % ec3)
+                    st["still"] = 0
+                if norm_mm < 0.6:                                  # 已到目标 ⇒ 不发新点, 等它变
+                    st["why"] = "跟到位, 等仿真下一个点"
+                    _follow_dump()
                     time.sleep(0.05)
                     continue
-                u = [x / mag for x in v]
-                nxt = [last[i] + u[i] * st["step"] / 1000.0 for i in range(3)]
+                frac = min(1.0, st["step"] / norm_mm)
+                nxt = [cur[i] + del_[i] * frac for i in range(3)]
                 dev = max(abs(nxt[i] - st["anchor"][i]) * 1000.0 for i in range(3))
-                if dev > st["band"]:
-                    # 到带宽 ⇒ 不再往外追加, 等方向反过来 (绝不越走越远)
-                    st["why"] = "已到带宽 %.0fmm (累计 %d 点), 等方向反向" % (st["band"], st["n"])
+                if dev > st["band"] * 1.1:
+                    st["why"] = "目标超带宽 (%.1fmm > %.0f), 拒绝追加" % (dev, st["band"])
                     _follow_dump()
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                     continue
+                st["why"] = "跟随中 (目标差 %.1fmm)" % norm_mm
                 cp = C.x.CartesianPosition(list(nxt), list(st["rpy"]))
                 mc = C.x.MoveLCommand(cp, st["speed"], -1)
                 ec = {}
@@ -245,6 +276,8 @@ def follow_on(r, req):
                 st["why"] = "跟随中"
                 try:
                     st["pose"] = list(C.read_pose(r)["tcp"])
+                    st["travel_mm"] = round(max(abs(st["pose"][i] - st["anchor"][i]) * 1000.0
+                                                for i in range(3)), 1)
                 except Exception:                                           # noqa: BLE001
                     pass
                 _follow_dump()
@@ -273,6 +306,82 @@ def follow_on(r, req):
     _follow_dump()
     return 0, {"cmd": "follow", "verdict": "FOLLOW ON", "speed_mm_s": speed, "band_mm": band,
                "step_mm": step, "zone_mm": zone, "anchor": st["anchor"]}
+
+
+def do_path(r, req):
+    """🧪 一次性下发多点路径: append 全部点 → **一次** moveStart → 连续走完 (测验"批量路径能不能不停)"""
+    pts = [[float(x) for x in p][:3] for p in (req.get("points") or [])]
+    if not pts or len(pts) > 200:
+        return 2, {"cmd": "path", "verdict": "点数非法 (1~200)"}
+    speed = max(1.0, min(float(req.get("speed") or 50.0), C.MAX_SPEED_MM_S, 100.0))
+    zone = max(0.0, min(float(req.get("zone") or 5.0), 30.0))
+    out = {"cmd": "path", "n_points": len(pts), "speed_mm_s": speed, "zone_mm": zone}
+    bad = C.precheck(r, out)
+    if bad:
+        out["verdict"] = "ABORT 前置条件: %s" % bad
+        return 3, out
+    p0 = C.read_pose(r)
+    rpy = list(p0["rpy"])
+    base = list(p0["tcp"])
+    gbox = req.get("guard_box")
+    ec = {}
+    r.setDefaultSpeed(speed, ec)
+    out["setDefaultSpeed_ec"] = dict(ec)
+    ec = {}
+    r.setDefaultZone(int(zone), ec)
+    out["setDefaultZone_ec"] = dict(ec)
+    ec = {}
+    r.setDefaultConfOpt(False, ec)
+    ec = {}
+    r.moveReset(ec)
+    acc = [0.0, 0.0, 0.0]
+    for k, p in enumerate(pts):
+        acc = [acc[i] + p[i] / 1000.0 for i in range(3)]
+        tgt = [base[i] + acc[i] for i in range(3)]
+        cp = C.x.CartesianPosition(list(tgt), list(rpy))
+        mc = C.x.MoveLCommand(cp, speed, -1)
+        ec = {}
+        r.moveAppend(mc, C.x.PyString("path_%d_%d" % (int(time.time()), k)), ec)
+        if ec.get("ec", 0) != 0:
+            out["verdict"] = "ABORT moveAppend 第%d点 ec=%s" % (k, ec)
+            return 5, out
+    ec = {}
+    t_send = time.time()
+    r.moveStart(ec)
+    out["moveStart_ec"] = dict(ec)
+    # 盯真值: 直到停稳 1.2s 或超时 (路径长度/速度 + 10s)
+    path_mm = sum(abs(x) for p in pts for x in p) / 3.0
+    budget = max(15.0, sum((sum(x * x for x in p) ** 0.5) for p in pts) / speed + 10.0)
+    last = None
+    t_last = time.time()
+    while time.time() - t_send < budget:
+        time.sleep(0.1)
+        try:
+            p1 = C.read_pose(r)
+        except Exception:                                                # noqa: BLE001
+            continue
+        t_now = list(p1["tcp"])
+        if gbox:
+            bad_ax = [ax for i, ax in enumerate("xyz") if not (gbox[ax][0] <= t_now[i] <= gbox[ax][1])]
+            if bad_ax:
+                ecx = {}
+                r.stop(ecx)
+                out["verdict"] = "🛑 扫掠越界急停: %s" % bad_ax
+                out["stop_ec"] = dict(ecx)
+                return 4, out
+        if last is not None and max(abs(t_now[i] - last[i]) for i in range(3)) < 0.00005:
+            if time.time() - t_last > 1.2:
+                break
+        else:
+            t_last = time.time()
+        last = t_now
+    p2 = C.read_pose(r)
+    d = [round((p2["tcp"][i] - base[i]) * 1000.0, 2) for i in range(3)]
+    want = [round(sum(p[i] for p in pts), 2) for i in range(3)]
+    out.update({"delta_mm": dict(zip("xyz", d)), "want_mm": dict(zip("xyz", want)),
+                "took_s": round(time.time() - t_send, 2),
+                "verdict": "PATH DONE" if max(abs(d[i] - want[i]) for i in range(3)) < 3.0 else "PATH 未到位"})
+    return 0, out
 
 
 def follow_off():

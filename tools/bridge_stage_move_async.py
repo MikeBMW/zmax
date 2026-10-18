@@ -62,9 +62,11 @@ def _uff():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--step", type=float, default=15.0, help="每个动作位移 mm")
+    ap.add_argument("--step", type=float, default=15.0, help="无真值时的保底位移 mm")
+    ap.add_argument("--scale", type=float, default=0.5, help="仿真真值位移的缩放 (默认 0.5)")
+    ap.add_argument("--max-step", type=float, default=45.0, help="单拍位移上限 mm (默认 45, 腿硬上限 50)")
     ap.add_argument("--speed", type=float, default=100.0, help="速度 mm/s")
-    ap.add_argument("--band", type=float, default=40.0, help="锚点周围硬包络 ±mm")
+    ap.add_argument("--band", type=float, default=120.0, help="锚点周围硬包络 ±mm")
     ap.add_argument("--settle", type=float, default=0.15, help="阶段窗口采样 s")
     ap.add_argument("--min-gap", type=float, default=0.30, help="两次下发最小间隔 s")
     ap.add_argument("--max-actions", type=int, default=40, help="0=常驻")
@@ -86,6 +88,10 @@ def main():
             f.write(str(os.getpid()))
     except Exception:                                                     # noqa: BLE001
         pass
+    st_truth = {"prev": None}
+    _tr0 = _j(VFF).get("truth_xyz")
+    if isinstance(_tr0, (list, tuple)) and len(_tr0) >= 3:
+        st_truth["prev"] = [float(x) * 1000.0 for x in _tr0]
     last, n, t_next = _stage(), 0, 0.0
     pend = None                      # 上一拍: (stage, cmd, pose_at_dispatch, ts)
     idle_since = time.time()
@@ -126,16 +132,31 @@ def main():
             back = [-x * 0.6 for x in off]
             _fifo({"id": "rc_%d" % int(time.time() * 1000), "cmd": "move-rel", "tag": "bridge",
                    "dx": round(back[0], 2), "dy": round(back[1], 2), "dz": round(back[2], 2),
-                   "speed": min(100.0, a.speed), "cap_mm": 30.0, "guard_box": gbox})
+                   "speed": min(100.0, a.speed), "cap_mm": min(50.0, a.max_step), "guard_box": gbox})
             print("🔄 回中 %s mm (离锚 %s)" % ([round(x, 1) for x in back],
                                               [round(x, 1) for x in off]), flush=True)
-        d = [u[i] * a.step for i in range(3)]
+        # 🎯 位移来源改成**仿真真值**的每阶段实际位移 × scale
+        #    实测(20s): 积分位姿只有 X19/Y4/Z33mm, 而真值是 X211/Y41/Z41mm
+        #    —— 这就是"没看到横向移动"的根: 15mm 沿法向分配后 Y 只剩 2~6mm。
+        tr = _j(VFF).get("truth_xyz")
+        truth = [float(x) * 1000.0 for x in tr] if isinstance(tr, (list, tuple)) and len(tr) >= 3 else None
+        if truth and st_truth.get("prev"):
+            dv = [truth[i] - st_truth["prev"][i] for i in range(3)]
+            mag_dv = max(abs(x) for x in dv)
+            if mag_dv > a.max_step:              # 跨阶段跳变收一档
+                dv = [x * a.max_step / mag_dv for x in dv]
+            d = [x * a.scale for x in dv]
+        else:
+            d = [u[i] * a.step for i in range(3)]
+        st_truth["prev"] = truth or st_truth.get("prev")
         scale = 1.0
         for i in range(3):
             room = a.band - abs((cur[i] - anchor[i]) * 1000.0)
             if abs(d[i]) > 1e-6 and (cur[i] - anchor[i]) * d[i] > 0:
                 scale = min(scale, max(0.0, room / abs(d[i])))
         d = [x * scale for x in d]
+        if max(abs(x) for x in d) > a.max_step:                # 单拍上限
+            d = [x * a.max_step / max(abs(v) for v in d) for x in d]
         if max(abs(x) for x in d) < 2.0:
             print("🚧 %-8s 已到包络边界 ⇒ 跳过" % s, flush=True)
             continue
@@ -144,7 +165,7 @@ def main():
             break
         _fifo({"id": "stg_%d_%d" % (int(time.time() * 1000), n), "cmd": "move-rel", "tag": "bridge",
                "dx": round(d[0], 2), "dy": round(d[1], 2), "dz": round(d[2], 2),
-               "speed": min(100.0, a.speed), "cap_mm": 30.0, "guard_box": gbox})
+               "speed": min(100.0, a.speed), "cap_mm": min(50.0, a.max_step), "guard_box": gbox})
         n += 1
         print("⚡ 动作 %2d · %-8s 方向(%+.2f,%+.2f,%+.2f) → 命令(%+.1f,%+.1f,%+.1f)mm@%.0f (不等回执)"
               % (n, s, u[0], u[1], u[2], d[0], d[1], d[2], a.speed), flush=True)
