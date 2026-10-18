@@ -12,6 +12,8 @@
   ① 单实例 RSS > MAX_GB(默认 8GB)            → SIGTERM, 记事故
   ② 孤儿实例 (ppid==1, 调试器已断) 且 > 2GB   → SIGTERM, 记事故 (这是叠加泄漏的来源)
   ③ 全部实例 RSS 合计 > TOTAL_GB(默认 12GB)   → 先杀最大的那个
+  ④ 杀掉后**自动拉起**(STUDIO_AUTO_RESTART=1, 默认开) ⇒ 控制台不会凭空消失;
+     不想被自动拉起就设 STUDIO_AUTO_RESTART=0。
   只做只读判断 + 精准 SIGTERM, 不动引擎/采样/总线。
 
 用法:
@@ -25,9 +27,12 @@ import argparse
 import json
 import os
 import signal
+import subprocess
 import time
 
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
+AUTO_RESTART = os.environ.get("STUDIO_AUTO_RESTART", "1") != "0"
+RESTART_SH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "restart_studio.sh")
 LOG = os.path.join(REPO, "zmax_data", "ops", "studio_mem_guard.jsonl")
 MAX_GB = float(os.environ.get("STUDIO_MAX_GB", "8"))
 ORPHAN_GB = float(os.environ.get("STUDIO_ORPHAN_GB", "2"))
@@ -110,14 +115,34 @@ def main() -> int:
     if not kill:
         print(msg + " · 正常")
         return 0
+    killed = 0
     for p, why in kill:
         print("⚠ " + msg + " · 触发: pid=%s %s" % (p["pid_s"], why))
         if a.enforce:
             try:
                 os.kill(p["pid"], signal.SIGTERM)
+                killed += 1
                 print("  → 已 SIGTERM pid=%s (记录 %s)" % (p["pid_s"], LOG))
             except Exception as e:                                  # noqa: BLE001
                 print("  → 杀失败: %s" % e)
+    # ④ 杀掉后自动拉起 —— 否则用户会看到"控制台自己没了"却不知道原因
+    if killed and AUTO_RESTART:
+        time.sleep(3)          # 等 SIGTERM 生效再查, 否则会把刚杀的算成"还在跑"
+        # 只有"全杀光"了才需要拉起 (还留着一个在跑的就不重复开窗口)
+        left = [p for p in scan() if p["rss_gb"] >= 1.0]
+        if not left:
+            try:
+                with open(LOG, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"ts": time.time(), "action": "auto_restart",
+                                        "sh": RESTART_SH}, ensure_ascii=False) + "\n")
+                subprocess.Popen(["bash", RESTART_SH],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                print("  → 已自动拉起控制台 (%s)" % RESTART_SH)
+            except Exception as e:                                  # noqa: BLE001
+                print("  → 自动拉起失败: %s" % e)
+        else:
+            print("  → 仍有 %d 个实例在跑, 不重复拉起" % len(left))
     return 0 if a.enforce else 3
 
 
