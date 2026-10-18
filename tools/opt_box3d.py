@@ -16,6 +16,7 @@ import json
 import math
 import os
 import threading
+import time
 
 import numpy as np
 
@@ -33,6 +34,7 @@ CONF_MIN = float(os.environ.get("ZMAX_MOD_CONF", "0.25"))
 
 _YOLO = None
 _YOLO_LOCK = threading.Lock()
+_LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(框贴边时沿用)
 
 
 def _yolo():
@@ -42,6 +44,52 @@ def _yolo():
             from ultralytics import YOLO
             _YOLO = YOLO(YOLO_PT)
         return _YOLO
+
+
+def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32):
+    """在检测框基础上，沿长轴把整支光模块圈全（银色壳体 + 绿色拉环/头部）。
+    检测框常只盖住壳体一段（实测：框到 y=118，而模块实际到 y≈157，头部被漏掉）。
+    做法：HSV 里取「低饱和高亮(金属) | 绿色(拉环)」像素，按行统计宽度剖面，
+    从框内向外扩；允许 ≤gap_max 行空洞，遇连续空洞即停（避免并入下方其它工件）。
+    """
+    import cv2 as _cv
+    H, W = img_bgr.shape[:2]
+    x1, y1, x2, y2 = int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))
+    xa, xb = max(0, x1 - 6), min(W, x2 + 6)
+    if xb - xa < 4 or y2 <= y1:
+        return x1, y1, x2, y2, "跳过(框太小)"
+    hsv = _cv.cvtColor(img_bgr, _cv.COLOR_BGR2HSV)
+    sub = hsv[:, xa:xb]
+    S = sub[:, :, 1].astype(int)
+    V = sub[:, :, 2].astype(int)
+    Hh = sub[:, :, 0].astype(int)
+    mask = ((S < 80) & (V > 100)) | ((Hh > 33) & (Hh < 98) & (S > 50))
+    prof = mask.sum(axis=1)
+    thr = max(6, frac * (x2 - x1))
+
+    def grow(start, step):
+        gap = 0
+        y = start
+        while 0 <= y + step < H:
+            y += step
+            if prof[y] >= thr:
+                gap = 0
+            else:
+                gap += 1
+                if gap > gap_max:
+                    return y - step * gap
+        return y
+
+    top = grow(y1, -1)
+    bot = grow(y2, +1)
+    if bot <= top:
+        return x1, y1, x2, y2, "扩失败(剖面为空)"
+    band = mask[top:bot + 1]
+    colp = band.sum(axis=0)
+    cols = np.where(colp > max(2, 0.25 * (bot - top)))[0]
+    nx1 = xa + int(cols[0]) if len(cols) else x1
+    nx2 = xa + int(cols[-1]) if len(cols) else x2
+    return nx1, top, nx2, bot, "扩 %s→%s" % ((y1, y2), (top, bot))
 
 
 def detect_boxes(img_bgr, conf=CONF_MIN):
@@ -129,6 +177,17 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     if det["name"] != "OPT_Gold":
         warn.append("检出的类别是 %s, 不是 OPT_Gold (光模块类) —— 按同一位置给框" % det["name"])
     x1, y1, x2, y2 = det["xyxy"]
+    det_box = [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)]
+    # 🔎 检测框常只盖住壳体一段(实测到 y=118, 模块实际到 y≈157) ⇒ 沿长轴把整支(含头部)圈全
+    rx1, ry1, rx2, ry2, rnote = _refine_extent(img_bgr, x1, y1, x2, y2)
+    x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+    H_img, W_img = img_bgr.shape[:2]
+    # 🔴 框贴边 = 目标被画幅裁掉: 此时"框高 ⇒ 距离"必然偏大(看到的只是局部), 不能当真
+    clip = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5,
+            "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}
+    clipped = [k for k, v in clip.items() if v]
+    if clipped:
+        warn.append("检测框贴到画面边缘(%s) ⇒ 目标被裁, 尺寸不完整, 距离反解会偏大" % "/".join(clipped))
     u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
     h_px = max(1.0, y2 - y1)
     w_px = max(1.0, x2 - x1)
@@ -143,13 +202,21 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     d_base = Rcb @ d_cam
 
     f = float(K[0, 0])
+    D = None
     if depth_mm:
         D = float(depth_mm)
         src = "depth(实测)"
+    elif clipped and _LAST["d_mm"] and (time.time() - _LAST["t"]) < 15.0:
+        D = float(_LAST["d_mm"])                    # 被裁时沿用上一次未裁的距离, 避免框忽然变大
+        src = "size(沿用上次未裁切距离 %.1fmm)" % D
+        warn.append("目标出画被裁, 距离沿用上一次完整观测(15s 内), 不重新反解")
     else:
-        D = f * float(h_mm) / h_px            # 由画面高度反解距离
+        D = f * float(h_mm) / h_px
         src = "size(已知件长 %.1fmm ↔ 画面 %.0fpx)" % (h_mm, h_px)
         warn.append("无深度: 距离由已知件长反解, 误差 ~5%; 换品种要把 ZMAX_MOD_H_MM 设成真实长度")
+    if not clipped and depth_mm is None:
+        _LAST["d_mm"] = D
+        _LAST["t"] = time.time()
 
     W = float(w_px) * D / f                   # 画面宽 ⇒ 实物宽(不用猜)
     H = float(h_mm) if not depth_mm else float(h_px) * D / f
@@ -172,6 +239,8 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "ok": True,
         "class": det["name"], "conf": round(det["conf"], 3),
         "box2d": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
+        "box2d_det": det_box,
+        "refine": rnote,
         "corners_px": [[round(p[0], 1), round(p[1], 1)] for p in corners_px],
         "corners_base_mm": [[round(p[0], 1), round(p[1], 1), round(p[2], 1)] for p in corners_base],
         "center_base_mm": [round(p, 1) for p in center_base],
@@ -182,6 +251,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "handeye_resid_mm": he.get("resid_trans_mm_rms"),
         "src": src,
         "depth_available": bool(depth_mm),
+        "clipped": clipped,
         "warn": warn,
     }
 
