@@ -3046,6 +3046,14 @@ class SimNodeItem(QGraphicsObject):
         其余区域透传给 scene (拖拽/选中不受影响)"""
         try:
             p = self.node.get("params", {})
+            # 🌉 2026-10-18 老倪: 「开关, 做在画布 plan 节点上边, 我可以用鼠标控制」
+            #   桥接开关画在 plan 节点底部那一条 (矩形与 _paint_core 里必须逐字一致):
+            #   点一下 = 开/关 (只跟 v_ff 方向 · 真机硬上限 10mm/s)。
+            if e.button() == Qt.LeftButton and ("bridge_vff" in p):
+                if QRectF(8, self.h - 26, self.w - 16, 20).contains(QPointF(e.pos())):
+                    self.scene_ref.on_toggle_bridge(self.node)
+                    e.accept()
+                    return
             if e.button() == Qt.LeftButton and p.get("src_switch"):
                 # 🔀 数据源拨钮 (真机 → 插拔场景 → 摆盘场景)
                 if QRectF(8, self.h - 26, self.w - 16, 20).contains(QPointF(e.pos())):
@@ -3253,6 +3261,28 @@ class SimNodeItem(QGraphicsObject):
             painter.setFont(_node_font(8, bold=True))
             painter.drawText(QRectF(_bx, _by, _bw, _bh2), Qt.AlignCenter, "◉ 核心")
             painter.setPen(pen)          # 还原, 别把金笔漏给后续分支
+        # 🌉 桥接开关 (画在 plan 节点底部): 开 = 绿框实心点, 关 = 灰框空心点
+        #   唯一真源 = params.bridge_vff / bridge_vff_cap_mms / bridge_vff_deadband_mms;
+        #   鼠标点击由 mousePressEvent 命中同一条矩形 → scene_ref.on_toggle_bridge 改它并存回画布 JSON。
+        if "bridge_vff" in params:
+            _br = QRectF(8, self.h - 26, self.w - 16, 20)
+            _bon = bool(params.get("bridge_vff"))
+            _bcap = min(float(params.get("bridge_vff_cap_mms", 10.0) or 10.0), 10.0)
+            painter.setPen(QPen(QColor("#3fb950") if _bon else QColor("#57606a"), 1.4))
+            painter.setBrush(QBrush(QColor(20, 60, 40, 235) if _bon else QColor(13, 17, 23, 235)))
+            painter.drawRoundedRect(_br, 9, 9)
+            painter.setBrush(QColor("#3fb950") if _bon else QColor(13, 17, 23, 255))
+            painter.setPen(QPen(QColor("#3fb950") if _bon else QColor("#8b949e"), 1.3))
+            painter.drawEllipse(QPointF(_br.left() + 11, _br.center().y()), 4.6, 4.6)
+            painter.setPen(QColor("#e6edf3") if _bon else QColor("#8b949e"))
+            painter.setFont(_node_font(NODE_SUB_PT, bold=_bon))
+            _btxt = ("🌉 桥接 v_ff→位姿  开 · ≤%.0fmm/s" % _bcap) if _bon else "🌉 桥接 v_ff→位姿  关"
+            _bfm = QFontMetrics(_node_font(NODE_SUB_PT, bold=_bon))
+            if _bfm.horizontalAdvance(_btxt) > _br.width() - 26:
+                _btxt = _bfm.elidedText(_btxt, Qt.ElideRight, int(_br.width() - 26))
+            painter.drawText(QRectF(_br.left() + 20, _br.top(), _br.width() - 24, _br.height()),
+                             Qt.AlignVCenter | Qt.AlignLeft, _btxt)
+
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
         # 🧿 2026-09-28 老倪: 增加 **L5 档** (大模型视觉语言自动标注 → L2/L3/L4 监督 + 自动训练)
@@ -13492,6 +13522,27 @@ class SimulinkModule(QWidget):
             if p.get("mode") in MODE_ORDER:
                 return p["mode"]
         return None
+
+    def on_toggle_bridge(self, node):
+        """🌉 画布 plan 节点上的桥接开关 (鼠标点节点底部那条) —— 仿真 v_ff → 末端位姿
+
+        老倪 2026-10-18: 「开关, 做在画布 plan 节点上边, 我可以用鼠标控制」
+          · 开: 只取 v_ff 的**方向**慢速驱动 plan 节点位姿, 真正输出速度 ≤ cap (硬上限 10mm/s)
+          · 关: 只显示按仿真原速积分的位姿, 不驱动
+        状态存 params.bridge_vff (画布 JSON = 唯一真源); 控制台 3D 面板的勾选框读同一份。
+        """
+        p = node.setdefault("params", {})
+        on = not bool(p.get("bridge_vff"))
+        p["bridge_vff"] = on
+        _cap = min(float(p.get("bridge_vff_cap_mms", 10.0) or 10.0), 10.0)
+        _dead = float(p.get("bridge_vff_deadband_mms", 3.0) or 3.0)
+        it = self._items.get(node.get("id"))
+        if it:
+            it.update()
+        self._save_param_to_flow(node, "bridge_vff")
+        self._log(("🌉 桥接开关 → 开   只跟 v_ff 方向 · 输出 ≤%.0fmm/s (硬上限 10) · 死区 %.0fmm/s · 旋转未建模"
+                   % (_cap, _dead)) if on else
+                  "🌉 桥接开关 → 关   只显示积分位姿, 不驱动")
 
     def on_toggle_src(self, node):
         """🔀 数据源切换 (真机 → 插拔场景 → 摆盘场景 → 真机) — 做在 📦 数据源节点上
