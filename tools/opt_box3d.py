@@ -281,21 +281,40 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         _LAST["t"] = time.time()
 
     W = float(w_px) * D / f                   # 画面宽 ⇒ 实物宽(不用猜)
-    H = float(h_mm) if not depth_mm else float(h_px) * D / f
+    # 🔴 2026-10-18 老倪: 「你的标注，太长了」「画面中的光模块，只有一个小头」
+    # 原来无深度时 H 直接取整支 56.5mm ⇒ 只看到 61px 小头时, 画出来的框仍有 140px 高,
+    # 视觉上就是"框比物体长出一大截"。框只应该盖住**看得见的那部分**:
+    # 可见像素高 h_px × 距离 D ÷ 焦距 f = 可见实物高。整支都可见时自然 ≈ 56.5mm。
+    H = float(h_px) * D / f
 
     c_cam = d_cam * D                          # 立方体中心(相机系)
     ex = np.array([1.0, 0, 0])                 # 相机 x = 画面横
     ey = np.array([0, 1.0, 0])                 # 相机 y = 画面竖 (长轴)
     ez = np.array([0, 0, 1.0])                 # 相机 z = 视线
-    corners_cam, corners_base, corners_px = [], [], []
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            for sz in (-1, 1):
-                p = c_cam + ex * (sx * W / 2) + ey * (sy * H / 2) + ez * (sz * float(t_mm) / 2)
-                corners_cam.append(p)
-                corners_base.append(Rcb @ p + o)
-                pc = p / p[2]
-                corners_px.append([K[0, 0] * pc[0] + K[0, 2], K[1, 1] * pc[1] + K[1, 2]])
+
+    def _corners(Hv):
+        cc, cb, cp = [], [], []
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                for sz in (-1, 1):
+                    p = c_cam + ex * (sx * W / 2) + ey * (sy * Hv / 2) + ez * (sz * float(t_mm) / 2)
+                    cc.append(p)
+                    cb.append(Rcb @ p + o)
+                    pc = p / p[2]
+                    cp.append([K[0, 0] * pc[0] + K[0, 2], K[1, 1] * pc[1] + K[1, 2]])
+        return cc, cb, cp
+
+    # 🔴 投影自洽(2026-10-18 老倪「你的标注，太长了」):
+    # 立方体斜着看时, 3D 框的**投影**会比正面可见高度大一截(实测 24mm 的框投出 82px, 而可见只有 61px),
+    # 现场看到的就是"框比物体长"。所以按"投影高 = 可见像素高"反解一次 H, 迭代到一致。
+    corners_cam, corners_base, corners_px = _corners(H)
+    for _ in range(3):
+        ys = [q[1] for q in corners_px]
+        proj = max(ys) - min(ys)
+        if proj < 2.0 or h_px < 2.0:
+            break
+        H *= float(h_px) / proj
+        corners_cam, corners_base, corners_px = _corners(H)
     center_base = Rcb @ c_cam + o
     _CONT["base_mm"] = [float(v) for v in center_base]
     return {
@@ -315,6 +334,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "src": src,
         "depth_available": bool(depth_mm),
         "clipped": clipped,
+        "extent_note": ("只框可见部分(头部出画)" if clipped else "整支"),
         "continuity": {"jump": jump, "smoothed": bool(fresh and not jump)},
         "warn": warn,
     }
