@@ -64,6 +64,30 @@ grep -rn '未接入\|S3 前\|占位' tools/gui/state_space_sim_real.py
 实测问「它用在哪里? 是建图么?」时, 正确答法 = 先说定位 (感知原语产 2D 掩膜)、再给 3D 通路 (掩膜+深度 → 掩膜内中位深度 ⇒ **单帧**位姿, 缺深度/手眼必须如实拒答)、
 最后明确"建图(走点扫描/重建)是另一条链, 它不在其中"。含糊一句"能做 3D"就是误导。
 
+## 「X 进 Y 节点了么 / 这个话题是谁发的」—— DDS 三层核验 (顺序固定)
+
+用户问某个量"有没有进某个节点"时, 不许凭画布连线或"看着在动"回答, 按三层走:
+
+1. **类型字段表**: `dds/ss_types.py` 里那个 dataclass 有没有目标字段。没有 = 结构上不可能带入, 一句话结案,
+   不用跑实验 (实测 `SSPlan` 只有 joints_path/tcp_path/start_joints/goal_xyz/end_err/gate_*, 无 u_ff/v_ff
+   ⇒ "前馈 v_ff 没进 plan 节点"是定义级结论)。
+2. **发布端填充 + 闸门**: `grep -rn 'publish("<topic>"' tools/ src/ dds/` → 读那个函数填了哪些字段、前置闸是什么;
+   新旧实现并存 (`tools/zmax_dds_*.py` 与 `tools/dds/ss_daemon.py`) 时, 认主循环里被调用的那个。
+3. **实时证据**: `zmax_data/dataspace/live.json` 的 `count / age_s / lamp`, 加上这条话题**上游源文件**的 mtime。
+   黑灯 (count=0 / age=null) 先比上游 mtime 与闸门阈值, 再谈"节点没接"。
+
+实测话题归属 (变了以 grep 为准):
+
+| 话题 | 发布节点 | 上游 | 闸 |
+|---|---|---|---|
+| ss_action | `tools/dds/ss_daemon.py: pub_action()` (主循环 1219 行) | `zmax_data/ss_live/proposal_*.jsonl` 末行 (infer-8790 产物) | 源龄 > `STALE_S=5s` 直接不发 |
+| ss_state | 同文件 `pub_state()` | `zmax_data/ss_live/state_*.json` | 同上 STALE_S |
+| ss_plan | 同文件 `pub_plan()` | `~/zmax_moveit_plan` 里 moveit_plan_live 追加行 (容器没起 ⇒ 目录都不存在) | 同源闸: FK vs 真机 TCP ≤5mm |
+| ss_engine / skill_* | `ss_engine_loop.py` / `ss_skill_dispatch.py` | 引擎回路 / 技能库 | 设计 Hz |
+
+**"在动"要落到消费者才叫进链**: 前馈 `u_ff`(v_ff) 的消费方是 `cognition.decide(u_ff, u_fb)` → 阶段限速/安全边界 →
+`ss_action`; 与 plan 节点 (MoveIt 只规划不执行) 是两条线。回答时把"显示链通 / 执行链通"分开报, 别用一个话题名拍死。
+
 ## 回答模板 (老倪认这种结构)
 
 > 「节点级已集成: 注册 / 单步真跑 / 防假闸 三项都有实测 (贴数字)。

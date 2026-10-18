@@ -159,6 +159,24 @@ writer 身份 = `pid:turn=…:<turn-nonce>:platform=`）; 抢不到就打印上�
 伴生现象: 若同一时刻在跑**上下文压缩**（`agent.log` 的 `context compression done: messages=A->B`）,
 回合会长得多、等待更明显 —— 那是正常重活, 不是卡死。
 
+### 「回得慢 / 只回一句兜底」= 会话撑爆后模型接口超时（不是机器卡死）
+
+判据（两行日志就定案）:
+1. `~/.hermes/logs/errors.log` 里 `API call failed after 3 retries ... provider=<p> model=<m> msgs=<N> tokens=~<X>`
+   —— `msgs` 到 400+ / tokens 到 20 万级时每轮都会 3/3 timeout, 重试无用（是上下文预算, 不是网络抖动）。
+2. `~/.hermes/logs/gateway.log` 的 `response ready: ... time=<秒> api_calls=<n> response=<字符>`
+   —— 实测 `time=3017.4s api_calls=34 / 259 chars` 这种就是"熬 50 分钟只吐一句兜底"。
+
+处置: 别继续往那个会话堆活 —— 压缩或换新会话（CLI 里 `/compact`）, 把结论搬过去继续;
+在网关里再发一轮只会再等一次超时。
+
+**三种"没反应"先分开, 再决定动不动机器**（本机实测均遇过, 处置完全不同）:
+1. 回合租约被占 → 看 `session_turn_leases` 的 holder / `agent.log` 的 `still alive after interrupt`（上一节）。
+2. 本机资源耗尽 → `free -g`、`journalctl -b -1 | grep -oE "loadavg_1m=[0-9.]+"`、
+   `systemd[1]: user@1000.service ... memory peak`（实测 26.5G/30G + swap 峰值 13.1G + loadavg 12 就是 thrash）。
+3. 模型接口超时 → 本条。
+别把 2 的账算到 1 头上（同一个会话里两种现象会同时出现）。
+
 ## Live-USB Rescue: Restore from Windows Docker Desktop Backup
 
 Scenario: the old Windows machine holds the only Hermes backup (`D:\hermes-docker\workspace\hermes-backup\hermes_core_*.tar.gz` — a full `~/.hermes` snapshot) and you're continuing on a fresh box. Boot an Ubuntu live USB on the old machine, mount its NTFS drives **read-only**, extract selectively. (Full recipe: `references/2026-08-22-live-usb-windows-backup-restore.md`.)

@@ -185,9 +185,23 @@ metaworld 真物理路开同一个开关 = **失败**, 默认关:
 
 ### 内存撑不住时的排查顺序 (别先怪 LSP)
 看到“某 python 占 20GB”先 `tr '\0' ' ' < /proc/<pid>/cmdline` 看**完整命令行**:
-实测那个 20.2GB 是 `studio.py` 控制台 GUI (VSCode debugpy 拉起、跑 8h53m 泄漏), 不是 Pylance。
-处置前必须核实两件事: ①该进程**无子进程** ②在役守护都是 `ppid=1` ⇒ 杀了不影响引擎;
-然后 SIGTERM → 停 Restarting 崩溃容器 → `drop_caches` → `swapoff/swapon` 重置。实测 available 475MB→13GB, swap 满→0。
+实测那个 20.2GB 是 `studio.py` 控制台 GUI (VSCode debugpy 拉起、跑 8h53m), 不是 Pylance。
+
+四步定位 (全程不注入运行中的进程):
+1. **看进程栈** `py-spy dump --pid` → 主线程/热点线程卡在哪个模块 (实测是 `canoe_graphic.run→push_many`)
+2. **分辩内存类型** `smaps_rollup`: `Private_Dirty == Anonymous` = 纯 Python/Qt 堆 (非文件映射/GPU)
+3. **读热点代码找预分配**: `CAP=200000` + 每个对象 `np.zeros(CAP)*2` = **3.05MB/对象**
+4. **数真实对象数**: 信号 key 来自各源 JSON 全套叶子字段 (含 DDS `topics.*`, 100 话题×8 字段 = 829)
+   → 1013 key × 3.05MB = 3.1GB, 与实测 RSS 对上了才能下结论 (对不上就别改)
+
+**关键判断: "涨到 20GB" 不一定是泄漏**。本例是“每个信号预支 3MB 长历史”的**结构性浪费**,
+对象数随时间(话题注册/字段)增长 ⇒ 表现像泄漏。修法不是找泄漏点, 而是改分配策略:
+初始小 (CAP_MIN=4096) + 写满才翻倍 + **未显示的封顶 (CAP_SOFT)**, 只有 `arrays()` 被调用过
+(真在画) 才允许长到 CAP ⇒ 在看的曲线历史一点没少。判据要拿**朴素 list 实现当 oracle** 逐点比,
+并单测“写满回绕顺序”与“导入大数据不被截断” (惰性扩容最容易在这两处破坏语义)。
+
+处置先核实两件事: ①该进程**无子进程** ②在役守护都是 `ppid=1` ⇒ 杀了不影响引擎;
+然后 SIGTERM → 停 Restarting 崩溃容器 → `drop_caches` → `swapoff/swapon` 重置。实测 available 475MB→13GB。
 重跑控制台会再泄漏: 先看 RSS 再决定起不起。
 
 ## 物理参数标定 (v / a / s + 物理上下限)

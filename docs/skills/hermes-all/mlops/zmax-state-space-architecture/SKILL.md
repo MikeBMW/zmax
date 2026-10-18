@@ -104,6 +104,17 @@ src/lerobot/engineering/
    执行) = 名不副实 — 2026-09-02 已修 node_ss_s2 估计分支 (补 obs39 z_k 校正闭环, 日志打
    predict 与 update 两步数值; 手算验证匹配)。
 4. 改完 GUI 代码必重启 studio.py; 验证逻辑用 gui-venv311/bin/python (项目无 .venv)。
+5. **「这个量是模型算的还是公式算的 / 谁在算」→ 三问定源, 别从画布连线推断**: ①**哪个进程**在算 ——
+   GUI 回放进程 ≠ 常驻引擎进程, 同一个量在两边由不同代码产出; ②该进程的**开关 env**
+   (`tr '\0' '\n' < /proc/<pid>/environ | grep -E "^SS_|^ZMAX_"`); ③代码分支 (真权重 / 解析式 / 纯公式)。
+   实测插拔 3D 场景的四层速度: `u_ff` = 模型或解析前馈 (控制台进程**没有** `SS_INTACT`/`SS_L4_INTACT`
+   ⇒ 那个 `v_ff` 不是 INTACT 输出, INTACT 只在常驻引擎那侧跑), `u_fb` = 纯公式 `clip(0.5×残差EMA)`,
+   `u` = `u_ff+k_fb·u_fb` + 阶段限速, `u_sat` = 饱和 + 插入段回退; 而位置/姿态/夹持/帧号这些
+   **是回放 npz 真值, 不是算的**。回答"是不是只有 X 是计算输出"必须把「算出来的」与「模型算出来的」分成两问答。
+6. **由速度反推位姿: 位置能、姿态不能**。位置 = 积分 (用执行量 `u_sat/u_exec` 比用 `u_ff` 准得多),
+   姿态推不出来 (动作只有 3 轴线速度 + 夹爪, 无角速度); `SSPlan` 只是 MoveIt 规划结果的镜像,
+   **不反推位姿**。实测误差表、量纲自证法 (拟合缩放 k, k≈1 才说明单位与 dt 对) 见
+   `references/metaworld-closed-loop-contracts.md` 末节。
 
 ## 🧮 流形层逐帧发布闭环 (2026-09-03 老倪: "为什么流形/潜空间没有输出连线")
 - 回路外元层此前只读日志、无输出 → 半吊子。闭环: 引擎 run() 每步实算流形量
@@ -479,6 +490,14 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 3. **删层前先补归属**: `ss.node.<id>.<port>` 没规则 ⇒ 判 SYS ⇒ 删 SYS 时整类话题消失。
    真源 `config/platform/dds_topic_types.json -> nodes.<id>` (ins.producers/outs.consumers/layer);
    in 口 Tx=上游、out 口 Tx=本节点/Rx=下游 consumer。
+   · **画布上有节点 ≠ 有层索引**: `attribution.layer_of` 看的是 `db.node_rows()` 的 layer, 它由
+     `src/lerobot/engineering/nodes/by_level.py::LEVELS_INDEX` 兜底 —— 节点在画布里、但 LEVELS_INDEX 里没有这一条 ⇒
+     layer 落 `meta` ⇒ `layer_of` 返回 **SYS** ⇒ Trace「SYS 不入表」⇒ 该节点**整族信号一行都不显示**
+     (实测「🛡 安全执行边界」`sslimit` 一直在画布, 而 `sstrace.安全边界_*` 4 条一条都看不到)。
+     修法是**补 by_level 的层索引**(按语义归 L2 —— 执行由 L2 收口), 不是改 attribution 的 `PREFIX_OWNER`:
+     那里本来就有 `("sstrace.安全边界", "sslimit", "")` 映射, 是层判定把它筛掉的。
+     验: 新开进程跑 `attribution.layer_of("sstrace.安全边界_mms")` 应从 SYS 变 L2、`tx_of` 给中文节点名 ⇒ 再重启控制台。
+     同型指纹: 用户说「数据空间怎么没有 XX 这个 Tx 节点」⇒ 先查 `db.node_rows()` 里该节点的 `layer`, 不要先怀疑映射表。
 4. **给表加列 = 所有 `verify_*.py` 的列下标位移** ⇒ 判据会读出"不一致 398 处"的假故障; 加列必须同步改下标或改成按列头名取列。
 5. **元数据过滤会把"只有信封字段"的端口整行滤掉** ⇒ 兜底用端口名占一行, 不回信封、不编 payload 字段。
 6. **位姿信号**: x/y/z 是当前 TCP (不是每技能规划点); tap 停更时用 `trace_live.末端_x/y/z`(m→mm) 代偿并写
@@ -561,6 +580,20 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    · 改名放在**渲染前一次**, 原始端口名留在 `raw`/tooltip 可追溯; 别在每行的渲染循环里做 (会撞上变量复用坑)。
    · 判据 `tools/verify_signal_names.py`: 全端口 (272) 裸端口名 == 0 · Trace 行裸端口名 == 0 · 点名口对照
      (`n_moveit.out1→plan` / `in1→plan_in`)。回退指纹: 屏上再出现 `out1`/`in1` 就是口径被破坏。
+
+16. **速度类信号统一 mm/s: 后缀 `_mms` + 只在一处换算** (老倪: 「以后不要出现 mps」)。
+   · 键名用 `_mms`, **不要 `_mmps`** —— 后者仍含 `mps` 子串, 违反用户口径; 也别用 `_m_s`。
+   · **换算点只有一个: 生产端** (`ss_dreamview.publish_trace_live` / `ss_fw_trace_pub` 写值时 m/s×1000)。
+     显示层**不许再按键名后缀乘** —— 旧 `canoe_graphic` 有 `if "_mps" in k: v *= 1000`, 改名后照样命中就二次放大 1000 倍。
+     规则: 单位换算不能靠"键名后缀"判定, 后缀只用于**标注** (图例/Y 轴 `(mm/s)`)。
+   · **契约内部仍是 m/s**: DDS 的 `v_cap`、`gravity_table`、物理约束表这类消费端读到 mm/s 键要显式 `/1000`,
+     别顺手把内部契约也改成 mm —— 改的是信号口径, 不是接口单位。
+   · 注册表同步: `config/topics/scene_tags.json` 的场景信号名 (真源在 `data/database/zmax/sources/config/`, **不在 git**,
+     所以 `git add config/...` 会 exit 1 —— 那是软链到工程库 source); `signals.db` 里旧 `_mps` 行要顺手清,
+     否则面板新旧两套名同时存在。
+   · 验收: `tools/verify_trace_sync.py` 的「速度类信号单位 = mm/s」「数值口径 ±25% 越界 0 例」两行 + 现场采 2~3 帧看值在
+     **同一量级且逐帧变化** (例: 插入段 10~32 mm/s、阶段限速 85 / 350 / 120 mm/s)。数值从 0.03 直接变 30 才叫改完。
+   · 还有人改口径时把旧名留在注释/文档里: 只要**键名**不再出现 `mps` 即可, 注释里解释历史可以, 但别让字符串再进注册表。
 
 全过程 (判据代码骨架、实测数字、报警注入法、归属单链、统一库、刷新性能、**L2-only 收口与闸门顺序**) →
 `references/trace-signal-panel-consistency.md` §1–§17

@@ -7,7 +7,21 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 📄 **「改完用户看不到」/ 数据空间缺 Tx 节点 / 速度 mm/s 口径 / v_ff 能否算位姿**:
+> `references/dual-instance-and-trace-tx-gates.md` —— 先查是不是**两个控制台并存**（裸 `studio.py` 启动的实例不被
+> `gui/studio.py` 模式匹配 ⇒ 用户一直在看旧进程）；Trace 上屏要过**三道门**（层索引 → Rx → 信号白名单），
+> 任一不过整行静默消失；速度键 `_mms` 只在生产端 ×1000 一次。
+
+> 📄 **控制台发涩 / CPU 吃满 / 内存增长**: `references/gui-cpu-and-memory-forensics.md` ——
+> `/proc` 差分采 CPU(不用 `ps %CPU`) · **窗口在后台不算数**(Qt 不重绘, 必须同可见页面前后对比) ·
+> py-spy raw 要**按 count 加权** · 3D 面板每帧新建 QFont/QFontMetrics(缓存后 13.7→4.5us, 缓存必须设上限) ·
+> `HOST_POLL_HZ` 50→20 · anon 64MB 段 = glibc arena(`MALLOC_ARENA_MAX=4` 只有走 restart 脚本才带上) ·
+> 段差分报 `RSS 0MB/负值` = pid 被换掉了。
+
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
+> 📄 **控制台内存 / 看门狗 / 重启**: `references/studio-memory-and-watchdog.md` —— 信号页五处内存结构(预分配环形缓冲 ·
+> `arrays()` 零分配 · 元数据被当曲线画 · 高频 json 解析) + 看门狗必须“杀掉后自动拉起” + 重启脚本按 `comm` 取 pid(否则自杀) +
+> IDE `launch.json` 的 env 也要跟。判据只认“增速掉下来”(5/10/20 分钟三点 GB/h), 单点 RSS 不算数。
 > 📄 **发版/保存数据**: `references/version-bump-and-release-archive.md` —— 版本号只按用户指定升 · `bump_version.py` 一次改齐 9 处
 > (归位后 docs_sync 路径变了, 不改就静默漏改) · tag 已推后同版本内修 bug 用 `git tag -f` 移动而不是自主 bump ·
 > 归档两份 (`docs/data_snapshots` + `zmax_data/release_<ver>_<date>`) 并用 `sha256sum -c` 回读 · 跨平台只说"配置已验, 产物由 CI 出"。
@@ -1305,3 +1319,35 @@ diag_compare_window_render (抓窗口与渲染帧逐像素比对) / ascii_render
 ~/zmax_data/ss_remote/20260918_0615/ (state/proposal jsonl.gz + MANIFEST)。
 
 > 🗣 日志文案 = 完整句子 / 朴素白话（禁止「标题: 名词短语 · 名词短语」堆砌） → `references/log-writing-style.md` (2026-10-17 老倪定规; 存量 ~1800 处按此口径收敛)
+
+## 屏幕"卡死"取证: 先分层, 别乱杀窗口管理器 (2026-10-18 实测)
+- 症状组合: 控制台窗不上屏 + 桌面整体无响应 + 只能按电源键。本次实测 **不是内核死机**: journal 连续到底,
+  logind 记 `Power key pressed short` ×2 → `The system will power off now!`, 属干净关机。
+- 查证顺序: ①`journalctl -b -1 | grep -iE "oom-kill|Killed process|Xid|fence expiration"`
+  (本次 `Fence expiration time out i915...chrome` = Intel 显示 fence 超时, 桌面停止重绘);
+  ②`systemd[1]: user@1000.service ... memory peak` (本次 26.5G/30G, swap 峰值 13.1G);
+  ③控制台日志 `grep "Fatal Python error"` — 本次多次 `Segmentation fault`/`Aborted`:
+  **窗不上屏多半是 studio.py 自己崩了, 不是 Mutter 不映射**。
+- **禁止** `killall -3 gnome-shell` 救窗口: 会把会话一起带走 (本次 12:26:27 `gnome-session-manager` 停止 →
+  掉到登录界面, 外观就是"死机")。要救就按 pid 只杀 studio.py, 再起一个实例。
+- 同刻只留一个控制台实例 (每个 ~1.4GB RSS + Qt/3D episode 装载); 重启前先
+  `pkill -f "gui-venv311/bin/python studio.py"` 并确认 `pgrep -fc ...` = 0, 再起新的。
+
+## 内存增速取证 (量出来再说泄漏)
+- 增速 = 两次读 `/proc/<pid>/status` 的 VmRSS, 间隔 ≥120s 再换算 GB/h; 单点 RSS 什么都不说明。
+- **先确认两次采样是同一个 pid**: 控制台会被 systemd/dbus 拉起, 崩一次就换新 pid 并把 RSS 掉回 ~1.3GB ⇒ 跨 pid 的
+  "曲线"会把振荡当泄漏 (实测同一 pid 稳定 4.9GB/h, 跨 pid 会算出 0 甚至负增速)。核法: `pgrep -f "tools/gui/studio.py"`
+  两次拿到同一 pid, 且 `ps -o lstart= -p <pid>` 一致。
+- 按段定位 (涨在哪): `sudo cat /proc/<pid>/smaps` 两次按 (起址, 权限, 名字) 对齐差分 —— `[heap]` 涨 = Python/Qt 对象;
+  单个大 anon 段涨 = numpy 数组; 大量小段涨 = 频繁小分配。
+- 采样要 root: `py-spy record/dump` 打别人的 uid 进程直接 Permission Denied, 用 `sudo env "PATH=$PATH" py-spy ...`
+  (sudo 会重置 PATH, 不带 env 就找不到 py-spy)。py-spy 给的是 **CPU 热点, 不等于分配点**, 必须和 smaps 差分合看。
+- 已知结构性底座 (已修, 别再当泄漏): 信号页 `SignalBuffer` 曾对每个信号 `np.zeros(CAP)` = 3.05MB × 1013 信号 ≈ 3.1GB,
+  话题注册越多底座越大 (8h53m 可到 20GB); 现为惰性 `CAP_MIN=4096`(64KB) 写满才翻倍。
+  **新增任何"每信号/每话题一份"的缓存, 必须惰性分配 + 硬上限**, 否则底座随注册量线性膨胀。
+
+## pgrep -f 会命中自己的包装 shell
+- `pgrep -f "<pattern>"` / `pkill -f` 会匹配到 Hermes 自己的 `bash -c "...<pattern>..."` 包装命令行 ⇒ 自杀
+  (实测把桥接 shell SIGTERM, 目标反而没杀成)。
+- 拿 pid 优先走 `ss -ltnp` 或 pid 文件; 必须按名匹配时锚定解释器路径 (`pgrep -f -- "^[^ ]*python .*studio\.py"`) 并排除 `$$`,
+  杀之前 `cat /proc/<pid>/cmdline` 核一眼; 多步 pgrep/kill 写进脚本再跑, 别内联一条命令。

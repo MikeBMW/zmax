@@ -20,6 +20,28 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
 8. 汇总: 逐项 {case, desc, pass, evidence, detail} → JSON; PDF 嵌图 (reportlab platypus Image, 中文用 wqy 字体); Excel 加 sheet
 9. 多帧数据: 窗口若累积 N 帧才出图 (堆叠/散点), 测试脚本先开窗再逐帧喂真实数据 (如从训练 parquet 回放真实帧跑模型 forward → push 窗口), 别只喂末帧
 
+## 点得中吗？—— 事件级验证 (比 handler 单测、比截图都硬)
+
+控件"点了没反应"有三种完全不同的原因: **事件根本没派发到它** / 命中几何不对 / handler 没接线。
+只有事件级验证能一次分开这三层:
+
+1. 离屏真建**真实容器**(如 `SimCanvas(stub_module)`) + 把被测控件加进去。stub 只需在被调用时记一笔
+   (`calls.append((名, 参数))`), 并用 `__getattr__` 兜住其他属性。
+2. `QApplication.sendEvent(view.viewport(), QMouseEvent(QEvent.MouseButtonPress, view.mapFromScene(点),
+   Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))` —— 走完整 `viewport → view.mousePressEvent → itemAt → 命中 → handler`。
+3. 断三件: 点控件本体/边缘 → handler 调用一次; 点**不该触发**的区域(控件上方的标题) → 不调用(证明没抢走拖动/选中);
+   连点两次 → 状态翻转两次。
+
+- 只测 handler(把方法绑到 stub 上)会漏掉"事件没到"; 只截图会漏掉"位置错/被别的层拦"。
+- **自绘控件渲染证据**: 直接 `it.paint(QPainter(QImage), QStyleOptionGraphicsItem(), None)` 渲成 PNG, 再用像素颜色计数
+  (开/关两态各数一种描边色的像素, 并核它们落在预期矩形内) + `tesseract -l chi_sim+eng --psm 7` 认状态文字。
+  只数"非背景像素"不够 —— 得数**预期颜色**并核**位置范围**, 否则控件没画对也照样"非空"。
+- 🔴 **stub 容器要给全它 require 的属性**: 自绘控件常遍历 `scene_ref.links` / `nodes` / `_items` / `_flow_path`,
+  缺一个就是 `TypeError: 'NoneType' object is not iterable`, 看着像"控件画不出来"。
+- 🔴 **命中代码写在哪一层要按容器的拦截行为定**: 若容器对"子项上的左键"先拦并 `return`(拖拽/选中/端口拖线这类),
+  子件自己的 `mousePressEvent` 永远收不到 ⇒ 命中必须写在**容器层**且排在拖拽分支之前。
+  旁证法: 找一个**已有的、确认能点**的同型控件(如 radio 档位), 看它做在哪一层 —— 跟它同层就对了。
+
 ## 坑 (已踩)
 - **cv2 自带 Qt 平台插件污染**: 先 import cv2 (ultralytics 等) 后建 QApplication → Qt 从 `cv2/qt/plugins` 找 xcb → "Could not load the Qt platform plugin xcb" (缺系统依赖)。修复: 建 QApplication **之前**设 `QT_QPA_PLATFORM_PLUGIN_PATH=<site-packages>/PyQt5/Qt5/plugins` (遍历 sys.path 找含 platforms/ 的目录)。别只删 cv2 路径 — 显式指定 PyQt5 真实目录即可
 - QApplication 只能在 import 任何 Qt widget 前创建一次; 被报告侧 import 时 (cv2 已加载) 也要先设插件 env 再建 app

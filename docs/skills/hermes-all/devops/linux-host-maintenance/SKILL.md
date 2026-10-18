@@ -55,6 +55,29 @@ nvidia-smi pmon -c 1 -s u | tail -n +3      # 按进程看 sm%: 谁在吃 + 桌�
 - **报告口径**: 「谁吃 GPU / 桌面剩多少 / 停掉后 GPU 变多少」三组数字, 不写"优化了一下性能"。
 - ⚠️ 别拿 `ps -eo pcpu` 的百分比当"现在正在烧"(那是生命周期均值, 见上节): GPU 只看 `pmon` 的瞬时 sm%。
 
+## 1c. 「怎么电脑变得这么慢 / 之前也不是这么慢」⇒ 先算总账, 再定责, 最后查差量
+
+用户问这类问题时**不是要一个自检表**, 是要「为什么现在比刚才慢」。顺序固定:
+
+1. **总账先换算成核数**: 各进程 `/proc/<pid>/stat` 的 utime+stime 采两次求增量(别用 `ps %CPU`, 那是生命周期均值),
+   求和写「合计 X% = Y 核 / N 核」。实测一次「328% = 3.3 核 / 32 核 + load 4.4」 ⇒ **机器根本没饱和**,
+   此时别再拿 CPU 当解释, 往内存/GPU/单线程卡顿转 —— 报「CPU 挤满」是假诊断。
+2. **把自己这条链路的进程算进账**: 排查期我自己起的 VSCode 调试宿主(GUI 在 pydevd 下能到 90%+)、
+   两个 pyright 语言服务(各 ~570MB)、采样脚本、signal_store 守护 —— 这些在 `ps` 里跟业务进程长得一样。
+   给用户报「谁在吃」之前先认领自己的, 否则会把自己的开销当成系统故障。
+3. **差量对账**: 拿「刚重启时」的记录(load/swap/内存)跟现在逐项比, 差的那一项才是嫌疑。实测一次:
+   刚重启 load 4.7 / swap **0** ⇒ 两小时后 load 6.9 / swap **3.9G** ⇒ 差在 swap, 而 swap 是**我反复重启 GUI(每次峰值 1.4~3.6GB)攒出来的**, 不是硬件。
+4. **回收 swap 前先看装得下**: `awk '/MemAvailable/' /proc/meminfo` 必须 > swap 已用, 然后
+   `sudo swapoff -a && sudo swapon -a` (实测 3.9G 换回内存用 15.8s, MemAvailable 18.7G→14.7G)。
+   报数写「swap 已用 X G → 0」, 不写「清理了一下」。
+5. **GPU 只看瞬时**: `nvidia-smi pmon -c 1 -s u`; 无 CUDA 争用时再查核显 —
+   `sudo dmesg -T --since "2 hours ago" | grep -iE "i915|fence|GPU hang|reset"` 应为空(有 `Fence expiration` = 桌面停止重绘)。
+6. **归属不明确时直说**: 「机器现在 3.3 核/32 核、无 GPU 故障、swap 已清零 ⇒ 剩下的卡顿不在 CPU, 需要你指一个具体动作(拖窗/切页/点按钮)我再拆」。
+   比拢一堆自检项有用得多。
+
+⚠️ **别拿后台窗口的 CPU 当降载证据**: GUI(Qt/pyqtgraph)在后台时**根本不重绘**, 同一进程后台 22%、前台 120%。
+做过优化要给降幅, 必须在**同一可见页面**下前后各采一次; 拿不到就明说拿不到, 不给假数字。
+
 ## 2. DNS "清理"
 ```bash
 resolvectl status | grep -E "Current DNS|DNS Servers"      # 先看解析链 (127.0.0.53 → 上游)
@@ -483,6 +506,33 @@ sudo grep -o 'crashkernel=[^ ]*\|panic=10\|lockup_panic=1' /boot/grub/grub.cfg |
 再配一条 `@reboot` 留痕(`tools/boot_crashcheck.sh`: 记 kdump 就绪状态, 发现 `/var/crash` 有转储就推一条通知)
 —— 否则崩后重启又是"什么都查不到"。注意 `nmi_watchdog` 要为 1, `hardlockup_panic` 才真能触发。
 
+### 9d-2. 「屏幕不动了 / 整机卡死」先分三层: 内核 · 显示栈 · 用户会话
+
+三种外观都是"死机", 处置完全不同。只读取证按顺序取:
+```bash
+journalctl -b -1 --no-pager | grep -iE "Kernel panic|Oops|oom-kill|Killed process|Xid|fence expiration|i915"
+journalctl -b -1 --no-pager | grep -iE "Power key pressed|will power off now|Reached target poweroff|Session .* logged out|Stopped gnome-session-manager"
+journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # 会话内存峰值 + swap 峰值
+```
+判读:
+- **`The system will power off now!` + `Reached target poweroff` + journal 一直记到关机** ⇒ 干净关机, 是**电源键**触发的,
+  不是内核死机 (长按 5s 硬断不会留下这段完整关机序列)。先看 `logind` 的 `Power key pressed short`, 再决定要不要往 panic 方向查。
+- **`Fence expiration time out i915-...`** = Intel 核显 fence 超时: 桌面合成停止重绘, 系统还活着 ⇒ 用户看到"冻屏、键鼠没反应",
+  这类既能自愈也会反复; 查清后才是 kill 那个吃 GPU 的应用, 不要去重建会话。
+- **`user@1000.service ... memory peak`** 接近 `mem_total` 且 swap 峰值贴满 ⇒ 它是"卡顿 / 新窗口合不出"的放大器;
+  报结论前先算峰值占比 (例: 26.5G/30G + swap 13.1G/15G), 别只写"内存有点高"。
+- **`Session N logged out` / `Stopped gnome-session-manager`** ⇒ 会话已经掉了, 屏幕上就是登录界面 —— 不是崩溃,
+  是"桌面重来一遍"; 在这之后按电源键当然是干净关机。
+
+**禁止用 `killall -3 gnome-shell` 救不映射的窗口**: SIGQUIT 是最快的合成器重启, 但它会把整个用户会话一起带走
+(实测紧接着 `gnome-session-manager` 停止 → 掉登录界面), 在用户眼里等于"你把机器搞死了"。
+窗口 `IsUnMapped` 时先查应用**自己**是不是在崩 (`grep -c "Fatal Python error" <应用日志>` 看 `Segmentation fault`/`Aborted`),
+只按 pid 杀那个应用再起一份; 同刻只留一个实例 (每个 GUI 实例常驻 1G+ 且会连内存一起吃)。
+
+**用户说"你怎么卡死了"时, 机器和我这两端都要查**: 机器端 = 上面三段; 我这一端 = `grep -aE "APITimeoutError|ConnectTimeout"
+~/.hermes/logs/errors.log | tail`。模型接口超时的表现正好也是"长时间一个字都不出", 而机器完全正常 ⇒
+先分清再回答, 别把接口超时说成死机 (也别反过来把死机说成网络问题)。
+
 ## 9e. 开机自愈的两个"假好"陷阱 (2026-10-09 重启后实测)
 
 **① 把后台进程和耗时长的 `sudo systemctl start` 写进同一条 terminal 命令 ⇒ 超时被工具杀掉时, 后台子进程一起死。**
@@ -667,11 +717,58 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
 - 复核口径: 再跑一次那条锚定 `pgrep -af` 应为空; 服务是否回来**以端口/HTTP 探活为准**(`ss -ltnp` / 探活码),
   不看“脚本退出码 0”。
 - 更稳的做法: 常驻进程启动时写 pid 文件, 之后一律按 pid 文件杀。
+- **脚本里的 `pgrep -f <py名>` 会命中"另一条正在执行的命令"的 shell**: 那条 shell 的 cmdline 里可能恰好含
+  同一个串(哪怕你自己写的是 `gui/studio.py`、脚本里写的是 `studio[.]py`, 方括号只防自己那一条命令行),
+  于是脚本的 `kill $(pgrep ...)` 把**正在调用它的 shell**一起杀掉 ⇒ 命令 `exit -15`, 后续步骤全没执行,
+  而用户看到的是"窗口闪一下没了"。定式: **按 comm 过滤, 只留解释器进程**:
+  ```bash
+  _pids() { for p in $(pgrep -f "gui/studio[.]py"); do
+              case "$(cat /proc/$p/comm 2>/dev/null)" in python*) echo "$p";; esac; done; }
+  ```
+  杀完必须复核 `[ -n "$(_pids)" ]` 为空才算停掉; 起新实例用 `setsid nohup … &` 后 `sleep 6` 再取 pid 复核(不要用 `$!`,
+  `setsid` 的 pid 不是解释器的)。
 - **守护进程名唯一时, 最简安全形式是 `pgrep -x <可执行名>`**(只按可执行名精确匹配, 不含参数与路径 ⇒
   不可能命中调用它的那条 shell; `pgrep -f` 才需要 `^...$` 锚定)。实测
   `pgrep -x tinyproxy | while read p; do sudo kill "$p"; done` 一次干净停掉、不再自杀;
   收尾复核"再跑一次应为空 + 端口/探活为准"。
 - 同一类坑还有: 内联的长命令会被工具层拦或截断 —— 脚本化写到 `/tmp/*.sh` 再跑。
+- 🔴 **同一 GUI 会有多份实例, 而模式串常常只认其中一种 argv**: 实测 `pgrep -f "gui/studio[.]py"`
+  匹配 `tools/gui/studio.py`, **漏掉 cwd=tools/gui 时以裸 `studio.py` 启动**的那份(IDE F5 / 手工起)
+  ⇒ 脚本每次"重启"都是再起一份、旧的那份连起六次都没被杀; 两份额外各占 1.3~1.8GB + 各吃一份 CPU,
+  而用户眼前的窗口恰恰属于旧的那份(他看到的永远是旧代码, 于是"改了没用")。
+  定式: 候选用宽松模式 `pgrep -f "studio[.]py"` → 三重过滤(`comm` 是 python · `readlink /proc/<pid>/cwd`
+  在本工程目录 · 不命中自己这条 shell) → 杀完复核"只剩一份";
+  复核他看的是不是新实例用 `wmctrl -l -p`(窗口→pid) + `ps -o lstart=` 比提交时间, 不看进程个数。
+
+## 12. 某进程 RSS 只增不减(把整机拖到 thrash)⇒ 段级 diff + bpftrace 抓分配者
+
+**别靠读代码猜泄漏点。** 三步定死, 顺序不要跳:
+```bash
+free -m; ps -eo pid,etime,rss,nlwp,args --sort=-rss | head -5      # 谁在涨 + 跑了多久 + 几个线程
+sudo grep -E "Private_Dirty|Anonymous|Rss" /proc/<pid>/smaps_rollup  # 匿名堆=自己的分配; 大额 file 映射=数据集/模型
+```
+① **哪一类映射在涨**(两次快照 diff): `sudo python3 scripts/probe_rss_seg.py --pid <pid> --wait 120` ——
+  `[anon]` 涨 = numpy 大数组/GL 缓冲/线程栈; `[heap]` 涨 = 小对象; **56~72MB 段反复"新映射" = glibc arena**;
+  **128KB~1MB 段高频新增 = CPython pymalloc arena**(`_PyObject_ArenaMmap` 每次 256KB)。
+② **谁在分配**(决定性, 别停在推测):
+```bash
+P=$(pgrep -f '<脚本名>[.]py' | head -1)
+sudo bpftrace -e 'tracepoint:syscalls:sys_enter_mmap /pid == '"$P"'/ { @u[ustack(5)] = count(); }
+                  interval:s:40 { exit(); }' > /tmp/s.txt 2>&1   # 最大栈在最后, 别 head
+grep -A6 '@u\[' /tmp/s.txt | tail -40                                # 或用 python 正则聚合 count
+```
+  栈里出现 `_PyObject_ArenaMmap ← _PyObject_Malloc ← PyDict_SetItem ← scan_once_unicode` = **高频 json 解析**;
+  出现 `_PyUnicode_New`/`dict_merge` = 高频拼字符串/建字典; 出现 `sysmalloc_mmap ← _int_malloc ← __libc_malloc` = C 侧大块 malloc。
+  顺带看尺寸分布 `@sz[args->len] = count()`: 非 2 的幂的怪尺寸(147456/512000…)都是 4096 的倍数 = malloc 的 mmap 路径。
+③ **修法与判据** 见 `references/process-rss-growth-forensics.md`。核心定式: **轮询读取按 `(mtime_ns, size)` 缓存**
+  (文件没变 = 零解析, 只刷新帧龄/age 这类随墙钟变的字段)。
+
+⚠️ **判据只认"增速掉下来"**: 改完重启, 采 5/10/20 分钟三点算 GB/h 与前值对比; 单点 RSS 变小不算数(启动缓存会骗人)。
+   只降一部分就如实报剩余 GB/h+"未定位", **不写"已根治"**。
+⚠️ **别只调 `MALLOC_ARENA_MAX`**: 它治 glibc arena, 治不了 CPython pymalloc arena(高频小对象那类才是多数)。
+   要加就**启动器与 IDE launch 配置两处都加**, 否则换成 F5 启动就失效。
+⚠️ **杀掉这类 GUI 进程后必须自动拉起**(看门狗里 `subprocess.Popen(["bash", restart.sh])`), 否则用户看到的是
+   "程序自己没了"却不知道为什么; 阈值按实测增速算(1.5GB 起 + 5GB/h ⇒ 8GB 阈值要 1.3h 才动作, 想早兜就压到 3~4GB)。
 
 ## 11. 「帮我装个 X / 一会要用」⇒ 先查已装, 再做就绪核查
 
@@ -727,9 +824,14 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | 拿"进程在"当"应用可用" | 报成功但窗口根本没起 | 复核窗口(`wmctrl -l` / `xdotool search --name`), 不是 `pgrep` |
 | 设备被生产服务占着却报"硬件坏了" | 误判摄像头/串口故障 | `sudo fuser -v /dev/*` + `lsof` 找占用者 + `v4l2-ctl -d <dev> --info` 认卡名; 报冲突并请示, 不擅停生产服务; **让出 + 防再占的定式见 `zmax-live-video-stream` 的「显式关闭档」节**(停止服务很可能是白停: cron 守卫每 5 分钟会把它拉回来) |
 | 用户说"电脑卡/鼠标延迟"就只查 CPU + 磁盘 | 报"机器不忙、没到瓶颈"却解释不了拖动卡 | 查 `nvidia-smi pmon -c 1 -s u` 的按进程 sm% —— CUDA 常驻吃满时桌面合成只剩个位数 (见 §1b) |
+| 用 `ps -eo pcpu` 报"谁在吃 CPU" | 数值是生命周期均值, 刚重启的实例被低估、老进程历史尖峰一直背着 | 采两次 `/proc/<pid>/stat` 的 utime+stime 求增量, 总和换算成核数(见 §1c) |
+| 拿后台窗口的 CPU 当优化前后对比 | GUI 在后台不重绘, 同一进程 22% vs 前台 120%, 降幅是假的 | 同一可见页面下前后各采一次; 判据 `xdotool getactivewindow getwindowname`; 拿不到就明说 |
+| 整机变慢先怀疑硬件/系统旋钮 | 实际差量是"我反复重启 GUI 攒出的 swap 3.9G" | 先与刚重启时的 load/swap 对账, 再 `swapoff -a && swapon -a` 回收(先验 MemAvailable > swap 已用) |
 | 老目录整理完又冒出来 | 代码扫干净了却仍重建 `~/<老名>` | 查**仓库外**工具的全局配置(`~/.config/Ultralytics/settings.json` 的 `runs_dir/weights_dir/datasets_dir` 等): 不在仓库里, 五种路径写法全扫不到, 但工具每次都按它落盘 ⇒ 备份后改到工程内 → 把已落错地方的产物**合并回来** → 空目录才 `rmdir`; 判据是"跑一次那个工具看产物落在哪", 不是 grep |
 | 停守护只停被守护的进程, 没停 keepalive | 汇报"守护已全部停止", 一分钟后它们全回来了(且正加载模型烧 CPU) | 先 `crontab -l` 找保活/guard 行 → 先停 keepalive 再停守护 → 报告写"会被拉回哪些"(追加型文件 ⇒ 下电无风险) |
 | 下电结论只看 `df` 百分比 | 87%/余 51G 看着安全, 10Hz 无轮转 tap 约 25 天就吃满 | 报盘耗增速(MB/千行 · GB/天 · 剩余天数)+ 轮转建议; 百分比给不出"还剩几天" |
 | 停完不复核就报"全场静止" | 有个别守护 TERM/KILL 后仍活着 | 逐条复核并列出残留(状态/CPU/是否持写句柄), 「停不掉的」也要写 |
+| 用户说"死机了"就顺着认死机 | 电源键触发的干净关机被写成 panic/内核崩溃 | 先取三件套: power key+poweroff 序列 · `fence expiration i915` · `Session logged out`(见 §9d-2), 再定层 |
+| 窗口不映射就去重启窗口管理器 | `killall -3 gnome-shell` 把整个会话带走, 外观=整机死机 | 先看应用自己是否 segfault, 只按 pid 杀那个应用; 合成器不动 |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`

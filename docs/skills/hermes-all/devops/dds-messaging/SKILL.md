@@ -88,6 +88,12 @@ Qos(_p(Policy.Reliability.Reliable, 0), _p(Policy.History.KeepLast, 1),
 ```
 用 `--cfg` 或 `export CYCLONEDDS_URI=file://<abs路径>` 加载。
 
+### 探针/临时订阅端也别手搓 `DataReader`
+自测脚本里 `DataReader(dp, Topic(dp, "zmax/xxx", T))` 这种写法**没带单播配置** ⇒ 同上一个坑,
+本机也一样收 0 条 (实测: 手搓 0 条, 换工程自带 `dds/zmax_node.py::Node("probe").take("<短键>")` 后 6 秒 51 条)。
+`Node` 三件事都替你做了: 自动找到 `dds/cyclonedds_unicast.xml` 并塞进 `CYCLONEDDS_URI` · 建 topic 时补 `zmax/` 前缀 ·
+`qos_for(话题)` 跟发布端对齐。**订阅端收不到时, 先怀疑自己的探针没带配置/QoS, 最后才怀疑发布端。**
+
 ### 该版本实测**不可用**的 XML 元素（会 `DDS_RETCODE_ERROR`，别加回来）
 ```
 ❌ <Interfaces><NetworkInterface name="auto"/></Interfaces>      ← 指定网卡也不行

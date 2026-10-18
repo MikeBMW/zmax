@@ -626,6 +626,9 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 以为改 `capability_levels.py` 会改变断言数 | 只在 `groups` 里报真实 `t_*` 前缀才影响计数; 加 `groups: []` 的功能条目 (如 L4-C16) 计数不变 | 加能力条目用空 groups; 别写错前缀 |
 | 标定参数写盘顺手 `sync_calib(write=True)` | `calib.json` 其他域 (内参/几何/TCP) 被一起刷新成"当前源", 意外改变在役读值 | 只读写自己那一节 (读-改-写单键), 别整表重合并 |
 | 忘了重启控制台 | 用户看到旧拓扑 | 改完必重启 + 确认 `Traceback=0` |
+| 现场拖动前没起录制 | 这一趟动作数据永久丢失 | 先架录制/叠加再回"准备好" |
+| 生产端用 `x or []` 兜底(numpy 数组) | 首帧 `ValueError: truth value of an array ... is ambiguous` 被 `except: return False` 吞掉 ⇒ 产物文件永不生成、日志一句没有 | 用 `x if x is not None else []`; 生产函数的 except 必须打 traceback; 判活看**产物文件 mtime/点数**, 不看进程在不在 |
+| 节点上画的开关点了没反应 | ①命中写在 `SimNodeItem.mousePressEvent` 里 ⇒ canvas 层先拦走左键, 永不执行 ②命中矩形与绘制矩形各写一遇 | 命中放 **canvas 层**、排在拖动之前; 几何抽成一个 `_rect(w,h)` helper 供绘制+命中同调; 每次点这个节点都 `print` 一行"点在哪/矩形在哪/命中与否", 用户报点不动时直读日志 |
 | 拿自报日志当副作用发生 | "页已打开"其实浏览器没起 | 查外部痕迹: 进程 lstart / 浏览器 History, 不信自报 |
 | **用自己的临时脚本判"孤岛/断线"** | 连线字段名猜错 ⇒ 误报 `ss_seg` "入度=0 出度=0", 差点"为改而改"去接一条**本来就存在**的线 | 判拓扑只用**工程自带**手段: `canvas_node_audit.py`(孤立/断头/悬空) + `match_node(节点名)` + 渲染级 link items; 自写脚本必须先用一条**已知存在**的连线做正例自检 |
 | 按钮反馈只写日志/节点小字 | 用户连报"点了没反应" | 反馈落在**他刚点的那个控件**(按钮文字)+ **节点边框状态色** + 下面终端日志(变化时才写); 画布上不铺字(见"长任务触发器") |
@@ -697,6 +700,54 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   真 `SimulinkModule` 加载真工程后量「视口中心 vs 核心中心」偏差 (实测 dx=dy=1.0); 已并入 `run_gui_verifiers.sh` (core_node_ui)。
   活体复核: `DISPLAY=:0 scrot -o /tmp/x.png` + 像素统计 (画布不在前台时数不到暖色, 不要误判成"没生效")。
 
+## 在画布节点上做一个「鼠标可点的开关/拨钮」(状态存节点 params)
+
+用户说「这个开关做在 X 节点上, 我要用鼠标控制」时, 不要只给面板里的勾选框 —— 开关要画在节点本体上并且**点得中**。
+五件缺一就是「点了没反应」:
+1. **三处同一几何**: 绘制矩形、命中矩形、写回口径用同一个表达式 (底部条 `QRectF(8, self.h - 26, self.w - 16, 20)`)。
+   各写一遇 ⇒ 画在这儿、判在那儿, 点偏几像素就不触发。
+2. **绘制**: 开 = 绿框 + 实心点, 关 = 灰框 + 空心点; 文案带**当前生效值**(硬上限之后的值, 不是配置值);
+   超宽用 `elidedText`, 不换行不裁字。
+   🔴 **安全类开关(动真机/能量/桥接)不许做成 20px 小 pill** —— 用户会直接说"太不好看、看不出来"。
+   定稿形态: **整条 34px 高**(占节点底部约 1/3) + 2px 描边(关=红 #e05252 / 开=绿 #3fb950) + 同色外发光,
+   左侧**拨杆轨道 + 滑块**(关靠左红 / 开靠右绿), 两行文字: 标题「⚠ <功能名>」+ 状态行
+   「已断开 · 不驱动 (点此接通)」/「已接通 · 输出 ≤10mm/s · 死区 3」—— 状态行必须带生效值,
+   用户要的是"一眼看出通没通、限多少"。
+3. 🔴 **命中**必须**写在 `SimCanvas.mousePressEvent`(canvas 层), 不是 `SimNodeItem.mousePressEvent`**:
+   canvas 对"节点上的左键按下"一律先拦 (端口拖线 / `cap_switch` 档位 radio / 拖动节点) 并 `return`
+   ⇒ 节点自己那层 `mousePressEvent` **永远收不到** (写在里面的命中 = 死代码, 用户报"点了没反应")。
+   位置: 进 `if isinstance(item, SimNodeItem):` 之后、`p = self.mapToScene(...)` 拿到场景点之后,
+   排在"端口/档位/拖动"之前: `_bridge_rect(n.w, n.h).translated(n.scenePos()).contains(p)` 命中就
+   `self.module.on_toggle_bridge(n.node); return`。
+   旁证: 画布上的 `cap_switch` 档位 radio 就是做在 canvas 层才点得中的; 节点层可以留一份同样的兜底,
+   但**不能只有节点层**。
+4. **处理器在 SimulinkModule** (`scene_ref` 就是 module 实例, 不是 QGraphicsView): 翻 params → `self._items[id].update()`
+   → `self._save_param_to_flow(node, key)` → `self._log(...)`; 日志把**生效口径**(硬上限/死区)写出来, 别只写"已开"。
+5. **状态唯一真源 = 画布 JSON 的节点 params**: 3D 面板/侧栏的勾选框读同一份(mtime 缓存), 两边改都生效 ——
+   各存一份必然出现"面板开了、画布没开"。
+
+上限类参数(速度/力/电流)另加一条: **代码里硬上限 + clamp 配置 + 超限打日志**, 配置写多大都不算 ——
+真机安全不能依赖一个可被随手编辑的配置文件。
+🔴 **仿真速度接到真机链路上的桥接开关**(把仿真 v_ff 变成位姿/动作): 用户对它的硬要求是
+**只跟方向、不跟幅值** —— `v_cmd = normalize(v_ff) · min(|v_ff|, cap)`, 且
+**cap 有代码常量硬上限 10mm/s**(配置写 20/50 一律按 10 执行并打日志), 另加**死区 3mm/s**
+(低于就不动, 防仿真噪声让真机持续蠕动)。位姿只积分**位置**(p += v_cmd·dt), 旋转未建模就写 `null`
+并标"未建模", 不许拿 0° 冒充已知姿态。
+
+### 没鼠标也能验 (两件离线证据 + 一件真屏证据)
+- **事件级(最硬的一条, 别省)**: 离屏真建 `SimCanvas(stub_module)` + `SimNodeItem` 进 scene, 用
+  `QApplication.sendEvent(view.viewport(), QMouseEvent(MouseButtonPress, view.mapFromScene(点), LeftButton,…))`
+  真走一遍 `viewport → SimCanvas.mousePressEvent → itemAt → 命中 → handler`; stub 模块记 `calls` 列表,
+  断言"点开关条中部/拨杆 → 调用一次"、"点节点上部标题 → 不调用"(证明没抢走拖动)。
+  只测 handler 单测会漏掉"事件根本没派发"这一层 —— 那正是用户看到的现象。
+- **处理器单测**: 把方法绑到 stub 上 (`_items={}` · `_save_param_to_flow` 记 (id,key,值) · `_log` 记串), 连点 3 次断言
+  `True→False→True` 且每次存回值对; cap 配 50 时日志里必须报硬上限值(实测 10)。
+- **绘制**: 离屏造 `SimNodeItem(node, stub)` 直接 `it.paint(qp, opt, None)` 渲成 PNG, 再
+  `tesseract -l chi_sim+eng --psm 7` 认那行字(开/关两态各一张)。现成脚本 `scripts/render_canvas_node.py`。
+  🔴 stub `scene_ref` 至少要有 `links=[]` · `nodes={}` · `_items={}` · `_flow_path=None` —— `_paint_core` 会遍历
+  `self.scene_ref.links`, 缺了就是 `TypeError: 'NoneType' object is not iterable`, 看着像"节点画不出来"。
+- **真屏**: 最终以用户点一下为准(交付话术写"点它一下看状态变没变"), 别把离屏图说成"你屏幕上已经生效"。
+
 ## 验证清单
 ```bash
 # 架构自检 (迁移后新增, 6 项: 逻辑在包里/JSON 真源/档位契约/GUI 壳一致/档位索引)
@@ -717,6 +768,9 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
 `references/message-signal-db.md`。
 给节点接**实时数据源** (live JSON → 数据空间 Trace, 含 Tx/Rx 归属链路的四件套与 Rx 空行被丢弃的坑):
 同文件 §8。
+仿真 `v_ff` 能不能算位姿/能算多准、四层速度里哪层是模型输出、桥接到真机的限速与姿态缺口、
+**桥接后真机 target 仍不动的三个断点** (发布≠消费 · target 写端被 `moveit_plan_req.py --auto --watch` 每秒覆盖 ·
+MoveIt 容器已退出) 与 **仿真基座系≠真机基座系 (差 ~0.7m，只能叠方向增量)**: `references/velocity-to-pose-bridge.md` §1-§5。
 信号分析(Graphic)树里找不到刚接的 live 话题、以及页面参数→执行器→段表的速度/步长对账口径(三处改写、限速闸)、
 以及数据空间窗口"反映慢"的五段链路量法: 同文件 §9 · §10 · §11。
 

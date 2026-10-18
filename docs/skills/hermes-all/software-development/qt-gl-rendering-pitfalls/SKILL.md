@@ -84,6 +84,18 @@ trigger: "pyqtgraph GLViewWidget 渲染失败、'Error while drawing item'、glG
 3. paintEvent 每帧: 画缓存 pixmap + 动态元素 (QPainter drawLine/drawEllipse)。
 4. 数值实时放 QLabel (widget 布局内), 别塞画面。
 
+## 坑 0c: 每帧新建 QFont/QFontMetrics = 烧掉一整个核 (实测 CPU 214%→155%)
+
+自绘面板每帧给几十块文字各建一次 `QFont(size, bold)` + `QFontMetrics(f)` 再量宽, 看着是"纯计算",
+实测**每次量宽 13.7µs**、主线程被文字度量吃满 ⇒ 窗口在可见时 CPU 200%+, 后台时又只有 22%(不重绘)。
+- 修法: `_cached_fm(size, bold)` 以 `(size, bold)` 为键缓存 QFont + QFontMetrics; 标题 QFont 复用;
+  换行结果再按 `(text, width, size, sep)` 缓存(**必须有界** —— 键里含数值文本时数字每帧变, 无界缓存会自己变成内存泄漏)。
+- 实测收益: 量宽 13.7µs → 4.5µs; 同一可见页面 CPU 214% → 155%。
+- 定位: `sudo env "PATH=$PATH" py-spy record -o /tmp/spy.txt --format raw --pid <pid> --duration 200`
+  (非 root 会 `Permission Denied`; `py-spy top` 若输出为空就改用 record 的 raw 再自己聚合行首函数名),
+  热点通常落在 `paintEvent` / `_block` / `_wrap` / `_fmw` 这几个自绘函数上。
+- 🔴 **降幅只能在"同一可见页面"前后各采一次**: 后台窗口不重绘, 拿后台 22% 对比前台 120% 是假数。
+
 ## 渲染验证 (offscreen/真实 DISPLAY 通用)
 
 - 像素级验证不要走 `QImage.bits()` + np.frombuffer (PyQt5 sip.voidptr 无 size 坑);

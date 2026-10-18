@@ -96,9 +96,12 @@ metaworld 内部 (`sawyer_xyz_env.py::set_xyz_action`): `mocap_pos += action[:3]
 
 | 段 | 产出代码 | 实时可观测 |
 |---|---|---|
-| `u_ff` 前馈 | `state_space/parallel.py::FeedforwardAccelerator.forward` | `zmax/ss_state`: `前馈速度_mps`(模长) + `前馈速度_x/_y/_z_mps`; **夹爪通道不发** |
-| `u` 调制 | `cognition.py::ActionModulator.decide` | `zmax/ss_engine`: `动作调制_x/_y/_z_mps` + `动作调制_夹爪` |
-| `u_sat` 限幅 | `safety.py::saturate` | `zmax/ss_state`: `安全边界_mps` + `安全边界_x/_y/_z_mps` |
+| `u_ff` 前馈 | `state_space/parallel.py::FeedforwardAccelerator.forward` | `zmax/ss_state`: `前馈速度_mms`(模长) + `前馈速度_x/_y/_z_mms`; **夹爪通道不发** |
+| `u` 调制 | `cognition.py::ActionModulator.decide` | `zmax/ss_engine`: `动作调制_x/_y/_z_mms` + `动作调制_夹爪` |
+| `u_sat` 限幅 | `safety.py::saturate` | `zmax/ss_state`: `安全边界_mms` + `安全边界_x/_y/_z_mms` |
+
+⚠️ 速度类键名后缀是 `_mms`, **值已是 mm/s** (生产端写值时 m/s×1000); 显示层不许再按键名后缀乘。
+下表的历史键名 (`_mps`) 一律按 `_mms` 读, 契约内部 (DDS `v_cap` 等) 仍 m/s。
 | `u_exec` 执行 | `execution.py::execute` | **无实时字段、无 topic**; 只在 episode `npz['u_exec_vec']`(4D) |
 
 `u_ff` 的完整输出面 (问"前馈都输出什么"就按这四层答):
@@ -113,3 +116,31 @@ metaworld 内部 (`sawyer_xyz_env.py::set_xyz_action`): `mocap_pos += action[:3]
 DDS 动作话题 `ss.node.ssff/ssdec/sslimit/ssact.out1` (`zmax::Action*`) **工程图里有、当前无 publisher**:
 `matched_pubs=0` + `fields` 空 ⇒ Trace 显 `—`。答这类问题必须给出"图上定义了 / 实际没跑"两句,
 并指向真正在流动的字段, 否则用户会去搜一个永远空的话题。
+
+## 能否由速度反推位姿 (`v_ff` → 位姿 → 真机关节) — 实测口径 (785 帧 episode, 80Hz)
+
+问"能不能由 `v_ff` 算出位姿 / 由 plan 节点算出真机位姿"按这五条答, 每条都有硬判据:
+
+1. **位置: 能, 但要用执行后的速度**。`p[k+1] = p[k] + u[k]·dt`, `dt = diff(npz['t'])` (实测 12.5ms / 80Hz),
+   与 `npz['x']` 逐帧比 `|p−gt|`:
+
+   | 积分输入 | 平均 | 最大 | 末帧 | 最优缩放 k |
+   |---|---|---|---|---|
+   | `u_ff_vec` (前馈意图) | 23.4 mm | 36.8 mm | 18.6 mm | 0.912 |
+   | `u_limit_vec` (限幅后 = 实际执行) | 5.0 mm | 12.9 mm | 5.0 mm | 0.986 |
+
+   机理: 真值是"执行后的结果", 所以执行量积分天然更准; `u_ff` 只是意图 (中间还过反馈/限速/饱和)。
+2. **量纲自证**: 拟合一个全局缩放 k, **k≈1 就证明单位与 dt 都对** —— 不需要隐藏系数。
+   k 明显偏离 1 时先怀疑单位或时间步, 别去调增益。
+3. **分阶段看漂移往哪走** (`u_limit` 积分, 平均/最大): 接近 9.1/12.9 · 对位 7.9/10.0 · 下降 5.7/8.1 ·
+   抬起 6.1/7.4 · 插入 4.1/6.1 · 插入接触 3.5/4.8 · 转移 2.4/6.5 mm。位移越大误差越大。
+   插入容差本身 6mm 级 ⇒ **纯积分不够; 必须每帧用实测 TCP 位姿重置锚点**, 否则几十帧就漂过容差。
+4. **姿态: 算不出来**。动作 4 维 = vx,vy,vz + 夹爪, 没有角速度; 回放 npz 也只存 `x` 三轴位置
+   (无四元数/欧拉角)。6D 位姿的姿态分量只能另取: 实测 TCP 姿态 (`rokae_sdk/tcp_out/latest.json`, 50Hz)
+   或规划器给的目标姿态。别用"速度积分出位置 ⇒ 位姿也有了"糊过去。
+5. **plan 节点不反推位姿**: `SSPlan` 只是 MoveIt 规划结果 (joints + tcp 目标) 的镜像, 不是"速度→位姿"算子;
+   而且要先有数据源 (`~/zmax_moveit_plan` 不存在 / `ss_plan count=0` = MoveIt 容器没起)。
+   到真机关节位姿还差一步 IK (MoveIt 或控制器侧), 下发再过 8793 授权 + 速度口径 + idle/automatic 前置闸。
+
+复现: 载入 npz → 按上表积分 → 与 `x` 比 → 打印分阶段表 (约 50 行脚本, 别手算)。
+

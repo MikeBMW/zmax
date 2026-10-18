@@ -294,6 +294,30 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 修法四件(缺一条就还能复发): ① `setData(..., skipFiniteCheck=True)` —— 数据已知有限, 不让 paint 每帧扫数组(直接去掉报错那行); ② 刷新函数加重入闸 `_in_refresh`(级联不叠栈); ③ 每帧 `setYRange` 只在量程真变时才调(缓存上次量程, 容差 1e-9); ④ `except RecursionError` 里把完整栈写日志再 raise(留证据不吞错)。
 - 判据: `sys.setrecursionlimit(250)` 压低后, 全选 1000+ 条缓冲 × 三种模式(同轴/9 子图/叠加) 各跑 25 拍 0 异常; 改前必炸。绘制条数上限(MAX_DRAW 之类)保留, 别为了"全画"把级联放大。
 
+### 24. 自绘 paintEvent 里现造 QFont/QFontMetrics = 主线程 CPU 黑洞；缓存必须带上限
+- 症状: 常驻 GUI 烧 100%~200% CPU、界面发涩; py-spy 里 `_block`/`_labels`/`paintEvent` 各占 5~8%(leaf)。
+- 机制: 每个文字块**每次重绘**都 `QFont("…")` + `setPixelSize()` + `QFontMetrics(f)` + `horizontalAdvance()`;
+  一帧几十块 × 60fps ⇒ 全是构造开销。实测单次量宽 **13.7µs → 复用后 4.5µs**（3 倍）。
+- 修法: 模块级 `_FONT_CACHE[(size,bold)]` / `_FM_CACHE[(size,bold)]`, `_block` 里改 `p.setFont(_cached_font(size))`;
+  量宽再套一层 `(text,size)→width` 缓存; `_wrap()` 的换行结果按 `(text,width,size,sep)` 缓存。
+- 🔴 **这类缓存的键常含实时数值 ⇒ 每帧都是新键，不设上限就是自己造泄漏**:
+  回填前 `if len(cache) > 3000: cache.clear()`（宽度缓存可放到 2 万量级）。加缓存必须同时加上限。
+- 量法（比"我觉得快了"硬）: 离屏 `QT_QPA_PLATFORM=offscreen`，同一段量宽循环跑 900 次，
+  旧写法 vs 复用写法各计时一次，输出 µs/次。
+
+**性能数字的口径纪律（不然会报出假账）**:
+- `ps -o pcpu` 是**自启动以来的平均** ⇒ 判"现在多热"要读 `/proc/<pid>/stat` 的 `utime+stime` 两次差分
+  （`awk '{print $14+$15}' /proc/<pid>/stat`）再除以采样秒数。
+- `py-spy record --format raw` 每行末尾是**采样计数**，统计必须按计数加权；按行数平均会把少量深栈算成热点。
+- 🔴 **窗口在后台时 Qt 不重绘** ⇒ 前台/后台两组 CPU 数不可比。A/B 汇报必须写清采样条件
+  （"3D 面板在前台/后台"），否则"214% → 23%"其实是页面被切走了。
+- 内存段差分（smaps 前后差）若 Δ 出现 **RSS→0** 且速率离谱 ⇒ 目标 pid 已被重启换掉，是假数；
+  开工前记 `ps -o lstart= -p <pid>`，跑完再核一次，变了就重测（本类实例很容易被自己的重启脚本换掉）。
+- 新增段全是 **64MB 级 anon rw-p** ⇒ glibc malloc arena 签名（每线程一套、只增不还）;
+  缓解 = 启动时 `MALLOC_ARENA_MAX=4` + `MALLOC_TRIM_THRESHOLD_=131072`。
+  线程数恒定而 RSS 仍按 MB/min 涨 ⇒ 不是 arena，去查按需扩容的环形缓冲/缓存上限。
+- 验收"某行到底在不在表里"用 `scripts/offscreen_table_row_probe.py`（离屏造真控件 + 逐行打印 + grab 图）。
+
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
   也会被判「你怎么把表格全给改了? 只是让你增加 X 列」并要求改回去: 白做一轮 + 多一次回退版本。
