@@ -930,7 +930,7 @@ def _gripper_svc_name():
     name = "/gripper_srv"
     try:
         r = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST,
-                            PRE + "ros2 service list 2>/dev/null | grep -E '^/gripper'"],
+                            PRE + "ros2 service list --no-daemon 2>/dev/null | grep -E '^/gripper'"],
                            capture_output=True, text=True, timeout=20)
         cands = [l.strip() for l in (r.stdout or "").splitlines() if l.strip().startswith("/gripper")]
         if cands:
