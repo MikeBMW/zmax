@@ -327,7 +327,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "corners_base_mm": [[round(p[0], 1), round(p[1], 1), round(p[2], 1)] for p in corners_base],
         "center_base_mm": [round(p, 1) for p in center_base],
         "dist_mm": round(D, 1),
-        "dims_mm": [round(W, 1), round(H, 1), round(float(t_mm), 1)],
+        "dims_mm": [round(float(W), 1), round(float(H), 1), round(float(t_mm), 1)],   # 必须转 float: np.float64 不能直接 json 序列化
         "cam_origin_mm": [round(p, 1) for p in o],
         "tcp_mm": [round(p, 1) for p in T_bt[:3, 3]],
         "handeye_resid_mm": he.get("resid_trans_mm_rms"),
