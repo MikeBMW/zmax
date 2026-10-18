@@ -49,6 +49,7 @@
   <h1>🛰 TCP 轨迹 AR/VR 调试台</h1>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
+  <span class="tag" id="tAge">帧龄 —</span>
   <span id="camPick" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <span class="tag" id="tCal">标定: 未标定</span>
   <span class="tag" id="tShow">轨迹: 关(默认)</span>
@@ -64,7 +65,7 @@
  <div id="leftcol">
   <div id="stagewrap">
    <div id="inner">
-    <img id="vid" src="/cam.mjpg?c=local2" alt="固定相机实时画面">
+    <canvas id="vid" width="640" height="480"></canvas>
     <canvas id="ov"></canvas>
     <div id="hit"></div>
    </div>
@@ -1232,11 +1233,50 @@ async function loadCams(){
   }catch(e){}
   if(CAMS[CAM]){                       // 🔴 分辨率必须跟着初始相机走(标定点按像素存, 混用必然投影错)
     IMG_W=CAMS[CAM].w||IMG_W; IMG_H=CAMS[CAM].h||IMG_H;
-    $('vid').src='/cam.mjpg?c='+CAM+'&t='+Date.now();
+    startPump();
   }
   buildCamPick();
   await loadCalib();
 }
+
+// ═══ 取帧泵 (2026-10-18 老倪: 「怎么一会黑屏一下」「别总黑屏啊」) ═══
+// 原来直接把 <img src="/cam.mjpg"> 当 MJPEG 流用: 上游一断/一慢, 浏览器就把整幅清成黑的,
+// 现场看到的就是"一会黑屏一下"。现在改成: 后台预加载单帧 JPEG(/snap/<cam>.jpg),
+// **只有这一帧真的解码成功才换上去**, 失败就继续显示上一帧 —— 结构上不可能再黑屏。
+// 同时把"帧龄"标出来(老倪要求: 实时画面必须能看出这帧多旧)。
+const FPUMP={busy:false,err:0,ok:0,last:0,timer:null,period:150};
+function frameAgeText(){
+  if(!FPUMP.last) return ' · 帧龄 —';
+  const a=(performance.now()-FPUMP.last)/1000;
+  return ' · 帧龄 '+a.toFixed(1)+'s'+(a>1.5?' ⚠':''); 
+}
+function pumpTick(){
+  if(FPUMP.busy) return;
+  FPUMP.busy=true;
+  const im=new Image();
+  im.onload=()=>{
+    FPUMP.busy=false;
+    const v=$('vid');
+    if(v && im.naturalWidth>1 && im.naturalHeight>1){
+      // 🔴 不能改 <img src>: 每换一次 src, 浏览器会先清空再解码 —— 实测 30% 的采样点拿到 0×0,
+      // 现场看到的就是"一会黑屏一下"。改成 canvas: 只有新帧解码成功才 drawImage, 期间屏幕上是上一帧。
+      if(v.width!==im.naturalWidth || v.height!==im.naturalHeight){ v.width=im.naturalWidth; v.height=im.naturalHeight; }
+      try{ v.getContext('2d').drawImage(im,0,0); }catch(e){}
+      FPUMP.ok++; FPUMP.last=performance.now(); FPUMP.err=0;
+      const t=$('tAge'); if(t) t.textContent=frameAgeText();
+    }
+  };
+  im.onerror=()=>{ FPUMP.busy=false; FPUMP.err++;
+    const t=$('tAge'); if(t){ const a=FPUMP.last?((performance.now()-FPUMP.last)/1000).toFixed(1):'—';
+      t.textContent=' · 取帧失败×'+FPUMP.err+' · 显示上一帧(帧龄 '+a+'s)'; } };
+  im.src='/snap/'+encodeURIComponent(CAM)+'.jpg?t='+Date.now();
+}
+function startPump(){
+  if(FPUMP.timer) return;
+  pumpTick();                                  // 立刻来一帧, 不等 150ms
+  FPUMP.timer=setInterval(pumpTick, FPUMP.period);
+}
+
 function _ageTxt(v){
   if(v===null||v===undefined||isNaN(v)) return '';
   const s=+v;
@@ -1293,7 +1333,7 @@ function setCam(k){
   LASTRECT=null; CAL_PTS=[]; CALIB=null; SIG='';
   $('bSolve').disabled=true; $('calBar').style.width='0%';
   $('pCal').textContent='已切到 '+(CAMS[k].label||k)+' —— 这台相机的标定点和外参都独立(分辨率不同, 混用必然投影错)。';
-  $('vid').src='/cam.mjpg?c='+k+'&t='+Date.now();
+  startPump();                              // 换相机就接着泵新相机的帧(旧帧留在屏幕上直到新帧到)
   LASTOROT=''; applyRot();          // 🆕 分辨率变了 ⇒ 旋转盒子(宽高比)要重算
   buildCamPick();
   loadCalib().then(()=>{ layout(); refresh(); });

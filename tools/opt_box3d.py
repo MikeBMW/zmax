@@ -35,6 +35,7 @@ CONF_MIN = float(os.environ.get("ZMAX_MOD_CONF", "0.25"))
 _YOLO = None
 _YOLO_LOCK = threading.Lock()
 _LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(框贴边时沿用)
+_CONT = {"d_mm": None, "h_px": None, "w_px": None, "base_mm": None, "t": 0.0}   # 连续性闸: 上一次被接受的观测
 
 
 def _yolo():
@@ -256,6 +257,25 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         D = f * float(h_mm) / h_px
         src = "size(已知件长 %.1fmm ↔ 画面 %.0fpx)" % (h_mm, h_px)
         warn.append("无深度: 距离由已知件长反解, 误差 ~5%; 换品种要把 ZMAX_MOD_H_MM 设成真实长度")
+    # ── 连续性闸 ── 老倪 2026-10-18: 「光模块不可能突然变化很大的, 它是一个连续的模块」
+    # 同一支模块相邻两帧的画面尺寸不会翻倍/减半, 距离也不会凭空跳。
+    # 越界 ⇒ 这一帧必然是算错了(遮挡/裁切/误检), 沿用上一次可信值, 并显式标注, 不许"看起来像"就画出来。
+    _now = time.time()
+    jump = None
+    fresh = bool(_CONT["t"]) and (_now - _CONT["t"]) < 2.5
+    if fresh:
+        r_h = h_px / max(1e-6, _CONT["h_px"])
+        r_w = w_px / max(1e-6, _CONT["w_px"])
+        if not (0.62 <= r_h <= 1.62) or not (0.55 <= r_w <= 1.80):
+            jump = "画面尺寸跳变 h×%.2f w×%.2f" % (r_h, r_w)
+    if jump and _CONT["d_mm"]:
+        D = float(_CONT["d_mm"])
+        src = "size(跳变被拒→沿用上次 %.1fmm)" % D
+        warn.append("连续性闸: %s ⇒ 该帧不可信, 沿用上次距离(模块是连续物体, 不会突跳)" % jump)
+    else:
+        if fresh and _CONT["d_mm"]:
+            D = 0.6 * D + 0.4 * float(_CONT["d_mm"])          # 轻度平滑, 压抖动
+        _CONT.update(d_mm=float(D), h_px=float(h_px), w_px=float(w_px), t=_now)
     if not clipped and depth_mm is None:
         _LAST["d_mm"] = D
         _LAST["t"] = time.time()
@@ -277,6 +297,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
                 pc = p / p[2]
                 corners_px.append([K[0, 0] * pc[0] + K[0, 2], K[1, 1] * pc[1] + K[1, 2]])
     center_base = Rcb @ c_cam + o
+    _CONT["base_mm"] = [float(v) for v in center_base]
     return {
         "ok": True,
         "class": det["name"], "conf": round(det["conf"], 3),
@@ -294,6 +315,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         "src": src,
         "depth_available": bool(depth_mm),
         "clipped": clipped,
+        "continuity": {"jump": jump, "smoothed": bool(fresh and not jump)},
         "warn": warn,
     }
 
