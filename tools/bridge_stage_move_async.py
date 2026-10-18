@@ -67,7 +67,7 @@ def main():
     ap.add_argument("--band", type=float, default=40.0, help="锚点周围硬包络 ±mm")
     ap.add_argument("--settle", type=float, default=0.15, help="阶段窗口采样 s")
     ap.add_argument("--min-gap", type=float, default=0.30, help="两次下发最小间隔 s")
-    ap.add_argument("--max-actions", type=int, default=40)
+    ap.add_argument("--max-actions", type=int, default=40, help="0=常驻")
     a = ap.parse_args()
 
     if not _get("/ctl/status").get("motion_armed"):
@@ -79,13 +79,28 @@ def main():
     print("⚡ 异步跟随: 每动作 %.0fmm@%.0fmm/s · 包络 ±%.0fmm · 不等回执 · 锚点 (%.4f, %.4f, %.4f)"
           % (a.step, a.speed, a.band, *anchor), flush=True)
 
+    # 🛑 常驻跑: 桥接开关(plan_from_vff.bridge)一关就停 —— 这是现场的"总闸"
+    PIDF = os.path.join(REPO, "zmax_data", "ss_live", "bridge_async.pid")
+    try:
+        with open(PIDF, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except Exception:                                                     # noqa: BLE001
+        pass
     last, n, t_next = _stage(), 0, 0.0
     pend = None                      # 上一拍: (stage, cmd, pose_at_dispatch, ts)
-    while n < a.max_actions:
+    idle_since = time.time()
+    while (a.max_actions == 0) or (n < a.max_actions):
         time.sleep(0.05)
+        if not _j(VFF).get("bridge"):
+            print("⏹ 桥接开关已关 ⇒ 停 (共下发 %d 拍)" % n, flush=True)
+            break
         s = _stage()
         if not s or s == last or time.time() < t_next:
+            if time.time() - idle_since > 300:
+                print("⏹ 5 分钟没有新阶段 ⇒ 停", flush=True)
+                break
             continue
+        idle_since = time.time()
         last = s
         t_end = time.time() + a.settle
         vs = []
