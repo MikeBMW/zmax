@@ -15577,8 +15577,13 @@ def main():
             #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)
             #   → 最大化移到 _show_ready 内 show() 之后设置 (正确时序)
             # win.setWindowState(win.windowState() | Qt.WindowMaximized)
-            _want_max = True      # 🪟 2026-10-16 老倪: 「增高太阳系和万有引力窗口」⇒ 所有屏都最大化
-                                  #   (最大化 = 可用工作区全高 ⇒ M 页 ~838px, 两窗同时整块可见)
+            # 🪟 2026-10-16 老倪: 「增高太阳系和万有引力窗口」⇒ 曾改成所有屏都最大化
+            # 🔴 2026-10-18 老倪: 「控制台怎么启动不了了 / 看不到窗口启动」—— 实测复现:
+            #   showMaximized() 之后 isMinimized=True / X Map State=IsUnMapped (状态位 3=Maximized|Minimized),
+            #   本机 GNOME/Mutter 把"最大化"当成"最小化" ⇒ 窗口永远不上屏。
+            #   ⇒ 起手不最大化: 直接 resize 到可用工作区 96% (3200x2000 → 3030x1830) 已经够用,
+            #     需要满屏时用户自己双击标题栏最大化 (那时窗口已上屏, Mutter 不会再误判)。
+            _want_max = False
         elif geo is not None:
             win.setGeometry(max(0, min(60, geo.width() - 300)), max(0, min(40, geo.height() - 200)),
                             1400, 900)
@@ -15668,8 +15673,12 @@ def main():
             def _unminimize():
                 try:
                     if win.isMinimized():
+                        # 📚 2026-10-18 实测: 只清 WindowMinimized 位 + show() 不解除 Iconic;
+                        #   必须 showNormal() (与最小复现一致), 之后再按需最大化。
                         win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
-                        win.show()
+                        win.showNormal()
+                        if locals().get("_want_max"):
+                            win.showMaximized()
                         win.raise_()
                         win.activateWindow()
                         _QA2.processEvents()
@@ -15685,17 +15694,27 @@ def main():
                             _df.write(f"{time.time():.1f} unmin_loop: min={win.isMinimized()} vis={win.isVisible()} state={int(win.windowState())}\n")
                     if win.isMinimized():
                         win.setWindowState(win.windowState() & ~Qt.WindowMinimized)
-                        win.show()
+                        win.showNormal()
+                        if locals().get("_want_max"):
+                            win.showMaximized()
                         win.raise_()
                         win.activateWindow()
                         _QA2.processEvents()
-                    # 无论是否刚恢复, 持续探测 (每 400ms, 最多 10 次) 直到稳定
+                    # 无论是否刚恢复, 持续探测 (每 400ms) 直到稳定
+                    # 📚 2026-10-18 老倪: 「控制台怎么启动不了了 / 看不到窗口启动」——
+                    #   实测本机 GNOME/Mutter 连一个空 QLabel show 都立即 Iconic (最小复现);
+                    #   原来只探 10 次 (4s), 而 Mutter 在这次双屏 (3200+3840) 布局下 5~8s 才把它踢成
+                    #   Iconic ⇒ 探完就退出 = 窗口再也起不来。改成: 探满 120 次 (约 48s), 连续 6 次稳
+                    #   定才收工; 期间只要被最小化就无条件 showNormal + 置前。
                     _n = getattr(win, "_unmin_attempts", 0) + 1
                     setattr(win, "_unmin_attempts", _n)
-                    if _n < 10:
+                    _ok = (getattr(win, "_unmin_stable", 0) + 1) if not win.isMinimized() else 0
+                    setattr(win, "_unmin_stable", _ok)
+                    if _ok < 6 and _n < 120:
                         _oneshot(win, 400, _unminimize_loop)
                     else:
                         setattr(win, "_unmin_attempts", 0)
+                        setattr(win, "_unmin_stable", 0)
                 except Exception:
                     pass
             for _ms in (1200, 1800, 2600, 3600):
