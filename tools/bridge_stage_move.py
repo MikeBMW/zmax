@@ -68,7 +68,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--step", type=float, default=15.0, help="每个动作位移 mm (默认 15)")
     ap.add_argument("--speed", type=float, default=100.0, help="速度 mm/s (默认 100)")
-    ap.add_argument("--band", type=float, default=25.0, help="锚点周围硬包络 ±mm (默认 25)")
+    ap.add_argument("--band", type=float, default=40.0, help="锚点周围硬包络 ±mm (默认 40)")
     ap.add_argument("--settle", type=float, default=0.15, help="阶段切换后采样窗口 s")
     ap.add_argument("--max-actions", type=int, default=40)
     a = ap.parse_args()
@@ -116,6 +116,27 @@ def main():
             print("🚧 阶段 %-6s 已到包络边界 (离锚 %.1fmm) ⇒ 跳过"
                   % (s, max(abs((cur[i] - anchor[i]) * 1000.0) for i in range(3))), flush=True)
             continue
+        # 🔄 回中: 累计偏移超过包络 60% 就先往回走一半, 否则动作会一路撞到扫掠闸
+        #    (2026-10-18 实测: 转移 -13.9mm + 转移·接触 -11.9mm = -25.8mm, 正好撞 ±25 边界被急停)
+        off = [(cur[i] - anchor[i]) * 1000.0 for i in range(3)]
+        if max(abs(x) for x in off) > a.band * 0.6:
+            back = [-x * 0.6 for x in off]
+            print("🔄 回中: 当前离锚 %s mm ⇒ 先往回走 %s mm"
+                  % ([round(x, 1) for x in off], [round(x, 1) for x in back]), flush=True)
+            rid0 = "rc_%d_%d" % (int(time.time()), n)
+            try:
+                _fifo({"id": rid0, "cmd": "move-rel", "tag": "bridge",
+                       "dx": round(back[0], 2), "dy": round(back[1], 2), "dz": round(back[2], 2),
+                       "speed": min(100.0, a.speed), "cap_mm": 30.0, "guard_box": gbox})
+            except OSError as e:
+                print("⚠️ 回中下发失败: %s" % e, flush=True)
+            t_rc = time.time()
+            while time.time() - t_rc < 20:
+                time.sleep(0.15)
+                if str(_j(RES).get("id")) == rid0:
+                    break
+            cur = [float(x) for x in _get("/pose")["xyz"]]
+            d = [u[i] * a.step for i in range(3)]      # 回中后按原方向重算余量
         st = _get("/ctl/status")
         if not st.get("motion_armed"):
             print("🔒 授权已撤 ⇒ 停", flush=True)
