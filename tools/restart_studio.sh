@@ -4,10 +4,19 @@ cd /home/ubuntu/zmax || exit 1
 # ⚠️ pgrep -f "studio[.]py" 会匹配到**执行本脚本的 shell** (其命令行含该串) ⇒ kill 会自杀。
 #    因此只取 comm 为 python* 的进程 (真正的解释器)。
 _pids() {
-  local p
-  for p in $(pgrep -f "gui/studio[.]py" 2>/dev/null); do
+  local p cwd
+  # 🔴 2026-10-18: 原模式 "gui/studio[.]py" 只匹配 `tools/gui/studio.py`,
+  #   漏掉**以 cwd=tools/gui 用裸 `studio.py` 启动**的实例 (实测: VSCode F5 / 手工启动) ⇒
+  #   清理时永远留下一个旧进程, 于是「N 个实例并存、用户看的是旧那个、改了看不到」。
+  #   现在按 cmdline 认 studio.py + 按 cwd 认工程目录, comm 必须是 python* (防匹配到本 shell)。
+  for p in $(pgrep -f "studio[.]py" 2>/dev/null); do
     case "$(cat /proc/$p/comm 2>/dev/null)" in
-      python*) echo "$p" ;;
+      python*) ;;
+      *) continue ;;
+    esac
+    cwd=$(readlink /proc/$p/cwd 2>/dev/null)
+    case "$cwd" in
+      /home/ubuntu/zmax|/home/ubuntu/zmax/tools/gui) echo "$p" ;;
     esac
   done
 }
