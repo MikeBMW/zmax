@@ -801,17 +801,28 @@ function drawVR(){
     const x=dx*R[0]+dy*R[1]+dz*R[2], y=dx*U[0]+dy*U[1]+dz*U[2];
     return {u:CX+F*x/z, v:CY-F*y/z, z:z};
   }
-  // 台面网格 (z=0.12, ±0.35m 网格)
-  g.strokeStyle='#1b2430'; g.lineWidth=1;
-  for(let i=-3;i<=3;i++){
-    const a=pr([0.7+i*0.1,0.2-0.35,0.12]), b=pr([0.7+i*0.1,0.2+0.35,0.12]);
+  // ── 地面 = base 世界系 xy 平面 (z=0) ──
+  // 老倪 2026-10-18: 「将三维视图的地面, 改成跟 base 世界 xy 平面重合的平面」
+  // 之前这块网格画在 z=0.12、中心 (0.7,0.2), 跟 base 系没关系, 看着像"悬空的台面"; 现在钉在 z=0、原点在 (0,0)。
+  const GZ=0.0, GE=0.90, GS=0.10;                 // z=0, 半径 0.9m, 格距 0.1m
+  const ng=Math.round(GE/GS);
+  for(let i=-ng;i<=ng;i++){
+    const c=Math.abs(i)%5===0;                    // 每 0.5m 一条亮线
+    g.strokeStyle=(i===0)?'#2f3b4a':(c?'#232f3d':'#182230'); g.lineWidth=(i===0)?1.6:(c?1.2:1);
+    const a=pr([i*GS,-GE,GZ]), b=pr([i*GS,GE,GZ]);          // 平行 Y 轴的线
     if(a&&b){g.beginPath();g.moveTo(a.u,a.v);g.lineTo(b.u,b.v);g.stroke();}
-    const c2=pr([0.7-0.35,0.2+i*0.1,0.12]), d2=pr([0.7+0.35,0.2+i*0.1,0.12]);
+    const c2=pr([-GE,i*GS,GZ]), d2=pr([GE,i*GS,GZ]);        // 平行 X 轴的线
     if(c2&&d2){g.beginPath();g.moveTo(c2.u,c2.v);g.lineTo(d2.u,d2.v);g.stroke();}
   }
-  // 基座竖轴(看方向)
-  const o1=pr([0.7,0.2,0.12]), o2=pr([0.7,0.2,0.42]);
-  if(o1&&o2){g.strokeStyle='#8b949e';g.beginPath();g.moveTo(o1.u,o1.v);g.lineTo(o2.u,o2.v);g.stroke();}
+  // 地面上的两条主轴: X 轴偏红 / Y 轴偏绿 (和坐标轴图层同色口径)
+  const ax=pr([-GE,0,GZ]), bx=pr([GE,0,GZ]), ay=pr([0,-GE,GZ]), by=pr([0,GE,GZ]);
+  if(ax&&bx){g.strokeStyle='rgba(226,88,88,.55)';g.lineWidth=1.6;g.beginPath();g.moveTo(ax.u,ax.v);g.lineTo(bx.u,bx.v);g.stroke();}
+  if(ay&&by){g.strokeStyle='rgba(88,190,110,.55)';g.lineWidth=1.6;g.beginPath();g.moveTo(ay.u,ay.v);g.lineTo(by.u,by.v);g.stroke();}
+  // 原点竖轴 (base 原点 = 机器人底座, z=0 就是这块地面)
+  const o1=pr([0,0,GZ]), o2=pr([0,0,0.35]);
+  if(o1&&o2){g.strokeStyle='#8b949e';g.setLineDash([4,4]);g.beginPath();g.moveTo(o1.u,o1.v);g.lineTo(o2.u,o2.v);g.stroke();g.setLineDash([]);}
+  if(o1){g.fillStyle='#c9d1d9';g.beginPath();g.arc(o1.u,o1.v,2.6,0,Math.PI*2);g.fill();
+    g.fillStyle='#6b7a8d';g.font='10px monospace';g.fillText('O(0,0,0)',o1.u+5,o1.v+12);}
   VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY,pr:pr};   // 🖱 点图取点(反投影) / 鼠标选中命中测试
   // 🦾 URDF 外形: 真关节角正运动学 (5Hz 跟随) → 凸包填充
   if(VR.urdf && URDF){
@@ -880,7 +891,7 @@ function drawVR(){
          +' · 法兰↔模块头 '+TCP.frames.flange_mm+'mm';
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
-  g.fillText('base 系 · 台面网格 z=0.12m · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
+  g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
   $('pVr').textContent=(SHOW?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点 · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 let drag=null;
