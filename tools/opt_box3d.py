@@ -46,11 +46,19 @@ def _yolo():
         return _YOLO
 
 
-def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32):
+def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32, max_extend=100,
+                   max_color_dist=45.0, green_extra=25):
     """在检测框基础上，沿长轴把整支光模块圈全（银色壳体 + 绿色拉环/头部）。
+
     检测框常只盖住壳体一段（实测：框到 y=118，而模块实际到 y≈157，头部被漏掉）。
-    做法：HSV 里取「低饱和高亮(金属) | 绿色(拉环)」像素，按行统计宽度剖面，
-    从框内向外扩；允许 ≤gap_max 行空洞，遇连续空洞即停（避免并入下方其它工件）。
+
+    🔴 两次现场血案（都是"扩过头"）：
+      ① 只按"行剖面 ≥ 0.32×框宽"扩 ⇒ 遇到大片同色背景一路扩到画面边缘（58px 的框被扩成 0~479）。
+      ② 只加"最多 ±100px"还不够 ⇒ 仍会把相邻的别的东西吃进来。
+    ⇒ 现在四条一起收口：
+      ①向外最多 max_extend px ②阈值 = max(8, 0.32×框宽, 0.5×框内剖面中位数)
+      ③扩出的行若明显比框宽（>1.6×）当场停 ④**颜色必须连续**：行内平均色与框内平均色差 ≤ max_color_dist；
+        绿色（拉环）允许再额外 green_extra px —— 因为拉环是绿的、壳体是银的，但绿 PCB 底面在更远处，靠这条把它挡住。
     """
     import cv2 as _cv
     H, W = img_bgr.shape[:2]
@@ -59,20 +67,47 @@ def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32):
     if xb - xa < 4 or y2 <= y1:
         return x1, y1, x2, y2, "跳过(框太小)"
     hsv = _cv.cvtColor(img_bgr, _cv.COLOR_BGR2HSV)
-    sub = hsv[:, xa:xb]
-    S = sub[:, :, 1].astype(int)
-    V = sub[:, :, 2].astype(int)
-    Hh = sub[:, :, 0].astype(int)
+    sub = img_bgr[:, xa:xb]
+    sh = hsv[:, xa:xb]
+    S = sh[:, :, 1].astype(int)
+    V = sh[:, :, 2].astype(int)
+    Hh = sh[:, :, 0].astype(int)
     mask = ((S < 80) & (V > 100)) | ((Hh > 33) & (Hh < 98) & (S > 50))
+    green = (Hh > 33) & (Hh < 98) & (S > 50)
     prof = mask.sum(axis=1)
-    thr = max(6, frac * (x2 - x1))
 
-    def grow(start, step):
+    ya, yb = max(0, y1), min(H - 1, y2)
+    in_prof = prof[ya:yb + 1]
+    base_med = float(np.median(in_prof)) if in_prof.size else 0.0
+    thr = max(8.0, frac * (x2 - x1), 0.5 * base_med)
+    wide = 1.6 * max(4, x2 - x1)
+
+    sel = mask[ya:yb + 1]
+    ref_col = sub[ya:yb + 1][sel].mean(0) if sel.any() else None
+
+    def row_col(y):
+        m = mask[y]
+        return (sub[y][m].mean(0) if m.any() else None), (m & green[y]).sum() > 0.5 * max(1, m.sum())
+
+    def ok_row(y, moved):
+        if prof[y] < thr or prof[y] > wide:
+            return False
+        c, is_green = row_col(y)
+        if ref_col is None or c is None:
+            return True
+        d = float(np.abs(c - ref_col).mean())
+        if d <= max_color_dist:
+            return True
+        return bool(is_green and moved <= green_extra)          # 拉环: 颜色不同但紧邻
+
+    def grow(start, step, limit):
         gap = 0
         y = start
-        while 0 <= y + step < H:
+        moved = 0
+        while 0 <= y + step < H and moved < limit:
             y += step
-            if prof[y] >= thr:
+            moved += 1
+            if ok_row(y, moved):
                 gap = 0
             else:
                 gap += 1
@@ -80,8 +115,8 @@ def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32):
                     return y - step * gap
         return y
 
-    top = grow(y1, -1)
-    bot = grow(y2, +1)
+    top = grow(y1, -1, max_extend)
+    bot = grow(y2, +1, max_extend)
     if bot <= top:
         return x1, y1, x2, y2, "扩失败(剖面为空)"
     band = mask[top:bot + 1]
@@ -210,6 +245,13 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         D = float(_LAST["d_mm"])                    # 被裁时沿用上一次未裁的距离, 避免框忽然变大
         src = "size(沿用上次未裁切距离 %.1fmm)" % D
         warn.append("目标出画被裁, 距离沿用上一次完整观测(15s 内), 不重新反解")
+    elif clipped:
+        # 🔴 2026-10-18 现场: 只剩"一个小头"时, 可见高度 61px ≠ 整支 56.5mm,
+        # 按长轴反解会给出 365mm 这种明显偏大的距离 ⇒ 框的深度/尺寸跟着错。
+        # 宽度几乎不受纵向裁切影响, 被裁时改用**宽度**反解。
+        D = f * float(MOD_W_MM) / w_px
+        src = "size(被裁→用宽度 %.1fmm ↔ 画面 %.0fpx)" % (MOD_W_MM, w_px)
+        warn.append("目标出画被裁 ⇒ 长轴不可信, 改用宽度反解距离(宽度受纵向裁切影响小)")
     else:
         D = f * float(h_mm) / h_px
         src = "size(已知件长 %.1fmm ↔ 画面 %.0fpx)" % (h_mm, h_px)
