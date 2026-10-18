@@ -29,6 +29,7 @@ YOLO_PT = os.path.join(REPO, "models", "yolo_peg_live.pt")
 # 与 13.4/56.5 = 0.24 吻合 ⇒ 长轴当 56.5mm 用。可用环境变量覆盖。
 MOD_H_MM = float(os.environ.get("ZMAX_MOD_H_MM", "56.5"))     # 长轴
 MOD_W_MM = float(os.environ.get("ZMAX_MOD_W_MM", "13.4"))     # 短轴(参考)
+MOD_D_REF_MM = float(os.environ.get("ZMAX_MOD_D_REF", "159.2"))   # 整支可见时实测的相机↔模块距离(刚性参考)
 MOD_T_MM = float(os.environ.get("ZMAX_MOD_T_MM", "8.5"))      # 厚度
 CONF_MIN = float(os.environ.get("ZMAX_MOD_CONF", "0.25"))
 
@@ -261,16 +262,35 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         warn.append("检出的类别是 %s, 不是 OPT_Gold (光模块类) —— 按同一位置给框" % det["name"])
     x1, y1, x2, y2 = det["xyxy"]
     det_box = [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)]
-    # 🔎 检测框常只盖住壳体一段(实测到 y=118, 模块实际到 y≈157) ⇒ 沿长轴把整支(含头部)圈全
-    rx1, ry1, rx2, ry2, rnote = _refine_extent(img_bgr, x1, y1, x2, y2)
-    x1, y1, x2, y2 = rx1, ry1, rx2, ry2
     H_img, W_img = img_bgr.shape[:2]
+    # 🔎 检测框常只盖住壳体一段(实测到 y=118, 模块实际到 y≈157) ⇒ 沿长轴把整支(含头部)圈全
+    # 🔴 但**已经被画幅裁掉时绝不能再外扩**(老倪 2026-10-18「又太长了」):
+    # 只剩小头时, 检测框下方紧挨着的是台面/背景亮面, 外扩会跨过缝隙把背景并进来(实测 58px→92px)。
+    # 被裁 = 只看得到一段, 这时"整支有多长"本来就不可观测 ⇒ 用检测框原样, 不猜。
+    _clip0 = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5, "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}
+    if any(_clip0.values()):
+        rnote = "被裁(%s)⇒用检测框原样, 不外扩" % "/".join(k for k, v in _clip0.items() if v)
+    else:
+        rx1, ry1, rx2, ry2, rnote = _refine_extent(img_bgr, x1, y1, x2, y2)
+        x1, y1, x2, y2 = rx1, ry1, rx2, ry2
     # 🔴 框贴边 = 目标被画幅裁掉: 此时"框高 ⇒ 距离"必然偏大(看到的只是局部), 不能当真
     clip = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5,
             "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}
     clipped = [k for k, v in clip.items() if v]
     if clipped:
         warn.append("检测框贴到画面边缘(%s) ⇒ 目标被裁, 尺寸不完整, 距离反解会偏大" % "/".join(clipped))
+    # 🔴 2026-10-18 老倪(只露小头时): 「有点大, 现在光模块只是露了一个小头」
+    # 只剩小头时, 可见区域会把**背景的亮面/金属反光**一起圈进来(实测框宽 68px, 而真实小头只有 36px),
+    # 框就被撑大。物理上能算: 模块宽 13.4mm、夹住后相机↔模块距离 159.2mm(刚性) ⇒ 画面里就该是
+    # f×13.4/159.2 ≈ 32px。所以"被裁"时宽度按这个**物理宽度**收口, 不再相信可见掩膜。
+    if clipped:
+        _f0 = float(K[0, 0])
+        w_ref_px = _f0 * float(MOD_W_MM) / float(MOD_D_REF_MM)
+        _cx = (x1 + x2) / 2.0
+        if (x2 - x1) > 1.25 * w_ref_px:                 # 明显比物理宽度宽 ⇒ 圈进背景了
+            x1, x2 = _cx - w_ref_px / 2.0, _cx + w_ref_px / 2.0
+            warn.append("被裁+框过宽(%0.0fpx > 物理 %0.0fpx) ⇒ 宽度按 13.4mm/159.2mm 收口"
+                        % ((_cx + w_ref_px / 2.0) - (_cx - w_ref_px / 2.0), w_ref_px))
     u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
     h_px = max(1.0, y2 - y1)
     w_px = max(1.0, x2 - x1)
@@ -294,12 +314,11 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         src = "size(沿用上次未裁切距离 %.1fmm)" % D
         warn.append("目标出画被裁, 距离沿用上一次完整观测(15s 内), 不重新反解")
     elif clipped:
-        # 🔴 2026-10-18 现场: 只剩"一个小头"时, 可见高度 61px ≠ 整支 56.5mm,
-        # 按长轴反解会给出 365mm 这种明显偏大的距离 ⇒ 框的深度/尺寸跟着错。
-        # 宽度几乎不受纵向裁切影响, 被裁时改用**宽度**反解。
-        D = f * float(MOD_W_MM) / w_px
-        src = "size(被裁→用宽度 %.1fmm ↔ 画面 %.0fpx)" % (MOD_W_MM, w_px)
-        warn.append("目标出画被裁 ⇒ 长轴不可信, 改用宽度反解距离(宽度受纵向裁切影响小)")
+        # 被裁 = 只看得到一段 ⇒ 尺寸反解都不可靠(实测: 长轴 365mm / 宽度 77.7mm, 真值 159mm)。
+        # 模块被夹爪夹住时相机↔模块是**刚性距离**, 直接用整支可见时实测的参考值。
+        D = float(MOD_D_REF_MM)
+        src = "刚性参考 %.1fmm(被裁, 不反解)" % D
+        warn.append("目标出画被裁 ⇒ 不做尺寸反解, 距离取刚性参考 %.0fmm" % D)
     else:
         D = f * float(h_mm) / h_px
         src = "size(已知件长 %.1fmm ↔ 画面 %.0fpx)" % (h_mm, h_px)
