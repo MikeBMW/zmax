@@ -89,6 +89,26 @@ def read(prefix, raw):
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
                     out["%s · %s" % (tag, lab)] = float(v)
         return out
+    # 🧭 2026-10-18 老倪: 「运动规划这些信号…感觉没啥用呢?」——
+    #   原来整份段表 flatten 出 21 条 (含 t / segs.N.id / segs.N.service 这类恒等值), 屏幕全是噪音。
+    #   这里只出**能回答问题的 11 条**: 几段/多远/多快(页面vs实际)/有没有被限速/是不是人工回点/每段多远/数据多新。
+    if prefix == "planlive":
+        _segs = raw.get("segs") or []
+        _o = {"n_segs": raw.get("n"), "total_mm": raw.get("lin_total_mm"),
+              "v_page_mms": raw.get("req_speed_mm_s"), "v_actual_mms": raw.get("speed_mm_s_actual"),
+              "v_units_req": raw.get("req_speed_units_raw"), "v_units_used": raw.get("req_speed"),
+              "manual": raw.get("req_manual_point")}
+        for _i, _s in enumerate(_segs[:4], 1):
+            _o["seg%d_mm" % _i] = (_s or {}).get("lin_mm")
+        _o["age_s"] = max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))
+        return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    # ⚙️ 2026-10-18: 执行器同理 —— 只留"进度/残差/速度/目标/新鲜度" 8 条
+    if prefix == "ss_exec":
+        _o = {"phase_code": raw.get("phase_code"), "seg": raw.get("seg"), "n_seg": raw.get("n_seg"),
+              "residual_mm": raw.get("residual_mm"), "v_mms": raw.get("speed_mm_s"),
+              "tgt_x": raw.get("target_x"), "tgt_y": raw.get("target_y"), "tgt_z": raw.get("target_z"),
+              "age_s": max(0.0, time.time() - float(raw.get("t_pub") or raw.get("t") or 0.0))}
+        return {k: float(v) for k, v in _o.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     if prefix in ("ar", "sskill") and isinstance(raw.get("s"), dict):
         meta = ("ts", "t", "age", "meta", "groups", "schema")
         return {str(k): float(v) for k, v in raw["s"].items()
