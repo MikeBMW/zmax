@@ -101,10 +101,10 @@ def trace_horizontal(g, seed, pad=7, gap_merge=45):
             "prof_z_max": round(float(z[lo:hi].max()), 2)}
 
 
-def trace_hough(g, seed, min_len=60, max_gap=60):
+def trace_hough(g, seed=None, min_len=60, max_gap=60, edge_skip=8):
     """HoughLinesP 追整条划痕 —— 关键在 maxLineGap 足够大, 它能跨过亮度断点把线段接起来。
     划痕本身是**直线**, 连通域法会按对比度断开, Hough 按共线接续 ⇒ 这才是量长划痕的正路。"""
-    x0, y0, sw, sh = seed
+    x0, y0, sw, sh = seed if seed else (0, 0, 1, 1)   # seed=None 时只走全自动分支, 不用这些值
     gx = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 4)).apply(g)
     ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
     chans = {"dark": cv2.morphologyEx(gx, cv2.MORPH_BLACKHAT, ker),
@@ -130,13 +130,19 @@ def trace_hough(g, seed, min_len=60, max_gap=60):
                 if ln < min_len:
                     continue
                 ang = float(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
+                # 排除贴边棱线: 模块上下沿是横贯整宽的强边, 永远比真划痕长, 不排掉必被当成划痕
+                #   (实测 y=0 长985 / y=186 长1094 都排在真划痕 y=93 长830 之前)
+                H_ = g.shape[0]
+                seg_y_raw = (y1 + y2) / 2.0
+                if seg_y_raw <= edge_skip or seg_y_raw >= H_ - edge_skip:
+                    continue
                 all_lines.append({"ch": cname, "k": ksz, "p": [x1, y1, x2, y2],
                                   "len": round(ln, 1), "ang": round(ang, 1)})
-                # 挑覆盖种子的那条
-                seg_y = (y1 + y2) / 2.0
-                in_band = abs(seg_y - (y0 + sh / 2.0)) <= max(12, sh)
+                # 挑覆盖种子的那条 (seed=None 时取最长, 全自动)
+                seg_y = seg_y_raw
+                in_band = True if seed is None else (abs(seg_y - (y0 + sh / 2.0)) <= max(12, sh))
                 seg_x1, seg_x2 = min(x1, x2), max(x1, x2)
-                covers = seg_x1 - max_gap <= (x0 + sw / 2.0) <= seg_x2 + max_gap
+                covers = True if seed is None else (seg_x1 - max_gap <= (x0 + sw / 2.0) <= seg_x2 + max_gap)
                 if in_band and covers and (best is None or ln > best["len"]):
                     best = {"ch": cname, "k": ksz, "p": [x1, y1, x2, y2], "len": round(ln, 1),
                             "ang": round(ang, 1), "x1": seg_x1, "x2": seg_x2,
@@ -153,9 +159,12 @@ def main():
     H, W = g.shape[:2]
     print("曝光 %s | ROI %dx%d mean=%.1f 死白=%.2f%%"
           % (expo, W, H, g.mean(), float((g >= 250).mean() * 100)))
-    print("种子(老倪指认12号): xywh=%s\n" % SEED)
+    if "--seed" in sys.argv:
+        print("种子(老倪指认12号): xywh=%s\n" % SEED)
 
-    best, top = trace_hough(g, SEED)
+    use_seed = SEED if "--seed" in sys.argv else None
+    print("模式: %s\n" % ("按老倪指认种子 %s 追" % SEED if use_seed else "全自动(排除棱线后取最长直线)"))
+    best, top = trace_hough(g, use_seed)
     print("① Hough 共线接续(前 10 条最长直线):")
     for i, L in enumerate(top, 1):
         print("   #%-2d %-6s 核%-4d 长%-7.1f 角度%-7.1f p=%s" % (i, L["ch"], L["k"], L["len"], L["ang"], L["p"]))
