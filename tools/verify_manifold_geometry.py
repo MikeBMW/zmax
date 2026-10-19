@@ -114,33 +114,60 @@ ck("② 零回归·su2梯度=纯差分", worst < 1e-12, "8 组最大偏差 %.2e 
 # ══════════════════════════════════════════════════════════════════════════
 # ③ 混合势是**分段**的 (2026-10-19 实测: 度规势在 c→0 有驻点 ⇒ 远距离退回欧氏), 所以判据也分段:
 #    c ≥ C_HI ⇒ Φ == ½d_M²  |  c ≤ C_LO ⇒ Φ == ½‖p−g‖²  |  过渡区必须连续 (无跳变)
-from lerobot.manifold.manifold_engine import PHI_METRIC_C_HI, PHI_METRIC_C_LO  # noqa: E402
+from lerobot.manifold.manifold_engine import (PHI_METRIC_C_HI, PHI_METRIC_C_LO,  # noqa: E402
+                                              PHI_METRIC_W_MAX)
 
 for mtype, pairs in (("su2", su2_points(24)), ("sphere", sphere_points(24))):
     eng = make_engine(mtype, phi_metric=True, su2_tangent=False)
     w_near = w_far = 0.0
     n_near = n_far = 0
-    prev_phi = None
+    prev_u = None
     jump = 0.0
     for p, g in pairs:
         eng.current_manifold_point = p
         eng.goal_point = g
-        val = float(eng.gradient_flow()["phi"])
+        gmix = np.asarray(eng.gradient_flow()["grad"], float)
         c = abs(float(np.dot(unit(p), unit(g))))
-        d = float(eng.metric.distance(p, g))
-        eu = 0.5 * float(np.dot(p - g, p - g))
+        w = float(eng._metric_phi_weight(p, g))
+        # 分段口径 (2026-10-20 改): 执行量是**权重 w + 梯度方向**, 不是 Φ 的数值。
+        #   近区 (c≥C_HI): w 必须到上限 W_MAX (留 1-W_MAX 欧氏腿保单调性)
+        #   远区 (c≤C_LO): w 必须为 0 (退纯欧氏)
         if c >= PHI_METRIC_C_HI:
-            w_near = max(w_near, abs(val - 0.5 * d * d)); n_near += 1
+            w_near = max(w_near, abs(w - PHI_METRIC_W_MAX)); n_near += 1
         elif c <= PHI_METRIC_C_LO:
-            w_far = max(w_far, abs(val - eu)); n_far += 1
-        if prev_phi is not None:
-            jump = max(jump, abs(val - prev_phi))
-        prev_phi = val
-    # 近距离必等于度规势, 远距离必等于欧氏势 (各段都得有样本才判定)
-    ok = (w_near < 1e-6 if n_near else True) and (w_far < 1e-6 if n_far else True) and (n_near + n_far > 0)
+            w_far = max(w_far, abs(w)); n_far += 1
+        nu = float(np.linalg.norm(gmix))
+        if nu > 1e-12:
+            u = gmix / nu
+            if prev_u is not None:
+                jump = max(jump, 1.0 - float(np.dot(u, prev_u)))
+            prev_u = u
+    # 连续性必须沿**连续路径**测: pairs 是互相独立的随机点, 相邻两点方向本来就无关
+    #   (实测跳变 1.87 ≈ 完全反向), 拿它当「硬切换」证据是判据设计错误。
+    #   这里固定 goal, 让 p 沿同一方向连续靠近 ⇒ 方向应平滑变化。
+    _n = 4 if mtype == "su2" else 3
+    _g_fix = unit(RNG.normal(size=_n))
+    _d_fix = unit(RNG.normal(size=_n))
+    prev_u = None
+    jump = 0.0
+    for _t in np.linspace(0.90, 0.05, 26):
+        _p_fix = unit(_g_fix + _t * _d_fix)
+        eng.current_manifold_point = _p_fix
+        eng.goal_point = _g_fix
+        _gm = np.asarray(eng.gradient_flow()["grad"], float)
+        _nu = float(np.linalg.norm(_gm))
+        if _nu < 1e-12:
+            continue
+        _u = _gm / _nu
+        if prev_u is not None:
+            jump = max(jump, 1.0 - float(np.dot(_u, prev_u)))
+        prev_u = _u
+    # 近区权重必达上限, 远区权重必为 0; 相邻点的方向不得突变 (无硬切换)
+    ok = (w_near < 1e-9 if n_near else True) and (w_far < 1e-9 if n_far else True) \
+        and (n_near + n_far > 0) and jump < 0.6
     ck("③ phi_metric分段正确(%s)" % mtype, ok,
-       "近区(c≥%.2f) %d 例 偏差%.2e · 远区(c≤%.2f) %d 例 偏差%.2e · 相邻跳变≤%.3f"
-       % (PHI_METRIC_C_HI, n_near, w_near, PHI_METRIC_C_LO, n_far, w_far, jump))
+       "近区(c≥%.2f) %d 例 w 偏差%.2e(期望=%.2f) · 远区(c≤%.2f) %d 例 w 偏差%.2e · 相邻方向跳变≤%.3f"
+       % (PHI_METRIC_C_HI, n_near, w_near, PHI_METRIC_W_MAX, PHI_METRIC_C_LO, n_far, w_far, jump))
 
 # ══════════════════════════════════════════════════════════════════════════
 # ④ su2_tangent 生效: ∇Φ 严格落在切空间 ⟨∇Φ,p⟩=0

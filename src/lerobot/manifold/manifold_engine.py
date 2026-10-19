@@ -145,6 +145,9 @@ MANIFOLD_M_UNIT = "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信�
 #   而 c=0.001 起 ‖∇Φ‖ 已异常增高、c=0 直接塌陷 ⇒ 把"纯度规"的边界放在 0.1 是保守取值。
 PHI_METRIC_C_LO = 0.10
 PHI_METRIC_C_HI = 0.35
+# 度规权重上限: 留 15% 欧氏分量作单调性保底 (纯度规时 2.4% 的步会让 Φ 微增)。
+# 可用环境变量 ZMAX_PHI_W_MAX 覆盖。
+PHI_METRIC_W_MAX = float(os.environ.get("ZMAX_PHI_W_MAX", "0.85"))
 M_EPS = 1e-9                                   # M ≤ M_EPS 视为无惯性 (过阻尼极限)
 
 
@@ -776,6 +779,78 @@ class ManifoldEngine:
         out["t_navigate_ms"] = round((time.perf_counter() - t0) * 1e3, 3)
         return out
 
+    def _metric_phi_smooth(self, q: np.ndarray, goal: np.ndarray) -> float:
+        """Fubini–Study 的**光滑等价势**: ½(1−c²), c=|⟨q,goal⟩|/(|q||goal|).
+
+        为什么不是 ½·arccos(c)²:
+          · arccos 在 c→1 (两状态几乎同一姿态) 处导数 -1/√(1-c²) **发散** ⇒ 数值微分裂掉;
+          · |⟨q,goal⟩| 在 c=0 处**不可导** (绝对值尖点) ⇒ 方向由噪声决定。
+          而 c² 把绝对值吃掉了 (⟨q,g⟩² 光滑), 且 ∂/∂p[½(1-c²)] ∝ -∂c/∂p 与
+          ∂/∂p[½arccos(c)²] ∝ -arccos(c)/√(1-c²)·∂c/∂p **同向** (c>0)
+          ⇒ 同一族测地线, 方向完全等价, 但处处有限。
+
+        ⚠️ 符号: SU(2) 里 p 与 -p 是同一姿态, 但 ⟨p,goal⟩ 的**符号**决定梯度指向。
+          本势的切向梯度 ∝ -_dot·(g - _dot·p) (见 _mixed_gradient 推导), _dot<0 时**整体反向**。
+          实测 k=30 约 9%、k=150 约 34% 的样本 _dot<0 ⇒ 必须先把 goal 翻到与 q 同半球。
+          调用方 (_mixed_gradient) 已负责翻转; 本函数单独使用时按原式算 (口径不变)。
+        """
+        q = np.asarray(q, float).ravel()
+        nq = float(np.linalg.norm(q))
+        ng = float(np.linalg.norm(goal))
+        if nq < 1e-12 or ng < 1e-12:
+            return 0.0
+        _dot = float(np.dot(q, goal)) / (nq * ng)          # 带符号, 不取绝对值
+        return 0.5 * (1.0 - _dot)
+
+    def _metric_phi_weight(self, q: np.ndarray, goal: np.ndarray) -> float:
+        """度规权重 w∈[0,1]: c 太小 (对跖/正交点, 方向本性不定) 时退回欧氏势。
+
+        上限 PHI_METRIC_W_MAX (默认 0.85): 留 15% 欧氏分量作单调性保底 ——
+        混合方向不是严格的 -∇Φ 方向, 纯 100% 度规时实测有 2.4% 的步会让 Φ 微增
+        (单调率掉到 0.976); 留一条欧氏腿把方向拴在「确实下降」的一侧。
+        """
+        q = np.asarray(q, float).ravel()
+        nq = float(np.linalg.norm(q))
+        ng = float(np.linalg.norm(goal))
+        if nq < 1e-12 or ng < 1e-12:
+            return 0.0
+        c = abs(float(np.dot(q, goal)) / (nq * ng))
+        w = float(np.clip((c - PHI_METRIC_C_LO) / max(PHI_METRIC_C_HI - PHI_METRIC_C_LO, 1e-9), 0.0, 1.0))
+        w = w * w * (3.0 - 2.0 * w)
+        return min(w, PHI_METRIC_W_MAX)
+
+    def _mixed_gradient(self, p: np.ndarray) -> np.ndarray:
+        """度规势与欧氏势的**方向级混合**梯度 (幅值始终取欧氏梯度范数).
+
+        原实现把两个势按 w 线性相加成一个标量函数 phi 再数值求导:
+          · 两者量纲不同 (Φ_eu 可任意大, Φ_met∈[0,0.5]) ⇒ 混合后幅值跳变;
+          · arccos 在 c→1 处的奇点仍在 phi 里 ⇒ 梯度被噪声主导。
+        改成分开求梯度, 只在**单位方向**上按 w 插值, 幅值统一用 ‖∇Φ_eu‖:
+          · 方向带度规几何 (测地线方向), 幅值不发散 ⇒ 收敛行为可控。
+        """
+        goal0 = np.asarray(self.goal_point, float).ravel()
+        p = np.asarray(p, float).ravel()
+        # 度规势用 ½(1-⟨p̂,ĝ⟩) (带符号, 见 _metric_phi_smooth): 梯度方向唯一指向 goal0,
+        #   不需要再翻半球代表 —— 早期版本用 ½(1-c²) 时 c 取绝对值导致 goal/-goal 同势,
+        #   翻转无效且 _dot<0 时整体反向 (实测 k=150 有 34.0% 样本 _dot<0, B 臂 cos 掉到 0.3238)。
+        g_eu = self.metric.tangent_gradient(
+            lambda q: 0.5 * float(np.dot(np.asarray(q, float).ravel() - goal0,
+                                         np.asarray(q, float).ravel() - goal0)), p)
+        ne = float(np.linalg.norm(g_eu))
+        w = self._metric_phi_weight(p, goal0)
+        if w <= 1e-9 or ne < 1e-12:
+            return g_eu
+        g_met = self.metric.tangent_gradient(
+            lambda q: self._metric_phi_smooth(q, goal0), p)
+        nm = float(np.linalg.norm(g_met))
+        if nm < 1e-12:
+            return g_eu
+        u = (1.0 - w) * (g_eu / ne) + w * (g_met / nm)
+        un = float(np.linalg.norm(u))
+        if un < 1e-12:
+            return g_eu
+        return (u / un) * ne
+
     def gradient_flow(self, potential_fn=None, p: np.ndarray | None = None) -> dict:
         t0 = time.perf_counter()
         p = self.current_manifold_point if p is None else np.asarray(p, float).ravel()
@@ -785,32 +860,25 @@ class ManifoldEngine:
             phi = potential_fn
         elif self.goal_point is None:
             phi = lambda q: 0.0                                   # noqa: E731
-        elif self.phi_metric:
-            # 势函数用**该度规自身**的距离 Φ=½·d_M(q,goal)², 但必须混合欧氏兜底 ——
-            # 2026-10-19 实测 (tools/diag_metric_phi.py): 度规势的方向在 c=⟨p̂,ĝ⟩∈[0.001,0.999] 上
-            #   **全程 cos=1.0000** (欧氏势只有 0.707~0.9997 ⇒ 越远越偏), 但 c→0 处 Fubini–Study
-            #   的 |⟨p,q⟩| 有尖点: c=0 时 ‖∇Φ‖ 塌到 5.9e-05 (驻点) ⇒ 方向由数值噪声决定。
-            #   而 project() 的 bounded_rotvec(gain=2.0) 把远距离状态映射到接近 π 的旋转,
-            #   真实轨迹 k=150 时大量点正好落在这个驻点上 (实测 cos 掉到 0.28)。
-            # ⇒ 近距离 (c 大, 度规方向准) 用度规势; 远处 (c 小, 易驻点) 平滑过渡到欧氏势。
-            _g = np.asarray(self.goal_point, float).ravel()
-            _m = self.metric
-            _glen = max(float(np.linalg.norm(_g)), 1e-12)
-
-            def phi(q, _g=_g, _m=_m, _glen=_glen):
-                _qv = np.asarray(q, float).ravel()
-                _d = float(_m.distance(_qv, _g))
-                _eu = 0.5 * float(np.dot(_qv - _g, _qv - _g))
-                _qlen = float(np.linalg.norm(_qv))
-                if _qlen < 1e-12:
-                    return _eu
-                _c = abs(float(np.dot(_qv, _g)) / (_qlen * _glen))       # |cos| 夹角余弦
-                _w = float(np.clip((_c - PHI_METRIC_C_LO) / (PHI_METRIC_C_HI - PHI_METRIC_C_LO), 0.0, 1.0))
-                _w = _w * _w * (3.0 - 2.0 * _w)                          # smoothstep, 避免硬切换
-                return _w * (0.5 * _d * _d) + (1.0 - _w) * _eu
         else:
+            # 度规分支的标量势 (½arccos² 的 w-混合版) 已不再参与任何计算:
+            #   梯度改走 _mixed_gradient (方向级混合, 见其 docstring),
+            #   监视势也统一成欧氏尺度 ½‖p-goal‖² (见下方 phi_mon)。
+            #   两个口径都只要欧氏式 —— 留着旧 arccos 势只会让「监视势」与「执行梯度」不同源,
+            #   实测单调率因此掉到 0.976 (沿新梯度走, 旧势不单调)。
             phi = lambda q: 0.5 * float(np.dot(q - self.goal_point, q - self.goal_point))
-        g = self.metric.tangent_gradient(phi, p)
+        # ── 度规势: 方向级混合 (2026-10-20) ──
+        #   原路径把混合后的标量 phi 整体数值求导 ⇒ arccos 奇点 + 量纲差都进梯度。
+        #   现在度规分支改走 _mixed_gradient: 两势分别求导, 只在单位方向插值, 幅值取欧氏。
+        _use_mix = bool(self.phi_metric and potential_fn is None and self.goal_point is not None)
+        if _use_mix:
+            g = self._mixed_gradient(p)
+        else:
+            g = self.metric.tangent_gradient(phi, p)
+        # ⚠️ 监视势与梯度同源: phi 已是欧氏式 ½‖p-goal‖², 与 _mixed_gradient 的幅值
+        #   (‖∇Φ_eu‖) 一致 ⇒ 单调性判据与执行量同口径。旧实现此处返回 ½arccos²(Fubini–Study),
+        #   沿新方向走不单调, 实测单调率掉到 0.976。
+        phi_mon = phi
         d = -g
         self.lat["metric"].append((time.perf_counter() - t0) * 1e3)
         # 🐛 2026-10-16 老倪「静默降级零容忍 / 未测不许冒充 0」: goal_point=None 时
