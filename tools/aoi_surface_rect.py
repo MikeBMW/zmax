@@ -32,7 +32,7 @@ def _prep(gray):
     return cv2.GaussianBlur(clahe.apply(gray), (5, 5), 0)
 
 
-def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4):
+def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, aspect_min=2.5):
     """在整幅画面里**搜索**矩形刚体(位置/角度每帧变, 不写死坐标)。
 
     返回 (rect, meta): rect = dict(cx,cy,w,h,angle,fill,area_frac) 或 None。
@@ -62,13 +62,20 @@ def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4):
         if w * h <= 0:
             continue
         fill = a / float(w * h)
+        # 2026-10-20 搜索漂移修正: 光模块是**扁长**的(实测 5.97~6.82:1), 而台面/夹具接近方形(实测 1.88:1)。
+        #   不加这道闸时, 48000us 下会搜到 2394x1274 的台面当刚体 ⇒ 摆正对着台面转, 判据图全错。
+        asp = max(w, h) / float(max(1e-6, min(w, h)))
+        if aspect_min > 0 and asp < aspect_min:
+            continue
         cands.append((af * fill, dict(cx=float(_cx), cy=float(_cy), w=float(w), h=float(h),
-                                      angle=float(ang), fill=float(fill), area_frac=float(af))))
+                                      angle=float(ang), fill=float(fill), area_frac=float(af),
+                                      aspect=float(asp))))
     cands.sort(key=lambda t: -t[0])
     meta = {"ok": False, "mode": mode, "n_cand": len(cands), "fg_frac": round(fg, 3), "shape": [int(H), int(W)],
             "bright_frac": round(float(np.mean(g >= 250)), 4), "p99": int(np.percentile(g, 99))}
     if not cands:
-        meta["why"] = "搜索不到候选矩形(面积闸 0.5%%~75%% 全不过) ⇒ 工件不在位/画面全暗"
+        meta["why"] = ("搜索不到候选矩形(面积闸 0.5%%~75%% + 长宽比≥%.1f 全不过) ⇒ 工件不在位/画面全暗"
+                       % aspect_min)
         return None, meta
     best = cands[0][1]
     meta.update(best)
