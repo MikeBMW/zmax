@@ -3123,8 +3123,20 @@ class ConfigCenterPage(QWidget):
             _l10.addWidget(_lb10)
             _l10.addStretch()
             self.tabs.addTab(_scrollable(_w10, th), "💰 成本/报价")
+        # 11) 🧩 商业模式 —— 2026-10-19 老倪: 「在配置中心，要有商业模式，从配置导出商业模式」
+        #     算法真源 tools/business_model.py (输入 = 成本真源 + 商业模式假设真源);
+        #     本页只做「现算 → 复制/导出」, 不写第二套公式, 不落盘派生值。
+        try:
+            self.tabs.addTab(_scrollable(self._biz_page(th), th), "🧩 商业模式")
+        except Exception as _e11:                                                # noqa: BLE001
+            _w11 = QWidget()
+            _l11 = QVBoxLayout(_w11)
+            _lb11 = QLabel("⛔ 商业模式页构造失败: %r" % (_e11,))
+            _lb11.setWordWrap(True)
+            _l11.addWidget(_lb11)
+            _l11.addStretch()
+            self.tabs.addTab(_scrollable(_w11, th), "🧩 商业模式")
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
-
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
         try:
             _mk = os.path.join(ROOT, "zmax_data", "cc_last_tab.txt")
@@ -3673,7 +3685,7 @@ class ConfigCenterPage(QWidget):
     # 2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面; 取消文档预览页面, 合并到 文档配置页面」
     # ⇒ 只剩 7 个配置页 + 1 个非七星视图 (工程配置)。页签名 = 配置名。
     _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                  "工程配置", "成本/报价")
+                  "工程配置", "成本/报价", "商业模式")
 
     def _apply_tab_order(self):
         """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
@@ -3935,6 +3947,315 @@ class ConfigCenterPage(QWidget):
             self._log_cc("💰 成本估算已导出: %s" % _p)
         except Exception as _e:                                             # noqa: BLE001
             self._cost_log.setText("⛔ 导出失败: %r" % (_e,))
+
+    # ══════════════════════════════════════════════════════════════════
+    # 🧩 商业模式 (2026-10-19 老倪: 「在配置中心，要有商业模式，从配置导出商业模式」)
+    #   算法: tools/business_model.py (唯一公式) · 输入: 成本真源 + 商业模式假设真源
+    #   页面只做 改假设 → 现算 → 复制/导出; 派生值 (回本/floor/毛利/阶段价) 一律不落盘
+    # ══════════════════════════════════════════════════════════════════
+    def _biz_page(self, th):
+        _w = QWidget()
+        _lay = QVBoxLayout(_w)
+        _lay.setContentsMargins(6, 6, 6, 6)
+        try:
+            import business_model as _bm
+        except Exception as _e:                                                 # noqa: BLE001
+            _lb = QLabel("⛔ tools/business_model.py 不可用: %r" % (_e,))
+            _lb.setWordWrap(True)
+            _lay.addWidget(_lb)
+            _lay.addStretch()
+            return _w
+        self._biz_m = _bm
+        try:
+            self._biz_d = _bm.load()
+        except Exception as _e:                                                 # noqa: BLE001
+            _lb = QLabel("⛔ 商业模式真源读不到 (config/platform/zmax_business_model.json): %r" % (_e,))
+            _lb.setWordWrap(True)
+            _lay.addWidget(_lb)
+            _lay.addStretch()
+            return _w
+
+        _gray = th.get("C_GRAY", "#8b949e")
+        _acc = th.get("C_ACCENT", "#58a6ff")
+
+        _h = QLabel("🧩 商业模式 · 成本结构 → 成交区间 → 三阶段定价 (从上面各配置现算)")
+        _h.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        _h.setStyleSheet("color:%s;background:transparent;" % _acc)
+        _lay.addWidget(_h)
+        self._biz_l_src = QLabel()
+        self._biz_l_src.setWordWrap(True)
+        self._biz_l_src.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._biz_l_src)
+
+        # ── 成本结构 (固定 vs 变动) ──
+        self._biz_t_struct = _mk_table(["成本结构", "值", "说明"], [], th, widths=[170, 120, 420])
+        _lay.addWidget(self._biz_t_struct)
+
+        # ── 分层口径 (客户真实回本) ──
+        self._biz_l_lay = QLabel()
+        self._biz_l_lay.setWordWrap(True)
+        self._biz_l_lay.setFont(QFont("Consolas", 10))
+        self._biz_l_lay.setStyleSheet("color:%s;background:%s;border:1px solid %s;"
+                                      "border-radius:4px;padding:6px;"
+                                      % (th.get("C_WHITE", "#e6edf3"), th.get("C_BG2", "#161b22"),
+                                         th.get("C_BORDER", "#30363d")))
+        _lay.addWidget(self._biz_l_lay)
+
+        # ── 成交区间 + 规模阈值 ──
+        self._biz_l_deal = QLabel()
+        self._biz_l_deal.setWordWrap(True)
+        self._biz_l_deal.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        self._biz_l_deal.setStyleSheet("background:transparent;")
+        _lay.addWidget(self._biz_l_deal)
+
+        # ── 业务假设 (改了就现算; 写入真源才长期生效) ──
+        _row = QHBoxLayout()
+        _lab = QLabel("业务假设:")
+        _lab.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _row.addWidget(_lab)
+        self._biz_in = {}
+        _in = (self._biz_d.get("inputs") or {})
+        for _key, _text, _kind, _lo, _hi, _step, _dec in (
+                ("target_margin", "目标毛利率 %", "float", 0.0, 80.0, 1.0, 0),
+                ("customer_target_payback", "客户目标回本 年", "float", 1.0, 8.0, 0.5, 1),
+                ("s3_units", "批量台数", "int", 1, 200, 1, 0),
+                ("eta_struct", "人效结构系数", "float", 0.5, 1.0, 0.01, 2)):
+            _l = QLabel(_text)
+            _l.setStyleSheet("background:transparent;")
+            _row.addWidget(_l)
+            _v = _in.get(_key, {}).get("value", 0)
+            if _kind == "int":
+                _sb = QSpinBox()
+                _sb.setRange(int(_lo), int(_hi))
+                _sb.setSingleStep(int(_step))
+                _sb.setValue(int(_v))
+            else:
+                _sb = QDoubleSpinBox()
+                _sb.setRange(float(_lo), float(_hi))
+                _sb.setSingleStep(float(_step))
+                _sb.setDecimals(int(_dec))
+                _sb.setValue(float(_v) * (100.0 if _key == "target_margin" else 1.0))
+            _sb.setFixedWidth(78)
+            _sb.valueChanged.connect(lambda *_: self._biz_refresh())
+            _row.addWidget(_sb)
+            self._biz_in[_key] = _sb
+        _row.addStretch()
+        _lay.addLayout(_row)
+
+        # ── 三阶段定价 ──
+        _t3 = QLabel("三阶段定价 (阶段一不收费 ⇒ 客户零决策压力; 阶段三用真实数据算 ROI)")
+        _t3.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(_t3)
+        self._biz_t_phase = _mk_table(["阶段", "台数", "报价", "我方承担", "客户决策"], [], th,
+                                      widths=[90, 50, 110, 330, 200])
+        _lay.addWidget(self._biz_t_phase)
+
+        # ── 模式推荐 ──
+        self._biz_l_rec = QLabel()
+        self._biz_l_rec.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        self._biz_l_rec.setStyleSheet("background:transparent;color:#3fb950;")
+        _lay.addWidget(self._biz_l_rec)
+        self._biz_t_mode = _mk_table(["模式", "报价", "毛利", "成立条件", "数字"], [], th,
+                                     widths=[150, 100, 60, 250, 340])
+        _lay.addWidget(self._biz_t_mode)
+
+        # ── 改配置的量化出口 + 价值/风险 ──
+        self._biz_l_conf = QLabel()
+        self._biz_l_conf.setWordWrap(True)
+        self._biz_l_conf.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._biz_l_conf)
+        self._biz_l_split = QLabel()
+        self._biz_l_split.setWordWrap(True)
+        self._biz_l_split.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._biz_l_split)
+
+        # ── 按钮 ──
+        _row2 = QHBoxLayout()
+        _b_calc = _btn("🧮 重新推导", th)
+        _b_calc.clicked.connect(lambda: self._biz_refresh(verbose=True))
+        _row2.addWidget(_b_calc)
+        _b_save = _btn("💾 写入假设真源", th)
+        _b_save.setToolTip("只写 4 个业务假设 (自动备份 + 回读校验; 派生值不落盘)")
+        _b_save.clicked.connect(self._biz_save)
+        _row2.addWidget(_b_save)
+        _b_copy = _btn("📋 复制结果", th)
+        _b_copy.setToolTip("TSV, 直接贴 Excel / 邮件")
+        _b_copy.clicked.connect(self._biz_copy)
+        _row2.addWidget(_b_copy)
+        _b_exp = _btn("📥 导出 JSON+提案", th)
+        _b_exp.setToolTip("落 zmax_data/business/business_model_<时间>.{json,md} (提案可直接发客户)")
+        _b_exp.clicked.connect(self._biz_export)
+        _row2.addWidget(_b_exp)
+        _row2.addStretch()
+        _lay.addLayout(_row2)
+
+        self._biz_log = QLabel("—")
+        self._biz_log.setWordWrap(True)
+        self._biz_log.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._biz_log)
+        _lay.addStretch()
+
+        self._biz_refresh()             # 打开即出数 (不等用户点)
+        return _w
+
+    def _biz_inputs(self):
+        g = lambda k: self._biz_in[k].value()                               # noqa: E731
+        return dict(target_margin=float(g("target_margin")) / 100.0,
+                    customer_target_payback=float(g("customer_target_payback")),
+                    s3_units=int(g("s3_units")),
+                    eta_struct=float(g("eta_struct")))
+
+    def _biz_refresh(self, verbose=False):
+        """按当前界面假设现算 (不发任何写操作)。"""
+        if not getattr(self, "_biz_m", None) or not hasattr(self, "_biz_in"):
+            return None
+        try:
+            e = self._biz_m.derive(d=self._biz_d, **self._biz_inputs())
+        except Exception as _e:                                             # noqa: BLE001
+            self._biz_log.setText("⛔ 推导失败: %r" % (_e,))
+            return None
+        self._biz_e = e
+        lay, dr, th_ = e["layered"], e["deal"], e["threshold"]
+        cs = e["cost_structure"]
+
+        self._biz_l_src.setText(
+            "真源 %s @ %s ＋ %s ｜ 算法 tools/business_model.py ｜ 打开即现算, 派生值不落盘"
+            % (os.path.basename(e["truth"]["cost"]), e["truth"]["business_mtime"],
+               os.path.basename(e["truth"]["business"])))
+
+        rows = [
+            ["变动成本 (硬件/台)", "%.1f 万" % (cs["hardware_variable"] / 1e4),
+             "随学习曲线下降 (10 台乘子 %.2f, 每翻倍降 %.0f%%)"
+             % (cs["lc_10"], e["inputs"]["learning_rate"] * 100)],
+            ["固定成本", "%.1f 万" % (cs["fixed_total"] / 1e4),
+             "软件研发 %.1f 万 + 实施 NRE %.1f 万 ⇒ 靠规模摊薄"
+             % (cs["software_dev"] / 1e4, cs["nre"] / 1e4)],
+            ["首台单位成本", "%.1f 万" % (cs["first_unit_cost"] / 1e4),
+             "研发按计划 %d 台摊销" % int(e["inputs"]["amortize_units"])],
+            ["10 台单位成本", "%.1f 万" % (cs["unit_cost_10"] / 1e4), cs["logic"]],
+        ]
+        self._biz_t_struct.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, val in enumerate(row):
+                self._biz_t_struct.setItem(r, c, QTableWidgetItem(str(val)))
+
+        self._biz_l_lay.setText(
+            "客户真实回本（分层口径, 只对外报 C/D）\n"
+            "  A 上限   %.2f 年   售价 ÷ (heads×人力)          人效 1.0 · 零 OPEX · 零 NRE（不得当承诺）\n"
+            "  B +OPEX  %.2f 年   扣维护 %.0f%%·售价 + 复训 %.1f 万 + 软件年费 %.1f 万\n"
+            "  C +人效  %.2f 年   η=%.3f = 结构 %.2f × 成功率 %.2f × uptime %.2f × CT比 %.2f\n"
+            "  D +NRE   %.2f 年   客户真实投入（含实施 %.1f 万）← 报价只用这一层"
+            % (lay["A_payback"], lay["B_payback"], e["inputs"]["maint_rate"] * 100,
+               e["inputs"]["retrain_per_year"] / 1e4, e["inputs"]["software_fee_per_year"] / 1e4,
+               lay["C_payback"], lay["eta"], e["inputs"]["eta_struct"], e["inputs"]["success_rate"],
+               e["inputs"]["uptime"], lay["ct_ratio"], lay["D_payback"], lay["nre"] / 1e4))
+        self._biz_l_lay.setStyleSheet(self._biz_l_lay.styleSheet())
+
+        _ok = dr["ok"]
+        self._biz_l_deal.setText(
+            "%s 成交区间: floor %.1f 万 %s ceiling %.1f 万（差 %+.1f 万）｜ 规模阈值 %s"
+            % ("✅" if _ok else "❌", dr["floor"] / 1e4, "≤" if _ok else ">", dr["ceiling"] / 1e4,
+               dr["gap"] / 1e4,
+               ("%d 台" % th_["units"]) if th_ else ">500 台（改配置, 不降价）"))
+        self._biz_l_deal.setStyleSheet("background:transparent;color:%s;"
+                                      % ("#3fb950" if _ok else "#f85149"))
+
+        prow = []
+        for p in e["phases"]:
+            price = "0（不收费）" if p["price"] == 0 else "%.1f 万" % (p["price"] / 1e4)
+            if p["stage"].startswith("S3"):
+                price = "%.1f 万/台 · 合计 %.1f 万" % (p["unit_price"] / 1e4, p["total"] / 1e4)
+            prow.append([p["stage"], str(p["units"]), price, p["risk"], p["decision"]])
+        self._biz_t_phase.setRowCount(len(prow))
+        for r, row in enumerate(prow):
+            for c, val in enumerate(row):
+                self._biz_t_phase.setItem(r, c, QTableWidgetItem(str(val)))
+
+        self._biz_l_rec.setText("推荐模式: %s   （%s）"
+                                % (e["modes"]["recommend"], e["modes"]["rule"]))
+        mrow = []
+        for m in e["modes"]["options"]:
+            price = ("%.1f 万" % (m["price"] / 1e4)) if m.get("price") else (
+                "%.3f 元/颗" % m["per_part"] if m.get("per_part") else "—")
+            margin = ("%.0f%%" % (m["margin"] * 100)) if m.get("margin") is not None else "—"
+            mark = "★ " if m["mode"] == e["modes"]["recommend"] else ""
+            mrow.append([mark + m["mode"], price, margin,
+                         m["cond"] + ("  ✅" if m["fit"] else "  ❌"), m["note"]])
+        self._biz_t_mode.setRowCount(len(mrow))
+        for r, row in enumerate(mrow):
+            for c, val in enumerate(row):
+                it = QTableWidgetItem(str(val))
+                if c == 0 and str(val).startswith("★"):
+                    it.setForeground(QColor("#3fb950"))
+                self._biz_t_mode.setItem(r, c, it)
+
+        cf = e["configs"]
+        oks = [r for r in cf["rows"] if r["ok"]]
+        oks.sort(key=lambda r: r["ceiling"])
+        self._biz_l_conf.setText(
+            "改配置的量化出口（不降价）: floor %.1f 万固定, 只有 heads 足够大才进区间 ⇒ 成立 %d/%d 组；"
+            "最小成立: %s"
+            % (cf["floor"] / 1e4, cf["ok_count"], len(cf["rows"]),
+               ("%d 工位 × %d 班 = %d 人, 上限 %.1f 万"
+                % (oks[0]["stations"], oks[0]["shifts"], oks[0]["heads"], oks[0]["ceiling"] / 1e4))
+               if oks else "无（需换更便宜的臂或卖软件授权）"))
+
+        vs = e["value_split"]
+        rs = e["risk_split"]
+        self._biz_l_split.setText(
+            "价值分配: " + " · ".join("%s %s %.1f 万" % (v["who"], v["item"],
+                                                      (v["amount"] or 0) / 1e4) for v in vs if v["amount"])
+            + "\n风险承担: " + " → ".join("%s 我方: %s" % (r["phase"], r["ours"]) for r in rs)
+            + "\n" + e["profit_where"])
+
+        if verbose:
+            self._log_cc("🧩 商业模式: " + e["summary_line"])
+        return e
+
+    def _biz_save(self):
+        try:
+            r = self._biz_m.save_inputs(**self._biz_inputs())
+        except Exception as _e:                                             # noqa: BLE001
+            self._biz_log.setText("⛔ 写回假设真源失败: %r" % (_e,))
+            self._log_cc("⛔ 商业模式假设写回失败: %r" % (_e,))
+            return
+        if r.get("ok"):
+            self._biz_d = self._biz_m.load()
+            self._biz_refresh()
+            self._biz_log.setText("✅ 已写回 %s (备份 %s) · 回读校验通过 · 改动 %s"
+                                  % (os.path.basename(r["path"]), os.path.basename(r["backup"]),
+                                     ", ".join(r["changed"])))
+            self._log_cc("🧩 商业模式假设已写回 config/platform/zmax_business_model.json: %s"
+                         % ", ".join(r["changed"]))
+        else:
+            self._biz_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看真源: %s" % r["path"])
+            self._log_cc("⚠ 商业模式假设回读不一致: %s" % r["path"])
+
+    def _biz_copy(self):
+        e = getattr(self, "_biz_e", None)
+        if not e:
+            self._biz_log.setText("⚠ 还没有可复制的结果")
+            return
+        txt = self._biz_m.to_tsv(e)
+        QApplication.clipboard().setText(txt)
+        self._biz_log.setText("✅ 已复制 TSV 到剪贴板 (%d 行) —— 直接贴 Excel / 邮件" % len(txt.splitlines()))
+        self._log_cc("🧩 商业模式结果已复制 (TSV)")
+
+    def _biz_export(self):
+        e = getattr(self, "_biz_e", None)
+        if not e:
+            self._biz_log.setText("⚠ 还没有可导出的结果")
+            return
+        try:
+            p = self._biz_m.export(e)
+            j = json.load(open(p["json"], encoding="utf-8"))
+            ok = (abs(float(j["deal"]["floor"]) - float(e["deal"]["floor"])) < 1e-6
+                  and len(j["phases"]) == len(e["phases"]))
+            self._biz_log.setText(("✅ 已导出 " if ok else "⚠ 导出回读不一致 ") + p["json"]
+                                  + "  +  " + os.path.basename(p["md"]))
+            self._log_cc("🧩 商业模式已导出: %s" % p["json"])
+        except Exception as _e:                                             # noqa: BLE001
+            self._biz_log.setText("⛔ 导出失败: %r" % (_e,))
 
     def _pv_tab_index(self):
         """文档预览所在页 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」

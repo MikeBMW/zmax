@@ -71,7 +71,7 @@ def main():
         all(hasattr(pg, a) for a in ("_cost_bom", "_cost_in", "_cost_l_total", "_cost_l_annual",
                                      "_cost_l_payback", "_cost_l_alt", "_cost_log")),
         "假设控件: %s" % list(pg._cost_in))
-    chk("①c", "页签次序 = 北斗次序末位 (成本/报价最后)", titles[-1] == "💰 成本/报价", titles[-3:])
+    chk("①c", "页签次序 = 北斗次序 (成本/报价 在 商业模式 之前)", titles[-2] == "💰 成本/报价", titles[-3:])
 
     print("\n【② 默认口径 = 老倪给的数】")
     chk("②a", "硬件 20.3 万", abs(e["hardware"] - 203000) < 1e-6, "%.0f 元" % e["hardware"])
@@ -176,7 +176,7 @@ def main():
     print("\n【⑫ 零回归】")
     chk("⑫a", "画布真源未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt,
         os.path.getmtime(CANVAS))
-    chk("⑫b", "页签 = 原 8 页 + 成本/报价 = 9", len(titles) == 9, titles)
+    chk("⑫b", "页签 = 原 8 页 + 成本/报价 + 商业模式 = 10", len(titles) == 10, titles)
     chk("⑫c", "真源已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n" + "=" * 68)
