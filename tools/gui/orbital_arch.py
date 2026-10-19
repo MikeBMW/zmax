@@ -1511,12 +1511,20 @@ class OrbitalArchView(QWidget):
         # 2026-10-19 老倪「选了 L5 却没有 L5 的力显示」: 表盘原来只画方向 (q̂ 的矢量部, 模长≈常数)
         #   ⇒ 五个盘看起来一模一样, 也**没有任何数字**。现在: 射线长 ∝ √(|F|/max) + 盘下写 |F|。
         self._s3_lens = []
-        _items = [(fE.get("q"), "#58a6ff", "合", 1.0, float(fE.get("mag") or 0.0))]
+        # 🔴 2026-10-19 老倪「就 L5, 力场不显示 L5 的单位圆」: 原来只遍历"有数据的层",
+        #   L5 没真源(缺 L5) 时整格都不画 ⇒ 五格变四格, 位置还整体错位, 看着像"L5 被吞了"。
+        #   现在: **五个格位固定** (合/L5/L4/L3/L2), 没数据的层照样画单位圆 + 层名 + "缺",
+        #   只是不画射线 —— 老倪要的是"能看见它在, 且知道它为什么没数"。
+        _byL = {}
         for c in (fE.get("comps") or []):
-            _col = self.COL.get(c.get("body") or "earth", "#8b949e")
-            # 权重一律 1.0: 主力靠"线宽/亮度"区分, 不靠缩短射线 (否则弱层短到看不出方向)
-            _items.append((c.get("q"), _col, c["L"], 1.0,
-                           float(c.get("mag") or 0.0)))
+            _byL[c["L"]] = c
+        self._s3_slots = ["合", "L5", "L4", "L3", "L2"]     # 五个格位固定 (判据 R4 用)
+        _items = [(fE.get("q"), "#58a6ff", "合", 1.0, float(fE.get("mag") or 0.0))]
+        for _L5 in ("L5", "L4", "L3", "L2"):
+            _c5 = _byL.get(_L5)
+            _col = self.COL.get((_c5 or {}).get("body") or "sun", "#8b949e")
+            _items.append((((_c5 or {}).get("q")), _col, _L5, 1.0,
+                           float((_c5 or {}).get("mag") or 0.0)))
         _mx = max([it[4] for it in _items] or [1e-9]) or 1e-9
         from PyQt5.QtGui import QPolygonF
         _dirs = []                # 已画过的 (角度, 名字): 用于给"同向层"标 ≡ (L2/L3 常常同向)
@@ -1525,6 +1533,22 @@ class OrbitalArchView(QWidget):
         _dy = _y0 + 52.0 + 44.0
         for _i, (_q, _col, _nm, _wgt, _mag) in enumerate(_items):
             if not _q:
+                # 这一层没有真源 (例: L5 场景理解没跑) ⇒ 空盘 + 层名 + "缺", 位置不动
+                _ccx = x0 + 14.0 + _cw * (_i + 0.5)
+                _ccy = _dy
+                _rad = min(34.0, _cw * 0.45)
+                p.setPen(QPen(QColor(52, 66, 86, 140), 1.2, Qt.DashLine))
+                p.setBrush(QColor(12, 17, 26, 200))
+                p.drawEllipse(QPointF(_ccx, _ccy), _rad, _rad)
+                p.setBrush(Qt.NoBrush)
+                p.setPen(QColor("#6e7681"))
+                p.setFont(_cached_font(14, True))
+                p.drawText(QRectF(_ccx - _cw / 2.0, _ccy + _rad + 2, _cw, 18),
+                           Qt.AlignHCenter | Qt.AlignTop, _nm)
+                p.setFont(_cached_font(15, True))
+                p.setPen(QColor("#8b949e"))
+                p.drawText(QRectF(_ccx - _cw / 2.0, _ccy + _rad + 20, _cw, 16),
+                           Qt.AlignHCenter | Qt.AlignTop, "缺")
                 continue
             _ccx = x0 + 14.0 + _cw * (_i + 0.5)
             _ccy = _dy
