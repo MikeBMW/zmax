@@ -998,7 +998,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.747")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.750")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12133,6 +12133,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.750: AOI 表面检测 10083 上线 v20.1 + 侧面三点现场重示教 + 判据图口径归位  一、10083 表面检测程序上线 v20.1（飞书端 10-12 改好、本轮首次真部署到产线） - 取像参数 settle：POST /exposure 后主动丢弃一帧（_warmup_grab），治「改完曝光紧跟的第一张必 500」；   重连策略只在首次失败时 Close+ensure，避免「关了又开 ⇒ 首抓必失败」死循环；开关 AOI_EXPO_SETTLE_S=0.25s。 - 判据阈值相对化：th = bg + 0.5×(lvl−bg)（并集阈 bg + 0.33×），夹下限 25；阈值写进 /crop_info   （th_mode/th_bar/th_mod/bg_lvl）可审；回老街口 AOI_SURFACE_JUDGE_TH=abs。 - 部署实测（aoi_remote_deploy.py --surface … --only 10083）：文件 60693B / sha256 32EB2562… 与本地逐位一致，   备份现役 20261020_070555，服务重启 10083 pid 14488，验收全过（/storage 200 · capture_detect 200 ·   grab=1 出图 154964B · grab 不落盘 108→108），⑤b 无落盘档位跳过复原。 - 上线后 /crop_info 实测 th_mode="rel" · th_bar=130.0 · th_mod=87.5 · bg_lvl=[5,255] ⇒ 相对阈值真生效。  二、曝光档位归位 5000us（此前被误设 48000/80000） - 飞书端 commit a8013ce 已写明结论：「48000 下 Otsu 前景 1.000 搜不到，5000 下干净」。 - 实测 5000us：原图 mean=16.5 · p50=9 · p99=231 · 饱和 0.79%；   判据图 1285×188 · 宽高比 6.84 · 倾角 −69.94°（与 10-19 23:0x 好帧 1273×188 / −69.81° 一致）。 - 教训：改曝光、改判据算法、连抓图三件事任一都会让「判据图看着没了」，定位顺序应先读 commit 结论再动手。  三、判据图算法归位飞书端版本（我的多阈值改动撤销） - 现场症状：侧面点2 视角下 ok=False（Otsu 前景与右侧壳体粘连，长宽比 1.60 被 aspect 闸挡）。 - 我加了「多阈值 + p99 相对档」让它能检出（1453×237），但会把不该检的目标也检出来；   老倪要求「改回去」⇒ git checkout 恢复 commit a8013ce 版本（_profile_extent 扩暗头/纯旋转摆正/aspect 闸 5 处齐全），   改动备份 /tmp/aoi_surface_rect_multithresh.py.bak。  四、侧面三点现场重示教（reports + taught_points 两处同步，本轮补齐「只写一处」的漏洞） - 侧面点0 [398.845, −406.041, 546.291] / abc [82.436, −0.106, 65.057] - 侧面点1 [401.183, −434.873, 554.995] / abc [65.087, 87.157, 5.638]   Δ旧 50.0mm（姿态差 179.26°） - 侧面点2 [383.823, −434.488, 551.013] / abc [−86.473, 1.656, 174.232] Δ旧 45.3mm - 三点彼此姿态差 97.85°(点1↔点2) / 174.84°(点0↔点2) ⇒ 位置只差十几毫米而姿态要翻近 180°，   这就是「动作一顿一顿」的真因：执行器姿态差 >15° 必须拆成每段 ≤5° 的原地转身，再平移。  五、安全与口令固化 - 新增 tools/precheck_move.py：移动前对 3 个长方体硬边界 + margin 做逐段采样距离判定，命中即拒发。 - 新增 tools/watch_teach_pt.py：纯只读订阅 tcp_out/latest.json，老倪手动移动后「位移>10mm 且停稳 3s」自动抓点。 - 实测坑：arm_raw.py 的 --abc 负数必须写 `--abc=-29.9,...`；pkill -f "arm_raw.py move" 会杀掉自己；   机器人处于 drag/manual 时所有自动指令被 ABORT（前置条件不满足：机器人不空闲）；   10083 抓帧 500 是冷启/抢相机，重试第 2 次即 200，连抓三次会卡死（须 KeepAlive 约 75s 拉起）。  六、未关项 - 工控机内置判据（找过曝亮条量厚度）在 5000us 下仍报「亮条上边缘点太少(196)」（相对阈值已生效，是工件位姿问题），   本机 aoi_surface_rect 同帧可检出 1285×188 ⇒ 两套判据口径不一致，需现场把工件摆到观察位后同口径复评。 - 光学质量检测节点接 10083 的旁路调试通道（老倪本轮要求「以后可以旁路调试侧面检测 10083 服务」）待实现。
         # v5.50.747: 表面判据图摆正+曝光按ROI标定到3000us×1.8(死白1.72%→工控机YOLO检出housing_pit conf0.473, 对照48000us死白90.74%检出0) · L2凸凹缺陷检测(接线遮罩从46.8%收窄到12.0%, 改测局部std而非线状划痕) · 插拔场景全量训练 hand/peg/hole 3类 18900train/2100val 软链数据集(167M) · 流形切投影A/B复现(cos1.0000/法向泄漏0.0000 优于基线0.9651/0.1315) · 磁盘336G→240G(删95G cube_single_expert.h5, 保护区8/8完好); 根因: 8791 推流进程 22:57 启动而 cam_live_stream.py(23:22)/aoi_surface_rect.py(00:02) 之后才改, 旧进程无长宽比闸(aspect>=2.5) → 高曝光下把台面(1717x1269, aspect1.35)当模块 → surface_judge 返回 None → 静默回落未摆正原图, 曝光数值正确但像素没进摆正链路; 重启后实测 1272x188 / aspect6.77 / 死白1.44%
         # v5.50.746: 分层力 L2~L5 各接自己的模型输出张量 (前馈 u_ff / 动作头 chunk / 流形度量 M / VL 场景矢量) + 权重热生效; 根因: 四层共用一个解析势场、L5 用 prior 回放冒充, 界面上看不出"哪层真在算"
         # v5.50.745: 臂相机画 tool1 坐标系(原点=标注的模块头顶中心, /api/toolframe + 页面『▣ tool1系』) · 绿框钉死不动+竖向硬夹不拉长 · 光模块放回槽位走反向抓取(姿态分步 4°+纯姿态被控制器静默忽略故加 z 抖动) ; 根因三条: 手眼矩阵平移单位是米、local2 是 MAXHUB 非 D435、纯姿态 move-abs 回 PASS 但不动
@@ -13062,7 +13063,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.747  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.750  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15400,7 +15401,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.747</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.750</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

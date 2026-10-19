@@ -28,7 +28,7 @@ DOCSYNC_SHIM = REPO / "tools" / "gui" / "docs_sync.py"
 if not DOCSYNC.is_file():
     DOCSYNC = DOCSYNC_SHIM
 
-EXPECTED_VERSION = "v5.50.747"
+EXPECTED_VERSION = "v5.50.750"
 
 # 期望的功能卡列表 (与 HomeWidget._modules_grid modules 元组第一列一致)
 EXPECTED_CARDS = [
