@@ -54,8 +54,8 @@ def build_wire_mask(g, min_len=120, edge_skip=15):
     不排除的话它会稳稳排第一, 把真缺陷挤下去。"""
     gx = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 4)).apply(g)
     ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
-    mask = np.zeros_like(g, dtype=np.uint8)
     H, W = g.shape[:2]
+    cands = []
     for plane in (cv2.morphologyEx(gx, cv2.MORPH_BLACKHAT, ker),
                   cv2.morphologyEx(gx, cv2.MORPH_TOPHAT, ker)):
         for ksz in (61, 101, 141):
@@ -71,7 +71,31 @@ def build_wire_mask(g, min_len=120, edge_skip=15):
                 a = np.asarray(L).reshape(-1)[:4].astype(int)
                 if len(a) < 4:
                     continue
-                cv2.line(mask, (a[0], a[1]), (a[2], a[3]), 255, 5)   # 线宽 5 只盖本体, 9 会吃掉半个模块(实测53.4%)
+                x1_, y1_, x2_, y2_ = a
+                if abs(y2_ - y1_) > 3:            # 只看近水平线: 安装接线是水平的
+                    continue
+                L_ = float(np.hypot(x2_ - x1_, y2_ - y1_))
+                cands.append((L_, x1_, y1_, x2_, y2_))
+    # ── 关键修正 2026-10-20: 接线只有**一条**, 而多尺度多通道会把它重复检出十几次,
+    #   加上凹凸区的方向性纹理也被当直线 ⇒ 遮罩一度达 46.8%, **左下/右侧缺陷整片被遮死**
+    #   (网格实测: 右侧 c9-c12 被遮 55~99%, 左下 c1-c5 被遮 80~93% ⇒ 真缺陷反而测不到)。
+    #   改为: 只按「长度最长」取, 且总遮罩硬上限 12%。
+    cands.sort(key=lambda t: -t[0])
+    mask = np.zeros_like(g, dtype=np.uint8)
+    budget = int(0.12 * H * W)
+    used = 0
+    for L_, x1_, y1_, x2_, y2_ in cands:
+        if L_ < min_len:
+            continue
+        tmp = np.zeros_like(mask)
+        cv2.line(tmp, (x1_, y1_), (x2_, y2_), 255, 4)
+        add = int((tmp > 0).sum() - ((tmp > 0) & (mask > 0)).sum())
+        if used + add > budget:
+            continue
+        mask |= tmp
+        used += add
+        if used >= budget:
+            break
     return mask
 
 
