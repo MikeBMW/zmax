@@ -310,6 +310,62 @@ TOPICS = {
                        "通道: 规格三通道 1000Hz 电机 / 100Hz 监控 / 10Hz 数据 —— **当前只接 10Hz 数据通道**, "
                        "100Hz/1000Hz 未接 (无实时消费者, 如实标注, 不得当作已实现)。"),
     },
+    # ── ⚡ 分层力 L2~L5 (老倪 2026-10-19「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic;
+    #    L4 的 Tx 是流形引擎, L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」) ──────────────────
+    #    一层一条话题: trace/信号分析里按话题名就能分辨是哪一层的力, 载荷 tx 字段写死的力产生端。
+    #    数值与万有引力表 / 太阳系 / S³ 面板**同一份** (真源 tools/layer_forces.py, 含 w/k 加权),
+    #    daemon 只读转发, 不另算 —— 逐位可对账。
+    "ss_force_l2": {
+        "type": "zmax::SSForceLayer", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "producer": "状态空间守护 tools/dds/ss_daemon.py (只读转发) ← tools/layer_forces.py "
+                    "← zmax_data/ss_live/chunk_latest.json 的 ff[0][:3]",
+        "tx": "前馈加速器 (⚡ MLP u_ff)", "layer": "L2",
+        "consumers": ["控制台 实时监控·信号分析 (trace)", "力场页 (万有引力表/太阳系)", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "layer", "tx", "seq", "stage", "task", "x/y/z", "mag", "raw_mag",
+                       "w", "k", "fresh", "age_s", "src", "note"],
+        "quality": ["freshness", "finite", "no_zero_fake", "same_source_as_force_field"],
+        "provenance": "L2 力 = 前馈加速器 MLP 的 u_ff (m/s), 乘 config/calib/layer_forces.json 的 w·k; "
+                      "取不到 ff[0] 就不发 (不用 0 充数)。",
+    },
+    "ss_force_l3": {
+        "type": "zmax::SSForceLayer", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "producer": "状态空间守护 tools/dds/ss_daemon.py (只读转发) ← tools/layer_forces.py "
+                    "← zmax_data/ss_live/chunk_latest.json 的 chunk[0][:3]",
+        "tx": "DiT 动作头 (chunk 第一步)", "layer": "L3",
+        "consumers": ["控制台 实时监控·信号分析 (trace)", "力场页 (万有引力表/太阳系)", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "layer", "tx", "seq", "stage", "task", "x/y/z", "mag", "raw_mag",
+                       "w", "k", "fresh", "age_s", "src", "note"],
+        "quality": ["freshness", "finite", "no_zero_fake", "same_source_as_force_field"],
+        "provenance": "L3 力 = DiT 动作头输出的 chunk 第一步 (m/s 当量), 乘 w·k; 真源字段名与 chunk_src 写进 src。",
+    },
+    "ss_force_l4": {
+        "type": "zmax::SSForceLayer", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "producer": "状态空间守护 tools/dds/ss_daemon.py (只读转发) ← tools/layer_forces.py "
+                    "← torque_live.metric_M/engine_latest.M 作用在前馈上 (F = M̂·u_ff)",
+        "tx": "流形引擎 (度量张量 M̂)", "layer": "L4",
+        "consumers": ["控制台 实时监控·信号分析 (trace)", "力场页 (万有引力表/太阳系)", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "layer", "tx", "seq", "stage", "task", "x/y/z", "mag", "raw_mag",
+                       "w", "k", "fresh", "age_s", "src", "note"],
+        "quality": ["freshness", "finite", "no_zero_fake", "same_source_as_force_field"],
+        "provenance": "L4 力 = 流形引擎度量 M/m_ref 对前馈方向做各向异性缩放后的一层力; "
+                      "M 取 torque_live.metric_M (退 engine_latest.M), 缺度量就不发。",
+    },
+    "ss_force_l5": {
+        "type": "zmax::SSForceLayer", "src": TYPES_SRC, "rate_hz": 10.0, "qos": "beat",
+        "producer": "状态空间守护 tools/dds/ss_daemon.py (只读转发) ← tools/layer_forces.py "
+                    "← zmax_data/ss_live/l5_scene_vec.json (退 l5_understand_latest.json)",
+        "tx": "DeepSeek VL 场景理解", "layer": "L5",
+        "consumers": ["控制台 实时监控·信号分析 (trace)", "力场页 (万有引力表/太阳系)", "数据空间页"],
+        "modes": ["diag", "calib", "test"],
+        "key_fields": ["ts", "layer", "tx", "seq", "stage", "task", "x/y/z", "mag", "raw_mag",
+                       "w", "k", "fresh", "age_s", "src", "note"],
+        "quality": ["freshness", "finite", "no_zero_fake", "same_source_as_force_field"],
+        "provenance": "L5 力 = VL 场景理解矢量 (方向/条件项), 乘 w·k; VL 只按需出 2D boxes 时该层不发 "
+                      "(src 写明缺什么, 不拿别的层顶替)。",
+    },
     "ds_dataset": {
         "type": "zmax::SliceJSON", "src": "(JSON 切面, 见 provenance)", "rate_hz": 0.05, "qos": "state",
         "area": "数据集", "status": "已登记 · 待接 DDS 生产者 (当前真源为只读工具 JSON)",
@@ -640,20 +696,24 @@ TOPICS = {
 SKILL_TOPICS = ["skill_%s" % c.lower() for c in
                 ("SK01", "SK02", "SK03", "SK04", "SK05", "SK06", "SK07", "SK08")]
 
+# ⚡ 分层力话题 (老倪 2026-10-19): 一层一条通道 —— trace 里按话题名分辨层次, 载荷 tx 写死力产生端。
+#   单列常量同 SKILL_TOPICS, 三档一起登记, 避免漏档变成"静默不发"。
+FORCE_TOPICS = ["ss_force_l2", "ss_force_l3", "ss_force_l4", "ss_force_l5"]
+
 MODE_TOPICS = {   # 🧮 ss_cfg_names: 主参数节点已加载配置名称 (5s, 字符串) 见 ss_daemon.tick
     "prod":  [],
     # 🧾 ss_meta_task = 元任务清单 (主参数节点出口 5s) · 🧾 ss_meta_pred = 元任务**预测值**
     #    (输入=流形引擎驱动扭矩; 老倪 2026-10-14「将元任务预测的topic，放到信号分析」)
     "diag":  ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
               "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage",
-              "ss_action_chunk"] + SKILL_TOPICS,
+              "ss_action_chunk"] + SKILL_TOPICS + FORCE_TOPICS,
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS + FORCE_TOPICS,
     "test":  ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state",
               "ss_action", "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib",
               "ss_diag", "ss_test", "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine",
-              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
+              "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS + FORCE_TOPICS,
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -680,7 +740,8 @@ PRODUCERS = {
     "状态空间数据空间守护": {"unit": "zmax-dds-ss.service", "path": "/home/ubuntu/zmax/dds_ss_daemon.py",
                         "publishes": ["ss_state", "ss_action", "ss_infer", "ss_calib", "ss_diag",
                                       "ss_test", "ss_canvas", "ss_macro", "ss_nodes", "ss_plan",
-                                      "ss_energy", "ss_cfg_names"]},
+                                      "ss_energy", "ss_cfg_names", "ss_force_l2", "ss_force_l3",
+                                      "ss_force_l4", "ss_force_l5"]},
     "流形引擎能量探针": {"unit": None, "path": "tools/manifold_energy_probe.py",
                         "publishes": ["ss_energy"],
                         "note": "写 tap zmax_data/ss_live/energy_*.jsonl; 由 ss_daemon 转发上 DDS"},

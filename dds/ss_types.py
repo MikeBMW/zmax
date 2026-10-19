@@ -538,3 +538,34 @@ class SSSkillPhys(IdlStruct, typename="zmax::SSSkillPhys"):
     source: str = ""                   # 真源文件 / 采集口
     why: str = ""                      # 本拍被哪几条约束削 (速度/加速度/…)
     note: str = ""
+
+
+# ─────────────── 分层力 L2~L5 (老倪 2026-10-19「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic」) ───────────────
+@dataclass
+class SSForceLayer(IdlStruct, typename="zmax::SSForceLayer"):
+    """单层的力输出 —— 与万有引力表/太阳系/S³ 面板**同一份**加权矢量 (真源 tools/layer_forces.py)。
+
+    一条话题只承载一层力 ⇒ 信号分析里按话题就能分辨是哪一层, trace 里 tx 字段直接写"谁发的力":
+      · ss_force_l2  tx = 前馈加速器      (chunk_latest.ff[0][:3], MLP u_ff)
+      · ss_force_l3  tx = DiT 动作头      (chunk_latest.chunk[0][:3])
+      · ss_force_l4  tx = 流形引擎        (度量张量 M̂ = M/m_ref 作用于前馈)
+      · ss_force_l5  tx = DeepSeek VL 场景理解 (l5_scene_vec / l5_understand_latest)
+    取不到的层不发 (vacuous 胜过 0 充数); 帧龄超 max_age_s 只标 fresh=0, 数值照给。
+    """
+    ts: float64 = 0.0                  # epoch 秒 (发布时刻)
+    layer: str = ""                    # L2 / L3 / L4 / L5
+    tx: str = ""                       # 力的产生端 (前馈加速器 / DiT 动作头 / 流形引擎 / DeepSeek VL)
+    seq: int32 = 0                     # 该话题累计条数
+    stage: str = ""                    # 当前阶段 (真源 chunk_latest.stage / trace_live.阶段)
+    task: str = ""                     # 任务/配置标识
+    x: float64 = 0.0                   # 加权后力矢量 (m/s 当量)
+    y: float64 = 0.0
+    z: float64 = 0.0
+    mag: float64 = -1.0                # ‖加权后矢量‖
+    raw_mag: float64 = -1.0            # 加权前原始幅值 (对账用)
+    w: float64 = -1.0                  # 该层权重 (config/calib/layer_forces.json)
+    k: float64 = -1.0                  # 该层单位换算系数
+    fresh: int32 = 0                   # 1 = 真源帧龄 ≤ max_age_s
+    age_s: float64 = -1.0              # 真源帧龄 s
+    src: str = ""                      # 真源文件.字段 (逐项可对账)
+    note: str = ""

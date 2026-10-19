@@ -998,7 +998,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.746")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.747")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12133,6 +12133,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.747: 表面判据图摆正+曝光按ROI标定到3000us×1.8(死白1.72%→工控机YOLO检出housing_pit conf0.473, 对照48000us死白90.74%检出0) · L2凸凹缺陷检测(接线遮罩从46.8%收窄到12.0%, 改测局部std而非线状划痕) · 插拔场景全量训练 hand/peg/hole 3类 18900train/2100val 软链数据集(167M) · 流形切投影A/B复现(cos1.0000/法向泄漏0.0000 优于基线0.9651/0.1315) · 磁盘336G→240G(删95G cube_single_expert.h5, 保护区8/8完好); 根因: 8791 推流进程 22:57 启动而 cam_live_stream.py(23:22)/aoi_surface_rect.py(00:02) 之后才改, 旧进程无长宽比闸(aspect>=2.5) → 高曝光下把台面(1717x1269, aspect1.35)当模块 → surface_judge 返回 None → 静默回落未摆正原图, 曝光数值正确但像素没进摆正链路; 重启后实测 1272x188 / aspect6.77 / 死白1.44%
         # v5.50.746: 分层力 L2~L5 各接自己的模型输出张量 (前馈 u_ff / 动作头 chunk / 流形度量 M / VL 场景矢量) + 权重热生效; 根因: 四层共用一个解析势场、L5 用 prior 回放冒充, 界面上看不出"哪层真在算"
         # v5.50.745: 臂相机画 tool1 坐标系(原点=标注的模块头顶中心, /api/toolframe + 页面『▣ tool1系』) · 绿框钉死不动+竖向硬夹不拉长 · 光模块放回槽位走反向抓取(姿态分步 4°+纯姿态被控制器静默忽略故加 z 抖动) ; 根因三条: 手眼矩阵平移单位是米、local2 是 MAXHUB 非 D435、纯姿态 move-abs 回 PASS 但不动
         # v5.50.741: AR 三维视图画真机实测轨迹(橙色·10Hz SDK endInRef) + 修视图上下颠倒(相机 up 用 R×fwd, 原 fwd×R 算出 U=(0,0,-1) 朝下, 地平面上天) + 清除轨迹同时清橙色序列并通知录制器丢缓冲 + 插拔/摆盘桥接改整轮一条多点路径(一次 moveStart 一口气走完, 实测 32mm/4.3s、40mm/15.2s) + 严格串行不许叠队(叠两条会越走越快跑远、顶穿包络闸, 实测连拒 150 轮) + 模板防自我衰减(改由仿真真值录 696mm/42s 模板, 只接受更长模板) + 腿报扫掠越界以当前位置重锚定、前置条件(手动/点动)不满足时退避并打印原因 + 实时性实测(控制器 RTT 0.14ms/0%丢包, 命令往返 11ms±0.3ms, 跟随进程 nice -15 + 独占 28-31 核)
@@ -13061,7 +13062,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.746  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.747  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15399,7 +15400,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.746</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.747</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

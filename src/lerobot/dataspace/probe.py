@@ -66,6 +66,15 @@ def _jsonable(v):
 def _digest_for(k, f):
     """按话题给**一行可读摘要** —— 否则长数组(如 ss_plan 的 joints_path n×6)会把 digest 灌满数字"""
     try:
+        if k.startswith("ss_force_"):
+            # ⚡ 分层力 (老倪 2026-10-19「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic」):
+            #   一行紧凑 JSON —— 既能人读 (tx = 谁的力), 又能被 parse_ds_digest 抠出数值叶子画波形。
+            return json.dumps({"layer": f.get("layer") or "", "tx": f.get("tx") or "",
+                               "x": f.get("x"), "y": f.get("y"), "z": f.get("z"),
+                               "mag": f.get("mag"), "raw_mag": f.get("raw_mag"),
+                               "w": f.get("w"), "k": f.get("k"), "fresh": f.get("fresh"),
+                               "age_s": f.get("age_s"), "stage": f.get("stage") or "",
+                               "seq": f.get("seq")}, ensure_ascii=False)[:400]
         if k == "ss_plan":
             return ("plan-only: n=%s (joints_path %d / tcp_path %d) plan_code=%s 时长=%ss "
                     "终点误差=%smm FK起点差=%smm 同源闸=%s[%s] age=%ss"

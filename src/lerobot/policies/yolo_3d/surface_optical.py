@@ -200,6 +200,72 @@ class SurfaceOpticalQuality:
             sig["表面光学.曝光us"] = float(r["exposure"]["us"])
         return sig
 
+    # ── 送工控机 YOLO 检测 (本机不加载模型: 权重加密 besthousing_zh0128.pt.enc, 解密器只在工控机) ──
+    def plant_detect(self, rot_bgr, timeout_s: float = 180.0, hub_host: str | None = None) -> dict:
+        """把**摆正后的整幅图**通过 agent_hub 反向通道送到工控机, 用它的 housing YOLO 检测。
+
+        为什么必须传整幅而不是裁剪条: 该模型训练输入是全幅 letterbox 1280x1280, 送 1122x188 长条
+        等于换了输入分布。实测(同姿态同摆正): 48000us 死白90.7% → 0 缺陷; 3000us 死白1.72% → 检出
+        housing_pit conf=0.473 ⇒ **过曝会把缺陷冲掉, 送检前必须确认模块不过曝**。
+        """
+        import base64
+        import glob
+        import subprocess
+        root = os.path.dirname(os.path.abspath(__file__))
+        while root != os.path.dirname(root) and not os.path.exists(os.path.join(root, "tools", "agent_hub.py")):
+            root = os.path.dirname(root)
+        hub = os.path.join(root, "tools", "agent_hub.py")
+        deliver = os.path.join(root, "zmax_data", "aoi_v4", "deliver")
+        if not os.path.exists(hub):
+            return {"ok": False, "why": "找不到 tools/agent_hub.py"}
+        os.makedirs(deliver, exist_ok=True)
+        name = "surface_rot_%s.png" % time.strftime("%Y%m%d_%H%M%S")
+        fpath = os.path.join(deliver, name)
+        cv2.imwrite(fpath, rot_bgr)
+
+        host = hub_host or os.environ.get("ZMAX_HUB_HOST", "192.168.23.50")
+        url = "http://%s:8794/%s" % (host, name)
+        code = ("import sys, json\n"
+                "sys.path.insert(0, r'D:\\xspace\\ultralytics_AOI')\n"
+                "from yolo_detector import YoloDetector\n"
+                "d = YoloDetector()\n"
+                "r = d.detect(sys.argv[1], detect_type='housing')\n"
+                "print('RESULT_JSON ' + json.dumps(r, default=str, ensure_ascii=False))\n")
+        b64 = base64.b64encode(code.encode("utf-8")).decode()
+        ps = ("[IO.File]::WriteAllText('C:\\Windows\\TEMP\\zmax_det.py', "
+              "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('%s')), "
+              "(New-Object Text.UTF8Encoding($false))); "
+              "Invoke-WebRequest -Uri '%s' -OutFile 'C:\\Windows\\TEMP\\zmax_rot.png' -UseBasicParsing; "
+              "& 'D:\\xspace\\ultralytics_AOI\\venv\\Scripts\\python.exe' "
+              "'C:\\Windows\\TEMP\\zmax_det.py' 'C:\\Windows\\TEMP\\zmax_rot.png' 2>&1") % (b64, url)
+
+        outs_glob = os.path.join(root, "zmax_data", "agent_hub", "out", "*.txt")
+        t_mark = max((os.path.getmtime(p) for p in glob.glob(outs_glob)), default=0.0)
+        try:
+            subprocess.run([sys.executable, hub, "--enqueue", ps], capture_output=True,
+                           text=True, timeout=90, cwd=root)
+        except Exception as e:                                       # noqa: BLE001
+            return {"ok": False, "why": "入队失败 %s" % e}
+
+        t0 = time.time()
+        while time.time() - t0 < timeout_s:
+            time.sleep(8)
+            fresh = [p for p in glob.glob(outs_glob) if os.path.getmtime(p) > t_mark]
+            for p in sorted(fresh, key=os.path.getmtime, reverse=True):
+                txt = open(p, encoding="utf-8", errors="replace").read()
+                for ln in txt.replace("\r", "").splitlines():
+                    if ln.startswith("RESULT_JSON "):
+                        try:
+                            r = json.loads(ln[len("RESULT_JSON "):])
+                        except Exception:                            # noqa: BLE001
+                            continue
+                        dets = r.get("detections") or []
+                        return {"ok": True, "count": r.get("detect_count", r.get("result", 0)),
+                                "detections": dets, "sent_png": fpath, "url": url,
+                                "saved_incoming": r.get("saved_incoming"), "wait_s": round(time.time() - t0, 1)}
+        return {"ok": False, "why": "%.0fs 内没拿到工控机结果 (agent 轮询可能停了)" % timeout_s,
+                "sent_png": fpath, "url": url}
+
     @classmethod
     def camera_line(cls) -> str:
         return ("表面 10083 旁路 (4060 本机): %s · 只读 kind=origin&grab=1 · 判据图口径 "

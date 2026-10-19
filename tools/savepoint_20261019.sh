@@ -52,7 +52,7 @@ echo "=== ④ MANIFEST ==="
 {
   echo "# Z-MAX 收工存档 $(date '+%F %T')"
   echo
-  echo "代码: HEAD $(git rev-parse --short HEAD) · 版本 v5.50.746 · 工作区干净"
+  echo "代码: HEAD $(git rev-parse --short HEAD) · 版本 v5.50.747 · 工作区干净"
   echo
   echo "## 本日主题"
   echo "- 太阳系/力场: 四层力各接自己的模型输出张量; S³ 盘固定五格位; 盘与球同一投影 (方向差 0.00°)"
