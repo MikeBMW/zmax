@@ -62,11 +62,16 @@ metadata:
 
 1. 姿态按 ≤4°/步 转过去(32.4° 实测分 9 步, 终态姿态差 0.00°)
 2. 位移按 ≤35mm/步(111mm 分 4 步, 位置差 1.0mm)
-3. 松爪走 FIFO 技能键 `{"skill":"L2.grip_open"}` —— **不是** `{"cmd":"grip"}`(回 `未知命令: grip` 且不会松爪)
+3. 松爪走 **`zmax_data/l2_cmd.fifo`**(l2_daemon 的原子技能通道): `{"skill":"L2.grip_open"}` ——
+   **不要**写到 `zmax_data/rokae_sdk/cmd_arm.fifo`(SDK 腿只管 move-abs/move-rel, 不认 skill ⇒ 回`未知命令: grip`, 夹爪一动不动)
+   实测: 写对通道后 1s 生效(GripperSrv target_pos=1000 → curr_pos=196 → 几秒后 1000)
+   夹爪三态真值: 合住 174 · 半开 196 · 全开 1000
 4. 张爪真值 `/gripper_pos` **>700 才算张开**(合住=174, 空爪闭合≈21), 没张开不要退
 5. 沿 tool1 −x 退 110mm 回抓取起始位
 
 坑:
+- **两条 FIFO 分两扎**: `rokae_sdk/cmd_arm.fifo` 只跑运动; `l2_cmd.fifo` 才跑原子技能(夹爪/升降)。写错通道的典型症状: 夹爪不响应但不报错
+- **`grasp_opt.G.send()` 等回执靠 `zmax_data/rokae_sdk/logs/agent_YYYYMMDD.jsonl`, 那个文件可能根本不存在** ⇒ 动作实际执行了但脚本 90s 后判 TIMEOUT 停手。用 `tools/arm_raw.py`(写FIFO + /pose 轮询), 实测 3.2s 到位、残差 0.0mm
 - **纯姿态(位移 0)的 move-abs 被控制器静默忽略**: 回执 PASS / Δ=0 / 姿态一动不动 ⇒ 每步带 ±1mm z 抖动才真动
 - `G.pose()` 姿态是**弧度**, 目标按度写 ⇒ 必须换算(3.1rad 当 3.1° ⇒ 47° 假姿态差/命令发错)
 - `PowerState.estop` 期间所有 move 直接 ABORT(前置条件不满足), 与授权无关, 要先人工解除急停

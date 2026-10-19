@@ -17,8 +17,16 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > py-spy raw 要**按 count 加权** · 3D 面板每帧新建 QFont/QFontMetrics(缓存后 13.7→4.5us, 缓存必须设上限) ·
 > `HOST_POLL_HZ` 50→20 · anon 64MB 段 = glibc arena(`MALLOC_ARENA_MAX=4` 只有走 restart 脚本才带上) ·
 > 段差分报 `RSS 0MB/负值` = pid 被换掉了。
+> 「卡住了 / 点不动」先 `py-spy dump --pid` 抓主线程栈(dump 一次就够, 不必先 record): 栈里同一链反复出现
+> (`_tick → … → _trim_selected`)就是周期 tick 死循环。定式: **周期性 tick 里"裁到 N 条"必须同时回写控件状态**
+> (只裁内存列表、不取消勾选 ⇒ itemChanged 每拍把行塞回 ⇒ 裁/塞 4Hz 循环, 主线程 100%),
+> 并给裁裁日志加 10s 节流、所有入径走同一收口; 修完报 `/proc` 差分前后数 + MainThread 回 `idle`(§9)。
 
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
+> 📄 **真源改了 → 工程库/参数中心同步 (ensure-fresh · 三表对账 · param auto 行)**: `references/truth-to-db-sync.md`
+📄 **配置中心页面改 UI (删重复块 / 文字全可选可复制 / 判据同步 / 一次重启)**: `references/config-center-ui-changes.md` ——
+> `ConfigCenterPage` 被主控制台与独立窗口共用 ⇒ 改一处两边同时生效; 删块必须同改判据并翻成"不该再有这个块";
+> 全页文字可选中 = QLabel OR flags + app 级 Polish 过滤器 (跳过条件别写成 `if f & (A|B)`); 判据变红先 stash 取基线。
 > 📄 **控制台内存 / 看门狗 / 重启**: `references/studio-memory-and-watchdog.md` —— 信号页五处内存结构(预分配环形缓冲 ·
 > `arrays()` 零分配 · 元数据被当曲线画 · 高频 json 解析) + 看门狗必须“杀掉后自动拉起” + 重启脚本按 `comm` 取 pid(否则自杀) +
 > IDE `launch.json` 的 env 也要跟。判据只认“增速掉下来”(5/10/20 分钟三点 GB/h), 单点 RSS 不算数。

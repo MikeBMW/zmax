@@ -225,6 +225,11 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   (内容真的全在表里) 与**页面 `verticalScrollBar().maximum()`** (超出视口就得页滚 ⇒ 把 px 数写进汇报)。三样齐了才算量清。
   量测一律离屏 (`QT_QPA_PLATFORM=offscreen` + `page.resize(W,H)` + `show()` + `processEvents()` + `widget.grab().save(png)`),
   并按**用户真实窗口几何**补一档容器尺寸 (`DISPLAY=:0 wmctrl -lG | grep <标题>` 取尺寸); 出图后用 OCR 数条数当"N 条都在画面里"的证据。
+- **重启脚本只"告警"越界、不会替你夹窗口** (它刻意不写窗口尺寸, 因为硬 resize 会和应用的 show/fit 抢) ⇒
+  起完读 `xdotool getwindowgeometry --shell <wid>`: 若 `X+WIDTH > 屏宽` 或 `Y+HEIGHT > 屏高`, 手工夹:
+  `wmctrl -i -r <wid> -b remove,maximized_vert,maximized_horz` → `wmctrl -i -r <wid> -e 0,x,y,w,h`。
+  **WM 会坚持自己算的 x/y** (只认 w/h), 所以要**迭代改 w/h** 直到右边界/下边界进屏, 每次都 `xdotool getwindowgeometry` 复核;
+  实测一次给 3060x1900 仍越界 98px, 收到 3020x1740 才全在屏内。别只看 `wmctrl` 返回码就宣布搞定。
 - **两张表同处一个 QVBoxLayout、谁都没边界 ⇒ 用户"想多看也拉不动"**: 这是结构缺陷, 补一条竖直 `QSplitter`
   (`setChildrenCollapsible(False)` + `setHandleWidth(9)` + 连 `splitterMoved` 记 `_user_sized`) 才算修好 —— 不是把高度调大就完事。
 - 🚫 **一个 QLayout 只能有一个父布局**: `l.addLayout(row)` 之后又把同一个 `row` `addLayout` 到新容器,
@@ -272,9 +277,26 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   断言可见行数从 N 降到 M 且该列只剩 `L2`; 再叠第二列过滤只清第一列, 断言第二列过滤仍在。
 - 改列序要同步 **QSettings 列宽键换版本**(`...cols` → `...cols_v2`), 旧键按下标记宽, 顺序一变就套错列。
 
-### 21. 「删按钮/删文字行」: 删可见性, 不删对象
-- 别处还在读 `btn.isChecked()` / `btn.toggled` / `label.setText()`, 直接删控件就是 AttributeError。
-  一律 `w.setParent(self); w.hide()`。
+### 21. 「删按钮/删文字行」: 先判能不能真删, 不能才藏
+- 别处还在读 `btn.isChecked()` / `btn.toggled` / `label.setText()` 时, 直接删控件就是 AttributeError。
+  这类一律 `w.setParent(self); w.hide()`。
+- **数据驱动的行可以真删, 但三处必须同一 patch 一起删**: 行集合通常是元组/列表 (`_ROWS = (...)`) 驱动建控件 +
+  `dict[行名]` 存控件 + 刷新函数里逐行 `vals[行名].set_value(...)`。只从元组删键 ⇒ 刷新时 `KeyError`;
+  只删控件不删元组 ⇒ 建控件时就崩。做法: 元组删键 → 刷新函数删对应 setter → 删只服务这些行的状态标签/
+  日志拼接/内部回算块 → 收尾 `grep -n "<行名>" <file>` 必须为 0 (留一行 = 死代码, 用户会追问)。
+- **判据同步改成"断言不存在"**: `k not in page._vals` / `not hasattr(pg, "_src_label")` /
+  卡片 `findChildren(QLabel)` 文本里不含那段文案。旧判据留在目录里会拿已删的行报 ✗, 被当成回归。
+- **同一块 UI 的删减一定是多轮**: 用户先贴一批 ("这些全删掉"), 验收时再追加一行 ("XX 删掉")。
+  每轮都要重跑**依赖该行集合**的判据 (行元组 + 取数 setter + 判据里硬写的期望字典三处一起改),
+  别以为删一轮就收工 —— 第 N 轮漏改, 界面会 `KeyError` 或判据报 ✗ 被当成回归。
+- 🔴 **判据里拿被删行当"载体"的检查要换目标, 不能直接删**: 复制类判据常挑一个**截断显示**的行来验证
+  "显示截断 / 复制完整"; 这行被删后"截断"这个前提也消失了 ⇒ 换到仍存在的一行, 并把断言诚实降级为
+  `复制值 == full_value` (去掉"显示文本不含完整值"), 同时在汇报里说清降级原因。留着前提已消失的断言 = 假绿。
+- **删行后顺手清只服务它的模块级 helper**: 例 `_cut_big()/_vmark()` 的唯一调用点就在被删的 setter 里 ⇒ 连 helper 一起删;
+  删前先在**整个仓库** (`grep -rn "_cut_big\\|_vmark" --include=*.py`) 确认零消费者 —— 工具/判据脚本也会 import 它们,
+  只删确实没人用的, 否则界面干净了、别的脚本 ImportError。
+- **用户指着 A 说"删掉"因为它与 B 重复时, 删副本、留单一真源**: 删之前先 `grep` 那段文案/路径确认它是
+  B 的同源副本 (同一 provider 函数), 删完 B 仍要能独立工作; 副本的构造函数/刷新方法/判据断言一起下架, 别只移出布局。
 - 🔴 未上布局又没 `setParent` 的控件会变成**漂浮的顶层窗口**; 探针用
   `[x for x in QApplication.topLevelWidgets() if x is not w and x.isVisible()]` 确认干净。
 - 取证三件: 可见按钮/标签列表 · 按 `mapTo(w, rect().topLeft()).y()//10*10` 分行(只应剩一行) ·
@@ -304,6 +326,33 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   回填前 `if len(cache) > 3000: cache.clear()`（宽度缓存可放到 2 万量级）。加缓存必须同时加上限。
 - 量法（比"我觉得快了"硬）: 离屏 `QT_QPA_PLATFORM=offscreen`，同一段量宽循环跑 900 次，
   旧写法 vs 复用写法各计时一次，输出 µs/次。
+
+### 25. 「所有这些文字都要能用鼠标选中/复制」= QLabel 默认选不了, 且动态建的会漏
+- 机制: QLabel 默认 `textInteractionFlags() == NoTextInteraction` ⇒ 只能看不能框选, 用户会直接问「为什么这段话
+  用鼠标选不了」。要能选才设 `Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard` + `setCursor(Qt.IBeamCursor)`
+  (I 形光标是"这里能选"的唯一可视信号)。
+- **必须两段, 只扫一遍不够**: ① 建页末尾 `for lb in page.findChildren(QLabel)` 全量扫一遍; ② 再装 **app 级
+  `installEventFilter(self)`**, 在 `eventFilter` 里认 `ev.type() == QEvent.Polish and isinstance(obj, QLabel) and
+  self.isAncestorOf(obj)` 开 flags。刷新/重读真源/换页之后**新建**的标签只有 ② 兜得住 —— 只做 ① 时判据会报
+  「52 个标签里 11 个不可选」, 而且这 11 个正是用户盯着的那页。
+- 🔴 跳过条件写错等于没改: `if f & (Mouse|Keyboard): continue` 会放过"只有 Mouse 没有 Keyboard"的标签
+  (自定义可复制标签常只设 `TextSelectableByMouse`) ⇒ 判据若同时要求两个 flag 就红, 现象像"改了没生效"。
+  正确写法 = **逐 flag OR**: `_want = f | Mouse | Keyboard; if _want != f: setTextInteractionFlags(_want)`。
+- 树/表格不是 QLabel, 天生不能框选 ⇒ 补页级 `QShortcut(QKeySequence.Copy, page)`
+  (`setContext(Qt.WidgetWithChildrenShortcut)`) + `_copy_focus_text()`: 焦点在 QTreeWidget 拷 `currentItem()` 文本、
+  QTableWidget 拷选中单元格 **TSV**(可直接粘 Excel)、**QTextEdit/QLineEdit 一律调它自己的 `copy()`** ——
+  别自己抄选择, 否则把原有复制行为弄坏。树再挂右键「复制条目文字 / 复制全部条目」(省略号截断的行也能拿全文)。
+- **如实划边界: 按钮 / QRadioButton / 页签标题 / QComboBox 条目在 Qt 层面根本不能框选文字** —— 别承诺"所有文字都能选",
+  回复里一句话说清这几类要用旁边的值行或 📋 拿; 用户要的是"能拷走", 不是"每个像素都能拖蓝"。
+- app 级事件过滤器是**每个页面实例装一次**: 主窗口和独立窗口各建一个同一页面类实例 ⇒ 装之前留
+  `if getattr(self, "_copy_filter_on", False): return` 幂等 flag, 否则每开一次窗就多一层 filter (polish 事件重复处理)。
+- **判据必须真拖选, 不能只看 flags**: `QTest.mouseMove` **不带按键状态** ⇒ QLabel 不会进入选择态,
+  `selectedText()` 恒空(会误判功能没生效)。手工发事件:
+  `sendEvent(lb, QMouseEvent(MouseButtonPress, QPointF(x,y), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier))`
+  → 循环 `MouseMove`(**button=`Qt.NoButton`, buttons=`Qt.LeftButton`**) → `MouseButtonRelease`, 再断言 `selectedText()` 非空。
+- 判据套件(离屏一次跑完): 全页 `findChildren(QLabel)` 100% 带两个 flag · 每个页签切过去再查一遍 ·
+  后建标签 show 后自动带上 · 树 Ctrl+C 落剪贴板 · 表 Ctrl+C 出 TSV · 信息窗 Ctrl+C 仍走自己的 copy。
+  现成探针: `scripts/qt_label_selectable_audit.py --module <模块> --class <页面类> --tabs` (前四条直接跑, 新增控件再补)。
 
 **性能数字的口径纪律（不然会报出假账）**:
 - `ps -o pcpu` 是**自启动以来的平均** ⇒ 判"现在多热"要读 `/proc/<pid>/stat` 的 `utime+stime` 两次差分

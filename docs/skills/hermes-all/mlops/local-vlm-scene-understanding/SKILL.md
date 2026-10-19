@@ -113,6 +113,24 @@ max_tokens=500  → 1.9s · 正常回答 ✓     (reasoning_tokens=225, completi
 自测配方(先定标定上限再改代码): 拿一张小图直接打两次 API, 打印 `用时 / finish_reason / content 长度 / usage`
 —— 两次都有正常回答就说明服务端无辜, 问题在调用方。
 
+### 7.2 第三类"空": 模型名本身无效 (2026-10-19 实测, 排查第一步就该做)
+
+`ZMAX_L5_VLM` 默认值 `deepseek-v4-flash` **不是有效模型名** ⇒ 请求**挂起 45s 连 HTTP 状态都拿不到**,
+表象与"timeout 太短"完全一样, 但改 timeout 永远救不回来。
+判据(**10 秒定案, 先做这一步再谈别的**): 用同一把 key 打一次**纯文本**最小请求 ——
+```bash
+curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST https://api.deepseek.com/v1/chat/completions \
+  -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+  -d '{"model":"<候选模型名>","messages":[{"role":"user","content":"说OK"}],"max_tokens":10}'
+# deepseek-v4-flash → 45s 超时无响应 ✗   deepseek-chat → HTTP 200 · 0.61s ✓
+```
+⇒ 排查空回答的顺序改成: **①模型名有效吗(纯文本最小请求) → ②有没有拿到响应对象(超时) → ③看 usage/finish_reason(预算)**。
+
+**第三类"空"的变种: 两个文本字段都空而 token 有值**。同一张图 `deepseek-chat` 实测
+`prompt_tokens 773`(图确实进去了)、`completion_tokens 249`, 而 `content` **和** `reasoning_content` **都是空**
+⇒ 说"模型没输出"是错的, 输出在**别的字段**里。此时**必须打印原始 `choices[0].message` 的全部键**,
+只读 `content`/`reasoning_content` 两个键就判死, 会把它误当成 API 故障 (本轮为此白查两轮)。
+
 ## 八、小模型(500M 级)会「复述提示词」—— 这不是识别
 把候选词表写进提示词(「候选对象: 机械臂/夹爪/光模块/标定板/托盘/扫码枪」), 500M 级模型会把
 **这张表原样吐回来**当结果(实测 SmolVLM2-500M: 每个对象的位置字段全填 `table`/`workcell`)。
@@ -317,3 +335,5 @@ for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModel
 | 加载 SmolVLM/Idefics 系权重报 `Unrecognized configuration class` | 别写死 `AutoModelForCausalLM` ⇒ Vision2Seq→ImageTextToText→CausalLM 依次试, 并记下哪个类加载的 |
 | 权重目录明明在却报"找不到"、静默退化成兜底实现 | 大小写变体都找(`l5_*` / `L5_*`), 并把实际 backend 名打进产出 |
 | 输入帧全黑/纯色还送去 VLM | 先算灰度 mean/std(mean≤3 或 std≤2 = 不可用) ⇒ 跳过调用 + 标 degraded, 别把黑图当证据 |
+| 调用挂起 45s+, 连状态码都没有, 调 timeout/预算都没用 | **模型名无效**(实测 `deepseek-v4-flash`) ⇒ 先用纯文本最小请求验模型名, 换成 `deepseek-chat`(0.61s) |
+| content 与 reasoning_content 都空, 但 completion_tokens 有几百 | 内容在**别的字段**里 ⇒ 打印原始 `choices[0].message` 全部键, 别只读两个键就判成 API 故障 |

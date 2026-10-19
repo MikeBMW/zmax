@@ -42,6 +42,28 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
   子件自己的 `mousePressEvent` 永远收不到 ⇒ 命中必须写在**容器层**且排在拖拽分支之前。
   旁证法: 找一个**已有的、确认能点**的同型控件(如 radio 档位), 看它做在哪一层 —— 跟它同层就对了。
 
+## 文字/能力类判据 (可选中 · 可复制 · 可编辑) —— 只读 flags 不算验过
+- QLabel 默认 `NoTextInteraction`（只能看不能框选）。批量开放: 扫 `root.findChildren(QLabel)` 后
+  `flags |= TextSelectableByMouse | TextSelectableByKeyboard`。**跳过条件写 `if want == f: continue`** ——
+  写成 `if f & (A|B): continue` 会把"只开了 A"的标签整体跳过，B 永远补不上 (项目里自定义 `_CopyLabel` 只设
+  `TextSelectableByMouse`)，结果是鼠标能选、判据 (要 A+B) 却红。
+- 动态新建的控件靠 **app 级 eventFilter** 兜底: `QApplication.installEventFilter(page)` +
+  `ev.type() == QEvent.Polish and isinstance(obj, QLabel) and self.isAncestorOf(obj)` → 同样 OR flags。
+  刷新/换页/重读真源时新建的行才不会落空 (建页末尾的一次性扫描管不到它们)。
+- **真验选中**: `QTest.mouseMove` 不带按键状态 ⇒ 拖选后 `selectedText()` 永远空 (假红)。手工发
+  `QMouseEvent(MouseButtonPress, pos, LeftButton, LeftButton, NoModifier)` → 多次
+  `QMouseEvent(MouseMove, pos, NoButton, LeftButton, …)` → `MouseButtonRelease`，再读 `QLabel.selectedText()`。
+- **真验快捷键**: `page.activateWindow()` + `w.setFocus()` + `processEvents()` 后
+  `QTest.keyClick(w, Qt.Key_C, Qt.ControlModifier)`，比对 `QApplication.clipboard().text()`。
+  树/表格不是 QLabel: page 级 `QShortcut(QKeySequence.Copy, self)` + `Qt.WidgetWithChildrenShortcut`，
+  焦点在 QTextEdit/QLineEdit 时转调它自己的 `copy()`；另写一条判据证明没把信息窗的 Ctrl+C 抢走。
+- 原生限制如实说: 按钮 / 单选钮 / 页签标题的文字 Qt 不支持框选 —— 只说"标签文字全可选", 别承诺所有控件。
+
+## 已有判据变红: 先取基线, 再断定是谁的锅
+改完跑判据看到红，先 `git stash push -q -- <改动文件> <判据文件>` 用同一脚本跑一遍基线，再 `git stash pop`。
+改前条数 == 改后条数 ⇒ 零回退 (旧红如实标注"改动前就红"); 只有差异才是本次引入。别把旧红当自己的回归，
+也别悄悄把旧红算成通过。
+
 ## 坑 (已踩)
 - **cv2 自带 Qt 平台插件污染**: 先 import cv2 (ultralytics 等) 后建 QApplication → Qt 从 `cv2/qt/plugins` 找 xcb → "Could not load the Qt platform plugin xcb" (缺系统依赖)。修复: 建 QApplication **之前**设 `QT_QPA_PLATFORM_PLUGIN_PATH=<site-packages>/PyQt5/Qt5/plugins` (遍历 sys.path 找含 platforms/ 的目录)。别只删 cv2 路径 — 显式指定 PyQt5 真实目录即可
 - QApplication 只能在 import 任何 Qt widget 前创建一次; 被报告侧 import 时 (cv2 已加载) 也要先设插件 env 再建 app

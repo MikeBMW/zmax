@@ -130,3 +130,31 @@ sudo swapoff -a && sudo swapon -a        # 实测 3.9G 换回内存用 15.8s
 
 按「占总账 / 大头是谁 / 改了什么 / 实测前后」四段, 每段带数字与单位(核、GB、ms、us)。
 不要写「已优化性能」; 不要把后台态的数字和前台态的比; 拿不到同口径就明说拿不到。
+
+## 9. "卡住了" 第一动作: `py-spy dump` 抓主线程栈 (周期性 tick 死循环)
+
+`py-spy dump --pid <pid>` 一次就够 —— 若 `MainThread (active+gil)` 反复停在同一条链上, 那就是 4Hz 级死循环,
+不必先 record。实测形状(一条栈直接点出问题):
+
+```
+_tick → _update_tree_values → _on_item_changed → _draw_order → _trim_selected → _log
+```
+
+判读: `_tick` = 定时器; `_update_tree_values` 只写"值变了的行"; `_on_item_changed` 被这次写入触发;
+`_draw_order` 里做"超过上限就裁"。这条链等于**写入 → itemChanged → 重算 → 裁剪 → 再写**闭成了环。
+
+根因(可推广的规则): **周期性 tick 里的"裁到 N 条"如果只裁内存列表、不回写控件状态, 下一拍的
+`if checked == (key in selected): return` 守卫对被裁的行不成立 ⇒ 整棵重取 + `set_curves(几百条)` +
+再裁 + 每拍一行日志**, 4Hz 就把主线程吃满(实测 103% of one core; `ps %CPU` 是生命周期均值, 看不出来)。
+
+修法三层(缺一层都复发):
+
+1. **裁掉的同时改控件状态**: 对被裁的 key `setCheckState(0, Qt.Unchecked)` —— 取消勾选会发 `itemChanged`,
+   但此时 key 已不在 selected ⇒ 守卫直接 return, 不会递归。
+2. **日志节流**: 同一溢出状态 10s 只报一次(`time.monotonic()` 记 `_trim_log_t`); `_log` 会同时写页面标签与
+   日志面板, 每拍一次 = 刷盘。
+3. **所有入径走同一收口**: 别的入口(watch 前缀自动勾选等)直接 `set_curves(self.selected)` 会绕过裁剪 ⇒
+   统一改调 `set_curves(self._draw_order())`, 否则溢出从另一条路又长回来。
+
+验收必须给两个数: ① `/proc/<pid>/stat` 差分(改动前后同一可见页面) ② `py-spy dump` 里 MainThread 回到 `idle`。
+实测口径: 103% → 23% of one core, 主线程 idle 且栈里不再出现 `_trim_selected`。

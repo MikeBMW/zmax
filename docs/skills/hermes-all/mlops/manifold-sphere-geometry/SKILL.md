@@ -19,6 +19,32 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 改完重跑对指纹: 相等 = 逐位零回归。把该 sha256 常量写进判据脚本, 成为可重复的门。
 在役档位 (su2) 不要顺手改默认值; 切档要按门槛「有提升非仅不回退」先出同口径 A/B。
 
+## 2b. 几何开关的落地铁律 (2026-10-19 su2_tangent 实测踩到)
+
+切空间投影 `su2_tangent` (SU(2)≅S³, T_pS³={v|⟨v,p⟩=0}) 已接进 `ss_engine_loop`
+(`build_engine(..., su2_tangent=True)`, CLI `--su2-tangent/--no-su2-tangent`, env `ZMAX_MANIFOLD_SU2_TANGENT=0`),
+`engine_latest.json` 带 `su2_tangent` 字段。真机下发链 (8793/l2_daemon/臂) **一行未改** —— 本回路只出建议。
+
+- 🔴 **开关"接了"不等于生效: 核验所有构造点**。`ManifoldEngine.load()` 里另有
+  `self.metric = MetricCalculator(self.manifold_type)` ⇒ 标定文件一 load, 开关被静默丢掉。
+  症状极隐蔽: **开/关两跑数值逐位相同**。修法: 所有重建点都传 `su2_tangent=getattr(self,"su2_tangent",False)`。
+  判据先量这个: 同一 p 下 ‖∇Φ‖ 开≠关 (实测 0.800 vs 0.894, 随机点)。
+- **回路级 A/B 的正确期望** (真跑 `--instance dbg_* --seconds 2 --no-lock`): φ **相同** (势值不变)、
+  ‖∇Φ‖ 变小 (实测 1.363→0.997, 去掉法向 −27%)、解码动作 ‖a‖ **相同** (ridge 解码读流形点, 不读梯度)。
+  若三者全同 ⇒ 先怀疑构造点漏传, 不要怀疑数学。
+- 调试 tap 会**追加**: 比较前清 `rm -rf /dev/shm/zmax_ss_engine_dbg_*`, 否则读到的是上一轮的旧帧 = 假"无变化"。
+
+## 2c. 主参数 M 的形象化与可操作 (画布右侧主参数窗口)
+
+- 物理口径 (与引擎同一条律): `a = ‖∇Φ‖/M`, M = 等效质量 ⇒ 势场相同时 M↑ = 更平滑更慢。
+  **「越小越快」不成立**: 真跑引擎实测 (起点夹角 60°, `tools/manifold_m_gravity.py`)
+  M=0→35 拍 · 0.3→29 · **1.0→18 (甜点)** · 3.0→31 · 8.0→50; M=0.3 路径比 1.759 = 步长大 ⇒ 绕远兜圈。
+- 档位数字必须**真跑引擎导出** (`--export` → `zmax_data/ss_live/mparam_gravity.json`), 界面只读它, 不手填。
+- 窗口可操作 = 拖动条 (0~8) ↔ 微调框双向联动 + 档位一键填入; **拖/点不写盘**, 仍走「✏️ 写 M」一步。
+- 窗口有信息连接 = 一行 `真源 3.643 · 在役 3.643✓ · 93min前 · a=0.004 · 3.643 重载档(≈实测31拍)`,
+  真源 `config/calib/zmax_manifold.json` / 在役 `zmax_data/ss_live/engine_latest.json`; 非档位值用最近档并标 ≈。
+  判据 `tools/verify_mparam_window.py` 9/9 (联动/档位/真源/在役/物理读数/实测拍数/写入口)。
+
 ## 3. 判据按**真数学**写, 别照抄方案文字
 方案文档里的几何描述常有想当然处, 判据要实测把它们挑出来:
 
