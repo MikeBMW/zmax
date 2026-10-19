@@ -24,6 +24,8 @@ app = QApplication(sys.argv)
 import studio as ST  # noqa: E402
 
 win = ST.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 win.resize(1600, 1000)
 win.show()
 for _ in range(8):

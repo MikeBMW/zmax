@@ -24,6 +24,8 @@ try:
     import studio as ST
 
     win = ST.StudioMainWindow()
+      # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+    win.materialize_all()
     win.show()
     for _ in range(8):
         app.processEvents()

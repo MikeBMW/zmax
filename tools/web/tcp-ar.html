@@ -7,6 +7,9 @@
  header{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid #21262d;flex-wrap:wrap}
  h1{font-size:17px;margin:0;font-weight:700}
  .tag{font-size:12px;padding:2px 8px;border-radius:999px;background:#21262d;color:#8b949e}
+ /* 帧龄/取帧状态格子定宽: 文字一变长短, 头部 flex 就重排 —— 现场看到的就是"整条头在跳"。 */
+ #tAge{display:inline-block;min-width:196px;max-width:264px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+ #tTcp{display:inline-block;min-width:150px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
  .tag.on{background:#1f6feb;color:#fff}
  .tag.warn{background:#7d4e00;color:#ffd479}
  main{display:flex;gap:12px;padding:12px;align-items:flex-start;flex-wrap:wrap}
@@ -50,10 +53,10 @@
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
+  <span class="tag" id="tTcp">TCP —</span>
   <span id="camPick" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <span class="tag" id="tCal">标定: 未标定</span>
   <span class="tag" id="tShow">轨迹: 关(默认)</span>
-  <span class="tag" id="tAge">帧龄 —</span>
   <span style="display:flex;gap:6px;align-items:center">
     <button id="bRotL" class="sm" title="整幅画面向左旋转 90°(逆时针)">↺ 左旋90°</button>
     <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
@@ -69,6 +72,8 @@
     <canvas id="vid" width="640" height="480"></canvas>
     <canvas id="ov"></canvas>
     <div id="hit"></div>
+    <!-- 无帧时把"黑"说清楚: 老倪会把黑画面读成"页面没打开/还是慢"。这是画面没有, 不是页面慢。 -->
+    <div id="nofeed" style="position:absolute;inset:0;display:none;pointer-events:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:rgba(13,17,23,.88);color:#e6edf3;font:15px/1.7 system-ui,sans-serif;text-align:center;padding:24px;z-index:6"></div>
    </div>
     <canvas id="loupe" width="176" height="176"></canvas>
     <div id="hint" style="position:absolute;left:10px;bottom:10px;background:#000a;border:1px solid #30363d;border-radius:8px;padding:6px 10px;font-size:13px">
@@ -1176,13 +1181,15 @@ async function refresh(){
     const [t,st]=await Promise.all([fetch('/api/traj').then(r=>r.json()), fetch('/api/traj/state').then(r=>r.json())]);
     TRAJ={trace:t.trace||[],plan:t.plan||[],real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s}; }
   catch(e){}
-  try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok) $('tAge').textContent='帧龄 '+TCP.age_s.toFixed(2)+'s'; }catch(e){}
+  try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok){
+    const _e=$('tTcp'); if(_e){ const _s='TCP 帧龄 '+TCP.age_s.toFixed(1)+'s'+((TCP.age_s>5)?' ⚠':''); if(_e.textContent!==_s) _e.textContent=_s; }
+  } }catch(e){}
   if(CAM==='arm'){                       // 🔍 光模块 3D 框 (只在臂相机这一路拉)
     try{ MOD3=await fetch('/api/module3d').then(r=>r.json()); }catch(e){}
   } else { MOD3=null; }
   if(CAM==='rs'){ try{ const ri=await fetch('/api/rs_info').then(r=>r.json());
-    $('tAge').textContent='RealSense 帧 '+(ri.frames||0)+' · 帧龄 '+(ri.age_s==null?'—':ri.age_s)+'s · 深度中位 '+(((ri.depth||{}).median_mm)||'—')+'mm';
-    $('tAge').className='tag'+(ri.ok?' on':''); }catch(e){} }
+    $('tTcp').textContent='RS 帧 '+(ri.frames||0)+' · 帧龄 '+(ri.age_s==null?'—':ri.age_s)+'s · 深度中位 '+(((ri.depth||{}).median_mm)||'—')+'mm';
+    $('tTcp').title=$('tTcp').textContent; }catch(e){} }
   try{ const s=await fetch('/api/traj/state').then(r=>r.json());
     if(s&&s.ok){ const inS=s.in_spec||{};
       SHOW=!!s.state.show;                              // 🔴 每次轮询都同步(原来只在 init 读一次: 后端开了、页面还是"隐藏", 看着就像没轨迹)
@@ -1287,20 +1294,32 @@ async function loadCams(){
 // 现场看到的就是"一会黑屏一下"。现在改成: 后台预加载单帧 JPEG(/snap/<cam>.jpg),
 // **只有这一帧真的解码成功才换上去**, 失败就继续显示上一帧 —— 结构上不可能再黑屏。
 // 同时把"帧龄"标出来(老倪要求: 实时画面必须能看出这帧多旧)。
-const FPUMP={busy:false,err:0,ok:0,last:0,timer:null,period:150};
+// 泵周期: 150ms(=6.67fps)是原来的硬顶 —— 实测单帧取回只要 3ms(8797→8791),
+// 链路本身远没到极限, 所以提到 60ms(=16.7fps); 单帧本身慢(大图)时 busy 闸自然退让, 不会堆积。
+const FPUMP={busy:false,err:0,ok:0,last:0,timer:null,period:60};
 function frameAgeText(){
   if(!FPUMP.last) return ' · 帧龄 —';
   const a=(performance.now()-FPUMP.last)/1000;
   return ' · 帧龄 '+a.toFixed(1)+'s'+(a>1.5?' ⚠':''); 
 }
-function pumpTick(){
+function noFeed(title, detail){
+  const n=$('nofeed'); if(!n) return;
+  if(!title){ if(n.style.display!=='none'){ n.style.display='none'; n.innerHTML=''; } return; }
+  if(n.style.display==='flex') return;      // 已经显示了就不再重画 —— 每帧重写 innerHTML 会让那块闪
+  n.style.display='flex';
+  n.innerHTML='<div style="font-size:19px;font-weight:600">⛔ '+title+'</div>'+
+              '<div style="max-width:520px;opacity:.92">'+(detail||'')+'</div>';
+}
+function pumpTick(forceSnap){
   if(FPUMP.busy) return;
   FPUMP.busy=true;
   // 🦾 臂相机 + 开3D框时: 一次请求拿回"被分析的那一帧 + 对应的框" ⇒ 画面和标注永远是同一时刻,
   // 不会出现框比画面滞后(老倪: 「画面延迟挺大的, 注意画面的理解」)。
-  if(CAM==='arm' && MOD3ON){
+  // ⚠️ 但检测线程还没出结果(刚启动/相机刚断)时**必须退回单帧快照** —— 原来这里直接 return,
+  //    结果是"一张图都不画": 页面永远黑, 而 /snap/<cam>.jpg 明明是通的(实测 30+ 次请求全 ok:false, 画布 mean=0)。
+  if(CAM==='arm' && MOD3ON && !forceSnap){
     fetch('/api/module3d?img=1').then(r=>r.json()).then(async d=>{
-      if(!d||!d.jpg_b64){ FPUMP.busy=false; return; }
+      if(!d||!d.jpg_b64){ FPUMP.busy=false; pumpTick(true); return; }
       const im=new Image();
       await new Promise((res,rej)=>{ im.onload=res; im.onerror=rej; im.src='data:image/jpeg;base64,'+d.jpg_b64; }).catch(()=>{});
       if(!im.naturalWidth){ FPUMP.busy=false; return; }
@@ -1324,8 +1343,11 @@ function pumpTick(){
     }
   };
   im.onerror=()=>{ FPUMP.busy=false; FPUMP.err++;
-    const t=$('tAge'); if(t){ const a=FPUMP.last?((performance.now()-FPUMP.last)/1000).toFixed(1):'—';
-      t.textContent=' · 取帧失败×'+FPUMP.err+' · 显示上一帧(帧龄 '+a+'s)'; } };
+    // 取帧失败 = **跳过这一帧**: 屏幕保持上一帧, 不重绘、不每帧改字(原来每 100ms 改一次"取帧失败×N",
+    // 头部 flex 跟着重排 ⇒ 现场看到"字在跳、屏幕在跳")。只在刚进入失败态时写一次。
+    const t=$('tAge'); if(t && FPUMP.err===3) t.textContent=' · 无画面(相机未出图)';
+    if(FPUMP.err>=3) noFeed('这一路没有画面', '相机取不到帧 —— 页面本身没慢, 是这一路没有图像。'
+      + '切到在线的那一路底图, 或检查 Orin 链路 / 相机电源与线缆。'); };
   im.src='/snap/'+encodeURIComponent(CAM)+'.jpg?t='+Date.now();
 }
 function drawFrameToVid(im){
@@ -1334,6 +1356,7 @@ function drawFrameToVid(im){
   // 现场看到的就是"一会黑屏一下"。改成 canvas: 只有新帧解码成功才 drawImage, 期间屏幕上是上一帧。
   if(v.width!==im.naturalWidth || v.height!==im.naturalHeight){ v.width=im.naturalWidth; v.height=im.naturalHeight; }
   try{ v.getContext('2d').drawImage(im,0,0); }catch(e){}
+  noFeed(null);                                 // 真来帧了 ⇒ 撤掉"没有画面"的说明
 }
 function startPump(){
   if(FPUMP.timer) return;

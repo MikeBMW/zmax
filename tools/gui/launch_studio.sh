@@ -33,10 +33,12 @@ if ! echo "${DBUS_SESSION_BUS_ADDRESS:-}" | grep -q '^unix:'; then
 fi
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-# 🚀 2026-10-12 老倪: 「双击启动图标后, 先打开配置中心」——
-#   新实例: studio.py 按 ZMAX_BOOT_PAGE 启动后跳页 (默认 config = 配置中心);
-#   已有实例: 直接写命令通道把它弹到配置中心 (双击图标一定落到配置中心, 不用记快捷键)。
-export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
+# 🚀 2026-10-19 老倪: 「更改打开的首个界面 —— 第一眼应该是主控制台的界面; 之后用户可以单独打开
+#   配置中心, 再从配置中心打开状态空间工程」 ⇒ 默认落点从 config 改成 home (主控制台)。
+#   新实例: studio.py 按 ZMAX_BOOT_PAGE 启动后跳页 (home = 主控制台, 本来就是初始页 ⇒ 不跳);
+#   已有实例: 写命令通道把它带回主控制台 (双击图标 = 回到第一眼那个界面, 不用记快捷键)。
+#   要临时落到别的页: ZMAX_BOOT_PAGE=config tools/gui/launch_studio.sh
+export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-home}"
 
 # 已有实例在跑 → 激活已有窗口 + 弹到配置中心, 不重复启动
 # 🔴 2026-10-15 加固: 原来用 `pgrep -f "[g]ui-venv311/bin/python studio.py"` —— 这是**子串匹配**,
@@ -45,6 +47,7 @@ export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-config}"
 #   ⇒ 改成锚定整条 cmdline: 只有"就是那个解释器在跑 studio.py"才算实例。
 STUDIO_RE='^[^ ]*gui-venv311/bin/python studio\.py$'
 # 🔔 2026-10-16 老倪「第一次总是没反应」: studio.py 从进程起来到**主窗口 map 出来**要 ≈50s
+#    (2026-10-19 提速后实测 3.1s: 只先建首页+配置中心, 其余页在窗口出来后按需/后台建)
 #   (启动期预读配置真源 + 自动加载 L2 YOLO 2.4s / L3 SmolVLA 18.5s · 1289MB / L4 INTACT 5.9s),
 #   这段时间桌面**一点反馈都没有** ⇒ 人会以为没点到、再双击一次。这里补两条可见反馈:
 #   · 新实例: 立刻弹一条"正在启动"通知 (告诉他大概要等多久, 别急着再点)
@@ -60,7 +63,7 @@ if pgrep -f "$STUDIO_RE" >/dev/null 2>&1; then
         DISPLAY="$DISPLAY" xdotool windowactivate "$WIN" 2>/dev/null
     else
         # 进程在、窗口还没 map ⇒ 正在启动中 (不是没反应)
-        _notify "控制台正在启动中" "进程已在运行, 主窗口还没出来 (还要等 30~50 秒, 加载模型/画布中)。请勿重复双击。"
+        _notify "控制台正在启动中" "进程已在运行, 主窗口还没出来 (常规 3~5 秒)。请勿重复双击。"
     fi
     exit 0
 fi
@@ -72,7 +75,7 @@ fi
 
 cd "$GUI_DIR" || exit 1
 # 🔔 新实例: 先给一条可见反馈再 exec (窗口 ≈50s 后才出来, 这段空窗期正是"第一次没反应"的由来)
-_notify "XSpace Studio 正在启动" "正在加载工程库/画布 + L2/L3/L4 模型, 主窗口约 50 秒后出现。请勿重复双击。"
+_notify "XSpace Studio 正在启动" "主窗口约 3 秒出现 (先出首页+配置中心, 其余页面随后在后台建好)。请勿重复双击。"
 # 只启动控制台本体: 不设任何自动开窗开关 (ZMAX_AUTO_RUN/ZMAX_AUTO_SS/ZMAX_AUTO_SS_RUN/ZMAX_AUTO_TEST
 # 一律不导出) —— 双击图标 = 落到配置中心, 由老倪自己检查任务配置后点「🚀 启动工程 · 信号 · 场景」。
 unset ZMAX_AUTO_RUN ZMAX_AUTO_SS ZMAX_AUTO_SS_RUN ZMAX_AUTO_SS_3D ZMAX_AUTO_TEST

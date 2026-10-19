@@ -27,6 +27,8 @@ import studio                                                                   
 
 W, H = (int(os.environ.get("ZMAX_W") or 3200), int(os.environ.get("ZMAX_H") or 2000))
 win = studio.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 win.resize(W, H)
 win.show()
 try:

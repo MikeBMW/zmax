@@ -66,12 +66,18 @@ def main():
 
     print("\n【① 页签与控件】")
     titles = [pg.tabs.tabText(i) for i in range(pg.tabs.count())]
-    chk("①a", "「💰 成本/报价」页签存在", any("成本/报价" in t for t in titles), titles)
+    # 2026-10-19 老倪: 「将成本/报价 商业模式的内容，都迁移到 文档配置里」⇒ 不再有独立页签
+    _di = pg._tab_index_by_title("文档配置")
+    _host = pg.tabs.widget(_di) if _di >= 0 else None
+    _in_doc = _host is not None and (_host.isAncestorOf(pg._cost_bom) or _host is pg._cost_bom)
+    chk("①a", "💰 成本/报价 块在「📄 文档配置」页内 (独立页签已取消)",
+        _in_doc and not any("成本/报价" in t for t in titles),
+        "在文档配置页=%s · 页签=%s" % (_in_doc, titles))
     chk("①b", "BOM 表 + 6 个假设 + 结果 4 行 + 日志行都在",
         all(hasattr(pg, a) for a in ("_cost_bom", "_cost_in", "_cost_l_total", "_cost_l_annual",
                                      "_cost_l_payback", "_cost_l_alt", "_cost_log")),
         "假设控件: %s" % list(pg._cost_in))
-    chk("①c", "页签次序 = 北斗次序 (成本/报价 在 商业模式 之前)", titles[-2] == "💰 成本/报价", titles[-3:])
+    chk("①c", "页签 = 北斗七星 7 页 (文档配置在末位)", len(titles) == 7 and "文档配置" in titles[-1], titles[-3:])
 
     print("\n【② 默认口径 = 老倪给的数】")
     chk("②a", "硬件 20.3 万", abs(e["hardware"] - 203000) < 1e-6, "%.0f 元" % e["hardware"])
@@ -176,7 +182,7 @@ def main():
     print("\n【⑫ 零回归】")
     chk("⑫a", "画布真源未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt,
         os.path.getmtime(CANVAS))
-    chk("⑫b", "页签 = 原 8 页 + 成本/报价 + 商业模式 = 10", len(titles) == 10, titles)
+    chk("⑫b", "页签恰好 7 个 (= 北斗七星; 成本/报价 已并入文档配置)", len(titles) == 7, titles)
     chk("⑫c", "真源已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n" + "=" * 68)

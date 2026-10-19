@@ -225,6 +225,8 @@ _acts = [a.text() for a in m.findChildren(type(m.findChild(type(None)) or object
 from PyQt5.QtWidgets import QAction as _QA                            # noqa: E402
 import studio as ST                                                   # noqa: E402
 win = ST.StudioMainWindow()          # 真建主窗口 (菜单在它身上, 不在画布模块上)
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 app.processEvents()
 menu_txt = [a.text() for a in win.findChildren(_QA)]
 # 2026-10-12 老倪「zmax_space.proj 默认应该是这个, 保存, 自动更新, 加载这个」⇒ 菜单改名:

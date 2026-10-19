@@ -11,7 +11,8 @@
 ────────────────────────────────────────
 老倪: 「双击启动图标后, 先打开配置中心, 在配置中心, 可以配置任务, 信号分析, 3D场景。」
 · 桌面图标 `~/Desktop/XSpace-Studio.desktop` → `tools/gui/launch_studio.sh`;
-· 新实例: 脚本导出 `ZMAX_BOOT_PAGE=config` (可覆盖), `studio.py` 界面建好 3.2s 后自动 `_on_nav("config")`;
+· 新实例: 脚本导出 `ZMAX_BOOT_PAGE=home` (可覆盖) —— **2026-10-19 起第一眼 = 主控制台**
+  (home 是 stack 第 0 页, 默认不跳); 要恢复旧行为用 `ZMAX_BOOT_PAGE=config`;
 · 已有实例: 脚本把 `config` 写进命令通道 `/tmp/zmax_nav_cmd` 并把窗口激活 ⇒ **双击图标永远落到配置中心** (不重复起进程)。
 · 实测: 重启后**我一条命令都没发**, 状态文件自己写成 page=配置 nav=config (pid 625994, 帧龄 52s);
   再双击一次, 通道内容 2.9s 内被吃掉 + page=配置 (进程号不变 ⇒ 没新起实例, 只是导航)。
@@ -100,7 +101,8 @@
   ⑦ 真点按钮(无回调): `/tmp/zmax_nav_cmd` 真被写成 `open_all`
   ⑧ 驱动 `status` 真跑 (退出码 0, 真读到绑定真源与窗口)
   ⑨ 端到端回执 (控制台重启到含本流程的版本后才验, 否则如实"跳过"而不是假绿)
-  ⑩ 双击图标 → 配置中心: studio.py `ZMAX_BOOT_PAGE` 接线 + 启动脚本导出 + 已有实例写通道 + 桌面图标指向本脚本
+  ⑩ 双击图标 → 主控制台 (2026-10-19; 10-12~10-18 是配置中心): studio.py `ZMAX_BOOT_PAGE` 接线
+    + 启动脚本导出 (默认 home) + 已有实例写通道 + 桌面图标指向本脚本
 
 判据 ②`tools/verify_task_scene_matrix.py` → **46/46 PASS** (配置 × 任务 × 场景 × 信号实时监控 自动测试)
   对 TASK-01-FW(插拔绿) / TASK-06-TRAY(摆盘蓝) / TASK-07-AOI(AR紫) 逐轮真激活 → 切场景 → 统一打开, 每轮核 6 项真值:

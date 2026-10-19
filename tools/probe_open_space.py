@@ -22,6 +22,8 @@ path = sys.argv[1] if len(sys.argv) > 1 else PF.space_path()
 print("工程文件:", path, "存在:", os.path.exists(path), flush=True)
 
 win = ST.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 # 等懒创建的画布模块 (启动后 400ms 建)
 for _ in range(60):
     app.processEvents()

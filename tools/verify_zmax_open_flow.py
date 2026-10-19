@@ -103,6 +103,13 @@ def main():
     pg.resize(1400, 900)
     pg.show()
     app.processEvents()
+    # 🔧 2026-10-19: 配置中心会「记住上次那一页」(zmax_data/cc_last_tab.txt) ⇒ 若上次停在非任务页,
+    #    任务页从未 layout 过, 下面量按钮几何会量到默认 (0,0,640,480) 的未布局状态, 判据假红。
+    #    判据要的是"任务页在 1280/1400/1920 下不挤不截断" ⇒ 显式切到任务配置页再量。
+    _ti = pg._tab_index_by_title("任务配置") if hasattr(pg, "_tab_index_by_title") else -1
+    if _ti >= 0:
+        pg.tabs.setCurrentIndex(_ti)
+        app.processEvents()
     _tt = pg.tasks_table
     _hdr = [_tt.horizontalHeaderItem(c).text() if _tt.horizontalHeaderItem(c) else "" for c in range(_tt.columnCount())]
     ck("表头列序 = 任务ID/类型/工程/3D场景/实时监控/…",
@@ -227,9 +234,10 @@ def main():
 
     print("⑩ 双击启动图标 → 先打开配置中心 (老倪 10-12)")
     _lsh = rd(os.path.join(ROOT, "tools", "gui", "launch_studio.sh"))
-    ck("studio.py 支持开机默认页 (ZMAX_BOOT_PAGE, 默认 config)",
-       "ZMAX_BOOT_PAGE" in s and 'or "config"' in s and "_on_nav(_bp)" in s)
-    ck("启动脚本导出 ZMAX_BOOT_PAGE", "export ZMAX_BOOT_PAGE=" in _lsh and ":-config}" in _lsh)
+    ck("studio.py 支持开机默认页 (ZMAX_BOOT_PAGE, 默认 home=主控制台)",
+       "ZMAX_BOOT_PAGE" in s and 'or "home"' in s and "_on_nav(_bp)" in s)
+    ck("启动脚本导出 ZMAX_BOOT_PAGE (默认 home)",
+       "export ZMAX_BOOT_PAGE=" in _lsh and ":-home}" in _lsh)
     ck("已有实例也弹到配置中心 (写命令通道再激活窗口)",
        'printf \'%s\\n\' "$ZMAX_BOOT_PAGE" > /tmp/zmax_nav_cmd' in _lsh)
     _dt = rd(os.path.expanduser("~/Desktop/XSpace-Studio.desktop"))

@@ -25,6 +25,8 @@ def chk(cond, msg):
 
 print("probe ③ 菜单「画布(C)」7 项 + 点击真转发", flush=True)
 win = ST.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 app.processEvents()
 menu_titles = [a.text() for a in win.menuBar().actions()]
 chk(any("画布" in t for t in menu_titles), f"主窗口一级菜单含「画布」 (共 {len(menu_titles)} 个: {menu_titles})")

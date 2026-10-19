@@ -9,6 +9,11 @@
        (列 = 《元任务标准模板》七个字段; 真源 config_meta.json + 画布连线 + tasks.json)
      · 🧾 工单配置 = **工单实例粒度**: 一份工单 (order_no) 的身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪
        (真源 config/orders/BS_*.json)
+
+老倪 2026-10-19: 「将 工单配置，替换成 工程配置；将工单，放到文档配置选项卡，将成本/报价 商业模式的内容，
+                  都迁移到 文档配置里；整体上调整原来的 北斗七星的 开阳的描述」
+  ⇒ 六阵由「工单配置·定调度」改为「工程配置·定落地」(工程库/参数注册表/工程-模型匹配/AR 示教点位);
+    工单实例 + 成本/报价 + 商业模式 三块并入七阵「📄 文档配置」—— 页签仍是 7 个, 正好七星。
 结构: 左域树 + 右工作区(页签, 首屏=任务配置) + 底部结果面板(点了必出结果)。
 
 本文件只依赖 PyQt5 + json, **不 import studio** (颜色由 studio 传进来), 保证可离屏单测。
@@ -136,7 +141,7 @@ def _meta_task_count():
 
 
 def _orders_list():
-    """工单配置真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
+    """工单实例真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
     out = []
     for f in sorted(glob.glob(os.path.join(ORDERS_D, "BS_*.json"))):
         d = _j(f, {}) or {}
@@ -979,23 +984,29 @@ def _star_facts():
         for _dom, _k in (("功能配置", "func"), ("模型配置", "model"), ("性能配置", "perf")):
             _l = [c for c in _cs if c.get("domain") == _dom]
             f[_k] = "%s %d/%d 就绪" % (_dom, sum(1 for c in _l if c.get("ready")), len(_l))
-        f["func"] += " · 工程域 %d 项 (天玑下的子入口)" % len([c for c in _cs if c.get("domain") == "工程配置"])
     except Exception as e:                                                      # noqa: BLE001
         for _k in ("func", "model", "perf"):
             f.setdefault(_k, "取不到 (%s)" % type(e).__name__)
-    # 6 · 开阳 工单配置
+    # 6 · 开阳 工程配置 (2026-10-19: 由「工单配置」改为「工程配置·定落地」)
+    #   真源三件: 特征库工程域 (参数注册表) · 工程-模型匹配 (九类站点能力) · AR 场景示教点位
     try:
-        f["order"] = "工单 %d 个" % len(_orders_list())
+        _cs = (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", [])
+        _eng = [c for c in _cs if c.get("domain") == "工程配置"]
+        _mt = _j(MATCH_J, {}) or {}
+        f["eng"] = "工程域 %d/%d 就绪 · 工程-模型匹配 %d 模型 · 真源改于 %s" % (
+            sum(1 for c in _eng if c.get("ready")), len(_eng),
+            len(_mt.get("MODELS", [])), _mt_str(MCD_J))
     except Exception as e:                                                      # noqa: BLE001
-        f["order"] = "取不到 (%s)" % type(e).__name__
-    # 7 · 瑶光 文档配置
+        f["eng"] = "取不到 (%s)" % type(e).__name__
+    # 7 · 瑶光 文档配置 (2026-10-19: 工单 / 成本报价 / 商业模式 都收进这一阵)
     try:
-        f["doc"] = "文档 %d/3 就绪 (SOR / 立项 / 合作)" % sum(
-            1 for m in (_doc_mark(k) for k in ("sor", "project", "agreement")) if m == "✅")
+        f["doc"] = "文档 %d/3 就绪 (SOR / 立项 / 合作) · 工单 %d 个 · 含 成本报价 + 商业模式" % (
+            sum(1 for m in (_doc_mark(k) for k in ("sor", "project", "agreement")) if m == "✅"),
+            len(_orders_list()))
     except Exception as e:                                                      # noqa: BLE001
         f["doc"] = "取不到 (%s)" % type(e).__name__
     f["__all__"] = " · ".join("%s %s" % (_ss.BY_KEY[k]["star"], f.get(k, "").split(" · ")[0])
-                              for k in ("prod", "task", "func", "model", "perf", "order", "doc"))
+                              for k in ("prod", "task", "func", "model", "perf", "eng", "doc"))
     return f
 
 
@@ -1699,13 +1710,13 @@ class ConfigCenterPage(QWidget):
         """左树顶层 = **北斗七星阵** 七项, 从上到下 1..7 (老倪 2026-10-15)。
 
         次序 = 配置体系的传导次序: 天枢定边界 → 天璇定作业 → 天玑定能力 → 天权定算法 → 玉衡定指标
-        → 开阳定调度 → 瑶光定记录。每项前面必须有**序号** (老倪原话: 「注意前面要显示一个序号」)。
+        → 开阳定落地 → 瑶光定记录。每项前面必须有**序号** (老倪原话: 「注意前面要显示一个序号」)。
 
         与原布局的差别 (如实记, 免得下次又"改回"来):
           · 原来顶层 8 项, 次序是 模型/工程/功能/性能/文档/任务/工单/产品 —— 顺序是按代码里 append 的先后来的,
             没有体系含义; 现在按阵法次序。
-          · 原来「工程配置」单列顶层; 它是**特征库第 4 个域**(工程库类特征), 不是八颗星里的一颗 ⇒
-            归到「天玑·功能配置(定能力)」下作子入口 (功能没删, 点它照样进工程域视图)。
+          · 2026-10-19 老倪: 「将 工单配置，替换成 工程配置」⇒ 第六阵 = 工程配置(开阳·定落地),
+            工程库/参数注册表/工程-模型匹配/AR 示教点位; 工单实例搬进第七阵 文档配置(与成本报价、商业模式同页)。
         """
         chars = d.get("CHARACTERISTIC", [])
         _dom = {}
@@ -1738,22 +1749,25 @@ class ConfigCenterPage(QWidget):
         doms.append((f"{_ss.star_line('task')}  任务 {len(_tk_all)} · 元任务 {_meta_task_count()}",
                      "⛔" if (_tk_all and any(t.get("blocked_by_site") for t in _tk_all)) else "✅",
                      [t["task_id"] for t in _tk_all]))
-        # 3 · 天玑 —— 功能配置 (特征库功能域 + 工程域子入口)
+        # 3 · 天玑 —— 功能配置 (特征库功能域)
+        #   2026-10-19: 工程域**升格为第六阵**, 不再是天玑下的子入口 ⇒ 这里只留功能域本身
         _r3, _n3, _b3 = _dom["功能配置"]
         doms.append((f"{_ss.star_line('func')}  {_r3}/{_n3}", "⛔" if _r3 < _n3 else "✅",
-                     list(_b3) + ["工程配置 · 工程库域（特征库第 4 域）"]))
+                     list(_b3)))
         # 4 · 天权 —— 模型配置 ; 5 · 玉衡 —— 性能配置
         for _k, _d in (("model", "模型配置"), ("perf", "性能配置")):
             _r, _n, _b = _dom[_d]
             doms.append((f"{_ss.star_line(_k)}  {_r}/{_n}", "⛔" if _r < _n else "✅", list(_b)))
-        # 6 · 开阳 —— 工单配置 (工单实例粒度)
-        doms.append((f"{_ss.star_line('order')}  工单 {len(_bs)}",
-                     "⛔" if any((b.get("readiness") or {}).get("site_missing") for b in _bs) else "✅",
-                     [((b.get("identity") or {}).get("order_no") or "?") for b in _bs]))
-        # 7 · 瑶光 —— 文档配置 (收束全部)
+        # 6 · 开阳 —— 工程配置 (2026-10-19 老倪: 「将 工单配置，替换成 工程配置」)
+        #   工程域参数注册表 = 这一阵的主表; 工单实例搬去第七阵文档配置
+        _r6, _n6, _b6 = _dom["工程配置"]
+        doms.append((f"{_ss.star_line('eng')}  {_r6}/{_n6}",
+                     "⛔" if _r6 < _n6 else "✅", list(_b6)))
+        # 7 · 瑶光 —— 文档配置 (收束全部: 三份文档 + 工单实例 + 成本报价 + 商业模式)
         doms.append((f"{_ss.star_line('doc')}  文档 {sum(1 for m in dm if m == '✅')}/3",
                      "⛔" if "⛔" in dm else "✅",
-                     ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对"]))
+                     ["供应商外发 SOR", "项目立项文档", "合作协议", "一致性核对",
+                      "工单实例 %d 个" % len(_bs), "成本/报价", "商业模式"]))
         #   记 (2026-10-14 老倪): 「任务配置」= 元任务粒度 (功能 + 配置参数) / 「工单配置」= 工单实例粒度 (一次执行)。
         #   记 (2026-10-13 老倪): 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力。
         # 🧹 2026-10-15 老倪: 「左侧不用显示那么多, 只显示 1..7; 详细信息要在配置页面显示」
@@ -2229,10 +2243,16 @@ class ConfigCenterPage(QWidget):
             pass
 
     def _show_orders(self, txt=""):
-        """🧾 工单配置页 = **工单实例粒度**。点具体工单号 ⇒ 底部面板摊开这份工单的完整配置面。"""
-        i = self._tab_index_by_title("工单配置")
+        """🧾 工单实例页 (2026-10-19 起在「📄 文档配置」页里)。点具体工单号 ⇒ 底部面板摊开这份工单的完整配置面。"""
+        i = self._tab_index_by_title("文档配置")
         if i >= 0:
             self.tabs.setCurrentIndex(i)
+            # 工单块在文档配置页里靠下 ⇒ 切页后把它滚进视野 (否则"点了像没反应")
+            try:
+                _sa = self.tabs.widget(i)
+                _sa.ensureWidgetVisible(getattr(self, "order_table", None), 0, 60)
+            except Exception:                                                   # noqa: BLE001
+                pass
         m = re.search(r"(BS-[A-Za-z0-9-]+)", txt or "")
         if m:
             self._show_order_detail(m.group(1))
@@ -2251,7 +2271,7 @@ class ConfigCenterPage(QWidget):
         i, rd = bs.get("identity") or {}, bs.get("readiness") or {}
         rec = bs.get("recipe") or []
         self.out.setPlainText("\n".join([
-            "🧾 工单配置 · %s" % i.get("order_no", "—"),
+            "🧾 工单实例 · %s" % i.get("order_no", "—"),
             "   场景       : %s (%s)" % (i.get("scene_id", "—"), i.get("name", "—")),
             "   工单目标   : %s" % (bs.get("targets") or {}),
             "   配方       : %d 段 / %d 条参数" % (len(rec), sum(len(x.get("params") or []) for x in rec)),
@@ -2275,7 +2295,7 @@ class ConfigCenterPage(QWidget):
             return False
         r = t.currentRow()
         if not (0 <= r < len(ords)):
-            self._log_cc("   ⛔ 先在「🧾 工单配置」表里点一行 (共 %d 份工单)" % len(ords))
+            self._log_cc("   ⛔ 先在「📄 文档配置」页的工单表里点一行 (共 %d 份工单)" % len(ords))
             return False
         return self._show_order_detail(ords[r])
 
@@ -2306,7 +2326,7 @@ class ConfigCenterPage(QWidget):
                         self._filter_fpm({"func": "功能配置", "perf": "性能配置"}[_k])
                     self._sync_star_banner()
                     return
-            if "工单配置" in txt:
+            if "工单配置" in txt:        # 2026-10-19: 旧左树行/历史会话里的叫法 —— 工单已并入文档配置
                 self._show_orders(txt)
                 return
             if "任务配置" in txt:
@@ -2754,7 +2774,13 @@ class ConfigCenterPage(QWidget):
         head.setFont(QFont("Consolas", 10))
         head.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;")
         l.addWidget(head)
-        row = QHBoxLayout()
+        # ⚡ 2026-10-19: 这排 12 个按钮挤在一行**实测最小宽度 1472px** ⇒ 窗口 1280/1400 宽时右侧被截
+        #   (判据 verify_zmax_open_flow 量到「启动按钮右边缘 1641 > 页宽 1280」; 老倪口径: 界面不许挤/不许截断)。
+        #   改成网格 6 个一行: 两行各 ~740px, 1280 宽也完整可见; 宽度够时视觉上仍是两行紧凑按钮组。
+        row = QGridLayout()
+        row.setHorizontalSpacing(6)
+        row.setVerticalSpacing(4)
+        _row_btns = []
         for txt, fn, kw in (("🧩 刷新绑定", "bind", {}),
                             ("📋 配置清单(选中)", "bind", {"use_sel": True}),
                             ("📋 配置单(全参数导出)", "sheet", {"use_sel": True}),
@@ -2767,7 +2793,7 @@ class ConfigCenterPage(QWidget):
                             ("📋 导出 JSON", "tasks", {})):
             b = _btn(txt, th)
             b.clicked.connect(lambda _, f=fn, k=kw: self._run_selected(f, **k))
-            row.addWidget(b)
+            _row_btns.append(b)
         # 🆕 2026-10-14 老倪: 「这些元任务, 要由配置中心可以在任务配置里可以导出 word 和 pdf 文档」
         #   任务配置首屏直接出「元任务开发计划 · 项目立项书」(md + docx + pdf),
         #   元任务 = 一个功能 + 该功能全部配置参数; 与命令行 tools/export_meta_doc.py 同一执行体。
@@ -2779,8 +2805,10 @@ class ConfigCenterPage(QWidget):
                          "ss_task_binding.json + 画布(89 节点) —— 出文档前先跑一致性校验")
         _b_mt.setStyleSheet(_b_mt.styleSheet() + ";font-weight:bold;")
         _b_mt.clicked.connect(lambda: self._run_doc("metaplan"))
-        row.addWidget(_b_mt)
-        row.addStretch()
+        _row_btns.append(_b_mt)
+        for _k, _b in enumerate(_row_btns):
+            row.addWidget(_b, _k // 6, _k % 6)
+        row.setColumnStretch(6, 1)              # 右侧留白 (按钮靠左, 不拉伸)
         l.addLayout(row)
         # ⚠️ 任务表**不直接进 l** —— 它要和元任务表之间夹一条可拖的分隔条 (见本页末尾的 self.tm_split),
         #    否则两张表的高度都只能由布局"分剩下的"决定 ⇒ 元任务表 75 行只看得到 19 行, 老倪也拉不动它。
@@ -2945,7 +2973,7 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         w4 = QWidget(); l4 = QVBoxLayout(w4); l4.setContentsMargins(6, 6, 6, 6)
-        _h4 = QLabel("工单配置 = 工单实例粒度 (身份/配方/变体/选项/目标/站点就绪) · 真源 %s"
+        _h4 = QLabel("工单实例 = 一次执行 (身份/配方/变体/选项/目标/站点就绪) · 真源 %s"
                      " · 点一行看完整配置面" % os.path.relpath(ORDERS_D, ROOT))
         _h4.setFont(QFont("Consolas", 10))
         _h4.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
@@ -2953,12 +2981,14 @@ class ConfigCenterPage(QWidget):
         l4.addWidget(_h4)
         r4 = QHBoxLayout()
         for txt, fn in (("📋 工单列表", lambda: self._run_into("orders")),
-                        ("🧾 工单配置明细(选中)", lambda: self._order_from_row(t4))):
+                        ("🧾 工单明细(选中)", lambda: self._order_from_row(t4))):
             b4 = _btn(txt, th)
             b4.clicked.connect(lambda _=False, f=fn: f())
             r4.addWidget(b4)
         r4.addStretch(); l4.addLayout(r4); l4.addWidget(t4, 1)
-        self.tabs.addTab(_scrollable(w4, th), "🧾 工单配置")
+        # 🔁 2026-10-19 老倪: 「将工单，放到文档配置选项卡」⇒ 不再单开「🧾 工单配置」页签,
+        #    整块 (表 + 按钮 + 点行看明细) 搬进第七阵「📄 文档配置」页里 (见下面 l7 的嵌入)。
+        self._w4_orders = w4
 
         # 5) 模型 × 工程配置
         m = _j(MATCH_J, {}) or {}
@@ -3035,13 +3065,52 @@ class ConfigCenterPage(QWidget):
                                     f"border:1px solid {th['C_BORDER']};")
         self.docs_out.setPlainText(_doc_inventory())
         l7.addWidget(self.docs_out, 1)
+
+        # ── 以下三块: 2026-10-19 老倪「将工单，放到文档配置选项卡，将成本/报价 商业模式的内容，都迁移到 文档配置里」
+        #    它们都不是独立配置面 (工单实例 = 一次执行的记录 / 成本报价 = 从配置算出来的账 /
+        #    商业模式 = 从成本与配置导出的商业方案) ⇒ 统一收在第七阵 瑶光·文档配置(定记录) 之下。
+        def _sec(title, tip=""):
+            _s = QLabel("─" * 12 + "  " + title)
+            _s.setWordWrap(True)
+            _s.setFont(QFont("Consolas", 10, QFont.Bold))
+            _s.setStyleSheet("color:%s;background:transparent;"
+                             % th.get("C_ACCENT", th.get("C_WHITE", "#e6edf3")))
+            if tip:
+                _s.setToolTip(tip)
+            return _s
+
+        l7.addWidget(_sec("🧾 工单实例（原「🧾 工单配置」页）",
+                          "工单 = 一次执行 (Build Sheet) · 真源 config/orders/BS_*.json · 点行看完整配置面"))
+        l7.addWidget(getattr(self, "_w4_orders", QWidget()), 2)
+        try:
+            l7.addWidget(_sec("💰 成本/报价",
+                              "算法真源 tools/cost_model.py · 参数真源 config/platform/zmax_cost_model.json"))
+            l7.addWidget(self._cost_page(th))
+        except Exception as _e10b:                                              # noqa: BLE001
+            _lb10b = QLabel("⛔ 成本/报价块构造失败: %r" % (_e10b,))
+            _lb10b.setWordWrap(True)
+            l7.addWidget(_lb10b)
+        try:
+            l7.addWidget(_sec("🧩 商业模式",
+                              "算法真源 tools/business_model.py (输入 = 成本真源 + 商业模式假设真源)"))
+            l7.addWidget(self._biz_page(th))
+        except Exception as _e11b:                                              # noqa: BLE001
+            _lb11b = QLabel("⛔ 商业模式块构造失败: %r" % (_e11b,))
+            _lb11b.setWordWrap(True)
+            l7.addWidget(_lb11b)
+
         self.tabs.addTab(_scrollable(w7, th), "📄 文档配置")
 
         # 8) 文档预览 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
         #    ⇒ 不再单开页签: 预览控件直接进上面那张「📄 文档配置」页 (同一页: 上面导出/清单, 下面正文)
         l8 = l7
-        _sep8 = QLabel("─" * 96)
-        _sep8.setStyleSheet(f"color:{th['C_BORDER']};background:transparent;")
+        # ⚠️ 2026-10-19: 原来这里是 QLabel("─" * 96) —— 96 个字宽把整页最小宽度顶到 1632px,
+        #   QTabWidget 取各页最小宽度的最大值 ⇒ 窗口 1280/1400 宽时**每一页**都被撑出可视区
+        #   (判据 verify_zmax_open_flow 量到「启动按钮右边缘 1641 > 页宽 1280」)。装饰线改用 QFrame,
+        #   不参与最小宽度计算 (判据口径: 界面不许挤/不许截断)。
+        _sep8 = QFrame()
+        _sep8.setFixedHeight(1)
+        _sep8.setStyleSheet(f"background:{th['C_BORDER']};border:none;")
         l8.addWidget(_sep8)
         self.pv_head = QLabel("文档正文预览 — 点一份文档按钮即可在这里看到**实际内容** "
                               "(本节原为独立「📄 文档预览」页, 已并入本页)")
@@ -3110,32 +3179,11 @@ class ConfigCenterPage(QWidget):
         l9.addStretch()
         self.tabs.addTab(_scrollable(w9, th), "🏷 产品配置")
 
-        # 10) 💰 成本/报价 —— 2026-10-19 老倪: 「从配置中心，直接预计出成本价格」
-        #     算法真源 tools/cost_model.py, 参数真源 config/platform/zmax_cost_model.json;
-        #     本页只做「改假设 → 现算 → 可写回」, 不在这里写第二套公式。
-        try:
-            self.tabs.addTab(_scrollable(self._cost_page(th), th), "💰 成本/报价")
-        except Exception as _e10:                                                # noqa: BLE001
-            _w10 = QWidget()
-            _l10 = QVBoxLayout(_w10)
-            _lb10 = QLabel("⛔ 成本/报价页构造失败: %r" % (_e10,))
-            _lb10.setWordWrap(True)
-            _l10.addWidget(_lb10)
-            _l10.addStretch()
-            self.tabs.addTab(_scrollable(_w10, th), "💰 成本/报价")
-        # 11) 🧩 商业模式 —— 2026-10-19 老倪: 「在配置中心，要有商业模式，从配置导出商业模式」
-        #     算法真源 tools/business_model.py (输入 = 成本真源 + 商业模式假设真源);
-        #     本页只做「现算 → 复制/导出」, 不写第二套公式, 不落盘派生值。
-        try:
-            self.tabs.addTab(_scrollable(self._biz_page(th), th), "🧩 商业模式")
-        except Exception as _e11:                                                # noqa: BLE001
-            _w11 = QWidget()
-            _l11 = QVBoxLayout(_w11)
-            _lb11 = QLabel("⛔ 商业模式页构造失败: %r" % (_e11,))
-            _lb11.setWordWrap(True)
-            _l11.addWidget(_lb11)
-            _l11.addStretch()
-            self.tabs.addTab(_scrollable(_w11, th), "🧩 商业模式")
+        # 10) 💰 成本/报价 · 11) 🧩 商业模式 —— 2026-10-19 老倪: 「将成本/报价 商业模式的内容，都迁移到 文档配置里」
+        #     ⇒ 两个**独立页签取消**, 内容整块嵌进上面「📄 文档配置」页 (l7) 的「工单实例」之后。
+        #     理由 (与阵法一致, 不是随便挪): 成本/报价 = 从配置算出来的账, 商业模式 = 从成本与配置导出的方案,
+        #     二者都是**记录与导出** ⇒ 归第七阵 瑶光·定记录。原页构造器 _cost_page()/_biz_page() 一行没改,
+        #     仍是唯一算法入口 (tools/cost_model.py / tools/business_model.py), 不存在第二套公式。
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
         try:
@@ -3144,6 +3192,11 @@ class ConfigCenterPage(QWidget):
                 # 2026-10-15: 原来记的是**页序号** —— 页签次序改成北斗次序后, 同一个序号指向的是别的页
                 # (回来会落在错的页)。改成记**页名**, 兼容老的纯数字文件 (按序号解释一次)。
                 _v = open(_mk, encoding="utf-8").read().strip()
+                # 2026-10-19: 旧页名「🧾 工单配置」已并入文档配置 —— 老文件/老记忆别让它落到第一页
+                for _old, _new in (("工单配置", "文档配置"), ("成本/报价", "文档配置"), ("商业模式", "文档配置")):
+                    if _old in _v:
+                        _v = _new
+                        break
                 _i = -1
                 if _v.isdigit():
                     _i = int(_v)
@@ -3683,9 +3736,9 @@ class ConfigCenterPage(QWidget):
     # ⭐ 主页面(右工作区)页签次序 = 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #   应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)。非七星的视图排在七阵之后。
     # 2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面; 取消文档预览页面, 合并到 文档配置页面」
-    # ⇒ 只剩 7 个配置页 + 1 个非七星视图 (工程配置)。页签名 = 配置名。
-    _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                  "工程配置", "成本/报价", "商业模式")
+    # 2026-10-19 老倪: 「将 工单配置，替换成 工程配置；将工单，放到文档配置选项卡，将成本/报价 商业模式
+    #   的内容，都迁移到 文档配置里」⇒ 页签正好 = 北斗七星 (7 个), 没有非七星视图了。
+    _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工程配置", "文档配置")
 
     def _apply_tab_order(self):
         """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
@@ -4680,11 +4733,6 @@ class ConfigCenterPage(QWidget):
                          % (len(_cs), sum(1 for c in _cs if c.get("ready")),
                             sum(1 for c in _cs if not c.get("ready"))))
                 L.append("   真源: %s" % os.path.relpath(MCD_J, ROOT))
-            elif "工单配置" in t:
-                _bs = _orders_list()
-                L.append("   工单 %d 份: %s" % (len(_bs), " · ".join(
-                    str((b.get("identity") or {}).get("order_no", "?")) for b in _bs[:8])))
-                L.append("   真源: config/orders/BS_*.json (点工单号看完整配置面)")
             elif "文档配置" in t:
                 try:                                    # 专利与 SOR/立项/合作协议 同级 (老倪 2026-10-15)
                     import patent_center as _pcm2                                       # noqa: PLC0415
@@ -4699,9 +4747,19 @@ class ConfigCenterPage(QWidget):
                 L.append("   三份交付文档: 项目立项 %s · 供应商 SOR %s · 合作协议 %s (✅就绪 / ⛔过期或未生成)"
                          % (_dm[1], _dm[0], _dm[2]))
                 L.append("   本页 = 导出按钮 + 产物清单 + **正文预览** (原「文档预览」页已并入)")
+                # 2026-10-19: 工单 / 成本报价 / 商业模式 三块迁入本页 (都在"记录与导出"这一阵)
+                _bs2 = _orders_list()
+                L.append("   + 工单实例 %d 份 (原「🧾 工单配置」页, 点工单号看完整配置面) · 真源 config/orders/BS_*.json"
+                         % len(_bs2))
+                L.append("   + 成本/报价 (tools/cost_model.py 现算) · 商业模式 (tools/business_model.py 现算) —— 均不落盘派生值")
             elif "工程配置" in t:
                 _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "工程配置"]
+                L.append("   第六阵 开阳·工程配置 (定落地): 工程库 / 参数注册表 / 工程-模型匹配 / AR 示教点位")
                 L.append("   工程域参数 %d 条 · 真源 %s" % (len(_cs), os.path.relpath(MCD_J, ROOT)))
+                _mt2 = _j(MATCH_J, {}) or {}
+                L.append("   工程-模型匹配 %d 个模型 (九类站点能力) · 真源 %s"
+                         % (len(_mt2.get("MODELS", [])), os.path.relpath(MATCH_J, ROOT)))
+                L.append("   工单实例已移出本阵 ⇒ 见「📄 文档配置」(第七阵 瑶光·定记录)")
                 L.append("   本页还带 AR 场景示教点位表 (可复制 / 导出 TSV)")
         except Exception as _e:                                                 # noqa: BLE001
             L.append("   ⛔ 本面信息取不到: %r" % (_e,))

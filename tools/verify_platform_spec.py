@@ -107,6 +107,8 @@ print("⑤ 主窗口接线 (侧栏 Z-MAX 卡在 System 2 之上 · 点击开清�
 import studio as ST                                                               # noqa: E402
 
 win = ST.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 for _ in range(80):
     app.processEvents()
     if getattr(win, "simulink", None) is not None:

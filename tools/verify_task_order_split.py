@@ -61,13 +61,17 @@ def main():
     print("═══ ① 左树拆两项 ═══")
     # 2026-10-15 老倪: 「左侧不用显示那么多, 只显示 1..7 …… 详细信息要在配置页面显示」
     # ⇒ 左树只留 7 颗星 (序号+名称·星名), **不再有子项**; 任务 ID/工单号改在各自配置页的表里看。
-    chk("左树有「2. 任务配置 · 天璇」项", any("任务配置 · 天璇" in t for t in tops), " / ".join(t.strip() for t in tops))
-    chk("左树有「6. 工单配置 · 开阳」项", any("工单配置 · 开阳" in t for t in tops))
+    # 2026-10-17 老倪「现在太宽了」: 行里只画「序号 + 名称」, 星名在 item data(全文) 与阵图条上
+    _full = [str(pg.tree.topLevelItem(i).data(0, __import__("PyQt5.QtCore", fromlist=["Qt"]).Qt.UserRole + 1) or "")
+             for i in range(pg.tree.topLevelItemCount())]
+    chk("左树有「2. 任务配置 · 天璇」项", any("任务配置 · 天璇" in t for t in _full), " / ".join(t.strip() for t in _full))
+    chk("左树有「6. 工程配置 · 开阳」项 (2026-10-19 第六阵换名)", any("工程配置 · 开阳" in t for t in _full))
+    chk("左树已无「工单配置」项 (工单并入文档配置)", not any("工单配置" in t for t in _full))
     chk("旧的「工艺·工单」项已不再单列", not any(t.strip().startswith("工艺·工单") for t in tops))
     task_it = next((pg.tree.topLevelItem(i) for i in range(pg.tree.topLevelItemCount())
                     if "任务配置" in pg.tree.topLevelItem(i).text(0)), None)
     ord_it = next((pg.tree.topLevelItem(i) for i in range(pg.tree.topLevelItemCount())
-                   if "工单配置" in pg.tree.topLevelItem(i).text(0)), None)
+                   if "文档配置" in pg.tree.topLevelItem(i).text(0)), None)
     chk("左树七项都**没有子项** (老倪 2026-10-15 精简)", all(
         pg.tree.topLevelItem(i).childCount() == 0 for i in range(pg.tree.topLevelItemCount())),
         "子项数=%s" % [pg.tree.topLevelItem(i).childCount() for i in range(pg.tree.topLevelItemCount())])
@@ -84,7 +88,14 @@ def main():
 
     print("\n═══ ② 页签同拆 + 既有区没丢 ═══")
     chk("页签有「📋 任务配置」", "📋 任务配置" in tabs, " · ".join(tabs))
-    chk("页签有「🧾 工单配置」(旧「🎯 工单」改名)", "🧾 工单配置" in tabs and "🎯 工单" not in tabs)
+    # 2026-10-19 老倪: 「将工单，放到文档配置选项卡」⇒ 工单不再有独立页签, 表并进 📄 文档配置
+    chk("「🧾 工单配置」页签已取消 (工单进文档配置页)", "🧾 工单配置" not in tabs and "🎯 工单" not in tabs)
+    _di = pg._tab_index_by_title("文档配置")
+    _dh = pg.tabs.widget(_di) if _di >= 0 else None
+    chk("工单表确实挂在「📄 文档配置」页里",
+        _dh is not None and getattr(pg, "order_table", None) is not None
+        and (_dh.isAncestorOf(pg.order_table) or _dh is pg.order_table),
+        "文档配置页=%s" % (getattr(_dh, "objectName", lambda: "?")() or "QScrollArea"))
     # 2026-10-15: 模型匹配 → 并入 🧠 模型配置 · 文档预览 → 并入 📄 文档配置 (页签取消)
     keep = ["📋 任务配置", "⚙️ 工程配置", "🧩 功能配置", "⚡ 性能配置", "🧠 模型配置", "📄 文档配置"]
     chk("既有 6 个区一个没丢", all(k in tabs for k in keep), "缺 %s" % [k for k in keep if k not in tabs])
@@ -128,7 +139,7 @@ def main():
     vis_all = sum(1 for r in range(t.rowCount()) if not t.isRowHidden(r))
     chk("「显示全部元任务」恢复 %d 条" % n_fn, vis_all == n_fn, "可见 %d" % vis_all)
 
-    print("\n═══ ⑥ 工单配置页: 原 6 列保留 + 增列 ═══")
+    print("\n═══ ⑥ 工单表 (在文档配置页里): 原 6 列保留 + 增列 ═══")
     t4 = getattr(pg, "order_table", None)
     cols4 = [t4.horizontalHeaderItem(c).text() for c in range(t4.columnCount())] if t4 else []
     old6 = ["工单号", "场景", "BOM", "步骤", "站点就绪", "状态"]
@@ -144,7 +155,7 @@ def main():
     pg._show_orders(_bs_no)
     app.processEvents()
     txt = pg.out.toPlainText()
-    chk("切到工单配置页", "工单配置" in pg.tabs.tabText(pg.tabs.currentIndex()),
+    chk("切到文档配置页 (工单块所在页)", "文档配置" in pg.tabs.tabText(pg.tabs.currentIndex()),
         pg.tabs.tabText(pg.tabs.currentIndex()))
     chk("面板出该工单 (号/场景/配方)", ("BS-SCN-01-FW" in txt) and ("配方" in txt) and ("SCN-01-FW" in txt),
         txt[:70].replace("\n", " | "))
@@ -155,10 +166,10 @@ def main():
         cc.cmd_overview(type("A", (), {"json": False})())
     out = buf.getvalue()
     chk("overview 有「任务配置」行", "任务配置" in out)
-    chk("overview 有「工单配置」行", "工单配置" in out)
+    chk("overview 有「文档配置」行 (工单并入这一行)", "文档配置" in out)
     chk("overview 不再有「工艺·工单」", "工艺·工单" not in out)
-    chk("CLI DOMAINS 与界面同名 (2 项)",
-        cc.DOMAINS[-2:] == ["任务配置", "工单配置"], str(cc.DOMAINS))
+    chk("CLI DOMAINS 与界面同名 (任务配置 / 文档配置 收尾)",
+        cc.DOMAINS[-2:] == ["任务配置", "文档配置"], str(cc.DOMAINS))
 
     print("\n" + ("✅ 全部通过 (%d 项)" % len(OK) if not BAD else "⛔ 失败 %d 项: %s" % (len(BAD), BAD)))
     return 1 if BAD else 0

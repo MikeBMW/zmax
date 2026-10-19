@@ -93,7 +93,7 @@ def main():
     _tabs = [page.tabs.tabText(i) for i in range(page.tabs.count())]
     _want = {"产品配置": ["平台", "active_product"], "任务配置": ["任务("], "功能配置": ["功能清单汇总"],
              "模型配置": ["模型 ←→ 工程配置" if False else "模型", "匹配"], "性能配置": ["性能配置参数"],
-             "工单配置": ["工单"], "文档配置": ["三份交付文档", "正文预览"], "工程配置": ["工程域参数"]}
+             "文档配置": ["三份交付文档", "正文预览", "工单", "成本"], "工程配置": ["工程域参数"]}
     bad = []
     for i, t in enumerate(_tabs):
         page.tabs.setCurrentIndex(i)

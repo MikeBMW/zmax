@@ -10,7 +10,7 @@
     同时更新工程数据库, 保证数据一致性。」
 
 每个任务真走 9 步 (没有一步是"已实现"声明, 全部留证据文件):
-  ① 配置链 7 域快照 —— 依序实读真源: 任务→产品→功能→模型→性能→工程→工单 (config_chain.json)
+  ① 配置链 7 域快照 —— 依序实读真源: 任务→产品→功能→模型→性能→工程→文档(工单) (config_chain.json)
   ② 场景切换       —— ss_scene_switch.py (有映射才切, 无映射明说 skipped)
   ③ 原型单步运行   —— 按该任务 enabled_nodes 依次真执行 execute_node_logic, 每节点真出 out,
                       经 ss_bus_topics.publish(mode='step') **真序列化**成节点输出 topic (topics/*.jsonl)
@@ -156,7 +156,7 @@ def chain_snapshot(tid):
         "⑥ 工程配置": {"T_base_cam": calib.get("T_base_cam"), "plane_z": calib.get("plane_z"),
                    "depth_scale": calib.get("depth_scale"), "cell_geometry": calib.get("cell_geometry"),
                    "camera": calib.get("camera"), "真源": CALIB_J},
-        "⑦ 工单配置": {"order_no": (bs.get("identity") or {}).get("order_no"),
+        "⑦ 文档配置·工单实例": {"order_no": (bs.get("identity") or {}).get("order_no"),
                    "scene_id": (bs.get("identity") or {}).get("scene_id"),
                    "targets": bs.get("targets"), "readiness": bs.get("readiness"),
                    "配方段数": len(bs.get("recipe") or []),
@@ -561,9 +561,9 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
           % (PERF_J, snap["⑤ 性能配置"]["匹配组数"], snap["⑤ 性能配置"]["匹配口径"]),
           "6. **工程配置** `%s` — T_base_cam/plane_z/depth_scale/cell_geometry 实读"
           % CALIB_J,
-          "7. **工单配置** `%s` — 工单 %s · 站点就绪 %s"
-          % (snap["⑦ 工单配置"]["真源"], snap["⑦ 工单配置"].get("order_no"),
-             (snap["⑦ 工单配置"].get("readiness") or {}).get("site_ok")), ""]
+          "7. **文档配置·工单实例** `%s` — 工单 %s · 站点就绪 %s"
+          % (snap["⑦ 文档配置·工单实例"]["真源"], snap["⑦ 文档配置·工单实例"].get("order_no"),
+             (snap["⑦ 文档配置·工单实例"].get("readiness") or {}).get("site_ok")), ""]
     # 该任务承载的元任务, 逐条给「干什么活 / 卡在哪 / 当前状态」(真源 data/database/zmax/function_notes.json)
     _mts = list(snap["③ 功能配置"].get("元任务") or [])
     if _mts:

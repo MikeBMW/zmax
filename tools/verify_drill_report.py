@@ -31,7 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 DRILL = "reports/drill"
 DB = "data/database/zmax/zmax_engineering.db"
-DOMS = ("① 任务配置", "② 产品配置", "③ 功能配置", "④ 模型配置", "⑤ 性能配置", "⑥ 工程配置", "⑦ 工单配置")
+DOMS = ("① 任务配置", "② 产品配置", "③ 功能配置", "④ 模型配置", "⑤ 性能配置", "⑥ 工程配置", "⑦ 文档配置·工单实例")
 
 OK, BAD, SKIP = [], [], []
 

@@ -57,6 +57,8 @@ print("② 「拖进画布」通道齐备", flush=True)
 import studio as ST                                                              # noqa: E402
 
 win = ST.StudioMainWindow()
+  # ⚡ 2026-10-19 页面改按需建 ⇒ 判据/探针先强制全部真建 (线上由后台泵做)
+win.materialize_all()
 for _ in range(80):                     # 画布模块是懒创建的 (启动后 ~400ms)
     app.processEvents()
     if getattr(win, "simulink", None) is not None:

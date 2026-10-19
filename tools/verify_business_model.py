@@ -70,13 +70,19 @@ def main():
 
     print("\n【① 页签与控件】")
     titles = [pg.tabs.tabText(i) for i in range(pg.tabs.count())]
-    chk("①a", "「🧩 商业模式」页签存在", any("商业模式" in t for t in titles), titles[-3:])
+    # 2026-10-19 老倪: 「将成本/报价 商业模式的内容，都迁移到 文档配置里」⇒ 不再有独立页签
+    _di2 = pg._tab_index_by_title("文档配置")
+    _host2 = pg.tabs.widget(_di2) if _di2 >= 0 else None
+    _in_doc2 = _host2 is not None and (_host2.isAncestorOf(pg._biz_t_struct) or _host2 is pg._biz_t_struct)
+    chk("①a", "🧩 商业模式 块在「📄 文档配置」页内 (独立页签已取消)",
+        _in_doc2 and not any("商业模式" in t for t in titles),
+        "在文档配置页=%s · 页签=%s" % (_in_doc2, titles[-3:]))
     chk("①b", "4 表 + 4 标签 + 按钮齐",
         all(hasattr(pg, a) for a in ("_biz_t_struct", "_biz_l_lay", "_biz_l_deal", "_biz_t_phase",
                                      "_biz_t_mode", "_biz_l_rec", "_biz_l_conf", "_biz_l_split",
                                      "_biz_log", "_biz_in")),
         "假设控件: %s" % list(pg._biz_in))
-    chk("①c", "排在成本/报价之后 (末位)", titles[-1] == "🧩 商业模式", titles[-2:])
+    chk("①c", "排在成本/报价之后 (同一页内, 文档配置末位)", "文档配置" in titles[-1], titles[-2:])
 
     print("\n【② 成本结构 (固定 vs 变动)】")
     cs = e["cost_structure"]
@@ -227,7 +233,7 @@ def main():
     chk("⑬a", "成本页仍出 36.3 万 / 2.02 年",
         abs(ce["total_first"] - 363000) < 1e-6 and ce["payback_years"] == 2.02,
         "%.0f / %s" % (ce["total_first"], ce["payback_years"]))
-    chk("⑬b", "页签 = 原 9 + 商业模式 = 10", len(titles) == 10, len(titles))
+    chk("⑬b", "页签恰好 7 个 (= 北斗七星; 商业模式 已并入文档配置)", len(titles) == 7, len(titles))
     chk("⑬c", "画布真源未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt)
     chk("⑬d", "真源已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
 

@@ -3,15 +3,15 @@
 """verify_config_center_seven_stars.py — 判据: 配置中心 = 北斗七星阵 (次序/序号/星名/顶部阵图条)。
 
 老倪 2026-10-15 要求:
-  左树从上到下 1.产品配置 2.任务配置 3.功能配置 4.模型配置 5.性能配置 6.工单配置 7.文档配置, 前面要显示序号;
+  左树从上到下 1.产品配置 2.任务配置 3.功能配置 4.模型配置 5.性能配置 6.工程配置 7.文档配置, 前面要显示序号;
   每个配置打开的主页面最上顶部要写该星的说明 (北斗七星阵 = 状态空间工程的完备结构)。
 
 判据 (全程离屏, 不动生产 GUI, 不写任何真源):
   ① 左树顶层恰好 7 项, 次序与序号/星名一一对应 (1.产品配置·天枢 … 7.文档配置·瑶光)
   ② 每项序号在**最前面** (标 ✅/⛔ 之后紧跟 "N. ")
   ③ 七颗星齐全且无重复 (天枢/天璇/天玑/天权/玉衡/开阳/瑶光)
-  ④ 「工程配置」不再是顶层 (北斗是 7 项), 但作为「功能配置·天玑」下的子入口健在 (功能没丢)
-  ⑤ 阵图条: 每个页签都拿到**该页所属星**的说明; 非七星页 (工程配置) 拿到阵法总览 + 如实说明
+  ④ 第六阵 = 工程配置 (老倪 2026-10-19「将 工单配置，替换成 工程配置」) —— 不再是"不在七星之列"的附加视图
+  ⑤ 阵图条: 七个页签都拿到**该页所属星**的说明 (2026-10-19 起七页全为七星页)
   ⑥ 星图 7 颗, 点第 7 颗 (瑶光) → 真切到文档页且阵图条随之变 (真联动)
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_config_center_seven_stars.py
 """
@@ -28,7 +28,7 @@ for p in (ROOT, os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 WANT = [("1.", "产品配置", "天枢"), ("2.", "任务配置", "天璇"), ("3.", "功能配置", "天玑"),
-        ("4.", "模型配置", "天权"), ("5.", "性能配置", "玉衡"), ("6.", "工单配置", "开阳"),
+        ("4.", "模型配置", "天权"), ("5.", "性能配置", "玉衡"), ("6.", "工程配置", "开阳"),
         ("7.", "文档配置", "瑶光")]
 
 
@@ -48,25 +48,32 @@ def main() -> int:
     tops = [page.tree.topLevelItem(i).text(0) for i in range(page.tree.topLevelItemCount())]
     ok1 = len(tops) == 7
     checks.append(("① 左树顶层恰好 7 项 (北斗七星)", ok1, " | ".join(t[:26] for t in tops)))
-    _want_lbl = ["%s %s %s · %s" % ("%s", w[0], w[1], w[2]) for w in WANT]
-    ok2 = all(re.match(r"^[✅⛔] \d\. [\u4e00-\u9fa5]+ · [\u4e00-\u9fa5]{2}$", t) for t in tops) and all(
-        (w[0] + " " + w[1] + " · " + w[2]) in t for w, t in zip(WANT, tops))
-    checks.append(("② 每项正好「序号 + 名称 · 星名」(不带计数/当前值)", ok2,
+    # 🎯 2026-10-17 老倪「现在太宽了」: 行里只画「序号 + 名称」, 星名不再画在行上
+    #   (全文「N. 名称 · 星名」存在 item data UserRole+1, 点点选/复制照旧) ⇒ 判据按"显示行 + 全文"两处一起验。
+    from PyQt5.QtCore import Qt as _Qt
+    _full = [str(page.tree.topLevelItem(i).data(0, _Qt.UserRole + 1) or "") for i in range(len(tops))]
+    ok2 = all(re.match(r"^[✅⛔] \d\. [\u4e00-\u9fa5]+$", t) for t in tops) and all(
+        (w[0] + " " + w[1] + " · " + w[2]) in f for w, f in zip(WANT, _full))
+    checks.append(("② 每项显示「序号 + 名称」· 全文带星名 (不带计数/当前值)", ok2,
                    " | ".join(t for t in tops)))
-    stars_in_tree = [w[2] for w in WANT if w[2] in " ".join(tops)]
+    stars_in_tree = [w[2] for w in WANT if w[2] in " ".join(_full)]
     checks.append(("③ 七颗星齐全且无重复", len(stars_in_tree) == 7 == len(set(stars_in_tree)),
                    " ".join(stars_in_tree)))
     # 左树次序 == 阵法数据里的次序 (不允许两处各写一份顺序)
     checks.append(("③b 左树次序 == ss_seven_stars.STARS 次序",
-                   [S.BY_KEY[k]["star"] for k in ("prod", "task", "func", "model", "perf", "order", "doc")]
+                   [S.BY_KEY[k]["star"] for k in ("prod", "task", "func", "model", "perf", "eng", "doc")]
                    == stars_in_tree, " ".join(s["star"] for s in S.STARS)))
 
-    # ④ 左树只留 7 行 (无子项) · 「工程配置」页签仍在 (功能没丢, 从配置页进)
+    # ④ 第六阵 = 工程配置 (2026-10-19): 左树第 6 行 + 页签都得有; 独立「工单配置」页签必须消失
     _kids = sum(page.tree.topLevelItem(i).childCount() for i in range(page.tree.topLevelItemCount()))
     _eng_tab = page._tab_index_by_title("工程配置") >= 0
-    checks.append(("④ 左树无子项 (只 7 行) · 「工程配置」页签健在 (功能没丢)",
-                   _kids == 0 and _eng_tab and not any("工程配置" in t for t in tops),
-                   "子项数=%d · 工程配置页签=%s" % (_kids, "有" if _eng_tab else "无")))
+    _eng_top = any("工程配置" in t for t in tops)
+    _tabs_all = [page.tabs.tabText(i) for i in range(page.tabs.count())]
+    _no_order_tab = not any("工单配置" in t for t in _tabs_all)
+    checks.append(("④ 第六阵=工程配置 (左树+页签) · 左树无子项 · 独立「工单配置」页签已取消",
+                   _kids == 0 and _eng_top and _eng_tab and _no_order_tab,
+                   "子项数=%d · 左树有工程配置=%s · 页签有工程配置=%s · 还有工单配置页签=%s"
+                   % (_kids, _eng_top, _eng_tab, not _no_order_tab)))
 
     # ⑤ 阵图条: 每个页签都要有该页所属星的说明 (或非七星页的总览)
     bad = []
@@ -110,7 +117,7 @@ def main() -> int:
         if len(lit) != _want:
             multi.append("%s→亮%d颗(%s) 应为%d" % (_t.strip(), len(lit), "/".join(lit) or "无", _want))
     checks.append(("⑧ 七星页恰好一颗星亮 · 非七星页 0 颗 (不许一页亮三颗)", not multi,
-                   " ; ".join(multi) if multi else "逐一实测: 七星页 1 颗 / 工程配置页 0 颗(总览)"))
+                   " ; ".join(multi) if multi else "逐一实测: 七个页签各亮 1 颗 (2026-10-19 起无非七星页)"))
 
     # ⑨ 一页三星的页签: 点哪颗只亮哪颗 + 说明跟着换 (天玑/玉衡/天权 依次点)
     _j = page._tab_index_by_title("功能配置")
@@ -131,7 +138,7 @@ def main() -> int:
     #    根因: 序号 "2." 的点被"参数 ID 分支"当成参数 ID ⇒ 页面不动。这里逐项模拟点击验证。
     _EXPECT = [("1. 产品配置", "产品配置"), ("2. 任务配置", "任务配置"),
                ("3. 功能配置", "功能配置"), ("4. 模型配置", "模型配置"),
-               ("5. 性能配置", "性能配置"), ("6. 工单配置", "工单配置"),
+               ("5. 性能配置", "性能配置"), ("6. 工程配置", "工程配置"),
                ("7. 文档配置", "文档配置")]
     _jump = []
     for _i in range(page.tree.topLevelItemCount()):
@@ -151,7 +158,7 @@ def main() -> int:
 
     # ⑪ 详细信息在配置页: 每颗星那页顶部都要有「本页真源: …」且非空
     _facts = []
-    for _k in ("prod", "task", "func", "model", "perf", "order", "doc"):
+    for _k in ("prod", "task", "func", "model", "perf", "eng", "doc"):
         page._goto_star(_k)
         _app.processEvents()
         _f = page.star_banner.snapshot().get("fact", "")
@@ -163,14 +170,13 @@ def main() -> int:
 
     # ⑫ 主页面页签次序 == 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
     #    应该显示 产品配置标签, 然后是第二个任务配置, 依次顺序排列」)
-    # 2026-10-15: 模型匹配/文档预览 已并入 模型配置/文档配置 ⇒ 只剩 7 配置页 + 工程配置
-    _order_want = ["产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                   "工程配置"]
+    # 2026-10-19: 工单/成本报价/商业模式 并入文档配置 ⇒ 页签正好 7 个 = 七星
+    _order_want = ["产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工程配置", "文档配置"]
     _order_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]
     _pos = [next((i for i, t in enumerate(_order_now) if k in t), -1) for k in _order_want]
-    checks.append(("⑫ 页签次序 == 北斗次序 (1产品→2任务→…→7文档→非七星视图)",
-                   all(x >= 0 for x in _pos) and _pos == sorted(_pos),
-                   " | ".join("→".join([t.strip() for t in _order_now])[:150].split("→"))[:150]))
+    checks.append(("⑫ 页签恰好 7 个且次序 == 北斗次序 (1产品→2任务→…→6工程→7文档)",
+                   len(_order_now) == 7 and all(x >= 0 for x in _pos) and _pos == sorted(_pos),
+                   "%d 个: %s" % (len(_order_now), " | ".join(t.strip() for t in _order_now))))
 
     # ⑬ 点「5. 性能配置 · 玉衡」→ 顶部阵图条必须是**玉衡**, 且右页「性能配置」按钮是按下态
     #    (老倪实测: 左侧点性能配置, 右侧还显示天玑的按钮/描述)
@@ -259,6 +265,35 @@ def main() -> int:
                    _ok17, "功能表 %s 行 (真源 %d) · 汇总「%s」· 产品特性 %s 行 (真源 %d)"
                    % (getattr(_ft, "rowCount", lambda: "—")(), len(_fns2), _smy["text"],
                       getattr(_pt, "rowCount", lambda: "—")(), len(_pdata.get("features") or []))))
+
+    # ⑱ 老倪 2026-10-19: 「将工单，放到文档配置选项卡，将成本/报价 商业模式的内容，都迁移到 文档配置里」
+    #    ⇒ 三块必须**真的在**「📄 文档配置」页的控件树里, 且独立页签已取消。
+    _doc_i = page._tab_index_by_title("文档配置")
+    _doc_host = page.tabs.widget(_doc_i) if _doc_i >= 0 else None
+
+    def _labels_in(_root):
+        from PyQt5.QtWidgets import QLabel as _QL
+        return [w.text() for w in (_root.findChildren(_QL) if _root is not None else []) if w.text()]
+
+    _dl = " ".join(_labels_in(_doc_host))
+    _c_orders = _in_tab(getattr(page, "order_table", None), "文档配置")
+    _c_cost = ("成本/报价" in _dl) and ("成本 / 报价" in _dl)
+    _c_biz = "商业模式" in _dl
+    _c_no_tab = not any(k in t for t in _tabs_all for k in ("成本/报价", "商业模式"))
+    checks.append(("⑱ 工单表 + 成本/报价 + 商业模式 三块都在「文档配置」页内 · 独立页签已取消",
+                   _c_orders and _c_cost and _c_biz and _c_no_tab,
+                   "工单表在文档页=%s · 成本块=%s · 商业模式块=%s · 无独立页签=%s"
+                   % (_c_orders, _c_cost, _c_biz, _c_no_tab)))
+
+    # ⑲ 开阳的描述整体改成「工程配置·定落地」(老倪: 「整体上调整原来的 北斗七星的 开阳的描述,
+    #    因为要变更成 工程配置」) —— 名字/主司/定义/关系里不许再留工单调度的说法。
+    _o6 = S.BY_KEY["eng"]
+    _txt6 = "".join(str(_o6[k]) for k in ("name", "role", "bind", "q", "define", "rel"))
+    _ok19 = (_o6["name"] == "工程配置" and _o6["star"] == "开阳" and _o6["bind"] == "定落地"
+             and "定调度" not in _txt6 and "工单编号" not in _txt6
+             and "工程" in _txt6)
+    checks.append(("⑲ 开阳 = 工程配置·定落地 (描述里不再有工单调度口径)",
+                   _ok19, "%s、%s · %s · %s" % (_o6["no_cn"], _o6["name"], _o6["star"], _o6["bind"])))
 
     # ⑦ 阵图条在两种窗口宽度下都**不被截**: 每个可见标签的实得高度 >= 该宽度下换行后需要的高度
     clipped = []
