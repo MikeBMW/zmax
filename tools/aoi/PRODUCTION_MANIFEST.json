@@ -33,7 +33,7 @@
    "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py",
    "local_source": "zmax_data/aoi_v4/cam_surface_10083_work_v20.py",
    "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
-   "sha256": "e3e3ba49da75936b11d3268fe25249de193b1fbe6d854abaafce791cb65d8339",
+   "sha256": "e47a05cd560bbae24633b71c4e8836052e8fc5df37622e4da4f7c290024baf39",
    "bytes": 60693,
    "src_sha256": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
    "src_mtime": "2026-10-12 17:10:15",
@@ -43,7 +43,7 @@
    "old_sha256_before_v20_1": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
    "old_sha256_before_v750": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
    "version": "5.50.750",
-   "note": "VERSION 字符串 = 5.50.750 (与状态空间完全一致); 2026-10-20 部署"
+   "note": "5.50.750 + 夹具整列贯穿截断(本机判据同口径)"
   }
  ],
  "files": {

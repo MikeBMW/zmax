@@ -448,6 +448,26 @@ def render_judge_surface(bgr):
     x1, y1 = min(x1, W), min(y1, H)
     g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     met = {"roi": [x0, y0, x1, y1], "canvas": list(JUDGE_CANVAS), "ok": False, "why": ""}
+    # 🆕 5.50.750 (2026-10-20 现场): 工件右端插进夹具时, 夹具是**整列贯穿**(列亮 > 0.39*H 且连续 ≥60 列),
+    #   而工件只占 ~0.2*H 高。夹具会被当成亮条的一部分 ⇒ 上边缘点被带偏/点数不够("亮条上边缘点太少")。
+    #   ⇒ 先按贯穿列把 ROI 右界收到夹具左界; ROI 内没有贯穿列时行为完全不变。
+    try:
+        _col = (g >= 180).astype(np.uint8).sum(axis=0)
+        _below = _col > int(0.39 * H)
+        _run = 0
+        for _x in range(W):
+            if _below[_x]:
+                _run += 1
+                if _run >= 60:
+                    _xc = _x - _run + 1
+                    if x0 < _xc < x1:
+                        x1 = _xc
+                        met["fixture_clamp_x"] = int(_xc)
+                    break
+            else:
+                _run = 0
+    except Exception:                                                     # noqa: BLE001
+        pass
     try:
         bg0, lvl0, th_bar, th_mod = _judge_th_levels(g, x0, y0, x1, y1)     # 🆕 v20.1 本帧阈值
         met.update({"th_mode": JUDGE_TH_MODE, "th_bar": round(th_bar, 1), "th_mod": round(th_mod, 1),
