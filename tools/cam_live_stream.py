@@ -2040,13 +2040,19 @@ def _aoi_note(port: int, **kw) -> None:
 #   **连续失败**(judge_ok=False 3/3, 原因「找过曝亮条(掩膜)」找不到), 而且 10083 的判据图是"亮条归一化渲染",
 #   降曝光它也不会变暗(逐像素平均差 0.25/255)。所以:**显示**这侧压高光(不设假的暗, 只把死白压到浅灰,
 #   让模块边界/丝印看得见), 相机曝光 / 判据 / 模型的输入图**一律不动**。可用 ZMAX_SURFACE_DEGLARE=0 关掉。
-_SURFACE_DEGLARE = os.environ.get("ZMAX_SURFACE_DEGLARE", "1") != "0"
+# 2026-10-19 老倪「别变暗, 要调节曝光」⇒ 默认**关**(画面如实反映相机曝光, 不去人为压暗)。
+#   需要临时压高光看细节再设 ZMAX_SURFACE_DEGLARE=1。
+_SURFACE_DEGLARE = os.environ.get("ZMAX_SURFACE_DEGLARE", "0") != "0"
 # 2026-10-19 老倪「曝光还是太大」: 原 knee=200/top=214 只压 >200 的像素, 而实测判据图
 #   mean=116 / p90=195 ⇒ **画面整体亮度一点没被压**(p90 还在 knee 之下), 他只看到"还是太亮"。
 #   改成 160/185: 从 160 起压, 高光落到 185 ⇒ p90 195 会被压到 ~170, 观感明显降但结构/边界保留
 #   (仍只作用于**显示帧**, 相机曝光/判据/模型输入一行未动)。env ZMAX_SURFACE_DEGLARE_KNEE/TOP 可现场调。
-_DEGLARE_KNEE = int(os.environ.get("ZMAX_SURFACE_DEGLARE_KNEE", "160"))
-_DEGLARE_TOP = int(os.environ.get("ZMAX_SURFACE_DEGLARE_TOP", "185"))
+# 2026-10-19 老倪连说三次「还是太亮」⇒ 160/185 只把 p90 压到 165, 观感仍偏亮。
+#   实测同一帧各档: 未压 p90=181 · 160/185→165 · 130/155→139 · 110/135→121 · 90/115→103
+#   取 110/135: 相对原始暗 60 个灰阶(肉眼可辨), 结构/边界/丝印仍在 (死白始终 0%)。
+#   现场还能用 env 继续调: ZMAX_SURFACE_DEGLARE_KNEE / _TOP (越小越暗)。
+_DEGLARE_KNEE = int(os.environ.get("ZMAX_SURFACE_DEGLARE_KNEE", "110"))
+_DEGLARE_TOP = int(os.environ.get("ZMAX_SURFACE_DEGLARE_TOP", "135"))
 
 
 def _deglare_bgr(bgr, knee: int = _DEGLARE_KNEE, top: int = _DEGLARE_TOP):

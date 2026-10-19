@@ -609,7 +609,11 @@ class GravityField(object):
                                          note=_x.get("note") or "")
                         continue
                     _o[_L] = dict(mag=_x["mag"], vec=list(_x["vec"]),
-                                  src=_x["src"], note=_x.get("note") or "")
+                                  # ⚡ 力场格子 → trace 话题 (老倪 2026-10-19「在力场上显示的力,
+                                  #   都做到 trace 的 topic」): 格子的真源描述末尾直接写出它对应的总线话题,
+                                  #   悬停即可核对"这一格 = 哪条 topic 的哪一拍"。
+                                  src=(_x["src"] or "") + " → trace topic zmax/ss_force_%s" % _L.lower(),
+                                  note=_x.get("note") or "")
                 if _o:
                     cells.update(_o)
                     # 🪐 万有引力定律约束 (老倪 2026-10-19): 四层张量当**引力荷**,

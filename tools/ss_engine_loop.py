@@ -741,6 +741,18 @@ class Loop:
             try:
                 own = int(io.open(self.pid_path, encoding="utf-8").read().strip() or 0)
                 os.kill(own, 0)
+                # 🔴 2026-10-19 现场: pid 会被系统复用 —— 引擎某次崩掉时写下的 pid,
+                #   后来被 vl_safety_fast.py 捡到(pid 5282) ⇒ os.kill 成功 ⇒ 引擎每次启动都判
+                #   "已有写入器在跑" 直接退出, 实测重启 669 次、chunk_latest 1.8 小时不更新。
+                #   ⇒ 活着的 pid 也必须校 cmdline, 不是引擎自己就按陈旧锁接管。
+                try:
+                    _cl = io.open("/proc/%d/cmdline" % own, "rb").read().decode("utf-8", "ignore")
+                except Exception:                                            # noqa: BLE001
+                    _cl = ""
+                if "ss_engine_loop" not in _cl:
+                    _log("⚠ pid 文件里的 %d 不是引擎进程(cmdline=%r) ⇒ 陈旧锁, 接管"
+                         % (own, _cl.replace("\x00", " ")[:90]))
+                    own = 0
             except Exception:                                                # noqa: BLE001
                 own = 0
         if own and own != os.getpid():

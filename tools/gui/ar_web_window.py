@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 
 from PyQt5.QtCore import QEvent, QUrl, Qt
@@ -150,8 +151,26 @@ class ARWebWindow(QMainWindow):
         _lay.addWidget(_tb)
 
         self.view = QWebEngineView(self)
+        # 🔴 2026-10-19 老倪「AR 打开后, 怎么是白屏呢? 好长时间才显示」:
+        #   QWebEngineView 在**画出第一帧之前**的默认底色是白的 (页面 body 再深也轮不到它) ⇒
+        #   窗口先是一片白, 等渲染进程起来 + 页面首帧才变深, 看着就是"白屏好久"。
+        #   把页面底色钉成 AR 页同一深色 (#0b0f14, 见 tools/web/tcp-ar.html body) ⇒
+        #   从点开到出画面的整段都是深色 + 工具栏"⏳ 加载 xx%", 结构上不再有白屏。
+        try:
+            from PyQt5.QtGui import QColor                          # 延迟 import: 无 WebEngine 时不影响模块加载
+            self.view.page().setBackgroundColor(QColor("#0b0f14"))
+        except Exception:                                                   # noqa: BLE001
+            pass
         try:
             self.view.settings().setAttribute(self.view.settings().JavascriptEnabled, True)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        # 🕒 加载进度上屏: 老倪要"点了就有" —— 没有进度时白色/深色一片, 人以为没反应。
+        #    loadStarted → "⏳ 正在加载…" · loadProgress → "⏳ 42%" · loadFinished → "✅ 0.87s".
+        try:
+            self.view.loadStarted.connect(self._on_load_start)
+            self.view.loadProgress.connect(self._on_load_progress)
+            self.view.loadFinished.connect(self._on_load_done)
         except Exception:                                                   # noqa: BLE001
             pass
         _lay.addWidget(self.view, 1)
@@ -167,6 +186,27 @@ class ARWebWindow(QMainWindow):
             _app = QApplication.instance()
             if _app is not None:
                 _app.installEventFilter(self)
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+    # ── 加载状态 (白屏期给可读反馈) ────────────────────────────────
+    def _on_load_start(self):
+        self._t_load0 = time.time()
+        self._lb.setText("  ⏳ 正在加载 AR 页面…")
+
+    def _on_load_progress(self, p: int):
+        try:
+            self._lb.setText("  ⏳ 加载 %d%%" % int(p))
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+    def _on_load_done(self, ok: bool):
+        _dt = time.time() - (self._t_load0 or time.time())
+        self._lb.setText("  %s %.2fs · %s" % ("✅ 页面已加载" if ok else "⚠ 加载失败", _dt, self._url))
+        # 落一行到 stderr(控制台日志), 现场可直接对"点了到出画面多少秒"取数, 不靠感觉
+        try:
+            print("[AR] 页面加载%s 用时 %.2fs · %s" % ("完成" if ok else "失败", _dt, self._url),
+                  file=sys.stderr, flush=True)
         except Exception:                                                   # noqa: BLE001
             pass
 
@@ -231,6 +271,12 @@ class ARWebWindow(QMainWindow):
 
     def keyPressEvent(self, ev):
         try:
+            # 🔄 2026-10-19: 页面热更新/自救 —— 服务端 tcp-ar.html 改了 mtime 热读, 但内嵌窗口
+            #    加载过就不再取 ⇒ 以前只能重启控制台。给 Ctrl+R / F5 = 重载一次(泵也能借这个复活)。
+            if ev.key() == Qt.Key_F5 or (
+                    ev.key() == Qt.Key_R and (ev.modifiers() & Qt.ControlModifier)):
+                self.reload()
+                return None
             if ev.modifiers() & Qt.ControlModifier:
                 _k = ev.key()
                 if _k in (Qt.Key_Plus, Qt.Key_Equal):
@@ -281,12 +327,19 @@ def _make(url: str = AR_URL) -> ARWebWindow:
 
 
 def prewarm(url: str = AR_URL) -> bool:
-    """控制台启动后预建窗口(**不 show、不 load**): 把 QtWebEngine 的进程/上下文先起好。
+    """控制台启动后预建窗口(**不 show**) + **预载页面**。
 
-    实测 view create 0.05s 是热态; 冷态第一建要几百 ms。预建之后第一次点 AR 就只是 show。
+    老倪 2026-10-19「AR 打开后, 怎么是白屏呢? 好长时间才显示」:
+      只预热窗口、不 load 时, 第一次点开仍要现场跑一遍"WebEngine 起渲染进程 + 拉 90KB 页面 +
+      解析内联 JS", 期间就是一片空(旧版还是白底)。现在页面在**隐藏窗口**里先加载完:
+        · 点开 = show + raise (实测 <0.1s), 页面骨架/控件已经在 ⇒ 不再白屏;
+        · 页面自己在 document.hidden 时不取帧、不轮询 (见 tcp-ar.html pumpTick/refresh),
+          被 show 出来时由 visibilitychange 立刻补一帧 ⇒ 后台不占 8797 的请求。
+    内嵌不可用(异常)时返回 False, 调用方回退外部窗口。
     """
     try:
-        _make(url)
+        w = _make(url)
+        w.ensure_loaded()
         return True
     except Exception:                                                       # noqa: BLE001
         return False

@@ -101,6 +101,45 @@ def _state_save(d):
         pass
 
 
+def _refine_width(img_bgr, x1, y1, x2, y2, pad=26, min_frac=0.30):
+    """横向精修: 在框的 y 行范围内逐列统计模块掩膜, 从框中心向两侧扩到"断档"为止。
+
+    🔴 2026-10-19 老倪现场: 「你现在的绿色光模块的边界框, 向左偏了一些, 修正」
+       —— _refine_extent 只沿**长轴(上下)**扩, 水平方向一直沿用 YOLO 原框(±6px)。
+       实测 YOLO 框中心比模块真实中心偏 3~4px(316~350 vs 实际 312~347), 视觉上就是框没盖住模块。
+       这里只改 x、绝不动 y(被画幅裁掉时 y 不可观测, 不能猜)。
+    """
+    import cv2 as _cv
+    H, W = img_bgr.shape[:2]
+    x1, y1, x2, y2 = int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))
+    ya, yb = max(0, y1), min(H - 1, y2)
+    if yb <= ya or x2 <= x1:
+        return x1, x2, "跳过(框太小)"
+    hsv = _cv.cvtColor(img_bgr, _cv.COLOR_BGR2HSV)
+    S = hsv[:, :, 1].astype(int)
+    V = hsv[:, :, 2].astype(int)
+    Hh = hsv[:, :, 0].astype(int)
+    mask = ((S < 80) & (V > 100)) | ((Hh > 33) & (Hh < 98) & (S > 50))   # 银壳 + 绿拉环
+    prof = mask[ya:yb + 1, :].sum(axis=0)
+    thr = max(3.0, min_frac * (yb - ya + 1))
+    # 🔴 2026-10-19: 起点不能用框中心 —— 框本身整体偏了, 拿它当锚会一路偏下去。
+    #   老倪现场给的真值: 「光模块就在屏幕中心, 上边沿中线上」⇒ 在框左右窗口里取**掩膜覆盖最宽的列**当锚。
+    _wx0, _wx1 = max(0, x1 - pad), min(W - 1, x2 + pad)
+    _seg = prof[_wx0:_wx1 + 1]
+    cx = int(_wx0 + int(np.argmax(_seg))) if _seg.size else int(round((x1 + x2) / 2.0))
+    ok = prof >= thr
+    lo, hi = max(0, x1 - pad), min(W - 1, x2 + pad)
+    l = cx
+    while l > lo and ok[l - 1]:
+        l -= 1
+    r = cx
+    while r < hi and ok[r + 1]:
+        r += 1
+    if r - l < 4:
+        return x1, x2, "跳过(掩膜太窄)"
+    return l, r, "横修 %d~%d (原 %d~%d, 中心 %+.1fpx)" % (l, r, x1, x2, (l + r) / 2.0 - (x1 + x2) / 2.0)
+
+
 def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32, max_extend=100,
                    max_color_dist=45.0, green_extra=25):
     """在检测框基础上，沿长轴把整支光模块圈全（银色壳体 + 绿色拉环/头部）。
@@ -284,6 +323,15 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     items = detect_boxes(img_bgr, conf)
     det_src = "yolo" if items else None
     if not items:
+        # 🔴 2026-10-19 现场: 走完围栏线后腕部姿态翻了 180°, 模块亮度/角度变了 ⇒ 模型只给 0.10 的 conf
+        #   (实测原图 conf=0.101 box=[300.7,4.1,357.7,65.0]), 而默认阈值 0.25 直接把它滤掉,
+        #   结果"框丢了"。这里先按低阈值重检一次, 后面的选框规则(离上次框最近/离画面中心最近)负责挡误检。
+        _low = detect_boxes(img_bgr, min(conf, 0.08))
+        if _low:
+            items = _low
+            det_src = "yolo-low"
+            warn.append("默认阈值 %.2f 未检出 ⇒ 低阈值(0.08)重检命中 conf %.2f" % (conf, _low[0]["conf"]))
+    if not items:
         # 🔴 老倪 2026-10-18「稳住，别丢光模块」: 只剩小头/被遮挡时全图 YOLO 会漏(实测连丢 13 帧)。
         # 模块是连续的、跑不掉 —— 就在上一次框的邻域里裁一块放大 2× 重检, 命中后映射回全图坐标。
         lb = _LASTBOX.get("box2d")
@@ -363,9 +411,19 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     _clip0 = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5, "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}
     if any(_clip0.values()):
         rnote = "被裁(%s)⇒用检测框原样, 不外扩" % "/".join(k for k, v in _clip0.items() if v)
+        # 被裁时 y 不可观测(不能猜), 但 **x 可以修** —— 横向偏左/偏右是纯像素事实
+        if not ("left" in _clip0 or "right" in _clip0):
+            _l, _r, _wn = _refine_width(img_bgr, x1, y1, x2, y2)
+            if _r - _l >= 6:
+                x1, x2 = _l, _r
+                rnote += " · " + _wn
     else:
         rx1, ry1, rx2, ry2, rnote = _refine_extent(img_bgr, x1, y1, x2, y2)
         x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+        _l, _r, _wn = _refine_width(img_bgr, x1, y1, x2, y2)
+        if _r - _l >= 6:
+            x1, x2 = _l, _r
+            rnote += " · " + _wn
     # 🔴 框贴边 = 目标被画幅裁掉: 此时"框高 ⇒ 距离"必然偏大(看到的只是局部), 不能当真
     clip = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5,
             "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}

@@ -503,7 +503,40 @@ def frozen_box_center():
     return None, None
 
 
-def toolframe_px(length_mm=60.0, align_box=True):
+def frozen_box_tip(inset_px: float = None):
+    """光模块**头顶中心**(像素) = 绿色边界框**下边缘中点** (老倪 2026-10-19 现场口述:
+    「不对, 下多了。你自己走, 在绿色边界框的下边缘中点的位置」)。
+
+    inset_px=None ⇒ 直接取框底 b[3] (默认口径); 给数字则按 b[1]+inset 覆盖(现场微调用 ?inset=)。
+
+    🔴 2026-10-19 老倪现场纠正:「tool1 原点应该在光模块头顶上, 在你当前手臂相机**上边沿的下面大约 2 厘米**,
+      不是图像上边沿的正中心」—— 检测框贴顶(clipped top)时 box2d[1]≈0.3, 那是被 YOLO 顶到画外的边,
+      真实的模块头顶在画面里往下约 2cm ⇒ 原点必须内缩。
+      · 内缩量按当前这把尺算: 60mm↔66.5px ⇒ 1px≈0.90mm ⇒ 20mm≈22.2px (可用 ?inset= 覆盖微调)。
+
+    老倪 2026-10-19: 「原点要移动到光模块头顶中心点, 不要显示 60mm」
+      · 原来对齐到框中心 ⇒ 原点画在模块**中段**(框高 59px≈54mm, 偏下约 27mm), 现场看就不是头顶;
+      · 细长模块的头顶 = 框顶边中点 (box2d[0]+box2d[2])/2, box2d[1];
+      · 框贴顶(clipped top)时头顶已经出画, 这里仍然给可见顶边中点, 并把 clipped 一并返回,
+        由页面标注「头顶出画·原点按可见顶边」——不假装。
+    返回 (tip_xy, box2d, clipped_list)
+    """
+    for p in ("/dev/shm/mod3_freeze.json", "/dev/shm/mod3_latest.json"):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            b = d.get("box2d")
+            if d.get("ok") and b:
+                # 默认口径: 框**下边缘中点**; 给了 inset_px 就按框顶往下量(现场微调)
+                _y = float(b[3]) if inset_px is None else (b[1] + float(inset_px))
+                _img = d.get("img") or [640, 480]
+                _y = max(0.0, min(_y, float(_img[1]) - 2.0))
+                return [(b[0] + b[2]) / 2.0, _y], b, list(d.get("clipped") or [])
+        except Exception:                                               # noqa: BLE001
+            continue
+    return None, None, []
+
+
+def toolframe_px(length_mm=80.0, align_box=True, tip_inset_px=None):
     """tool1 坐标系投影到臂相机像素。相机在腕上 ⇒ 这套像素是**固定**的(不随位姿变)。
     数据: models/handeye_state.json(相机在 tool 系的位姿; 矩阵平移单位是米) + real_cam_calib.json 的 K/dist。"""
     import json as _j
@@ -531,17 +564,22 @@ def toolframe_px(length_mm=60.0, align_box=True):
         ax = {"X": [float(uv[1][0]), float(uv[1][1])], "Y": [float(uv[2][0]), float(uv[2][1])],
               "Z": [float(uv[3][0]), float(uv[3][1])]}
         delta = [0.0, 0.0]
-        # 🔴 老倪 2026-10-18「坐标系就在你标注的光模块头顶中心点」:
-        # 手眼投出来的原点和标注框中心有 ~12px(≈5mm) 的固定偏差 ⇒ 按现场口径把原点平移到标注点上,
-        # 三轴整体平移(姿态不变), 偏差如实报出来, 不藏着。
+        _clip = []
+        # 🔴 老倪 2026-10-18「坐标系就在你标注的光模块头顶中心点」/ 2026-10-19「原点要移动到头顶中心点」:
+        #   手眼投出来的原点和标注框**中心**有 ~12px 固定偏差; 但框中心是模块中段, 不是头顶 ⇒
+        #   2026-10-19 起对齐目标改为**框顶边中点(头顶)**; 三轴整体平移(姿态不变), 偏差如实报出来。
         if align_box:
-            bc, _b = frozen_box_center()
-            if bc:
-                delta = [bc[0] - org[0], bc[1] - org[1]]
-                org = [org[0] + delta[0], org[1] + delta[1]]
+            _tip, _b, _clip = frozen_box_tip(tip_inset_px)
+            if _tip:
+                delta = [round(_tip[0] - org[0], 2), round(_tip[1] - org[1], 2)]
+                org = [_tip[0], _tip[1]]
                 for k in ax:
                     ax[k] = [ax[k][0] + delta[0], ax[k][1] + delta[1]]
-        return {"ok": True, "origin": org, "align_shift_px": [round(delta[0], 2), round(delta[1], 2)],
+        return {"ok": True, "origin": org, "align_shift_px": delta,
+                "align_to": ("pegtip(框下边缘中点)" if tip_inset_px is None
+                             else "pegtip(框顶+%.1fpx)" % float(tip_inset_px)),
+                "tip_inset_px": tip_inset_px,
+                "tip_clipped": _clip,
                 "axes": ax,
                 "length_mm": length_mm, "cam_z_mm": float(Pc[0, 2]), "img": [640, 480],
                 "src": "handeye_state.json(残差0.06mm) + real_cam_calib K(camera_info)"}
@@ -614,16 +652,24 @@ class H(BaseHTTPRequestHandler):
                 self._json(read_tcp())
             elif p in ("/toolframe.jpg", "/toolframe.png"):   # ▣ 画好 tool1 坐标系的臂相机图(直接看图, 不用等页面刷新)
                 try:
-                    L = float(qs.get("len", "60") or 60)
+                    L = float(qs.get("len", "80") or 80)
                 except Exception:                                       # noqa: BLE001
-                    L = 60.0
-                self._toolframe_img(L)
+                    L = 80.0
+                try:
+                    _ins = float(qs.get("inset"))       # 贴顶时头顶内缩(px), 现场可微调
+                except Exception:                                       # noqa: BLE001
+                    _ins = None
+                self._toolframe_img(L, tip_inset_px=_ins)
             elif p == "/api/toolframe":                    # ▣ tool1 坐标系(臂相机像素, 固定)
                 try:
-                    L = float(qs.get("len", "60") or 60)
+                    L = float(qs.get("len", "80") or 80)
                 except Exception:                                       # noqa: BLE001
-                    L = 60.0
-                self._json(toolframe_px(L, align_box=(qs.get("align", "box") != "0")))
+                    L = 80.0
+                try:
+                    _ins = float(qs.get("inset"))       # 贴顶时头顶内缩(px)
+                except Exception:                                       # noqa: BLE001
+                    _ins = None
+                self._json(toolframe_px(L, align_box=(qs.get("align", "box") != "0"), tip_inset_px=_ins))
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
                 self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
@@ -647,6 +693,40 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": bool(c), "calib": c, "cam": cam, "cams": CAMS})
             elif p == "/api/traj/state":
                 self._json(self._traj_state())
+            elif p == "/api/ar_diag":              # 🩺 AR 页面自诊断上报(页面每 3s 推一次真实运行时状态)
+                # 老倪 2026-10-19「点击刷新也不好使」——服务端日志只能看到 /api/* 轮询, 看不到页面里
+                # FPUMP.busy 是否卡死、document.hidden 是什么、CAMS 有没有 arm。让页面自己上报。
+                # ⚠ 8797 是 ForkingMixIn(每请求一个子进程) ⇒ 不能存模块级 list, 必须落盘。
+                try:
+                    from urllib.parse import urlparse as _up, parse_qs as _pq
+                    _f = "/dev/shm/zmax_ar_diag.jsonl"
+                    _qq = _pq(_up(self.path).query)
+                    if "state" in _qq:
+                        try:
+                            _st = json.loads(_qq["state"][0])
+                        except Exception:                                        # noqa: BLE001
+                            _st = {"raw": str(_qq["state"][0])[:300]}
+                        _st["t"] = time.strftime("%H:%M:%S")
+                        _mode = "a"
+                        try:
+                            if os.path.getsize(_f) > 200000:
+                                _mode = "w"
+                        except Exception:                                        # noqa: BLE001
+                            pass
+                        with open(_f, _mode, encoding="utf-8") as _fh:
+                            _fh.write(json.dumps(_st, ensure_ascii=False) + "\n")
+                        self._json({"ok": True})
+                    else:
+                        _lines = []
+                        try:
+                            with open(_f, encoding="utf-8") as _fh:
+                                _lines = _fh.read().strip().split("\n")[-10:]
+                        except Exception:                                        # noqa: BLE001
+                            pass
+                        self._json({"ok": True, "n": len(_lines),
+                                    "diag": [json.loads(_x) for _x in _lines if _x.strip()]})
+                except Exception as _e:                                          # noqa: BLE001
+                    self._json({"ok": False, "err": str(_e)[:120]})
             elif p == "/api/aoi/state":            # 🔍 最近一次 AOI 结果(不拍照)
                 self._json(_aoi_state_read())
             elif p == "/api/aoi/read":             # 🔍 只读体检(不拍照)
@@ -723,7 +803,16 @@ class H(BaseHTTPRequestHandler):
             self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 500)
 
     def _proxy_stream(self, p):
-        """MJPEG 透传: 不断开、边读边写(不要 copyfile — 它是无限的)。"""
+        """MJPEG 透传: 不断开、边读边写(不要 copyfile — 它是无限的)。
+
+        🔴 2026-10-19 实测事故 (老倪: 「怎么卡住了? 电脑怎么这么慢」):
+          客户端(AR 页面/内嵌窗口刷新或关闭)断开后, 服务端这条连接停在 CLOSE-WAIT,
+          而 `wfile.write` 在 socket 缓冲写满之前**不会报错** ⇒ 子进程继续 read/write 空转。
+          实测两个这样的僵尸流子进程各 38% CPU、白烧 7 分钟, 又各占一个 max_children 名额,
+          整机 load average 冲到 14 (8 核) ⇒ 控制台/相机全卡。
+          所以这里必须: ① 单连接有硬上限时长; ② 每块 flush 让 EPIPE 尽早暴露; ③ 任何异常都收摊。
+        """
+        _t0 = time.time()
         try:
             req = urllib.request.Request(UP + p)
             with urllib.request.urlopen(req, timeout=20) as r:
@@ -732,16 +821,20 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
 
-
                 while True:
+                    if time.time() - _t0 > 300:          # 硬上限 5 分钟: 超时收摊, 让页面自己重连
+                        break
                     chunk = r.read(8192)
                     if not chunk:
                         break
                     self.wfile.write(chunk)
+                    self.wfile.flush()                   # 断链 ⇒ BrokenPipe 立刻暴露, 不拖到缓冲写满
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:                                                    # noqa: BLE001
             self.log_message("stream err %s", e)
+        finally:
+            self.close_connection = True
 
     def _fence_audit(self, route, fid, body):        # 🧱 围栏写操作审计: 谁/何时/改了什么
         try:
@@ -851,7 +944,7 @@ class H(BaseHTTPRequestHandler):
     MOD3_STATE = "/dev/shm/mod3_latest.json"
     MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
 
-    def _toolframe_img(self, L=60.0):
+    def _toolframe_img(self, L=80.0, tip_inset_px=None):
         """现场最直观的一张图: 当前臂相机帧 + tool1 三轴。直接 GET /toolframe.jpg 就能看。"""
         try:
             img = None
@@ -863,7 +956,7 @@ class H(BaseHTTPRequestHandler):
             if img is None:
                 self._send(503, "text/plain; charset=utf-8", "臂相机取帧失败".encode())
                 return
-            tf = toolframe_px(L, align_box=True)
+            tf = toolframe_px(L, align_box=True, tip_inset_px=tip_inset_px)
             if not tf.get("ok"):
                 self._send(200, "application/json", json.dumps(tf, ensure_ascii=False).encode())
                 return
@@ -873,12 +966,11 @@ class H(BaseHTTPRequestHandler):
             for k, col in (("X", (60, 60, 235)), ("Y", (60, 210, 60)), ("Z", (235, 140, 40))):
                 T = tuple(int(round(v * S)) for v in tf["axes"][k])
                 cv2.arrowedLine(big, O, T, col, 3, cv2.LINE_AA, tipLength=0.12)
-                cv2.putText(big, "%s %.0fmm" % (k, L), (T[0] + 6, T[1] - 6),
+                cv2.putText(big, k, (T[0] + 6, T[1] - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2, cv2.LINE_AA)
             cv2.circle(big, O, 7, (255, 255, 255), -1, cv2.LINE_AA)
             cv2.circle(big, O, 7, (30, 30, 30), 2, cv2.LINE_AA)
-            cv2.putText(big, "tool1 (%d,%d)  z=%.0fmm  ·  %s" % (
-                tf["origin"][0], tf["origin"][1], tf["cam_z_mm"], time.strftime("%H:%M:%S")),
+            cv2.putText(big, "tool1(模块头)",
                 (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
             ok, jpg = cv2.imencode(".jpg", big, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
             if not ok:
@@ -901,7 +993,12 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                   # noqa: BLE001
             return {"ok": False, "err": "光模块检测线程还没出结果(刚启动? 看服务日志)"}
         try:
-            r["result_age_s"] = round(time.time() - float(r.get("ts") or 0), 2)
+            _age = round(time.time() - float(r.get("ts") or 0), 2)
+            r["result_age_s"] = _age
+            # 🔴 2026-10-19 现场: 检测线程检不到目标时**保留上一帧结果**, 而页面又把旧框画在新画面上
+            #   (22:05:42 的框画在 22:09 的画面里) ⇒ 用户看到的就是"绿色框向左偏了"。
+            #   这里如实标 stale, 页面不得把陈旧框当实时框画成实线。
+            r["stale"] = bool(_age > 2.5 or not r.get("ok"))
         except Exception:                                                   # noqa: BLE001
             pass
         if want_img:
@@ -1124,12 +1221,18 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         try:
+            _t0 = time.time()
             for part in RS.mjpeg(fps=15, quality=78):
+                if time.time() - _t0 > 300:      # 同 _proxy_stream: 断链不许永久占住子进程
+                    break
                 self.wfile.write(part)
+                self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:                                                   # noqa: BLE001
             sys.stderr.write("[rs.mjpg] %s: %s\n" % (type(e).__name__, str(e)[:100]))
+        finally:
+            self.close_connection = True
 
     def _do_calib(self, body):
         cam = str(body.get("cam") or "local")

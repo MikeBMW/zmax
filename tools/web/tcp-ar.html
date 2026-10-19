@@ -358,21 +358,26 @@ function drawModBox(g){
   if(!MOD3||!MOD3.ok||!MOD3ON) return 0;
   const P=MOD3.corners_px||[], E=(MOD3.edges||[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]);
   g.save();
-  g.lineWidth=2; g.strokeStyle='#00e676'; g.shadowColor='#00e676'; g.shadowBlur=6;
+  // 🔴 老倪 2026-10-19「绿色边界框向左偏」的真因: 检测线程检不到目标时保留上一帧框, 页面把旧框画在新画面
+  //   ⇒ 看起来就是"偏了"。陈旧框必须换色 + 虚线 + 报帧龄, 不许冒充实时。
+  const STALE=!!MOD3.stale, COL=STALE?'#ffb020':'#00e676';
+  g.lineWidth=STALE?1.5:2; g.strokeStyle=COL; g.shadowColor=COL; g.shadowBlur=STALE?0:6;
+  if(STALE) g.setLineDash([6,5]);
   E.forEach(([i,j])=>{ const a=P[i], b=P[j]; if(!a||!b) return;
     g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke(); });
   g.shadowBlur=0;
   // 8 个角点
-  g.fillStyle='#00e676';
+  g.fillStyle=COL;
   P.forEach(p=>{ g.beginPath(); g.arc(p[0],p[1],2.2,0,Math.PI*2); g.fill(); });
+  g.setLineDash([]);
   // 标签
   const bx=MOD3.box2d||[0,0,0,0];
-  const lab='光模块 3D · '+MOD3.dims_mm.map(v=>v.toFixed(0)).join('×')+'mm · d='+MOD3.dist_mm.toFixed(0)+'mm'
-    +(MOD3.stale?(' · ⚠沿用上次框(连续 '+MOD3.detect_lost+' 帧未检出)'):'');
+  const lab=STALE?('⚠ 陈旧框 · '+((MOD3.result_age_s||0).toFixed(0))+'s 前 · 当前帧未检出目标')
+    :('光模块 3D · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm · d='+(MOD3.dist_mm||0).toFixed(0)+'mm');
   g.font='12px monospace'; const tw=g.measureText(lab).width;
   const lx=Math.max(2,Math.min(IMG_W-tw-8,bx[0]-4)), ly=Math.max(14,bx[1]-8);
   g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(lx-3,ly-13,tw+8,17);
-  g.fillStyle='#00e676'; g.fillText(lab,lx,ly);
+  g.fillStyle=COL; g.fillText(lab,lx,ly);
   // ⚠ 头部出画: 3D 框的角点 y<0 / 贴顶边 ⇒ 画面上只看到半支, 用向上箭头明确标出来
   const cl=MOD3.clipped||[], cxp=(bx[0]+bx[2])/2;
   if(cl.indexOf('top')>=0 || Math.min(...P.map(p=>p[1]))<-2){
@@ -389,7 +394,7 @@ function drawModBox(g){
 // 相机装在手爪上 ⇒ tool1 在画面里的像素位置是**常量**, 一次取回即可, 每帧只是重画, 零成本。
 let TF=null, TFON=true, TFN=0;
 async function loadToolFrame(){
-  try{ const d=await fetch('/api/toolframe?len=60').then(r=>r.json());
+  try{ const d=await fetch('/api/toolframe?len=80').then(r=>r.json());
     if(d&&d.ok){ TF=d; SIG=''; drawOv(); } }catch(e){}
   setTimeout(loadToolFrame, 30000);                // 30s 复核一次(手眼重标后自动跟上)
 }
@@ -400,6 +405,9 @@ function drawToolFrame(g){
   const O=P(TF.origin);
   const AX=[['X',TF.axes.X,'#ff5c5c'],['Y',TF.axes.Y,'#4dd24d'],['Z',TF.axes.Z,'#4da3ff']];
   g.save(); g.lineWidth=3; g.font='bold 15px system-ui';
+  // 只标一处: tool1(模块头)
+  g.fillStyle='#e6edf3'; g.font='bold 14px system-ui';
+  g.fillText('tool1(模块头)', O[0]+6, O[1]+16);
   AX.forEach(([k,q,c])=>{
     const T=P(q);
     g.strokeStyle=c; g.fillStyle=c;
@@ -409,11 +417,11 @@ function drawToolFrame(g){
     g.lineTo(T[0]-hl*Math.cos(a-0.4),T[1]-hl*Math.sin(a-0.4));
     g.lineTo(T[0]-hl*Math.cos(a+0.4),T[1]-hl*Math.sin(a+0.4));
     g.closePath(); g.fill();
-    g.fillText(k+' '+((TF.length_mm||60)|0)+'mm', T[0]+6, T[1]-6);
+    // 老倪 2026-10-19「tool1(模块头) 就显示这个, 不要显示数字」⇒ 三轴不标名字不标长度
   });
   g.fillStyle='#fff'; g.beginPath(); g.arc(O[0],O[1],6,0,7); g.fill();
   g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
-  g.fillStyle='#fff'; g.fillText('tool1 ('+O[0].toFixed(0)+', '+O[1].toFixed(0)+')  z='+(TF.cam_z_mm||0).toFixed(0)+'mm', O[0]+10, O[1]+20);
+  // 老倪 2026-10-19「原来的 331 62 z=218 删掉」⇒ 像素坐标与 z 不再上屏，只留 tool1(模块头)
   g.restore(); return 3;
 }
 function drawOv(){
@@ -1177,6 +1185,13 @@ function drawIfChanged(){
   SIG=s; drawOv(); drawVR();
 }
 async function refresh(){
+  // 隐藏(预载/最小化)时不轮询 —— 但**降到 3s 一次保活**, 不能直接 return:
+  //   切回可见时若 platform/Qt 不发 visibilitychange, 面板会永久停在旧数 (帧龄会露馅但体验是"卡住")。
+  if(document.hidden){
+    const _n=performance.now();
+    if(_n-(refresh._hid||0) < 3000) return;
+    refresh._hid=_n;
+  }
   try{
     const [t,st]=await Promise.all([fetch('/api/traj').then(r=>r.json()), fetch('/api/traj/state').then(r=>r.json())]);
     TRAJ={trace:t.trace||[],plan:t.plan||[],real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s}; }
@@ -1276,6 +1291,19 @@ async function aoiState(){
   READY=true; layout(); await refresh();
   await aoiState();
   setInterval(refresh,1500); setInterval(aoiState,5000);
+  // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
+  //   老倪 2026-10-19「点击刷新也不好使」时, 服务端只看得到 /api/* 轮询, 看不到 bus y卡死/hidden/CAMS。
+  //   有了这条, 现场"画面不动"能直接判定是 泵卡死 / 没相机键 / 页面没初始化, 而不是靠猜。
+  setInterval(function(){
+    try{
+      fetch('/api/ar_diag?state='+encodeURIComponent(JSON.stringify({
+        vis:document.visibilityState, hidden:document.hidden,
+        ready:(typeof READY!=='undefined'&&!!READY), busy:!!FPUMP.busy, ok:FPUMP.ok, err:FPUMP.err,
+        timer:!!FPUMP.timer, cam:String(CAM), hasCam:!!CAMS[CAM], period:FPUMP.period,
+        innerH:innerHeight, scrollY:Math.round(scrollY), zoom:document.documentElement.style.zoom||null
+      })));
+    }catch(e){}
+  },3000);
 })();
 async function loadCams(){
   try{ const r=await fetch('/api/cams').then(x=>x.json());
@@ -1294,9 +1322,11 @@ async function loadCams(){
 // 现场看到的就是"一会黑屏一下"。现在改成: 后台预加载单帧 JPEG(/snap/<cam>.jpg),
 // **只有这一帧真的解码成功才换上去**, 失败就继续显示上一帧 —— 结构上不可能再黑屏。
 // 同时把"帧龄"标出来(老倪要求: 实时画面必须能看出这帧多旧)。
-// 泵周期: 150ms(=6.67fps)是原来的硬顶 —— 实测单帧取回只要 3ms(8797→8791),
-// 链路本身远没到极限, 所以提到 60ms(=16.7fps); 单帧本身慢(大图)时 busy 闸自然退让, 不会堆积。
-const FPUMP={busy:false,err:0,ok:0,last:0,timer:null,period:60};
+// 泵周期: 150ms(=6.67fps)。曾提到 60ms(16.7fps), 但 8797 是 **每连接 fork 一个进程**,
+//   16.7 次/s 的取帧 + 光模块 3D 框(每次 57KB base64) 让打开新页面时的首屏跟着排队
+//   (老倪 2026-10-19「AR 打开后白屏, 好长时间才显示」) ⇒ 回到 150ms: 目检够用, fork 压力砍 60%。
+//   单帧本身慢时 busy 闸自然退让, 不会堆积。
+const FPUMP={busy:false,err:0,ok:0,last:0,timer:null,period:100};
 function frameAgeText(){
   if(!FPUMP.last) return ' · 帧龄 —';
   const a=(performance.now()-FPUMP.last)/1000;
@@ -1311,8 +1341,15 @@ function noFeed(title, detail){
               '<div style="max-width:520px;opacity:.92">'+(detail||'')+'</div>';
 }
 function pumpTick(forceSnap){
-  if(FPUMP.busy) return;
-  FPUMP.busy=true;
+  // 🔴 看门狗 (2026-10-19 老倪「AR 怎么不动? ... 还是卡死了?」):
+  //   8797 重启/相机断链时, 上一拍的 <img> 请求可能**永远 pending** —— onload/onerror 都不触发,
+  //   FPUMP.busy 就永久卡在 true ⇒ 页面轮询还在跑(面板数字在变), 但画面再也不更新, 看起来就是"卡死"。
+  //   实测过一次重启后就是这样。任何超过 2.5s 没回来的拍都必须放手。
+  if(FPUMP.busy && performance.now()-(FPUMP._bt||0) < 2500) return;
+  // ⚠️ 2026-10-19 晚: 这里原先有个"document.hidden 时降到 1s 一帧"的节流, 已**撤掉** ——
+  //   内嵌窗口被判定 hidden 时它让画面变成 1fps, 老倪的原话是「没有以前的网页好使」。
+  //   省 CPU 交给 period(100ms) 和看门狗, 不再拿"流畅度"换。
+  FPUMP.busy=true; FPUMP._bt=performance.now();
   // 🦾 臂相机 + 开3D框时: 一次请求拿回"被分析的那一帧 + 对应的框" ⇒ 画面和标注永远是同一时刻,
   // 不会出现框比画面滞后(老倪: 「画面延迟挺大的, 注意画面的理解」)。
   // ⚠️ 但检测线程还没出结果(刚启动/相机刚断)时**必须退回单帧快照** —— 原来这里直接 return,
@@ -1360,8 +1397,13 @@ function drawFrameToVid(im){
 }
 function startPump(){
   if(FPUMP.timer) return;
-  pumpTick();                                  // 立刻来一帧, 不等 150ms
+  pumpTick(true);                              // 首帧**强制走单帧快照**(便宜: 几十KB, 不等检测线程),
+                                               // 先把画面点亮; 之后各拍再按 MOD3ON 决定要不要 3D 框
   FPUMP.timer=setInterval(pumpTick, FPUMP.period);
+  // 被 show 出来(预载页第一次打开) ⇒ 立刻补一帧并刷新一轮控制面板, 不等周期
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden){ pumpTick(true); try{ refresh(); }catch(e){} }
+  });
 }
 
 function _ageTxt(v){

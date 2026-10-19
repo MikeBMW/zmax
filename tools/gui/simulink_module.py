@@ -4018,7 +4018,7 @@ SRC_SCENE_ID = {"插拔场景": "SS-EPI-CORNER", "摆盘场景": "SS-TRAY-PLACE"
 SRC_DESC = {"真机": "📡 真机 (Orin 远程只读: TCP位姿/关节/力/夹爪/图像)",
             "插拔场景": "🧩 插拔场景 (SS-EPI-CORNER)",
             "摆盘场景": "🧩 摆盘场景 (SS-TRAY-PLACE)",
-            "AR场景": "🥽 AR场景 (状态空间工程视频源实拍 + AOI/空间点位叠加) · 8797/ar"}
+            "AR场景": "🥽 AR场景 (状态空间工程视频源实拍 + AOI/空间点位叠加) · 8793/ar"}
 
 
 def _src_norm(v):
@@ -5902,7 +5902,7 @@ class SimulinkModule(QWidget):
         #   ⇒ 工具栏直接给入口 (不必先进 3D 场景), 且**非阻塞**: 点一下立刻回报, 页面先送出。
         self.btn_ar = mk_btn(
             "🥽 AR",
-            "直接打开 AR 页面 (http://127.0.0.1:8797/ar)\n"
+            "直接打开 AR 页面 (http://10.163.146.78:8793/ar · 302→8797 真源, 浏览器直开)\n"
             "  · 底图 = 状态空间工程视频源 4 路相机 (手臂 D405 / 金手指 / 表面 / 本机)\n"
             "  · 叠加 = AOI 点位 / 空间点位 / TCP 真值 / 录制轨迹\n"
             "  · 8797 没起会自动拉起 (后台, 不卡界面); 数据源是「真机」时不抢你的设置\n"
@@ -14862,21 +14862,13 @@ class SimulinkModule(QWidget):
         self._l5_start_poll(1000)
 
     def open_ar_page(self):
-        """🥽 工具栏「AR」: 直接打开 AR 页面 (2026-10-19 老倪: 3D 里点 AR 半天没反应)。
+        """🥽 工具栏「AR」: 打开 AR 页面 = http://10.163.146.78:8793/ar (浏览器直开)。
 
-        **内嵌浏览器优先** (老倪 2026-10-19「要走这条」): 控制台内的 QWebEngineView,
-        实测 create 0.08s / show 0.03s / 页面 load 0.29s ⇒ 和 3D 场景一样"点了就有";
-        窗口关掉不销毁, 再点 0.001s 就回来。内嵌起不来(没装 PyQtWebEngine/没 GL)才回退
-        外部 chromium 那条路(0.4~0.9s, 且可能被日常浏览器的单例卡住)。
+        老倪 2026-10-19: 「画布的 AR按钮, 也要换成 http://10.163.146.78:8793/ar」
+        —— 不再走控制台内嵌的 QWebEngineView: 内嵌窗口被判 hidden 时页面只有 1fps,
+           而且控制台主线程一忙(建页/绘图)滚轮和点击整段丢事件, 现场就是「卡 / 没以前好使」。
+           8793 的 /ar 是 302 → 8797/ar(AR 真源), 入口地址保持他记的这一个。
         """
-        try:
-            sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
-            import ar_web_window as _aw                                          # noqa: PLC0415
-            if _aw.open_ar():
-                return "embedded"
-            self._log("🥽 内嵌浏览器不可用 ⇒ 回退外部窗口")
-        except Exception as _e:                                                 # noqa: BLE001
-            self._log("🥽 内嵌浏览器异常(%s) ⇒ 回退外部窗口" % type(_e).__name__)
         try:
             sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
             import ss_dreamview as _sd                                          # noqa: PLC0415

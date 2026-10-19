@@ -1294,7 +1294,12 @@ _LAN = _lan_ip()
 #   日志写「服务启动后 12s 仍无响应」, 于是整个 AR 按钮判失败 —— 而 8797 明明在听(同机回环一直通)。
 #   修法: ① 服务探测**回环优先**(控制台与 AR 服务同一台机器), LAN 只当备选;
 #         ② 地址在**点击时现算**, 不再吃启动那一刻的网络。
-AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8797/ar"
+AR_PAGE_URL_LOOPBACK = os.environ.get("ZMAX_AR_URL") or "http://10.163.146.78:8793/ar"
+# 🥽 2026-10-19 老倪: 「画布的 AR 按钮, 也要换成 http://10.163.146.78:8793/ar」
+#   8793 上的 /ar 是 302 → 8797/ar(同一台机的 AR 真源), 但**入口地址保持他记的这个**;
+#   打开方式是浏览器直开(不是控制台内嵌 QWebEngineView) —— 内嵌窗口被判 hidden 时只有 1fps,
+#   且控制台主线程一忙滚轮/点击就丢事件, 现场就是「卡 / 没以前好使」。
+#   IP 变了就改这一行(或设环境变量 ZMAX_AR_URL)。
 AR_PAGE_URL_LAN = "http://%s:8797/ar" % _LAN
 AR_PAGE_URL = os.environ.get("ZMAX_AR_URL") or AR_PAGE_URL_LOOPBACK      # 同机打开: 回环最稳(与 verify_ar_button 判据一致)
 AR_SERVICE_URL = "http://127.0.0.1:8797"

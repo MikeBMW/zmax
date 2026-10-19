@@ -8443,14 +8443,24 @@ class HardwareModule(SubModuleWidget):
         self.setObjectName("hardware")  # 🌐 2026-08-09 老倪: 页识别 (VEH-3 功能卡编号用 — 硬件工具箱 VEH.3.xx)
         
         # SSH 连接复用 — 加速所有硬件控制命令
+        # 🔴 2026-10-19 老倪「怎么卡住了? 滚轮没反应」实测: 这行 ssh 预连是**同步** subprocess.run(timeout=2),
+        #    Orin 不在线/网络不通时主线程结结实实等满 2 秒; 而后台建页泵 (_pump_pages) 每 0.8s 真建一个页,
+        #    建到"硬件工具箱"就整窗卡 2s —— 期间点击/滚轮事件全丢, 现场就是"AR 不动 / 滚轮没反应"。
+        #    py-spy 抓到的现场栈: main → _step → _realize_pending → _realize_page → HardwarePage.__init__ → subprocess.run。
+        #    所以挪到后台线程: 连不上只是后台超时, 界面一帧都不卡。
         import subprocess
-        try:
-            subprocess.run(
-                ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock", 
-                 "-o", "ControlPersist=120", "-fN", "tashan@192.168.23.66"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
-        except:
-            pass  # Orin 不在线也不崩溃
+        import threading as _th
+
+        def _warm_ssh():
+            try:
+                subprocess.run(
+                    ["ssh", "-o", "ControlMaster=auto", "-o", "ControlPath=/tmp/orin-ssh.sock",
+                     "-o", "ControlPersist=120", "-o", "ConnectTimeout=2", "-fN", "tashan@192.168.23.66"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            except Exception:                                               # noqa: BLE001
+                pass  # Orin 不在线也不崩溃
+
+        _th.Thread(target=_warm_ssh, name="warm_ssh", daemon=True).start()
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
@@ -15740,8 +15750,9 @@ def main():
     app = QApplication(sys.argv)
     print("⏱ 启动计时：解释器起 + 模块级 import + QApplication 就绪，用了 %.2f 秒。"
           % (_time.time() - _BOOT_T0), flush=True)
-    # 🥽 2026-10-19 老倪「要走这条(内嵌浏览器)」: 启动 3s 后后台把 AR 窗口建好(不 show/不 load),
-    #    把 QtWebEngine 的进程与上下文先热身 ⇒ 第一次点 AR 只剩 show(实测 0.03s), 和 3D 场景一样"点了就有"。
+    # 🥽 2026-10-19 老倪「要走这条(内嵌浏览器)」: 启动 3s 后后台把 AR 窗口建好,
+    #    **并且把页面先预载进隐藏窗口**(页面 hidden 时只 1s 一帧保活, 不刷 8797)
+    #    ⇒ 第一次点 AR = show + 补一帧(实测 0.077s), 不再"白屏好久"(见 ar_web_window.prewarm 注释)。
     #    失败(没装/没 GL)就静默跳过, 点 AR 时自动回退外部浏览器。
     try:
         from PyQt5.QtCore import QTimer as _QT_ar

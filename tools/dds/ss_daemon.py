@@ -104,6 +104,18 @@ META_PRED_STALE_S = 180.0        # 元任务预测帧龄阈值 (超过 ⇒ note 
 # ⚖ 原子技能话题 (SK01..SK08) —— 与 src/lerobot/dataspace/topics.py::SKILL_TOPICS 同口径
 SKILL_TOPICS = ["skill_%s" % c for c in
                 ("sk01", "sk02", "sk03", "sk04", "sk05", "sk06", "sk07", "sk08")]
+
+# ─────────────── ⚡ 分层力 L2~L5 (老倪 2026-10-19) ───────────────
+# 「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic; L4 的 Tx 是流形引擎,
+#   L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」
+#   一层一条话题 ⇒ trace/信号分析里按话题名分辨层次; 载荷 tx 写死该层力的产生端。
+FORCE_LAYERS = (
+    ("L2", "ss_force_l2", "前馈加速器"),
+    ("L3", "ss_force_l3", "DiT 动作头"),
+    ("L4", "ss_force_l4", "流形引擎"),
+    ("L5", "ss_force_l5", "DeepSeek VL 场景理解"),
+)
+FORCE_TOPICS = [t for _l, t, _x in FORCE_LAYERS]
 SKILL_PHYS = os.path.join(_TAP_CANON, "skill_phys.json")   # 数值真源 (技能派发循环服务 60Hz 写)
 POSE_STALE_S = float(os.environ.get("ZMAX_SKILL_POSE_STALE_S", "5.0"))   # 位姿停更 ⇒ 位置/角度发 -1
 
@@ -111,14 +123,14 @@ MODE_TOPICS = {
     "prod": [],
     "diag": ["hw_state", "heartbeat", "ss_infer", "train_prog", "ss_diag", "ss_energy", "ss_torque",
              "ss_cfg_names", "ss_engine", "ss_meta_task", "ss_meta_pred", "ss_stage", "ss_action_chunk"]
-             + SKILL_TOPICS,
+             + SKILL_TOPICS + FORCE_TOPICS,
     "calib": ["ss_state", "ss_action", "link_value", "hw_state", "heartbeat", "ss_calib", "ss_diag",
               "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-              "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
+              "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS + FORCE_TOPICS,
     "test": ["hw_state", "heartbeat", "train_prog", "deploy_cmd", "link_value", "ss_state", "ss_action",
              "ss_infer", "ss_canvas", "ss_macro", "ss_nodes", "ss_calib", "ss_diag", "ss_test",
              "ss_plan", "ss_energy", "ss_torque", "ss_cfg_names", "ss_engine", "ss_meta_task",
-             "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS,
+             "ss_meta_pred", "ss_stage", "ss_action_chunk"] + SKILL_TOPICS + FORCE_TOPICS,
 }
 MODE_TOPICS["dev"] = MODE_TOPICS["test"]
 
@@ -313,6 +325,34 @@ def read_infer():
             return json.loads(r.read().decode() or "{}")
     except Exception:                                                # noqa: BLE001
         return {}
+
+
+# ─────────────── ⚡ 分层力 L2~L5 (老倪 2026-10-19) ───────────────
+#   口径表 FORCE_LAYERS 在文件头 (与 MODE_TOPICS 同处, 三档一起登记)。
+def _json_file(path):
+    """读一份单 JSON 真源 → (dict, mtime)。读不到返回 ({}, None) —— 不猜。"""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return (json.load(fh) or {}), os.path.getmtime(path)
+    except Exception:                                                        # noqa: BLE001
+        return {}, None
+
+
+def read_layer_forces():
+    """分层力 —— 与**力场格子**同一口径: layer_forces 的四层加权张量 → gravity_law.field 的引立场。
+
+    力场页上的格子是这一步**之后**的 |F| = G·M/r² (老倪 2026-10-19「力场之间的力必须严格满足
+    万有引力定律」), 所以 trace 必须发同一份 —— 否则 trace 里的数和力场上画的对不上。
+    返回 (layers, gfield): layers = layer_forces 结果 (src/w/k/fresh/加权前 mag), gfield = 引立场。
+    """
+    p = os.path.join(REPO, "tools")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import layer_forces as _lf                                              # noqa: PLC0415
+    import gravity_law as _gl                                               # noqa: PLC0415
+    d = _lf.layer_forces()
+    vecs = {L: (d.get(L) or {}).get("vec") for L in ("L2", "L3", "L4", "L5")}
+    return d, _gl.field(vecs)
 
 
 def read_calibs():
@@ -1077,7 +1117,57 @@ class SSDaemon:
                  % (idx, idx8)))
         return True
 
-    # ══════════════════ ⚖ 原子技能物理量 (老倪 2026-10-15) ══════════════════
+    # ══════════════════ ⚡ 分层力 L2~L5 (老倪 2026-10-19) ══════════════════
+    def pub_forces(self):
+        """⚡ 力场上显示的 L2~L5 力 → 四条 trace 话题 zmax/ss_force_l2 … l5
+
+        老倪 2026-10-19: 「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic;
+                          L4 的 Tx 是流形引擎, L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」
+
+        口径 (与力场页/万有引力表/太阳系**同一份**, 不另算):
+          · 数值直接取 tools/layer_forces.py 的加权矢量 (w/k 权重真源 config/calib/layer_forces.json)
+          · 一层一条话题, 载荷 layer + tx 写死该层力的产生端 ⇒ trace 里一眼看出"谁的力"
+          · 该层真源取不到 ⇒ **这条话题这一拍不发** (不拿 0/别的层顶替)
+          · 真源帧龄超限 ⇒ 照发但 fresh=0 + age_s 如实给 (让人看见"这是定格的", 不冒充实时)
+        """
+        from ss_types import SSForceLayer                                # noqa: PLC0415
+        try:
+            d, gf = read_layer_forces()
+        except Exception as e:                                           # noqa: BLE001
+            log("⚠️ 分层力读取失败 (tools/layer_forces.py + gravity_law.py): %s: %s"
+                % (type(e).__name__, str(e)[:100]))
+            return False
+        comps = {c.get("L"): c for c in (gf.get("comps") or [])}
+        ch, _ = _json_file(os.path.join(SS_REMOTE, "chunk_latest.json"))
+        mt, _ = _json_file(os.path.join(SS_REMOTE, "meta_tasks.json"))
+        stage = str(ch.get("stage") or "")
+        task = " ".join(str(x) for x in (mt.get("task_id"), mt.get("task_name")) if x)
+        n_ok = 0
+        for L, topic, tx in FORCE_LAYERS:
+            x = d.get(L) or {}
+            c = comps.get(L) or {}
+            v = c.get("vec")
+            if not v or len(v) < 3:
+                continue                     # 取不到该层 ⇒ 不发 (src 里已写明缺哪个真源)
+            v = [float(q) for q in v[:3]]
+            _age = x.get("age_s")
+            ok = self.publish(topic, SSForceLayer(
+                ts=time.time(), layer=L, tx=tx, seq=int(self.seq.get(topic, 0)) + 1,
+                stage=stage[:40], task=task[:80],
+                x=v[0], y=v[1], z=v[2],
+                mag=float(c.get("mag") or 0.0),
+                raw_mag=float(x.get("mag") or 0.0),          # 引力律**前**的分层加权幅值 (对账用)
+                w=float(x.get("w") if x.get("w") is not None else -1.0),
+                k=float(x.get("k") if x.get("k") is not None else -1.0),
+                fresh=1 if x.get("fresh") else 0,
+                age_s=(float(_age) if _age is not None else -1.0),
+                src=str(x.get("src") or "")[:220],
+                note=("%s · 引力律 M=%.4f r=%.2f |F|=G·M/r²"
+                      % (x.get("note") or "", float(c.get("M") or 0.0),
+                         float(c.get("r") or 0.0)))[:120]))
+            n_ok += 1 if ok else 0
+        return n_ok > 0
+
     def pub_skills(self):
         """⚖ 每个原子技能一条话题: zmax/skill_sk01 … zmax/skill_sk08
 
@@ -1356,6 +1446,12 @@ class SSDaemon:
                     self.pub_stage()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_stage 发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
+            try:
+                # ⚡ 分层力 L2~L5 → 四条 trace 话题 (老倪 2026-10-19; 与力场同一份加权结果)
+                if any(allowed(t) for t in FORCE_TOPICS):
+                    self.pub_forces()
+            except Exception as e:                                       # noqa: BLE001
+                log("⚠️ 分层力发布失败: %s: %s" % (type(e).__name__, str(e)[:100]))
             self._stop.wait(max(0.02, period - (time.time() - t0)))
 
     def run(self, seconds=0.0, once=False):
@@ -1370,6 +1466,8 @@ class SSDaemon:
                     self.pub_meta_task()
                 if allowed("ss_meta_pred"):
                     self.pub_meta_pred()
+                if any(allowed(t) for t in FORCE_TOPICS):     # ⚡ 分层力 (取证: 四条话题各发一轮)
+                    self.pub_forces()
             except Exception as e:                                       # noqa: BLE001
                 log("⚠️ ss_cfg_names / ss_meta_task 一次性发布失败: %s" % type(e).__name__)
         else:

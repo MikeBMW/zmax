@@ -153,6 +153,7 @@ def dds_topics_allowed(topics, prod=None):
         return list(topics)
     core = ("ss_stage", "ss_torque", "ss_engine", "ss_energy", "ss_meta_task", "ss_meta_pred",
             "hw_state", "heartbeat", "ss_cfg_names",
+            "ss_force_l2", "ss_force_l3", "ss_force_l4", "ss_force_l5",
             *["skill_%s" % c for c in ("sk01", "sk02", "sk03", "sk04", "sk05", "sk06", "sk07", "sk08")])
     return [t for t in topics if t in core]
 
