@@ -9,8 +9,8 @@
   ① 产品配置区存在      ConfigCenterPage 里找到「产品配置」卡片 + 页签 + 左树条目 (现有区未被拆)
   ② 三个产品项          550A/550B/550C 三个单选, 名字与真源 products.<id>.name 同名
   ③ 选中即写回真源      点 550B → 真源 active_product 真变 550B; 原子写 (无 .tmp 残留); 且**只改那一行**
-  ④ 显示 == 真源回读    7 个字段逐个与真源 + prime_structure 回读值比对 (指纹/能力质数签名用**完整值**);
-                        显示文本(截断) == 完整值的既定截断形式 (前18…后6 (N 位))
+  ④ 显示 == 真源回读    3 个字段 (产品/版本段/能力数) 逐个与真源回读值比对;
+                        2026-10-19 老倪删掉 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行与说明行、真源行
   ⑤ 恢复原值            跑完真源**字节级**还原, active_product 回到原值, 探针临时文件自清理
   ⑥ 节点随真源          流形引擎节点 node_ss_mani_eng 的返回字典 product_id 随真源变化 (550C/550A 各真跑一次)
   ⑦ 窄窗 1280 不截断    1280×800 离屏渲染: 每个标签 width ≥ 最小需求 (不挤); 非换行标签 width ≥ sizeHint (不截断)
@@ -136,7 +136,7 @@ def _console_pids() -> list:
 def main() -> int:
     t0 = time.time()
     print("═══ 「产品标识 + 空间质数结构化理解能力」界面/节点判据 (pid=%d) ═══" % PID)
-    from PyQt5.QtWidgets import QApplication
+    from PyQt5.QtWidgets import QApplication, QLabel
     app = QApplication.instance() or QApplication(sys.argv)
 
     orig_bytes = open(PRODUCT_J, "rb").read()
@@ -166,8 +166,19 @@ def main() -> int:
     chk("①", "既有 7 个区一个没被拆", all(k in tabs for k in keep), "缺=%s" % [k for k in keep if k not in tabs])
     chk("①", "左树有「产品配置」条目 (能从左侧直达)", "产品配置" in tree_txt,
         "顶层项数 %d" % pg.tree.topLevelItemCount())
-    chk("①", "产品配置区 7 个只读回读字段齐 + 每行一个 📋", all(k in (pg._prod_val or {}) for k in fields)
-        and len(pg._prod_val) == 7, "字段=%s" % " · ".join(fields))
+    chk("①", "产品配置区只读回读字段齐 + 每行一个 📋 (老倪 2026-10-19 删后 3 行)", all(k in (pg._prod_val or {}) for k in fields)
+        and len(pg._prod_val) == len(fields), "字段=%s" % " · ".join(fields))
+    # 🗑 2026-10-19 老倪: 「真源行 / 选一个产品 = 原子写回真源 说明 / 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 全删掉」
+    _gone_keys = [k for k in ("产品质数", "当前发布指纹", "质数结构自检", "能力质数签名") if k in (pg._prod_val or {})]
+    _card_txt = "\n".join(lb.text() for lb in pg._prod_card.findChildren(type(pg._prod_val["产品"])))
+    _card_txt += "\n".join(lb.text() for lb in pg._prod_card.findChildren(QLabel))
+    chk("①", "已删的四行真不在界面 (产品质数/当前发布指纹/质数结构自检/能力质数签名)",
+        not _gone_keys, "残留=%s · 现有=%s" % (_gone_keys, " · ".join(fields)))
+    chk("①", "已删的说明行/真源行真不在界面 (「原子写回真源 …」「prime_structure 交叉回算 …」)",
+        ("原子写回真源" not in _card_txt) and ("prime_structure 交叉回算" not in _card_txt)
+        and not hasattr(pg, "_prod_src"),
+        "命中 原子写回真源=%s · prime_structure=%s · _prod_src 属性=%s"
+        % ("原子写回真源" in _card_txt, "prime_structure 交叉回算" in _card_txt, hasattr(pg, "_prod_src")))
     chk("①", "真源已进 source_fingerprint (跨窗口一致性判据)", V.REL_PRODUCT in V.ConfigCenterPage._SRC_FILES
         and V.REL_PRODUCT in pg.source_fingerprint(),
         "指纹键含产品真源=%s · 证据行 %s" % (V.REL_PRODUCT in pg.source_fingerprint(),
@@ -192,7 +203,7 @@ def main() -> int:
     # ── ⑧ 可复制 (先验, 不改真源) ───────────────────────────────────────────────
     print("\n【⑧ 可复制 (📋 / 双击 / 右键)】")
     clip = app.clipboard()
-    tgt = "当前发布指纹"
+    tgt = "版本段"
     lb = pg._prod_val[tgt]
     full = str(lb.full_value)
 
@@ -210,9 +221,8 @@ def main() -> int:
     c1 = _clip_after(lambda: pg._copy_field(tgt))
     c2 = _clip_after(lambda: lb._copy())            # 双击走的就是这条
     c3 = _clip_after(lambda: lb._copy_pair())       # 右键菜单第 2 项
-    chk("⑧", "📋 按钮复制**完整值** (显示是截断的, 复制的不截断)",
-        c1 == full and full not in lb.text(),
-        "复制=%s (完整 %d 位) · 显示文本不含完整值 ⇒ 显示=截断形式 %r" % (c1, len(full), lb.text()[:46]))
+    chk("⑧", "📋 按钮复制**完整值** (与值标签 full_value 一致)",
+        c1 == full, "复制=%s · 完整 %d 位 · 显示=%r" % (c1, len(full), lb.text()[:46]))
     chk("⑧", "双击标签复制完整值", c2 == full, "复制=%s…" % c2[:24])
     chk("⑧", "右键菜单「字段名: 值」可用", c3 == "%s: %s" % (tgt, full), "复制=%s…" % c3[:28])
     chk("⑧", "标签可选中 (鼠标可拖选, 便于人工复制)", int(lb.textInteractionFlags()) != 0,
@@ -261,41 +271,20 @@ def main() -> int:
         exp = {
             "产品": "%s — %s" % (act, pv.get("name")),
             "版本段": str(pv.get("version_segment")),
-            "产品质数": str(pv.get("prime")),
             "能力数": "%d 项 (元数据基元 %d + 阶段 %d)" % (
                 len(pv.get("capabilities") or []),
                 len([x for x in pv["capabilities"] if x in PS.PRIMITIVE_PRIMES]),
                 len([x for x in pv["capabilities"] if x in PS.STAGE_PRIMES])),
-            "能力质数签名": str((dd.get("capability_signatures") or {}).get(act)),
-            "当前发布指纹": str(fpr.get("fingerprint")),
         }
         okv = True
         for k, v in exp.items():
             lbk = pg._prod_val[k]
-            if k in ("能力质数签名", "当前发布指纹"):
-                # 显示文本 = 既定截断形式; 完整值 = 真源值
-                good = lbk.text().startswith(_cut_big(v).split("…")[0]) and lbk.full_value == v
-            else:
-                good = lbk.text() == v and lbk.full_value == v
+            good = lbk.text() == v and lbk.full_value == v
             okv = okv and good
             if not good:
                 print("        ✗ %s: 显示=%r full=%r 期望=%r" % (k, lbk.text(), lbk.full_value, v))
-        chk("④", "[%s] 6 个字段与真源回读值逐一相同" % where, okv,
+        chk("④", "[%s] 3 个字段与真源回读值逐一相同 (已删的四行不参与)" % where, okv,
             " · ".join("%s=%s" % (k, pg._prod_val[k].full_value[:26]) for k in exp))
-        sig_full = str(PS.cap_signature_of(act))
-        fp_full = str(PS.fingerprint(relv.get("product"), int(relv.get("iteration")))["fingerprint"])
-        chk("④", "[%s] 界面**能力质数签名** == prime_structure 回读值" % where,
-            pg._prod_val["能力质数签名"].full_value == sig_full,
-            "界面=%s · PS.cap_signature_of(%s)=%s" % (pg._prod_val["能力质数签名"].full_value, act, sig_full))
-        chk("④", "[%s] 界面**当前发布指纹** == prime_structure 回读值" % where,
-            pg._prod_val["当前发布指纹"].full_value == fp_full,
-            "界面=%s · PS.fingerprint(%s,%s)=%s" % (pg._prod_val["当前发布指纹"].full_value,
-                                                   relv.get("product"), relv.get("iteration"), fp_full))
-        selfck = pg._prod_val["质数结构自检"].text()
-        chk("④", "[%s] 质数结构自检 (唯一性 + 整除关系) 与真源 checks/整除块一致" % where,
-            ("唯一性 ✅" in selfck if (dd.get("checks") or {}).get("all_fingerprints_distinct") else "唯一性 ❌" in selfck)
-            and all(("%s ✅" % k) in selfck for k, v in (dd.get("capability_divisibility") or {}).items() if v),
-            "显示=%s" % selfck)
         return okv
 
     check_rows("550B")

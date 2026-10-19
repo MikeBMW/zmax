@@ -90,6 +90,15 @@ def _sha(s):
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
 
+def _hash_file(p):
+    """文件级 sha256[:16] (自动同步判据用; 文件不在 → None)。"""
+    try:
+        with open(p, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:16]
+    except Exception:                                                             # noqa: BLE001
+        return None
+
+
 def _j(x):
     return json.dumps(x, ensure_ascii=False)
 
@@ -273,6 +282,13 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         }),
     }
     c.executemany("INSERT INTO meta(k,v) VALUES(?,?)", list(meta.items()))
+    # 自动同步: 附加真源 (params 表现算依赖) 的指纹 —— ensure_fresh 用它判断库是否落后
+    try:
+        c.execute("INSERT INTO meta(k,v) VALUES(?,?)",
+                  ("src_extra", _j({os.path.relpath(_p, ROOT): _hash_file(_p)
+                                     for _p in _EXTRA_SOURCES if os.path.exists(_p)})))
+    except Exception:                                                             # noqa: BLE001
+        pass
 
     # platform / products / subsystems / axes / features
     p = plat.get("platform", {})
@@ -1020,10 +1036,83 @@ def serve(port=8798, db=DB_DEFAULT):
     return 0
 
 
+def _meta_sources(db=DB_DEFAULT):
+    """build 时记下的真源 (路径 → sha256) —— 自动同步的判据。"""
+    try:
+        con = sqlite3.connect(db)
+        row = con.execute("SELECT v FROM meta WHERE k='sources'").fetchone()
+        con.close()
+        return json.loads(row[0]) if row and row[0] else {}
+    except Exception:                                                             # noqa: BLE001
+        return {}
+
+
+# 也要算进「真源是否变了」的附加文件 (params 表由 param_registry 从这两份现算)
+_EXTRA_SOURCES = (
+    os.path.join(ROOT, "config", "platform", "param_spec.json"),
+    os.path.join(ROOT, "config", "platform", "zmax_product.json"),
+    os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json"),
+)
+
+
+def is_stale(db=DB_DEFAULT):
+    """库是否落后于真源。返回 (stale: bool, why: str)。判据 = build 记下的 sha vs 盘上现状。"""
+    if not os.path.exists(db):
+        return True, "库文件不存在"
+    srcs = _meta_sources(db)
+    if not srcs:
+        return True, "库内没有真源指纹 (旧库)"
+    _bad = []
+    for _k, _v in srcs.items():
+        try:
+            _p, _sha_v = _v[0], _v[1]
+        except Exception:                                                         # noqa: BLE001
+            continue
+        if not _p:
+            continue
+        _p2 = _p if os.path.isabs(_p) else os.path.join(ROOT, _p)
+        if not os.path.exists(_p2):
+            _bad.append("%s 没了" % _k)
+            continue
+        if _sha_v and _sha(_read(_p2) or "") != _sha_v:
+            _bad.append("%s 变了" % _k)
+    # 附加拿 hash 比对 (不进 meta.sources 的也要算)
+    try:
+        con = sqlite3.connect(db)
+        _h = con.execute("SELECT v FROM meta WHERE k='src_extra'").fetchone()
+        con.close()
+        _old = json.loads(_h[0]) if _h and _h[0] else {}
+    except Exception:                                                             # noqa: BLE001
+        _old = {}
+    for _p in _EXTRA_SOURCES:
+        if not os.path.exists(_p):
+            continue
+        _rel = os.path.relpath(_p, ROOT)
+        if _old.get(_rel) != _hash_file(_p):
+            _bad.append("%s 变了/未记" % _rel)
+    return bool(_bad), " · ".join(_bad)
+
+
+def ensure_fresh(db=DB_DEFAULT, quiet=False):
+    """真源变了就自动重建库 (自动同步; 真源没变则什么也不做)。返回 True = 本次重建过。"""
+    stale, why = is_stale(db)
+    if not stale:
+        if not quiet:
+            print("✅ 工程库已是最新 (真源未变, 无需重建) → %s" % db)
+        return False
+    if not quiet:
+        print("🔄 真源已变 (%s) ⇒ 自动重建工程库 …" % why)
+    build(db, quiet=True)
+    if not quiet:
+        print("✅ 工程库已自动同步 → %s" % db)
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description="Z-MAX 工程数据库 (单一文件承载全部工程数据)")
     ap.add_argument("cmd", nargs="?", default="stats",
-                    choices=["build", "check", "stats", "query", "load", "serve", "migrate"])
+                    choices=["build", "check", "stats", "query", "load", "serve", "migrate",
+                             "ensure-fresh", "stale"])
     ap.add_argument("arg", nargs="?", default="")
     ap.add_argument("--db", default=DB_DEFAULT)
     ap.add_argument("--project", default=None)
@@ -1031,6 +1120,13 @@ def main():
     a = ap.parse_args()
     if a.cmd == "build":
         return 0 if build(a.db, a.project) else 1
+    if a.cmd == "ensure-fresh":
+        ensure_fresh(a.db)
+        return 0
+    if a.cmd == "stale":
+        stale, why = is_stale(a.db)
+        print(("⚠ 库落后于真源: %s" % why) if stale else "✅ 库与真源一致")
+        return 0 if not stale else 3
     if a.cmd == "check":
         return check(a.db)
     if a.cmd == "stats":

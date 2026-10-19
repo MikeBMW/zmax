@@ -382,7 +382,7 @@ def scan_canvas():
     return out
 
 
-KPI_NUM = re.compile(r"([<>≥≤]=?\s*)(\d+(?:\.\d+)?)\s*(%|mm|ms|s|Hz|kg|deg|N)?")
+KPI_NUM = re.compile(r"([<>≥≤]=?\s*)(\d+(?:\.\d+)?)\s*(%|mm|ms|s|Hz|kg|deg|N|秒|毫秒|分钟|次|盘)?")
 
 
 def scan_platform():
@@ -552,6 +552,38 @@ def build_spec_seed(force=False):
     return True
 
 
+def _sync_spec_auto(ps):
+    """把 auto 播种行的 中文名/单位/默认 同步回真源 param_spec.json (只动 code=auto 行; 人工收紧的 min/max/choices 不动)。
+
+    为什么: 这些字段本来就是从真源文本现算的 (KPI 文本改了, 中文名/单位要跟着改), 不写回就会
+    留下「值已变、文案还是旧的」的不一致 (老倪 2026-10-19「保证全局数据统一」)。
+    """
+    try:
+        d = _load(SPEC, {}) or {}
+        rows = d.get("params") or {}
+        n = 0
+        for p in ps:
+            s = rows.get(p["param_id"])
+            if not s or (s.get("code") or "manual") != "auto":
+                continue
+            for k, kk in (("cn", "cn"), ("unit", "unit"), ("default", "default")):
+                v = p.get(kk)
+                if v in (None, "") or s.get(k) == v:
+                    continue
+                s[k] = v
+                n += 1
+        if n:
+            tmp = SPEC + ".tmp-sync"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, SPEC)
+        return n
+    except Exception:                                                             # noqa: BLE001
+        return 0
+
+
 def registry():
     build_spec_seed()
     file_spec = (_load(SPEC, {}) or {}).get("params", {})
@@ -559,11 +591,17 @@ def registry():
     for p in ps:
         s = file_spec.get(p["param_id"])
         if s:
+            # 🐛 2026-10-19 老倪「保证全局数据统一」: auto 播种行的 中文名/单位 是**从真源文本现算**的
+            #   (KPI 文本 "头到孔底 <4mm" → "节拍 <12秒")。若还用 spec 里的旧文案覆盖, 就会出现
+            #   「值 12 但文案/单位仍是 mm」的石英钟式不一致 ⇒ auto 行一律以真源现算为准。
+            _auto = (s.get("code") or "manual") == "auto"
             for k, kk in (("cn", "cn"), ("unit", "unit"), ("min", "min"), ("max", "max"),
                           ("choices", "choices"), ("impact", "impact"), ("sys", "sys_hint")):
+                if _auto and k in ("cn", "unit"):
+                    continue
                 if s.get(k) not in (None, ""):
                     p[kk] = s[k]
-            if s.get("default") is not None and p["status"] == "范围未定义":
+            if s.get("default") is not None and p["status"] == "范围未定义" and not _auto:
                 p["default"] = s["default"]
             if s.get("min") is not None or s.get("max") is not None:
                 _code = s.get("code", "manual")
@@ -576,6 +614,7 @@ def registry():
             if p["value"] is None and p["group"] == "calib":
                 p["status"] = "未标定(缺口)" if "已定义" not in p["status"] else "未标定(缺口) · 范围已定义"
             p["spec_code"] = s.get("code", "manual")
+    _sync_spec_auto(ps)          # auto 行的文案/单位/默认 写回真源 (真源文本改了 ⇒ 自动跟上)
     groups = {}
     for p in ps:
         groups.setdefault(p["group"], []).append(p)

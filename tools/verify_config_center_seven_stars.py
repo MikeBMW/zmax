@@ -206,19 +206,22 @@ def main() -> int:
     checks.append(("⑭ 点功能/性能/模型三种: 星与页都各自对上",
                    not any(x.startswith("❌") for x in _pair), " ; ".join(_pair)))
 
-    # ⑮ 产品配置页的「🏭 Z-MAX 平台」块 == 单一真源模块, 且主控制台左侧卡面同源 (老倪 2026-10-15:
-    #    「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息」)
+    # ⑮ 老倪 2026-10-19: 「(与主控制台左侧同源: config/platform/zmax_platform.json) 在主配置中心，删掉」
+    #    ⇒ 配置中心产品配置页 **不许** 再挂那块与主控制台左侧重复的 🏭 平台信息块;
+    #      主控制台左侧卡面照旧读单一真源 (zmax_platform_info), 产品配置页的「平台描述 + 产品特性」块保留。
     try:
         from zmax_platform_info import zmax_platform_info as _zpi
         _pi_lines = (_zpi() or {}).get("lines") or []
     except Exception:                                                           # noqa: BLE001
         _pi_lines = []
-    _page_lines = list(getattr(page, "plat_lines", None) or [])
     _src_studio = open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8").read()
     _wired = '(_zmax_platform_info() or {}).get("short")' in _src_studio
-    _ok15 = bool(_pi_lines) and _page_lines == _pi_lines and _wired
-    checks.append(("⑮ 产品配置页平台块 == 单一真源 且主控制台卡面同源 (不硬写)",
-                   _ok15, "页上3行=%s | 模块=%s | 卡面接线=%s" % (len(_page_lines), len(_pi_lines), _wired)))
+    _no_card = (getattr(page, "plat_card", None) is None) and not hasattr(page, "plat_lines")
+    _page_kept = getattr(page, "plat_page_block", None) is not None
+    _ok15 = bool(_pi_lines) and _wired and _no_card and _page_kept
+    checks.append(("⑮ 配置中心已删 🏭 平台块 · 主控制台左侧仍单一真源 · 平台描述块保留",
+                   _ok15, "模块 %d 行 | 主控制台卡面接线=%s | 配置中心无平台块=%s | 平台页块=%s"
+                   % (len(_pi_lines), _wired, _no_card, _page_kept)))
 
     # ⑯ 合并已生效 (老倪 2026-10-15: 取消模型匹配/文档预览, 并入模型配置/文档配置)
     _tabs_now = [page.tabs.tabText(i) for i in range(page.tabs.count())]

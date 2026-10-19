@@ -2237,7 +2237,7 @@ class CanoeGraphicWidget(QWidget):
                     self.selected.append(k)
                     hit = True
             if hit:
-                self.wave.set_curves(self.selected)
+                self.wave.set_curves(self._draw_order())     # 走同一收口 (超上限就裁+取消勾选, 不再无限增长)
 
     # 波形同时只画 24 条 (性能上限), 优先把场景里最该看的排前面:
     # TCP 位姿 → 八阶段 → 接触/夹持 → 前馈/调制/安全 → 其余
@@ -2253,16 +2253,36 @@ class CanoeGraphicWidget(QWidget):
     )
 
     def _trim_selected(self, added=0):
-        """同时显示的曲线数超过 MAX_CURVES ⇒ 只保留前 MAX_CURVES 条 (说清楚, 不静默)。"""
+        """同时显示的曲线数超过 MAX_CURVES ⇒ 只保留前 MAX_CURVES 条 (说清楚, 不静默)。
+
+        🔴 2026-10-19 老倪「怎么卡住了」真因 (py-spy 实测主线程 100%, 栈:
+           _tick → _update_tree_values → _on_item_changed → _draw_order → _trim_selected 每拍都走):
+           `_ordered_selected()` 是**按树上勾选状态重算** selected 的, 而这里只裁内存列表、没动勾选 ⇒
+           被裁掉的行在树上仍是 Checked ⇒ 下一拍 `_on_item_changed` 的守卫 `checked == (key in selected)`
+           对它们不成立 ⇒ 又整棵重算 + set_curves(几百条) + 再裁 + 再打日志 ⇒ 4Hz 死循环。
+           修法两层: ① 裁掉的同时**把树上的勾去掉**(信号会回到一致状态, 下一拍直接 return)
+                     ② 日志节流 (同一溢出状态 10s 只报一次, 不再刷屏刷盘)。
+        """
         if len(self.selected) <= MAX_CURVES:
             return 0
         cut = len(self.selected) - MAX_CURVES
+        drop = {str(k) for k in self.selected[MAX_CURVES:]}
         self.selected = self.selected[:MAX_CURVES]
-        try:
-            self._log(f"⚠️ 同时显示上限 {MAX_CURVES} 条曲线, 已裁掉后 {cut} 条"
-                      f" (其余信号仍在树里看最新值/帧龄)")
-        except Exception:
+        try:                                   # ① 树上勾选与"实际在画"保持一致 (取消勾选会发 itemChanged,
+            for o in self._all_items():        #    但那几行此时已不在 selected ⇒ 守卫直接 return, 不递归)
+                k = o.data(0, Qt.UserRole)
+                if k and str(k) in drop and o.checkState(0) == Qt.Checked:
+                    o.setCheckState(0, Qt.Unchecked)
+        except Exception:                                                       # noqa: BLE001
             pass
+        now = time.monotonic()                 # ② 节流: 别每拍刷一行日志
+        if now - getattr(self, "_trim_log_t", 0.0) > 10.0:
+            self._trim_log_t = now
+            try:
+                self._log(f"⚠️ 同时显示上限 {MAX_CURVES} 条曲线, 已取消勾选后 {cut} 条"
+                          f" (其余信号仍在树里看最新值/帧龄; 想画别的就先取消一条)")
+            except Exception:                                                   # noqa: BLE001
+                pass
         return cut
 
     def _draw_order(self):

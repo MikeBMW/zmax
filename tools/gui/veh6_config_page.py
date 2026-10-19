@@ -31,12 +31,13 @@ TOOLS = os.path.join(ROOT, "tools")
 if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
-from PyQt5.QtCore import Qt, QSettings, QTimer  # noqa: E402
-from PyQt5.QtGui import QColor, QFont  # noqa: E402
+from PyQt5.QtCore import Qt, QSettings, QTimer, QEvent  # noqa: E402
+from PyQt5.QtGui import QColor, QFont, QKeySequence  # noqa: E402
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
-                             QFrame, QHeaderView, QLabel, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
-                             QSplitter,
+                             QFrame, QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
+                             QSplitter, QShortcut,
                              QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextEdit, QTreeWidget,
+                             QSpinBox, QDoubleSpinBox,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
 TASKS_J = os.path.join(ROOT, "config", "tasks", "tasks.json")
@@ -878,17 +879,6 @@ def _ps_module():
         return None
 
 
-def _cut_big(n, head=18, tail=6):
-    """大整数显示口径: 前 head + … + 后 tail (N 位) —— 只影响**显示**, 完整值仍在控件/复制里。"""
-    s = str(n)
-    return s if len(s) <= head + tail + 3 else "%s…%s (%d 位)" % (s[:head], s[-tail:], len(s))
-
-
-def _vmark(flag):
-    """交叉核对标记: 真源写下的值 vs prime_structure 独立回算。None = 没核对上 (不可假成功)。"""
-    return " ✅ 真源与回算一致" if flag else (" ❌ 真源与回算不一致" if flag is False else " · 未核对")
-
-
 def _product_view():
     """产品配置区要显示的**回读值** —— 全部从真源 config/platform/zmax_product.json 读 (不吃内存副本)。"""
     out = {"src": REL_PRODUCT, "error": None, "ps": False}
@@ -1191,6 +1181,8 @@ class ConfigCenterPage(QWidget):
         self._prod_timer = _ptmr
         self.tree.itemDoubleClicked.connect(self._on_tree)
         self.tree.itemClicked.connect(self._on_tree)      # 单击即生效 (双击才响应会让人以为"点了没反应")
+        # 📋 2026-10-19 老倪「所有文字都可以被选中，复制」: 树/表格不是 QLabel, 没法框选 ⇒ 给 Ctrl+C + 右键复制
+        self._install_copy_shortcut()
         sp.addWidget(self.tree)
 
         self.tabs = QTabWidget()
@@ -1283,6 +1275,167 @@ class ConfigCenterPage(QWidget):
         self.setLayout(root)
         self._sync_out_for()
         QTimer.singleShot(0, self._fit_out)      # 首次布局完成后给一次合适高度 (之后以拖动为准)
+
+        # 📋 2026-10-19 老倪: 「配置中心…应该所有文字都可以被选中, 复制。你全都改一下」
+        #   真因: QLabel 默认 NoTextInteraction ⇒ 文字只能看不能框选 (例如「选一个产品 = 原子写回真源 …」那行)。
+        #   做法两段: ① 建页后全量扫一遍, 现存 QLabel 全开「鼠标+键盘可选中」
+        #             ② 装 app 级 eventFilter —— 之后动态新建的 QLabel (刷新/重读真源/换页加的行) 在 polish 时自动带上,
+        #                不用逐个改; 独立窗口 (simulink「🗂 配置中心」) 复用同一个页面类, 一并生效。
+        self._install_text_copy_all()
+        self._enable_text_copy(self)
+
+    # ── 📋 全页文字可选中 / 可复制 (2026-10-19 老倪: 「应该所有文字都可以被选中，复制」) ──
+    def _enable_text_copy(self, root):
+        """root 下所有 QLabel 变成可用鼠标/键盘选中 (只做 OR, 不动已有的链接/其它 flags)。"""
+        n = 0
+        for lb in root.findChildren(QLabel):
+            try:
+                _f = lb.textInteractionFlags()
+                _want = _f | Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+                if _want == _f:
+                    continue
+                lb.setTextInteractionFlags(_want)
+                lb.setCursor(Qt.IBeamCursor)          # 光标变 I 形 ⇒ 一眼看出「这里能选」
+                n += 1
+            except Exception:                                                   # noqa: BLE001
+                pass
+        return n
+
+    def _install_text_copy_all(self):
+        """app 级 eventFilter (幂等): 页面里**后建**的 QLabel 在 polish 时也自动可选中。"""
+        try:
+            app = QApplication.instance()
+            if app is not None and not getattr(self, "_copy_filter_on", False):
+                app.installEventFilter(self)
+                self._copy_filter_on = True
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def eventFilter(self, obj, ev):
+        """只认自己的子孙 QLabel 的 polish 事件 (别的控件/别的事件原样放过)。"""
+        try:
+            if ev.type() == QEvent.Polish and isinstance(obj, QLabel) and self.isAncestorOf(obj):
+                _f = obj.textInteractionFlags()
+                _want = _f | Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+                if _want != _f:
+                    obj.setTextInteractionFlags(_want)
+                    obj.setCursor(Qt.IBeamCursor)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return super().eventFilter(obj, ev)
+
+    # ── 📋 树/表格文字复制 (QLabel 能框选, 树条目/表格单元格不能 ⇒ Ctrl+C + 右键) ──
+    def _install_copy_shortcut(self):
+        """Ctrl+C: 焦点在树/表格时复制其文字; 焦点在文本编辑框时**照旧走它自己**的复制。"""
+        try:
+            self._copy_sc = QShortcut(QKeySequence.Copy, self)
+            self._copy_sc.setContext(Qt.WidgetWithChildrenShortcut)
+            self._copy_sc.activated.connect(self._copy_focus_text)
+        except Exception:                                                       # noqa: BLE001
+            self._copy_sc = None
+        try:
+            self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.tree.customContextMenuRequested.connect(self._copy_menu)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    @staticmethod
+    def _item_text(it):
+        """条目全文: 各列用 \\t 连 (左栏是单列; 多列时一次拷全)。"""
+        if it is None:
+            return ""
+        cols = []
+        try:
+            for c in range(it.columnCount()):
+                t = it.text(c) or ""
+                if c == 0:
+                    t = t.replace("⛔ ", "").replace("✅ ", "")   # 去掉判态标记, 拷出来是干净名字
+                cols.append(t)
+        except Exception:                                                       # noqa: BLE001
+            return it.text(0) or ""
+        return "\t".join(cols).strip()
+
+    def _tree_all_text(self):
+        lines = []
+        try:
+            for i in range(self.tree.topLevelItemCount()):
+                it = self.tree.topLevelItem(i)
+                lines.append(self._item_text(it))
+                for j in range(it.childCount()):
+                    lines.append("  " + self._item_text(it.child(j)))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        return "\n".join(x for x in lines if x)
+
+    def _table_sel_text(self, tbl):
+        """表格选中单元格 → TSV (与 Excel 一致), 空选区 = 当前行。"""
+        try:
+            _rows = sorted({i.row() for i in tbl.selectedItems()})
+            _cols = sorted({i.column() for i in tbl.selectedItems()})
+            if not _rows:
+                _rows = [tbl.currentRow()]
+                _cols = list(range(tbl.columnCount()))
+            out = []
+            for r in _rows:
+                cells = []
+                for c in _cols:
+                    _it = tbl.item(r, c)
+                    cells.append((_it.text() if _it else "") or "")
+                out.append("\t".join(cells))
+            return "\n".join(out)
+        except Exception:                                                       # noqa: BLE001
+            return ""
+
+    def _copy_focus_text(self):
+        """Ctrl+C 落点: 树 → 条目; 表 → 选中单元格; 文本编辑框 → 它自己的 copy(); 标签 → 选中文字。"""
+        w = QApplication.focusWidget()
+        txt = ""
+        try:
+            if isinstance(w, QTextEdit):
+                w.copy()
+                return ""
+            if isinstance(w, QLineEdit):
+                w.copy()
+                return ""
+            if isinstance(w, QTreeWidget):
+                txt = self._item_text(w.currentItem())
+            elif isinstance(w, QTableWidget):
+                txt = self._table_sel_text(w)
+            elif isinstance(w, QLabel):
+                txt = w.selectedText() or w.text()
+        except Exception:                                                       # noqa: BLE001
+            txt = ""
+        if txt:
+            QApplication.clipboard().setText(txt)
+        return txt
+
+    def _copy_menu(self, pos):
+        """左树右键: 复制条目文字 / 复制全部条目 (省略号截断的条目也能拷到全文)。"""
+        try:
+            it = self.tree.itemAt(pos)
+            m = QMenu(self.tree)
+            a1 = m.addAction("📋 复制条目文字")
+            a2 = m.addAction("📋 复制全部条目 (%d 条)" % self.tree.topLevelItemCount())
+            a1.setEnabled(it is not None)
+            _pick = m.exec_(self.tree.viewport().mapToGlobal(pos))
+            if _pick is a1 and it is not None:
+                QApplication.clipboard().setText(self._item_text(it))
+                self._flash("已复制条目: %s" % self._item_text(it)[:40])
+            elif _pick is a2:
+                _all = self._tree_all_text()
+                QApplication.clipboard().setText(_all)
+                self._flash("已复制 %d 条左树条目" % len(_all.splitlines()))
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    def _flash(self, msg):
+        """一句话反馈 (不抢底部信息窗): 在鼠标旁弹 2s。"""
+        try:
+            from PyQt5.QtWidgets import QToolTip
+            from PyQt5.QtGui import QCursor
+            QToolTip.showText(QCursor.pos(), msg, self, self.rect(), 2000)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     # ── 左侧栏宽度: 适配内容 + 可拖 + 记住 (2026-10-12 老倪「无法更改宽度, 字体都挡住了」) ──
     _TREE_W_KEY = "config_center/tree_width"
@@ -2218,59 +2371,9 @@ class ConfigCenterPage(QWidget):
         self._run_into("overview")
 
     # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
-    _PROD_ROWS = ("产品", "版本段", "产品质数", "能力数", "能力质数签名", "当前发布指纹", "质数结构自检")
-
-    def _zmax_platform_card(self, th):
-        """🏭 Z-MAX 平台信息块 —— **与主控制台左侧「🏭 Z-MAX 平台」卡面同源**。
-
-        老倪 2026-10-15: 「产品配置页面, 对应主控制台左侧 Z-MAX 平台描述, 你同步信息」。
-        两边都读 tools/gui/zmax_platform_info.py (平台/产品描述来自 config/platform/zmax_platform.json,
-        计数来自单一工程库) ⇒ 改一处两侧同时变; 读不到就写「取不到」, 不回退旧值。
-        内容可复制 (📋 复制 / 双击文本也复制)。
-        """
-        info = (_zmax_platform_info() if _zmax_platform_info else {}) or {}
-        w = QFrame()
-        w.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:6px;}"
-                        % (th["C_BG2"], th["C_BORDER"]))
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(8, 6, 8, 6)
-        lay.setSpacing(2)
-        lines = info.get("lines") or ["🏭 Z-MAX 平台: 取不到 (zmax_platform_info 不可用)"]
-        self.plat_lines = list(lines)
-        for _i, _ln in enumerate(lines):
-            lb = QLabel(_ln)
-            lb.setWordWrap(True)
-            lb.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
-            lb.setFont(QFont("Consolas", 10 if _i == 0 else 9))
-            lb.setStyleSheet("color:%s;background:transparent;border:none;"
-                             % (th["C_YELLOW"] if _i == 0 else th["C_GRAY"]))
-            lb.setToolTip(_ln)
-            lay.addWidget(lb)
-        row = QHBoxLayout()
-        b_cp = _btn("📋 复制平台信息", th)
-        b_cp.setToolTip("把上面三行复制到剪贴板 (给文档/飞书用)")
-        b_cp.clicked.connect(lambda: QApplication.clipboard().setText("\n".join(self.plat_lines or [])))
-        row.addWidget(b_cp)
-        b_rl = _btn("♻️ 重读真源", th)
-        b_rl.setToolTip("重读 config/platform/zmax_platform.json + 工程库 (改过真源点一下)")
-        b_rl.clicked.connect(self._refresh_platform_card)
-        row.addWidget(b_rl)
-        row.addStretch()
-        lay.addLayout(row)
-        return w
-
-    def _refresh_platform_card(self):
-        """重读平台真源并刷新块内文本 (真源现算, 不缓存旧值)。"""
-        info = (_zmax_platform_info() if _zmax_platform_info else {}) or {}
-        lines = info.get("lines") or ["🏭 Z-MAX 平台: 取不到"]
-        self.plat_lines = list(lines)
-        _labels = [lb for lb in (getattr(self, "plat_card", None).findChildren(QLabel)
-                                 if getattr(self, "plat_card", None) else [])]
-        for _lb, _ln in zip(_labels, lines):
-            _lb.setText(_ln)
-            _lb.setToolTip(_ln)
-        self.out.setPlainText("🏭 已重读平台真源:\n" + "\n".join("  " + x for x in lines)
-                              + "\n\n真源: %s" % (info.get("src") or "取不到"))
+    # 🗑 2026-10-19 老倪: 「…这些全删掉」——产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行
+    #   + 说明行 + 真源行全部下架, 只留 产品 / 版本段 / 能力数 (值仍全部从真源回读)。
+    _PROD_ROWS = ("产品", "版本段", "能力数")
 
     def _product_card(self, th):
         """🏷 产品配置区 —— 三个产品**单选** + 右侧**真源回读**值 (可复制)。
@@ -2278,8 +2381,7 @@ class ConfigCenterPage(QWidget):
         老倪 2026-10-13: 「流形引擎节点要一眼认出是系统核心 —— 给它加产品标识 (550A/550B/550C)
         与空间质数结构化理解能力的输出」⇒ 配置中心这边给产品配置区:
           · 选中即**原子写回**真源 config/platform/zmax_product.json 的 active_product (临时文件 + os.replace);
-          · 右边显示 版本段 / 产品质数 / 能力数 / 能力质数签名(截断) / 当前发布指纹(截断) /
-            质数结构自检(唯一性 + 整除关系) —— 每个值都**从真源回读**, 不是界面自算的副本;
+          · 右边显示 版本段 / 能力数 —— 每个值都**从真源回读**, 不是界面自算的副本;
           · 显示可复制 (双击 / 右键菜单 / 📋 按钮, 复制的是**完整值**);
           · 窄窗 1280 完整可见: 值标签自动换行 (不截断), 每个字段一行 + 一个 📋 按钮。
         """
@@ -2296,13 +2398,6 @@ class ConfigCenterPage(QWidget):
         ttl.setWordWrap(True)
         ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
         cv.addWidget(ttl)
-        sub = QLabel("选一个产品 = 原子写回真源 %s 的 active_product (临时文件 + 替换, 不留半截文件); "
-                     "右侧每个值都是从真源**回读**的 (不是界面自算的副本), 双击/右键/📋 复制完整值。"
-                     "产品标识由流形引擎节点输出 (链路缓存 mani_product.product_id)。" % REL_PRODUCT)
-        sub.setFont(QFont("Consolas", 9))
-        sub.setWordWrap(True)
-        sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
-        cv.addWidget(sub)
 
         # ① 三产品单选 (选中 → 写回真源 active_product)
         row = QHBoxLayout()
@@ -2350,11 +2445,6 @@ class ConfigCenterPage(QWidget):
         grid.setColumnStretch(1, 1)
         cv.addLayout(grid)
 
-        self._prod_src = QLabel("真源: —")
-        self._prod_src.setFont(QFont("Consolas", 8))
-        self._prod_src.setWordWrap(True)
-        self._prod_src.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
-        cv.addWidget(self._prod_src)
         cv.addStretch()
         self._prod_card = card
         self._prod_shown_active = None
@@ -2383,45 +2473,18 @@ class ConfigCenterPage(QWidget):
         if v.get("error"):
             for k in self._PROD_ROWS:
                 vals[k].set_value("⛔ " + str(v["error"]))
-            self._prod_src.setText("真源: %s (读不出 ⇒ 如实报缺, 不造数)" % v["src"])
+            self._log_cc("⛔ 产品真源读不出 (%s): %s — 不造数, 界面如实报缺"
+                         % (v.get("src") or REL_PRODUCT, v["error"]))
             return v
         vals["产品"].set_value("%s — %s" % (v.get("active"), v.get("product_name")))
         vals["版本段"].set_value(v.get("version_segment"))
-        vals["产品质数"].set_value(v.get("prime"))
         n_prim, n_stage = v.get("n_prim"), v.get("n_stage")
         vals["能力数"].set_value("%s 项%s" % (v.get("n_caps"),
                                             (" (元数据基元 %s + 阶段 %s)" % (n_prim, n_stage))
                                             if n_prim is not None else ""))
-        vals["能力质数签名"].set_value("%s%s" % (_cut_big(v.get("cap_signature")),
-                                               _vmark(v.get("cap_signature_verified"))),
-                                      v.get("cap_signature"))
-        vals["当前发布指纹"].set_value(
-            "%s · %s%s" % (_cut_big(v.get("fingerprint")),
-                           "发布 %s (迭代 %s · %s)" % (v.get("release"), v.get("release_iteration"),
-                                                       v.get("release_kind")),
-                           _vmark(v.get("fingerprint_verified"))),
-            v.get("fingerprint"))
-        ck = v.get("checks") or {}
-        dv = v.get("div") or {}
-        dvv = v.get("div_verified") or {}
-
-        def _cmp(x):
-            return "一致" if x else ("不符" if x is False else "未核对")
-
-        uniq = "唯一性 %s (%s/%s 指纹互不相等 · 回算%s)" % (
-            "✅" if ck.get("all_fingerprints_distinct") else "❌",
-            ck.get("n_fingerprints"), v.get("n_fingerprints"), _cmp(v.get("uniq_verified")))
-        div_txt = " · ".join("%s %s%s" % (k, "✅" if dv.get(k) else "❌",
-                                          "" if (not dvv or dvv.get(k) == dv.get(k)) else "(回算不符)")
-                             for k in sorted(dv)) or "—"
-        vals["质数结构自检"].set_value("%s · 整除 %s" % (uniq, div_txt))
-        self._prod_src.setText("真源: %s · schema %s · 更新 %s · 文件 sha256[:16] %s · prime_structure 交叉回算 %s"
-                               % (v["src"], v.get("schema"), v.get("updated"), v.get("sha16"),
-                                  "✅ 可用" if v.get("ps") else "⚠ 不可用 (只显真源回读值)"))
         if not silent:
-            self._log_cc("🏷 产品配置已按真源重读: active=%s · 产品质数 %s · 能力 %s 项 · 能力质数签名 %s · 指纹 %s"
-                         % (v.get("active"), v.get("prime"), v.get("n_caps"),
-                            _cut_big(v.get("cap_signature")), _cut_big(v.get("fingerprint"))))
+            self._log_cc("🏷 产品配置已按真源重读: active=%s · 能力 %s 项"
+                         % (v.get("active"), v.get("n_caps")))
         return v
 
     def _on_product_pick(self, pid, checked):
@@ -3029,14 +3092,8 @@ class ConfigCenterPage(QWidget):
         l9 = QVBoxLayout(w9)
         l9.setContentsMargins(6, 6, 6, 6)
         try:
-            try:                       # 🏭 Z-MAX 平台 (与主控制台左侧卡面同源) —— 老倪 2026-10-15
-                self.plat_card = self._zmax_platform_card(th)
-                l9.addWidget(self.plat_card)
-            except Exception as _e9p:                                           # noqa: BLE001
-                self.plat_card = None
-                _lb9p = QLabel("⛔ Z-MAX 平台信息块构造失败: %r" % (_e9p,))
-                _lb9p.setWordWrap(True)
-                l9.addWidget(_lb9p)
+            # 🗑 2026-10-19 老倪: 「(与主控制台左侧同源: config/platform/zmax_platform.json) 在主配置中心，删掉」
+            #    这个 🏭 平台块与主控制台左侧卡面完全重复 ⇒ 配置中心不再挂它 (主控制台左侧照旧, 单一真源未动)。
             l9.addWidget(self._product_card(th))
             try:                   # 🏭 复用「Z-MAX 平台」页描述 + 产品特性清单 (老倪 2026-10-15)
                 self.plat_page_block = self._zmax_platform_page_block(th)
@@ -3052,6 +3109,20 @@ class ConfigCenterPage(QWidget):
             l9.addWidget(_lb9)
         l9.addStretch()
         self.tabs.addTab(_scrollable(w9, th), "🏷 产品配置")
+
+        # 10) 💰 成本/报价 —— 2026-10-19 老倪: 「从配置中心，直接预计出成本价格」
+        #     算法真源 tools/cost_model.py, 参数真源 config/platform/zmax_cost_model.json;
+        #     本页只做「改假设 → 现算 → 可写回」, 不在这里写第二套公式。
+        try:
+            self.tabs.addTab(_scrollable(self._cost_page(th), th), "💰 成本/报价")
+        except Exception as _e10:                                                # noqa: BLE001
+            _w10 = QWidget()
+            _l10 = QVBoxLayout(_w10)
+            _lb10 = QLabel("⛔ 成本/报价页构造失败: %r" % (_e10,))
+            _lb10.setWordWrap(True)
+            _l10.addWidget(_lb10)
+            _l10.addStretch()
+            self.tabs.addTab(_scrollable(_w10, th), "💰 成本/报价")
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
 
         # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
@@ -3602,7 +3673,7 @@ class ConfigCenterPage(QWidget):
     # 2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面; 取消文档预览页面, 合并到 文档配置页面」
     # ⇒ 只剩 7 个配置页 + 1 个非七星视图 (工程配置)。页签名 = 配置名。
     _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工单配置", "文档配置",
-                  "工程配置")
+                  "工程配置", "成本/报价")
 
     def _apply_tab_order(self):
         """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
@@ -3618,6 +3689,252 @@ class ConfigCenterPage(QWidget):
             if _cur != _target:
                 _bar.moveTab(_cur, _target)
         return [self.tabs.tabText(i) for i in range(self.tabs.count())]
+
+    # ══════════════════════════════════════════════════════════════════
+    # 💰 成本/报价 (2026-10-19 老倪: 「从配置中心，直接预计出成本价格」)
+    #   算法: tools/cost_model.py (唯一公式) · 参数: config/platform/zmax_cost_model.json
+    #   页面只做 改假设 → 现算 → 可写回/导出; 派生值 (合计/回本) 一律不落盘、不手填。
+    # ══════════════════════════════════════════════════════════════════
+    def _cost_page(self, th):
+        _w = QWidget()
+        _lay = QVBoxLayout(_w)
+        _lay.setContentsMargins(6, 6, 6, 6)
+        try:
+            import cost_model as _cm
+        except Exception as _e:                                                 # noqa: BLE001
+            _lb = QLabel("⛔ tools/cost_model.py 不可用: %r" % (_e,))
+            _lb.setWordWrap(True)
+            _lay.addWidget(_lb)
+            _lay.addStretch()
+            return _w
+        self._cost_m = _cm
+        try:
+            self._cost_d = _cm.load()
+        except Exception as _e:                                                 # noqa: BLE001
+            _lb = QLabel("⛔ 成本真源读不到 (config/platform/zmax_cost_model.json): %r" % (_e,))
+            _lb.setWordWrap(True)
+            _lay.addWidget(_lb)
+            _lay.addStretch()
+            return _w
+
+        _d = self._cost_d
+        _gray = th.get("C_GRAY", "#8b949e")
+        _acc = th.get("C_ACCENT", "#58a6ff")
+
+        _h = QLabel("💰 成本 / 报价 · 单套投入与静态回本 (Z100Fd ｜ %s)" % _d.get("name", ""))
+        _h.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        _h.setStyleSheet("color:%s;background:transparent;" % _acc)
+        _lay.addWidget(_h)
+        self._cost_l_src = QLabel()
+        self._cost_l_src.setWordWrap(True)
+        self._cost_l_src.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._cost_l_src)
+
+        # ── BOM (逐项真源, 只读) ──
+        _rows = [[str(it.get("item", "")), str(it.get("model", "")),
+                  "{:,}".format(int(it.get("price") or 0)), str(it.get("status", ""))]
+                 for it in (_d.get("hardware") or [])]
+        _rows.append(["硬件合计", "—", "{:,}".format(int(_cm.hardware_total(_d))), "现算"])
+        self._cost_bom = _mk_table(["部件", "型号", "单价 (元)", "状态"], _rows, th,
+                                   widths=[150, 190, 110, 80])
+        self._cost_bom.setToolTip("真源 config/platform/zmax_cost_model.json 的 hardware[]; 改价只改 price, 其余现值")
+        _lay.addWidget(self._cost_bom)
+
+        # ── 假设 (可改, 写回真源才生效) ──
+        _row = QHBoxLayout()
+        _lab = QLabel("产线假设:")
+        _lab.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _row.addWidget(_lab)
+        self._cost_in = {}
+        _line = _d.get("line") or {}
+        _labor = float((_d.get("labor") or {}).get("cost_per_person_year", 90000))
+        _sw = float((_d.get("software") or {}).get("price", 160000))
+        _alt = float((_d.get("alt_arm") or {}).get("saving", 45000))
+        for _key, _text, _kind, _lo, _hi, _step, _val, _dec in (
+                ("stations", "工位数", "int", 1, 50, 1, int(_line.get("stations", 1)), 0),
+                ("shifts", "班次", "int", 1, 3, 1, int(_line.get("shifts", 2)), 0),
+                ("persons", "每班人数", "int", 1, 10, 1, int(_line.get("persons_per_shift", 1)), 0),
+                ("labor", "人力成本 万/人·年", "float", 4.0, 20.0, 0.5, _labor / 1e4, 1),
+                ("software", "软件 万/套", "float", 0.0, 100.0, 1.0, _sw / 1e4, 1),
+                ("alt", "替代臂降本 万", "float", 0.0, 30.0, 0.5, _alt / 1e4, 1)):
+            _l = QLabel(_text)
+            _l.setStyleSheet("background:transparent;")
+            _row.addWidget(_l)
+            if _kind == "int":
+                _sb = QSpinBox()
+                _sb.setRange(int(_lo), int(_hi))
+                _sb.setSingleStep(int(_step))
+                _sb.setValue(int(_val))
+            else:
+                _sb = QDoubleSpinBox()
+                _sb.setRange(float(_lo), float(_hi))
+                _sb.setSingleStep(float(_step))
+                _sb.setDecimals(int(_dec))
+                _sb.setValue(float(_val))
+            _sb.setFixedWidth(78)
+            _sb.valueChanged.connect(lambda *_: self._cost_refresh())
+            _row.addWidget(_sb)
+            self._cost_in[_key] = _sb
+        _row.addStretch()
+        _lay.addLayout(_row)
+
+        # ── 结果 (只读, 现算) ──
+        _box = QFrame()
+        _box.setStyleSheet("QFrame{background:%s;border:1px solid %s;border-radius:4px;}"
+                           % (th.get("C_BG2", "#161b22"), th.get("C_BORDER", "#30363d")))
+        _bl = QVBoxLayout(_box)
+        self._cost_l_total = QLabel()
+        self._cost_l_total.setFont(QFont("Microsoft YaHei", 15, QFont.Bold))
+        self._cost_l_total.setStyleSheet("background:transparent;border:none;")
+        _bl.addWidget(self._cost_l_total)
+        self._cost_l_annual = QLabel()
+        self._cost_l_annual.setFont(QFont("Microsoft YaHei", 11))
+        self._cost_l_annual.setStyleSheet("background:transparent;border:none;")
+        _bl.addWidget(self._cost_l_annual)
+        self._cost_l_payback = QLabel()
+        self._cost_l_payback.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self._cost_l_payback.setStyleSheet("background:transparent;border:none;color:#3fb950;")
+        _bl.addWidget(self._cost_l_payback)
+        self._cost_l_alt = QLabel()
+        self._cost_l_alt.setWordWrap(True)
+        self._cost_l_alt.setStyleSheet("background:transparent;border:none;color:%s;" % _gray)
+        _bl.addWidget(self._cost_l_alt)
+        _lay.addWidget(_box)
+
+        # ── 按钮 ──
+        _row2 = QHBoxLayout()
+        _b_calc = _btn("🧮 重新估算", th)
+        _b_calc.clicked.connect(lambda: self._cost_refresh(verbose=True))
+        _row2.addWidget(_b_calc)
+        _b_save = _btn("💾 写入真源", th)
+        _b_save.setToolTip("把上面 6 个假设写回 config/platform/zmax_cost_model.json (自动备份 + 回读校验; 派生值不落盘)")
+        _b_save.clicked.connect(self._cost_save)
+        _row2.addWidget(_b_save)
+        _b_copy = _btn("📋 复制结果", th)
+        _b_copy.setToolTip("TSV, 直接贴 Excel / 邮件")
+        _b_copy.clicked.connect(self._cost_copy)
+        _row2.addWidget(_b_copy)
+        _b_exp = _btn("📥 导出 JSON", th)
+        _b_exp.setToolTip("落 zmax_data/cost/cost_estimate_<时间>.json (给立项文档/画布节点吃)")
+        _b_exp.clicked.connect(self._cost_export)
+        _row2.addWidget(_b_exp)
+        _row2.addStretch()
+        _lay.addLayout(_row2)
+
+        self._cost_log = QLabel("—")
+        self._cost_log.setWordWrap(True)
+        self._cost_log.setStyleSheet("color:%s;background:transparent;" % _gray)
+        _lay.addWidget(self._cost_log)
+        _lay.addStretch()
+
+        self._cost_refresh()            # 打开即出数 (不等用户点)
+        return _w
+
+    def _cost_inputs(self):
+        g = lambda k: self._cost_in[k].value()                              # noqa: E731
+        return dict(stations=int(g("stations")), shifts=int(g("shifts")),
+                    persons_per_shift=int(g("persons")),
+                    labor_per_person_year=float(g("labor")) * 1e4,
+                    software=float(g("software")) * 1e4,
+                    alt_arm_saving=float(g("alt")) * 1e4)
+
+    def _cost_refresh(self, verbose=False):
+        """按当前界面假设现算 (不发任何写操作)。"""
+        if not getattr(self, "_cost_m", None) or not hasattr(self, "_cost_in"):
+            return None
+        try:
+            e = self._cost_m.estimate(self._cost_d, **self._cost_inputs())
+        except Exception as _e:                                             # noqa: BLE001
+            self._cost_log.setText("⛔ 估算失败: %r" % (_e,))
+            return None
+        self._cost_e = e
+        self._cost_l_src.setText(
+            "真源 %s @ %s ｜ 算法 %s ｜ %s" % (
+                e["truth"], e["truth_mtime"], "tools/cost_model.py",
+                "改假设后点「🧮 重新估算」; 想长期生效点「💾 写入真源」"))
+        self._cost_l_total.setText("单套投入 %.1f 万  (硬件 %.1f + 软件 %.1f)" % (
+            e["total_first"] / 1e4, e["hardware"] / 1e4, e["software"] / 1e4))
+        self._cost_l_annual.setText(
+            "年节省 %.1f 万  ←  %d 工位 × %d 班 × %d 人/班 = %d 人 × %.1f 万/人·年" % (
+                e["annual_save"] / 1e4, e["stations"], e["shifts"], e["persons_per_shift"],
+                e["heads"], e["labor_per_person_year"] / 1e4))
+        if e["payback_years"] is None:
+            self._cost_l_payback.setText("静态回本 —  (年节省为 0, 无法回本)")
+        else:
+            self._cost_l_payback.setText("静态回本 %.2f 年   (%s)" % (
+                e["payback_years"], e["formula"]))
+        self._cost_l_alt.setText(
+            "替代力控臂 (降 %.1f 万): 单套 %.1f 万 ⇒ 回本 %.2f 年 ｜ 不计折现/质量损耗/增产" % (
+                e["alt_arm_saving"] / 1e4, e["total_alt"] / 1e4,
+                e["payback_years_alt"] if e["payback_years_alt"] is not None else float("nan")))
+        if verbose:
+            self._log_cc("💰 成本估算: 单套 %.1f 万 · 年节省 %.1f 万 · 回本 %s 年" % (
+                e["total_first"] / 1e4, e["annual_save"] / 1e4, e["payback_years"]))
+        return e
+
+    def _cost_save(self):
+        try:
+            r = self._cost_m.save_line(**self._cost_inputs())
+        except Exception as _e:                                             # noqa: BLE001
+            self._cost_log.setText("⛔ 写回真源失败: %r" % (_e,))
+            self._log_cc("⛔ 成本假设写回失败: %r" % (_e,))
+            return
+        if r.get("ok"):
+            self._cost_d = self._cost_m.load()      # 写后重读, 页面与真源同步
+            self._cost_refresh()
+            self._cost_log.setText("✅ 已写回真源 (备份 %s) · 回读校验通过: %s"
+                                   % (os.path.basename(r["backup"]), r["line"]))
+            self._log_cc("💰 成本假设已写回 config/platform/zmax_cost_model.json "
+                         "line=%s labor=%s" % (r["line"], r["labor"]))
+        else:
+            self._cost_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看真源: %s" % r["path"])
+            self._log_cc("⚠ 成本假设回读不一致: %s" % (r["path"],))
+
+    def _cost_text(self):
+        e = getattr(self, "_cost_e", None)
+        if not e:
+            return ""
+        return "\n".join([
+            "项\t值",
+            "方案\t%s" % e["scheme"],
+            "硬件 (元)\t%d" % int(e["hardware"]),
+            "软件 (元)\t%d" % int(e["software"]),
+            "单套合计 (元)\t%d" % int(e["total_first"]),
+            "工位数\t%d" % e["stations"],
+            "班次\t%d" % e["shifts"],
+            "每班人数\t%d" % e["persons_per_shift"],
+            "人力成本 (元/人·年)\t%d" % int(e["labor_per_person_year"]),
+            "年节省 (元)\t%d" % int(e["annual_save"]),
+            "静态回本 (年)\t%s" % e["payback_years"],
+            "替代臂单套 (元)\t%d" % int(e["total_alt"]),
+            "替代臂回本 (年)\t%s" % e["payback_years_alt"],
+        ]) + "\n"
+
+    def _cost_copy(self):
+        txt = self._cost_text()
+        if not txt:
+            self._cost_log.setText("⚠ 还没有可复制的结果")
+            return
+        QApplication.clipboard().setText(txt)
+        self._cost_log.setText("📋 已复制 %d 行 TSV (可直接贴 Excel)" % (txt.count("\n") - 1))
+        self._log_cc("💰 成本结果已复制到剪贴板")
+
+    def _cost_export(self):
+        e = getattr(self, "_cost_e", None)
+        if not e:
+            return
+        try:
+            _dir = os.path.join(ROOT, "zmax_data", "cost")
+            os.makedirs(_dir, exist_ok=True)
+            _p = os.path.join(_dir, "cost_estimate_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
+            with open(_p, "w", encoding="utf-8") as f:
+                json.dump(e, f, ensure_ascii=False, indent=1)
+            back = json.load(open(_p, encoding="utf-8"))
+            _ok = abs(float(back["total_first"]) - float(e["total_first"])) < 1e-6
+            self._cost_log.setText(("✅ 已导出 " if _ok else "⚠ 导出回读不一致 ") + _p)
+            self._log_cc("💰 成本估算已导出: %s" % _p)
+        except Exception as _e:                                             # noqa: BLE001
+            self._cost_log.setText("⛔ 导出失败: %r" % (_e,))
 
     def _pv_tab_index(self):
         """文档预览所在页 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
