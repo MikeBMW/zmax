@@ -2041,7 +2041,12 @@ def _aoi_note(port: int, **kw) -> None:
 #   降曝光它也不会变暗(逐像素平均差 0.25/255)。所以:**显示**这侧压高光(不设假的暗, 只把死白压到浅灰,
 #   让模块边界/丝印看得见), 相机曝光 / 判据 / 模型的输入图**一律不动**。可用 ZMAX_SURFACE_DEGLARE=0 关掉。
 _SURFACE_DEGLARE = os.environ.get("ZMAX_SURFACE_DEGLARE", "1") != "0"
-_DEGLARE_KNEE, _DEGLARE_TOP = 200, 214      # >knee 的像素线性压到 [knee, top] ⇒ 死白不再刺眼, 边界不减
+# 2026-10-19 老倪「曝光还是太大」: 原 knee=200/top=214 只压 >200 的像素, 而实测判据图
+#   mean=116 / p90=195 ⇒ **画面整体亮度一点没被压**(p90 还在 knee 之下), 他只看到"还是太亮"。
+#   改成 160/185: 从 160 起压, 高光落到 185 ⇒ p90 195 会被压到 ~170, 观感明显降但结构/边界保留
+#   (仍只作用于**显示帧**, 相机曝光/判据/模型输入一行未动)。env ZMAX_SURFACE_DEGLARE_KNEE/TOP 可现场调。
+_DEGLARE_KNEE = int(os.environ.get("ZMAX_SURFACE_DEGLARE_KNEE", "160"))
+_DEGLARE_TOP = int(os.environ.get("ZMAX_SURFACE_DEGLARE_TOP", "185"))
 
 
 def _deglare_bgr(bgr, knee: int = _DEGLARE_KNEE, top: int = _DEGLARE_TOP):
@@ -2171,7 +2176,11 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                         bgr = _surf_ov
                         clean = False
                     if _surf_ov is not None and full_name:
-                        _fj = _aoi_full_frame(_surf_ov)
+                        # 2026-10-19 老倪「曝光还是太大」: 这一格在 deglare 之前就 put 了 ⇒
+                        #   切换看「整板原图」时看到的仍是原始过曝 (实测死白 5.16% / p90 181)。
+                        #   与判据图同口径压一遍再入队 (绿框在 166 灰阶仍清晰可见)。
+                        _ov_show = _deglare_bgr(_surf_ov) if _SURFACE_DEGLARE else _surf_ov
+                        _fj = _aoi_full_frame(_ov_show)
                         if _fj:
                             _put(full_name, _fj, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 # 2026-09-28: 金手指那格走"原比例 + 去倾角"(老倪: 要矩形、不能有角度)
@@ -2182,7 +2191,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 _nat = (name == "aoi_gold")
                 _ds = _aoi_gold_angle() if _nat else 0.0
                 if port == 10083 and _SURFACE_DEGLARE:      # 🔴 仅显示: 表面判据图整体过曝(实测白区 43%)
-                    bgr = _deglare_bgr(bgr)
+                    bgr = _deglare_bgr(bgr)   # bgr 就地改写 ⇒ 下面 2197「整板原图」那一路自动继承
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
                                         vstretch=(3.0 if _nat else 1.0),
                                         fix_hw=((900, 332) if _nat else None))
@@ -4805,6 +4814,17 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             body = PAGE.replace("__IDX__", str(self.server.local_dev)).encode("utf-8")
             self._send(200, "text/html; charset=utf-8", body)
+        elif p in ("/ar", "/ar.html"):
+            # 🥽 2026-10-19 老倪「回到以前 http://10.163.146.78:8793/ar 的状态吧, 以前就不卡」:
+            #   他记的这个地址要能用。AR 页面/取帧/判据 API 的真源在 8797(同一台机, 同源 /api 与 /snap),
+            #   所以这里**只做 302**, 不在 8793 上再挂一层代理 —— 相机流服务(8791/8793)是本机最重的常驻进程,
+            #   让 AR 页面的 10Hz 取帧穿它一趟只会把视频流拖慢。
+            _h = (self.headers.get("Host") or "").split(":")[0] or "127.0.0.1"
+            self.send_response(302)
+            self.send_header("Location", "http://%s:8797/ar" % _h)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         elif p in ("/overlay", "/overlay.html", "/scene", "/live"):
             # 🧩 2026-09-27: 叠加/现场实况页 —— 真源 = tools/web/scene-overlay.html(按 mtime 热读)。
             #   之前这里发的是本文件内嵌的 OVERLAY_PAGE 旧副本 ⇒ 改 html 不生效(内嵌副本只认 arm 那路)。
