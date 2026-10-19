@@ -1,0 +1,40 @@
+{
+ "schema": "zmax.cost_model.v1",
+ "name": "Z100Fd 单套成本 / 静态回本模型",
+ "updated": "2026-10-19",
+ "source": "老倪 2026-10-19 给定测算口径 (天机臂第一期)",
+ "note": "硬件逐项是真源, 合计与回本一律由 tools/cost_model.py 现算, 不在文件里存派生值; 改价只改 price。",
+ "hardware": [
+  {"item": "头部相机", "model": "奥比中光 335lg", "price": 2000, "status": "给定"},
+  {"item": "腕部相机×2", "model": "奥比中光 305g", "price": 2000, "status": "给定"},
+  {"item": "域控", "model": "Thor T5000", "price": 55000, "status": "给定"},
+  {"item": "机械臂", "model": "天机", "price": 135000, "status": "给定"},
+  {"item": "夹爪×2", "model": "吸盘", "price": 4000, "status": "给定"},
+  {"item": "电源+结构件", "model": "—", "price": 5000, "status": "给定"}
+ ],
+ "hardware_arm_label": "第一期 (天机臂)",
+ "software": {
+  "price": 160000,
+  "includes": "随单套方案交付, 含三年授权",
+  "basis": "套餐中的软件份额",
+  "status": "给定"
+ },
+ "labor": {
+  "cost_per_person_year": 90000,
+  "given_range": [80000, 100000],
+  "basis": "给定区间 8~10 万/人·年, 取中值 9 万",
+  "status": "给定"
+ },
+ "line": {
+  "stations": 1,
+  "shifts": 2,
+  "persons_per_shift": 1,
+  "basis": "一个摆盘工位, 两班, 每班 1 人 (替代前)"
+ },
+ "alt_arm": {
+  "name": "其它力控臂",
+  "saving": 45000,
+  "basis": "后续改配其它力控臂, 硬件降本 4.5 万 (仅换臂, 其余不变)"
+ },
+ "excludes": ["折现", "质量损耗", "增产收益"]
+}
