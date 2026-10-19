@@ -47,6 +47,26 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 - 端到端订阅：另起一个 DDS 订阅者收 `zmax/ss_energy`，**逐位核对** `e_total_cj` 与 tap 最后一行一致（不是"看起来像"）。
 - 报数必带：`P_in` 来源、采样点数、阶段窗口、η 符号（无采样就 `η=-1` 如实）。
 
+## 分层力 → trace 话题 L2~L5 (2026-10-19)
+老倪: 「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic; L4 的 Tx 是流形引擎,
+L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」。落地 = 一层一条 DDS 话题 `zmax/ss_force_l2..l5`。
+- **口径必须走到力场格子那一步**: `layer_forces()` 只给"加权张量", 力场格子画的是
+  `gravity_law.field(vecs)` 之后的 `|F|=G·M/r²` ⇒ daemon 两段都调, 发后者; 只发前者 trace 与力场对数不上。
+- **tx 写死在一张表**: `FORCE_LAYERS=(L, topic, tx)` — L2 前馈加速器 / L3 DiT 动作头 /
+  L4 流形引擎 / L5 DeepSeek VL; 载荷与 topics.py 的 `tx` 字段、力场格子 tooltip 三处同一句。
+- **五处登记缺一即静默**: `dds/ss_types.py`(SSForceLayer) · `dds/zmax_node.py`(_SS_TOPICS+QOS_CLASS beat) ·
+  `src/lerobot/dataspace/topics.py`(TOPICS+FORCE_TOPICS 进三档) · `tools/dds/ss_daemon.py`(MODE_TOPICS) ·
+  `tools/zmax_profile.py`(core 集, 否则 A 档被过滤掉)。
+- **不要用 gravity_table 取数**: 它 import PyQt5, daemon 的 dds-venv 没有 ⇒ 用纯 stdlib 的
+  `tools/layer_forces.py` + `tools/gravity_law.py` 复现同一拍 (逐位对账已验 56/56)。
+- **取不到的层不发** (不拿 0/别层顶替); 真源陈旧照发但 `fresh=0 + age_s`, 让人看出是定格。
+- **判据**: `tools/verify_layer_force_topics.py [--live] --seconds 12` (逐位对 x/y/z/mag/raw_mag/w/k/
+  tx/note 引力律口径)。自起发布端时 **--seconds 必须 ≥10s**: 四个新话题首轮各 `wait_for_match` 1.5s,
+  5s 窗口内 L4/L5 根本发不出去 (实测只收到 L2/L3)。
+- **现场生效两步**: 重启 `zmax-dds-ss`(发布) + `zmax-dataspaces-probe`(probe 进程内缓存旧话题表,
+  不重启 trace.jsonl 里永远没有新话题)。信号分析页随后自动出 `ds.zmax/ss_force_lX.{x,y,z,mag}`,
+  tx/layer/stage 走 `parse_ds_digest_str` 上屏。
+
 ## 内稳态层 (身体/功能性感受/自我模型) — 2026-10-10 v5.37.1
 老倪给「流形引擎 · 内稳态与自主安全」规格 (能量/温度/磨损/姿态/对齐 → 偏差 → 紧迫度 → 行为 + 自我模型),
 要求「L5 功能的实际代码可运行/可观察/可用 vscode debug」。落地口径:

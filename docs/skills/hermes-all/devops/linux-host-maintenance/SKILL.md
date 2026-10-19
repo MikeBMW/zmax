@@ -78,6 +78,44 @@ nvidia-smi pmon -c 1 -s u | tail -n +3      # 按进程看 sm%: 谁在吃 + 桌�
 ⚠️ **别拿后台窗口的 CPU 当降载证据**: GUI(Qt/pyqtgraph)在后台时**根本不重绘**, 同一进程后台 22%、前台 120%。
 做过优化要给降幅, 必须在**同一可见页面**下前后各采一次; 拿不到就明说拿不到, 不给假数字。
 
+## 1d. load 很高但 CPU 大量空闲 ⇒ 账不在算力, 在「半死连接 + fork churn」
+
+**先看空闲率再定责**: `uptime` 给 load 14, 而 `top` 的 `%Cpu(s)` 显示 `71~82 id` ⇒ 没有任何进程在算, 问题是
+**调度/进程churn**, 此时去查 GPU、磁盘、调频全是白查。按序取四个数(全只读):
+```bash
+uptime; grep procs_running /proc/stat                 # load 与"同时可运行"的进程数
+awk '/^processes/{print $2}' /proc/stat              # 隔 3s 两次差 = 进程/线程创建速率
+awk '/^ctxt/{print $2}' /proc/stat                   # 隔 3s 两次差 = 上下文切换速率
+ss -tan | grep -E ":<端口>" | grep CLOSE-WAIT        # 服务端半关闭连接: 客户端已断, 处理函数没收摊
+ps -eo pid,ppid,pcpu,stat,etime,args --no-headers | awk '$2==<服务pid>'   # 它的 fork 子进程谁还在烧
+```
+实测形态(AR 服务 8797): load **14.4** / CPU 空闲 **71%** / 创建 **452 次每秒** / 切 **88k 每秒** /
+两条 `CLOSE-WAIT` 各对应一个 fork 子进程、**各 38% CPU 空转 7 分钟**。
+- 判读: fork-per-connection 服务里, **每条 CLOSE-WAIT 就是一个还没收摊的子进程**; 它同时占一个 `max_children`
+  名额 ⇒ 名额满则新连接被拒/排队, 表象是「打开页面白屏好久」, 而不是「机器算不动」。
+- 处置顺序: ①`kill <僵尸子进程 pid>`(只断已经死掉的流, 不碰在役连接) ②改服务端让它有收摊条件
+  (硬上限时长 + 每块 flush + `finally close_connection`, 配方在 `low-latency-camera-streaming`)
+  ③复核 `CLOSE-WAIT` 计数归 0 + load 在 5 分钟内回落。
+- **报告口径**: 报 "load 14.4 → 12.5 / CLOSE-WAIT 2 → 0 / procs_running 67 → 2 / tcp_ar 260% → 个位数",
+  不写「优化了一下性能」。
+
+## 1e. 「界面卡 / 滚轮没反应 / 点了没反应」但页面本身是好的 ⇒ py-spy 抓 GUI 主线程栈
+
+先分清楚**是页面还是宿主**: 在浏览器/页面里验一遍功能(滚轮就 `document.documentElement.scrollHeight` vs
+`innerHeight`, 再往 `view.focusProxy()` 注 `QWheelEvent` 读 `scrollY`) —— 实测滚轮 0→60 有效 ⇒ 代码没问题,
+卡在**宿主 GUI 主线程**。此时 `top` 看到 GUI 进程 100% CPU、`ps %CPU` 又是均值 ⇒ 不要靠猜, 直接抓栈:
+```bash
+sudo <venv>/bin/py-spy dump --pid $(pgrep -f 'studio[.]py' | head -1) 2>&1 | head -40
+```
+实测栈形: `main → _step → _realize_pending → _realize_page → <某页>.__init__ → subprocess.run(ssh …)`
+⇒ **惰性建页机制把同步子进程放在了页构造函数里**: 后台建页泵每 0.8s 真建一个页, 建到那个页就整窗卡
+2s(子进程 timeout), 期间点击/滚轮/重绘事件全丢 —— 用户看到的是「卡住了/滚轮没反应」, 而不是「开慢了」。
+- **定式**: Qt 页面构造函数里的**任何同步 `subprocess.run` / 网络探测 / ssh 预连**都必须挤到后台线程
+  (`threading.Thread(target=…, daemon=True).start()`), 并给子进程加 `ConnectTimeout`, 别让 timeout 决定帧时间。
+- **排查顺序**: ①先证页面功能本身可行(页面内自证) ②`py-spy dump` 看主线程是不是在 `_wait/communicate`
+  ③再去改动 —— 不抓栈去改事件处理/重写 UI 都是改错地方。
+- 这类修复改的是 `.py` ⇒ **要重启 GUI 才生效**, 当场能给的只是“下次启动生效”, 如实说。
+
 ## 2. DNS "清理"
 ```bash
 resolvectl status | grep -E "Current DNS|DNS Servers"      # 先看解析链 (127.0.0.53 → 上游)
@@ -829,6 +867,7 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | 用 `ps -eo pcpu` 报"谁在吃 CPU" | 数值是生命周期均值, 刚重启的实例被低估、老进程历史尖峰一直背着 | 采两次 `/proc/<pid>/stat` 的 utime+stime 求增量, 总和换算成核数(见 §1c) |
 | 拿后台窗口的 CPU 当优化前后对比 | GUI 在后台不重绘, 同一进程 22% vs 前台 120%, 降幅是假的 | 同一可见页面下前后各采一次; 判据 `xdotool getactivewindow getwindowname`; 拿不到就明说 |
 | 整机变慢先怀疑硬件/系统旋钮 | 实际差量是"我反复重启 GUI 攒出的 swap 3.9G" | 先与刚重启时的 load/swap 对账, 再 `swapoff -a && swapon -a` 回收(先验 MemAvailable > swap 已用) |
+| load 14 但 CPU 空闲 70%+ 还去查算力 | 实际是断开的流子进程空转 + 每秒数百次 fork/线程创建 | 取 `ss ... CLOSE-WAIT` + `/proc/stat` 的 processes/ctxt 增量(见 §1d); 杀僵尸子进程后给服务端加流时长上限 |
 | 老目录整理完又冒出来 | 代码扫干净了却仍重建 `~/<老名>` | 查**仓库外**工具的全局配置(`~/.config/Ultralytics/settings.json` 的 `runs_dir/weights_dir/datasets_dir` 等): 不在仓库里, 五种路径写法全扫不到, 但工具每次都按它落盘 ⇒ 备份后改到工程内 → 把已落错地方的产物**合并回来** → 空目录才 `rmdir`; 判据是"跑一次那个工具看产物落在哪", 不是 grep |
 | 停守护只停被守护的进程, 没停 keepalive | 汇报"守护已全部停止", 一分钟后它们全回来了(且正加载模型烧 CPU) | 先 `crontab -l` 找保活/guard 行 → 先停 keepalive 再停守护 → 报告写"会被拉回哪些"(追加型文件 ⇒ 下电无风险) |
 | 下电结论只看 `df` 百分比 | 87%/余 51G 看着安全, 10Hz 无轮转 tap 约 25 天就吃满 | 报盘耗增速(MB/千行 · GB/天 · 剩余天数)+ 轮转建议; 百分比给不出"还剩几天" |

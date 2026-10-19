@@ -122,6 +122,16 @@ exit 0
 
 要点: 说清"实际在跑什么" (老倪红线: 说了没做=不可接受); 指标不夸大 (真实均值+波动区间); 缺口如实标注 (如"cube 未评测"不许含糊成"已完成")。
 
+🔴 **从实验产物读指标: 按表头名字取列, 绝不许按固定列号; 取完做值域自检**。
+ultralytics 的 `results.csv` 是 `epoch,time,train/box_loss,train/cls_loss,train/dfl_loss,metrics/precision(B),metrics/recall(B),metrics/mAP50(B),metrics/mAP50-95(B),val/*,lr/*`
+—— **第 5 列是 dfl_loss, 不是 precision**。实测按 `awk -F, '{print $5,$6}'` 报出 `P=1.38`(precision 数学上不可能 >1),
+而真实情况是 P 一直 0.999、真正卡住的是另一个指标 ⇒ 把一条假结论发给用户再撤回。
+⇒ 先 `head -1 <csv> | tr ',' '\n' | nl` 拿列名→列号, 再 `csv.DictReader` 按名取;
+**任何指标掉出数学值域 (P/R/mAP ∉ [0,1]、loss 为负、epoch 超过总轮数) = 列错位, 不是模型异常**,
+不要拿它去推断"模型保守/学不会"。报数后再核一次自洽性: 已完成轮数 × 每轮耗时 是否等于累计耗时, ETA 是否同源算出。
+🔴 **指标长时间纹丝不动本身就是结论**: P 已逼近 1 而 R 从头到尾同一个数 ⇒ 不是轮数不够, 是数据侧问题
+(某类框偏小 / 标注与实际尺度对不上), 该停下来查每类召回与 val 预测图, 而不是继续加 epoch 等它自己变好。
+
 ## 参考
 
 - `references/multi-stage-orchestrator-rc-and-gpu-oom-2026-09-22.md` — 多阶段训练编排: **逐阶段读 rc/JSONL** ·

@@ -22,9 +22,12 @@ metadata:
 2. **数据不靠 commit 保存。** `zmax_data/` 在 `.gitignore` 里 ⇒ 「保存数据」= **归档目录 + 清单 + sha256**,
    不是 `git add zmax_data`(会 fatal 或静默不入库)。
 3. **commit 与 tag 是两条推送。** `git push origin HEAD` **不会**带上 tag ⇒ 必须再 `git push origin vX.Y.Z`,
-   并 `git ls-remote --tags origin 'vX.Y.*'` 回读确认。
+   并回读**精确 ref**: `git ls-remote --tags origin 'refs/tags/vX.Y.Z*'`。
+   别用 `'vX.Y.*'` 加 `| tail` 验收: ls-remote 输出按**字典序**排, `v5.50.746` 排在 `v5.50.78`/`v5.50.79` 之前,
+   tail 只看得到别人的 tag ⇒ 会误判"没推上去"、白推一遍。
+4. **`config/` 是软链, 不进 git。** `config -> data/database/zmax/sources/config`, 本轮改过的标定/权重 json
+   (`config/calib/*.json`) 必须显式 `cp` 进归档 `data/` —— 否则"保存数据"恰好漏掉唯一的参数真源。
 4. **证据只写数字。** 归档里的 evidence 放实测值(延迟/幅度/前后对照), 不写过程叙述。
-
 ## 步骤
 
 ### ① 改号 (一条命令同步全部位置)
@@ -39,6 +42,21 @@ cd ~/zmax && ./gui-venv311/bin/python tools/bump_version.py --to 5.50.741 --summ
   `tools/ci/integrity_check.EXPECTED_VERSION` · changelog 行 · VERSION.md 新行。
 - 看完它打印的"旧号残留": **只允许留在历史行**(VERSION.md 旧行、旧 changelog); 其它任何命中都要改。
   复核: `grep -rn '5.50.740' --include=*.py --include=*.md . | grep -v 'v5.50.740 |'`。
+
+- 🔴 **改号前先给每一处命中定性；全仓 `replace_all` 会改坏基线**。全仓 grep `5.50.7x` 实测命中四类，**只有第一类该改**:
+  ① **当前版本号（改）**: `studio.py` 三处显示(QLabel / 状态栏 showMessage / 关于框 HTML) ·
+     `update_checker.CURRENT_VERSION` · `version_sync.zmax_ver` · `ci/integrity_check.EXPECTED_VERSION` ·
+     `src/lerobot/ops/docs_sync.py` 两键(version / zmax_version) · 归档与 savepoint 脚本里回显的号 ·
+     VERSION.md **新增**一行 · `studio.py` changelog **追加**一行。
+  ② **基线产品版本（绝不改）**: 评估分析页「有性能提升才准升级」对标用的那个基线版本号。改了等于把标尺一起挪走，
+     之后所有「有提升/零回退」的结论都失效。
+  ③ **历史 changelog 与 VERSION.md 旧行（不该改）**: 改了历史就失真，下一版读的人无法回溯根因。
+  ④ **注释里的占位写法（别误判）**: 形如 `"Z-MAX v5.50.73x"` 讲的是像素宽度一类的占位符，不是版本号。
+  ⇒ 一律 `grep -n` 逐条看上下文再改，改完把四类命中各举一例回读。
+- **自检正则要锚够宽**: 用 `5\.50\.\d+` 自查会把 `5.50.73x` 和基线 `5.50.735` 一起抓出来报不一致（假红）⇒
+  正则钉到 `5\.50\.\d{3}`，并显式排除基线与历史行；否则你会去「修」一个本来就对的地方。
+- **`setWindowTitle` 没有硬编码版本**: 它走 `_console_title(<product>)` 动态拼。动手前先看目标处是不是变量拼接，
+  别照着旧版本文档里的「两处」去找一个不存在的硬编码。
 
 ### ② 归档 (这才是「保存数据」)
 
@@ -64,7 +82,7 @@ git add VERSION.md tools/gui/studio.py tools/gui/update_checker.py tools/gui/ver
 git commit -m "vX.Y.Z: <一句话主题>"
 git tag vX.Y.Z
 git push origin HEAD && git push origin vX.Y.Z
-git ls-remote --tags origin 'vX.Y.*'        # 回读: 新 tag 在不在这边
+git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这边 (别用 'vX.Y.*' + tail)
 ```
 
 ## Pitfalls
@@ -73,6 +91,7 @@ git ls-remote --tags origin 'vX.Y.*'        # 回读: 新 tag 在不在这边
 |---|---|---|
 | 只 push HEAD | 本地有 tag, 远端没有 ⇒ CI/发布看着"没触发" | 单独 `git push origin vX.Y.Z` + `ls-remote` 回读 |
 | 想用 commit 保存数据 | `zmax_data` 被 .gitignore, add 不进或直接 fatal | 走归档目录 + sha256; 真要入库的是文档/说明, 放 `docs/data_snapshots/` |
+| 归档漏掉参数真源 | 归档里没有 `layer_forces.json`/`force_field.json` 之类 | `config/` 是软链且不在 git, 逐份 `cp config/calib/<本轮改过的>.json` 进 `data/`, MANIFEST 里点名 |
 | 归档脚本照抄上一版没改路径/版本 | 产物堆到旧版本目录, MANIFEST 写错号 | 复制后只改 `DST` 前缀 + MANIFEST 主题, 跑完用 `search_files(target='files')` 核对目录名 |
 | changelog 写成过程叙述 | 下一版读的人不知道改了什么、根因在哪 | 一行: "做了什么 + 为什么(根因)", 不写排查过程 |
 | 版本号自选 | 与用户口径冲突 | 只按用户给的数字; 没给就只改内容 |

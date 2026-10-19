@@ -7,6 +7,11 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 📄 **控件交互与布局陷阱 (某行一直在闪 / 分隔条拖不动 / 停进程把自己也杀了 / 独立进程组像“自动运行”)**:
+> `references/pyqt-interaction-pitfalls.md` —— 闪=悬停提示条每移一次重弹(setToolTip 去重 + 未击中图元不弹);
+> 拖不动=两侧 `setMinimumWidth` 之和顶死 QSplitter(大值只作首选宽, 离屏 `setSizes()` 后回读验证);
+> 杀进程要写进脚本(内联 `pgrep -f` 会匹配到调用它的 shell 自己), 判活要按 argv 分词不能子串匹配。
+
 > 📄 **启动慢 / 点快捷方式等半天 / 刚改成延迟建页后判据全红**: `references/startup-latency.md` ——
 > 用 **Xvfb :99 冷启**量「点击→窗口可见」(离屏 offscreen 建主窗口会 core dump, 别当回归)；
 > 真瓶颈是 **建全部页 + win.show() 首次 polish**(本机 8.7s→3.2s: 首屏只建首页+配置中心, 其余占位后台泵)；
