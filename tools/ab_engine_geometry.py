@@ -113,7 +113,7 @@ def main() -> int:
                 setattr(eng.encoder, attr, getattr(base.encoder, attr))
         eng.fitted = True
 
-        cos_l, leak_l, conv_l, mono_l = [], [], [], []
+        cos_l, leak_l, conv_l, mono_l, cos_raw_l = [], [], [], [], []
         for t in idx:
             r0 = eng.project(obs[t])
             r1 = eng.project(obs[t + a.k])
@@ -127,6 +127,17 @@ def main() -> int:
                 continue
             # 法向泄漏
             leak_l.append(abs(float(np.dot(grad, p))) / (ng * float(np.linalg.norm(p)) + 1e-12))
+            # ── 割线参照对照 (2026-10-20) ──
+            #   ⚠️ 这里用**未投影**的 p→goal (欧氏割线) 作参照。在球面流形上正确的目标方向是
+            #   切空间里的测地线方向 (= 下面投影后的 to_goal), 割线不是测地线 ⇒ cos_raw **不是**
+            #   "无偏真值", 不能拿它推翻原版结论。它唯一的用途: 量化「被投影掉的切向分量」
+            #   = 割线与切线夹角。本轮实测 A 臂 cos_raw=1.0000 / C 臂 cos_raw=0.8010
+            #   ⇒ 梯度本来就是欧氏割线方向, 投影代价 cos≈0.80。
+            #   结论判定仍以原版 cos (切线参照) 为准。
+            tg_raw = goal - p
+            ntr = float(np.linalg.norm(tg_raw))
+            if ntr > 1e-12:
+                cos_raw_l.append(-float(np.dot(grad, tg_raw)) / (ng * ntr))
             # 真位移方向: p→goal 在切空间的投影
             to_goal = goal - p
             to_goal = to_goal - p * float(np.dot(to_goal, p)) / max(float(np.dot(p, p)), 1e-12)
@@ -151,14 +162,15 @@ def main() -> int:
 
         rows[name] = {
             "cos": float(np.mean(cos_l)) if cos_l else 0.0,
+            "cos_raw": float(np.mean(cos_raw_l)) if cos_raw_l else 0.0,
             "leak": float(np.mean(leak_l)) if leak_l else 0.0,
             "conv": float(np.mean(conv_l)) if conv_l else 0.0,
             "mono": float(np.mean(mono_l)) if mono_l else 0.0,
             "n": len(cos_l),
         }
-        print("  %-12s cos=%.4f · 法向泄漏=%.4f · 收敛拍=%.1f · 单调率=%.3f (n=%d)"
-              % (name, rows[name]["cos"], rows[name]["leak"], rows[name]["conv"],
-                 rows[name]["mono"], rows[name]["n"]))
+        print("  %-12s cos=%.4f (无偏raw=%.4f) · 泄漏=%.4f · 收敛拍=%.1f · 单调率=%.3f (n=%d)"
+              % (name, rows[name]["cos"], rows[name]["cos_raw"], rows[name]["leak"],
+                 rows[name]["conv"], rows[name]["mono"], rows[name]["n"]))
 
     # ── 判据 ──
     print("\n" + "=" * 84)
