@@ -19,6 +19,14 @@ cp -f tools/cam_live_stream.py \
       tools/archive_release_5_50_746_expo.sh "$DST/tools/" 2>/dev/null
 mkdir -p "$DST/src/manifold"
 cp -f src/lerobot/manifold/manifold_engine.py "$DST/src/manifold/" 2>/dev/null
+# 🆕 L2 光学质量检测节点 + 10083 表面旁路 (2026-10-19 老倪)
+mkdir -p "$DST/src/l2_aoi"
+cp -f src/lerobot/policies/yolo_3d/surface_optical.py "$DST/src/l2_aoi/" 2>/dev/null
+cp -f src/lerobot/middleware/nodes/n_inspection.py "$DST/src/l2_aoi/" 2>/dev/null
+cp -f src/lerobot/engineering/nodes/library.py "$DST/src/l2_aoi/" 2>/dev/null
+cp -f tools/verify_aoi_surface_node.py tools/mk_surface_judge_rect.py tools/mk_surface_judge_two.py \
+      tools/mk_surface_judge.py tools/aoi_surface_rect.py "$DST/tools/" 2>/dev/null
+cp -f data/database/zmax/sources/canvas/state_space_obs.json "$DST/data/" 2>/dev/null
 cp -f VERSION.md "$DST/docs/"
 
 echo "=== ② 数据快照 (曝光对比图 / 死白定位 / 引擎A/B) ==="
@@ -69,6 +77,19 @@ echo "=== ③ 证据 (实测数字) ==="
   echo "- 度规势被证伪: 逐点诊断 c∈[0.001,0.999] 方向 cos=1.0000 (胜欧氏 0.707~0.9997), 但 c→0 时 ‖grad‖ 塌到 5.9e-05"
   echo "  (Fubini-Study 的 arccos|⟨p,q⟩| 尖点); project 的 bounded_rotvec(gain=2.0) 把远距离状态推到近 π 死角 ⇒ k=150 大量点踩驻点"
   echo "- 数学根因: 欧氏势的切空间梯度 ∝ −(g−c·p), 精确等于测地方向 ⇒ 「欧氏势+切投影」已是方向意义最优, 度规在此指标无提升空间"
+  echo
+  echo "## L2 光学质量检测节点 · 10083 表面旁路 (2026-10-19 老倪)"
+  echo "- 节点: ssaoi 🔍 光学质量检测 · layer 由空 → **L2** (模块真源 LAYER / DB mw_node / 画布 JSON params 三处一致)"
+  echo "- 旁路: 跑在 **4060 本机**, 只读 GET 10083 /picture?kind=origin&grab=1, 不部署不改产线不抢独占"
+  echo "- 实现: src/lerobot/policies/yolo_3d/surface_optical.py::SurfaceOpticalQuality"
+  echo "        → tools/aoi_surface_rect.py::surface_judge (与交付判据图同一实现)"
+  echo "- 判据图口径: 长边水平(长边在 x) · 保留整块(expand 纳回暗头, expand_px 单列) · 零拉伸(no_stretch=输出尺寸==裁剪尺寸)"
+  echo "- 实测 (5000us): 模块摆正 1282x188 · 长宽比 6.819 · 倾角 -69.79° · 矩形度 0.833 · expand_px=[154,0] · no_stretch=True"
+  echo "- 🔴 **ROI 口径 (本轮最值钱的一条)**: 判决必须看**摆正后模块 ROI**, 不能看整帧 mean ——"
+  echo "  同一帧: 整帧 mean=16.25 / 死白 0.82% / 暗部 94.7% (**看着全黑**),"
+  echo "  而模块 mean=153.97 / 死白 **16.70%** / 清晰度 60.9 (**本身严重过曝**); 黑背景把整帧均值拉低 ⇒ 拿整帧判会得出反向结论"
+  echo "- 话题: 表面光学.* 共 13 个 (可用/取像体检/整帧{均值,死白,暗部,清晰度}/模块{均值,清晰度,长宽比}/倾角/矩形度/水平/曝光us)"
+  echo "- 自检 tools/verify_aoi_surface_node.py **10/10 PASS** (含 10083 不可达时优雅降级)"
   echo
   echo "## 闸门默认状态 (未改动, 零回归)"
   echo "- ZMAX_MANIFOLD_SU2_TANGENT 默认关 (实测有效, 待真机 A/B 后决定)"

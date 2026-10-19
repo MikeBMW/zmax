@@ -3493,6 +3493,48 @@ def _ar_aoi_publish(sig, log=None):
         return {"ok": False}
 
 
+def _surface_bypass(log=None):
+    """🆕 2026-10-19 老倪「10083服务, 可以在4060上旁路运行」:
+    表面相机旁路 —— 本机(4060) 通过 HTTP 从工控机 10083 取同一帧, 自己搜矩形刚体 → 摆正
+    (保留整块模块 · 长边水平 · 零插值) → 量光学质量 → 发「表面光学.*」话题。
+    · 不部署到工控机、不改产线程序、不抢相机独占; 10083 不可达就只记一句, 不影响金手指那一路。
+    · 实现同源: src/lerobot/policies/yolo_3d/surface_optical.py → tools/aoi_surface_rect.py
+      (与交付的判据图同一个 surface_judge, 不另写一套口径)。
+    · ROI 口径: 模块摆正后单独统计, **不看整帧 mean** —— 黑背景会把整帧 mean 拉到 16 而模块本身
+      仍在过曝(实测 5000us: 整帧 mean 16.25/暗部94.7%, 模块 mean 153.9/死白16.68%)。
+    """
+    try:
+        from lerobot.policies.yolo_3d.surface_optical import SurfaceOpticalQuality
+        sq = SurfaceOpticalQuality()
+        sres = sq.run()
+        _YOLO_CACHE["surface_aoi"] = sres
+        ssig = sq.signals(sres)
+        if ssig:
+            _ar_aoi_publish(ssig, log)
+        if log:
+            _m = {"ok": "✅", "too_dark": "🌑", "overexposed": "🔴", "shape_fail": "❔"}.get(
+                sres.get("verdict"), "❔")
+            _mod = sres.get("module") or {}
+            _full = sres.get("full") or {}
+            if sres.get("ok"):
+                log(f"{_m} 表面 10083 旁路: {sres.get('verdict')} — {sres.get('verdict_why')}")
+                log(f"   模块摆正 {sres.get('judge_shape')} 水平={_mod.get('long_edge_horizontal')} "
+                    f"长宽比={_mod.get('aspect')} 倾角={(_rect_angle := (sres.get('rect') or {}).get('angle'))} "
+                    f"矩形度={(_fi := (sres.get('rect') or {}).get('fill'))}")
+                log(f"   ROI 口径: 模块 mean={_mod.get('mean')} 死白={_mod.get('sat_pct')}% "
+                    f"清晰度={_mod.get('sharpness')}  |  整帧 mean={_full.get('mean')} "
+                    f"死白={_full.get('sat_pct')}% 暗部={_full.get('dark_pct')}% (整帧会被黑背景拉低, 判决看 ROI)")
+            else:
+                log(f"{_m} 表面 10083 旁路: 未出图 — {sres.get('why')}")
+            log(f"   表面光学话题已发出 ({len(ssig)} 个): "
+                + " · ".join("%s=%g" % (k.split('.')[-1], v) for k, v in sorted(ssig.items())))
+        return sres
+    except Exception as e:                                          # noqa: BLE001
+        if log:
+            log(f"⚠️ 表面 10083 旁路失败 (不影响金手指): {type(e).__name__}: {e}")
+        return None
+
+
 def node_ss_aoi(ctx):
     """🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测,
     并把 AOI 话题 (判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检) 发到 AR/AOI 信号总线。
@@ -3545,6 +3587,7 @@ def node_ss_aoi(ctx):
             log(f"🔍 光学质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
             log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
                                                                   for k, v in sorted(_sig.items())))
+        _surface_bypass(log)          # 🆕 10083 表面旁路 (4060 本机), 失败不影响金手指那一路
         return bool(res.get("pass"))
     except Exception as e:
         if log:
