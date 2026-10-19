@@ -15650,6 +15650,23 @@ def _kill_orphan_l5(include_own=False):
     if killed:
         print("🧹 清掉上一轮残留的 L5 闭环进程: %s (L5 只在你点 ▶ 时启动)" % killed, flush=True)
         try:
+            # L5 的状态文件也必须改成 stopped —— 否则它一直停在 "running",
+            # 界面会以为"还在跑"(实测老倪就是这么看到太阳系不转的: 表说在跑, 画面冻着)。
+            _sp = os.path.join(_ROOT_P, "zmax_data", "l5_loop", "state.json")
+            if os.path.exists(_sp):
+                with open(_sp, encoding="utf-8") as _f:
+                    _sd = json.load(_f) or {}
+                if str(_sd.get("status") or "").lower() == "running":
+                    _sd["status"] = "stopped"
+                    _sd["stopped_by"] = "studio-cleanup"
+                    _sd["stopped_ts"] = time.time()
+                    _tmp2 = _sp + ".tmp"
+                    with open(_tmp2, "w", encoding="utf-8") as _f:
+                        json.dump(_sd, _f, ensure_ascii=False)
+                    os.replace(_tmp2, _sp)
+        except Exception:                                                    # noqa: BLE001
+            pass
+        try:
             _up = os.path.join(_ROOT_P, "zmax_data", "ss_live", "ui_run.json")
             _d = {}
             if os.path.exists(_up):

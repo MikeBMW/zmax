@@ -512,6 +512,14 @@ class OrbitalArchData:
         except Exception:                                                    # noqa: BLE001
             return False, "未点 ▶ 运行"
         if not d.get("running"):
+            # 2026-10-19 老倪「L5 运行后太阳系不转」: L5 是独立进程, 它真在跑就得转,
+            #   不能因为 ui_run.json 里是 false (或控制台重启过) 就把画面冻住。
+            try:
+                from gravity_table import _l5_proc_alive  # noqa: PLC0415
+                if _l5_proc_alive():
+                    return True, "运行中 (L5 闭环独立进程在跑)"
+            except Exception:                                                # noqa: BLE001
+                pass
             return False, "未运行 (没点 ▶ 运行)"
         try:
             os.kill(int(d.get("pid") or 0), 0)

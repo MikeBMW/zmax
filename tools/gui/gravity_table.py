@@ -92,9 +92,40 @@ def _l5_loop_running(max_age=900.0):
         if time.time() - os.path.getmtime(p) > max_age:
             return False
         with open(p, encoding="utf-8") as fh:
-            return str((json.load(fh) or {}).get("status") or "").lower() == "running"
+            _st = str((json.load(fh) or {}).get("status") or "").lower()
     except Exception:                                                        # noqa: BLE001
         return False
+    if _st != "running":
+        return False
+    # 🔴 2026-10-19 老倪「L5 运行后太阳系怎么不转」实测根因之一: 进程被杀了, state.json 还停在
+    #   "running" ⇒ 界面以为在跑 (表里有数), 而太阳系按 ui_run 判"未运行"⇒ 冻住, 两边打架。
+    #   修法: "在跑" 必须**进程真的在** (扫 /proc), 只有状态文件不算。
+    return _l5_proc_alive()
+
+
+def _l5_proc_alive():
+    """扫 /proc: L5 闭环 (编排或标注) 进程是否真的存在。"""
+    try:
+        import glob as _g
+        for _p in _g.glob("/proc/[0-9]*/cmdline"):
+            try:
+                with open(_p, "rb") as _f:
+                    _parts = [x.decode("utf-8", "ignore") for x in _f.read().split(b"\0") if x]
+            except Exception:                                                # noqa: BLE001
+                continue
+            if not _parts:
+                continue
+            # 必须**真的是 python 在跑那个脚本** (argv[0] 是 python, 某个参数以脚本名结尾)。
+            # 不能用 "子串出现在 cmdline 里" —— 那会把 grep/heredoc/本判据自己都算进去 (实测踩过)。
+            _a0 = os.path.basename(_parts[0])
+            if not _a0.startswith("python"):
+                continue
+            for _t in _parts[1:]:
+                if _t.endswith("l5_annotate_train_loop.py") or _t.endswith("auto_annotate.py"):
+                    return True
+    except Exception:                                                        # noqa: BLE001
+        pass
+    return False
 
 
 def run_state(now=None):
@@ -111,6 +142,9 @@ def run_state(now=None):
         with open(_ui, encoding="utf-8") as fh:
             _d = json.load(fh)
         if not _d.get("running"):
+            # L5 闭环是独立进程: 它真在跑就算在跑 (和太阳系用同一个判据, 两边不许打架)
+            if _l5_proc_alive():
+                return True, "运行中 (L5 闭环独立进程在跑)"
             return False, "未点 ▶ 运行 (已停止)"
         try:
             os.kill(int(_d.get("pid") or 0), 0)
