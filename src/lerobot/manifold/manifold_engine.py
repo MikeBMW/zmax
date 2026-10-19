@@ -706,7 +706,8 @@ class ManifoldEngine:
         self.encoder.latent_dim, self.encoder.n_fit = int(d["latent_dim"]), int(d["n_fit"])
         self.manifold_type = str(d["manifold_type"]) if "manifold_type" in d else self.manifold_type
         self.projector = ManifoldProjector(self.manifold_type)
-        self.metric = MetricCalculator(self.manifold_type)
+        self.metric = MetricCalculator(self.manifold_type,
+                                       su2_tangent=getattr(self, "su2_tangent", False))
         self.navigator = Navigator(self.manifold_type)
         if "readout" in d:
             self.readout, self.readout_b = d["readout"], d["readout_b"]

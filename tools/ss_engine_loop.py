@@ -205,12 +205,17 @@ def read_state_file(path: str) -> dict | None:
 
 
 # ─────────────────────────── 引擎构建 ───────────────────────────
-def build_engine(traj: dict, M: float, inertia: bool):
-    """与画布节点「🧮 流形引擎」同口径建引擎: load(models/manifold_engine.npz), 失败则现场 fit。"""
+def build_engine(traj: dict, M: float, inertia: bool, su2_tangent: bool = True):
+    """与画布节点「🧮 流形引擎」同口径建引擎: load(models/manifold_engine.npz), 失败则现场 fit。
+
+    su2_tangent (2026-10-19 老倪「接进 ss_engine_loop」): SU(2)≅S³ ⇒ ∇Φ 必须去掉法向分量
+    (旧版只有 sphere 分支有投影, 实测法向泄漏 50.5%@k=150)。**真机下发链未动** —— 本循环只算
+    方向/动作建议 (写 engine_latest + DDS), 不直接命令机械臂。
+    """
     from lerobot.manifold.manifold_engine import ManifoldEngine               # noqa: PLC0415
     eng = ManifoldEngine(manifold_type="su2", latent_dim=LATENT, state_dim=STATE_DIM,
                          action_dim=ACTION_DIM, manifold_M=(M if M > 0 else 3.643),
-                         inertia=bool(inertia))
+                         inertia=bool(inertia), su2_tangent=bool(su2_tangent))
     loaded = False
     try:
         loaded = bool(eng.load(CKPT))
@@ -384,7 +389,8 @@ class Loop:
 
     def __init__(self, hz: float, state_file: str | None, traj_path: str, inertia: bool,
                  encoder: str = "pca", l4_hz: float = 1.0, l4_url: str = "",
-                 pipe: bool = False, pipe_every: int = 5, pipe_img: str = "") -> None:
+                 pipe: bool = False, pipe_every: int = 5, pipe_img: str = "",
+                 su2_tangent: bool = True) -> None:
         self.dt = 1.0 / max(1e-6, float(hz))
         self.hz = float(hz)
         self.encoder = str(encoder or "pca")
@@ -403,6 +409,9 @@ class Loop:
         self.state_file = state_file
         self.traj_path = traj_path
         self.inertia = bool(inertia)
+        # 🔵 2026-10-19: SU(2) 切空间投影 (SU(2)≅S³) —— 只改 ∇Φ 的方向质量, 不动真机下发链
+        #   ZMAX_MANIFOLD_SU2_TANGENT 可整体关 (0) 回旧口径, 便于同口径 A/B。
+        self.su2_tangent = bool(su2_tangent)
         self.n = 0
         # 🧩 动作块流水线 (老倪 2026-10-15): H>1 才建; ZMAX_CHUNK_H=1/0 ⇒ 完全不参与 (逐位回退)
         try:
@@ -558,12 +567,14 @@ class Loop:
         self.traj = new
         if changed or p0 != self.proj or t0 != self.task or m0 != self.M:
             try:
-                self.eng, self.calib_note, _ = build_engine(new, self.M, self.inertia)
+                self.eng, self.calib_note, _ = build_engine(new, self.M, self.inertia,
+                                                            su2_tangent=self.su2_tangent)
                 self._attach_encoder()
                 self._attach_pipeline()
                 self.idx = 0
-                _log("🧮 引擎就位: %s · 源=%s (%d 帧) · M=%.4f (键 %s) · 工程 %s · 任务 %s"
+                _log("🧮 引擎就位: %s · 源=%s (%d 帧) · M=%.4f (键 %s) · su2切投影=%s · 工程 %s · 任务 %s"
                      % (self.calib_note, self.src_key, len(new["obs"]), self.M, self.M_key,
+                        "开" if self.su2_tangent else "关",
                         self.proj.get("project") or "?", self.task.get("task_id") or "?"))
                 # 📍 断点位置自证 (老倪: 「断点还是没进」——先把"该打在哪一行"打到日志里)
                 try:
@@ -655,6 +666,7 @@ class Loop:
             "meta_all": int((self.meta or {}).get("n_all") or 0),
             "scene": str(self.traj.get("scene") or ""),
             "M": float(self.M), "M_key": self.M_key, "inertia": bool(self.inertia),
+            "su2_tangent": bool(self.su2_tangent),
             "calib": self.calib_note, "decode_src": str(rec.get("decode_src") or ""),
             "manifold": str(rec.get("manifold") or ""), "status": str(rec.get("status") or ""),
             "p": [round(float(x), 6) for x in p],
@@ -828,7 +840,7 @@ def cmd_selftest() -> int:
     with io.open(tp, "w", encoding="utf-8") as fh:
         json.dump({"saved_at": time.strftime("%F %T"), "scene": "selftest", "src": "自检斜坡状态 (非在役数据)",
                    "obs": obs}, fh, ensure_ascii=False)
-    lp = Loop(hz=10.0, state_file=None, traj_path=tp, inertia=False)
+    lp = Loop(hz=10.0, state_file=None, traj_path=tp, inertia=False, su2_tangent=True)
     lp.t_src = 0.0
     got = []
     t0 = time.time()
@@ -865,6 +877,14 @@ def main() -> int:
     ap.add_argument("--traj", default=os.environ.get("ZMAX_SS_ENGINE_TRAJ") or TRAJ,
                     help="状态空间工程轨迹真源 (默认 %s)" % os.path.relpath(TRAJ, ROOT))
     ap.add_argument("--inertia", action="store_true", help="二阶演化 (M=等效惯量, 默认过阻尼=旧行为)")
+    # 🔵 2026-10-19 老倪「现在就把 su2_tangent 接进 ss_engine_loop, 但先不接入真机」
+    #   接到本回路 (只算方向/动作建议, 写 engine_latest + DDS); 真机下发链 (8793/l2_daemon/臂) 一行未改。
+    #   默认开; --no-su2-tangent 或 ZMAX_MANIFOLD_SU2_TANGENT=0 可回旧口径做同口径 A/B。
+    _def_su2 = str(os.environ.get("ZMAX_MANIFOLD_SU2_TANGENT", "1")).strip().lower() not in ("0", "false", "no", "off")
+    ap.add_argument("--su2-tangent", dest="su2_tangent", action="store_true", default=_def_su2,
+                    help="SU(2)≅S³ 切空间投影 (默认开; 只改 ∇Φ 方向, 不动真机)")
+    ap.add_argument("--no-su2-tangent", dest="su2_tangent", action="store_false",
+                    help="关掉切空间投影 (旧口径, 零回归对照臂)")
     ap.add_argument("--instance", default=os.environ.get("ZMAX_SS_ENGINE_INSTANCE") or "main",
                     help="实例名: main=常驻服务那份; 用别的名字(如 debug) ⇒ 独立 tap/pid, 可与服务并行 "
                          "(调试断点用, 不污染在役记录)")
@@ -896,7 +916,8 @@ def main() -> int:
     INSTANCE = str(a.instance or "main")
     lp = Loop(hz=a.hz, state_file=a.state_file, traj_path=a.traj, inertia=a.inertia,
               encoder=a.encoder, l4_hz=a.l4_hz, l4_url=a.l4_frame_url,
-              pipe=a.pipeline, pipe_every=a.pipe_every, pipe_img=a.pipe_img)
+              pipe=a.pipeline, pipe_every=a.pipe_every, pipe_img=a.pipe_img,
+              su2_tangent=a.su2_tangent)
     # `run --seconds N` 必须真按 N 收 (实测踩过: 恒传 0 ⇒ --seconds 被忽略, 一直跑)
     rc = lp.run(seconds=(a.seconds if a.cmd == "run" else 1.0), once=(a.cmd == "once"),
                 lock=not a.no_lock)

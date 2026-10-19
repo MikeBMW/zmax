@@ -18,7 +18,7 @@ import numpy as np
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import (QSizePolicy, QWidget, QFrame, QVBoxLayout, QComboBox, QStackedWidget,
                              QTreeWidget, QTreeWidgetItem, QLabel, QInputDialog,
-                             QHBoxLayout, QPushButton, QDoubleSpinBox,
+                             QHBoxLayout, QPushButton, QDoubleSpinBox, QSlider,
                              QGroupBox, QFormLayout, QMessageBox, QTabWidget,
                              QScrollArea, QFileDialog, QSplitter,
                              QTableWidget, QTableWidgetItem, QHeaderView,
@@ -1025,10 +1025,29 @@ class MasterParamMView(QWidget):
         self.sp_M.setSingleStep(0.1)
         self.sp_M.setDecimals(3)
         self.sp_M.setValue(1.0)
+        self.sp_M.setFixedWidth(78)
         self.sp_M.setToolTip("M 范围 [0,8] (G0 结构参数, 非自由拟合)。M→0 = 无惯性 (旧一阶过阻尼, 零回归)")
         self.sp_M.setStyleSheet("QDoubleSpinBox{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
                                 "border-radius:4px;padding:2px 6px;font-size:13px;}")
         ml.addWidget(self.sp_M)
+
+        # 🎚 2026-10-19 老倪「主参数窗口要可操作」: 拖动条 (0~8, 一格 0.01) 与微调框双向联动
+        #   —— 拖 = 看趋势 (立刻出物理读数), 精确值仍可键盘输入; 写入真源仍走「✏️ 写 M」一步, 防误改产线。
+        self.sl_M = QSlider(Qt.Horizontal)
+        self.sl_M.setRange(0, 800)
+        self.sl_M.setSingleStep(1)
+        self.sl_M.setPageStep(25)
+        self.sl_M.setValue(100)
+        self.sl_M.setMinimumWidth(120)
+        self.sl_M.setToolTip("拖动 = 连续调 M (0~8); 松手不自动写入 —— 写入真源要点「✏️ 写 M」")
+        self.sl_M.setStyleSheet(
+            "QSlider::groove:horizontal{height:5px;background:#21262d;border-radius:2px;}"
+            "QSlider::handle:horizontal{width:12px;margin:-5px 0;border-radius:6px;background:#58a6ff;}"
+            "QSlider::sub-page:horizontal{background:#1f6feb;border-radius:2px;}")
+        ml.addWidget(self.sl_M, 1)
+        self.sl_M.valueChanged.connect(self._m_from_slider)
+        self.sp_M.valueChanged.connect(self._m_from_spin)
+
         self.chk_inertia = QCheckBox("inertia")
         self.chk_inertia.setToolTip("勾 = 有惯性二阶 (Δx=F·dt²/M); 不勾 = 零回归 (与旧版一阶过阻尼逐位相同)")
         self.chk_inertia.setStyleSheet("QCheckBox{color:#c9d1d9;font-size:13px;background:transparent;}")
@@ -1056,6 +1075,48 @@ class MasterParamMView(QWidget):
                             "border-radius:4px;padding:3px 8px;font-size:12px;}"
                             "QPushButton:hover{background:#30363d;}")
         lay.addWidget(mbar)
+
+        # ── 🌍 2026-10-19 老倪「有信息连接 + 容易操作」: 引力档位 + 真源/在役/物理读数 ──
+        #   档位数字 = tools/manifold_m_gravity.py **真跑引擎实测** (tools/…--export 落
+        #   zmax_data/ss_live/mparam_gravity.json), 不是手填的漂亮话; 读不到就只显示档名, 不编拍数。
+        mrow = QFrame()
+        mrow.setStyleSheet("QFrame{background:transparent;}")
+        mrow.setFixedHeight(26)
+        mr = QHBoxLayout(mrow)
+        mr.setContentsMargins(2, 0, 2, 0)
+        mr.setSpacing(4)
+        self._gear_btns = []
+        for _gm, _gn in ((0.0, "无惯性"), (0.3, "轻灵"), (1.0, "标准"), (3.0, "重载"), (8.0, "极重")):
+            _b = QPushButton("%g %s" % (_gm, _gn))
+            _b.setFixedHeight(22)
+            _b.setToolTip("M=%g (%s) —— 点一下填入, 再点「✏️ 写 M」才落真源" % (_gm, _gn))
+            _b.setStyleSheet("QPushButton{background:#161b22;color:#c9d1d9;border:1px solid #30363d;"
+                             "border-radius:4px;padding:0 5px;font-size:11px;}"
+                             "QPushButton:hover{background:#21262d;color:#e6edf3;}")
+            _b.clicked.connect(lambda _=False, v=_gm: self.sp_M.setValue(v))
+            mr.addWidget(_b)
+            self._gear_btns.append(_b)
+        self.lbl_minfo = QLabel("M 真源/在役读数加载中…")
+        self.lbl_minfo.setStyleSheet("color:#8b949e;font-size:11px;font-family:Consolas,monospace;"
+                                     "background:transparent;")
+        self.lbl_minfo.setMinimumWidth(80)
+        mr.addWidget(self.lbl_minfo, 1)
+        lay.addWidget(mrow)
+        self._m_gravi = {}
+        try:
+            with open(os.path.join(self._root, "zmax_data", "ss_live", "mparam_gravity.json"),
+                      encoding="utf-8") as _f:
+                self._m_gravi = json.load(_f)
+        except Exception:                                                     # noqa: BLE001
+            self._m_gravi = {}
+        try:
+            self._mtimer = QTimer(self)
+            self._mtimer.setInterval(2000)
+            self._mtimer.timeout.connect(self._mparam_tick)
+            self._mtimer.start()
+            QTimer.singleShot(300, self._mparam_tick)
+        except Exception:                                                     # noqa: BLE001
+            self._mtimer = None
 
         # ── 🌐 流形引擎可视化 (老倪 2026-10-16: 「将这个可视化球面, 轨迹显示方式, 做到画布右侧的
         #    主参数 M 的侧面栏窗口」) —— S³ 立体投影球 / 切空间 / 度量场采样 / 时间序列 四面板,
@@ -1522,6 +1583,138 @@ class MasterParamMView(QWidget):
         for pre in ("python3 tools/", "gui-venv311/bin/python tools/", "/home/ubuntu/zmax/"):
             s = s.replace(pre, "")
         return s.replace(" · ", " | ")
+
+    # ── 🎚🌍 主参数 M: 拖动条 ↔ 微调框 · 档位 → 真源/在役/物理读数 (2026-10-19 老倪「可操作 + 有信息连接」) ──
+    def _m_from_slider(self, v):
+        try:
+            self.sp_M.blockSignals(True)
+            self.sp_M.setValue(round(float(v) / 100.0, 2))
+            self.sp_M.blockSignals(False)
+        except Exception:                                                     # noqa: BLE001
+            pass
+        self._mparam_tick()
+
+    def _m_from_spin(self, v):
+        try:
+            self.sl_M.blockSignals(True)
+            self.sl_M.setValue(int(round(float(v) * 100)))
+            self.sl_M.blockSignals(False)
+        except Exception:                                                     # noqa: BLE001
+            pass
+        self._mparam_tick()
+
+    def _m_gear(self, M):
+        """档名 + 实测收敛拍 (真源 = zmax_data/ss_live/mparam_gravity.json; 读不到就只给档名)。
+
+        非档位值 (如现场标定 3.643) ⇒ 取**最近档**的实测拍并标 ≈, 让人知道"大概什么手感", 不冒充同档。
+        """
+        rows = self._m_gravi.get("rows") or []
+        name, meas, approx = "自定义", None, False
+        for g in (self._m_gravi.get("gears") or []):
+            if abs(float(g.get("M", -1)) - M) < 1e-9:
+                name = str(g.get("name") or "自定义")
+                break
+        for r in rows:
+            if abs(float(r.get("M", -1)) - M) < 1e-9:
+                meas = r.get("converged_step") or r.get("steps")
+                break
+        if meas is None and rows:
+            _nr = min(rows, key=lambda r: abs(float(r.get("M", 0)) - M))
+            meas, approx = (_nr.get("converged_step") or _nr.get("steps")), True
+        if name == "自定义":
+            name = ("近无惯性" if M < 0.2 else "轻灵档" if M < 0.6 else "标准档" if M < 1.5
+                    else "重载档" if M < 4.0 else "极重档")
+        return name, meas, approx
+
+    def _mparam_tick(self):
+        """把 M 的**真源 / 在役引擎 / 物理读数**连到界面上 (缺源如实写缺, 不编数)。"""
+        if not hasattr(self, "lbl_minfo"):
+            return
+        try:
+            M_now = float(self.sp_M.value())
+        except Exception:                                                     # noqa: BLE001
+            return
+        src_M, src_at, src_path = None, "", "config/calib/zmax_manifold.json"
+        try:
+            p = os.path.join(self._root, "config", "calib", "zmax_manifold.json")
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            src_M = float(d["M"])
+            src_at = str(d.get("_updated_at") or "")
+            src_path = os.path.relpath(p, self._root)
+            _mt = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(p)))
+        except Exception:                                                     # noqa: BLE001
+            _mt = "读不到"
+        eng = {}
+        try:
+            with open(os.path.join(self._root, "zmax_data", "ss_live", "engine_latest.json"),
+                      encoding="utf-8") as f:
+                eng = json.load(f) or {}
+        except Exception:                                                     # noqa: BLE001
+            eng = {}
+        e_M = eng.get("M")
+        e_age = ""
+        try:
+            e_age = "%.0fs 前" % max(0.0, time.time() - float(eng.get("ts")))
+        except Exception:                                                     # noqa: BLE001
+            e_age = "无"
+        grad = eng.get("grad_norm")
+        phi = eng.get("phi")
+        _a_txt = "—"
+        try:
+            if grad is not None and e_M is not None and float(e_M) > 1e-9:
+                _a_txt = "%.3f" % (float(grad) / float(e_M))
+        except Exception:                                                     # noqa: BLE001
+            _a_txt = "—"
+        bits = []
+        if src_M is not None:
+            bits.append("真源 %.3f" % src_M)
+        else:
+            bits.append("真源读不到")
+        if e_M is not None:
+            _same = src_M is not None and abs(float(e_M) - src_M) < 1e-9
+            bits.append("在役 %.3f%s" % (float(e_M), "✓" if _same else "⚠"))
+        else:
+            bits.append("在役无(引擎未跑)")
+        try:
+            _age = max(0.0, time.time() - float(eng.get("ts")))
+            e_age = ("%.0fs前" % _age) if _age < 120 else (("%.0fmin前" % (_age / 60)) if _age < 7200
+                                                          else "%.1fh前" % (_age / 3600))
+        except Exception:                                                     # noqa: BLE001
+            e_age = "无"
+        if e_age != "无" and e_M is not None:
+            bits.append(e_age)
+        if _a_txt != "—":
+            bits.append("a=%s" % _a_txt)
+        _gn, _meas, _apx = self._m_gear(M_now)
+        bits.append("%g %s%s" % (M_now, _gn,
+                                 ("(%s实测%s拍)" % ("≈" if _apx else "", _meas)) if _meas else ""))
+        line = " · ".join(bits)
+        try:
+            self.lbl_minfo.setText(line if len(line) <= 118 else line[:115] + "…")
+            _same_src = src_M is not None and abs(M_now - src_M) < 1e-9
+            self.lbl_minfo.setStyleSheet(
+                "color:%s;font-size:11px;font-family:Consolas,monospace;background:transparent;"
+                % ("#3fb950" if _same_src else "#d29922"))
+            # 悬浮里给全套 (含实测档位表 + 引力口径), 界面只留一行不挤
+            _rows = self._m_gravi.get("rows") or []
+            _tab = "\n".join("  M=%-4g %-5s 收敛 %s 拍 · 首步角 %.5f · 路径比 %.3f"
+                             % (float(r.get("M", 0)), self._m_gear(float(r.get("M", 0)))[0],
+                                r.get("converged_step") or r.get("steps"),
+                                float(r.get("first_step_rad") or 0), float(r.get("path_ratio") or 0))
+                             for r in _rows)
+            self.lbl_minfo.setToolTip(
+                "主参数 M = 等效质量 (引擎二阶: a = ‖∇Φ‖/M)\n"
+                "真源 %s · 改于 %s\n在役引擎 %s · M=%s · inertia=%s · cycle=%s\n"
+                "当前 Φ=%s ‖∇Φ‖=%s ⇒ a=%s /拍²\n"
+                "引力口径: 目标=引力源; M×4 ⇒ 耗时×2 (√M, 同开普勒周期直觉)\n"
+                "实测档位 (tools/manifold_m_gravity.py 真跑引擎, 起点夹角 %s°):\n%s\n"
+                "写入口: 选好 M → 「✏️ 写 M」→ 引擎按真源 mtime 自动重建 (无需重启)"
+                % (src_path, src_at or _mt, e_age, e_M, eng.get("inertia"), eng.get("cycle"),
+                   phi, grad, _a_txt,
+                   self._m_gravi.get("theta_deg", "?"), _tab or "  (未生成: 跑 tools/manifold_m_gravity.py --export)"))
+        except Exception:                                                     # noqa: BLE001
+            pass
 
     def _write_M(self):
         import subprocess
