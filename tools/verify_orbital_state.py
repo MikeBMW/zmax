@@ -341,6 +341,25 @@ def check_earth_force(app):
                         _ink += 1
     chk("R4", "「S³ 力场总观」面板画出来了 (合力 + 四层分力的方向射线 + Δ/一致度)",
         bool(_rc) and _ink >= 20, "面板 %s · 墨点 %d" % (_rc, _ink))
+    # R5 (老倪 2026-10-19「力场的合力方向，与太阳系地球的 F合 方向要一致」):
+    #   两边必须走**同一个投影** ⇒ 角度差 ≈0; 再转 25° 偏航, 两个角都要跟着转且仍相等
+    #   (只比一次相等没有意义: 两处都写死同一个常数也会"相等")。
+    def _d360(a, b):
+        return abs(((a - b + 180.0) % 360.0) - 180.0)
+    _a1, _s1 = getattr(v, "_arrow_ang", None), getattr(v, "_s3_ang", None)
+    _d0 = _d360(_a1, _s1) if (_a1 is not None and _s1 is not None) else 999.0
+    _yaw0 = float(getattr(v, "yaw", 0.0) or 0.0)
+    v.yaw = _yaw0 + 25.0
+    v.grab(); app.processEvents()
+    _a2, _s2 = getattr(v, "_arrow_ang", None), getattr(v, "_s3_ang", None)
+    _d1 = _d360(_a2, _s2) if (_a2 is not None and _s2 is not None) else 999.0
+    _mv = _d360(_a2, _a1) if (_a2 is not None and _a1 is not None) else 0.0
+    v.yaw = _yaw0
+    chk("R5", "力场盘「合」射线方向 == 地球 F合 箭头方向 (同一投影, 转 25° 仍一致)",
+        _d0 <= 0.5 and _d1 <= 0.5 and _mv > 3.0,
+        "箭头 %.1f° vs 盘 %.1f° (差 %.2f°) · 转 25° 后 箭头 %.1f° vs 盘 %.1f° (差 %.2f°) · 位移 %.1f°"
+        % (_a1 if _a1 is not None else -1, _s1 if _s1 is not None else -1, _d0,
+           _a2 if _a2 is not None else -1, _s2 if _s2 is not None else -1, _d1, _mv))
     try:
         v.close()
     except Exception:                                                        # noqa: BLE001

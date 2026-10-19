@@ -6294,6 +6294,11 @@ class SimulinkModule(QWidget):
         try:
             from model_tree import ModelTreeDock
             self.model_tree = ModelTreeDock(self)
+            # 🖱 画布最小宽也要放下来: 否则 画布最小 + 右栏最小 一起顶死分隔条 (老倪"横向不动了")
+            try:
+                self._mdi.setMinimumWidth(320)
+            except Exception:                                                # noqa: BLE001
+                pass
             split.addWidget(self.model_tree)
             split.setStretchFactor(split.indexOf(self.model_tree), 0)
             # 🖱 2026-10-19 老倪「主参数的窗口大小, 要可以用鼠标拖拽大小, 现在的窗口太小」:

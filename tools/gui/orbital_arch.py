@@ -1423,6 +1423,8 @@ class OrbitalArchView(QWidget):
         self._force_arrow(p, ex, ey, fx, fy, 5.4, "#58a6ff", head=11.0, alpha=245)
         self._last_arrows.append({"kind": "F合", "w": 5.4,
                                   "len": math.hypot(fx - ex, fy - ey), "main": True})
+        # 记下合力箭头的**屏幕方向角** (判据 R5 用它跟 S³ 表盘的"合"射线逐度比对)
+        self._arrow_ang = math.degrees(math.atan2(fy - ey, fx - ex)) % 360.0
         # ③ 合力实时数 (贴箭头尖)
         # 潮汐项 (月球↔地球互作用): 真源里没有"月球对地球的引力", 只有状态校正器的**残差** ⇒
         #   拿残差当潮汐量, 画虚线箭并向月球方向, 标签写"潮汐(残差)", 不冒充引力。
@@ -1531,7 +1533,17 @@ class OrbitalArchView(QWidget):
             p.setBrush(QColor(14, 20, 30, 220))
             p.drawEllipse(QPointF(_ccx, _ccy), _rad, _rad)
             p.setBrush(Qt.NoBrush)
+            # 🔴 2026-10-19 老倪「力场的合力方向，与太阳系地球的 F合 方向要一致」:
+            #   原来这里用的是 q 的 (x,y) 两个分量 ⇒ 那是**力在 XY 平面上的投影**;
+            #   而地球那根 F合 箭头用的是 _proj() 的**屏幕投影** (带黄道倾角/偏航/俯仰)。
+            #   两套投影不同 ⇒ 盘上的指针和球上的箭头方向对不上。
+            #   现在: 盘上的方向也走 _proj (同一个函数, 只是原点取 0、尺度取 1) ⇒ 天然一致。
+            #   长度: 盘里按单位圆封顶 (老倪「力场在单位圆里即可」), 球上的箭头照旧可以更长。
             vx, vy, _vz, ww = _q[1], _q[2], _q[3], _q[0]
+            _d2x, _d2y, _ = self._proj(vx, vy, _vz, 0.0, 0.0, 1.0)
+            if math.hypot(_d2x, _d2y) < 1e-9:      # 力几乎垂直于屏幕 (投影退化) ⇒ 指向正上, 不画零长
+                _d2x, _d2y = 0.0, -1.0
+            vx, vy = _d2x, _d2y
             _vv = math.hypot(vx, vy) or 1e-6
             # 长度按 |F| 的**对数**尺度 (2026-10-19 看图: 平方根把 5 倍压成 1.27 倍, 肉眼读不出量级)
             #   ⇒ log 分档, 最弱层 0.24r、最强层 0.92r; 尖不出环 (≤0.92r < 半径)
@@ -1546,7 +1558,7 @@ class OrbitalArchView(QWidget):
             _lens.append((_nm, round(_mag, 4), round(_ln, 1)))
             c = QColor(_col); c.setAlpha(int(150 + 100 * abs(ww)))
             p.setPen(QPen(c, 5.0 if _nm == "合" else 3.6, Qt.SolidLine, Qt.RoundCap))
-            _px, _py = _ccx + vx / _vv * _ln, _ccy - vy / _vv * _ln
+            _px, _py = _ccx + vx / _vv * _ln, _ccy + vy / _vv * _ln
             p.drawLine(QPointF(_ccx, _ccy), QPointF(_px, _py))
             # 箭头尖 (2026-10-19 看图: 只是圆头线段 ⇒ 看不出朝向)
             _ang = math.atan2(_py - _ccy, _px - _ccx)
@@ -1562,9 +1574,11 @@ class OrbitalArchView(QWidget):
             p.setBrush(Qt.NoBrush)
             p.setPen(c)
             p.setFont(_cached_font(14, True))
-            _ang_d = math.degrees(math.atan2(-(vy), vx)) % 360.0
+            _ang_d = math.degrees(math.atan2(vy, vx)) % 360.0     # 屏幕坐标 (y 向下)
             _same = None      # 2026-10-19: 同向就写 "L2≡L3" 反而让人以为是一个层; 层名一律独立
             _dirs.append((_ang_d, _nm, _mag))
+            if _nm == "合":
+                self._s3_ang = _ang_d          # 表盘"合"射线的屏幕方向角 (判据 R5)
             p.drawText(QRectF(_ccx - _cw / 2.0, _ccy + _rad + 2, _cw, 18),
                        Qt.AlignHCenter | Qt.AlignTop, (_nm + "≡" + _same) if _same else _nm)
             # 盘下写这个层这一刻的力 (m/s) —— 直接回答"L5 的力是多少"
