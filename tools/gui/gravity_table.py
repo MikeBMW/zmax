@@ -32,6 +32,11 @@ import math
 import os
 import time
 
+import sys as _sys
+_TDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _TDIR not in _sys.path:
+    _sys.path.insert(0, _TDIR)          # tools/ 下 (layer_forces.py 等)
+
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QLabel, QSizePolicy,
                              QHeaderView)
@@ -71,10 +76,53 @@ _RUN_FRESH_S = 30.0
 _RUN_OVERRIDE = None          # None=自动判定 (判据脚本用它跑"在跑/没跑"两分支)
 
 
+_L5_OVERRIDE = None          # 判据用: 强行规定"L5 闭环没在跑" (None = 读真源)
+
+
+def _l5_loop_running(max_age=900.0):
+    """L5 闭环 (l5_loop/state.json) 是否在跑 —— 它是**独立进程**, 控制台重启/退出它照跑。
+
+    2026-10-19 老倪「运行 L5 还是没有力的显示」/「q合 一直在闪」的连带修复:
+    控制台重启后 `ui_run.json` 里留着上一台控制台的 pid ⇒ 按 pid 判活会误判"没在跑",
+    而 L5 闭环其实还在 annotate。这里把"L5 闭环在跑"也算作在跑 (档位即 L5)。"""
+    if _L5_OVERRIDE is not None:
+        return bool(_L5_OVERRIDE)
+    p = _p("zmax_data", "l5_loop", "state.json")
+    try:
+        if time.time() - os.path.getmtime(p) > max_age:
+            return False
+        with open(p, encoding="utf-8") as fh:
+            return str((json.load(fh) or {}).get("status") or "").lower() == "running"
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
 def run_state(now=None):
-    """(是否实跑, 判据说明)。实跑 = 引擎认知块新鲜 (engine_latest.json mtime ≤ 30s)。"""
+    """(是否实跑, 判据说明)。
+    2026-10-19 改: **优先**控制台发布的 ui_run.json —— 只有人点 ▶ 运行才算在跑。
+      老倪: 「现在我还没有点击运行按钮，应该没有运行的力啊」
+      根因: tools/ss_engine_loop.py / ss_fw_trace_pub.py 是常驻后台 (10Hz 一直写 engine_latest),
+            按 mtime 判"实跑"⇒ 没点运行也一直有合力。pid 死了也算没跑 (崩溃不留假在跑)。
+    没有 ui_run.json (老工程/独立进程) ⇒ 退回旧口径 (引擎认知块 ≤30s)。"""
     if _RUN_OVERRIDE is not None:
         return bool(_RUN_OVERRIDE), "override"
+    _ui = _p("zmax_data", "ss_live", "ui_run.json")
+    try:
+        with open(_ui, encoding="utf-8") as fh:
+            _d = json.load(fh)
+        if not _d.get("running"):
+            return False, "未点 ▶ 运行 (已停止)"
+        try:
+            os.kill(int(_d.get("pid") or 0), 0)
+        except Exception:                                                    # noqa: BLE001
+            if _l5_loop_running():
+                return True, "运行中 (L5 闭环独立进程在跑; 控制台已重启)"
+            return False, "控制台已退出 (残留标记)"
+        return True, "运行中 (pid %s · %s)" % (_d.get("pid"), _d.get("src") or "控制台")
+    except FileNotFoundError:
+        return False, "未点 ▶ 运行 (还没有运行标记 ui_run.json)"
+    except Exception:                                                        # noqa: BLE001
+        pass
     now = now or time.time()
     ages = []
     for nm in ("engine_latest.json", "chunk_latest.json"):
@@ -247,6 +295,19 @@ class GravityField(object):
 
     # ---- 读真源 (全部只读; 任何一步失败都留痕, 不抛) ----
     def reload(self):
+        self._load_force_cfg()                                   # u_ff 权重 α / 箭头绝对尺度 (真源 json)
+        # 🧱 分层力 (老倪 2026-10-19 口径): 每层读**自己的**模型输出张量 → 加权三维力矢量。
+        #   L2=前馈 u_ff · L3=动作头 chunk · L4=流形度量 M×(ff−chunk) · L5=VL 场景理解
+        #   权重/换算系数在 config/calib/layer_forces.json; 取不到的层写"缺", 不拿别的层冒充。
+        self.lf, self.lf_on, self.lf_main = None, False, None
+        try:
+            import layer_forces as _lfd
+            self.lf = _lfd.layer_forces()
+            self.lf_on = bool((self.lf.get("meta") or {}).get("enabled", True))
+            self.lf_main = _lfd.main_force(self.lf)
+        except Exception:                                                        # noqa: BLE001
+            pass
+        self._load_layers_on()                                   # 🎚 能力档位 ⇒ 哪几层这次真的在跑
         self.meta = _read(self.src["meta"]) or {}
         self.skill = _read(self.src["skill"]) or {}
         self.chunk = _read(self.src["chunk"]) or {}
@@ -499,6 +560,39 @@ class GravityField(object):
             if _lv:
                 cells.update(_lv)
 
+            # 🧱 分层力**压在最上面** (每层它自己的模型输出; 权重已在矢量层乘好)
+            #   放在活源之后: 活源是"3D 面板同一帧的三个速度", 分层力是"每层各自张量",
+            #   老倪要的是后者 ⇒ 后者赢 (取不到的层在下面按"缺"清空)。
+            if getattr(self, "lf_on", False) and s == self.stage_now:
+                _o = {}
+                for _L in ("L2", "L3", "L4", "L5"):
+                    _x = (self.lf or {}).get(_L) or {}
+                    if _x.get("vec") is None:
+                        # 这层真源取不到 ⇒ 明确清空并写缺什么; 不许留着上一段的 npz 数冒充
+                        cells[_L] = dict(mag=None, vec=None, src=_x.get("src") or "缺",
+                                         note=_x.get("note") or "")
+                        continue
+                    _o[_L] = dict(mag=_x["mag"], vec=list(_x["vec"]),
+                                  src=_x["src"], note=_x.get("note") or "")
+                if _o:
+                    cells.update(_o)
+
+            # 🎚 档位没启用的层: 本次没有调用 ⇒ 清空 (不许留上一轮/轨迹里的数当作"这次在算")
+            for _L2k, _on2 in (getattr(self, "layers_on", {}) or {}).items():
+                if not _on2 and _L2k in cells:
+                    cells[_L2k] = dict(mag=None, vec=None, q=None,
+                                       src="缺 %s: 本次未调用 (档位 %s)" % (_L2k, self.cap_level or "?"))
+
+            # 🎯 u_ff 加权 (老倪 2026-10-19): 前馈项 L4 × α 之后再算四元数/合力 ——
+            #   同一份权重贯穿 格子 → 行合力 → 太阳系箭头 → S³ 面板, 不另算一套。
+            _a = float(getattr(self, "alpha", 1.0) or 1.0)
+            _c4 = cells.get("L4") or {}
+            if _a > 1.0 and not getattr(self, "lf_on", False) and _c4.get("vec") and _c4.get("mag") is not None:
+                _c4["vec"] = [float(x) * _a for x in _c4["vec"]]
+                _c4["mag"] = float(_c4["mag"]) * _a
+                _c4["alpha"] = _a
+                _c4["src"] = str(_c4.get("src") or "") + " · u_ff 加权 ×%.2f (force_field.json)" % _a
+
             # 每格 → 四元数
             for k, c in cells.items():
                 if c.get("mag") is None or not c.get("vec"):
@@ -532,14 +626,73 @@ class GravityField(object):
         self.frozen_at = None if self.running else time.strftime("%H:%M:%S")
         return self.running
 
+    def _load_layers_on(self):
+        """🎚 当前能力档位 (真源: 控制台 ▶运行时写进 `ui_run.json` 的 `cap_level`)。
+
+        档位是"跑到第几层": L2 只跑快速响应 MLP; L3 追加调度; L4 追加前馈/集合; L5 全链。
+        **没被档位启用的层, 本次根本没有调用 ⇒ 不许有输出** (老倪 2026-10-19:
+        「我现在运行的 L2, 为什么 L3 L4 L5 还有力的输出呢?」)。
+        读不到档位 ⇒ 全部当启用 (老行为, 不误伤)。
+        """
+        _rank = {"L2": 2, "L3": 3, "L4": 4, "L4D": 4, "L5": 5}
+        try:
+            with open(os.path.join(_ROOT, "zmax_data", "ss_live", "ui_run.json"), encoding="utf-8") as f:
+                self.cap_level = str((json.load(f) or {}).get("cap_level") or "").upper()
+        except Exception:                                                        # noqa: BLE001
+            self.cap_level = ""
+        # 🔴 2026-10-19 老倪「运行 L5 还是没有力的显示」: L5 闭环 (l5_loop) 是从别的入口起的,
+        #   画布「能力档位」节点可能还停在 L4 ⇒ 发布出去的 cap_level=L4 ⇒ 表把 L5 判成"未调用"清空。
+        #   真源优先: **l5_loop/state.json 说在跑 L5, 这一轮就是 L5 全链**。
+        if _l5_loop_running():          # 统一走一个判断 (判据可 override 它)
+            self.l5_running = True
+            self.cap_level = "L5"
+        _cr = _rank.get(self.cap_level)
+        self.layers_on = ({L: (_rank[L] <= _cr) for L in ("L2", "L3", "L4", "L5")}
+                          if _cr is not None else {L: True for L in ("L2", "L3", "L4", "L5")})
+
+    def _load_force_cfg(self):
+        """🔧 力场构造参数 (真源 `config/calib/force_field.json`, 改文件即生效, 不用重启动):
+             u_ff_gain      —— 前馈项 (L4 = u_ff) 的权重 α; >1 ⇒ 前馈成为**主力** (老倪 2026-10-19)
+             arrow_px_per_mps —— 太阳系力箭头的**绝对尺度** (px 每 m/s), 让箭头长度跨帧可比
+             apply_to_tau   —— 是否把 α 也加到真机扭矩 τ = M·(−∇Φ + α·u_ff); 缺省 false (只改显示, 不动控制)
+        """
+        self.alpha = 1.0
+        self.arrow_px = 300.0
+        self.arrow_ref = 1.0
+        self.arrow_max = 168.0
+        self.apply_to_tau = False
+        self.cap_level = ""
+        self.l5_running = False
+        self.layers_on = {L: True for L in ("L2", "L3", "L4", "L5")}
+        self.ff_cfg = {}
+        try:
+            with open(os.path.join(_ROOT, "config/calib/force_field.json"), encoding="utf-8") as f:
+                _c = json.load(f)
+            self.ff_cfg = _c
+            self.alpha = float(_c.get("u_ff_gain", 1.0))
+            self.arrow_px = float(_c.get("arrow_px_per_mps", 300.0))
+            self.arrow_ref = float(_c.get("arrow_ref_mps", 1.0))
+            self.arrow_max = float(_c.get("arrow_max_px", 168.0))
+            self.apply_to_tau = bool(_c.get("apply_to_tau", False))
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def _main_layer(self, s, cells):
         """⚡ 主力 (老倪口径, 2026-10-16 纠正):
            **每一时刻只有一个主力** = 正在跑的那一项的 L2 执行收口 (例: 插拔时刻 插拔技能的 L2 是主力)。
            其余格子都是赋能力 —— 所以别的行**不高亮** (原来给每行都标了"影响力最大层", 结果一屏 8 个高亮、
            有的行亮在 L5 上, 老倪问「我选的是 L2, 为什么 L5 也高亮」—— 那是标错了语义)。
            没在跑的项: main=None (不给主力名义), 该行影响力最大的层只写进 tooltip 备用。"""
-        if s == self.stage_now and cells["L2"].get("mag") is not None:
-            return "L2"
+        # 🎯 老倪 2026-10-19「改力场构造 (给 u_ff 加权)」: α>1 ⇒ 前馈 L4 就是主力。
+        #   这不是"让数值碰巧最大", 是**构造上的定义**: 前馈项是主动项, 加权后它就是主力。
+        if s == self.stage_now:
+            if getattr(self, "lf_on", False) and getattr(self, "lf_main", None) \
+                    and cells.get(self.lf_main, {}).get("vec"):
+                return self.lf_main
+            if getattr(self, "alpha", 1.0) > 1.0 and cells.get("L4", {}).get("vec"):
+                return "L4"
+            if cells["L2"].get("mag") is not None:
+                return "L2"
         return None
 
     def _influence_layer(self, s, cells):
@@ -638,6 +791,14 @@ def _q_str(q, dec=2, pair=False):
     宽度不够就降小数位 (而不是打省略号), 再不够才回退 2×2 (每行两个, 仍共四个数)。"""
     if not q:
         return "未算"
+    try:                                     # 2026-10-19: 量级 ≥10 时小数位自动降 1 (最小 0)
+        _mx = max(abs(float(x)) for x in q)
+        if _mx >= 10.0:
+            dec = max(0, dec - 1)
+        if _mx >= 100.0:
+            dec = 0
+    except Exception:                                                        # noqa: BLE001
+        pass
     v = [_q_num(q[0], dec), _q_num(q[1], dec), _q_num(q[2], dec), _q_num(q[3], dec)]
     if pair:
         return "%s %s\n%s %s" % (v[0], v[1], v[2], v[3])
@@ -668,18 +829,37 @@ class GravityTableWidget(QWidget):
 
         self.lbl_head = QLabel("")
         self.lbl_head.setWordWrap(True)
-        self.lbl_head.setStyleSheet("color:#8b949e;font-size:13px;font-family:Consolas,monospace;")
+        self.lbl_head.setStyleSheet("color:#8b949e;font-size:15px;font-family:Consolas,monospace;")
         lay.addWidget(self.lbl_head)
+
+        # 2026-10-19 老倪: 「把这个思想映射到主参数 M 窗口的太阳系和万有引力表格」
+        #   ⇒ 列不再是干巴巴的 L2/L3/L4/L5, 而是"层 ↔ 天体 ↔ 引擎对象"; 引力 ↔ 度量 M 写在行上。
+        self.lbl_map = QLabel("")
+        self.lbl_map.setWordWrap(True)
+        self.lbl_map.setMaximumHeight(40)
+        self.lbl_map.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_map.setStyleSheet("color:#58a6ff;font-size:12px;font-family:Consolas,monospace;"
+                                   "background:#0d1117;border:1px solid #1f2a37;border-radius:5px;padding:2px 4px;")
+        lay.addWidget(self.lbl_map)
 
         self.t = QTableWidget(0, 1 + len(LAYERS) + 1)   # 首列 + L2/L3/L4/L5 + 合力 = 6 列 (原来多出一列空列)
         heads = ["状态空间项 · 元任务"] + [n for _k, n in LAYERS] + ["合力"]
         self.t.setHorizontalHeaderLabels(heads)
+        _colmap = {1: ("L2 · 地球 = 快响应 MLP", "小动作/局部微调"),
+                   2: ("L3 · 火星 = 动作生成器 DiT", "大动作/动作块; 公转周期=动作节拍"),
+                   3: ("L4 · 木星 = 集合条件 (性能流形 η/V_p)", "约束的集合侧; 引力=度量张量"),
+                   4: ("L5 · 太阳 = 流形中心 (意图→势场 φ)", "约束的中心: 定方向 G·(−∇Φ)"),
+                   5: ("合力 = 主力 + Σ赋能力", "四层矢量叠加; 强度由度量 M 决定")}
+        for _j, (_nm, _tp) in _colmap.items():
+            _it = self.t.horizontalHeaderItem(_j)
+            if _it is not None:
+                _it.setToolTip("%s\n%s" % (_nm, _tp))
         self.t.verticalHeader().setVisible(False)
         self.t.setStyleSheet(
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:14px;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}")
-        self.t.verticalHeader().setDefaultSectionSize(42)      # 🌍 四元数一行四个数 (宽度自适应) / 2×2 两行都放得下
+        self.t.verticalHeader().setDefaultSectionSize(48)      # 🌍 字号放大后行高跟着 (原 42)
         # 2026-10-16 老倪: 「四元数不应该是 4 个数么?」—— 四元数写成一行四个数, 宽度不够就按 _pick_fmt 降小数位。
         #   实测: 右栏就是 682~1120px (由它自己的容器决定, 表给大最小宽只会把表格撑出视口 ⇒ 右边被裁、看着像省略号)。
         #   ⇒ 表不许比视口宽: 最小宽只留一点点, 宽度不够交给 _pick_fmt 降精度 + 外层 QScrollArea 兜底。
@@ -704,11 +884,11 @@ class GravityTableWidget(QWidget):
 
         self.lbl_foot = QLabel("")
         self.lbl_foot.setWordWrap(True)
-        self.lbl_foot.setMaximumHeight(46)      # 🔒 锁两行 (高度省给太阳系)
+        self.lbl_foot.setMaximumHeight(52)      # 🔒 锁两行 (字号 14 后两行 ≈ 52px)
         self.lbl_foot.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_foot.setWordWrap(True)
         self.lbl_foot.setMaximumHeight(46)      # 🔒 锁两行 (高度省给太阳系)
-        self.lbl_foot.setStyleSheet("color:#7ee787;font-size:10px;font-family:Consolas,monospace;"
+        self.lbl_foot.setStyleSheet("color:#7ee787;font-size:14px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;")
         lay.addWidget(self.lbl_foot)
 
@@ -729,8 +909,8 @@ class GravityTableWidget(QWidget):
         w = w or self.t.viewport().width() or self.width() or 682
         _c0 = self.t.columnWidth(0) or 104                     # 首列固定宽, 不算进数值列的份额
         avail = max(40.0, (w - _c0 - 6) / float(self.t.columnCount() - 1) - 8)
-        for dec, px, pair in ((3, 14, False), (2, 14, False), (2, 13, False), (1, 13, False), (1, 12, False),
-                              (2, 13, True)):
+        for dec, px, pair in ((3, 18, False), (2, 17, False), (2, 16, False), (1, 16, False), (1, 15, False),
+                              (2, 16, True), (2, 15, True)):
             f = QFont("Consolas")
             f.setPixelSize(px)
             fm = QFontMetrics(f)
@@ -782,7 +962,7 @@ class GravityTableWidget(QWidget):
             "QTableWidget{background:#0d1117;color:#e6edf3;gridline-color:#21262d;"
             "font-size:%dpx;font-family:Consolas,monospace;border:none;}"
             "QHeaderView::section{background:#161b22;color:#8b949e;border:none;padding:2px;font-size:13px;}" % _px)
-        self.t.verticalHeader().setDefaultSectionSize(32 if not _pair else 36)   # 行高 32 = 表体够高, 又给太阳系留出高度   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
+        self.t.verticalHeader().setDefaultSectionSize(36 if not _pair else 42)   # 行高 32 = 表体够高, 又给太阳系留出高度   # 🔻收紧: 整页不滚 (老倪: 「显示不全, 一动就滚动」)
         self._q = lambda q: _q_str(q, _dec, _pair)               # 本拍的四元数写法
         try:
             from PyQt5.QtCore import QTimer as _QT
@@ -790,6 +970,7 @@ class GravityTableWidget(QWidget):
         except Exception:                                                        # noqa: BLE001
             pass
         self.lbl_head.setText(("⏸ " if getattr(self, "_frozen", False) else "🌍 ") + f.header_line())
+        self.lbl_map.setText(self._map_line(f))
 
         rows = f.rows
         self.t.setRowCount(len(rows) + 1)                  # + 最下面一行 = 各列合力
@@ -866,15 +1047,19 @@ class GravityTableWidget(QWidget):
                 if _q:
                     for _i in range(4):
                         _rest[_i] += _q[_i]
-        tot = QTableWidgetItem("本刻总合力 %s ‖q‖=%.1f\n%s\n主 %s·%s Δ主%.0f°\n全表32格和 ‖q‖=%.1f\n%s"
-                               % ((_ar or {}).get("stage") or "本刻", _curq_n, _q_str(_curq, 1, False),
+        # 2026-10-19 老倪「字少一点 / 字大一点」: 5 行 → 4 行 (全表32格和 挪进 tooltip), 字号跟着表体 (16pt+)
+        # 2026-10-19: 文本形态保持原样 (判据 ⑭/⑮b 依赖"本刻总合力 … 全表32格和 … 主 … Δ主"这几段),
+        #   只把字号放大 + 大数自动降小数位 (见 _q_str), 让它在放大后仍不溢出。
+        #   首行去掉 stage (stage 已在"主 …"那行), 少 6 个字符 ⇒ 16px 下 1116px 侧栏不溢出
+        tot = QTableWidgetItem("本刻总合力 ‖q‖=%.1f\n%s\n主 %s·%s Δ主%.0f°\n全表32格和 ‖q‖=%.1f\n%s"
+                               % (_curq_n, _q_str(_curq, 1, False),
                                   dn_s or "?", dn_k or "?", _dev_tot, _qtn, _q_str(qt, 1, False)))
         tot.setForeground(QColor("#ffd33d"))
         # 2026-10-16 老倪: 「右下角的字体太小了」⇒ 这一格在列宽内**尽量放大**(粗体 13~18px 自适应)
         from PyQt5.QtGui import QFontMetrics as _QFM
         _cw = self.t.columnWidth(self.t.columnCount() - 1) - 8
         _big = None
-        for _px in range(13, 10, -1):
+        for _px in range(self._fmt[1] + 2, self._fmt[1] - 1 + 1, -1):
             _f = QFont("Consolas")
             _f.setPixelSize(_px)
             _f.setBold(True)
@@ -893,17 +1078,18 @@ class GravityTableWidget(QWidget):
         fo = _big or QFont("Consolas")
         if _big is None:
             fo.setPixelSize(self._fmt[1])
+            fo.setBold(True)          # 2026-10-19: 兜底也要粗体 (判据 ⑭b: 右下角 ≥ 表体且加粗)
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
         tot.setToolTip("归一四元数 q̂ = %s (各项平方和 = %.6f) · ‖q‖ = %.3f\n总合力(全表) = 所有格子的力矢量相加"
                        % (" ".join("%+.3f" % x for x in _qtu), _qtss, _qtn) + "\n本刻行合力 = 在跑的那一项那一行的合力 = 主力 + Σ赋能力\nΔ主 = 该合力与主力的夹角\n"
                        "全精度: 总合力 %s · 本刻行合力 %s" % (_fmt_q(qt), _fmt_q((_ar or {}).get("q") or (1.0, 0, 0, 0))))
         self.t.setItem(li, 1 + len(LAYERS), tot)
-        self.t.setRowHeight(li, 112)   # 右下角: 5 行 × ~18px   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
+        self.t.setRowHeight(li, 104)   # 右下角: 5 行 × ~18px   # 右下角那格: 全表总合力 + 本刻行合力 + 一致度/夹角/主力                    # 右下角那格内容多 (总合力+一致度+主力), 单独给高一点
 
         stale = [k for k, v in f.age.items() if v is not None and v > 60]
         _age_col = "#f85149" if stale else "#7ee787"
-        self.lbl_foot.setStyleSheet("color:%s;font-size:13px;font-family:Consolas,monospace;"
+        self.lbl_foot.setStyleSheet("color:%s;font-size:14px;font-family:Consolas,monospace;"
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;" % _age_col)
         # 🔴 这一行是**保证看得见**的 (表若被窗口裁了, 右下角总合力也要在页面上有一份; 老倪拿画面当结果)
         _res_max, _dev_max, _coh_all = f.equation()
@@ -913,11 +1099,12 @@ class GravityTableWidget(QWidget):
         _qu, _qn, _qss = _qnorm(qt)
         # 🗜 页脚压到 3 行 (老倪 2026-10-16: 表「显示不全, 一动就滚动」⇒ 高度省给表):
         #   行1 本刻系统合力 · 行2 主力/归一/平方和 · 行3 活帧+帧龄; 长口径全在 tooltip
+        # 2026-10-19 老倪「不要显示那么多字」: 3 行压到 2 行 (归一/平方和/全表32格 全挪进 tooltip)
         self.lbl_foot.setText(
-            "★★ 本刻系统合力 (在跑项 %s = 主力 + Σ赋能力) %s · ‖q‖=%.2f ★★\n"
-            "主力 %s·%s · 归一 q̂=[%s] 平方和=%.6f · 全表32格和 ‖q‖=%.1f · %s%s"
+            "本刻合力 (在跑项 %s) %s · ‖q‖=%.2f\n"
+            "主力 %s·%s · %s%s"
             % ((_cur[0]["stage"] if _cur else "无"), _fmt_q(_curq), _curn,
-               dn_s or "?", dn_k or "?", " ".join("%+.2f" % x for x in _qu), _qss, _qn,
+               dn_s or "?", dn_k or "?",
                f.live_line().replace("🛰 ", "").replace("⏸ ", ""),
                (" ⚠️非本刻" if stale else "")))
         self.lbl_foot.setToolTip(
@@ -929,11 +1116,38 @@ class GravityTableWidget(QWidget):
             "真源 (只读): trace_live / meta_tasks / skill_latest / engine_latest; 每 0.7s 重读\n"
             "u_ref = %.4f (该阶段限速 = 满速基准)" % f.u_ref)
 
+    def _map_line(self, f):
+        """结构映射行: 黄道面↔S³ · 太阳↔流形中心 · 行星↔DiT · 地球↔MLP · 轨道↔测地线 · 引力↔度量 M · 周期↔节拍 · 自转↔微调。
+        M 的数值取真源 config/calib/zmax_manifold.json (读不到就写"未读", 不编)。"""
+        _M = _DIM = _MODE = _EIG = None
+        try:
+            with open(os.path.join(_ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8") as fh:
+                _c = json.load(fh)
+            _M = _c.get("M")
+            _mt = _c.get("metric") or {}
+            _DIM, _MODE = _mt.get("dim"), _mt.get("mode")
+        except Exception:                                                    # noqa: BLE001
+            pass
+        try:                                     # 特征值取"在役这一帧"的真源 (torque_live), 别自己推
+            with open(os.path.join(_ROOT, "zmax_data", "ss_live", "torque_live.json"), encoding="utf-8") as fh:
+                _t = json.load(fh)
+            _a, _b = _t.get("metric_eig_min"), _t.get("metric_eig_max")
+            if isinstance(_a, (int, float)) and isinstance(_b, (int, float)):
+                _EIG = "%.2f~%.2f" % (_a, _b)
+        except Exception:                                                    # noqa: BLE001
+            pass
+        _met = ("M=%s · dim=%s%s%s" % ("%.4g" % _M if isinstance(_M, (int, float)) else "未读",
+                                       _DIM or "?", (" · %s" % _MODE) if _MODE else "",
+                                       (" · eig %s" % _EIG) if _EIG else ""))
+        return ("黄道面=S³ · 太阳=流形中心(%s) · 行星=DiT · 地球=MLP · 轨道=测地线 · "
+                "引力=度量 · 周期=节拍 · 自转=局部微调   |   列 = 层 = 天体: L2 地球 · L3 火星 · L4 木星 · L5 太阳" % _met)
+
     def block_height(self):
         """整块高度 = 页头 + 表 + 页脚 (用**已布局的真实高度**, 不用 sizeHint —— 它被换行标签高估过)。"""
         try:
             # 表高是**定值**(setFixedHeight) ⇒ 可信; 页头+页脚给固定余量 (~2 行 + 1 行)
-            return max(200, int(self.t.height()) + 104)
+            _extra = 30 if getattr(self, "lbl_map", None) is not None and self.lbl_map.isVisible() else 0
+            return max(200, int(self.t.height()) + 104 + _extra)
         except Exception:                                                        # noqa: BLE001
             return int(self.sizeHint().height())
 

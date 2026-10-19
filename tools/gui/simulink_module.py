@@ -7,7 +7,7 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 """
 import json, math, random, re, time, os, sys, glob, tempfile
 from PyQt5.QtCore import (Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread,
-                        QMimeData, QByteArray)   # 📚 模块库拖拽 (2026-10-09)
+                        QMimeData, QByteArray, QObject, QEvent)   # 📚 模块库拖拽 (2026-10-09)
 from PyQt5.QtGui import QDrag                     # 📚 模块库拖拽
 from PyQt5.QtGui import (QPainter, QPainterPath, QPainterPathStroker, QColor, QPen, QBrush, QFont,
                          QPixmap, QTransform,  # 🐛 2026-08-18: 画布内嵌视频帧需要 (原只在 play_mlp_rollout 局部 import → _mlp_show NameError 静默)
@@ -5631,6 +5631,91 @@ class SimulinkModule(QWidget):
         """🌐 绑定 Model Engine (studio 传入 — 训练节点双击 → 引擎选择/启动训练)"""
         self._model_engine = engine
 
+    # ── 右栏 (主参数 M 页) 宽度: 落盘 / 恢复 / 双击切换 ──────────────────────────
+    def _split_state_path(self):
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "zmax_data", "ui_layout.json")
+
+    def _save_main_split(self):
+        try:
+            sp = getattr(self, "_main_splitter", None)
+            if sp is None:
+                return
+            _p = self._split_state_path()
+            os.makedirs(os.path.dirname(_p), exist_ok=True)
+            _d = {}
+            try:
+                if os.path.isfile(_p):
+                    _d = json.load(open(_p, encoding="utf-8")) or {}
+            except Exception:                                                    # noqa: BLE001
+                _d = {}
+            _d["main_split"] = [int(x) for x in sp.sizes()]
+            _tmp = _p + ".tmp"
+            open(_tmp, "w", encoding="utf-8").write(json.dumps(_d, ensure_ascii=False))
+            os.replace(_tmp, _p)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _restore_main_split(self):
+        """恢复上次拖到的两栏宽度 (窗口宽度变了就按比例缩放, 且右栏不小于 1080)。"""
+        sp = getattr(self, "_main_splitter", None)
+        if sp is None or sp.count() < 2:
+            return
+        try:
+            _d = json.load(open(self._split_state_path(), encoding="utf-8")) if \
+                os.path.isfile(self._split_state_path()) else {}
+        except Exception:                                                        # noqa: BLE001
+            _d = {}
+        _sz = _d.get("main_split")
+        _tot = max(1, sp.width())
+        if isinstance(_sz, list) and len(_sz) == 2 and sum(_sz) > 0:
+            _k = _tot / float(sum(_sz))
+            _right = max(1080, min(int(_sz[1] * _k), _tot - 320))
+            sp.setSizes([max(320, _tot - _right), _right])
+        else:
+            # 没有历史档时的默认宽度: 1250 (老倪 2026-10-19「现在的窗口太小」); 仍受 1080 下限与窗口宽度约束
+            _right = min(max(1250, int(_tot * 0.45)), max(1080, _tot - 320))
+            sp.setSizes([max(320, _tot - _right), _right])
+
+    def _hook_split_dblclick(self, split):
+        """双击分隔手柄: 主参数栏在「上次的宽 / 宽屏 (占 62%)」之间切换。"""
+        try:
+            _h = split.handle(1)
+            if _h is None:
+                return
+            _h.setToolTip("拖我 = 调主参数窗口大小 · 双击 = 宽屏/常规")
+            _h.setCursor(Qt.SplitHCursor)
+
+            class _F(QObject):
+                def __init__(self_, owner, sp, handle):
+                    super().__init__(handle)
+                    self_.owner, self_.sp = owner, sp
+                    self_.prev = None
+
+                def eventFilter(self_, obj, ev):
+                    try:
+                        if ev.type() == QEvent.MouseButtonDblClick:
+                            _t = max(1, self_.sp.width())
+                            _cur = self_.sp.sizes()
+                            if self_.prev is None:
+                                _wide = max(1080, int(_t * 0.62))
+                                self_.prev = list(_cur)
+                                self_.sp.setSizes([max(320, _t - min(_wide, _t - 320)),
+                                                   min(_wide, _t - 320)])
+                            else:
+                                self_.sp.setSizes(self_.prev)
+                                self_.prev = None
+                            self_.owner._save_main_split()
+                            return True
+                    except Exception:                                            # noqa: BLE001
+                        pass
+                    return False
+
+            self._split_filter = _F(self, split, _h)
+            _h.installEventFilter(self._split_filter)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def closeEvent(self, ev):
         """🛡 关闭时清理所有 QThread + 定时器 (2026-08-05 崩溃修复#3:
         SimulinkModule 主类原本无 closeEvent → _worker(CICDWorker QThread)/_acq_worker/
@@ -6211,6 +6296,25 @@ class SimulinkModule(QWidget):
             self.model_tree = ModelTreeDock(self)
             split.addWidget(self.model_tree)
             split.setStretchFactor(split.indexOf(self.model_tree), 0)
+            # 🖱 2026-10-19 老倪「主参数的窗口大小, 要可以用鼠标拖拽大小, 现在的窗口太小」:
+            #   画布↔右栏 这条分隔手柄原来只有 5px 且和底色同色 (看不见也没法抓)。现在:
+            #   ① 手柄 5→10px, 常态深灰带内描边、hover 变蓝、按住更亮;
+            #   ② 两栏宽度落盘 zmax_data/ui_layout.json (下次打开还是他拖到的宽度);
+            #   ③ 双击手柄 = 主参数栏在「常用宽 / 宽屏」之间切换 (不用精确拖)。
+            try:
+                split.setHandleWidth(10)
+                split.setChildrenCollapsible(False)
+                split.setStyleSheet(
+                    "QSplitter::handle:horizontal{background:#1b2430;"
+                    "border-left:1px solid #30363d;border-right:1px solid #30363d;}"
+                    "QSplitter::handle:horizontal:hover{background:#2f81f7;}"
+                    "QSplitter::handle:horizontal:pressed{background:#58a6ff;}")
+                self._main_splitter = split
+                split.splitterMoved.connect(lambda *a: self._save_main_split())
+                QTimer.singleShot(260, self._restore_main_split)
+                self._hook_split_dblclick(split)
+            except Exception as _ex3:                                            # noqa: BLE001
+                self._log(f"⚠️ 右栏拖拽手柄装配失败: {_ex3}")
             # ⚙️ 2026-10-09 老倪: 6 个运行开关搬进右侧「🔧 配置 · 运行开关」页
             #   (同一个 QCheckBox 对象 re-parent ⇒ 所有运行路径读 self.chk_* 零改动)
             try:
@@ -8649,6 +8753,7 @@ class SimulinkModule(QWidget):
         self.stop_sim()
 
     def stop_sim(self):
+        self._ui_run_publish(False)          # 2026-10-19: 停止 ⇒ 观察窗口立刻"没力"
         # 🐛 2026-09-09 🔄重启崩溃根因修复: 真实化引擎 daemon 线程必须真停 —
         #   置 _abort → run 循环退出 → 轮询 join (≤10s), 否则 🔄重启立即开新引擎 =
         #   双 metaworld env 并发 mujoco C segfault (崩溃日志: reset_model segfault 实锤)
@@ -14754,9 +14859,19 @@ class SimulinkModule(QWidget):
     def open_ar_page(self):
         """🥽 工具栏「AR」: 直接打开 AR 页面 (2026-10-19 老倪: 3D 里点 AR 半天没反应)。
 
-        非阻塞: 本方法几百毫秒返回, 页面在后台线程送出/拉起服务/切场景, 状态经
-        `ss_dreamview.ar_status_bus()` 的 pyqtSignal 排队回到 GUI 线程再写日志。
+        **内嵌浏览器优先** (老倪 2026-10-19「要走这条」): 控制台内的 QWebEngineView,
+        实测 create 0.08s / show 0.03s / 页面 load 0.29s ⇒ 和 3D 场景一样"点了就有";
+        窗口关掉不销毁, 再点 0.001s 就回来。内嵌起不来(没装 PyQtWebEngine/没 GL)才回退
+        外部 chromium 那条路(0.4~0.9s, 且可能被日常浏览器的单例卡住)。
         """
+        try:
+            sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
+            import ar_web_window as _aw                                          # noqa: PLC0415
+            if _aw.open_ar():
+                return "embedded"
+            self._log("🥽 内嵌浏览器不可用 ⇒ 回退外部窗口")
+        except Exception as _e:                                                 # noqa: BLE001
+            self._log("🥽 内嵌浏览器异常(%s) ⇒ 回退外部窗口" % type(_e).__name__)
         try:
             sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
             import ss_dreamview as _sd                                          # noqa: PLC0415
@@ -14971,7 +15086,69 @@ class SimulinkModule(QWidget):
             return os.environ.get("SS_L2_YOLO", "1") != "0"
         return False
 
+    # ── 2026-10-19 老倪: 「现在我还没有点击运行按钮, 应该没有运行的力啊」─────────────
+    #   根因: tools/ss_engine_loop.py 是**常驻后台** (10Hz 一直写 engine_latest/torque_live),
+    #   太阳系/万有引力表按"文件新鲜度"判在跑 ⇒ 没点运行也显示力和旋转。
+    #   正解: 控制台自己发一个运行态 **ui_run.json** (只有点 ▶ 运行 = true, 停止/关窗 = false),
+    #   观察窗口只认它; pid 死了也算没在跑 (崩溃/被杀不留假在跑)。
+    def _ui_run_publish(self, running):
+        try:
+            import json as _json
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _p = os.path.join(_root, "zmax_data", "ss_live", "ui_run.json")
+            os.makedirs(os.path.dirname(_p), exist_ok=True)
+            with open(_p, "w", encoding="utf-8") as f:
+                # 🎚 把**当前能力档位**一起发布: 运行 L2 时 L3/L4/L5 没被调用, 力就不该有输出
+                #   (老倪 2026-10-19: 「我现在运行的 L2, 为什么 L3 L4 L5 还有力的输出呢?」)
+                _cap = ""
+                try:
+                    _cap = str(self._cap_level_now() or "").upper()
+                except Exception:                                                # noqa: BLE001
+                    _cap = str(getattr(self, "_cap_level", "") or "").upper()
+                # L5 闭环在跑 ⇒ 这轮就是 L5 全链 (画布档位节点可能还停在 L4, 别拿它压掉 L5)
+                try:
+                    _l5p = os.path.join(_root, "zmax_data", "l5_loop", "state.json")
+                    if os.path.isfile(_l5p) and (time.time() - os.path.getmtime(_l5p)) < 900:
+                        if str((json.load(open(_l5p, encoding="utf-8")) or {}).get("status") or "").lower() == "running":
+                            _cap = "L5"
+                except Exception:                                                # noqa: BLE001
+                    pass
+                _json.dump({"running": bool(running), "ts": time.time(), "pid": os.getpid(),
+                            "task": str(getattr(self, "task_id", "") or ""), "cap_level": _cap,
+                            "src": "控制台 ▶ 运行/⏹ 停止"}, f, ensure_ascii=False)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _cap_publish(self):
+        """🎚 档位一变就落盘到 `ui_run.json.cap_level` —— 不必等 ▶/⏹。
+
+        为什么: 万有引力表/太阳系按 `ui_run.cap_level` 决定哪几层有输出。若只在 ▶ 时发布,
+        老倪切到 L5 后直接看表, 里面还是上一轮的 L2 ⇒ 表上写「缺 L5: 本次未调用」,
+        看起来就是「选了 L5 却没有 L5 的力」。只改 cap_level + ts, 不动 running/pid。
+        """
+        try:
+            import json as _json
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _p = os.path.join(_root, "zmax_data", "ss_live", "ui_run.json")
+            _d = {}
+            try:
+                with open(_p, encoding="utf-8") as f:
+                    _d = _json.load(f) or {}
+            except Exception:                                                    # noqa: BLE001
+                _d = {}
+            _d["cap_level"] = str(self._cap_level_now() or getattr(self, "_cap_level", "") or "").upper()
+            _d["ts"] = time.time()
+            _d.setdefault("src", "控制台 档位切换")
+            os.makedirs(os.path.dirname(_p), exist_ok=True)
+            _t = _p + ".tmp"
+            with open(_t, "w", encoding="utf-8") as f:
+                _json.dump(_d, f, ensure_ascii=False)
+            os.replace(_t, _p)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def _start_real_sim(self):
+        self._ui_run_publish(True)
         """🎥 真实化运行 (2026-09-04 老倪: YOLO 断点每步可进, 不造假)
         metaworld 真实物理 + 每帧 render→YOLO detect_3d (RealStateSpaceSim vision)
         每帧 ~0.5-1s → 后台线程跑 (主线程不冻结), QTimer 轮询完成 → 播放真实轨迹
@@ -15577,6 +15754,7 @@ class SimulinkModule(QWidget):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
         引擎 500 步纯 numpy <0.1s 快跑 → 收集时间序列 → QTimer 动画逐节点执行
         + 每轮打印真实数值 (距离/残差/接触概率/阶段), 完成自动汇总"""
+        self._ui_run_publish(True)           # 2026-10-19: 点 ▶ 运行 (快演档) 也发运行态
         # 🕹 v3.4.7 老倪: 点画布 ▶运行后 3D 视图被画布覆盖 — 运行开始把可见 3D 窗口拉前,
         #   3D 逐帧同步画布信号时用户看得见 (窗口仍可被点回, 不置顶不抢画布焦点)
         self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
@@ -15701,6 +15879,53 @@ class SimulinkModule(QWidget):
         self._ss_timer.start(getattr(self, "_ss_tick_ms", 30))
         self._log("▶ 仿真开始 · 物理世界: 末端 (0.10, -0.06, 0.12) → 孔位 (0.25, 0, 0.05) · 光模块插拔")
 
+    def _publish_trace_min(self, idx, tr):
+        """▶运行但没有可见 3D 窗口时, 由控制台**自己**发布一份 trace_live 快照。
+
+        为什么要它: `trace_live.json` 的唯一发布者是 3D 面板 (ss_dreamview.publish_trace_live,
+        在 set_frame 渲染时写)。不打开 3D 窗口 ⇒ 这份文件停在上一轮 ⇒ 太阳系/万有引力表读到的
+        "力"永远不更新 (老倪 2026-10-19: 「运行后合力怎么没跟随着变化?」)。
+        这里只发**能取到真值**的字段 (取不到就跳过, 不编)。
+        """
+        try:
+            from ss_dreamview import publish_trace_live, _stage_maps
+            import numpy as _np
+            _i = int(idx)
+            _t = tr.get("t")
+            _pay = {
+                "ts": time.time(),
+                "src": "控制台 ▶运行 · 无 3D 窗口时直发 (与 3D 面板同一字段名/同一单位)",
+                "帧": _i,
+                "总帧": int(len(_t) - 1) if _t is not None else _i,
+                "时间_s": round(float(_t[_i]), 3) if _t is not None and len(_t) > _i else None,
+                "八阶段表": _stage_maps()[2],
+                "scene": getattr(self, "_ss_scene", "") or "",
+            }
+            _st = tr.get("stage")
+            if _st is not None and len(_st) > _i:
+                _pay["阶段"] = str(_st[_i]).replace("阶段 ", "")
+            _x = tr.get("x")
+            if _x is not None and len(_x) > _i:
+                _v = _np.asarray(_x[_i], float)[:3]
+                _pay["末端"] = [float(_v[0]), float(_v[1]), float(_v[2])]
+                for _j, _ax in enumerate("xyz"):
+                    _pay["末端_%s" % _ax] = round(float(_v[_j]), 5)
+            for _nm, _k2 in (("前馈速度", "u_ff_vec"), ("安全边界", "u_limit_vec"), ("动作调制", "u_fuse_vec")):
+                _arr = tr.get(_k2)
+                if _arr is None or len(_arr) <= _i:
+                    continue
+                _v2 = _np.asarray(_arr[_i], float)
+                for _j, _ax in enumerate("xyz"):
+                    _pay["%s_%s_mms" % (_nm, _ax)] = round(float(_v2[_j]) * 1000.0, 2)
+            publish_trace_live(_pay)
+        except Exception as _e:                                                  # noqa: BLE001
+            if not getattr(self, "_trace_min_warned", False):
+                self._trace_min_warned = True
+                try:
+                    self._log("⚠️ 直发 trace_live 失败(太阳系力会停): %s" % _e)
+                except Exception:
+                    pass
+
     def _ss_tick(self):
         """播放一帧 (v3.4.8 平滑逐引擎步): 30ms/tick 线性推进引擎步 —
         3D set_frame **每 tick** (动作连续不跳帧); 节点动画轮转 + 演示执行 /
@@ -15790,6 +16015,7 @@ class SimulinkModule(QWidget):
                 pass
             # 🎯 2026-09-02 老倪「3D 视图显示状态与程序执行状态保持一致」:
             #   推引擎步 idx — **每 tick** (30ms/帧 → 3D 动作连续, 不再大步跳)
+            _vis = 0
             try:
                 import sip as _sip
                 for _w in getattr(self, "_ss_3d_windows", []):
@@ -15798,8 +16024,12 @@ class SimulinkModule(QWidget):
                     if getattr(_w, "tr", None) is not tr:
                         _w.set_trajectory(tr)
                     _w.set_frame(idx)
+                    _vis += 1
             except Exception:
                 pass
+            # 🔴 没有可见 3D 窗口 ⇒ trace_live 没人写 ⇒ 力的方向会冻住。控制台自己发一份。
+            if _vis == 0:
+                self._publish_trace_min(idx, tr)
             # 🔭 2026-09-05 老倪(信号同步严查): 直方图/归因/Scope 接同一播放帧流 —
             #   每 2 tick 从 probe_seq[idx] push (运行过程逐帧动态), Scope 光标到 idx (波形增长)
             try:
@@ -16611,6 +16841,7 @@ class SimulinkModule(QWidget):
             level = {"L4D": "L4"}.get(level, level if level in ("L2", "L3", "L4", "L5") else "L2")
         p["cap_level"] = level
         self._cap_level = level
+        self._cap_publish()          # 档位即时落盘 (表/太阳系按它决定哪几层有力输出)
         # 🐛 2026-09-09: 切档后重置单步/播放序 — 旧序按上一档位过滤 (L2 35节点),
         #   不重置则切 L3 后单步仍走 L2 序, 永远进不了 VLM/Flow-Matching (老倪实锤)
         _tmr = getattr(self, "_ss_timer", None)

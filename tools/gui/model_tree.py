@@ -1181,7 +1181,9 @@ class MasterParamMView(QWidget):
         # 🌍 2026-10-16 老倪: 太阳系下面那张「万有引力」表要看得全 (原来 2:1 ⇒ 表只剩 ~460px, 右下角总合力
         #   被窗口底边切掉, 他用画面当结果) ⇒ 上下比例交给**可拖的分隔条**, 见下面的 split_m。
         # 🪐 2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」⇒ 开机按存值回选 (关机前是太阳系就还是太阳系)
-        _want = ui_state_get(MPARAM_VIZ_KEY, 0)
+        # 🪐 2026-10-19 老倪「之前的太阳系，怎么没有了？」: 默认值原来是 0(四面板), 而 QSettings 里存的也是 0
+        #   ⇒ 开机看到的是四面板, 他以为太阳系被删了。太阳系是他要盯的主视图 ⇒ 默认 1。
+        _want = ui_state_get(MPARAM_VIZ_KEY, 1)
         if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
             self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读真源
 
@@ -1225,7 +1227,12 @@ class MasterParamMView(QWidget):
         #   ⇒ ① 太阳系固定 300px (给足高度, 不再被表挤);
         #     ② 整页只有**一条**右侧滚动条 (表自己 = 关, 太阳系不另开) ⇒ 上下看就用那一条;
         #     ③ 滚轮照旧就地吃掉 ⇒ 表不会被滚轮带着乱动。
-        self.viz_stack.setFixedHeight(300)
+        # 2026-10-19 老倪「太阳系字体太小看不到」: 300 → 360 (球更大), 差额从表的行高里省 (40→36, 右下角 124→104)
+        # 🖱 2026-10-19 老倪「主参数的窗口太小, 要能用鼠标拖拽大小」:
+        #   原来这里 setFixedHeight(360) 把太阳系钉死 ⇒ 右栏拖宽了太阳系也不会变大 (只是横向空出来)。
+        #   改成下限 320 + 让 _fit_heights() 给它"视口高 − 表块"的全部剩余高度 (上限 620) ⇒
+        #   右栏一拖宽, 太阳系就按新宽度撑满可用高度, 球/字同比放大。
+        self.viz_stack.setMinimumHeight(520)
         lay.addWidget(self.viz_stack, 1)         # 🪐 太阳系 = 唯一伸缩项 (吃满剩余高度)
         lay.addWidget(self.tabs, 0)              # 🌍 万有引力表: 按内容整块 (自己的滚动条 = 关)
         try:
@@ -1293,6 +1300,26 @@ class MasterParamMView(QWidget):
             vh = self._scroll.viewport().height()
             if vh <= 0:
                 return
+            # 🖱 2026-10-19 老倪「窗口太小, 要能拖拽」: 太阳系高度跟**页面宽度**走 (0.34×宽, 320~620),
+            #   右栏一拖宽它就跟着长高 (球/字同比放大); 默认 1080 宽时 = 367 ≈ 原来的 360, 整页不滚。
+            try:
+                # 🔴 2026-10-19 老倪「L5 的合力还是没有显示」实测: 右栏 1067 宽时
+                #   _want 被抬到 520, 而表要 ~400 ⇒ 两者相加超出视口, 表被挤到"折线以下"
+                #   (截图上只剩表头 + 图例两行)。这里先按"视口 − 表需要的整块 − 页头"封顶。
+                _gneed = 300
+                try:
+                    _g0 = getattr(self, "gravity", None)
+                    if _g0 is not None:
+                        _gneed = max(300, int(_g0.sizeHint().height()), int(_g0.height()))
+                except Exception:                                            # noqa: BLE001
+                    pass
+                _cap = max(300, int(vh) - _gneed - 80)
+                _want = int(max(300, min(820, int(self.width() * 0.46), _cap)))
+                if int(self.viz_stack.height()) != _want or \
+                        int(getattr(self.viz_stack, "maximumHeight")()) != _want:
+                    self.viz_stack.setFixedHeight(_want)
+            except Exception:                                                    # noqa: BLE001
+                pass
             _g = getattr(self, "gravity", None)
             need = 0
             if _g is not None:
@@ -1311,13 +1338,8 @@ class MasterParamMView(QWidget):
                 # 🪐 结构定稿 (2026-10-16): 太阳系 = 唯一伸缩项 (stretch=1) + **动态上限**
             #   = 视口 − (表块 + 头部)。两者配合: 它自动吃满剩余高度, 又不会把内容顶出视口
             #   ⇒ 表整块(含合力行/合力列)始终在视野内, 太阳系尽可能大 (实测 300 而不是地板 140)。
-            try:
-                _inner = self._scroll.widget()
-                _ih = int(_inner.height()) if _inner is not None else 0
-                _others = max(0, _ih - int(self.viz_stack.height()))
-                self.viz_stack.setMaximumHeight(max(150, int(vh) - _others))
-            except Exception:                                                    # noqa: BLE001
-                self.viz_stack.setMaximumHeight(620)
+            # (2026-10-19) 原来的"视口−表块"动态上限已由上面的 setFixedHeight 接管:
+            #   再调 setMaximumHeight 会把定高打掉 (固定高被压回 min/max=150) ⇒ 这里不再动它。
             # 🔒 表**永不被挤**: 页签块固定 = 表内容整块高 (含表头/页脚) ⇒ 最下面一行永远在块内,
             #    空间不够时由整页右侧那条拖动条兜 (老倪: 「最下面一行看不到」)。
             try:

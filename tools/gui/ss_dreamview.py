@@ -198,7 +198,10 @@ def publish_plan_from_vff(scene, i, t, x_truth, u_ff, min_interval=0.10):
                     ("桥接关: 位置按仿真 v_ff 原速积分 (只显示, 不驱动); 无旋转 (未建模); "
                      "与仿真真值偏差 %.1fmm" % drift),
         }
-        tmp = SS_PLAN_VFF + ".tmp"
+        # 2026-10-19 修: 原来固定 ".tmp" 一个名字 ⇒ 新旧两个控制台进程 (重启窗口) 同时写,
+        #   后写的 os.replace 先把 tmp 搬走, 先写的再 replace 就 FileNotFoundError (日志里真出现过,
+        #   这一次计划直接丢, 静默)。改成每进程一个 tmp 名, 并发写不互相吞文件。
+        tmp = "%s.tmp.%d" % (SS_PLAN_VFF, os.getpid())
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
         os.replace(tmp, SS_PLAN_VFF)
@@ -1326,6 +1329,20 @@ def ar_service_base(timeout: float = 2.0) -> str:
     return ""
 
 
+def ar_port_up(timeout: float = 0.15, port: int = 8797) -> bool:
+    """端口能不能连上 —— 只做 TCP 握手(实测 ~0.1ms 级), 用来决定"先出窗还是先起服务"。
+
+    为什么不复用 ar_service_base: 它打的是 /api/cams, 实测 **147ms**(要转发 8791 的 stats),
+    挡在"出窗"前面就是白等 —— 老倪 2026-10-19: 「前台的网页要立刻就弹出来」。
+    """
+    import socket as _s
+    try:
+        with _s.create_connection(("127.0.0.1", int(port)), timeout=timeout):
+            return True
+    except Exception:                                                           # noqa: BLE001
+        return False
+
+
 def ar_service_up(timeout: float = 2.0) -> bool:
     """AR 服务(8797)在不在 —— 读真值 /api/cams, 不猜(回环优先, 见上面现场坑)。"""
     return bool(ar_service_base(timeout))
@@ -1368,7 +1385,7 @@ def ar_window_seen(timeout: float = 6.0) -> str:
                 return _ln.split()[0]
         if _t.time() - _t0 >= float(timeout):
             return ""
-        _t.sleep(0.6)
+        _t.sleep(0.1)      # 0.6s 太粗: 窗口实测 0.38s 就映射出来了, 粗轮询白等半秒(老倪: 「要能马上打开页面」)
 
 
 def ar_conn_count():
@@ -1485,26 +1502,61 @@ def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
     return json.loads(_out[-1]) if _out else {"ok": False, "msg": "无输出: %s" % ((_p.stderr or "")[-160:],)}
 
 
-def ar_spawn_browser(url: str = AR_PAGE_URL) -> str:
+def _artrace(msg: str) -> None:
+    """AR 打开链路的**时间线日志**(老倪 2026-10-19: 「点了没反应, 得等好长时间」)。
+
+    只写一行一条, 用来回答"卡在哪一步": 点按钮 → spawn → 窗口出现 → 置前。
+    没有这个日志时, 浏览器为什么没出窗全靠猜(F12 也没有, 因为进程是 DEVNULL)。
+    """
+    try:
+        import time as _t
+        _p = os.path.join(_REPO, "zmax_data", "logs", "ar_launch.log")
+        os.makedirs(os.path.dirname(_p), exist_ok=True)
+        with open(_p, "a", encoding="utf-8") as f:
+            f.write("[%s] %s\n" % (_t.strftime("%H:%M:%S"), msg))
+    except Exception:                                                           # noqa: BLE001
+        pass
+
+
+AR_PROFILE_DIR = os.path.join(_REPO, "zmax_data", "ar_browser")
+
+
+def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False) -> str:
     """只把浏览器拉起来(**不等窗口**), 几十毫秒返回所用的程序名(空串=没有可用浏览器)。
 
-    2026-10-19 老倪: 「点击 3D场景中的 AR, 半天没反应」——根因是原来的 ar_open_url 会**逐个候选
-    等窗口出现(每个最多 6s)**, 而且整条流程跑在 GUI 主线程 ⇒ 界面直接冻住。
-    现在: 页面先开, 服务/场景/相机实况在后台线程做 (ar_launch)。
+    两级:
+      · `isolated=False`(默认, 快): 走用户那个已在跑的 chromium —— 实测出窗 **0.38s**。
+        代价: 命令是"转发给已在跑的实例", 那边忙/单例套接字不畅时窗口就是不出来
+        (实测 studio 子进程 execve 成功、线程起来了、30s 无窗)。
+      · `isolated=True`(兜底, 稳): 独立 profile(`zmax_data/ar_browser`), 窗口由这个进程自己建,
+        不看日常浏览器脸色; 冷启实测 **0.85s**。ar_launch 在"快路径 1.2s 没出窗"时自动走这一级。
+
+    2026-10-19 老倪: 「点击 3D场景中的 AR, 半天没反应」—— 原来还会**逐个候选等窗口(每个 6s)**,
+    而且整条流程跑在 GUI 主线程 ⇒ 界面直接冻住。现在: 页面先开, 其余在后台线程做。
     """
     import shutil as _sh
     import subprocess as _sp
-    _browser = [("-new-window", ("chromium", "google-chrome", "chromium-browser", "firefox"))]
-    for _flag, _names in _browser:
-        for _b in _names:
-            if not _sh.which(_b):
-                continue
-            _args = [_b] + (["--new-window", url] if _b != "firefox" else ["--new-window", url])
+    _prof = AR_PROFILE_DIR if isolated else ""
+    for _b in ("chromium", "google-chrome", "chromium-browser"):
+        if not _sh.which(_b):
+            continue
+        if _prof:
             try:
-                _sp.Popen(_args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
-                return _b
+                os.makedirs(_prof, exist_ok=True)
             except Exception:                                                   # noqa: BLE001
-                continue
+                _prof = ""
+        if _prof:
+            _args = [_b, "--user-data-dir=%s" % _prof, "--no-first-run",
+                     "--no-default-browser-check", "--window-size=1500,950", url]
+        else:
+            _args = [_b, "--new-window", url]
+        try:
+            _p = _sp.Popen(_args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+            _artrace("spawn pid=%s isolated=%s" % (_p.pid, bool(_prof)))
+            return "%s%s" % (_b, "(独立profile)" if _prof else "")
+        except Exception as _e:                                                 # noqa: BLE001
+            _artrace("spawn 失败 %s: %r" % (_b, _e))
+            continue
     for _b, _a in (("xdg-open", [url]), ("gio", ["open", url])):
         if _sh.which(_b):
             try:
@@ -1658,23 +1710,38 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
         import time as _t
         try:
             _t0 = _t.time()
-            _base = ar_service_base(0.8)
-            if _base:
-                _say("🥽 AR 服务在跑 (%s) · 正在打开页面" % _base)
-            else:
-                _say("🥽 AR 服务没起 ⇒ 正在启动服务 (最多 20s)…")
-                _up, _why = ar_ensure_service(tries=20)
-                _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
-            _win = ar_window_seen(0.1)      # 已经在开 ⇒ 搬过来抬到最前, 不再叠一个窗口
+            _artrace("click → _work 起 · url=%s" % AR_PAGE_URL)
+            # 🔴 2026-10-19 老倪: 「前台的网页要立刻就弹出来」—— **出窗是第一动作**:
+            #   ① 窗口已在 ⇒ 抬最前(实测 3ms) ② 没有 ⇒ 立刻 spawn(实测窗口 0.38s 出来),
+            #   服务探测(/api/cams 147ms)挪到 spawn 之后, 不许挡在"出窗"前面。
+            _win = ar_window_seen(0.05)
             if _win:
                 _up = ar_place_near_console(_win)
+                _artrace("已开窗口 → 抬前 %.2fs ok=%s" % (_t.time() - _t0, _up))
                 _say("🥽 AR 窗口已开着 ⇒ %s · %s" % ("已搬到控制台这块屏并置最前" if _up else "已置最前", AR_PAGE_URL))
             else:
+                if ar_port_up(0.15):
+                    _say("🥽 AR 服务在跑 (%s) · 正在打开页面" % (AR_SERVICE_URL or "http://127.0.0.1:8797"))
+                else:
+                    _say("🥽 AR 服务没起 ⇒ 正在启动服务 (最多 20s)…")
+                    _up, _why = ar_ensure_service(tries=20)
+                    _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
+                    ar_service_base(0.8)      # 起来后把 AR_SERVICE_URL 定到这次通的地址
                 _how = ar_spawn_browser(AR_PAGE_URL)
                 if not _how:
+                    _artrace("没有可用浏览器")
                     _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
                     return
-                _win = ar_window_seen(6.0)
+                # 🔴 spawn 一出就放锁: 后面等窗口/置前/切场景再慢, 也不许把下一次点击挡在门外
+                #    (原来 busy 要等整条流程跑完才放, 最长 6+20+3+4s ⇒ 期间点几次都"没反应")
+                _AR_RUNNING["busy"] = False
+                _win = ar_window_seen(1.2)
+                if not _win:      # 快路径(共享实例)没出窗 ⇒ 独立 profile 兜底, 亲眼确认窗口出来才算完
+                    _artrace("快路径 1.2s 无窗 ⇒ 走独立 profile 兜底")
+                    _how2 = ar_spawn_browser(AR_PAGE_URL, isolated=True)
+                    _how = (_how + " → " + _how2) if _how2 else _how
+                    _win = ar_window_seen(5.0)
+                _artrace("窗口 %s · spawn 到出窗 %.2fs" % (("出现 " + str(_win)) if _win else "没出现", _t.time() - _t0))
                 _up = ar_place_near_console(_win) if _win else False
                 _say("🥽 页面已送出 (%s, %.1fs)%s · %s" % (
                     _how, _t.time() - _t0,

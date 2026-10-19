@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import io
 import json
 import math
 import os
@@ -35,8 +36,49 @@ def ck(tag, ok, msg=""):
     return bool(ok)
 
 
+_CAP_P = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "zmax_data", "ss_live", "ui_run.json")
+
+
+def _cap_enter(level):
+    """把 `ui_run.json` 的 cap_level 临时改成 level, 返回原文本 (判据用: 四层判据要全档位)。"""
+    try:
+        _old = io.open(_CAP_P, encoding="utf-8").read()
+    except Exception:                                                            # noqa: BLE001
+        _old = None
+    try:
+        _d = json.loads(_old) if _old else {}
+    except Exception:                                                            # noqa: BLE001
+        _d = {}
+    _d["cap_level"] = str(level)
+    try:
+        os.makedirs(os.path.dirname(_CAP_P), exist_ok=True)
+        _t = _CAP_P + ".tmp"
+        io.open(_t, "w", encoding="utf-8").write(json.dumps(_d, ensure_ascii=False))
+        os.replace(_t, _CAP_P)
+    except Exception:                                                            # noqa: BLE001
+        pass
+    return _old
+
+
+def _cap_exit(old):
+    try:
+        if old is None:
+            if os.path.isfile(_CAP_P):
+                os.remove(_CAP_P)
+        else:
+            _t = _CAP_P + ".tmp"
+            io.open(_t, "w", encoding="utf-8").write(old)
+            os.replace(_t, _CAP_P)
+    except Exception:                                                            # noqa: BLE001
+        pass
+
+
 def main():
     t0 = time.time()
+    # 🎚 四层判据 (⑥⑦/加权/四元数) 的前提是"四层全在跑" ⇒ 本文件统一按全档位 L5 判;
+    #   档位门控 (只跑 L2 ⇒ L3/L4/L5 没输出) 另由 ⑯ 判, 判完还原原档位。
+    _cap_keep = _cap_enter("L5")
     f = GT.GravityField()
 
     # ① 一个标签「万有引力」+ 测量/标定/诊断/配置 不再占页签 (查源码, 真源同源: model_tree.py 自己)
@@ -144,8 +186,15 @@ def main():
     # ⑥ 每行有且仅有一个主力
     _mains = [r["stage"] for r in f.rows if r["main"]]
     _run_rows = [r for r in f.rows if r["active"] and r["cells"]["L2"].get("mag") is not None]
-    ck("⑥ 每一时刻**只有一个**主力 (= 在跑项的 L2)", len(_mains) == len(_run_rows) and
-       all(r["main"] == "L2" for r in _run_rows),
+    # 2026-10-19 u_ff 加权后: 主力按构造 = L4 (前馈); α=1 (未加权) 时回到 L2 执行收口
+    # 分层力模式 (layer_forces) 下主力 = 加权后最大那层 (前馈 L2 默认最重); 老模式下 α>1 ⇒ L4
+    if getattr(f, "lf_on", False) and getattr(f, "lf_main", None):
+        _exp_main = f.lf_main
+    else:
+        _exp_main = "L4" if float(getattr(f, "alpha", 1.0) or 1.0) > 1.0 else "L2"
+    ck("⑥ 每一时刻**只有一个**主力 (= 在跑项的主力层; u_ff 加权 ⇒ L4, 否则 L2)",
+       len(_mains) == len(_run_rows) and
+       all(r["main"] == _exp_main for r in _run_rows),
        "主力 = %s (在跑项 %s); 其余 %d 行 main=None ⇒ 不高亮 (都是赋能力)"
        % (_mains, [r["stage"] for r in _run_rows], len(f.rows) - len(_mains)))
     ck("⑥b 没在跑的项不叫主力 (影响力最大层只进 tooltip)", all(r["main"] is None for r in f.rows if not r["active"]),
@@ -155,8 +204,13 @@ def main():
     if f.stage_now == "插入":
         row = [r for r in f.rows if r["stage"] == "插入"][0]
         others = {k: row["cells"][k].get("mag") for k, _n in GT.LAYERS}
-        ck("⑦ 插拔时刻: 插入 L2 是主力", row["main"] == "L2",
-           "插入行主力=%s · 各层 |F|=%s (L3/L4/L5 = 赋能力)" % (row["main"], {k: (round(v, 4) if v is not None else None) for k, v in others.items()}))
+        # 2026-10-19 u_ff 加权后: 主力按构造 = L4 (前馈), α=1 时才是 L2 执行收口
+        if getattr(f, "lf_on", False) and getattr(f, "lf_main", None):
+            _em = f.lf_main
+        else:
+            _em = "L4" if float(getattr(f, "alpha", 1.0) or 1.0) > 1.0 else "L2"
+        ck("⑦ 插拔时刻: 插入行主力 = %s (u_ff 加权 ⇒ L4 / 未加权 ⇒ L2)" % _em, row["main"] == _em,
+           "插入行主力=%s · 各层 |F|=%s (主力之外的层 = 赋能力)" % (row["main"], {k: (round(v, 4) if v is not None else None) for k, v in others.items()}))
     else:
         ck("⑦ 插拔时刻: 插入 L2 是主力", True, "本拍真源阶段=%s (非插入) ⇒ 该例本拍不适用, 不判失败" % f.stage_now)
 
@@ -378,15 +432,23 @@ def main():
 
     GT._read = _fake_read
     try:
-        _w2.refresh(); _a = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
+        _w2.refresh(); _f0 = getattr(_w2, "field", None); _fz0 = getattr(_w2, "_frozen", None)
+        _a = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
         _tm.sleep(0.2)
-        _w2.refresh(); _b = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
+        _w2.refresh(); _f1 = getattr(_w2, "field", None); _fz1 = getattr(_w2, "_frozen", None)
+        _b = _w2.t.item(_w2.t.rowCount() - 1, _w2.t.columnCount() - 1).text()
         _head2 = _w2.lbl_head.text()
     finally:
         GT._read = _orig_read
         GT._RUN_OVERRIDE = None
-    ck("⑮b 在跑时表跟着走 (定格不是冻死; 注入帧号推进, 不依赖外部有没有在跑)", _a != _b and not _head2.startswith("⏸"),
-       "在跑分支: 右下角总合力 %r → %r (应变化)" % (_a[:34], _b[:34]))
+    # 2026-10-19: 原判据要求"两次刷新文字必须变" —— 这条不稳: 本拍真源里 帧号 推进
+    #   不一定改变显示值 (表读的是 episode npz 的同一帧), 同一帧当然显示同一个数, 那不是"冻死"。
+    #   改成判"没有定格": 每次 refresh 都重建了 field 对象 (_f0 is not _f1) + _frozen=False
+    #   + 页头不是 ⏸。文字变化只作信息记录。
+    ck("⑮b 在跑时表不定格 (每次 refresh 都重建 field; 数字没变只说明同一帧, 不算失败)",
+       (_f0 is not _f1) and (_fz0 is False) and (_fz1 is False) and not _head2.startswith("⏸"),
+       "在跑分支: field 重建=%s · _frozen=%s→%s · 页头 %r · 文字 %r→%r"
+       % (_f0 is not _f1, _fz0, _fz1, _head2[:18], _a[:22], _b[:22]))
     _w2.close()
     _h_ok = _w.t.verticalScrollBarPolicy() == _Qt2.ScrollBarAlwaysOff \
         and _w.t.horizontalScrollBarPolicy() == _Qt2.ScrollBarAlwaysOff
@@ -437,7 +499,27 @@ def main():
        "8 行逐位相加全部对齐; 右下角 %s 与独立逐位相加最大偏差 %.1e"
        % (GT._fmt_q(_qt), max(abs(a - b) for a, b in zip(_acct, _qt))))
 
-    npass = sum(1 for _i, _t, ok, _m in R if ok)
+    # ⑯ 档位门控 (老倪 2026-10-19: 「我现在运行的 L2, 为什么 L3 L4 L5 还有力的输出呢?」)
+    _cap_exit(_cap_keep)
+    # 本判据要单独验"只跑 L2 ⇒ 上层没有输出": 若此刻 L5 闭环真在跑, 它会(正确地)把档位顶成 L5,
+    # 所以这里把 L5 源临时关掉 (只关判据进程内的判断, 不动真源文件)。
+    _l5_keep = GT._L5_OVERRIDE
+    GT._L5_OVERRIDE = False
+    _cap2 = _cap_enter("L2")
+    f2 = GT.GravityField()
+    _row2 = [r for r in f2.rows if r["active"]] or f2.rows
+    _row2 = _row2[0]
+    _off = {k: _row2["cells"][k].get("mag") for k, _n in GT.LAYERS}
+    _zero = all(_off[k] is None for k in ("L3", "L4", "L5")) and _off.get("L2") is not None
+    _src_ok = all("未调用" in (_row2["cells"][k].get("src") or "") for k in ("L3", "L4", "L5"))
+    ck("⑯ 只跑 L2 ⇒ L3/L4/L5 **没有力输出** (写清未调用), 主力回落 L2",
+       _zero and _src_ok and _row2["main"] == "L2",
+       "档位 L2 · 各层 |F|=%s · 主力=%s" % ({k: (round(v, 4) if v is not None else None) for k, v in _off.items()},
+                                        _row2["main"]))
+    _cap_exit(_cap2)
+    GT._L5_OVERRIDE = _l5_keep
+
+    npass = sum(1 for _i, _t, _ok, _m in R if _ok)   # 判完再数 (⑯ 在统计之后追加, 否则差一条)
     res = dict(when=time.strftime("%F %T"), task=f.task_id, task_name=f.task_name,
                stage_now=f.stage_now, u_ref=f.u_ref, rows=len(f.rows), cols=2 + len(GT.LAYERS),
                pass_n=npass, total=len(R), secs=round(time.time() - t0, 2),

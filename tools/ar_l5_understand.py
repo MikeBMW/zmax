@@ -32,6 +32,48 @@ def _load_by_path(name: str, path: str):
     return m
 
 
+def _publish_scene_vec(boxes, w, h, model):
+    """把 L5 的场景理解落成**一个三维方向矢量** (给分层力 L5 用)。
+
+    口径 (只做能追溯到画面的换算, 不编):
+      取面积最大的目标框 → 框心相对画面中心的偏移 (归一化 dx,dy) → 相机系方向 (dx, -dy, 0) 归一
+      → 乘该框置信度 (没有置信度就按 0.5, 并在 src 里写明)。
+    输出 zmax_data/ss_live/l5_scene_vec.json:
+      {"vec":[x,y,z], "conf":c, "ts":..., "src":"ar_l5_understand:<model>", "box":[cx,cy,bw,bh], "w":w, "h":h}
+    没有框 ⇒ vec=null (调用方据此写"缺 L5", 不拿 0 冒充)。
+    """
+    try:
+        import math as _m
+        import time as _t
+        vec, conf, bb = None, 0.0, None
+        if boxes:
+            def _area(b):
+                try:
+                    return float(b.get("w") or b.get("bw") or 0) * float(b.get("h") or b.get("bh") or 0)
+                except Exception:                                                # noqa: BLE001
+                    return 0.0
+            b = max(boxes, key=_area)
+            cx = float(b.get("cx") or b.get("x") or 0) + float(b.get("w") or b.get("bw") or 0) / 2.0
+            cy = float(b.get("cy") or b.get("y") or 0) + float(b.get("h") or b.get("bh") or 0) / 2.0
+            conf = float(b.get("conf") or b.get("score") or 0.5)
+            dx = (cx - w / 2.0) / max(1.0, w / 2.0)
+            dy = (cy - h / 2.0) / max(1.0, h / 2.0)
+            n = _m.hypot(dx, dy)
+            vec = [0.0, 0.0, 0.0] if n < 1e-6 else [dx / n * conf, -dy / n * conf, 0.0]
+            bb = [round(cx, 1), round(cy, 1), b.get("w") or b.get("bw"), b.get("h") or b.get("bh")]
+        out = {"ts": _t.time(), "vec": vec, "conf": conf, "box": bb, "w": w, "h": h,
+               "src": "ar_l5_understand:%s" % (model or "SceneVLM")}
+        path = os.path.join(ROOT, "zmax_data", "ss_live", "l5_scene_vec.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False)
+        os.replace(tmp, path)
+        return out
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--jpg", required=True, help="要理解的图(与页面看到的是同一路的快照)")
@@ -81,6 +123,10 @@ def main() -> int:
                 boxes = (parse(txt) or {}).get("objects") or []
             except Exception:                                                     # noqa: BLE001
                 boxes = []
+        try:
+            _publish_scene_vec(boxes, a.w, a.h, (out.get("model") or ""))   # L5 分层力的真源
+        except Exception:                                                        # noqa: BLE001
+            pass
         out.update({"ok": True, "text": txt, "boxes": boxes, "n_boxes": len(boxes),
                     "model": r.get("src"), "text_len": len(txt)})
     except Exception as e:                                                        # noqa: BLE001

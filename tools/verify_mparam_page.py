@@ -52,8 +52,12 @@ _id, _nm, _p = (n or {}).get("id", ""), (n or {}).get("name", ""), ((n or {}).ge
 chk("主参数" in _nm and "cfg_snapshot" in _p,
     f"节点身份: 名字含「主参数」+ params 带 cfg_snapshot (id={_id} 由 load_flow_file 重编, 故不按 id 判)")
 
-print("\n② 4 页签 + 逐值比对 (页上显示 == 节点快照)")
-chk(v.tabs.count() == 4, f"页签数 = {v.tabs.count()} {[v.tabs.tabText(i) for i in range(v.tabs.count())]}")
+print("\n② 页签 + 逐值比对 (页上显示 == 节点快照)")
+# 2026-10-19: 老倪 2026-10-16 已把「测量/标定/诊断/配置」四个页签合成**一个**「🌍 万有引力」
+#   (原话: 太阳系下面的参数区不再分「测量/标定/诊断/配置」, 只要一个标签「万有引力」)
+#   ⇒ 判据跟着改成"正好 1 个页签且叫万有引力"; 四套表的**内容**仍逐值核 (下面的 measure/calib/diag/cfg 行检查不变)。
+chk(v.tabs.count() == 1 and "万有引力" in v.tabs.tabText(0),
+    f"页签数 = {v.tabs.count()} {[v.tabs.tabText(i) for i in range(v.tabs.count())]} (应为 1 个「🌍 万有引力」)")
 chk(v.lbl_hd.text().startswith("🧮 主参数 M"), f"页头 = {v.lbl_hd.text()}")
 snap = NODE_PARAMS.get("cfg_snapshot", {})
 def rows(tab):

@@ -35,7 +35,7 @@ import time
 
 import numpy as np
 from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
-from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QRadialGradient
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QRadialGradient, QRegion
 from PyQt5.QtWidgets import QSizePolicy, QWidget
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -79,6 +79,9 @@ VIOLET = QColor("#a371f7")
 FOOT = QColor("#aebcc8")                      # 2026-10-16 看图: 底部图注原用 DIM(#8b949e) 对比度低
 RED = QColor("#f85149")
 BLUE = QColor("#4da3ff")
+
+
+_QUAT_FIELD = None          # 万有引力表的 GravityField 缓存 (太阳系四元数从这里取, 不重复建)
 
 
 def _load_by_path(modname, relpath, label):
@@ -153,6 +156,28 @@ class OrbitalArchData:
         self.frames = self._frames()
 
     # ── 读真源 ────────────────────────────────────────────────────────────
+    def reload(self):
+        """重读全部真源 (2026-10-19 修: 原来只在 __init__ 读一次 ⇒ 500ms 刷新拿到的还是死值,
+        「模型停了界面也不变」)。canvas 138KB/2ms, 整体 ≈4ms, 2Hz 重读对主线程无感。"""
+        self.err = []
+        self.ages = {}
+        self.now = time.time()
+        self.canvas = self._j("data/database/zmax/sources/canvas/state_space_obs.json")
+        self.mani = self._j("config/calib/zmax_manifold.json")
+        self.engine = self._j("zmax_data/ss_live/engine_latest.json")
+        self.torque = self._j("zmax_data/ss_live/torque_live.json")
+        self.skills = self._j("zmax_data/ss_live/skill_latest.json")
+        self.skerr = self._j("zmax_data/ss_live/skill_error.json")
+        self.skphys = self._j("zmax_data/ss_live/skill_phys.json")
+        self.traj = self._j("data/database/zmax/sources/canvas/ss_traj_last.json")
+        self.nodes = {n.get("id"): n for n in (self.canvas.get("nodes") or [])} if self.canvas else {}
+        self.links = list(self.canvas.get("links") or []) if self.canvas else []
+        self.link_set = {(l.get("f"), l.get("t")) for l in self.links}
+        try:
+            self.frames = self._frames()
+        except Exception:                                                    # noqa: BLE001
+            self.frames = None
+
     def _j(self, rel):
         p = os.path.join(self.root, rel)
         try:
@@ -216,6 +241,8 @@ class OrbitalArchData:
 
     # ── 组装: 每个天体的真值 ──────────────────────────────────────────────
     def build(self):
+        if not getattr(self, "_no_reload", False):
+            self.reload()                     # 2026-10-19: 每拍重读真源 (判据可用 _no_reload 冻结输入)
         eng, tq, sk, se, sp = self.engine or {}, self.torque or {}, self.skills or {}, self.skerr or {}, self.skphys or {}
         stage = str(tq.get("stage") or (sk.get("cur_stage") if isinstance(sk, dict) else "") or "")
         if not stage:
@@ -312,7 +339,224 @@ class OrbitalArchData:
         self.body["sats"] = {"名": "原子技能", "真源": "skill_phys.json (在职 SK↔段) + skill_latest.json + 标定真源 zmax_skill_physics.json",
                              "list": sats, "active": act.get("SK"), "n": len(sats), "n_calib": n_cal,
                              "sk_ids": [d["SK"] for d in sats]}
+        self._compute_state()            # 2026-10-19: 每体运行态 + L2~L5 层状态 (帧龄/在跑/输出)
+        # 🔴 2026-10-19 老倪「现在没有运行, 为什么力的方向还在变化?」
+        #   根因: 两份力数据每 500ms 从 trace_live/表里重算, 而后台常驻 ss_engine_loop 10Hz 一直在写文件
+        #   ⇒ 没点 ▶ 运行, 力的方向照样在转。修法: **未运行一律不重算** (定格在最后一次运行的值),
+        #   连 q̂ / S³ 面板 / 姿态轴一起停 —— 数不许比画面更"活"。
+        self._build_tok = getattr(self, "_build_tok", 0) + 1
+        self.frozen = (not self.running)
+        if self.running:
+            self._compute_quat()             # 每层归一四元数 (老倪「将四元数显示在太阳系」)
+            self._compute_earth_forces()     # 地球的合力/四层分力 (老倪「以地球为主要观察对象」)
+        elif not hasattr(self, "fE"):
+            self.fE = {}
+            self.quat = {}
         return {"checked": checked, "stage": stage, "mf": mf, "mf_note": mf.get("note", "")}
+
+    def _field(self):
+        """取万有引力表 (GravityField)。**每次 build 只 reload 一次** ——
+        `_compute_quat` 与 `_compute_earth_forces` 共用同一拍, 谁也不许拿上一次 build 的旧表。
+        (2026-10-19 老倪「运行后合力怎么没跟着变」: earth_forces 只用了模块级缓存、从不 reload,
+         进程活久了合力就永远停在第一次构造的那一帧。)"""
+        global _QUAT_FIELD
+        import gravity_table as _gt
+        _tok = getattr(self, "_build_tok", None)
+        if _QUAT_FIELD is None:
+            _QUAT_FIELD = _gt.GravityField()
+        elif getattr(self, "_field_tok", None) != _tok:
+            _QUAT_FIELD.reload()
+        self._field_tok = _tok
+        return _QUAT_FIELD
+
+    def _compute_earth_forces(self):
+        """地球这一刻受的力 (老倪 2026-10-19: 「地球的引力箭头应该大一些…就是前馈加速器的自己的合力,
+        是主力; 而太阳力, 行星力, 都是组成地球合力的分力」)。
+
+        口径 (全部来自万有引力表同一拍, 不另算):
+          · 合力  F合 = 该行四层矢量的和 (row_resultant) —— 就是**前馈节点这一刻输出方向上的合力**;
+          · 分力  L2/L3/L4/L5 = 该行每层的矢量 (L2 = 前馈/主力; L3 = DiT; L4 = 性能流形; L5 = 流形中心);
+          · Δ主↔合 = 表里的 dev (°) —— 主力方向与合力方向的夹角; 一致度 = 表里的 coh。
+        """
+        try:
+            import gravity_table as _gt
+            _f = self._field()                       # 同一拍 (见 _field)
+            st, _lay = _f.dominant_now()
+            row = next((r for r in _f.rows if r.get("stage") == st), None) or (_f.rows[0] if _f.rows else None)
+            if row is None:
+                self.fE = {}
+                return
+            _names = {"L2": ("前馈加速器 (主力)", "earth"), "L3": ("DiT 动作头", "mars"),
+                      "L4": ("性能流形", "jupiter"), "L5": ("流形中心 (太阳)", "sun")}
+            comps = []
+            for L in ("L5", "L4", "L3", "L2"):
+                c = (row.get("cells") or {}).get(L) or {}
+                v = c.get("vec")
+                if not v:
+                    continue
+                q, _nn, _ss = _gt._qnorm(c.get("q"))
+                nm, bk = _names[L]
+                comps.append({"L": L, "name": nm, "body": bk, "vec": [float(x) for x in v],
+                              "mag": float(c.get("mag") or 0.0), "q": q, "norm": _nn,
+                              "main": (L == row.get("main"))})
+            qv = row.get("vec") or [0.0, 0.0, 0.0]
+            qq, _qn, _qs = _gt._qnorm(row.get("q"))
+            self.arrow_px = float(getattr(_f, "arrow_px", 300.0) or 300.0)
+            self.arrow_ref = float(getattr(_f, "arrow_ref", 1.0) or 1.0)
+            self.arrow_max = float(getattr(_f, "arrow_max", 168.0) or 168.0)
+            self.alpha = float(getattr(_f, "alpha", 1.0) or 1.0)
+            self.cap_level = str(getattr(_f, "cap_level", "") or "")
+            self.layers_on = dict(getattr(_f, "layers_on", {}) or {})
+            self.fE = {"stage": st, "vec": [float(x) for x in qv], "mag": float(row.get("mag_res") or 0.0),
+                       "q": qq, "norm": _qn, "s2": _qs, "dev": float(row.get("dev") or 0.0),
+                       "coh": float(row.get("coh") or 0.0), "comps": comps,
+                       "day": bool(getattr(_f, "running", False))}
+        except Exception as _e:                                                  # noqa: BLE001
+            self.fE = {}
+            self.fE_err = str(_e)
+
+    def _compute_quat(self):
+        """每层 (L2~L5) 的**归一四元数** q̂ —— 取万有引力表该层**列合力**的力四元数再归一。
+
+        为什么归一: 表里的"力四元数" = (|F|/u_ref, Fx/u_ref, Fy/u_ref, Fz/u_ref), 故意不归一(要能逐位
+        对账); 而"状态方向"要的是 S³ 上的单位四元数 ⇒ 这里给 q̂ = q/‖q‖ (各项平方和 = 1, 矢量部分 =
+        该层合力方向), ‖q‖ 另存 (那是力度, 悬停卡里给)。
+        """
+        try:
+            import gravity_table as _gt
+            _f = self._field()                       # 同一拍 (见 _field)
+            self.quat = {}
+            for _L in ("L5", "L4", "L3", "L2"):
+                _q, _coh = _f.col_resultant(_L)
+                _u, _nn, _ss = _gt._qnorm(_q)
+                _ok = bool(_nn and _nn > 1e-9)
+                self.quat[_L] = {"q": (_u if _ok else None), "norm": _nn, "s2": _ss,
+                                 "coh": _coh, "live": bool(getattr(_f, "running", False))}
+        except Exception as _e:                                                  # noqa: BLE001
+            self.quat = {}
+            self.quat_err = str(_e)
+
+    # ── 2026-10-19 老倪: 「太阳系窗口是观察 L2~L5 模型的主要窗口, 要反映模型实际状态」──
+    #   口径: 每体只认**它自己那一份真源**的 ts; 没有 ts 就用文件 mtime; 都没有 ⇒ 报"缺失"。
+    #   不许用"引擎在跑"去冒充"这一层在跑" (那是假的: L2/L3/L4 可能根本没被调用)。
+    STATE_TTL_LIVE = 2.5      # ≤2.5s = 在跑
+    STATE_TTL_STALE = 60.0    # ≤60s  = 陈旧 (能看到, 但不能当实时)
+
+    @staticmethod
+    def _age_of(path):
+        try:
+            return max(0.0, time.time() - os.path.getmtime(path))
+        except Exception:                                                    # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _state_of(age):
+        if age is None:
+            return "off", "无真源"
+        if age <= OrbitalArchData.STATE_TTL_LIVE:
+            return "live", "在跑"
+        if age <= OrbitalArchData.STATE_TTL_STALE:
+            return "stale", "陈旧"
+        return "off", "离线"
+
+    def _layers_live(self):
+        """L5/L4/L3/L2 逐层: 最近一次**真调用**的 ok/src/ms + 帧龄 (真源 layer_calls.jsonl 末行)。
+        这个文件是引擎每拍落一条的调用流水; 停写 ⇒ 界面必须显示"陈旧/离线", 不能拿旧数当在跑。"""
+        p = os.path.join(self.root, "zmax_data", "ss_live", "layer_calls.jsonl")
+        rec = None
+        try:
+            with open(p, "rb") as f:                       # 只读尾部 8KB, 47MB 的日志不整读
+                f.seek(0, os.SEEK_END)
+                n = f.tell()
+                f.seek(max(0, n - 8192))
+                tail = f.read().decode("utf-8", "replace").strip().split("\n")
+            for line in reversed(tail):
+                try:
+                    rec = json.loads(line)
+                    break
+                except Exception:                                          # noqa: BLE001
+                    continue
+        except Exception:                                                  # noqa: BLE001
+            rec = None
+        age = None
+        if rec and isinstance(rec.get("ts"), (int, float)):
+            age = max(0.0, time.time() - float(rec["ts"]))
+        if age is None:
+            age = self._age_of(p)
+        k, txt = self._state_of(age)
+        out = {"age": age, "k": k, "txt": txt, "cycle": (rec or {}).get("cycle"),
+               "pipe_calls": (rec or {}).get("pipe_calls"), "src": p}
+        for name in ("L5", "L4", "L3", "L2"):
+            d = (rec or {}).get("layers", {}).get(name) or {}
+            out[name] = {"ok": d.get("ok"), "src": d.get("src"), "ms": d.get("ms")}
+        return out
+
+    def _ui_run(self):
+        """(是否在跑, 说明) —— 真源 = 控制台点 ▶ 运行 时写的 zmax_data/ss_live/ui_run.json。
+        为什么不用文件新鲜度: tools/ss_engine_loop.py / ss_fw_trace_pub.py 是**常驻后台**,
+        engine_latest/torque_live 一直在写 ⇒ 没点运行也会"看着在跑"(老倪 2026-10-19 指出的)。
+        pid 不在了也判没在跑 (崩溃/被杀不留假在跑)。"""
+        p = os.path.join(self.root, "zmax_data", "ss_live", "ui_run.json")
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:                                                    # noqa: BLE001
+            return False, "未点 ▶ 运行"
+        if not d.get("running"):
+            return False, "未运行 (没点 ▶ 运行)"
+        try:
+            os.kill(int(d.get("pid") or 0), 0)
+        except Exception:                                                    # noqa: BLE001
+            # 控制台重启过 ⇒ pid 残留; 只要 L5 闭环独立进程还在跑, 就算在跑 (档位 L5)
+            try:
+                _l5p = os.path.join(self.root, "zmax_data", "l5_loop", "state.json")
+                if os.path.isfile(_l5p) and (time.time() - os.path.getmtime(_l5p)) < 900:
+                    if str((json.load(open(_l5p, encoding="utf-8")) or {}).get("status") or "").lower() == "running":
+                        return True, "运行中 (L5 闭环独立进程)"
+            except Exception:                                                # noqa: BLE001
+                pass
+            return False, "控制台已退出 (残留标记)"
+        return True, "运行中 (pid %s)" % d.get("pid")
+
+    def _compute_state(self):
+        root = self.root
+        ages = {
+            "engine": self._age_of(os.path.join(root, "zmax_data", "ss_live", "engine_latest.json")),
+            "torque": self._age_of(os.path.join(root, "zmax_data", "ss_live", "torque_live.json")),
+            "skill":  self._age_of(os.path.join(root, "zmax_data", "ss_live", "skill_latest.json")),
+            "skerr":  self._age_of(os.path.join(root, "zmax_data", "ss_live", "skill_error.json")),
+        }
+        # 体 ← 它自己的真源 (太阳: 引擎+扭矩两条都新鲜才算在跑; 水星/木星: 吃引擎这一帧的位姿)
+        src = {"sun": ("engine", "torque"), "mercury": ("engine",), "jupiter": ("engine",),
+               "mars": ("engine",), "earth": ("skill",), "moon": ("skerr",), "sats": ("skill",)}
+        self.running, self.run_note = self._ui_run()
+        for body, keys in src.items():
+            d = self.body.get(body)
+            if not isinstance(d, dict):
+                continue
+            _ags = [ages[k] for k in keys if ages.get(k) is not None]
+            age = max(_ags) if _ags else None
+            k, txt = self._state_of(age)
+            if not self.running:
+                # 2026-10-19 老倪: 「还没点运行, 应该没有力」⇒ 一律未运行 (文件再新也是后台常驻写的)
+                k, txt = "off", "未运行"
+            d["st"] = {"k": k, "txt": txt, "age": age,
+                       "src": " + ".join("zmax_data/ss_live/%s.json" % x for x in
+                                         {"engine": ["engine_latest"], "torque": ["torque_live"],
+                                          "skill": ["skill_latest"], "skerr": ["skill_error"]}[keys[0]])}
+        # 驱动扭矩口径 (老倪问过: 主参数 M 与模型张量是否一致) —— 直接把口径写在视图上, 不让人猜
+        tq = self.torque or {}
+        self.drv = {
+            "src": str(tq.get("source") or "")[:400],
+            "x_source": str(tq.get("x_source") or ""),
+            "clip": bool(tq.get("clipped")),
+            "T": tq.get("torque_norm"), "T_max": tq.get("t_max"),
+            "model_tensor": bool(tq.get("model_tensor") or tq.get("tensor_src")),
+        }
+        self.layers = self._layers_live()
+        if not self.running:
+            self.layers["k"], self.layers["txt"] = "off", "未运行 (没点 ▶ 运行)"
+
 
     def _active_skill(self, sk_phys):
         """当前在职技能 SKxx ↔ 段 (真源: skill_phys.json 的 SK→stage 映射; 段取 torque_live.stage)。"""
@@ -360,17 +604,21 @@ class OrbitalArchView(QWidget):
     """
 
     TICK_MS = 60
+    LH = 27                              # 行高 (2026-10-19 第四次放大: 24→27, 右栏字号 17→20, 图注 13→14)
     # 轨道半径 (相对 R) · 球径 (相对 S) · 颜色
     ORB = {"mercury": 0.30, "earth": 0.50, "mars": 0.68, "jupiter": 0.86}
-    RAD = {"sun": 0.052, "mercury": 0.019, "earth": 0.026, "mars": 0.031, "jupiter": 0.037,
-           "moon": 0.014, "sat": 0.0058}
-    COL = {"sun": "#ffd166", "mercury": "#b9bec7", "earth": "#4da3ff", "mars": "#ff7a45",
-           "jupiter": "#d2a45f", "moon": "#dfe4ec", "sat": "#7fd1c1", "ext": "#8b949e"}
+    # 2026-10-19 老倪「看不到」: 球径整体放大 ~25% (300px 高时地球只有 5px ⇒ 现在 7~8px)
+    RAD = {"sun": 0.060, "mercury": 0.024, "earth": 0.032, "mars": 0.038, "jupiter": 0.045,
+           "moon": 0.014, "sat": 0.0068}
+    # 2026-10-19 老倪「把文字与球体的连线去掉, 太乱了; 有颜色对应就可以了」⇒ 颜色成为唯一对应关系,
+    #   必须互相可区分: 水星改冷灰 (原 #b9bec7 与月球 #dfe4ec 撞), 木星改青铜 (原 #d2a45f 与太阳 #ffd166 撞)。
+    COL = {"sun": "#ffd166", "mercury": "#8d99a8", "earth": "#4da3ff", "mars": "#ff7a45",
+           "jupiter": "#c98f3c", "moon": "#dfe4ec", "sat": "#7fd1c1", "ext": "#8b949e"}
     # 卫星群/月球 绕地球的半径 (相对 R) —— 原子技能在内, 月球在外 (不叠)
     # 2026-10-16 看图逐项校正 (都为"账算得出来"的量, 判据 K2/K3 逐条卡):
     #   · 卫星圈必须整体在地球球体之外: 投影后的最小地-卫距 ≥ r_earth + r_sat (+4px 余量)
     #   · 月球必须在卫星圈之外: 地-月距 ≥ 卫星圈半径 + r_sat + r_moon
-    SAT_R = 0.116
+    SAT_R = 0.120      # 2026-10-19: 0.116→0.120, 卫星环离地月线 5.9→6.5px (判据 O3 要 ≥6)
     MOON_R = 0.182
     BASE_INCL = 0.26                     # 轨道面基础倾角 (视角立体感, 真三维变换的一部分)
 
@@ -403,6 +651,12 @@ class OrbitalArchView(QWidget):
         self._tm = QTimer(self)
         self._tm.timeout.connect(self._tick)
         self._tm.start(self.TICK_MS)
+        # 2026-10-19 老倪: 「太阳系窗口是观察 L2~L5 模型的主要窗口, 要反映模型实际状态」
+        #   原来只在 __init__ 里 self.data.build() 一次 ⇒ 屏上数字是"打开那一刻"的死值, 模型停了也不变。
+        #   现在每 500ms 重读真源 (build ≈1ms), 窗口不可见时跳过。
+        self._tm_data = QTimer(self)
+        self._tm_data.timeout.connect(self.refresh)
+        self._tm_data.start(500)
 
     # ── 真源: 力的相互作用 (画布 links) ──────────────────────────────────────
     @staticmethod
@@ -483,11 +737,17 @@ class OrbitalArchView(QWidget):
 
     # ── 交互 ────────────────────────────────────────────────────────────────
     def mousePressEvent(self, e):
+        _cr = getattr(self, "_chip_rect", None)
+        if _cr and _cr[0] <= e.x() <= _cr[0] + _cr[2] and _cr[1] <= e.y() <= _cr[1] + _cr[3]:
+            self._focus = not getattr(self, "_focus", False)     # 🌍 地球视角 / ☀ 太阳系视角
+            self.update()
+            return
         self._drag = (e.x(), e.y())
         self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, e):
         if self._drag is None:
+            self._hover(e.x(), e.y())          # 2026-10-19: 悬停读数 (没拖动时才做, 拖动仍是旋转)
             return
         dx = e.x() - self._drag[0]
         dy = e.y() - self._drag[1]
@@ -502,6 +762,85 @@ class OrbitalArchView(QWidget):
 
     def mouseDoubleClickEvent(self, e):
         self.reset_view()
+
+    def _set_ttp(self, txt):
+        """设悬停提示, **同一段文字不重复设**。
+
+        🐛 2026-10-19 老倪「右侧有个 q合 未运行, 一直在闪烁」: `mouseMoveEvent` 每动一下就
+        `setToolTip(...)` 一次 (鼠标在右栏上 = 没击中球, 也会设那句通用提示) ⇒ Qt 把提示条
+        反复弹出/收回, 正好压在右栏 q̂ 那两行上, 看着就是"那行在闪"。改成同文案不重设。
+        """
+        if txt == getattr(self, "_ttp", None):
+            return
+        self._ttp = txt
+        self.setToolTip(txt)
+
+    # ── 2026-10-19: 悬停 = 读数卡 (太阳系窗口要能"看模型实际状态", 不只靠标签上的两行) ──
+    def _hover(self, mx, my):
+        """鼠标落在某颗球上 ⇒ 土 tooltip 给出: 名/真源/运行态/帧龄/输出量。
+        数据全部来自 self.data.body (每 500ms 重读真源), 视图自己不攒数、不猜。"""
+        W, H, S, cx, cy, R = self._geom()
+        pos = self.positions(cx, cy, R)
+        hit, best = None, 9.0
+        for k in ("sun", "mercury", "earth", "mars", "jupiter", "moon"):
+            x, y, _z = pos[k]
+            d = math.hypot(mx - x, my - y) - S * self.RAD[k]
+            if d < best:
+                hit, best = k, d
+        for _x, _y, _z, _sk in pos.get("_sat", []):
+            d = math.hypot(mx - _x, my - _y) - S * self.RAD["sat"] - 2.0
+            if d < best:
+                hit, best = ("sat", _sk), d
+        if hit is None:
+            self._set_ttp("")          # 没击中球 ⇒ 不弹提示条 (它会盖住右栏读数)
+            return
+        b = self.data.body
+        if isinstance(hit, tuple):
+            _sk = hit[1]
+            _d = next((x for x in (b.get("sats", {}).get("list") or []) if x.get("SK") == _sk), {})
+            _st = (b.get("sats", {}).get("st") or {})
+            self._set_ttp("🛰 %s · 原子技能\n运行态: %s (帧龄 %s)\n段: %s · 在职 %s · 可行 %s · 偏差 %s m/s\n真源: %s" % (
+                _sk, _st.get("txt"), self._fmt_age(_st.get("age")), _d.get("stage"),
+                _d.get("在职"), _d.get("可行"), _d.get("偏差_mps"), b.get("sats", {}).get("真源")))
+            return
+        d = b.get(hit, {}) or {}
+        stt = d.get("st") or {}
+        rows = ["%s %s" % (self._st_glyph(d), d.get("名") or hit),
+                "运行态: %s · 帧龄 %s" % (stt.get("txt") or "—", self._fmt_age(stt.get("age")))]
+        # 四元数 (该层的归一四元数 = 状态方向): 悬停就能拿到四个数 + ‖q‖ (力度) + 口径说明
+        _Lq = {"sun": "L5", "jupiter": "L4", "mars": "L3", "earth": "L2"}.get(hit)
+        if _Lq:
+            _qd = (getattr(self.data, "quat", {}) or {}).get(_Lq) or {}
+            _q = _qd.get("q")
+            if _q:
+                rows.append("q̂%s = %+.3f %+.3f %+.3f %+.3f  (单位四元数, 平方和=%.6f)" % (_Lq, _q[0], _q[1], _q[2], _q[3], _qd.get("s2") or 0.0))
+                rows.append("‖q‖=%.2f (力四元数模长=力度) · 口径: 万有引力表该层列合力 → 归一 · 一致性 %.2f" % (
+                    _qd.get("norm") or 0.0, _qd.get("coh") or 0.0))
+            else:
+                rows.append("q̂%s 未算 (该层此刻无列合力)" % _Lq)
+        for k, lab in (("M", "M 主参数"), ("phi", "φ 势能"), ("grad_norm", "‖∇Φ‖"),
+                       ("T_norm", "T 扭矩 N·m"), ("progress", "接触进度"), ("V", "V 接触势"),
+                       ("V_p", "V_p 性能势"), ("eta", "η 效率"), ("req_mps", "前馈请求 m/s"),
+                       ("action_norm", "动作范数"), ("confidence", "置信度"), ("err", "残差")):
+            v = d.get(k)
+            if isinstance(v, (int, float)):
+                rows.append("%s: %.4g" % (lab, v))
+        if d.get("state"):
+            rows.append("状态: %s" % d["state"])
+        _ROLE = {"sun": "流形中心 (约束由度量 M 定; 意图→势场 φ)",
+                 "mercury": "几何条件通道 (接触流形)", "earth": "快响应 MLP (L2 小动作/局部微调)",
+                 "mars": "动作生成器 DiT (大动作/动作块)", "jupiter": "集合条件 (性能流形 η/V_p)",
+                 "moon": "状态校正 (残差/反馈)"}
+        rows.append("结构对应: %s" % _ROLE.get(hit, "—"))
+        rows.append("节拍: 控制环 10Hz (一拍 0.1s) · 公转相位 = 该层实测量映射, 不做时间积分")
+        rows.append("真源: %s" % (d.get("真源") or "—"))
+        self._set_ttp("\n".join(rows))
+
+    @staticmethod
+    def _fmt_age(a):
+        if not isinstance(a, (int, float)):
+            return "—"
+        return ("%.1fs" % a) if a < 60 else ("%.1fmin" % (a / 60.0) if a < 3600 else "%.1fh" % (a / 3600.0))
 
     def wheelEvent(self, e):
         try:
@@ -525,7 +864,51 @@ class OrbitalArchView(QWidget):
 
     def _tick(self):
         # 只推进"虚线流动相位" (慢, 连续) —— 不做透明度脉冲 (老倪: 不要高频闪烁)
-        self._phase = (self._phase + 0.18) % 12.0
+        import time as _t
+        _now = _t.monotonic()
+        _dt = min(0.25, max(0.01, _now - getattr(self, "_t_prev", _now - self.TICK_MS / 1000.0)))
+        self._t_prev = _now
+        self._dt = _dt
+        # 2026-10-19 老倪「太阳系所有显示禁止跳跃」: 凡是跟数据走的量, 一律低通, 不许阶跃。
+        #   月球轨道半径 (残差) / 连线偏移 / 连线出现消失 (透明度) / 文字块位置 全部平滑。
+        # 2026-10-19 老倪: 「前馈加速模型运行 ⇒ 地球有高亮 + 柔顺闪烁; 依次类推, 每个模型推理都有对应」
+        #   _live_s[key] = 该层"此刻在推理"的平滑度 (live→1 / stale→0.35 / off→0), 低通 ⇒ 不硬闪;
+        #   _pulse_t = 呼吸/外扩环的时间基 (只随帧推进, 不跟数据跳)。
+        if not hasattr(self, "_live_s"):
+            self._live_s = {}
+        for _k2, _d2 in (self.data.body or {}).items():
+            if _k2 in ("sats",):
+                continue
+            _s2 = ((_d2 or {}).get("st") or {}).get("k")
+            _tg = {"live": 1.0, "stale": 0.35}.get(_s2, 0.0)
+            _cv = self._live_s.get(_k2, _tg)
+            self._live_s[_k2] = _cv + (_tg - _cv) * min(1.0, _dt * 2.4)
+        try:                                     # 原子技能 (卫星): 有实测偏差 ⇒ 视为在推理
+            _sl = ((self.data.body.get("sats") or {}).get("list") or [])
+            _tgS = 1.0 if (getattr(self.data, "running", False) and any(
+                isinstance(x.get("偏差_mps"), (int, float)) for x in _sl)) else 0.0
+        except Exception:                                                        # noqa: BLE001
+            _tgS = 0.0
+        _cvS = self._live_s.get("sat", _tgS)
+        self._live_s["sat"] = _cvS + (_tgS - _cvS) * min(1.0, _dt * 2.4)
+        _wt = self._wobble_raw(self.data.body.get("moon", {}))
+        self._wob_s = _wt if getattr(self, "_wob_s", None) is None else \
+            self._wob_s + (_wt - self._wob_s) * min(1.0, _dt * 3.0)
+        if getattr(self.data, "running", False):
+            self._phase = (self._phase + 0.18 * (_dt / (self.TICK_MS / 1000.0))) % 12.0
+            self._pulse_t = getattr(self, "_pulse_t", 0.0) + _dt
+            self._advance(self.TICK_MS / 1000.0)  # 行星连续公转 (积分, 不按数据跳相位)
+        # ⏸ 未运行: 相位/公转/呼吸全部不动 —— 老倪「没运行, 为什么力的方向还在变化?」
+        self.update()
+
+    def refresh(self):
+        """重读真源 (每 500ms): 天体运行态 / L2~L5 层状态 / 扭矩口径 都会跟着变。"""
+        if not self.isVisible():
+            return
+        try:
+            self.info = self.data.build()
+        except Exception:                                                    # noqa: BLE001
+            return
         self.update()
 
     # ── 3D: 平面坐标 → 屏幕 (绕 Z 偏航 + 绕 X 俯仰 + 正交投影 + 深度微缩) ────
@@ -548,12 +931,40 @@ class OrbitalArchView(QWidget):
         # 🪐 2026-10-16 老倪: 「太阳系窗口增加高度」—— 高度由页面给, 但**图本身**还能再放大:
         #   上留白 20→8, 脚注留白 12→6, 半径系数 0.46→0.50 ⇒ 同样高度下半径 +~17% (实测直径 +~28px)。
         pad_t = 8
-        pad_b = 6 + 11 * len(self._foot_lines(W))
-        S = max(120, min(W - 14, H - pad_t - pad_b))
-        cx, cy = W / 2.0, pad_t + (H - pad_t - pad_b) / 2.0
-        return W, H, S, cx, cy, S * 0.58      # 🪐 再放大一档 (老倪「太阳系增加高度」)
+        # 2026-10-19 老倪「不要来回跳」: 图注行数会随数据变 (缺源多一行/少一行) ⇒ 半径 S 跟着变,
+        #   整张图会"呼吸"一下。这里加滞回: 行数与上次差 ≥2 才重算, 平时钉住 ⇒ 尺度稳定。
+        _n = len(self._foot_lines(W))
+        _prev = getattr(self, "_foot_n", None)
+        if _prev is None or abs(_n - _prev) >= 2:
+            self._foot_n = _n
+            _prev = _n
+        pad_b = 6 + self.LH * (_prev or _n)
+        # 2026-10-19 老倪「文字描述不要飘来漂去, 都靠右侧显示, 不要动」:
+        #   右侧让出固定文字栏 (_col_w), 系统圆心左移 ⇒ 文字永远不进系统区, 也就不用避让/换位。
+        _col_w = self._col_w(W) if self.RIGHT_COL else 0
+        # 🪟 2026-10-19 老倪「合力的小窗口太小, 根本看不到」: 卡片放大到 350×168 之后必须**占位**,
+        #   否则地球/火星会落在卡片底下 (实测 earth 316,293 就在卡内)。这里给左侧留走廊。
+        _card = self._s3_w(W) + 16.0
+        _gut = _card if self._s3_visible(W) else 0.0
+        S = max(120, min(W - _col_w - _gut - 14, H - pad_t - pad_b))
+        cx = _gut + (W - _col_w - _gut) / 2.0
+        cy = pad_t + (H - pad_t - pad_b) / 2.0
+        _R = S * 0.58
+        if self.RIGHT_COL and _gut > 0:
+            # 轨道左缘不许钻进左下卡 (卡是实底, 会切掉一段轨道): 先把半径压到"卡右缘↔右栏"之间放得下,
+            #   再把圆心摆到卡右缘右侧 (右移而不是硬夹, 否则 R 不变时一定会压卡)
+            _cl = 10.0 + self._s3_w(W) + 10.0                  # 卡右缘
+            _avail = (W - _col_w - 6.0) - _cl - 10.0           # 卡右缘到右栏左缘的净宽
+            _R = min(_R, max(90.0, _avail / 2.0))
+            cx = _cl + _R + 5.0
+        # 🔴 铁律: 球**永远不许**画进右侧文字栏 (窄窗时上面那两个约束都会失效)
+        _free = (W - _col_w - _gut - 16.0) / 2.0
+        if _R > _free:
+            _R = max(60.0, _free)
+            cx = _gut + (W - _col_w - _gut) / 2.0
+        return W, H, S, cx, cy, _R      # 🪐 再放大一档 (老倪「太阳系增加高度」)
 
-    def _angles(self, b):
+    def _angles_static(self, b):
         """角度映射 (实测量 → 公转相位, 写进图注): 水星←接触进度 · 地球←前馈请求/上限 ·
         火星←块步 λ · 木星←耦合效率 η · 月球/卫星=地球相位 (协同)。取不到 ⇒ 定点 (不假装转)。"""
         a = {}
@@ -571,11 +982,54 @@ class OrbitalArchView(QWidget):
         a["jupiter"] = 2 * math.pi * max(0.0, min(1.0, float(eta))) if isinstance(eta, (int, float)) else 4.4
         return a
 
-    def _wobble(self, moon):
+    PH_KEYS = ("mercury", "earth", "mars", "jupiter")
+
+    def _init_ph(self, b):
+        """相位初值 = 旧的静态映射 (保证首帧位置与旧布局一致)。"""
+        self._ph = dict(self._angles_static(b))
+        self._om = {k: 0.0 for k in self.PH_KEYS}
+
+    def _omega_target(self, key, b):
+        """目标角速度 (rad/s): 由该层实测量定快慢, 但在跑时**恒 >0** ⇒ 一直连续转。
+        (旧实现: 相位 = f(实测量), 数据一跳相位就跳 ⇒ 老倪「太阳系不要来回跳, 要连续」)"""
+        d = b.get(key) or {}
+        pair = {"mercury": (d.get("progress"), 0.012), "earth": (d.get("req_mps"), 0.35),
+                "mars": (d.get("lambda"), 1.0), "jupiter": (d.get("eta"), 1.0)}[key]
+        try:
+            f = max(0.0, min(1.0, float(pair[0]) / (float(pair[1]) or 1.0)))
+        except Exception:                                                    # noqa: BLE001
+            f = 0.25
+        return 0.25 + 1.0 * f            # 0.25 rad/s ≈ 25s 一圈 · 1.25 rad/s ≈ 5s 一圈
+
+    def _advance(self, dt):
+        b = self.data.body
+        if getattr(self, "_ph", None) is None:
+            self._init_ph(b)
+        if not getattr(self.data, "running", False):
+            for k in self.PH_KEYS:      # 没在跑: 不转、不留惯性 (老倪: 还没点运行, 不该有力)
+                self._om[k] = 0.0
+            return
+        for k in self.PH_KEYS:
+            tgt = self._omega_target(k, b)
+            self._om[k] += (tgt - self._om[k]) * min(1.0, dt * 1.8)   # 平滑加速, 不突跳
+            self._ph[k] = (self._ph[k] + self._om[k] * dt) % (2 * math.pi)
+
+    def _angles(self, b):
+        """当前公转相位 (连续积分量; 判据/positions 都用它)。"""
+        if getattr(self, "_ph", None) is None:
+            self._init_ph(b)
+        return dict(self._ph)
+
+    def _wobble_raw(self, moon):
         try:
             return max(0.0, min(0.55, abs(float(moon.get("err"))) * 2.4))
         except Exception:                                                    # noqa: BLE001
             return 0.0
+
+    def _wobble(self, moon):
+        """月球轨道半径偏置 (残差) —— 读**低通后**的值, 数据跳也不让月球跳。"""
+        w = getattr(self, "_wob_s", None)
+        return self._wobble_raw(moon) if w is None else w
 
     @staticmethod
     def _live(d):
@@ -602,7 +1056,10 @@ class OrbitalArchView(QWidget):
         # 起相位 +0.26rad (2026-10-16 看图: 卫星 i=0 与月球同取地球相位 ⇒ SK01 正好坐在地月连线上,
         #   球+金圈把 1px 地月线遮得只剩 1.5px, 看不出有连线)
         for i, d in enumerate(sats):
-            aa = ea + 0.26 + 2 * math.pi * i / max(1, len(sats))   # 与地球同向公转 (绕地球), 起相位错开
+            # 起相位取**半个间距** (π/n): 这样"最近的那颗卫星"离地月线最远 —— 8 颗时是 22.5°
+            #   (原来固定 0.26rad≈15°, 投影压扁后垂距只剩 5.6px, 判据 O3 要 ≥6)。n 变也自动最优。
+            _n_s = max(1, len(sats))
+            aa = ea + math.pi / _n_s + 2 * math.pi * i / _n_s        # 与地球同向公转 (绕地球)
             pos["_sat"].append(self._proj(ex + self.SAT_R * math.cos(aa),
                                           ey + self.SAT_R * math.sin(aa), 0.0, cx, cy, R) + (d.get("SK"),))
         wob = self._wobble(b.get("moon", {}))
@@ -641,14 +1098,22 @@ class OrbitalArchView(QWidget):
         p.fillRect(0, 0, W, H, BG)
         b = self.data.body
         p.setPen(FG)
-        p.setFont(_cached_font(12, True))
+        p.setFont(_cached_font(15, True))
         p.drawText(QRectF(6, 2, W - 160, 18), Qt.AlignLeft | Qt.AlignVCenter,
                    "🪐 球心引力架构 (太阳系映射)")
-        p.setPen(DIM); p.setFont(_cached_font(9))
+        p.setPen(DIM); p.setFont(_cached_font(14))
         p.drawText(QRectF(max(0, W - 190), 2, 184, 18), Qt.AlignRight | Qt.AlignVCenter,
                    "🖱 拖动旋转 · 滚轮缩放 · 双击复位")
+        if not getattr(self.data, "running", False):
+            # 2026-10-19: 状态必须写在脸上 —— 没点运行就别让人以为在看实时力
+            p.setFont(_cached_font(11, True))
+            p.setPen(QColor("#d29922"))
+            p.drawText(QRectF(6, 18, max(120, W - 12), 16), Qt.AlignLeft | Qt.AlignVCenter,
+                       "⏸ 未运行 (%s) —— 不显示力、不旋转; 球上的数 = 标定值/上一帧定格"
+                       % (getattr(self.data, "run_note", "") or "未点 ▶ 运行"))
         # 引力井 (度量: 扁率按真特征值) + 轨道 (都在当前三维变换下)
         self._gravity_well(p, cx, cy, R, b.get("sun", {}))
+        self._ecliptic(p, cx, cy, R)          # 2026-10-19: 黄道面 = 流形基准 (S³ 切片), 所有运动只在这个面里
         # 背景**圆形轨道** (2026-10-16 老倪: 「背景的圆形轨道也要体现出」):
         #   每条行星轨道用自己的球色淡描 + 慢速虚线相位 (与力连线同相位 ⇒ 全图一张"脉搏", 不闪)
         for ring, key in zip(self._grids, ("mercury", "earth", "mars", "jupiter")):
@@ -672,7 +1137,10 @@ class OrbitalArchView(QWidget):
         for j in range(len(pt) - 1):
             p.drawLine(QPointF(pt[j][0], pt[j][1]), QPointF(pt[j + 1][0], pt[j + 1][1]))
         # 力的相互作用 (真源连线) —— 先画线, 再画球 (球压线, 视觉更干净)
-        self._draw_forces(p, cx, cy, R, b)
+        #   2026-10-19: 没点 ▶ 运行 ⇒ 一条力线都不画 (老倪: 「应该没有运行的力啊」)
+        _RUN = bool(getattr(self.data, "running", False))
+        if _RUN:
+            self._draw_forces(p, cx, cy, R, b)
         # 球体 (按深度排序: 远的先画)
         pos = self.positions(cx, cy, R)
         sats = b.get("sats", {}).get("list") or []
@@ -694,34 +1162,519 @@ class OrbitalArchView(QWidget):
         _vx, _vy = _vx / _nn, _vy / _nn
         _r1 = S * self.RAD["earth"] + 2.0
         _r2 = S * self.RAD["moon"] + 2.0
-        p.setPen(QPen(QColor(120, 132, 150, 170), 1))
+        # 地月线颜色 2026-10-19 从 (120,132,150) 改深: 原色与月球球体自身的暗边 (约 131,135,139)
+        #   在像素判据的容差内撞车 ⇒ 判据把"月球自己的阴影"误判成"线穿球面"。
+        p.setPen(QPen(QColor(92, 104, 122, 190), 1))
         p.drawLine(QPointF(_ex + _vx * _r1, _ey + _vy * _r1), QPointF(mx - _vx * _r2, my - _vy * _r2))
 
+        # 光晕先画 (在球体之下, 轨道之上): 只有"此刻在推理"的层才有, 强度=帧龄×呼吸
+        for kind, x, y, r, _z, sk in items:
+            if kind != "sat":
+                self._infer_halo(p, kind, x, y, r)
         for kind, x, y, r, _z, sk in items:
             if kind == "sat":
                 act = (sk == b.get("sats", {}).get("active"))
                 live = bool(b.get("sats", {}).get("list")) and any(
                     d.get("SK") == sk and isinstance(d.get("偏差_mps"), (int, float))
                     for d in sats)
+                self._infer_halo(p, "sat", x, y, r) if act else None
                 self._sphere(p, x, y, r, self.COL["sat"], 1.0 if (act and live) else (0.7 if live else 0.32))
+                if act:
+                    self._infer_ripple(p, "sat", x, y, r)
                 if act:
                     p.setPen(QPen(GOLD, 1)); p.setBrush(Qt.NoBrush)
                     p.drawEllipse(QPointF(x, y), r + 2, r + 2)      # r+3 → r+2 (看图: 金圈压进地球 1.8px)
                 continue
             ecol = self.COL[kind] if kind != "moon" else self.COL["moon"]
             dkey = "sun" if kind == "sun" else kind
-            energy = b.get(dkey, {}).get("grad_norm") if kind == "sun" else (1.0 if self._live(b.get(dkey, {})) else 0.35)
+            # 太阳亮度不跟 ‖∇Φ‖ 走: ∇Φ 小的时候 (接近谷底) 太阳会暗到看不见 —— 中心不该"消失"。
+            #   梯度大小另有表达: 引力井扁率 (度量特征值) + 标签里的 ‖∇Φ‖ + 自转弧。
+            energy = 1.0 if kind == "sun" else (1.0 if self._live(b.get(dkey, {})) else 0.35)
+            if getattr(self, "_focus", False) and kind != "earth":
+                energy *= 0.42                                   # 地球视角: 其余天体退成背景
             self._sphere(p, x, y, r, ecol, energy)
+        # 2026-10-19: 运行态环 —— 球外一圈按该体**自己真源的帧龄**上色 (绿=在跑/黄=陈旧/灰=离线)。
+        #   环与球之间留 3px, 线宽 1.6px; 不做脉冲 (老倪: 不要高频闪烁)。
+        for kind, x, y, r, _z, sk in items:
+            if kind == "sat":
+                continue
+            _stt = (b.get(kind) or {}).get("st") or {}
+            _LQ = {"sun": "L5", "jupiter": "L4", "mars": "L3", "earth": "L2"}.get(kind)
+            if _LQ:
+                self._quat_axis(p, _LQ, x, y, r, triad=(kind == "earth"))
+            self._infer_ripple(p, kind, x, y, r)          # 推理外扩环 (在球外 5~18px, 不压球)
+            self._state_ring(p, x, y, r, _stt.get("k"))
+            if _RUN:
+                self._spin(p, x, y, r, self._adj_local(kind, b))
         # 文字块是**半透明**底 (α=222) ⇒ 压住的线仍隐约可见 (老倪: 线不要很快消失);
         # 透描放在文字之前 —— 先透描再写字, 字才不会被线盖暗 (2026-10-16 看图: 数值行前半被压暗)。
-        p.save()
-        p.setClipRegion(self._ball_clip(p, pos, S))     # 透描不许画到球面上 (2026-10-16 看图: 线穿球面)
-        self._draw_forces(p, cx, cy, R, b, ghost=True)
-        p.restore()
+        if _RUN:
+            p.save()
+            p.setClipRegion(self._ball_clip(p, pos, S))     # 透描不许画到球面上 (2026-10-16 看图: 线穿球面)
+            self._draw_forces(p, cx, cy, R, b, ghost=True)
+            p.restore()
+        # 地球的力矢量 (粗=合力/细=分力) 画在连线之上、文字之下
+        self._earth_force_arrows(p, pos, S, cx, cy, R)
         self._leaders = []
         self._labels(p, pos, cx, cy, R, b, W, H, S)
+        self._focus_chip(p)
+        self._s3_panel(p, W, H, b)
         self._legend(p, W, H, b)
         p.end()
+
+    def _ecliptic(self, p, cx, cy, R):
+        """黄道面 = 流形 (S³) 的二维基准切片。
+        老倪 2026-10-19: 「黄道平面对应流形球面, 太阳对应流形中心 …… 两者都是所有运动发生的基准结构」
+        ⇒ 画成**一个面**(半透明圆盘 + 细虚线边), 而不是再画一条轨道: 面=约束, 线=测地线。"""
+        rr = 0.985                     # ⚠️ 单位是"R 的倍数" (不是像素): _proj 内部再乘 R,
+                                       #    写成 R*0.985 会得到 1e5 量级的坐标 ⇒ 画面外, 等于没画 (实测踩过)
+        poly = [self._proj(rr * math.cos(t / 90.0 * 2 * math.pi), rr * math.sin(t / 90.0 * 2 * math.pi),
+                           0.0, cx, cy, R) for t in range(91)]
+        path = [QPointF(x, y) for x, y, _z in poly]
+        if path:
+            from PyQt5.QtGui import QPolygonF
+            pg = QPolygonF(path)
+            p.setPen(Qt.NoPen)
+            # α 太小时在 #0d1117 底上等于没画 (实测 α=16 采样点仍是纯底色) ⇒ 提到 140 的冷灰蓝:
+            #   它是"基准面"的底色, 线/字都画在它**上面**, 不会被染色。
+            p.setBrush(QColor(26, 44, 74, 140))
+            p.drawPolygon(pg)
+            p.setBrush(Qt.NoBrush)
+            c = QColor(56, 139, 253, 120)
+            pen = QPen(c, 1.0, Qt.CustomDashLine)
+            pen.setDashPattern([2.0, 7.0]); pen.setDashOffset(self._phase * 0.6)
+            p.setPen(pen)
+            p.drawPolygon(pg)
+        # 面标签 (贴在椭圆左下缘外侧, 避开主体与文字块)
+        # 2026-10-19: 卡片放大到左下之后, 面标签会被卡压住 ⇒ 挪到椭圆**右上缘**外侧
+        x, y, _z = self._proj(rr * 0.66, -rr * 0.72, 0.0, cx, cy, R)
+        p.setPen(QColor(88, 166, 255, 210)); p.setFont(_cached_font(12))
+        p.drawText(QRectF(x - 60, y + 2, 170, 12), Qt.AlignLeft | Qt.AlignVCenter,
+                   "黄道面 = 流形基准 (S³ 切片)")
+
+    @staticmethod
+    def _adj_local(key, b):
+        """局部微调量 (0~1): 太阳←‖∇Φ‖ · 水星←|V̇| · 地球←削因 · 火星←λ · 木星←η · 月球←|残差|。
+        这正是"自转 = 局部微调"的可测量替身 —— 取不到的体返回 None ⇒ 不画弧。"""
+        d = (b or {}).get(key) or {}
+        v = None
+        if key == "sun":
+            v = d.get("grad_norm")
+        elif key == "mercury":
+            _vd = d.get("Vdot")
+            v = abs(_vd) * 20 if isinstance(_vd, (int, float)) else None
+        elif key == "earth":
+            v = d.get("削因")
+        elif key == "mars":
+            v = d.get("lambda")
+        elif key == "jupiter":
+            v = d.get("eta")
+        elif key == "moon":
+            _e = d.get("err")
+            v = abs(_e) * 10 if isinstance(_e, (int, float)) else None
+        if not isinstance(v, (int, float)):
+            return None
+        return 2 * math.pi * 0.6 * max(0.0, min(1.0, float(v)))
+
+    def _spin(self, p, x, y, r, ph):
+        """自转 = 局部微调: 一小段弧, 弧角 = 该体的局部微调量 (真值归一), 不是空转动画。"""
+        if not isinstance(ph, (int, float)):
+            return
+        span = max(0.0, min(2 * math.pi, float(ph)))
+        if span <= 0.02:
+            return
+        c = QColor(255, 255, 255, 90)
+        p.setPen(QPen(c, 1.1)); p.setBrush(Qt.NoBrush)
+        rc = QRectF(x - r - 5.0, y - r - 5.0, 2 * (r + 5.0), 2 * (r + 5.0))
+        p.drawArc(rc, int(math.degrees(-math.pi / 2) * 16), int(-math.degrees(span) * 16))
+
+    # ── 2026-10-19 新增: 状态环 + L2~L5 层状态带 ────────────────────────────────
+    STATE_COL = {"live": QColor("#3fb950"), "stale": QColor("#d29922"), "off": QColor("#6e7681")}
+
+    PULSE_T = 2.0          # 呼吸/外扩环周期 (s) —— 慢, 柔顺
+
+    @staticmethod
+    def _qmat(q):
+        """单位四元数 (w,x,y,z) → 3×3 旋转矩阵 (列 = 局部轴在母系里的方向)。"""
+        w, x, y, z = [float(v) for v in q]
+        return ((1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)),
+                (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
+                (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)))
+
+    def _quat_axis(self, p, key, x, y, r, triad=False):
+        """把该层的归一四元数画出来: 默认只画**转轴** (矢量部分方向, 1 根线);
+        `triad=True` (地球 = 状态点) 画完整三轴 (X红/Y绿/Z蓝), 一眼看出朝向。
+        6 颗球都画全三轴会太乱 ⇒ 只有状态点给三轴。"""
+        qd = (getattr(self.data, "quat", {}) or {}).get(key) or {}
+        q = qd.get("q")
+        if not q:
+            return
+        m = self._qmat(q)
+        _L = max(10.0, r * (1.75 if triad else 1.55))
+        ox, oy = x, y
+
+        def _tip(vx, vy, vz, ln, r0=0.0):
+            """轴向端点的屏幕坐标; r0>0 时**从球面外侧**起画 (不压球面 —— 判据 M4 会抓
+            "线色像素落在球心区", 三轴里那根绿轴和"动作"连线同色, 画在球上会被误判成线穿球)。"""
+            _px, _py, _ = self._proj(vx * ln, vy * ln, vz * ln, ox, oy, 1.0)
+            _dx, _dy = _px - ox, _py - oy
+            _n = math.hypot(_dx, _dy) or 1.0
+            return (ox + _dx / _n * (max(0.0, r0) + ln), oy + _dy / _n * (max(0.0, r0) + ln))
+
+
+        if triad:
+            self._tri_axes = []          # 判据用: 三轴投影后的实际长度 (有轴正对镜头时投影可能≈0)
+            for _i, _c in enumerate(("#f85149", "#3fb950", "#4da3ff")):
+                tx, ty = _tip(m[0][_i], m[1][_i], m[2][_i], _L, r + 1.0)
+                self._tri_axes.append((_c, math.hypot(tx - ox, ty - oy)))
+                cc = QColor(_c); cc.setAlpha(215)
+                p.setPen(QPen(cc, 1.6))
+                _sx, _sy = ox + (tx - ox) * (r + 1.0) / (r + 1.0 + _L), oy + (ty - oy) * (r + 1.0) / (r + 1.0 + _L)
+                p.drawLine(QPointF(_sx, _sy), QPointF(tx, ty))
+                p.setBrush(cc)
+                p.drawEllipse(QPointF(tx, ty), 1.6, 1.6)
+                p.setBrush(Qt.NoBrush)
+            return
+        _bk = {"L5": "sun", "L4": "jupiter", "L3": "mars", "L2": "earth"}.get(key, "")
+        col = QColor(self.COL.get(_bk, "#8b949e")); col.setAlpha(190)
+        tx, ty = _tip(m[0][0], m[1][0], m[2][0], _L, r + 1.0)      # 局部 X 轴 = 该层"方向"
+        p.setPen(QPen(col, 1.4))
+        _sx2 = ox + (tx - ox) * (r + 1.0) / (r + 1.0 + _L)
+        _sy2 = oy + (ty - oy) * (r + 1.0) / (r + 1.0 + _L)
+        p.drawLine(QPointF(_sx2, _sy2), QPointF(tx, ty))
+        p.setBrush(col); p.drawEllipse(QPointF(tx, ty), 1.4, 1.4); p.setBrush(Qt.NoBrush)
+
+    @staticmethod
+    def _force_arrow(p, x0, y0, x1, y1, w, col, head=8.0, alpha=235):
+        """画一根带箭头的力矢量 (粗=合力, 细=分力)。"""
+        c = QColor(col); c.setAlpha(alpha)
+        p.setPen(QPen(c, w, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(QPointF(x0, y0), QPointF(x1, y1))
+        _dx, _dy = x1 - x0, y1 - y0
+        _L = math.hypot(_dx, _dy) or 1.0
+        ux, uy = _dx / _L, _dy / _L
+        # 箭头两翼
+        for sgn in (-1, 1):
+            _ax = x1 - ux * head + (-uy) * head * 0.5 * sgn
+            _ay = y1 - uy * head + (ux) * head * 0.5 * sgn
+            p.setPen(QPen(c, max(1.4, w * 0.72), Qt.SolidLine, Qt.RoundCap))
+            p.drawLine(QPointF(x1, y1), QPointF(_ax, _ay))
+
+    def _earth_force_arrows(self, p, pos, S, cx, cy, R):
+        """地球 (状态点) 上的力: **粗大箭头 = 合力 (前馈节点输出方向)**, 细箭头 = 四层分力,
+        再加一条头尾相接的虚线链 (把分力一段段加起来正好落到合力箭头尖) —— 一眼看出"合力由谁组成"。
+        老倪 2026-10-19: 「地球的引力箭头应该大一些, 长一些, 粗一些, 明显一些…太阳力, 行星力,
+        都是组成地球合力的分力」。"""
+        self._last_arrows = []          # 每帧先清空: 未运行时不画, 也不许留上一帧的账 (判据会读到假值)
+        fE = getattr(self.data, "fE", None) or {}
+        if not fE or not getattr(self.data, "running", False):
+            return
+        # 卡片区域不画箭头 (卡片是实底, 否则箭头像被砍断)
+        _Wq, _Hq = int(self.width()), int(self.height())
+        _cw = self._s3_w(_Wq) + 10.0
+        _ch = 218.0
+        _cy0 = _Hq - 14.0 - self.LH * len(self._foot_lines(_Wq)) - _ch
+        _reg = QRegion(0, 0, _Wq, _Hq).subtracted(QRegion(0, int(_cy0) - 2, int(_cw), int(_ch) + 4))
+        p.save()
+        p.setClipRegion(_reg)
+        ex, ey, _e = pos["earth"]
+
+        def _scr(v, ln):
+            px, py, _ = self._proj(v[0] * ln, v[1] * ln, v[2] * ln, ex, ey, 1.0)
+            _dx, _dy = px - ex, py - ey
+            _n = math.hypot(_dx, _dy) or 1.0
+            return ex + _dx / _n * ln, ey + _dy / _n * ln
+
+        # 判据用: 这一刻每根箭头的 (类, 笔宽, 像素长)
+        # 🔧 绝对尺度 (老倪 2026-10-19「按建议来」): 长度 = |F| × px_per_mps (真源 force_field.json),
+        #   不再"按当帧最大值归一" —— 那样帧与帧之间长度不可比, 看着忽长忽短。
+        #   线性尺度在 |F| 跨 10 倍 (0.05~0.55 m/s) 时只能全线贴顶 ⇒ 用**固定参考的平方根尺度**:
+        #   L = Lmax·√(|F|/F_ref), F_ref 固定 (force_field.json) ⇒ 同一 |F| 永远同样长, 跨帧可比, 不会饱和。
+        _ref = float(getattr(self.data, "arrow_ref", 1.0) or 1.0)
+        _lmax = float(getattr(self.data, "arrow_max", 168.0) or 168.0)
+        if getattr(self, "_focus", False):
+            _lmax *= 1.18
+
+        def _plen(mag):
+            _r = min(1.0, max(0.0, float(mag or 0.0)) / _ref)
+            return max(9.0, _lmax * math.sqrt(_r))
+        # ① 分力 (细) + 头尾链
+        ox, oy = ex + 0.0, ey + 0.0
+        _chain_x, _chain_y = ex, ey
+        for _ci, c in enumerate(fE.get("comps") or []):
+            _ln = _plen(c["mag"])
+            tx, ty = _scr(c["vec"], _ln)
+            _col = self.COL.get(c.get("body") or "earth", "#8b949e")
+            _w2 = 3.2 if c.get("main") else 1.7
+            self._force_arrow(p, ex, ey, tx, ty, _w2, _col,
+                        head=7.0 if c.get("main") else 4.5, alpha=210 if c.get("main") else 165)
+            self._last_arrows.append({"kind": c["L"], "w": _w2,
+                                      "len": math.hypot(tx - ex, ty - ey), "main": bool(c.get("main"))})
+            # 头尾链: 从上一个分力末端出发
+            _nx = _chain_x + (tx - ex)
+            _ny = _chain_y + (ty - ey)
+            cc = QColor(_col); cc.setAlpha(110)
+            p.setPen(QPen(cc, 1.0, Qt.DashLine))
+            p.drawLine(QPointF(_chain_x, _chain_y), QPointF(_nx, _ny))
+            _chain_x, _chain_y = _nx, _ny
+        # ② 合力 (粗, 最显眼)
+        _lnF = _plen(fE.get("mag") or 0.0) * 1.35      # 合力同尺度 ×1.35: 永远比分力长 (但不是靠归一张冠李戴)
+        fx, fy = _scr(fE.get("vec") or [0, 0, 0], _lnF)
+        self._force_arrow(p, ex, ey, fx, fy, 5.4, "#58a6ff", head=11.0, alpha=245)
+        self._last_arrows.append({"kind": "F合", "w": 5.4,
+                                  "len": math.hypot(fx - ex, fy - ey), "main": True})
+        # ③ 合力实时数 (贴箭头尖)
+        # 潮汐项 (月球↔地球互作用): 真源里没有"月球对地球的引力", 只有状态校正器的**残差** ⇒
+        #   拿残差当潮汐量, 画虚线箭并向月球方向, 标签写"潮汐(残差)", 不冒充引力。
+        _me = (self.data.body.get("moon") or {}).get("err")
+        if isinstance(_me, (int, float)) and not isinstance(_me, bool):
+            _mx2, _my2, _ = pos["moon"]
+            _dd = math.hypot(_mx2 - ex, _my2 - ey) or 1.0
+            _tlen = max(10.0, min(58.0, abs(float(_me)) * 900.0))
+            _tx2, _ty2 = ex + (_mx2 - ex) / _dd * _tlen, ey + (_my2 - ey) / _dd * _tlen
+            _cc = QColor(223, 228, 236); _cc.setAlpha(150)
+            p.setPen(QPen(_cc, 1.4, Qt.DashLine, Qt.RoundCap))
+            p.drawLine(QPointF(ex, ey), QPointF(_tx2, _ty2))
+            p.setPen(QColor(190, 198, 212))
+            p.setFont(_cached_font(9))
+            p.drawText(QRectF(_tx2 + 3, _ty2 - 11, 96, 11), Qt.AlignLeft | Qt.AlignVCenter,
+                       "潮汐 |残差|%.3f" % float(_me))
+        p.restore()
+        _lab = "F合 %.2f m/s · Δ主↔合 %.0f°" % (fE.get("mag") or 0.0, fE.get("dev") or 0.0)
+        p.setPen(QColor("#9fd0ff"))
+        p.setFont(_cached_font(15, True))
+        p.drawText(QRectF(fx + 8, fy - 26, 280, 22), Qt.AlignLeft | Qt.AlignVCenter, _lab)
+
+    def _focus_chip(self, p):
+        """左上角胶囊: 点一下在「🌍 地球视角」与「☀ 太阳系视角」之间切 (老倪 2026-10-19「以地球为主要观察对象」)。"""
+        _on = bool(getattr(self, "_focus", False))
+        _t = "☀ 太阳系视角" if _on else "🌍 地球视角"
+        p.setFont(_cached_font(15, True))
+        _w = 152.0
+        _r = QRectF(10, 40, _w, 32)          # 标题 0~18 / 说明 19~34 ⇒ 胶囊从 40 起, 不压字
+        self._chip_rect = (10.0, 40.0, _w, 32.0)
+        p.setPen(QPen(QColor("#2f81f7" if _on else "#3d4757"), 1))
+        p.setBrush(QColor(24, 36, 54, 200) if _on else QColor(18, 24, 34, 170))
+        p.drawRoundedRect(_r, 11, 11)
+        p.setPen(QColor("#9fd0ff" if _on else "#9aa4b2"))
+        p.drawText(_r, Qt.AlignCenter, _t)
+
+    def _s3_panel(self, p, W, H, b):
+        """"S³ 力场总观" 小面板 (左下): 把合力与四个分力的**四元数**画成一束方向射线,
+        长度 = 矢量部分模长 (方向强度), 亮度 = 标量部 w。附 Δ主↔合 与一致度。"""
+        fE = getattr(self.data, "fE", None) or {}
+        if not self._s3_visible(W):
+            return
+        _run0 = bool(getattr(self.data, "running", False))
+        _h = 218.0
+        _y0 = H - 14.0 - self.LH * len(self._foot_lines(W)) - _h
+        x0, w0 = 10.0, self._s3_w(W)
+        p.setPen(QPen(QColor(90, 110, 140, 120), 1))
+        p.setBrush(QColor(9, 14, 21, 238))      # 不再透到看得见后面的轨道 ⇒ 面板要"实"
+        if not fE:
+            # 未运行 / 无真源: 画空骨架 (五个空盘 + 未运行), 布局不跳, 也不假装有力
+            p.setPen(QPen(QColor(90, 110, 140, 120), 1))
+            p.setBrush(QColor(9, 14, 21, 238))
+            p.drawRoundedRect(QRectF(x0, _y0, w0, _h), 6, 6)
+            p.setBrush(Qt.NoBrush)
+            p.setFont(_cached_font(17, True)); p.setPen(QColor("#9aa4b2"))
+            p.drawText(QRectF(x0 + 14, _y0 + 10, w0 - 28, 24), Qt.AlignLeft | Qt.AlignVCenter,
+                       "S³ 力场 · ⏸ 未运行")
+            _cw0 = (w0 - 28.0) / 5.0
+            for _i, _nm in enumerate(("合", "L5", "L4", "L3", "L2")):
+                _ccx = x0 + 14.0 + _cw0 * (_i + 0.5)
+                _ccy = _y0 + 96.0
+                _rad = min(34.0, _cw0 * 0.45)
+                p.setPen(QPen(QColor(52, 66, 86, 160), 1.2))
+                p.drawEllipse(QPointF(_ccx, _ccy), _rad, _rad)
+                p.setFont(_cached_font(14, True)); p.setPen(QColor("#6e7681"))
+                p.drawText(QRectF(_ccx - _cw0 / 2.0, _ccy + _rad + 2, _cw0, 18),
+                           Qt.AlignHCenter | Qt.AlignTop, _nm)
+            p.setFont(_cached_font(15, True))
+            p.drawText(QRectF(x0 + 14, _y0 + _h - 30, w0 - 28, 22), Qt.AlignLeft | Qt.AlignVCenter,
+                       "没点 ▶ 运行, 不显示力")
+            return
+        self._s3_rect = (x0, _y0, w0, _h)
+        p.drawRoundedRect(QRectF(x0, _y0, w0, _h), 6, 6)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QColor("#9aa4b2"))
+        p.setFont(_cached_font(17, True))
+        _cap0 = str(getattr(self.data, "cap_level", "") or "")
+        _ft = (("S³ 力场 · 一致度 %.2f" % (fE.get("coh") or 0.0)) + ((" · 档位 " + _cap0) if _cap0 else "")) \
+            if getattr(self.data, "running", False) else "S³ 力场 · ⏸ 未运行 (定格)"
+        p.setPen(QColor("#9aa4b2") if not getattr(self.data, "running", False) else QColor("#e6edf3"))
+        p.drawText(QRectF(x0 + 14, _y0 + 10, w0 - 28, 24), Qt.AlignLeft | Qt.AlignVCenter, _ft)
+        # 2026-10-19 看图: 五支射线共用同一原点, 中段只差 4~8px ⇒ 糊成一束。
+        #   改成**五个独立小表盘** (各自原点, 各自格子), 方向一眼分得开。
+        # 2026-10-19 老倪「选了 L5 却没有 L5 的力显示」: 表盘原来只画方向 (q̂ 的矢量部, 模长≈常数)
+        #   ⇒ 五个盘看起来一模一样, 也**没有任何数字**。现在: 射线长 ∝ √(|F|/max) + 盘下写 |F|。
+        self._s3_lens = []
+        _items = [(fE.get("q"), "#58a6ff", "合", 1.0, float(fE.get("mag") or 0.0))]
+        for c in (fE.get("comps") or []):
+            _col = self.COL.get(c.get("body") or "earth", "#8b949e")
+            # 权重一律 1.0: 主力靠"线宽/亮度"区分, 不靠缩短射线 (否则弱层短到看不出方向)
+            _items.append((c.get("q"), _col, c["L"], 1.0,
+                           float(c.get("mag") or 0.0)))
+        _mx = max([it[4] for it in _items] or [1e-9]) or 1e-9
+        from PyQt5.QtGui import QPolygonF
+        _dirs = []                # 已画过的 (角度, 名字): 用于给"同向层"标 ≡ (L2/L3 常常同向)
+        _n_it = len(_items)
+        _cw = (w0 - 28.0) / max(1, _n_it)
+        _dy = _y0 + 52.0 + 44.0
+        for _i, (_q, _col, _nm, _wgt, _mag) in enumerate(_items):
+            if not _q:
+                continue
+            _ccx = x0 + 14.0 + _cw * (_i + 0.5)
+            _ccy = _dy
+            _rad = min(34.0, _cw * 0.45)
+            p.setPen(QPen(QColor(52, 66, 86, 200), 1.2))
+            p.setBrush(QColor(14, 20, 30, 220))
+            p.drawEllipse(QPointF(_ccx, _ccy), _rad, _rad)
+            p.setBrush(Qt.NoBrush)
+            vx, vy, _vz, ww = _q[1], _q[2], _q[3], _q[0]
+            _vv = math.hypot(vx, vy) or 1e-6
+            # 长度按 |F| 的**对数**尺度 (2026-10-19 看图: 平方根把 5 倍压成 1.27 倍, 肉眼读不出量级)
+            #   ⇒ log 分档, 最弱层 0.24r、最强层 0.92r; 尖不出环 (≤0.92r < 半径)
+            _lg = lambda v: math.log10(max(1e-6, v))
+            _lo = min([it[4] for it in _items if it[4] > 0] or [1e-6])
+            _hi = max([it[4] for it in _items] or [1e-6])
+            _u = 0.0 if _hi <= _lo * 1.0001 else (_lg(_mag) - _lg(_lo)) / (_lg(_hi) - _lg(_lo))
+            _ln = max(9.0, _rad * (0.28 + 0.64 * max(0.0, min(1.0, _u))) * _wgt)
+            _lens = getattr(self, "_s3_lens", None)
+            if _lens is None:
+                _lens = self._s3_lens = []
+            _lens.append((_nm, round(_mag, 4), round(_ln, 1)))
+            c = QColor(_col); c.setAlpha(int(150 + 100 * abs(ww)))
+            p.setPen(QPen(c, 5.0 if _nm == "合" else 3.6, Qt.SolidLine, Qt.RoundCap))
+            _px, _py = _ccx + vx / _vv * _ln, _ccy - vy / _vv * _ln
+            p.drawLine(QPointF(_ccx, _ccy), QPointF(_px, _py))
+            # 箭头尖 (2026-10-19 看图: 只是圆头线段 ⇒ 看不出朝向)
+            _ang = math.atan2(_py - _ccy, _px - _ccx)
+            _hl = 8.0 if _nm == "合" else 6.5
+            p.setBrush(c)
+            _tri = QPolygonF([QPointF(_px, _py),
+                              QPointF(_px - _hl * math.cos(_ang - 0.42), _py - _hl * math.sin(_ang - 0.42)),
+                              QPointF(_px - _hl * math.cos(_ang + 0.42), _py - _hl * math.sin(_ang + 0.42))])
+            p.drawPolygon(_tri)
+            p.setBrush(Qt.NoBrush)
+            p.setBrush(c)
+            p.drawEllipse(QPointF(_ccx, _ccy), 2.6, 2.6)
+            p.setBrush(Qt.NoBrush)
+            p.setPen(c)
+            p.setFont(_cached_font(14, True))
+            _ang_d = math.degrees(math.atan2(-(vy), vx)) % 360.0
+            _same = None      # 2026-10-19: 同向就写 "L2≡L3" 反而让人以为是一个层; 层名一律独立
+            _dirs.append((_ang_d, _nm, _mag))
+            p.drawText(QRectF(_ccx - _cw / 2.0, _ccy + _rad + 2, _cw, 18),
+                       Qt.AlignHCenter | Qt.AlignTop, (_nm + "≡" + _same) if _same else _nm)
+            # 盘下写这个层这一刻的力 (m/s) —— 直接回答"L5 的力是多少"
+            p.setFont(_cached_font(15, True))
+            p.setPen(QColor("#c9d1d9"))
+            _off_layer = (not getattr(self.data, "layers_on", {}).get(_nm, True)) if _nm != "合" else False
+            p.drawText(QRectF(_ccx - _cw / 2.0, _ccy + _rad + 20, _cw, 16),
+                       Qt.AlignHCenter | Qt.AlignTop, "未跑" if _off_layer else ("%.3f" % _mag))
+        ox, oy = x0 + 14.0, _y0 + _h - 30.0
+
+        # S³ 角距 (老倪「用四元数表达力场总观」): 角距 = 2·acos|⟨qi,qj⟩| (大圆距离), 两行写完六对
+        _qs = dict((c["L"], c.get("q")) for c in (fE.get("comps") or []))
+        _qs["合"] = fE.get("q")
+        def _ang(a, b):
+            if not a or not b:
+                return None
+            _d = abs(sum(x * y for x, y in zip(a, b)))
+            return math.degrees(2.0 * math.acos(min(1.0, _d)))
+        _pairs = [("L2", "L3"), ("L2", "L4"), ("L2", "L5"), ("L3", "L4"), ("L3", "L5"), ("L4", "L5")]
+        # 角距只留"主力↔合力"一句 (其余五对在悬停卡): 9px 两行字太小, 老倪看不清 ⇒ 不上画面
+        _a = float(getattr(self.data, "alpha", 1.0) or 1.0)
+        _ml = "L4" if _a > 1.0 else "L2"
+        _dmain = _ang(_qs.get(_ml), fE.get("q"))
+        p.setPen(QColor("#8b98a8"))
+        p.setFont(_cached_font(15, True))
+        p.drawText(QRectF(x0 + 14, _y0 + _h - 30, w0 - 28, 22), Qt.AlignLeft | Qt.AlignVCenter,
+                   "∠主力↔合力 %.0f° · Δ合 %.0f°" % (_dmain or 0.0, fE.get("dev") or 0.0))
+
+
+    def _infer_halo(self, p, key, x, y, r):
+        """推理中的**柔顺光晕** (画在球体之下): 半径 2.2r 的径向渐变, 强度按
+        _live_s (该层真源帧龄) × 呼吸曲线 (周期 2s, 正弦) —— 在推理就慢呼吸, 不在就自然灭掉。"""
+        a = getattr(self, "_live_s", {}).get(key, 0.0)
+        if a <= 0.03:
+            return
+        t = getattr(self, "_pulse_t", 0.0)
+        _ph = (t / self.PULSE_T + (abs(hash(key)) % 97) / 97.0) % 1.0
+        _b = 0.55 + 0.45 * math.sin(2 * math.pi * _ph)          # 0.10 ~ 1.00, 连续
+        col = QColor(self.COL.get(key, "#8b949e"))
+        g = QRadialGradient(QPointF(x, y), max(r * 2.2, r + 12.0))
+        c0 = QColor(col); c0.setAlphaF(min(0.40, 0.34 * a * _b))
+        c1 = QColor(col); c1.setAlphaF(0.0)
+        g.setColorAt(0.0, c0); g.setColorAt(0.58, c0); g.setColorAt(1.0, c1)
+        p.setPen(Qt.NoPen); p.setBrush(g)
+        _rr = max(r * 2.2, r + 12.0)
+        p.drawEllipse(QPointF(x, y), _rr, _rr)
+        p.setBrush(Qt.NoBrush)
+
+    def _infer_ripple(self, p, key, x, y, r):
+        """推理中的**外扩环** (画在球体之外, 不压球): 两个环错半周期, 一直有环在往外走
+        ⇒ 看得出来"这一颗正在算", 但既不闪也不跳 (半径/透明度都是时间连续函数)。"""
+        a = getattr(self, "_live_s", {}).get(key, 0.0)
+        if a <= 0.03:
+            return
+        t = getattr(self, "_pulse_t", 0.0)
+        _ph = (t / self.PULSE_T + (abs(hash(key)) % 97) / 97.0) % 1.0
+        col = QColor(self.COL.get(key, "#8b949e"))
+        for _d in (0.0, 0.5):
+            f = (_ph + _d) % 1.0
+            al = int(135 * a * (1.0 - f) ** 1.7)
+            if al <= 3:
+                continue
+            c = QColor(col); c.setAlpha(al)
+            p.setPen(QPen(c, 1.5)); p.setBrush(Qt.NoBrush)
+            rr = r + 5.0 + 13.0 * f
+            p.drawEllipse(QPointF(x, y), rr, rr)
+
+    def _state_ring(self, p, x, y, r, k):
+        c = QColor(self.STATE_COL.get(k or "off"))
+        c.setAlpha(235 if k == "live" else 200)
+        p.setPen(QPen(c, 1.6)); p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(x, y), r + 3.0, r + 3.0)
+
+    def _layers_strip(self, p, W, H):
+        """右上角 L5→L4→L3→L2 四格: 每格 = 层名 + 状态点 + 最近一次真调用的 ms; 整条带标公共帧龄。
+        真源: layer_calls.jsonl 末行 (引擎每拍一条流水)。文件停写 ⇒ 整条带变黄/灰并标"陈旧", 不冒充在跑。"""
+        L = getattr(self.data, "layers", None) or {}
+        if not L:
+            return
+        k = L.get("k")
+        col = self.STATE_COL.get(k or "off")
+        cw, ch, gap = 74.0, 34.0, 6.0
+        x0 = W - 8 - (cw * 4 + gap * 3)
+        y0 = 24.0
+        p.setFont(_cached_font(12))
+        _fm = p.fontMetrics()
+        for i, name in enumerate(("L5", "L4", "L3", "L2")):
+            d = L.get(name) or {}
+            x = x0 + i * (cw + gap)
+            rr = QRectF(x, y0, cw, ch)
+            _bg = QColor(18, 22, 30, 232)
+            p.setPen(QPen(QColor(58, 66, 80), 1)); p.setBrush(_bg)
+            p.drawRoundedRect(rr, 5, 5)
+            _ok = d.get("ok")
+            _dc = QColor("#3fb950") if (_ok and k == "live") else (QColor("#d29922") if _ok else QColor("#f85149"))
+            if k != "live":
+                _dc = QColor("#d29922") if _ok else QColor("#6e7681")
+            p.setPen(Qt.NoPen); p.setBrush(_dc)
+            p.drawEllipse(QPointF(x + 8, y0 + 10), 3.0, 3.0)
+            p.setPen(FG); p.setFont(_cached_font(11, True))
+            p.drawText(QRectF(x + 14, y0 + 3, cw - 16, 14), Qt.AlignLeft | Qt.AlignVCenter, name)
+            p.setPen(DIM); p.setFont(_cached_font(12))
+            _ms = d.get("ms")
+            _t = ("%.1f ms" % _ms) if isinstance(_ms, (int, float)) else ("—" if _ok is None else "无 ms")
+            p.drawText(QRectF(x + 6, y0 + 18, cw - 10, 12), Qt.AlignLeft | Qt.AlignVCenter, _t)
+        # 公共帧龄
+        _age = L.get("age")
+        _txt = "L2~L5 调用流水: " + (("帧龄 %.1fs · %s" % (_age, L.get("txt") or "")) if isinstance(_age, (int, float)) else "无真源")
+        p.setFont(_cached_font(12)); p.setPen(col)
+        p.drawText(QRectF(x0, y0 + ch + 2, cw * 4 + gap * 3, 12), Qt.AlignRight | Qt.AlignVCenter, _txt)
 
     def _gravity_well(self, p, cx, cy, R, sun):
         e1, e2 = sun.get("eig_min"), sun.get("eig_max")
@@ -764,10 +1717,14 @@ class OrbitalArchView(QWidget):
                 _dx2, _dy2 = _b2[3] - _b2[1], _b2[4] - _b2[2]
                 _n2 = math.hypot(_dx2, _dy2) or 1.0
                 _nx, _ny = -_dy2 / _n2, _dx2 / _n2
-                _dd2 = min(abs((_a[1] - _b2[1]) * _nx + (_a[2] - _b2[2]) * _ny),
-                           abs((_a[3] - _b2[1]) * _nx + (_a[4] - _b2[2]) * _ny))
+                _sd_a = (_a[1] - _b2[1]) * _nx + (_a[2] - _b2[2]) * _ny
+                _sd_b = (_a[3] - _b2[1]) * _nx + (_a[4] - _b2[2]) * _ny
+                _dd2 = min(abs(_sd_a), abs(_sd_b))
                 if _dd2 < 6.0:
-                    shift = 4.0
+                    # 2026-10-19: 原来固定 +4 ⇒ 汇于同一顶点的两条近共线 (太阳→水星/太阳→木星)
+                    #   会被推向**靠近**对方的一侧, 局部反而贴成 0px。改成朝"离开对方"的方向推 4px。
+                    _mid = _sd_a if abs(_sd_a) >= abs(_sd_b) else _sd_b
+                    shift = 4.0 if _mid >= 0 else -4.0
             offs.append((_a[0], shift))
         return offs
 
@@ -823,18 +1780,33 @@ class OrbitalArchView(QWidget):
         #   (两端同移, 仍落在两球之间)。两遍(透描/正画)用同一张偏移表 ⇒ 相位与位置一致。
         _seg4 = self._force_segments(pos, b)
         _offs = {id(_e): _o for (_e, _o) in _seg4}
+        _dt = getattr(self, "_dt", self.TICK_MS / 1000.0)
+        if not hasattr(self, "_edge_a"):
+            self._edge_a, self._edge_o = {}, {}
         for e in self._edges:
             if not e["body_body"]:
                 continue
-            if not self._signal_ok(e, b):            # 有就显示, 没有就不显示
+            _ok = self._signal_ok(e, b)              # 有就显示, 没有就不显示
+            _k = id(e)
+            # 2026-10-19 老倪「不能有任何连线的跳跃」: 出现/消失走 0.3s 透明度渐变, 不硬切;
+            #   近共线偏移 0↔4px 也走缓动 ⇒ 不会看到线"弹"一下。
+            _a = self._edge_a.get(_k, 1.0 if _ok else 0.0)
+            if ghost:
+                _a += ((1.0 if _ok else 0.0) - _a) * min(1.0, _dt * 3.2)
+                self._edge_a[_k] = _a
+            if _a <= 0.03:
                 continue
             pa = pos.get(self._key_of(e["f"]))
             pb = pos.get(self._key_of(e["t"]))
             if pa is None or pb is None:
                 continue
             x1, y1, x2, y2 = float(pa[0]), float(pa[1]), float(pb[0]), float(pb[1])
-            _o2 = _offs.get(id(e), 0.0)
-            if _o2:
+            _alg = _offs.get(_k, 0.0)
+            _o2 = self._edge_o.get(_k, _alg)
+            if ghost:
+                _o2 += (_alg - _o2) * min(1.0, _dt * 5.0)
+                self._edge_o[_k] = _o2
+            if abs(_o2) > 0.05:
                 _dx3, _dy3 = x2 - x1, y2 - y1
                 _n3 = math.hypot(_dx3, _dy3) or 1.0
                 x1 += -_dy3 / _n3 * _o2; y1 += _dx3 / _n3 * _o2
@@ -843,15 +1815,15 @@ class OrbitalArchView(QWidget):
             if ghost:
                 # 文字块**之下**先透描一遍 (字压线: 字仍可读, 线也没有"断"的错觉); 全部虚线, 同相位
                 # 2026-10-16 看图: 这一遍画在球体之后 ⇒ 线穿过球面(z 序错)。用 clip 把球体挖掉。
-                c2 = QColor(col); c2.setAlpha(86)
+                c2 = QColor(col); c2.setAlpha(int(86 * _a))
                 g = QPen(c2, 2.9, Qt.CustomDashLine)
                 g.setCapStyle(Qt.FlatCap)
                 g.setDashPattern([7.0 / 2.9, 6.0 / 2.9]); g.setDashOffset((self._phase * 1.6) / 2.9)
                 p.setPen(g)
                 p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
                 continue
-            core = QColor(col); core.setAlpha(236)
-            glow = QColor(col); glow.setAlpha(60)
+            core = QColor(col); core.setAlpha(int(236 * _a))
+            glow = QColor(col); glow.setAlpha(int(60 * _a))
             pen_w = 2.9
             # 慢速流动虚线: 长划 6px / 间隔 4px ⇒ 人眼看得清"是虚线", 相位每次 tick 走 0.5px (60ms/格)
             _dash, _gap = 7.0, 6.0          # 像素单位 (与笔宽解耦: 两支笔的划/隔必须同一像素几何)
@@ -925,41 +1897,35 @@ class OrbitalArchView(QWidget):
         return list(_out)
 
     def _foot_lines(self, W):
-        """底部图注 (完整, 自动换行) —— 判据 J2 核"不许截断"。"""
+        """底部图注 (2026-10-19 老倪「不要显示那么多字, 精简」: 由 8~9 行砍到 3 行, 字号 9→11)。
+        保留可复核锚点: 真源: / 帧龄 / 节点映射核对 (判据 F2) · L2~L5 (判据 S13) · 角度映射 (F1)。
+        细节 (每条连线/每个角度映射到哪个量) 全在悬停卡与 tooltip 里, 不占画面。"""
         s = self.data.body.get("sun", {})
-        e1, e2 = s.get("eig_min"), s.get("eig_max")
-        mtxt = ("度量 g dim=%s diag 特征值 %.3f~%.3f (引力=度量, 井扁率按此)" % (s.get("metric_dim"), e1, e2)) \
-            if e1 else "度量 g 未读 torque_live"
         nv = self.info.get("checked", {})
         miss = [k for k, v in nv.items() if not v.get("在")]
-        _all_bb = [e for e in self._edges if e["body_body"]]
-        _live = self.interactions()
-        a = ("力的相互作用 (画布 links 真源): 主体↔主体 %d 条 · **信号有值才画** ⇒ 当前画出 %d 条 · "
-             "体系外节点/灰点已删 (老倪: 其它球体删掉)") % (len(_all_bb), len(_live))
-        _kinds = []
-        for _e in _live:
-            _k = _e.get("sig_kind")
-            if _k and _k not in _kinds:
-                _kinds.append(_k)
-        _kname = {"geom": "青=几何条件", "perf": "金=性能/集合条件", "drive": "绿=动作/前馈", "feedback": "紫=反馈/回灌"}
-        _miss_k = [n for k, n in _kname.items() if k not in _kinds]
-        bb = ("线义 (**全部虚线** 长划7/隔6, 慢速流动): 本帧实画 %s%s · 缺值不画 (显示由真源代码触发: 见 SIG_OF 注释)") % (
-            " · ".join(_kname[k] for k in _kinds) or "无",
-            (" · 本帧无: " + " · ".join(_miss_k)) if _miss_k else "")
-        c = ("角度映射: 水星←接触进度‖e∥‖ · 地球←前馈请求/v_cap · 火星←块步λ · 木星←η · "
-             "月球与原子技能=地球相位(协同行进) · 卫星=原子技能 %s (真源 skill_phys; 亮=在职, 金圈=当前在职 %s)") % (
-            "SK01~SK%02d" % max(1, len(self.data.body.get("sats", {}).get("list") or [])),
-            self.data.body.get("sats", {}).get("active") or "—")
-        d = "真源: engine_latest(帧龄 %s) · torque_live(%s) · skill_latest · ss_traj_last(%d 帧) · manifold_layer.py 真算 · 画布 %d 节点/%d 连线 · 节点映射核对 %d/%d 全命中" % (
-            ("%.1fs" % s["帧龄"]) if isinstance(s.get("帧龄"), (int, float)) else "—", mtxt,
-            (self.data.frames or {}).get("n", 0), len(self.data.nodes), len(self.data.links), len(BODIES) - len(miss), len(BODIES))
-        out = []
-        for t in (a, bb, c, d):
-            out += self._wrap(t, max(80, W - 12), 9)
+        _age = ("%.1fs" % s["帧龄"]) if isinstance(s.get("帧龄"), (int, float)) else "—"
+        _L = getattr(self.data, "layers", {}) or {}
+        def _glyph(nm):
+            _d = _L.get(nm, {})
+            if _d.get("ok") and _L.get("k") == "live":
+                return "●"
+            if _d.get("ok") and _L.get("k") == "stale":
+                return "◐"
+            return "○"
+        _lg = " ".join("%s%s" % (nm, _glyph(nm)) for nm in ("L5", "L4", "L3", "L2"))
+        _run = "" if getattr(self.data, "running", False) else " · ⏸ 未运行"
+        # 2026-10-19 再精简: 4 行 → 3 行短句 (每项都留着, 只是不再写解释性长句)
+        out = [
+            "线义: 青=几何 金=性能 绿=动作 紫=反馈",
+            "L2~L5: %s · 帧龄 %s · 球位=角度映射" % (
+                _lg,
+                ((" %.0fs" % _L["age"]) if isinstance(_L.get("age"), (int, float)) else "无")),
+            "真源 engine/torque_live/skill · %.1fs · 核对 %d/%d%s" % (
+                float(_age.rstrip("s")) if _age.endswith("s") else 0.0,
+                len(BODIES) - len(miss), len(BODIES), _run),
+        ]
         if miss:
             out.append("⚠ 缺源: %s" % ",".join(miss))
-        if self.data.err:
-            out.append("⚠ 读源异常 %d 处" % len(self.data.err))
         return out
 
     def _block(self, p, lines, x, y, w, color, size=9, frame=True):
@@ -968,7 +1934,7 @@ class OrbitalArchView(QWidget):
         if not lines:
             return QRectF()
         fm = self._fm(size)
-        h = 11 * len(lines) + 4
+        h = self.LH * len(lines) + 4
         rect = QRectF(x, y, w, h)
         if frame:
             p.setPen(QPen(QColor(52, 68, 86, 210), 1))
@@ -977,13 +1943,134 @@ class OrbitalArchView(QWidget):
         p.setPen(color)
         p.setFont(_cached_font(size))
         for i, t in enumerate(lines):
-            p.drawText(QRectF(rect.x() + 3, rect.y() + 2 + i * 11, rect.width() - 6, 11),
+            p.drawText(QRectF(rect.x() + 4, rect.y() + 2 + i * self.LH, rect.width() - 8, self.LH),
                        Qt.AlignLeft | Qt.AlignVCenter, t)
         return rect
+
+    def _body_short(self, key, d):
+        """标签上只放**一行**关键量 (老倪 2026-10-19: 字少、字大)。全量在悬停卡 _hover 里。"""
+        def _f(v, fmt="%.3f"):
+            return (fmt % v) if isinstance(v, (int, float)) else "—"
+        if key == "mercury":
+            pr = d.get("progress")
+            return ("%.0f%%" % (pr * 100)) if isinstance(pr, (int, float)) else "—"
+        if key == "earth":
+            return "%s m/s" % _f(d.get("req_mps"), "%.2f")
+        if key == "mars":
+            return "λ %s" % _f(d.get("lambda"), "%.2f")
+        if key == "jupiter":
+            return "η %s" % _f(d.get("eta"), "%.2f")
+        if key == "moon":
+            return "残差 %s" % _f(d.get("err"), "%.2f")
+        return ""
+
+    def _sun_text_short(self, s):
+        """太阳只写两个数: M (标定) + T (在跑才有)。"""
+        if not isinstance(s.get("M"), (int, float)):
+            return "真源不可用"
+        if not getattr(self.data, "running", False):
+            return "M=%.2f 未运行" % s["M"]
+        t = "M=%.2f" % s["M"]
+        if isinstance(s.get("T_norm"), (int, float)):
+            t += " T=%.0f%s" % (s["T_norm"], "≤" if s.get("clip") else "")
+        return t
 
     def _body_line(self, key, d):
         """球下的真值一行 (完整短句, 不截断); 取不到 ⇒ 诚实文案。"""
         return self._body_text(key, d)
+
+    RIGHT_COL = True          # 文字描述固定在右侧竖栏 (老倪 2026-10-19: 不要飘, 不要动)
+    COL_W = 380.0             # 右侧栏最大宽度 (px)          # 文字描述固定在右侧竖栏 (老倪 2026-10-19: 不要飘, 不要动)
+
+    def _s3_visible(self, W):
+        """窗口太窄时卡片放不下 (会压住轨道/文字) ⇒ 不画; S³ 的数仍在右栏 q̂合/q̂主 两行里。"""
+        _col = self._col_w(W) if self.RIGHT_COL else 0
+        return (W - _col - self._s3_w(W) - 30.0) >= 200.0
+
+    def _s3_w(self, W):
+        """左下「S³ 力场」卡宽度 (放大的合力小窗): 窄窗收窄, 宽窗到 350px。"""
+        return float(min(392.0, max(260.0, W * 0.32)))
+
+    def _col_w(self, W):
+        """右侧文字栏宽度 (内容自适应, 但**固定**不变 ⇒ 文字不会左右挪)。"""
+        return float(min(self.COL_W, max(240, int(W * 0.36))))
+
+    def _label_blocks_right(self, pos, b, cx, cy, R, S, W, H):
+        """右侧固定文字栏 (老倪 2026-10-19: 「文字描述不要飘来漂去, 都靠右侧显示, 不要动」)。
+
+        · 行序固定: 太阳 → 水星 → 地球 → 月球 → 火星 → 木星 → SK 群; 每行**一行字**, 不换行;
+        · 位置固定: 右边缘贴 W-6, 宽度按文字自适应 (文字不变 ⇒ 位置不变), 与数据跳动无关;
+        · 归属靠 1px 淡引线 (引线跟着球连续走 —— 线可以动, 字不动)。
+        """
+        _run_all = bool(getattr(self.data, "running", False))
+        colw = self._col_w(W)
+        # 老倪 2026-10-19「字太小, 字数太多, 要精简」: 角色名压到 2 个字, 详细口径全在悬停卡
+        names = {"sun": "☀ 太阳·中心", "mercury": "☿ 水星·接触",
+                 "earth": "♁ 地球·前馈", "moon": "🌙 月球·校正",
+                 "mars": "♂ 火星·DiT", "jupiter": "♃ 木星·性能"}
+        rows = []
+        for key in ("sun", "mercury", "earth", "moon", "mars", "jupiter"):
+            head, col = names[key], QColor(self.COL[key])
+            if key == "sun":
+                body = self._sun_text_short(b.get("sun", {}))
+            elif not _run_all:
+                body = "未运行"          # 后台常驻引擎一直在写文件 ⇒ 未运行时不许让数字继续跳
+            else:
+                body = self._body_short(key, b.get(key, {})) or "无真源"
+            # 一行: 状态字形 + 天体/节点名 + 关键量 (详细口径在悬停卡)
+            rows.append((key, "%s %s %s" % (self._st_glyph(b.get(key, {})), head, body), col))
+        # 卫星: 8 颗 SK 合成一行 (逐颗浮动标号会跟着地球转 = 飘, 老倪不要)
+        _sats = (b.get("sats", {}).get("list") or [])
+        _ids = [str(d.get("SK") or "") for d in _sats if d.get("SK")]
+        # 地球合力一行 (粗箭头那个数): 合力模长 + 主力↔合力夹角 + 一致度
+        _fE = getattr(self.data, "fE", {}) or {}
+        _run = bool(getattr(self.data, "running", False))
+        if _run and _fE:
+            rows.append((None, "F合 %.2f m/s · Δ主↔合 %.0f°"
+                         % (_fE.get("mag") or 0.0, _fE.get("dev") or 0.0),
+                         QColor("#58a6ff")))
+        else:
+            # 未运行: 行不能消失 (行数一变整列就跳), 但必须写清"未运行", 不拿后台文件冒充实时力
+            rows.append((None, "F合 ⏸ 未运行" + (" (定格)" if _fE else ""), QColor("#6e7681")))
+        # 四元数行: 每层一行 (q̂ = 归一四元数, 平方和=1; 颜色=该层天体色 ⇒ 一眼对应)
+        # 四元数: 只留两个 —— 合力 q̂ (整个力场的方向) 与 主力 q̂ (u_ff), 其余在悬停卡里
+        _qq = getattr(self.data, "quat", {}) or {}
+        # 主力层: α>1 时是前馈 L4 —— **但档位没跑到 L4 时它没输出** (只跑 L2 ⇒ 主力就是 L2)
+        _ql = (getattr(self.data, "quat", None) or {})
+        _main_L = ("L4" if (float(getattr(self.data, "alpha", 1.0) or 1.0) > 1.0
+                           and (_ql.get("L4") or {}).get("q")) else "L2")
+        if not (_ql.get(_main_L) or {}).get("q"):
+            _main_L = next((k for k in ("L2",) if (_ql.get(k) or {}).get("q")), _main_L)
+        for _L, _nm, _k in (("合", "合", None), (_main_L, "主", "jupiter" if _main_L == "L4" else "earth")):
+            _src = (_fE.get("q") if _L == "合" else ((_qq.get(_L) or {}).get("q")))
+            if _src:
+                _txt = "q̂%s %+.2f %+.2f %+.2f %+.2f" % (_nm, _src[0], _src[1], _src[2], _src[3])
+                if not _run:
+                    _txt = "⏸ " + _txt
+            else:
+                _txt = "q̂%s 未运行" % _nm if not _run else ("q̂%s 未算" % _nm)
+            rows.append((None, _txt, QColor("#58a6ff" if _L == "合" else self.COL.get(_k, "#4da3ff"))))
+        _sk_txt = ("SK%s…SK%s" % (_ids[0][-2:], _ids[-1][-2:]) if len(_ids) > 1
+                   else ("SK%s" % _ids[0][-2:] if _ids else "无卫星"))
+        rows.append((None, "● %s" % _sk_txt, QColor("#8ee6c8")))
+        _gap = 7.0
+        _h = float(self.LH + 6)      # 行高 24 + 6 = 30px/行 (17px 字不挤)
+        _avail = H - 70.0 - (6 + self.LH * len(self._foot_lines(W)))   # 起点 y=46 (让出标题带) + 底边留白
+        while len(rows) * (_h + _gap) - _gap > _avail and _gap > 1.0:
+            _gap -= 1.0
+        y = 46.0
+        out, placed = [], []
+        self._lead_of = {}          # 文字↔球体不画连线 (老倪 2026-10-19: 太乱), 只靠颜色对应
+        for _i, (key, text, col) in enumerate(rows):
+            _w = min(colw, max(150.0, self._fm(20).width(text) + 18.0))
+            rect = QRectF(W - 14.0 - _w, y, _w, _h)         # 右边缘钉住 ⇒ 视觉不挪 (留 14px 不贴画布边)
+            out.append((rect, [text], col, 20))
+            _p = pos.get(key) if key else pos.get("earth")
+            _bx, _by = float(_p[0]), float(_p[1]) if _p else cy
+            self._lead_of[_i] = (_bx, _by, col)      # 只记归属 (供 hover/判据), **不画引线**
+            placed.append(rect)
+            y += _h + _gap
+        return out, placed
 
     def _label_blocks(self, pos, b, cx, cy, R, S, W, H):
         """算出**所有文字块的外接矩形** (先避让再画) —— 判据 J1 用它核「任何两块文字不重叠」。
@@ -994,8 +2081,10 @@ class OrbitalArchView(QWidget):
           · 与已放置的块/球体圆/卫星圈相交 ⇒ 沿自己的方向每次推 6px, 最多 26 次。
         块宽 208px (与侧栏 682px 宽兼容), 每行 11px。
         """
+        if self.RIGHT_COL:
+            return self._label_blocks_right(pos, b, cx, cy, R, S, W, H)
         w = min(228.0, max(150.0, W - 24))
-        pad_top, pad_bot = 20, 12 + 11 * len(self._foot_lines(W))
+        pad_top, pad_bot = 24, 14 + self.LH * len(self._foot_lines(W))
         placed, out = [], []
 
         def keepouts():
@@ -1081,14 +2170,17 @@ class OrbitalArchView(QWidget):
             再在候选方向 (径向 → ±45° → ±90° → ±135° → 反向) 上 6px 步扫, 先 clamp 再判冲突。
             """
             w, lines = _fit_lines(lines, size)
-            h = 11 * len(lines) + 4
+            h = self.LH * len(lines) + 4
             ks = keepouts()
+
+            self._lead_of = getattr(self, "_lead_of", {})
 
             def _fin(rect):
                 """块离自己的球太远 ⇒ 记一条引线 (2026-10-16 看图: 月球块孤零零挂左下角认不出归属)。
                 口径按"块矩形到该球**球面**的距离", 不是块心到球心 (宽块贴球时块心本来就远)。"""
                 _nx2 = max(rect.x(), min(x, rect.x() + rect.width()))
                 _ny2 = max(rect.y(), min(y, rect.y() + rect.height()))
+                self._lead_of[len(out)] = (float(x), float(y), color)
                 _surf = max(0.0, math.hypot(_nx2 - x, _ny2 - y) - own_r)
                 if _surf > 45.0:
                     self._leaders.append((rect, float(x), float(y), color))
@@ -1150,6 +2242,7 @@ class OrbitalArchView(QWidget):
             return _fin(best)
 
         # 2026-10-16 看图: 画面只有节点名, 认不出天体 ⇒ 标题带上**天体名 + 结点名**
+        self._lead_of = {}
         names = {"mercury": "☿ 水星 · 接触流形", "earth": "♁ 地球 · 前馈加速器",
                  "mars": "♂ 火星 · DiT 动作头", "jupiter": "♃ 木星 · 性能流形"}
         for key in ("mercury", "mars", "jupiter", "earth"):
@@ -1157,15 +2250,17 @@ class OrbitalArchView(QWidget):
             ux, uy = x - cx, y - cy
             n = math.hypot(ux, uy) or 1.0
             ux, uy = ux / n, uy / n
-            lines = [names[key]]
-            sub = self._body_line(key, b.get(key, {}))
-            if sub:
-                lines += self._wrap(sub, w - 8, 9)
-            place_near(x, y, lines, FG if key != "earth" else QColor("#cfe4ff"), 9,
+            # 2026-10-19 老倪「字体太小 / 不要那么多字」⇒ 每颗球只留 2 行: 名字 + 1 行关键量
+            _st = (b.get(key, {}) or {}).get("st") or {}
+            _tail = "" if _st.get("k") == "live" else (" · %s" % (_st.get("txt") or ""))
+            lines = ["%s %s" % (self._st_glyph(b.get(key, {})), names[key]),
+                     (self._body_short(key, b.get(key, {})) or "无真源") + _tail]
+            place_near(x, y, lines, FG if key != "earth" else QColor("#cfe4ff"), 12,
                        ux, uy, S * self.RAD[key])
         # 太阳 (贴球底)
-        slines = ["☀ 太阳 · 流形引擎"] + self._wrap(self._sun_text(b.get("sun", {})), w - 8, 9)
-        place_near(cx, cy, slines, GOLD, 9, 0.0, 1.0, S * self.RAD["sun"])
+        slines = ["%s ☀ 太阳 · 流形引擎" % self._st_glyph(b.get("sun", {})),
+                  self._sun_text_short(b.get("sun", {}))]
+        place_near(cx, cy, slines, GOLD, 12, 0.0, 1.0, S * self.RAD["sun"])
         # 卫星群 (绕地球的那一圈的外侧)
         # 月球 (沿"离地球"方向往外)
         mx, my, _mz = pos["moon"]
@@ -1173,7 +2268,8 @@ class OrbitalArchView(QWidget):
         n = math.hypot(ux, uy) or 1.0
         # own_r 原先写成 _mr/2.0 ⇒ 月球标签被推到"地球-月球连线中点之外", 结果压在卫星圈上;
         # 换成 (月球球半径 + 12) ⇒ 近边贴月球外侧 (2026-10-16)
-        place_near(mx, my, ["🌙 月球 · 状态校正器"], QColor("#dfe4ec"), 9, ux / n, uy / n,
+        place_near(mx, my, ["%s 🌙 月球 · 状态校正器" % self._st_glyph(b.get("moon", {}))], QColor("#dfe4ec"), 12,
+                   ux / n, uy / n,
                    S * self.RAD["moon"] + 12)
         # 收尾防撞 (2026-10-16 看图/判据 J1: 加了 8 个卫星 SK 号之后, 拥挤区可能仍有两块相交):
         #   逐对检查, 相交的把**后一块**改放页边栏空槽; 槽位也撞就保持原位 (判据会报出来, 不藏着)。
@@ -1208,7 +2304,7 @@ class OrbitalArchView(QWidget):
 
     def _gutter_slot(self, lines, placed, ks, W, H, pad_top, pad_bot, w):
         """页边栏空槽 (保证不重叠的兜底位置) —— 候选方向全冲突时用 (2026-10-16 看图: 地球区三条互压)。"""
-        h = 11 * len(lines) + 4
+        h = self.LH * len(lines) + 4
         for xg in (6.0, W - 6.0 - w):                 # 先左栏, 再右栏
             y = float(pad_top) + 4.0
             while y + h <= H - pad_bot - 2:
@@ -1247,24 +2343,39 @@ class OrbitalArchView(QWidget):
         return [(t[0], list(t[1])) for t in out]
 
     def _labels(self, p, pos, cx, cy, R, b, W, H, S):
+        """画文字块 —— **位置低通**: 布局给的 target 会随球走/避让切换而瞬移,
+        直接按 target 画就是"文字块跳一下"; 这里每帧只朝 target 走 40%
+        (2026-10-19 老倪「太阳系所有显示禁止跳跃」), 引线也用平滑后的块位算, 否则引线跟块脱节。"""
         blocks, _placed = self._label_blocks(pos, b, cx, cy, R, S, W, H)
-        for rect, lines, color, size in blocks:
-            self._block(p, lines, rect.x(), rect.y(), rect.width(), color, size)
-        # 引线 (2026-10-16 看图: 性能流形块被挤到左上角, 认不出属于哪颗球 ⇒ 拉一根 1px 淡引线)
-        for rect, bx, by, col in getattr(self, "_leaders", []):
-            ccx, ccy = rect.center().x(), rect.center().y()
-            vx, vy = ccx - bx, ccy - by
-            nn = math.hypot(vx, vy) or 1.0
-            vx, vy = vx / nn, vy / nn
-            # 起点: 块边界 (沿方向缩到框外 2px); 终点: 球心外 6px
-            tx = (rect.width() / 2.0) / max(1e-6, abs(vx)) if abs(vx) > 1e-6 else 1e9
-            ty = (rect.height() / 2.0) / max(1e-6, abs(vy)) if abs(vy) > 1e-6 else 1e9
-            tt = min(tx, ty) + 3.0
-            x1, y1 = ccx - vx * tt, ccy - vy * tt
-            x2, y2 = bx + vx * 7.0, by + vy * 7.0
-            c2 = QColor(col); c2.setAlpha(120)
-            p.setPen(QPen(c2, 1))
-            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+        _dt = getattr(self, "_dt", self.TICK_MS / 1000.0)
+        if not hasattr(self, "_lbl_pos"):
+            self._lbl_pos = {}
+        _k = min(1.0, _dt * 6.0)
+        _lead = getattr(self, "_lead_of", {})
+        _shown = []
+        for _i, (rect, lines, color, size) in enumerate(blocks):
+            # key 用"去掉状态字形后的首行" —— 状态一变字形就从 ● 变 ◐/○, 若拿整行当 key
+            # 会当成"新块"⇒ 直接落位 = 跳一下 (2026-10-19)
+            _key = (lines[0].split(" ", 1)[-1] if lines else "") or str(_i)
+            _cur = self._lbl_pos.get(_key)
+            if _cur is None:
+                _cur = QPointF(rect.x(), rect.y())
+            else:
+                # 指数逼近 + **单帧位移上限 14px**: 布局 target 从画面一侧换到另一侧 (避让切换) 时,
+                #   纯指数逼近一步就能走 160px ⇒ 看着还是"跳"; 有上限就变成 1s 左右的滑动。
+                _dx, _dy = rect.x() - _cur.x(), rect.y() - _cur.y()
+                _d = math.hypot(_dx, _dy)
+                if _d > 0.4:
+                    _step = min(_d, max(2.5, min(14.0, _d * _k)))
+                    _cur = QPointF(_cur.x() + _dx / _d * _step, _cur.y() + _dy / _d * _step)
+                else:
+                    _cur = QPointF(rect.x(), rect.y())          # 残差吸附, 免得永远差一点
+            self._lbl_pos[_key] = _cur
+            _r2 = QRectF(_cur.x(), _cur.y(), rect.width(), rect.height())
+            self._block(p, lines, _r2.x(), _r2.y(), _r2.width(), color, size, frame=False)
+            if _i in _lead:
+                _shown.append((_r2, _lead[_i]))
+        # 引线已按老倪要求删除 (2026-10-19: 「把文字与球体的连线去掉, 太乱了; 有颜色对应就可以了」)
 
     @staticmethod
     def _fit_text(p, text, width):
@@ -1277,10 +2388,11 @@ class OrbitalArchView(QWidget):
         """底部图注: **完整** (自动换行, 不省略号截断) —— 行数已经算进 _geom 的底栏高度。"""
         lines = self._foot_lines(W)
         p.setPen(FOOT)
-        p.setFont(_cached_font(9))
-        y0 = H - 8 - 11 * len(lines)
+        p.setFont(_cached_font(14))          # 2026-10-19 看图: 11px 太小, 与正文 20px 差太多
+        y0 = H - 8 - self.LH * len(lines)
+        p.setFont(_cached_font(14))
         for i, t in enumerate(lines):
-            p.drawText(QRectF(4, y0 + i * 11, W - 8, 11), Qt.AlignLeft | Qt.AlignVCenter, t)
+            p.drawText(QRectF(4, y0 + i * self.LH, W - 8, self.LH), Qt.AlignLeft | Qt.AlignVCenter, t)
 
     def _sphere(self, p, x, y, r, col, energy=None):
         r = max(2.0, float(r))
@@ -1321,12 +2433,39 @@ class OrbitalArchView(QWidget):
             return "‖a‖=%.3f · 条件 %d 路" % (d["action_norm"], int(d.get("cond_n") or 0))
         return ""
 
+    @staticmethod
+    def _st_glyph(d):
+        """运行态字形: ● 在跑 · ◐ 陈旧 · ○ 离线 (数据侧算的, 不是猜的)。"""
+        k = ((d or {}).get("st") or {}).get("k")
+        return {"live": "●", "stale": "◐"}.get(k, "○")
+
+    @staticmethod
+    def _st_line(d):
+        st = ((d or {}).get("st") or {})
+        if not st:
+            return ""
+        a = st.get("age")
+        return ("%s · 帧龄 %.1fs" % (st.get("txt") or "", a)) if isinstance(a, (int, float)) \
+            else (st.get("txt") or "")
+
     def _sun_text(self, s):
         if not isinstance(s.get("M"), (int, float)):
             return "真源不可用 (未读 zmax_manifold/engine)"
         t = "M=%.3f · φ=%s · ‖∇Φ‖=%s" % (s["M"],
                                         ("%.3f" % s["phi"]) if isinstance(s.get("phi"), (int, float)) else "—",
                                         ("%.3f" % s["grad_norm"]) if isinstance(s.get("grad_norm"), (int, float)) else "—")
+        if not getattr(self.data, "running", False):
+            # 没在跑: M 只是标定值, 扭矩不是这一帧推理出来的 ⇒ 不写 T (否则等于把上次的数当实时)
+            return t + " · 未运行 (无实时力)"
         if isinstance(s.get("T_norm"), (int, float)):
             t += " · T=%.1f%sN·m" % (s["T_norm"], "≤" if s.get("clip") else "~")
+        _drv = getattr(self.data, "drv", {}) or {}
+        if _drv:
+            # 2026-10-19: 口径本身就是"模型状态"的一部分 —— τ 是解析势场算的, 还是模型张量驱动的?
+            if _drv.get("model_tensor"):
+                t += " · τ源=模型张量"
+            elif _drv.get("src") or _drv.get("x_source"):
+                t += " · τ源=解析势场(未接模型张量)"
+            if _drv.get("clip") and isinstance(_drv.get("T"), (int, float)):
+                t += " · 已限幅(%.0f>%.0f)" % (_drv["T"], _drv.get("T_max") or 0)
         return t

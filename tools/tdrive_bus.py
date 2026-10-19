@@ -185,7 +185,34 @@ def status_gain(H: float, status: str) -> tuple:
 
 
 # ─────────────────────── 核心计算 ───────────────────────
-def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
+def _ff_cfg():
+    """力场构造参数 (与 UI/表同一份真源 `config/calib/force_field.json`)。"""
+    try:
+        import json as _j
+        with open(os.path.join(ROOT, "config/calib/force_field.json"), encoding="utf-8") as f:
+            _c = _j.load(f)
+        return float(_c.get("u_ff_gain", 1.0) or 1.0), bool(_c.get("apply_to_tau", False))
+    except Exception:                                                            # noqa: BLE001
+        return 1.0, False
+
+
+def _u_ff_vec():
+    """本拍前馈速度 (真源: trace_live.json 的 3D 面板快照 `前馈速度`); 拿不到返回 None。"""
+    try:
+        import json as _j
+        with open(os.path.join(ROOT, "zmax_data/ss_live/trace_live.json"), encoding="utf-8") as f:
+            _d = _j.load(f)
+        # 与万有引力表**同一批数**: trace_live 的 HUD 三速度 *_mps (m/s), 不是 nested snap
+        # 🔢 真源是 **_mms** (毫米/秒), 内部统一 m/s ⇒ 除以 1000 (别把 mm 当 m, 差 1000 倍)
+        _xyz = [_d.get("前馈速度_x_mms"), _d.get("前馈速度_y_mms"), _d.get("前馈速度_z_mms")]
+        if any(x is None for x in _xyz):
+            return None
+        return np.asarray([float(x) / 1000.0 for x in _xyz], float)[:3]
+    except Exception:                                                            # noqa: BLE001
+        return None
+
+
+def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None, ff_gain=None) -> dict:
     """算一帧 T_drive = M·(−∇Φ)。全部数值来自真源; 算不出就抛, 不返回编的数。"""
     from lerobot.memory.potential_field import MemoryLayerBridge
     from lerobot.manifold.health import health_from_field
@@ -207,6 +234,23 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
     #    dim=3 逐位保持原行为 (零回归)。
     _dim = int(np.asarray(M).shape[0])
     neg_in = neg6 if _dim == 6 else neg
+    # 🔧 u_ff 加权 (老倪 2026-10-19「改力场构造（给 u_ff 加权）」):
+    #   τ = M·(−∇Φ + α·u_ff)。α 与开关都在 config/calib/force_field.json, 与太阳系/表同一份真源。
+    #   默认 apply_to_tau=false ⇒ 只改显示与表, 不动真机控制回路; 打开才进 τ (并写进 rep 供核对)。
+    _ffg, _ffapply = _ff_cfg()
+    if ff_gain is not None:
+        _ffg, _ffapply = float(ff_gain), True
+    _uff_used = False
+    if _ffapply and _ffg > 1.0:
+        _uff = _u_ff_vec()
+        if _uff is not None:
+            _uff6 = np.concatenate([np.zeros(ROT_DIM), _uff]) if _dim == 6 else _uff
+            neg_in = neg_in + _ffg * _uff6
+            if _dim == 6:
+                neg6 = neg_in
+            else:
+                neg = neg_in
+            _uff_used = True
     tau_vec = M @ neg_in                                       # T = M·(−∇Φ)
     tau6 = tau_vec if _dim == 6 else np.concatenate([np.zeros(ROT_DIM), tau_vec])
     _inv = metric.ginv_mul(x, neg_in)
@@ -244,6 +288,7 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None) -> dict:
         "torque_norm": float(np.linalg.norm(tau_c6)),
         "torque_raw_norm": float(np.linalg.norm(tau_raw6)),
         "clipped": clipped, "t_max": float(t_max), "t_max_src": t_max_src,
+        "ff_gain": (_ffg if _uff_used else 1.0), "ff_applied": _uff_used,
         "t_max_norm_bound": float(t_max * np.sqrt(ROT_DIM)),   # 逐分量限幅 ⇒ 范数上界 √3·T_MAX (规格 §五)
         "torque_inv": [float(v) for v in tau_inv6],
         "unit": "N·m",

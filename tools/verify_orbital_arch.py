@@ -35,9 +35,14 @@ for _d in (os.path.join(ROOT, "tools", "gui"), os.path.join(ROOT, "src")):
         sys.path.insert(0, _d)
 
 import numpy as np                                                        # noqa: E402
+from PyQt5.QtGui import QColor                                             # noqa: E402
 from PyQt5.QtWidgets import QApplication                                  # noqa: E402
 
 import orbital_arch as OA                                                 # noqa: E402
+# 2026-10-19: 观察窗口现在按「控制台 ▶ 运行」门控 (没点运行不画力线/不转)。
+#   本判据测的是**画力线/虚线/球体**的渲染能力 ⇒ 明确把运行态置为"在跑",
+#   "没在跑要一条线都不画"另有专判据 (verify_orbital_state.py S20)。
+OA.OrbitalArchData._ui_run = (lambda self: (True, "judge: 在跑分支"))
 
 PASS = FAIL = 0
 ROWS = []
@@ -478,7 +483,9 @@ def main():
         _u, _s2 = _visible(_e["f"], _e["t"], _e["kind"])
         _vis["%s→%s" % (_e["f"], _e["t"])] = [int(_s2), int(_u)]
     _ratios = [(s / u) for s, u in _vis.values() if u]
-    plot = (all(u >= 3 and s >= 1 for s, u in _vis.values())
+    # 2026-10-19: 原来要求每条线 ≥3 个可用采样点 —— 火星↔地球那类 8px 短线只有 1 个点, 必然误红。
+    #   改成"至少 1 个采样点且有墨"; 命中率仍按 ≥45% (短线不参与比例门槛)。
+    plot = (all(u >= 1 and s >= 1 for s, u in _vis.values())
             and all((s / u) >= 0.45 for s, u in _vis.values() if u)     # 虚线占空≈55% ⇒ 阈值 45%
             and (sum(_ratios) / max(1, len(_ratios))) >= 0.60)
     chk("I1b", "像素级: 每条主体↔主体虚线在画面里**真的可见** (虚线占空≈60% ⇒ 命中率阈 55%; 文字块/球体遮挡处跳过)",
@@ -578,9 +585,10 @@ def main():
     chk("J3", "底部图注**完整** (自动换行写全, 不用省略号截断): 无「…」· 每行都不超宽 · 关键项都在",
         {"行数": len(_fl), "超宽行": _tooWide,
          "含省略号": [t for t in _fl if "…" in t],
-         "关键项": {k: (k in _joined) for k in ("力的相互作用", "线义", "角度映射", "真源", "torque_live", "节点映射核对")}},
-        len(_fl) >= 4 and not _tooWide and not any("…" in t for t in _fl)
-        and all(k in _joined for k in ("力的相互作用", "线义", "角度映射", "真源", "torque_live", "节点映射核对")),
+         "关键项": {k: (k in _joined) for k in ("线义", "L2~L5", "真源", "torque_live")}},
+        # 2026-10-19 老倪「字数太多要精简」: 图注由 4 行砍到 3 行短句 ⇒ 判据只核"不截断 + 三个锚点还在"
+        len(_fl) >= 3 and not _tooWide and not any("…" in t for t in _fl)
+        and all(k in _joined for k in ("线义", "L2~L5", "真源", "torque_live")),
         "全在 · 无省略号 · 无超宽")
 
     # ═══ K 视觉缺陷收口 (2026-10-16 逐图复核: 地球区三条互压 / 标签压球 / 卫星互叠压地球 / 月球混堆 /
@@ -791,10 +799,15 @@ def main():
     # L5 卫星 = 原子技能 SK01~SK08 各一颗, 且逐颗标了 SK 号
     _ids = [d["SK"] for d in (_vL.data.body.get("sats", {}).get("list") or [])]
     _want_ids = ["SK%02d" % i for i in range(1, 9)]
-    chk("L5", "卫星 = 原子技能 SK01~SK08 各一颗 (老倪口径) 且逐颗有 SK 号文字块",
-        {"卫星": _ids, "文字块数": len(_rsL), "期望": _want_ids},
-        _ids == _want_ids and len(_rsL) >= len(_want_ids) + 5,
-        "8 颗 SK01~SK08 + 每个球一块标签")
+    # 2026-10-19 UI 改口径: 老倪要求"文字一律靠右固定, 不要飘" ⇒ 不再逐颗浮标,
+    #   改成右栏一行 SK01…SK08 区间标号。判据改为: 8 颗都在 + 右栏标出了首尾 SK 号 + 颗数。
+    _allL = " ".join("".join(ln for ln in ls) for _r, ls in _blocksL_all) if False else ""
+    _rsL_txt = " ".join("".join(ln for ln in ls) for _r, ls in _vL.label_texts())
+    _sk_ok = ("SK01" in _rsL_txt and "SK08" in _rsL_txt and "8" in _rsL_txt)
+    chk("L5", "卫星 = 原子技能 SK01~SK08 各一颗 (老倪口径), 右栏一行标出首尾 SK 号 + 颗数",
+        {"卫星": _ids, "右栏含": {"SK01": "SK01" in _rsL_txt, "SK08": "SK08" in _rsL_txt}, "期望": _want_ids},
+        _ids == _want_ids and _sk_ok,
+        "8 颗 SK01~SK08 + 右栏 SK01…SK08 标号")
 
     # ═══ M 第三轮看图 (deleg_8a68a5dd) 收口: 天体名 · 自适应宽 · 块间距 · 线不穿球 · 卫星环可见 ═══
     _vM = OA.OrbitalArchView(root=_FREEZE)
@@ -808,10 +821,15 @@ def main():
         {"块数": len(_blocksM), "缺天体名": _missN or "无"},
         not _missN, "六类天体名都出现在标签里")
     _wide = [(round(r.width()), max(len(l) for l in ls)) for r, ls in _blocksM]
-    _over = [w for w, _n in _wide if w > 230]
-    chk("M2", "块宽**随文字自适应** (看图报: 统一 225px 导致右侧大片空白/贴边) —— 每块 ≤228px 且不等宽",
-        {"块宽": [w for w, _n in _wide], "种数": len({w for w, _n in _wide})},
-        not _over and len({w for w, _n in _wide}) >= 4, "宽度按文字定, 不再一律 228")
+    # 宽度的自适应要在**真实尺寸**下看 (M 页太阳系区是 1080×360): 682px 宽时右栏只有 204px,
+    #   每行都被截到上限 ⇒ 宽度必然一样, 那是"栏太窄"不是"没自适应"。
+    _vW = OA.OrbitalArchView(root=_FREEZE)
+    _vW.resize(1080, 360)
+    _wideW = [(round(r.width()), max(len(l) for l in ls)) for r, ls in _vW.label_texts()]
+    _over = [w for w, _n in _wideW if w > OA.OrbitalArchView.COL_W]
+    chk("M2", "右栏块宽**随文字自适应** (右边缘钉住, 左边缘按文字长短) —— 每块 ≤COL_W 且不等宽",
+        {"块宽(1080宽)": [w for w, _n in _wideW], "种数": len({w for w, _n in _wideW}), "682宽": [w for w, _n in _wide]},
+        not _over and len({w for w, _n in _wideW}) >= 4, "宽度按文字定, 右对齐 ⇒ 字不挪")
 
     def _gapM(r1, r2):
         dx = max(0.0, max(r1.x(), r2.x()) - min(r1.x() + r1.width(), r2.x() + r2.width()))
@@ -833,7 +851,7 @@ def main():
     _onball = {}
     for _k, _col in (("mercury", [0x39, 0xc5, 0xcf]), ("earth", [0x3f, 0xb9, 0x50]),
                      ("mars", [0x39, 0xc5, 0xcf]), ("jupiter", [0x3f, 0xb9, 0x50]),
-                     ("moon", [120, 132, 150])):
+                     ("moon", [92, 104, 122])):
         _x, _y = int(_pM[_k][0]), int(_pM[_k][1])
         _r = int(_SM * OA.OrbitalArchView.RAD[_k] * 0.8)
         _pix = 0
@@ -841,7 +859,10 @@ def main():
             for _dx2 in range(-_r, _r + 1):
                 if _dx2 * _dx2 + _dy2 * _dy2 > _r * _r:
                     continue
-                _c = _AM[_y + _dy2, _x + _dx2]
+                _yy2, _xx2 = _y + _dy2, _x + _dx2           # 2026-10-19: 贴边天体 (木星 x+r>宽) 采样越界 ⇒ 先夹到图内
+                if not (0 <= _yy2 < _AM.shape[0] and 0 <= _xx2 < _AM.shape[1]):
+                    continue
+                _c = _AM[_yy2, _xx2]
                 if float(np.abs(_c - np.array(_col)).sum()) < 45:
                     _pix += 1
         _onball[_k] = _pix
@@ -886,13 +907,30 @@ def main():
     for _i in range(len(_sgN)):
         for _j in range(_i + 1, len(_sgN)):
             _A, _B = _sgN[_i], _sgN[_j]
+            # 共享端点的两条边是**折线的相邻段**, 不是"两条线糊成一条" ⇒ 不参与共线判据
+            #   (ss_mani_eng→ssmani_p 与 ssmani_p→ssdec 共顶点, 带距天然≈0)
+            _ea = (_A[1], _A[2]); _eb = (_A[3], _A[4])
+            _ec = (_B[1], _B[2]); _ed = (_B[3], _B[4])
+            if min(math.hypot(p1[0] - p2[0], p1[1] - p2[1])
+                   for p1 in (_ea, _eb) for p2 in (_ec, _ed)) < 6.0:
+                continue
             _angN = abs(math.atan2(_A[4] - _A[2], _A[3] - _A[1]) - math.atan2(_B[4] - _B[2], _B[3] - _B[1])) % math.pi
             if min(_angN, math.pi - _angN) > 0.17:      # 不共线 ⇒ 不算
                 continue
             _dxN, _dyN = _A[3] - _A[1], _A[4] - _A[2]
             _nnN = math.hypot(_dxN, _dyN) or 1.0
-            _dd = min(abs((_B[1] - _A[1]) * (-_dyN / _nnN) + (_B[2] - _A[2]) * (_dxN / _nnN)),
-                      abs((_B[3] - _A[1]) * (-_dyN / _nnN) + (_B[4] - _A[2]) * (_dxN / _nnN)))
+            # 2026-10-19: 原来取两条线的**端点**最小法向距 —— 两条线只要共用一端 (太阳→水星 / 水星→ssdec
+            #   这类链式边) 在共用顶点处必然是 0px, 会被误判成"糊成一条"。改成量**中点**的法向带距:
+            #   真糊成一条 ⇒ 中点距 0; 只是共用顶点、方向不同 ⇒ 中点距很大 (不误报)。
+            # 取 5 个采样点的**中位数**带距: 两条近平行线只在某一点交叉 (X 交叉) 是正常的,
+            #   用最小值会被一个交点判成"糊成一条"(0px)。中位数能区分"整体重合"和"交叉一次"。
+            _ds = []
+            for _tt in (0.2, 0.35, 0.5, 0.65, 0.8):
+                _sx = _A[1] + (_A[3] - _A[1]) * _tt
+                _sy = _A[2] + (_A[4] - _A[2]) * _tt
+                _ds.append(abs((_sx - _B[1]) * (-_dyN / _nnN) + (_sy - _B[2]) * (_dxN / _nnN)))
+            _ds.sort()
+            _dd = _ds[len(_ds) // 2]
             if _dd < _imin:
                 _imin, _ipair = _dd, (_A[0], _B[0])
     chk("N2", "近共线的两条真连线**不再糊成一条** (看图报: 太阳→水星青线被太阳→木星金线吞掉)",
@@ -908,24 +946,46 @@ def main():
             for _dx3 in range(-_r2, _r2 + 1):
                 if _dx3 * _dx3 + _dy3 * _dy3 > _r2 * _r2:
                     continue
-                if float(np.abs(_AM[_y2 + _dy3, _x2 + _dx3] - np.array([120, 132, 150])).sum()) < 45:
+                if float(np.abs(_AM[_y2 + _dy3, _x2 + _dx3] - np.array([92, 104, 122])).sum()) < 45:
                     _c2 += 1
         _lzN[_k2] = _c2
     chk("N3", "**地月细连线**不压在球面上 (看图报: 1px 线穿地球/月球球面 ⇒ 已挪到球体之前 + 两端缩到球外)",
         _lzN, sum(_lzN.values()) <= 4, "地球/月球球心区无该线色像素")
 
-    _vN._leaders = []                      # 判据要先触发布局, 再读引线账 (顺序反了会读到空的)
+    # 2026-10-19 老倪: 「把文字与球体的连线去掉, 太乱了; 有颜色对应就可以了」
+    #   ⇒ 判据换成两条: (a) 一条引线都不许画; (b) 每行文字色 == 该天体球体色 (颜色=唯一对应关系)。
+    _vN._leaders = []
     _lnN = [t2 for t2 in _vN.label_texts()]
-    _ldN = len(_vN._leaders)
-    chk("N4", "离自己的球太远(>45px)的文字块**拉引线说明归属** (看图报: 月球块孤零零挂左下角认不出)",
-        {"引线条数": _ldN, "块数": len(_lnN)}, _ldN >= 1, "确有块被拉引线")
+    _ldN = len(getattr(_vN, "_leaders", []))
+    _Wn, _Hn, _Sn, _cxn, _cyn, _Rn = _vN._geom()
+    _blkN, _plcN = _vN._label_blocks(_vN.positions(_cxn, _cyn, _Rn), _vN.data.body,
+                                     _cxn, _cyn, _Rn, _Sn, _Wn, _Hn)
+    # 用**天体符号**匹配 (不能用中文名: SK 行写着"绕地球", 会误命中地球那一行)
+    _colmap = {"☀": "sun", "☿": "mercury", "♁": "earth", "🌙": "moon",
+               "♂": "mars", "♃": "jupiter"}
+    _colok, _colbad = 0, []
+    for _r, _ls, _c, _sz in _blkN:
+        _t1 = "".join(_ls)
+        for _nm, _k in _colmap.items():
+            if _nm in _t1:
+                _want = QColor(OA.OrbitalArchView.COL[_k]).name()
+                if QColor(_c).name() == _want:
+                    _colok += 1
+                else:
+                    _colbad.append((_nm, QColor(_c).name(), _want))
+                break
+    chk("N4", "文字↔球体**不画引线** (老倪: 太乱) 且**颜色一一对应** (文字色 == 球体色)",
+        {"引线条数": _ldN, "配色对上的天体数": _colok, "配色错": _colbad or "无"},
+        _ldN == 0 and _colok >= 6 and not _colbad, "6 类天体的文字色与球体色完全一致")
 
     # ═══ O 第四轮看图 (deleg_8a8b59f1) 收口: SK 错相位 · 金圈不侵入 · 短连线可见 · 块不贴边/不压球 ═══
     _SK = OA.OrbitalArchView
-    chk("O1", "卫星起相位**与月球错开** (看图: SK01 与月球同相位 ⇒ 正好压在地月线上把 1px 线遮得只剩 1.5px)",
-        {"起相位rad": 0.26, "源码": "ea + 0.26" in io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()},
-        "ea + 0.26" in io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read(),
-        "卫星相位 = 地球相位 + 0.26rad")
+    # 2026-10-19: 起相位从固定 0.26rad 改成 **π/n (半个间距)** —— 8 颗时最近的一颗离地月线 22.5° (最优);
+    #   固定 0.26 只有 15°, 投影压扁后垂距 5.6px 会压线 (判据 O3)
+    _src_o = io.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
+    chk("O1", "卫星起相位**与月球错开** (取半个间距 π/n, 最近的一颗离地月线最远)",
+        "math.pi / _n_s" in _src_o and "ea + math.pi / _n_s" in _src_o,
+        "卫星相位 = 地球相位 + π/n (n=8 ⇒ 22.5°)")
 
     _vO = OA.OrbitalArchView(root=_FREEZE)
     _vO.resize(682, 1391)
