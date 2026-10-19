@@ -180,10 +180,67 @@ def run_batch(cams, push_overlay=False, send_w=SEND_W) -> dict:
     with open(OUTROOT / "annotations.jsonl", "a", encoding="utf-8") as f:  # 追加式数据集
         for r in recs:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    try:
+        publish_scene_vec(recs, batch=stamp)      # L5 分层力的真源 (框 → 方向矢量)
+    except Exception:                                                        # noqa: BLE001
+        pass
     if push_overlay:
         _push_overlay(recs)
     print(json.dumps(summ, ensure_ascii=False, indent=1))
     return summ
+
+
+def publish_scene_vec(recs, batch=None):
+    """L5 分层的真源: 把本批**真实标注框**折成一个三维方向矢量, 写 ss_live/l5_scene_vec.json。
+
+    口径 (与 tools/ar_l5_understand.py 同一套, 只做能追溯到画面的换算):
+      选"面积×置信度"最大的那个框 (优先机械臂/工位相机) → 框心相对画面中心的归一偏移
+      (dx, dy) → 相机系方向 (dx, -dy, 0) 归一 → 乘该框置信度。
+    没有框 ⇒ vec=null (调用方据此显示「缺 L5」, 绝不拿 0 或别的层冒充)。
+    """
+    try:
+        import json as _j
+        import math as _m
+        import os as _os
+        import time as _t
+        order = ("arm", "local", "local2", "depth", "aoi_gold", "aoi_surface")
+        best = None
+        for c in order:
+            r = next((x for x in recs if x.get("cam") == c and x.get("ok")), None)
+            if not r:
+                continue
+            w = float(r.get("w") or 0) or 1.0
+            h = float(r.get("h") or 0) or 1.0
+            for o in (r.get("objects") or []):
+                try:
+                    x1, y1, x2, y2 = [float(v) for v in (o.get("bbox") or [])[:4]]
+                except Exception:                                            # noqa: BLE001
+                    continue
+                a = max(0.0, (x2 - x1)) * max(0.0, (y2 - y1))
+                if a <= 0:
+                    continue
+                conf = float(o.get("conf") or 0.0)
+                score = a * max(0.05, conf)
+                if best is None or score > best[0]:
+                    best = (score, c, w, h, (x1 + x2) / 2.0, (y1 + y2) / 2.0, conf, o.get("label"))
+        out = {"ts": _t.time(), "batch": batch, "vec": None, "conf": 0.0, "cam": None, "label": None}
+        if best:
+            _sc, cam, w, h, cx, cy, conf, lab = best
+            dx = (cx - w / 2.0) / max(1.0, w / 2.0)
+            dy = (cy - h / 2.0) / max(1.0, h / 2.0)
+            n = _m.hypot(dx, dy)
+            out.update({"vec": [0.0, 0.0, 0.0] if n < 1e-6 else [dx / n * conf, -dy / n * conf, 0.0],
+                        "conf": conf, "cam": cam, "label": lab,
+                        "src": "auto_annotate:%s:%s:%s" % (batch or "?", cam, lab)})
+        path = os.path.expanduser("~/zmax/zmax_data/ss_live/l5_scene_vec.json")
+        _os.makedirs(_os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _j.dump(out, f, ensure_ascii=False)
+        _os.replace(tmp, path)
+        return out
+    except Exception:                                                        # noqa: BLE001
+        return None
 
 
 def _push_overlay(recs):

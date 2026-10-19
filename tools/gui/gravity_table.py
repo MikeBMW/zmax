@@ -300,6 +300,8 @@ class GravityField(object):
         #   L2=前馈 u_ff · L3=动作头 chunk · L4=流形度量 M×(ff−chunk) · L5=VL 场景理解
         #   权重/换算系数在 config/calib/layer_forces.json; 取不到的层写"缺", 不拿别的层冒充。
         self.lf, self.lf_on, self.lf_main = None, False, None
+        self.gfield = None            # 万有引力场 (gravity_law.field 的结果)
+        self.gvecs = None             # 各层张量原矢量
         try:
             import layer_forces as _lfd
             self.lf = _lfd.layer_forces()
@@ -576,6 +578,26 @@ class GravityField(object):
                                   src=_x["src"], note=_x.get("note") or "")
                 if _o:
                     cells.update(_o)
+                    # 🪐 万有引力定律约束 (老倪 2026-10-19): 四层张量当**引力荷**,
+                    #   力一律走 |F|=G·M/r² 算, 不再直接把张量当力 ⇒ 反平方/作用反作用/
+                    #   叠加/保守场四条在数值上恒成立 (tools/gravity_law.py 负责算法,
+                    #   tools/verify_gravity_law.py 负责核验)。方向沿用该层张量的方向。
+                    try:
+                        import gravity_law as _GL
+                        _gv = dict((_k, (_o.get(_k) or {}).get("vec")) for _k in ("L2", "L3", "L4", "L5"))
+                        self.gvecs = _gv          # 各层张量原矢量 (引力律自检的输入)
+                        _gf = _GL.field(_gv)
+                        self.gfield = _gf
+                        for _c in _gf["comps"]:
+                            _cl = dict(cells.get(_c["L"]) or {})
+                            _cl["vec"] = list(_c["vec"])
+                            _cl["mag"] = _c["mag"]
+                            _cl["src"] = ((_cl.get("src") or "") +
+                                          " · 引力律 M=%.4f r=%.2f |F|=G·M/r²" % (_c["M"], _c["r"]))
+                            _cl["gram"] = {"M": _c["M"], "r": _c["r"], "phi": _c["phi"]}
+                            cells[_c["L"]] = _cl
+                    except Exception:                                        # noqa: BLE001
+                        pass
 
             # 🎚 档位没启用的层: 本次没有调用 ⇒ 清空 (不许留上一轮/轨迹里的数当作"这次在算")
             for _L2k, _on2 in (getattr(self, "layers_on", {}) or {}).items():

@@ -14248,6 +14248,11 @@ class StudioMainWindow(QMainWindow):
             traceback.print_exc()
 
     def closeEvent(self, ev):
+        # 🧹 关控制台 ⇒ 一起结束 L5 闭环子进程 (否则它变成孤儿, 下次启动就像"自动运行")
+        try:
+            _kill_orphan_l5(include_own=True)     # 自己起的也要一起收 (否则变孤儿)
+        except Exception:                                                   # noqa: BLE001
+            pass
         # 🧪 TEMP DIAG 2026-09-18 (静静): 控制台启动 ~30s 后自己关窗退出 — 抓调用栈, 抓完还原
         try:
             import time as _t3
@@ -15608,6 +15613,58 @@ def _install_thread_guard():
         pass
 
 
+
+def _kill_orphan_l5(include_own=False):
+    """启动时清掉**上一轮残留**的 L5 闭环进程 (老倪 2026-10-19: 「L5 上来就自己运行了,
+    点重启也自动运行了」)。
+
+    根因: L5 闭环 (l5_annotate_train_loop.py → auto_annotate.py) 是独立进程组
+    (start_new_session), 控制台退出/重启时它不死 ⇒ 下次一开控制台, 界面上就"自动在跑"。
+    规则: L5 只能由他点 ▶ 启动 ⇒ 只要不是本次进程自己起的, 一律结束;
+          并把 ui_run.json 置 running=false (界面不再显示"运行中")。
+    """
+    import glob as _glob
+    import signal as _sig
+    me = os.getpid()
+    killed = []
+    for _p in _glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            _pid = int(_p.split("/")[2])
+            if _pid == me:
+                continue
+            with open(_p, "rb") as _f:
+                _cmd = _f.read().replace(b"\0", b" ").decode("utf-8", "ignore")
+            if ("l5_annotate_train_loop.py" not in _cmd) and ("tools/auto_annotate.py" not in _cmd):
+                continue
+            try:
+                with open("/proc/%d/stat" % _pid) as _f:
+                    _ppid = int(_f.read().split(") ")[1].split()[1])
+            except Exception:                                                # noqa: BLE001
+                _ppid = -1
+            if _ppid == me and not include_own:  # 自己起的 (初始化阶段不会有) ⇒ 不动
+                continue
+            os.kill(_pid, _sig.SIGTERM)
+            killed.append(_pid)
+        except Exception:                                                    # noqa: BLE001
+            continue
+    if killed:
+        print("🧹 清掉上一轮残留的 L5 闭环进程: %s (L5 只在你点 ▶ 时启动)" % killed, flush=True)
+        try:
+            _up = os.path.join(_ROOT_P, "zmax_data", "ss_live", "ui_run.json")
+            _d = {}
+            if os.path.exists(_up):
+                with open(_up, encoding="utf-8") as _f:
+                    _d = json.load(_f) or {}
+            _d.update({"running": False, "pid": None, "ts": time.time(), "src": "boot-cleanup"})
+            _tmp = _up + ".tmp"
+            with open(_tmp, "w", encoding="utf-8") as _f:
+                json.dump(_d, _f, ensure_ascii=False)
+            os.replace(_tmp, _up)
+        except Exception:                                                    # noqa: BLE001
+            pass
+    return killed
+
+
 def main():
     _install_thread_guard()          # 🐞 调试期线程异常只落盘, 不抢断点焦点
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
@@ -15890,6 +15947,11 @@ def main():
                       % (type(_cur).__name__ if _cur is not None else "—", win.stack.currentIndex()),
                       flush=True)
             except Exception:                                                   # noqa: BLE001
+                pass
+            # 🧹 L5 闭环是独立进程, 控制台重启后它还活着 ⇒ 界面上像"自动运行"。启动时先清掉。
+            try:
+                _kill_orphan_l5()
+            except Exception:                                               # noqa: BLE001
                 pass
             # ⚡ 2026-10-19 (二改): 页面改「空闲且无人操作时」才建 —— 见 StudioMainWindow.start_idle_build
             try:

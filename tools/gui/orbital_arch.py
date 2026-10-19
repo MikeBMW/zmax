@@ -347,6 +347,15 @@ class OrbitalArchData:
         self._build_tok = getattr(self, "_build_tok", 0) + 1
         self.frozen = (not self.running)
         if self.running:
+            # 🪐 万有引力场 (老倪 2026-10-19「力场之间的力必须严格满足万有引力定律」):
+            #   场由表那边算 (gravity_law.field), 这里只把结果挂上来给图注/悬停卡用,
+            #   不另算一套 ⇒ 画面上的那条律行和表里的数是同一个场。
+            try:
+                _fld = self._field()
+                self._gfield = getattr(_fld, "gfield", None)
+                self._gvecs = getattr(_fld, "gvecs", None)
+            except Exception:                                                # noqa: BLE001
+                self._gfield, self._gvecs = None, None
             self._compute_quat()             # 每层归一四元数 (老倪「将四元数显示在太阳系」)
             self._compute_earth_forces()     # 地球的合力/四层分力 (老倪「以地球为主要观察对象」)
         elif not hasattr(self, "fE"):
@@ -1934,6 +1943,23 @@ class OrbitalArchView(QWidget):
         _WRAP_CACHE[_k] = tuple(_out)
         return list(_out)
 
+    def _law_line(self):
+        """一行写出"这些力满足哪条律 + 实测残差" (取真值, 不写口号)。"""
+        try:
+            import gravity_law as _GL
+            _g = getattr(self.data, "_gfield", None) or {}
+            _vs = getattr(self.data, "_gvecs", None) or {}
+            _inv = _GL.invariants(dict((c["L"], c["vec"]) for c in (_g.get("comps") or []))
+                                  if not _vs else _vs)
+            _r1 = _inv["inverse_square"]["ratio"]
+            _r3 = _inv["action_reaction"]["max_residual"]
+            _r4 = (_inv.get("superposition") or {}).get("residual", 0.0)
+            _ok = abs(_r1 - 4.0) < 1e-6 and _r3 < 1e-9 and _r4 < 1e-9
+            return ("万有引力律 |F|=G·M/r² · Φ=−G·M/r · 反平方 %.3f× · 反作用 %.0e · 叠加 %.0e %s"
+                    % (_r1, _r3, _r4, "✓" if _ok else "✗"))
+        except Exception:                                                    # noqa: BLE001
+            return "万有引力律 |F|=G·M/r² · Φ=−G·M/r"
+
     def _foot_lines(self, W):
         """底部图注 (2026-10-19 老倪「不要显示那么多字, 精简」: 由 8~9 行砍到 3 行, 字号 9→11)。
         保留可复核锚点: 真源: / 帧龄 / 节点映射核对 (判据 F2) · L2~L5 (判据 S13) · 角度映射 (F1)。
@@ -1961,6 +1987,8 @@ class OrbitalArchView(QWidget):
             "真源 engine/torque_live/skill · %.1fs · 核对 %d/%d%s" % (
                 float(_age.rstrip("s")) if _age.endswith("s") else 0.0,
                 len(BODIES) - len(miss), len(BODIES), _run),
+            # 🪐 万有引力定律约束 (老倪 2026-10-19): 场上正在用的力是否满足律, 写在画面上可核
+            self._law_line(),
         ]
         if miss:
             out.append("⚠ 缺源: %s" % ",".join(miss))
