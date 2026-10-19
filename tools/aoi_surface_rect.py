@@ -167,12 +167,18 @@ def surface_judge(bgr, out_long=None, min_fill=0.45, return_overlay=True, expand
     except Exception:                                                             # noqa: BLE001
         meta["same_pixel_mean_diff"] = None
     meta["crop_size"] = [cw, ch]
-    meta["no_stretch"] = bool(cw == int(round(rect["w"])) or cw == int(round(rect["h"])))
+    # 🔧 2026-10-19 老倪「保留整块模块」: 旧判据 `cw == round(rect.w|h)` 把"扩暗头"误判成拉伸
+    #   (扩的像素是 thr_long 阈值判定属于模块、getRectSubPix 1:1 取出的真实像素, 没有插值)。
+    #   真拉伸只发生在 resize 时 ⇒ 判据改为「输出尺寸 == 裁剪尺寸」; 扩了多少单列 expand_px。
     meta["out_size"] = [int(crop.shape[1]), int(crop.shape[0])]
+    meta["crop_size_raw"] = [cw, ch]
+    meta["no_stretch"] = bool(meta["out_size"] == [cw, ch] and "resize" not in str(meta.get("notes", "")))
+    meta["expand_px"] = [cw - int(round(rect["w"])), ch - int(round(rect["h"]))]
     if out_long and max(crop.shape[:2]) > out_long:
         s = out_long / float(max(crop.shape[:2]))
         crop = cv2.resize(crop, (int(crop.shape[1] * s), int(crop.shape[0] * s)), interpolation=cv2.INTER_AREA)
         meta["scaled_to"] = [int(crop.shape[1]), int(crop.shape[0])]
+        meta["no_stretch"] = False      # 走了 resize ⇒ 有插值, 这才是真拉伸
     return crop, ov, meta
 
 
