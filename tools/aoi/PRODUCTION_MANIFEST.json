@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-12 17:12:13",
+ "generated_at": "2026-10-20 07:24:00",
  "note": "产线程序运行在工控机(192.168.23.23); 这里是**调试副本**(状态空间工程内), 由 tools/aoi/production_sync.py 与产线对齐",
  "host": "192.168.23.23",
  "items": [
@@ -33,14 +33,17 @@
    "repo_copy": "tools/aoi/cam_surface_10083_work_v20.py",
    "local_source": "zmax_data/aoi_v4/cam_surface_10083_work_v20.py",
    "remote_file": "D:\\xspace\\ultralytics_AOI\\cam_surface_10083_work_v20.py",
-   "sha256": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
+   "sha256": "e3e3ba49da75936b11d3268fe25249de193b1fbe6d854abaafce791cb65d8339",
    "bytes": 60693,
    "src_sha256": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
    "src_mtime": "2026-10-12 17:10:15",
    "copy_matches_source": true,
-   "pending_deploy": true,
+   "pending_deploy": false,
    "why_v20_1": "v20.1 = v20 + ① 取像参数 settle(_warmup_grab: 改曝光后紧跟的第一帧由 POST 自己吃掉, 不落盘/不动显示帧, 回执报 warmup) + ② 判据阈值相对化(不再吃绝对 200/170, 改 bg+0.5×(lvl-bg); AOI_SURFACE_JUDGE_TH=abs 逐位回老街口) + 模型输入零改动。离线判据 test_v20_1_settle_and_relth.py 10/10 PASS, v13 曝光契约回归 12/12 PASS。⏸ 未上线: 产线网卡不在位(192.168.23.23 不可达) ⇒ 上线前先 production_sync pull --port 10083",
-   "old_sha256_before_v20_1": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317"
+   "old_sha256_before_v20_1": "763d4a565738fc5d12f3b7b66a767b8879aef3a249cce0badcb04134f56c6317",
+   "old_sha256_before_v750": "32eb2562fe9dabd3b3ee133c0329dd28c6996b4aa57f0389d249047f8e41be54",
+   "version": "5.50.750",
+   "note": "VERSION 字符串 = 5.50.750 (与状态空间完全一致); 2026-10-20 部署"
   }
  ],
  "files": {

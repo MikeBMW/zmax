@@ -68,7 +68,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-VERSION = "v20"             # v20 = v13 内容(v12.1 判据图 / v12.2 台阶右界 / v13 曝光·增益可调); 2026-10-08 统一版本号
+VERSION = "5.50.750"        # 与状态空间完全同版本 (2026-10-20 老倪指定); 内容 = v20.1(取像 settle + 判据相对阈值)
 #   v12.2 = v12.1 + 判据图右界改"数据驱动认台阶"(去掉右边那块夹具)+纵向收带; 模型输入口径未变
 app = Flask(__name__)
 m_Device = SciCamera()          # 相机设备全局实例
