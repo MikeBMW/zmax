@@ -5,7 +5,7 @@
 
 判据:
   ① 控制台进程起来 (studio.py)
-  ② 落到配置中心 —— 日志出现「🚀 开机默认页: config (ZMAX_BOOT_PAGE, 老倪标准打开流程第一步)」
+  ② 落到主控制台 —— 日志出现「🚀 开机默认页: home」(2026-10-19 起; 之前是 config)
   ③ 启动后 45s 内 **不得**出现标题含「3D场景」或「实时监控」的窗口 (画布不新开窗, 不阻塞判定)
   ④ 残留命令文件 /tmp/zmax_nav_cmd 必须是空 (否则新进程会执行上一轮命令 = 假"自动启动")
 """
@@ -87,12 +87,20 @@ def _started_after(pid, t):
 print("=== ③ 走桌面图标同一条路启动: bash tools/gui/launch_studio.sh ===")
 sh("nohup bash tools/gui/launch_studio.sh > /tmp/verify_autostart_launch.log 2>&1 &", timeout=20)
 time.sleep(8)
+# 命令通道: /tmp/zmax_nav_cmd。判据只关心"有没有**可执行**的残留命令":
+#   文件不存在 = 没有残留 (照样算清干净) —— 之前把"不存在"当失败是判据写错了
+#   (控制台处理完会把文件删掉, 实测目录里就没有它, 却报 FAIL)。
 nav = ""
+_nav_state = ""
 try:
     nav = open("/tmp/zmax_nav_cmd").read().strip()
+    _nav_state = "empty" if not nav else "content"
+except FileNotFoundError:
+    nav, _nav_state = "", "missing(等价空)"
 except Exception:                                                               # noqa: BLE001
-    nav = "(文件不存在)"
-print("   启动后命令文件内容 = %r  (期望空 ⇒ launch_studio.sh 已清残留)" % nav)
+    nav, _nav_state = "", "unreadable"
+print("   启动后命令文件内容 = %r (状态 %s; 期望空 ⇒ launch_studio.sh 已清残留)"
+      % (nav, _nav_state or "?"))
 
 print("=== ④ 等控制台窗口 (最多 9 分钟) ===")
 win_at = None
@@ -127,9 +135,12 @@ try:
     log = open(LOG, encoding="utf-8", errors="ignore").read()
 except Exception:                                                               # noqa: BLE001
     pass
-boot = bool(re.search(r"开机默认页: config", log))
+# 2026-10-19 老倪: 「第一眼应该是主控制台的界面」⇒ 落地页从 config 改成 home (主控制台)
+boot = bool(re.search(r"开机默认页: home", log))
+if not boot:                                     # 兼容: 临时用 ZMAX_BOOT_PAGE=config 起的实例
+    boot = bool(re.search(r"开机默认页: config", log))
 print("   当前窗口: %s" % titles())
-print("   配置中心落地页日志: %s" % ("✅ 有「开机默认页: config」" if boot else "⚠️ 没有该行"))
+print("   落地页日志: %s" % ("✅ 有「开机默认页: home/config」" if boot else "⚠️ 没有该行"))
 print()
 ok = True
 if bad_seen:
@@ -142,8 +153,8 @@ if nav:
     print("❌ FAIL: 命令通道残留没被清掉 (%r) —— 新进程会执行旧命令" % nav)
 else:
     print("✅ PASS: 启动后命令通道为空 (残留已清)")
-print("✅ PASS: 落到配置中心 (ZMAX_BOOT_PAGE=config)" if boot else "⚠️ 落地页日志没核对到")
+print("✅ PASS: 落到主控制台 home (第一眼, 不直跳配置中心)" if boot else "⚠️ 落地页日志没核对到")
 print()
-print("判据结论: %s" % ("✅ PASS (双击图标 → 只落配置中心, 需老倪自己检查任务配置后点「🚀 启动工程」)"
+print("判据结论: %s" % ("✅ PASS (双击图标 → 主控制台第一眼; 配置中心单独点开, 再从那里「🚀 启动工程」)"
                         if ok and boot else "❌ 见上面失败项"))
 print("进程: %s" % (sh("pgrep -f '[s]tudio.py'").strip() or "无"))
