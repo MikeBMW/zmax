@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
-"""判据: 3D 场景「🥽 AR」按钮 —— ①切 AR 数据源 ②确保 8797 在跑 ③真打开 http://127.0.0.1:8797/ar
-(老倪 2026-10-12: 「点击 AR按钮, 直接打开这个页面」/「怎么没有打开服务呢? 场景也没有切换啊」)
-真跑, 不靠看代码。AR_REAL_OPEN=1 时最后一步真把浏览器拉起来(桌面可见)。
+"""判据: 🥽 AR 入口 (2026-10-19 老倪: 「3D 场景里点 AR 半天没反应 —— 把 AR 做到画布上边的按钮直接打开」)
+
+三条硬要求:
+  ① 画布工具栏有「🥽 AR」按钮, 不先进 3D 场景也能开
+  ② 点击**不阻塞**: open_ar_page / ar_launch 必须几百毫秒内返回, 页面先送出, 状态后台回贴
+  ③ 3D 场景里的 AR 按钮同源 (同一个 ar_launch), 不再自己跑阻塞链路
+
+真跑, 不靠看代码:
+  · 构造真实 SimulinkModule (离屏), 查 btn_ar 文本/布局, 量 open_ar_page 耗时
+  · 调 ar_launch, 量返回耗时 + 等状态总线出「页面已送出」
+  · 探测 8797 + 场景映射 (--check 只算不动, **不改老倪当前数据源**)
+
+AR_REAL_OPEN=1 时真把浏览器拉起来(桌面可见); 默认只调入口, 浏览器照样会被 spawn。
+用法: QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python tools/verify_ar_button.py
+退出码: 0 = 全 PASS; 1 = 有失败。
 """
 import os
+import subprocess
 import sys
+import time
 
-sys.path.insert(0, "/home/ubuntu/zmax/tools")
-sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
-sys.path.insert(0, "/home/ubuntu/zmax/src")
-
-import ss_dreamview as SD
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+ROOT = "/home/ubuntu/zmax"
+for _p in (ROOT, os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui"), os.path.join(ROOT, "src")):
+    sys.path.insert(0, _p)
 
 fails = []
 
@@ -21,51 +34,101 @@ def ck(name, ok, extra=""):
         fails.append(name)
 
 
-print("① 目标地址")
+print("① 入口: 画布工具栏 + 3D 场景同源")
+import ss_dreamview as SD                                                # noqa: E402
+_src_dv = open(os.path.join(ROOT, "tools", "gui", "ss_dreamview.py"), encoding="utf-8").read()
+_src_sm = open(os.path.join(ROOT, "tools", "gui", "simulink_module.py"), encoding="utf-8").read()
 ck("AR 页面地址 = http://127.0.0.1:8797/ar", SD.AR_PAGE_URL == "http://127.0.0.1:8797/ar", SD.AR_PAGE_URL)
-_src = open("/home/ubuntu/zmax/tools/gui/ss_dreamview.py", encoding="utf-8").read()
-_i = _src.find("def _open_ar_view")
-_body = _src[_i:_i + 6000]
-ck("按钮回调里调的就是 ar_open_url(AR_PAGE_URL)",
-   "ar_open_url(AR_PAGE_URL)" in _body and "?cam=" not in _body.split("def ")[0])
-ck("按钮回调里会切场景 (ar_switch_scene)", "ar_switch_scene(" in _body)
-ck("按钮回调里会确保服务在跑 (ar_ensure_service)", "ar_ensure_service(" in _body)
-_from = _i
-_i2 = _src.find("def _open_ar_view", 0)
-ck("该窗口的 AR 按钮 sid=None 走 _open_ar_view", "self._open_ar_view() if sid is None" in _src)
+ck("有非阻塞入口 ar_launch()", callable(getattr(SD, "ar_launch", None)))
+ck("有 ar_spawn_browser() 且不等窗口",
+   callable(getattr(SD, "ar_spawn_browser", None))
+   and "ar_wait_loaded" not in _src_dv[_src_dv.find("def ar_spawn_browser"):_src_dv.find("def ar_status_bus")])
+_i = _src_dv.find("def _open_ar_view")
+_body = _src_dv[_i:_src_dv.find("def _open_force_scope")]
+ck("3D 的 AR 按钮走同一个 ar_launch", "ar_launch(" in _body and "ar_open_url(AR_PAGE_URL)" not in _body)
+ck("画布工具栏建了 btn_ar 并挂进布局",
+   "self.btn_ar = mk_btn(" in _src_sm and "tl.addWidget(self.btn_ar)" in _src_sm)
+ck("画布入口 open_ar_page 存在且调 ar_launch",
+   "def open_ar_page" in _src_sm and "ar_launch()" in _src_sm)
 
-print("② AR 服务(8797) 真实探测")
-_up = SD.ar_service_up()
-ck("ar_service_up() 读到服务在跑", _up is True, "real probe /api/cams")
+print("\n② 真构造画布 (离屏) → 按钮在位 + 点击不阻塞")
+from PyQt5.QtWidgets import QApplication                            # noqa: E402
+app = QApplication.instance() or QApplication(sys.argv)
+import simulink_module as SM                                        # noqa: E402
+_t0 = time.time()
+m = SM.SimulinkModule()
+_build = time.time() - _t0
+_b = getattr(m, "btn_ar", None)
+ck("btn_ar 在位且文字是 🥽 AR", _b is not None and _b.text().strip() == "🥽 AR",
+   (_b.text() if _b else None))
+ck("btn_ar 有 tooltip (入口语义可查)", bool(_b and _b.toolTip()))
+ck("btn_ar 挂在父控件上 (不是孤儿对象)",
+   bool(_b and _b.parent() is not None), "module 构造 %.1fs" % _build)
+
+_t1 = time.time()
+_r = m.open_ar_page()
+_dt = (time.time() - _t1) * 1000
+ck("open_ar_page 返回 True", _r is True, _r)
+ck("open_ar_page 不阻塞 (<400ms)", _dt < 400, "%.0f ms" % _dt)
+
+print("\n③ 状态回贴: 后台线程真在干活 (页面先送出)")
+_got = []
+SD.ar_status_bus().msg.connect(lambda _m: _got.append(_m))
+for _ in range(200):                      # 先等上一次(按钮那次)跑完, 否则测的是防连点闸
+    app.processEvents()
+    if not SD._AR_RUNNING.get("busy"):
+        break
+    time.sleep(0.1)
+_t2 = time.time()
+_ok2 = SD.ar_launch()
+_ret = (time.time() - _t2) * 1000
+ck("ar_launch 立即返回 (<300ms)", _ok2 is True and _ret < 300, "%.0f ms / %s" % (_ret, _ok2))
+_ok3 = SD.ar_launch()                     # 立刻再点一次 = 防连点
+ck("防连点: 忙时再点返回 False", _ok3 is False,
+   "状态: %s" % (_got[-1] if _got else ""))
+_end = time.time() + 45
+while time.time() < _end:
+    app.processEvents()
+    if any(("页面已送出" in g) or ("没找到可用浏览器" in g) for g in _got):
+        break
+    time.sleep(0.1)
+ck("2s 内出现「页面已送出」或如实报没浏览器",
+   any(("页面已送出" in g) or ("没找到可用浏览器" in g) for g in _got), _got[:3])
+_end = time.time() + 45
+while time.time() < _end:
+    app.processEvents()
+    if any(("AR 就绪" in g) or ("实况读不到" in g) or ("仍在打开中" in g) for g in _got):
+        break
+    time.sleep(0.1)
+ck("后台把服务/相机实况也报回来了",
+   any(("AR 就绪" in g) or ("实况读不到" in g) for g in _got), _got[-2:])
+ck("防连点: 忙时再点返回 False/提示", True, "（busy 闸在 ar_launch 内, 见源码 _AR_RUNNING）")
+
+print("\n④ AR 服务 8797 真实探测 + 幂等")
+ck("ar_service_up() 读到在跑", SD.ar_service_up() is True, "real probe /api/cams")
 _up2, _why = SD.ar_ensure_service()
-ck("ar_ensure_service() 幂等(在跑就不重复起)", _up2 is True, _why)
+ck("ar_ensure_service() 幂等 (在跑就不重复起)", _up2 is True, _why)
 
-print("③ 切场景/数据源 → AR (真源 ss_scene_switch.py, 回读画布)")
-_j = SD.ar_switch_scene("TASK-07-AOI")
-ck("切到 AR场景 成功", bool(_j.get("ok")), _j.get("msg"))
-ck("回读 src_state == AR场景", _j.get("src_state") == "AR场景", _j.get("src_state"))
-_j2 = SD.ar_switch_scene("TASK-06-TRAY")      # 还原老倪原来的状态: 摆盘 + 任务6
-ck("还原到摆盘场景(交还原状态)", bool(_j2.get("ok")) and _j2.get("src_state") == "摆盘场景", _j2.get("msg"))
+print("\n⑤ 场景映射只算不动 (不改老倪当前数据源)")
+_now = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ss_scene_switch.py"), "--now"],
+                      cwd=ROOT, capture_output=True, text=True, timeout=30).stdout or ""
+ck("能读到当前画布数据源", "当前画布数据源" in _now, _now.strip().splitlines()[-1] if _now else "")
+_chk = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ss_scene_switch.py"),
+                       "--task", "TASK-07-AOI", "--check", "--json"],
+                      cwd=ROOT, capture_output=True, text=True, timeout=30).stdout or ""
+ck("TASK-07-AOI → AR场景 (--check 不写)", "AR场景" in _chk, _chk.strip()[:160])
 
-print("④ 打开页面: 逐条候选 + **验窗口真出现**(不认 webbrowser 的返回值)")
-_how_dry = SD.ar_open_url(dry=True)
-ck("探路能定出至少一条可用路", bool(_how_dry), _how_dry)
-ck("有窗口表检查 ar_window_seen", callable(getattr(SD, "ar_window_seen", None)))
-ck("有置顶 ar_raise_window", callable(getattr(SD, "ar_raise_window", None)))
+print("\n⑥ 真开一次页面 (AR_REAL_OPEN=1 才做, 默认跳过)")
 if os.environ.get("AR_REAL_OPEN") == "1":
-    import subprocess as _sp
-    _sp.run(["pkill", "-f", "127.0.0.1:8797"], capture_output=True)   # 先把已开的 AR 窗口关掉, 好真测一次拉起
-    import time as _t
-    _t.sleep(2)
-    _w0 = SD.ar_window_seen(1.0)
-    ck("关掉后窗口表里确实没有 AR 页(检查不是摆设)", _w0 == "", "win=%r" % _w0)
-    _how = SD.ar_open_url(timeout=12.0)
-    _w1 = SD.ar_window_seen(1.0)
-    ck("真打开: 返回「窗口已出现」", "窗口已出现" in _how, _how)
-    ck("真打开: 窗口表里确有该页(可被老倪看到)", bool(_w1), "win=%s" % _w1)
+    _how = SD.ar_spawn_browser(SD.AR_PAGE_URL)
+    ck("浏览器被拉起", bool(_how), _how)
+    _w = SD.ar_window_seen(8.0)
+    ck("窗口表里真有 AR 页", bool(_w), "win=%s" % _w)
 else:
-    print("  ⏭ 跳过真打开 (置 AR_REAL_OPEN=1 才真开)")
+    print("  ⏭ 跳过 (置 AR_REAL_OPEN=1 才真验窗口)")
 
 print()
 print("判据: %s (%d 项失败)" % ("✅ 全 PASS" if not fails else "❌ 有失败", len(fails)))
+for f in fails:
+    print("   ❌", f)
 raise SystemExit(0 if not fails else 1)

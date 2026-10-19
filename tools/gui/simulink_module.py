@@ -5813,6 +5813,17 @@ class SimulinkModule(QWidget):
         #   🔴 根因: btn_ss_3d 在 5366 行建了对象, 但 43b233d (v5.26.1 工具栏精简) 把 addWidget 删了
         #   ⇒ 按钮在、点击能通, 只是没挂进布局 = 用户看不到 (工具栏可见性判据缺失才漏到今天)。
         tl.addWidget(self.btn_ss_3d)
+        # 🥽 2026-10-19 老倪: 「3D场景里点 AR 半天没反应 —— 把 AR 做到画布上边的按钮直接打开」
+        #   ⇒ 工具栏直接给入口 (不必先进 3D 场景), 且**非阻塞**: 点一下立刻回报, 页面先送出。
+        self.btn_ar = mk_btn(
+            "🥽 AR",
+            "直接打开 AR 页面 (http://127.0.0.1:8797/ar)\n"
+            "  · 底图 = 状态空间工程视频源 4 路相机 (手臂 D405 / 金手指 / 表面 / 本机)\n"
+            "  · 叠加 = AOI 点位 / 空间点位 / TCP 真值 / 录制轨迹\n"
+            "  · 8797 没起会自动拉起 (后台, 不卡界面); 数据源是「真机」时不抢你的设置\n"
+            "  · 3D 场景里的 🥽 AR 与本按钮同一个入口 (tools/gui/ss_dreamview.py::ar_launch)",
+            self.open_ar_page, "#8957e5")
+        tl.addWidget(self.btn_ar)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -14739,6 +14750,38 @@ class SimulinkModule(QWidget):
         #   画布(他正看的界面)永远不刷新, 他当然什么都看不见。常驻 1s, 幂等。
         self._l5_mark_open()      # 🚫 打开工程这一刻记基线: 打开时就有的旧失败不播报 (老倪 2026-09-28)
         self._l5_start_poll(1000)
+
+    def open_ar_page(self):
+        """🥽 工具栏「AR」: 直接打开 AR 页面 (2026-10-19 老倪: 3D 里点 AR 半天没反应)。
+
+        非阻塞: 本方法几百毫秒返回, 页面在后台线程送出/拉起服务/切场景, 状态经
+        `ss_dreamview.ar_status_bus()` 的 pyqtSignal 排队回到 GUI 线程再写日志。
+        """
+        try:
+            sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
+            import ss_dreamview as _sd                                          # noqa: PLC0415
+        except Exception as _e:                                                 # noqa: BLE001
+            self._log("⛔ AR 不可用 (ss_dreamview 导入失败): %r" % (_e,))
+            return None
+        if not getattr(self, "_ar_bus_wired", False):
+            try:
+                _sd.ar_status_bus().msg.connect(self._ar_status)
+                self._ar_bus_wired = True
+            except Exception:                                                   # noqa: BLE001
+                self._ar_bus_wired = False
+        self._log("🥽 正在打开 AR: %s" % _sd.AR_PAGE_URL)
+        try:
+            return _sd.ar_launch()
+        except Exception as _e:                                                 # noqa: BLE001
+            self._log("⛔ AR 启动失败: %r" % (_e,))
+            return None
+
+    def _ar_status(self, msg):
+        """AR 后台线程的状态回贴 (只写日志, 任何异常都不许冒泡到 Qt 槽)。"""
+        try:
+            self._log(str(msg))
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def open_ss_3d(self, on_top=True, level=None):
         """🧭 打开 Apollo 风格 3D 分层视图 (2026-08-25 老倪)

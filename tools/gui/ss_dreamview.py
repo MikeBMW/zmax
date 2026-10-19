@@ -25,6 +25,7 @@ ss_dreamview.py — 🧭 状态空间 3D 分层视图 (参考百度 Apollo Dream
 import glob
 import json
 import os
+import sys
 import math
 import time
 import numpy as np
@@ -1482,6 +1483,140 @@ def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
                  cwd=_REPO, capture_output=True, text=True, timeout=timeout)
     _out = (_p.stdout or "").strip().splitlines()
     return json.loads(_out[-1]) if _out else {"ok": False, "msg": "无输出: %s" % ((_p.stderr or "")[-160:],)}
+
+
+def ar_spawn_browser(url: str = AR_PAGE_URL) -> str:
+    """只把浏览器拉起来(**不等窗口**), 几十毫秒返回所用的程序名(空串=没有可用浏览器)。
+
+    2026-10-19 老倪: 「点击 3D场景中的 AR, 半天没反应」——根因是原来的 ar_open_url 会**逐个候选
+    等窗口出现(每个最多 6s)**, 而且整条流程跑在 GUI 主线程 ⇒ 界面直接冻住。
+    现在: 页面先开, 服务/场景/相机实况在后台线程做 (ar_launch)。
+    """
+    import shutil as _sh
+    import subprocess as _sp
+    _browser = [("-new-window", ("chromium", "google-chrome", "chromium-browser", "firefox"))]
+    for _flag, _names in _browser:
+        for _b in _names:
+            if not _sh.which(_b):
+                continue
+            _args = [_b] + (["--new-window", url] if _b != "firefox" else ["--new-window", url])
+            try:
+                _sp.Popen(_args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+                return _b
+            except Exception:                                                   # noqa: BLE001
+                continue
+    for _b, _a in (("xdg-open", [url]), ("gio", ["open", url])):
+        if _sh.which(_b):
+            try:
+                _sp.Popen([_b] + _a, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+                return _b
+            except Exception:                                                   # noqa: BLE001
+                continue
+    return ""
+
+
+_AR_BUS = None
+
+
+def ar_status_bus():
+    """后台线程 → GUI 的状态通道 (pyqtSignal, 跨线程安全排队)。必须在 GUI 线程里第一次取。"""
+    global _AR_BUS
+    if _AR_BUS is None:
+        from PyQt5.QtCore import QObject, pyqtSignal
+
+        class _ARBus(QObject):
+            msg = pyqtSignal(str)
+
+        _AR_BUS = _ARBus()
+    return _AR_BUS
+
+
+_AR_RUNNING = {"busy": False}
+_AR_LOCK = None
+
+
+def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
+    """非阻塞打开 AR: 立刻回报, 后台干活。返回 False = 上一次还没跑完(防连点)。
+
+    顺序 (2026-10-19 定): ① 快探服务(0.8s); 在跑 ⇒ **立刻开浏览器**
+                        ② 没起 ⇒ 报「正在启动」→ 起服务(最多 20s) → 起来再开
+                        ③ 后台切场景(老倪选了「真机」就不抢) ④ 读 /api/cams 报在线/帧龄
+    """
+    global _AR_LOCK
+    import threading
+    if _AR_LOCK is None:
+        _AR_LOCK = threading.Lock()
+
+    def _say(msg):
+        try:
+            if status_cb:
+                status_cb(msg)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            ar_status_bus().msg.emit(msg)
+        except Exception:                                                       # noqa: BLE001
+            pass
+
+    with _AR_LOCK:
+        if _AR_RUNNING["busy"]:
+            _say("🥽 AR 正在打开中, 请稍候…")
+            return False
+        _AR_RUNNING["busy"] = True
+
+    def _work():
+        import time as _t
+        try:
+            _t0 = _t.time()
+            _base = ar_service_base(0.8)
+            if _base:
+                _say("🥽 AR 服务在跑 (%s) · 正在打开页面" % _base)
+            else:
+                _say("🥽 AR 服务没起 ⇒ 正在启动服务 (最多 20s)…")
+                _up, _why = ar_ensure_service(tries=20)
+                _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
+            _how = ar_spawn_browser(AR_PAGE_URL)
+            if not _how:
+                _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
+                return
+            _say("🥽 页面已送出 (%s, %.1fs) · %s" % (_how, _t.time() - _t0, AR_PAGE_URL))
+            if switch_scene:
+                try:
+                    import subprocess as _sp0
+                    _o = _sp0.run([sys.executable, os.path.join(_REPO, "tools", "ss_scene_switch.py"), "--now"],
+                                  cwd=_REPO, capture_output=True, text=True, timeout=20).stdout or ""
+                    _cur = "真机" if "真机" in _o else ("AR场景" if "AR场景" in _o else "")
+                    if _cur == "真机":
+                        _say("🥽 数据源保持「真机」不动(点 AR 只开页面)")
+                    elif _cur == "AR场景":
+                        pass
+                    else:
+                        _j = ar_switch_scene("TASK-07-AOI")
+                        _say("🥽 场景已切到 AR 数据源 · %s" % (_j.get("msg") or "?"))
+                except Exception as _e:                                         # noqa: BLE001
+                    _say("⚠️ 切 AR 场景没成功: %s (AR 页面照开)" % type(_e).__name__)
+            try:
+                import urllib.request as _u
+                with _u.urlopen(AR_SERVICE_URL + "/api/cams", timeout=3) as _r:
+                    info = json.loads(_r.read().decode("utf-8", "ignore"))
+                _cams = (info or {}).get("cams") or {}
+                _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
+                _age = (_cams.get("arm") or {}).get("age_s")
+                _say("🥽 AR 就绪 · 在线 %d/4 · 手臂相机帧龄 %s" %
+                     (len(_live), ("%.1fs" % _age) if isinstance(_age, (int, float)) else "读不到"))
+            except Exception:                                                   # noqa: BLE001
+                _say("🥽 AR 页面已开, 服务实况读不到 (稍后刷新页面即可)")
+            try:                                   # 后台验一眼窗口有没有真出来, 只补一条状态
+                _w = ar_window_seen(4.0)
+                if not _w:
+                    _say("⚠️ 浏览器没开新窗口 ⇒ 窗口可能被挡/开了标签页, 页面地址: %s" % AR_PAGE_URL)
+            except Exception:                                                   # noqa: BLE001
+                pass
+        finally:
+            _AR_RUNNING["busy"] = False
+
+    threading.Thread(target=_work, name="ar-launch", daemon=True).start()
+    return True
 
 
 class DreamView3D(QWidget):
@@ -3058,11 +3193,10 @@ class DreamView3D(QWidget):
     def _open_ar_view(self):
         """🥽 AR 场景 (2026-10-11 老倪: 「把 3D场景的 力控, 改成 AR」)。
 
-        不是在仿真里再开一个 3D 窗, 而是**把虚拟信息叠到真实画面**上:
-        · 底图 = **状态空间工程的视频数据源**(8791 cam_live_stream 的 4 台相机; 页面顶部可切, 默认手臂 D405)
-        · 叠加 = base 系 3D 内容经相机外参投影上去 (金手指 AOI 点位/空间点位/TCP 真值/录制轨迹)
-        · 标定/开关/清除语义全在 8797 (AR 服务) 与页面里, 本方法只负责**打开并如实回报状态**
-        服务没起/相机没帧就照实说, 不弹空窗、不用旧帧冒充。
+        2026-10-19 改**非阻塞**: 老倪反馈「点 AR 半天没反应」。原实现把
+        ①切场景(子进程 30s) ②起服务(12s) ③逐个浏览器候选等窗口(每个 6s) 全跑在 GUI 主线程,
+        界面直接冻住、看不出在干什么。现在: 立刻回报一行, 页面先送出, 其余在后台线程做
+        (共享 ar_launch: 服务探测/拉起/场景切换/相机实况 + 窗口复查)。
         """
         _st = getattr(self, "_scene_edit_attacher", None)
 
@@ -3074,69 +3208,15 @@ class DreamView3D(QWidget):
                 pass
             print(msg)
 
-        # ① 切场景/数据源 → AR (真源 = 画布 ssdata.src_state; 与配置中心激活同一条路)
-        #   ⚠️ 但**不抢老倪手里的数据源**: 现场他把数据源切到「真机」(bypass_real) 时, 点 AR 只开页面,
-        #      不把真机改回 AR场景(2026-10-12 现场: 他切了真机, 画布却显示 AR场景 ⇒ 是我这一步改的)。
-        _cur = ""
         try:
-            import subprocess as _sp0
-            _o = _sp0.run([sys.executable, os.path.join(_REPO, "tools", "ss_scene_switch.py"), "--now"],
-                          cwd=_REPO, capture_output=True, text=True, timeout=30).stdout or ""
-            _cur = "真机" if "真机" in _o else ("AR场景" if "AR场景" in _o else "")
-        except Exception:                                                       # noqa: BLE001
-            _cur = ""
-        try:
-            if _cur == "真机":
-                _say("🥽 数据源保持「真机」不动(点 AR 只开页面) · 底图=状态空间工程视频源")
-                _j = {}
-            elif _cur == "AR场景":
-                _j = {"msg": "已经是 AR场景 ⇒ 不动"}
-            else:
-                _j = ar_switch_scene("TASK-07-AOI")
-                _say("🥽 场景已切到 AR数据源 · %s" % (_j.get("msg") or "?"))
+            ok = ar_launch(status_cb=_say, switch_scene=True)
         except Exception as _e:                                                 # noqa: BLE001
-            _say("⚠️ 切 AR 场景没成功: %s (AR 页面照开)" % type(_e).__name__)
-            _j = {}
-        # ② 服务在不在 → 不在就起 (老倪: 「怎么没有打开服务呢」)
-        try:
-            _up, _why = ar_ensure_service()
-        except Exception as _e:                                                 # noqa: BLE001
-            _up, _why = False, "探测异常 %s" % type(_e).__name__
-        # ③ 打开页面(逐条候选 + **验窗口真的出现** + 置顶), 并如实回报各相机实况
-        _how = ""
-        try:
-            _how = ar_open_url(AR_PAGE_URL)
-        except Exception as _e:                                                 # noqa: BLE001
-            _how = ""
-            _say("⚠️ 打开页面异常: %r" % (_e,))
-        if (not _how) or _how.startswith("试过"):
-            # 六条路都没把窗口拉出来 ⇒ 不假装成功: 弹一个可复制的框 + 状态行写明网址
-            _say("🥽 AR 页面没能自动打开(%s) ⇒ 请手动打开: %s (服务%s)" % (_how or "无可用浏览器", AR_PAGE_URL, _why))
-            try:
-                from PyQt5.QtWidgets import QMessageBox as _MB
-                _mb = _MB(self)
-                _mb.setWindowTitle("AR 页面没能自动打开")
-                _mb.setIcon(_MB.Warning)
-                _mb.setText("没能自动打开 AR 页面(已试: 浏览器/xdg-open/gio/Qt)。\n服务状态: %s" % _why)
-                _mb.setInformativeText("请手动在浏览器里打开(可复制):\n%s" % AR_PAGE_URL)
-                _mb.setDetailedText(AR_PAGE_URL)
-                _mb.exec_()
-            except Exception:                                                   # noqa: BLE001
-                pass
+            _say("⛔ 打开 AR 失败: %r" % (_e,))
             return None
-        _live, _age = [], None
-        try:
-            import urllib.request as _u
-            with _u.urlopen(AR_SERVICE_URL + "/api/cams", timeout=3) as _r:
-                info = json.loads(_r.read().decode("utf-8", "ignore"))
-            _cams = (info or {}).get("cams") or {}
-            _live = [_k for _k in ("arm", "gold", "surface", "rs") if (_cams.get(_k) or {}).get("online") is True]
-            _age = (_cams.get("arm") or {}).get("age_s")
-        except Exception:                                                       # noqa: BLE001
-            pass
-        _say("🥽 AR 已打开 %s (浏览器: %s · 服务 %s) · 底图=状态空间工程视频源 · 在线 %d/4 · 手臂相机帧龄 %s"
-             % (AR_PAGE_URL, _how, _why, len(_live),
-                ("%.1fs" % _age) if isinstance(_age, (int, float)) else "读不到"))
+        if not ok:
+            _say("🥽 AR 正在打开中(上一次还没跑完) · %s" % AR_PAGE_URL)
+            return None
+        _say("🥽 正在打开 AR 页面 %s (后台: 服务/场景/相机实况)" % AR_PAGE_URL)
         return True
 
     def _open_force_scope(self):
