@@ -89,11 +89,11 @@ ck("防连点: 忙时再点返回 False", _ok3 is False,
 _end = time.time() + 45
 while time.time() < _end:
     app.processEvents()
-    if any(("页面已送出" in g) or ("没找到可用浏览器" in g) for g in _got):
+    if any(("页面已送出" in g) or ("没找到可用浏览器" in g) or ("AR 窗口已开着" in g) for g in _got):
         break
     time.sleep(0.1)
-ck("2s 内出现「页面已送出」或如实报没浏览器",
-   any(("页面已送出" in g) or ("没找到可用浏览器" in g) for g in _got), _got[:3])
+ck("2s 内出现「页面已送出」/「已开着已搬过来」/如实报没浏览器",
+   any(("页面已送出" in g) or ("没找到可用浏览器" in g) or ("AR 窗口已开着" in g) for g in _got), _got[:3])
 _end = time.time() + 45
 while time.time() < _end:
     app.processEvents()
@@ -102,6 +102,19 @@ while time.time() < _end:
     time.sleep(0.1)
 ck("后台把服务/相机实况也报回来了",
    any(("AR 就绪" in g) or ("实况读不到" in g) for g in _got), _got[-2:])
+
+print("\n③b 多屏: 窗口必须落在**控制台这块屏**并置最前 (否则看着就是「没反应」)")
+_mons = SD.ar_monitors()
+_ag = SD.ar_window_geom(SD.ar_find_window("XSpace ZMAX"))
+_wid = SD.ar_find_window("AR/VR") or SD.ar_find_window("TCP 轨迹")
+_wg = SD.ar_window_geom(_wid)
+ck("读到多屏布局", len(_mons) >= 1, _mons)
+ck("读到控制台窗口位置", bool(_ag), _ag)
+ck("AR 窗口在控制台同一块屏", bool(_ag and _wg) and SD.ar_monitors() and any(
+    m[0] <= (_wg["x"] + _wg["w"] // 2) < m[0] + m[2] and m[0] <= (_ag["x"] + _ag["w"] // 2) < m[0] + m[2]
+    for m in _mons), "AR@x=%s 控制台@x=%s" % (_wg.get("x"), _ag.get("x")))
+_raised = SD.ar_place_near_console(_wid) if _wid else False
+ck("ar_place_near_console 能搬+抬 (幂等)", bool(_raised), "window=%s" % _wid)
 ck("防连点: 忙时再点返回 False/提示", True, "（busy 闸在 ar_launch 内, 见源码 _AR_RUNNING）")
 
 print("\n④ AR 服务 8797 真实探测 + 幂等")

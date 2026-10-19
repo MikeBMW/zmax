@@ -1535,6 +1535,96 @@ _AR_RUNNING = {"busy": False}
 _AR_LOCK = None
 
 
+def ar_monitors():
+    """多屏原点 [(x, y, w, h)] —— 老倪是 1920 左屏(eDP) + 1920 右屏(HDMI)。
+
+    2026-10-19 实测: 控制台在左屏(x=66), 浏览器却把 AR 窗口开到右屏(x=1934) ⇒ 他盯着左屏,
+    看到的就是「点了没反应」。所以开完必须把窗口搬到控制台这块屏并抬到最前。
+    """
+    import re as _re
+    import subprocess as _sp
+    try:
+        _o = _sp.run(["xrandr", "--query"], capture_output=True, text=True, timeout=5).stdout or ""
+    except Exception:                                                           # noqa: BLE001
+        return []
+    _res = []
+    for _ln in _o.splitlines():
+        if " connected" in _ln:
+            _m = _re.search(r"(\d+)x(\d+)\+(\d+)\+(\d+)", _ln)
+            if _m:
+                _w, _h, _x, _y = (int(v) for v in _m.groups())
+                _res.append((_x, _y, _w, _h))
+    return _res
+
+
+def ar_window_geom(win_id):
+    """读某个窗口的屏幕位置/大小: {'x','y','w','h','title'} (读不到给空 dict)。"""
+    import subprocess as _sp
+    if not win_id:
+        return {}
+    try:
+        _o = _sp.run(["wmctrl", "-lG"], capture_output=True, text=True, timeout=5).stdout or ""
+    except Exception:                                                           # noqa: BLE001
+        return {}
+    for _ln in _o.splitlines():
+        _p = _ln.split(None, 7)
+        if len(_p) >= 7 and _p[0].lower() == str(win_id).lower():
+            try:
+                return {"x": int(_p[2]), "y": int(_p[3]), "w": int(_p[4]), "h": int(_p[5]),
+                        "title": _p[7] if len(_p) > 7 else ""}
+            except Exception:                                                   # noqa: BLE001
+                return {}
+    return {}
+
+
+def ar_find_window(title_part: str):
+    """按标题片段找窗口 id (空串=没有)。"""
+    import subprocess as _sp
+    try:
+        _o = _sp.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5).stdout or ""
+    except Exception:                                                           # noqa: BLE001
+        return ""
+    for _ln in _o.splitlines():
+        if title_part in _ln:
+            return _ln.split()[0]
+    return ""
+
+
+def ar_place_near_console(win_id, anchor: str = "XSpace ZMAX") -> bool:
+    """把 AR 窗口搬到**控制台所在那块屏**, 再抬到最前 (否则等于没开)。返回 True=已抬到前面。"""
+    import subprocess as _sp
+    if not win_id:
+        return False
+    _raised = False
+    try:
+        _g = ar_window_geom(win_id)
+        _mons = ar_monitors()
+        _a = ar_find_window(anchor)
+        _ag = ar_window_geom(_a) if _a else {}
+        if _g and _ag and _mons:
+            _acx = _ag["x"] + _ag["w"] // 2
+            _mon = next((m for m in _mons if m[0] <= _acx < m[0] + m[2]), None)
+            if _mon:
+                _mx, _my, _mw, _mh = _mon
+                _wcx = _g["x"] + _g["w"] // 2
+                _on_same = _mx <= _wcx < _mx + _mw
+                if not _on_same:      # 开到了另一块屏 ⇒ 搬过来
+                    _tw = max(900, min(_mw - 120, 1500))
+                    _th = max(600, min(_mh - 140, 980))
+                    _tx, _ty = _mx + 60, _my + 70
+                    _sp.run(["wmctrl", "-i", "-r", win_id, "-e", "0,%d,%d,%d,%d" % (_tx, _ty, _tw, _th)],
+                            capture_output=True, timeout=5)
+    except Exception:                                                           # noqa: BLE001
+        pass
+    try:
+        _sp.run(["wmctrl", "-i", "-a", win_id], capture_output=True, timeout=5)
+        _sp.run(["wmctrl", "-i", "-R", win_id], capture_output=True, timeout=5)
+        _raised = True
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return _raised
+
+
 def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
     """非阻塞打开 AR: 立刻回报, 后台干活。返回 False = 上一次还没跑完(防连点)。
 
@@ -1575,11 +1665,21 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 _say("🥽 AR 服务没起 ⇒ 正在启动服务 (最多 20s)…")
                 _up, _why = ar_ensure_service(tries=20)
                 _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
-            _how = ar_spawn_browser(AR_PAGE_URL)
-            if not _how:
-                _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
-                return
-            _say("🥽 页面已送出 (%s, %.1fs) · %s" % (_how, _t.time() - _t0, AR_PAGE_URL))
+            _win = ar_window_seen(0.1)      # 已经在开 ⇒ 搬过来抬到最前, 不再叠一个窗口
+            if _win:
+                _up = ar_place_near_console(_win)
+                _say("🥽 AR 窗口已开着 ⇒ %s · %s" % ("已搬到控制台这块屏并置最前" if _up else "已置最前", AR_PAGE_URL))
+            else:
+                _how = ar_spawn_browser(AR_PAGE_URL)
+                if not _how:
+                    _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
+                    return
+                _win = ar_window_seen(6.0)
+                _up = ar_place_near_console(_win) if _win else False
+                _say("🥽 页面已送出 (%s, %.1fs)%s · %s" % (
+                    _how, _t.time() - _t0,
+                    (" · 已搬到控制台这块屏并置最前" if _up else (" · ⚠️ 窗口没出现" if not _win else " · ⚠️ 没能抬到前面")),
+                    AR_PAGE_URL))
             if switch_scene:
                 try:
                     import subprocess as _sp0
@@ -1608,6 +1708,8 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 _say("🥽 AR 页面已开, 服务实况读不到 (稍后刷新页面即可)")
             try:                                   # 后台验一眼窗口有没有真出来, 只补一条状态
                 _w = ar_window_seen(4.0)
+                if _w:
+                    ar_place_near_console(_w)      # 再抬一次(有些 WM 先在别处映射再搬)
                 if not _w:
                     _say("⚠️ 浏览器没开新窗口 ⇒ 窗口可能被挡/开了标签页, 页面地址: %s" % AR_PAGE_URL)
             except Exception:                                                   # noqa: BLE001
