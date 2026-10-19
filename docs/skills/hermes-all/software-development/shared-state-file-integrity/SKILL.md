@@ -58,6 +58,11 @@ metadata:
    🩸 别用宽泛的 `pkill -f <脚本名>` 收工: 命令行里含该字样会**匹配到自己/自己的 bash 包装** ⇒ 整条命令被 SIGTERM 打断
    (现象: exit -15, 后面的验证全没跑)。判定条件用 `/proc/<pid>/comm` 必须以 `python` 开头 + cmdline 含脚本名, 两个都满足才杀。
 
+6. **原子写的 tmp 名必须带 pid**: 固定 `<target>.tmp` + 两个进程同时写 ⇒ 后者的 `os.replace` 先把 tmp 搬走,
+   前者的 `os.replace` 抛 `FileNotFoundError` (常被上层 catch 成一行日志) ⇒ **那一次写静默丢失**。
+   改法: `tmp = "%s.tmp.%d" % (path, os.getpid())`; 同一目标并发写还要在 replace 前重读合并, 否则就是"最后写的赢"。
+   证据口径: 日志里出现 `os.replace` 的 FileNotFoundError 就是它 —— 别归因成"文件系统抖了一下"。
+
 ## 铁律三: 清理工具必须黑名单语义 (默认保留, 只删点名的)
 ```python
 # ✗ 白名单: 任何没被枚举过的新类别静默消失, 且每次运行再杀一次

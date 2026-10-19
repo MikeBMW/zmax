@@ -71,7 +71,28 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 ### 11. 启动卡顿/闪烁: 延迟创建重量级组件 (2026-08-12 实测)
 - 症状: "打开前屏幕使劲闪 + 卡死好几秒" — 主线程构造里同步建重量级组件(200+ 按钮的模块库面板/画布) → VcXsrv 每次窗口映射全屏合成一次 → 闪 + 卡
 - `win.hide() + QTimer.singleShot(80, win.show)` **无效且加重**(更闪+卡死, 已 revert) → **正解: 构造期不建重量级组件, `QTimer.singleShot(400, self._init_heavy)` 后置创建**(记录 `self._stack_index = stack.count()` + 完成后 `insertWidget(index, widget)` 插回原 tab 位, try/except 兜底 statusBar 提示); 实测启动 27s→8s
-- 规律: VcXsrv 下启动慢 = 主线程同步构造重组件; **延迟创建(QTimer 后置)比 show 时机 hack 有效**; 延迟回调里访问延迟组件时它已就绪(400ms < 2.5s 等); Pyright 对 `self.attr = None` 后访问报 OptionalMemberAccess 是静态误报
+- 规律: 启动慢 = 主线程同步构造重组件; **延迟创建(QTimer 后置)比 show 时机 hack 有效**; 延迟回调里访问延迟组件时它已就绪(400ms < 2.5s 等); Pyright 对 `self.attr = None` 后访问报 OptionalMemberAccess 是静态误报
+- 🔴 **一次 `singleShot` 只把"卡"推迟, 多个重组件用固定节拍逐个建 = "窗口出来了但动不了"**:
+  每页 0.02~2.5s, 全在主线程 ⇒ 用户看到窗口已显示却十几秒不能拖/不能滚, 先说是"界面坏了"。
+  实测同一份代码: 固定 120ms 节拍连建 12 页, 事件循环最大停顿 **2938ms**; 改成空闲驱动后, 连续滚 6s 期间**建页 0 个**,
+  最大停顿 **953ms**(剩下的是另一次一次性初始化, 与泵无关)。
+- **正解 = 空闲 + 无人操作双门槛泵**:
+  ```python
+  disp = QAbstractEventDispatcher.instance()
+  def step():
+      if time.time() - self._last_input < 2.0:   # 最近 2s 有滚轮/鼠标/键盘 ⇒ 一个都不建
+          return
+      if time.time() - self._last_build < 0.8:   # 两次之间 ≥0.8s
+          return
+      self._last_build = time.time(); self._realize_one()
+  disp.aboutToBlock.connect(step)                # 队列真空了才轮到建页
+  ```
+  `_last_input` 由一个 app 级 `eventFilter` 在 `Wheel/MouseButtonPress/MouseMove/KeyPress` 时刷新。
+  另按上次实测耗时排序 (`zmax_data/page_build_ms.json`) —— **轻的先生、重的最后**, 余下真被用户撞上时也只卡几百 ms。
+- **量"窗口能不能滚"用进程内探针, 别用肉眼/全屏 diff**: 50ms `QTimer` 记相邻 tick 的时间差 (最大值=用户感知的卡顿),
+  同时每 100ms 往滚动区投 `QWheelEvent`; 输出 最大停顿 / 平均 / 滚轮命中 / 期间建了几个页。
+  滚轮"命中"= 滚动条值变了**或已在底部**(到底后无位移是正常的, 别当成没响应); 探针必须调与线上**同一个**泵函数,
+  千万不要在手搭窗口里复制一份 —— 两份代码一定漂, 测出来的不是你上的那条路径。
 
 ### 12. QGraphicsScene 节点双击: canvas 拦截 press 是隐性杀手 (2026-08-12 实测)
 - 症状: 用户反复报"双击节点没反应" — 双击 ▶生成视频/数据源切换全不生效, 只有右键菜单"运行节点"能用
@@ -243,6 +264,22 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **回归证据 = 和"改动前"逐条比对, 不是只看"全绿"**: `git stash push -- <改动文件>` → 跑既有 verify 套件 → `git stash pop`,
   这样能分清哪条 FAIL 是本来就有的; 用户要的是"没回退"。
 
+### 17b. 「窗口一变窄就挤/被截断」= 最小**宽度**沿布局树往上传染 (与 §17 的最小高度同源)
+- 先量再改: `page.minimumSizeHint().width()`。**QTabWidget 取各页最小宽度的最大值** ⇒ 只要一页超宽,
+  窄窗口下**所有页**都被撑出可视区(用户会描述成"每一页都坏了", 让人误以为是全局 QSS/缩放问题)。
+- 两个实测元凶: ① 用 `QLabel("─" * 96)` 当分隔线/标题横线 —— 96 个字宽直接把页面最小宽顶到 ~1630px;
+  ② 一排 10+ 个按钮塞进同一个 `QHBoxLayout` —— 按钮文字不可压缩, 12 个实测最小 1472px。
+- 修法: 装饰线换 `QFrame` + `setFixedHeight(1)` + 背景色(不参与最小宽计算); 按钮改 `QGridLayout`
+  每行 6 个(`row.addWidget(b, k // 6, k % 6)` + 末列 `setColumnStretch` 留白), 宽度够时视觉仍是紧凑按钮组。
+- 定位手法: 打印页面 `minimumSizeHint()` 后遍历 `findChildren(QWidget)`, 找 `minimumSizeHint().width()`
+  最大的几个; 若单个控件都不大而整页很大, 就看横向布局 —— `layout.itemAt(i).minimumSize()` 是**子项之和**,
+  整行超宽在单个控件上完全看不出来。
+- 🔴 **在"从没上过布局"的控件上量几何 = 判据假绿**: 页面藏在非当前页签时子控件还没被 layout,
+  尺寸仍是默认 `(0,0,640,480)` ⇒ 640 宽能 fit 进任何窗口, "按钮不挤不截断"这类判据**永远通过**。
+  量之前必须 `tabs.setCurrentIndex(目标页)` + `processEvents()`, 并断言
+  `w.width() > 0 and w.isVisibleTo(page)` 作为前提; 否则量出来的是假数(这类假绿会在你改布局后突然"变红",
+  看起来像回归, 其实是判据第一次真的开始工作)。
+
 ### 18. 「反应非常慢 / 点一下要等」= 先 py-spy dump 定主线程栈, 别猜机器慢 (2026-10-17 实测)
 - **判据顺序 (30 秒出结论)**: ①`ps -o pid,pcpu,nlwp,etime -p <pid>` 看主进程 %CPU 与 **TIME+ / elapsed 比例** — 接近 1.0 就是"自始就在烧一个核"(与"某次点击后变慢"完全不同的病); ②`top -H -b -n1 -p <pid>` 看哪个线程热(通常 MainThread 99.9%, 其它 sleeping); ③**连打 8 次 `py-spy dump --pid <pid>`(间隔 0.4s) 只取 MainThread 前 6 行** —— 8/8 同一条栈才算定死, 单次采样会被一次偶发回调骗; ④`py-spy record -d 6 -f raw` 的 leaf frame 分布**分散时不要采信**(json/socket/subprocess 各 1~3% = 你在看一堆无关定时器), 递归栈才是热点; ⑤应用日志增速也能量: `wc -c <log>` 隔 5s 再量, 增长 0 = 卡在主线程而非日志刷屏。
 - **本机 py-spy 在 Hermes 自带工具目录**(`which py-spy` 指到 `~/.hermes/tools/...`), 读别的进程要 `sudo`; `py-spy top` 需 tty(非交互会 `Not a tty`), 用 `dump` 循环代替。
@@ -354,6 +391,49 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   后建标签 show 后自动带上 · 树 Ctrl+C 落剪贴板 · 表 Ctrl+C 出 TSV · 信息窗 Ctrl+C 仍走自己的 copy。
   现成探针: `scripts/qt_label_selectable_audit.py --module <模块> --class <页面类> --tabs` (前四条直接跑, 新增控件再补)。
 
+### 26. 「点开一个网页要等半天 / 点了没反应」⇒ 把网页内嵌进进程, 不要 spawn 外部浏览器
+- **外部浏览器慢且不可靠**: 从 GUI 进程 spawn chromium 实测出窗 0.38~0.9s; 更糟的是这条命令通常只是
+  "转发给已在跑的那个实例" —— 那边忙/单例套接字不畅时 **子进程 execve 成功、线程都起来了、30s 没有任何窗口**,
+  日志一片正常, 只有 `wmctrl -l` 数窗口才发现没出来。所以"用户点了没反应"别只怀疑网络/页面/接口。
+- **正解 = 进程内 `QWebEngineView`**(装 PyQtWebEngine): 实测 view 创建 0.05~0.08s · show 0.03s · 页面 load 0.29s
+  ⇒ 与"打开一个原生 Qt 窗口"同一档。用户说"要像 3D 场景那样立刻打开"时, 就是要求换成这条链路。
+- 🔴 **`import PyQt5.QtWebEngineWidgets` 必须早于 `QApplication` 构造**: 放主脚本**模块级顶部**(早于 main() 里那句
+  `QApplication(sys.argv)`), 否则 PyQt 直接抛 `ImportError: QtWebEngineWidgets must be imported before a
+  QCoreApplication instance is created`; 藏进"第一次点按钮"的构造函数里 = 必踩。
+- **窗口对象放模块级单例, 关窗不销毁**(别开 `WA_DeleteOnClose`): 再点只做 `show()/raise_()/activateWindow()`
+  ⇒ 实测 0.001s 回来且页面状态还在; 每次新建窗口才是慢的来源。
+- **预热**: `QTimer.singleShot(3000, prewarm)` 在启动 3s 后把窗口**建好但不 show/不 load**;
+  建窗口放构造期会拖启动, 放 3s 后等于零成本, 第一次点 AR 只剩 show。
+- **装依赖前先 `pip freeze | grep -i pyqt`**: PyQtWebEngine-Qt5 与已有的 PyQt5-Qt5 必须同版本线 —— 两者装进同一个
+  `PyQt5/Qt5/lib` 目录, 装错版本会覆盖核心 Qt 库, 把正在用的 GUI 一起搞崩。纪律: 先在临时 venv 里装好、
+  跑通 QWebEngineView 再动生产 venv, 并先 `pip freeze > before.txt` 留底。
+- 探针脚本两个坑: ① `QApplication` 默认 `quitOnLastWindowClosed=True` —— 探针里 `close()` 掉唯一窗口会让事件循环
+  直接退出, 表现为"脚本无声结束/退出码 2", **不是崩溃** ⇒ 探针里先 `app.setQuitOnLastWindowClosed(False)`;
+  ② 证明页面真活着用 `page().runJavaScript("performance.getEntriesByType('resource')…")` 数请求, 别只信 loadFinished;
+  `window.grab().save(png)` 后量灰度均值(深色页 ~26 / 全白 ~255)判"渲染出来没有"。
+- **回退链 + 时间线日志**: 内嵌失败(没装/没 GL) → 外部浏览器 → `xdg-open`; 每步写一行
+  `spawn pid / 窗口出现 +N.Ns`, 下次"没反应"直接读日志定位到哪一环, 不用猜。
+- **挂起锁在不可逆动作之后立刻放**: 打开流程的 busy/去重标志若等整条后处理(等窗口 6s + 切场景 20s + 读接口 3s)
+  跑完才释放 ⇒ 此后几十秒内用户点几次都是静默 no-op, 主观就是"点了没反应"。spawn 一返回就放开, 后处理再慢也挡不住下一次点击。
+- 🔴 **页面字号"小得看不见"不是页面写小了, 是高 DPI 屏上 DPR 仍为 1.0**: 3200x2000 / 236 物理 DPI 的屏,
+  `devicePixelRatio()` 可能还是 1.0 ⇒ CSS 12px 只占 12 个物理像素 ≈ 3.6pt。内嵌页面**默认缩放按屏算**,
+  别写死 1.0: `clamp(physicalDotsPerInch()/96*0.85, 1.0, 2.6)` (236 DPI ⇒ 2.1; 96 DPI 自动回 1.0)。
+- **用户调过的视图状态(网页缩放/分隔条/面板宽)必须存盘回读**, 不许每次打开重置 —— `zmax_data/<视图>_zoom.json` +
+  原子写(`.tmp` + `os.replace`); 验收判据 = 调一次 → 关窗 → **新进程**读到同一档(用户原话就是"默认能记住上次的状态么")。
+  三种调法都要落到同一个值上: 工具栏 ±、Ctrl+滚轮、Ctrl+=/-/0。
+- **窗口尺寸要按缩放反算 CSS 视口**: 页面多用 `flex-wrap` + `flex-basis` 定断点(如 640+380+间距 ≈ 1060 CSS px),
+  缩放 2.1 时窗口得 ~2400px 才并排, 否则被挤成单列(用户会当成"排版坏了")。窗口取 `availableGeometry*0.92` 封顶,
+  并在探针里断言各卡片的 x 坐标确实分成两列, 而不是只看"窗口开了"。
+- 🔴 **QWebEngineView 里 Ctrl+滚轮收不到**: 滚轮事件落在它内部的渲染控件上, 构造时 `focusProxy()` 还是 None ⇒
+  局部 `installEventFilter` 无效。要挂 `QApplication.instance().installEventFilter(self)`, 并在 filter 里
+  先判断事件是否落在本窗口。
+- 🔴 **一次物理滚轮会被投递多路**(实测 QWindow → QWidget → QWebEngineView → QWidget → 本窗口, 5 次),
+  每路都进同一个 filter ⇒ 不防抖时一格滚轮放大 0.5(直接冲到 300%)。正解: **只认 `obj is self.windowHandle()`
+  那一路**(每个物理滚轮恰好一次, 快速连滚也不会被吞), 其余几路 30ms 内不重复计。
+- 用 xdotool 验证缩放时, 别在命令刚返回就读 `view.zoomFactor()`(事件异步处理, 读到旧值) ⇒
+  `QTimer.singleShot(600, …)` 之后再读, 并同时断言存盘文件的数值。
+- 可直接抄的骨架 + 探针 + 缩放/滚轮实现: `references/embedded-webview-in-qt.md`。
+
 **性能数字的口径纪律（不然会报出假账）**:
 - `ps -o pcpu` 是**自启动以来的平均** ⇒ 判"现在多热"要读 `/proc/<pid>/stat` 的 `utime+stime` 两次差分
   （`awk '{print $14+$15}' /proc/<pid>/stat`）再除以采样秒数。
@@ -444,6 +524,10 @@ Z-MAX 有多个会话（CLI + 飞书 gateway）会改同一份本地代码，症
 - 枚举窗口: `DISPLAY=:0 xdotool search "" | while read w; do xdotool getwindowname $w; done`（找标题）
 - 关多开的弹窗（2026-08-08 实测 "7 模型 rollout 对比" 开了 8 个）: 按标题匹配 `case "$t" in *"rollout 对比"*) xdotool windowkill $w;; esac`
 - **盲点坐标点击不可靠**（找不到控件坐标，点导航/按钮常点空）——老倪要求"操作窗口按钮"时，优先走 GUI 内部触发（`.click()`/信号注入）或让用户点；xdotool 只用于清窗口/激活（`windowactivate`）
+- **量"点某按钮后多久才出结果"不要用坐标点**: 在独立进程里 `sys.path.insert(<gui目录>)` + `import <模块>` +
+  直接调那个入口方法计时 —— 这是最干净的判据(能把“出窗慢”和“点击没命中”彻底分开)。坐标点会因为窗口焦点/滚动/
+  按钮 bbox 变化反复点空, 一次会话白耗好几轮; 实在要点, 先 hover 扫出按钮矩形再点, 命中判据用
+  “是否多了子进程 / `wmctrl -l` 窗口数变化”, **不要用整屏 diff**(画布在动, 全屏每处都在变, diff 无法说明任何事)。
 
 ## GUI 行为原则
 - 小面板/密集控件: 字体用 `setPixelSize`(见 §15), 挂载点选 central 布局而非 QStatusBar(见 §16)

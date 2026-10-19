@@ -64,6 +64,17 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
 改前条数 == 改后条数 ⇒ 零回退 (旧红如实标注"改动前就红"); 只有差异才是本次引入。别把旧红当自己的回归，
 也别悄悄把旧红算成通过。
 
+## 判据卫生 (自己别假绿/假红)
+- **前提要摆好并还原**: 判据常依赖「全层都启用」这类前提, 而用户的当前档位/开关可能不是全开。用临时改写真源
+  (`ui_run.json` 的 `cap_level` 等) + `finally` 逐字还原, 让「全开」判据与「单层」判据各自成立; 别让用户此刻的开关
+  决定判据颜色。同一个文件被多个判据文件需要时, `_cap_enter(level)` / `_cap_exit(old_text)` 一对函数最省事。
+- **状态覆盖要发生在构造被测控件之前**: 先 `show()` 再 monkeypatch 运行态/真源, 第一帧已按旧状态画过, 残留的输出清单
+  (`self._last_arrows` 之类) 会被当成本次证据 ⇒ 假红/假绿。双保险: 渲染函数入口先清空输出清单再判 `return`。
+- **通过数在所有判据追加完之后再数**: `npass` 写在追加新判据之前 ⇒ 40 条报成 39/40, 每行都是 ✅ 而摘要说「未通过」,
+  最容易被自己骗过去。改完**整脚本跑一遍数条数**。
+- **「两次采样必须变」要跨过一个刷新周期**: 刷新是 500ms 时 `sleep(0)` 采样当然一样; 取 1.05s 以上, 并对真源静止的
+  情况显式标「本拍不适用」, 不判假绿。
+
 ## 坑 (已踩)
 - **cv2 自带 Qt 平台插件污染**: 先 import cv2 (ultralytics 等) 后建 QApplication → Qt 从 `cv2/qt/plugins` 找 xcb → "Could not load the Qt platform plugin xcb" (缺系统依赖)。修复: 建 QApplication **之前**设 `QT_QPA_PLATFORM_PLUGIN_PATH=<site-packages>/PyQt5/Qt5/plugins` (遍历 sys.path 找含 platforms/ 的目录)。别只删 cv2 路径 — 显式指定 PyQt5 真实目录即可
 - QApplication 只能在 import 任何 Qt widget 前创建一次; 被报告侧 import 时 (cv2 已加载) 也要先设插件 env 再建 app

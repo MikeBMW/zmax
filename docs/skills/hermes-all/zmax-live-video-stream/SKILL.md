@@ -101,6 +101,21 @@ metadata:
 —— 他的「硬件工具箱」默认就看臂上相机; 笔记本/MAXHUB 电视这两路只能进下拉作备选。
 口径: `_CAM_LIVE_DEFAULT = "arm"`; 自动链路 arm → local2 → local → 远端快照 → 落盘文件。
 
+## 🥽 AR 页面(8797 `tools/web/tcp-ar.html`)说"慢" —— 三层分开量, 别一上来查相机
+
+- **打开**: 页面 88KB, DCL/load 实测 ~20ms; 画布「🥽 AR」按钮走 `ss_dreamview.ar_launch`(后台线程,
+  先开页面再探服务) ⇒ 若还觉得"点了没反应", 查的是浏览器窗口拉起, 不是服务没起。
+- **单帧**: `/snap/<cam>.jpg` 正常 3~9ms(PAGE 是**热读**的, 改 HTML 不用重启服务)。
+  **`200` + `0 字节` = 该路没有帧**(8791 那路 `online=false / frames_served=0`), 不是页面/网络问题。
+- **节拍**: `FPUMP.period` 就是显示硬顶(原 150ms=6.67fps, 现 60ms=16.67fps)。
+  真实 fps 在页面里量: `performance.getEntriesByType('resource')` 数 `/snap/` 条数, 别拿 8791 `/stats` 当用户看到的帧率。
+- **默认 `MOD3ON=true` ⇒ 走 `/api/module3d?img=1`**, 而 `_mod3_worker` 的 `period=0.15s`
+  ⇒ 该模式下图像与框都被压到 ≤6.7Hz; 检测线程没结果时**必须降级到 `/snap`**(原实现直接 return ⇒ 永远黑)。
+- **叠加的位姿也要查帧龄**: `/api/tcp` 的 `age_s` 到小时级 ⇒ 画面再新, 叠加的也是旧位姿(实测 7.3h)。
+  页面上把 `tAge` 从 TCP 的 `age_s` 写成"帧龄"会把人带偏 —— 分清"画面帧龄"与"位姿帧龄"再报。
+- **同一根因会同时打死两条路**: USB 网卡不在位 ⇒ `192.168.23.66` No route to host ⇒ arm 无帧 **且**
+  TCP 真值冻结。别当成"相机故障 + 位姿故障"两件事查 —— 先 `ip -br addr` / `ip route get <orin>`。
+
 # Z-MAX 真机双相机 · 压缩实时流 + 运动摄录取证
 
 ## 触发

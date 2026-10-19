@@ -7,6 +7,33 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 📄 **启动慢 / 点快捷方式等半天 / 刚改成延迟建页后判据全红**: `references/startup-latency.md` ——
+> 用 **Xvfb :99 冷启**量「点击→窗口可见」(离屏 offscreen 建主窗口会 core dump, 别当回归)；
+> 真瓶颈是 **建全部页 + win.show() 首次 polish**(本机 8.7s→3.2s: 首屏只建首页+配置中心, 其余占位后台泵)；
+> ⚠ **后台泵不许用固定节拍**: 每 120ms 建一个 ⇒ 主线程一段段被堵, 用户看到"窗口出来了但滚轮十几秒没反应"。
+> 用 `start_idle_build()`: `aboutToBlock` 判空闲 + **最近 2s 有输入就一个都不建** + 间隔 ≥0.8s
+> + 按 `zmax_data/page_build_ms.json` 实测耗时"轻的先生、重的最后" + YOLO 预热放最后。
+> 改完必查三条: `_on_nav` 先 realize 占位页 · 后插入的画布 page 要用 `stack.indexOf` 重算 `self.modules` ·
+> 所有 `StudioMainWindow()` 判据/探针加 `win.materialize_all()`。
+> **开机第一眼 = 主控制台 home**, 不是配置中心: `launch_studio.sh` 默认 `ZMAX_BOOT_PAGE=home`,
+> studio.py 落 home 时**不排跳页**(home 就是 stack[0]); 配置中心由首页「⚙️ 配置中心」卡片单独打开,
+> 再从配置中心「🚀 启动工程 · 信号 · 场景」开状态空间工程。只有非 home 的落点才排 3.2s 跳页。
+
+> 📄 **力场可视化 (没运行为什么有力 / 运行后合力不跟着变 / 字太小)**: `references/force-field-visualization.md`
+> —— 运行态闸门四条(不重算·不画·写未运行·相位停)、档位门控(只跑 L2 时 L3/L4/L5 写“未调用”, 切档就落盘)、“太阳系不见了”先查 `mparam/viz_view` 落盘、`trace_live.json` 唯一发布者=3D 面板(无窗口必须控制台直发),
+> `GravityField` 每次 build 必须 reload 一次、u_ff 加权与主力语义、20px/380/无边框/五个独立表盘/左侧走廊、
+> 判据跟着构造改 + 派子代理看图做视觉复核。
+
+> 📄 **观察窗口 (太阳系/3D/信号) 的数与模型实际状态对不上 / 要设计"能反映 L2~L5"的交互 / 字体太小 / 文字飘来飘去要固定靠右 / 文字与球体的连线太乱(改颜色对应) / 画面里有跳跃 / 窗口太小要能拖拽放大 / 每个模型推理要有高亮闪烁 / 要把四元数显示在太阳系 / 地球合力箭头要粗大明显、太阳行星力算分力 / 给 u_ff 加权让主力真压倒分力 / 力箭头忽长忽短(尺度)**:
+> `references/observation-window-live-state.md` —— 视图数据必须每拍 `reload()`(只在 __init__ 建 = 死值);
+> **所有显示 (球/连线/文字块) 必须连续**: 相位积分 + 线透明度缓变 + 块位低通 (见铁律 8/8b, `tools/verify_orbital_nojump.py`);
+> **“在跑”只看控制台发布的 `zmax_data/ss_live/ui_run.json` (+pid 存活)**: 后台常驻 `ss_engine_loop` 一直写 engine_latest，
+> 拿文件新鲜度判在跑 ⇒ 没点 ▶ 运行也显示力/在转 (用户一问就穿)；没在跑就不画力线/不画自转弧/相位冻结/太阳标签不写 T。
+> 公转相位必须**积分** (`_ph += ω·dt`, ω 平滑向目标)，禁 `相位 = f(实测量)` (数据一跳就来回跳)；`_geom()` 图注行数加滞回防“呼吸”; 结构映射 (黄道面↔S³ · 太阳=中心 · 行星=DiT · 地球=MLP · 引力=度量) 的落点、
+> 以及画布「画了但没画出来」三种静默失败 (坐标单位/低 α/亮度跟实时量) 也在这份里;
+> 状态按**每个实体自己的真源 mtime** 上色 (●≤2.5s ◐≤60s ○离线), 层状态取 `layer_calls.jsonl` 末行;
+> 口径写屏上 (τ 是解析势场还是模型张量 · 是否限幅); 加信息前先算遮挡代价 (贴球标签压球、右上角状态带压虚线)。
+
 > 📄 **「改完用户看不到」/ 数据空间缺 Tx 节点 / 速度 mm/s 口径 / v_ff 能否算位姿**:
 > `references/dual-instance-and-trace-tx-gates.md` —— 先查是不是**两个控制台并存**（裸 `studio.py` 启动的实例不被
 > `gui/studio.py` 模式匹配 ⇒ 用户一直在看旧进程）；Trace 上屏要过**三道门**（层索引 → Rx → 信号白名单），
@@ -23,6 +50,9 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 并给裁裁日志加 10s 节流、所有入径走同一收口; 修完报 `/proc` 差分前后数 + MainThread 回 `idle`(§9)。
 
 > 📄 VEH.6 配置中心 `references/veh6-config-center-mcd.md`(参数表/四层配置/CLI/写后回读) · 全链路演练+功能描述+专利导出 `references/full-drill-and-patent.md`
+> 📄 **配置中心「💰 成本/报价」+「🧩 商业模式」**: `references/config-center-cost-page.md` · `references/config-center-business-model.md`
+> —— 成本只存输入(BOM/软件/人力/产线), 派生值现算不落盘; 商业模式从成本+性能+任务推 分层口径/成交区间/三阶段/模式,
+> 区间不成立就改配置不降价; 加页必连带改 `_TAB_ORDER` 与既有判据里的页签计数。
 > 📄 **真源改了 → 工程库/参数中心同步 (ensure-fresh · 三表对账 · param auto 行)**: `references/truth-to-db-sync.md`
 📄 **配置中心页面改 UI (删重复块 / 文字全可选可复制 / 判据同步 / 一次重启)**: `references/config-center-ui-changes.md` ——
 > `ConfigCenterPage` 被主控制台与独立窗口共用 ⇒ 改一处两边同时生效; 删块必须同改判据并翻成"不该再有这个块";

@@ -28,6 +28,34 @@ AR 服务 `tools/tcp_ar_server.py`(8797) 只**订阅**: `CAMS[key] = {w,h,label,
 - 帧龄/在线**只从真源读**(8791 `/stats`), 不在 AR 侧重算; 哪路停就照实显示(实测遇过 USB 内置相机停 10h)。
 - 3D 场景「🥽 AR」按钮开 `?cam=<default>`, 别写死某一台; 开关前先探 `/api/cams` 并报「在线 N/M」。
 
+### 1.1 AR 入口必须**非阻塞**, 且画布工具栏直接给入口 (2026-10-19 实测)
+老倪: 「3D场景里点 AR, 半天没反应 —— 把 AR 做到画布上边的按钮直接打开」。
+根因不是服务坏, 而是 **整条流程跑在 GUI 主线程**: 切场景(子进程 30s) → `ar_ensure_service`(12s)
+→ `ar_open_url` 逐个浏览器候选**各等窗口 6s** ⇒ 界面冻住, 用户看不到任何反馈。
+定式 (已落地 `tools/gui/ss_dreamview.py::ar_launch`):
+- **统一后台入口** `ar_launch()`: 加锁防连点; 返回 <10ms; 界面只负责显示状态。
+- 顺序要按「用户多久看到东西」排: ① 快探 8797(0.8s) 在跑就**立刻 spawn 浏览器**
+  (只 `Popen`, **不等窗口** —— 等窗口就是那 6s) ② 没起才先报「正在启动服务」再拉起
+  ③ 切场景(数据源是「真机」时不抢用户设置) ④ 读 `/api/cams` 报在线/帧龄。
+- 跨线程回贴用 `pyqtSignal` (`ar_status_bus()`), **绝不在后台线程直接改控件**。
+- 入口两处同源: 画布工具栏 `🥽 AR` (`simulink_module.open_ar_page`) 与 3D 场景按钮都调同一个 `ar_launch`,
+  否则两处行为会漂 (一个快一个卡)。
+- 判据必须量**耗时**而不是“能打开”: `open_ar_page`/`ar_launch` <300ms + 2s 内出现「页面已送出」
+  + 防连点第二次返回 False + 场景映射用 `ss_scene_switch --check`(**只算不动**, 别改用户当前数据源)。
+
+### 1.2 多屏：AR 窗口默认开在**另一块屏**，用户看到的就是“没反应”
+实测（老倪工位，2026-10-19）：`xrandr` 是 eDP 主屏 `0+0 1920x1200` + HDMI `1920+0 1920x1080`；
+控制台在**左屏**（x=66），spawn 的 AR 窗口却在**右屏**（x=1934）——窗口 0.4s 就出来了,
+但他盯着左屏，所以“点了半天没反应”。
+定式（`ar_place_near_console`，已落地）：
+- 开完**必须**搬：用 `xrandr --query` 取屏原点、`wmctrl -lG` 取控制台(“XSpace ZMAX”)几何，
+  窗口中心不在控制台那块屏 ⇒ `wmctrl -i -r <id> -e 0,x,y,w,h` 搬过去（屏原点+60,+70，
+  尺寸 min(屏宽-120,1500) x min(屏高-140,980)），再 `wmctrl -i -a` 抬到最前。
+- **复用不叠窗**：已有 AR 窗口就直接搬+抬（顺手相当于“再点一次置前”），不再 spawn；
+  否则连点几下会向右屏叠出一堆窗口。
+- 别信 spawn 的返回码：`ar_window_seen()` 查真窗口表才算数；抬完再查一次位置写入判据。
+- 判断环境别用 `\$DISPLAY` 猜：判据要用 `DISPLAY=:0` 真跑 `xrandr`/`wmctrl`，否则 RPAREN。
+
 ## 2. L5(VLM) 理解 = **子进程桥**, 别在常驻服务里 import 引擎
 引擎 `src/lerobot/policies/left_right/state_space/scene_vlm.py :: SceneVLM.ask(jpg, prompt, max_tokens)` 会拉 torch(GB 级);
 AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻只允许一个模型进程)。
