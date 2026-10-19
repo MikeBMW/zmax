@@ -15649,6 +15649,9 @@ def _kill_orphan_l5(include_own=False):
             continue
     if killed:
         print("🧹 清掉上一轮残留的 L5 闭环进程: %s (L5 只在你点 ▶ 时启动)" % killed, flush=True)
+    # 不管这次有没有杀到进程, 这个时刻 L5 都不该被当成"在跑" ⇒ 状态文件一并归位
+    # (实测: 进程已被外部脚本杀掉时 killed 为空, 老写法跳过 ⇒ state.json 永远停在 running)
+    if True:
         try:
             # L5 的状态文件也必须改成 stopped —— 否则它一直停在 "running",
             # 界面会以为"还在跑"(实测老倪就是这么看到太阳系不转的: 表说在跑, 画面冻着)。
