@@ -51,6 +51,28 @@ def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, asp
         mode = "p80"
     th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
     th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((25, 25), np.uint8))
+    # 2026-10-20 侧面点2 实测: 光模块右端**插进右侧夹具**, 两者亮度相近且 x 相邻 ⇒ 轮廓粘成
+    #   2080x1303 一块(aspect 1.70), 被 aspect 闸全挡掉 ⇒ n_cand=0, 判据图回退整幅(不水平+带夹具)。
+    #   可分的物理特征: 夹具是**整列贯穿**(列亮>800px, 占 2048 高的 60%+), 模块只有 ~440px 高。
+    #   ⇒ 按"贯穿列"找到夹具左界, 把 ROI 截到模块侧。好帧(o_sync)没有贯穿列 ⇒ 行为完全不变。
+    _col = (g >= 180).astype(np.uint8).sum(axis=0)
+    _below = _col > int(0.39 * H)
+    _run = 0; _xc = W
+    for _x in range(W):
+        if _below[_x]:
+            _run += 1
+            if _run >= 60:                       # 连续 60 列都贯穿才算夹具(单个高光条不算)
+                _xc = _x - _run + 1
+                break
+        else:
+            _run = 0
+    if _xc < W:
+        # 截断后必须**换成严格阈值**重算: Otsu(91) 下模块与夹具连成整块, 光靠切 x 切不开;
+        #   g>=180 只留金属高光, 模块独立成 1500x210 的长条(实测 asp 7.2 / fill 0.70, 全过闸)。
+        th = ((g >= 180).astype(np.uint8) * 255)[:, :_xc]
+        th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        th = cv2.copyMakeBorder(th, 0, 0, 0, W - _xc, cv2.BORDER_CONSTANT, value=0)
     cs, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cands = []
     for c in cs:
@@ -66,6 +88,13 @@ def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, asp
         #   不加这道闸时, 48000us 下会搜到 2394x1274 的台面当刚体 ⇒ 摆正对着台面转, 判据图全错。
         asp = max(w, h) / float(max(1e-6, min(w, h)))
         if aspect_min > 0 and asp < aspect_min:
+            # 2026-10-20 侧面点3 实测: 工件**竖着且顶部出画**时, 完整矩形搜不到;
+            #   但"贴边竖条"本身很规整(minAreaRect fill 0.95, 长边 599, 短边 395)。
+            #   ⇒ 不直接丢, 记成 vertical 候选; 只有主搜索全空时才启用, 摆正时自动转 90° 成水平。
+            if fill >= 0.85 and min(w, h) >= 200 and max(w, h) >= 450:
+                cands.append((0.0, dict(cx=float(_cx), cy=float(_cy), w=float(w), h=float(h),
+                                        angle=float(ang), fill=float(fill), area_frac=float(af),
+                                        aspect=float(asp), vertical=True)))
             continue
         cands.append((af * fill, dict(cx=float(_cx), cy=float(_cy), w=float(w), h=float(h),
                                       angle=float(ang), fill=float(fill), area_frac=float(af),
