@@ -96,7 +96,10 @@ def main():
     # ── 双曝光: 48000us 下 Otsu 前景率=1.000, 模块与台面糊成一片(最大候选 1717x1269 是台面),
     #    搜不出模块; 5000us 下背景全黑, 能干净搜到 1123x188(aspect 5.97)。
     #    ⇒ ① 低曝光定几何 ② 正常曝光取像素(工控机 YOLO 认的是正常曝光分布) ③ 同角度旋转。
-    LOW_US, GOOD_US = 5000, 48000
+    # 2026-10-20 按 ROI 扫档实测(不是整帧): 死白率随曝光单调恶化 —— 5000us 19.37% / 8000 64.86% /
+    #   12000 76.11% / 48000 90.74%; 降到 3000us 才有 1.72%(mean 110 仍有细节, 清晰度 44.6)。
+    #   ⇒ 取像素用 3000us(不过曝的光模块, 老倪要求), 几何仍在 5000us 下搜(对比强, 搜得干净)。
+    LOW_US, GOOD_US = 5000, 3000
     print("① 低曝光 %dus 定几何…" % LOW_US)
     set_expo(LOW_US)
     im_low = sq.capture(grab=True)
@@ -130,6 +133,11 @@ def main():
     cv2.imwrite(fpath, rot)
     print("② 整幅旋正 %.2f° → %s (%dx%d, %d KB)"
           % (ang, os.path.relpath(fpath, ROOT), rot.shape[1], rot.shape[0], os.path.getsize(fpath) // 1024))
+    # 送检前确认模块本身不过曝 (老倪: 要没有曝光的光模块)
+    crop_chk, _ = rotate_full(im, rect)
+    gchk = cv2.cvtColor(rot, cv2.COLOR_BGR2GRAY)
+    print("   用 %.0fus 取像素; 整幅 mean=%.1f 死白=%.2f%%"
+          % (GOOD_US, gchk.mean(), float((gchk >= 250).mean() * 100)))
 
     # 旋正后复核: 模块应该变水平
     r2, m2 = surface_roi(rot)
