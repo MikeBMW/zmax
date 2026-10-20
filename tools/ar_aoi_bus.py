@@ -421,6 +421,13 @@ def publish(signals, meta=None, prov=None, quiet=False):
     cur = _j(LIVE, {}) or {}
     _cs = cur.get("s")
     prev_s = dict(_cs) if isinstance(_cs, dict) else {}
+    # 🆕 2026-10-20: 这里原本是纯 merge ⇒ SPEC 删掉的信号会永远赖在 live 里(实测删了 末端.速度/Δt 还在刷)。
+    #   先按 KEYMAP(SPEC 生成) 过滤陈旧键, 再并本轮新值。KEYMAP 里的点位键不受影响。
+    _drop = [k for k in prev_s if k not in KEYMAP]
+    for k in _drop:
+        prev_s.pop(k, None)
+    if _drop and not quiet:
+        print("  ⟲ 清掉 SPEC 已删除的陈旧信号 %d 个: %s" % (len(_drop), _drop[:6]))
     prev_s.update({k: v for k, v in signals.items() if isinstance(v, (int, float))})
     doc = {"ts": round(time.time(), 3), "t": time.strftime("%Y-%m-%d %H:%M:%S"),
            "s": prev_s, "age": {}, "meta": {"last_pull": meta or {}, "prov": prov or {},
