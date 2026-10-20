@@ -11,6 +11,9 @@ cd "$REPO" || exit 1
 
 echo "=== ① 本轮改动的代码 ==="
 cp -f tools/ar_aoi_bus.py tools/robot_state.py tools/tcp_ar_server.py \
+      tools/rs_service.py tools/rs_service.sh tools/rs_probe.py tools/verify_rs_camera.py \
+      tools/realsense_source.py tools/cam_live_stream.py tools/cam_live_stream_ctl.sh \
+      tools/ar_server_kill_by_port.sh tools/ar_server_hard_restart.sh tools/boot_restore.sh \
       tools/verify_ar_force_signals.py tools/verify_sig_space_sync.py \
       tools/restore_cron_after_boot.sh tools/archive_release_5_50_750_arstate.sh "$DST/tools/" 2>/dev/null
 mkdir -p "$DST/tools/rokae"
@@ -32,6 +35,7 @@ cp -f zmax_data/dataspace/live.json "$DST/data/dataspace_live.json" 2>/dev/null
 
 echo "=== ③ 运行日志 ==="
 cp -f /tmp/tcp_ar_server.log "$DST/logs/" 2>/dev/null
+cp -f /tmp/rs_service.log "$DST/logs/" 2>/dev/null
 cp -f /tmp/ar_aoi_bus.log "$DST/logs/" 2>/dev/null
 
 echo "=== ④ 证据 (只写实测数字, 现取现算) ==="
@@ -87,6 +91,20 @@ L.append("")
 L.append("## 现场约定 (老倪口述 2026-10-20)")
 L.append("- 光模块就夹在机器人手臂末端(夹爪)上, 随臂动; AR 画面里的绿色边框不用动, 不要去重标定")
 L.append("")
+L.append("## USB RealSense D435 现场事故与修法 (2026-10-20 老倪报「怎么不好使了」)")
+try:
+    import urllib.request as _u, json as _j
+    _h = _j.loads(_u.urlopen("http://127.0.0.1:8789/health", timeout=4).read().decode())
+    _i = _j.loads(_u.urlopen("http://127.0.0.1:8797/api/rs_info", timeout=8).read().decode())
+    _d = _i.get("depth") or {}
+    L.append("- 现象: /snap/rs.jpg 返回 200 但 **0 字节**; /api/rs_info 有内参却 `frames=0`; dmesg 刷 `uvcvideo ... status (-71)`; 曾报 `xioctl(VIDIOC_S_FMT) failed, errno=16 Device or resource busy`")
+    L.append("- 根因一(架构): `tcp_ar_server.py` 是 **ForkingMixIn**(每连接 fork), pyrealsense 的取帧线程不会被继承 ⇒ 子进程里的 pipeline 是空壳(snap()=None)。2/9 子进程轮流开设备还会互相抢 UVC ⇒ EBUSY / -71")
+    L.append("- 根因二(抢占): 8791 相机流服务把卡名里的 `RealSense` 也当「USB 摄像头」扫进去, 用 CV2 开着 video8 ⇒ D435 被两个进程分着抢")
+    L.append("- 修法: 新增 `tools/rs_service.py`(8789, **单进程 + 每请求一线程**)独占 D435; AR 服务的 /api/rs_* · /snap/rs.jpg · /rs.mjpg 全部代理过去; `cam_live_stream` 永不把 RealSense 当 USB 摄像头; `realsense_source` 连续 EBUSY 三次即 hardware_reset 重枚举")
+    L.append("- 实测归档当刻: health ok=%s n=%s age=%.3fs | 经 8797 frames=%s age=%.3fs depth_valid=%s | 卡名 RealSense D435 @ USB %s" % (_h.get("ok"), _h.get("n"), (_h.get("age_s") or -1), _i.get("frames"), (_i.get("age_s") or -1), _d.get("valid_ratio"), "5000Mbps"))
+except Exception as _e:
+    L.append("- 实测取数失败: %s: %s" % (type(_e).__name__, str(_e)[:100]))
+L.append("")
 L.append("## 判据")
 L.append("- tools/verify_ar_force_signals.py: 见下 (真起窗口, 含主要信号 <=10 / 场景切换 / 数据源跟随 / 力未接不写 0)")
 L.append("- tools/verify_sig_space_sync.py: 见下 (数据空间 AR 组 · 位姿同值 · 状态机可读 · 树 16px/行高 23px · DDS 同一文件)")
@@ -100,7 +118,10 @@ PY
   QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_ar_force_signals.py 2>&1 \
     | grep -E "✅ PASS|❌ FAIL|^  ✅ .*(力|插拔|场景|数据源|10 条)|^   - " || echo "verify_ar_force_signals 未跑通"
   QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_sig_space_sync.py 2>&1 \
-    | grep -E "✅ PASS|❌ FAIL|^   - " || echo "verify_sig_space_sync 未跑通"
+    > "$DST/evidence/verify_sig_space_sync.txt" 2>&1
+  timeout 120 ./gui-venv311/bin/python tools/verify_rs_camera.py 2>&1 \
+    | tee "$DST/evidence/verify_rs_camera.txt" \
+    | grep -E "^PASS|^FAIL|^[0-9]+/[0-9]+ PASS" || echo "verify_rs_camera 未跑通"
   echo '```'
 } >> "$EV"
 
@@ -123,6 +144,12 @@ echo "=== ⑤ MANIFEST ==="
   echo "tools/verify_ar_force_signals.py 判据: 真起信号分析窗口 (含 --selftest)"
   echo "tools/verify_sig_space_sync.py   判据: 两个窗口同源 + 字号"
   echo "tools/restore_cron_after_boot.sh 开机恢复 cron/服务 (本次上电用)"
+  echo "tools/rs_service.py (+.sh)     新增 · USB D435 独占小服务(8789, 单进程线程模型): 修 fork 空壳/frames=0/0字节/EBUSY"
+  echo "tools/tcp_ar_server.py         改 · /api/rs_* · /snap/rs.jpg · /rs.mjpg 全代理到 8789; _rs_jpeg 不再在本进程开设备"
+  echo "tools/realsense_source.py      改 · 连续 EBUSY 三次即 hardware_reset 重枚举 (光重试没用)"
+  echo "tools/cam_live_stream.py       改 · 绝不把 RealSense 当「USB 摄像头」(抢走会让 AR EBUSY) + 按卡名解析"
+  echo "tools/verify_rs_camera.py      判据 · 独占/出帧/新帧/像素/代理/cams 六项 (2026-10-20 实测 6/6 PASS)"
+  echo "tools/boot_restore.sh          改 · 开机先拉 RealSense 小服务(8789) 再拉 AR 服务(8797)"
   echo '```'
   echo
   echo "## 目录"

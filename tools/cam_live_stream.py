@@ -386,6 +386,11 @@ def _src_find(needle: str, exclude: int = -1) -> int:
         nm = (d["name"] or "").lower()
         if d["dev"] == exclude or not any(k in nm for k in keys):
             continue
+        # 🔴 2026-10-20 现场事故: 这一路把 D435 抢走 ⇒ AR 服务 pyrealsense 直接
+        #   `xioctl(VIDIOC_S_FMT) failed, errno=16 Device or resource busy` (dmesg 满屏 uvcvideo -71),
+        #   页面表现就是"USB RealSense 不好使了"。RealSense 永远留给 AR 服务/手臂, 这里一律跳过。
+        if "realsense" in nm:
+            continue
         if any(f in ("MJPG", "JPEG") for f in d["fmt"]):
             return d["dev"]
         if color_fb < 0 and any(f in ("YUYV", "RGB3", "BGR3") for f in d["fmt"]):
@@ -5471,7 +5476,7 @@ def main():
                          "(~/zmax/zmax_data/cam_local_src.json, 没有记录就是内置)")
     ap.add_argument("--usb-dev", type=int, default=-1,
                     help="USB 摄像头 /dev/videoN (-1=按卡名自动扫; 推荐自动 —— 插拔/换口后序号会变)")
-    ap.add_argument("--usb-name", default="USB2.0 Camera,RealSense",
+    ap.add_argument("--usb-name", default="USB2.0 Camera,MAXHUB",   # ⛔ 不含 RealSense: D435/D405 是 AR/手臂专用
                     help="USB 摄像头卡名匹配串(逗号分隔多个, 任一命中即可; 取 v4l2 卡名 —— "
                          "默认 'USB2.0 Camera,RealSense': 实测外接 Intel RealSense D435 的卡名是 "
                          "'Intel(R) RealSense(TM) Depth Camera', 只认 USB2.0 Camera 会把它判成不在位)")

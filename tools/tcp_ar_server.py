@@ -301,13 +301,18 @@ def _aoi_state_read():
 
 
 def _rs_jpeg(quality: int = 82) -> bytes:
-    """🥽 RealSense 单帧 JPEG(没帧就回空, 不拿旧帧冒充)。"""
-    import realsense_source as RS
-    f = RS.snap()
-    if f is None:
+    """🥽 RealSense 单帧 JPEG —— **一律从独占小服务(8789)取**。
+
+    ⚠ 本进程是 ForkingMixIn: 在这类子进程里 import realsense_source 只会拿到 fork 前那份空壳
+      (frames=0, snap()=None) ⇒ 原来这里直接调 RS.snap() 永远回空图, 正是"USB RealSense 不好使"的表象。
+      真源只有一个: tools/rs_service.py(单进程独占 D435)。取不到就回空字节, 不拿旧帧冒充。
+    """
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:8789/snap.jpg", timeout=8) as r:
+            return r.read()
+    except Exception:                                                            # noqa: BLE001
         return b""
-    ok, buf = cv2.imencode(".jpg", f, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-    return buf.tobytes() if ok else b""
 
 
 def motion_mask(gap: float = 0.8, thr: int = 18, cam: str = "local"):
@@ -638,6 +643,12 @@ class H(BaseHTTPRequestHandler):
                     k, v = kv.split("=", 1)
                     qs[k] = v
         cam = qs.get("cam") or qs.get("c") or "local"
+        # 🔌 2026-10-20: RealSense 的**所有**端点一律转给独占小服务 (本进程是 ForkingMixIn,
+        #   fork 出来的子进程里 pyrealsense 只剩空壳 ⇒ frames=0 / 0 字节 / 抢设备 EBUSY)。
+        #   真源: tools/rs_service.py (单进程独占 D435)
+        if p in ("/rs.mjpg", "/snap/rs.jpg", "/snapshot/rs.jpg") or p.startswith("/api/rs_"):
+            self._rs_proxy()
+            return
         try:
             if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar"):
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
@@ -1222,6 +1233,60 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                        # noqa: BLE001
             pass
         return out
+
+    def _rs_proxy(self):
+        """把 /api/rs_* · /snap/rs.jpg · /rs.mjpg 原样转给 rs_service (8789)。
+
+        流式(MJPEG)按块搬运, 其余一次性取回; 小服务不在就如实 503, 不装死、不返回空图。
+        """
+        import urllib.request
+        import urllib.error
+        _p = self.path
+        _map = {"/snapshot/rs.jpg": "/snap.jpg", "/snap/rs.jpg": "/snap.jpg",
+                "/api/rs_info": "/api/info", "/api/rs_options": "/api/options",
+                "/api/rs_exposure": "/api/exposure", "/api/rs_pose": "/api/pose",
+                "/api/rs_detect": "/api/detect", "/api/rs_point": "/api/point"}
+        _base = _p.split("?")[0]
+        _qs = ("?" + _p.split("?", 1)[1]) if "?" in _p else ""
+        url = "http://127.0.0.1:8789" + _map.get(_base, _base) + _qs
+        try:
+            r = urllib.request.urlopen(url, timeout=15)
+        except urllib.error.HTTPError as e:                      # 小服务自己给的 4xx/5xx 原样透出
+            body = e.read() or b""
+            self._send(e.code, e.headers.get("Content-Type", "application/json"), body)
+            return
+        except Exception as e:                                   # noqa: BLE001
+            self._json({"ok": False, "err": "RealSense 小服务(8789)不可达: %s" % str(e)[:120],
+                        "hint": "bash tools/rs_service.sh start  (单进程独占 D435)"}, 503)
+            return
+        _ct = r.headers.get("Content-Type", "")
+        if "multipart/x-mixed-replace" in _ct:                   # MJPEG: 边读边写
+            self.send_response(200)
+            self.send_header("Content-Type", _ct)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                while True:
+                    chunk = r.read(32768)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                try:
+                    r.close()
+                except Exception:                                # noqa: BLE001
+                    pass
+                self.close_connection = True
+            return
+        try:
+            body = r.read()
+        finally:
+            r.close()
+        self._send(200, _ct or "application/json; charset=utf-8", body)
 
     def _rs_stream(self):
         """🥽 RealSense 的 MJPEG 流: 由 realsense_source 提供(不走 8791 代理)。"""

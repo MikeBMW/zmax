@@ -72,6 +72,20 @@ local_up() {
       > /tmp/cam_live_stream.out 2>&1 &
     echo "  ✓ 起了推流服务"
   else echo "  · 推流服务已在跑"; fi
+  # 🎥 RealSense D435 独占小服务 (8796→8789): 必须**先于** AR 服务(8797)起来 ——
+  #   老倪 2026-10-20「USB realsense 怎么不好使了」的根因就是: AR 服务是 forking 模型, 子进程里
+  #   pyrealsense 只剩空壳(frames=0, snap=None) ⇒ /snap/rs.jpg 200 但 0 字节, 且多进程抢 UVC 报 EBUSY/-71。
+  #   现在 D435 只归这一个单进程服务, AR 侧全部代理过去。
+  if curl -s --max-time 2 http://127.0.0.1:8789/health 2>/dev/null | grep -q '"zmax-rs"'; then
+    echo "  · RealSense 小服务(8789)已在跑"
+  else
+    nohup $PY tools/rs_service.py --port 8789 > /tmp/rs_service.log 2>&1 &
+    echo $! > /tmp/rs_service.pid
+    sleep 2
+    echo -n "  ✓ 起了 RealSense 小服务: "
+    curl -s --max-time 3 http://127.0.0.1:8789/health || echo "（还没应答, 看 /tmp/rs_service.log）"
+    echo
+  fi
   # 🌈 深度源(容器内常驻 ros_depth_stream) — 少了它 8791 深度格会一直显示旧图
   #    (2026-09-28 现场: 重启后没人拉, 深度格冻结 26.6h, frames_served=1, 慢层拼图一直在给"画面异常"扣分)
   if [ "$(sudo -n docker exec ss-remote-tap bash -lc "ps -eo cmd 2>/dev/null | grep -c '[r]os_depth_stream.py'" 2>/dev/null | tail -1)" != "0" ]; then

@@ -69,11 +69,40 @@ class _RS:
         self.pipe = None
         self.running = False
         self.th = None
+        self.fails = 0          # 连续启动/取帧失败次数 (EBUSY 自救用)
+
+    def _reset_usb(self, why=""):
+        """🔌 EBUSY 死循环自救 —— 2026-10-20 现场实测过的坑:
+
+        取帧失败后 `pipe.stop()` 若自己抛错(设备被拔/重枚举), 旧的 pipeline 对象仍然**持有 UVC 句柄**,
+        而进程里再 `pipeline().start()` 只会一直拿到
+        `xioctl(VIDIOC_S_FMT) failed, errno=16 Device or resource busy`
+        ⇒ 表现为"服务器明明开着、/api/cams 说 rs online=False、/snap/rs.jpg 200 但 0 字节"。
+        光重试没用, 必须让它真掉线再枚举一次 (hardware_reset), 然后重开。
+        """
+        try:
+            import pyrealsense2 as rs
+            n = 0
+            for dev in rs.context().query_devices():
+                try:
+                    dev.hardware_reset()
+                    n += 1
+                except Exception:                                            # noqa: BLE001
+                    pass
+            with _LK:
+                _ST["err"] = "USB 复位(%s, %d 台) 后重开" % (why or "EBUSY", n)
+            time.sleep(3.0)                       # 复位后设备要重新枚举, 太急还是 busy
+        except Exception as e:                                               # noqa: BLE001
+            with _LK:
+                _ST["err"] = "USB 复位失败 %s: %s" % (type(e).__name__, str(e)[:80])
 
     def start(self):
         import pyrealsense2 as rs
         if self.running:
             return True
+        if self.fails >= 3:                       # 连续失败 ≥3 次 ⇒ 先掉线重枚举, 否则永远 EBUSY
+            self.fails = 0
+            self._reset_usb("连续失败 3 次")
         try:
             cfg = rs.config()
             cfg.enable_stream(rs.stream.depth, W, H, rs.format.z16, FPS)
@@ -90,6 +119,7 @@ class _RS:
                 _ST["started"] = time.time()
                 _ST["restarts"] += 1
             self.running = True
+            self.fails = 0
             self.th = threading.Thread(target=self._loop, daemon=True)
             self.th.start()
             return True
@@ -97,6 +127,14 @@ class _RS:
             with _LK:
                 _ST["err"] = "启动失败 %s: %s" % (type(e).__name__, str(e)[:140])
             self.running = False
+            self.fails += 1
+            # 句柄可能是上一轮没回收的 pipeline 留着的 ⇒ 断开引用, 让下一次能真重开
+            try:
+                if self.pipe is not None:
+                    self.pipe.stop()
+            except Exception:                                                # noqa: BLE001
+                pass
+            self.pipe = None
             return False
 
     def _loop(self):
@@ -122,7 +160,12 @@ class _RS:
                 except Exception:                                                # noqa: BLE001
                     pass
                 self.running = False
+                self.pipe = None                  # 丢掉旧句柄引用 (留着它就一直 EBUSY)
+                self.fails += 1
                 time.sleep(1.0)
+                if self.fails >= 3:
+                    self.fails = 0
+                    self._reset_usb("取帧连续失败")
                 self.start()
 
     def stop(self):
