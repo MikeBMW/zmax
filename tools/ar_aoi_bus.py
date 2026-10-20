@@ -68,7 +68,7 @@ SPEC = [
     ("末端.vx", G_AR_PTS, "mm/s", "TCP 真值差分: latest.json 相邻两帧 (x2-x1)/Δt"),
     ("末端.vy", G_AR_PTS, "mm/s", "同上 (y 分量)"),
     ("末端.vz", G_AR_PTS, "mm/s", "同上 (z 分量)"),
-    ("插拔.切向力_N", G_AR_PTS, "N", "DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x); 驱动无读数时不写该键"),
+    ("末端.切向力_N", G_AR_PTS, "N", "DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x); 驱动无读数时不写该键。命名避开\"插拔\"二字: 信号名里出现插拔会被场景规则染成插拔场景绿"),
     # —— AR 相机 (RealSense, 相机系) ——
     ("相机.目标_x_m", G_AR_CAM, "m", "AR 服务 8797 /api/rs_pose (深度真值; 相机系, 非基座系)"),
     ("相机.目标_y_m", G_AR_CAM, "m", "同上"),
@@ -341,7 +341,7 @@ def _tangential_force():
     x = getattr(m, "x", None)
     if x is None:
         return {}
-    out = {"插拔.切向力_N": round(float(x), 4)}
+    out = {"末端.切向力_N": round(float(x), 4)}
     tx = getattr(m, "tx", None)
     if tx:
         out["插拔.力来源层"] = str(tx)[:16] if False else None  # 占位: 字符串不写数值通道
