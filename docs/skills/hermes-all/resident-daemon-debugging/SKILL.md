@@ -102,6 +102,30 @@ ros=j6_rot      → run_j6_rot()                     (J6 自转)
 取证顺序: ①入口解析 ②`dispatch()` ③算目标（`build_move`/`plan_stage`）④闸门 ⑤最终下发（`_send_via_sdk`
 → `_T.exec_call`）⑥等到位（`wait_arrive`）。
 
+## 🚫 指令被拒 `FIFO 打不开([Errno 6] No such device or address)` = 两个根因, 别只查一个
+
+`Errno 6 / ENXIO` 在 FIFO 写端(`os.open(path, O_WRONLY|O_NONBLOCK)`)只有一个含义: **此刻没有读端**。
+FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。实测两处(2026-10-20 老倪「操作机器人的指令被拒」):
+
+1. **守护进程根本没在跑**(最常见)。`ls -l zmax_data/l2_cmd.fifo` 是 09:00 留下的空文件, 照样好看。
+   判活别用 `pgrep -f <名字>`(会匹配到自己这条命令, 甚至把自己 kill 掉), 扫 cmdline:
+   `for p in /proc/[0-9]*; do c=$( { tr '\0' ' ' < $p/cmdline; } 2>/dev/null ) || continue; case "$c" in *python*[l]2_daemon.py*) echo ${p#/proc/};; esac; done`
+2. **在跑也照样被拒**: 主循环写成 `while True: with open(FIFO) as f: for line in f:` = **开-读-关**循环。
+   关闭那一瞬到下次打开之间没有读端 ⇒ 恰好此刻点的指令 ENXIO; 更致命的是 **指令执行期间整条 FIFO 是关的**
+   (一路 20s 的动作走完才回到 open) ⇒ 动作进行中点的每一条全被拒, 而现场表现是「点了没反应」。
+
+**修法(服务自己持常驻读端)**: 启动时 `_fd = os.open(FIFO, os.O_RDWR | os.O_NONBLOCK)`(O_RDWR 让它自己也是写端
+⇒ 别的写端永不 ENXIO), 主循环用 `select.select([_fd], [], [], 0.5)` 等数据, `os.read(_fd, 65536)` 取块,
+按 `\n` 切行、**尾段不完整就留到下一轮**(`_buf`)。保留原有逐行处理体: 把 `with open(FIFO) as f:` 换成
+`with io.StringIO("\n".join(lines)) as f:` 即可**不用重排缩进**(逐行体里的 `continue` 语义不变)。
+
+**自证顺序**(不动机器人): ①`ls -l /proc/<pid>/fd | grep fifo` 看到那条 FIFO ⇒ 读端锚在;
+②投一条**未知技能**探针 `printf '{"skill":"__pipe_probe__"}\n' > fifo` ⇒ 日志出现「拒绝: 未知技能」
+且进程存活 ⇒ 管道通且没有下发运动。只在需要验运动时才用真技能。
+
+常驻件都要有 `start|stop|restart|status` 的 ctl 脚本, 且 **status 必须直接报「FIFO reader 有没有」**——
+「进程在」不等于「能收命令」, 这两件事在这套系统里已经各自出过一次事故。
+
 ## 坑
 
 - **重启计数一路涨 + 日志只有一句「已有写入器在跑」= pid 文件陈旧 + pid 被系统复用**, 不是"真有实例在跑"。

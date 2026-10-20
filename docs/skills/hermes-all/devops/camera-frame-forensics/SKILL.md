@@ -395,7 +395,42 @@ tr '\0' ' ' < /proc/<服务pid>/cmdline; ps -o lstart= -p <服务pid>   # 服务
   实测诱因优先级 **改曝光 > 改算法 > 连续取图**, 三者症状一模一样; 而**连抓同一台相机三次会打坏句柄**
   (之后全部超时, 只能等保活拉起), 重试必须两次之间 ≥10s、最多 3 次。
 
-## 常见误判清单
+## 🧬 HTTP 200 但 **0 字节** / `frames=0` 却有内参 = 取帧线程不在这个进程里 (fork 型服务, 2026-10-20 实测)
+
+现场原话:「你的 USB realsense 相机怎么不好使了」。表象一组, 分开看会走弯路:
+`/snap/rs.jpg` → **200 但 0 字节**; `/api/rs_info` → 内参/分辨率齐全但 `frames=0`、`err=""`; dmesg 刷
+`uvcvideo ... Non-zero status (-71)`; 间或 `xioctl(VIDIOC_S_FMT) failed, errno=16 Device or resource busy`。
+
+**判据一(先看父进程模型)**: `grep -nE "ForkingMixIn|ThreadingMixIn" <服务>.py`。若是 forking(每连接 fork):
+pyrealsense 的取帧线程**不会**被 fork 继承 ⇒ 子进程里的 pipeline 是空壳, `snap()` 恒 None。
+而且 `_ST` 这类模块级状态是 copy-on-write 的旧快照 ⇒ **子进程看得到内参却一帧都收不到**,
+这就是「200 但 0 字节」的全部来源。2~9 个子进程轮流开设备还会互抢 UVC ⇒ EBUSY / -71。
+
+**判据二(谁真占着节点, 按 fd 反查不信名字)**:
+```bash
+for p in /proc/[0-9]*; do for f in /proc/$p/fd/*; do t=$(readlink "$f" 2>/dev/null);
+  case "$t" in /dev/video*) echo "${p#/proc/} $(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null|cut -c1-80) → $t";; esac
+done; done 2>/dev/null | sort -u
+```
+实测: 一台 D435 的 6 个节点被 **两个不同进程** 分着开(AR 服务 + 8791 相机流服务), 后者的
+`--usb-name` 默认值里含 `RealSense` 关键字 ⇒ 把 USB 深度相机当「USB 摄像头」扫走了。
+
+**修法(独占小服务, 架构级)**:
+1. 让**唯一一个单进程**拥有相机: `tools/rs_service.py` = `ThreadingHTTPServer` + 每请求一线程,
+   端点 `/api/info /api/options /api/exposure /api/pose /api/detect /api/point /snap.jpg /rs.mjpg`; 端口
+   必须现场核占用(实测 8796 已被 sam3 分割服务占 ⇒ 用 8789), 且 `/health` 要带 `"svc"` 名自证,
+   否则起停脚本会把别人的 200 当自己起成功。
+2. 原服务(forking)一律**代理**: `/api/rs_*`、`/snap/rs.jpg`、`/rs.mjpg` 转发到小服务, MJPEG 按块搬运;
+   取帧函数不许在子进程里 import 相机库。
+3. 任何「按卡名找摄像头」的逻辑都**显式排除** RealSense/D405(专用机), 否则一路推流就能把 AR 弄瘫。
+4. EBUSY 光重试无用: 连续三次失败就 `dev.hardware_reset()` 让 USB 真掉线重枚举(复位后节点号会变,
+   实测 video4-9 → video10-15, 别写死索引)。
+
+**判据(六项全过才算好)**: ①节点只有一个进程持有 ②`/health` n 递增且 age<1s ③间隔 1.2s 两张图
+字节都 >20KB **且 md5 不同**(排除冻帧) ④像素 `mean>30`、暗(<8) 占比 <50% ⑤经原服务代理仍 200 且 frames>0
+⑥`/api/cams` 该路 online=true。落地脚本: `tools/verify_rs_camera.py`(`tools/rs_probe.py` 单独量 fps/首帧)。
+
+
 | 现象 | 真相 |
 |---|---|
 | 面板/网页某格"没有图像"但接口 200 | 先查**状态端点**是否 500(序列化崩)或响应体是不是 MB 级(整图像素进了 JSON) |
