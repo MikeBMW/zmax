@@ -68,8 +68,6 @@ SPEC = [
     ("末端.vx", G_AR_PTS, "mm/s", "TCP 真值差分: latest.json 相邻两帧 (x2-x1)/Δt"),
     ("末端.vy", G_AR_PTS, "mm/s", "同上 (y 分量)"),
     ("末端.vz", G_AR_PTS, "mm/s", "同上 (z 分量)"),
-    ("末端.速度", G_AR_PTS, "mm/s", "合速度 sqrt(vx²+vy²+vz²) —— 与上面三分量同源同帧"),
-    ("末端.速度Δt_ms", G_AR_PTS, "ms", "上面速度的差分间隔: 总线 2s 一轮 ⇒ 是 Δt 内的平均速度, 不是 50Hz 瞬时值"),
     ("插拔.切向力_N", G_AR_PTS, "N", "DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x); 驱动无读数时不写该键"),
     # —— AR 相机 (RealSense, 相机系) ——
     ("相机.目标_x_m", G_AR_CAM, "m", "AR 服务 8797 /api/rs_pose (深度真值; 相机系, 非基座系)"),
@@ -315,8 +313,6 @@ def _motion():
             out["末端.vx"] = round(v[0], 3)
             out["末端.vy"] = round(v[1], 3)
             out["末端.vz"] = round(v[2], 3)
-            out["末端.速度"] = round((v[0] ** 2 + v[1] ** 2 + v[2] ** 2) ** 0.5, 3)
-            out["末端.速度Δt_ms"] = round(dt * 1000.0, 1)   # 诚实标注: 这是 Δt 内的平均速度
     try:
         json.dump({"ts": ts, "p": p}, open(_VEL_CACHE, "w", encoding="utf-8"))
     except Exception:                                                             # noqa: BLE001

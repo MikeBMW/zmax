@@ -321,6 +321,18 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
         return out
 
     items = detect_boxes(img_bgr, conf)
+    # 🆕 2026-10-20 现场: 手臂相机与臂一体 ⇒ 爪中模块**恒在画面上半部**;
+    #   实测 bottom 料盘里的模块会以 conf 0.42 被检出(y 459~480), 而真模块在顶部(y 0~58, conf 0.68),
+    #   两框同帧竞争时曾选错。⇒ 先丢掉画面下半部的框(料盘里的), 全空才回退。
+    _H = img_bgr.shape[0]
+    _up = [d for d in items if (d["xyxy"][1] + d["xyxy"][3]) / 2.0 < _H * 0.5]
+    if _up:
+        if len(_up) != len(items):
+            warn.append("手臂相机位置先验: 丢掉画面下半部 %d 个框(料盘), 保留 %d 个上半部" % (len(items) - len(_up), len(_up)))
+        items = _up
+    else:
+        if items:
+            warn.append("⚠ 上半部无框, 回退用全画面最高 conf 框(可能在料盘)")
     det_src = "yolo" if items else None
     if not items:
         # 🔴 2026-10-19 现场: 走完围栏线后腕部姿态翻了 180°, 模块亮度/角度变了 ⇒ 模型只给 0.10 的 conf
