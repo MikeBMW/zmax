@@ -167,6 +167,26 @@ def main():
             pose_ok &= chk(color.lower() == PURPLE, "%s 行首圆点是紫 ● (实测 %r)" % (key, col[:2]))
 
     print("· ——— 力通道 ———")
+    # ⏳ AR 总线是 2s 一拍的**文件通道**, 而位姿是 50Hz ⇒ 首建树那刻 力 行还是「未接」占位。
+    #   不等真值进 store 就断言, 会把"刚打开还没到第二拍"误判成"窗口不显示真值"(2026-10-20 实测)。
+    _t0 = time.time()
+    while time.time() - _t0 < 10.0:
+        app.processEvents()
+        if any(("力" in str(k)) and str(k).startswith("ar.末端.") for k in w.store.keys()):
+            break
+        time.sleep(0.3)
+    w._fill_tree()
+    app.processEvents()
+    ar_root = w.tree.topLevelItem(0)      # 重建树会换掉 QTreeWidgetItem ⇒ 必须重新取根, 别用旧引用
+    tree = w.tree
+    rows = {}
+    for gi in range(ar_root.childCount()):
+        g = ar_root.child(gi)
+        for ri in range(g.childCount()):
+            r = g.child(ri)
+            _k = r.data(0, Qt.UserRole)
+            if _k:
+                rows[str(_k)] = ([r.text(c) for c in range(tree.columnCount())], g.text(0))
     import json
     live = json.load(open(os.path.join(ROOT, "zmax_data", "ar_live", "ar_aoi_live.json"), encoding="utf-8"))
     s = live.get("s") or {}

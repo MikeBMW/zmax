@@ -15,7 +15,7 @@
 状态机 (code 与含义绑定, 改含义必须同步改这里和 ar_aoi_signals 的 unit 说明):
   0 未连接      控制器/位姿文件都陈旧 (网卡不在位、采样器没跑、控制器没上电)
   1 急停/报警    控制器报急停 或 有未恢复报警
-  2 未上电      power != on
+  2 未使能      伺服没开 (power=off: 控制器连着、位姿能来, 但电机没出力)
   3 手动         mode = manual (含拖动示教)
   4 自动待机     automatic 且 没在动
   5 自动运行     automatic 且 在动 (TCP 速度 > MOVE_EPS_MM_S 或控制器 op != idle)
@@ -43,6 +43,9 @@ GATE = os.path.join(ROOT, "zmax_data", "ss_live", "skill_gate.json")
 EXEC = os.path.join(ROOT, "zmax_data", "ss_live", "exec_state.json")
 ENG = os.path.join(ROOT, "zmax_data", "ss_live", "engine_latest.json")
 CACHE = os.path.join(ROOT, "zmax_data", "ss_live", "_robot_speed_cache.json")
+# 当前三态 (power/mode/op) 由 ft_direct_sampler 每帧用 SDK enum 直读落盘 —— **当前态**;
+# state.json 里的 last_estop/n_err_recent 只是**历史报警表**, 不能拿来判"现在急停"(2026-10-20 实测栽过)。
+FT = os.path.join(ROOT, "zmax_data", "rokae_sdk", "ft_out", "latest.json")
 
 CONN_MAX_S = 5.0        # 控制器三查/位姿超过这么久没更新 = 没连上
 STAGE_MAX_S = 3.0       # 阶段文件超过这么久 = 阶段未知(不拿旧阶段冒充当前)
@@ -52,7 +55,12 @@ STAGES = ("接近", "对位", "下降", "抓取", "抬起", "转移", "插入", 
 INSERT_STAGES = ("插入", "拔出", "插拔")
 INSERT_SKILL_HINTS = ("insert", "pull", "插入", "拔出", "插拔")
 
-CODE_TEXT = {0: "未连接", 1: "急停/报警", 2: "未上电", 3: "手动", 4: "自动待机", 5: "自动运行"}
+CODE_TEXT = {0: "未连接", 1: "急停/伺服报警", 2: "未使能(伺服off)", 3: "手动", 4: "自动待机", 5: "自动运行"}
+OP_TXT = {"idle": "停", "moving": "运动", "drag": "拖动", "jog": "点动", "jogging": "点动中",
+          "rtControlling": "实时控制", "rlProgram": "RL程序", "demo": "演示",
+          "frictionIdentify": "摩擦辨识", "dynamicIdentify": "动力学辨识", "loadIdentify": "负载辨识"}
+MOVE_OPS = ("moving", "jog", "jogging", "rtControlling", "rlProgram", "demo", "drag")  # drag=人在拖, 也确算在动
+ESTOP_POWER = ("estop", "gstop")
 
 
 def _j(p):
@@ -125,10 +133,16 @@ def snapshot():
     connected = bool((a_state is not None and a_state <= CONN_MAX_S) or
                      (a_tcp is not None and a_tcp <= CONN_MAX_S))
 
-    power = str(st.get("power") or "").lower() or None
-    mode = str(st.get("mode") or "").lower() or None
-    op = str(st.get("op") or "").lower() or None
-    estop = bool(st.get("last_estop"))
+    # —— 当前三态: 优先 ft_out (ft_direct_sampler 每帧 SDK enum 直读), 否则退回 state.json ——
+    ft = _j(FT)
+    a_ft = _age_of(FT, ft.get("ts"))
+    _ft_ok = bool(a_ft is not None and a_ft <= 2.0 and ft.get("power"))
+    src_now = "ft_direct_sampler/SDK enum" if _ft_ok else "state.json"
+    power = str((ft.get("power") if _ft_ok else st.get("power")) or "").lower() or None
+    mode = str((ft.get("mode") if _ft_ok else st.get("mode")) or "").lower() or None
+    op = str((ft.get("op") if _ft_ok else st.get("op")) or "").lower() or None
+    # 急停 = **当前**伺服态 (PowerState.estop/gstop); 历史 last_estop 只当记录, 不再据此判故障
+    estop = power in ESTOP_POWER
     alarm = st.get("last_alarm") or {}
     alarm_n = 0
     try:
@@ -143,7 +157,9 @@ def snapshot():
             speed = _speed_mm_s(float(tcp["x"]), float(tcp["y"]), float(tcp["z"]), float(tcp["ts"]))
     except Exception:                                                                  # noqa: BLE001
         speed = None
-    if speed is not None and a_tcp is not None and a_tcp <= CONN_MAX_S:
+    if op in MOVE_OPS:
+        moving = True
+    elif speed is not None and a_tcp is not None and a_tcp <= CONN_MAX_S:
         moving = speed > MOVE_EPS_MM_S
     else:
         moving = (op not in (None, "idle", "idling", "stop")) if connected else False
@@ -172,7 +188,7 @@ def snapshot():
 
     code = 0
     if connected:
-        if estop or alarm_n:
+        if estop:
             code = 1
         elif power != "on":
             code = 2
@@ -184,11 +200,13 @@ def snapshot():
             code = 4
 
     stage_idx = STAGES.index(stage) if stage in STAGES else -1
-    txt = _text_of(code, mode, stage, inserting, speed, eng, a_state, a_tcp)
+    txt = _text_of(code, mode, stage, inserting, speed, eng, a_state, a_tcp, op=op)
     return {"ts": round(now, 3),
             "code": code, "state": CODE_TEXT.get(code, "?"),
             "connected": connected, "power": power, "mode": mode, "op": op,
             "estop": estop, "alarm_n": alarm_n, "alarm_id": alarm.get("id"),
+            "alarm_hist": {"n": alarm_n, "last": alarm.get("ts"), "last_txt": (alarm.get("content") or "")[:60]},
+            "state_src": src_now, "op_txt": OP_TXT.get(op or "", op or ""),
             "moving": bool(moving), "speed_mm_s": (round(speed, 3) if speed is not None else None),
             "stage": stage, "stage_idx": stage_idx, "stage_age_s": (round(a_stage, 3) if a_stage else None),
             "stage_src": stage_src, "exec_skill": exec_skill,
@@ -203,13 +221,17 @@ def snapshot():
                     "engine": os.path.relpath(ENG, ROOT)}}
 
 
-def _text_of(code, mode, stage, inserting, speed, eng, a_state, a_tcp):
+def _text_of(code, mode, stage, inserting, speed, eng, a_state, a_tcp, op=""):
     """一行人话 (给页面/日志): 状态 · 模式 · 阶段 · 速度 · 是否插拔 · 任务。"""
     _mode = {"automatic": "自动", "auto": "自动", "manual": "手动"}.get(mode or "", mode or "")
     _ins = {True: "插拔中", False: "非插拔", None: "插拔未知"}[inserting]
-    parts = ["🤖 " + CODE_TEXT.get(code, "?")]
-    if _mode:
+    _code_txt = CODE_TEXT.get(code, "?")
+    parts = ["🤖 " + _code_txt]
+    if _mode and _mode != _code_txt:       # 状态码已经是"手动"时不再重复
         parts.append(_mode)
+    _op = {"drag": "拖动示教"}.get(op or "", OP_TXT.get(op or "", op or ""))
+    if _op and _op != _mode:            # 手动 + 拖动 时不重复写"手动"
+        parts.append(_op)
     parts.append(("阶段 " + stage) if stage else "阶段未知")
     if speed is not None:
         parts.append("%.1f mm/s" % speed)

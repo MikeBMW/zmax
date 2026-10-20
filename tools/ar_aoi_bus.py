@@ -39,6 +39,7 @@ TCP = os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
 #   单一写入器 = tools/rokae/ft_direct_sampler.py (珞石 xCoreSDK forceControl().getEndTorque, 只读, 不发运动)
 #   口径: 写的是**基座系**分量 (frame=world) —— 插入轴 = base +x ⇒ 侧向力 = hypot(fy, fz)。
 #   本总线只做换算, 不在这一层猜坐标系: frame 不是 world/base 就拒用(宁可这条通道空着)。
+SRC_FT = "rokae_xcoresdk/getEndTorque (direct, read-only)"
 FT = os.path.join(ROOT, "zmax_data", "rokae_sdk", "ft_out", "latest.json")
 TEACH_D = os.path.join(ROOT, "reports", "aoi_points")
 SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
@@ -84,14 +85,14 @@ SPEC = [
     ("末端.侧向力z_N", G_AR_PTS, "N", "真机六维力 fz (带符号, 基座系; 侧向上下) ← 同上"),
     ("末端.力帧龄_s", G_AR_PTS, "s", "六维力真值文件写龄 (>1s 视为陈旧); 采样器不在跑 ⇒ 不写(波形空), 不写 0 冒充"),
     # —— 🤖 机器人状态机 (老倪 2026-10-20: 直接看到"是否在插拔") ——
-    ("机器人.状态_码", G_ROBOT, "0=未连接/1=急停报警/2=未上电/3=手动/4=自动待机/5=自动运行",
+    ("机器人.状态_码", G_ROBOT, "0=未连接/1=急停报警/2=未使能(伺服off)/3=手动/4=自动待机/5=自动运行",
      "tools/robot_state.py snapshot(): 控制器三查 tcp_out/state.json + 位姿 latest.json + 阶段 ss_live/skill_dispatch.json"),
     ("机器人.插拔中", G_ROBOT, "0=否/1=是",
      "当前阶段 ∈ {插入,拔出,插拔} 或 执行技能名含 insert/pull/插入 ⇒ 1; 阶段拿不到时不写该键(未知≠否)"),
     ("机器人.运动中", G_ROBOT, "0=停/1=动", "TCP 真值差分实测速度 >1mm/s (或控制器 op!=idle); 未连接时不写"),
     ("机器人.阶段_码", G_ROBOT, "0..7=接近/对位/下降/抓取/抬起/转移/插入/完成 · -1=未知",
      "ss_live/skill_dispatch.json stage (chunk_pipeline 每拍写) → 备路 skill_gate.json"),
-    ("机器人.报警数", G_ROBOT, "个", "控制器 state.json n_err_recent"),
+    ("机器人.报警数", G_ROBOT, "个", "state.json n_err_recent = **历史**报警条数(不代表当前故障); 当前急停看 机器人.状态_码=1"),
     ("机器人.状态帧龄_s", G_ROBOT, "s", "state.json 写龄 (>5s 判未连接)"),
     # —— AR 相机 (RealSense, 相机系) ——
     ("相机.目标_x_m", G_AR_CAM, "m", "AR 服务 8797 /api/rs_pose (深度真值; 相机系, 非基座系)"),
@@ -414,7 +415,9 @@ def _real_force():
         "末端.侧向力y_N": round(fy, 4),
         "末端.侧向力z_N": round(fz, 4),
     }
-    return out, {}
+    # ✅ 有真值时也写一句"这数是不是活的"(老倪: 实时数据必须标帧龄/来源; 别 silent)
+    return out, {"real_force": "真机六维力 %s · 参考系 %s · 帧龄 %.2fs · 轴向 %.2fN 侧向 %.2fN"
+                               % (SRC_FT, frame, age, fx, math.hypot(fy, fz))}
 
 
 _RS_MOD = None

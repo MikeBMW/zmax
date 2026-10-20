@@ -75,10 +75,14 @@ def read_force(fc, ref, bufs):
     jtm, etm, ctq, cfo = bufs
     ec = {}
     fc.getEndTorque(ref, jtm, etm, ctq, cfo, ec)
+    # 🐛 2026-10-20 实测: 珞石 SDK 的成功返回是 {'ec': 0, 'message': 'success'} —— 键名是 **ec** 不是 code。
+    #   旧写法 ec.get("code")/ec.get("err") 都取不到 ⇒ 把成功当报错抛 (真机上 getEndTorque 明明是好的)。
     err = None
     try:
         if isinstance(ec, dict):
-            err = ec.get("code") or ec.get("err") or (ec if ec else None)
+            code = ec.get("ec", ec.get("code", ec.get("err")))
+            if code not in (None, 0, "0"):
+                err = ec
         elif ec:
             err = ec
     except Exception:                                                                    # noqa: BLE001
@@ -91,6 +95,24 @@ def read_force(fc, ref, bufs):
         raise RuntimeError("cart_force 只有 %d 个分量 (期望 3): %r" % (len(f), f))
     tx, ty, tz = (t + [0.0, 0.0, 0.0])[:3]
     return float(f[0]), float(f[1]), float(f[2]), tx, ty, tz, {"joint_torque_measured": _vals(jtm)[:8]}
+
+
+def read_ctrl_state(robot):
+    """控制器**当前**三态 (enum 直读, 不是 state.json 里的历史报警表)。
+
+    🐛 2026-10-20 实测: state.json 的 last_estop/n_err_recent 是**历史记录**(早上 08:15 那次急停),
+      拿它判"现在急停"会把人吓一跳; 真正当前态只有 SDK 这三个 enum:
+      powerState ∈ {off,on,estop,gstop} · operateMode ∈ {automatic,manual} · operationState ∈ {idle,moving,drag,jog,…}
+    """
+    out = {}
+    for key, fn in (("power", "powerState"), ("mode", "operateMode"), ("op", "operationState")):
+        ec = {}
+        try:
+            v = getattr(robot, fn)(ec)
+            out[key] = str(v).split(".")[-1] or None
+        except Exception:                                                                # noqa: BLE001
+            out[key] = None
+    return out
 
 
 def write_atomic(path, obj):
@@ -193,6 +215,12 @@ def main():
             rec = {"ts": round(ts, 4),
                    "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) + (".%03d" % int(ts * 1000 % 1000)),
                    "frame": a.frame, "src": SRC, "ip": ROBOT_IP}
+            try:
+                _st = read_ctrl_state(robot)          # 当前三态 (power/mode/op), 与力同帧落盘
+                if any(_st.values()):
+                    rec.update(_st)
+            except Exception:                                                        # noqa: BLE001
+                pass
             try:
                 fx, fy, fz, tx, ty, tz, extra = read_force(fc, ref, bufs)
                 if not all(math.isfinite(v) for v in (fx, fy, fz, tx, ty, tz)):

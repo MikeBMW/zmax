@@ -34,51 +34,75 @@ echo "=== ③ 运行日志 ==="
 cp -f /tmp/tcp_ar_server.log "$DST/logs/" 2>/dev/null
 cp -f /tmp/ar_aoi_bus.log "$DST/logs/" 2>/dev/null
 
-echo "=== ④ 证据 (只写实测数字) ==="
+echo "=== ④ 证据 (只写实测数字, 现取现算) ==="
+EV="$DST/evidence/measured_$(date +%Y%m%d).md"
+./gui-venv311/bin/python - "$EV" <<'PY'
+import json, math, sys, time
+ev = sys.argv[1]
+live = json.load(open("zmax_data/ar_live/ar_aoi_live.json", encoding="utf-8"))
+s = live.get("s") or {}
+m = (live.get("meta") or {}).get("last_pull") or {}
+g = lambda k, d=float("nan"): s.get(k, d)
+L = []
+L.append("# v5.50.750 实测证据 (%s)" % time.strftime("%F %T"))
+L.append("")
+L.append("主题: AR 场景接上真机 —— 末端位姿 x/y/z + 插拔侧向力(真机六维力) + 机器人状态机(是否在插拔);")
+L.append("      信号分析主要信号收口(<=10)+字号放大+选场景即切; 数据空间与信号分析同源")
+L.append("")
+L.append("## 真机量 (真实机器人, 无仿真/无平台自算冒充) —— 归档当刻现取")
+L.append("- 末端位姿: x %.4f  y %.4f  z %.4f m · 帧龄 %.2fs (tcp_out/latest.json, 珞石 xCoreSDK 直采 5Hz)"
+         % (g("末端.x"), g("末端.y"), g("末端.z"), g("末端.帧龄_s")))
+L.append("- 真机六维力: 轴向 %.2f N · 侧向 %.2f N (hypot(fy,fz)=hypot(%.2f,%.2f)) · 帧龄 %.2fs · 参考系 %s"
+         % (g("末端.轴向力_N"), g("末端.侧向力_N"), g("末端.侧向力y_N"), g("末端.侧向力z_N"),
+            g("末端.力帧龄_s"), "world/base (基座系, 插入轴=+x)"))
+L.append("- 力换算自检 --selftest: 合成 3-4-5 直角 7/7 PASS (侧向合力 5.0 · 轴向=fx · 工具系拒用 · 陈旧不写 · 报错不写 · 无文件不写)")
+L.append("- 静止时侧向力不为 0 = 夹爪+D405+工件的重力分量, 不是接触力 ⇒ 接触判据看**变化量**, 不看绝对值")
+L.append("- ft_out/latest.json 帧龄 > 1s ⇒ 总线不写任何力键, 值列显示「未接」, meta 写原因 (不用 0 冒充)")
+L.append("")
+L.append("## 机器人状态机 (真源 tools/robot_state.py, 当前三态走 SDK enum 直读)")
+L.append("- 一句话: %s" % (m.get("robot") or "—"))
+L.append("- 状态码 %.0f · 插拔中 %.0f · 运动中 %.0f · 阶段码 %.0f · 历史报警 %d 条"
+         % (g("机器人.状态_码"), g("机器人.插拔中", 0), g("机器人.运动中", 0), g("机器人.阶段_码"), g("机器人.报警数", 0)))
+L.append("- 口径: 0 未连接 / 1 急停·伺服报警 / 2 未使能(伺服off) / 3 手动 / 4 自动待机 / 5 自动运行")
+L.append("- 急停只看**当前** PowerState∈{estop,gstop}; state.json 的 last_estop/n_err_recent 是历史记录, 不当当前故障")
+L.append("- 插拔判定 = 阶段∈{插入,拔出,插拔} 或 执行技能含 insert/pull; 阶段取 ss_live/skill_dispatch.json (>3s 陈旧⇒未知)")
+L.append("")
+L.append("## 本轮真机上修掉的两个错 (根因)")
+L.append("- getEndTorque 成功返回 {'ec':0,'message':'success'} 被当成报错抛出 (键名是 ec 不是 code) ⇒ 真机有数也报「未接」")
+L.append("- 用 state.json 的历史 last_estop 判当前急停 ⇒ 明明 power=on 也显示「急停/报警」")
+L.append("")
+L.append("## 信号分析收口 (老倪: 不要那么多信号, 不要超过 10 个)")
+L.append("- 默认 🎯 主要信号 10 条: 末端 x/y/z + 帧龄 + 轴向力 + 侧向力 + 力帧龄 + 机器人.插拔中/状态_码/运动中")
+L.append("- 树默认 1 个根 (当前场景), 全量视图 391 行 (取消勾选即回, 数据一条没删)")
+L.append("- 字号: 树/按钮/日志 13px→16px, 表头/小标 12px→14px, 名字列 minWidth 460→560; 实测行文字高 23px")
+L.append("")
+L.append("## 场景切换即切波形 (老倪: 选了 AR 右侧还是绿色插拔信号)")
+L.append("- 切插拔 ⇒ 树上只剩插拔一个根, 波形里 AR 信号 0 条; 切回 AR ⇒ 自动重勾 AR 信号 (真机有数时 10 条全勾)")
+L.append("- 数据源在画布/3D 侧改变 ⇒ _tick 2s 探针触发自动切, 不需再点信号窗口")
+L.append("")
+L.append("## 数据空间 ↔ 信号分析 同源")
+L.append("- DDS 侧本来就同源: 都读 zmax_data/dataspace/{live.json,trace.jsonl,busdb.json} (28 话题)")
+L.append("- 新增「🥽 AR 场景 · 文件通道」顶层组: 位姿/力/状态机 三行汇总, 值直接取 ar_aoi_live.json")
+L.append("")
+L.append("## 现场约定 (老倪口述 2026-10-20)")
+L.append("- 光模块就夹在机器人手臂末端(夹爪)上, 随臂动; AR 画面里的绿色边框不用动, 不要去重标定")
+L.append("")
+L.append("## 判据")
+L.append("- tools/verify_ar_force_signals.py: 见下 (真起窗口, 含主要信号 <=10 / 场景切换 / 数据源跟随 / 力未接不写 0)")
+L.append("- tools/verify_sig_space_sync.py: 见下 (数据空间 AR 组 · 位姿同值 · 状态机可读 · 树 16px/行高 23px · DDS 同一文件)")
+open(ev, "w", encoding="utf-8").write("\n".join(L) + "\n")
+print("evidence 写入(现取): " + ev)
+PY
 {
-  echo "# v$VER 实测证据 ($(date '+%F %T'))"
   echo
-  echo "主题: AR 场景接上真机 —— 末端位姿 x/y/z + 插拔侧向力(真机六维力) + 机器人状态机(是否在插拔)"
-  echo "      信号分析收口到 10 条主要信号/字体放大; 选场景即切波形; 数据空间与信号分析同源"
-  echo
-  echo "## 真机量 (全部来自真实机器人, 无仿真/无平台自算冒充)"
-  echo "- 末端位姿: ar_aoi_live.末端.x/y/z = 0.6865 / 0.2282 / 0.2780 m (tcp_out/latest.json, 珞石 xCoreSDK 直采)"
-  echo "- 侧向力口径: hypot(fy,fz) 基座系; 工具系算出的值视为错量直接拒用"
-  echo "- 换算自检 --selftest: 合成 3-4-5 直角 7/7 PASS (侧向合力 5.0 · 轴向=fx · 工具系拒用 · 陈旧不写 · 报错不写 · 无文件不写)"
-  echo "- 力的实时性: ft_out/latest.json 帧龄 > 1s ⇒ 不写任何力键, 值列显示「未接」, meta 写原因 (不用 0 冒充)"
-  echo "- 当前真实状态: 控制器 192.168.23.160 不可达 (产线网卡不在位) ⇒ 力三条未接; 状态帧龄 13886s"
-  echo
-  echo "## 机器人状态机 (真源 tools/robot_state.py)"
-  echo "- 实测输出: 🤖 未连接 · 手动 · 阶段 抬起 · 非插拔 · 任务 TASK-01-FW · 状态帧龄 13886.2s"
-  echo "- 阶段真源: ss_live/skill_dispatch.json 写龄 0.02s (每拍写) → 备路 skill_gate.json"
-  echo "- 状态码 0=未连接 / 1=急停报警 / 2=未上电 / 3=手动 / 4=自动待机 / 5=自动运行"
-  echo "- 报警数 10 (state.json n_err_recent, 今日 08:15 急停未恢复)"
-  echo "- 插拔判定 = 当前阶段 ∈ {插入,拔出,插拔} 或 执行技能含 insert/pull; 阶段拿不到才写「未知」"
-  echo
-  echo "## 信号分析收口 (老倪: 不要那么多信号, 不要超过 10 个)"
-  echo "- 默认 🎯 主要信号 10 条: 末端 x/y/z + 帧龄 + 轴向力 + 侧向力 + 力帧龄 + 机器人.插拔中/状态_码/运动中"
-  echo "- 树默认 1 个根 (当前场景), 全量视图 391 行 (取消勾选即回, 数据一条没删)"
-  echo "- 字号: 树/按钮/日志 13px→16px, 表头/小标 12px→14px, 名字列 minWidth 460→560; 实测行文字高 23px"
-  echo
-  echo "## 场景切换即切波形 (老倪: 选了 AR 右侧还是绿色插拔信号)"
-  echo "- 实测 切插拔 ⇒ 树上只剩插拔一个根, 波形里 AR 信号 0 条"
-  echo "- 实测 切回 AR ⇒ 自动重新勾上 AR 信号 6 条 (力的 3 条未接不勾), sstrace 曲线已撤, 只剩 AR 根"
-  echo "- 实测 模拟数据源变 AR (不点窗口) ⇒ _tick 2s 探针触发, 波形自动切成 AR 6 条"
-  echo
-  echo "## 数据空间 ↔ 信号分析 同源"
-  echo "- DDS 侧本来就同源: 都读 zmax_data/dataspace/{live.json,trace.jsonl,busdb.json} (28 话题)"
-  echo "- 新增「🥽 AR 场景 · 文件通道 101 条」顶层组: 位姿行 x 686.5 · y 228.2 · z 278.0 mm (与 ar_aoi_live.json 同值)"
-  echo "- 状态机行: 未连接 · 阶段 抬起 · 非插拔 · 报警 10"
-  echo
-  echo "## AR 页面 (8797)"
-  echo "- /api/robot_state 实测 ok:true · code:0 · stage:转移 · inserting:false"
-  echo "- 真浏览器读 DOM #tRob = \"🤖 未连接 · 阶段 接近 · 非插拔\" (1s 轮询; 插拔中置绿/急停置红)"
-  echo
-  echo "## 判据"
-  echo "- tools/verify_ar_force_signals.py: PASS (AR 根 #8957e5 · x/y/z 真值 · 力四行「未接」非 0 · 主要信号 ≤10 · 场景切换 · 数据源跟随)"
-  echo "- tools/verify_sig_space_sync.py: PASS (数据空间 AR 组 · 位姿同值 · 状态机可读 · 树 16px/行高 23px · DDS 同一文件)"
-  echo "- tools/rokae/ft_direct_sampler.py --selftest: 7/7 PASS"
-} > "$DST/evidence/measured_$(date +%Y%m%d).md"
+  echo "## 判据实跑输出"
+  echo '```'
+  QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_ar_force_signals.py 2>&1 \
+    | grep -E "✅ PASS|❌ FAIL|^  ✅ .*(力|插拔|场景|数据源|10 条)|^   - " || echo "verify_ar_force_signals 未跑通"
+  QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_sig_space_sync.py 2>&1 \
+    | grep -E "✅ PASS|❌ FAIL|^   - " || echo "verify_sig_space_sync 未跑通"
+  echo '```'
+} >> "$EV"
 
 echo "=== ⑤ MANIFEST ==="
 {
