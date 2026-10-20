@@ -7,7 +7,7 @@
   B) 状态通道: 循环读 /robot/tcp_pose -> 维护当前位姿缓存 (供相对技能算目标)
 接口: FIFO ~/zmax/zmax_data/l2_cmd.fifo  (一行一条 JSON: {"skill":"L2.lift","d_mm":100})
 """
-import json, os, re, subprocess, sys, threading, time
+import io, json, os, re, select, subprocess, sys, threading, time
 import urllib.request
 
 # 🔐 真动授权(8793 手动控制台)的单一真源 —— 所有运动下发的**唯一收口**(chan_send/服务调用/夹爪)
@@ -2403,9 +2403,25 @@ def main():
     exec_state(phase="idle", skill="")
     # 🛡 安全层口径(启动时明示, 免得事后说不清谁关了什么): 慢层可停用, 快层永远强制
     log("🛡 安全层: %s · 快层(本地 5Hz 遮挡/糊化反射)=**强制**(任何开关都不越过它)" % _vl_slow_status())
+    _fd = os.open(FIFO, os.O_RDWR | os.O_NONBLOCK)   # 常驻读端锚: 保证写端永远找得到 reader
+    _buf = ""
     while True:
         reg = maybe_reload(reg)
-        with open(FIFO, encoding="utf-8") as f:
+        # 📌 2026-10-20 老倪「操作机器人的指令被拒绝了 … FIFO 打不开(Errno 6)」的**第二个**根因:
+        #   原来是 `with open(FIFO)` 开-读-关循环 —— 关闭的那一瞬到下一次打开之间没有读端,
+        #   写端 os.open(O_WRONLY|O_NONBLOCK) 就 ENXIO。更要命的是**指令执行期间**(走一路 20s 的动作)
+        #   FIFO 全程是关的 ⇒ 这期间点的每一条都被拒。
+        #   现在自己持一个 O_RDWR 常驻读端(写端永不 ENXIO), 用 select 等数据, 按行切(尾段留到下一轮)。
+        try:
+            _r, _, _ = select.select([_fd], [], [], 0.5)
+        except InterruptedError:
+            _r = []
+        if not _r:
+            continue
+        _chunk = _buf + os.read(_fd, 65536).decode("utf-8", "replace")
+        _lines = _chunk.split("\n")
+        _buf = _lines.pop()                      # 最后一段可能不完整, 留到下一轮
+        with io.StringIO("\n".join(_lines)) as f:
             for line in f:
                 line = line.strip()
                 if not line:
