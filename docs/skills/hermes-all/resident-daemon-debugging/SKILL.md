@@ -128,6 +128,14 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
 
 ## 坑
 
+- **FIFO 没人读, 先查"保活是不是被人关了"**: `crontab -l | grep -i keepalive` 可能看到
+  `# [关机暂停 <日期>] */5 * * * * …` —— 关机前手工注释掉、开机后**没人恢复**, 于是执行器从此没人拉起,
+  现场表现就是「点了没反应 / 被拒: FIFO 打不开(Errno 6)」。修: 按原样取消注释 `crontab /tmp/ct_after.txt`, 再
+  用手册脚本(cron 里那个 keepalive, **不是**简单 start)拉起 —— keepalive 会带上 `ZMAX_VL_INTENT_WAIT_S=600`
+  这类裁决等待环境变量, 少了它们慢层重试轮次必然超时 ⇒ 落"未给裁决⇒从严不安全" ⇒ 所有动作被拒。
+  起完三个判据一起看: ①`/proc/<pid>/fd` 挂着 FIFO ②`tr '\0' '\n' < /proc/<pid>/environ | grep ZMAX_VL` 有 600Σ
+  ③投 `{"skill":"__pipe_probe__"}` ⇒ 日志「拒绝: 未知技能」且进程存活。
+
 - **重启计数一路涨 + 日志只有一句「已有写入器在跑」= pid 文件陈旧 + pid 被系统复用**, 不是"真有实例在跑"。
   单实例锁只判 `os.kill(pid, 0)` 存活是不够的: 进程崩掉后那个 pid 会被内核回收、分给**别的**活进程,
   于是每次启动都判"已有实例"→ 直接退出。实测症状 = `systemctl show -p NRestarts` 六百多次、

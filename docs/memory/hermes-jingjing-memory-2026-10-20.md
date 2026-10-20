@@ -50,7 +50,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 位姿真源=tcp_out/latest.json(全0=陈旧)
 §
-运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop
+运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
 AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py桥; 3D「🥽AR」?cam=arm
 §

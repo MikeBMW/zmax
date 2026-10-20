@@ -56,6 +56,30 @@ AR 服务 `tools/tcp_ar_server.py`(8797) 只**订阅**: `CAMS[key] = {w,h,label,
 - 别信 spawn 的返回码：`ar_window_seen()` 查真窗口表才算数；抬完再查一次位置写入判据。
 - 判断环境别用 `\$DISPLAY` 猜：判据要用 `DISPLAY=:0` 真跑 `xrandr`/`wmctrl`，否则 RPAREN。
 
+### 1.3 「AR 按钮打不开」= 浏览器**静默退出**, 不是服务/页面坏 (2026-10-20 实测)
+老倪: 「ar按钮 打不开 http://10.163.146.78:8797/ar」。取证顺序(照这个顺序查, 一步都不能少):
+- 先证服务与页面是好的: `ss -ltnp | grep 8797` + `curl -o /dev/null -w '%{http_code}' :8797/ar` (200) +
+  `:8793/ar` (302→8797)。**页面 97KB 正常返回 ⇒ 别再动服务**。
+- 再查 `zmax_data/logs/ar_launch.log`: 若 `spawn pid=…` 有、后面 `窗口 没出现`, 就是**浏览器层**问题。
+- 决定性判据 = 浏览器 History 里有没有这一次访问: 拷 `Default/History` 出来查 `urls.last_visit_time`。
+  实测 5 次点击 **History 里 0 次访问** ⇒ 进程起来了但页面根本没加载(不是窗口跑到别的屏, 也不是标题没解析)。
+
+两个真根因(都已落地修法, `tools/gui/ss_dreamview.py`):
+1. **失效单例锁 ⇒ chromium 静默 exit 0**: profile 里 `SingletonLock -> ubuntu-<pid>` 的 pid 已死或被复用,
+   chromium 以为"已有实例", 把 URL 转发给不存在的实例后**直接退出**(无窗口、无 stderr、History 无访问)。
+   修法 `ar_clean_profile_locks(prof)`: 只在锁里的 pid **不是浏览器进程**(`/proc/<pid>/cmdline` 无 chrom)时
+   删 `SingletonLock/SingletonSocket/SingletonCookie`; 活着的浏览器锁一律不动。
+2. **只按窗口标题判"没出现"会漏**: 页面还在加载时标题就是 URL, 标题里没有「TCP 轨迹/AR/VR」⇒ 判失败。
+   修法 `ar_window_ids()` 取 spawn **前后快照** + `ar_wait_new_window(before, t)`: 先认标题, 再退一步认
+   "任何新窗口(标题含 chrom/8797/8793)"。
+- 兜底三级(顺序不能变): 快路径(共享实例, 0.38s) → 独立 profile(`zmax_data/ar_browser`) →
+  **全新带时间戳 profile**(`ar_browser_MMDD_HHMMSS`, 必无锁) —— 最后一级保证窗口一定开出来。
+- chromium stderr 必须落 `zmax_data/logs/ar_browser.log`(原来 DEVNULL ⇒ "为什么没出窗"全靠猜)。
+- 打不开之后别急着重启服务: 服务侧 200 就与它无关; 真改的是控制台进程里的代码 ⇒ **控制台要重启一次**才生效
+  (`tools/restart_studio.sh`, 单次, 别反复重启)。
+- 判据脚本 `tools/verify_ar_button.py` 里那条页面地址断言要跟 `AR_PAGE_URL` 同步(现为 8793/ar 或 127.0.0.1:8797/ar),
+  否则改了地址就假失败。
+
 ## 2. L5(VLM) 理解 = **子进程桥**, 别在常驻服务里 import 引擎
 引擎 `src/lerobot/policies/left_right/state_space/scene_vlm.py :: SceneVLM.ask(jpg, prompt, max_tokens)` 会拉 torch(GB 级);
 AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻只允许一个模型进程)。

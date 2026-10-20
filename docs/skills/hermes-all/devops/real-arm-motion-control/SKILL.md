@@ -1167,5 +1167,36 @@ tool1 距箱 109.3 · tool0 距箱 132.6   ← 两个都"看着安全"
           ③到位后分段转身(≤5°/段)   禁: 出发点上方升满 / 一条 MoveJ 同时大平移+大转身
 禁发条件: Δz > 100mm 且 肘部 height 接近 650~750 带 ⇒ 先降或改姿态, 不要"分段硬抬"
 ```
-每次分段后必须 `arm_raw.py pos` 回读; 出现残差 > 2mm 或姿态偏离就停, 不要接着走下一段。
+### 🔧 SDK 关节空间通道 + setPowerState 签名的实测口径 (2026-10-20)
+
+「不动」的第四种病因 = **没上电**(前面只记了 manual/drag)。`PowerState.off` 时执行器回
+`⛔ ABORT 前置条件不满足: 上电状态不是 on (PowerState.off)`, 而现场只会说“怎么还不动”。
+- 上电/下电: `r.setPowerState(True/False, ec)` —— **参数是 bool**, 传 `x.PowerState.on` 会
+  `TypeError: incompatible function arguments (supported: on: bool, ec: dict)`。现成脚本 `tools/rokae/sdk_power.py --on|--off`。
+- 状态读数要**连采 4 次**再看结论: 实测 `state` 与紧跟的运动命令读到过相反值(on vs off),
+  manual↔automatic 也会在两次调用之间来回跳 ⇒ 单次采样不可作为判据。
+
+关节空间(绕过笛卡尔奇异/贴限位):
+```
+MoveJCommand  吃的是 **CartesianPosition**(轴插补到笛卡尔目标), 不是关节!
+关节目标必须 MoveAbsJCommand(JointPosition([j1..j6]), speed, -1)
+moveAppend 第一个参数是 **Sequence** ⇒ 传 [cmd], 不要传裸 cmd
+```
+现成脚本 `tools/rokae/sdk_j6.py --joint 3 --deg 5`(单关节相对微调, 速度%档, 回读关节角核 Δ)。
+实测: J3 在 −151.45°(贴近限位) 时任何笛卡尔下降都被拒; 用 MoveAbsJ 把它拧回 −146.31° **成功**,
+J6 从 0.1° 转开 25° **成功** —— 说明关节通道真能救命。
+
+### 🧭 50120「沿路径无法到达终点」= 奇异规避让位不够, 不是路径错 (2026-10-20)
+
+现象: `moveStart` 回 ec=0, 6s 后**零位移 idle**, 执行器写 `疑似报警 50102 奇异点`。
+**别猜**: `bash tools/rokae_sdk_run.sh --script dump_controller_log.py 25` 读控制器原文, 实测是
+```
+50120 [奇异规避]使用奇异规避，沿路经无法到达终点 [SDK MoveL]   (repair: 重新示教/更换奇异规避方式)
+50023 [SDK MoveJ] 目标点选择了奇异位姿逆解，无法精确到达      (repair: 修改目标点conf)
+```
+根因: `sdk_ctl._sing_on()` 只允许 **2.9°**(`SING_LIMIT_RAD=0.05`) 的姿态让步。
+修法优先级: ①`ZMAX_SING_LIMIT_RAD=0.30`(≈17°) 重发 —— 对应维修建议“更换奇异规避方式”
+②仍拒就**换关节空间** `sdk_j6.py` 挪关节再走直线 ③最后才是改目标点。
+⚠️ 排查顺序固定: 上电 on → automatic/idle → 报警原文 → 再谈路径。前两条任一不满足, 后面全是白忙。
+
 
