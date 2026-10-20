@@ -40,7 +40,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程根~/zmax=独立仓库(MikeBMW/zmax); zmax_data=模型+数据+HF+secrets/zmax.env; 训练带HF_HOME
 §
-控制台禁反复重启GUI; 改码攒批(含字体)
+控制台禁反复重启GUI
 §
 工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 真源=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
 §
@@ -50,7 +50,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 位姿真源=tcp_out/latest.json(全0=陈旧)
 §
-运动安全: 速度口径mm/s 1~1000(4处收口含技能speed_max); 前置须idle+automatic; 真源web/station.html; 腿上限须重启容器; 清8793授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; '要碰撞'先agent_all_stop.py
+运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop
 §
 AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py桥; 3D「🥽AR」?cam=arm
 §
@@ -60,14 +60,14 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密; MoveIt起点=SDK直采
 §
-侧面判据图=aoi_surface_rect.py(搜框+摆正+扩暗头; 0回退); 10083 judge退化整幅
+判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头); 曝光5000us; 10083=5.50.750同算法
 §
-奇异区: 单步姿态>5°被50113拒且腿假报到位(姿态看真值); 转移=抬50→转身→低位横移→目标上方升降
+奇异区: 姿态>5°被50113拒且腿假报到位(看真值); 转移=抬50→转身→低位横移→上方升降
 §
-扭矩tap→/dev/shm(32MB环)
+建图=人工走点(8793 manual,45s/轮增量); GS_MAP_MODE=auto回旧
 §
-建图=人工走点(8793按钮已切manual, 全程采帧+45s/轮增量); GS_MAP_MODE=auto回旧
+版本号只按老倪指定; 当前5.50.750
 §
-版本号只按老倪指定; 当前5.50.747(tag已推)
+专利12件·渠道74/74; config/patents/patent_registry.json; patent_center.py --coverage
 §
-专利12件·功能渠道74/74; 真源config/patents/patent_registry.json; patent_center.py --coverage/--export; 文档docs/patents
+tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
