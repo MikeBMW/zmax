@@ -14,6 +14,7 @@ cp -f tools/ar_aoi_bus.py tools/robot_state.py tools/tcp_ar_server.py \
       tools/rs_service.py tools/rs_service.sh tools/rs_probe.py tools/verify_rs_camera.py \
       tools/realsense_source.py tools/cam_live_stream.py tools/cam_live_stream_ctl.sh \
       tools/l2_daemon.py tools/l2_daemon_ctl.sh \
+      tools/watch_insert.py tools/record_insertion.py tools/save_insert_series.py \
       tools/ar_server_kill_by_port.sh tools/ar_server_hard_restart.sh tools/boot_restore.sh \
       tools/verify_ar_force_signals.py tools/verify_sig_space_sync.py \
       tools/restore_cron_after_boot.sh tools/archive_release_5_50_750_arstate.sh "$DST/tools/" 2>/dev/null
@@ -27,6 +28,9 @@ echo "=== ② 真源快照 (config 是软链, 必须显式拷) ==="
 cp -f config/topics/ar_aoi_signals.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ar_live/ar_aoi_live.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ar_state/module3d_lock.json "$DST/data/" 2>/dev/null
+cp -f zmax_data/evidence/insertion_*.json "$DST/data/" 2>/dev/null
+cp -f zmax_data/evidence/insertion_index.jsonl "$DST/data/" 2>/dev/null
+cp -f zmax_data/evidence/insertion_series_*.jsonl "$DST/data/" 2>/dev/null
 cp -f zmax_data/rokae_sdk/tcp_out/state.json "$DST/data/tcp_state.json" 2>/dev/null
 cp -f zmax_data/rokae_sdk/tcp_out/latest.json "$DST/data/tcp_latest.json" 2>/dev/null
 cp -f zmax_data/rokae_sdk/ft_out/latest.json "$DST/data/ft_latest.json" 2>/dev/null
@@ -155,6 +159,9 @@ echo "=== ⑤ MANIFEST ==="
   echo "tools/l2_daemon_ctl.sh         新增 · 执行器 start|stop|restart|status (status 直接报 FIFO reader 有无)"
   echo "tools/ar_server.py/tcp_ar_server.py 改 · 绿框定主: /api/module3d_lock(lock|unlock) + 锁定时坐标恒定(stale=false, live 单独报活性)"
   echo "web/tcp-ar.html                改 · 顶部 '🔒 绿框定主' 按钮 + 定主时标签写 '🔒 定主'"
+  echo "tools/watch_insert.py          新增 · 插入过程只读监视 (位姿/力/实时框/画面差, 1Hz 一行)"
+  echo "tools/record_insertion.py      新增 · 把'这一刻'落证据: json + 臂/D435 同刻原帧 + index.jsonl"
+  echo "tools/save_insert_series.py    新增 · 采样表存 jsonl 并算行程/力峰/保持段 (不编)"
   echo "tools/boot_restore.sh          改 · 开机先拉 RealSense 小服务(8789) 再拉 AR 服务(8797)"
   echo '```'
   echo

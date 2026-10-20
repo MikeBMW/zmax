@@ -819,7 +819,20 @@ class H(BaseHTTPRequestHandler):
             elif p.startswith("/snapshot/") and p.endswith(".jpg"):
                 self._send(200, "image/jpeg", _get(p))
             elif p.startswith("/snap/") and p.endswith(".jpg"):     # 🥽 按相机键取一帧(rs 走本机, 其余走状态空间视频源)
-                _b, _src = frame_bytes(p[len("/snap/"):-4])
+                _cam = p[len("/snap/"):-4]
+                _b, _src = frame_bytes(_cam)
+                if not _b:
+                    # 🔴 2026-10-20 老倪「USB 相机还是没有图像」: 原来这里对**空帧**照样回 200 + 0 字节,
+                    #   页面的 onload 拿到 0×0 的图什么也不画 ⇒ 屏幕停在上一帧, 看着像"没变/卡住"。
+                    #   空帧必须如实 503 + 说清是哪一路、源在哪、怎么查。
+                    self._json({"ok": False, "cam": _cam, "src": _src,
+                                "err": "这一路相机此刻取不到帧(源返回 0 字节): " + str(_src),
+                                "hint": ("①设备在不在 USB 总线: lsusb | grep -i camera  "
+                                         "②节点还在不在: v4l2-ctl --list-devices  "
+                                         "③源服务是否活着: curl -s -o /dev/null -w '%{http_code}' "
+                                         + str(_src))},
+                               503)
+                    return
                 self._send(200, "image/jpeg", _b)
             else:
                 self._send(404, "text/plain", b"not found")
