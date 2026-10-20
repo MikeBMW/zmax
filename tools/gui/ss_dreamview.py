@@ -1524,9 +1524,52 @@ def _artrace(msg: str) -> None:
 
 
 AR_PROFILE_DIR = os.path.join(_REPO, "zmax_data", "ar_browser")
+AR_STDERR_LOG = os.path.join(_REPO, "zmax_data", "logs", "ar_browser.log")
 
 
-def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False) -> str:
+def ar_pid_is_chrome(pid: int) -> bool:
+    """这个 pid 现在是不是浏览器进程 —— 判「单例锁还是活的吗」只认这个(pid 会被复用, 不能只看存活)。"""
+    try:
+        with open("/proc/%d/cmdline" % int(pid), "rb") as _f:
+            return b"chrom" in _f.read()
+    except Exception:                                                           # noqa: BLE001
+        return False
+
+
+def ar_clean_profile_locks(prof: str) -> list:
+    """清掉 profile 里**失效的**单例锁。
+
+    2026-10-20 现场(老倪「AR 按钮打不开」): 5 次点击 spawn 都成功, 但 chromium 既不出窗、
+    History 里也没有一次页面访问 —— 就是卡的这一层: SingletonLock 指向的 pid 早死了/被别的进程复用,
+    chromium 以为"已有实例", 把 URL 转发给一个不存在的实例后**静默退出**(exit 0, 无窗口, 无报错)。
+    活着且真是浏览器的锁一律不动(否则会把用户正开着的窗口搞坏)。返回清掉的文件名。
+    """
+    _done = []
+    for _n in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        _p = os.path.join(prof, _n)
+        if not os.path.lexists(_p):
+            continue
+        _pid = 0
+        try:
+            _tgt = os.readlink(_p)
+            if "-" in _tgt:
+                _pid = int(_tgt.rsplit("-", 1)[1])
+        except Exception:                                                       # noqa: BLE001
+            _pid = 0
+        if _pid and ar_pid_is_chrome(_pid):
+            continue
+        try:
+            os.unlink(_p)
+            _done.append(_n)
+        except Exception:                                                       # noqa: BLE001
+            pass
+    if _done:
+        _artrace("清失效单例锁 %s: %s" % (prof.rsplit("/", 1)[-1], "+".join(_done)))
+    return _done
+
+
+def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False, profile: str = "",
+                     tag: str = "") -> str:
     """只把浏览器拉起来(**不等窗口**), 几十毫秒返回所用的程序名(空串=没有可用浏览器)。
 
     两级:
@@ -1535,13 +1578,23 @@ def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False) -> str:
         (实测 studio 子进程 execve 成功、线程起来了、30s 无窗)。
       · `isolated=True`(兜底, 稳): 独立 profile(`zmax_data/ar_browser`), 窗口由这个进程自己建,
         不看日常浏览器脸色; 冷启实测 **0.85s**。ar_launch 在"快路径 1.2s 没出窗"时自动走这一级。
+        `profile=<自定义目录>` 可指定一个全新目录(ar_launch 最后一招: 全新 profile 必出窗)。
 
-    2026-10-19 老倪: 「点击 3D场景中的 AR, 半天没反应」—— 原来还会**逐个候选等窗口(每个 6s)**,
-    而且整条流程跑在 GUI 主线程 ⇒ 界面直接冻住。现在: 页面先开, 其余在后台线程做。
+    2026-10-20: 起浏览器前先清该 profile 的**失效单例锁**(见 ar_clean_profile_locks),
+    stderr 落 `zmax_data/logs/ar_browser.log`(原来是 DEVNULL ⇒ "为什么没出窗"全靠猜)。
     """
     import shutil as _sh
     import subprocess as _sp
-    _prof = AR_PROFILE_DIR if isolated else ""
+    _prof = profile or (AR_PROFILE_DIR if isolated else "")
+    _err = None
+    try:
+        os.makedirs(os.path.dirname(AR_STDERR_LOG), exist_ok=True)
+        _err = open(AR_STDERR_LOG, "a", encoding="utf-8", errors="ignore")
+        _err.write("\n===== %s spawn tag=%s url=%s isolated=%s prof=%s\n"
+                   % (time.strftime("%H:%M:%S"), tag, url, bool(isolated), _prof or "-"))
+        _err.flush()
+    except Exception:                                                           # noqa: BLE001
+        _err = None
     for _b in ("chromium", "google-chrome", "chromium-browser"):
         if not _sh.which(_b):
             continue
@@ -1551,13 +1604,22 @@ def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False) -> str:
             except Exception:                                                   # noqa: BLE001
                 _prof = ""
         if _prof:
+            ar_clean_profile_locks(_prof)
             _args = [_b, "--user-data-dir=%s" % _prof, "--no-first-run",
-                     "--no-default-browser-check", "--window-size=1500,950", url]
+                     "--no-default-browser-check", "--window-size=1500,950",
+                     "--disable-session-crashed-bubble", "--noerrdialogs", url]
         else:
             _args = [_b, "--new-window", url]
         try:
-            _p = _sp.Popen(_args, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
-            _artrace("spawn pid=%s isolated=%s" % (_p.pid, bool(_prof)))
+            _p = _sp.Popen(_args, stdout=_sp.DEVNULL, stderr=(_err or _sp.DEVNULL),
+                           start_new_session=True)
+            _artrace("spawn pid=%s isolated=%s prof=%s tag=%s"
+                     % (_p.pid, bool(_prof), _prof.rsplit("/", 1)[-1] if _prof else "-", tag))
+            if _err:
+                try:
+                    _err.close()
+                except Exception:                                               # noqa: BLE001
+                    pass
             return "%s%s" % (_b, "(独立profile)" if _prof else "")
         except Exception as _e:                                                 # noqa: BLE001
             _artrace("spawn 失败 %s: %r" % (_b, _e))
@@ -1566,10 +1628,60 @@ def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False) -> str:
         if _sh.which(_b):
             try:
                 _sp.Popen([_b] + _a, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+                if _err:
+                    _err.close()
                 return _b
             except Exception:                                                   # noqa: BLE001
                 continue
+    if _err:
+        try:
+            _err.close()
+        except Exception:                                                       # noqa: BLE001
+            pass
     return ""
+
+
+def ar_window_ids() -> dict:
+    """当前所有窗口 {id: 标题} —— 用来做 spawn 前后对比 (标题可能还没解析出来, 光看标题会漏)。"""
+    import subprocess as _sp
+    try:
+        _o = _sp.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=4).stdout or ""
+    except Exception:                                                           # noqa: BLE001
+        return {}
+    _d = {}
+    for _ln in _o.splitlines():
+        _p = _ln.split(None, 3)
+        if len(_p) >= 3:
+            _d[_p[0]] = (_p[3] if len(_p) > 3 else "")
+    return _d
+
+
+def ar_wait_new_window(before: dict, timeout: float = 2.0) -> str:
+    """spawn 之后等窗口出现: ①先认标题里的「TCP 轨迹/AR/VR」(最准) ②退一步认**任何新窗口**
+    (页面还在加载时标题就是 URL, 只按标题判会判"没出现" —— 2026-10-20 实测就是这样漏的)。
+
+    返回窗口 id(空串=真没出现)。"""
+    import time as _t
+    _t0 = _t.time()
+    _before = dict(before or {})
+    while True:
+        _cur = ar_window_ids()
+        # ① **新增**的窗口优先(这是"我这次 spawn 出来的") —— 只认标题会把早就开着的旧窗口当成功
+        for _wid, _ti in _cur.items():
+            if _wid not in _before and (("TCP 轨迹" in _ti) or ("AR/VR" in _ti)):
+                return _wid
+        # ② 退一步: 任何新增窗口(页面还在加载时标题就是 URL)
+        for _wid, _ti in _cur.items():
+            if _wid not in _before and ("chrom" in _ti.lower() or "8797" in _ti or "8793" in _ti):
+                return _wid
+        # ③ 再退一步: 表里已有 AR 页面(别人已经开过) —— 也算"页面在"
+        for _wid, _ti in _cur.items():
+            if ("TCP 轨迹" in _ti) or ("AR/VR" in _ti):
+                return _wid
+        if _t.time() - _t0 >= float(timeout):
+            return ""
+        _t.sleep(0.1)
+
 
 
 _AR_BUS = None
@@ -1732,7 +1844,8 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                     _up, _why = ar_ensure_service(tries=20)
                     _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
                     ar_service_base(0.8)      # 起来后把 AR_SERVICE_URL 定到这次通的地址
-                _how = ar_spawn_browser(AR_PAGE_URL)
+                _snap0 = ar_window_ids()      # spawn 前的窗口表(判"新窗口"用, 标题可能还没解析)
+                _how = ar_spawn_browser(AR_PAGE_URL, tag="fast")
                 if not _how:
                     _artrace("没有可用浏览器")
                     _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
@@ -1740,12 +1853,20 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 # 🔴 spawn 一出就放锁: 后面等窗口/置前/切场景再慢, 也不许把下一次点击挡在门外
                 #    (原来 busy 要等整条流程跑完才放, 最长 6+20+3+4s ⇒ 期间点几次都"没反应")
                 _AR_RUNNING["busy"] = False
-                _win = ar_window_seen(1.2)
+                _win = ar_wait_new_window(_snap0, 1.5)
                 if not _win:      # 快路径(共享实例)没出窗 ⇒ 独立 profile 兜底, 亲眼确认窗口出来才算完
-                    _artrace("快路径 1.2s 无窗 ⇒ 走独立 profile 兜底")
-                    _how2 = ar_spawn_browser(AR_PAGE_URL, isolated=True)
+                    _artrace("快路径 1.5s 无窗 ⇒ 走独立 profile 兜底")
+                    _snap1 = ar_window_ids()
+                    _how2 = ar_spawn_browser(AR_PAGE_URL, isolated=True, tag="iso")
                     _how = (_how + " → " + _how2) if _how2 else _how
-                    _win = ar_window_seen(5.0)
+                    _win = ar_wait_new_window(_snap1, 5.0)
+                if not _win:      # 最后一招: 全新 profile(带时间戳 ⇒ 必无单例锁) —— 窗口一定要开出来
+                    _artrace("独立 profile 也没出窗 ⇒ 全新 profile 兜底")
+                    _snap2 = ar_window_ids()
+                    _fresh = "%s_%s" % (AR_PROFILE_DIR, time.strftime("%m%d_%H%M%S"))
+                    _how3 = ar_spawn_browser(AR_PAGE_URL, profile=_fresh, tag="fresh")
+                    _how = (_how + " → " + _how3) if _how3 else _how
+                    _win = ar_wait_new_window(_snap2, 6.0)
                 _artrace("窗口 %s · spawn 到出窗 %.2fs" % (("出现 " + str(_win)) if _win else "没出现", _t.time() - _t0))
                 _up = ar_place_near_console(_win) if _win else False
                 _say("🥽 页面已送出 (%s, %.1fs)%s · %s" % (

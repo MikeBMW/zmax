@@ -90,6 +90,49 @@ def _detect(conf=0.25, imgsz=640):
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
 
 
+# ── D435 专用检测头 (2026-10-20 老倪选 B: 「单独给 D435 视角训一个检测头…只能给 2D 框」) ──
+# 现役 models/yolo_peg_live.pt 是在**腕相机 D405** 视角/尺度上训的, 在 D435 上基本检不出
+# (实测 conf=0.25 全帧 0 个; 降到 0.15 才冒出疑似框 + 台面静止杂物误检)。
+# 这里跑的 `models/yolo_peg_d435.pt` 是用 D435 实拍帧单独训的 1 类(peg)小头, 只给 2D 框,
+# 不做 3D/不碰 tool1 —— 那两样要 D435 的外参(未标定)。
+_DET435 = {"m": None, "path": None, "res": None, "t": 0.0}
+
+
+def _det435(conf=0.25, imgsz=416):
+    p = os.path.join(os.path.dirname(HERE), "models", "yolo_peg_d435.pt")
+    if not os.path.exists(p):
+        return {"ok": False, "err": "没有 D435 检测权重: %s (先跑 tools/peg_d435_train.py)" % p}
+    try:
+        if _DET435["m"] is None or _DET435["path"] != p:
+            from ultralytics import YOLO
+            _DET435.update({"m": YOLO(p), "path": p, "res": None, "t": 0.0})
+        now = time.time()
+        if _DET435["res"] and now - _DET435["t"] < 0.2:              # 200ms 内复用(页面会轮询)
+            return _DET435["res"]
+        fr = RS.snap()
+        if fr is None:
+            L = RS.latest()
+            return {"ok": False, "err": "此刻没有新帧", "age_s": L.get("age_s"), "n": L.get("n")}
+        t0 = time.time()
+        r = _DET435["m"].predict(fr, conf=conf, imgsz=imgsz, device="cpu", verbose=False)[0]
+        boxes = []
+        for b in r.boxes:
+            x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
+            boxes.append({"xyxy": [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1)],
+                          "conf": round(float(b.conf), 3),
+                          "cls": r.names[int(b.cls)]})
+        out = {"ok": True, "n": len(boxes), "boxes": boxes,
+               "ms": int((time.time() - t0) * 1000),
+               "age_s": (RS.latest() or {}).get("age_s"),
+               "model": os.path.basename(p), "conf_thr": conf}
+        _DET435["res"], _DET435["t"] = out, now
+        return out
+    except SystemExit as e:
+        return {"ok": False, "err": str(e)}
+    except Exception as e:                                           # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:160])}
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-rs/1.0"
@@ -141,6 +184,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(_pose(roi=roi, use_last_detect=(q("det", "1") != "0")))
         if p == "/api/detect":
             return self._json(_detect(conf=float(q("conf") or 0.25), imgsz=int(q("imgsz") or 640)))
+        if p == "/api/detect_d435":                                  # D435 专用 1 类小头(只给 2D 框)
+            return self._json(_det435(conf=float(q("conf") or 0.25), imgsz=int(q("imgsz") or 416)))
         if p == "/api/point":
             return self._json(RS.deproject(float(q("u") or 0), float(q("v") or 0)))
         if p in ("/snap.jpg", "/snapshot/rs.jpg", "/snap/rs.jpg"):

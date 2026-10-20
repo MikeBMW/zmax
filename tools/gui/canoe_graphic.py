@@ -129,7 +129,11 @@ SCENE_GROUPS = (
 CORE_SIGNALS = (
     # 位姿 (真机 TCP 真值 latest.json)
     "ar.末端.x", "ar.末端.y", "ar.末端.z", "ar.末端.帧龄_s",
-    # 真机六维力 (xCoreSDK getEndTorque, 基座系; 插入轴 +x)
+    # 🔴 2026-10-20 19:3x 老倪: 「三力三力矩齐全(fx,fy,fz / tx,ty,tz), 你把这些加入信号分析窗口」+「没看到」
+    #   ⇒ 六分量逐条列出, 不用旧的 轴向/侧向 合成名当唯一入口 (轴向力_N 仍保留在后面)
+    "ar.末端.力x_N", "ar.末端.力y_N", "ar.末端.力z_N",
+    "ar.末端.力矩x_Nm", "ar.末端.力矩y_Nm", "ar.末端.力矩z_Nm",
+    # 真机六维力 合成口径 (兼容名, 判据用)
     "ar.末端.轴向力_N", "ar.末端.侧向力_N", "ar.末端.力帧龄_s",
     # 🤖 机器人状态机 (老倪 2026-10-20: 「直接看到是否在插拔」)
     "ar.机器人.插拔中", "ar.机器人.状态_码", "ar.机器人.运动中",
@@ -2018,7 +2022,7 @@ class CanoeGraphicWidget(QWidget):
         #   默认只列 CORE_SIGNALS(10 条: 末端 x/y/z + 真机六维力 + 两条帧龄); 取消勾选 = 回到全量视图。
         core_row = QHBoxLayout()
         self.core_only = True
-        self.b_core = self._btn("🎯 主要信号 (10 条)", "默认只列末端位姿 x/y/z + 真机轴向力/侧向力 + 帧龄;\n"
+        self.b_core = self._btn("🎯 主要信号 (六维力)", "默认只列末端位姿 x/y/z + 真机六维力 fx fy fz / tx ty tz + 轴向/侧向合成 + 帧龄;\n"
                                                        "取消勾选 = 显示全部信号 (AR 56 条 + 台账点位 + ROS/DDS)", "#8957e5")
         self.b_core.setCheckable(True)
         self.b_core.setChecked(True)

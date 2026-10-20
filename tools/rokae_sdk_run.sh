@@ -18,6 +18,10 @@ SDK_DIR="${ZMAX_SDK_DIR:-/home/ubuntu/zmax/zmax_data/rokae_sdk}"
 REPO_TOOLS="$(cd "$(dirname "$0")" && pwd)/rokae"
 IMAGE="${ZMAX_SDK_IMAGE:-ros:humble-ros-base}"
 
+# --script <name> : 跑 /repo/<name> 而不是默认的 sdk_ctl.py (2026-10-20 加, 给力控插入用)
+SCRIPT="sdk_ctl.py"
+if [ "${1:-}" = "--script" ]; then SCRIPT="$2"; shift 2; fi
+
 if [ ! -d "$SDK_DIR/xcoresdk_python" ]; then
   echo "⛔ 找不到 SDK: $SDK_DIR/xcoresdk_python (先从 Orin 拷一份, 见技能 rokae-direct-control)" >&2
   exit 2
@@ -28,4 +32,4 @@ exec sudo docker run --rm --network host \
   -e ZMAX_ROBOT_IP="${ZMAX_ROBOT_IP:-192.168.23.160}" \
   -v "$SDK_DIR":/sdk \
   -v "$REPO_TOOLS":/repo:ro \
-  -w /sdk "$IMAGE" python3 /repo/sdk_ctl.py "$@"
+  -w /sdk "$IMAGE" python3 "/repo/$SCRIPT" "$@"

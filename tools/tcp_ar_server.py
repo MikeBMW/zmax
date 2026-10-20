@@ -1329,7 +1329,11 @@ class H(BaseHTTPRequestHandler):
         _map = {"/snapshot/rs.jpg": "/snap.jpg", "/snap/rs.jpg": "/snap.jpg",
                 "/api/rs_info": "/api/info", "/api/rs_options": "/api/options",
                 "/api/rs_exposure": "/api/exposure", "/api/rs_pose": "/api/pose",
-                "/api/rs_detect": "/api/detect", "/api/rs_point": "/api/point"}
+                "/api/rs_detect": "/api/detect", "/api/rs_point": "/api/point",
+                # 🆕 2026-10-20 老倪选 B: D435 专用 1 类小头(只给 2D 框)
+                #   ⚠ 本进程在 do_GET 开头就把 **所有 /api/rs_** 交给这里代理(见 665 行), 所以这条必须
+                #   做成**路径映射**; 在 elif 链里加 p=="/api/rs_detect_d435" 是够不到的(死代码)。
+                "/api/rs_detect_d435": "/api/detect_d435"}
         _base = _p.split("?")[0]
         _qs = ("?" + _p.split("?", 1)[1]) if "?" in _p else ""
         url = "http://127.0.0.1:8789" + _map.get(_base, _base) + _qs

@@ -375,6 +375,10 @@ function drawTube(g, pts, opt){
   return {n:seg.length, zmin, zmax};
 }
 function drawModBox(g){
+  // 🔴 2026-10-20 老倪: 「?cam=rs 这个页面…usb 内置 D435 就不要显示 tool1 模块头坐标系了」
+  //   corners_px 是**臂相机**(D405·手眼+内参)算出来的像素 ⇒ 换到 D435 上就是错位几何。
+  //   只有当前底图就是臂相机时才画; 别的相机要画得先标定它自己的外参。
+  if(CAM!=='arm') return 0;
   if(!MOD3||!MOD3.ok||!MOD3ON) return 0;
   const P=MOD3.corners_px||[], E=(MOD3.edges||[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]);
   g.save();
@@ -421,11 +425,33 @@ async function loadToolFrame(){
   setTimeout(loadToolFrame, 30000);                // 30s 复核一次(手眼重标后自动跟上)
 }
 function drawToolFrame(g){
+  // 🔴 2026-10-20 老倪: 「usb 内置 D435 就不要显示 tool1 模块头坐标系了」(「位姿不是在屏幕正上方中心」)
+  //   tool1 的屏幕像素是按**臂相机**一次算好、之后每帧当常量重画的(相机装腕上 ⇒ 像素固定)。
+  //   换到 D435 上这组像素没有物理意义, 只会把一个坐标系画在画面歪处 ⇒ 只在臂相机画。
+  if(CAM!=='arm') return 0;
   if(!TFON||!TF||!TF.ok) return 0;
   const sx=IMG_W/((TF.img&&TF.img[0])||640), sy=IMG_H/((TF.img&&TF.img[1])||480);
   const P=q=>[q[0]*sx, q[1]*sy];
   const O=P(TF.origin);
   const AX=[['X',TF.axes.X,'#ff5c5c'],['Y',TF.axes.Y,'#4dd24d'],['Z',TF.axes.Z,'#4da3ff']];
+  // 🆕 2026-10-20 老倪「机器人手臂相机 模块头 的 tool1 模块头坐标系哪里去了?」
+  //   不是没画: 模块头贴到画面**右下角**(实测 origin=[616.8,478.0], tip_clipped=["bottom"]),
+  //   三个轴全被画布裁掉, 屏幕上只剩"看不见" ⇒ 出画时改成贴边指示器, 保证永远找得到。
+  const EDGE=10;
+  const _out = O[0]<EDGE||O[0]>IMG_W-EDGE||O[1]<EDGE||O[1]>IMG_H-EDGE;
+  if(_out){
+    g.save(); g.lineWidth=2.5; g.font='bold 13px monospace';
+    const cx=Math.min(Math.max(O[0],28),IMG_W-28), cy=Math.min(Math.max(O[1],24),IMG_H-18);
+    g.fillStyle='rgba(0,0,0,.66)';
+    const lab='◤ tool1 出画 ('+O[0].toFixed(0)+','+O[1].toFixed(0)+')';
+    g.fillRect(cx-24, cy-16, g.measureText(lab).width+10, 20);
+    g.fillStyle='#ffd166'; g.fillText(lab, cx-18, cy-2);
+    g.strokeStyle='#ffd166'; g.beginPath(); g.arc(cx, cy+14, 7, 0, 7); g.stroke();
+    g.beginPath(); g.moveTo(O[0],O[1]); g.lineTo(cx,cy+14); g.setLineDash([4,4]);
+    g.strokeStyle='rgba(255,209,102,.55)'; g.stroke(); g.setLineDash([]);
+    g.restore();
+    return 3;
+  }
   g.save(); g.lineWidth=3; g.font='bold 15px system-ui';
   // 只标一处: tool1(模块头)
   g.fillStyle='#e6edf3'; g.font='bold 14px system-ui';
@@ -446,13 +472,65 @@ function drawToolFrame(g){
   // 老倪 2026-10-19「原来的 331 62 z=218 删掉」⇒ 像素坐标与 z 不再上屏，只留 tool1(模块头)
   g.restore(); return 3;
 }
+// 🆕 2026-10-20 老倪选 B: 「单独给 D435 视角训一个检测头(现权重 0 检出), 只能给 2D 框」
+//  → 页面对 `?cam=rs` 轮询 /api/rs_detect_d435(D435 专用 1 类小头, 跑在 8789), 只画 2D 框;
+//    不做 3D、不碰 tool1 —— 那两样要 D435 的外参(未标定)。
+let PEG2D=null;                                    // {boxes:[{xyxy,conf}], ts, age_s, ms, thr}
+function drawPeg2D(g){
+  if(CAM!=='rs'||!PEG2D) return 0;
+  if(performance.now()/1000 - PEG2D.ts > 2.0) return 0;   // 数据超过 2s 就不画(不拿旧框冒充)
+  const bs=PEG2D.boxes||[];
+  bs.forEach((b,i)=>{
+    const [x1,y1,x2,y2]=b.xyxy;
+    g.save();
+    g.strokeStyle='#39d353'; g.lineWidth=2; g.setLineDash([]);
+    g.strokeRect(x1,y1,x2-x1,y2-y1);
+    // 角标: 让"这是 2D 框"一眼可见(和臂相机的 3D 框不是一回事)
+    g.strokeStyle='#0b7'; g.lineWidth=3;
+    const L=Math.max(8,Math.min(18,(x2-x1)/4, (y2-y1)/4));
+    [[x1,y1,1,1],[x2,y1,-1,1],[x1,y2,1,-1],[x2,y2,-1,-1]].forEach(([cx,cy,sx,sy])=>{
+      g.beginPath(); g.moveTo(cx+sx*L,cy); g.lineTo(cx,cy); g.lineTo(cx,cy+sy*L); g.stroke();
+    });
+    const lab='光模块2D '+b.conf.toFixed(2);
+    g.font='12px monospace';
+    const tw=g.measureText(lab).width+8;
+    const ly=Math.max(12, y1-6);
+    g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(x1, ly-11, tw, 14);
+    g.fillStyle='#39d353'; g.fillText(lab, x1+4, ly);
+    g.restore();
+  });
+  return bs.length;
+}
+// 🆕 D435 专用 2D 头轮询(只给 `?cam=rs`; 其他相机不打扰 8789)
+async function peg2dTick(){
+  if(CAM!=='rs'){ if(PEG2D){ PEG2D=null; try{drawOv();}catch(e){} } return; }
+  if(document.hidden) return;
+  try{
+    const d=await (await fetch('/api/rs_detect_d435?conf=0.30&imgsz=416')).json();
+    PEG2D={boxes:(d&&d.ok)?(d.boxes||[]):[], ts:performance.now()/1000,
+           age_s:d&&d.age_s, ms:d&&d.ms, thr:(d&&d.conf_thr)||0.30,
+           err:(d&&d.ok)?'':((d&&d.err)||'请求失败')};
+    drawOv();
+  }catch(e){ PEG2D={boxes:[], ts:performance.now()/1000, err:'fetch: '+e.message}; try{drawOv();}catch(_e){} }
+}
 function drawOv(){
   const c=$('ov'), g=c.getContext('2d');
   g.clearRect(0,0,IMG_W,IMG_H);
   const nTf=drawToolFrame(g);                      // ▣ tool1 坐标系(臂相机, 像素固定)
   const nMod=drawModBox(g);                        // 🔍 光模块 3D 框先画(不吃 AR 标定)
-  if(!CALIB){ $('hint').textContent=nMod?('光模块 3D 框已画 ('+nMod+' 条棱) · AR 叠加需要先标定 '+(CAMS[CAM]||{}).label||CAM)
-             :`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`; return; }
+  const nPeg2D=drawPeg2D(g);                       // 🆕 D435 专用 2D 框(老倪 2026-10-20 选的 B 路线)
+  // 换到非臂相机时这两样按设计不画(它们的像素来自臂相机)。这里把"为什么不画"写在提示条上,
+  // 免得看着像坏了 —— 2026-10-20 老倪「D435 就不要显示 tool1 模块头坐标系了」。
+  const _camLabel = (CAMS[CAM]||{}).label || CAM;
+  const _d435 = (CAM==='rs') ? (PEG2D
+      ? (' · D435专用头 检出 '+((PEG2D.boxes||[]).length)+' 个 (conf≥'+(PEG2D.thr||0.30)+' · '+((PEG2D.ms==null)?'—':PEG2D.ms+'ms')+' · 帧龄 '+((PEG2D.age_s==null)?'—':PEG2D.age_s+'s')+')')
+      : ' · D435专用头 无数据') : '';
+  const _notArm = (CAM!=='arm')
+      ? ('（光模块 3D 框 / tool1 模块头坐标系只画在臂相机 🦾 D405 上；' + _camLabel + ' 走 D435 专用 2D 头' + _d435 + '）')
+      : '';
+  if(!CALIB){ $('hint').textContent=_notArm? _notArm
+             :(nMod?('光模块 3D 框已画 ('+nMod+' 条棱) · AR 叠加需要先标定 '+(CAMS[CAM]||{}).label||CAM)
+             :`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`); return; }
   if(!SHOW){ $('hint').textContent='轨迹已隐藏(默认不显示) —— 点『显示轨迹』'; return; }
   let n1=0,n2=0;
   if(TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
@@ -1336,6 +1414,7 @@ async function robotTick(){
   //   真源 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
   robotTick(); setInterval(robotTick,1000);
   lockTick(); setInterval(lockTick,3000);
+  peg2dTick(); setInterval(peg2dTick,600);          // 🆕 D435 专用 2D 头
   // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
   //   老倪 2026-10-19「点击刷新也不好使」时, 服务端只看得到 /api/* 轮询, 看不到 bus y卡死/hidden/CAMS。
   //   有了这条, 现场"画面不动"能直接判定是 泵卡死 / 没相机键 / 页面没初始化, 而不是靠猜。

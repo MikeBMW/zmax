@@ -84,6 +84,13 @@ SPEC = [
     ("末端.侧向力y_N", G_AR_PTS, "N", "真机六维力 fy (带符号, 基座系; 侧向左右) ← 同上"),
     ("末端.侧向力z_N", G_AR_PTS, "N", "真机六维力 fz (带符号, 基座系; 侧向上下) ← 同上"),
     ("末端.力帧龄_s", G_AR_PTS, "s", "六维力真值文件写龄 (>1s 视为陈旧); 采样器不在跑 ⇒ 不写(波形空), 不写 0 冒充"),
+    # —— 六维力六分量全量 (老倪 2026-10-20 19:1x: 「三力三力矩齐全, 你把这些加入信号分析窗口」) ——
+    ("末端.力x_N", G_AR_PTS, "N", "真机六维力 fx (基座系 +x = 插入轴/轴向) ← ft_out/latest.json ← xCoreSDK getEndTorque 只读 10Hz"),
+    ("末端.力y_N", G_AR_PTS, "N", "真机六维力 fy (带符号, 基座系; 侧向左右)"),
+    ("末端.力z_N", G_AR_PTS, "N", "真机六维力 fz (带符号, 基座系; 侧向上下)"),
+    ("末端.力矩x_Nm", G_AR_PTS, "Nm", "真机六维力矩 tx (基座系) ← 同一帧, 与力同源同刻"),
+    ("末端.力矩y_Nm", G_AR_PTS, "Nm", "真机六维力矩 ty (基座系)"),
+    ("末端.力矩z_Nm", G_AR_PTS, "Nm", "真机六维力矩 tz (基座系)"),
     # —— 🤖 机器人状态机 (老倪 2026-10-20: 直接看到"是否在插拔") ——
     ("机器人.状态_码", G_ROBOT, "0=未连接/1=急停报警/2=未使能(伺服off)/3=手动/4=自动待机/5=自动运行",
      "tools/robot_state.py snapshot(): 控制器三查 tcp_out/state.json + 位姿 latest.json + 阶段 ss_live/skill_dispatch.json"),
@@ -346,6 +353,10 @@ def _motion():
     return out
 
 
+_DDS_CACHE = {"t": 0.0, "v": None}
+DDS_FORCE_EVERY_S = float(os.environ.get("ZMAX_DDS_FORCE_EVERY_S", "1.0"))
+
+
 def _tangential_force():
     """插拔切向力 = DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x)。
 
@@ -359,7 +370,16 @@ def _tangential_force():
         os.environ.setdefault("CYCLONEDDS_URI", "file://%s/dds/cyclonedds_unicast.xml" % ROOT)
         from zmax_node import Node                                                # noqa: PLC0415
         _DDS_NODE = Node("ar_aoi_bus", domain=0)
-    msgs = _DDS_NODE.take("ss_force_l2", timeout=0.30) or []   # 0.05s 太短: discovery 没走完就返回空, 实测 0.3s 稳
+    # 🔴 2026-10-20 老倪「信号分析总是断开, 保持信号连续」:
+    #   take(timeout=0.30) 每轮阻塞 0.3s ⇒ pull() 全程 400ms ⇒ 总线最快 2Hz, 波形必然断成点。
+    #   改: DDS 这一路**降频抓**(默认 1s 一次), 其余快源(六维力/位姿) 保持高频, 值用缓存。
+    global _DDS_CACHE
+    _now = time.time()
+    if _DDS_CACHE.get("v") is None or _now - _DDS_CACHE.get("t", 0.0) >= DDS_FORCE_EVERY_S:
+        # 首次要等 discovery(0.3s); 之后队列里没新帧就是空, 用 0.02s 立即返回 (否则每秒白等 0.3s ⇒ 波形卡顿)
+        _to = 0.30 if _DDS_CACHE.get("v") is None else 0.02
+        _DDS_CACHE = {"t": _now, "v": _DDS_NODE.take("ss_force_l2", timeout=_to) or []}
+    msgs = _DDS_CACHE.get("v") or []
     if not msgs:
         return {}
     m = msgs[-1]
@@ -408,13 +428,24 @@ def _real_force():
         return {}, {"real_force": "未接: 力的分量不是数 (%r, %r, %r)" % (fx, fy, fz)}
     if not all(math.isfinite(v) for v in (fx, fy, fz)):
         return {}, {"real_force": "未接: 力的分量含 NaN/Inf"}
+    tx = d.get("tx"); ty = d.get("ty"); tz = d.get("tz")
     out = {
         "末端.力帧龄_s": round(age, 3),
+        "末端.力x_N": round(fx, 4),
+        "末端.力y_N": round(fy, 4),
+        "末端.力z_N": round(fz, 4),
         "末端.轴向力_N": round(fx, 4),                       # 插入轴 = base +x
         "末端.侧向力_N": round(math.hypot(fy, fz), 4),       # 垂直于插入轴的合力
         "末端.侧向力y_N": round(fy, 4),
         "末端.侧向力z_N": round(fz, 4),
     }
+    if tx is not None and ty is not None and tz is not None:
+        try:
+            out["末端.力矩x_Nm"] = round(float(tx), 4)
+            out["末端.力矩y_Nm"] = round(float(ty), 4)
+            out["末端.力矩z_Nm"] = round(float(tz), 4)
+        except Exception:                                                         # noqa: BLE001
+            pass
     # ✅ 有真值时也写一句"这数是不是活的"(老倪: 实时数据必须标帧龄/来源; 别 silent)
     return out, {"real_force": "真机六维力 %s · 参考系 %s · 帧龄 %.2fs · 轴向 %.2fN 侧向 %.2fN"
                                % (SRC_FT, frame, age, fx, math.hypot(fy, fz))}
@@ -562,7 +593,7 @@ def publish(signals, meta=None, prov=None, quiet=False):
                 f.write(old)
     except Exception:                                                             # noqa: BLE001
         pass
-    tmp = LIVE + ".tmp"
+    tmp = "%s.tmp.%d" % (LIVE, os.getpid())   # 每进程唯一: 两个写者用同名 tmp 会 os.replace 抢到不存在文件
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False)
     os.replace(tmp, LIVE)
@@ -649,7 +680,7 @@ def main():
                                                    r.get("n_points", -1), r.get("ok")), flush=True)
             except Exception as e:                                                # noqa: BLE001
                 print("[%s] 抓取失败: %s: %s" % (time.strftime("%H:%M:%S"), type(e).__name__, e), flush=True)
-            time.sleep(max(0.5, a.interval))
+            time.sleep(max(0.05, a.interval))   # 2026-10-20 老倪「不要自己刷新, 保持信号连续」: 下限 0.5s→0.05s, 否则最快 2Hz, 波形必然断成点
     elif a.cmd == "show":
         d = _j(LIVE, {}) or {}
         s = d.get("s") or {}
