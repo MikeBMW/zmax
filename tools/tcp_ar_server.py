@@ -650,6 +650,17 @@ class H(BaseHTTPRequestHandler):
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p == "/api/robot_state":        # 🤖 机器人状态机 (是否在插拔 ⇒ 页面顶部一眼看到)
+                #   真源 = tools/robot_state.py (控制器三查 + 位姿 + 阶段文件), 本服务只做只读代发。
+                try:
+                    import importlib.util as _ilu
+                    _sp = _ilu.spec_from_file_location(
+                        "zmax_robot_state", os.path.join(REPO, "tools", "robot_state.py"))
+                    _m = _ilu.module_from_spec(_sp)
+                    _sp.loader.exec_module(_m)                              # type: ignore[union-attr]
+                    self._json({"ok": True, "robot": _m.snapshot()})
+                except Exception as e:                                      # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:200])})
             elif p in ("/toolframe.jpg", "/toolframe.png"):   # ▣ 画好 tool1 坐标系的臂相机图(直接看图, 不用等页面刷新)
                 try:
                     L = float(qs.get("len", "80") or 80)

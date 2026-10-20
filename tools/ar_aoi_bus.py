@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -34,6 +35,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIVE = os.path.join(ROOT, "zmax_data", "ar_live", "ar_aoi_live.json")
 REGISTRY = os.path.join(ROOT, "config", "topics", "ar_aoi_signals.json")
 TCP = os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+# 🦾 真机六维力 (2026-10-20 老倪: 「末端执行器的 x y z 和 插拔的侧向力, 显示出来, 来自于真实的机器人」)
+#   单一写入器 = tools/rokae/ft_direct_sampler.py (珞石 xCoreSDK forceControl().getEndTorque, 只读, 不发运动)
+#   口径: 写的是**基座系**分量 (frame=world) —— 插入轴 = base +x ⇒ 侧向力 = hypot(fy, fz)。
+#   本总线只做换算, 不在这一层猜坐标系: frame 不是 world/base 就拒用(宁可这条通道空着)。
+FT = os.path.join(ROOT, "zmax_data", "rokae_sdk", "ft_out", "latest.json")
 TEACH_D = os.path.join(ROOT, "reports", "aoi_points")
 SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
 AOI_STATE = os.path.join(ROOT, "zmax_data", "ar_aoi_state.json")
@@ -46,6 +52,8 @@ G_AR_CAM = "AR·相机 (RealSense D435 · 相机系)"
 G_AOI_GF = "AOI·金手指 (工控机 10082)"
 G_AOI_SURF = "AOI·表面 (工控机 10083)"
 G_AOI_NODE = "AOI·状态空间节点 (光学质量检测)"
+# 🤖 2026-10-20 老倪: 「AR 场景…把机器人的状态机接上, 可以直接看到是否在插拔」⇒ 机器人状态机独立成组
+G_ROBOT = "AR·机器人状态机 (插拔判定)"
 
 SPEC = [
     # —— AR 空间点位 (基座系, 全部来自真值/台账) ——
@@ -69,6 +77,22 @@ SPEC = [
     ("末端.vy", G_AR_PTS, "mm/s", "同上 (y 分量)"),
     ("末端.vz", G_AR_PTS, "mm/s", "同上 (z 分量)"),
     ("末端.切向力_N", G_AR_PTS, "N", "DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x); 驱动无读数时不写该键。命名避开\"插拔\"二字: 信号名里出现插拔会被场景规则染成插拔场景绿"),
+    # —— 🦾 真机六维力 (只来自机器人本身, 不是平台自算力) ——
+    ("末端.轴向力_N", G_AR_PTS, "N", "真机六维力 fx (基座系 +x = 插入轴) ← zmax_data/rokae_sdk/ft_out/latest.json (tools/rokae/ft_direct_sampler.py, xCoreSDK getEndTorque, 只读); 力未接/陈旧时不写该键"),
+    ("末端.侧向力_N", G_AR_PTS, "N", "真机六维力 侧向合力 = hypot(fy, fz) (垂直于插入轴, 基座系) ← 同上; 力未接/陈旧时不写该键"),
+    ("末端.侧向力y_N", G_AR_PTS, "N", "真机六维力 fy (带符号, 基座系; 侧向左右) ← 同上"),
+    ("末端.侧向力z_N", G_AR_PTS, "N", "真机六维力 fz (带符号, 基座系; 侧向上下) ← 同上"),
+    ("末端.力帧龄_s", G_AR_PTS, "s", "六维力真值文件写龄 (>1s 视为陈旧); 采样器不在跑 ⇒ 不写(波形空), 不写 0 冒充"),
+    # —— 🤖 机器人状态机 (老倪 2026-10-20: 直接看到"是否在插拔") ——
+    ("机器人.状态_码", G_ROBOT, "0=未连接/1=急停报警/2=未上电/3=手动/4=自动待机/5=自动运行",
+     "tools/robot_state.py snapshot(): 控制器三查 tcp_out/state.json + 位姿 latest.json + 阶段 ss_live/skill_dispatch.json"),
+    ("机器人.插拔中", G_ROBOT, "0=否/1=是",
+     "当前阶段 ∈ {插入,拔出,插拔} 或 执行技能名含 insert/pull/插入 ⇒ 1; 阶段拿不到时不写该键(未知≠否)"),
+    ("机器人.运动中", G_ROBOT, "0=停/1=动", "TCP 真值差分实测速度 >1mm/s (或控制器 op!=idle); 未连接时不写"),
+    ("机器人.阶段_码", G_ROBOT, "0..7=接近/对位/下降/抓取/抬起/转移/插入/完成 · -1=未知",
+     "ss_live/skill_dispatch.json stage (chunk_pipeline 每拍写) → 备路 skill_gate.json"),
+    ("机器人.报警数", G_ROBOT, "个", "控制器 state.json n_err_recent"),
+    ("机器人.状态帧龄_s", G_ROBOT, "s", "state.json 写龄 (>5s 判未连接)"),
     # —— AR 相机 (RealSense, 相机系) ——
     ("相机.目标_x_m", G_AR_CAM, "m", "AR 服务 8797 /api/rs_pose (深度真值; 相机系, 非基座系)"),
     ("相机.目标_y_m", G_AR_CAM, "m", "同上"),
@@ -113,6 +137,7 @@ GROUP_RULES = (
     ("AOI.表面", G_AOI_SURF),
     ("AOI.", G_AOI_GF),
     ("光学质量检测.", G_AOI_NODE),
+    ("机器人.", G_ROBOT),
     ("相机.", G_AR_CAM),
     ("末端.", G_AR_PTS), ("金手指点", G_AR_PTS), ("侧面点", G_AR_PTS), ("准备点", G_AR_PTS),
     ("安全点", G_AR_PTS), ("空间点", G_AR_PTS), ("叠加.", G_AR_PTS),
@@ -349,6 +374,77 @@ def _tangential_force():
     return out
 
 
+def _real_force():
+    """🦾 真机六维力 → 轴向力 / 侧向力 (基座系, 插入轴 = base +x)。
+
+    单一真源 = `zmax_data/rokae_sdk/ft_out/latest.json`, 由 `tools/rokae/ft_direct_sampler.py`
+    用珞石 xCoreSDK `forceControl().getEndTorque()` **只读**采样写出 (不发任何运动指令)。
+    契约 (缺一项就整批不写, 绝不补 0):
+      · frame ∈ {world, base, base_link}  —— 侧向力必须在基座系算, 工具系算出来是错量
+      · 文件写龄 ≤ 1.0s                 —— 采样器停了就是没接, 波形该空着
+      · fx/fy/fz 都在且是有限数
+    信号名里**不出现「插拔/插入」**: 那两个词会被 sig_scene_tags 的关键词表染成插拔场景绿。
+    """
+    d = _j(FT, {}) or {}
+    if not d:
+        return {}, {"real_force": "未接: 无 %s (ft_direct_sampler.py 未运行 / 控制器 192.168.23.160 不在线)"
+                          % os.path.relpath(FT, ROOT)}
+    frame = str(d.get("frame") or "")
+    if frame not in ("world", "base", "base_link"):
+        return {}, {"real_force": "拒用: 力的参考系 = %r (侧向力只在基座系有物理意义)" % frame}
+    ts = float(d.get("ts") or 0)
+    age = time.time() - ts
+    if age > 1.0:
+        _why = str(d.get("err") or "")
+        return {}, {"real_force": "未接: 力的真值帧龄 %.1fs > 1s%s"
+                                 % (age, (" · 采样器最后错误: " + _why) if _why else " (采样器已停, 值不当实时用)")}
+    fx, fy, fz = (d.get("fx"), d.get("fy"), d.get("fz"))
+    if fx is None or fy is None or fz is None:
+        return {}, {"real_force": "未接: 采样器报错 %s" % (d.get("err") or "缺 fx/fy/fz")}
+    try:
+        fx, fy, fz = float(fx), float(fy), float(fz)
+    except Exception:                                                             # noqa: BLE001
+        return {}, {"real_force": "未接: 力的分量不是数 (%r, %r, %r)" % (fx, fy, fz)}
+    if not all(math.isfinite(v) for v in (fx, fy, fz)):
+        return {}, {"real_force": "未接: 力的分量含 NaN/Inf"}
+    out = {
+        "末端.力帧龄_s": round(age, 3),
+        "末端.轴向力_N": round(fx, 4),                       # 插入轴 = base +x
+        "末端.侧向力_N": round(math.hypot(fy, fz), 4),       # 垂直于插入轴的合力
+        "末端.侧向力y_N": round(fy, 4),
+        "末端.侧向力z_N": round(fz, 4),
+    }
+    return out, {}
+
+
+_RS_MOD = None
+
+
+def _robot_state():
+    """🤖 机器人状态机 → 数值信号 + 一行文字 (真源唯一: tools/robot_state.py)。"""
+    global _RS_MOD
+    if _RS_MOD is None:
+        import importlib.util
+        _p = os.path.join(ROOT, "tools", "robot_state.py")
+        _spec = importlib.util.spec_from_file_location("zmax_robot_state", _p)
+        _m = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
+        _RS_MOD = _m
+    st = _RS_MOD.snapshot()
+    sig = {"机器人.状态_码": float(st.get("code") or 0)}
+    if st.get("alarm_n") is not None:
+        sig["机器人.报警数"] = float(st.get("alarm_n") or 0)
+    if st.get("state_age_s") is not None:
+        sig["机器人.状态帧龄_s"] = float(st["state_age_s"])
+    if bool(st.get("connected")) and st.get("moving") is not None:
+        sig["机器人.运动中"] = 1.0 if st["moving"] else 0.0
+    if st.get("inserting") is not None:           # 未知就不写 (未知 ≠ 否)
+        sig["机器人.插拔中"] = 1.0 if st["inserting"] else 0.0
+    if (st.get("stage_idx") or -1) >= 0:
+        sig["机器人.阶段_码"] = float(st["stage_idx"])
+    return sig, {"robot": st.get("text") or ""}
+
+
 def pull(publish_it=True, quiet=False):
     """从各真源抓一轮 → 合并 → 写 live 文件 (取不到的键不写)。"""
     sig: dict = {}
@@ -367,6 +463,21 @@ def pull(publish_it=True, quiet=False):
         prov["force"] = len(tf)
     except Exception as e:                                                        # noqa: BLE001
         meta["force"] = "%s: %s" % (type(e).__name__, str(e)[:100])
+    # 🦾 真机六维力 (轴向/侧向) —— 只在真值新鲜且在基座系时才写键, 否则 meta 里记"未接"
+    try:
+        rf, rm = _real_force()
+        sig.update(rf)
+        meta.update(rm)
+        prov["real_force"] = len(rf)
+    except Exception as e:                                                        # noqa: BLE001
+        meta["real_force"] = "%s: %s" % (type(e).__name__, str(e)[:100])
+    try:
+        rb, rm = _robot_state()
+        sig.update(rb)
+        meta.update(rm)
+        prov["robot"] = len(rb)
+    except Exception as e:                                                        # noqa: BLE001
+        meta["robot"] = "%s: %s" % (type(e).__name__, str(e)[:100])
     for fn, tag in ((_tcp, "tcp"),):
         try:
             d, m = fn()
@@ -432,7 +543,10 @@ def publish(signals, meta=None, prov=None, quiet=False):
     doc = {"ts": round(time.time(), 3), "t": time.strftime("%Y-%m-%d %H:%M:%S"),
            "s": prev_s, "age": {}, "meta": {"last_pull": meta or {}, "prov": prov or {},
                                             "registry": REGISTRY, "by": "ar_aoi_bus.py"},
-           "groups": {k: v[0] for k, v in KEYMAP.items()}}
+           # 🥽 2026-10-20: groups 原来只覆盖 SPEC(KEYMAP) 里的键 ⇒ 台账点位(光模块插入口 等)
+           #   在 live 里没有组名, 窗口只能把几十条点位丢进「AR 场景 · 其它信号」, 与注册表对不上。
+           #   改为**每个真在发的键都按 group_of 归组**(注册表用的是同一套规则 ⇒ 两边一致)。
+           "groups": {k: group_of(k) for k in prev_s}}
     now = time.time()
     for k in prev_s:
         doc["age"][k] = 0.0

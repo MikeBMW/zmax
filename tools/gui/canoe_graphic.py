@@ -122,6 +122,20 @@ SCENE_GROUPS = (
     ("基础场景", "⚪ 基础场景 · 未分类信号 (真机位姿 / 安全 / YOLO / 空间点 / ROS / DDS 遥测)"),
 )
 
+# 🎯 2026-10-20 老倪: 「信号分析, 不要打开那么多信号, 没有用, 还看不清;
+#   只要有位姿等主要信号, 不要超过 10 个」
+#   口径: **默认只列这 10 条**(真机末端位姿 + 真机六维力 + 两条帧龄), 全量(56 条 AR + 台账点位 +
+#   ROS/DDS)仍原样保留, 点顶部「🎯 主要信号」取消勾选即可看全 —— 不是删数据, 只是显示口径收口。
+CORE_SIGNALS = (
+    # 位姿 (真机 TCP 真值 latest.json)
+    "ar.末端.x", "ar.末端.y", "ar.末端.z", "ar.末端.帧龄_s",
+    # 真机六维力 (xCoreSDK getEndTorque, 基座系; 插入轴 +x)
+    "ar.末端.轴向力_N", "ar.末端.侧向力_N", "ar.末端.力帧龄_s",
+    # 🤖 机器人状态机 (老倪 2026-10-20: 「直接看到是否在插拔」)
+    "ar.机器人.插拔中", "ar.机器人.状态_码", "ar.机器人.运动中",
+)
+CORE_GROUP = "🎯 主要信号 · 末端位姿 + 真机力"
+
 
 def _scene_tags_mod():
     """加载 信号→场景 标签真源; 任何异常都返回 None(页面照常可用, 只是不标色)。"""
@@ -1761,7 +1775,7 @@ class CanoeGraphicWidget(QWidget):
         b.setCursor(Qt.PointingHandCursor)
         b.setStyleSheet(f"""
             QPushButton{{background:{C_BG2}; color:{C_WHITE}; border:1px solid {C_BORDER};
-                        border-radius:5px; padding:4px 9px; font-size:13px;}}
+                        border-radius:5px; padding:4px 9px; font-size:16px;}}
             QPushButton:hover{{border-color:{color}; color:{color};}}
             QPushButton:checked{{background:{color}22; border-color:{color}; color:{color};}}
         """)
@@ -1798,7 +1812,7 @@ class CanoeGraphicWidget(QWidget):
             self.win_combo.addItem(label, val)
         self.win_combo.setCurrentIndex(1)
         self.win_combo.setStyleSheet(f"QComboBox{{background:{C_BG2};color:{C_WHITE};border:1px solid {C_BORDER};"
-                                     f"border-radius:5px;padding:4px 6px;font-size:13px;}}")
+                                     f"border-radius:5px;padding:4px 6px;font-size:16px;}}")
         self.win_combo.currentIndexChanged.connect(self._on_window_changed)
 
         self.ymode = QComboBox()
@@ -1893,15 +1907,15 @@ class CanoeGraphicWidget(QWidget):
         st = QHBoxLayout()
         st.setSpacing(14)
         self.lb_state = QLabel("● 未启动")
-        self.lb_state.setStyleSheet(f"color:{C_ORANGE}; font-size:13px;")
+        self.lb_state.setStyleSheet(f"color:{C_ORANGE}; font-size:16px;")
         self.lb_info = QLabel("")
-        self.lb_info.setStyleSheet(f"color:{C_DIM}; font-size:13px;")
+        self.lb_info.setStyleSheet(f"color:{C_DIM}; font-size:16px;")
         st.addWidget(self.lb_state)
         st.addWidget(self.lb_info)
         st.addStretch()
         self.lb_legend = QLabel("")
         self.lb_legend.setTextFormat(Qt.RichText)
-        self.lb_legend.setStyleSheet(f"font-size:13px;")
+        self.lb_legend.setStyleSheet(f"font-size:16px;")
         st.addWidget(self.lb_legend)
         for _w in (self.lb_state, self.lb_info, self.lb_legend):   # 文字行只留八阶段
             _w.setParent(self)
@@ -1912,7 +1926,7 @@ class CanoeGraphicWidget(QWidget):
         #    当前段 **粗体+场景绿+【】**, 已走过段淡显, 未到段常规 —— 一眼看出"现在在第几段、叫什么"。
         self.lb_stages = QLabel("")
         self.lb_stages.setTextFormat(Qt.RichText)
-        self.lb_stages.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        self.lb_stages.setStyleSheet(f"color:{C_DIM}; font-size:16px; padding:2px 4px;")
         # 长富文本会把窗口的 minimumSizeHint 顶大 (实测窗口被撑到 3068x1936 ⇒ 大半跑到屏幕外),
         # 所以这里**不参与宽度诉求**: 水平 policy = Ignored, 由布局按剩余空间裁。
         try:
@@ -1929,7 +1943,7 @@ class CanoeGraphicWidget(QWidget):
         #    页面**不自己编**名字: 没有载荷就写"等话题/未生成", 并给出怎么生成 (ss_meta_predict.py)。
         self.lb_meta = QLabel("")
         self.lb_meta.setTextFormat(Qt.RichText)
-        self.lb_meta.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        self.lb_meta.setStyleSheet(f"color:{C_DIM}; font-size:16px; padding:2px 4px;")
         try:
             self.lb_meta.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             self.lb_meta.setMinimumWidth(0)
@@ -1947,7 +1961,7 @@ class CanoeGraphicWidget(QWidget):
         #    H/阶段/平滑性/技能派发 + 帧龄; 没块就写"等引擎出块", 不编。
         self.lb_chunk = QLabel("")
         self.lb_chunk.setTextFormat(Qt.RichText)
-        self.lb_chunk.setStyleSheet(f"color:{C_DIM}; font-size:13px; padding:2px 4px;")
+        self.lb_chunk.setStyleSheet(f"color:{C_DIM}; font-size:16px; padding:2px 4px;")
         try:
             self.lb_chunk.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             self.lb_chunk.setMinimumWidth(0)
@@ -1973,7 +1987,7 @@ class CanoeGraphicWidget(QWidget):
         self.filter = QLineEdit()
         self.filter.setPlaceholderText("过滤信号…")
         self.filter.setStyleSheet(f"QLineEdit{{background:{C_BG2};color:{C_WHITE};border:1px solid {C_BORDER};"
-                                  f"border-radius:5px;padding:4px 6px;font-size:13px;}}")
+                                  f"border-radius:5px;padding:4px 6px;font-size:16px;}}")
         self.filter.textChanged.connect(lambda _: self._fill_tree())
         b_refresh = self._btn("⟳ 话题目录", "从 Orin 刷新话题字段 (任意话题)", C_BLUE)
         b_refresh.clicked.connect(self.refresh_catalog)
@@ -1992,13 +2006,30 @@ class CanoeGraphicWidget(QWidget):
             sc_row.addWidget(_b)
         sc_row.addStretch(1)
         self._scene_lab = QLabel("")
-        self._scene_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px")
+        self._scene_lab.setStyleSheet(f"color:{C_DIM}; font-size:14px")
         # 🧹 2026-10-17 老倪: 「上边好几行文字, 除了八阶段那行, 全都删掉」
         #   「场景排序: … 当前数据源场景: … 计数 …」这行也是文字行 ⇒ 不上面板 (对象保留, 状态照算)
         self._scene_lab.setParent(self)
         self._scene_lab.hide()
         lv.addLayout(sc_row)
         self._scene_sync_lab()
+
+        # 🎯 2026-10-20 老倪: 「不要打开那么多信号, 没有用, 还看不清; 只要有位姿等主要信号, 不要超过 10 个」
+        #   默认只列 CORE_SIGNALS(10 条: 末端 x/y/z + 真机六维力 + 两条帧龄); 取消勾选 = 回到全量视图。
+        core_row = QHBoxLayout()
+        self.core_only = True
+        self.b_core = self._btn("🎯 主要信号 (10 条)", "默认只列末端位姿 x/y/z + 真机轴向力/侧向力 + 帧龄;\n"
+                                                       "取消勾选 = 显示全部信号 (AR 56 条 + 台账点位 + ROS/DDS)", "#8957e5")
+        self.b_core.setCheckable(True)
+        self.b_core.setChecked(True)
+        self.b_core.toggled.connect(self._set_core_only)
+        core_row.addWidget(self.b_core)
+        self._core_lab = QLabel("")
+        self._core_lab.setStyleSheet(f"color:{C_DIM}; font-size:14px")
+        self._core_lab.setParent(self)        # 文字行不上面板(老倪 2026-10-17: 上边别堆字)
+        self._core_lab.hide()
+        core_row.addStretch(1)
+        lv.addLayout(core_row)
 
         # ⚙️ 2026-10-12 老倪: 「现在的实时监控, 要能看出配置」——顶部常显一行"当前配置"
         #   (任务/场景+色/配方/工艺步数/启用节点/档位/覆盖参数/配置单文件与时间);
@@ -2007,7 +2038,7 @@ class CanoeGraphicWidget(QWidget):
         self._cfg_lab = QLabel("")
         self._cfg_lab.setTextFormat(Qt.RichText)
         self._cfg_lab.setWordWrap(True)
-        self._cfg_lab.setStyleSheet(f"color:{C_DIM}; font-size:12px; padding:2px 3px;")
+        self._cfg_lab.setStyleSheet(f"color:{C_DIM}; font-size:14px; padding:2px 3px;")
         self._cfg_lab.setParent(self)     # 「当前配置 …」整行文字 ⇒ 不上面板
         self._cfg_lab.hide()
         self._fill_cfg()
@@ -2027,16 +2058,16 @@ class CanoeGraphicWidget(QWidget):
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.setStyleSheet(f"""
             QTreeWidget{{background:{C_BG2}; color:#c9d1d9; border:1px solid {C_BORDER};
-                         border-radius:6px; font-size:13px;
+                         border-radius:6px; font-size:16px;
                          alternate-background-color:#11161d;}}
             QTreeWidget::item:selected{{background:{C_BLUE}44; color:#ffffff;}}
-            QHeaderView::section{{background:{C_BG}; color:{C_DIM}; border:none; padding:4px; font-size:12px;}}
+            QHeaderView::section{{background:{C_BG}; color:{C_DIM}; border:none; padding:4px; font-size:14px;}}
         """)
         # 名字列必须真看得见: 数值列用固定窄宽 (原来 ResizeToContents 会被 1791721088.4008 这种长数字
         # 撑到 110px+, 5 列一起把"信号"列挤成 0 宽 ⇒ 名字画不出来), 余下全给名字列。
         self.tree.setIndentation(16)                     # 默认 40px 缩进把名字列吃掉了
         self.tree.setTextElideMode(Qt.ElideMiddle)       # 长名字: 头尾都留着 (sstrace.…孔_mm)
-        self.tree.setMinimumWidth(460)
+        self.tree.setMinimumWidth(560)
         self._apply_col_widths()
         QTimer.singleShot(0, self._apply_col_widths)     # 显示后再来一次 (样式表 polish 会重置)
         QTimer.singleShot(1200, self._apply_col_widths)
@@ -2066,12 +2097,12 @@ class CanoeGraphicWidget(QWidget):
         self.cursor_lb = QLabel("")
         self.cursor_lb.setTextFormat(Qt.RichText)
         self.cursor_lb.setStyleSheet(f"background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:6px;"
-                                     f"padding:4px 8px; font-size:13px; font-family:monospace;")
+                                     f"padding:4px 8px; font-size:16px; font-family:monospace;")
         self.cursor_lb.setVisible(False)
         rv.addWidget(self.cursor_lb)
         self.log_line = QLabel("")
         self.log_line.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.log_line.setStyleSheet(f"color:{C_DIM}; font-size:12px; font-family:monospace;")
+        self.log_line.setStyleSheet(f"color:{C_DIM}; font-size:14px; font-family:monospace;")
         rv.addWidget(self.log_line)
         split.addWidget(right)
         split.setStretchFactor(0, 0)
@@ -2339,10 +2370,27 @@ class CanoeGraphicWidget(QWidget):
         #   TCP 位姿, 即场景中的动态信号, 你给整理都变成显示状态」
         #   口径: 默认勾选 = **插拔场景组里的全部动态信号** (sstrace/gravity/skill/skillphys,
         #   去掉 .ts 这种时间戳), 不再只勾 10 条代表曲线。增量补勾逻辑不变 (手动取消的不顶回来)。
-        keys = self._scene_default_keys()
-        if len(keys) < 3:
-            keys = [k for k in self.DEFAULT_3D if k in self.store.bufs]
-        if len(keys) < 3:
+        if getattr(self, "core_only", True):
+            # 🎯 主要信号模式: 默认勾上**树上现有的**核心行 (AR = CORE_SIGNALS; 其它场景 = 前 10 条),
+            #    不再补勾插拔全量 (老倪 2026-10-20: 选了 AR 就别再冒出绿色的插拔信号)
+            keys = []
+            for it in self._all_items():
+                _k = it.data(0, Qt.UserRole)
+                if not _k or it.childCount():
+                    continue
+                if not (it.flags() & Qt.ItemIsUserCheckable):
+                    continue
+                if str(_k) in self.store.bufs and not str(_k).endswith(".ts"):
+                    keys.append(str(_k))
+            keys = keys[:12]
+        else:
+            keys = self._scene_default_keys()
+        if not getattr(self, "core_only", True):
+            if len(keys) < 3:
+                keys = [k for k in self.DEFAULT_3D if k in self.store.bufs]
+            if len(keys) < 3:
+                return
+        elif not keys:
             return                      # 3D 场景还没跑过 (快照未落) → 下次建树再试
         _new = [k for k in keys if k not in self._auto_checked]
         if not _new:
@@ -2384,13 +2432,13 @@ class CanoeGraphicWidget(QWidget):
                       "\n· 全局数据空间(DDS): 数据空间页登记的真实话题 (zmax/ss_state 等), 值来自总线帧 trace.jsonl"
                       "\n· Orin ROS2: 机械臂/相机侧话题 (勾上后自动向 Orin 重新订阅)"
                       "\n· 本机真值流: 位姿/安全/YOLO 等本机 JSON 文件")
-        head.setStyleSheet(f"color:{C_GRAY}; font-size:12px;")
+        head.setStyleSheet(f"color:{C_GRAY}; font-size:14px;")
         box.addWidget(head)
 
         lw = QListWidget()
         lw.setSelectionMode(QAbstractItemView.ExtendedSelection)
         lw.setStyleSheet(f"QListWidget{{background:{C_BG2};color:{C_WHITE};font-family:monospace;"
-                         f"font-size:13px;border:1px solid {C_BORDER};}}")
+                         f"font-size:16px;border:1px solid {C_BORDER};}}")
         # (1) 全局数据空间
         ds_items = {}
         if self.ds_src is not None:
@@ -2425,7 +2473,7 @@ class CanoeGraphicWidget(QWidget):
 
         row = QHBoxLayout()
         info_lb = QLabel("")
-        info_lb.setStyleSheet(f"color:{C_DIM}; font-size:12px;")
+        info_lb.setStyleSheet(f"color:{C_DIM}; font-size:14px;")
         row.addWidget(info_lb, 1)
         b_add = QPushButton("➕ 加入波形")
         b_del = QPushButton("➖ 从波形移除")
@@ -2582,6 +2630,17 @@ class CanoeGraphicWidget(QWidget):
         (老倪点的折叠不再被下一次重建顶开 —— 之前是硬编码 setExpanded(True) 顶开的)。
         """
         filt = self.filter.text().strip().lower()
+        core_only = bool(getattr(self, "core_only", True))     # 🎯 默认只要主要信号(10 条)
+        # 🔄 2026-10-20 老倪: 「我都选择 AR 场景了, 右侧还是绿色的插拔场景信号, 应该马上切换到 AR 场景」
+        #   当前场景(画布数据源 / 场景按钮)一变 ⇒ 立刻撤掉别的场景的曲线, 目录跟着切。
+        _act_now = self._active_scene() or ""
+        if _act_now and _act_now != getattr(self, "_scene_seen", ""):
+            _first = not getattr(self, "_scene_seen", "")
+            self._scene_seen = _act_now
+            if self.selected:
+                self._prune_to_scene(_act_now)
+            if not _first:
+                self._log("🔄 场景切到 %s ⇒ 目录/波形跟着切 (别的场景曲线已撤)" % _act_now)
         for it in self._all_items():        # 记住展开/折叠, 重建后原样恢复
             _k = it.data(0, Qt.UserRole + 1) or it.data(0, Qt.UserRole) or it.text(0)
             if not _k:
@@ -2627,7 +2686,7 @@ class CanoeGraphicWidget(QWidget):
         host_bufs = [b for b in self.store.bufs.values()
                      if b.src not in ("ros", "ds", "file") and not self._meta_key(b.key)]
         _n_host = 0
-        for b in sorted(host_bufs, key=lambda x: (self._scene_rank(x.key), x.key)):
+        for b in ([] if core_only else sorted(host_bufs, key=lambda x: (self._scene_rank(x.key), x.key))):
             if filt and filt not in b.key.lower():
                 continue
             if b.key.startswith("ar."):
@@ -2653,20 +2712,66 @@ class CanoeGraphicWidget(QWidget):
         ar_items = sorted([b for b in self.store.bufs.values() if b.key.startswith("ar.")],
                           key=lambda x: (self._scene_rank(x.key), x.key))
         _ar_root = roots["AR场景"]
-        if ar_items:
-            grp = self._ar_groups()
-            by_g = {}
+        grp = self._ar_groups()
+        reg = self._ar_reg_groups()
+        by_g = {}
+        missing = {}
+        if core_only:
+            # 🎯 只要主要信号: 固定 10 条, 顺序 = CORE_SIGNALS 的物理顺序 (位姿 → 力 → 帧龄)
+            _live = {b.key: b for b in ar_items}
+            for k in CORE_SIGNALS:
+                if filt and filt not in k.lower():
+                    continue
+                b = _live.get(k)
+                if b is not None:
+                    by_g.setdefault(CORE_GROUP, []).append(b)
+                else:
+                    missing.setdefault(CORE_GROUP, []).append(k[3:])     # 声明的核心信号但此刻没数据 ⇒ 未接
+            reg = {}                                                      # 不让注册表把非核心键补回来
+        else:
             for b in ar_items:
                 if filt and filt not in b.key.lower():
                     continue
                 by_g.setdefault(grp.get(b.key[3:], "AR 场景 · 其它信号"), []).append(b)
-            for g in sorted(by_g):
+            # 🦾 2026-10-20: 注册表声明了但 live 没值的信号 ⇒ 建"未接"占位行(紫淡显·不可勾选·值列写未接, 不写 0)。
+            #   否则真机没接时这一路通道在窗口里**整行都不存在**, 用户看不出"有这个信号只是没数据"。
+            #   只为**核心信号**建占位; 台账点位(示教点/空间点)不铺 —— 几十行淡字只会把窗口塞满。
+            _PT_PRE = ("金手指点", "侧面点", "准备点", "安全点", "空间点", "GUI测试点")
+            for g, keys in (reg or {}).items():
+                for k in keys:
+                    if str(k).startswith(_PT_PRE):
+                        continue
+                    full = "ar." + k
+                    if filt and filt not in full.lower():
+                        continue
+                    if any(b.key == full for b in by_g.get(g, [])):
+                        continue
+                    missing.setdefault(g, []).append(k)
+        if by_g or missing:
+            for g in sorted(set(by_g) | set(missing)):
                 _sid = "ar:" + g
-                gnode = QTreeWidgetItem([g, "", "", ""])
+                _nlive, _nmiss = len(by_g.get(g, [])), len(missing.get(g, []))
+                _title = g if not _nmiss else "%s  (声明 %d · 在跑 %d · 未接 %d)" % (
+                    g, _nlive + _nmiss, _nlive, _nmiss)
+                gnode = QTreeWidgetItem([_title, "", "", ""])
                 gnode.setForeground(0, QColor(SCENE_COLORS["AR场景"]))   # 二级标题也用场景色(老倪: AR 下面别是白的)
                 gnode.setData(0, Qt.UserRole + 1, _sid)
-                for b in by_g[g]:
+                for b in by_g.get(g, []):
                     self._add_to(gnode, b, checked=b.key in self.selected)
+                for k in missing.get(g, []):
+                    full = "ar." + k
+                    _ph = QTreeWidgetItem(["● " + k, self._sig_layer(full), k.split(".", 1)[-1],
+                                           "未接", "-", self._sig_type(full),
+                                           self._out_node(full), "—"])
+                    _c = QColor(SCENE_COLORS["AR场景"])
+                    _c.setAlpha(150)                                     # 淡紫: 声明的通道, 此刻没数据
+                    _ph.setForeground(0, _c)
+                    _ph.setFlags(_ph.flags() & ~Qt.ItemIsUserCheckable)
+                    _ph.setData(0, Qt.UserRole, full)
+                    _ph.setToolTip(0, "%s\n已在注册表声明 (config/topics/ar_aoi_signals.json), 但此刻 live 里没有"
+                                      "这一帧的值 ⇒ 标「未接」, **不写 0 冒充**。\n来源: %s"
+                                   % (full, (getattr(self, "_ar_reg_src", {}) or {}).get(k, "")))
+                    gnode.addChild(_ph)
                 _inuse = any(k.startswith("ar.") and (grp.get(k[3:]) == g) for k in self.selected)
                 gnode.setExpanded(False if _sid in self._collapsed
                                   else bool(filt) or _inuse or _sid in self._expanded)
@@ -2681,7 +2786,7 @@ class CanoeGraphicWidget(QWidget):
         ros_root.setForeground(0, QColor(C_DIM))
         ros_root.setData(0, Qt.UserRole + 1, "base:ros")
         roots["基础场景"].addChild(ros_root)
-        if self.catalog and not only3d:
+        if self.catalog and not only3d and not core_only:
             for topic, meta in sorted(self.catalog.items()):
                 tnode = QTreeWidgetItem([f"{topic}  ({meta['type'].split('/')[-1]})", "", ""])
                 tnode.setForeground(0, QColor(C_DIM))
@@ -2713,7 +2818,7 @@ class CanoeGraphicWidget(QWidget):
         ds_root.setForeground(0, QColor("#bc8cff"))
         ds_root.setData(0, Qt.UserRole + 1, "base:ds")
         roots["基础场景"].addChild(ds_root)
-        if not only3d:
+        if not only3d and not core_only:
             ds_topics = {}
             if self.ds_src is not None:
                 for t, meta in self.ds_src.seen.items():
@@ -2778,6 +2883,50 @@ class CanoeGraphicWidget(QWidget):
                 _it = QTreeWidgetItem([_ph, "-", "-", "-", "-"])
                 _it.setForeground(0, QColor(C_DIM))
                 _r.addChild(_it)
+        # 🎯 主要信号模式: 树上只留**当前场景**那一个根, 其余场景/ROS/DDS 根整体收起
+        #   (信号与数据一条都没删, 取消勾选「🎯 主要信号」即回到全量视图)
+        if core_only:
+            _keep = self._active_scene() or "AR场景"
+            if _keep != "AR场景" and _keep in roots:
+                # 该场景没有手写核心清单 ⇒ 按场景秩取前 10 条 (≤10 的承诺对所有场景都成立)
+                _r = roots[_keep]
+                _cand = []
+                for b in sorted(self.store.bufs.values(), key=lambda x: (self._scene_rank(x.key), x.key)):
+                    if b.src in ("ros", "ds", "file") or self._meta_key(b.key) or b.key.startswith("ar."):
+                        continue
+                    try:
+                        _t = SST.tag(b.key) if SST is not None else ""
+                    except Exception:                                               # noqa: BLE001
+                        _t = ""
+                    if _t == _keep:
+                        _cand.append(b)
+                for b in _cand[:10]:
+                    self._add_to(_r, b, scene=_keep)
+                if not _cand:
+                    _it = QTreeWidgetItem(["（%s 此刻没有数据帧 — 该场景跑起来后这里出前 10 条信号）" % _keep,
+                                           "-", "-", "-", "-"])
+                    _it.setForeground(0, QColor(C_DIM))
+                    _r.addChild(_it)
+            for _sc in ("插拔场景", "摆盘场景", "AR场景", "基础场景"):
+                if _sc == _keep:
+                    continue
+                _r = roots.get(_sc)
+                if _r is not None:
+                    _idx = self.tree.indexOfTopLevelItem(_r)
+                    if _idx >= 0:
+                        self.tree.takeTopLevelItem(_idx)
+            try:
+                _kr = roots.get(_keep)
+                if _kr is not None:
+                    if _keep == "AR场景":
+                        _kr.setText(0, "🥽 AR 场景 · 🎯 主要信号 %d 条 (位姿 x/y/z + 真机轴向/侧向力 + 机器人状态机·是否插拔)"
+                                       % len(CORE_SIGNALS))
+                    else:
+                        _kr.setText(0, "%s · 🎯 主要信号 (前 10 条 · 该场景无手写核心清单)"
+                                       % _kr.text(0).split(" · ")[0])
+                    _kr.setExpanded(True)
+            except Exception:                                                   # noqa: BLE001
+                pass
         self.tree.blockSignals(False)
         # 🔴 2026-10-15 老倪: 「你重启信号分析」后要**一眼看到插拔(绿)**。原来建完树视图停在别处
         #   (树很长, 默认落点/旧滚动位置不在首组) ⇒ 看着像"绿色信号不在"。规则: 首次建树 + 切场景排序后,
@@ -2785,13 +2934,21 @@ class CanoeGraphicWidget(QWidget):
         try:
             _tgt = roots.get(self._scene_sort) if self._scene_sort else None
             if _tgt is None:
-                _tgt = roots.get("插拔场景")
+                _tgt = roots.get("AR场景") if core_only else roots.get("插拔场景")
             if _tgt is not None:
                 self.tree.scrollToItem(_tgt, QAbstractItemView.PositionAtTop)
         except Exception:                                                       # noqa: BLE001
             pass
         # 建完树先把"已勾信号"按树上顺序重排一次 (老倪 2026-10-15: 子图顺序要跟信号上下顺序一致),
         # 再走首屏默认补勾 (补勾也会重排)。
+        if core_only:
+            # 🎯 主要信号模式: 波形只画树上这 ≤10 条 (别的场景/非核心的勾选一并收起)
+            _vis = set()
+            for it in self._all_items():
+                _k = it.data(0, Qt.UserRole)
+                if _k and it.childCount() == 0:
+                    _vis.add(str(_k))
+            self.selected = [k for k in self.selected if k in _vis]
         self.selected = self._ordered_selected(self.selected)
         self.wave.set_curves(self._draw_order())
         self._apply_default_selection()
@@ -2891,6 +3048,33 @@ class CanoeGraphicWidget(QWidget):
             out = {}
         self._ar_grp, self._ar_grp_mt = out, mt
         return out
+
+    def _ar_reg_groups(self):
+        """🥽 AR/AOI **注册表**里的 组 → [信号键] (声明口径)。
+
+        为什么要它 (2026-10-20 老倪: 「末端的 x y z 和侧向力, 显示出来; 现在没有接」):
+        树原来只建 live 文件里**有值**的行 ⇒ 真机没接时, 力那几条通道在窗口里**根本不存在**,
+        用户没法知道"这个窗口有这一路信号, 只是没数据"。注册表 = 这个场景声明要发的信号全集,
+        live = 此刻真在发的 ⇒ 差集就是"声明了但没数据", 必须显式列出来(标 未接), 不许用 0 冒充。
+        """
+        p = os.path.join(ROOT, "config", "topics", "ar_aoi_signals.json")
+        try:
+            mt = os.path.getmtime(p)
+            if getattr(self, "_ar_reg", None) is not None and getattr(self, "_ar_reg_mt", None) == mt:
+                return self._ar_reg
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            out = {}
+            src = {}
+            for g, items in (d.get("groups") or {}).items():
+                out[g] = [it.get("key") for it in items if it.get("key")]
+                for it in items:
+                    if it.get("key"):
+                        src[it["key"]] = it.get("src") or ""
+            self._ar_reg, self._ar_reg_mt, self._ar_reg_src = out, mt, src
+            return out
+        except Exception:                                                         # noqa: BLE001
+            return {}
 
     def _fill_cfg(self):
         """顶部「当前配置」横幅 —— 让实时监控一眼看出"正在看的是哪套配置"。
@@ -3118,11 +3302,57 @@ class CanoeGraphicWidget(QWidget):
         self._scene_lab.setText("场景排序: %s · 当前数据源场景: %s · 计数 %s"
                                 % (_sel, _cur, " ".join("%s=%d" % (k, v) for k, v in sorted(_n.items())) or "—"))
 
+    def _set_core_only(self, on):
+        """🎯 主要信号开关 (老倪 2026-10-20: 「不要打开那么多信号…不要超过 10 个」)。"""
+        self.core_only = bool(on)
+        try:
+            self.b_core.setText("🎯 主要信号 (10 条)" if self.core_only else "🎯 主要信号 (关 · 全量)")
+        except Exception:                                                         # noqa: BLE001
+            pass
+        self._log("🎯 信号目录: %s" % ("只要主要信号 (%d 条)" % len(CORE_SIGNALS) if self.core_only
+                                      else "全量(全部场景/话题)"))
+        self._fill_tree()
+
+    def _prune_to_scene(self, scene):
+        """切场景 ⇒ **立刻**把别的场景的曲线撤掉 (老倪 2026-10-20: 「我都选择 AR 场景了, 右侧还是绿色的
+        插拔场景信号, 应该马上切换到 AR 场景」)。
+
+        只动"画哪些曲线"(selected), 不动数据; 判据用与目录同一个标签真源 `sig_scene_tags.tag()`。
+        """
+        if not scene:
+            return 0
+        _keep = []
+        for k in list(self.selected):
+            try:
+                _t = SST.tag(k) if SST is not None else ""
+            except Exception:                                                     # noqa: BLE001
+                _t = ""
+            if _t == scene:
+                _keep.append(k)
+        _drop = [k for k in self.selected if k not in _keep]
+        self.selected = _keep
+        if getattr(self, "core_only", True):
+            # 🎯 主要信号模式: 清掉"自动勾过"的记忆 ⇒ 切回这个场景时它那几条会**重新自动勾上**,
+            #   否则切走再切回来波形是空的 (老倪点了 AR 却一条都没画 = 更糟)
+            try:
+                self._auto_checked.clear() if hasattr(self._auto_checked, "clear") else None
+            except Exception:                                                 # noqa: BLE001
+                self._auto_checked = set()
+        if _drop:
+            try:
+                self._log("🔄 场景 %s ⇒ 撤掉别的场景曲线 %d 条: %s" % (scene, len(_drop), _drop[:5]))
+            except Exception:                                                     # noqa: BLE001
+                pass
+        return len(_drop)
+
     def _set_scene_sort(self, val):
         self._scene_sort = val or ""
         for _v, _b in getattr(self, "_scene_btns", {}).items():
             _on = (_v == self._scene_sort)
             _b.setStyleSheet("font-weight:%s" % ("700" if _on else "400"))
+        # 🥽 选了某个场景 ⇒ 波形**马上**切到这个场景 (不是只排序)
+        if self._scene_sort:
+            self._prune_to_scene(self._scene_sort)
         self._log("🎨 信号排序: %s" % (self._scene_sort or "全部(白) — 所有颜色的信号都显示"))
         self._scene_sync_lab()
         self._fill_tree()
@@ -3745,6 +3975,17 @@ class CanoeGraphicWidget(QWidget):
         if time.monotonic() - self._last_tree_update > 0.25:
             self._last_tree_update = time.monotonic()
             # 信号集合/目录变了就重建左侧目录 (主线程里做, 不依赖工作线程回调)
+            # 🔄 2026-10-20 老倪: 「我都选择 AR 场景了, 右侧还是绿色的插拔信号, 应该马上切换」
+            #   场景变了不一定有新键(键集合指纹不变) ⇒ 单独 0.5Hz 探一次场景, 变了就立刻重建目录+切波形。
+            #   2s 一次是因为 _active_scene() 要读画布数据源 (别每帧都读文件)。
+            if time.monotonic() - getattr(self, "_scene_poll_t", 0.0) > 2.0:
+                self._scene_poll_t = time.monotonic()
+                try:
+                    _act = self._active_scene() or ""
+                except Exception:                                            # noqa: BLE001
+                    _act = ""
+                if _act and _act != getattr(self, "_scene_seen", ""):
+                    self._fill_tree()
             sig = (len(self.catalog or {}), tuple(sorted(self.store.keys())))
             if sig != self._tree_sig and (time.monotonic() - self._last_fill) > 1.5:
                 self._fill_tree()
@@ -3905,7 +4146,7 @@ class CanoeGraphicWidget(QWidget):
         agestr = f" · 帧龄 {min(ages):.2f}s" if ages else " · 帧龄 —"
         self.lb_state.setText(state)
         self.lb_state.setStyleSheet(
-            f"color:{C_ORANGE if self.paused else (C_GREEN if self.running else C_RED)}; font-size:13px;")
+            f"color:{C_ORANGE if self.paused else (C_GREEN if self.running else C_RED)}; font-size:16px;")
         # 🕒 数据时刻 = 最新样本自己的时刻 (3D 场景 HUD 上写的是同一个) ⇒ 一眼对得上
         newest = None
         for k in keys:
@@ -3935,7 +4176,7 @@ class CanoeGraphicWidget(QWidget):
                              f"(有波形 {_with}) · 点 {self.store.total_pts}"
                              f"{agestr}{clk} · 本机时刻 {time.strftime('%H:%M:%S')}")
         try:                                   # 新鲜=绿系, 停更=橙 (与状态灯同口径)
-            self.lb_info.setStyleSheet(f"color:{C_DIM if _st_fresh else C_ORANGE}; font-size:13px;")
+            self.lb_info.setStyleSheet(f"color:{C_DIM if _st_fresh else C_ORANGE}; font-size:16px;")
         except Exception:                                                      # noqa: BLE001
             pass
         try:                                   # 八阶段**文字**一行 (八段名 + 当前段高亮)

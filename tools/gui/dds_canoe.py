@@ -101,6 +101,11 @@ C_BAR = "#2f81f7"     # CANoe 的 Bar 是实心蓝 #0072C5, 深色主题里提�
 C_SEL = "#243a52"     # CANoe 选中行浅蓝 #AFD7F1 的深色对应
 
 DS_DIR = os.environ.get("ZMAX_DATASPACE_DIR", "/home/ubuntu/zmax/zmax_data/dataspace")
+# 🥽 AR 场景走的是**文件通道**(ar_aoi_bus 2s 写一次), 不在 DDS 总线上。
+#   老倪 2026-10-20「数据空间和信号分析的数据源, 同步了么?」⇒ 数据空间也挂上这一份, 名字/数值/帧龄同源。
+AR_LIVE = os.environ.get("ZMAX_AR_LIVE",
+                         os.path.join(os.path.dirname(DS_DIR), "ar_live", "ar_aoi_live.json"))
+C_AR = "#8957e5"
 LIVE, TRACE = os.path.join(DS_DIR, "live.json"), os.path.join(DS_DIR, "trace.jsonl")
 LOOP, BUSDB = os.path.join(DS_DIR, "loop.json"), os.path.join(DS_DIR, "busdb.json")
 
@@ -109,6 +114,46 @@ VERDICT_COLOR = {"ok": C_GREEN, "pass": C_GREEN, "warn": C_YELLOW, "fail": C_RED
                  "unknown": C_GRAY, "stale": C_YELLOW}
 LAMP_ICON = {"green": "🟢", "yellow": "🟡", "red": "🔴", "black": "⚫"}
 MONO, UI = "Consolas", "Arial"
+
+
+_AR_CODES = {0: "未连接", 1: "急停/报警", 2: "未上电", 3: "手动", 4: "自动待机", 5: "自动运行"}
+_AR_STAGES = ("接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成")
+
+
+def _ar_summary(sig, keys):
+    """AR 组一行的汇总值 (值列就一格, 把同组几条压成一句; 明细/tooltip 里有全部键名)。"""
+    def g(k):
+        v = sig.get(k)
+        return None if v is None else float(v)
+
+    if "末端.x" in keys:
+        x, y, z, a = g("末端.x"), g("末端.y"), g("末端.z"), g("末端.帧龄_s")
+        if x is None:
+            return "未接 · 真机 TCP 无帧"
+        return "x %.1f · y %.1f · z %.1f mm%s" % (
+            x * 1000.0, y * 1000.0, z * 1000.0,
+            "" if a is None else " · 帧龄 %.1fs" % a)
+    if "末端.轴向力_N" in keys:
+        ax, lp, a = g("末端.轴向力_N"), g("末端.侧向力_N"), g("末端.力帧龄_s")
+        if ax is None and lp is None:
+            return "未接 · 六维力无帧 (采样器没跑/控制器不可达)"
+        return "轴向 %s N · 侧向 %s N%s" % (
+            "—" if ax is None else "%.2f" % ax,
+            "—" if lp is None else "%.2f" % lp,
+            "" if a is None else " · 帧龄 %.1fs" % a)
+    if "机器人.状态_码" in keys:
+        c = g("机器人.状态_码")
+        ins, mov, st, n = g("机器人.插拔中"), g("机器人.运动中"), g("机器人.阶段_码"), g("机器人.报警数")
+        txt = "%s" % (_AR_CODES.get(int(c), "?") if c is not None else "—")
+        if st is not None and 0 <= int(st) < len(_AR_STAGES):
+            txt += " · 阶段 %s" % _AR_STAGES[int(st)]
+        txt += " · " + ("插拔中" if ins else ("非插拔" if ins is not None else "插拔未知"))
+        if mov is not None:
+            txt += " · " + ("运动中" if mov else "停")
+        if n:
+            txt += " · 报警 %d" % int(n)
+        return txt
+    return " · ".join("%s=%s" % (k, ("%.3g" % sig[k]) if k in sig else "未接") for k in keys[:4])
 
 
 def _j(path, default=None):
@@ -635,7 +680,9 @@ class BusView(QWidget):
                 if not self._busdb:
                     self._busdb = _j(BUSDB, {})
                 self._fill_tree()
+                self._fill_ar_group()        # 🥽 AR 场景(文件通道) 与信号分析同源, 一并列出
             self._update_values()
+            self._update_ar_group()
             if self._sel_obj is None and self.tree.topLevelItemCount():
                 _root = self.tree.topLevelItem(0)
                 if _root is not None and _root.childCount():
@@ -1023,6 +1070,77 @@ class BusView(QWidget):
             it.setText(5, "%d%%" % int(min(1.0, ratio) * 100) if ratio > 0 else "")
             it.setForeground(2, QColor(VERDICT_COLOR.get(t.get("verdict", "unknown"), C_WHITE)))
             it.setForeground(4, QColor(C_GRAY))
+
+    # ─────────── 🥽 AR 场景 (文件通道 · 与「信号分析」同一份真源) ───────────
+    _AR_SECTIONS = (
+        ("末端位姿 (真机 TCP 真值)", ("末端.x", "末端.y", "末端.z", "末端.vx", "末端.vy", "末端.vz", "末端.帧龄_s")),
+        ("插拔力 (真机六维力 / 接触)", ("末端.轴向力_N", "末端.侧向力_N", "末端.侧向力y_N",
+                                      "末端.侧向力z_N", "末端.切向力_N", "末端.力帧龄_s")),
+        ("🤖 机器人状态机 (是否在插拔)", ("机器人.状态_码", "机器人.插拔中", "机器人.运动中",
+                                        "机器人.阶段_码", "机器人.报警数", "机器人.状态帧龄_s")),
+    )
+
+    def _ar_payload(self):
+        d = _j(AR_LIVE, {}) or {}
+        return d, (d.get("s") or {})
+
+    def _fill_ar_group(self):
+        """把 AR 文件通道的信号挂进数据空间 (3 行汇总; 明细看信号分析页)。
+
+        为什么要挂: 数据空间的其余行都来自 DDS 总线(dataspace/live.json), 而 AR 的末端位姿/六维力/机器人
+        状态机走 ar_aoi_live.json ⇒ 不挂的话, 同一时刻两个窗口看到的东西不一致, 现场会怀疑谁在骗人。
+        """
+        try:
+            d, sig = self._ar_payload()
+            if not sig:
+                return
+            root = QTreeWidgetItem(["🥽 AR 场景 · 文件通道 %d 条" % len(sig),
+                                    "ar_aoi_live.json", "", "", "", "", "", ""])
+            root.setFont(0, QFont(UI, 10, QFont.Bold))
+            root.setForeground(0, QColor(C_AR))
+            root.setToolTip(0, "与「信号分析」页同一份真源: zmax_data/ar_live/ar_aoi_live.json\n"
+                               "AR 总线是文件通道(2s/次), 不在 DDS 上 —— 所以这里单独列, 不冒充 DDS 报文。\n"
+                               "明细/波形: 信号分析 → 🎯 主要信号")
+            for name, keys in self._AR_SECTIONS:
+                hit = [k for k in keys if k in sig]
+                it = QTreeWidgetItem([name, "ar_aoi_live.json", "—", "", "—", "", "", ""])
+                it.setData(0, Qt.UserRole, ("ar", keys))
+                it.setToolTip(0, "本组信号 (%d/%d 在跑):\n%s" % (len(hit), len(keys), " · ".join(keys)))
+                root.addChild(it)
+            self.tree.addTopLevelItem(root)
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _update_ar_group(self):
+        """AR 组三行的汇总值: 有值就把 x/y/z 或 轴/侧向力 或 状态/插拔 压成一行。"""
+        try:
+            d, sig = self._ar_payload()
+            if not sig:
+                return
+            age = None
+            try:
+                age = max(0.0, time.time() - float(d.get("ts") or 0)) if d.get("ts") else None
+            except Exception:                                                    # noqa: BLE001
+                age = None
+            for i in range(self.tree.topLevelItemCount()):
+                root = self.tree.topLevelItem(i)
+                if not (root and root.text(0).startswith("🥽 AR 场景")):
+                    continue
+                if age is not None:
+                    root.setText(4, _num(age, 1))
+                    root.setToolTip(4, "ar_aoi_live.json 写龄")
+                for j in range(root.childCount()):
+                    it = root.child(j)
+                    dt = it.data(0, Qt.UserRole)
+                    if not dt:
+                        continue
+                    _kind, keys = dt
+                    it.setText(2, _ar_summary(sig, keys))
+                    it.setText(4, _num(age, 1) if age is not None else "—")
+                    it.setForeground(2, QColor(C_AR))
+                break
+        except Exception:                                                        # noqa: BLE001
+            pass
 
     def _trace_sig(self):
         try:

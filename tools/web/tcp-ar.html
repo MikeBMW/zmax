@@ -54,6 +54,7 @@
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
   <span class="tag" id="tTcp">TCP —</span>
+  <span class="tag" id="tRob" title="机器人状态机: 状态 · 当前阶段 · 是否在插拔 (真源 tools/robot_state.py)">🤖 机器人 —</span>
   <span id="camPick" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <span class="tag" id="tCal">标定: 未标定</span>
   <span class="tag" id="tShow">轨迹: 关(默认)</span>
@@ -1286,11 +1287,33 @@ async function rsCalInfo(){
 async function aoiState(){
   try{ const d=await (await fetch('/api/aoi/state')).json(); if(d&&d.detect) aoiRender(d); }catch(e){}
 }
+// 🤖 机器人状态机 → 顶部一个 chip: 状态 · 阶段 · 是否在插拔
+//   老倪 2026-10-20「可以**直接看到**是否在插拔」⇒ 不点任何按钮, 进来就看得见。
+async function robotTick(){
+  const el = document.getElementById('tRob');
+  try{
+    const r = await fetch('/api/robot_state',{cache:'no-store'}).then(x=>x.json());
+    const R = (r && r.robot) || null;
+    if(!R){ el.textContent = '🤖 状态: 读不到'; el.title = (r && r.err) || ''; return; }
+    const ins = (R.inserting === true) ? '插拔中' : (R.inserting === false ? '非插拔' : '插拔未知');
+    el.textContent = '🤖 ' + R.state + ' · 阶段 ' + (R.stage || '—') + ' · ' + ins;
+    el.title = (R.text || '') + '\n真源: state.json + latest.json + ss_live/skill_dispatch.json';
+    el.style.background = (R.inserting === true) ? 'rgba(63,185,80,.30)'
+                        : (R.code === 1 ? 'rgba(248,81,73,.30)' : '');
+    el.style.fontWeight = (R.inserting === true) ? '700' : '';
+  }catch(e){
+    el.textContent = '🤖 状态: 读不到'; el.title = String(e);
+  }
+}
+
 (async function init(){
   await loadCams();
   READY=true; layout(); await refresh();
   await aoiState();
   setInterval(refresh,1500); setInterval(aoiState,5000);
+  // 🤖 机器人状态机 (老倪 2026-10-20: 「AR 场景需要接上机器人, 直接看到是否在插拔」)
+  //   真源 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
+  robotTick(); setInterval(robotTick,1000);
   // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
   //   老倪 2026-10-19「点击刷新也不好使」时, 服务端只看得到 /api/* 轮询, 看不到 bus y卡死/hidden/CAMS。
   //   有了这条, 现场"画面不动"能直接判定是 泵卡死 / 没相机键 / 页面没初始化, 而不是靠猜。
