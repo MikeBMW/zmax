@@ -13,6 +13,7 @@ echo "=== ① 本轮改动的代码 ==="
 cp -f tools/ar_aoi_bus.py tools/robot_state.py tools/tcp_ar_server.py \
       tools/rs_service.py tools/rs_service.sh tools/rs_probe.py tools/verify_rs_camera.py \
       tools/realsense_source.py tools/cam_live_stream.py tools/cam_live_stream_ctl.sh \
+      tools/l2_daemon.py tools/l2_daemon_ctl.sh \
       tools/ar_server_kill_by_port.sh tools/ar_server_hard_restart.sh tools/boot_restore.sh \
       tools/verify_ar_force_signals.py tools/verify_sig_space_sync.py \
       tools/restore_cron_after_boot.sh tools/archive_release_5_50_750_arstate.sh "$DST/tools/" 2>/dev/null
@@ -25,6 +26,7 @@ cp -f VERSION.md "$DST/docs/"
 echo "=== ② 真源快照 (config 是软链, 必须显式拷) ==="
 cp -f config/topics/ar_aoi_signals.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ar_live/ar_aoi_live.json "$DST/data/" 2>/dev/null
+cp -f zmax_data/ar_state/module3d_lock.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/rokae_sdk/tcp_out/state.json "$DST/data/tcp_state.json" 2>/dev/null
 cp -f zmax_data/rokae_sdk/tcp_out/latest.json "$DST/data/tcp_latest.json" 2>/dev/null
 cp -f zmax_data/rokae_sdk/ft_out/latest.json "$DST/data/ft_latest.json" 2>/dev/null
@@ -149,6 +151,10 @@ echo "=== ⑤ MANIFEST ==="
   echo "tools/realsense_source.py      改 · 连续 EBUSY 三次即 hardware_reset 重枚举 (光重试没用)"
   echo "tools/cam_live_stream.py       改 · 绝不把 RealSense 当「USB 摄像头」(抢走会让 AR EBUSY) + 按卡名解析"
   echo "tools/verify_rs_camera.py      判据 · 独占/出帧/新帧/像素/代理/cams 六项 (2026-10-20 实测 6/6 PASS)"
+  echo "tools/l2_daemon.py             改 · FIFO 常驻读端(O_RDWR+select): 修 Errno 6 指令被拒(含动作执行期间)"
+  echo "tools/l2_daemon_ctl.sh         新增 · 执行器 start|stop|restart|status (status 直接报 FIFO reader 有无)"
+  echo "tools/ar_server.py/tcp_ar_server.py 改 · 绿框定主: /api/module3d_lock(lock|unlock) + 锁定时坐标恒定(stale=false, live 单独报活性)"
+  echo "web/tcp-ar.html                改 · 顶部 '🔒 绿框定主' 按钮 + 定主时标签写 '🔒 定主'"
   echo "tools/boot_restore.sh          改 · 开机先拉 RealSense 小服务(8789) 再拉 AR 服务(8797)"
   echo '```'
   echo

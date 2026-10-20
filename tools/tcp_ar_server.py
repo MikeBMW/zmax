@@ -692,6 +692,8 @@ class H(BaseHTTPRequestHandler):
                 except Exception:                                       # noqa: BLE001
                     _ins = None
                 self._json(toolframe_px(L, align_box=(qs.get("align", "box") != "0"), tip_inset_px=_ins))
+            elif p == "/api/module3d_lock":                   # 🔒 定主状态 (只读)
+                self._json(self._mod3_lock("status"))
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
                 self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
@@ -965,6 +967,7 @@ class H(BaseHTTPRequestHandler):
 
     MOD3_STATE = "/dev/shm/mod3_latest.json"
     MOD3_FRAME = "/dev/shm/mod3_frame.jpg"
+    MOD3_LOCK = os.path.join(REPO, "zmax_data", "ar_state", "module3d_lock.json")
 
     def _toolframe_img(self, L=80.0, tip_inset_px=None):
         """现场最直观的一张图: 当前臂相机帧 + tool1 三轴。直接 GET /toolframe.jpg 就能看。"""
@@ -1002,6 +1005,51 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                                              # noqa: BLE001
             self._send(500, "text/plain; charset=utf-8", ("toolframe 图失败: %s" % e).encode())
 
+    def _mod3_lock(self, action="status"):
+        """🔒 绿框定主/解锁/查状态。定主 = 把当前 3D 框坐标钉死, 之后 /api/module3d 一律回这份。"""
+        p = self.MOD3_LOCK
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        if action == "unlock":
+            try:
+                os.remove(p)
+            except FileNotFoundError:
+                return {"ok": True, "locked": False, "msg": "本来就没锁"}
+            return {"ok": True, "locked": False, "msg": "已解锁: 绿框回到实时检测"}
+        if action == "lock":
+            try:
+                with open(self.MOD3_STATE, encoding="utf-8") as f:
+                    r = json.load(f)
+            except Exception as e:                                          # noqa: BLE001
+                return {"ok": False, "err": "检测线程还没出结果, 无法定主: %s: %s"
+                        % (type(e).__name__, str(e)[:80])}
+            if not r.get("ok") or not r.get("corners_px"):
+                return {"ok": False, "err": "当前这一帧没检出光模块 ⇒ 不能拿空框定主"}
+            L = {"locked": True, "ts": time.time(),
+                 "corners_px": r["corners_px"], "box2d": r.get("box2d"),
+                 "dims_mm": r.get("dims_mm"), "dist_mm": r.get("dist_mm"),
+                 "edges": r.get("edges"), "clipped": r.get("clipped"),
+                 "frame_size": r.get("frame_size"),
+                 "by": "老倪 2026-10-20: 相机与光模块相对无运动 ⇒ 绿框定主不变"}
+            tmp = p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(L, f, ensure_ascii=False)
+            os.replace(tmp, p)
+            return {"ok": True, "locked": True, "lock": L,
+                    "msg": "已定主: 绿框坐标从现在起不再变 (解锁用同一按钮)"}
+        try:
+            with open(p, encoding="utf-8") as f:
+                L = json.load(f)
+            L["ok"] = True
+            L["age_s"] = round(time.time() - float(L.get("ts") or 0), 1)
+            return L
+        except FileNotFoundError:
+            return {"ok": True, "locked": False}
+        except Exception as e:                                              # noqa: BLE001
+            return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:80])}
+
     def _module3d(self, want_img=False):
         """🔍 光模块 3D 框: 直接读**后台线程**算好的最新结果(请求路径上不跑推理)。
 
@@ -1021,6 +1069,27 @@ class H(BaseHTTPRequestHandler):
             #   (22:05:42 的框画在 22:09 的画面里) ⇒ 用户看到的就是"绿色框向左偏了"。
             #   这里如实标 stale, 页面不得把陈旧框当实时框画成实线。
             r["stale"] = bool(_age > 2.5 or not r.get("ok"))
+        except Exception:                                                   # noqa: BLE001
+            pass
+        # 🔒 定主: 老倪 2026-10-20「手臂相机的绿色边界框, 定主, 不要变; 相机和光模块相对无运动」
+        #   相机在臂上、光模块夹在夹爪里 ⇒ 两者刚性相对 ⇒ 绿框每帧重算只会因检测抖动而"跳"。
+        #   有锁文件就**一律回锁定的坐标**(stale=False), 同时把实时那路的活性放进 live 字段,
+        #   让页面能分辨"框定住了"和"检测线程死了"。
+        try:
+            with open(self.MOD3_LOCK, encoding="utf-8") as f:
+                _L = json.load(f)
+            if _L.get("locked") and _L.get("corners_px"):
+                r = {"ok": True, "locked": True, "stale": False,
+                     "corners_px": _L["corners_px"], "box2d": _L.get("box2d"),
+                     "dims_mm": _L.get("dims_mm"), "dist_mm": _L.get("dist_mm"),
+                     "edges": _L.get("edges"), "clipped": _L.get("clipped"),
+                     "frame_size": _L.get("frame_size"),
+                     "lock_age_s": round(time.time() - float(_L.get("ts") or 0), 1),
+                     "live": {"ok": bool(r.get("ok")), "age_s": r.get("result_age_s"),
+                              "box2d": r.get("box2d")},
+                     "note": "🔒 定主(相机↔光模块相对无运动): 坐标不随检测抖动"}
+        except FileNotFoundError:
+            pass
         except Exception:                                                   # noqa: BLE001
             pass
         if want_img:
@@ -1087,7 +1156,9 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n).decode("utf-8", "ignore") or "{}")
         except Exception:                                                         # noqa: BLE001
             body = {}
-        if p == "/api/aoi/inspect":            # 🔍 真拍 + 缺陷检测 + 矩形搜索 + 侧边修正
+        if p == "/api/module3d_lock":     # 🔒 绿框定主 (lock|unlock|status)
+            self._json(self._mod3_lock(str(body.get("action") or "status")))
+        elif p == "/api/aoi/inspect":            # 🔍 真拍 + 缺陷检测 + 矩形搜索 + 侧边修正
             self._json(self._aoi_inspect(port=int(body.get("port") or 10082)))
         elif p == "/api/calib":
             self._json(self._do_calib(body))

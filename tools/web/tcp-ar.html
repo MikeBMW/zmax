@@ -63,6 +63,7 @@
     <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
     <button id="bTf" class="sm" title="在臂相机画面上画 tool1 坐标系(手眼 0.06mm + 内参; 相机装腕上, 像素固定)">▣ tool1系</button>
     <button id="bMod3" class="sm" title="在臂相机画面上叠光模块 3D 框(检测器 + 内参 + 手眼 + TCP)">🔍 光模块3D框</button>
+    <button id="bLock" class="sm" title="把绿框钉死: 相机与光模块相对无运动, 定主后坐标不再随检测抖动变化">🔒 绿框定主</button>
     <span class="tag" id="tRot">旋转 0°</span>
   </span>
 </header>
@@ -279,6 +280,24 @@ function setRot(d){
   LASTOROT=''; applyRot();
 }
 $('bRotL').addEventListener('click',()=>setRot(-90));  // 左旋 = 逆时针
+let MODLOCK=null;
+async function lockTick(){
+  try{ const r=await fetch('/api/module3d_lock').then(x=>x.json()); MODLOCK=r; }catch(e){ MODLOCK=null; }
+  const b=$('bLock'); if(!b) return;
+  if(MODLOCK&&MODLOCK.locked){ b.textContent='🔒 定主中(点=解锁)'; b.className='sm primary';
+    b.title='绿框已定主 · '+((MODLOCK.age_s||0)/60).toFixed(1)+' 分钟前钉住'; }
+  else { b.textContent='🔒 绿框定主'; b.className='sm'; b.title='把绿框钉死: 相机与光模块相对无运动, 定主后坐标不再变'; }
+}
+$('bLock').addEventListener('click',async()=>{
+  const act=(MODLOCK&&MODLOCK.locked)?'unlock':'lock';
+  try{
+    const r=await fetch('/api/module3d_lock',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:act})}).then(x=>x.json());
+    if(!r.ok){ alert('定主失败: '+(r.err||'未知')); return; }
+  }catch(e){ alert('定主请求失败: '+e); return; }
+  await lockTick(); try{ MOD3=await fetch('/api/module3d').then(r=>r.json()); }catch(e){}
+  drawOv();
+});
 $('bMod3').addEventListener('click',()=>{ MOD3ON=!MOD3ON;
   $('bMod3').textContent=MOD3ON?'🔍 光模块3D框':'🔍 光模块3D框(关)';
   $('bMod3').className='sm'+(MOD3ON?' primary':''); SIG=''; drawOv(); });
@@ -361,7 +380,7 @@ function drawModBox(g){
   g.save();
   // 🔴 老倪 2026-10-19「绿色边界框向左偏」的真因: 检测线程检不到目标时保留上一帧框, 页面把旧框画在新画面
   //   ⇒ 看起来就是"偏了"。陈旧框必须换色 + 虚线 + 报帧龄, 不许冒充实时。
-  const STALE=!!MOD3.stale, COL=STALE?'#ffb020':'#00e676';
+  const LOCKED=!!MOD3.locked, STALE=!LOCKED&&!!MOD3.stale, COL=STALE?'#ffb020':'#00e676';
   g.lineWidth=STALE?1.5:2; g.strokeStyle=COL; g.shadowColor=COL; g.shadowBlur=STALE?0:6;
   if(STALE) g.setLineDash([6,5]);
   E.forEach(([i,j])=>{ const a=P[i], b=P[j]; if(!a||!b) return;
@@ -373,8 +392,10 @@ function drawModBox(g){
   g.setLineDash([]);
   // 标签
   const bx=MOD3.box2d||[0,0,0,0];
-  const lab=STALE?('⚠ 陈旧框 · '+((MOD3.result_age_s||0).toFixed(0))+'s 前 · 当前帧未检出目标')
-    :('光模块 3D · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm · d='+(MOD3.dist_mm||0).toFixed(0)+'mm');
+  const lab=LOCKED?('🔒 光模块 3D · 定主 · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm'
+      +(MOD3.live&&MOD3.live.ok?'':' · (实时检测未出框, 框按定主坐标显示)'))
+    :(STALE?('⚠ 陈旧框 · '+((MOD3.result_age_s||0).toFixed(0))+'s 前 · 当前帧未检出目标')
+    :('光模块 3D · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm · d='+(MOD3.dist_mm||0).toFixed(0)+'mm'));
   g.font='12px monospace'; const tw=g.measureText(lab).width;
   const lx=Math.max(2,Math.min(IMG_W-tw-8,bx[0]-4)), ly=Math.max(14,bx[1]-8);
   g.fillStyle='rgba(0,0,0,.62)'; g.fillRect(lx-3,ly-13,tw+8,17);
@@ -1314,6 +1335,7 @@ async function robotTick(){
   // 🤖 机器人状态机 (老倪 2026-10-20: 「AR 场景需要接上机器人, 直接看到是否在插拔」)
   //   真源 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
   robotTick(); setInterval(robotTick,1000);
+  lockTick(); setInterval(lockTick,3000);
   // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
   //   老倪 2026-10-19「点击刷新也不好使」时, 服务端只看得到 /api/* 轮询, 看不到 bus y卡死/hidden/CAMS。
   //   有了这条, 现场"画面不动"能直接判定是 泵卡死 / 没相机键 / 页面没初始化, 而不是靠猜。
