@@ -91,15 +91,19 @@ def arm_polylines(q):
             pass
     pts = [p for p in pts if p]
     lines = []
+    # 🆕 2026-10-20 现场教训: 纯线段没有粗细 ⇒ 肘部(link4)本体半径 78mm 侵入横梁 23mm 时
+    #   线段距离 55.5mm > 20mm 门槛, 仍然报 PASS。必须按每段本体半径扣减。
+    RAD = [95.0, 95.0, 90.0, 78.0, 78.0, 62.0, 58.0]
     for i in range(len(pts) - 1):
-        lines.append(("连杆 %d" % i, [pts[i], pts[i + 1]]))
+        r = RAD[i] if i < len(RAD) else 60.0
+        lines.append(("连杆 %d" % i, [pts[i], pts[i + 1]], r))
     # tool1 -> 夹爪包络末端(沿最后一段方向外延)
     if len(pts) >= 2:
         a, b = pts[-2], pts[-1]
         v = [b[i] - a[i] for i in range(3)]
         n = math.sqrt(sum(x * x for x in v)) or 1.0
         tip = [b[i] + v[i] / n * GRIP_ENVELOPE_MM for i in range(3)]
-        lines.append(("夹爪包络", [b, tip]))
+        lines.append(("夹爪包络", [b, tip], 0.0))
     return lines
 
 
@@ -119,25 +123,28 @@ def main():
 
     lines = arm_polylines(q)
     if to:
-        lines.append(("到目标的直线", seg_samples(tcp, to, 10.0)))
+        lines.append(("到目标的直线", seg_samples(tcp, to, 10.0), 0.0))
 
     worst = (1e9, "", None)
     bad = []
-    for name, pts in lines:
+    for name, pts, rad in lines:
         if len(pts) == 2:
             samples = seg_samples(pts[0], pts[1], 10.0)
         else:
             samples = pts
         for b in boxes:
-            dmin = min(dist_point_box(p, b["lo"], b["hi"]) for p in samples)
+            dmin = min(dist_point_box(p, b["lo"], b["hi"]) for p in samples) - rad
             if dmin < worst[0]:
                 worst = (dmin, name, b["name"])
             if dmin <= 0:
                 bad.append((name, b["name"], dmin))
-            print("  %-10s vs %-20s 最小距离 %8.1f mm %s" % (
-                name, b["name"], dmin, "🔴 侵入" if dmin <= 0 else ""))
+            print("  %-10s(r%3.0f) vs %-20s 净余量 %8.1f mm %s" % (
+                name, rad, b["name"], dmin, "🔴 侵入" if dmin <= 0 else ("⚠" if dmin < 20 else "")))
 
     print("\n最小余量: %.1f mm (%s vs %s)" % worst)
+    if worst[0] < 20.0 and not bad:
+        bad.append((worst[1], worst[2], worst[0]))
+        print("⚠ 最小净余量 %.1fmm < 20mm 门槛 ⇒ 按 FAIL 处理" % worst[0])
     if bad:
         print("❌ FAIL —— 有 %d 处侵入, 不许发运动指令" % len(bad))
         for n, bn, d in bad:
