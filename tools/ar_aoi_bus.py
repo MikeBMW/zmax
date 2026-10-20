@@ -64,6 +64,13 @@ SPEC = [
     ("空间点1.x", G_AR_PTS, "m", "空间点真源 data/skills/l2_atomic/space_points.json (真机实测 7 点)"),
     ("空间点7.x", G_AR_PTS, "m", "同上 (1~7 全套)"),
     ("叠加.点位数", G_AR_PTS, "个", "本轮实际载入的空间点数 (缺谁不补)"),
+    # —— 插拔过程信号 (2026-10-20 老倪: 「把信号分析的 插拔的切向力、末端 x y z 速度, 加到信号波形上」) ——
+    ("末端.vx", G_AR_PTS, "mm/s", "TCP 真值差分: latest.json 相邻两帧 (x2-x1)/Δt"),
+    ("末端.vy", G_AR_PTS, "mm/s", "同上 (y 分量)"),
+    ("末端.vz", G_AR_PTS, "mm/s", "同上 (z 分量)"),
+    ("末端.速度", G_AR_PTS, "mm/s", "合速度 sqrt(vx²+vy²+vz²) —— 与上面三分量同源同帧"),
+    ("末端.速度Δt_ms", G_AR_PTS, "ms", "上面速度的差分间隔: 总线 2s 一轮 ⇒ 是 Δt 内的平均速度, 不是 50Hz 瞬时值"),
+    ("插拔.切向力_N", G_AR_PTS, "N", "DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x); 驱动无读数时不写该键"),
     # —— AR 相机 (RealSense, 相机系) ——
     ("相机.目标_x_m", G_AR_CAM, "m", "AR 服务 8797 /api/rs_pose (深度真值; 相机系, 非基座系)"),
     ("相机.目标_y_m", G_AR_CAM, "m", "同上"),
@@ -283,11 +290,87 @@ def _ar_cam():
     return s, meta
 
 
+_VEL_CACHE = os.path.join(ROOT, "zmax_data", "ar_live", "_tcp_vel_cache.json")
+_DDS_NODE = None
+
+
+def _motion():
+    """末端 x/y/z 速度: 用 TCP 真值相邻两帧差分 (同一份 latest.json, 不另采)。
+
+    为什么缓存上一帧: 真值 50Hz, 而本总线 0.5~2Hz 拉一轮 ⇒ 每轮取到的都是"最新一帧",
+    与上一轮比 Δt 可能是 0.5s(不是 20ms), 必须用真实 Δt 去除; 断流 >2s 不拿旧点硬算。
+    """
+    d = json.load(open(TCP, encoding="utf-8"))
+    ts = float(d.get("ts") or 0)
+    p = [float(d["x"]), float(d["y"]), float(d["z"])]
+    out = {}
+    try:
+        prev = json.load(open(_VEL_CACHE, encoding="utf-8"))
+    except Exception:                                                             # noqa: BLE001
+        prev = None
+    if prev and prev.get("p") and float(prev.get("ts") or 0) > 0:
+        dt = ts - float(prev["ts"])
+        if 0.002 <= dt <= 5.0:
+            v = [(p[i] - float(prev["p"][i])) / dt * 1000.0 for i in range(3)]     # mm/s
+            out["末端.vx"] = round(v[0], 3)
+            out["末端.vy"] = round(v[1], 3)
+            out["末端.vz"] = round(v[2], 3)
+            out["末端.速度"] = round((v[0] ** 2 + v[1] ** 2 + v[2] ** 2) ** 0.5, 3)
+            out["末端.速度Δt_ms"] = round(dt * 1000.0, 1)   # 诚实标注: 这是 Δt 内的平均速度
+    try:
+        json.dump({"ts": ts, "p": p}, open(_VEL_CACHE, "w", encoding="utf-8"))
+    except Exception:                                                             # noqa: BLE001
+        pass
+    return out
+
+
+def _tangential_force():
+    """插拔切向力 = DDS zmax/ss_force_l2 的 x 分量 (插入轴 = base +x)。
+
+    诚实边界: 里萨如力控插入时力是**驱动内部闭环**执行的, 本机拿不到实时六维力;
+    ss_force_l2 是本平台自己算的分层力(前馈加速器), 与驱动接触力不是同一个量。
+    读不到就不写键(波形上该通道为空), 不写 0 冒充。
+    """
+    global _DDS_NODE
+    if _DDS_NODE is None:
+        sys.path.insert(0, os.path.join(ROOT, "dds"))
+        os.environ.setdefault("CYCLONEDDS_URI", "file://%s/dds/cyclonedds_unicast.xml" % ROOT)
+        from zmax_node import Node                                                # noqa: PLC0415
+        _DDS_NODE = Node("ar_aoi_bus", domain=0)
+    msgs = _DDS_NODE.take("ss_force_l2", timeout=0.30) or []   # 0.05s 太短: discovery 没走完就返回空, 实测 0.3s 稳
+    if not msgs:
+        return {}
+    m = msgs[-1]
+    # SSForceLayer 是 dataclass(不是 dict) ⇒ 用 getattr, 别用 .get()
+    x = getattr(m, "x", None)
+    if x is None:
+        return {}
+    out = {"插拔.切向力_N": round(float(x), 4)}
+    tx = getattr(m, "tx", None)
+    if tx:
+        out["插拔.力来源层"] = str(tx)[:16] if False else None  # 占位: 字符串不写数值通道
+        out.pop("插拔.力来源层", None)
+    return out
+
+
 def pull(publish_it=True, quiet=False):
     """从各真源抓一轮 → 合并 → 写 live 文件 (取不到的键不写)。"""
     sig: dict = {}
     meta: dict = {}
     prov: dict = {}
+    # 插拔过程信号 (速度 = TCP 差分; 切向力 = DDS ss_force_l2) —— 先跑, 让 tcp 的键被覆盖成同一帧的值
+    try:
+        mv = _motion()
+        sig.update(mv)
+        prov["motion"] = len(mv)
+    except Exception as e:                                                        # noqa: BLE001
+        meta["motion"] = "%s: %s" % (type(e).__name__, str(e)[:100])
+    try:
+        tf = _tangential_force()
+        sig.update(tf)
+        prov["force"] = len(tf)
+    except Exception as e:                                                        # noqa: BLE001
+        meta["force"] = "%s: %s" % (type(e).__name__, str(e)[:100])
     for fn, tag in ((_tcp, "tcp"),):
         try:
             d, m = fn()
