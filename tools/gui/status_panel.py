@@ -194,12 +194,14 @@ class _Fetcher(QThread):
 # ============================================================
 class StatusPanel(QWidget):
     W, H = 1080, 40                 # 逻辑画布尺寸 (paint 里所有坐标都按这个写死, 别改它)
-    # 🔍 2026-10-21 老倪: 「最下面的硬件指示的字体太小了, 调大」
+    # 🔍 2026-10-21 老倪(第二次): 「主界面的下面的硬件指标，字体太小，需要放大」
     #   做法: 不逐个改 30+ 处写死坐标 (11/37/47/60/88/96…), 而是**画布等比放大** ——
     #   painter.scale(SCALE) 后仍按 1080x40 的逻辑坐标画, 实际像素 = 1080x40 × SCALE,
     #   字/灯/进度条/圆角全部同步变大, 布局关系一点不变 (不会互相压住)。
-    #   1.42 ⇒ 字体 10px→14.2px、11px→15.6px, 面板 1080x40 → 1533x56。
-    SCALE = 1.42
+    #   1.42 ⇒ 10px 字体只有 14.2 物理像素, 而本机 Xft.dpi≈192 (1pt≈2.67px) ⇒ 等效 ~5.3pt, 现场看就是小。
+    #   2.60 ⇒ 10px→26px / 11px→28.6px (等效 ~9.7pt, 与其它 Qt pt 标签同级), 面板 1080x40 → 2808x104
+    #   (窗口宽 3068, 仍留 260px 余量, 不会横向溢出)。
+    SCALE = 2.60
     POLL_MS = 1000
     MAX_CHIPS = 4
 
@@ -1015,7 +1017,7 @@ def _selftest(shot=None):
     # 1) 面积红线 (2026-10-14: 老倪「排成一行; 现在两行占地方」⇒ 560x68 两行 → 1080x40 一行)
     pn = StatusPanel(poll=False)
     _Wp, _Hp = int(StatusPanel.W * StatusPanel.SCALE), int(StatusPanel.H * StatusPanel.SCALE)
-    chk("面积 ≤ %dx%d px (一行, 已按 1.42 放大)" % (_Wp, _Hp),
+    chk("面积 ≤ %dx%d px (一行, 已按 %.2f 放大)" % (_Wp, _Hp, StatusPanel.SCALE),
         pn.width() <= _Wp and pn.height() <= _Hp + 4, "%dx%d" % (pn.width(), pn.height()))
 
     # 1b) 真·一行判据: 渲染后按像素扫描内容行带, 必须只有**一条**带 (背景外的像素行连续成带)
