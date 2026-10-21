@@ -1,0 +1,26 @@
+[Unit]
+Description=Z-MAX 550C 光学质量检测 · 旁路 AOI (Intel 侧, 只读 10082/10083)
+Documentation=file:///home/intel/zmax_map/tools/aoi_bypass_intel.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel/zmax_map
+Environment=HOME=/home/intel
+Environment=PYTHONUNBUFFERED=1
+Environment=ZMAX_AOI_BYPASS_DIR=/home/intel/aoi_bypass
+ExecStart=/usr/bin/python3 -u /home/intel/zmax_map/tools/aoi_bypass_intel.py --port 8802 --interval 5
+Restart=always
+RestartSec=8
+# 旁路是监控, 优先级低, 绝不允许跟 edge 推理抢 NPU/GPU
+Nice=10
+CPUQuota=50%
+MemoryMax=512M
+StandardOutput=append:/home/intel/aoi_bypass/bypass.log
+StandardError=append:/home/intel/aoi_bypass/bypass.log
+
+[Install]
+WantedBy=multi-user.target
