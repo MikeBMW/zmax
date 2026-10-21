@@ -1,0 +1,21 @@
+[Unit]
+Description=ZMAX Intel 端 全模型并行推理守护 (NPU+GPU 吃满)
+After=network-online.target zmax-edge.service
+Wants=zmax-edge.service
+
+[Service]
+Type=simple
+User=intel
+WorkingDirectory=/home/intel/edge_models
+Environment=EDGE_BASE=http://127.0.0.1:8800
+Environment=EDGE_NPU_MODELS=yolo_peg_live,intact_enc
+Environment=EDGE_GPU_MODELS=intact_pred,intact_enc
+Environment=EDGE_SAT_IMG=/home/intel/edge_models/20260917_124517_611.jpg
+Environment=EDGE_GUARD_TICK=15
+ExecStart=/usr/bin/python3 /home/intel/edge_models/edge_pipeline_guard.py
+Restart=always
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

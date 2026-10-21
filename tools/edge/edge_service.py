@@ -8,16 +8,19 @@
   · /health 给运维与 550C 探活 (进程、设备、已加载模型、最近一帧耗时)。
 
 接口:
-  GET  /health                      → {ok, device, model, sha16, last_ms, n_req}
+  GET  /health                      → {ok, device, model, sha16, last_ms, n_req, hw:{cpu/mem/disk/temp/npu}, infer:{busy,req_rate_10s}}
   POST /detect  (body = JPEG/PNG)   → {ok, device, infer_ms, w, h, dets:[{cls,conf,xyxy}]}
   POST /detect?conf=0.3&iou=0.45    → 阈值可覆盖
 用法: python edge_service.py --xml ir/yolo_peg_live.xml --device NPU --port 8800
 """
 import argparse
+import collections
 import hashlib
 import io
 import json
 import os
+import shutil
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -28,7 +31,221 @@ import openvino as ov
 
 IMGSZ = 640
 PAD = 114
-STATE = {"n": 0, "last_ms": None, "t0": time.time()}
+STATE = {"n": 0, "last_ms": None, "t0": time.time(),
+         "req_ts": collections.deque(maxlen=400), "last_req_t": 0.0,
+         "dev_req": {}}
+
+
+# ── 硬件 / 负载 (2026-10-21) ────────────────────────────────────────────────
+#   目的: 主界面最下面的灯带要看「Intel 的硬件 + 模型是否在推理」, /health 必须自报,
+#   不靠主节点去 ssh 采 (工控机上未必有登录口)。全部走 /proc 与 /sys, 零第三方依赖。
+_CPU = {"t": 0.0, "idle": 0.0, "total": 0.0, "pct": None}
+
+
+def _cpu_pct():
+    """两次 /proc/stat 采样差分; 首次调用返回 None (不编 0)。"""
+    try:
+        with open("/proc/stat") as f:
+            fld = f.readline().split()[1:]
+        vals = [float(x) for x in fld]
+        idle, total = vals[3] + vals[4], sum(vals)
+        p = _CPU["pct"]
+        if _CPU["total"] and total > _CPU["total"]:
+            dt, di = total - _CPU["total"], idle - _CPU["idle"]
+            p = round(max(0.0, min(100.0, 100.0 * (dt - di) / dt)), 1)
+        _CPU.update(t=time.time(), idle=idle, total=total, pct=p)
+        return p
+    except Exception:
+        return None
+
+
+def _temp_c():
+    try:
+        for z in sorted(os.listdir("/sys/class/thermal")):
+            if not z.startswith("thermal_zone"):
+                continue
+            base = "/sys/class/thermal/" + z
+            try:
+                typ = open(base + "/type").read().strip()
+            except Exception:
+                continue
+            if "pkg" in typ or "coretemp" in typ or "x86" in typ:
+                return round(int(open(base + "/temp").read().strip()) / 1000.0, 1)
+    except Exception:
+        pass
+    return None
+
+
+# ── 硬件注册表 / 算力 (2026-10-21) ──────────────────────────────────────────
+#   老倪: 「intel 的所有硬件、算力、磁盘空间大小，都要显示标识」。硬件的**身份与算力**是静态的
+#   (CPU 型号 / iGPU 型号+INT8 TOPS / NPU 型号+INT8 TOPS), 启动时问一次 OpenVINO 就够;
+#   **占用**是动态的 (CPU%、内存、磁盘、温度、板载 GPU/NPU 是否在跑) 每次 /health 现采。
+_STATIC = {}
+
+
+def _rd(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
+
+def _drv(link):
+    """driver/module 软链 → 驱动名 (软链指向目录, 不能用 read_text)。"""
+    try:
+        return os.path.basename(os.path.realpath(link))
+    except Exception:
+        return None
+
+
+def _npu_dev():
+    """/dev/accel/accel0 才是真实节点 (udev 建的是子目录); 兼容老内核的 /dev/accel0。"""
+    if os.path.exists("/dev/accel/accel0"):
+        return "/dev/accel/accel0"
+    try:
+        for fn in sorted(os.listdir("/dev/accel")):
+            if fn.startswith("accel"):
+                return "/dev/accel/" + fn
+    except Exception:
+        pass
+    return "/dev/accel0" if os.path.exists("/dev/accel0") else None
+
+
+def _gops_to_tops(gops, typ="int8_t"):
+    """OpenVINO DEVICE_GOPS: {'<Type: int8_t>': 50380.8, ...} (GOPS) → TOPS。取不到就 None, 不估算。"""
+    try:
+        for k, v in (gops or {}).items():
+            if typ in str(k) and v:
+                return round(float(v) / 1000.0, 1)
+    except Exception:
+        pass
+    return None
+
+
+def _dev_static(core, dev):
+    """某设备的型号/架构/INT8 算力 (TOPS) —— 取不到就如实空着。"""
+    out = {"name": None, "arch": None, "tops_int8": None}
+    try:
+        out["name"] = str(core.get_property(dev, "FULL_DEVICE_NAME"))
+    except Exception:
+        pass
+    try:
+        out["arch"] = str(core.get_property(dev, "DEVICE_ARCHITECTURE"))
+    except Exception:
+        pass
+    for key in ("DEVICE_GOPS", "DEVICE_GOPS"):
+        try:
+            out["tops_int8"] = _gops_to_tops(core.get_property(dev, key), "int8_t")
+            break
+        except Exception:
+            continue
+    return out
+
+
+def _init_static(core, devices):
+    """启动时只跑一次: 主机身份 + 三设备身份/算力 + 磁盘总量。"""
+    cpu_model, threads = None, os.cpu_count()
+    for ln in open("/proc/cpuinfo"):
+        if ln.startswith("model name"):
+            cpu_model = ln.split(":", 1)[1].strip()
+            break
+    mhz_max = _rd("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
+    _STATIC.update({
+        "host": os.uname().nodename, "kernel": os.uname().release, "arch": os.uname().machine,
+        "ov_version": ov.__version__, "devices_ov": list(devices),
+        "cpu": {"model": cpu_model, "threads": threads,
+                "mhz_max": round(int(mhz_max) / 1000.0) if mhz_max else None},
+        "gpu": {"pci": None, "driver": _drv("/sys/class/drm/card0/device/driver/module"),
+                "tops_int8": None, "name": None},
+        "npu": {"dev": _npu_dev(), "present": bool(_npu_dev()),
+                "driver": _drv("/sys/class/accel/accel0/device/driver/module"),
+                "pci": None, "name": None, "tops_int8": None},
+    })
+    for ln in (_rd("/sys/class/drm/card0/device/uevent") or "").splitlines():
+        if ln.startswith("PCI_ID="):
+            _STATIC["gpu"]["pci"] = ln.split("=", 1)[1]
+    for ln in (_rd("/sys/class/accel/accel0/device/uevent") or "").splitlines():
+        if ln.startswith("PCI_ID="):
+            _STATIC["npu"]["pci"] = ln.split("=", 1)[1]
+    for dev, key in (("GPU", "gpu"), ("NPU", "npu")):
+        if dev in devices:
+            d = _dev_static(core, dev)
+            _STATIC[key].update(name=d.get("name"), arch=d.get("arch"), tops_int8=d.get("tops_int8"))
+    try:
+        du = shutil.disk_usage("/")
+        _STATIC["disk_root_gb"] = round(du.total / 1e9, 1)
+    except Exception:
+        pass
+    return _STATIC
+
+
+def _disk_mounts():
+    out = []
+    for mnt in ("/", "/boot/efi"):
+        try:
+            u = shutil.disk_usage(mnt)
+            out.append({"mount": mnt, "total_gb": round(u.total / 1e9, 1),
+                        "used_gb": round(u.used / 1e9, 1), "free_gb": round(u.free / 1e9, 1),
+                        "pct": round(100.0 * u.used / u.total, 1)})
+        except Exception:
+            pass
+    return out
+
+
+def _hw():
+    """动态占用 + 静态身份/算力 一起给 (字段名跟主节点 status_hub 的口径对齐)。"""
+    hw = {"host": _STATIC.get("host") or os.uname().nodename,
+          "cpu_n": os.cpu_count(), "cpu_pct": _cpu_pct(),
+          "cpu_model": (_STATIC.get("cpu") or {}).get("model"),
+          "cpu_mhz_max": (_STATIC.get("cpu") or {}).get("mhz_max"),
+          "cpu_mhz_now": None, "load1": round(os.getloadavg()[0], 2)}
+    mhz = _rd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+    if mhz:
+        try:
+            hw["cpu_mhz_now"] = round(int(mhz) / 1000.0)
+        except Exception:
+            pass
+    try:
+        mi = {}
+        with open("/proc/meminfo") as f:
+            for ln in f:
+                k, v = ln.split(":", 1)
+                mi[k] = int(v.split()[0])
+        tot, avail = mi.get("MemTotal", 0), mi.get("MemAvailable", 0)
+        hw["mem_total_mb"] = round(tot / 1024.0)
+        hw["mem_used_mb"] = round((tot - avail) / 1024.0)
+        hw["mem_pct"] = round(100.0 * (tot - avail) / tot, 1) if tot else None
+    except Exception:
+        pass
+    disks = _disk_mounts()
+    hw["disks"] = disks
+    if disks:
+        d0 = disks[0]
+        hw["disk_total_gb"], hw["disk_used_gb"] = d0["total_gb"], d0["used_gb"]
+        hw["disk_free_gb"], hw["disk_pct"] = d0["free_gb"], d0["pct"]
+    hw["temp_c"] = _temp_c()
+    hw["npu"] = bool(_npu_dev())
+    # 三块算力的身份/算力 (静态) + 谁在用 (动态: 当前服务编译在哪个设备上)
+    hw["accel"] = {
+        "cpu": {"name": (_STATIC.get("cpu") or {}).get("model"),
+                "tops_int8": None, "unit": "threads",
+                "cap": (_STATIC.get("cpu") or {}).get("mhz_max")},
+        "gpu": dict((_STATIC.get("gpu") or {}), in_use=Handler.meta.get("device") == "GPU"),
+        "npu": dict((_STATIC.get("npu") or {}), in_use=Handler.meta.get("device") == "NPU"),
+    }
+    return hw
+
+
+def _busy():
+    """模型是否在推理: 最近 3s 内有请求 = busy; 速率按最近 10s 请求数算。"""
+    now = time.time()
+    ts = STATE["req_ts"]
+    while ts and now - ts[0] > 10.0:
+        ts.popleft()
+    rate = round(len(ts) / 10.0, 2)
+    return {"busy": (now - STATE["last_req_t"]) < 3.0, "req_rate_10s": rate,
+            "last_req_age_s": (round(now - STATE["last_req_t"], 1) if STATE["last_req_t"] else None)}
 
 
 def letterbox(img, size=IMGSZ):
@@ -69,6 +286,165 @@ def decode(out, r, pad, conf_th=0.25, iou_th=0.45):
     return sorted(res, key=lambda d: -d["conf"])
 
 
+# ── 多设备 / 多模型: 编译结果按 (xml, device) 缓存 ────────────────────────────────
+#   老倪 2026-10-21: 「我现在有 YOLO, SmolVLA, INTACT 模型, 怎么在 intel 上运行?」
+#   ⇒ 服务不再绑死一个模型/一个设备: /detect?model=<名>&device=NPU|GPU|CPU 现编现跑, 编过就复用。
+#   并发安全: 共用的是 **CompiledModel**(线程安全), 每次调用由它新建 InferRequest;
+#   之前 4 并发 RemoteDisconnected 是共用一个 InferRequest 导致的, 这里不碰那个坑。
+_COMP = {}
+_COMP_LOCK = threading.Lock()
+
+
+def _comp_cache_devices():
+    return sorted({k[1] for k in _COMP.keys()})
+
+
+def _comp_for(model_name, device):
+    """(model 名, device) → (compiled_model, output_port, key)。"""
+    xml = Handler.meta.get("xml")
+    if model_name:
+        base = os.path.dirname(os.path.abspath(xml))
+        cand = os.path.join(base, model_name if model_name.endswith(".xml") else model_name + ".xml")
+        if not os.path.isfile(cand):
+            raise FileNotFoundError("没有这个模型: %s" % cand)
+        xml = cand
+    key = (os.path.abspath(xml), str(device or "NPU").upper())
+    with _COMP_LOCK:
+        if key not in _COMP:
+            t0 = time.perf_counter()
+            _COMP[key] = Handler.core.compile_model(Handler.core.read_model(key[0]), key[1])
+            print("[edge] 编译 %s @ %s: %.1fms" % (os.path.basename(key[0]), key[1],
+                                                   (time.perf_counter() - t0) * 1000), flush=True)
+        comp = _COMP[key]
+    return comp, comp.output(0), key
+
+
+# ── NPU/GPU 并行调度 (2026-10-21 老倪: 「550C 全模型运行, 将 NPU GPU 最大化使用」) ────────
+#   一台设备一个常驻 worker: 各自 back-to-back 跑自己那几个模型, 谁闲着就补下一个 ⇒ 两块算力同时吃满。
+#   指标口径: duty = 该 worker 真正在执行推理的累计时间 / 墙钟时间 (不是"发了多少请求")。
+PIPE = {"on": False, "stop": None, "threads": [], "t0": 0.0, "plan": [],
+        "stat": {}}          # stat[dev] = {"n":int, "busy_s":float, "last_ms":float, "err":str}
+
+
+def _model_path(name):
+    """模型名 (yolo_peg_live / xxx.xml / 绝对路径) → 绝对路径。"""
+    if not name:
+        return Handler.meta.get("xml")
+    if os.path.isabs(name):
+        return name
+    base = os.path.dirname(os.path.abspath(Handler.meta.get("xml")))
+    cand = os.path.join(base, name if name.endswith(".xml") else name + ".xml")
+    if not os.path.isfile(cand):                       # 也允许传 ir/ 子目录下的名字
+        cand2 = os.path.join(base, "ir", name if name.endswith(".xml") else name + ".xml")
+        if os.path.isfile(cand2):
+            return cand2
+    return cand
+
+
+def _dim(d):
+    """OpenVINO Dimension → int; 动态维(-1)按 1 处理。"""
+    try:
+        return int(d.get_length()) if d.is_static else 1
+    except Exception:                                             # noqa: BLE001
+        return 1
+
+
+def _sat_input(xml, img_path):
+    """给 worker 造输入: 按模型自己声明的形状建 tensor; 有图且输入是 4D 图像就吃真图。
+    返回 (feed, src) —— feed 是 np.ndarray (单输入) 或 {port: array} (多输入)。"""
+    core = Handler.core
+    m = core.read_model(_model_path(xml))
+    ins = list(m.inputs)
+    feed, srcs = {}, []
+    for i, port in enumerate(ins):
+        shp = [_dim(s) for s in port.partial_shape]
+        arr = np.zeros(shp, dtype=np.float32)
+        if len(shp) == 4 and img_path and os.path.exists(img_path) and i == 0:
+            import cv2
+            im = cv2.imread(img_path)
+            if im is not None:
+                im = cv2.resize(im, (shp[3], shp[2]))
+                arr = np.ascontiguousarray(
+                    im[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0)
+                srcs.append(os.path.basename(img_path))
+        feed[port] = arr
+    vals = list(feed.values())
+    if len(vals) == 1:
+        return vals[0], (srcs[0] if srcs else "zeros")
+    return vals, (",".join(srcs) if srcs else "zeros")     # 多输入 → 按端口顺序传 list
+                                                        # (dict 用 read_model 的 Port 当键会被 OpenVINO 拒)
+
+
+def _worker(dev, plan, stop_ev):
+    st = PIPE["stat"][dev]
+    while not stop_ev.is_set():
+        for xml in plan:
+            if stop_ev.is_set():
+                break
+            try:
+                comp, port, key = _comp_for(xml, dev)
+                x = Handler.sat_in.get((dev, os.path.basename(_model_path(xml))))
+                if x is None:
+                    x = np.zeros((1, 3, 640, 640), dtype=np.float32)
+                t0 = time.perf_counter()
+                comp(x)[port]
+                dt = time.perf_counter() - t0
+                st["n"] += 1
+                st["busy_s"] += dt
+                st["last_ms"] = round(dt * 1000.0, 2)
+                st["err"] = None
+            except Exception as e:                                    # noqa: BLE001
+                st["err"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+                time.sleep(0.05)
+
+
+def _pipe_start(plan, img_path=None):
+    """plan = {"NPU":[xml...], "GPU":[xml...]}; 起 worker 并预热输入。"""
+    _pipe_stop()
+    Handler.sat_in = {}
+    PIPE.update(on=True, stop=threading.Event(), threads=[], t0=time.time(),
+                plan=[{"dev": k, "models": list(v)} for k, v in plan.items()], stat={})
+    src = {}
+    for dev, models in plan.items():
+        if not models:
+            continue
+        for mname in models:                     # 同一设备多个模型 → 每个模型自己的输入张量
+            x, s = _sat_input(mname or Handler.meta["xml"], img_path)
+            Handler.sat_in[(dev, os.path.basename(_model_path(mname or Handler.meta["xml"])))] = x
+            src["%s:%s" % (dev, mname)] = s
+        PIPE["stat"][dev] = {"n": 0, "busy_s": 0.0, "last_ms": None, "err": None,
+                             "src": ",".join(sorted({v for k2, v in src.items() if k2.startswith(dev + ":")}))}
+        th = threading.Thread(target=_worker, args=(dev, list(models), PIPE["stop"]), daemon=True,
+                              name="pipe-%s" % dev)
+        th.start()
+        PIPE["threads"].append(th)
+    return {"ok": True, "plan": PIPE["plan"], "input": src, "t0": PIPE["t0"]}
+
+
+def _pipe_stop():
+    if PIPE.get("stop") is not None:
+        PIPE["stop"].set()
+    for th in PIPE.get("threads") or []:
+        th.join(timeout=2.0)
+    PIPE.update(on=False, stop=None, threads=[])
+
+
+def _pipe_stats():
+    el = (time.time() - PIPE["t0"]) if PIPE["on"] else 0.0
+    out = {}
+    for dev, st in (PIPE.get("stat") or {}).items():
+        n = st["n"]
+        busy = st["busy_s"]
+        plan_models = next((x["models"] for x in (PIPE.get("plan") or []) if x["dev"] == dev), [])
+        out[dev] = {"n": n, "models": plan_models, "elapsed_s": round(el, 1),
+                    "fps": round(n / el, 1) if el > 0 else None,
+                    "avg_ms": round(busy / n * 1000.0, 2) if n else None,
+                    "duty_pct": round(100.0 * busy / el, 1) if el > 0 else None,
+                    "last_ms": st["last_ms"], "src": st.get("src"), "err": st["err"]}
+    return {"on": PIPE["on"], "elapsed_s": round(el, 1), "devices": out,
+            "total_fps": round(sum((v["fps"] or 0) for v in out.values()), 1) if out else None}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "zmax-edge/1.0"
     protocol_version = "HTTP/1.1"
@@ -92,15 +468,60 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path in ("/health", "/", "/healthz"):
             return self._json(200, dict(ok=True, uptime_s=round(time.time() - STATE["t0"], 1),
-                                        n_req=STATE["n"], last_ms=STATE["last_ms"], **self.meta))
+                                        n_req=STATE["n"], last_ms=STATE["last_ms"],
+                                        hw=_hw(), infer=_busy(),
+                                        pipeline=_pipe_stats(), **self.meta))
+        if u.path == "/pipeline/stats":
+            return self._json(200, dict(ok=True, **_pipe_stats()))
+        if u.path == "/pipeline/stop":
+            _pipe_stop()
+            return self._json(200, dict(ok=True, stopped=True, **_pipe_stats()))
+        if u.path == "/models":
+            d = os.path.dirname(os.path.abspath(Handler.meta.get("xml") or "."))
+            items = []
+            for fn in sorted(os.listdir(d)):
+                if fn.endswith(".xml"):
+                    fp = os.path.join(d, fn)
+                    items.append({"name": fn[:-4], "mb": round(os.path.getsize(fp) / 1e6, 1),
+                                  "active": os.path.basename(Handler.meta.get("xml") or "") == fn})
+            return self._json(200, {"ok": True, "dir": d, "models": items,
+                                    "devices": list(_comp_cache_devices())})
         return self._json(404, {"ok": False, "error": "no such path %s" % u.path})
 
     def do_POST(self):
+        try:
+            return self._do_POST()
+        except Exception:                                         # noqa: BLE001
+            import traceback
+            tb = traceback.format_exc().strip().splitlines()[-3:]
+            try:
+                self._json(500, {"ok": False, "error": " | ".join(tb)})
+            except Exception:                                     # noqa: BLE001
+                pass
+
+    def _do_POST(self):
         u = urlparse(self.path)
+        q0 = parse_qs(u.query or "")
+        if u.path == "/pipeline/start":
+            plan = {}
+            for dev in ("NPU", "GPU", "CPU"):
+                v = (q0.get(dev.lower()) or q0.get(dev) or [""])[0]
+                if v:
+                    plan[dev] = [x.strip() for x in v.split(",") if x.strip()]
+            if not plan:
+                plan = {Handler.meta.get("device") or "NPU": [os.path.basename(Handler.meta["xml"])]}
+            img = (q0.get("img") or [""])[0] or None
+            try:
+                return self._json(200, _pipe_start(plan, img))
+            except Exception as e:                                    # noqa: BLE001
+                return self._json(500, {"ok": False, "plan": plan,
+                                        "error": "%s: %s" % (type(e).__name__, str(e)[:200])})
         if u.path != "/detect":
             return self._json(404, {"ok": False, "error": "no such path %s" % u.path})
         q = parse_qs(u.query or "")
         conf = float((q.get("conf") or ["0.25"])[0])
+        want_dev = (q.get("device") or [Handler.meta.get("device") or "NPU"])[0].upper()
+        want_model = (q.get("model") or [None])[0]
         iou = float((q.get("iou") or ["0.45"])[0])
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > 32 * 1024 * 1024:
@@ -109,16 +530,26 @@ class Handler(BaseHTTPRequestHandler):
         img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             return self._json(400, {"ok": False, "error": "不是能解码的图片 (要 JPEG/PNG)"})
+        try:
+            comp, out_port, used = _comp_for(want_model, want_dev)
+        except Exception as e:                                        # noqa: BLE001
+            return self._json(400, {"ok": False, "error": "compile %s/%s 失败: %s: %s"
+                                                         % (want_model or Handler.meta.get("xml"),
+                                                            want_dev, type(e).__name__, str(e)[:160])})
         t = time.perf_counter()
         lb, r, pad = letterbox(img)
         x = np.ascontiguousarray(lb[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0)
-        out = self.comp(x)[self.out_port]
+        out = comp(x)[out_port]
         dets = decode(out, r, pad, conf, iou)
         ms = round((time.perf_counter() - t) * 1000.0, 2)
         STATE["n"] += 1
         STATE["last_ms"] = ms
-        return self._json(200, dict(ok=True, device=self.meta.get("device"), infer_ms=ms,
-                                    w=img.shape[1], h=img.shape[0], **_sha_of(self.meta), dets=dets))
+        STATE["last_req_t"] = time.time()
+        STATE["req_ts"].append(time.time())
+        STATE["dev_req"][used] = STATE["dev_req"].get(used, 0) + 1
+        return self._json(200, dict(ok=True, device=used[1], model=os.path.basename(used[0]),
+                                    infer_ms=ms, n_dev_req=STATE["dev_req"].get(used, 0),
+                                    w=img.shape[1], h=img.shape[0], dets=dets))
 
 
 def _sha_of(meta):
@@ -141,6 +572,9 @@ def main():
     with open(a.xml, "rb") as f:
         sha16 = hashlib.sha256(f.read()).hexdigest()[:16]
     Handler.comp, Handler.out_port = comp, comp.output(0)
+    Handler.core = core
+    _init_static(core, core.available_devices)          # 硬件身份 + 三设备算力 (静态, 只跑一次)
+    _COMP[(os.path.abspath(a.xml), a.device.upper())] = comp
     Handler.meta = {"xml": a.xml, "device": a.device, "sha16": sha16,
                     "compile_ms": compile_ms, "imgsz": IMGSZ,
                     "host": os.uname().nodename, "pid": os.getpid()}

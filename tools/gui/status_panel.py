@@ -637,6 +637,13 @@ class StatusPanel(QWidget):
             L.append("  Intel 内存: %s/%s MB (%s%%) · 温度 %s°C · n_req %s · 最近10s %s 次/s" % (
                 hwe.get("mem_used_mb", "—"), hwe.get("mem_total_mb", "—"), hwe.get("mem_pct", "—"),
                 hwe.get("temp_c", "—"), e.get("n_req", "—"), e.get("rate_10s", "—")))
+            pl = e.get("pipeline") or {}
+            if pl.get("on"):
+                for dev, st in (pl.get("devices") or {}).items():
+                    L.append("  并行调度 %s: %.1f fps · 均值 %s ms · 占空 %s%% · 已跑 %s 次%s" % (
+                        dev, st.get("fps") or 0, st.get("avg_ms"), st.get("duty_pct"), st.get("n"),
+                        (" · " + st["err"]) if st.get("err") else ""))
+                L.append("  合计 %.1f fps (NPU+GPU 同时吃满)" % (pl.get("total_fps") or 0))
             for dsk in (hwe.get("disks") or [])[:3]:
                 L.append("  Intel 磁盘 %s: 总 %s GB · 已用 %s GB · 余 %s GB (%s%%)" % (
                     dsk.get("mount", "—"), dsk.get("total_gb", "—"), dsk.get("used_gb", "—"),

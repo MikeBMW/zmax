@@ -772,6 +772,7 @@ def collect_edge(timeout: float = 1.5) -> dict:
                 "last_ms": d.get("last_ms"), "busy": bool(inf.get("busy")),
                 "rate_10s": inf.get("req_rate_10s"), "last_req_age_s": inf.get("last_req_age_s"),
                 "hw": hw,
+                "pipeline": d.get("pipeline"),        # NPU/GPU 并行调度的 duty/fps (on 才有值)
                 "uptime_s": d.get("uptime_s"), "ts": time.time()}
     return {"online": False, "tried": tried, "ts": time.time()}
 
