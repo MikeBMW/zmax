@@ -1,0 +1,24 @@
+[Unit]
+Description=Z-MAX 手机拍视频建图 App (Intel, 单目 SfM)
+Documentation=file:///home/intel/zmax_map/tools/mobile_map_app.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+WorkingDirectory=/home/intel/zmax_map/tools
+Environment=ZMAX_MOBILE_MAP_DIR=/home/intel/mobile_map
+Environment=ZMAX_MONO_SFM=/home/intel/zmax_map/tools/mapping/mono_sfm.py
+Environment=ZMAX_PY=/usr/bin/python3
+ExecStart=/usr/bin/python3 /home/intel/zmax_map/tools/mobile_map_app.py --port 8803
+Restart=always
+RestartSec=5
+Nice=5
+CPUQuota=400%
+MemoryMax=4G
+StandardOutput=append:/home/intel/mobile_map/app.log
+StandardError=append:/home/intel/mobile_map/app.log
+
+[Install]
+WantedBy=multi-user.target

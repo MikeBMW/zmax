@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0a0c10">
+<title>手机建图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0a0c10;color:#dfe3ea;font:14px/1.6 -apple-system,"Helvetica Neue","Noto Sans CJK SC",sans-serif;
+     height:100vh;overflow:hidden;display:flex;flex-direction:column}
+header{padding:12px 16px;border-bottom:1px solid #1b2028;display:flex;align-items:center;gap:10px;flex-shrink:0}
+h1{font-size:15px;font-weight:600}
+.tag{padding:2px 8px;border-radius:9px;font-size:11px;background:#16202c;color:#63b3ed}
+.warn{background:#2d1b1e;color:#f87171}
+main{flex:1;position:relative;overflow:hidden}
+#view{width:100%;height:100%;display:block;touch-action:none}
+#hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+      justify-content:center;gap:14px;padding:24px;text-align:center}
+#hint p{color:#6b7683;font-size:13px;line-height:1.8;max-width:300px}
+.big{background:#1d4ed8;color:#fff;border:none;border-radius:12px;padding:16px 30px;
+     font-size:16px;font-weight:600;width:100%;max-width:300px;cursor:pointer}
+.big:active{background:#1e40af}
+.big:disabled{background:#2a3140;color:#5a6270}
+#file{display:none}
+#bar{position:absolute;left:0;right:0;bottom:0;padding:10px 16px;background:#0d1117ee;
+     border-top:1px solid #1b2028;font-size:12px;display:flex;justify-content:space-between;
+     gap:12px;backdrop-filter:blur(8px)}
+#bar span{color:#6b7683}#bar b{color:#dfe3ea;font-variant-numeric:tabular-nums}
+#prog{position:absolute;top:0;left:0;height:2px;background:#3b82f6;width:0;transition:width .3s}
+</style></head><body>
+<header>
+  <h1>手机拍视频建图</h1>
+  <span class="tag" id="st">待上传</span>
+</header>
+<div id="prog"></div>
+<main>
+  <canvas id="view"></canvas>
+  <div id="hint">
+    <p>拍一段边走边拍的视频（3 秒以上，画面里要有近处和远处的物体，慢一点横向移动）</p>
+    <button class="big" id="pick">选择 / 拍摄视频</button>
+    <input type="file" id="file" accept="video/*" capture="environment">
+  </div>
+  <div id="bar" style="display:none">
+    <span>帧 <b id="nf">—</b></span>
+    <span>点 <b id="np">—</b></span>
+    <span>耗时 <b id="sec">—</b></span>
+  </div>
+</main>
+<script type="importmap">
+{"imports":{"three":"/lib/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const cv = document.getElementById('view');
+const st = document.getElementById('st');
+const hint = document.getElementById('hint');
+const bar = document.getElementById('bar');
+const prog = document.getElementById('prog');
+const fileIn = document.getElementById('file');
+
+let renderer, scene, camera, points, trajLine, ready = false;
+let rot = {x: 0.4, y: 0.6}, dist = 3, dragging = false, last = null;
+
+function setTag(text, warn) {
+  st.textContent = text;
+  st.className = 'tag' + (warn ? ' warn' : '');
+}
+function setProg(p) { prog.style.width = Math.max(0, Math.min(100, p)) + '%'; }
+
+function initGL() {
+  if (renderer) return;
+  renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true, alpha: false,
+                                      preserveDrawingBuffer: true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0c10);
+  camera = new THREE.PerspectiveCamera(55, 1, 0.01, 1000);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.6));
+  const g = new THREE.GridHelper(10, 20, 0x1b2028, 0x141a22);
+  scene.add(g);
+  resize();
+  addEventListener('resize', resize);
+  animate();
+}
+function resize() {
+  if (!renderer) return;
+  const w = cv.clientWidth || innerWidth, h = cv.clientHeight || innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+function animate() {
+  requestAnimationFrame(animate);
+  if (!renderer) return;
+  if (!dragging) rot.y += 0.0015;
+  const cx = dist * Math.cos(rot.x) * Math.sin(rot.y);
+  const cy = dist * Math.sin(rot.x);
+  const cz = dist * Math.cos(rot.x) * Math.cos(rot.y);
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+}
+
+// 触摸/鼠标旋转缩放
+function down(x, y) { dragging = true; last = [x, y]; }
+function move(x, y) {
+  if (!dragging || !last) return;
+  rot.y -= (x - last[0]) * 0.008;
+  rot.x += (y - last[1]) * 0.008;
+  rot.x = Math.max(-1.5, Math.min(1.5, rot.x));
+  last = [x, y];
+}
+function up() { dragging = false; last = null; }
+cv.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+addEventListener('mousemove', e => move(e.clientX, e.clientY));
+addEventListener('mouseup', up);
+cv.addEventListener('touchstart', e => { const t = e.touches[0]; down(t.clientX, t.clientY); }, {passive: true});
+cv.addEventListener('touchmove', e => { const t = e.touches[0]; move(t.clientX, t.clientY); }, {passive: true});
+cv.addEventListener('touchend', up);
+cv.addEventListener('wheel', e => {
+  dist *= (1 + Math.sign(e.deltaY) * 0.12);
+  dist = Math.max(0.3, Math.min(30, dist));
+  e.preventDefault();
+}, {passive: false});
+
+// 双指缩放
+let pinch0 = null;
+cv.addEventListener('touchmove', e => {
+  if (e.touches.length !== 2) return;
+  const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                       e.touches[0].clientY - e.touches[1].clientY);
+  if (pinch0) { dist *= pinch0 / d; dist = Math.max(0.3, Math.min(30, dist)); }
+  pinch0 = d;
+}, {passive: true});
+cv.addEventListener('touchend', () => { pinch0 = null; });
+
+document.getElementById('pick').onclick = () => fileIn.click();
+
+fileIn.onchange = async () => {
+  const f = fileIn.files[0];
+  if (!f) return;
+  document.getElementById('pick').disabled = true;
+  setTag('上传中…');
+  setProg(10);
+  const fd = new FormData();
+  fd.append('video', f, f.name || 'video.mp4');
+  try {
+    const r = await fetch('/upload', {method: 'POST', body: fd});
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || '上传失败');
+    setProg(30);
+    setTag('建图中…');
+    poll(j.id);
+  } catch (e) {
+    setTag('失败: ' + e.message, true);
+    document.getElementById('pick').disabled = false;
+    setProg(0);
+  }
+};
+
+async function poll(id) {
+  const t0 = Date.now();
+  const tick = async () => {
+    try {
+      const j = await (await fetch('/job?id=' + id, {cache: 'no-store'})).json();
+      setTag(j.msg || j.state);
+      if (j.frames) document.getElementById('nf').textContent = j.frames;
+      if (j.state === 'done') {
+        setProg(100);
+        setTag('完成');
+        document.getElementById('np').textContent = j.n_points;
+        document.getElementById('sec').textContent = j.secs + 's';
+        bar.style.display = 'flex';
+        showMap(id, j);
+        return;
+      }
+      if (j.state === 'failed') {
+        setTag('失败: ' + (j.err || ''), true);
+        document.getElementById('pick').disabled = false;
+        setProg(0);
+        return;
+      }
+      const p = 30 + Math.min(65, (Date.now() - t0) / 400);
+      setProg(p);
+      setTimeout(tick, 1500);
+    } catch (e) { setTimeout(tick, 2500); }
+  };
+  tick();
+}
+
+async function showMap(id, job) {
+  hint.style.display = 'none';
+  initGL();
+  const pts = await (await fetch('/points?id=' + id, {cache: 'no-store'})).json();
+  if (!pts.length) { setTag('点云为空', true); return; }
+
+  // 归一化到单位球, 保证手机上看得到
+  let cx = 0, cy = 0, cz = 0;
+  for (const p of pts) { cx += p[0]; cy += p[1]; cz += p[2]; }
+  cx /= pts.length; cy /= pts.length; cz /= pts.length;
+  let rad = 0;
+  for (const p of pts) rad = Math.max(rad, Math.hypot(p[0] - cx, p[1] - cy, p[2] - cz));
+  const s = rad > 1e-9 ? 1 / rad : 1;
+
+  const pos = new Float32Array(pts.length * 3);
+  const col = new Float32Array(pts.length * 3);
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    pos[i * 3] = (p[0] - cx) * s;
+    pos[i * 3 + 1] = (p[1] - cy) * s;
+    pos[i * 3 + 2] = (p[2] - cz) * s;
+    col[i * 3] = (p[3] ?? 200) / 255;
+    col[i * 3 + 1] = (p[4] ?? 200) / 255;
+    col[i * 3 + 2] = (p[5] ?? 200) / 255;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({size: 0.012, vertexColors: true, sizeAttenuation: true});
+  points = new THREE.Points(geo, mat);
+  scene.add(points);
+  dist = 2.6;
+  // 调试钩子: 便于外部核验渲染结果 (点数/场景对象), 不影响正常使用
+  window.__zmap = {scene, points, camera, renderer, n: pts.length};
+
+  // 轨迹
+  try {
+    const tj = await (await fetch('/trajectory?id=' + id, {cache: 'no-store'})).json();
+    if (tj.length > 1) {
+      const tp = new Float32Array(tj.length * 3);
+      for (let i = 0; i < tj.length; i++) {
+        tp[i * 3] = (tj[i][0] - cx) * s;
+        tp[i * 3 + 1] = (tj[i][1] - cy) * s;
+        tp[i * 3 + 2] = (tj[i][2] - cz) * s;
+      }
+      const tg = new THREE.BufferGeometry();
+      tg.setAttribute('position', new THREE.BufferAttribute(tp, 3));
+      trajLine = new THREE.Line(tg, new THREE.LineBasicMaterial({color: 0xffa500}));
+      scene.add(trajLine);
+    }
+  } catch (e) {}
+}
+
+// 语言/环境自检
+fetch('/health').then(r => r.json()).then(j => {
+  if (!j.sfm_exists) setTag('后端缺 mono_sfm', true);
+}).catch(() => setTag('后端无响应', true));
+
+// 支持 ?id=xxx 直接打开已有任务的结果 (分享链接用)
+const qs = new URLSearchParams(location.search);
+if (qs.get('id')) {
+  hint.style.display = 'none';
+  initGL();
+  poll(qs.get('id'));
+}
+</script>
+</body></html>
