@@ -233,6 +233,21 @@ def _active_task():
     return ""
 
 
+def _conv_short(txt):
+    """'tools/edge/ov_export_torch.py → tools/edge/ov_convert.py' → 'ov_export_torch → ov_convert'。
+    窄列只放得下这个长度; 完整命令行在 tooltip 与双击单元格里 (可复制)。"""
+    s = str(txt or "—")
+    if "tools/edge/" in s:
+        return (s.replace("tools/edge/", "").replace(".py", "").split(" (")[0].strip() or "—")
+    if "torch 直跑" in s:
+        return "无 · torch 直跑"
+    if "云端 API" in s:
+        return "无 · 云端 API"
+    if "独立服务" in s:
+        return "无 · 服务内"
+    return s.split(" (")[0].strip() or "—"
+
+
 class _Fetcher(threading.Thread):
     """后台取数: model_inventory --json + 8796 /status/all (阻塞 I/O 绝不进 GUI 线程)。"""
 
@@ -257,8 +272,29 @@ class _Fetcher(threading.Thread):
                     st = json.loads(r.read(262144).decode("utf-8", "replace"))
             except Exception:                                                             # noqa: BLE001
                 st = {}
-            self.out.put((inv, st, time.time()))
+            self.out.put((inv, st, time.time(), self._runtime(inv)))
             self._stop.wait(self.interval)
+
+    def _runtime(self, inv=None):
+        """运行位置/权重/转换工具/推理-训练 的真源 (60s 一次: 里面要 hash 权重, 不能每 tick 都做)。"""
+        try:
+            if time.time() - getattr(self, "_rt_ts", 0) < 60 and getattr(self, "_rt_d", None):
+                return self._rt_d
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import model_runtime_map as mrm                                        # noqa: PLC0415
+            d = mrm.build(inv)
+            if d.get("ok"):
+                try:
+                    os.makedirs(os.path.dirname(mrm.OUT_J), exist_ok=True)
+                    with open(mrm.OUT_J + ".tmp", "w", encoding="utf-8") as f:
+                        json.dump(d, f, ensure_ascii=False, indent=1)
+                    os.replace(mrm.OUT_J + ".tmp", mrm.OUT_J)
+                except Exception:                                                  # noqa: BLE001
+                    pass
+            self._rt_d, self._rt_ts = d, time.time()
+            return d
+        except Exception as e:                                                     # noqa: BLE001
+            return {"_err": "%s: %s" % (type(e).__name__, e), "items": []}
 
 
 class ModelEnginePanel(QWidget):
@@ -277,6 +313,7 @@ class ModelEnginePanel(QWidget):
         self._q = queue.Queue()
         self._log_q = queue.Queue()
         self._inv, self._st, self._age = {}, {}, None
+        self._rt = {}                     # 运行位置/运行权重/转换工具 真源 (model_runtime_map)
         self._logdir = os.path.join(ROOT, "reports")
         self._build()
         if poll:
@@ -308,7 +345,11 @@ class ModelEnginePanel(QWidget):
         head.addWidget(self.lb_task)
         v.addLayout(head)
 
-        cols = ("层", "在役模型", "在役版本", "本层产物", "推理", "训练中", "最近训练", "在役权重路径")
+        # 2026-10-21 老倪: 「在模型引擎, 增加 每个模型在哪里运行, 运行的是哪个权重, 对应的转换工具,
+        #   是正在推理, 还是在训练」。⇒ 插三列 (运行位置/运行权重/转换工具), "推理" 升为 "状态" (推理中/训练中/空闲),
+        #   真源 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算, 界面不自己猜设备)。
+        cols = ("层", "在役模型", "在役版本", "运行位置", "运行权重", "转换工具",
+                "本层产物", "状态", "训练中", "最近训练", "在役权重路径")
         self.tb = QTableWidget(len(LAYERS), len(cols))
         self.tb.setHorizontalHeaderLabels(cols)
         self.tb.verticalHeader().setVisible(False)
@@ -326,10 +367,12 @@ class ModelEnginePanel(QWidget):
         # 训练中列要放得下 "训练中 · 进度未报"(140px) 与 "45% (9/20)"; 版本列留 ≥24px 余量(ElideNone 余量不足会硬切)
         # 2026-10-14: 层列 56→132 (候选行要写 "🔎 L2 · 候选", 56px 会硬切); 在役模型列 258→340 (候选行
         #   "SAM3基座848M · 适配器annot_v1 +1" 要放得下) —— 两处都服从"宁可挤别列, 不许截断"
-        for i, wdt in enumerate((132, 340, 278, 76, 78, 160, 180)):
+        # 2026-10-21 新三列按真实文字定宽 (运行位置 "NPU×2 97% · GPU×1 96%" / 运行权重 "yolo_peg_live 61f9541d" /
+        #   转换工具 "ov_export_torch → ov_convert"); 路径列仍 Stretch, 窄屏走横滚不截断。
+        for i, wdt in enumerate((132, 320, 210, 268, 330, 234, 92, 96, 150, 170)):
             hh.setSectionResizeMode(i, QHeaderView.Fixed)
             self.tb.setColumnWidth(i, wdt)
-        hh.setSectionResizeMode(7, QHeaderView.Stretch)
+        hh.setSectionResizeMode(10, QHeaderView.Stretch)
         self.tb.setTextElideMode(Qt.ElideNone)      # 宁可横滚也不截断 (老倪: 内容要看得全/可复制)
         self.tb.setWordWrap(False)
         self.tb.itemSelectionChanged.connect(lambda: self._sync_btns())
@@ -347,8 +390,8 @@ class ModelEnginePanel(QWidget):
         #   真因: `setFixedWidth(1900)` 把宽度钉死 ⇒ 既拖不动, 也把最大化的可能性一起锁死。
         #   口径改成: 1900 只是**设计宽/默认宽**, 窗口可自由拖宽/最大化; 列宽按设计比例随宽度重算
         #   (`_refit`), 窄到放不下就走横滚 —— 内容永远不用省略号截断。
-        self.DESIGN_W = 1900
-        self._base_cols = (132, 340, 278, 76, 78, 160, 180)
+        self.DESIGN_W = 2212
+        self._base_cols = (132, 320, 210, 268, 330, 234, 92, 96, 150, 170)
         self.setMinimumWidth(980)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -423,9 +466,10 @@ class ModelEnginePanel(QWidget):
         except Exception:                                            # noqa: BLE001
             pass
 
-    def feed(self, inv, st=None, age=None):
+    def feed(self, inv, st=None, age=None, rt=None):
         """外部注入数据 (自检用) —— 与后台取数走同一条渲染路径。"""
         self._inv, self._st = inv or {}, st or {}
+        self._rt = rt if rt is not None else getattr(self, "_rt", {})
         self._age = age if age is not None else time.time()
         self._render()
 
@@ -434,14 +478,14 @@ class ModelEnginePanel(QWidget):
         while not self._q.empty():
             got = self._q.get()
         if got:
-            self.feed(got[0], got[1], got[2])
+            self.feed(got[0], got[1], got[2], got[3] if len(got) > 3 else None)
 
     def _force_refresh(self):
         threading.Thread(target=lambda: self._q.put(self._fetch_once()), daemon=True).start()
 
     @staticmethod
     def _fetch_once():
-        inv, st = {}, {}
+        inv, st, rt = {}, {}, {}
         try:
             r = subprocess.run(INV_CMD, cwd=ROOT, capture_output=True, text=True, timeout=120)
             inv = json.loads(r.stdout) if r.returncode == 0 else {}
@@ -452,7 +496,13 @@ class ModelEnginePanel(QWidget):
                 st = json.loads(r.read(262144).decode("utf-8", "replace"))
         except Exception:                                                                 # noqa: BLE001
             st = {}
-        return inv, st, time.time()
+        try:                                     # 运行位置/权重/转换工具 (与界面同一真源)
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import model_runtime_map as mrm                                            # noqa: PLC0415
+            rt = mrm.build(inv)
+        except Exception as e:                                                             # noqa: BLE001
+            rt = {"_err": "%s: %s" % (type(e).__name__, e), "items": []}
+        return inv, st, time.time(), rt
 
     # ─────────────────────────── 渲染 ───────────────────────────
     def _rows(self):
@@ -562,6 +612,58 @@ class ModelEnginePanel(QWidget):
                 })
         except Exception:                                                    # noqa: BLE001
             pass
+        # ── 运行位置 / 运行权重 / 转换工具 / 状态 ────────────────────────────────────────
+        # 老倪 2026-10-21: 「每个模型在哪里运行, 运行的是哪个权重, 对应的转换工具, 是正在推理, 还是在训练」
+        #   真源 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算: Intel /models 的 sha16 +
+        #   /pipeline 的设备归属 + 本机在役 ckpt + 转换脚本)。界面**不自己猜**设备, 采集失败就写 "未加载"。
+        by_ly = {}
+        for it in ((getattr(self, "_rt", {}) or {}).get("items") or []):
+            if isinstance(it, dict):
+                by_ly.setdefault(str(it.get("layer")), []).append(it)
+        for r in out:
+            if r.get("cand"):
+                r.update(where="未部署", weights="—", conv="—", statxt="—")
+                continue
+            if r.get("ext"):
+                r.update(where="本机 8796 · torch/服务", weights="— 不进 IR", conv="无 (未转 IR)",
+                         statxt="空闲")
+                continue
+            parts, wts, cvs = [], [], []
+            for it in by_ly.get(str(r.get("layer_key")), []):
+                seg = []
+                for x in (it.get("runs") or []):
+                    d = str(x.get("dev") or "")
+                    duty = x.get("duty_pct")
+                    if d == "云端":
+                        seg.append("云端 API")
+                    else:
+                        _d = ("Intel " + d) if d in ("NPU", "GPU") else d
+                        seg.append("%s%s%s" % (_d, ("×%s" % x.get("streams")) if x.get("streams") else "",
+                                               (" %.0f%%" % duty) if isinstance(duty, (int, float)) else ""))
+                parts.append(" · ".join(seg) or "未加载")
+                irs = it.get("ir") or []
+                if irs:
+                    wts.append(" + ".join("%s %s" % (i.get("name"), i.get("sha16") or "?") for i in irs))
+                elif it.get("kind") == "api":
+                    wts.append("云端权重 · 本机 smolvlm 备用未转 IR" if it.get("note") else "云端权重 (无端侧)")
+                elif it.get("source"):
+                    _p = str(it["source"]).rstrip("/").split(os.sep)
+                    _b = _p[-1] if _p else "—"
+                    if _b in ("pretrained_model", "model", "last") and len(_p) >= 2:
+                        _b = "%s/%s" % (_p[-2], _b)
+                    wts.append(_b)
+                else:
+                    wts.append("—")
+                cvs.append(_conv_short(it.get("converter")))
+            _w = " · ".join(parts) or "未加载"
+            r["where"] = _w.replace(" · Intel ", " · ")      # 只留一个 Intel 前缀 (窄列)
+            r["weights"] = " · ".join(wts) or "—"
+            r["conv"] = " · ".join(dict.fromkeys(cvs)) or "—"
+            _rt_items = by_ly.get(str(r.get("layer_key")), [])
+            _rt_infer = any(str(it.get("status")) == "inferring" for it in _rt_items)
+            _rt_train = any(str(it.get("status")) == "training" for it in _rt_items)
+            r["statxt"] = ("训练中" if (r.get("train") != "否" or _rt_train)
+                           else ("推理中" if (r.get("infer") or _rt_infer) else "空闲"))
         return out
 
     def _render(self):
@@ -569,12 +671,12 @@ class ModelEnginePanel(QWidget):
         inv = self._inv or {}
         gpu = (inv.get("gpu") or {})
         busy = sum(1 for r in rows if r["train"] != "否")
-        self.lb_head.setText("🧠 模型引擎 · L2~L5　GPU %s%% · 显存 %s/%sMB · %s°C　训练中 %d" % (
+        self.lb_head.setText("🧠 模型引擎 · L2~L5　GPU %s%% · 显存 %s/%sMB · %s°C　训练中 %d　(占空=设备算力占用比)" % (
             gpu.get("util", "—"), gpu.get("mem_used", "—"), gpu.get("mem_total", "—"),
             gpu.get("temp", "—"), busy))
         self._rows_cache = rows
-        self._sig = [(r["layer"], r["name"], r["ver"], r["n"], r["infer"], r["train"], r["last"], r["path"])
-                     for r in rows]
+        self._sig = [(r["layer"], r["name"], r["ver"], r.get("where"), r.get("weights"), r.get("conv"),
+                      r["n"], r.get("statxt"), r["train"], r["last"], r["path"]) for r in rows]
         if self.tb.rowCount() != len(rows):          # 候选行会让总行数 > 4 ⇒ 先扩表再写
             self.tb.setRowCount(len(rows))
         _nc = sum(1 for r in rows if r.get("cand"))
@@ -586,9 +688,10 @@ class ModelEnginePanel(QWidget):
         for i, r in enumerate(rows):
             cand = bool(r.get("cand"))
             col = C_YELLOW if cand else (C_GREEN if r["active"] else C_RED)
-            vals = ("🔎 " + r["layer"] if cand else r["layer"], r["name"], r["ver"], str(r["n"]),
-                    "推理中" if r["infer"] else "空闲", r["train"], _short_ts(r["last"]),
-                    _short_path(r["path"]))
+            vals = ("🔎 " + r["layer"] if cand else r["layer"], r["name"], r["ver"],
+                    (r.get("where") or "—"), (r.get("weights") or "—"), (r.get("conv") or "—"),
+                    str(r["n"]), (r.get("statxt") or ("推理中" if r["infer"] else "空闲")),
+                    r["train"], _short_ts(r["last"]), _short_path(r["path"]))
             for j, x in enumerate(vals):
                 it = self.tb.item(i, j)
                 if it is None:
@@ -599,11 +702,15 @@ class ModelEnginePanel(QWidget):
                 if j == 0:
                     fg = col
                 elif cand:                                   # 候选行整体压暗 ⇒ 一眼看出"没在役"
-                    fg = C_WHITE if j == 7 else C_GRAY
-                elif j == 4 and r["infer"]:
+                    fg = C_WHITE if j == 10 else C_GRAY
+                elif j == 7 and r.get("statxt") == "推理中":
                     fg = C_CYAN
-                elif j == 5 and r["train"] != "否":
+                elif j == 7 and r.get("statxt") == "训练中":
                     fg = C_YELLOW
+                elif j == 8 and r["train"] != "否":
+                    fg = C_YELLOW
+                elif j == 4 and not cand:
+                    fg = C_CYAN if (r.get("weights") or "").find("?") < 0 and r.get("weights") != "—" else C_WHITE
                 else:
                     fg = C_WHITE
                 it.setForeground(QColor(fg))
@@ -623,8 +730,10 @@ class ModelEnginePanel(QWidget):
                 else:
                     tip = ("层 %s · 在役模型 (真名): %s\n"
                            "名字真源: 8796 /status/all 在役模型名 → models/active_models.json (与配置通道同一规则)\n"
+                           "运行位置: %s\n运行权重: %s\n转换工具: %s\n"
                            "在役权重完整路径 (双击复制):\n%s\n最近训练 %s\n本层产物 %d 个\n训练进程: %s%s"
-                           % (r["layer"], r.get("name_full") or r["name"], r["path"], r["last"], r["n"],
+                           % (r["layer"], r.get("name_full") or r["name"], r.get("where") or "—",
+                              r.get("weights") or "—", r.get("conv") or "—", r["path"], r["last"], r["n"],
                               r.get("train_raw", "无训练进程"),
                               ("\n⚠ 本层磁盘在役产物是**另一个模型**: %s\n   (引擎报名来自 8796; 磁盘产物来自 "
                                "models/active_models.json / ckpt config.json — 两者不是同一个东西)"
