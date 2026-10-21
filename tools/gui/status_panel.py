@@ -433,23 +433,38 @@ class StatusPanel(QWidget):
         # —— 550C: 部署到 Intel 端侧 (五槽: NPU/GPU/CPU/内存/磁盘 —— 老倪要「所有硬件·算力·磁盘都显示」)
         e_busy, e_ms = bool(e.get("busy")), e.get("last_ms")
         e_model = str(e.get("model") or "—").split("/")[-1].replace(".xml", "")
+        # 2026-10-21 修真: 550C 的 NPU/GPU 槽原来只读 **单帧 /detect 的 last_ms**,
+        #   流水线常驻时 last_ms=None + busy=False ⇒ 明明 NPU 96% 占空, 槽里却是「—」(状态条空着)。
+        #   口径改为: 流水线在跑就读该设备的 fps/占空, 没有流水线才退回 last_ms/忙。
+        _pd = (e.get("pipeline") or {})
+        _pdev = (_pd.get("devices") or {}) if isinstance(_pd, dict) else {}
+        _pn = _pdev.get("NPU") if isinstance(_pdev.get("NPU"), dict) else {}
+        _pg = _pdev.get("GPU") if isinstance(_pdev.get("GPU"), dict) else {}
+        _pn_fps, _pn_duty = _pn.get("fps"), _pn.get("duty_pct")
+        _pg_fps, _pg_duty = _pg.get("fps"), _pg.get("duty_pct")
+        _pipe_on = bool(_pd.get("on")) if isinstance(_pd, dict) else False
         acc = hwe.get("accel") if isinstance(hwe.get("accel"), dict) else {}
         a_npu = acc.get("npu") if isinstance(acc.get("npu"), dict) else {}
         a_gpu = acc.get("gpu") if isinstance(acc.get("gpu"), dict) else {}
         a_cpu = acc.get("cpu") if isinstance(acc.get("cpu"), dict) else {}
-        npu_txt = ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—")
+        npu_txt = ("%.0ffps" % _pn_fps) if isinstance(_pn_fps, (int, float)) else (
+            ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—"))
+        npu_fill = _pn_duty if isinstance(_pn_duty, (int, float)) else None
         npu_tops = a_npu.get("tops_int8")
         gpu_tops = a_gpu.get("tops_int8")
-        gpu_txt = ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—"   # 算力标识 (INT8 TOPS)
+        gpu_txt = ("%.0ffps" % _pg_fps) if isinstance(_pg_fps, (int, float)) else (
+            ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—")   # 有流水线报 fps, 否则报 INT8 TOPS
+        gpu_fill = _pg_duty if isinstance(_pg_duty, (int, float)) else None
         disk_free = hwe.get("disk_free_gb")
         disk_txt = ("%.0fG" % disk_free) if isinstance(disk_free, (int, float)) else "—"  # 余量, 大写 G 省宽度
         c_mod = {"key": "550C", "hw": self._hw_of("550C", "Intel"), "mode": "端侧部署",
-                 "dot": "cyan" if (e_on and e_busy) else ("green" if e_on else "dim"), "online": e_on,
+                 "dot": "cyan" if (e_on and (e_busy or _pipe_on)) else ("green" if e_on else "dim"),
+                 "online": e_on,
                  "fact": "NPU %s / %sTOPS · iGPU %sTOPS · 盘余 %sGB" % (
                      npu_txt, ("%.0f" % npu_tops) if npu_tops else "—",
                      ("%.0f" % gpu_tops) if gpu_tops else "—", disk_free if disk_free is not None else "—"),
-                 "slots": [("NPU", None, npu_txt, "ok" if e_on else "idle"),
-                           ("GPU", None, gpu_txt, "ok" if e_on else "idle"),
+                 "slots": [("NPU", npu_fill, npu_txt, "ok" if e_on else "idle"),
+                           ("GPU", gpu_fill, gpu_txt, "ok" if e_on else "idle"),
                            ("CPU", _num(hwe.get("cpu_pct")), None),
                            ("内存", _num(hwe.get("mem_pct")), None),
                            ("磁盘", _num(hwe.get("disk_pct")), disk_txt)]}
@@ -683,9 +698,14 @@ class StatusPanel(QWidget):
         e = self._edge()
         if e:
             hwe = e.get("hw") or {}
+            _pl = e.get("pipeline") or {}
+            _pd = (_pl.get("devices") or {}) if isinstance(_pl, dict) else {}
+            _pf = sum(float((v or {}).get("fps") or 0) for v in _pd.values()) if _pd else 0.0
+            _state = ("流水线在跑 %s fps (%d 设备)" % ("%.0f" % _pf, len(_pd))
+                      if (_pl.get("on") and _pd) else
+                      (("推理中 %sms" % e.get("last_ms")) if e.get("busy") else "空闲"))
             L.append("Intel 端侧 · %s · %s · 模型 %s (sha %s)" % (
-                "在线" if e.get("online") else "不通",
-                ("推理中 %sms" % e.get("last_ms")) if e.get("busy") else "空闲",
+                "在线" if e.get("online") else "不通", _state,
                 str(e.get("model") or "—").split("/")[-1], e.get("sha16") or "—"))
             acc = hwe.get("accel") if isinstance(hwe.get("accel"), dict) else {}
             a_cpu = acc.get("cpu") if isinstance(acc.get("cpu"), dict) else {}

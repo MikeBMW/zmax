@@ -2551,8 +2551,15 @@ def probe_intel_edge(timeout=1.8):
         busy = bool(inf.get("busy"))
         dev = str(d.get("device") or "?")
         model = str(d.get("model") or d.get("xml") or "—").split("/")[-1].replace(".xml", "")
-        sub = [dev, ("推理中 %sms" % ("%.1f" % ms if ms is not None else "?")) if busy
-               else ("空闲" if ms is None else "空闲·上次 %.1fms" % ms)]
+        # 2026-10-21 修真: 流水线常驻时 /detect 的 last_ms=None、busy=False ⇒ 灯面写「空闲」,
+        #   可 NPU/GPU 正在 96% 占空跑。有流水线就以流水线的 fps/占空为准。
+        _pipe = d.get("pipeline") or {}
+        _pn = ((_pipe.get("devices") or {}).get("NPU") or {}) if isinstance(_pipe, dict) else {}
+        if _pipe.get("on") and isinstance(_pn.get("fps"), (int, float)):
+            sub = [dev, "流水线 %.0ffps · 占空 %.0f%%" % (_pn["fps"], _pn.get("duty_pct") or 0)]
+        else:
+            sub = [dev, ("推理中 %sms" % ("%.1f" % ms if ms is not None else "?")) if busy
+                   else ("空闲" if ms is None else "空闲·上次 %.1fms" % ms)]
         if hw.get("temp_c") is not None:
             sub.append("%.0f°C" % hw["temp_c"])
         tip = ("Intel 端侧 · 模型 %s (sha %s) · n_req %s · %s"
