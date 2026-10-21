@@ -17,5 +17,25 @@
 - `tools/l2_daemon.py` + `~/zmax_data/l2_cmd.fifo` — L2 收口命令通道(fifo 写入即执行, 见 `zmax-console` / 真机类技能)。
 - `tools/auto_loop.py` — 群/网页轮询兜底(WS 断时靠它)。
 
+## 公网出口链 (经 ECS 反代, 全部 enabled)
+
+本机 8793(工位)/8791(AR)/8799(大屏) 要出公网, 但 ECS 安全组**只开 22/80/443**
+(7xxx/1879x/22022 从外面一律不可达, ufw 里放行也没用)。所以链路全走 80:
+
+| unit | 作用 |
+|---|---|
+| `zmax-tunnel-proxy` | 本机只读代理: **8893→8793(工位)**、**8891→8791(AR)**, 带 token 校验 |
+| `zmax-ecs-station` | ECS `18793` → 本机 8893 |
+| `zmax-ecs-ov` | ECS `18791` → 本机 8891 (AR overlay) |
+| `zmax-ecs-dash` | ECS `18799` → 本机 8799 (大屏) |
+| `zmax-ecs-orin` | ECS `22022` → Orin `192.168.23.66:22` (裸 TCP, 盖不住于 HTTP 反代, **必须让用户开安全组**) |
+
+nginx 侧 (宝塔: `/www/server/panel/vhost/nginx/datadrive.world.conf`):
+`^~ /st/` → 18793 · `^~ /ov/` → 18791 · `/dash/` → 18799。
+**`/st/` 与 `/ov/` 必须带 token 查询参数** (裸地址 403); `/dash/` 是裸的。
+
+🔴 端口号**不可凭直觉推断**: `18791/18793` 映射的是 `8891/8893` 代理, **不是** 8791/8793。
+一律 `systemctl cat <unit> | grep -e '-R'` 看 `ExecStart` 原文再下结论。
+
 ## 排查顺序 (服务"看起来没起")
 1. `systemctl is-enabled/is-active` → 2. `journalctl -u X -n 30` 看真原因(203/EXEC=没 chmod; 空日志=缓冲) → 3. `systemctl restart` 手工复跑同一路径 → 4. 看台账/日志有没有新增行 → 5. 才去怀疑业务逻辑本身。

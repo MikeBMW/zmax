@@ -281,6 +281,33 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - ⚠️ **别按颜色数像素当判据**: "环境接触"橙红球 `(1.0,0.45,0.10)` 与红盒一样是"红高、绿蓝低",
   实测两个场景都能数出 ~970 个"红"像素 (球本体) ⇒ 颜色阈值分不出"哪个场景"。
 
+## 新增一个「工序场景 + 任务」并跑三档进化 (2026-10-21 实採, /autoLight#c1 → SCN-08-AL1)
+
+把一个工艺卡场景真的接进状态空间并让模型进化，五步一条链，**每步都有真源，别手改生成物**:
+
+1. `flows/scenes_5jobs.json` 加场景 (`scene_id` 编号决定任务号: `SCN-08-AL1` → `TASK-08-AL1`);
+   objects 用 `pos`(米) + `size_mm`(毫米), `steps` 带 t/dur/name/desc/metric。
+2. 🔴 **`tools/task_build.py` 的 `PLAN` 必须有该 `scene_type` 的配方**，否则 → `⏭ 无配方计划(PLAN), 未入任务清单`，
+   任务根本不会出现（不报错、只少一条，最容易漏看）。`derive_ss_mode` 靠关键词分叉: 文案含「插入/孔口/拔出」=insert，
+   含「摆盘/取放/吸附/真空」=tray；纯搬运工位要写「取放」才落到 tray 链（否则默认 insert，档位上挂着插拔链）。
+3. `tools/task_build.py` → `config/tasks/tasks.json`; `tools/ss_task_bind.py --activate TASK-0N-XXX` → 绑定 + 回读。
+4. `tools/scene_registry.py --build` 落 `data/scene/scenes/<ID>/{objects3d,overlay_spec}.json` + index.json。
+   ⚠️ 它会**重建已存在的同名场景**（只 PROTECTED 才跳过），并调 `sim_scene_def.export_episode_truth()` 重写在役
+   `data/scene/*.json` ⇒ 它自己的 `⛔ 现场场景 sha 未变` 是**预期现象**（导出的回放场景确定性重写），不是构建失败。
+   构建前先 `tar` 一份 `data/scene`（registry 只在 `_backup_registry/` 备份部分文件）。
+5. 🔴 **`tools/ss_scene_switch.py` 的 `TASK_SCENE` 是硬编码单一真源**（连同 `SCENE_COLOR`）。不加映射时
+   `--task TASK-08-AL1` 会回 `该任务没有场景映射 ⇒ 数据源不动`（ok=True 的假成功），3D 视图/数据源不会切到新场景。
+   加了映射后 `--now` 必须回读成新场景名（回读才算生效）。
+
+一键构建 + 四件自检: `tools/autolight_scene.py --build|--check`（场景真源→任务→绑定→场景库，带快照与改动回滚）。
+
+三档进化 `tools/evolve_550abc.py --run`:
+- 训练前必须**停掉常驻 `ss_engine_loop`**（同卡两进程抢显存），跑完按原命令行重起。
+- 档位用 `zmax_compute_mode.py --apply 550X --no-vscode --no-train`（不加 `--no-vscode` 会起 VSCode）。
+- 单任务全链 = `fullflow_tasks7.py --tasks TASK-08-AL1`；部署档 (550C) 加 `--skip-train`（不训练，用上档权重做部署推理）。
+- 报告表格的「档位状态」串里含 `|`（`... ／ 推理=intel 线程=all`）⇒ 写 markdown 前必须 `.replace("|", "／")`，
+  否则整张表错列（实测首版列错位）。
+
 ## 验证
 - offscreen: `load_flow_file` 后断言节点/连线数 + data×2 + row_bg×4
 - 公网: `urllib` POST scene-api.php 3 端点 HTTP 200 + 保存文件可读

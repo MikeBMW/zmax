@@ -114,3 +114,7 @@ ssh <ECS> 'ss -ltn | grep -E ":(1879[0-9]|22022)"'
 curl -s -o /dev/null -H 'Host: <server_name>' -w '%{http_code} %{size_download}B\n' 'http://<公网IP>/st/station'
 ```
 本地通("我在服务器上 curl 127.0.0.1 是 200")**不算数** —— 安全组、`server_name`、绑地址都可能在那之后把它弄死。
+
+**带口令的只读代理要连 `?k=` 一起验**: 反代链路后面常挂一个 token 校验的只读代理, 不带口令返回 **403**。
+403 不是路径配错 —— 先看现有 location 的 `proxy_pass` 和代理自身的 token 参数, 别去改 nginx。
+交付时把带口令的完整 URL 作为可用地址 (`.../st/station?k=<token>`), 并写明哪些路径需要口令、哪些是裸的。

@@ -113,7 +113,9 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 | **`ssh -N` 不会 fork** | `Type=simple` 下长驻前台进程被判启动异常, `status=9/KILL` 反复重试(前面几轮可能还夹着别的错) | `Type=forking` + 命令行加 `-f`(`-f -N`), 让 ssh 自己后台化 |
 | **systemd 访不到 ssh-agent** | 你在 shell 里 `ssh root@host` 能免密, unit 里却 `Permission denied (publickey)` | 登录 shell 能连很可能**只是 agent 里有一把合适的 key**, 而 `~/.ssh/id_rsa`/`id_ed25519` **根本不在对端 authorized_keys 里**(用 `-i <那把>` + `IdentitiesOnly=yes` 手测就会再现失败)。正解: `ssh-keygen -t ed25519 -f ~/.ssh/id_<用途> -N ''` 生成专用密钥 → 追到对端 `authorized_keys` → unit 里 `-i` 显式指它。不要依赖 agent |
 
-别的必备项(同样实测): `Environment=HOME=/home/<user>`(systemd 下 HOME 与登录 shell 不同)、
+| **对端端口有监听 ≠ 隧道活着** | 对端 `ss -ltn` 能看到 `0.0.0.0:<port>` 在听, 从外面连却只拿到半开连接/超时; unit 一 `restart` 就 `status=255` 秒退 | 那个监听是**上一条隧道死掉后留下的 sshd 转发残骸**, 新连接被 `ExitOnForwardFailure=yes` 直接劝退。判活要打**真协议**(`exec 3<>/dev/tcp/<IP>/<port>; head -c 40 <&3` 看 SSH banner, 或 `curl` 看 HTTP 码), 不能只看 `ss`。修法: 对端 `ss -ltnp \| grep :<port>` 找 pid 清掉 → 再 `restart` 本机 unit; 起完核 `is-enabled`(常见 `active` 但 `disabled`, 重启后不恢复) |
+
+别的必备项(同样实测): `Environment=HOME=/home/<user>`(systemd 下 HOME 与登录 shell 不同),
 `ServerAliveInterval=20 ServerAliveCountMax=3`(不掉长连接)、`ExitOnForwardFailure=yes`(端口被占就别假装成功)、
 `Restart=always` + `RestartSec=10`。
 
