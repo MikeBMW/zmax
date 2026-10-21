@@ -1,0 +1,16 @@
+[Unit]
+Description=Z-MAX ECS 反向隧道 [mobile] (本机 → Intel:8803 手机建图, ECS 127.0.0.1:18794)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/zmax-ecs-station.env
+ExecStart=/usr/bin/sshpass -e /usr/bin/ssh -NT -o StrictHostKeyChecking=no -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:18794:192.168.23.70:8803 root@39.102.211.79
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/zmax_data/logs/ecs_mobile_tunnel.log
+StandardError=append:/home/ubuntu/zmax_data/logs/ecs_mobile_tunnel.log
+
+[Install]
+WantedBy=multi-user.target

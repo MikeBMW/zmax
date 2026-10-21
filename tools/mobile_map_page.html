@@ -47,7 +47,7 @@ main{flex:1;position:relative;overflow:hidden}
   </div>
 </main>
 <script type="importmap">
-{"imports":{"three":"/lib/three.module.js"}}
+{"imports":{"three":"./lib/three.module.js"}}
 </script>
 <script type="module">
 import * as THREE from 'three';
@@ -146,7 +146,7 @@ fileIn.onchange = async () => {
   const fd = new FormData();
   fd.append('video', f, f.name || 'video.mp4');
   try {
-    const r = await fetch('/upload', {method: 'POST', body: fd});
+    const r = await fetch('upload', {method: 'POST', body: fd});
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || '上传失败');
     setProg(30);
@@ -163,7 +163,7 @@ async function poll(id) {
   const t0 = Date.now();
   const tick = async () => {
     try {
-      const j = await (await fetch('/job?id=' + id, {cache: 'no-store'})).json();
+      const j = await (await fetch('job?id=' + id, {cache: 'no-store'})).json();
       setTag(j.msg || j.state);
       if (j.frames) document.getElementById('nf').textContent = j.frames;
       if (j.state === 'done') {
@@ -192,7 +192,7 @@ async function poll(id) {
 async function showMap(id, job) {
   hint.style.display = 'none';
   initGL();
-  const pts = await (await fetch('/points?id=' + id, {cache: 'no-store'})).json();
+  const pts = await (await fetch('points?id=' + id, {cache: 'no-store'})).json();
   if (!pts.length) { setTag('点云为空', true); return; }
 
   // 归一化到单位球, 保证手机上看得到
@@ -226,7 +226,7 @@ async function showMap(id, job) {
 
   // 轨迹
   try {
-    const tj = await (await fetch('/trajectory?id=' + id, {cache: 'no-store'})).json();
+    const tj = await (await fetch('trajectory?id=' + id, {cache: 'no-store'})).json();
     if (tj.length > 1) {
       const tp = new Float32Array(tj.length * 3);
       for (let i = 0; i < tj.length; i++) {
@@ -243,7 +243,7 @@ async function showMap(id, job) {
 }
 
 // 语言/环境自检
-fetch('/health').then(r => r.json()).then(j => {
+fetch('health').then(r => r.json()).then(j => {
   if (!j.sfm_exists) setTag('后端缺 mono_sfm', true);
 }).catch(() => setTag('后端无响应', true));
 
