@@ -47,9 +47,11 @@ from urllib.parse import urlparse, parse_qs
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MAP_DIR = os.path.join(ROOT, "zmax_data", "slam_map")
-DEPTH_DIR = os.path.join(ROOT, "zmax_data", "ss_live", "depth_map")
-GS_ASSETS = os.path.join(ROOT, "zmax_data", "gs_assets")
+# 路径全部可用环境变量覆盖 —— 部署到别的机器(如 Intel 192.168.23.70)时
+# 目录结构不一样, 硬编码会直接崩 (2026-10-22 部署时踩到)
+MAP_DIR = os.environ.get("ZMAX_MAP_OUT", os.path.join(ROOT, "zmax_data", "slam_map"))
+DEPTH_DIR = os.environ.get("ZMAX_MAP_DEPTH_DIR", os.path.join(ROOT, "zmax_data", "ss_live", "depth_map"))
+GS_ASSETS = os.environ.get("ZMAX_MAP_GS_ASSETS", os.path.join(ROOT, "zmax_data", "gs_assets"))
 os.makedirs(MAP_DIR, exist_ok=True)
 # 与 tools/ros_scene_depth_build.py 同源: DEPTH_SCALE=0.0001 m/unit, 有效阈值 0.05m
 MIN_DEPTH_MM = float(os.environ.get('ZMAX_MAP_MIN_DEPTH_MM', '50'))
