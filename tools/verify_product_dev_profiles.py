@@ -113,6 +113,26 @@ def main() -> int:
         r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=60)
         got = (r.stdout or "").strip()
         ck(got.startswith(want.split(";")[0]) if False else bool(got), "%s → 子进程读取: %s" % (prod, got))
+    print("\n⑤ 档位↔硬件绑定 (老倪 2026-10-21: 550A=4060核心载体 · 550B=4060桥接/状态空间工程全tool · 550C=intel部署)")
+    hw_want = {"550A": "4060", "550B": "4060", "550C": "intel"}
+    for k, want in hw_want.items():
+        hw = (prods.get(k) or {}).get("hardware") or {}
+        ck(str(hw.get("key")) == want, "%s 真源 hardware=%r (要 %s)" % (k, hw.get("key"), want))
+    for k in hw_want:
+        h = zp.hardware(k)
+        ck(str(h.get("key")) == hw_want[k] and bool(h.get("label")),
+           "%s 读取口 hardware() → %s(%s)" % (k, h.get("key"), h.get("label")))
+    ck(bool(zp.host_hardware()), "本机算力载体探测 = %s (当前档 %s)" % (zp.host_hardware(), zp.product()))
+    code = ("import sys; sys.path.insert(0, %r); import zmax_profile as zp; "
+            "print(zp.hardware_ok('550C'), zp.hardware('550C')['key'], zp.host_hardware())"
+            % os.path.join(ROOT, "tools"))
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       env=dict(os.environ, ZMAX_PRODUCT="550C"), timeout=60)
+    got = (r.stdout or "").strip()
+    parts = got.split()
+    ck(len(parts) == 3 and parts[0] == ("True" if parts[1] == parts[2] else "False"),
+       "不符判定自检 (C档/本机): hw_ok key host = %s" % got)
+
     print("\n" + "=" * 96)
     print("结论: %s" % ("✅ 全过 — 三产品分工已写进真源、有单一读取口、四处已接线、子进程实测按档取值"
                         if OK[0] else "❌ 未通过"))

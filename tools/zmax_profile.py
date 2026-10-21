@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
@@ -144,6 +146,69 @@ def algo_allowed(name, prod=None):
     return str(name) in set(dev_profile(prod).get("verified_algorithms") or [])
 
 
+_HW_FALLBACK = {
+    "550A": {"key": "4060", "label": "4060", "usage": "开发训练"},
+    "550B": {"key": "4060", "label": "4060", "usage": "桥接 · 状态空间工程/全 tool"},
+    "550C": {"key": "intel", "label": "Intel", "usage": "端侧部署"},
+}
+
+
+def hardware(prod=None):
+    """该档对应的**算力载体** (真源 products[<档>].hardware)。
+
+    老倪 2026-10-21: 「550C 的硬件对应 intel, 550A 对应 4060, 550B 对应 vscode;
+    550B 是桥梁, 是状态空间工程、各种 tool 的总配置模式; 550A 是 4060 计算资源的核心载体;
+    550C 是运行在 intel 上的部署」。
+    ⇒ 档位与硬件是**绑定关系**, 所以载体写进真源, 不许只在界面里硬编码。
+    """
+    p = prod or product()
+    hw = {}
+    try:
+        with open(product_json(), encoding="utf-8") as f:
+            hw = (((json.load(f).get("products") or {}).get(p) or {}).get("hardware")) or {}
+    except Exception:                                                       # noqa: BLE001
+        hw = {}
+    if not isinstance(hw, dict) or not hw.get("key"):
+        hw = dict(_HW_FALLBACK.get(p) or {"key": "?", "label": "?", "usage": "未配置"})
+    hw.setdefault("label", str(hw.get("key") or "?"))
+    hw.setdefault("usage", "")
+    hw["product"] = p
+    return hw
+
+
+def host_hardware():
+    """本机实际算力载体: '4060' / 'intel' / 其它 nvidia 型号 / 'local'（判「档位与硬件是否相符」用）。"""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=3).stdout or ""
+        if "4060" in out:
+            return "4060"
+        if out.strip():
+            return out.strip().splitlines()[0][:32]
+    except Exception:                                                       # noqa: BLE001
+        pass
+    try:
+        if os.path.isdir("/sys/class/accel") and os.listdir("/sys/class/accel"):
+            return "intel"
+    except Exception:                                                       # noqa: BLE001
+        pass
+    try:
+        if "nodka" in socket.gethostname().lower():
+            return "intel"
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return "local"
+
+
+def hardware_ok(prod=None):
+    """档位要求的载体 == 本机实际载体? 判不出来 (want/got 有 'local') 一律不判错。"""
+    want = str(hardware(prod).get("key") or "")
+    got = host_hardware()
+    if not want or want == "local" or got == "local":
+        return True
+    return want == got
+
+
 def dds_topics_allowed(topics, prod=None):
     """按档位过滤序列化话题: all=全放 (只受运行时 mode 另有约束) · core=核心集 · none=一个都不发。"""
     mode = topics_mode(prod)
@@ -161,8 +226,12 @@ def dds_topics_allowed(topics, prod=None):
 def summary(prod=None):
     """一行摘要 (可打印/可复制; 判据与界面共用同一句)。"""
     p = dev_profile(prod)
-    return ("%s %s | topics=%s comm=%s 信号分析=%s 3D场景=%s VSCode=%s 远程旁路=%s 算法=%s"
-            % (p.get("product"), p.get("role"), topics_mode(prod), comm_mode(prod),
+    hw = hardware(prod)
+    ok = hardware_ok(prod)
+    return ("%s %s | 硬件=%s(%s)%s | topics=%s comm=%s 信号分析=%s 3D场景=%s VSCode=%s 远程旁路=%s 算法=%s"
+            % (p.get("product"), p.get("role"), hw.get("key"), hw.get("label"),
+               "" if ok else " ⚠本机=%s 不符" % host_hardware(),
+               topics_mode(prod), comm_mode(prod),
                gui_on("signal_analysis", prod), gui_on("scene_3d", prod),
                vscode_ok(prod), remote_bypass_ok(prod), algo_policy(prod)))
 

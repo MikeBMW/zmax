@@ -359,7 +359,16 @@ class StatusPanel(QWidget):
         c = d.get("cams")
         return c if isinstance(c, dict) else {}
 
-    # ---------- 三档 = 三种算力用法 (550A/4060 · 550B/标定观察 · 550C/Intel) ----------
+    # ---------- 三档 = 三种算力用法 (550A/4060 · 550B/4060桥接 · 550C/Intel) ----------
+    def _hw_of(self, key, fallback):
+        """该档要求的算力载体 (真源 products[<档>].hardware 优先; 读不到退回静态兜底)。"""
+        try:
+            from lerobot.engineering import status_hub as _hub
+            h = _hub.profile_hardware(key) or {}
+            return str(h.get("label") or h.get("key") or fallback)
+        except Exception:                                            # noqa: BLE001
+            return fallback
+
     def modes(self):
         """三档各自的「灯 + 4 个指标槽」。当前档用完整槽位; 另外两档给菜单用的一行摘要。
 
@@ -386,7 +395,7 @@ class StatusPanel(QWidget):
             mem_l = _num(mem.get("pct"))
 
         # —— 550A: 4060 上开发训练
-        a_mod = {"key": "550A", "hw": "4060", "mode": "开发训练", "dot": "green", "online": True,
+        a_mod = {"key": "550A", "hw": self._hw_of("550A", "4060"), "mode": "开发训练", "dot": "green", "online": True,
                  "fact": "GPU %s%% · 训练 %s" % (_txt(_num(gpu.get("util"))), "中" if (d.get("training") or {}).get("active") else "无"),
                  "slots": [("GPU", _num(gpu.get("util")), None),
                            ("CPU", _num(cpu.get("util")), None),
@@ -403,7 +412,7 @@ class StatusPanel(QWidget):
         o_on = bool(o.get("online"))
         eps_n, eps_tot = int(e_on) + int(o_on), 2
         rs_n, rs_tot = sum(1 for v in rs.values() if v), len(rs)
-        b_mod = {"key": "550B", "hw": "标定", "mode": "VSCode 标定 · 观察全硬件",
+        b_mod = {"key": "550B", "hw": self._hw_of("550B", "4060"), "mode": "桥接 · 状态空间工程/全 tool · 观察全硬件",
                  "dot": "green" if (c_on and c_n > 0) else ("dim" if not c_on else "yellow"),
                  "online": bool(c_on),
                  "fact": "相机 %d/%d · 端侧 %d/%d · 栈 %s" % (c_n, c_tot, eps_n, eps_tot,
@@ -434,7 +443,7 @@ class StatusPanel(QWidget):
         gpu_txt = ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—"   # 算力标识 (INT8 TOPS)
         disk_free = hwe.get("disk_free_gb")
         disk_txt = ("%.0fG" % disk_free) if isinstance(disk_free, (int, float)) else "—"  # 余量, 大写 G 省宽度
-        c_mod = {"key": "550C", "hw": "Intel", "mode": "端侧部署",
+        c_mod = {"key": "550C", "hw": self._hw_of("550C", "Intel"), "mode": "端侧部署",
                  "dot": "cyan" if (e_on and e_busy) else ("green" if e_on else "dim"), "online": e_on,
                  "fact": "NPU %s / %sTOPS · iGPU %sTOPS · 盘余 %sGB" % (
                      npu_txt, ("%.0f" % npu_tops) if npu_tops else "—",
@@ -444,7 +453,16 @@ class StatusPanel(QWidget):
                            ("CPU", _num(hwe.get("cpu_pct")), None),
                            ("内存", _num(hwe.get("mem_pct")), None),
                            ("磁盘", _num(hwe.get("disk_pct")), disk_txt)]}
-        return [a_mod, b_mod, c_mod]
+        out = [a_mod, b_mod, c_mod]
+        # 档位与硬件不符 (例: 4060 上挂着 550C) ⇒ 当前档的灯转黄 + fact 前缀, 不许静默
+        pr = self._profile()
+        if pr and pr.get("hw_ok") is False:
+            for m in out:
+                if m["key"] == pr.get("key"):
+                    m["dot"] = "yellow"
+                    m["fact"] = "⚠ 档位≠本机硬件 · " + str(m.get("fact") or "")
+                    m["hw_warn"] = str(pr.get("hw_warn") or "")
+        return out
 
     def current(self):
         """当前档 (真源 active_product); 真源没给就用 550B (调试档兜底, 与 zmax_profile 同口径)."""
@@ -584,10 +602,16 @@ class StatusPanel(QWidget):
                         caps.get("signal_analysis", "—"), caps.get("scene_3d", "—"),
                         caps.get("vscode", "—"), caps.get("remote_bypass", "—"), caps.get("algo", "—")))
             L.append("  真源 %s" % (pr.get("source") or "—"))
+            L.append("  硬件要求 %s · 本机 %s %s" % (
+                "%s(%s)" % (pr.get("hw_label", "—"), pr.get("hardware", "—")),
+                pr.get("host_hardware", "—"), "✓ 相符" if pr.get("hw_ok", True) else "⚠ 不符"))
+            if pr.get("hw_warn"):
+                L.append("  ⚠ %s" % pr.get("hw_warn"))
             boot = getattr(self, "_boot", "") or pr.get("key")
             if boot and boot != pr.get("key"):
                 L.append("  ⚠ 已从 %s 切到 %s: 真源已写, **重启控制台**后界面/话题/算法准入才全生效" % (boot, pr.get("key")))
-            L.append("  点最左侧 chip 可换档: 550A·4060 开发训练 / 550B·标定 观察全硬件 / 550C·Intel 端侧部署")
+            L.append("  点最左侧 chip 可换档: 550A·4060 开发训练 / 550B·4060 桥接(状态空间工程·全tool) / 550C·Intel 端侧部署")
+            L.append("  硬件绑定以真源 products[<档>].hardware 为准; 档位与本机不符时 chip 灯转黄")
         cm = self._cams()
         if cm:
             if cm.get("online"):

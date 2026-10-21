@@ -647,13 +647,43 @@ def _zmax_profile():
     return mod
 
 
-# 三档 ↔ 算力/模式 (老倪 2026-10-21: 「550C 部署到 intel 上; 550A 在 4060 上开发训练;
-#                                  550B 对应 VSCode 的标定配置模式, 且可以连接观察所有硬件」)
+# 三档 ↔ 算力/模式 (老倪 2026-10-21: 「550C 的硬件对应 intel, 550A 对应 4060, 550B 对应 vscode;
+#     550B 是桥梁, 是状态空间工程、各种 tool 的总配置模式; 550A 是 4060 计算资源的核心载体;
+#     550C 是运行在 intel 上的部署」)
+# ⇒ 硬件绑定现在以**真源** products[<档>].hardware 为准, 这里只做读不到真源时的兜底。
 PROFILE_HW = {
-    "550A": {"hardware": "local", "hw_label": "4060", "mode": "开发训练"},
-    "550B": {"hardware": "calib", "hw_label": "标定", "mode": "VSCode 标定 · 观察全硬件"},
+    "550A": {"hardware": "4060", "hw_label": "4060", "mode": "开发训练"},
+    "550B": {"hardware": "4060", "hw_label": "4060", "mode": "桥接 · 状态空间工程/全 tool/VSCode 标定"},
     "550C": {"hardware": "intel", "hw_label": "Intel", "mode": "端侧部署"},
 }
+
+
+def profile_hardware(key: str) -> dict:
+    """某档要求的算力载体 (真源优先, 兜底 PROFILE_HW) —— 界面画 chip / 菜单共用这一个口。"""
+    k = str(key or "").strip().upper()
+    hw = {}
+    zp = _zmax_profile()
+    if zp is not None:
+        try:
+            hw = dict(zp.hardware(k))
+        except Exception:                                             # noqa: BLE001
+            hw = {}
+    if not hw.get("key"):
+        fb = PROFILE_HW.get(k) or {"hardware": "local", "hw_label": "?", "mode": "未配置"}
+        hw = {"key": fb["hardware"], "label": fb["hw_label"], "usage": fb["mode"]}
+    hw.setdefault("label", str(hw.get("key") or "?"))
+    return hw
+
+
+def host_hardware() -> str:
+    """本机实际算力载体 ('4060' / 'intel' / 'local')。"""
+    zp = _zmax_profile()
+    if zp is not None:
+        try:
+            return str(zp.host_hardware())
+        except Exception:                                             # noqa: BLE001
+            pass
+    return "local"
 
 
 def collect_profile() -> dict:
@@ -673,9 +703,15 @@ def collect_profile() -> dict:
                     "algo": zp.algo_policy(key)}
         except Exception:                                             # noqa: BLE001
             pass
-    hw = PROFILE_HW.get(key) or {"hardware": "local", "hw_label": "?", "mode": "未配置"}
+    hw = profile_hardware(key)
+    host_hw = host_hardware()
+    want = str(hw.get("key") or "")
+    hw_ok = True if (not want or want == "local" or host_hw == "local") else (want == host_hw)
     return {"key": key, "role": role, "summary": summ, "caps": caps,
-            "hardware": hw["hardware"], "hw_label": hw["hw_label"], "mode": hw["mode"],
+            "hardware": hw.get("key"), "hw_label": hw.get("label"), "mode": hw.get("usage") or "",
+            "host_hardware": host_hw, "hw_ok": hw_ok,
+            "hw_warn": "" if hw_ok else ("档位 %s 要求 %s, 本机是 %s: 工具/话题按 %s 档收窄"
+                                         % (key, hw.get("label") or want, host_hw, key)),
             "source": (zp.product_json() if zp is not None else ""), "ts": time.time()}
 
 

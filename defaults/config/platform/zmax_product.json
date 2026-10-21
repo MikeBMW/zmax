@@ -6,6 +6,7 @@
     "550A": {
       "name": "550A 原创版",
       "version_segment": "5.50.A",
+      "hardware": {"key": "4060", "label": "4060", "usage": "开发训练 · 550A 是 4060 计算资源的核心载体"},
       "prime": 1009,
       "task": "TASK-07-AOI",
       "scene": "SCN-07-AOI",
@@ -44,6 +45,7 @@
     "550B": {
       "name": "550B 标定版",
       "version_segment": "5.50.B",
+      "hardware": {"key": "4060", "label": "4060", "usage": "桥接 · 状态空间工程/全 tool/VSCode 标定 的总配置模式, 可观察所有硬件"},
       "prime": 1013,
       "task": "TASK-07-AOI",
       "scene": "SCN-07-AOI",
@@ -92,6 +94,7 @@
     "550C": {
       "name": "550C 量产版",
       "version_segment": "5.50.C",
+      "hardware": {"key": "intel", "label": "Intel", "usage": "端侧部署 · 550C 运行在 intel 上"},
       "prime": 1019,
       "task": "TASK-07-AOI",
       "scene": "SCN-07-AOI",
