@@ -717,6 +717,16 @@ class H(BaseHTTPRequestHandler):
             if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar"):
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
                     self._send(200, "text/html; charset=utf-8", f.read())
+            elif p in ("/autoLight", "/autolight", "/autoLight.html"):
+                # 光纤端面检测及清理设备 · 三维工艺视图 (2026-10-21)
+                #   与 /ar 同一 base 世界系 (Z 上, m); 页面本身独立, 同样**热读**——改 HTML 不用重启
+                _alp = os.path.join(REPO, "tools", "web", "autoLight.html")
+                try:
+                    with open(_alp, "rb") as f:
+                        self._send(200, "text/html; charset=utf-8", f.read())
+                except Exception as _ae:
+                    self._send(404, "text/plain; charset=utf-8",
+                               ("autoLight 页面缺失: %s: %s" % (type(_ae).__name__, _ae)).encode())
             elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)
                 self._json(_cams_payload())
             elif p == "/api/ss_stats":          # 🥽 状态空间工程视频源(8791 cam_live_stream)原始实况
@@ -1233,7 +1243,20 @@ class H(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n).decode("utf-8", "ignore") or "{}")
         except Exception:                                                         # noqa: BLE001
             body = {}
-        if p == "/api/module3d_lock":     # 🔒 绿框定主 (lock|unlock|status)
+        if p == "/api/autolight/docx":          # 📄 工艺卡 → Word(.docx) 一键导出
+            # 真源是页面 CARDS（tools/web/autoLight.html）：前端把卡片文字 + canvas 截图传上来,
+            # 这里只排版（python-docx）。不要在服务端复制一份工艺文字, 否则改页面会与导出不一致。
+            try:
+                from autolight_docx import build_docx
+                _d = build_docx(body)
+                _fn = "autolight_process_cards_%s.docx" % time.strftime("%Y%m%d_%H%M%S")
+                self._send(200,
+                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           _d, {"Content-Disposition": 'attachment; filename="%s"' % _fn})
+            except Exception as _e:                                            # noqa: BLE001
+                self.log_message("autolight docx FAIL: %s: %s", type(_e).__name__, _e)
+                self._json({"ok": False, "err": "%s: %s" % (type(_e).__name__, _e)})
+        elif p == "/api/module3d_lock":     # 🔒 绿框定主 (lock|unlock|status)
             self._json(self._mod3_lock(str(body.get("action") or "status")))
         elif p == "/api/aoi/inspect":            # 🔍 真拍 + 缺陷检测 + 矩形搜索 + 侧边修正
             self._json(self._aoi_inspect(port=int(body.get("port") or 10082)))
