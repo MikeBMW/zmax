@@ -547,6 +547,234 @@ def collect_assets() -> list:
 # ──────────────────────────────────────────────────────────────────────────────
 # 聚合 + 后台刷新 + 快照
 # ──────────────────────────────────────────────────────────────────────────────
+_ORIN_CACHE = {"ts": 0.0, "data": None}
+_ORIN_URLS = [u for u in (os.environ.get("ZMAX_ORIN_STATUS_URL"),
+                          "https://datadrive.world/orin/status",
+                          "http://127.0.0.1:8796/orin/status") if u]
+
+
+def collect_orin(ttl: float = 5.0, timeout: float = 2.5) -> dict:
+    """Orin AGX (192.168.23.66) 主机遥测 —— 只读, 由 Orin 侧上行到 ECS 的 /orin/status 供读 (2026-10-21).
+
+    Orin 那边脚本只读遥测, 不参与动作; 这里也**不碰机械臂**, 拿的是 cpu_temp/mem/load1/生产栈状态。
+    5s 缓存: 底部状态带 2-3s 刷一次, 别把 ECS 打成筛子。
+    """
+    now = time.time()
+    if _ORIN_CACHE["data"] and now - _ORIN_CACHE["ts"] < ttl:
+        return _ORIN_CACHE["data"]
+    tried = []
+    for u in _ORIN_URLS:
+        try:
+            with urllib.request.urlopen(u, timeout=timeout) as r:
+                d = json.loads(r.read().decode())
+        except Exception as e:                                       # noqa: BLE001
+            tried.append("%s(%s)" % (u.split("//")[-1].split("/orin")[0], type(e).__name__))
+            continue
+        out = {"online": bool(d.get("online")), "host": d.get("host"), "url": u,
+               "cpu_temp_c": d.get("cpu_temp_c"), "mem_used_mb": d.get("mem_used_mb"),
+               "mem_total_mb": d.get("mem_total_mb"), "load1": d.get("load1"),
+               "uptime_s": d.get("uptime_s"), "robot_stack": d.get("robot_stack") or {},
+               "robot": d.get("robot") or {}, "last_seen": d.get("last_seen"),
+               "ts": d.get("ts"), "_fetched": now}
+        _ORIN_CACHE.update(ts=now, data=out)
+        return out
+    out = {"online": False, "tried": tried, "_fetched": now}
+    _ORIN_CACHE.update(ts=now, data=out)
+    return out
+
+
+_CAM_CACHE = {"ts": 0.0, "data": None}
+
+
+def collect_cams(ttl: float = 2.5, timeout: float = 1.5) -> dict:
+    """相机通道 (8791 /stats) —— 550B 标定/观察档要「相机 n/m」一眼看到哪路断了 (2026-10-21).
+
+    fresh = 在线且帧龄 ≤3s (延迟这条口径与界面横幅/帧龄一致, 不看 frames_served 累计值)。
+    """
+    now = time.time()
+    if _CAM_CACHE["data"] and now - _CAM_CACHE["ts"] < ttl:
+        return _CAM_CACHE["data"]
+    url = os.environ.get("ZMAX_STREAM_STATS_URL", "http://127.0.0.1:8791/stats")
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            d = json.loads(r.read().decode())
+    except Exception as e:                                            # noqa: BLE001
+        out = {"online": False, "err": "%s: %s" % (type(e).__name__, str(e)[:80]), "ts": now}
+        _CAM_CACHE.update(ts=now, data=out)
+        return out
+    items = []
+    for k, v in (d or {}).items():
+        if not isinstance(v, dict):
+            continue
+        lab, on = v.get("label"), bool(v.get("online"))
+        if not lab and not on:              # local2 这类空槽不计数
+            continue
+        if str(k).startswith("ov_"):        # ov_* = 叠加稿(派生图), 不是硬件通道
+            continue
+        age = v.get("age_s")
+        fresh = on and isinstance(age, (int, float)) and 0 <= float(age) <= 3.0
+        items.append({"key": k, "label": lab or k, "online": on, "fresh": bool(fresh),
+                      "age_s": age, "fps": v.get("fps"), "stalled": bool(v.get("stalled"))})
+    out = {"online": True, "url": url, "items": items, "n_total": len(items),
+           "n_online": sum(1 for i in items if i["online"]),
+           "n_fresh": sum(1 for i in items if i["fresh"]), "ts": now}
+    _CAM_CACHE.update(ts=now, data=out)
+    return out
+
+
+_PROFILE_CACHE = {"mtime": None, "mod": None}
+
+
+def _zmax_profile():
+    """按**文件路径**加载 tools/zmax_profile.py (真源唯一, 不复制它的判档逻辑)。"""
+    import importlib.util
+    root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+    p = os.path.join(root, "tools", "zmax_profile.py")
+    m = _PROFILE_CACHE["mod"]
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return None
+    if m is not None and _PROFILE_CACHE["mtime"] == mt:
+        return m
+    try:
+        spec = importlib.util.spec_from_file_location("zmax_profile_ro", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except Exception:                                                 # noqa: BLE001
+        return None
+    _PROFILE_CACHE.update(mtime=mt, mod=mod)
+    return mod
+
+
+# 三档 ↔ 算力/模式 (老倪 2026-10-21: 「550C 部署到 intel 上; 550A 在 4060 上开发训练;
+#                                  550B 对应 VSCode 的标定配置模式, 且可以连接观察所有硬件」)
+PROFILE_HW = {
+    "550A": {"hardware": "local", "hw_label": "4060", "mode": "开发训练"},
+    "550B": {"hardware": "calib", "hw_label": "标定", "mode": "VSCode 标定 · 观察全硬件"},
+    "550C": {"hardware": "intel", "hw_label": "Intel", "mode": "端侧部署"},
+}
+
+
+def collect_profile() -> dict:
+    """当前产品档 (真源 active_product / ZMAX_PRODUCT 覆盖) + 该档对应的算力角色."""
+    zp = _zmax_profile()
+    key, role, summ, caps = "550B", "", "", {}
+    if zp is not None:
+        try:
+            key = str(zp.product())
+            prof = zp.dev_profile(key)
+            role = str(prof.get("role") or "")
+            summ = zp.summary(key)
+            caps = {"topics": zp.topics_mode(key), "comm": zp.comm_mode(key),
+                    "signal_analysis": zp.gui_on("signal_analysis", key),
+                    "scene_3d": zp.gui_on("scene_3d", key),
+                    "vscode": zp.vscode_ok(key), "remote_bypass": zp.remote_bypass_ok(key),
+                    "algo": zp.algo_policy(key)}
+        except Exception:                                             # noqa: BLE001
+            pass
+    hw = PROFILE_HW.get(key) or {"hardware": "local", "hw_label": "?", "mode": "未配置"}
+    return {"key": key, "role": role, "summary": summ, "caps": caps,
+            "hardware": hw["hardware"], "hw_label": hw["hw_label"], "mode": hw["mode"],
+            "source": (zp.product_json() if zp is not None else ""), "ts": time.time()}
+
+
+def set_profile(key: str, backup: bool = True) -> dict:
+    """把 active_product 写进真源 (留 .bak + 追加切换日志); 返回 {ok, key, backup, err}.
+
+    只改 **active_product 一个字段**, 其余内容原样保留 (真源是人可编的, 不许踩掉别人的改动)。
+    · 生效口径: 各模块在 import/建界面时读档 ⇒ **重启控制台**才全身生效;
+      本函数不清缓存, 由调用方如实告知「待重启」。
+    """
+    key = str(key or "").strip().upper()
+    if key not in PROFILE_HW:
+        return {"ok": False, "err": "档位只能是 550A/550B/550C", "key": key}
+    zp = _zmax_profile()
+    if zp is None:
+        return {"ok": False, "err": "读不到 tools/zmax_profile.py", "key": key}
+    p = zp.product_json()
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            raw = f.read()
+        d = json.loads(raw)
+        if key not in (d.get("products") or {}):
+            return {"ok": False, "err": "真源里没有 %s 这个档" % key, "key": key}
+        old = str(d.get("active_product") or "")
+        # ★ 只改 active_product 这一处的**字面值**, 其余字节原样保留 (真源进 git, 不许把格式/键序/别的档洗一遍)
+        import re as _re
+        pat = _re.compile(r'("active_product"\s*:\s*")([^"]*)(")')
+        new_raw, n = pat.subn(lambda m: m.group(1) + key + m.group(3), raw, count=1)
+        if n != 1:
+            return {"ok": False, "err": "真源里找不到唯一 active_product 字段", "key": key}
+        try:
+            if str(json.loads(new_raw).get("active_product")) != key:
+                return {"ok": False, "err": "改写后回读不一致, 已放弃", "key": key}
+        except Exception as ex:                                       # noqa: BLE001
+            return {"ok": False, "err": "改写后 JSON 不合法: %s" % ex, "key": key}
+        bak = ""
+        if backup:
+            bak = "%s.bak_%s" % (p, time.strftime("%Y%m%d_%H%M%S"))
+            _n = 1
+            while os.path.exists(bak) and _n < 100:        # 同一秒内连切两次也不许覆盖上一份备份
+                bak = "%s.bak_%s_%d" % (p, time.strftime("%Y%m%d_%H%M%S"), _n)
+                _n += 1
+            try:
+                with open(p, "rb") as src, open(bak, "wb") as dst:
+                    dst.write(src.read())
+            except Exception:                                         # noqa: BLE001
+                bak = ""
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(new_raw)
+        os.replace(tmp, p)
+        try:
+            logd = os.path.expanduser("~/.zmax/config")
+            os.makedirs(logd, exist_ok=True)
+            with open(os.path.join(logd, "product_switch_log.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": time.strftime("%F %T"), "from": old, "to": key,
+                                    "by": "status_panel"}, ensure_ascii=False) + "\n")
+        except Exception:                                             # noqa: BLE001
+            pass
+        _PROFILE_CACHE.update(mtime=None, mod=None)                   # 逼下一次重读
+        return {"ok": True, "key": key, "old": old, "backup": bak, "path": p}
+    except Exception as e:                                            # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:100]), "key": key}
+
+
+def collect_edge(timeout: float = 1.5) -> dict:
+    """Intel 端侧 (550C) 真状态 —— 硬件 + 模型是否在推理 (2026-10-21 老倪要「最下面的指示灯」显示 Intel).
+
+    真源 = Intel 边缘机 zmax-edge 的 GET /health (自报 hw/infer; 走 /proc + /sys)。
+    · 本机不在产线网时走隧道 127.0.0.1:18800 (zmax-orin-intel-fwd.service), 产线网直连留作候选;
+    · 读不到 **不冒充在线**: online=False + tried 列表, 界面画灰灯。
+    """
+    urls = [u for u in (os.environ.get("ZMAX_EDGE_URL"),
+                        "http://127.0.0.1:18800/health",
+                        "http://192.168.23.70:8800/health") if u]
+    tried = []
+    for u in urls:
+        try:
+            with urllib.request.urlopen(u, timeout=timeout) as r:
+                d = json.loads(r.read().decode())
+        except Exception as e:                                          # noqa: BLE001
+            tried.append("%s(%s)" % (u.split("//")[-1].split("/health")[0], type(e).__name__))
+            continue
+        hw = d.get("hw") or {}
+        inf = d.get("infer") or {}
+        return {"online": True, "url": u,
+                "device": d.get("device"), "model": str(d.get("model") or d.get("xml") or ""),
+                "sha16": d.get("sha16"), "n_req": d.get("n_req"),
+                "last_ms": d.get("last_ms"), "busy": bool(inf.get("busy")),
+                "rate_10s": inf.get("req_rate_10s"), "last_req_age_s": inf.get("last_req_age_s"),
+                "hw": {"cpu_n": hw.get("cpu_n"), "cpu_pct": hw.get("cpu_pct"),
+                       "mem_used_mb": hw.get("mem_used_mb"), "mem_total_mb": hw.get("mem_total_mb"),
+                       "mem_pct": hw.get("mem_pct"), "disk_pct": hw.get("disk_pct"),
+                       "disk_free_gb": hw.get("disk_free_gb"), "temp_c": hw.get("temp_c"),
+                       "npu": hw.get("npu"), "load1": hw.get("load1")},
+                "uptime_s": d.get("uptime_s"), "ts": time.time()}
+    return {"online": False, "tried": tried, "ts": time.time()}
+
+
 def _collect_all() -> dict:
     d = {"ts": time.time(), "errs": []}
     try:
@@ -585,6 +813,26 @@ def _collect_all() -> dict:
         d["assets"] = [{"kind": "3DGS", "name": "assets 采集降级", "version": "unknown",
                         "path": "", "err": str(e)[:120]}]
         d["errs"].append("assets")
+    try:
+        d["edge"] = collect_edge()
+    except Exception as e:                                            # noqa: BLE001
+        d["edge"] = {"online": False, "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("edge")
+    try:
+        d["orin"] = collect_orin()
+    except Exception as e:                                            # noqa: BLE001
+        d["orin"] = {"online": False, "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("orin")
+    try:
+        d["profile"] = collect_profile()
+    except Exception as e:                                            # noqa: BLE001
+        d["profile"] = {"key": "550B", "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("profile")
+    try:
+        d["cams"] = collect_cams()
+    except Exception as e:                                            # noqa: BLE001
+        d["cams"] = {"online": False, "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("cams")
     if not d["errs"]:
         d.pop("errs")
     else:

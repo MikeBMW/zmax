@@ -44,13 +44,14 @@ import urllib.request
 
 from PyQt5.QtCore import Qt, QPointF, QRectF, QThread, QTimer
 from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QPolygonF
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QMenu
 
 # ---- 配色 (与 tools/gui/hw_widgets.py 同一套口径) ----
 C_BG2, C_BORDER = "#161b22", "#30363d"
 C_WHITE, C_GRAY, C_DIM = "#e6edf3", "#8b949e", "#6e7681"
 C_GREEN, C_YELLOW, C_RED, C_CYAN = "#3fb950", "#d29922", "#f85149", "#39d0d8"
 TRACK = "#2b3340"
+
 UI, MONO = "Noto Sans CJK SC", "Consolas"
 
 # 状态 → 灯色
@@ -254,6 +255,11 @@ class StatusPanel(QWidget):
         if sig == self._sig:                                            # 值没变不重绘(省 GPU)
             return
         self._sig = sig
+        if not getattr(self, "_boot", ""):                              # 启动档: 用于标「已切档待重启 ⟳」
+            try:
+                self._boot = str(self._profile().get("key") or "")
+            except Exception:
+                self._boot = ""
         self._refresh_tooltip()
         self.update()
 
@@ -330,6 +336,150 @@ class StatusPanel(QWidget):
         t = d.get("training")
         return t if isinstance(t, dict) else {}
 
+    def _edge(self):
+        """Intel 端侧 (550C): {online, device, busy, last_ms, hw{...}} —— 契约没有就返回 {} (旧服务端兼容)."""
+        d = self._obj if isinstance(self._obj, dict) else {}
+        e = d.get("edge")
+        return e if isinstance(e, dict) else {}
+
+    def _orin(self):
+        """Orin AGX: {online, cpu_temp_c, mem_*, load1, robot_stack} —— 只读遥测."""
+        d = self._obj if isinstance(self._obj, dict) else {}
+        o = d.get("orin")
+        return o if isinstance(o, dict) else {}
+
+    def _profile(self):
+        """当前产品档 (真源 active_product): {key:'550B', hardware:'calib', hw_label:'标定', mode, caps, summary}."""
+        d = self._obj if isinstance(self._obj, dict) else {}
+        p = d.get("profile")
+        return p if isinstance(p, dict) else {}
+
+    def _cams(self):
+        d = self._obj if isinstance(self._obj, dict) else {}
+        c = d.get("cams")
+        return c if isinstance(c, dict) else {}
+
+    # ---------- 三档 = 三种算力用法 (550A/4060 · 550B/标定观察 · 550C/Intel) ----------
+    def modes(self):
+        """三档各自的「灯 + 4 个指标槽」。当前档用完整槽位; 另外两档给菜单用的一行摘要。
+
+        槽 = (名称, 填充比例或None, 右侧文字或None)。
+        · 缺数据画「—」, 不编数;   · 550B 的槽 = 观察全硬件: 相机/机械臂/端侧/栈。
+        """
+        d = self._obj if isinstance(self._obj, dict) else {}
+        hw = d.get("hw") if isinstance(d.get("hw"), dict) else {}
+        gpu = hw.get("gpu") if isinstance(hw.get("gpu"), dict) else {}
+        cpu = hw.get("cpu") if isinstance(hw.get("cpu"), dict) else {}
+        mem = hw.get("mem") if isinstance(hw.get("mem"), dict) else {}
+        dsk = hw.get("disk") if isinstance(hw.get("disk"), dict) else {}
+        e, o, cm = self._edge(), self._orin(), self._cams()
+        hwe = e.get("hw") if isinstance(e.get("hw"), dict) else {}
+
+        def _pct(a, b):
+            try:
+                return _num(float(a) / float(b) * 100.0)
+            except Exception:
+                return None
+
+        mem_l = _pct(mem.get("used_gb"), mem.get("total_gb"))
+        if mem_l is None:
+            mem_l = _num(mem.get("pct"))
+
+        # —— 550A: 4060 上开发训练
+        a_mod = {"key": "550A", "hw": "4060", "mode": "开发训练", "dot": "green", "online": True,
+                 "fact": "GPU %s%% · 训练 %s" % (_txt(_num(gpu.get("util"))), "中" if (d.get("training") or {}).get("active") else "无"),
+                 "slots": [("GPU", _num(gpu.get("util")), None),
+                           ("CPU", _num(cpu.get("util")), None),
+                           ("内存", mem_l, None),
+                           ("磁盘", _num(dsk.get("pct")), None)]}
+
+        # —— 550B: VSCode 标定 / 观察所有硬件
+        c_on, c_n, c_tot = bool(cm.get("online")), int(cm.get("n_fresh") or 0), int(cm.get("n_total") or 0)
+        rob = o.get("robot") or {}
+        rs = o.get("robot_stack") or {}
+        arm_ok = (str(rob.get("power_state") or "") == "on") and not rob.get("has_error")
+        arm_txt = ("通" if arm_ok else ("错" if rob.get("has_error") else ("电" if rob else "—"))) if o.get("online") else "—"
+        e_on = bool(e.get("online"))
+        o_on = bool(o.get("online"))
+        eps_n, eps_tot = int(e_on) + int(o_on), 2
+        rs_n, rs_tot = sum(1 for v in rs.values() if v), len(rs)
+        b_mod = {"key": "550B", "hw": "标定", "mode": "VSCode 标定 · 观察全硬件",
+                 "dot": "green" if (c_on and c_n > 0) else ("dim" if not c_on else "yellow"),
+                 "online": bool(c_on),
+                 "fact": "相机 %d/%d · 端侧 %d/%d · 栈 %s" % (c_n, c_tot, eps_n, eps_tot,
+                                                          ("%d/%d" % (rs_n, rs_tot)) if rs else "—"),
+                 "slots": [("相机", (100.0 * c_n / c_tot) if c_tot else None, ("%d/%d" % (c_n, c_tot)) if c_tot else "—"),
+                           ("机械臂", 100.0 if arm_ok else (0.0 if arm_txt == "错" else None), arm_txt),
+                           ("端侧", 100.0 * eps_n / eps_tot, "%d/%d" % (eps_n, eps_tot)),
+                           ("栈", (100.0 * rs_n / rs_tot) if rs_tot else None,
+                            ("%d/%d" % (rs_n, rs_tot)) if rs_tot else "—")]}
+
+        # —— 550C: 部署到 Intel 端侧
+        e_busy, e_ms = bool(e.get("busy")), e.get("last_ms")
+        e_model = str(e.get("model") or "—").split("/")[-1].replace(".xml", "")
+        npu_txt = ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—")
+        c_mod = {"key": "550C", "hw": "Intel", "mode": "端侧部署",
+                 "dot": "cyan" if (e_on and e_busy) else ("green" if e_on else "dim"), "online": e_on,
+                 "fact": "NPU %s · %s · %s°C" % (npu_txt, e_model if e_on else "未连通",
+                                                 ("%.0f" % hwe["temp_c"]) if hwe.get("temp_c") is not None else "—"),
+                 "slots": [("NPU", None, npu_txt),
+                           ("CPU", _num(hwe.get("cpu_pct")), None),
+                           ("内存", _num(hwe.get("mem_pct")), None),
+                           ("温度", None, ("%.0f°" % hwe["temp_c"]) if hwe.get("temp_c") is not None else "—")]}
+        return [a_mod, b_mod, c_mod]
+
+    def current(self):
+        """当前档 (真源 active_product); 真源没给就用 550B (调试档兜底, 与 zmax_profile 同口径)."""
+        key = str(self._profile().get("key") or "550B")
+        for m in self.modes():
+            if m["key"] == key:
+                return m
+        return self.modes()[1]
+
+    def switch_profile(self, key):
+        """写真源 active_product (留 .bak + 日志)。界面立刻显示新档, 但**运行时能力要重启控制台才全身生效**. """
+        try:
+            from lerobot.engineering import status_hub as _hub
+            r = _hub.set_profile(key)
+        except Exception as ex:                                        # noqa: BLE001
+            r = {"ok": False, "err": "%s: %s" % (type(ex).__name__, str(ex)[:90]), "key": key}
+        if r.get("ok"):
+            self._sig = None
+            self.update()
+        return r
+
+    def _popup_profile_menu(self, gpos):
+        cur = self.current()
+        m = QMenu(self)
+        m.setStyleSheet("QMenu{background:#1f2733;color:#e6edf3;border:1px solid #30363d;font-size:10px;}"
+                        "QMenu::item{padding:3px 18px 3px 10px;}QMenu::item:selected{background:#2d3b4d;}"
+                        "QMenu::separator{height:1px;background:#30363d;margin:3px 6px;}")
+        for t in self.modes():
+            mark = {"cyan": "◉", "green": "●", "yellow": "◐", "dim": "○"}.get(t["dot"], "○")
+            act = m.addAction("%s %s  %s · %s · %s" % (mark, t["key"], t["hw"], t["mode"], t["fact"]))
+            act.setCheckable(True)
+            act.setChecked(t["key"] == cur["key"])
+            act.triggered.connect(lambda _c=False, k=t["key"]: self._on_pick(k))
+        m.addSeparator()
+        m.addAction("切换写真源 active_product … 重启控制台后能力全生效").setEnabled(False)
+        m.exec_(gpos)
+
+    def _on_pick(self, key):
+        r = self.switch_profile(key)
+        if not r.get("ok"):
+            self.setToolTip("切换失败: %s" % r.get("err"))
+        self._sig = None
+        self.update()
+
+    def mousePressEvent(self, ev):                                      # noqa: N802
+        try:
+            if ev.button() == Qt.LeftButton and ev.pos().x() <= 96:
+                self._popup_profile_menu(ev.globalPos())
+                return
+        except Exception:
+            pass
+        super().mousePressEvent(ev)
+
     def _chips(self):
         """按层聚合 (型号可能一层多个): 每层一个 chip —— 优先展示**在役**那一个的版本号,
         灯色取该层最好状态 (在役>候选>未训练), 推理标记 = 该层任一在推理。
@@ -395,6 +545,59 @@ class StatusPanel(QWidget):
         L.append("内存 %s/%s GB · 磁盘 %s/%s GB (%s%%)" % (
             mem.get("used_gb", "—"), mem.get("total_gb", "—"),
             dsk.get("used_gb", "—"), dsk.get("total_gb", "—"), dsk.get("pct", "—")))
+        pr = self._profile()
+        if pr:
+            caps = pr.get("caps") or {}
+            L.append("产品档 %s · %s · 算力=%s (%s)" % (pr.get("key", "—"), pr.get("role", "—"),
+                                                     pr.get("hw_label", "—"), pr.get("mode", "—")))
+            L.append("  档位能力: topics=%s comm=%s 信号分析=%s 3D场景=%s VSCode=%s 远程旁路=%s 算法=%s"
+                     % (caps.get("topics", "—"), caps.get("comm", "—"),
+                        caps.get("signal_analysis", "—"), caps.get("scene_3d", "—"),
+                        caps.get("vscode", "—"), caps.get("remote_bypass", "—"), caps.get("algo", "—")))
+            L.append("  真源 %s" % (pr.get("source") or "—"))
+            boot = getattr(self, "_boot", "") or pr.get("key")
+            if boot and boot != pr.get("key"):
+                L.append("  ⚠ 已从 %s 切到 %s: 真源已写, **重启控制台**后界面/话题/算法准入才全生效" % (boot, pr.get("key")))
+            L.append("  点最左侧 chip 可换档: 550A·4060 开发训练 / 550B·标定 观察全硬件 / 550C·Intel 端侧部署")
+        cm = self._cams()
+        if cm:
+            if cm.get("online"):
+                items = cm.get("items") or []
+                L.append("相机 %d/%d 有帧 (帧龄≤3s): %s" % (
+                    cm.get("n_fresh", 0), cm.get("n_total", 0),
+                    " · ".join("%s %s" % (str(i.get("label") or i.get("key"))[:14],
+                                          ("%.1fs" % i["age_s"]) if isinstance(i.get("age_s"), (int, float)) and i["age_s"] >= 0 else "无")
+                               for i in items)))
+            else:
+                L.append("相机: 8791 /stats 不可达 (%s)" % (cm.get("err") or "—"))
+        o = self._orin()
+        if o:
+            if o.get("online"):
+                rob = o.get("robot") or {}
+                L.append("Orin · %s · 内存 %s/%s MB · load %s · %s°C · 机器人 %s/%s · 生产栈 %s"
+                         % (o.get("host", "—"), o.get("mem_used_mb", "—"), o.get("mem_total_mb", "—"),
+                            o.get("load1", "—"), o.get("cpu_temp_c", "—"),
+                            rob.get("power_state", "—"), rob.get("operation_state", "—"),
+                            ",".join(k for k, v in (o.get("robot_stack") or {}).items() if v) or "无"))
+            else:
+                L.append("Orin: 不可达 (%s)" % (o.get("tried") or "—"))
+        e = self._edge()
+        if e:
+            hwe = e.get("hw") or {}
+            L.append("Intel 端侧 · %s · %s · 模型 %s (sha %s)" % (
+                "在线" if e.get("online") else "不通",
+                ("推理中 %sms" % e.get("last_ms")) if e.get("busy") else "空闲",
+                str(e.get("model") or "—").split("/")[-1], e.get("sha16") or "—"))
+            L.append("  Intel 硬件: %s 核 · CPU %s%% · 内存 %s/%s MB (%s%%) · 盘 %s%%(余 %sGB) · "
+                     "%s°C · NPU %s · load %s · n_req %s · 最近10s %s 次/s" % (
+                         hwe.get("cpu_n", "—"), hwe.get("cpu_pct", "—"),
+                         hwe.get("mem_used_mb", "—"), hwe.get("mem_total_mb", "—"),
+                         hwe.get("mem_pct", "—"), hwe.get("disk_pct", "—"),
+                         hwe.get("disk_free_gb", "—"), hwe.get("temp_c", "—"),
+                         "有" if hwe.get("npu") else "无", hwe.get("load1", "—"),
+                         e.get("n_req", "—"), e.get("rate_10s", "—")))
+            if e.get("tried"):
+                L.append("  试过: %s" % ", ".join(e["tried"]))
         L.append("模型 (%d):  (短名 ≤9 字, 缩自 name 真值)" % len(self._models()))
         for m in self._models():
             L.append("  [%s] %-9s · %s · %s（%s）%s" % (
@@ -445,29 +648,48 @@ class StatusPanel(QWidget):
         f_sb.setPixelSize(11)
         f_sb.setBold(True)
 
-        row1, gpu, cpu, mem, dsk = self._rows()
-        cy = h / 2.0                     # ★ 一行布局: 全部元素共用一条中线 (2026-10-14 老倪)
+        # ── 算力目标 chip (2026-10-21 老倪: 最左侧要显示 550A/4060 · 550B/标定 · 550C/Intel) ──────
+        #    灯: 青=端侧推理中 · 绿=在线/可观察 · 黄=部分掉线 · 灰=不通;  ⟳ = 已切档但待重启生效
+        cur = self.current()
+        cy = h / 2.0
         gw = 88.0
-        for i, (cap, val) in enumerate(row1):
-            x0 = 6.0 + i * gw
-            col = QColor(tone(val))
-            self._lamp(p, x0 + 5, cy, col, val is not None)
+        SEL_W = 96.0
+        boot = getattr(self, "_boot", "") or cur["key"]
+        pending = bool(boot) and boot != cur["key"]
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#1f2733"))
+        p.drawRoundedRect(QRectF(4.0, cy - 9.0, SEL_W - 14.0, 18.0), 9.0, 9.0)
+        self._lamp(p, 12.0, cy, QColor({"cyan": C_CYAN, "green": C_GREEN, "yellow": C_YELLOW,
+                                        "dim": C_DIM}.get(cur["dot"], C_GREEN)), bool(cur["online"]))
+        p.setPen(QColor(C_WHITE if cur["online"] else C_DIM))
+        p.setFont(f_lb)
+        p.drawText(QRectF(19.0, 0, 58.0, h), Qt.AlignVCenter | Qt.AlignLeft,
+                   QFontMetrics(f_lb).elidedText("%s·%s" % (cur["key"], cur["hw"]), Qt.ElideRight, 58))
+        p.setPen(QColor(C_YELLOW if pending else C_GRAY))
+        p.drawText(QRectF(SEL_W - 22.0, 0, 10.0, h), Qt.AlignVCenter | Qt.AlignRight,
+                   "⟳" if pending else "▾")
+
+        for i, (cap, frac, txt) in enumerate(list(cur["slots"])[:4]):
+            x0 = SEL_W + i * gw
+            has = (frac is not None) or (txt not in (None, "", "—"))
+            col = QColor(tone(frac)) if frac is not None else QColor(C_GRAY)
+            self._lamp(p, x0 + 5, cy, col, has)
             p.setPen(QColor(C_GRAY))
             p.setFont(f_lb)
             p.drawText(QRectF(x0 + 11, 0, 25, h), Qt.AlignVCenter | Qt.AlignLeft,
                        QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, 25))
-            # 迷你状态条
             bx, bw, bh = x0 + 37, 26, 7
             by = cy - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
             p.drawRoundedRect(QRectF(bx, by, bw, bh), 3.5, 3.5)
-            if val is not None:
+            if frac is not None:
                 p.setBrush(col)
-                p.drawRoundedRect(QRectF(bx, by, max(3.0, bw * min(1.0, max(0.0, val / 100.0))), bh), 3.5, 3.5)
-            p.setPen(QColor(C_WHITE if val is not None else C_DIM))
+                p.drawRoundedRect(QRectF(bx, by, max(3.0, bw * min(1.0, max(0.0, frac / 100.0))), bh), 3.5, 3.5)
+            right = str(txt) if txt not in (None, "") else _txt(frac)
+            p.setPen(QColor(C_WHITE if has else C_DIM))
             p.setFont(f_num)
-            p.drawText(QRectF(x0 + 62, 0, 23, h), Qt.AlignVCenter | Qt.AlignRight, _txt(val))
+            p.drawText(QRectF(x0 + 60, 0, 26, h), Qt.AlignVCenter | Qt.AlignRight, right)
 
         # ---- 模型层 chips (同一行: 画在训练条之后 / 3DGS 之前的空档里, 见本函数末尾) ----
         # (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」)
@@ -487,7 +709,7 @@ class StatusPanel(QWidget):
         self._lamp(p, w - 9, cy, QColor(C_GREEN if fresh else C_DIM), fresh)
 
         # ---- 训练进度条 + % · 模型层 chips · 3DGS 资产 —— 全部落在**这一条中线**上 (一行布局) ----
-        tx = 6.0 + 4.0 * gw + 6.0               # 4 个硬件条的右边界 + 6
+        tx = SEL_W + 4.0 * gw + 6.0          # 算力 chip + 4 个指标槽之后
         bar_w = 40.0
         pct_x = tx + bar_w + 3.0
         pct_w = 26.0

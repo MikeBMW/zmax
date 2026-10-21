@@ -2408,6 +2408,15 @@ class HardwareCard(QFrame):
                 self.lb_remote.setText(f"🛰 <b>4060 远端真实数据</b> —（{str(e)[:50]}）")
                 self.lb_src.setText("数据源: 探测异常")
 
+            # 🖥 Intel 端侧 (550C): 灯带一颗灯 —— 在线/推理中 + 硬件进 tooltip (2026-10-21)
+            try:
+                _ie = probe_intel_edge()
+                if _ie:
+                    devs.append({"name": "Intel 端侧", "sub": _ie["sub"],
+                                 "state": _ie["state"], "tip": _ie["tip"]})
+            except Exception:                                                   # noqa: BLE001
+                pass
+
             m["devices"] = devs
             m["ts"] = time.strftime("%H:%M:%S")
             out["_metrics"] = m
@@ -2513,6 +2522,53 @@ def _light_qss(color, solid):
     """🚦 状态灯样式 (2026-10-15): solid=True 实心亮 / False 空心带边线 —— 与老版视觉一致"""
     return (f"background:{color}; border:2px solid {color}; border-radius:7px;" if solid
             else f"background:transparent; border:2px solid {color}; border-radius:7px;")
+
+
+# ── 🖥 Intel 端侧 (550C) 探活: 灯带要看出「Intel 的硬件 + 模型是否在推理」 ──────────
+#   2026-10-21 老倪: 「主界面的最下面的指示灯, 当接到 intel 的时候, 能显示 intel 的硬件和模型的是否推理的状态么」
+#   真源 = Intel 边缘机 zmax-edge 的 GET /health (同日该口已自报 hw/infer 字段, 走 /proc + /sys, 零依赖)。
+#   本机不在产线网时走隧道 127.0.0.1:18800 (zmax-orin-intel-fwd.service); 产线网直连留作候选。
+_EDGE_HEALTH_URLS = [u for u in (os.environ.get("ZMAX_EDGE_URL"),
+                                 "http://127.0.0.1:18800/health",
+                                 "http://192.168.23.70:8800/health") if u]
+
+
+def probe_intel_edge(timeout=1.8):
+    """→ {state, sub, tip} ; state: busy=推理中 / ok=在线空闲 / err=不通。读不到一律 err, 不冒充在线。"""
+    import json as _j
+    import urllib.request as _u
+    errs = []
+    for url in _EDGE_HEALTH_URLS:
+        try:
+            with _u.urlopen(url, timeout=timeout) as r:
+                d = _j.loads(r.read().decode())
+        except Exception as e:                                                  # noqa: BLE001
+            errs.append("%s(%s)" % (url.split("//")[-1].split("/health")[0], type(e).__name__))
+            continue
+        hw = d.get("hw") or {}
+        inf = d.get("infer") or {}
+        ms = d.get("last_ms")
+        busy = bool(inf.get("busy"))
+        dev = str(d.get("device") or "?")
+        model = str(d.get("model") or d.get("xml") or "—").split("/")[-1].replace(".xml", "")
+        sub = [dev, ("推理中 %sms" % ("%.1f" % ms if ms is not None else "?")) if busy
+               else ("空闲" if ms is None else "空闲·上次 %.1fms" % ms)]
+        if hw.get("temp_c") is not None:
+            sub.append("%.0f°C" % hw["temp_c"])
+        tip = ("Intel 端侧 · 模型 %s (sha %s) · n_req %s · %s"
+               "\n硬件: %s核 · CPU %s%% · 内存 %s/%sMB (%s%%) · 盘余 %sGB (%s%%) · %s°C · NPU %s · load %s"
+               "\n推理: %s · 最近 10s %s 次/s · 距上次请求 %ss"
+               "\n来源 %s"
+               % (model, d.get("sha16") or "—", d.get("n_req"),
+                  "推理中" if busy else "空闲",
+                  hw.get("cpu_n") or "—", hw.get("cpu_pct"), hw.get("mem_used_mb"),
+                  hw.get("mem_total_mb"), hw.get("mem_pct"), hw.get("disk_free_gb"),
+                  hw.get("disk_pct"), hw.get("temp_c"), "有" if hw.get("npu") else "无",
+                  hw.get("load1"), "busy" if busy else "idle",
+                  inf.get("req_rate_10s"), inf.get("last_req_age_s"), url))
+        return {"state": "busy" if busy else "ok", "sub": " · ".join(sub), "tip": tip}
+    return {"state": "err", "sub": "未连通",
+            "tip": "Intel 端侧 /health 不可达: " + (", ".join(errs) or "无候选地址")}
 
 
 class _StatusLightFetcher(QThread):
@@ -15962,7 +16018,11 @@ def main():
             #   (state=1 WindowMinimized 实锤)。改为: resize 96% (留边不贴满) + show 后最大化
             # 🪟 宽/高各再让 160/160: 窗管实测会自己偏移 (x+80) ⇒ 不留余量会把表格最右列
             #   「合力」顶到屏幕右边缘外 (老倪: 「合力被遮挡」)。
-            win.resize(max(1200, int(geo.width()) - 170), max(720, int(geo.height()) - 170))
+            # 🪟 2026-10-21 老倪「最下面那条带」被切: 实测 Qt 自报 1750x1097@10,10, 而 WM 真实外框
+            #   1854x1131@66,106 ⇒ 底边 1237 > 屏 1200, 最底下「算力/模型」状态带下沿被切 ~13px。
+            #   Qt 的 frameGeometry 在这套 GNOME/Mutter 上少报 (宽+104 高+34, 位置再低 96),
+            #   所以高度按 230 让 (原来 170 不够), 留出的余量正好补上 WM 自己的偏移。
+            win.resize(max(1200, int(geo.width()) - 170), max(720, int(geo.height()) - 230))
             win.move(geo.x() + 10, geo.y() + 10)
             # 🐛 2026-09-06: GNOME/Mutter 窗口 Iconic bug — setWindowState(Maximized)
             #   在 show() 前调用 → Mutter map 时先给 Iconic 再忽略 Maximized (矛盾状态)

@@ -64,6 +64,30 @@ echo "  · 笔记本这一路可选: 内置 /dev/video$_ld · USB $([ "$_lu" -ge
 #       父进程的 1024 个 fd + 1024 的软上限, 于是连 accept 都做不了, 整个服务僵死 7 小时。
 #       这里 ulimit 抬上限, closerange 丢弃 3 号以上的继承 fd, setrlimit 顶到硬上限。
 ulimit -n 65535 2>/dev/null || ulimit -n 4096 2>/dev/null || true
+# ── 手臂相机源: 产线网直连优先, 本机不在产线网时走 ECS 隧道本地口 18792 ─────────
+#   直连: http://192.168.23.66:8792/frame.jpg (Orin rs_fast_node)
+#   隧道: zmax-orin-arm-fwd.service (ssh -L 18792 -> Orin 8792, 走 39.102.211.79:22022)
+ARM_URL="http://$ORIN_HOST:8792/frame.jpg"
+if ! curl -s -m 2 -o /dev/null "http://$ORIN_HOST:8792/frame.jpg" 2>/dev/null; then
+  if curl -s -m 2 -o /dev/null "http://127.0.0.1:18792/frame.jpg" 2>/dev/null; then
+    ARM_URL="http://127.0.0.1:18792/frame.jpg"
+    echo "  · 手臂源: 产线网 $ORIN_HOST:8792 不通 → 改走 ECS 隧道 127.0.0.1:18792"
+  else
+    echo "  · 手臂源: 产线网与隧道都不通 (zmax-orin-arm-fwd 没起?) ⇒ 这一路会是空"
+  fi
+else
+  echo "  · 手臂源: 产线网直连 http://$ORIN_HOST:8792/frame.jpg"
+fi
+# ── AOI 工控机地址: 直连优先, 不在产线网时用隧道本地口 10082/10083 ──────────────
+#   隧道单元: zmax-orin-aoi-fwd.service (ssh -L 10082/10083 -> 192.168.23.23 经 Orin)
+if curl -s -m 2 -o /dev/null "http://192.168.23.23:10082/storage" 2>/dev/null; then
+  echo "  · AOI 源: 产线网直连 192.168.23.23:10082/10083"
+elif curl -s -m 2 -o /dev/null "http://127.0.0.1:10082/storage" 2>/dev/null; then
+  export ZMAX_AOI_HOST=127.0.0.1
+  echo "  · AOI 源: 产线网不通 → 改走隧道 127.0.0.1:10082/10083 (ZMAX_AOI_HOST=127.0.0.1)"
+else
+  echo "  · AOI 源: 直连与隧道都不通 (zmax-orin-aoi-fwd 没起?) ⇒ 金手指/表面两格会是空"
+fi
 nohup "$PY" -c 'import os,sys,resource
 try:
   _s,_h=resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -72,7 +96,7 @@ except Exception:
   pass
 os.closerange(3,65536)
 os.execv(sys.argv[1], sys.argv[1:])' "$PY" tools/cam_live_stream.py --port $PORT --quality 72 --fps 30 \
-  --arm-http "http://$ORIN_HOST:8792/frame.jpg" --arm-fps 30 \
+  --arm-http "$ARM_URL" --arm-fps 30 \
   "${LOCAL_ARGS[@]}" \
   --depth-fps 4 --aoi-fps 0.25 --ctl-motion --station-port $STATION \
   --overlay --overlay-src all --overlay-fps 10 >> "$LOG" 2>&1 &

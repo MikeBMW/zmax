@@ -296,4 +296,5 @@ class HwVisual(QWidget):
                 self._lamps[n] = Lamp(n)
             self.row_dev.insertWidget(i, self._lamps[n])      # 已存在也重插 → 顺序确定(本机永远最后)
             self._lamps[n].set_state(d.get("state", "off"), d.get("sub", ""))
+            self._lamps[n].setToolTip(str(d.get("tip") or ""))      # Intel 端侧等: 硬件明细进悬停
         self.lb_dev.setText("设备状态")          # 名字在灯上, 不再重复写一遍(老倪: 别那么多文字)

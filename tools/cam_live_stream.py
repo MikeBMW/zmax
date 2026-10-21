@@ -38,6 +38,12 @@ import json
 import shutil
 import math
 import os
+
+# ── AOI 工控机地址可覆写 (2026-10-21) ─────────────────────────────────────────
+#   本机不在产线网(没插产线网卡)时, 192.168.23.23 不可达 -> 用 ECS 隧道把
+#   本机 127.0.0.1:10082/10083 转发到 Orin 再转工控机, 由启动器 export
+#   ZMAX_AOI_HOST=127.0.0.1。不设 = 原行为 192.168.23.23 (零变化)。
+_AOI_HOST = os.environ.get("ZMAX_AOI_HOST", "192.168.23.23")
 import re
 import subprocess
 import sys
@@ -1272,7 +1278,7 @@ def _aoi_gold_angle(port: int = 10082, ttl: float = 60.0) -> float:
     try:
         import json as _json
         import urllib.request as _ur
-        with _ur.urlopen("http://192.168.23.23:%d/region?grab=0" % port, timeout=4) as r:
+        with _ur.urlopen("http://" + _AOI_HOST + ":%d/region?grab=0" % port, timeout=4) as r:
             d = _json.loads(r.read().decode("utf-8", "ignore"))
         a = d.get("angle")
         if a is None and isinstance(d.get("region"), dict):
@@ -1770,7 +1776,7 @@ def _restore_cam_param(port: int = 10082) -> dict:
             q.append("gain=%g" % e["gain_db"])
         if not q:
             return {"ok": False, "msg": "没有落盘的档位(port=%d)" % int(port)}
-        with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
+        with _ur.urlopen("http://" + _AOI_HOST + ":%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
             d = _json.loads(r.read().decode("utf-8", "ignore"))
         return {"ok": bool(d.get("ok")), "port": int(port), "restored": e, "applied": d.get("applied"), "now": d.get("now")}
     except Exception as e:
@@ -1803,7 +1809,7 @@ def _aoi_param(port: int = 10082, profile=None, exposure=None, gain=None, why: s
     if not q:
         return {"ok": False, "code": 400, "msg": "没有要写的参数(给 profile 或 exposure/gain)"}
     try:
-        with _ur.urlopen("http://192.168.23.23:%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
+        with _ur.urlopen("http://" + _AOI_HOST + ":%d/param?%s" % (int(port), "&".join(q)), timeout=15) as r:
             d = _json.loads(r.read().decode("utf-8", "ignore"))
         ok = bool(d.get("ok"))
         if ok:
@@ -1837,13 +1843,13 @@ def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
     #   才算"这一次"的结果。否则表面推理 8.9s、等待到点没等到 ⇒ 页面把上一次(可能几分钟前)的判决当本次报出来。
     _n0 = None
     try:
-        with _ur.urlopen("http://192.168.23.23:%d/last_result" % int(port), timeout=8) as _r0:
+        with _ur.urlopen("http://" + _AOI_HOST + ":%d/last_result" % int(port), timeout=8) as _r0:
             _n0 = _json.loads(_r0.read().decode("utf-8", "ignore")).get("n")
     except Exception:                                                             # noqa: BLE001
         _n0 = None
     out["n_before"] = _n0
     try:
-        req = _ur.Request("http://192.168.23.23:%d/capture_detect" % port, data=b"", method="POST")
+        req = _ur.Request("http://" + _AOI_HOST + ":%d/capture_detect" % port, data=b"", method="POST")
         with _ur.urlopen(req, timeout=60) as r:
             out["capture"] = _json.loads(r.read().decode("utf-8", "ignore"))
         out["ok"] = True
@@ -1861,7 +1867,7 @@ def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
                 time.sleep(0.6)
             _slept = True
             try:
-                with _ur.urlopen("http://192.168.23.23:%d/last_result" % port, timeout=20) as r:
+                with _ur.urlopen("http://" + _AOI_HOST + ":%d/last_result" % port, timeout=20) as r:
                     d = _json.loads(r.read().decode("utf-8", "ignore"))
                 _last_code = 200
             except Exception as _e1:                                              # noqa: BLE001
@@ -1908,7 +1914,7 @@ def _aoi_last_result(port: int = 10082) -> dict:
     import urllib.request as _ur
     out = {"ok": False, "port": int(port), "cmd": "GET /last_result", "fetched_at": time.time()}
     try:
-        with _ur.urlopen("http://192.168.23.23:%d/last_result" % int(port), timeout=12) as r:
+        with _ur.urlopen("http://" + _AOI_HOST + ":%d/last_result" % int(port), timeout=12) as r:
             d = _json.loads(r.read().decode("utf-8", "ignore"))
         out["ok"] = True
         out["last_result"] = d
@@ -1949,7 +1955,7 @@ def _aoi_modelin_get(suffix: str = "", port: int = 10082):
     **喂给 detector.detect() 的同一份像素**无损取回来, 并且 /last_result.model_input_md5
     与它的像素 md5 逐位对得上(同源硬证据, 不是"看起来像")。
     """
-    url = "http://192.168.23.23:%d/picture?kind=modelin%s" % (int(port), suffix)
+    url = "http://" + _AOI_HOST + ":%d/picture?kind=modelin%s" % (int(port), suffix)
     req = urllib.request.Request(url, headers={"User-Agent": "zmax-station"})
     with urllib.request.urlopen(req, timeout=10) as r:
         return r.status, r.read(), dict(r.headers)
@@ -1961,7 +1967,7 @@ def _aoi_caliber(port: int = 10082, ttl: float = 8.0) -> dict:
     if _AOI_CAL.get("mode") and (now - float(_AOI_CAL.get("t") or 0.0)) < ttl:
         return dict(_AOI_CAL)
     try:
-        with urllib.request.urlopen("http://192.168.23.23:%d/caliber" % int(port), timeout=4) as r:
+        with urllib.request.urlopen("http://" + _AOI_HOST + ":%d/caliber" % int(port), timeout=4) as r:
             d = json.loads(r.read().decode("utf-8", "ignore"))
         c = d.get("caliber") or {}
         _AOI_CAL.update({"mode": str(c.get("mode") or "canonical"), "t": now, "port": int(port),
@@ -1981,7 +1987,7 @@ def _aoi_set_caliber(port: int = 10082, mode: str = "canonical") -> dict:
     m = str(mode or "").strip().lower()
     if m not in ("canonical", "same"):
         return {"ok": False, "code": 400, "msg": "mode 只能是 canonical(规范) 或 same(同一口径)"}
-    url = "http://192.168.23.23:%d/caliber?mode=%s" % (int(port), m)
+    url = "http://" + _AOI_HOST + ":%d/caliber?mode=%s" % (int(port), m)
     t0 = time.time()
     try:
         req = urllib.request.Request(url, data=b"", method="POST",
@@ -2145,8 +2151,8 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
       **升级到 v4 后**本 worker 零改动就有图: v4 增加了 GET /picture?kind=crop(规范图 1280, 喂模型的图)/
       kind=origin(原图)/ last_result / crop_info。这里取 kind=crop(=模型真正看到的那张) + 读 /last_result。
     """
-    url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
-    vurl = "http://192.168.23.23:%d/last_result" % port
+    url = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, kind)
+    vurl = "http://" + _AOI_HOST + ":%d/last_result" % port
     n = 0
     while not _STOP.is_set():
         t0 = time.time()
@@ -2252,7 +2258,7 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         # 🐢 整板原图(体积大: 10082 origin 实测 4.9MB) 单独按更低频率取: 每 full_every 轮一次, 不拖累主流
         if full_name and full_kind and full_every and (n % int(full_every) == 0):
             try:
-                fu = "http://192.168.23.23:%d/picture?kind=%s" % (port, full_kind)
+                fu = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, full_kind)
                 with urllib.request.urlopen(
                         urllib.request.Request(fu, headers={"User-Agent": "zmax-station"}),
                         timeout=20) as r:
@@ -2292,7 +2298,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
       另外: kind=anno (判据图 + YOLO 框 + 判决文字, 工控机端画好) 走 /aoi_gold_anno.mjpg 给现场看结果。
     """
     raw_every = 3          # same 口径下, "整板原图"这格低频单独取(省带宽, 不拖累判据图)
-    vurl = "http://192.168.23.23:%d/last_result" % port
+    vurl = "http://" + _AOI_HOST + ":%d/last_result" % port
     n = 0
     while not _STOP.is_set():
         t0 = time.time()
@@ -2314,7 +2320,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         else:
             mode = "canonical"
         kind = "crop" if mode == "same" else "origin"
-        url = "http://192.168.23.23:%d/picture?kind=%s" % (port, kind)
+        url = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
         _watching = ((not _aoi_busy(port))           # 🔴 同上: 检测期间不抢相机
                      and any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
@@ -2326,7 +2332,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         #   本机仍做**同一套** canonical 加工(原比例+去倾角+纵向3× → 900x332) ⇒ 显示口径不变, 只是取帧快了 ~16×。
         #   老版工控机无此路由 ⇒ 404 自动永久回落老路(零影响)。
         if _watching and _AOI_PREVIEW_OK.get(port, True):
-            _req_url = "http://192.168.23.23:%d/preview.jpg?q=88" % port
+            _req_url = "http://" + _AOI_HOST + ":%d/preview.jpg?q=88" % port
             _use_prev = True
         else:
             _req_url = url + ("&grab=1" if _watching else "")
@@ -2415,7 +2421,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                     else:
                         try:
                             with urllib.request.urlopen(
-                                    urllib.request.Request("http://192.168.23.23:%d/picture?kind=origin" % port,
+                                    urllib.request.Request("http://" + _AOI_HOST + ":%d/picture?kind=origin" % port,
                                                            headers={"User-Agent": "zmax-station"}),
                                     timeout=20) as r2:
                                 if r2.status == 200:
@@ -2456,7 +2462,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         # 🧾 检测结果叠加 (kind=anno): 有人看那一格才取(内存帧, 8~11ms); 字节直传, 本地零加工
         if (time.time() - _AOI_VIEW_TS.get(anno_name, 0.0)) < _AOI_LIVE_WIN_S:
             try:
-                au = "http://192.168.23.23:%d/picture?kind=anno" % port
+                au = "http://" + _AOI_HOST + ":%d/picture?kind=anno" % port
                 with urllib.request.urlopen(
                         urllib.request.Request(au, headers={"User-Agent": "zmax-station"}), timeout=10) as r3:
                     if r3.status == 200:
@@ -2494,10 +2500,10 @@ def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
       · 10083 表面: 只有 POST /capture_detect, 回执是个 JSON(可能带 base64 图)。
     """
     if port == 10082:
-        url = "http://192.168.23.23:%d/picture?kind=origin&grab=1" % port
+        url = "http://" + _AOI_HOST + ":%d/picture?kind=origin&grab=1" % port
         how, method = "GET /picture?grab=1", "GET"
     else:
-        url = "http://192.168.23.23:%d/capture_detect" % port
+        url = "http://" + _AOI_HOST + ":%d/capture_detect" % port
         how, method = "POST /capture_detect", "POST"
     try:
         if method == "POST":
@@ -2543,7 +2549,7 @@ def _aoi_capture(port: int, name: str, timeout: float = 90.0) -> dict:
         # v4(表面/金手指): /capture_detect 回执不带图, 但拍完内存里就有照片了
         #  ⇒ 顺手 GET 一次 /picture 把图取回来(这一步是只读取图, 不会再拍)
         try:
-            gurl = "http://192.168.23.23:%d/picture?kind=%s" % (
+            gurl = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (
                 port, "crop" if port == 10083 else "origin")
             with urllib.request.urlopen(
                     urllib.request.Request(gurl, headers={"User-Agent": "zmax-station"}),
