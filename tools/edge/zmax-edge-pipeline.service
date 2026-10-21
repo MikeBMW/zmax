@@ -12,6 +12,7 @@ Environment=EDGE_NPU_MODELS=yolo_peg_live,intact_enc
 Environment=EDGE_GPU_MODELS=intact_pred,intact_enc
 Environment=EDGE_SAT_IMG=/home/intel/edge_models/20260917_124517_611.jpg
 Environment=EDGE_GUARD_TICK=15
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /home/intel/edge_models/edge_pipeline_guard.py
 Restart=always
 RestartSec=5
