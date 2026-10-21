@@ -13138,6 +13138,20 @@ class StudioMainWindow(QMainWindow):
             _pn_row.addStretch(1)
             _wrap.addLayout(_pn_row, 0)
             central.setLayout(_wrap)
+            # 2026-10-21 取证: 状态带到底有没有真的进布局/在不在屏内 (只看截图会漏判 —— 窗口底边可能被 WM 顶到屏外)
+            def _pn_geo_dbg():
+                try:
+                    g = self.status_panel.geometry()
+                    scr = self.screen().geometry() if self.screen() else None
+                    fg = self.frameGeometry()
+                    print("[status_panel] geo=%dx%d@%d,%d vis=%s hidden=%s | win=%dx%d@%d,%d | screen=%s | in_screen=%s"
+                          % (g.width(), g.height(), g.x(), g.y(), self.status_panel.isVisible(), self.status_panel.isHidden(),
+                             fg.width(), fg.height(), fg.x(), fg.y(),
+                             ("%dx%d" % (scr.width(), scr.height())) if scr else "?",
+                             (fg.y() + fg.height()) <= (scr.height() if scr else 0)))
+                except Exception as _e3:
+                    print("[status_panel] geo 取证失败: %r" % (_e3,))
+            QTimer.singleShot(4000, _pn_geo_dbg)
         except Exception as _e:
             print("[status_panel] 左下角状态面板挂载失败: %r" % (_e,))
             central.setLayout(root)
@@ -15681,6 +15695,18 @@ def _fit_window_to_screen(win, margin=8):
         if scr is None:
             return False, "no-screen"
         ag = scr.availableGeometry()
+        # 🔴 2026-10-21 实测: 这套 GNOME/Mutter 上 availableGeometry() 本身就越界 ——
+        #   报 3068x1862@132,212 ⇒ 底边 2074 > 主屏 2000, 于是"按可用区夹紧"把窗口夹到了屏外,
+        #   最底下那条**硬件状态带**整条看不见 (抓屏能抓到/肉眼看没有 = 只看截图会漏判)。
+        #   ⇒ 用**屏幕物理几何**与之求交, 再留 48px 底部安全边 (CSD 阴影不计入 frameGeometry)。
+        try:
+            _g = scr.geometry()
+            _x0, _y0 = max(ag.x(), _g.x()), max(ag.y(), _g.y())
+            _x1, _y1 = min(ag.x() + ag.width(), _g.x() + _g.width()), min(ag.y() + ag.height(), _g.y() + _g.height())
+            from PyQt5.QtCore import QRect
+            ag = QRect(_x0, _y0, max(640, _x1 - _x0), max(480, _y1 - _y0))
+        except Exception:
+            pass
         _mx_fix = False
         if win.isMaximized() or win.isFullScreen():
             fr = win.frameGeometry()

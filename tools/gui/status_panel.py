@@ -193,14 +193,20 @@ class _Fetcher(QThread):
 # 面板
 # ============================================================
 class StatusPanel(QWidget):
-    W, H = 1080, 40                 # 2026-10-14: 两行→一行 (560x68 → 1080x40), 占地方改小
+    W, H = 1080, 40                 # 逻辑画布尺寸 (paint 里所有坐标都按这个写死, 别改它)
+    # 🔍 2026-10-21 老倪: 「最下面的硬件指示的字体太小了, 调大」
+    #   做法: 不逐个改 30+ 处写死坐标 (11/37/47/60/88/96…), 而是**画布等比放大** ——
+    #   painter.scale(SCALE) 后仍按 1080x40 的逻辑坐标画, 实际像素 = 1080x40 × SCALE,
+    #   字/灯/进度条/圆角全部同步变大, 布局关系一点不变 (不会互相压住)。
+    #   1.42 ⇒ 字体 10px→14.2px、11px→15.6px, 面板 1080x40 → 1533x56。
+    SCALE = 1.42
     POLL_MS = 1000
     MAX_CHIPS = 4
 
     def __init__(self, parent=None, url=None, poll=True):
         super().__init__(parent)
         self.url = url or DEFAULT_URL
-        self.setFixedSize(self.W, self.H)
+        self.setFixedSize(int(self.W * self.SCALE), int(self.H * self.SCALE))
         self.setToolTip("状态面板: 等待 8796 /status/all …")
         self._obj = None                    # 最近一次成功载荷
         self._err = "未连接"                # 最近一次失败原因 (不显示在界面上, 只进 tooltip)
@@ -571,7 +577,7 @@ class StatusPanel(QWidget):
 
     def mousePressEvent(self, ev):                                      # noqa: N802
         try:
-            if ev.button() == Qt.LeftButton and ev.pos().x() <= 96:
+            if ev.button() == Qt.LeftButton and ev.pos().x() <= 96 * self.SCALE:   # 画布坐标 × 放大系数
                 self._popup_profile_menu(ev.globalPos())
                 return
         except Exception:
@@ -770,10 +776,12 @@ class StatusPanel(QWidget):
     def _paint(self):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
-        w, h = self.width(), self.height()
-        p.fillRect(0, 0, w, h, QColor(C_BG2))
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.scale(self.SCALE, self.SCALE)                 # 等比放大 (逻辑坐标仍是 1080x40)
+        w, h = self.width() / self.SCALE, self.height() / self.SCALE
+        p.fillRect(QRectF(0.0, 0.0, w, h), QColor(C_BG2))     # ⚠ 缩放后 w/h 是 float, 必须走 QRectF 重载
         p.setPen(QPen(QColor(C_BORDER), 1))
-        p.drawLine(0, 0, w, 0)
+        p.drawLine(QPointF(0.0, 0.0), QPointF(w, 0.0))
 
         # 字体一律用 setPixelSize (本机 Qt 字体 DPI≈192, pt 会放大 ~1.5 倍 ⇒ 撑破小框)
         f_lb = QFont(UI)
@@ -1006,7 +1014,9 @@ def _selftest(shot=None):
 
     # 1) 面积红线 (2026-10-14: 老倪「排成一行; 现在两行占地方」⇒ 560x68 两行 → 1080x40 一行)
     pn = StatusPanel(poll=False)
-    chk("面积 ≤ 1080x56 px (一行)", pn.width() <= 1080 and pn.height() <= 56, "%dx%d" % (pn.width(), pn.height()))
+    _Wp, _Hp = int(StatusPanel.W * StatusPanel.SCALE), int(StatusPanel.H * StatusPanel.SCALE)
+    chk("面积 ≤ %dx%d px (一行, 已按 1.42 放大)" % (_Wp, _Hp),
+        pn.width() <= _Wp and pn.height() <= _Hp + 4, "%dx%d" % (pn.width(), pn.height()))
 
     # 1b) 真·一行判据: 渲染后按像素扫描内容行带, 必须只有**一条**带 (背景外的像素行连续成带)
     pn.feed(REAL)
@@ -1028,7 +1038,9 @@ def _selftest(shot=None):
     chk("渲染内容只有 1 条行带 (一行)", len(bands) == 1, "行带 %s" % (bands,))
     if bands:
         y0, y1 = bands[0]
-        chk("行带高度 ≤ 40px 且占满中部", (y1 - y0) <= 40, "%d..%d (%dpx)" % (y0, y1, y1 - y0 + 1))
+        # 2026-10-21: 面板按 1.42 放大后, 行带应为 ~53px (原 40px); 判据改成"占满中部"而不是写死 40
+        chk("行带高度合理 (%.0f~%.0fpx)" % (_Hp * 0.35, _Hp * 0.98),
+            _Hp * 0.35 <= (y1 - y0) <= _Hp * 0.98, "%d..%d (%dpx)" % (y0, y1, y1 - y0 + 1))
     # 1c) 一行里必须同时看得见 4 个硬件项 + 4 个模型层 + 3DGS (都没有被折到别处)
     xs = [x for x in range(0, img.width(), 2)
           if any(abs(img.pixelColor(x, y).red() - 0x16) > 12 or abs(img.pixelColor(x, y).green() - 0x1b) > 12
@@ -1102,7 +1114,7 @@ def _selftest(shot=None):
                                        {"layer": "L7", "name": "x3", "version": "v8", "state": "candidate", "inferring": False}]
     pn.feed(many)
     pn.grab()
-    chk("6 模型走聚合位不崩", pn.width() == 1080)
+    chk("6 模型走聚合位不崩", pn.width() == int(StatusPanel.W * StatusPanel.SCALE))
     if shot:
         pn.grab().save(shot.replace(".png", "_many.png"))
 

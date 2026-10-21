@@ -825,7 +825,7 @@ def set_profile(key: str, backup: bool = True) -> dict:
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:100]), "key": key}
 
 
-def collect_edge(timeout: float = 1.5) -> dict:
+def _edge_fetch(timeout: float = 1.5) -> dict:
     """Intel 端侧 (550C) 真状态 —— 硬件 + 模型是否在推理 (2026-10-21 老倪要「最下面的指示灯」显示 Intel).
 
     真源 = Intel 边缘机 zmax-edge 的 GET /health (自报 hw/infer; 走 /proc + /sys)。
@@ -859,6 +859,41 @@ def collect_edge(timeout: float = 1.5) -> dict:
                 "pipeline": d.get("pipeline"),        # NPU/GPU 并行调度的 duty/fps (on 才有值)
                 "uptime_s": d.get("uptime_s"), "ts": time.time()}
     return {"online": False, "tried": tried, "ts": time.time()}
+
+
+# 🔴 2026-10-21: 状态带上的 NPU/GPU 槽画"—"的真根因 —— 隧道单请求实测 2.9~3.6s, 而 collect_edge 只等 1.5s,
+#   必然 TimeoutError ⇒ online=False ⇒ 界面只能画横杠 (不是 NPU 没跑)。改后台线程刷 + 缓存:
+#   请求路径永不阻塞 (隧道慢也不拖 /status/all), 拿到就更新; 读不到就继续给上一份并标 cache_age_s。
+_EDGE_CACHE = {"ts": 0.0, "data": None, "busy": False, "tried": []}
+
+
+def collect_edge(timeout: float = 8.0, ttl: float = 8.0) -> dict:
+    """带缓存的 Intel 端侧状态 (隧道慢 ⇒ 必须异步刷, 见上)。"""
+    now = time.time()
+    c = _EDGE_CACHE
+    fresh = c["data"] is not None and (now - c["ts"]) < ttl
+    if not fresh and not c["busy"]:
+        c["busy"] = True
+
+        def _job():
+            try:
+                out = _edge_fetch(timeout)
+                if out.get("online"):
+                    _EDGE_CACHE.update(ts=time.time(), data=out, tried=[])
+                else:
+                    _EDGE_CACHE.update(tried=out.get("tried") or [])
+            except Exception:                                          # noqa: BLE001
+                pass
+            finally:
+                _EDGE_CACHE["busy"] = False
+
+        threading.Thread(target=_job, daemon=True).start()
+    if c["data"] is not None:
+        d = dict(c["data"])
+        d["cache_age_s"] = round(now - c["ts"], 1)
+        d["stale"] = (now - c["ts"]) >= ttl * 2.5                       # 太久没刷上 ⇒ 界面可标陈旧
+        return d
+    return {"online": False, "tried": c["tried"] or ["warming-up"], "ts": now, "cache_age_s": None}
 
 
 def _collect_all() -> dict:
