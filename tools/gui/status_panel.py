@@ -408,11 +408,18 @@ class StatusPanel(QWidget):
                  "online": bool(c_on),
                  "fact": "相机 %d/%d · 端侧 %d/%d · 栈 %s" % (c_n, c_tot, eps_n, eps_tot,
                                                           ("%d/%d" % (rs_n, rs_tot)) if rs else "—"),
-                 "slots": [("相机", (100.0 * c_n / c_tot) if c_tot else None, ("%d/%d" % (c_n, c_tot)) if c_tot else "—"),
-                           ("机械臂", 100.0 if arm_ok else (0.0 if arm_txt == "错" else None), arm_txt),
-                           ("端侧", 100.0 * eps_n / eps_tot, "%d/%d" % (eps_n, eps_tot)),
+                 # 槽 = (名称, 填充比例, 右侧文字, 语义色)。★ 计数类「满额 = 好」必须显式给 ok,
+                 #   否则 tone(100%) 按"负载过高"上红色 —— 实测被子代理抓到: 端侧 2/2、栈 2/2 显示红点红满条。
+                 "slots": [("相机", (100.0 * c_n / c_tot) if c_tot else None,
+                            ("%d/%d" % (c_n, c_tot)) if c_tot else "—",
+                            "ok" if (c_tot and c_n >= c_tot) else "warn"),
+                           ("机械臂", 100.0 if arm_ok else (0.0 if arm_txt == "错" else None), arm_txt,
+                            "ok" if arm_ok else ("bad" if arm_txt == "错" else "idle")),
+                           ("端侧", 100.0 * eps_n / eps_tot, "%d/%d" % (eps_n, eps_tot),
+                            "ok" if eps_n >= eps_tot else "warn"),
                            ("栈", (100.0 * rs_n / rs_tot) if rs_tot else None,
-                            ("%d/%d" % (rs_n, rs_tot)) if rs_tot else "—")]}
+                            ("%d/%d" % (rs_n, rs_tot)) if rs_tot else "—",
+                            "ok" if (rs_tot and rs_n >= rs_tot) else "warn")]}
 
         # —— 550C: 部署到 Intel 端侧 (五槽: NPU/GPU/CPU/内存/磁盘 —— 老倪要「所有硬件·算力·磁盘都显示」)
         e_busy, e_ms = bool(e.get("busy")), e.get("last_ms")
@@ -432,8 +439,8 @@ class StatusPanel(QWidget):
                  "fact": "NPU %s / %sTOPS · iGPU %sTOPS · 盘余 %sGB" % (
                      npu_txt, ("%.0f" % npu_tops) if npu_tops else "—",
                      ("%.0f" % gpu_tops) if gpu_tops else "—", disk_free if disk_free is not None else "—"),
-                 "slots": [("NPU", None, npu_txt),
-                           ("GPU", None, gpu_txt),
+                 "slots": [("NPU", None, npu_txt, "ok" if e_on else "idle"),
+                           ("GPU", None, gpu_txt, "ok" if e_on else "idle"),
                            ("CPU", _num(hwe.get("cpu_pct")), None),
                            ("内存", _num(hwe.get("mem_pct")), None),
                            ("磁盘", _num(hwe.get("disk_pct")), disk_txt)]}
@@ -708,23 +715,30 @@ class StatusPanel(QWidget):
                    "⟳" if pending else "▾")
 
         _slots = list(cur["slots"])[:5]
-        for i, (cap, frac, txt) in enumerate(_slots):
+        _SEM = {"ok": C_GREEN, "warn": C_YELLOW, "bad": C_RED, "idle": C_DIM, "busy": C_CYAN}
+        for i, _sl in enumerate(_slots):
+            cap, frac, txt = _sl[0], _sl[1], _sl[2]
+            sem = _sl[3] if len(_sl) > 3 else None
             x0 = SEL_W + i * gw
             has = (frac is not None) or (txt not in (None, "", "—"))
-            col = QColor(tone(frac)) if frac is not None else QColor(C_GRAY)
+            if sem:
+                col = QColor(_SEM.get(sem, C_GREEN))
+            else:
+                col = QColor(tone(frac)) if frac is not None else QColor(C_GRAY)
             self._lamp(p, x0 + 5, cy, col, has)
             p.setPen(QColor(C_GRAY))
             p.setFont(f_lb)
-            p.drawText(QRectF(x0 + 11, 0, 25, h), Qt.AlignVCenter | Qt.AlignLeft,
-                       QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, 25))
-            bx, bw, bh = x0 + 37, 26, 7
+            _lw = 25.0 if frac is not None else 34.0      # 纯文字槽 (机械臂/栈/NPU/GPU) 标签区给宽, 三字不截
+            p.drawText(QRectF(x0 + 11, 0, _lw, h), Qt.AlignVCenter | Qt.AlignLeft,
+                       QFontMetrics(f_lb).elidedText(cap, Qt.ElideRight, int(_lw)))
+            bx, bw, bh = (x0 + 37 if frac is not None else x0 + 47), (26 if frac is not None else 16), 7
             by = cy - bh / 2.0
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(TRACK))
             p.drawRoundedRect(QRectF(bx, by, bw, bh), 3.5, 3.5)
             if frac is not None:
-                p.setBrush(col)
-                p.drawRoundedRect(QRectF(bx, by, max(3.0, bw * min(1.0, max(0.0, frac / 100.0))), bh), 3.5, 3.5)
+                p.setBrush(col)          # 2px 底 (原 3px): 6% 的条看起来别像 11%
+                p.drawRoundedRect(QRectF(bx, by, max(2.0, bw * min(1.0, max(0.0, frac / 100.0))), bh), 3.5, 3.5)
             right = str(txt) if txt not in (None, "") else _txt(frac)
             p.setPen(QColor(C_WHITE if has else C_DIM))
             p.setFont(f_num)
