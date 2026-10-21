@@ -436,6 +436,17 @@ class StatusPanel(QWidget):
                 return m
         return self.modes()[1]
 
+    def set_boot_product(self, key):
+        """控制台**启动时**读到的档 (它的界面/话题就是按这个建的)。
+
+        与真源现读不同 ⇒ 右侧画 ⟳, 表示「真源已换, 重启控制台才全生效」; 不假装已经生效。
+        """
+        k = str(key or "").strip().upper()
+        if k:
+            self._boot = k
+            self._sig = None
+            self.update()
+
     def switch_profile(self, key):
         """写真源 active_product (留 .bak + 日志)。界面立刻显示新档, 但**运行时能力要重启控制台才全身生效**. """
         try:

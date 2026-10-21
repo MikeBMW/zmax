@@ -13089,6 +13089,11 @@ class StudioMainWindow(QMainWindow):
                 sys.path.insert(0, _pn_dir)
             from status_panel import StatusPanel as _StatusPanel
             self.status_panel = _StatusPanel(self)
+            try:
+                # 2026-10-21: 把控制台自己启动时的档告诉状态带 —— 真源被换档后界面上打 ⟳(待重启), 不谎报已生效
+                self.status_panel.set_boot_product(getattr(self, "_title_product", ""))
+            except Exception:
+                pass
             _wrap = QVBoxLayout()
             _wrap.setContentsMargins(0, 0, 0, 0)
             _wrap.setSpacing(0)
@@ -15648,12 +15653,11 @@ def _fit_window_to_screen(win, margin=8):
             #   3068x1862@132,212, 底边 2074 落在主屏可见区**外** 74px ⇒ 最底一行(版本提示/跑马灯/
             #   那个蓝色按钮)老倪**永远看不到**(离屏抓图能抓到, 所以只看截图会漏判)。
             #   ⇒ 最大化**不等于**在屏内: 越界就退回普通态再按可用区重夹(不留空洞、不贴死边)。
-            if not (fr.x() < ag.x() or fr.y() < ag.y()
-                    or fr.x() + fr.width() > ag.x() + ag.width()
-                    or fr.y() + fr.height() > ag.y() + ag.height()):
-                return False, (f"maximized ok {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} "
-                               f"(可用 {ag.width()}x{ag.height()}@{ag.x()},{ag.y()})")
-            _pre = f"maximized-overflow {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
+            # 🪟 2026-10-21 老倪「最下面那条状态带」被切: 这套双屏 Mutter 上「最大化」的真实外框和
+            #   frameGeometry 对不上 (实测 Qt 报 1750x1097@10,10, WM 实给 1854x1131@66,106 ⇒ 底边 1237 > 屏 1200),
+            #   原来的「在屏内就放行」判据因此永远为真, 状态带下沿被切 13px 没人管。
+            #   ⇒ 最大化态一律退回普通态, 按可用工作区重夹 (要满屏用户自己双击标题栏, 那时窗口已上屏)。
+            _pre = f"maximized→normal {fr.width()}x{fr.height()}@{fr.x()},{fr.y()} → "
             try:
                 win.showNormal()   # 最大化态下 resize/move 会被 WM 忽略, 必须先退
             except Exception:
@@ -16131,6 +16135,10 @@ def main():
                     except Exception:
                         pass
                 _oneshot(win, 400, _do_fit)
+                # 🪟 2026-10-21: Mutter 的「最大化」是**异步**施加的 (400ms 时窗口还 state=0, 之后才变成
+                #   1854x1131@66,106, 底边 1237 > 屏 1200)。再补一次 ,这时 _fit_window_to_screen 会看到
+                #   isMaximized=True ⇒ 退普通态重夹 ⇒ 最下面那条状态带不会被切。
+                _oneshot(win, 3000, _do_fit)
             try:
                 with open("/tmp/studio_show_diag.log", "a") as _df:
                     _df.write(f"{time.time():.1f} after show: visible={win.isVisible()} minimized={win.isMinimized()} state={int(win.windowState())}\n")
