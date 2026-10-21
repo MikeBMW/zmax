@@ -55,6 +55,8 @@ GS_ASSETS = os.environ.get("ZMAX_MAP_GS_ASSETS", os.path.join(ROOT, "zmax_data",
 os.makedirs(MAP_DIR, exist_ok=True)
 # 与 tools/ros_scene_depth_build.py 同源: DEPTH_SCALE=0.0001 m/unit, 有效阈值 0.05m
 MIN_DEPTH_MM = float(os.environ.get('ZMAX_MAP_MIN_DEPTH_MM', '50'))
+# D405 无效深度编码 65535(×0.1mm=6553.5mm); 上限把哨兵与远场噪声挡在门外 (见 backproject 注释)
+MAX_DEPTH_MM = float(os.environ.get('ZMAX_MAP_MAX_DEPTH_MM', '2000'))
 
 # 全局地图状态 (单写者: 建图线程; 多读者: HTTP 线程)
 MAP = {
@@ -93,7 +95,10 @@ def backproject_depth(depth_u16, stats):
     # 有效判据必须与真源 tools/ros_scene_depth_build.py 一致: z_m > 0.05 (50mm)。
     # 只判 z>0 会把近距噪声点也反投影出去, 实测直接把 bbox 撑到 Z[-3322,1158]mm
     # (真源 bbox 是 Z[-1224,337]mm) —— 2026-10-22 踩过。
-    valid = z > MIN_DEPTH_MM
+    # 🔴 2026-10-22 实测补一条**上限**: D405 无效深度会被编码成 65535 (×0.1mm = 6553.5mm),
+    #    只判下限时这些哨兵值照样通过 ⇒ 2.3% 的 6554mm 点把 bbox 撑到 X[120,6875] Z[-4524,1685]mm
+    #    (工作台实际 ~2m 内)。≥2000mm 的点对 D405 而言是无效/远场, 默认丢掉。
+    valid = (z > MIN_DEPTH_MM) & (z < MAX_DEPTH_MM)
     vv, uu = np.nonzero(valid)
     zc = z[vv, uu]
     xc = (uu.astype(np.float32) - cx) * zc / fx

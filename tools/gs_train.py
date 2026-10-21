@@ -105,11 +105,21 @@ def main() -> int:
     a = ap.parse_args()
 
     torch.manual_seed(a.seed); np.random.seed(a.seed)
-    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    # 设备口径: CUDA → XPU(Intel Arc, gsplat SYCL 后端) → CPU。gsplat 自己按
+    # torch.cuda / torch.xpu 选后端(BACKEND=cuda|sycl), 这里只保证张量落在同一设备上。
+    if torch.cuda.is_available():
+        dev = "cuda"
+    elif getattr(torch, "xpu", None) is not None and torch.xpu.is_available():
+        dev = "xpu"
+    else:
+        dev = "cpu"
     import gsplat
     from gsplat.strategy import DefaultStrategy
-    print("torch %s · cuda=%s (%s) · gsplat %s" % (torch.__version__, torch.cuda.is_available(),
-          torch.cuda.get_device_name(0) if torch.cuda.is_available() else "-", gsplat.__version__))
+    _dname = (torch.cuda.get_device_name(0) if dev == "cuda"
+              else (torch.xpu.get_device_name(0) if dev == "xpu" else "-"))
+    print("torch %s · dev=%s (%s) · gsplat %s · backend=%s"
+          % (torch.__version__, dev, _dname, gsplat.__version__,
+             getattr(gsplat, "BACKEND", "?")))
 
     cj = json.load(open(os.path.join(a.data, "cameras.json"), encoding="utf-8"))
     W, H = int(cj["width"]), int(cj["height"])
