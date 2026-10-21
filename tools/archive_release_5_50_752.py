@@ -49,7 +49,10 @@ UNITS = [
     "/etc/systemd/system/zmax-lan-nat.service",
     "/usr/local/sbin/zmax-lan-nat.sh",
     "/home/ubuntu/.config/systemd/user/zmax-studio.service",
-    "/home/ubuntu/frp_0.61.0_linux_amd64/frpc.toml",
+    # 2026-10-21: frp 0.61 二进制目录已删 (服务一直 disabled+inactive, 33M 白占);
+    # 配方 (frpc.toml/frps.toml/unit) 留档在 zmax_data/host_backup/frp/, 归档从这里取
+    "/home/ubuntu/zmax/zmax_data/host_backup/frp/frpc.toml",
+    "/home/ubuntu/zmax/zmax_data/host_backup/frp/zmax-frpc.service",
 ]
 
 MANIFEST = """# Z-MAX v{ver} 归档
