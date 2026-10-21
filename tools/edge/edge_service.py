@@ -300,7 +300,12 @@ def _comp_cache_devices():
 
 
 def _comp_for(model_name, device):
-    """(model 名, device) → (compiled_model, output_port, key)。"""
+    """(model 名, device) → (compiled_model, output_port, key)。
+
+    2026-10-21 老倪「NPU GPU 最大化使用」: 流水线可用 hint=1 让 OpenVINO 按 **吞吐** 编
+    (PERFORMANCE_HINT=THROUGHPUT ⇒ 单模型内部多 stream)；老设备/驱动不认就自动退回默认配置,
+    退回要打印一行, 不许静默。
+    """
     xml = Handler.meta.get("xml")
     if model_name:
         base = os.path.dirname(os.path.abspath(xml))
@@ -308,13 +313,25 @@ def _comp_for(model_name, device):
         if not os.path.isfile(cand):
             raise FileNotFoundError("没有这个模型: %s" % cand)
         xml = cand
-    key = (os.path.abspath(xml), str(device or "NPU").upper())
+    hint = bool(PIPE.get("hint"))
+    key = (os.path.abspath(xml), str(device or "NPU").upper(), hint)
     with _COMP_LOCK:
         if key not in _COMP:
             t0 = time.perf_counter()
-            _COMP[key] = Handler.core.compile_model(Handler.core.read_model(key[0]), key[1])
-            print("[edge] 编译 %s @ %s: %.1fms" % (os.path.basename(key[0]), key[1],
-                                                   (time.perf_counter() - t0) * 1000), flush=True)
+            mdl = Handler.core.read_model(key[0])
+            comp = None
+            if hint:
+                try:
+                    comp = Handler.core.compile_model(mdl, key[1], {"PERFORMANCE_HINT": "THROUGHPUT"})
+                except Exception as e:                                # noqa: BLE001
+                    print("[edge] %s@%s 不支持 THROUGHPUT 提示 (%s) → 退回默认编译"
+                          % (os.path.basename(key[0]), key[1], str(e)[:80]), flush=True)
+            if comp is None:
+                comp = Handler.core.compile_model(mdl, key[1])
+            _COMP[key] = comp
+            print("[edge] 编译 %s @ %s%s: %.1fms" % (os.path.basename(key[0]), key[1],
+                                                    " (throughput)" if hint else "",
+                                                    (time.perf_counter() - t0) * 1000), flush=True)
         comp = _COMP[key]
     return comp, comp.output(0), key
 
@@ -323,7 +340,9 @@ def _comp_for(model_name, device):
 #   一台设备一个常驻 worker: 各自 back-to-back 跑自己那几个模型, 谁闲着就补下一个 ⇒ 两块算力同时吃满。
 #   指标口径: duty = 该 worker 真正在执行推理的累计时间 / 墙钟时间 (不是"发了多少请求")。
 PIPE = {"on": False, "stop": None, "threads": [], "t0": 0.0, "plan": [],
-        "stat": {}}          # stat[dev] = {"n":int, "busy_s":float, "last_ms":float, "err":str}
+        "stat": {}, "streams": 1, "hint": False,
+        "lock": threading.Lock()}   # stat[dev] = {"n":int, "busy_s":float, "last_ms":float, "err":str}
+# streams = 每台设备并发几条 worker (每条自己 back-to-back 推理 ⇒ 设备不等主机侧开销, 占空往 100% 顶)
 
 
 def _model_path(name):
@@ -389,21 +408,49 @@ def _worker(dev, plan, stop_ev):
                 t0 = time.perf_counter()
                 comp(x)[port]
                 dt = time.perf_counter() - t0
-                st["n"] += 1
-                st["busy_s"] += dt
-                st["last_ms"] = round(dt * 1000.0, 2)
-                st["err"] = None
+                with PIPE["lock"]:
+                    st["n"] += 1
+                    st["busy_s"] += dt
+                    st["last_ms"] = round(dt * 1000.0, 2)
+                    st["err"] = None
             except Exception as e:                                    # noqa: BLE001
                 st["err"] = "%s: %s" % (type(e).__name__, str(e)[:120])
                 time.sleep(0.05)
 
 
-def _pipe_start(plan, img_path=None):
-    """plan = {"NPU":[xml...], "GPU":[xml...]}; 起 worker 并预热输入。"""
+def _parse_streams(spec, plan):
+    """'2' → 每设备 2 条; '2:1' → NPU 2 条 / GPU 1 条; 缺省 1。"""
+    spec = str(spec or "1").strip()
+    if ":" in spec:
+        parts = [x.strip() for x in spec.split(":")]
+        out = {}
+        for i, dev in enumerate([d for d in ("NPU", "GPU", "CPU") if d in plan]):
+            try:
+                out[dev] = max(1, min(int(parts[i]) if i < len(parts) else 1, 8))
+            except Exception:                                         # noqa: BLE001
+                out[dev] = 1
+        for dev in plan:
+            out.setdefault(dev, 1)
+        return out
+    try:
+        n = max(1, min(int(spec), 8))
+    except Exception:                                                 # noqa: BLE001
+        n = 1
+    return {dev: n for dev in plan}
+
+
+def _pipe_start(plan, img_path=None, streams=1, hint=False):
+    """plan = {"NPU":[xml...], "GPU":[xml...]}; streams=每设备并发 worker 数; hint=吞吐编译。
+
+    streams 口径: 设备在同一时刻只有一条推理在跑时, 主机侧 (numpy 造 tensor/py 开销) 是空的 ⇒
+    实测占空 ~96%。多开几条 worker 让设备始终有活 ⇒ 占空顶到 ~100%, fps 上去; 代价是单帧均值略增。
+    """
     _pipe_stop()
     Handler.sat_in = {}
+    strm = _parse_streams(streams, plan)
     PIPE.update(on=True, stop=threading.Event(), threads=[], t0=time.time(),
-                plan=[{"dev": k, "models": list(v)} for k, v in plan.items()], stat={})
+                plan=[{"dev": k, "models": list(v)} for k, v in plan.items()], stat={},
+                streams=strm, hint=bool(hint))
     src = {}
     for dev, models in plan.items():
         if not models:
@@ -414,11 +461,13 @@ def _pipe_start(plan, img_path=None):
             src["%s:%s" % (dev, mname)] = s
         PIPE["stat"][dev] = {"n": 0, "busy_s": 0.0, "last_ms": None, "err": None,
                              "src": ",".join(sorted({v for k2, v in src.items() if k2.startswith(dev + ":")}))}
-        th = threading.Thread(target=_worker, args=(dev, list(models), PIPE["stop"]), daemon=True,
-                              name="pipe-%s" % dev)
-        th.start()
-        PIPE["threads"].append(th)
-    return {"ok": True, "plan": PIPE["plan"], "input": src, "t0": PIPE["t0"]}
+        for i in range(strm.get(dev, 1)):
+            th = threading.Thread(target=_worker, args=(dev, list(models), PIPE["stop"]), daemon=True,
+                                  name="pipe-%s-%d" % (dev, i))
+            th.start()
+            PIPE["threads"].append(th)
+    return {"ok": True, "plan": PIPE["plan"], "input": src, "t0": PIPE["t0"],
+            "streams": strm, "hint": bool(hint)}
 
 
 def _pipe_stop():
@@ -432,16 +481,26 @@ def _pipe_stop():
 def _pipe_stats():
     el = (time.time() - PIPE["t0"]) if PIPE["on"] else 0.0
     out = {}
-    for dev, st in (PIPE.get("stat") or {}).items():
+    snap = {}
+    with PIPE["lock"]:
+        for dev, st in (PIPE.get("stat") or {}).items():
+            snap[dev] = dict(st)
+    for dev, st in snap.items():
         n = st["n"]
         busy = st["busy_s"]
         plan_models = next((x["models"] for x in (PIPE.get("plan") or []) if x["dev"] == dev), [])
+        streams = PIPE.get("streams")
+        n_str = (streams or {}).get(dev, 1) if isinstance(streams, dict) else 1
         out[dev] = {"n": n, "models": plan_models, "elapsed_s": round(el, 1),
                     "fps": round(n / el, 1) if el > 0 else None,
                     "avg_ms": round(busy / n * 1000.0, 2) if n else None,
-                    "duty_pct": round(100.0 * busy / el, 1) if el > 0 else None,
+                    # duty = 设备真正在算的时间 / 墙钟; 多 stream 时按 stream 数归一 (封顶 100)
+                    "duty_pct": round(min(100.0, 100.0 * busy / el / max(1, n_str)), 1) if el > 0 else None,
+                    "busy_ratio": round(busy / el, 2) if el > 0 else None,
+                    "streams": n_str,
                     "last_ms": st["last_ms"], "src": st.get("src"), "err": st["err"]}
     return {"on": PIPE["on"], "elapsed_s": round(el, 1), "devices": out,
+            "streams": PIPE.get("streams"), "hint": PIPE.get("hint"),
             "total_fps": round(sum((v["fps"] or 0) for v in out.values()), 1) if out else None}
 
 
@@ -511,8 +570,10 @@ class Handler(BaseHTTPRequestHandler):
             if not plan:
                 plan = {Handler.meta.get("device") or "NPU": [os.path.basename(Handler.meta["xml"])]}
             img = (q0.get("img") or [""])[0] or None
+            streams = (q0.get("streams") or ["1"])[0] or 1
+            hint = (q0.get("hint") or ["0"])[0] in ("1", "true", "on", "yes")
             try:
-                return self._json(200, _pipe_start(plan, img))
+                return self._json(200, _pipe_start(plan, img, streams=streams, hint=hint))
             except Exception as e:                                    # noqa: BLE001
                 return self._json(500, {"ok": False, "plan": plan,
                                         "error": "%s: %s" % (type(e).__name__, str(e)[:200])})

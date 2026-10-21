@@ -23,6 +23,8 @@ BASE = os.environ.get("EDGE_BASE", "http://127.0.0.1:8800")
 NPU = os.environ.get("EDGE_NPU_MODELS", "yolo_peg_live,intact_enc")
 GPU = os.environ.get("EDGE_GPU_MODELS", "intact_pred,intact_enc")
 IMG = os.environ.get("EDGE_SAT_IMG", "/home/intel/edge_models/20260917_124517_611.jpg")
+STREAMS = os.environ.get("EDGE_STREAMS", "1")        # "2" 或 "NPU:GPU" 形如 "2:1"
+HINT = os.environ.get("EDGE_HINT", "0")              # 1 = THROUGHPUT 编译 (实测反而更慢, 默认关)
 TICK = float(os.environ.get("EDGE_GUARD_TICK", "15"))
 MAX_FAIL = int(os.environ.get("EDGE_GUARD_MAX_FAIL", "3"))
 
@@ -43,7 +45,7 @@ def log(msg):
 
 
 def start_pipeline():
-    q = "/pipeline/start?npu=%s&gpu=%s&img=%s" % (NPU, GPU, IMG)
+    q = "/pipeline/start?npu=%s&gpu=%s&img=%s&streams=%s&hint=%s" % (NPU, GPU, IMG, STREAMS, HINT)
     try:
         r = _post(q)
         log("已启动流水线: %s" % json.dumps(r.get("plan"), ensure_ascii=False))
