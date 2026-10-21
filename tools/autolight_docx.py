@@ -204,7 +204,7 @@ def build_docx(payload: dict) -> bytes:
             try:
                 doc.add_picture(img, width=Cm(16.6))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                _para(doc, "图 %s-1　%s（三维窗口截图，坐标系同 /ar）" % (no, title),
+                _para(doc, "图 %s-1　%s（三维窗口截图）" % (no, title),
                       8.5, False, GRAY, 8, WD_ALIGN_PARAGRAPH.CENTER)
             except Exception as e:  # 图片坏了不许整个导出失败
                 _para(doc, "（视图截图嵌入失败：%s: %s）" % (type(e).__name__, e), 8.5, False, GRAY, 4)
@@ -243,7 +243,7 @@ def build_docx(payload: dict) -> bytes:
     _kv_table(doc, [
         ("数据来源", "/autoLight 工艺卡页面（tools/web/autoLight.html）与本文档同源，改页面即改导出"),
         ("协议依据", "《光纤端面检测及清理设备技术协议》rev1.0：§2.1 技术指标 / §2.2 工艺流程九步 / §2.3 交互信号 / §3 硬件配置"),
-        ("坐标系", "与 /ar 同一 base 世界系：X 右 / Y 近 / Z 上，单位 m，地面 z=0"),
+        ("坐标系", "三维视图坐标约定：X 右 / Y 近 / Z 上，单位 m，地面 z=0（仅用于视图布置，协议未规定该坐标系）"),
         ("三维说明", "三维窗口为按协议模块关系的 1:1 示意，用于说明设备位置、物料流向与动作顺序；施工以 LAYOUT 图为准"),
         ("生成时间", meta.get("ts") or time.strftime("%Y-%m-%d %H:%M:%S")),
         ("导出入口", meta.get("url") or "/autoLight"),
