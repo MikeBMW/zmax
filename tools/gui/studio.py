@@ -2555,8 +2555,11 @@ def probe_intel_edge(timeout=1.8):
         #   可 NPU/GPU 正在 96% 占空跑。有流水线就以流水线的 fps/占空为准。
         _pipe = d.get("pipeline") or {}
         _pn = ((_pipe.get("devices") or {}).get("NPU") or {}) if isinstance(_pipe, dict) else {}
-        if _pipe.get("on") and isinstance(_pn.get("fps"), (int, float)):
-            sub = [dev, "流水线 %.0ffps · 占空 %.0f%%" % (_pn["fps"], _pn.get("duty_pct") or 0)]
+        if _pipe.get("on") and isinstance(_pn.get("duty_pct"), (int, float)):
+            _pgv = ((_pipe.get("devices") or {}).get("GPU") or {})
+            _gd = _pgv.get("duty_pct")
+            sub = [dev, "NPU 占用 %.0f%%%s" % (_pn["duty_pct"],
+                                             (" · GPU %.0f%%" % _gd) if isinstance(_gd, (int, float)) else "")]
         else:
             sub = [dev, ("推理中 %sms" % ("%.1f" % ms if ms is not None else "?")) if busy
                    else ("空闲" if ms is None else "空闲·上次 %.1fms" % ms)]

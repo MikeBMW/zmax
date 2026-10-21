@@ -447,22 +447,23 @@ class StatusPanel(QWidget):
         a_npu = acc.get("npu") if isinstance(acc.get("npu"), dict) else {}
         a_gpu = acc.get("gpu") if isinstance(acc.get("gpu"), dict) else {}
         a_cpu = acc.get("cpu") if isinstance(acc.get("cpu"), dict) else {}
-        npu_txt = ("%.0ffps" % _pn_fps) if isinstance(_pn_fps, (int, float)) else (
+        # 老倪 2026-10-21: 「NPU GPU 要显示成算力的占用比, 不要 fps」⇒ 槽面写占空 %, 填充条同值;
+        #   fps / 均值 / 累计次数留在 tooltip 的「并行调度」里, 不在窄槽里挤。
+        npu_txt = ("%.0f%%" % _pn_duty) if isinstance(_pn_duty, (int, float)) else (
             ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—"))
         npu_fill = _pn_duty if isinstance(_pn_duty, (int, float)) else None
         npu_tops = a_npu.get("tops_int8")
         gpu_tops = a_gpu.get("tops_int8")
-        gpu_txt = ("%.0ffps" % _pg_fps) if isinstance(_pg_fps, (int, float)) else (
-            ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—")   # 有流水线报 fps, 否则报 INT8 TOPS
+        gpu_txt = ("%.0f%%" % _pg_duty) if isinstance(_pg_duty, (int, float)) else (
+            ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—")   # 有流水线报占用比, 否则报 INT8 TOPS
         gpu_fill = _pg_duty if isinstance(_pg_duty, (int, float)) else None
         disk_free = hwe.get("disk_free_gb")
         disk_txt = ("%.0fG" % disk_free) if isinstance(disk_free, (int, float)) else "—"  # 余量, 大写 G 省宽度
         c_mod = {"key": "550C", "hw": self._hw_of("550C", "Intel"), "mode": "端侧部署",
                  "dot": "cyan" if (e_on and (e_busy or _pipe_on)) else ("green" if e_on else "dim"),
                  "online": e_on,
-                 "fact": "NPU %s / %sTOPS · iGPU %sTOPS · 盘余 %sGB" % (
-                     npu_txt, ("%.0f" % npu_tops) if npu_tops else "—",
-                     ("%.0f" % gpu_tops) if gpu_tops else "—", disk_free if disk_free is not None else "—"),
+                 "fact": "NPU %s · iGPU %s · 盘余 %sGB" % (
+                     npu_txt, gpu_txt, disk_free if disk_free is not None else "—"),
                  "slots": [("NPU", npu_fill, npu_txt, "ok" if e_on else "idle"),
                            ("GPU", gpu_fill, gpu_txt, "ok" if e_on else "idle"),
                            ("CPU", _num(hwe.get("cpu_pct")), None),
