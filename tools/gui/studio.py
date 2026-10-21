@@ -13547,9 +13547,45 @@ class StudioMainWindow(QMainWindow):
         _names = _pj_loaded_names(path)
         self.statusBar().showMessage("✅ 总工程已打开并切到画布: %s" % os.path.basename(path), 8000)
         try:
-            self._ui_msg("🗂 总工程已打开: %s · 配置 %s · %s · 存档 %s"
+            # 2026-10-21 修真: drift_txt 原来算完没人用 (确认框删掉后漂移对照就丢了) ⇒ 并进这行报告
+            self._ui_msg("🗂 总工程已打开: %s · 配置 %s · %s · 存档 %s%s"
                          % (os.path.basename(path), " / ".join(_names) or "(无)",
-                            detail, r.get("saved_at")))
+                            detail, r.get("saved_at"),
+                            (("\n" + drift_txt) if drift_txt else "")))
+        except Exception:                                                        # noqa: BLE001
+            pass
+        # 🚀 2026-10-21 老倪: 打开工程后, 550B 标定档自动起 VSCode 的状态空间工程 (低耗 · 单线程 debug)
+        self._vscode_autostart_after_open("打开总工程")
+
+    def _vscode_autostart_after_open(self, entry=""):
+        """🚀 550B 标定版: 打开工程后自动起 VSCode 的状态空间工程 (省资源 · 单线程 debug)。
+
+        老倪 2026-10-21 (逐字): 「550B 标定版，选择后，从 文件，打开工程，你要自动启动 vscode的
+        状态空间工程，要注意节约资源，因为vscode每次启动后，机器都显得很慢；标定配置版本，
+        不需要那么多并行逻辑，多线程，要保持稳定的，面向 清晰单线程逻辑的debug模式」
+
+        口径全在 tools/gui/vscode_launch.py (唯一实现): 只有 550B 起; 复用窗口 + 关 GPU + 跳欢迎页;
+        进程环境钉单线程 (OMP/MKL/OPENBLAS/Torch = 1) + ZMAX_DEBUG_MODE=1; 独立 systemd scope。
+        这里只负责"调一次 + 如实报一行", 永不抛 (打开工程是主线, VSCode 起不来不能拖累它)。
+        """
+        try:
+            from vscode_launch import autostart
+            r = autostart(getattr(self, "repo_path", None))
+        except Exception as e:                                                   # noqa: BLE001
+            try:
+                self._ui_msg("⚠️ 自动起 VSCode 异常 (%s): %r" % (entry, e))
+            except Exception:                                                    # noqa: BLE001
+                pass
+            return
+        try:
+            if r.get("skipped"):
+                self._ui_msg("🚀 VSCode: 未自动起 — %s" % r.get("why"))
+            elif r.get("ok"):
+                self.statusBar().showMessage("✅ VSCode 已起 (复用窗口·关GPU·单线程): 状态空间工程", 8000)
+                self._ui_msg("🚀 VSCode 已启动 (%s · %s): 状态空间工程 · 复用窗口 · 关GPU · 单线程 debug"
+                             % (entry, r.get("product")))
+            else:
+                self._ui_msg("⚠️ VSCode 启动失败 (%s): %s" % (entry, r.get("why")))
         except Exception:                                                        # noqa: BLE001
             pass
 
@@ -13624,6 +13660,8 @@ class StudioMainWindow(QMainWindow):
                             detail, r.get("backup") or "无"))
         except Exception:                                                        # noqa: BLE001
             pass
+        # 🚀 2026-10-21 老倪: 两条打开路径都要——550B 打开工程后自动起 VSCode 状态空间工程
+        self._vscode_autostart_after_open("加载工程文件")
 
     def _open_ss_canvas_cmd(self):
         if getattr(self, "simulink", None) is not None:

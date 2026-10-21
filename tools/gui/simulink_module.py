@@ -5486,6 +5486,16 @@ def _vscode_launch_cfg(root: str) -> dict:
              "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
              "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
              "args": ["--node", "n_calib_mani"], "env": {}},
+            # ── 🅱 550B 标定版 · 单线程 debug (2026-10-21 老倪: 「550B … 打开工程自动起 VSCode 的状态空间工程 …
+            #    省资源 … 标定档不需要那么多并行/多线程, 面向清晰单线程逻辑的 debug 模式」) ──
+            #   单线程口径唯一真源 = tools/gui/vscode_launch.py::SINGLE_THREAD_ENV (判据逐键核)
+            {"name": "🅱 550B 标定版 · 单线程 debug (状态空间工程)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "gui", "simulink_module.py"),
+             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
+                     "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
+                     "MALLOC_ARENA_MAX": "2", "ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1",
+                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1"}},
         ],
     }
 

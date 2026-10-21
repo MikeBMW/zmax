@@ -9,7 +9,9 @@
   ① 产品配置区存在      ConfigCenterPage 里找到「产品配置」卡片 + 页签 + 左树条目 (现有区未被拆)
   ② 三个产品项          550A/550B/550C 三个单选, 名字与真源 products.<id>.name 同名
   ③ 选中即写回真源      点 550B → 真源 active_product 真变 550B; 原子写 (无 .tmp 残留); 且**只改那一行**
-  ④ 显示 == 真源回读    3 个字段 (产品/版本段/能力数) 逐个与真源回读值比对;
+  ④ 显示 == 真源回读    3 个字段 (产品/版本号/能力数) 逐个与真源回读值比对;
+     🏷 2026-10-21 老倪: 「版本段 改成 版本号 … A B C 只是产品的配置标识, 版本号全系统统一
+     (都跟 v5.50.751 同步)」⇒ 「版本号」= 系统总版本 update_checker.CURRENT_VERSION, 不是 5.50.A/B/C;
                         2026-10-19 老倪删掉 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行与说明行、真源行
   ⑤ 恢复原值            跑完真源**字节级**还原, active_product 回到原值, 探针临时文件自清理
   ⑥ 节点随真源          流形引擎节点 node_ss_mani_eng 的返回字典 product_id 随真源变化 (550C/550A 各真跑一次)
@@ -204,7 +206,7 @@ def main() -> int:
     # ── ⑧ 可复制 (先验, 不改真源) ───────────────────────────────────────────────
     print("\n【⑧ 可复制 (📋 / 双击 / 右键)】")
     clip = app.clipboard()
-    tgt = "版本段"
+    tgt = list(V.ConfigCenterPage._PROD_ROWS)[1]        # 「版本号」这一行 (标签改了, 不写死名字)
     lb = pg._prod_val[tgt]
     full = str(lb.full_value)
 
@@ -271,7 +273,7 @@ def main() -> int:
         relv, fpr = rels[rk], (dd.get("fingerprints") or {})[rk]
         exp = {
             "产品": "%s — %s" % (act, pv.get("name")),
-            "版本段": str(pv.get("version_segment")),
+            "版本号": str(V._system_version()),          # 全系统统一版本号 (2026-10-21 改口径)
             "能力数": "%d 项 (元数据基元 %d + 阶段 %d)" % (
                 len(pv.get("capabilities") or []),
                 len([x for x in pv["capabilities"] if x in PS.PRIMITIVE_PRIMES]),

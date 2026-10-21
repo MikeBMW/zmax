@@ -25,11 +25,11 @@ import studio as ST                                                             
 ok = [0, 0]
 
 
-def chk(cond, msg):
+def chk(cond, msg, ev=""):
     ok[0] += 1
     if not cond:
         ok[1] += 1
-    print(("  ✅ " if cond else "  ❌ ") + msg, flush=True)
+    print(("  ✅ " if cond else "  ❌ ") + msg + (("  · " + str(ev)) if ev else ""), flush=True)
 
 
 win = ST.StudioMainWindow()
@@ -69,7 +69,10 @@ src = open(os.path.join(ROOT, "tools/gui/studio.py"), encoding="utf-8").read()
 chk('_msg_ask(self, "🗂 集成式打开总工程"' not in src, "打开总工程 不再弹确认框")
 chk('_msg_ask(self, "📂 加载工程文件"' not in src, "加载工程文件 不再弹确认框")
 chk(src.count('跳过确认框 (选文件即确认)') == 2, "两条打开路径都留痕「跳过确认框」(可追溯)")
-chk("当前现场 vs 这个总工程 (打开前核对)" in src, "漂移对照没丢 —— 挪到打开完成后的报告里")
+# 2026-10-21: 确认框删掉后, 漂移对照改为并进"打开完成"的那行报告。
+#   判据不能只认某句固定文案 (那句已随弹窗删除), 要认**真被用上**: drift_txt 至少一处赋值 + 一处使用。
+chk(src.count("drift_txt") >= 2 and "drift_txt" in src.split("def _load_project_file")[0].split("def _open_space_project")[-1],
+    "漂移对照没丢 —— 挪到打开完成后的报告里", "drift_txt 出现 %d 次" % src.count("drift_txt"))
 p = inspect.signature(ST._msg_ask).parameters
 chk("default_yes" in p and "yes_text" in p, "_msg_ask 仍支持 default_yes/动作名按钮 (别的确认框可用)")
 chk(p.get("default_yes").default is False, "危险操作默认仍是「否」(不擅自确认)")

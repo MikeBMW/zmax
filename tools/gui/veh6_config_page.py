@@ -36,8 +36,9 @@ TOOLS = os.path.join(ROOT, "tools")
 if TOOLS not in sys.path:
     sys.path.insert(0, TOOLS)
 
-from PyQt5.QtCore import Qt, QSettings, QTimer, QEvent  # noqa: E402
-from PyQt5.QtGui import QColor, QFont, QKeySequence  # noqa: E402
+from PyQt5.QtCore import Qt, QSettings, QTimer, QEvent, QSize, QRectF, QPointF  # noqa: E402
+from PyQt5.QtGui import (QColor, QFont, QKeySequence, QFontMetrics, QLinearGradient,  # noqa: E402
+                         QPainter, QPen, QRadialGradient)
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
                              QFrame, QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
                              QSplitter, QShortcut,
@@ -54,6 +55,16 @@ BIND_J = os.path.join(ROOT, "config", "ss_task_binding.json")
 PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
 REL_PRODUCT = "config/platform/zmax_product.json"
 PRODUCT_IDS = ("550A", "550B", "550C")
+
+# 🎨 产品档位卡 (老倪 2026-10-21: 「VEH.6.01 550A / VEH.6.02 550B / VEH.6.03 550C 这些配置的 UI 设计应该
+#   更加绚丽一些, 现在只是一个小白点来选择配置, 不好看 —— 你来增强设计 … 要明显, 好看一些」)
+#   只改**外观**: 档位语义仍是 QRadioButton 单选 (判据 _prod_btns / _prod_group / text() 全部照旧)。
+#   三档各一套编号 + 主色/辉光 (开发紫 / 调试青 / 量产绿), 选中 = 主色渐变 + 辉光描边 + 「✓ 当前」胶囊。
+PRODUCT_CARDS = {
+    "550A": {"code": "VEH.6.01", "c": "#6E6AC8", "glow": "#B6B3E6"},
+    "550B": {"code": "VEH.6.02", "c": "#3D8CA0", "glow": "#8FC0CC"},
+    "550C": {"code": "VEH.6.03", "c": "#4A8F72", "glow": "#93C2AC"},
+}
 
 # ⭐ 北斗七星阵 (2026-10-15 老倪): 「我的状态空间工程, 实际上是一个阵法, 是有完备的结构的」——
 #   七类配置 = 天枢/天璇/天玑/天权/玉衡/开阳/瑶光。星名/次序/定义/关系只写在 ss_seven_stars 一处,
@@ -884,6 +895,23 @@ def _ps_module():
         return None
 
 
+def _system_version():
+    """全系统总版本号 (v5.50.751 这一份, 三档共用) —— 单源: tools/gui/update_checker.CURRENT_VERSION。
+
+    老倪 2026-10-21: 「A B C 只是产品的配置标识, 版本号全系统统一 … 都与 v5.50.751 系统的总版本号
+    保持同步更新」⇒ 界面**不手抄**版本号, 直接读版本真源; 读不到就如实写"取不到", 不退回旧号。
+    """
+    for _m in ("update_checker",):
+        try:
+            _mod = __import__(_m)
+            v = str(getattr(_mod, "CURRENT_VERSION", "") or "").strip()
+            if v:
+                return v if v.lower().startswith("v") else ("v" + v)
+        except Exception:                                                       # noqa: BLE001
+            pass
+    return "取不到"
+
+
 def _product_view():
     """产品配置区要显示的**回读值** —— 全部从真源 config/platform/zmax_product.json 读 (不吃内存副本)。"""
     out = {"src": REL_PRODUCT, "error": None, "ps": False}
@@ -904,6 +932,14 @@ def _product_view():
         "active": pid, "product_name": p.get("name"), "version_segment": p.get("version_segment"),
         "prime": p.get("prime"), "capabilities": caps, "n_caps": len(caps),
         "names": {k: ((v or {}).get("name") or k) for k, v in prods.items()},
+        # 🎨 2026-10-21 产品档卡片底行用: 系统总版本 (全系统统一) + 定位 (开发版/调试版/量产版)
+        "system_version": _system_version(),
+        "segments": {k: ((v or {}).get("version_segment") or "") for k, v in prods.items()},
+        "roles": {k: str((((v or {}).get("dev_profile") or {}).get("role") or "")).split("·")[0].strip()
+                  for k, v in prods.items()},
+        # 🖥 运行时域 (A=本地 · B=VSCode标定 · C=Intel 端侧量产全模型), 全部读真源, 界面不推断
+        "runtime": dict(p.get("runtime") or {}),
+        "runtimes": {k: dict((v or {}).get("runtime") or {}) for k, v in prods.items()},
         "cap_signature": (d.get("capability_signatures") or {}).get(pid),
         "release": rk, "release_product": relv.get("product"), "release_iteration": relv.get("iteration"),
         "release_kind": relv.get("kind"), "fingerprint": fpr.get("fingerprint"),
@@ -953,6 +989,12 @@ def _mt_str(p):
         return time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(p)))
     except OSError:
         return "取不到"
+
+
+# 🗑 2026-10-21 老倪: 「产品配置 本页真源: 当前 550B · 真源改于 10-19 15:36 · 三档 550A 原创版 / 550B 标定版 /
+#   550C 量产版」这句话删掉 —— 只删**页顶阵图条那句** (产品页本身就是选三档的地方, 再念一遍当前档+三档名单是重复)。
+#   数据仍在 _star_facts()["prod"]: 左树 hover tooltip / 底部信息窗 / 判据 ⑧ 照旧读得到, "真源改于" 这条证据不丢。
+BANNER_FACT_HIDDEN = ("prod",)
 
 
 def _star_facts():
@@ -1072,6 +1114,199 @@ def _write_active_product(pid):
         return False, None, "写盘失败: %r" % (e,)
     back = str((_j(PRODUCT_J, {}) or {}).get("active_product"))     # 回读确认 (不信内存)
     return (back == pid), back, None
+
+
+class _ProductCard(QRadioButton):
+    """产品档位卡: 全部自绘 (渐变底 + 外辉光 + 编号 + 大号档名 + 定位标签 + ✓当前), 单选语义仍是 QRadioButton。
+
+    老倪 2026-10-21: 「现在只是一个小白点来选择配置, 不好看 —— 你来增强设计 … 要明显, 好看一些」
+      第 2 轮: 「550A 550B 550C 这几个数字太大了, 调小一些; 颜色太高调亮丽了, 对比度太强了, 内敛一些;
+              这些字没有显示完整, 被遮挡了, 你要适配调整」
+      ⇒ 档名 21pt → 16pt, 卡片 240×116 → 252×104 (字变小、卡变宽 ⇒ 一行排得下, 不再挤/遮);
+        主色降到低饱和 (muted indigo/teal/green), 选中卡不再是"亮卡", 改成**深色卡 + 素白字**,
+        只靠 1.8px 冷光描边 + 深色底上的浅色「✓ 当前」小标区分; 未选卡更暗一档。
+    **判据不受影响**: 仍是 QRadioButton 子类, text() = 真源 products.<id>.name, isChecked()/setChecked() 照旧。
+    ⚠ 版式常量 (W/H/BAND_*/PILL_*) 是判据 verify_product_card_ui 的唯一来源 —— 改这里, 判据跟着变, 别在两处抄数字。
+    """
+
+    W, H = 252, 104
+    PAD_L, PAD_R = 14, 13
+    BAND_CODE = (7, 22)          # 相对卡片内框 r.top() 的 y0/y1 (编号行)
+    BAND_BIG = (26, 60)          # 大号档名 + 后缀
+    BAND_SUB = (26, 8)           # 相对 r.bottom() 的 y0/y1 (底行: 版本号 · 定位)
+    PILL_W, PILL_H = 62, 19
+    SUB_PT, CODE_PT, BIG_PT, SMALL_PT = 9, 8, 16, 9
+
+    def __init__(self, pid, code, accent, glow, parent=None):
+        super().__init__(parent)
+        self._pid, self._code = str(pid), str(code)
+        self._accent, self._glow = QColor(accent), QColor(glow)
+        self._hover = False
+        self._sub = ""
+        self.setText(self._pid)             # 真名由 _refresh_product_view 回填 (判据与真源 name 比对)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumSize(self.W, self.H)
+        self.setMaximumHeight(self.H)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
+        self.toggled.connect(lambda *_: self.update())
+        self.setToolTip("%s · %s\n点这张卡 = 切成这一档 (写回真源 active_product)" % (code, pid))
+
+    # ── 外部接口 (与 QRadioButton 兼容) ──
+    def setText(self, t):                   # 名字变了要重画
+        super().setText(str(t))
+        self.update()
+
+    def set_sub(self, text):
+        """底行副标题: 版本段 + 定位 (由真源回读, 界面不自算)。"""
+        self._sub = str(text or "")
+        self.setToolTip("%s · %s\n%s\n点这张卡 = 切成这一档 (写回真源 active_product)"
+                        % (self._code, super().text(), self._sub))
+        self.update()
+
+    def sizeHint(self):
+        return QSize(self.W, self.H)
+
+    def enterEvent(self, ev):
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev):
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
+    def mouseMoveEvent(self, ev):            # 只读选择, 不要拖拽选中
+        ev.accept()
+
+    def _full_line(self):
+        return "%s %s (%s)" % (self._code, super().text(), self._sub) if self._sub \
+            else "%s %s" % (self._code, super().text())
+
+    def _copy(self):
+        try:
+            QApplication.clipboard().setText(self._full_line())
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+    def _menu(self, pos):
+        m = QMenu(self)
+        m.addAction("📋 复制档位 (%s)" % self._code).triggered.connect(self._copy)
+        m.exec_(self.mapToGlobal(pos))
+
+    def mouseDoubleClickEvent(self, ev):
+        self._copy()
+        ev.accept()
+
+    # ── 绘制 ──
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        on = self.isChecked()
+        a, gl = self._accent, self._glow
+        r = QRectF(5.0, 5.0, self.width() - 10.0, self.height() - 10.0)
+        rad = 13.0
+        ink = QColor(8, 25, 30)          # 选中卡上的深墨字 (亮底 ⇒ 暗字, 对比度 ~8:1)
+        _pl = self.PAD_L
+        _pr = self.PAD_R
+        _right = r.right() - _pr
+
+        # ① 描边冷光 (选中才有; 内敛: 只两圈很淡的光, 不炸眼)
+        if on:
+            for _w, _al in ((4.5, 20), (2.8, 42)):
+                p.setBrush(Qt.NoBrush)
+                p.setPen(QPen(QColor(gl.red(), gl.green(), gl.blue(), _al), _w))
+                p.drawRoundedRect(r.adjusted(1.0, 1.0, -1.0, -1.0), rad, rad)
+
+        # ② 底: 选中 = 低饱和深色卡 (主色压暗, 配素白字); 未选 = 更暗一档 —— 靠"描边+小标"区分, 不靠刺眼亮度
+        #    2026-10-21 复审: 选中卡仍是画面里最亮的块 (中位亮度 82 vs 42/34) ⇒ 再压暗一档 (~55)
+        g = QLinearGradient(r.topLeft(), r.bottomRight())
+        if on:
+            g.setColorAt(0.00, QColor(a).darker(175))
+            g.setColorAt(0.55, QColor(a).darker(232))
+            g.setColorAt(1.00, QColor(a).darker(268))
+        else:
+            base = QColor(a).darker(455 if not self._hover else 390)
+            g.setColorAt(0.00, QColor(base).lighter(155 if self._hover else 140))
+            g.setColorAt(1.00, base)
+        p.setPen(Qt.NoPen)
+        p.setBrush(g)
+        p.drawRoundedRect(r, rad, rad)
+
+        # ②b 顶部高光 (1px 内描边, 做出卡片厚度)
+        p.setBrush(Qt.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 40 if on else 16), 1.0))
+        p.drawLine(QPointF(r.left() + rad, r.top() + 1.4), QPointF(r.right() - rad, r.top() + 1.4))
+
+        # ③ 未选卡右上角一点点主色微光 (选中卡靠描边就够, 不再叠光)
+        if not on:
+            rg = QRadialGradient(QPointF(r.right() - 24.0, r.top() + 16.0), 88.0)
+            rg.setColorAt(0.0, QColor(gl.red(), gl.green(), gl.blue(), 32))
+            rg.setColorAt(1.0, QColor(gl.red(), gl.green(), gl.blue(), 0))
+            p.setBrush(rg)
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(r, rad, rad)
+
+        # ④ 描边 (选中: 1.8px 冷光; 未选: 主色 35%)
+        p.setBrush(Qt.NoBrush)
+        if on:
+            p.setPen(QPen(QColor(gl.red(), gl.green(), gl.blue(), 205), 1.8))
+        else:
+            _al = 120 if self._hover else 85
+            p.setPen(QPen(QColor(a.red(), a.green(), a.blue(), _al), 1.2))
+        p.drawRoundedRect(r, rad, rad)
+
+        # ⑤ 顶行: 编号 + (选中) 浅色「✓ 当前」小标 (深色卡上的浅标, 不刺眼)
+        p.setFont(QFont("Consolas", self.CODE_PT, QFont.Bold))
+        p.setPen(QColor(226, 236, 241, 228) if on else QColor(gl.red(), gl.green(), gl.blue(), 176))
+        _c0, _c1 = self.BAND_CODE
+        p.drawText(QRectF(r.left() + _pl, r.top() + _c0, 120, _c1 - _c0),
+                   int(Qt.AlignLeft | Qt.AlignVCenter), self._code)
+        if on:
+            pill = QRectF(_right - self.PILL_W, r.top() + _c0 - 1, self.PILL_W, self.PILL_H)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(gl.red(), gl.green(), gl.blue(), 215))
+            p.drawRoundedRect(pill, self.PILL_H / 2.0, self.PILL_H / 2.0)
+            p.setPen(ink)
+            p.setFont(QFont("Consolas", 8, QFont.Bold))
+            p.drawText(pill, int(Qt.AlignCenter), "✓ 当前")
+
+        # ⑥ 中间: 大号档名 + 中文后缀 (用 text() 拆: "550A 原创版")
+        nm = (super().text() or self._pid).strip()
+        head, _, tail = nm.partition(" ")
+        head = head or self._pid
+        f_big = QFont("Consolas", self.BIG_PT, QFont.Bold)
+        p.setFont(f_big)
+        _bw = QFontMetrics(f_big).width(head)
+        _b0, _b1 = self.BAND_BIG
+        p.setPen(QColor(236, 243, 246) if on else QColor(196, 210, 216))
+        p.drawText(QRectF(r.left() + _pl, r.top() + _b0, _bw + 4, _b1 - _b0),
+                   int(Qt.AlignLeft | Qt.AlignVCenter), head)
+        if tail:
+            f_sm = QFont("Consolas", self.SMALL_PT)
+            f_sm.setFamily(f_big.family())
+            p.setFont(f_sm)
+            p.setPen(QColor(gl.red(), gl.green(), gl.blue(), 215 if on else 150))
+            p.drawText(QRectF(r.left() + _pl + 4 + _bw, r.top() + _b0 + 3, r.width() - (_bw + 30), _b1 - _b0),
+                       int(Qt.AlignLeft | Qt.AlignVCenter), tail)
+
+        # ⑦ 底行: 版本号 + 定位 (全系统统一版本 · 9pt)
+        if self._sub:
+            p.setFont(QFont("Consolas", self.SUB_PT))
+            _s0, _s1 = self.BAND_SUB
+            p.setPen(QColor(203, 218, 224, 220) if on else QColor(172, 190, 198, 165))
+            p.drawText(QRectF(r.left() + _pl, r.bottom() - _s0, r.width() - (_pl + _pr), _s0 - _s1),
+                       int(Qt.AlignLeft | Qt.AlignVCenter), self._sub)
+
+        # ⑧ 键盘焦点: 细虚线框
+        if self.hasFocus():
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor(255, 255, 255, 150), 1.0, Qt.DashLine))
+            p.drawRoundedRect(r.adjusted(3.0, 3.0, -3.0, -3.0), rad - 3, rad - 3)
+        p.end()
 
 
 class _CopyLabel(QLabel):
@@ -1782,7 +2017,10 @@ class ConfigCenterPage(QWidget):
             #   并把"全文/星 key"存进 item data ⇒ 点选分派逻辑照旧按全文走, 不会因为少了星名而点不动。
             # 行文: 去掉「· 天枢/天璇/…」星名段 (及其后内容); 星名仍在阵图条与 tooltip
             _row = re.sub(r"\s*·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光).*$", "", _short)
-            it = QTreeWidgetItem([f"{mark} {_row}"])
+            # 🆕 2026-10-21 老倪: 「左边栏的小对号, 应该打开哪个配置页面, 小对号就对应显示相应的配置」
+            #   ⇒ 行首标记不再表示「真源就绪」, 而是「当前打开的是这一页」:
+            #      ✅ = 当前页 · ○ = 其它页; 真源就绪状态挪进 tooltip (仍现算, 信息不丢)。
+            it = QTreeWidgetItem([f"○ {_row}"])
             _k0 = _ss.key_for_label(label)
             it.setData(0, Qt.UserRole, _k0)
             it.setData(0, Qt.UserRole + 1, f"{mark} {_short}")   # 全文 (含 · 星名) —— 分派/复制用
@@ -1796,8 +2034,43 @@ class ConfigCenterPage(QWidget):
                                               " …" if len(kids) > 24 else "")
             if "文档配置" in label and getattr(self, "_doc_group_tip_on", False):
                 _det += "\n\n" + self._doc_group_tip
-            it.setToolTip(0, (_tip + _det).strip())
+            it.setToolTip(0, ("真源就绪: %s\n" % mark + _tip + _det).strip())     # 就绪符挪进 tooltip
             self.tree.addTopLevelItem(it)
+
+        self._mark_tree_current()          # 行首 ✅ 跟着「当前打开的是哪一页」走 (2026-10-21 老倪)
+
+    def _mark_tree_current(self, *_a):
+        """左树行首标记 = **当前打开的配置页** (老倪 2026-10-21: 「打开哪个配置页面, 小对号就对应显示」)。
+
+        ✅ = 当前页 (并加粗), ○ = 其它页; 真源就绪 (✅/⛔) 不再占行首, 挪到条目 tooltip。
+        目的: 一眼知道"我现在在哪一页", 而不是把 ⛔ 误读成"这页不能用"。
+        """
+        try:
+            _s = _ss.star_for_tab(self.tabs.tabText(self.tabs.currentIndex()))
+            _cur = _s.get("key") if _s else None
+        except Exception:                                                       # noqa: BLE001
+            _cur = None
+        for i in range(self.tree.topLevelItemCount()):
+            it = self.tree.topLevelItem(i)
+            if it is None:
+                continue
+            _k = it.data(0, Qt.UserRole)
+            _full = str(it.data(0, Qt.UserRole + 1) or "")
+            _body = re.sub(r"^(?:✅|⛔|○)\s+", "", _full)          # 去掉底层就绪符
+            _row = re.sub(r"\s*·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光).*$", "", _body)
+            _on = (_k == _cur)
+            it.setText(0, "%s %s" % ("✅" if _on else "○", _row))
+            # 就绪符始终留在 tooltip (别的刷新路径会重写 tooltip ⇒ 这里可重入地补一次, 不叠加)
+            _ready = _full[:1] if _full[:1] in ("✅", "⛔") else "—"
+            _tip_now = str(it.toolTip(0) or "")
+            if not _tip_now.startswith("真源就绪:"):
+                it.setToolTip(0, ("真源就绪: %s\n%s" % (_ready, _tip_now)).strip())
+            try:
+                _f = it.font(0)
+                _f.setBold(bool(_on))
+                it.setFont(0, _f)
+            except Exception:                                                   # noqa: BLE001
+                pass
 
     # ── 域过滤: 点左树域节点 → 右侧切到对应页并只筛该域的行; 点参数 ID → 直接定位该行 ──
     def _install_state_combos(self):
@@ -1956,13 +2229,23 @@ class ConfigCenterPage(QWidget):
         self._star_focus = None
         self._sync_star_banner()
         self._sync_out_for()
+        # 🆕 2026-10-21 老倪: 换页 ⇒ 左树那个小对号跟着走 (打开哪页, ✅ 就落在哪一项)
+        try:
+            self._mark_tree_current()
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _sync_star_banner(self, *_a):
-        """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。"""
+        """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。
+
+        「本页真源: …」只对没在阵图条上重复的页显示 —— 见 BANNER_FACT_HIDDEN。
+        """
         try:
             self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()),
                                      focus_key=getattr(self, "_star_focus", None),
-                                     facts=_star_facts())      # 「本页真源: …」现算 (左树不再显示计数)
+                                     facts={k: v for k, v in _star_facts().items()
+                                            if k not in BANNER_FACT_HIDDEN})
+
         except Exception as e:                                                  # noqa: BLE001
             try:
                 self._log_cc("   ⚠ 阵图条刷新失败: %r" % (e,))
@@ -2392,8 +2675,15 @@ class ConfigCenterPage(QWidget):
 
     # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
     # 🗑 2026-10-19 老倪: 「…这些全删掉」——产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行
-    #   + 说明行 + 真源行全部下架, 只留 产品 / 版本段 / 能力数 (值仍全部从真源回读)。
-    _PROD_ROWS = ("产品", "版本段", "能力数")
+    #   + 说明行 + 真源行全部下架, 只留 产品 / 版本号 / 能力数 (值仍全部从真源回读)。
+    # 🏷 2026-10-21 老倪: 「版本段 改成 版本号 … 都与 v5.50.751 系统的总版本号保持同步更新,
+    #   即 A B C 只是产品的配置标识, 版本号全系统统一」⇒ 这一行不再是每档的 5.50.A/B/C,
+    #   而是**系统总版本** (读 update_checker.CURRENT_VERSION, 全系统一份, 三档同一个号)。
+    # 🏷 2026-10-21 老倪定三档运行位置: 「550A 在本地运行, 550B 用于 vscode, 550C 用于量产,
+    #   直接部署在 intel 上, 550C 包括所有模型, 可以远程端侧实时运行」
+    #   ⇒ 真源 products.<id>.runtime 新增运行时域 (location/label/host/host_ip/models/realtime),
+    #     界面加一行「运行位置」, 卡片底行 = 系统总版本号 · 运行位置。
+    _PROD_ROWS = ("产品", "版本号", "运行位置", "能力数")
 
     def _product_card(self, th):
         """🏷 产品配置区 —— 三个产品**单选** + 右侧**真源回读**值 (可复制)。
@@ -2412,24 +2702,28 @@ class ConfigCenterPage(QWidget):
         cv.setContentsMargins(10, 8, 10, 8)
         cv.setSpacing(6)
 
-        ttl = QLabel("🏷 产品配置 —— 产品标识 (550A 原创版 / 550B 标定版 / 550C 量产版)"
-                     " + 空间质数结构化理解能力")
+        ttl = QLabel("产品配置 —— 产品档 · 点卡片切换 (写回真源)")
         ttl.setFont(QFont("Consolas", 11, QFont.Bold))
         ttl.setWordWrap(True)
         ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
         cv.addWidget(ttl)
 
-        # ① 三产品单选 (选中 → 写回真源 active_product)
+        # ① 三档卡片 (VEH.6.01/02/03) —— 选中 → 写回真源 active_product
+        #    老倪 2026-10-21: 「只是一个小白点来选择配置, 不好看 … 更加绚丽 … 要明显, 好看一些」
+        #    卡片是 QRadioButton 子类 (_ProductCard), 单选语义/判据不变; 外观全部自绘。
         row = QHBoxLayout()
-        row.setSpacing(10)
+        row.setSpacing(14)
         self._prod_group = QButtonGroup(self)
         self._prod_group.setExclusive(True)
         self._prod_btns = {}
-        for pid in PRODUCT_IDS:
-            rb = QRadioButton(pid)
+        for _i, pid in enumerate(PRODUCT_IDS):
+            _cf = PRODUCT_CARDS.get(pid) or {}
+            rb = _ProductCard(pid,
+                              _cf.get("code") or ("VEH.6.0%d" % (_i + 1)),
+                              _cf.get("c") or "#8B5CF6",
+                              _cf.get("glow") or "#C4B5FD")
             rb.setObjectName("productRadio_%s" % pid)
-            rb.setFont(QFont("Consolas", 10))
-            rb.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;spacing:6px;")
+            rb.setStyleSheet("background:transparent;border:none;")   # 全部自绘, 不要 QSS 底
             rb.toggled.connect(lambda ck, _p=pid: self._on_product_pick(_p, ck))
             self._prod_group.addButton(rb)
             self._prod_btns[pid] = rb
@@ -2477,12 +2771,23 @@ class ConfigCenterPage(QWidget):
         v = _product_view()
         self._prod_last = v
         names = v.get("names") or {}
+        segs = v.get("segments") or {}
+        roles = v.get("roles") or {}
         for pid in PRODUCT_IDS:
             rb = (getattr(self, "_prod_btns", {}) or {}).get(pid)
             if rb is None:
                 continue
             nm = str(names.get(pid) or "").strip()
             rb.setText(nm if nm.startswith(pid) else ("%s %s" % (pid, nm) if nm else pid))
+            if hasattr(rb, "set_sub"):               # 🎨 卡片底行: 系统总版本号 · 运行位置
+                # 2026-10-21 老倪: A=本地运行 / B=用于 VSCode / C=量产部署在 Intel(全模型·远程端侧实时)
+                _rt = (v.get("runtimes") or {}).get(pid) or {}
+                _where = str(_rt.get("label") or "").strip()
+                if not _where:                        # 真源缺 runtime 就退回旧口径 (定位), 不编造
+                    _role = str(roles.get(pid) or "").strip()
+                    _suf = str(nm).split(" ", 1)[1].strip() if " " in str(nm) else ""
+                    _where = "" if (_role and _role == _suf) else _role
+                rb.set_sub(" · ".join([x for x in (str(v.get("system_version") or "").strip(), _where) if x]))
             rb.blockSignals(True)                    # 程序回填不触发写盘 (防写—读回环)
             rb.setChecked(pid == v.get("active"))
             rb.blockSignals(False)
@@ -2497,7 +2802,18 @@ class ConfigCenterPage(QWidget):
                          % (v.get("src") or REL_PRODUCT, v["error"]))
             return v
         vals["产品"].set_value("%s — %s" % (v.get("active"), v.get("product_name")))
-        vals["版本段"].set_value(v.get("version_segment"))
+        vals["版本号"].set_value(v.get("system_version"))     # 全系统统一版本号 (不是每档的 5.50.A/B/C)
+        _rt = v.get("runtime") or {}
+        _where = str(_rt.get("label") or "—").strip()
+        _host = str(_rt.get("host") or "").strip()
+        _ip = str(_rt.get("host_ip") or "").strip()
+        _mdl = str(_rt.get("models") or "").strip()
+        _rtl = str(_rt.get("realtime") or "").strip()
+        _full = " · ".join([x for x in (_where, _host, ("(" + _ip + ")") if _ip else "",
+                                       ("模型: " + _mdl) if _mdl else "",
+                                       ("实时: " + _rtl) if _rtl else "") if x])
+        vals["运行位置"].set_value(_full)
+        vals["运行位置"].setToolTip("真源 %s → products.%s.runtime" % (v.get("src") or REL_PRODUCT, v.get("active")))
         n_prim, n_stage = v.get("n_prim"), v.get("n_stage")
         vals["能力数"].set_value("%s 项%s" % (v.get("n_caps"),
                                             (" (元数据基元 %s + 阶段 %s)" % (n_prim, n_stage))
@@ -2572,20 +2888,7 @@ class ConfigCenterPage(QWidget):
         # 现在封顶 300px (看不够用滚), 页面整体还能压 (页已包进 QScrollArea)。
         tb.setMinimumHeight(min(300, 28 * (len(rows) + 2) + 6))
         tb.setMaximumHeight(30 * (len(rows) + 2) + 10)
-        try:                                        # 金手指点1 那一行高亮(老倪要"立刻找到")
-            if rows:
-                from PyQt5.QtGui import QColor as _QC
-                for c in range(tb.columnCount()):
-                    it = tb.item(0, c)
-                    if it is not None:
-                        it.setForeground(_QC(th["C_GREEN"]))
-                        it.setToolTip("★ 金手指点1 —— 位姿 x=%s y=%s z=%s m · a=%s° b=%s° c=%s°"
-                                      " · 记录 %s\n   真源 %s\n   %s"
-                                      % (rows[0]["x"], rows[0]["y"], rows[0]["z"],
-                                         rows[0].get("a", "—"), rows[0].get("b", "—"), rows[0].get("c", "—"),
-                                         rows[0]["t"], rows[0]["src"], rows[0].get("hist") or ""))
-        except Exception:                                                       # noqa: BLE001
-            pass
+        # 金手指点1 行高亮 + tooltip 统一由 _fill() 写 (建卡与 2s 静默刷新同一处, 不会刷掉)
         cv.addWidget(tb)
         _sync = QLabel("真源同步: —")
         _sync.setFont(QFont("Consolas", 9))
@@ -2631,10 +2934,21 @@ class ConfigCenterPage(QWidget):
                     tb.setItem(i, c, QTableWidgetItem(str(v)))
             try:
                 from PyQt5.QtGui import QColor as _QC2
+                # 2026-10-21: tooltip 必须在这里写 —— 原来只写在建卡那一遍, 2s 静默刷新重建单元格后
+                #   就没了 (判据当场抓到"tooltip 有真源 + 更新记录"红)。行 0 = 金手指点1, 高亮 + 全信息。
+                _tip0 = None
+                if r2:
+                    _r0 = r2[0]
+                    _tip0 = ("★ %s —— 位姿 x=%s y=%s z=%s m · a=%s° b=%s° c=%s° · 记录 %s\n   真源 %s\n   %s"
+                             % (_r0.get("name", "金手指点1"), _r0["x"], _r0["y"], _r0["z"],
+                                _r0.get("a", "—"), _r0.get("b", "—"), _r0.get("c", "—"),
+                                _r0["t"], _r0["src"], _r0.get("hist") or ""))
                 for c in range(tb.columnCount()):
                     it = tb.item(0, c)
                     if it is not None and r2:
                         it.setForeground(_QC2(th["C_GREEN"]))
+                        if _tip0:
+                            it.setToolTip(_tip0)
             except Exception:                                                   # noqa: BLE001
                 pass
             _h = os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0
@@ -3185,26 +3499,24 @@ class ConfigCenterPage(QWidget):
         #     二者都是**记录与导出** ⇒ 归第七阵 瑶光·定记录。原页构造器 _cost_page()/_biz_page() 一行没改,
         #     仍是唯一算法入口 (tools/cost_model.py / tools/business_model.py), 不存在第二套公式。
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
-        # 🆕 2026-10-12: 记住上次看的那一页 —— 老倪在「工程配置」页干活时, 任何重启后回来还是这一页(不用再点一遍)
+        # 🆕 2026-10-21 老倪: 「配置中心 打开的时候, 应该先显示 产品配置」
+        #   ⇒ 初始页**固定**为第一阵「🏷 产品配置」; 「记住上次那一页」不再回放
+        #     (文件照旧随浏览写, 只是不再拿它决定打开哪一页 —— 否则回来会落在随便哪一页)。
+        _pi = self._tab_index_by_title("产品配置")
+        if _pi >= 0:
+            self.tabs.setCurrentIndex(_pi)
+            # setCurrentIndex 若是"原地不动"(索引没变) 不会发 currentChanged ⇒ 左树对号不会自己刷,
+            # 这里显式刷一次, 保证打开那一刻 ✅ 就落在「产品配置」行。
+            try:
+                self._mark_tree_current()
+            except Exception:                                                   # noqa: BLE001
+                pass
+        # 🆕 2026-10-12: 记住上次看的那一页 (留档用; 2026-10-21 起不参与"打开哪一页")
         try:
             _mk = os.path.join(ROOT, "zmax_data", "cc_last_tab.txt")
-            if os.path.exists(_mk):
-                # 2026-10-15: 原来记的是**页序号** —— 页签次序改成北斗次序后, 同一个序号指向的是别的页
-                # (回来会落在错的页)。改成记**页名**, 兼容老的纯数字文件 (按序号解释一次)。
-                _v = open(_mk, encoding="utf-8").read().strip()
-                # 2026-10-19: 旧页名「🧾 工单配置」已并入文档配置 —— 老文件/老记忆别让它落到第一页
-                for _old, _new in (("工单配置", "文档配置"), ("成本/报价", "文档配置"), ("商业模式", "文档配置")):
-                    if _old in _v:
-                        _v = _new
-                        break
-                _i = -1
-                if _v.isdigit():
-                    _i = int(_v)
-                elif _v:
-                    _i = self._tab_index_by_title(_v)
-                if 0 <= _i < self.tabs.count():
-                    self.tabs.setCurrentIndex(_i)
-
+            # ⛔ 回放已停用 (老倪 2026-10-21: 打开先看产品配置) —— 原逻辑保留注释, 免得下次"又加回来":
+            #   _v = open(_mk).read().strip(); _i = ... ; if 0 <= _i < count: setCurrentIndex(_i)
+            #   现在只写不读。
             def _remember(_idx):
                 try:
                     os.makedirs(os.path.dirname(_mk), exist_ok=True)

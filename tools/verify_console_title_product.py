@@ -128,7 +128,8 @@ def main() -> int:
 
     # ④ F5 调试目标 == 在役 studio.py (调试同一版本的硬证据)
     try:
-        cfg = json.loads(read(LAUNCH))
+        # launch.json 是 JSONC (带 // 注释, VSCode 允许) ⇒ 解析前剥行注释 (2026-10-21)
+        cfg = json.loads(re.sub(r"^\s*//.*$", "", read(LAUNCH), flags=re.M))
     except Exception as e:
         chk("④ F5 配置可读", False, "%s: %s" % (e.__class__.__name__, e))
         cfg = {}

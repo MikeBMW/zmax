@@ -37,7 +37,10 @@ def chk(cond, ok_msg, bad_msg):
 
 print("=== ① 4 个 INTACT 调试配置 ===")
 try:
-    cfg = json.load(io.open(LJ, encoding="utf-8"))
+    # launch.json 是 JSONC (带 // 注释, VSCode 允许) ⇒ 解析前剥掉行注释, 否则永远解析失败
+    import re as _re
+    _raw = io.open(LJ, encoding="utf-8").read()
+    cfg = json.loads(_re.sub(r"^\s*//.*$", "", _raw, flags=_re.M))
 except Exception as e:
     print(f"  ❌ launch.json 解析失败: {e}")
     sys.exit(2)

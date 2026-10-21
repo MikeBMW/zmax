@@ -42,6 +42,10 @@ def main() -> int:
     # 直接 ConfigCenterPage() 会少那个页签, 判"点模型配置跳哪"就会判错 —— 2026-10-15 实测)
     from PyQt5.QtWidgets import QWidget as _QW
     page = V.build_config_center(_QW())
+    _OPEN_IDX = page.tabs.currentIndex()          # 构造完就停在哪一页 = 用户打开配置中心看到的第一页
+    _OPEN_TAB = page.tabs.tabText(_OPEN_IDX)
+    # 打开那一刻左树行首标记的快照 (后面判据会切页, 不能拿切换后的状态当"初始")
+    _MARKS_OPEN = [page.tree.topLevelItem(_i).text(0) for _i in range(page.tree.topLevelItemCount())]
     checks = []
 
     # ① 顶层 7 项 + ② 序号在最前 + ③ 星名齐全
@@ -52,7 +56,8 @@ def main() -> int:
     #   (全文「N. 名称 · 星名」存在 item data UserRole+1, 点点选/复制照旧) ⇒ 判据按"显示行 + 全文"两处一起验。
     from PyQt5.QtCore import Qt as _Qt
     _full = [str(page.tree.topLevelItem(i).data(0, _Qt.UserRole + 1) or "") for i in range(len(tops))]
-    ok2 = all(re.match(r"^[✅⛔] \d\. [\u4e00-\u9fa5]+$", t) for t in tops) and all(
+    # 🆕 2026-10-21 老倪: 行首 ✅ = 当前打开的那一页, ○ = 其它页 (就绪符挪进 tooltip)
+    ok2 = all(re.match(r"^[✅○] \d\. [\u4e00-\u9fa5]+$", t) for t in tops) and all(
         (w[0] + " " + w[1] + " · " + w[2]) in f for w, f in zip(WANT, _full))
     checks.append(("② 每项显示「序号 + 名称」· 全文带星名 (不带计数/当前值)", ok2,
                    " | ".join(t for t in tops)))
@@ -157,15 +162,25 @@ def main() -> int:
                    not any(x.startswith("❌") for x in _jump), " ; ".join(_jump)))
 
     # ⑪ 详细信息在配置页: 每颗星那页顶部都要有「本页真源: …」且非空
+    #    ⚠️ 例外 (老倪 2026-10-21): 「产品配置 本页真源: 当前 550B · 真源改于 10-19 15:36 · 三档 550A 原创版 /
+    #    550B 标定版 / 550C 量产版 这句话 删掉」⇒ 天枢 (prod) 页顶**必须没有**这行, 其余六页照旧必须有。
+    #    判据跟着真实现走: 读取口是 veh6_config_page.BANNER_FACT_HIDDEN, 不在这里另抄一份档名。
+    _hidden = tuple(getattr(V, "BANNER_FACT_HIDDEN", ()))
     _facts = []
     for _k in ("prod", "task", "func", "model", "perf", "eng", "doc"):
         page._goto_star(_k)
         _app.processEvents()
         _f = page.star_banner.snapshot().get("fact", "")
         _facts.append("%s→%s" % (S.BY_KEY[_k]["star"], (_f[8:40] + "…") if len(_f) > 48 else _f[8:]))
+        if _k in _hidden:
+            _facts[-1] = "%s→(无, 已按老倪要求删)" % S.BY_KEY[_k]["star"]
+            if _f.strip():
+                _facts[-1] = "❌" + _facts[-1] + " 仍有:" + _f[:20]
+            continue
         if not _f.startswith("本页真源: ") or len(_f) <= 9:
             _facts[-1] = "❌" + _facts[-1]
-    checks.append(("⑪ 每颗星的页顶都有「本页真源: …」(左树删掉的详细值落到这里)",
+    checks.append(("⑪ 每颗星的页顶都有「本页真源: …」(%s 页已删, 左树删掉的详细值落到其余页)"
+                   % "/".join(S.BY_KEY[k]["star"] for k in _hidden),
                    not any(x.startswith("❌") for x in _facts), " ; ".join(_facts)))
 
     # ⑫ 主页面页签次序 == 北斗次序 (老倪 2026-10-15: 「下面主页面标签的顺序也不一致,
@@ -311,6 +326,42 @@ def main() -> int:
                 clipped.append("%dx%d %s 实得%dpx < 需要%dpx" % (_w, _h, _n, _l.height(), _need))
     checks.append(("⑦ 阵图条两种窗宽下文字不被截 (换行高度实测)", not clipped,
                    " ; ".join(clipped) if clipped else "1600×900 / 1120×700 全部放得下"))
+
+    # ⑳ 打开先看产品配置 + 左树小对号跟着当前页走 (老倪 2026-10-21 原话)
+    #    「配置中心 打开的时候, 应该先显示 产品配置; 左边栏 的小对号, 应该打开哪个配置页面,
+    #      小对号就对应显示相应的配置」
+    _pi0 = page._tab_index_by_title("产品配置")
+    _cur0 = _OPEN_IDX
+    # 页面构造完就应停在产品配置页 (与"记住上次那一页"无关 —— 回放已停用)
+    _open_ok = (_pi0 >= 0 and _cur0 == _pi0)
+    def _marks():
+        out = []
+        for i in range(page.tree.topLevelItemCount()):
+            it = page.tree.topLevelItem(i)
+            out.append((it.text(0), it.data(0, _Qt.UserRole)))
+        return out
+    _m0 = [(t, None) for t in _MARKS_OPEN]          # 打开那一刻的标记 (不是切过几页之后的状态)
+    _tick0 = [t for t, _ in _m0 if t.startswith("✅")]
+    _one0 = (len(_tick0) == 1 and _m0[_pi0][0].startswith("✅")
+             and all(t.startswith("○") for t, _ in _m0 if not t.startswith("✅")))
+    # 换到任务配置页 ⇒ ✅ 必须移到第 2 行 (仍是唯一一个)
+    _ti = page._tab_index_by_title("任务配置")
+    page.tabs.setCurrentIndex(_ti)
+    _app.processEvents()
+    _m1 = _marks()
+    _tick1 = [t for t, _ in _m1 if t.startswith("✅")]
+    _move_ok = (len(_tick1) == 1 and _m1[_ti][0].startswith("✅")
+                and not _m1[_pi0][0].startswith("✅"))
+    # 再切回产品配置页 ⇒ ✅ 回到第 1 行
+    page.tabs.setCurrentIndex(_pi0)
+    _app.processEvents()
+    _back_ok = _marks()[_pi0][0].startswith("✅")
+    # 就绪状态没丢: tooltip 里仍有「真源就绪: ✅/⛔」
+    _tip_ok = all("真源就绪:" in str(page.tree.topLevelItem(i).toolTip(0)) for i in range(page.tree.topLevelItemCount()))
+    checks.append(("⑳ 打开先落在「产品配置」· 左树 ✅ 只标当前页 (切换跟着走, ○ 标其余; 就绪符留 tooltip)",
+                   _open_ok and _one0 and _move_ok and _back_ok and _tip_ok,
+                   "首屏=%s (期望 %d) · 初始✅=%s · 切任务后✅=%s · 切回=%s · tooltip就绪=%s"
+                   % (_OPEN_TAB, _pi0, _tick0, _tick1, _back_ok, _tip_ok)))
 
     # 出图 (给人看的证据; 本判据不依赖看图)
     try:

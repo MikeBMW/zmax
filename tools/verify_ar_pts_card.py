@@ -42,6 +42,11 @@ import veh6_config_page as V  # noqa: E402
 
 app = QApplication.instance() or QApplication([])
 page = V.build_config_center()
+# 2026-10-21 老倪: 配置中心打开先显示「产品配置」⇒ 判据要量工程配置页时必须自己切过去
+_ENGTAB = page._tab_index_by_title("工程配置")
+if _ENGTAB >= 0:
+    page.tabs.setCurrentIndex(_ENGTAB)
+    app.processEvents()
 
 print("=== ① 工程配置页里有 AR 场景专用块 ===")
 card = getattr(page, "ar_pts_card", None)
@@ -60,7 +65,9 @@ ck(len(tbs) == 1, "块里只有一张表", "%d 张" % len(tbs))
 tb = tbs[0] if tbs else None
 if tb is not None:
     hdr = [tb.horizontalHeaderItem(c).text() for c in range(tb.columnCount())]
-    ck(hdr == ["点位", "X (m)", "Y (m)", "Z (m)", "记录时间", "更新", "真源文件"], "表头齐", hdr)
+    # 2026-10-21: 表格已加 A/B/C 姿态三列 ⇒ 判据按**现在真实的列**验 (原来写死旧列, 一直红)
+    WANT_HDR = ["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "真源文件"]
+    ck(hdr == WANT_HDR, "表头齐", hdr)
     ck(tb.rowCount() >= 8, "点位行数 ≥8", tb.rowCount())
     r0 = [tb.item(0, c).text() for c in range(tb.columnCount())]
     ck(r0[0] == "金手指点1", "第一行就是金手指点1", r0)
@@ -71,8 +78,9 @@ if tb is not None:
     want = ["%.6f" % j["pos"][0], "%.6f" % j["pos"][1], "%.6f" % j["pos"][2]]
     got = [r0[1], r0[2], r0[3]]
     ck(got == want, "x/y/z 与 reports/aoi_points/金手指点1.json 一致", "%s vs %s" % (got, want))
-    ck(j["recorded_at"] in r0[4], "记录时间一致", r0[4])
-    ck(r0[6].endswith("金手指点1.json"), "真源文件名一致", r0[6])
+    _ci = {h: i for i, h in enumerate(hdr)}
+    ck(j["recorded_at"] in r0[_ci["记录时间"]], "记录时间一致", r0[_ci["记录时间"]])
+    ck(r0[_ci["真源文件"]].endswith("金手指点1.json"), "真源文件名一致", r0[_ci["真源文件"]])
 
     print("\n=== ④ 行 tooltip 带来源/历史 ===")
     tip = tb.item(0, 0).toolTip() or ""
@@ -105,22 +113,25 @@ if b_ex is not None:
         body = open(new[0], encoding="utf-8-sig").read()
         ck("金手指点1" in body and want[0] in body, "CSV 内容含金手指点1 坐标")
 
-print("\n=== ⑦ 记住上次那一页(重启后回来还是「工程配置」) ===")
+print("\n=== ⑦ 打开先落在「产品配置」· 左上标记文件只写不读 (老倪 2026-10-21 改的口径) ===")
 try:
     mk = os.path.join(ROOT, "zmax_data", "cc_last_tab.txt")
     os.makedirs(os.path.dirname(mk), exist_ok=True)
+    _prod = page._tab_index_by_title("产品配置")
     with open(mk, "w", encoding="utf-8") as f:
-        f.write(str(tab_idx))
+        f.write("工程配置")                          # 故意把"上次那一页"写成工程配置
     page2 = V.build_config_center()
-    ck(page2.tabs.currentIndex() == tab_idx, "重建后自动回到「工程配置」页",
-       "current=%d (工程配置=%d)" % (page2.tabs.currentIndex(), tab_idx))
-    page2.tabs.setCurrentIndex(0)
-    ck(open(mk, encoding="utf-8").read().strip() == "0", "切页会回写标记(下次按它恢复)",
+    ck(page2.tabs.currentIndex() == _prod,
+       "不管上次停在哪页, 重建后都落在「产品配置」",
+       "current=%s (产品配置=%s)" % (page2.tabs.tabText(page2.tabs.currentIndex()), _prod))
+    page2.tabs.setCurrentIndex(_ENGTAB)
+    ck("工程配置" in open(mk, encoding="utf-8").read().strip(),
+       "切页仍会写标记 (只是不再拿它决定打开哪一页)",
        open(mk, encoding="utf-8").read().strip())
     with open(mk, "w", encoding="utf-8") as f:
-        f.write(str(tab_idx))                      # 还原成"工程配置", 让老倪重启后直接看到
+        f.write("🏷 产品配置")
 except Exception as e:                                                           # noqa: BLE001
-    ck(False, "记住上次那一页", repr(e)[:120])
+    ck(False, "打开页/标记文件", repr(e)[:120])
 
 print("\n=== 汇总: PASS %d · FAIL %d ===" % (P, F))
 sys.exit(0 if F == 0 else 1)
