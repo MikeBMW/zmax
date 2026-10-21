@@ -31,8 +31,10 @@ TASK_SCENE = {
     "TASK-01-FW":   {"scene": "插拔场景", "scn": "SCN-01-FW",   "color": "#2e8b57", "name": "插拔场景(绿)"},
     "TASK-06-TRAY": {"scene": "摆盘场景", "scn": "SCN-06-TRAY", "color": "#1f6feb", "name": "摆盘场景(蓝)"},
     "TASK-07-AOI":  {"scene": "AR场景",   "scn": "SCN-07-AOI",  "color": "#8957e5", "name": "AR场景(紫)"},
+    "TASK-08-AL1":  {"scene": "上料缓存场景", "scn": "SCN-08-AL1", "color": "#d29922", "name": "上料缓存场景(琥珀)"},
 }
-SCENE_COLOR = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5", "真机": "#c9d1d9"}
+SCENE_COLOR = {"插拔场景": "#2e8b57", "摆盘场景": "#1f6feb", "AR场景": "#8957e5",
+               "上料缓存场景": "#d29922", "真机": "#c9d1d9"}
 SRC_NODE_HINT = ("ssdata", "数据源")
 
 

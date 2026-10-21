@@ -25,7 +25,7 @@
   #nav a:hover{color:var(--teal);border-color:#1e6b62}
   #wrap{padding:14px 18px 70px;display:grid;gap:16px;max-width:1900px;margin:0 auto;
         grid-template-columns:repeat(auto-fit,minmax(560px,1fr))}
-  .card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
+  .card{scroll-margin-top:74px;background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
         border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
   .card .top{display:flex;align-items:baseline;gap:10px;padding:10px 14px 8px;border-bottom:1px solid #16202b}
   .card .no{font:600 13px/1 ui-monospace,monospace;color:#0a1016;background:var(--teal);
@@ -684,7 +684,7 @@ CARDS.forEach(c=>{
         c.det.map(d=>'<li>'+d+'</li>').join('')+'</ul></div>'+
       '<div class="kv">'+c.kv.map(k=>'<span>'+k[0]+'</span><span>'+k[1]+'</span>').join('')+'</div>'+
       '<div class="tags">'+c.tags.map((x,i)=>'<span class="tag'+(i===0?' t':'')+'">'+x+'</span>').join('')+'</div>'+
-      '<div class="fn">来源：技术协议 rev1.0 §2.2 第 '+c.n+' 步 / §2.1 指标 / §2.3 对接信号 / §3 硬件配置；三维为按模块关系的 1:1 示意，非施工图</div>'+
+      (String(c.n)==='1'?'<div class="fn" style="border-left:2px solid #d29922;padding-left:8px">🧩 已进入状态空间工程：场景 <b>SCN-08-AL1</b>（上料缓存场景 · 琥珀 #d29922）· 任务 <b>TASK-08-AL1</b>（上料缓存·载具搬运取放 · 段 4 · 参数覆盖 8）</div>':'')+      '<div class="fn">来源：技术协议 rev1.0 §2.2 第 '+c.n+' 步 / §2.1 指标 / §2.3 对接信号 / §3 硬件配置；三维为按模块关系的 1:1 示意，非施工图</div>'+
     '</div>';
   WRAP.appendChild(el);
 
@@ -700,6 +700,15 @@ const io=new IntersectionObserver(es=>{
   });
 },{rootMargin:'200px'});
 views.forEach(v=>{ v.visible=true; io.observe(v.cv); });
+
+/* #cN 锚点: 打开链接 / 改 hash 都定位到第 N 张卡 */
+function goHash(smooth){
+  const m=/^#c(\d+)$/.exec(location.hash||''); if(!m) return false;
+  const el=document.getElementById('c'+m[1]); if(!el) return false;
+  el.scrollIntoView({behavior:smooth?'smooth':'auto',block:'start'}); return true;
+}
+addEventListener('hashchange',()=>goHash(true));
+if(!goHash(false)) setTimeout(()=>goHash(false),60);
 
 const bSpin=document.getElementById('bSpin'), bPlay=document.getElementById('bPlay'), bLbl=document.getElementById('bLbl');
 bSpin.onclick=()=>{ const on=bSpin.classList.toggle('on'); views.forEach(v=>v.spin=on?0.10:0); };
