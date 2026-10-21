@@ -759,18 +759,19 @@ def collect_edge(timeout: float = 1.5) -> dict:
         except Exception as e:                                          # noqa: BLE001
             tried.append("%s(%s)" % (u.split("//")[-1].split("/health")[0], type(e).__name__))
             continue
-        hw = d.get("hw") or {}
+        hw = dict(d.get("hw") or {})
         inf = d.get("infer") or {}
+        # 2026-10-21: hw 全量透传 (cpu_model/cpu_mhz_*/disks/accel 三设备身份+算力), 不再掐字段;
+        #   accel = {cpu:{name,threads,cap}, gpu:{name,arch,tops_int8,in_use,driver,pci}, npu:{...}}
+        for _k in ("cpu_pct", "mem_pct", "disk_pct", "temp_c", "mem_used_mb", "mem_total_mb",
+                   "disk_free_gb", "disk_total_gb", "cpu_n", "load1"):
+            hw.setdefault(_k, None)
         return {"online": True, "url": u,
                 "device": d.get("device"), "model": str(d.get("model") or d.get("xml") or ""),
                 "sha16": d.get("sha16"), "n_req": d.get("n_req"),
                 "last_ms": d.get("last_ms"), "busy": bool(inf.get("busy")),
                 "rate_10s": inf.get("req_rate_10s"), "last_req_age_s": inf.get("last_req_age_s"),
-                "hw": {"cpu_n": hw.get("cpu_n"), "cpu_pct": hw.get("cpu_pct"),
-                       "mem_used_mb": hw.get("mem_used_mb"), "mem_total_mb": hw.get("mem_total_mb"),
-                       "mem_pct": hw.get("mem_pct"), "disk_pct": hw.get("disk_pct"),
-                       "disk_free_gb": hw.get("disk_free_gb"), "temp_c": hw.get("temp_c"),
-                       "npu": hw.get("npu"), "load1": hw.get("load1")},
+                "hw": hw,
                 "uptime_s": d.get("uptime_s"), "ts": time.time()}
     return {"online": False, "tried": tried, "ts": time.time()}
 

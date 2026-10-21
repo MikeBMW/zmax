@@ -414,18 +414,29 @@ class StatusPanel(QWidget):
                            ("栈", (100.0 * rs_n / rs_tot) if rs_tot else None,
                             ("%d/%d" % (rs_n, rs_tot)) if rs_tot else "—")]}
 
-        # —— 550C: 部署到 Intel 端侧
+        # —— 550C: 部署到 Intel 端侧 (五槽: NPU/GPU/CPU/内存/磁盘 —— 老倪要「所有硬件·算力·磁盘都显示」)
         e_busy, e_ms = bool(e.get("busy")), e.get("last_ms")
         e_model = str(e.get("model") or "—").split("/")[-1].replace(".xml", "")
+        acc = hwe.get("accel") if isinstance(hwe.get("accel"), dict) else {}
+        a_npu = acc.get("npu") if isinstance(acc.get("npu"), dict) else {}
+        a_gpu = acc.get("gpu") if isinstance(acc.get("gpu"), dict) else {}
+        a_cpu = acc.get("cpu") if isinstance(acc.get("cpu"), dict) else {}
         npu_txt = ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—")
+        npu_tops = a_npu.get("tops_int8")
+        gpu_tops = a_gpu.get("tops_int8")
+        gpu_txt = ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—"   # 算力标识 (INT8 TOPS)
+        disk_free = hwe.get("disk_free_gb")
+        disk_txt = ("%.0fG" % disk_free) if isinstance(disk_free, (int, float)) else "—"  # 余量, 大写 G 省宽度
         c_mod = {"key": "550C", "hw": "Intel", "mode": "端侧部署",
                  "dot": "cyan" if (e_on and e_busy) else ("green" if e_on else "dim"), "online": e_on,
-                 "fact": "NPU %s · %s · %s°C" % (npu_txt, e_model if e_on else "未连通",
-                                                 ("%.0f" % hwe["temp_c"]) if hwe.get("temp_c") is not None else "—"),
+                 "fact": "NPU %s / %sTOPS · iGPU %sTOPS · 盘余 %sGB" % (
+                     npu_txt, ("%.0f" % npu_tops) if npu_tops else "—",
+                     ("%.0f" % gpu_tops) if gpu_tops else "—", disk_free if disk_free is not None else "—"),
                  "slots": [("NPU", None, npu_txt),
+                           ("GPU", None, gpu_txt),
                            ("CPU", _num(hwe.get("cpu_pct")), None),
                            ("内存", _num(hwe.get("mem_pct")), None),
-                           ("温度", None, ("%.0f°" % hwe["temp_c"]) if hwe.get("temp_c") is not None else "—")]}
+                           ("磁盘", _num(hwe.get("disk_pct")), disk_txt)]}
         return [a_mod, b_mod, c_mod]
 
     def current(self):
@@ -599,14 +610,30 @@ class StatusPanel(QWidget):
                 "在线" if e.get("online") else "不通",
                 ("推理中 %sms" % e.get("last_ms")) if e.get("busy") else "空闲",
                 str(e.get("model") or "—").split("/")[-1], e.get("sha16") or "—"))
-            L.append("  Intel 硬件: %s 核 · CPU %s%% · 内存 %s/%s MB (%s%%) · 盘 %s%%(余 %sGB) · "
-                     "%s°C · NPU %s · load %s · n_req %s · 最近10s %s 次/s" % (
-                         hwe.get("cpu_n", "—"), hwe.get("cpu_pct", "—"),
-                         hwe.get("mem_used_mb", "—"), hwe.get("mem_total_mb", "—"),
-                         hwe.get("mem_pct", "—"), hwe.get("disk_pct", "—"),
-                         hwe.get("disk_free_gb", "—"), hwe.get("temp_c", "—"),
-                         "有" if hwe.get("npu") else "无", hwe.get("load1", "—"),
-                         e.get("n_req", "—"), e.get("rate_10s", "—")))
+            acc = hwe.get("accel") if isinstance(hwe.get("accel"), dict) else {}
+            a_cpu = acc.get("cpu") if isinstance(acc.get("cpu"), dict) else {}
+            a_gpu = acc.get("gpu") if isinstance(acc.get("gpu"), dict) else {}
+            a_npu = acc.get("npu") if isinstance(acc.get("npu"), dict) else {}
+            L.append("  Intel CPU: %s · %s 线程 · %s→%s MHz · 占用 %s%% · load %s" % (
+                hwe.get("cpu_model") or a_cpu.get("name") or "—", hwe.get("cpu_n") or "—",
+                hwe.get("cpu_mhz_now") or "—", hwe.get("cpu_mhz_max") or a_cpu.get("cap") or "—",
+                hwe.get("cpu_pct") if hwe.get("cpu_pct") is not None else "—", hwe.get("load1", "—")))
+            L.append("  Intel iGPU: %s · %s · 算力 %s TOPS(INT8) · 驱动 %s · 当前%s" % (
+                a_gpu.get("name") or "—", a_gpu.get("arch") or "—",
+                ("%.1f" % a_gpu["tops_int8"]) if isinstance(a_gpu.get("tops_int8"), (int, float)) else "—",
+                a_gpu.get("driver") or "—", "在用" if a_gpu.get("in_use") else "空闲"))
+            L.append("  Intel NPU: %s · %s · 算力 %s TOPS(INT8) · %s · %s · 当前%s" % (
+                a_npu.get("name") or "—", a_npu.get("arch") or "—",
+                ("%.1f" % a_npu["tops_int8"]) if isinstance(a_npu.get("tops_int8"), (int, float)) else "—",
+                a_npu.get("driver") or "—", a_npu.get("dev") or "—",
+                "在用" if a_npu.get("in_use") else ("空闲" if a_npu.get("present") else "不在")))
+            L.append("  Intel 内存: %s/%s MB (%s%%) · 温度 %s°C · n_req %s · 最近10s %s 次/s" % (
+                hwe.get("mem_used_mb", "—"), hwe.get("mem_total_mb", "—"), hwe.get("mem_pct", "—"),
+                hwe.get("temp_c", "—"), e.get("n_req", "—"), e.get("rate_10s", "—")))
+            for dsk in (hwe.get("disks") or [])[:3]:
+                L.append("  Intel 磁盘 %s: 总 %s GB · 已用 %s GB · 余 %s GB (%s%%)" % (
+                    dsk.get("mount", "—"), dsk.get("total_gb", "—"), dsk.get("used_gb", "—"),
+                    dsk.get("free_gb", "—"), dsk.get("pct", "—")))
             if e.get("tried"):
                 L.append("  试过: %s" % ", ".join(e["tried"]))
         L.append("模型 (%d):  (短名 ≤9 字, 缩自 name 真值)" % len(self._models()))
@@ -680,7 +707,8 @@ class StatusPanel(QWidget):
         p.drawText(QRectF(SEL_W - 22.0, 0, 10.0, h), Qt.AlignVCenter | Qt.AlignRight,
                    "⟳" if pending else "▾")
 
-        for i, (cap, frac, txt) in enumerate(list(cur["slots"])[:4]):
+        _slots = list(cur["slots"])[:5]
+        for i, (cap, frac, txt) in enumerate(_slots):
             x0 = SEL_W + i * gw
             has = (frac is not None) or (txt not in (None, "", "—"))
             col = QColor(tone(frac)) if frac is not None else QColor(C_GRAY)
@@ -720,7 +748,7 @@ class StatusPanel(QWidget):
         self._lamp(p, w - 9, cy, QColor(C_GREEN if fresh else C_DIM), fresh)
 
         # ---- 训练进度条 + % · 模型层 chips · 3DGS 资产 —— 全部落在**这一条中线**上 (一行布局) ----
-        tx = SEL_W + 4.0 * gw + 6.0          # 算力 chip + 4 个指标槽之后
+        tx = SEL_W + len(_slots) * gw + 6.0   # 算力 chip + 该档的指标槽 (4~5 个) 之后
         bar_w = 40.0
         pct_x = tx + bar_w + 3.0
         pct_w = 26.0
