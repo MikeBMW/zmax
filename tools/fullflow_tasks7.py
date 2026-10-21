@@ -174,7 +174,7 @@ def stage_train(task, ev, logdir, steps, yolo_epochs, l5_steps, skip=False):
             for ln in open(p, encoding="utf-8"):
                 try:
                     j = json.loads(ln)
-                    stages[j.get("stage")] = {"rc": j.get("rc"), "sec": j.get("sec")}
+                    stages[j.get("stage")] = {"rc": j.get("rc"), "sec": j.get("secs", j.get("sec"))}
                 except Exception:                                            # noqa: BLE001
                     pass
     ev["train"] = {"rc": r["rc"], "sec": r["sec"], "run_dir": runs[-1] if runs else None, "stages": stages,
