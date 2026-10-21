@@ -208,12 +208,76 @@ def _urdf_payload():
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 
+def _euler_quat(rx, ry, rz):
+    """与 tcp_direct_sampler.euler_to_quaternion 逐行相同 (Euler ZYX → qx,qy,qz,qw)。
+    本机没有产线网卡时, 真值从 Orin 的珞石桥来, 口径必须与采样器一致, 否则姿态会整体歪掉。"""
+    import math
+    cr, sr = math.cos(rx * 0.5), math.sin(rx * 0.5)
+    cp, sp = math.cos(ry * 0.5), math.sin(ry * 0.5)
+    cy, sy = math.cos(rz * 0.5), math.sin(rz * 0.5)
+    return (cy * cp * sr - sy * sp * cr,      # qx
+            sy * cp * sr + cy * sp * cr,      # qy
+            sy * cp * cr - cy * sp * sr,      # qz
+            cy * cp * cr + sy * sp * sr)      # qw
+
+
+def _read_orin_tcp():
+    """Orin 珞石桥 (经 ECS 隧道 19061) → 与 latest.json **同口径**的一条真值。
+    老倪 2026-10-21: 「http://10.163.146.78:8797/ar 现在不是实际的位姿啊」
+    ⇒ 根因: 本机 tcp_direct_sampler 容器连不上控制器 192.168.23.160 (本机只有 WiFi),
+      容器 restarts 循环, latest.json 冻在 00:46(3.5 小时前), 而页面照旧读它。
+    返回 (rec, err)"""
+    url = os.environ.get("ZMAX_ORIN_SDK_URL", "http://127.0.0.1:19061/status")
+    try:
+        with urllib.request.urlopen(url, timeout=1.5) as r:
+            d = json.loads(r.read().decode())
+        st = d.get("status") or d
+        p6 = st.get("endInRef")
+        if not p6 or len(p6) < 6:
+            return None, "桥里没有 endInRef"
+        ts = time.time()
+        qx, qy, qz, qw = _euler_quat(float(p6[3]), float(p6[4]), float(p6[5]))
+        rec = {"ts": round(ts, 4),
+               "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) + (".%03d" % int(ts * 1000 % 1000)),
+               "x": round(float(p6[0]), 6), "y": round(float(p6[1]), 6), "z": round(float(p6[2]), 6),
+               "rx": round(float(p6[3]), 6), "ry": round(float(p6[4]), 6), "rz": round(float(p6[5]), 6),
+               "qx": round(qx, 6), "qy": round(qy, 6), "qz": round(qz, 6), "qw": round(qw, 6),
+               "frame": "base_link",
+               "src": "orin_bridge/珞石 endInRef (本机无产线网卡 → ECS 隧道 19061, 5Hz)",
+               "joint": st.get("jointPos")}
+        return rec, None
+    except Exception as e:                                                    # noqa: BLE001
+        return None, "%s: %s" % (type(e).__name__, str(e)[:100])
+
+
 def read_tcp():
+    """真值优先级: latest.json 新鲜(≤8s) → 用文件; 否则 → Orin 桥直连; 都不行 → 如实报 stale。"""
+    d, src_used, fb_err = None, "latest.json", None
     try:
         with open(TCP_JSON) as f:
             d = json.load(f)
+    except Exception as e:                                                    # noqa: BLE001
+        fb_err = "文件读不到: %s" % str(e)[:60]
+    max_age = float(os.environ.get("ZMAX_TCP_MAX_AGE_S", "8"))
+    if d is not None and (time.time() - float(d.get("ts") or 0)) > max_age:
+        rec, err = _read_orin_tcp()
+        if rec is not None:
+            d, src_used = rec, "orin_bridge"
+            fb_err = None
+        else:
+            fb_err = "文件 %.0fs 没更新 · 桥也读不到(%s)" % (time.time() - float(d.get("ts") or 0), err)
+    elif d is None:
+        rec, err = _read_orin_tcp()
+        if rec is not None:
+            d, src_used = rec, "orin_bridge"
+            fb_err = None
+    if d is None:
+        return {"ok": False, "err": "真值读不到(文件+桥都失败)", "fallback_err": fb_err}
+    try:
         out = {"ok": True, "x": d["x"], "y": d["y"], "z": d["z"],
                "t": d.get("t"), "age_s": round(time.time() - float(d["ts"]), 3),
+               "stale": bool(time.time() - float(d["ts"]) > max_age),
+               "source": src_used, "fallback_err": fb_err,
                "frame": d.get("frame") or "base_link", "src": d.get("src"),
                "quat": [d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")],
                "tool01_const": {"rpy": list(TOOL01_RPY), "xyz": list(TOOL01_XYZ),
@@ -226,7 +290,7 @@ def read_tcp():
             out["frames"] = fr
         return out
     except Exception as e:                                                        # noqa: BLE001
-        return {"ok": False, "err": str(e)[:120]}
+        return {"ok": False, "err": str(e)[:120], "fallback_err": fb_err}
 
 
 def snap_cam(cam: str = "local"):

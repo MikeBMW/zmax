@@ -558,7 +558,15 @@ class Handler(BaseHTTPRequestHandler):
             for fn in sorted(os.listdir(d)):
                 if fn.endswith(".xml"):
                     fp = os.path.join(d, fn)
+                    try:                                  # sha16 = 这份 IR 的身份 (界面要显示"跑的哪个权重")
+                        _h = hashlib.sha256(open(fp, "rb").read()).hexdigest()[:16]
+                    except Exception:                     # noqa: BLE001
+                        _h = None
+                    _b = fp[:-4] + ".bin"
                     items.append({"name": fn[:-4], "mb": round(os.path.getsize(fp) / 1e6, 1),
+                                  "bin_mb": round(os.path.getsize(_b) / 1e6, 1) if os.path.isfile(_b) else None,
+                                  "sha16": _h,
+                                  "mtime": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(fp))),
                                   "active": os.path.basename(Handler.meta.get("xml") or "") == fn})
             return self._json(200, {"ok": True, "dir": d, "models": items,
                                     "devices": list(_comp_cache_devices())})
