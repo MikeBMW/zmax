@@ -41,6 +41,33 @@ Patterns for stateless HTTP relay services that shuttle data between machines (e
 - Port mismatch between service and nginx upstream causes silent 502s — grep BOTH sides.
 - **Prefix stripping**: `proxy_pass http://127.0.0.1:PORT/;` (trailing slash) STRIPS the location prefix — `/api/orin/heartbeat` arrives at the service as `/heartbeat`. The service must accept BOTH the bare path and the prefixed path (`if path in ("/orin/heartbeat", "/heartbeat")`). And the mirrored GET path may now collide with an existing bare endpoint (`/api/orin/status` → `/status` returns queue status, NOT orin status) — after adding a new location, curl BOTH the public URL and the localhost path and compare response bodies.
 
+### 4b. 内网穿透 (frp) —— 把一个局域网的多台机器挂到 ECS 上
+当需要暴露的不是一个 HTTP 服务, 而是**局域网里多台机器的原端口** (Orin 的 SSH、大屏 8799、station 8793、边缘机推理口),
+不要在每台机器上各装一个 agent: **只找那台同时能到 ECS 和能到局域网内其它机器的主机跑一个 frpc**,
+其余机器用 `localIP = <对方局域网 IP>` 直转。前提先量清楚谁在哪:
+```bash
+for h in 127.0.0.1 <本机局域网IP> <对端IP>; do
+  for p in 8799 8793; do printf "%-16s %-5s " $h $p
+    timeout 2 bash -c "cat < /dev/null > /dev/tcp/$h/$p" 2>/dev/null && echo 通 || echo 不通; done; done
+ss -ltnp | grep -E ":87[0-9][0-9]"      # 端口对应哪个 pid/服务, 再判断"它到底跑在哪台"
+```
+结论通常是: 本机服务(大屏/station) `localIP = "127.0.0.1"`; 同网段的别的主机 `localIP = "<它的内网 IP>"`。
+**`127.0.0.1` 只对 frpc 所在的那台机器成立** —— 写错不报错, 表现是"隧道建了但连过去没人应答"。
+
+frp 0.61 toml 骨架见 `templates/frpc.toml`。三个必须项:
+- `loginFailExit = false`: 服务端端口还没放通时 frpc 会**直接退出**(日志 `With loginFailExit enabled, no additional retries`),
+  配合 systemd `Restart=always` 也只是反复被杀; 关掉它才是进程内重试。
+- 每个 `remotePort` **都要在云安全组放行**, 不只 `serverPort`(7000)。少开一个, 表现就是那一条代理不通、其余正常。
+- 常驻用 systemd unit (`WorkingDirectory` 指向 frp 目录, `Restart=always`), 不要 `ssh 'frpc -c ... &'`。
+
+**三层定位**(超时 ≠ 拒绝):
+1. 对端 frps 在不在听: `ss -ltnp | grep 7000`; 配置里 `auth.token` 两端必须一致。
+2. 宿主防火墙: `ufw allow <port>/tcp` + `ufw status`。**ufw 放行是必要条件不是充分条件**。
+3. 云安全组: `ufw allow` 之后从外网仍 `i/o timeout`, 而 frps 日志**没有任何连接记录**(No entries)
+   ⇒ 包根本没到机器, 卡在安全组。安全组在云控制台/API, 服务器内部改不了 —— 拿到授权码才有 CLI 权限;
+   实例元数据没有 RAM 角色时 `aliyun` CLI 也无从下手, 这一步必须由人开或给人 AccessKey。
+判据: 同一台 ECS 上 `22/80/443` 通、新端口超时 = 安全组白名单, 不要去改 nginx 或服务端代码。
+
 ### 5. SSH process management: setsid, never bare nohup
 - Plain `nohup python3 app.py &` dies when the SSH session closes. Use `setsid nohup python3 app.py > log 2>&1 < /dev/null &` or a start.sh run via `bash start.sh`.
 - PITFALL: `pkill -f 'app.py' && restart` in ONE ssh command line kills the freshly-started process too (pkill matches the new cmdline). Split kill and start into separate invocations, or put pkill inside a start script.
@@ -212,3 +239,4 @@ Prevention note: nothing supervises relay/nginx on the ECS — a reboot or crash
 - `references/zmax-relay-deploy.md` — Z-MAX deployment specifics (endpoints, nginx block, client scripts, bug history)
 - `references/websocket-relay.md` — WS 状态中转实测: ws_relay.py 广播 hub + Orin WS主/HTTP兜底 + 路径别名坑 + 验证步骤
 - `references/zmax-ws-event-loop.md` — WS 事件驱动闭环实测 (2026-08-03): data_arrived 事件广播 (notify:8766→hub) + auto_loop.py v2 订阅端 + /command 采集指令端点 + 三个新坑 (/status mtime 排序 / 二进制包 frames=? / 远程补丁吞函数头)
+- `templates/frpc.toml` — 内网穿透起步配置 (一台 frpc 代理局域网多台机器 + loginFailExit + 每个 remotePort 都要开安全组)

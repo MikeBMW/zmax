@@ -7,10 +7,48 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 🅱 **550B 标定档「文件→打开工程」自动起 VSCode (省资源 + 单线程 debug)**: `references/vscode-autostart-550b.md`
+> —— 启动参数集中在 `tools/gui/vscode_launch.py`(只放 `code --help` 里真有的参数)、pylance 单进程 920MB 必须关、
+> `launch.json` 走 JSONC ⇒ 解析前剥 `//` 注释。
+
+> 🧹 **主界面收整三件套 (底部状态栏行 / 画布勾选框 / 日志区拖不动)**: `references/main-window-cleanup.md`
+> —— 状态栏要换 `_QuietStatusBar`(单点 hide 会被 showMessage 复活); 日志区拖不动先查 `setMaximumHeight==setMinimumHeight`。
+
+> 📐 **底部硬件状态带：放大字号 / 整条看不见 / 槽位画「—」**: `references/status-strip-scaling.md`
+> —— 放大用单一 `SCALE` + `painter.scale`（改完 `fillRect` 必须走 QRectF，否则整帧静默不画）；
+> 看不见先查 `availableGeometry()` 越界/帧外延 74px；画「—」是隧道 3s vs 1.5s 超时，不是 NPU 没跑。
+
+> 🧠 **模型引擎四列 (运行位置/运行权重/转换工具/推理还是训练)**: `references/model-engine-runtime-columns.md`
+> —— 真源 `tools/model_runtime_map.py`(Intel /models 的 sha16 + /pipeline 的设备占空 + CONVERTERS 表), 界面不自猜;
+> 只看 `/status/all.inferring` 会把 96% 占空的端侧渲染成「空闲」。
+
+> 🎴 **产品档三张自绘卡片 + 三档运行位置 (A 本地 / B VSCode / C Intel 端侧)**: `references/product-card-ui.md`
+> —— 版式常量只看 `_ProductCard.*`, 底行 = 系统总版本号 · `runtime.label`。
+
+> 📄 **配置中心文案增删 / 判据跟着改 / 改完在跑窗口看不到**: `references/config-center-ui-edits.md` ——
+> 配置中心文案由 `_star_facts()` + `StarBanner.set_tab(facts=…)` 现算拼出, grep 原句改不到;
+> 删一句要在**渲染入口**过滤(`BANNER_FACT_HIDDEN`), **不动数据源**(tooltip/底部信息窗/判据都读它);
+> 同版内把判据 ⑪ 从“必须有”改成“该页必须没有 + 其余页仍有”, 名单从实现模块 getattr 读;
+> `studio.py` 只在启动时建一次 `cfg_page` ⇒ 在跑窗口看不到, 不许为看效果反复重启, 如实说“重开一次才生效”;
+> **他说"你重启"时**: 先 TERM 旧 pid 再 `systemctl --user start zmax-studio.service`(`launch_studio.sh` 有"已在跑只激活"守卫会用 exit 0 让你以为重启了), 就绪靠 `xdotool search --onlyvisible --name "XSpace ZMAX"`, 改完再用 scrot+OCR 对照页取证。
+>
+> ❗ **「配置中心 打开先显示 产品配置」+ 左树小对号 = 当前打开的那一页 (常驻口径)**:
+> 初始页固定 `_tab_index_by_title("产品配置")`; `zmax_data/cc_last_tab.txt` **只写不读**(回放会让它落回上一页,
+> 现场验证: 文件里写着别的页, 打开仍落在产品配置); 左树行首 ✅ = 当前页(并加粗)、○ = 其余页,
+> 真源就绪 ✅/⛔ 挪进条目 tooltip; `_mark_tree_current()` 要在 `_fill_tree` 末尾、`_on_tab_changed`、
+> 以及**设完初始页之后**都显式调一次(`setCurrentIndex` 索引没变时不发 `currentChanged`, 联动不会自己刷)。
+> 「版本号」= 全系统一个号, 读 `update_checker.CURRENT_VERSION`(现 v5.50.751), 不手抄; 550A/B/C 只是配置标识。
+
 > 📄 **控件交互与布局陷阱 (某行一直在闪 / 分隔条拖不动 / 停进程把自己也杀了 / 独立进程组像“自动运行”)**:
 > `references/pyqt-interaction-pitfalls.md` —— 闪=悬停提示条每移一次重弹(setToolTip 去重 + 未击中图元不弹);
 > 拖不动=两侧 `setMinimumWidth` 之和顶死 QSplitter(大值只作首选宽, 离屏 `setSizes()` 后回读验证);
 > 杀进程要写进脚本(内联 `pgrep -f` 会匹配到调用它的 shell 自己), 判活要按 argv 分词不能子串匹配。
+>
+> 📄 **产品档位卡 (VEH.6.01/02/03 · 550A/B/C) 调档位 UI /「内敛不刺眼」**: `references/product-card-ui.md` ——
+> 自绘 `_ProductCard(QRadioButton)`, **必须仍是 QRadioButton 子类**(判据读 text/isChecked/objectName);
+> 取证 `setChecked` 会**真写真源** ⇒ 每张卡 `blockSignals(True)` + 判据断言 sha256 不变;
+> 互斥组不能 `setChecked(False)`(换另一张当基线); 像素判据用**区域均值**(单点会落在字形抗锯齿上);
+> 选中/未选只能同卡比亮度 (≥60%), 排版用 paintEvent 同口径常量复算。
 
 > 📄 **启动慢 / 点快捷方式等半天 / 刚改成延迟建页后判据全红**: `references/startup-latency.md` ——
 > 用 **Xvfb :99 冷启**量「点击→窗口可见」(离屏 offscreen 建主窗口会 core dump, 别当回归)；

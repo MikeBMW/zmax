@@ -1,4 +1,4 @@
-Orin=192.168.23.66(tashan/ts123); 产线.23.50/24无网关(USB网卡); 网卡不在位⇒不可达+拒发动作
+Orin=192.168.23.66(tashan/ts123); .70=intel/intel免密 Nodka PTL X7 358H/30G/NPU+ArcB390/RT/ROS2Jazzy/6CAN; 产线.23.50/24无网关; 网卡不在位≠服务坏
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -50,7 +50,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 位姿真源=tcp_out/latest.json(全0=陈旧)
 §
-运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop
+运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
 AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py桥; 3D「🥽AR」?cam=arm
 §
@@ -68,6 +68,6 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 版本号只按老倪指定; 当前5.50.750
 §
-专利12件·渠道74/74; config/patents/patent_registry.json; patent_center.py --coverage
+专利12件·渠道74/74; config/patents/patent_registry.json
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区

@@ -116,6 +116,31 @@ sudo systemctl restart ss-remote-tap
 才放行(最多等 120s, 超时仅告警不阻断)。开机日志可见 `[netwait] 直连链路就绪 (src=192.168.23.50, 第1次探测)`。
 副作用提醒: 关机放置后开机,**先看 `cam_rs.png` 时间戳与 `status.json.recv.img`**, 别以为"服务 active 就等于链通"。
 
+## 不在现场时: 公网入口 = ECS 反代 22022 (2026-10-21 实测)
+办公室没有产线网卡(无 enx* 适配器) 时, 唯一入口是 Orin 自己扛的反向隧道:
+```bash
+ssh -p 22022 tashan@39.102.211.79      # = Orin (ECS 39.102.211.79 上 22022 转发到 Orin:22)
+# 本机 ~/.ssh/config 已配别名: ssh orin   (key=~/.ssh/id_ed25519 三把 key 都已免密)
+```
+Orin 侧单元 `zmax-orin-tunnel` (active+enabled) 负责维持; 掉线先 `systemctl restart zmax-orin-tunnel`。
+ECS 上残留的旧 22022 监听会因 `ExitOnForwardFailure` 抢占 → `ss -ltn | grep 22022` 查重。
+任意端口可走同一条路: `ssh -N -L 18765:127.0.0.1:8765 -p 22022 tashan@39.102.211.79`(实测隧道本身通, 返回 `SSH-2.0-OpenSSH_8.9p1`)。
+
+### Orin 自己上网(WiFi) 后的两个后果
+1. **WiFi = Corp-Guest (10.163.149.55), 本机在 Corp-Office(10.163.146.78)** → 两者**互相 ping 不通、TCP 也不通**
+   (AP 客户端隔离)。别以为"同一个公司网就能直连", 一切走 ECS 22022。
+   出网实测: baidu 0.15s / pypi.tuna 0.4s / pip download 实下成功; github.com 与 pypi.org **被墙超时** (全局问题, 非 Orin)。
+   pip 源已是 `https://pypi.tuna.tsinghua.edu.cn/simple`, apt 源是 tuna ubuntu-ports — 下载不用改。
+2. **DDS 发现多播会被 WiFi 默认路由抢走** (`ip route get 239.255.0.1` → `dev wlP1p1s0 src 10.163.149.55`),
+   产线 ROS 对端将 discovery 不到 Orin。已落地修法(Orin 侧, 不碰 NM/netplan):
+   `/usr/local/bin/zmax_orin_mcroute.sh` + `zmax-orin-mcroute.service` (oneshot, enabled)
+   → `ip route replace 239.0.0.0/8 dev enP8p1s0 scope link`; 复核 `ip route get 239.255.0.1` 必须是 `dev enP8p1s0 src 192.168.23.66`。
+   修完实测: baidu 仍 200, 产线控制器 192.168.23.160 0.19ms, 本地 ROS 发现正常 (`/gripper_pos` 12.03Hz)。
+
+### 重启后不会自己回来的东西 (2026-10-21 开机 1d23h 实测)
+只有 `gripper_driver`、realsense、`/robot/tcp_pose`、`/robot_status` 在; **`robot_driver` / `motion` / `orin_gateway.py`(8765) / HMI(8000) 都没起**,
+`ss -ltn` 只有 22。⇒ 看到 `/real_joint_states`、`/robot/force_torque` 无速率时**不是网络断**, 是生产栈没拉起来。
+
 ## 地址表（小芳 2026-09-16 确认）
 | 设备 | 地址 |
 |---|---|

@@ -116,6 +116,44 @@ metadata:
 - **同一根因会同时打死两条路**: USB 网卡不在位 ⇒ `192.168.23.66` No route to host ⇒ arm 无帧 **且**
   TCP 真值冻结。别当成"相机故障 + 位姿故障"两件事查 —— 先 `ip -br addr` / `ip route get <orin>`。
 
+## 🔌 本机不在产线网时，站点页**每一路**指向产线 IP 的源都必须走隧道
+
+判据（一眼定性）：8791 `/snapshot/<name>.jpg` 回 **503「该路还没有帧（检查相机/源）」**，而源头设备本身正常。
+本机只连办公室 WiFi、没插产线网卡时，`192.168.23.66:*` 与 `192.168.23.23:*` 都不可达 —— **不是相机坏，是 URL 指到了够不到的地址**。
+先 `ip -br addr` 确认本机没有 192.168.23.x 网卡，再改源；**别在相机那头排查**。
+
+⚠️ **修好用户问的那一格不等于修好页面**：同一根因会同时打死所有写着产线 IP 的格
+（arm · aoi_gold 判据图 · aoi_gold_raw 整板原图 · aoi_surface · depth）。改完一次要把每格都取一张验过再回话，
+否则用户下一句必然是「XX 那张呢？」。
+
+定式 = 两个常驻 ssh 本地转发（目标地址在 **Orin 侧**解析，所以能到产线网）+ 启动器自动选源：
+```
+zmax-orin-arm-fwd : ssh -NT -p 22022 -L 127.0.0.1:18792:127.0.0.1:8792   tashan@<ECS>
+zmax-orin-aoi-fwd : ssh -NT -p 22022 -L 127.0.0.1:10082:192.168.23.23:10082 \
+                                 -L 127.0.0.1:10083:192.168.23.23:10083  tashan@<ECS>
+```
+- 两个 unit 都 `enabled` + `Restart=always` + `ExitOnForwardFailure=yes`；用 key 免密（`-i ~/.ssh/id_ed25519 -o BatchMode=yes`），
+  不要用 sshpass —— 密码进 unit 正文会漏进日志。
+- **AOI 隧道保持端口号不变**（本地 10082 → 远端 10082），所以代码里只需换 host，不需要端口映射表。
+- `cam_live_stream.py` 的 AOI 地址已收口成 `"http://" + _AOI_HOST + ":%d..."`（21 处），
+  `_AOI_HOST = os.environ.get("ZMAX_AOI_HOST", "192.168.23.23")` ⇒ **不设 = 原行为一字不变**，产线网插回来自动走直连。
+- `tools/start_station_stream.sh` 依次探测并打印选中的源：手臂先探产线直连、再探 18792；AOI 先探
+  `192.168.23.23:10082/storage`、再探 `127.0.0.1:10082/storage`，命中隧道就 `export ZMAX_AOI_HOST=127.0.0.1`。
+  两个"都不通"的分支要**明说该格会是空**，别静默起一个注定没画面的进程。
+
+验收（缺一不算通，全部取真图看尺寸/均值，不要只看 HTTP 200）：
+- 手臂：`/snapshot/overlay_arm.jpg` 200 · ~54KB · 640x480（overlay 后 mean≈131，比裸帧 172 低是叠加改动，不是变暗）
+- 金手指判据图 `/snapshot/aoi_gold.jpg` · 整板原图 `/snapshot/aoi_gold_raw.jpg` 1400x1171 · 表面 `/snapshot/aoi_surface.jpg`
+- `8791/stats` 各格 `frames_served` 递增；arm 的 `age_s ≤0.3`
+- **arm 连续两帧 md5 必须不同**（真在动）；**AOI 两格 md5 相同是正常的** ——
+  它们的源是「工控机最后一次拍照」，不随轮询变。要它变就触发一次 `POST /capture_detect`（≈1.5s 出判决），
+  别把"AOI 图不变"当成冻帧去查网络。
+
+重启一律走官方脚本 `bash tools/start_station_stream.sh`（按端口找 pid 杀，不会杀错），
+重启后先看它打印的「手臂源 / AOI 源」两行，再取图验收。
+⚠️ 产品档（550A/550B/550C）与这些画面**没有关系**：550B 只负责起 VSCode 标定工程，
+"切到 550B 就该看到臂相机"这个假设不成立 —— 那格空，查的是源地址通不通。
+
 # Z-MAX 真机双相机 · 压缩实时流 + 运动摄录取证
 
 ## 触发

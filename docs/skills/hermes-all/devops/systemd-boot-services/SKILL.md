@@ -99,8 +99,28 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 
 ## 常驻脚本在 agent 会话里起的坑 (2026-09-27 实测)
 
-- **别用 `grep` 匹配自己的命令行**：`for p in /proc/*; do grep -q "<脚本名>" ...; done` 会匹配到**执行这条命令的 shell 自身**(argv 里就含那个串) ⇒ 把自己 kill 掉(exit -15)。
-  修法①判据写拼接串(`P="vl_safety""_monitor.py"`)；修法②把循环放进**独立脚本文件**再执行(它的 argv 只有路径)。
+- **别用 `grep` / `pkill -f` 匹配自己的命令行**：`for p in /proc/*; do grep -q "<脚本名>" ...; done` 会匹配到**执行这条命令的 shell 自身**(argv 里就含那个串) ⇒ 把自己 kill 掉(exit -15)。
+  `pkill -f 'ssh.*<端口>'` 同样会自杀——命令行里就写着那个端口号, 它会先杀掉自己所在的 shell(SIGTERM)。
+  修法①判据写拼接串(`P="vl_safety""_monitor.py"`)；修法②把循环/kill 放进**独立脚本文件**再执行(它的 argv 只有路径)。
+  🔴 **"操作成功一半、工具报被自己 SIGTERM"时先怀疑自杀式匹配, 不要以为服务真挂了。**
+
+## 7. `ssh -R` 反向隧道做 unit: 两个必踩的坑
+
+把内网服务/另一台机器暴露出去时, `ssh -R` 隧道写成 unit 有两个坑会让你以为"密钥不行"或"服务起不来":
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| **`ssh -N` 不会 fork** | `Type=simple` 下长驻前台进程被判启动异常, `status=9/KILL` 反复重试(前面几轮可能还夹着别的错) | `Type=forking` + 命令行加 `-f`(`-f -N`), 让 ssh 自己后台化 |
+| **systemd 访不到 ssh-agent** | 你在 shell 里 `ssh root@host` 能免密, unit 里却 `Permission denied (publickey)` | 登录 shell 能连很可能**只是 agent 里有一把合适的 key**, 而 `~/.ssh/id_rsa`/`id_ed25519` **根本不在对端 authorized_keys 里**(用 `-i <那把>` + `IdentitiesOnly=yes` 手测就会再现失败)。正解: `ssh-keygen -t ed25519 -f ~/.ssh/id_<用途> -N ''` 生成专用密钥 → 追到对端 `authorized_keys` → unit 里 `-i` 显式指它。不要依赖 agent |
+
+别的必备项(同样实测): `Environment=HOME=/home/<user>`(systemd 下 HOME 与登录 shell 不同)、
+`ServerAliveInterval=20 ServerAliveCountMax=3`(不掉长连接)、`ExitOnForwardFailure=yes`(端口被占就别假装成功)、
+`Restart=always` + `RestartSec=10`。
+
+🔴 **手测成功≠unit 会成功**: 三者环境不同(HOME / agent / PATH)。失败先看 `journalctl -u <unit> -n 20` 里
+究竟是 `Permission denied`(密钥) 还是 `9/KILL`(进程模型), 两种错治法完全不同 —— 别一上来就改密钥。
+
+远端端口诊断顺序与"安全组 vs 本机防火墙"的判定, 见 `references/reverse-tunnel-diagnosis.md`。
 - **agent 会话里 `nohup/setsid ... &` 起的常驻进程会随会话清理一起死**(终端工具也直接拒这类包装)：要用 `background=true` 交给 Hermes，或交给 **cron keepalive 每分钟探测+拉起**才算真脱离会话。
 - **改完代码必须重启进程**：长驻守护跑的是内存里的旧代码 —— 本轮磁盘上改了 `timeout`/常量但没重启，误报又持续 2 小时。核验要对比 `ps` 启动时间 vs 文件 mtime。
 
@@ -111,3 +131,4 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 - `references/local-units.md` — 本机(4060 工位机)已落地的 unit 清单与各自口径
 - `references/production-device-service-pattern.md` — 在别人的产线设备上放常驻服务: 硬约束/部署清单 + **看门狗指纹、独占设备去重、无人升级验收、版本取证**
 - `references/self-exiting-service-chains.md` — 「自己会退」的常驻链(定时 `--seconds` · 跨 `docker exec` · 页面按钮打另一个端口): 必须托管 + 心跳可视 + 删除/清除按钮的真实语义 + 四步自检
+- `references/reverse-tunnel-diagnosis.md` — 「外面连不进来」五层定位(监听 vs 本地通 vs ufw vs **云安全组**) + 安全组不可改时的 `ssh -R` + nginx 80/443 反代方案 + nginx 反代四坑 + 动手前盘点已有隧道

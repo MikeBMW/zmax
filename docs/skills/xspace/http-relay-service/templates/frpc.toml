@@ -1,0 +1,28 @@
+# frpc 起步配置: 一台主机把局域网里多台机器的端口挂到云上
+# 用法: 复制到 frp_<ver>_linux_amd64/frpc.toml, 改 serverAddr / token / 代理清单
+# 前提: 云安全组入方向放行 serverPort(7000) **以及每一个 remotePort** (少开一条 = 那一条不通, 其余正常)
+#       服务端 ufw 也要放行同样的端口 (ufw 是必要不充分条件, 详见 SKILL.md §4b)
+
+serverAddr = "<ECS 公网 IP>"
+serverPort = 7000
+auth.token = "<两端一致的 token>"
+
+log.level = "info"
+loginFailExit = false      # 关键: 服务端未放通时进程内重试, 不退出 (否则只能靠 systemd 反复拉起)
+transport.tcpMux = true
+
+# 本机服务: 127.0.0.1 (frpc 所在的那台机器)
+[[proxies]]
+name = "dash-8799"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8799
+remotePort = 18799
+
+# 同网段的另一台机器: 用它的局域网 IP, 不要 127.0.0.1
+[[proxies]]
+name = "peer-ssh"
+type = "tcp"
+localIP = "<对端局域网 IP>"
+localPort = 22
+remotePort = 22022

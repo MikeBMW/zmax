@@ -27,7 +27,7 @@ metadata:
    tail 只看得到别人的 tag ⇒ 会误判"没推上去"、白推一遍。
 4. **`config/` 是软链, 不进 git。** `config -> data/database/zmax/sources/config`, 本轮改过的标定/权重 json
    (`config/calib/*.json`) 必须显式 `cp` 进归档 `data/` —— 否则"保存数据"恰好漏掉唯一的参数真源。
-4. **证据只写数字。** 归档里的 evidence 放实测值(延迟/幅度/前后对照), 不写过程叙述。
+5. **证据只写数字。** 归档里的 evidence 放实测值(延迟/幅度/前后对照), 不写过程叙述。
 ## 步骤
 
 ### ① 改号 (一条命令同步全部位置)
@@ -85,6 +85,58 @@ git push origin HEAD && git push origin vX.Y.Z
 git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这边 (别用 'vX.Y.*' + tail)
 ```
 
+- **推完要等 CI 真出包再回话**: 一个 `Build Desktop` workflow 里带 Windows + macOS **两个 job** ⇒
+  轮询只看那个 run 的 `status/conclusion`，不要要求"至少两个 run"（会等不到而白转）；
+  两个 job 都 success 后 `GET /releases/tags/vX.Y.Z` 回读**资产名/体积/state=uploaded**，才把下载链接给他。
+- **界面上的版本号不会自己变**: 控制台进程是用旧源码起的 ⇒ 改完号必须清实例、单实例重起，
+  然后截图 OCR 回读新号（源码 grep 只证明文件改了，不能证明他看到的变了）。
+
+### ④ 收工 / 关机前 (没给版本号也照样要"保存数据")
+
+「保存数据, 准备关机」不是一句安慰话 —— 按顺序跑完这五步再回话:
+
+1. **代码**: 只 `git add` 本轮真改过的源码 (新 tools/ 子目录、判据、gui 文件), **不 add** 一次性的
+   `*_tmp.py` / probe 脚本; 然后 `git commit` + `git push origin HEAD`, 回读新 commit sha 再报。
+2. **状态快照** (这才是数据): 进 `data/database/zmax/archive/state_<date>_preoff/` 拷 `sources/config` 全量、
+   `zmax_engineering.db`、`zmax_space.proj`、`config_meta.json`, 再拷一份 `/etc/systemd/system/zmax-*.service`
+   + `~/.config/systemd/user/zmax-*.service` (下次重建环境靠它); 最后 `tar czf archive/zmax_state_<ts>.tar.gz`,
+   报出 tar 体积与文件数。
+3. **工程库重建并核对**: `./gui-venv311/bin/python tools/engineering_db.py build` 然后 `... check`,
+   必须看到"判据全绿"。改了 config/产品真源不重建 = 下次 check 报漂移。
+4. **开机自启清单**: 逐个 `systemctl is-active/is-enabled` (含 `systemctl --user` 的 GUI 服务),
+   把 enabled 的服务列给他 —— 并且要真的 **enabled**, 本次手工 `setsid nohup` 起的服务要补 unit
+   (否则重启就没了, 而他会以为还在)。
+5. **关机影响面必须先讲**: 哪些公网/远程链路跑在这台机器上 (隧道、反代、docker 里的 ROS 节点),
+   一关机就死; 哪些在别的机器上, 不受影响。让他出门前就知道了, 不要等他到了现场才发现 502。
+
+### ⑤ 「同步 550 ABC」= 两端逐字节对齐，方向靠 sha + diff 判
+
+“同步”不是无脑把仓库推到机器上：**两边的副本可能各自更新**，推错方向就把对方的新功能盖掉。
+实测一对反向的：仓库的 `tools/edge/edge_service.py` 比 intel 旧（intel 有 `/models` 的 `sha16/bin_mb/mtime`）⇒ 该**拉回仓库**；
+而仓库的 `tools/zmax_profile.py` 比 intel 新（`hardware_ok` + 550C 判据）⇒ 该**推到 intel**。
+
+固定流程（每个共享文件都跑）:
+1. 两侧 `sha256sum` 前 16 位对齐 → 相等就结束，不要动。
+2. 不等就**抓回远端那一份，双向 diff**（`diff <(git show HEAD:path) /tmp/remote_copy`），
+   看清哪边是哪边的超集再决定 `cp` 方向 —— 别凭“仓库一定是最新”直接覆盖。
+3. 同步后回读两侧 sha 作证据，再跑档位门：本机 `tools/verify_product_dev_profiles.py`；
+   intel 侧 `zmax_profile.product()/hardware()/host_hardware()/hardware_ok()` 应得 `550C / intel / intel / True`。
+4. 产品真源三份都要在：`config/platform/zmax_product.json`（软链真源）、`defaults/config/platform/...`、
+   `/home/intel/zmax/config/platform/...`；只改一处就会出现“界面报 550C、机器按旧档跑”。
+
+隧道不稳时不要下结论“机器挂了”: `sshpass ... -J <jump> ssh -o ConnectTimeout=25` 报
+`Connection timed out during banner exchange` 就加重试（2~3 次、间隔 3 s）—— 实测第二次同一条命令就通了。
+
+## 改完号的判据：只认「五处一致」，不认 integrity_check 全绿
+
+`tools/ci/integrity_check.py` 里那条 **"stack addWidget 顺序不一致"** 是长期假红：
+页面改成懒加载后，AST 在 `__init__` 里取不到 `self.stack.addWidget(<PageClass>)`
+（实参是 `_ph` 占位 widget），实测 **v5.50.752 / HEAD 都是"实际前11个 []"，命中 0**。
+⇒ 发版前不要因为它整份脚本 ❌ 就以为版本号没改对；版本可用性看这六个数全部等于新号：
+`studio.py`(QLabel/状态栏/关于框/changelog 共 4 处) · `update_checker.CURRENT_VERSION` · `version_sync.zmax_ver` ·
+`docs_sync` 两键 · `integrity_check.EXPECTED_VERSION` · `VERSION.md` 新增行。
+要真修就改检查器（按 `self.modules` 字典 + `_lazy()` 闭包里的 `addWidget(_ph)` 重建顺序），别去"修"源码。
+
 ## Pitfalls
 
 | 坑 | 症状 | 修法 |
@@ -95,6 +147,8 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 | 归档脚本照抄上一版没改路径/版本 | 产物堆到旧版本目录, MANIFEST 写错号 | 复制后只改 `DST` 前缀 + MANIFEST 主题, 跑完用 `search_files(target='files')` 核对目录名 |
 | changelog 写成过程叙述 | 下一版读的人不知道改了什么、根因在哪 | 一行: "做了什么 + 为什么(根因)", 不写排查过程 |
 | 版本号自选 | 与用户口径冲突 | 只按用户给的数字; 没给就只改内容 |
+| 同步多端时默认“仓库最新” | 把远端较新的修复盖掉（反向同理） | 先两侧 sha256，不等就抓回远端 diff 看超集，只拷较新那个方向 |
+| 归档清单靠手写 | 改了文件忘了加进 CODE 表，归档里少东西 | 用 `git diff --name-only v<上一版>..HEAD` 生成 CODE 列表，再人工剔除一次性的 `*_tmp.py` |
 
 ## 相关
 - 仓库口径/入库边界/密钥红线: `zmax-engineering-repo`(user-owned)。

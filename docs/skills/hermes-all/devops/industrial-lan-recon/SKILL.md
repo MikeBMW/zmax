@@ -84,7 +84,7 @@ smbclient //<ip>/C\$ -U 'user%pass' -c 'ls'             # ⑤ ACCESS_DENIED + RI
 ## 七、已知的段与角色（持续更新，详细见 references）
 | 段 | 谁在用 |
 |---|---|
-| 192.168.23.0/24 | 产线网：本机 .50（USB 千兆直连）· Orin .66 · 珞石控制器 .160 · 研华工控机 .23 · NVIDIA 边缘盒 .203 · OPT 视觉 .2/.8 |
+| 192.168.23.0/24 | 产线网：本机 .50（USB 千兆直连）· Orin .66 · 珞石控制器 .160 · 研华工控机 .23 · NVIDIA 边缘盒 .203 · OPT 视觉 .2/.8 · 诺达佳 Intel 边缘机 .70（X7 358H · NPU+Arc B390 · RT 内核 · ROS2 Jazzy · 6×CAN） |
 | 10.163.146.0/23 | 本机 WiFi（公司网，未清点） |
 | 192.168.124.0/24 | Orin 的 WiFi（另一张网，未清点） |
 ⚠️ **网关 .1 不回应 ARP**（本机/Orin 的路由表都指向它，但该地址没有设备）→ 别把它当可用网关。
@@ -101,10 +101,49 @@ smbclient //<ip>/C\$ -U 'user%pass' -c 'ls'             # ⑤ ACCESS_DENIED + RI
 
 **判活三层(别把三件事混成一句"连不上")**:
 ```bash
+ip -br addr | grep '\.23\.'                        # ⓿ 本机有没有该网段的地址/网卡 (USB 网卡不在位 ⇒ 以下全是假阴性)
 ping -c2 -W2 <ip>                                  # ① 整机: 100% 丢包 = 机器不在(关机/拔线/网口)
 timeout 3 bash -c "echo > /dev/tcp/<ip>/<port>"     # ② 服务: 连接被拒 = 机器在、服务没起
 curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://<ip>:<port>/<path>   # ③ 应用: 000=端口无应答
 ```
-三种组合结论不同: ① 失败 ⇒ 整机不在线(别去修本机网卡/通道); ① 通而 ② 失败 ⇒ 服务没起;
+- ⓿ **先查本机地址**: 本机连 `192.168.23.x` 都没有 ⇒ 结论是"**网卡不在位**"(USB 网卡没插/被拔), 不是"设备挂了/服务挂了", 也不要因此去重启任何服务; 同时按铁律不下发动作。
+- 查**远程**服务的端口不要用本机 `ss -ltn` —— 那只列本机监听, 拿它报"10082/10083 DOWN"是纯误报; 要用 `timeout 3 bash -c 'echo > /dev/tcp/<ip>/<port>'`。
+三种组合结论不同: ① 失败 ⇒ 先回 ⓿ 确认本机地址在位, 在位才是整机不在线(否则是本机网卡/线的问题); ① 通而 ② 失败 ⇒ 服务没起;
 ② 通而 ③ 给 404 ⇒ **服务在、只是该路由不存在**(版本会推翻历史结论 ⇒ 现探再断言, 见 §四)。
 - 本机要"借道上网"时别改产线机的网络设置 —— 见 `windows-plant-host-operations` §七(在操作机侧起受限代理, 产线机只借一条命令)。
+
+## 九、新接入一台 Linux 设备：指纹 → 拿访问权 → 一轮家底
+
+### 9.1 先三层指纹，别先要账号
+`ping -c3`(TTL: 64=Linux/128=Windows) → `ip neigh`(MAC) → 端口扫描 + **SSH banner**（banner 一行就把发行版/版本交出来）。
+- 扫描用 python socket + 线程池，不要卡在"装 nmap"; 必扫的身份口:
+  `22` `80` `443` `8080` `16992/16993`(Intel AMT) `623/664`(IPMI) `3389` `5900` `502` `4840` `1883`。
+- **结论要按实际端口说话**: 只开 22 + `OpenSSH_x.xp1 Ubuntu-y` ⇒ 就是一台 Ubunty 主机,
+  不是"带 Web 管理页的工业控制器"; 没有 AMT/IPMI ⇒ 它没有带外管理，重启只能找人现场或远程桌面。
+- OUI 查不到厂商不等于杂牌: `api.macvendors.com` / `api.maclookup.app` 对小批量前缀常返空 ⇒ 以 banner/系统信息为准。
+
+### 9.2 SSH 不泄露用户名 —— 别枚举
+不存在的用户与密码错，`Permission denied (publickey,password)` 提示**一模一样**，试名字试不出结果，爆破还会锁号。
+用户名只有三个来源: ① 机器登录界面（Ubuntu 会显示上次登录用户）② 在那台机上 `whoami` ③ 别人原有机器上的 `~/.ssh/config` / `history | grep ssh`。
+
+### 9.3 拿访问权：给现场人员的命令永远只有一行
+他会直接回你"代码太多了，还得手动操作"。定式:
+- 他在**操作机**上: `ssh-copy-id -i ~/.ssh/id_ed25519.pub <user>@<ip>`（口令由他自己输，我不碰）。
+- 他在**目标机**终端里: 一行装完并回执——
+  `mkdir -p ~/.ssh; chmod 700 ~/.ssh; echo '<pubkey>' >> ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; echo OK`
+  （`chmod` 不能省，sshd 会因权限过宽拒收；`echo OK` 是回执，比"应该好了吧"可靠）。
+- 他把口令直接打在聊天里时: `sshpass -p '<pw>' ssh-copy-id ...` 一次装好公钥，随后**全部走密钥**
+  （`ssh -o BatchMode=yes` 验通），口令不写进任何文件，并提醒弱口令（如 user/user）风险。
+- 装完立刻验一行: `ssh -o BatchMode=yes <user>@<ip> 'hostname; whoami; uname -sr'` —— 验不过就不要继续摸家底。
+
+### 9.4 一轮家底（一条 ssh 批量跑，别一条条问）
+系统/内核(`uname -a` · `/etc/os-release` · `uptime -p`) · CPU(`lscpu` 型号/核数/主频/L3) · 内存磁盘 ·
+加速器(`lspci | grep -iE "vga|display|3d|accelerator|npu"` · `ls /dev/dri /dev/accel` · `sycl-ls` · `clinfo -l`) ·
+网口(`ip -br addr`) · 监听(`ss -ltnp`) · 非默认 running 单元 · 容器 · `ls /opt ~` · 关键包
+(`openvino` `onnxruntime` `torch` `ros-*` 计数)。
+判读要点:
+- `nproc` < `lscpu` 的 CPU 数 ⇒ 有核被 RT 隔离 (`isolcpus`)；内核名带 `-rt` ⇒ PREEMPT_RT ⇒ **产线执行端**候选，不是纯推理机。
+- "装了 ROS 但没装推理栈"(有 `ros-jazzy-*` 296 个包、无 openvino/onnxruntime/torch) ⇒ NPU/GPU 空着，先装推理栈跑基准再谈"能不能替代 Orin"。
+- 有 `/dev/accel/accel0` + `level-zero-npu` 才是真 NPU；只有 `/dev/dri/renderD*` 是核显。
+- 跨版本 ROS (Humble ↔ Jazzy, aarch64 ↔ x86_64) **不假设互通**: 标准 msg 的 DDS 能过，自定义 msg 的字段/类型不一致会静默不匹配 ⇒ 走网关/桥。
+- 顺手看 `~/.bash_history` 最后几条: 常暴露上一家在这台机上试过什么(如 `ping` 过哪台机、跑过哪个 tuning 脚本)。
