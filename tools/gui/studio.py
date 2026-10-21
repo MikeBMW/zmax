@@ -375,7 +375,7 @@ def _oneshot(parent, ms, fn):
     _oneshot_queue.put((parent, ms, fn))
     return None
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStatusBar,
     QLabel, QPushButton, QFrame, QGridLayout, QSizePolicy,
     QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
     QSplitter, QTextEdit, QGroupBox, QFormLayout, QLineEdit,
@@ -12127,6 +12127,29 @@ def _console_title(pid=None):
     return "XSpace ZMAX %s" % (pid or _active_product_id())
 
 
+class _QuietStatusBar(QStatusBar):
+    """永不显示的底部状态栏 —— 老倪 2026-10-21: 「主界面最下面的 训练 Z-MAX三层结构架构 Sys 这行字 删掉」。
+
+    为什么不逐个删 showMessage(): 全工程 55 处调用, 删漏一处就会重新出现; 而 Qt 的 showMessage()
+    本身会把状态栏**重新显示**出来。⇒ 换一个把 showMessage/addWidget 全部吞掉且保持隐藏的子类,
+    调用方代码一行都不用改, 行为确定。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setSizeGripEnabled(False)
+        self.hide()
+
+    def showMessage(self, *a, **k):        # noqa: D401
+        self.hide()
+
+    def addWidget(self, *a, **k):          # noqa: D401
+        return None
+
+    def addPermanentWidget(self, *a, **k):  # noqa: D401
+        return None
+
+
 class StudioMainWindow(QMainWindow):
     def _maybe_warn(self):
         """🔍 启动自检 (老倪 2026-10-15): 「不用特意显示"非调试模式", 但要保证用 vscode debug 调试时打开的也是同一个版本」
@@ -13128,7 +13151,10 @@ class StudioMainWindow(QMainWindow):
             "sys2":  "dataset",
         }
 
-        # 状态栏 - 引擎选择与状态
+        # 🗑 2026-10-21 老倪: 「主界面最下面的 训练 Z-MAX三层结构架构 Sys 这行字 删掉」
+        #   整条状态栏取消 (它只剩一行总览文字, 没有任何可点控件 —— 右下角那组读数 2026-10-16 已删)。
+        #   用 _QuietStatusBar: 任何 showMessage() 都吞掉并保持隐藏, 55 处调用不用改, 也不会"复活"这一行。
+        self.setStatusBar(_QuietStatusBar(self))
         sb = self.statusBar()
         sb.setStyleSheet(f"background:{C_BG2}; color:{C_GRAY}; border-top:1px solid {C_BORDER};")
 

@@ -5838,22 +5838,10 @@ class SimulinkModule(QWidget):
 
         self.btn_run = mk_btn("▶ 运行", "按拓扑执行仿真 (Simulink Run)", self.start_sim, "#00d4aa")
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
-        # 🎯 2026-10-09 老倪: 「单步运行, 运行到哪个节点哪个节点要高亮, 而且画布要跳到这个节点 ——
-        #   现在画布太大了, 我找不到单步节点到底在哪里」→ 跟随开关(默认开) + 定位 + 全览三件套
-        self.chk_follow_step = QCheckBox("🎯 跟随单步")
-        self.chk_follow_step.setChecked(True)
-        self.chk_follow_step.setToolTip("勾选 (默认) = ⏭单步/右键运行节点时, 画布自动平移到该节点并调到看得清的缩放;\n"
-                                        "取消勾选 = 画布不动, 只在终端报出当前节点 (想自己看全景时用)")
-        tl.addWidget(self.chk_follow_step)
-        # 🧮 2026-10-10 老倪: 「每次打开状态空间工程, 屏幕中心就是这个节点 (流形引擎)」
-        #   核心 = 流形引擎 → 打开/加载工程后自动居中它 (受本开关控制, 想看别处可关)
-        self.chk_core_center = QCheckBox("🧮 核心居中")
-        self.chk_core_center.setChecked(True)
-        self.chk_core_center.setToolTip("勾选 (默认) = 每次打开/加载状态空间工程, 视口自动居中到**系统核心节点**:"
-                                        "🧮 流形引擎 (琥珀金 · ◉核心);\n"
-                                        "取消勾选 = 打开后不动视口 (画布停在原处)\n"
-                                        "快捷键 Ctrl+Shift+C 随时手动居中核心")
-        tl.addWidget(self.chk_core_center)
+        # 🗑 2026-10-21 老倪: 「删掉 simulink 画布 跟随单步 核心居中 两个按钮」+「整体按钮向左移动, 左侧对齐」
+        #   两个勾选框从工具栏撤掉 (它们原来占住最左两格 ⇒ 剩下的按钮整体右移)。
+        #   **能力没删**: 跟随单步默认开 (代码里 getattr(self,"chk_follow_step",None) is None ⇒ 视为开),
+        #   核心居中默认开 (同理), 键盘 Ctrl+L 跳当前单步节点 / Ctrl+Shift+C 居中核心仍可用。
         # 🗑 2026-10-09 老倪: 工具栏「📍定位节点 / 🏠全览 / 🧾节点实现审计」按钮删除。
         #   状态空间工程需要这三件事 → **在代码里给快捷键** (不占按钮):
         #   Ctrl+L 跳到当前单步节点 · Ctrl+0 全览 · Ctrl+Shift+A 节点实现审计
@@ -6217,6 +6205,17 @@ class SimulinkModule(QWidget):
         # 拖动只画分割线, 松手后完整重绘, 无残影
         self._v_split = QSplitter(Qt.Vertical)
         self._v_split.setOpaqueResize(False)
+        # 2026-10-21 老倪: 「日志区怎么无法用鼠标向上拖动调高」—— 竖向手柄原来没设宽/没样式 (只有 ~4px 且和
+        #   背景同色), 加上前面 max==min==46 的死钉 ⇒ 拖不动。这里手柄给 8px + 可见色, 不许拖成 0 高。
+        try:
+            self._v_split.setHandleWidth(8)
+            self._v_split.setChildrenCollapsible(False)
+            self._v_split.setStyleSheet(
+                "QSplitter::handle:vertical{background:#c9d1d9;border-top:1px solid #d0d7de;}"
+                "QSplitter::handle:vertical:hover{background:#58a6ff;}"
+                "QSplitter::handle:vertical:pressed{background:#1f6feb;}")
+        except Exception:                                                        # noqa: BLE001
+            pass
         self._v_split.addWidget(body)
         outer.addWidget(self._v_split, 1)
 
@@ -6268,12 +6267,14 @@ class SimulinkModule(QWidget):
         # 🐛 2026-08-18 老倪: 终端文字灰色看不清 → 固定暗底白字 (switch_theme 跳过, 见下)
         self.log_box.setStyleSheet("background:#0d1117; color:#ffffff; border:none; border-top:1px solid #30363d; font-size:10pt; font-family:Consolas;")
         _lp.addWidget(self.log_box)
-        # 日志面板放进垂直 splitter (主体上方), 初始: 主体高, 日志 160px
-        # 🗜 2026-10-16 老倪: 「万有引力表格最下面一行看不到 / 太阳系又变矮了」—— 高度从这儿出:
-        #   日志面板原来吃掉 ~105px(比设的 60 大) ⇒ 钉成 46px (够看一行), 省下的全给右栏 M 页。
+        # 日志面板放进垂直 splitter (主体上方)
+        # 🗜 2026-10-16 曾把高度钉成 46px (给右栏 M 页腾地方) ⇒ 2026-10-21 老倪:
+        #   「下方的日志区怎么无法用鼠标向上拖动调高了? 现在只剩一行的显示」
+        #   根因就是那对 setMaximumHeight/setMinimumHeight(46): max==min 时 splitter 手柄**拖不动**。
+        #   改回: 最小一行高 (28), 不设上限 ⇒ 鼠标随便往上拖; 初始给 160px。
         try:
-            self._log_panel.setMaximumHeight(46)
-            self._log_panel.setMinimumHeight(46)
+            self._log_panel.setMinimumHeight(28)
+            self._log_panel.setMaximumHeight(16777215)
         except Exception:                                                        # noqa: BLE001
             pass
         self._v_split.addWidget(self._log_panel)
@@ -6283,7 +6284,7 @@ class SimulinkModule(QWidget):
             # 🗜 2026-10-16 老倪: 「万有引力在当前窗口显示不全, 一动就上下滚」—— 根因: 主体只分到 560px,
             #   M 页视口仅 ~450px, 装不下「太阳系 + 12 行表 + 页脚」。⇒ 默认把高度还给主体 (日志压到 150),
             #   日志仍可拖/可折叠 (◀ 按钮)。实测 M 页视口 450 → ~700 ⇒ 整页装下, 不用滚。
-            self._v_split.setSizes([1100, 60])
+            self._v_split.setSizes([1100, 160])
         except Exception:
             pass
         # 🎨 应用当前主题 (QSS 硬编码为浅色模板, 构建后按 _CUR_THEME 重设为深/浅)
