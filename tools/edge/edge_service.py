@@ -193,6 +193,19 @@ def _disk_mounts():
     return out
 
 
+def _dev_in_use(dev, window_s=3.0):
+    """该设备最近 window_s 内有没有真在推理 (流水线计数 / 单帧请求, 任一即可)。"""
+    now = time.time()
+    st = (PIPE.get("stat") or {}).get(dev) or {}
+    if st.get("last_t") and (now - float(st["last_t"])) <= window_s:
+        return True
+    ts = (STATE.get("dev_req") or {}).get(dev)
+    try:
+        return bool(ts) and (now - float(ts)) <= window_s
+    except Exception:                                                 # noqa: BLE001
+        return False
+
+
 def _hw():
     """动态占用 + 静态身份/算力 一起给 (字段名跟主节点 status_hub 的口径对齐)。"""
     hw = {"host": _STATIC.get("host") or os.uname().nodename,
@@ -231,8 +244,11 @@ def _hw():
         "cpu": {"name": (_STATIC.get("cpu") or {}).get("model"),
                 "tops_int8": None, "unit": "threads",
                 "cap": (_STATIC.get("cpu") or {}).get("mhz_max")},
-        "gpu": dict((_STATIC.get("gpu") or {}), in_use=Handler.meta.get("device") == "GPU"),
-        "npu": dict((_STATIC.get("npu") or {}), in_use=Handler.meta.get("device") == "NPU"),
+        # in_use = 最近 3s 真在算 (流水线 worker 或最近一次 /detect), 不看命令行 --device。
+        # 2026-10-21 修真: 原来只看 --device ⇒ 流水线把 GPU 跑到 96% 占空, /health 还报 gpu.in_use=false
+        # (界面把在干活的 iGPU 显示成「当前空闲」)。
+        "gpu": dict((_STATIC.get("gpu") or {}), in_use=_dev_in_use("GPU")),
+        "npu": dict((_STATIC.get("npu") or {}), in_use=_dev_in_use("NPU")),
     }
     return hw
 
@@ -412,6 +428,7 @@ def _worker(dev, plan, stop_ev):
                     st["n"] += 1
                     st["busy_s"] += dt
                     st["last_ms"] = round(dt * 1000.0, 2)
+                    st["last_t"] = time.time()
                     st["err"] = None
             except Exception as e:                                    # noqa: BLE001
                 st["err"] = "%s: %s" % (type(e).__name__, str(e)[:120])
@@ -459,7 +476,7 @@ def _pipe_start(plan, img_path=None, streams=1, hint=False):
             x, s = _sat_input(mname or Handler.meta["xml"], img_path)
             Handler.sat_in[(dev, os.path.basename(_model_path(mname or Handler.meta["xml"])))] = x
             src["%s:%s" % (dev, mname)] = s
-        PIPE["stat"][dev] = {"n": 0, "busy_s": 0.0, "last_ms": None, "err": None,
+        PIPE["stat"][dev] = {"n": 0, "busy_s": 0.0, "last_ms": None, "err": None, "last_t": 0.0,
                              "src": ",".join(sorted({v for k2, v in src.items() if k2.startswith(dev + ":")}))}
         for i in range(strm.get(dev, 1)):
             th = threading.Thread(target=_worker, args=(dev, list(models), PIPE["stop"]), daemon=True,
