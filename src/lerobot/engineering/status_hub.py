@@ -675,6 +675,51 @@ def profile_hardware(key: str) -> dict:
     return hw
 
 
+_COMPUTE_CACHE = {"mod": None, "mtime": -1.0}
+
+
+def _zmax_compute():
+    """按路径加载 tools/zmax_compute_mode.py (档位→算力用法的唯一决策部署口)。"""
+    import importlib.util
+    p = os.path.join(ROOT, "tools", "zmax_compute_mode.py")
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return None
+    if _COMPUTE_CACHE["mod"] is not None and _COMPUTE_CACHE["mtime"] == mt:
+        return _COMPUTE_CACHE["mod"]
+    try:
+        spec = importlib.util.spec_from_file_location("zmax_compute_mode_ro", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except Exception:                                                 # noqa: BLE001
+        return None
+    _COMPUTE_CACHE.update(mod=mod, mtime=mt)
+    return mod
+
+
+def collect_compute(profile=None, edge=None) -> dict:
+    """档位 → 算力用法: 推理落哪台 (intel 优先, 无则回 4060) / 线程 / 训练 / VSCode。
+
+    决策本身不在这里, 在 tools/zmax_compute_mode.py::policy(); 这里只把**同一次**采集到的
+    edge 结果喂给它, 免得一个刷新周期里对 intel 探两次活 (口径必须同源)。
+    """
+    key = str((profile or {}).get("key") or "550B")
+    mod = _zmax_compute()
+    if mod is None:
+        return {"ok": False, "product": key, "err": "读不到 tools/zmax_compute_mode.py", "ts": time.time()}
+    try:
+        st = mod.policy(key, edge=(edge if isinstance(edge, dict) and edge else None))
+    except Exception as e:                                            # noqa: BLE001
+        return {"ok": False, "product": key, "err": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                "ts": time.time()}
+    return {"ok": True, "product": key, "role": st.get("role"),
+            "infer": st.get("infer"), "threads": st.get("threads"),
+            "single_thread": st.get("single_thread"), "train": st.get("train"),
+            "vscode": st.get("vscode"), "intel_online": st.get("intel_online"),
+            "summary": st.get("summary"), "ts": time.time()}
+
+
 def host_hardware() -> str:
     """本机实际算力载体 ('4060' / 'intel' / 'local')。"""
     zp = _zmax_profile()
@@ -706,11 +751,14 @@ def collect_profile() -> dict:
     hw = profile_hardware(key)
     host_hw = host_hardware()
     want = str(hw.get("key") or "")
-    hw_ok = True if (not want or want == "local" or host_hw == "local") else (want == host_hw)
+    try:
+        hw_ok = bool(zp.hardware_ok(key)) if zp is not None else True
+    except Exception:                                                 # noqa: BLE001
+        hw_ok = True if (not want or want == "local" or host_hw == "local") else (want == host_hw)
     return {"key": key, "role": role, "summary": summ, "caps": caps,
             "hardware": hw.get("key"), "hw_label": hw.get("label"), "mode": hw.get("usage") or "",
             "host_hardware": host_hw, "hw_ok": hw_ok,
-            "hw_warn": "" if hw_ok else ("档位 %s 要求 %s, 本机是 %s: 工具/话题按 %s 档收窄"
+            "hw_warn": "" if hw_ok else ("档位 %s 要本机 %s, 本机是 %s: 工具/话题按 %s 档收窄"
                                          % (key, hw.get("label") or want, host_hw, key)),
             "source": (zp.product_json() if zp is not None else ""), "ts": time.time()}
 
@@ -866,6 +914,11 @@ def _collect_all() -> dict:
     except Exception as e:                                            # noqa: BLE001
         d["profile"] = {"key": "550B", "err": str(e)[:120], "ts": time.time()}
         d["errs"].append("profile")
+    try:
+        d["compute"] = collect_compute(d.get("profile"), d.get("edge"))
+    except Exception as e:                                            # noqa: BLE001
+        d["compute"] = {"ok": False, "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("compute")
     try:
         d["cams"] = collect_cams()
     except Exception as e:                                            # noqa: BLE001

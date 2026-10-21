@@ -484,7 +484,13 @@ class StatusPanel(QWidget):
             self.update()
 
     def switch_profile(self, key):
-        """写真源 active_product (留 .bak + 日志)。界面立刻显示新档, 但**运行时能力要重启控制台才全身生效**. """
+        """写真源 active_product + 把档位交给算力决策部署口 (tools/zmax_compute_mode.py)。
+
+        老倪 2026-10-21: 选 550C → intel 部署模式 (显示 intel 硬件); 选 550B → 自动起 VSCode +
+        单线程 debug, 推理 intel 优先 / 无 intel 自动回 4060; 选 550A → 自动起 4060 全模型训练,
+        算力不足时用满所有能拿到的资源 (推理挪 intel 腾卡)。
+        写档是同步的 (立刻回读); 起 VSCode / 起训练 / 拉隧道 放后台线程, 不冻结界面。
+        """
         try:
             from lerobot.engineering import status_hub as _hub
             r = _hub.set_profile(key)
@@ -492,8 +498,37 @@ class StatusPanel(QWidget):
             r = {"ok": False, "err": "%s: %s" % (type(ex).__name__, str(ex)[:90]), "key": key}
         if r.get("ok"):
             self._sig = None
+            self._apply_compute_async(key)
             self.update()
         return r
+
+    def _compute_mod(self):
+        """按路径加载 tools/zmax_compute_mode.py (不复制判档/决策逻辑)。"""
+        import importlib.util
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "zmax_compute_mode.py")
+        spec = importlib.util.spec_from_file_location("zmax_compute_mode_gui", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _apply_compute_async(self, key):
+        """后台执行按档动作 (起隧道/探 intel / 起 VSCode / 起训练), 结果只落一句人话。"""
+        def _run():
+            try:
+                res = self._compute_mod().apply(key)
+                acts = " · ".join("%s %s" % (a.get("act"), "OK" if a.get("ok") else "FAIL")
+                                  for a in (res.get("actions") or []))
+                self._compute_note = "%s%s" % ((res["state"].get("summary") or ""),
+                                               (" | " + acts) if acts else "")
+            except Exception as ex:                                    # noqa: BLE001
+                self._compute_note = "算力部署异常: %s: %s" % (type(ex).__name__, str(ex)[:100])
+            try:
+                self.update()
+            except Exception:                                          # noqa: BLE001
+                pass
+        import threading
+        threading.Thread(target=_run, name="zmax-compute-apply", daemon=True).start()
 
     def _popup_profile_menu(self, gpos):
         cur = self.current()
@@ -592,6 +627,17 @@ class StatusPanel(QWidget):
         L.append("内存 %s/%s GB · 磁盘 %s/%s GB (%s%%)" % (
             mem.get("used_gb", "—"), mem.get("total_gb", "—"),
             dsk.get("used_gb", "—"), dsk.get("total_gb", "—"), dsk.get("pct", "—")))
+        cp = (self._obj or {}).get("compute") if isinstance(self._obj, dict) else None
+        if isinstance(cp, dict) and cp.get("ok"):
+            L.append("算力用法 %s" % (cp.get("summary") or "—"))
+            _inf = cp.get("infer") or {}
+            if _inf:
+                L.append("  推理 → %s: %s" % (_inf.get("target"), _inf.get("why")))
+            _tr = cp.get("train") or {}
+            if _tr.get("why"):
+                L.append("  训练 → %s: %s" % (_tr.get("target") or "无", _tr.get("why")))
+        if getattr(self, "_compute_note", ""):
+            L.append("  本次切换: %s" % self._compute_note)
         pr = self._profile()
         if pr:
             caps = pr.get("caps") or {}

@@ -177,7 +177,13 @@ def hardware(prod=None):
 
 
 def host_hardware():
-    """本机实际算力载体: '4060' / 'intel' / 其它 nvidia 型号 / 'local'（判「档位与硬件是否相符」用）。"""
+    """本机实际算力载体: '4060' / 'intel' / 其它 nvidia 型号 / 'local'（判「档位与硬件是否相符」用）。
+
+    `ZMAX_HOST_HW` 可强制覆盖, 只给判据/子进程自测用 (不碰现场真实探测)。
+    """
+    _f = (os.environ.get("ZMAX_HOST_HW") or "").strip()
+    if _f:
+        return _f
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                              capture_output=True, text=True, timeout=3).stdout or ""
@@ -201,10 +207,15 @@ def host_hardware():
 
 
 def hardware_ok(prod=None):
-    """档位要求的载体 == 本机实际载体? 判不出来 (want/got 有 'local') 一律不判错。"""
+    """本机算力是否满足该档?
+
+    · 550A / 550B 的算力在**本机 4060** ⇒ 必须 host 相符 (在 intel 上挂 550A 是真缺口)。
+    · 550C 的算力在**远端 intel**, 本机只是操作端 ⇒ 本机永远不算缺口;
+      intel 通不通由 tools/zmax_compute_mode.py 探活判 (那里的 intel_online 才是真判据)。
+    """
     want = str(hardware(prod).get("key") or "")
     got = host_hardware()
-    if not want or want == "local" or got == "local":
+    if not want or want == "local" or got == "local" or want == "intel":
         return True
     return want == got
 
@@ -228,8 +239,9 @@ def summary(prod=None):
     p = dev_profile(prod)
     hw = hardware(prod)
     ok = hardware_ok(prod)
-    return ("%s %s | 硬件=%s(%s)%s | topics=%s comm=%s 信号分析=%s 3D场景=%s VSCode=%s 远程旁路=%s 算法=%s"
+    return ("%s %s | 硬件=%s(%s)%s%s | topics=%s comm=%s 信号分析=%s 3D场景=%s VSCode=%s 远程旁路=%s 算法=%s"
             % (p.get("product"), p.get("role"), hw.get("key"), hw.get("label"),
+               "·远端" if str(hw.get("key")) == "intel" else "",
                "" if ok else " ⚠本机=%s 不符" % host_hardware(),
                topics_mode(prod), comm_mode(prod),
                gui_on("signal_analysis", prod), gui_on("scene_3d", prod),

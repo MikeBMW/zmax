@@ -124,14 +124,19 @@ def main() -> int:
            "%s 读取口 hardware() → %s(%s)" % (k, h.get("key"), h.get("label")))
     ck(bool(zp.host_hardware()), "本机算力载体探测 = %s (当前档 %s)" % (zp.host_hardware(), zp.product()))
     code = ("import sys; sys.path.insert(0, %r); import zmax_profile as zp; "
-            "print(zp.hardware_ok('550C'), zp.hardware('550C')['key'], zp.host_hardware())"
+            "print(zp.hardware_ok('550A'), zp.hardware('550A')['key'], zp.host_hardware())"
             % os.path.join(ROOT, "tools"))
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       env=dict(os.environ, ZMAX_PRODUCT="550C"), timeout=60)
+                       env=dict(os.environ, ZMAX_PRODUCT="550A", ZMAX_HOST_HW="intel"), timeout=60)
     got = (r.stdout or "").strip()
-    parts = got.split()
-    ck(len(parts) == 3 and parts[0] == ("True" if parts[1] == parts[2] else "False"),
-       "不符判定自检 (C档/本机): hw_ok key host = %s" % got)
+    ck(got == "False 4060 intel", "不符判定自检 (550A 挂在 intel 上必须判 False): %s" % got)
+    code2 = ("import sys; sys.path.insert(0, %r); import zmax_profile as zp; "
+             "print(zp.hardware_ok('550C'), zp.hardware('550C')['key'], zp.host_hardware())"
+             % os.path.join(ROOT, "tools"))
+    r2 = subprocess.run([sys.executable, "-c", code2], capture_output=True, text=True,
+                        env=dict(os.environ, ZMAX_PRODUCT="550C"), timeout=60)
+    got2 = (r2.stdout or "").strip()
+    ck(got2.startswith("True"), "550C 在本机 4060 上不算缺口 (算力在远端 intel, 可达性看 compute_mode): %s" % got2)
 
     print("\n" + "=" * 96)
     print("结论: %s" % ("✅ 全过 — 三产品分工已写进真源、有单一读取口、四处已接线、子进程实测按档取值"
