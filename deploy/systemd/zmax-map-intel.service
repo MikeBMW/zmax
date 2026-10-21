@@ -1,0 +1,30 @@
+[Unit]
+Description=Z-MAX 建图服务 (Intel 端) — 已知位姿建图 + HTTP 地图服务 :8801
+Documentation=file:///home/intel/zmax_map/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel/zmax_map
+Environment=HOME=/home/intel
+Environment=PYTHONUNBUFFERED=1
+# 路径覆盖: Intel 上目录结构与 4060 不同 (2026-10-22 踩过硬编码)
+Environment=ZMAX_MAP_OUT=/home/intel/zmax_map/map
+Environment=ZMAX_MAP_DEPTH_DIR=/home/intel/zmax_map/data
+Environment=ZMAX_MAP_GS_ASSETS=/home/intel/zmax_map/gs_assets
+Environment=ZMAX_MAP_MIN_DEPTH_MM=50
+ExecStart=/usr/bin/python3 -u /home/intel/zmax_map/tools/slam_map_service.py --port 8801
+Restart=always
+RestartSec=5
+# 建图有 CPU 峰值, 但不该吃满 16 核拖慢别的服务
+Nice=5
+CPUQuota=300%
+MemoryMax=6G
+StandardOutput=append:/home/intel/zmax_map/map_svc.log
+StandardError=append:/home/intel/zmax_map/map_svc.log
+
+[Install]
+WantedBy=multi-user.target
