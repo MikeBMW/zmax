@@ -97,10 +97,23 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 
 1. **代码**: 只 `git add` 本轮真改过的源码 (新 tools/ 子目录、判据、gui 文件), **不 add** 一次性的
    `*_tmp.py` / probe 脚本; 然后 `git commit` + `git push origin HEAD`, 回读新 commit sha 再报。
+   🔴 **先确认这段时间有没有别人在同一个仓提交**: `git log --graph --oneline -12` + `git status -sb`。
+   收工时 `HEAD` 顶上常挂着**不是自己写的**提交(并行 session / cron agent 在同一仓干活, 实测几小时里插进来十来条),
+   而 `git status` 干净只说明"没有未提交改动", **不代表只有我在动这个仓**。两件事必做:
+   ① 本地领先远端(`## main...origin/main [ahead N]`)的提交要 push, 别让工作留在本机等关机;
+   ② 报告里点名"这几条不是我提的 + 它们做了什么", 不揽功, 也不要把别人没做完的改动当已完成汇报。
 2. **状态快照** (这才是数据): 进 `data/database/zmax/archive/state_<date>_preoff/` 拷 `sources/config` 全量、
    `zmax_engineering.db`、`zmax_space.proj`、`config_meta.json`, 再拷一份 `/etc/systemd/system/zmax-*.service`
    + `~/.config/systemd/user/zmax-*.service` (下次重建环境靠它); 最后 `tar czf archive/zmax_state_<ts>.tar.gz`,
    报出 tar 体积与文件数。
+   - **场景/画布数据别手搓打包**: 有现成 `./gui-venv311/bin/python tools/scene_data_snapshot.py` ——
+     一步出 `zmax_data/snapshots/scene_<ts>.tar.gz` + 同目录 `MANIFEST_<ts>.json`(逐文件 sha256 前 16 位),
+     末尾自带 `--verify` 自校验; 收尾再跑一次 `--verify` 把 sha 报给用户(实测 49 文件 / sha[:16])。
+   - **权重与模型产物清单按 `zmax_data/models/` 找, 不是 `outputs/`**: 训练产物落在 `zmax_data/models/<name>_<ts>/`
+     (如 `l5_vlm_lora_<ts>/adapter_model.safetensors`), `find outputs` 会得 0 条然后误报"今天没产出权重"。
+     清单写 `路径 | 字节 | mtime`, 大件不拷。
+   - **归档里要引用的远端产物先探活**: 另一台机器(如 intel)上的质量 json / 地图 png 先 `ping`+`ssh` 一次再 `scp`;
+     对端已掉线就把该项标成"在远端磁盘, 未取回", **绝不静默略过** —— 否则清单看起来齐全, 实际少件。
 3. **工程库重建并核对**: `./gui-venv311/bin/python tools/engineering_db.py build` 然后 `... check`,
    必须看到"判据全绿"。改了 config/产品真源不重建 = 下次 check 报漂移。
 4. **开机自启清单**: 逐个 `systemctl is-active/is-enabled` (含 `systemctl --user` 的 GUI 服务),
@@ -108,6 +121,14 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    (否则重启就没了, 而他会以为还在)。
 5. **关机影响面必须先讲**: 哪些公网/远程链路跑在这台机器上 (隧道、反代、docker 里的 ROS 节点),
    一关机就死; 哪些在别的机器上, 不受影响。让他出门前就知道了, 不要等他到了现场才发现 502。
+6. **把"开机后必须手动跑一次"的东西单独列出来**, 别混进 enabled 服务清单里：
+   本仓 `tools/boot_restore.sh` **没有开机自启**(不在 systemd unit、也不在 crontab) —— 它才是补起
+   l5_live_mark / vl_safety_monitor / 深度源 / 实时标注器的入口 ⇒ 台账上写一句「重启后手动
+   `bash tools/boot_restore.sh local`」, 否则用户开机看到图不刷新、标注不动。
+   验收口径: `systemctl is-enabled` 的那批会自己起, `boot_restore` 那批不会 —— 两类分开写。
+7. **已知在崩的东西先定性, 并说清它重启后依旧会崩**（实测两容器 `RuntimeError: network: network connection`
+   = 本机没接产线网、连不上机器人控制器）⇒ 否则开机后他一眼看到 `Restarting` 就当成新故障又查一轮。
+   同时点名**另一台机器上没在跑的节点**(如 Orin 的取流节点)不会因本机重启而回来。
 
 ### ⑤ 「同步 550 ABC」= 两端逐字节对齐，方向靠 sha + diff 判
 
@@ -148,6 +169,7 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 | changelog 写成过程叙述 | 下一版读的人不知道改了什么、根因在哪 | 一行: "做了什么 + 为什么(根因)", 不写排查过程 |
 | 版本号自选 | 与用户口径冲突 | 只按用户给的数字; 没给就只改内容 |
 | 同步多端时默认“仓库最新” | 把远端较新的修复盖掉（反向同理） | 先两侧 sha256，不等就抓回远端 diff 看超集，只拷较新那个方向 |
+| 归档清单把自己也算进去 | `sha256sum -c` 必 FAIL(清单写入时自己已被截断) | `find . -type f ! -name MANIFEST.sha256 -exec sha256sum {} \; > MANIFEST.sha256`, 再 `-c --quiet` 复核 |
 | 归档清单靠手写 | 改了文件忘了加进 CODE 表，归档里少东西 | 用 `git diff --name-only v<上一版>..HEAD` 生成 CODE 列表，再人工剔除一次性的 `*_tmp.py` |
 
 ## 相关

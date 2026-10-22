@@ -25,7 +25,7 @@ metadata:
 ## 数据源 (本机实测, 只读, 不动在役链路)
 | 用途 | 路径/端点 | 实测 |
 |---|---|---|
-| 臂上 D405 图 | `http://192.168.23.66:8792/frame.jpg` (Orin `rs_fast_node` 压好的 JPEG) | 200 · ~27KB · **640x480** · 可 8~30Hz |
+| 臂上 D405 图 | 工位机侧走 **8793 中继** `http://127.0.0.1:8793/snapshot/arm.jpg`; `http://192.168.23.66:8792/frame.jpg` 只在 Orin 本机可达 | 中继 200 · ~28KB · **640x480**; Orin 那个端点绑 127.0.0.1, 从工位机 curl 是 connection refused ⇒ `gs_capture.py --url` 指中继 |
 | TCP 真值位姿 | `~/zmax_data/rokae_sdk/tcp_out/latest.json` | 50Hz; 字段 `x y z rx ry rz qx qy qz qw` + `ts`/`t` + `frame:"base_link"` + `joint[12]` |
 | 手眼 | `~/zmax_data/handeye_state.json` | `T_cam2tool`(4x4) + `resid_trans_mm_rms`/`resid_rot_deg_rms` + `views` |
 | **内参 K + 畸变** | 仓库 `models/real_cam_calib.json` | `K=[394.0623,393.4724,cx 318.4436,cy 238.6584]` · `dist` 5 参数 · `image_size 640x480` · `K_src`=ROS `camera_info`; ⚠️ 它的 `T_base_cam`/`plane_z` 是 **null**(要自己用 `handeye_state.json` 算) |
@@ -39,9 +39,13 @@ metadata:
 ## 流程
 1. **先立采集, 再谈重建**。数据错过就没了: 用户说“一会我就动”时, 立刻起采集后台, 再去做环境/训练/接线。
    收工用**会话目录里的 `STOP` 文件**(优雅停, 落 `capture_summary.json`); 别 kill。
+   **采集进行中就能判"人到底动没动"**(不用等 STOP): 读 `frames.jsonl` 的 `pose_before`, 对 x/y/z 求 `np.ptp` ——
+   实测 917 行 / 73 张唯一图但 `ptp=(0,0,0)` = 同一视角连拍, 训练只会出浅浮雕 ⇒ 当场让人挪 (累计跨度 ≥150mm 才有视差)。
+   别把"帧数够了"当"数据够了": 唯帧数与视差是两个独立门。
    ⚠️ **同一会话目录里多轮采集必须续帧号**: 每轮从 0 起编号会让第 N 轮的文件名覆盖第 N-1 轮
    (`frame_000001.jpg…`) ⇒ 只剩最后一轮的画面(多轮建图尤其致命)。判据 = 两轮文件名不重叠(或会话里唯一图数 ≈
    各轮之和)。
+   无人值守时(臂一动就采图+记位姿、攒够自己送训)的守护进程判据与三个必踩 bug 见 `references/autocap-daemon.md`。
 2. **采集期间给操作员动作口径**(直接发给他, 别省略): ~30~80mm/s; 加**高度 + 俯仰/侧移**变化, 别只平移一条基线; 相机主要对着工作台/工件区; D405 最近 ~7cm 别贴死; 停在一处不用停久(重复视角无用)。
 3. **配对必须用单调时钟**: 墙钟会被 NTP 回拨(本机差 8h)。每帧在**取图前后各读一次位姿** + 记 `fetch_ms`/`pose_t_gap_ms`, 后处理按单调时刻最近邻取; **负帧龄一律拒**。
 4. **重建**: 逐帧算 `T_base_cam`, 导出后训练 3DGS。公式/schema/导出格式见 `references/capture-and-pose-math.md`;
@@ -78,10 +82,9 @@ metadata:
 | 把纯 255 过曝面/强反光金属当训练主材 | 3DGS 高斯糊成一片、看不出结构 | 过曝区无梯度: 降曝光/缩光圈, 或纯 255 区掩掉不参与损失; 必要时加深度监督 |
 | 采集时把机械臂自身也拍进画面 | 臂被烤进场景, 资材里有幽灵臂 | 相机在臂上时它只对静态场景 ✓; 若其它相机/臂体入镜, 按帧位姿 mask 或 diffusion inpainting 抹掉 |
 | 没先拿 K 就开训 | 跑完才发现不可用, 白烧 GPU | 采集第一天就把 K 存进 `session_meta`; 训练前先校分辨率与 K |
-| 把上万帧连拍直接喂进训练 | 训练慢/显存吃紧而视角几乎不增 | **先按 6D 位姿最远点贪心抽帧**(平移 + 0.15×朝向差) 到 ~300 张 ——
+| 把上万帧连拍直接喂进训练 | 训练慢/显存吃紧而视角几乎不增 | **先按 6D 位姿最远点贪心抽帧**(平移 + 0.15×朝向差) 到 ~300 张 —— 同视角连拍对重建零贡献。现成工具 `tools/gs_dataset.py`(去畸变 + 选帧 + 出 `cameras.json`/`transforms.json`/`meta.json`) |
 | **深度图无效值 65535 没挡** | 点云 bbox 被撑到 6.8m×5.6m×6.2m(实际工作台 ~2.3m)；离群剔除只剔 1.8% | D405 无效深度编码 **65535**×0.1mm=6553.5mm；有效判据必须**双端**: `(z > 50) & (z < 2000)`(`tools/slam_map_service.py` 已加 `ZMAX_MAP_MAX_DEPTH_MM`, 默认 2000)。实测同一帧: 232308 点/bbox 6.8m → 217375 点/bbox 2.3m |
-| 在 intel(Arc) 上建图/训 3DGS | — | intel 侧有两条现成服务: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) 与 `zmax-mobile-map.service`(单目 SfM), 纯 CPU、不占 4060。3DGS 训练需 torch-xpu + **gsplat-xpu(SYCL 后端，官方支持 Arc B390)**；只改 `gs_train.py` 的设备选择不够——还要看 torch 轮能不能下下来(实测 intel 到 download.pytorch.org ~50KB/s, 860MB+600MB 是小时级) |
-同视角连拍对重建零贡献。现成工具 `tools/gs_dataset.py`(去畸变 + 选帧 + 出 `cameras.json`/`transforms.json`/`meta.json`) |
+| 想「在 intel(Arc) 上训 3DGS，不占 4060」 | 以为「Arc 上 torch 可用」就等于「能训 3DGS」，去下 860MB torch 轮再发现训不了 | **两件事要分开判**: ①intel 上 torch-xpu + ultralytics 确实可用(实测 2.7.1+xpu: `xpu.is_available()=True`、`get_device_name(0)=Intel(R) Arc(TM) B390 GPU`、矩阵乘真算过、ultralytics 也认这个 device) ②但 **pypi 的 `gsplat` 包不是 SYCL 路线**: `gsplat/cuda/_backend.py` 的门就是 `cuda_toolkit_available()`(只查 nvcc/CUDA_HOME), 装了 `intel-sycl-rt` 让 `No CUDA toolkit found` 警告消失之后 `_C` 仍是 None、`rasterization` 照报 `'NoneType' ... CameraModelType` ⇒ **别在 pypi 轮上反复试**, 要 SYCL 只能用下面的轮 ③但 **官方有 SYCL 路线, 不是只能 CUDA**: `isl-org/gsplat` 分支 `sycl_code_integration` + `docs/Intel_XPU.md`, 预编译轮在 `https://isl-org.github.io/gsplat/whl/gsplat`(索引实测为 `gsplat-1.5.3+pt210xpu-cp310..cp314-linux/win`)。**轮名里的 `pt210xpu` 必须与 torch 对齐 ⇒ 装 `torch==2.10.0+xpu`**, 装 2.13/2.14 会 ABI 不匹配(白下 800MB+); 两者是绑定关系, 不是"装新不装旧"。编译器: Ubuntu 的 oneAPI apt 源已配好时直接 `sudo apt-get install intel-oneapi-compiler-dpcpp-cpp`, 装完核 `/opt/intel/oneapi/compiler/latest/bin/icpx` 存在(只有 `intel-oneapi-runtime-*` 不算装好)。远端密码 sudo 用 `echo <pw> | sudo -S <cmd>`, 不要加 `-p ''`(会报 sudo 用法错)。⚠️ 端到端训练**尚未**在本机跑通 ⇒ 只报"装到哪一步/哪步报什么", 不许说"intel 能训 3DGS 了"。**建图(非 3DGS)在 intel 上是现成的**: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) + `zmax-mobile-map.service`(单片 SfM), 纯 CPU、不占 4060；建库/质检也已在 intel CPU 跑通(300 帧/174 视点/5 项 PASS) |
 | **采集端每取必存**(老版) | 118586 次取图只对应 5830 张唯一画面(重复 95.1%), 且同一画面被存成多份、每份配**不同** TCP 位姿(最大差 193.7mm) = 矛盾监督 ⇒ 训练视角 PSNR 16.5dB、留出 11~13dB(**低于"填常数"平凡基线**) | 采集端按内容 md5 去重(内容没变不落盘, 重复只在 jsonl 记一行); 建库端再兜一层并把位姿取该图**首现时刻** |
 | **选帧贪心忘了把选中点自己归零** (`gs_dataset.select`) | 数据集 `unique_images` FAIL(实测 唯一图 **180/400**)，报错话术是"同图配多位姿"，把人往"走得不够好/走太快"上带；数据集里 **400 帧有 221 帧是同一张图**；训出来 PSNR 平在 15dB(正常 33dB+)，怎么改走法都不涨 | 最远点贪心里 `sel.append(nxt)` 后**必须 `dmin[nxt] = 0.0`** —— 否则只要"新点到最后一点"的距离 `d[nxt]` 比 `dmin[nxt]` 大，argmax 每轮都返回同一个索引。判据(10 秒): 跑 `select()` 后断言 `len(set(sel)) == len(sel)`；或读数据集 `cameras.json` 的 `src`，**唯一 src 数必须 == 帧数**。⚠️ 症状与"数据脏"完全同名，先查这一条再叫人重走 |
 | 把 "0.0" 当假值做兜底 (`x or 999.0`) | **最理想**的测量值被判成最差: 同一位姿不同时刻画面差 = 0.0(=最一致) 被 `0.0 or 999.0` 替成 999 ⇒ `static_scene` FAIL，干净数据也过不了门(实测同一场数值在 0.4↔999 之间跳) | 兜底一律写成 `v = d.get(k)` + `if v is None: v = 999.0` —— **不要用 `or`**(0.0/0/[]/'' 都是假值)。凡是"0 是最优"的指标(画面差/误差/偏差)都要这么写 |

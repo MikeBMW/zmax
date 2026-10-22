@@ -59,6 +59,17 @@ tail -5 "$LOG"                     # 确认已进入 ② 并开始报 seed/traj
 - GPU 全负荷举证: 训练中连采 10 次 `nvidia-smi --query-gpu=utilization.gpu`，报**几次=100%**（实测 `0 73 100 99 100 0 100 100 100 100`），单点采样不算。
 - 仿真阶段每条轨迹报 `插深 0.0mm` 属常见: 不代表轨迹失败，但**必须在报告里单列**（否则等于把“未插入”写成“已插入”）。
 
+## 坑：L3 SmolVLA 会在中途"卡住"（不是跑得慢）
+症状：日志停在某个 step 不再增长（实测 90/150）、GPU util **0%** 但显存仍占 ~6.9 GB、主线程 **99.9% CPU 自旋**、其余线程全 idle。
+判据（三条同时满足就必须介入，别再等）：日志字节数 15 s 内的两次读取不变 + `nvidia-smi` util=0 且 power~11 W + 进程 STATE=R。
+```bash
+S1=$(stat -c%s $LOG); sleep 15; S2=$(stat -c%s $LOG)   # 相等 = 停
+py-spy dump --pid <train_pid>                          # 本机: ~/.hermes/tools/*/bin/py-spy
+```
+实测栈：`inputs_merger`(modeling_smolvlm.py:488) → `torch_compilable_check` → `_check_tensor_all_with` 的 `cond._is_all_true().item()`，即**卡在 CUDA 流同步自旋，不是判据为假**。
+诱因：内存压力（当时 swap 8.8 G 已用 / avail 9.4 G / 单进程 RES 8.6 G）。
+处置顺序：① 降 `num_workers` 到 4~8、停掉 studio.py/chromium 等非必需进程；② 给 L3 加墙钟守护（单步 ~5.4 s，150 步 ≈ 13.5 min；>25 min 无增长即判卡死 → 杀训练/记栈/跳过该头继续 L2、L5）；③ 别把整条编排压在这一个头上——它停了 `fullflow_tasks7.py` 会一起等，7 任务整体作废。
+
 ## 坑 (都实测踩过)
 1. **`collect_simreal_vla_data.py --target` 计的是成功轨迹数, 不是尝试数** — 失败 seed 每个还要空跑 ~20s
    (`tr["done"][-1]` 为假即「未完成, 跳过」)。target=24 时只出 8~13 条成功、白磨 4 分钟; **用 10**,

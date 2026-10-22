@@ -69,6 +69,9 @@ Orin 上的 `zmax-arm-sdk-bridge`（`/health` `/status`，端口在 bridge 脚�
   关节静止时 `jointPos` 的 Δ 本就该 ≈0，那是机械臂没动，不是数据冻住。
 - 报姿态用 **mm + 度**并换算出可读值；`flangeInBase` 前三数是米。同时报 `powerState / operateMode`（`PowerState.on` +
   `OperateMode.automatic` = 上电且自动模式，此时**任何动作都必须先走授权**）。
+- 本机的 `zmax_data/rokae_sdk/tcp_out/*.json` 只当**日志**，不当真值：`agent_heartbeat.json` 可以 `agent:"up"` 而
+  `state` 全是 `unknown`、`pose` 全 0、`ec:[{ec:263,message:"timeout"}]` —— 那是本机 SDK 会话断了（本机没有产线路由时必然如此），
+  机器人本身是好的。报数前先量 `latest.json` 的 mtime/age（上千秒即陈旧），真值一律从 Orin 的 39061 现读。
 
 ### 5. 周边设备：各用各的判活口
 | 设备 | 判活（只读） | 注意 |
@@ -113,6 +116,13 @@ sshpass -p <pw> ssh -J orin intel@192.168.23.70 'bash -s' < scripts/edge_intel_p
 
 ## 坑（都是花过时间的）
 
+- **分段探测脚本出报告前先 `bash -n`，并数段标题齐不齐**：段标题写成裸词（如历史残片 `hr 4.USB`）时 bash 报
+  `command not found` 但**继续往下跑** ⇒ 输出里凭空少了 4/5/6 段的标题，极易被误读成“那几项没数据/设备不在”。
+  定式：段标题一律 `echo '=== N. 项目'`；跑完先核对输出里 `=== 1.`…`=== N.` 都在，缺段就是脚本坏了，不是现场坏了。
+  ⚠️ **段标题里带括号（`hr 3.端口(${X})`）是硬语法错误**：报 `未预期的记号 "(" 附近有语法错误`，
+  整个脚本当场停 —— 输出里只剩前一两段，后面全空白。看到这条错误先修脚本再重跑，
+  别把"只有前两段"当成远端环境/设备不在（`bash -n <脚本>` 一条命令就能定案）。
+
 - **远程 sudo 不要用 `echo pw | sudo -S tee f <<EOF`**：管道和 heredoc 抢同一个 stdin，密码读不到 → 三次失败后报
   “N 次错误密码尝试”，看着像密码错。正确做法：本地 `write_file` → `scp` 到 `/tmp` → `echo pw | sudo -S install -m 755 /tmp/x /usr/local/bin/x`。
 - **改远端路由/单元后必须回读**：`systemctl is-enabled/is-active` + `ip route get <224.0.0.0/4 目标>` + 一次业务面实测
@@ -128,6 +138,17 @@ sshpass -p <pw> ssh -J orin intel@192.168.23.70 'bash -s' < scripts/edge_intel_p
   要 `systemctl cat <unit>` 看输出重定向，再去 tail 那个文件；否则会得出“服务没跑过”的错误结论。
 - **有状态服务别只看 `/health` 的字段自述**：`in_use`、`busy`、`online` 这类由服务自己算的标志位会和实测矛盾，
   先用两个会变的量（计数、fps、帧龄）对账，再决定信哪个。
+
+- **端口号不等于服务身份**：报“某端口没起 / 那是授权口”之前，先 `ss -ltnp | grep ':<port> '` 取 pid，再
+  `tr '\0' ' ' < /proc/<pid>/cmdline` 看真身。同一个端口号在本机和 Orin 上是两回事（本机 8793 是相机流的旁路口，
+  不是动作授权口）—— 只凭记忆里的端口号下结论，会把一条安全结论说错给用户。
+- **`ss` 里的 pid 会过期**：隧道/守护进程被重拉后 `/proc/<pid>/cmdline` 报 “No such file or directory”。
+  重跑一次 `ss -ltnp` 拿新 pid；判隧道死没死只认 `curl 127.0.0.1:<隧道口>/health`，不看 pid 在不在。
+- **相机报离线，先分“相机死”和“取流地址没走隧道”**：直接打源端 `/health`（Orin `8792` 回
+  `{"n":…,"age_s":0.3}` = 相机活），再看本机取流进程 cmdline 里拉的是哪个地址 —— 写死 `192.168.23.66:8792` 时
+  本机没产线路由必然 0fps，而 `127.0.0.1:18792` 这条隧道口是通的。两条证据一起给，用户才知道是改地址不是修相机。
+- **ROS 侧命令拿不到结果 ≠ 机器人不可访问**：`ros2` 不在 PATH / 要进容器时别停在“ROS 看不到”，直接走 SDK 桥
+  （Orin 39061）+ 服务单元（`systemctl list-units --state=running | grep -Ei 'zmax|arm|bridge'`）拿真值。
 
 相关：入口/隧道/网卡配置细节归 `orin-lan-direct-access`；AOI 判决口径与端点归 `zmax-aoi-service`；
 Intel 端侧的推理栈本身（单元、模型、能力上限）归 `intel-edge-npu-deployment`。

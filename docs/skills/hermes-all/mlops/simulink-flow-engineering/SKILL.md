@@ -90,6 +90,14 @@ tl.addWidget(self.btn_left_brain)
 # 方法: def add_left_brain(self): self.add_node_at_center("model", "🧠 左脑 MLP", {params})
 ```
 params 与 LIBRARY 同名列保持一致。
+- **加一个工具栏按钮 = 三件都要有, 少了用户永远看不到**: ① `mk_btn(...)` 定义 ② `tl.addWidget(self.btn_x)` 挂进布局
+  ③ 回调方法(打开页面类回调包 try/except, 不阻塞主线程)。只写了①②中的一项 = 按钮“存在于代码但不在界面上”。
+- 🔴 **新按钮要重启控制台才出现 —— 不要擅自重启**: 用户画布上可能有未保存的活。交付时说清楚
+  「下次启动控制台可见」并问一句是否现在重启, 不要把“重启”当前置步骤。
+- **打开网页类回调统一走 `_open_page_window` + 独立 snap profile**(`~/snap/chromium/common/zmax_<用途>_profile`,
+  实测 2.0s 出窗); 别在方法里自拼 `subprocess.Popen(["chromium", ...])` 三跳兜底 —— 那条路 10~13s 且经常失败,
+  详见 `fixed-camera-ar-overlay` 的「AR 服务打不开」三个真因。
+- 页面入口类按钮建议新窗口开(`window.open(url,'_blank')` 或独立 profile), 不要在主窗口里跳转。
 - **打开画布类按钮不弹确认框 (2026-08-14 老倪偏好\"工具按钮要好使\"): 点按钮 → 直接加载目标画布**。历史: open_topsys/open_z700_flow 用 `_qmsg_yes(\"将清空当前画布...\")` 确认, 但前馈 PD 按钮也套确认框后用户点按钮\"没反应\"(确认框被狂闪吞/用户没注意) → 已去。**新加\"打开某画布\"类按钮一律直接 load_flow_file, 不确认**(用户明确要打开就是要打开; 确认框只在危险操作如删除时保留)
 
 ## 删除工具栏按钮 (2026-08-14 老倪「删除工具栏上的AWE按钮即可」)

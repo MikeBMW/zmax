@@ -7,6 +7,20 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> ⚖ **重力表/太阳系「主力」必须与格子数值同源**: `tools/gui/gravity_table.py` 的 `_main_layer()` 曾在 layer_forces
+> 开着时取 `layer_forces()` 里加权后的 argmax, 而格子 `mag` 又过了一遍 `|F|=G·M/r²` 重算 ⇒ 高亮落在 L3、
+> 数字最大却 L2 (用户一句「高亮跟数对不上」就穿)。修法: 在**最终 cells** 上 argmax, α/权重等构造意图只留痕不覆盖数值。
+> 判据 `tools/verify_orbital_state.py` 的 `chk(tag, name, ok, detail)` 注意参数序 (写成 title/got 会被静默错位);
+> 同一文件两条同名 `W1` 必须改名 (`W1b`), 否则报告里认错对象。
+
+> 📐 **太阳系右栏「不乱动」= 整列固定宽度**, 不是逐行自适应: 右缘固定 + 每行宽按当前文字算 ⇒ 数字换位数时左缘横移
+> (实测单次 13px)。改成 `col_w(W)` 整列定宽、左缘 `W-14-colw+4` 恒定; 行数用滞回值, 避免缺源时整列上下跳。
+> 判据 `tools/verify_orbital_rightcol_frozen.py` 用两套量宽不同的数据比较左/右缘, 要求 `max|Δx|=0`。
+>
+> 🧭 **箭头与表盘同向 = 先归一化再投影**: `_proj` 的近大远小因子 `sc=R·zoom·(1+0.10·z4)` 对长矢量会变负 ⇒ 箭头 180° 翻转
+> (实测同一帧箭头 83.7° vs 表盘 263.7°)。两处都走同一个 `_force_dir_screen(vec)` (单位矢量投影, 因子恒 0.9~1.1),
+> 避免"两个来源恰好一致"的隐性耦合; 判据 `tools/verify_orbital_force_dir.py` 跨阶段×视角×尺度要求角差 0°。
+
 > 🅱 **550B 标定档「文件→打开工程」自动起 VSCode (省资源 + 单线程 debug)**: `references/vscode-autostart-550b.md`
 > —— 启动参数集中在 `tools/gui/vscode_launch.py`(只放 `code --help` 里真有的参数)、pylance 单进程 920MB 必须关、
 > `launch.json` 走 JSONC ⇒ 解析前剥 `//` 注释。

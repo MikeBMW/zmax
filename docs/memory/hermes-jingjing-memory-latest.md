@@ -66,7 +66,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=人工走点(8793 manual,45s/轮增量); GS_MAP_MODE=auto回旧
 §
-版本号只按老倪指定; 当前5.50.750
+版本号只按老倪指定; 当前5.50.753
 §
 专利12件·渠道74/74; config/patents/patent_registry.json
 §
