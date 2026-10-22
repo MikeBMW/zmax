@@ -1,0 +1,32 @@
+[Unit]
+Description=Z-MAX 3DGS 自动采集守护 (Intel) — 臂动就记图+位姿, 够量自己训
+Documentation=file:///home/intel/zmax_map/tools/gs_autocap_daemon.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+WorkingDirectory=/home/intel/zmax_map/tools
+Environment=GS_FRAME_URL=http://192.168.23.66:8792/frame.jpg
+Environment=GS_POSE_URL=http://192.168.23.50:8804/pose
+Environment=GS_TRAIN_URL=http://192.168.23.50:8804
+Environment=GS_WORK=/home/intel/gs_autocap
+Environment=GS_MIN_FRAMES=120
+Environment=GS_MIN_SPAN_M=0.05
+Environment=GS_MAX_FRAMES=400
+Environment=GS_COOLDOWN_S=180
+Environment=GS_TRAIN_STEPS=1000
+Environment=GS_AUTOTRAIN=1
+Environment=GS_PORT=8806
+ExecStart=/usr/bin/python3 /home/intel/zmax_map/tools/gs_autocap_daemon.py
+Restart=always
+RestartSec=5
+Nice=10
+CPUQuota=100%
+MemoryMax=2G
+StandardOutput=append:/home/intel/gs_autocap/daemon.log
+StandardError=append:/home/intel/gs_autocap/daemon.log
+
+[Install]
+WantedBy=multi-user.target
