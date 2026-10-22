@@ -477,7 +477,7 @@ function drawToolFrame(g){
 //    不做 3D、不碰 tool1 —— 那两样要 D435 的外参(未标定)。
 let PEG2D=null;                                    // {boxes:[{xyxy,conf}], ts, age_s, ms, thr}
 function drawPeg2D(g){
-  if(CAM!=='rs'||!PEG2D) return 0;
+  if((CAM!=='rs'&&CAM!=='local')||!PEG2D) return 0;
   if(performance.now()/1000 - PEG2D.ts > 2.0) return 0;   // 数据超过 2s 就不画(不拿旧框冒充)
   const bs=PEG2D.boxes||[];
   bs.forEach((b,i)=>{
@@ -503,6 +503,18 @@ function drawPeg2D(g){
 }
 // 🆕 D435 专用 2D 头轮询(只给 `?cam=rs`; 其他相机不打扰 8789)
 async function peg2dTick(){
+  // 🆕 2026-10-22 老倪「usb 相机, 光模块, 你给画出边界框」: local 路走绿拉环锚点 2D 头
+  if(CAM==='local'){
+    if(document.hidden) return;
+    try{
+      const d=await (await fetch('/api/mod2d_usb?cam=local')).json();
+      PEG2D={boxes:(d&&d.ok)?(d.boxes||[]):[], ts:performance.now()/1000,
+             age_s:0, ms:null, thr:null,
+             err:(d&&d.ok)?'':((d&&d.err)||'请求失败'), ring:d&&d.ring};
+      drawOv();
+    }catch(e){ PEG2D={boxes:[], ts:performance.now()/1000, err:'fetch: '+e.message}; try{drawOv();}catch(_e){} }
+    return;
+  }
   if(CAM!=='rs'){ if(PEG2D){ PEG2D=null; try{drawOv();}catch(e){} } return; }
   if(document.hidden) return;
   try{

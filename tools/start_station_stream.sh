@@ -18,9 +18,9 @@ STATION=8793
 LOG=/tmp/zmax_scene_overlay.log
 ORIN_HOST="${ZMAX_ORIN_HOST:-tashan@192.168.23.66}"; ORIN_HOST="${ORIN_HOST##*@}"
 
-_ld=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
-_l2=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
-_lu=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');   [ -n "$_lu" ] || _lu=-1
+_ld=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
+_l2=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
+_lu=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');   [ -n "$_lu" ] || _lu=-1
 [ "$_l2" = "$_ld" ] && _l2=-1        # 绝不把两路指到同一台设备(独占会打不开)
 
 # ── 🎥 2026-10-17: 笔记本那一路的开关 —— 由页面落盘的 cam_local_src.json 决定 ─────────

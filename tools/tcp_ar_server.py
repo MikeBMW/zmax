@@ -1028,6 +1028,22 @@ class H(BaseHTTPRequestHandler):
                 self._json(self._mod3_lock("status"))
             elif p in ("/api/module3d", "/api/opt3d"):      # 🔍 光模块 3D 框 (臂相机)
                 self._json(self._module3d(qs.get("img", "0") in ("1", "true", "yes")))
+            elif p == "/api/mod2d_usb":        # 🆕 USB 固定相机(local)上的光模块 2D 框
+                # 老倪 2026-10-22「usb 相机, 光模块, 你给画出边界框」
+                # 在役 YOLO 在这一路实测 0 框 ⇒ 走"绿拉环锚点 + 一次性标定偏移"(tools/mod2d_usb.py),
+                # 只给 2D 框, 不冒充 3D; 找不到拉环就 ok=False, 不拿旧框顶上。
+                try:
+                    import mod2d_usb as M2U
+                    _f = snap_cam(qs.get("cam") or "local")
+                    if _f is None:
+                        self._json({"ok": False, "boxes": [], "err": "local 取帧失败(8791 未出图)"})
+                    else:
+                        _r = M2U.detect(_f)
+                        _r["age_s"] = 0.0
+                        _r["cam"] = qs.get("cam") or "local"
+                        self._json(_r)
+                except Exception as e:                                             # noqa: BLE001
+                    self._json({"ok": False, "boxes": [], "err": "%s: %s" % (type(e).__name__, str(e)[:120])})
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
                 self._json(FS.listing())
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)

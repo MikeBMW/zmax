@@ -427,7 +427,13 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     #   判据: **类别不是光模块类(OPT_Gold) 且 框贴画幅边被裁** ⇒ 判误检、不给框(回 ok=False, 页面不画);
     #   框完整(未贴边)的 peg 仍走原逻辑给框(保住 2026-10-19「别丢光模块」)。
     _clipped0 = [k for k, v in _clip0.items() if v]
-    if _clipped0 and det.get("name") != "OPT_Gold":
+    # 🆕 2026-10-22 老倪: 「现在的光模块, 就一个小头, 边界框你得画出来啊」
+    #   同一个"贴边 peg"既可能是误检(顶边圆角装置, conf≈0.44~0.48), 也可能是**只露小头的真模块**。
+    #   单靠类别一刀切会把真模块也挡掉 ⇒ 加置信度分界: ≥0.65 当真模块, 只框可见那段并标注"被裁"。
+    _peg_clip_conf = float(os.environ.get("ZMAX_PEG_CLIP_MIN", "0.65"))
+    _is_real_head = (_clipped0 and det.get("name") != "OPT_Gold"
+                     and float(det.get("conf") or 0) >= _peg_clip_conf)
+    if _clipped0 and det.get("name") != "OPT_Gold" and not _is_real_head:
         warn.append("类别 %s 且框贴 %s 边被裁 ⇒ 判为误检, 不给光模块框"
                     % (det.get("name"), "/".join(_clipped0)))
         return {"ok": False,
@@ -568,9 +574,66 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     ey = np.array([0, 1.0, 0])                 # 相机 y = 画面竖 (长轴)
     ez = np.array([0, 0, 1.0])                 # 相机 z = 视线
 
+    _FLAT = os.environ.get("ZMAX_OBB_FLAT", "1") not in ("0", "false", "False")
+
     def _corners(Hv, ctr=None):
+        """立方体 8 角点 (相机系 / 基座系 / 像素投影)。
+
+        🔧 2026-10-22 老倪: 「3D 边界框方向不对, 没有与光模块的位姿保持一致」
+        旧实现: 立方体建在**相机轴**上(画面横/画面竖/视线)再整体转到基座系 ⇒ 相机有俯角时,
+        模块平放在台面上, 框的长轴却被抬起 (实测长轴 z 分量 0.61 ≈ 38°), 看着就是框歪了。
+        新实现(_FLAT 默认开): 光模块平放 ⇒ 每个像素角点沿**自己的视线**打到同一水平面
+        (z = 该框中心的 z), 上下再各加 t/2 厚度成体 ⇒ 长轴自动落在台面内, 与模块实际姿态一致。
+        角点顺序保持与旧实现完全一致 (sx, sy, sz 三层嵌套), 上层绘图不用改。
+        """
         c0 = c_cam if ctr is None else ctr
         cc, cb, cp = [], [], []
+        if _FLAT:
+            Kinv = np.linalg.inv(K)
+            zb = float((Rcb @ c0 + o)[2])
+            # ① 4 个像素角点沿各自视线打到**中心水平面** → 得到贴台的足印(长/短轴都落在台面内)
+            foot, pix = [], []
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    p = c0 + ex * (sx * W / 2) + ey * (sy * Hv / 2)
+                    pc = p / p[2]
+                    u = K[0, 0] * pc[0] + K[0, 2]
+                    v = K[1, 1] * pc[1] + K[1, 2]
+                    db = Rcb @ (Kinv @ np.array([u, v, 1.0]))
+                    dz = db[2] if abs(db[2]) > 1e-9 else 1e-9
+                    foot.append(o + ((zb - o[2]) / dz) * db)
+                    pix.append((u, v))
+            # ② 斜视时"视线打到平面"会把足印拉长(实测 55mm 的模块投出 74mm) ⇒ 按**实物长轴**收口
+            #    光模块长度是已知常量(MOD_H_MM), 被画幅裁切时只可能更短, 不可能更长。
+            # 足印 4 点顺序 = [(-,-), (-,+), (+,-), (+,+)] ⇒ 相邻四条边里最长的那条才是**长轴**
+            # (踩过: 用 (i, i+2) 配对量到的是短轴, 结果长轴 71.7mm 没被收口)
+            edges = [(0, 1), (1, 3), (3, 2), (2, 0)]
+            e = max(edges, key=lambda ab: np.linalg.norm(foot[ab[0]][:2] - foot[ab[1]][:2]))
+            vlong = foot[e[1]] - foot[e[0]]
+            Lf = float(np.linalg.norm(vlong[:2]))
+            c2 = np.mean(np.array([f[:2] for f in foot]), axis=0)
+            u_ax = (vlong[:2] / Lf) if Lf > 1e-6 else np.array([0.0, 1.0])
+            u_perp = np.array([-u_ax[1], u_ax[0]])
+            # 尺寸口径: 朝向来自视觉、尺寸来自实物(光模块是尺寸已知刚体);
+            # 被画幅裁掉时"整支多长"不可观测 ⇒ 长度只取**可见那段** H, 绝不许按整支画。
+            _sc = float(os.environ.get("ZMAX_OBB_SCALE", "0.94"))
+            half_l = min(Lf, float(H), float(h_mm)) * _sc / 2.0
+            half_w = float(MOD_W_MM) * _sc / 2.0
+            foot = []
+            for (sx, sy) in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                p2 = c2 + u_ax * (sy * half_l) + u_perp * (sx * half_w)
+                foot.append(np.array([p2[0], p2[1], zb]))
+            # ③ 竖直挤出 t/2 ⇒ 厚度边严格竖直, 长/短轴严格水平
+            for i, (sx, sy) in enumerate([(-1, -1), (-1, 1), (1, -1), (1, 1)]):
+                for sz in (-1, 1):
+                    p_b = foot[i] + np.array([0.0, 0.0, sz * float(t_mm) / 2])
+                    cb.append(p_b)
+                    cc.append(Rcb.T @ (p_b - o))
+                    cp.append([pix[i][0], pix[i][1]])
+            # 角点顺序映射回旧嵌套 (sx, sy, sz)
+            order = [0, 1, 2, 3]   # 已按 (sx,sy) 排列, 每个占两位(sz-/+)
+            cb2 = [cb[0], cb[1], cb[2], cb[3], cb[4], cb[5], cb[6], cb[7]]
+            return cc, cb2, cp
         for sx in (-1, 1):
             for sy in (-1, 1):
                 for sz in (-1, 1):

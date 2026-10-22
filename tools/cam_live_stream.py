@@ -5613,7 +5613,7 @@ def main():
                          "(~/zmax/zmax_data/cam_local_src.json, 没有记录就是内置)")
     ap.add_argument("--usb-dev", type=int, default=-1,
                     help="USB 摄像头 /dev/videoN (-1=按卡名自动扫; 推荐自动 —— 插拔/换口后序号会变)")
-    ap.add_argument("--usb-name", default="USB2.0 Camera,MAXHUB",   # ⛔ 不含 RealSense: D435/D405 是 AR/手臂专用
+    ap.add_argument("--usb-name", default="USB2.0 Camera",   # ⛔ 不含 RealSense: D435/D405 是 AR/手臂专用
                     help="USB 摄像头卡名匹配串(逗号分隔多个, 任一命中即可; 取 v4l2 卡名 —— "
                          "默认 'USB2.0 Camera,RealSense': 实测外接 Intel RealSense D435 的卡名是 "
                          "'Intel(R) RealSense(TM) Depth Camera', 只认 USB2.0 Camera 会把它判成不在位)")

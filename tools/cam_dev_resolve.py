@@ -50,23 +50,65 @@ def _idx(path: str) -> int:
     return int(m.group(1)) if m else -1
 
 
+def _alive(dev: str):
+    """实测"能不能出图"(不是只看格式表): 打开一次、连读 3 帧、判 mean/std。
+
+    2026-10-22 现场: 笔记本内置相机被物理隐私开关关掉(camera_power=0 / privacy=1) —— 能 open、
+    能读帧, 但**整幅全黑**(mean≈5)。只按卡名+MJPG 匹配会把它选成 local ⇒ 页面一格里永远是黑屏。
+    所以判据必须落到像素上: 全黑/无对比 ⇒ 判不可用, 让位给外接 USB 相机。
+    """
+    try:
+        import cv2
+        cap = cv2.VideoCapture(int(str(dev).replace("video", "")), cv2.CAP_V4L2)
+        if not cap.isOpened():
+            return False, "打不开(被占用/无权限)"
+        ok, f = False, None
+        for _ in range(3):
+            ok, f = cap.read()
+            if ok and f is not None:
+                break
+        cap.release()
+        if not ok or f is None:
+            return False, "读不到帧"
+        m, s = float(f.mean()), float(f.std())
+        if m < 12 or s < 8:
+            return False, "全黑/无对比 mean=%.0f std=%.1f" % (m, s)
+        return True, "mean=%.0f std=%.0f %dx%d" % (m, s, f.shape[1], f.shape[0])
+    except Exception as e:                                                 # noqa: BLE001
+        return False, "探测异常 %s" % type(e).__name__
+
+
 def pick(prefer_rgb_name: str, prefer_top_name: str):
     devs = sorted(glob.glob(os.path.join(VID, "video*")), key=_idx)
     rows = []
     for p in devs:
         d = os.path.basename(p)
         fmts = _formats(d)
-        rows.append({"dev": d, "name": _name(d), "formats": sorted(fmts)})
+        ok, why = _alive(d) if fmts else (False, "无像素格式(纯 metadata 节点)")
+        rows.append({"dev": d, "name": _name(d), "formats": sorted(fmts),
+                     "alive": ok, "why": why})
 
     def _has_mjpg(r):
         return "MJPG" in r["formats"]
 
+    def _ok(r):
+        # 只要实测出图就算可用: 外接 USB 相机常只有 YUYV(没有 MJPG), 卡 MJPG 会把它判成"不在位"
+        return bool(r["alive"])
+
+    # ① 点名优先, 但必须**实测出图** (内置相机被隐私开关关掉时会在这里被跳过)
     local = next((r["dev"] for r in rows
-                  if prefer_rgb_name.lower() in r["name"].lower() and _has_mjpg(r)), None)
-    if local is None:
-        local = next((r["dev"] for r in rows if _has_mjpg(r)), None)     # 退一步: 任意彩色
+                  if prefer_rgb_name.lower() in r["name"].lower() and _ok(r)), None)
+    # ①.5 外接 USB 相机优先占 local 位 —— 老倪 2026-10-22「笔记本我也接了USB摄像头」:
+    #     内置相机遇隐私开关/亮度不稳, 而 USB 是现场唯一稳定的一路; 内置仍可点 [内置] 换回。
+    usb_alive = next((r["dev"] for r in rows
+                      if any(k in r["name"].lower() for k in ("usb2.0 camera", "realsense"))
+                      and _ok(r)), None)
+    if usb_alive:
+        local = usb_alive
+    if local is None:                                          # ② 退一步: 任意彩色且实测出图
+        local = next((r["dev"] for r in rows if _ok(r)), None)
     top = next((r["dev"] for r in rows
-                if prefer_top_name.lower() in r["name"].lower() and _has_mjpg(r)
+                if prefer_top_name.lower() in r["name"].lower() and _ok(r)
                 and r["dev"] != local), None)
     return local, top, rows
 
