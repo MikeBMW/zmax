@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>光纤端面检测及清理设备 · 三维视角（九步场景）</title>
+<style>
+  :root{--bg:#080d12;--panel:#0e141b;--line:#1e2b39;--fg:#dbe6f0;--dim:#8ba0b6;--acc:#2ee6c8;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font-family:"Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  #bar{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  #bar .ttl{font-size:15px;font-weight:700}
+  #stepName{font-size:14px;font-weight:600;color:var(--acc)}
+  #stage{font-size:11.5px;color:var(--dim)}
+  #bar .r{margin-left:auto;display:flex;align-items:center;gap:7px}
+  button{background:#16202b;color:var(--fg);border:1px solid var(--line);border-radius:7px;
+    padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer}
+  button:hover{border-color:#33506b;background:#1b2836}
+  button.on{color:var(--acc);border-color:#1e6b62;background:#0c2724}
+  a.lnk{font-size:12px;color:#58a6ff;text-decoration:none;border:1px solid var(--line);
+    border-radius:7px;padding:5px 10px}
+  a.lnk:hover{border-color:#33506b}
+  #chips{display:flex;gap:6px;padding:7px 14px;overflow-x:auto;border-bottom:1px solid var(--line);background:#0b1219}
+  #chips b{flex:0 0 auto;font-size:11.5px;font-weight:600;color:var(--dim);cursor:pointer;
+    border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+  #chips b:hover{color:var(--fg);border-color:#33506b}
+  #chips b.on{color:#08120f;background:var(--acc);border-color:var(--acc)}
+  /* 🔗 工艺动作链(8 步) —— 动作是"做什么", 工位是"在哪做", 两条并排看 */
+  #actsbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:#0e161f;
+           border-bottom:1px solid var(--line);overflow-x:auto}
+  #actsbar .alab{flex:0 0 auto;font-size:11px;font-weight:700;color:#7f92a8;letter-spacing:.4px}
+  #acts{display:flex;align-items:center;gap:0;flex:0 0 auto}
+  #acts .a{display:flex;align-items:center;gap:5px;flex:0 0 auto;cursor:pointer;
+          padding:3px 9px;border:1px solid #26323f;border-radius:999px;background:#101a24;
+          font-size:11.5px;color:#8ba0b6;transition:.15s}
+  #acts .a i{font-style:normal;font-size:10px;opacity:.65}
+  #acts .a:hover{color:#dbe6f0;border-color:#33506b}
+  #acts .a.on{color:#08120f;background:var(--acc);border-color:var(--acc);font-weight:700}
+  #acts .a.on i{opacity:.8}
+  #acts .sep{flex:0 0 auto;color:#3c4a5a;font-size:11px;padding:0 3px}
+  #actsbar .anote{flex:0 0 auto;font-size:10.5px;color:#5c6f84;margin-left:auto;white-space:nowrap}
+  #main{display:flex;height:calc(100% - 86px)}
+  #cvwrap{flex:1 1 auto;min-width:0;position:relative}
+  #cv{display:block;width:100%;height:100%;cursor:grab;background:#080d12}
+  #hint{position:absolute;left:12px;bottom:10px;font-size:11px;color:#5c6f84;
+    background:rgba(8,13,18,.7);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+  #side{flex:0 0 372px;border-left:1px solid var(--line);background:var(--panel);
+    padding:12px 14px;overflow-y:auto;font-size:12.5px;line-height:1.62}
+  #side h3{margin:0 0 8px;font-size:14px}
+  #side .sec{font-size:11px;letter-spacing:.06em;color:#6b7a8d;margin:12px 0 5px;
+    border-bottom:1px dashed #1b2836;padding-bottom:3px}
+  /* 🖼 设备实照: 工艺卡是"这一步做什么", 实照是"这台设备长什么样" —— 全局参考, 固定放侧栏顶部,
+     不随九步切换, 也就不占 3D 画布的地方; 点图开灯箱看原图 */
+  #shotBox{margin:-2px 0 2px}
+  #shots{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #shots figure{margin:0;position:relative;border:1px solid #2a3441;border-radius:9px;
+    overflow:hidden;background:#0a0f15;cursor:zoom-in}
+  #shots img{width:100%;height:126px;object-fit:cover;display:block}
+  #shots figcaption{position:absolute;left:0;right:0;bottom:0;padding:4px 7px;font-size:11px;
+    color:#d7ecff;background:linear-gradient(transparent,rgba(0,0,0,.82))}
+  #shots figure:hover{border-color:var(--acc)}
+  /* 🧩 来料产品卡: 与工艺卡的排列 = 产品(做谁) → 设备实照(谁做的) → 该步工艺(怎么做), 自上而下;
+     两张产品卡用 tab 切换, 省侧栏高度; 参数只显示关键 6 行, 其余收进「全部参数」 */
+  #sAct2{font-size:11px;color:var(--acc);margin:-2px 0 8px;letter-spacing:.2px}
+  #prodBox{margin:0 0 4px}
+  #prodTabs{display:flex;gap:6px;margin:2px 0 7px}
+  #prodTabs b{flex:1;text-align:center;font-size:11.5px;font-weight:700;color:#8ba0b6;cursor:pointer;
+    border:1px solid var(--line);border-radius:7px;padding:4px 0}
+  #prodTabs b.on{color:#08120f;background:var(--acc);border-color:var(--acc)}
+  #prodCard{display:block}
+  #prodPic{width:100%;border:1px solid #2a3441;border-radius:8px;overflow:hidden;cursor:zoom-in;
+    background:#0a0f15;cursor:zoom-in}
+  #prodPic img{width:100%;height:92px;object-fit:contain;display:block;background:#fff}
+  #prodPic span{display:block;font-size:10px;color:#7f92a8;text-align:center;padding:2px 0}
+  #prodMeta{flex:1 1 auto;min-width:0}
+  #prodMeta .sub{font-size:11px;color:var(--acc);margin-bottom:4px}
+  #prodMeta{margin-top:6px}
+  #prodMeta .row{display:grid;grid-template-columns:56px 1fr;gap:2px 7px;font-size:11.3px;line-height:1.5}
+  #prodMeta .row i{color:#7f92a8;font-style:normal}
+  #prodMeta details{margin-top:3px}
+  #prodMeta summary{font-size:11px;color:#58a6ff;cursor:pointer;list-style:none}
+  #prodNote{font-size:10.8px;color:#7f92a8;margin-top:5px;line-height:1.45}
+  #lightbox{position:fixed;inset:0;z-index:99;display:none;align-items:center;justify-content:center;
+    background:rgba(3,7,11,.93);cursor:zoom-out}
+  #lightbox.on{display:flex}
+  #lightbox img{max-width:94vw;max-height:92vh;border-radius:6px;box-shadow:0 10px 50px rgba(0,0,0,.7)}
+  #lightbox .cap{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:12px;color:#9fb6cc}
+  #side .act b{color:#9ff0e4}
+  #side ul{margin:0;padding-left:16px;color:#b9c8d6}
+  #side li{margin:3px 0}
+  #side .kv{display:grid;grid-template-columns:104px 1fr;gap:3px 8px;margin-top:8px;font-size:11.8px}
+  #side .kv span:nth-child(odd){color:#7f92a8}
+  #side .fn{margin-top:12px;font-size:10.8px;color:#5c6f84;border-top:1px dashed #1b2836;padding-top:7px}
+  #side .tags{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px}
+  #side .tag{font-size:10.5px;border:1px solid #27384a;border-radius:999px;padding:1px 7px;color:#93a8bd}
+  #side .tag.t{border-color:#1e6b62;color:#7ff0dd;background:#0c2724}
+</style>
+</head>
+<body>
+<div id="bar">
+  <span class="ttl">🧊 光纤端面检测及清理设备 · 三维视角</span>
+  <span id="stepName"></span><span id="stage"></span>
+  <div class="r">
+    <button id="prev" title="上一步 (←)">◀</button>
+    <button id="next" title="下一步 (→)">▶</button>
+    <button id="bSpin" class="on" title="视图自转">视图自转</button>
+    <button id="bPlay" class="on" title="步骤动画">动画</button>
+    <button id="bLbl" class="on" title="标注">标注</button>
+    <!-- 📄 2026-10-22 老倪: 右上角「技术」按钮 → 打开真源 Word 版技术协议
+         (文件放 /home/ubuntu/zmax/zmax_data/agreements/; 点按钮 = 在工位机桌面用 LibreOffice 打开) -->
+    <button id="bAgree" title="打开技术协议（Word 真源；文件放在 zmax_data/agreements/，点了在工位机桌面打开）">📄 技术协议</button>
+    <a class="lnk" id="aAgree" href="/agreement" target="_blank" title="下载 / 在线查看当前这份技术协议">⬇</a>
+    <a class="lnk" href="/autoLight" target="_blank" title="打开工艺卡页(文字/Word 导出)">工艺卡</a>
+  </div>
+</div>
+<div id="actsbar"><span class="alab">工艺动作 · 8 步</span><div id="acts"></div>
+  <span class="anote">点亮 = 当前工位正在做的动作 · 点动作跳到对应工位</span></div>
+<div id="chips"></div>
+<div id="main">
+  <div id="cvwrap"><canvas id="cv"></canvas><div id="hint">拖拽旋转 · 滚轮缩放 · ←/→ 切步骤</div></div>
+  <aside id="side">
+    <div id="prodBox" hidden>
+      <div class="sec" style="margin-top:0">来料产品 <span style="color:#5c6f84">· 点图看外观/结构原图</span></div>
+      <div id="prodTabs"></div>
+      <div id="prodCard">
+        <div id="prodPic"><img alt=""><span></span></div>
+        <div id="prodMeta"></div>
+      </div>
+      <div id="prodNote"></div>
+    </div>
+    <div id="shotBox" hidden>
+      <div class="sec" style="margin-top:0">设备实照 <span style="color:#5c6f84">· 点图放大</span></div>
+      <div id="shots"></div>
+    </div>
+    <h3 id="sTitle"></h3>
+    <div id="sAct2"></div>
+    <div class="sec">动作分解</div><div id="sAct" class="act"></div>
+    <div class="sec">技术细节</div><ul id="sDet"></ul>
+    <div id="sKv" class="kv"></div>
+    <div id="sTags" class="tags"></div>
+    <div class="fn" id="sFn"></div>
+  </aside>
+</div>
+<!-- 🖼 灯箱: 点设备实照看原图(点任意处/Esc 关闭) -->
+<div id="lightbox"><img alt=""><div class="cap"></div></div>
+<script>
+"use strict";
+/* =====================================================================
+   /autoLight3d · 光纤设备九步场景的**独立大窗口三维视角**
+   （老倪 2026-10-22: 「/ar 的三维视角，需要重新开一个新页面，在光纤的场景」）
+   几何/场景/取景全部与 tools/web/autoLight.html 同一份引擎与同一份 1:1 布置，
+   本页只是：一页一个大 3D 窗口 + 九步切换 + 右侧该步的动作分解/技术细节。
+   坐标：X 右 / Y 近 / Z 上，单位 m，地面 z=0（与 /ar 同一 base 世界系）
+   ===================================================================== */
+const FL=3.0, FW=1.5, FH=1.9;       // 3000 x 1500 x 1900 mm
+const TX=-FL/2, TY=-FW/2;
+const TZ=0.86;                       // 工作台面
+const LZ=0.875;                      // 流线面
+const C={frame:'#2b3644',table:'#33404f',station:'#37485c',inst:'#2f4a63',tray:'#44586d'};
+
+// 五个工站（沿 X 排布）
+const ST=[
+ {x:-0.80,w:0.26,short:'① FC 拔帽·端检'},
+ {x:-0.42,w:0.24,short:'② MPO 拔帽·端检·回损'},
+ {x:-0.05,w:0.26,short:'③ FC 回损 ×16'},
+ {x: 0.34,w:0.28,short:'④ FC 端面·清洗·盖帽'},
+ {x: 0.72,w:0.24,short:'⑤ MPO 端面·盖帽'}
+];
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const ease=p=>p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+const ph=(t,off,dur)=>clamp(((t+off)%dur)/dur,0,1);
+function shade(hex,k){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgb('+Math.min(255,((n>>16)&255)*k|0)+','+Math.min(255,((n>>8)&255)*k|0)+','+Math.min(255,(n&255)*k|0)+')';
+}
+
+/* ---------------- 一个独立三维窗口 ---------------- */
+class View{
+  constructor(cv,opt){
+    opt=opt||{};
+    this.cv=cv; this.g=cv.getContext('2d');
+    this.yaw=opt.yaw==null?-0.98:opt.yaw;
+    this.pitch=opt.pitch==null?0.40:opt.pitch;
+    this.dist=opt.dist||1.6;
+    this.tgt=opt.tgt||[0,0,0.98];
+    this.labels=true; this.spin=0.10; this.playing=true;
+    this.LQ=[]; this.TQ=[]; this.W=0; this.H=0; this.DPR=1; this.drawn=0;
+    this._bind();
+  }
+  _bind(){
+    const cv=this.cv; let drag=null;
+    cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};this.spin=0;
+      cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';
+      document.getElementById('bSpin').classList.remove('on');});
+    cv.addEventListener('pointermove',e=>{
+      if(!drag)return;
+      this.yaw-=(e.clientX-drag.x)*0.010;
+      this.pitch=clamp(this.pitch+(e.clientY-drag.y)*0.007,-0.10,1.25);
+      drag={x:e.clientX,y:e.clientY};
+    });
+    const up=()=>{drag=null;cv.style.cursor='grab';};
+    cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
+    cv.addEventListener('wheel',e=>{e.preventDefault();
+      this.dist=clamp(this.dist*(1+Math.sign(e.deltaY)*0.10),0.30,14);},{passive:false});
+  }
+  fit(box){
+    // box: [[x0,y0,z0],[x1,y1,z1]] = 该卡主体的世界包围盒; 二分距离让 8 个角点都进视口
+    if(!box) return;
+    const pts=[];
+    for(const x of [box[0][0],box[1][0]]) for(const y of [box[0][1],box[1][1]]) for(const z of [box[0][2],box[1][2]]) pts.push([x,y,z]);
+    const mL=8, mR=8, mT=8, mB=16;
+    const ok=(d)=>{
+      this.dist=d; this.cam();
+      for(const p of pts){ const q=this.pr(p);
+        if(!q||q.u<mL||q.u>this.W-mR||q.v<mT||q.v>this.H-mB) return false; }
+      return true;
+    };
+    let lo=0.25; if(ok(lo)){ return; }
+    let hi=20;
+    for(let i=0;i<26;i++){ const mid=(lo+hi)/2; if(ok(mid)) hi=mid; else lo=mid; }
+    this.dist=hi*1.015; this.cam();
+  }
+  resize(){
+    this.DPR=Math.min(2,window.devicePixelRatio||1);
+    this.W=this.cv.clientWidth||560; this.H=this.cv.clientHeight||268;
+    const w=Math.round(this.W*this.DPR), h=Math.round(this.H*this.DPR);
+    if(this.cv.width!==w||this.cv.height!==h){ this.cv.width=w; this.cv.height=h; }
+    this.g.setTransform(this.DPR,0,0,this.DPR,0,0);
+  }
+  cam(){
+    const cy=Math.cos(this.yaw), sy=Math.sin(this.yaw);
+    const cp=Math.cos(this.pitch), sp=Math.sin(this.pitch);
+    const fwd=[cp*cy,cp*sy,-sp];
+    const eye=[this.tgt[0]-fwd[0]*this.dist,this.tgt[1]-fwd[1]*this.dist,this.tgt[2]-fwd[2]*this.dist];
+    const up=[0,0,1];
+    let R=[fwd[1]*up[2]-fwd[2]*up[1], fwd[2]*up[0]-fwd[0]*up[2], fwd[0]*up[1]-fwd[1]*up[0]];
+    const nl=Math.hypot(R[0],R[1],R[2])||1; R=[R[0]/nl,R[1]/nl,R[2]/nl];
+    const U=[R[1]*fwd[2]-R[2]*fwd[1], R[2]*fwd[0]-R[0]*fwd[2], R[0]*fwd[1]-R[1]*fwd[0]];
+    this._c={eye,fwd,R,U,F:Math.min(this.W,this.H)*1.30,CX:this.W/2,CY:this.H/2+6};
+  }
+  pr(P){
+    const c=this._c; if(!c) return null;
+    const dx=P[0]-c.eye[0], dy=P[1]-c.eye[1], dz=P[2]-c.eye[2];
+    const z=dx*c.fwd[0]+dy*c.fwd[1]+dz*c.fwd[2];
+    if(z<0.05) return null;
+    return {u:c.CX+c.F*(dx*c.R[0]+dy*c.R[1]+dz*c.R[2])/z,
+            v:c.CY-c.F*(dx*c.U[0]+dy*c.U[1]+dz*c.U[2])/z, z};
+  }
+  dep(P){const e=this._c.eye;return Math.hypot(P[0]-e[0],P[1]-e[1],P[2]-e[2]);}
+  push(d,fn){this.LQ.push({d,fn});}
+  quad(a,b,c2,d,fill){
+    const A=this.pr(a),B=this.pr(b),Cc=this.pr(c2),D=this.pr(d);
+    if(!A||!B||!Cc||!D)return;
+    const dep=(this.dep(a)+this.dep(b)+this.dep(c2)+this.dep(d))/4;
+    this.push(dep,()=>{const g=this.g;g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);
+      g.lineTo(Cc.u,Cc.v);g.lineTo(D.u,D.v);g.closePath();
+      if(fill){g.fillStyle=fill;g.fill();}});
+  }
+  box(x0,y0,z0,x1,y1,z1,color,o){
+    o=o||{}; const k=o.k||1;
+    if(o.noTop!==true) this.quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],shade(color,1.00*k));
+    this.quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],shade(color,0.78*k));
+    this.quad([x1,y1,z0],[x0,y1,z0],[x0,y1,z1],[x1,y1,z1],shade(color,0.66*k));
+    this.quad([x0,y1,z0],[x0,y0,z0],[x0,y0,z1],[x0,y1,z1],shade(color,0.72*k));
+    this.quad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1],shade(color,0.88*k));
+  }
+  line(a,b,color,lw,dash){
+    const A=this.pr(a),B=this.pr(b); if(!A||!B)return;
+    this.push((this.dep(a)+this.dep(b))/2,()=>{const g=this.g;g.strokeStyle=color;
+      g.lineWidth=lw||1.3; if(dash)g.setLineDash(dash);
+      g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);g.stroke(); if(dash)g.setLineDash([]);});
+  }
+  tube(a,b,color,r){
+    const A=this.pr(a),B=this.pr(b); if(!A||!B)return;
+    const sc=Math.max(2.0,r*(this._c.F/((A.z+B.z)/2)));
+    this.push((this.dep(a)+this.dep(b))/2,()=>{const g=this.g;g.strokeStyle=color;
+      g.lineWidth=sc;g.lineCap='round';g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);g.stroke();g.lineCap='butt';});
+  }
+  dot(P,color,r){
+    const A=this.pr(P); if(!A)return;
+    const sc=Math.max(1.4,r*(this._c.F/A.z));
+    this.push(this.dep(P),()=>{const g=this.g;g.fillStyle=color;g.beginPath();g.arc(A.u,A.v,sc,0,7);g.fill();});
+  }
+  text(P,s,color,o){
+    o=o||{}; const A=this.pr(P); if(!A)return;
+    this.TQ.push({z:A.z,u:A.u+(o.dx||0),v:A.v+(o.dy||0),s,color,
+      size:o.size||11,bold:!!o.bold,prio:o.prio==null?2:o.prio});
+  }
+  cores(center,axis,n,cols,color){
+    for(let i=0;i<n;i++){
+      const c=i%cols, r=Math.floor(i/cols);
+      const p=[center[0]+(axis==='x'?(c-(cols-1)/2)*0.012:(r-(cols-1)/2)*0.012),
+               center[1]+(axis==='x'?(r-(cols-1)/2)*0.012:(c-(cols-1)/2)*0.012),
+               center[2]];
+      this.dot(p,color,0.0035);
+    }
+  }
+  paint(){
+    const g=this.g;
+    g.fillStyle='#080d12'; g.fillRect(0,0,this.W,this.H);
+    this.LQ.sort((a,b)=>b.d-a.d);
+    for(const it of this.LQ) it.fn();
+    const kf=clamp(this.W/760,0.80,1.10);
+    g.textBaseline='middle';
+    this.TQ.sort((a,b)=>(a.prio-b.prio)||(b.z-a.z));
+    const placed=[];
+    for(const t of this.TQ){
+      if(!this.labels) break;
+      const sz=t.size*kf;
+      g.font=(t.bold?'600 ':'')+sz.toFixed(1)+'px "Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
+      const w=g.measureText(t.s).width, bx=t.u-4, by=t.v-sz*0.72, bw=w+8, bh=sz*1.44;
+      if(placed.some(p=>bx<p.x+p.w&&p.x<bx+bw&&by<p.y+p.h&&p.y<by+bh)) continue;
+      placed.push({x:bx,y:by,w:bw,h:bh});
+      g.fillStyle='rgba(6,10,14,.76)'; g.fillRect(bx,by,bw,bh);
+      g.fillStyle=t.color; g.fillText(t.s,t.u,t.v);
+    }
+    this.drawn=placed.length;
+  }
+}
+
+/* ---------------- 共用场景元素 ---------------- */
+function grid(v,r){
+  r=r||1.0;
+  const n=Math.round(r/0.2);
+  for(let i=-n;i<=n;i++){
+    const heavy=(i%5===0);
+    v.line([i*0.2,-r,0],[i*0.2,r,0],heavy?'#1c2836':'#131c25',heavy?1.1:0.7);
+    v.line([-r,i*0.2,0],[r,i*0.2,0],heavy?'#1c2836':'#131c25',heavy?1.1:0.7);
+  }
+}
+function axes(v,o){
+  o=o||{}; const L=o.len||0.26;
+  v.line([0,0,0],[L,0,0],'#ff5a68',1.6); v.text([L,0,0],'X','#ff5a68',{size:9.5,prio:7});
+  v.line([0,0,0],[0,L,0],'#3ce07a',1.6); v.text([0,L,0],'Y','#3ce07a',{size:9.5,prio:7});
+  v.line([0,0,0],[0,0,L],'#4aa8ff',1.6); v.text([0,0,L],'Z','#4aa8ff',{size:9.5,prio:7});
+}
+function frameCtx(v){
+  const p=0.05;
+  for(const x of [TX+p/2,FL/2-p/2]) for(const y of [TY+p/2,FW/2-p/2])
+    v.box(x-p/2,y-p/2,0,x+p/2,y+p/2,FH,'#1b242e',{noTop:true});
+  v.box(TX+0.04,TY+0.04,TZ-0.03,FL/2-0.04,FW/2-0.04,TZ,'#222d3a');
+  v.box(TX,TY,FH-0.05,FL/2,TY+p,FH,'#1a232c');
+  v.box(TX,FW/2-p,FH-0.05,FL/2,FW/2,FH,'#1a232c');
+}
+// 载具 + 光纤（本设备的主角：1 PCS MPO 端 + 16 FC 端）
+function trayAsset(v,x,y,z,o){
+  o=o||{};
+  v.box(x-0.15,y-0.10,z-0.014,x+0.15,y+0.10,z,'#3b4c60');
+  for(const d of [[-0.13,-0.08],[0.13,-0.08],[-0.13,0.08],[0.13,0.08]])
+    v.dot([x+d[0],y+d[1],z+0.004],'#5a6f88',0.007);
+  const mx=x-0.10;
+  v.box(mx-0.030,y-0.020,z,mx+0.030,y+0.020,z+0.024,'#26404f');
+  v.box(mx-0.030,y-0.020,z+0.024,mx+0.030,y+0.020,z+0.028,'#8fe8ff');
+  for(let i=0;i<16;i++){
+    const row=Math.floor(i/8), col=i%8;
+    v.line([mx+0.030+col*0.004,y-0.012+row*0.024,z+0.020],
+           [x+0.020,y-0.075+0.010*i,z+0.020],'rgba(127,214,234,'+(o.dim?0.45:0.85)+')',0.9);
+  }
+  for(let i=0;i<16;i++) v.dot([x+0.075,y-0.075+0.010*i,z+0.012],'#cfe9f5',0.0042);
+  if(o.hl){
+    const A=v.pr([x,y,z+0.02]);
+    if(A){ const r=Math.max(15,v._c.F*0.17/(A.z||1));
+      v.push(v.dep([x,y,z]),()=>{const g=v.g;g.strokeStyle='rgba(143,232,255,.75)';g.lineWidth=1.3;
+        g.setLineDash([4,3]);g.beginPath();g.arc(A.u,A.v,r,0,7);g.stroke();g.setLineDash([]);});
+    }
+  }
+  if(o.label!==false) v.text([x-0.15,y-0.11,z+0.05],o.label||'MPO-16FC 光纤 + 载具','#8fe8ff',{size:10.2,bold:true,prio:0});
+}
+// 门架工站（oz=作业头高度）
+function gantry(v,s,o){
+  o=o||{}; const col=o.col||C.station, on=!!o.on, hz=o.hz==null?1.24:o.hz;
+  v.box(s.x-s.w/2,-0.30,TZ,s.x-s.w/2+0.03,-0.27,1.42,col,{noTop:true});
+  v.box(s.x+s.w/2-0.03,-0.30,TZ,s.x+s.w/2,-0.27,1.42,col,{noTop:true});
+  v.box(s.x-s.w/2,-0.31,1.36,s.x+s.w/2,-0.26,1.42,col);
+  v.box(s.x-0.045,-0.16,Math.min(hz,1.34)-0.10,s.x+0.045,-0.08,Math.min(hz,1.34),on?col:'#2b3644');
+  v.line([s.x,-0.12,Math.min(hz,1.34)],[s.x,-0.12,1.36],'#2b3644',1.8);
+  if(on) v.dot([s.x,-0.12,Math.min(hz,1.34)-0.11],'#2ee6c8',0.012);
+  v.text([s.x-s.w/2,-0.33,1.46],o.label||s.short,on?'#2ee6c8':'#7f92a8',{size:10.2,bold:on,prio:1});
+}
+function lineCtx(v,x0,x1,o){
+  o=o||{};
+  v.box(x0,-0.075,LZ-0.055,x1,0.075,LZ-0.020,'#2a3644');
+  for(let x=x0+0.04;x<x1;x+=0.12) v.line([x,-0.055,LZ-0.016],[x,0.055,LZ-0.016],'#1d2833',0.9);
+  if(o.label) v.text([x0,-0.095,LZ-0.055],o.label,'#7f92a8',{size:9.8,prio:3});
+}
+// 仪表架（hi=要高亮的仪表名片段）
+function instCtx(v,hi){
+  const y0=TY+0.05,y1=TY+0.28;
+  v.box(TX+0.08,y0,TZ,FL/2-0.12,y1,TZ+0.04,'#1f2a35');
+  let x=TX+0.14;
+  const seq=[['ASTCHECK PRO 200KC',4],['RLM1412A-1FA-24',1],['Offsoon Pro',3]];
+  for(const it of seq){
+    const nm=it[0], n=it[1], on=!!(hi&&nm.indexOf(hi)>=0);
+    for(let k=0;k<n;k++){
+      v.box(x,y0+0.02,TZ+0.04,x+0.16,y1-0.02,TZ+0.18,on?'#4f86ad':'#33465a');
+      v.box(x+0.03,y0+0.03,TZ+0.18,x+0.13,y1-0.04,TZ+0.22,on?'#37627f':'#1d2833');
+      x+=0.20;
+    }
+    v.text([x-0.20*n,y0+0.005,TZ+0.26],nm+' ×'+n,on?'#9fdcff':'#54708a',{size:9.2,prio:4});
+    x+=0.09;
+  }
+}
+
+/* ===================== 九步场景 + 迁移 ===================== */
+// ① 人工上料 → 推入缓存一
+function scene1(v,t){
+  grid(v,1.02); axes(v); frameCtx(v);
+  const P=ph(t,0,5.0);
+  const x=(P<0.15)?-1.42:(P<0.55?-1.42+0.30*ease((P-0.15)/0.40):-1.12);
+  v.box(-1.60,-0.22,TZ,-1.34,0.22,1.30,'#39485a');
+  for(let i=0;i<3;i++) v.box(-1.58,-0.20,TZ+0.05+i*0.10,-1.36,0.20,TZ+0.08+i*0.10,'#46586e');
+  v.text([-1.62,-0.24,1.33],'人工取放堆叠架 · 人工放料位','#8b9bb0',{size:10.2,prio:2});
+  const rod=P<0.15?0:(P<0.55?0.30*ease((P-0.15)/0.40):0.30);
+  v.box(-1.42,-0.06,1.02,-1.22,0.06,1.14,'#3d5166');
+  v.line([-1.38,0,1.08],[-1.38+rod,0,1.08],'#7f93a8',3);
+  v.box(-1.42+rod,-0.05,1.00,-1.37+rod,0.05,1.16,'#95a9bd');
+  v.text([-1.44,0.10,1.19],'推料模组','#8b9bb0',{size:9.8,prio:3});
+  v.box(-1.16,-0.26,TZ,-0.96,-0.10,1.06,(x>-1.50)?'#2a4a44':'#2b3644');
+  v.text([-1.18,-0.28,1.09],'缓存仓一','#8b9bb0',{size:9.8,prio:2});
+  trayAsset(v,x,0,LZ,{hl:true,label:'载具（1 PCS/载具）'});
+  lineCtx(v,-0.94,1.22,{label:'载具搬运流线 →'});
+  v.dot([-1.12,0.09,LZ+0.02],(x>-1.50)?'#3ce07a':'#4a5b6d',0.008);
+  v.text([-1.10,0.11,LZ+0.07],(x>-1.50)?'到位 ✓':'等待',(x>-1.50)?'#3ce07a':'#6f8296',{size:9.5,prio:1});
+  v.text([-1.32,-0.14,LZ+0.13],'扫码绑定：产品码 ↔ 载具码','#ffb340',{size:9.8,prio:1});
+  v.text([0.40,0.12,1.32],'整机所需人力 2 人（操作设备、上下料）','#5f7186',{size:9.5,prio:4});
+}
+
+// ② 缓存一 → 缓存二
+function scene2(v,t){
+  grid(v,0.9); axes(v); frameCtx(v);
+  const P=ph(t,0,4.6);
+  const x=(P<0.25)?-1.06:(P<0.70?-1.06+0.16*ease((P-0.25)/0.45):-0.90);
+  const done=P>0.70;
+  v.box(-1.18,-0.26,TZ,-1.02,-0.10,1.06,done?'#2b3644':'#2a4a44');
+  v.text([-1.20,-0.28,1.09],'缓存仓一','#8b9bb0',{size:9.8,prio:2});
+  v.box(-0.98,-0.26,TZ,-0.82,-0.10,1.06,done?'#2a4a44':'#2b3644');
+  v.text([-1.00,-0.28,1.09],'缓存仓二','#8b9bb0',{size:9.8,prio:2});
+  v.box(-1.12,0.10,1.04,-0.98,0.18,1.14,'#3d5166');
+  v.text([-1.14,0.20,1.16],'推料模组','#8b9bb0',{size:9.8,prio:3});
+  for(let i=0;i<5;i++){
+    const on=done?i<3:i<2;
+    v.box(-1.21+i*0.055,-0.02,TZ+0.02,-1.19+i*0.055,0.02,TZ+0.032,on?'#2ee6c8':'#33424f');
+  }
+  v.text([-1.22,0.13,TZ+0.10],'载具托盘缓存最多 15 PCS','#8b9bb0',{size:9.6,prio:2});
+  trayAsset(v,x,0,LZ,{hl:true,label:'等待进入主流线'});
+  lineCtx(v,-0.80,0.34,{label:'→ 主流线'});
+}
+
+// ③ 主流线缓存位：移栽 → 顶升 → 分离接料
+function scene3(v,t){
+  grid(v,0.86); axes(v); frameCtx(v);
+  const P=ph(t,0,5.2);
+  const enter=(P<0.45)?ease(P/0.45):1;
+  const x=-0.90+0.16*enter;
+  const lift=(P>0.55)?0.10*Math.min(1,(P-0.55)/0.25):0;
+  const sep=(P>0.60)?Math.min(1,(P-0.60)/0.25):0;
+  lineCtx(v,-1.00,0.46,{label:'载具搬运流线（动力主干）'});
+  v.box(-1.10,0.12,1.02,-0.94,0.20,1.12,'#3d5166');
+  v.text([-1.12,0.22,1.14],'缓存2 移栽模组','#8b9bb0',{size:9.6,prio:2});
+  v.box(x-0.11,-0.08,TZ-0.16,x+0.11,0.08,TZ-0.02,'#4a5f78');
+  v.box(x-0.09,-0.06,TZ-0.02,x+0.09,0.06,TZ+lift,'#6f8aa6');
+  v.text([x-0.13,-0.11,TZ-0.18],'主流线顶升模组','#8b9bb0',{size:9.6,prio:2});
+  for(const s of [-1,1]){
+    const p=0.16-0.07*sep;
+    v.box(x+s*p-0.012,-0.012,TZ+0.012,x+s*p+0.012,0.012,TZ+0.036,'#95a9bd');
+  }
+  v.text([x+0.13,-0.12,TZ+0.07],'分离模组 伸出接料','#8b9bb0',{size:9.6,prio:2});
+  trayAsset(v,x,0,LZ+lift,{hl:true,label:'载具顶升到检测位'});
+  v.text([x-0.20,0.13,1.26],'载具磁吸锁附 + 定位销（浮动 XY 单边 0.5 mm）','#2ee6c8',{size:9.8,prio:1});
+  v.text([-0.06,-0.18,1.36],'各工站将治具提升，配合对应测试仪器并行测试','#5f7186',{size:9.5,prio:4});
+}
+
+// ④ 拔帽 · 端检 · 清洗
+function scene4(v,t){
+  grid(v,0.78); axes(v); frameCtx(v); instCtx(v,'ASTCHECK');
+  const s=ST[0], P=ph(t,0,6.2);
+  const head=(P<0.20)?1.30:(P<0.34?1.30-0.24*ease((P-0.20)/0.14):(P<0.80?1.06:1.06+(P-0.80)*3.2));
+  const capUp=(P>0.30&&P<0.55)?(P-0.30)/0.25:(P>=0.55?1:0);
+  lineCtx(v,-1.06,0.12);
+  gantry(v,s,{on:P>0.18&&P<0.92,hz:head});
+  trayAsset(v,s.x,0,LZ,{label:'载具在检测位'});
+  if(capUp>0){
+    const cz=LZ+0.03+0.17*capUp;
+    for(let i=0;i<4;i++) v.box(s.x-0.055+i*0.028,-0.02,cz-0.012,s.x-0.040+i*0.028,0.02,cz+0.006,'#c9d8e6');
+    v.text([s.x-0.02,0.06,cz+0.07],'帽盖拔除 → 暂存位','#ffd08a',{size:9.8,prio:1});
+  }
+  if(P>0.36&&P<0.66){
+    v.line([s.x,-0.10,1.18],[s.x,0,LZ+0.03],'rgba(46,230,200,.55)',1.2,[3,3]);
+    v.cores([s.x,0,LZ+0.030],'x',16,8,'#8fe8ff');
+    v.text([s.x+0.05,0.10,1.20],'端面缺陷检测（FC 16 PCS 端面）','#2ee6c8',{size:9.8,prio:1});
+    v.text([s.x+0.05,0.10,1.16],'ASTCHECK PRO 200KC ×4','#6f89a3',{size:9.2,prio:2});
+  }
+  if(P>0.66&&P<0.92){
+    const k=(P-0.66)/0.26, cx=s.x-0.07+0.14*k;
+    v.box(cx-0.018,-0.05,LZ+0.02,cx+0.018,-0.01,LZ+0.05,'#b48cff');
+    v.line([cx,-0.03,LZ+0.05],[cx,0.01,LZ+0.02],'rgba(180,140,255,.55)',1);
+    v.text([s.x-0.14,0.12,1.06],'清洗：清洗头 + Offsoon Pro（无腐蚀/无残留）','#b48cff',{size:9.8,prio:1});
+  }
+}
+
+// ⑤ 自动插回损测试
+function scene5(v,t){
+  grid(v,0.82); axes(v); frameCtx(v); instCtx(v,'RLM1412A');
+  const s=ST[2], P=ph(t,0,6.0);
+  const eng=(P>0.25&&P<0.85)?Math.min(1,(P-0.25)/0.20)*Math.min(1,(0.85-P)/0.20):0;
+  lineCtx(v,-0.40,0.40);
+  gantry(v,s,{on:eng>0.12,hz:1.28-0.20*eng});
+  trayAsset(v,s.x,0,LZ,{label:'载具顶升到回损位'});
+  const pts=[[s.x-0.09,-0.06,LZ+0.03],[s.x-0.17,-0.17,LZ+0.11],[s.x-0.11,-0.31,LZ+0.17],[TX+0.60,-0.42,TZ+0.22]];
+  for(let i=0;i<pts.length-1;i++) v.line(pts[i],pts[i+1],'#7fd6ea',1.4);
+  v.text([pts[1][0],pts[1][1],pts[1][2]+0.06],'FC 转 FC 延长线','#7fd6ea',{size:9.4,prio:2});
+  v.line([s.x+0.06,0.02,LZ+0.03],[s.x+0.11,-0.20,LZ+0.12],'#ffb340',1.4);
+  v.box(s.x+0.06,-0.24,LZ+0.10,s.x+0.17,-0.16,LZ+0.16,'#5a441f');
+  v.text([s.x+0.09,-0.27,LZ+0.19],'MPO 端 ↔ 测试线（法兰）','#ffd08a',{size:9.4,prio:2});
+  for(let i=0;i<4;i++){
+    const hx=s.x-0.075+i*0.05;
+    v.box(hx-0.014,-0.05,LZ+0.03+0.05*eng,hx+0.014,-0.01,LZ+0.10+0.05*eng,'#9fb8d0');
+  }
+  if(eng>0.5){
+    v.text([s.x+0.12,0.10,1.24],'回损测试（仪表判据）+ 结果上传','#4aa8ff',{size:10,prio:1});
+    v.text([s.x+0.12,0.10,1.20],'RLM1412A-1FA-24 ×1 · 结果绑定产品码','#6f89a3',{size:9.2,prio:2});
+  }
+  v.text([s.x-0.22,0.14,LZ+0.10],'浮动 0.5 mm + 缓冲机构：对插不准时保护产品','#2ee6c8',{size:9.4,prio:1});
+}
+
+// ⑥ 复检 → 二次清洗 → 盖帽 → 扫码
+function scene6(v,t){
+  grid(v,0.80); axes(v); frameCtx(v); instCtx(v,'Offsoon');
+  const s=ST[3], P=ph(t,0,6.4);
+  const seg=(a,b)=>clamp((P-a)/(b-a),0,1);
+  lineCtx(v,0.10,0.62);
+  gantry(v,s,{on:P>0.15&&P<0.95,hz:1.30-0.10*seg(0.15,0.35)});
+  trayAsset(v,s.x,0,LZ,{label:'复检 → 盖帽 → 扫码'});
+  if(P<0.35){
+    v.line([s.x,-0.10,1.18],[s.x,0,LZ+0.03],'rgba(46,230,200,.5)',1.1,[3,3]);
+    v.text([s.x+0.05,0.10,1.22],'端面复检（不合格 → 二次清洗/擦拭）','#2ee6c8',{size:9.8,prio:1});
+  }
+  if(P>=0.30&&P<0.55){
+    const k=seg(0.30,0.55), cx=s.x-0.07+0.14*k;
+    v.box(cx-0.016,-0.05,LZ+0.02,cx+0.016,-0.01,LZ+0.05,'#b48cff');
+    v.text([s.x-0.14,0.12,1.06],'二次清洗：端面清洗笔 / 擦拭盒','#b48cff',{size:9.8,prio:1});
+  }
+  if(P>=0.50&&P<0.82){
+    const k=seg(0.50,0.82), cz=LZ+0.15-0.11*k;
+    for(let i=0;i<5;i++) v.box(s.x-0.075+i*0.032,-0.03,cz-0.012,s.x-0.056+i*0.032,0.03,cz+0.008,'#c9d8e6');
+    v.box(s.x-0.10,-0.06,cz+0.02,s.x+0.10,0.02,cz+0.10,'#4a5f78');
+    v.text([s.x-0.04,0.10,cz+0.15],'FC 盖帽模组（帽来自盖帽暂存位）','#ffd08a',{size:9.8,prio:1});
+  }
+  if(P>=0.80){
+    v.line([s.x+0.02,-0.22,1.34],[s.x+0.02,-0.02,LZ+0.04],
+           'rgba(255,90,104,'+(0.30+0.35*Math.abs(Math.sin(t*9))).toFixed(2)+')',1.6);
+    v.text([s.x+0.05,-0.24,1.37],'扫码：产品码 ↔ 载具码（全链路追溯）','#ff8b95',{size:9.8,prio:1});
+  }
+}
+
+// ⑦ OK / NG 自动分拣
+function scene7(v,t){
+  grid(v,0.92); axes(v); frameCtx(v);
+  const P=ph(t,0,5.6), k=clamp((P-0.15)/0.50,0,1);
+  lineCtx(v,0.30,1.12,{label:'→ 分拣位'});
+  trayAsset(v,0.50,0,LZ-0.02,{label:'判定来源：端检 + 回损'});
+  const y=0.50*k, z=LZ+0.16*Math.sin(Math.PI*clamp(k*1.35,0,1));
+  v.box(0.44,0.10,1.24,0.58,0.24,1.34,'#4a2c33');
+  v.line([0.51,0.17,1.24],[0.51,y,z+0.06],'#ff8b95',2);
+  if(k>0.04){ v.box(0.50-0.15,y-0.10,z-0.03,0.50+0.15,y+0.10,z,'#5a343c'); }
+  v.text([0.42,0.26,1.37],'NG 搬运模组（磁吸锁附）','#ff8b95',{size:9.8,prio:1});
+  v.box(0.60,0.34,TZ,0.86,0.56,1.02,'#3a2026');
+  for(let i=0;i<4;i++) v.box(0.62+i*0.055,0.38,TZ+0.02,0.66+i*0.055,0.52,TZ+0.08,(k>0.7&&i===0)?'#ff5a68':'#2a161a');
+  v.text([0.60,0.58,1.06],'NG 产品缓存仓 4 PCS','#ff5a68',{size:9.8,prio:1});
+  v.box(1.04,-0.26,TZ,1.22,-0.10,1.02,'#20362c');
+  v.text([1.00,-0.28,1.06],'OK 缓存仓 1/2','#3ce07a',{size:9.8,prio:1});
+  v.line([0.66,0.0,LZ],[1.02,-0.06,LZ],'rgba(60,224,122,.5)',1.4,[4,3]);
+  v.text([0.70,0.16,1.20],'OK → OK 物料缓存仓','#3ce07a',{size:9.6,prio:1});
+  v.text([0.26,0.12,1.36],'信号：OK / NG / 完成（板卡→设备）· 启动（设备→板卡）','#8b9bb0',{size:9.2,prio:3});
+}
+
+// ⑧ OK 缓存仓 2
+function scene8(v,t){
+  grid(v,0.76); axes(v); frameCtx(v);
+  const P=ph(t,0,4.4);
+  const x=(P<0.30)?0.86:(P<0.75?0.86+0.20*ease((P-0.30)/0.45):1.06);
+  lineCtx(v,0.55,1.12,{label:'主流线末端'});
+  v.box(0.92,-0.26,TZ,1.10,-0.10,1.06,'#20362c');
+  v.text([0.90,-0.28,1.09],'OK 缓存仓 2（暂存）','#3ce07a',{size:9.8,prio:1});
+  trayAsset(v,x,0,LZ,{hl:true,label:'合格载具进入 OK 仓 2'});
+  v.text([0.60,0.14,1.30],'OK 品缓存仓（整机 2 套）','#8b9bb0',{size:9.6,prio:2});
+}
+
+// ⑨ OK 缓存仓 1 → 人工整盘下料
+function scene9(v,t){
+  grid(v,0.78); axes(v); frameCtx(v);
+  const P=ph(t,0,4.8), k=clamp((P-0.55)/0.35,0,1);
+  lineCtx(v,0.55,1.06,{label:'主流线末端'});
+  v.box(0.96,-0.26,TZ,1.14,-0.10,1.06,'#20362c');
+  v.text([0.94,-0.28,1.09],'OK 缓存仓 1','#3ce07a',{size:9.8,prio:1});
+  v.box(1.18,-0.24,TZ,1.46,0.24,1.34,'#20362c');
+  for(let i=0;i<4;i++) v.box(1.20,-0.16+k*0.06,TZ+0.10+i*0.04,1.44,0.16+k*0.06,TZ+0.12+i*0.04,'#2f5a45');
+  v.text([1.16,0.27,1.37],'人工下料位 · 整盘取走','#8b9bb0',{size:9.8,prio:1});
+  trayAsset(v,0.86+0.30*k,0,LZ+0.06*k,{hl:k>0.10,label:k>0.15?'整盘载具 → 人工下料':'待下料'});
+  v.text([0.62,0.14,1.30],'整机 2 人操作；OEE ≥85%（协议 2.1）','#5f7186',{size:9.4,prio:3});
+}
+
+/* 每张卡的主体包围盒（世界坐标 m）—— 自动取景用 */
+const FOCUS={
+ 1:[[-1.66,-0.34,0.78],[-0.88,0.30,1.44]],
+ 2:[[-1.26,-0.34,0.78],[-0.74,0.30,1.28]],
+ 3:[[-1.04,-0.34,0.66],[-0.56,0.30,1.26]],
+ 4:[[-1.04,-0.40,0.76],[-0.52,0.28,1.52]],
+ 5:[[-0.38,-0.48,0.76],[ 0.18,0.28,1.52]],
+ 6:[[ 0.08,-0.40,0.76],[ 0.58,0.28,1.52]],
+ 7:[[ 0.26,-0.38,0.76],[ 1.30,0.64,1.50]],
+ 8:[[ 0.58,-0.36,0.76],[ 1.24,0.22,1.32]],
+ 9:[[ 0.58,-0.38,0.76],[ 1.54,0.34,1.50]]
+};
+
+/* ===================== 九张工艺卡（内容全部出自技术协议 rev1.0 原文） ===================== */
+const CARDS=[
+{n:'1',title:'待测物料缓存仓一',stage:'2.2 第 1 步 · 上料',scene:scene1,
+ cam:{tgt:[-1.13,0,1.02],yaw:-1.00,pitch:0.33,dist:1.18},
+ act:'<b>人工将载具（托盘）上料至人工放料位，经推料模组推入缓存1。</b>',
+ det:['缓存1、缓存2 与人工放料位、人工下料位同属<b>人工取放堆叠架</b>，配推料模组、缓存2 移栽模组、分离模组、主流线顶升模组（2.1）；整机配置 <b>2 套</b>（3.1-4）',
+      '载具托盘含支撑柱×4、底板、产品线材限位柱、<b>磁吸板×2</b>（自动锁附载具）、<b>定位轴套×2</b>、夹具初定位销及<b>盖帽暂存位</b>、缓冲机构（对插不准时保护产品）、载具标识二维码和数字号牌；浮动机构 <b>XY 单边浮动 0.5mm</b>；配 MPO 端夹具 / FC 端夹具×16（2.1 载具托盘）',
+      '来料类型：<b>MPO-8FC / MPO-16FC</b> 光纤来料，载具承载 <b>1PCS/载具</b>（1.4）',
+      '扫码与数据绑定：人工上料时需将产品上的二维码与载具二维码扫码绑定，实现<b>产品—载具—工位—结果</b>全链路追溯（2.1）',
+      '产品安全：过程中各动作使用传感器检测是否到位，传感器闭环检测自身是否失效（2.1）'],
+ kv:[['整机布局','3000mm × 1500mm × 1900mm（长×宽×高）；所需人力 2 人（2.1/4.1）'],
+     ['缓存能力','载具托盘缓存最多 15PCS（2.1）'],
+     ['来料','MPO-8FC / MPO-16FC，1PCS/载具（1.4）']],
+ tags:['推料模组','缓存1','载具托盘 1PCS','扫码绑定']},
+
+{n:'2',title:'待测物料缓存仓二',stage:'2.2 第 2 步 · 缓存',scene:scene2,
+ cam:{tgt:[-1.02,0,1.02],yaw:-1.00,pitch:0.33,dist:1.00},
+ act:'<b>缓存1 满后推料模组将载具推至缓存2，等待进入主流线。</b>',
+ det:['缓存2 由<b>缓存2 移栽模组</b>负责与主流线交接（2.1 人工取放堆叠架）',
+      '载具托盘缓存最多 <b>15PCS</b>（2.1 载具搬运流线）',
+      '缓存仓配置（3.1）：待测产品缓存仓 <b>2</b> 套、OK 品缓存仓 <b>2</b> 套、NG 产品缓存仓（4PCS）<b>1</b> 套',
+      '异常处理：检测异常时系统自动触发声光报警，报警界面显示异常工位及产品位置（2.1）'],
+ kv:[['缓存上限','载具托盘缓存最多 15PCS（2.1）'],
+     ['缓存仓','待测 2 / OK 2 / NG（4PCS）1（3.1-11~13）'],
+     ['交接','缓存2 移栽模组（2.1）']],
+ tags:['缓存2','移栽模组','15PCS']},
+
+{n:'3',title:'主流线载具缓存位',stage:'2.2 第 3 步 · 流转',scene:scene3,
+ cam:{tgt:[-0.85,0,1.00],yaw:-1.05,pitch:0.35,dist:1.10},
+ act:'<b>缓存2 移栽模组将待测产品推入主流线缓存位；主流线顶升模组顶升，分离模组伸出接料。</b>',
+ det:['载具搬运流线：为载具流转提供动力，治具流转到检测站，各工站将治具提升，配合对应测试仪器<b>并行测试</b>；含载具托盘<b>分离组件</b>、载具托盘<b>顶升组件</b>（2.1）',
+      '1.3.2 各检测工站通过<b>顶升模组</b>将载具提升至检测位，配合在线检测与清洁仪表并行测试，提升稼动率与检测效率',
+      '载具托盘搬运轴含 <b>X 轴、Z 轴</b>；配载具磁吸锁附、载具定位销、<b>载具到位阻挡气缸</b>（2.1）',
+      '洁净设计：运动单元尽可能放置在工件下方；选用洁净型模组/洁净型机器人/洁净型坦克链/洁净型气缸；固定线缆避免相互摩擦；整机配置 <b>FFU</b>（2.1）'],
+ kv:[['节拍（8-FC）','非全端面自动对焦 2S＋测试 2S 条件下 CT ≤70s、UPH ≥51、OEE ≥85%（2.1）'],
+     ['节拍（16-FC）','全端面自动对焦 2S＋测试 2S 条件下 CT ≤134s、UPH ≥26、OEE ≥85%（2.1）'],
+     ['在线仪表','端检仪 ASTCHECK PRO 200KC ×4；回损仪 RLM1412A-1FA-24 ×1；清洗机 Offsoon Pro ×3（2.1）']],
+ tags:['顶升模组','分离模组','磁吸锁附','并行测试']},
+
+{n:'4',title:'MPO&FC 拔帽&端检&清洗',stage:'2.2 第 4 步 · 检测工站',scene:scene4,
+ cam:{tgt:[-0.78,0,1.05],yaw:-1.05,pitch:0.33,dist:1.00},
+ act:'<b>载具经载具搬运流线流转至拔帽&端检&清洗工站，自动拔除端面帽盖，执行端面缺陷检测并清洗端面。</b>',
+ det:['FC 自动拔帽&清洁&端检工站：仅负责 <b>16PCS FC</b> 拔盖帽&端面检测和清洗；含自动拔帽模组、端面清洗头、端面清洗机、FC 自动端检仪（<b>ASTCHECK PRO 200KC</b>）、Y 轴（2.1）',
+      'MPO 自动拔帽&清洁&端检&回损工站：仅负责 <b>1PCS MPO</b> 拔帽&端面检测清洁回损测试；含自动拔帽模组、MPO 端面清洗头、MPO 擦拭盒、MPO 测试头自动清洁笔、MPO 自动端面检测、MPO 端检头、端面清洗机、X 轴、Y 轴（2.1）',
+      '清洁耗材：设备光纤端面清洁区使用<b>无腐蚀性、无残留</b>的清洁耗材，清洁材料不得对光纤端面产生二次污染（6.1.2.2）',
+      '自动拔帽模组整机 <b>2 套</b>、MPO 端检头 <b>1 套</b>（3.2-5/9）；帽盖暂存位设在载具托盘上（2.1）'],
+ kv:[['处理量','FC 16PCS / MPO 1PCS（每载具，2.1）'],
+     ['检测对象','端面缺陷检测 + 端面清洗（2.2 第 4 步）'],
+     ['不合格处置','转入第 6 步端面复检时的二次清洗（FC）/ 二次擦拭（MPO）（2.1）']],
+ tags:['自动拔帽模组 ×2','ASTCHECK ×4','Offsoon ×3','帽盖暂存位']},
+
+{n:'5',title:'MPO&FC 自动插回损测试',stage:'2.2 第 5 步 · 回损工站',scene:scene5,
+ cam:{tgt:[-0.06,0,1.02],yaw:-1.05,pitch:0.33,dist:1.10},
+ act:'<b>载具提升至回损测试工站，自动插接测试头（FC 端经 FC 转 FC 延长线连接，MPO 端与仪表测试线法兰连接），完成回损测试。</b>',
+ det:['FC 回损测试工站：仅负责 <b>16PCS FC</b> 回损测试；含 FC 端检转换头、FC 测试头清洁笔、FC 端面清洗笔、X 轴、Y 轴（2.1）',
+      '回损测试仪表对接（2.3.2）：MPO-16FC 光纤测试时，产品 <b>FC 端与 FC 转 FC 延长线端法兰连接</b>、产品 <b>MPO 端与仪表测试线法兰连接</b>',
+      '仪表：回损测试仪 <b>RLM1412A-1FA-24</b>，需求数量 1 台（2.1 在线检测仪表）',
+      '插接可靠性来自载具托盘机构：<b>浮动机构 XY 单边 0.5mm</b> + 缓冲机构（对插不准时保护产品）（2.1）',
+      '信号交互（2.3.1）：OK / NG / 完成（测试板卡→设备）、启动（设备→测试板卡）；测试板卡供电与显示器接口在设计评审阶段确认'],
+ kv:[['测试对象','FC 16PCS + MPO 1PCS（2.2 第 5 步 / 2.1）'],
+     ['信号','OK / NG / 完成 ← 板卡；启动 → 板卡（2.3.1）'],
+     ['仪表数量','RLM1412A-1FA-24 ×1（2.1）']],
+ tags:['RLM1412A ×1','FC 转 FC 延长线','MPO 法兰','浮动 0.5mm']},
+
+{n:'6',title:'MPO&FC 自动端检&清洁&盖帽&扫码',stage:'2.2 第 6 步 · 复检收尾',scene:scene6,
+ cam:{tgt:[0.32,0,1.05],yaw:-1.05,pitch:0.33,dist:1.00},
+ act:'<b>载具流转至盖帽工站，执行端面复检（二次清洗/二次擦拭）、端面帽盖盖回，并完成产品二维码扫描。</b>',
+ det:['FC 端面测试&清洗&盖帽工站：仅负责 <b>16PCS FC</b> 端面测试和盖帽，端检不合格<b>二次清洗</b>；含 FC 盖帽模组、FC 端面清洗笔、FC 自动端检测仪、端面清洗机、X 轴、Y 轴（2.1）',
+      'MPO 端面测试&清洗&盖帽工站：仅负责 <b>1PCS MPO</b> 端面测试和盖帽，端检不合格<b>二次擦拭</b>；含 MPO 盖帽模组、MPO 端面擦拭盒、MPO 端检仪、Y 轴（2.1）',
+      '数据管理与信息追溯：软件系统自动保存每一批次的识别和测量数据并上传至数据库；保存设备运行日志和异常日志，可自动生成并导出；支持 <b>CSV</b> 存储识别结果和日志（2.1）',
+      '追溯：产品条码与载具条码扫码绑定（1.5.2）；产品二维码与载具二维码绑定后实现产品—载具—工位—结果全链路追溯（2.1）',
+      '易损件（3.3）：MPO 测试头自动清洁笔 / FC 测试头清洁笔 / FC 端面清洗笔 / MPO 端面擦拭盒 / MPO 擦拭盒 各 <b>2</b>'],
+ kv:[['二次处理','端检不合格二次清洗（FC）/ 二次擦拭（MPO）（2.1）'],
+     ['数据','批次数据上传数据库；运行/异常日志可导出；CSV（2.1）'],
+     ['追溯键','产品二维码 ↔ 载具二维码（1.5.2 / 2.1）']],
+ tags:['端面复检','二次清洗/擦拭','盖帽模组','扫码追溯']},
+
+{n:'7',title:'已测物料 OK&NG 自动分拣位',stage:'2.2 第 7 步 · 分拣',scene:scene7,
+ cam:{tgt:[0.60,0.12,1.02],yaw:-1.10,pitch:0.42,dist:1.30},
+ act:'<b>7.1 OK 物料缓存仓；7.2 NG 物料缓存仓（4PCS）。NG 产品由 NG 搬运模组经磁吸锁附搬运至 NG 缓存仓。</b>',
+ det:['NG 下料模组：仅负责 NG 产品的搬运和缓存；含 <b>NG 顶升组件</b>、<b>NG 载具提升模组</b>、<b>NG 搬运流线</b>、<b>NG 产品缓存仓（4PCS）</b>；磁吸锁附搬运载具（2.1）',
+      '判定能力（1.3.4）：设备具备与测试板卡的信号交互能力，实现工序节拍同步、<b>合格/不合格自动判定</b>与数据上传',
+      '异常处理与报警：检测异常时系统自动触发<b>声光报警</b>，提示操作员干预；报警界面显示异常工位及产品位置，便于补录与排查；软件具备人工干预接口（2.1）',
+      '缓存仓配置（3.1）：待测产品缓存仓 2、OK 品缓存仓 2、NG 产品缓存仓（4PCS）1；NG 产品由 NG 搬运模组经磁吸锁附搬运至 NG 缓存仓（2.2 第 7 步 7.2）'],
+ kv:[['NG 仓容量','4PCS（2.2 第 7 步 / 2.1）'],
+     ['分拣依据','端检（第 4/6 步）+ 回损（第 5 步）结果（2.2）'],
+     ['信号','OK / NG / 完成 ← 板卡；启动 → 板卡（2.3.1）']],
+ tags:['NG 下料模组','NG 仓 4PCS','磁吸锁附','声光报警']},
+
+{n:'8',title:'测试 OK 物料缓存仓 2',stage:'2.2 第 8 步 · 缓存',scene:scene8,
+ cam:{tgt:[0.96,-0.06,1.00],yaw:-1.10,pitch:0.38,dist:0.92},
+ act:'<b>合格载具经 OK 品缓存仓暂存。</b>',
+ det:['OK 品缓存仓整机 <b>2 套</b>（3.1-12），本步为其中的 OK 物料缓存仓 2',
+      '软件界面：图形化界面显示当前产品图像、检测结果、UPH、<b>各缓存仓检测数量和位置</b>；所有工位相机运行画面可同时显示（2.1）',
+      '载具托盘缓存最多 15PCS（2.1 载具搬运流线）'],
+ kv:[['容量口径','载具托盘缓存最多 15PCS（2.1）'],
+     ['界面','各缓存仓数量/位置 + 全工位相机画面 + UPH（2.1）']],
+ tags:['OK 仓 2','数量可视化','UPH']},
+
+{n:'9',title:'测试 OK 物料缓存仓 1',stage:'2.2 第 9 步 · 下料',scene:scene9,
+ cam:{tgt:[1.06,0,1.02],yaw:-1.05,pitch:0.33,dist:1.05},
+ act:'<b>合格载具进入 OK 品缓存仓 1，人工于人工下料位取走整盘载具，完成下料。</b>',
+ det:['人工取放堆叠架含人工放料位、人工下料位、缓存1、缓存2；整机 2 套（2.1 / 3.1-4）',
+      '节拍（2.1）：8-FC 非全端面自动对焦 2S＋测试 2S 条件下 CT ≤70s、UPH ≥51、OEE ≥85%；16-FC 全端面自动对焦 2S＋测试 2S 条件下 CT ≤134s、UPH ≥26、OEE ≥85%（均以所有接头测试一次通过为前提）',
+      '运行环境（4.1）：温度 25℃±5℃、工作相对湿度 35%~65%、气源 DCA ≤0.7MPa、真空 >-80KPa、电源单相 AC220V±10% 50Hz、外形 3000×1500×1900mm、设备重量 3500kg、所需人力 2 人',
+      'ESD（4.2）：设备总体接地电阻 <1Ω（放置物料区域对地阻抗或对平台阻抗 <1Ω）；所有和物料接触的通电部位漏电压 <0.3V；预装静电环报警器并做好接地布线'],
+ kv:[['节拍','8-FC CT ≤70s / UPH ≥51；16-FC CT ≤134s / UPH ≥26；OEE ≥85%（2.1）'],
+     ['环境','25±5℃ / 35~65%RH / 气源≤0.7MPa / 真空>-80KPa / AC220V±10% 50Hz（4.1）'],
+     ['整机','3000×1500×1900mm、3500kg、2 人（2.1/4.1）']],
+ tags:['人工下料','整盘载具','OEE ≥85%','2 人']}
+];
+
+/* ===================== 本页装配（单窗口 + 九步切换） ===================== */
+const $=id=>document.getElementById(id);
+const cv=$('cv'), chips=$('chips'), side=$('side');
+const V=new View(cv, CARDS[0].cam);
+V.scene=CARDS[0].scene; V.card=CARDS[0].n; V.focus=FOCUS[CARDS[0].n];
+
+let cur=0, T0=performance.now();
+function paintSide(c){
+  $('sTitle').textContent=c.n+' · '+c.title;
+  const _n=+c.n, _acts=(typeof ACTS!=='undefined'?ACTS:[]).filter(a=>a.steps.includes(_n)).map(a=>a.name);
+  $('sAct2').textContent=_acts.length?('本工位动作：'+_acts.join(' · ')):'本工位动作：—';
+  $('sAct').innerHTML=c.act;
+  $('sDet').innerHTML=c.det.map(d=>'<li>'+d+'</li>').join('');
+  $('sKv').innerHTML=c.kv.map(k=>'<span>'+k[0]+'</span><span>'+k[1]+'</span>').join('');
+  $('sTags').innerHTML=c.tags.map((x,i)=>'<span class="tag'+(i===0?' t':'')+'">'+x+'</span>').join('');
+  $('sFn').textContent='来源：技术协议 rev1.0 §2.2 第 '+c.n+' 步 / §2.1 指标 / §2.3 对接信号 / §3 硬件配置；'
+    +'三维为按模块关系的 1:1 示意，非施工图。';
+}
+function setStep(i, opt){
+  opt=opt||{};
+  i=Math.max(0,Math.min(CARDS.length-1,i)); cur=i;
+  const c=CARDS[i];
+  V.scene=c.scene; V.card=c.n; V.focus=FOCUS[c.n];
+  if(c.cam){ if(c.cam.tgt)V.tgt=c.cam.tgt.slice(); if(c.cam.yaw!=null)V.yaw=c.cam.yaw;
+             if(c.cam.pitch!=null)V.pitch=c.cam.pitch; if(c.cam.dist!=null)V.dist=c.cam.dist; }
+  V.resize(); V.cam(); V.fit(V.focus);
+  if(V.playing) V._frozen=null; else V._frozen=(performance.now()-T0)/1000;
+  $('stepName').textContent='第 '+c.n+' 步 · '+c.title;
+  $('stage').textContent=c.stage;
+  [...chips.children].forEach((b,k)=>b.classList.toggle('on',k===i));
+  syncActs(c.n);
+  paintSide(c);
+  if(!opt.silent) history.replaceState(null,'','#'+c.n);
+}
+/* ===== 工艺动作链: 8 个动作 → 落在 9 个工位上 (同一个工位可含多个动作) ===== */
+const ACTS=[
+  {n:1, name:'上料',       steps:[1,2,3], hint:'载具/物料上机, 缓存仓→主流线'},
+  {n:2, name:'拔帽',       steps:[4],     hint:'FC 金属帽 + MPO 防尘帽取下'},
+  {n:3, name:'端面检测',   steps:[4],     hint:'MPO 8/16 芯 + FC 端面逐面判脏'},
+  {n:4, name:'端面清洁',   steps:[4],     hint:'NG 面清洁后复检'},
+  {n:5, name:'回损测试',   steps:[5],     hint:'插损/回损按芯逐一测'},
+  {n:6, name:'盖帽',       steps:[6],     hint:'测试完回装 FC 帽 / MPO 帽'},
+  {n:7, name:'扫码',       steps:[6],     hint:'SN 绑定测试数据'},
+  {n:8, name:'分拣下料',   steps:[7,8,9], hint:'OK/NG 分流, 入缓存仓'}
+];
+(function buildActs(){
+  const box=$('acts');
+  ACTS.forEach((a,k)=>{
+    if(k){
+      const s=document.createElement('span'); s.className='sep'; s.textContent='→'; box.appendChild(s);
+    }
+    const el=document.createElement('span');
+    el.className='a'; el.title=(a.hint||'')+'（工位 '+a.steps.join('/')+'）';
+    // 动作序号用 ①~⑧, 和工位号(1~9)在视觉上分开, 免得混
+    el.innerHTML='<i>'+'①②③④⑤⑥⑦⑧'[a.n-1]+'</i>'+a.name;
+    el.onclick=()=>setStep(a.steps[0]-1);
+    box.appendChild(el);
+  });
+})();
+function syncActs(stepNo){
+  const n=+stepNo, els=[...$('acts').querySelectorAll('.a')];
+  ACTS.forEach((a,k)=>{ if(els[k]) els[k].classList.toggle('on', a.steps.includes(n)); });
+}
+CARDS.forEach((c,i)=>{
+  const b=document.createElement('b');
+  b.textContent=c.n+' '+c.title.replace(/（.*/,'');
+  b.onclick=()=>setStep(i);
+  chips.appendChild(b);
+});
+$('prev').onclick=()=>setStep(cur-1);
+$('next').onclick=()=>setStep(cur+1);
+$('bSpin').onclick=()=>{ const on=$('bSpin').classList.toggle('on'); V.spin=on?0.10:0; };
+$('bPlay').onclick=()=>{ const on=$('bPlay').classList.toggle('on'); V.playing=on; if(on)V._frozen=null; };
+$('bLbl').onclick=()=>{ const on=$('bLbl').classList.toggle('on'); V.labels=on; };
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft')setStep(cur-1);
+  else if(e.key==='ArrowRight')setStep(cur+1);
+  else if(e.key>='1'&&e.key<='9')setStep(+e.key-1);
+});
+addEventListener('resize',()=>{ V.resize(); V.cam(); V.fit(V.focus); });
+
+/* 入口参数: ?step=3 或 #3 */
+(function(){
+  const q=new URLSearchParams(location.search).get('step');
+  const h=(location.hash||'').replace('#','');
+  const n=parseInt(q||h||'1',10);
+  setStep(Math.max(1,n)-1,{silent:true});
+})();
+addEventListener('hashchange',()=>{ const n=parseInt((location.hash||'').replace('#',''),10); if(n)setStep(n-1,{silent:true}); });
+
+/* ===================== 主循环 ===================== */
+let lastNow=performance.now(), nF=0, fps=60, lastT=lastNow;
+function loop(now){
+  const dt=Math.min(0.1,(now-lastNow)/1000); lastNow=now;
+  const t=(now-T0)/1000;
+  nF++; if(now-lastT>500){ fps=nF*1000/(now-lastT); nF=0; lastT=now; }
+  V.resize(); V.cam();
+  if(V.spin) V.yaw+=V.spin*dt;
+  let tt=t; if(!V.playing){ if(V._frozen==null)V._frozen=t; tt=V._frozen; }
+  V.LQ.length=0; V.TQ.length=0;
+  (V.scene||function(){})(V,tt);
+  V.paint();
+  requestAnimationFrame(loop);
+}
+V.resize(); V.cam(); V.fit(V.focus);
+requestAnimationFrame(loop);
+
+/* ===================== 🖼 统一灯箱（设备实照 / 产品外观+结构 共用；点图切换，点背景关闭） ===================== */
+let _LB = [], _LBi = 0;
+function openLight(url, cap, list){
+  const lb = $('lightbox'), img = lb.querySelector('img'), c = lb.querySelector('.cap');
+  _LB = (list && list.length) ? list.slice() : [{url: url, name: cap}];
+  _LBi = Math.max(0, _LB.findIndex(x => x.url === url));
+  img.src = _LB[_LBi].url;
+  c.textContent = (_LB[_LBi].name || cap) + (_LB.length > 1 ? ' · 点图切换（' + (_LBi+1) + '/' + _LB.length + '）' : '') + ' · 点背景或 Esc 关闭';
+  lb.classList.add('on');
+  img.onclick = ev => {
+    ev.stopPropagation();
+    if(_LB.length < 2) return;
+    _LBi = (_LBi + 1) % _LB.length;
+    img.src = _LB[_LBi].url;
+    c.textContent = _LB[_LBi].name + ' · 点图切换（' + (_LBi+1) + '/' + _LB.length + '）· 点背景或 Esc 关闭';
+  };
+  lb.onclick = () => { lb.classList.remove('on'); img.src = ''; };
+  document.onkeydown = ev => { if(ev.key === 'Escape'){ lb.classList.remove('on'); img.src = ''; } };
+}
+
+/* ===================== 🧩 来料产品 MPO-8FC / MPO-16FC（产品 → 设备 → 工艺，自上而下） ===================== */
+(async function prodInit(){
+  try{
+    const d = await (await fetch('/api/products')).json();
+    const specs = d.specs || [], ph = d.photos || {};
+    if(!specs.length) return;
+    const tabs = $('prodTabs');
+    let cur = 0;
+    function render(i){
+      cur = i;
+      const s = specs[i];
+      [...tabs.children].forEach((b, k) => b.classList.toggle('on', k === i));
+      const pics = (ph[s.key] || []);
+      // 缩略图优先用**实拍实物图**(分辨率高、看得清真实接头), 没有就退回外观图
+      const face = pics.find(p => p.kind === '实物') || pics.find(p => p.kind === '外观') || pics[0] || null;
+      const out = pics.find(p => p.kind === '结构') || null;
+      const picBox = $('prodPic');
+      if(face){
+        picBox.querySelector('img').src = face.url;
+        picBox.querySelector('img').alt = face.name;
+        const _kinds = [...new Set(pics.map(q => q.kind))].join('/');
+        picBox.querySelector('span').textContent = face.kind + '（点开看' + (pics.length > 1 ? '全部 ' + pics.length + ' 张：' + _kinds : '原图') + '）';
+        picBox.style.display = '';
+        picBox.onclick = () => openLight(face.url, face.name, pics);
+      } else { picBox.style.display = 'none'; }
+      const meta = $('prodMeta');
+      const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+      const rows = s.rows || [];
+      meta.innerHTML = '<div class="sub">' + esc(s.sub) + '</div>' +
+        rows.slice(0, 6).map(r => `<div class="row"><i>${esc(r[0])}</i><span>${esc(r[1])}</span></div>`).join('') +
+        (rows.length > 6 ? `<details><summary>＋ 全部参数（${rows.length} 项）</summary>` +
+          rows.slice(6).map(r => `<div class="row"><i>${esc(r[0])}</i><span>${esc(r[1])}</span></div>`).join('') +
+          '</details>' : '');
+      $('prodNote').innerHTML = (s.note ? '<div>' + s.note + '</div>' : '') +
+        (s.picnote ? '<div style="color:#5c6f84">图注：' + s.picnote + '</div>' : '');
+    }
+    specs.forEach((s, i) => {
+      const b = document.createElement('b');
+      b.textContent = s.title;
+      b.onclick = () => render(i);
+      tabs.appendChild(b);
+    });
+    render(0);
+    $('prodBox').hidden = false;
+    window.__AL3D_PROD = specs.map(s => s.key);
+  }catch(e){ console.warn('来料产品加载失败', e); }
+})();
+
+/* ===================== 🖼 设备实照（与工艺卡并列：全局参考，不占 3D 画布） ===================== */
+(async function shotsInit(){
+  try{
+    const d = await (await fetch('/api/photos')).json();
+    // 优先只看「设备」实照(老倪点名要的两张), 目录里没有设备图时再退回全部
+    const all = d.photos || [];
+    const dev = all.filter(p => /设备/.test(p.name));
+    const list = (dev.length ? dev : all).slice(0, 6);
+    if(!list.length) return;
+    const box = $('shots');
+    const shortName = n => n.replace(/\.[^.]+$/, '')
+                           .replace(/^光纤自动检测设备\s*/, '设备')
+                           .replace(/^光纤/, '');
+    list.forEach(p => {
+      const fig = document.createElement('figure');
+      fig.title = p.name + ' · ' + p.mtime_s;
+      const img = new Image();
+      img.src = p.url; img.alt = shortName(p.name); img.loading = 'lazy';
+      const cap = document.createElement('figcaption');
+      cap.textContent = shortName(p.name);
+      fig.appendChild(img); fig.appendChild(cap);
+      fig.onclick = () => openLight(p.url, p.name + ' · ' + p.mtime_s);
+      box.appendChild(fig);
+    });
+    $('shotBox').hidden = false;
+    const lb = $('lightbox');
+    lb.onclick = () => { lb.classList.remove('on'); lb.querySelector('img').src = ''; };
+    document.addEventListener('keydown', e => {
+      if(e.key === 'Escape'){ lb.classList.remove('on'); lb.querySelector('img').src = ''; }
+    });
+    window.__AL3D_SHOTS = list.length;
+  }catch(e){ console.warn('设备实照加载失败', e); }
+})();
+
+/* ===================== 📄 技术协议（Word 真源 → 工位机桌面打开） ===================== */
+$('bAgree').onclick=async()=>{
+  const b=$('bAgree'), o=b.textContent;
+  b.disabled=true; b.textContent='打开中…';
+  try{
+    const info=await (await fetch('/api/agreement')).json();
+    if(!info.exists){
+      b.textContent='没放文件';
+      alert('还没有技术协议文件。\n请把 Word 版放进：\n'+info.dir+
+            '\n\n（.docx/.doc/.pdf 都行，放好后不用重启，再点这个按钮即可）');
+    }else{
+      const r=await (await fetch('/agreement/open',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:'{}'})).json();
+      b.textContent = r.ok ? ('已打开 · '+(r.how||'桌面')) : '打开失败';
+      if(!r.ok) alert('打开失败：'+(r.err||'')+'\n文件：'+(r.path||''));
+    }
+  }catch(e){ b.textContent='打开失败'; alert('打开失败：'+e); }
+  setTimeout(()=>{ b.textContent=o; b.disabled=false; }, 4000);
+};
+(async function agreeInit(){
+  try{
+    const i=await (await fetch('/api/agreement')).json();
+    const a=$('aAgree');
+    if(i.exists){ a.title='下载 / 在线查看：'+i.current+'（'+Math.round((i.size||0)/1024)+' KB · '+i.files.length+' 份候选）'; }
+    else { a.style.opacity='.45'; a.title='目录里还没有技术协议文件：'+i.dir; }
+  }catch(e){}
+})();
+
+/* ===================== 取证接口（判据用, 不是给人看的） ===================== */
+window.__AL3D={
+  ready:true, version:'autoLight3d-1',
+  steps:()=>CARDS.length,
+  card:()=>CARDS[cur].n,
+  title:()=>CARDS[cur].title,
+  geom:()=>({W:V.W,H:V.H,faces:V.LQ.length,labels:V.drawn||0,dist:+V.dist.toFixed(3),
+             yaw:+V.yaw.toFixed(3),pitch:+V.pitch.toFixed(3)}),
+  fps:()=>Math.round(fps),
+  setStep:n=>setStep(n-1)
+};
+</script>
+</body>
+</html>

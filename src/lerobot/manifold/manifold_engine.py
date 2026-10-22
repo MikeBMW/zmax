@@ -582,6 +582,14 @@ class ManifoldEngine:
         #   latent_provider=None ⇒ 逐位回到内建 PCA (零回归); 见 src/lerobot/manifold/encoder_model.py
         self.latent_provider = latent_provider
         self.latent_provider_note = str(latent_provider_note or "")
+        # 🧠 H-JEPA 第三潜通道 (老倪 2026-10-22 A): 默认**未接** ⇒ 零回归; w=0 ⇒ 只观测不动动作
+        self.hjepa_provider = None
+        self.hjepa_note = ""
+        try:
+            self.hjepa_w = float(os.environ.get("HJEPA_W", "0") or 0.0)
+        except Exception:                                                    # noqa: BLE001
+            self.hjepa_w = 0.0
+        self._hj_prev_pred = None
         self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
         # ── 几何完备性开关 (2026-10-19) — 默认两个都关 ⇒ 与旧版逐位相同 ──
         #   ① phi_metric : 势函数换成**各度规自身距离** Φ=½·d_M(q,goal)²
@@ -626,6 +634,63 @@ class ManifoldEngine:
         return {"provider": "编码模型" if provider is not None else "内建 PCA (Encoder.fit)",
                 "note_prev": prev, "note": self.latent_provider_note,
                 "latent_dim": int(self.latent_dim)}
+
+    def set_hjepa_provider(self, provider, note: str = "") -> dict:
+        """🧠 H-JEPA 三层潜空间 → 引擎**第三潜通道** (老倪 2026-10-22「A 把 H-JEPA 真接进流形引擎」)。
+
+        provider = callable() → dict(取自 `HJEPAModel.infer`; 至少含 z_concat/z1/z2/z3/energy/ms) 或 None。
+        接线口径 (别把它当主编码器):
+          · 主潜表示仍是 PCA(或 latent_provider) ⇒ p/goal/Φ 的语义不变 (goal 是**轨迹潜空间**的概念)。
+          · H-JEPA 每步真前向, 结果进 `rec["hjepa"]` = 世界模型通道 (三层潜范数/能量/预测残差), 供画布/数据总线/异常判据。
+          · 势注入 `HJEPA_W` 默认 0.0 ⇒ 只观测不动动作 (**逐位零回归**); >0 才把 w·Σ能量 加进 Φ ——
+            这会改动作, 属另开档位, 必须单独过闸。
+        """
+        prev = self.hjepa_note
+        self.hjepa_provider = provider
+        self.hjepa_note = str(note or "")
+        return {"provider": "H-JEPA 三层潜空间" if provider is not None else "未接",
+                "note_prev": prev, "note": self.hjepa_note,
+                "w_phi": float(getattr(self, "hjepa_w", 0.0))}
+
+    def _hjepa_read(self):
+        """取一帧 H-JEPA 输出 + 世界模型预测残差 (相邻两帧: 上一帧的 z_pred vs 本帧 z)。"""
+        if self.hjepa_provider is None:
+            return None
+        try:
+            out = self.hjepa_provider()
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.hjepa_note}
+        if not out:
+            return {"ok": False, "why": "provider 无输出 (未就绪/超帧龄)", "note": self.hjepa_note}
+        if not isinstance(out, dict) or not out.get("ok", True):
+            return {"ok": False, "why": str((out or {}).get("why") or "未知"), "note": self.hjepa_note}
+        try:
+            z1 = np.asarray(out["z1"], float).ravel()
+            z2 = np.asarray(out["z2"], float).ravel()
+            z3 = np.asarray(out["z3"], float).ravel()
+            _zc = out.get("z_concat")
+            zc = np.asarray(_zc if _zc is not None else np.concatenate([z1, z2, z3]), float).ravel()
+            # 世界模型预测残差: 上一帧预测 vs 本帧实测 (同维), 反映"画面/状态是否按模型设想走"
+            prv = getattr(self, "_hj_prev_pred", None)
+            surprise = None
+            if prv is not None and np.asarray(prv).size == zc.size:
+                a = np.asarray(prv, float).ravel()
+                surprise = float(np.linalg.norm(zc - a) / (np.linalg.norm(zc) + 1e-9))
+            preds = out.get("z_pred") or []
+            self._hj_prev_pred = (np.concatenate([np.asarray(p, float).ravel() for p in preds])
+                                  if preds else None)
+            return {"ok": True, "z_dim": int(zc.size),
+                    "norms": {"z1": round(float(np.linalg.norm(z1)), 4),
+                              "z2": round(float(np.linalg.norm(z2)), 4),
+                              "z3": round(float(np.linalg.norm(z3)), 4)},
+                    "energy": [round(float(e), 4) for e in (out.get("energy") or [])],
+                    "surprise": (None if surprise is None else round(surprise, 5)),
+                    "ms": out.get("ms"), "note": self.hjepa_note,
+                    "w_phi": float(getattr(self, "hjepa_w", 0.0))}
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "输出解析异常: %s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.hjepa_note}
 
     def set_M(self, value: float, inertia: bool | None = None) -> dict:
         """设置主标定参数 M (带范围校验; inertia=None 时保持原状)。
@@ -974,6 +1039,9 @@ class ManifoldEngine:
                    "urgency": hom["urgency"], "state": self.hom.state.as_dict(),
                    "estimated": dict(self.hom.state.estimated), "safety_override": hom["safety_override"]}),
                "hom_enabled": self.hom_enabled}
+        hj = self._hjepa_read()
+        if hj is not None:
+            rec["hjepa"] = hj
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
         return rec
 

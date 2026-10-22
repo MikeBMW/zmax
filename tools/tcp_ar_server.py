@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import socketserver
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -56,6 +57,198 @@ AOI_STATE = os.path.join(os.path.expanduser("~/zmax/zmax_data"), "ar_aoi_state.j
 UP = "http://127.0.0.1:8791"
 PORT = int(os.environ.get("AR_PORT", "8797"))
 PAGE = os.path.join(REPO, "tools", "web", "tcp-ar.html")
+
+# 📄 2026-10-22 老倪: 「右上角增加一个 技术 按钮，可以打开技术协议；你来规划一个文件夹路径，
+#   我把真正的 word 版本的技术协议放到这里，你负责打开这个 word」
+#   规约: 目录只放**真源文件**(Word/PDF), 不进 git(大件不进库, 见 git 精简纪律);
+#   选哪份 = ZMAX_AGREEMENT_FILE 指定 > 文件名含「技术协议」且最新的 > 目录里最新的。
+AGREE_DIR = os.environ.get("ZMAX_AGREEMENT_DIR") or os.path.join(REPO, "zmax_data", "agreements")
+AGREE_EXTS = (".docx", ".doc", ".pdf")
+AGREE_MIME = {".pdf": "application/pdf",
+              ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              ".doc": "application/msword"}
+
+
+def _agreement_files():
+    """目录里可当技术协议的文件(真读盘, 不缓存 —— 老倪随时可能替换)。"""
+    out = []
+    try:
+        for n in sorted(os.listdir(AGREE_DIR)):
+            if n.startswith(".") or not n.lower().endswith(AGREE_EXTS):
+                continue
+            p = os.path.join(AGREE_DIR, n)
+            if not os.path.isfile(p):
+                continue
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            out.append({"name": n, "size": st.st_size, "mtime": st.st_mtime,
+                        "mtime_s": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)),
+                        "ext": os.path.splitext(n)[1].lower()})
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+    return out
+
+
+def _agreement_pick():
+    """返回 (选中文件 dict|None, 全部文件 list)。"""
+    files = _agreement_files()
+    if not files:
+        return None, files
+    want = os.environ.get("ZMAX_AGREEMENT_FILE") or ""
+    if want:
+        for f in files:
+            if f["name"] == want:
+                return f, files
+    pref = [f for f in files if "技术协议" in f["name"]] or list(files)
+    pref.sort(key=lambda f: f["mtime"], reverse=True)
+    return pref[0], files
+
+
+def _agreement_info():
+    f, files = _agreement_pick()
+    return {"ok": True, "dir": AGREE_DIR, "exists": bool(f), "count": len(files),
+            "current": f["name"] if f else None, "size": f["size"] if f else None,
+            "files": files,
+            "hint": "把 Word 版技术协议放进这个目录即可（.docx/.doc/.pdf；有多份时取文件名含「技术协议」且最新的那份，"
+                    "或用环境变量 ZMAX_AGREEMENT_FILE 指定文件名）"}
+
+
+def _agreement_path(name=None):
+    if name:
+        name = os.path.basename(str(name))
+        for f in _agreement_files():
+            if f["name"] == name:
+                return os.path.join(AGREE_DIR, name)
+        return ""
+    f, _ = _agreement_pick()
+    return os.path.join(AGREE_DIR, f["name"]) if f else ""
+
+
+# 🖼 2026-10-22 老倪: 「光纤自动检测设备1 和2 …这两张图片，也显示在 /autoLight3d#1 这个页面，
+#   你来设计，如何跟工艺卡排列」—— 设备实照是**全局参考**(不随九步变), 单独从图片库读, 不塞进页面当静态资源,
+#   这样老倪随时往目录里丢新照片, 页面刷新就有。
+PHOTO_DIR = os.environ.get("ZMAX_PHOTO_DIR") or "/home/ubuntu/图片库/01_设备与现场照片"
+# 🧩 产品/器件图(来料 MPO-8FC / MPO-16FC 的外观与结构图)单独一个目录, 与设备实照分开管理
+PRODUCT_DIR = os.environ.get("ZMAX_PRODUCT_DIR") or "/home/ubuntu/图片库/05_产品与器件"
+PHOTO_DIRS = [PHOTO_DIR, PRODUCT_DIR]
+PHOTO_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+# 🧩 来料产品的主要参数(2026-10-22 老倪: 「MPO-8FC / MPO-16FC 上网找实际的图片，主要参数，显示在 autoLight3d」)
+#   数值取自厂家规格书与华为 CE 系列《光跳线外观结构与针脚定义》的公开资料, **典型/上限值**, 只作现场识别参考;
+#   真值一律以甲方来料规格书与实测为准(回损测试以 RLM1412A 读数为准)。
+PRODUCT_SPECS = [
+    {"key": "MPO-8FC", "title": "MPO-8FC", "sub": "1× MPO 8 芯 → 8× FC 单芯",
+     "rows": [["芯数", "8 芯"], ["连接器", "MPO(母/公) — 8× FC/PC"],
+              ["端面", "MPO PC/APC8° · FC PC/APC"],
+              ["插损", "MPO ≤0.35 · FC ≤0.30 dB"],
+              ["回损", "SM ≥60 · MM ≥25~35 dB"],
+              ["波长", "SM 1310/1550 · MM 850/1300"],
+              ["线径", "3.0 主干 / 0.9~2.0 分支 · R≥7.5"],
+              ["温度", "-40 ~ +85 ℃"], ["极性", "Type A/B/C(华为 CE 用 B)"],
+              ["标准", "IEC 61754-7 · TIA-604-5(FOCIS-5) · GR-1435"]],
+     "note": "本设备 FC 工站一次测 16PCS FC 端面 ⇒ 2 件 MPO-8FC 的 FC 端刚好占满一个载具",
+     "picnote": "外观图可数出 8 个 FC(4 组双工 1A/1B~4A/4B); 结构图为 MPO 12 针位只用 8 芯(1~4 + 9~12); 末张为 Fluke《MPO 类型》原图裁出的 8 芯阵列 —— 该图 12 位法兰只装 8 芯(中间 4 位空), 与华为结构图 1~4 + 9~12 完全对得上"},
+    {"key": "MPO-16FC", "title": "MPO-16FC", "sub": "1× MPO-16 芯 → 16× FC 单芯",
+     "rows": [["芯数", "16 芯"], ["连接器", "MPO-16(母/公) — 16× FC/PC"],
+              ["端面", "MPO APC8°/PC · FC PC/APC"],
+              ["插损", "MPO ≤0.35 · FC ≤0.30 dB"],
+              ["回损", "SM ≥60 · MM ≥25~35 dB"],
+              ["波长", "SM 1310/1550 · MM 850/1300"],
+              ["线径", "3.0 主干 / 0.9~2.0 分支 · R≥7.5"],
+              ["温度", "-40 ~ +85 ℃"], ["极性", "Type A / B / C"],
+              ["标准", "IEC 61754-7 · TIA-604-5 · GR-1435"]],
+     "note": "1 件 MPO-16FC = 16 个 FC 端面 = 1 个载具(载具配 FC 夹具×16)",
+     "picnote": "实物=KOCENT MPO-16 转 16×FC 白底实拍(与 HCI 同风格); 对照=HCI 的 Y 缆与华为两端 MPO 干缆; 「16 芯」以结构图+Fluke《MPO 类型》16 芯阵列为准"},
+]
+
+
+def _photo_files():
+    out = []
+    try:
+        names = sorted(os.listdir(PHOTO_DIR))
+    except OSError:
+        return out
+    for n in names:
+        if n.startswith(".") or os.path.splitext(n)[1].lower() not in PHOTO_EXTS:
+            continue
+        p = os.path.join(PHOTO_DIR, n)
+        if not os.path.isfile(p):
+            continue
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append({"name": n, "size": st.st_size,
+                    "mtime_s": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)),
+                    "url": "/photo/" + urllib.parse.quote(n)})
+    return out
+
+
+def _product_photos():
+    """产品图: 按文件名前缀归到 MPO-8FC / MPO-16 两组, 页面按组取外观/结构图。"""
+    out = {"MPO-8FC": [], "MPO-16FC": []}
+    try:
+        names = sorted(os.listdir(PRODUCT_DIR))
+    except OSError:
+        return out
+    for n in names:
+        if n.startswith(".") or os.path.splitext(n)[1].lower() not in PHOTO_EXTS:
+            continue
+        p = os.path.join(PRODUCT_DIR, n)
+        if not os.path.isfile(p):
+            continue
+        grp = "MPO-16FC" if "MPO-16" in n else ("MPO-8FC" if "MPO-8" in n else "")
+        item = {"name": n, "url": "/photo/" + urllib.parse.quote(n),
+                "kind": ("对照" if "对照" in n else
+                         "结构" if "结构" in n else
+                         "细节" if "细节" in n else
+                         "外观" if "外观" in n else "实物"),
+                "size": os.path.getsize(p)}
+        if grp:
+            out[grp].append(item)
+    # 排序: 实物(一眼看形态) → 外观 → 细节(端面特写) → 对照(别家形态) → 结构(位定义)
+    rank = {"实物": 0, "外观": 1, "细节": 2, "对照": 3, "结构": 4}
+    for k in out:
+        out[k].sort(key=lambda x: (rank.get(x["kind"], 9), x["name"]))
+    return out
+
+
+def _agreement_open():
+    """在**工位机桌面**把 Word 打开(真起进程, 返回用了哪个程序)。
+
+    为什么要服务端开: 这个按钮在工位机上点(浏览器与文档同一台机器) —— 让 LibreOffice/Word 直接出窗,
+    比"下载到下载目录再自己找"快一步; 从别的设备点会开在工位机桌面上, 页面会明说, 另给 ⬇ 下载。
+    """
+    import shutil as _sh
+    p = _agreement_path()
+    if not p:
+        return {"ok": False, "err": "目录里还没有技术协议文件", "dir": AGREE_DIR,
+                "hint": "把 Word 放进 %s 后点这个按钮即可" % AGREE_DIR}
+    env = dict(os.environ)
+    env.setdefault("DISPLAY", ":0")
+    from pathlib import Path
+    target = str(Path(p).resolve())
+    tried = []
+    for cmd in (["soffice", "--norestore", target],
+                ["lowriter", "--norestore", target],
+                ["xdg-open", target]):
+        if _sh.which(cmd[0]) is None:
+            continue
+        tried.append(cmd[0])
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True, env=env)
+            return {"ok": True, "how": cmd[0], "file": os.path.basename(target), "path": target,
+                    "size": os.path.getsize(target)}
+        except Exception as _e:                                                # noqa: BLE001
+            last = "%s: %r" % (cmd[0], _e)
+            continue
+    return {"ok": False, "err": "没找到能打开 Word 的程序(soffice/lowriter/xdg-open 都不可用)", "path": target}
+
 CALIB = os.path.join(REPO, "data", "scene", "laptop_cam_calib.json")            # 旧单相机文件(兼容保留)
 MCALIB = os.path.join(REPO, "data", "scene", "cam_calib.json")                   # 多相机: {"local":{...},"local2":{...}}
 # 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
@@ -727,6 +920,71 @@ class H(BaseHTTPRequestHandler):
                 except Exception as _ae:
                     self._send(404, "text/plain; charset=utf-8",
                                ("autoLight 页面缺失: %s: %s" % (type(_ae).__name__, _ae)).encode())
+            elif p in ("/autoLight3d", "/autolight3d", "/autoLight3d.html"):
+                # 🧊 2026-10-22 老倪: 「/ar 的三维视角，需要重新开一个新页面，在光纤的场景」
+                #   = 光纤设备九步场景的**独立大窗口三维视角**(一页一个大 3D + 九步切换);
+                #   与 /autoLight 同一份引擎/场景(1:1 布置), 同样**热读** —— 改 HTML 不用重启服务
+                _al3 = os.path.join(REPO, "tools", "web", "autoLight3d.html")
+                try:
+                    with open(_al3, "rb") as f:
+                        self._send(200, "text/html; charset=utf-8", f.read())
+                except Exception as _ae:
+                    self._send(404, "text/plain; charset=utf-8",
+                               ("autoLight3d 页面缺失: %s: %s" % (type(_ae).__name__, _ae)).encode())
+            elif p == "/api/photos":            # 🖼 设备实照清单(从图片库现场读盘)
+                self._json({"ok": True, "dir": PHOTO_DIR, "photos": _photo_files()})
+            elif p == "/api/products":          # 🧩 来料产品(MPO-8FC / MPO-16FC) 图 + 主要参数
+                self._json({"ok": True, "dir": PRODUCT_DIR,
+                            "specs": PRODUCT_SPECS, "photos": _product_photos()})
+            elif p.startswith("/photo/"):
+                # 🖼 单张设备实照: 只认白名单扩展名 + 目录内文件(防目录穿越)
+                from urllib.parse import unquote as _uq2
+                _nm = os.path.basename(_uq2(p[len("/photo/"):]))
+                # 设备实照与产品图分两个目录, 同名以设备实照优先
+                _pp = ""
+                for _d in PHOTO_DIRS:
+                    _c = os.path.join(_d, _nm)
+                    if os.path.isfile(_c):
+                        _pp = _c
+                        break
+                if not _nm or not _pp or \
+                        os.path.splitext(_nm)[1].lower() not in PHOTO_EXTS:
+                    self._send(404, "text/plain; charset=utf-8", b"no such photo")
+                else:
+                    with open(_pp, "rb") as f:
+                        _b = f.read()
+                    _mime = ("image/png" if _nm.lower().endswith(".png")
+                             else "image/webp" if _nm.lower().endswith(".webp")
+                             else "image/jpeg")
+                    self._send(200, _mime, _b, {"Cache-Control": "max-age=30"})
+            elif p == "/api/agreement":         # 📄 技术协议清单(目录/当前选中/候选列表)
+                self._json(_agreement_info())
+            elif p in ("/agreement", "/agreement/file") or p.startswith("/agreement/"):
+                # 📄 取文件本身: /agreement = 当前选中那份; /agreement/<文件名> = 指定那份
+                _nm = p[len("/agreement/"):] if p.startswith("/agreement/") else ""
+                if _nm in ("", "file"):
+                    _ap = _agreement_path()
+                else:
+                    from urllib.parse import unquote as _uq
+                    _ap = _agreement_path(_uq(_nm))
+                if not _ap:
+                    self._send(404, "text/plain; charset=utf-8",
+                               ("没有技术协议文件; 请放到: %s" % AGREE_DIR).encode())
+                else:
+                    _ext = os.path.splitext(_ap)[1].lower()
+                    _fn = os.path.basename(_ap)
+                    try:
+                        with open(_ap, "rb") as f:
+                            _b = f.read()
+                        # inline: 手机上能直接看 PDF; Word 由浏览器交系统打开/下载
+                        _disp = "inline" if _ext == ".pdf" else "attachment"
+                        self._send(200, AGREE_MIME.get(_ext, "application/octet-stream"), _b,
+                                   {"Content-Disposition":
+                                    '%s; filename="agreement%s"; filename*=UTF-8\'\'%s'
+                                    % (_disp, _ext, urllib.parse.quote(_fn))})
+                    except Exception as _ae:                                # noqa: BLE001
+                        self._send(500, "text/plain; charset=utf-8",
+                                   ("读取技术协议失败: %s: %s" % (type(_ae).__name__, _ae)).encode())
             elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)
                 self._json(_cams_payload())
             elif p == "/api/ss_stats":          # 🥽 状态空间工程视频源(8791 cam_live_stream)原始实况
@@ -1258,6 +1516,8 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": False, "err": "%s: %s" % (type(_e).__name__, _e)})
         elif p == "/api/module3d_lock":     # 🔒 绿框定主 (lock|unlock|status)
             self._json(self._mod3_lock(str(body.get("action") or "status")))
+        elif p == "/agreement/open":        # 📄 技术协议: 在工位机桌面打开 Word(真起进程)
+            self._json(_agreement_open())
         elif p == "/api/aoi/inspect":            # 🔍 真拍 + 缺陷检测 + 矩形搜索 + 侧边修正
             self._json(self._aoi_inspect(port=int(body.get("port") or 10082)))
         elif p == "/api/calib":
@@ -1609,6 +1869,16 @@ def _mod3_write(r, frame_b=None):
         if not (prev and prev.get("ok")):
             r["ts"] = time.time()
             r["t"] = time.strftime("%H:%M:%S")
+        elif (time.time() - float(prev.get("last_ts") or prev.get("ts") or 0)) > float(
+                os.environ.get("ZMAX_MOD_STALE_MAX_S", "3.0")):
+            # 🆕 2026-10-22 现场(老倪: 「手臂相机现在没有光模块, 不需要显示绿色边界框」):
+            #   沿用旧框**必须有上限**。老逻辑是"只要以前检出过就一直沿用" ⇒ 明明画面上没有模块,
+            #   那个(橙虚线)框会无限期挂在页面上。⇒ 超过 ZMAX_MOD_STALE_MAX_S(默认 3s)仍没检出,
+            #   就写一份干净的"未检出"(ok=False), 页面自然不画框; 3s 内的短暂漏检仍按旧框+stale 明示。
+            r["ts"] = time.time()
+            r["t"] = time.strftime("%H:%M:%S")
+            r["stale"] = False
+            r["box_expired"] = True
         else:
             prev = dict(prev)
             prev["stale"] = True

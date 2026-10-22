@@ -389,11 +389,20 @@ def check_uff_weight(app):
     _m2 = float((_cells.get("L2") or {}).get("mag") or 0.0)
     _others = [float((_cells.get(k) or {}).get("mag") or 0.0) for k in ("L3", "L4", "L5")]
     _src2 = str((_cells.get("L2") or {}).get("src") or "")
-    chk("W1", "分层力: 主力=L2(前馈 u_ff), 且力度 ≥1.2× 其它层 (权重把前馈顶起来)",
-        bool(row) and row.get("main") == "L2" and _m2 >= 1.2 * max(_others + [1e-9]),
-        "main=%s; L2=%.4f vs L3/L4/L5=%.4f/%.4f/%.4f (%.1f×) · w=%s"
-        % ((row or {}).get("main"), _m2, _others[0], _others[1], _others[2],
-           _m2 / max(max(_others), 1e-9), _w))
+    # 🔴 2026-10-22 口径修正 (老倪「表里的高亮跟数对不上」): 主力不再是"构造指定", 而是
+    #   **最终格子里 mag 最大的那一层** ⇒ 高亮的格子和显示的数字永远同源, 可逐位对账。
+    #   原来的 \"main 必须 = L2 且 ≥1.2×\" 是老构造 (lf 关闭/α=1) 的意图, 现降级为**证据位** (W1e)。
+    _cand = [(k, float((_cells.get(k) or {}).get("mag")))
+             for k in ("L2", "L3", "L4", "L5")
+             if isinstance((_cells.get(k) or {}).get("mag"), (int, float))]
+    _mxk, _mxm = (max(_cand, key=lambda t: t[1]) if _cand else (None, 0.0))
+    chk("W1", "主力 = 最终格子里 mag 最大的那一层 (表里的高亮与数字同源, 可逐位对账)",
+        bool(row) and (row or {}).get("main") == _mxk and len(_cand) == 4,
+        "main=%s · max层=%s · 各层=%s" % ((row or {}).get("main"), _mxk,
+                                       {k: round(v, 4) for k, v in _cand}))
+    # 证据位 (不作判据): 构造意图是"前馈最重", 实际力度比看这一行
+    print("   📎 [证据] 前馈 L2=%.4f vs 最强 %.4f ⇒ %.2f× · w=%s"
+          % (_m2, _mxm, _m2 / max(_mxm, 1e-9), _w))
     chk("W2", "每层格子 src 写清它自己的真源 (chunk_latest / torque_live) ⇒ 可逐层对账",
         "chunk_latest" in _src2 and "torque_live" in str((_cells.get("L4") or {}).get("src") or ""),
         "L2 src=%s | L4 src=%s" % (_src2[:44], str((_cells.get("L4") or {}).get("src") or "")[:44]))
@@ -572,7 +581,7 @@ def main():
         if not isinstance(got, (int, float)) or abs(got - want) > 1.5:
             bad.append((body, "%s≠%s" % (got, round(want, 2))))
     _any_run = (d.body.get("sun", {}).get("st") or {}).get("txt") != "未运行"
-    chk("W1", "7 个天体都有状态, 帧龄与各自真源 mtime 独立复算一致; 未运行态下文案=未运行",
+    chk("W1b", "7 个天体都有状态, 帧龄与各自真源 mtime 独立复算一致; 未运行态下文案=未运行",
         not bad and (all((d.body.get(b, {}).get("st") or {}).get("txt") == "未运行" for b in srcs) if not _any_run else True),
         "%s · sun=%s" % (str(bad or "")[:110], (d.body.get("sun", {}).get("st") or {}).get("txt")))
 

@@ -821,15 +821,23 @@ def main():
         {"块数": len(_blocksM), "缺天体名": _missN or "无"},
         not _missN, "六类天体名都出现在标签里")
     _wide = [(round(r.width()), max(len(l) for l in ls)) for r, ls in _blocksM]
-    # 宽度的自适应要在**真实尺寸**下看 (M 页太阳系区是 1080×360): 682px 宽时右栏只有 204px,
-    #   每行都被截到上限 ⇒ 宽度必然一样, 那是"栏太窄"不是"没自适应"。
+    # 宽度的自适应要在**真实尺寸**下看 (M 页太阳系区是 1080×360)
     _vW = OA.OrbitalArchView(root=_FREEZE)
     _vW.resize(1080, 360)
     _wideW = [(round(r.width()), max(len(l) for l in ls)) for r, ls in _vW.label_texts()]
     _over = [w for w, _n in _wideW if w > OA.OrbitalArchView.COL_W]
-    chk("M2", "右栏块宽**随文字自适应** (右边缘钉住, 左边缘按文字长短) —— 每块 ≤COL_W 且不等宽",
-        {"块宽(1080宽)": [w for w, _n in _wideW], "种数": len({w for w, _n in _wideW}), "682宽": [w for w, _n in _wide]},
-        not _over and len({w for w, _n in _wideW}) >= 4, "宽度按文字定, 右对齐 ⇒ 字不挪")
+    # 2026-10-22 老倪「太阳系的右侧的字体, 不要乱动。固定住」⇒ 口径反过来了:
+    #   老口径(每块按自己文字宽度自适应)会让数字一换位数就横移 13px (实测), 已作废。
+    #   新口径: 整列**一个固定宽度** = _col_w(W), 左缘恒定 ⇒ 文字不挪; 只随窗口宽度变。
+    _wantw = round(_vW._col_w(1080))
+    _wantw2 = round(_vW._col_w(682))
+    _same = (len({w for w, _n in _wideW}) == 1) and (len({w for w, _n in _wide}) == 1)
+    chk("M2", "右栏一列**固定宽度** (左缘恒定 ⇒ 文字不随数字位数挪动), 宽 = _col_w(W) 且 ≤ COL_W",
+        {"块宽(1080宽)": [w for w, _n in _wideW], "期望宽": _wantw,
+         "682宽": [w for w, _n in _wide], "期望宽682": _wantw2},
+        (not _over) and _same
+        and all(w == _wantw for w, _n in _wideW) and all(w == _wantw2 for w, _n in _wide),
+        "同一尺寸下所有块等宽 = _col_w(W) (数据跳动时左缘 0px 位移, 见 verify_orbital_rightcol_frozen.py)")
 
     def _gapM(r1, r2):
         dx = max(0.0, max(r1.x(), r2.x()) - min(r1.x() + r1.width(), r2.x() + r2.width()))

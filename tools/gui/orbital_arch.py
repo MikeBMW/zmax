@@ -1377,6 +1377,27 @@ class OrbitalArchView(QWidget):
             p.setPen(QPen(c, max(1.4, w * 0.72), Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QPointF(x1, y1), QPointF(_ax, _ay))
 
+    def _force_dir_screen(self, vec):
+        """力矢量的**屏幕方向单位向量** —— 球上的力箭头与 S³ 表盘的指针**共用这一条**
+        (老倪 2026-10-22「力场合力的方向, 要与太阳系动画的地球的合力方向一致, 要同方向」)。
+
+        🔴 真因 (2026-10-22 实测): `_proj` 里有个**近大远小**因子 `sc = R·zoom·(1+0.10·z4)`。
+        直接把长矢量 (力×像素长, 模长可到 160) 投进去, z4 跟着变到 -60 ⇒ 因子变**负数** ⇒
+        投影结果整根翻到反方向 180°; 而 unit 的 q̂ 投进去 z4≈±1 不翻。同一个力, 球上箭头和表盘
+        指针就各指一方 (实测「转移」阶段 yaw=1.7/pitch=0.55 时 83.7° vs 263.7°)。
+        正解: **先归一再投影** (|v̂|=1 ⇒ |z4|≤1 ⇒ 因子恒在 0.9~1.1, 永不翻), 归一化再抹掉常数因子。
+        这样两个调用点拿到的是同一个角, 且与矢量长度无关 (缩放不变)。
+        """
+        n0 = math.sqrt(float(vec[0]) ** 2 + float(vec[1]) ** 2 + float(vec[2]) ** 2)
+        if n0 < 1e-12:
+            return 0.0, -1.0         # 零矢量 ⇒ 指向正上, 不画零长
+        px, py, _ = self._proj(float(vec[0]) / n0, float(vec[1]) / n0, float(vec[2]) / n0,
+                               0.0, 0.0, 1.0)
+        n = math.hypot(px, py)
+        if n < 1e-9:                 # 力几乎垂直于屏幕 (投影退化) ⇒ 指向正上, 不画零长
+            return 0.0, -1.0
+        return px / n, py / n
+
     def _earth_force_arrows(self, p, pos, S, cx, cy, R):
         """地球 (状态点) 上的力: **粗大箭头 = 合力 (前馈节点输出方向)**, 细箭头 = 四层分力,
         再加一条头尾相接的虚线链 (把分力一段段加起来正好落到合力箭头尖) —— 一眼看出"合力由谁组成"。
@@ -1397,10 +1418,8 @@ class OrbitalArchView(QWidget):
         ex, ey, _e = pos["earth"]
 
         def _scr(v, ln):
-            px, py, _ = self._proj(v[0] * ln, v[1] * ln, v[2] * ln, ex, ey, 1.0)
-            _dx, _dy = px - ex, py - ey
-            _n = math.hypot(_dx, _dy) or 1.0
-            return ex + _dx / _n * ln, ey + _dy / _n * ln
+            ux, uy = self._force_dir_screen(v)          # 与 S³ 表盘同一条方向 (2026-10-22)
+            return ex + ux * ln, ey + uy * ln
 
         # 判据用: 这一刻每根箭头的 (类, 笔宽, 像素长)
         # 🔧 绝对尺度 (老倪 2026-10-19「按建议来」): 长度 = |F| × px_per_mps (真源 force_field.json),
@@ -1536,20 +1555,24 @@ class OrbitalArchView(QWidget):
         for c in (fE.get("comps") or []):
             _byL[c["L"]] = c
         self._s3_slots = ["合", "L5", "L4", "L3", "L2"]     # 五个格位固定 (判据 R4 用)
-        _items = [(fE.get("q"), "#58a6ff", "合", 1.0, float(fE.get("mag") or 0.0))]
+        # 🔴 2026-10-22 老倪「力场合力的方向，要与太阳系动画的地球的合力方向一致，要同方向」:
+        #   盘上的**方向**一律取**与球上箭头完全同一份矢量** (合 = fE["vec"], 各层 = c["vec"]),
+        #   再走同一个 _proj ⇒ 同源同向, 不是"两套算法恰好在某个视角对上"。
+        #   q̂ 仍然保留 (标量部 w 用来调亮度、角距行用它), 但方向不再从 q̂ 的矢量部推。
+        _items = [(fE.get("q"), fE.get("vec"), "#58a6ff", "合", 1.0, float(fE.get("mag") or 0.0))]
         for _L5 in ("L5", "L4", "L3", "L2"):
             _c5 = _byL.get(_L5)
             _col = self.COL.get((_c5 or {}).get("body") or "sun", "#8b949e")
-            _items.append((((_c5 or {}).get("q")), _col, _L5, 1.0,
+            _items.append((((_c5 or {}).get("q")), (_c5 or {}).get("vec"), _col, _L5, 1.0,
                            float((_c5 or {}).get("mag") or 0.0)))
-        _mx = max([it[4] for it in _items] or [1e-9]) or 1e-9
+        _mx = max([it[5] for it in _items] or [1e-9]) or 1e-9
         from PyQt5.QtGui import QPolygonF
         _dirs = []                # 已画过的 (角度, 名字): 用于给"同向层"标 ≡ (L2/L3 常常同向)
         _n_it = len(_items)
         _cw = (w0 - 28.0) / max(1, _n_it)
         _dy = _y0 + 52.0 + 44.0
-        for _i, (_q, _col, _nm, _wgt, _mag) in enumerate(_items):
-            if not _q:
+        for _i, (_q, _vec, _col, _nm, _wgt, _mag) in enumerate(_items):
+            if not _q and not _vec:
                 # 这一层没有真源 (例: L5 场景理解没跑) ⇒ 空盘 + 层名 + "缺", 位置不动
                 _ccx = x0 + 14.0 + _cw * (_i + 0.5)
                 _ccy = _dy
@@ -1574,23 +1597,21 @@ class OrbitalArchView(QWidget):
             p.setBrush(QColor(14, 20, 30, 220))
             p.drawEllipse(QPointF(_ccx, _ccy), _rad, _rad)
             p.setBrush(Qt.NoBrush)
-            # 🔴 2026-10-19 老倪「力场的合力方向，与太阳系地球的 F合 方向要一致」:
-            #   原来这里用的是 q 的 (x,y) 两个分量 ⇒ 那是**力在 XY 平面上的投影**;
-            #   而地球那根 F合 箭头用的是 _proj() 的**屏幕投影** (带黄道倾角/偏航/俯仰)。
-            #   两套投影不同 ⇒ 盘上的指针和球上的箭头方向对不上。
-            #   现在: 盘上的方向也走 _proj (同一个函数, 只是原点取 0、尺度取 1) ⇒ 天然一致。
+            # 🔴 2026-10-22 老倪「力场合力的方向，要与太阳系动画的地球的合力方向一致，要同方向」:
+            #   方向**直接取与球上箭头同一份矢量** (合 = fE["vec"], 层 = c["vec"]) 走同一个 _proj;
+            #   原来用 q̂ 的矢量部推方向 —— 数学上与 F 平行, 但那是"两个来源恰好一致",
+            #   一旦 q̂ 的来源/符号/归一改了就会各指一方。现在同源 ⇒ 不可能不一致。
             #   长度: 盘里按单位圆封顶 (老倪「力场在单位圆里即可」), 球上的箭头照旧可以更长。
-            vx, vy, _vz, ww = _q[1], _q[2], _q[3], _q[0]
-            _d2x, _d2y, _ = self._proj(vx, vy, _vz, 0.0, 0.0, 1.0)
-            if math.hypot(_d2x, _d2y) < 1e-9:      # 力几乎垂直于屏幕 (投影退化) ⇒ 指向正上, 不画零长
-                _d2x, _d2y = 0.0, -1.0
+            ww = float(_q[0]) if _q else 1.0
+            _srcv = (_vec if _vec else (_q[1], _q[2], _q[3]))
+            _d2x, _d2y = self._force_dir_screen(_srcv)   # 与地球那根 F合 箭头**同一条**方向
             vx, vy = _d2x, _d2y
             _vv = math.hypot(vx, vy) or 1e-6
             # 长度按 |F| 的**对数**尺度 (2026-10-19 看图: 平方根把 5 倍压成 1.27 倍, 肉眼读不出量级)
             #   ⇒ log 分档, 最弱层 0.24r、最强层 0.92r; 尖不出环 (≤0.92r < 半径)
             _lg = lambda v: math.log10(max(1e-6, v))
-            _lo = min([it[4] for it in _items if it[4] > 0] or [1e-6])
-            _hi = max([it[4] for it in _items] or [1e-6])
+            _lo = min([it[5] for it in _items if it[5] > 0] or [1e-6])
+            _hi = max([it[5] for it in _items] or [1e-6])
             _u = 0.0 if _hi <= _lo * 1.0001 else (_lg(_mag) - _lg(_lo)) / (_lg(_hi) - _lg(_lo))
             _ln = max(9.0, _rad * (0.28 + 0.64 * max(0.0, min(1.0, _u))) * _wgt)
             _lens = getattr(self, "_s3_lens", None)
@@ -2129,14 +2150,23 @@ class OrbitalArchView(QWidget):
         rows.append((None, "● %s" % _sk_txt, QColor("#8ee6c8")))
         _gap = 7.0
         _h = float(self.LH + 6)      # 行高 24 + 6 = 30px/行 (17px 字不挤)
-        _avail = H - 70.0 - (6 + self.LH * len(self._foot_lines(W)))   # 起点 y=46 (让出标题带) + 底边留白
+        # 🔴 2026-10-22 老倪「太阳系的右侧的字体, 不要乱动。固定住」:
+        #   原来每行宽度按**这行文字当前宽度**算 (min(colw, 文字+18)) ⇒ 数字一换位数
+        #   (42%→100% · 0.35→12.05 · +0.12→-0.98), 块宽就变, 右缘钉住 ⇒ **左缘横移**
+        #   (实测 13 px/次, 见 tools/verify_orbital_rightcol_frozen.py), 看着就是字在抖。
+        #   改成整列一个固定宽度 = colw: 左缘 = W-14-colw+4 恒定, 前缀 (状态字形+天体名)
+        #   一个字都不挪, 数字在后面伸缩; 右缘仍钉 W-14。
+        self._col_fixed_w = colw
+        # 底栏行数用 _geom 的**滞回值** (缺源多/少一行不许改行距 ⇒ 整列上下跳)
+        _nfoot = getattr(self, "_foot_n", None) or len(self._foot_lines(W))
+        _avail = H - 70.0 - (6 + self.LH * _nfoot)       # 起点 y=46 (让出标题带) + 底边留白
         while len(rows) * (_h + _gap) - _gap > _avail and _gap > 1.0:
             _gap -= 1.0
         y = 46.0
         out, placed = [], []
         self._lead_of = {}          # 文字↔球体不画连线 (老倪 2026-10-19: 太乱), 只靠颜色对应
         for _i, (key, text, col) in enumerate(rows):
-            _w = min(colw, max(150.0, self._fm(20).width(text) + 18.0))
+            _w = colw                                          # 固定列宽 (不随内容变)
             rect = QRectF(W - 14.0 - _w, y, _w, _h)         # 右边缘钉住 ⇒ 视觉不挪 (留 14px 不贴画布边)
             out.append((rect, [text], col, 20))
             _p = pos.get(key) if key else pos.get("earth")

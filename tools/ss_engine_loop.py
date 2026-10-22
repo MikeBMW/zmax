@@ -397,6 +397,9 @@ class Loop:
         self.l4_hz = float(l4_hz)
         self.l4_url = l4_url
         self.l4 = None
+        self.hjepa = None            # 🧠 H-JEPA 三层潜空间通道 (--encoder hjepa, 老倪 2026-10-22 A)
+        self._hj_retry = 0
+        self._state_now = None       # 本周期真值 state (H-JEPA 的 state7 取它前 7 维, 非零填充)
         # 🧠 多层 pipeline (L5→MEM→L2→L4→L3 依次真跑)
         self.pipe = None
         self.pipe_on = bool(pipe)
@@ -447,9 +450,17 @@ class Loop:
         """🧠 老倪 2026-10-14: L4 潜空间 = VLM 通用视觉编码器(输入) → 黎曼度规约束(引擎) → INTACT(意图解码)。
 
         `--encoder l4` ⇒ 引擎潜表示由**真实相机帧**经 VLM 编码 + 度规约束给出 (带帧龄);
+        `--encoder hjepa` ⇒ 🧠 H-JEPA 三层潜空间接成**第三潜通道** (老倪 2026-10-22 A):
+                            主潜表示仍走 PCA (goal 语义不变), H-JEPA 每步真前向 → rec["hjepa"]
+                            (三层范数/能量/预测残差); 势注入 HJEPA_W 默认 0 ⇒ 逐位零回归。
         `--encoder pca` (默认) ⇒ 内建 PCA 编码器 (零回归)。接不上就明写原因并留在 pca, 不假装。
         """
-        if self.encoder != "l4" or self.eng is None:
+        if self.eng is None:
+            return
+        if self.encoder == "hjepa":
+            self._attach_hjepa()
+            return
+        if self.encoder != "l4":
             return
         try:
             from lerobot.manifold.l4_live import FRAME_URL_DEFAULT, L4LiveProvider   # noqa: PLC0415
@@ -466,6 +477,57 @@ class Loop:
         except Exception as e:                                                   # noqa: BLE001
             _log("⚠️ L4 接入异常 (%s: %s) ⇒ 退回内建 PCA" % (type(e).__name__, str(e)[:90]))
             self.l4 = None
+
+    def _hjepa_state7(self):
+        """H-JEPA 的 state7: 优先本周期真值; 首周期还没走到 step 时用轨迹真源末帧 (都是真数据)。"""
+        s = self._state_now
+        if s is None:
+            try:
+                O = (self.traj or {}).get("obs")
+                s = None if O is None else O[min(getattr(self, "idx", 0), len(O) - 1)]
+            except Exception:                                                # noqa: BLE001
+                s = None
+        return None if s is None else np.asarray(s, float)[:7]
+
+    def _attach_hjepa(self) -> None:
+        """H-JEPA 三层潜空间 → 引擎第三潜通道 (真权重真前向; 缺什么明写, 不装)。
+
+        主潜表示**不动** (goal/Φ 仍是轨迹潜空间的概念); H-JEPA 走 `eng.set_hjepa_provider`。
+        state7 取本周期 `state[:7]` (真值, 非零填充); 图像支路用真帧文件, 实测该权重图像不敏感 (见判据 J7)。
+        """
+        try:
+            from lerobot.manifold.hjepa_state import HJEPAStateProvider        # noqa: PLC0415
+        except Exception as e:                                                   # noqa: BLE001
+            _log("⚠️ H-JEPA 模块导入失败 (%s: %s) ⇒ 不接" % (type(e).__name__, str(e)[:90]))
+            return
+        try:
+            if self.hjepa is None:
+                _fr = ""
+                try:
+                    import glob as _g                                       # noqa: PLC0415
+                    _c = sorted(_g.glob(os.path.join(ROOT, "zmax_data/eval_frames/live_*")))
+                    for _d in reversed(_c[-6:]):
+                        _imgs = sorted(_g.glob(os.path.join(_d, "*.png")))
+                        if _imgs:
+                            _fr = _imgs[len(_imgs) // 2]
+                            break
+                except Exception:                                            # noqa: BLE001
+                    _fr = ""
+                self.hjepa = HJEPAStateProvider(ROOT, frame_path=_fr,
+                                                state_fn=self._hjepa_state7)
+                ok, why = self.hjepa.start()
+                if not ok:
+                    _log("⚠️ H-JEPA 接不上 ⇒ 不接 (原因: %s)" % why)
+                    self.hjepa = None
+                    return
+                _log("🧠 H-JEPA 已接入引擎 (第三潜通道): %s" % why)
+            info = self.eng.set_hjepa_provider(self.hjepa, self.hjepa.note_base)
+            _log("🧠 H-JEPA 通道就位: %s (w_phi=%.2f ⇒ %s)" % (
+                info.get("note"), info.get("w_phi") or 0.0,
+                "只观测不动动作" if not (info.get("w_phi") or 0.0) else "参与势场"))
+        except Exception as e:                                                   # noqa: BLE001
+            _log("⚠️ H-JEPA 接入异常 (%s: %s) ⇒ 不接" % (type(e).__name__, str(e)[:90]))
+            self.hjepa = None
 
     # 真源 5s 跟随 (工程/任务/M/源文件)—— 与 tdrive_bus 的场景跟随同口径
     # ── 🧠 多层 pipeline: 让 L5/MEM/L2/L4/L3 每周期按序真跑 (不是只看状态灯) ──
@@ -619,6 +681,10 @@ class Loop:
         state = O[min(self.idx, len(O) - 1), :STATE_DIM]
         replay = self.idx >= len(O)
         self.idx = (self.idx + 1) % (len(O) + 1)
+        self._state_now = np.asarray(state, float)
+        if self.encoder == "hjepa" and self.hjepa is None and self._hj_retry < 3:
+            self._hj_retry += 1
+            self._attach_hjepa()
         t0 = time.perf_counter()
         rec = self.eng.step(np.asarray(state, float), dt=self.dt)
         ms = (time.perf_counter() - t0) * 1000.0
@@ -700,6 +766,7 @@ class Loop:
             #   大偏差 → 融合定位核对 → 流形引擎顶层结构补偿 (老倪 2026-10-15)
             **self._skill_trace(phys_rec),
             "chunk": chunk_rec if isinstance(chunk_rec, dict) else {},
+            "hjepa": rec.get("hjepa") or {},
             "chunk_keys": (self.chunk.trace_keys(chunk_rec)
                            if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}),
             "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
@@ -904,7 +971,9 @@ def main() -> int:
     ap.add_argument("--episode", default="", help="seed 用: 真实 episode npz (reports/ss_episode*.npz)")
     ap.add_argument("--out", default="", help="seed 用: 输出路径 (默认轨迹真源)")
     ap.add_argument("--encoder", default=os.environ.get("ZMAX_SS_ENGINE_ENCODER") or "pca",
-                    choices=["pca", "l4"], help="潜表示来源: pca=内建 PCA (默认) · l4=VLM视觉编码器→黎曼度规约束")
+                    choices=["pca", "l4", "hjepa"],
+                    help="潜表示来源: pca=内建 PCA (默认) · l4=VLM视觉编码器→黎曼度规约束 · "
+                         "hjepa=H-JEPA 三层潜空间接成第三潜通道 (rec['hjepa'], 势注入见 HJEPA_W)")
     ap.add_argument("--l4-hz", type=float, default=float(os.environ.get("ZMAX_L4_HZ") or 1.0),
                     help="L4 潜表示刷新节拍 Hz (视觉塔实测 ~0.8s/帧, 故独立线程按此节拍)")
     ap.add_argument("--l4-frame-url", default=os.environ.get("ZMAX_L4_FRAME_URL") or "",

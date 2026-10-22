@@ -421,6 +421,19 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     # 只剩小头时, 检测框下方紧挨着的是台面/背景亮面, 外扩会跨过缝隙把背景并进来(实测 58px→92px)。
     # 被裁 = 只看得到一段, 这时"整支有多长"本来就不可观测 ⇒ 用检测框原样, 不猜。
     _clip0 = {"top": y1 <= 1.5, "bottom": y2 >= H_img - 1.5, "left": x1 <= 1.5, "right": x2 >= W_img - 1.5}
+    # 🆕 2026-10-22 现场(老倪: 「手臂相机现在没有光模块, 不需要显示绿色边界框」):
+    #   实测: 画面顶边那台浅灰白圆角装置被在役权重以 class=peg conf≈0.44~0.48 误检, 框贴顶边被裁
+    #   (只看到一条边, 深度也不可用) ⇒ 页面却一直画一个"光模块 3D"绿框。
+    #   判据: **类别不是光模块类(OPT_Gold) 且 框贴画幅边被裁** ⇒ 判误检、不给框(回 ok=False, 页面不画);
+    #   框完整(未贴边)的 peg 仍走原逻辑给框(保住 2026-10-19「别丢光模块」)。
+    _clipped0 = [k for k, v in _clip0.items() if v]
+    if _clipped0 and det.get("name") != "OPT_Gold":
+        warn.append("类别 %s 且框贴 %s 边被裁 ⇒ 判为误检, 不给光模块框"
+                    % (det.get("name"), "/".join(_clipped0)))
+        return {"ok": False,
+                "err": "本帧未检出光模块(误检被挡: %s 类 + 贴%s边)" % (det.get("name"), "/".join(_clipped0)),
+                "class": det.get("name"), "conf": round(float(det.get("conf") or 0), 3),
+                "box2d": det_box, "clipped": _clipped0, "warn": warn}
     if any(_clip0.values()):
         rnote = "被裁(%s)⇒用检测框原样, 不外扩" % "/".join(k for k, v in _clip0.items() if v)
         # 被裁时 y 不可观测(不能猜), 但 **x 可以修** —— 横向偏左/偏右是纯像素事实

@@ -691,17 +691,81 @@ def node_siglip(ctx):
 # 🧠 H-JEPA 三层潜空间 — AWE zFlow (z₁空间/z₂物体/z₃语义)
 # ════════════════════════════════════════════════════════════════
 def node_hjepa(ctx):
-    """🧠 H-JEPA 三层潜空间 — 空间/物体/语义 分层潜表示"""
+    """🧠 H-JEPA 三层潜空间 — 空间/物体/语义 分层潜表示 (**真推理**, 2026-10-22 接上)
+
+    三档, 按"有没有真活数据"降级, 每档都写明来源 (不再只回显参数):
+      ① 引擎在跑 (engine_latest.json 里有 hjepa 段) ⇒ 直接读**引擎里那一路**的三层潜范数/能量/预测残差;
+      ② 没有引擎段 ⇒ 自己跑真权重 (state7 取 ctx 的 obs, 图像取最近真帧);
+      ③ 权重缺/无 state ⇒ 如实报"未接 + 原因", 参数只是构造值。
+    """
     log = ctx["log"]
     p = ctx["params"]
     # === ✏️ 可修改区 START ===
     d_z1 = p.get("d_z1", 128)    # z₁空间 (物体位姿)
     d_z2 = p.get("d_z2", 128)    # z₂物体 (类别属性)
     d_z3 = p.get("d_z3", 64)     # z₃语义 (任务目标)
-    if log:
-        log(f"🧠 H-JEPA: z₁={d_z1} z₂={d_z2} z₃={d_z3} (4060 等比缩小自 256/256/128)")
-    # 官方源码: train_awe_zflow.py HJEPAEncoder — 三层潜空间头分离
-    #   对标它石 OmniVTA / H-JEPA: 从被动感知 → 主动预测接触演化
+    ROOT = "/home/ubuntu/zmax"
+    try:
+        import io as _io, json as _json, os as _os                         # noqa: PLC0415
+        _live = _os.path.join(ROOT, "zmax_data/ss_live/engine_latest.json")
+        if _os.path.isfile(_live):
+            with _io.open(_live, encoding="utf-8") as _fh:
+                _d = _json.load(_fh)
+            _hj = _d.get("hjepa") or {}
+            if _hj.get("ok"):
+                _n = _hj.get("norms") or {}
+                _msg = ("H-JEPA **引擎在跑** (cycle %s): z₁=%.2f z₂=%.2f z₃=%.2f · 能量 %s · "
+                        "预测残差 %s · %.1fms" % (_d.get("cycle"), _n.get("z1", 0), _n.get("z2", 0),
+                                                 _n.get("z3", 0),
+                                                 [round(e, 3) for e in (_hj.get("energy") or [])],
+                                                 _hj.get("surprise"), float(_hj.get("ms") or 0)))
+                if log:
+                    log("🧠 " + _msg)
+                return (True, _msg)
+        # ② 自己跑真权重
+        try:
+            import sys as _sys                                           # noqa: PLC0415
+            _sys.path.insert(0, _os.path.join(ROOT, "src"))
+            from lerobot.manifold.hjepa_model import HJEPAModel           # noqa: PLC0415
+            _obs = ctx.get("obs")
+            _m = HJEPAModel(root=ROOT)
+            _ok, _why = _m.available()
+            if not _ok:
+                return (False, "H-JEPA 未接: " + _why)
+            if _obs is None:
+                return (False, "H-JEPA 权重就绪, 但本节点没有 state7 输入 (引擎侧已通: "
+                               "ss_engine_loop --encoder hjepa); 构造维 z₁%d/z₂%d/z₃%d" % (d_z1, d_z2, d_z3))
+            import numpy as _np                                      # noqa: PLC0415
+            import glob as _g                                        # noqa: PLC0415
+            _fr = ""
+            for _dd in reversed(sorted(_g.glob(_os.path.join(ROOT, "zmax_data/eval_frames/live_*")))[-6:]):
+                _imgs = sorted(_g.glob(_os.path.join(_dd, "*.png")))
+                if _imgs:
+                    _fr = _imgs[len(_imgs) // 2]
+                    break
+            _img = _np.zeros((64, 64, 3), _np.uint8)
+            if _fr:
+                try:
+                    from PIL import Image as _Img                         # noqa: PLC0415
+                    _img = _np.asarray(_Img.open(_fr).convert("RGB"))
+                except Exception:                                         # noqa: BLE001
+                    _img = _np.zeros((64, 64, 3), _np.uint8)
+            _prov = _m.infer(_img, _np.asarray(_obs, float).ravel()[:7])
+            if not _prov.get("ok"):
+                return (False, "H-JEPA 前向失败: " + str(_prov.get("why")))
+            _msg = ("H-JEPA **真推理** (节点内): |z₁|=%.2f |z₂|=%.2f |z₃|=%.2f · 能量 %s · %.1fms"
+                    % (float(_np.linalg.norm(_prov["z1"])), float(_np.linalg.norm(_prov["z2"])),
+                       float(_np.linalg.norm(_prov["z3"])),
+                       [round(e, 3) for e in _prov.get("energy") or []], float(_prov.get("ms") or 0)))
+            if log:
+                log("🧠 " + _msg)
+            return (True, _msg)
+        except Exception as e:                                           # noqa: BLE001
+            return (False, "H-JEPA 未接: %s: %s" % (type(e).__name__, str(e)[:80]))
+    except Exception as e:                                               # noqa: BLE001
+        if log:
+            log("🧠 H-JEPA 读取异常 %s: %s" % (type(e).__name__, str(e)[:80]))
+        return (False, "H-JEPA 读取异常: %s" % str(e)[:80])
     # === ✏️ 可修改区 END ===
     # 🔒 结构节点 (勿改)
     return (True, f"H-JEPA: z₁={d_z1} z₂={d_z2} z₃={d_z3}")

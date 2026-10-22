@@ -5907,6 +5907,17 @@ class SimulinkModule(QWidget):
             "  · 3D 场景里的 🥽 AR 与本按钮同一个入口 (tools/gui/ss_dreamview.py::ar_launch)",
             self.open_ar_page, "#8957e5")
         tl.addWidget(self.btn_ar)
+        # 🔦 2026-10-22 老倪: 「还得增加 光纤 按钮，自动打开 http://10.163.146.78:8797/autoLight」
+        #   与 🥽 AR 并列的独立入口; 复用**总览页那条已实测的出窗路径**(_open_page_window:
+        #   独立 snap profile ⇒ 不会被已开的浏览器吞成后台标签, 出窗后搬回控制台这块屏);
+        #   8797 没起就先探活一次: 起不来只在日志里说清, 不弹框卡界面。
+        self.btn_fiber = mk_btn(
+            "🔦 光纤",
+            "直接打开光纤端面检测工艺卡 (http://10.163.146.78:8797/autoLight)\n"
+            "  · 与 AR 同一个服务端口(8797), 独立窗口 ⇒ 可与 AR 页 / 总览页同时开着\n"
+            "  · 打开后自动搬回控制台这块屏并置前; 8797 没起时后台起一次再开",
+            self.open_fiber_page, "#f0883e")
+        tl.addWidget(self.btn_fiber)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -14898,6 +14909,53 @@ class SimulinkModule(QWidget):
         except Exception as _e:                                                 # noqa: BLE001
             self._log("⛔ AR 启动失败: %r" % (_e,))
             return None
+
+    def open_fiber_page(self):
+        """🔦 工具栏「光纤」: 打开光纤端面检测工艺卡 = http://10.163.146.78:8797/autoLight。
+
+        老倪 2026-10-22: 「还得增加 光纤 按钮, 自动打开 …/autoLight」。
+        实现取向(与 🥽 AR 的差别, 都是实测过的):
+          · **非阻塞**: 点击立刻返回, 出窗/搬屏/探活全在后台线程, 控制台主线程不睡;
+          · 走 `_open_page_window`(总览页那条路): 独立 snap profile ⇒ 不会被已在跑的
+            chromium 吞成后台标签(用户看到的是"点了没反应"), 出窗后搬回控制台这块屏并置前;
+          · 8797 没起时后台 `ar_server_ctl.sh start` 起一次再开, 失败只在日志里说清。
+        """
+        import threading as _th
+        _url = "http://10.163.146.78:8797/autoLight"
+
+        def _bg():
+            try:
+                import urllib.request as _u
+                try:
+                    with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=2) as _r:
+                        _up = 200 <= int(getattr(_r, "status", 200) or 200) < 300
+                except Exception:                                              # noqa: BLE001
+                    _up = False
+                if not _up:
+                    self._log("🔦 8797 没起 ⇒ 后台起一次 AR 服务")
+                    import subprocess as _sp
+                    _sp.Popen(["bash", os.path.join(self._repo_root(), "tools", "ar_server_ctl.sh"), "start"],
+                              cwd=self._repo_root(), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                              start_new_session=True)
+                    import time as _t
+                    for _ in range(20):
+                        _t.sleep(1)
+                        try:
+                            with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=2):
+                                break
+                        except Exception:                                      # noqa: BLE001
+                            continue
+                _ok, _how = self._open_page_window(_url, "光纤", "zmax_fiber_profile", "🔦 光纤:")
+                self._log(("✅ " if _ok else "⚠️ ") + "光纤工艺卡: " + str(_how) + " · " + _url)
+            except Exception as _e:                                            # noqa: BLE001
+                try:
+                    self._log("⛔ 光纤页面打开失败: %r" % (_e,))
+                except Exception:                                              # noqa: BLE001
+                    pass
+
+        self._log("🔦 正在打开光纤工艺卡: %s" % _url)
+        _th.Thread(target=_bg, name="open-fiber", daemon=True).start()
+        return True
 
     def _ar_status(self, msg):
         """AR 后台线程的状态回贴 (只写日志, 任何异常都不许冒泡到 Qt 槽)。"""

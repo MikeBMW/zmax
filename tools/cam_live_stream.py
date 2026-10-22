@@ -96,6 +96,8 @@ _FRAMES = {k: dict(_FRAME_TPL) for k in
 _OV_INFO = {}                        # 每路最近一次的叠加统计（画了多少框/跳过原因）
 _CAM_LABEL = {}                      # 🎥 源名 → 真实相机名 (页面/画布直显"这是哪个摄像头")
 _STOP = threading.Event()
+# 🔭 臂源当前地址/切换次数 (2026-10-22: 本机无 192.168.23.0/24 路由 ⇒ 自动切到 ssh 转发口 18792)
+_ARM_SRC = {"url": "", "n_switch": 0, "last_err": ""}
 
 
 def _put(name: str, jpg: bytes, src_ts: float, raw_kb: float,
@@ -310,22 +312,46 @@ def arm_raw_worker(raw_path: str, meta_path: str, quality: int,
 
 # ── ①b 手臂相机：从 Orin 高速 JPEG 通道取帧（D405 直驱 30fps，旁路 DDS）──
 def arm_http_worker(url: str, fps_cap: float) -> None:
-    """Orin 侧已压好 JPEG(640x480 q72, ~32KB)，这里原样转发不再重压 → 最快"""
+    """Orin 侧已压好 JPEG(640x480 q72, ~32KB)，这里原样转发不再重压 → 最快
+
+    🔴 2026-10-22 老倪「机器人的相机看不到」根因: 本机只有 WiFi 10.163.146.78/23,
+       **没有 192.168.23.0/24 路由** ⇒ 直连 `http://192.168.23.66:8792/frame.jpg` 必 No route to host,
+       而 Orin 那侧相机是活的 (18792 转发口自报 age 0.1s, 累计 133 万帧)。
+       ⇒ 这里做**候选源自动切换** (可在 --arm-http 里用逗号写多个, 环境变量 ZMAX_ARM_HTTP_FALLBACK 再补):
+         直连失败 5 次就换下一个, 换到能出的那个后停在那儿; 只打一条切换日志, 不刷屏。
+       状态里带 cur_url (arm 那一路), 一眼能看出这帧是从哪条路来的。
+    """
     import urllib.request
-    misses = 0
-    last_len = 0
+    cands = [u.strip() for u in str(url or "").split(",") if u.strip()]
+    for _c in str(os.environ.get("ZMAX_ARM_HTTP_FALLBACK")
+                  or "http://127.0.0.1:18792/frame.jpg").split(","):
+        if _c.strip() and _c.strip() not in cands:
+            cands.append(_c.strip())
+    if not cands:
+        print("[arm-http] 没有任何候选源 (-arm-http 为空)", flush=True)
+        return
+    ci, fails, misses, last_len = 0, 0, 0, 0
+    _ARM_SRC.update({"url": cands[0], "n_switch": 0, "last_err": ""})
     while not _STOP.is_set():
+        _u = cands[ci % len(cands)]
         t0 = time.time()
         _src_age = None
         try:
-            with urllib.request.urlopen(url, timeout=2.0) as r:
+            with urllib.request.urlopen(_u, timeout=2.0) as r:
                 _src_age = _hdr_age(r.headers)          # 源端自报帧龄(有就给, 没有=None)
                 data = r.read()
         except Exception as e:
             misses += 1
+            fails += 1
+            _ARM_SRC["last_err"] = str(e)[:80]
             if misses % 20 == 1:
-                print(f"[arm-http] 取 {url} 失败: {str(e)[:60]}（Orin rs_fast_node 在跑么？）",
-                      flush=True)
+                print(f"[arm-http] 取 {_u} 失败: {str(e)[:60]}", flush=True)
+            if fails >= 5 and len(cands) > 1:                       # 换下一条候选路
+                ci, fails = ci + 1, 0
+                _ARM_SRC.update({"url": cands[ci % len(cands)],
+                                 "n_switch": int(_ARM_SRC.get("n_switch") or 0) + 1})
+                print(f"[arm-http] ⟳ 切换源 → {cands[ci % len(cands)]} "
+                      f"(原 {_u} 连不通)", flush=True)
             _STOP.wait(0.15)
             continue
         if not data or len(data) < 500:
@@ -409,6 +435,10 @@ def _src_find(needle: str, exclude: int = -1) -> int:
 def _src_kinds() -> list:
     """当前可选源 (实时扫硬件; dev<0 = 此刻不在位, 页面按钮照样显示但点了会如实说不在位)。"""
     opts = []
+    # 🎥 2026-10-22: 「关」= 彻底放开摄像头。笔记本内置相机只有一个使用者: 常驻预览占着时,
+    #   微信/腾讯会议的视频通话开不起来(REQBUFS EBUSY / open 失败) ⇒ 必须给一个显式关闭档。
+    opts.append({"kind": "off", "dev": -1, "present": True,
+                 "name": "关闭(把摄像头让给微信/视频通话)"})
     bd = int(_LOCAL_SRC.get("builtin_dev", -1))
     opts.append({"kind": "builtin", "dev": bd, "present": bd >= 0,
                  "name": (_v4l_name(bd) if bd >= 0 else "") or "内置相机"})
@@ -419,6 +449,8 @@ def _src_kinds() -> list:
 
 
 def _src_dev(kind: str) -> int:
+    if kind == "off":
+        return -1
     if kind == "usb":
         preset = int(_USBCFG.get("dev", -1))
         if preset >= 0:                       # 命令行写死了号就以它为准(不在了如实报 -1)
@@ -428,6 +460,8 @@ def _src_dev(kind: str) -> int:
 
 
 def _src_label(kind: str, dev: int) -> str:
+    if kind == "off":
+        return "🚫 本机相机已关闭(让给微信/视频通话)"
     nm = _v4l_name(dev) if dev >= 0 else ""
     return "%s %s" % ("🔌 USB" if kind == "usb" else "💻 内置",
                       nm or ("/dev/video%d" % dev if dev >= 0 else "未接"))
@@ -437,7 +471,7 @@ def _src_load() -> str:
     try:
         with open(_SRC_FILE, encoding="utf-8") as f:
             k = (json.load(f) or {}).get("kind")
-        return k if k in ("builtin", "usb") else "builtin"
+        return k if k in ("builtin", "usb", "off") else "builtin"
     except Exception:                                                          # noqa: BLE001
         return "builtin"
 
@@ -454,7 +488,7 @@ def _src_save(kind: str) -> None:
 def _src_apply(kind: str, persist: bool = True, why: str = "页面") -> dict:
     """切到 kind: 重解析设备号 + 抬 gen 让采集线程释放重开 + 更新页面标签 + 落盘。"""
     dev = _src_dev(kind)
-    if dev < 0:
+    if dev < 0 and kind != "off":
         return {"ok": False, "code": 409, "kind": _LOCAL_SRC["kind"],
                 "msg": "⛔ %s摄像头此刻不在位(按卡名 %r 没扫到能出图的节点), 仍用当前这一路"
                        % ("USB " if kind == "usb" else "内置", _USBCFG["name"]
@@ -498,6 +532,58 @@ def _src_wait_change(prev_gen: int, timeout: float) -> bool:
 
 
 # ── ② 本机 V4L2 相机：驱动直读 (笔记本内置 / USB / MAXHUB 电视顶摄 都是走这里) ────
+# 🔴 2026-10-22 老倪: 「笔记本的摄像头，打不开了，修好」—— 真因是**我们自己独占**了 /dev/video0:
+#   tools/cam_live_stream.py(8791 工位总览本机那格) 从开机起一直握着设备, 微信视频通话
+#   也去开同一个节点, REQBUFS 直接 EBUSY(实测 微信 pid 有 /dev/video0 的 fd, 但取不到帧)
+#   ⇒ 用户看到「摄像头打不开/黑的」。相机硬件没坏: 我们把设备让出来后
+#   /dev/video0 立刻 640x480 mean=134.9 std=34.1 正常出图。
+#   ⇒ 规矩: 本机相机是**共享资源**, 常驻预览必须让位给视频通话类应用(微信/腾讯会议)。
+_DEV_YIELD_POLL = 1.0        # 每 1s 看一次「有没有别人在用这台相机」(单次全 /proc 扫描 ~21ms ⇒ 约 2% 单核)
+
+
+def _dev_other_holders(dev: int, me: int | None = None) -> list:
+    """除本进程外, 还有谁打开着 /dev/videoN(同用户可见; 微信与我们同是 ubuntu)。
+
+    只读 /proc, 不碰设备本身 —— 用视频类节点做归属判定时, 「谁握着 fd」比「能不能 open」可靠:
+    UVC 允许多进程 open, 真正的冲突发生在 REQBUFS/streaming 阶段, 所以对方 open 成功但取不到帧。
+    性能: 先按 uid 过滤(内核线程/root 进程没有相机 fd), 把 600 个 pid 的扫描降到 ~2ms。
+    """
+    hit = []
+    me = me or os.getpid()
+    uid = os.getuid()
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return hit
+    target = "/dev/video%d" % dev
+    for ps in pids:
+        pid = int(ps)
+        if pid == me:
+            continue
+        try:
+            if os.stat("/proc/%d" % pid).st_uid != uid:
+                continue
+        except OSError:
+            continue
+        try:
+            fds = os.listdir("/proc/%d/fd" % pid)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                if os.readlink("/proc/%d/fd/%s" % (pid, fd)) != target:
+                    continue
+            except OSError:
+                continue
+            try:
+                nm = open("/proc/%d/comm" % pid, "r").read().strip()
+            except OSError:
+                nm = "?"
+            hit.append("%d:%s" % (pid, nm))
+            break
+    return hit
+
+
 def local_worker(dev_index: int, quality: int, width: int, height: int,
                  fps_cap: float, frame_name: str = "local",
                  switchable: bool = False) -> None:
@@ -505,24 +591,46 @@ def local_worker(dev_index: int, quality: int, width: int, height: int,
     控制端 _src_apply() 抬 gen ⇒ 本线程 break 出读循环、release 旧设备、按新号重开。
     先 release 再 open ⇒ 不会出现"两台一起占着/设备忙"。打不开时线程**不退出**, 每 3s 重试
     (USB 可能刚插上), 这样用户点一次 [USB] 只要设备到位就一定能切过去。
+
+    🎥 让位机制(2026-10-22): 检测到**别的进程**打开着同一个 /dev/videoN(微信视频通话等) 时,
+    立刻 release 并挂起取帧, 对方松手后自动接回 —— 常驻预览不能把笔记本相机长期霸住,
+    否则用户那边的视频通话表现为「摄像头打不开/全黑」。
     """
     if switchable:
-        gen, dev = _src_cur()
-        if dev < 0:
-            dev = dev_index
+        gen, dev = _src_cur()          # dev<0 = 「关闭」档(把摄像头让给微信) 或设备不在位
     else:
         gen, dev = 0, dev_index
     params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
     fails = 0
+    yielded = False
+    last_chk = 0.0
+    me = os.getpid()
     while not _STOP.is_set():
+        if switchable and dev < 0:
+            # 🚫 「关闭」档: 一个字节都不碰设备, 只等页面把源切回来(不刷日志)
+            if _src_wait_change(gen, 2.0):
+                gen, dev = _src_cur()
+            continue
+        if yielded:
+            # 等对方用完再开; 只在状态变化时打一行日志(不刷屏)
+            others = _dev_other_holders(dev, me)
+            if others:
+                _STOP.wait(_DEV_YIELD_POLL)
+                continue
+            print(f"[{frame_name}] 让位结束 → 重新接管 /dev/video{dev}", flush=True)
+            yielded = False
         cap = cv2.VideoCapture(dev)
         if not cap.isOpened():
             cap.release()
-            print(f"[{frame_name}] /dev/video{dev} 打不开（{_v4l_name(dev) or '无名'}）", flush=True)
-            if not switchable:
-                return
-            if _src_wait_change(gen, 3.0):
-                gen, dev = _src_cur()
+            print(f"[{frame_name}] /dev/video{dev} 打不开（{_v4l_name(dev) or '无名'}）",
+                  flush=True)
+            if switchable:
+                if _src_wait_change(gen, 3.0):
+                    gen, dev = _src_cur()
+            else:
+                # 🎥 以前这里 return ⇒ 线程永久退出(别人占着就再也不回来); 改成重试
+                if _STOP.wait(3.0):
+                    break
             continue
         # 低延迟三件套：MJPG 采集 + 缓冲=1 + 固定分辨率
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -532,9 +640,19 @@ def local_worker(dev_index: int, quality: int, width: int, height: int,
         if height:
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         print(f"[{frame_name}] 出图: /dev/video{dev} = {_v4l_name(dev) or '(无名)'}", flush=True)
+        last_chk = 0.0
         while not _STOP.is_set():
             if switchable and _LOCAL_SRC["gen"] != gen:
                 break                                          # 🔁 换源信号: 出去重开
+            now = time.time()
+            if now - last_chk >= _DEV_YIELD_POLL:
+                last_chk = now
+                others = _dev_other_holders(dev, me)
+                if others:
+                    print(f"[{frame_name}] 🎥 让位: 别的进程要用 /dev/video{dev} "
+                          f"({','.join(others)}) ⇒ 释放设备, 用完自动接回", flush=True)
+                    yielded = True
+                    break
             t0 = time.time()
             ok, frame = cap.read()
             if not ok or frame is None:
@@ -5332,8 +5450,8 @@ class Handler(BaseHTTPRequestHandler):
             #   只改"这一格采哪台设备" —— 通道名还是 "local" ⇒ 页面/叠加/VL 安全层自动跟随。
             _b = body if isinstance(body, dict) else {}
             _k = str(_b.get("kind") or "").strip().lower()
-            if _k not in ("builtin", "usb"):
-                out = {"ok": False, "code": 400, "msg": "kind 只能是 builtin 或 usb"}
+            if _k not in ("builtin", "usb", "off"):
+                out = {"ok": False, "code": 400, "msg": "kind 只能是 builtin / usb / off"}
                 out.update(_src_status())
             else:
                 out = _src_apply(_k, persist=True, why="页面")
@@ -5364,6 +5482,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _snapshot(self, name: str):
         jpg, seq, _, _, _ = _get(name)
+        # 🚫 2026-10-22: 本机相机被**主动关闭**(off 档, 让给微信视频通话)时, 别再回旧帧 ——
+        #   否则页面停在一张冻住的画面上, 看着像"还在拍", 比明说没图更容易误导现场。
+        if name in ("local", "ov_local") and int(_LOCAL_SRC.get("dev", -1)) < 0 \
+                and _LOCAL_SRC.get("kind") == "off":
+            self._send(503, "text/plain; charset=utf-8",
+                       "本机相机已关闭(让给微信/视频通话): 在页面把本机那格切回「内置相机」即可恢复"
+                       .encode("utf-8"))
+            return
         if not jpg:
             self._send(503, "text/plain; charset=utf-8",
                        "该路还没有帧（检查相机/源）".encode("utf-8"))
@@ -5443,6 +5569,11 @@ class Handler(BaseHTTPRequestHandler):
                 "frames_served": seq,
                 "label": _CAM_LABEL.get(name.replace("ov_", ""), ""),
             }
+            if name == "arm":
+                # 臂源这一帧到底从哪条路来 (直连 Orin / ssh 转发口), 页面/我都能核对
+                out[name]["src_url"] = _ARM_SRC.get("url") or ""
+                out[name]["src_switch"] = int(_ARM_SRC.get("n_switch") or 0)
+                out[name]["src_err"] = _ARM_SRC.get("last_err") or ""
             if name == "depth":
                 # 🌈 深度格: 源文件停更 ⇒ 如实报「深度源已断 Ns」(不是"帧龄 5 万秒"那种含糊)
                 _dd, _dd_s = _depth_src_dead()

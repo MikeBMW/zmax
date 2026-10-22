@@ -745,14 +745,18 @@ class GravityField(object):
            没在跑的项: main=None (不给主力名义), 该行影响力最大的层只写进 tooltip 备用。"""
         # 🎯 老倪 2026-10-19「改力场构造 (给 u_ff 加权)」: α>1 ⇒ 前馈 L4 就是主力。
         #   这不是"让数值碰巧最大", 是**构造上的定义**: 前馈项是主动项, 加权后它就是主力。
+        # 🔴 2026-10-22 老倪「表里的高亮跟数对不上」口径修正:
+        #   原来 lf_on 时直接返回 layer_forces.main_force() 的结果 —— 那是**加权前**的 lf 字典里
+        #   argmax; 而格子的 mag 之后又过了引力律 (|F| = G·M/r²) 重算 ⇒ 两个数字不同源,
+        #   实测出现 main=L3 而 L2=0.0248 > L3=0.0114 (主力高亮的那格不是最大的那格)。
+        #   现在: 主力 = **最终格子里 mag 最大的那一层** (与表里数字同源, 可逐位对账);
+        #   构造意图 (α>1 / lf 权重想让谁当主力) 写进 main_note 留痕, 不再用来覆盖数值。
         if s == self.stage_now:
-            if getattr(self, "lf_on", False) and getattr(self, "lf_main", None) \
-                    and cells.get(self.lf_main, {}).get("vec"):
-                return self.lf_main
-            if getattr(self, "alpha", 1.0) > 1.0 and cells.get("L4", {}).get("vec"):
-                return "L4"
-            if cells["L2"].get("mag") is not None:
-                return "L2"
+            _cand = [(k, cells[k].get("mag")) for k, _ in LAYERS
+                     if isinstance(cells[k].get("mag"), (int, float))]
+            if _cand:
+                return max(_cand, key=lambda t: t[1])[0]
+            return None
         return None
 
     def _influence_layer(self, s, cells):

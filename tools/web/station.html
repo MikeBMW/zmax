@@ -411,6 +411,10 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
              (仅产线内网可达: 8797 是本机服务; 公网域名下点不开, 属预期) -->
         <button onclick="window.open('http://'+location.hostname+':8797/ar?cam=rs','_blank')"
                 style="font-weight:700" title="AR 场景: Intel RealSense 实拍 + 金手指AOI点位/空间点位/TCP真值叠加 (产线内网)">🥽 AR 场景</button>
+        <!-- 🔦 2026-10-22 老倪: 「还得增加 光纤 按钮，自动打开 …:8797/autoLight」
+             与 🥽 AR 场景同一个服务端口(8797), 新窗口打开 ⇒ 两个页面可同时开着 -->
+        <button onclick="window.open('http://'+location.hostname+':8797/autoLight','_blank')"
+                style="font-weight:700" title="光纤端面检测及清理设备 · 工艺卡 (8797 同端口 · 产线内网)">🔦 光纤</button>
         <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <script>

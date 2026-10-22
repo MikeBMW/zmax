@@ -70,6 +70,11 @@
   <span class="meta">技术协议 rev1.0 §2.2 九步工艺 · 每张卡内容逐条引自协议原文（条款号标在文内）· 本体 3000×1500×1900 mm · 2 人 · 载具缓存 ≤15PCS · NG 仓 4PCS　｜　三维视图坐标约定（视图用，非协议内容）：X 右 / Y 近 / Z 上，单位 m，地面 z=0</span>
   <div class="r">
     <button id="bDoc">⬇ 导出 Word（全 9 卡）</button>
+    <!-- 🧊 2026-10-22 老倪: 「/ar 的三维视角，需要重新开一个新页面，在光纤的场景」
+         = 九步场景的独立大窗口三维视角(一页一个大 3D + 九步切换)；同端口 8797 热读 -->
+    <button id="b3d" onclick="window.open('/autoLight3d','_blank')" title="在新页面打开九步三维视角（大窗口 · 可切九步 · 拖拽旋转）">🧊 三维视角</button>
+    <!-- 📄 2026-10-22: 技术协议 Word 真源 —— 文件放 zmax_data/agreements/, 点了在工位机桌面打开 -->
+    <button id="bAgree" onclick="openAgreement(this)" title="打开技术协议（Word 真源；文件放在 zmax_data/agreements/）">📄 技术协议</button>
     <button id="bSpin" class="on">视图自转</button>
     <button id="bPlay" class="on">动画</button>
     <button id="bLbl" class="on">标注</button>
@@ -807,6 +812,27 @@ window.__AL={
   fps:()=>Math.round(fps),
   scrollTo:n=>{ const el=document.getElementById('c'+n); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
 };
+</script>
+<script>
+/* 📄 技术协议: 点击 → 让**工位机桌面**把 Word 真源打开(文件在 zmax_data/agreements/) */
+async function openAgreement(btn){
+  const o=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='打开中…'; }
+  try{
+    const info=await (await fetch('/api/agreement')).json();
+    if(!info.exists){
+      if(btn) btn.textContent='没放文件';
+      alert('还没有技术协议文件。\n请把 Word 版放进：\n'+info.dir+
+            '\n\n（.docx/.doc/.pdf 都行，放好后不用重启，再点这个按钮即可）');
+    }else{
+      const r=await (await fetch('/agreement/open',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:'{}'})).json();
+      if(btn) btn.textContent = r.ok ? ('已打开 · '+(r.how||'桌面')) : '打开失败';
+      if(!r.ok) alert('打开失败：'+(r.err||'')+'\n文件：'+(r.path||''));
+    }
+  }catch(e){ if(btn) btn.textContent='打开失败'; alert('打开失败：'+e); }
+  if(btn) setTimeout(()=>{ btn.textContent=o; btn.disabled=false; },4000);
+}
 </script>
 </body>
 </html>
