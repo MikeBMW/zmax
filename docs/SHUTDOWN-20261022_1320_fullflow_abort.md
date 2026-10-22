@@ -58,8 +58,8 @@ forward → update_policy (lerobot_train.py:136) → train (lerobot_train.py:639
 
 - ✅ 机械臂无真动授权（`ctl_auth.json` 窗口已过期，epoch=196；VL 现场放行不存在 ⇒ fail-closed）
 - ✅ 无采集/训练在写（本轮训练进程已全部停止，GPU 已释放）
-- ❌ 家目录顶层有 2 个 zmax 相关项：`zmax` + `zmax_data`（后者是 41 MB 的旧副目录：ar_browser/evidence/hf_cache/logs，与 `zmax/zmax_data` 不是同一份；本轮不动它）
-- ⚠️ 仓库未提交 10 个（均为 tmp 探针脚本与新 deploy 文件，见下）
+- ❌ 家目录顶层有 2 个 zmax 相关项：`zmax` + `zmax_data`（后者 41 MB，**是在用的**，不是重复目录：`logs/ecs_mobile_tunnel.log` 13:15 还在写（zmax-ecs-mobile 服务），`ar_browser/` 是 chromium 用户 profile，`hf_cache/`、`evidence/` 也有引用；全仓 8 个脚本按 `~/zmax_data` 绝对路径取值 ⇒ 本轮不动，仅记录。preflight 这条红是家目录形态规则，不影响下电安全性）
+- ✅ 仓库干净（本轮提交 c62001c 已推 origin/main；一次性探针 `tools/rokae/*_tmp.py` 进 .gitignore 未入库）
 - ✅ 磁盘 113 GB 可用（71% 已用）· 内存已用 7 G / 30 G
 - ✅ 服务单元 38 个在跑 · 容器 `ss-remote-tap` / `zmax-sdk-arm-agent` Up；`rokae_tcp_sampler` restarting（网卡掉，正常现象）
 
