@@ -1,0 +1,19 @@
+[Unit]
+Description=Z-MAX 3DGS 训练服务 (4060 CUDA) — /train /pose /splat /render
+Documentation=file:///home/ubuntu/zmax/tools/gs_train_service.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/gs_train_service.py --port 8804
+Restart=always
+RestartSec=5
+Nice=5
+StandardOutput=append:/home/ubuntu/gs_train_service.log
+StandardError=append:/home/ubuntu/gs_train_service.log
+
+[Install]
+WantedBy=multi-user.target

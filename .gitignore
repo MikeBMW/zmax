@@ -374,3 +374,6 @@ zmax_data/cloud/*.tar
 
 # 数据快照里的库文件 (二进制 >300KB) 不进库, 只留 sha256 清单
 docs/data_snapshots/*/*.db
+
+# 一次性探针脚本（真机 SDK 试参用，不留库）
+tools/rokae/*_tmp.py
