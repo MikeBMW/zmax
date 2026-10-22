@@ -47,7 +47,9 @@
    `_c_internal_utils` 是编译好的 `.so`，ABI 不兼容。
    **纯 Python 包**（ultralytics、requests、yaml）可以跨版本，
    **带 C 扩展的**（matplotlib、pandas、numpy、cv2）必须匹配版本。
-   修：从 4060 的 `gs-venv`（Python 3.12）传 matplotlib，不要从 gui-venv311 传。
+   修：下载 cp312 版 matplotlib wheel（4060 的 gui-venv311 是 3.11、gs-venv 根本没装，
+   两边都不能直接传）。或者干脆 patch 掉 matplotlib —— ultralytics 只在画图/存结果时用它，
+   训练主流程不依赖。
 
 5. **torch 2.7 强依赖 CUDA 库**
    即使是 CPU 用途，`torch/__init__.py` 也会加载 `nvidia/*/lib/*.so`。
