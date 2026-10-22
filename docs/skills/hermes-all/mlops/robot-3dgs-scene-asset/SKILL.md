@@ -79,6 +79,8 @@ metadata:
 | 采集时把机械臂自身也拍进画面 | 臂被烤进场景, 资材里有幽灵臂 | 相机在臂上时它只对静态场景 ✓; 若其它相机/臂体入镜, 按帧位姿 mask 或 diffusion inpainting 抹掉 |
 | 没先拿 K 就开训 | 跑完才发现不可用, 白烧 GPU | 采集第一天就把 K 存进 `session_meta`; 训练前先校分辨率与 K |
 | 把上万帧连拍直接喂进训练 | 训练慢/显存吃紧而视角几乎不增 | **先按 6D 位姿最远点贪心抽帧**(平移 + 0.15×朝向差) 到 ~300 张 ——
+| **深度图无效值 65535 没挡** | 点云 bbox 被撑到 6.8m×5.6m×6.2m(实际工作台 ~2.3m)；离群剔除只剔 1.8% | D405 无效深度编码 **65535**×0.1mm=6553.5mm；有效判据必须**双端**: `(z > 50) & (z < 2000)`(`tools/slam_map_service.py` 已加 `ZMAX_MAP_MAX_DEPTH_MM`, 默认 2000)。实测同一帧: 232308 点/bbox 6.8m → 217375 点/bbox 2.3m |
+| 在 intel(Arc) 上建图/训 3DGS | — | intel 侧有两条现成服务: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) 与 `zmax-mobile-map.service`(单目 SfM), 纯 CPU、不占 4060。3DGS 训练需 torch-xpu + **gsplat-xpu(SYCL 后端，官方支持 Arc B390)**；只改 `gs_train.py` 的设备选择不够——还要看 torch 轮能不能下下来(实测 intel 到 download.pytorch.org ~50KB/s, 860MB+600MB 是小时级) |
 同视角连拍对重建零贡献。现成工具 `tools/gs_dataset.py`(去畸变 + 选帧 + 出 `cameras.json`/`transforms.json`/`meta.json`) |
 | **采集端每取必存**(老版) | 118586 次取图只对应 5830 张唯一画面(重复 95.1%), 且同一画面被存成多份、每份配**不同** TCP 位姿(最大差 193.7mm) = 矛盾监督 ⇒ 训练视角 PSNR 16.5dB、留出 11~13dB(**低于"填常数"平凡基线**) | 采集端按内容 md5 去重(内容没变不落盘, 重复只在 jsonl 记一行); 建库端再兜一层并把位姿取该图**首现时刻** |
 | **选帧贪心忘了把选中点自己归零** (`gs_dataset.select`) | 数据集 `unique_images` FAIL(实测 唯一图 **180/400**)，报错话术是"同图配多位姿"，把人往"走得不够好/走太快"上带；数据集里 **400 帧有 221 帧是同一张图**；训出来 PSNR 平在 15dB(正常 33dB+)，怎么改走法都不涨 | 最远点贪心里 `sel.append(nxt)` 后**必须 `dmin[nxt] = 0.0`** —— 否则只要"新点到最后一点"的距离 `d[nxt]` 比 `dmin[nxt]` 大，argmax 每轮都返回同一个索引。判据(10 秒): 跑 `select()` 后断言 `len(set(sel)) == len(sel)`；或读数据集 `cameras.json` 的 `src`，**唯一 src 数必须 == 帧数**。⚠️ 症状与"数据脏"完全同名，先查这一条再叫人重走 |

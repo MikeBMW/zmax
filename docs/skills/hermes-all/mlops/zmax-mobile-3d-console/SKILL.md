@@ -34,6 +34,20 @@ description: Use when 把状态空间3D复刻成手机Three.js页看/控, 或手
 - 同页 live 轮询会请求 `ss3d_live.json`(无服务时 404) → 设计成 catch 后回放本地轨迹, 404 无害不算错。
 - headless 验证: `playwright chromium --use-gl=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`
   (无这些 flag → NO_WEBGL 黑屏, 无法验证渲染); 截图后 PIL 算饱和像素占比确认画面非黑。
+  ⚠️ snap 版 chromium 的 `--screenshot=` 会落到沙箱隔离目录, 在外层用 `search_files (target='files')` 也找不到它
+  ⇒ 截图那条路可能断; 改用下面的 `readPixels` 口径, 不依赖截图落盘。
+- 🔴 **`readPixels` 默认读回全 0 不是黑屏**: `new THREE.WebGLRenderer({preserveDrawingBuffer: false})` 时
+  在帧外读缓冲拿到的是被清空的缓冲 (maxVal=0/litPct=0), 拿它当"没画出来"会误判。
+  要外部核验渲染必须两件事同时做:
+  ① renderer 建时加 `preserveDrawingBuffer: true`;
+  ② 数据灌进场景后挂调试钩子 `window.__zmap = {scene, points, camera, renderer, n: pts.length}`。
+  然后 CDP 里一次拿全: `points.geometry.attributes.position.count` (顶点数)、`scene.children.length`、
+  `camera.position` (是否在动)、canvas `readPixels` 的亮点占比与 maxVal。
+  实测口径: 场景 4 对象 / posCount 5690 / 画布 **1.52% 亮点 / maxVal 255** = 真画出点云;
+  反过来 maxVal 0 且 litPct 0 才该怀疑。
+- 🔴 **状态栏数字不能证明渲染成功**: 页面上的「帧/点/耗时」若来自 job 状态接口, 它只能证明后端有数据,
+  和 Three.js 有没有把 BufferGeometry 画上去是两条路。要么按上一条读像素, 要么确认无 JS error 且
+  `scene.children` 已增长; 只报"页面上显示 5690 点"等于没验证。
 - 页面 JS 改完自检: 括号配对 + 旧变量残留 grep(如删了 armTip 还有引用)。
 
 ## 🎯 几何必须按引擎真实常量 (老倪铁律: 对照 metaworld 视频比例, 不拍脑袋)

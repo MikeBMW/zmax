@@ -111,6 +111,32 @@ A 要到**第 2 步**才有信号 ⇒ 第 1 次 backward 上每个模块都**必
   按模块族报“非零 `lora_B` 条数/总条数 + 最大 |B|”即可产出报告，不依赖 init 快照
   （拿 init 当基准易翻车: init 文件可能只存了几个键 ⇒ 基准不成立；也别把“找不到初值”记成“已移动”）。
 
+## 「训练是不是卡住了」—— 反向假象: 看着像卡死, 其实在算
+
+与上面的“静默不训”相反的一类误判: **checkpoint 长时间不更新 + GPU util 个位数** 很容易被当成卡死,
+但可能只是 CPU-bound 在慢慢跑。结论前必须拿到栈证据, 别先 kill 进程。
+
+```bash
+nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader
+ps -o pid,etime,pcpu,rss,cmd -p <pid>
+PYSPY=$(ls ~/.hermes/tools/python-*/bin/py-spy 2>/dev/null | head -1)
+sudo "$PYSPY" dump --pid <pid> | head -40          # 主线程到底在哪
+```
+
+| 栈 / 现象 | 结论 |
+|---|---|
+| 主线程在 `forward` / `backward` / CUDA 调用 | **正常在算**, 只是慢 —— 别再怀疑卡死 |
+| 主线程在 `socket.recv` / `Condition.wait` / 等锁 | **真卡**, 查 dataloader / IPC / 数据路径 |
+| GPU 个位数 + 主进程 CPU **>100%** + 一堆 worker 常态挂着 | **CPU-bound 数据加载**, 不是卡死 |
+| 显存还在但 GPU 0% 且主进程 CPU 近 0 | 在等外部(网络/磁盘/锁), 看栈 |
+
+三条避免“诊断错对象”的配套纪律:
+- **报进度前重查一次 pid**: 两次工具调用之间进程可能已正常结束
+  (`/proc/<pid>/cmdline: No such file`) ⇒ 去读它的 summary/日志拿终态, 不要把它当还在跑。
+- **checkpoint 目录名不一定等于配置的 `output_dir`**(实测目录叫 `..._r2` 而进程跑的是 `..._r3`)
+  ⇒ 先 `grep -E 'output_dir|steps|save_freq' <config>.yaml` 找出这次真写到哪。
+- **“多久没动”必须现场取时间**: 别用上下文里早前某次 `date` 的输出当“现在”(实测把十几分钟算成 27 分钟)。
+
 ## RL 实战
 - 纯 PPO 60 轮 0% 抓起（奖励 -9.9 卡住，稀疏奖励探索不到）
 - warm-start 官方专家后仍 0%（-9.9→-5.0）

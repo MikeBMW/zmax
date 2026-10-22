@@ -176,6 +176,14 @@ FK      : tools/robot_spec_sync.py 的 parse_urdf + serial_chain + fk_from_chain
    认工件按**框 + 外观**核, 别按类名或"金色小方块"去找。
 
 ## Pitfalls
+- 🔴 **反投影链不要自造, 先搜真源实现**: `grep -rl 'bbox_base_mm\|depth_scale_mm_per_unit' --include='*.py' .`
+  找到写这个 stats 的那份代码, 把 `DEPTH_SCALE` / **有效深度阈值** / 手眼方向 / 四元数顺序逐项对齐。
+  实测漏掉真源的 `z > 0.05`(米) 阈值、只写 `z > 0`, 近距飞点被反投影 ⇒ bbox 从
+  `Z[-1224,337]` 撑到 `Z[-3322,1158]mm`(代码「看着完全对」, 只有 bbox 离谱)。
+  点云/建图类交付的完整细节(离群点剔除、栅格化、地图服务)见 `depth-cloud-map-service`。
+- 🔴 **手眼矩阵的**键名**不等于方向**: `handeye_result.json` 的 `T_base_cam` 平移值与 `stats.json` 的
+  `X_t_mm` 完全相同 ⇒ 它实际是**相机→末端**的手眼 X, 不是 base←cam。
+  判据 = 拿一个已知量对一对(此处: 两处平移数值是否相等), 而不是读名字。
 - 反投影前不核手眼平移单位(米 vs 毫米) ⇒ 相机光心正好落在 TCP 上: 判据就是"光心==TCP"这一行自检。
 - `_overlay_info.<cam>.tcp_ok=false` 时该路框数静默为 0(看着像生成器没干活): 投影要实时位姿 ⇒
   先看 `tcp_ok`/`origins`/规格龄, 再怀疑生成器。
