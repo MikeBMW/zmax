@@ -1,0 +1,36 @@
+[Unit]
+Description=Z-MAX Intel 自主进化守护 (YOLO XPU 训练->评估->择优)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel
+Environment=LD_LIBRARY_PATH=/home/intel/train_venv/lib
+Environment=PYTHONPATH=/home/intel/zmax_map/tools
+Environment=EVO_DATA=/home/intel/train_data/peg_insert/data.yaml
+Environment=EVO_MODEL=/home/intel/zmax_map/models/yolov8n.pt
+Environment=EVO_WORK=/home/intel/evolve
+Environment=EVO_EPOCHS=3
+Environment=EVO_BATCH=8
+Environment=EVO_IMGSZ=320
+Environment=EVO_DEVICE=xpu
+Environment=EVO_MARGIN=0.005
+Environment=EVO_ROUNDS=0
+Environment=EVO_COOLDOWN=60
+Environment=EVO_PORT=8810
+ExecStartPre=/home/intel/train_venv/bin/python -c "import sys; sys.path.insert(0,'/home/intel/zmax_map/tools'); import mpl_stub; import torch; assert torch.xpu.is_available(), 'XPU 不可用'"
+ExecStart=/home/intel/train_venv/bin/python -u /home/intel/zmax_map/tools/zmax_evolve_intel.py
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/intel/evolve/evolve.log
+StandardError=append:/home/intel/evolve/evolve.log
+
+# 只读不进内存大户的限额：训练需要真实算力，不压 CPU
+Nice=5
+MemoryMax=8G
+
+[Install]
+WantedBy=multi-user.target
