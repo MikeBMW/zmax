@@ -26,7 +26,7 @@ main{flex:1;position:relative;overflow:hidden}
      border-top:1px solid #1b2028;font-size:12px;display:flex;justify-content:space-between;
      gap:12px;backdrop-filter:blur(8px)}
 #bar span{color:#6b7683}#bar b{color:#dfe3ea;font-variant-numeric:tabular-nums}
-#prog{position:absolute;top:0;left:0;height:2px;background:#3b82f6;width:0;transition:width .3s}
+#prog{position:absolute;top:0;left:0;height:2px;background:#3b82f6;width:0;transition:width .3s;z-index:5}
 </style></head><body>
 <header>
   <h1>手机拍视频建图</h1>
@@ -46,12 +46,9 @@ main{flex:1;position:relative;overflow:hidden}
     <span>耗时 <b id="sec">—</b></span>
   </div>
 </main>
-<script type="importmap">
-{"imports":{"three":"./lib/three.module.js"}}
-</script>
-<script type="module">
-import * as THREE from 'three';
-
+<script>
+'use strict';
+// 原生 WebGL 点云渲染 (不依赖 Three.js: 它 1.27MB, 走公网要 6 秒; 这里整个页面 ~9KB)
 const cv = document.getElementById('view');
 const st = document.getElementById('st');
 const hint = document.getElementById('hint');
@@ -59,64 +56,123 @@ const bar = document.getElementById('bar');
 const prog = document.getElementById('prog');
 const fileIn = document.getElementById('file');
 
-let renderer, scene, camera, points, trajLine, ready = false;
-let rot = {x: 0.4, y: 0.6}, dist = 3, dragging = false, last = null;
+let gl, progObj, gPos, gCol, gTraj, nPts = 0, nTraj = 0;
+let rotX = 0.4, rotY = 0.6, dist = 2.6, dragging = false, last = null, pinch0 = null;
 
-function setTag(text, warn) {
-  st.textContent = text;
-  st.className = 'tag' + (warn ? ' warn' : '');
-}
+function setTag(t, warn) { st.textContent = t; st.className = 'tag' + (warn ? ' warn' : ''); }
 function setProg(p) { prog.style.width = Math.max(0, Math.min(100, p)) + '%'; }
 
-function initGL() {
-  if (renderer) return;
-  renderer = new THREE.WebGLRenderer({canvas: cv, antialias: true, alpha: false,
-                                      preserveDrawingBuffer: true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0c10);
-  camera = new THREE.PerspectiveCamera(55, 1, 0.01, 1000);
-  scene.add(new THREE.AmbientLight(0xffffff, 1.6));
-  const g = new THREE.GridHelper(10, 20, 0x1b2028, 0x141a22);
-  scene.add(g);
-  resize();
-  addEventListener('resize', resize);
-  animate();
+const VS = 'attribute vec3 aPos; attribute vec3 aCol;' +
+           'uniform mat4 uMVP; uniform float uSize; varying vec3 vCol;' +
+           'void main(){ vCol = aCol; gl_Position = uMVP * vec4(aPos,1.0); gl_PointSize = uSize; }';
+const FS = 'precision mediump float; varying vec3 vCol;' +
+           'void main(){ gl_FragColor = vec4(vCol, 1.0); }';
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
 }
-function resize() {
-  if (!renderer) return;
-  const w = cv.clientWidth || innerWidth, h = cv.clientHeight || innerHeight;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+function mat4mul(a, b) {
+  const o = new Float32Array(16);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    o[i*4+j] = a[j]*b[i*4] + a[4+j]*b[i*4+1] + a[8+j]*b[i*4+2] + a[12+j]*b[i*4+3];
+  }
+  return o;
 }
-function animate() {
-  requestAnimationFrame(animate);
-  if (!renderer) return;
-  if (!dragging) rot.y += 0.0015;
-  const cx = dist * Math.cos(rot.x) * Math.sin(rot.y);
-  const cy = dist * Math.sin(rot.x);
-  const cz = dist * Math.cos(rot.x) * Math.cos(rot.y);
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(0, 0, 0);
-  renderer.render(scene, camera);
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy/2), nf = 1/(near-far);
+  return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+}
+function lookAt(eye, tgt, up) {
+  let zx=eye[0]-tgt[0], zy=eye[1]-tgt[1], zz=eye[2]-tgt[2];
+  let l=Math.hypot(zx,zy,zz)||1; zx/=l; zy/=l; zz/=l;
+  let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+  l=Math.hypot(xx,xy,xz)||1; xx/=l; xy/=l; xz/=l;
+  const yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+  return new Float32Array([xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0,
+    -(xx*eye[0]+xy*eye[1]+xz*eye[2]), -(yx*eye[0]+yy*eye[1]+yz*eye[2]),
+    -(zx*eye[0]+zy*eye[1]+zz*eye[2]), 1]);
 }
 
-// 触摸/鼠标旋转缩放
+function initGL() {
+  if (gl) return;
+  gl = cv.getContext('webgl', {antialias: true, preserveDrawingBuffer: true});
+  if (!gl) throw new Error('此浏览器不支持 WebGL');
+  progObj = gl.createProgram();
+  gl.attachShader(progObj, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(progObj, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(progObj);
+  if (!gl.getProgramParameter(progObj, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(progObj));
+  gl.useProgram(progObj);
+  gl.clearColor(0.04, 0.05, 0.06, 1);
+  gl.enable(gl.DEPTH_TEST);
+  gPos = gl.createBuffer(); gCol = gl.createBuffer(); gTraj = gl.createBuffer();
+  resize(); addEventListener('resize', resize);
+  requestAnimationFrame(loop);
+}
+
+function resize() {
+  if (!gl) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = (cv.clientWidth || innerWidth) * dpr;
+  cv.height = (cv.clientHeight || innerHeight) * dpr;
+  gl.viewport(0, 0, cv.width, cv.height);
+}
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (!gl) return;
+  if (!dragging && !pinch0) rotY += 0.0015;
+  const eye = [dist*Math.cos(rotX)*Math.sin(rotY), dist*Math.sin(rotX), dist*Math.cos(rotX)*Math.cos(rotY)];
+  const mvp = mat4mul(perspective(0.96, cv.width/cv.height, 0.01, 1000), lookAt(eye, [0,0,0], [0,1,0]));
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const uMVP = gl.getUniformLocation(progObj, 'uMVP');
+  const uSize = gl.getUniformLocation(progObj, 'uSize');
+  const aPos = gl.getAttribLocation(progObj, 'aPos');
+  const aCol = gl.getAttribLocation(progObj, 'aCol');
+  gl.uniformMatrix4fv(uMVP, false, mvp);
+  gl.enableVertexAttribArray(aPos);
+  gl.enableVertexAttribArray(aCol);
+  if (nPts) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, gPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gCol); gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(uSize, 3.0 * (devicePixelRatio || 1));
+    gl.drawArrays(gl.POINTS, 0, nPts);
+  }
+  if (nTraj) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, gTraj); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+    gl.disableVertexAttribArray(aCol);
+    gl.vertexAttrib3f(aCol, 1.0, 0.65, 0.1);
+    gl.uniform1f(uSize, 2.0);
+    gl.drawArrays(gl.LINE_STRIP, 0, nTraj);
+    gl.enableVertexAttribArray(aCol);
+  }
+}
+
 function down(x, y) { dragging = true; last = [x, y]; }
 function move(x, y) {
   if (!dragging || !last) return;
-  rot.y -= (x - last[0]) * 0.008;
-  rot.x += (y - last[1]) * 0.008;
-  rot.x = Math.max(-1.5, Math.min(1.5, rot.x));
+  rotY -= (x - last[0]) * 0.008;
+  rotX += (y - last[1]) * 0.008;
+  rotX = Math.max(-1.5, Math.min(1.5, rotX));
   last = [x, y];
 }
-function up() { dragging = false; last = null; }
+function up() { dragging = false; last = null; pinch0 = null; }
 cv.addEventListener('mousedown', e => down(e.clientX, e.clientY));
 addEventListener('mousemove', e => move(e.clientX, e.clientY));
 addEventListener('mouseup', up);
 cv.addEventListener('touchstart', e => { const t = e.touches[0]; down(t.clientX, t.clientY); }, {passive: true});
-cv.addEventListener('touchmove', e => { const t = e.touches[0]; move(t.clientX, t.clientY); }, {passive: true});
+cv.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
+                         e.touches[0].clientY - e.touches[1].clientY);
+    if (pinch0) { dist *= pinch0 / d; dist = Math.max(0.3, Math.min(30, dist)); }
+    pinch0 = d; return;
+  }
+  const t = e.touches[0]; if (t) move(t.clientX, t.clientY);
+}, {passive: true});
 cv.addEventListener('touchend', up);
 cv.addEventListener('wheel', e => {
   dist *= (1 + Math.sign(e.deltaY) * 0.12);
@@ -124,33 +180,20 @@ cv.addEventListener('wheel', e => {
   e.preventDefault();
 }, {passive: false});
 
-// 双指缩放
-let pinch0 = null;
-cv.addEventListener('touchmove', e => {
-  if (e.touches.length !== 2) return;
-  const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX,
-                       e.touches[0].clientY - e.touches[1].clientY);
-  if (pinch0) { dist *= pinch0 / d; dist = Math.max(0.3, Math.min(30, dist)); }
-  pinch0 = d;
-}, {passive: true});
-cv.addEventListener('touchend', () => { pinch0 = null; });
-
 document.getElementById('pick').onclick = () => fileIn.click();
 
 fileIn.onchange = async () => {
   const f = fileIn.files[0];
   if (!f) return;
   document.getElementById('pick').disabled = true;
-  setTag('上传中…');
-  setProg(10);
+  setTag('上传中…'); setProg(10);
   const fd = new FormData();
   fd.append('video', f, f.name || 'video.mp4');
   try {
     const r = await fetch('upload', {method: 'POST', body: fd});
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || '上传失败');
-    setProg(30);
-    setTag('建图中…');
+    setProg(30); setTag('建图中…');
     poll(j.id);
   } catch (e) {
     setTag('失败: ' + e.message, true);
@@ -167,12 +210,11 @@ async function poll(id) {
       setTag(j.msg || j.state);
       if (j.frames) document.getElementById('nf').textContent = j.frames;
       if (j.state === 'done') {
-        setProg(100);
-        setTag('完成');
+        setProg(100); setTag('完成');
         document.getElementById('np').textContent = j.n_points;
         document.getElementById('sec').textContent = j.secs + 's';
         bar.style.display = 'flex';
-        showMap(id, j);
+        showMap(id);
         return;
       }
       if (j.state === 'failed') {
@@ -181,78 +223,50 @@ async function poll(id) {
         setProg(0);
         return;
       }
-      const p = 30 + Math.min(65, (Date.now() - t0) / 400);
-      setProg(p);
+      setProg(30 + Math.min(65, (Date.now() - t0) / 400));
       setTimeout(tick, 1500);
     } catch (e) { setTimeout(tick, 2500); }
   };
   tick();
 }
 
-async function showMap(id, job) {
+async function showMap(id) {
   hint.style.display = 'none';
   initGL();
   const pts = await (await fetch('points?id=' + id, {cache: 'no-store'})).json();
   if (!pts.length) { setTag('点云为空', true); return; }
-
-  // 归一化到单位球, 保证手机上看得到
-  let cx = 0, cy = 0, cz = 0;
+  let cx=0, cy=0, cz=0;
   for (const p of pts) { cx += p[0]; cy += p[1]; cz += p[2]; }
   cx /= pts.length; cy /= pts.length; cz /= pts.length;
   let rad = 0;
-  for (const p of pts) rad = Math.max(rad, Math.hypot(p[0] - cx, p[1] - cy, p[2] - cz));
+  for (const p of pts) rad = Math.max(rad, Math.hypot(p[0]-cx, p[1]-cy, p[2]-cz));
   const s = rad > 1e-9 ? 1 / rad : 1;
-
   const pos = new Float32Array(pts.length * 3);
   const col = new Float32Array(pts.length * 3);
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    pos[i * 3] = (p[0] - cx) * s;
-    pos[i * 3 + 1] = (p[1] - cy) * s;
-    pos[i * 3 + 2] = (p[2] - cz) * s;
-    col[i * 3] = (p[3] ?? 200) / 255;
-    col[i * 3 + 1] = (p[4] ?? 200) / 255;
-    col[i * 3 + 2] = (p[5] ?? 200) / 255;
+    pos[i*3] = (p[0]-cx)*s; pos[i*3+1] = (p[1]-cy)*s; pos[i*3+2] = (p[2]-cz)*s;
+    col[i*3] = (p[3] ?? 200)/255; col[i*3+1] = (p[4] ?? 200)/255; col[i*3+2] = (p[5] ?? 255)/255;
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const mat = new THREE.PointsMaterial({size: 0.012, vertexColors: true, sizeAttenuation: true});
-  points = new THREE.Points(geo, mat);
-  scene.add(points);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gPos); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gCol); gl.bufferData(gl.ARRAY_BUFFER, col, gl.STATIC_DRAW);
+  nPts = pts.length;
   dist = 2.6;
-  // 调试钩子: 便于外部核验渲染结果 (点数/场景对象), 不影响正常使用
-  window.__zmap = {scene, points, camera, renderer, n: pts.length};
-
-  // 轨迹
+  window.__zmap = {n: nPts, gl: gl, get traj() { return nTraj; }};
   try {
     const tj = await (await fetch('trajectory?id=' + id, {cache: 'no-store'})).json();
     if (tj.length > 1) {
       const tp = new Float32Array(tj.length * 3);
       for (let i = 0; i < tj.length; i++) {
-        tp[i * 3] = (tj[i][0] - cx) * s;
-        tp[i * 3 + 1] = (tj[i][1] - cy) * s;
-        tp[i * 3 + 2] = (tj[i][2] - cz) * s;
+        tp[i*3] = (tj[i][0]-cx)*s; tp[i*3+1] = (tj[i][1]-cy)*s; tp[i*3+2] = (tj[i][2]-cz)*s;
       }
-      const tg = new THREE.BufferGeometry();
-      tg.setAttribute('position', new THREE.BufferAttribute(tp, 3));
-      trajLine = new THREE.Line(tg, new THREE.LineBasicMaterial({color: 0xffa500}));
-      scene.add(trajLine);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gTraj); gl.bufferData(gl.ARRAY_BUFFER, tp, gl.STATIC_DRAW);
+      nTraj = tj.length;
     }
   } catch (e) {}
 }
 
-// 语言/环境自检
-fetch('health').then(r => r.json()).then(j => {
-  if (!j.sfm_exists) setTag('后端缺 mono_sfm', true);
-}).catch(() => setTag('后端无响应', true));
-
-// 支持 ?id=xxx 直接打开已有任务的结果 (分享链接用)
 const qs = new URLSearchParams(location.search);
-if (qs.get('id')) {
-  hint.style.display = 'none';
-  initGL();
-  poll(qs.get('id'));
-}
+if (qs.get('id')) { hint.style.display = 'none'; initGL(); poll(qs.get('id')); }
 </script>
 </body></html>
