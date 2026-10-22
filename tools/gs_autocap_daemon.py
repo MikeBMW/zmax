@@ -276,6 +276,10 @@ def capture_loop():
                     STATE["last_error"] = "位姿陈旧 age=%.2fs" % float(p.get("age_s") or -1)
                 time.sleep(dur)
                 continue
+            # 位姿拉到了 ⇒ 清掉历史错误, 否则界面上的 err 会一直挂着旧故障
+            with LOCK:
+                if STATE.get("last_error", "").startswith("位姿拉取失败"):
+                    STATE["last_error"] = ""
             pv = _pose_vec(p)
 
             # ② 机械臂在动? 静止就不抓 (抓到的是重复视角, 白占盘)
