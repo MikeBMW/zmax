@@ -44,6 +44,36 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+import numpy as np
+
+# ── 手眼外参 (相机固连在臂上, TCP 位姿 + 这个 X 才是相机位姿) ──
+# 来源 models/handeye_state.json 的 T_cam2tool, 标定残差 0.06mm/0.005deg。
+# 可用 GS_HANDEYE 指向别的 json; 置空字符串则退回"TCP 位姿即相机位姿"(仅供对照, 不推荐)。
+_HANDEYE_PATH = os.environ.get("GS_HANDEYE",
+                               osp.expanduser("~/zmax_map/models/handeye_state.json"))
+
+
+def _load_handeye(path):
+    if not path or not osp.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        X = np.array(d["T_cam2tool"], dtype=np.float64)
+        if X.shape != (4, 4):
+            print("[handeye] T_cam2tool 不是 4x4, 忽略")
+            return None
+        print("[handeye] 已加载 %s | t_mm=%s | resid=%.3fmm/%.4fdeg"
+              % (path, d.get("t_mm"), d.get("resid_trans_mm_rms", -1),
+                 d.get("resid_rot_deg_rms", -1)))
+        return X
+    except Exception as e:
+        print("[handeye] 加载失败 %s: %s" % (path, e))
+        return None
+
+
+HANDEYE_X = _load_handeye(_HANDEYE_PATH)
+
 # ── 配置 (环境变量可覆盖) ──
 FRAME_URL = os.environ.get("GS_FRAME_URL", "http://192.168.23.66:8792/frame.jpg")
 POSE_URL = os.environ.get("GS_POSE_URL", "http://192.168.23.50:8804/pose")
@@ -343,10 +373,25 @@ def capture_loop():
             with open(osp.join(cur["dir"], "images", fn), "wb") as f:
                 f.write(jpg)
             R = _rpy_to_R(pv[3], pv[4], pv[5])
-            T = [[R[0][0], R[0][1], R[0][2], pv[0]],
-                 [R[1][0], R[1][1], R[1][2], pv[1]],
-                 [R[2][0], R[2][1], R[2][2], pv[2]],
-                 [0, 0, 0, 1]]
+            T_base2tcp = np.array([
+                [R[0][0], R[0][1], R[0][2], pv[0]],
+                [R[1][0], R[1][1], R[1][2], pv[1]],
+                [R[2][0], R[2][1], R[2][2], pv[2]],
+                [0.0, 0.0, 0.0, 1.0],
+            ], dtype=np.float64)
+            # 🔴 2026-10-22 修: 原来直接把 TCP 位姿当相机位姿 (T_cam2world = T_base2tcp),
+            #   少了手眼变换, 实测 338 帧数据集 PSNR 只有 15dB(train 也才 18)。
+            #   相机固连在臂上, 差一个固定外参 X = T_cam2tool:
+            #     p_base = T_base2tcp @ X @ p_cam  ⇒  T_base2cam = T_base2tcp @ X
+            #     ⇒ T_cam2world = inv(T_base2cam)
+            #   验证口径: |T_base2cam[:3,3] - T_base2tcp[:3,3]| 必须恒等于手眼模长,
+            #   否则说明 X 的方向或约定用错了(踩过: 用错方向得 735mm/1064mm, 对的是 244.1mm)。
+            if HANDEYE_X is not None:
+                T_base2cam = T_base2tcp @ HANDEYE_X
+                T_cam2world = np.linalg.inv(T_base2cam)
+            else:
+                T_cam2world = T_base2tcp
+            T = T_cam2world.tolist()
             cur["frames"].append({"file": fn, "T_cam2world": T,
                                   "pose": pv, "bright": round(bright, 1),
                                   "ts": time.time()})
