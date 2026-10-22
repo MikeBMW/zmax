@@ -41,7 +41,15 @@
 3. **`data.yaml` 里写死 4060 绝对路径**
    `path: /home/ubuntu/zmax/zmax_data/full_train/peg_insert` → Intel 上必须改成本机路径。
 
-4. **torch 2.7 强依赖 CUDA 库**
+4. **matplotlib 跨 Python 版本不能用（C 扩展 ABI）**
+   `ImportError: cannot import name '_c_internal_utils' from partially initialized module 'matplotlib'`
+   matplotlib 从 `gui-venv311`（Python 3.11）传的，Intel venv 是 3.12。
+   `_c_internal_utils` 是编译好的 `.so`，ABI 不兼容。
+   **纯 Python 包**（ultralytics、requests、yaml）可以跨版本，
+   **带 C 扩展的**（matplotlib、pandas、numpy、cv2）必须匹配版本。
+   修：从 4060 的 `gs-venv`（Python 3.12）传 matplotlib，不要从 gui-venv311 传。
+
+5. **torch 2.7 强依赖 CUDA 库**
    即使是 CPU 用途，`torch/__init__.py` 也会加载 `nvidia/*/lib/*.so`。
    必须把整个 `nvidia/`（3.7G）和 `cusparselt`（227M，**不在 nvidia/ 下，是独立包**）一起传。
    缺 `libcusparseLt.so.0` 就是漏了 cusparselt。
