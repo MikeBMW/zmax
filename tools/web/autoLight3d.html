@@ -95,6 +95,30 @@
   #side .tags{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px}
   #side .tag{font-size:10.5px;border:1px solid #27384a;border-radius:999px;padding:1px 7px;color:#93a8bd}
   #side .tag.t{border-color:#1e6b62;color:#7ff0dd;background:#0c2724}
+/* 📋 工艺动作 ⇄ 工艺卡 对照表（导出/预览）—— 一句话口径: 动作是"做什么", 工艺卡是"在哪做、用什么做" */
+#mapMask{position:fixed;inset:0;z-index:80;display:none;background:rgba(6,10,15,.72);backdrop-filter:blur(2px)}
+#mapMask.on{display:block}
+#mapBox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(1180px,94vw);max-height:88vh;
+  display:flex;flex-direction:column;background:#0d151d;border:1px solid #24425c;border-radius:10px;box-shadow:0 18px 60px rgba(0,0,0,.6)}
+#mapBox h3{flex:0 0 auto;margin:0;padding:12px 16px;font-size:14px;color:#dbe6f0;border-bottom:1px solid #1c3040;
+  display:flex;align-items:center;gap:10px}
+#mapBox h3 small{font-weight:400;font-size:11px;color:#7f92a8}
+#mapBox .mbtns{margin-left:auto;display:flex;gap:8px}
+#mapBox .mbtns button{font-size:11.5px;padding:4px 10px;border-radius:6px;border:1px solid #2c4a66;background:#12202c;color:#cfe0ef;cursor:pointer}
+#mapBox .mbtns button:hover{background:#1a2f42;color:#fff}
+#mapBox .mbtns button.pri{background:var(--acc);border-color:var(--acc);color:#08120f;font-weight:700}
+#mapScroll{flex:1 1 auto;overflow:auto;padding:0 16px 8px}
+#mapTb{border-collapse:collapse;width:100%;font-size:12px;line-height:1.62}
+#mapTb th,#mapTb td{border-bottom:1px solid #1b2c3a;padding:9px 10px;vertical-align:top;text-align:left}
+#mapTb th{position:sticky;top:0;background:#12202c;color:#9fb6cb;font-weight:700;font-size:11.5px;white-space:nowrap;z-index:2}
+#mapTb td.n{white-space:nowrap;color:var(--acc);font-weight:700}
+#mapTb td.a{white-space:nowrap;color:#dbe6f0;font-weight:700}
+#mapTb td.c{min-width:150px;color:#a8c4dc}
+#mapTb td.w{min-width:230px;color:#cfdeea}
+#mapTb td.d{min-width:380px;color:#b7c9d8}
+#mapTb td.b{min-width:150px;color:#7f92a8;font-size:11px}
+#mapTb tr:hover td{background:#101d28}
+#mapFoot{flex:0 0 auto;padding:8px 16px 12px;font-size:11px;color:#6f8398;border-top:1px solid #1c3040}
 </style>
 </head>
 <body>
@@ -107,6 +131,10 @@
     <button id="bSpin" class="on" title="视图自转">视图自转</button>
     <button id="bPlay" class="on" title="步骤动画">动画</button>
     <button id="bLbl" class="on" title="标注">标注</button>
+    <!-- 📋 2026-10-23 老倪: 「增加导出表格, 将工艺动作和工艺卡对应起来」——
+         点开先给可读的对照表(每行=一个工艺动作 → 它落在哪几张工艺卡/工位), 可复制、可存 CSV。
+         口径: 动作 = 做什么(①~⑧), 工艺卡 = 在哪做/用什么机构做(1~9 工位); 一个动作可跨多个工位, 一个工位也可承担多个动作。 -->
+    <button id="bMap" title="导出「工艺动作 ⇄ 工艺卡」对照表（可复制 / 存 CSV，Excel 直接打开）">📋 动作⇄工艺卡</button>
     <!-- 📄 2026-10-22 老倪: 右上角「技术」按钮 → 打开真源 Word 版技术协议
          (文件放 /home/ubuntu/zmax/zmax_data/agreements/; 点按钮 = 在工位机桌面用 LibreOffice 打开) -->
     <button id="bAgree" title="打开技术协议（Word 真源；文件放在 zmax_data/agreements/，点了在工位机桌面打开）">📄 技术协议</button>
@@ -117,6 +145,22 @@
 <div id="actsbar"><span class="alab">工艺动作 · 8 步</span><div id="acts"></div>
   <span class="anote">点亮 = 当前工位正在做的动作 · 点动作跳到对应工位</span></div>
 <div id="chips"></div>
+
+<!-- 📋 工艺动作 ⇄ 工艺卡 对照表（导出弹窗；内容与下方 ACTCARD 同一份数据，页面与 CSV 不会各说一套） -->
+<div id="mapMask" onclick="if(event.target===this)closeMapTable()">
+  <div id="mapBox" role="dialog" aria-modal="true" aria-label="工艺动作与工艺卡对照表">
+    <h3>📋 工艺动作 ⇄ 工艺卡 对照表
+      <small>8 个工艺动作 → 9 张工艺卡（工位）· 每行给出「在哪做、做什么、怎么保证」</small>
+      <span class="mbtns">
+        <button id="mCopy" title="复制整张表（纯文本，可粘进邮件/飞书/Word）">复制表格</button>
+        <button id="mCsv" class="pri" title="下载 CSV（UTF-8 带 BOM，Excel 双击即正常显示中文）">⬇ 下载 CSV</button>
+        <button id="mClose" title="关闭（Esc）">关闭</button>
+      </span>
+    </h3>
+    <div id="mapScroll"><table id="mapTb"></table></div>
+    <div id="mapFoot">口径：工艺动作回答「做什么」，工艺卡回答「在哪做、用什么机构做」。同一个动作可能跨多个工位（如上料跨 1/2/3、分拣下料跨 7/8/9），同一个工位也可能承担多个动作（如工位 4 同时做拔帽、端检、清洁）。内容取自技术协议 rev1.0 §1.4、§1.5、§2.1、§2.2、§2.3、§3；三维为按模块关系的示意，不替代施工图。</div>
+  </div>
+</div>
 <div id="main">
   <div id="cvwrap"><canvas id="cv"></canvas><div id="hint">拖拽旋转 · 滚轮缩放 · ←/→ 切步骤</div></div>
   <aside id="side">
@@ -790,6 +834,94 @@ function syncActs(stepNo){
   const n=+stepNo, els=[...$('acts').querySelectorAll('.a')];
   ACTS.forEach((a,k)=>{ if(els[k]) els[k].classList.toggle('on', a.steps.includes(n)); });
 }
+/* ===== 📋 工艺动作 ⇄ 工艺卡 对照表 (老倪 2026-10-23「增加导出表格, 将工艺动作和工艺卡对应起来」)
+   每条 = 一个工艺动作(①~⑧) → 它落在哪几张工艺卡(工位) → 在这一步到底做什么 → 靠什么机构/判据保证 → 协议依据。
+   写作口径: 技术细节一律用完整陈述句 (谁·做什么·为什么·依据是什么), 不写电报体、不堆术语缩写;
+   数字与型号全部取自技术协议 rev1.0, 与左侧工艺卡同一份原文, 不另编。 */
+const ACTCARD=[
+{n:'①', act:'上料', cards:'工艺卡 1 待测物料缓存仓一 · 2 待测物料缓存仓二 · 3 主流线载具缓存位',
+ what:'操作员把装满来料的载具托盘放进人工放料位，推料模组把托盘推进缓存仓一；缓存仓一满后，托盘被推到缓存仓二，再由缓存仓二移栽模组送进主流线缓存位。主流线顶升模组把载具提升到交接高度，分离模组伸出接料，载具由此进入自动化流转。',
+ det:'载具托盘靠两组磁吸板自动锁附，并用两个定位轴套保证重复定位精度；托盘上设有浮动机构，在 XY 方向单边留出 0.5 毫米的余量，对插不准时由缓冲机构先退让，避免把力直接作用在产品上。上料时系统把产品二维码与载具二维码扫码绑定，形成产品、载具、工位、结果四者的全链路追溯关系。每一个动作都配有到位传感器，传感器自身还会做闭环自检，一旦检测功能失效就会报警，防止设备在“看不见”的状态下继续动作。缓存仓能力为每个载具托盘最多缓存 15 件。',
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+{n:'②', act:'拔帽', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'载具到达工位 4 后，自动拔帽模组把 FC 端的金属帽和 MPO 端的防尘帽取下，端面随之暴露出来，等待检测。取下的帽盖不落地，而是放回载具托盘上的帽盖暂存位。',
+ det:'自动拔帽模组整机配置 2 套，FC 侧一次处理 16 个端面，MPO 侧处理 1 个端面；拔帽动作由 Y 轴定位到端面正前方后沿轴向退出，避免斜向受力损伤插芯。帽盖放回托盘暂存位是关键设计：它保证第 6 步盖帽时每一顶帽子都回到原来那一支产品上，不会出现帽盖串盘、混料的情况。',
+ basis:'§2.2 第 4 步；§2.1 FC / MPO 自动拔帽&清洁&端检工站；§3.2-5 自动拔帽模组 2 套'},
+
+{n:'③', act:'端面检测', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'拔帽完成后，端检仪对每个端面逐一采集图像，判断端面是否存在脏污、划伤、凹陷等缺陷，并给出合格或不合格的结论。',
+ det:'FC 侧使用 ASTCHECK PRO 200KC 端面检测仪，整机配置 4 台，可覆盖 16 个 FC 端面；MPO 侧使用 MPO 自动端面检测与端检头，覆盖 1 个 MPO 端面，端检头整机配置 1 套。检测结果按端面逐条记录，并与该产品的二维码绑定后上传数据库，因此后续可以精确追溯到“哪一支产品的哪一个端面”在什么时间判了什么结果。',
+ basis:'§2.2 第 4 步；§2.1 在线检测仪表；§3.2-9 MPO 端检头 1 套'},
+
+{n:'④', act:'端面清洁', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'被判为脏污的端面就在工位 4 原地清洁：FC 端面由端面清洗头配合端面清洗机清洁，MPO 端面由 MPO 端面清洗头配合擦拭盒清洁。清洁完成后立即复检，确认端面已经达到要求。',
+ det:'清洁耗材必须无腐蚀性、无残留，并且不得对光纤端面造成二次污染，这是技术协议 §6.1.2.2 的强制要求，不是可选项。清洁后复检仍不合格的产品不当场报废，而是流转到第 6 步再做一次处理：FC 端面做二次清洗，MPO 端面做二次擦拭。这样做的目的是把“可挽救”的脏污与“真缺陷”区分开，减少不必要的报废。',
+ basis:'§2.2 第 4 步；§6.1.2.2 清洁耗材要求；§2.1 端面清洗机 / 擦拭盒'},
+
+{n:'⑤', act:'回损测试', cards:'工艺卡 5 MPO&FC 自动插回损测试（工位 5）',
+ what:'载具被顶升模组提升到回损测试位，测试头自动插入：FC 端通过 FC 转 FC 延长线与仪表对接，MPO 端直接与仪表测试线做法兰连接，随后逐芯测量回损。',
+ det:'回损测试仪型号为 RLM1412A-1FA-24，整机配置 1 台。插接能否可靠到位，主要取决于载具托盘的两套机构：浮动机构在 XY 方向单边提供 0.5 毫米浮动量来吸收定位误差，缓冲机构在插歪时先让位、避免压伤端面。设备与测试板卡之间通过 OK、NG、完成、启动四路信号握手，保证测试节拍与产线同步，而不是各跑各的。',
+ basis:'§2.2 第 5 步；§2.3.1 信号交互；§2.3.2 仪表法兰对接'},
+
+{n:'⑥', act:'盖帽', cards:'工艺卡 6 MPO&FC 自动端检&清洁&盖帽&扫码（工位 6）',
+ what:'回损合格的产品在工位 6 先做一次端面复检，复检通过后由盖帽模组把第 2 步暂存的帽盖重新盖回端面，产品恢复到可交付状态。',
+ det:'盖帽之前必须再过一次端检，因为插拔测试有可能在端面上留下新的污染；复检不合格时 FC 端面走二次清洗、MPO 端面走二次擦拭，处理合格后再盖帽。盖帽模组的帽源就是载具托盘上的帽盖暂存位，帽子始终跟着这一盘产品走，因此不会出现不同批次帽盖混用的问题。',
+ basis:'§2.2 第 6 步；§2.1 FC / MPO 端面测试&清洗&盖帽工站'},
+
+{n:'⑦', act:'扫码', cards:'工艺卡 6 MPO&FC 自动端检&清洁&盖帽&扫码（工位 6）',
+ what:'盖帽完成后，设备扫描产品上的二维码，把这一盘产品的全部检测数据与该二维码绑定，并上传到数据库，完成追溯闭环。',
+ det:'扫码环节绑定的键值有两个：产品条码与载具条码，两者在上料时已经建立对应关系，因此数据既能按产品查，也能按载具查。软件自动保存每一批次的识别数据和测量数据，同时保存设备运行日志与异常日志，并支持以 CSV 格式导出。出现异常时，报警界面会直接显示异常工位和产品位置，方便操作员补录或排查，而不需要翻日志猜。',
+ basis:'§2.2 第 6 步；§1.5.2 扫码绑定；§2.1 数据管理与信息追溯'},
+
+{n:'⑧', act:'分拣下料', cards:'工艺卡 7 OK&NG 自动分拣位 · 8 测试 OK 物料缓存仓 2 · 9 测试 OK 物料缓存仓 1',
+ what:'系统依据端面检测与回损测试的结果自动判定合格或不合格。合格产品经 OK 品缓存仓暂存后进入缓存仓一，由操作员在人工下料位整盘取走；不合格产品由 NG 搬运模组搬运到 NG 缓存仓，等待人工处理。',
+ det:'判定完全由测试板卡回传的信号驱动，不需要人工判读，判定结果同时写入数据库。NG 产品通过磁吸锁附方式搬运，NG 缓存仓容量为 4 件；OK 品缓存仓整机配置 2 套、NG 缓存仓 1 套。出现异常时系统自动触发声光报警提示操作员干预，界面上同时显示各缓存仓的当前数量与位置，操作员一眼就能看出该取哪一盘、该处理哪一盘。',
+ basis:'§2.2 第 7~9 步；§1.3.4 自动判定能力；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'}
+];
+const MAP_COLS=['动作序号','工艺动作','对应工艺卡（工位）','这一步在做什么','技术细节（机构 / 判据 / 为什么这么做）','技术协议依据'];
+function mapRows(){ return ACTCARD.map(r=>[r.n, r.act, r.cards, r.what, r.det, r.basis]); }
+function openMapTable(){
+  const tb=$('mapTb');
+  tb.innerHTML='<thead><tr>'+MAP_COLS.map((h,i)=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'
+    +ACTCARD.map(r=>'<tr><td class="n">'+r.n+'</td><td class="a">'+r.act+'</td><td class="c">'+r.cards
+        +'</td><td class="w">'+r.what+'</td><td class="d">'+r.det+'</td><td class="b">'+r.basis+'</td></tr>').join('')
+    +'</tbody>';
+  $('mapMask').classList.add('on');
+}
+function closeMapTable(){ $('mapMask').classList.remove('on'); }
+function mapTSV(){
+  const esc=s=>String(s).replace(/\t/g,' ');
+  return [MAP_COLS, ...mapRows()].map(r=>r.map(esc).join('\t')).join('\n');
+}
+function mapCSV(){
+  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  return '\ufeff'+[MAP_COLS, ...mapRows()].map(r=>r.map(q).join(',')).join('\r\n')+'\r\n';
+}
+function downloadCSV(){
+  const blob=new Blob([mapCSV()],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='工艺动作_工艺卡对照表_v5.50.753.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+async function copyMapTable(){
+  const txt=mapTSV(), btn=$('mCopy');
+  try{ await navigator.clipboard.writeText(txt); btn.textContent='已复制 ✓'; }
+  catch(e){
+    const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta);
+    ta.select(); try{document.execCommand('copy'); btn.textContent='已复制 ✓';}catch(_){btn.textContent='复制失败, 请用下载';}
+    ta.remove();
+  }
+  setTimeout(()=>{btn.textContent='复制表格';},1800);
+}
+$('bMap').onclick=openMapTable;
+$('mClose').onclick=closeMapTable;
+$('mCsv').onclick=downloadCSV;
+$('mCopy').onclick=copyMapTable;
+addEventListener('keydown',e=>{ if(e.key==='Escape') closeMapTable(); });
+
 CARDS.forEach((c,i)=>{
   const b=document.createElement('b');
   b.textContent=c.n+' '+c.title.replace(/（.*/,'');
