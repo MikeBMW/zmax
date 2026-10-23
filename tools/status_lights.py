@@ -1,27 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🚦 控制台右上角三色状态灯 —— 真源与判据 (老倪 2026-10-15)
+"""🚦 控制台右上角三色状态灯 —— 真源与判据
 
-老倪原话: 「那三个状态指示灯，保留，绿色表示功能正常(可以随时进行模型推理，且所有模型可以数据闭环全流程工作)，
-黄色灯光默认保持现状，工作时要以1秒为周期闪烁，表示训练正在进行(且GPU负荷平均大于50%)，红色灯光默认也是保持现状，
-工作时要以1秒为周期闪烁，表示正处于真机器联调且随时可以进行机械臂操作；你来同步功能，要保证功能的准确实时显示。」
+2026-10-23 老倪定口径 (覆盖 10-15 的旧口径):
+「如果连上了 550C, 右上角的绿色指示灯应该亮; 如果没连上, 红灯应该亮;
+  如果本地的 GPU 在训练, 黄色指示灯应该亮」
 
-三个灯 = 三个**可证伪**的判据 (每条给实测证据 + 源时间戳/帧龄; 取不到就标失效, 绝不冒充现状):
-
-  绿 实心常亮        = 功能正常: 随时可推理 + 全部在役模型可解析 + 数据闭环全流程入口在位
-      ① 推理服务 127.0.0.1:8790/health == 200                      (随时可以进行模型推理)
-      ② models/active_models.json 的 L2/L3/L4 + extra_in_service 指针**逐个**解析到真实文件
-      ③ 闭环四环入口在位: 采集(zmax_datasets.json 有条目) · 训练(tools/joint_train_all.py) ·
-         推理(8790) · 部署(tools/model_autoload.py)
-      任一不满足 ⇒ 绿灯**灭** + 写清缺哪条 (不冒充"功能正常")
-  黄 1s 周期闪        = 训练进行中
-      ① 训练进程在场 (口径同 tools/gpu_load_guard.py: lerobot_train|joint_train_all|yolo_annot_train|train_*.py)
-      ② GPU 利用率**滑窗平均 > 50%** (最近 20s; 样本 <3 个时如实报"样本不足", 不拿单点冒充平均)
-      否则黄灯**保持现状** (空心不闪)
-  红 1s 周期闪        = 真机联调中 且 随时可操作机械臂
-      ① 联调中 = 位姿真源 zmax_data/rokae_sdk/tcp_out/latest.json 帧龄 ≤ 2s 且非全 0
-      ② 可操作 = 真动授权 zmax_data/ctl_auth.json armed 且未过期 (single source: tools/ctl_auth.py)
-      否则红灯**保持现状** (空心不闪)
+  绿 实心常亮 = 已连上 550C (Intel 端侧 Nodka-PTL-Demo)
+      真源 = Intel 边缘机 GET /health (本机不在产线网时走隧道 127.0.0.1:18800,
+      zmax-orin-intel-fwd.service; 产线网直连 192.168.23.70:8800 作候选)。
+      取到 200 + JSON ⇒ 亮; 灯面写设备名/温度/NPU/推理是否在跑。绝不因为"隧道在听"就冒充连上。
+  红 实心常亮 = **没连上 550C** (绿/红互斥, 任一时刻恰好一个亮)
+      每个候选地址的失败原因逐条写进 tooltip。10-15 那套「真机联调 + 真动授权」的
+      位姿帧龄/授权证据仍照采, 保留在 red.detail 里 (只是不再驱动红灯)。
+  黄 1s 周期闪 = 本机 GPU 在训练
+      ① 训练进程在场 (口径同 tools/gpu_load_guard.py) ② GPU 利用率滑窗平均 > 50% (最近 20s)
+      否则黄灯灭 (空心)。
 
 用法:
   ./gui-venv311/bin/python tools/status_lights.py            # 人读
@@ -48,6 +42,12 @@ POSE_SRC = os.path.join(ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json"
 AUTH_SRC = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax/zmax_data/ctl_auth.json"))
 GPU_RING = os.path.join(ROOT, "zmax_data", "status_lights_gpu.jsonl")
 INFER_HEALTH = "http://127.0.0.1:8790/health"
+
+# 🖥 550C = Intel 端侧 (Nodka-PTL-Demo): 真源 /health。隧道优先(不在产线网时也能看), 产线网直连作候选。
+#   注意: 隧道端口在听 ≠ 550C 连上 —— 必须真拿到 /health 的 JSON 才算连上。
+EDGE_HEALTH_URLS = [u for u in (os.environ.get("ZMAX_EDGE_URL"),
+                                "http://127.0.0.1:18800/health",
+                                "http://192.168.23.70:8800/health") if u]
 
 POSE_FRESH_S = 2.0      # 位姿帧龄阈值 (50Hz 真值源; 视频/运动类 1~2s 口径)
 GPU_WIN_S = 20.0        # GPU 滑窗
@@ -87,7 +87,53 @@ def _resolve(p):
     return True, rp
 
 
+def probe_edge(timeout=1.5):
+    """550C / Intel 端侧探活 → {ok, url, ms, hw, infer, why, errs}
+
+    判据只认"真拿到 /health 的 JSON"; 端口在听、隧道活着都不算连上 (不冒充)。
+    """
+    import json as _j
+    import urllib.request as _u
+    errs = []
+    for url in EDGE_HEALTH_URLS:
+        t0 = time.time()
+        try:
+            with _u.urlopen(url, timeout=timeout) as r:
+                d = _j.loads(r.read().decode())
+            ms = round((time.time() - t0) * 1000, 1)
+        except Exception as e:                                                  # noqa: BLE001
+            errs.append("%s → %s" % (url, e.__class__.__name__))
+            continue
+        hw = d.get("hw") or {}
+        inf = d.get("infer") or {}
+        busy = bool(inf.get("busy"))
+        model = str(d.get("model") or d.get("xml") or "—").split("/")[-1].replace(".xml", "")
+        sub = [str(hw.get("host") or "?"), "NPU %s" % ("在" if hw.get("npu") else "无"),
+               "%.0f°C" % hw["temp_c"] if hw.get("temp_c") is not None else "温度—",
+               ("推理中 %sms" % ("%.1f" % d["last_ms"] if d.get("last_ms") is not None else "?"))
+               if busy else "空闲"]
+        if model != "—":
+            sub.append("模型 " + model)
+        return {"ok": True, "url": url, "ms": ms, "hw": hw, "infer": inf, "busy": busy,
+                "sub": " · ".join(sub), "errs": errs,
+                "why": "已连上 550C: %s · HTTP 200 · %sms" % (" · ".join(sub), ms)}
+    return {"ok": False, "url": None, "ms": None, "hw": {}, "infer": {}, "busy": False,
+            "sub": "未连通", "errs": errs,
+            "why": "未连上 550C: " + ("; ".join(errs) or "无候选地址")}
+
+
 def check_green():
+    """绿灯 = 已连上 550C (老倪 2026-10-23 口径)"""
+    e = probe_edge()
+    items = [{"name": "550C Intel 端侧 /health", "ok": bool(e["ok"]),
+              "ev": ("%s · HTTP 200 · %sms · %s" % (e["url"], e["ms"], e["sub"])) if e["ok"]
+              else "; ".join(e["errs"])[:300]}]
+    return {"on": bool(e["ok"]), "why": e["why"], "items": items,
+            "func": check_func(), "edge": {"url": e["url"], "ms": e["ms"], "sub": e["sub"]}}
+
+
+def check_func():
+    """10-15 旧口径那套「功能正常」证据 —— 现在只作绿灯 tooltip 的补充信息, 不再驱动灯色。"""
     items = []
     # ① 推理服务
     ok, code, ms = _http_ok(INFER_HEALTH)
@@ -200,10 +246,11 @@ def check_yellow():
             ("%.1f%%" % avg) if avg is not None else note, GPU_TRAIN_MIN)
     else:
         why = "无训练进程 ⇒ 保持现状 (不闪)"
-    return {"blink": blink, "why": why, "gpu_avg": avg, "gpu_n": n, "gpu_note": note, "train": procs}
+    return {"on": blink, "blink": blink, "why": why, "gpu_avg": avg, "gpu_n": n, "gpu_note": note, "train": procs}
 
 
-def check_red():
+def _pose_auth():
+    """10-15 旧口径: 真机联调(位姿帧龄≤2s) + 真动授权 armed —— 现在只作红灯 tooltip 的证据明细。"""
     pose_age, pose_ok, pose_ev = None, False, "缺位姿真源"
     try:
         d = json.load(open(POSE_SRC, encoding="utf-8"))
@@ -241,6 +288,21 @@ def check_red():
             "pose_ev": pose_ev, "armed": armed, "auth_until": until, "auth_ev": auth_ev}
 
 
+def check_red():
+    """红灯 = **没连上 550C** (老倪 2026-10-23 口径; 与绿灯互斥)。
+
+    探活复用 probe_edge (同一次采样里的结论), 失败原因逐条留在 items 里;
+    旧的「联调/授权」证据仍照采, 放 detail 供 tooltip 用, 不再驱动灯色。
+    """
+    e = probe_edge()
+    items = [{"name": "550C Intel 端侧 /health", "ok": bool(e["ok"]),
+              "ev": ("已连上 (%s · %sms) ⇒ 红灯灭" % (e["url"], e["ms"])) if e["ok"]
+              else ("未连通: " + ("; ".join(e["errs"]) or "无候选地址"))[:300]}]
+    return {"on": (not e["ok"]), "why": ("未连上 550C ⇒ 红灯亮: " + ("; ".join(e["errs"]) or "无候选地址"))
+                                       if not e["ok"] else "已连上 550C (%s · %sms) ⇒ 红灯灭" % (e["url"], e["ms"]),
+            "items": items, "detail": _pose_auth()}
+
+
 def collect():
     return {"ts": round(time.time(), 2), "t": time.strftime("%Y-%m-%d %H:%M:%S"),
             "blink_period_s": BLINK_PERIOD_S,
@@ -264,11 +326,16 @@ def main() -> int:
         print(json.dumps(d, ensure_ascii=False))
         return 0
     print("🚦 状态灯 (口径: %s · 闪烁周期 %ss)" % (time.strftime("%H:%M:%S"), BLINK_PERIOD_S))
-    print("  🟢 绿 %s  %s" % ("实心/常亮" if d["green"]["on"] else "灭(空心)", d["green"]["why"]))
+    print("  🟢 绿 %s  %s" % ("实心/常亮 = 已连上 550C" if d["green"]["on"] else "灭", d["green"]["why"]))
     for it in d["green"]["items"]:
-        print("       %s %-22s %s" % ("✓" if it["ok"] else "✗", it["name"], it["ev"]))
-    print("  🟡 黄 %s  %s" % ("1s 周期闪烁" if d["yellow"]["blink"] else "保持现状(空心不闪)", d["yellow"]["why"]))
-    print("  🔴 红 %s  %s" % ("1s 周期闪烁" if d["red"]["blink"] else "保持现状(空心不闪)", d["red"]["why"]))
+        print("       %s %-26s %s" % ("✓" if it["ok"] else "✗", it["name"], it["ev"]))
+    print("  🟡 黄 %s  %s" % ("1s 周期闪烁 = GPU 训练中" if d["yellow"]["blink"] else "灭", d["yellow"]["why"]))
+    print("  🔴 红 %s  %s" % ("实心/常亮 = 没连上 550C" if d["red"]["on"] else "灭", d["red"]["why"]))
+    for it in d["red"]["items"]:
+        print("       %s %-26s %s" % ("✓" if it["ok"] else "✗", it["name"], it["ev"]))
+    _dt = d["red"].get("detail") or {}
+    if _dt:
+        print("       (参考·不再驱动红灯) %s · %s" % (_dt.get("pose_ev"), _dt.get("auth_ev")))
     return 0
 
 

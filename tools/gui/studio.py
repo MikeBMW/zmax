@@ -2742,15 +2742,27 @@ class ReflowCardRow(QWidget):
             self._grid.setColumnStretch(cc, 1 if cc < cols else 0)
         self._cols = cols
         self._cap = cap
+        # 🐛 2026-10-23 现场: 首页「功能模块 Modules」只剩标题、卡片全不见 ——
+        #   本类在宽度还没定下来时 (showEvent 那刻 width 可能是 0/1) 从不 reflow ⇒ 网格空 ⇒
+        #   minimumSizeHint=0 ⇒ 外层 QVBoxLayout 把它压成 0 高, 卡片做了也看不见。
+        #   修法: 每次真排完就按网格实际高度给出最小高 (随列数变), 外层再也压不掉。
+        try:
+            _h = self._grid.sizeHint().height()
+            if _h > 0:
+                self.setMinimumHeight(int(_h))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self.updateGeometry()
         return True
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        # 延迟一拍再排: showEvent 里父级还在布尺寸, 这时的 width 往往不是最终宽
+        QTimer.singleShot(0, lambda: self.reflow_for(self.width()))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.reflow_for(e.size().width())
-
-    def showEvent(self, e):
-        super().showEvent(e)
-        self.reflow_for(self.width())
 
 
 class HomeWidget(QWidget):
@@ -15140,27 +15152,25 @@ class StudioMainWindow(QMainWindow):
         brand.setStyleSheet("color:#e6edf3; font-size:20px; font-weight:600; background:transparent; border:none; padding:0 8px;")
         sl.addWidget(brand)
         
-        # 🚦 2026-10-15 老倪: 「那三个状态指示灯，保留，绿色表示功能正常(可以随时进行模型推理，且所有模型可以
-        #   数据闭环全流程工作)，黄色…训练正在进行(且GPU负荷平均大于50%)，红色…正处于真机器联调且随时可以进行
-        #   机械臂操作；你来同步功能，要保证功能的准确实时显示。」⇒ 三灯改成**可证伪的真状态**, 每秒实时同步:
-        #     绿 实心常亮  = 功能正常: 8790 推理服务在线 + 全部在役模型指针可解析 + 数据闭环全流程入口在位;
-        #     黄 1s 周期闪 = 训练进行中: 训练进程在场 且 GPU 利用率滑窗平均 > 50%; 否则保持现状(空心不闪);
-        #     红 1s 周期闪 = 真机联调且可操作: 位姿真源帧龄 ≤2s 且 真动授权 armed; 否则保持现状(空心不闪)。
+        # 🚦 2026-10-23 老倪定口径:「连上了 550C ⇒ 绿灯亮; 没连上 ⇒ 红灯亮; 本地 GPU 在训练 ⇒ 黄灯亮」
+        #   ⇒ 绿 = 已连上 550C (Intel 端侧 /health 真拿到 JSON, 隧道在听不算) 实心常亮;
+        #      红 = 没连上 550C 实心常亮 (与绿互斥, 任一时刻恰好一个亮);
+        #      黄 = 本机 GPU 训练中 (训练进程 + GPU 滑窗平均 >50%) 1s 周期闪, 否则灭。
         #   真源**单一出处** = tools/status_lights.py (可直接复核: ./gui-venv311/bin/python tools/status_lights.py)
         #   本处只做两件事: 后台线程每 2s 取一次真状态 + 250ms 渲染相位; 取不到就如实标失效, 不冒充现状。
         self._status_lights = {}
         self._light_state = {}
         self._light_ts = 0.0
         for color_on, name, tooltip in [
-            ("#3fb950", "green",  "功能正常: 可以随时进行模型推理, 且所有模型可以数据闭环全流程工作"),
-            ("#d29922", "yellow", "训练进行中: 1s 周期闪烁 (训练进程在场 且 GPU 负荷平均 > 50%)"),
-            ("#f85149", "red",    "正处于真机器联调且随时可以进行机械臂操作: 1s 周期闪烁"),
+            ("#3fb950", "green",  "已连上 550C (Intel 端侧): 常亮; 没连上则不亮"),
+            ("#d29922", "yellow", "本机 GPU 训练中: 1s 周期闪烁 (训练进程在场 且 GPU 负荷平均 > 50%)"),
+            ("#f85149", "red",    "没连上 550C: 常亮; 连上后熄灭"),
         ]:
             dot = QLabel()
             dot.setFixedSize(14, 14)
             dot.setToolTip(tooltip)
-            # 默认: 绿灯实心, 其他空心带边线 (黄/红"保持现状" = 就是这个空心)
-            dot.setStyleSheet(_light_qss(color_on, name == "green"))
+            # 默认全空心: 灯色一律由真状态决定 (不预设"绿灯本来就亮")
+            dot.setStyleSheet(_light_qss(color_on, False))
             sl.addWidget(dot)
             self._status_lights[name] = dot
 
@@ -15186,7 +15196,8 @@ class StudioMainWindow(QMainWindow):
         self._light_ts = time.time()
 
     def _render_lights(self):
-        """画三灯: 绿实心常亮 / 黄·红 1s 周期闪烁 (默认保持空心不闪); 取不到数据就**如实标失效**"""
+        """画三灯: 绿=已连上 550C · 红=没连上 550C (都实心常亮·互斥) · 黄=GPU 训练中 1s 周期闪
+        取不到数据就**如实标失效** (灯灭 + tooltip 写明状态源静止)"""
         try:
             st = self._light_state or {}
             age = (time.time() - self._light_ts) if self._light_ts else None
@@ -15199,14 +15210,23 @@ class StudioMainWindow(QMainWindow):
                 if dot is None:
                     continue
                 d = st.get(name) or {}
-                if name == "green":
-                    solid = bool(d.get("on")) and not stale
-                    ev = " · ".join("%s%s" % ("✓" if i.get("ok") else "✗", i.get("name")) for i in (d.get("items") or []))
-                else:
+                if name == "yellow":
                     solid = bool(d.get("blink")) and on_phase and not stale
                     ev = ""
+                else:
+                    # 绿/红 = 550C 连接状态, 实心常亮 (不闪)
+                    solid = bool(d.get("on")) and not stale
+                    ev = " · ".join("%s%s" % ("✓" if i.get("ok") else "✗", i.get("name"))
+                                    for i in (d.get("items") or []))
                 dot.setStyleSheet(_light_qss(color, solid))
                 tip = "%s\n%s" % (d.get("why") or "无数据 (状态源没回)", ev)
+                _det = d.get("detail") or {}
+                if name == "red" and _det:
+                    tip += "\n(参考·不再驱动红灯) %s · %s" % (_det.get("pose_ev"), _det.get("auth_ev"))
+                if name == "green" and (d.get("func") or {}).get("items"):
+                    tip += "\n功能证据: " + " · ".join(
+                        "%s%s" % ("✓" if i.get("ok") else "✗", i.get("name"))
+                        for i in d["func"]["items"])
                 if stale:
                     tip = ("⚠ 状态源已静止 %s ⇒ 当前灯色是最后一帧, 勿当现状\n" %
                            ("(从未取到)" if age is None else "%.0fs" % age)) + tip
