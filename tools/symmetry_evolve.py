@@ -149,7 +149,14 @@ def evaluate(g: dict) -> dict:
     cov = float(flags.mean())
     err_rel = float(np.median(errs[flags]) / med_step) if flags.any() else 1.0
     thr = 2.0 * med_step
-    bp = float(np.mean(errs[~flags] > thr)) if (~flags).any() else 1.0
+    # ⚠ 破缺精度必须要求**真的抓到过破缺**: 原先"没有 invalid 拍就给 1.0" ⇒ 搜索学会
+    #   "什么都不判无效" 白拿 0.4 分 (实测 cov 0.99 的退化基因组)。现在: 判无效的拍少于
+    #   样本 3% (且 <5 个) 记 0 分 —— 没有破缺检测能力就不给分。
+    n_inv = int((~flags).sum())
+    if n_inv >= max(5, int(0.03 * n)):
+        bp = float(np.mean(errs[~flags] > thr))
+    else:
+        bp = 0.0
     score = cov * (1.0 - min(err_rel, 1.0)) + 0.4 * bp - 0.5 * max(0.0, 0.30 - cov)
     return {"score": round(score, 6), "cov": round(cov, 4), "err_rel": round(err_rel, 5),
             "break_prec": round(bp, 4), "n": int(n), "med_step": round(med_step, 6)}

@@ -142,9 +142,13 @@ EVIDENCE = """# v5.50.755 实测数字（全部来自本机/Intel 真跑）
 - 判据在 `/home/intel/train_venv/bin/python` 上真跑：selftest 3/3、verify **15/15**（E4 需 live tap 跳过）
 - 进化台账（23 代，best 0.7381）：advisor 判 `escalate` · `推演破缺(step_length_dispersion)` ·
   pred_next 0.7113 · drift 1.95 · accel 5.29
-- 对称性引擎自主进化 (6 路并行, 基因组=引擎真参数 window/drift/accel/bend/phi/lookahead/M):
-  起点(引擎当前默认) score 1.0353 · cov 0.97 · err_rel 0.176 · bp 0.60;
-  第 4 代 score **1.1259** · cov 0.98 · err_rel 0.183 · bp **0.81** (同样本同判据)
+- 对称性引擎自主进化 (6 路并行, 基因组=**部署口径下真能改的量** window/drift/accel/bend/phi;
+  M 固定 3.643, lookahead 由 E1 实测定 1):
+  · 判据 v1: 起点 1.0353 → 第4代 1.1259 (cov 0.98 / err_rel 0.183 / bp 0.81)
+  · **判据 v2 修正**: v1 里"没有 invalid 拍就给 bp=1.0" ⇒ 搜索学会"什么都不判无效"白拿 0.4 分
+    (实测出现 cov 0.99 的退化基因组)。改为: 无效拍 <3% 记 bp=0。
+  · v2 下诚实基线: score **0.99~1.04** · cov 0.96~0.97 · err_rel **0.17** · bp **0.50~0.61**
+  · old best 留档 `symmetry_best_pre_fix_*.json`, 已采纳参数保留在跑, 评分重置等新一代最优
 - 闭环贯通: Intel `symmetry_best.json` → 本机 `pull_symmetry_params.py`(timer 10min, 提升 ≥0.05 且距上次 ≥1h 才采纳)
   → `zmax_data/ss_live/orbit_params.json` → 重启 `zmax-ss-engine-loop` 按新参数跑;
   实测已采纳一版 (score 1.1259, cov 0.9819, err_rel 0.183, bp 0.8095), live 里 drift 0.676 < 阈值 2.68 ⇒ valid
