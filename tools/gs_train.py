@@ -272,9 +272,22 @@ def main() -> int:
     t0 = time.time(); log = []
     for step in range(1, steps + 1):
         opts["means"].param_groups[0]["lr"] = means_lr_at(step)   # 位置 lr 指数衰减(官方配方)
-        c = tr[np.random.randint(len(tr))]
-        gt = load(c).permute(2, 0, 1)
-        out, info = render(c)
+        # 🔴 2026-10-23: gsplat SYCL(XPU) 后端在**空 tile 交集 (nnz=0)** 时会抛
+        #   IndexError: shapes [0], [0, 2]（CUDA 版对 nnz=0 有保护，SYCL 版没有）。
+        #   处置: 该视角重抽, 连续 20 次都空才报错 —— 不掩盖真正无交集的坏数据。
+        _bad = 0
+        while True:
+            c = tr[np.random.randint(len(tr))]
+            gt = load(c).permute(2, 0, 1)
+            try:
+                out, info = render(c)
+                break
+            except IndexError as _e:
+                if 'indexing tensors could not be broadcast' not in str(_e):
+                    raise
+                _bad += 1
+                if _bad > 20:
+                    raise RuntimeError('连续 20 个训练视角与高斯零交集, 数据/位姿有问题') from _e
         if strategy.absgrad:
             info["means2d"].retain_grad()
         l1 = (out - gt).abs().mean()

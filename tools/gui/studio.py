@@ -8079,6 +8079,7 @@ class EvalModule(SubModuleWidget):
         self._build_headline(bl)
         self._build_gates(bl)
         self._build_iteration_roadmap(bl)        # 🗺 2026-10-15 老倪: 迭代路线图 Phase 0→4 · 迭代验证 · 对比分析
+        self._build_industry_deck(bl)            # 📊 2026-10-23 老倪: 行业分析 PPT(X) 直接在评估分析里加载
         self._build_table(bl)
         self._build_evidence(bl)
         self._build_log(bl)
@@ -8113,6 +8114,141 @@ class EvalModule(SubModuleWidget):
             _hb.setWordWrap(True)
             _hb.setStyleSheet("color:#f85149; font-size:14px; border:none;")
             bl.addWidget(_hb)
+
+    # ────────────────── 📊 行业分析 PPT · 在评估分析里直接加载 PPTX (老倪 2026-10-23) ──────────────────
+    DECK_SVC = "http://127.0.0.1:8793/eval/ppt"
+
+    @staticmethod
+    def _ppt_mod():
+        """按文件路径加载 tools/ppt_preview.py（不依赖 sys.path，避免和别的同名模块撞车）。"""
+        import importlib.util
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        p = os.path.join(root, "tools", "ppt_preview.py")
+        spec = importlib.util.spec_from_file_location("zmax_ppt_preview", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def _build_industry_deck(self, bl):
+        """交付件 .pptx 的入口：列 zmax_data/deliverables 里的 PPT，可在控制台内看幻灯片，
+        也可用本机程序打开原文件编辑。
+
+        真源只有一处：tools/ppt_preview.py 扫目录 + 8793 `/eval/ppt` 渲染/下载。
+        本面板**不复制页数、不缓存结论**：拿不到文件就显示原因，绝不显示假 0。"""
+        g = QGroupBox("📊 行业分析 PPT · 可编辑交付件（外部环境 · 竞品/合作格局）")
+        g.setStyleSheet("QGroupBox{color:%s; font-weight:bold; %s}"
+                        % (SYS12_COLOR, card_style(C_CARD, SYS12_COLOR, 8, 12)))
+        v = QVBoxLayout(); v.setSpacing(9)
+
+        row = QHBoxLayout(); row.setSpacing(9)
+        self.deck_cb = QComboBox()
+        self.deck_cb.setMinimumHeight(30)
+        self.deck_cb.setStyleSheet(
+            f"QComboBox{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {C_BORDER};"
+            f" border-radius:6px; padding:4px 8px; font-size:13px;}}"
+            f"QComboBox QAbstractItemView{{background:#161b22; color:{C_WHITE};"
+            f" selection-background-color:#1f6feb;}}")
+        self.deck_cb.currentIndexChanged.connect(self._deck_sel)
+        row.addWidget(self.deck_cb, 1)
+        for txt, fn in (("🖼 在控制台查看", self._deck_view),
+                        ("↗ 用本机程序打开", self._deck_open_native),
+                        ("📋 复制路径", self._deck_copy),
+                        ("⟳ 重新扫描", self._deck_scan)):
+            b = QPushButton(txt)
+            b.setMinimumHeight(30)
+            b.setStyleSheet(f"QPushButton{{background:{C_CARD}; color:{C_WHITE};"
+                            f" border:1px solid {C_BORDER}; border-radius:6px;"
+                            f" padding:4px 12px; font-size:13px;}}"
+                            f"QPushButton:hover{{border-color:{SYS12_COLOR}; color:{SYS12_COLOR};}}")
+            b.clicked.connect(fn)
+            row.addWidget(b)
+        v.addLayout(row)
+
+        self.deck_lb = QLabel("—")
+        self.deck_lb.setWordWrap(True)
+        self.deck_lb.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.deck_lb.setStyleSheet(f"color:{C_GRAY}; font-size:12px; border:none;")
+        v.addWidget(self.deck_lb)
+
+        hint = QLabel("幻灯片由服务端 8793 转 PNG（首转 5–10 秒，之后走缓存）；原 .pptx 一个字节都不改，"
+                      "「用本机程序打开」即可在 PowerPoint/WPS 里编辑。")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color:{C_GRAY}; font-size:11.5px; border:none;")
+        v.addWidget(hint)
+
+        g.setLayout(v)
+        bl.addWidget(g)
+        self._deck_scan()
+
+    def _deck_cur(self):
+        i = self.deck_cb.currentIndex()
+        if i < 0:
+            return None
+        return self.deck_cb.itemData(i)
+
+    def _deck_scan(self):
+        try:
+            m = self._ppt_mod()
+            decks = m.list_decks()
+        except Exception as _e:                                              # noqa: BLE001
+            self.deck_cb.clear()
+            self.deck_lb.setText("⚠️ 扫描交付目录失败: %r" % (_e,))
+            return
+        prev = (self._deck_cur() or {}).get("name") if self.deck_cb.count() else None
+        self.deck_cb.blockSignals(True)
+        self.deck_cb.clear()
+        for d in decks:
+            kb = d["size"] / 1024.0
+            self.deck_cb.addItem("📑 %s  (%.0f KB)" % (d["name"], kb), d)
+        if prev:
+            for i in range(self.deck_cb.count()):
+                if self.deck_cb.itemData(i)["name"] == prev:
+                    self.deck_cb.setCurrentIndex(i); break
+        self.deck_cb.blockSignals(False)
+        if not decks:
+            self.deck_lb.setText("交付目录里还没有 .pptx（zmax_data/deliverables/**）")
+        else:
+            self._deck_sel()
+
+    def _deck_sel(self, *_a):
+        d = self._deck_cur()
+        if not d:
+            return
+        self.deck_lb.setText("%d 个交付件 · 当前：%s\n%s"
+                             % (self.deck_cb.count(), d["name"], d["path"]))
+
+    def _deck_view(self):
+        d = self._deck_cur()
+        if not d:
+            self.deck_lb.setText("⚠️ 没有可查看的 pptx")
+            return
+        from urllib.parse import quote
+        url = "%s?f=%s" % (self.DECK_SVC, quote(d["name"]))
+        try:
+            from ppt_deck_window import open_deck          # 与 studio.py 同目录(tools/gui)
+            if open_deck(url):
+                self.deck_lb.setText("已打开预览窗 · %s\n%s" % (d["name"], url))
+                return
+        except Exception as _e:                                              # noqa: BLE001
+            print("⚠️ 内嵌预览不可用: %r" % (_e,), flush=True)
+        # 退回系统浏览器（同样是只读预览；编辑还是走「用本机程序打开」）
+        QDesktopServices.openUrl(QUrl(url))
+        self.deck_lb.setText("已用系统浏览器打开 · %s\n%s\n（服务 8793 未起时此地址会 404）" % (d["name"], url))
+
+    def _deck_open_native(self):
+        d = self._deck_cur()
+        if not d:
+            return
+        ok = QDesktopServices.openUrl(QUrl.fromLocalFile(d["path"]))
+        self.deck_lb.setText(("已交给本机程序打开（可编辑）· " if ok else "⚠️ 本机没有可打开 .pptx 的程序 · ")
+                             + d["path"])
+
+    def _deck_copy(self):
+        d = self._deck_cur()
+        if not d:
+            return
+        QApplication.clipboard().setText(d["path"])
+        self.deck_lb.setText("路径已复制到剪贴板 · " + d["path"])
 
     # ─────────────────────────── 顶部: 基线/当前/准入 ───────────────────────────
     def _build_headline(self, bl):

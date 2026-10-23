@@ -4030,6 +4030,34 @@ def _gs_assets():
     return out
 
 
+def _ppt_mod():
+    """📊 2026-10-23 老倪「评估分析里直接加载 PPTX」: 交付件预览模块(tools/ppt_preview.py)。
+
+    懒加载 —— 模块缺依赖(soffice/poppler)或本身报错时只让 PPT 预览不可用,
+    **绝不影响相机流/控制这两个主服务**(本文件是最重的常驻进程)。
+    """
+    try:
+        import sys as _s
+        _d = os.path.dirname(os.path.abspath(__file__))
+        if _d not in _s.path:
+            _s.path.insert(0, _d)
+        import ppt_preview
+        return ppt_preview
+    except Exception as _e:                                         # noqa: BLE001
+        print("⚠️ ppt_preview 不可用: %r" % (_e,), flush=True)
+        return None
+
+
+def _eval_ppt_page() -> bytes:
+    """评估分析 · 行业分析 PPT 页面(真源 tools/web/eval_ppt.html, 按 mtime 热读)。"""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "eval_ppt.html")
+    try:
+        with open(p, "rb") as f:
+            return f.read()
+    except Exception as _e:                                         # noqa: BLE001
+        return ("<h3>页面文件缺失</h3><pre>%s</pre><pre>%r</pre>" % (p, _e)).encode("utf-8")
+
+
 def _gs_latest_render():
     """最新资产(按 gs.splat mtime)的留出视角渲染图 → (path, 资产名, mtime)。
 
@@ -4931,6 +4959,81 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = self.path.split("?")[0]
+        # 📊 2026-10-23 老倪「这个分析最好能在控制台评估分析里直接加载 PPTX」:
+        #   交付目录(zmax_data/deliverables 等)里的 .pptx 转成幻灯片 PNG 画廊, 同源直出。
+        #   只读原文件; 转换结果按 (文件名, mtime, size) 缓存在 zmax_data/eval/ppt_cache。
+        if p in ("/eval/ppt", "/eval/ppt/"):
+            self._send(200, "text/html; charset=utf-8", _eval_ppt_page())
+            return
+        if p in ("/eval/ppt/list", "/eval/ppt/meta"):
+            import json as _json
+            _pp = _ppt_mod()
+            _q = {}
+            if "?" in self.path:
+                for _kv in self.path.split("?", 1)[1].split("&"):
+                    if "=" in _kv:
+                        _k, _v = _kv.split("=", 1)
+                        _q[_k] = _v
+            if _pp is None:
+                body = _json.dumps({"ok": False, "err": "ppt_preview 模块不可用(见服务日志)"},
+                                   ensure_ascii=False).encode()
+            elif p == "/eval/ppt/list":
+                body = _json.dumps({"ok": True, "decks": _pp.list_decks()},
+                                   ensure_ascii=False).encode()
+            else:
+                from urllib.parse import unquote as _uq
+                _f = _uq(_q.get("f", ""))
+                _force = _q.get("force") == "1"
+                _m = _pp.deck_meta(_f, convert=True)
+                if _force and _m.get("ok"):
+                    import shutil as _sh
+                    _d0 = _pp._find(_f)
+                    if _d0:
+                        _sh.rmtree(_pp._cache_dir(_d0), ignore_errors=True)   # noqa: SLF001
+                    _m = _pp.deck_meta(_f, convert=True)
+                body = _json.dumps(_m, ensure_ascii=False).encode()
+            self._send(200, "application/json; charset=utf-8", body)
+            return
+        if p == "/eval/ppt/slide":
+            _pp = _ppt_mod()
+            _q = {}
+            if "?" in self.path:
+                for _kv in self.path.split("?", 1)[1].split("&"):
+                    if "=" in _kv:
+                        _k, _v = _kv.split("=", 1)
+                        _q[_k] = _v
+            from urllib.parse import unquote as _uq
+            _f = _uq(_q.get("f", ""))
+            try:
+                _n = int(_q.get("n", "1"))
+            except ValueError:
+                _n = 1
+            _sp = _pp.slide_path(_f, _n) if _pp else None
+            if not _sp:
+                self._send(404, "text/plain; charset=utf-8",
+                           ("没有这一页: %s #%s" % (_f, _n)).encode("utf-8"))
+            else:
+                with open(_sp, "rb") as _fh:
+                    self._send(200, "image/png", _fh.read())
+            return
+        if p == "/eval/ppt/file":
+            _q = {}
+            if "?" in self.path:
+                for _kv in self.path.split("?", 1)[1].split("&"):
+                    if "=" in _kv:
+                        _k, _v = _kv.split("=", 1)
+                        _q[_k] = _v
+            from urllib.parse import unquote as _uq
+            _f = _uq(_q.get("f", ""))
+            _pp = _ppt_mod()
+            _d = _pp._find(_f) if _pp else None                                    # noqa: SLF001
+            if not _d:
+                self._send(404, "text/plain; charset=utf-8", ("没有这个文件: %s" % _f).encode("utf-8"))
+            else:
+                with open(_d["path"], "rb") as _fh:
+                    self._send(200, "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                               _fh.read(), {"Content-Disposition": 'attachment; filename="%s"' % _f})
+            return
         # 🖼 2026-10-08 老倪「3DGS窗口白屏」: /gs_render.png 原来放在 elif 链尾部,
         #   被后面的通用兜底分支截走 ⇒ 一律返回 not found ⇒ 面板图永远加载不出(白屏)。
         #   这里提到链首优先处理; 且 _send 必须收 bytes(传 str 会 TypeError 崩)。
