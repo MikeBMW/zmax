@@ -810,6 +810,7 @@ class Loop:
             "orbit_hit_rate": _orb.get("hit_rate"),
             "orbit_break": str(_orb.get("break_reason") or ""),
             "orbit_pred_1": (_orb.get("pred") or {}).get("1"),
+            "lookahead": rec.get("lookahead") or {},
             "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
             "pipe_calls": int(self.pipe_calls),
             # 🧭 对称性编排: 这次为什么跑/为什么省 + 计划有多旧 + 破缺→重规划的延迟
