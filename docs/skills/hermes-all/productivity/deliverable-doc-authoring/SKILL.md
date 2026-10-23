@@ -257,7 +257,30 @@ soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
 - 视图/示意图的约定（坐标系、1:1 示意比例、颜色含义）写在图注下或导出说明里，**不要写进图题或正文当作协议结论**。
 - 交付前必跑**逐字溯源 + 自拟术语扫描**，比对基准是用户贴的原文，不是自己生成脚本里的字符串；命中的删掉。
 
+## 铁律十二：PPTX 交付件 —— 先保“可编辑”，再过“版面三道闸”，最后挂预览
+
+用户要的是**能自己改的 pptx**，不是导出的图片。同一份内容做幻灯时（分析报告、格局分析、汇报材料）：
+
+- **台账只一份真源**（`roster.json` 这类）+ 生成脚本（`*_figs.py` / `make_pptx.py`）；脚本里不写死任何数字，
+  改数只改 json 再重跑 —— 否则同一个数在表、图、正文三处各说一套。
+- **可编辑性**：标题正文用 `add_textbox`、明细用 `add_table`、口径写 `notes_slide`；
+  不把文字烧进 PNG（图里只放图形，能改的字都放文本框/表格）。
+  中文必须同时设 `a:ea`（`run.font.name` 只管西文），否则字形回落成主题字/方块。
+- **插图永远 contain + 夹页内**：给 `w` 和 `h` 会拉伸；只按 `w` 推 `h` 会让高图算出 `y+h > 页高` 被裁。
+- **图的比例是版面契约**：`bbox_inches="tight"` 会把坐标轴外的 annotate/注脚扩进画布，横版 figsize 可能存成竖版，
+  contain 后被压成窄条并撞上下面的表格。锁 xlim/ylim、文字留轴内、存图不带 tight，并用 `PIL` 断言实际宽高比。
+- **碰撞自检要三类**：text↔text / text↔marker（散点压标签）/ text宽↔patch宽（段内标签溢出色块）；只比文字对文字会漏。
+- **回读断言再交付**：逐 shape 验 `left/top/left+width/top+height` 不越页（通顶装饰条按 shape 名白名单跳过），
+  并打表格底距页脚（> 约 0.2 in 余量）；表格离页脚太空就抬 `row_h`，不塞废话。
+- **像素复检要独立**：`soffice → pdftoppm -r 110` 出页图，交给独立视觉复核，问题清单枚举（溢出/重叠/行高/断词/豆腐块），
+  允许逐页回 `Pn: OK`、并要求像素量化；改完只复检改动页。判**渲染后的页**，不判源图。
+- **能把 pptx 挂进控制台/网页预览**（用户可能明确要求“在评估分析里直接打开”）：服务端子进程转图、
+  缓存键 `(文件名, mtime, size)`、原 pptx 当附件下载、缺转换工具要**报错不出空画廊**。
+  完整配方（含 PyQt 薄壳与路由）见 `references/editable-pptx-delivery.md`。
+
 ## 支持文件
 - `templates/product-manual.md` —— 产品手册骨架（八章 + 写作红线自查清单），复制后逐节填。
 - `references/feishu-file-delivery.md` —— 成稿怎么送到用户手里（飞书文件通道：`im/v1/files` 上传 + file 消息 + message_id；**发完要服务端回读核验**：翻页/按 id 直查/拉文件逐字节比 sha256；文字结论+zip 的交付口径）。
 - `references/supplier-sor-structure.md` —— 供应商外发 SOR 的章节骨架(1–15 + 附录 A–G)与必带三附录的逐节内容、交付分工表口径、复跑命令、**§5 一份 SOR 覆盖多任务的合并结构**。
+- `references/editable-pptx-delivery.md` —— 把分析/汇报内容落成**可编辑 .pptx** 并挂进控制台预览：
+  目录与单一真源、字体/插图/回读自检代码、服务端 pptx→页图缓存与路由、PyQt 薄壳入口、视觉复检循环。

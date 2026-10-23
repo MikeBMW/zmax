@@ -107,6 +107,19 @@
 定式: **采集/建数据集/质检放 Intel(不占 GPU), 30000 步正式训练送 4060**。要在 Intel 上出东西只有"预览版"
 (3000 步≈2 小时), 必须标明不是交付资产。判据: 先报步速再谈方案, 不要拿"能跑"当"能用到闭环里"。
 
+### 一轮跑不起来时的两个真故障 (实测, 按这个顺序查)
+
+1. **建库步 `ModuleNotFoundError: No module named 'cv2'`** —— XPU venv 里只有 torch/gsplat。
+   别软链系统 `cv2*.so`: 系统 cv2 是 numpy1.x 编的, venv 是 numpy 2.x ⇒ `ImportError: numpy.core.multiarray failed to import`。
+   也别指望 `pip install opencv-python-headless`: 产线机常常**没有外网 DNS**(`Failed to resolve 'pypi.org'`)。
+   定式 = **建库用系统 `python3`**(系统 py3.12 自带 cv2 + numpy1.26), 训练用 `gsxpu-venv`;
+   编排器里 `SYS_PY` / `PY` 两个变量分开。实测建库 3 秒过: 871 帧 → 300 帧(6D 最远点贪心)、去畸变后 fx=387.33。
+2. **训练第一步崩 `IndexError: shapes [0], [0, 2]`**(`gsplat/rendering.py` 的 `opacities.view(B,N)[batch_ids, gaussian_ids]`)
+   —— SYCL 后端在**空 tile 交集 (nnz=0)** 时退化, CUDA 后端不报。先证明后端本身没问题(10 万高斯 + `sh_degree=2`
+   直接 `rasterization` 应出非零唯一色), 再证明几何没问题(把初值点投到每台相机, 统计"z>0 且落在画面内"的台数)。
+   两者都正常 ⇒ 就该视角**重抽**: `try: render(c) except IndexError: 换一台相机重抽`, 连续 20 次才抛错。
+   判据 = `--smoke 200` 跑完并落 `gs.ply/gs.splat`(别拿"能 import gsplat"当"能训")。
+
 ## 🔴 采集端没做「内容 md5 去重」= 自训稳定产出废资产 (实测 2026-10-23 第一版自动资产)
 
 第一版全自动跑通（机器人动 → 采 124 帧 → 自动送 4060 → 30000 步 → 763k 高斯）但质检 **FAIL**:
@@ -130,6 +143,11 @@
 - 视点判据与质检门同口径: 平移 **5mm** + 姿态 **0.57°(0.01rad)** 量化成簇; 触发 = **视点 ≥30 且 ≥90s 没有新帧**
   (后者说明这一段走完了)。单独看帧数会误判 —— 同一视角连拍能让帧数上万而视点仍是 1。
 - 用 `会话名:帧数` 做指纹, 训过就跳过; **失败也写进指纹**(`TRAIN_FAILED`), 否则每轮轮询都重试一次、把机器堵死。
+  🔴 **反过来也成立: 修好故障后必须把对应的 `*_FAILED` 指纹清掉**(先备份 `state.json`)。不清 ⇒ 同一指纹永不重试,
+  现场看到的是"故障已经修了但一动不动", 很容易再去找一个不存在的第二个 bug。
+  🔴 **判活只看成功标志数**: `grep -l '训练完成\|gs.ply' gs_assets/train_*.log | wc -l`, 结果为 **0** 就是"一版都没成过",
+  哪怕守护 active、日志一天十几个。再配合 `grep -c DATASET_FAILED state.json` 与"两份日志报错是否逐字相同"定案。
+  🔴 多个 `gs_auto_train.py` 实例并存时按**显式 pid** 清到一个(它们会互相覆盖同名日志、时间线无法还原)。
 - 产物目录带 `status.json`(`ready` / `sent`), 推送端只按这两个标志取件、推完置 `sent=true` 保持幂等(不重发)。
 - `state.json` 要给 `views / need_views / pose_span_mm / idle_s` —— 现场问"还差多少"时直接念数。
 

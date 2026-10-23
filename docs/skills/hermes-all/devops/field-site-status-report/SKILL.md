@@ -38,6 +38,18 @@ sshpass -p <intel密码> ssh -o StrictHostKeyChecking=no -J orin intel@192.168.2
 Orin 上通常只 ping 得通 intel、没有到它的 key 授权（`ssh orin 'ssh -o BatchMode=yes intel@…'` → Permission denied(publickey)），
 所以用**本机 `-J orin` + sshpass**，别去 Orin 上折腾 key。密码从记忆/交接取，不猜。
 
+🔴 **先核 `orin` 这个别名到底指向谁**：`grep -A4 '^Host orin' ~/.ssh/config` 可能显示
+`HostName 39.102.211.79 / Port 22022`（公网跳板），登录后 `hostname` 回的是跳板自己。
+此时“`ssh orin` 一切正常”只证明**跳板可达**，一个字都不能证明 Orin 活着 —— 报告里把入口写成别名会把结论说错。
+判据 = 三条独立证据分开列：跳到跳板（`hostname`）字 / 跳板上 `ping 192.168.23.66` / 目标机自己的 `hostname` 是不是 Orin。
+🔴 **跳板只认 key 时，`sshpass -p <跳板密码>` 会被拒，本机 `sshpass … -J <跳板> <目标>` 也常被拒**（第二跳的密码喂不进去）。
+可用定式 = paramiko：本机 key（`key_filename=~/.ssh/id_ed25519`）连跳板 + 
+`open_channel('direct-tcpip', (内网IP, 22), ('127.0.0.1', 0))` + 目标机用户名/密码，之后 sftp/exec_command 照常用。
+⚠️ **后台起进程时 `exec_command('… &')` 会把通道挂住**（读输出超时，但进程已经起来）：发完就关、另开连接验，或把 stdout 全重定向到文件再读。
+🔴 **读远端日志别 `tail -c N` 后直接 decode**：字节数会切在多字节字符中间 ⇒
+`UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa7`（看着像文件坏了，其实是读法）。
+一律 `.decode('utf-8', errors='replace')`，或远端 `tr -d '\r'` 后按行取。
+
 🔴 **人在办公室(本机只有办公 WiFi)、实验室内网整段不可达时, 走公网跳板两跳**:
 ```bash
 ssh -p 22022 tashan@39.102.211.79 'hostname; ip -4 addr show | awk "/inet 192.168.23/{print \$2}"'

@@ -206,6 +206,52 @@ say so rather than approximating.
   handles this, but remember it when writing ad-hoc python-pptx code.
 - Always pass `encoding="utf-8"` when writing spec files; tokens like
   `{{city}}` may be filled with non-ASCII values.
+- **CJK runs need the East Asian typeface set separately**: `run.font.name
+  = "微软雅黑"` only writes `a:latin` — Chinese glyphs fall back to the
+  theme font and render wrong. Also append `<a:ea typeface="微软雅黑"/>`
+  to the run's `rPr` (helper in `references/cjk-editable-deck.md`).
+- **Never derive picture height from width alone.** A tall figure
+  (aspect < 0.8) computes `y + h > slide_height` and gets silently
+  cropped at the page edge. Contain-fit into the available box
+  `min(slide_w - x - margin, footer_y - y)` and scale by the smaller
+  factor; passing both `w` and `h` to `add_picture` stretches, it does
+  not preserve aspect ratio.
+- **Verify overflow by reading the deck back, not by eyeballing.**
+  Assert `left>=0, top>=0, left+width<=W, top+height<=H` on every shape;
+  full-bleed decoration bars legitimately touch the edge, so whitelist
+  them by name rather than loosening the threshold.
+- **Slide-preview caches must key on (filename, mtime, size).** Keying on
+  name alone serves stale PNGs after every regeneration — the deck looks
+  unchanged when it is not.
+- **Editability is a spec, not an aspiration.** Native textboxes, real
+  tables (`add_table`), and speaker notes with the numbers behind each
+  figure; never burn labels into a PNG. Put the source data in a
+  side-car JSON next to a generator script so the deck is regenerable.
+- **Keep the generator and the shipped deck in ONE directory.** Copying a
+  scratch copy of the script over the deliverable-directory copy silently
+  reverts every layout fix applied since that copy was made: the pptx is
+  right, the script is stale, and the next regenerate undoes the work.
+  After any bulk `cp`, gate with a signature diff — for every slide, every
+  shape's (name, left, top, width, height, text, table column widths) must
+  match between a fresh `python make_deck.py` output and the shipped file
+  (see `references/cjk-editable-deck.md` §6). Zero diff is the only
+  acceptable result before you trust the script.
+- **Sentinel: a table cell that wraps one character onto a second line
+  means the column is ~0.15 in too narrow.** Fix by widening the column
+  *and* shortening the phrase to a semantic break point (「+」→「·」,
+  drop a clause); widening alone just moves the orphan.
+- **Do not hand-tune scatter-label offsets.** Moving one label to clear a
+  neighbour shoves it onto the next point (four rounds of whack-a-mole in
+  practice). Lock `xlim/ylim` first, then loop candidate `xytext` offsets
+  scoring each against BOTH collisions — label-label overlap *and*
+  label-marker intrusion (point-to-rect distance < marker radius) — and
+  take the first zero. Text-vs-text checks alone miss labels crushed by
+  markers.
+- **A figure's aspect ratio is a deck-layout input.** `bbox_inches="tight"`
+  plus an annotation placed far outside the axes turns a wide bar chart
+  into a portrait PNG (ar 0.86 instead of 4.7); contain-fit then shrinks
+  it to half the intended width and the table below covers it. Pin
+  `set_ylim` and skip tight-bbox for figures that must fill a known box.
 
 ## Verification
 

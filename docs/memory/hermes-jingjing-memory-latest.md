@@ -1,4 +1,4 @@
-Orin=192.168.23.66(tashan/ts123); .70=intel/intel免密 Nodka PTL X7 358H/30G/NPU+ArcB390/RT/ROS2Jazzy/6CAN; 产线.23.50/24无网关; 网卡不在位≠服务坏
+远程=ssh orin(ECS:22022跳板→Orin tashan/ts123)/ssh intel免密(ProxyJump); .23.66 Orin, .23.70 intel/intel Nodka X7 358H/30G/NPU+ArcB390/ROS2Jazzy; .23.50/24无网关; 网卡掉≠服务坏
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -7,8 +7,6 @@ NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker�
 交付前自跑通; 改文件必回读
 §
 L5=DeepSeek视觉:短提示+小JSON; timeout≥300
-§
-飞书99991663=token过期→重启gateway
 §
 L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5 veto
 §
@@ -66,7 +64,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=人工走点(8793 manual,45s/轮增量); GS_MAP_MODE=auto回旧
 §
-版本号只按老倪指定; 当前5.50.753
+版本号只听老倪; 现5.50.753
 §
 专利12件·渠道74/74; config/patents/patent_registry.json
 §
