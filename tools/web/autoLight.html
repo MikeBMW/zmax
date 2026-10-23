@@ -885,7 +885,7 @@ async function exportDocx(no){
       cards:list.map(c=>({n:c.n,pc:c.pc||'',title:c.title,stage:c.stage,act:c.act,
         owner:c.owner||'',oacts:c.oacts||'',
         det:c.det,desc:c.desc||c.det,kv:c.kv,tags:c.tags,fn:fnOf(c),basis:c.basis||'',img:snapOne(c)})),
-      acts:(typeof ACTCARD!=='undefined'?ACTCARD:[])
+      acts:(!no && typeof ACTCARD!=='undefined')?ACTCARD:[]   // 单卡导出不附全量对照表
     };
     const r=await fetch('/api/autolight/docx',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
