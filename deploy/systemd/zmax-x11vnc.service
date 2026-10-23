@@ -1,0 +1,17 @@
+[Unit]
+Description=Z-MAX 远程遥控 · 本机桌面 x11vnc (:0 → 127.0.0.1:5900)
+After=display-manager.service graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+ExecStart=/usr/bin/x11vnc -display :0 -auth /run/user/1000/gdm/Xauthority -nopw -forever -shared -noxdamage -localhost -rfbport 5900 -repeat -nowf
+Restart=always
+RestartSec=5
+# 只绑 127.0.0.1：外部一律走 ECS 隧道，局域网内不暴露桌面
+
+[Install]
+WantedBy=graphical.target

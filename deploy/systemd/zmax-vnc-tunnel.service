@@ -1,0 +1,18 @@
+[Unit]
+Description=Z-MAX 远程遥控 · 反向隧道 (本机 5900 → ECS 39.102.211.79:5900)
+After=network-online.target zmax-x11vnc.service
+Wants=network-online.target zmax-x11vnc.service
+
+[Service]
+Type=simple
+User=ubuntu
+EnvironmentFile=/home/ubuntu/zmax/zmax_data/secrets/zmax.env
+ExecStart=/usr/bin/sshpass -p ${ZMAX_ECS_PW} /usr/bin/ssh -N -T \
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/home/ubuntu/.ssh/known_hosts \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \
+  -o BatchMode=no -R 5900:localhost:5900 root@39.102.211.79
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
