@@ -37,15 +37,17 @@ def make_fixture():
 
 
 def read_ply_xyz(path):
+    """读 3DGS 格式 PLY 的 xyz（属性是 float，不是 uchar red/green/blue）。"""
     with open(path, "rb") as f:
         data = f.read()
     he = data.index(b"end_header\n") + len(b"end_header\n")
-    ln = [l for l in data[:he].decode().split("\n") if l.startswith("element vertex")][0]
+    header = data[:he].decode()
+    props = [l.split()[-1] for l in header.splitlines() if l.startswith("property float")]
+    ln = [l for l in header.splitlines() if l.startswith("element vertex")][0]
     n = int(ln.split()[-1])
-    dt = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
-                   ("r", "u1"), ("g", "u1"), ("b", "u1")])
-    pts = np.frombuffer(data[he:he + n * dt.itemsize], dtype=dt)
-    return n, np.stack([pts["x"], pts["y"], pts["z"]], axis=1)
+    arr = np.frombuffer(data[he:he + n * len(props) * 4], dtype="<f4").reshape(n, len(props))
+    ix = {p: i for i, p in enumerate(props)}
+    return n, np.stack([arr[:, ix["x"]], arr[:, ix["y"]], arr[:, ix["z"]]], axis=1)
 
 
 def main():

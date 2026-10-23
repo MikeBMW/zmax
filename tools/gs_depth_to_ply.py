@@ -32,35 +32,55 @@ def read_ply_header_and_points(path):
     raise NotImplementedError
 
 
-def write_ply(path, xyz, rgb=None):
-    """写二进制 little-endian PLY, 3DGS 可直接读。"""
+SH_C0 = 0.28209479177387814
+
+
+def write_ply(path, xyz, rgb=None, scale_m=None):
+    """写 **3DGS 标准格式** PLY (gs_train.py read_gs_ply 要的就是这套)。
+
+    必需属性: x y z | f_dc_0/1/2 | opacity | scale_0/1/2 | rot_0/1/2/3
+      · f_dc: 颜色转 SH DC 系数 = (c/255 - 0.5) / SH_C0
+      · opacity: logit 域, 用 0.9 的 logit ≈ 2.197
+      · scale: log 域, 取"每像素对应的物理尺寸" z/fx (该点在图像上的真实投影大小)
+      · rot: 单位四元数 (w,x,y,z) = (1,0,0,0), 点状高斯不需要朝向
+    """
     n = len(xyz)
     xyz = np.asarray(xyz, dtype=np.float32)
-    rgb = np.zeros((n, 3), dtype=np.uint8) if rgb is None else np.asarray(rgb, dtype=np.uint8)
+    rgb = (np.full((n, 3), 128, np.uint8) if rgb is None
+           else np.asarray(rgb, dtype=np.uint8).reshape(n, 3))
+    if scale_m is None:
+        scale_m = np.full(n, 0.005, np.float32)
+
+    f_dc = (rgb.astype(np.float32) / 255.0 - 0.5) / SH_C0        # (N,3)
+    opac = np.full(n, 2.1972, np.float32)                        # logit(0.9)
+    scale = np.log(np.maximum(np.asarray(scale_m, np.float32), 1e-5))  # (N,) → 3 列同值
+    quat = np.zeros((n, 4), np.float32); quat[:, 0] = 1.0        # (w,x,y,z)
+
+    dt = np.dtype([
+        ("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
+        ("f_dc_0", "<f4"), ("f_dc_1", "<f4"), ("f_dc_2", "<f4"),
+        ("opacity", "<f4"),
+        ("scale_0", "<f4"), ("scale_1", "<f4"), ("scale_2", "<f4"),
+        ("rot_0", "<f4"), ("rot_1", "<f4"), ("rot_2", "<f4"), ("rot_3", "<f4"),
+    ])
+    rec = np.zeros(n, dtype=dt)
+    rec["x"], rec["y"], rec["z"] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    rec["f_dc_0"], rec["f_dc_1"], rec["f_dc_2"] = f_dc[:, 0], f_dc[:, 1], f_dc[:, 2]
+    rec["opacity"] = opac
+    rec["scale_0"], rec["scale_1"], rec["scale_2"] = scale, scale, scale
+    rec["rot_0"] = quat[:, 0]; rec["rot_1"] = quat[:, 1]
+    rec["rot_2"] = quat[:, 2]; rec["rot_3"] = quat[:, 3]
+
     header = (
         "ply\n"
         "format binary_little_endian 1.0\n"
         f"element vertex {n}\n"
-        "property float x\n"
-        "property float y\n"
-        "property float z\n"
-        "property uchar red\n"
-        "property uchar green\n"
-        "property uchar blue\n"
+        + "".join(f"property float {f}\n" for f in dt.names) +
         "end_header\n"
     )
     with open(path, "wb") as f:
         f.write(header.encode("ascii"))
-        rec = np.empty((n, 6), dtype=np.float32)
-        rec[:, :3] = xyz
-        rec[:, 3:] = rgb.astype(np.float32)
-        # 逐字段混合类型: 用 structured array 才对
-        out = np.zeros(n, dtype=np.dtype([
-            ("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
-            ("red", "u1"), ("green", "u1"), ("blue", "u1")]))
-        out["x"], out["y"], out["z"] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
-        out["red"], out["green"], out["blue"] = rgb[:, 0], rgb[:, 1], rgb[:, 2]
-        f.write(out.tobytes())
+        f.write(rec.tobytes())
     return n
 
 
@@ -123,6 +143,7 @@ def main():
 
     all_xyz = []
     all_rgb = []
+    all_scale = []
     used = 0
     skipped = 0
     total_valid = 0
@@ -178,6 +199,8 @@ def main():
         Xw = Xc @ R.T + t
 
         all_xyz.append(Xw.astype(np.float32))
+        # 每个点的物理尺寸: 一个像素在该深度上对应的长度 = z / fx
+        all_scale.append((zz / fx).astype(np.float32))
 
         if not a.no_color:
             img_p = osp.join(a.src, "images", name)
@@ -199,6 +222,7 @@ def main():
 
     xyz = np.concatenate(all_xyz, axis=0)
     rgb = np.concatenate(all_rgb, axis=0) if all_rgb else None
+    scl = np.concatenate(all_scale, axis=0) if all_scale else None
     print(f"[info] {used} 帧贡献点云 | 原始点 {xyz.shape[0]:,} | 有效深度像素 {total_valid:,}")
 
     # 均匀下采样
@@ -207,10 +231,12 @@ def main():
         xyz = xyz[idx]
         if rgb is not None:
             rgb = rgb[idx]
+        if scl is not None:
+            scl = scl[idx]
         print(f"[info] 下采样到 {a.max_points:,} 点")
 
     os.makedirs(osp.dirname(osp.abspath(a.out)) or ".", exist_ok=True)
-    n = write_ply(a.out, xyz, rgb)
+    n = write_ply(a.out, xyz, rgb, scl)
 
     bb_min, bb_max = xyz.min(axis=0), xyz.max(axis=0)
     print(f"[done] 写入 {a.out} | {n:,} 点 | {os.path.getsize(a.out)/1048576:.2f} MB")

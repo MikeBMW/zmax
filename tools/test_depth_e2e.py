@@ -42,7 +42,10 @@ def build():
         d = np.full((H, W), int(0.5 / UNIT), np.uint16)
         cv2.imwrite(os.path.join(ds, "depth", fn[:-4] + ".png"), d)
         frames.append({"file": fn, "T_cam2world": T.tolist()})
-    json.dump({"K": [[FX, 0, CX], [0, FY, CY], [0, 0, 1]], "frames": frames},
+    json.dump({"width": W, "height": H,
+               "K": [[FX, 0, CX], [0, FY, CY], [0, 0, 1]],
+               "convention": "T_cam2world",
+               "frames": frames},
               open(ds + "/cameras.json", "w"))
     # 打包
     buf = io.BytesIO()
@@ -52,11 +55,21 @@ def build():
 
 
 def submit(tar_bytes, steps):
+    """POST /train 是 multipart/form-data: dataset.tar.gz + steps 字段。"""
+    boundary = "----zmaxtestboundary"
+    body = b""
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"steps\"\r\n\r\n%d\r\n"
+             % (boundary, steps)).encode()
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"dataset\"; "
+             "filename=\"dataset.tar.gz\"\r\nContent-Type: application/gzip\r\n\r\n"
+             % boundary).encode()
+    body += tar_bytes
+    body += ("\r\n--%s--\r\n" % boundary).encode()
     req = urllib.request.Request(
-        "http://127.0.0.1:8804/train?steps=%d" % steps,
-        data=tar_bytes,
-        headers={"Content-Type": "application/gzip"})
-    with urllib.request.urlopen(req, timeout=60) as r:
+        "http://127.0.0.1:8804/train",
+        data=body,
+        headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary})
+    with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read())
 
 
