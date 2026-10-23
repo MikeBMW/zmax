@@ -213,6 +213,8 @@ class OrbitPredictor:
         hit = float(np.mean([e < 0.01 for e in self.errors[-50:]])) if self.errors else None
         return {
             "n": n, "speed_rad": round(speed, 8), "step_mean": round(step_mean, 8),
+            # 轨道速度本身 (挂在 p 上): 上层要"沿轨道推进/约束动作"时必须拿它, 不能只看预测点
+            "v": [round(float(x), 8) for x in (v_host if v_host is not None else np.zeros(p.size))],
             "pred": {str(h): [round(float(x), 6) for x in q] for h, q in preds.items()},
             "valid": bool(valid), "break_reason": break_reason,
             "static": bool(step_mean < STATIC_EPS),

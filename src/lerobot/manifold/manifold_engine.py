@@ -631,6 +631,12 @@ class ManifoldEngine:
         self.orbit = (_OrbitPredictor(window=6, manifold="euclidean" if manifold_type == "euclidean" else "sphere")
                       if (self.orbit_enabled and _OrbitPredictor is not None) else None)
         self.orbit_last: dict = {}
+        # 🧭 对称性指导运行方向 (默认关): gain=0 即完全不介入; 开=动作向上一步+沿轨道一步隐含增量靠拢
+        try:
+            self.guide_gain = float(os.environ.get("ZMAX_ORBIT_GUIDE_GAIN", "0") or 0.0)
+        except Exception:                                                      # noqa: BLE001
+            self.guide_gain = 0.0
+        self._a_prev = None
 
     def _sat(self, x, lo, hi):
         return float(max(0.0, min(1.0, (float(x) - lo) / (hi - lo)))) if hi > lo else 0.0
@@ -998,6 +1004,15 @@ class ManifoldEngine:
         """单步: 编码→投影→梯度流→导航步→解码动作→(可选)反馈修正"""
         r = self.project(state)
         gf = self.gradient_flow(potential_fn)
+        # 🧭 对称轨道先算 (本拍要拿它指导动作; 观测失败不阻塞主链路)
+        orb = None
+        if self.orbit is not None:
+            try:
+                orb = self.orbit.observe(r["p"], phi=float(gf["phi"]))
+                self.orbit_last = orb
+            except Exception as e:                                             # noqa: BLE001
+                orb = {"valid": False, "break_reason": "orbit_error:%s" % e}
+                self.orbit_last = orb
         p_new = self._evolve(r["p"], gf["descent"], dt)      # M 生效点 (默认过阻尼=旧行为)
         fb = self.feedback_update(sensor_residual) if sensor_residual is not None else None
         # 解码动作 (有拟合 readout 用真拟合; 否则用潜坐标前 action_dim 维, **如实标注**)
@@ -1032,6 +1047,30 @@ class ManifoldEngine:
                     hom["modulated"] = True
         if a.size:
             a = np.clip(a, -1.0, 1.0)
+        # 🧭 对称性指导运行方向 (ZMAX_ORBIT_GUIDE_GAIN>0 才介入; 默认 0 = 逐位不变)
+        #   轨道成立 (valid) ⇒ 动作向上一步 + 沿轨道一步隐含的动作增量靠拢 = 沿等价轨道推进;
+        #   破缺 ⇒ 完全不介入, 交回势场/上层 (对称性只在它成立的地方说话)。
+        guide = None
+        if (self.guide_gain > 0 and orb is not None and orb.get("valid") and self.readout is not None
+                and a.size and self._a_prev is not None and np.asarray(self._a_prev).size == a.size):
+            try:
+                v = np.asarray(orb.get("v") or [], float).ravel()
+                if v.size == np.asarray(r["p"]).size:
+                    da = np.asarray(v @ self.readout, float).ravel()
+                    a_orb = np.asarray(self._a_prev, float) + da[:a.size]
+                    a2 = (1.0 - self.guide_gain) * a + self.guide_gain * a_orb
+                    if self.action_lo is not None:
+                        a2 = np.clip(a2, self.action_lo, self.action_hi)
+                    a2 = np.clip(a2, -1.0, 1.0)
+                    guide = {"gain": float(self.guide_gain),
+                             "d_a": float(np.linalg.norm(a2 - a)),
+                             "a_before": [round(float(x), 6) for x in a],
+                             "a_after": [round(float(x), 6) for x in a2]}
+                    a = a2
+            except Exception as e:                                             # noqa: BLE001
+                guide = {"error": str(e)[:80]}
+        if a.size:
+            self._a_prev = np.asarray(a, float).copy()
         rec = {"state": np.asarray(state, float).ravel(), "p": r["p"], "p_next": p_new,
                # 🧠 潜表示来源必须随每步带出 (否则上下游只能"看到跑"，看不到喝的是哪条编码链)
                "z_source": r.get("z_source"), "z_dim": int(np.asarray(r["z"]).size),
@@ -1051,19 +1090,11 @@ class ManifoldEngine:
                    "dominant_urgency": hom["dominant_urgency"], "action_gain": hom["action_gain"],
                    "urgency": hom["urgency"], "state": self.hom.state.as_dict(),
                    "estimated": dict(self.hom.state.estimated), "safety_override": hom["safety_override"]}),
-               "hom_enabled": self.hom_enabled}
+               "hom_enabled": self.hom_enabled, "orbit": orb, "guide": guide}
         hj = self._hjepa_read()
         if hj is not None:
             rec["hjepa"] = hj
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
-        # 🧭 对称轨道预测 (观测: 沿等价轨道等距推下一步; 破缺处只报破缺, 不外推)
-        if self.orbit is not None:
-            try:
-                self.orbit_last = self.orbit.observe(r["p"], phi=float(gf["phi"]))
-                rec["orbit"] = self.orbit_last
-            except Exception as e:                                             # noqa: BLE001
-                self.orbit_last = {"valid": False, "break_reason": "orbit_error:%s" % e}
-                rec["orbit"] = self.orbit_last
         return rec
 
     def query(self, what: str = "all") -> dict:
