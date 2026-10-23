@@ -30,6 +30,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -93,10 +94,12 @@ TRAIN_STEPS = int(os.environ.get("GS_TRAIN_STEPS", "1000"))
 MIN_BRIGHT = float(os.environ.get("GS_MIN_BRIGHT", "12"))       # 全黑闸
 AUTOTRAIN = os.environ.get("GS_AUTOTRAIN", "1") == "1"
 
+_LAST_MD5 = [None]          # 上一张真正落盘画面的 md5
+
 STATE = {
     "started": time.time(),
     "frames_total": 0, "frames_skipped_static": 0, "frames_skipped_stale": 0,
-    "frames_skipped_dark": 0, "sessions": 0, "trains_submitted": 0,
+    "frames_skipped_dark": 0, "frames_skipped_dup": 0, "sessions": 0, "trains_submitted": 0,
     "last_error": "", "cooldown_until": 0.0,
     "cur": None,          # 当前这趟
     "last_train": None,   # 最近一次训练结果
@@ -352,6 +355,16 @@ def capture_loop():
                 time.sleep(dur)
                 continue
 
+            # ⑥-b 内容去重(实测必须): 相机 ~1.2fps, 臂快速移动时同一张图会被配上多个位姿
+            #      ⇒ 唯一图 47/124(重复 62%), 留出 PSNR 10.9dB 低于平凡基线 = 废资产。
+            #      内容没变就不落盘, 也不推进"上一次采到帧"的基准。
+            md5 = hashlib.md5(jpg).hexdigest()
+            if md5 == _LAST_MD5[0]:
+                with LOCK:
+                    STATE["frames_skipped_dup"] = STATE.get("frames_skipped_dup", 0) + 1
+                time.sleep(dur)
+                continue
+
             # ⑤ 起新趟
             if cur is None:
                 cur = _new_session()
@@ -395,6 +408,7 @@ def capture_loop():
             cur["frames"].append({"file": fn, "T_cam2world": T,
                                   "pose": pv, "bright": round(bright, 1),
                                   "ts": time.time()})
+            _LAST_MD5[0] = md5
             cur["last_pose"] = pv
             with LOCK:
                 STATE["frames_total"] += 1

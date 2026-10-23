@@ -50,8 +50,16 @@ class Ring(QWidget):
         self._text = "—"
         self._color = C_DIM
         self._sub = ""
-        self.setMinimumSize(132, 150)
+        # 2026-10-23 老倪「硬件资源窗口太高了, 很空旷, 高度减半」⇒ 132x150 → 104x80 (纵向压缩专用, 数值口径不变)
+        self.setMinimumSize(104, 80)
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+    def set_caption(self, caption, unit=None):
+        """环下标题可换 (550C 档第 1 环是 NPU、第 4 环是内存/磁盘, 不能写死) —— 与底部状态带同源"""
+        self.caption = caption or ""
+        if unit is not None:
+            self.unit = unit
+        self.update()
 
     def set_value(self, frac, text=None, color=None, sub=""):
         self._frac = None if frac is None else max(0.0, min(1.0, float(frac)))
@@ -64,30 +72,30 @@ class Ring(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         w, h = self.width(), self.height()
-        d = min(w, h - 26) - 10
-        r = QRectF((w - d) / 2.0, 4.0, d, d)
-        pen = QPen(QColor(C_BORDER), 9)
+        d = min(w, h - 18) - 6                     # 紧凑: 环径跟着高度走 (原 h-26 / -10)
+        r = QRectF((w - d) / 2.0, 3.0, d, d)
+        pen = QPen(QColor(C_BORDER), 6)            # 紧凑: 环宽 9 → 6
         pen.setCapStyle(Qt.FlatCap)      # 质检: 圆头端帽让弧比数值多 ~8.6°(34% 看着像 36%)
         p.setPen(pen)
         p.drawArc(r, 0, 360 * 16)
         if self._frac is not None and self._frac > 0:
-            pen2 = QPen(QColor(self._color), 9)
+            pen2 = QPen(QColor(self._color), 6)
             pen2.setCapStyle(Qt.FlatCap)
             p.setPen(pen2)
             p.drawArc(r, 90 * 16, -int(360 * 16 * self._frac))
         # 中心文字
         p.setPen(QColor(C_WHITE if self._frac is not None else C_DIM))
-        f = QFont(MONO, 15, QFont.Bold)
+        f = QFont(MONO, 11, QFont.Bold)          # 紧凑: 15pt → 11pt (环径也小了, 字号同比)
         p.setFont(f)
-        p.drawText(QRectF(0, 4 + d * 0.28, w, d * 0.44), Qt.AlignCenter, self._text)
+        p.drawText(QRectF(0, 3 + d * 0.24, w, d * 0.44), Qt.AlignCenter, self._text)
         if self._sub:
             p.setPen(QColor(C_GRAY))
-            p.setFont(QFont(MONO, 9))            # 质检: 中文/数字字号不一、基线差 5px → 统一等宽 9pt
-            p.drawText(QRectF(0, 4 + d * 0.60, w, d * 0.34), Qt.AlignCenter, self._sub)
+            p.setFont(QFont(MONO, 7))            # 质检: 中文/数字字号不一、基线差 5px → 统一等宽
+            p.drawText(QRectF(0, 3 + d * 0.58, w, d * 0.36), Qt.AlignCenter, self._sub)
         # 环下标题
         p.setPen(QColor(C_GRAY))
-        p.setFont(QFont(UI, 10, QFont.Bold))
-        p.drawText(QRectF(0, h - 22, w, 20), Qt.AlignCenter, self.caption)
+        p.setFont(QFont(UI, 8, QFont.Bold))
+        p.drawText(QRectF(0, h - 15, w, 14), Qt.AlignCenter, self.caption)
 
 
 class StatBar(QWidget):
@@ -100,12 +108,18 @@ class StatBar(QWidget):
         self._frac = None
         self._text = "—"
         self._color = C_DIM
-        self.setFixedHeight(34)
+        self.setFixedHeight(20)                    # 2026-10-23 紧凑: 34 → 22 → 20
         # 🔴 2026-10-15 整齐修复: 原 300px × 4 条 = 状态条行 1278px ⇒ 把 HardwareCard 的最小宽撑到 1328px,
         #   而实机首页视口只有 1144px (窗 1400 − 侧栏/边距) ⇒ 整页横向溢出: Roadmap 第 5 张卡 (Phase 4)
         #   连同它的右下角主指标被挤出窗外(实测卡 x=1360..1600)。降到 245px 后整页最小宽 ≈1106 < 视口,
         #   五张卡并排全见。窄到 245 时绘制代码自动缩短进度条 (见 paintEvent 的 x1 回退), 不会截断数字。
         self.setMinimumWidth(245)
+
+    def set_caption(self, caption, unit=None):
+        """条名/单位可换 (底部状态带的槽名可能是「磁盘 20G」而不是「磁盘占用 %」)"""
+        self.caption = caption or ""
+        self.unit = "" if unit is None else unit
+        self.update()
 
     def set_value(self, frac, text=None, color=None):
         self._frac = None if frac is None else max(0.0, min(1.0, float(frac)))
@@ -118,19 +132,19 @@ class StatBar(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         w, h = self.width(), self.height()
         p.setPen(QColor(C_GRAY))
-        p.setFont(QFont(UI, 10))
-        p.drawText(QRectF(0, 0, 150, h), Qt.AlignVCenter | Qt.AlignLeft, self.caption)
-        x0, x1 = 158, w - 110
+        p.setFont(QFont(UI, 8))                                  # 紧凑: 10pt → 8pt
+        p.drawText(QRectF(0, 0, 118, h), Qt.AlignVCenter | Qt.AlignLeft, self.caption)
+        x0, x1 = 124, w - 96                                      # 紧凑: 158/110 → 124/96
         if x1 - x0 < 40:
             x1 = max(x0 + 40, w - 60)
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(TRACK))
-        p.drawRoundedRect(QRectF(x0, h / 2.0 - 7, x1 - x0, 14), 7, 7)
+        p.drawRoundedRect(QRectF(x0, h / 2.0 - 5, x1 - x0, 10), 5, 5)     # 条高 14 → 10
         if self._frac:
             p.setBrush(QColor(self._color))
-            p.drawRoundedRect(QRectF(x0, h / 2.0 - 7, max(6.0, (x1 - x0) * self._frac), 14), 7, 7)
+            p.drawRoundedRect(QRectF(x0, h / 2.0 - 5, max(6.0, (x1 - x0) * self._frac), 10), 5, 5)
         p.setPen(QColor(C_WHITE if self._frac is not None else C_DIM))
-        p.setFont(QFont(MONO, 11, QFont.Bold))
+        p.setFont(QFont(MONO, 9, QFont.Bold))                    # 紧凑: 11pt → 9pt
         p.drawText(QRectF(x1 + 8, 0, w - x1 - 10, h), Qt.AlignVCenter | Qt.AlignRight,
                    "%s%s" % (self._text, self.unit if self._frac is not None else ""))
 
@@ -145,7 +159,7 @@ class Lamp(QWidget):
         self.name = name
         self._state = "off"
         self._sub = ""
-        self.setFixedSize(152, 62)
+        self.setFixedSize(140, 36)                 # 2026-10-23 紧凑: 152x62 → 140x36
 
     def set_state(self, state, sub=""):
         self._state = state if state in self.COLOR else "off"
@@ -157,7 +171,7 @@ class Lamp(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         col = QColor(self.COLOR[self._state])
         w, h = self.width(), self.height()
-        cx, cy, r = 15.0, h / 2.0, 9.0
+        cx, cy, r = 13.0, h / 2.0, 7.0             # 紧凑: 15/9 → 13/7
         if self._state != "off":                       # 光晕(亮=在线)
             glow = QColor(col)
             glow.setAlpha(70)
@@ -168,21 +182,21 @@ class Lamp(QWidget):
         p.setPen(QPen(QColor("#000000"), 1))
         p.drawEllipse(QRectF(cx - r, cy - r, r * 2, r * 2))
         p.setPen(QColor(C_WHITE))
-        p.setFont(QFont(UI, 10, QFont.Bold))
+        p.setFont(QFont(UI, 9, QFont.Bold))        # 紧凑: 10pt → 9pt
         nm = self.name
         while nm and QFontMetrics(p.font()).width(nm) > (w - cx - r - 12):
             nm = nm[:-1]
         if nm != self.name:
             nm = self.name[:max(1, len(nm) - 1)] + "…"
-        p.drawText(QRectF(cx + r + 6, cy - 20, w - cx - r - 8, 22), Qt.AlignVCenter, nm)
+        p.drawText(QRectF(cx + r + 5, cy - 17, w - cx - r - 7, 17), Qt.AlignVCenter, nm)
         p.setPen(QColor(C_GRAY))
-        p.setFont(QFont(MONO, 8))
+        p.setFont(QFont(MONO, 7))
         sub = self._sub
         while sub and QFontMetrics(p.font()).width(sub) > (w - cx - r - 12):     # 质检: 小字被硬裁
             sub = sub[:-1]
         if sub != self._sub:
             sub = (self._sub[:max(1, len(sub) - 1)] + "…") if len(self._sub) > 2 else sub
-        p.drawText(QRectF(cx + r + 6, cy + 1, w - cx - r - 8, 22), Qt.AlignVCenter, sub)
+        p.drawText(QRectF(cx + r + 5, cy + 0, w - cx - r - 7, 17), Qt.AlignVCenter, sub)
 
 
 class HwVisual(QWidget):
@@ -194,14 +208,14 @@ class HwVisual(QWidget):
         self._peak_w = 0.0
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(12)
+        v.setSpacing(6)                            # 紧凑: 12 → 6
 
         self.lb_dev = QLabel("设备状态")
-        self.lb_dev.setFont(QFont(UI, 10, QFont.Bold))
+        self.lb_dev.setFont(QFont(UI, 7, QFont.Bold))
         self.lb_dev.setStyleSheet(f"color:{C_GRAY};border:none;background:transparent;")
         v.addWidget(self.lb_dev)
         self.row_dev = QHBoxLayout()
-        self.row_dev.setSpacing(10)
+        self.row_dev.setSpacing(8)
         v.addLayout(self.row_dev)          # 质检: 原来先 addStretch ⇒ 灯全挤到右边, 左侧 31% 空白
         self._lamps = {}
 
@@ -224,6 +238,36 @@ class HwVisual(QWidget):
             b = StatBar(cap, unit)
             self.bars[key] = b
             self.row_bar.addWidget(b, 1)
+
+    # ── 与底部状态带同源: 直接吃 StatusPanel.modes() 的当前档槽位 ──
+    def set_slots(self, slots, profile_key=""):
+        """把「底部那一行硬件指示」的槽位原样搬上来: (名称, 填充比例%, 右侧文字, 语义色)。
+
+        前 4 个槽 → 4 个圆环; 第 5 个槽 (550C 的磁盘) → 第 1 条状态条。
+        文字/比例/颜色全部照抄, 不做二次换算 ⇒ 与底部状态带逐项相等 (老倪: 「信息没同步」)。
+        """
+        sem2col = {"ok": C_GREEN, "warn": C_YELLOW, "bad": C_RED, "idle": C_DIM, "busy": C_CYAN}
+        slots = list(slots or [])
+        for key, sl in zip(("gpu", "vram", "cpu", "mem"), slots[:4]):
+            cap, frac, txt = sl[0], sl[1], sl[2]
+            sem = sl[3] if len(sl) > 3 else None
+            col = sem2col.get(sem) if sem else (_tone(frac) if frac is not None else C_DIM)
+            rg = self.rings[key]
+            rg.set_caption(str(cap))
+            # 文字口径与状态带一致: 槽里没给文字就自己按比例写百分比 (状态带里 CPU/内存 就是这种)
+            _t = str(txt) if txt not in (None, "") else (("%.0f%%" % float(frac)) if frac is not None else None)
+            rg.set_value(None if frac is None else max(0.0, min(1.0, float(frac) / 100.0)), _t, col, "")
+        rest = slots[4:]
+        if rest and "disk" in self.bars:
+            sl = rest[0]
+            cap, frac, txt = sl[0], sl[1], sl[2]
+            sem = sl[3] if len(sl) > 3 else None
+            col = sem2col.get(sem) if sem else (_tone(frac) if frac is not None else C_DIM)
+            b = self.bars["disk"]
+            b.set_caption(str(cap), "")                      # 文字里已带单位 (如 20G), 不再补 %
+            b.set_value(None if frac is None else max(0.0, min(1.0, float(frac) / 100.0)),
+                        None if txt in (None, "") else str(txt), col)
+        self.lb_dev.setText("设备状态 · 与底部状态带同源%s" % ((" · %s 档" % profile_key) if profile_key else ""))
 
     # ── 数据入口 (缺字段一律画 '—', 不用 0 冒充) ──
     def set_data(self, m):

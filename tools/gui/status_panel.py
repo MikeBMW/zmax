@@ -192,8 +192,29 @@ class _Fetcher(QThread):
 # ============================================================
 # 面板
 # ============================================================
+def _edge_short(name: str) -> str:
+    """端侧模型短名 (chip 里放得下且认得出来): yolo_peg_live→YOLO · intact_enc→INTACT-E · intact_pred→INTACT-P"""
+    s = str(name or "").strip()
+    low = s.lower()
+    if "yolo" in low:
+        return "YOLO"
+    if "intact" in low:
+        if "enc" in low:
+            return "INTACT-E"
+        if "pred" in low:
+            return "INTACT-P"
+        return "INTACT"
+    if "sam3" in low:
+        return "SAM3"
+    return short_name(s)
+
+
 class StatusPanel(QWidget):
-    W, H = 1080, 40                 # 逻辑画布尺寸 (paint 里所有坐标都按这个写死, 别改它)
+    W, H = 1080, 20                 # 逻辑画布尺寸 (paint 里所有坐标都按这个写死, 别改它)
+    #   2026-10-23 老倪(第五次): 「硬件状态窗口太高了, 很空旷, 高度变成当前的一半」⇒ H 40 → 20
+    #   能这么改是因为 paint 里所有 y 都围绕中线 `cy = h/2` 画 (没有写死的绝对 y),
+    #   最高的固定元素只有 18 逻辑 px (当前档 chip 底 18 / 灯外圈 14 / 推理环 13) ⇒ h=20 刚好放下,
+    #   上下各留 ~1px。物理高度 58 → 29 (按 SCALE 1.45), 正好一半。
     # 🔍 2026-10-21 老倪(第二次): 「主界面的下面的硬件指标，字体太小，需要放大」
     #   做法: 不逐个改 30+ 处写死坐标 (11/37/47/60/88/96…), 而是**画布等比放大** ——
     #   painter.scale(SCALE) 后仍按 1080x40 的逻辑坐标画, 实际像素 = 1080x40 × SCALE,
@@ -201,7 +222,11 @@ class StatusPanel(QWidget):
     #   1.42 ⇒ 10px 字体只有 14.2 物理像素, 而本机 Xft.dpi≈192 (1pt≈2.67px) ⇒ 等效 ~5.3pt, 现场看就是小。
     #   2.60 ⇒ 10px→26px / 11px→28.6px (等效 ~9.7pt, 与其它 Qt pt 标签同级), 面板 1080x40 → 2808x104
     #   (窗口宽 3068, 仍留 260px 余量, 不会横向溢出)。
-    SCALE = 2.60
+    # 🔍 2026-10-23 老倪(第四次): 「字体还是太大, 再小一些」⇒ 1.76 → 1.45
+    #   (面板 1566x58, 10px→14.5px / 11px→16px; 白字行带 14px→11px)
+    #   ⚠ 宽度是硬约束: 本机两块屏都是 1920 宽 ⇒ SCALE ≤ 1920/1080 = 1.777, 超了父控件静默裁右边。
+    #   1.45 只占 1566px, 右边留 350px 余量。
+    SCALE = 1.45
     POLL_MS = 1000
     MAX_CHIPS = 4
 
@@ -367,6 +392,17 @@ class StatusPanel(QWidget):
         c = d.get("cams")
         return c if isinstance(c, dict) else {}
 
+    def _lan(self):
+        """连接方式真源: /status/all.lan = {mode: lan|remote|unknown, local_ips, hosts}"""
+        d = self._obj if isinstance(self._obj, dict) else {}
+        l = d.get("lan")
+        return l if isinstance(l, dict) else {}
+
+    def link_mode(self):
+        """'lan' 局域网 / 'remote' 远程 / 'unknown' 判不出来 —— 只信服务端给的结论, 界面不乱猜。"""
+        m = str(self._lan().get("mode") or "")
+        return m if m in ("lan", "remote") else "unknown"
+
     # ---------- 三档 = 三种算力用法 (550A/4060 · 550B/4060桥接 · 550C/Intel) ----------
     def _hw_of(self, key, fallback):
         """该档要求的算力载体 (真源 products[<档>].hardware 优先; 读不到退回静态兜底)。"""
@@ -402,43 +438,9 @@ class StatusPanel(QWidget):
         if mem_l is None:
             mem_l = _num(mem.get("pct"))
 
-        # —— 550A: 4060 上开发训练
-        a_mod = {"key": "550A", "hw": self._hw_of("550A", "4060"), "mode": "开发训练", "dot": "green", "online": True,
-                 "fact": "GPU %s%% · 训练 %s" % (_txt(_num(gpu.get("util"))), "中" if (d.get("training") or {}).get("active") else "无"),
-                 "slots": [("GPU", _num(gpu.get("util")), None),
-                           ("CPU", _num(cpu.get("util")), None),
-                           ("内存", mem_l, None),
-                           ("磁盘", _num(dsk.get("pct")), None)]}
-
-        # —— 550B: VSCode 标定 / 观察所有硬件
-        c_on, c_n, c_tot = bool(cm.get("online")), int(cm.get("n_fresh") or 0), int(cm.get("n_total") or 0)
-        rob = o.get("robot") or {}
-        rs = o.get("robot_stack") or {}
-        arm_ok = (str(rob.get("power_state") or "") == "on") and not rob.get("has_error")
-        arm_txt = ("通" if arm_ok else ("错" if rob.get("has_error") else ("电" if rob else "—"))) if o.get("online") else "—"
-        e_on = bool(e.get("online"))
-        o_on = bool(o.get("online"))
-        eps_n, eps_tot = int(e_on) + int(o_on), 2
-        rs_n, rs_tot = sum(1 for v in rs.values() if v), len(rs)
-        b_mod = {"key": "550B", "hw": self._hw_of("550B", "4060"), "mode": "桥接 · 状态空间工程/全 tool · 观察全硬件",
-                 "dot": "green" if (c_on and c_n > 0) else ("dim" if not c_on else "yellow"),
-                 "online": bool(c_on),
-                 "fact": "相机 %d/%d · 端侧 %d/%d · 栈 %s" % (c_n, c_tot, eps_n, eps_tot,
-                                                          ("%d/%d" % (rs_n, rs_tot)) if rs else "—"),
-                 # 槽 = (名称, 填充比例, 右侧文字, 语义色)。★ 计数类「满额 = 好」必须显式给 ok,
-                 #   否则 tone(100%) 按"负载过高"上红色 —— 实测被子代理抓到: 端侧 2/2、栈 2/2 显示红点红满条。
-                 "slots": [("相机", (100.0 * c_n / c_tot) if c_tot else None,
-                            ("%d/%d" % (c_n, c_tot)) if c_tot else "—",
-                            "ok" if (c_tot and c_n >= c_tot) else "warn"),
-                           ("机械臂", 100.0 if arm_ok else (0.0 if arm_txt == "错" else None), arm_txt,
-                            "ok" if arm_ok else ("bad" if arm_txt == "错" else "idle")),
-                           ("端侧", 100.0 * eps_n / eps_tot, "%d/%d" % (eps_n, eps_tot),
-                            "ok" if eps_n >= eps_tot else "warn"),
-                           ("栈", (100.0 * rs_n / rs_tot) if rs_tot else None,
-                            ("%d/%d" % (rs_n, rs_tot)) if rs_tot else "—",
-                            "ok" if (rs_tot and rs_n >= rs_tot) else "warn")]}
-
         # —— 550C: 部署到 Intel 端侧 (五槽: NPU/GPU/CPU/内存/磁盘 —— 老倪要「所有硬件·算力·磁盘都显示」)
+        #   ⚠ 这块指标 550B(局域网模式) 也要用 ⇒ 必须在三档之前算完 (e_on 一起在这里定义)
+        e_on = bool(e.get("online"))
         e_busy, e_ms = bool(e.get("busy")), e.get("last_ms")
         e_model = str(e.get("model") or "—").split("/")[-1].replace(".xml", "")
         # 2026-10-21 修真: 550C 的 NPU/GPU 槽原来只读 **单帧 /detect 的 last_ms**,
@@ -460,23 +462,91 @@ class StatusPanel(QWidget):
         npu_txt = ("%.0f%%" % _pn_duty) if isinstance(_pn_duty, (int, float)) else (
             ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—"))
         npu_fill = _pn_duty if isinstance(_pn_duty, (int, float)) else None
+        # 🔴 2026-10-23: duty_pct 是**每路**占空 (busy_ratio/streams)。实测 NPU busy_ratio=1.94 / 2 路
+        #   ⇒ 槽面 97% 其实是「2 路各 97%、整体已饱和」; 只写 97% 会让人以为还有余量。
+        #   busy_ratio ≥1.05 一律写「满载」+ 满条, 原始倍数留在 tooltip 的并行调度里。
+        _pn_br = _pn.get("busy_ratio") if isinstance(_pn.get("busy_ratio"), (int, float)) else None
+        _pg_br = _pg.get("busy_ratio") if isinstance(_pg.get("busy_ratio"), (int, float)) else None
+        if isinstance(_pn_duty, (int, float)) and _pn_br is not None and _pn_br >= 1.05:
+            npu_txt, npu_fill = "满载", 100.0
+        # 端侧数据年龄: 走隧道 ⇒ 单请求 2.9~3.6s, 缓存 8s ⇒ 槽里的数**最多可能落后 ~10s**,
+        #   而载荷顶层 ts 只有 1s ⇒ 不标年龄就是把旧数当实时。stale(≥2×ttl)= 隧道断了, 数不可信。
+        _e_age = e.get("cache_age_s")
+        _e_age = float(_e_age) if isinstance(_e_age, (int, float)) else None
+        _e_stale = bool(e.get("stale")) if e.get("online") else True
         npu_tops = a_npu.get("tops_int8")
         gpu_tops = a_gpu.get("tops_int8")
         gpu_txt = ("%.0f%%" % _pg_duty) if isinstance(_pg_duty, (int, float)) else (
             ("%sT" % ("%.0f" % gpu_tops if gpu_tops else "—")) if e_on else "—")   # 有流水线报占用比, 否则报 INT8 TOPS
         gpu_fill = _pg_duty if isinstance(_pg_duty, (int, float)) else None
+        if isinstance(_pg_duty, (int, float)) and _pg_br is not None and _pg_br >= 1.05:
+            gpu_txt, gpu_fill = "满载", 100.0
         disk_free = hwe.get("disk_free_gb")
         disk_txt = ("%.0fG" % disk_free) if isinstance(disk_free, (int, float)) else "—"  # 余量, 大写 G 省宽度
+        # —— 550A: 4060 上开发训练
+        a_mod = {"key": "550A", "hw": self._hw_of("550A", "4060"), "mode": "开发训练", "dot": "green", "online": True,
+                 "fact": "GPU %s%% · 训练 %s" % (_txt(_num(gpu.get("util"))), "中" if (d.get("training") or {}).get("active") else "无"),
+                 "slots": [("GPU", _num(gpu.get("util")), None),
+                           ("CPU", _num(cpu.get("util")), None),
+                           ("内存", mem_l, None),
+                           ("磁盘", _num(dsk.get("pct")), None)]}
+
+        # —— 550B: VSCode 标定 / 观察所有硬件
+        c_on, c_n, c_tot = bool(cm.get("online")), int(cm.get("n_fresh") or 0), int(cm.get("n_total") or 0)
+        rob = o.get("robot") or {}
+        rs = o.get("robot_stack") or {}
+        arm_ok = (str(rob.get("power_state") or "") == "on") and not rob.get("has_error")
+        arm_txt = ("通" if arm_ok else ("错" if rob.get("has_error") else ("电" if rob else "—"))) if o.get("online") else "—"
+        o_on = bool(o.get("online"))
+        eps_n, eps_tot = int(e_on) + int(o_on), 2
+        rs_n, rs_tot = sum(1 for v in rs.values() if v), len(rs)
+        # 🔀 2026-10-23 老倪: 「550B 增加显示是远程模式, 还是连接上局域网; 远程就显示 4060 的硬件信息和模型状态,
+        #   局域网则显示 intel 的硬件状态和模型状态」⇒ 第 1 槽固定「链」(连接方式), 后 4 槽按模式换数据源:
+        #   · 局域网(产线网段在位且主机有应答) → Intel 端侧: NPU/GPU(占空) + CPU/内存 (edge.pipeline / edge.hw)
+        #   · 远程(没有产线网段, 走远程通道)     → 4060 本机: GPU/CPU/内存/磁盘 (hw.*)
+        #   相机/机械臂/端侧/栈 四个观察计数不删, 移到 fact(悬停) 里, 免得窄槽挤成一团。
+        _lm = self.link_mode()
+        _is_lan = (_lm == "lan")
+        if _is_lan:
+            _chain = ("链", 100.0, "局域网", "ok")
+            _hw_slots = [("NPU", npu_fill, npu_txt, "ok" if e_on else "idle", True),
+                         ("GPU", gpu_fill, gpu_txt, "ok" if e_on else "idle", True),
+                         ("CPU", _num(hwe.get("cpu_pct")), None, None, True),
+                         ("内存", _num(hwe.get("mem_pct")), None, None, True)]
+        else:
+            _chain = ("链", (100.0 if _lm == "remote" else None),
+                      ("远程" if _lm == "remote" else "—"),
+                      ("busy" if _lm == "remote" else "idle"))
+            _hw_slots = [("GPU", _num(gpu.get("util")), None),
+                         ("CPU", _num(cpu.get("util")), None),
+                         ("内存", mem_l, None),
+                         ("磁盘", _num(dsk.get("pct")), None)]
+        b_mod = {"key": "550B", "hw": ("Intel" if _is_lan else self._hw_of("550B", "4060")),
+                 "mode": "桥接 · 状态空间工程/全 tool · %s" % ("局域网(Intel 端侧)" if _is_lan else "远程(4060 本机)"),
+                 "dot": "green" if (c_on and c_n > 0) else ("dim" if not c_on else "yellow"),
+                 "online": bool(c_on),
+                 "link": _lm,
+                 "edge_age_s": (_e_age if _is_lan else None),
+                 "edge_stale": (_e_stale if _is_lan else None),
+                 "fact": "链 %s · 相机 %d/%d · 机械臂 %s · 端侧 %d/%d · 栈 %s" % (
+                     ("局域网" if _is_lan else ("远程" if _lm == "remote" else "—")),
+                     c_n, c_tot, arm_txt, eps_n, eps_tot,
+                     ("%d/%d" % (rs_n, rs_tot)) if rs else "—"),
+                 # 槽 = (名称, 填充比例, 右侧文字, 语义色)。★ 计数类「满额 = 好」必须显式给 ok,
+                 #   否则 tone(100%) 按"负载过高"上红色 —— 实测被子代理抓到: 端侧 2/2、栈 2/2 显示红点红满条。
+                 "slots": [_chain] + _hw_slots}
+
         c_mod = {"key": "550C", "hw": self._hw_of("550C", "Intel"), "mode": "端侧部署",
                  "dot": "cyan" if (e_on and (e_busy or _pipe_on)) else ("green" if e_on else "dim"),
                  "online": e_on,
                  "fact": "NPU %s · iGPU %s · 盘余 %sGB" % (
                      npu_txt, gpu_txt, disk_free if disk_free is not None else "—"),
-                 "slots": [("NPU", npu_fill, npu_txt, "ok" if e_on else "idle"),
-                           ("GPU", gpu_fill, gpu_txt, "ok" if e_on else "idle"),
-                           ("CPU", _num(hwe.get("cpu_pct")), None),
-                           ("内存", _num(hwe.get("mem_pct")), None),
-                           ("磁盘", _num(hwe.get("disk_pct")), disk_txt)]}
+                 "edge_age_s": _e_age, "edge_stale": _e_stale,
+                 "slots": [("NPU", npu_fill, npu_txt, "ok" if e_on else "idle", True),
+                           ("GPU", gpu_fill, gpu_txt, "ok" if e_on else "idle", True),
+                           ("CPU", _num(hwe.get("cpu_pct")), None, None, True),
+                           ("内存", _num(hwe.get("mem_pct")), None, None, True),
+                           ("磁盘", _num(hwe.get("disk_pct")), disk_txt, None, True)]}
         out = [a_mod, b_mod, c_mod]
         # 档位与硬件不符 (例: 4060 上挂着 550C) ⇒ 当前档的灯转黄 + fact 前缀, 不许静默
         pr = self._profile()
@@ -591,6 +661,9 @@ class StatusPanel(QWidget):
         灯色取该层最好状态 (在役>候选>未训练), 推理标记 = 该层任一在推理。
         ⇒ 一排就看得出「哪层在役/哪层只是候选/哪层没训过」。最多 MAX_CHIPS 层, 其余聚合成 ×N。
         """
+        # 550B + 局域网模式 ⇒ 模型状态要看**端侧在跑什么** (Intel NPU/GPU 上的模型), 不是 4060 的注册表
+        if self.link_mode() == "lan" and str(self._profile().get("key") or "550B").upper() == "550B":
+            return self._edge_chips()
         groups = {}
         order = []
         for m in self._models():
@@ -622,6 +695,53 @@ class StatusPanel(QWidget):
                      for ly in LAYER_ORDER]
         return chips
 
+    def _edge_chips(self):
+        """局域网模式下 550B 的「模型状态」= 端侧流水线各设备真在跑的模型 + 占空 (真源 edge.pipeline.devices)。
+
+        形状与层 chip 一致 (灯 + 3 字标签 + 短名 + 数字), 这样同一行画法不用改。
+        """
+        e = self._edge()
+        pd_ = e.get("pipeline") if isinstance(e.get("pipeline"), dict) else {}
+        devs = pd_.get("devices") if isinstance(pd_.get("devices"), dict) else {}
+        chips = []
+        for dev in ("NPU", "GPU"):
+            dv = devs.get(dev) if isinstance(devs.get(dev), dict) else {}
+            duty = dv.get("duty_pct")
+            ms = [str(x) for x in (dv.get("models") or [])]
+            on = isinstance(duty, (int, float))
+            chips.append({"layer": dev, "state": ("in_service" if on else "candidate"),
+                          "version": ("%.0f%%" % duty) if on else None,
+                          "inferring": bool(on and duty > 0), "n": max(1, len(ms)),
+                          "in_service": on,
+                          "name": (_edge_short(ms[0]) if ms else "—"),
+                          "full": " · ".join(ms) or "—"})
+        if not chips:
+            chips = [{"layer": "端侧", "state": "", "version": None, "inferring": False, "n": 0,
+                      "in_service": False, "placeholder": True, "name": "", "full": ""}]
+        return chips
+
+    @staticmethod
+    def gs_label(assets=None):
+        """底部带右端的 3DGS 标签 —— 说明「哪一轮 / 几个场景」，不再挂一个对不上号的哈希。
+
+        collect_assets 按 gs.ply mtime 倒序 ⇒ assets[0] = 最新 (旧代码取 [-1] = 最旧, 所以哈希对不上)。
+        · 同一场景多轮 (xxx_m196…m200) ⇒ `3DGS m200 ×5轮`
+        · 多个不同场景           ⇒ `3DGS ×3 m200`
+        · 没有资产               ⇒ `3DGS —`
+        """
+        assets = list(assets or [])
+        if not assets:
+            return "3DGS —"
+        _new = assets[0]
+        _nm = str(_new.get("name") or "")
+        _mm = re.search(r"_(m\d+)\b", _nm)
+        _tagv = _mm.group(1) if _mm else short_ver(_new.get("version"))
+        # ⚠ 每个资产各自取名字 (原来错用了 assets[0] 的 _nm, 5 个不同场景也会被算成 1 个)
+        _scenes = {re.sub(r"_m\d+$", "", str(a.get("name") or "").split(" · ")[0]) for a in assets}
+        if len(_scenes) > 1:
+            return "3DGS ×%d %s" % (len(_scenes), _tagv)
+        return "3DGS %s ×%d轮" % (_tagv, len(assets))
+
     def _assets(self):
         d = self._obj if isinstance(self._obj, dict) else {}
         return [x for x in (d.get("assets") or []) if isinstance(x, dict)]
@@ -643,6 +763,13 @@ class StatusPanel(QWidget):
         mem = mem or {}
         dsk = dsk or {}
         L = ["状态面板 · %s" % self.url]
+        _lm = self.link_mode()
+        _la = self._lan()
+        L.append("连接方式 %s%s · 本机产线网段 %s · 产线主机 %s" % (
+            {"lan": "局域网(看 Intel 端侧)", "remote": "远程(看 4060 本机)"}.get(_lm, "判不出来"),
+            (" (缓存 %.1fs)" % _la["cache_age_s"]) if isinstance(_la.get("cache_age_s"), (int, float)) else "",
+            (",".join(_la.get("local_ips") or []) or "无"),
+            (" ".join("%s%s" % (k, "✓" if v else "✗") for k, v in (_la.get("hosts") or {}).items()) or "—")))
         L.append("GPU %s · util %s%% · 显存 %s/%s MB · %s°C" % (
             gpu.get("name", "—"), _num(gpu.get("util")), gpu.get("mem_used_mb", "—"),
             gpu.get("mem_total_mb", "—"), gpu.get("temp_c", "—")))
@@ -827,6 +954,9 @@ class StatusPanel(QWidget):
         for i, _sl in enumerate(_slots):
             cap, frac, txt = _sl[0], _sl[1], _sl[2]
             sem = _sl[3] if len(_sl) > 3 else None
+            # 端侧槽 + 隧道断(stale) ⇒ 旧数不许当实时: 灰灯 + 「—」(年龄在右端标签/悬停里)
+            if (len(_sl) > 4 and _sl[4]) and cur.get("edge_stale"):
+                frac, txt, sem = None, "—", "idle"
             x0 = SEL_W + i * gw
             has = (frac is not None) or (txt not in (None, "", "—"))
             if sem:
@@ -899,13 +1029,27 @@ class StatusPanel(QWidget):
             self._lamp(p, tx + 5, cy, QColor(C_DIM), False)
 
         # 3DGS 资产 (同一条中线的最右, 通信灯左侧) —— 先算它要占多宽, 剩下的才给模型层
+        # 2026-10-23 老倪「3DGS ×5 1114 啥意思」⇒ 原来的字面是「最近 5 个资产目录 + 最后一个(最旧那个)的
+        #   版本哈希后 8 位」, 等于显示了个对不上号的哈希。改成: 最新的**轮次** + 轮数 + 不同场景数。
+        #   · collect_assets 按 gs.ply mtime 倒序 ⇒ assets[0] 才是最新 (原来取 [-1] = 最旧)
+        #   · 同一次扫场的多轮 (xxx_m196…m200) 是「5 轮」不是「5 个场景」, 场景数按去掉 _mNNN 后去重
         assets = [a for a in self._assets() if str(a.get("kind", "")).upper() == "3DGS"]
-        ver = short_ver(assets[-1].get("version")) if assets else "—"
-        label = "3DGS %s" % ver
-        if len(assets) > 1:
-            label = "3DGS ×%d %s" % (len(assets), ver)
+        label = self.gs_label(assets)
         p.setFont(f_ver)
-        xr = w - 22.0                            # 右端给通信灯(w-9)留位
+        # 🔴 2026-10-23: 端侧(Intel)走隧道, 槽里的数最多落后 ~10s (缓存 8s + 单请求 2.9~3.6s),
+        #   而载荷顶层 ts 只有 1s ⇒ 必须在带子上标出「这组数的年龄」, 否则就是把旧数当实时。
+        _eage = cur.get("edge_age_s")
+        if isinstance(_eage, (int, float)):
+            _tf = QFont(MONO)
+            _tf.setPixelSize(9)
+            _tag = ("Intel 陈旧" if cur.get("edge_stale") else "Intel %.0fs" % _eage)
+            _tw = QFontMetrics(_tf).width(_tag)
+            p.setFont(_tf)
+            p.setPen(QColor(C_RED if cur.get("edge_stale") else (C_YELLOW if _eage >= 12 else C_GRAY)))
+            p.drawText(QRectF(w - 20.0 - _tw, 0, _tw, h), Qt.AlignVCenter | Qt.AlignRight, _tag)
+            xr = w - 24.0 - _tw
+        else:
+            xr = w - 22.0                        # 右端给通信灯(w-9)留位
         room = max(24.0, xr - (pct_end + 8.0))
         label = QFontMetrics(f_ver).elidedText(label, Qt.ElideRight, int(room))
         tw = QFontMetrics(f_ver).width(label)
@@ -1090,6 +1234,73 @@ def _selftest(shot=None):
         short_name("SmolVLA+LEW 长程规划 (在役运行时 ckpt)") == "SmolVLA"
         and short_name("SmolVLA+LEW 长程规划 LoRA (7帧窗口)") == "SmolVLA-L")
     chk("chip 带短名(非空)", all(c["name"] and c["name"] != "?" for c in ch), [c["name"] for c in ch])
+
+    # 2e) 550B 双模式: 远程 → 4060 硬件; 局域网 → Intel 端侧硬件 + 端侧模型 (2026-10-23 老倪)
+    _both = json.loads(json.dumps(REAL))
+    _both["profile"] = {"key": "550B", "hardware": "4060", "hw_label": "4060"}
+    _both["edge"] = {"online": True, "hw": {"cpu_pct": 45.9, "mem_pct": 45.7, "disk_pct": 6.5, "disk_free_gb": 889.2},
+                     "pipeline": {"on": True, "devices": {
+                         "NPU": {"fps": 492.8, "duty_pct": 63.0, "models": ["yolo_peg_live", "intact_enc"]},
+                         "GPU": {"fps": 369.8, "duty_pct": 98.3, "models": ["intact_pred"]}}}}
+    _both["lan"] = {"mode": "remote", "local_ips": [], "hosts": {"intel": False}}
+    pn.feed(_both)
+    cur_r = pn.current()
+    chk("550B 远程: 首槽=链(远程)", cur_r["slots"][0][2] == "远程" and cur_r["slots"][0][0] == "链", cur_r["slots"][0])
+    chk("550B 远程: 硬件槽=4060(GPU/CPU/内存/磁盘)",
+        [s[0] for s in cur_r["slots"][1:]] == ["GPU", "CPU", "内存", "磁盘"], [s[0] for s in cur_r["slots"][1:]])
+    chk("550B 远程: GPU 槽 = hw.gpu.util",
+        _num(cur_r["slots"][1][1]) == _num(_both["hw"]["gpu"]["util"]), cur_r["slots"][1])
+    chk("550B 远程: 模型 chip 仍是在役层 (L2..L5)", [c["layer"] for c in pn._chips()] == ["L2", "L3", "L4", "L5"],
+        [c["layer"] for c in pn._chips()])
+
+    _both["lan"] = {"mode": "lan", "local_ips": ["192.168.23.50"], "hosts": {"intel": True}}
+    pn.feed(_both)
+    cur_l = pn.current()
+    chk("550B 局域网: 首槽=链(局域网)", cur_l["slots"][0][2] == "局域网", cur_l["slots"][0])
+    chk("550B 局域网: 硬件槽=Intel(NPU/GPU/CPU/内存)",
+        [s[0] for s in cur_l["slots"][1:]] == ["NPU", "GPU", "CPU", "内存"], [s[0] for s in cur_l["slots"][1:]])
+    chk("550B 局域网: NPU 槽 = 端侧占空 63", _num(cur_l["slots"][1][1]) == 63.0, cur_l["slots"][1])
+    chk("550B 局域网: CPU 槽 = edge.hw.cpu_pct", _num(cur_l["slots"][3][1]) == round(45.9), cur_l["slots"][3])
+    _ch_l = pn._chips()
+    chk("550B 局域网: 模型 chip = 端侧 NPU/GPU 在跑的模型", [c["layer"] for c in _ch_l] == ["NPU", "GPU"],
+        [(c["layer"], c["name"], c["version"]) for c in _ch_l])
+    chk("550B 局域网: chip 带端侧模型名+占空",
+        _ch_l[0]["name"] == "YOLO" and _ch_l[0]["version"] == "63%",
+        (_ch_l[0]["name"], _ch_l[0]["version"]))
+    chk("550B 局域网: chip 写了 Intel", cur_l["hw"] == "Intel", cur_l["hw"])
+    pn.feed(REAL)
+
+    # 2f) 端侧数据可信度: 年龄标签 / 陈旧不许当实时 / 每路占空→满载 (2026-10-23)
+    _e = json.loads(json.dumps(_both))
+    _e["profile"] = {"key": "550C", "hardware": "Intel", "hw_label": "Intel"}
+    _e["edge"]["cache_age_s"] = 9.9
+    _e["edge"]["stale"] = False
+    pn.feed(_e)
+    c5 = pn.current()
+    chk("550C 带端侧数据年龄", c5.get("edge_age_s") == 9.9 and c5.get("edge_stale") is False, c5.get("edge_age_s"))
+    _e2 = json.loads(json.dumps(_e))
+    _e2["edge"]["cache_age_s"] = 44.0
+    _e2["edge"]["stale"] = True
+    pn.feed(_e2)
+    _img_stale = pn.grab().toImage()          # 陈旧帧必须能画出来(不崩)
+    chk("陈旧端侧 → 仍渲染不崩", _img_stale.width() == int(pn.W * pn.SCALE))
+    _e3 = json.loads(json.dumps(_e))
+    _e3["edge"]["stale"] = False
+    _e3["edge"]["pipeline"]["devices"]["NPU"]["busy_ratio"] = 1.94    # 2 路各 97% ⇒ 已饱和
+    pn.feed(_e3)
+    c5b = pn.current()
+    chk("NPU 每路 97% + busy_ratio 1.94 ⇒ 写「满载」(不让人误判还有余量)",
+        c5b["slots"][0][2] == "满载" and _num(c5b["slots"][0][1]) == 100, c5b["slots"][0])
+    pn.feed(REAL)
+
+    # 2g) 3DGS 标签口径 (2026-10-23 老倪问「3DGS x5 1114 啥意思」)
+    _g5 = [{"kind": "3DGS", "name": "map_20261018_210049_m%d · 101693 高斯" % (200 - i),
+            "version": "v20261019-hash%d" % i, "path": "/x/gs.splat"} for i in range(5)]
+    chk("3DGS 同场景 5 轮 → 报最新轮+轮数", pn.gs_label(_g5) == "3DGS m200 ×5轮", pn.gs_label(_g5))
+    _g2 = [{"kind": "3DGS", "name": "map_A_m180 · 1 高斯", "version": "v1", "path": ""},
+           {"kind": "3DGS", "name": "map_B_m7 · 2 高斯", "version": "v2", "path": ""}]
+    chk("3DGS 两个场景 → 报场景数 + 最新轮", pn.gs_label(_g2) == "3DGS ×2 m180", pn.gs_label(_g2))
+    chk("3DGS 无资产 → 灰标签", pn.gs_label([]) == "3DGS —")
 
     # 3) 正常载荷: 渲染不崩 + 有内容
     pn.feed(DEMO)

@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import threading
 import time
@@ -896,6 +897,77 @@ def collect_edge(timeout: float = 8.0, ttl: float = 8.0) -> dict:
     return {"online": False, "tried": c["tried"] or ["warming-up"], "ts": now, "cache_age_s": None}
 
 
+# ── 连接方式 (远程 / 局域网) —— 550B 要一眼看出现在看的是哪一边 (2026-10-23 老倪) ──────────
+#   口径: 本机是否挂在产线局域网 (192.168.23.0/24)。有 LAN 地址 + 至少一台产线主机可达 ⇒ 局域网;
+#   只有外网 (WiFi/4G) ⇒ 远程。两个都判不出来就 "unknown", 不猜。
+LAN_PREFIX = "192.168.23."
+LAN_HOSTS = (("intel", "192.168.23.70", 22), ("orin", "192.168.23.66", 22),
+             ("aoi", "192.168.23.23", 10082), ("jig", "192.168.23.50", 8796))
+_LAN_CACHE = {"data": None, "ts": 0.0, "busy": False}
+
+
+def _lan_local_ips(prefix: str = LAN_PREFIX) -> list:
+    """本机是否持有产线网段地址 (只看 ip addr, 不触发任何网络请求)。"""
+    out = []
+    try:
+        s = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True, timeout=2).stdout
+        for ln in s.splitlines():
+            for w in ln.split():
+                if w.startswith(prefix):
+                    out.append(w.split("/")[0])
+    except Exception:                                                        # noqa: BLE001
+        out = []
+    return sorted(set(out))
+
+
+def _tcp_ok(ip: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
+def collect_lan(ttl: float = 4.0, timeout: float = 0.5) -> dict:
+    """连接方式: {"mode": "lan|remote|unknown", "local_ips": [...], "hosts": {name: bool}, "ts": ...}
+
+    4s 缓存 (状态带 2~3s 刷一次, 别每轮都扫网); 探测走线程 + 总等待 1.5s 上限, 绝不拖住采集线程。
+    """
+    now = time.time()
+    c = _LAN_CACHE
+    if c["data"] is not None and (now - c["ts"]) < ttl:
+        d = dict(c["data"])
+        d["cache_age_s"] = round(now - c["ts"], 1)
+        return d
+    if c["busy"]:
+        return dict(c["data"]) if c["data"] else {"mode": "unknown", "local_ips": [], "hosts": {}, "ts": now}
+    c["busy"] = True
+    try:
+        ips = _lan_local_ips()
+        res = {}
+        threads = []
+        for name, ip, port in LAN_HOSTS:
+            t = threading.Thread(target=lambda n=name, i=ip, p=port: res.__setitem__(n, _tcp_ok(i, p, timeout)),
+                                 daemon=True)
+            t.start()
+            threads.append(t)
+        deadline = time.time() + 1.5
+        for t in threads:
+            t.join(max(0.0, deadline - time.time()))
+        hosts = {n: bool(res.get(n)) for n, _i, _p in LAN_HOSTS}
+        if any(hosts.values()):
+            mode = "lan"
+        elif not ips:
+            mode = "remote"          # 本机没有产线网段地址 ⇒ 走的是远程通道
+        else:
+            mode = "unknown"         # 有 LAN 地址但一台都不通 (线拔了/换网段) ⇒ 不谎报
+        d = {"mode": mode, "local_ips": ips, "hosts": hosts, "ts": time.time()}
+        c["data"], c["ts"] = d, time.time()
+        return d
+    finally:
+        c["busy"] = False
+
+
 def _collect_all() -> dict:
     d = {"ts": time.time(), "errs": []}
     try:
@@ -959,6 +1031,11 @@ def _collect_all() -> dict:
     except Exception as e:                                            # noqa: BLE001
         d["cams"] = {"online": False, "err": str(e)[:120], "ts": time.time()}
         d["errs"].append("cams")
+    try:
+        d["lan"] = collect_lan()                                      # 连接方式: 远程 / 局域网
+    except Exception as e:                                            # noqa: BLE001
+        d["lan"] = {"mode": "unknown", "err": str(e)[:120], "ts": time.time()}
+        d["errs"].append("lan")
     if not d["errs"]:
         d.pop("errs")
     else:

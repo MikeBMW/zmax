@@ -62,7 +62,15 @@ def dataset_checks(d):
     out["unique_images"] = uniq
     out["dup_ratio"] = round(1.0 - uniq / max(1, n), 4)
     # ② 不同视点(位置 5mm + 姿态 0.01)
-    P = np.array([f["pos"] for f in fr], float)
+    # 🔴 采集守护 (gs_autocap_daemon) 写的 cameras.json 只有 T_cam2world, 没有 "pos";
+    #    老代码直接 f["pos"] 会 KeyError: 'pos' ⇒ 自动闭环的库永远过不了质检门(静默不生效)。
+    #    没有 "pos" 就从 T_cam2world 的平移列取, 两份 schema 都能跑。
+    def _pos_of(f):
+        if "pos" in f:
+            return f["pos"]
+        T = np.array(f["T_cam2world"], float)
+        return [T[0][3], T[1][3], T[2][3]]
+    P = np.array([_pos_of(f) for f in fr], float)
     R = np.array([np.array(f["T_cam2world"], float)[:3, :3] for f in fr])
     q = np.round(np.hstack([P / 0.005, R.reshape(n, -1) / 0.01])).astype(np.int64)
     views = len({tuple(v) for v in q})

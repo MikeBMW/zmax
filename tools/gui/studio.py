@@ -2018,7 +2018,7 @@ def _get_dds_collector():
 
 
 _BTN_CSS = ("""QPushButton{{background:{bg};color:{fg};border:1px solid {bd};border-radius:6px;"""
-            """padding:6px 14px;font-size:13px;min-height:22px}}"""
+            """padding:3px 10px;font-size:11px;min-height:18px}}"""
             """QPushButton:hover{{color:#ffffff;border-color:{bl}}}""").format(
     bg="#161b22", fg="#8b949e", bd="#30363d", bl="#58a6ff")
 
@@ -2038,14 +2038,15 @@ class HardwareCard(QFrame):
         self.setStyleSheet(
             f"#hwCard{{background:{C_CARD};border:1px solid {C_BORDER};border-radius:10px}}")
         v = QVBoxLayout(self)
-        v.setContentsMargins(24, 20, 24, 20)
-        v.setSpacing(14)
+        # 2026-10-23 老倪「硬件资源窗口太高了, 很空旷, 高度减半」⇒ 内边距 24,20/20 → 20,8/8, 行距 14 → 6
+        v.setContentsMargins(20, 6, 20, 6)
+        v.setSpacing(6)
         head = QHBoxLayout()
         t = QLabel("🖥 硬件资源")
-        t.setStyleSheet(f"color:{C_WHITE};font-size:34px;font-weight:700;border:none")
+        t.setStyleSheet(f"color:{C_WHITE};font-size:17px;font-weight:700;border:none")
         self.lb_ts = QLabel("采样中…")
-        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:18px;border:none;"
-                                 f"background:{C_BG2};border-radius:5px;padding:4px 12px")
+        self.lb_ts.setStyleSheet(f"color:{C_GRAY};font-size:12px;border:none;"
+                                 f"background:{C_BG2};border-radius:5px;padding:2px 8px")
         head.addWidget(t)
         head.addStretch()
         head.addWidget(self.lb_ts)
@@ -2417,6 +2418,20 @@ class HardwareCard(QFrame):
             except Exception:                                                   # noqa: BLE001
                 pass
 
+            # 🔗 2026-10-23 老倪: 「硬件资源窗口要跟最底部那行硬件指示保持数据同步; 我看你现在的信息也没同步」
+            #   根因: 底部状态带读 8796 /status/all (真源), 而这张卡读本机 nvidia-smi + 8799 —— 两个源、
+            #   两台机器 (550C 档是 Intel 端侧的 NPU/GPU/CPU/内存, 卡上却是本机 4060), 数字必然对不上。
+            #   修法: 这里也读**同一份** /status/all, 由 refresh() 用**同一个解析器**(StatusPanel.modes)
+            #   取出当前档的槽位贴到卡上 ⇒ 两处数字不可能分叉。
+            try:
+                _ok_sa, _sa = self._probe_url("http://127.0.0.1:8796/status/all", timeout=3.0)
+                if _ok_sa and isinstance(_sa, dict) and _sa.get("hw"):
+                    m["status_all"] = _sa
+                    self.lb_src.setText("数据源: 8796 /status/all (与底部状态带同源) · ts=%s"
+                                        % _sa.get("ts"))
+            except Exception:                                               # noqa: BLE001
+                pass
+
             m["devices"] = devs
             m["ts"] = time.strftime("%H:%M:%S")
             out["_metrics"] = m
@@ -2489,6 +2504,35 @@ class HardwareCard(QFrame):
                 lb.setText(v)
             except Exception:                                                   # noqa: BLE001
                 pass
+        # 最后再贴一次: 用底部状态带同一个解析器算出的槽位覆盖圆环/状态条 (顺序不能反, 否则被上面覆盖)
+        _sa = ((self._last or {}).get("_metrics") or {}).get("status_all")
+        if isinstance(_sa, dict):
+            self._sync_strip(_sa)
+
+    def _sync_strip(self, payload):
+        """把底部状态带(8796 /status/all)的**当前档槽位**原样搬到本卡 —— 同一份载荷 + 同一个解析器。
+
+        这样「NPU/GPU/CPU/内存/磁盘」这些数在两处一定是同一个值、同一个 ts, 不会一卡一表两套数。
+        """
+        try:
+            pn = getattr(self, "_pn", None)
+            if pn is None:
+                from status_panel import StatusPanel          # 同目录, 与底部状态带完全同一份解析代码
+                pn = StatusPanel(poll=False)
+                self._pn = pn
+            pn.feed(payload)
+            cur = pn.current()
+            if getattr(self, "_visual", None) is not None:
+                self._visual.set_slots(cur.get("slots") or [], cur.get("key") or "")
+            try:
+                _ts = float(payload.get("ts") or 0)
+                _age = max(0.0, time.time() - _ts) if _ts else 0.0
+                self.lb_ts.setText("%s 采样 · 帧龄 %.1fs · 8796"
+                                   % (time.strftime("%H:%M:%S", time.localtime(_ts)) if _ts else "—", _age))
+            except Exception:                                                   # noqa: BLE001
+                pass
+        except Exception as _e:                                                 # noqa: BLE001
+            print("[hw] 与底部状态带同步失败: %r" % (_e,))
 
 
 class _HwFetcher(QThread):
@@ -2756,18 +2800,15 @@ class HomeWidget(QWidget):
         layout.addWidget(self._modules_grid())
 
         # --- 状态统计 ---
-        lbl3 = QLabel("项目状态  Status")
-        lbl3.setFont(QFont("Arial", 11, QFont.Bold))
-        lbl3.setStyleSheet(f"color:{C_GRAY};")
-        layout.addWidget(lbl3)
-        layout.addWidget(self._stats_bar())
+        # 🔻 2026-10-23 老倪: 「把项目状态 Status 那个窗口删掉」⇒ 首页不再挂这块 (策略/脚本/数据集/
+        #   checkpoints/训练进度 都是写死的静态数字, 已过时; 真实在役状态在上面的模块卡与底部状态带)。
+        #   `_stats_bar()` 方法保留但不再实例化 (删掉实现会让老存档的 UI 取证脚本 import 失败)。
 
-        # 🖥 硬件资源卡（4060 仪表盘 · 2 秒自动刷新）—— 页面最底(老倪 2026-09-29)
-        lbl4 = QLabel("硬件资源  Hardware")
-        lbl4.setFont(QFont("Arial", 11, QFont.Bold))
-        lbl4.setStyleSheet(f"color:{C_GRAY};")
-        layout.addWidget(lbl4)
-        layout.addWidget(HardwareCard())
+        # 🖥 硬件资源卡（4060 仪表盘 · 2 秒自动刷新）
+        # 🔻 2026-10-23 老倪: 「把硬件资源 Hardware 这个窗口删掉吧, 与最底部的显示功能重复了」
+        #   ⇒ 首页不再挂 HardwareCard: 底部常驻状态带(tools/gui/status_panel.py, 读 8796 /status/all)
+        #   已经把同一批硬件数字(NPU/GPU/CPU/内存/磁盘/在役模型/3DGS)一行显示完, 两块功能重复。
+        #   HardwareCard 类与 hw_widgets 实现保留不挂载 (离线取证/历史工具仍可实例化), 不再是首页元素。
 
         layout.addStretch()
         page.setLayout(layout)

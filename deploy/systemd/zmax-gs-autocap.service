@@ -8,15 +8,15 @@ Wants=network-online.target
 Type=simple
 User=intel
 WorkingDirectory=/home/intel/zmax_map/tools
-Environment=GS_FRAME_URL=http://192.168.23.66:8792/frame.jpg
-Environment=GS_POSE_URL=http://192.168.23.50:8804/pose
+Environment=GS_FRAME_URL=http://127.0.0.1:8811/frame.jpg
+Environment=GS_POSE_URL=http://127.0.0.1:8811/pose
 Environment=GS_TRAIN_URL=http://192.168.23.50:8804
 Environment=GS_WORK=/home/intel/gs_autocap
-Environment=GS_MIN_FRAMES=120
-Environment=GS_MIN_SPAN_M=0.05
+Environment=GS_MIN_FRAMES=160
+Environment=GS_MIN_SPAN_M=0.10
 Environment=GS_MAX_FRAMES=400
-Environment=GS_COOLDOWN_S=180
-Environment=GS_TRAIN_STEPS=1000
+Environment=GS_COOLDOWN_S=600
+Environment=GS_TRAIN_STEPS=30000
 Environment=GS_AUTOTRAIN=1
 Environment=GS_PORT=8806
 ExecStart=/usr/bin/python3 /home/intel/zmax_map/tools/gs_autocap_daemon.py

@@ -1,0 +1,23 @@
+[Unit]
+Description=Z-MAX 3DGS ROS2 桥 (Intel 本地 /realsense/color/image_raw + /robot/tcp_pose → HTTP 127.0.0.1:8811)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Environment=GS_BRIDGE_PORT=8811
+Environment=GS_BRIDGE_BIND=127.0.0.1
+Environment=GS_IMG_TOPIC=/realsense/color/image_raw
+Environment=GS_POSE_TOPIC=/robot/tcp_pose
+Environment=GS_BRIDGE_STALE_S=6.0
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 /home/intel/zmax_map/tools/gs_ros_bridge.py'
+TimeoutStopSec=5
+KillSignal=SIGKILL
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
