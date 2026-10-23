@@ -95,6 +95,9 @@
   #side .tags{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px}
   #side .tag{font-size:10.5px;border:1px solid #27384a;border-radius:999px;padding:1px 7px;color:#93a8bd}
   #side .tag.t{border-color:#1e6b62;color:#7ff0dd;background:#0c2724}
+  #side .meta{font-size:11.5px;color:#93a8bd;line-height:1.75;margin:2px 0 8px}
+  #side .meta b{color:#cfe6f5;font-weight:600}
+  #side .meta .k{display:inline-block;min-width:56px;color:#6f8398}
 /* 📋 工艺动作 ⇄ 工艺卡 对照表（导出/预览）—— 一句话口径: 动作是"做什么", 工艺卡是"在哪做、用什么做" */
 #mapMask{position:fixed;inset:0;z-index:80;display:none;background:rgba(6,10,15,.72);backdrop-filter:blur(2px)}
 #mapMask.on{display:block}
@@ -178,9 +181,9 @@
       <div id="shots"></div>
     </div>
     <h3 id="sTitle"></h3>
-    <div id="sAct2"></div>
+    <div id="sMeta" class="meta"></div>
     <div class="sec">动作分解</div><div id="sAct" class="act"></div>
-    <div class="sec">技术细节</div><ul id="sDet"></ul>
+    <div class="sec">详细描述</div><ul id="sDet"></ul>
     <div id="sKv" class="kv"></div>
     <div id="sTags" class="tags"></div>
     <div class="fn" id="sFn"></div>
@@ -779,15 +782,20 @@ V.scene=CARDS[0].scene; V.card=CARDS[0].n; V.focus=FOCUS[CARDS[0].n];
 
 let cur=0, T0=performance.now();
 function paintSide(c){
-  $('sTitle').textContent=c.n+' · '+c.title;
-  const _n=+c.n, _acts=(typeof ACTS!=='undefined'?ACTS:[]).filter(a=>a.steps.includes(_n)).map(a=>a.name);
-  $('sAct2').textContent=_acts.length?('本工位动作：'+_acts.join(' · ')):'本工位动作：—';
+  $('sTitle').textContent=(c.pc?c.pc+' · '+c.title:(c.n+' · '+c.title));
+  // 🧭 2026-10-23: 右侧改为「工位归属 / 工艺动作 / 详细描述 / 技术协议依据」四段
+  //   —— 文字与 /autoLight 工艺卡页共用同一份 CARD_TEXT, 两页不会各说一套。
+  const _acts=(typeof ACTS!=='undefined'?ACTS:[]).filter(a=>a.steps.includes(+c.n)).map(a=>a.name);
+  const _own=c.owner||'—', _oa=c.oacts||(_acts.length?_acts.join('、'):'—');
+  $('sMeta').innerHTML='<div><span class="k">工位归属</span>：<b>'+_own+'</b>'
+    +'<span style="color:#4d5f72"> · </span><span class="k" style="min-width:0">对应动作</span> '+(_acts.length?_acts.join(' · '):'—')+'</div>'
+    +'<div><span class="k">工艺动作</span>：'+_oa+'</div>';
   $('sAct').innerHTML=c.act;
-  $('sDet').innerHTML=c.det.map(d=>'<li>'+d+'</li>').join('');
+  $('sDet').innerHTML=(c.desc||c.det).map(d=>'<li>'+d+'</li>').join('');
   $('sKv').innerHTML=c.kv.map(k=>'<span>'+k[0]+'</span><span>'+k[1]+'</span>').join('');
   $('sTags').innerHTML=c.tags.map((x,i)=>'<span class="tag'+(i===0?' t':'')+'">'+x+'</span>').join('');
-  $('sFn').textContent='来源：技术协议 rev1.0 §2.2 第 '+c.n+' 步 / §2.1 指标 / §2.3 对接信号 / §3 硬件配置；'
-    +'三维为按模块关系的 1:1 示意，非施工图。';
+  $('sFn').textContent='技术协议依据：'+(c.basis||('§2.2 第 '+c.n+' 步；§2.1 指标；§3 硬件配置'))
+    +'。三维按模块关系 1:1 布置示意，不替代施工图。';
 }
 function setStep(i, opt){
   opt=opt||{};
@@ -921,6 +929,60 @@ $('mClose').onclick=closeMapTable;
 $('mCsv').onclick=downloadCSV;
 $('mCopy').onclick=copyMapTable;
 addEventListener('keydown',e=>{ if(e.key==='Escape') closeMapTable(); });
+
+/* ===================== 2026-10-23 定稿: 9 张工艺卡的文字（老倪给的 PC-01~PC-09 描述原文，逐字同步） =====================
+   口径: 这里只放"字"，不动 scene/cam/kv/tags —— 三维布置与关键参数仍由各页自己的 CARDS 提供。
+   覆盖字段: pc(卡号) / owner(工位归属) / oacts(工艺动作) / det(详细描述, 一段一条) / basis(技术协议依据)。
+   为什么单独一块: /autoLight 与 /autoLight3d 两个页面共用同一份文字 ⇒ 改一次两边一致，不会各说一套。 */
+const CARD_TEXT={
+'1':{pc:'PC-01', owner:'上料', oacts:'人工上料、托盘锁附、推入缓存仓一',
+ desc:['操作员将装满来料的载具托盘放入人工放料位，推料模组将托盘推入待测物料缓存仓一。载具托盘通过两组磁吸板自动锁附，并由两个定位轴套保证重复定位精度；托盘上设置浮动机构，XY 方向单边保留 0.5 mm 余量，对插不准时由缓冲机构先退让，避免力直接作用在产品上。上料时系统扫描产品二维码与载具二维码，建立产品、载具、工位、结果的全链路追溯关系。每个动作均配置到位传感器，传感器具备闭环自检功能，检测失效时立即报警，防止设备在检测异常状态下继续动作。单载具托盘最多缓存 15 件。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'2':{pc:'PC-02', owner:'上料', oacts:'缓存仓一满载后转存、移栽至主流线',
+ desc:['待测物料缓存仓一满载后，托盘由缓存仓一推入待测物料缓存仓二；随后由缓存仓二移栽模组将载具送入主流线载具缓存位。该工位承接缓存仓一的下料动作，保证来料连续供应，避免上游人工上料节拍影响主线运行。到位传感器持续监控托盘位置与状态，传感器自检异常时触发报警并暂停流转。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'3':{pc:'PC-03', owner:'上料', oacts:'顶升交接、分离接料、进入自动化主线',
+ desc:['主流线顶升模组将载具提升至交接高度，分离模组伸出完成接料，载具由此正式进入自动化流转。上料阶段已建立的产品二维码与载具二维码绑定关系在本工位继续沿用，确保后续检测、测试、分拣数据均可追溯至具体产品与载具。传感器闭环自检持续生效，交接异常时系统报警并等待人工确认。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'4':{pc:'PC-04', owner:'工位 4', oacts:'自动拔帽、端面检测、端面清洁、清洁后复检',
+ desc:['载具到达工位 4 后，自动拔帽模组将 FC 端金属帽和 MPO 端防尘帽取下，端面暴露后等待检测。自动拔帽模组整机配置 2 套，FC 侧一次处理 16 个端面，MPO 侧处理 1 个端面；拔帽动作由 Y 轴定位到端面正前方后沿轴向退出，避免斜向受力损伤插芯。取下的帽盖不落地，直接放回载具托盘上的帽盖暂存位，确保后续盖帽时帽盖仍对应原产品，避免串盘、混料。',
+       '端检环节对每个端面逐一采集图像，判断是否存在脏污、划伤、凹陷等缺陷。FC 侧使用 ASTCHECK PRO 200KC 端面检测仪，整机配置 4 台，覆盖 16 个 FC 端面；MPO 侧使用 MPO 自动端面检测端检头，整机配置 1 套。检测结果按端面逐条记录，并与产品二维码绑定后上传数据库，可精确追溯至“哪一支产品的哪一个端面”在何时判为何种结果。',
+       '被判为脏污的端面在工位 4 原地清洁：FC 端面由端面清洗头配合端面清洗机清洁，MPO 端面由 MPO 端面清洗头配合擦拭盒清洁。清洁耗材须满足无腐蚀性、无残留、不造成二次污染的要求，并按 §6.1.2.2 执行。清洁后立即复检，复检仍不合格的产品不当场报废，而是流转至后续二次处理：FC 端面二次清洗，MPO 端面二次擦拭，以区分可挽救脏污与真实缺陷，减少不必要报废。'],
+ basis:'§2.2 第 4 步；§2.1 FC / MPO 自动拔帽&清洁&端检工站；§2.1 在线检测仪表；§2.1 端面清洗机 / 擦拭盒；§3.2-5 自动拔帽模组 2 套；§3.2-9 MPO 端检头 1 套；§6.1.2.2 清洁耗材要求'},
+
+'5':{pc:'PC-05', owner:'工位 5', oacts:'顶升定位、自动插接、逐芯回损测试、信号握手',
+ desc:['载具由顶升模组提升至回损测试位，测试头自动插入：FC 端通过 FC 转 FC 延长线与仪表对接，MPO 端直接与仪表测试线做法兰连接，随后逐芯测量回损。回损测试仪型号为 RLM1412A-1FA-24，整机配置 1 台。',
+       '插接可靠性由载具托盘的浮动机构和缓冲机构共同保证：浮动机构在 XY 方向单边提供 0.5 mm 浮动量，吸收定位误差；缓冲机构在插偏时先让位，避免压伤端面。设备与测试板卡之间通过 OK、NG、完成、启动四路信号握手，确保测试节拍与产线同步，避免测试与流转各自独立运行。'],
+ basis:'§2.2 第 5 步；§2.3.1 信号交互；§2.3.2 仪表法兰对接'},
+
+'6':{pc:'PC-06', owner:'工位 6', oacts:'端面复检、二次清洁、盖帽、扫码绑定、数据上传',
+ desc:['回损合格的产品在工位 6 先进行端面复检，因为插拔测试可能在端面上留下新的污染。复检通过后，由盖帽模组将暂存在载具托盘上的帽盖重新盖回端面，产品恢复至可交付状态。复检不合格时，FC 端面进行二次清洗，MPO 端面进行二次擦拭，处理合格后再盖帽。',
+       '盖帽模组的帽源来自载具托盘上的帽盖暂存位，帽盖始终跟随本盘产品流转，不会出现不同批次帽盖混用的问题。盖帽完成后扫描产品二维码，将本盘产品的全部检测数据与产品条码、载具条码绑定并上传数据库，实现按产品和按载具双向追溯。软件自动保存每一批次的识别数据、测量数据、设备运行日志和异常日志，并支持以 CSV 格式导出。出现异常时，报警界面直接显示异常工位和产品位置，便于操作员补录或排查。'],
+ basis:'§2.2 第 6 步；§2.1 FC / MPO 端面测试&清洗&盖帽工站；§1.5.2 扫码绑定；§2.1 数据管理与信息追溯'},
+
+'7':{pc:'PC-07', owner:'工位 7', oacts:'自动判定、OK/NG 分流、NG 搬运、异常报警',
+ desc:['系统依据端面检测与回损测试结果自动判定合格或不合格，判定完全由测试板卡回传信号驱动，无需人工判读，判定结果同时写入数据库。合格产品进入 OK 品缓存流转，不合格产品由 NG 搬运模组搬运至 NG 缓存仓；NG 产品采用磁吸锁附方式搬运。异常时系统自动触发声光报警，界面显示各缓存仓当前数量与位置，便于操作员识别处理对象。'],
+ basis:'§2.2 第 7~9 步；§1.3.4 自动判定能力；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'},
+
+'8':{pc:'PC-08', owner:'工位 8', oacts:'OK 品中间缓存、状态监控',
+ desc:['合格产品经 OK 品缓存仓暂存后进入测试 OK 物料缓存仓 2，作为 OK 品下料前的中间缓存。该缓存仓用于缓冲主线节拍与人工下料节拍之间的差异，避免产线因下料不及时而停线。缓存仓状态纳入系统监控，界面实时显示当前数量与位置，操作员可直观判断取料对象。OK 品缓存仓整机配置 2 套。'],
+ basis:'§2.2 第 7~9 步；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'},
+
+'9':{pc:'PC-09', owner:'工位 9', oacts:'OK 品终缓存、人工整盘下料',
+ desc:['测试 OK 物料缓存仓 2 暂存后，合格产品进入测试 OK 物料缓存仓 1；操作员在人工下料位整盘取走合格载具。该工位为 OK 品流转的最终缓存节点，承载人工取料动作。NG 缓存仓整机配置 1 套，容量为 4 件，用于暂存不合格产品并等待人工处理。系统持续监控缓存仓状态，异常时触发声光报警并提示操作员干预。'],
+ basis:'§2.2 第 7~9 步；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'}
+};
+CARDS.forEach(c=>{
+  const t=CARD_TEXT[String(c.n)];
+  if(!t) return;
+  c.pc=t.pc; c.owner=t.owner; c.oacts=t.oacts;
+  c.det=t.desc.slice();          // 详细描述 = 定稿 9 段(一段一条), 原文逐字
+  c.desc=t.desc.slice();
+  c.basis=t.basis;
+});
 
 CARDS.forEach((c,i)=>{
   const b=document.createElement('b');
