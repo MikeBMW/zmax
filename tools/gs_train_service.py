@@ -25,10 +25,12 @@ from __future__ import annotations
 import io
 import json
 import os
+import glob
 import os.path as osp
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -39,6 +41,7 @@ from urllib.parse import urlparse, parse_qs
 ROOT = os.path.expanduser("~/gs_train_service")
 JOBS = osp.join(ROOT, "jobs")
 RUNNER = "/home/ubuntu/zmax/tools/run_gs_train.sh"
+DEPTH2PLY = "/home/ubuntu/zmax/tools/gs_depth_to_ply.py"
 os.makedirs(JOBS, exist_ok=True)
 
 TASKS = {}
@@ -107,6 +110,34 @@ def worker(jid, ds_root, steps):
         out = osp.join(d, "out")
         os.makedirs(out, exist_ok=True)
         cmd = [RUNNER, "--data", ds_root, "--out", out, "--steps", str(steps)]
+        # 有深度就反投影成初始点云。gs_train.py 没初始点云时会在"相机前 0.28m"摆一个
+        # 0.30x0.30x0.20m 的随机盒子, 和真实场景毫无关系, 全靠训练去纠正 ⇒ PSNR 卡 14~15。
+        depth_dir = osp.join(ds_root, "depth")
+        init_ply = osp.join(d, "init.ply")
+        if osp.isdir(depth_dir) and (glob.glob(osp.join(depth_dir, "*.png"))
+                                     or glob.glob(osp.join(depth_dir, "*.raw"))):
+            try:
+                dp = subprocess.run(
+                    [sys.executable, DEPTH2PLY, "--src", ds_root, "--out", init_ply],
+                    capture_output=True, text=True, timeout=900)
+                if dp.returncode == 0 and osp.exists(init_ply):
+                    cmd += ["--init-ply", init_ply]
+                    job["init_source"] = "depth"
+                    job["init_ply_mb"] = round(os.path.getsize(init_ply) / 1048576, 2)
+                    _save(jid, job)
+                else:
+                    job["init_source"] = "random_box"
+                    job["init_note"] = ("深度反投影失败: %s"
+                                        % ((dp.stderr or dp.stdout or "")[-300:]))
+                    _save(jid, job)
+            except Exception as e:
+                job["init_source"] = "random_box"
+                job["init_note"] = "深度反投影异常: %s" % str(e)[:300]
+                _save(jid, job)
+        else:
+            job["init_source"] = "random_box"
+            job["init_note"] = "数据集无 depth/ 目录, 沿用旧的随机盒初始化"
+            _save(jid, job)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
         if r.returncode != 0:
             tail = ((r.stdout or "") + (r.stderr or ""))[-600:]

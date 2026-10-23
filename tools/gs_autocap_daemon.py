@@ -105,6 +105,9 @@ CALIB = _load_calib(_CALIB_PATH)
 
 # ── 配置 (环境变量可覆盖) ──
 FRAME_URL = os.environ.get("GS_FRAME_URL", "http://192.168.23.66:8792/frame.jpg")
+# 深度端点 (rs_fast_node 新版提供 16 位 PNG)。拿不到就优雅降级为只存彩色。
+DEPTH_URL = os.environ.get("GS_DEPTH_URL", "http://192.168.23.66:8792/depth.png")
+INTR_URL = os.environ.get("GS_INTR_URL", "http://192.168.23.66:8792/intrinsics")
 POSE_URL = os.environ.get("GS_POSE_URL", "http://192.168.23.50:8804/pose")
 TRAIN_URL = os.environ.get("GS_TRAIN_URL", "http://192.168.23.50:8804")
 WORK = os.environ.get("GS_WORK", osp.expanduser("~/gs_autocap"))
@@ -115,6 +118,12 @@ MIN_FRAMES = int(os.environ.get("GS_MIN_FRAMES", "120"))
 MIN_SPAN_M = float(os.environ.get("GS_MIN_SPAN_M", "0.05"))     # 位姿跨度 >= 5cm
 MOVE_EPS_M = float(os.environ.get("GS_MOVE_EPS_M", "0.002"))    # 2mm 算"在动"
 MOVE_EPS_RAD = float(os.environ.get("GS_MOVE_EPS_RAD", "0.008"))
+# 🔴 帧间重叠闸: 单帧跳太远/转太多 ⇒ 两帧看不到同一块场景, 3DGS 三角化不了。
+#    实测: 每帧 4.8cm + 最大跳 1m + 相机转 150° ⇒ PSNR 10.98 (等于"只输出均值"的上限)
+#          每帧 0.2cm + 朝向一束               ⇒ PSNR 15.27
+MAX_STEP_M = float(os.environ.get("GS_MAX_STEP_M", "0.05"))      # 单帧最大位移 5cm
+MAX_STEP_RAD = float(os.environ.get("GS_MAX_STEP_RAD", "0.26"))  # 单帧最大旋转 15°
+MAX_SPAN_M = float(os.environ.get("GS_MAX_SPAN_M", "1.0"))       # 会话总跨度上限 1m
 COOLDOWN_S = float(os.environ.get("GS_COOLDOWN_S", "180"))
 MAX_FRAMES = int(os.environ.get("GS_MAX_FRAMES", "400"))
 POLL_HZ = float(os.environ.get("GS_POLL_HZ", "4"))
@@ -172,6 +181,32 @@ def _moved(a, b):
     d = sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
     r = sum((a[i] - b[i]) ** 2 for i in range(3, 6)) ** 0.5
     return d > MOVE_EPS_M or r > MOVE_EPS_RAD
+
+
+def _step_too_big(a, b):
+    """相邻两帧的位移/旋转是否大到"没有重叠"。
+
+    3DGS 靠帧间重叠三角化。位移太大时两张图看到的是完全不同的画面, 无法匹配,
+    训练只能退化成"输出一片灰"。踩过的真实对比:
+      · 0.54m 跨度 338 帧 (每帧挪 0.2cm, 朝向一束) ⇒ PSNR 15.27
+      · 2.37m 跨度 124 帧 (每帧挪 4.8cm, 最大跳 1m, 相机转 150°) ⇒ PSNR 10.98
+    后者 PSNR 已等于"只输出每帧均值"的理论上限 11.4, 即一个结构都没学到。
+    """
+    if a is None or b is None:
+        return False
+    d = sum((a[i] - b[i]) ** 2 for i in range(3)) ** 0.5
+    r = sum((a[i] - b[i]) ** 2 for i in range(3, 6)) ** 0.5
+    return d > MAX_STEP_M or r > MAX_STEP_RAD
+
+
+def _span_of(sess):
+    """会话已积累的位姿跨度 (对角线长度, 米)。"""
+    pts = [f.get("pose") for f in sess.get("frames", []) if f.get("pose")]
+    if len(pts) < 2:
+        return 0.0
+    mins = [min(p[i] for p in pts) for i in range(3)]
+    maxs = [max(p[i] for p in pts) for i in range(3)]
+    return sum((maxs[i] - mins[i]) ** 2 for i in range(3)) ** 0.5
 
 
 def _new_session():
@@ -374,6 +409,16 @@ def capture_loop():
                 time.sleep(dur)
                 continue
 
+            # ②.5 跳太远/转太多 ⇒ 和上一帧没有重叠, 采了也是废帧 (会把 3DGS 带崩)
+            if _step_too_big(ref, pv):
+                if cur:
+                    cur["skipped_jump"] = cur.get("skipped_jump", 0) + 1
+                with LOCK:
+                    STATE["frames_skipped_jump"] = STATE.get("frames_skipped_jump", 0) + 1
+                    STATE["last_error"] = ""   # 不是错误, 是正常跳过
+                time.sleep(dur)
+                continue
+
             # ③ 冷却中不采集
             with LOCK:
                 cooling = time.time() < STATE["cooldown_until"]
@@ -430,6 +475,22 @@ def capture_loop():
             fn = "f_%04d.jpg" % len(cur["frames"])
             with open(osp.join(cur["dir"], "images", fn), "wb") as f:
                 f.write(jpg)
+            # 深度: 有就一起存 (3DGS 用它反投影出精确初始点云, 比"相机前 0.28m 摆个盒子"强得多)
+            # 拿不到就跳过, 不影响彩色采集 —— Orin 的 rs_fast_node 只有在带 /depth.png 的新版
+            # 才提供这个端点, 旧版会 404/503。
+            try:
+                dep = _get(DEPTH_URL, timeout=6)
+                if dep and len(dep) > 1000:
+                    ddir = osp.join(cur["dir"], "depth")
+                    os.makedirs(ddir, exist_ok=True)
+                    with open(osp.join(ddir, fn[:-4] + ".png"), "wb") as f:
+                        f.write(dep)
+                    cur["depth_frames"] = cur.get("depth_frames", 0) + 1
+                else:
+                    cur.setdefault("depth_miss", 0)
+                    cur["depth_miss"] += 1
+            except Exception:
+                cur["depth_miss"] = cur.get("depth_miss", 0) + 1
             R = _rpy_to_R(pv[3], pv[4], pv[5])
             T_base2tcp = np.array([
                 [R[0][0], R[0][1], R[0][2], pv[0]],
@@ -460,7 +521,9 @@ def capture_loop():
                 STATE["_last_cap_pose"] = pv
 
             # ⑦ 够了就收尾训练
-            if len(cur["frames"]) >= MAX_FRAMES:
+            #   帧数够了, 或者位姿跨度已经摊到 MAX_SPAN_M (再扫下去密度只会更稀)
+            span = _span_of(cur)
+            if len(cur["frames"]) >= MAX_FRAMES or span >= MAX_SPAN_M:
                 _write_cameras(cur)
                 _finalize_and_train(cur)
 
