@@ -1,0 +1,412 @@
+# capability_feature.dbc.yaml — Z-MAX 能力特征库（CANoe 式 feature.dbc）
+#
+# 一条 feature = 一个可独立验证的「在什么条件下做到什么」的物理/行为能力。
+# 铁律：name / def 里禁止出现算法词（VLA、Diffusion、Transformer、世界模型…），
+#       只写物理与行为；算法与论文只出现在 evidence 列。
+# 判据一律带单位与阈值，现场按 n>=100 次（或注明次数）取样判定。
+#
+# zmax 字段 = 我方当前状态，只认「有实物/有台账」的证据：
+#   done    有可跑的实现 + 有留痕证据
+#   partial 有相邻能力，但不能直接满足该条判据
+#   missing 没有
+# software_only = 不买新硬件、不换本体就能补上（决定投入优先级）
+#
+# 来源：research/RESEARCH_DIGEST.md（2026-10-23，35 条，国外 10 家 + 国内 20 家核实）
+
+meta:
+  version: 1
+  date: "2026-10-23"
+  basis: "deliverables/robotics_landscape_2026-10-23/research/RESEARCH_DIGEST.md"
+  coverage_rule: "coverage = (done + 0.5*partial) / total"
+  judge: "现场 n>=100 次，或按条目标注次数"
+
+features:
+  # ---------------- 精密插拔（11） ----------------
+  - id: F-PREC-01
+    name: 亚毫米轴对位
+    dir: 精密插拔
+    def: 模块与笼口未接触时，把轴线对到笼口中心，横向偏差与倾角同时落入可插入窗口后才进给
+    metric: 横向偏差≤0.3mm；倾角≤0.5°；对位≤2s；一次插入成功率≥98%
+    evidence: UMD CASE 2025（0.1–1.0mm 间隙 96.7%）
+    strength: 论文实测
+    zmax: done
+    zmax_note: 视觉对位 + 力控插入，FW/TRAY 场景已跑通并留痕
+    software_only: false
+
+  - id: F-PREC-02
+    name: 限力轴向压入
+    dir: 精密插拔
+    def: 进入笼口后沿插入轴以受限推力推进到目标深度，力超包络即停而不是继续加力
+    metric: 轴向推力≤20N 且不超模块规格；横向顺应≤500N/m；速度≤5mm/s；深度误差≤0.5mm
+    evidence: arXiv 2602.22100（5 种连接器>90%）；SFP/QSFP 规格
+    strength: 论文实测
+    zmax: done
+    zmax_note: 插入力上限 40N 硬闸 + 分段压入，INCIDENT 台账有越限拦截记录
+    software_only: false
+
+  - id: F-PREC-03
+    name: 接触后容差搜索
+    dir: 精密插拔
+    def: 视觉对位后仍有残余偏差、端面已轻触倒角时，保持轻接触在插入平面做螺旋搜索，找到落孔即转直插
+    metric: 搜索半径±2mm；≤3s；搜索期法向力≤5N；初始偏差1mm内成功率≥95%
+    evidence: arXiv 2507.03925（6s 在线探测，96.7%）；Rutgers IROS 2024 风车轨迹
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 现为「对位—直推」，容差靠笼口倒角兜；面板变形即顶死
+    software_only: true
+
+  - id: F-PREC-04
+    name: 无视线盲插
+    dir: 精密插拔
+    def: 笼口被跳线/理线架完全遮挡、相机无直线视线时，仅凭关节位置与力矩历史靠接触送到底
+    metric: 间隙≥0.2mm 成功率≥90%；≤20s；峰值接触力≤10N；≥3 种壳体泛化
+    evidence: Blind Precise Assembly（仅本体感受，零样本迁移真机）
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 遮挡工位仍留人工；1U 48 口场景进不去
+    software_only: true
+
+  - id: F-PREC-05
+    name: 卡扣到位判据
+    dir: 精密插拔
+    def: 以力-位移曲线拐点（推力上升后回落、卡扣咬合振动）判是否完全到位，而非固定行程/时间
+    metric: 到位判定准确率≥99.5%；半插误判良≤0.2%；延迟≤50ms；深度重复偏差≤0.2mm
+    evidence: π 实时分块（RJ45 卡扣）；arXiv 2602.22100
+    strength: 官方演示
+    zmax: missing
+    zmax_note: 现按固定行程 + 末端力判，无曲线特征判据
+    software_only: true
+
+  - id: F-PREC-06
+    name: 卡滞识别与回退重试
+    dir: 精密插拔
+    def: 推力-位移斜率或横向力矩超包络时立即停、回退到接触前位姿重新对位，而非原地加力
+    metric: 识别≤100ms；召回≥98%；回退1–3mm；重试≤3次；重试成功率≥80%
+    evidence: arXiv 2507.03925；π 实时分块
+    strength: 论文实测
+    zmax: partial
+    zmax_note: 有异常停与报警，但没有「歪了能救 vs 针脚已弯」的分类与自动回退重试
+    software_only: true
+
+  - id: F-PREC-07
+    name: 双手协同插拔
+    dir: 精密插拔
+    def: 笼体/面板会随推力移动时，一手托住模块尾部、一手插入，全程保持两手相对位姿在容差内
+    metric: 相对位姿误差≤0.5mm/1°；扶稳手力≤20N；成功率≥95%；节拍≤8s/件
+    evidence: Figure Helix 双机协同；ALOHA/Mobile ALOHA
+    strength: 官方演示
+    zmax: missing
+    zmax_note: 单臂方案；柔性面板工位未覆盖
+    software_only: false
+
+  - id: F-PREC-08
+    name: 卡扣解锁与受控拔出
+    dir: 精密插拔
+    def: 模块已锁止、拉环可及时，先解锁卡扣再沿轴向受限速度拔出，不使拉环/笼体/跳线超限受力
+    metric: 拔出力≤15N；速度≤10mm/s；拉环受力≤5N；跳线弯曲半径≥10×外径；成功率≥98%；零损伤≥99.5%
+    evidence: SFP+ 规格；AnyGrasp 拉环类小目标抓取
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 只做插入；拔出（换型、返修拆件）靠人拉拉环
+    software_only: true
+
+  - id: F-PREC-09
+    name: 多针多芯并插
+    dir: 精密插拔
+    def: 多针连接器针位与孔位同时受约束时，以受控倾角把整排针一次送入，不允许单针先触底
+    metric: 倾角≤1°；单针轴向力≤2N；一次成功率≥98%；针弯曲率≤0.1%
+    evidence: arXiv 2602.22100；arXiv 2507.03925
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 当前工件为单模块插拔，无多针场景
+    software_only: true
+
+  - id: F-PREC-10
+    name: 插入端面找正
+    dir: 精密插拔
+    def: 模块以倾斜姿态接近时，先把端面与笼口端面调到平行再进给，避免单角先入刮伤簧片
+    metric: 端面平行度≤0.3°；找正≤2s；金手指划伤率≤0.1%；失败可识别率≥95%
+    evidence: arXiv 2507.03925；Blind Precise Assembly
+    strength: 论文实测
+    zmax: partial
+    zmax_note: 视觉给姿态但不做端面平行度的主动调整
+    software_only: true
+
+  - id: F-PREC-11
+    name: 插拔全程留痕可复核
+    dir: 精密插拔
+    def: 每次插拔同步记录力-位移曲线、末端位姿、时间戳与影像，并给出合格/不合格/需人工的可复核判定
+    metric: 采样≥200Hz；时间同步≤5ms；留痕完整率100%；与人工复核一致率≥99%；留存≥30天
+    evidence: arXiv 2507.03925（力/时间为安全判据）；Agility 现场可审计记录
+    strength: 论文实测
+    zmax: done
+    zmax_note: 判据库 + 力数据 + 影像 + INCIDENT 台账，逐件可回溯（我方相对优势）
+    software_only: false
+
+  # ---------------- 灵巧操作（6） ----------------
+  - id: F-DEXT-01
+    name: 手内重定向
+    dir: 灵巧操作
+    def: 物体已入掌心、手指可包覆时，不借桌面把物体绕指定轴转到目标朝向并保持
+    metric: 朝向误差≤5°；掉落率≤2%；≤5s；≥20 种未见形状可用
+    evidence: OpenAI Dactyl（Shadow 24 DOF，全仿真训练迁真机）；Tesla 22 DOF 腱驱手
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 平行夹爪，无手内操作自由度
+    software_only: false
+
+  - id: F-DEXT-02
+    name: 指尖力控夹持
+    dir: 灵巧操作
+    def: 抓易碎/易变形件时把指尖法向力保持在「不滑落且不压伤」窗口内，并在外部扰动下维持
+    metric: 指尖力0.5–5N 可设；精度±0.3N；持握滑移≤0.5mm；压痕/破损率≤0.1%
+    evidence: Tesla 指尖触觉+柔性指腹；OpenAI Dactyl
+    strength: 官方演示
+    zmax: partial
+    zmax_note: 有夹爪力控（40N 级），无指尖级 0.3N 精度与指腹阵列
+    software_only: false
+
+  - id: F-DEXT-03
+    name: 初始滑移检测与夹持自适应
+    dir: 灵巧操作
+    def: 物体相对手指出现微滑但未脱落时，数十毫秒内识别并上调夹持力使滑移停止
+    metric: 检出≤20ms；误报≤5%；滑移总量≤1mm；夹持力上调≤3N
+    evidence: OpenAI Dactyl（摩擦/滑移不可直接观测，须从传感史推断）；Tesla 指尖阵列
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 无法感知滑移前兆，只能靠力上限兜
+    software_only: false
+
+  - id: F-DEXT-04
+    name: 薄片与软线精细捏取
+    dir: 灵巧操作
+    def: 目标为厚度<2mm 的薄片或柔性线缆、且仅单侧可及时，用两指捏取并保持姿态不翻转
+    metric: 最小可捏厚度≤0.5mm；成功率≥95%；姿态保持误差≤2°；折损率≤0.5%
+    evidence: ALOHA（拉链带穿孔、电池入槽）；Mobile ALOHA
+    strength: 论文实测
+    zmax: partial
+    zmax_note: 防尘帽类薄件可夹，但姿态保持与折损未做判据
+    software_only: false
+
+  - id: F-DEXT-05
+    name: 双手交接
+    dir: 灵巧操作
+    def: 单手不可达或需换手时，把物体从一手交到另一手，交接瞬间不失落不挤压
+    metric: 成功率≥98%；≤1.5s；交接瞬间位移≤2mm；掉落率≤1%
+    evidence: Figure Helix 双机协同；Mobile ALOHA
+    strength: 官方演示
+    zmax: missing
+    zmax_note: 单臂，无交接动作
+    software_only: false
+
+  - id: F-DEXT-06
+    name: 线缆弯曲受控操控
+    dir: 灵巧操作
+    def: 抓取、理线与插拔跳线时，全程弯曲半径不低于规定最小值，且不承受超过拉脱力的张力
+    metric: 弯曲半径≥10×外径（单模跳线≥20mm 量级）；张力≤5N；断纤/拉脱率≤0.1%
+    evidence: 1X Redwood；Mobile ALOHA 柔性交互
+    strength: 官方演示
+    zmax: partial
+    zmax_note: 有光纤缓存/理线场景，但弯曲半径未作为判据约束
+    software_only: true
+
+  # ---------------- 长程分解与恢复（6） ----------------
+  - id: F-LONG-01
+    name: 长程分段与进度判定
+    dir: 长程分解
+    def: 任务由≥5 个子步骤组成时，逐步判定完成/未完成再进入下一步，而非按固定时序推进
+    metric: 子步骤判定准确率≥98%；跳步率≤1%；判定延迟≤300ms
+    evidence: Skild S1 单段视频学长程；π0.5 多步骤家务 86%
+    strength: 官方演示
+    zmax: done
+    zmax_note: 7 任务状态机 + 原子技能序列，逐步判据落台账
+    software_only: false
+
+  - id: F-LONG-02
+    name: 失败检出与安全停
+    dir: 长程分解
+    def: 子步骤出现超时、力异常或目标丢失时，数秒内判定失败并停止，不把错误带入下一步
+    metric: 检出率≥95%；平均延迟≤2s；误报≤3%；失败后停止位移≤1mm
+    evidence: Mobile ALOHA 失败案例集；π 实时分块
+    strength: 论文实测
+    zmax: done
+    zmax_note: 异常即停 + agent_all_stop，事件进INCIDEENT 台账
+    software_only: false
+
+  - id: F-LONG-03
+    name: 限次重试与位姿扰动
+    dir: 长程分解
+    def: 子步骤失败后以改变后的接近位姿重试，最多 N 次；仍失败上报人工，不在同姿态反复硬试
+    metric: 重试≤3次；重试成功率≥75%；总时长增幅≤30%；重试零新增损伤
+    evidence: arXiv 2507.03925；ALOHA 失败需人工重置
+    strength: 论文实测
+    zmax: partial
+    zmax_note: 有重试框架，但重试时位姿不变（同一姿态再试），无扰动策略
+    software_only: true
+
+  - id: F-LONG-04
+    name: 人在环接管
+    dir: 长程分解
+    def: 置信度低或检出异常时先安全停再请求接管，人接管后可继续完成并恢复到原节拍
+    metric: 请求延迟≤500ms；接管前速度归零100%；切换≤3s；接管率按工位可统计
+    evidence: 1X Expert Mode；Tesla 部分演示为遥操作；Figure 自主与遥操作并存
+    strength: 媒体报道
+    zmax: done
+    zmax_note: 8793 HIL 状态机 + 一次性授权闸，接管有留痕
+    software_only: false
+
+  - id: F-LONG-05
+    name: 中断后状态回读续做
+    dir: 长程分解
+    def: 断电、急停、换料后回读工件与夹具实际状态，从上一次确认的检查点继续，不整段重做
+    metric: 回读正确率≥99%；恢复≤60s；重复动作≤1次；恢复后首件合格率≥98%
+    evidence: Agility GXO 连续运行；GR00T N1 双臂长程
+    strength: 官方演示
+    zmax: partial
+    zmax_note: 有 task_state.json，但断电后靠人工确认，未做自动回读判定
+    software_only: true
+
+  - id: F-LONG-06
+    name: 工位变更后免编程重规划
+    dir: 长程分解
+    def: 工位布局或工件型号改变、未重新编程时，依新布局重生成动作序列并完成同一任务
+    metric: 换型适配≤30min；零代码改动率≥80%；换型后首件成功率≥90%
+    evidence: π0.5（400h 数据在未见环境完成任务 86%）；RT-2
+    strength: 论文实测
+    zmax: partial
+    zmax_note: ss_scene_switch 可切 FW/TRAY/AOI，但换型时间从未实测（TCT 未测的直接原因）
+    software_only: true
+
+  # ---------------- 数据效率（6） ----------------
+  - id: F-DATA-01
+    name: 少样本适配新工件
+    dir: 数据效率
+    def: 只给≤50 次示教，对新工件（尺寸/颜色/表面变化）达到可投产成功率
+    metric: 示教≤50次；新工件成功率≥85%；适配≤1天；同型号件间方差≤5%
+    evidence: ALOHA 50 次示教；Mobile ALOHA 提升 90%
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 新模块型号需重新标定+编程数天；无少样本适配流程
+    software_only: true
+
+  - id: F-DATA-02
+    name: 单段示教迁移
+    dir: 数据效率
+    def: 只给一段演示（视频或一次遥操作），完成同类任务的新实例
+    metric: 示教1段；成功率≥60%；步骤数≥4；无需新增标注
+    evidence: Skild S1；DeepMind RoboCat
+    strength: 官方演示
+    zmax: missing
+    zmax_note: 依赖 400 帧级轨迹与训练，非单段迁移
+    software_only: true
+
+  - id: F-DATA-03
+    name: 仿真训练真机零样本
+    dir: 数据效率
+    def: 动作能力全部在仿真训练、真机不做微调，直接完成同一装配动作
+    metric: 真机零微调；成功率≥80%；未见形状泛化≥3种；仿真-真机差≤15pp
+    evidence: OpenAI Dactyl；Blind Precise Assembly
+    strength: 论文实测
+    zmax: partial
+    zmax_note: metaworld 仿真可训，但真机部署仍需低 lr 微调（ACT 三阶段 S3）
+    software_only: true
+
+  - id: F-DATA-04
+    name: 少量真机加大量合成
+    dir: 数据效率
+    def: 真机示教极少、主要靠合成数据补足，达到与纯真机训练相当的现场表现
+    metric: 合成:真实≥10:1；性能保持≥90%；训练≤3天；差异可量化
+    evidence: GR00T N1 异构混合训练
+    strength: 论文实测
+    zmax: partial
+    zmax_note: 有 3DGS 场景资产与仿真造数据链路，但合成占比与增益未系统对照
+    software_only: true
+
+  - id: F-DATA-05
+    name: 跨本体迁移
+    dir: 数据效率
+    def: 换不同臂长、不同自由度或不同夹爪时，同一套能力仍能完成大部分同类任务
+    metric: 跨≥3种本体；成功率保持≥80%；换本体后重标定≤2h
+    evidence: Open X-Embodiment/RT-X（22 种机器人）；π0 多本体
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 只有珞石 xMate 一个本体接入过；跨本体从未实测（TCT 未测的根因）
+    software_only: false
+
+  - id: F-DATA-06
+    name: 手持示教动作保真
+    dir: 数据效率
+    def: 不用机器人、仅用手持夹爪采集示教，动作在真机复现时位置与夹爪开合保持在容差内
+    metric: 位置误差≤2mm；开合误差≤1mm；时间对齐≤20ms；无需真机示教
+    evidence: UMI；HiFi-UMI 双目惯性
+    strength: 论文实测
+    zmax: missing
+    zmax_note: 采集依赖真机遥操作/自动录制
+    software_only: false
+
+  # ---------------- 安全与可验证性（6） ----------------
+  - id: F-SAFE-01
+    name: 接触力硬上限
+    dir: 安全
+    def: 任意路径下末端接触力不超设定上限，越限毫秒级卸力，硬件与软件各有一道独立限幅
+    metric: 力上限5–40N 可设；越限响应≤10ms；千次动作越限0次；软硬双限幅可用
+    evidence: ISO/TS 15066；Agility 协作安全；Figure 力控上身
+    strength: 官方演示
+    zmax: done
+    zmax_note: 插入力≤40N 硬闸 + 碰撞检测，INCIDENT 台账有拦截记录
+    software_only: false
+
+  - id: F-SAFE-02
+    name: 接触前减速与碰撞前停
+    dir: 安全
+    def: 末端接近工件数毫米时主动降速，检测异常接触立即停止，而非以工作速度撞上
+    metric: 接近段≤10mm/s；停止≤20ms；停止距离≤1mm；误停≤1%
+    evidence: arXiv 2507.03925；Agility 人机共处
+    strength: 论文实测
+    zmax: done
+    zmax_note: 分段速度 + 接近段降速 + 碰撞前停，已进 precheck
+    software_only: false
+
+  - id: F-SAFE-03
+    name: 人机共处速度与动量限制
+    dir: 安全
+    def: 人进入工作区时自动把末端速度与所携工件动量限制在安全范围，人离开后恢复
+    metric: 末端速度≤250mm/s；人体检测≤100ms；检测率≥99.5%；恢复节拍≤2s
+    evidence: ISO/TS 15066 与 ISO 10218；Agility 商业现场
+    strength: 官方演示
+    zmax: partial
+    zmax_note: 有急停与围栏，无人在场动态限速
+    software_only: false
+
+  - id: F-SAFE-04
+    name: 判据可解释可复核
+    dir: 安全
+    def: 每次判定给出判据名称、阈值、实测值与结论，第三方可用原始数据独立复核，不允许只给通过/不通过
+    metric: 判据覆盖100%；复核一致率≥99%；单件取证≤50MB；可追溯到原始信号
+    evidence: arXiv 2507.03925 力信号作可解释判据；Agility 可审计记录
+    strength: 论文实测
+    zmax: done
+    zmax_note: 判据库 + 逐件留痕 + 复核接口（我方相对优势，对手多为黑盒）
+    software_only: false
+
+  - id: F-SAFE-05
+    name: 危险动作一次性授权
+    dir: 安全
+    def: 可能损伤工件或人的动作执行前必须先取得一次性授权，未授权时物理上不动作
+    metric: 未授权执行0次；授权仅单次有效；留痕100%；拒绝响应≤100ms
+    evidence: ISO 10218/TS 15066；Digit 分级授权实践
+    strength: 官方演示
+    zmax: done
+    zmax_note: 8793 授权闸（动作授权只从 8793 出），一次性令牌 + 留痕
+    software_only: false
+
+  - id: F-SAFE-06
+    name: 失效安全与看门狗
+    dir: 安全
+    def: 通信中断、推理超时或急停触发时，百毫秒内进入力保持或卸力停机，不产生失控位移，恢复需人工确认
+    metric: 检出≤100ms；停机位移≤1mm；断电保持力≥5s；恢复需人工确认100%
+    evidence: π 实时分块（延迟致动作不连续）；Helix 200Hz 独立实时回路
+    strength: 论文实测
+    zmax: done
+    zmax_note: systemd 看门狗 + 推理超时即停 + 恢复要授权
+    software_only: false
