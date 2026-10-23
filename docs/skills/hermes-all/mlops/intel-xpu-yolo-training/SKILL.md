@@ -102,14 +102,15 @@ Epoch  GPU_mem  box_loss  cls_loss  dfl_loss
 
 `GPU_mem > 0` 且三项 loss 单调下降 ⇒ 真在算。loss 不动就是空转。
 
-## 实测速度参考（Arc B390, 18,900 张, 320px, batch 8）
+## 实测速度参考（Arc B390, 18,900 张）
 
 | 阶段 | 数值 |
 |---|---|
-| 训练 | 4.2~5.9 it/s，约 9 分钟/epoch |
+| 训练 320px, batch 8 | 4.2~5.9 it/s，约 9 分钟/epoch |
+| 训练 640px, batch 8（= 部署口径） | 2.4~2.6 it/s，约 20 分钟/epoch |
 | 验证（2,100 张） | 约 4 分钟/次 |
-| 2 epoch 完整流程 | 27.4 分钟 |
-| 3 epoch 完整流程 | 30 分钟/代 |
+| 2 epoch 完整流程 @320 | 27.4 分钟 |
+| 4 epoch 完整流程 @640 | 约 85 分钟/代 |
 
 比 4060 CUDA 慢约 3 倍，但**不占独显**，适合与产线检测并行。
 
@@ -118,7 +119,25 @@ Epoch  GPU_mem  box_loss  cls_loss  dfl_loss
 脚本 `tools/zmax_evolve_intel.py`（本技能配套），systemd unit
 `deploy/systemd/zmax-evolve-intel.service`，只读端点 `:8810`。
 
-### 三条硬规矩
+### 四条硬规矩
+
+0. **没有变异就没有搜索。** 训练是确定性的（同超参+同数据顺序+固定 seed）⇒ 从同一 best.pt 出发的每一代
+   产出**逐位相同**的 mAP。台账实证：gen8/9/10 的 mAP50 都是 `0.740945867230116`（15 位小数全同），
+   这 14 代 "平台期" 是没搜索，不是数据到顶。必须按代采样变异（尺度/旋转/mosaic/HSV/lr/冻结层）并把
+   选中的 `mutation` + 完整 kwargs 写进台账。
+
+0b. **`optimizer=auto` 会静默吃掉 lr0。** 日志原文：`optimizer: 'optimizer=auto' found, ignoring 'lr0=0.01' ...
+   determining best 'optimizer', 'lr0' and 'momentum' automatically` ⇒ 变异表里的 lr 档位全是空转。
+   要 lr 生效必须显式 `optimizer="AdamW"`。同理 `warmup_epochs` 默认 3.0，在 3~4 epoch 的短程里等于整程
+   都在 warmup、调度走不到衰减段 ⇒ 短程必须 `warmup_epochs=0.5`。从 best.pt 微调 `lr0` 用 0.002 量级，
+   默认 0.01 会把已有能力打散。
+
+0c. **epochs 是最大的那个旋钮，而且 1 就是灾难。** 实测同一数据同一起点：3 epoch → mAP50 0.7381；
+   1 epoch @640 → 0.6550（掉 8 个点），而且 1 epoch @640 要 23 min，比 3 epoch @320 还贵。
+   平台期要按阶梯加算力（4 → 12 → 20 epoch），不是反复换增广小步微调。
+
+0d. **imgsz 跟部署口径走。** 在役 OpenVINO IR 是 640×640（`grep '<dim>' ir/*.xml` 可核）⇒ 训练/评估用 640，
+   别为了省时间降到 320 再拿 mAP 去跟 640 的部署模型比。
 
 1. **采纳判据是「有提升」，不是「不回退」**
    ```python
@@ -138,10 +157,21 @@ Epoch  GPU_mem  box_loss  cls_loss  dfl_loss
 
 ```bash
 curl -s http://127.0.0.1:8810/health
-# phase: training gen2 | gen: 2 | best: 0.6491 | acc/rej: 2 0
+# phase: training gen2 | gen: 2 | best: 0.6491 | acc/rej: 2 0 | mut: aug_scale | streak: 0
 ```
 
 `phase` 停在 `error` 且 `last_error` 长期不变 ⇒ 看 `traceback` 字段，里面是完整栈。
+
+**别用 `tail`/`grep` 看 evolve.log**：ultralytics 的进度行是一条几十 KB 的单行 `\r` 串，`tail -40` 会把
+十几万字符灌进上下文。要看进度只读 `runs/genNNN/results.csv`（每 epoch 一行，四个指标齐全）。
+
+### XPU 掉卡：`xe GT0 job timeout` → `level_zero ... DEVICE_LOST`
+
+长跑时偶发（实测一次发生在训练第 51%、跑了 27 分钟的位置）。`dmesg -T` 会看到
+`xe 0000:00:02.0: [drm] GT0: Timedout job ... VM job timed out on non-killed execqueue`，
+同一时刻 `zmax-edge`（OpenVINO NPU）也会被连带重启。GPU 会在几十秒内自恢复（`torch.xpu` 矩阵乘可验），
+所以**不要重启机器**，做法是训练外层捕获 `device_lost|level_zero` 后同一代重试（90 s 间隔、最多 3 次），
+连续失败才记一条失败代 —— 否则一次驱动抖动就把整条进化链拖成 `phase: error`。
 
 ## 实测效果
 

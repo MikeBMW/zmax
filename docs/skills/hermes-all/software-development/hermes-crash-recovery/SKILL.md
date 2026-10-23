@@ -89,6 +89,31 @@ WantedBy=default.target
 - Verify: `systemctl --user status hermes-gateway` (active) + `grep "feishu connected" ~/.hermes/logs/gateway.log`. WSL check: `systemctl is-system-running` → `running` means systemd is available.
 - Pitfalls: the gateway cannot restart itself from inside its own process (SIGTERM propagation — Hermes blocks "restart/stop from inside the gateway process"); always `rm -f ~/.hermes/gateway.lock ~/.hermes/gateway.pid` before start if a crash may have left them.
 
+#### 双单元互撞: 用户级 + 系统级 gateway 同时装 ⇒ 每 6 秒重启的死循环
+
+症状: 开机后 `systemctl --user status hermes-gateway` 一直 `activating (auto-restart)`,
+`systemctl --user show -p NRestarts --value` 在几分钟内飙到几十, journal 里全是同一句
+`✓ The host gateway already serves profile 'default' — nothing to start` + `Main PID … (code=exited, status=75)`。
+
+机理: 两个单元都装了，真正在服务的是**另一级**那个；这一级的 `ExecStart` 发现同档 gateway 已在跑就
+`exit 75`，而单元里写了 `RestartForceExitStatus=75`（与 `SuccessExitStatus=75` 并存）⇒ 被当成"强制重启"，
+于是每 `RestartSec` 拉起一次、又立即退出。功能没坏（gateway 在别处正常服务、cron ticker 照跑），
+但白烧进程与日志。
+
+判据（不靠猜）：
+```bash
+cat /proc/<gateway-pid>/cgroup        # 0::/system.slice/hermes-gateway.service ⇒ 活着的是"系统级"
+systemctl is-active hermes-gateway --system
+systemctl --user show -p NRestarts --value hermes-gateway   # 还往上涨 = 循环未停
+hermes gateway status                 # 自己也会警告 "Both user and system gateway services are installed"
+```
+
+处置: **只留一个**。要保持系统级在跑就 `systemctl --user disable --now hermes-gateway`
+（用户级单元的 `KillMode=mixed` 只影响它自己的 cgroup，不会杀掉 system.slice 里那个真 gateway）；
+反之要用户级就 `sudo hermes gateway uninstall --system`。
+复核: 原 gateway pid **不变**、`NRestarts` 不再涨、`hermes cron list` 的 `next_run` 继续前进（cron 跑在 gateway 里）。
+⚠ 别用 `pgrep -af 'gateway run'` 当"只有一个"的判据 —— 它同时命中反复重启的短命进程；认 cgroup 与 `MainPID`。
+
 ### 容器无 systemd 守护（2026-08-16 根因修复，容器专用）
 
 Symptom: gateway 死了 8-17 小时无人拉起，且 Hermes 的 gateway-守护 cron 一直显示 ok 却没生效。
@@ -545,3 +570,4 @@ After all context is re-established, snapshot Hermes memory to the project repo 
 | `hermes update` 跑到一半中断 / gateway 重启把升级带走 | update 与 gateway 同进程树 | `setsid hermes update --backup --yes > /tmp/hermes_update.log 2>&1 &` 分离运行 |
 | 升级完行为没变 | 新代码要 gateway 重启才生效（update 先 drain，窗口可达 ~30 分钟） | 在**进程外**终端 `hermes gateway restart`；别在 gateway 内重启自己 |
 | 界面报 `Another Hermes process is using this session` / 消息没被处理 | 会话回合租约被**本进程上一轮**占着（中断后 agent 线程仍活、未释放） | 别重发；Ctrl-C 停当前回合或等收尾；查 `state.db` 的 `session_turn_leases` + `agent.log` 的 `lease wait`/`still alive after interrupt` |
+| `hermes-gateway` 用户级一直 `activating (auto-restart)`、`NRestarts` 飙涨、journal 反复 `already serves profile … status=75` | 用户级与系统级 gateway **同时安装**，`RestartForceExitStatus=75` 把"已在别处服务"当成强制重启 | `cat /proc/<pid>/cgroup` 找出活着的是哪一级 → `systemctl --user disable --now hermes-gateway`（或 `sudo hermes gateway uninstall --system`），只留一个；复核 pid 不变 + `NRestarts` 不涨 |

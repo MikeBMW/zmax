@@ -9,6 +9,13 @@ description: Use when 在 Intel Arc 上用 torch XPU 训练 YOLO。
 torch CUDA 版在这里只能跑 CPU; 要真用上 Arc 必须换 **`+xpu` wheel**。
 推理走 OpenVINO 是另一条路, 见 `intel-edge-npu-deployment`。
 
+## When to Use (何时用)
+- 要在这台 Intel 工位机上装/修 `+xpu` torch、torchvision, 或训练报 IGC / matplotlib / cv2 类错误。
+- 要判断训练是真在 Arc 上算, 还是空转。
+- 要跑/维护「训练→评估→择优」自进化守护 (`zmax_evolve_intel.py`): 连续多代不涨点、
+  台账里多代 mAP 逐位相同、某代起整体掉一截、lvl_zero 掉卡。
+- 要把采纳后的权重换到在役 OpenVINO IR 上。
+
 ## 链路 (顺序不能乱)
 1. **torch 2.7.1+xpu wheel** — 外网单线程下不动 (CDN 边缘缓存不一致: 前 30MB 6.6MB/s, 150-180MB 574B/s)。
    用 **16 段并发 curl + 合并 + 大小校验**, 几十秒拿完 677MB。从有网的机器下好再 rsync 比在边缘机 pip 快得多。
@@ -28,6 +35,8 @@ torch CUDA 版在这里只能跑 CPU; 要真用上 Arc 必须换 **`+xpu` wheel*
 - 2 epoch 全流程 1642 秒 (27.4 分钟, 含每 epoch 末验证)
 - **mAP50 60.75% / mAP50-95 49.87% / P 99.47% / R 56.24%** (2 epoch ⇒ R 偏低是欠训练, 不是烂模型)
 - 同一数据 4060 约 14 it/s ⇒ **Arc 比 4060 慢约 3 倍**, 但完全不占 4060
+- 同机 640px / batch 8: **2.4~2.5 it/s, 约 20 分钟/epoch**, 评估 2100 张约 4 分钟
+  ⇒ 进化环一代 (3~4 epoch) ≈ 1~1.3 小时, 4 代以上别用 `epochs=1` 省时间 (更贵还更差)
 
 ## 坑 (每个都实测踩过)
 
@@ -72,9 +81,15 @@ ExecStartPre 里的预检查是独立子进程, 不会生效 —— 表现是服
 - **重启必须从台账恢复 `best_map50`**, 否则第一代被当「首个基线」无条件采纳, 哪怕更差
 - 恢复代号用 `max(generation)` 而非 `len(entries)` (基线 gen0 占一条), 否则重启跳代
 - ultralytics 每 epoch 末都会验证一次挑 best.pt ⇒ 每代耗时 ≈ epoch数 ×(训练+验证), 3 epoch 约 40 分钟
+- **每代必须变异**: 训练是确定性的, 超参不变时连续多代的 mAP50 会到 15 位小数全同 —— 那不是「收敛」, 是没在搜索。按代数采样 mutation 并记进台账
+- **短程微调三件套**: 显式 `optimizer="AdamW"`(留 auto 会静默忽略 lr0) + `lr0≈0.002` + `warmup_epochs=0.5`(默认 3.0 在 3~4 epoch 里等于整程 warmup); 绝不用 `epochs=1`
+- `imgsz` 必须等于在役 IR 输入尺寸 (通常 640)
+- XPU 偶发 `level_zero ... DEVICE_LOST`(xe GT0 job timeout): 同代重试 3 次、间隔 90s, 不要计作进化失败
+- 看进度读 `runs/genNNN/results.csv`, 别 grep `evolve.log` (进度行带 \r, 一次十几万字符)
 
 ## 相关
 - `deploy/INTEL_XPU_SETUP.md` — 打通全过程记录
 - `tools/dl_xpu_torch.sh` — 16 段并发下载
 - `tools/mpl_stub.py` — matplotlib 桩
 - `deploy/systemd/zmax-evolve-intel.service`
+- `references/evolution-loop-design.md` — 变异表/采样器/算力阶梯/台账字段/演进环诊断表

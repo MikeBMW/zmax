@@ -129,6 +129,9 @@ ultralytics 的 `results.csv` 是 `epoch,time,train/box_loss,train/cls_loss,trai
 ⇒ 先 `head -1 <csv> | tr ',' '\n' | nl` 拿列名→列号, 再 `csv.DictReader` 按名取;
 **任何指标掉出数学值域 (P/R/mAP ∉ [0,1]、loss 为负、epoch 超过总轮数) = 列错位, 不是模型异常**,
 不要拿它去推断"模型保守/学不会"。报数后再核一次自洽性: 已完成轮数 × 每轮耗时 是否等于累计耗时, ETA 是否同源算出。
+🔴 **别用 grep 从训练日志里抠进度**: ultralytics 的进度行带 `\r` 且每步一行,
+`grep -o "...it/s..." 日志` 一次能吐十几万字符直接把上下文冲掉 (实测 156KB)。
+进度一律读 `runs/<name>/results.csv` (按列名), 或 `/health` 这类结构化的只读端点。
 🔴 **指标长时间纹丝不动本身就是结论**: P 已逼近 1 而 R 从头到尾同一个数 ⇒ 不是轮数不够, 是数据侧问题
 (某类框偏小 / 标注与实际尺度对不上), 该停下来查每类召回与 val 预测图, 而不是继续加 epoch 等它自己变好。
 

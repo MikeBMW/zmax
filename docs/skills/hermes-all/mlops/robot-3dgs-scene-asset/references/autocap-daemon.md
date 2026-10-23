@@ -64,6 +64,67 @@
 - **schema 必须与 `tools/gs_dataset.py` 对齐**: 它读 `t_mono_fetch1` 与 `pose_after`/`pose_before` ⇒ 写记录时这几个键一并写
   (自己另加 `mono_ts`/`pose` 不影响), 否则建库时帧被静默丢掉、表现为"采了但数据集里没有"。
 
+## 🔴 Intel 侧「默认一动就采」为什么一张都不采 (实测 2026-10-23)
+
+守护 `zmax-gs-autocap.service` 在 Intel 是 **enabled+running、GS_AUTOTRAIN=1**, 但 17.5 小时只积到
+`frames_total=1 / sessions=0 / trains_submitted=0 / skipped_dark=68233`, `last_error=位姿拉取失败 urlopen timed out`。
+根因不是守护逻辑, 是 **两个源都指向从 Intel 根本不可达的地址**:
+
+| 配置 | 值 | 为什么拉不到 |
+|---|---|---|
+| `GS_FRAME_URL` | `http://192.168.23.66:8792/frame.jpg` | Orin 上这个端点绑 **127.0.0.1**, 别的机器一律拉不到 (且 Intel 实测 6s 超时) |
+| `GS_POSE_URL` | `http://192.168.23.50:8804/pose` | 工位机不在产线网段时(例: 只在 WiFi 10.163.x) 整台不可达 ⇒ 6s 超时 |
+| `GS_TRAIN_URL` | `http://192.168.23.50:8804` | 同上; 攒够了也送不出去 |
+
+真源其实 **Intel 本地就有**(不用绕中继、不依赖工位机在线):
+`/realsense/color/image_raw`(bgr8 640x480, 实测亮度 119, ~1.6~1.75fps) + `/robot/tcp_pose`
+(PoseStamped, `base_link`, header 带时间戳; 两者都是 **BEST_EFFORT** QoS)。
+
+定式 = 本地桥, 契约与 8804 逐字段一致: `tools/gs_ros_bridge.py` + `zmax-gs-ros-bridge.service`
+(127.0.0.1:**8811**; 8810 已被 evolve 服务占) 提供 `/frame.jpg` `/pose` `/health`, 然后把 autocap 的
+`GS_FRAME_URL`/`GS_POSE_URL` 指向它。
+- 🔴 **四元数→rpy 必须是 ZYX**, 才与 rokae `endInRef` 的 rx/ry/rz 同口径(实测同一时刻与 SDK 直读吻合到 1e-5);
+  换一套欧拉约定会把整份数据的姿态拧掉, 且 `_moved` 门看不出来(它只比差值)。
+- 判据(修好后 20 秒内可见): `last_error` 清空 · `skipped_dark` 不再涨 · `skipped_static` 上涨(臂没动就该涨) ·
+  `images/f_0000.jpg` 落盘。
+- 采集落盘是 **逐帧 JPEG + 每帧位姿 + 时间戳**(`images/f_NNNN.jpg`), 不是 mp4 视频; 问“有视频么”要按这个口径答。
+- 还剩的两道门(采集通了也不等于能自训): ①`GS_TRAIN_URL` 仍要一台可达的 CUDA 机(Intel 上 3DGS 只验证到 SYCL
+  栅格化, 完整训练循环未通) ②`GS_TRAIN_STEPS` 默认 **1000** = 铺色阶段, 留出 PSNR ~14dB / 渲染 std 只有真值一半,
+  要像样得 30000 步(4060 上 15~20 分钟/版), 无人值守自训要么提步数要么在门上加"步数不足"标记。
+
+## 550C(Intel Arc B390) 本地训 3DGS: 已跑通完整循环, 但慢 70~80 倍 (实测 2026-10-23)
+
+`gs_train.py` 已自带后端选择(cuda→xpu 自动), `gsxpu-venv` 里 `torch 2.10.0+xpu` +
+`gsplat 1.5.3+pt210xpu`(SYCL)。实测同一个 338 帧数据集在 Intel 上跑完整个循环(不是只栅格化):
+
+| 项 | 实测 |
+|---|---|
+| 端到端 | ✅ 200 步跑完, 落 `gs.ply` + `gs.splat`(502.4s 训练 + 首次 SYCL 编译 ~90s) |
+| 步速 | **~2.5 s/步**(进程 99.9% CPU, 瓶颈在宿主侧而非 Arc) |
+| 30000 步折算 | **≈21 小时**(4060 CUDA 同配置 15~20 分钟 ⇒ 慢 ~70~80×) |
+| 启动特征 | 前 2~4 分钟日志只有 `gsplat: Using SYCL XPU backend.`, 不要当卡死(首次编译) |
+
+定式: **采集/建数据集/质检放 Intel(不占 GPU), 30000 步正式训练送 4060**。要在 Intel 上出东西只有"预览版"
+(3000 步≈2 小时), 必须标明不是交付资产。判据: 先报步速再谈方案, 不要拿"能跑"当"能用到闭环里"。
+
+## 🔴 采集端没做「内容 md5 去重」= 自训稳定产出废资产 (实测 2026-10-23 第一版自动资产)
+
+第一版全自动跑通（机器人动 → 采 124 帧 → 自动送 4060 → 30000 步 → 763k 高斯）但质检 **FAIL**:
+
+| 判据 | 实测 | 结论 |
+|---|---|---|
+| unique_images | 唯一图 **47/124 (重复 62.1%)** | 同图配多位姿 = 矛盾监督 |
+| distinct_views / parallax | 122 个 / 1.46×1.36×1.28 m | 视差与视点都是够的 |
+| beats_trivial | 留出 **10.90 dB** vs 平凡基线 **12.18 dB**（−1.28） | 连拟合都没做到 |
+| fits_training_views | 训练视角 21.36 dB（+9.18） | 只记住训练帧 |
+
+根因 = 相机只有 ~1.2fps，而臂快速移动时**同一张画面被反复落盘并配上不同位姿**。守扤的
+`_moved` 门（位移 ≥2mm）只看位姿看不画面，于是同一个 pose 变一下就存一张同一张图。
+定式: 抓到图后算 **md5，与上一张真正落盘的图相同就不落盘、也不推进基准**（计数器单独一个
+`frames_skipped_dup`，否则“重复太多”与“臂没动”在健康页上分不开）。
+配套把门抬高: `GS_MIN_FRAMES 120→160`、`GS_MIN_SPAN_M 0.05→0.10`（5cm 跨度只能保证“不是同一位姿”，
+不保证视差）。
+
 ## 训练编排器 (视点攒够自动开训, 不重复训)
 
 - 视点判据与质检门同口径: 平移 **5mm** + 姿态 **0.57°(0.01rad)** 量化成簇; 触发 = **视点 ≥30 且 ≥90s 没有新帧**
