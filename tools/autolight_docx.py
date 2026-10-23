@@ -140,6 +140,63 @@ def _overview_table(doc, cards):
     return t
 
 
+def _acts_table(doc, acts):
+    """附表：工艺动作 ⇄ 工艺卡 对照表（页面 ACTCARD 同一份数据）。
+
+    为什么做 4 列而不是把 6 列硬塞：A4 正文宽 17cm，6 列会挤成竖条读不动；
+    把「技术协议依据」并进技术细节格的末尾（［依据：…］），信息不丢、版面能读。
+    """
+    t = doc.add_table(rows=1, cols=4)
+    t.style = "Table Grid"
+    hdr = ["动作", "对应工艺卡（工位）", "这一步在做什么", "技术细节（机构 / 判据 / 为什么）"]
+    widths = [Cm(2.0), Cm(3.4), Cm(5.6), Cm(6.0)]
+    for i, h in enumerate(hdr):
+        c = t.rows[0].cells[i]
+        c.width = widths[i]
+        p = c.paragraphs[0]
+        p.paragraph_format.space_after = Pt(1)
+        _font(p.add_run(h), 9, True)
+        _shade(c, "DCE8F0")
+    for a in acts:
+        row = t.add_row().cells
+        for i in range(4):
+            row[i].width = widths[i]
+        name = "%s %s" % (_strip(a.get("n", "")), _strip(a.get("act", "")))
+        cells = [name, _strip(a.get("cards", "")), _strip(a.get("what", "")), _strip(a.get("det", ""))]
+        for i, v in enumerate(cells):
+            p = row[i].paragraphs[0]
+            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.line_spacing = 1.15
+            _font(p.add_run(v), 8.5, i == 0)
+        b = _strip(a.get("basis", ""))
+        if b:
+            p = row[3].add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(1)
+            _font(p.add_run("［依据：%s］" % b), 8, False, GRAY)
+    return t
+
+
+def _footer_pagenum(doc, note=""):
+    """页脚：生成说明 + 第 X 页 / 共 Y 页（用 Word 域，翻页自动更新）。"""
+    from docx.oxml import OxmlElement                          # noqa: PLC0415
+    for sec in doc.sections:
+        p = sec.footer.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if note:
+            _font(p.add_run(note + "　　"), 8, False, GRAY)
+        def _field(instr):
+            run = p.add_run()
+            _font(run, 8, False, GRAY)
+            fld1 = OxmlElement("w:fldChar"); fld1.set(qn("w:fldCharType"), "begin")
+            it = OxmlElement("w:instrText"); it.set(qn("xml:space"), "preserve"); it.text = instr
+            fld2 = OxmlElement("w:fldChar"); fld2.set(qn("w:fldCharType"), "end")
+            run._r.append(fld1); run._r.append(it); run._r.append(fld2)
+        _font(p.add_run("第 "), 8, False, GRAY); _field("PAGE")
+        _font(p.add_run(" 页 / 共 "), 8, False, GRAY); _field("NUMPAGES")
+        _font(p.add_run(" 页"), 8, False, GRAY)
+
+
 # ---------------------------------------------------------------- 主函数
 def build_docx(payload: dict) -> bytes:
     cards = (payload or {}).get("cards") or []
@@ -174,7 +231,8 @@ def build_docx(payload: dict) -> bytes:
           9, False, GRAY, 6, WD_ALIGN_PARAGRAPH.CENTER)
 
     _para(doc, "本文档由 /autoLight 工艺卡页面一键导出，内容与页面同源（同一份工艺卡数据）。"
-               "每步一张卡：三维视图 + 动作分解 + 技术细节 + 参数口径 + 协议来源。"
+               "每步一张卡：工位归属与工艺动作 + 三维视图 + 动作分解 + 详细描述 + 参数口径 + 协议依据；"
+               "文末附「工艺动作 ⇄ 工艺卡」对照表。"
                "三维视图为按协议模块关系的 1:1 示意，非施工图；协议未定项标「设计评审确认」。",
           9.5, False, None, 8, WD_ALIGN_PARAGRAPH.JUSTIFY)
 
@@ -195,14 +253,23 @@ def build_docx(payload: dict) -> bytes:
     for c in cards:
         doc.add_page_break()
         no = _strip(c.get("n", ""))
+        pc = _strip(c.get("pc", ""))
         title = _strip(c.get("title", ""))
         stage = _strip(c.get("stage", ""))
-        _heading(doc, "%s　%s%s" % (no, title, ("（" + stage + "）") if stage else ""), 1)
+        _heading(doc, "%s%s　%s%s" % ((pc + "　") if pc else "", no, title,
+                                      ("（" + stage + "）") if stage else ""), 1)
+
+        # 🧭 2026-10-23: 卡头先把「工位归属 / 工艺动作」说清楚 —— 与网页右侧同一口径,
+        #   这样一张卡单独打印出来也知道它属于哪个工位、承担哪几个动作。
+        owner = _strip(c.get("owner", ""))
+        oacts = _strip(c.get("oacts", ""))
+        if owner or oacts:
+            _kv_table(doc, [(k, v) for k, v in (("工位归属", owner), ("工艺动作", oacts)) if v])
 
         img = _img_from_dataurl(c.get("img") or "")
         if img is not None:
             try:
-                doc.add_picture(img, width=Cm(16.6))
+                doc.add_picture(img, width=Cm(13.2))   # 13.2cm: 640px 图 ≈123dpi 仍清晰; 实测让 PC-04(三段长文)也落在一页内
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 _para(doc, "图 %s-1　%s（三维窗口截图）" % (no, title),
                       8.5, False, GRAY, 8, WD_ALIGN_PARAGRAPH.CENTER)
@@ -214,11 +281,14 @@ def build_docx(payload: dict) -> bytes:
             _heading(doc, "动作分解", 2)
             _para(doc, act, 10.5, False, None, 6, WD_ALIGN_PARAGRAPH.JUSTIFY)
 
-        det = [d for d in (_strip(x) for x in (c.get("det") or [])) if d]
+        det = [d for d in (_strip(x) for x in ((c.get("desc") or c.get("det")) or [])) if d]
         if det:
-            _heading(doc, "技术细节", 2)
+            _heading(doc, "详细描述", 2)
             for d in det:
-                _bullet(doc, d)
+                # 详细描述是整段文字（不是要点罗列）⇒ 用正文段落+首行缩进, 不用项目符号
+                p = _para(doc, d, 9.8, False, None, 3, WD_ALIGN_PARAGRAPH.JUSTIFY)
+                p.paragraph_format.first_line_indent = Pt(20)
+                p.paragraph_format.line_spacing = 1.18
 
         kv = [(_strip(k), _strip(v)) for k, v in (c.get("kv") or []) if _strip(k)]
         if kv:
@@ -237,6 +307,17 @@ def build_docx(payload: dict) -> bytes:
         if fn:
             _para(doc, fn, 8.5, False, GRAY, 2)
 
+    # ---------- 附表: 工艺动作 ⇄ 工艺卡 对照表 ----------
+    acts = (payload or {}).get("acts") or []
+    if acts:
+        doc.add_page_break()
+        _heading(doc, "附表　工艺动作 ⇄ 工艺卡 对照表", 1)
+        _para(doc, "本表把 8 个工艺动作与 9 张工艺卡（工位）逐一对应：同一个动作可能跨多个工位"
+                   "（如上料跨 1/2/3、分拣下料跨 7/8/9），同一个工位也可能承担多个动作"
+                   "（如工位 4 同时完成拔帽、端面检测与端面清洁）。内容与正文工艺卡同源。",
+              9.5, False, GRAY, 6, WD_ALIGN_PARAGRAPH.JUSTIFY)
+        _acts_table(doc, acts)
+
     # ---------- 尾页信息 ----------
     doc.add_page_break()
     _heading(doc, "导出说明", 1)
@@ -250,6 +331,7 @@ def build_docx(payload: dict) -> bytes:
     ])
 
     buf = io.BytesIO()
+    _footer_pagenum(doc, note="光纤端面检测及清理自动化设备 · 工艺卡（技术协议 rev1.0）")
     doc.save(buf)
     return buf.getvalue()
 
