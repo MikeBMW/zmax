@@ -628,7 +628,19 @@ class ManifoldEngine:
         self.hom = HomeostasisEngine() if self.hom_enabled else None
         # 🧭 对称轨道预测器 (观测量): 关掉 ZMAX_ORBIT_PREDICT=0 即完全不影响旧行为
         self.orbit_enabled = (os.environ.get("ZMAX_ORBIT_PREDICT", "1") not in ("0", "false", "False"))
-        self.orbit = (_OrbitPredictor(window=6, manifold="euclidean" if manifold_type == "euclidean" else "sphere")
+        # 🧬 进化出来的轨道参数 (Intel 对称引擎自主进化的产物): ZMAX_ORBIT_PARAMS=<json 路径>
+        #    genome 字段: window/drift_tol/accel_tol/bend_tol/phi_tol/lookahead —— 只覆盖引擎真参数, 不加新算法
+        self.orbit_params: dict = {}
+        _pp = os.environ.get("ZMAX_ORBIT_PARAMS", "")
+        if _pp and os.path.isfile(_pp):
+            try:
+                self.orbit_params = json.load(open(_pp))
+            except Exception:                                                  # noqa: BLE001
+                self.orbit_params = {}
+        _kw = {k: self.orbit_params[k] for k in ("window", "drift_tol", "accel_tol", "bend_tol", "phi_tol")
+               if k in self.orbit_params}
+        _kw["manifold"] = "euclidean" if manifold_type == "euclidean" else "sphere"
+        self.orbit = (_OrbitPredictor(**_kw)
                       if (self.orbit_enabled and _OrbitPredictor is not None) else None)
         self.orbit_last: dict = {}
         # 🧭 对称性指导运行方向 (默认关): gain=0 即完全不介入; 开=动作向上一步+沿轨道一步隐含增量靠拢
@@ -638,7 +650,10 @@ class ManifoldEngine:
             self.guide_gain = 0.0
         self._a_prev = None
         try:
-            self.lookahead = max(0, int(os.environ.get("ZMAX_ORBIT_LOOKAHEAD", "0") or 0))
+            _la = os.environ.get("ZMAX_ORBIT_LOOKAHEAD", "")
+            if _la == "" and "lookahead" in getattr(self, "orbit_params", {}):
+                _la = self.orbit_params["lookahead"]        # 进化给的时延补偿步数
+            self.lookahead = max(0, int(_la or 0))
         except Exception:                                                      # noqa: BLE001
             self.lookahead = 0
 

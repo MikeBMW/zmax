@@ -29,6 +29,7 @@ CODE = [
     "tools/symmetry_evolve.py",                 # ⑥ 对称性引擎自主进化 (基因组=引擎真参数)
     "tools/edge/symmetry_evolve_multi.sh",      # ⑥ 6 路并行搜索
     "tools/edge/zmax-autonomy-watch.sh",        # ⑦ 无人值守看护
+    "tools/pull_symmetry_params.py",            # ⑧ 采纳 Intel 进化参数 (闭环最后一段)
     "tools/gui/studio.py",                      # 版本号 (4 处显示)
     "tools/gui/update_checker.py",
     "tools/gui/version_sync.py",
@@ -47,6 +48,8 @@ UNITS = [
     "tools/edge/zmax-symmetry-evolve.service",   # ⑥ 对称进化常驻 (Restart=always)
     "tools/edge/zmax-autonomy-watch.service",    # ⑦ 看护 oneshot
     "tools/edge/zmax-autonomy-watch.timer",      # ⑦ 每 5 分钟
+    "tools/edge/zmax-symmetry-adopt.service",    # ⑧ 采纳 oneshot
+    "tools/edge/zmax-symmetry-adopt.timer",      # ⑧ 每 10 分钟
     "/etc/systemd/system/zmax-ss-engine-loop.service",
     "/etc/systemd/system/zmax-ss-engine-loop.service.d/orbit.conf",
     "/etc/systemd/system/zmax-x11vnc.service",
@@ -142,6 +145,9 @@ EVIDENCE = """# v5.50.755 实测数字（全部来自本机/Intel 真跑）
 - 对称性引擎自主进化 (6 路并行, 基因组=引擎真参数 window/drift/accel/bend/phi/lookahead/M):
   起点(引擎当前默认) score 1.0353 · cov 0.97 · err_rel 0.176 · bp 0.60;
   第 4 代 score **1.1259** · cov 0.98 · err_rel 0.183 · bp **0.81** (同样本同判据)
+- 闭环贯通: Intel `symmetry_best.json` → 本机 `pull_symmetry_params.py`(timer 10min, 提升 ≥0.05 且距上次 ≥1h 才采纳)
+  → `zmax_data/ss_live/orbit_params.json` → 重启 `zmax-ss-engine-loop` 按新参数跑;
+  实测已采纳一版 (score 1.1259, cov 0.9819, err_rel 0.183, bp 0.8095), live 里 drift 0.676 < 阈值 2.68 ⇒ valid
 - 无人值守: `zmax-evolve-intel`(Restart=always) + `zmax-symmetry-evolve`(Restart=always) + 看护 timer 5min,
   看护日志实测 `ok phase=training gen23 disk=829G`
 - 版本五处一致 = 5.50.755（studio 4 处显示 / update_checker / version_sync / docs_sync 两键 / integrity_check）

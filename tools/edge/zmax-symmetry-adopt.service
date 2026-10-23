@@ -1,0 +1,7 @@
+[Unit]
+Description=Z-MAX 采纳 Intel 进化出的对称轨道参数 (闭环最后一段)
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /home/ubuntu/zmax/tools/pull_symmetry_params.py
