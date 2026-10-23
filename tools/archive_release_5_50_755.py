@@ -26,6 +26,9 @@ CODE = [
     "tools/orbit_evolve_advisor.py",            # ⑤ 进化方向裁定 (一维等改进量)
     "tools/orbit_evolve_watch.py",              # ⑤ Intel 旁路判读
     "tools/edge/apply_v6_intel.sh",             # ⑤ Intel cooldown 热替换
+    "tools/symmetry_evolve.py",                 # ⑥ 对称性引擎自主进化 (基因组=引擎真参数)
+    "tools/edge/symmetry_evolve_multi.sh",      # ⑥ 6 路并行搜索
+    "tools/edge/zmax-autonomy-watch.sh",        # ⑦ 无人值守看护
     "tools/gui/studio.py",                      # 版本号 (4 处显示)
     "tools/gui/update_checker.py",
     "tools/gui/version_sync.py",
@@ -41,6 +44,9 @@ DATA = [
     "data/database/zmax/config_meta.json",
 ]
 UNITS = [
+    "tools/edge/zmax-symmetry-evolve.service",   # ⑥ 对称进化常驻 (Restart=always)
+    "tools/edge/zmax-autonomy-watch.service",    # ⑦ 看护 oneshot
+    "tools/edge/zmax-autonomy-watch.timer",      # ⑦ 每 5 分钟
     "/etc/systemd/system/zmax-ss-engine-loop.service",
     "/etc/systemd/system/zmax-ss-engine-loop.service.d/orbit.conf",
     "/etc/systemd/system/zmax-x11vnc.service",
@@ -133,6 +139,11 @@ EVIDENCE = """# v5.50.755 实测数字（全部来自本机/Intel 真跑）
 - 判据在 `/home/intel/train_venv/bin/python` 上真跑：selftest 3/3、verify **15/15**（E4 需 live tap 跳过）
 - 进化台账（23 代，best 0.7381）：advisor 判 `escalate` · `推演破缺(step_length_dispersion)` ·
   pred_next 0.7113 · drift 1.95 · accel 5.29
+- 对称性引擎自主进化 (6 路并行, 基因组=引擎真参数 window/drift/accel/bend/phi/lookahead/M):
+  起点(引擎当前默认) score 1.0353 · cov 0.97 · err_rel 0.176 · bp 0.60;
+  第 4 代 score **1.1259** · cov 0.98 · err_rel 0.183 · bp **0.81** (同样本同判据)
+- 无人值守: `zmax-evolve-intel`(Restart=always) + `zmax-symmetry-evolve`(Restart=always) + 看护 timer 5min,
+  看护日志实测 `ok phase=training gen23 disk=829G`
 - 版本五处一致 = 5.50.755（studio 4 处显示 / update_checker / version_sync / docs_sync 两键 / integrity_check）
 """
 

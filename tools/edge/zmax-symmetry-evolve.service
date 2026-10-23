@@ -1,0 +1,21 @@
+[Unit]
+Description=Z-MAX 对称性引擎自主进化 (Intel 550C, 4 路并行搜索)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel/zmax_map
+Environment=EVO_WORK=/home/intel/evolve
+Environment=LD_LIBRARY_PATH=/home/intel/train_venv/lib
+Nice=10
+ExecStart=/bin/bash /home/intel/zmax_map/tools/edge/symmetry_evolve_multi.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/intel/evolve/symmetry_evolve.log
+StandardError=append:/home/intel/evolve/symmetry_evolve.log
+
+[Install]
+WantedBy=multi-user.target

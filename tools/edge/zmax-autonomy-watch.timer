@@ -1,0 +1,10 @@
+[Unit]
+Description=Z-MAX Intel 看护 每 5 分钟
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

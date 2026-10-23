@@ -1,0 +1,7 @@
+[Unit]
+Description=Z-MAX Intel 无人值守看护 (服务/训练/对称进化/磁盘)
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash /home/intel/zmax_map/tools/edge/zmax-autonomy-watch.sh
