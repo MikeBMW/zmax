@@ -47,14 +47,16 @@ LEDGER = os.path.join(WORK, "symmetry_ledger.jsonl")
 BEST = os.path.join(WORK, "symmetry_best.json")
 
 # 基因组边界 (min, max, is_log)
+# 只进化**部署口径下真能改的东西**:
+#   · M 固定在常驻引擎实际用的 3.643 (否则阈值是给另一个引擎调的 → 采纳后对不上)
+#   · lookahead 由 ZMAX_ORBIT_LOOKAHEAD 定 (实测 E1: k=1 动作误差 −64.4%), 不进基因组 (否则无选择压力的维度在乱走)
+DEPLOY_M = float(os.environ.get("SYM_DEPLOY_M", "3.643"))
 BOUNDS = {
-    "window": (3, 12, False),
-    "drift_tol": (0.2, 4.0, True),
-    "accel_tol": (0.15, 3.0, True),
-    "bend_tol": (0.15, 3.0, True),
-    "phi_tol": (0.15, 3.0, True),
-    "lookahead": (1, 3, False),
-    "M": (0.5, 10.0, True),
+    "window": (3, 14, False),
+    "drift_tol": (0.2, 6.0, True),
+    "accel_tol": (0.15, 6.0, True),
+    "bend_tol": (0.15, 6.0, True),
+    "phi_tol": (0.10, 3.0, True),
 }
 
 _ENG: dict[float, ManifoldEngine] = {}
@@ -122,7 +124,7 @@ def bank(M: float):
 
 
 def evaluate(g: dict) -> dict:
-    segs = bank(g["M"])
+    segs = bank(g.get("M", DEPLOY_M))
     pr = OrbitPredictor(window=int(g["window"]), drift_tol=g["drift_tol"],
                         accel_tol=g["accel_tol"], bend_tol=g["bend_tol"], phi_tol=g["phi_tol"],
                         horizons=(1, 2, 5), manifold="sphere")
@@ -151,6 +153,22 @@ def evaluate(g: dict) -> dict:
     score = cov * (1.0 - min(err_rel, 1.0)) + 0.4 * bp - 0.5 * max(0.0, 0.30 - cov)
     return {"score": round(score, 6), "cov": round(cov, 4), "err_rel": round(err_rel, 5),
             "break_prec": round(bp, 4), "n": int(n), "med_step": round(med_step, 6)}
+
+
+def write_best(genome: dict, metrics: dict, gen: int, run_id: str) -> None:
+    """只有**全局**更优才写 symmetry_best.json —— 多路并行时每路各有各的 best,
+    不加这道闸就会被某一路的较差结果覆盖掉全局最优 (实测踩到: 台账 max 1.1664 / 文件只有 1.1286)。"""
+    try:
+        cur = json.load(open(BEST))
+        if float((cur.get("metrics") or {}).get("score") or -9) >= float(metrics["score"]):
+            return
+    except Exception:                                                    # noqa: BLE001
+        pass
+    tmp = BEST + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"at": time.strftime("%F %T"), "run": run_id, "generation": gen,
+                   "genome": genome, "metrics": metrics}, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, BEST)
 
 
 def sample(rng: random.Random) -> dict:
@@ -192,8 +210,7 @@ def main():
     rng = random.Random(int(time.time()) % 100000)
     run_id = time.strftime("%Y%m%d_%H%M%S")
     # 起点: 当前引擎默认参数 (不是随机乱找)
-    seed = {"window": 6, "drift_tol": 1.0, "accel_tol": 0.6, "bend_tol": 0.5,
-            "phi_tol": 0.5, "lookahead": 1, "M": 3.643}
+    seed = {"window": 6, "drift_tol": 1.0, "accel_tol": 0.6, "bend_tol": 0.5, "phi_tol": 0.5}
     pop = [seed] + [sample(rng) for _ in range(pop_n - 1)]
     best = None
     for gen in range(1, gens + 1):
@@ -201,9 +218,7 @@ def main():
         scored.sort(key=lambda t: -t[0]["score"])
         if best is None or scored[0][0]["score"] > best[0]["score"]:
             best = (scored[0][0], dict(scored[0][1]))
-            json.dump({"at": time.strftime("%F %T"), "run": run_id, "generation": gen,
-                       "genome": best[1], "metrics": best[0]},
-                      open(BEST, "w"), ensure_ascii=False, indent=1)
+            write_best(best[1], best[0], gen, run_id)
         rec = {"at": time.strftime("%F %T"), "run": run_id, "gen": gen,
                "best_score": best[0]["score"], "best": best[1], "best_metrics": best[0],
                "gen_best_score": scored[0][0]["score"], "gen_best": scored[0][1],
