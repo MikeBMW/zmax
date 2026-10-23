@@ -75,6 +75,34 @@ def _load_handeye(path):
 
 HANDEYE_X = _load_handeye(_HANDEYE_PATH)
 
+# ── 相机内参 (真值, 不再用 1.2*max(W,H) 猜) ──
+# 来源 models/real_cam_calib.json 的 fx_fy_cx_cy, 由 ROS camera_info 采集。
+# 踩过: 早先 fx = 1.2*max(W,H) = 768, 而 D405 真值 394.06 —— 差近一倍,
+# 所有投影系统性偏移, 重建整体扭曲 (PSNR 从 15.27 掉到 10.9)。
+_CALIB_PATH = os.environ.get("GS_CALIB",
+                             osp.expanduser("~/zmax_map/models/real_cam_calib.json"))
+
+
+def _load_calib(path):
+    """读真内参。返回 (fx, fy, cx, cy, calib_w, calib_h) 或 None。"""
+    if not path or not osp.exists(path):
+        print("[calib] 未找到 %s, 内参退回估算值" % path)
+        return None
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        fx, fy, cx, cy = [float(v) for v in d["fx_fy_cx_cy"]]
+        w, h = d.get("image_size") or [640, 480]
+        print("[calib] 已加载 %s | fx=%.2f fy=%.2f cx=%.2f cy=%.2f | 标定尺寸 %sx%s"
+              % (path, fx, fy, cx, cy, w, h))
+        return (fx, fy, cx, cy, float(w), float(h), d.get("dist"))
+    except Exception as e:
+        print("[calib] 解析失败 %s: %s, 内参退回估算值" % (path, e))
+        return None
+
+
+CALIB = _load_calib(_CALIB_PATH)
+
 # ── 配置 (环境变量可覆盖) ──
 FRAME_URL = os.environ.get("GS_FRAME_URL", "http://192.168.23.66:8792/frame.jpg")
 POSE_URL = os.environ.get("GS_POSE_URL", "http://192.168.23.50:8804/pose")
@@ -263,18 +291,35 @@ def _log(meta):
 def _write_cameras(sess):
     """把本趟帧+位姿写成 cameras.json (T_cam2world, OpenCV 光学系)
     位姿约定: 机械臂 TCP 真值 = base←flange, 相机装在臂上, 手眼标定给出 cam←flange。
-    这里没有手眼时退化为 TCP 位姿直接当相机位姿 (会偏, 但方向/尺度一致, 3DGS 能学结构)。
+    T_base2cam = T_base2tcp @ T_cam2tool, T_cam2world = inv(T_base2cam)。
+    内参优先用 real_cam_calib.json 真值, 按实际帧尺寸等比缩放。
     """
     frames = sess["frames"]
     if not frames:
         return
-    # 图像尺寸 + 焦距
     W, H = frames[0].get("w"), frames[0].get("h")
-    fx = 1.2 * max(W or 640, H or 480)
-    K = [[fx, 0.0, (W or 640) / 2.0], [0.0, fx, (H or 480) / 2.0], [0.0, 0.0, 1.0]]
-    out = {"width": int(W or 640), "height": int(H or 480), "K": K,
+    W = int(W or 640)
+    H = int(H or 480)
+    if CALIB is not None:
+        fx, fy, cx, cy, cw, ch, _dist = CALIB
+        # 实际帧尺寸和标定尺寸不一致时按比例缩放 (例如采到 320x240 的缩略图)
+        sx, sy = W / cw, H / ch
+        fx, cx = fx * sx, cx * sx
+        fy, cy = fy * sy, cy * sy
+        K = [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]
+        k_src = "real_cam_calib.json(真机内参) 缩放 %.3fx%.3f" % (sx, sy)
+    else:
+        # 兜底估算, 显式标注, 免得又被当成真值
+        fx = 1.2 * max(W, H)
+        K = [[fx, 0.0, W / 2.0], [0.0, fx, H / 2.0], [0.0, 0.0, 1.0]]
+        k_src = "估算 1.2*max(W,H)=%.1f (无标定文件, 不可信)" % fx
+    pose_note = ("位姿=T_base2tcp @ T_cam2tool 手眼变换" if HANDEYE_X is not None
+                 else "位姿=机械臂TCP真值(未经手眼变换)")
+    out = {"width": W, "height": H, "K": K,
            "convention": "T_cam2world",
-           "note": "gs_autocap_daemon 自动采集; 位姿=机械臂TCP真值(未经手眼变换)",
+           "note": "gs_autocap_daemon 自动采集; %s; K=%s" % (pose_note, k_src),
+           "K_src": k_src,
+           "handeye_applied": HANDEYE_X is not None,
            "frames": frames}
     json.dump(out, open(osp.join(sess["dir"], "cameras.json"), "w"),
               ensure_ascii=False, indent=1)
