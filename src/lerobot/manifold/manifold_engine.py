@@ -63,6 +63,14 @@ try:
 except Exception:                                                              # noqa: BLE001
     sphere_mod = None
 
+# ── 对称轨道预测 (老倪 2026-10-23「预测 = 沿对称群轨道等距离推演」) ──
+#   Φ 不变的方向 = 群的对称方向 ⇒ 沿轨道等距推演; 破缺 (速度/方向/残差/势) 处判无效。
+#   ⚠ 纯观测量: 不改 p / 不改动作 ⇒ 关掉或失败都与旧行为逐位相同。
+try:
+    from lerobot.manifold.orbit_predict import OrbitPredictor as _OrbitPredictor
+except Exception:                                                              # noqa: BLE001
+    _OrbitPredictor = None
+
 # ── 内稳态层 (2026-10-10 老倪: 身体状态/功能性感受/自我模型) ──
 #   ⚠️ hospitality 模块带 @dataclass ⇒ 动态加载时**必须先 sys.modules[spec.name]=m 再 exec_module**,
 #   否则 dataclasses 取 sys.modules.get(cls.__module__).__dict__ 报 'NoneType' has no attribute '__dict__'。
@@ -618,6 +626,11 @@ class ManifoldEngine:
         self.hom_enabled = bool(homeostasis) and HomeostasisEngine is not None
         self._satisfy = _satisfy_fn
         self.hom = HomeostasisEngine() if self.hom_enabled else None
+        # 🧭 对称轨道预测器 (观测量): 关掉 ZMAX_ORBIT_PREDICT=0 即完全不影响旧行为
+        self.orbit_enabled = (os.environ.get("ZMAX_ORBIT_PREDICT", "1") not in ("0", "false", "False"))
+        self.orbit = (_OrbitPredictor(window=6, manifold="euclidean" if manifold_type == "euclidean" else "sphere")
+                      if (self.orbit_enabled and _OrbitPredictor is not None) else None)
+        self.orbit_last: dict = {}
 
     def _sat(self, x, lo, hi):
         return float(max(0.0, min(1.0, (float(x) - lo) / (hi - lo)))) if hi > lo else 0.0
@@ -1043,6 +1056,14 @@ class ManifoldEngine:
         if hj is not None:
             rec["hjepa"] = hj
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
+        # 🧭 对称轨道预测 (观测: 沿等价轨道等距推下一步; 破缺处只报破缺, 不外推)
+        if self.orbit is not None:
+            try:
+                self.orbit_last = self.orbit.observe(r["p"], phi=float(gf["phi"]))
+                rec["orbit"] = self.orbit_last
+            except Exception as e:                                             # noqa: BLE001
+                self.orbit_last = {"valid": False, "break_reason": "orbit_error:%s" % e}
+                rec["orbit"] = self.orbit_last
         return rec
 
     def query(self, what: str = "all") -> dict:

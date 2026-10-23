@@ -719,6 +719,7 @@ class Loop:
         hom = rec.get("homeostasis") or {}
         p = np.asarray(rec.get("p"), float).ravel()
         a = np.asarray(rec.get("action"), float).ravel()
+        _orb = rec.get("orbit") or {}          # 🧭 引擎给的对称轨道预测/破缺判读
         return {
             "ts": time.time(), "ts_str": time.strftime("%F %T"), "cycle": self.n,
             "hz": self.hz, "ms": round(ms, 3), "dt": self.dt,
@@ -769,6 +770,14 @@ class Loop:
             "hjepa": rec.get("hjepa") or {},
             "chunk_keys": (self.chunk.trace_keys(chunk_rec)
                            if (self.chunk is not None and isinstance(chunk_rec, dict)) else {}),
+            # 🧭 对称轨道预测 (老倪 2026-10-23): 沿等价轨道等距推下一步 + 破缺判读
+            #    valid=True 才是"这个方向对称、可以外推"; False 只报破缺原因, 不给假预测
+            "orbit": _orb, "orbit_valid": bool(_orb.get("valid")),
+            "orbit_speed_rad": float(_orb.get("step_mean") or 0.0),
+            "orbit_err_rad": _orb.get("err_rad"),
+            "orbit_hit_rate": _orb.get("hit_rate"),
+            "orbit_break": str(_orb.get("break_reason") or ""),
+            "orbit_pred_1": (_orb.get("pred") or {}).get("1"),
             "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
             "pipe_calls": int(self.pipe_calls),
             "pipe_on": bool(self.pipe is not None),
