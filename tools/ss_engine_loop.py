@@ -408,6 +408,11 @@ class Loop:
         self.pipe_frame = None
         self.pipe_frame_ts = 0.0
         self.pipe_calls = 0
+        # 🧭 对称性编排 (老倪 2026-10-23「对称性指导运行」): 破缺才重规划, 对称成立且计划不老就省一次
+        self.sym_pipe = (os.environ.get("ZMAX_PIPE_SYMMETRY", "0") not in ("0", "false", "False"))
+        self.pipe_age = 10 ** 9          # 距上次真跑 pipeline 的周期数
+        self.break_refresh: list[int] = []   # 破缺 → 重规划的延迟 (周期数)
+        self._break_pending = None
         self.pipe_last: dict = {}
         self.state_file = state_file
         self.traj_path = traj_path
@@ -714,8 +719,35 @@ class Loop:
             phys_rec = {"note": "物理偏差读取失败 %s: %s" % (type(e).__name__, str(e)[:60])}
         # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」: 每 N 周期按序真跑 L5→MEM→L2→L4→L3
         pipe_rec: dict = {}
-        if self.pipe is not None and (self.n % self.pipe_every == 0):
-            pipe_rec = self._run_pipeline(state)
+        _orb_now = rec.get("orbit") or {}
+        _trigger = ""
+        if self.pipe is not None:
+            _broke = (_orb_now.get("valid") is False) and bool(_orb_now.get("n", 0) >= 2)
+            _due = (self.n % self.pipe_every == 0)
+            _run = _due
+            _trigger = "periodic"
+            if self.sym_pipe:
+                # 破缺 = 轨道假设已破 (物理不再给答案) ⇒ 尽快重规划, 但至少间隔 2 拍防抖
+                if _broke and self.pipe_age >= 2:
+                    _run, _trigger = True, "break"
+                # 只在「再跳一次也不会超过 2 个周期」时才省 (陈旧上限 = 2×every)
+                elif _due and not _broke and (self.pipe_age + self.pipe_every) <= 2 * self.pipe_every:
+                    _run, _trigger = False, "skip_symmetry"      # 对称成立+计划不老 ⇒ 省这次
+                elif _due:
+                    _run, _trigger = True, "periodic"
+                else:
+                    _trigger = "break_debounce" if _broke else "wait"
+            if _run:
+                pipe_rec = self._run_pipeline(state)
+                self.pipe_age = 0
+                pipe_rec["trigger"] = _trigger
+                if self._break_pending is not None:
+                    self.break_refresh.append(self.n - self._break_pending)
+                    self._break_pending = None
+            else:
+                self.pipe_age += 1
+                if _broke and self._break_pending is None:
+                    self._break_pending = self.n
         hom = rec.get("homeostasis") or {}
         p = np.asarray(rec.get("p"), float).ravel()
         a = np.asarray(rec.get("action"), float).ravel()
@@ -780,6 +812,11 @@ class Loop:
             "orbit_pred_1": (_orb.get("pred") or {}).get("1"),
             "pipe": pipe_rec if isinstance(pipe_rec, dict) else {},
             "pipe_calls": int(self.pipe_calls),
+            # 🧭 对称性编排: 这次为什么跑/为什么省 + 计划有多旧 + 破缺→重规划的延迟
+            "pipe_trigger": str(_trigger or ""), "pipe_age_cycles": int(self.pipe_age),
+            "pipe_symmetry": bool(self.sym_pipe),
+            "break_refresh_mean": (float(np.mean(self.break_refresh[-50:])) if self.break_refresh else None),
+            "break_refresh_n": int(len(self.break_refresh)),
             "pipe_on": bool(self.pipe is not None),
         }
 

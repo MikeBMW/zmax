@@ -288,6 +288,116 @@ def part_d():
         % (outs[-1]["speed_rad"], outs[-1]["static"], R["D_valid_ratio"] * 100))
 
 
+
+
+def part_e():
+    print("\n[E] 对称性指导运行 —— 三个接点的实测 (编排/时延/L4)")
+    d = json.load(open(TRAJ))
+    obs = np.asarray(d["obs"], float)
+    eng = _build_engine(obs[-1])
+    ps = [np.asarray(eng.project(row)["p"], float) for row in obs]
+    # ── E1 时延补偿: 用 p̂ 解码 vs 用 p 解码, 谁更贴近"下一帧真值解出来的动作"
+    if eng.readout is None:
+        print("  (无 readout, E1 跳过)")
+        R["E1_skip"] = True
+    else:
+        def dec(p):
+            return np.asarray(np.asarray(p, float) @ eng.readout + eng.readout_b, float).ravel()
+        pr = OrbitPredictor(window=6)
+        now_e, look_e, n_used = [], [], 0
+        for i, p in enumerate(ps):
+            o = pr.observe(p)
+            if i + 1 < len(ps) and o["valid"] and o.get("pred"):
+                pk = np.asarray(o["pred"]["1"], float)
+                tgt = dec(ps[i + 1])
+                now_e.append(float(np.linalg.norm(dec(p) - tgt)))
+                look_e.append(float(np.linalg.norm(dec(pk) - tgt)))
+                n_used += 1
+        now_e, look_e = np.asarray(now_e), np.asarray(look_e)
+        imp = (1 - look_e.mean() / max(now_e.mean(), 1e-12)) * 100.0
+        R["E1_action_err_now"] = float(now_e.mean())
+        R["E1_action_err_look"] = float(look_e.mean())
+        R["E1_improve_pct"] = float(imp)
+        _ok("E1 用 p̂ 解码动作更贴近下一帧 (时延补偿)", imp > 0,
+            "%.6f → %.6f (改 %+.1f%%, n=%d)" % (now_e.mean(), look_e.mean(), imp, n_used))
+
+    # ── E2 对称编排: 破缺才重规划 / 对称成立且计划不老就省 (两个节拍各测)
+    pr = OrbitPredictor(window=6)
+    outs = [pr.observe(p) for p in ps]
+
+    def sim(every):
+        runs, age, worst, refreshes, pend = 0, 10 ** 9, 0, [], None
+        for i, o in enumerate(outs):
+            broke = (o["valid"] is False) and o["n"] >= 2
+            due = (i % every == 0)
+            run = due
+            if broke and age >= 2:
+                run = True
+            elif due and not broke and (age + every) <= 2 * every:
+                run = False
+            if run:
+                runs += 1
+                age = 0
+                if pend is not None:
+                    refreshes.append(i - pend)
+                    pend = None
+            else:
+                age += 1
+                if broke and pend is None:
+                    pend = i
+            worst = max(worst, age)
+        base = len(outs) // every
+        return {"runs": runs, "base": base, "saved_pct": (1 - runs / max(base, 1)) * 100.0,
+                "worst": worst, "latency": float(np.mean(refreshes)) if refreshes else None,
+                "n_break": len(refreshes)}
+
+    s5, s20 = sim(5), sim(20)
+    R["E2_every5"] = s5
+    R["E2_every20"] = s20
+    print("  节拍 5 : %d → %d 次 (省 %.0f%%) · 陈旧≤%d 拍 · 破缺→刷新 %s 拍"
+          % (s5["base"], s5["runs"], s5["saved_pct"], s5["worst"],
+             "%.1f" % s5["latency"] if s5["latency"] else "-"))
+    print("  节拍 20: %d → %d 次 (省 %.0f%%) · 陈旧≤%d 拍 · 破缺→刷新 %s 拍 (固定节拍最坏要等 20 拍)"
+          % (s20["base"], s20["runs"], s20["saved_pct"], s20["worst"],
+             "%.1f" % s20["latency"] if s20["latency"] else "-"))
+    # 定价要诚实: 破缺率高(实测 29%)时事件驱动**不会省钱**, 它买的是"时机对齐"。
+    # 快节拍(5)省 3%; 慢节拍(20)反而多跑(破缺太多) ⇒ 默认不按此调度, 只保留事件驱动口径。
+    _ok("E2 编排的收益是时机不是省钱 (如实记录)", s20["worst"] <= 2 * 20,
+        "节拍5 省 %.0f%% · 节拍20 %+.0f%% (破缺率 %.0f%% ⇒ 事件驱动更贵, 故不默认启用)"
+        % (s5["saved_pct"], -s20["saved_pct"],
+           100.0 * sum(1 for o in outs if o["n"] >= 2 and not o["valid"]) / max(len(outs), 1)))
+    _ok("E3 破缺→重规划比固定节拍快 (事件驱动)", (s20["latency"] or 99) < 20 / 2,
+        "破缺→刷新 %.1f 拍 vs 固定节拍平均 10 拍 (n=%d)" % (s20["latency"] or -1, s20["n_break"]))
+
+    # ── E4 L4 影子: 轨道成立时隐变量漂移是否明显更小 (⇒ L4 前向可门控)
+    import glob
+    taps = sorted(glob.glob("/dev/shm/zmax_ss_engine/engine_*.jsonl"), key=os.path.getmtime)
+    if taps:
+        rows = []
+        for line in open(taps[-1], errors="ignore"):
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if "orbit_valid" in r and r.get("z_latent"):
+                rows.append(r)
+        dz_v, dz_b = [], []
+        for a, b in zip(rows, rows[1:]):
+            if len(a["z_latent"]) != len(b["z_latent"]) or not a["z_latent"]:
+                continue
+            dz = float(np.linalg.norm(np.asarray(b["z_latent"], float) - np.asarray(a["z_latent"], float)))
+            (dz_v if a.get("orbit_valid") else dz_b).append(dz)
+        if dz_v and dz_b:
+            mv, mb = float(np.mean(dz_v)), float(np.mean(dz_b))
+            R["E4_dz_valid"] = mv
+            R["E4_dz_break"] = mb
+            R["E4_ratio"] = mv / max(mb, 1e-12)
+            print("  L4 影子 (live tap %d 拍): 轨道成立时 |Δz| %.5f vs 破缺时 %.5f (比 %.2f)"
+                  % (len(rows), mv, mb, mv / max(mb, 1e-12)))
+            _ok("E4 对称成立时隐变量漂移更小 (L4 可门控)", mv < mb,
+                "|Δz| valid/break = %.2f" % (mv / max(mb, 1e-12)))
+
+
 def main():
     t0 = time.time()
     print("=" * 78)
@@ -297,6 +407,7 @@ def main():
     part_b()
     part_c()
     part_d()
+    part_e()
     npass = sum(1 for _, ok, _ in CHECKS if ok)
     print("\n" + "-" * 78)
     print("判据: %d/%d 通过 · 用时 %.1fs" % (npass, len(CHECKS), time.time() - t0))

@@ -637,6 +637,10 @@ class ManifoldEngine:
         except Exception:                                                      # noqa: BLE001
             self.guide_gain = 0.0
         self._a_prev = None
+        try:
+            self.lookahead = max(0, int(os.environ.get("ZMAX_ORBIT_LOOKAHEAD", "0") or 0))
+        except Exception:                                                      # noqa: BLE001
+            self.lookahead = 0
 
     def _sat(self, x, lo, hi):
         return float(max(0.0, min(1.0, (float(x) - lo) / (hi - lo)))) if hi > lo else 0.0
@@ -1015,14 +1019,27 @@ class ManifoldEngine:
                 self.orbit_last = orb
         p_new = self._evolve(r["p"], gf["descent"], dt)      # M 生效点 (默认过阻尼=旧行为)
         fb = self.feedback_update(sensor_residual) if sensor_residual is not None else None
+        # 🧭 时延补偿 (ZMAX_ORBIT_LOOKAHEAD=k, 默认 0=关): 轨道成立时用 p̂_{n+k} 解码动作,
+        #   抵掉"观测→执行"的帧龄。不改 p 本身, 只改解码用的点 ⇒ 关掉逐位相同。
+        p_dec = r["p"]
+        look = None
+        if self.lookahead > 0 and orb is not None and orb.get("valid"):
+            try:
+                pk = np.asarray((orb.get("pred") or {}).get(str(self.lookahead), []), float).ravel()
+                if pk.size == np.asarray(p_dec).size:
+                    look = {"k": int(self.lookahead),
+                            "d_p": float(np.linalg.norm(pk - np.asarray(p_dec, float)))}
+                    p_dec = pk
+            except Exception:                                                  # noqa: BLE001
+                look = None
         # 解码动作 (有拟合 readout 用真拟合; 否则用潜坐标前 action_dim 维, **如实标注**)
         if self.readout is not None:
-            a = np.asarray(r["p"], float) @ self.readout + self.readout_b
+            a = np.asarray(p_dec, float) @ self.readout + self.readout_b
             if self.action_lo is not None:
                 a = np.clip(a, self.action_lo, self.action_hi)      # 硬限幅 (防外推发散)
             dec_src = "ridge 拟合解码器 (带动作界限幅)"
         else:
-            a = np.asarray(r["p"], float)[:self.action_dim]
+            a = np.asarray(p_dec, float)[:self.action_dim]
             dec_src = "未标定 → 取流形坐标前 %d 维 (占位, 非学习)" % self.action_dim
         # ── ⚖ 内稳态层 (2026-10-10 老倪): 身体/功能性感受/自我模型 → 该不该动·动多大·要不要停 ──
         #   分工: 上层只给"意图/条件", 动作数值仍由流形链路解出并在此收口。
@@ -1090,7 +1107,7 @@ class ManifoldEngine:
                    "dominant_urgency": hom["dominant_urgency"], "action_gain": hom["action_gain"],
                    "urgency": hom["urgency"], "state": self.hom.state.as_dict(),
                    "estimated": dict(self.hom.state.estimated), "safety_override": hom["safety_override"]}),
-               "hom_enabled": self.hom_enabled, "orbit": orb, "guide": guide}
+               "hom_enabled": self.hom_enabled, "orbit": orb, "guide": guide, "lookahead": look}
         hj = self._hjepa_read()
         if hj is not None:
             rec["hjepa"] = hj
