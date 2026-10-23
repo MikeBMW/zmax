@@ -38,7 +38,23 @@ sshpass -p <intel密码> ssh -o StrictHostKeyChecking=no -J orin intel@192.168.2
 Orin 上通常只 ping 得通 intel、没有到它的 key 授权（`ssh orin 'ssh -o BatchMode=yes intel@…'` → Permission denied(publickey)），
 所以用**本机 `-J orin` + sshpass**，别去 Orin 上折腾 key。密码从记忆/交接取，不猜。
 
-还有一条独立入口：控制台 `/status/all`（8796）的 `edge` 块是**控制台自己那条隧道**（`http://127.0.0.1:18800/health`）看到的口径。
+🔴 **人在办公室(本机只有办公 WiFi)、实验室内网整段不可达时, 走公网跳板两跳**:
+```bash
+ssh -p 22022 tashan@39.102.211.79 'hostname; ip -4 addr show | awk "/inet 192.168.23/{print \$2}"'
+# 再以跳板为支点摸内网: 跳板→intel 通常没有免密 key ⇒ 用 paramiko 带密码建 direct-tcpip 通道
+```
+判据: 在跳板上 `ping -c1 192.168.23.70/.23/.160` 全通 = 实验室内网活着, **不是设备掉了**;
+本机 `ip -4 addr` 只见 10.163.x = 只是本机没了产线路由(网卡/网线不在位), 两者必须分开报。
+第二跳用 paramiko (`Transport((host,22))` + `open_channel('direct-tcpip',(内网IP,22),(…))`) 或先跳板上装 sshpass;
+⚠️ 跳板上跑长探测/写文件的脚本用 paramiko 的 **SFTP 写**而不是 heredoc —— 远端 heredoc 里 `$V`/`$(date)` 会被本地 shell 先展开。
+
+🔴 **“现场打不开页面/看不到画面”先看那套页服务到底跑在哪台机**: 相机流(`8791`)、工位控制(`8793`)、AR(`8797`)
+如果跑在**笔记本(工位机)**上, 笔记本被带回办公室后实验室就真的没有这条链路了 —— 此时设备、控制器、AOI 全正常,
+报的时候要写“入口在笔记本上、已离开现场”, 别让用户以为实验室死了。现场自带的服务(AOI 10082/10083、建图 8801/8803)照常。
+
+还有一条独立入口：控制台 `/status/all`（8796）的 `edge` 块是**控制台自己那条隧道**（`http://127.0.0.1:18800/health`）看到的口径；报“界面显示在线/离线”时用它, 自己 ping 不通不等于界面显示离线, 两者要分开说。
+第三个独立源是 ECS 的 `/orin/status`（`{"online":true,"last_seen":"HH:MM:SS"}`）—— 它只证明 Orin 侧上报活着,
+不能代替机体/控制器真值; 三源口径不一致时以能登上去实测的那条为准。
 报“界面显示在线/离线”时用它；自己 ping 不通不等于界面显示离线，两者要分开说。
 
 ### 2. 一条命令把状态抓全，不要一句一条 ssh

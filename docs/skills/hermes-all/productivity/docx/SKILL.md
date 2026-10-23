@@ -183,6 +183,14 @@ cannot render PDFs, and layout fidelity requires a real renderer.
 
 ## Verification
 
+### Word 工艺卡「一卡一页」实测
+
+- 一卡一页靠**图片宽度**调：A4 正文宽 17cm 时，640×420 画布截图取 **13.2cm** 宽，才能让「3 段长描述 + 参数表 + 依据」的卡不跨页；15.2cm 会只剩依据一行溢到下一页。
+- 改完必须验证：`soffice --headless --convert-to pdf` + `pdfimages -list <pdf>`，按页号数图片数（每页 1 张 = 每卡落在一页），`pdfinfo` 看总页数。
+- 整段中文描述别用 List Bullet：`first_line_indent=Pt(20)` + `line_spacing=1.18` + `JUSTIFY` 才是文档体，项目符号是清单体。
+- 页码用 `w:fldChar` 域（PAGE/NUMPAGES）；`paragraph.text` 读回为空属正常，域要 Word/LibreOffice 打开才求值。
+- 表格 6 列塞不下就砍到 4 列，把「依据」并进最后一格末尾（`［依据：…］`），比横向压字可读。
+
 - After create/edit/template, run `docx_read.py out.docx --text` and
   check the expected strings appear (and old strings are gone).
 - After accept/reject, `docx_revisions.py list` should return `[]` (or
