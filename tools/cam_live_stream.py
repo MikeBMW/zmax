@@ -5726,6 +5726,10 @@ def main():
                     help="相机②本机 /dev/videoN (MAXHUB 电视顶摄; -1=关)")
     ap.add_argument("--local2-url", default="",
                     help="相机②走网络: http(s) JPEG/MJPEG 或 rtsp:// (MAXHUB 联网模式)")
+    ap.add_argument("--local2-label", default="",
+                    help="相机②显示名 (如 '🎥 中央相机'); 空=按设备名/URL 自动取")
+    ap.add_argument("--local2-fps", type=float, default=0.0,
+                    help="相机②单独限帧 (0=沿用 --fps; 网络相机按源端真实帧率给, 别跟着 30 空转)")
     ap.add_argument("--no-local2", action="store_true", help="不启第二路相机")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
@@ -5800,14 +5804,15 @@ def main():
     # 🎥 三相机: 第二路 (MAXHUB 电视顶摄: 本机 USB 或网络流二选一)
     if not args.no_local2 and (args.local2_url or args.local2_dev >= 0):
         if args.local2_url:
-            _CAM_LABEL["local2"] = "📺 " + args.local2_url.split("//")[-1][:34]
-            print(f"   相机② 网络: {args.local2_url}", flush=True)
+            _CAM_LABEL["local2"] = args.local2_label or ("📺 " + args.local2_url.split("//")[-1][:34])
+            print(f"   相机② 网络: {args.local2_url}  名: {_CAM_LABEL['local2']}", flush=True)
             threading.Thread(target=url_cam_worker,
-                             args=(args.local2_url, args.fps, "local2", args.quality),
+                             args=(args.local2_url, (args.local2_fps or args.fps), "local2",
+                                   args.quality),
                              daemon=True, name="local2-url").start()
         else:
             _nm2 = _v4l_name(args.local2_dev)
-            _CAM_LABEL["local2"] = ("📺 " + (_nm2 or ("/dev/video%d" % args.local2_dev)))
+            _CAM_LABEL["local2"] = (args.local2_label or ("📺 " + (_nm2 or ("/dev/video%d" % args.local2_dev))))
             print(f"   相机② 本机: /dev/video{args.local2_dev} = {_nm2 or '(无名)'}", flush=True)
             threading.Thread(target=local_worker,
                              args=(args.local2_dev, args.quality, args.width,
