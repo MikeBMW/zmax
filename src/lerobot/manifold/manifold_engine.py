@@ -598,6 +598,15 @@ class ManifoldEngine:
         except Exception:                                                    # noqa: BLE001
             self.hjepa_w = 0.0
         self._hj_prev_pred = None
+        # 🌐 H-JEPA-MR 几何分支通道 (老倪 2026-10-23): 与语义通道零耦合, 默认未接 ⇒ 零回归
+        #    语义 rec["hjepa"] 管纹理/遮挡/接触视觉; 几何 rec["hjepa_mr"] 管 ξ∈se(3) 与 n∈S²。
+        #    两者分开是方案的核心 —— 姿态误差和语义纹理不能揉在同一个欧氏 latent 里。
+        self.hjepa_mr_provider = None
+        self.hjepa_mr_note = ""
+        try:
+            self.hjepa_mr_w = float(os.environ.get("HJEPA_MR_W", "0") or 0.0)
+        except Exception:                                                    # noqa: BLE001
+            self.hjepa_mr_w = 0.0
         self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
         # ── 几何完备性开关 (2026-10-19) — 默认两个都关 ⇒ 与旧版逐位相同 ──
         #   ① phi_metric : 势函数换成**各度规自身距离** Φ=½·d_M(q,goal)²
@@ -672,6 +681,84 @@ class ManifoldEngine:
         return {"provider": "编码模型" if provider is not None else "内建 PCA (Encoder.fit)",
                 "note_prev": prev, "note": self.latent_provider_note,
                 "latent_dim": int(self.latent_dim)}
+
+    def set_hjepa_mr_provider(self, provider, note: str = "") -> dict:
+        """🌐 H-JEPA-MR 几何分支 → 引擎**几何通道** (老倪 2026-10-23「H-JEPA-MR 混合黎曼表征」)。
+
+        provider = callable() → dict(取自 `HJEPAManifoldProvider`; 含 xi/v_n/T_pred/n_pred/
+        d_se3/d_normal/V_perf/eta/xi_samples/ms) 或 None。
+
+        与语义通道 `set_hjepa_provider` 的关系 (并存, 不替代):
+          · rec["hjepa"]    语义: z1/z2/z3 三层潜范数 + 每层能量 (纹理/遮挡/接触视觉)
+          · rec["hjepa_mr"] 几何: ξ∈se(3) twist + v∈TS² 法线切向量 + SE3 测地线诊断
+          分开的理由就是方案的核心 —— 姿态误差与语义纹理揉在单一欧氏 latent 里会互相污染,
+          微小装配偏差在欧氏空间里失真。
+
+        势注入 `HJEPA_MR_W` 默认 0.0 ⇒ 只观测不动动作 (**逐位零回归**)。
+        >0 才把 w·V_contact 加进 Φ; 这会改动作, 属另开档位, 必须单独过闸 (与 hjepa_w 同纪律)。
+        """
+        prev = self.hjepa_mr_note
+        self.hjepa_mr_provider = provider
+        self.hjepa_mr_note = str(note or "")
+        return {"provider": "H-JEPA-MR 几何分支" if provider is not None else "未接",
+                "note_prev": prev, "note": self.hjepa_mr_note,
+                "w_phi": float(getattr(self, "hjepa_mr_w", 0.0))}
+
+    def _hjepa_mr_read(self):
+        """取一帧几何分支输出 + 流形动力学预测残差。
+
+        残差口径 (与语义通道的 surprise 同一思想, 但量是几何的):
+          · d_se3_pred : 上一帧动力学预测的 g vs 本帧实际 g 的 SE(3) 测地线距离
+          · d_normal   : 法线球面偏离 (rad)
+        这两项就是"想象世界模型 vs 真实几何"的对账, 也是 L3 调度/L4 认知层该看的量。
+        """
+        if self.hjepa_mr_provider is None:
+            return None
+        try:
+            out = self.hjepa_mr_provider()
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.hjepa_mr_note}
+        if not out:
+            return {"ok": False, "why": "provider 无输出 (未就绪/超帧龄)",
+                    "note": self.hjepa_mr_note}
+        if not isinstance(out, dict) or not out.get("ok", True):
+            return {"ok": False, "why": str((out or {}).get("why") or "未知"),
+                    "note": self.hjepa_mr_note}
+        try:
+            xi = np.asarray(out.get("xi", np.zeros(6)), float).ravel()[:6]
+            v_n = np.asarray(out.get("v_n", np.zeros(3)), float).ravel()[:3]
+            T_pred = np.asarray(out.get("T_pred", np.eye(4).tolist()), float).reshape(4, 4)
+            # 动力学预测残差: 上一帧的 T_pred 与这一帧的实际位姿对账
+            prv = getattr(self, "_hj_mr_prev_T", None)
+            d_pred = None
+            if prv is not None:
+                try:
+                    from .hjepa_manifold import se3_distance
+                    d_pred = float(se3_distance(prv, T_pred))
+                except Exception:                                            # noqa: BLE001
+                    d_pred = None
+            self._hj_mr_prev_T = T_pred.copy()
+            return {"ok": True,
+                    "xi": [round(float(x), 6) for x in xi],
+                    "xi_norm": round(float(np.linalg.norm(xi)), 6),
+                    "v_n": [round(float(x), 6) for x in v_n],
+                    "n_pred": [round(float(x), 6) for x in np.asarray(out.get("n_pred", [0, 0, 1]), float).ravel()[:3]],
+                    "d_se3": round(float(out.get("d_se3") or 0.0), 6),
+                    "d_normal": round(float(out.get("d_normal") or 0.0), 6),
+                    "V_contact": float(out.get("V_contact") or 0.0),
+                    "V_perf": float(out.get("V_perf") or 0.0),
+                    "eta": round(float(out.get("eta") or 0.0), 6),
+                    "contact_state": str(out.get("contact_state") or ""),
+                    "normal_state": str(out.get("normal_state") or ""),
+                    "d_se3_pred_residual": (None if d_pred is None else round(d_pred, 6)),
+                    "mode": str(out.get("mode") or ""),
+                    "ms": out.get("ms"), "h_src": str(out.get("h_src") or ""),
+                    "note": self.hjepa_mr_note,
+                    "w_phi": float(getattr(self, "hjepa_mr_w", 0.0))}
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "解析失败: %s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.hjepa_mr_note}
 
     def set_hjepa_provider(self, provider, note: str = "") -> dict:
         """🧠 H-JEPA 三层潜空间 → 引擎**第三潜通道** (老倪 2026-10-22「A 把 H-JEPA 真接进流形引擎」)。
@@ -1126,6 +1213,10 @@ class ManifoldEngine:
         hj = self._hjepa_read()
         if hj is not None:
             rec["hjepa"] = hj
+        # 🌐 H-JEPA-MR 几何通道: ξ∈se(3) / v∈TS² / SE3 测地线诊断 (与语义通道并存)
+        hmr = self._hjepa_mr_read()
+        if hmr is not None:
+            rec["hjepa_mr"] = hmr
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
         return rec
 
