@@ -607,6 +607,17 @@ class ManifoldEngine:
             self.hjepa_mr_w = float(os.environ.get("HJEPA_MR_W", "0") or 0.0)
         except Exception:                                                    # noqa: BLE001
             self.hjepa_mr_w = 0.0
+        # 🌍 SE(3) 几何阻抗「万有引力」通道 (老倪 2026-10-25):
+        #    「将状态空间的万有引力, 按照这个算法实现」
+        #    旧引力 _metric_phi_smooth = ½(1−⟨q̂,ĝ⟩) 只有方向, 没有轴向/侧向之分;
+        #    新引力 V = ½ξ_eᵀKξ_e + u = +Kξ_e − Bξ, 刚性主轴固定工具本体。
+        #    默认未接 ⇒ 零回归 (SE3_GRAVITY_W=0 不进势)。
+        self.se3_gravity_provider = None
+        self.se3_gravity_note = ""
+        try:
+            self.se3_gravity_w = float(os.environ.get("SE3_GRAVITY_W", "0") or 0.0)
+        except Exception:                                                    # noqa: BLE001
+            self.se3_gravity_w = 0.0
         self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
         # ── 几何完备性开关 (2026-10-19) — 默认两个都关 ⇒ 与旧版逐位相同 ──
         #   ① phi_metric : 势函数换成**各度规自身距离** Φ=½·d_M(q,goal)²
@@ -703,6 +714,73 @@ class ManifoldEngine:
         return {"provider": "H-JEPA-MR 几何分支" if provider is not None else "未接",
                 "note_prev": prev, "note": self.hjepa_mr_note,
                 "w_phi": float(getattr(self, "hjepa_mr_w", 0.0))}
+
+    def set_se3_gravity_provider(self, provider, note: str = "") -> dict:
+        """🌍 SE(3) 几何阻抗「万有引力」→ 引擎通道 (老倪 2026-10-25)。
+
+        provider = callable() → dict(取自 `se3_gravity_provider.Se3GravityProvider`)
+        或任何返回 {ok, u, V, Vdot, xi_e, ...} 的可调用体。
+
+        与 hjepa_mr 通道的分工:
+          · hjepa_mr  : 世界模型**预测**的几何量 (ξ / v_n / d_se3, 来自网络)
+          · se3_gravity: **控制后端**算出来的力扭 u 和势能 V (来自几何阻抗律)
+        两条都接也不冲突 —— 前者是"看", 后者是"推"。
+        """
+        prev = self.se3_gravity_note
+        self.se3_gravity_provider = provider
+        self.se3_gravity_note = str(note or "")
+        return {"provider": "SE(3) 几何阻抗 (万有引力)", "note_prev": prev,
+                "note": self.se3_gravity_note, "w": self.se3_gravity_w}
+
+    def _se3_gravity_read(self):
+        """取一帧 SE(3) 几何阻抗输出 (u / V / V̇ / ξ_e)。
+
+        三件事必须能对上账, 否则调用方没法判断"引力到底在不在":
+          ① u      体坐标力扭 6 维, 标准序 [力; 力矩]
+          ② V / V̇  势能及其变化率 —— V̇ ≤ 0 是被动性的硬判据
+          ③ V 的**数值下降**与 V̇ 的符号一致 (不同源就是 bug, 见过这种)
+        """
+        if self.se3_gravity_provider is None:
+            return None
+        try:
+            out = self.se3_gravity_provider()
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.se3_gravity_note}
+        if not isinstance(out, dict) or not out.get("ok", True):
+            return {"ok": False, "why": str((out or {}).get("why") or "未知"),
+                    "note": self.se3_gravity_note}
+        try:
+            u = np.asarray(out.get("u", np.zeros(6)), float).ravel()[:6]
+            xi_e = np.asarray(out.get("xi_e", np.zeros(6)), float).ravel()[:6]
+            V = float(out.get("V") or 0.0)
+            Vdot = float(out.get("Vdot") or 0.0)
+            # 与上一帧对账: V 该降还是该升, 必须和 V̇ 同号 (同源判据)
+            prev_V = getattr(self, "_se3g_prev_V", None)
+            dV = None if prev_V is None else float(V - prev_V)
+            consistent = None
+            if dV is not None:
+                # V̇<0 ⇒ V 应减小 (dV≤~0); V̇=0 ⇒ dV 应≈0。允许 1e-9 的数值噪声。
+                consistent = bool(dV <= 1e-9) if Vdot <= 0 else True
+            self._se3g_prev_V = V
+            return {"ok": True,
+                    "u": [round(float(v), 6) for v in u],
+                    "|u|": round(float(np.linalg.norm(u)), 6),
+                    "xi_e": [round(float(v), 8) for v in xi_e],
+                    "|xi_e|": round(float(np.linalg.norm(xi_e)), 8),
+                    "V": round(V, 10),
+                    "Vdot": round(Vdot, 10),
+                    "dV": None if dV is None else round(dV, 10),
+                    "dV_matches_Vdot": consistent,
+                    "saturated": bool(out.get("saturated")),
+                    "K_diag": out.get("K_diag"),
+                    "goal": out.get("goal"),
+                    "w": self.se3_gravity_w,
+                    "note": self.se3_gravity_note or out.get("note", ""),
+                    "why": out.get("why", "")}
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
+                    "note": self.se3_gravity_note}
 
     def _hjepa_mr_read(self):
         """取一帧几何分支输出 + 流形动力学预测残差。
@@ -1217,6 +1295,10 @@ class ManifoldEngine:
         hmr = self._hjepa_mr_read()
         if hmr is not None:
             rec["hjepa_mr"] = hmr
+        # 🌍 SE(3) 几何阻抗「万有引力」通道 (老倪 2026-10-25)
+        _sg = self._se3_gravity_read()
+        if _sg is not None:
+            rec["se3_gravity"] = _sg
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
         return rec
 

@@ -1,0 +1,35 @@
+# /etc/systemd/system/zmax-se3-gravity-evolve.service
+# SE(3) 几何阻抗「万有引力」参数自主进化守护 (Intel Arc B390, 550C)
+#
+# 老倪 2026-10-25: 「将状态空间的万有引力, 按照这个算法实现 ... 最终部署到 550C 自主进化」
+#
+# 进化的是阻抗参数 (k_lat/k_ax/k_rot_*/alpha/kf_z), **不是**网络权重。
+# 适应度带被动性硬闸: V̇ > 0 出现一次整代判废 —— 那是安全性判据, 不许被性能分掩盖。
+# 限幅 u_max 不参与进化 (硬件保护)。
+#
+# 每轮 6 代约 2s (纯 numpy 闭环仿真, 不占 GPU), 冷却 600s。
+[Unit]
+Description=Z-MAX SE(3) 几何阻抗(万有引力)参数自主进化 (550C)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel/se3_gravity
+Environment=LD_LIBRARY_PATH=/home/intel/train_venv/lib
+Environment=ZMAX_ROOT=/home/intel/se3_gravity
+Environment=PYTHONPATH=/home/intel/se3_gravity
+Environment=MR_GENS=6
+Environment=MR_MARGIN=0.05
+Environment=MR_SEED=0
+ExecStartPre=/home/intel/train_venv/bin/python -c "import numpy; print('numpy ok')"
+ExecStart=/bin/bash -lc 'mkdir -p /home/intel/se3_gravity && while true; do /home/intel/train_venv/bin/python -u /home/intel/se3_gravity/evolve.py; echo "--- 冷却 600s ---"; sleep 600; done'
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/intel/se3_gravity/evolve.log
+StandardError=append:/home/intel/se3_gravity/evolve.log
+
+[Install]
+WantedBy=multi-user.target
