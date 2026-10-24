@@ -903,11 +903,17 @@ def draw_overlay(img, spec: dict, cam: str, tcp7=None, extra: dict | None = None
     if _guide_off:
         band.append("🧭 辅助线不适用当前相机源 %d 条(没画) — 换回内置相机, 或在这台相机上重跑 "
                     "tools/laptop_guide_lines.py" % _guide_off)
+    # 🧹 2026-10-25 老倪: 「中央相机和手臂相机窗口下面的文字显示，都删掉」
+    #   这条真值带是**烧进 JPEG 像素**的(CSS 移不动), 640x480 缩到 300px 宽后字只剩 ~3px,
+    #   读不出内容却糊住画面底部 ~20%。调用方传 extra={"no_band": True} 即不画带(框/辅助线照旧)。
+    if (extra or {}).get("no_band"):
+        band = []
     y = H - 8 - 16 * (len(band) - 1)
-    cv2.rectangle(img, (0, max(0, y - 18)), (W, H), (16, 22, 30), -1)
-    for i, t in enumerate(band):
-        cv2.putText(img, t, (8, max(14, y + i * 16)), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
-                    (230, 237, 243), 1, cv2.LINE_AA)
+    if band:
+        cv2.rectangle(img, (0, max(0, y - 18)), (W, H), (16, 22, 30), -1)
+        for i, t in enumerate(band):
+            cv2.putText(img, t, (8, max(14, y + i * 16)), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
+                        (230, 237, 243), 1, cv2.LINE_AA)
     # ── 辅助线(origin=guide) 在真值带**之上**再补画一遍 (2026-09-30 实测) ──
     #   真值带从 y≈358 一直铺到画面底, 落在带内的辅助线(如"空间底" y=415)在叠加帧里**一个像素都没有**。
     #   这类线是量测标注(标"横梁围成的内部空间"的层次), 压在状态带上也必须可读 ⇒ 带画完补一遍。

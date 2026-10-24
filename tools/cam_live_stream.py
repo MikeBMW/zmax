@@ -3296,6 +3296,10 @@ def overlay_worker(src_name: str, fps_cap: float) -> None:
                                         "name": _st.get("name"), "wh": [img.shape[1], img.shape[0]]}
                 except Exception:                                              # noqa: BLE001
                     pass
+            # 🧹 2026-10-25 老倪: 「中央相机和手臂相机窗口下面的文字显示，都删掉」
+            #   这三路(臂上/本机/中央)的叠加帧一律不烧底部真值带; 深度/AOI 不受影响。
+            if src_name in ("arm", "local", "local2"):
+                extra["no_band"] = True
             img2, info = _SO.draw_overlay(img, spec, src_name, tcp, extra)
             ok, buf = cv2.imencode(".jpg", img2, params)
             if ok:
@@ -3961,6 +3965,15 @@ def _station_exec_plan(body: dict) -> dict:
             "msg": "✅ 逐段执行完成" if not stopped else "⛔ 执行中止(失败/残差超限) — 不重发、不自动补偿"}
 
 
+def _station_ver() -> int:
+    """页面版本号 = tools/web/station.html 的 mtime(取整秒)。页面靠它判自己是不是老版本。"""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "station.html")
+    try:
+        return int(os.path.getmtime(p))
+    except Exception:                                                         # noqa: BLE001
+        return 0
+
+
 def _station_page() -> bytes:
     """🛰 工位总览页真源 = `tools/web/station.html`(按 mtime 热读)。
 
@@ -3973,7 +3986,9 @@ def _station_page() -> bytes:
         m = os.path.getmtime(p)
         if _STATION_CACHE["t"] != m:
             with open(p, "rb") as f:
-                _STATION_CACHE["b"] = f.read()
+                _b = f.read()
+            _b = _b.replace(b"__HTMLVER__", str(int(m)).encode())
+            _STATION_CACHE["b"] = _b
             _STATION_CACHE["t"] = m
         return _STATION_CACHE["b"]
     except Exception:                                                         # noqa: BLE001
@@ -5295,7 +5310,11 @@ class Handler(BaseHTTPRequestHandler):
             payload = {"stats": self._stats(), "ctl": _ctl_status(),
                        "aoi_auto": _aoi_auto_status(),
                        # 🎛 2026-10-07: 笔记本相机当前源 (内置/USB) 也塞进这条, 页面不再多发一条请求
-                       "cam_src": _src_status()}
+                       "cam_src": _src_status(),
+                       # 🔁 2026-10-25: 模板版本号(= station.html mtime)。页面拿它和自己内联的
+                       #    HTML_VER 比, 不一致就自动 reload —— 否则改完页面, 现场那个老标签页
+                       #    还按老 data-src 取 overlay 烧字图, 看起来像"改了没生效"。
+                       "html_ver": _station_ver()}
             with _AOI_LOCK:
                 payload["aoi"] = {str(k): dict(v) for k, v in _AOI_INFO.items()}
             self._send(200, "application/json; charset=utf-8", _jbytes(payload))

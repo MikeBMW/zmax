@@ -281,7 +281,11 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 .panel img{max-height:none}
 /* AOI 两格源是超宽条(914x64 / 1400x240): 先保持原样(4:3 框 + contain),
    要不要改成条状显示由现场定 —— 未经验证的版式不动。 */
-</style></head><body>
+</style>
+<script>/* 🔁 页面版本号: 服务端把 __HTMLVER__ 换成模板 mtime; 与 /station/status 里的 html_ver
+   不一致 ⇒ 说明这个标签页拿的是老模板(会按老 data-src 去取烧字图) ⇒ 自动 reload 一次。 */
+var HTML_VER="__HTMLVER__";</script>
+</head><body>
 <header>
   <h1>🛰 工位总览</h1>
   <span class="hint">6 路同屏 · 右侧手动控制 (X Y Z 平动 / A B C 绕轴旋转)</span>
@@ -368,7 +372,7 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
       <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
-    <div class="panel"><div class="cap"><span class="ttl">💻 笔记本相机</span>
+    <div class="panel"><div class="cap"><span class="ttl">📷 本机相机 (内置 / USB)</span>
       <span class="meta" id="m_local">…</span></div>
       <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400">
       <!-- 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
@@ -1396,6 +1400,14 @@ async function poll(){
   let s=null, aoi=null, st=null;
   try{
     const j=await getj('/station/status?t='+Date.now(),6000);
+    /* 🔁 老模板自愈: 服务端模板 mtime 变了 ⇒ 这个标签页重载一次(只认数字, 防占位符没替换时死循环) */
+    try{
+      if(j && j.html_ver && /^[0-9]+$/.test(String(HTML_VER))
+         && String(j.html_ver)!==String(HTML_VER)){
+        var _n=Number(sessionStorage.getItem('hv_n')||0);
+        if(_n<3){ sessionStorage.setItem('hv_n',String(_n+1)); location.reload(); return; }
+      }
+    }catch(_e){}
     s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
     try{ window.__stats=st||{}; }catch(_e){}
     const a82=$('#auto82');
