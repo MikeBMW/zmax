@@ -251,18 +251,42 @@ def main() -> int:
 
     @torch.no_grad()
     def evaluate():
-        ps = []
-        for c in te[:min(8, len(te))]:
+        # 🔴 2026-10-24 修: 训练循环里有 SYCL 空交集(nnz=0)重抽保护, evaluate() 漏了 ⇒
+        #   400 步后第一次 eval 直接崩 (IndexError: shapes [0], [0, 2]), 整个自训白跑。
+        #   处置: 该视角跳过并往后多取一个, 保证仍凑够样本数; 全坏才报"留出不可用"。
+        ps, _skip = [], 0
+        _want = min(8, len(te))
+        for c in te:
+            if len(ps) >= _want:
+                break
             im = load(c).permute(2, 0, 1)
-            out, _ = render(c)
+            try:
+                out, _ = render(c)
+            except IndexError as _e:
+                if 'indexing tensors could not be broadcast' not in str(_e):
+                    raise
+                _skip += 1
+                continue
             ps.append(psnr(out, im))
         # 诊断用: 同一套权重在**训练视角**上的 PSNR —— 分开"没拟合上"与"过拟合/位姿不一致"
         trs = []
-        for c in tr[:min(3, len(tr))]:
+        _twant = min(3, len(tr))
+        for c in tr:
+            if len(trs) >= _twant:
+                break
             im = load(c).permute(2, 0, 1)
-            out, _ = render(c)
+            try:
+                out, _ = render(c)
+            except IndexError as _e:
+                if 'indexing tensors could not be broadcast' not in str(_e):
+                    raise
+                continue
             trs.append(psnr(out, im))
         _last_train_psnr[0] = float(np.mean(trs)) if trs else 0.0
+        if _skip:
+            print("   ↳ 跳过 %d 个零交集视角(看不到任何高斯, 不参与 PSNR)" % _skip, flush=True)
+        if not ps:
+            print("   ↳ ⚠️ 留出视角全部零交集 · 本轮留出 PSNR 不可用(不当作 0dB 记)", flush=True)
         return float(np.mean(ps)) if ps else 0.0
 
     _last_train_psnr = [0.0]
