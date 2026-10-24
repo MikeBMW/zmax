@@ -15,7 +15,7 @@ from pptx.util import Inches, Pt
 BASE = os.path.dirname(os.path.abspath(__file__))
 D = json.load(open(os.path.join(BASE, "data_v5.json"), encoding="utf-8"))
 FIG = os.path.join(BASE, "fig5")
-DECK = "Z-MAX_竞品与合作分析_v5_四表全量_2026-10-24.pptx"
+DECK = "Z-MAX_竞品与合作分析_33页_图表可编辑_v5_2026-10-24.pptx"
 
 CN = RGBColor(0x2E, 0x6F, 0xD9)
 OS = RGBColor(0xE8, 0x87, 0x3A)

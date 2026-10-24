@@ -7,7 +7,7 @@ import sys
 from pptx import Presentation
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DECK = os.path.join(BASE, "Z-MAX_竞品与合作分析_v5_四表全量_2026-10-24.pptx")
+DECK = os.path.join(BASE, "Z-MAX_竞品与合作分析_33页_图表可编辑_v5_2026-10-24.pptx")
 prs = Presentation(DECK)
 n = len(prs.slides._sldIdLst)
 fail = []
