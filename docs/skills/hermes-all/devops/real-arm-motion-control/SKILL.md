@@ -10,6 +10,11 @@ metadata:
     related_skills: [orin-lan-direct-access, zmax-cicd, unattended-pipeline-supervision]
 ---
 
+> 给 3DGS / 多视角重建造数据时的「恒定 z 纯平移弧线采集法」（不升降·不转姿态·半径恒定 ⇒ 结构上不可能撞
+> 上横梁/下台面）、按部件取半径的净空自检、执行器一步一条+真值判到位（🔴 `/robot/tcp_pose` 必须
+> **BEST_EFFORT** 订阅、`set +u` 后再 source ROS）、以及 **PSNR 口径纪律**（跨数据集/跨留出协议不可比）:
+> 见 `references/capture-trajectory-constant-z.md`。
+
 ## 🧱 安全区 = 已教点位定义; 天花板闸 + **MoveJ 自愈默认禁用** (2026-10-08 第二起事故)
 
 现场症状 = 走某个点/建图自动跑点时, 臂**往高处或旁边摆**, 超出预期 ⇒ 老倪只能按急停。

@@ -253,3 +253,8 @@ for sigma in (0.0, 0.05, 0.10, 0.20, 0.40):            # 相对平均步长的�
 - 球面算子实现与可视化: `manifold-sphere-geometry`
 - 能量/功率记账: `manifold-engine-energy`
 - 评估口径纪律(同源、平凡基线、K 折): `same-source-eval-discipline`
+- 用 SE(3) 势做**物理控制** (体坐标力扭/被动性/`J_b`): `se3-impedance-control`。
+  那边有一条度规选型规则值得提前知道: 球面 `tangent_gradient` 的切投影会去掉**径向**分量,
+  而纯平移在球面上正是径向 ⇒ 拿球面度规跑 SE(3) 势的梯度流会卡住不动。
+  球面度规只适用于**本身就住在球面上**的状态; 有意义的径向方向存在时改用 `euclidean`,
+  或只把旋转子空间投球面。

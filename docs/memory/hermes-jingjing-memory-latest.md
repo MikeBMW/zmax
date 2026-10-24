@@ -1,4 +1,4 @@
-远程=ssh orin(ECS:22022跳板→Orin tashan/ts123)/ssh intel免密(ProxyJump); .23.66 Orin, .23.70 intel/intel Nodka X7 358H/30G/NPU+ArcB390/ROS2Jazzy; .23.50/24无网关; 网卡掉≠服务坏
+远程=ssh orin(ECS:22022跳板→Orin tashan/ts123)/ssh intel免密(ProxyJump); .23.66 Orin, .23.70 intel UltraX7/30G/NPU+ArcB390/ROS2Jazzy; .23.50/24无网关; 网卡掉≠服务坏
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -22,7 +22,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 真机: rt后必下电; move_*不下电; 30s超时勿重发; collision=False
 §
-记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
+引擎记忆五层L2/L3/L4+Qwen(SS_MACRO),势场喂obs[0:3]; 含H-JEPA-MR几何分支+SE3阻抗(u=+Kξ−Bξ̇+F_d,符号必+; 分量序[ρ;ω]非[ω;v])
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
 §
@@ -58,14 +58,14 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密; MoveIt起点=SDK直采
 §
-判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头); 曝光5000us; 10083=5.50.750同算法
+判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头); 曝光5000us
 §
 奇异区: 姿态>5°被50113拒且腿假报到位(看真值); 转移=抬50→转身→低位横移→上方升降
 §
-建图=人工走点(8793 manual,45s/轮增量); GS_MAP_MODE=auto回旧
+建图=8793 manual走点(45s/轮); GS_MAP_MODE=auto回旧
 §
 版本号只听老倪; 现5.50.753
 §
-专利12件·渠道74/74; config/patents/patent_registry.json
+专利12件·渠道74/74(patent_registry.json)
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区

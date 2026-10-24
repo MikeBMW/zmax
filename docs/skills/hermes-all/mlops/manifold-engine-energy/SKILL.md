@@ -11,6 +11,12 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 > 对称轨道预测（「预测 = 沿对称群轨道等距离推演」，含破缺判据 + 实测数字 + 4 条坑）:
 > 见 `references/orbit-predict.md`。
 
+> **引擎侧几何通道 / SE(3) 万有引力的接入点索引**: 见 `references/hjepa-mr-se3-gravity.md`
+> —— 零侵入几何分支（SE3Head ξ∈se³ / SphereHead v∈TS² / 方差头，≈10 万参数）、
+> 势改成 `V=½ξ_eᵀKξ_e` 后的验收数（Φ 8e-2→2e-6，250 步单调）、L2~L5 阈值回归基线
+> （法线 2.5°⇒gain 0.498 / 6°⇒veto，σ=0.01⇒M=1.909）、台账只取尾巴。
+> 公式/符号/分量序的**权威版本在专项技能**：`geometric-latent-branch`（表征）· `se3-impedance-control`（势与力）。
+
 ## 何时用
 - 用户要「引擎像发动机一样」有输出功率/效率/转数/能量，且能量要跟 L2/L3/L4/L5+LoRA 映射。
 - 要把某层的"能力"做成可观测、可测量、可记录的量，并挂到全局数据空间 topic。
