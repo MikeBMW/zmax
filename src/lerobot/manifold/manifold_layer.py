@@ -150,6 +150,66 @@ class ContactManifold:
         return (f"进度={r['progress']:.4f}m · 法向偏离={r['risk']:.4f}m · "
                 f"V=½‖e‖²={r['V']:.3e} · V̇={r['Vdot']:.3e} → {r['state']}")
 
+    # ─────────── 黎曼升级通道 (H-JEPA-MR, 2026-10-23) ───────────
+    # 原 decompose() 是纯欧氏 (risk=‖e⊥‖, V=½‖e‖², V̇=−e·v), 全部保留不动。
+    # 下面两条通道是**可选**的黎曼口径: 法线住在 S² 上, 位姿住在 SE(3) 上,
+    # 用测地线距离代替欧氏向量差 —— 微小装配偏差在流形上不再被欧氏距离失真。
+
+    def decompose_normal_sphere(self, n_meas, n_ref, antipodal=True):
+        """接触面法线的球面偏离: risk = d_{S²}(n_meas, n_ref)。
+
+        为什么必须用测地线而不是 ‖n−n*‖: 两个单位法线的欧氏差在大角度时饱和
+        (最大值 2), 而弧长线性增长到 π; 小角度下二者等价, 但 threshold 语义
+        以"角度"表达最直观 (记归一化后 risk 同时给米和弧度两个数)。
+
+        antipodal=True: 接触面法线 ±n 是同一个物理面 (双覆盖), 必须消歧,
+        否则"法线反了"会被报成 π 的巨大偏差。
+        """
+        from . import sphere as _S2
+        n_m = np.asarray(n_meas, float).ravel()[:3]
+        n_r = np.asarray(n_ref, float).ravel()[:3]
+        nm = _S2.normalize(n_m)[0] if np.linalg.norm(n_m) > 1e-12 else n_m
+        nr = _S2.normalize(n_r)[0] if np.linalg.norm(n_r) > 1e-12 else n_r
+        d_rad = float(_S2.distance(nm, nr, antipodal=antipodal))    # 弧长 (半径 1)
+        th = self.risk_th.get("normal", 0.087)                      # 默认 5°
+        state = ("法线对齐 (在流形)" if d_rad <= 0.5 * th
+                 else "法线轻微偏斜" if d_rad <= th
+                 else "法线显著偏斜 (接触面不平行)")
+        # 法线偏差 → 通道上的横向位移量 (半径 R 的接触面上, 角度 θ ≈ 横向位移/R)
+        return {"risk_rad": d_rad, "risk": d_rad,
+                "n_meas": nm, "n_ref": nr, "risk_th": th, "state": state,
+                "note": "球面测地线 (S²), antipodal=%s" % antipodal}
+
+    def decompose_se3(self, T_cur, T_target, xi_vel=None, weight=None):
+        """SE(3) 黎曼版: 进度/偏离/李雅普诺夫势全部用测地线表述。
+
+        V = ½·d_SE3(g_cur, g_target)²,  V̇ = −⟨log(g_cur⁻¹g_target), ξ⟩
+        · 比欧氏版好在: 平移与旋转量纲自动统一到 twist 空间 (ω rad, v m),
+          姿态误差不会再被"米"和"弧度"混着加。
+        · weight 允许给 6 维权重 (工程上常把旋转压低, 因为插入主要看横向位置)。
+        """
+        from .hjepa_manifold import se3_distance
+        Tc = np.asarray(T_cur, float).reshape(4, 4)
+        Tt = np.asarray(T_target, float).reshape(4, 4)
+        d = float(se3_distance(Tc, Tt, weight))
+        V = 0.5 * d * d
+        Vdot = None
+        if xi_vel is not None:
+            from .lie_intent import se3_log
+            xi = np.asarray(se3_log(np.linalg.inv(Tc) @ Tt), float).ravel()[:6]
+            vel = np.asarray(xi_vel, float).ravel()[:6]
+            if weight is not None:
+                w = np.asarray(weight, float).ravel()[:6]
+                xi, vel = xi * w, vel * w
+            Vdot = -float(xi @ vel)              # 黎曼梯度流: V̇ = −⟨grad, ξ⟩
+        th = self.risk_th.get("se3", 0.01)
+        state = ("在流形 (测地线收敛)" if d <= 0.5 * th
+                 else "贴流形边缘" if d <= th
+                 else "离流形 (SE3 距离超阈)")
+        return {"d_se3": d, "V": V, "Vdot": Vdot, "risk": d, "risk_th": th,
+                "state": state, "T_cur": Tc, "T_target": Tt,
+                "note": "SE(3) 测地线距离 (twist 空间)"}
+
 
 class PerformanceManifold:
     """性能流形 — 光耦合对准代价与估计耦合效率 (高斯光束近似, 非实测)
@@ -162,13 +222,19 @@ class PerformanceManifold:
     真机用光功率计 IL/RL 标定 W/σ — 本模块输出是模型不是实测)。
     """
 
-    def __init__(self, hole_pos=None, w=None, sigma=0.004, predictor=None):
+    def __init__(self, hole_pos=None, w=None, sigma=0.004, predictor=None,
+                 w_rot=1.0e-3, w_trans=1.0):
         self.hole_pos = HOLE_POS if hole_pos is None else np.asarray(hole_pos, float)
         # W 对角 (x=轴向插深, y/z=横向对中): 顺序与 δ 分量对应
         self.W = np.diag([0.4, 1.0, 1.0]) if w is None else np.asarray(w, float)
         self.sigma = sigma
         # 🧠 2026-09-08 JEPA predictor 注入 (可选): 预测性能流形坐标 (旁路对照)
         self.predictor = predictor
+        # H-JEPA-MR: SE(3) 版的旋转/平移权重 (量纲不同, 必须分开)。
+        # 1e-3 的物理含义: 1 rad 的姿态误差 ≈ (1mm)² 量级的代价, 即
+        # "插斜 1 度" 与 "横向偏 0.016mm" 等价 (1°≈1.7e-2 rad, 平方后 ×1e-3 ≈ 3e-7)。
+        self.w_rot_default = float(w_rot)
+        self.w_trans_default = float(w_trans)
 
     def predict_manifold(self, z, a=None):
         """🧠 JEPA predictor → 预测性能流形 (旁路; predictor 未注入返回 None)"""
@@ -204,3 +270,30 @@ class PerformanceManifold:
         return (f"对准误差 δ⊥={r['d_perp_norm']*1000:.2f}mm (横向) · "
                 f"插深剩余={-r['d_axial']*1000:.2f}mm · V_p={r['Vp']:.3e} · "
                 f"η≈{r['eta']:.4f} ({r['note']})")
+
+    # ─────────── 黎曼升级通道 (H-JEPA-MR, 2026-10-23) ───────────
+    # 原 evaluate() 吃 3 维欧氏 δ, 只看得见位置; 姿态错位 (插斜) 完全不在 V_p 里,
+    # 而精细装配里"插斜"和"偏 0.2mm"一样致命。SE(3) 版把姿态也纳进同一个二次型。
+
+    def evaluate_se3(self, T_peg, T_hole, w_rot=None, w_trans=None, stage=None):
+        """SE(3) 版对准代价: ξ = log(T_hole⁻¹·T_peg) ∈ R⁶, V_p = ½ ξᵀ W₆ ξ。
+
+        ω(前3) 单位 rad, v(后3) 单位 m —— 量纲不同, 必须分开给权重。
+        默认把旋转权重压到等效"1 rad ≈ 若干 mm", 否则姿态项会吃掉整个代价。
+        """
+        from .lie_intent import se3_log
+        from .hjepa_manifold import se3_distance
+        Tp = np.asarray(T_peg, float).reshape(4, 4)
+        Th = np.asarray(T_hole, float).reshape(4, 4)
+        xi = np.asarray(se3_log(np.linalg.inv(Th) @ Tp), float).ravel()[:6]
+        wr = float(self.w_rot_default if w_rot is None else w_rot)
+        wt = float(self.w_trans_default if w_trans is None else w_trans)
+        W6 = np.diag([wr, wr, wr, wt, wt, wt])
+        Vp = 0.5 * float(xi @ W6 @ xi)
+        eta = float(np.exp(-Vp / max(self.sigma ** 2, 1e-12)))
+        grad = W6 @ xi                       # 切空间梯度; 最优修正 = −grad
+        d_geo = float(se3_distance(Tp, Th))
+        return {"xi": xi, "Vp": Vp, "V_p": Vp, "eta": eta, "grad": grad,
+                "d_se3": d_geo, "w_rot": wr, "w_trans": wt,
+                "stage": stage,
+                "note": "SE(3) twist 空间二次型 (含姿态项 %s)" % (stage or "")}
