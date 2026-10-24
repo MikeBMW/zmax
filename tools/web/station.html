@@ -269,6 +269,12 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
   .colllist .ch,.colllist .ci{grid-template-columns:34px repeat(3,1fr) repeat(3,1fr);font-size:11px}
   button,.slotbar button,.pad button{padding:10px 6px;font-size:13px;min-height:40px}
 }
+/* 🧹 2026-10-25 老倪: 「删掉所有窗口下面的文字, 现在已经遮挡图像了」 ——
+   相机格只留标题, 状态/说明/提示类文字一律不出 (元素仍在, JS 照常写值, 只是不显示;
+   要复查口径时把 body 加个 show-meta 类就全回来)。图像因此拿到全部高度。 */
+.cap .meta,#m_gsmap,.note,#gs_ref_cap,#gs_img_cap,#gs_msg,#gs_live_hint,#lsrc_msg,
+#n_depth,#gold_mode_hint,#surface_mode_hint{display:none!important}
+.panel img{max-height:none}
 </style></head><body>
 <header>
   <h1>🛰 工位总览</h1>
