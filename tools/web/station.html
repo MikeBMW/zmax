@@ -24,6 +24,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;
   border-bottom:1px solid #21262d}
 .ttl{font-size:18px;font-weight:600}
+/* 帧龄徽标: 只一个 token(如 0.2s), 挤在标题右边, 不占图像一行 */
+.age{margin-left:auto;font-size:12px;color:#6e7681;font-variant-numeric:tabular-nums;
+  white-space:nowrap;opacity:.85}
+.age.ok{color:#3fb950}.age.bad{color:#f85149}.age.wa{color:#d29922}
 .meta{font-size:14px;color:#8b949e;font-variant-numeric:tabular-nums;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .panel img{width:100%;display:block;background:#010409;aspect-ratio:4/3;object-fit:contain}
@@ -275,6 +279,8 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 .cap .meta,#m_gsmap,.note,#gs_ref_cap,#gs_img_cap,#gs_msg,#gs_live_hint,#lsrc_msg,
 #n_depth,#gold_mode_hint,#surface_mode_hint{display:none!important}
 .panel img{max-height:none}
+/* AOI 两格源是超宽条(914x64 / 1400x240): 先保持原样(4:3 框 + contain),
+   要不要改成条状显示由现场定 —— 未经验证的版式不动。 */
 </style></head><body>
 <header>
   <h1>🛰 工位总览</h1>
@@ -361,10 +367,10 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
     </div>
     <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-mode="snap" data-src="/snapshot/overlay_arm.jpg" data-every="800"></div>
+      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
     <div class="panel"><div class="cap"><span class="ttl">💻 笔记本相机</span>
       <span class="meta" id="m_local">…</span></div>
-      <img id="i_local" data-mode="snap" data-src="/snapshot/overlay_local.jpg" data-every="400">
+      <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400">
       <!-- 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
            —— 服务侧按**卡名**重解析设备(插拔后号变了也对), 选择落盘, 重启后仍是这台。
            这一路同时是安全层「全局视角」的输入 ⇒ 换源会一起改变安全层看到的全局画面。 -->
@@ -375,7 +381,7 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
         <span id="lsrc_msg" style="font-size:12px;opacity:.85"></span></div></div>
     <div class="panel"><div class="cap"><span class="ttl">🎥 中央相机</span>
       <span class="meta" id="m_local2">…</span></div>
-      <img id="i_local2" data-mode="snap" data-src="/snapshot/overlay_local2.jpg" data-every="400"></div>
+      <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
     <div class="panel"><div class="cap"><span class="ttl">🌈 D405 深度图</span>
       <span class="meta" id="m_depth">…</span></div>
       <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500">
@@ -1346,14 +1352,25 @@ function panel(id,st,label){
   const m=$('#m_'+id); if(!m) return;
   const _im=$('#i_'+id);
   const _live=(_im&&_im.dataset.mode==='mjpg')?' · 🔴 实时推流':'';
-  if(!st){m.textContent='未接'+_live; return;}
+  /* 🕒 标题右侧的帧龄徽标 (2026-10-25 老倪: 画面里的字把图挡了 ⇒ 一条长状态行全部撤掉,
+     只留这一个 token 贴着标题右边, 不占图像一行)。整条状态文本仍在 #m_*, 只是 CSS 不显示。 */
+  const _badge=function(t,cls){
+    let b=document.getElementById('a_'+id);
+    if(!b){
+      const cap=document.getElementById('m_'+id).parentNode;
+      if(!cap) return;
+      b=document.createElement('span'); b.id='a_'+id; cap.appendChild(b);
+    }
+    b.className='age'+(cls?' '+cls:''); b.textContent=t;
+  };
+  if(!st){m.textContent='未接'+_live; _badge('未接','bad'); return;}
   const _pre=(label?label+' · ':'');
   // ⛔ 源已断(如深度源文件停更): 如实报警, 绝不把上一帧旧图说成在线/新鲜
   if(st.dead){
     m.innerHTML=_pre+'<span class="bad">⛔ 源已断 '+fmt(st.dead_s,1)+'s（无新帧, 不显示假新鲜值）</span>'+_live;
-    return;
+    _badge('⛔ 断 '+fmt(st.dead_s,0)+'s','bad'); return;
   }
-  if(!st.online){m.textContent=_pre+'无帧'+_live; return;}
+  if(!st.online){m.textContent=_pre+'无帧'+_live; _badge('无帧','bad'); return;}
   /* 🕒 帧龄口径 (2026-09-28 修): 标的是**源端那一帧**的年龄, 不是本端合成帧的年龄。
      ① 源端自报(X-Frame-Age-S 之类) → 直接用它的数;
      ② 源连续返回同一张图 ≥2s     → 醒目报「源已静止 Ns」(源卡死也不许显示 0.01s);
@@ -1368,6 +1385,10 @@ function panel(id,st,label){
     _age='本端帧龄 '+fmt(st.age_s,2)+'s';   // 源端没自报、也没卡死: 明说这是"本端"量, 不冒充源端时间
   }
   m.innerHTML=_pre+_age+' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB'+_live;
+  const _a=(st.src_age_s!==undefined&&st.src_age_s!==null)?st.src_age_s:st.age_s;
+  if(st.stalled)                 _badge(fmt(st.stall_s,0)+'s 静止','wa');
+  else if(typeof _a==='number')  _badge(fmt(_a,1)+'s', _a>3?'wa':'ok');
+  else                           _badge('实时','ok');
 }
 let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
 async function poll(){
