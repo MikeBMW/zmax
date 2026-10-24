@@ -124,6 +124,12 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 
 远端端口诊断顺序与"安全组 vs 本机防火墙"的判定, 见 `references/reverse-tunnel-diagnosis.md`。
 - **agent 会话里 `nohup/setsid ... &` 起的常驻进程会随会话清理一起死**(终端工具也直接拒这类包装)：要用 `background=true` 交给 Hermes，或交给 **cron keepalive 每分钟探测+拉起**才算真脱离会话。
+- 🔴 **经 paramiko `exec_command` 起后台进程会把通道挂到超时, 而超时不等于没起**: `setsid nohup bash run.sh > log 2>&1 &`
+  照样 `PipeTimeout` —— `exec_command` 等的是**通道关闭**, 只要子进程继承了 stdout/stderr 就会把通道顶住(实测两次各挂 40s+)。
+  三重修法: ① 三个 fd 全重定向 `> log 2>&1 < /dev/null` 并 `& disown`; ② **启动与核查拆成两次调用**,
+  第二次才 `ps -eo pid,etime,cmd | grep <脚本> | grep -v grep` + 数产物行数; ③ 常驻的根本别用 nohup ——
+  落成 unit 后启动就一句 `systemctl restart`(立即返回)。
+  判据: 本次超时但下一次 `ps` 里进程在、产物在增长 ⇒ **当成起成功了**, 别再起第二份(两进程抢设备/日志交错, 比没起更难排)。
 - **改完代码必须重启进程**：长驻守护跑的是内存里的旧代码 —— 本轮磁盘上改了 `timeout`/常量但没重启，误报又持续 2 小时。核验要对比 `ps` 启动时间 vs 文件 mtime。
 
 ## 支持文件

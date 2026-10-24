@@ -263,8 +263,40 @@ soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
 
 - **台账只一份真源**（`roster.json` 这类）+ 生成脚本（`*_figs.py` / `make_pptx.py`）；脚本里不写死任何数字，
   改数只改 json 再重跑 —— 否则同一个数在表、图、正文三处各说一套。
-- **可编辑性**：标题正文用 `add_textbox`、明细用 `add_table`、口径写 `notes_slide`；
-  不把文字烧进 PNG（图里只放图形，能改的字都放文本框/表格）。
+  🔴 **改了「生成 json 的脚本」（`data_*.py`）必须重跑它本身**：只改 .py 不重跑，json 还是旧值，
+  而图从记录重算 ⇒ 同一页里正文写「9 家」、图上写 10 家。verify 脚本要从 json **重算**关键计数，
+  并在 deck 全文 grep 被取代的旧值（“只有 9 家”这类句子），命中就 fail。
+- **每个 page builder 必须自己 `new()` 出这一页，不能接收上一页的 `s` 往里画**：接收 `s` 的 helper 一旦被调用方
+  传入上一页的 slide，几页内容叠在同一页上，`len(prs.slides)` 比声明的 TOTAL 少（实测 33 声明 → 29 产出），
+  **全程不报错**，每页单看都正常，只有数页数才发现。helper 只收内容参数、内部建页；保存前断言
+  `len(prs.slides._sldIdLst) == TOTAL`，并把 TOTAL 同时喂给页脚页码函数。
+- **`add_shape` 自带主题 `effectRef` 阴影**：只设 `shape.shadow.inherit = False` 不够，LibreOffice/WPS 仍按
+  `<p:style>` 给每张卡片、每个色块渲染脏灰投影。要连 `p:style` 一起摘（`sh._element.remove(st)`，`st` 为
+  `qn("p:style")` 节点），之后 fill/line 必须显式给 —— 不再继承任何东西。
+- **`vertical_anchor` 收的是 `MSO_ANCHOR` 枚举不是整数**：`tf.vertical_anchor = 2` / `cell.vertical_anchor = 2`
+  直接 `ValueError: 2 is not a valid MSO_VERTICAL_ANCHOR`，写 `MSO_ANCHOR.MIDDLE`。
+- **表格单元按索引打包，错一位不会报错**：把 `rec[8]` 当 `rec[9]` 用，会把“综合判断”整段塞到“技术架构”
+  表头底下，JSON outline 读起来毫无异常。生成后必须**读一页渲染图**，逐列核对该列内容与表头是否同一语义。
+- **一页 N 张卡横排会把下半页留空**：5 张卡挤在顶部、下面 60% 空白。改 2 列 × 3 行、左图右文的横卡铺满
+  12 × 5.1 in 正文区（`cw=(12.09-gap)/2`、`ch≈1.56`、图位 `1.24×(ch-0.22)`）；末页不足 6 张时把空格做成
+  图例位，不拉伸卡片。产品图位用灰框 + 目标文件名（小字），对方 `Change Picture` 不动版面。
+- **极坐标/雷达图别用 `bbox_inches="tight"`**：轴刻度标签画在 axes patch 外侧，会被画布边缘裁掉一半。
+  这类图存图不带 tight、靠 `subplots_adjust` 留边，2×3 网格 `hspace≈0.58`，否则上排底标签撞下排标题；
+  轴名用短词（场景/模型/数据/本体）。
+- **像素复检要独立**：`soffice → pdftoppm -r 110` 出页图，交给独立视觉复核，问题清单枚举（溢出/重叠/行高/断词/豆腐块/表头与内容错位/同页数字自相矛盾），
+  允许逐页回 `Pn: OK`、并要求像素量化；改完只复检改动页。判**渲染后的页**，不判源图。
+  **30 页以上别顺序看**：把 PNG 切成三段并行派三个**只读**子代理，要求回 `页码｜位置｜缺陷｜严重度`；
+  全回齐后一次性批量修 —— 同一个缺陷（一个阴影、一列宽度、一处标签偏移）通常在十几页重复出现，
+  按单页报告修会重生成三次。
+- **可编辑性 = 文字是 textbox、明细是 `add_table`、图是 `add_chart`**：标题正文用 `add_textbox`、明细用
+  `add_table`、口径写 `notes_slide`。**数据图必须是原生图表对象，不能是 matplotlib 出的 PNG** ——
+  「图里只放图形、能改的字都放文本框」这条不够：用户拿到 deck 第一件事是删行、改数、换配色，
+  PNG 让他从零重画，必被退回（原话：「PPT的图表，要可以编辑。我看你的图表是图片，我无法二次编辑」）。
+  `add_chart` 为每个图表内嵌一份 XLSX，右键「编辑数据」真能改；判定：
+  `unzip -l out.pptx | grep -c 'embeddings/'` 等于图表数（少一个就说明那张图没带工作簿）。
+  反过来，**2×2 矩阵、分档清单这类没有数据表可编辑的判断图，用形状+文本框**（能拖、能改色）比 chart 更自由。
+  逐图配方（条形/柱状/折线/雷达、对数轴、逐点分色、定性分档堆叠、圆点标签不压点）见
+  `references/native-charts.md`。
   中文必须同时设 `a:ea`（`run.font.name` 只管西文），否则字形回落成主题字/方块。
 - **插图永远 contain + 夹页内**：给 `w` 和 `h` 会拉伸；只按 `w` 推 `h` 会让高图算出 `y+h > 页高` 被裁。
 - **图的比例是版面契约**：`bbox_inches="tight"` 会把坐标轴外的 annotate/注脚扩进画布，横版 figsize 可能存成竖版，
@@ -284,3 +316,7 @@ soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
 - `references/supplier-sor-structure.md` —— 供应商外发 SOR 的章节骨架(1–15 + 附录 A–G)与必带三附录的逐节内容、交付分工表口径、复跑命令、**§5 一份 SOR 覆盖多任务的合并结构**。
 - `references/editable-pptx-delivery.md` —— 把分析/汇报内容落成**可编辑 .pptx** 并挂进控制台预览：
   目录与单一真源、字体/插图/回读自检代码、服务端 pptx→页图缓存与路由、PyQt 薄壳入口、视觉复检循环。
+- `references/native-charts.md` —— PPT 里把图做成**原生图表对象**（可右键编辑数据）：条形/柱状/折线/雷达的
+  构造代码、对数轴 XML 注入、逐点分色、定性分档堆叠、形状画判断图、以及会让图渲废的几个坑。
+- `references/number-claim-calibration.md` —— 对外材料里估值/份额/开源/「未披露」的口径规则：
+  四种估值口径不可混排、未披露 ≠ 0、派生指标带派生口径、技术叙事标签只认公开证据。

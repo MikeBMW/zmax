@@ -140,6 +140,13 @@
 
 ## 训练编排器 (视点攒够自动开训, 不重复训)
 
+🔴 **编排器自己必须是 systemd unit, 不能用 `setsid nohup` 起(实测 2026-10-24)**: 本仓用 setsid 起了 `gs_auto_train.py`,
+跑得挺好(17h 无中断、4 版资产), 但 `systemctl list-unit-files | grep autotrain` 是**空的**、crontab 也没有 ⇒
+**机器一重启, 自主进化就永久消失**, 而采集守护 `zmax-gs-autocap` 是 enabled 的、照常起来采数据 ⇒ 现场看到的是
+"数据一直在攒、再也没有新资产", 很容易怀疑成训练挂了。定式 = 给编排器补 `zmax-gs-autotrain.service`
+(`Restart=always` + `After=zmax-gs-autocap.service`), 并且**切换时先等手上的训练跑完** —— 编排器是训练的父进程,
+`subprocess.run` 不随父死, kill 父会让训练变孤儿(继续烧 GPU 但没人收结果、不归档资产)。
+
 - 视点判据与质检门同口径: 平移 **5mm** + 姿态 **0.57°(0.01rad)** 量化成簇; 触发 = **视点 ≥30 且 ≥90s 没有新帧**
   (后者说明这一段走完了)。单独看帧数会误判 —— 同一视角连拍能让帧数上万而视点仍是 1。
 - 用 `会话名:帧数` 做指纹, 训过就跳过; **失败也写进指纹**(`TRAIN_FAILED`), 否则每轮轮询都重试一次、把机器堵死。

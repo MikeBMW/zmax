@@ -129,3 +129,56 @@ for i, s in enumerate(prs.slides, 1):
 - 交付汇报带：绝对路径、页数、真表格数量、图数量、“改数据重算”的两三条命令、控制台入口、口径与待核实项。
 - 凡“未公开/口径不可比”的样本（美元市值 vs 人民币一级估值、两份信息源冲突的公司）**单列并不进合计**，
   在口径页写明“合作前须核实”——不要为版面整齐把它们混进分母。
+
+## 9. page builder 骨架（页数会静默少掉的那类 bug）
+
+一个接收当前 slide 往里画的 helper 是隐形的页数吞噬器：调用方把上一页的 `s` 传进去，几页内容叠在同一页，
+`len(prs.slides)` 比声明值少（33 → 29），**不抱任何异常**，存在的那几页单看全对。
+
+```python
+TOTAL = 33
+
+def page(kick, title, n, sub=None):          # 只收内容参数
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    header(s, kick, title, n, sub)
+    return s
+
+def findings_page(n, kick, title, items, color, concl=None):
+    s = page(kick, title, n)                 # helper 自己建页
+    ...
+    return s
+
+assert len(prs.slides._sldIdLst) == TOTAL, len(prs.slides._sldIdLst)
+```
+
+同一个 `TOTAL` 要嗂给页脚函数（`"%d/%d" % (n, TOTAL)`），否则页码也会跟着说谎。
+
+## 10. 版面几何配方
+
+**表格行高预算。** `add_table` 的 row height 是**最小值**：需要三行的单元格会把行撑高、把表推进页脚。
+先算 `(footer_y - table_y - head_h) / n_rows`，再按这个高度限定每格行数：16:9 上 15 行表在 6.7pt 下
+约 0.32 in/行（每格两行字），10 行密集表在 6.4pt 下约 0.48 in/行。单元格 margin 给 0.05 in 会贴格线，0.085 in 才干净。
+
+**卡片网格。** 一行 N 张卡会把下半页留空：改 2 列 × 3 行、左图右文，`cw=(12.09-0.19)/2`、`ch≈1.56`、
+图位 `1.24×(ch-0.22)`、文字从 `x+1.48` 起。图位做成填充矩形 + 目标文件名（小灰字），对方可右键换图不动版面。
+
+**雷达图。** `bbox_inches="tight"` 会裁掉外侧极坐标刻度标签（标签画在 axes patch 之外）。这类图存图不带 tight、
+用 `subplots_adjust` 留边，2×3 网格 `hspace≈0.58`，轴名用短词。
+
+**卡片的脏投影。** `add_shape` 带主题 `effectRef`，`shadow.inherit = False` 在 LibreOffice/WPS 下清不掉，
+要摘整个 style 节点：
+
+```python
+from pptx.oxml.ns import qn
+sh.shadow.inherit = False
+st = sh._element.find(qn("p:style"))
+if st is not None:
+    sh._element.remove(st)
+```
+
+## 11. 30 页以上的复检要并行
+
+顺序 `vision_analyze` 30 页比生成还贵。把页图区间切成三段，并行派三个**只读**子代理（不修文件），
+要求回 `页码｜位置｜缺陷｜严重度`，并强制干净页写 `OK`（只问“有什么问题”的子代理会凑问题）。
+任务文本里把七项检查写死：出框/裁切、元素重叠、豆腐块、孤字、表格压页脚、表头与内容语义错位、
+同页数字自相矛盾。三路全回后一次性批量修。

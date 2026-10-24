@@ -69,6 +69,13 @@ cv2.imwrite(os.path.expanduser("~/zmax_ss_remote/local_cam_test.png"), f)
 - `ros2 topic hz --qos-reliability best_effort` → `unrecognized arguments` (humble 的 hz 不吃这个参数)。
   要看 QoS 用 `ros2 topic info -v <topic>` (Reliability: BEST_EFFORT 在端点信息里);
   sensor 话题订阅端用 BEST_EFFORT 才收得到(我方 tap 即 `raw=True` + BEST_EFFORT 订阅)。
+- 🔴 **rclpy 订阅端 QoS 不匹配 = 回调一次都不进, 只有一条 WARN**: `/robot/tcp_pose`、
+  `/realsense/color/image_raw` 这类传感器话题的发布者多是 **BEST_EFFORT**, 而
+  `create_subscription(Msg, topic, cb, 10)` 的默认是 **RELIABLE** ⇒ 启动日志只有
+  `New publisher discovered on topic '<t>', offering incompatible QoS. No messages will be received from it.
+  Last incompatible policy: RELIABILITY`, 然后**零消息**(实测该 304 行的记录器一开始一行不写, 进程还活着)。
+  修法一行: `from rclpy.qos import qos_profile_sensor_data` → `create_subscription(Msg, topic, cb, qos_profile_sensor_data)`。
+  判据: 起订阅后 **30 秒内必须看到回调计数增长**; 只有 WARN、计数不动 ⇒ 就是 QoS, 别去查发布端。
   ⚠️ **但 `raw=True` 只适合"只数帧/只转发字节"**: 回调拿到的是 **CDR 序列化 bytes**,
   没有 `.encoding` / `.height` / `.step` 字段，一读就报
   `'bytes' object has no attribute 'encoding'`。**一需要像素或元数据就必须去掉 `raw=True`**,

@@ -206,6 +206,11 @@ say so rather than approximating.
   handles this, but remember it when writing ad-hoc python-pptx code.
 - Always pass `encoding="utf-8"` when writing spec files; tokens like
   `{{city}}` may be filled with non-ASCII values.
+- **`✗` (U+2717) / `✘` / `✔` have no glyph in Noto Sans CJK — they render as `.notdef` 豆腐块** (`✓` U+2713 and `◐` U+25D0 do exist). Use `✓` + `×` (U+00D7) for pass/fail marks. Font fallback fails silently, so this is only visible after rendering.
+- **图内注释**用 `fig.text(...)` 落在画布外 + `subplots_adjust(bottom=…)` 留边距；写在 `transform=ax.transAxes` 的 0.01–0.05 处必然压最短的那根条或曲线，改完还要重新量图底与页面结论条的距离。
+- **2×2 矩阵图的四格标题**放在「离数据点最远的那半格」：点全在顶部就写底部，全在底部就写顶部；写死在某个角必然被压。
+- **卡片/表格/结论条三者要按页面坐标算一遍**：`卡 y + n×步进` vs `结论 y` vs `页脚 7.02`。这类碰撞最常见，且肉眼看小图看不出来。
+
 - **CJK runs need the East Asian typeface set separately**: `run.font.name
   = "微软雅黑"` only writes `a:latin` — Chinese glyphs fall back to the
   theme font and render wrong. Also append `<a:ea typeface="微软雅黑"/>`
