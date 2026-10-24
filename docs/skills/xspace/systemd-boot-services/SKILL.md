@@ -61,6 +61,8 @@ ls -lt <repo>/reports/<名>_*.jsonl       # 真产物: 每跑一次追加一行�
 | **常驻守护的真逻辑放 `/tmp`** | 重启/清理后脚本与进程一起没了, 下游数据**静默冻结**很久才被发现 | 常驻逻辑一律进**仓库 + unit**(`ExecStart` 指仓库路径); `/tmp` 只准放一次性临时脚本, 且仓库留档一份 |
 | **unit 里写死了命令行开关** | 改了脚本默认值, 重启后行为**没变** | `ExecStart` 的参数**覆盖**脚本默认值 ⇒ 改前先 `grep` 单元里那个开关, 改**单元** + `daemon-reload` + `restart`; 只改代码默认值等于没改。**同类但更隐蔽的一种: 单元带 `Restart=always`** ⇒ 杀掉那个散跑的裸进程**不会换档**, systemd 立刻按 `ExecStart` 把旧档拉回来(观感=「改完开关重启后行为没变」, `ps` 里新进程 ppid=1 像什么都没发生)。换档唯一路径 = 改单元文件 → `daemon-reload` → `restart`；仓库模板 `<repo>/tools/systemd/<unit>` 与已安装的 `/etc/systemd/system/<unit>` 是**两份**, 先 `diff -q` 再一起改, 否则改了模板而真正生效的是旧安装件 |
 | **依赖写成 `Requires=`** | 重启被依赖方会**连带重启**依赖方 | `Requires=` 是双向生命线(停/重启都传播)。若依赖方的"身份"是**启动时才生成**的(内网穿透的公网 URL、会话级地址/端口、一次性 token), 硬依赖会把它换掉 ⇒ 已发出去的链接、已烧进客户端的地址**全部失效**。定式: 用 `Wants=`(软依赖), 只有确实要"被依赖方死了我也停"时才用 `Requires=`。排查症状: 服务全 `active`、本地直连正常、而**经中间那条链路稳定失败** |
+| **停掉一个被守护驱动的负载时只调了它自己的 API** | 停完几秒它自己又回来了(`on=true`、fps 恢复), 看上去"停不掉/自己重启" | 那类负载常由**另一个 unit 定期 `POST /start` 拉起**。定式 = `systemctl stop+disable <驱动 unit>` → 再停进程内的任务 → **间隔 ≥3s 连查 3 次**状态都是停的才算停; 只看一次 stop 的返回体就报"已停"必翻车(先 `systemctl list-units | grep -i <关键字>` 把驱动找出来) |
+| 用 `ps -o pcpu` 判断"谁在抢 CPU" | 早已空转的进程仍显示 130%+, 结论整个反过来 | `ps` 的 `%CPU` 是**进程生命周期均值**, 不是瞬时值 ⇒ 换成 `uptime` 的 load、`top -bn1 | head`、或服务自己 `/health` 的 duty/fps; 报告里别拿均值当"现在在吃" |
 | 只测一条链路就下结论 | 本地 ok / 经代理失败 | 本地与服务状态都绿时, **先查中间层自己的状态**(隧道日志里的当前 URL、代理日志里的拒绝原因)——中间层会自己换地址/自己拒绝, 不是被服务的错 |
 | **见到 `failed (Result: timeout)` 就赶紧重启** | 其实活已经干完了, 重启白折腾还把在跑的东西拆掉; 或反过来把 failed 当成"服务挂了"报给用户 | 超时判 failed ≠ 没干成: 长链 oneshot(起容器 + `docker exec` 拉常驻进程 + `systemctl restart` 别的单元)最容易在**最后一步**撞 start 超时被 TERM, 而前面几步的产物全在。先取证真实产物 `docker ps` + `docker exec <容器> ps -eo pid,etime,cmd \| grep <目标进程>`, 在跑 ⇒ 只 `sudo systemctl reset-failed <unit>` 清状态即可(**reset-failed 不重启任何东西**)。报"单元全绿/没有故障"之前也要跑这一步, 否则会把清理态当故障、或把 failed 当成已修 |
 
@@ -79,6 +81,17 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
   满足"单一路径"要求; **报告时把这条说清楚** (systemd 强制要求在 `/etc/systemd/system` 有个入口, 软链不算放文件)。
 - **没有上游就不空转用 `Requires=`**: 汇总/转发类服务 `Requires=<数据源服务>` + `After=`, 源死它也停
   (实测 D405 发布件被 kill 时, 转发件跟着停, 不会挂着个 8792 回空)。
+- 🔴 **`systemctl disable` 一个 `link` 进来的单元会删掉 `/etc` 里那条软链**(实体在隐藏目录里没丢, 但
+  `/etc/systemd/system/<svc>.service` 不见了, 之后 `is-enabled` 直接报 `No such file or directory`, 很像"unit 被删了")。
+  两个互斥单元要换档时定式 = `systemctl stop <旧的>`(需要彻底禁就 `disable`, 但先 `cp` 一份内容) →
+  `link` 新的 → `daemon-reload` → `enable --now` → `ls -l /etc/systemd/system/<svc>.service` 确认是链接。
+- 🔴 **独占设备的服务换档要先"放设备"**: 相像这类独占 USB 设备的发布件, 只 `kill` 进程没用 ——
+  `Restart=always` 会把它拉回来抢设备; 新进程当场报 `Input/output error`(errno=5)。定式 = `systemctl stop`
+  → 等 **10~12s** 设备释放(必要时 `sudo fuser -v /dev/video*` 看还有谁占着) → 再起新件。
+- 🔴 **用密码喂 `sudo` 时, 不要把 heredoc 和 `printf <pw> | sudo -S` 写在同一句**: 两者的 stdin 会打架,
+  heredoc 的内容根本进不了 `tee`, 而密码被当成文件内容写进去(实测 unit 文件里只剩 `ts123`)。
+  定式 = 以目标用户用 heredoc 写文件 → `sudo` 只用于 `systemctl link`/`daemon-reload`/`restart`;
+  写完后 `cat` 回读文件头两行验明没写错东西。
 - **自愈要当场验**, 不要只写 `Restart=always`: `pkill -f '<脚本>'` → `sleep 6` → `systemctl is-active` +
   端口 `curl` 回 200 + 新 pid 存活 = 真自愈。不能重启整机验开机时, 用 `is-enabled` + `wants/` 链接存在作开机证据。
 - **目标机刚重启过、原来那套栈没自启时, 先量三样再动手**: `ros2 topic list | wc -l` (=0 就是没发布者)、

@@ -88,6 +88,15 @@ Qos(_p(Policy.Reliability.Reliable, 0), _p(Policy.History.KeepLast, 1),
 ```
 用 `--cfg` 或 `export CYCLONEDDS_URI=file://<abs路径>` 加载。
 
+### ★ 跨机发现可以是单向的：一端看到订阅者、另一端看不到发布者 → 重启**发布端**进程
+**症状**（Fast DDS / ROS2 humble↔jazzy 实测）：A 机 `ros2 topic info` 显示 `Publisher count: 1, Subscription count: 3`（看得到 B 的订阅），
+B 机同一话题 `Publisher count: 0` —— 只单向通。同机其它话题（另一个节点发的）却双向正常。
+**原因**：那个发布者的 DDS participant 是在**开机时建的**，当时产线网口/对端还没就绪，participant 的 locator 是陈旧的；
+之后网络起来了也不会重新宣告。所以"同一个 domain、同一 QoS、两边都没设 LOCALHOST_ONLY"照样不对称。
+**修**：重启那个**发布端**进程/服务（本次：`systemctl restart d405-color-pub`）→ 8 秒内 B 机立刻 `Publisher count: 1` 且数据到（img_age 0.17s）。
+**判据顺序**：先比两边 `topic info` 的 pub/sub 计数（不对称＝发现层问题，不是 QoS/带宽）→ 再看 QoS 是否 RxO 兼容 → 最后才怀疑网络。
+**预防**：把发布者服务写成 `After=network-online.target` 且网口 up 后再建 participant；或用单播 `<Peers>` 显式列对端。
+
 ### 探针/临时订阅端也别手搓 `DataReader`
 自测脚本里 `DataReader(dp, Topic(dp, "zmax/xxx", T))` 这种写法**没带单播配置** ⇒ 同上一个坑,
 本机也一样收 0 条 (实测: 手搓 0 条, 换工程自带 `dds/zmax_node.py::Node("probe").take("<短键>")` 后 6 秒 51 条)。

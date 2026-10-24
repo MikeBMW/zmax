@@ -43,6 +43,24 @@ metadata:
 得到这个结论之前，不要花时间优化编码/拷贝/对齐。完整配方见
 `references/frame-rate-ceiling-diagnosis.md` §3.7。
 
+### 🔴 图像「一发布就掉速」: 先分「Python 打包」还是「传输」
+最后一档必须发到**0 订阅者的测试话题**: 实测 只取帧 26.5fps → +深度(0.6MB) 7.5fps → +彩色(0.9MB) **3.0fps**,
+而把网络订阅端整个停掉帧率纹丝不动(3.07→3.15) ⇒ 病在 rclpy 逐字节打包(0.9MB≈170ms), 不是网络/带宽/UDP 缓冲。
+定式 = 同一进程持相机(hub): 图像走**小消息**全速出口, ROS 只保低频给生产 RELIABLE 订阅方。
+小消息有两条路, 都实测过, 按下游要不要 ROS2 选:
+
+| 出口 | 实测(Orin→Intel 同一 /24) | 适用 |
+|---|---|---|
+| **ROS2 CompressedImage**(JPEG 41KB / 16bit PNG 159KB), BEST_EFFORT | 彩色 **9.09Hz** · 深度 **8.43Hz**, 帧龄 0.07/0.01s | 下游本来就是 ROS2 节点(采集/推理)→ **优先这条, 别为了 3Hz 就弃用 ROS2** |
+| HTTP `/frame.jpg` + `/depth.png` | 取一轮 **2.6ms**(上限 378fps), 帧龄 0.02s | 下游是网页/脚本/跨机取图; 或要 raw 级新鲜度 |
+
+⇒ **一发布就掉速时, 先换小消息, 再谈换协议**: 大消息 raw 走哪条协议都慢(病在打包), 小消息走 DDS 和走 HTTP 都够用。
+判别步骤、实测表与实现要点见 `references/frame-rate-ceiling-diagnosis.md` §3.8。
+- 订阅端 QoS 要**显式 BEST_EFFORT** 才能和压缩发布端匹配(默认 RELIABLE 订阅会报
+  `incompatible QoS. No messages will be received` 且一条都收不到)。
+- 压缩图像**复用采集线程已编码好的字节**, 不要为了发 compressed 再编码一次(白烧 CPU, 还可能把帧率压回去)。
+- 订阅端不要每帧 `cv2.imdecode` 只为量亮度: 每 20 帧解一次就够(比 41KB 传输贵一个量级的从来是解码, 不是传输)。
+
 ### 用户嫌「卡/不实时」时：先分清「配置节流」还是「真设备上限」
 实测帧率**远低于话题里配置的目标值**（如 `color_fps: 15` 而实测 1.83Hz）时，别急着说"设备就是慢"，
 按序证伪下面每一条 —— **每条都能被一条只读命令排除**，全排除完才能下"设备上限"的结论：
@@ -449,7 +467,9 @@ sudo docker run -d --name zmax-arm-raw --restart unless-stopped \
 | 开了"图+标注"模式后画面永远黑, 而 `/snap` 端点 200 且字节正常 | 标注后端无结果时渲染分支直接 `return` ⇒ 必须降级成"只出图"并在画面上标失败次数/帧龄, 不许静默 |
 | 用户说"点按钮打开还是慢/像没打开" | 两条链分开量: 打开=导入+探测+出窗+置前(实测 0.2/0.15/0.38/0.13s, 热启 3ms), 画面=泵周期。**等窗口的轮询粒度(0.6s)常是白等的那一秒** ⇒ ≤0.1s; 窗口已开就先抬起。黑画面会被读成"没打开" ⇒ 视频区盖"这一路没有画面"说明, 来帧即撤 |
 | 换了源还是只 1.9fps | 按三层分（设备模式表 / 厂商实现 / 发布传输），先跑分层卸载测速定位在哪一层，别直接报名"设备上限"。实测真根因是厂商节点回退路径 + 大消息发布 216ms/帧，**直驱+旁路后提到 16.6fps** ⇒ 先看 `references/high-rate-camera-bypass-node.md` 再下结论 |
-| 直驱能跑 30fps，一发布就崩到 4.6fps | 921KB 帧 ÷ 208KB UDP socket 缓冲 → 分片丢包重传 → 216ms/帧。根治需 root 调 `rmem_max/wmem_max`；不碰权限就走 JPEG/HTTP 小消息旁路 |
+| 直驱能跑 30fps，一发布就崩到 4.6fps | 先判是**打包**还是**传输**: 发到**0 订阅者**的测试话题还崩 ⇒ rclpy 逐字节打包(0.9MB≈170ms, 实测 26.5→3.0fps, 深度 0.6MB 单独发就 7.5fps), 停掉网络订阅端帧率不变; 插上订阅者才崩才轮到 socket 缓冲/分片。**修法是换小消息不是换协议**: compressed(41KB/159KB)走 DDS 实测 9Hz, HTTP 实测 25fps, raw 哪条都慢 |
+| 一台相机被两个服务各开一路(彩色一路/深度一路) | 抢设备 → 一方 EIO、彩色时有时无(`/dev/videoN` 被 UVC 独占而 vendor 接口又被另一进程占) | **一个进程持相机**: 采集线程只做 `wait_for_frames`+`rs.align(color)`, 再分发给 HTTP(全速) / ROS raw(低频) / ROS compressed(10Hz); 别让另一个服务去开同一个设备 |
+| 停掉相机服务后立刻重开 → `RuntimeError: Couldn't resolve requests` / EIO | 设备没释放完(实测停服务后 **8s 不够, 15~20s 才行**) | 重启前 `sleep 18~20` 再开; 连着失败几次后设备可能**从 `lsusb` 整个消失**(并非硬件坏): 逐级核 `sysfs` 里 `idVendor`, 对父 hub 端口 `authorized=0`→`1` 重新枚举即回(实测 `Bus 002 Device 005: 8086:0b5b` 回来了), 回来后再起服务 |
 | DDS 发布拖慢采集（12.9 vs 22.9fps） | 大消息发布必须在**独立线程 + 有界队列丢帧**，不能内联在采集循环里 |
 | 改了 `--arm-fps 30` 还是只 15fps | 推流服务另有全局 `--fps`（默认 15）在封顶，两个都要传 |
 | 容器订阅报 `'bytes' object has no attribute 'encoding'` | 用了 `raw=True` ⇒ 去掉 |
@@ -484,3 +504,4 @@ sudo docker run -d --name zmax-arm-raw --restart unless-stopped \
 - 目标可见性/动作匹配验证脚本：`scripts/verify_motion_in_video.py`
 - **直驱 + 双通道（高帧率旁路 + 限流 DDS 保订阅方）的建设配方**：`references/high-rate-camera-bypass-node.md`
 - **出局域网交付（只读闸门 + 出网隧道 + 带宽预算 + 地址发布发现 + 与转发方的接口）**：`references/remote-stream-delivery-and-gate.md`
+- **「一发布就掉速」的分层测速脚本（A 只取帧 / B +深度 / C +彩色 / D 生产话题，四档各报 fps）**：`scripts/ros_publish_cost_attribution.py`

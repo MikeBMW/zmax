@@ -121,7 +121,8 @@ C  BEST_EFFORT + 不发布点云     → 排除点云开销
 | A3 +拷贝 | **30.0** | 拷贝**免费** |
 | B/C +发布 | **4.6** | **发布一步就吃掉 6.5 倍** |
 ⇒ **瓶颈是"发布"本身，与相机/对齐/拷贝/QoS/点云都无关。**
-一帧 921KB 走本机 DDS 需 **216ms** ⇒ 这是链路特性，不是你的代码慢。
+一帧 921KB 走本机 DDS 需 **216ms** ⇒ 但**别急着把账算给链路**: 先做下节 §3.8 的「0 订阅者」判别,
+实测在同一台机器上 0 订阅者也一样掉到 3fps ⇒ 主因是 Python 侧的打包, 不是 socket/带宽。
 
 **机制**（能在现场直接查到）：大消息走 UDP 分片，而内核 socket 缓冲远小于一帧：
 ```bash
@@ -134,6 +135,55 @@ cat /proc/sys/net/core/rmem_max /proc/sys/net/core/wmem_max    # 实测 212992 =
   见 `references/high-rate-camera-bypass-node.md`。
 - 顺带量一下 `free -g` 与 `uptime`：**本机已满载（load≈核数）时，发布线程会连采集一起拖慢**，
   这也是下面"发布必须独立线程"的原因。
+
+## 3.8 打包 vs 传输: 用「0 订阅者的测试话题」一刀切开
+§3.7 的 B/C 档常带订阅者, 那样永远分不清"我的代码慢"还是"链路慢"。**最后一档必须是无人订阅的测试话题**:
+
+```python
+pub = node.create_publisher(Image, "/bench/color", QoSProfile(depth=1, reliability=RELIABILITY))
+# 逐层: A 只取帧 → B 加深度 BEST_EFFORT → C 加彩色 RELIABLE(都发 /bench/*, 无任何订阅者)
+```
+实测(D405 640×480, 本机同进程, 每档 6s):
+
+| 档 | 内容 | 实测 |
+|---|---|---|
+| A | 只取帧 + `rs.align`, 不发布 | **26.5 fps**(38ms/帧, p50 33ms) |
+| B | +深度 0.6MB → `/bench/depth` BEST_EFFORT(**0 订阅者**) | 7.5 fps(133ms/帧) |
+| C | +彩色 0.9MB → `/bench/color` RELIABLE(**0 订阅者**) | **3.0 fps**(329ms/帧) |
+| D | 发到生产话题(有 RELIABLE 订阅方) | 3.0 fps(**与 C 相同**) |
+
+两条判据:
+1. **0 个订阅者也掉到 3fps ⇒ 病在 rclpy 打包**。`sensor_msgs/Image` 的 `data` 是逐字节转进 CDR 序列的,
+   耗时随字节数线性涨(0.6MB≈95ms, 0.9MB≈170ms, 彩色+深度≈300ms)。这不是网络, 也不是相机。
+2. **把网络侧订阅进程整个停掉, 再量一次帧率**: 实测 3.07 → 3.15 fps(**纹丝不动**) ⇒ 对端与局域网都不是瓶颈。
+   反过来说, 若停掉订阅端帧率明显回升, 那才是传输侧的问题(才轮到 §3.7 的 socket 缓冲/调 `rmem_max`)。
+
+⇒ 结论口径: 「相机 30fps 而下游只有 3fps」时**不要先去调 socket/带宽/编码**, 先跑 A/B/C 三档把锅定到那一行 `publish()`。
+
+### 修法定式: 同一进程持相机 → 图像走 HTTP 全速, ROS 只保低频给生产订阅方
+一台相机只能一个进程打开, 而「生产订阅方(RELIABLE)」与「采集/调试要全速」又要同时满足 ⇒ 拆两条路,
+同一个 frameset 出两份(实测可用):
+- **采集/调试**: `/frame.jpg`(JPEG q82, 41KB) + `/depth.png`(16bit PNG, 158KB), 全速 **25fps**,
+  帧龄 0.01~0.035s; 实测取一轮「彩色+深度」**2.6ms** ⇒ 上限 378 次/秒, 采集侧不再是瓶颈。
+- **生产**: ROS 话题照旧发布(RELIABLE 订阅方如视觉节点不受影响), 频率压低到 5Hz 即可;
+  **它本来就不是给采集用的**, 不要拿它当采集通道(否则永远被 3Hz 卡住)。
+- 实现要点: capture 线程按相机原生帧率取帧并**编码进「最新帧槽」**(JPEG + 16bit PNG 各一份字节);
+  第二个线程按 `ROS_HZ` 从槽里 `copy()` 出来发布; HTTP handler 只吐槽里现成字节。
+  ⚠️ HTTP 侧**不许现解压现重编码**(否则又回到每帧几十毫秒); ⚠️ ROS 侧**不许内联在采集循环里**(会把采集一起拖慢)。
+- 同一进程持相机的附带收益: 不会两个进程抢设备, 也不会「图与深度不同步」(同一 frameset 出两路)。
+- 验收三个数: HTTP 帧龄(<0.05s) · 取一轮彩色+深度的耗时(实测 2.6ms) · ROS 话题仍按预期 Hz 发布且订阅方未掉。
+
+### 但别就此弃用 ROS2: 同一 hub 再开一路 `CompressedImage` 就够(实测 9Hz)
+"大消息慢"的修法是**换小消息**, 不是**换协议**。同一个持相机进程里再起第三个出口即可,
+下游是 ROS2 节点时优先这条(不用另写 HTTP 客户端):
+- 发布 `/realsense/color/image_raw/compressed`(JPEG 41KB) + `/realsense/depth/image_rect_raw/compressed`(16bit PNG 159KB),
+  **BEST_EFFORT / depth=3**, 直接复用采集线程已编码好的字节(**别再编一次**)。
+- 实测跨机(Orin → Intel, 同一 /24, `ROS_DOMAIN_ID=0`): 彩色 **9.09Hz** · 深度 **8.43Hz**;
+  Intel 侧桥 `/health` 报 `img_age 0.07s · depth_age 0.01s`。即 DDS 本身完全能扛 200KB×10Hz。
+- 订阅端:**显式 BEST_EFFORT**(用默认 RELIABLE 会报 `incompatible QoS`, 一条都收不到);
+  `cv2.imdecode` 只每 20 帧解一次(只为量亮度/尺寸)——传输便宜、解码贵。
+- 选型一句话: 下游是 ROS2 节点 → compressed; 下游是网页/脚本/要 raw 级新鲜度 → HTTP。
+  两条可以同时开(同一 frameset, 零额外编码), 用 `GS_IMG_SRC=comp|http` 这类开关切换。
 
 ## 4. 找实现（决定"能不能读源码确证"）
 ```bash

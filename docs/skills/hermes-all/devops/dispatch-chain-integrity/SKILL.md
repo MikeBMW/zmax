@@ -103,6 +103,37 @@ metadata:
 Z-MAX 的具体文件与端点、以及桥接限速口径: 见技能 `state-space-canvas-engineering` 中
 「仿真速度 v_ff → 位置位姿」参考文件的第 5 节。
 
+## 铁律 ②c: 「记录了」≠「记到了」—— 采集链(下发链的反向)逐层核验 + 备用真值通道
+
+用户说"刚才动了, 数据能用么/你看到了么"时, 别凭印象答, 也别先怀疑控制器或软件。采集链是一条独立的链:
+**网卡/网段 → 采集容器(会话) → 桥/接口 → 落盘文件**, 断在任何一层, 结果都长得一模一样: **一条数据都没有**。
+
+1. **先判链路, 再判设备**(顺序不能反):
+   ```bash
+   ip -br link | grep -vE '^(lo|docker0)'      # 有线网卡在不在
+   lsusb | grep -iE 'realtek|asix|ethernet'   # 工位机的产线网段常靠 **USB 网卡**(netplan 钉 192.168.23.50/24, 无网关)
+   ping -c2 192.168.23.160; ping -c2 192.168.23.66
+   ```
+   🔴 **采集容器在 crash loop 里打 `connectToRobot(...) → RuntimeError: network: network connection` = 网卡/网段掉了, 不是控制器坏**。
+   同一时刻还能看到 `ss-remote-tap`/`traj-rec` 卡在 `start-pre`(等网络)、相机与画布轨迹全空 —— 全是同一个根因的下游。
+   判定"机器人连没连"只认 **SDK 会话能不能读到真值**, 不认进程在不在、话题列不列得出来。
+2. **本机链路断了不等于没法采**: 边缘机(Orin)通常仍在产线网段、且走公网跳板 `ssh <edge>` 可达 ⇒
+   用它上面已有的**只读 HTTP 桥**(`curl -s http://127.0.0.1:<port>/status`)当备用真值源, 一次一帧就够判活。
+   这条是只读路径: 不启边缘机的产线栈、不下发运动; 产线 launch/驱动节点要不要重起归用户定。
+3. **用户说"一会要动, 你要记录"时, 先起录制再让他动**, 并把基线立刻回给他(位姿/关节/模式/电源):
+   用 `scripts/arm_pose_recorder.py`(本 skill 自带)在真值侧机器上跑, 逐帧 JSONL + `latest.json` + 收尾 `last_summary.json`。
+   ```bash
+   ssh <edge> 'cd ~/.zmax/arm && setsid nohup python3 arm_pose_recorder.py 3600 30 <tag> >rec_run.log 2>&1 </dev/null &'
+   ssh <edge> 'wc -l ~/.zmax/arm/rec/rec_<tag>_*.jsonl'    # 行数在涨才是真在录
+   ```
+4. **坑**
+   - 🔴 **桥不自动重连**: 典型的 SDK 桥只在 `STATE["robot"] is None` 时才 `connect()` ⇒ 控制器断电重启后它抱着**死会话**,
+     `/health` 照报 `sdk:true` 而 `/status` 逐字段变成 `*_err` ⇒ 必须重启那个**只读桥**单元, 然后回读真值确认。
+   - 远程后台录制用 `setsid nohup … </dev/null >log 2>&1 &`, 但 ssh 仍可能因持有通道跑到 **exit 124** ——
+     **不是失败**, 判定看落盘行数; 大 JSONL **别 scp 拉回**(过公网跳板几 MB 就超时), 分析脚本放真值侧机器上跑。
+   - 采集窗口里的掉线段是**证据**(断电/复位/会话断开), 要写清落在哪个时间窗, 不能拿平均值掩盖。
+5. **报告口径**见 `references/pose-stream-recording.md`(必报六项 · 角度 unwrap · 运动分段 · 连续性阈值)。
+
 ## 铁律 ③: 数据来历 —— 先确认这个值是不是他要的那个
 
 存在多份同名数据(两套点库/两份配置/演示学习 vs 手工示教)时:
@@ -300,3 +331,7 @@ Z-MAX 的具体文件与端点、以及桥接限速口径: 见技能 `state-spac
 - `references/point-store-and-recovery.md` —— 两套点库/覆盖识别判据/审计与备份位置/可跑的还原取值片段。
 - `scripts/verify_rot_split.py` —— 姿态分步(最后一跳自动 ≤5°/段 原地转身)的**零运动离线自证**:
   真实点对 + 90/150/179° 极端, 退出码 0 = 每段 ≤5° · 留给平移段的残差 ≤5° · 无 NaN。拿到真机前先跑它。
+- `references/pose-stream-recording.md` —— 真机真值流(位姿/关节/力矩)录制与取证报告口径:
+  必报六项 · rpy 的 ±π **回绕**(极差 6.28 不是转一圈) · 运动分段与路径长度 · 连续性(>0.1s 间隔计数) · 采集链断点定位。
+- `scripts/arm_pose_recorder.py` —— 只读位姿录制器(轮询 SDK 桥 `/status`, N Hz, 逐帧 JSONL + latest + summary)。
+  用户说"一会动, 你记录"时直接部署到真值侧机器跑, 不发任何运动指令。
