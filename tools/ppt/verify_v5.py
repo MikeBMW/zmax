@@ -16,7 +16,7 @@ print("页数: %d" % n)
 if n != 33:
     fail.append("页数 %d != 33" % n)
 
-ntab = npic = ntxt = 0
+ntab = npic = ntxt = nchart = 0
 bad_star = []
 bad_char = []
 small = []
@@ -26,6 +26,8 @@ for i, s in enumerate(prs.slides, 1):
             ntab += 1
         if sh.shape_type == 13:
             npic += 1
+        if getattr(sh, "has_chart", False) and sh.has_chart:
+            nchart += 1
         if not sh.has_text_frame:
             continue
         t = sh.text_frame.text
@@ -42,7 +44,8 @@ for i, s in enumerate(prs.slides, 1):
                 if r.font.size and r.font.size.pt < 6.0:
                     small.append((i, r.font.size.pt, r.text[:24]))
 
-print("表格: %d 个   图片: %d 张   文本块: %d 个" % (ntab, npic, ntxt))
+print("表格: %d 个   原生图表: %d 个   位图: %d 张   文本块: %d 个"
+      % (ntab, nchart, npic, ntxt))
 print("`**` 残留: %d" % len(bad_star))
 for x in bad_star:
     print("   P%d %s" % x)

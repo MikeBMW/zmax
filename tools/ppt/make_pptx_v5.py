@@ -161,6 +161,222 @@ def table(s, x, y, w, data, col_w, fsize=8.2, row_h=0.32, head_h=0.34,
     return gf
 
 
+
+# ═══════════════ 原生图表（PowerPoint 对象，右键「编辑数据」可改） ═══════════════
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import (XL_CHART_TYPE, XL_LABEL_POSITION,
+                             XL_LEGEND_POSITION, XL_MARKER_STYLE)
+from pptx.oxml.ns import qn as _qn
+
+GRID2 = RGBColor(0xE6, 0xE9, 0xEE)
+
+
+def _ea_font(el):
+    for rPr in el.iter(_qn("a:defRPr")):
+        ea = rPr.find(_qn("a:ea"))
+        if ea is None:
+            ea = rPr.makeelement(_qn("a:ea"), {})
+            rPr.append(ea)
+        ea.set("typeface", FONT)
+
+
+def chart_style(ch, size=8.0, grid=True):
+    ch.font.size = Pt(size)
+    ch.font.name = FONT
+    ch.font.color.rgb = INK
+    _ea_font(ch._chartSpace)
+    va = ch.value_axis
+    va.has_major_gridlines = grid
+    if grid:
+        va.major_gridlines.format.line.color.rgb = GRID2
+        va.major_gridlines.format.line.width = Pt(0.5)
+    va.format.line.fill.background()
+    va.tick_labels.font.size = Pt(max(6.0, size - 0.8))
+    va.tick_labels.font.color.rgb = MUT
+    va.minimum_scale = 0
+    ca = ch.category_axis
+    ca.has_major_gridlines = False
+    ca.format.line.color.rgb = LINE
+    ca.tick_labels.font.size = Pt(size)
+    ca.tick_labels.font.color.rgb = INK
+
+
+def _log_axis(ch, base=10, minv=None, maxv=None):
+    va = ch.value_axis
+    sc = va._element.find(_qn("c:scaling"))
+    if sc is None:
+        return
+    old = sc.find(_qn("c:logBase"))
+    if old is not None:
+        sc.remove(old)
+    el = sc.makeelement(_qn("c:logBase"), {"val": str(base)})
+    ori = sc.find(_qn("c:orientation"))
+    if ori is not None:
+        ori.addnext(el)
+    else:
+        sc.insert(0, el)
+    if minv is not None:
+        va.minimum_scale = minv
+    if maxv is not None:
+        va.maximum_scale = maxv
+
+
+def hbar(s, x, y, w, h, cats, vals, colors, fmt="0", cat_sz=8.2, lab_sz=8.0,
+         maxv=None, log=False, minv=None, lab_pos="out"):
+    """横向条形；colors 逐点分色（None = 用主题色）"""
+    cd = CategoryChartData()
+    cd.categories = list(reversed(cats))
+    cd.add_series("值", list(reversed(vals)))
+    gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(x), Inches(y),
+                            Inches(w), Inches(h), cd)
+    ch = gf.chart
+    ch.has_legend = False
+    ch.has_title = False
+    chart_style(ch, lab_sz)
+    pl = ch.plots[0]
+    pl.gap_width = 40
+    pl.vary_by_categories = False
+    pl.has_data_labels = True
+    dl = pl.data_labels
+    dl.number_format = fmt
+    dl.number_format_is_linked = False
+    dl.position = {"out": XL_LABEL_POSITION.OUTSIDE_END,
+                   "in": XL_LABEL_POSITION.INSIDE_END,
+                   "ctr": XL_LABEL_POSITION.CENTER}[lab_pos]
+    dl.font.size = Pt(lab_sz)
+    dl.font.bold = (lab_pos == "in")
+    dl.font.color.rgb = WHITE if lab_pos == "in" else INK
+    ser = ch.series[0]
+    for i, c in enumerate(reversed(colors)):
+        if c is None:
+            continue
+        pt = ser.points[i]
+        pt.format.fill.solid()
+        pt.format.fill.fore_color.rgb = c
+        pt.format.line.fill.background()
+    ch.category_axis.tick_labels.font.size = Pt(cat_sz)
+    if log:
+        _log_axis(ch, 10, minv, maxv)
+    elif maxv:
+        ch.value_axis.maximum_scale = maxv
+    return ch
+
+
+def stacked_status(s, x, y, w, h, cats, groups, colors, names, cat_sz=8.4):
+    """groups[i] ∈ {1,2,3} → 按档位拆成 3 个系列堆叠，每行仅一档有值"""
+    cd = CategoryChartData()
+    cd.categories = list(reversed(cats))
+    rev = list(reversed(groups))
+    for k in (3, 2, 1):
+        cd.add_series(names[k], [k if g == k else None for g in rev])
+    gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED, Inches(x), Inches(y),
+                            Inches(w), Inches(h), cd)
+    ch = gf.chart
+    ch.has_title = False
+    chart_style(ch, cat_sz)
+    ch.has_legend = True
+    ch.legend.position = XL_LEGEND_POSITION.BOTTOM
+    ch.legend.include_in_layout = False
+    ch.legend.font.size = Pt(cat_sz)
+    ch.plots[0].gap_width = 45
+    ch.plots[0].overlap = 100
+    for i, k in enumerate((3, 2, 1)):
+        ser = ch.series[i]
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = colors[k]
+        ser.format.line.fill.background()
+        ser.data_labels.show_value = False
+    ch.value_axis.visible = False
+    ch.category_axis.tick_labels.font.size = Pt(cat_sz)
+    return ch
+
+
+def vbar(s, x, y, w, h, cats, vals, colors, fmt="0", cat_sz=9.5, lab_sz=10.5):
+    cd = CategoryChartData()
+    cd.categories = cats
+    cd.add_series("值", vals)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(x), Inches(y),
+                            Inches(w), Inches(h), cd)
+    ch = gf.chart
+    ch.has_legend = False
+    ch.has_title = False
+    chart_style(ch, cat_sz)
+    pl = ch.plots[0]
+    pl.gap_width = 55
+    pl.vary_by_categories = False
+    pl.has_data_labels = True
+    dl = pl.data_labels
+    dl.number_format = fmt
+    dl.number_format_is_linked = False
+    dl.position = XL_LABEL_POSITION.OUTSIDE_END
+    dl.font.size = Pt(lab_sz)
+    dl.font.bold = True
+    dl.font.color.rgb = INK
+    ser = ch.series[0]
+    for i, c in enumerate(colors):
+        pt = ser.points[i]
+        pt.format.fill.solid()
+        pt.format.fill.fore_color.rgb = c
+        pt.format.line.fill.background()
+    return ch
+
+
+def line_ch(s, x, y, w, h, cats, vals, color, fmt="0", lab_sz=8.0):
+    cd = CategoryChartData()
+    cd.categories = cats
+    cd.add_series("覆盖率", vals)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(x), Inches(y),
+                            Inches(w), Inches(h), cd)
+    ch = gf.chart
+    ch.has_legend = False
+    ch.has_title = False
+    chart_style(ch, lab_sz)
+    pl = ch.plots[0]
+    pl.has_data_labels = True
+    dl = pl.data_labels
+    dl.number_format = fmt
+    dl.number_format_is_linked = False
+    dl.position = XL_LABEL_POSITION.ABOVE
+    dl.font.size = Pt(lab_sz)
+    dl.font.color.rgb = INK
+    ser = ch.series[0]
+    ser.format.line.color.rgb = color
+    ser.format.line.width = Pt(2.2)
+    ser.smooth = False
+    ser.marker.style = XL_MARKER_STYLE.CIRCLE
+    ser.marker.size = 7
+    try:
+        ser.marker.format.fill.solid()
+        ser.marker.format.fill.fore_color.rgb = color
+        ser.marker.format.line.color.rgb = WHITE
+    except AttributeError:
+        pass
+    return ch
+
+
+def radar_ch(s, x, y, w, h, vals, color):
+    cd = CategoryChartData()
+    cd.categories = ["场景", "模型", "数据", "本体"]
+    cd.add_series("值", vals)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.RADAR, Inches(x), Inches(y),
+                            Inches(w), Inches(h), cd)
+    ch = gf.chart
+    ch.has_legend = False
+    ch.has_title = False
+    chart_style(ch, 7.5)
+    va = ch.value_axis
+    va.maximum_scale = 10
+    va.minimum_scale = 0
+    va.major_unit = 2.5
+    va.tick_labels.number_format = ";;;"
+    va.tick_labels.number_format_is_linked = False
+    va.tick_labels.font.size = Pt(5.0)
+    ser = ch.series[0]
+    ser.format.line.color.rgb = color
+    ser.format.line.width = Pt(1.9)
+    return ch
+
+
 def pic(s, name, x, y, w=None, h=None):
     p = os.path.join(FIG, name)
     if not os.path.exists(p):
@@ -282,7 +498,49 @@ conclusion(s, 6.30,
 # ══════════════════ P4 竞合 2×2 ══════════════════
 s = new()
 header(s, "第 1 章 · 竞合地图", "四个格子，四种对待方式", 4)
-pic(s, "fig_rel.png", 0.62, 1.52, w=6.12)
+# 2×2 用形状画（原生对象：可拖、可改色、可改字）
+RC_SH = {"comp": RED, "partner": GRN, "watch": RGBColor(0x9A, 0xA3, 0xAF), "me": ME}
+QX, QY, QW, QH = 0.90, 1.62, 6.15, 4.55
+HALF_W, HALF_H = QW / 2, QH / 2
+QS = [(QX + HALF_W, QY, "直接竞品", "它石、智元", "打", RED, REDBG),
+      (QX, QY, "模型伙伴", "具脑、无界", "谈", GRN, BLUEBG),
+      (QX + HALF_W, QY + HALF_H, "元任务层 · 我方", "只有我方", "守", ME, MEBG),
+      (QX, QY + HALF_H, "能力补充", "RIMBOT 日冕", "看", MUT, GREYBG)]
+for _x, _y, _t1, _t2, _act, _c, _bg in QS:
+    rect(s, _x, _y, HALF_W, HALF_H, fill=_bg, line_c=WHITE, lw=2.0)
+    text(s, _x + 0.12, _y + 0.10, HALF_W - 0.5, 0.26, _t1, 10.0, True, _c)
+    text(s, _x + 0.12, _y + 0.38, HALF_W - 0.3, 0.22, _t2, 8.2, False, MUT)
+    text(s, _x + HALF_W - 0.50, _y + 0.08, 0.40, 0.42, _act, 17, True, _c, align="r")
+
+
+def qpt(dx, dy):
+    return QX + dx / 10.0 * QW, QY + (1 - dy / 10.0) * QH
+
+
+PP = [("智元", 7.9, 9.15, "comp", -0.18, 0.05, "r"),
+      ("它石智航", 8.5, 7.30, "comp", -0.18, 0.03, "r"),
+      ("具脑磐石", 2.4, 8.60, "partner", 0.19, -0.02, "l"),
+      ("无界智航", 3.3, 7.20, "partner", 0.19, -0.02, "l"),
+      ("RIMBOT 日冕", 3.0, 2.20, "watch", 0.19, -0.02, "l"),
+      ("我方 Z-MAX", 8.5, 1.00, "me", -0.18, 0.03, "r")]
+from pptx.enum.shapes import MSO_SHAPE
+for _nm, _dx, _dy, _q, _ox, _oy, _ha in PP:
+    _px, _py = qpt(_dx, _dy)
+    _sz = 0.16 if _q == "me" else 0.115
+    _sh = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(_px - _sz), Inches(_py - _sz),
+                             Inches(_sz * 2), Inches(_sz * 2))
+    _sh.fill.solid(); _sh.fill.fore_color.rgb = RC_SH[_q]
+    _sh.line.color.rgb = WHITE; _sh.line.width = Pt(1.2)
+    _sh.shadow.inherit = False
+    _st = _sh._element.find(_qn("p:style"))
+    if _st is not None:
+        _sh._element.remove(_st)
+    _tx = _px + _ox - 1.38 if _ha == "r" else _px + _ox
+    text(s, _tx, _py + _oy - 0.13, 1.38, 0.26, _nm, 8.6, _q == "me",
+         ME if _q == "me" else INK, align=_ha)
+text(s, QX, QY + QH + 0.10, QW, 0.24, "与工厂精细操作的场景重叠度（低 → 高）", 9.0, False, MUT,
+     align="c")
+text(s, 0.30, QY + QH / 2 - 0.12, 2.0, 0.24, "自研本体程度（低 → 高）", 9.0, False, MUT)
 CARDS = [("打｜直接竞品", RED, "它石、智元。差异不在模型，在「存量产线 + 多本体」"),
          ("谈｜模型伙伴", GRN, "具脑、无界。它出脑，我出场景与判据库"),
          ("看｜能力补充", MUT, "RIMBOT 日冕。触觉与力控模块，体量小"),
@@ -311,7 +569,14 @@ text(s, 0.62, 6.62, 12.1, 0.36,
 # ══════════════════ P6 四维雷达 ══════════════════
 s = new()
 header(s, "第 1 章 · 能力对比", "六家的四维形状：我方缺的只是本体", 6)
-pic(s, "fig_radar.png", 0.62, 1.50, w=8.24)
+RR = D["score4"]
+RC = {"comp": RED, "partner": GRN, "watch": RGBColor(0x9A, 0xA3, 0xAF), "me": ME}
+for _k, _r in enumerate(RR):
+    _cx, _cy = _k % 3, _k // 3
+    _x = 0.60 + _cx * 2.44
+    _y = 1.72 + _cy * 2.14
+    text(s, _x, _y - 0.24, 2.34, 0.22, _r[0], 9.4, True, RC[_r[5]], align="c")
+    radar_ch(s, _x, _y, 2.34, 1.86, list(_r[1:5]), RC[_r[5]])
 text(s, 9.45, 1.60, 3.4, 0.34, "三种形状，加一个我方", 12, True, INK)
 NOTES = [("满而均衡", "智元 — 四维全高，正面打不过，只能错位", RED),
          ("两轴突出", "它石 — 场景+模型双高，但只有自家本体", RED),
@@ -340,8 +605,21 @@ table(s, 0.62, 1.86, 12.09, data, [0.35, 1.55, 2.55, 1.05, 6.59], fsize=7.7,
 # ══════════════════ P8 国际图 ══════════════════
 s = new()
 header(s, "第 2 章 · 全球格局", "估值与单台估值：溢价差 41 倍，差在叙事不在交付", 8)
-pic(s, "fig_g10.png", 0.62, 1.52, w=12.09)
-conclusion(s, 5.98,
+FOREIGN = {"Figure AI", "Tesla Optimus", "NEURA Robotics", "Apptronik"}
+r8 = [r for r in D["global10"] if r[3]]
+text(s, 0.62, 1.46, 6.4, 0.22, "估值 / 市值（亿元人民币，2026-10-24）", 8.8, True, MUT)
+hbar(s, 0.55, 1.66, 6.62, 4.00, [r[1] for r in r8], [r[3] for r in r8],
+     [OS if r[1] in FOREIGN else CN for r in r8], fmt="0", cat_sz=8.4, lab_sz=8.0,
+     maxv=3150)
+text(s, 7.35, 1.46, 5.3, 0.22, "单台估值（亿元 / 台，对数轴）", 8.8, True, MUT)
+PR = [("Figure AI", 2788 / 150), ("宇树科技", 2475 / 5500), ("智元", 500 / 5168)]
+hbar(s, 7.28, 1.66, 5.42, 4.00, [p[0] for p in PR], [p[1] for p in PR],
+     [OS, CN, CN], fmt="0.00", cat_sz=8.6, lab_sz=9.0, log=True, minv=0.05, maxv=60,
+     lab_pos="in")
+text(s, 0.62, 5.78, 12.1, 0.30,
+     "左图 9 家（Optimus 无独立估值、未入图）；右图按 Figure 2025 约 150 台、宇树约 5500 台、智元 5168 台换算；"
+     "橙色 = 国外，蓝色 = 国内。", 7.8, False, MUT)
+conclusion(s, 6.16,
            "Figure 单台 1.86 亿元、宇树 4500 万、智元 967 万 —— 同一门生意，市场给三种价。", OS)
 
 # ══════════════════ P9 国际优势分析 ══════════════════
@@ -368,7 +646,20 @@ findings_page(12, "第 3 章 · 国内格局", "国内前 20 的四个特点（�
 # ══════════════════ P13 国内图 ══════════════════
 s = new()
 header(s, "第 3 章 · 国内格局", "同一张榜里混了四种上市性质，颜色分开才看得懂", 13)
-pic(s, "fig_d20.png", 0.62, 1.50, w=11.0)
+COLN = {"科创板": CN, "科创板 IPO": CN, "港股": RGBColor(0x1F, 0x9D, 0x8F),
+        "Pre-IPO": RGBColor(0x9A, 0xA3, 0xAF), "私募": RGBColor(0x7F, 0xA8, 0xE8),
+        "私募（拟港股）": CN, "私募（已递表港交所）": RGBColor(0x7F, 0xA8, 0xE8)}
+r13 = D["domestic20"]
+hbar(s, 0.55, 1.52, 11.95, 4.42,
+     ["%d %s" % (r[0], r[1]) for r in r13], [r[3] for r in r13],
+     [COLN.get(r[4], MUT) for r in r13], fmt="0", cat_sz=7.6, lab_sz=7.4, maxv=2680)
+LEG = [("科创板 / 拟港股", CN), ("港股", RGBColor(0x1F, 0x9D, 0x8F)),
+       ("Pre-IPO（未达百亿）", RGBColor(0x9A, 0xA3, 0xAF)), ("私募", RGBColor(0x7F, 0xA8, 0xE8))]
+for _i, (nm, c) in enumerate(LEG):
+    _lx = 8.60 + (_i % 2) * 1.66
+    _ly = 5.62 + (_i // 2) * 0.25
+    rect(s, _lx, _ly + 0.052, 0.13, 0.13, fill=c)
+    text(s, _lx + 0.19, _ly, 1.46, 0.24, nm.replace("（未达百亿）", " 未达百亿"), 7.8, False, MUT)
 conclusion(s, 6.34,
            "蓝=科创板/拟港股、青=港股、灰=Pre-IPO 未达百亿、浅蓝=私募 —— 只有前两类是市场定价。", CN)
 
@@ -422,7 +713,22 @@ findings_page(19, "第 4 章 · 轮式双臂", "轮式的四个结论：数据�
 # ══════════════════ P20 轮式数据矩阵 ══════════════════
 s = new()
 header(s, "第 4 章 · 轮式双臂", "数据资产强弱：3 家能自证，9 家拿不出", 20)
-pic(s, "fig_wheel.png", 0.62, 1.52, w=12.09)
+def _wscore(d):
+    if "未披露" in d or "未公开" in d:
+        return 1
+    if "未开源" in d or "非开源" in d:
+        return 2
+    if "开源" in d or "TB" in d or "百亿" in d or "500+" in d:
+        return 3
+    return 2
+
+
+r20 = D["wheel15"]
+stacked_status(s, 0.55, 1.54, 12.0, 4.30, [r[1] for r in r20],
+               [_wscore(r[4]) for r in r20],
+               {3: GRN, 2: OS, 1: RGBColor(0xC9, 0xCE, 0xD6)},
+               {3: "可自证（能拿到或能核）", 2: "有数据但拿不到（未开源）", 1: "连规模都没写"},
+               cat_sz=8.2)
 conclusion(s, 6.30,
            "数据权重加大后，这条直接决定排序 —— 不是谁机器人好，是谁拿得出可训练的数据。", CN)
 
@@ -457,7 +763,17 @@ for i, (h1, h2) in enumerate(D["findings"]["hybrid_edge"][:3]):
     text(s, 1.22, y + 0.05, 11.2, 0.26, h1, 10.8, True, INK)
     text(s, 1.22, y + 0.32, 11.2, 0.48, h2, 8.8, False, MUT, line=1.2)
     y += 0.94
-pic(s, "fig_hybrid.png", 0.62, 4.40, w=11.0)
+NG = [r[1] for r in D["hybrid15"] if r[6]]
+NB = [r[1] for r in D["hybrid15"] if not r[6]]
+rect(s, 0.62, 4.40, 12.09, 0.90, fill=GRNBG)
+rect(s, 0.62, 4.40, 0.055, 0.90, fill=GRN)
+text(s, 0.84, 4.48, 11.6, 0.26, "有数据痕迹 / 模型合作    %d 家" % len(NG), 10.4, True, GRN)
+text(s, 0.84, 4.78, 11.6, 0.44, " · ".join(NG), 8.8, False, INK, line=1.22)
+rect(s, 0.62, 5.40, 12.09, 0.90, fill=GREYBG)
+rect(s, 0.62, 5.40, 0.055, 0.90, fill=RGBColor(0x9A, 0xA3, 0xAF))
+text(s, 0.84, 5.48, 11.6, 0.26, "模型或数据写「未公开」    %d 家" % len(NB), 10.4, True,
+     RGBColor(0x5C, 0x63, 0x6E))
+text(s, 0.84, 5.78, 11.6, 0.44, " · ".join(NB), 8.8, False, INK, line=1.22)
 conclusion(s, 6.62, "对这批公司，我们不是竞品，是给它们装脑子的人 —— 谈判位置比轮式那边好。", GRN)
 
 # ══════════════════ P25 / P26 模型表 ══════════════════
@@ -474,15 +790,58 @@ for k, (i0, i1) in enumerate([(0, 10), (10, 20)]):
 # ══════════════════ P27 架构分布 ══════════════════
 s = new()
 header(s, "第 6 章 · 模型与数据", "20 家的技术路线：7 家押纯世界模型，4 家是 VLA 系", 28)
-pic(s, "fig_arch.png", 0.62, 1.56, w=11.6)
+ACAT = {"VLA": [], "JEPA": [], "World": [], "触觉": [], "数据": [], "控制器": []}
+for _r in D["model20"]:
+    _t = _r[9]
+    if "JEPA" in _t:
+        ACAT["JEPA"].append(_r[1])
+    elif "触觉" in _t or "VTLA" in _t:
+        ACAT["触觉"].append(_r[1])
+    elif "数据" in _t:
+        ACAT["数据"].append(_r[1])
+    elif "控制器" in _t or "原子技能" in _t:
+        ACAT["控制器"].append(_r[1])
+    elif "VLA" in _t:
+        ACAT["VLA"].append(_r[1])
+    elif "World" in _t or "预测" in _t or "物理反演" in _t or "重建" in _t:
+        ACAT["World"].append(_r[1])
+    else:
+        ACAT["控制器"].append(_r[1])
+AORD = ["World", "VLA", "JEPA", "触觉", "控制器", "数据"]
+ACOL = [RGBColor(0x1F, 0x9D, 0x8F), CN, ME, GRN, RGBColor(0x9A, 0xA3, 0xAF), OS]
+text(s, 0.62, 1.46, 11.3, 0.22,
+     "按公开可查的架构标签分类（每家的标签见第 26–27 页表格第 4 列）；单位：家", 8.8, True, MUT)
+vbar(s, 0.55, 1.70, 11.4, 3.62, AORD, [len(ACAT[k]) for k in AORD], ACOL,
+     cat_sz=10.0, lab_sz=12.0)
 conclusion(s, 5.92,
            "7 家押纯世界模型、4 家走 VLA、真正 JEPA 只有 3 家 —— 谈之前先问权重能不能下载。", ME)
 
 # ══════════════════ P28 开源阶梯 ══════════════════
 s = new()
 header(s, "第 6 章 · 模型与数据", "开源可验证性：只有第一层能自己跑一遍", 29)
-pic(s, "fig_open.png", 0.62, 1.56, w=12.09)
-conclusion(s, 6.06,
+L1, L2, L3 = [], [], []
+for _r in D["model20"]:
+    _o = _r[2]
+    _neg = any(k in _o for k in ("未明确", "无开源", "不开源", "闭源", "未开源", "非开源"))
+    if _neg:
+        L3.append(_r[1])
+    elif "数据集" in _o and "权重" not in _o:
+        L2.append(_r[1])
+    elif "开源" in _o:
+        L1.append(_r[1])
+    else:
+        L2.append(_r[1])
+TIERS = [("权重 + 代码可下载（可自证）", L1, GRN, GRNBG),
+         ("只开数据 / 部分开源（半可证）", L2, OS, RGBColor(0xFD, 0xF4, 0xEC)),
+         ("未明确或不开放（不可验证）", L3, RGBColor(0x9A, 0xA3, 0xAF), GREYBG)]
+_ty = 1.62
+for _t, _nm, _c, _bg in TIERS:
+    rect(s, 0.62, _ty, 12.09, 1.30, fill=_bg)
+    rect(s, 0.62, _ty, 0.055, 1.30, fill=_c)
+    text(s, 0.86, _ty + 0.13, 11.6, 0.28, "%s    %d 家" % (_t, len(_nm)), 11.6, True, _c)
+    text(s, 0.86, _ty + 0.50, 11.6, 0.70, " · ".join(_nm), 9.2, False, INK, line=1.3)
+    _ty += 1.48
+conclusion(s, 6.14,
            "合作前先要三样：权重链接、License、跑通的 benchmark —— 三样给不出两家以上，就当它闭源。", GRN)
 
 # ══════════════════ P29 模型层分析 ══════════════════
@@ -523,7 +882,9 @@ data = [["优先级", "对象", "动作", "合同要点", "时间窗"],
         ["—", "它石智航", "不打（差异化）", "存量利旧 + 多品牌混线，不进它的新建线战场", "—"]]
 table(s, 0.62, 1.58, 7.35, data, [0.55, 1.45, 1.45, 3.2, 1.1], fsize=7.6,
       row_h=0.62, head_h=0.32, bold_col0=True)
-pic(s, "fig_invest.png", 8.02, 1.60, w=4.74)
+line_ch(s, 7.98, 1.66, 4.82, 2.86, ["0", "4", "8", "12", "16", "17"],
+        [38.1, 33.3, 69.4, 79.2, 93.1, 100.0], ME, fmt="0", lab_sz=8.0)
+text(s, 7.98, 1.48, 4.8, 0.22, "投入（新增能力条数）→ 元任务覆盖率 %", 8.4, True, MUT)
 text(s, 8.02, 4.72, 4.74, 1.4,
      "投入产出（实测）：现状 20 条只覆盖 38%，针对性补 8 条就到了 69%，补齐 17 条到 9/9 全覆盖。"
      "问题不是条数不够，是那 20 条选错了。", 8.4, False, MUT, line=1.3)
