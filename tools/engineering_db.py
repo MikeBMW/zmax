@@ -388,6 +388,10 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         _notes_doc = json.loads(_read(os.path.join(PROJ_DIR, "function_notes.json")) or "{}")
     except Exception:                                                        # noqa: BLE001
         _notes_doc = {}
+    # 🐛 2026-10-25: 画布插/删节点会让 FN-<SYS>-NN 的**位置编号整体平移** (实测插 1 个节点 ⇒ 27 个功能点
+    #   的描述全部张冠李戴, 判据 ⑦b 反而"看起来满员")。⇒ 描述优先按**节点名**取 (notes_by_name),
+    #   编号键仅作历史兼容兜底。编号仍保留在 functions.fn_id 上 (对外引用/工单不改)。
+    _NOTES_BY_NAME = (_notes_doc.get("notes_by_name") or {}) if isinstance(_notes_doc, dict) else {}
     NOTES = (_notes_doc.get("notes") or {}) if isinstance(_notes_doc, dict) else {}
     fno = 0
     for s_ in plat.get("subsystems", []):
@@ -413,8 +417,9 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                           (fid, sid, nm, s_.get("level"), _kind, hname, nm,
                            _j({k: v for k, v in pp.items() if k != "desc"}),
                            (ref or {}).get("file", "") + ((":%d" % ref["line"]) if ref and ref.get("line") else ""),
-                           (NOTES.get(fid) or {}).get("work"), (NOTES.get(fid) or {}).get("pain"),
-                           (NOTES.get(fid) or {}).get("state")))
+                           (_NOTES_BY_NAME.get(nm) or NOTES.get(fid) or {}).get("work"),
+                           (_NOTES_BY_NAME.get(nm) or NOTES.get(fid) or {}).get("pain"),
+                           (_NOTES_BY_NAME.get(nm) or NOTES.get(fid) or {}).get("state")))
                 c.execute("INSERT INTO links VALUES(?,?,?,?,?)", ("function", fid, "module", nm, "对应模块"))
                 jx = 0
                 for k, v in pp.items():

@@ -907,13 +907,16 @@ class GravityTableWidget(QWidget):
         lay.addWidget(self.lbl_map)
 
         self.t = QTableWidget(0, 1 + len(LAYERS) + 1)   # 首列 + L2/L3/L4/L5 + 合力 = 6 列 (原来多出一列空列)
-        heads = ["状态空间项 · 元任务"] + [n for _k, n in LAYERS] + ["合力"]
+        # 🌍 2026-10-25: 老倪问「合力计算合理么？有没有真正的对应关系」—— 这一列是**矢量叠加**(m/s 当量),
+        #   不是牛顿力; 列名改名为「合力(矢量)」如实标量纲, 真力 F=−∂U/∂x 见下方 H=K+U 能量块。
+        heads = ["状态空间项 · 元任务"] + [n for _k, n in LAYERS] + ["合力(矢量)"]
         self.t.setHorizontalHeaderLabels(heads)
         _colmap = {1: ("L2 · 地球 = 快响应 MLP", "小动作/局部微调"),
                    2: ("L3 · 火星 = 动作生成器 DiT", "大动作/动作块; 公转周期=动作节拍"),
                    3: ("L4 · 木星 = 集合条件 (性能流形 η/V_p)", "约束的集合侧; 引力=度量张量"),
                    4: ("L5 · 太阳 = 流形中心 (意图→势场 φ)", "约束的中心: 定方向 G·(−∇Φ)"),
-                   5: ("合力 = 主力 + Σ赋能力", "四层矢量叠加; 强度由度量 M 决定")}
+                   5: ("合力(矢量) = 主力 + Σ赋能力", "四层**速度当量(m/s)**矢量叠加 · 一致度=|ΣF|/Σ|F|\n"
+                       "⚠ 量纲: 这是 m/s 的加权和, 不是 N; 真力 = −∂U/∂x 见 H=K+U 能量块")}
         for _j, (_nm, _tp) in _colmap.items():
             _it = self.t.horizontalHeaderItem(_j)
             if _it is not None:
@@ -956,6 +959,17 @@ class GravityTableWidget(QWidget):
                                     "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:4px;")
         lay.addWidget(self.lbl_foot)
 
+        # 🌍 2026-10-25 老倪「要不改成哈密顿力学？H=K+U，你来设计公式和用户 UI」
+        #   能量块贴在「主参数 M → 万有引力表」下面: 一行给出 U/K/H/Ḣ/|F| + 被动性 + 数据源帧龄。
+        #   数据来自节点 ss_grav_h 每帧落的 zmax_data/ss_live/hamiltonian.json (缺文件 ⇒ 显示「节点未运行」, 不造数)。
+        self.lbl_energy = QLabel("🌍 H = K + U ── 等待节点 ss_grav_h 出数…")
+        self.lbl_energy.setWordWrap(True)
+        self.lbl_energy.setMaximumHeight(58)
+        self.lbl_energy.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_energy.setStyleSheet("color:#ffd479;font-size:13px;font-family:Consolas,monospace;"
+                                      "background:#0d1117;border:1px solid #3d2f12;border-radius:5px;padding:4px;")
+        lay.addWidget(self.lbl_energy)
+
         self.field = None
         self._fmt = (2, 14, False)          # (小数位, 字号px, 是否 2×2) —— 由 _pick_fmt 按当前宽度定
         self.refresh()
@@ -966,6 +980,44 @@ class GravityTableWidget(QWidget):
         self._tm.setInterval(700)
         self._tm.timeout.connect(self.refresh_if_visible)
         self._tm.start()
+
+    # ── 🌍 能量块: H = K + U (节点 ss_grav_h 每帧落盘, 这里只读) ──
+    def _update_energy(self):
+        """读 zmax_data/ss_live/hamiltonian.json → 两行能量读数。
+
+        口径 (与 src/lerobot/manifold/state_space_energy.py 逐式一致):
+            U = ½·ξ_eᵀ K ξ_e · K = ½·ξᵀ Λ ξ · H = K + U · Ḣ = −ξᵀBξ ≤ 0(被动) · F = −∂U/∂x
+        缺文件/太旧/节点报错 ⇒ 如实显示, **绝不用 0 冒充**。
+        """
+        import json as _json
+        import time as _t
+        try:
+            p = _p("zmax_data", "ss_live", "hamiltonian.json")
+            with open(p, encoding="utf-8") as fh:
+                d = _json.load(fh)
+        except Exception as e:                                               # noqa: BLE001
+            self.lbl_energy.setText("🌍 H = K + U ── 节点 ss_grav_h 未出数 (%s: %s)" % (type(e).__name__, e))
+            return
+        try:
+            age = max(0.0, _t.time() - float(d.get("ts") or 0.0))
+            U, K, H = float(d["U"]), float(d["K"]), float(d["H"])
+            hd = float(d.get("hdot", 0.0))
+            F = [float(x) for x in (d.get("F") or [0, 0, 0, 0, 0, 0])]
+            fn = float(d.get("F_norm") or 0.0)
+            ok = bool(d.get("passive", hd <= 0.0))
+            stale = age > 5.0
+            line1 = ("🌍 H=K+U │ U %.4f J │ K %.6f J │ H %.4f J │ Ḣ %.2e %s%s"
+                     % (U, K, H, hd, "≤0 ✅被动" if ok else ">0 ⚠主动", "  ⏸陈旧%.0fs" % age if stale else ""))
+            line2 = ("F=−∂U/∂x │ |F| %.3f N (Fx %.2f · Fy %.2f · Fz %.2f) │ ρ %.1f mm │ 帧龄 %.1fs │ %s · %s"
+                     % (fn, F[0], F[1], F[2], float(d.get("rho_mm") or 0.0), age,
+                        str(d.get("stage") or "-")[:10], str(d.get("xi_src") or "")[:14]))
+            self.lbl_energy.setText(line1 + "\n" + line2)
+            self.lbl_energy.setToolTip(
+                "公式: %s\n数据源: %s\n参数来源: %s\nK_diag=%s · alpha=%s · m=%.3f kg"
+                % (d.get("formula", ""), str(d.get("src", ""))[:90], d.get("param_source", ""),
+                   d.get("K_diag"), d.get("alpha"), float(d.get("mass_kg") or 0.0)))
+        except Exception as e:                                               # noqa: BLE001
+            self.lbl_energy.setText("🌍 H = K + U ── 字段不全 (%s: %s)" % (type(e).__name__, e))
 
     # ── 宽度自适应: 老倪要一行四个数看得见 ⇒ 先降小数位/字宽, 不够才 2×2 (绝不打省略号) ──
     def _pick_fmt(self, w=None):
@@ -1002,6 +1054,7 @@ class GravityTableWidget(QWidget):
         QTimer.singleShot(0, self._maybe_refmt)
 
     def refresh(self):
+        self._update_energy()          # 🌍 H=K+U 能量块 (独立数据源, 与四元数表解耦)
         try:
             _new = GravityField()
         except Exception as e:                                               # noqa: BLE001

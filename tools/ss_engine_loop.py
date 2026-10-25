@@ -827,6 +827,19 @@ class Loop:
             fh.write(json.dumps(d, ensure_ascii=False) + "\n")
         _trim_tap(self.tap_path, int(TAP_MAX_MB * 1024 * 1024))
         _atomic_json(self.live_path, d)
+        # 🌍 2026-10-25 老倪「增加万有引力节点…计算状态空间的动能和势能…H=K+U」:
+        #   本回路每周期算一次能量场 (U/K/H/Ḣ/F), 落 zmax_data/ss_live/hamiltonian.json
+        #   ⇒ 右侧栏「主参数 M」下的 H 能量块与 DDS 切面都读这一份 (同一算式, 不各算一套)。
+        #   算式唯一真源 = lerobot.manifold.state_space_energy.live_energy (画布节点 ss_grav_h 同用)。
+        #   只读观测 / 不下发: 力场结论进快照与日志, 机械臂方向仍由 L2 收口决定。
+        try:
+            if not hasattr(self, "_ham_cache"):
+                self._ham_cache = {}
+            from lerobot.manifold.state_space_energy import live_energy
+            self._ham = live_energy(ROOT, self._ham_cache)
+            _atomic_json(os.path.join(LIVE_DIR, "hamiltonian.json"), self._ham)
+        except Exception as _he:                                             # noqa: BLE001
+            self._ham = {"ok": False, "err": "%s: %s" % (type(_he).__name__, _he)}
 
     def say(self, d: dict, t0: float, n0: int) -> None:
         self.slice.append(d)

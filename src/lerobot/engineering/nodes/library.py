@@ -5992,6 +5992,91 @@ _reg("l5_loop", ["L5 · 视觉语言自动标注", "L5 标注→训练", "标注
      "自动训练 (L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge); 双击节点看状态",
      node_l5_loop)
 
+# ════════════════ 🌍 万有引力 · SE(3) 几何阻抗 + H = K + U (2026-10-25 老倪) ════════════════
+# 老倪: 「增加万有引力节点。要保证所有层都能受控于这个力，因为力场才是空间的本质。
+#        我要基于万有引力，计算状态空间的动能和势能 … 要不改成哈密顿力学？H=K+U，你来设计公式和用户 UI」
+# 公式与判据的唯一真源: src/lerobot/manifold/state_space_energy.py (12/12 判据自测通过)。
+# 本函数只做三件事: ① 读**真实在跑的**实况 (trace_live/chunk_latest, 不造数) ② 算 U/K/H/F/Ḣ
+# ③ 落 zmax_data/ss_live/hamiltonian.json 供右侧栏「主参数 M」下的能量块与 DDS 切面读。
+_HAM_CACHE = {"prev": None}
+
+
+def _ham_mod():
+    """惰性导入能量层 (避免画布启动时拉起 numpy 全链)。"""
+    try:
+        from lerobot.manifold.state_space_energy import StateSpaceHamiltonian   # type: ignore
+        return StateSpaceHamiltonian
+    except Exception:                                                       # noqa: BLE001
+        for p in (os.path.join(_REPO_ROOT, "src"), _REPO_ROOT):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        from lerobot.manifold.state_space_energy import StateSpaceHamiltonian   # type: ignore
+        return StateSpaceHamiltonian
+
+
+def node_ss_grav_h(ctx):
+    """🌍 万有引力 · SE(3) 几何阻抗 + H=K+U — 全层力场仲裁。
+
+    物理口径 (与 state_space_energy.py 逐式对应):
+        ξ_e = [目标 − 当前] (体坐标, 指向目标) · U = ½ ξ_eᵀ K ξ_e (+ 逐层分解 s_l, Σs=1)
+        K = ½ ξᵀ Λ ξ  (Λ = diag(m,m,m,Ix,Iy,Iz)) · H = K + U
+        F = +K ξ_e (驱动) · F_l = s_l·F (逐层, Σ_l F_l = F 恒等式)
+        ξ̇ = Λ⁻¹(F − Bξ) · Ḣ = −ξᵀBξ ≤ 0 (被动, 结构保证)
+    数据来源 (实时, 缺就报缺, 不造数):
+        zmax_data/ss_live/trace_live.json   末端_x/y/z + 光模块_x/y + 阶段 + src
+        zmax_data/ss_live/chunk_latest.json 参考速度 u / 阶段 (交叉核对)
+    """
+    log = ctx.get("log")
+    root = ctx.get("root") or _REPO_ROOT
+    live = os.path.join(root, "zmax_data", "ss_live")
+    try:
+        import json as _json
+        import numpy as _np
+        tr = _json.load(open(os.path.join(live, "trace_live.json"), encoding="utf-8"))
+        try:
+            ck = _json.load(open(os.path.join(live, "chunk_latest.json"), encoding="utf-8"))
+        except Exception:                                                   # noqa: BLE001
+            ck = {}
+        # ① ② ③ 算式只有一份: state_space_energy.live_energy()（引擎 emit 每周期也调它,
+        #   两处不各算一套 —— 公式/符号/单位改一处就全局一致）。
+        from lerobot.manifold.state_space_energy import live_energy
+        out = live_energy(root, _HAM_CACHE)
+        U, K, F = float(out["U"]), float(out["K"]), out["F"]
+        hd = float(out["hdot"])
+        xi_e, stage = out["xi_e"], out["stage"]
+        src_vel = out["xi_src"]
+        try:
+            os.makedirs(live, exist_ok=True)
+            with open(os.path.join(live, "hamiltonian.json"), "w", encoding="utf-8") as fh:
+                _json.dump(out, fh, ensure_ascii=False, indent=1)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        if log:
+            log("🌍 万有引力: ξ_e=[%.1f,%.1f,%.1f]mm · U=%.6fJ · K=%.6fJ · H=%.6fJ · Ḣ=%.2e %s"
+                % (xi_e[0] * 1000, xi_e[1] * 1000, xi_e[2] * 1000, U, K, K + U, hd,
+                   "(被动✅)" if hd <= 0 else "(主动⚠)"))
+            log("   力场: |F|=%.3fN (Fx %.3f · Fy %.3f · Fz %.3f) · 逐层 %s"
+                % (out["F_norm"], F[0], F[1], F[2],
+                   " ".join("%s %.3fN" % (k, float(_np.linalg.norm(v))) for k, v in out["F_layers"].items())))
+            log("   数据源: %s · 阶段 %s · ξ 来自 %s · 落 zmax_data/ss_live/hamiltonian.json"
+                % (str(out["src"])[:48], stage, src_vel))
+        return _NodeOut(out)
+    except Exception as e:                                                  # noqa: BLE001
+        if log:
+            log("⚠️ 万有引力节点: %s: %s (缺实况 ⇒ 不出数, 不造数)" % (type(e).__name__, e))
+        return _NodeOut({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+
+
+_reg("ss_grav_h", ["万有引力", "SE3 几何阻抗", "H=K+U", "哈密顿"],
+     "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U — 全层力场仲裁: 势能 U=½ξeᵀKξe 决定允许方向 "
+     "(层动作与 −∇U 夹角>60° 否决), 动能 K=½ξᵀΛξ 决定代价, H=K+U 判被动性 (Ḣ=−ξᵀBξ≤0); "
+     "输出 u=[F;M] 与逐层力分解 (ΣF_l=F)。源码 src/lerobot/manifold/state_space_energy.py::"
+     "StateSpaceHamiltonian · 判据 tools/verify_hamiltonian_energy.py",
+     node_ss_grav_h)
+
+_EXTERNAL_LOC["ss_grav_h"] = (os.path.join(_MANIFOLD_DIR, "state_space_energy.py"),
+                              92, "class StateSpaceHamiltonian")
+
 # ── 迁移收尾: 把本模块命名空间交给注册表 (用户改过的逻辑 exec 时用同一份 globals) ──
 
 # ════════════════════════════════════════════════════════════════
