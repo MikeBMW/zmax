@@ -1063,6 +1063,10 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/calib":
                 c = load_calib(cam)
                 self._json({"ok": bool(c), "calib": c, "cam": cam, "cams": CAMS})
+            elif p == "/api/traj/plan":
+                self._json(self._traj_plan())
+            elif p == "/api/traj/exec/state":
+                self._json(self._traj_exec_state())
             elif p == "/api/traj/state":
                 self._json(self._traj_state())
             elif p == "/api/ar_diag":              # 🩺 AR 页面自诊断上报(页面每 3s 推一次真实运行时状态)
@@ -1463,6 +1467,67 @@ class H(BaseHTTPRequestHandler):
                 r["img_err"] = str(e)
         return r
 
+    TRAJ_DIR = os.path.join(REPO, "zmax_data", "runtime", "traj")
+    TRAJ_MAX_AGE = 1800.0
+
+    def _traj_plan(self):
+        """当前规划轨迹（老倪要"先画出来、我看到再执行" ⇒ 页面读的就是执行器读的同一份）。"""
+        p = os.path.join(self.TRAJ_DIR, "planned_traj.json")
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            d["age_s"] = round(time.time() - float(d.get("ts") or 0), 1)
+            d["stale"] = d["age_s"] > self.TRAJ_MAX_AGE
+            d["ok"] = True
+            return d
+        except Exception as e:                                                   # noqa: BLE001
+            return {"ok": False, "err": "还没有规划轨迹 (%s)" % str(e)[:80]}
+
+    def _traj_exec_state(self):
+        p = os.path.join(self.TRAJ_DIR, "traj_state.json")
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            d["age_s"] = round(time.time() - float(d.get("t") or 0), 1)
+            d["ok"] = True
+            return d
+        except Exception:                                                        # noqa: BLE001
+            return {"ok": False, "phase": "none"}
+
+    def _traj_exec_start(self):
+        """『▶ 执行轨迹』按钮的后端: 复核(规划新鲜/预检过/授权窗) → 后台起 traj_exec.py。
+
+        命令**只进** l2_daemon 的 FIFO（唯一执行收口），本服务不直连 SDK、不自己下发。
+        """
+        plan = self._traj_plan()
+        if not plan.get("ok"):
+            return {"ok": False, "msg": plan.get("err") or "没有规划轨迹"}
+        if plan.get("stale"):
+            return {"ok": False, "msg": "规划已 %.0f 分钟, 位姿早变了 ⇒ 请重新规划" % (plan["age_s"] / 60.0)}
+        if not ((plan.get("precheck") or {}).get("ok")):
+            return {"ok": False, "msg": "规划预检未通过(净空 %.1fmm) ⇒ 不发" % (
+                (plan.get("precheck") or {}).get("worst_mm") or -1)}
+        # 🔒 授权闸先判: 过期就直接告诉人, 不要"已下发"然后执行器静默拒发(用户会以为机器该动了却没动)
+        try:
+            _au = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
+            _until = float(_au.get("until") or 0)
+            _left = _until - time.time()
+            if float(_au.get("revoked_at") or 0) > 0:
+                return {"ok": False, "msg": "授权已被撤销 ⇒ 先在 8793 页面重新做现场授权"}
+            if _left <= 0:
+                return {"ok": False, "msg": "授权窗已过期 %.0f 分钟 ⇒ 先在 8793 页面点现场授权, 再点执行轨迹" % (-_left / 60.0)}
+        except Exception as e:                                                   # noqa: BLE001
+            return {"ok": False, "msg": "读不到授权真源(ctl_auth.json): %s" % str(e)[:60]}
+        st = self._traj_exec_state()
+        if st.get("phase") == "running" and float(st.get("age_s") or 99) < 3:
+            return {"ok": False, "msg": "轨迹正在执行中(第 %s 段)" % st.get("seg")}
+        log = os.path.join(self.TRAJ_DIR, "exec_stdout.log")
+        os.makedirs(self.TRAJ_DIR, exist_ok=True)
+        f = open(log, "ab")
+        pr = subprocess.Popen([sys.executable, os.path.join(HERE, "traj_exec.py")], cwd=REPO,
+                              stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        return {"ok": True, "pid": pr.pid, "n_seg": plan.get("n_seg"),
+                "msg": "已下发: %d 段 / %.0fmm (执行器 l2_daemon · FIFO 收口)" % (
+                    plan.get("n_seg") or 0, plan.get("total_mm") or 0)}
+
     def _traj_state(self):
         st = TD.get_state()
         rec = 0
@@ -1582,6 +1647,9 @@ class H(BaseHTTPRequestHandler):
                         "in_spec": TD.paths_in_spec(),
                         "msg": ("✅ 已显示轨迹(实测轨迹 + 规划航路)" if show
                                 else "⏸ 已隐藏轨迹(画面上的轨迹线撤掉, 录制历史保留)")})
+        elif p == "/api/traj/exec":
+            r = self._traj_exec_start()
+            self._json(r)
         elif p == "/api/traj/clear":
             rec = 0
             try:
