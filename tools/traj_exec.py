@@ -82,6 +82,30 @@ def run(dry=False):
     if not (plan.get("precheck") or {}).get("ok"):
         say("❌ 规划自检未通过(净空 %.1fmm) ⇒ 不发" % ((plan.get("precheck") or {}).get("worst_mm") or -1))
         return 2
+    # 🔒 起点闸(2026-10-25 实测踩到): 人是会手动挪臂的 —— 挪过之后这条"相对段"轨迹的含义就变了。
+    #    规划里存了 tcp0_mm; 现在 TCP 跟它差 >5mm 就拒发, 不拿旧起点硬跑。
+    try:
+        sys.path.insert(0, HERE)
+        from precheck_move import read_joints
+        _q, _tcp, _age = read_joints()
+        _p0 = plan.get("tcp0_mm")
+        if _p0 and _age <= 5.0:
+            d = sum((float(_tcp[i]) - float(_p0[i])) ** 2 for i in range(3)) ** 0.5
+            if d > 5.0:
+                say("🛑 起点已变: 规划时 TCP=(%.1f, %.1f, %.1f)mm, 现在=(%.1f, %.1f, %.1f)mm, 差 %.1fmm > 5mm"
+                    " ⇒ 这条轨迹是相对段, 含义已变, 请重新规划"
+                    % (float(_p0[0]), float(_p0[1]), float(_p0[2]),
+                       float(_tcp[0]), float(_tcp[1]), float(_tcp[2]), d))
+                _w(STATE, {"plan_ts": plan.get("ts"), "n_seg": len(plan.get("segs") or []),
+                           "phase": "blocked", "seg": 0, "blocked_by": "起点已变 %.1fmm" % d, "t": time.time()})
+                return 5
+    except SystemExit as e:
+        say("⚠ 起点闸读不到实时真值(%s) ⇒ 按保守处理: 不执行" % str(e)[:80])
+        return 5
+    except Exception as e:                                                   # noqa: BLE001
+        say("⚠ 起点闸异常(%s) ⇒ 不执行" % str(e)[:80])
+        return 5
+
     ok, epoch, why = auth_ok()
     if not ok and not dry:
         say("🛑 %s" % why)

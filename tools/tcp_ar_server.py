@@ -1063,6 +1063,8 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/calib":
                 c = load_calib(cam)
                 self._json({"ok": bool(c), "calib": c, "cam": cam, "cams": CAMS})
+            elif p == "/api/module_spec":
+                self._json(self._module_spec())
             elif p == "/api/traj/plan":
                 self._json(self._traj_plan())
             elif p == "/api/traj/exec/state":
@@ -1469,6 +1471,28 @@ class H(BaseHTTPRequestHandler):
 
     TRAJ_DIR = os.path.join(REPO, "zmax_data", "runtime", "traj")
     TRAJ_MAX_AGE = 1800.0
+
+    # ── 光模块外形(长方体) 规格: 真源一个文件, 页面只读 ───────────────────────
+    MODSPEC = os.path.join(REPO, "zmax_data", "ar_state", "module_spec.json")
+    MOD_DEFAULT = {"L_mm": 56.5, "W_mm": 13.4, "T_mm": 8.5,
+                   "src": "SFP 类标称(长 56.5 / 宽 13.4 / 厚 8.5), 与臂相机实测宽高比 27/122px 吻合"}
+
+    def _module_spec(self):
+        """光模块长方体规格 + 与 tool1 的轴向约定(老倪 2026-10-25 定的口径)。
+
+        tool1 原点 = **模块头中心**(长方体沿 Z 的一端); X = 上表面法向(厚度);
+        Y = 侧面法向(宽度); Z = 上表面中轴线(长度)。
+        """
+        d = dict(self.MOD_DEFAULT)
+        try:
+            d.update(json.load(open(self.MODSPEC, encoding="utf-8")))
+            d["ok"] = True
+        except Exception:                                                        # noqa: BLE001
+            d["ok"] = True
+            d["src"] = d.get("src") or self.MOD_DEFAULT["src"]
+            d["note"] = "还没落 module_spec.json, 用默认标称值"
+        d["axes"] = "tool1: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度) · 原点=模块头中心"
+        return d
 
     def _traj_plan(self):
         """当前规划轨迹（老倪要"先画出来、我看到再执行" ⇒ 页面读的就是执行器读的同一份）。"""

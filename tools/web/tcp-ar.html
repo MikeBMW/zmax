@@ -91,6 +91,7 @@
       <button id="bSpin" class="sm" title="自动缓慢旋转">🎥 自动环绕</button>
       <button id="bFrames" class="sm on" title="画 base(世界系) / tool0(法兰中心) / tool1(夹爪·模块头) 三个坐标系">🧭 坐标系</button>
       <button id="bUrdf" class="sm on" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
+      <button id="bMod" class="sm on" title="在 tool1(模块头中心)画光模块长方体: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度)">🔩 光模块</button>
     </div>
     <pre id="pVr">—</pre>
   </div>
@@ -228,7 +229,9 @@ let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRA
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
     MOD3=null, MOD3ON=true,
-    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true};
+    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true,mod:true};
+let MODSPEC={L_mm:56.5,W_mm:13.4,T_mm:8.5,src:'默认'};
+fetch('/api/module_spec').then(r=>r.json()).then(d=>{ if(d&&d.L_mm){ MODSPEC=d; drawVR(); } }).catch(()=>{});
 
 // ── 图像实际渲染矩形(= object-fit:contain 后画面占的位置), 叠加层必须贴这个矩形 ──
 // 🔴 踩坑(2026-09-29 屏幕闪烁): Safari/部分浏览器对 multipart/x-mixed-replace 的 <img> **每帧都触发 load**,
@@ -1072,6 +1075,10 @@ function drawVR(){
   }
   // 🧱 3D 围栏 (画在机器人之上, 轨迹之下)
   if(typeof FENCES!=='undefined' && FENCES.length) drawFences(g,pr);
+  // 🔩 光模块长方体 @ tool1 (2026-10-25 老倪: 「在三维视图画出光模块」)
+  //    口径由老倪定: tool1 原点 = 模块头中心(= 长方体沿 Z 的一端); X = 上表面法向(厚度 T);
+  //    Y = 侧面法向(宽度 W); Z = 上表面中轴线(长度 L)。本体从模块头朝法兰方向长出去。
+  if(VR.mod && TCP && TCP.ok && TCP.frames && TCP.frames.tool1) drawModuleBox(g, pr);
   // 轨迹(VR 里也按 3D 管道画)
   function tube(pts,color,baseW,alpha,ring){
     if(!pts||pts.length<2) return 0;
@@ -1224,6 +1231,7 @@ setInterval(async ()=>{
 $('bFrames').addEventListener('click',()=>{ VR.frames=!VR.frames; VR.auto=true;
   $('bFrames').classList.toggle('on',VR.frames); drawVR(); });
 $('bUrdf').addEventListener('click',()=>{ VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); drawVR(); });
+$('bMod').addEventListener('click',()=>{ VR.mod=!VR.mod; $('bMod').classList.toggle('on',VR.mod); drawVR(); });
 let SPIN=null;
 $('bSpin').addEventListener('click',()=>{
   if(SPIN){ clearInterval(SPIN); SPIN=null; $('bSpin').classList.remove('on'); return; }
@@ -1360,6 +1368,58 @@ function drawIfChanged(){
   if(s===SIG) return;
   SIG=s; drawOv(); drawVR();
 }
+// 🔩 光模块长方体 @ tool1 —— 老倪 2026-10-25 定的口径:
+//    tool1 原点 = **模块头中心**(长方体沿 Z 的一端);  X = 上表面法向 ⇒ 厚度 T 沿 X;
+//    Y = 侧面法向 ⇒ 宽度 W 沿 Y;  Z = 上表面中轴线 ⇒ 长度 L 沿 Z。
+//    本体从模块头朝**法兰**那边长(sign 由 tool0−tool1 与 Z 的点积定, 不写死)。
+function drawModuleBox(g, pr){
+  const F1=TCP.frames.tool1, F0=TCP.frames.tool0||{};
+  const L=(MODSPEC.L_mm||56.5)/1000, W=(MODSPEC.W_mm||13.4)/1000, T=(MODSPEC.T_mm||8.5)/1000;
+  const O=F1.origin, AX=[F1.x,F1.y,F1.z];                 // AX[0]=X(厚), AX[1]=Y(宽), AX[2]=Z(长)
+  let sgn=1;                                              // 本体方向: +1 沿 +Z, -1 沿 -Z
+  if(F0.origin){ const d=[F0.origin[0]-O[0],F0.origin[1]-O[1],F0.origin[2]-O[2]];
+    sgn = (d[0]*AX[2][0]+d[1]*AX[2][1]+d[2]*AX[2][2]) >= 0 ? 1 : -1; }
+  const half=[T/2, W/2, L/2*sgn];
+  const C=[0,1,2].map(i=> O[i] + AX[2][i]*half[2]);       // 长方体中心(沿 Z 从头部偏移 L/2)
+  const cs=[];                                            // 8 角点; 索引 = sx*4+sy*2+sz (sx,sy,sz∈{0,1})
+  for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1]){
+    cs.push([0,1,2].map(i=> C[i] + AX[0][i]*half[0]*sx + AX[1][i]*half[1]*sy + AX[2][i]*(L/2)*sz));
+  }
+  const P=cs.map(pr);
+  const okAll=P.every(q=>q);
+  const ix=(a,b,c)=> ((a+1)/2)*4 + ((b+1)/2)*2 + ((c+1)/2);   // sx,sy,sz ∈ {-1,1}
+  const faces=[
+    {f:[ix(-1,-1,-1),ix(-1,1,-1),ix(-1,1,1),ix(-1,-1,1)], head:false},
+    {f:[ix( 1,-1,-1),ix( 1,-1,1),ix( 1,1,1),ix( 1,1,-1)], head:false},
+    {f:[ix(-1,-1,-1),ix(-1,-1,1),ix( 1,-1,1),ix( 1,-1,-1)], head:false},
+    {f:[ix(-1, 1,-1),ix( 1, 1,-1),ix( 1, 1,1),ix(-1, 1,1)], head:false},
+    {f:[ix(-1,-1,-1),ix( 1,-1,-1),ix( 1, 1,-1),ix(-1, 1,-1)], head:(sgn<0)},   // sz=-1 端面
+    {f:[ix(-1,-1, 1),ix(-1, 1, 1),ix( 1, 1, 1),ix( 1,-1, 1)], head:(sgn>0)},   // sz=+1 端面
+  ];
+  if(okAll){
+    const Zs=faces.map(o=>({o, z:o.f.reduce((s,i)=>s+P[i].z,0)/4})).sort((a,b)=>b.z-a.z);
+    for(const {o} of Zs){
+      g.beginPath(); g.moveTo(P[o.f[0]].u,P[o.f[0]].v);
+      for(let k=1;k<4;k++) g.lineTo(P[o.f[k]].u,P[o.f[k]].v);
+      g.closePath();
+      g.globalAlpha=0.30; g.fillStyle=o.head?'#ff8c1a':'#ffc457'; g.fill();
+      g.globalAlpha=1;    g.strokeStyle=o.head?'#ff8c1a':'#ffc457'; g.lineWidth=o.head?2.4:1.6; g.stroke();
+    }
+    // 模块头(tool1 原点)画一个小十字, 与"原点=头中心"的说法对上
+    const h=pr(O);
+    if(h){ g.strokeStyle='#fff'; g.lineWidth=1.4; g.beginPath();
+      g.moveTo(h.u-5,h.v); g.lineTo(h.u+5,h.v); g.moveTo(h.u,h.v-5); g.lineTo(h.u,h.v+5); g.stroke(); }
+    // 标签: 写实测/标称尺寸 + 来源
+    const mid=P[faces[0].f[0]];
+    const lbl='🔩 光模块 '+MODSPEC.L_mm+'×'+MODSPEC.W_mm+'×'+MODSPEC.T_mm+'mm';
+    g.font='bold 12px monospace';
+    const tw=g.measureText(lbl).width;
+    const lx=Math.min(Math.max(6, mid.u+8), g.canvas.width-tw-14), ly=Math.min(g.canvas.height-8, Math.max(16, mid.v-8));
+    g.fillStyle='rgba(0,0,0,.75)'; g.fillRect(lx-4, ly-12, tw+10, 17);
+    g.fillStyle='#ffc457'; g.fillText(lbl, lx+1, ly);
+  }
+}
+
 // 🎯 让规划轨迹在画布上真的"够大": 反复 drawVR + 量洋红像素跨度, 按跨度调视距(实测收敛 2~3 轮)
 //    判据只用渲染结果, 不自己算投影 —— 这样 yaw/pitch/F 怎么变都不会失准; 琥珀色标签不参与判据。
 function autoZoomPlan(){
