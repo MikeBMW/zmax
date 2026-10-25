@@ -79,10 +79,32 @@ def _pt_seg_dist(p, a, b):
 
 
 # ─────────────────────────── CRUD ───────────────────────────
-def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "") -> dict:
+def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "", pts=None) -> dict:
+    """加一个 3D 元素。
+
+    kind: box(轴对齐长方体) / line(线段) / points(轨迹点序列 —— 老倪 2026-10-26
+    「工程配置里，对应的轨迹点，规划的轨迹点，没看到，补充上」)。
+    points 只做**显示与留档**, 不进碰撞判定 (轨迹本身就是机器人要走的路, 拿它当围栏
+    等于把路全堵死); check_point() 里显式跳过 type=points。
+    """
     kind = (kind or "box").lower()
-    if kind not in ("box", "line"):
-        raise ValueError("type 只能是 box 或 line")
+    if kind not in ("box", "line", "points"):
+        raise ValueError("type 只能是 box / line / points")
+    if kind == "points":
+        if not pts or len(pts) < 2:
+            raise ValueError("points 需要至少 2 个点 (pts=[[x,y,z]m,...])")
+        P = [_f3(q) for q in pts]
+        with _LOCK:
+            d = _load()
+            it = {"id": "F" + uuid.uuid4().hex[:6], "type": "points",
+                  "name": name or "轨迹点-%d" % (len(d["items"]) + 1),
+                  "p1": P[0], "p2": P[-1], "pts": P,
+                  "color": color or "#39d0ff",
+                  "enabled": True, "note": note, "at": time.strftime("%F %T"),
+                  "n": len(P)}
+            d["items"].append(it)
+            _save(d)
+            return it
     with _LOCK:
         d = _load()
         it = {"id": "F" + uuid.uuid4().hex[:6], "type": kind,
@@ -164,6 +186,8 @@ def check_point(p, margin_mm: float | None = None) -> dict:
     for it in d["items"]:
         if not it.get("enabled", True):
             continue
+        if it["type"] == "points":
+            continue                     # 轨迹点 = 参考路径, 不是围栏: 不参与碰撞 (否则把自己的路堵死)
         if it["type"] == "box":
             lo, hi = _box_bounds(it, mg)
             if all(lo[i] <= p[i] <= hi[i] for i in range(3)):

@@ -1877,7 +1877,7 @@ class H(BaseHTTPRequestHandler):
                 self._fence_audit("/api/fence/add", "-", body)
                 it = FS.add(body.get("type") or "box", body.get("p1"), body.get("p2"),
                             name=body.get("name") or "", color=body.get("color") or "",
-                            note=body.get("note") or "")
+                            note=body.get("note") or "", pts=body.get("pts"))
                 self._json({"ok": True, "item": it, "n": len(FS.listing()["items"])})
             except Exception as e:                                                 # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})

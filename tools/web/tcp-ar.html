@@ -189,6 +189,11 @@
       </div>
       <div class="row" style="margin-top:8px">
         <button id="fAdd" class="primary">➕ 添加元素</button>
+        <!-- 📍 2026-10-26 老倪「工程配置里，对应的轨迹点，规划的轨迹点，没看到，补充上」
+             把轨迹点真正落进工程配置 (fences.json, type=points), 之后列表里能看/能删、
+             3D 视图按点阵画; 轨迹点不参与碰撞判定 (它就是要走的路)。 -->
+        <button id="fSaveNamed" class="sm" style="border-color:#39d0ff;color:#39d0ff" title="把当前选中的命名轨迹(小红/正方/建图/安全/实时)的全部点存成工程配置里的『轨迹点』元素">📍 存当前轨迹点</button>
+        <button id="fSavePlan" class="sm" style="border-color:#58a6ff;color:#58a6ff" title="把规划航路(TRAJ.plan)的全部点存成工程配置里的『轨迹点』元素">📍 存规划航路点</button>
         <button id="fEditSave" class="sm" disabled>💾 保存修改</button>
         <button id="fClearAll" class="danger sm">清空全部</button>
       </div>
@@ -501,11 +506,20 @@ function drawNamedVR(g, pr){
     g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
     n++;
   }
-  // 每 8 个点画一个小圆, 看得出方向/密度
-  for(let i=0;i<P.length;i+=8){
+  // 🔴 2026-10-26 老倪「轨迹点没看到」: 原来每 8 个点才画一个 3px 小圆, 41/54 点的轨迹
+  //   只露出 6~7 个点, 看着就像没有轨迹点。现在**每个点都画**, 并每 10 个点标序号,
+  //   点数与序号都由服务端返回的真实点列算出来, 不写死。
+  const _dotR = pts.length > 200 ? 1.8 : (pts.length > 60 ? 2.2 : 2.8);
+  for(let i=0;i<P.length;i++){
     const q=P[i]; if(!q) continue;
-    g.fillStyle=col; g.beginPath(); g.arc(q.u,q.v,3,0,Math.PI*2); g.fill();
+    g.fillStyle=col; g.beginPath(); g.arc(q.u,q.v,_dotR,0,Math.PI*2); g.fill();
   }
+  g.font='10px monospace'; g.fillStyle=col;
+  for(let i=0;i<P.length;i+=10){
+    const q=P[i]; if(!q) continue;
+    g.globalAlpha=0.85; g.fillText(String(i+1), q.u+4, q.v+11); g.globalAlpha=1;
+  }
+  window.__NAMED_DOTS__=(window.__NAMED_DOTS__||0)+P.filter(Boolean).length;
   // 起点 S / 终点 E 标注
   const q0=P[0], q1=P[P.length-1];
   g.font='bold 12px monospace';
@@ -876,6 +890,18 @@ function renderFenceList(){
   if(!FENCES.length){ box.innerHTML='<div style="font-size:12px;color:#8b949e">还没有元素。上面填两点 → ➕ 添加元素。</div>'; return; }
   box.innerHTML=FENCES.map(it=>{
     const p1=it.p1.map(v=>Math.round(v*1000)), p2=it.p2.map(v=>Math.round(v*1000));
+    if(it.type==='points'){          // 📍 轨迹点序列 (显示/留档用, 不参与碰撞)
+      const n=(it.pts||[]).length;
+      return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #1b2430;font-size:12px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${it.color};display:inline-block"></span>
+        <b style="color:#c9d1d9">${it.name}</b>
+        <span style="color:#8b949e">📍 ${n} 点</span>
+        <span style="color:#6b7a8d">[${p1.join(',')}]→[${p2.join(',')}]</span>
+        <span style="color:#6b7a8d;font-size:11px">不参与碰撞</span>
+        <button class="sm" style="margin-left:auto" onclick="saveFencePointsTxt('${it.id}')" title="把这条轨迹的全部点导出成文本(可复制)">📋 点表</button>
+        <button class="sm danger" onclick="fenceDel('${it.id}')">删</button>
+      </div>`;
+    }
     const dim=(it.type==='box')?p1.map((v,i)=>Math.abs(p2[i]-v)).join('×')+'mm':('长度 '+
       Math.round(Math.hypot(p2[0]-p1[0],p2[1]-p1[1],p2[2]-p1[2]))+'mm');
     return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #1b2430;font-size:12px">
@@ -888,6 +914,40 @@ function renderFenceList(){
       ${it.type==='line'?`<button class="sm" style="border-color:#3fb950;color:#3fb950" title="让 tool1 沿这条线往复走" onclick="followLine('${it.id}')">▶ Follow</button>`:''}
       <button class="sm danger" onclick="fenceDel('${it.id}')">删</button>
     </div>`;}).join('');
+}
+// 📍 把一组点 (米) 落成工程配置里的『轨迹点』元素
+async function savePointsElement(name, pts, note){
+  if(!pts || pts.length<2){ alert('这条轨迹没有点可存'); return; }
+  // 同名元素已存在 ⇒ 先删再存 (老板连点两次不该堆出两条一模一样的轨迹点)
+  const olds=(FENCES||[]).filter(f=>f.type==='points' && f.name===name);   // 可能有多条(早先连点堆出来的), 全删
+  for(const o of olds){ try{ await fetch('/api/fence/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id:o.id})}); }catch(e){} }
+  try{
+    const r=await fetch('/api/fence/add',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'points', name:name, pts:pts, note:note||'', color:'#39d0ff'})});
+    const d=await r.json();
+    if(!d.ok){ alert('存失败: '+(d.err||'')); return; }
+    await loadFences();
+    const box=$('fList');
+    if(box) box.scrollTop=box.scrollHeight;
+  }catch(e){ alert('存失败: '+e.message); }
+}
+async function saveNamedAsPoints(){
+  if(!NAMED_SEL || !NAMED[NAMED_SEL]){ alert('先点一个轨迹按钮 (小红/正方/建图/安全/实时)'); return; }
+  const info=NAMED_INFO[NAMED_SEL]||{};
+  const nm=(info.label||NAMED_SEL)+' 轨迹点';
+  await savePointsElement('📍'+nm, NAMED[NAMED_SEL], '来自 /api/traj/named?k='+NAMED_SEL+' · '+(info.src||''));
+}
+async function saveTrajAsPoints(){
+  const pts=TRAJ.plan||[];
+  await savePointsElement('📍规划航路 轨迹点', pts, '来自 TRAJ.plan (traj_plan.py 规划的航路)');
+}
+function saveFencePointsTxt(id){
+  const it=FENCES.find(x=>x.id===id); if(!it||!it.pts) return;
+  const lines=(it.pts||[]).map((q,i)=>(i+1)+'\t'+(q[0]*1000).toFixed(1)+'\t'+(q[1]*1000).toFixed(1)+'\t'+(q[2]*1000).toFixed(1));
+  const txt='# '+it.name+' · '+(it.pts||[]).length+' 点 · base 系 mm (x/y/z)\n# i\tx\ty\tz\n'+lines.join('\n');
+  const w=window.open('','_blank'); if(w){ w.document.write('<pre style="font:12px monospace">'+txt+'</pre>'); }
+  else { navigator.clipboard?.writeText(txt); }
 }
 function fenceToggle(id,on){ fencePost('/api/fence/update',{id:id,enabled:on}); }
 function fenceDel(id){ fencePost('/api/fence/delete',{id:id}); }
@@ -926,6 +986,22 @@ function drawFences(g,pr){
   for(const it of items){
     const p1=it.p1,p2=it.p2;
     const sel=(it.id===FSEL);
+    if(it.type==='points'){
+      // 📍 轨迹点: 每个点一个小圆 (可数), 点间细连线表示顺序
+      const P=(it.pts||[]).map(pr);
+      g.strokeStyle=it.color; g.globalAlpha=0.55; g.lineWidth=1.5;
+      for(let i=1;i<P.length;i++){ const a=P[i-1],b=P[i]; if(!a||!b) continue;
+        g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke(); }
+      g.globalAlpha=1;
+      let k=0; for(const q of P){ if(!q) continue; k++;
+        g.fillStyle=it.color; g.beginPath();
+        g.arc(q.u,q.v, sel?3.4:2.6, 0, Math.PI*2); g.fill(); }
+      const q0=P[0];
+      if(q0){ g.fillStyle=it.color; g.font='11px monospace';
+        g.fillText(it.name+' '+(it.pts||[]).length+'点', q0.u+6, q0.v-6); }
+      window.__FENCE_PTS_DRAWN__=(window.__FENCE_PTS_DRAWN__||0)+k;
+      continue;
+    }
     if(it.type==='line'){
       const A=pr(p1),B=pr(p2); if(!A||!B) continue;
       g.strokeStyle=it.color; g.lineWidth=3; g.globalAlpha=0.95;
@@ -1155,6 +1231,9 @@ function fenceBind(){
   $('fCube').addEventListener('click',()=>{ const s=_mm(_fnum('fSide')); const p=_p1();
     fillP2([p[0]+s,p[1]+s,p[2]+s]); $('pFence').textContent='② = ① + '+Math.round(s*1000)+'mm (正方体)'; });
   $('fAdd').addEventListener('click',fenceAdd);
+  // 📍 轨迹点落库 (2026-10-26): 工程配置里能看/能删的『轨迹点』元素
+  { const b=$('fSaveNamed'); if(b) b.addEventListener('click',saveNamedAsPoints); }
+  { const b=$('fSavePlan');  if(b) b.addEventListener('click',saveTrajAsPoints);  }
   $('fEditSave').addEventListener('click',fenceSaveEdit);
   $('fClearAll').addEventListener('click',()=>fencePost('/api/fence/clear',{}));
   $('fMarginSave').addEventListener('click',()=>fencePost('/api/fence/margin',{mm:_fnum('fMargin')}));
