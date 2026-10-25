@@ -297,6 +297,63 @@ journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
 **边界要说清**: 换文件源只让**显示**实时, DDS 若仍 0 发布者, 要单独查 daemon 话题登记/配对
 (单播配置、mode、QoS 兼容性), 不能把"显示动了"当成"DDS 通了"。
 
+## 跨网段/无 UDP 路由: 用 wss 中继搬 DDS (2026-10-25 实测双向往返)
+
+**判断前提**: 两台机器**不在同一网段**且中间只有 SSH(或只能过 443) ⇒ DDS 原生 UDP 一定不通。
+别再折腾 peers/端口 —— 单播 peers 只解决"同网段多网卡挑错卡", 解决不了"没有路由"。
+
+```
+对端A 本地 DDS ⇄ ws_bridge(edge) ⇄ wss://域名/ws/bus/ ⇄ ws_bridge(hub) ⇄ 对端B 本地 DDS
+                                    ↑ 纯 fan-out 哑中继, 不解析业务、不装 DDS
+```
+工具: `tools/dds/ws_bus_relay.py`(中继, 纯标准库, token 鉴权, 按 channel 白名单 fan-out) +
+`tools/dds/ws_bridge.py`(两端桥, `--role edge|hub`, latest-wins, seq 单调, 断线指数退避) +
+判据 `tools/dds/verify_ws_bus.py`(12 项)。帧: `{"op":"pub","ch":..,"seq":N,"ts":..,"src":"550C","payload":{..}}`。
+
+**拓扑要点**
+1. **中继放在谁都能到的地方**: 实测 550C 是产线机(无 DNS 无外网, 但能到 Orin 的 LAN 22 端口) ⇒
+   中继放 ECS 的 127.0.0.1:39064, nginx `location /ws/bus/` 反代 443, 再加一跳
+   `ssh -L 192.168.23.66:39064:127.0.0.1:39064 root@ECS -N` 在 Orin 上常驻(systemd, ExitOnForwardFailure)。
+   于是 550C 连 `ws://192.168.23.66:39064/`(局域网明文+token), 4060 连 `wss://域名/ws/bus/`。
+2. **两个方向都要单独证**: 上行(edge→hub)拿对端的 node 名出现在本机 DDS; 下行(hub→edge)在
+   对端跑一个本地订阅脚本收 issuer/action。只证一个方向 = 只证了一半。
+3. **别复用 ECS 上老的 `dds_ws_gateway`**: 它是 `ZMAX_*` 话题 + 单字段 JSON payload + 每秒全量快照,
+   加新话题要改它; 哑中继更省事且不把 CDR 塞进 web。
+
+**两个"看起来通了其实没通"的坑 (都实测踩过)**
+| 症状 | 真因 | 修法 |
+|---|---|---|
+| 桥收到 `↓deploy_cmd:4` 但对方本地 DDS 订阅端 0 条 | 下行 writer 是**收到第一帧才建**的 VOLATILE 写者, 发现未完成前写的样本**不补发** | 启动时把 `--down` 话题的 writer **全部预建** + `wait_for_match(ch,1,10)` 再进主循环; 统计行要同时打 `写N` 才能区分"没收到"和"没落地" |
+| `journalctl -u <桥>` 一直 `-- No entries --`, 完全看不到统计 | 那台机器 journald 不存该 unit 的输出 | unit 里加 `StandardOutput=append:/var/log/xxx.log` + `StandardError=...`, 用文件看统计; 否则会误判成"服务没跑" |
+
+**jar 级判据(实测值)**: 4060 侧 `↓hw_state:124(写124,缺0) ↓train_prog:114 ↓heartbeat:113 ↑deploy_cmd:38`;
+550C 侧本地订阅收到 `issuer='4060' action='promote'` 共 9 条 ⇒ 双向成立。缺号必须为 0 (latest-wins
+允许丢旧帧, 但不允许乱序)。
+
+### 白名单是"按角色分别写"的 —— 加一个话题要改两处并重启两端
+
+`ws_bridge.py` 的 `ROLES` 一个角色一个元组 `(上行, 下行)`: 要把新话题(如规划 `ss_plan`)从 B 送到 A,
+必须 **hub 的上行 + edge 的下行** 都加上, 然后 `systemctl restart` **两端**。只改一端时现象是
+“发出去了但对面 0 条”(帧在中继就被白名单掉了), 不会报错。
+改完从启动日志回读一遍实际白名单, 不要凭记忆:
+```
+[sent] 🌐 ws-bus 已连 | 上行 deploy_cmd,ss_plan | 下行 hw_state,train_prog,heartbeat
+```
+
+**新增跨网话题的验收顺序**: ①两端重启后比对启动行里的话题名 ②发端用探针发 N 帧
+(`tools/dds/verify_ss_plan_channel.py --pub`) ③**读接收端桥自己的统计行**
+`↓ss_plan:13(写13,缺0)` —— `收N` 证明过中继, `写N` 证明写了本地 DDS, 两者相等且缺号为 0 才算通。
+⚠️ 别用“在跳板后面起一个订阅脚本看输出”当唯一判据: 跳板随时断, **断了就是空输出**,
+极易误判成“通道不通”而多跑一轮; 桥的统计行落在对端文件/日志里, 断了重连接上照样能读到。
+
+**闭环另一头: 指令必须有人接, 且接的时候要有闸**
+跨网把 `deploy_cmd` 送到对方后, 别忘了它以前只是个 dry-run 打印。真执行器必须是"代理"而不是"直跑命令":
+`tools/dds/deploy_agent.py` 七道闸 —— 动作白名单(promote/rollback) · 发起人白名单 · 产物存在+扩展名+
+**realpath 落允许目录**(防 `--artifact /etc/passwd` 与 `..`) · 先 `--check-only` 校验 ·
+真执行需 `ZMAX_DEPLOY_EXEC=1` **且** `--apply` (双重闸) · 幂等 120s + 限速 20s · 每条一条审计 JSONL。
+判据 `tools/dds/verify_deploy_agent.py` 必须含**四类拒绝案例**(产物不存在/越目录/动作不在名单/发起人不在名单),
+只测"合法的能过"等于只测了一半 —— 闸门的意义就在拒绝那几条上。
+
 ## Pitfalls 汇总
 ```
 ✗ 多网卡下不配单播 → 发得出去收不到（最高频, 且日志完全正常, 极易误判成"代码逻辑没问题"）
@@ -310,6 +367,10 @@ journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
 ✗ 把 DDS 装进业务 venv → 依赖互相绑架; 用独立 venv + JSON 桥解耦
 ✗ 显示不动就去调刷新 Timer → 真因多是 matched_pubs=0 / mode 允许 0 话题, 先查发布端
 ✗ 占位/"—" 行喂给物理判据 → 一次刷出上千条假 fail, 真告警被淹没
+✗ 跨网段还去改 peers/端口 → 没有 UDP 路由, 改配置永远不通; 要么补路由, 要么走 wss 中继
+✗ 下行话题不预建 writer → 中继明明收到了, 对方本地 DDS 还是 0 条
+✗ 只改 ws_bridge 一侧的白名单 → 帧在中继就被滤掉, 发送端计数在涨、对面永远 0 条
+✗ 拿跳板后面的订阅脚本当唯一判据 → 跳板一断就是空输出, 把“没看到”当成“没通”; 优先读对端桥的统计行
 ```
 
 ## 相关文件

@@ -710,6 +710,45 @@ metadata:
   (形如「起点已变 188mm」), 与本次完全无关。真因去**执行器 stdout/日志尾**找本次那几行,
   尤其「读不到实时真值 ⇒ 按保守处理 ⇒ 不执行」这种 fail-closed 行 —— 它说明的是真值通道, 不是授权/闸门。
 
+## 3k. 「点了按钮没反应」的一个高频形态: **后端已拒、页面没把拒因显示出来**
+
+现场说「我点了执行轨迹, 没反应」时, **不要先怀疑前端/网络** —— 直接 curl 那个按钮 POST 的端点, 拿后端原话:
+
+```
+POST /api/traj/exec  →  {"ok": false, "msg": "规划已 362 分钟, 位姿早变了 ⇒ 请重新规划"}
+```
+
+后端拒得明明白白、只是一行 JSON 里的 `msg`, 页面没渲染它 ⇒ 现场看到的就是"没反应"。
+判据顺序(零动作, 30 秒): ①`curl` 该端点看 `ok/msg` ②`ok=false` 就是被拒, 拒因在 `msg` 里,
+**照原文复述给现场** ③只有 `ok=true` 而设备不动才轮到 §3f/§3c 查通道/真值。
+
+**轨迹类按钮的三层死因(按顺序查, 每层都能单独把整条链弄死)**:
+1. **规划过期**: 后端用 `规划文件龄` 判 stale, 超阈值直接拒(实测 362 分钟 = 6 小时前的规划)。
+   修 = 重新规划, 不是重试下发。
+2. **位姿真源陈旧**: 规划/执行器的起点来自 `tcp_out/latest.json`, 它一停更(实测停在 4 小时前)
+   ⇒ 重规划也只会用旧起点算出一条"看着合法"的轨迹 ⇒ **先修真值源再规划**。
+   读法: `ls -l --time-style=+%H:%M:%S <latest.json>` 与 `date +%H:%M:%S` 比, 差分钟级就别用它规划。
+3. **执行器(队列消费方)根本不存在**: 本机到控制器的路由断了, 采样器/SDK 代理容器会以
+   `RuntimeError: network: network connection` 无限重启 ⇒ FIFO 有人写、没人读。
+   判据 `ip route get <控制器IP>` + `docker ps` 的 Restarting。此时任何"页面点一下就走"都没戏,
+   要么接回产线网卡, 要么改走能摸到控制器的那台机器(见 real-arm-motion-control 的 Orin 桥)。
+
+### 「授权期没过」与文件对不上时: 先重读一次, 别拿旧读数跟现场争
+授权真源是文件里的 **`until`(硬期限)**, `armed = until > now` 是派生值。
+- 读到 `armed=False` 可能只是**你读的时刻早于他点击的时刻**(实测: 读到时 19:51 刚过期, 他 19:58 重新授权)。
+  现场说「我刚授权了」⇒ **当场重读一次**, 并把 `since/until/epoch` 一并报出来(`epoch` 变了就是新一轮授权)。
+- 他点了授权/执行却**没留下事件**时, 看 `events` 最后一条的时间与 IP —— 没有新条目 = 那个点击没落盘,
+  不是授权机制坏了; 先解释这条, 再去查页面/服务。
+
+### 承载按钮的那个 unit 在 crash-loop ⇒ 页面照样是死的
+一个 unit 每 3~4 秒重启一次时, 页面点击会落在"刚起还没就绪/刚被杀"的进程上 ⇒ 现象同样是"点了没反应"。
+- `systemctl show -p NRestarts --value <unit>` 一大串 + `systemctl is-active` 恒 `activating` 就是它。
+- journal 里只有 `Started … / Main process exited, code=exited, status=1/FAILURE`, **看不到真因**;
+  真因在 unit 自己的 `StandardOutput/StandardError=append:<file>` 那个日志尾部(实测 `OSError: [Errno 98] Address already in use`)。
+- 常见根因 = **两个 unit 的 ExecStart 一模一样**, 先起的那个已占端口 ⇒ 后起的永远起不来。
+  判据: `systemctl cat A B | grep ExecStart` 对比 + `ss -ltnp | grep :<port>` 看是哪个 pid/哪个 unit 在听。
+  修法 = `systemctl disable --now` 掉重复的那个(先确认在听的那个能把活干完)。
+
 ## 4. 下发反馈: 让点击"有感觉"(现场最常抱怨的一条)
 
 - 🔴 **界面报「请求没发出去/超时: TypeError: Failed to fetch」≠ 没下发**: 这是**客户端**的 fetch 超时(常见十几秒)

@@ -73,12 +73,40 @@ if dist(_tcp, to_mm) <= ARRIVE_TOL_MM and _age <= 5.0:   # ARRIVE_TOL_MM = 8.0
 4. **执行锁**：`fcntl.flock(LOCK_EX|LOCK_NB)`，第二个实例直接拒。
    两个执行器并发会把两条轨迹交替写进同一条 FIFO，在途指令互相覆盖目标位姿。
 
-## 连续性有物理上限（汇报时先说清，别承诺做不到的）
+## 连续性：分段口径 vs 控制器队列(真连续)
 
-`/move_pose`(`TargetPose`) 请求字段只有 `speed` + `joint_state`，**没有 blend / zone / 队列标志**。
-每条命令被控制器当成独立点到点运动，走到位停住再接下一段 ⇒ 软件层零等待，**拐点仍有一次减速停顿**（约 0.3~1s）。
-要机器人层面真连续（画方框不掉速）必须换控制器连续轨迹接口：xCoreSDK moveLine 队列，或 ROS
-`FollowJointTrajectory` 一次下发整条关节轨迹。先探接口支持哪种再谈“不停顿”。
+**分段发 `/move_pose`(`TargetPose`) 没有 blend 可言** —— 请求字段只有 `speed` + `joint_state`，
+每条被控制器当成独立点到点运动，走到位停住再接下一段 ⇒ 软件层零等待，**拐点仍有一次停稳**
+（实测每段 ~0.67s：4 段 280mm @60mm/s 合计 **7.32s**，而纯行程只 4.7s）。
+
+要机器人层面真连续，只有一条路：**把多点 append 进 SDK 的命令队列，只 start 一次**。
+xCoreSDK 上实测可行的调用形态（Orin 的 `zmax_arm_sdk_bridge` 已长出一个 `/path` 路由做这件事）：
+
+```
+setDefaultSpeed(speed, ec) · setDefaultZone(zone_mm, ec) · setDefaultConfOpt(False, ec) · moveReset(ec)
+for each 目标点:  cp = x.CartesianPosition([x,y,z], rpy)
+                  mc = x.MoveLCommand(cp, speed, -1)          # -1 = 用默认 zone
+                  r.moveAppend(mc, x.PyString(cmd_id), ec)     # 逐点 append, 不 start
+r.moveStart(ec)                                                # 只 start 一次 ⇒ 段间按 zone 圆滑过渡
+```
+
+- `zone=0` 等于段段精确停车（失去连续收益）；矩形闭环 **5mm** 够用。`moveStart` **不阻塞**，
+  所以「到位」仍要自己轮询真值（到末点 ≤2mm 且 `jointVel<0.02`）。
+- 提速是两根**独立**杠杆：①速度 60→200mm/s（规划段口径 150~300，控制器允许到 1000）
+  ②从分段改连续。只提速度不改形态，一半时间仍花在停稳上。
+- 增量点语义：`/path` 的 `points` 是**相对起点的累加增量(mm)**，不是绝对坐标 —— 先把段表换算成增量，
+  再靠 dry 预演把每个目标点与规划点逐点对账（≤0.5mm）才允许真发。
+- 状态要诚实：连续形态目前只做到 **dry 目标点已对账**（与规划 5 点逐点一致），真跑耗时**未实测**；
+  在实测出数前，汇报里只能给「预期 ~2.0~2.5s（280mm/200mm/s + 加减速）」，不能说成已验证。
+
+## 下发前的第 0 道闸：授权窗（现查，不自补）
+
+派发任何真动前先读授权真源 `tools/ctl_auth.py::info()`：`armed` / `left_s` / `epoch`（默认窗口 900s）。
+
+- `armed=False`（自然到期或已撤销）⇒ **停手，请现场在 8793 重新授权**。绝不自己写授权文件、
+  绝不复用上一轮的 `epoch` 顶上去 —— 授权只能来自现场那一个入口。
+- 窗口短于计划耗时（多段/连续都算）就先算耗时再决定跑不跑；跑到一半过期，后续段一律被拦。
+- 取证时把 `epoch` 与剩余秒数一并记进执行台账，事后能对上「这次是谁、哪一次授权」放行的。
 
 ## 诊断「怎么只执行了一段」（按这个顺序，别猜）
 
@@ -88,8 +116,22 @@ if dist(_tcp, to_mm) <= ARRIVE_TOL_MM and _age <= 5.0:   # ARRIVE_TOL_MM = 8.0
 3. 执行进程是否还在：`/proc/<pid>/wchan` = `hrtimer_nanosleep` + `State: S` = 在 sleep 轮询一个永不来的条件。
 4. 真值是否已到第一段目标：到了就证明**动作成功、问题在判定不在下发**。
 
+## 汇报口径：两条必须分开说
+
+- **「指令由谁发出」要说准**: 脚本在 Orin 上直打 SDK 桥 与 「550C 的 plan 节点下发」是两件不同的事。
+  plan 节点若还是 plan-only，就只能说“规划在 550B、执行由我在 Orin 上直发”，不能说成“550C 在执行”。
+- **时间要拆成两段**: ①动作耗时（真值实测秒数）②被阻塞的时间（无产线路由、桥的真下发报错、跳板抖）。
+  两者的修法完全不同；混成一句“跑了很久”，现场只会追问“都规划好了怎么还这么久”。
+
 ## 坑
 
+- 🔴 **经跳板跑动作脚本一律脱会话**: 长命令随时被跳板掐断，**当场被掐的表现是「日志空/没输出」**，
+  极易误判成脚本失败而白等一轮。用 `setsid nohup python3 -u <script> > /tmp/<name>.log 2>&1 </dev/null &` 起，
+  再轮询日志（`stat -c %s` 在长 + `tail` 有新行）确认真在跑；不要用一条长 ssh 扛着动作命令。
+  被杀后先读真值确认臂在哪，别急着重发（重发 = 叠加第二条轨迹）。
+- 🔴 **桥的 `dry=false` 自己会 500 时，dry 对账通过也不代表能发**: 老桥的 `moveAppend(list, speed, True, ref, {})`
+  在本 SDK 里是**不存在的重载**（`TypeError: incompatible function arguments`），dry 只算目标所以一切正常。
+  真下层只认 `moveAppend(cmd, PyString(cmdID), ec)`。改完必须 `compile → restart → curl /health 回读 sdk:true` 三步才算生效。
 - 🔴 **别用 `pkill -f traj_exec.py` 收尾**：自己的命令行含同一串 ⇒ SIGKILL 掉整个 shell，后续步骤全不执行。
   按 `/proc/<pid>/cmdline` 精确匹配，或把模式串写进脚本文件再执行。
 - 🔴 **页面/API 里的执行状态是上一次失败留下的**：`traj_state.json` 可能是几小时前某个 `blocked`，

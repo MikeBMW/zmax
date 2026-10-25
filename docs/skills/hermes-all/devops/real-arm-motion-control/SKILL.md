@@ -912,6 +912,49 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 - 守卫 max_lin_mm(500mm) 是**故意的**: 技能只是"到槽位正上方/下降"的精细段, 不是长距离回位。
   要让臂靠近, 用点动(+Y/−Z)把臂移到目标附近再点技能 —— 别为了让技能能跑就放宽守卫。
 
+## 页面「执行轨迹」链 (8793/8797 → FIFO → l2_daemon → 执行腿)
+
+链路: `8797 /api/traj/exec` → `tools/traj_exec.py` → `zmax_data/l2_cmd.fifo` → `tools/l2_daemon.py` → 执行腿 → 控制器。
+**判断“点下去为什么不动”就按这条链逐段查**, 每段都有痕迹可查:
+
+| 环节 | 怎么查 | 典型故障 |
+|---|---|---|
+| 8797 后端 | `POST /api/traj/exec` 的返回 msg | `规划已 N 分钟 ⇒ 请重新规划`(段表太旧) / `已有另一个 traj_exec 正在执行`(flock 被卡死的进程占着) |
+| traj_exec | `/api/traj/exec/state`、`zmax_data/runtime/traj/exec_stdout.log` | 卡住不退 ⇒ 后续点击全被拒; 用 `tools/clean_traj_exec.sh` 清 |
+| FIFO/执行器 | `zmax_data/l2_daemon_stdout.log` 里 `受理:` 行 | 启动时要等 ssh 探针(最长 60 轮) ⇒ FIFO 迟建, 点击全落空 ⇒ 设 `ZMAX_SKIP_CHAN_PROBE=1` |
+| 闸门 | `🛑 被拦(真动授权)` / `🛑 被拦: 命令通道不可用` | 授权窗(900s)**从点的时刻算**, 过期就拒; 页面不一定会把���拒理由弹出来 |
+| 执行腿 | `🚚 bridge 腿下发 OK` / `bridge 腿拒发` / `moveStart 报错` | 见下 |
+
+**执行腿 bridge (2026-10-25 起默认)**: `l2_daemon` 的 `_bridge_send()` 直打 `http://127.0.0.1:39071`(常驻 `ssh -L` 到 Orin `:39061`)。
+`ros` 腿(每条动作一条 ssh → `ros2 service call /move_line`)在经 ECS 跳板时每 ~60s 被对端关一次, 不要用。
+
+三条实测坑, 每一条都曾让“点了不动”:
+1. **段表必须带绝对目标** `abs_mm`(= 规划里的 `to_mm`)。`d_mm` 是“当前位姿 + 增量”, 任一段被拦/跳过后, 后续段全体漂移 ——
+   实测臂停在起点 +80mm 外、z 差 26mm。`traj_exec` 写 FIFO 时带 `abs_mm`, `build_move()` 末尾用绝对点覆盖。
+2. **`moveStart` 撞上上一条还在走** ⇒ 报 busy, 但命令其实已进队列 ⇒ 判据不可信。
+   `_bridge_send()` 发之前先等 `max|jointVel| < 0.05`。
+3. **FIFO 一个 chunk 内按行连续跑**: 前段被拦却继续跑后段 ⇒ 相对段漂移。现在前段一被拦就丢弃本批剩余段。
+
+参考提交: `a39542b`(跑通) / `b5198b0`(bridge 腿+位姿中继) / `6296a5f`(跳过 ssh 探针)。
+实测基线: 4 段 280mm @200mm/s 全程 ~5s, 每段残差 ≤0.03mm, 闭环回起点零偏差。
+
+## Orin SDK 桥 `/move_pose` 真下发 (2026-10-25 实测)
+
+`zmax_arm_sdk_bridge.py` (Orin · `zmax-arm-sdk-bridge.service` · `:39061`) 三个坑:
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| **moveAppend 重载错** | `dry=true` 能算出 delta_mm，`dry=false` 返 500 `TypeError: moveAppend(): incompatible function arguments` | 该 SDK 只有 `moveAppend(cmd, PyString(cmdID), ec)`，cmd 必须是命令对象：`cp=x.CartesianPosition(xyz, rpy)` → `mc=x.MoveLCommand(cp, speed, -1)` → `setDefaultConfOpt(False)` → `moveReset` → `moveAppend(mc, x.PyString(cid), ec)` → `moveStart(ec)`。修法与备份: `tools/rokae/patch_bridge_move_pose.py` |
+| **只有三个路由** | `/path`、`/cmd`、`/run` 全 404（提示 `POST /reset \| /stop \| /move_pose`） | 仓库版 `tools/rokae/sdk_agent.py` 的 `cmd=path` 并没部署到 Orin；要在桥上多点连走就得先更新桥，否则调用侧一段一段发 |
+| **moveStart 不阻塞** | 调用返 200 但臂还在动 | 自己轮询 `/status` 的 `endInRef` 与 `jointVel`（到目标 ≤2mm 且 vel<0.02）才算这一段完成 |
+
+**本机无产线路由时**: `rokae_tcp_sampler` 与 `zmax-sdk-arm-agent` 两个容器会以
+`RuntimeError: network: network connection` 无限重启，位姿真值停在上一次成功采样 ⇒ 先查
+`ip route get 192.168.23.160` 与 `sudo docker ps`，别把“执行器没反应”当软件 bug。
+执行器就位时的正确形态 = `tools/exec_plan_via_orin.py`：**每段 dry 预演对账 → 真下发 → 真值对账 → 下一段**，
+任一段不过立即 `/stop` 且**不重发不补偿**。实测 4 段 280mm @60mm/s：1.67/1.97/1.67/2.01s，
+残差 0.01~0.03mm，闭环回起点偏差 [0.01, 0, -0.01]mm。
+
 ## 已知坑
 
 ### 「授权成功但按钮点不动」= 状态口径不一致(必查项)

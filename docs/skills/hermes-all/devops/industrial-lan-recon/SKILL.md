@@ -95,6 +95,30 @@ smbclient //<ip>/C\$ -U 'user%pass' -c 'ls'             # ⑤ ACCESS_DENIED + RI
 判据就是 `ip route` 里那行 `192.168.23.0/24 dev <有线> metric 100`, 以及 `ip -br addr` 里 `enx*`(USB 有线)与 `wlp*`(WiFi)的分工。
 部署/同步数据也同理: 跨机拉文件走哪条路由由目标 IP 决定, 不需要手工指定网卡。
 
+### 🔴 “网卡在位”≠“配置生效”: USB 网卡换口/换线 ⇒ 网卡名变 ⇒ 静态地址静默失效
+
+netplan / NetworkManager 的配置是按**网卡名**（`enx<MAC>` / `enp*`）绑定的。同一根线换个 USB 口、
+换一根线、换个适配器，网卡名就变 ⇒ 配置里那条 `addresses: 192.168.23.50/24` 再也落不到任何设备上，
+而新网卡在 `ip -br addr` 里显示 UNKNOWN / 无地址（或已被 NM 用别的 profile 拿了 DHCP）。
+此时"整个 192.168.23.0/24 不可达"的根因是**本机没有那个地址**，不是设备挂了。
+
+诊断顺序:
+```bash
+ls /sys/class/net | grep -E '^(enx|enp|eth)'                      # 有线网卡候选
+cat /sys/class/net/<N>/carrier; ethtool <N> | grep 'Link detected' # 1 / yes = 线是插着的
+nmcli -t -f DEVICE,STATE,CONNECTION dev | grep -v wl               # disconnected = 无 profile 接管
+grep -rln '<N>' /etc/netplan/                                      # 配置里认的是哪个名字
+```
+- **carrier=1 却没有地址 ⇒ 网卡身份/配置不匹配**，不是线断、更不是对端故障；别去重启对端。
+- `sudo nmcli dev connect <N>` 让它起来（可能从上游拿 DHCP）。
+- 拿到形如 `192.168.244.254/30`（对端 /30 邻居有 ARP 应答、却零开放端口）**不证明接上了产线**：
+  那是点对点链路形态，不是产线网段；判据仍是能否到 `192.168.23.x`。
+- 想验证它到底接在哪条二层网: 临时 `sudo ip addr add <期望地址>/24 dev <N>` → ping 目标 →
+  **全 INCOMPLETE / FAILED = 线不在那条交换机上**，立刻 `sudo ip addr del` 撤销（不留备用地址，避免日后与真网卡冲突）。
+- 报结论时写清“改了哪块网卡、加了什么地址、是否已撤销”——静默改网络是红线。
+- **连带面一并报**: 网卡不在位时，依赖产线网的常驻容器会在 `Restarting` 循环（`docker ps`），
+  真值文件 mtime 停住 ⇒ 只报“网不通”会让用户以为只是网络问题。
+
 ## 八、跨机视觉链路: 点云通道(梅卡曼德/Mech-Vision 那一类)怎么判活
 
 点云不是相机直连，是一条**跨机 HTTP 链**: Windows 侧出 `.npy` → 边缘侧(Orin)拉取 → 转成 ROS 话题。实测这条链的落点是:

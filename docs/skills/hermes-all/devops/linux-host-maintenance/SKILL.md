@@ -387,7 +387,12 @@ systemctl --failed --no-pager
 for s in $(systemctl list-unit-files 'zmax-*' 'aoi-*' --no-pager | awk '/enabled/{print $1}'); do printf '%-28s %s\n' $s $(systemctl is-active $s); done
 ss -ltnp | grep -E '8791|8793|8790|8891|8893'      # 8793=工位总览=动作授权唯一入口, 不可省
 pgrep -af '<手工进程名>'                            # 自启单元管不到的手工进程(推流/采样/桥)
-python3 tools/cam_dev_resolve.py                    # 相机按卡名实测解析(重启后设备号会变)
+./gui-venv311/bin/python tools/cam_dev_resolve.py   # 相机按卡名实测解析(重启后设备号会变)
+                                                    # ⚠️ **必须用 venv python**: 系统 python3 无 cv2 ⇒
+                                                    #   每个候选 alive=false "探测异常 ModuleNotFoundError" ⇒ 全 -1
+                                                    #   (实测 2026-10-25: 据此回落 --local-dev 0, 而重启后 video0
+                                                    #    已不存在 ⇒ 推流 40s 后冻在 1839 帧); 且**推流在跑时**
+                                                    #   被占用的那路会报"打不开(被占用)"⇒ 解析要在起流之前跑
 ls -l /home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
                                                     # ⚠️ 家目录整合后的真实路径 = `~/zmax/zmax_data/...` (**不是** `~/zmax_data/...`):
                                                     #   按老家目录路径探会得到"缺 latest.json" ⇒ 误报"真值没在刷"(实测踩过);
@@ -403,12 +408,33 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
   「环境缺失 ⇒ 拒发动作」是**假警报**(实测开机 1min 时判定缺失、90s 后网卡就位且 Orin/工控机全通)。
   判据: `ip -br addr` 里真出现 `192.168.23.x` + `ping -c1 -W2 <Orin>` 通才算「网卡在位」;
   一次不通就**隔 60~90s 复采一次**再下结论 —— **两次采样都查不到**才判真缺失(实操口径见 §9e③: 开机 5min 与 10min 两个点)。
+ ⚠️ **判据只认「能通」，不认「有 IP」**：netplan 里产线口写死成某个 `enx<MAC>` 名字时，换一根 dongle
+ (接口名就变) 就不匹配 ⇒ 没有 192.168.23.50; 反过来, 把匹配改成 `enx*` 通配后, **机载/扩展坞的 USB 网口
+ 也会拿到这个 IP** ⇒ `ip -br a` 看到 192.168.23.x 但 `RX bytes=0`、ARP 全 INCOMPLETE、ping 全丢。
+ 所以「产线网在位」= `ping -c1 <Orin>` 通 **或** 该接口 `RX packets > 0`; 只有 IP 不算。
+ ⇒ 两种写法都不对的**正解 = 按 MAC 匹配**(`match: macaddress: "00:e0:4c:0c:32:a0"`): 真网卡的 MAC 稳定，
+ 而且 `enx<MAC>` 的名字里就写着它; 而手机 USB 共享 / 机载摄像头的 RNDIS 口(`ethtool -i` = `rndis_host`)
+ 用的是**随机本地 MAC、每次枚举都变**(名字也跟着变) ⇒ 按 MAC 写只命中真网卡，换 dongle / 重插都不受影响。
+ 一行排掉干扰口: `for i in /sys/class/net/enx*; do echo $i $(ethtool -i $(basename $i)|awk '/driver/{print $2}'); done`
+ （`r8152`/`cdc_ncm` = 真网卡; `rndis_host` = 手机/摄像头，不是产线口）。
+ - 🔴 **动 netplan 前先记下 WiFi 的 IP**：`netplan apply` 会重启 NetworkManager、WiFi 可能跳到另一个 SSID ⇒
+  本机 IP 换网段; 而用户手里的页面链接/二维码是 **IP 形式**的，他会直接报「某某页面打不开」——
+  先 `ip -4 -br addr show wlp*` 对一眼是不是 IP 变了，别急着查服务/日志。恢复用 `nmcli con up <原SSID>`，
+  防再跳设 `nmcli con mod <办公SSID> connection.autoconnect-priority 20` + 访客/热点网设 `0`。
+  探活页面要**跟跳转**: `.../ar` 返回 302 是**正常**(它跳 8797/ar)，用 `curl -sL` 得 200 才算页面在。
+🔴 **老倪常态是远程办公**：他不在现场时**没有插产线 USB 网卡是预期状态**, 不是故障 ——
+ 不要把「Orin/工控机/珞石位姿/AOI 全不可达」当问题修, 更不要去查网线/交换机；
+ 一句话报「远程模式 ⇒ 产线链路天然不通, 机器人/550C/AOI 本轮不可达」即可。
   ⚠️ **「等开机满 N 分钟再复采」必须用 `/proc/uptime` 计时, 不要用 `date -d` 做相对算术**:
   `date -d "$(uptime -s) + 10 minutes"` 里 GNU date 把 `+ 10` 读成**时区偏移**(UTC+10:00) ⇒ 算出比现在**早 2 小时**的时间戳,
   于是 `while [ now -lt target ]; do sleep 10; done` **第一轮就退出**, 第二点采样其实离开机只有 4 分钟, 却打印"已满10min" ——
   **凭空造出"两次复采一致 ⇒ 真缺失"的结论**(这条比采样本身更危险: 它让"两点复采"这条防线静默失效)。
   定式: `while [ "$(awk '{print int($1)}' /proc/uptime)" -lt 600 ]; do sleep 10; done`;
   `scripts/reboot_verify.sh --wait` 已按这个计时写好。
+  🔴 **但这个等待循环不要在"用户正等着回复"的时候拿前台跑**: 它要静默几分钟, 用户看到的是"静静卡死了"(实测被直接追问)。
+  定式: ①先做别的检查(服务/帧号/手动进程/资源), 把第 1 点网络采样报出去, 明说"第二点在开机满 10min 再采";
+  ②真要等就 `background=true` 跑、随后 poll, 或者干脆下个回合再采 —— **别用一个阻塞 sleep 循环占住整轮对话**;
+  ③只在"两点都缺、且必须当场定缺席"时才值得阻塞等待。
 - **本机那 5 个手工进程一律走官方复原脚本，别手敲命令行**（幂等，已在跑的不重拉）：
   `bash tools/boot_restore.sh check` 先看清点 → `bash tools/boot_restore.sh local` 补齐
   （cam_live_stream 8791+8793 / l5_live_mark / vl_safety_monitor / l2_daemon / studio）；它自己按
@@ -542,6 +568,18 @@ v4l2-ctl -d /dev/videoN --list-ctrls | grep -i privacy
   kill 后 + **补上 ECS sshd 保活** (`ClientAliveInterval 30`/`ClientAliveCountMax 3`/`TCPKeepAlive yes` → `sshd -t && systemctl reload ssh`),
   复核本机闸门/公网 200 + POST 403, NRestarts 稳定在 4 不再涨。
 - 别自己另起端口写 nginx —— nginx 里 `proxy_pass` 的端口是固定的, 换口等于通道全废。
+- 🔴 **公网 502 时先对齐"域名解析到哪台"和"隧道落地到哪台", 再决定要不要清 ECS 端口**:
+  本机闸门 200 + 公网 502, 不代表隧道坏了 —— 域名 A 记录可能指着另一台机器(站点首页在那边也是 200, 只有 `/ov/` `/st/` 502)。
+  ```bash
+  dig +short datadrive.world A; dig +short NS datadrive.world | head -1   # 权威记录才是真的
+  curl -s -o /dev/null -w '%{http_code}\n' -k --resolve datadrive.world:443:<A记录IP> https://datadrive.world/ov/live.json?k=zmax-live
+  curl -s -o /dev/null -w '%{http_code}\n' -k --resolve datadrive.world:443:<隧道落地IP> https://datadrive.world/ov/live.json?k=zmax-live
+  ```
+  两边不一致 ⇒ 根因是"域名换了主机、隧道没跟着换", 处置是**迁移隧道目标或改 A 记录**(要人点头),
+  **不是**去对端 kill sshd —— 按 §9c 清口只会白折腾一轮, 隧道本身是通的。判据: 对端 loopback 上
+  `curl 127.0.0.1:18791/…` = 200(说明反向转发好好的), 而公网仍 502。
+  域名相关的结论一律报"A 记录 = X(权威 TTL N)", 别只说"公网不通"; 换主机后证书也会换
+  (`openssl s_client -connect <IP>:443 -servername <域名>` 看 issuer/签发日), 可作为"这台是不是新机"的旁证。
 
 ## 9d. "前几天是不是内核 panic 了?" — 硬停/死机取证 (先摆证据, 再下结论)
 
@@ -613,9 +651,13 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 窗口 `IsUnMapped` 时先查应用**自己**是不是在崩 (`grep -c "Fatal Python error" <应用日志>` 看 `Segmentation fault`/`Aborted`),
 只按 pid 杀那个应用再起一份; 同刻只留一个实例 (每个 GUI 实例常驻 1G+ 且会连内存一起吃)。
 
-**用户说"你怎么卡死了"时, 机器和我这两端都要查**: 机器端 = 上面三段; 我这一端 = `grep -aE "APITimeoutError|ConnectTimeout"
-~/.hermes/logs/errors.log | tail`。模型接口超时的表现正好也是"长时间一个字都不出", 而机器完全正常 ⇒
-先分清再回答, 别把接口超时说成死机 (也别反过来把死机说成网络问题)。
+**用户说"你怎么卡死了"时, 三端都要查(第三端最常被漏)**:
+① 机器端 = 上面三段; ② 我这一端 = `grep -aE "APITimeoutError|ConnectTimeout" ~/.hermes/logs/errors.log | tail`
+(模型接口超时的表现正好也是"长时间一个字都不出", 而机器完全正常);
+③ **我自己造成的那一端 = 一条阻塞等待/长命令**(等开机满 10min 的 `while … sleep`、`systemctl start` 一个 3min 的 oneshot、
+`du /` 全盘扫描)在前台跑几分钟不出字, 工具会把它转后台而用户只看到沉默。
+⇒ 回答时**先把这一条认领掉**(说清那条命令在等什么、还要多久、已转后台), 再给机器侧的三个数; 别把它混进"机器卡"或"接口超时"。
+三类都要能给判据: 机器端 load/单元数、我这一端 errors.log 的时间戳、第三端"我当时在跑哪条命令"。
 
 ## 9e. 开机自愈的两个"假好"陷阱 (2026-10-09 重启后实测)
 

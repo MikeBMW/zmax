@@ -20,7 +20,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 真机画面报方向说'朝画面中心'
 §
-真机: rt后必下电; move_*不下电; 30s超时勿重发; collision=False
+真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 执行腿=bridge(4060 l2_daemon→39071隧道→Orin 39061); 段表须带abs_mm; 550C不在执行链
 §
 引擎记忆五层L2/L3/L4+Qwen(SS_MACRO),势场喂obs[0:3]; 含H-JEPA-MR几何分支+SE3阻抗(u=+Kξ−Bξ̇+F_d,符号必+; 分量序[ρ;ω]非[ω;v])
 §
@@ -32,7 +32,7 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS: /agent/{prompt,reply}+/hil/state+/orin/status; 站点=/www/wwwroot/datadrive.world; 免密→ZMAX_ECS_PW; nginx须^~
+ECS=47.93.88.143(口令ZMAX_ECS_PW; ufw 22/80/443+22022; 18791/3/4/99=本机-R; /map/→18794手机; 39053带/command禁开); 老.79弃用
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
@@ -40,13 +40,11 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 控制台禁反复重启GUI
 §
-工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 真源=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
-§
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=tcp_out/latest.json(全0=陈旧)
+位姿真源=tcp_out/latest.json(全0=陈旧; 采样器崩时 zmax-pose-relay 从 Orin 桥搬)
 §
 运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
@@ -66,6 +64,6 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 版本号只听老倪; 现5.50.757
 §
-专利12件·渠道74/74(patent_registry.json)
+专利12件·渠74/74(patent_registry.json)
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区

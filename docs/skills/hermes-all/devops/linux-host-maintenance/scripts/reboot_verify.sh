@@ -67,7 +67,7 @@ done
 echo "  注: boot_restore.sh check 的 ✓ 只等于'取样那一刻有进程' —— l5_live_mark 还要看 zmax_data/l5live/l5_live_mark.out 的 mtime/存在性"
 
 echo "===== 6. 相机设备解析 (重启后设备号会变) ====="
-( cd "$ROOT" 2>/dev/null && python3 tools/cam_dev_resolve.py 2>&1 | head -6 ) || echo "  (解析器跑不了)"
+( cd "$ROOT" 2>/dev/null && ./gui-venv311/bin/python tools/cam_dev_resolve.py 2>&1 | head -6 ) || echo "  (解析器跑不了)"
 
 echo "===== 7. 位姿真值 (真实路径是 ~/zmax/zmax_data/... 不是 ~/zmax_data/...) ====="
 ls -l --time-style=+%F_%T "$ROOT/zmax_data/rokae_sdk/tcp_out/latest.json" 2>&1

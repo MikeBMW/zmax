@@ -141,6 +141,16 @@ zmax-orin-aoi-fwd : ssh -NT -p 22022 -L 127.0.0.1:10082:192.168.23.23:10082 \
   `192.168.23.23:10082/storage`、再探 `127.0.0.1:10082/storage`，命中隧道就 `export ZMAX_AOI_HOST=127.0.0.1`。
   两个"都不通"的分支要**明说该格会是空**，别静默起一个注定没画面的进程。
 
+- **中央相机那一格（`local2`）源在 550C/Intel**：`http://<intel>:8812/snap.jpg`，本机靠 `zmax-intel-cam-tunnel`
+  （`ssh -N -L 127.0.0.1:8812:127.0.0.1:8812 intel`，`intel` 走 ProxyJump → 跳板口 → 产线网）拿到。
+  本机没有第二台 USB 相机时**别让这一格空着**：启动器按「550C 隧道 → ECS 中转」顺序探，探到哪个用哪个并把来源打印出来。
+  该 unit 曾 `NRestarts=96` 长期崩（跳板口变更后 `Connection to UNKNOWN port 65535 timed out`），
+  先修跳板再加它——先查 8812 有没有响应，再看 unit 状态。
+- **第三条路 = ECS 中转（源侧推帧）**：设备上只读推帧 `POST /api/relay/cam/push?cam=<name>`（body 就是 JPEG 字节），
+  本机/网页读 `GET /api/snapshot/<name>`。⚠️ `/api/relay/cam/<name>.jpg` 是 404；`/cam/latest.jpg` 会回**几周前的归档快照**
+  （永远 200）—— 拿它当实时画面就是把旧图说成现场。契约细节、push→回读 md5 验证与测试帧清理见
+  `references/ecs-cam-relay-and-intel-tunnel.md`。
+
 验收（缺一不算通，全部取真图看尺寸/均值，不要只看 HTTP 200）：
 - 手臂：`/snapshot/overlay_arm.jpg` 200 · ~54KB · 640x480（overlay 后 mean≈131，比裸帧 172 低是叠加改动，不是变暗）
 - 金手指判据图 `/snapshot/aoi_gold.jpg` · 整板原图 `/snapshot/aoi_gold_raw.jpg` 1400x1171 · 表面 `/snapshot/aoi_surface.jpg`
@@ -404,6 +414,8 @@ MJPEG（`multipart/x-mixed-replace`）天然免解码缓冲 → 低延迟；服�
 - 帧率/IP/体积都写实测值，不写"应该"。
 
 ## 支持文件
+- `references/ecs-cam-relay-and-intel-tunnel.md` — 本机不在产线网时的三条取流路：Orin 反代(臂) · 550C:8812 隧道(中央相机) ·
+  ECS 中转 push/pull 契约(含 `/cam/latest.jpg` 会回几周前归档的坑 · push→回读 md5 验证 · 测试帧必须清掉)
 - `references/remote-usb-cam-as-station-tile.md` — 把**另一台机器**的 USB 相机接成工位页一格（源端 `/snap.jpg` +
   `X-Frame-Age-S`/503-stale 契约 · ssh -L 隧道 · `--local2-url/--local2-label/--local2-fps` ·
   “别追 fps，先算页面刷新周期” · 双取帧灰度相关验收 · cv2 对 YUYV-only UVC 设 MJPG 会 0×0）

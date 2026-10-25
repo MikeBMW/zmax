@@ -100,6 +100,38 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
   (20 行脚本, 与原有转发件同住隐藏目录), 再用 `lsusb` 确认硬件在位 (例 `8086:0b5b` = Intel RealSense)。
   注意 `python3 -c 'import rclpy'` 要 source 过 ROS 才通; 找不到 `realsense2_camera` 包是常态, 不影响这条路。
 
+## 4c. 「看着在重启」时先读**退出码**, 它直接告诉你是哪一类病
+
+`systemctl is-active` 只会说 `activating (auto-restart)` —— 但这一个态对应好几种完全不同的病因,
+`systemctl status -n 3` 那行 `(code=exited, status=NNN/XXX)` 才是证据:
+
+| 退出码 | 真因 | 修法 |
+|---|---|---|
+| `209/STDOUT` | systemd **打不开 `StandardOutput=append:<路径>`** (父目录不存在/无权限) | 先 `mkdir -p` 那个日志目录再 `restart`。注意: 这时日志文件里**一个字都没有**, 应用自己的报错根本不会出现 —— 别去代码里找 bug |
+| `1/FAILURE` + 日志只有一行 fail-closed 提示 | 脚本自己拒跑: 常见是**secrets 文件在这台机上压根不存在**(新迁过来的机器只同步了 unit, 没同步 `zmax_data/secrets/`), 而 unit 的 `Environment=` 只带了间隔/token 以外的参数 | `mkdir -p <repo>/zmax_data/secrets && umask 077` 写文件 → `chmod 600` → `restart`; token 值从原机 secrets 里取, **不要写进 unit 正文**(会漏进日志与 git) |
+| `1/FAILURE` + 日志尾部 `OSError: [Errno 98] Address already in use` | **两个 unit 的 `ExecStart` 一模一样**，先起的那个已占端口 ⇒ 后起的永远绑不上，`NRestarts` 能涨到几千。现象不仅是“服务挂了”：依赖它的页面/按钮**也一起没响应**（请求落在刚起/刚死的进程上） | `systemctl cat A B \| grep ExecStart` 对比 + `ss -ltnp \| grep :<port>` 看是哪个 unit 在听 ⇒ `systemctl disable --now` 掉重复的那个。journal 里只有 `Started …` / `status=1/FAILURE`，**真因只在 unit 自己 `StandardOutput=append:` 那个文件尾部** |
+| `203/EXEC` | 脚本无可执行位 / 路径不存在 | `chmod 755`, 或看 unit 里路径是否指向旧 checkout |
+| `255` | 隧道类 unit: 远端拒绝/端口被占 | 见 §7 |
+
+验收固定三样, 缺一不算修好: `is-active` = `active` · `NRestarts` 隔 20s 两次**不涨** · 日志末尾出现业务自带的那行成功提示
+(例: `📡 实况推送 → https://<domain>/xxx.php (每 1.0s)`)。只看到 `active` 就报“修好了”会在下一轮重启时打回原形。
+
+### 跨 Python 版本往远端 venv 补包 (实测坑)
+
+远端 venv 与手边解释器版本不一致时, **不能拷 site-packages** —— 带编译产物的包(如 `cyclonedds`)是 `cp3XX` ABI 绑定的,
+`3.11` 拷到 `3.12` 只会 `ModuleNotFoundError`, 看起来像“装了但没生效”。也不要指望远端能上 PyPI(内网常被禁)。
+定式 = 在手边机器上**下载目标版本 + 目标平台的 wheel**, 再离线装到远端:
+```bash
+# 远端: python3 -V 拿到 3.12 → 手边下载 cp312 / manylinux2014_x86_64
+python3 -m pip download <pkg> -d /tmp/w --no-deps --only-binary :all: \
+  --python-version 3.12 --platform manylinux2014_x86_64 --implementation cp --abi cp312
+scp /tmp/w/*.whl <远端>:/tmp/
+# 远端: 用**目标 venv 自己的 pip** 离线装, 再用“导入 + 建对象”验, 不看 pip 退出码
+<venv>/bin/pip install -q --no-index /tmp/<pkg>-*.whl
+<venv>/bin/python -c "from cyclonedds.domain import DomainParticipant; print('ok')"
+```
+装之前先确认那个 venv 的版本 (`<venv>/bin/python -V`) —— 猜错 ABI 只会得到一样的 `ModuleNotFoundError`。
+
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。
 - 不许写"已配置完成/已优化"而无数字; 未实测的东西标明"未证明"。

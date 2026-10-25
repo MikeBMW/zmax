@@ -24,6 +24,24 @@ platforms: [linux]
 
 判卡死的那条最容易误判：端口是内核应答的，用户态 hung 时端口照样 `nc` 得通，只有握手和 HTTP 会超时。
 
+🔴 **判「用户态卡死」要一次试多个不相干的端口，只看一个分不清两种病**：
+同刻打 ssh 22 / 跳板 22022 / https 443 / 面板端口 —— **全部 TCP 握手成功而 SSH banner 与 TLS 都超时** ⇒ 整机应用层假死；
+若只有目标端口 refused、别的端口正常应答 ⇒ 是那一个服务没起，不是卡死。ping 通（实测 27ms）也不能当成"机器好的"证据。
+
+🔴 **一台中转机假死会同时打掉四条链，别当四个独立故障逐个修**：
+① `-R` 隧道反复重启（`NRestarts` 分钟级上涨，日志 `Timeout, server … not responding`）；
+② 所有 `-L` 转发**本地监听直接消失**，而它们的 unit 仍报 `active`（`ss -ltn` 里 10082/18792 这类口没了 ⇒ 靠它的 AOI/取流服务一起 000）；
+③ 经它做 `ProxyJump` 的内网设备全部不可达（跳板一断，内网那几台跟着"消失"）；
+④ `/ov/` `/st/` 公网口 000/502。
+⇒ 判据顺序固定：**先证中转机应用层活着，再谈内网设备**；反过来先查内网设备会绕远路，还会把"环境缺失"误报成"设备坏了"。
+
+🔴 **中转机不可达又没有带外通道时，内网设备只能报「最后已知快照 + 时刻」**：写「17:26 实测在跑，现在不可达」，
+**不许写成现在时**（"X 没在跑"/"X 挂了"），也不许因为探不到就说它坏 —— 用户会把你的现在时当结论用。
+
+🔴 **公网 502 而本机闸门 200 时，先对齐「域名 A 记录指的那台」与「隧道落地的那台」**：两台不是同一台，
+表现就是首页 200（另一台也挂着同一份站点）而 `/ov/` `/st/` 全 502 —— 这不是隧道坏，是域名换了主机、隧道没跟着换。
+别按本文去对端清端口（白折腾一轮）；取命令与判据见 `linux-host-maintenance` 的 §9c 末条。
+
 🔴 **卡死后温和重启常常救不回来，用「停止 → 启动」硬复位。** 实测在控制台点一次普通重启后，
 `ssh` 依旧 `banner exchange timeout`、反向端口依旧不出现；必须彻底 stop 再 start（等价于断电冷启）。
 复位后**先复测再汇报**，不要假定“重启了就好了”—— 判据就用 §8 那几条。
@@ -138,3 +156,96 @@ curl -s <本机服务>/api/tcp | grep -E 'source|age|stale'   # 期望 source �
 若跳板机公网 IP 是 EIP：解绑再绑到新实例 ⇒ 代码里所有硬编码地址**一处都不用改**；
 不是 EIP 就得逐文件改。先花 10 秒确认这一条，能省掉几十到几百处替换。
 迁移方式优先「系统盘快照 → 自定义镜像 → 新实例」，不要手工重装重配。
+
+## 9b. 非 EIP 换机的实测清单（一处不能漏，漏一条就是一片 502）
+换机真正要改的只有 **谁在建那条链路**，不是“所有出现过旧 IP 的地方”。按下面四层走，每层都有验收：
+```bash
+# ① 本机 unit (反/正向隧道 + 跳板) —— 漏一条就少一路口
+sudo grep -l '<旧IP>' /etc/systemd/system/*.service
+sed -i 's/<旧IP>/<新IP>/g' <每个 unit>; systemctl daemon-reload
+# ② ssh config 的跳板别名 HostName (普通用户与 root 各一份!)
+sudo 跑脚本时 ~ = /root ⇒ root 的 config 没有那个别名 ⇒ `ssh: Could not resolve hostname orin`
+sed -i '/^Host <alias>$/,/^$/ s/HostName <旧>/HostName <新>/' ~/.ssh/config
+# ③ 口令 (sshpass -e 的 EnvironmentFile / secrets 里的 *_PW)
+# ④ 新机必须收我们的公钥 —— 老机上的 authorized_keys 不会自己跟过
+sshpass -e ssh root@<新> 'grep -qF "$(cat ~/.ssh/id_x.pub)" /root/.ssh/authorized_keys || echo "$(cat ~/.ssh/id_x.pub)" >> /root/.ssh/authorized_keys'
+```
+**新机上的坑（按出现顺序）**：
+1. `ufw` 默认 deny ⇒ 反向口建得出来、外网连不进来。**跳板口（如 22022）必须单独放行，且只放行我们的出口 IP**，其余回环口（nginx 反代用）一个都不要开。
+2. 端口**被新机自己的服务占了**：老机上某个口是我们的 -R，新机上同一个口可能是新迁过来的后端（实测 18794 老机=手机控制台 -R、新机=/map/ 后端）。先在新机 `ss -ltn` 看该口有没有人听，再决定改口还是复用。
+3. **两条 unit 抢同一个 -R 口**（实测 zmax-tunnel 与 zmax-ecs-orin 都建 22022）⇒ 带 `ExitOnForwardFailure=yes` 的那条会无限重启。留一条，另一条停掉并 disable。
+4. **-R 的末跳是在本机执行的**：`-R 0.0.0.0:22022:192.168.23.66:22` 由**持有隧道的这台机**去连 192.168.23.66 ⇒ 本机产线网卡不在位时，这个跳板口“在听但连不上”（TCP 能握、banner 超时），别当成 ECS 挂了。
+**验收四连**（缺一不算切完）：公网 `/ov/ /st/` 200 · 新机 `ss -ltn` 见到 1879x/22022 · `systemctl show -p NRestarts` 隔 20s 两次不涨 · 回读 `grep -rl <旧IP> /etc/systemd/system ~/.ssh/config` 为空。
+凡脚本里“部署/上传/同步到 ECS”的默认值也要一起改（实测 27 个代码文件，其中指向别的机器的那几条要单独辨：如 `host: 旧IP, port: 50054` 是老机上的转发，不是网关本身）。
+
+## 9c. 真正的入口常常是「内网设备自建的那条隧道」，不是本机的 -R
+
+本机没有产线网卡（远程）时，能到产线的唯一一条路往往是**内网设备自己往跳板机注册的 `-R`**
+（形如 Orin 的 `zmax-orin-tunnel.service`：`ssh -R 0.0.0.0:22022:127.0.0.1:22 root@<跳板>`）。
+本机再 `-L`/`-J` 从这个口进去，中间那台 ECS 只是落地点，不参与转发。
+
+1. **先问「谁在持有那个端口」**：跳板机 `ss -ltnp | grep :<port>` 看 pid 属于哪条连接，本机 `ss -tnp | grep :<port>`
+   看你的 ssh 对端是同一条还是另一条。**两条 unit 抢同一个 `-R` 口时**，带 `ExitOnForwardFailure=yes` 的那条会无限重启；
+   真正提供跳板能力的是另一条 ⇒ 把本机那条 `systemctl disable --now`，让设备那条独占，别去修重启的那条。
+2. **改设备侧 unit 前先要一个能进设备的壳**：域名切了新跳板后设备通常还连着老跳板 ⇒ 用**老跳板**的
+   `ssh -p <反向口> <user>@<老IP>` 进去改。老机应用层半死也没关系，只要那条 `-R` 还活着就够用。
+3. **unit 里写域名，不写 IP**：`root@<domain>` 让隧道跟着 A 记录走，下次换机不用再登设备。判据：设备上解析该域名可用
+   （它的遥测 uplink 已经在用域名，就是现成证据）。
+4. **重启那条 unit = 你自己那根网线被拔**：你的 shell 正走这条隧道，必然收到 `Connection closed by remote host`。
+   **这是预期，不是失败**，别急着回滚；从外面重新验证即可。
+5. **跳板口会抖，单次失败不算断**：跳板机负载高时 `Connection refused` / `closed by remote host` 几秒后自己好。
+   验收要**循环 3 次、间隔 4~6s**，全失败才判断；一次 refused 就改配置，会把本来好好的链路改坏。
+6. **出口 IP 会漂**：ufw 只放行“我们的出口 IP”时，换房间/重连 WiFi 就换了一个出口（实测 `103.x` → `122.x`），
+   症状是**超时**而不是 refused。先 `curl -s https://ifconfig.me` 拿当前出口，再补
+   `ufw allow from <新IP> to any port <跳板口> proto tcp`，别动隧道。
+7. **停掉本机 `-R` 后，跳板机上的 sshd 监听会赖着不走**（实测残留 ~25 分钟）⇒ 设备那条抢不到口。
+   `ss -ltnp` 找到那个 sshd pid 直接 `kill`，等口释放再重启设备侧 unit。
+
+## 9d. 跳板口公网不通时：从跳板机自己的 22 口走 `-W` 跳板
+症状组合很好认：跳板机 22/80/443 通，但反向隧道口（如 22022）从本机**超时**（不是 refused）；同时跳板机上
+`ss -ltn` 明明有该口监听、`ufw status` 也已放行我们的出口 IP ⇒ 拦包在**云安全组/运营商**，不在机器里，
+别再去改 ufw/sshd（改了也不会好）。先在跳板机内部证明这条链是通的：
+```bash
+ssh root@<jump> 'ss -ltn | grep -E ":22022|:39061"'                 # 端口在听
+ssh root@<jump> 'ssh -o BatchMode=yes -p 22022 <user>@127.0.0.1 hostname'  # 127.0.0.1:22022 = 设备反向注册的 sshd
+```
+然后用 22 口做跳板，目标指向跳板机自己的 `127.0.0.1:<反向口>`：
+```
+Host <dev>-jump
+    HostName 127.0.0.1
+    Port 22022
+    User <dev-user>
+    IdentityFile ~/.ssh/<dev-key>
+    StrictHostKeyChecking no
+    ProxyCommand ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i ~/.ssh/<jump-key> -W %h:%p root@<jump-eip>
+```
+所有隧道 unit **只改 ExecStart 末尾的别名**（见 §3），端口号一个都不用动。
+
+🔴 两个必踩的坑：
+1. **ssh-agent 会掩盖「拿错 key」**：交互式 `ssh -i <错key> root@<jump> hostname` 成功**不代表**那把被授权——
+   agent 里另一把 key 顶上去了。写进 systemd unit 后环境里没有 agent，立刻变成 `Permission denied (publickey)` +
+   `status=255` 无限重启（日志要去看 unit 的 `StandardError` 落地文件，journal 里只有一行 `Main process exited`）。
+   写进 unit 前必须隔离验证：
+   `sudo -u <user> env -i /usr/bin/ssh -o BatchMode=yes -o IdentitiesOnly=yes -i <key> root@<jump> hostname`
+   （`env -i` 去掉 `SSH_AUTH_SOCK`，`IdentitiesOnly=yes` 只试指定那把）。
+2. **systemd 把 `%` 当 specifier**：ExecStart 里内联 ProxyCommand 必须写 `%%h %%p`，否则 ssh 收到被替换过的怪值直接失败。
+   走 ssh config 别名能避开，但别名只对**运行 unit 的那个 User** 生效：`User=ubuntu` 读 `/home/ubuntu/.ssh/config`，
+   `User=root` 读 `/root/.ssh/config`，少一份就 `Could not resolve hostname`。先 `systemctl show -p User --value <unit>` 确认。
+
+验收：`ss -ltn` 见到各 `-L` 口 · `curl 127.0.0.1:<桥口>/status` 200 · `NRestarts` 隔 20s 不涨。
+把 ECS 这一跳加进去后**每段动作指令多一跳**，段表/位姿的往返会慢一点；产线网卡回来后应切回直连。
+
+顺带：`netplan apply` **不会**摘掉 NetworkManager 已经挂上的地址 ——
+试验留下的影子地址（如 `192.168.23.50/24` 挂在一块没插线的 `enx*` 上，还带 `239.0.0.0/8` 多播路由）会一直留着，
+把 DDS 发现钉在死网卡上。清理必须显式 `sudo ip addr del <ip>/24 dev <if>` + `sudo ip route del 239.0.0.0/8 dev <if>`，
+再 `ip -br a` / `ip route show` 回读确认；只跑 `netplan apply` 会以为已恢复而其实还在。
+
+🔴 **产线网口的 match 用 MAC，不要用 `enx*` 通配**：`enx*` 会把插着的**手机 USB 网络共享（RNDIS）**也当成产线网口，
+把 `192.168.23.50/24` 配到手机上，整段 192.168.23.0/24 就被它吃掉，真网卡插回来也不通。先 `ethtool -i <if>` 认设备：
+驱动是 `rndis_host`/`cdc_ethernet` 且 `Speed: Unknown!` ⇒ 是手机，不是产线网卡；产线网卡（Realtek 等）按 `match: macaddress:`
+绑定，插哪个口、名字变成 `enxe6...` 都照样拿到同一个静态 IP。
+
+🔴 **`netplan apply` 会重启 NetworkManager ⇒ WiFi 可能换到另一个 AP，本机 IP 跟着变**：
+用户手里记着的 `http://<旧IP>:<端口>/...` 会立刻打不开（他报「页面打不开」时先 `ip -4 -br addr` 对一遍 IP，
+别先去查端口/进程）。改完必须回读地址、按 SSID 切回原来的 AP（`nmcli con up <SSID>`），并给常用 AP 设
+`connection.autoconnect-priority`（其余置 0），否则下次 apply/重连还会跳。
