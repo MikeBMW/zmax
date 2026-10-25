@@ -31,6 +31,7 @@ FIFO = os.path.expanduser(os.environ.get("ZMAX_L2_FIFO") or "~/zmax/zmax_data/l2
 EXEC_STATE = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_state.json")
 AUTH = os.path.join(REPO, "zmax_data", "ctl_auth.json")
 
+ARRIVE_TOL_MM = 8.0        # 到位判据: 控制器真值与段目标差 ≤8mm(不依赖 l2_daemon 的 phase)
 SEG_TIMEOUT = 150.0        # 单段最长等多久(秒) —— 30mm/s 下 300mm 也要 10s, 给足余量
 PLAN_MAX_AGE = 1800.0      # 规划超过 30 分钟不执行(位姿早变了, 轨迹已失真)
 
@@ -117,10 +118,37 @@ def run(dry=False):
         say("❌ 规划里没有段")
         return 2
 
+    import fcntl
+    _lk = open(os.path.join(os.path.dirname(STATE), "traj_exec.lock"), "w")
+    try:
+        fcntl.flock(_lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        say("⛔ 已有另一个 traj_exec 正在执行 ⇒ 拒绝并发(防两条指令抢同一个 FIFO)")
+        return 7
     say("▶ 执行轨迹: %d 段 / %.0fmm · 授权 epoch=%s (%s) · 规划龄 %.0fs" % (
         len(segs), plan.get("total_mm") or 0, epoch, why, age))
     base = {"plan_ts": plan.get("ts"), "n_seg": len(segs), "auth_epoch": epoch, "note": plan.get("note") or ""}
     _w(STATE, dict(base, phase="running", seg=0, t=time.time()))
+
+    # 🔴 老倪 2026-10-25: 「1 2 3 4 步一次性发到运动规划节点, 点击执行就一次都执行, 中间不能停顿」
+    #    ⇒ 先把全部段**一次**写进 FIFO, 段间不再等位; 之后只观察真值(取证), 不再由软件控制节奏。
+    if not dry:
+        _sent = 0
+        try:
+            with open(FIFO, "w", encoding="utf-8") as f:
+                for s in segs:
+                    cmd = {"skill": s["skill"], "d_mm": float(s["d_mm"]), "auth_epoch": epoch,
+                           "src": "traj_exec",
+                           "note": "轨迹第 %d/%d 段 %s" % (int(s["i"]), len(segs), s.get("cn") or s["dir"])}
+                    f.write(json.dumps(cmd, ensure_ascii=False) + "\n")
+                    f.flush()
+                    _sent += 1
+                    time.sleep(0.12)
+        except Exception as e:                                               # noqa: BLE001
+            say("❌ FIFO 一次性下发失败(已发 %d 段): %s ⇒ 中止" % (_sent, str(e)[:100]))
+            _w(STATE, dict(base, phase="error", seg=_sent, err="FIFO: %s" % str(e)[:80], t=time.time()))
+            return 4
+        say("📤 已一次性下发 %d/%d 段 · 无段间等待(机器人连续执行)" % (_sent, len(segs)))
 
     for s in segs:
         i = int(s["i"])
@@ -130,35 +158,34 @@ def run(dry=False):
         if dry:
             say("DRY-RUN 第 %d/%d 段 %s %smm → %s" % (i, len(segs), s["dir"], s["d_mm"], target))
             continue
-        cmd = {"skill": s["skill"], "d_mm": float(s["d_mm"]), "auth_epoch": epoch,
-               "src": "traj_exec", "note": "轨迹第 %d/%d 段 %s" % (i, len(segs), s.get("cn") or s["dir"])}
-        try:
-            with open(FIFO, "w", encoding="utf-8") as f:
-                f.write(json.dumps(cmd, ensure_ascii=False) + "\n")
-        except Exception as e:                                               # noqa: BLE001
-            say("❌ FIFO 写入失败: %s ⇒ 中止" % str(e)[:100])
-            _w(STATE, dict(base, phase="error", seg=i, err="FIFO 写入失败: %s" % str(e)[:80], t=time.time()))
-            return 4
-        say("→ 第 %d/%d 段 %s %smm (目标 %s)" % (i, len(segs), s["dir"], s["d_mm"], target))
+        say("观测 第 %d/%d 段 %s %smm (目标 %s, 已预发)" % (i, len(segs), s["dir"], s["d_mm"], target))
 
         t0 = time.time()
-        seen = False
+        arrived = False
         while time.time() - t0 < SEG_TIMEOUT:
             st = read_exec()
-            ph = st.get("phase")
-            sk = st.get("skill") or ""
-            if ph in ("planned", "dispatching", "arrived"):
-                seen = True
-            if ph == "blocked":
+            if st.get("phase") == "blocked":
                 say("🛑 第 %d 段被拦: %s ⇒ 中止余下 %d 段" % (i, st.get("blocked_by") or "?", len(segs) - i))
                 _w(STATE, dict(base, phase="blocked", seg=i, blocked_by=st.get("blocked_by"), t=time.time()))
                 return 5
-            if seen and ph in ("done", "idle") and (not sk or sk == s["skill"] or ph == "idle"):
-                res = st.get("residual_mm")
-                say("✓ 第 %d/%d 段到位 · 残差 %s mm" % (i, len(segs), res))
-                time.sleep(0.8)
-                break
-            time.sleep(0.2)
+            # 🔴 2026-10-25 实测: l2_daemon 收到 ROS TargetPose response 后停在 phase=accepted,
+            #    永远不写 done ⇒ 等状态机会卡死(只走了第 1 段)。到位与否**只认真值**。
+            try:
+                if target:
+                    from precheck_move import read_joints
+                    _q, _tcp, _age = read_joints()
+                    _d = sum((float(_tcp[k]) - float(target[k])) ** 2 for k in range(3)) ** 0.5
+                    if _d <= ARRIVE_TOL_MM and _age <= 5.0:
+                        say("✓ 第 %d/%d 段到位 · 真值残差 %.1fmm (phase=%s)" % (i, len(segs), _d, st.get("phase")))
+                        _w(STATE, dict(base, phase="arrived", seg=i, residual_mm=round(_d, 1), t=time.time()))
+                        arrived = True
+                        time.sleep(0.8)
+                        break
+            except SystemExit:
+                pass
+            except Exception:                                                # noqa: BLE001
+                pass
+            time.sleep(0.3)
         else:
             say("❌ 第 %d 段 %.0fs 内没看到到位 ⇒ 中止余下 %d 段" % (i, SEG_TIMEOUT, len(segs) - i))
             _w(STATE, dict(base, phase="timeout", seg=i, t=time.time()))

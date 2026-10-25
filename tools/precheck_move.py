@@ -64,6 +64,37 @@ def seg_samples(a, b, step=10.0):
     return [[a[i] + (b[i] - a[i]) * k / n for i in range(3)] for k in range(n + 1)]
 
 
+def _live_from_sdk(timeout=8):
+    """控制器真值(经本机 19061 → Orin SDK 桥 /status): jointPos + endInRef。
+
+    与页面 /api/tcp 同一份源 ⇒ 预检算净空用的起点, 和用户看到的、执行器下发的是同一个位姿。
+    ROS 话题在 2026-10-25 出现过**两个发布者**(真机 + 残留节点), echo --once 会随机取到错的。
+    """
+    try:
+        import subprocess
+        # 优先本机隧道, 拿不到再 ssh 直取(隧道在远程模式下会半开返回空 ⇒ 踩过)
+        b = b""
+        try:
+            import urllib.request
+            b = urllib.request.urlopen("http://127.0.0.1:19061/status", timeout=timeout).read()
+        except Exception:                                                   # noqa: BLE001
+            b = b""
+        if not (b or b"").strip().startswith(b"{"):
+            r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "orin",
+                                "curl -s -m 5 http://127.0.0.1:39061/status"],
+                               capture_output=True, text=True, timeout=timeout + 10)
+            b = (r.stdout or "").encode()
+        d = json.loads(b)
+        s = d.get("status") or d
+        q = [float(v) for v in (s.get("jointPos") or [])][:6]
+        e = [float(v) for v in (s.get("endInRef") or [])][:3]
+        if len(q) == 6 and len(e) >= 3 and not all(abs(v) < 1e-9 for v in q):
+            return q, [v * 1000.0 for v in e], 0.0
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return None
+
+
 def _live_from_orin(timeout=25):
     """直读 Orin 宿主的 ROS 话题取关节角 + TCP（零运动）。
 
@@ -96,7 +127,10 @@ def _live_from_orin(timeout=25):
 
 def read_joints():
     """读实时关节角 + TCP: 优先 Orin 宿主 ROS, 退本机遥测文件(需 <5s 新鲜)。"""
-    live = _live_from_orin()
+    live = _live_from_sdk()          # ① 控制器真值(SDK 桥) —— 与 /api/tcp 同源
+    if live:
+        return live
+    live = _live_from_orin()         # ② 退 ROS 话题(可能取到错误的发布者, 见 _live_from_sdk 注释)
     if live:
         return live
     p = os.path.join(HERE, "..", "zmax_data", "rokae_sdk", "tcp_out", "latest.json")

@@ -40,11 +40,22 @@ def ssh(cmd, timeout=60):
 
 
 def training_alive(job):
-    rc, out, _ = ssh("pgrep -fc 'gs_train.py .*%s'" % job)
-    try:
-        return int(out.strip() or 0) > 0
-    except Exception:                                                        # noqa: BLE001
-        return False
+    """训练进程还活着吗。
+
+    🔴 2026-10-25 现场踩过: ECS/frp 断链时 ssh 返回 rc!=0, 老实现 `except: return False`
+    ⇒ 守护误判"训练已退出"并直接跳过切换(实际训练还在 25400/30000 跑着)。
+    现在: **连不上 ≠ 进程不存在** ⇒ ssh 失败一律按"还活着"处理并重试, 绝不据此下结论。
+    """
+    for _ in range(3):
+        rc, out, err = ssh("pgrep -fc 'gs_train.py .*%s'" % job)
+        if rc == 0:
+            try:
+                return int(out.strip() or 0) > 0
+            except Exception:                                                # noqa: BLE001
+                return True
+        time.sleep(5)
+    say("⚠ SSH 连续 3 次连不上(不等于训练结束) ⇒ 按还活着处理, 继续等")
+    return True
 
 
 def report(job):

@@ -1514,6 +1514,18 @@ class H(BaseHTTPRequestHandler):
         if F0.get("origin"):
             d = _np.array(F0["origin"], float) * 1000.0 - O
             sgn = 1 if float(_np.dot(d, AX[2])) >= 0 else -1
+        # 固定偏移(老倪目视标定, 不跑检测 ⇒ 框不跳动): 相机系里平移, 再转到 base
+        off = _np.zeros(3)
+        try:
+            rf = json.load(open(os.path.join(REPO, "zmax_data", "ar_state", "tool1_refine.json"), encoding="utf-8"))
+            o_cam = _np.array(rf.get("cam_offset_mm") or [0, 0, 0], float)
+            M = _np.array(json.load(open(os.path.join(REPO, "models", "handeye_state.json")))["T_cam2tool"], float)
+            if _np.abs(M[:3, 3]).max() < 10: M[:3, 3] *= 1000.0
+            R_c2b = R_b2t @ M[:3, :3]
+            off = R_c2b @ o_cam
+        except Exception:                                                        # noqa: BLE001
+            pass
+        O = O + off
         C = O + AX[2] * (L / 2.0 * sgn)
         cs = []
         for sx in (-1, 1):
@@ -1559,11 +1571,11 @@ class H(BaseHTTPRequestHandler):
         n_draw = 0
         for i, j in edges:
             if P[i] and P[j]:
-                cv2.line(img, P[i], P[j], (87, 196, 255), 2, cv2.LINE_AA); n_draw += 1
+                cv2.line(img, P[i], P[j], (0, 255, 0), 2, cv2.LINE_AA); n_draw += 1
         if P[0]:
             cv2.circle(img, P[0], 4, (0, 0, 255), -1)
-        cv2.putText(img, "MOD %.1fx%.1fx%.1fmm  edges %d/12" % (float(sp["L_mm"]), float(sp["W_mm"]), float(sp["T_mm"]), n_draw),
-                    (6, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (87, 196, 255), 1, cv2.LINE_AA)
+        cv2.putText(img, "MOD %.1fx%.1fx%.1fmm  edges %d/12  FIXED(+2mm up)" % (float(sp["L_mm"]), float(sp["W_mm"]), float(sp["T_mm"]), n_draw),
+                    (6, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
         return cv2.imencode(".jpg", img)[1].tobytes(), None
 
     def _module_spec(self):
