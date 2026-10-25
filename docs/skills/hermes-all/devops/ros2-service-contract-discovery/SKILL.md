@@ -21,6 +21,14 @@ metadata:
 厂家服务的失败几乎都在"参数校验"阶段: 校验不过 = **零动作**, 且 message 里直接写明缺什么。
 ⇒ 每次失败都是一次**规格增量**, 不是死胡同。把 message 当文档读。
 
+⚡ **但先分清两类拒绝**，否则会把时间全烧在第一种之外:
+- **参数拒绝（有信息量）**: message 写具体字段/长度/枚举 ⇒ 按第 4 步换值再试。
+- **状态拒绝（零信息量）**: 服务一条都不受理、或每条都 ABORT，因为**机器人本体不在可用态**。
+  典型: `operation_state=drag`（示教器停在拖动示教）⇒ **任何指令一律被拒**，且 SDK 改不了模式，只能现场
+  在示教器上「关拖动 → 切自动 → 伺服上电」。同类前置: `power_state=off` · `has_error=true` · 未使能/manual。
+  ⇒ **探测前先读三查**（`power_state=on` / `operation_state=idle` / `has_error=false`），不满足就**不发**、
+  直接报「需要现场切模式」。换服务、换速度、换载荷全部无效，只会把同一个拒绝看十几遍。
+
 ## 步骤
 1. **先枚举图, 再看类型** —— 服务名与类型在**任何能看到该 domain 的机器**上都查得到:
    `ros2 service list` / `ros2 service type <name>`。
@@ -45,6 +53,9 @@ metadata:
 - **编译产物里捞枚举是浪费**: 处理逻辑常在 `install/<pkg>/lib/python3.10/site-packages/<pkg>/*.so`,
   而 `install/<pkg>/lib/<pkg>/<name>` 只是几十行的入口壳。`.so` 的字符串表常被压/剥, `strings` 出不来;
   即便出得来, 也不如第 4 步直接试快。
+- **状态/回执解析一律走 JSON, 不要用 grep 抓字段**: 状态话题里 `"has_error": false` 是**不带引号的布尔**,
+  `grep -o '"has_error": "[a-z]*"'` 得空串 ⇒ "好状态"被判成"不满足"，脚本自己把门关了。
+  用 Python `json.loads` 取键（`ros2 topic echo` 的 `data` 字段本身就是一段 JSON 字符串）。
 - **只看 message, 别把整段回执 dump 进上下文**: `ros2 service call … 2>&1 | grep -aE 'success|message|非法|必须|长度'`。
 - **自写 rclpy 节点收不到反馈**: 反馈话题若是 **BEST_EFFORT**, 默认(RELIABLE)订阅**一条也收不到**,
   只在启动时打一行 `New publisher discovered … incompatible QoS … Last incompatible policy: RELIABILITY`。

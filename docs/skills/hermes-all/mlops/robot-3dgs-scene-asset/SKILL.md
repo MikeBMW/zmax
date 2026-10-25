@@ -409,6 +409,67 @@ metadata:
   (`step=walk` + 建议视点行, 页面轮询这个文件)。**起后台跑时把 stdout 重定向到 run.log**,
   否则页面日志区看不到新行(状态仍会走 status.json)。
 
+## 在线渲染推流: Intel 渲 → 4060 只显示 · 视角跟随手臂相机 (2026-10-25 落地)
+
+老倪两条原话即架构铁律: 「把建好的图送到这里, 本来就有实景查看器」+「**4060 只是显示, 而 intel 要渲染好, 推流过来**」
+以及「现在的手臂相机没有动, 你要将 **3DGS 的视角与手臂相机同步**」。页面文案统一叫**「手臂相机」**(他明确要求把「机器人臂上 D405」改名, 不再露出 D405)。
+
+链路三段(每段可单独判活):
+```
+Intel XPU  tools/gs_render_stream_intel.py --ply --cameras --report --handeye --sync auto --port 8816
+           gsplat + torch.xpu 逐帧栅格化 → /frame.jpg · /stream.mjpg · /health
+4060       systemd zmax-intel-gsrender-tunnel  (ssh -L 127.0.0.1:8816:<intel>:8816)
+8793       /gs/live.jpg 仅代理取帧(本机零渲染) · /gs/live/health 透传
+页面       3DGS 那格 <img> 每 260ms 拉一帧(先 new Image() 预热再换 src, 防闪烁); 标题行报 高斯数/fps/帧龄/视角/位姿龄
+```
+实测: 280,452 高斯 · 5~6fps · 位姿龄 **0.008s** · 单帧 21KB · 端到端 0.31s。
+
+- 🔴 **不要拿浏览器端 splat 渲染当交付面**: 那要拉几十 MB 且占宿主页主线程; 服务端渲一帧 JPEG 只有几十 KB。
+- 🔴 **同步公式必须与采集同式**: `T_cam2world = inv(T_base2tcp @ T_cam2tool)`, 手眼取 `~/zmax_map/models/handeye_state.json`
+  (|t|=244.1mm · 残差 0.06mm)。位姿源 `/robot/tcp_pose`(PoseStamped 50Hz) —— **Intel(192.168.23.70) 可直接订阅**, 不必绕 Orin。
+  自检口径: 反推 `X_implied = inv(T_base2tcp) @ inv(T_cam2world)` 应在 202 帧上**逐帧恒定**(实测 t=[214.7,12.5,-115.3]mm、旋转漂移 0.00°)。
+  ⚠️ 相机中心是 `-R^T t`, **不是** `T_cam2world[:3,3]`; 用错会算出手眼 812mm(真值 244mm)从而误判"位姿数据不自洽"。
+- **两个解释器解耦**: rclpy 只在 `/opt/ros/jazzy`(系统 python3), 渲染在 `gsxpu-venv` ⇒ ROS 侧单独进程写 `/tmp/arm_tcp_pose.json`
+  (原子 `os.replace`, 50Hz), 渲染侧每帧读文件。混装会报 `ImportError: numpy.core.multiarray failed to import`。
+  ⚠️ 同理**渲染器里别 `import cv2`** —— 该 venv 的 numpy 2.x 与系统 cv2(numpy1.x 编的)不兼容, 逐帧 JPEG 一律用 `PIL.Image.save(BytesIO, quality=…)`。
+- 位姿龄 >0.8s 自动退回环绕路径并在 `/health` 标 `src=tour` —— 不拿旧位姿冒充同步。
+
+### 判"没对上"用三视角, 不要去猜外参
+同一帧渲三次, 只看亮度与黑像素占比: A=实时位姿 · B=实时**位置**+最近采集帧的**姿态** · C=最近采集帧完整位姿。
+```
+A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相机中心离最近采集位 65mm, 两光轴差 50°)
+```
+**A 暗 B 亮 ⇒ 位置与外参都对, 差的是那 50° 姿态方向从没采集过**(模型覆盖问题) —— 别去调标定、也别调曝光。B≈C 且都暗 ⇒ 模型质量/覆盖整体不足。
+🔴 **覆盖判据用「光轴与采集锥平均夹角」, 不要用位移**: 实测同一位姿只把臂挪 80mm + 转 64°, 夹角 **50.0° → 15.7°** ⇒
+渲染亮度 35.7 → **81.9**、黑像素 66.2% → **25.3%**(同模型同分辨, 只改视角)。经验线: 夹角 >30° 基本半屏空, <20° 才看得成东西;
+所以「视角同步但画面黑」先报这个夹角, 它是**数据覆盖**指标, 不是标定指标。
+⚠️ 图像复核(VLM)看到半屏黑会断言"外参/轴序错", **那只是猜测且实测被推翻**: 同一模型用采集位姿渲帧 vs 当帧真值 = 14.55/15.55/12.90dB
+(均值 14.33, 与报告 holdout 15.26 同量级) ⇒ 链路正确。VLM 结论只当线索, 定因必须给一条能证伪的判据。
+工具: `tools/gs_view_triage.py` · `tools/gs_render_pose_check.py`。
+
+### 飞点剪枝(提升观感的第一刀, 不用重训)
+腕相机只扫 0.2×0.3m, 模型却铺到 ±3.4m。`tools/gs_prune_floaters.py` 三判据: **稳健质心**(不透明度加权中位数, 不被飞点拉偏)
++ `sigmoid(opacity)<0.02` + `exp(scale)>0.30m` + `r>1.2m` ⇒ 实测剪掉 **34.9%**(280,452→182,605), 推流直接换 pruned ply。
+判据看**分布**(「质心 1.0m 内占 76%」)而不是 min/max 包围盒 —— 后者被个别飞点撑爆。
+
+### 欠训练 vs 数据不够
+`train_report.json` 的 `steps` · `refine_stop_iter` · loss 是否收敛三样一起看: 实测 3000 步 + `refine_stop_iter=1500`
+(默认按 `min(steps,15000)*0.5` 算) ⇒ loss 0.127 仍在跳、渲染只能看大色块。补法 30k 步 + `--sh-degree 3 --refine-stop 15000`;
+但**它只提清晰度, 提不了覆盖** —— 覆盖缺就得真去采。Intel XPU 步速现量: 3000 步≈0.18s/步; 30k 且推流同时在跑时≈0.47s/步(≈3.5h)。
+📎 **重训完自动接管** `tools/gs_retrain_swap.py --job <id> --baseline <现役 PSNR> --run`: 等训练进程退出 → 读
+`train_report.json` → **优于基线才换 --ply 重启渲染器并归档资产, 不优就明确记「不切换」**(守住"有提升而非仅不回退"的门);
+不带 `--run` 是只体检(不等待不改动)。日志落 `~/.hermes/cache/scratch/retrain_swap.log`, 起它时用 `background=true` 长驻。
+
+### 运维坑
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| `pgrep -f gs_render_stream_intel.py` 判活/杀进程 | 计数恒为 1, 或 kill 之后自己的 ssh 会话直接断 | 命令串里也含这个模式 ⇒ **匹配到自己**; 用 pidfile(`echo $$ > /tmp/gsstream.pid` 后 `exec python …`)或按端口 `ss -ltnp` 取 pid |
+| 重启时旧实例还占 :8816 | 新进程 `OSError: [Errno 98] Address already in use`, 而 `/health` 仍回旧数据(甚至旧的 `src/err`) | 先按端口取 pid 杀掉再起; 否则会以为"改了没生效", 实际看的是旧实例 |
+| 训练与推流同时在 XPU 上 | 渲染 fps 掉、health 偶发超时、步速 0.42→0.47s/步 | 已知可接受; 要快把推流 fps 从 10 降到 5~6 |
+| 跨机 `scp` 大 ply | 读回报 `buffer size must be a multiple of element size` | 文件被**截断**(实测 37,340,160B vs 实际 42.6MB) ⇒ 核对字节数后重传, 不要怀疑 ply 解析器 |
+| 改了渲染器代码但页面没变 | — | 渲染器是 **systemd/pidfile 常驻**, 必须重启; 页面/JS 是热读, 只需刷新 |
+| `timeout N ssh host '… ; sleep N ; tail …'` | 拿不到任何输出(命令 exit 0 但空), 像"远端没反应" | `timeout` 把**自己的 ssh 会话**在 sleep 结束前砍了 ⇒ 启动与取值拆两次调用: 一次 detached 起(`setsid nohup … &`, 立刻返回), 另一次再读 health/日志 |
+
 ## 交付面的网页查看器 (用户要「自己在窗口里转着看」)
 
 - 产物三件: `gs.ply`(真尺度, 给下游/仿真) · `gs.splat`(32B/高斯, 查看器格式) · `renders/*.png`(留出视角渲染图)。

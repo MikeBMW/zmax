@@ -404,6 +404,9 @@ MJPEG（`multipart/x-mixed-replace`）天然免解码缓冲 → 低延迟；服�
 - 帧率/IP/体积都写实测值，不写"应该"。
 
 ## 支持文件
+- `references/remote-usb-cam-as-station-tile.md` — 把**另一台机器**的 USB 相机接成工位页一格（源端 `/snap.jpg` +
+  `X-Frame-Age-S`/503-stale 契约 · ssh -L 隧道 · `--local2-url/--local2-label/--local2-fps` ·
+  “别追 fps，先算页面刷新周期” · 双取帧灰度相关验收 · cv2 对 YUYV-only UVC 设 MJPG 会 0×0）
 - `references/arm-stream-restore.md` — arm 路帧龄上万时的恢复口径
 - `references/camera-device-renumber-recovery.md` — 相机没帧先查设备重枚举（by-id 建立时间）+ 必须带原始参数重启
 - `references/public-exposure-gate.md` — 公网暴露闸门的白名单/拒绝表、真值表用例、隧道选型与实测吞吐、`/live.json` 清单形状

@@ -748,6 +748,19 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   `self.scene_ref.links`, 缺了就是 `TypeError: 'NoneType' object is not iterable`, 看着像"节点画不出来"。
 - **真屏**: 最终以用户点一下为准(交付话术写"点它一下看状态变没变"), 别把离屏图说成"你屏幕上已经生效"。
 
+## 往画布插一个节点 ⇒ 先想清楚 FN-*-NN 编号会整体平移 (2026-10-25 实测)
+
+`engineering_db.py build` 的 `functions.fn_id` 是**按行序的位置编号** (`FN-SYS0-50` …)，
+而功能点描述真源 `data/database/zmax/function_notes.json` 原来按 `fn_id` 取 ⇒
+**在任一位置插 1 个节点，它后面所有功能点的描述全部张冠李戴**（实测插 1 个节点 → 27 条描述错位，
+而判据 ⑦b 因为“条数满员”反而显示 ✅，只有人工对名字才看得出）。
+
+铁律：
+- 描述一律按**节点名**取：`notes_by_name` 优先、`fn_id` 只作历史兼容兜底（`engineering_db.py` 里已改）。
+- 插/删节点后必须重建库并**抽 3 条按名字核对** work 文本是不是这个节点该干的活，别只看“77/77 全绿”。
+- 定位移植办法（换名/换顺序都能用）：用旧画布 build 一份临时库 `--db /tmp/old.db`，把
+  `fn_id → name` 映射出来，再去重写 notes，别手工数序号。
+
 ## 验证清单
 ```bash
 # 架构自检 (迁移后新增, 6 项: 逻辑在包里/JSON 真源/档位契约/GUI 壳一致/档位索引)

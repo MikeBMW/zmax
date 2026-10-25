@@ -19,6 +19,10 @@ metadata:
 ## 铁律
 
 1. **版本号只用用户给的数字。** 没给数字时只改内容、不改号; 自选版本号是明确被禁止的。
+   🔴 **改号前先读仓里的"实际当前版本", 不信记忆/上一份报告里的号**: 并行 session 会把号往前推
+   (实测记忆里记 5.50.753 而仓里 HEAD 已是 5.50.756)。`head -30 VERSION.md` + `grep -rn '5\.50\.\d{3}' tools/gui/studio.py | head -3`
+   先定基线, 再 `bump_version.py --to <用户给的目标号>`。**用户给的目标号与当前号之间的号不补、不改** ——
+   `bump_version.py` 会打印 `旧号 → 新号` 两行, 对不上就是基线读错了。
 2. **数据不靠 commit 保存。** `zmax_data/` 在 `.gitignore` 里 ⇒ 「保存数据」= **归档目录 + 清单 + sha256**,
    不是 `git add zmax_data`(会 fatal 或静默不入库)。
 3. **commit 与 tag 是两条推送。** `git push origin HEAD` **不会**带上 tag ⇒ 必须再 `git push origin vX.Y.Z`,
@@ -74,6 +78,13 @@ zmax_data/release_<ver>_<YYYYMMDD>/
 
 验收(缺这条等于没验): 在归档目录里 `sha256sum -c sha256sums.txt` **全 OK** + 报文件数与体积。
 
+- **远端在役代码先 `scp` 到 staging 目录, 归档脚本只从 staging 拷** —— 脚本里不嵌 `ssh`（嵌了就没法重跑、
+  也没法在远端掉线时看出缺件）。staging 用 `~/.hermes/cache/scratch/rel<ver>/{orin,intel}/`。
+- 🔴 **`scp` 一次传多个文件会部分失败而不报错**: 必须 `ls` 回读 staging 清单, 逐个对名字。
+  实测漏了一个 `traj_*.json`（清单里只剩 4 个而非 5 个）, 不核对就会把"轨迹文件"这一项静默丢出归档。
+- **归档文件数上千是正常的**: `data/config` 全量拷贝（calib + platform）单项就有 700 余个文件、5 MB。
+  看到 700+ 文件不要以为拷错了, 按目录 `find | wc -l` 分组报一次即可。
+
 ### ③ 提交与推送
 
 ```bash
@@ -88,8 +99,22 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 - **推完要等 CI 真出包再回话**: 一个 `Build Desktop` workflow 里带 Windows + macOS **两个 job** ⇒
   轮询只看那个 run 的 `status/conclusion`，不要要求"至少两个 run"（会等不到而白转）；
   两个 job 都 success 后 `GET /releases/tags/vX.Y.Z` 回读**资产名/体积/state=uploaded**，才把下载链接给他。
+- **没有 `gh` 也能查 CI**: token 从 git 凭据库取, 走 REST（不要因为 `gh: command not found` 就说无法查）:
+  ```bash
+  TOK=$(printf "protocol=https\nhost=github.com\nusername=<user>\n\n" | git credential fill 2>/dev/null | grep '^password=' | cut -d= -f2)
+  curl -s -H "Authorization: Bearer $TOK" "https://api.github.com/repos/<owner>/<repo>/actions/runs?per_page=3"
+  curl -s -H "Authorization: Bearer $TOK" ".../actions/runs/<run_id>/jobs"          # 逐 job 的 status/conclusion
+  curl -s -H "Authorization: Bearer $TOK" ".../releases/tags/<tag>"                 # assets[].name/size/state
+  ```
+- 🔴 **轮询不要用长 `sleep` 堵在前台**: 前台默认 180s 上限, `sleep 240` 会被直接杀掉报 `exit 124`
+  （看着像 CI 挂了或命令出错）。写成轮询脚本用 `background=true, notify=true` 跑（每 30s 查一次、
+  `conclusion` 一到就打印两个 job + release 资产），自己继续做别的。
 - **界面上的版本号不会自己变**: 控制台进程是用旧源码起的 ⇒ 改完号必须清实例、单实例重起，
   然后截图 OCR 回读新号（源码 grep 只证明文件改了，不能证明他看到的变了）。
+- 🔴 **tag 之后又发生新改动（服务端页面 / unit / 工具）**：另起一个普通 commit 直接 push，
+  **不补 tag、不自己升版本号**（版本号只用用户给的那个）。汇报时必须把“改动的性质”点明：
+  这类改动是**服务端热读/不掉进安装包**的，所以那个 tag 出的 Windows/macOS 包里没有它也不冲突；
+  否则用户下一句必然是“那我下的包到底是不是最新的”。
 
 ### ④ 收工 / 关机前 (没给版本号也照样要"保存数据")
 
@@ -171,6 +196,10 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 | 同步多端时默认“仓库最新” | 把远端较新的修复盖掉（反向同理） | 先两侧 sha256，不等就抓回远端 diff 看超集，只拷较新那个方向 |
 | 归档清单把自己也算进去 | `sha256sum -c` 必 FAIL(清单写入时自己已被截断) | `find . -type f ! -name MANIFEST.sha256 -exec sha256sum {} \; > MANIFEST.sha256`, 再 `-c --quiet` 复核 |
 | 归档清单靠手写 | 改了文件忘了加进 CODE 表，归档里少东西 | 用 `git diff --name-only v<上一版>..HEAD` 生成 CODE 列表，再人工剔除一次性的 `*_tmp.py` |
+| 信记忆里的"当前版本" | `bump_version.py` 打印的旧号与预期不符，或跳号改错 | 先 `head VERSION.md` + grep studio.py 定基线；只落用户给的目标号 |
+| 前台长 `sleep` 等 CI | `exit 124`，误判 CI 挂 | 轮询写成脚本用 `background=true, notify=true` |
+| `scp` 多文件只到一部分 | 归档里少一个关键 json 而 sha256 仍「全 OK」 | staging 后 `ls` 逐名核对，再让脚本拷 |
+| tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里说明该改动是服务端热读/不进包 |
 
 ## 相关
 - 仓库口径/入库边界/密钥红线: `zmax-engineering-repo`(user-owned)。
