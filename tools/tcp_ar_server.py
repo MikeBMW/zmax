@@ -1405,10 +1405,28 @@ class H(BaseHTTPRequestHandler):
                 #   抬60→后80→降60→前80, 起点就是当前 TCP), 也就是模块头刚实际走过的那一圈。
                 #   所以这里读 planned_traj.json 的真点列, 按边加密到 ~20mm 一个点。
                 pp = os.path.join(REPO, "zmax_data", "runtime", "traj", "planned_traj.json")
-                if not os.path.exists(pp):
-                    out["note"] = "没有规划航路 planned_traj.json ⇒ 先规划(traj_plan.py)或重新生成矩形"
+                _pl = None
+                if os.path.exists(pp):
+                    _pl = json.load(open(pp, encoding="utf-8"))
+                if not _pl or len(_pl.get("pts_mm") or []) < 4:
+                    # 550C 上没有 planned_traj.json(规划在 550B 做的) ⇒ 退回它自己收到的那份段表
+                    #   plan_latest.json(段表真源, 每段带 abs_mm), 拼成同样的闭环点列。
+                    lp = os.path.join(REPO, "zmax_data", "runtime", "plan", "plan_latest.json")
+                    if os.path.exists(lp):
+                        _lb = json.load(open(lp, encoding="utf-8"))
+                        _st = [float(v) / 1000.0 for v in (_lb.get("start_mm") or [])]
+                        _pts = [_st] if _st else []
+                        for _sg in (_lb.get("segs") or []):
+                            _a = _sg.get("abs_mm") or [(float(_sg["pos"][i]) * 1000.0) for i in range(3)]
+                            _pts.append([float(v) / 1000.0 for v in _a])
+                        if len(_pts) >= 4:
+                            _pl = {"pts_mm": [[round(v * 1000.0, 1) for v in p] for p in _pts],
+                                   "total_mm": _lb.get("lin_total_mm"),
+                                   "src": "plan_latest.json(550C 收到的段表)"}
+                if not _pl:
+                    out["note"] = ("没有规划航路: planned_traj.json / plan_latest.json 都没有 ⇒ "
+                                   "先在 550B 规划, 或让规划桥把段表推过来")
                     return out
-                _pl = json.load(open(pp, encoding="utf-8"))
                 _anchors = [[float(v) / 1000.0 for v in p] for p in (_pl.get("pts_mm") or [])]
                 if len(_anchors) < 4:
                     out["note"] = ("规划航路只有 %d 个点, 不成矩形 (要 ≥4) ⇒ 重新规划一条 4 段闭环"
