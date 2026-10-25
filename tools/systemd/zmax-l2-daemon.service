@@ -1,0 +1,24 @@
+[Unit]
+Description=Z-MAX L2 常驻执行器 (FIFO 唯一收口 · 授权/VL/包络闸 · 执行腿=bridge→Orin SDK 桥)
+After=network-online.target zmax-orin-move-fwd.service
+Wants=zmax-orin-move-fwd.service
+# 2026-10-25: 改成 systemd 常驻 —— 用手工 setsid 起会因会话/跳板抖动被带走, 且容易起成两份抢同一条 FIFO
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_MOVEJ_RETRY=1
+Environment=ZMAX_L2_FORCE_J=1
+Environment=ZMAX_L2_MM_S=200
+Environment=ZMAX_MOVE_BRIDGE_URL=http://127.0.0.1:39071
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/l2_daemon.py
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=25
+StandardOutput=append:/home/ubuntu/zmax/zmax_data/l2_daemon_stdout.log
+StandardError=append:/home/ubuntu/zmax/zmax_data/l2_daemon_stdout.log
+
+[Install]
+WantedBy=multi-user.target

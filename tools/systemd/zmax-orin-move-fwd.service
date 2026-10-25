@@ -1,0 +1,18 @@
+[Unit]
+Description=Z-MAX 本机 39071 -> Orin SDK 桥 39061 (常驻转发; 执行器 bridge 腿用, 断线自愈)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 为什么要有这条: 经 ECS 跳板的 ssh 每 ~60s 被对端关一次, 「每条动作一条 ssh」的 legs 会段段失败;
+# 这里只维持**一条**长连接做端口转发, 动作变成一次本机 HTTP POST, 不随会话死。
+ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o ConnectTimeout=10 -L 127.0.0.1:39071:127.0.0.1:39061 orin
+Restart=always
+RestartSec=5
+User=ubuntu
+StandardOutput=append:/var/log/zmax-orin-move-fwd.log
+StandardError=append:/var/log/zmax-orin-move-fwd.log
+
+[Install]
+WantedBy=multi-user.target

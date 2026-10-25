@@ -1546,7 +1546,8 @@ def run_stages(sk, spec, chan, pts):
         _LEG_FAIL.update(t=0.0, why="")            # 🚚 打标窗口: 本条下发之后的腿失败才算数
         _t_send = time.time()
         if not chan_send(pl["call"], _intent_desc(pl.get("name", "阶段"), pl.get("dx", 0.0), pl.get("dy", 0.0),
-                                                  pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0))):
+                                                  pl.get("dz", 0.0), "直线 %.0fmm" % (pl.get("lin") or 0)),
+                         target=pl.get("pos"), quat=pl.get("quat"), speed=pl.get("speed")):
             # 🧭 把"被哪一层拦、为什么"原样带出去给界面(老倪: 点了必须出结果, 别只说"通道不可用或VL拒发")
             _why = _block_msg()
             log("🛑 阶段 %d/%d 下发被拦 → 中止剩余阶段(绝不重发) · %s" % (i, n, _why))
@@ -2210,13 +2211,13 @@ def _move_leg():
     v = "ros"
     try:
         _e = (os.environ.get("ZMAX_MOVE_TRANSPORT") or "").strip().lower()
-        if _e in ("ros", "sdk"):
+        if _e in ("ros", "sdk", "bridge"):
             v = _e
         else:
             _p = os.path.expanduser("~/zmax/zmax_data/move_transport.json")
             _j = json.loads(open(_p, encoding="utf-8").read())
             _t = str(_j.get("transport") or "ros").strip().lower()
-            v = _t if _t in ("ros", "sdk") else "ros"
+            v = _t if _t in ("ros", "sdk", "bridge") else "ros"
     except Exception:                                                       # noqa: BLE001
         v = "ros"
     _c.update(t=time.time(), v=v)
@@ -2270,7 +2271,79 @@ def _stop_via_sdk(call):
     return True
 
 
-def chan_send(call, intent_desc=None):
+def _bridge_url():
+    """Orin SDK 桥的 URL: 环境变量 > move_transport.json 的 bridge_url > 本机转发口 39071。"""
+    _u = (os.environ.get("ZMAX_MOVE_BRIDGE_URL") or "").strip()
+    if _u:
+        return _u.rstrip("/")
+    try:
+        _p = os.path.expanduser("~/zmax/zmax_data/move_transport.json")
+        _j = json.loads(open(_p, encoding="utf-8").read())
+        _b = str(_j.get("bridge_url") or "").strip().rstrip("/")
+        if _b:
+            return _b
+    except Exception:                                                           # noqa: BLE001
+        pass
+    return "http://127.0.0.1:39071"
+
+
+def _bridge_send(call, target=None, quat=None, speed=None):
+    """2026-10-25 第三条腿: 一条运动调用改走 **Orin SDK 桥 (HTTP /move_pose)**。
+
+    为什么需要: ros 腿 = 每条动作一条 ssh → Orin `ros2 service call /move_line`; 实测经 ECS 跳板的
+    ssh 每 ~60s 被对端关一次("Connection to 47.93.88.143 closed by remote host"), 且 Orin 侧
+    vendor setup 里还 source 了不存在的 /home/jetson/yahboom_ws ⇒ 段段失败/空等, 表现就是
+    「点了执行轨迹, 臂不动」。bridge 腿把下发变成一次本机 HTTP POST(经常驻 ssh -L 隧道到 Orin
+    的 39061), 不随 ssh 会话死, 且目标/速度可直给, 到位判据仍由 wait_arrive 看真值。
+
+    闸门位置不变: 本函数在 chan_send 里**闸门之后**调用, 授权/VL/包络一个不少。
+    """
+    if (target is None) or (quat is None):
+        _m = re.search(r"position:\s*\{x:\s*(-?[\d.eE+-]+),\s*y:\s*(-?[\d.eE+-]+),\s*z:\s*(-?[\d.eE+-]+)\}", call or "")
+        _n = re.search(r"orientation:\s*\{x:\s*(-?[\d.eE+-]+),\s*y:\s*(-?[\d.eE+-]+),\s*z:\s*(-?[\d.eE+-]+),\s*w:\s*(-?[\d.eE+-]+)\}", call or "")
+        if _m and target is None:
+            target = [float(_m.group(i)) for i in (1, 2, 3)]
+        if _n and quat is None:
+            quat = [float(_n.group(i)) for i in (1, 2, 3, 4)]
+    if target is None:
+        log("🚚 bridge 腿: 这条调用里找不到目标点 ⇒ 拒发")
+        _LEG_FAIL.update(t=time.time(), why="bridge 腿: 无目标点")
+        return False
+    if (not quat) or max(abs(float(v)) for v in quat) < 1e-9:
+        _q, _src, _age = _fresh_quat()
+        quat = _q or [0.0, 0.0, 0.0, 1.0]
+        log("🚚 bridge 腿: 姿态取现读 (%s, 龄 %.1fs)" % (_src, _age))
+    _sp = float(speed or 60.0)
+    _env_sp = (os.environ.get("ZMAX_L2_MM_S") or "").strip()
+    if _env_sp:                                        # 显式提速开关(留痕, 不静默改)
+        try:
+            _sp = float(_env_sp)
+            log("🚚 bridge 腿: 速度按 ZMAX_L2_MM_S=%.0fmm/s 执行 (段内请求 %.0f)" % (_sp, float(speed or 60.0)))
+        except ValueError:
+            pass
+    body = {"p": [float(v) for v in target], "q": [float(v) for v in quat], "speed": _sp, "dry": False}
+    try:
+        _rq = urllib.request.Request(_bridge_url() + "/move_pose", data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(_rq, timeout=25) as _r:
+            _d = json.loads(_r.read().decode())
+    except Exception as _e:                                                     # noqa: BLE001
+        log("🚚 bridge 腿异常(%s): %s" % (_bridge_url(), str(_e)[:80]))
+        _LEG_FAIL.update(t=time.time(), why="bridge 腿异常: %s" % str(_e)[:70])
+        return False
+    _res = _d.get("result") or {}
+    _ok = bool(_res.get("ok"))
+    if _ok:
+        log("🚚 bridge 腿下发 OK · p=%s speed=%.0fmm/s · Δ=%smm" % (
+            [round(v, 4) for v in body["p"]], _sp, (_res.get("sent") or {}).get("delta_mm")))
+    else:
+        _why = _res.get("why") or _d.get("error") or "未知"
+        log("🚚 bridge 腿拒发: %s" % str(_why)[:90])
+        _LEG_FAIL.update(t=time.time(), why="bridge 腿拒发: %s" % str(_why)[:70])
+    return _ok
+
+
+def chan_send(call, intent_desc=None, target=None, quat=None, speed=None):
     """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。
 
     🛡 所有运动类下发在此**唯一收口**: 先过 VL 视觉安全闸(见上), 停机/复位白名单放行。
@@ -2329,6 +2402,13 @@ def chan_send(call, intent_desc=None):
     #      ros = ssh → Orin `ros2 service call /move_line`(产线原路)
     #      sdk = 本机 SDK 直连(tools/rokae/l2_transport_sdk.py → 常驻代理 → xCoreSDK → 控制器)
     #    默认 ros ⇒ 不改开关时行为与改前逐字节一致; 热切见 ~/zmax/zmax_data/move_transport.json。
+    if _move_leg() == "bridge":
+        # 🚚 2026-10-25: 第三条腿 —— 直接 POST Orin SDK 桥 (本机 39071 → Orin 39061 常驻隧道)。
+        #    叫停类仍走原有白名单路径, 不碰; 只有 /move_line|/move_pose 走桥。
+        if any(_k in (call or "") for _k in _VL_ALWAYS_ALLOW):
+            return _stop_via_sdk(call) if _sdk_leg_module() else _bridge_send(call, target, quat, speed)
+        if _is_motion_call(call):
+            return _bridge_send(call, target, quat, speed)
     if _move_leg() == "sdk":
         # ⏹ 叫停/复位类优先: 停止通道不能走已死的 ROS 栈(否则撤销授权叫不停臂)
         if any(_k in (call or "") for _k in _VL_ALWAYS_ALLOW):

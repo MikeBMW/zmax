@@ -4,6 +4,8 @@ set -u
 cd /home/ubuntu/zmax
 export ZMAX_MOVEJ_RETRY=1
 export ZMAX_L2_FORCE_J=1
+# 2026-10-25: bridge 腿(Orin SDK 桥)速度显式给到 200mm/s —— 段内默认 60 太慢(实测 60 时 4 段 7.3s)
+export ZMAX_L2_MM_S=200
 setsid ./gui-venv311/bin/python tools/l2_daemon.py >> zmax_data/l2_daemon_stdout.log 2>&1 < /dev/null &
 sleep 8
 for p in /proc/[0-9]*; do

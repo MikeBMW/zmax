@@ -1,0 +1,18 @@
+[Unit]
+Description=Z-MAX 位姿真值中继 (Orin SDK 桥 39071 -> tcp_out/latest.json; 采样器崩时保活)
+After=network-online.target zmax-orin-move-fwd.service
+Wants=zmax-orin-move-fwd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_BRIDGE_URL=http://127.0.0.1:39071
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/orin_pose_relay.py
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-pose-relay.log
+StandardError=append:/var/log/zmax-pose-relay.log
+
+[Install]
+WantedBy=multi-user.target
