@@ -1131,9 +1131,37 @@ function drawVR(){
          +' · tool1(模块头)='+T1.origin.map(v=>v.toFixed(3)).join(',')
          +' · 法兰↔模块头 '+TCP.frames.flange_mm+'mm';
   }
+  // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线，要明显画出来」：
+  //    规划轨迹单独在最上层重画一遍 —— 深色描边 + 洋红粗实线 + 白色流动虚线 + 编号节点 + 起终点标记。
+  //    原来那条 (alpha .35 / 细蓝线) 在网格+机器人外形上几乎看不见, 等于没画。
+  if(TRAJ.plan && TRAJ.plan.length>1){
+    const P=TRAJ.plan.map(pr).filter(Boolean);
+    if(P.length>1){
+      g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
+      const stroke=(col,w)=>{ g.strokeStyle=col; g.lineWidth=w; g.beginPath();
+        P.forEach((q,i)=> i? g.lineTo(q.u,q.v) : g.moveTo(q.u,q.v)); g.stroke(); };
+      stroke('rgba(0,0,0,.9)', 15);              // 描边: 压住网格与机器人外形
+      stroke('#ff35d7', 8);                      // 主色: 洋红, 与所有既有颜色都不同
+      g.setLineDash([12,8]); stroke('rgba(255,255,255,.95)', 2.4); g.setLineDash([]);   // 亮虚线(近看有方向感)
+      P.forEach((q,i)=>{                          // 每个轨迹点: 白心洋红环 + 序号
+        g.beginPath(); g.arc(q.u,q.v,7,0,Math.PI*2); g.fillStyle='#ff35d7'; g.fill();
+        g.lineWidth=2.2; g.strokeStyle='#fff'; g.stroke();
+        g.font='bold 13px monospace'; g.fillStyle='#fff'; g.fillText(String(i), q.u+10, q.v-9); });
+      const a=P[0], b=P[P.length-1];
+      g.fillStyle='#3fb950'; g.beginPath(); g.arc(a.u,a.v,9,0,Math.PI*2); g.fill();   // 起点绿
+      g.strokeStyle='#fff'; g.lineWidth=2; g.stroke();
+      g.fillStyle='#e05252'; g.fillRect(b.u-7,b.v-7,14,14);                            // 终点红
+      g.strokeStyle='#fff'; g.strokeRect(b.u-7,b.v-7,14,14);
+      g.font='bold 14px monospace';
+      const lbl='规划轨迹 '+(TRAJ.planLabel?('· '+TRAJ.planLabel):(TRAJ.plan.length+' 点'));
+      const tw=g.measureText(lbl).width;
+      g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(a.u+12, a.v+14, tw+12, 22);
+      g.fillStyle='#ff35d7'; g.fillText(lbl, a.u+18, a.v+30);
+    }
+  }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
-  $('pVr').textContent=(SHOW?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点 · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
+  $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 let drag=null;
 $('vr').addEventListener('pointerdown',e=>{
@@ -1335,7 +1363,20 @@ async function refresh(){
   }
   try{
     const [t,st]=await Promise.all([fetch('/api/traj').then(r=>r.json()), fetch('/api/traj/state').then(r=>r.json())]);
-    TRAJ={trace:t.trace||[],plan:t.plan||[],real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s}; }
+    TRAJ={trace:t.trace||[],plan:t.plan||[],planLabel:t.plan_label||'',real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s};
+    // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线」的真因: 线画了但在整机视角里只占 30×40 像素。
+    //    规划一变就把视角框到这条轨迹上(只改 target/距离, 不动他手调的 yaw/pitch)。
+    if(TRAJ.plan && TRAJ.plan.length>1){
+      const sig=TRAJ.plan.map(p=>p.map(v=>Math.round(v*1000)).join(',')).join('|');
+      if(sig!==(refresh._planSig||'')){
+        refresh._planSig=sig;
+        const X=TRAJ.plan.map(p=>p[0]), Y=TRAJ.plan.map(p=>p[1]), Z=TRAJ.plan.map(p=>p[2]);
+        VR.tgt=[(Math.min(...X)+Math.max(...X))/2, (Math.min(...Y)+Math.max(...Y))/2, (Math.min(...Z)+Math.max(...Z))/2];
+        const ext=Math.max(Math.max(...X)-Math.min(...X), Math.max(...Y)-Math.min(...Y), Math.max(...Z)-Math.min(...Z));
+        VR.dist=Math.max(0.33, ext*2.0);
+        VR.auto=false;                       // 不再自转, 让人看清这条线
+      }
+    } }
   catch(e){}
   try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok){
     const _e=$('tTcp'); if(_e){ const _s='TCP 帧龄 '+TCP.age_s.toFixed(1)+'s'+((TCP.age_s>5)?' ⚠':''); if(_e.textContent!==_s) _e.textContent=_s; }
