@@ -12,6 +12,10 @@ Environment=ZMAX_MOVEJ_RETRY=1
 Environment=ZMAX_L2_FORCE_J=1
 Environment=ZMAX_L2_MM_S=200
 Environment=ZMAX_MOVE_BRIDGE_URL=http://127.0.0.1:39071
+# 直连 192.168.23.66 现在必然不通(本机无产线路由) ⇒ 直接给 ssh 别名, 省掉启动时 120s 直连探针(实测每次白等 2 分钟)
+Environment=ZMAX_ORIN_SSH=orin
+# 启动别等 ssh 探针(最长 60 轮): 执行腿=bridge, 不依赖 ssh; 否则 FIFO 迟迟不建 ⇒ 页面点了全落空
+Environment=ZMAX_SKIP_CHAN_PROBE=1
 ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/l2_daemon.py
 Restart=always
 RestartSec=5

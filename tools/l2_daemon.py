@@ -2499,18 +2499,25 @@ def main():
     reg = json.load(open(REG_PATH, encoding="utf-8"))
     threading.Thread(target=state_thread, daemon=True).start()
     # ① 等直连链路就绪 ② 一次性 ssh 探针确认真能登录 —— 否则通道"建完即死"变僵尸(2026-09-21 实况)
-    if not _link_ready(120):
-        log("⚠️ 直连链路 120s 未就绪, 仍尝试建通道(会由看门狗/下发时自愈)")
-    for _i in range(1, 61):
-        _ok, _out = _ssh_once("echo ZMAX_CHAN_PROBE_OK", timeout=12)
-        if _ok and "ZMAX_CHAN_PROBE_OK" in _out:
-            log("✅ ssh 探针通过 (第 %d 次尝试)" % _i)
-            break
-        if _i == 1:
-            log("⏳ 等 Orin ssh 就绪中(最多 120s)...")
-        time.sleep(2)
+    # 🚚 2026-10-25: 执行腿改 bridge(本机 HTTP → Orin 桥) 后, 运动下发**不经过 ssh**;
+    #    而这里每次启动要等直连 120s + 最多 60 轮 ssh 探针(实测跳板抖动时能卡十几分钟),
+    #    期间 FIFO 还没建好 ⇒ 用户在页面点「执行轨迹」全部落空(表现为"点了没反应")。
+    #    ZMAX_SKIP_CHAN_PROBE=1 直接跳过这两段; 通道由看门狗在后台慢慢建, 不影响 bridge 腿。
+    if (os.environ.get("ZMAX_SKIP_CHAN_PROBE") or "").strip().lower() in ("1", "true", "yes"):
+        log("⏭ 跳过 ssh 链路/探针等待 (ZMAX_SKIP_CHAN_PROBE=1 · 执行腿=bridge 不依赖 ssh)")
     else:
-        log("⚠️ ssh 探针 120s 未通过 — 通道由看门狗/下发时重建")
+        if not _link_ready(120):
+            log("⚠️ 直连链路 120s 未就绪, 仍尝试建通道(会由看门狗/下发时自愈)")
+        for _i in range(1, 61):
+            _ok, _out = _ssh_once("echo ZMAX_CHAN_PROBE_OK", timeout=12)
+            if _ok and "ZMAX_CHAN_PROBE_OK" in _out:
+                log("✅ ssh 探针通过 (第 %d 次尝试)" % _i)
+                break
+            if _i == 1:
+                log("⏳ 等 Orin ssh 就绪中(最多 120s)...")
+            time.sleep(2)
+        else:
+            log("⚠️ ssh 探针 120s 未通过 — 通道由看门狗/下发时重建")
     chan = _spawn_chan(force=True)
     threading.Thread(target=chan_watchdog, daemon=True).start()
     log("L2 常驻执行器启动 · FIFO=%s · 原子技能 %d 个" % (FIFO, len(reg["skills"])))
