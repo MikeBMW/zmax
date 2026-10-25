@@ -70,6 +70,19 @@
     <button id="bLock" class="sm" title="把绿框钉死: 相机与光模块相对无运动, 定主后坐标不再随检测抖动变化">🔒 绿框定主</button>
     <span class="tag" id="tRot">旋转 0°</span>
   </span>
+  <!-- 🧭 2026-10-26 老倪: 「8797/ar 新增的5个按钮呢?」
+       顶部工具条放一份**同功能**的五个轨迹按钮(tA1..tA5): 这一条是 sticky 的, 开页就在眼前,
+       不用滚到 3000px 页面下方。三维视图那一行保留(位置更贴近画布), 两处 id 不同、绑同一个 loadNamed。
+       为什么做两处: 实测整页高 3000px、视口 577px ⇒ 只放在三维视图下面 = 打开页面根本看不见。 -->
+  <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span class="tag" style="background:#1f6feb33">轨迹</span>
+    <button id="tA1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">① 小红</button>
+    <button id="tA2" class="sm" title="以小红中点为心的正方形 (工程配置无正方形元素 ⇒ 构造, 会标注)">② 正方</button>
+    <button id="tA3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物)">③ 建图</button>
+    <button id="tA4" class="sm" title="金手指点1 → 安全点1 (点位台账, 实时刷新)">④ 安全</button>
+    <button id="tA5" class="sm" title="真机实际走过的 TCP 轨迹 (实测录制)">⑤ 实时</button>
+    <button id="tAoff" class="sm" title="不再叠命名轨迹">✕</button>
+  </span>
 </header>
 <main>
  <div id="leftcol">
@@ -97,6 +110,21 @@
       <button id="bUrdf" class="sm on" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
       <button id="bMod" class="sm on" title="在 tool1(模块头中心)画光模块长方体: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度)">🔩 光模块</button>
     </div>
+    <!-- 🧭 2026-10-26 老倪: 「8797/ar 新增的5个按钮呢?」
+         实测真因(不是没做): 五个按钮原本渲染在**右侧栏中部**的『轨迹控制』卡片里,
+         页面总高 3000px 而视口只有 577px ⇒ 按钮在 top≈1009px, 不滚动**根本看不到**
+         (display:block/opacity:1 都在, 纯"在屏幕外面")。现在搬到**三维视图正下方按钮行**,
+         与『▶ 执行轨迹』同一排, 开页即见。侧栏那一份改成指路文字, 避免 id 重复。 -->
+    <div class="row" style="margin-top:6px">
+      <span style="font-size:12px;color:#8b949e;margin-right:4px">轨迹:</span>
+      <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
+      <button id="t2" class="sm" title="以小红中点为心的水平正方形 (工程配置无现成正方形元素 ⇒ 构造, 会标注)">轨迹2 正方</button>
+      <button id="t3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物: frontier+信息增益+A*)">轨迹3 建图</button>
+      <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
+      <button id="t5" class="sm" title="真机实际走过的 TCP 轨迹 (bridge_path_recorder 实测录制)">轨迹5 实时</button>
+      <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>
+    </div>
+    <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">点上面 5 个按钮: 从工程配置读轨迹点画到 3D 视图</pre>
     <pre id="pVr">—</pre>
   </div>
  </div>
@@ -125,19 +153,11 @@
       <!-- 🧭 2026-10-25 老倪: 「三维视图窗口下面操作按钮区加五个按钮」
            轨迹点全从配置中心工程配置读 (fence_store / 点位台账 / 探索产物 / 实测录制),
            不写死坐标; 取不到就明说为什么, 不画假线。 -->
+      <!-- 🧭 2026-10-26: 五个轨迹按钮已搬去「三维视图正下方」那一行 (开页即见, 不用滚动)。
+           这里保留指路, 不再重复渲染同一组 id。 -->
       <div class="row" style="margin-top:8px">
-        <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
-        <button id="t2" class="sm" title="以小红中点为心的水平正方形 (工程配置无现成正方形元素 ⇒ 构造, 会标注)">轨迹2 正方</button>
+        <span style="font-size:12px;color:#8b949e">五个轨迹按钮(小红/正方/建图/安全/实时) 在**三维视图正下方**, 与『▶ 执行轨迹』同一排。</span>
       </div>
-      <div class="row" style="margin-top:6px">
-        <button id="t3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物: frontier+信息增益+A*)">轨迹3 建图</button>
-        <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
-        <button id="t5" class="sm" title="真机实际走过的 TCP 轨迹 (bridge_path_recorder 实测录制)">轨迹5 实时</button>
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button id="tOff" class="sm">✕ 关掉命名轨迹</button>
-      </div>
-      <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">点上面 5 个按钮: 从工程配置读轨迹点画到 3D 视图</pre>
       <pre id="pTraj">—</pre>
     </div>
     <div class="card" id="cardFence">
@@ -424,9 +444,10 @@ async function loadNamed(k){
       el.style.color = /构造|示意/.test(d.note) ? '#fbbf24' : '#4ade80';
     }
     NAMED_SEL=k;
-    ['t1','t2','t3','t4','t5'].forEach((id,i)=>{
-      const key=['xiaohong','square','map','safe','real'][i];
-      $(id).classList.toggle('on', key===k && !!NAMED[k]);
+    // 高亮同步两处: 三维视图那一行 (t1..t5) 与顶部工具条 (tA1..tA5), id 不同、状态同一个
+    ['t1','t2','t3','t4','t5','tA1','tA2','tA3','tA4','tA5'].forEach((id)=>{
+      const key=['xiaohong','square','map','safe','real'][Number(id.replace('tA',''))-1];
+      const node=$(id); if(node) node.classList.toggle('on', key===k && !!NAMED[k]);
     });
     if(d.ok){ SHOW=true; }        // 有数据 ⇒ 顺手把轨迹显示打开
     // 🔴 必须**强制重绘**: drawIfChanged 的指纹只看 TRAJ/TCP/MOD3, 不含 NAMED,
@@ -435,7 +456,12 @@ async function loadNamed(k){
     if(typeof vrFitBox==='function') vrFitBox();
     if(typeof drawOv==='function') drawOv();
     if(typeof drawVR==='function') drawVR();
-    await refreshTraj();
+    // 🔴 2026-10-26 修: 这里原来写 `await refreshTraj()` —— 全页没有这个函数(真名是 refresh),
+    //   于是每次都抛 ReferenceError 被下面的 catch 抓住, 把已经拿到的 41 点结果覆盖成
+    //   「⚠ 请求失败: refreshTraj is not defined」—— 按钮"点了没反应/报错"的真因。
+    //   刷新失败也不许抹掉结果: 只把刷新错误单独提示。
+    try { if (typeof refresh === 'function') await refresh(); }
+    catch (e2) { console.warn('轨迹刷新失败(不影响已取到的点):', e2); }
   }catch(e){
     NAMED[k]=null; NAMED_SEL=null;
     el.textContent='⚠ 请求失败: '+e.message;
@@ -1492,6 +1518,10 @@ $('bRef').addEventListener('click',()=>{refresh();drawVR();});
 // 每个按钮 = 一次 /api/traj/named 请求, 点从配置中心工程配置读, 不写死坐标。
 [['t1','xiaohong'],['t2','square'],['t3','map'],['t4','safe'],['t5','real']]
   .forEach(([id,k])=>{ const el=$(id); if(el) el.addEventListener('click',()=>loadNamed(k)); });
+// 🧭 2026-10-26: 顶部工具条那一份 (tA1..tA5) —— 开页即见, 与上面同一批动作
+[['tA1','xiaohong'],['tA2','square'],['tA3','map'],['tA4','safe'],['tA5','real']]
+  .forEach(([id,k])=>{ const el=$(id); if(el) el.addEventListener('click',()=>loadNamed(k)); });
+{ const _o=$('tAoff'); if(_o) _o.addEventListener('click',()=>clearNamed()); }
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
