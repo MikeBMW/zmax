@@ -1,0 +1,35 @@
+# /etc/systemd/system/zmax-hjepa-m3-evolve.service
+# 方案3 (统一多模态双向跨模态 JEPA) 自主进化守护 (Intel Arc B390, 550C)
+#
+# 老倪 2026-10-25: 「方案3 你考虑进自主进化」
+#
+# 进化的是方案3 的结构/训练超参: d_e / tau / lam_align / lam_g2i / lr / steps
+# 适应度里**塌缩是硬闸**: collapse_score 判塌 ⇒ 整代作废, 不是扣分项。
+#   (塌缩时对比 loss 极低、各项看着都好, 加权一定被骗 —— 这是方案3 最著名的失败模式)
+#
+# 纯 torch 小模型 (20 万参数级别), 每代 3~8s, 冷却 300s。
+[Unit]
+Description=Z-MAX 方案3 双向跨模态 JEPA 自主进化 (550C)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+WorkingDirectory=/home/intel/hjepa_m3
+Environment=LD_LIBRARY_PATH=/home/intel/train_venv/lib
+Environment=ZMAX_ROOT=/home/intel/hjepa_m3
+Environment=PYTHONPATH=/home/intel/hjepa_m3
+Environment=MR_GENS=6
+Environment=MR_MARGIN=0.02
+Environment=MR_SEED=0
+ExecStartPre=/home/intel/train_venv/bin/python -c "import torch; print('torch', torch.__version__)"
+ExecStart=/bin/bash -lc 'mkdir -p /home/intel/hjepa_m3 && while true; do /home/intel/train_venv/bin/python -u /home/intel/hjepa_m3/evolve.py; echo "--- 冷却 300s ---"; sleep 300; done'
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/intel/hjepa_m3/evolve.log
+StandardError=append:/home/intel/hjepa_m3/evolve.log
+
+[Install]
+WantedBy=multi-user.target
