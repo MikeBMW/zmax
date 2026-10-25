@@ -139,6 +139,11 @@ def run(dry=False):
                 for s in segs:
                     cmd = {"skill": s["skill"], "d_mm": float(s["d_mm"]), "auth_epoch": epoch,
                            "src": "traj_exec",
+                           # 🎯 2026-10-25: 同时给**绝对目标**(规划里的 to_mm)。
+                           #   为什么: d_mm 是"相对当前位姿"的增量, 只要有任一段被拦/被跳过,
+                           #   后续段就会整体漂移 —— 实测出现"后退没走、前进照走 ⇒ 臂停在 +80mm 外"。
+                           #   给了 abs_mm 之后, 每段都落到规划点上, 单段失败不会污染后面的点。
+                           "abs_mm": [float(v) for v in (s.get("to_mm") or [])][:3] or None,
                            "note": "轨迹第 %d/%d 段 %s" % (int(s["i"]), len(segs), s.get("cn") or s["dir"])}
                     f.write(json.dumps(cmd, ensure_ascii=False) + "\n")
                     f.flush()

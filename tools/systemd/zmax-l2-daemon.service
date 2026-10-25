@@ -11,6 +11,8 @@ WorkingDirectory=/home/ubuntu/zmax
 Environment=ZMAX_MOVEJ_RETRY=1
 Environment=ZMAX_L2_FORCE_J=1
 Environment=ZMAX_L2_MM_S=200
+# 腿必须钉死 bridge: 之前 _move_leg 每次都重读 json, 实测出现"段1 走桥、段2 回落到已死的 ros 腿"
+Environment=ZMAX_MOVE_TRANSPORT=bridge
 Environment=ZMAX_MOVE_BRIDGE_URL=http://127.0.0.1:39071
 # 直连 192.168.23.66 现在必然不通(本机无产线路由) ⇒ 直接给 ssh 别名, 省掉启动时 120s 直连探针(实测每次白等 2 分钟)
 Environment=ZMAX_ORIN_SSH=orin

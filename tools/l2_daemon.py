@@ -469,6 +469,12 @@ def build_move(sk, spec, pts, cur=None, curq=None):
     if not p or not q:
         return None
     t = list(p)
+    # 🎯 2026-10-25 段表绝对目标优先: traj_exec 会给 abs_mm(规划里的 to_mm)。
+    #   给了就落到规划点, 不再"当前位姿 + 增量"——否则前一段被拦/跳过会把后面所有点带偏
+    #   (实测: 后退没走、前进照走 ⇒ 臂停在 +80mm 外, z 也差 26mm)。
+    #   注意: 本函数末尾统一用 abs_mm 覆盖 t, 这里只置标记, 不打断各模式的既有口径。
+    _abs = spec.get("abs_mm")
+    _has_abs = bool(_abs and len(_abs) == 3)
     if sk["ros"] == "line_rel":
         _pd = (sk.get("param") or {}).get("d_mm") or {}
         d = float(spec.get("d_mm", _pd.get("default", 50))) / 1000.0
@@ -547,6 +553,13 @@ def build_move(sk, spec, pts, cur=None, curq=None):
             if _qe:
                 log("拒绝: 点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe))
                 return None
+    if _has_abs:
+        try:
+            t = [float(v) / 1000.0 for v in _abs]
+            log("🎯 绝对目标覆盖: abs_mm=%s ⇒ 落架构规划点, 不叠加技能的相对偏移 (技能 %s)" % (
+                [round(float(v), 1) for v in _abs], sk.get("id")))
+        except (TypeError, ValueError):
+            log("⚠️ abs_mm 解析失败, 保持相对口径: %s" % (_abs,))
     return (t, q)
 
 
@@ -2322,6 +2335,20 @@ def _bridge_send(call, target=None, quat=None, speed=None):
         except ValueError:
             pass
     body = {"p": [float(v) for v in target], "q": [float(v) for v in quat], "speed": _sp, "dry": False}
+    # ⏳ 串行化: 上一条动作还在走时再发 moveStart 会被控制器拒(moveStart 报错, 但队列里其实已经收下) ——
+    #    实测 4 段连续点击时出现 "moveStart 报错" 却仍动的情况, 判据不可信。这里先等臂停稳再发。
+    _t_wait = time.time()
+    while time.time() - _t_wait < 6.0:
+        try:
+            with urllib.request.urlopen(_bridge_url() + "/status", timeout=3) as _sr:
+                _sd = (json.loads(_sr.read().decode()) or {}).get("status") or {}
+            _v = _sd.get("jointVel") or []
+            _vmax = max([max(abs(x) for x in e) if isinstance(e, list) else abs(e) for e in _v] or [0.0])
+            if _vmax < 0.05:
+                break
+        except Exception:                                                    # noqa: BLE001
+            break
+        time.sleep(0.15)
     try:
         _rq = urllib.request.Request(_bridge_url() + "/move_pose", data=json.dumps(body).encode(),
                                      headers={"Content-Type": "application/json"})
@@ -2586,7 +2613,15 @@ def main():
                            blocked_by="", residual_mm=None, target=None,
                            auth_epoch=spec.get("auth_epoch"))
                 try:
-                    log("受理: " + dispatch(reg, spec, chan))
+                    _msg = dispatch(reg, spec, chan)
+                    log("受理: " + _msg)
+                    # 🛑 2026-10-25 实测: traj_exec 把整条段表(4 行)一次写进 FIFO, 一个 chunk 里按行跑。
+                    #   段表的 d_mm 是"相对当前位姿"的增量 ⇒ 若某段被拦/失败却继续跑下一段,
+                    #   目标会整体漂移(实测: 后退被拦、forward 照走 ⇒ 臂停在 +80mm 外, z 差 26mm)。
+                    #   ⇒ 前段一被拦就丢弃本批剩余段(不重发不补偿, 与"递进式执行"口径一致)。
+                    if _msg and str(_msg)[:1] in ("🛑", "⛔", "❌"):
+                        log("🗑 本批剩余段已丢弃(前段被拦/失败 ⇒ 防相对段漂移), 本条=%s" % (spec.get("skill") or "?"))
+                        break
                 except Exception as e:
                     log("执行异常: %s" % e)
 
