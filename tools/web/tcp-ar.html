@@ -82,6 +82,7 @@
     <button id="tA4" class="sm" title="金手指点1 → 安全点1 (点位台账, 实时刷新)">④ 安全</button>
     <button id="tA5" class="sm" title="真机实际走过的 TCP 轨迹 (实测录制)">⑤ 实时</button>
     <button id="tAoff" class="sm" title="不再叠命名轨迹">✕</button>
+    <button id="tAFit" class="sm" title="把视角对准当前显示的轨迹(点轨迹按钮时不会跳)">🎯</button>
   </span>
 </header>
 <main>
@@ -123,6 +124,7 @@
       <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
       <button id="t5" class="sm" title="真机实际走过的 TCP 轨迹 (bridge_path_recorder 实测录制)">轨迹5 实时</button>
       <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>
+      <button id="tFit" class="sm" title="把视角对准当前显示的轨迹(只有点这个按钮才会动相机; 点轨迹按钮不会跳)">🎯 对准</button>
     </div>
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
     <pre id="pVr">—</pre>
@@ -450,6 +452,16 @@ function paintNamedBtns(){
                    real:' 轨迹5 实时(真机实测)'}[key]||'');
   });
 }
+// 🔴 2026-10-26: 按钮点了看不见 ⇒ **只提示不挪相机**(老倪: 不要跳)。要挪得自己点 🎯 对准。
+function vrInViewHint(){
+  const el=$('pNamed'); if(!el) return;
+  const vis=window.__NAMED_VIS__||{};
+  const bad=Object.keys(NAMED_ON).filter(k=>NAMED_ON[k] && vis[k] && vis[k].ok===0);
+  if(!bad.length) return;
+  el.textContent += '\n⚠ ' + bad.map(k=>(NAMED_INFO[k]||{}).label||k).join(' / ') +
+    ' 在当前视角外(相机没动) ⇒ 点 🎯 对准 才会把视角移过去';
+  el.style.color='#fbbf24';
+}
 function namedSummary(){
   const on = Object.keys(NAMED_ON).filter(k=>NAMED_ON[k] && NAMED[k] && NAMED[k].length);
   const el=$('pNamed');
@@ -486,10 +498,18 @@ async function loadNamed(k){
     NAMED_SEL=k;
     paintNamedBtns(); namedSummary();
     SHOW=true;
-    // 强制重绘 + 先取景: 指纹里只看 TRAJ/TCP/MOD3, 不含 NAMED, 不强制就"点了没像素变化"
-    if(typeof vrFitBox==='function') vrFitBox();
+    // 🔴 2026-10-26 老倪「点击按钮的时候，你的三维视图不要跳」
+    //    真因: 这里原来显式 vrFitBox() 把相机重新取景(target/dist 全变) ⇒ 每点一次按钮画面就蹦一下;
+    //    而且 VR.auto=true 时 drawVR() 内部每帧还调一次 vrFitBox(), 点完还会继续跳。
+    //    现在: 记住当前相机 → 关 auto(不再自动取景) → 只重绘(不改视角) → 原样恢复相机。
+    const cam0={yaw:VR.yaw, pitch:VR.pitch, dist:VR.dist, tgt:(VR.tgt||[]).slice()};
+    VR.auto=false;
     if(typeof drawOv==='function') drawOv();
     if(typeof drawVR==='function') drawVR();
+    VR.yaw=cam0.yaw; VR.pitch=cam0.pitch; VR.dist=cam0.dist; VR.tgt=cam0.tgt;
+    if(typeof drawOv==='function') drawOv();
+    if(typeof drawVR==='function') drawVR();
+    if(typeof vrInViewHint==='function') vrInViewHint();
     try { if (typeof refresh === 'function') await refresh(); }
     catch (e2) { console.warn('轨迹刷新失败(不影响已取到的点):', e2); }
   }catch(e){
@@ -503,9 +523,14 @@ function toggleNamedOff(k){
   delete NAMED_ON[k];
   if(NAMED_SEL===k) NAMED_SEL = Object.keys(NAMED_ON).filter(x=>NAMED_ON[x]).pop() || null;
   paintNamedBtns(); namedSummary();
-  if(typeof vrFitBox==='function') vrFitBox();
+  const cam0={yaw:VR.yaw, pitch:VR.pitch, dist:VR.dist, tgt:(VR.tgt||[]).slice()};
+  VR.auto=false;
   if(typeof drawOv==='function') drawOv();
   if(typeof drawVR==='function') drawVR();
+  VR.yaw=cam0.yaw; VR.pitch=cam0.pitch; VR.dist=cam0.dist; VR.tgt=cam0.tgt;
+  if(typeof drawOv==='function') drawOv();
+  if(typeof drawVR==='function') drawVR();
+  if(typeof vrInViewHint==='function') vrInViewHint();
 }
 
 function clearNamed(){
@@ -533,6 +558,7 @@ function _drawNamedVR1(g, pr, key){
   let n=0;
   // 诊断: 有多少点真的投进视锥 (其余被 pr 返 null ⇒ 画不出来但代码不报错)
   let _okP=0; for(const q of P) if(q) _okP++;
+  (window.__NAMED_VIS__=window.__NAMED_VIS__||{})[key]={ok:_okP, total:pts.length};
   window.__NAMED_DBG__={key:key, total:pts.length, projected:_okP,
                         vtgt:(VR.tgt||[]).slice(), vdist:VR.dist};
   // 🔴 逐段画, 不是一条 beginPath 串到底:
@@ -1652,6 +1678,10 @@ $('bRef').addEventListener('click',()=>{refresh();drawVR();});
 [['tA1','xiaohong'],['tA2','square'],['tA3','map'],['tA4','safe'],['tA5','real']]
   .forEach(([id,k])=>{ const el=$(id); if(el) el.addEventListener('click',()=>loadNamed(k)); });
 { const _o=$('tAoff'); if(_o) _o.addEventListener('click',()=>clearNamed()); }
+// 🎯 对准: 唯一会主动动相机的入口 (老倪 2026-10-26「点击按钮三维视图不要跳」)
+['tFit','tAFit'].forEach(id=>{ const b=$(id); if(b) b.addEventListener('click',()=>{
+  VR.auto=true; if(typeof vrFitBox==='function') vrFitBox(); drawVR();
+}); });
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
