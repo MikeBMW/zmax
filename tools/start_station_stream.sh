@@ -29,6 +29,25 @@ _lu=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');
 #   ⇒ 结果是把笔记本内置摄像头一直占着。off 就是显式关掉这一路, 页面点 [内置]/[USB] 可随时开回。
 _src_kind=$(python3 -c "import json;print(json.load(open('$ROOT/zmax_data/cam_local_src.json')).get('kind','builtin'))" 2>/dev/null || echo builtin)
 LOCAL_ARGS=(--local-dev "$_ld" --local2-dev "$_l2")
+# ── 🌐 远程模式: 中央相机不在本机(没有第二台 USB 相机)时, 吃 Orin 推到 ECS 中转的帧 ──────
+#   链路: Orin 跑 tools/orin_cam_uplink.py → POST /api/relay/cam/push?cam=central
+#         本机读 https://datadrive.world/api/snapshot/central
+#   2026-10-25 老倪远程: 厂内相机只有经 Orin 的公网出口才拿得到, 本机没有产线网卡。
+RELAY_CAM="${ZMAX_CAM_RELAY:-https://datadrive.world/api/snapshot}"
+CENTRAL_URL="${ZMAX_CENTRAL_CAM_URL:-http://127.0.0.1:8812/snap.jpg}"
+if [ "$_l2" -lt 0 ] && [ "$_src_kind" != "off" ]; then
+  # ① 优先: 550C(Intel) 的中央相机, 经 zmax-intel-cam-tunnel 转到本机 8812
+  if curl -s -m 3 -o /dev/null "$CENTRAL_URL" 2>/dev/null; then
+    LOCAL_ARGS=(--local-dev "$_ld" --local2-url "$CENTRAL_URL" --local2-label "🎥 中央相机" --local2-fps 10)
+    echo "  · 中央相机: 走 550C 隧道 $CENTRAL_URL"
+  elif curl -s -m 3 -o /dev/null "$RELAY_CAM/central" 2>/dev/null; then
+    # ② 兜底: ECS 中转里 Orin 推到 central 的帧
+    LOCAL_ARGS=(--local-dev "$_ld" --local2-url "$RELAY_CAM/central" --local2-label "🎥 中央相机" --local2-fps 10)
+    echo "  · 中央相机: 550C 隧道不通 → 吃 ECS 中转 $RELAY_CAM/central"
+  else
+    echo "  · 中央相机: 550C 隧道与 ECS 中转都没有帧 ⇒ 这一格会是空"
+  fi
+fi
 if [ "$_src_kind" = "off" ]; then
   LOCAL_ARGS=(--no-local --no-local2)
   echo "  ⏸ 笔记本那一路: 已关闭 (cam_local_src.json kind=off)"
@@ -73,7 +92,14 @@ if ! curl -s -m 2 -o /dev/null "http://$ORIN_HOST:8792/frame.jpg" 2>/dev/null; t
     ARM_URL="http://127.0.0.1:18792/frame.jpg"
     echo "  · 手臂源: 产线网 $ORIN_HOST:8792 不通 → 改走 ECS 隧道 127.0.0.1:18792"
   else
-    echo "  · 手臂源: 产线网与隧道都不通 (zmax-orin-arm-fwd 没起?) ⇒ 这一路会是空"
+    # 🌐 远程兜底: 产线与隧道都不通 ⇒ 吃 Orin 推到 ECS 中转的臂相机帧
+    #   (Orin 跑 tools/orin_cam_uplink.py → POST /api/relay/cam/push?cam=arm)
+    if curl -s -m 3 -o /dev/null "$RELAY_CAM/arm" 2>/dev/null; then
+      ARM_URL="http://127.0.0.1:18792/frame.jpg,$RELAY_CAM/arm"
+      echo "  · 手臂源: 产线/隧道都不通 → 追加 ECS 中转 $RELAY_CAM/arm (需 Orin 推帧)"
+    else
+      echo "  · 手臂源: 产线网/隧道/ECS 中转都没有帧 ⇒ 这一路会是空"
+    fi
   fi
 else
   echo "  · 手臂源: 产线网直连 http://$ORIN_HOST:8792/frame.jpg"
