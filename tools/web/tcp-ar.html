@@ -54,6 +54,7 @@
 </style></head><body>
 <header>
   <h1>🛰 TCP 轨迹 AR/VR 调试台</h1>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r8 · 五条按钮都能点亮(0点也变蓝)</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -466,7 +467,7 @@ function paintNamedBtns(){
     const node=$(id); if(!node) return;
     node.classList.toggle('on', !!NAMED_ON[key]);
     node.title = (NAMED_ON[key] ? '显示中 · 再点一下隐藏' : '已隐藏 · 点一下在三维视图显示') +
-                 ({xiaohong:' 轨迹1 小红(工程配置直线)', square:' 轨迹2 正方(构造)',
+                 ({xiaohong:' 轨迹1 小红(工程配置直线)', square:' 轨迹2 矩形(规划航路洋红闭环)',
                    map:' 轨迹3 建图(自主探索)', safe:' 轨迹4 安全(金手指点1→安全点1)',
                    real:' 轨迹5 实时(真机实测)'}[key]||'');
   });
@@ -482,7 +483,8 @@ function vrInViewHint(){
   el.style.color='#fbbf24';
 }
 function namedSummary(){
-  const on = Object.keys(NAMED_ON).filter(k=>NAMED_ON[k] && NAMED[k] && NAMED[k].length);
+  // 2026-10-26: 激活了但 0 点也要出现在汇总里(否则按钮蓝着、文字却说"都关着")
+  const on = Object.keys(NAMED_ON).filter(k=>NAMED_ON[k]);
   const el=$('pNamed');
   if(!on.length){
     el.textContent='五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏';
@@ -491,6 +493,7 @@ function namedSummary(){
   el.textContent = on.map(k=>{
     const d=NAMED_INFO[k]||{}, n=(NAMED[k]||[]).length;
     const warn=/构造|示意/.test(d.note||'') ? ' ⚠' : '';
+    if(!n) return (d.label||k)+' ● 已激活 · 0 点(真机还没走过, 不能执行)';
     return (d.label||k)+' ✓ '+n+' 点'+(d.src?(' · '+d.src):'')+warn;
   }).join('\n');
   el.style.color = on.some(k=>/构造|示意/.test((NAMED_INFO[k]||{}).note||'')) ? '#fbbf24' : '#4ade80';
@@ -506,8 +509,13 @@ async function loadNamed(k){
       const d=await r.json();
       NAMED_INFO[k]=d;
       if(!d.ok){
-        NAMED[k]=null;
-        el.textContent='⚠ '+d.label+'\n取不到: '+d.note;
+        // 🔴 2026-10-26 老倪「点击后, 要变成蓝色, 标识激活；轨迹1～轨迹5」
+        //   以前 ok=false 就直接 return, 按钮一直是黑的 —— 他点轨迹5(实时, 还没走过=0点)会以为没反应。
+        //   现在: 按钮照样变蓝 = 这条已激活(激活是按钮状态, 有没有点另说), 文字里写清楚为什么 0 点、能不能执行。
+        NAMED[k]=[]; NAMED_ON[k]=true;
+        if(NAMED_SEL===k) NAMED_SEL=null;
+        paintNamedBtns(); namedSummary();
+        el.textContent='● '+d.label+' 已激活 · 0 点\n'+d.note+'\n(0 点的轨迹只能看状态, 不能执行)';
         el.style.color='#fbbf24';
         return;
       }
@@ -1533,6 +1541,12 @@ $('bFit').addEventListener('click',async ()=>{
   // 🧭 2026-10-26 老倪: 「高亮哪个轨迹就在三维里显示哪个, 我看着, 点执行就发指令」
   //   有高亮的命名轨迹 ⇒ 执行**它就是那条** (服务端先转段表再走执行闸);
   //   没高亮 ⇒ 保持老行为(执行当前规划航路)。这里先把"要执行哪条"说清楚, 不让人看着A执行B。
+  // 2026-10-26: 0 点的(轨迹5 实时, 还没走过)也能激活变蓝, 但**不能执行** —— 这里先挡掉, 别让它走到"去起点"那种空下发
+  if (typeof NAMED_SEL!=='undefined' && NAMED_SEL && NAMED_ON[NAMED_SEL] && !((NAMED[NAMED_SEL]||[]).length>=2)) {
+    msg.style.color='#d29922';
+    msg.textContent='⚠ '+(((NAMED_INFO[NAMED_SEL]||{}).label)||NAMED_SEL)+' 已激活但只有 '+((NAMED[NAMED_SEL]||[]).length)+' 点 —— 不能执行(真机走一次这条路才会有实时轨迹)';
+    return;
+  }
   const sel = (typeof NAMED_SEL!=='undefined' && NAMED_SEL && NAMED[NAMED_SEL] && NAMED_ON[NAMED_SEL])
               ? (NAMED_INFO[NAMED_SEL]||{}).label || NAMED_SEL : null;
   // 多选显示时: 执行的是**最后点亮**的那条, 其它只是"看着"; 确认框要说清楚, 不许含糊
