@@ -372,8 +372,9 @@ var HTML_VER="__HTMLVER__";</script>
             function health(){
               fetch('gs/live/health',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
                 if(!d || !d.ok) return;
-                cap.textContent='🖥 Intel XPU 渲染 · '+(d.gaussians/1000).toFixed(0)+'k 高斯 · '+d.fps+' fps · 帧龄 '+d.age_s
-                  +'s · 环绕 '+(d.idx%d.path_frames)+'/'+d.path_frames+' 帧 · 源=intel:'+''+d.dev;
+                cap.textContent='🖥 Intel XPU 渲染 · '+(d.gaussians/1000).toFixed(0)+'k 高斯 · '+d.fps+' fps · 帧龄 '+d.age_s+'s'
+                  +' · 视角='+(d.view||'环绕路径')+(d.src==='arm'&&d.pose_age_s!=null?(' · 位姿龄 '+d.pose_age_s+'s'):'')
+                  +' · 源=intel:'+d.dev;
               }).catch(function(){});
             }
             function tick(){
@@ -400,7 +401,7 @@ var HTML_VER="__HTMLVER__";</script>
         </div>
       </div>
     </div>
-    <div class="panel"><div class="cap"><span class="ttl">🦾 机器人臂上 D405</span>
+    <div class="panel"><div class="cap"><span class="ttl">🦾 手臂相机</span>
       <span class="meta" id="m_arm">…</span></div>
       <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
     <div class="panel"><div class="cap"><span class="ttl">📷 本机相机 (内置 / USB)</span>
@@ -417,7 +418,7 @@ var HTML_VER="__HTMLVER__";</script>
     <div class="panel"><div class="cap"><span class="ttl">🎥 中央相机</span>
       <span class="meta" id="m_local2">…</span></div>
       <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
-    <div class="panel"><div class="cap"><span class="ttl">🌈 D405 深度图</span>
+    <div class="panel"><div class="cap"><span class="ttl">🌈 手臂相机深度图</span>
       <span class="meta" id="m_depth">…</span></div>
       <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500">
       <div class="note" id="n_depth" style="display:none"></div></div>

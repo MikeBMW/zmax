@@ -169,6 +169,14 @@ def main():
     ap.add_argument("--fps", type=float, default=8.0)
     ap.add_argument("--frames", type=int, default=300, help="环绕一圈用多少帧")
     ap.add_argument("--quality", type=int, default=80)
+    ap.add_argument("--handeye", default="/home/intel/zmax_map/models/handeye_state.json",
+                    help="手眼 T_cam2tool(4x4, 米) —— 与采集 cameras.json 时同一份")
+    ap.add_argument("--pose-json", default="/tmp/arm_tcp_pose.json",
+                    help="gs_arm_pose_pub.py 落盘的手臂 TCP 位姿(50Hz)")
+    ap.add_argument("--pose-max-age", type=float, default=0.8,
+                    help="位姿龄超过这个秒数就退回环绕路径(防拿旧位姿冒充同步)")
+    ap.add_argument("--sync", choices=("auto", "on", "off"), default="auto",
+                    help="auto=有位姿就跟手臂相机, 没有就环绕; on=必须有位姿")
     ap.add_argument("--width", type=int, default=0, help="0=用建模分辨率")
     a = ap.parse_args()
 
@@ -201,11 +209,51 @@ def main():
     Kt = torch.tensor(K, dtype=torch.float32, device=dev).unsqueeze(0)
     print("载入 %d 个高斯 · SH %d · %dx%d · dev=%s" % (n, sh_deg, W, H, dev), flush=True)
 
+    # ── 视角与手臂相机同步 ────────────────────────────────────────────────
+    # 老倪 2026-10-25: 「现在的手臂相机没有动，你要将 3DGS 的视角与手臂相机同步」
+    # 链路: /robot/tcp_pose(50Hz) → T_base2tcp → @ T_cam2tool(手眼) → T_cam2world → 归一化 → viewmat
+    # 与采集时 cameras.json 逐字同式(T_cam2world = inv(T_base2tcp @ X)), 所以视角天然对齐。
+    HE = None
+    if a.sync != "off":
+        try:
+            hd = json.load(open(a.handeye, encoding="utf-8"))
+            HE = np.array(hd["T_cam2tool"], dtype=float)
+            print("手眼 T_cam2tool |t|=%.1fmm (resid %s mm)" % (
+                float(np.linalg.norm(HE[:3, 3])) * 1000, hd.get("resid_trans_mm_rms")), flush=True)
+        except Exception as e:                                               # noqa: BLE001
+            print("⚠️ 手眼读不到(%s), 同步不可用 ⇒ 只走环绕路径" % e, flush=True)
+            HE = None
+
+    def live_pose():
+        """返回 (R, t, age) 在**归一化前**的世界系; 无新鲜位姿返回 None。"""
+        if HE is None:
+            return None
+        try:
+            st = os.stat(a.pose_json)
+            d = json.load(open(a.pose_json, encoding="utf-8"))
+        except Exception:                                                    # noqa: BLE001
+            return None
+        age = time.time() - float(d.get("ts") or 0)
+        if age > a.pose_max_age:
+            return None
+        t = np.array(d["t"], dtype=float)
+        q = d["q"]                                        # [x,y,z,w]
+        Tb = np.eye(4)
+        Tb[:3, :3] = quat2mat(np.array([q[3], q[0], q[1], q[2]], dtype=float))
+        Tb[:3, 3] = t
+        Tcw = np.linalg.inv(Tb @ HE)                      # = 训练时的 T_cam2world
+        return Tcw[:3, :3], Tcw[:3, 3], age
+
     path = build_path(cj["frames"], center, S, a.frames)
     print("相机路径 %d 帧 (方位角排序+闭环插值)" % len(path), flush=True)
 
     def render_one(i):
-        Rm, t = path[i % len(path)]
+        Rm, t, src, age = path[i % len(path)][0], path[i % len(path)][1], "tour", None
+        lp = live_pose()
+        if lp is not None:
+            Rm, t0, age = lp
+            t = S * (t0 - center)          # 与训练同式: t_norm = S*(t_world - center)
+            src = "arm"
         Tn = np.eye(4)
         Tn[:3, :3] = Rm
         Tn[:3, 3] = t
@@ -219,20 +267,22 @@ def main():
         rgb = img[0].clamp(0, 1).mul(255).byte().cpu().numpy()
         buf = io.BytesIO()
         Image.fromarray(rgb).save(buf, format="JPEG", quality=a.quality)
-        return buf.getvalue()
+        return buf.getvalue(), src, age
 
     def loop():
         i = 0
         t_prev = time.time()
         while True:
             try:
-                jp = render_one(i)
+                jp, src, age = render_one(i)
                 now = time.time()
                 with LOCK:
                     STATE["jpeg"] = jp
                     STATE["ts"] = now
                     STATE["idx"] = i
                     STATE["fps"] = 0.9 * STATE["fps"] + 0.1 * (1.0 / max(1e-3, now - t_prev))
+                    STATE["src"] = src
+                    STATE["pose_age"] = age
                     STATE["err"] = ""
                 t_prev = now
                 i += 1
@@ -272,7 +322,11 @@ def main():
                 with LOCK:
                     d = {"ok": bool(STATE["jpeg"]), "gaussians": n, "w": W, "h": H, "fps": round(STATE["fps"], 1),
                          "age_s": round(time.time() - STATE["ts"], 2) if STATE["ts"] else None,
-                         "idx": STATE["idx"], "path_frames": len(path), "dev": dev, "err": STATE["err"]}
+                         "idx": STATE["idx"], "path_frames": len(path), "dev": dev,
+                         "src": STATE.get("src", "tour"),
+                         "pose_age_s": (round(STATE["pose_age"], 3) if STATE.get("pose_age") is not None else None),
+                         "view": ("手臂相机实时视角" if STATE.get("src") == "arm" else "环绕路径"),
+                         "err": STATE["err"]}
                 return self._send(200, json.dumps(d, ensure_ascii=False).encode(), "application/json; charset=utf-8")
             if p == "/stream.mjpg":
                 self.send_response(200)
