@@ -82,7 +82,11 @@ def resolve_devs():
     """按卡名+能力解析本机两路相机 (与 tools/start_station_stream.sh / 控制台按钮同一个真源)
     → (LOCAL, LOCAL2, USB) 或 None (USB 未插到时报 -1, 这里照样带出来)"""
     try:
-        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "cam_dev_resolve.py")],
+        # ⚠️ 必须用 venv python: 系统 python3 没有 cv2 ⇒ 每个候选都 "探测异常 ModuleNotFoundError"
+        #    ⇒ 全 -1 ⇒ 推流被以 --local-dev -1 拉起 (两格全空)。实测 2026-10-25 踩过。
+        _py = os.path.join(ROOT, "gui-venv311/bin/python")
+        r = subprocess.run([_py if os.path.exists(_py) else sys.executable,
+                            os.path.join(ROOT, "tools", "cam_dev_resolve.py")],
                            capture_output=True, text=True, timeout=25)
     except Exception:                                                            # noqa: BLE001
         return None
