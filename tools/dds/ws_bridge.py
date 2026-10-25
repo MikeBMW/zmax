@@ -43,8 +43,9 @@ for _p in (_HERE, os.path.join(os.path.dirname(os.path.dirname(_HERE)), "dds")):
 
 OP_CONT, OP_TEXT, OP_BIN, OP_CLOSE, OP_PING, OP_PONG = 0x0, 0x1, 0x2, 0x8, 0x9, 0xA
 ROLES = {
-    "edge": (["hw_state", "train_prog", "heartbeat"], ["deploy_cmd"]),
-    "hub": (["deploy_cmd"], ["hw_state", "train_prog", "heartbeat"]),
+    # 2026-10-25: 规划也要跨网 —— 550B(hub) 出 ss_plan, 550C(edge) 收 ss_plan
+    "edge": (["hw_state", "train_prog", "heartbeat"], ["deploy_cmd", "ss_plan"]),
+    "hub": (["deploy_cmd", "ss_plan"], ["hw_state", "train_prog", "heartbeat"]),
 }
 
 
