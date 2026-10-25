@@ -54,7 +54,8 @@
 </style></head><body>
 <header>
   <h1>🛰 TCP 轨迹 AR/VR 调试台</h1>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r8 · 五条按钮都能点亮(0点也变蓝)</span>
+  <span id="bAuth" style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #30363d">授权: 查…</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r10 · 执行结果横幅 + 矩形跟当前TCP走</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -1570,6 +1571,9 @@ $('bFit').addEventListener('click',async ()=>{
       body:JSON.stringify(sel?{k:NAMED_SEL}:{})})).json();
     msg.style.color = r.ok ? '#3fb950' : '#e05252';
     msg.textContent = r.msg || (r.ok?'已下发':'失败');
+    // 🔴 2026-10-26 「点击执行没反应」: 服务端其实回了原因(例如"起点已变 100mm"), 但只写在按钮旁边
+    //    一行小字里, 一闪就被别的轮询覆盖 ⇒ 现在**同时**弹一条 6 秒的横幅, 成功绿色/失败红色。
+    showToast((r.ok?'✅ ':'⛔ ')+(r.msg||(r.ok?'已下发':'失败')), r.ok);
   }catch(e){ msg.style.color='#e05252'; msg.textContent='下发失败: '+e; }
 });
 // 执行状态跟一跟（只读，2s 轮询）
@@ -1703,6 +1707,42 @@ $('bClear').addEventListener('click',async ()=>{
   await refresh(); drawOv(); drawVR();
 });
 $('bRef').addEventListener('click',()=>{refresh();drawVR();});
+// 🔴 2026-10-26 老倪「轨迹2执行，你怎么不动？」—— 真因是授权窗早过期, 服务端在发段表前就拒了,
+//    而那句提示只是按钮旁边一行小字, 他没看到。这里在标题栏放一个**一直可见**的授权状态牌(3s 刷新):
+//    红 = 现在点执行必然不动, 并直接写明去哪授权; 绿 = 窗口有效 + 剩多少分钟。
+function showToast(text, ok){
+  let t=$('zmaxToast');
+  if(!t){ t=document.createElement('div'); t.id='zmaxToast';
+    t.style.cssText='position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:99999;'
+      +'max-width:78vw;padding:10px 16px;border-radius:9px;font-size:13.5px;font-weight:700;'
+      +'box-shadow:0 6px 22px rgba(0,0,0,.45);white-space:pre-wrap;line-height:1.45;';
+    document.body.appendChild(t); }
+  t.style.background = ok ? '#12331f' : '#3d1d1d';
+  t.style.color = ok ? '#3fb950' : '#ff7b72';
+  t.style.border = '1px solid ' + (ok ? '#238636' : '#f85149');
+  t.textContent = text;
+  clearTimeout(window.__toastT);
+  window.__toastT = setTimeout(()=>{ if(t) t.style.display='none'; }, 6000);
+  t.style.display='block';
+}
+async function refreshAuthBadge(){
+  const el=$('bAuth'); if(!el) return;
+  try{
+    // 服务端这个端点挂在 POST 分支(与 /api/traj/exec 同一处), GET 会 404 ⇒ 这里显式 POST
+    const d=await (await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(!d.ok){ el.style.background='#3d1d1d'; el.style.color='#f87171'; el.textContent='授权: 读不到真源'; return; }
+    if(d.armed){
+      el.style.background='#12331f'; el.style.color='#3fb950'; el.style.borderColor='#238636';
+      el.textContent='🟢 授权有效 · 剩 '+d.left_min+' 分钟 (epoch='+d.epoch+')';
+      el.title='真动授权窗口有效, 点『▶ 执行轨迹』才会真发';
+    }else{
+      el.style.background='#3d1d1d'; el.style.color='#ff7b72'; el.style.borderColor='#f85149';
+      el.textContent='🔴 授权已失效 → 去 8793 点「授权真动」';
+      el.title=(d.revoked?'授权被撤销':'授权窗已过期 '+(d.left_min||0)+' 分钟')+' · 现在点执行必然不动';
+    }
+  }catch(e){ el.textContent='授权: 查询失败'; }
+}
+refreshAuthBadge(); setInterval(refreshAuthBadge, 3000);
 // 🧭 命名轨迹 5 个按钮 (老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」)
 // 每个按钮 = 一次 /api/traj/named 请求, 点从配置中心工程配置读, 不写死坐标。
 [['t1','xiaohong'],['t2','square'],['t3','map'],['t4','safe'],['t5','real']]

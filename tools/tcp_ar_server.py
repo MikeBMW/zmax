@@ -1404,6 +1404,40 @@ class H(BaseHTTPRequestHandler):
                 #   粉色矩形 = 三维视图里那条**洋红色的规划航路**(planned_traj.json, 4 段闭环:
                 #   抬60→后80→降60→前80, 起点就是当前 TCP), 也就是模块头刚实际走过的那一圈。
                 #   所以这里读 planned_traj.json 的真点列, 按边加密到 ~20mm 一个点。
+                # 🔴 2026-10-26 现场第三轮: 「点击执行，没反应」——
+                #   真因: 之前这里读的是**上一次**的 planned_traj.json, 而臂已经不在那个起点了
+                #   (走完抬60+后80之后停在 [455,306,222]) ⇒ 段表起点 [535,306,162] 与当前差 100mm,
+                #   550C 起点闸拒: "起点已变 100.0mm"。页面只在小字里闪一下, 看着就是"点了没反应"。
+                #   语义修正: 轨迹2 就是「臂旁边那个矩形」, 必须**以当前 TCP 为基准**画, 否则永远过期。
+                #   现在: 用当前真值当场生成 抬60 → 后(x-)80 → 降60 → 前(x+)80 的闭环;
+                #   真值取不到时才退回 planned_traj.json 的历史点列(并注明是历史)。
+                _t = read_tcp()
+                if _t.get("ok"):
+                    # read_tcp 给的是米, 这里换算成毫米再构图, 末了整组 /1000 回米
+                    x0 = float(_t["x"]) * 1000.0
+                    y0 = float(_t["y"]) * 1000.0
+                    z0 = float(_t["z"]) * 1000.0
+                    a_mm = [[x0, y0, z0], [x0, y0, z0 + 60.0], [x0 - 80.0, y0, z0 + 60.0],
+                            [x0 - 80.0, y0, z0], [x0, y0, z0]]
+                    _anchors = [[v / 1000.0 for v in p] for p in a_mm]
+                    pts = []
+                    for c in range(len(_anchors) - 1):
+                        A, B = _anchors[c], _anchors[c + 1]
+                        edge = sum((B[q] - A[q]) ** 2 for q in range(3)) ** 0.5
+                        nn = max(2, int(round(edge / 0.02)))
+                        pts.extend(_lerp(A, B, nn)[:-1])
+                    pts.append(list(_anchors[-1]))
+                    mn = [min(p[q] for p in _anchors) for q in range(3)]
+                    mx = [max(p[q] for p in _anchors) for q in range(3)]
+                    out.update(ok=True, pts=pts, n=len(pts),
+                               src="以当前 TCP 为基准的矩形 (实时)",
+                               note="矩形: 起点=当前 TCP [%.1f,%.1f,%.1f]mm · "
+                                    "抬60 → 后(x-)80 → 降60 → 前(x+)80 · 280mm · %d 点 · 闭环 · "
+                                    "x %.1f~%.1f / z %.1f~%.1fmm"
+                                    % (x0, y0, z0, len(pts),
+                                       mn[0] * 1000, mx[0] * 1000, mn[2] * 1000, mx[2] * 1000))
+                    return out
+
                 pp = os.path.join(REPO, "zmax_data", "runtime", "traj", "planned_traj.json")
                 _pl = None
                 if os.path.exists(pp):
@@ -1979,6 +2013,22 @@ class H(BaseHTTPRequestHandler):
                         "in_spec": TD.paths_in_spec(),
                         "msg": ("✅ 已显示轨迹(实测轨迹 + 规划航路)" if show
                                 else "⏸ 已隐藏轨迹(画面上的轨迹线撤掉, 录制历史保留)")})
+        elif p == "/api/auth":
+            # 🔴 2026-10-26 老倪「轨迹2执行，你怎么不动？」——
+            #    真因是授权窗过期(10.5 小时前), 服务端在发段表之前就拒了, 一行小字他没看见。
+            #    这里只读授权真源, 给页面做**顶部横幅**: 过期=红条, 有授权=绿条, 不让人猜。
+            try:
+                _d = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
+            except Exception as e:                                               # noqa: BLE001
+                self._json({"ok": False, "err": "读不到 ctl_auth.json: %s" % str(e)[:60]})
+                return
+            _u = float(_d.get("until") or 0)
+            _left = _u - time.time()
+            _rev = float(_d.get("revoked_at") or 0) > 0
+            self._json({"ok": True, "armed": (not _rev) and _left > 0, "epoch": _d.get("epoch"),
+                        "left_s": round(max(0.0, _left)), "left_min": round(max(0.0, _left) / 60.0, 1),
+                        "revoked": _rev, "until": _u,
+                        "where": "8793 工位总览 → 授权真动(两步确认)"})
         elif p == "/api/traj/exec":
             # 🧭 2026-10-26 老倪: 「点轨迹按钮→高亮→三维里看着→点执行就发指令」
             #   带 k 就先把它转成段表(planned_traj.json), 再走原来的执行闸;

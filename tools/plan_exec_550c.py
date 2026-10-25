@@ -138,11 +138,25 @@ def execute(payload):
         cur = tcp_mm(st)
         r = bridge("/move_pose", {"p": [v / 1000.0 for v in tgt], "q": q, "speed": sp, "dry": False})
         res = (r.get("result") or {})
+        # 🔴 2026-10-26 现场「只走了两步就中断」复盘:
+        #   ① 段下发被判失败 ⇒ 这里去调 /stop, 而 Orin 桥的 /stop 当时裸调 stopMove()/moveReset()
+        #      少了 ec 参数 ⇒ 抛 TypeError ⇒ HTTP 500 ⇒ **未捕获异常把整个执行器进程打死**,
+        #      systemd 重启后状态文件回到 idle ⇒ 页面看着"没报错就停了"。
+        #   ② 失败原因也跟着丢了: ledger 写在 /stop 之后, 那句 seg_fail 永远没落盘。
+        #   现在改成: 先落 ledger(带桥返回的完整 ec/why) → 再尽力 stop(任何异常都吞掉) → 不崩。
         if not res.get("ok"):
-            bridge("/stop", {}, timeout=8)
-            state(phase="aborted", plan_id=plan_id, seg=i, why=str(res.get("why"))[:80])
-            ledger({"ev": "seg_fail", "plan_id": plan_id, "seg": i, "why": res.get("why")})
-            return {"ok": False, "why": "第 %d 段下发被拒: %s" % (i, res.get("why")), "segs": results}
+            _why = str(res.get("why") or (r.get("error") or "未知"))[:120]
+            ledger({"ev": "seg_fail", "plan_id": plan_id, "seg": i, "why": _why,
+                    "target_mm": tgt, "here_mm": cur,
+                    "sent_ec": (res.get("sent") or {}).get("moveAppend_ec") or (res.get("sent") or {}).get("moveStart_ec")})
+            _stop = {}
+            try:
+                _stop = bridge("/stop", {}, timeout=8)
+            except Exception as _e:                                          # noqa: BLE001
+                _stop = {"ok": False, "err": str(_e)[:120]}
+            state(phase="aborted", plan_id=plan_id, seg=i, n_seg=len(pts),
+                  why=_why, stop=_stop, target_mm=tgt, here_mm=cur)
+            return {"ok": False, "why": "第 %d 段下发被拒: %s" % (i, _why), "segs": results, "stop": _stop}
         while time.time() - t0 < TIME_LIMIT_S:
             st = bridge("/status", timeout=6)["status"]
             cur = tcp_mm(st)
@@ -203,7 +217,18 @@ def main():
                 continue
             seen[pid] = time.time()
             write_json(SEEN, seen)
-            out = execute(note)
+            # 🔴 2026-10-26: execute() 里任何没料到的异常都不许打死这个常驻进程
+            #    (上一轮就是 /stop 的 HTTP 500 冒到这里, 进程崩、systemd 重启、状态回到 idle,
+            #     现场看到的现象是"走两步就停了, 页面也没报错")。
+            try:
+                out = execute(note)
+            except Exception as _e:                                        # noqa: BLE001
+                import traceback
+                _tb = traceback.format_exc()[-400:]
+                ledger({"ev": "crash", "plan_id": pid, "err": str(_e)[:160], "tb": _tb})
+                state(phase="error", plan_id=pid, why="执行器异常: %s" % str(_e)[:120])
+                log("💥 执行器异常(已兜住, 不退出): %s" % str(_e)[:160])
+                out = {"ok": False, "why": str(_e)[:120]}
             log("执行结果: ok=%s %s" % (out.get("ok"), out.get("why") or ""))
         time.sleep(0.2)
 
