@@ -77,8 +77,8 @@
   <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
     <span class="tag" style="background:#1f6feb33">轨迹</span>
     <button id="tA1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">① 小红</button>
-    <button id="tA2" class="sm" title="以小红中点为心的正方形 (工程配置无正方形元素 ⇒ 构造, 会标注)">② 正方</button>
-    <button id="tA3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物)">③ 建图</button>
+    <button id="tA2" class="sm" title="工程配置『检测设备』矩形的顶面 (模块头沿它走)">② 矩形</button>
+    <button id="tA3" class="sm" title="按围栏重规划的覆盖路径 (避开检测设备)">③ 建图</button>
     <button id="tA4" class="sm" title="金手指点1 → 安全点1 (点位台账, 实时刷新)">④ 安全</button>
     <button id="tA5" class="sm" title="真机实际走过的 TCP 轨迹 (实测录制)">⑤ 实时</button>
     <button id="tAoff" class="sm" title="不再叠命名轨迹">✕</button>
@@ -119,8 +119,8 @@
     <div class="row" style="margin-top:6px">
       <span style="font-size:12px;color:#8b949e;margin-right:4px">轨迹:</span>
       <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
-      <button id="t2" class="sm" title="以小红中点为心的水平正方形 (工程配置无现成正方形元素 ⇒ 构造, 会标注)">轨迹2 正方</button>
-      <button id="t3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物: frontier+信息增益+A*)">轨迹3 建图</button>
+      <button id="t2" class="sm" title="工程配置里『检测设备』矩形的顶面 (tool1 模块头沿它走), 不是凭空构造的正方形">轨迹2 矩形</button>
+      <button id="t3" class="sm" title="按工程配置围栏重规划的覆盖路径 (避开检测设备/侧面检测相机/上横梁)">轨迹3 建图</button>
       <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
       <button id="t5" class="sm" title="真机实际走过的 TCP 轨迹 (bridge_path_recorder 实测录制)">轨迹5 实时</button>
       <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>

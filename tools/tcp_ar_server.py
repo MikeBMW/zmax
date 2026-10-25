@@ -1366,7 +1366,7 @@ class H(BaseHTTPRequestHandler):
     # 空数据一律 ok=False + note 说明**为什么空**, 绝不返回假 0 点。
     NAMED_TRAJ = {
         "xiaohong": "轨迹1 · 小红 (工程配置直线)",
-        "square":   "轨迹2 · 正方 (小红端点构造)",
+        "square":   "轨迹2 · 矩形 (工程配置 检测设备 顶面)",
         "map":      "轨迹3 · 建图 (自主探索)",
         "safe":     "轨迹4 · 安全 (金手指点1→安全点1)",
         "real":     "轨迹5 · 实时 (真机实测)",
@@ -1397,30 +1397,56 @@ class H(BaseHTTPRequestHandler):
                                                      [round(v * 1000) for v in B]))
 
             elif k == "square":
-                it = next((x for x in FS.listing()["items"]
-                           if x.get("type") == "line" and x.get("name") == "小红"), None)
-                if not it:
-                    out["note"] = "缺参照直线「小红」⇒ 无法定正方形边长/位置"
+                # 🔴 2026-10-26 老倪: 「正方形不对，不是新的，就是你的 tool1 模块头触碰的那个矩形轨迹，
+                #    改过来」—— 之前是**凭空构造**一个以小红中点为心的正方形(工程配置里根本没有这东西),
+                #    手往哪儿走纯靠我编。现在改成读工程配置里**真实存在**的那个矩形:
+                #    检测设备(围栏盒子)的**顶面矩形** —— tool1 模块头就是贴着它的顶面走的
+                #    (z 取盒子顶面; 四角取盒子 x/y 边界)。找不到就不画, 明确报缺什么。
+                RECT_NAME = os.environ.get("ZMAX_RECT_ELEMENT", "检测设备")
+                box = next((x for x in FS.listing()["items"]
+                            if x.get("type") == "box" and RECT_NAME in (x.get("name") or "")), None)
+                if not box:
+                    names = [x.get("name") for x in FS.listing()["items"] if x.get("type") == "box"]
+                    out["note"] = ("工程配置里没有名字含「%s」的矩形(盒子)。现有盒子: %s "
+                                   "⇒ 用 ZMAX_RECT_ELEMENT=<名字> 指名要哪个"
+                                   % (RECT_NAME, "、".join(names) or "无"))
                     return out
-                A, B = list(it["p1"]), list(it["p2"])
-                cx = (A[0] + B[0]) / 2.0
-                cy = (A[1] + B[1]) / 2.0
-                cz = (A[2] + B[2]) / 2.0
-                half = 0.5 * sum((B[i] - A[i]) ** 2 for i in range(3)) ** 0.5
-                half = min(half, 0.12)          # 实测工作空间 0.90m 上限, 边长封顶 240mm
+                x1, y1, _z1 = [float(v) for v in box["p1"]]
+                x2, y2, z2 = [float(v) for v in box["p2"]]
+                xa, xb = min(x1, x2), max(x1, x2)
+                ya, yb = min(y1, y2), max(y1, y2)
+                zt = z2                                  # 顶面: 模块头触碰的高度
+                corners = [(xa, ya), (xb, ya), (xb, yb), (xa, yb)]
                 pts = []
-                corners = [(cx - half, cy - half), (cx + half, cy - half),
-                           (cx + half, cy + half), (cx - half, cy + half)]
                 for c in range(4):
-                    a = corners[c]
-                    b = corners[(c + 1) % 4]
-                    seg = _lerp([a[0], a[1], cz], [b[0], b[1], cz], 10)
+                    a, b = corners[c], corners[(c + 1) % 4]
+                    edge = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
+                    n = max(8, int(round(edge / 0.02)))     # 每 ~20mm 一个点
+                    seg = _lerp([a[0], a[1], zt], [b[0], b[1], zt], n)
                     pts.extend(seg[:-1] if c < 3 else seg)
-                out.update(ok=True, pts=pts, src="construct/小红",
-                           note="⚠ 构造: 工程配置无正方形元素 ⇒ 以小红中点 (%.0f,%.0f,%.0f)mm 为心, "
-                                "边长 %.0fmm 水平正方形" % (cx * 1000, cy * 1000, cz * 1000, half * 2000))
+                pts.append(list(pts[0]))                     # 闭环回到起点
+                out.update(ok=True, pts=pts, src="工程配置/%s 顶面矩形" % box.get("name"),
+                           note="工程配置矩形「%s」顶面: x %.0f~%.0f · y %.0f~%.0f · z=%.0fmm "
+                                "(%.0f×%.0fmm, %d 点, 闭环) —— tool1 模块头沿它的顶面走"
+                                % (box.get("name"), xa * 1000, xb * 1000, ya * 1000, yb * 1000,
+                                   zt * 1000, (xb - xa) * 1000, (yb - ya) * 1000, len(pts)))
 
             elif k == "map":
+                # 🔴 2026-10-26 老倪: 「建图轨迹太长了，都碰到检测设备了，你前面的围栏，你看到了么？重新规划」
+                #    原来读的是 2D 栅格平移的**示意坐标**, 一路铺到 x=+720mm, 正好压进
+                #    「检测设备」围栏(712~844mm / z 0~340mm)。现在优先读
+                #    tools/explore_traj_fenced.py 按围栏重规划出来的 base 系真坐标点列;
+                #    那份不存在时才退回旧栅格映射, 并在 note 里明说"没避让围栏"。
+                fp = os.path.join(REPO, "zmax_data", "ss_live", "explore_traj_fenced.json")
+                if os.path.exists(fp):
+                    _f = json.load(open(fp, encoding="utf-8"))
+                    _p = [[float(v) for v in q] for q in (_f.get("pts") or [])]
+                    if len(_p) >= 2:
+                        # n / label 必须一起给: 早退分支漏了 n ⇒ 页面显示「✓ 0 点」(实测踩过)
+                        out.update(ok=True, pts=_p, n=len(_p), src="explore_traj_fenced.json",
+                                   note="按工程配置围栏重规划 · %s" % (_f.get("note") or ""))
+                        out["label"] = self.NAMED_TRAJ["map"] + " · 避让围栏重规划"
+                        return out
                 mp = os.path.join(REPO, "zmax_data", "ss_live", "explore_traj.json")
                 if not os.path.exists(mp):
                     out["note"] = "还没有探索轨迹 (先跑 tools/explore_path_planner.py)"
