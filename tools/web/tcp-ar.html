@@ -255,6 +255,20 @@
   MAXHUB 整条臂+台面+夹具都在画面内, 末端约 10~25px(所以标定给配了 4× 放大镜)。用途: 把算法走过的通道摊在固定视角上做调试对比。
 </footer>
 <script>
+// 🔴 2026-10-26 老倪「我点击轨迹按钮 你怎么不高亮变成蓝色显示呢？」
+//   真因: 这一页会被两个端口同时使用 —— 8797(tcp_ar_server, 页面的家) 和 8793(工位总览, 反向代理来的静态页)。
+//   8793 那边**只转发了页面, 没有转发 /api/*** —— 实测 curl 8793/api/traj/named ⇒ 404 not found,
+//   于是 fetch 抛错, 按钮永远不变蓝。这里在脚本最前面装一次 fetch 兜底:
+//   页面不是从 8797 打开的, 就把所有 /api/* 打到同一台机器的 8797 上
+//   (8797 已带 Access-Control-Allow-Origin: *, 跨端口直取没问题)。
+const __ZMAX_APIBASE = (location.port === '8797') ? '' : (location.protocol + '//' + location.hostname + ':8797');
+if (__ZMAX_APIBASE) {
+  const __f = window.fetch.bind(window);
+  window.fetch = function(u, o){
+    if (typeof u === 'string' && u.charAt(0) === '/' && u.indexOf('/api/') === 0) u = __ZMAX_APIBASE + u;
+    return __f(u, o);
+  };
+}
 const $=(id)=>document.getElementById(id);
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
 // 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**;
@@ -443,7 +457,12 @@ const NAMED_COL = {xiaohong:'#ff4444', square:'#a855f7', map:'#22d3ee',
 //   可以几条同时显示(各有各的颜色), ✕ 一次全关。NAMED_SEL 只记"最后点亮的那条"给『执行』用。
 function paintNamedBtns(){
   ['t1','t2','t3','t4','t5','tA1','tA2','tA3','tA4','tA5'].forEach((id)=>{
-    const key=['xiaohong','square','map','safe','real'][Number(id.replace('tA',''))-1];
+    // 🔴 2026-10-26 老倪「我点击轨迹按钮 你怎么不高亮变成蓝色显示呢？」的真因:
+    //   这里原来写 Number(id.replace('tA',''))-1 —— 对 t1..t5 来说 replace 不动任何东西,
+    //   Number('t1') = NaN ⇒ key=undefined ⇒ 三维视图那一行的五个按钮**永远不会变蓝**;
+    //   只有顶部 tA1..tA5 碰巧对(replace 后是数字)才亮。现在统一剥前缀。
+    const num = id.startsWith('tA') ? id.slice(2) : id.slice(1);
+    const key=['xiaohong','square','map','safe','real'][Number(num)-1];
     const node=$(id); if(!node) return;
     node.classList.toggle('on', !!NAMED_ON[key]);
     node.title = (NAMED_ON[key] ? '显示中 · 再点一下隐藏' : '已隐藏 · 点一下在三维视图显示') +
