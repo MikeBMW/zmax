@@ -16,6 +16,21 @@ PY="$ROOT/gui-venv311/bin/python"
 PORT=8791
 STATION=8793
 LOG=/tmp/zmax_scene_overlay.log
+
+# 🔒 2026-10-25 (实测事故): 这个服务已由 systemd 托管(zmax-cam-live-stream)。只要 unit 存在,
+#    本脚本**不许**再自己 nohup 起一个副本 —— 曾经发生过: 守护脚本/页面按钮各拉一次,
+#    副本抢住 8791/8793, 于是 unit 每次都 "OSError: [Errno 98] Address already in use"
+#    崩了 90 次(而页面表面还能用, 没人发现后台一直在崩), 副本还带着 --local-dev 1 的错配置。
+#    口径: 有 systemd 就只走 systemctl, 本脚本退化成"解析设备 + 报告"。
+if systemctl is-enabled zmax-cam-live-stream >/dev/null 2>&1; then
+  if [ "${1:-}" = "--check" ]; then
+    echo "ℹ️ 该服务由 systemd 托管 (zmax-cam-live-stream); --check 继续只做检查。"
+  else
+    systemctl restart zmax-cam-live-stream
+    echo "✅ 已交由 systemd 重启 zmax-cam-live-stream (不再拉起不受管的副本)"
+    exit 0
+  fi
+fi
 ORIN_HOST="${ZMAX_ORIN_HOST:-tashan@192.168.23.66}"; ORIN_HOST="${ORIN_HOST##*@}"
 
 _ld=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
