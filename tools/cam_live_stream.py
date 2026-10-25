@@ -4972,6 +4972,27 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):  # 静音
         pass
 
+    def _send_gs_live(self):
+        """代理取 Intel 渲染帧 (本机隧道 127.0.0.1:8816) —— 本机只转发, 不渲染。"""
+        try:
+            r = urllib.request.urlopen("http://127.0.0.1:8816/frame.jpg", timeout=6)
+            b = r.read()
+            age = r.headers.get("X-Frame-Age", "")
+            self._send(200, "image/jpeg", b, {"Cache-Control": "no-store, max-age=0",
+                                              "X-GS-Age": age, "X-GS-Src": "intel-xpu"})
+        except Exception as e:                                               # noqa: BLE001
+            self._send(503, "text/plain; charset=utf-8",
+                       ("Intel 渲染流取不到: %s" % str(e)[:120]).encode())
+
+    def _send_gs_live_health(self):
+        """Intel 渲染器的健康/帧率透传(页面与 curl 取证用)。"""
+        try:
+            r = urllib.request.urlopen("http://127.0.0.1:8816/health", timeout=5)
+            self._send(200, "application/json; charset=utf-8", r.read(), {"Cache-Control": "no-store"})
+        except Exception as e:                                               # noqa: BLE001
+            self._send(503, "application/json; charset=utf-8",
+                       ('{"ok": false, "err": "%s"}' % str(e)[:100]).encode())
+
     def do_GET(self):
         p = self.path.split("?")[0]
         # 📊 2026-10-23 老倪「这个分析最好能在控制台评估分析里直接加载 PPTX」:
@@ -5124,6 +5145,13 @@ class Handler(BaseHTTPRequestHandler):
                        else ("text/css; charset=utf-8" if p.endswith(".css")
                              else "application/octet-stream"))
                 self._send(200, _ct, _lb)
+        elif p in ("/gs/live.jpg", "/gs/render.jpg"):
+            # 🖥 2026-10-25 老倪: 「4060 只是显示，而 intel 要渲染好，推流过来」
+            #   Intel 侧 gs_render_stream_intel.py 用 XPU 渲一帧(环绕相机路径) → 本机隧道 8812 风格转发。
+            #   这里只做**代理取帧**, 本机不做任何 GPU 渲染。
+            self._send_gs_live()
+        elif p in ("/gs/live/health", "/gs/render/health"):
+            self._send_gs_live_health()
         elif p in ("/gsview", "/gsview.html", "/3dgs", "/splat"):
             # 🧊 3DGS 场景(高斯球)查看页 —— 真源 tools/web/gs_view.html 热读; 资产同域 /gs/*.splat
             self._send(200, "text/html; charset=utf-8", _gsview_page())

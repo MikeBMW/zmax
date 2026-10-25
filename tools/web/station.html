@@ -334,6 +334,8 @@ var HTML_VER="__HTMLVER__";</script>
              ⇒ 该窗口默认就是**可交互的实景查看器**(内嵌 /gsview, 同域 so 鼠标事件直通拖拽/缩放/平移);
              原来的静态渲染图退成可切换的「🖼 参考渲染图」对照。 -->
         <div class="row" style="gap:8px;align-items:center;padding:0 0 6px">
+          <button id="gsrenderbtn" style="font-size:13px;font-weight:700"
+            onclick="document.getElementById('gs_rwrap').style.display='block';document.getElementById('gs_live').style.display='none';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='none';document.getElementById('gs_render').dataset.paused='0'">🖥 Intel 渲染</button>
           <button id="gslivebtn" style="font-size:13px;font-weight:700"
             onclick="var f=document.getElementById('gs_live');if(!f.src||f.src.indexOf('about:blank')>=0)f.src=f.dataset.src;f.style.display='block';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='none'">🎥 实景查看器</button>
           <button id="gsimgbtn" style="font-size:13px"
@@ -356,8 +358,37 @@ var HTML_VER="__HTMLVER__";</script>
           })();
           </script>
         </div>
+        <div id="gs_rwrap" style="padding:0 0 8px">
+          <!-- 🖥 2026-10-25 老倪: 「4060 只是显示，而 intel 要渲染好，推流过来」
+               这一格 = Intel XPU 服务端渲染的实时帧(环绕建模相机路径), 本机只做取帧代理(/gs/live.jpg)。
+               不做浏览器端高斯渲染 ⇒ 不占本页主线程, 老机器也不卡。 -->
+          <img id="gs_render" alt="Intel 渲染的 3DGS 实景" data-paused="0"
+            style="width:100%;height:56vh;min-height:420px;object-fit:contain;background:#05070a;border:1px solid #30363d;border-radius:6px">
+          <div id="gs_render_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px">🖥 Intel XPU 实时渲染推流(加载中)…</div>
+          <script>
+          (function(){
+            var img=document.getElementById('gs_render'), cap=document.getElementById('gs_render_cap');
+            var n=0, bad=0, hp=0;
+            function health(){
+              fetch('gs/live/health',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+                if(!d || !d.ok) return;
+                cap.textContent='🖥 Intel XPU 渲染 · '+(d.gaussians/1000).toFixed(0)+'k 高斯 · '+d.fps+' fps · 帧龄 '+d.age_s
+                  +'s · 环绕 '+(d.idx%d.path_frames)+'/'+d.path_frames+' 帧 · 源=intel:'+''+d.dev;
+              }).catch(function(){});
+            }
+            function tick(){
+              if(!img || img.dataset.paused==='1') return;
+              var u='gs/live.jpg?t='+Date.now(), im=new Image();
+              im.onload=function(){ img.src=u; n++; bad=0; if((n%8)===0) health(); };
+              im.onerror=function(){ bad++; if(bad>3) cap.textContent='⚠️ Intel 渲染流取不到(查 zmax-intel-gsrender-tunnel / Intel 侧 gs_render_stream_intel.py)'; };
+              im.src=u;
+            }
+            setInterval(tick, 260); tick(); health();
+          })();
+          </script>
+        </div>
         <iframe id="gs_live" src="about:blank" data-src="gsview" title="3DGS 实景查看器(可拖拽转角度)"
-          style="display:block;width:100%;height:56vh;min-height:420px;border:1px solid #30363d;border-radius:6px;background:#05070a"></iframe>
+          style="display:none;width:100%;height:56vh;min-height:420px;border:1px solid #30363d;border-radius:6px;background:#05070a"></iframe>
         <div id="gs_imgwrap" style="display:none">
           <!-- 🦾 2026-10-14 老倪「参考渲染图应该是手臂相机, 现在的图像是一个历史帧」:
                这格默认给**手臂相机实时帧**(2 秒一刷 · 36KB, 轻), 模型渲的留出图退到「🖼 参考渲染图」按钮后面。 -->
