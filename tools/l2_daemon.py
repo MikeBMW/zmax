@@ -22,7 +22,30 @@ except Exception as _e:                                                 # noqa: 
     print("!! ctl_auth 导入失败(%s) ⇒ 运动下发将**一律拒发**(fail-closed, 现场安全优先)" % _e, flush=True)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOST = "tashan@192.168.23.66"
+
+
+def _pick_orin_host() -> str:
+    """选一条**当下真能通**的路去 Orin。
+
+    2026-10-25 教训: 4060 的有线口已不在机器人网段(192.168.23.x 全 ARP 不通), 而 `HOST` 写死成
+    `tashan@192.168.23.66` ⇒ 位姿流与所有下发全断(日志只报 "No route to host")。
+    现口径: 直连 22 端口 2s 内握手成功就用直连; 否则退回 ssh 别名(经 ECS 跳板, ~/.ssh/config 的 `orin`)。
+    测试点只探 TCP 22, 不下发任何指令。
+    """
+    ip = os.environ.get("ZMAX_ORIN_IP", "192.168.23.66")
+    force = os.environ.get("ZMAX_ORIN_SSH")
+    if force:
+        return force
+    try:
+        import socket
+        s = socket.create_connection((ip, 22), timeout=2.0)
+        s.close()
+        return "tashan@" + ip
+    except Exception:                                                        # noqa: BLE001
+        return "orin"
+
+
+HOST = _pick_orin_host()
 # 🐛 2026-10-18 老倪: 「l2_daemon.py 我怎么 debug，断点放在哪里？」
 #   调试版必须能**用另一条 FIFO** 起，绝不和线上执行器抢同一条管道 (两个读者会分走命令)。
 #   默认路径与行为完全不变；只在你显式设 ZMAX_L2_FIFO 时才换。
@@ -77,6 +100,19 @@ def _pose_direct(timeout=10):
                 return _v7
     except Exception as e:                                                   # noqa: BLE001
         log("SDK 直读位姿失败(退回话题): %s" % str(e)[:80])
+    # 2026-10-25: 4060 的有线口已不在机器人网段(ARP 不通, 192.168.23.x 全不可达) ⇒ 本机 docker tap
+    #   与直连 SDK 采样器同时失效, 两条都读不到位姿, 所有技能被"位姿读不到"挡住。
+    #   新增② = **走 Orin 宿主机的 ROS CLI 只读一次**(实测 3~5s, 与 tap 同口径, 不依赖本机 DDS/网段)。
+    try:
+        _cmd2 = PRE + "timeout 6 ros2 topic echo --once /robot/tcp_pose --field pose"
+        _r2 = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST,
+                             "bash", "-lc", _cmd2],
+                            capture_output=True, text=True, timeout=timeout + 6)
+        _v2 = [float(x) for x in NUM.findall(_r2.stdout)]
+        if len(_v2) >= 7 and any(abs(_v2[i]) > 1e-6 for i in range(3)):
+            return _v2[:7]
+    except Exception as e:                                                   # noqa: BLE001
+        log("直读位姿(Orin 宿主 ROS)失败: %s" % str(e)[:80])
     try:
         r = subprocess.run(["sudo", "docker", "exec", CONTAINER, "bash", "-lc",
                             "source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=0; "
