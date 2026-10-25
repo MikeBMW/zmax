@@ -64,18 +64,51 @@ def seg_samples(a, b, step=10.0):
     return [[a[i] + (b[i] - a[i]) * k / n for i in range(3)] for k in range(n + 1)]
 
 
-def read_joints():
-    """读实时关节角 + TCP: 用遥测桥落的文件(零运动, 不连控制器)。
+def _live_from_orin(timeout=25):
+    """直读 Orin 宿主的 ROS 话题取关节角 + TCP（零运动）。
 
-    注意: latest.json 的 ts 受 NTP 回拨影响(比本机慢 8h), 新鲜度一律按文件 mtime 判。
+    2026-10-25 教训: 本文件原来只读 `tcp_out/latest.json`，而那天该文件是 **2 天前**的
+    （4060 有线口不在机器人网段 ⇒ 直连 SDK 采样器停摆），预检拿旧位姿算净空 ⇒ 预检本身成了隐患。
+    现口径: ①先直读 Orin 宿主 ROS（/real_joint_states + /robot/tcp_pose）
+            ②失败才退文件，且**文件龄 >5s 一律拒用**（绝不拿旧位姿做安全判断）。
     """
+    import re
+    import subprocess
+    NM = re.compile(r"-?\d+\.?\d*(?:e-?\d+)?")
+    pre = ('source /opt/ros/humble/setup.bash 2>/dev/null; '
+           'for ws in /home/tashan/0810/*/install/setup.bash; do [ -f "$ws" ] && source "$ws" && break; done; '
+           'export ROS_DOMAIN_ID=0; ')
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "orin",
+                            "bash", "-lc", pre + "timeout 8 ros2 topic echo --once /real_joint_states --field position"],
+                           capture_output=True, text=True, timeout=timeout)
+        q = [float(x) for x in NM.findall(r.stdout)][:6]
+        r2 = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "orin",
+                             "bash", "-lc", pre + "timeout 8 ros2 topic echo --once /robot/tcp_pose --field pose"],
+                            capture_output=True, text=True, timeout=timeout)
+        v = [float(x) for x in NM.findall(r2.stdout)]
+        if len(q) == 6 and len(v) >= 3:
+            return q, [v[0] * 1000.0, v[1] * 1000.0, v[2] * 1000.0], 0.0
+    except Exception:                                                       # noqa: BLE001
+        pass
+    return None
+
+
+def read_joints():
+    """读实时关节角 + TCP: 优先 Orin 宿主 ROS, 退本机遥测文件(需 <5s 新鲜)。"""
+    live = _live_from_orin()
+    if live:
+        return live
     p = os.path.join(HERE, "..", "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
     d = json.load(open(p, encoding="utf-8"))
     q = [float(v) for v in (d.get("joint") or [])][:6]
     if len(q) < 6 or all(abs(v) < 1e-9 for v in q):
         raise SystemExit("关节角全 0 ⇒ 遥测陈旧, 不做预检(先确认真值源)")
-    tcp = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
     age = time.time() - os.path.getmtime(p)
+    if age > 5.0:
+        raise SystemExit("⛔ 遥测文件已陈旧 %.0fs (>5s) 且 Orin 直读失败 ⇒ 拒绝预检"
+                         "(拿旧位姿算净空等于没有预检)" % age)
+    tcp = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
     return q, tcp, age
 
 
@@ -115,6 +148,20 @@ def main():
             to = [float(x) for x in argv[i + 1].split(",")]
     boxes, margin = load_boxes()
     q, tcp, age = read_joints()
+    # 🔒 2026-10-25: 关节角必须与 TCP 互相印证 —— 只读错一份数据, 净空就是假的。
+    #   实测同一条命令连跑两次, 有一次给出 "PASS 30.8mm", 实际是那次关节读到了别的东西。
+    try:
+        _R, _t = fk(q, upto="tool1")
+        _fk = [v * 1000.0 for v in _t]
+        _d = math.sqrt(sum((_fk[i] - tcp[i]) ** 2 for i in range(3)))
+        if _d > 15.0:
+            raise SystemExit("⛔ FK 与 TCP 真值差 %.1fmm (>15mm) ⇒ 关节角/TCP 不同源, 拒绝预检"
+                             "(FK=%s TCP=%s)" % (_d, [round(v, 1) for v in _fk], [round(v, 1) for v in tcp]))
+        print("🔒 一致性: FK(q) vs TCP 差 %.1fmm ✓" % _d)
+    except SystemExit:
+        raise
+    except Exception as e:                                                   # noqa: BLE001
+        raise SystemExit("⛔ 一致性核验失败(%s) ⇒ 拒绝预检" % str(e)[:80])
     print("关节角(rad) =", [round(v, 4) for v in q])
     print("TCP 真值    = [%.1f, %.1f, %.1f] mm  (帧龄 %.1fs)" % (tcp[0], tcp[1], tcp[2], age))
     if age > 3.0:
