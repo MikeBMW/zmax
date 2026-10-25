@@ -1448,16 +1448,28 @@ $('vr').addEventListener('pointerup',()=>{
 // 单击 = 执行当前规划轨迹（先问一句，带段数/总长/预检结论）；双击 = 原「对准轨迹」视角功能，避免丢能力
 $('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; drawVR(); });
 $('bFit').addEventListener('click',async ()=>{
-  const msg=$('bTrajMsg'); msg.style.color='#8b949e'; msg.textContent='查询规划…';
+  const msg=$('bTrajMsg'); msg.style.color='#8b949e';
+  // 🧭 2026-10-26 老倪: 「高亮哪个轨迹就在三维里显示哪个, 我看着, 点执行就发指令」
+  //   有高亮的命名轨迹 ⇒ 执行**它就是那条** (服务端先转段表再走执行闸);
+  //   没高亮 ⇒ 保持老行为(执行当前规划航路)。这里先把"要执行哪条"说清楚, 不让人看着A执行B。
+  const sel = (typeof NAMED_SEL!=='undefined' && NAMED_SEL && NAMED[NAMED_SEL])
+              ? (NAMED_INFO[NAMED_SEL]||{}).label || NAMED_SEL : null;
+  msg.textContent = sel ? ('准备执行高亮轨迹: '+sel+' …') : '查询规划…';
   let plan=null;
   try{ plan=await (await fetch('/api/traj/plan')).json(); }catch(e){}
-  if(!plan||!plan.ok||!plan.ts){ msg.style.color='#e05252'; msg.textContent='还没有规划轨迹'; return; }
-  if(plan.stale){ msg.style.color='#e05252'; msg.textContent='规划已 '+(plan.age_s/60).toFixed(0)+' 分钟, 请重新规划'; return; }
-  const pc=plan.precheck||{};
-  if(!confirm('执行这条轨迹？\n\n段数 '+plan.n_seg+' · 总长 '+ (plan.total_mm||0).toFixed(0) +'mm\n最差净空 '+(pc.worst_mm)+'mm ('+(pc.ok?'预检通过':'预检未通过')+')\n'+(plan.note||'')) ){ msg.textContent='已取消'; return; }
+  if(sel){
+    if(!confirm('执行三维视图里高亮的这条轨迹？\n\n'+sel+'\n'+((NAMED[NAMED_SEL]||[]).length)+' 个点\n\n'
+      +'服务端会: 起点闸(当前 TCP 距首点 ≤20mm) → 抽骨架拆段 → 逐点净空预检(≥20mm) → 下发执行器')) { msg.textContent='已取消'; return; }
+  }else{
+    if(!plan||!plan.ok||!plan.ts){ msg.style.color='#e05252'; msg.textContent='还没有规划轨迹(也没选命名轨迹)'; return; }
+    if(plan.stale){ msg.style.color='#e05252'; msg.textContent='规划已 '+(plan.age_s/60).toFixed(0)+' 分钟, 请重新规划'; return; }
+    const pc=plan.precheck||{};
+    if(!confirm('执行这条轨迹？\n\n段数 '+plan.n_seg+' · 总长 '+ (plan.total_mm||0).toFixed(0) +'mm\n最差净空 '+(pc.worst_mm)+'mm ('+(pc.ok?'预检通过':'预检未通过')+')\n'+(plan.note||'')) ){ msg.textContent='已取消'; return; }
+  }
   msg.textContent='下发中…';
   try{
-    const r=await (await fetch('/api/traj/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    const r=await (await fetch('/api/traj/exec',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(sel?{k:NAMED_SEL}:{})})).json();
     msg.style.color = r.ok ? '#3fb950' : '#e05252';
     msg.textContent = r.msg || (r.ok?'已下发':'失败');
   }catch(e){ msg.style.color='#e05252'; msg.textContent='下发失败: '+e; }

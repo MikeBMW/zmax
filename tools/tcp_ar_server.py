@@ -1761,6 +1761,24 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                        # noqa: BLE001
             return {"ok": False, "phase": "none"}
 
+    def _traj_plan_from_named(self, k):
+        """把页面高亮的命名轨迹转成执行段表 (tools/traj_from_named.py)。
+
+        全流程真源仍是那个脚本: 起点闸/预检/写 planned_traj.json + plan_latest.json 都在它里面,
+        这里只负责跑它并把**失败原因原样带回页面** (不能笼统报"失败", 人要知道是起点不一致还是净空不够)。
+        """
+        exe = [sys.executable, os.path.join(HERE, "traj_from_named.py"), "--k", str(k)]
+        try:
+            pr = subprocess.run(exe, cwd=REPO, capture_output=True, text=True, timeout=240)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "msg": "命名轨迹转段表超时(240s)"}
+        out = (pr.stdout or "") + (pr.stderr or "")
+        if pr.returncode != 0:
+            bad = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("⛔")]
+            return {"ok": False, "msg": bad[0] if bad else "命名轨迹转段表失败(见 exec_stdout.log)"}
+        tot = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("总长")]
+        return {"ok": True, "msg": tot[-1] if tot else "段表已生成", "k": k}
+
     def _traj_exec_start(self):
         """『▶ 执行轨迹』按钮的后端: 复核(规划新鲜/预检过/授权窗) → 后台起 traj_exec.py。
 
@@ -1917,6 +1935,15 @@ class H(BaseHTTPRequestHandler):
                         "msg": ("✅ 已显示轨迹(实测轨迹 + 规划航路)" if show
                                 else "⏸ 已隐藏轨迹(画面上的轨迹线撤掉, 录制历史保留)")})
         elif p == "/api/traj/exec":
+            # 🧭 2026-10-26 老倪: 「点轨迹按钮→高亮→三维里看着→点执行就发指令」
+            #   带 k 就先把它转成段表(planned_traj.json), 再走原来的执行闸;
+            #   不带 k 保持老行为(执行当前规划航路)。
+            _k = str((body or {}).get("k") or "").strip()
+            if _k:
+                _pr = self._traj_plan_from_named(_k)
+                if not _pr.get("ok"):
+                    self._json(_pr)
+                    return
             r = self._traj_exec_start()
             self._json(r)
         elif p == "/api/traj/clear":
