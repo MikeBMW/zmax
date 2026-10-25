@@ -1366,7 +1366,7 @@ class H(BaseHTTPRequestHandler):
     # 空数据一律 ok=False + note 说明**为什么空**, 绝不返回假 0 点。
     NAMED_TRAJ = {
         "xiaohong": "轨迹1 · 小红 (工程配置直线)",
-        "square":   "轨迹2 · 矩形 (工程配置 检测设备 顶面)",
+        "square":   "轨迹2 · 矩形 (规划航路·洋红闭环)",
         "map":      "轨迹3 · 建图 (自主探索)",
         "safe":     "轨迹4 · 安全 (金手指点1→安全点1)",
         "real":     "轨迹5 · 实时 (真机实测)",
@@ -1397,39 +1397,40 @@ class H(BaseHTTPRequestHandler):
                                                      [round(v * 1000) for v in B]))
 
             elif k == "square":
-                # 🔴 2026-10-26 老倪: 「正方形不对，不是新的，就是你的 tool1 模块头触碰的那个矩形轨迹，
-                #    改过来」—— 之前是**凭空构造**一个以小红中点为心的正方形(工程配置里根本没有这东西),
-                #    手往哪儿走纯靠我编。现在改成读工程配置里**真实存在**的那个矩形:
-                #    检测设备(围栏盒子)的**顶面矩形** —— tool1 模块头就是贴着它的顶面走的
-                #    (z 取盒子顶面; 四角取盒子 x/y 边界)。找不到就不画, 明确报缺什么。
-                RECT_NAME = os.environ.get("ZMAX_RECT_ELEMENT", "检测设备")
-                box = next((x for x in FS.listing()["items"]
-                            if x.get("type") == "box" and RECT_NAME in (x.get("name") or "")), None)
-                if not box:
-                    names = [x.get("name") for x in FS.listing()["items"] if x.get("type") == "box"]
-                    out["note"] = ("工程配置里没有名字含「%s」的矩形(盒子)。现有盒子: %s "
-                                   "⇒ 用 ZMAX_RECT_ELEMENT=<名字> 指名要哪个"
-                                   % (RECT_NAME, "、".join(names) or "无"))
+                # 🔴 2026-10-26 老倪两次纠正:
+                #   ① 「正方形不对，不是新的」⇒ 不许我自己构造;
+                #   ② 「你怎么还画到前面的检测器上面了？那不碰撞了？矩形就是你旁边的粉色矩形轨迹」
+                #      ⇒ 我上一版读的是「检测设备」盒子顶面(z=340, 正好贴/压设备) —— 方向整个错了。
+                #   粉色矩形 = 三维视图里那条**洋红色的规划航路**(planned_traj.json, 4 段闭环:
+                #   抬60→后80→降60→前80, 起点就是当前 TCP), 也就是模块头刚实际走过的那一圈。
+                #   所以这里读 planned_traj.json 的真点列, 按边加密到 ~20mm 一个点。
+                pp = os.path.join(REPO, "zmax_data", "runtime", "traj", "planned_traj.json")
+                if not os.path.exists(pp):
+                    out["note"] = "没有规划航路 planned_traj.json ⇒ 先规划(traj_plan.py)或重新生成矩形"
                     return out
-                x1, y1, _z1 = [float(v) for v in box["p1"]]
-                x2, y2, z2 = [float(v) for v in box["p2"]]
-                xa, xb = min(x1, x2), max(x1, x2)
-                ya, yb = min(y1, y2), max(y1, y2)
-                zt = z2                                  # 顶面: 模块头触碰的高度
-                corners = [(xa, ya), (xb, ya), (xb, yb), (xa, yb)]
+                _pl = json.load(open(pp, encoding="utf-8"))
+                _anchors = [[float(v) / 1000.0 for v in p] for p in (_pl.get("pts_mm") or [])]
+                if len(_anchors) < 4:
+                    out["note"] = ("规划航路只有 %d 个点, 不成矩形 (要 ≥4) ⇒ 重新规划一条 4 段闭环"
+                                   % len(_anchors))
+                    return out
                 pts = []
-                for c in range(4):
-                    a, b = corners[c], corners[(c + 1) % 4]
-                    edge = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
-                    n = max(8, int(round(edge / 0.02)))     # 每 ~20mm 一个点
-                    seg = _lerp([a[0], a[1], zt], [b[0], b[1], zt], n)
-                    pts.extend(seg[:-1] if c < 3 else seg)
-                pts.append(list(pts[0]))                     # 闭环回到起点
-                out.update(ok=True, pts=pts, src="工程配置/%s 顶面矩形" % box.get("name"),
-                           note="工程配置矩形「%s」顶面: x %.0f~%.0f · y %.0f~%.0f · z=%.0fmm "
-                                "(%.0f×%.0fmm, %d 点, 闭环) —— tool1 模块头沿它的顶面走"
-                                % (box.get("name"), xa * 1000, xb * 1000, ya * 1000, yb * 1000,
-                                   zt * 1000, (xb - xa) * 1000, (yb - ya) * 1000, len(pts)))
+                for c in range(len(_anchors) - 1):
+                    a, b = _anchors[c], _anchors[c + 1]
+                    edge = sum((b[i] - a[i]) ** 2 for i in range(3)) ** 0.5
+                    n = max(2, int(round(edge / 0.02)))
+                    seg = _lerp(a, b, n)
+                    pts.extend(seg[:-1])
+                pts.append(list(_anchors[-1]))               # 收尾回到闭环点
+                mn = [min(p[i] for p in _anchors) for i in range(3)]
+                mx = [max(p[i] for p in _anchors) for i in range(3)]
+                out.update(ok=True, pts=pts, src="planned_traj.json (规划航路矩形)",
+                           note="规划航路矩形(三维视图里那条洋红线): 起点 [%.0f,%.0f,%.0f]mm · "
+                                "x %.0f~%.0f / y %.0f~%.0f / z %.0f~%.0fmm · %d 段 / %.0fmm · %d 点 · 闭环"
+                                % (_anchors[0][0] * 1000, _anchors[0][1] * 1000, _anchors[0][2] * 1000,
+                                   mn[0] * 1000, mx[0] * 1000, mn[1] * 1000, mx[1] * 1000,
+                                   mn[2] * 1000, mx[2] * 1000, len(_anchors) - 1,
+                                   float(_pl.get("total_mm") or 0), len(pts)))
 
             elif k == "map":
                 # 🔴 2026-10-26 老倪: 「建图轨迹太长了，都碰到检测设备了，你前面的围栏，你看到了么？重新规划」
