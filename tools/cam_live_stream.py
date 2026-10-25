@@ -2941,6 +2941,15 @@ def _collisions(limit: int = 80) -> list:
     #13036(RSC)与 #30400(力矩超限)常是同一次碰撞的两行 ⇒ 5s 内配对, 只留一行。
     """
     import re
+
+    def _code_int(_x):
+        """台账 code 既可能是数字(30400)也可能是字符串('COLLISION') ⇒ 不能直接 int()。
+        2026-10-25 实测: 一条手写的 COLLISION 记录让 /stats 整个 500, 页面状态刷不出来。"""
+        try:
+            return int(_x.get("code") or 0)
+        except (TypeError, ValueError):
+            return -1
+
     led = []
     try:
         if os.path.exists(COLLISION_LEDGER):
@@ -2969,7 +2978,7 @@ def _collisions(limit: int = 80) -> list:
             except Exception:
                 t0 = 0
             _pool = [(t1, r1) for t1, r1, _ in new if r1 == 30400] + \
-                    [(str(x.get("ts")), int(x.get("code") or 0)) for x in led if int(x.get("code") or 0) == 30400]
+                    [(str(x.get("ts")), _code_int(x)) for x in led if _code_int(x) == 30400]
             if any(abs(t0 - time.mktime(time.strptime(t1, "%Y-%m-%d %H:%M:%S"))) <= 5
                    for t1, r1 in _pool):
                 continue
@@ -3014,9 +3023,9 @@ def _collisions(limit: int = 80) -> list:
             return time.mktime(time.strptime(str(x.get("ts")), "%Y-%m-%d %H:%M:%S"))
         except Exception:
             return 0.0
-    _t304 = [_sec(x) for x in led if int(x.get("code") or 0) == 30400]
+    _t304 = [_sec(x) for x in led if _code_int(x) == 30400]
     led = [x for x in led
-           if not (int(x.get("code") or 0) == 13036 and any(abs(_sec(x) - t) <= 5 for t in _t304))]
+           if not (_code_int(x) == 13036 and any(abs(_sec(x) - t) <= 5 for t in _t304))]
     return led[:limit]
 
 

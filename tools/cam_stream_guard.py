@@ -205,8 +205,15 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
 
 
 def restart(reason):
-    s = os.path.join(ROOT, "tools", "start_station_stream.sh")
-    r = subprocess.run(["bash", s], capture_output=True, text=True, timeout=180)
+    # 2026-10-25 修: 权威实例必须是 systemd 管的那个。原来直接跑 start_station_stream.sh
+    #   会拉起一个**不受 systemd 管**的副本抢住 8791/8793, 于是 unit 永远 bind 失败
+    #   (实测 restart counter 67 · "Address already in use"), 而副本还带着 --local-dev 1
+    #   的错配置(V4L2:/dev/video1 打不开) —— 页面表面能用, 后台其实一直崩。
+    r = subprocess.run(["systemctl", "restart", "zmax-cam-live-stream"],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        s = os.path.join(ROOT, "tools", "start_station_stream.sh")
+        r = subprocess.run(["bash", s], capture_output=True, text=True, timeout=180)
     tail = "\n".join((r.stdout or "").strip().splitlines()[-4:])
     print("🛰 工位推流守护: %s → 已按解析结果重启\n%s" % (reason, tail))
     # ⚠️ 2026-10-08 修: 复核必须与判定**逐字同一组参数** —— 原来漏传 `local_expected()`

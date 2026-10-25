@@ -1,0 +1,22 @@
+[Unit]
+Description=ZMAX WS-Bus 规划桥 · hub 专发 ss_plan (550B → 550C 段表跨网)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=ZMAX_REPO=/home/ubuntu/zmax
+Environment=CYCLONEDDS_URI=file:///home/ubuntu/zmax/dds/cyclonedds_unicast.xml
+Environment=ZMAX_WS_BUS_URL=wss://datadrive.world/ws/bus/
+Environment=ZMAX_WS_BUS_TOKEN=WUYv39O6a6x7jkhW7kF-h7eB
+Environment=PYTHONUNBUFFERED=1
+# 只上行 ss_plan, 下行为空("-") ⇒ 不碰遥测话题, 不会与 zmax-ws-bridge-hub 双写
+ExecStart=/home/ubuntu/zmax/venvs/dds-venv/bin/python /home/ubuntu/zmax/tools/dds/ws_bridge.py --role hub --up ss_plan --down - --src 4060-plan --max-hz 10
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

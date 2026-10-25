@@ -43,9 +43,13 @@ for _p in (_HERE, os.path.join(os.path.dirname(os.path.dirname(_HERE)), "dds")):
 
 OP_CONT, OP_TEXT, OP_BIN, OP_CLOSE, OP_PING, OP_PONG = 0x0, 0x1, 0x2, 0x8, 0x9, 0xA
 ROLES = {
-    # 2026-10-25: 规划也要跨网 —— 550B(hub) 出 ss_plan, 550C(edge) 收 ss_plan
+    # 2026-10-25: 规划也要跨网 —— 550B 出 ss_plan, 550C(edge) 收 ss_plan
+    # 2026-10-25 21:1x 修: ss_plan 改由**独立**的 plan 桥进程送 (zmax-plan-bridge.service,
+    #   --up ss_plan --down -)。原因: 遥测 hub 里带 ss_plan 实测发不出去 (hub 侧 ↑ss_plan 恒为 0,
+    #   而同 venv 新起的同构进程立刻收得到 ⇒ hub 那个 participant 是坏的老状态)。
+    #   规划与遥测分进程后, 任一侧抽风都不会把动作下发拖死。
     "edge": (["hw_state", "train_prog", "heartbeat"], ["deploy_cmd", "ss_plan"]),
-    "hub": (["deploy_cmd", "ss_plan"], ["hw_state", "train_prog", "heartbeat"]),
+    "hub": (["deploy_cmd"], ["hw_state", "train_prog", "heartbeat"]),
 }
 
 
@@ -443,7 +447,9 @@ def main():
     if a.up:
         up = [x for x in a.up.split(",") if x]
     if a.down:
-        down = [x for x in a.down.split(",") if x]
+        # "-" = 显式空集 (只要上行, 不要下行) —— 不给这个写法就只能退回角色默认值,
+        # 于是"专发 ss_plan 的桥"会顺带把 hw_state 也写一遍, 造成同一话题双写者。
+        down = [] if a.down.strip() == "-" else [x for x in a.down.split(",") if x]
     src = a.src or ("550C" if a.role == "edge" else "4060")
     Bridge(a.role, a.url, a.token, up, down, src, a.max_hz, not a.quiet, a.no_dds).run()
     return 0

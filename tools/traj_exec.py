@@ -130,6 +130,39 @@ def run(dry=False):
     base = {"plan_ts": plan.get("ts"), "n_seg": len(segs), "auth_epoch": epoch, "note": plan.get("note") or ""}
     _w(STATE, dict(base, phase="running", seg=0, t=time.time()))
 
+    # 🕹 2026-10-25 老倪: 「让 550C 成为下发方」—— 本机不再执行, 只把段表发布出去。
+    #    开关: ~/zmax/zmax_data/runtime/plan/exec_by.json = {"by":"550c"} 或环境 ZMAX_EXEC_BY=550c。
+    #    为什么放这里: 起点闸/规划龄/授权都已经在上面过了, 与本地执行同一套前置条件;
+    #    550C 侧还有自己的授权剩余/幂等/真值对账闸(见 tools/plan_exec_550c.py)。
+    _by = (os.environ.get("ZMAX_EXEC_BY") or "").strip().lower()
+    if not _by:
+        for _p in (os.path.join(os.path.dirname(STATE), "exec_by.json"),
+                   os.path.expanduser("~/zmax/zmax_data/runtime/plan/exec_by.json")):
+            try:
+                _by = str((json.load(open(_p, encoding="utf-8")) or {}).get("by") or "").strip().lower()
+            except Exception:                                               # noqa: BLE001
+                _by = ""
+            if _by:
+                break
+    if _by == "550c" and not dry:
+        _pid = "PLAN-%s-%s" % (time.strftime("%Y%m%d-%H%M%S"), int(float(plan.get("ts") or 0)))
+        sys.path.insert(0, os.path.join(HERE, "dds"))
+        import plan_publish                                                    # noqa: PLC0415
+        _until = 0.0
+        try:
+            if HERE not in sys.path:
+                sys.path.insert(0, HERE)
+            import ctl_auth as _CA                                          # noqa: PLC0415
+            _until = float(_CA.info().get("until") or 0.0)
+        except Exception:                                                   # noqa: BLE001
+            _until = time.time()
+        _sp = float(os.environ.get("ZMAX_PLAN_SPEED_MM_S") or 200.0)
+        _out = plan_publish.publish_plan(plan, _sp, {"epoch": epoch, "until": _until}, _pid)
+        say("🕹 已把段表发布给 550C 执行: plan_id=%s 段数=%s 配对=%s"
+            % (_pid, _out.get("n_points"), _out.get("matched")))
+        _w(STATE, dict(base, phase="delegated", plan_id=_pid, by="550C", t=time.time()))
+        return 0
+
     # 🔴 老倪 2026-10-25: 「1 2 3 4 步一次性发到运动规划节点, 点击执行就一次都执行, 中间不能停顿」
     #    ⇒ 先把全部段**一次**写进 FIFO, 段间不再等位; 之后只观察真值(取证), 不再由软件控制节奏。
     if not dry:
