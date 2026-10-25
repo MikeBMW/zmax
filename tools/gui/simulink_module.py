@@ -3311,13 +3311,9 @@ class SimNodeItem(QGraphicsObject):
                 if _k == "vff":
                     _sw_on = bool(params.get("bridge_vff"))
                     _t_on, _t_off = "v_ff 连接", "v_ff 断开"
-                    _sub_on = "≤%.0fmm/s" % min(float(params.get("bridge_vff_cap_mms", 10.0) or 10.0), 10.0)
-                    _sub_off = "点此接通"
                 else:
                     _sw_on = _st_on
                     _t_on, _t_off = "station 连接", "station 断开"
-                    _sub_on = "轨迹可下发"
-                    _sub_off = "点此接通"
                 _edge = QColor("#3fb950") if _sw_on else QColor("#e05252")
                 # 外发光 (连=绿雾 / 断=红雾) —— 画布上远远就能找到
                 painter.setPen(Qt.NoPen)
@@ -3347,11 +3343,7 @@ class SimNodeItem(QGraphicsObject):
                 if _fm1.horizontalAdvance(_t1) > _tw:
                     _t1 = _fm1.elidedText(_t1, Qt.ElideRight, int(_tw))
                 painter.drawText(QRectF(_tx, _rect.top() + 3, _tw, 14), Qt.AlignVCenter | Qt.AlignLeft, _t1)
-                _t2 = _sub_on if _sw_on else _sub_off
-                _fm2 = QFontMetrics(_font1)
-                if _fm2.horizontalAdvance(_t2) <= _tw:
-                    painter.setPen(_edge if _sw_on else QColor("#ff9f9f"))
-                    painter.drawText(QRectF(_tx, _rect.top() + 17, _tw, 14), Qt.AlignVCenter | Qt.AlignLeft, _t2)
+                # 老倪 2026-10-25: 「点此接通 / 轨迹可下发 这几个字去掉, 太多了」⇒ 只留一句主文案, 不加次行
 
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)

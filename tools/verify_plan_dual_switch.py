@@ -211,6 +211,9 @@ def paint_texts(vff, st):
 
 for tag, (vff, st), want in (("连接", (True, True), ("v_ff 连接", "station 连接")),
                              ("断开", (False, False), ("v_ff 断开", "station 断开"))):
+    _extra = paint_texts(vff, st)
+    for _bad in ("点此接通", "轨迹可下发", "mm/s"):
+        ck("不再画多余字 %r" % _bad, not any(_bad in t for t in _extra), [t for t in _extra if _bad in t])
     txts = paint_texts(vff, st)
     print("    [%s] drawText = %s" % (tag, [t for t in txts if "v_ff" in t or "station" in t]))
     for wd in want:
