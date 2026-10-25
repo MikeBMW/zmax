@@ -41,7 +41,7 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_SRC = REPO / "data" / "database" / "zmax"
 DEFAULT_OUTDIR = REPO / "zmax_data" / "cloud"
 DEFAULT_REPORTDIR = REPO / "reports"
-DEFAULT_ECS_HOST = os.environ.get("ZMAX_ECS_HOST", "39.102.211.79")
+DEFAULT_ECS_HOST = os.environ.get("ZMAX_ECS_HOST", "47.93.88.143")
 DEFAULT_ECS_USER = os.environ.get("ZMAX_ECS_USER", "root")
 DEFAULT_ECS_PATH = os.environ.get(
     "ZMAX_ECS_PATH", "/www/wwwroot/datadrive.world/backup/zmax/"

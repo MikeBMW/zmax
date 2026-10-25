@@ -13,7 +13,7 @@ import json, subprocess, sys, time, os, glob
 from pathlib import Path
 import requests
 
-ECS = "root@39.102.211.79"
+ECS = "root@47.93.88.143"
 RELAY = "https://datadrive.world/api/relay"
 HOME = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew"))
 ARCH_LOCAL = HOME / "data" / "orin_archive"

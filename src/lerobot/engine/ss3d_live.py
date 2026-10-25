@@ -27,7 +27,7 @@ import time
 import subprocess
 import sys
 
-ECS_HOST = os.environ.get("ZMAX_ECS_HOST", "39.102.211.79")
+ECS_HOST = os.environ.get("ZMAX_ECS_HOST", "47.93.88.143")
 ECS_PW = os.environ.get("ZMAX_ECS_PW", "")
 WEB_DIR = "/www/wwwroot/datadrive.world"
 API_URL = os.environ.get("ZMAX_SS3D_API", "https://datadrive.world/ss3d_api.php")

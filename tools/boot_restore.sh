@@ -61,7 +61,11 @@ local_up() {
     #    快反射层判『遮挡/糊化』⇒ **所有运动类原子技能一律拒发** (老倪:「原子技能又不好使了」)。
     #    video0 = 同一台相机的 MJPG 彩色路(实测 mean=112/Lap=260), video4 = MAXHUB 顶视。
     #    ⇒ 设备号一律按 **卡名+能力** 解析 (tools/cam_dev_resolve.py), 重启换号也不会再错。
-    _devs=$(python3 "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null)
+    #    ⚠️ 必须用 $PY(venv) 跑解析器: 系统 python3 没有 cv2 ⇒ 每个候选都是
+    #       "探测异常 ModuleNotFoundError" ⇒ 全 -1 ⇒ 回落 `--local-dev 0`,
+    #       而重启后 USB 重新枚举, video0 可能已不存在/换人 ⇒ 推流开起来几十秒后
+    #       冻结在某个帧号(实测 2026-10-25: 1839 帧冻住, age 单调涨)。
+    _devs=$($PY "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null)
     _ld=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
     _l2=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
     [ "$_l2" = "0" ] && _l2=-1          # 别让两路撞同一台设备(会被独占打不开)

@@ -15,7 +15,7 @@
 #   · 本机(4060) IP 会自动取当前公网出口, 防写死过期
 set -euo pipefail
 
-ECS_HOST="${ECS_HOST:-39.102.211.79}"
+ECS_HOST="${ECS_HOST:-47.93.88.143}"
 IP_4060="${1:-103.114.194.13}"
 IP_MAC="${2:-}"
 HOME_ONLY="${3:-}"

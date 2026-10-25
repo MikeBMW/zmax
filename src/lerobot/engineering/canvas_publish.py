@@ -189,7 +189,7 @@ def ecs_ssh(cmd: str, timeout: int = 60) -> tuple[int, str]:
     import subprocess
     env = dict(os.environ, SSHPASS=ecs_pw())
     p = subprocess.run(["sshpass", "-e", "ssh", "-o", "StrictHostKeyChecking=no",
-                        "-o", "ConnectTimeout=15", "root@39.102.211.79", cmd],
+                        "-o", "ConnectTimeout=15", "root@47.93.88.143", cmd],
                        capture_output=True, text=True, timeout=timeout, env=env)
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 

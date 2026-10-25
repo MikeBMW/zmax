@@ -22,7 +22,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 META.mkdir(parents=True, exist_ok=True)
 VID.mkdir(parents=True, exist_ok=True)
 
-ECS = "root@39.102.211.79"
+ECS = "root@47.93.88.143"
 ARCHIVE = "/root/zmax-relay/archive"
 
 

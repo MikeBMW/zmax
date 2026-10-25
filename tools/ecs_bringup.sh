@@ -8,7 +8,7 @@
 # 依据: http-relay-service 技能 §9 恢复阶梯 + ecs-relay.md (relay 在 /root/zmax-relay, 端口 39053)
 set -uo pipefail
 
-HOST="${ECS_HOST:-39.102.211.79}"
+HOST="${ECS_HOST:-47.93.88.143}"
 USER_="${ECS_USER:-root}"
 DOMAIN="${ECS_DOMAIN:-datadrive.world}"
 PW="${ZMAX_ECS_PW:-}"

@@ -23,7 +23,7 @@
 #   ZMAX_ECS_PW='...' bash tools/ecs_overlay_forward.sh --revert   # 撤掉(nginx 块 + 本地 unit)
 set -uo pipefail
 
-ECS_HOST="${ECS_HOST:-39.102.211.79}"
+ECS_HOST="${ECS_HOST:-47.93.88.143}"
 ECS_USER="${ECS_USER:-root}"
 ECS_DOMAIN="${ECS_DOMAIN:-datadrive.world}"
 # ── 通道: overlay(叠加页 8791) | station(工位总览 8793) ──────────────────────────

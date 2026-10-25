@@ -6,7 +6,7 @@
 # ============================================================
 set -u
 
-ECS_HOST="root@39.102.211.79"
+ECS_HOST="root@47.93.88.143"
 # 🔐 2026-10-10: 明文口令已移出仓库 (public repo) —— 优先环境变量, 其次密钥文件
 ECS_PW="${ZMAX_ECS_PW:-}"
 if [ -z "$ECS_PW" ] && [ -f "$HOME/zmax_data/secrets/zmax.env" ]; then

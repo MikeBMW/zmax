@@ -64,9 +64,9 @@ print(f"   格式: observations={np.stack(observations).shape} states={np.stack(
 # 上传4090
 print(f"\n=== 上传4090 ===")
 # scp方式
-os.system(f"sshpass -p '{_ecs_pw()}' scp -o StrictHostKeyChecking=no -P 23 {filename} root@39.102.211.79:/root/datasets/metaworld/tasks/")
+os.system(f"sshpass -p '{_ecs_pw()}' scp -o StrictHostKeyChecking=no -P 23 {filename} root@47.93.88.143:/root/datasets/metaworld/tasks/")
 print("✅ 已上传4090 → 触发训练")
-requests.post("http://39.102.211.79:50053/task", json={
+requests.post("http://47.93.88.143:50053/task", json={
     "task": "train",
     "params": {"data": str(filename), "model": "act", "epochs": 10}
 }, timeout=5)

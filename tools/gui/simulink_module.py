@@ -12854,11 +12854,11 @@ class SimulinkModule(QWidget):
                 try:
                     import subprocess as _sp
                     r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
-                                 out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                                 out, "root@47.93.88.143:/www/wwwroot/datadrive.world/"],
                                 capture_output=True, timeout=60)
                     if r.returncode == 0:
                         _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@39.102.211.79",
+                                 "root@47.93.88.143",
                                  "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
                                 capture_output=True, timeout=30)
                         self._safe_log("📤 物理世界参数已导出: https://datadrive.world/physical_world_params.html")
@@ -13411,11 +13411,11 @@ class SimulinkModule(QWidget):
                     import subprocess as _sp
                     fname = os.path.basename(path)
                     r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no", path,
-                                 f"root@39.102.211.79:/www/wwwroot/datadrive.world/{fname}"],
+                                 f"root@47.93.88.143:/www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, text=True, timeout=60)
                     if r.returncode == 0:
                         _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@39.102.211.79", f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
+                                 "root@47.93.88.143", f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
                                 capture_output=True, text=True, timeout=30)
                         self._safe_log(local)
                         self._safe_log(f"🔗 http://datadrive.world/{fname}")
@@ -13670,7 +13670,7 @@ class SimulinkModule(QWidget):
                         _r = _sp.run(
                             ["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
                              "-o", "ConnectTimeout=15", f,
-                             f"root@39.102.211.79:/www/wwwroot/datadrive.world/{os.path.basename(f)}"],
+                             f"root@47.93.88.143:/www/wwwroot/datadrive.world/{os.path.basename(f)}"],
                             capture_output=True, text=True, timeout=60)
                         if _r.returncode == 0:
                             self._safe_log(f"🔗 {tag}: http://datadrive.world/{os.path.basename(f)}")
@@ -16299,11 +16299,11 @@ class SimulinkModule(QWidget):
                         self._safe_log("⛔ 缺 ZMAX_ECS_PW (环境变量或 zmax_data/secrets/zmax.env) — 上传跳过")
                         return
                     r2 = _sp.run(["sshpass", "-p", _pw, "scp", "-o", "StrictHostKeyChecking=no",
-                                  out, "root@39.102.211.79:/www/wwwroot/datadrive.world/"],
+                                  out, "root@47.93.88.143:/www/wwwroot/datadrive.world/"],
                                  capture_output=True, timeout=60)
                     if r2.returncode == 0:
                         _sp.run(["sshpass", "-p", _pw, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@39.102.211.79",
+                                 "root@47.93.88.143",
                                  "chmod 644 /www/wwwroot/datadrive.world/ss_episode_latest.mp4"],
                                 capture_output=True, timeout=30)
                         self._safe_log("🎥 操作视频 (与 3D 视图同源): "

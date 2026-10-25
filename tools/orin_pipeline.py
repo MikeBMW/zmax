@@ -9,7 +9,7 @@ import requests, json, time, os, numpy as np
 from pathlib import Path
 
 ORIN = "http://192.168.23.66:8765"
-GPU4090 = "http://39.102.211.79:50053"
+GPU4090 = "http://47.93.88.143:50053"
 DATA = Path(os.environ.get("ZMAX_FORK", "/home/ubuntu/zmax/external/lerobot-smolvla-lew")) / "data" / "orin_tasks"
 
 def step1_collect(frames=100):
@@ -69,7 +69,7 @@ def step3_upload(npz_file):
     print(f"📤 Step3: 上传4090...")
     # 直接保存到本地, web从4090拉取
     print(f"  数据就绪: {npz_file}")
-    print(f"  @web: scp {npz_file} root@39.102.211.79:/root/datasets/metaworld/tasks/")
+    print(f"  @web: scp {npz_file} root@47.93.88.143:/root/datasets/metaworld/tasks/")
     
     # 触发训练任务
     try:

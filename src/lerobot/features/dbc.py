@@ -194,13 +194,13 @@ def upload_excel(path=None):
         r = subprocess.run(
             ["sshpass", "-p", (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW","")), "scp", "-o", "StrictHostKeyChecking=no",
              "-o", "ConnectTimeout=15", path,
-             "root@39.102.211.79:/www/wwwroot/datadrive.world/feature_dbc.xlsx"],
+             "root@47.93.88.143:/www/wwwroot/datadrive.world/feature_dbc.xlsx"],
             capture_output=True, timeout=60)
         if r.returncode != 0:
             return path, None
         subprocess.run(
             ["sshpass", "-p", (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW","")), "ssh", "-o", "StrictHostKeyChecking=no",
-             "-o", "ConnectTimeout=15", "root@39.102.211.79",
+             "-o", "ConnectTimeout=15", "root@47.93.88.143",
              "chmod 644 /www/wwwroot/datadrive.world/feature_dbc.xlsx"],
             capture_output=True, timeout=60)
         return path, url

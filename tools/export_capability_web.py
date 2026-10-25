@@ -98,13 +98,13 @@ def deploy(out):
               "带密码执行: ZMAX_ECS_PW=xxx " + os.path.basename(__file__))
         return False
     r = subprocess.run(["sshpass", "-p", pw, "scp", "-o", "StrictHostKeyChecking=no",
-                        out, f"root@39.102.211.79:/www/wwwroot/datadrive.world/{FNAME}"],
+                        out, f"root@47.93.88.143:/www/wwwroot/datadrive.world/{FNAME}"],
                        capture_output=True, timeout=60)
     if r.returncode != 0:
         print(f"❌ 上传失败: {r.stderr.decode(errors='ignore')[:200]}")
         return False
     subprocess.run(["sshpass", "-p", pw, "ssh", "-o", "StrictHostKeyChecking=no",
-                    "root@39.102.211.79", f"chmod 644 /www/wwwroot/datadrive.world/{FNAME}"],
+                    "root@47.93.88.143", f"chmod 644 /www/wwwroot/datadrive.world/{FNAME}"],
                    capture_output=True, timeout=30)
     print(f"✅ 已部署: {ESC}/{FNAME}")
     return True

@@ -2254,7 +2254,7 @@ class EngineeringReqWidget(QWidget):
         """scp PDF 到 ECS /www/wwwroot/datadrive.world/reports/ → https://datadrive.world/reports/xxx.pdf"""
         import subprocess as _sp
         import shlex as _sh
-        ECS = "root@39.102.211.79"
+        ECS = "root@47.93.88.143"
         PASS = (_os_ecs.environ.get("ZMAX_ECS_PW", "") if "_os_ecs" in dir() else __import__("os").environ.get("ZMAX_ECS_PW",""))
         REMOTE_DIR = "/www/wwwroot/datadrive.world/reports"
         try:

@@ -17,8 +17,28 @@ import time
 
 import paramiko
 
-JUMP = dict(hostname='39.102.211.79', port=22022, username='tashan', password='tashan')
-INTEL = dict(hostname='192.168.23.70', username='intel', password='intel')
+def _secret(key: str, default: str = "") -> str:
+    """口令只从环境变量或 zmax_data/secrets/zmax.env(600, 不入库) 取 —— 不许再写明文进仓库。"""
+    v = os.environ.get(key)
+    if v:
+        return v
+    p = os.path.expanduser("~/zmax/zmax_data/secrets/zmax.env")
+    try:
+        with open(p, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return default
+
+
+JUMP = dict(hostname=os.environ.get("ZMAX_JUMP_HOST", "47.93.88.143"),
+            port=int(os.environ.get("ZMAX_JUMP_PORT", "22022")),
+            username=os.environ.get("ZMAX_JUMP_USER", "tashan"),
+            password=_secret("ZMAX_ORIN_PW"))
+INTEL = dict(hostname=os.environ.get("ZMAX_INTEL_HOST", "192.168.23.70"),
+             username="intel", password=_secret("ZMAX_INTEL_PW"))
 ASSETS = '/home/intel/zmax_map/gs_assets'
 LOCAL = os.path.expanduser('~/zmax_data/deliverables/gs_assets')
 PY = os.path.expanduser('~/zmax/gui-venv311/bin/python')

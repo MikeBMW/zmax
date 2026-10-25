@@ -7695,7 +7695,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                 import subprocess as _sp
                 import requests as _rq
                 ts = _t.strftime("%Y%m%d_%H%M%S")
-                ecs = "root@39.102.211.79"
+                ecs = "root@47.93.88.143"
                 ecs_pwd = _os.environ.get("ZMAX_ECS_PW", "")
                 models_dir = "/www/wwwroot/datadrive.world/models"
                 ver_name = f"act_{ts}.safetensors"
