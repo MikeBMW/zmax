@@ -1063,6 +1063,20 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/calib":
                 c = load_calib(cam)
                 self._json({"ok": bool(c), "calib": c, "cam": cam, "cams": CAMS})
+            elif p.startswith("/box/") and p.endswith(".jpg"):
+                cam = p[5:-4]
+                if cam == "arm":
+                    b, err = self._box_arm_jpeg()
+                    if b is None:
+                        self.send_response(503); self.end_headers(); return
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Cache-Control", "no-store, max-age=0")
+                    self.send_header("X-Box-Err", (err or "")[:120].encode("ascii", "ignore").decode())
+                    self.send_header("Content-Length", str(len(b)))
+                    self.end_headers(); self.wfile.write(b)
+                else:
+                    self._json({"ok": False, "err": "%s 这台相机还没外参 ⇒ 画不了 3D 框(需要在 AR 页做 6~8 点标定)" % cam})
             elif p == "/api/module_spec":
                 self._json(self._module_spec())
             elif p == "/api/traj/plan":
@@ -1476,6 +1490,81 @@ class H(BaseHTTPRequestHandler):
     MODSPEC = os.path.join(REPO, "zmax_data", "ar_state", "module_spec.json")
     MOD_DEFAULT = {"L_mm": 56.5, "W_mm": 13.4, "T_mm": 8.5,
                    "src": "SFP 类标称(长 56.5 / 宽 13.4 / 厚 8.5), 与臂相机实测宽高比 27/122px 吻合"}
+
+    def _module_corners_mm(self):
+        """光模块长方体的 8 角点 (base 系, mm)。口径由老倪定, 见 _module_spec()。
+
+        手眼口径(2026-10-25 定死, 有判据): cam 原点 = O + R_b2t·t ; R_c2b = R_b2t·M_R
+          ⇒ tool1 投到 (333.0, 39.7), 与项目文档常量 (332.9, 41.8) 吻合。
+          (另一种"用 inv(M) 的旋转 + 同样的位置"会投到 (-83,1266), 已证伪。)
+        """
+        import numpy as _np
+        t = read_tcp()
+        if not t.get("ok"):
+            return None, "TCP 读不到: %s" % str(t.get("err"))[:60]
+        sp = self._module_spec()
+        F1 = (t.get("frames") or {}).get("tool1")
+        F0 = (t.get("frames") or {}).get("tool0") or {}
+        if not F1:
+            return None, "TCP 没有 frames(tool1)"
+        O = _np.array(F1["origin"], float) * 1000.0
+        AX = [_np.array(F1[k], float) for k in ("x", "y", "z")]
+        L, W, T = float(sp["L_mm"]), float(sp["W_mm"]), float(sp["T_mm"])
+        sgn = 1
+        if F0.get("origin"):
+            d = _np.array(F0["origin"], float) * 1000.0 - O
+            sgn = 1 if float(_np.dot(d, AX[2])) >= 0 else -1
+        C = O + AX[2] * (L / 2.0 * sgn)
+        cs = []
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                for sz in (-1, 1):
+                    cs.append(C + AX[0] * (T / 2) * sx + AX[1] * (W / 2) * sy + AX[2] * (L / 2) * sz)
+        return cs, None
+
+    def _box_arm_jpeg(self):
+        """在**手臂相机**帧上画光模块 3D 框(手眼实时投影)。腕上相机没有固定外参 ⇒ 每帧算。"""
+        import numpy as _np
+        cs, err = self._module_corners_mm()
+        img = snap_cam("arm")
+        if img is None:
+            return None, "取不到臂相机帧"
+        if cs is None:
+            b = cv2.imencode(".jpg", img)[1].tobytes()
+            return b, err
+        t = read_tcp()
+        F1 = (t.get("frames") or {})["tool1"]
+        R_b2t = _np.column_stack([_np.array(F1[k], float) for k in ("x", "y", "z")])
+        M = _np.array(json.load(open(os.path.join(REPO, "models", "handeye_state.json")))["T_cam2tool"], float)
+        if _np.abs(M[:3, 3]).max() < 10:
+            M[:3, 3] *= 1000.0
+        cam = _np.array(F1["origin"], float) * 1000.0 + R_b2t @ M[:3, 3]
+        R_c2b = R_b2t @ M[:3, :3]
+        K = _np.array(json.load(open(os.path.join(REPO, "models", "real_cam_calib.json")))["K"], float).reshape(3, 3)
+        sp = self._module_spec()
+
+        def pr(p):
+            q = R_c2b.T @ (_np.asarray(p, float) - cam)
+            if q[2] <= 1: return None
+            return (int(round(K[0, 0] * q[0] / q[2] + K[0, 2])), int(round(K[1, 1] * q[1] / q[2] + K[1, 2])))
+        P = [pr(c) for c in cs]
+        ix = lambda a, b, c: ((a + 1) // 2) * 4 + ((b + 1) // 2) * 2 + ((c + 1) // 2)
+        edges = []
+        for a in (-1, 1):
+            for b in (-1, 1): edges.append((ix(a, b, -1), ix(a, b, 1)))
+        for a in (-1, 1):
+            for c in (-1, 1): edges.append((ix(a, -1, c), ix(a, 1, c)))
+        for b in (-1, 1):
+            for c in (-1, 1): edges.append((ix(-1, b, c), ix(1, b, c)))
+        n_draw = 0
+        for i, j in edges:
+            if P[i] and P[j]:
+                cv2.line(img, P[i], P[j], (87, 196, 255), 2, cv2.LINE_AA); n_draw += 1
+        if P[0]:
+            cv2.circle(img, P[0], 4, (0, 0, 255), -1)
+        cv2.putText(img, "MOD %.1fx%.1fx%.1fmm  edges %d/12" % (float(sp["L_mm"]), float(sp["W_mm"]), float(sp["T_mm"]), n_draw),
+                    (6, img.shape[0] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (87, 196, 255), 1, cv2.LINE_AA)
+        return cv2.imencode(".jpg", img)[1].tobytes(), None
 
     def _module_spec(self):
         """光模块长方体规格 + 与 tool1 的轴向约定(老倪 2026-10-25 定的口径)。

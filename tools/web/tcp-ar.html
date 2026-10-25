@@ -1177,6 +1177,13 @@ function drawVR(){
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
   $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
+// 🖱 滚轮缩放 (老倪 2026-10-25: 「三维视图需要用鼠标滚轮可以缩放, 现在无法调整」)
+$('vr').addEventListener('wheel',(e)=>{ e.preventDefault();
+  const k=Math.exp((e.deltaY>0?1:-1)*0.12);          // 每格 ×0.89 / ×1.13
+  VR.dist=Math.max(0.10, Math.min(4.0, VR.dist*k));
+  VR.auto=false; drawVR();
+  const p=document.getElementById('pVr'); if(p) p.dataset.zoom=(VR.dist*1000).toFixed(0);
+}, {passive:false});
 let drag=null;
 $('vr').addEventListener('pointerdown',e=>{
   // 🧱 先看是不是点在围栏上: 命中就选中并开始拖 (此时不转视角)
