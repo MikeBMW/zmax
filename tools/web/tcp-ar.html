@@ -1132,31 +1132,38 @@ function drawVR(){
          +' · 法兰↔模块头 '+TCP.frames.flange_mm+'mm';
   }
   // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线，要明显画出来」：
-  //    规划轨迹单独在最上层重画一遍 —— 深色描边 + 洋红粗实线 + 白色流动虚线 + 编号节点 + 起终点标记。
-  //    原来那条 (alpha .35 / 细蓝线) 在网格+机器人外形上几乎看不见, 等于没画。
+  //    规划轨迹单独在最上层重画一遍。2026-10-25 二次迭代(视觉复核打回): 原来 5 个 r=7 的圆点挤在
+  //    40×45px 的团里, 点把线盖死、编号 0/4 被压住 ⇒ 看着像"一坨点簇"不是线。改成:
+  //    线粗(10px) + 小点(r=4) + 编号按屏幕间距决定画不画 + 起终点小标记 + 标签改琥珀色(不污染"洋红=路径"的判据)
   if(TRAJ.plan && TRAJ.plan.length>1){
     const P=TRAJ.plan.map(pr).filter(Boolean);
     if(P.length>1){
       g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
       const stroke=(col,w)=>{ g.strokeStyle=col; g.lineWidth=w; g.beginPath();
         P.forEach((q,i)=> i? g.lineTo(q.u,q.v) : g.moveTo(q.u,q.v)); g.stroke(); };
-      stroke('rgba(0,0,0,.9)', 15);              // 描边: 压住网格与机器人外形
-      stroke('#ff35d7', 8);                      // 主色: 洋红, 与所有既有颜色都不同
-      g.setLineDash([12,8]); stroke('rgba(255,255,255,.95)', 2.4); g.setLineDash([]);   // 亮虚线(近看有方向感)
-      P.forEach((q,i)=>{                          // 每个轨迹点: 白心洋红环 + 序号
-        g.beginPath(); g.arc(q.u,q.v,7,0,Math.PI*2); g.fillStyle='#ff35d7'; g.fill();
-        g.lineWidth=2.2; g.strokeStyle='#fff'; g.stroke();
-        g.font='bold 13px monospace'; g.fillStyle='#fff'; g.fillText(String(i), q.u+10, q.v-9); });
+      stroke('rgba(0,0,0,.92)', 17);             // 深色描边: 压住网格/机器人外形/围栏盒
+      stroke('#ff35d7', 10);                     // 主色: 洋红粗线, 与 蓝plan/绿trace/橙real 都不同
+      g.setLineDash([14,9]); stroke('rgba(255,255,255,.95)', 2.6); g.setLineDash([]);   // 亮虚线: 静止时也看得出走向
+      // 相邻点的屏幕间距(太小就不画编号, 否则数字互相压盖, 用户读不出)
+      let minD=1e9; for(let i=1;i<P.length;i++) minD=Math.min(minD, Math.hypot(P[i].u-P[i-1].u, P[i].v-P[i-1].v));
+      P.forEach((q,i)=>{                          // 轨迹点: 小洋红点 + 细白圈(不再盖住线)
+        g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fillStyle='#ff35d7'; g.fill();
+        g.lineWidth=1.6; g.strokeStyle='#fff'; g.stroke();
+        if(minD>=16 && i>0 && i<P.length-1){ g.font='bold 12px monospace'; g.fillStyle='#fff';
+          g.fillText(String(i), q.u+7, q.v-6); } });
       const a=P[0], b=P[P.length-1];
-      g.fillStyle='#3fb950'; g.beginPath(); g.arc(a.u,a.v,9,0,Math.PI*2); g.fill();   // 起点绿
+      g.fillStyle='#3fb950'; g.beginPath(); g.arc(a.u,a.v,6,0,Math.PI*2); g.fill();   // 起点绿
       g.strokeStyle='#fff'; g.lineWidth=2; g.stroke();
-      g.fillStyle='#e05252'; g.fillRect(b.u-7,b.v-7,14,14);                            // 终点红
-      g.strokeStyle='#fff'; g.strokeRect(b.u-7,b.v-7,14,14);
-      g.font='bold 14px monospace';
-      const lbl='规划轨迹 '+(TRAJ.planLabel?('· '+TRAJ.planLabel):(TRAJ.plan.length+' 点'));
+      g.fillStyle='#e05252'; g.fillRect(b.u-5,b.v-5,10,10);                            // 终点红
+      g.strokeStyle='#fff'; g.strokeRect(b.u-5,b.v-5,10,10);
+      // 标签: 琥珀色(不属于"洋红=路径"判据) + 去掉 plan_label 里重复的「规划轨迹」前缀
+      let lbl=(TRAJ.planLabel||'').replace(/^\s*规划轨迹\s*[·:]?\s*/,'');
+      lbl='规划轨迹 · '+(lbl||(TRAJ.plan.length+' 点'));
+      g.font='bold 13px monospace';
       const tw=g.measureText(lbl).width;
-      g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(a.u+12, a.v+14, tw+12, 22);
-      g.fillStyle='#ff35d7'; g.fillText(lbl, a.u+18, a.v+30);
+      const lx=Math.min(Math.max(8, a.u-8), g.canvas.width-tw-18), ly=Math.min(g.canvas.height-10, Math.max(20, a.v-24));
+      g.fillStyle='rgba(0,0,0,.78)'; g.fillRect(lx-4, ly-15, tw+12, 21);
+      g.fillStyle='#ffd166'; g.fillText(lbl, lx+2, ly);
     }
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
@@ -1353,6 +1360,24 @@ function drawIfChanged(){
   if(s===SIG) return;
   SIG=s; drawOv(); drawVR();
 }
+// 🎯 让规划轨迹在画布上真的"够大": 反复 drawVR + 量洋红像素跨度, 按跨度调视距(实测收敛 2~3 轮)
+//    判据只用渲染结果, 不自己算投影 —— 这样 yaw/pitch/F 怎么变都不会失准; 琥珀色标签不参与判据。
+function autoZoomPlan(){
+  const cv=document.getElementById('vr'); if(!cv) return;
+  const c=cv.getContext('2d');
+  for(let k=0;k<5;k++){
+    drawVR();
+    const d=c.getImageData(0,0,cv.width,cv.height).data;
+    let minx=1e9,maxx=-1,miny=1e9,maxy=-1;
+    for(let y=0;y<cv.height;y++){ for(let x=0;x<cv.width;x++){ const i=(y*cv.width+x)*4;
+      if(d[i]>200 && d[i+1]<120 && d[i+2]>170){ if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; } } }
+    if(maxx<0) return;                                     // 还没有洋红 ⇒ 没画出来, 不动视距
+    const span=Math.max(maxx-minx, maxy-miny), lim=Math.min(cv.width,cv.height);
+    if(span>=0.42*lim && span<=0.92*lim) return;           // 够大又没出界 ⇒ 收工
+    VR.dist=Math.max(0.12, Math.min(3.0, VR.dist*Math.max(span,6)/(0.62*lim)));   // 跨度小 ⇒ 拉近(除反了就一zoom到3m外, 实测踩过)
+  }
+}
+
 async function refresh(){
   // 隐藏(预载/最小化)时不轮询 —— 但**降到 3s 一次保活**, 不能直接 return:
   //   切回可见时若 platform/Qt 不发 visibilitychange, 面板会永久停在旧数 (帧龄会露馅但体验是"卡住")。
@@ -1370,11 +1395,18 @@ async function refresh(){
       const sig=TRAJ.plan.map(p=>p.map(v=>Math.round(v*1000)).join(',')).join('|');
       if(sig!==(refresh._planSig||'')){
         refresh._planSig=sig;
-        const X=TRAJ.plan.map(p=>p[0]), Y=TRAJ.plan.map(p=>p[1]), Z=TRAJ.plan.map(p=>p[2]);
-        VR.tgt=[(Math.min(...X)+Math.max(...X))/2, (Math.min(...Y)+Math.max(...Y))/2, (Math.min(...Z)+Math.max(...Z))/2];
-        const ext=Math.max(Math.max(...X)-Math.min(...X), Math.max(...Y)-Math.min(...Y), Math.max(...Z)-Math.min(...Z));
-        VR.dist=Math.max(0.33, ext*2.0);
-        VR.auto=false;                       // 不再自转, 让人看清这条线
+        const mn=[0,1,2].map(i=>Math.min(...TRAJ.plan.map(p=>p[i])));
+        const mx=[0,1,2].map(i=>Math.max(...TRAJ.plan.map(p=>p[i])));
+        const ext=[0,1,2].map(i=>mx[i]-mn[i]);
+        VR.tgt=[0,1,2].map(i=>(mn[i]+mx[i])/2);
+        // 视线要**正对轨迹所在的平面**(最薄的那根轴 = 法向), 否则 280mm 的环被透视压成一条线
+        const thin=ext.indexOf(Math.min(...ext));
+        VR.pitch=0;
+        if(thin===1) VR.yaw=-Math.PI/2;       // 平面在 xz ⇒ 站在 +Y 侧看(避开臂体)
+        else if(thin===0) VR.yaw=0;           // 平面在 yz ⇒ 沿 -X 看
+        VR.auto=false;                        // 不自转, 让人看清这条线
+        VR.dist=Math.max(0.30, Math.max(...ext)*2.2);
+        setTimeout(()=>{ try{ autoZoomPlan(); }catch(e){} }, 150);   // 出一帧后按真实像素跨度再收敛
       }
     } }
   catch(e){}
