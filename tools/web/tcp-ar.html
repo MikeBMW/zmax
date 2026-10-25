@@ -40,6 +40,10 @@
  .row{display:flex;gap:8px;flex-wrap:wrap}
  .row button{flex:1 1 46%}
  #vr{width:100%;height:260px;background:#070a0e;border-radius:8px;display:block;touch-action:none}
+ /* 🧭 ?vr=1 VR 全屏模式: 只留三维视图放大 —— 手机上看得清, 也方便精确截图取证 */
+ body.vronly #stagewrap, body.vronly #side, body.vronly header, body.vronly #leftcol > .card:not(#vrcard){display:none!important}
+ body.vronly #vrcard{margin:0;border-radius:0}
+ body.vronly #vr{height:calc(100vh - 92px)}
  pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-all;font-size:12.5px;color:#9fb1c4;max-height:150px;overflow:auto}
  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13.5px}
  .kv b{color:#8b949e;font-weight:600}
@@ -118,6 +122,22 @@
         <button id="bAll">📜 全部历史</button>
         <button id="bRef">⟳ 刷新</button>
       </div>
+      <!-- 🧭 2026-10-25 老倪: 「三维视图窗口下面操作按钮区加五个按钮」
+           轨迹点全从配置中心工程配置读 (fence_store / 点位台账 / 探索产物 / 实测录制),
+           不写死坐标; 取不到就明说为什么, 不画假线。 -->
+      <div class="row" style="margin-top:8px">
+        <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
+        <button id="t2" class="sm" title="以小红中点为心的水平正方形 (工程配置无现成正方形元素 ⇒ 构造, 会标注)">轨迹2 正方</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="t3" class="sm" title="自主探索建图轨迹 (explore_path_planner 产物: frontier+信息增益+A*)">轨迹3 建图</button>
+        <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
+        <button id="t5" class="sm" title="真机实际走过的 TCP 轨迹 (bridge_path_recorder 实测录制)">轨迹5 实时</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="tOff" class="sm">✕ 关掉命名轨迹</button>
+      </div>
+      <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">点上面 5 个按钮: 从工程配置读轨迹点画到 3D 视图</pre>
       <pre id="pTraj">—</pre>
     </div>
     <div class="card" id="cardFence">
@@ -228,6 +248,8 @@ let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运�
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
+// 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时): 点从服务端 /api/traj/named 读工程配置真源
+    NAMED={}, NAMED_SEL=null, NAMED_INFO={},
     MOD3=null, MOD3ON=true,
     VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true,mod:true};
 let MODSPEC={L_mm:56.5,W_mm:13.4,T_mm:8.5,src:'默认'};
@@ -378,6 +400,113 @@ function drawTube(g, pts, opt){
   if(s1){ g.fillStyle='#ffd166'; g.beginPath(); g.arc(s1.u,s1.v,5,0,Math.PI*2); g.fill(); }
   return {n:seg.length, zmin, zmax};
 }
+// ═══ 🧭 命名轨迹 (老倪 2026-10-25) ═══
+// 轨迹点一律来自服务端 /api/traj/named (读的是配置中心工程配置真源), 前端不写死坐标。
+// 取不到 ⇒ 明确写出为什么取不到, 绝不画一条假线糊弄。
+const NAMED_COL = {xiaohong:'#ff4444', square:'#a855f7', map:'#22d3ee',
+                   safe:'#4ade80', real:'#ff9f1c'};
+
+async function loadNamed(k){
+  const el=$('pNamed');
+  el.textContent='读取「'+k+'」...';
+  try{
+    const r=await fetch('/api/traj/named?k='+encodeURIComponent(k)+'&_='+Date.now());
+    const d=await r.json();
+    NAMED_INFO[k]=d;
+    if(!d.ok){
+      NAMED[k]=null;
+      el.textContent='⚠ '+d.label+'\n取不到: '+d.note;
+      el.style.color='#fbbf24';
+    }else{
+      NAMED[k]=d.pts;
+      el.dataset.srv=d.label+'  ✓ '+d.n+' 点\n来源: '+d.src+'\n'+d.note;
+      el.textContent=el.dataset.srv;
+      el.style.color = /构造|示意/.test(d.note) ? '#fbbf24' : '#4ade80';
+    }
+    NAMED_SEL=k;
+    ['t1','t2','t3','t4','t5'].forEach((id,i)=>{
+      const key=['xiaohong','square','map','safe','real'][i];
+      $(id).classList.toggle('on', key===k && !!NAMED[k]);
+    });
+    if(d.ok){ SHOW=true; }        // 有数据 ⇒ 顺手把轨迹显示打开
+    // 🔴 必须**强制重绘**: drawIfChanged 的指纹只看 TRAJ/TCP/MOD3, 不含 NAMED,
+    //    所以它判"没变化"直接 return —— 实测 safe 轨迹 0 像素就是这么来的。
+    //    另外 vrFitBox 要**先**跑, 否则 z=654mm 的安全点跑出默认取景框, 画了也看不见。
+    if(typeof vrFitBox==='function') vrFitBox();
+    if(typeof drawOv==='function') drawOv();
+    if(typeof drawVR==='function') drawVR();
+    await refreshTraj();
+  }catch(e){
+    NAMED[k]=null; NAMED_SEL=null;
+    el.textContent='⚠ 请求失败: '+e.message;
+    el.style.color='#f87171';
+  }
+}
+
+function clearNamed(){
+  NAMED={}; NAMED_SEL=null; NAMED_INFO={};
+  ['t1','t2','t3','t4','t5'].forEach(id=>$(id).classList.remove('on'));
+  const el=$('pNamed');
+  el.textContent='已关掉命名轨迹';
+  el.style.color='#8b949e';
+  if(typeof drawOv==='function') drawOv();
+  if(typeof drawVR==='function') drawVR();
+}
+
+// VR 三维视图里画 (用 drawVR 内的 tube 风格: 自己分段描线, 带帧号标注)
+function drawNamedVR(g, pr){
+  if(!NAMED_SEL) return 0;
+  const key=NAMED_SEL, pts=NAMED[key];
+  if(!pts || pts.length<2) return 0;
+  const col=NAMED_COL[key]||'#ff35d7';
+  const P=pts.map(pr);
+  let n=0;
+  // 诊断: 有多少点真的投进视锥 (其余被 pr 返 null ⇒ 画不出来但代码不报错)
+  let _okP=0; for(const q of P) if(q) _okP++;
+  window.__NAMED_DBG__={key:key, total:pts.length, projected:_okP,
+                        vtgt:(VR.tgt||[]).slice(), vdist:VR.dist};
+  // 🔴 逐段画, 不是一条 beginPath 串到底:
+  //    中间只要有一个点被 pr 判成视野外返 null, 整条 path 就被打断成很多孤立 moveTo,
+  //    实测 54 点的建图轨迹因此只剩 15 个像素(看着像"没画")。分段画, 连得上的段照画。
+  g.strokeStyle=col; g.lineWidth=4; g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
+  for(let i=1;i<P.length;i++){
+    const a=P[i-1], b=P[i];
+    if(!a||!b) continue;
+    g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
+    n++;
+  }
+  // 每 8 个点画一个小圆, 看得出方向/密度
+  for(let i=0;i<P.length;i+=8){
+    const q=P[i]; if(!q) continue;
+    g.fillStyle=col; g.beginPath(); g.arc(q.u,q.v,3,0,Math.PI*2); g.fill();
+  }
+  // 起点 S / 终点 E 标注
+  const q0=P[0], q1=P[P.length-1];
+  g.font='bold 12px monospace';
+  if(q0){ g.fillStyle=col; g.fillText('S',q0.u+6,q0.v-6); }
+  if(q1){ g.fillStyle=col; g.fillText('E',q1.u+6,q1.v+14); }
+  const nm=(NAMED_INFO[key]||{}).label||key;
+  if(q0){ g.font='12px monospace'; g.fillStyle=col; g.fillText(nm,q0.u+18,q0.v-6); }
+  const _pn=$('pNamed');
+  if(_pn && _pn.dataset.srv){
+    _pn.textContent = _pn.dataset.srv +
+      '\n投影 ' + _okP + '/' + pts.length + ' 点可见' +
+      (_okP < pts.length ? '  ⚠ 其余在视野外(点太远/太高)' : '');
+  }
+  return n;
+}
+
+// AR 叠加视图里画 (用全局 drawTube)
+function drawNamedOV(g){
+  if(!NAMED_SEL) return 0;
+  const key=NAMED_SEL, pts=NAMED[key];
+  if(!pts || pts.length<2) return 0;
+  const col=NAMED_COL[key]||'#ff35d7';
+  const r=drawTube(g, pts, {baseW:7, ref:1.1, alpha:0.85, ring:12,
+      color:(p,f)=>col, ringColor:'rgba(255,255,255,.6)'});
+  return r.n||0;
+}
+
 function drawModBox(g){
   // 🔴 2026-10-20 老倪: 「?cam=rs 这个页面…usb 内置 D435 就不要显示 tool1 模块头坐标系了」
   //   corners_px 是**臂相机**(D405·手眼+内参)算出来的像素 ⇒ 换到 D435 上就是错位几何。
@@ -557,6 +686,7 @@ function drawOv(){
        ringColor:'rgba(255,255,255,.55)'});
     n2=r.n||0;
   }
+  drawNamedOV(g);                                   // 🧭 命名轨迹叠加
   if(TCP&&TCP.ok){                                  // 当前 TCP: 十字 + 文字
     const q=proj([TCP.x,TCP.y,TCP.z]);
     if(q){ g.strokeStyle='#ffd166'; g.lineWidth=2;
@@ -573,6 +703,7 @@ function vrFitBox(){
   const pts=[];
   (TRAJ.trace||[]).forEach(p=>pts.push(p));
   (TRAJ.plan||[]).forEach(p=>pts.push(p));
+  if(NAMED_SEL && NAMED[NAMED_SEL]) (NAMED[NAMED_SEL]||[]).forEach(p=>pts.push(p)); // 🧭 命名轨迹纳入取景
   if(TCP&&TCP.ok) pts.push([TCP.x,TCP.y,TCP.z]);
   // 🦾 URDF 外形也纳入取景: 否则整条臂会跑出画面 (实测只按 TCP 取景时, 臂顶 bbox 到 y=-26px)
   if(VR.urdf && URDF && LINKM){
@@ -1101,6 +1232,8 @@ function drawVR(){
   const nTr=(TRAJ.trace&&TRAJ.trace.length>1)?tube(TRAJ.trace,(f)=>'rgba(140,230,120,.9)',7,0.6,8):0;
   // 🆕 真机实际走过的轨迹(实测 TCP) —— 橙色, 画在最上层
   const nReal=(TRAJ.real&&TRAJ.real.length>1)?tube(TRAJ.real,(f)=>'rgba(255,159,28,.95)',6,0.85,12):0;
+  // 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时) —— 画在实时轨迹之上, 便于对比
+  const nNamed = drawNamedVR(g, pr);
   let realTxt='';
   if(nReal){
     const q=pr(TRAJ.real[TRAJ.real.length-1]);
@@ -1355,6 +1488,11 @@ $('bClear').addEventListener('click',async ()=>{
   await refresh(); drawOv(); drawVR();
 });
 $('bRef').addEventListener('click',()=>{refresh();drawVR();});
+// 🧭 命名轨迹 5 个按钮 (老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」)
+// 每个按钮 = 一次 /api/traj/named 请求, 点从配置中心工程配置读, 不写死坐标。
+[['t1','xiaohong'],['t2','square'],['t3','map'],['t4','safe'],['t5','real']]
+  .forEach(([id,k])=>{ const el=$(id); if(el) el.addEventListener('click',()=>loadNamed(k)); });
+$('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({n:0})})).json();
@@ -1371,6 +1509,7 @@ function drawIfChanged(){
   const tcpK=(TCP&&TCP.ok)?[TCP.x.toFixed(3),TCP.y.toFixed(3),TCP.z.toFixed(3),
       _q.slice(0,4).map(v=>(v||0).toFixed(2)).join(',')].join(','):'-';
   const s=[(TRAJ.trace||[]).length,(TRAJ.plan||[]).length,tcpK,SHOW?1:0,CALIB?1:0,
+           'nm:'+(NAMED_SEL||'-')+':'+((NAMED_SEL&&NAMED[NAMED_SEL])?NAMED[NAMED_SEL].length:0),
            (MOD3&&MOD3.ok)?(MOD3.dist_mm+','+(MOD3.corners_px||[]).map(p=>p[0].toFixed(0)+':'+p[1].toFixed(0)).join('|')):'-'].join('|');
   if(s===SIG) return;
   SIG=s; drawOv(); drawVR();
@@ -1620,6 +1759,12 @@ async function loadCams(){
   }
   buildCamPick();
   await loadCalib();
+  // 🧭 ?traj=xiaohong|square|map|safe|real 自动加载命名轨迹
+  //   用途: ① 手机/微信直接发带参数的链接就能看 ② 无头 chromium 截图验证不用点按钮
+  const _usp = new URLSearchParams(location.search);
+  if(_usp.get('vr')==='1'){ document.body.classList.add('vronly'); }
+  const _tq = _usp.get('traj');
+  if(_tq){ try{ await loadNamed(_tq); }catch(e){} }
 }
 
 // ═══ 取帧泵 (2026-10-18 老倪: 「怎么一会黑屏一下」「别总黑屏啊」) ═══

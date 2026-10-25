@@ -1058,6 +1058,11 @@ class H(BaseHTTPRequestHandler):
                 self._json(_urdf_payload())
             elif p == "/api/traj":
                 self._json(self._traj())
+            elif p == "/api/traj/named":        # 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时)
+                # 老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」
+                # 轨迹点全从配置中心工程配置读真源, 空数据返回 ok=False + 原因, 不假造点。
+                self._json(self._traj_named((qs.get("k") or [""])[0]
+                                            if isinstance(qs.get("k"), list) else qs.get("k")))
             elif p == "/api/stable":
                 self._json(self._stable())
             elif p == "/api/calib":
@@ -1344,6 +1349,145 @@ class H(BaseHTTPRequestHandler):
             out["real"] = []
         out["ok"] = True
         out["at"] = time.strftime("%H:%M:%S")
+        return out
+
+    # ═══ 命名轨迹 (老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮:
+    #     轨迹1 小红 / 轨迹2 正方 / 轨迹3 建图 / 轨迹4 安全 / 轨迹5 实时」) ═══
+    #
+    # 轨迹点一律从**配置中心的工程配置**读真源, 前端不写死坐标:
+    #   小红  → fence_store 的直线元素 (工程配置「3D 元素」里那条叫"小红"的线)
+    #   正方  → 工程配置里没有正方形元素, 由小红的两个端点推出边长**构造**,
+    #           响应里 note 明确标 "构造", 不冒充已有元素
+    #   建图  → zmax_data/ss_live/explore_traj.json (tools/explore_path_planner.py 的产物)
+    #   安全  → ar_aoi_live.json 的金手指点1 → 安全点1 (工程配置点位台账, 实时刷新)
+    #   实时  → zmax_data/ss_live/bridge_real_path.json (bridge_path_recorder 录的真机实测)
+    #
+    # 统一返回 {"ok","k","label","pts":[[x,y,z]m...],"src","n","note","at"};
+    # 空数据一律 ok=False + note 说明**为什么空**, 绝不返回假 0 点。
+    NAMED_TRAJ = {
+        "xiaohong": "轨迹1 · 小红 (工程配置直线)",
+        "square":   "轨迹2 · 正方 (小红端点构造)",
+        "map":      "轨迹3 · 建图 (自主探索)",
+        "safe":     "轨迹4 · 安全 (金手指点1→安全点1)",
+        "real":     "轨迹5 · 实时 (真机实测)",
+    }
+
+    def _traj_named(self, k):
+        k = (k or "").strip()
+        out = {"ok": False, "k": k, "label": self.NAMED_TRAJ.get(k, k),
+               "pts": [], "n": 0, "src": "", "note": "", "at": time.strftime("%H:%M:%S")}
+        if k not in self.NAMED_TRAJ:
+            out["note"] = "未知轨迹名 (可用: %s)" % ", ".join(self.NAMED_TRAJ)
+            return out
+
+        def _lerp(a, b, n):
+            return [[a[i] + (b[i] - a[i]) * (t / float(n)) for i in range(3)]
+                    for t in range(n + 1)]
+
+        try:
+            if k == "xiaohong":
+                it = next((x for x in FS.listing()["items"]
+                           if x.get("type") == "line" and x.get("name") == "小红"), None)
+                if not it:
+                    out["note"] = "工程配置里没有叫「小红」的直线元素 (fence_store 为空或已改名)"
+                    return out
+                A, B = list(it["p1"]), list(it["p2"])
+                out.update(ok=True, pts=_lerp(A, B, 40), src="fence_store/小红",
+                           note="直线 %s → %s mm" % ([round(v * 1000) for v in A],
+                                                     [round(v * 1000) for v in B]))
+
+            elif k == "square":
+                it = next((x for x in FS.listing()["items"]
+                           if x.get("type") == "line" and x.get("name") == "小红"), None)
+                if not it:
+                    out["note"] = "缺参照直线「小红」⇒ 无法定正方形边长/位置"
+                    return out
+                A, B = list(it["p1"]), list(it["p2"])
+                cx = (A[0] + B[0]) / 2.0
+                cy = (A[1] + B[1]) / 2.0
+                cz = (A[2] + B[2]) / 2.0
+                half = 0.5 * sum((B[i] - A[i]) ** 2 for i in range(3)) ** 0.5
+                half = min(half, 0.12)          # 实测工作空间 0.90m 上限, 边长封顶 240mm
+                pts = []
+                corners = [(cx - half, cy - half), (cx + half, cy - half),
+                           (cx + half, cy + half), (cx - half, cy + half)]
+                for c in range(4):
+                    a = corners[c]
+                    b = corners[(c + 1) % 4]
+                    seg = _lerp([a[0], a[1], cz], [b[0], b[1], cz], 10)
+                    pts.extend(seg[:-1] if c < 3 else seg)
+                out.update(ok=True, pts=pts, src="construct/小红",
+                           note="⚠ 构造: 工程配置无正方形元素 ⇒ 以小红中点 (%.0f,%.0f,%.0f)mm 为心, "
+                                "边长 %.0fmm 水平正方形" % (cx * 1000, cy * 1000, cz * 1000, half * 2000))
+
+            elif k == "map":
+                mp = os.path.join(REPO, "zmax_data", "ss_live", "explore_traj.json")
+                if not os.path.exists(mp):
+                    out["note"] = "还没有探索轨迹 (先跑 tools/explore_path_planner.py)"
+                    return out
+                d = json.load(open(mp, encoding="utf-8"))
+                cell = float(d.get("cell") or 0.02)
+                nx = int(d.get("nx") or 0)
+                ny = int(d.get("ny") or 0)
+                # 栅格坐标系在工作台左下角原点; 平移到 base 系 (台面高度 z, 机器人在其左后)
+                # ⚠ 这是**示意映射** —— 探索轨迹是 2D 栅格, 没有真实 base 系坐标
+                # 栅格 (0~0.64, 0~0.60) 平移到 base 系工作台区。
+                # 🔴 初版用 oy=-0.45 ⇒ 整条轨迹跑到机器人身后, VR 视图里 54 个点
+                #    只投出 15 个像素(其余在视锥外), 看着就是"没画"。
+                #    对齐小红/安全点的实际 y 区间 (-0.20~+0.20) 后就能看见。
+                ox, oy, oz = 0.28, -0.30, 0.28
+                # 优先用**完整 path** (54 步连续轨迹), 不是 7 个航点跳着连 ——
+                # 实测只连航点时画出 7 段稀疏短线, VR 视图里只剩 15 个像素看不见。
+                pts = [[ox + i * cell, oy + j * cell, oz] for (i, j) in (d.get("path") or [])]
+                if len(pts) < 2:
+                    pts = [[ox + w["x"], oy + w["y"], oz] for w in (d.get("waypoints") or [])]
+                out.update(ok=len(pts) >= 2, pts=pts, src="explore_traj.json",
+                           note="⚠ 示意坐标: 2D 栅格(%dx%d @ %dcm)平移到 base 系台面 z=%.0fmm; "
+                                "覆盖 %.1f%%, 航点 %d"
+                                % (nx, ny, int(cell * 1000), oz * 1000,
+                                   float(d.get("coverage_final") or 0) * 100,
+                                   len(d.get("waypoints") or [])))
+                if not out["ok"]:
+                    out["note"] += " (航点不足 2 个)"
+
+            elif k == "safe":
+                ap = os.path.join(REPO, "zmax_data", "ar_live", "ar_aoi_live.json")
+                if not os.path.exists(ap):
+                    out["note"] = "点位台账 ar_aoi_live.json 不存在 (ar_aoi_bus 没在跑)"
+                    return out
+                s = json.load(open(ap, encoding="utf-8")).get("s") or {}
+
+                def _p(nm):
+                    v = [s.get(nm + "." + ax) for ax in "xyz"]
+                    return None if any(x is None for x in v) else [float(x) for x in v]
+
+                a, b = _p("金手指点1"), _p("安全点1")
+                if a is None or b is None:
+                    out["note"] = "点位台账缺金手指点1 或 安全点1 (工程配置里没标这俩点)"
+                    return out
+                out.update(ok=True, pts=_lerp(a, b, 20), src="ar_aoi_live/金手指点1→安全点1",
+                           note="金手指点1 %s → 安全点1 %s mm"
+                                % ([round(v * 1000) for v in a], [round(v * 1000) for v in b]))
+
+            elif k == "real":
+                rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
+                if not os.path.exists(rp):
+                    out["note"] = "还没有真机实测轨迹 (bridge_path_recorder 未录到)"
+                    return out
+                rj = json.load(open(rp, encoding="utf-8"))
+                pts = rj.get("pts") or []
+                if len(pts) < 2:
+                    out["note"] = ("真机还没走过路 (实测 0 点) —— 这**不是故障**, "
+                                   "是机器人这段时间没执行动作; 走一次就会自动出现")
+                    return out
+                out.update(ok=True, pts=pts, src="bridge_real_path.json",
+                           note="真机实测 %s 点 · %smm · 阶段 %s · 帧龄 %.0fs"
+                                % (rj.get("n"), rj.get("len_mm"), rj.get("stage") or "?",
+                                   time.time() - os.path.getmtime(rp)))
+        except Exception as e:                                                  # noqa: BLE001
+            out["ok"] = False
+            out["note"] = "读真源失败 %s: %s" % (type(e).__name__, e)
+        out["n"] = len(out["pts"])
         return out
 
     MOD3_STATE = "/dev/shm/mod3_latest.json"
