@@ -5500,6 +5500,40 @@ def _vscode_launch_cfg(root: str) -> dict:
     }
 
 
+# ════════ 🎥 2026-10-25 中央相机 (Intel USB) 与「谁负责起推流」 ════════
+def _cam_central_args():
+    """GUI 自动起推流时**必须**带上的中央相机三件套。
+
+    为什么: --local2-url/label/fps 只写在 systemd 单元里, GUI 自己 spawn 的实例没有这三项
+    ⇒ 页面第三格「🎥 中央相机」永远空白 (老倪 2026-10-25:「中央相机怎么没有图像了?」)。
+    """
+    return ["--local2-url", os.environ.get("ZMAX_CENTRAL_CAM_URL", "http://127.0.0.1:8812/snap.jpg"),
+            "--local2-label", "🎥 中央相机", "--local2-fps", "10"]
+
+
+def _spawn_cam_stream(cmd, cwd):
+    """起推流: **有 systemd 单元就以单元为准**, 单元拉不起来才按 cmd 自己 spawn。
+
+    为什么: GUI 直接 Popen 会先抢到 :8791/:8793, 之后单元每次启动都
+    `OSError: [Errno 98] Address already in use` ⇒ 实测空转 760 次, 而真正服务的那个
+    实例是 GUI 起的旧参数版 (无中央相机、arm 直连 8792) —— 页面看着"服务在跑", 实际少两路。
+    返回 "unit" | "spawn" | "" (失败)。
+    """
+    try:
+        r = subprocess.run(["systemctl", "start", "zmax-cam-live-stream"],
+                           capture_output=True, text=True, timeout=20)
+        if r.returncode == 0:
+            return "unit"
+    except Exception:                                                       # noqa: BLE001
+        pass
+    try:
+        logf = open("/tmp/zmax_scene_overlay.log", "ab")
+        subprocess.Popen(cmd, cwd=cwd, stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+        return "spawn"
+    except Exception:                                                       # noqa: BLE001
+        return ""
+
+
 class SimulinkModule(QWidget):
     # 信号 (类级声明, worker 线程 → 主线程)
     log_signal = pyqtSignal(str)
@@ -9632,11 +9666,10 @@ class SimulinkModule(QWidget):
                        "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
                        # 总览页自己的端口 —— 漏了它 /station 就 404(总览页"消失"的真根因之一)
                        "--station-port", "8793",
+                       *_cam_central_args(),        # 🎥 中央相机 (Intel USB) —— 漏了这格就空白
                        "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
                 try:
-                    logf = open("/tmp/zmax_scene_overlay.log", "ab")
-                    subprocess.Popen(cmd, cwd=self._repo_root(), stdout=logf,
-                                     stderr=subprocess.STDOUT, start_new_session=True)
+                    _how = _spawn_cam_stream(cmd, self._repo_root())
                     for _ in range(12):
                         if _stats_ok():
                             break
@@ -9960,11 +9993,10 @@ class SimulinkModule(QWidget):
                        #   /overlay, `8793/station`(6 路同屏 + 控制区)直接 404 ⇒ 总览页就"没了"。
                        #   补上 8793, 只要这个按钮把流拉起来, 总览页就同时在。
                        "--station-port", "8793",
+                       *_cam_central_args(),        # 🎥 中央相机 (Intel USB) —— 漏了这格就空白
                        "--overlay", "--overlay-src", "all", "--overlay-fps", "10"]
                 try:
-                    logf = open("/tmp/zmax_scene_overlay.log", "ab")
-                    subprocess.Popen(cmd, cwd=self._repo_root(), stdout=logf,
-                                     stderr=subprocess.STDOUT, start_new_session=True)
+                    _how = _spawn_cam_stream(cmd, self._repo_root())
                     for _ in range(12):        # 🐛 2026-09-27: 原死等 7s 就开页 (流可能还没就绪) → 轮询到真就绪
                         if _stats_ok():
                             break
