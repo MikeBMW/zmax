@@ -54,7 +54,10 @@ done
 echo "##PROCS"
 ps -eo pid,etimes,cmd --no-headers | grep -E 'python.*(ss_daemon|tcp_ar_server|dashboard_server|edge_service|live_trace|ss_fw_trace|ws_bridge|sam3|evolver|gravity)' | grep -v grep | cut -c1-140
 echo "##WEIGHTS"
-ls -d models/* 2>/dev/null | head -20
+# 🔴 2026-10-26: 原来带 head -20 —— Intel 上 models/ 下有 36 项, sam3_hf 排第 23,
+#    于是审计一直报"Intel 无 sam3 权重", 而权重其实早就推进去了(3.44GB 实测)。
+#    这里不截断, 权重目录本身就不多。
+ls -d models/* 2>/dev/null
 """
 
 
@@ -170,7 +173,12 @@ def eval_node(fam, pv, canvas_has):
         if "8796" in ports:
             return "run", "Intel 8796 /health %s" % ports["8796"]
         w = [x for x in pv["weights"] if "sam3" in x.lower()]
-        return "absent", ("有目录 %s 但 8796 没起" % w[0]) if w else "Intel 无 sam3 权重/服务"
+        if w:
+            # 权重到位 = 能离线跑(不是常驻服务)。实测: 840.4M 参数, 加载 1.5~3.0s,
+            # 单提示 40~50s @ CPU 8 线程 ⇒ 静态判据/离线标注可用, 实时要 OpenVINO/NPU。
+            return "ready", ("有 %s 权重 + transformers 5.16.1 已装, 离线可跑 "
+                             "(实测 840.4M 参数 · 40~50s/提示 @CPU8); 8796 常驻服务未起") % w[0]
+        return "absent", "Intel 无 sam3 权重/服务"
     if fam == "yolo":
         if "8800" in ports:
             return "run", "Intel 8800 /health %s (OpenVINO)" % ports["8800"]
@@ -234,7 +242,8 @@ def main():
            "canvas": CANVAS, "n_nodes": len(rows), "n_executable": exec_n,
            "counts": cnt, "intel": {"ports": pv["ports"], "n_procs": len(pv["procs"]),
                                     "files_age_s": {k: round(pv["now"] - v, 1) for k, v in pv["files"].items()}},
-           "verdict_note": "run=有对得上执行体且证据新鲜; stale=执行体在但证据过期; absent=Intel 上没有该节点执行体; nonexec=非执行节点",
+           "verdict_note": ("run=有对得上执行体且证据新鲜; ready=权重/依赖就位能离线真跑但无常驻服务; "
+                            "stale=执行体在但证据过期; absent=Intel 上没有该节点执行体; nonexec=非执行节点"),
            "rows": rows}
 
     if a.out:
@@ -252,11 +261,11 @@ def main():
     print("550C 节点级取证 · %s · 画布 %d 节点 (可执行 %d)" % (out["t_str"], len(rows), exec_n))
     print("结论分布:", cnt)
     print()
-    order = {"run": 0, "stale": 1, "absent": 2, "unknown": 3, "nonexec": 9}
+    order = {"run": 0, "ready": 1, "stale": 2, "absent": 3, "unknown": 4, "nonexec": 9}
     for r in sorted(rows, key=lambda x: (order.get(x["verdict"], 5), x["family"])):
         if r["verdict"] == "nonexec":
             continue
-        mark = {"run": "✅", "stale": "⚠️ ", "absent": "❌", "unknown": "? "}[r["verdict"]]
+        mark = {"run": "✅", "ready": "🟡", "stale": "⚠️ ", "absent": "❌", "unknown": "? "}[r["verdict"]]
         print("%s %-16s %-12s %s" % (mark, r["id"], r["family"], r["name"][:26]))
         print("     %s" % r["evidence"][:110])
     print()
