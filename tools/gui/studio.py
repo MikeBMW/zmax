@@ -14604,6 +14604,9 @@ class StudioMainWindow(QMainWindow):
             traceback.print_exc()
 
     def closeEvent(self, ev):
+        # 🔴 2026-10-25 老倪: 「用鼠标关不掉了」——实测 WM_DELETE/Ctrl+Q/SIGTERM 全不生效,
+        #    只有 SIGKILL 能收。显式 accept, 保证清理跑完后窗口一定关得上。
+        ev.accept()
         # 🧹 关控制台 ⇒ 一起结束 L5 闭环子进程 (否则它变成孤儿, 下次启动就像"自动运行")
         try:
             _kill_orphan_l5(include_own=True)     # 自己起的也要一起收 (否则变孤儿)
@@ -16570,6 +16573,23 @@ def main():
         _qtimer_q.start()
     except Exception as _e:                                                  # noqa: BLE001
         print("⚠️ 信号处理挂钩异常(不影响控制台): %s" % _e, flush=True)
+    # 🔴 2026-10-25: 原来 SIGTERM 直接被吞(只 SIGKILL 能收) ⇒ 外部关闭必丢工程。
+    #    接住 SIGTERM/SIGINT 转成 app.quit(), 走正常 closeEvent 清理链(存工程/停定时器)。
+    try:
+        import signal as _sg
+
+        def _sig_quit(*_a):
+            try:
+                app.quit()
+            except Exception:                                                # noqa: BLE001
+                pass
+        for _s in (_sg.SIGTERM, _sg.SIGINT, _sg.SIGHUP):
+            try:
+                _sg.signal(_s, _sig_quit)
+            except Exception:                                                # noqa: BLE001
+                pass
+    except Exception:                                                        # noqa: BLE001
+        pass
     _rc = app.exec_()
     # 🎯 2026-10-17 老倪关窗口时控制台崩: 「QThread: Destroyed while thread is still running」
     #   + Fatal Python error: Aborted (exit -6 + core dump)。Qt 事件循环已退出, 但信号页回放/

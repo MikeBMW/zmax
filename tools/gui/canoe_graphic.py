@@ -1366,6 +1366,15 @@ class WaveArea(QWidget):
                 pass
             axis.linkToView(vb)
             item = pg.PlotDataItem(pen=pg.mkPen(b.color, width=b.bold))
+            # 🔴 2026-10-25 老倪: 「画布用鼠标关不掉了」——py-spy 抓到主线程 active+gil 卡在
+            #    setPen/updateData(canoe_graphic.py:1479) ← _tick 每帧全量 setData, 把事件循环
+            #    占死(WM_DELETE/Ctrl+Q/SIGTERM 全不处理, 只 SIGKILL 能收)。开降采样+裁剪,
+            #    只画视窗内的点, 单帧数据处理量降一到两个数量级。
+            try:
+                item.setDownsampling(auto=True, mode="peak")
+                item.setClipToView(True)
+            except Exception:                                                # noqa: BLE001
+                pass
             item.setClipToView(True)
             vb.addItem(item)
             self.items[k] = item
