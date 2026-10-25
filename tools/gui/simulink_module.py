@@ -3008,11 +3008,26 @@ def _mw_status_map():
 #   开关几何**只在这里定义一次**, 绘制 (SimNodeItem._paint_core) 与点击命中 (mousePressEvent)
 #   都调 _bridge_rect() —— 原来两处各写一串数字, 一改就错位 (点不中)。
 BRIDGE_SW_H = 34
+BRIDGE_SW_GAP = 6
+BRIDGE_SW_KEYS = ("vff", "station")
+
+
+def _bridge_sw_rects(w, h):
+    """plan 节点底部**两个开关**的矩形 (节点内坐标): 左=v_ff 桥接 · 右=station 通道。
+
+    老倪 2026-10-25: 「桥接 v_ff 这几个字改成 v_ff 连接 / v_ff 断开 (绿=连接 红=断开);
+    再增加一个一样的开关放在节点右侧, 显示 station 连接 / station 断开」
+    ⇒ 原来一整条改成左右各半; 绘制与命中**都从这里取**, 不许再各写一串数字 (那是"点不中"的根因)。
+    """
+    _y = h - BRIDGE_SW_H - 4
+    _half = (w - 12 - BRIDGE_SW_GAP) / 2.0
+    return {"vff": QRectF(6, _y, _half, BRIDGE_SW_H),
+            "station": QRectF(6 + _half + BRIDGE_SW_GAP, _y, _half, BRIDGE_SW_H)}
 
 
 def _bridge_rect(w, h):
-    """plan 节点底部那条桥接安全开关的矩形 (节点内坐标)。"""
-    return QRectF(6, h - BRIDGE_SW_H - 4, w - 12, BRIDGE_SW_H)
+    """兼容老调用: 左半边 (v_ff 桥接) 的矩形。"""
+    return _bridge_sw_rects(w, h)["vff"]
 
 
 class SimNodeItem(QGraphicsObject):
@@ -3061,15 +3076,19 @@ class SimNodeItem(QGraphicsObject):
             #   左键按下会先拦截并 return, 节点自己的 mousePressEvent 收不到 (这就是"点了没反映"的根因)。
             #   这里只留一个兜底: 万一以后 canvas 不再拦截, 节点层同样能点中。
             if e.button() == Qt.LeftButton and ("bridge_vff" in p):
-                _r = _bridge_rect(self.w, self.h)
-                _hit = _r.contains(QPointF(e.pos()))
-                # 诊断: 现场点不中时能直接从日志看出"点在哪 / 开关在哪"
-                print("[plan/bridge] 点击 pos=(%.0f,%.0f) 开关矩形=(%.0f,%.0f,%.0fx%.0f) 命中=%s"
-                      % (e.pos().x(), e.pos().y(), _r.x(), _r.y(), _r.width(), _r.height(), _hit), flush=True)
-                if _hit:
-                    self.scene_ref.on_toggle_bridge(self.node)
-                    e.accept()
-                    return
+                _rects = _bridge_sw_rects(self.w, self.h)
+                _pt = QPointF(e.pos())
+                for _k in BRIDGE_SW_KEYS:
+                    _r = _rects[_k]
+                    _hit = _r.contains(_pt)
+                    # 诊断: 现场点不中时能直接从日志看出"点在哪 / 开关在哪"
+                    print("[plan/sw] 节点层点击 key=%s pos=(%.0f,%.0f) 矩形=(%.0f,%.0f,%.0fx%.0f) 命中=%s"
+                          % (_k, _pt.x(), _pt.y(), _r.x(), _r.y(), _r.width(), _r.height(), _hit), flush=True)
+                    if _hit:
+                        _fn = self.scene_ref.on_toggle_bridge if _k == "vff" else self.scene_ref.on_toggle_station
+                        _fn(self.node)
+                        e.accept()
+                        return
             if e.button() == Qt.LeftButton and p.get("src_switch"):
                 # 🔀 数据源拨钮 (真机 → 插拔场景 → 摆盘场景)
                 if QRectF(8, self.h - 26, self.w - 16, 20).contains(QPointF(e.pos())):
@@ -3282,46 +3301,57 @@ class SimNodeItem(QGraphicsObject):
         #        ③ 状态文字加粗: "已断开·不驱动" / "已接通·输出≤10mm/s" ④ 关着时右侧写"点此接通"
         #   唯一真源 = params.bridge_vff / bridge_vff_cap_mms / bridge_vff_deadband_mms
         if "bridge_vff" in params:
-            _br = _bridge_rect(self.w, self.h)
-            _bon = bool(params.get("bridge_vff"))
-            _bcap = min(float(params.get("bridge_vff_cap_mms", 10.0) or 10.0), 10.0)
-            _dead = float(params.get("bridge_vff_deadband_mms", 3.0) or 3.0)
-            _edge = QColor("#3fb950") if _bon else QColor("#e05252")
-            # 外发光 (开着时绿雾, 关着时轻微红雾) —— 一眼能在画布上找到它
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(QColor(_edge.red(), _edge.green(), _edge.blue(), 46 if _bon else 26)))
-            painter.drawRoundedRect(_br.adjusted(-2, -2, 2, 2), 10, 10)
-            # 壳体
-            painter.setPen(QPen(_edge, 2.0))
-            painter.setBrush(QBrush(QColor("#0f2a1a") if _bon else QColor("#231417")))
-            painter.drawRoundedRect(_br, 7, 7)
-            # 左侧拨杆轨道
-            _trk = QRectF(_br.left() + 6, _br.center().y() - 9, 44, 18)
-            painter.setPen(QPen(_edge if _bon else QColor("#8b949e"), 1.2))
-            painter.setBrush(QBrush(QColor("#12351f") if _bon else QColor("#1a1f24")))
-            painter.drawRoundedRect(_trk, 9, 9)
-            # 滑块 (开=靠右绿, 关=靠左红灰)
-            _kx = _trk.right() - 12 if _bon else _trk.left() + 12
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(QColor("#3fb950") if _bon else QColor("#e05252")))
-            painter.drawEllipse(QPointF(_kx, _trk.center().y()), 7.2, 7.2)
-            # 文字区: 标题 + 状态
-            _tx = _trk.right() + 8
-            _tw = _br.right() - 8 - _tx
-            painter.setFont(_node_font(NODE_TITLE_PT, bold=True))
-            painter.setPen(QColor("#e6edf3"))
-            _t1 = "⚠ 安全开关 · 桥接 v_ff→位姿"
-            _fm1 = QFontMetrics(_node_font(NODE_TITLE_PT, bold=True))
-            if _fm1.horizontalAdvance(_t1) > _tw:
-                _t1 = _fm1.elidedText(_t1, Qt.ElideRight, int(_tw))
-            painter.drawText(QRectF(_tx, _br.top() + 3, _tw, 15), Qt.AlignVCenter | Qt.AlignLeft, _t1)
-            painter.setFont(_node_font(NODE_SUB_PT, bold=True))
-            painter.setPen(_edge if _bon else QColor("#ff9f9f"))
-            _t2 = ("已接通 · 输出 ≤%.0fmm/s · 死区 %.0f" % (_bcap, _dead)) if _bon else "已断开 · 不驱动 (点此接通)"
-            _fm2 = QFontMetrics(_node_font(NODE_SUB_PT, bold=True))
-            if _fm2.horizontalAdvance(_t2) > _tw:
-                _t2 = _fm2.elidedText(_t2, Qt.ElideRight, int(_tw))
-            painter.drawText(QRectF(_tx, _br.top() + 16, _tw, 15), Qt.AlignVCenter | Qt.AlignLeft, _t2)
+            # 🌉🛰 两个同样的开关 (老倪 2026-10-25): 左 = v_ff 桥接 · 右 = station 通道
+            #   文字就是他要的两句: 「v_ff 连接 / v_ff 断开」「station 连接 / station 断开」, 绿=连接 红=断开
+            #   唯一真源 = params.bridge_vff (桥接) / params.station_link (station 入口闸, 缺省连接)
+            _swr = _bridge_sw_rects(self.w, self.h)
+            _st_on = bool(params.get("station_link", True))
+            for _k in BRIDGE_SW_KEYS:
+                _rect = _swr[_k]
+                if _k == "vff":
+                    _sw_on = bool(params.get("bridge_vff"))
+                    _t_on, _t_off = "v_ff 连接", "v_ff 断开"
+                    _sub_on = "≤%.0fmm/s" % min(float(params.get("bridge_vff_cap_mms", 10.0) or 10.0), 10.0)
+                    _sub_off = "点此接通"
+                else:
+                    _sw_on = _st_on
+                    _t_on, _t_off = "station 连接", "station 断开"
+                    _sub_on = "轨迹可下发"
+                    _sub_off = "点此接通"
+                _edge = QColor("#3fb950") if _sw_on else QColor("#e05252")
+                # 外发光 (连=绿雾 / 断=红雾) —— 画布上远远就能找到
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor(_edge.red(), _edge.green(), _edge.blue(), 44 if _sw_on else 24)))
+                painter.drawRoundedRect(_rect.adjusted(-2, -2, 2, 2), 9, 9)
+                # 壳体
+                painter.setPen(QPen(_edge, 2.0))
+                painter.setBrush(QBrush(QColor("#0f2a1a") if _sw_on else QColor("#231417")))
+                painter.drawRoundedRect(_rect, 7, 7)
+                # 拨杆轨道 (半宽, 比原来窄一档, 给文字留位置)
+                _trk = QRectF(_rect.left() + 5, _rect.center().y() - 8, 32, 16)
+                painter.setPen(QPen(_edge if _sw_on else QColor("#8b949e"), 1.2))
+                painter.setBrush(QBrush(QColor("#12351f") if _sw_on else QColor("#1a1f24")))
+                painter.drawRoundedRect(_trk, 8, 8)
+                _kx = _trk.right() - 9 if _sw_on else _trk.left() + 9
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor("#3fb950") if _sw_on else QColor("#e05252")))
+                painter.drawEllipse(QPointF(_kx, _trk.center().y()), 6.0, 6.0)
+                # 文字: 主行 = 用户要的那句话 (放不下就省略, 不挤不裁); 次行 = 生效值/操作提示
+                _tx = _trk.right() + 6
+                _tw = _rect.right() - 5 - _tx
+                _font1 = _node_font(NODE_SUB_PT, bold=True)
+                painter.setFont(_font1)
+                painter.setPen(QColor("#e6edf3") if _sw_on else QColor("#ff9f9f"))
+                _t1 = _t_on if _sw_on else _t_off
+                _fm1 = QFontMetrics(_font1)
+                if _fm1.horizontalAdvance(_t1) > _tw:
+                    _t1 = _fm1.elidedText(_t1, Qt.ElideRight, int(_tw))
+                painter.drawText(QRectF(_tx, _rect.top() + 3, _tw, 14), Qt.AlignVCenter | Qt.AlignLeft, _t1)
+                _t2 = _sub_on if _sw_on else _sub_off
+                _fm2 = QFontMetrics(_font1)
+                if _fm2.horizontalAdvance(_t2) <= _tw:
+                    painter.setPen(_edge if _sw_on else QColor("#ff9f9f"))
+                    painter.drawText(QRectF(_tx, _rect.top() + 17, _tw, 14), Qt.AlignVCenter | Qt.AlignLeft, _t2)
 
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
@@ -4366,13 +4396,19 @@ class SimCanvas(QGraphicsView):
                 #   而且直接 return ⇒ SimNodeItem.mousePressEvent 里那段桥接命中**永远不执行**。
                 #   所以桥接开关的命中必须做在**这里**(canvas 层), 且排在"拖动节点"之前。
                 if "bridge_vff" in (n.node.get("params") or {}):
-                    _br = _bridge_rect(n.w, n.h).translated(n.scenePos())
-                    _hit = _br.contains(p)
-                    print("[plan/bridge] 画布点击 节点=%s scene=(%.0f,%.0f) 开关矩形=(%.0f,%.0f,%.0fx%.0f) 命中=%s"
-                          % (n.node.get("id"), p.x(), p.y(), _br.x(), _br.y(), _br.width(), _br.height(), _hit),
-                          flush=True)
-                    if _hit:
+                    _rects = _bridge_sw_rects(n.w, n.h)
+                    _hit_key = None
+                    for _k in BRIDGE_SW_KEYS:
+                        if _rects[_k].translated(n.scenePos()).contains(p):
+                            _hit_key = _k
+                            break
+                    print("[plan/sw] 画布点击 节点=%s 命中=%s scene=(%.0f,%.0f)"
+                          % (n.node.get("id"), _hit_key, p.x(), p.y()), flush=True)
+                    if _hit_key == "vff":
                         self.module.on_toggle_bridge(n.node)
+                        return
+                    if _hit_key == "station":
+                        self.module.on_toggle_station(n.node)
                         return
                 rp = n.scenePos()
                 out_x = rp.x() + n.w
@@ -13771,6 +13807,26 @@ class SimulinkModule(QWidget):
         self._log(("🌉 桥接开关 → 开   只跟 v_ff 方向 · 输出 ≤%.0fmm/s (硬上限 10) · 死区 %.0fmm/s · 旋转未建模"
                    % (_cap, _dead)) if on else
                   "🌉 桥接开关 → 关   只显示积分位姿, 不驱动")
+
+    def on_toggle_station(self, node):
+        """🛰 plan 节点**右侧**的 station 开关 —— station → plan 的唯一入口闸
+
+        老倪 2026-10-25: 「再增加一个一样的开关, 放在节点右侧, 显示 station 连接 / station 断开」
+          · 连接 (绿): station 可以把轨迹/点位发进 plan 节点
+          · 断开 (红): station 的规划请求一律拒 (fail-closed, 不给静默放行)
+        状态存 params.station_link (画布 JSON = 唯一真源); 真消费点在 station 服务侧
+        tools/cam_live_stream.py::_station_plan —— 它读同一份画布, 断开即 403 并写明原因。
+        """
+        p = node.setdefault("params", {})
+        on = not bool(p.get("station_link", True))
+        p["station_link"] = on
+        it = self._items.get(node.get("id"))
+        if it:
+            it.update()
+        self._save_param_to_flow(node, "station_link")
+        self._log("🛰 station 通道 → %s   %s" % (
+            "连接 (station 可下发轨迹)",
+            "断开 (station 规划请求会被拒, fail-closed; 再点一下可接通)" if not on else "再点一下可断开"))
 
     def on_toggle_src(self, node):
         """🔀 数据源切换 (真机 → 插拔场景 → 摆盘场景 → 真机) — 做在 📦 数据源节点上

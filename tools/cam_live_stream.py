@@ -3694,6 +3694,34 @@ _SEG_SPEED = 200.0                                                    # 执行�
 _SEG_POS_TOL_MM = 5.0                                                 # 段残差容差(超 ⇒ 停手)
 _SEG_DEG_TOL = 3.0
 _PLAN_CACHE = {}                                                      # plan_id → 段表(进程内, 供 GET)
+# 🛰 plan 节点右侧 station 开关 (老倪 2026-10-25): 画布 params.station_link = 唯一真源
+#   · 缺省 True = 连接 (现状: station 本来就能规划)
+#   · 断开 ⇒ /station/plan 一律 403 (fail-closed, 不许静默放行)
+_STATION_LINK_CACHE = {}
+_CANVAS_JSON_PATH = os.path.join(_REPO_ROOT, "flows", "state_space_obs.json")
+
+
+def _plan_node_station_link() -> bool:
+    """读 plan 节点的 station 开关。真源 = 画布 JSON (flows/ 是软链到工程真源); mtime 变了才重读。"""
+    _p = os.environ.get("ZMAX_CANVAS_JSON") or _CANVAS_JSON_PATH
+    try:
+        _st = os.stat(_p)
+        _key = (_p, _st.st_mtime_ns)
+        if _STATION_LINK_CACHE.get("key") == _key:
+            return bool(_STATION_LINK_CACHE.get("val", True))
+        with open(_p, "r", encoding="utf-8") as _f:
+            _d = json.load(_f)
+        _val = True
+        for _n in (_d.get("nodes") or []):
+            _pr = _n.get("params") or {}
+            if "bridge_vff" in _pr:            # plan 节点 = 桥接开关所在的那个节点
+                _val = bool(_pr.get("station_link", True))
+                break
+        _STATION_LINK_CACHE.update({"key": _key, "val": _val})
+        return _val
+    except Exception as _e:                     # 读不到就按"连接"放行, 但必须留一行痕迹
+        print("[station/gate] 读画布 station_link 失败(%s) ⇒ 按连接放行" % _e, flush=True)
+        return True
 
 
 def _ledger_append(rec: dict):
@@ -3770,6 +3798,13 @@ def _resolve_target(target: str):
 
 def _station_plan(body: dict) -> dict:
     """① 校验授权窗与就绪度 ② 写规划请求 ③ 等 live_plan_latest.json(带超时) ④ 段化 ⑤ 落台账。不动臂。"""
+    # 🛰 第一道闸 = plan 节点右侧 station 开关 (画布 params.station_link); 断开即拒, 连门都不进
+    if not _plan_node_station_link():
+        _ledger_append({"t": time.time(), "event": "plan_denied", "ok": False, "denied_by": "station_link",
+                        "target": body.get("target"), "reason": "plan 节点 station 开关=断开"})
+        return {"ok": False, "code": 403, "denied": True, "denied_by": "station_link", "event": "plan_denied",
+                "reason": "plan 节点的 station 开关是『断开』⇒ 拒绝 (画布 plan 节点右侧开关点一下变成 station 连接)",
+                "msg": "⛔ station 通道已断开: 到画布把 plan 节点右侧开关点成『station 连接』再发。"}
     ai = _auth_info()
     if not ai.get("armed"):
         _ledger_append({"t": time.time(), "event": "plan_denied", "ok": False,
