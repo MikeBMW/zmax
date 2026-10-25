@@ -1217,6 +1217,21 @@ class MasterParamMView(QWidget):
             _lb = QLabel("🌍 万有引力: 表建不起来 (%s)" % _e_gr)
             _lb.setStyleSheet("color:#f85149;font-size:11px;")
             self.tabs.addTab(_lb, "🌍 万有引力")
+        # 🌀 2026-10-25 老倪: 「在主参数的下部，增加在相空间 phase space 中绘制运动轨迹的视图；
+        #   纵轴 p 动量、横轴 Θ 位置，每个流线是相空间的轨迹」
+        #   ⇒ 与「🌍 万有引力」同区(下部)做页签, 不抢表格高度; 数据源同一份 hamiltonian.json, 参数同一套 k/α/m。
+        try:
+            from phase_space import PhaseSpaceView
+            self.phase = PhaseSpaceView()
+            self.tabs.addTab(self.phase, "🌀 相空间 (Θ,p)")
+        except Exception as _e_ph:                                              # noqa: BLE001
+            self.phase = None
+            _lb2 = QLabel("🌀 相空间: 建不起来 (%s)" % _e_ph)
+            _lb2.setStyleSheet("color:#f85149;font-size:11px;")
+            self.tabs.addTab(_lb2, "🌀 相空间 (Θ,p)")
+        # 页签条: 只有 1 页时藏起来(省 26px, 原口径); 有 2 页就必须露出来, 否则第二页点不到
+        self.tabs.tabBar().setVisible(self.tabs.count() > 1)
+
         # 🌍 2026-10-16 老倪(改口径): 「右下角万有引力表, 右边不要有专门针对它的拖动调, 直接显示完全就好了」
         #   ⇒ 撤掉原来那条"上下可拖的分隔条"(split_m): 太阳系拿走剩余空间, 表按**内容高度整块**显示,
         #     表自己也不带滚动条 (见 gravity_table.py) ⇒ 一眼看全, 不用拖、不用滚。

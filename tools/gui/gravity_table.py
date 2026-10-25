@@ -964,7 +964,7 @@ class GravityTableWidget(QWidget):
         #   数据来自节点 ss_grav_h 每帧落的 zmax_data/ss_live/hamiltonian.json (缺文件 ⇒ 显示「节点未运行」, 不造数)。
         self.lbl_energy = QLabel("🌍 H = K + U ── 等待节点 ss_grav_h 出数…")
         self.lbl_energy.setWordWrap(True)
-        self.lbl_energy.setMaximumHeight(58)
+        self.lbl_energy.setMaximumHeight(76)   # 侧栏窄 (<780px) 时第二行会折行 ⇒ 给到 4 行的余量, 不许裁尾
         self.lbl_energy.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_energy.setStyleSheet("color:#ffd479;font-size:13px;font-family:Consolas,monospace;"
                                       "background:#0d1117;border:1px solid #3d2f12;border-radius:5px;padding:4px;")
@@ -1008,9 +1008,18 @@ class GravityTableWidget(QWidget):
             stale = age > 5.0
             line1 = ("🌍 H=K+U │ U %.4f J │ K %.6f J │ H %.4f J │ Ḣ %.2e %s%s"
                      % (U, K, H, hd, "≤0 ✅被动" if ok else ">0 ⚠主动", "  ⏸陈旧%.0fs" % age if stale else ""))
-            line2 = ("F=−∂U/∂x │ |F| %.3f N (Fx %.2f · Fy %.2f · Fz %.2f) │ ρ %.1f mm │ 帧龄 %.1fs │ %s · %s"
-                     % (fn, F[0], F[1], F[2], float(d.get("rho_mm") or 0.0), age,
-                        str(d.get("stage") or "-")[:10], str(d.get("xi_src") or "")[:14]))
+            # 🖥 2026-10-25 实测: 侧栏 682~1120px 都出现过; 620 字宽下原文第二行会折行被裁尾
+            #   (末端只剩「帧龄 0.1s │ 转移 · 差」)。⇒ 按控件实际宽度选口径, 宽给全字段, 窄给紧凑版
+            #   (Fx/Fy/Fz 与速度来源仍留在 tooltip 里, 不丢信息)。
+            _w = self.lbl_energy.width() or self.width() or 682
+            _rho = float(d.get("rho_mm") or 0.0)
+            if _w >= 800:
+                line2 = ("F=−∂U/∂x │ |F| %.3f N (Fx %.2f · Fy %.2f · Fz %.2f) │ ρ %.1f mm │ 帧龄 %.1fs │ %s · %s"
+                         % (fn, F[0], F[1], F[2], _rho, age,
+                            str(d.get("stage") or "-")[:10], str(d.get("xi_src") or "")[:14]))
+            else:
+                line2 = ("F=−∂U/∂x │ |F| %.2f N │ ρ %.0f mm │ 帧龄 %.1fs │ %s"
+                         % (fn, _rho, age, str(d.get("stage") or "-")[:10]))
             self.lbl_energy.setText(line1 + "\n" + line2)
             self.lbl_energy.setToolTip(
                 "公式: %s\n数据源: %s\n参数来源: %s\nK_diag=%s · alpha=%s · m=%.3f kg"
