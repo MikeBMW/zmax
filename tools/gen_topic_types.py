@@ -49,6 +49,8 @@ NODES = {
     "n_vlm_llm":       ("VlmSceneText",      "视觉语言场景理解",    {}),
     "n_web_agent":     ("WebAgentBridge",    "Web 智能体桥",        {}),
     "ss2d3d":          ("Pose3D",            "2D→3D 解算",          {}),
+    # 🌍 2026-10-25: SE(3) 几何阻抗 / H=K+U 力场仲裁节点 (已在画布与 library.py 注册, 表里漏了 ⇒ 生成器直接报缺节点)
+    "ss_grav_h":       ("GravityImpedance",  "万有引力 SE(3) 阻抗",  {}),
     "ss3d_view":       ("View3D",            "3D 视图",             {}),
     "ss_l5":           ("L5AutoLabel",       "L5 自动标注训练",     {}),
     "ss_lora_l3":      ("L3LoraAdapter",     "L3 LoRA 微调",        {}),

@@ -16,8 +16,7 @@
 
 NODE_ID = 'ssaoi'
 NAME = '🔍 光学质量检测'
-LAYER = 'L2'          # 2026-10-19 老倪: 光学质量检测归 L2 (感知原语, 与 🎯 YOLO / 🧩 分割同级)
-                      #   能力落 L2(图像 → 质量判决), 意图落 L5, 不进 L3/L4。
+LAYER = ''
 TYPE = 'model'
 EXEC_MODE = 'pure'
 

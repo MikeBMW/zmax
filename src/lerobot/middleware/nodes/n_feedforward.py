@@ -5,7 +5,7 @@
     in  in1   ← ss_mem_l2, ssobs, sscap
     in  in2   ← ssdec
     out out1  → ssff_hist, ssff_hist
-    out out2  → ssintact, sssched
+    out out2  → sssched
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

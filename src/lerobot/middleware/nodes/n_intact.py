@@ -4,10 +4,10 @@
 工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← sssensor
-    in  in3   ← ssff
     in  in4   ← sscap
     in  in5   ← ss_lora_l4
     out out1  → swintact
+    out out2  → ss_grav_h
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -25,8 +25,8 @@ TYPE = 'model'
 EXEC_MODE = 'view'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5']
-PORTS_OUT = ['out1']
+PORTS_IN = ['in1', 'in2', 'in4', 'in5']
+PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
 IMPL_KEY = 'intact'

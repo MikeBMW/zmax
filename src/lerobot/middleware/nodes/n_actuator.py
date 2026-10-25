@@ -2,7 +2,7 @@
 """🤖 机器人执行器  ·  节点 ssact
 
 工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← n_moveit, ssbypv
+    in  in1   ← ssbypv, n_exec
     out out1  → ssworld
 
 输出 / 输入代码:

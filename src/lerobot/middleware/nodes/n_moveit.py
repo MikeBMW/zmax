@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)  ·  节点 n_moveit
+"""运动规划  ·  节点 n_moveit
 
 工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssk1, sssk2, sssk3, sssk4
     in  in2   ← sssk5, sssk6, sssk7, sssk8, ssdec
-    out out1  → ssact
+    in  in3   ← ss_grav_h
+    out out1  → n_exec
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -16,20 +17,20 @@
 """
 
 NODE_ID = 'n_moveit'
-NAME = '🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)'
+NAME = '运动规划'
 LAYER = ''
 TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2']
+PORTS_IN = ['in1', 'in2', 'in3']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_moveit'
 SOURCE = ''
 SOURCE_SYMBOL = ''
-PARAMS = {'layer': 'L2/L3 执行面', 'role': 'MoveIt2 规划 + 双后端执行', 'backends': ['orin_sdk_bridge (xCoreSDK 直连, 默认/效率优先)', 'ros2_srv (兼容现有 /move_pose)'], 'sdk_bridge': 'http://192.168.23.66:39061', 'controller': '192.168.23.160', 'safety': 'Δ守卫 · 向下限幅 · dry-run 默认 · 现场闸门', 'src': 'src/lerobot/arm/arm_control.py', 'parity': 'SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)'}
+PARAMS = {'layer': 'L2', 'role': '意图/技能 → 段表 (规划); 不下发、不碰执行器', 'backends': ['orin_sdk_bridge (xCoreSDK 直连, 默认/效率优先)', 'ros2_srv (兼容现有 /move_pose)'], 'sdk_bridge': 'http://192.168.23.66:39061', 'controller': '192.168.23.160', 'safety': 'Δ守卫 · 向下限幅 · dry-run 默认 · 现场闸门', 'src': 'src/lerobot/arm/arm_control.py', 'parity': 'SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)', 'bridge_vff': False, 'bridge_vff_cap_mms': 10.0, 'bridge_vff_deadband_mms': 3.0, 'bridge_vff_src': 'SS-EPI-CORNER 仿真 v_ff (只取方向)', 'bridge_vff_cap_hard_mms': 10.0}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

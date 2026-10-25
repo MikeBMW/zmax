@@ -6,6 +6,7 @@
     in  in2   ← sspred
     in  in3   ← ssworld
     in  in4   ← ssphys
+    in  in5   ← n_exec
     out out1  → sssched
     out out2  → sssensor
 
@@ -25,7 +26,7 @@ TYPE = 'model'
 EXEC_MODE = 'pure'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2', 'in3', 'in4']
+PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 

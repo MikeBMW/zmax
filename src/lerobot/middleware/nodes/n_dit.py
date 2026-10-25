@@ -5,6 +5,7 @@
     in  in1   ← ssvlm, ss_lora_l4
     in  in5   ← ssmani_c, ssmani_p, sslat
     out out1  → ssff, n_moveit
+    out out2  → ss_grav_h
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -23,7 +24,7 @@ EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
 PORTS_IN = ['in1', 'in5']
-PORTS_OUT = ['out1']
+PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {'out1': 'out1'}
 
 IMPL_KEY = 'action_head'
