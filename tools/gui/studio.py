@@ -34,6 +34,29 @@ try:
 except Exception:
     pass
 import tempfile  # 🐛 2026-08-28: Windows exe 无 /tmp → 打点日志改 tempfile.gettempdir()
+
+# 🔒 2026-10-25 老倪: 「调整 550B 单线程调试程序」——实测桌面快捷方式起的控制台
+#   (pid 52080) 进程环境里**没有** ZMAX_SINGLE_THREAD / OMP_NUM_THREADS, `ls /proc/<pid>/task` = 41 线程;
+#   而档位表里写着"线程=1"。真源是 `tools/gui/vscode_launch.py::SINGLE_THREAD_ENV`, 但那条只覆盖
+#   VSCode 调试启动, 覆盖不到桌面双击/gnome 拉起。
+#   ⇒ 在**解释器早期**(任何 numpy/torch 导入之前) 把同一份口径灌进 os.environ, 谁拉起都是单线程。
+#   必须放在 BLAS 初始化之前: 事后 torch.set_num_threads() 只改 torch, 改不了 OpenBLAS/MKL 已建的线程池。
+#   留 `ZMAX_MULTI_THREAD=1` 逃生口(要跑基准/批量推理时显式关单线程)。
+try:
+    if os.environ.get("ZMAX_SINGLE_THREAD", "") != "1" and os.environ.get("ZMAX_MULTI_THREAD", "") != "1":
+        try:
+            from vscode_launch import SINGLE_THREAD_ENV as _ST_ENV      # 同目录, 与 VSCode 启动同源
+        except Exception:                                              # noqa: BLE001
+            _ST_ENV = {
+                "MALLOC_ARENA_MAX": "2", "MKL_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1",
+                "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "PYTHONUNBUFFERED": "1",
+                "TORCH_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1",
+                "ZMAX_DEBUG_MODE": "1", "ZMAX_SINGLE_THREAD": "1",
+            }
+        for _k, _v in _ST_ENV.items():
+            os.environ[_k] = str(_v)
+except Exception:                                                      # noqa: BLE001
+    pass
 import json
 import glob
 import time  # 硬件工具箱日志时间戳

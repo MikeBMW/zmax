@@ -19,7 +19,14 @@ import time
 
 REPO = "/home/ubuntu/zmax"
 LIVE = os.path.join(REPO, "zmax_data", "ss_live")
-REMOTE = "intel@192.168.23.70:/home/intel/evolve/symmetry_best.json"
+# 2026-10-25: Intel 现在只能经 ECS 跳板 + 端口 18822 进(产线网卡不在位时 .23.70 不可达),
+#   所以远端地址改成可覆盖; 默认走本机 18822 隧道(它转 intel 的 22)。
+#   只看"拉不到"就当失败会让 systemd unit 每 5 分钟红一次(实测 status=2 刷了几十条),
+#   所以拉取失败按"本轮无更新"处理(exit 0), 真错误才非零。
+INTEL_TARGET = os.environ.get("ZMAX_INTEL_TARGET") or "127.0.0.1"
+INTEL_PORT = os.environ.get("ZMAX_INTEL_PORT") or "18822"
+INTEL_USER = os.environ.get("ZMAX_INTEL_USER") or "intel"
+REMOTE = "%s@%s:/home/intel/evolve/symmetry_best.json" % (INTEL_USER, INTEL_TARGET)
 FETCHED = os.path.join(LIVE, "symmetry_best_intel.json")
 PARAMS = os.path.join(LIVE, "orbit_params.json")
 ADOPTED = os.path.join(LIVE, "orbit_params_adopted.json")
@@ -36,10 +43,14 @@ def main():
     dry = "--dry-run" in sys.argv
     force = "--force" in sys.argv
     os.makedirs(LIVE, exist_ok=True)
-    r = sh("scp -q -o ConnectTimeout=8 %s %s" % (REMOTE, FETCHED), timeout=40)
+    _scp = "scp -q -o ConnectTimeout=8 -o StrictHostKeyChecking=no -P %s %s %s" % (
+        INTEL_PORT, REMOTE, FETCHED)
+    r = sh(_scp, timeout=40)
     if r.returncode != 0 or not os.path.isfile(FETCHED):
-        print("拉取失败 (Intel 不可达或文件不在): %s" % (r.stderr or "").strip()[:160])
-        return 2
+        # 不可达 = 本轮没有新参数可采纳, 不是故障(现场网卡随时会掉/换路径) ⇒ 不退非零, 免得
+        # systemd unit 每轮都红; 原因照样打出来。
+        print("本轮跳过 (Intel 不可达或文件不在, 不算故障): %s" % (r.stderr or "").strip()[:160])
+        return 0
     best = json.load(open(FETCHED))
     score = float((best.get("metrics") or {}).get("score") or -9)
     genome = best.get("genome") or {}
