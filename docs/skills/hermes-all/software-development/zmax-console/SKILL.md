@@ -7,6 +7,12 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 🧊 **「画布/控制台用鼠标关不掉了」** ⇒ 别先怀疑鼠标和窗口管理器：`py-spy dump` 看主线程是
+> `idle`（事件没送到）还是 `active+gil` 卡在 `paintEvent/setData`（绘制占死事件循环，WM_DELETE/Ctrl+Q/SIGTERM
+> 全不处理，只有 SIGKILL 能收）。僵尸窗口 id、`IsUnMapped` 窗口、`closeEvent ev.accept()` +
+> `SIGTERM→app.quit()` 两处修法、曲线降采样/标签缓存、以及“用户正在编辑时别重启”的纪律：
+> 见 `references/gui-freeze-and-close.md`。
+
 > ⚖ **重力表/太阳系「主力」必须与格子数值同源**: `tools/gui/gravity_table.py` 的 `_main_layer()` 曾在 layer_forces
 > 开着时取 `layer_forces()` 里加权后的 argmax, 而格子 `mag` 又过了一遍 `|F|=G·M/r²` 重算 ⇒ 高亮落在 L3、
 > 数字最大却 L2 (用户一句「高亮跟数对不上」就穿)。修法: 在**最终 cells** 上 argmax, α/权重等构造意图只留痕不覆盖数值。

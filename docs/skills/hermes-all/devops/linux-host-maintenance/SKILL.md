@@ -372,6 +372,10 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 
 ## 9. 重启后核验：链路自愈了没有（用户说「重启了 / 回来了 / 元气恢复」先跑这个）
 
+> 跳板/公网入口断了怎么自愈（22022 是**哪一端**用 -R 建的 · 端口能连但 SSH 不握手 · unit active 但转发已半开 ·
+> LAN 直连↔公网跳板 双模式自动切换 · 换 ECS 时 EIP 决定多少硬编码要改）：
+> 见 `references/remote-access-tunnel.md` 的「跳板恢复」与「迁移」两节。
+
 这类话要的是**最简现状**：哪些自愈了、哪些还缺、缺在哪一层。一条命令跑完只读清点：
 （**重启后必看 cron ticker 心跳** —— 偏钟下它会静默卡死, 13 个守护任务一起哑, 见 §9g。）
 **可直接跑 `scripts/reboot_verify.sh`** —— 只读, 一条出齐下列全部数字(含开机满 10min 的两点网络复采、cron 心跳双向判活、

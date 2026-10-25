@@ -484,6 +484,40 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 修法: ① 只有**真命中**目标才设文案, 未命中置空; ② `_set_ttp(t)` 去重 (文案没变就不调 `setToolTip`);
   ③ 提示条尽量别落在读数区, 或改成内嵌卡片而不是 tooltip。验收判据: 鼠标在空白处移动 6 次 ⇒ `setToolTip` 只被调 1 次且为空。
 
+### 28. 「用鼠标关不掉了」= 先证明关闭**请求**有没有到窗口，再谈鼠标 (2026-10-25 实测)
+
+用户说「点 ✕ 关不掉」时，**不要先去改 UI / 找遮罩 / 猜窗口管理器**。按下面四步定层，每步都有可观测证据：
+
+1. **主线程真的是 idle 吗**：`py-spy dump --pid <pid>`。看到 `main() … app.exec_()` 标 `idle` **不等于事件循环健康**——
+   它可能已经不再分发任何用户/退出事件了（本次实测：主线程 idle，但 WM_DELETE / Ctrl+Q / SIGTERM 全部无反应，只有 SIGKILL 能收）。
+2. **closeEvent 到底被调用了没有**：在 `closeEvent` 开头写一行带时间戳的日志（临时文件即可），
+   然后看这行日志的 mtime。**mtime 不更新 = 事件根本没进 closeEvent**，问题在事件投递层，不在清理逻辑。
+   这一步能把「清理链卡住」和「事件没到」彻底分开 —— 本次 90% 的时间都耗在没做这一步上。
+3. **三层关闭手段逐个发**：`xdotool windowclose <wid>`（发 WM_DELETE，等价点 ✕）→ `xdotool key --window <wid> ctrl+q`
+   → `kill -TERM <pid>`。全不动 = 事件循环已死；只有 `-9` 能收 = 同样结论。
+4. **窗口 id 是不是你要找的那个**：`xdotool search` 的返回值可能是 **mutter 的 frame 窗口**或**已死进程残留的僵尸 id**
+   （向它发 WM_DELETE 当然无效）。用 `xwininfo -root -tree | grep <标题>` 看**窗口树**（子窗口缩进在父下），
+   再 `xprop -id <wid> | grep -E "WM_PROTOCOLS|Map State"` 确认 `WM_DELETE_WINDOW` 存在。
+
+修复（两层都要，写在应用里而不是只在本次手动救）：
+
+```python
+def closeEvent(self, ev):
+    ev.accept()            # 显式接受：杜绝清理链里任何 ignore() 残留路径导致关不掉
+    ...                    # 原有清理（存工程/停定时器/收子进程）
+
+# main() —— 让外部杀得干净，别逼人用 -9（-9 会丢用户工程状态）
+for _s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    signal.signal(_s, lambda *_: app.quit())
+```
+
+其它固定判据：
+- **启动后窗口存在但没显示**：窗口树里有、`wmctrl -l` 没有 = UnMapped。用 `xdotool windowmap <wid>` + `windowactivate`
+  顶上来。**标题还是 `<脚本名>.py` 而不是应用正式标题 = UI 仍在初始化**，别在此刻测关闭/交互。
+- **用户说的「那个【画布】窗口」往往不是独立子窗口**：它是主窗口标题里拼进去的当前页名（`f"<应用名> - [{页面}]"`）。
+  找一圈“画布窗口”找不到就是这个原因；关它 = 关整个主窗口，没有“只关画布页”这个操作（想切页就点页签）。
+- 禁止反复重启 GUI 自证：先把 SIGTERM handler 接上再重启，这样后续关闭走正常 closeEvent（自动存工程）。
+
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
   也会被判「你怎么把表格全给改了? 只是让你增加 X 列」并要求改回去: 白做一轮 + 多一次回退版本。

@@ -132,6 +132,19 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 `ServerAliveInterval=20 ServerAliveCountMax=3`(不掉长连接)、`ExitOnForwardFailure=yes`(端口被占就别假装成功)、
 `Restart=always` + `RestartSec=10`。
 
+🔴 **隧道 unit 的 `ExecStart` 写死远端地址 ⇒ 改 ssh 别名救不了它**:
+症状: `ssh <别名>` 手测通、unit `is-active` 绿, 但**本地转发端口 closed**; `journalctl` 里是
+`Timeout, server <旧IP> not responding` → `status=255` + Restart 循环。
+根因: unit 里写的是 `-p <旧端口> user@<旧网关IP>`, 与 `~/.ssh/config` 的别名是**两条独立路径**。
+定式:
+1. 隧道 unit 一律写**直连目标** + 显式密钥, 不写别名:
+   `ExecStart=/usr/bin/ssh -NT -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o StrictHostKeyChecking=no \
+      -i /home/<user>/.ssh/id_ed25519 -L <本地端口>:127.0.0.1:<远端端口> user@<直连IP>`(加 `User=` 明确跑的用户)。
+2. 换链路时先 `systemctl cat <unit>` 看 ExecStart 到底指向谁 —— 别假设它跟着 ssh config 走。
+3. **验收用端口不听服务**: `for p in 19061 8792 8816; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "$p open" || echo "$p closed"; done`。
+   一条链路常摊成 3~4 个隧道 unit(位姿/相机/推流各一个), 逐个验; **`is-active` 全绿而端口全 closed 是常态**。
+4. 公网跳板只做**兜底别名**(`Host <名字>-ecs` 指向公网 IP+端口), 主别名叫直连内网 IP ⇒ 中间层挂掉不拖垮内网链路。
+
 🔴 **手测成功≠unit 会成功**: 三者环境不同(HOME / agent / PATH)。失败先看 `journalctl -u <unit> -n 20` 里
 究竟是 `Permission denied`(密钥) 还是 `9/KILL`(进程模型), 两种错治法完全不同 —— 别一上来就改密钥。
 

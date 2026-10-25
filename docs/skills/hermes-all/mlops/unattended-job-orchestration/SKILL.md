@@ -93,6 +93,10 @@ exit 0
 
 ## 陷阱
 
+- **跨机哨兵: 探活失败 ≠ 任务结束**。任务在别的机器上跑时, `ssh` 返回非零可能是"进程没了"也可能是
+  "SSH/跳板断了" —— `except: return False` 会把后者当成前者, 守护于是静默跳过一次该做的判断,
+  日志还写着"没有 report ⇒ 不切换"(看起来像指标没过闸)。探活必须三态, `unknown` 按 **alive** 处理,
+  且否定结论要有一条**不经过那条链路**的证据复核。详见 `references/sentinel-silent-skip-audit.md`。
 - **不要编辑正在运行的 bash 脚本**: bash 按字节增量读取脚本文件, 运行中改动可能让执行流错乱。要加门/加钩子就**另起一个 watcher 进程** (轮询 + 状态文件), 或等它跑完。
 - **报"完成"前必须有真实产物证据**: 文件真打开/真解码/统计量对得上 (见 `hf-dataset-subset` 的
   `references/hdf5-blosc-verification.md` 与 `scripts/verify_h5_dataset.py`), 不能只看 exit code 或"文件存在"。

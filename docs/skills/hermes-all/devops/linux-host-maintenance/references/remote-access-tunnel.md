@@ -16,7 +16,83 @@
 
 ## 已废弃/不要再加
 - `zmax-frpc` / `zmax-tunnel`: 删/停。frp 控制口 7000 被安全组挡死, 且 41000 已属于宝塔; 走 443 的 frp-websocket 方案是多余的。
+- ⚠️ **但 ECS 上的 `frps` 仍在跑**(`/root/frp/frps.toml` · bindPort 7000 · vhost 8891 · unit `frps.service`): 它是另一路
+  视频/HTTP 隧道, 与跳板无关。**不要因为它"属于已废弃的 frp"就去停/删** —— 先看 8891 上还有没有在用。
 - nginx 旧的 `location /station → 127.0.0.1:18795` 已无监听(502), 改用 /st/。
+
+## ECS 重启 / 迁移后的跳板恢复: 22022 是**本机**那条 `zmax-ecs-orin` 用 ssh -R 建出来的
+
+推理顺序反了会白等半小时: `22022` 既不是 ECS 上的 sshd, 也不是 ECS 上的 frpc, 而是**某一个发起端**用
+`ssh -R 0.0.0.0:22022:<本机>:22` 注册上去的。发起端**有两处都要查**: ①工位机的 `zmax-ecs-orin`
+②**Orin 自己**的 `zmax-orin-tunnel`(`-R 0.0.0.0:22022:127.0.0.1:22`, 含义是"不依赖工位机"的那一套)。
+只查工位机会得出"我这没建, 那一定是远端坏了"的错误结论。ECS 一重启这条 -R 就消失 ⇒ `ssh orin`
+变成 `Connection refused / timed out`。**先在两端发起端查, 别先去 ECS 找原因**:
+```bash
+systemctl is-active zmax-ecs-orin; systemctl show -p NRestarts --value zmax-ecs-orin
+journalctl -u zmax-ecs-orin -b --no-pager | tail -15   # remote port forwarding failed / Permission denied
+sudo systemctl restart zmax-ecs-orin                   # 一次即可; 起来后 ECS 侧立刻出现 22022
+nc -z <ecs> 22022 && ssh orin hostname                 # 硬判据: 端口在听 **且** 对面真是 Orin
+```
+⚠️ `nc -z` 成功只证明有人在听, 不证明对面是那台机器 —— 必须再补一句 `ssh orin hostname`。
+
+**ECS 侧的 `frps` 在跑 ≠ 跳板通**: `/root/frp/frps.toml`(bindPort 7000 · token · vhost 8891)是独立的视频/HTTP 隧道组件,
+`ss -tn | grep 7000` **零客户端连接是常态**, 不能据此判「远端掉线」(本次就照这条误判过一次, 把本机单元没重连说成了远端没连上来)。
+判跳板只看 `22022` + `ssh orin hostname`。
+
+### 🔴 「unit active + `Restart=always` + `ServerAliveInterval` 全都有, 隧道仍然是死的」
+
+ECS 重启后那条 `-R` 会话可以是**半开**状态: 转发已失效、ssh 进程还活着 ⇒ systemd 不触发 Restart,
+`journalctl` 40 分钟零日志, `systemctl is-active` 一直 `active`, 而现场表现是"产线静默失联"。
+`ServerAliveInterval/CountMax` 在这类 drop 上并不能保证 60s 内退出。
+⇒ **别信 `is-active`, 信对端**: 本机 `nc -z <ecs> 22022` 与 ECS 上 `ss -ltn | grep 22022` **两侧都看不到**才算真死。
+处置两层:
+1. 立刻: 在能到 Orin 时 `systemctl restart zmax-orin-tunnel` —— 实测重启后 22022 秒回, **不用动 ECS**;
+2. 根治: 在**发起端**装对端可达性 watchdog(`zmax-tunnel-wd.timer`, 60s 一次): 从发起端侧连续 3 次(≈60s)
+   `timeout 4 bash -c 'echo > /dev/tcp/<ecs>/22022'` 都失败才 `systemctl restart <unit>`。
+   **单次失败就重启会被网络抖动误杀** ⇒ 必须"连续 N 次 + 间隔"。
+
+### 🔁 LAN 直连 / 公网跳板 双模式: 隧道 unit 一律用 ssh 别名, 绝不写死 IP+端口
+
+写死 `ssh -NT -p 22022 … <ECS_IP>` 的 unit, ECS 一挂四个隧道(位姿桥 / 臂相机 / 3DGS 推流 / Intel 相机)全废 ——
+而当时插上网卡本来就能直连, 却没人切。定式:
+- unit 里只写 `ssh -NT -L 19061:127.0.0.1:39061 orin`(**用 `~/.ssh/config` 的别名**), 一个 IP 都不写;
+- config 留两个入口: `Host orin`(当前模式) + `Host orin-lan`(直连产线 IP:22); 远程模式时 `Host orin → <ECS>:22022`。
+  `Host intel` / `Host gongkong` 一律 `ProxyJump orin` ⇒ 自动跟随模式;
+- **切模式只改 `Host orin` 的 HostName/Port 两行**, 再 restart 那几个 unit 就全跟着切。
+
+自动接管(不用人喊): 定时器 30s 巡一次, **判据全部满足才切 LAN** —— 出现有线网卡(排除 wlan/docker/veth/br)
+· carrier=1 · 该网卡上有产线段地址 · ping 通 Orin; 任一不满足就保持/切回远程。
+**宁可不动, 也不要把好链路切坏**; 拔线后判据自然失效 ⇒ 自动切回远程, 两种模式来回零人工。
+
+⚠️ **carrier=1 不等于对面有设备**: 网线插在空口/断电交换机上时 carrier 仍是 1。真判据是**发 ARP 有没有人回** ——
+`ping` 不通且 `ip neigh` 显示 `INCOMPLETE`, 再把整段 254 个地址并发扫一遍**只有自己应答** ⇒ 对面没有活设备
+(不是本机网卡配错, 别急着改 netplan)。扫段用:
+`seq 1 254 | xargs -P 64 -I{} sh -c 'ping -c1 -W1 192.168.23.{} >/dev/null 2>&1 && echo 192.168.23.{}'` (约 5s)。
+⚠️ **别写死网卡名**: 换一根 USB 网卡名字就变(实测 `enxd223ec68e0a6` → `enx00e04c0c32a0`),
+脚本一律按 `carrier=1` + IP 段动态找接口, 不要拿上次的名字去 `ip link set`。
+⚠️ 改 `~/.ssh/config` 时判断"某段是否已存在"必须按 `'\nHost x'` **带换行**匹配 —— 注释里出现同样字样会让
+`'Host x' in s` 判真, 静默跳过追加(以为写了其实没写, 用 `grep '^Host '` 复核一遍)。
+
+### 「端口能建连、SSH 不握手、站点也不响应」= 主机用户态卡死, 不是网络
+分层取数, 别 ping 完就下结论:
+```bash
+ping -c2 <ecs>                                  # 通(实测 28ms) ⇒ 网络没问题, 别在本机改网络配置
+nc -z -w5 <ecs> 22 && nc -z -w5 <ecs> 22022     # TCP 能建连
+ssh -p 22 root@<ecs> 'uptime'                   # ⇐ banner exchange timed out 才是真信号
+curl -s -o /dev/null -w '%{http_code}' https://<站点>/   # 000
+```
+能建连 + banner 超时 + 站点 000 ⇒ **内核活着、用户态卡死**(ssh 会话吊死/负载爆/内存或盘打满), 本机侧无从下手,
+只能云控制台重启。重启后 `:22022` 从 `timed out` 变成 **`Connection refused`** 就是主机已活的标志
+(refused = sshd 在正常拒绝), 此时 22022 缺失按上一节处理(发起端 -R 重连)。
+
+### 迁移到新 ECS: 先确认公网 IP 是不是 EIP —— 它决定工作量差两个数量级
+- **EIP**: 解绑 → 绑到新实例 ⇒ 所有硬编码(IP/端口/域名)**一处都不用改**。迁移方式用**系统盘快照 → 自定义镜像 →
+  新实例**, 别手工重装(nginx/宝塔/frps/relay 单元/站点目录都得原样带过去)。
+- **非 EIP(随实例分配)**: IP 必变 ⇒ 代码面硬编码逐个改(本项目实测 `src/ tools/ deploy/ hermes_gateway_mac/` 下
+  **117 个文件 / 313 处**, GUI 与 Android APK 都在其中, APK 还得重打包), 文档面另有一批。
+- 顺序: **先查实例详情的公网 IP 类型, 再谈方案**; 别先动手改代码。
+- 迁移后按序验: ping → 22/22022 → ssh 握手 → 站点 200 → 跳板 `ssh orin/intel` → 位姿真值回到实时(`source=orin_bridge`)。
+  任一条不过就回滚旧实例(旧实例停服但**不要释放**)。
 
 ## 关机前: 把上行隧道挪到"不会关的那台"
 隧道跟着**发起端**走: 主机一关, 它建的 -R 全部消失。要关机又要保远程访问时:

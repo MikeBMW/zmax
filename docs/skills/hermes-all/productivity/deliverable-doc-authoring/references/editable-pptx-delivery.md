@@ -122,6 +122,41 @@ for i, s in enumerate(prs.slides, 1):
 4. 改完只复检**改动过的页**，并告知改了什么，让对方判修复而不是重推意图。
 5. 判渲染后的页，不判源图；源图正确照样可能撞在 deck 里。
 
+## 7.5 衬底色块留白：用像素反推，别按 inch 估
+
+视觉复核只会说「文字偏上，上下留白约 3:1」；照着改色块高度非常容易过头 ——
+实测把块收 0.05 in，文字底就贴到块底只剩 3px（视觉上就是「字压出块了」）。定式是量出来再改：
+
+```python
+from PIL import Image
+import numpy as np
+
+def measure(png, bg, tol=10, left_skip=30, dark_delta=60, dark_px=30):
+    im = np.array(Image.open(png).convert("RGB")).astype(int)
+    bg = np.array(bg); W = im.shape[1]
+    rows = np.where((np.abs(im - bg).sum(2) < tol).sum(1) > W * 0.5)[0]   # 衬底块行范围
+    if len(rows) == 0: return None
+    top, bot = rows.min(), rows.max()
+    band = im[top:bot + 1, left_skip:]        # 🔴 跳过左侧竖条/金条装饰
+    dark = (np.abs(band - bg).sum(2) > dark_delta).sum(1)
+    t = np.where(dark > dark_px)[0]           # 阈值要高于装饰条宽度，否则每行都算文字
+    if len(t) == 0: return None
+    up, dn = t.min(), (bot - top) - t.max()
+    return dict(block=(top, bot), text=(top + t.min(), top + t.max()),
+                up=up, dn=dn, ratio=up / max(1, dn))
+
+for png, bg in (("pg-31.png", (0xFF, 0xF8, 0xE3)), ("pg-32.png", (0xEC, 0xF2, 0xF8))):
+    r = measure(png, bg)
+    print(png, r, "OK" if 0.7 < r["ratio"] < 1.5 and r["dn"] > 8 else "FIX")
+```
+
+- 判据：**上下留白比 0.7~1.5，且下留白 > 8px**（110 dpi 下约 0.07 in）。实测调平到 21px/21px（比 1.00）。
+- 两个必踩的读数坑：① **左侧竖条装饰**（3~7px 宽的品牌色条）在每一行都有暗像素，
+  不 `left_skip` 就会把整块判成文字；② **暗像素阈值要大于装饰条宽度**（`>30` 而不是 `>3`），否则同样每行命中。
+- 容器块的位置和高度**都**会影响文字换行：改块高、或只改文字框 `y`，渲染后行数都可能变。
+  每改一次都要重跑 `<pptx> → soffice → pdftoppm → measure`，不要拿上一轮的像素推算。
+  同一个块连调三轮才平是正常的（实测 0.78 → 0.73 → 0.88 in）。
+
 ## 8. 生效与交付口径
 
 - 重出 pptx 后控制台**不用重启**：缓存键带 mtime，下次打开自动重转；但要重启一次才生效的是 GUI 代码本身，
@@ -152,6 +187,11 @@ assert len(prs.slides._sldIdLst) == TOTAL, len(prs.slides._sldIdLst)
 ```
 
 同一个 `TOTAL` 要嗂给页脚函数（`"%d/%d" % (n, TOTAL)`），否则页码也会跟着说谎。
+
+**插页 = 一次改四处**：新页的 `n`、后续所有页的 `n`、`TOTAL`、文件名里的页数。页码是硬编码参数，
+不重排就会出现两页同为 31。插入位置按章节逻辑定（技术选型放在策略章之前），追加到末尾虽最省事，
+却会产出「第 7 章策略 → 第 7 章技术选型 → 第 8 章策略」的乱序，而页数断言照样通过。
+改完把所有 `header(...)` 行 grep 出来打印一遍（章节号 + 页码），逐行对顺序。
 
 ## 10. 版面几何配方
 
