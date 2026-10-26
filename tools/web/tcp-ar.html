@@ -89,7 +89,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r17 · 左臂仿真臂 + x y z a b c 点动</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r18 · 顶视相机(1轴高立柱+RealSense模板)</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -162,6 +162,7 @@
       <button id="bArmR" class="sm on" title="右臂 = 真实机器人 (真关节角来自 tcp_out/latest.json, 每帧正运动学); 点一下隐藏">🦾 右臂</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
+      <button id="bCamTop" class="sm on" title="两臂之间的顶视相机(立柱+RealSense 模板): 立柱高 = 1 轴高度, 相机俯角 35° 看工作区; 点一下隐藏">📷 顶视相机</button>
     </div>
     <!-- 左臂位姿控制(左臂自身世界系): x y z 平移(mm) / a b c 姿态(deg), 参考 station 点动 -->
     <div id="cardLarm" style="margin-top:6px;border:1px solid #1f2b33;border-radius:8px;padding:6px 8px;background:#0d1418">
@@ -377,6 +378,11 @@ var CFG_PTS=[], CFG_ON={}, CFG_SIG='', CFG_AGE=null;
 //   off = 左臂原心在 base 系的位置(米); d/rpy = 仿真增量(左臂自身世界系, mm/deg)
 //   画法: 右臂正运动学点 p 先按 rpy 转、加 d, 再加 off ⇒ 世界坐标。复位(d=rpy=0)时两条臂完全同姿态。
 var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], fill:'#12363c', stroke:'#5eead4'};
+// 📷 顶视相机(具身智能第三视角) —— 老倪 2026-10-26: 「在左右臂之间增加一个圆柱体, 顶部有个相机,
+//   按照 realsense 为模板, 作为具身智能的顶视相机; 圆柱的高度与 1 轴的高度相同; 你来设计一个相机」
+//   我的设计口径: 立柱立在两臂原心中线 y=+250mm、半径 70mm、高 = 1 轴高度(URDF joint_1 z=0.328);
+//   相机 = RealSense D435 模板(90×25×25mm, 2×IR+RGB+红外投射器), 俯角 35° 朝 +X 看工作区, 并画视锥覆盖区。
+var TCAM={show:true, y:0.25, r:0.070, tilt:35, fovH:87, fovV:58, body:[0.090,0.025,0.025]};
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
 // 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**;
 //   现在有 USB 相机(RealSense)/机器人手臂的 RealSense/金手指检测相机/表面检测相机, 这 4 个都照同一个场景」
@@ -965,6 +971,11 @@ function vrFitBox(){
                   X.R[1][0]*w[0]+X.R[1][1]*w[1]+X.R[1][2]*w[2]+X.t[1],
                   X.R[2][0]*w[0]+X.R[2][1]*w[1]+X.R[2][2]*w[2]+X.t[2]]); } }
     pts.push(LARM.off.slice());
+  }
+  // 📷 顶视相机立柱也要在取景里(不然立柱顶/相机可能出框)
+  if(typeof TCAM!=='undefined' && TCAM.show){
+    const hh=axis1H();
+    pts.push([0,TCAM.y,0],[0,TCAM.y,hh],[TCAM.r,TCAM.y,hh],[-TCAM.r,TCAM.y,hh],[0,TCAM.y-0.06,hh+0.05]);
   }
   // 🧭 坐标系也纳入取景(否则三个轴可能全落在画面外)。含 base 世界系原点 ⇒ 会拉远看全域:
   //    想看"整条臂 + 底座 + 台面"就开着; 只想看轨迹就点 🧭 关掉再『对准轨迹』。
@@ -1610,6 +1621,11 @@ function drawVR(){
   g.clearRect(0,0,w,h);
   g.fillStyle='#070a0e'; g.fillRect(0,0,w,h);
   if(VR.auto) vrFitBox();
+  // 🦾 正运动学必须在**取景之前**算: vrFitBox() 会用 LINKM 算包围盒,
+  //    原来这一句写在下面(画臂的地方) ⇒ 第一帧 URDF 刚到、LINKM 还是空的时候,
+  //    取景只按"立柱+左臂原点"这点点算 ⇒ 视距 0.42m(画面糊在立柱上), 要等下一帧才纠正。
+  //    后台 tag/被浏览器节流时下一帧很久才来, 现场表现就是"一进来画面怼在立柱上"。
+  if(URDF) LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null);
   const tgt=VR.tgt;
   const cy=Math.cos(VR.yaw),sy=Math.sin(VR.yaw),cp=Math.cos(VR.pitch),sp=Math.sin(VR.pitch);
   const fwd=[cp*cy,cp*sy,-sp];                                         // 视线方向(远离相机→目标)
@@ -1651,11 +1667,8 @@ function drawVR(){
   if(o1){g.fillStyle='#c9d1d9';g.beginPath();g.arc(o1.u,o1.v,2.6,0,Math.PI*2);g.fill();
     g.fillStyle='#6b7a8d';g.font='10px monospace';g.fillText('O(0,0,0)',o1.u+5,o1.v+12);}
   VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY,pr:pr};   // 🖱 点图取点(反投影) / 鼠标选中命中测试
-  // 🦾 URDF 外形: 真关节角正运动学 (5Hz 跟随) → 凸包填充
-  //    2026-10-26: 正运动学无论右臂显不显示都算 —— 左臂(仿真)要一直跟着真关节角走,
-  //    不然点了『🦾 右臂』关掉右臂, 左臂就冻在最后一帧。
+  // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
   if(URDF){
-    LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null);
     if(VR.urdf) drawUrdf(g,pr);
   }
   // 🤖 左臂(仿真臂) —— 老倪 2026-10-26: 同一套 URDF/关节角, 原心在 base 系 Y=+500mm,
@@ -1675,6 +1688,8 @@ function drawVR(){
       g.fillText('左臂 O(0,+500,0)', o.u+10, o.v+18);
     }
   }
+  // 📷 顶视相机: 两臂之间的立柱 + RealSense 模板相机 + 打到台面的视锥覆盖区
+  if(TCAM.show) drawTopCam(g, pr);
   // 🧱 3D 围栏 (画在机器人之上, 轨迹之下)
   if(typeof FENCES!=='undefined' && FENCES.length) drawFences(g,pr);
   // 🔩 光模块长方体 @ tool1 (2026-10-25 老倪: 「在三维视图画出光模块」)
@@ -1901,6 +1916,118 @@ function jogLarm(k,sgn){
   LARM.show=true; paintLarm();
   vrKeepCam(()=>{});          // 走 vrKeepCam: 点动绝不能重取景(否则每点一下画面蹦一下)
 }
+// ══════════════════════════════════════════════════════════════════════════
+//  📷 顶视相机 (具身智能第三视角) —— 2026-10-26 老倪: 「在左右臂之间增加一个圆柱体, 顶部有个相机,
+//  按照 realsense 为模板, 作为具身智能的顶视相机; 圆柱的高度与 1 轴的高度相同; 你来设计一个相机;
+//  参考之前的竞品的混合机器人的资料」
+//  设计(老倪可改):
+//   · 立柱: 两臂原心中线 (x=0, y=+250mm), 半径 70mm, 高 = 1 轴高度(URDF joint_1 xyz z=0.328m)
+//     ⇒ 与 1 轴同高: 不遮两臂第一关节, 也在机器人包络里, 相机正好俯视两臂的共同工作区。
+//   · 相机: RealSense D435 模板 —— 90×(W) 25×(H) 25×(D) mm 机身, 前面板 左IR + RGB + 右IR + 红外投射器,
+//     俯角 35° 朝 +X(工作区), D435 视场 87°×58°; 画出打到台面(z=0)的视锥覆盖区, 一眼看出"能看到哪块"。
+//   · 竞品口径: 无界智航 X-Arm 那类"双臂 + 第三视角"混合结构 —— 第三视角相机固定在两臂之间的上方,
+//     目的是给慢脑/快脑一个**不受臂运动影响**的全局观察角, 所以立在两臂之间而不是装在臂上。
+// ══════════════════════════════════════════════════════════════════════════
+function axis1H(){
+  const js = (URDF && URDF.joints) || [];
+  const j = js.filter(x => /joint_1$/.test(x.name || ''))[0];
+  if (j && j.xyz && j.xyz[2] > 0.05) return j.xyz[2];        // 实测 URDF: joint_1 xyz=[0,0,0.328]
+  return 0.328;
+}
+function _ry(th){ const c = Math.cos(th), s = Math.sin(th); return [[c,0,s],[0,1,0],[-s,0,c]]; }
+function _rotT(R,t,p){ return [R[0][0]*p[0]+R[0][1]*p[1]+R[0][2]*p[2]+t[0],
+                              R[1][0]*p[0]+R[1][1]*p[1]+R[1][2]*p[2]+t[1],
+                              R[2][0]*p[0]+R[2][1]*p[1]+R[2][2]*p[2]+t[2]]; }
+function _quad(g,q,fill,stroke,lw){
+  if(q.some(p=>!p)) return;
+  g.beginPath(); g.moveTo(q[0].u,q[0].v);
+  for(let i=1;i<q.length;i++) g.lineTo(q[i].u,q[i].v);
+  g.closePath();
+  if(fill){ g.fillStyle=fill; g.fill(); }
+  if(stroke){ g.strokeStyle=stroke; g.lineWidth=lw||1; g.stroke(); }
+}
+function drawTopCam(g, pr){
+  const h = axis1H(), R = TCAM.r, cy = TCAM.y, N = 28;
+  // ── 立柱(圆柱): 上下两圈取样点 → 投影 → 凸包做剪影, 再单独画顶盖 ──
+  const tops = [], bots = [];
+  for(let i=0;i<N;i++){
+    const a = 2*Math.PI*i/N, x = R*Math.cos(a), y = cy + R*Math.sin(a);
+    tops.push(pr([x,y,h])); bots.push(pr([x,y,0.001]));
+  }
+  const all = tops.concat(bots).filter(Boolean);
+  if(all.length > 6){
+    const hull = _hull(all);
+    g.beginPath(); g.moveTo(hull[0].u,hull[0].v);
+    for(let i=1;i<hull.length;i++) g.lineTo(hull[i].u,hull[i].v);
+    g.closePath(); g.fillStyle='#2a333f'; g.fill();
+    g.strokeStyle='#5b6b7d'; g.lineWidth=1.5; g.stroke();
+    g.beginPath(); g.moveTo(tops[0].u,tops[0].v);
+    for(let i=1;i<tops.length;i++) g.lineTo(tops[i].u,tops[i].v);
+    g.closePath(); g.fillStyle='#3f4d5c'; g.fill();                 // 顶盖亮一点, 一眼看出是圆柱
+    g.strokeStyle='#7d8ea1'; g.lineWidth=1.1; g.stroke();
+    // 底座法兰
+    g.beginPath();
+    const f1 = pr([R*1.35, cy-R*1.35, 0.012]), f2 = pr([R*1.35, cy+R*1.35, 0.012]);
+    if(f1&&f2){ g.strokeStyle='#4b5a6b'; g.lineWidth=1; g.beginPath();
+      g.ellipse((f1.u+f2.u)/2, (f1.v+f2.v)/2, Math.abs(f2.u-f1.u)/2, Math.abs(f2.u-f1.u)/12, 0, 0, Math.PI*2); g.stroke(); }
+  }
+  // ── 相机机身(RealSense D435 模板) ──
+  const W = TCAM.body[0], HH = TCAM.body[1], D = TCAM.body[2];
+  const Rn = _ry(TCAM.tilt*Math.PI/180);                            // 绕 Y 俯下去(朝 +X 看)
+  const org = [0, cy, h + 0.006];
+  const loc = [[-D/2,-W/2,0],[D/2,-W/2,0],[D/2,W/2,0],[-D/2,W/2,0],
+               [-D/2,-W/2,HH],[D/2,-W/2,HH],[D/2,W/2,HH],[-D/2,W/2,HH]];
+  const cor = loc.map(c => _rotT(Rn, org, c));
+  const pj  = cor.map(pr);
+  const faces = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+  faces.map(f => ({f:f, z: f.reduce((a,i)=>a+((pj[i]&&pj[i].z)||9),0)/4}))
+       .sort((A,B)=> B.z - A.z)                                     // 远的先画
+       .forEach(o => _quad(g, o.f.map(i=>pj[i]), '#1b2430', '#8aa0b8', 1.1));
+  // 前面板: 左IR / RGB / 右IR (x = +D/2 那面), 再加红外投射器
+  const face = 1;                                                   // 局部 x=+D/2 的面
+  [[-W/2+0.014,'#0b0f14'],[0,'#1d4ed8'],[W/2-0.014,'#0b0f14']].forEach(kv=>{
+    const c = [D/2+0.001, kv[0], HH*0.5];
+    const s = pr(_rotT(Rn, org, c)); if(!s) return;
+    g.beginPath(); g.arc(s.u, s.v, 4.6, 0, Math.PI*2); g.fillStyle=kv[1]; g.fill();
+    g.strokeStyle='#c9d1d9'; g.lineWidth=1; g.stroke();
+  });
+  const proj = pr(_rotT(Rn, org, [D/2+0.001, W/2-0.004, HH*0.15]));
+  if(proj){ g.beginPath(); g.arc(proj.u, proj.v, 2.2, 0, Math.PI*2); g.fillStyle='#ef476f'; g.fill(); }
+  const led = pr(_rotT(Rn, org, [0, 0, HH+0.0005]));
+  if(led){ g.beginPath(); g.arc(led.u, led.v, 2.0, 0, Math.PI*2); g.fillStyle='#06d6a0'; g.fill(); }
+  // ── 视锥: 打到台面 z=0 的覆盖区(87°×58°) ──
+  const lensW = _rotT(Rn, org, [D/2, 0, HH*0.5]);
+  const fwd = [Rn[0][0], Rn[1][0], Rn[2][0]];
+  const rgt = [Rn[0][1], Rn[1][1], Rn[2][1]];
+  const upv = [Rn[0][2], Rn[1][2], Rn[2][2]];
+  const th = Math.tan(TCAM.fovH*Math.PI/360), tv = Math.tan(TCAM.fovV*Math.PI/360);
+  const corners = [];
+  [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(sg=>{
+    const d = [fwd[0]+rgt[0]*th*sg[0]+upv[0]*tv*sg[1],
+               fwd[1]+rgt[1]*th*sg[0]+upv[1]*tv*sg[1],
+               fwd[2]+rgt[2]*th*sg[0]+upv[2]*tv*sg[1]];
+    if(d[2] >= -1e-6){ corners.push(null); return; }
+    const t = -lensW[2]/d[2];
+    if(!(t > 0) || t > 3.0){ corners.push(null); return; }
+    corners.push(pr([lensW[0]+d[0]*t, lensW[1]+d[1]*t, 0.002]));
+  });
+  if(corners.every(Boolean)){
+    _quad(g, corners, 'rgba(94,234,212,.10)', 'rgba(94,234,212,.55)', 1.2);
+    g.setLineDash([4,4]); g.strokeStyle='rgba(94,234,212,.35)'; g.lineWidth=1;
+    corners.forEach(c=>{ const o=pr(lensW); if(!o) return;
+      g.beginPath(); g.moveTo(o.u,o.v); g.lineTo(c.u,c.v); g.stroke(); });
+    g.setLineDash([]);
+  }
+  // ── 标签 ──
+  const lab = pr([0, cy, h + 0.006 + HH + 0.03]);
+  if(lab){
+    g.font='bold 12px monospace';
+    const txt='顶视相机 · 1轴高 '+Math.round(h*1000)+'mm';
+    const tw=g.measureText(txt).width;
+    g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(lab.u-2, lab.v-11, tw+8, 16);
+    g.fillStyle='#5eead4'; g.fillText(txt, lab.u+2, lab.v+2);
+  }
+}
 (function buildLarmUI(){
   const g=$('lGrid'); if(!g) return;
   [['x','X'],['y','Y'],['z','Z'],['a','A'],['b','B'],['c','C']].forEach(function(kv){
@@ -1924,6 +2051,8 @@ function jogLarm(k,sgn){
   paintLarm();
 })();
 $('bArmL').addEventListener('click',()=>vrKeepCam(()=>{ LARM.show=!LARM.show; paintLarm(); }));
+$('bCamTop').addEventListener('click',()=>vrKeepCam(()=>{
+  TCAM.show=!TCAM.show; $('bCamTop').classList.toggle('on',TCAM.show); }));
 $('bArmR').addEventListener('click',()=>vrKeepCam(()=>{
   VR.urdf=!VR.urdf;
   $('bArmR').classList.toggle('on',VR.urdf);
@@ -2014,7 +2143,10 @@ $('bSolve').addEventListener('click',async ()=>{
   if(!r.ok){ $('pCal').textContent='解算失败: '+(r.err||''); return; }
   CALIB=r.calib; layout(); drawOv(); drawVR();
   try{ const u=await fetch('/api/urdf').then(r=>r.json());
-       if(u&&u.ok){ URDF=u; console.log('🦾 URDF 外形: '+(u.links||[]).length+' links · '+(u.joints||[]).length+' joints · '+(u.links||[]).reduce((s,l)=>s+(l.pts||[]).length,0)+' 点'); }
+       if(u&&u.ok){ URDF=u; console.log('🦾 URDF 外形: '+(u.links||[]).length+' links · '+(u.joints||[]).length+' joints · '+(u.links||[]).reduce((s,l)=>s+(l.pts||[]).length,0)+' 点');
+         // URDF 是异步到的: 到场后立刻按"含臂"的包围盒重新取景一次, 不然首帧是按只有立柱/点位的
+         // 小包围盒定的距(实测 0.42m, 画面怼在立柱上), 要等下一帧才纠正 —— 后台标签被节流时很久不纠。
+         if(VR.auto){ LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null); vrFitBox(); drawVR(); } }
        else console.warn('URDF 外形不可用:', u&&u.err); }
   catch(e){ console.warn('URDF 取失败', e); }
   $('tCal').textContent=`标定: 好 (RMS ${r.calib.rms_px}px, ${r.calib.n_points} 点)`;

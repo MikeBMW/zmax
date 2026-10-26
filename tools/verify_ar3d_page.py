@@ -53,6 +53,10 @@ PROBE = r"""
     scrollable: document.documentElement.scrollHeight > innerHeight + 2,
     cfgN: (typeof CFG_PTS !== 'undefined') ? CFG_PTS.length : -1,
     ptsErr: window.__ptsErr || null, ptsTries: window.__ptsTries || 0,
+    vr: (typeof VR!=='undefined') ? {dist:+VR.dist.toFixed(4), auto:VR.auto,
+         tgt:VR.tgt.map(v=>+v.toFixed(3))} : null,
+    urdfN: (URDF&&URDF.links)?URDF.links.length:0,
+    linkN: Object.keys(LINKM||{}).length,
     cfgRows: document.querySelectorAll('#rowCfgPts button').length
   };
   if (cv) {
@@ -128,7 +132,30 @@ CLICK2 = r"""
   const dJog = LARM.d.slice(), cJog = cyan(), dd1 = +VR.dist.toFixed(4);
   document.getElementById('bLreset').click();
   const dBack = LARM.d.slice();
+  // 📷 顶视相机: 立柱高 = 1 轴高 · 立在两臂中线(y=+250mm) · 能画能关 · 视锥真打到台面
+  const pr2 = VIEW.pr;
+  const hA = axis1H();
+  const sample = (u, v) => {
+    const dd = cx.getImageData(Math.max(0, (u|0)-2), Math.max(0, (v|0)-2), 5, 5).data;
+    let r=0,g=0,b=0,n=0;
+    for (let i=0;i<dd.length;i+=4){ r+=dd[i]; g+=dd[i+1]; b+=dd[i+2]; n++; }
+    return [Math.round(r/n), Math.round(g/n), Math.round(b/n)];
+  };
+  const pT = pr2([0, TCAM.y, hA - 0.002]);              // 立柱顶面中心
+  const Rr = _ry(TCAM.tilt * Math.PI / 180), org = [0, TCAM.y, hA + 0.006];
+  const lens = _rotT(Rr, org, [TCAM.body[2]/2, 0, TCAM.body[1]*0.5]);
+  const fwd = [Rr[0][0], Rr[1][0], Rr[2][0]];
+  const tt = -lens[2] / fwd[2];
+  const pHit = (tt > 0) ? pr2([lens[0]+fwd[0]*tt, lens[1]+fwd[1]*tt, 0.002]) : null;
+  const onTop = pT ? sample(pT.u, pT.v) : null;
+  const onFov = pHit ? sample(pHit.u, pHit.v) : null;
+  document.getElementById('bCamTop').click();
+  const offTop = pT ? sample(pT.u, pT.v) : null;
+  const offFov = pHit ? sample(pHit.u, pHit.v) : null;
+  document.getElementById('bCamTop').click();
   return JSON.stringify({s0: s0, s1: s1, s2: s2,
+                         tcam: {h: +hA.toFixed(4), y: TCAM.y, onTop: onTop, offTop: offTop,
+                                onFov: onFov, offFov: offFov},
                          cfg: {n: nCfg, rows: rows, on: bOn, off: bOff, back: bBack},
                          larm: {offErr: (offErr === null ? null : +offErr.toFixed(9)), cyanOn: cOn,
                                 cyanOff: cOff, cyanJog: cJog, dJog: dJog, dBack: dBack,
@@ -146,14 +173,14 @@ def run(url, app, size=(1600, 1000), wait_ms=30000, shot=None, do_click=False):
     def got_probe(r):
         st["tries"] += 1
         # 取"画得最多"的那次: 页面数据(traj/URDF/光模块)是异步到的, 太早取样会误判"没画出来"
+        # 取**最新**一帧, 不取"画得最多"的: 早期帧数据还没到(视距还在收敛/轨迹还没拉),
+        # 非背景像素反而更多(立柱被放大糊满屏), 按 pct 取最大会挑中那种废帧。
         if r:
-            cur = (st["probe"] or {}).get("pixels") or {}
-            new = r.get("pixels") or {}
-            if (new.get("pct") or 0) >= (cur.get("pct") or 0):
-                st["probe"] = r
+            st["probe"] = r
         pct = ((st["probe"] or {}).get("pixels") or {}).get("pct") or 0
         cfg_n = (st["probe"] or {}).get("cfgN") or 0          # 📍 点位台账是异步 fetch 来的, 没到就点会误判"0 点"
-        if do_click and ((pct >= 3.0 and cfg_n >= 20) or st["tries"] >= 10):
+        amber = ((st["probe"] or {}).get("pixels") or {}).get("amber") or 0
+        if do_click and ((pct >= 3.0 and cfg_n >= 20 and amber >= 300) or st["tries"] >= 12):
             v.page().runJavaScript(CLICK2, got_click)
         elif not do_click and (pct >= 3.0 or st["tries"] >= 8):
             st["n"] += 1
@@ -274,6 +301,25 @@ def main():
     except Exception as e2:                                   # noqa: BLE001
         ad = "解析失败 %r" % (e2,)
     chk("⑧ 左臂仿真臂: 默认=右臂整条平移(0,+500,0) + 能画/能关 + x 点动生效且不动相机", arm_ok, ad)
+    tc_ok = False
+    td = "tcam=%r" % (j.get("tcam") if isinstance(j, dict) else None,)
+    try:
+        T = j.get("tcam") or {}
+        h, y = T.get("h"), T.get("y")
+        onT, offT = T.get("onTop") or [0,0,0], T.get("offTop") or [0,0,0]
+        onF, offF = T.get("onFov") or [0,0,0], T.get("offFov") or [0,0,0]
+        height_ok = (h is not None and abs(h - 0.328) < 0.02)        # 立柱高 = 1 轴高(joint_1 z=0.328)
+        mid_ok = (y is not None and abs(y - 0.25) < 1e-9)            # 立在两臂原心中线
+        drawn = (max(abs(onT[i]-offT[i]) for i in range(3)) > 20)    # 立柱/相机真画出来, 关掉即消失
+        tint_on = (onF[1]+onF[2]) - 2*onF[0]
+        tint_off = (offF[1]+offF[2]) - 2*offF[0]
+        fov_ok = (tint_on - tint_off) > 12                           # 视锥覆盖区(青)真打在台面上
+        tc_ok = height_ok and mid_ok and drawn and fov_ok
+        td = ("立柱高 %.3fm(=1轴) · y=%.3fm(两臂中线) · 顶面 %s↔关%s · 台面视锥 青偏置 %+d↔关%+d"
+              % (h, y, onT, offT, tint_on, tint_off))
+    except Exception as e2:                                   # noqa: BLE001
+        td = "解析失败 %r" % (e2,)
+    chk("⑨ 顶视相机: 立柱高=1轴高 + 立两臂中线 + 能画能关 + 视锥打到台面", tc_ok, td)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))
