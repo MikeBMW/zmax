@@ -89,7 +89,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r14 · 独立三维页 /ar3d(一屏只有三维视图)</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r15 · /ar3d 左栏按钮 + 开关不动相机</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -1671,10 +1671,25 @@ setInterval(async ()=>{
     else if(s.phase==='blocked'||s.phase==='error'||s.phase==='timeout'){ msg.style.color='#e05252'; msg.textContent='🛑 '+(s.phase)+' @第'+(s.seg||0)+'段 '+(s.blocked_by||s.err||''); }
   }catch(e){}
 }, 2000);
-$('bFrames').addEventListener('click',()=>{ VR.frames=!VR.frames; VR.auto=true;
-  $('bFrames').classList.toggle('on',VR.frames); drawVR(); });
-$('bUrdf').addEventListener('click',()=>{ VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); drawVR(); });
-$('bMod').addEventListener('click',()=>{ VR.mod=!VR.mod; $('bMod').classList.toggle('on',VR.mod); drawVR(); });
+// 🎥 2026-10-26 老倪: 「点击 URDF 外形 的时候, 窗口的图像不要跳变, 不要忽然变大或变小」
+//   真因(实测代码): drawVR() 第一行是 `if(VR.auto) vrFitBox()`, 而 vrFitBox() 会把 **URDF 点云**、
+//   坐标系原点(base 0,0,0)、工具系一起算进包围盒 ⇒ 开关这三个按钮时视距/目标点被重算, 画面就"蹦"一下;
+//   bFrames 原来还显式 `VR.auto=true`, 蹦得更明显。
+//   口径: 这三个开关只改"画什么", **不许动相机**; 只有 🎯对准 / 双击『执行轨迹』才重取景。
+function vrKeepCam(fn){
+  const c0={yaw:VR.yaw, pitch:VR.pitch, dist:VR.dist, tgt:(VR.tgt||[]).slice()};
+  VR.auto=false;                     // 锁住: 否则下一帧又按新包围盒重新取景
+  try{ fn(); } finally {
+    VR.yaw=c0.yaw; VR.pitch=c0.pitch; VR.dist=c0.dist; VR.tgt=c0.tgt;
+  }
+  drawVR();
+}
+$('bFrames').addEventListener('click',()=>vrKeepCam(()=>{
+  VR.frames=!VR.frames; $('bFrames').classList.toggle('on',VR.frames); }));
+$('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
+  VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); }));
+$('bMod').addEventListener('click',()=>vrKeepCam(()=>{
+  VR.mod=!VR.mod; $('bMod').classList.toggle('on',VR.mod); }));
 let SPIN=null;
 $('bSpin').addEventListener('click',()=>{
   if(SPIN){ clearInterval(SPIN); SPIN=null; $('bSpin').classList.remove('on'); return; }

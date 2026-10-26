@@ -12,7 +12,7 @@
   ③ 左栏里的按钮 ≥ 12 个且全部可见(执行轨迹/坐标系/URDF/光模块/五条轨迹…)
   ④ 画布真有绘制(非背景像素 > 0.5%)
   ⑤ 对照 /ar: 同一批按钮**不在**画布左侧(证明判据不是恒真)
-  ⑥ 按钮真能点: 点『🧭 坐标系』后 class 变化(on ⇄ off)
+  ⑥ 点『URDF 外形』来回两次: 相机(dist/tgt/yaw/pitch)纹丝不动 + 按钮状态真翻转
 截图: /tmp/ar3d_verify.png · 用法: gui-venv311/bin/python tools/verify_ar3d_page.py
 """
 import json
@@ -71,13 +71,18 @@ PROBE = r"""
 })()
 """
 
-CLICK = r"""
+CLICK2 = r"""
 (() => {
-  const b = document.getElementById('bFrames');
+  const b = document.getElementById('bUrdf');
   if (!b) return 'NOBTN';
-  const before = b.className;
-  b.click();
-  return before + '|' + b.className;
+  if (typeof VR === 'undefined') return 'NOVR';
+  const snap = () => ({d: +VR.dist.toFixed(6), t: (VR.tgt||[]).map(v => +v.toFixed(6)), y: +VR.yaw.toFixed(6), p: +VR.pitch.toFixed(6), cls: b.className});
+  const s0 = snap();
+  b.click();                       // 关掉 URDF
+  const s1 = snap();
+  b.click();                       // 再打开(来回两次都要不动相机)
+  const s2 = snap();
+  return JSON.stringify({s0: s0, s1: s1, s2: s2});
 })()
 """
 
@@ -98,7 +103,7 @@ def run(url, app, size=(1600, 1000), wait_ms=30000, shot=None, do_click=False):
                 st["probe"] = r
         pct = ((st["probe"] or {}).get("pixels") or {}).get("pct") or 0
         if do_click and (pct >= 3.0 or st["tries"] >= 8):
-            v.page().runJavaScript(CLICK, got_click)
+            v.page().runJavaScript(CLICK2, got_click)
         elif not do_click and (pct >= 3.0 or st["tries"] >= 8):
             st["n"] += 1
 
@@ -170,12 +175,22 @@ def main():
         side = b["rail"][0] + b["rail"][2] <= b["canvas"][0] + 2
         chk("⑤ 对照 /ar 不是左栏版式(判据非恒真)", not side,
             "/ar rail=%s canvas=%s" % (b["rail"], b["canvas"]))
-    if click_res and isinstance(click_res, str) and "|" in click_res:
-        before, after = click_res.split("|", 1)
-        chk("⑥ 『坐标系』按钮真能点(状态翻转)", before.strip() != after.strip(),
-            "%r → %r" % (before.strip(), after.strip()))
-    else:
-        chk("⑥ 『坐标系』按钮真能点(状态翻转)", False, "click=%r" % (click_res,))
+    cam_ok = False
+    detail = "click=%r" % (click_res,)
+    try:
+        j = json.loads(click_res) if isinstance(click_res, str) else {}
+        s0, s1, s2 = j.get("s0"), j.get("s1"), j.get("s2")
+        if s0 and s1 and s2:
+            cam_still = (s0["d"] == s1["d"] == s2["d"] and s0["t"] == s1["t"] == s2["t"]
+                         and s0["y"] == s1["y"] == s2["y"] and s0["p"] == s1["p"] == s2["p"])
+            toggled = (s0["cls"] != s1["cls"] and s1["cls"] != s2["cls"])
+            cam_ok = cam_still and toggled
+            detail = ("dist %s→%s→%s · tgt %s · yaw %s · cls %r→%r→%r"
+                      % (s0["d"], s1["d"], s2["d"], "同" if s0["t"] == s2["t"] else "变了",
+                         "同" if s0["y"] == s2["y"] else "变了", s0["cls"], s1["cls"], s2["cls"]))
+    except Exception as e:                                    # noqa: BLE001
+        detail = "解析失败 %r / %r" % (click_res, e)
+    chk("⑥ 点『URDF 外形』来回两次: 相机纹丝不动(视距/目标/角度全不变)+ 状态真翻转", cam_ok, detail)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))
