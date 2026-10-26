@@ -153,7 +153,26 @@ CLICK2 = r"""
   const offTop = pT ? sample(pT.u, pT.v) : null;
   const offFov = pHit ? sample(pHit.u, pHit.v) : null;
   document.getElementById('bCamTop').click();
+  // 📦 箱体: 顶板 = 两臂安装面(z=0), 长宽高 1085/775/290(对标 优艾智合 O 系列)
+  // 箱体用**颜色计数**验(取样点会被立柱/视锥/遮挡干扰, 单点取样不可靠):
+  //   顶板 #31404f=(49,64,79) / 体色 #1b2732=(27,39,50) 都是箱体独有
+  const cnt = (R,G,B,t) => {
+    const dd = cx.getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0;
+    for (let i = 0; i < dd.length; i += 4) {
+      if (Math.abs(dd[i]-R)<t && Math.abs(dd[i+1]-G)<t && Math.abs(dd[i+2]-B)<t) n++;
+    }
+    return n;
+  };
+  // 顶板面 #31404f 与"顶板高光/标签"#9fb6cc 一起数: 体色 #1b2732 会和相机机身撞色, 不能用
+  const onPlate = cnt(49,64,79,6), onHi = cnt(159,182,204,6);
+  document.getElementById('bChs').click();
+  const offPlate = cnt(49,64,79,6), offHi = cnt(159,182,204,6);
+  document.getElementById('bChs').click();
+  const onBody = onHi, offBody = offHi;
   return JSON.stringify({s0: s0, s1: s1, s2: s2,
+                         chs: {L: CHS.L, W: CHS.W, H: CHS.H, cy: CHS.cy,
+                               onPlate: onPlate, offPlate: offPlate, onBody: onBody, offBody: offBody},
                          tcam: {h: +hA.toFixed(4), y: TCAM.y, onTop: onTop, offTop: offTop,
                                 onFov: onFov, offFov: offFov},
                          cfg: {n: nCfg, rows: rows, on: bOn, off: bOff, back: bBack},
@@ -320,6 +339,23 @@ def main():
     except Exception as e2:                                   # noqa: BLE001
         td = "解析失败 %r" % (e2,)
     chk("⑨ 顶视相机: 立柱高=1轴高 + 立两臂中线 + 能画能关 + 视锥打到台面", tc_ok, td)
+    ch_ok = False
+    cd = "chs=%r" % (j.get("chs") if isinstance(j, dict) else None,)
+    try:
+        C = j.get("chs") or {}
+        L, W, H = C.get("L") or 0, C.get("W") or 0, C.get("H") or 0
+        dim_ok = (abs(L-1.085) < 0.002 and abs(W-0.775) < 0.002 and abs(H-0.290) < 0.002)
+        onP, offP = C.get("onPlate") or [0,0,0], C.get("offPlate") or [0,0,0]
+        onB, offB = C.get("onBody") or [0,0,0], C.get("offBody") or [0,0,0]
+        # 顶板高光 #9fb6cc 是箱体独有的(实测 480 ↔ 关 2); 顶板面 #31404f 会和围栏/臂的
+        # 暗色底撞色(基线 3337), 只用来佐证"画上去了确实变多"
+        drawn = (onB > 200 and offB < 60 and onP > offP * 1.3)
+        ch_ok = dim_ok and drawn
+        cd = ("箱体 %.3f×%.3f×%.3fm · 顶板面像素 %d↔关%d · 顶板高光 %d↔关%d"
+              % (L, W, H, onP, offP, onB, offB))
+    except Exception as e2:                                   # noqa: BLE001
+        cd = "解析失败 %r" % (e2,)
+    chk("⑩ 箱体: 长宽高=1085×775×290(对标优艾智合 O 系列) + 顶板即两臂安装面 + 能画能关", ch_ok, cd)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))
