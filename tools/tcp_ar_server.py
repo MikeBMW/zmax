@@ -1549,6 +1549,41 @@ class H(BaseHTTPRequestHandler):
                                 % ([round(v * 1000) for v in a], [round(v * 1000) for v in b]))
 
             elif k == "real":
+                # 🧭 2026-10-26 老倪:「我现在点击 轨迹5实时了, 我准备去安全点, 你先规划一个去安全点的轨迹」
+                #   语义改成: 轨迹5 = **从当前实时位姿出发 → 安全点1** 的待执行路径 (实时=当前 TCP 起算)。
+                #   以前这里读 bridge_real_path.json (真机走过的记录), 空的就 0 点 ⇒ 点执行永远拒。
+                aq = os.path.join(REPO, "zmax_data", "ar_live", "ar_aoi_live.json")
+                cur = None
+                try:
+                    cp = os.path.join(REPO, "zmax_data", "rokae_sdk/tcp_out/latest.json")
+                    cj = json.load(open(cp, encoding="utf-8"))
+                    if all(abs(float(cj.get(ax) or 0)) < 1e-9 for ax in "xyz"):
+                        cur = None                                   # 全 0 = 陈旧, 不能当起点
+                    else:
+                        cur = [float(cj["x"]), float(cj["y"]), float(cj["z"])]
+                except Exception:                                                  # noqa: BLE001
+                    cur = None
+                safe_p = None
+                try:
+                    s = json.load(open(aq, encoding="utf-8")).get("s") or {}
+                    v = [s.get("安全点1." + ax) for ax in "xyz"]
+                    if all(x is not None for x in v):
+                        safe_p = [float(x) for x in v]
+                except Exception:                                                  # noqa: BLE001
+                    safe_p = None
+                if cur is None or safe_p is None:
+                    rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
+                    out["note"] = ("实时路径缺数据: 当前 TCP=%s · 安全点1=%s"
+                                   " (要走实测记录就等 bridge_real_path 有数据)"
+                                   % (cur, safe_p))
+                    return out
+                out.update(ok=True, pts=_lerp(cur, safe_p, 24),
+                           src="实时: 当前TCP→安全点1",
+                           note="当前 TCP %s → 安全点1 %s mm · 直线 %d 点 (实际下发按轴拆段)"
+                                % ([round(x * 1000) for x in cur],
+                                   [round(x * 1000) for x in safe_p], 25))
+
+            elif k == "real_gone":
                 rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
                 if not os.path.exists(rp):
                     out["note"] = "还没有真机实测轨迹 (bridge_path_recorder 未录到)"

@@ -55,7 +55,7 @@
 <header>
   <h1>🛰 TCP 轨迹 AR/VR 调试台</h1>
   <span id="bAuth" style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #30363d">授权: 查…</span>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r10 · 执行结果横幅 + 矩形跟当前TCP走</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r13 · 按钮五行重排(动作/视图/轨迹/围栏盒/直线)</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -109,6 +109,9 @@
       <button id="bFit" class="sm" title="点击 = 把当前规划轨迹发给执行器(l2_daemon · 逐段走)· 双击 = 视角对准轨迹（原功能）">▶ 执行轨迹</button>
       <span id="bTrajMsg" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <button id="bSpin" class="sm" title="自动缓慢旋转">🎥 自动环绕</button>
+    </div>
+    <!-- 🧱 2026-10-26 老倪: 「将下面的按钮重新排列: 第一行 执行轨迹 自动环绕; 第二行 坐标系 URDF外形 光模块」 -->
+    <div class="row" style="margin-top:6px">
       <button id="bFrames" class="sm on" title="画 base(世界系) / tool0(法兰中心) / tool1(夹爪·模块头) 三个坐标系">🧭 坐标系</button>
       <button id="bUrdf" class="sm on" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
       <button id="bMod" class="sm on" title="在 tool1(模块头中心)画光模块长方体: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度)">🔩 光模块</button>
@@ -118,6 +121,7 @@
          页面总高 3000px 而视口只有 577px ⇒ 按钮在 top≈1009px, 不滚动**根本看不到**
          (display:block/opacity:1 都在, 纯"在屏幕外面")。现在搬到**三维视图正下方按钮行**,
          与『▶ 执行轨迹』同一排, 开页即见。侧栏那一份改成指路文字, 避免 id 重复。 -->
+    <!-- 第三行: 五条命名轨迹 -->
     <div class="row" style="margin-top:6px">
       <span style="font-size:12px;color:#8b949e;margin-right:4px">轨迹:</span>
       <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
@@ -128,6 +132,11 @@
       <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>
       <button id="tFit" class="sm" title="把视角对准当前显示的轨迹(只有点这个按钮才会动相机; 点轨迹按钮不会跳)">🎯 对准</button>
     </div>
+    <!-- 🧱 第四行: 围栏盒子(长方体/上横梁/检测设备/前方相机) · 第五行: 直线(小红/小兰/小青)
+         按钮由 paintFenceBtns() 按 /api/fence 的真源动态生成, 点击=启用/停用该元素
+         (停用后三维视图和 AR 叠加都不画, 但配置里还在, 再点一下就回来) -->
+    <div class="row" style="margin-top:6px" id="rowBoxes"></div>
+    <div class="row" style="margin-top:6px" id="rowLines"></div>
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
     <pre id="pVr">—</pre>
   </div>
@@ -457,6 +466,9 @@ const NAMED_COL = {xiaohong:'#ff4444', square:'#a855f7', map:'#22d3ee',
 //     黑(不亮) = 不显示 → 点一下变蓝 = 三维里显示这条
 //     蓝(亮)   = 显示中   → 再点一下变黑 = 从三维里拿掉
 //   可以几条同时显示(各有各的颜色), ✕ 一次全关。NAMED_SEL 只记"最后点亮的那条"给『执行』用。
+// 有没有任何一条命名轨迹被点亮 (蓝色) —— 所有"轨迹显示"都以它为闸:
+// 没点按钮 ⇒ 三维视图里一条轨迹都不画, 连规划航路(洋红)也不画。
+function namedAnyOn(){ return Object.keys(NAMED_ON).some(k=>!!NAMED_ON[k]); }
 function paintNamedBtns(){
   ['t1','t2','t3','t4','t5','tA1','tA2','tA3','tA4','tA5'].forEach((id)=>{
     // 🔴 2026-10-26 老倪「我点击轨迹按钮 你怎么不高亮变成蓝色显示呢？」的真因:
@@ -807,7 +819,9 @@ function drawOv(){
              :`AR 叠加需要先标定**${(CAMS[CAM]||{}).label||CAM}** 的外参(右侧『进入标定』) —— VR 面板不受影响`); return; }
   if(!SHOW){ $('hint').textContent='轨迹已隐藏(默认不显示) —— 点『显示轨迹』'; return; }
   let n1=0,n2=0;
-  if(TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
+  // 🔴 2026-10-26 老倪:「我也没有点击任何轨迹, 你却显示的一个粉红色的轨迹…不点击, 不要显示轨迹」
+  //    真源: 规划航路(TRAJ.plan)以前是无条件画的, 与按钮无关 ⇒ 没点按钮也有一条洋红线。
+  if(namedAnyOn()&&TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
        color:(p,f)=>`rgba(88,166,255,${0.35+0.45*f})`, ringColor:'rgba(88,166,255,.5)'}).n||0;
   if(TRAJ.trace&&TRAJ.trace.length){
     const r=drawTube(g,TRAJ.trace,{baseW:9,ref:1.25,alpha:0.62,ring:10,
@@ -972,8 +986,32 @@ async function loadFences(){
     if($('fMargin') && document.activeElement!==$('fMargin')) $('fMargin').value=Math.round(FMARGIN);
     $('tFence').textContent=FENCES.length+' 个';
     $('tFence').className='tag'+(FENCES.length?' on':'');
-    renderFenceList(); drawVR();
+    renderFenceList(); paintFenceBtns(); drawVR();
   }catch(e){ $('pFence').textContent='围栏读失败: '+e; }
+}
+// 🧱 第四行(围栏盒) / 第五行(直线): 按 /api/fence 真源生成按钮, 点一下=启用/停用
+function paintFenceBtns(){
+  const mk=(host,label,items)=>{
+    if(!host) return;
+    host.innerHTML='<span class="tag" style="background:#30363d99">'+label+'</span>';
+    items.forEach(it=>{
+      const b=document.createElement('button');
+      b.className='sm'+(it.enabled?' on':'');
+      b.textContent=(it.enabled?'▣ ':'□ ')+(it.name||it.id);
+      b.title=(it.enabled?'显示中 · 点一下在三维视图里隐藏(配置里仍然保留)'
+                        :'已隐藏 · 点一下显示')+' · p1='+(it.p1||[]).map(v=>Math.round(v*1000)).join(',');
+      b.onclick=()=>fenceToggle(it.id, !it.enabled);
+      host.appendChild(b);
+    });
+    if(!items.length){
+      const s=document.createElement('span');
+      s.style.cssText='font-size:12px;color:#6b7a8d';
+      s.textContent='(无)';
+      host.appendChild(s);
+    }
+  };
+  mk($('rowBoxes'), '围栏盒', FENCES.filter(i=>i.type==='box'));
+  mk($('rowLines'), '直线', FENCES.filter(i=>i.type==='line'));
 }
 function renderFenceList(){
   const box=$('fList'); if(!box) return;
@@ -1423,7 +1461,7 @@ function drawVR(){
       g.beginPath(); g.arc(q.u,q.v,Math.max(1.5,3.2*Math.min(1,1.2/q.z)),0,Math.PI*2); g.stroke(); }
     return idx.length;
   }
-  const nPl=tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20);
+  const nPl=namedAnyOn()?tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20):0;
   const nTr=(TRAJ.trace&&TRAJ.trace.length>1)?tube(TRAJ.trace,(f)=>'rgba(140,230,120,.9)',7,0.6,8):0;
   // 🆕 真机实际走过的轨迹(实测 TCP) —— 橙色, 画在最上层
   const nReal=(TRAJ.real&&TRAJ.real.length>1)?tube(TRAJ.real,(f)=>'rgba(255,159,28,.95)',6,0.85,12):0;
@@ -1470,7 +1508,7 @@ function drawVR(){
   //    规划轨迹单独在最上层重画一遍。2026-10-25 二次迭代(视觉复核打回): 原来 5 个 r=7 的圆点挤在
   //    40×45px 的团里, 点把线盖死、编号 0/4 被压住 ⇒ 看着像"一坨点簇"不是线。改成:
   //    线粗(10px) + 小点(r=4) + 编号按屏幕间距决定画不画 + 起终点小标记 + 标签改琥珀色(不污染"洋红=路径"的判据)
-  if(TRAJ.plan && TRAJ.plan.length>1){
+  if(namedAnyOn() && TRAJ.plan && TRAJ.plan.length>1){
     const P=TRAJ.plan.map(pr).filter(Boolean);
     if(P.length>1){
       g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
@@ -1862,7 +1900,7 @@ async function refresh(){
     TRAJ={trace:t.trace||[],plan:t.plan||[],planLabel:t.plan_label||'',real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s};
     // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线」的真因: 线画了但在整机视角里只占 30×40 像素。
     //    规划一变就把视角框到这条轨迹上(只改 target/距离, 不动他手调的 yaw/pitch)。
-    if(TRAJ.plan && TRAJ.plan.length>1){
+    if(namedAnyOn() && TRAJ.plan && TRAJ.plan.length>1){
       const sig=TRAJ.plan.map(p=>p.map(v=>Math.round(v*1000)).join(',')).join('|');
       if(sig!==(refresh._planSig||'')){
         refresh._planSig=sig;

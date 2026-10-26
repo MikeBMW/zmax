@@ -43,13 +43,19 @@ def main() -> int:
     ap.add_argument("--hz", type=float, default=5.0)
     ap.add_argument("--duration", type=float, default=0.0, help="0 = 一直采到 SIGTERM")
     ap.add_argument("--tag", default="", help="会话标签, 例如 traj3")
+    ap.add_argument("--depth", default="http://192.168.23.66:8792/depth.png",
+                    help="深度图 URL (置空不采); 3DGS 有深度就不用随机盒子初始点云")
+    ap.add_argument("--no-depth", action="store_true")
     a = ap.parse_args()
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     name = (a.tag + "-" + stamp) if a.tag else stamp
     sess = os.path.join(a.out, "sessions", name)
     fdir = os.path.join(sess, "frames")
+    ddir = os.path.join(sess, "depth")
     os.makedirs(fdir, exist_ok=True)
+    if a.depth and not a.no_depth:
+        os.makedirs(ddir, exist_ok=True)
     pose_f = open(os.path.join(sess, "poses.jsonl"), "w", encoding="utf-8")
 
     def _stop(*_a):
@@ -75,6 +81,9 @@ def main() -> int:
             e = st.get("endInRef") or []
             if len(e) >= 3:
                 pos = [round(float(e[i]) * 1000.0, 2) for i in range(3)]     # m → mm
+                # 🔴 必须存姿态: 相机装在臂上, 位姿要做 T_base2tcp @ T_cam2tool 才能建 3DGS;
+                #    只存 xyz 的 962 帧等于白采 (老倪问"两次够不够"时发现这个洞)。
+                rpy = [round(float(e[i]), 5) for i in range(3, 6)] if len(e) >= 6 else None
                 last_ts = float(st.get("ts") or time.time())
                 if bbox is None:
                     bbox = [pos[:], pos[:]]
@@ -93,8 +102,20 @@ def main() -> int:
                 fp = os.path.join(fdir, "%06d.jpg" % n)
                 with open(fp, "wb") as f:
                     f.write(jpg)
+                dep_ok = False
+                if a.depth and not a.no_depth:
+                    try:
+                        png = _get(a.depth, timeout=3.0)
+                        if png[:4] == b"\x89PNG":
+                            with open(os.path.join(ddir, "%06d.png" % n), "wb") as f:
+                                f.write(png)
+                            dep_ok = True
+                    except Exception:                                        # noqa: BLE001
+                        pass
                 pose_f.write(json.dumps({"i": n, "ts": round(time.time(), 3),
-                                         "tcp_mm": pos, "file": os.path.basename(fp),
+                                         "tcp_mm": pos, "tcp_rpy": rpy,
+                                         "file": os.path.basename(fp),
+                                         "depth": dep_ok,
                                          "bytes": len(jpg)}, ensure_ascii=False) + "\n")
                 pose_f.flush()
                 n += 1

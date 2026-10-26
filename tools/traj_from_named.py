@@ -38,12 +38,15 @@ sys.path.insert(0, HERE)
 
 import traj_plan as TP                                                    # noqa: E402
 
-LIMIT = TP.LIMIT                # 单段上限 mm
+# 单段上限 mm: 默认沿用 registry 的 300, 但实测 **222mm 一条 straight MoveL 会被控制器静默丢弃**
+# (moveAppend/moveStart 都 ec=0, 但 25s 内一动不动; 同一位置拆成 100mm 就正常) ⇒ 覆盖扫描这类
+# 长直线必须用 --seg-max 100 拆开。ZMAX_SEG_MAX_MM 环境变量可覆盖。
+LIMIT = float(os.environ.get("ZMAX_SEG_MAX_MM") or TP.LIMIT)
 START_GATE_MM = 20.0            # 起点闸: 与 550C 执行器同一口径
 # 只显示、不打算给真机走的轨迹 (坐标不是真机可达语义)
 NOT_EXECUTABLE = {
     "map": "建图轨迹是 2D 栅格平移到台面的**示意坐标**(32x30 @20cm), 不是真机可达点; 真要拿它走路得先做栅格→base 真值标定",
-    "real": "实时轨迹是真机走过的点, 但页面这条通常是空的(0 点); 有数据时它是「已经走过」的记录, 不是待执行路径",
+    "real_legacy": "实时轨迹(old)=真机走过的记录, 不是待执行路径",
 }
 SERVER = os.environ.get("ZMAX_AR_SERVER", "http://127.0.0.1:8797")
 
@@ -107,6 +110,10 @@ def build(k: str, tol: float, force: bool, lead_in: bool = False):
     if not d.get("ok"):
         raise SystemExit("⛔ 取不到轨迹 %s: %s" % (k, d.get("note")))
     pts_m = [[float(v) for v in p] for p in (d.get("pts") or [])]
+    if k == "real" and len(pts_m) >= 2:
+        # 实时=当前 TCP→安全点1: 只取两端, 交给轴对齐拆段(否则 25 点连线会被拆成 48 个碎段,
+        # 而且实测长直线单段会被控制器静默丢弃 ⇒ 下面 main 里对 real 默认 LIMIT=100)
+        pts_m = [pts_m[0], pts_m[-1]]
     if len(pts_m) < 2:
         raise SystemExit("⛔ 轨迹 %s 只有 %d 点, 不能规划" % (k, len(pts_m)))
     # 🔴 2026-10-26: 建图轨迹的数据源已换成 explore_traj_fenced.json ——
@@ -115,7 +122,11 @@ def build(k: str, tol: float, force: bool, lead_in: bool = False):
     #   按 src 判, 指出是 fenced 版就放行(起点闸/净空预检照旧跑), 老的示意源继续拒。
     _src = str(d.get("src") or "")
     _fenced = ("explore_traj_fenced" in _src) or ("避让围栏" in _src)
-    if k in NOT_EXECUTABLE and not force and not _fenced:
+    # 轨迹5「实时」= 当前 TCP → 安全点1 的待执行路径 (服务端已按实时位姿生成点列),
+    # 起点就是当前 TCP ⇒ 起点闸天然过。以前它被列进 NOT_EXECUTABLE(实测记录不可执行), 现在放行。
+    if k == "real":
+        pass
+    elif k in NOT_EXECUTABLE and not force and not _fenced:
         raise SystemExit("⛔ %s 不可执行: %s\n   (确要试就加 --force)" % (k, NOT_EXECUTABLE[k]))
     rec = build_from_points(pts_m, k, tol, d.get("label") or k, d.get("src") or "", lead_in=lead_in)
     return rec, d
@@ -203,6 +214,8 @@ def main():
     ap.add_argument("--tol", type=float, default=5.0, help="RDP 抽稀容差 mm (默认 5)")
     ap.add_argument("--force", action="store_true", help="允许规划 示意坐标/实时 轨迹")
     ap.add_argument("--dry-run", action="store_true", help="只算不写 (不动 planned_traj.json)")
+    ap.add_argument("--seg-max", type=float, default=0.0,
+                    help="单段最大长度 mm (0=沿用默认 300; 长直线实测要用 100, 否则控制器不动)")
     ap.add_argument("--lead-in", action="store_true",
                     help="当前 TCP 不在首点时, 把 TCP→首点也拆成段一起下发 (覆盖扫描类轨迹用)")
     ap.add_argument("--self-test", action="store_true",
@@ -234,6 +247,11 @@ def main():
               (end, rec["tcp0_mm"], _dist(end, rec["tcp0_mm"])))
         return 0 if rec["precheck"]["ok"] else 2
 
+    global LIMIT
+    if a.seg_max and a.seg_max > 0:
+        LIMIT = float(a.seg_max)
+    elif a.k == "real":
+        LIMIT = 100.0       # 去安全点要抬 264mm; 超过 ~220mm 的单段实测会被控制器丢掉
     rec, d = build(a.k, a.tol, a.force, lead_in=a.lead_in)
 
     print("命名轨迹: %s  (%d 点, 来源 %s)" % (d.get("label"), d.get("n"), d.get("src")))

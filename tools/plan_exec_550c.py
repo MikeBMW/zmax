@@ -136,8 +136,33 @@ def execute(payload):
         tgt = [float(v) for v in tgt_mm]
         t0 = time.time()
         cur = tcp_mm(st)
+        # 🔴 2026-10-26 实测复现: seg1 成功后立刻发 seg2 → 桥返回 moveStart 报错(ec 被吞),
+        #   而 moveAppend 是 0 —— 典型的"上一条运动还没在内核里收尾就又 moveStart"。
+        #   修法两条: ①下发前等到真静止(vmax 小 + 位置不再变, 最多等 3s); ②失败 0.3s 后重试一次。
+        _t_wait = time.time()
+        _prev = None
+        while time.time() - _t_wait < 3.0:
+            try:
+                _s = bridge("/status", timeout=6)["status"]
+                _p = tcp_mm(_s)
+                if vmax(_s) < 0.05 and _prev is not None and max(abs(_p[k] - _prev[k]) for k in range(3)) < 0.1:
+                    break
+                _prev = _p
+            except Exception:                                                # noqa: BLE001
+                pass
+            time.sleep(0.12)
         r = bridge("/move_pose", {"p": [v / 1000.0 for v in tgt], "q": q, "speed": sp, "dry": False})
         res = (r.get("result") or {})
+        if not res.get("ok"):
+            # 重试一次 (拿新位姿再发; 只重试一次, 不掩盖真故障)
+            time.sleep(0.3)
+            _s2 = bridge("/status", timeout=6)["status"]
+            _e2 = _s2.get("endInRef") or []
+            _q2 = rpy_to_quat(float(_e2[3]), float(_e2[4]), float(_e2[5])) if len(_e2) >= 6 else q
+            r = bridge("/move_pose", {"p": [v / 1000.0 for v in tgt], "q": _q2, "speed": sp, "dry": False})
+            res = (r.get("result") or {})
+            if not res.get("ok"):
+                res["why"] = "%s (已重试 1 次)" % (res.get("why") or "moveStart 报错")
         # 🔴 2026-10-26 现场「只走了两步就中断」复盘:
         #   ① 段下发被判失败 ⇒ 这里去调 /stop, 而 Orin 桥的 /stop 当时裸调 stopMove()/moveReset()
         #      少了 ec 参数 ⇒ 抛 TypeError ⇒ HTTP 500 ⇒ **未捕获异常把整个执行器进程打死**,
@@ -148,7 +173,8 @@ def execute(payload):
             _why = str(res.get("why") or (r.get("error") or "未知"))[:120]
             ledger({"ev": "seg_fail", "plan_id": plan_id, "seg": i, "why": _why,
                     "target_mm": tgt, "here_mm": cur,
-                    "sent_ec": (res.get("sent") or {}).get("moveAppend_ec") or (res.get("sent") or {}).get("moveStart_ec")})
+                    "append_ec": (res.get("sent") or {}).get("moveAppend_ec"),
+                    "start_ec": (res.get("sent") or {}).get("moveStart_ec")})
             _stop = {}
             try:
                 _stop = bridge("/stop", {}, timeout=8)
