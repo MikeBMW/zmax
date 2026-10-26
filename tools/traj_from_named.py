@@ -102,7 +102,7 @@ def axis_segs(p_from, p_to):
     return out
 
 
-def build(k: str, tol: float, force: bool):
+def build(k: str, tol: float, force: bool, lead_in: bool = False):
     d = fetch_named(k)
     if not d.get("ok"):
         raise SystemExit("⛔ 取不到轨迹 %s: %s" % (k, d.get("note")))
@@ -117,16 +117,21 @@ def build(k: str, tol: float, force: bool):
     _fenced = ("explore_traj_fenced" in _src) or ("避让围栏" in _src)
     if k in NOT_EXECUTABLE and not force and not _fenced:
         raise SystemExit("⛔ %s 不可执行: %s\n   (确要试就加 --force)" % (k, NOT_EXECUTABLE[k]))
-    rec = build_from_points(pts_m, k, tol, d.get("label") or k, d.get("src") or "")
+    rec = build_from_points(pts_m, k, tol, d.get("label") or k, d.get("src") or "", lead_in=lead_in)
     return rec, d
 
 
-def build_from_points(pts_m, k, tol, label_named, src):
-    """纯计算: 点列(米) → 段表 + 预检。selftest 与线上走同一套代码。"""
+def build_from_points(pts_m, k, tol, label_named, src, lead_in=False):
+    """纯计算: 点列(米) → 段表 + 预检。selftest 与线上走同一套代码。
+
+    lead_in=True: 允许"当前 TCP 不在首点"的情况 —— 把 TCP→首点这段也拆成轴对齐段
+    一起写进同一份段表(段表起点 = 当前 TCP), 这样 550C 的起点闸照样过。
+    用于覆盖扫描类轨迹(建图): 它的起点在别处, 但不需要先单独发一次"去起点"。
+    """
     tcp, q, age = TP.live_tcp()
     first = [v * 1000.0 for v in pts_m[0]]
     gap = _dist(tcp, first)
-    if gap > START_GATE_MM:
+    if gap > START_GATE_MM and not lead_in:
         raise SystemExit(
             "⛔ 起点闸: 当前 TCP [%.1f, %.1f, %.1f] 离轨迹首点 [%.1f, %.1f, %.1f] 差 %.1fmm > %.0fmm\n"
             "   ⇒ 不规划(真机上「先去起点」本身就是一次运动, 得单独下发, 不能混在轨迹里)"
@@ -161,6 +166,11 @@ def build_from_points(pts_m, k, tol, label_named, src):
             raise SystemExit("内部错误: 拆段后没回到锚点 (%.2fmm)" % _dist(cur, a))
     if not segs:
         raise SystemExit("⛔ 轨迹全部点与当前 TCP 重合, 没有可执行的段")
+    # 550C 执行器的硬闸: 1 <= n_seg <= 24 (plan_exec_550c.py 收包校验), 超过就发不出去。
+    # 覆盖扫描(建图)一排一排走天然 12 段, 所以上限已经从 8 提到 24。
+    if len(segs) > 24:
+        raise SystemExit("⛔ 拆出 %d 段, 超过 550C 闸门上限 24 段 ⇒ 调大 --tol 抽稀, 或减少航点"
+                         % len(segs))
 
     checks, worst, ok = [], 1e9, True
     for p in pts_walk:
@@ -193,6 +203,8 @@ def main():
     ap.add_argument("--tol", type=float, default=5.0, help="RDP 抽稀容差 mm (默认 5)")
     ap.add_argument("--force", action="store_true", help="允许规划 示意坐标/实时 轨迹")
     ap.add_argument("--dry-run", action="store_true", help="只算不写 (不动 planned_traj.json)")
+    ap.add_argument("--lead-in", action="store_true",
+                    help="当前 TCP 不在首点时, 把 TCP→首点也拆成段一起下发 (覆盖扫描类轨迹用)")
     ap.add_argument("--self-test", action="store_true",
                     help="自检: 用当前 TCP 附近合成的 240mm 方框点验证 拆段/预检 数学 (不写文件)")
     a = ap.parse_args()
@@ -222,7 +234,7 @@ def main():
               (end, rec["tcp0_mm"], _dist(end, rec["tcp0_mm"])))
         return 0 if rec["precheck"]["ok"] else 2
 
-    rec, d = build(a.k, a.tol, a.force)
+    rec, d = build(a.k, a.tol, a.force, lead_in=a.lead_in)
 
     print("命名轨迹: %s  (%d 点, 来源 %s)" % (d.get("label"), d.get("n"), d.get("src")))
     print("起点 TCP = [%.1f, %.1f, %.1f] mm (帧龄 %.1fs) · 起点闸 ✅" %

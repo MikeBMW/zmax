@@ -1847,6 +1847,10 @@ class H(BaseHTTPRequestHandler):
         这里只负责跑它并把**失败原因原样带回页面** (不能笼统报"失败", 人要知道是起点不一致还是净空不够)。
         """
         exe = [sys.executable, os.path.join(HERE, "traj_from_named.py"), "--k", str(k)]
+        # 建图轨迹(覆盖扫描)起点不在当前 TCP: 允许把「TCP→首点」也拆成段写进同一份段表,
+        # 否则点执行永远被起点闸拒(实测差 520mm)。其余轨迹保持严格起点闸, 不许偷偷飞过去。
+        if str(k) in ("map",):
+            exe.append("--lead-in")
         try:
             pr = subprocess.run(exe, cwd=REPO, capture_output=True, text=True, timeout=240)
         except subprocess.TimeoutExpired:

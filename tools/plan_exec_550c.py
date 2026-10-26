@@ -206,7 +206,9 @@ def main():
             pts = note.get("abs_mm") or []
             rem = float(note.get("auth_remaining_s") or 0.0)
             log("收到段表 plan_id=%s n_seg=%s 授权剩余 %.0fs" % (pid, note.get("n_seg"), rem))
-            if not (1 <= len(pts) <= 8) or any(len(p) < 3 for p in pts):
+            # 段数上限原来 8: 手工 4 段够用, 但覆盖扫描(建图轨迹3)一排一排走, 天然 12 段 ⇒
+            # 改 24 (仍是"防呆上限", 不是安全闸; 安全靠起点/包络/授权/预检)。
+            if not (1 <= len(pts) <= 24) or any(len(p) < 3 for p in pts):
                 ledger({"ev": "reject", "plan_id": pid, "why": "abs_mm 不合法"})
                 continue
             if rem <= 1.0:
