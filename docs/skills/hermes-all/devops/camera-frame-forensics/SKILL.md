@@ -664,6 +664,24 @@ done; done 2>/dev/null | sort -u
   `scripts/pose_recorder.py`: 10Hz 降采样, 同时记墙钟 `t` 与 ROS 时戳 `stamp` —— 实测两者可差 32s,
   只记一个就回放对不上帧; 订阅必须 `qos_profile_sensor_data`, 发布者是 BEST_EFFORT)。
 
+## 🔗 采集/建图链「在跑」= 有帧 + 有产物, **systemd active 不是证据**
+
+老倪问的是结果不是进程状态:「你在 550C 中是自动记录图像和轨迹, 用于建图么?」—— 五个 unit 全 `active`,
+而 `…/health` 回 `img_age_s=43257 · pose_age_s=43257 · fps=0.0`, 产物目录近 2 小时 **0 张新图** ⇒ 一条都没在记。
+- **三层判据, 缺一不算在记**: ① 输入帧龄 (`age_s` 到小时级 = 源死) ② 实际 `fps`
+  ③ **产物新增** (`find <session_dir> -newermt '-2 hours' -name '*.jpg' | wc -l`)。只报 ①⇒ 能说"源断了",
+  报全三层才能说"这一趟采集不会产出“。汇报要先给这三个数, 再说修法。
+- **帧源死 ⇔ 采集链通**: 测试服务时常见 "建图服务正常, 但采集不到东西" —— 这时结论必须写成
+  「链路在、源不在」并**先修源**, 不要先改采集/建图代码。
+- 🔍 **探测相机 HTTP 口先分清「元数据口」与「真帧口」**: 同一服务常有 `/snap` 回 **JSON** (`{n, age_s}`),
+  真帧在 `/frame.jpg`。实测 `/snap` 回 **200 + 103B**, 若把字节数当图判就会得出"没图/相机死"的错误结论。
+  判活三件套: `/snap` 的 `n` **在增长** + `age_s<1` + 间隔 1~2s 两帧 md5 **不同**。
+- **自己写采集器时要自带自证**（不依赖那条已死的 ROS 链）: 会话目录 `sessions/<task>-<ts>/` 下
+  `frames/NNNNNN.jpg` + 逐行 `poses.jsonl`(同一行内配对帧号与 TCP 真值) + 收尾 `summary.json`
+  (n_frames / 实测 hz / cam_fail / pose_fail / 首末位姿 / 包围盒)。跑 6 秒就能验: 实测 30 帧 / 4.9Hz /
+  两帧 md5 不同 / fail 0 —— 这种数字当场就能给用户，不用等整条建图跑完。
+- 采集器带宽要预先算给用户: 640×480 JPEG ≈ 75KB/帧 ⇒ 5Hz ≈ 22MB/分钟; 开跑前把预计体积说清。
+
 ## 相关
 - ROS/DDS 侧"一帧都没到订阅端"(Publisher count 0 / 进程僵死 / **节点崩溃 exit code**)取证:
   `references/ros-image-chain-forensics.md`

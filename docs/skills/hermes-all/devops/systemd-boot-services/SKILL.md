@@ -79,6 +79,11 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 
 - `systemctl link` + `enable` = 开机会起 (`multi-user.target.wants/` 里出现链接), 而实体文件不在系统目录 ——
   满足"单一路径"要求; **报告时把这条说清楚** (systemd 强制要求在 `/etc/systemd/system` 有个入口, 软链不算放文件)。
+- 🔴 **`is-enabled` 回 `linked` 不等于开机会起**: `linked` 只表示 unit 文件是软链、**还没装进 `*.wants/`**,
+  这种单元 `is-active` 会一直是 `inactive`, 而 `list-unit-files` 里却能看到它 —— 极易被当成"服务存在, 只是暂时停了"。
+  实测一个相机发布件就这样 12 小时没人拉, 下游“采集链”一直拿旧帧。定式三连:
+  `is-enabled` 要 `enabled`(**不是** `linked/disabled`) + `is-active` 要 `active` + `ls /etc/systemd/system/multi-user.target.wants/ | grep <svc>` 有链接;
+  修法 = `systemctl link` 之后再 `systemctl enable --now <svc>`(link 自己不会 enable)。
 - **没有上游就不空转用 `Requires=`**: 汇总/转发类服务 `Requires=<数据源服务>` + `After=`, 源死它也停
   (实测 D405 发布件被 kill 时, 转发件跟着停, 不会挂着个 8792 回空)。
 - 🔴 **`systemctl disable` 一个 `link` 进来的单元会删掉 `/etc` 里那条软链**(实体在隐藏目录里没丢, 但
@@ -131,6 +136,16 @@ scp /tmp/w/*.whl <远端>:/tmp/
 <venv>/bin/python -c "from cyclonedds.domain import DomainParticipant; print('ok')"
 ```
 装之前先确认那个 venv 的版本 (`<venv>/bin/python -V`) —— 猜错 ABI 只会得到一样的 `ModuleNotFoundError`。
+
+🔴 **不要逐包 `--no-deps` 扒**: 那样拿到的只是你点名的那几个包, 依赖闭包(以及包之间的版本约束)全靠猜,
+实测会撞 `Could not find a version that satisfies the requirement huggingface-hub<2.0,>=1.5.0` 这类错 ——
+因为手边缓存的 hub 版本是新的, 而旧 `transformers` 不许。定式: **整条闭包一起下**(不加 `--no-deps`, 只加目标版本/平台/abi),
+让 pip 按**目标解释器**求解一遍:
+```bash
+pip download --only-binary :all: --python-version 3.12 --implementation cp --abi cp312 -d /tmp/w transformers
+# 目标机: pip install --no-index --find-links /tmp/w transformers
+```
+验收不能只看安装退出码: `python -c 'import <包>; print(<入口类>)'` + 真实用一次(如从本地目录 `local_files_only` 加载权重)都要过。
 
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。

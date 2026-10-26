@@ -87,11 +87,21 @@ metadata:
   否则 pip 直接拒绝执行。
 - **下载与安装都串行**：两个 `pip download` 同时往同一个 `-d` 目录写会互相抢，
   报 `FileNotFoundError: /tmp/pip-unpack-*/xxx.whl`（文件被另一个进程清掉）。
-- 🔴 **目标机无外网时走离线 wheel 通道**：源机
-  `pip download --no-deps --python-version 312 --only-binary=:all: --platform manylinux2014_x86_64 -d whl/ <pkg>`
-  → `scp -r whl/ target:~/whl/` → 目标机 `pip install --no-index --find-links ~/whl <pkg>`。
-  传递依赖一层套一层时，**别试图一次把百来条清单装全**（链条深、编译型包还会挂）：
-  按「起服务 → 看 `ModuleNotFoundError` → 只补那一个包」迭代，每轮几十秒，比整批失败快得多。
+- 🔴 **目标机无外网时走离线 wheel 通道**，但**看要装的是哪类包, 两种打法别混用**:
+  - **大栈 / 带算力绑定的清单**（torch·torchvision·nvidia-*）: 源机
+    `pip download --no-deps --python-version 312 --only-binary=:all: --platform manylinux2014_x86_64 -d whl/ <pkg>`
+    → `scp -r whl/ target:~/whl/` → 目标机 `pip install --no-index --find-links ~/whl <pkg>`。
+    这种场景下别把百来条清单一次装全（链条深、编译型包会挂），按「起服务 → 看 `ModuleNotFoundError` → 只补那一个」迭代。
+  - **单个有依赖树的主包**（`transformers` 这类）: **去掉 `--no-deps`，让 pip 把整棵闭包一次算完**:
+    ```bash
+    pip download --only-binary :all: --python-version 3.12 --implementation cp --abi cp312 \
+        transformers==5.16.1 -d /tmp/wheels312          # 实测 27 个轮子, 含 typer/hub/tokenizers
+    ```
+    逐次补在这里**更慢**: 目标机每轮只会报一个缺包（`pyyaml → typer → …`），每轮都要重新撞网络、重新搬文件。
+- 🔴 **轮子的 Python/ABI 必须先对齐目标解释器, 否则整个方案从第一秒就错了**: 拿 cp311 的 `pyyaml`/`regex` 去装 py3.12
+  会直接 “no matching distribution”, 而你很容易把它误读成“源机上有包、镜像没同步”。先 `python -V` 确认目标版本,
+  再给 `--python-version / --implementation cp / --abi cp312`。同理版本约束先读主包 METADATA：
+  `transformers 5.16.1` 要 `huggingface-hub>=1.5,<2.0`, 给 2.3.0 会卡在解析。
 - **装完必跑一次 `import`，不要看 pip 输出猜**：
   `python -c "import torch, cv2, numpy; print(torch.__version__, torch.xpu.is_available())"` ——
   `pip install` 成功不等于能 import（缺 XPU 运行时库时要到 import 期才炸 `libpti_view.so.0`）。
@@ -180,6 +190,7 @@ sed -i -e 's/^User=.*/User=<目标用户>/' -e 's/^Group=.*/Group=<目标组>/' 
 | `ln -sfn src dir` 目标是真实目录 | 链接被建到 `dir/src` 里，`readlink` 空 | 先 `mv` 备份目录再建链（律 4） |
 | `pip download` 不带 `--no-deps` | 被 transformers/accelerate 拖着下几个 G 的 CUDA 包，卡几十分钟 | 见律 3 |
 | 依赖清单含 `-e` 行 | 整条下载失败、只零星下到几个包，之后靠猜补依赖 | 先 `grep -v '^-e '`（律 3） |
+| 轮子 ABI/Python 版本不对（cp311 装到 py3.12） | 每轮报**另一个**包 no matching distribution，像依赖永远补不完 | 先 `python -V`，下载时给 `--python-version/--abi`，一次算全闭包 |
 | 并发跑两个 `pip download` | `FileNotFoundError: /tmp/pip-unpack-*/xxx.whl` | 串行（律 3） |
 | 只按 `is-active` 验收 | 「起来了」但接口 500 / 读不到真值 | 逐端口 `curl` 拿 200；补依赖后重数 active（流程 10） |
 

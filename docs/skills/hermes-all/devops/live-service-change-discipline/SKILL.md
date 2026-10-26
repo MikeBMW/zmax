@@ -82,6 +82,10 @@ metadata:
   ② start 前若端口仍被占就**显式报错退出**, 不许继续"假装启动"; ③ 起完**断言应答的 pid 不在 stop 前的 pid 集合里**,
   并用**只有新代码才有的内容特征**验收(本例: 接口某字段尾串), 不要用 `200`/`ok:true`。
   `ss -ltnp` 里同一端口出现一串 pid 就是这类 forking 服务的正常形态, 别当成"多实例"去乱杀。
+  ⚠️ **自己写的重启脚本最容易在这里翻车**: 用 `grep -oP 'pid=\K[0-9]+' | head -1` 只取第一个 pid,
+  TERM 之后端口立刻"看起来空了"(实际还有子进程在), 于是脚本报"起来了"而服务还是旧代码 ——
+  症状精确地表现为「某个端点的数量/条数还是旧值」。现成可用: `scripts/restart_port_service.sh <port> <入口.py>`
+  (按端口找到**全部** pid → 循环等到扫描为空 → 语法自检 → 起新进程 → 断言应答 pid 不在旧集合里)。
 - 🔴 **「我改了文件」≠「在跑的代码变了」—— 先把进程启动时间和链上每个文件的 mtime 并排量一次**。
   常驻服务启动时就把模块 import 进内存，之后改文件对它**零影响** ⇒ 你在命令行/离线工具里验得再漂亮，
   用户眼前的界面还是旧逻辑；而曝光/增益/阈值这类**服务端字段的回读却是对的**，
@@ -331,6 +335,11 @@ metadata:
   `/proc/*/cmdline` 把该模块的**所有**实例 kill -9（别用 `pkill -f`，见本节开头）；③ 循环等到端口连续两次扫描为空；
   ④ `systemctl reset-failed <svc> && systemctl restart <svc>`，然后断言**监听 pid 变了、且它的 `lstart` 晚于
   你改的文件的 mtime**，并拿一处**只有新代码才有的字段**（新加的 `*_ver` / 新端点）验收 —— 不要用 200 验收。
+  ⚠️ **抢端口的也可能是上一轮 agent/工具调用起的后台进程**: 它的 cgroup 挂在**别的 unit** 上
+  (实测 `cat /proc/<pid>/cgroup` = `0::/system.slice/hermes-gateway.service`), 于是 `systemctl status <pid>`
+  报的是那个 unit, 极易误判成"服务起来了"。认归属只看 `cat /proc/<pid>/cgroup` + `tr '\0' ' ' </proc/<pid>/cmdline`;
+  kill 用**显式 pid**(别 pkill -f), 再 `systemctl reset-failed <svc> && systemctl restart <svc>`,
+  收尾断言 `systemctl show -p MainPID -p NRestarts` = 新 pid / 0, 且 `curl` 那个端点是**新代码才有的字段**。
 - 🔴 **抢端口的"第二个 owner"常常是应用自己的 GUI 按钮**: 清掉手工孤儿进程、单元拉起来之后,
   用户一点界面按钮 (工位总览/预览/推流) 就又冒出一个自己 `Popen` 的实例, 它只带了**一部分启动参数**
   ⇒ 页面能开、服务看着很健康, 但**少几路/某格标题都是空的**(因为新加的参数只在 unit 里)。
