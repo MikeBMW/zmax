@@ -41,9 +41,24 @@
  .row button{flex:1 1 46%}
  #vr{width:100%;height:260px;background:#070a0e;border-radius:8px;display:block;touch-action:none}
  /* 🧭 ?vr=1 VR 全屏模式: 只留三维视图放大 —— 手机上看得清, 也方便精确截图取证 */
- body.vronly #stagewrap, body.vronly #side, body.vronly header, body.vronly #leftcol > .card:not(#vrcard){display:none!important}
+ /* 🔴 2026-10-26 实测: 右栏那个 <aside> **没有 id**(原来写的 #side 是死选择器) ⇒ 整列按钮
+    (53 个)一直留在页面上, 于是 /ar3d 虽然画布铺满了, 页面仍高 2469px 要滚轮拖。改成按标签选。 */
+ body.vronly #stagewrap, body.vronly aside, body.vronly header, body.vronly #leftcol > .card:not(#vrcard){display:none!important}
  body.vronly #vrcard{margin:0;border-radius:0}
  body.vronly #vr{height:calc(100vh - 92px)}
+ /* 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」
+    = /ar3d 独立三维页: 一屏只有 canvas, 不留标题/按钮/文字/页脚, 不滚动。 */
+ body.vrfull{margin:0;overflow:hidden;height:100vh;background:#070a0e}
+ body.vrfull aside, body.vrfull footer, body.vrfull header, body.vrfull #stagewrap{display:none!important}
+ body.vrfull main{padding:0!important;margin:0!important;display:block!important;height:100vh;overflow:hidden}
+body.vrfull #leftcol{display:block;height:100vh;overflow:hidden;padding:0;margin:0;max-width:none;width:100vw}
+ body.vrfull #vrcard{display:block!important;height:100vh;margin:0;padding:0;border:0;border-radius:0;background:#070a0e;box-shadow:none}
+ body.vrfull #vrcard h2,
+ body.vrfull #vrcard .row,
+ body.vrfull #vrcard pre,
+ body.vrfull #vrcard #bTrajMsg{display:none!important}
+ body.vrfull #vr,
+ body.vrfull #vrcard #vr{width:100vw!important;height:100vh!important;margin:0!important;border-radius:0}
  pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-all;font-size:12.5px;color:#9fb1c4;max-height:150px;overflow:auto}
  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13.5px}
  .kv b{color:#8b949e;font-weight:600}
@@ -55,7 +70,10 @@
 <header>
   <h1>🛰 TCP 轨迹 AR/VR 调试台</h1>
   <span id="bAuth" style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #30363d">授权: 查…</span>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r13 · 按钮五行重排(动作/视图/轨迹/围栏盒/直线)</span>
+  <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
+  <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
+     style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r14 · 独立三维页 /ar3d(一屏只有三维视图)</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -281,6 +299,13 @@ if (__ZMAX_APIBASE) {
   };
 }
 const $=(id)=>document.getElementById(id);
+// 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」
+//   /ar3d = 独立三维页。版式必须在**脚本最前面**定下来: 放到 loadCams() 里做要等 /api 返回,
+//   那一瞬间整页(页头+按钮+相机)会先闪出来 ⇒ 现场看着就是"还是原来那页"。等价写法 ?vr=full / ?bare=1
+const __USP = new URLSearchParams(location.search);
+const __BARE = (location.pathname.replace(/\/+$/,'') === '/ar3d') || __USP.get('vr')==='full' || __USP.get('bare')==='1';
+if(__BARE || __USP.get('vr')==='1'){ document.body.classList.add('vronly'); }
+if(__BARE){ document.body.classList.add('vrfull'); }
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
 // 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**;
 //   现在有 USB 相机(RealSense)/机器人手臂的 RealSense/金手指检测相机/表面检测相机, 这 4 个都照同一个场景」
@@ -2064,9 +2089,9 @@ async function loadCams(){
   await loadCalib();
   // 🧭 ?traj=xiaohong|square|map|safe|real 自动加载命名轨迹
   //   用途: ① 手机/微信直接发带参数的链接就能看 ② 无头 chromium 截图验证不用点按钮
-  const _usp = new URLSearchParams(location.search);
-  if(_usp.get('vr')==='1'){ document.body.classList.add('vronly'); }
-  const _tq = _usp.get('traj');
+  //   (独立三维页 /ar3d 的版式已在脚本最前面定好, 这里只补"预置轨迹/自动环绕")
+  if(__BARE && __USP.get('spin')==='1'){ try{ $('bSpin').click(); }catch(e){} }
+  const _tq = __USP.get('traj');
   if(_tq){ try{ await loadNamed(_tq); }catch(e){} }
 }
 

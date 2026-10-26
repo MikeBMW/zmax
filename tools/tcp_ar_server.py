@@ -907,7 +907,9 @@ class H(BaseHTTPRequestHandler):
             self._rs_proxy()
             return
         try:
-            if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar"):
+            if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar",
+                     "/ar3d", "/ar3d.html", "/arvr"):
+                # 🧭 /ar3d = 独立三维页(同一份页面, 前端按 path 进 vrfull 模式: 一屏只有三维视图)
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
                     self._send(200, "text/html; charset=utf-8", f.read())
             elif p in ("/autoLight", "/autolight", "/autoLight.html"):
@@ -2322,21 +2324,43 @@ class H(BaseHTTPRequestHandler):
 def main():
     if not os.path.exists(PAGE):
         print("✗ 页面不存在: %s" % PAGE); return 1
-    # 2026-10-12 现场: 线程模型(ThreadingHTTPServer)会把整个服务憋死 ——
-    #   实测 74 线程 / 16 条 CLOSE-WAIT / 主线程卡 futex(不再 accept) ⇒ 新连接一律超时(AR 按钮打不开),
-    #   只有老连接还能被服务。换成**每连接一进程**(ForkingMixIn): 一个连接卡死/线程泄漏都影响不到 accept。
-    #   max_children 兜住内存(父进程 ~60MB × N)。
-    class _ForkingSrv(socketserver.ForkingMixIn, HTTPServer):
-        allow_reuse_address = True
+    # 🧵 2026-10-26 (老倪: 「按照你的建议来」) —— 进程模型: fork-per-connection → **单进程多线程**
+    #   旧模型现场实测的代价(ForkingMixIn, max_children=24): 多开几个 AR 页后 24 个子进程、
+    #     RSS 合计 12.3GB、LISTEN backlog=5 且 Recv-Q 已满 6 ⇒ 新连接排队,
+    #     `curl -L 8793/ar` 走那条 302 要 **175.8s** 才通(直连也 30s 超时) ⇒ AR 按钮"打不开"(窗口空白)。
+    #   为什么以前线程模型会憋死(74 线程 / 16 CLOSE-WAIT / 主线程卡 futex): 那时**没有读超时、
+    #     也没有线程上限**, 断链的连接把线程永久挂住。现在两个都补齐:
+    #       · H.timeout = 20 秒(读/写超时即收尾) · 线程数上限 + 信号量(满了直接关连接, 不排长队)
+    #       · backlog 128(原来 5) —— 页面一次开 10Hz 轮询 + 4 路流是正常行为, 不许排队。
+    class _ThreadingSrv(socketserver.ThreadingMixIn, HTTPServer):
         daemon_threads = True
-        max_children = 24
+        allow_reuse_address = True
+        block_on_close = False
+        request_queue_size = 128
+        max_workers = 96
+        def __init__(self, *a, **kw):
+            self._sem = threading.BoundedSemaphore(self.max_workers)
+            super().__init__(*a, **kw)
+        def process_request_thread(self, request, client_address):
+            if not self._sem.acquire(blocking=False):
+                try:                                                # 满载: 关掉这条, 页面自己会重试
+                    request.close()
+                except Exception:                                   # noqa: BLE001
+                    pass
+                return
+            try:
+                super().process_request_thread(request, client_address)
+            finally:
+                self._sem.release()
     try:                                    # 🔴 光模块检测线程: 父进程常驻, 请求只读结果(不在请求里跑推理)
         OB3.warm()
         threading.Thread(target=_mod3_worker, name="mod3", daemon=True).start()
         print("  🔍 光模块检测线程: 已启动 (结果 → /dev/shm/mod3_latest.json, 供 /api/module3d 读)")
     except Exception as _e:                                                 # noqa: BLE001
         print("  🔍 光模块检测线程启动失败: %s" % _e)
-    srv = _ForkingSrv(("0.0.0.0", PORT), H)
+    srv = _ThreadingSrv(("0.0.0.0", PORT), H)
+    print("  🧵 进程模型: 单进程多线程 (backlog=%d · 线程上限=%d · 读超时=%ss)"
+          % (srv.request_queue_size, srv.max_workers, H.timeout))
     print("═══ TCP 轨迹 AR/VR 服务 ═══")
     print("  AR 页:      http://0.0.0.0:%d/          (手机/PC 同网可开)" % PORT)
     for k, v in CAMS.items():

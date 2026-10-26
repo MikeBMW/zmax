@@ -5137,14 +5137,15 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             body = PAGE.replace("__IDX__", str(self.server.local_dev)).encode("utf-8")
             self._send(200, "text/html; charset=utf-8", body)
-        elif p in ("/ar", "/ar.html"):
+        elif p in ("/ar", "/ar.html", "/ar3d", "/ar3d.html"):
             # 🥽 2026-10-19 老倪「回到以前 http://10.163.146.78:8793/ar 的状态吧, 以前就不卡」:
             #   他记的这个地址要能用。AR 页面/取帧/判据 API 的真源在 8797(同一台机, 同源 /api 与 /snap),
             #   所以这里**只做 302**, 不在 8793 上再挂一层代理 —— 相机流服务(8791/8793)是本机最重的常驻进程,
             #   让 AR 页面的 10Hz 取帧穿它一趟只会把视频流拖慢。
+            #   🧭 /ar3d = 独立三维页(只有三维视图), 同样只做 302 到 8797 的同名路径。
             _h = (self.headers.get("Host") or "").split(":")[0] or "127.0.0.1"
             self.send_response(302)
-            self.send_header("Location", "http://%s:8797/ar" % _h)
+            self.send_header("Location", "http://%s:8797%s" % (_h, p))
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
