@@ -100,8 +100,39 @@ CLICK2 = r"""
   const bOff = bright();
   document.getElementById('bCfgAll').click();
   const bBack = bright();
+  // 🤖 左臂(仿真臂): 默认 = 右臂整条平移 (0,+500,0)mm; 能画能关; 点动不改相机
+  const cyan = () => {
+    const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (Math.abs(d[i]-94) < 26 && Math.abs(d[i+1]-234) < 22 && Math.abs(d[i+2]-212) < 22) n++;
+    }
+    return n;
+  };
+  let offErr = null;
+  const X = larmXform();
+  ['base_link','link1','link2','link3','link4','link5','link6','tool1'].forEach(nm => {
+    const M = (LINKM||{})[nm]; if (!M) return;
+    const w = M.t;
+    const l = [X.R[0][0]*w[0]+X.R[0][1]*w[1]+X.R[0][2]*w[2]+X.t[0],
+               X.R[1][0]*w[0]+X.R[1][1]*w[1]+X.R[1][2]*w[2]+X.t[1],
+               X.R[2][0]*w[0]+X.R[2][1]*w[1]+X.R[2][2]*w[2]+X.t[2]];
+    const e = Math.max(Math.abs(l[0]-w[0]), Math.abs(l[1]-w[1]-0.5), Math.abs(l[2]-w[2]));
+    offErr = (offErr === null) ? e : Math.max(offErr, e);
+  });
+  const cOn = cyan(), dd0 = +VR.dist.toFixed(4);
+  document.getElementById('bArmL').click();
+  const cOff = cyan();
+  document.getElementById('bArmL').click();
+  for (let i = 0; i < 3; i++) document.getElementById('lXP').click();
+  const dJog = LARM.d.slice(), cJog = cyan(), dd1 = +VR.dist.toFixed(4);
+  document.getElementById('bLreset').click();
+  const dBack = LARM.d.slice();
   return JSON.stringify({s0: s0, s1: s1, s2: s2,
-                         cfg: {n: nCfg, rows: rows, on: bOn, off: bOff, back: bBack}});
+                         cfg: {n: nCfg, rows: rows, on: bOn, off: bOff, back: bBack},
+                         larm: {offErr: (offErr === null ? null : +offErr.toFixed(9)), cyanOn: cOn,
+                                cyanOff: cOff, cyanJog: cJog, dJog: dJog, dBack: dBack,
+                                dist0: dd0, dist1: dd1}});
 })()
 """
 
@@ -225,6 +256,24 @@ def main():
     except Exception as e:                                    # noqa: BLE001
         pd = "解析失败 %r" % (e,)
     chk("⑦ 工程配置点位: 左栏向下罗列全部点 + 三维大圆点真画出且能整组关/开", pts_ok, pd)
+    arm_ok = False
+    ad = "larm=%r" % (j.get("larm") if isinstance(j, dict) else None,)
+    try:
+        L = j.get("larm") or {}
+        e = L.get("offErr")
+        on, off, jog = L.get("cyanOn") or 0, L.get("cyanOff") or 0, L.get("cyanJog") or 0
+        dj, db = L.get("dJog") or [], L.get("dBack") or []
+        d0, d1 = L.get("dist0"), L.get("dist1")
+        same = (e is not None and e < 1e-6)                       # 左臂默认 = 右臂整体平移 Y+500mm
+        drawn = on > 300 and off < on * 0.2 and jog > 300
+        jogged = (dj == [30, 0, 0]) and (db == [0, 0, 0])
+        still = (d0 is not None and d0 == d1)                     # 点动不许动相机
+        arm_ok = same and drawn and jogged and still
+        ad = ("默认偏差 %.2e m · 青像素 开%d/关%d/点动后%d · 点动 %s→复位 %s · 视距 %s→%s"
+              % (e if e is not None else -1, on, off, jog, dj, db, d0, d1))
+    except Exception as e2:                                   # noqa: BLE001
+        ad = "解析失败 %r" % (e2,)
+    chk("⑧ 左臂仿真臂: 默认=右臂整条平移(0,+500,0) + 能画/能关 + x 点动生效且不动相机", arm_ok, ad)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))

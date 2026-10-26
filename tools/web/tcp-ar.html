@@ -89,7 +89,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r16 · /ar3d 左栏点位台账 + 大圆点</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r17 · 左臂仿真臂 + x y z a b c 点动</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -153,6 +153,34 @@
       <button id="bFrames" class="sm on" title="画 base(世界系) / tool0(法兰中心) / tool1(夹爪·模块头) 三个坐标系">🧭 坐标系</button>
       <button id="bUrdf" class="sm on" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
       <button id="bMod" class="sm on" title="在 tool1(模块头中心)画光模块长方体: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度)">🔩 光模块</button>
+    </div>
+    <!-- 🦾🦾 2026-10-26 老倪: 「在光模块按钮下面, 增加左臂和右臂两个按钮; 右臂就是当前正在显示的 6 轴机械臂;
+         左臂世界坐标系的原心在当前右臂的左侧, 右臂世界坐标系 Y=500mm、X=0 Z=0; 左臂 URDF 与右臂一样,
+         只是所有位姿当前都是我来仿真给你, 先默认跟右臂一样; 左臂位姿给我几个控制按钮, 参考 station 的
+         x y z a b c 控制, 控制系为左臂的世界坐标系」 -->
+    <div class="row" style="margin-top:6px">
+      <button id="bArmR" class="sm on" title="右臂 = 真实机器人 (真关节角来自 tcp_out/latest.json, 每帧正运动学); 点一下隐藏">🦾 右臂</button>
+      <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
+      <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
+    </div>
+    <!-- 左臂位姿控制(左臂自身世界系): x y z 平移(mm) / a b c 姿态(deg), 参考 station 点动 -->
+    <div id="cardLarm" style="margin-top:6px;border:1px solid #1f2b33;border-radius:8px;padding:6px 8px;background:#0d1418">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font:700 12px system-ui,sans-serif;color:#c9d1d9">左臂位姿 · 左臂世界系</span>
+        <span style="display:flex;gap:3px">
+          <select id="lStep" title="平移步长" style="font-size:11px;background:#161b22;color:#c9d1d9;border:1px solid #21262d;border-radius:5px;padding:1px 2px">
+            <option value="1">1mm</option><option value="5">5mm</option><option value="10" selected>10mm</option><option value="50">50mm</option>
+          </select>
+          <select id="lStepA" title="姿态步长" style="font-size:11px;background:#161b22;color:#c9d1d9;border:1px solid #21262d;border-radius:5px;padding:1px 2px">
+            <option value="1">1°</option><option value="2">2°</option><option value="5" selected>5°</option>
+          </select>
+        </span>
+      </div>
+      <div id="lGrid" style="display:grid;grid-template-columns:30px 1fr 1fr;gap:3px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px">
+        <button id="bLreset" class="sm" style="padding:2px 8px" title="清掉仿真增量, 左臂回到和右臂一样的位姿(只是整体右移 Y=500mm)">↺ 跟右臂</button>
+        <span id="tLpose" style="font:11px monospace;color:#8b949e"></span>
+      </div>
     </div>
     <!-- 🧭 2026-10-26 老倪: 「8797/ar 新增的5个按钮呢?」
          实测真因(不是没做): 五个按钮原本渲染在**右侧栏中部**的『轨迹控制』卡片里,
@@ -344,6 +372,11 @@ if(__BARE){ document.body.classList.add('vrfull'); }
 //    drawVR() 在顶层就会跑, 若这里用 let 声明在下面, drawCfgPts 访问会撞 TDZ
 //    ("Cannot access 'CFG_PTS' before initialization", 实测页面整个三维都不画了)。
 var CFG_PTS=[], CFG_ON={}, CFG_SIG='', CFG_AGE=null;
+// 🦾🦾 左臂(仿真臂)状态 —— 老倪 2026-10-26: 「左臂世界坐标系的原心在当前右臂的左侧,
+//   右臂世界坐标系 Y=500mm、X=0 Z=0; 左臂的 URDF 与右臂一样, 位姿先默认跟右臂一样」
+//   off = 左臂原心在 base 系的位置(米); d/rpy = 仿真增量(左臂自身世界系, mm/deg)
+//   画法: 右臂正运动学点 p 先按 rpy 转、加 d, 再加 off ⇒ 世界坐标。复位(d=rpy=0)时两条臂完全同姿态。
+var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], fill:'#12363c', stroke:'#5eead4'};
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
 // 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**;
 //   现在有 USB 相机(RealSense)/机器人手臂的 RealSense/金手指检测相机/表面检测相机, 这 4 个都照同一个场景」
@@ -920,6 +953,19 @@ function vrFitBox(){
                   M.R[1][0]*q[0]+M.R[1][1]*q[1]+M.R[1][2]*q[2]+M.t[1],
                   M.R[2][0]*q[0]+M.R[2][1]*q[1]+M.R[2][2]*q[2]+M.t[2]]); } }
   }
+  // 🤖 左臂(仿真臂)也纳入取景: 否则 Y=+500mm 那条臂整个在框外(老倪要两只臂同屏看)
+  if(typeof LARM!=='undefined' && LARM.show && VR.urdf && URDF && LINKM){
+    const X=larmXform();
+    for(const L of URDF.links){ const M=LINKM[L.name]; if(!M) continue;
+      for(let i=0;i<L.pts.length;i+=8){ const q=L.pts[i];
+        const w=[M.R[0][0]*q[0]+M.R[0][1]*q[1]+M.R[0][2]*q[2]+M.t[0],
+                 M.R[1][0]*q[0]+M.R[1][1]*q[1]+M.R[1][2]*q[2]+M.t[1],
+                 M.R[2][0]*q[0]+M.R[2][1]*q[1]+M.R[2][2]*q[2]+M.t[2]];
+        pts.push([X.R[0][0]*w[0]+X.R[0][1]*w[1]+X.R[0][2]*w[2]+X.t[0],
+                  X.R[1][0]*w[0]+X.R[1][1]*w[1]+X.R[1][2]*w[2]+X.t[1],
+                  X.R[2][0]*w[0]+X.R[2][1]*w[1]+X.R[2][2]*w[2]+X.t[2]]); } }
+    pts.push(LARM.off.slice());
+  }
   // 🧭 坐标系也纳入取景(否则三个轴可能全落在画面外)。含 base 世界系原点 ⇒ 会拉远看全域:
   //    想看"整条臂 + 底座 + 台面"就开着; 只想看轨迹就点 🧭 关掉再『对准轨迹』。
   if(VR.frames && TCP && TCP.frames){
@@ -984,38 +1030,51 @@ function _hull(pts){            // Andrew monotone chain: 2D 凸包(屏幕坐标
 const LINK_COL=[['#3d4b5c','#7f95ad'],['#43536a','#8ba6c4'],['#445a6e','#8fbfd6'],
                 ['#4a5f6b','#9ac6c9'],['#4d5568','#a7b8d8'],['#5a5568','#c3b6d8'],
                 ['#6a5a4d','#d8c0a0'],['#7a6a3f','#ffd166'],['#7a7a3f','#ffe08a'],['#808080','#d0d0d0']];
-function drawUrdf(g,pr){
-  if(!URDF||!URDF.links||!LINKM) return 0;
+function drawUrdf(g,pr,M0,X){
+  // M0 = 正运动学结果(默认右臂 LINKM); X = 可选整体刚体变换 {R,t,fill,stroke,alpha}
+  //   2026-10-26 加 X 是为了画**左臂仿真臂**: 同一套 URDF/关节角, 先绕左臂原心转 rpy、再加平移,
+  //   最后落到 base 系 —— 复位时左右臂姿态完全一样, 只有原心差 Y=500mm。
+  const M=M0||LINKM;
+  if(!URDF||!URDF.links||!M) return 0;
   let drawn=0;
+  const w2 = X ? (w=>{ const R=X.R,t=X.t;
+      return [R[0][0]*w[0]+R[0][1]*w[1]+R[0][2]*w[2]+t[0],
+              R[1][0]*w[0]+R[1][1]*w[1]+R[1][2]*w[2]+t[1],
+              R[2][0]*w[0]+R[2][1]*w[1]+R[2][2]*w[2]+t[2]]; }) : (w=>w);
   URDF.links.forEach((L,li)=>{
-    const M=LINKM[L.name]; if(!M) return;
+    const Mk=M[L.name]; if(!Mk) return;
     const P=[];
     for(const q of L.pts){
-      const w=[M.R[0][0]*q[0]+M.R[0][1]*q[1]+M.R[0][2]*q[2]+M.t[0],
-               M.R[1][0]*q[0]+M.R[1][1]*q[1]+M.R[1][2]*q[2]+M.t[1],
-               M.R[2][0]*q[0]+M.R[2][1]*q[1]+M.R[2][2]*q[2]+M.t[2]];
-      const s=pr(w); if(s) P.push(s);
+      const w=[Mk.R[0][0]*q[0]+Mk.R[0][1]*q[1]+Mk.R[0][2]*q[2]+Mk.t[0],
+               Mk.R[1][0]*q[0]+Mk.R[1][1]*q[1]+Mk.R[1][2]*q[2]+Mk.t[1],
+               Mk.R[2][0]*q[0]+Mk.R[2][1]*q[1]+Mk.R[2][2]*q[2]+Mk.t[2]];
+      const s=pr(w2(w)); if(s) P.push(s);
     }
     if(P.length<4) return;
     const h=_hull(P); if(h.length<3) return;
     const zc=P.reduce((s,q)=>s+q.z,0)/P.length;
     const col=LINK_COL[li%LINK_COL.length];
+    const fillC=(X&&X.fill)||col[0], strokeC=(X&&X.stroke)||col[1];
+    const ka=(X&&X.alpha)||1;
     g.beginPath(); g.moveTo(h[0].u,h[0].v);
     for(let i=1;i<h.length;i++) g.lineTo(h[i].u,h[i].v);
     g.closePath();
-    g.globalAlpha=Math.max(0.35,Math.min(0.92,1.4/zc));
-    g.fillStyle=col[0]; g.fill();
-    g.globalAlpha=Math.max(0.5,Math.min(1,1.6/zc));
-    g.strokeStyle=col[1]; g.lineWidth=Math.max(0.8,Math.min(2.2,2.2/zc)); g.stroke();
+    g.globalAlpha=ka*Math.max(0.35,Math.min(0.92,1.4/zc));
+    g.fillStyle=fillC; g.fill();
+    g.globalAlpha=ka*Math.max(0.5,Math.min(1,1.6/zc));
+    g.strokeStyle=strokeC; g.lineWidth=Math.max(0.8,Math.min(2.2,2.2/zc)); g.stroke();
     g.globalAlpha=1; drawn++;
   });
   // 关节骨架线 (父→子原点), 让链看着连贯
-  g.strokeStyle='rgba(255,255,255,.28)'; g.lineWidth=1;
+  g.strokeStyle=(X&&X.stroke)?X.stroke:'rgba(255,255,255,.28)';
+  g.globalAlpha=(X&&X.alpha)?X.alpha*0.55:0.28;
+  g.lineWidth=1;
   for(const j of (URDF.joints||[])){
-    const A=LINKM[j.parent], B=LINKM[j.child]; if(!A||!B) continue;
-    const a=pr(A.t), b=pr(B.t); if(!a||!b) continue;
+    const A=M[j.parent], B=M[j.child]; if(!A||!B) continue;
+    const a=pr(w2(A.t)), b=pr(w2(B.t)); if(!a||!b) continue;
     g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
   }
+  g.globalAlpha=1;
   return drawn;
 }
 
@@ -1593,9 +1652,28 @@ function drawVR(){
     g.fillStyle='#6b7a8d';g.font='10px monospace';g.fillText('O(0,0,0)',o1.u+5,o1.v+12);}
   VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY,pr:pr};   // 🖱 点图取点(反投影) / 鼠标选中命中测试
   // 🦾 URDF 外形: 真关节角正运动学 (5Hz 跟随) → 凸包填充
-  if(VR.urdf && URDF){
+  //    2026-10-26: 正运动学无论右臂显不显示都算 —— 左臂(仿真)要一直跟着真关节角走,
+  //    不然点了『🦾 右臂』关掉右臂, 左臂就冻在最后一帧。
+  if(URDF){
     LINKM=urdfFK((TCP&&TCP.ok&&TCP.joints)?TCP.joints:null);
-    drawUrdf(g,pr);
+    if(VR.urdf) drawUrdf(g,pr);
+  }
+  // 🤖 左臂(仿真臂) —— 老倪 2026-10-26: 同一套 URDF/关节角, 原心在 base 系 Y=+500mm,
+  //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
+  if(LARM.show && URDF && LINKM){
+    const X=larmXform();
+    drawUrdf(g, pr, LINKM, X);
+    const o=pr(LARM.off.slice());
+    if(o){
+      g.strokeStyle=LARM.stroke; g.lineWidth=1.6;
+      g.beginPath(); g.arc(o.u,o.v,7,0,Math.PI*2); g.stroke();
+      const ax=pr([LARM.off[0]+0.12,LARM.off[1],LARM.off[2]]), ay=pr([LARM.off[0],LARM.off[1]+0.12,LARM.off[2]]);
+      g.lineWidth=2;
+      if(ax){ g.strokeStyle='#ef476f'; g.beginPath(); g.moveTo(o.u,o.v); g.lineTo(ax.u,ax.v); g.stroke(); }
+      if(ay){ g.strokeStyle='#06d6a0'; g.beginPath(); g.moveTo(o.u,o.v); g.lineTo(ay.u,ay.v); g.stroke(); }
+      g.fillStyle=LARM.stroke; g.font='bold 12px monospace';
+      g.fillText('左臂 O(0,+500,0)', o.u+10, o.v+18);
+    }
   }
   // 🧱 3D 围栏 (画在机器人之上, 轨迹之下)
   if(typeof FENCES!=='undefined' && FENCES.length) drawFences(g,pr);
@@ -1802,6 +1880,55 @@ function vrKeepCam(fn){
 }
 $('bFrames').addEventListener('click',()=>vrKeepCam(()=>{
   VR.frames=!VR.frames; $('bFrames').classList.toggle('on',VR.frames); }));
+// 🦾🦾 左臂(仿真臂) —— 2026-10-26 老倪: 「左臂的 URDF 与右臂一样, 只是所有的位姿当前都是我来仿真给你;
+//   你先默认跟当前右臂的位姿一样…给我几个控制按钮, 参考 station 的 x y z a b c 控制, 控制的左臂系为左臂的世界坐标系」
+//   位姿口径: 世界点 = off + R(rpy)·(p_right) + d/1000    (p_right = 右臂正运动学点)
+//   ⇒ 复位(d=rpy=0)时左臂 = 右臂整条平移 Y+500mm, 姿态完全一致(正是"默认跟右臂一样")。
+function larmXform(){
+  const R=_rpy2R(LARM.rpy[0]*Math.PI/180, LARM.rpy[1]*Math.PI/180, LARM.rpy[2]*Math.PI/180);
+  return {R:R, t:[LARM.off[0]+LARM.d[0]/1000, LARM.off[1]+LARM.d[1]/1000, LARM.off[2]+LARM.d[2]/1000],
+          fill:LARM.fill, stroke:LARM.stroke, alpha:0.9};
+}
+function paintLarm(){
+  const t=$('tLpose'); if(t) t.textContent='Δ'+LARM.d.join(',')+'mm · '+LARM.rpy.join(',')+'°';
+  const s=$('tArmL'); if(s) s.textContent='Δ'+LARM.d.join(',');
+  const b=$('bArmL'); if(b) b.classList.toggle('on',!!LARM.show);
+}
+function jogLarm(k,sgn){
+  const mm=Number((($('lStep')||{}).value)||10), dg=Number((($('lStepA')||{}).value)||5);
+  if('xyz'.includes(k)){ const i='xyz'.indexOf(k); LARM.d[i]=Math.round(LARM.d[i]+sgn*mm); }
+  else { const i='abc'.indexOf(k); LARM.rpy[i]=Math.round(LARM.rpy[i]+sgn*dg); }
+  LARM.show=true; paintLarm();
+  vrKeepCam(()=>{});          // 走 vrKeepCam: 点动绝不能重取景(否则每点一下画面蹦一下)
+}
+(function buildLarmUI(){
+  const g=$('lGrid'); if(!g) return;
+  [['x','X'],['y','Y'],['z','Z'],['a','A'],['b','B'],['c','C']].forEach(function(kv){
+    const k=kv[0], lab=kv[1];
+    const l=document.createElement('span');
+    l.textContent=lab; l.style.cssText='font:12px monospace;color:#8b949e;align-self:center';
+    g.appendChild(l);
+    [-1,1].forEach(function(sgn){
+      const b=document.createElement('button');
+      b.type='button'; b.className='sm'; b.textContent=(sgn>0?'+':'−');
+      b.id='l'+lab+(sgn>0?'P':'M');
+      b.dataset.ax=k; b.dataset.sgn=sgn;
+      b.style.cssText='padding:3px 0;font-size:12.5px;line-height:1.1';
+      b.title='左臂 '+lab+(sgn>0?' 正向':' 负向')+' 走一步(左臂世界系)';
+      b.onclick=function(){ jogLarm(k,sgn); };
+      g.appendChild(b);
+    });
+  });
+  const rs=$('bLreset');
+  if(rs) rs.onclick=function(){ LARM.d=[0,0,0]; LARM.rpy=[0,0,0]; paintLarm(); vrKeepCam(function(){}); };
+  paintLarm();
+})();
+$('bArmL').addEventListener('click',()=>vrKeepCam(()=>{ LARM.show=!LARM.show; paintLarm(); }));
+$('bArmR').addEventListener('click',()=>vrKeepCam(()=>{
+  VR.urdf=!VR.urdf;
+  $('bArmR').classList.toggle('on',VR.urdf);
+  $('bUrdf').classList.toggle('on',VR.urdf);        // 和上面那个『🦾 URDF 外形』是同一个开关
+}));
 $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
   VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); }));
 $('bMod').addEventListener('click',()=>vrKeepCam(()=>{
