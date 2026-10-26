@@ -51,6 +51,22 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
 - **包本身的依赖区间与源侧缓存冲突**(如 `huggingface-hub<2.0,>=1.5` vs 缓存里 2.3.0): 让同一条 `pip download`
   的 resolver 自己选, 不要手改版本号, 也不要把不兼容的那个旧轮子跟着推过去(会先被选中再报冲突)。
 
+### 目标机可能已经有 wheel 库 —— 先找, 再决定要不要下载
+- 边缘机上常留有预先铺好的轮子目录(实测 `/home/intel/sam3_wheels`(cp310-abi3 + py3-none) ·
+  `sam3_wheels312`(cp312) · `whl550c`(draccus/mergedeep 等)) ⇒ 先
+  `find /home/<user> -maxdepth 2 -type d -iname '*wheel*'` + `ls <dir> | grep -i <pkg>`,
+  命中就直接 `pip install --no-index --find-links=<dir> --no-deps <pkg>==<ver>`, 不用回本机 `pip download` 再传。
+  **`--no-index` 必须显式给**: 不给自己会去连源/DNS, 在无外网的机器上白等到超时。
+  cp310-abi3 的轮子在 3.12 上可以直接用, abi 号不同也照用, 不必重下。
+- **只缺一两个包时, `--no-deps` 定向补比推整棵树安全**: 目标 venv 如果是**训练环境**,
+  按整棵树装会顺手把 torch/transformers 升级 ⇒ 复现性毁了。口径: 装前 `pip freeze` 存快照,
+  只装缺的(`--no-deps`), 装后逐字核 `torch`/`transformers` 版本未变。
+- 依赖链会**一串一串**冒(实测 `draccus` → `mergedeep` → `typing_inspect` → `mypy_extensions`):
+  逐个补、逐个 `import` 验证, 别一次只报一个就停, 也别因为链长就改回抓全树。
+- 端侧 torch 跑大视觉模型的性价比要**实测再下结论**: SAM3 1008px 在 Intel Arc B390 首次 **92.9s**
+  (含权重搬 XPU) vs 本机 4060 热推理 **742ms**, 同图同结果(都 13 个实例) ⇒ 这类模型端侧该走
+  ONNX→IR(OpenVINO); 补 venv 只用于"能跑起来同口径比对一次", 不是上线方案。
+
 ## 3. 验收三证 (少一条不算完成)
 
 1. **字节数/校验**: 目标机 `stat -c %s` 与源侧一致(或 sha256 对账), 不看 rsync 退出码就完事。

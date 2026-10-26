@@ -7,6 +7,20 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
+> 🔴 **GUI 里任何「打开浏览器页面」的地址都不许写死 IP。** 实测: `ss_dreamview.py` 的
+> `AR_PAGE_URL_LOOPBACK` 写死了旧 WiFi IP `10.163.146.78:8793/ar`(变量名还叫 LOOPBACK), 本机改连热点后
+> 按钮和状态栏把地址指向一个不存在的 IP ⇒ 用户报「AR 按钮打不开 ar 网页」, 而 8797 服务一直 200。
+> 定式四条: ① 提供 `ar_page_url()` —— **点击时**按默认路由网卡现算
+> (`socket(AF_INET,SOCK_DGRAM).connect(("10.255.255.255",1)).getsockname()`), `ZMAX_AR_URL` 仍可覆盖;
+> ② **函数默认参数不能写 `url: str = ar_page_url()`** —— 默认值在 `def` 执行时求值, 等于又冻死一次;
+> 要写 `url: str = ""` 再在体内 `url = url or ar_page_url()`(ar_open_url / ar_spawn_browser 两处都中过);
+> ③ 同源位置一起改, 否则下一个按钮还是打不开: 工具栏「光纤」(`8797/autoLight`)、旁路视图的
+> `zmax_data/ss_bypass/station_url.json`(用 `retarget_local_hosts()` 在读取时校验 host 是否仍是本机地址,
+> 不是就换成现算 IP —— **改代码不改用户配置**, 配置里保留他自己的意图);
+> ④ 判据 `tools/verify_ar_button.py` 断言「地址里不许出现旧 IP」, 再 `AR_REAL_OPEN=1` 真开一次,
+> 认窗口表(`win=0x…`)+ 落在控制台同屏, 不认 `webbrowser.open()` 的返回值。
+> 换网后先量: `ip -4 -br a` 里到底有没有那个 IP —— 没有就别在服务端查日志, 问题在地址本身。
+
 > 🧊 **「画布/控制台用鼠标关不掉了」** ⇒ 别先怀疑鼠标和窗口管理器：`py-spy dump` 看主线程是
 > `idle`（事件没送到）还是 `active+gil` 卡在 `paintEvent/setData`（绘制占死事件循环，WM_DELETE/Ctrl+Q/SIGTERM
 > 全不处理，只有 SIGKILL 能收）。僵尸窗口 id、`IsUnMapped` 窗口、`closeEvent ev.accept()` +
@@ -801,6 +815,13 @@ tools/gui/
 > (含实测探针 `tools/probe_ui_metrics.py`)。
 
 ## 陷阱
+
+> 📌 **systemctl 反复弹「需要验证」授权框**: 根因是 `/etc/polkit-1/rules.d/` 为空 ⇒ 普通用户
+> `systemctl start|stop|restart` 一律要求授权, 而 `restart_traj_ar.sh` / `start_station_stream.sh` /
+> `cam_stream_guard.py` / `simulink_module.py` 都是**不带 sudo** 直调 systemctl ⇒ 每动一次 `zmax-*` 服务就弹一次。
+> 修法: 装 `/etc/polkit-1/rules.d/49-zmax-units.rules`, 只对 `unit.indexOf("zmax-")===0` 且
+> `subject.user==="ubuntu" && subject.local && subject.active` 返回 `polkit.Result.YES`, 再 `systemctl restart polkit`。
+> **别全局放开** —— 其它服务要保留授权边界。验证 = 不带 sudo 重启后不弹框且 `is-active` 为 active。
 > 📌 **Orin 生产设备红线 (2026-09-16 老倪: 「不要在orin上增加新程序…你先只是转发orin的感知信号」)**:
 > Orin 侧**零自研程序零自启** (我此前放的 ss_edge/ss_shadow/ss_infer + crontab `@reboot` 已全清);
 > 采集改走 **4060 侧 Docker 远程只读订阅** (`ros:humble --network host` + `ROS_DOMAIN_ID=0` 可直读 Orin 生产话题,
