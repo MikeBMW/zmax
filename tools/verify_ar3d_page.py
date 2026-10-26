@@ -344,7 +344,7 @@ def main():
     try:
         C = j.get("chs") or {}
         L, W, H = C.get("L") or 0, C.get("W") or 0, C.get("H") or 0
-        dim_ok = (abs(L-1.085) < 0.002 and abs(W-0.775) < 0.002 and abs(H-0.290) < 0.002)
+        dim_ok = (abs(L-0.600) < 0.002 and abs(W-0.775) < 0.002 and abs(H-0.290) < 0.002)
         onP, offP = C.get("onPlate") or [0,0,0], C.get("offPlate") or [0,0,0]
         onB, offB = C.get("onBody") or [0,0,0], C.get("offBody") or [0,0,0]
         # 顶板高光 #9fb6cc 是箱体独有的(实测 480 ↔ 关 2); 顶板面 #31404f 会和围栏/臂的
@@ -355,7 +355,7 @@ def main():
               % (L, W, H, onP, offP, onB, offB))
     except Exception as e2:                                   # noqa: BLE001
         cd = "解析失败 %r" % (e2,)
-    chk("⑩ 箱体: 长宽高=1085×775×290(对标优艾智合 O 系列) + 顶板即两臂安装面 + 能画能关", ch_ok, cd)
+    chk("⑩ 箱体: 长宽高=600×775×290(对称) + 顶板即两臂安装面 + 能画能关", ch_ok, cd)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))
