@@ -30,6 +30,7 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -51,8 +52,10 @@ NOT_EXECUTABLE = {
 SERVER = os.environ.get("ZMAX_AR_SERVER", "http://127.0.0.1:8797")
 
 
-def fetch_named(k: str) -> dict:
+def fetch_named(k: str, target: str | None = None) -> dict:
     url = "%s/api/traj/named?k=%s&_=%d" % (SERVER, k, int(time.time() * 1000))
+    if target:
+        url += "&target=" + urllib.parse.quote(str(target))
     with urllib.request.urlopen(url, timeout=15) as r:                    # noqa: S310
         return json.load(r)
 
@@ -105,14 +108,15 @@ def axis_segs(p_from, p_to):
     return out
 
 
-def build(k: str, tol: float, force: bool, lead_in: bool = False):
-    d = fetch_named(k)
+def build(k: str, tol: float, force: bool, lead_in: bool = False, target: str | None = None):
+    d = fetch_named(k, target)
     if not d.get("ok"):
         raise SystemExit("⛔ 取不到轨迹 %s: %s" % (k, d.get("note")))
     pts_m = [[float(v) for v in p] for p in (d.get("pts") or [])]
-    if k == "real" and len(pts_m) >= 2:
-        # 实时=当前 TCP→安全点1: 只取两端, 交给轴对齐拆段(否则 25 点连线会被拆成 48 个碎段,
-        # 而且实测长直线单段会被控制器静默丢弃 ⇒ 下面 main 里对 real 默认 LIMIT=100)
+    if k == "real" and len(pts_m) > 8:
+        # 实时: 服务端现在给的是**成形路径**(当前点 → 升到安全高 → 平移 → 落点, 4 点);
+        # 只有老格式(几十点的长直线)才压成两端, 否则会被拆成几十个碎段。
+        # 成形路径不能压: 压掉就等于低空斜插过去(看着A执行B)。
         pts_m = [pts_m[0], pts_m[-1]]
     if len(pts_m) < 2:
         raise SystemExit("⛔ 轨迹 %s 只有 %d 点, 不能规划" % (k, len(pts_m)))
@@ -211,6 +215,8 @@ def build_from_points(pts_m, k, tol, label_named, src, lead_in=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--k", required=True, help="xiaohong / square / map / safe / real")
+    ap.add_argument("--target", default="",
+                    help="轨迹5(实时) 的目标点(工程配置点位台账里的点名, 缺省 安全点1)")
     ap.add_argument("--tol", type=float, default=5.0, help="RDP 抽稀容差 mm (默认 5)")
     ap.add_argument("--force", action="store_true", help="允许规划 示意坐标/实时 轨迹")
     ap.add_argument("--dry-run", action="store_true", help="只算不写 (不动 planned_traj.json)")
@@ -252,7 +258,7 @@ def main():
         LIMIT = float(a.seg_max)
     elif a.k == "real":
         LIMIT = 100.0       # 去安全点要抬 264mm; 超过 ~220mm 的单段实测会被控制器丢掉
-    rec, d = build(a.k, a.tol, a.force, lead_in=a.lead_in)
+    rec, d = build(a.k, a.tol, a.force, lead_in=a.lead_in, target=(a.target or None))
 
     print("命名轨迹: %s  (%d 点, 来源 %s)" % (d.get("label"), d.get("n"), d.get("src")))
     print("起点 TCP = [%.1f, %.1f, %.1f] mm (帧龄 %.1fs) · 起点闸 ✅" %

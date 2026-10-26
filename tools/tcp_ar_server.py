@@ -1103,8 +1103,12 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/traj/named":        # 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时)
                 # 老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」
                 # 轨迹点全从配置中心工程配置读真源, 空数据返回 ok=False + 原因, 不假造点。
-                self._json(self._traj_named((qs.get("k") or [""])[0]
-                                            if isinstance(qs.get("k"), list) else qs.get("k")))
+                # ⚠️ 本服务的 query 是手工 split 出来的, **不做 percent 解码** —— 点名是中文
+                #   ("金手指点1"), 页面 encodeURIComponent 过来必须在这里 unquote 一次,
+                #   否则台账里永远找不到这个点(实测: target=%e9%87%91... 查不到)。
+                _kq = urllib.parse.unquote(str(qs.get("k") or ""))
+                _tq = urllib.parse.unquote(str(qs.get("target") or ""))
+                self._json(self._traj_named(_kq, _tq))
             elif p == "/api/stable":
                 self._json(self._stable())
             elif p == "/api/calib":
@@ -1411,10 +1415,10 @@ class H(BaseHTTPRequestHandler):
         "square":   "轨迹2 · 矩形 (规划航路·洋红闭环)",
         "map":      "轨迹3 · 建图 (自主探索)",
         "safe":     "轨迹4 · 安全 (金手指点1→安全点1)",
-        "real":     "轨迹5 · 实时 (真机实测)",
+        "real":     "轨迹5 · 实时 (当前位姿 → 目标点)",
     }
 
-    def _traj_named(self, k):
+    def _traj_named(self, k, target=None):
         k = (k or "").strip()
         out = {"ok": False, "k": k, "label": self.NAMED_TRAJ.get(k, k),
                "pts": [], "n": 0, "src": "", "note": "", "at": time.strftime("%H:%M:%S")}
@@ -1591,9 +1595,10 @@ class H(BaseHTTPRequestHandler):
                                 % ([round(v * 1000) for v in a], [round(v * 1000) for v in b]))
 
             elif k == "real":
-                # 🧭 2026-10-26 老倪:「我现在点击 轨迹5实时了, 我准备去安全点, 你先规划一个去安全点的轨迹」
-                #   语义改成: 轨迹5 = **从当前实时位姿出发 → 安全点1** 的待执行路径 (实时=当前 TCP 起算)。
-                #   以前这里读 bridge_real_path.json (真机走过的记录), 空的就 0 点 ⇒ 点执行永远拒。
+                # 🧭 2026-10-26 老倪:「当我选择 轨迹5 实时的时候, 你要规划一个从当前点 → 目标点的轨迹;
+                #   左栏每个空间点位左侧加一个小开关标目标点(只能一个), 选好之后规划到这个点并显示」
+                #   ⇒ 轨迹5 = 当前实时 TCP → **页面上选中的目标点**(?target=点名, 缺省 安全点1);
+                #     路径形状 = 原地升到安全高 → 在安全高平移 → 垂直落点 (不做低空横移, 也不凭空造起点)。
                 aq = os.path.join(REPO, "zmax_data", "ar_live", "ar_aoi_live.json")
                 cur = None
                 try:
@@ -1605,25 +1610,36 @@ class H(BaseHTTPRequestHandler):
                         cur = [float(cj["x"]), float(cj["y"]), float(cj["z"])]
                 except Exception:                                                  # noqa: BLE001
                     cur = None
-                safe_p = None
+                tname = (str(target or "").strip() or "安全点1")
+                tgt_p, names = None, []
                 try:
                     s = json.load(open(aq, encoding="utf-8")).get("s") or {}
-                    v = [s.get("安全点1." + ax) for ax in "xyz"]
+                    names = sorted({str(n)[:-2] for n in s if str(n).endswith(".x")})
+                    v = [s.get(tname + "." + ax) for ax in "xyz"]
                     if all(x is not None for x in v):
-                        safe_p = [float(x) for x in v]
+                        tgt_p = [float(x) for x in v]
                 except Exception:                                                  # noqa: BLE001
-                    safe_p = None
-                if cur is None or safe_p is None:
-                    rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
-                    out["note"] = ("实时路径缺数据: 当前 TCP=%s · 安全点1=%s"
-                                   " (要走实测记录就等 bridge_real_path 有数据)"
-                                   % (cur, safe_p))
+                    tgt_p = None
+                out["target"] = tname
+                if cur is None:
+                    out["note"] = ("实时路径缺起点: 读不到当前 TCP (tcp_out/latest.json 全 0 或不存在)"
+                                   " —— 不会凭空编一个起点")
                     return out
-                out.update(ok=True, pts=_lerp(cur, safe_p, 24),
-                           src="实时: 当前TCP→安全点1",
-                           note="当前 TCP %s → 安全点1 %s mm · 直线 %d 点 (实际下发按轴拆段)"
-                                % ([round(x * 1000) for x in cur],
-                                   [round(x * 1000) for x in safe_p], 25))
+                if tgt_p is None:
+                    out["note"] = ("点位台账里没有目标点「%s」或坐标不全 · 可选: %s"
+                                   % (tname, ", ".join(names[:8]) or "(台账为空)"))
+                    return out
+                zs = max(cur[2], tgt_p[2]) + 0.05          # 安全高 = 两端高的那个再抬 50mm
+                pts = [list(cur),
+                       [cur[0], cur[1], zs],               # ① 原地升到安全高
+                       [tgt_p[0], tgt_p[1], zs],           # ② 在安全高平移
+                       list(tgt_p)]                        # ③ 垂直落点
+                out.update(ok=True, pts=pts,
+                           src="实时: 当前TCP→%s (升→平移→落点)" % tname,
+                           note=("当前 TCP %s → 🎯目标点「%s」%s mm · 先升到 z=%.0f 再平移再落点 · "
+                                 "骨架 %d 点 (执行时按轴拆段 ≤100mm)")
+                                % ([round(x * 1000) for x in cur], tname,
+                                   [round(x * 1000) for x in tgt_p], zs * 1000, len(pts)))
 
             elif k == "real_gone":
                 rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
@@ -1917,13 +1933,17 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                        # noqa: BLE001
             return {"ok": False, "phase": "none"}
 
-    def _traj_plan_from_named(self, k):
+    def _traj_plan_from_named(self, k, target=None):
         """把页面高亮的命名轨迹转成执行段表 (tools/traj_from_named.py)。
 
         全流程真源仍是那个脚本: 起点闸/预检/写 planned_traj.json + plan_latest.json 都在它里面,
         这里只负责跑它并把**失败原因原样带回页面** (不能笼统报"失败", 人要知道是起点不一致还是净空不够)。
         """
         exe = [sys.executable, os.path.join(HERE, "traj_from_named.py"), "--k", str(k)]
+        # 🎯 轨迹5 的目标点是页面上选的(单选) —— 必须**原样**传下去, 否则页面显示到 A 点、
+        #    执行却去了安全点1 (看着A执行B, 事故级)
+        if str(k) == "real" and target:
+            exe += ["--target", str(target)]
         # 建图轨迹(覆盖扫描)起点不在当前 TCP: 允许把「TCP→首点」也拆成段写进同一份段表,
         # 否则点执行永远被起点闸拒(实测差 520mm)。其余轨迹保持严格起点闸, 不许偷偷飞过去。
         if str(k) in ("map",):
@@ -2115,8 +2135,9 @@ class H(BaseHTTPRequestHandler):
             #   带 k 就先把它转成段表(planned_traj.json), 再走原来的执行闸;
             #   不带 k 保持老行为(执行当前规划航路)。
             _k = str((body or {}).get("k") or "").strip()
+            _tg = str((body or {}).get("target") or "").strip()
             if _k:
-                _pr = self._traj_plan_from_named(_k)
+                _pr = self._traj_plan_from_named(_k, _tg)
                 if not _pr.get("ok"):
                     self._json(_pr)
                     return
