@@ -210,6 +210,10 @@ r.moveStart(ec)                                                # 只 start 一�
   真下层只认 `moveAppend(cmd, PyString(cmdID), ec)`。改完必须 `compile → restart → curl /health 回读 sdk:true` 三步才算生效。
 - 🔴 **别用 `pkill -f traj_exec.py` 收尾**：自己的命令行含同一串 ⇒ SIGKILL 掉整个 shell，后续步骤全不执行。
   按 `/proc/<pid>/cmdline` 精确匹配，或把模式串写进脚本文件再执行。
+  ⚠️ **跨机(`ssh host '… pgrep -f <脚本名> …'`)同病且更难认**: 远端 shell 的命令行就是整串 ssh 命令,
+  它自己含那个模式 ⇒ 杀掉自己 ⇒ **ssh 返回 255 、一行输出都没有**, 看起来像"网断了/主机不可达"。
+  判据: 单独跑一句 `ssh host 'echo alive'` 通就是自杀不是断网。定式 = **方括号法** `pgrep -f 'map_record[e]r_550c'`
+  (正则自己不会匹配到自己的字面串), 或先 `echo $$` 记 pid 再排除它。
 - 🔴 **页面/API 里的执行状态是上一次失败留下的**：`traj_state.json` 可能是几小时前某个 `blocked`，
   用户看到的是那行旧文案。报原因前先看它的 mtime，别把旧 `blocked_by` 当本次病因。
 - 🔴 **规划脚本每次按当前 TCP 重算** ⇒ 臂移动过后形状/位置必然变。用户问「怎么跟之前不一样了」时，

@@ -139,6 +139,12 @@ return True     # 连不上 ⇒ 按「还活着」处理, 继续等, 绝不据�
 按 `/proc/*/cmdline` 遍历精确匹配，或 `pgrep -x`；已知 pid 就直接 `kill <pid>`。
 杀之前先 `kill -TERM` 看能不能收，收不了再 `-9`。
 
+🔴 **方括号技巧 (`map_record[e]r`) 不是万能的**：它只能防「模式串本体出现在自己 cmdline 里」这一种。
+同一条 `ssh … bash -c "…"` 里若后面还要 `nohup … map_recorder_550c.py`（真正的启动命令），整行 cmdline
+就含真串 ⇒ **依旧自杀**，症状是 ssh 返回 **255 且一行输出都没有**（看着像链路断/网卡掉，白查一轮网络）。
+定式：**先在目标机落一个小脚本**（stop + start 都写在里面），`ssh` 只执行那个脚本；脚本内部用
+`pgrep -f "<名字片段>[e]…"` 或读 pid 文件，别让 ssh 命令行里出现完整模式串。
+
 ## 7. 改 ssh config 时的两个小坑
 - 判断「已存在」要用 `"\nHost <name>"`（带换行）。注释里出现同名字符串会让 `"Host <name>" in text` 永远为真 ⇒ 静默不追加。
 - 改完立刻用 `ssh -o BatchMode=yes <别名> 'echo OK'` 验证；**先备份** `cp -a ~/.ssh/config ~/.ssh/config.bak-<日期>`。
@@ -234,6 +240,34 @@ Host <dev>-jump
 
 验收：`ss -ltn` 见到各 `-L` 口 · `curl 127.0.0.1:<桥口>/status` 200 · `NRestarts` 隔 20s 不涨。
 把 ECS 这一跳加进去后**每段动作指令多一跳**，段表/位姿的往返会慢一点；产线网卡回来后应切回直连。
+
+## 9e. 跳板机需要口令时：三跳 ProxyCommand 写成一个本地脚本
+
+场景：本机只能到跳板 **22**（反向口如 22022 被云安全组/运营商挡，从本机超时），而跳板机上做 `-W` 的目标
+（设备侧反向注册的 sshd）**只认口令不认我们的 key**。链路变成：
+`本机 → 跳板:22 (key) → 跳板机内 sshpass ssh -W $h:$p -p 22022 user@127.0.0.1 → 目标:22 (本机的 key)`。
+
+把它写成一个本地脚本（**必须落文件，不能内联**），再用 ProxyCommand 调：
+```bash
+#!/bin/bash   # ~/zmax/zmax_data/runtime/proxy_via_ecs_orin.sh
+# 用法: ssh -o ProxyCommand="bash <此脚本> %h %p" intel@192.168.23.70 'hostname'
+exec ssh -i "$HOME/.ssh/<jump-key>" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no \
+     root@<jump-eip> \
+     "sshpass -p '***' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -W $1:$2 -p 22022 <user>@127.0.0.1"
+```
+`rsync` 用 `-e "ssh -o BatchMode=yes -o ProxyCommand='bash <此脚本> %h %p'"`。实测落地：
+`550B → ECS:22 → Orin:22022 → Intel:22` 一条命令拿到 `hostname`（跳板机只需装 `sshpass`）。
+
+四条纪律：
+1. **口令只存在跳板机侧**（跳板装 `sshpass`，口令从 secrets/env 读）；技能与仓库里写 `***`。
+2. **内层 `-W` 只是字节管道、不落地登录** ⇒ 目标机的认证用的是**本机私钥**，不需要把目标机的 key 加到跳板机。
+3. **分段各证一次再串**：本机→跳板 22 `hostname` · 跳板内 `sshpass … -p 22022 user@127.0.0.1 true`（回
+   `Permission denied (publickey,password)` 也算"到了"，说明端口通、只是要口令）· 跳板机内
+   `bash -c 'echo > /dev/tcp/<目标>/22'` open。三层任一没证就串，排错会落到错误的机器上。
+4. **别在命令行里嵌三层引号**：`%h %p` 会被 shell 吃掉或引号错配，报 `Connection to UNKNOWN port 65535 timed out`
+   这类误导错误（见 §4 末）。一律走脚本文件。
+
+代价：每段动作指令多两跳，段表/位姿往返明显变慢；产线网卡回来后**切回直连**（§3 别名切换），别长期跑三跳。
 
 顺带：`netplan apply` **不会**摘掉 NetworkManager 已经挂上的地址 ——
 试验留下的影子地址（如 `192.168.23.50/24` 挂在一块没插线的 `enx*` 上，还带 `239.0.0.0/8` 多播路由）会一直留着，

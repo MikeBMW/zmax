@@ -1,4 +1,4 @@
-远程=ssh orin(ECS:22022跳板→Orin tashan/ts123)/ssh intel免密(ProxyJump); .23.66 Orin, .23.70 intel UltraX7/30G/NPU+ArcB390/ROS2Jazzy; .23.50/24无网关; 网卡掉≠服务坏
+远程=三跳脚本 zmax/zmax_data/runtime/proxy_via_ecs_orin.sh (550B→ECS22→Orin22022 sshpass→Intel22免密); .23.66 Orin, .23.70 Intel(py3.12 train_venv/ArcB390); USB网卡拔了就只能走三跳
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
