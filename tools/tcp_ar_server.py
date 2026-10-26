@@ -251,6 +251,41 @@ def _agreement_open():
 
 CALIB = os.path.join(REPO, "data", "scene", "laptop_cam_calib.json")            # 旧单相机文件(兼容保留)
 MCALIB = os.path.join(REPO, "data", "scene", "cam_calib.json")                   # 多相机: {"local":{...},"local2":{...}}
+
+
+def _ar_points():
+    """📍 工程配置的全部点位台账 —— 配置中心推的 ar_aoi_live.json。
+
+    老倪 2026-10-26: 「也要显示 工程配置的所有点, 向下罗列显示出来」。
+    结构: {"ts":..., "s":{"金手指点1.x":0.36, "金手指点1.y":..., ...}, "groups":{"金手指点1.x":"AR·空间点位 (基座系)"}}
+    ⇒ 按 "<点名>.x/.y/.z" 三件齐全才认(米), 同时给 mm 和分组, 页面按分组向下罗列。
+    """
+    ap = os.path.join(REPO, "zmax_data", "ar_live", "ar_aoi_live.json")
+    try:
+        with open(ap, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception as e:                                                    # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e), "points": [], "n": 0,
+                "hint": "台账由 ar_aoi_bus 推送(工程配置→%s)" % os.path.relpath(ap, REPO)}
+    s = d.get("s") or {}
+    groups = d.get("groups") or {}
+    out = []
+    for k in sorted(s.keys()):
+        if not k.endswith(".x"):
+            continue
+        nm = k[:-2]
+        try:
+            v = [float(s[nm + "." + ax]) for ax in "xyz"]
+        except Exception:                                                     # noqa: BLE001
+            continue
+        out.append({"name": nm, "x": v[0], "y": v[1], "z": v[2],
+                    "mm": [round(x * 1000) for x in v],
+                    "group": groups.get(nm + ".x") or "未分组"})
+    out.sort(key=lambda r: (r["group"], r["name"]))
+    ts = d.get("ts")
+    return {"ok": True, "n": len(out), "points": out, "ts": ts,
+            "age_s": (round(time.time() - float(ts), 1) if ts else None),
+            "src": os.path.relpath(ap, REPO)}
 # 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
 #   机器人手臂的 RealSense、金手指检测相机、表面检测相机 —— 这 4 个相机都照射着同一个场景, L5 层 deepseek VL 能理解它」
 #   ⇒ AR 底图来源分两类, 一律**登记真实分辨率**(标定点是像素量纲, 混用必错):
@@ -1048,6 +1083,11 @@ class H(BaseHTTPRequestHandler):
                     self._json({"ok": False, "boxes": [], "err": "%s: %s" % (type(e).__name__, str(e)[:120])})
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
                 self._json(FS.listing())
+            elif p == "/api/points":           # 📍 工程配置的全部点位台账 (配置中心 → ar_aoi_live.json)
+                # 老倪 2026-10-26: 「也要显示 工程配置的所有点, 向下罗列显示出来」
+                # 真源: zmax_data/ar_live/ar_aoi_live.json 的 s{} + groups{} (ar_aoi_bus 推的台账)。
+                # 只认 <点名>.x/.y/.z 三件齐全的组 —— AOI/相机/机器人这种非坐标组不列。
+                self._json(_ar_points())
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
                 self._json(self._follow_status())
             elif p == "/api/fence/check":      # 🧱 某点是否在围栏里

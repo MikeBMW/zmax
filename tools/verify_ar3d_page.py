@@ -50,7 +50,10 @@ PROBE = r"""
     railButtonText: btns.slice(0, 16).map(b => b.textContent.trim().slice(0, 10)),
     allVisibleButtons: [...document.querySelectorAll('button')].filter(b => b.offsetParent !== null).length,
     scrollH: document.documentElement.scrollHeight,
-    scrollable: document.documentElement.scrollHeight > innerHeight + 2
+    scrollable: document.documentElement.scrollHeight > innerHeight + 2,
+    cfgN: (typeof CFG_PTS !== 'undefined') ? CFG_PTS.length : -1,
+    ptsErr: window.__ptsErr || null, ptsTries: window.__ptsTries || 0,
+    cfgRows: document.querySelectorAll('#rowCfgPts button').length
   };
   if (cv) {
     const c = cv.getContext('2d');
@@ -82,7 +85,23 @@ CLICK2 = r"""
   const s1 = snap();
   b.click();                       // 再打开(来回两次都要不动相机)
   const s2 = snap();
-  return JSON.stringify({s0: s0, s1: s1, s2: s2});
+  // 📍 工程配置点位台账(2026-10-26): 左栏要罗列全部点, 三维里点要真画出来 / 真能关掉
+  const cv = document.getElementById('vr'), cx = cv.getContext('2d');
+  const bright = () => {
+    const d = cx.getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i] > 200 && d[i+1] > 120 && d[i+2] > 90) n++; }
+    return n;
+  };
+  const rows = document.querySelectorAll('#rowCfgPts button').length;
+  const nCfg = (typeof CFG_PTS !== 'undefined') ? CFG_PTS.length : -1;
+  const bOn = bright();
+  document.getElementById('bCfgNone').click();
+  const bOff = bright();
+  document.getElementById('bCfgAll').click();
+  const bBack = bright();
+  return JSON.stringify({s0: s0, s1: s1, s2: s2,
+                         cfg: {n: nCfg, rows: rows, on: bOn, off: bOff, back: bBack}});
 })()
 """
 
@@ -102,7 +121,8 @@ def run(url, app, size=(1600, 1000), wait_ms=30000, shot=None, do_click=False):
             if (new.get("pct") or 0) >= (cur.get("pct") or 0):
                 st["probe"] = r
         pct = ((st["probe"] or {}).get("pixels") or {}).get("pct") or 0
-        if do_click and (pct >= 3.0 or st["tries"] >= 8):
+        cfg_n = (st["probe"] or {}).get("cfgN") or 0          # 📍 点位台账是异步 fetch 来的, 没到就点会误判"0 点"
+        if do_click and ((pct >= 3.0 and cfg_n >= 20) or st["tries"] >= 10):
             v.page().runJavaScript(CLICK2, got_click)
         elif not do_click and (pct >= 3.0 or st["tries"] >= 8):
             st["n"] += 1
@@ -176,6 +196,7 @@ def main():
         chk("⑤ 对照 /ar 不是左栏版式(判据非恒真)", not side,
             "/ar rail=%s canvas=%s" % (b["rail"], b["canvas"]))
     cam_ok = False
+    j = {}
     detail = "click=%r" % (click_res,)
     try:
         j = json.loads(click_res) if isinstance(click_res, str) else {}
@@ -191,6 +212,19 @@ def main():
     except Exception as e:                                    # noqa: BLE001
         detail = "解析失败 %r / %r" % (click_res, e)
     chk("⑥ 点『URDF 外形』来回两次: 相机纹丝不动(视距/目标/角度全不变)+ 状态真翻转", cam_ok, detail)
+    pts_ok = False
+    pd = "cfg=%r" % (j.get("cfg") if isinstance(j, dict) else None,)
+    try:
+        c = j.get("cfg") or {}
+        n, rows = c.get("n"), c.get("rows")
+        on, off, back = c.get("on") or 0, c.get("off") or 0, c.get("back") or 0
+        listed = (n or 0) >= 20 and (rows or 0) >= (n or 0)
+        drawn = on > 0 and off < on * 0.6 and back > off * 1.4
+        pts_ok = listed and drawn
+        pd = ("台账 %s 点 / 左栏 %s 行 · 亮点 全开%s → 全关%s → 全开%s" % (n, rows, on, off, back))
+    except Exception as e:                                    # noqa: BLE001
+        pd = "解析失败 %r" % (e,)
+    chk("⑦ 工程配置点位: 左栏向下罗列全部点 + 三维大圆点真画出且能整组关/开", pts_ok, pd)
     print("截图:", SHOT, os.path.getsize(SHOT) if os.path.exists(SHOT) else "-")
     bad = [n for n, ok, _ in ck if not ok]
     print("═══ %s (%d/%d) ═══" % ("全绿" if not bad else "不过: " + ", ".join(bad), len(ck) - len(bad), len(ck)))

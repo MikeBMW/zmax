@@ -89,7 +89,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r15 · /ar3d 左栏按钮 + 开关不动相机</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r16 · /ar3d 左栏点位台账 + 大圆点</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -177,6 +177,19 @@
     <div class="row" style="margin-top:6px" id="rowLines"></div>
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
     <pre id="pVr">—</pre>
+    <!-- 📍 2026-10-26 老倪: 「也要显示 工程配置的所有点, 向下罗列显示出来; 点大一些, 方便用眼睛观察」
+         真源 = /api/points (配置中心点位台账 ar_aoi_live.json); 点一下 = 显示/隐藏, 默认全开 -->
+    <div id="cardCfgPts">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin:8px 0 4px">
+        <span style="font:700 12.5px system-ui,sans-serif;color:#c9d1d9">📍 工程配置点位
+          <span id="tCfgN" style="font-weight:400;color:#6b7a8d">—</span></span>
+        <span style="display:flex;gap:4px">
+          <button id="bCfgAll" class="sm" style="padding:2px 8px">全开</button>
+          <button id="bCfgNone" class="sm" style="padding:2px 8px">全关</button>
+        </span>
+      </div>
+      <div id="rowCfgPts" class="row" style="flex-direction:column;gap:4px"></div>
+    </div>
     </div><!-- /#vrRail -->
   </div>
  </div>
@@ -327,6 +340,10 @@ const __USP = new URLSearchParams(location.search);
 const __BARE = (location.pathname.replace(/\/+$/,'') === '/ar3d') || __USP.get('vr')==='full' || __USP.get('bare')==='1';
 if(__BARE || __USP.get('vr')==='1'){ document.body.classList.add('vronly'); }
 if(__BARE){ document.body.classList.add('vrfull'); }
+// 📍 工程配置点位台账(见 drawCfgPts) —— 必须**在脚本最前面**声明:
+//    drawVR() 在顶层就会跑, 若这里用 let 声明在下面, drawCfgPts 访问会撞 TDZ
+//    ("Cannot access 'CFG_PTS' before initialization", 实测页面整个三维都不画了)。
+var CFG_PTS=[], CFG_ON={}, CFG_SIG='', CFG_AGE=null;
 let IMG_W=1280, IMG_H=720;                // 随所选相机变(标定点按像素存, 必须和分辨率绑定)
 // 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**;
 //   现在有 USB 相机(RealSense)/机器人手臂的 RealSense/金手指检测相机/表面检测相机, 这 4 个都照同一个场景」
@@ -1428,6 +1445,103 @@ function fenceBind(){
   });
   loadFences();
 }
+// ══════════════════════════════════════════════════════════════════════════
+//  📍 工程配置点位台账 (2026-10-26 老倪: 「也要显示 工程配置的所有点, 向下罗列显示出来;
+//     工程配置里的点, 要注意 UI 显示, 点大一些, 方便用眼睛观察」)
+//  真源 = /api/points → 配置中心推的 ar_aoi_live.json(<点名>.x/.y/.z, 米)
+//  口径: 左栏按分组向下罗列(点名 + mm 坐标), 点一下=显示/隐藏, 默认全开;
+//        三维里画成大圆点(半径 8~11px, 近大远小) + 白描边 + 点名标签, 好认不糊。
+// ══════════════════════════════════════════════════════════════════════════
+let CFG_PAL=['#ffd166','#06d6a0','#ef476f','#4895ef','#c77dff','#ff9f1c','#4cc9f0','#ff7b9c','#a3e635','#f472b6'];
+async function loadCfgPts(){
+  try{
+    window.__ptsTries=(window.__ptsTries||0)+1;
+    const r=await (await fetch('/api/points',{cache:'no-store'})).json();
+    if(!r||!r.ok){ window.__ptsErr='api '+(r?JSON.stringify(r).slice(0,160):'null');
+      const t=$('tCfgN'); if(t) t.textContent=(r&&r.err)?'读取失败':'—'; return; }
+    CFG_PTS=r.points||[]; CFG_AGE=(r.age_s==null?null:r.age_s);
+    CFG_PTS.forEach(p=>{ if(!(p.name in CFG_ON)) CFG_ON[p.name]=true; });
+    const sig=CFG_PTS.map(p=>p.name+p.group+p.mm.join(',')).join('|');
+    if(sig!==CFG_SIG){ CFG_SIG=sig; paintCfgPts(); }
+    drawVR();
+    window.__ptsErr=null;
+  }catch(e){ window.__ptsErr=String(e); }
+}
+function paintCfgPts(){
+  const box=$('rowCfgPts'); if(!box) return;
+  box.innerHTML='';
+  const t=$('tCfgN');
+  if(t){                                    // 台账年龄: 老倪要求"实时数据必须标出多旧"
+    let ageTxt='';
+    if(CFG_AGE!=null){
+      const a=+CFG_AGE;
+      ageTxt = a>=86400 ? ' · 台账 '+(a/86400).toFixed(1)+' 天前'
+             : a>=3600  ? ' · 台账 '+(a/3600).toFixed(1)+' h 前'
+             : a>=60    ? ' · 台账 '+Math.round(a/60)+' min 前' : ' · 台账 '+Math.round(a)+' s 前';
+    }
+    t.textContent=CFG_PTS.length+' 个'+ageTxt;
+    t.title='真源: /api/points ← 配置中心点位台账 ar_aoi_live.json';
+  }
+  let lastG=null;
+  CFG_PTS.forEach((p,i)=>{
+    if(p.group!==lastG){
+      lastG=p.group;
+      const h=document.createElement('div');
+      h.style.cssText='font:600 11px system-ui,sans-serif;color:#6b7a8d;margin:6px 0 1px 2px;letter-spacing:.3px';
+      h.textContent=lastG;
+      box.appendChild(h);
+    }
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='sm'+(CFG_ON[p.name]?' on':'');
+    b.style.cssText='text-align:left;display:flex;justify-content:space-between;gap:6px;padding:5px 8px;font-size:12.5px';
+    const dot=document.createElement('i');
+    dot.style.cssText='display:inline-block;width:9px;height:9px;border-radius:50%;flex:none;align-self:center;background:'
+      +CFG_PAL[i%CFG_PAL.length];
+    const nm=document.createElement('span');
+    nm.style.cssText='flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    nm.textContent=p.name;
+    const co=document.createElement('span');
+    co.style.cssText='flex:none;color:#8b949e;font:11px monospace';
+    co.textContent=p.mm.join(',');
+    b.appendChild(dot); b.appendChild(nm); b.appendChild(co);
+    b.title=p.name+' · '+p.group+'\nbase 系 mm: '+p.mm.join(', ')+'\n点一下 = 显示/隐藏';
+    b.onclick=()=>{ CFG_ON[p.name]=!CFG_ON[p.name]; b.classList.toggle('on',!!CFG_ON[p.name]); drawVR(); };
+    box.appendChild(b);
+  });
+}
+function drawCfgPts(g, pr){
+  const big=document.body.classList.contains('vrfull');       // /ar3d 大画布: 点更大; /ar 小窗口: 小一点别糊
+  const rMin=big?9:5, rMax=big?15:9, k=big?12:7;
+  const placed=[];                                            // 已放下的标签框, 用来避让(点太密时不叠成一坨)
+  for(let i=0;i<CFG_PTS.length;i++){
+    const p=CFG_PTS[i];
+    if(!CFG_ON[p.name]) continue;
+    const s=pr([p.x,p.y,p.z]); if(!s) continue;
+    const col=CFG_PAL[i%CFG_PAL.length];
+    const R=Math.max(rMin, Math.min(rMax, k*Math.max(0.7,Math.min(1.6,1.1/s.z))));
+    g.beginPath(); g.arc(s.u,s.v,R+3.5,0,Math.PI*2); g.fillStyle='rgba(0,0,0,.55)'; g.fill();  // 暗底, 亮色点上才不糊
+    g.beginPath(); g.arc(s.u,s.v,R,0,Math.PI*2); g.fillStyle=col; g.fill();
+    g.lineWidth=2; g.strokeStyle='#0d1117'; g.stroke();                                        // 深色描边压住底下网格
+    g.lineWidth=1.4; g.strokeStyle='rgba(255,255,255,.9)'; g.stroke();                         // 白圈: 小屏幕也一眼看到
+    g.font='bold '+(big?13:12)+'px monospace';
+    const tw=g.measureText(p.name).width;
+    const bx=s.u+R+4, by=s.v-11, bw=tw+8, bh=17;
+    const hit=placed.some(q=>!(bx+bw<q[0] || q[0]+q[2]<bx || by+bh<q[1] || q[1]+q[3]<by));
+    if(!hit && bx+bw<g.canvas.width){
+      placed.push([bx,by,bw,bh]);
+      g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(bx,by,bw,bh);
+      g.fillStyle=col; g.fillText(p.name, bx+4, by+13);
+    }
+  }
+}
+{ const _a=$('bCfgAll'); if(_a) _a.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=true); paintCfgPts(); drawVR(); }; }
+{ const _n=$('bCfgNone'); if(_n) _n.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=false); paintCfgPts(); drawVR(); }; }
+// 📍 首屏拉一次 + 10s 跟随(台账变了才重排左栏, 不打断正在点的按钮)。
+//    2026-10-26 坑: 一开始写在 loadCams() 里 `await loadCalib()` 之后 —— 实测第二路页面
+//    /api/calib 慢/失败时整条链跳过 ⇒ 点位永远 0 个(判据直接红)。点位和相机是两件事, 独立起。
+loadCfgPts();
+setInterval(loadCfgPts, 10000);
 function drawVR(){
   const c=$('vr'), g=c.getContext('2d');
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
@@ -1585,6 +1699,8 @@ function drawVR(){
       g.fillStyle='#ffd166'; g.fillText(lbl, lx+2, ly);
     }
   }
+  // 📍 工程配置点位(台账): 画在最上层, 点大 + 带点名 (老倪: 「点大一些, 方便用眼睛观察」)
+  if(typeof CFG_PTS!=='undefined' && CFG_PTS.length) drawCfgPts(g, pr);
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
   $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
