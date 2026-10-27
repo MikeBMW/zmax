@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r32 · 左臂 tool1 模块头 + 左盘14待搬/右盘14已搬光模块(#60a5fa/#34d399) + 新增「🚚 仿真搬运」(状态空间 plan 节点排段表 → 左臂仿真 14 个模块 左槽→右槽, 真机不动) + 「↩ 回退」+ 左臂料盘(Y+)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r45 · UPH浮层顶部居中可收起+中键平移+按可见区取景 · 🏭全流程无限循环(稳态45.87s/4件)+UPH浮层 · 4孔柜内等距60mm · 先插满→拔一对→AOI→插同一对 · 右臂 626mm/s ⇒ 11.42 s/个 · 右侧栏新增「每模块时间构成」: 在孔/检测/落盘</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -178,12 +178,33 @@
       <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+  </div>
+  <button id="panChip" style="position:fixed;left:16px;top:96px;z-index:55;display:none;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 10px;font:11px/1.3 ui-monospace,monospace;cursor:pointer" title="中键平移后视角会一直保持; 点这里恢复到自动取景中心">🖱 视角已平移</button>
+  <button id="uphPill" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:16px;padding:5px 14px;font:12px/1 ui-monospace,monospace;cursor:pointer">🏭 UPH 300 ▸</button>
+  <div id="uphBox" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;border-radius:10px;padding:8px 12px;font:12px/1.5 ui-monospace,monospace;color:#c9d1d9;box-shadow:0 6px 24px rgba(0,0,0,.5);min-width:430px">
+    <div style="font-size:13px;color:#58a6ff;font-weight:700;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span>🏭 全流程并行 · 上料摆盘 + 插拔检测 + 下料分拣</span>
+      <span style="display:flex;gap:6px">
+        <button id="uphFold" title="收起/展开详情(不停止运行)" style="background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:4px;font:12px/1 system-ui;padding:2px 7px;cursor:pointer">▾</button>
+        <button id="uphHide" title="隐藏这个窗口(流程继续跑, 点上方小胶囊恢复)" style="background:#161b22;border:1px solid #30363d;color:#8b949e;border-radius:4px;font:12px/1 system-ui;padding:2px 7px;cursor:pointer">✕</button>
+      </span>
+    </div>
+    <div id="uphBody">
+    <div><span style="font-size:30px;font-weight:800;color:#3fb950" id="uphVal">300</span><span style="color:#8b949e"> UPH 目标(件/小时)</span></div>
+    <div style="color:#8b949e">实时 UPH <b id="uphLive" style="color:#58a6ff">—</b> · 达成 <b id="uphReach" style="color:#c9d1d9">—</b> · 运行 <b id="uphRun" style="color:#c9d1d9">0秒</b> · 产出 <b id="uphUnits" style="color:#c9d1d9">0</b> 件</div>
+    <div style="color:#8b949e">实时良率 <b id="uphYield" style="color:#3fb950">—</b> <span style="color:#6e7681">(目标 ≥99%)</span> · 良品 <b id="uphOk" style="color:#3fb950">0</b> / 不良 <b id="uphNg" style="color:#f85149">0</b></div>
+    <div style="color:#8b949e">上料盘 <b id="uphBuf" style="color:#c9d1d9">14/14</b> · 左臂 <b id="uphLA" style="color:#c9d1d9">—</b> · 右臂 <b id="uphRA" style="color:#c9d1d9">—</b></div>
+    <div style="color:#6e7681" id="uphNote">节拍 — · 一批 —</div>
+    </div>
+  </div>
+  <div>
       <!-- ↩ 2026-10-27 老倪: 「刚才我不小心用鼠标挪动了料盘的位置; 增加一个回退功能; 回到上一步」
            每次加/改/删围栏之前都会存快照, 这里点一下退一步; 连点可以一直退。 -->
       <button id="bUndo" class="sm" style="margin-left:14px" title="↩ 回到上一步: 把围栏/料盘/槽位恢复到上一次编辑之前的状态(连点可连续回退)">↩ 回退</button>
       <span id="tUndo" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <!-- 🚚 2026-10-27 老倪: 「用状态空间工程的 规划 plan 节点, 规划运送光模块的路径,
            由左臂仿真从左侧料盘抓起, 横移, 放下到右侧料盘, 全程都在 ar3d 里执行, 不需要动真正的右臂」 -->
+      <button id="bPlant" class="sm" style="margin-left:14px" title="全流程并行: 左臂上料摆盘 + 右臂插拔/检测 + 下料分拣 同时跑, 右上角显示 UPH(每小时产出)。仿真, 真机零指令">🏭 全流程 UPH</button>
       <button id="bTrans" class="sm" style="margin-left:14px" title="点一下 = 左臂仿真开始搬运(路径来自状态空间工程 plan 节点排的段表); 再点 = 停。只动左臂仿真模型, 真机不动">🚚 仿真搬运</button>
       <span id="tTrans" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
     </div>
@@ -203,7 +224,8 @@
          只是所有位姿当前都是我来仿真给你, 先默认跟右臂一样; 左臂位姿给我几个控制按钮, 参考 station 的
          x y z a b c 控制, 控制系为左臂的世界坐标系」 -->
     <div class="row" style="margin-top:6px">
-      <button id="bArmR" class="sm on" title="右臂 = 真实机器人 (真关节角来自 tcp_out/latest.json, 每帧正运动学); 点一下隐藏">🦾 右臂</button>
+      <button id="bArmR" class="sm on" title="右臂_仿真 = 画面里紫色那条仿真臂(骨架来自 /api/sim_insert 段表正解, 插拔/全流程时动的就是它); 点一下隐藏, 只留真机臂 —— 老倪 2026-10-27: 「将 右臂 改成 右臂_仿真 表示右臂仿真的显示与隐藏」">🦾 右臂_仿真</button>
+      <button id="bArmReal" class="sm on" title="真机右臂 = 画面里那条不动的真实机器人臂(关节角来自 tcp_out/latest.json); 点一下隐藏, 只留仿真/幽灵臂 —— 老倪 2026-10-27: 「点击后可以把画面那个暂时不动的真实机器人右臂隐藏」">🦾 右臂_真机</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
       <button id="bCamTop" class="sm on" title="两臂之间的顶视相机(立柱+RealSense 模板): 立柱高 = 1 轴高度, 相机俯角 35° 看工作区; 点一下隐藏">📷 顶视相机</button>
@@ -499,7 +521,7 @@ let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], S
     NAMED_ON={},        // 🧭 2026-10-26: 「按钮怎么不切换, 显示与不显示呢」⇒ 每个按钮独立开关;
                         //    蓝色=显示中, 黑色=已隐藏。NAMED_SEL 只记"最后打开的那条"给『执行』用。
     MOD3=null, MOD3ON=true,
-    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true,mod:true};
+    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true,mod:true,real:true,simArm:true,panOff:[0,0,0]};   // real=真机右臂(静止) / simArm=仿真右臂(紫色幽灵)
 let MODSPEC={L_mm:56.5,W_mm:13.4,T_mm:8.5,src:'默认'};
 fetch('/api/module_spec').then(r=>r.json()).then(d=>{ if(d&&d.L_mm){ MODSPEC=d; drawVR(); } }).catch(()=>{});
 
@@ -1061,6 +1083,10 @@ function drawOv(){
 // 🔴 自动对焦(2026-09-29 老倪"看不到 VR 轨迹"): 原来相机位置写死, 轨迹只占画面中间 ≈50px 的一小坨,
 //    看着就像"没有"。定式: 用**数据包围盒**自动定目标点和距离, 让通道铺满画面 ~70%。
 function vrFitBox(){
+  // 🖱 刚用中键平移过 ⇒ 1.5s 内谁叫都不重新取景(否则松手那一下会被别处的 refit 拉回去)
+  if(VR.camLock && (Date.now()-VR.camLock) < 1500) return '平移中, 不重新取景';
+  // 用户已经中键平移过 ⇒ 一律不再自动取景(否则包围盒一变就把画面拉回去)。只有 🎯对准/双击 才回中。
+  if(VR.panOff && (Math.abs(VR.panOff[0])+Math.abs(VR.panOff[1])+Math.abs(VR.panOff[2])) > 1e-6) return '已手动平移, 不自动取景';
   const pts=[];
   (TRAJ.trace||[]).forEach(p=>pts.push(p));
   (TRAJ.plan||[]).forEach(p=>pts.push(p));
@@ -1068,7 +1094,7 @@ function vrFitBox(){
   Object.keys(NAMED_ON).filter(k=>NAMED_ON[k]).forEach(k=>(NAMED[k]||[]).forEach(p=>pts.push(p)));
   if(TCP&&TCP.ok) pts.push([TCP.x,TCP.y,TCP.z]);
   // 🦾 URDF 外形也纳入取景: 否则整条臂会跑出画面 (实测只按 TCP 取景时, 臂顶 bbox 到 y=-26px)
-  if(VR.urdf && URDF && LINKM){
+  if(VR.urdf && VR.real!==false && URDF && LINKM){
     for(const L of URDF.links){ const M=LINKM[L.name]; if(!M) continue;
       for(let i=0;i<L.pts.length;i+=6){ const q=L.pts[i];
         pts.push([M.R[0][0]*q[0]+M.R[0][1]*q[1]+M.R[0][2]*q[2]+M.t[0],
@@ -1111,10 +1137,10 @@ function vrFitBox(){
     ['tool0','tool1'].forEach(k=>{ const f=TCP.frames[k]; if(f&&f.origin) pts.push(f.origin); });
     pts.push([0,0,0]);
   }
-  if(pts.length<2){ VR.tgt=[0.70,0.22,0.14]; VR.dist=1.35; return '默认视角'; }
+  if(pts.length<2){ VR.tgt=[0.70+_po(0),0.22+_po(1),0.14+_po(2)]; VR.dist=1.35; return '默认视角'; }
   const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
   pts.forEach(p=>{ for(let i=0;i<3;i++){ if(p[i]<mn[i])mn[i]=p[i]; if(p[i]>mx[i])mx[i]=p[i]; } });
-  VR.tgt=[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,(mn[2]+mx[2])/2];
+  VR.tgt=[(mn[0]+mx[0])/2+_po(0),(mn[1]+mx[1])/2+_po(1),(mn[2]+mx[2])/2+_po(2)];   // 叠加用户中键平移量
   const rad=Math.max(0.05, 0.5*Math.hypot(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]));
   // 🦾 取景收紧 (2026-10-18 实测): 按包围盒对角算出来的视距会让机器人只占画面 1/3 (126×209px/847×633),
   //    乘 0.62 后占 ~55%, 机器人外形看得清, 又不会被裁掉
@@ -1866,7 +1892,18 @@ function drawVR(){
   // ⬆ U = R × fwd (老倪 2026-10-18: 「地平面上天了」 —— 原来写成 fwd × R, pitch=0 时算出
   //    U=(0,0,-1) 朝下, 整个视图上下颠倒; 这里改成右手系 R×fwd, U 才是真'上')
   const U=[R[1]*fwd[2]-R[2]*fwd[1], R[2]*fwd[0]-R[0]*fwd[2], R[0]*fwd[1]-R[1]*fwd[0]];
-  const F=520, CX=w/2, CY=h/2;
+  // 右侧节拍栏是 fixed 覆盖层(392px): 按画布 w/2 居中时, 机器人看着偏右。
+  // 老倪 2026-10-27: 「现在的机器人不在屏幕中心, 有些靠右侧」⇒ 用「可见区域」的中心。
+  let _ovw=0;
+  try{
+    const tp=document.getElementById('tactPanel'), cr=$('vr').getBoundingClientRect();
+    if(tp && !tp.classList.contains('hide')){
+      const pr2=tp.getBoundingClientRect();
+      _ovw=Math.max(0, Math.min(w, cr.right-pr2.left));
+    }
+  }catch(e){}
+  const F=520, CX=(w-_ovw)/2, CY=h/2;
+  window.__vm={CX:CX, CY:CY, ovw:_ovw, w:w, h:h, F:F};   // 自检用: 取景中心/右侧栏遮挡宽度
   function pr(P){
     const dx=P[0]-eye[0],dy=P[1]-eye[1],dz=P[2]-eye[2];
     const z=dx*fwd[0]+dy*fwd[1]+dz*fwd[2];
@@ -1905,10 +1942,10 @@ function drawVR(){
   if(CHS.show) drawChassis(g, pr);
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
   if(URDF){
-    if(VR.urdf) drawUrdf(g,pr);
+    if(VR.urdf && VR.real!==false) drawUrdf(g,pr);              // 真机右臂(静止)
   }
   // 👻 预览动作: 紫色幽灵右臂 —— 与真实右臂同屏, 末端对着轨迹终点; 真机不动, 这条只是画上去的
-  if(PREV.on && PREV.M && URDF){
+  if(PREV.on && PREV.M && URDF && VR.simArm!==false){          // 仿真右臂(紫色幽灵)
     const I3=[[1,0,0],[0,1,0],[0,0,1]];
     drawUrdf(g, pr, PREV.M, {R:I3, t:[0,0,0], fill:'#7c3aed', stroke:'#c4b5fd', alpha:0.55});
     const e=pr(PREV.target||[0,0,0]);
@@ -1920,7 +1957,7 @@ function drawVR(){
   }
   // 🔌 插入仿真: 手里的模块跟着幽灵臂 tool1 走; 插完就留在孔里(767→814)
   if(typeof INSIM!=='undefined' && (INSIM.carry || INSIM.inserted)){
-    if(INSIM.carry && PREV.M && PREV.M['tool1']){
+    if(INSIM.carry && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
       const t1=PREV.M['tool1'];
       const L=(MODSPEC.L_mm||56.5)/1000;
       // 摆正: 模块长轴沿世界 X、宽度沿 Y、厚度沿 Z —— 与料盘里的模块是同一个姿态,
@@ -1942,24 +1979,37 @@ function drawVR(){
       drawFlatModule(g, pr, [sp[0]/1000, sp[1]/1000, sp[2]/1000], '#60a5fa');
     }
     // ② 手里抓着的那一个(绿, 跟着 ghost tool1 走, 轴对齐)
-    if(INSP.carry && PREV.M && PREV.M['tool1']){
+    if(INSP.carry && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
       const t1=PREV.M['tool1'], Lm=(MODSPEC.L_mm||56.5)/1000;
       drawFlatModule(g, pr, [t1.t[0]+Lm/2, t1.t[1], t1.t[2]], '#a3e635');
     }
-    // ③ 插在孔里那一瞬间(插到位停留期间)
-    if(INSP.inHole){
-      drawFlatModule(g, pr, [0.7905, 0.228, 0.278], '#a3e635');
+    // ③ 四个插孔(空/占/倒计时) + 孔里的模块
+    if(typeof drawInspHoles==='function') drawInspHoles(g, pr);
+    if(INSP.holeOcc){
+      for(var hk in INSP.holeOcc){
+        var hh=null;
+        for(var hi=0; hi<(INSP.holes||[]).length; hi++)
+          if(String(INSP.holes[hi].id)===String(hk)) hh=INSP.holes[hi];
+        if(!hh) continue;
+        drawFlatModule(g, pr, [(hh.mouth[0]+hh.insert[0])/2000, hh.mouth[1]/1000, 278/1000], '#a3e635');
+      }
     }
     // ④ 检测段: 在末端旁标相机判定(金手指 / 侧面四��)
-    if(INSP.curCheck && PREV.M && PREV.M['tool1']){
+    if(INSP.curCheck && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
       const ck=INSP.curCheck, tp=pr(PREV.M['tool1'].t);
       if(tp){
         const ok=(ck.result==='OK');
         g.fillStyle = ok ? '#34d399' : '#ef4444';
         g.font='bold 12px monospace';
         const nm = ck.camera ? ck.camera : (ck.face||'检测');
+        var _m=INSP.carried?INSP.cycles[INSP.carried-1]:null, _aoi=0, _tot=0;
+        if(_m && _m.t_aoi0!=null){ _aoi=Math.max(0,INSP.curT-_m.t_aoi0); _tot=_m.aoi_s||0; }
         g.fillText('📷 '+(ck.face||(ck.kind==='golden'?'金手指':(ck.kind==='hole'?'插孔':'检测')))
-                   +' '+(ok?'OK':'NG'), tp.u+10, tp.v-10);
+                   +' '+(ok?'OK':'NG')+(_tot?(' · 检测 '+_aoi.toFixed(1)+'/'+_tot.toFixed(1)+'s'):''), tp.u+10, tp.v-10);
+        if(_tot){
+          g.fillStyle='#f59e0b'; g.font='bold 11px monospace';
+          g.fillText('纯检测 '+(_m.aoi_check_s||0).toFixed(1)+'s · 移动 '+(_m.aoi_move_s||0).toFixed(1)+'s', tp.u+10, tp.v+6);
+        }
         g.strokeStyle = ok ? '#34d399' : '#ef4444'; g.lineWidth=1.4;
         g.beginPath(); g.arc(tp.u,tp.v,9,0,Math.PI*2); g.stroke();
       }
@@ -2128,8 +2178,33 @@ $('vr').addEventListener('wheel',(e)=>{ e.preventDefault();
   VR.auto=false; drawVR();
   const p=document.getElementById('pVr'); if(p) p.dataset.zoom=(VR.dist*1000).toFixed(0);
 }, {passive:false});
+// 🖱 中键平移 (老倪 2026-10-27: 「用鼠标中键应该能够平移」)
+//    按像素位移换算成世界位移(取景深度处 dist/F), 沿相机右/上轴反向移目标点 ⇒ 画面跟着手走
+// 🖱 中键平移量(用户视角偏移): 取景时叠加 ⇒ 即使别处重新取景, 平移也不会被抹掉回中
+function _po(i){ return (VR.panOff && VR.panOff[i]) || 0; }
+function vrPanBy(dx, dy){
+  const F=520, k=VR.dist/F;
+  const cy=Math.cos(VR.yaw), sy=Math.sin(VR.yaw), cp=Math.cos(VR.pitch), sp=Math.sin(VR.pitch);
+  const fwd=[cp*cy, cp*sy, -sp];
+  let R=[fwd[1], -fwd[0], 0]; const nl=Math.hypot(R[0],R[1],R[2])||1; R=[R[0]/nl,R[1]/nl,R[2]/nl];
+  const U=[R[1]*fwd[2]-R[2]*fwd[1], R[2]*fwd[0]-R[0]*fwd[2], R[0]*fwd[1]-R[1]*fwd[0]];
+  if(!VR.panOff) VR.panOff=[0,0,0];
+  for(let i=0;i<3;i++){ const d=(-R[i]*dx*k) + (-U[i]*dy*k); VR.tgt[i]+=d; VR.panOff[i]+=d; }
+  VR.auto=false; VR.camLock=Date.now();
+  var h=document.getElementById('panChip');
+  if(h){ const mm=Math.hypot(VR.panOff[0],VR.panOff[1],VR.panOff[2])*1000;
+         h.style.display = mm>1 ? 'block':'none';
+         h.textContent='🖱 视角已平移 '+(mm/10).toFixed(0)+'cm · 点这里回中'; }
+}
 let drag=null;
+$('vr').addEventListener('mousedown',e=>{ if(e.button===1){ e.preventDefault(); } });   // 挡掉浏览器中键自动滚动
+$('vr').addEventListener('auxclick',e=>{ if(e.button===1) e.preventDefault(); });
 $('vr').addEventListener('pointerdown',e=>{
+  if(e.button===1 || (e.buttons & 4)){                       // 中键 = 平移, 不做围栏命中/旋转
+    drag={x:e.clientX,y:e.clientY,pan:true}; VR.auto=false;
+    try{ $('vr').setPointerCapture(e.pointerId); }catch(err){}
+    return;
+  }
   // 🧱 先看是不是点在围栏上: 命中就选中并开始拖 (此时不转视角)
   if(!FPICK){
     const uu=_uv(e)[0], vv=_uv(e)[1];
@@ -2145,6 +2220,8 @@ $('vr').addEventListener('pointerdown',e=>{
 $('vr').addEventListener('pointermove',e=>{
   if(FDR){ const uu=_uv(e); const it=fenceDragMove(uu[0],uu[1]); if(it) drawVR(); return; }
   if(!drag) return;
+  if(drag.pan){ vrPanBy(e.clientX-drag.x, e.clientY-drag.y);
+                drag={x:e.clientX,y:e.clientY,pan:true}; drawVR(); return; }
   VR.yaw-=(e.clientX-drag.x)*0.01; VR.pitch=Math.max(-0.2,Math.min(1.45,VR.pitch+(e.clientY-drag.y)*0.008));
   drag={x:e.clientX,y:e.clientY}; drawVR(); });
 $('vr').addEventListener('pointerup',()=>{
@@ -2555,20 +2632,50 @@ function insSimPlay(){
 }
 if($('bIns')) $('bIns').addEventListener('click', insSimPlay);
 
-/* 🔁 右臂插拔全流程仿真 (2026-10-27 老倪)
-   「左臂上料以后, 右臂插拔, 从左侧第二个盘依次抓取光模块, 插入插孔, 再拔出放到下料盘;
-     检测失败则放到废料盘; 12 个良品, 2 个不良品」
-   数据源 /api/sim_insert (tools/sim_insert_plan.py 生成, 210 段/14 循环)。
+/* 🔁 右臂插拔全流程仿真 · 4 插孔交替 (2026-10-27 老倪)
+   「在插孔右边再增加3个插孔…插入光模块后有等待时间 1 分钟, 拔除后再做 AOI 检查。
+     先插入1 2 孔, 然后去拔除 3 4 孔; 再插入3 4 孔, 拔除1 2 孔, 依次类推」
+   稳态 60s/对 = 30.0 s/个 (驻留决定, 不是机械手速度决定); 14 个模块 8 轮 399 段。
+   数据源 /api/sim_insert (tools/sim_insert_plan.py 生成)。
    全程紫色幽灵臂 PREV 驱动, 真机零指令。 */
-var INSP={on:false, playing:false, plan:[], cycles:[], dur:0, t0:0, si:0, doneK:0,
+var INSP={on:false, playing:false, plan:[], cycles:[], rounds:[], holes:[], dur:0, t0:0, si:0, doneK:0,
           carry:false, rate:1, vok:0, vng:0, tip:'', loading:false,
-          pickedK:0, inHole:false, curCheck:null};
+          pickedK:0, curCheck:null, curT:0, carried:0, holeOcc:{}, holeT:{}, states:[], cum:[],
+          modsPerCycle:2, tactSteady:30, dwellS:60, holePitch:60, mods:14};
 // 黑盘 1~14 号位 (与 tools/sim_insert_plan.py 同源; 1~7 示教真值, 8~14 近排推算)
 var SLOT_MM=[[490,499,118],[491,449,118],[492,401,118],[492,353,118],[493,303,118],[492,255,118],[494,205,118],
              [617,501,118],[615,451,118],[615,404,118],[618,355,118],[614,307,118],[614,260,118],[617,212,118]];
 
 function inspPrepare(d){
   INSP.plan=d.plan||[]; INSP.cycles=d.cycles_data||[]; INSP.dur=d.total_t||0;
+  INSP.rounds=d.rounds||[]; INSP.holes=d.holes||[];
+  INSP.tactSteady=d.tact_steady_s||0;        // 右臂 = 左臂同速度算出来的节拍
+  INSP.speedProfile=d.speed_profile||null;
+  INSP.dwellS=d.dwell_s||0; INSP.holePitch=d.hole_pitch_mm||60; INSP.mods=d.mods||INSP.cycles.length;
+  INSP.flow=d.flow||'';
+  INSP.loop=d.loop||null;
+  INSP.uphTarget=d.uph_target||300;
+  INSP.ngRatio=d.ng_ratio||(1/125);
+  // 累计时间轴 + 逐段状态前缀: 抓了几个 / 放了几个 / 哪个孔里有哪个模块 / 何时插入
+  // (高倍速会整段跳过, 命中式判定必丢计数 —— 一律用前缀)
+  var cum=[], t=0, i;
+  for(i=0;i<INSP.plan.length;i++){ cum.push(+t.toFixed(2)); t+=INSP.plan[i].t; }
+  INSP.cum=cum;
+  var occ={}, occT={}, pick=0, done=0, carried=0, st=[];
+  for(i=0;i<INSP.plan.length;i++){
+    var s=INSP.plan[i];
+    if(s.kind==='grip'){
+      if(s.hole){ delete occ[s.hole]; delete occT[s.hole]; }   // 从孔里夹住 = 孔清空
+      else pick++;                                             // 从料盘抓走
+      carried=s.mod||0;
+    } else if(s.kind==='release'){
+      if(s.at==='hole'){ occ[s.hole]=s.mod||carried; occT[s.hole]=+(cum[i]+s.t).toFixed(2); carried=0; }
+      else { carried=0; done++; }
+    }
+    st.push({pick:pick, done:done, carried:carried,
+             occ:Object.assign({},occ), occT:Object.assign({},occT)});
+  }
+  INSP.states=st;
   var q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
   var bad=0;
   for(var i=0;i<INSP.plan.length;i++){
@@ -2598,7 +2705,8 @@ function inspPlay(){
     INSP.loading=false;
     if(!d.ok){ if(tip) tip.textContent='读取失败: '+(d.err||''); return; }
     var bad=inspPrepare(d);
-    if(tip) tip.textContent='已载 '+INSP.cycles.length+' 循环 / '+INSP.plan.length+' 段 · 节拍 '+INSP.dur.toFixed(1)+'s'+(bad?(' · IK 跳过 '+bad):'');
+    if(tip) tip.textContent='已载 '+INSP.rounds.length+' 轮 / '+INSP.mods+' 模块 / '+INSP.plan.length+' 段 · 稳态节拍 '
+      +(INSP.tactSteady||0).toFixed(1)+'s/个 · 4 孔轮转 · 预插满后 拔一对→AOI→插同一对'+(bad?(' · IK 跳过 '+bad):'');
     inspStart();
   }).catch(function(e){ INSP.loading=false; if(tip) tip.textContent='网络错: '+e.message; });
 }
@@ -2622,28 +2730,17 @@ function inspStart(){
     // 关节插值
     var q=s.qa.map(function(v,j){ return v+(s.qb[j]-v)*u; });
     PREV.q=q; PREV.M=urdfFK(q);
-    // 手中是否有模块 / 是否已插在孔里 —— 按段语义判, 比 carry_from/to 插值准
-    if(s.kind==='check'){ INSP.carry=false; INSP.inHole=true; }
-    else if(s.kind==='insert'){ INSP.carry=true; INSP.inHole=(u>=0.999); }
-    else if(s.kind==='pull'){ INSP.carry=true; INSP.inHole=false; }
-    else if(s.kind==='release'){ INSP.carry=(u<0.85); }
-    else { INSP.carry=!!s.carry_to; }
+    // 状态一律取「前缀」: 高倍速会整段跳过, 命中式判定必丢计数
+    var st=INSP.states[si]||{pick:0,done:0,carried:0,occ:{},occT:{}};
+    INSP.pickedK=st.pick; INSP.doneK=st.done; INSP.carried=st.carried;
+    INSP.holeOcc=st.occ; INSP.holeT=st.occT; INSP.curT=el;
+    INSP.carry = st.carried>0;
     INSP.curCheck = s.check || null;
-    // 源盘少一个: 本循环走到第 3 段(夹爪闭合)之后 ⇒ 第 k 个已抓走
-    // (不能用 kind==='grip' 命中判定: 高倍速会整段跳过, 抓取计数就丢了)
-    var seq=s.seq||1;
-    INSP.pickedK=Math.max(INSP.pickedK||0, INSP.doneK, (seq>=3?(s.k||0):Math.max(0,(s.k||1)-1)));
-    // 循环完成判定(单调递增, 只数一次): 正在做第 s.k 循环 ⇒ 已放下 s.k-1 个;
-    // 走到"抬起脱离"段说明本循环也放下了 ⇒ s.k 个
-    var k=s.k||0;
-    var done=(k>0)?(k-1):0;
-    if(s.kind==='up' && s.label==='抬起脱离') done=k;
-    if(done>INSP.doneK){
-      for(var j=INSP.doneK;j<done && j<INSP.cycles.length;j++){
-        if(INSP.cycles[j]){ if(INSP.cycles[j].verdict==='OK') INSP.vok++; else INSP.vng++; }
-      }
-      INSP.doneK=Math.min(done, INSP.cycles.length);
+    var vok=0, vng=0;
+    for(var j=0;j<st.done && j<INSP.cycles.length;j++){
+      if(INSP.cycles[j]){ if(INSP.cycles[j].verdict==='OK') vok++; else vng++; }
     }
+    INSP.vok=vok; INSP.vng=vng;
     if(el>=INSP.dur){
       INSP.playing=false; INSP.carry=false; INSP.doneK=INSP.cycles.length;
       if(b){ b.classList.remove('on'); b.textContent='🔁 插拔全流程'; }
@@ -2654,10 +2751,11 @@ function inspStart(){
     }
     if(tip){
       var chk=s.check, extra='';
-      if(chk){ extra=' · '+(chk.face||(chk.kind==='golden'?'金手指':chk.kind==='hole'?'插孔':''))
-                      +' '+chk.result; }
-      tip.textContent='循环 '+(s.k||0)+'/'+INSP.cycles.length+' · '+s.label+extra
-        +' · 良品 '+INSP.vok+' · NG '+INSP.vng;
+      if(chk){ extra=' · '+(chk.face||(chk.kind==='golden'?'金手指':''))+' '+chk.result; }
+      tip.textContent='R'+(s.k||0)+'/'+INSP.rounds.length+(s.mod?(' · 模块'+s.mod):'')
+        +(s.hole?(' · 孔'+s.hole):'')+' · '+s.label+extra
+        +' · 良品 '+INSP.vok+' · NG '+INSP.vng
+        +' · 孔内 '+Object.keys(INSP.holeOcc).length+'/4';
     }
     drawVR();
     requestAnimationFrame(step);
@@ -2666,11 +2764,215 @@ function inspStart(){
 }
 if($('bInsp')) $('bInsp').addEventListener('click', inspPlay);
 
+// 🏭 2026-10-27 老倪: 「全流程 UPH, 左右臂要一直工作; 按钮按下就高亮蓝色一直工作, 再按一下恢复;
+//    左臂默认有另一个机器人不断上料; 右臂不断插拔测试+AOI; 按这个节拍算 UPH, 要真实数据;
+//    1x/2x/4x/10x 数据要准确, UPH 要能对应上」
+// → 无限循环引擎: 取「两块相邻稳态轮次」= 无缝平铺块(45.87s / 4 件)，永远循环；
+//   时钟用虚拟仿真秒(simT)，与播放倍速解耦 ⇒ 10× 只是看得快, UPH/时长仍是真实值。
+const PLANT={on:false,rate:1,simT:0,last:0,raf:null,units:0,ok:0,ng:0,_u0:0,
+             buf:14,bufMax:14,feedS:3.0,feedAcc:0,lp:null,_k0:null,_P:0,frames:0};
+// 不良率 0.8% ⇒ 良率 99.2% > 99%(老倪: 「每 100 个光模块可以有一个不良品」⇒ 取 1/125 更保险)
+let NG_RATIO=1/125;
+const UPH_TARGET=300;                   // 老倪定: UPH 目标 300(不是稳态 314)
+window.PLANT=PLANT;                     // 供另一段脚本(倍速按钮)访问: const 不挂 window
+
+function plantCtx(){
+  const L=INSP.loop||{}, P=INSP.plan||[];
+  if(!P.length || !L.ks || L.ks.length<2) return null;
+  if(PLANT.lp && PLANT._k0===L.ks[0] && PLANT._P===P.length) return PLANT.lp;
+  let i0=-1, i1=-1;
+  for(let i=0;i<P.length;i++){ if(P[i].k===L.ks[0] && i0<0) i0=i; if(P[i].k===L.ks[1]) i1=i; }
+  if(i0<0||i1<0) return null;
+  const base=INSP.cum[i0], dur=+(INSP.cum[i1]+P[i1].t-base).toFixed(3);
+  const st0=(i0>0)?INSP.states[i0-1]:{pick:0,done:0,carried:0,occ:{},occT:{}};
+  const tIns={};
+  for(let i=i0;i<=i1;i++){ const s=P[i];
+    if(s.kind==='release' && s.at==='hole' && s.hole!=null) tIns[s.hole]=+(INSP.cum[i]+s.t-base).toFixed(2); }
+  const mods=(L.mods&&L.mods>0)?L.mods:4;
+  PLANT.lp={i0:i0,i1:i1,base:base,dur:dur,st0:st0,tIns:tIns,mods:mods,
+            tact:dur/mods, uph:3600/(dur/mods)};
+  PLANT._k0=L.ks[0]; PLANT._P=P.length;
+  return PLANT.lp;
+}
+
+function plantAt(simT){
+  const lp=plantCtx(); if(!lp) return null;
+  const P=INSP.plan, el=simT%lp.dur;
+  let si=lp.i0;
+  while(si<lp.i1 && (INSP.cum[si]+P[si].t-lp.base)<=el) si++;
+  const s=P[si];
+  const u=(s.t>0)?Math.min(1,Math.max(0,(el-(INSP.cum[si]-lp.base))/s.t)):1;
+  const q=s.qa.map(function(v,j){ return v+(s.qb[j]-v)*u; });
+  PREV.on=true; PREV.q=q; PREV.M=urdfFK(q);
+  const st=INSP.states[si]||lp.st0;
+  INSP.pickedK=Math.max(0,(st.pick||0)-(lp.st0.pick||0));
+  INSP.doneK=Math.max(0,(st.done||0)-(lp.st0.done||0));
+  INSP.carried=st.carried||0; INSP.carry=INSP.carried>0;
+  const occ={}, occT={}, stOcc=st.occ||{};
+  Object.keys(stOcc).forEach(function(h){
+    occ[h]=stOcc[h];
+    const ti=lp.tIns[h];
+    const inHole=(ti!=null)?((((el-ti)%lp.dur)+lp.dur)%lp.dur):0;   // 环形: 上一循环插入的也在算
+    occT[h]=+(el-inHole).toFixed(2);
+  });
+  INSP.holeOcc=occ; INSP.holeT=occT; INSP.curT=el;
+  INSP.curCheck=s.check||null;
+  INSP.si=si;                       // 同步段号: 侧栏「右臂插拔」行/块高亮靠它
+  return {s:s, el:el, lp:lp};
+}
+
+function plantHud(){
+  const g=function(id){ return document.getElementById(id); };
+  const lp=PLANT.lp; if(!lp) return;
+  const t=PLANT.simT;
+  // 实时 UPH: 跳过前两圈预热(首圈还在预插, 算进去会虚高), 之后按「产出 ÷ 耗时」算
+  if(!PLANT.warmT && t>=2*lp.dur){ PLANT.warmT=t; PLANT.warmU=PLANT.units; }
+  const live=(PLANT.warmT && (t-PLANT.warmT)>5)
+      ? Math.round((PLANT.units-PLANT.warmU)*3600/(t-PLANT.warmT)) : null;
+  const mm=Math.floor(t/60), ss=Math.floor(t%60);
+  const set=function(id,v){ if(g(id)) g(id).textContent=v; };
+  set('uphVal', PLANT.target||UPH_TARGET);          // 大字 = 目标 300
+  set('uphLive', (live==null)?'预热中' : (live+' 件/h'));
+  set('uphReach', (live==null)?'—' : ((live/(PLANT.target||UPH_TARGET)*100).toFixed(0)+'%'));
+  if(g('uphReach')){
+    const rp=(live==null)?0:live/(PLANT.target||UPH_TARGET);
+    g('uphReach').style.color = (live!=null && rp>=1) ? '#3fb950' : '#d29922';
+  }
+  set('uphUnits', PLANT.units);
+  set('uphOk', PLANT.ok); set('uphNg', PLANT.ng);
+  const yl=PLANT.units? (100*PLANT.ok/PLANT.units) : 100;
+  if(g('uphYield')){ g('uphYield').textContent=yl.toFixed(1)+'%';
+                     g('uphYield').style.color=(yl>=99)?'#3fb950':'#f85149'; }
+  set('uphRun', mm+'分'+(ss<10?'0':'')+ss+'秒');
+  set('uphBuf', PLANT.buf+'/'+PLANT.bufMax);
+  set('uphLA', PLANT.buf>=PLANT.bufMax ? '待命(料仓满)' : (PLANT.feedAcc<PLANT.feedS ? '上料中' : '待命'));
+  set('uphRA', INSP.curCheck ? ('检测 '+((INSP.curCheck.face)||(INSP.curCheck.kind==='golden'?'金手指':'')))
+                             : ((INSP.carried?'搬运/插拔':'抓取')));
+  set('uphNote', '节拍 '+lp.tact.toFixed(2)+' s/件(稳态循环 '+lp.dur.toFixed(1)+'s / '+lp.mods+' 件, 无限循环)'
+      +' · 上料 3.0s/件 是消耗的 '+(lp.tact/PLANT.feedS).toFixed(1)+' 倍(料仓常满, 左臂占用 '
+      +(100*PLANT.feedS/lp.tact).toFixed(0)+'%) · 不良率 '+(NG_RATIO*100).toFixed(1)+'% ⇒ 良率 '
+      +(100-NG_RATIO*100).toFixed(1)+'%(每 '+Math.round(1/NG_RATIO)+' 件 1 件不良, NG 进废料盘)');
+  if(g('uphPill') && g('uphPill').style.display!=='none'){
+    g('uphPill').textContent='🏭 UPH '+Math.round(lp.uph)+' · 实时 '+((live==null)?'预热':live)+' · 良率 '+yl.toFixed(1)+'% ▸';
+  }
+  set('tIns','全流程运行中 · 运行 '+mm+'分'+(ss<10?'0':'')+ss+'秒 · 产出 '+PLANT.units+' 件(良 '+PLANT.ok+'/NG '+PLANT.ng
+      +') · 实时 UPH '+((live==null)?'预热中':live)+' · 稳态 '+Math.round(lp.uph)+' · 真机没动');
+}
+
+function plantStep(){
+  if(!PLANT.on) return;
+  const now=performance.now();
+  let dt=(now-PLANT.last)/1000; PLANT.last=now;
+  if(dt>0.5) dt=0.5;
+  dt*=PLANT.rate;
+  PLANT.simT+=dt;
+  PLANT.feedAcc+=dt;
+  while(PLANT.feedAcc>=PLANT.feedS && PLANT.buf<PLANT.bufMax){ PLANT.feedAcc-=PLANT.feedS; PLANT.buf++; }
+  // 左臂: 一轮 42s 走完就接着下一轮(外部上料机器人不断供料)
+  if(typeof TRANS!=='undefined' && !TRANS.playing){
+    try{ TRANS.rate=PLANT.rate; transPlay(); }catch(e){}
+  }
+  const r=plantAt(PLANT.simT);
+  if(r){
+    const lp=r.lp;
+    PLANT.units=Math.floor(PLANT.simT/lp.dur)*lp.mods+INSP.doneK;
+    if(PLANT.units>PLANT._u0){ PLANT.buf=Math.max(0,PLANT.buf-(PLANT.units-PLANT._u0)); PLANT._u0=PLANT.units; }
+    PLANT.ng=Math.floor(PLANT.units*NG_RATIO); PLANT.ok=PLANT.units-PLANT.ng;   // 每 125 件出 1 件不良
+  }
+  drawVR();
+  if((PLANT.frames++ % 6)===0) plantHud();
+  PLANT.raf=requestAnimationFrame(plantStep);
+}
+
+// 🖱 视角回中(点平移小胶囊)
+if($('panChip')) $('panChip').addEventListener('click', function(){
+  VR.panOff=[0,0,0]; VR.camLock=0; VR.auto=true;
+  if(typeof vrFitBox==='function') vrFitBox();
+  this.style.display='none'; drawVR();
+});
+
+// UPH 浮层位置: 居中于「可见区域」(右侧节拍栏 392px 会让窗口中心偏右)
+function uphPlace(){
+  const b=document.getElementById('uphBox'); if(!b) return;
+  const tp=document.getElementById('tactPanel');
+  const ovw=(tp && !tp.classList.contains('hide')) ? tp.offsetWidth : 0;
+  b.style.left=((window.innerWidth-ovw)/2)+'px';
+  b.style.maxWidth=Math.max(300, window.innerWidth-ovw-24)+'px';
+  const pl=document.getElementById('uphPill');
+  if(pl) pl.style.left=((window.innerWidth-ovw)/2)+'px';
+}
+window.addEventListener('resize', uphPlace);
+
+function plantStart(){
+  PLANT.on=true; PLANT.simT=0; PLANT.units=0; PLANT.ok=0; PLANT.ng=0; PLANT._u0=0;
+  PLANT.buf=PLANT.bufMax; PLANT.feedAcc=0; PLANT.frames=0; PLANT.warmT=0; PLANT.warmU=0;
+  PLANT.rate=INSP.rate||1; PLANT.last=performance.now();
+  if(INSP.ngRatio) NG_RATIO=INSP.ngRatio;
+  PLANT.target=INSP.uphTarget||UPH_TARGET;
+  PLANT.lp=null;
+  INSP.on=true; INSP.playing=false;
+  if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
+  if($('bPlant')){ $('bPlant').classList.add('on'); $('bPlant').textContent='⏸ 停全流程'; }
+  const lp=plantCtx();
+  if($('tIns')) $('tIns').textContent='全流程运行中 · 稳态循环 '
+      +(lp?lp.dur.toFixed(1)+'s / '+lp.mods+' 件 · 节拍 '+lp.tact.toFixed(2)+' s/件 · UPH '+Math.round(lp.uph):'—');
+  // 左臂一起动: 上料摆盘循环播(42s 一轮), 播完自动再来 —— 老倪「左右臂要一直工作」
+  if(typeof TRANS!=='undefined' && !TRANS.playing){
+    try{ TRANS.rate=PLANT.rate; transPlay(); }catch(e){}
+  }
+  plantHud();
+  if(PLANT.raf) cancelAnimationFrame(PLANT.raf);
+  PLANT.raf=requestAnimationFrame(plantStep);
+}
+
+function plantStop(){
+  PLANT.on=false;
+  if(typeof TRANS!=='undefined'){ TRANS.playing=false; if(TRANS.raf){ cancelAnimationFrame(TRANS.raf); TRANS.raf=null; }
+    if($('bTrans')){ $('bTrans').classList.remove('on'); $('bTrans').textContent='🚚 仿真搬运'; } }
+  if(PLANT.raf){ cancelAnimationFrame(PLANT.raf); PLANT.raf=null; }
+  if($('uphBox')) $('uphBox').style.display='none';
+  if($('uphPill')) $('uphPill').style.display='none';
+  if($('bPlant')){ $('bPlant').classList.remove('on'); $('bPlant').textContent='🏭 全流程 UPH'; }
+  if($('tIns')) $('tIns').textContent='全流程已停 · 共 '+PLANT.units+' 件(良 '+PLANT.ok+' / NG '+PLANT.ng+') · 真机没动';
+}
+
+function plantToggle(){
+  if(PLANT.on){ plantStop(); return; }
+  if(INSP.plan.length){ plantStart(); return; }
+  if(INSP.loading) return;
+  INSP.loading=true;
+  fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(d){
+    INSP.loading=false;
+    if(!d.ok){ if($('tIns')) $('tIns').textContent='读取失败: '+(d.err||''); return; }
+    inspPrepare(d);
+    plantStart();
+  }).catch(function(e){ INSP.loading=false; if($('tIns')) $('tIns').textContent='网络错: '+e.message; });
+}
+if($('bPlant')) $('bPlant').addEventListener('click', plantToggle);
+// 彻底隐藏 → 收成顶部小胶囊; 点胶囊恢复
+if($('uphHide')) $('uphHide').addEventListener('click', function(){
+  if($('uphBox')) $('uphBox').style.display='none';
+  if($('uphPill')) $('uphPill').style.display='block';
+});
+if($('uphPill')) $('uphPill').addEventListener('click', function(){
+  if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
+  if($('uphPill')) $('uphPill').style.display='none';
+});
+// 收起/展开 UPH 详情(只隐藏明细, 不停流程)
+if($('uphFold')) $('uphFold').addEventListener('click', function(){
+  const b=$('uphBody'), f=$('uphFold');
+  const hid=(b.style.display==='none');
+  b.style.display = hid ? 'block' : 'none';
+  f.textContent = hid ? '▾' : '▸';
+  f.title = hid ? '收起详情' : '展开详情';
+});
+
 
 // 「↺ 跟右臂」复位时, 把左臂的独立关节角清掉, 恢复照抄右臂
 if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null; LARMFK=null; }, true);
 
-$('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; drawVR(); });
+$('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; VR.panOff=[0,0,0];
+  var _h=document.getElementById('panChip'); if(_h) _h.style.display='none'; drawVR(); });
 $('bFit').addEventListener('click',async ()=>{
   const msg=$('bTrajMsg'); msg.style.color='#8b949e';
   // 🧭 2026-10-26 老倪: 「高亮哪个轨迹就在三维里显示哪个, 我看着, 点执行就发指令」
@@ -3121,12 +3423,19 @@ $('bTab').addEventListener('click',()=>vrKeepCam(()=>{
 $('bFlr').addEventListener('click',()=>vrKeepCam(()=>{
   FLR.show=!FLR.show; $('bFlr').classList.toggle('on',FLR.show); }));
 $('bArmR').addEventListener('click',()=>vrKeepCam(()=>{
-  VR.urdf=!VR.urdf;
-  $('bArmR').classList.toggle('on',VR.urdf);
-  $('bUrdf').classList.toggle('on',VR.urdf);        // 和上面那个『🦾 URDF 外形』是同一个开关
+  VR.simArm=!VR.simArm;                              // 只管仿真右臂(紫色幽灵), 不动真机臂
+  $('bArmR').classList.toggle('on',VR.simArm);
+  $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)';
 }));
 $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
   VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); }));
+// 🦾 右臂_真机: 只藏那条静止的真机臂, 不动仿真/幽灵臂
+if($('bArmReal')) $('bArmReal').addEventListener('click',()=>{
+  VR.real = (VR.real===false);                        // 切换
+  $('bArmReal').classList.toggle('on', VR.real!==false);
+  $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)';
+  drawVR();
+});
 $('bMod').addEventListener('click',()=>vrKeepCam(()=>{
   VR.mod=!VR.mod; $('bMod').classList.toggle('on',VR.mod); }));
 let SPIN=null;
@@ -3294,7 +3603,8 @@ refreshAuthBadge(); setInterval(refreshAuthBadge, 3000);
 { const _o=$('tAoff'); if(_o) _o.addEventListener('click',()=>clearNamed()); }
 // 🎯 对准: 唯一会主动动相机的入口 (老倪 2026-10-26「点击按钮三维视图不要跳」)
 ['tFit','tAFit'].forEach(id=>{ const b=$(id); if(b) b.addEventListener('click',()=>{
-  VR.auto=true; if(typeof vrFitBox==='function') vrFitBox(); drawVR();
+  VR.auto=true; VR.camLock=0; VR.panOff=[0,0,0]; var _h=document.getElementById('panChip'); if(_h) _h.style.display='none';
+  if(typeof vrFitBox==='function') vrFitBox(); drawVR();
 }); });
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
@@ -3384,6 +3694,53 @@ function drawFlatModule(g, pr, c, col){
   g.strokeStyle=col; g.lineWidth=1.7; g.globalAlpha=0.95;
   for(const [a,b] of E){ g.beginPath(); g.moveTo(P[a].u,P[a].v); g.lineTo(P[b].u,P[b].v); g.stroke(); }
   g.globalAlpha=1;
+}
+
+// 插孔插座(比模块略大的暗盒) —— 4 孔交替插拔用; size 单位米
+function drawSocketBox(g, pr, c, Lx, Ly, Lz, fill, stroke){
+  const pts=[];
+  for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1])
+    pts.push([c[0]+sx*Lx/2, c[1]+sy*Ly/2, c[2]+sz*Lz/2]);
+  const P=pts.map(pr);
+  if(!P.every(q=>q)) return;
+  const top=[P[1],P[3],P[7],P[5]];
+  g.beginPath(); g.moveTo(top[0].u,top[0].v);
+  for(let i=1;i<4;i++) g.lineTo(top[i].u,top[i].v);
+  g.closePath(); g.globalAlpha=0.85; g.fillStyle=fill; g.fill(); g.globalAlpha=1;
+  g.strokeStyle=stroke; g.lineWidth=1.6;
+  const E=[[0,4],[1,5],[2,6],[3,7],[0,2],[1,3],[4,6],[5,7],[0,1],[2,3],[4,5],[6,7]];
+  for(const [a,b] of E){ g.beginPath(); g.moveTo(P[a].u,P[a].v); g.lineTo(P[b].u,P[b].v); g.stroke(); }
+}
+
+// 🔌 4 个插孔: 空=暗框, 有模块=绿色 + 驻留倒计时(60s)
+function drawInspHoles(g, pr){
+  if(typeof INSP==='undefined' || !INSP.holes || !INSP.holes.length) return;
+  const cy=278/1000;
+  // 四孔共用夹具底板 —— 4 孔全在「检测设备」柜内(等距 60mm), 底板只做视觉归组
+  const ys=INSP.holes.map(function(h){return h.mouth[1]/1000;});
+  const y0=Math.min.apply(null,ys), y1=Math.max.apply(null,ys);
+  drawSocketBox(g, pr, [0.7905, (y0+y1)/2, cy-0.014], 0.072, (y1-y0)+0.032, 0.010, '#161d26', '#3d4b5a');
+  INSP.holes.forEach(function(h){
+    const y=h.mouth[1]/1000, cx=(h.mouth[0]+h.insert[0])/2000;
+    const mod=INSP.holeOcc ? (INSP.holeOcc[h.id]|0) : 0;
+    const tIn=INSP.holeT ? INSP.holeT[h.id] : null;
+    const req=INSP.dwellS||0;                       // 0 = 本版不要求驻留, 只显示在孔时长
+    const inHole = mod ? Math.max(0,(INSP.curT-(tIn!=null?tIn:INSP.curT))) : 0;
+    const left = req ? Math.max(0, req-inHole) : 0;
+    drawSocketBox(g, pr, [cx,y,cy-0.005], 0.066, 0.021, 0.012,
+                  mod?'#1b3327':'#242e39', mod?'#34d399':'#4b5a6b');
+    const s=pr([cx,y,cy+0.014]);
+    if(s){
+      g.font='bold 11px monospace';
+      if(mod){
+        g.fillStyle = req ? (left>0 ? '#f59e0b' : '#34d399') : '#34d399';
+        g.fillText('孔'+h.id+(req ? (left>0?(' ⏳'+left.toFixed(0)+'s'):' ✓可拔')
+                                  : (' 在孔'+inHole.toFixed(0)+'s')), s.u+7, s.v-4);
+      }else{
+        g.fillStyle='#7d8590'; g.fillText('孔'+h.id+' 空', s.u+7, s.v-4);
+      }
+    }
+  });
 }
 
 // 两个料盘的模块排布: 左盘 = 还没搬走的; 右盘 = 已经搬过去的
@@ -3952,21 +4309,29 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     + '.tLeg{display:flex;flex-wrap:wrap;gap:10px;padding:8px 13px;border-top:1px solid #21262d;'
     + 'font-size:10px;color:#8b949e}'
     + '.tLeg span{display:flex;align-items:center;gap:4px}'
-    + '.tLeg i{width:9px;height:9px;border-radius:2px;display:block}';
+    + '.tLeg i{width:9px;height:9px;border-radius:2px;display:block}'
+    + '.tSec{display:flex;justify-content:space-between;align-items:baseline;margin:9px 0 5px;'
+    + 'padding-top:7px;border-top:1px solid #21262d;font-size:11.5px;font-weight:600;color:#e6edf3}'
+    + '.tSec:first-child{border-top:none;padding-top:0;margin-top:0}'
+    + '.tSec b{font:600 12px ui-monospace,monospace;color:#58a6ff}'
+    + '.tNote{font-size:10px;line-height:1.5;color:#6e7681;margin:2px 0 4px 35px}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   var wrap = document.createElement('div');
   wrap.id = 'tactWrap';
   wrap.innerHTML = '<div id="tactPanel">'
-    + '<div class="tHd"><span>⏱ 左臂摆盘节拍</span><b id="tCycle">—</b></div>'
-    + '<div class="tSum" id="tSum">节拍数据加载中…</div>'
+    + '<div class="tHd"><span>⏱ 生产节拍 · 整体</span><b id="tAll">—</b></div>'
+    + '<div class="tSum" id="tSumAll">节拍数据加载中…</div>'
+    + '<div class="tSum" id="tSum" style="display:none"></div>'
     + '<div class="tCtl">播放 <button data-r="1" class="on">1×</button><button data-r="2">2×</button>'
     + '<button data-r="4">4×</button><button data-r="10">10×</button>'
     + '<span id="tProg">—</span></div>'
     + '<div class="tBody" id="tBody"></div>'
     + '<div class="tLeg"><span><i style="background:#58a6ff"></i>平移</span>'
     + '<span><i style="background:#22d3ee"></i>下降/对准</span>'
-    + '<span><i style="background:#f59e0b"></i>抓取/放下(含抬起)</span></div>' 
+    + '<span><i style="background:#f59e0b"></i>抓取/放下</span>'
+    + '<span><i style="background:#f85149"></i>插入/拔出</span>'
+    + '<span><i style="background:#d2a8ff"></i>检测</span></div>'
     + '</div><button id="tactArrow" title="收起/展开节拍栏">⏱ ▸</button>';
   document.body.appendChild(wrap);
 
@@ -3985,36 +4350,151 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     return '#58a6ff';
   }
 
-  fetch('/api/sim_transport').then(function(r){return r.json();}).then(function(d){
-    var segs=(d&&d.segs)||[];
-    if(!segs.length){ document.getElementById('tSum').textContent='没有节拍数据(先规划一次仿真搬运)'; return; }
-    if(window.tactBuild) window.tactBuild(segs);      // 与播放共用 3s/循环 分摊
-    var byK={}, tot=0, nCyc=0;
-    segs.forEach(function(s){
-      var k=s.k|0; if(!byK[k]){ byK[k]=[]; nCyc++; }
-      s._t=dur(s); byK[k].push(s); tot+=s._t;
-    });
-    var cyc=tot/nCyc;
-    document.getElementById('tCycle').textContent=cyc.toFixed(1)+' s';
-    document.getElementById('tSum').innerHTML =
-      '单循环节拍 <em>'+cyc.toFixed(2)+' s</em> · '+nCyc+' 个循环 · 总 <em>'+tot.toFixed(1)+' s</em><br>'
-      + '节拍 <em>'+(window.TACT_CYCLE||3)+' s/循环</em> · 夹爪动作按 120mm 等效位移折算 · 每循环 8 步';
+  function rcol(k){
+    if(k==='insert'||k==='pull') return '#f85149';
+    if(k==='check'||k==='golden'||k==='side') return '#d2a8ff';
+    if(k==='down') return '#22d3ee';
+    if(k==='up') return '#34d399';
+    if(k==='grip'||k==='release') return '#f59e0b';
+    return '#58a6ff';
+  }
+  function secHd(t, s, c){
+    return '<div class="tSec"><span>'+t+'</span><b style="color:'+(c||'#58a6ff')+'">'+(s||'')+'</b></div>';
+  }
+  var L={ok:false}, R={ok:false};
+
+  /* 整体节拍 = 瓶颈工位: 左臂(摆盘 3.0s/个) 与 右臂(插拔 ~19s/个) 并行, 谁慢听谁的 */
+  function renderAll(){
+    if(!L.ok && !R.ok) return;
+    var lCyc=L.ok?L.tot/L.nCyc:0, rCyc=R.ok?(R.steady||R.tot/Math.max(1,(R.mods||R.nCyc))):0;
+    // 「生产节拍」按真机可达档报(目标档 3.00 s/个 只有对照意义, 不进产能)
+    var rReach=R.ok?(R.reach||rCyc):0;
+    var tact=Math.max(lCyc,rReach), bn=(rReach>=lCyc)?'右臂插拔':'左臂摆盘';
+    var nPer=Math.max(L.nCyc||0, R.nCyc||0)||14;
+    // 每盘 = 本批实测总时长(首轮有一次空等, 比稳态多 30~35s); 稳态节拍另标
+    // 产能一律按「真机可达档」报; 目标档(3.00 s/个)只做对照, 不乘产能
+    var batch=(R.ok&&R.batchReach)?R.batchReach:(Math.max(L.ok?L.tot:0, R.ok?R.tot:0)||(tact*nPer));
+    var capT=tact?3600/tact:0, cap=capT?(R.ok&&R.reach?3600/R.reach:capT):0;
+    var eAll=document.getElementById('tAll');
+    if(eAll) eAll.textContent = tact?tact.toFixed(2)+' s/个':'—';
+    var eSum=document.getElementById('tSumAll');
+    if(eSum) eSum.innerHTML =
+      '左臂摆盘 <em>'+(lCyc?lCyc.toFixed(2):'—')+' s/个</em> · 右臂插拔 <em>'+(rCyc?rCyc.toFixed(2):'—')+' s/个</em><br>'
+      + '瓶颈 <em style="color:#f85149">'+bn+'</em> ⇒ 整体节拍 <em>'+tact.toFixed(2)+' s/个</em> · 每盘'+nPer+'个 <em>'+batch.toFixed(1)+' s</em><br>'
+      + '理论产能 <em>'+cap.toFixed(0)+' 个/h</em> · 两班制 3,750h/年 ≈ <em>'+(cap*3750/10000).toFixed(1)+' 万个/年</em><br>'
+      + '<span style="font-size:10px;color:#6e7681">左臂 3.0s/个=老倪敲定 · 右臂=段表距离/'+((R.prof&&R.prof.v_mm_s)||'—')+'mm/s(左臂同速)+夹爪'+((R.prof&&R.prof.grip_s)||'—')+'s+检测'+((R.prof&&R.prof.check_golden_s)||'—')+'/'+((R.prof&&R.prof.check_side_s)||'—')+'s · 仿真值(真机未实测)</span>';
     var html='';
-    Object.keys(byK).sort(function(a,b){return a-b;}).forEach(function(k){
-      var arr=byK[k], kt=arr.reduce(function(a,s){return a+s._t;},0);
-      html += '<div class="tRow" data-k="'+k+'"><span class="tK">k'+k+'</span><span class="tBar">';
-      arr.forEach(function(s){
-        var w=Math.max(2, s._t/tot*100);
-        var tip=(s.label||'')+' · '+s._t.toFixed(2)+' s';
-        html += '<i data-seg="'+(s.i|0)+'" title="'+tip.replace(/"/g,'')+'" '
-             +  'style="width:'+w.toFixed(3)+'%;background:'+colr(s.label||'')+'"></i>';
+    if(L.ok){
+      html += secHd('🦾 左臂摆盘 · '+L.nCyc+' 循环', lCyc.toFixed(2)+' s/个');
+      Object.keys(L.byK).sort(function(a,b){return a-b;}).forEach(function(k){
+        var arr=L.byK[k], kt=arr.reduce(function(a,s){return a+s._t;},0);
+        html += '<div class="tRow" data-k="'+k+'"><span class="tK">k'+k+'</span><span class="tBar">';
+        arr.forEach(function(s){
+          var w=Math.max(2, s._t/L.tot*100);
+          var tip=(s.label||'')+' · '+s._t.toFixed(2)+' s';
+          html += '<i data-seg="'+(s.i|0)+'" title="'+tip.replace(/"/g,'')+'" '
+               +  'style="width:'+w.toFixed(3)+'%;background:'+colr(s.label||'')+'"></i>';
+        });
+        html += '</span><span class="tT">'+kt.toFixed(1)+'s</span></div>';
       });
-      html += '</span><span class="tT">'+kt.toFixed(1)+'s</span></div>';
-    });
-    document.getElementById('tBody').innerHTML=html;
+      html += '<div class="tNote">左臂合计 '+L.tot.toFixed(1)+' s · 每循环 8 步 · 夹爪按 120mm 等效位移折算</div>';
+    }
+    if(R.ok){
+      var nHole=(R.holes||4);
+      html += secHd('🔁 右臂插拔 · '+nHole+' 孔交替 · '+R.nCyc+' 轮',
+                    rCyc.toFixed(2)+' s/个'+(R.loopKs.length?(' · 全流程循环 k'+R.loopKs.join('/')):''), '#d2a8ff');
+      var mx=1; Object.keys(R.byK).forEach(function(k){
+        mx=Math.max(mx, R.byK[k].reduce(function(a,p){return a+(p.t||0);},0));
+      });
+      Object.keys(R.byK).sort(function(a,b){return a-b;}).forEach(function(k){
+        var arr=R.byK[k], kt=arr.reduce(function(a,p){return a+(p.t||0);},0);
+        html += '<div class="tRow" data-rk="'+k+'"><span class="tK">k'+k+'</span><span class="tBar">';
+        arr.forEach(function(p){
+          var t=p.t||0, w=Math.max(2, t/mx*100);
+          var tip=(p.label||'')+' · '+t.toFixed(2)+' s';
+          html += '<i data-rseq="'+(p.seq|0)+'" title="'+tip.replace(/"/g,'')+'" '
+               +  'style="width:'+w.toFixed(3)+'%;background:'+rcol(p.kind||'')+'"></i>';
+        });
+        html += '</span><span class="tT">'+kt.toFixed(1)+'s</span></div>';
+      });
+      var pf=R.prof||{};
+      html += '<div class="tNote">右臂末端速度 <b>'+(pf.v_mm_s||'—')+' mm/s</b> = 左臂同口径'+(pf.rule?('（'+pf.rule+'）'):'')
+        +' · 夹爪 '+(pf.grip_s!=null?pf.grip_s:'—')+' s(120mm 折算) · 检测 '+(pf.check_golden_s!=null?pf.check_golden_s:'—')+'/'+(pf.check_side_s!=null?pf.check_side_s:'—')+' s'
+        +' · 一轮 拔2+插2 不插等待 · 在孔 '+((R.dmin!=null)?R.dmin:0)+'~'+((R.dmax!=null)?R.dmax:0)+' s</div>';
+
+      // 🧪 每模块时间构成: 插入→拔除(在孔) / 拔出后 AOI(纯检测+移动) / 落盘
+      // 放在面板最上面 —— 这是老倪要的那个数, 不该让他滚到最底下找
+      var ML=R.mods_list||[], htmlMod='';
+      if(ML.length){
+        var mxT=0, ck0=(ML[0].aoi_check_s||0), mv0=(ML[0].aoi_move_s||0);
+        var dwMin=1e9, dwMax=0;
+        ML.forEach(function(m){ mxT=Math.max(mxT,(m.dwell_s||0)+(m.aoi_s||0)+(m.place_s||0));
+                                dwMin=Math.min(dwMin,m.dwell_s||0); dwMax=Math.max(dwMax,m.dwell_s||0); });
+        mxT=mxT||1;
+        htmlMod += secHd('🧪 每模块时间构成', '在孔 '+dwMin.toFixed(0)+'~'+dwMax.toFixed(0)+'s · 检测 '+(ML[0].aoi_s||0).toFixed(1)+'s', '#22d3ee');
+        ML.forEach(function(m){
+          var dw=m.dwell_s||0, ao=m.aoi_s||0, pl=m.place_s||0;
+          var tip='模块'+m.k+' · 孔'+m.hole+'\n插入→拔除(在孔): '+dw.toFixed(2)+' s\n'
+                 +'AOI 检测: '+ao.toFixed(2)+' s（纯检测 '+(m.aoi_check_s||0).toFixed(2)+' + 检测点间移动 '+(m.aoi_move_s||0).toFixed(2)+'）\n'
+                 +'落盘: '+pl.toFixed(2)+' s\n判定: '+m.verdict+(m.fail_reason?(' ('+m.fail_reason+')'):'');
+          htmlMod += '<div class="tRow" title="'+tip.replace(/"/g,'')+'">'
+               + '<span class="tK">M'+m.k+'</span><span class="tBar">'
+               + '<i style="width:'+(dw/mxT*100).toFixed(1)+'%;background:#1f6feb"></i>'
+               + '<i style="width:'+(ao/mxT*100).toFixed(1)+'%;background:#f59e0b"></i>'
+               + '<i style="width:'+(pl/mxT*100).toFixed(1)+'%;background:#6e7681"></i></span>'
+               + '<span class="tT">'+dw.toFixed(0)+'/'+ao.toFixed(1)+'/'+pl.toFixed(1)+'</span></div>';
+        });
+        htmlMod += '<div class="tNote"><b style="color:#58a6ff">蓝</b>=在孔(插入→拔除) · '
+             +'<b style="color:#f59e0b">黄</b>=AOI 检测('+ck0.toFixed(1)+'s 纯检测 + '+mv0.toFixed(1)+'s 点间移动) · '
+             +'<b style="color:#8b949e">灰</b>=落盘 · 数字=在孔/检测/落盘 s · 悬停看单件明细</div>';
+      }
+    }
+    document.getElementById('tBody').innerHTML=(typeof htmlMod!=='undefined'?htmlMod:'')+html;
+    window.__tactAll={tact:tact,lCyc:lCyc,rCyc:rCyc,cap:cap,bn:bn,batch:batch,nPer:nPer,
+                      lTot:L.ok?L.tot:0,rTot:R.ok?R.tot:0};
     window.__tactReady=true;
+  }
+
+  Promise.all([
+    fetch('/api/sim_transport').then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch('/api/sim_insert').then(function(r){return r.json();}).catch(function(){return null;})
+  ]).then(function(res){
+    var td=res[0], ins=res[1];
+    var segs=(td&&td.segs)||[];
+    if(segs.length){
+      if(window.tactBuild) window.tactBuild(segs);      // 与播放共用 3s/循环 分摊
+      var byK={}, tot=0;
+      segs.forEach(function(s){
+        var k=s.k|0; if(!byK[k]) byK[k]=[];
+        s._t=dur(s); byK[k].push(s); tot+=s._t;
+      });
+      L={ok:true, byK:byK, tot:tot, nCyc:Object.keys(byK).length};
+    }
+    var plan=(ins&&ins.plan)||[];
+    if(plan.length){
+      var rb={}, rt=0;
+      plan.forEach(function(p){
+        var k=p.k|0; if(!rb[k]) rb[k]=[];
+        rb[k].push(p); rt+=(p.t||0);
+      });
+      R={ok:true, byK:rb, tot:rt, nCyc:Object.keys(rb).length, dur:(ins.batch_reach_s||ins.total_t||rt),
+         mods:ins.mods, steady:ins.tact_steady_s, reach:ins.tact_steady_s,
+         target:ins.tact_steady_s, batchReach:ins.batch_reach_s,
+         prof:ins.speed_profile, mods_list:ins.cycles_data||[],
+         loopKs:(ins.loop&&ins.loop.ks)||[], loopDur:(ins.loop&&ins.loop.dur)||0,
+         uphTarget:ins.uph_target||300, loopUph:(ins.loop&&ins.loop.uph)||0,
+         dwell:ins.dwell_s, dmin:ins.dwell_min_s, dmax:ins.dwell_max_s,
+         flow:ins.flow, k:ins.time_scale, baseT:ins.base_tact_s,
+         holes:(ins.holes||[]).length};
+    }
+    renderAll();
+    if(!L.ok && !R.ok){
+      var e=document.getElementById('tSumAll');
+      if(e) e.textContent='没有节拍数据(先规划一次仿真搬运/插拔)';
+    }
   }).catch(function(e){
-    document.getElementById('tSum').textContent='节拍数据加载失败: '+e;
+    var el=document.getElementById('tSumAll');
+    if(el) el.textContent='节拍数据加载失败: '+e;
   });
 
   // 倍速: 改 TRANS.rate; 正在播就按已播节拍重锚 t0, 不让时间跳
@@ -4027,6 +4507,10 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
         var el=(performance.now()-T.t0)/1000*(T.rate||1);
         T.rate=rr; T.t0=performance.now()-el/rr*1000;
       } else T.rate=rr;
+      // 倍速同时作用于插拔流程与全流程(虚拟时钟, UPH 不受倍速影响)
+      if(typeof INSP!=='undefined') INSP.rate=rr;
+      var PL=window.PLANT;
+      if(PL && PL.on){ PL.rate=rr; PL.last=performance.now(); }
     });
   });
 
@@ -4044,9 +4528,36 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
         bars[j].classList.toggle('on', hit && parseInt(bars[j].getAttribute('data-seg'),10)===seg);
       }
     }
+    var I=window.INSP||{};
+    var rrows=document.querySelectorAll('.tRow[data-rk]');
+    if(rrows.length){
+      var ip=!!I.playing || !!(window.PLANT && window.PLANT.on);
+      var iplan=I.plan||[], iseg=iplan[I.si]||null;
+      var ik=iseg?(iseg.k|0):0, iseq=iseg?(iseg.seq|0):0;
+      for(var m=0;m<rrows.length;m++){
+        var rkk=parseInt(rrows[m].getAttribute('data-rk'),10);
+        var hit2 = ip && rkk===ik;
+        rrows[m].classList.toggle('on', !!hit2);
+        var rb2=rrows[m].querySelectorAll('.tBar i');
+        for(var n=0;n<rb2.length;n++){
+          rb2[n].classList.toggle('on', !!hit2 && parseInt(rb2[n].getAttribute('data-rseq'),10)===iseq);
+        }
+      }
+    }
+    // 高亮行自动滚进视野 —— 否则当前段在滚动区外面, 看着像"没动画"
+    var actRow=document.querySelector('.tRow[data-rk].on');
+    if(actRow && actRow!==window.__lastActRow){
+      window.__lastActRow=actRow;
+      try{ actRow.scrollIntoView({block:'nearest'}); }catch(e){}
+    }
     var prog=document.getElementById('tProg');
     if(prog){
-      if(T.durTotal) prog.textContent=(T.curT||0).toFixed(1)+' / '+T.durTotal.toFixed(1)+'s';
+      if(window.PLANT && window.PLANT.on && PLANT.lp){
+        prog.textContent='循环 '+(PLANT.simT%PLANT.lp.dur).toFixed(1)+' / '+PLANT.lp.dur.toFixed(1)
+                         +'s · 第 '+(Math.floor(PLANT.simT/PLANT.lp.dur)+1)+' 圈 · 产出 '+PLANT.units+' 件';
+      }
+      else if(T.durTotal) prog.textContent=(T.curT||0).toFixed(1)+' / '+T.durTotal.toFixed(1)+'s';
+      else if(I.dur && I.playing){ var ie=(performance.now()-I.t0)/1000*(I.rate||1); prog.textContent=Math.min(ie,I.dur).toFixed(1)+' / '+I.dur.toFixed(1)+'s'; }
       else prog.textContent='—';
     }
   }, 160);

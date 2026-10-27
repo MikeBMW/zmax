@@ -1021,7 +1021,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.757")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.758")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12434,6 +12434,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.758: v5.50.758: 市场分析(1000台/100场景/三方1:1:1)与 2027 模型分层策略(四层·H-JEPA事件靶·三刀解耦·配置中心)落仓; ar3d 4孔交替插拔+双相机AOI+UPH浮层/中键平移; 根因=年销量口径改人力替代口径、模型分工按时间尺度×资产属性重划
         # v5.50.757: 3DGS 采集轨迹自主动作化 + PSNR 同协议口径: 机械臂自跑恒定z纯平移弧线(19路点/末端719mm/全程z=0.4303不变/净空自检最差67.1mm)绕标定板拍一圈, 结构上不可能碰上横梁下台面; 留出改连续25%(8段留2)后同协议对照 旧数据10.41→新数据15.18dB(+4.77), 但留出−训练间隙2.97→2.68几乎不变⇒提升来自成像一致性(去畸变只编一次+匀速无拖影)而非外推能力; depth初始化在少帧(202帧)时+0.61dB/快2.5×, 多帧(635帧)时−0.2~−0.4dB⇒增益随帧数, 不能一句话结案
         # v5.50.756: 3DGS 自主进化修复: evaluate() 漏 SYCL 零交集(nnz=0)保护⇒每次自训 400 步必崩(IndexError shapes [0],[0,2]); 修后 1801 帧新数据自动建库+自动开训跑通。竞品 PPT 12 个图表全改 PowerPoint 原生对象(右键编辑数据可改)
         # v5.50.755: 对称性流形引擎落地: 预测=沿对称群轨道等距推演(理想轨道一步误差=几何数值地板2e-8, 真实episode比保持好45%/live valid拍好91%); 时延补偿用p̂解码进常驻(动作误差+64.4%); 对称性接入Intel 550C自主进化(一维等改进量推演, 真台账判escalate); 编排门控与直接改动作经实测判负、默认关
@@ -13392,7 +13393,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.757  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.758  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15779,7 +15780,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.757</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.758</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
