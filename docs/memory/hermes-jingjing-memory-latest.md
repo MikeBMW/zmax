@@ -30,7 +30,7 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS=47.93.88.143(口令ZMAX_ECS_PW; ufw 22/80/443+22022; 18791/3/4/99=本机-R; /map/→18794手机; 39053带/command禁开); 老.79弃用
+ECS已弃(老倪2026-10-27:以后没有ECS); 资产=产线网卡直连192.168.23.x rsync或U盘, 禁走跳板; 对外访问(手机/大屏)需新入口待定
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
@@ -60,7 +60,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=8793 manual走点(45s/轮); GS_MAP_MODE=auto回旧
 §
-版本号只听老倪; 现5.50.757
+版本号只听老倪; 现5.50.758
 §
 专利12件·渠74/74(patent_registry.json)
 §

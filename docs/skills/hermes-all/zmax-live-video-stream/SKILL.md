@@ -408,6 +408,19 @@ md5 全同、都是 30524B —— 这就是「画面冻结」, 发出去既费�
   (Orin `rs-fast-node` / D405 USB), 不要靠重发图让用户"再看看"。
 - 老倪会把画面当结果: **没变化的帧不要发**, 直接说"这路还是同一张(已 Ns)"并给根因。
 
+### 冻结往上追一层: 「unit 文件在 `~/.zmax/systemd/`」≠「已装成开机服务」
+实测 Orin 重启后 `8792` 无人监听, 而本机 8791 的 arm 格仍回 200、永远是同一张 —— 因为 `rs-fast-node.service`
+只躺在 `~/.zmax/systemd/` 里, 没 `cp` 到 `/etc/systemd/system/` + `enable`。「相机没坏、页面上却有图」是最坏的组合。
+- 判据: 取图 md5 跨 4~5s 不变 + 帧龄在涨 → `ssh orin 'ss -ltn | grep 8792'` + `systemctl is-enabled rs-fast-node`。
+- 装进去: `sudo cp ~/.zmax/systemd/rs-fast-node.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now rs-fast-node`。
+- 本机 arm 源直接指 `http://<orin>:8792/frame.jpg`(drop-in), 不必再经 SSH 蔒道 —— 少一跳, 蔒道断了也不会假装有图。
+
+### D405 掉 USB 的判别: `uvcvideo ... UVC probe control : -32`
+`dmesg` 反复刷 `Failed to set UVC probe control : -32 (exp. 48)` 且 6 个 `/dev/video*` 全部打不开 ⇒
+**USB 链路掉了**(线/供电/口), 不是软件。单测 `cv2.VideoCapture` 能跑 30.4fps、USB reset 后能活几十秒再全掉,
+这就是供电/线材问题的典型特征。结论要如实说: 需**现场重插 / 换 USB3 口 / 带供电 HUB**;
+软件侧只能先把取流脚本改直连, **别把"改成直连了"说成"相机好了"**。
+
 ## 取证纪律（每次交付）
 - **交付前必须证明"目标真的在画面里"**，不能只看帧差。实测教训：笔记本相机**完全没对准机械臂**，
   相邻帧差却让每一步都"看着像在动"（噪声）→ 老倪反馈"两个相机也没看到移动，动作和视频不匹配"。

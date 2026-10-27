@@ -346,6 +346,33 @@ journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
 ⚠️ 别用“在跳板后面起一个订阅脚本看输出”当唯一判据: 跳板随时断, **断了就是空输出**,
 极易误判成“通道不通”而多跑一轮; 桥的统计行落在对端文件/日志里, 断了重连接上照样能读到。
 
+### 规划/指令通道还会被「产品档位」整条关掉 —— 要单话题例外, 不是改档位
+
+`allowed(topic)` 除了白名单还有一道**档位闸**: `zmax_profile.topics_mode()=="none"` 时无条件 False。
+550C(量产档) 就是 `topics=none · comm=shm`, 于是本机**一个序列化 topic 都不发** —— 现象与"白名单漏了"一样
+(`live.json` 里 count=0 / matched_pubs=0 / lamp=black), 但改 ws_bridge 怎么改都没用。
+
+判据(先定性再动手):
+```bash
+python -c "import sys;sys.path.insert(0,'tools');import zmax_profile as z;print(z.topics_mode(), z.dds_topics_allowed(['ss_plan']))"
+```
+破例口径: 规划/指令这类**必须跨机**的通道, 共享内存替不了(只在本机有效), 只能 DDS ⇒ 在 `allowed()` 里给它**单个
+topic 的例外**, 开关默认关、只由 systemd drop-in 打开:
+```python
+if topic == "ss_plan" and os.environ.get("ZMAX_SS_PLAN_ALWAYS") == "1":
+    return True
+if _zp.topics_mode() == "none":
+    return False
+```
+其余 topic 的档位语义一字不变。别为了让规划能发就把档位整体改成 all —— 那会把全部遥测一起放出来。
+
+### 一端在推、另一端 0 条: 先怀疑"两端连的不是同一个后端"
+`↑ss_plan:8000+` 一直在涨而对面 `↓ss_plan:0(写0,缺0)` 不动 ⇒ 帧根本没到同一个中继。
+实测拓扑: 本机 hub 连 `wss://<域名>/ws/bus/`(443 反代), 550C edge 连 `ws://<Orin LAN>:39064/`(SSH 转发到中继 39064)。
+两条入口只要一条指错后端, 表现就是"发送端正常、接收端永远 0", 且两端日志各自都很干净。
+判据: 分别测**入口可达性**(`socket.create_connection`) + 读对端桥的统计行; 别拿"我这边在发"当通了的证据。
+⚠️ 别在跨网段时指望本机直连对端的中继端口: 该端口常只对白名单来源开放(实测公网 Timeout), 只能在能到它的那台机器上加转发。
+
 **闭环另一头: 指令必须有人接, 且接的时候要有闸**
 跨网把 `deploy_cmd` 送到对方后, 别忘了它以前只是个 dry-run 打印。真执行器必须是"代理"而不是"直跑命令":
 `tools/dds/deploy_agent.py` 七道闸 —— 动作白名单(promote/rollback) · 发起人白名单 · 产物存在+扩展名+
@@ -371,9 +398,12 @@ journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
 ✗ 下行话题不预建 writer → 中继明明收到了, 对方本地 DDS 还是 0 条
 ✗ 只改 ws_bridge 一侧的白名单 → 帧在中继就被滤掉, 发送端计数在涨、对面永远 0 条
 ✗ 拿跳板后面的订阅脚本当唯一判据 → 跳板一断就是空输出, 把“没看到”当成“没通”; 优先读对端桥的统计行
+✗ 规划跨机发不出去先去改 ws_bridge → 先看 `zmax_profile.topics_mode()`: 量产档 none 时 `allowed()` 全线关, 改桥无用
+✗ 一端 `↑N` 在涨就当通了 → 对面 `↓0` 不动 = 两端不是同一个中继后端, 分别测入口可达性
 ```
 
 ## 相关文件
+- `references/plan-dds-chain-breakpoints.md` — 规划跨机链路 (MoveIt→ss_plan→550C 执行) 的五处断点、起点闸误判、moveStart 被拒判据
 - `references/topic-registry-and-loading.md` — 话题注册表 + 库优先加载 (表结构/sha 守卫/CLI/判据)
 - `references/cyclonedds-python-api-notes.md` — API 细节与可抄代码
 - `templates/cyclonedds_unicast.xml` — 实测可用的单播/跨网配置（含"勿回退"注释）

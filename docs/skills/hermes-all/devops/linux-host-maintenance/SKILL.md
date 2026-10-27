@@ -379,7 +379,8 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 这类话要的是**最简现状**：哪些自愈了、哪些还缺、缺在哪一层。一条命令跑完只读清点：
 （**重启后必看 cron ticker 心跳** —— 偏钟下它会静默卡死, 13 个守护任务一起哑, 见 §9g。）
 **可直接跑 `scripts/reboot_verify.sh`** —— 只读, 一条出齐下列全部数字(含开机满 10min 的两点网络复采、cron 心跳双向判活、
-帧号递增双采), 输出就是四行汇报的底稿; 以下为它覆盖的同款命令, 手工跑也行:
+帧号递增双采), 输出就是四行汇报的底稿; **换过 WiFi/热点后要报"能打开的链接"就跑 `scripts/net_entries.sh`**
+(取当前 IP + 逐个页面 `curl -sL` 探活, 跟跳转 ⇒ 302 不算坏); 以下为它覆盖的同款命令, 手工跑也行:
 （每条命令都是实测过的, 但**脚本本身是这组命令的首次组装** ⇒ 第一次跑先通读输出再采信, 发现哪段不合本机实际就直接改脚本）
 ```bash
 date; uptime
@@ -697,6 +698,9 @@ Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有
 实测: up 2min 时 `ss -ltnp` 无 8791/8793、`curl 8793/station` = 000; up 5min 再采, `cam_stream_guard`(cron)
 已在 21:10 拉起 pid 14240, `8793/station` 与 `8791/` 双 200。判据: 先看 `stat -c %y /tmp/cam_stream_guard.log`
 有没有刚写过, 再决定要不要 `boot_restore.sh local`。
+**用户此刻报「某页面打不开」时先对开机时长**: 开机 1~3 分钟内的 000 就是这段补齐窗口(实测 8793/8797 在 up 2min 时
+全 000、up 3min 后 200), 复采即可, 别去动服务; 同时**「IP 没变」是正常答案** —— 重启不改 DHCP 租约,
+IP 变只发生在换 SSID / `netplan apply` 之后; 报页面前用 `curl -sL` 跟跳转(`/ar` 302→8797/ar 才算在役)。
 
 **② ECS 反向隧道的判活不能看日志 tail —— 日志里永远留着历史 `Error: remote port forwarding failed` 行。**
 实测重启后 `zmax-ecs-ov/station` 显示 `activating` + NRestarts 从 2→4, 但那是**开机头 90s 的短暂循环**;
@@ -752,7 +756,7 @@ NTP 约 30s 后才拨正 ⇒ **在回拨前写下的任何时间戳(文件 mtime
 处置与固化:
 ```bash
 hermes cron status                      # ✗ No gateway is running 时别照它下结论(见上)
-systemctl --user is-active hermes-gateway; pgrep -f 'gateway run'
+systemctl is-active hermes-gateway      # host 级单元; 不要用 pgrep -f 'gateway run' 判活(见 §9i①)
 hermes cron tick                        # 不依赖网关 ticker, 立刻把"过点"的任务点一遍(补火)
 hermes gateway restart                  # 让 ticker 在正时钟下重起 —— 实测重启后 60s 一次, 恢复正常
 ```
@@ -786,7 +790,7 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 用户一句"检查任务"要的是**现状**, 不是待办列表。按序三处(全只读, 顺序别换):
 1. **待办**: `todo_list` —— 空是很常见的结果, 只报它等于没查。
 2. **定时任务**: `cronjob_manage list` —— 看 count 与逐条 `last_status`/`next_run_at`; 同时报 gateway 是否在跑
-   (`systemctl --user is-active hermes-gateway`, cron 在网关里 tick)。
+   (`systemctl is-active hermes-gateway` —— system 级 host 单元, cron 在网关里 tick; **别用 `pgrep -f 'gateway run'` 判活**, 见 §9i①)。
 3. **在役服务**: `ss -ltnp` 逐个端口 + 一次 HTTP 探活 + `systemctl --failed`(=0)。
    "端口在听"只说明有进程, 探活码才是"在役"(闸门口 403 属合法拒绝, 不算坏)。
 
@@ -808,6 +812,30 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 
 **汇报形状**(用户要看结果, 不看成篇): 任务(空/几条, 哪条异常+已核产物) · 服务(端口+探活码) · 通路(直连 or 隧道)
 · 资源(GPU 利用率/显存 · 磁盘) · 写好但未上线的交付件 · 需要人决定的一条。数字在前, 不写"一切正常"。
+
+## 9i. 网关本身出问题: 双单元空转(exit 75) · 判活认 systemd 不认 pgrep
+
+**① `pgrep -f 'gateway run'` 判不到活着的网关 —— 它的 argv 是 python 包装。**
+网关主进程 cmdline 实为 `python3 -I -c "import sys, runpy; … runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)"`,
+里面**没有** `gateway run` 字样 ⇒ pgrep 空 ⇒ 报「无 gateway 进程」是**假警报**(同一刻心跳在动、cron 按点跑)。
+判活只认两项: `systemctl is-active hermes-gateway`(host 级) + ticker 心跳年龄。`scripts/reboot_verify.sh` 已按此改。
+
+**② user 与 system 两个 gateway 单元同时装着 ⇒ 每 5s 空转重启, NRestarts 爬到几十。**
+形态: `systemctl --user is-active` 给 `activating (auto-restart)`, `journalctl --user -u hermes-gateway` 每 5s 一行
+`✓ The host gateway already serves profile 'default' — nothing to start.  PID <host gateway>`;单元带 `RestartForceExitStatus=75`
+⇒ 「已在跑」这个退出码被当成需要重启 ⇒ 无限循环, 每实例烧 ~1.3s CPU、restart counter 直线涨。
+- 判据: `hermes gateway status` 头一行就写 **Both user and system gateway services are installed**。
+- 处置 = **保留在跑的那个, 卸掉另一个**(别两个都动):
+  ```bash
+  systemctl is-active hermes-gateway; systemctl show -p ExecMainPID,NRestarts --value hermes-gateway   # 在跑的
+  hermes gateway uninstall          # 卸 user 级; 反过来用 sudo hermes gateway uninstall --system
+  ```
+- 复核三件: user 单元文件已不存在 · 在跑那个的 `ExecMainPID` **未变**(没被顺带杀掉) · 心跳仍按 ~60s 继续写。
+- ⚠️ 只 `stop` 不 `uninstall` 无效: 单元 `enabled` + `Restart=always`, 下次开机照旧循环。
+
+**③ 目标机整台不可达 ≠ 端口被占(§9c)。** 本机互联网正常(baidu 200、网关 ~15ms)而目标 **ping 100% 丢 + 22/22022/80/443 全 timeout**
+⇒ 是那台机器/安全组的事, 不是隧道配置、也不是对端 sshd 抢口 —— 按 §9c 去对端 kill sshd 是白折腾。
+报告只写「本机互联网正常, X 整台不可达(实例/安全组), 本机侧修不了」并给一条要人点头的动作; 用户改走手机热点/局域直连时, 这整条通路不用修。
 
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 

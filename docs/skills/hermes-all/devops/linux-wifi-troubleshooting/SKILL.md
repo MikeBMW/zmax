@@ -40,6 +40,7 @@ description: Use when Linux WiFi 连不上/掉线/只能连热点. 诊断国家�
 | `nmcli` 报 "The Wi-Fi network could not be found" 但主动扫描能找到 | wpa_supplicant 用旧 regulatory 被动扫描扫不到弱信号 | 重启 NetworkManager 重新初始化 |
 | `CTRL-EVENT-DISCONNECTED reason=4 locally_generated=1` | 网卡省电模式主动断连（不是 AP 踢的） | 关 power_save |
 | 能连上但 ping 丢包严重(>10%)、延迟飙到秒级 | 5G 信号边缘(-53dBm 左右)，物理限制 | 换 2.4G 或挪位置，软件无解 |
+| 一开热点外网就断 | 单信道网卡(`iw list` 的 `#channels <= 1`)，STA 与 AP 不能共存 | 两端连同一手机热点 / USB 共享 + 开热点 / 插 USB 网卡做 AP；见"开热点必断外网" |
 
 ## 关键修复命令
 
@@ -75,6 +76,18 @@ EOF
 
 ## 关键陷阱
 
+- **开热点必断外网 = 单信道网卡的硬限制, 不是配置错**: 答应"本机开热点让设备连"之前先看
+  ```bash
+  iw list | grep -A6 "valid interface combinations"     # 关键看 #channels <= N
+  ls /sys/class/net                                      # 有没有有线网口可以兜底外网
+  ```
+  `#{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, #channels <= 1` ⇒ 同一块卡**只能在一个信道上工作**,
+  STA 已占着公司/家宽信道, 热点要另起信道 ⇒ 只能把 STA 踢掉, 上游网就断。没有有线网口时"网线保外网 + WiFi 开热点"根本不存在。
+  先量这三行再回答, 别先答应再解释。可用的三条路: ① 两端都连同一个手机热点 (最快, 零硬件) ② 手机 USB 共享给本机 + 本机 WiFi 开热点
+  ③ 插一块 USB WiFi 网卡专做 AP。
+- **别把"设备说已经连上本机热点了"当真**: 主机侧没有对应接口(`ip -4 -br a` 里没有 `ap0`/`10.42.0.x`、
+  `nmcli connection show --active` 里没有 hotspot 条目)就说明热点从来没在本机跑起来 —— 那时扫网段找到不设备是必然的,
+  先把"主机侧有没有那个接口"摆出来, 再谈连不连得上。
 - **Intel CNVi / AX211 是 "self-managed" regulatory（LARI）**：`iw reg set CN` 后 `iw reg get` 里 global 变 CN 但 `phy#0 (self-managed)` 仍显示 country 00。固件自己管 regulatory，但 global CN 仍会改变实际发射行为；固件连上 AP 后会从 AP 的 country IE 学到 CN。设 CN 后务必重启 NM 让扫描生效。
 - **主动 vs 被动扫描**：`iw dev <iface> scan` 是主动扫描（发 probe），`nmcli device wifi list` 可能用被动扫描。弱 5G 信号下被动扫描扫不到 beacon，主动扫描能扫到——用这个区分"信号真没了" vs "regulatory 限制扫描"。
 - **`iwlist channel` 的 5G 列表只到 140（缺 149-165）** = regulatory 没设对。中国移动 5G 光猫默认在 149-165（U-NII-3），country 00 下这些信道是 PASSIVE-SCAN，只能听不能主动连。

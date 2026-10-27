@@ -124,6 +124,12 @@ metadata:
 ### 节点要显示"正在执行的计划/执行状态" = plan 出段表 + exec 收口 (两层, 判据要对账)
 用户说「执行器也要做一个节点, 我要看到」时, 别把执行器整包搬进规划节点:
 **plan 只做"意图 → 段表", exec 保留 授权/闸/下发/等真值/台账**。闸门挪到上游 = 谁能动臂多一个入口。
+- 🔴 **plan 节点给的 token 序列 ≠ 几何规划, 别把两者当同一件东西接起来**: `left_right/state_space/planner.py`
+  的 `TaskPlanner.plan(指令)` 返回原子技能 token 表 (NPO0xx/XPO0xx), **不带任何几何量** (目标点/槽位/接近方向/速度)。
+  实测「从左料盘运送光模块到右料盘」与「把 7 号位的光模块插到孔 1」给出**同一串** token 且夹带语义无关项
+  ⇒ 直接接到 ar3d/轨迹链路, 页面写着"状态空间规划"而几何仍是脚本写死的 = **假规划**。
+  接之前先让 plan 输出**带几何的结构化计划** (技能 + 目标位 + 方向 + 速度档 + 后置条件);
+  判据 = 同一技能换目标点时几何跟着变 · 两条不同指令不能给出同一串。
 - **段表落盘**: 规划完先写 `zmax_data/runtime/plan/plan_latest.json` 再执行 (skill / backend=rule|moveit /
   n / segs[{id,pos,speed,dir,lin_mm,service}]), 一次规划一条, 与真执行的表**同一份**——不要另算一份给界面看。
   🔴 **两条规划路径都要落盘**: 多阶段技能走 `run_stages`, 方向键/单点回位走 `build_move` —— 只在一处落盘时,
@@ -248,6 +254,16 @@ metadata:
   `gui-venv311/bin/python -c "from lerobot.engineering import runtime; runtime.execute_node_logic(<节点>)"` 报 `NameError` 即命中;
   修完**两条路径各验一次**(`engineering.runtime` 与 `tools/gui/node_logic.py` 兼容壳), 再重启控制台确认 `Traceback=0`。
 - 排查顺序: **"节点不执行"先查派发层(runtime) → 再查注册/关键字匹配 → 最后才怀疑画布接线**。
+- 🔴 **`PURE` / `EXEC_MODE` / 节点注释里的「会动设备」都不是行为事实, 只认 `LAST_STATUS` 实测**:
+  中间件节点壳 (`middleware/nodes/n_<单词>.py` 的 `compute`) 只收 **dict 返回** —— 注册的实现若返回非 dict
+  (numpy 数组/标量, 如 `execution.py::RobotExecutor.execute` 的 `np.asarray(u)`) 就落成
+  `LAST_STATUS = "实现返回非 dict → 直通"` ⇒ **PURE=True 也照样不动**。`EXEC_MODE=act` 只表示"归在会动设备那一类"
+  (所以默认锁成数据面), 不是它真会动。真机执行只有 `tools/l2_daemon.py` 一条路 (FIFO → 授权 → 逐段闸 → 550C),
+  画布节点没有硬件句柄、不碰 FIFO、不查授权 ⇒ 安全开关的消费点必须在 `l2_daemon._auth_guard()`,
+  写在节点 compute 里就是装饰。
+- 判一拍干了什么用 CLI, 别靠 GUI 点击: `tools/mw_project.py node <id>` · `mw_project.py step`, 或
+  `load_project() → prj.step() → [n for n in prj.nodes.values() if n.spec.id=='<id>'][0].last_status`。
+  ⚠️ `Node` 只有 `spec.id` / `last_status` / `last_routed` / `module` —— **没有** `.id` / `.last_outs`, 猜属性会断探针。
 
 ## 按钮/节点"点了没反应"的分层取证 (别猜, 证据链三级)
 1. **handler 跑了没有** —— GUI 日志**始终**落盘: `_log` 无条件写 `/tmp/simulink_log.txt`(与底部日志区是否展开无关);
@@ -747,6 +763,77 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
   🔴 stub `scene_ref` 至少要有 `links=[]` · `nodes={}` · `_items={}` · `_flow_path=None` —— `_paint_core` 会遍历
   `self.scene_ref.links`, 缺了就是 `TypeError: 'NoneType' object is not iterable`, 看着像"节点画不出来"。
 - **真屏**: 最终以用户点一下为准(交付话术写"点它一下看状态变没变"), 别把离屏图说成"你屏幕上已经生效"。
+
+### 🔴 安全开关必须有一个真消费点(否则只是画在节点上的装饰)
+
+画布上做「AR 开关 / 真机开关」这类**安全类**双开关时, 语义分工与落法:
+- **两个正交语义**: 路由开关(AR 场景=仿真左右臂 / 关=直接控真机) 管"发到哪"; 授权开关(真机) 管"发不发"。
+  授权开关**必须写已有的那一个授权真源**(如 `tools/ctl_auth.grant/revoke`), 不要另立第二套授权表 ——
+  否则页面授权开门、画布开关关门, 两处各说各话, 现场永远说不清"到底谁拦的"。
+- 🔴 **消费点放执行器里那个集中闸门函数的最前面**(如 `l2_daemon._auth_guard()` 第一句), 不要散进每条命令:
+  开关只写状态文件而没人读 = 画布上多个按钮而已。判据要能答"开了以后谁拒绝我"。
+- 🔴 **开关状态文件要 fail-open(超龄即不拦)**: 状态文件帧龄超过阈值(实测定 **1800s**)就按"未拦截"处理并继续走原闸门。
+  阈值必须**远大于控制台的写盘频率** —— 控制台只在"点开关那一刻"写一次, 取 120s 时页面两分钟后自己退回默认模式,
+  用户以为开关失效; 1800s 兼顾"点一次撑完一场演示"与"控制台失联不把现场锁死"。改这个常量时两处必须同改
+  (服务端端点与执行器闸门各一份), 一边大一边小就出现"页面还在 AR、闸门已经不拦"。
+  反面(fail-closed)会让控制台没起/崩溃/断网时**把现场永久锁死**, 而用户此时连开关都点不到。
+- 五层判据(缺一层就会交付一个点不中/不生效的开关): ①真源默认态(两个都关) ②绘制(关态渲出红、开态绿, 数像素两态都非 0)
+  ③**事件级**(点左开关命中 1 次、点右 1 次、点标题区 0 次 —— 证明没抢走拖动) ④消费端(无状态文件=不拦 · 开=拦 · 关=不拦 · 过期=不拦)
+  ⑤**判据自己收尾复位**: 事件级判据必然连点开关, 跑完就把安全开关**留在开的状态写进画布真源**(实测漏这条 → 下次打开控制台直接是 AR 模式)。
+  脚本末尾必须把 params 复位成默认关并**回读断言**, 别信"我传进去的是 False"。
+
+### 开关要「接上画面」时 = 服务端只读端点 + 页面轮询 + 只在跳变时应用
+开关只落到执行器闸门时, 用户点开 AR 仍然"什么都没发生"(他要看到 AR 场景)。接法四层, 缺一层就是半截:
+1. **服务端加只读端点**(如 8797 `/api/ar/mode`): 直接读控制台发布的那份 live 状态文件, 返回 `{on, real_auth, age_s, fresh}`。
+   **过期口径要和处理方向一致地"不锁人"**: 文件帧龄超阈值 ⇒ 端点返回 `on=false`(页面自动退回默认显示);
+   而执行器闸门那边是 fail-open(不拦)。两边都是"按默认处理", 不许一边不拦一边把界面锁在 AR 模式。
+2. **页面轮询只在状态跳变时应用视图**(`if(on===LAST.on) return;`): 每 2s 无条件写视图会把用户**手动切的显示开关**一路抢回去,
+   症状是"我关了真机臂它自己又跳回来"。横幅文案可以每轮刷新(带帧龄), 视图状态只在跳变时改。
+3. **画面必须自报状态**: 横幅写清「AR 场景 · 由状态空间画布控制左右臂 · 真机不下发 · 开关帧龄 Ns」——
+   用户把这个页面当结果看, 只靠执行器日志他读不出当前在哪一层。
+4. 🔴 **判据要真开浏览器读 DOM**(`browser_navigate` → `browser_console` 读横幅元素/页面全局变量),
+   别只 `curl /api/...` 拿到 true 就交付: **API 通 ≠ 页面进了那个模式**。实测口径 = 横幅 `display`、真机臂标志位、按钮文案三者同变;
+   再切回关跑一遍确认横幅 `display:none` 且标志位复原(只验进不验回 = 没验可逆性)。
+5. 测试期外部副作用用 env 开关抑制: 处理器里 `if os.environ.get("ZMAX_NO_OPEN"): 跳过 webbrowser.open`, 判据脚本默认置上 ——
+   否则事件级判据连点几次就弹一堆浏览器窗口, 把"验证"变成干扰。
+
+⚠️ **改了服务端 .py 必须重启该服务才生效; 同服务的 html 是热读的不用重启** —— 两者别一起等。
+这类服务多半有守护(cron/keepalive), `kill` 后几秒会以**新 pid** 自己回来 ⇒ 验证看**新路由返回什么**, 不要拿 pid 变没变当判据。
+
+三个本次实测才暴露的坑:
+- 🔴 `flows.load_canvas()` / `save_canvas()` **返回元组** `(data, errors)` / `(path, backup)`: 直接当 dict/路径用会 TypeError,
+  或被 `d or {}` 兜底 **静默当成空画布**(最坏情况: 写出一个只有新节点的画布, 原图全没)。
+- 🔴 `ctl_auth.info()` 的字段是 `armed` / `left_s` / `until` / `epoch` —— **没有 `remaining_s`**。
+  取错名字只会显示 0/过期, 不抛异常 ⇒ 授权明明开着, 界面报"未授权"。
+- 🔴 用 `SimCanvas(stub_module)` 做事件级离屏验证时, stub 模块要比 `SimNodeItem` 那套更宽:
+  `SimCanvas.__init__` 会 connect 一堆 module 信号/回调 ⇒ stub 用 `__getattr__` 返回**可调用的空壳**;
+  且必须**手动塞 `cv.links` / `cv.nodes`**(真 GUI 由 `load_flow_file` 填) —— 少了这两项, `_paint_core` 遍历 None
+  直接让 offscreen 进程 abort, 现象很像"渲染代码改坏了"。
+- ⚠ **只改节点 params 也算改画布**: `save_canvas` 会顺手 build 一次库, 之后 `project_archive.py space-save`
+  必须**再跑一次 `engineering_db.py build`** 再 `check`, 否则报 `drift ['project','canvas']`(实测)。
+  "这次只动了参数不动结构"不是跳过六步同步顺序的理由。
+
+## 已有页面上跑着的功能要「用节点重做一遍」⇒ 两条并行, 页面一个字不改
+用户说「这个功能一步步由状态空间的节点实现」、同时又说过「保留当前已实现的 X 不动」时, 这是**两条并行实现, 不是迁移**:
+- 现有按钮 / JS / 数据文件**一行不改**; 节点读**同一份数据文件**, 在引擎里自己推时间轴。
+- 原方案里"让页面改读总线"那一步**直接作废** —— 改了就是破坏他"点按钮还是老样子"的要求。
+- 交付时明说两套并行、各自真源是哪个文件, 别让他以为旧路径已被替换。
+- 节点是「能力」不是「每一步一个框」: 一个节拍循环器 + N 个原子动作节点 + 检测/分拣/统计, 392 段也只多 3 个节点。
+- 段表语义(哪个字段是件号/段号)、实时 UPH 的预热坑、判据清单: `references/uph-tact-loop-node.md`。
+
+## 调度有四层, 画布 UI 不是调度器
+用户问「`simulink_module` 是不是整个系统的调度节点」时, 答**不是** —— 它是 Qt 画布界面层(负责连线怎么画/点了怎么响应/参数怎么落盘),
+没有任何调度逻辑。真调度分四层, 找错层就白改一版:
+
+| 层 | 真源 | 干什么 |
+|---|---|---|
+| 画布 UI | `tools/gui/simulink_module.py` | 画线/命中/参数落盘 (纯界面) |
+| 数据流调度 | 画布 JSON 的连线 → `middleware/loader.py::topo_order()`(SCC 缩点→拓扑序) → `middleware/project.py::Project.step()`(逐 `nd.step()`) | 每节点 pull→compute→push |
+| 任务/场景调度 | `tools/ss_scene_switch.py` | 任务 ↔ 场景 ↔ 画布数据源节点 |
+| 动作调度 | `tools/l2_daemon.py` | FIFO → 授权 → 逐段闸 → 真机 |
+
+改"谁先跑"去 middleware 拓扑; 改"跑哪个场景"去场景切换; 改"能不能动"去 `l2_daemon`。
+判某节点在一拍里干了什么用 CLI (`mw_project.py step` → 读 `n.last_status`), 别靠 GUI 点击。
 
 ## 往画布插一个节点 ⇒ 先想清楚 FN-*-NN 编号会整体平移 (2026-10-25 实测)
 

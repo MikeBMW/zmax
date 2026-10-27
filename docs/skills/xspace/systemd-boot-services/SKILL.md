@@ -123,6 +123,7 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 | `1/FAILURE` + 日志尾部 `OSError: [Errno 98] Address already in use` | **两个 unit 的 `ExecStart` 一模一样**，先起的那个已占端口 ⇒ 后起的永远绑不上，`NRestarts` 能涨到几千。现象不仅是“服务挂了”：依赖它的页面/按钮**也一起没响应**（请求落在刚起/刚死的进程上） | `systemctl cat A B \| grep ExecStart` 对比 + `ss -ltnp \| grep :<port>` 看是哪个 unit 在听 ⇒ `systemctl disable --now` 掉重复的那个。journal 里只有 `Started …` / `status=1/FAILURE`，**真因只在 unit 自己 `StandardOutput=append:` 那个文件尾部** |
 | `203/EXEC` | 脚本无可执行位 / 路径不存在 | `chmod 755`, 或看 unit 里路径是否指向旧 checkout |
 | `255` | 隧道类 unit: 远端拒绝/端口被占 | 见 §7 |
+| `75` + `RestartForceExitStatus=75` + 每 5s 一轮 | **user 与 system 两个作用域装了同名 unit**, user 那个一启动就 exit 75, 而 `RestartForceExitStatus` 把它当"需要重启的退出"⇒ 无限重启, `NRestarts` 涨到几十、每轮烧 1s+ CPU, 而真正的服务在 system 作用域里好好跑着 | `systemctl --user list-units \| grep <名>` + `systemctl list-units \| grep <名>` 两边都查(**只看一边会以为它坏了/好了**); 保留在跑的那个作用域, 卸掉另一个(`systemctl --user disable --now` / 卸载命令), 卸完确认 `--user` 侧 `inactive` 且**原 pid 未变** |
 
 验收固定三样, 缺一不算修好: `is-active` = `active` · `NRestarts` 隔 20s 两次**不涨** · 日志末尾出现业务自带的那行成功提示
 (例: `📡 实况推送 → https://<domain>/xxx.php (每 1.0s)`)。只看到 `active` 就报“修好了”会在下一轮重启时打回原形。
@@ -169,6 +170,11 @@ pip download --only-binary :all: --python-version 3.12 --implementation cp --abi
   `pkill -f 'ssh.*<端口>'` 同样会自杀——命令行里就写着那个端口号, 它会先杀掉自己所在的 shell(SIGTERM)。
   修法①判据写拼接串(`P="vl_safety""_monitor.py"`)；修法②把循环/kill 放进**独立脚本文件**再执行(它的 argv 只有路径)。
   🔴 **"操作成功一半、工具报被自己 SIGTERM"时先怀疑自杀式匹配, 不要以为服务真挂了。**
+- 🔴 **反方向也会错: 模式串对不上真 argv ⇒ 假阴性**(判活脚本报「没有 X 进程」, 而 `systemctl is-active` 明明是 `active`)。
+  wrapper 类服务(Python CLI、`python -I -c runpy…` 启动器、带 venv 前缀的入口)的真实 argv 与业务名不一致,
+  `pgrep -af '<业务名>'` 一个都匹配不到。定式: 先用 `systemctl show -p MainPID` 或 pidfile 拿 pid,
+  再 `tr '\0' ' ' < /proc/<pid>/cmdline` 取**一次真 argv** 才写模式; 日常判活优先 `is-active` / 端口 / pidfile,
+  不要用 `pgrep -f <业务名>` 当唯一判据。
 
 ## 7. `ssh -R` 反向隧道做 unit: 两个必踩的坑
 

@@ -93,7 +93,14 @@ else:
     print("  ok %s 心跳新鲜 %ds" % (f, int(d)))
 PY
 done
-pgrep -af 'gateway run' >/dev/null && echo "  gateway 进程在" || echo "  !! 无 gateway 进程"
+# 判活认 systemd: 网关主进程 argv 是 python -I -c runpy 包装, 不含 'gateway run' ⇒ pgrep -f 匹配不到, 会把活着的报成没有
+if systemctl is-active --quiet hermes-gateway 2>/dev/null; then
+  echo "  gateway 在 (system 级 unit, PID $(systemctl show -p ExecMainPID --value hermes-gateway 2>/dev/null))"
+elif systemctl --user is-active --quiet hermes-gateway 2>/dev/null; then
+  echo "  gateway 在 (user 级 unit) — 注意 user+system 双单元会导致 exit-75 空转, 见 SKILL §9i"
+else
+  echo "  !! gateway 未起(System/User 两个单元都 inactive) ⇒ hermes gateway start; 双单元空转见 SKILL §9i"
+fi
 
 echo "===== 9. 网络 / 外设 (产线网卡) ====="
 net_probe
