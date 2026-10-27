@@ -2276,6 +2276,17 @@ function larmRecalc(){ LARMFK = (LARM.q && URDF) ? urdfFK(LARM.q) : null; }
 
 function _d3(a,b){ return Math.hypot(b[0]-a[0], b[1]-a[1], b[2]-a[2]); }
 
+/* 节拍时间口径 —— 甘特图和播放共用这一份, 否则右侧栏的时间和画面推进对不上。
+   老倪 2026-10-27: 「怎么很多 11.6秒呢? 你的屏幕显示也不是11.6秒, 时间感觉对不上」 */
+var TACT_V=150, TACT_GRIP=0.35, TACT_REL=0.35;
+function segDur(s){
+  var dx=s.p_to[0]-s.p_from[0], dy=s.p_to[1]-s.p_from[1], dz=s.p_to[2]-s.p_from[2];
+  var d=Math.sqrt(dx*dx+dy*dy+dz*dz)*1000, t=d/TACT_V, L=s.label||'';
+  if(L.indexOf('抓起')>=0) t+=TACT_GRIP;
+  if(L.indexOf('放下')>=0) t+=TACT_REL;
+  return t;
+}
+
 async function transPlay(){
   const btn=$('bTrans'), tip=$('tTrans');
   if(TRANS.playing){                                   // 再点一下 = 停
@@ -2304,49 +2315,70 @@ async function transPlay(){
 
   // 起点关节角: 用真机当前关节(读得到就用), 读不到给一个折中的初值
   let q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
-  const off=LARM.off, frames=[];
-  let ikBad=0, carry=false;                       // carry = 这一刻手里有没有模块
-  for(const s of d.segs){
-    if((s.label||"").indexOf("抓起")>=0) carry=true;
-    const A=[s.p_from[0]-off[0], s.p_from[1]-off[1], s.p_from[2]-off[2]];   // 世界 → 左臂自身系
-    const B=[s.p_to[0]-off[0],   s.p_to[1]-off[1],   s.p_to[2]-off[2]];
-    const ra=ikTool1(A,q);                      // 位置 IK(可靠, PREV 实测残差 0.03mm)
-    if(!ra){ ikBad++; continue; }
-    const rb=ikTool1(B, ra.q);
-    if(!rb){ ikBad++; continue; }
-    const n=Math.max(4, Math.min(16, Math.round(_d3(A,B)/0.012)));           // 每 12mm 一帧
-    const isPlace=((s.label||"").indexOf("放下")>=0);
-    for(let i=0;i<=n;i++){
-      const t=i/n;
-      frames.push({q: ra.q.map((v,j)=>v+(rb.q[j]-v)*t), carry: isPlace ? (t<0.35) : carry,
-                   k: s.k, seg: s.i, y: A[1]+(B[1]-A[1])*t + off[1]});
+  const off=LARM.off;
+  // 解算一次要 ~11s(224 次 IK), 缓存起来: 同一 off + 同一段表第二次点按钮秒开
+  const cacheKey=off.join(',')+'|'+d.segs.length+'|'+d.segs[0].p_from.join(',');
+  let frames=(TRANS.cacheKey===cacheKey && TRANS.cacheFrames) ? TRANS.cacheFrames : null;
+  let ikBad=0, tt=0;                              // tt = 节拍累计秒
+  if(frames){
+    for(let i=frames.length-1;i>=0;i--){ if(frames[i].t!=null){ tt=frames[i].t; break; } }
+  } else {
+    frames=[];
+    let carry=false;                             // carry = 手里有没有模块
+    for(const s of d.segs){
+      if((s.label||"").indexOf("抓起")>=0) carry=true;
+      const A=[s.p_from[0]-off[0], s.p_from[1]-off[1], s.p_from[2]-off[2]];   // 世界 → 左臂自身系
+      const B=[s.p_to[0]-off[0],   s.p_to[1]-off[1],   s.p_to[2]-off[2]];
+      const ra=ikTool1(A,q);                      // 位置 IK(可靠, PREV 实测残差 0.03mm)
+      if(!ra){ ikBad++; continue; }
+      const rb=ikTool1(B, ra.q);
+      if(!rb){ ikBad++; continue; }
+      const n=Math.max(4, Math.min(16, Math.round(_d3(A,B)/0.012)));           // 每 12mm 一帧
+      const isPlace=((s.label||"").indexOf("放下")>=0);
+      const dur=segDur(s);                        // 这一段按节拍该花多少秒
+      for(let i=0;i<=n;i++){
+        const t=i/n;
+        frames.push({q: ra.q.map((v,j)=>v+(rb.q[j]-v)*t), carry: isPlace ? (t<0.35) : carry,
+                     k: s.k, seg: s.i, t: tt+dur*t, y: A[1]+(B[1]-A[1])*t + off[1]});
+      }
+      tt += dur;
+      if(isPlace) carry=false;
+      q=rb.q;
     }
-    if(isPlace) carry=false;
-    q=rb.q;
+    TRANS.cacheKey=cacheKey; TRANS.cacheFrames=frames;
   }
   if(!frames.length){ if(tip) tip.textContent='IK 全部失败, 没法动'; if(btn){btn.classList.remove('on'); btn.textContent='🚚 仿真搬运';} return; }
 
   TRANS.frames=frames; TRANS.fi=0; TRANS.playing=true;
+  TRANS.durTotal=tt;                                  // 整条节拍总秒数(与右侧栏同一个口径)
+  if(!TRANS.rate) TRANS.rate=4;                        // 默认 4 倍速播(1倍要 162s, 太久)
+  TRANS.t0=performance.now();
   LARM.q=frames[0].q.slice(); TRANS.carry=!!frames[0].carry;
   TRANS.curK=frames[0].k||1; TRANS.curY=frames[0].y; larmRecalc();
-  if(tip) tip.textContent='左臂仿真搬运中 · '+frames.length+' 帧 · '+d.cycles+' 个模块'+(ikBad?(' · IK 跳过 '+ikBad+' 段'):'');
+  if(tip) tip.textContent='左臂仿真搬运中 · 节拍 '+tt.toFixed(1)+'s · 播放 '+TRANS.rate+'× (约 '+(tt/TRANS.rate).toFixed(0)+'s) · '+d.cycles+' 个模块'+(ikBad?(' · IK 跳过 '+ikBad+' 段'):'');
   if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
   drawVR();
 
   let painted=0;
+  const applyFrame=(f)=>{ LARM.q=f.q; TRANS.carry=!!f.carry; TRANS.curK=f.k||0;
+                          TRANS.curY=f.y; TRANS.curSeg=f.seg|0; TRANS.curT=f.t||0; };
   const step=()=>{
     if(!TRANS.playing) return;
-    const _f=TRANS.frames[TRANS.fi];
-    LARM.q=_f.q; TRANS.carry=!!_f.carry; TRANS.curK=_f.k||0; TRANS.curY=_f.y; TRANS.curSeg=_f.seg|0;
+    // 按真实节拍时间找帧(不是按帧号一帧帧递增) —— 这样画面推进和右侧甘特的时间对得上。
+    // 老倪: 「时间感觉对不上」的根因就是原来 60fps 固定推进, 24 秒就把 162 秒的节拍跑完了。
+    const el=(performance.now()-TRANS.t0)/1000*(TRANS.rate||1);
+    let i=TRANS.fi;
+    while(i<frames.length-1 && frames[i+1].t<=el) i++;
+    TRANS.fi=i;
+    applyFrame(frames[i]);
     larmRecalc();
-    TRANS.fi++;
-    if(TRANS.fi>=TRANS.frames.length){
-      TRANS.playing=false; TRANS.raf=null;
+    if(el>=TRANS.durTotal){
+      TRANS.playing=false; TRANS.raf=null; TRANS.curT=TRANS.durTotal;
       if(btn){ btn.classList.remove('on'); btn.textContent='🚚 仿真搬运'; }
-      if(tip) tip.textContent='走完 '+d.cycles+' 个模块 · 真机没动 · 左臂停在最后一个槽位';
+      if(tip) tip.textContent='走完 '+d.cycles+' 个模块 · 节拍 '+TRANS.durTotal.toFixed(1)+'s · 真机没动';
       drawVR(); return;
     }
-    if((painted++ % 2)===0) drawVR();                  // 每 2 帧画一次, 别把浏览器拖死
+    if((painted++ % 2)===0) drawVR();
     TRANS.raf=requestAnimationFrame(step);
   };
   TRANS.raf=requestAnimationFrame(step);
@@ -3628,6 +3660,12 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     + '.tBar i.on{outline:2px solid #fff;outline-offset:-2px;filter:brightness(1.4)}'
     + '.tT{font:11px ui-monospace,SFMono-Regular,monospace;color:#8b949e;text-align:right}'
     + '.tRow.on .tT{color:#e6edf3}'
+    + '.tCtl{padding:6px 13px;display:flex;align-items:center;gap:5px;font-size:10px;'
+    + 'color:#8b949e;border-bottom:1px solid #21262d}'
+    + '.tCtl button{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:3px;'
+    + 'padding:2px 7px;font:10px system-ui;cursor:pointer}'
+    + '.tCtl button.on{background:#1f6feb;border-color:#1f6feb;color:#fff}'
+    + '#tProg{margin-left:auto;font:10px ui-monospace,monospace;color:#e6edf3}'
     + '.tLeg{display:flex;flex-wrap:wrap;gap:10px;padding:8px 13px;border-top:1px solid #21262d;'
     + 'font-size:10px;color:#8b949e}'
     + '.tLeg span{display:flex;align-items:center;gap:4px}'
@@ -3639,6 +3677,9 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   wrap.innerHTML = '<div id="tactPanel">'
     + '<div class="tHd"><span>⏱ 左臂摆盘节拍</span><b id="tCycle">—</b></div>'
     + '<div class="tSum" id="tSum">节拍数据加载中…</div>'
+    + '<div class="tCtl">播放 <button data-r="1">1×</button><button data-r="2">2×</button>'
+    + '<button data-r="4" class="on">4×</button><button data-r="10">10×</button>'
+    + '<span id="tProg">—</span></div>'
     + '<div class="tBody" id="tBody"></div>'
     + '<div class="tLeg"><span><i style="background:#58a6ff"></i>平移</span>'
     + '<span><i style="background:#22d3ee"></i>下降/对准</span>'
@@ -3653,14 +3694,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     arrow.textContent = hid ? '⏱ ◂' : '⏱ ▸';
   });
 
-  function dur(s){
-    var dx=s.p_to[0]-s.p_from[0], dy=s.p_to[1]-s.p_from[1], dz=s.p_to[2]-s.p_from[2];
-    var d=Math.sqrt(dx*dx+dy*dy+dz*dz)*1000;
-    var t=d/V, L=s.label||'';
-    if(L.indexOf('抓起')>=0) t+=GRIP_S;
-    if(L.indexOf('放下')>=0) t+=REL_S;
-    return t;
-  }
+  function dur(s){ return window.segDur ? window.segDur(s) : 0; }   // 与播放共用同一个口径
   function colr(L){
     if(L.indexOf('抓起')>=0||L.indexOf('放下')>=0) return '#f59e0b';
     if(L.indexOf('抬')>=0) return '#34d399';
@@ -3680,7 +3714,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     document.getElementById('tCycle').textContent=cyc.toFixed(1)+' s';
     document.getElementById('tSum').innerHTML =
       '单循环节拍 <em>'+cyc.toFixed(2)+' s</em> · '+nCyc+' 个循环 · 总 <em>'+tot.toFixed(1)+' s</em><br>'
-      + '设计速度 <em>'+V+' mm/s</em> · 夹爪闭合/松开各 <em>'+GRIP_S+' s</em> · 每循环 8 步';
+      + '设计速度 <em>'+(window.TACT_V||150)+' mm/s</em> · 夹爪闭合/松开各 <em>0.35 s</em> · 每循环 8 步';
     var html='';
     Object.keys(byK).sort(function(a,b){return a-b;}).forEach(function(k){
       var arr=byK[k], kt=arr.reduce(function(a,s){return a+s._t;},0);
@@ -3699,6 +3733,19 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     document.getElementById('tSum').textContent='节拍数据加载失败: '+e;
   });
 
+  // 倍速: 改 TRANS.rate; 正在播就按已播节拍重锚 t0, 不让时间跳
+  document.querySelectorAll('.tCtl button').forEach(function(b){
+    b.addEventListener('click', function(){
+      var rr=parseFloat(b.getAttribute('data-r'))||1;
+      document.querySelectorAll('.tCtl button').forEach(function(x){ x.classList.toggle('on', x===b); });
+      var T=window.TRANS||{};
+      if(T.playing && T.t0!=null){
+        var el=(performance.now()-T.t0)/1000*(T.rate||1);
+        T.rate=rr; T.t0=performance.now()-el/rr*1000;
+      } else T.rate=rr;
+    });
+  });
+
   // 播放时高亮: 当前循环(行) + 当前步(块)
   setInterval(function(){
     var T=window.TRANS||{}, k=T.curK|0, seg=T.curSeg|0, on=!!T.playing;
@@ -3712,6 +3759,11 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
       for(var j=0;j<bars.length;j++){
         bars[j].classList.toggle('on', hit && parseInt(bars[j].getAttribute('data-seg'),10)===seg);
       }
+    }
+    var prog=document.getElementById('tProg');
+    if(prog){
+      if(T.durTotal) prog.textContent=(T.curT||0).toFixed(1)+' / '+T.durTotal.toFixed(1)+'s';
+      else prog.textContent='—';
     }
   }, 160);
 })();
