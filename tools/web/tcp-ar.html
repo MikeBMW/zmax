@@ -1921,7 +1921,10 @@ function drawVR(){
   if(typeof INSIM!=='undefined' && (INSIM.carry || INSIM.inserted)){
     if(INSIM.carry && PREV.M && PREV.M['tool1']){
       const t1=PREV.M['tool1'];
-      drawModuleAt(g, pr, t1.t, _cols(t1.R), '#a3e635', '#65a30d');
+      const L=(MODSPEC.L_mm||56.5)/1000;
+      // 摆正: 模块长轴沿世界 X、宽度沿 Y、厚度沿 Z —— 与料盘里的模块是同一个姿态,
+      // 不跟 tool1 的腕部朝向走(老倪 2026-10-27: 「模块头要摆正, 与光模块平行, 位姿都要一样」)
+      drawFlatModule(g, pr, [t1.t[0]+L/2, t1.t[1], t1.t[2]], '#a3e635');
     }
     if(INSIM.inserted){
       // 插入到位: 模块中心 x=(767+814)/2=790.5, y=228, z=278, 长轴沿 X
@@ -2174,7 +2177,9 @@ function _solveN(A,b,n){                                 // 高斯消元(部分�
 // 抓取姿态(世界系): tool1 的 Z(长度)∥+X 轴 · X(厚度)∥−Z(朝下) · Y(宽度)∥+Y
 // 来源: zmax_data/ar_rs/module_calib_ref.json 的 quat [w,x,y,z]=[0.728266,0.022327,0.684847,0.010713]
 //   ⇒ 实测第三列 [0.9980,-0.0178,0.0610] ≈ +X, 与老倪说的"长度方向平行 x 轴"一致
-var R_GRASP=[[0.0617,0.0150,0.9980],[0.0462,0.9988,-0.0178],[-0.9971,0.0462,0.0610]];
+var R_GRASP=[[0,0,1],[0,1,0],[-1,0,0]];
+// ↑ 精确轴对齐版本(列 = tool1 的 X/Y/Z 轴): X(厚度)∥−Z 朝下 · Y(宽度)∥+Y · Z(长度)∥+X
+//   原来用实测 quat 反算的矩阵带 3.5° 残差, 看着"没跟光模块平行"——老倪要的是完全重合, 这里给死值
 
 // 位置+姿态 6 维 IK: target(米) 要到位, 同时 tool1 的姿态要贴 Rdes
 //   位置用米、姿态用弧度 ⇒ 姿态乘 W_ROT 换算到同一量级(0.06 ≈ 60mm/rad 的姿态权重)
