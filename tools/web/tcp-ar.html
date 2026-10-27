@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r30 · 新增「↩ 回退」(围栏/料盘误拖可退一步, 连点连续回退) + 左臂料盘(Y+ 并排)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r31 · 新增「🚚 仿真搬运」(状态空间 plan 节点排段表 → 左臂仿真 14 个模块 左槽→右槽, 真机不动) + 「↩ 回退」+ 左臂料盘(Y+)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -179,6 +179,10 @@
            每次加/改/删围栏之前都会存快照, 这里点一下退一步; 连点可以一直退。 -->
       <button id="bUndo" class="sm" style="margin-left:14px" title="↩ 回到上一步: 把围栏/料盘/槽位恢复到上一次编辑之前的状态(连点可连续回退)">↩ 回退</button>
       <span id="tUndo" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <!-- 🚚 2026-10-27 老倪: 「用状态空间工程的 规划 plan 节点, 规划运送光模块的路径,
+           由左臂仿真从左侧料盘抓起, 横移, 放下到右侧料盘, 全程都在 ar3d 里执行, 不需要动真正的右臂」 -->
+      <button id="bTrans" class="sm" style="margin-left:14px" title="点一下 = 左臂仿真开始搬运(路径来自状态空间工程 plan 节点排的段表); 再点 = 停。只动左臂仿真模型, 真机不动">🚚 仿真搬运</button>
+      <span id="tTrans" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
     </div>
     <div class="row" style="margin-top:8px">
       <button id="bFit" class="sm" title="点击 = 把当前规划轨迹发给执行器(l2_daemon · 逐段走)· 双击 = 视角对准轨迹（原功能）">▶ 执行轨迹</button>
@@ -423,7 +427,9 @@ var CFG_TARGET=null;
 //   右臂世界坐标系 Y=500mm、X=0 Z=0; 左臂的 URDF 与右臂一样, 位姿先默认跟右臂一样」
 //   off = 左臂原心在 base 系的位置(米); d/rpy = 仿真增量(左臂自身世界系, mm/deg)
 //   画法: 右臂正运动学点 p 先按 rpy 转、加 d, 再加 off ⇒ 世界坐标。复位(d=rpy=0)时两条臂完全同姿态。
-var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], fill:'#12363c', stroke:'#5eead4'};
+//  q = 左臂自己的 6 关节角(弧度)。null ⇒ 照抄右臂姿态(默认); 有值 ⇒ 用 urdfFK(q) 单独算左臂外形
+var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], q:null, fill:'#12363c', stroke:'#5eead4'};
+var LARMFK=null;   // LARM.q 的正运动学结果; 非空时左臂用它画, 不再照抄右臂
 // 📷 顶视相机(具身智能第三视角) —— 老倪 2026-10-26: 「在左右臂之间增加一个圆柱体, 顶部有个相机,
 //   按照 realsense 为模板, 作为具身智能的顶视相机; 圆柱的高度与 1 轴的高度相同; 你来设计一个相机」
 //   我的设计口径: 立柱立在两臂原心中线 y=+250mm、半径 70mm、高 = 1 轴高度(URDF joint_1 z=0.328);
@@ -1055,7 +1061,8 @@ function vrFitBox(){
   // 🤖 左臂(仿真臂)也纳入取景: 否则 Y=+500mm 那条臂整个在框外(老倪要两只臂同屏看)
   if(typeof LARM!=='undefined' && LARM.show && VR.urdf && URDF && LINKM){
     const X=larmXform();
-    for(const L of URDF.links){ const M=LINKM[L.name]; if(!M) continue;
+    const LMAP = LARMFK || LINKM;                  // 左臂自己动的时候用自己的 FK
+    for(const L of URDF.links){ const M=LMAP[L.name]; if(!M) continue;
       for(let i=0;i<L.pts.length;i+=8){ const q=L.pts[i];
         const w=[M.R[0][0]*q[0]+M.R[0][1]*q[1]+M.R[0][2]*q[2]+M.t[0],
                  M.R[1][0]*q[0]+M.R[1][1]*q[1]+M.R[1][2]*q[2]+M.t[1],
@@ -1898,7 +1905,17 @@ function drawVR(){
   //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
   if(LARM.show && URDF && LINKM){
     const X=larmXform();
-    drawUrdf(g, pr, LINKM, X);
+    drawUrdf(g, pr, LARMFK || LINKM, X);        // 有独立关节角时用左臂自己的 FK (仿真搬运)
+    // 🔩 仿真搬运时, 手里抓着的光模块跟着 tool1 走到右料盘
+    if(TRANS.carry && LARMFK && LARMFK['tool1']){
+      const t1=LARMFK['tool1'];
+      const w=[X.R[0][0]*t1.t[0]+X.R[0][1]*t1.t[1]+X.R[0][2]*t1.t[2]+X.t[0],
+               X.R[1][0]*t1.t[0]+X.R[1][1]*t1.t[1]+X.R[1][2]*t1.t[2]+X.t[1],
+               X.R[2][0]*t1.t[0]+X.R[2][1]*t1.t[1]+X.R[2][2]*t1.t[2]+X.t[2]];
+      const s=pr(w);
+      if(s){ g.fillStyle='#a3e635'; g.strokeStyle='#65a30d'; g.lineWidth=1.2;
+             g.beginPath(); g.rect(s.u-5, s.v-5, 10, 10); g.fill(); g.stroke(); }
+    }
     const o=pr(LARM.off.slice());
     if(o){
       g.strokeStyle=LARM.stroke; g.lineWidth=1.6;
@@ -2175,6 +2192,95 @@ async function doUndo(){
   }
 }
 if($('bUndo')) $('bUndo').addEventListener('click', doUndo);
+
+// 🚚 仿真搬运 (2026-10-27 老倪): 「用状态空间工程的 规划 plan 节点, 规划运送光模块的路径,
+//    由左臂仿真从左侧料盘抓起, 横移, 放下到右侧料盘, 全程都在 ar3d 里执行, 不需要动真正的右臂」
+// 路径真源: zmax_data/runtime/traj/sim_transport.json (tools/sim_transport_plan.py 生成,
+//   任务层=state_space/planner.py 的 plan 节点, 几何层=左槽1~14 / 槽1~14 实测盒)
+// 播放: 每段两端点各解一次 IK(左臂自身坐标系 = 世界点 − LARM.off), 段内关节角线性插值
+var TRANS={playing:false, data:null, frames:[], fi:0, raf:null};
+
+function larmRecalc(){ LARMFK = (LARM.q && URDF) ? urdfFK(LARM.q) : null; }
+
+function _d3(a,b){ return Math.hypot(b[0]-a[0], b[1]-a[1], b[2]-a[2]); }
+
+async function transPlay(){
+  const btn=$('bTrans'), tip=$('tTrans');
+  if(TRANS.playing){                                   // 再点一下 = 停
+    TRANS.playing=false;
+    if(TRANS.raf){ cancelAnimationFrame(TRANS.raf); TRANS.raf=null; }
+    if(btn){ btn.classList.remove('on'); btn.textContent='🚚 仿真搬运'; }
+    if(tip) tip.textContent='已停在第 '+(TRANS.fi||0)+' 帧 · 真机没动';
+    return;
+  }
+  if(!URDF){ if(tip) tip.textContent='URDF 还没加载完'; return; }
+
+  let d=TRANS.data;
+  if(!d){
+    try{ const r=await fetch('/api/sim_transport'); d=await r.json(); }
+    catch(e){ if(tip) tip.textContent='读路径失败: '+e; return; }
+    if(!d||!d.ok||!d.segs||!d.segs.length){
+      if(tip) tip.textContent='没有可用路径 (先跑 tools/sim_transport_plan.py): '+JSON.stringify(d||{}).slice(0,80);
+      return;
+    }
+    TRANS.data=d;
+  }
+
+  if(btn){ btn.classList.add('on'); btn.textContent='⏹ 停止搬运'; }
+  if(tip) tip.textContent='解算关节角… ('+d.segs.length+' 段)';
+  await new Promise(r=>setTimeout(r,20));
+
+  // 起点关节角: 用真机当前关节(读得到就用), 读不到给一个折中的初值
+  let q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
+  const off=LARM.off, frames=[];
+  let ikBad=0, carry=false;                       // carry = 这一刻手里有没有模块
+  for(const s of d.segs){
+    if((s.label||"").indexOf("抓起")>=0) carry=true;
+    const A=[s.p_from[0]-off[0], s.p_from[1]-off[1], s.p_from[2]-off[2]];   // 世界 → 左臂自身系
+    const B=[s.p_to[0]-off[0],   s.p_to[1]-off[1],   s.p_to[2]-off[2]];
+    const ra=ikTool1(A,q);
+    if(!ra){ ikBad++; continue; }
+    const rb=ikTool1(B, ra.q);
+    if(!rb){ ikBad++; continue; }
+    const n=Math.max(4, Math.min(16, Math.round(_d3(A,B)/0.012)));           // 每 12mm 一帧
+    const isPlace=((s.label||"").indexOf("放下")>=0);
+    for(let i=0;i<=n;i++){
+      const t=i/n;
+      frames.push({q: ra.q.map((v,j)=>v+(rb.q[j]-v)*t), carry: isPlace ? (t<0.35) : carry});
+    }
+    if(isPlace) carry=false;
+    q=rb.q;
+  }
+  if(!frames.length){ if(tip) tip.textContent='IK 全部失败, 没法动'; if(btn){btn.classList.remove('on'); btn.textContent='🚚 仿真搬运';} return; }
+
+  TRANS.frames=frames; TRANS.fi=0; TRANS.playing=true;
+  LARM.q=frames[0].q.slice(); TRANS.carry=!!frames[0].carry; larmRecalc();
+  if(tip) tip.textContent='左臂仿真搬运中 · '+frames.length+' 帧 · '+d.cycles+' 个模块'+(ikBad?(' · IK 跳过 '+ikBad+' 段'):'');
+  if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
+  drawVR();
+
+  let painted=0;
+  const step=()=>{
+    if(!TRANS.playing) return;
+    const _f=TRANS.frames[TRANS.fi];
+    LARM.q=_f.q; TRANS.carry=!!_f.carry;
+    larmRecalc();
+    TRANS.fi++;
+    if(TRANS.fi>=TRANS.frames.length){
+      TRANS.playing=false; TRANS.raf=null;
+      if(btn){ btn.classList.remove('on'); btn.textContent='🚚 仿真搬运'; }
+      if(tip) tip.textContent='走完 '+d.cycles+' 个模块 · 真机没动 · 左臂停在最后一个槽位';
+      drawVR(); return;
+    }
+    if((painted++ % 2)===0) drawVR();                  // 每 2 帧画一次, 别把浏览器拖死
+    TRANS.raf=requestAnimationFrame(step);
+  };
+  TRANS.raf=requestAnimationFrame(step);
+}
+if($('bTrans')) $('bTrans').addEventListener('click', transPlay);
+// 「↺ 跟右臂」复位时, 把左臂的独立关节角清掉, 恢复照抄右臂
+if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null; LARMFK=null; }, true);
+
 $('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; drawVR(); });
 $('bFit').addEventListener('click',async ()=>{
   const msg=$('bTrajMsg'); msg.style.color='#8b949e';

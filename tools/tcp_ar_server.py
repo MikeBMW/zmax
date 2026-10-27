@@ -1279,6 +1279,16 @@ class H(BaseHTTPRequestHandler):
                 # 真源: zmax_data/ar_live/ar_aoi_live.json 的 s{} + groups{} (ar_aoi_bus 推的台账)。
                 # 只认 <点名>.x/.y/.z 三件齐全的组 —— AOI/相机/机器人这种非坐标组不列。
                 self._json(_ar_points())
+            elif p == "/api/sim_transport":    # 🚚 左臂仿真搬运路径 (老倪 2026-10-27)
+                # 只读 zmax_data/runtime/traj/sim_transport.json, 不动真机一个字节
+                try:
+                    _f = os.path.join(REPO, "zmax_data", "runtime", "traj", "sim_transport.json")
+                    with open(_f, encoding="utf-8") as _fh:
+                        _d = json.load(_fh)
+                    _d["ok"] = True
+                    self._json(_d)
+                except Exception as e:                                             # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
                 self._json(self._follow_status())
             elif p == "/api/fence/check":      # 🧱 某点是否在围栏里
