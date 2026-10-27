@@ -1950,6 +1950,20 @@ function drawVR(){
     if(INSP.inHole){
       drawFlatModule(g, pr, [0.7905, 0.228, 0.278], '#a3e635');
     }
+    // ④ 检测段: 在末端旁标相机判定(金手指 / 侧面四��)
+    if(INSP.curCheck && PREV.M && PREV.M['tool1']){
+      const ck=INSP.curCheck, tp=pr(PREV.M['tool1'].t);
+      if(tp){
+        const ok=(ck.result==='OK');
+        g.fillStyle = ok ? '#34d399' : '#ef4444';
+        g.font='bold 12px monospace';
+        const nm = ck.camera ? ck.camera : (ck.face||'检测');
+        g.fillText('📷 '+(ck.face||(ck.kind==='golden'?'金手指':(ck.kind==='hole'?'插孔':'检测')))
+                   +' '+(ok?'OK':'NG'), tp.u+10, tp.v-10);
+        g.strokeStyle = ok ? '#34d399' : '#ef4444'; g.lineWidth=1.4;
+        g.beginPath(); g.arc(tp.u,tp.v,9,0,Math.PI*2); g.stroke();
+      }
+    }
   }
   // 🔁 插拔全流程: 已放下的模块 —— 良品落进下料盘(绿), NG 落进废料盘(红)
   if(typeof INSP!=='undefined' && INSP.on && INSP.doneK>0){
@@ -2548,7 +2562,7 @@ if($('bIns')) $('bIns').addEventListener('click', insSimPlay);
    全程紫色幽灵臂 PREV 驱动, 真机零指令。 */
 var INSP={on:false, playing:false, plan:[], cycles:[], dur:0, t0:0, si:0, doneK:0,
           carry:false, rate:1, vok:0, vng:0, tip:'', loading:false,
-          pickedK:0, inHole:false};
+          pickedK:0, inHole:false, curCheck:null};
 // 黑盘 1~14 号位 (与 tools/sim_insert_plan.py 同源; 1~7 示教真值, 8~14 近排推算)
 var SLOT_MM=[[490,499,118],[491,449,118],[492,401,118],[492,353,118],[493,303,118],[492,255,118],[494,205,118],
              [617,501,118],[615,451,118],[615,404,118],[618,355,118],[614,307,118],[614,260,118],[617,212,118]];
@@ -2614,6 +2628,7 @@ function inspStart(){
     else if(s.kind==='pull'){ INSP.carry=true; INSP.inHole=false; }
     else if(s.kind==='release'){ INSP.carry=(u<0.85); }
     else { INSP.carry=!!s.carry_to; }
+    INSP.curCheck = s.check || null;
     // 源盘少一个: 本循环走到第 3 段(夹爪闭合)之后 ⇒ 第 k 个已抓走
     // (不能用 kind==='grip' 命中判定: 高倍速会整段跳过, 抓取计数就丢了)
     var seq=s.seq||1;
@@ -2637,8 +2652,13 @@ function inspStart(){
         +' → 废料盘 · 节拍 '+INSP.dur.toFixed(1)+'s · 真机没动';
       drawVR(); return;
     }
-    if(tip) tip.textContent='循环 '+(s.k||0)+'/'+INSP.cycles.length+' · '+s.label
-      +' · 良品 '+INSP.vok+' · NG '+INSP.vng;
+    if(tip){
+      var chk=s.check, extra='';
+      if(chk){ extra=' · '+(chk.face||(chk.kind==='golden'?'金手指':chk.kind==='hole'?'插孔':''))
+                      +' '+chk.result; }
+      tip.textContent='循环 '+(s.k||0)+'/'+INSP.cycles.length+' · '+s.label+extra
+        +' · 良品 '+INSP.vok+' · NG '+INSP.vng;
+    }
     drawVR();
     requestAnimationFrame(step);
   };
