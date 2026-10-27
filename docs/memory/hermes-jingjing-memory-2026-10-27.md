@@ -1,4 +1,4 @@
-远程=三跳脚本 zmax/zmax_data/runtime/proxy_via_ecs_orin.sh (550B→ECS22→Orin22022 sshpass→Intel22免密); .23.66 Orin, .23.70 Intel(py3.12 train_venv/ArcB390); USB网卡拔了就只能走三跳
+远程: 本机常无产线USB网卡(仅WiFi .43.181); Orin .43.19(22/39061通, 产线口.66 TCP不通); 550C.70/工控机.23须经Orin跳; 执行腿=bridge 39071→Orin39061; legs旧指已废orin-ecs会exit255
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -17,8 +17,6 @@ Orin: ROS=domain0, tcp_pose 50Hz真值, 几何须ss_geom_calib, 只读遥测桥�
 真机3D须K+手眼+plane_z; D405深度unit=0.1mm(4013=401mm)
 §
 YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程做
-§
-真机画面报方向说'朝画面中心'
 §
 真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 执行腿=bridge(4060 l2_daemon→39071隧道→Orin 39061); 段表须带abs_mm; 550C不在执行链
 §

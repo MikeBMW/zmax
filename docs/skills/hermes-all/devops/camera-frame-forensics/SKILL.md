@@ -119,6 +119,9 @@ pm = QPixmap(path); img = pm.toImage()          # Qt 路径
   ① 连取两帧比 md5, **相同 ⇒ 已冻结**, 转采集/发布链取证(`references/ros-image-chain-forensics.md`);
   ② 读发布端自己的状态口(如桥的 `{"n","age_s"}`), `age_s` 大于一轮间隔就是停了;
   ③ 判读/标注/汇报一律挂**拍摄时刻 + 帧龄**, 帧龄大就明说"这帧是旧的, 不能当现场”。
+  ④ 🔴 **中转服务的 fps 计数会骗人**: 它统的是自己 HTTP 出帧的次数，源死了依旧按请求速率回同一份缓存字节。
+     实测某路 `fps 24.43 / age_s 0.0 / src_err 空`，而 5 次抓图跳 4.8s、md5 与字节数全同。
+     ⇒ 证源活只认**源端自己的 `n` 是否递增**（`n` 卡住 + `age_s` 一路涨 = 源死）；中转层的高 fps 反而会把你骗到"很快、只是没动"这个错误结论上。
 - **确认源曾冻结后, 要回头作废用它得出的结论**: 冻结窗口内发布过的画面判读(物体在不在、槽里有没有料、
   姿态、朝向)**全部不成立** ⇒ 源恢复后重取一帧重判, 并在回复里明确指出"前面那条基于冻结帧, 作废”。
   省了这一步, 用户会拿着一个错结论继续往下追。
@@ -487,6 +490,16 @@ rclpy 发 30fps ≈ 27MB/s ⇒ 序列化+拷贝把循环拖到 4-5fps。要满�
 `curl :8792` 回 **000** 而不是 503 时, 先 `systemctl is-active` —— 实测 relay 在
 "反复 stop/start 直到 restarts 上限"后会 `inactive` 并放弃, 这时重启 unit 即可,
 与相机/曝光/网络全部无关。
+
+- 🔴 **unit 只躺在项目目录（`~/.zmax/systemd/`）没装进 `/etc/systemd/system` = 重启后无人监听**，
+  而页面只会表现成"没图"。判据: `systemctl status <unit>` 回 `Unit ... could not be found`，
+  但文件明明在项目目录里 ⇒ 从未 `enable`。装的时候依赖要一起装：声明了 `Requires=<A>.service` 而 A 缺失时，
+  报错点名的是 **A**（`Failed to start B: Unit A not found`），看着像 B 不存在 —— 按 A 去找，
+  或干脆用 drop-in 把 `Requires=` 清空后自己直开设备。
+- 更彻底的一种（没有别的订阅者要那条 `Image` 话题时）：**让 relay 进程内直开相机** ——
+  `cv2.VideoCapture(节点) → imencode → HTTP`，整条 ROS/DDS 图像链不参与 ⇒ 27MB/s 的扇出与序列化开销直接消失，
+  CPU 和网络一起省。相机节点号按"能 open 且读到一帧"探测（USB reset 后编号会变，实测 video2 → video3），
+  别写死索引。
 
 ## 💀 RealSense **固件死锁**: 能枚举、能配流、就是不出帧 —— 软件手段全部无效, 只能拔插
 

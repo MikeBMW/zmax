@@ -97,6 +97,12 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
   heredoc 的内容根本进不了 `tee`, 而密码被当成文件内容写进去(实测 unit 文件里只剩 `ts123`)。
   定式 = 以目标用户用 heredoc 写文件 → `sudo` 只用于 `systemctl link`/`daemon-reload`/`restart`;
   写完后 `cat` 回读文件头两行验明没写错东西。
+- 🔴 **一条命令里每个 `sudo` 都要带 `-S`，漏一个就静默不写**: 非交互 ssh 下 `sudo tee`/`sudo mkdir`/`sudo cp` 报
+  `sudo: a terminal is required to read the password`；若它排在 `;`/`&&` 链中间，**文件根本没写成，而后面那句
+  `printf pw | sudo -S systemctl restart` 照样成功** ⇒ 服务拿**旧配置**重启了，现象与“改了没生效”一模一样。
+  判据: 重启后**回读落盘文件**(`cat` 那个 drop-in) + 看进程真实生效值(`systemctl show -p Environment` 或
+  `/proc/<pid>/environ`)；更快的旁证 = **服务自己的报错文案里还是旧参数**(实测仍报打不开 `/dev/video2`，而目标是 video3)。
+  另: drop-in 目录 `…service.d/` 不存在时 `tee` 同样失败 ⇒ 先 `mkdir -p` 再用 `sudo -S` 写。
 - **自愈要当场验**, 不要只写 `Restart=always`: `pkill -f '<脚本>'` → `sleep 6` → `systemctl is-active` +
   端口 `curl` 回 200 + 新 pid 存活 = 真自愈。不能重启整机验开机时, 用 `is-enabled` + `wants/` 链接存在作开机证据。
 - **目标机刚重启过、原来那套栈没自启时, 先量三样再动手**: `ros2 topic list | wc -l` (=0 就是没发布者)、
