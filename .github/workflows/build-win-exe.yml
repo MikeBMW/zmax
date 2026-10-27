@@ -291,9 +291,7 @@ jobs:
             ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
 
             > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
-            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
-            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
-            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
+            > 本版摘要由 `release-notes` job 从 VERSION.md 表首行回填 (旧版把摘要写死成 v5.50.737, 之后每版都挂着 737 的内容)。
 
             桌面版下载 (双平台):
             - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用
@@ -598,9 +596,7 @@ jobs:
             ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
 
             > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
-            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
-            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
-            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
+            > 本版摘要由 `release-notes` job 从 VERSION.md 表首行回填 (旧版把摘要写死成 v5.50.737, 之后每版都挂着 737 的内容)。
 
             桌面版下载 (双平台):
             - **macOS**: `Z-MAX_Console-macOS.zip` — 解压得到 `Z-MAX_Console.app` (Apple Silicon arm64;
@@ -609,3 +605,24 @@ jobs:
             - **Windows 免解包版**: `Z-MAX_Console-win64-nounpack.zip` — 机器内存紧 / TEMP 在 RAM 盘 / 系统盘满时用这个
               (单文件版每次启动要把 ~337MB 解包到 `%TEMP%`, 分配不到内存时会崩在
               `pyimod01_archive.extract → MemoryError`; zip 版不做运行时解包, 启动内存峰值低得多)
+
+
+  # ────────── 发布后回填正文（摘要唯一真源 = VERSION.md 表首行）──────────
+  # 2026-10-27: upload-release-action 只吃静态 body, 旧版把「本版」写死成 v5.50.737,
+  #   导致之后每个 Release 标题是新的、正文挂着 737 的内容。这里在两条构建都跑完后回填。
+  release-notes:
+    name: 回填本版摘要
+    needs: [build, build-mac]
+    if: always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch release body from VERSION.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TAG="${{ github.event.inputs.tag }}"; fi
+          python3 tools/ci/release_notes.py --tag "$TAG"
