@@ -65,3 +65,5 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 专利12件·渠74/74(patent_registry.json)
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
+§
+MoveIt起点须SDK直采(禁手推)
