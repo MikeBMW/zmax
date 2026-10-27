@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r31 · 新增「🚚 仿真搬运」(状态空间 plan 节点排段表 → 左臂仿真 14 个模块 左槽→右槽, 真机不动) + 「↩ 回退」+ 左臂料盘(Y+)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r32 · 左臂 tool1 模块头 + 左盘14待搬/右盘14已搬光模块(#60a5fa/#34d399) + 新增「🚚 仿真搬运」(状态空间 plan 节点排段表 → 左臂仿真 14 个模块 左槽→右槽, 真机不动) + 「↩ 回退」+ 左臂料盘(Y+)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -1906,16 +1906,7 @@ function drawVR(){
   if(LARM.show && URDF && LINKM){
     const X=larmXform();
     drawUrdf(g, pr, LARMFK || LINKM, X);        // 有独立关节角时用左臂自己的 FK (仿真搬运)
-    // 🔩 仿真搬运时, 手里抓着的光模块跟着 tool1 走到右料盘
-    if(TRANS.carry && LARMFK && LARMFK['tool1']){
-      const t1=LARMFK['tool1'];
-      const w=[X.R[0][0]*t1.t[0]+X.R[0][1]*t1.t[1]+X.R[0][2]*t1.t[2]+X.t[0],
-               X.R[1][0]*t1.t[0]+X.R[1][1]*t1.t[1]+X.R[1][2]*t1.t[2]+X.t[1],
-               X.R[2][0]*t1.t[0]+X.R[2][1]*t1.t[1]+X.R[2][2]*t1.t[2]+X.t[2]];
-      const s=pr(w);
-      if(s){ g.fillStyle='#a3e635'; g.strokeStyle='#65a30d'; g.lineWidth=1.2;
-             g.beginPath(); g.rect(s.u-5, s.v-5, 10, 10); g.fill(); g.stroke(); }
-    }
+    // (手里的光模块由下面的 🔩 模块头统一画, 不再画 10px 小方块)
     const o=pr(LARM.off.slice());
     if(o){
       g.strokeStyle=LARM.stroke; g.lineWidth=1.6;
@@ -1939,9 +1930,11 @@ function drawVR(){
   // 🔩 两个料盘里的光模块 (左盘待搬 / 右盘已搬)
   if(VR.mod) drawTrayModules(g, pr);
   // 🔩 左臂 tool1 模块头: 与右臂同一口径, 跟着左臂末端姿态走
-  if(VR.mod && LARM.show && LARMFK && LARMFK['tool1']){
+  if((VR.mod || TRANS.carry) && LARM.show && LARMFK && LARMFK['tool1']){
     const W=larmXform(), t1=LARMFK['tool1'];
-    const R=_m3mul(W.R, t1.R);
+    // 姿态用固定抓取姿态(模块长度∥世界X, 厚度朝下), 不跟 FK 的腕部朝向 ——
+    // 老倪: 「光模块都是平行于x轴摆放…你的 tool1 模块头也是与世界坐标系的x轴平行的」
+    const R=_m3mul(W.R, R_GRASP);
     const AX=_cols(R);
     const O=[0,1,2].map(i=> W.R[i][0]*t1.t[0]+W.R[i][1]*t1.t[1]+W.R[i][2]*t1.t[2]+W.t[i]);
     drawModuleAt(g, pr, O, AX, TRANS.carry?'#a3e635':'#ff8c1a', TRANS.carry?'#65a30d':'#ffc457');
@@ -2122,6 +2115,75 @@ function _solve3(A,b){                     // 3x3 高斯消元 (带选主元)
   for(let i=2;i>=0;i--){ let s=M[i][3]; for(let c=i+1;c<3;c++) s-=M[i][c]*x[c]; x[i]=s/M[i][i]; }
   return x;
 }
+
+// ── 姿态 IK 的小工具 (2026-10-27: 老倪要求 tool1 模块头也平行世界 X 轴) ──────────
+function _m3T(R){ return [[R[0][0],R[1][0],R[2][0]],[R[0][1],R[1][1],R[2][1]],[R[0][2],R[1][2],R[2][2]]]; }
+function _axisAngle(R){                                  // 旋转矩阵 → 轴角向量(弧度)
+  const tr=R[0][0]+R[1][1]+R[2][2];
+  const ang=Math.acos(Math.max(-1,Math.min(1,(tr-1)/2)));
+  if(ang<1e-6) return [0,0,0];
+  const s=2*Math.sin(ang);
+  if(Math.abs(s)<1e-6) return [0,0,0];
+  return [(R[2][1]-R[1][2])/s*ang, (R[0][2]-R[2][0])/s*ang, (R[1][0]-R[0][1])/s*ang];
+}
+function _solveN(A,b,n){                                 // 高斯消元(部分主元), 6x6 也够用
+  const M=A.map((row,i)=>row.slice().concat([b[i]]));
+  for(let c=0;c<n;c++){
+    let p=c; for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[p][c])) p=r;
+    if(Math.abs(M[p][c])<1e-12) return null;
+    if(p!==c){ const t=M[p]; M[p]=M[c]; M[c]=t; }
+    for(let r=0;r<n;r++){
+      if(r===c) continue;
+      const f=M[r][c]/M[c][c];
+      for(let k=c;k<=n;k++) M[r][k]-=f*M[c][k];
+    }
+  }
+  const x=[]; for(let i=0;i<n;i++) x.push(M[i][n]/M[i][i]);
+  return x;
+}
+
+// 抓取姿态(世界系): tool1 的 Z(长度)∥+X 轴 · X(厚度)∥−Z(朝下) · Y(宽度)∥+Y
+// 来源: zmax_data/ar_rs/module_calib_ref.json 的 quat [w,x,y,z]=[0.728266,0.022327,0.684847,0.010713]
+//   ⇒ 实测第三列 [0.9980,-0.0178,0.0610] ≈ +X, 与老倪说的"长度方向平行 x 轴"一致
+var R_GRASP=[[0.0617,0.0150,0.9980],[0.0462,0.9988,-0.0178],[-0.9971,0.0462,0.0610]];
+
+// 位置+姿态 6 维 IK: target(米) 要到位, 同时 tool1 的姿态要贴 Rdes
+//   位置用米、姿态用弧度 ⇒ 姿态乘 W_ROT 换算到同一量级(0.06 ≈ 60mm/rad 的姿态权重)
+function ikTool1Pose(target, q0, Rdes){
+  if(!URDF) return null;
+  const NJ=6, leaf=(TCP&&TCP.link_leaf)||'tool1', W_ROT=0.06;
+  let q=(q0||[]).slice(0,NJ); while(q.length<NJ) q.push(0);
+  const fk=(qq)=>{ const M=urdfFK(qq); return (M[leaf]||M['tool1']||M['tool0'])||null; };
+  let best=q.slice(), bestP=1e9, bestR=1e9, bestCost=1e18;
+  for(let it=0; it<140; it++){
+    const M=fk(q); if(!M) return null;
+    const p=M.t;
+    const ep=[target[0]-p[0], target[1]-p[1], target[2]-p[2]];
+    const eo=_axisAngle(_m3mul(Rdes, _m3T(M.R)));
+    const np=Math.hypot(ep[0],ep[1],ep[2]), nr=Math.hypot(eo[0],eo[1],eo[2]);
+    // 综合代价: 位置(mm) + 姿态(deg)×3 —— 只按位置挑会选出"到位但歪着"的解
+    const cost=np*1000 + nr*57.2958*3;
+    if(cost<bestCost){ bestCost=cost; bestP=np; bestR=nr; best=q.slice(); }
+    if(np<0.0006 && nr<0.02) break;                      // 0.6mm + 1.1°
+    const J=[[],[],[],[],[],[]], D=1e-4;
+    for(let j=0;j<NJ;j++){
+      const qq=q.slice(); qq[j]+=D;
+      const M2=fk(qq); if(!M2) return null;
+      for(let r=0;r<3;r++) J[r].push((M2.t[r]-p[r])/D);
+      const w2=_axisAngle(_m3mul(Rdes, _m3T(M2.R)));
+      // 差分必须减基准 eo: 之前漏了 ⇒ 姿态雅可比是"绝对值/D", 姿态项完全不收敛(实测卡在 120°)
+      for(let r=0;r<3;r++) J[3+r].push((w2[r]-eo[r])*W_ROT/D);
+    }
+    const e=[ep[0],ep[1],ep[2], eo[0]*W_ROT, eo[1]*W_ROT, eo[2]*W_ROT];
+    const A=[]; for(let r=0;r<6;r++){ const row=[]; for(let c2=0;c2<6;c2++){
+      let s=0; for(let j=0;j<NJ;j++) s+=J[r][j]*J[c2][j]; row.push(s+(r===c2?4e-4:0)); } A.push(row); }
+    const y=_solveN(A,e,6); if(!y) return null;
+    for(let j=0;j<NJ;j++){ let dq=0; for(let r=0;r<6;r++) dq+=J[r][j]*y[r];
+      q[j]+=Math.max(-0.12,Math.min(0.12,dq)); }
+  }
+  return {q:best, err_mm:bestP*1000, err_deg:bestR*180/Math.PI};
+}
+
 function ikTool1(target,q0){               // target:[x,y,z] 米 · q0: 6 关节角(弧度) → {q,err_mm}
   if(!URDF) return null;
   const NJ=6; let q=(q0||[]).slice(0,NJ);
@@ -2248,7 +2310,7 @@ async function transPlay(){
     if((s.label||"").indexOf("抓起")>=0) carry=true;
     const A=[s.p_from[0]-off[0], s.p_from[1]-off[1], s.p_from[2]-off[2]];   // 世界 → 左臂自身系
     const B=[s.p_to[0]-off[0],   s.p_to[1]-off[1],   s.p_to[2]-off[2]];
-    const ra=ikTool1(A,q);
+    const ra=ikTool1(A,q);                      // 位置 IK(可靠, PREV 实测残差 0.03mm)
     if(!ra){ ikBad++; continue; }
     const rb=ikTool1(B, ra.q);
     if(!rb){ ikBad++; continue; }
@@ -2988,12 +3050,14 @@ function drawModuleAt(g, pr, O, AX, fillHead, strokeCol){
   }
 }
 
-// 料盘里的模块(躺平): 长轴沿 Y, 宽沿 X, 厚沿 Z —— 只画 12 条棱, 28 个也不卡
+// 料盘里的模块(躺平): **长轴沿世界 X**, 宽沿 Y, 厚沿 Z —— 只画 12 条棱, 28 个也不卡
+// 老倪 2026-10-27 纠正: 「1号位到7号位的位姿, 光模块的位姿, 长度方向几乎都是与 x 轴平行的,
+//   误差来自于料盘槽位的间隙; 理论上光模块都是平行于 x 轴摆放的, 而且都是整齐放置」
 function drawFlatModule(g, pr, c, col){
   const L=(MODSPEC.L_mm||56.5)/2000, W=(MODSPEC.W_mm||13.4)/2000, T=(MODSPEC.T_mm||8.5)/2000;
   const pts=[];
   for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1])
-    pts.push([c[0]+sx*W, c[1]+sy*L, c[2]+sz*T]);
+    pts.push([c[0]+sx*L, c[1]+sy*W, c[2]+sz*T]);
   const P=pts.map(pr);
   if(!P.every(q=>q)) return;
   const E=[[0,4],[1,5],[2,6],[3,7],[0,2],[1,3],[4,6],[5,7],[0,1],[2,3],[4,5],[6,7]];
