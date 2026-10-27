@@ -1289,6 +1289,16 @@ class H(BaseHTTPRequestHandler):
                     self._json(_d)
                 except Exception as e:                                             # noqa: BLE001
                     self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+            elif p == "/api/sim_insert":       # 🔁 右臂插拔全流程 (抓取→插孔→拔出→良品下料盘/NG废料盘)
+                # 只读 zmax_data/runtime/traj/sim_insert.json, 纯仿真, 不碰真机
+                try:
+                    _f = os.path.join(REPO, "zmax_data", "runtime", "traj", "sim_insert.json")
+                    with open(_f, encoding="utf-8") as _fh:
+                        _d = json.load(_fh)
+                    _d["ok"] = True
+                    self._json(_d)
+                except Exception as e:                                             # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
             elif p == "/api/fence/follow/status":   # 🏃 跟随状态 (页面轮询)
                 self._json(self._follow_status())
             elif p == "/api/fence/check":      # 🧱 某点是否在围栏里

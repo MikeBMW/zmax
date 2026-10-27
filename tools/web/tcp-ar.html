@@ -175,6 +175,7 @@
     <div class="row" style="margin-top:8px">
       <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
       <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
+      <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <!-- ↩ 2026-10-27 老倪: 「刚才我不小心用鼠标挪动了料盘的位置; 增加一个回退功能; 回到上一步」
@@ -1933,6 +1934,22 @@ function drawVR(){
       if(s){ g.fillStyle='#a3e635'; g.font='bold 11px monospace'; g.fillText('✅ 已插入 47mm', s.u+8, s.v-6); }
     }
   }
+  // 🔁 插拔全流程: 已放下的模块 —— 良品落进下料盘(绿), NG 落进废料盘(红)
+  if(typeof INSP!=='undefined' && INSP.on && INSP.doneK>0){
+    for(var pi=0; pi<INSP.doneK && pi<INSP.cycles.length; pi++){
+      const c=INSP.cycles[pi];
+      if(!c || !c.target) continue;
+      drawFlatModule(g, pr, [c.target[0]/1000, c.target[1]/1000, c.target[2]/1000],
+                     (c.verdict==='NG') ? '#ef4444' : '#34d399');
+    }
+    // 盘边计数: 一眼看清 12 良品进了下料盘、2 个 NG 进了废料盘
+    const sL=pr([0.5188, 0.075, 0.170]);
+    if(sL){ g.fillStyle='#34d399'; g.font='bold 13px monospace';
+            g.fillText('良品 '+INSP.vok+' / 12 → 下料盘', sL.u+6, sL.v-4); }
+    const sS=pr([0.5188, -0.402, 0.170]);
+    if(sS){ g.fillStyle='#ef4444'; g.font='bold 13px monospace';
+            g.fillText('NG '+INSP.vng+' / 2 → 废料盘', sS.u+6, sS.v-4); }
+  }
   // 🤖 左臂(仿真臂) —— 老倪 2026-10-26: 同一套 URDF/关节角, 原心在 base 系 Y=+500mm,
   //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
   if(LARM.show && URDF && LINKM){
@@ -2506,6 +2523,98 @@ function insSimPlay(){
   requestAnimationFrame(step);
 }
 if($('bIns')) $('bIns').addEventListener('click', insSimPlay);
+
+/* 🔁 右臂插拔全流程仿真 (2026-10-27 老倪)
+   「左臂上料以后, 右臂插拔, 从左侧第二个盘依次抓取光模块, 插入插孔, 再拔出放到下料盘;
+     检测失败则放到废料盘; 12 个良品, 2 个不良品」
+   数据源 /api/sim_insert (tools/sim_insert_plan.py 生成, 210 段/14 循环)。
+   全程紫色幽灵臂 PREV 驱动, 真机零指令。 */
+var INSP={on:false, playing:false, plan:[], cycles:[], dur:0, t0:0, si:0, doneK:0,
+          carry:false, rate:1, vok:0, vng:0, tip:'', loading:false};
+
+function inspPrepare(d){
+  INSP.plan=d.plan||[]; INSP.cycles=d.cycles_data||[]; INSP.dur=d.total_t||0;
+  var q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
+  var bad=0;
+  for(var i=0;i<INSP.plan.length;i++){
+    var s=INSP.plan[i];
+    var ra=ikTool1(s.a.map(function(v){return v/1000;}), q);
+    if(!ra){ bad++; s.qa=q.slice(); s.qb=q.slice(); continue; }
+    var same=(s.a[0]===s.b[0]&&s.a[1]===s.b[1]&&s.a[2]===s.b[2]);
+    var rb=same?ra:ikTool1(s.b.map(function(v){return v/1000;}), ra.q);
+    s.qa=ra.q; s.qb=(rb||ra).q; q=s.qb;
+  }
+  INSP.badIK=bad;
+  return bad;
+}
+
+function inspPlay(){
+  var b=$('bInsp'), tip=$('tIns');
+  if(INSP.playing){
+    INSP.playing=false; INSP.carry=false;
+    if(b){ b.classList.remove('on'); b.textContent='🔁 插拔全流程'; }
+    if(tip) tip.textContent='已停 · 良品 '+INSP.vok+' / NG '+INSP.vng+' · 真机没动';
+    drawVR(); return;
+  }
+  if(INSP.plan.length){ inspStart(); return; }
+  if(INSP.loading) return;
+  INSP.loading=true;
+  fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(d){
+    INSP.loading=false;
+    if(!d.ok){ if(tip) tip.textContent='读取失败: '+(d.err||''); return; }
+    var bad=inspPrepare(d);
+    if(tip) tip.textContent='已载 '+INSP.cycles.length+' 循环 / '+INSP.plan.length+' 段 · 节拍 '+INSP.dur.toFixed(1)+'s'+(bad?(' · IK 跳过 '+bad):'');
+    inspStart();
+  }).catch(function(e){ INSP.loading=false; if(tip) tip.textContent='网络错: '+e.message; });
+}
+
+function inspStart(){
+  INSP.on=true; INSP.playing=true; INSP.si=0; INSP.doneK=0; INSP.carry=false;
+  INSP.vok=0; INSP.vng=0; INSP.t0=performance.now();
+  PREV.on=true; PREV.err_mm=null; PREV.target=null;
+  var b=$('bInsp'), tip=$('tIns');
+  if(b){ b.classList.add('on'); b.textContent='⏹ 停止流程'; }
+  drawVR();
+  var step=function(){
+    if(!INSP.playing) return;
+    var el=(performance.now()-INSP.t0)/1000*INSP.rate;
+    var acc=0, si=0, P=INSP.plan;
+    while(si<P.length-1 && acc+P[si].t<=el){ acc+=P[si].t; si++; }
+    var s=P[si];
+    var u=(s.t>0)?Math.min(1,(el-acc)/s.t):1;
+    INSP.si=si;
+    // 关节插值
+    var q=s.qa.map(function(v,j){ return v+(s.qb[j]-v)*u; });
+    PREV.q=q; PREV.M=urdfFK(q);
+    INSP.carry=!!(u<0.5?s.carry_from:s.carry_to);
+    // 循环完成判定(单调递增, 只数一次): 正在做第 s.k 循环 ⇒ 已放下 s.k-1 个;
+    // 走到"抬起脱离"段说明本循环也放下了 ⇒ s.k 个
+    var k=s.k||0;
+    var done=(k>0)?(k-1):0;
+    if(s.kind==='up' && s.label==='抬起脱离') done=k;
+    if(done>INSP.doneK){
+      for(var j=INSP.doneK;j<done && j<INSP.cycles.length;j++){
+        if(INSP.cycles[j]){ if(INSP.cycles[j].verdict==='OK') INSP.vok++; else INSP.vng++; }
+      }
+      INSP.doneK=Math.min(done, INSP.cycles.length);
+    }
+    if(el>=INSP.dur){
+      INSP.playing=false; INSP.carry=false; INSP.doneK=INSP.cycles.length;
+      if(b){ b.classList.remove('on'); b.textContent='🔁 插拔全流程'; }
+      if(tip) tip.textContent='全流程完成 · 良品 '+INSP.cycles.filter(function(c){return c.verdict==='OK';}).length
+        +' → 下料盘 · NG '+INSP.cycles.filter(function(c){return c.verdict==='NG';}).length
+        +' → 废料盘 · 节拍 '+INSP.dur.toFixed(1)+'s · 真机没动';
+      drawVR(); return;
+    }
+    if(tip) tip.textContent='循环 '+(s.k||0)+'/'+INSP.cycles.length+' · '+s.label
+      +' · 良品 '+INSP.vok+' · NG '+INSP.vng;
+    drawVR();
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+if($('bInsp')) $('bInsp').addEventListener('click', inspPlay);
+
 
 // 「↺ 跟右臂」复位时, 把左臂的独立关节角清掉, 恢复照抄右臂
 if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null; LARMFK=null; }, true);
