@@ -174,7 +174,9 @@
          用一个新颜色表达模拟动作的右臂」 -->
     <div class="row" style="margin-top:8px">
       <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
+      <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <!-- ↩ 2026-10-27 老倪: 「刚才我不小心用鼠标挪动了料盘的位置; 增加一个回退功能; 回到上一步」
            每次加/改/删围栏之前都会存快照, 这里点一下退一步; 连点可以一直退。 -->
       <button id="bUndo" class="sm" style="margin-left:14px" title="↩ 回到上一步: 把围栏/料盘/槽位恢复到上一次编辑之前的状态(连点可连续回退)">↩ 回退</button>
@@ -1915,6 +1917,19 @@ function drawVR(){
       g.fillText('👻 预览末端'+(PREV.err_mm!=null?' '+PREV.err_mm.toFixed(1)+'mm':''), e.u+9, e.v-7);
     }
   }
+  // 🔌 插入仿真: 手里的模块跟着幽灵臂 tool1 走; 插完就留在孔里(767→814)
+  if(typeof INSIM!=='undefined' && (INSIM.carry || INSIM.inserted)){
+    if(INSIM.carry && PREV.M && PREV.M['tool1']){
+      const t1=PREV.M['tool1'];
+      drawModuleAt(g, pr, t1.t, _cols(t1.R), '#a3e635', '#65a30d');
+    }
+    if(INSIM.inserted){
+      // 插入到位: 模块中心 x=(767+814)/2=790.5, y=228, z=278, 长轴沿 X
+      drawFlatModule(g, pr, [0.7905, 0.228, 0.278], '#a3e635');
+      const s=pr([0.7905,0.228,0.290]);
+      if(s){ g.fillStyle='#a3e635'; g.font='bold 11px monospace'; g.fillText('✅ 已插入 47mm', s.u+8, s.v-6); }
+    }
+  }
   // 🤖 左臂(仿真臂) —— 老倪 2026-10-26: 同一套 URDF/关节角, 原心在 base 系 Y=+500mm,
   //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
   if(LARM.show && URDF && LINKM){
@@ -2415,6 +2430,78 @@ async function transPlay(){
   TRANS.raf=requestAnimationFrame(step);
 }
 if($('bTrans')) $('bTrans').addEventListener('click', transPlay);
+
+/* 🔌 右臂插孔插入仿真 (2026-10-27 老倪: 「用右臂预览仿真的机械臂, 抓起一个光模块, 插入这个插孔」)
+   全程驱动紫色幽灵臂 PREV(只画不发指令), 真机零动作。
+   起抓点 = 7 号位 (647,206,108) 上方; 插孔 = 实测插入口 767,228,278 → 插入点 814,228,278 (沿 +X 插入 47mm)。
+   模块长度本来就沿 X, 与插入方向一致。 */
+var INS_SEGS=[
+  {label:'下降到 7 号位抓取', a:[0.647,0.206,0.172], b:[0.647,0.206,0.130], t:0.8},
+  {label:'夹爪闭合',          a:[0.647,0.206,0.130], b:[0.647,0.206,0.130], t:0.5, grip:true},
+  {label:'抓起抬起',          a:[0.647,0.206,0.130], b:[0.647,0.206,0.240], t:1.0},
+  {label:'移到准备点上方',    a:[0.647,0.206,0.240], b:[0.691,0.227,0.300], t:1.2},
+  {label:'下降到准备点',      a:[0.691,0.227,0.300], b:[0.691,0.227,0.271], t:0.6},
+  {label:'平移到插入口',      a:[0.691,0.227,0.271], b:[0.767,0.228,0.278], t:0.9},
+  {label:'插入到位 47mm',     a:[0.767,0.228,0.278], b:[0.814,0.228,0.278], t:0.8}
+];
+var INSIM={playing:false, frames:[], fi:0, t0:0, dur:0, carry:false, inserted:false, seg:''};
+
+function insSimPlay(){
+  var b=$('bIns'), tip=$('tIns');
+  if(INSIM.playing){
+    INSIM.playing=false; INSIM.carry=false; INSIM.inserted=false;
+    if(b){ b.classList.remove('on'); b.textContent='🔌 插入仿真'; }
+    if(tip) tip.textContent='已停 · 真机没动';
+    drawVR(); return;
+  }
+  if(!URDF){ if(tip) tip.textContent='URDF 还没加载完'; return; }
+  var q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
+  var frames=[], tt=0, carry=false, bad=0;
+  for(var si=0; si<INS_SEGS.length; si++){
+    var s=INS_SEGS[si];
+    var ra=ikTool1(s.a.slice(), q);
+    if(!ra){ bad++; continue; }
+    var same=(s.a[0]===s.b[0]&&s.a[1]===s.b[1]&&s.a[2]===s.b[2]);
+    var rb=same ? ra : ikTool1(s.b.slice(), ra.q);
+    if(!rb){ bad++; continue; }
+    if(s.grip) carry=true;
+    var n=Math.max(4, Math.round(s.t*20));           // 20 帧/秒
+    for(var i=0;i<=n;i++){
+      var u=i/n;
+      frames.push({q: ra.q.map(function(v,j){return v+(rb.q[j]-v)*u;}), t: tt+s.t*u,
+                   carry: carry, seg: s.label});
+    }
+    tt += s.t; q=rb.q;
+  }
+  if(!frames.length){ if(tip) tip.textContent='IK 全部失败'; return; }
+  INSIM.frames=frames; INSIM.dur=tt; INSIM.fi=0; INSIM.t0=performance.now();
+  INSIM.playing=true; INSIM.carry=false; INSIM.inserted=false;
+  PREV.on=true; PREV.err_mm=null; PREV.target=null;     // 借紫色幽灵臂来画
+  if(b){ b.classList.add('on'); b.textContent='⏹ 停止仿真'; }
+  if(tip) tip.textContent='插入仿真中 · 节拍 '+tt.toFixed(1)+'s · 7 段'+(bad?(' · IK 跳过 '+bad+' 段'):'');
+  drawVR();
+  var step=function(){
+    if(!INSIM.playing) return;
+    var el=(performance.now()-INSIM.t0)/1000;
+    var i=INSIM.fi;
+    while(i<frames.length-1 && frames[i+1].t<=el) i++;
+    INSIM.fi=i;
+    var f=frames[i];
+    PREV.q=f.q; PREV.M=urdfFK(f.q);
+    INSIM.carry=!!f.carry; INSIM.seg=f.seg||'';
+    if(el>=INSIM.dur){
+      INSIM.playing=false; INSIM.carry=false; INSIM.inserted=true;
+      if(b){ b.classList.remove('on'); b.textContent='🔌 插入仿真'; }
+      if(tip) tip.textContent='插入完成 · 模块在孔里(767→814) · 节拍 '+INSIM.dur.toFixed(1)+'s · 真机没动';
+      drawVR(); return;
+    }
+    drawVR();
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+if($('bIns')) $('bIns').addEventListener('click', insSimPlay);
+
 // 「↺ 跟右臂」复位时, 把左臂的独立关节角清掉, 恢复照抄右臂
 if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null; LARMFK=null; }, true);
 
