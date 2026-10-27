@@ -259,8 +259,8 @@
         <span style="font:700 12.5px system-ui,sans-serif;color:#c9d1d9">📍 工程配置点位
           <span id="tCfgN" style="font-weight:400;color:#6b7a8d">—</span></span>
         <span style="display:flex;gap:4px">
-          <button id="bCfgAll" class="sm" style="padding:2px 8px">全开</button>
-          <button id="bCfgNone" class="sm" style="padding:2px 8px">全关</button>
+          <button id="bCfgAll" class="sm" style="padding:2px 8px" title="全开: 点位全部显示 + 恢复画布文字">全开</button>
+          <button id="bCfgNone" class="sm" style="padding:2px 8px" title="全关: 点位全部隐藏 + 画布文字全部收起(只看图形)">全关</button>
         </span>
       </div>
       <div id="rowCfgPts" class="row" style="flex-direction:column;gap:4px"></div>
@@ -429,6 +429,20 @@ var CFG_TARGET=null;
 //   画法: 右臂正运动学点 p 先按 rpy 转、加 d, 再加 off ⇒ 世界坐标。复位(d=rpy=0)时两条臂完全同姿态。
 //  q = 左臂自己的 6 关节角(弧度)。null ⇒ 照抄右臂姿态(默认); 有值 ⇒ 用 urdfFK(q) 单独算左臂外形
 var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], q:null, fill:'#12363c', stroke:'#5eead4'};
+/* 🏷 画布文字总开关 —— 老倪 2026-10-27: 「点击全关的同时, 可以把所有文字显示都关掉,
+   现在的文字太多了, 影响阅读。全开则是显示文字」
+   做法: 全局挂 VR_TEXT, 直接拦 canvas 的 fillText/strokeText, 3D 视图里所有文字一次全灭,
+   面板/按钮是 DOM 不受影响。 */
+var VR_TEXT=true;
+(function(){
+  var proto=CanvasRenderingContext2D.prototype;
+  if(proto.__zmaxTextPatched) return;
+  var f=proto.fillText, s=proto.strokeText;
+  proto.fillText=function(){ if(window.VR_TEXT===false) return; return f.apply(this, arguments); };
+  proto.strokeText=function(){ if(window.VR_TEXT===false) return; return s.apply(this, arguments); };
+  proto.__zmaxTextPatched=true;
+})();
+
 var LARMFK=null;   // LARM.q 的正运动学结果; 非空时左臂用它画, 不再照抄右臂
 // 📷 顶视相机(具身智能第三视角) —— 老倪 2026-10-26: 「在左右臂之间增加一个圆柱体, 顶部有个相机,
 //   按照 realsense 为模板, 作为具身智能的顶视相机; 圆柱的高度与 1 轴的高度相同; 你来设计一个相机」
@@ -1818,8 +1832,8 @@ function drawCfgPts(g, pr){
     }
   }
 }
-{ const _a=$('bCfgAll'); if(_a) _a.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=true); paintCfgPts(); drawVR(); }; }
-{ const _n=$('bCfgNone'); if(_n) _n.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=false); paintCfgPts(); drawVR(); }; }
+{ const _a=$('bCfgAll'); if(_a) _a.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=true); window.VR_TEXT=true; paintCfgPts(); drawVR(); }; }
+{ const _n=$('bCfgNone'); if(_n) _n.onclick=()=>{ CFG_PTS.forEach(p=>CFG_ON[p.name]=false); window.VR_TEXT=false; paintCfgPts(); drawVR(); }; }
 // 📍 首屏拉一次 + 10s 跟随(台账变了才重排左栏, 不打断正在点的按钮)。
 //    2026-10-26 坑: 一开始写在 loadCams() 里 `await loadCalib()` 之后 —— 实测第二路页面
 //    /api/calib 慢/失败时整条链跳过 ⇒ 点位永远 0 个(判据直接红)。点位和相机是两件事, 独立起。
