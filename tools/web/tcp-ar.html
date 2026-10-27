@@ -1934,6 +1934,23 @@ function drawVR(){
       if(s){ g.fillStyle='#a3e635'; g.font='bold 11px monospace'; g.fillText('✅ 已插入 47mm', s.u+8, s.v-6); }
     }
   }
+  // 🔁 插拔全流程: 源盘同步 + 手里模块 + 已放下
+  if(typeof INSP!=='undefined' && INSP.on){
+    // ① 黑盘里还没被抓走的模块(蓝) —— 抓一个少一个
+    for(var si0=(INSP.pickedK||0); si0<14; si0++){
+      const sp=SLOT_MM[si0];
+      drawFlatModule(g, pr, [sp[0]/1000, sp[1]/1000, sp[2]/1000], '#60a5fa');
+    }
+    // ② 手里抓着的那一个(绿, 跟着 ghost tool1 走, 轴对齐)
+    if(INSP.carry && PREV.M && PREV.M['tool1']){
+      const t1=PREV.M['tool1'], Lm=(MODSPEC.L_mm||56.5)/1000;
+      drawFlatModule(g, pr, [t1.t[0]+Lm/2, t1.t[1], t1.t[2]], '#a3e635');
+    }
+    // ③ 插在孔里那一瞬间(插到位停留期间)
+    if(INSP.inHole){
+      drawFlatModule(g, pr, [0.7905, 0.228, 0.278], '#a3e635');
+    }
+  }
   // 🔁 插拔全流程: 已放下的模块 —— 良品落进下料盘(绿), NG 落进废料盘(红)
   if(typeof INSP!=='undefined' && INSP.on && INSP.doneK>0){
     for(var pi=0; pi<INSP.doneK && pi<INSP.cycles.length; pi++){
@@ -2530,7 +2547,11 @@ if($('bIns')) $('bIns').addEventListener('click', insSimPlay);
    数据源 /api/sim_insert (tools/sim_insert_plan.py 生成, 210 段/14 循环)。
    全程紫色幽灵臂 PREV 驱动, 真机零指令。 */
 var INSP={on:false, playing:false, plan:[], cycles:[], dur:0, t0:0, si:0, doneK:0,
-          carry:false, rate:1, vok:0, vng:0, tip:'', loading:false};
+          carry:false, rate:1, vok:0, vng:0, tip:'', loading:false,
+          pickedK:0, inHole:false};
+// 黑盘 1~14 号位 (与 tools/sim_insert_plan.py 同源; 1~7 示教真值, 8~14 近排推算)
+var SLOT_MM=[[490,499,118],[491,449,118],[492,401,118],[492,353,118],[493,303,118],[492,255,118],[494,205,118],
+             [617,501,118],[615,451,118],[615,404,118],[618,355,118],[614,307,118],[614,260,118],[617,212,118]];
 
 function inspPrepare(d){
   INSP.plan=d.plan||[]; INSP.cycles=d.cycles_data||[]; INSP.dur=d.total_t||0;
@@ -2570,6 +2591,7 @@ function inspPlay(){
 
 function inspStart(){
   INSP.on=true; INSP.playing=true; INSP.si=0; INSP.doneK=0; INSP.carry=false;
+  INSP.pickedK=0; INSP.inHole=false;
   INSP.vok=0; INSP.vng=0; INSP.t0=performance.now();
   PREV.on=true; PREV.err_mm=null; PREV.target=null;
   var b=$('bInsp'), tip=$('tIns');
@@ -2586,7 +2608,16 @@ function inspStart(){
     // 关节插值
     var q=s.qa.map(function(v,j){ return v+(s.qb[j]-v)*u; });
     PREV.q=q; PREV.M=urdfFK(q);
-    INSP.carry=!!(u<0.5?s.carry_from:s.carry_to);
+    // 手中是否有模块 / 是否已插在孔里 —— 按段语义判, 比 carry_from/to 插值准
+    if(s.kind==='check'){ INSP.carry=false; INSP.inHole=true; }
+    else if(s.kind==='insert'){ INSP.carry=true; INSP.inHole=(u>=0.999); }
+    else if(s.kind==='pull'){ INSP.carry=true; INSP.inHole=false; }
+    else if(s.kind==='release'){ INSP.carry=(u<0.85); }
+    else { INSP.carry=!!s.carry_to; }
+    // 源盘少一个: 本循环走到第 3 段(夹爪闭合)之后 ⇒ 第 k 个已抓走
+    // (不能用 kind==='grip' 命中判定: 高倍速会整段跳过, 抓取计数就丢了)
+    var seq=s.seq||1;
+    INSP.pickedK=Math.max(INSP.pickedK||0, INSP.doneK, (seq>=3?(s.k||0):Math.max(0,(s.k||1)-1)));
     // 循环完成判定(单调递增, 只数一次): 正在做第 s.k 循环 ⇒ 已放下 s.k-1 个;
     // 走到"抬起脱离"段说明本循环也放下了 ⇒ s.k 个
     var k=s.k||0;
