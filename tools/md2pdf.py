@@ -181,25 +181,38 @@ def convert(md_path, pdf_path, title=None, subtitle=None):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(page)
 
+    ext = os.path.splitext(pdf_path)[1].lower().lstrip(".") or "pdf"
+    if ext not in ("pdf", "docx"):
+        raise SystemExit("只支持 .pdf / .docx 输出，收到 .%s" % ext)
+
     base = ["soffice", "--headless", "--norestore",
             "-env:UserInstallation=" + profile]
     run(base + ["--convert-to", "odt", "--outdir", work, html_path])
     odt = os.path.join(work, "doc.odt")
     if not os.path.exists(odt):
         raise RuntimeError("odt 没生成：%s" % work)
-    run(base + ["--convert-to", "pdf", "--outdir", work, odt])
+    run(base + ["--convert-to", ext, "--outdir", work, odt])
 
-    out_pdf = os.path.join(work, "doc.pdf")
-    if not os.path.exists(out_pdf):
-        raise RuntimeError("pdf 没生成：%s" % work)
+    produced = os.path.join(work, "doc." + ext)
+    if not os.path.exists(produced):
+        raise RuntimeError("%s 没生成：%s" % (ext, work))
     os.makedirs(os.path.dirname(os.path.abspath(pdf_path)), exist_ok=True)
-    with open(out_pdf, "rb") as src, open(pdf_path, "wb") as dst:
+    with open(produced, "rb") as src, open(pdf_path, "wb") as dst:
         dst.write(src.read())
     return pdf_path
 
 
 def selfcheck(pdf_path):
     """抠字自检：中文成串 + 无 markdown 标记残留 + 页数"""
+    if pdf_path.lower().endswith(".docx"):
+        import zipfile
+        with zipfile.ZipFile(pdf_path) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "ignore")
+        txt = re.sub(r"<[^>]+>", " ", xml)
+        txt = html.unescape(txt)
+        return {"pages": None, "chars": len(txt),
+                "cjk": len(re.findall(r"[\u4e00-\u9fff]", txt)),
+                "stray_markup": {}, "bytes": os.path.getsize(pdf_path)}
     info = subprocess.run(["pdfinfo", pdf_path], capture_output=True, text=True).stdout
     pages = re.search(r"Pages:\s+(\d+)", info)
     txt = subprocess.run(["pdftotext", pdf_path, "-"], capture_output=True, text=True).stdout
@@ -230,7 +243,7 @@ def main():
     chk = selfcheck(out)
     print("PDF:", out)
     print("  页数 %s · 提取字符 %d · 中文字 %d · 大小 %.1f KB"
-          % (chk["pages"], chk["chars"], chk["cjk"], chk["bytes"] / 1024))
+          % (chk["pages"] or "-", chk["chars"], chk["cjk"], chk["bytes"] / 1024))
     if chk["stray_markup"]:
         print("  ⚠️ markdown 标记残留:", chk["stray_markup"])
     if chk["cjk"] < 200:
