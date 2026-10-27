@@ -1267,7 +1267,13 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:                                             # noqa: BLE001
                     self._json({"ok": False, "boxes": [], "err": "%s: %s" % (type(e).__name__, str(e)[:120])})
             elif p == "/api/fence":            # 🧱 3D 元素列表 (页面画 + 编辑用)
-                self._json(FS.listing())
+                _lst = FS.listing()
+                try:                # ↩ 可回退步数 + 最近几步做了什么 (老倪 2026-10-27)
+                    _lst["undo_n"] = len(FS.history(60))
+                    _lst["undo_last"] = (FS.history(3) or [{}])[0]
+                except Exception:                                                 # noqa: BLE001
+                    _lst["undo_n"] = 0
+                self._json(_lst)
             elif p == "/api/points":           # 📍 工程配置的全部点位台账 (配置中心 → ar_aoi_live.json)
                 # 老倪 2026-10-26: 「也要显示 工程配置的所有点, 向下罗列显示出来」
                 # 真源: zmax_data/ar_live/ar_aoi_live.json 的 s{} + groups{} (ar_aoi_bus 推的台账)。
@@ -2403,6 +2409,18 @@ class H(BaseHTTPRequestHandler):
                                name=body.get("name"), color=body.get("color"),
                                enabled=body.get("enabled"), note=body.get("note"))
                 self._json({"ok": True, "item": it})
+            except Exception as e:                                                 # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+        elif p == "/api/fence/undo":        # ↩ 回到上一步 (老倪 2026-10-27 误拖料盘后要的)
+            # 每次写操作(加/改/删)之前都会存一份快照, 这里用最近一份覆盖回去。
+            # steps 默认 1 = 退一步, 可以一次退多步; 回退本身也留快照(可再撤回)。
+            try:
+                _steps = int(body.get("steps") or 1)
+                self._fence_audit("/api/fence/undo", "-", body)
+                _res = FS.undo(_steps)
+                if _res.get("ok"):
+                    _res["undo_n"] = len(FS.history(60))
+                self._json(_res)
             except Exception as e:                                                 # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
         elif p == "/api/fence/delete":

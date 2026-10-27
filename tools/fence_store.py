@@ -49,6 +49,89 @@ def _save(d: dict) -> None:
         json.dump(d, f, ensure_ascii=False, indent=1)
     os.replace(tmp, PATH)
 
+# ── 回退 (undo) ──────────────────────────────────────────────────────────────
+# 老倪 2026-10-27: 「刚才我不小心用鼠标挪动了料盘的位置; 增加一个回退功能; 回到上一步」
+# 做法: 每次写操作**之前**把 fences.json 原样存一份 (fences_<时间戳>.json),
+#      undo() 用最近一份覆盖回去。回退前也存一份 ⇒ 可以连续回退, 也能再撤回来。
+HIST_DIR = os.path.join(REPO, "zmax_data", "ar_rs", "fences_history")
+HIST_KEEP = 60                       # 只留最近 60 步, 防止历史把磁盘塞满
+
+
+def _snapshot(action: str = "") -> None:
+    """把当前 fences.json 存成一份历史快照。调用方必须已持有 _LOCK。"""
+    try:
+        if not os.path.exists(PATH):
+            return
+        os.makedirs(HIST_DIR, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S") + "_%03d" % int((time.time() % 1) * 1000)
+        with open(PATH, encoding="utf-8") as f:
+            raw = f.read()
+        dst = os.path.join(HIST_DIR, "fences_%s.json" % ts)
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(raw)
+        with open(dst + ".meta", "w", encoding="utf-8") as f:
+            json.dump({"action": action, "at": time.strftime("%F %T")}, f, ensure_ascii=False)
+        files = sorted(x for x in os.listdir(HIST_DIR)
+                       if x.startswith("fences_") and x.endswith(".json"))
+        for old in files[:-HIST_KEEP]:
+            for p in (os.path.join(HIST_DIR, old), os.path.join(HIST_DIR, old + ".meta")):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+    except Exception:                                                             # noqa: BLE001
+        pass                          # 快照失败不能挡住正常写操作
+
+
+def history(n: int = 10) -> list:
+    """最近 n 步可回退的历史 (最新在前), 给页面显示"这一步是什么操作"。"""
+    try:
+        files = sorted((x for x in os.listdir(HIST_DIR)
+                        if x.startswith("fences_") and x.endswith(".json")), reverse=True)
+    except OSError:
+        return []
+    out = []
+    for x in files[:max(1, int(n))]:
+        meta = {}
+        try:
+            with open(os.path.join(HIST_DIR, x + ".meta"), encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:                                                         # noqa: BLE001
+            meta = {}
+        out.append({"snap": x, "action": meta.get("action", ""), "at": meta.get("at", "")})
+    return out
+
+
+def undo(steps: int = 1) -> dict:
+    """回到上一步: 用最近一份快照覆盖当前 fences.json。steps>1 一次退多步。"""
+    steps = max(1, int(steps))
+    with _LOCK:
+        try:
+            files = sorted((x for x in os.listdir(HIST_DIR)
+                            if x.startswith("fences_") and x.endswith(".json")), reverse=True)
+        except OSError:
+            files = []
+        if not files:
+            return {"ok": False, "error": "没有可回退的历史"}
+        target = files[min(steps, len(files)) - 1]
+        src = os.path.join(HIST_DIR, target)
+        try:
+            with open(src, encoding="utf-8") as f:
+                snap = json.load(f)
+        except Exception as e:                                                    # noqa: BLE001
+            return {"ok": False, "error": "快照读不出: %s" % e}
+        if not isinstance(snap.get("items"), list):
+            return {"ok": False, "error": "快照损坏 (没有 items)"}
+        _snapshot("undo 前(可再撤回)")
+        _save(snap)
+        try:
+            os.remove(src)
+            os.remove(src + ".meta")
+        except OSError:
+            pass
+        return {"ok": True, "restored_from": target, "n_items": len(snap["items"]),
+                "at": snap.get("at", ""), "remaining": len(files) - 1}
+
 
 def _norm(p1, p2):
     """盒子两对角点归一化: p1=min, p2=max (手填反/拖过头都不会出负尺寸)"""
@@ -95,6 +178,7 @@ def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "", pts=
             raise ValueError("points 需要至少 2 个点 (pts=[[x,y,z]m,...])")
         P = [_f3(q) for q in pts]
         with _LOCK:
+            _snapshot("add points")
             d = _load()
             it = {"id": "F" + uuid.uuid4().hex[:6], "type": "points",
                   "name": name or "轨迹点-%d" % (len(d["items"]) + 1),
@@ -106,6 +190,7 @@ def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "", pts=
             _save(d)
             return it
     with _LOCK:
+        _snapshot("add %s" % kind)
         d = _load()
         it = {"id": "F" + uuid.uuid4().hex[:6], "type": kind,
               "name": name or ("长方体" if kind == "box" else "直线") + "-%d" % (len(d["items"]) + 1),
@@ -120,6 +205,7 @@ def add(kind: str, p1, p2, name: str = "", color: str = "", note: str = "", pts=
 
 def update(fid: str, **kw) -> dict:
     with _LOCK:
+        _snapshot("update %s" % fid)
         d = _load()
         for it in d["items"]:
             if it["id"] != fid:
@@ -146,6 +232,7 @@ def update(fid: str, **kw) -> dict:
 
 def delete(fid: str) -> dict:
     with _LOCK:
+        _snapshot("delete %s" % fid)
         d = _load()
         n0 = len(d["items"])
         d["items"] = [it for it in d["items"] if it["id"] != fid]
@@ -155,6 +242,7 @@ def delete(fid: str) -> dict:
 
 def clear() -> dict:
     with _LOCK:
+        _snapshot("clear all")
         d = _load()
         n = len(d["items"])
         d["items"] = []
@@ -164,6 +252,7 @@ def clear() -> dict:
 
 def set_margin(mm: float) -> dict:
     with _LOCK:
+        _snapshot("set margin %s" % mm)
         d = _load()
         d["margin_mm"] = max(0.0, float(mm))
         _save(d)

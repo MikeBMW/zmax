@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r29 · 点位以标记模式(space_points.json)为真源 + 执行轨迹上方速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画 + 铝型材框架 + 实验桌750</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r30 · 新增「↩ 回退」(围栏/料盘误拖可退一步, 连点连续回退) + 左臂料盘(Y+ 并排)+左槽1~14 + 速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -175,6 +175,10 @@
     <div class="row" style="margin-top:8px">
       <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <!-- ↩ 2026-10-27 老倪: 「刚才我不小心用鼠标挪动了料盘的位置; 增加一个回退功能; 回到上一步」
+           每次加/改/删围栏之前都会存快照, 这里点一下退一步; 连点可以一直退。 -->
+      <button id="bUndo" class="sm" style="margin-left:14px" title="↩ 回到上一步: 把围栏/料盘/槽位恢复到上一次编辑之前的状态(连点可连续回退)">↩ 回退</button>
+      <span id="tUndo" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
     </div>
     <div class="row" style="margin-top:8px">
       <button id="bFit" class="sm" title="点击 = 把当前规划轨迹发给执行器(l2_daemon · 逐段走)· 双击 = 视角对准轨迹（原功能）">▶ 执行轨迹</button>
@@ -1212,6 +1216,12 @@ async function fencePost(path,obj){
   return r;
 }
 async function loadFences(){
+  // ↩ 顺带把"还能退几步"显示在回退按钮旁边 (2026-10-27)
+  try{
+    const _r = await fetch('/api/fence'); const _j = await _r.json();
+    const _t = $('tUndo');
+    if(_t) _t.textContent = (_j && _j.undo_n) ? ('可回退 ' + _j.undo_n + ' 步') : '无历史';
+  }catch(e){}
   if(FDR) return;                 // 正在拖的时候别刷 —— 一刷 FENCES 里的对象就换了, 拖到一半会断/跳
   try{
     const r=await fetch('/api/fence').then(x=>x.json());
@@ -2143,6 +2153,28 @@ function prevToggle(){
   $('tPrev').textContent='紫色幽灵臂 = 模拟走完的样子 · 末端残差 '+r.err_mm.toFixed(1)+'mm · 真机没动';
 }
 if($('bPrev')) $('bPrev').addEventListener('click', prevToggle);
+
+// ↩ 回退一步 (2026-10-27 老倪误拖料盘后要的): 调 /api/fence/undo, 成功后重画围栏和按钮
+async function doUndo(){
+  const btn = $('bUndo'), tip = $('tUndo');
+  if(btn){ btn.disabled = true; btn.textContent = '↩ 回退中…'; }
+  try{
+    const r = await fetch('/api/fence/undo', {method:'POST', headers:{'Content-Type':'application/json'},
+                                             body: JSON.stringify({steps: 1})});
+    const j = await r.json();
+    if(j && j.ok){
+      if(tip) tip.textContent = '已回到上一步 · 剩 ' + (j.undo_n ?? 0) + ' 步可退 · 共 ' + (j.n_items ?? '?') + ' 个对象';
+      if(typeof loadFences === 'function') await loadFences();
+    }else{
+      if(tip) tip.textContent = '退不回去了: ' + ((j && (j.error || j.err)) || '没有历史');
+    }
+  }catch(e){
+    if(tip) tip.textContent = '回退失败: ' + e;
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '↩ 回退'; }
+  }
+}
+if($('bUndo')) $('bUndo').addEventListener('click', doUndo);
 $('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; drawVR(); });
 $('bFit').addEventListener('click',async ()=>{
   const msg=$('bTrajMsg'); msg.style.color='#8b949e';
