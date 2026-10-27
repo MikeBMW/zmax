@@ -2319,7 +2319,7 @@ async function transPlay(){
     for(let i=0;i<=n;i++){
       const t=i/n;
       frames.push({q: ra.q.map((v,j)=>v+(rb.q[j]-v)*t), carry: isPlace ? (t<0.35) : carry,
-                   k: s.k, y: A[1]+(B[1]-A[1])*t + off[1]});
+                   k: s.k, seg: s.i, y: A[1]+(B[1]-A[1])*t + off[1]});
     }
     if(isPlace) carry=false;
     q=rb.q;
@@ -2337,7 +2337,7 @@ async function transPlay(){
   const step=()=>{
     if(!TRANS.playing) return;
     const _f=TRANS.frames[TRANS.fi];
-    LARM.q=_f.q; TRANS.carry=!!_f.carry; TRANS.curK=_f.k||0; TRANS.curY=_f.y;
+    LARM.q=_f.q; TRANS.carry=!!_f.carry; TRANS.curK=_f.k||0; TRANS.curY=_f.y; TRANS.curSeg=_f.seg|0;
     larmRecalc();
     TRANS.fi++;
     if(TRANS.fi>=TRANS.frames.length){
@@ -3592,4 +3592,127 @@ async function syncCams(){                     // 标记哪台相机已标定, �
   }catch(e){}
 }
 window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错: '+e.message; });
+</script>
+<script>
+/* ⏱ 左臂摆盘生产节拍甘特图 (右侧可折叠侧栏) —— 2026-10-27 老倪:
+   「描述左臂摆盘操作的生产节拍, 用甘特图, 在右侧侧面栏显示」
+   数据源: /api/sim_transport 的 112 段(14 循环 x 8 步), 每步时间 = 真实距离 / 设计速度 + 夹爪动作时间 */
+(function(){
+  if(document.getElementById('tactWrap')) return;
+  var V = 150;                       // 设计速度 mm/s(工业抓放常用档)
+  var GRIP_S = 0.35, REL_S = 0.35;   // 夹爪闭合/松开时间
+
+  var css = ''
+    + '#tactWrap{position:fixed;right:0;top:0;bottom:0;z-index:55;pointer-events:none}'
+    + '#tactArrow{pointer-events:auto;position:absolute;left:-28px;top:14px;width:28px;height:66px;'
+    + 'background:#161b22;border:1px solid #30363d;border-right:none;border-radius:7px 0 0 7px;'
+    + 'color:#8b949e;font:15px/1.2 system-ui;cursor:pointer;padding:0}'
+    + '#tactArrow:hover{color:#e6edf3;border-color:#58a6ff}'
+    + '#tactPanel{pointer-events:auto;width:392px;height:100%;background:rgba(13,17,23,.975);'
+    + 'border-left:1px solid #30363d;display:flex;flex-direction:column;'
+    + 'transition:transform .22s ease;transform:translateX(0);font-family:system-ui}'
+    + '#tactPanel.hide{transform:translateX(100%)}'
+    + '.tHd{padding:11px 13px 5px;font-size:13px;font-weight:600;color:#e6edf3;'
+    + 'display:flex;justify-content:space-between;align-items:baseline}'
+    + '.tHd b{font-size:16px;color:#58a6ff;font-weight:700}'
+    + '.tSum{padding:0 13px 9px;font-size:11px;line-height:1.6;color:#8b949e;border-bottom:1px solid #21262d}'
+    + '.tSum em{color:#e6edf3;font-style:normal;font-weight:600}'
+    + '.tBody{flex:1;overflow-y:auto;padding:9px 11px 12px}'
+    + '.tRow{display:grid;grid-template-columns:28px 1fr 44px;gap:7px;align-items:center;'
+    + 'margin-bottom:4px;padding:2px 1px;border-radius:4px}'
+    + '.tRow.on{background:rgba(88,166,255,.10);box-shadow:inset 0 0 0 1px rgba(88,166,255,.35)}'
+    + '.tK{font-size:10px;font-weight:600;color:#6e7681;text-align:right}'
+    + '.tRow.on .tK{color:#58a6ff}'
+    + '.tBar{display:flex;height:15px;border-radius:3px;overflow:hidden;background:#0d1117}'
+    + '.tBar i{display:block;height:100%;cursor:default}'
+    + '.tBar i.on{outline:2px solid #fff;outline-offset:-2px;filter:brightness(1.4)}'
+    + '.tT{font:11px ui-monospace,SFMono-Regular,monospace;color:#8b949e;text-align:right}'
+    + '.tRow.on .tT{color:#e6edf3}'
+    + '.tLeg{display:flex;flex-wrap:wrap;gap:10px;padding:8px 13px;border-top:1px solid #21262d;'
+    + 'font-size:10px;color:#8b949e}'
+    + '.tLeg span{display:flex;align-items:center;gap:4px}'
+    + '.tLeg i{width:9px;height:9px;border-radius:2px;display:block}';
+  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+  var wrap = document.createElement('div');
+  wrap.id = 'tactWrap';
+  wrap.innerHTML = '<div id="tactPanel">'
+    + '<div class="tHd"><span>⏱ 左臂摆盘节拍</span><b id="tCycle">—</b></div>'
+    + '<div class="tSum" id="tSum">节拍数据加载中…</div>'
+    + '<div class="tBody" id="tBody"></div>'
+    + '<div class="tLeg"><span><i style="background:#58a6ff"></i>平移</span>'
+    + '<span><i style="background:#22d3ee"></i>下降/对准</span>'
+    + '<span><i style="background:#f59e0b"></i>抓取/放下(含抬起)</span></div>' 
+    + '</div><button id="tactArrow" title="收起/展开节拍栏">⏱ ▸</button>';
+  document.body.appendChild(wrap);
+
+  var panel = document.getElementById('tactPanel');
+  var arrow = document.getElementById('tactArrow');
+  arrow.addEventListener('click', function(){
+    var hid = panel.classList.toggle('hide');
+    arrow.textContent = hid ? '⏱ ◂' : '⏱ ▸';
+  });
+
+  function dur(s){
+    var dx=s.p_to[0]-s.p_from[0], dy=s.p_to[1]-s.p_from[1], dz=s.p_to[2]-s.p_from[2];
+    var d=Math.sqrt(dx*dx+dy*dy+dz*dz)*1000;
+    var t=d/V, L=s.label||'';
+    if(L.indexOf('抓起')>=0) t+=GRIP_S;
+    if(L.indexOf('放下')>=0) t+=REL_S;
+    return t;
+  }
+  function colr(L){
+    if(L.indexOf('抓起')>=0||L.indexOf('放下')>=0) return '#f59e0b';
+    if(L.indexOf('抬')>=0) return '#34d399';
+    if(L.indexOf('下降')>=0||L.indexOf('接近')>=0||L.indexOf('对准')>=0) return '#22d3ee';
+    return '#58a6ff';
+  }
+
+  fetch('/api/sim_transport').then(function(r){return r.json();}).then(function(d){
+    var segs=(d&&d.segs)||[];
+    if(!segs.length){ document.getElementById('tSum').textContent='没有节拍数据(先规划一次仿真搬运)'; return; }
+    var byK={}, tot=0, nCyc=0;
+    segs.forEach(function(s){
+      var k=s.k|0; if(!byK[k]){ byK[k]=[]; nCyc++; }
+      s._t=dur(s); byK[k].push(s); tot+=s._t;
+    });
+    var cyc=tot/nCyc;
+    document.getElementById('tCycle').textContent=cyc.toFixed(1)+' s';
+    document.getElementById('tSum').innerHTML =
+      '单循环节拍 <em>'+cyc.toFixed(2)+' s</em> · '+nCyc+' 个循环 · 总 <em>'+tot.toFixed(1)+' s</em><br>'
+      + '设计速度 <em>'+V+' mm/s</em> · 夹爪闭合/松开各 <em>'+GRIP_S+' s</em> · 每循环 8 步';
+    var html='';
+    Object.keys(byK).sort(function(a,b){return a-b;}).forEach(function(k){
+      var arr=byK[k], kt=arr.reduce(function(a,s){return a+s._t;},0);
+      html += '<div class="tRow" data-k="'+k+'"><span class="tK">k'+k+'</span><span class="tBar">';
+      arr.forEach(function(s){
+        var w=Math.max(2, s._t/tot*100);
+        var tip=(s.label||'')+' · '+s._t.toFixed(2)+' s';
+        html += '<i data-seg="'+(s.i|0)+'" title="'+tip.replace(/"/g,'')+'" '
+             +  'style="width:'+w.toFixed(3)+'%;background:'+colr(s.label||'')+'"></i>';
+      });
+      html += '</span><span class="tT">'+kt.toFixed(1)+'s</span></div>';
+    });
+    document.getElementById('tBody').innerHTML=html;
+    window.__tactReady=true;
+  }).catch(function(e){
+    document.getElementById('tSum').textContent='节拍数据加载失败: '+e;
+  });
+
+  // 播放时高亮: 当前循环(行) + 当前步(块)
+  setInterval(function(){
+    var T=window.TRANS||{}, k=T.curK|0, seg=T.curSeg|0, on=!!T.playing;
+    var rows=document.querySelectorAll('.tRow');
+    for(var i=0;i<rows.length;i++){
+      var rk=parseInt(rows[i].getAttribute('data-k'),10);
+      var hit = on && rk===k;
+      if(rk===k && !on) hit=false;
+      rows[i].classList.toggle('on', hit);
+      var bars=rows[i].querySelectorAll('.tBar i');
+      for(var j=0;j<bars.length;j++){
+        bars[j].classList.toggle('on', hit && parseInt(bars[j].getAttribute('data-seg'),10)===seg);
+      }
+    }
+  }, 160);
+})();
 </script></body></html>
