@@ -2278,14 +2278,30 @@ function _d3(a,b){ return Math.hypot(b[0]-a[0], b[1]-a[1], b[2]-a[2]); }
 
 /* 节拍时间口径 —— 甘特图和播放共用这一份, 否则右侧栏的时间和画面推进对不上。
    老倪 2026-10-27: 「怎么很多 11.6秒呢? 你的屏幕显示也不是11.6秒, 时间感觉对不上」 */
-var TACT_V=150, TACT_GRIP=0.35, TACT_REL=0.35;
-function segDur(s){
-  var dx=s.p_to[0]-s.p_from[0], dy=s.p_to[1]-s.p_from[1], dz=s.p_to[2]-s.p_from[2];
-  var d=Math.sqrt(dx*dx+dy*dy+dz*dz)*1000, t=d/TACT_V, L=s.label||'';
-  if(L.indexOf('抓起')>=0) t+=TACT_GRIP;
-  if(L.indexOf('放下')>=0) t+=TACT_REL;
-  return t;
+/* 生产节拍 = 每循环固定 3.0 秒(老倪 2026-10-27: 「我感觉是每个模块是3秒, 就按照3秒一个」)。
+   循环内 8 步按"等效距离"分摊这 3 秒: 实际位移(mm) + 夹爪动作折算 120mm 等效位移,
+   所以抓起/放下不会因为位移小就变成 0 秒。14 循环 × 3.0s = 42.0s。 */
+var TACT_CYCLE=3.0, TACT_GRIP_EQ=120;
+var _tactDur={};
+function tactBuild(segs){
+  _tactDur={};
+  if(!segs||!segs.length) return;
+  var byK={};
+  segs.forEach(function(s){ var k=s.k|0; (byK[k]=byK[k]||[]).push(s); });
+  Object.keys(byK).forEach(function(k){
+    var arr=byK[k], w=[];
+    arr.forEach(function(s){
+      var dx=s.p_to[0]-s.p_from[0], dy=s.p_to[1]-s.p_from[1], dz=s.p_to[2]-s.p_from[2];
+      var d=Math.sqrt(dx*dx+dy*dy+dz*dz)*1000, L=s.label||'';
+      if(L.indexOf('抓起')>=0||L.indexOf('放下')>=0) d+=TACT_GRIP_EQ;   // 夹爪动作
+      if(d<1) d=1;
+      w.push(d);
+    });
+    var sum=w.reduce(function(a,b){return a+b;},0)||1;
+    arr.forEach(function(s,i){ _tactDur[s.i|0]=TACT_CYCLE*w[i]/sum; });
+  });
 }
+function segDur(s){ return _tactDur[s.i|0] || 0; }
 
 async function transPlay(){
   const btn=$('bTrans'), tip=$('tTrans');
@@ -2317,7 +2333,8 @@ async function transPlay(){
   let q=(TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3];
   const off=LARM.off;
   // 解算一次要 ~11s(224 次 IK), 缓存起来: 同一 off + 同一段表第二次点按钮秒开
-  const cacheKey=off.join(',')+'|'+d.segs.length+'|'+d.segs[0].p_from.join(',');
+  tactBuild(d.segs);                                  // 每循环 3.0s 的分摊表
+  const cacheKey=off.join(',')+'|'+d.segs.length+'|'+d.segs[0].p_from.join(',')+'|'+TACT_CYCLE;
   let frames=(TRANS.cacheKey===cacheKey && TRANS.cacheFrames) ? TRANS.cacheFrames : null;
   let ikBad=0, tt=0;                              // tt = 节拍累计秒
   if(frames){
@@ -2351,7 +2368,7 @@ async function transPlay(){
 
   TRANS.frames=frames; TRANS.fi=0; TRANS.playing=true;
   TRANS.durTotal=tt;                                  // 整条节拍总秒数(与右侧栏同一个口径)
-  if(!TRANS.rate) TRANS.rate=4;                        // 默认 4 倍速播(1倍要 162s, 太久)
+  if(!TRANS.rate) TRANS.rate=1;                        // 默认 1 倍 = 真实节拍 42s
   TRANS.t0=performance.now();
   LARM.q=frames[0].q.slice(); TRANS.carry=!!frames[0].carry;
   TRANS.curK=frames[0].k||1; TRANS.curY=frames[0].y; larmRecalc();
@@ -3677,8 +3694,8 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   wrap.innerHTML = '<div id="tactPanel">'
     + '<div class="tHd"><span>⏱ 左臂摆盘节拍</span><b id="tCycle">—</b></div>'
     + '<div class="tSum" id="tSum">节拍数据加载中…</div>'
-    + '<div class="tCtl">播放 <button data-r="1">1×</button><button data-r="2">2×</button>'
-    + '<button data-r="4" class="on">4×</button><button data-r="10">10×</button>'
+    + '<div class="tCtl">播放 <button data-r="1" class="on">1×</button><button data-r="2">2×</button>'
+    + '<button data-r="4">4×</button><button data-r="10">10×</button>'
     + '<span id="tProg">—</span></div>'
     + '<div class="tBody" id="tBody"></div>'
     + '<div class="tLeg"><span><i style="background:#58a6ff"></i>平移</span>'
@@ -3705,6 +3722,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   fetch('/api/sim_transport').then(function(r){return r.json();}).then(function(d){
     var segs=(d&&d.segs)||[];
     if(!segs.length){ document.getElementById('tSum').textContent='没有节拍数据(先规划一次仿真搬运)'; return; }
+    if(window.tactBuild) window.tactBuild(segs);      // 与播放共用 3s/循环 分摊
     var byK={}, tot=0, nCyc=0;
     segs.forEach(function(s){
       var k=s.k|0; if(!byK[k]){ byK[k]=[]; nCyc++; }
@@ -3714,7 +3732,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     document.getElementById('tCycle').textContent=cyc.toFixed(1)+' s';
     document.getElementById('tSum').innerHTML =
       '单循环节拍 <em>'+cyc.toFixed(2)+' s</em> · '+nCyc+' 个循环 · 总 <em>'+tot.toFixed(1)+' s</em><br>'
-      + '设计速度 <em>'+(window.TACT_V||150)+' mm/s</em> · 夹爪闭合/松开各 <em>0.35 s</em> · 每循环 8 步';
+      + '节拍 <em>'+(window.TACT_CYCLE||3)+' s/循环</em> · 夹爪动作按 120mm 等效位移折算 · 每循环 8 步';
     var html='';
     Object.keys(byK).sort(function(a,b){return a-b;}).forEach(function(k){
       var arr=byK[k], kt=arr.reduce(function(a,s){return a+s._t;},0);
