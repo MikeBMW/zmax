@@ -401,6 +401,48 @@ STATION_CAMS = [("arm", "臂上D405"), ("local", "笔记本"), ("local2", "MAXHU
 STATION_PEER_TTL_S = 30.0
 
 
+def _local_ipv4_set():
+    """本机所有 IPv4(不含回环) —— 用来判断配置里的 host 还是不是这台机器。"""
+    try:
+        import subprocess as _sp
+        out = _sp.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True, timeout=3).stdout
+        return {ln.split()[3].split("/")[0] for ln in out.splitlines() if len(ln.split()) >= 4}
+    except Exception:                                                          # noqa: BLE001
+        return set()
+
+
+def retarget_local_hosts(cfg):
+    """配置里写的 host 若已不是本机地址(换网/换热点), 就在内存里换成当前默认路由 IP。
+
+    🔴 2026-10-26: station_url.json 里写死过 10.163.146.78, WiFi 换成热点后
+       旁路视图的链接和 /station/status 轮询全部指向一个不存在的地址 ⇒ 红色离线,
+       而用户点链接也打不开。配置文件保留他的意图, 只在**读出来的这一刻**纠正。
+    """
+    _locals = _local_ipv4_set()
+    try:
+        import socket as _s
+        _x = _s.socket(_s.AF_INET, _s.SOCK_DGRAM); _x.connect(("10.255.255.255", 1))
+        _ip = _x.getsockname()[0]; _x.close()
+    except Exception:                                                          # noqa: BLE001
+        return cfg, []
+    if not _ip or _ip.startswith("127.") or _ip in _locals:
+        _locals.add(_ip)
+    out, fixed = dict(cfg), []
+    for _k in ("url", "status"):
+        _u = cfg.get(_k) or ""
+        if "//" not in _u:
+            continue
+        _head, _rest = _u.split("//", 1)
+        _hostport, _, _tail = _rest.partition("/")
+        _host = _hostport.split(":")[0]
+        _port = _hostport.split(":")[1] if ":" in _hostport else "8793"
+        if _host in ("127.0.0.1", "localhost") or _host in _locals:
+            continue
+        out[_k] = "%s//%s:%s/%s" % (_head, _ip, _port, _tail)
+        fixed.append("%s: %s → %s" % (_k, _host, _ip))
+    return out, fixed
+
+
 def load_station_cfg():
     """读 station 地址配置 → (cfg, created)。不存在则写默认并置 created=True (调用方 log)。"""
     created = False
@@ -411,13 +453,16 @@ def load_station_cfg():
             out = dict(STATION_CFG_DEFAULT)
             if isinstance(cfg, dict):
                 out.update({k: v for k, v in cfg.items() if isinstance(v, str) and v})
+            out, _fixed = retarget_local_hosts(out)
+            if _fixed:
+                print("[SSBypassView] station 地址已按当前网卡纠正: %s" % "; ".join(_fixed), flush=True)
             return out, created
         os.makedirs(os.path.dirname(STATION_CFG_PATH), exist_ok=True)
         with open(STATION_CFG_PATH, "w", encoding="utf-8") as f:
-            json.dump(STATION_CFG_DEFAULT, f, ensure_ascii=False, indent=2)
+            json.dump(retarget_local_hosts(dict(STATION_CFG_DEFAULT))[0], f, ensure_ascii=False, indent=2)
         created = True
     except Exception:
-        return dict(STATION_CFG_DEFAULT), created
+        return retarget_local_hosts(dict(STATION_CFG_DEFAULT))[0], created
     return dict(STATION_CFG_DEFAULT), created
 
 

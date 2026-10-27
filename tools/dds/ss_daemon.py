@@ -179,6 +179,13 @@ def allowed(topic):
         if os.path.isdir(_tp) and _tp not in sys.path:
             sys.path.insert(0, _tp)
         import zmax_profile as _zp                                          # noqa: PLC0415
+        # 🧭 2026-10-27 老倪: 「所有规划要旁路到 550C 的 DDS 节点执行」。
+        #   550C 档位是 topics=none(量产: 不发序列化 topic, 走 /dev/shm 共享内存直传), 但**规划必须跨机**
+        #   —— 本机(4060)规划 → 550C(Nodka)执行, 共享内存只在本机有效, 规划通道只能走 DDS。
+        #   所以只对 ss_plan 这一个 topic 破例, 且必须显式置 ZMAX_SS_PLAN_ALWAYS=1 才生效(默认行为一字不变);
+        #   其余 topic 仍严格按档位全关 —— 这是"收窄"之外唯一一处规划通道例外。
+        if topic == "ss_plan" and os.environ.get("ZMAX_SS_PLAN_ALWAYS") == "1":
+            return True
         if _zp.topics_mode() == "none":
             return False
         return topic in set(_zp.dds_topics_allowed(_m))

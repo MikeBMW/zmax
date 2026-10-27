@@ -1294,14 +1294,25 @@ _LAN = _lan_ip()
 #   日志写「服务启动后 12s 仍无响应」, 于是整个 AR 按钮判失败 —— 而 8797 明明在听(同机回环一直通)。
 #   修法: ① 服务探测**回环优先**(控制台与 AR 服务同一台机器), LAN 只当备选;
 #         ② 地址在**点击时现算**, 不再吃启动那一刻的网络。
-AR_PAGE_URL_LOOPBACK = os.environ.get("ZMAX_AR_URL") or "http://10.163.146.78:8793/ar"
+AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8793/ar"
 # 🥽 2026-10-19 老倪: 「画布的 AR 按钮, 也要换成 http://10.163.146.78:8793/ar」
-#   8793 上的 /ar 是 302 → 8797/ar(同一台机的 AR 真源), 但**入口地址保持他记的这个**;
-#   打开方式是浏览器直开(不是控制台内嵌 QWebEngineView) —— 内嵌窗口被判 hidden 时只有 1fps,
-#   且控制台主线程一忙滚轮/点击就丢事件, 现场就是「卡 / 没以前好使」。
-#   IP 变了就改这一行(或设环境变量 ZMAX_AR_URL)。
+#   8793 上的 /ar 是 302 → 8797/ar(同一台机的 AR 真源)。
+# 🔴 2026-10-26 修: 这里原来**写死了旧 WiFi IP 10.163.146.78**, IP 一变(改连热点 Mike)
+#   按钮就点到一个不存在的地址 ⇒ 日志里「⚠️ 页面地址: http://10.163.146.78:8793/ar」而页面打不开。
+#   现在改成**点击时按当前默认路由网卡现算**(ZMAX_AR_URL 仍可覆盖), 换网/换热点不用改代码。
+def ar_page_url():
+    """8793/ar 入口(302→8797/ar); 主机在调用时现算, 不吃启动那一刻的网络。"""
+    _env = os.environ.get("ZMAX_AR_URL")
+    if _env:
+        return _env
+    _ip = _lan_ip()
+    if not _ip or _ip.startswith("127."):
+        return AR_PAGE_URL_LOOPBACK
+    return "http://%s:8793/ar" % _ip
+
+
 AR_PAGE_URL_LAN = "http://%s:8797/ar" % _LAN
-AR_PAGE_URL = os.environ.get("ZMAX_AR_URL") or AR_PAGE_URL_LOOPBACK      # 同机打开: 回环最稳(与 verify_ar_button 判据一致)
+AR_PAGE_URL = ar_page_url()                # 兼容旧引用; 新代码用 ar_page_url() 现算
 AR_SERVICE_URL = "http://127.0.0.1:8797"
 
 
@@ -1439,7 +1450,7 @@ def ar_raise_window(win_id: str) -> bool:
         return False
 
 
-def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
+def ar_open_url(url: str = "", dry: bool = False, verify: bool = True,
                 timeout: float = 6.0) -> str:
     """打开 AR 页面 —— 逐条候选**真拉起 + 验窗口**; 返回「用了哪条」的说明(空串=六条都没出窗口)。
 
@@ -1447,6 +1458,7 @@ def ar_open_url(url: str = AR_PAGE_URL, dry: bool = False, verify: bool = True,
     ⇒ 只认「窗口真的出现在窗口表里」, 不认返回值。顺序: 具体浏览器(chromium/firefox/chrome) → xdg-open/gio
     → webbrowser/Qt。成功即置顶(避免窗口开在别的桌面被他当成「没打开」)。
     """
+    url = url or ar_page_url()          # 空=按当前网卡现算(写死旧 IP 会让页面打不开)
     import subprocess as _sp
     import shutil as _sh
     _cands = []
@@ -1568,7 +1580,7 @@ def ar_clean_profile_locks(prof: str) -> list:
     return _done
 
 
-def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False, profile: str = "",
+def ar_spawn_browser(url: str = "", isolated: bool = False, profile: str = "",
                      tag: str = "") -> str:
     """只把浏览器拉起来(**不等窗口**), 几十毫秒返回所用的程序名(空串=没有可用浏览器)。
 
@@ -1583,6 +1595,7 @@ def ar_spawn_browser(url: str = AR_PAGE_URL, isolated: bool = False, profile: st
     2026-10-20: 起浏览器前先清该 profile 的**失效单例锁**(见 ar_clean_profile_locks),
     stderr 落 `zmax_data/logs/ar_browser.log`(原来是 DEVNULL ⇒ "为什么没出窗"全靠猜)。
     """
+    url = url or ar_page_url()          # 空=按当前网卡现算
     import shutil as _sh
     import subprocess as _sp
     _prof = profile or (AR_PROFILE_DIR if isolated else "")
@@ -1827,7 +1840,7 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
         import time as _t
         try:
             _t0 = _t.time()
-            _artrace("click → _work 起 · url=%s" % AR_PAGE_URL)
+            _artrace("click → _work 起 · url=%s" % ar_page_url())
             # 🔴 2026-10-19 老倪: 「前台的网页要立刻就弹出来」—— **出窗是第一动作**:
             #   ① 窗口已在 ⇒ 抬最前(实测 3ms) ② 没有 ⇒ 立刻 spawn(实测窗口 0.38s 出来),
             #   服务探测(/api/cams 147ms)挪到 spawn 之后, 不许挡在"出窗"前面。
@@ -1835,7 +1848,7 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
             if _win:
                 _up = ar_place_near_console(_win)
                 _artrace("已开窗口 → 抬前 %.2fs ok=%s" % (_t.time() - _t0, _up))
-                _say("🥽 AR 窗口已开着 ⇒ %s · %s" % ("已搬到控制台这块屏并置最前" if _up else "已置最前", AR_PAGE_URL))
+                _say("🥽 AR 窗口已开着 ⇒ %s · %s" % ("已搬到控制台这块屏并置最前" if _up else "已置最前", ar_page_url()))
             else:
                 if ar_port_up(0.15):
                     _say("🥽 AR 服务在跑 (%s) · 正在打开页面" % (AR_SERVICE_URL or "http://127.0.0.1:8797"))
@@ -1845,10 +1858,10 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                     _say("🥽 服务%s · 正在打开页面" % ("已启动" if _up else "仍未响应(页面照开, 里面会提示)"))
                     ar_service_base(0.8)      # 起来后把 AR_SERVICE_URL 定到这次通的地址
                 _snap0 = ar_window_ids()      # spawn 前的窗口表(判"新窗口"用, 标题可能还没解析)
-                _how = ar_spawn_browser(AR_PAGE_URL, tag="fast")
+                _how = ar_spawn_browser(ar_page_url(), tag="fast")
                 if not _how:
                     _artrace("没有可用浏览器")
-                    _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % AR_PAGE_URL)
+                    _say("🥽 没找到可用浏览器 ⇒ 请手动打开: %s" % ar_page_url())
                     return
                 # 🔴 spawn 一出就放锁: 后面等窗口/置前/切场景再慢, 也不许把下一次点击挡在门外
                 #    (原来 busy 要等整条流程跑完才放, 最长 6+20+3+4s ⇒ 期间点几次都"没反应")
@@ -1857,14 +1870,14 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 if not _win:      # 快路径(共享实例)没出窗 ⇒ 独立 profile 兜底, 亲眼确认窗口出来才算完
                     _artrace("快路径 1.5s 无窗 ⇒ 走独立 profile 兜底")
                     _snap1 = ar_window_ids()
-                    _how2 = ar_spawn_browser(AR_PAGE_URL, isolated=True, tag="iso")
+                    _how2 = ar_spawn_browser(ar_page_url(), isolated=True, tag="iso")
                     _how = (_how + " → " + _how2) if _how2 else _how
                     _win = ar_wait_new_window(_snap1, 5.0)
                 if not _win:      # 最后一招: 全新 profile(带时间戳 ⇒ 必无单例锁) —— 窗口一定要开出来
                     _artrace("独立 profile 也没出窗 ⇒ 全新 profile 兜底")
                     _snap2 = ar_window_ids()
                     _fresh = "%s_%s" % (AR_PROFILE_DIR, time.strftime("%m%d_%H%M%S"))
-                    _how3 = ar_spawn_browser(AR_PAGE_URL, profile=_fresh, tag="fresh")
+                    _how3 = ar_spawn_browser(ar_page_url(), profile=_fresh, tag="fresh")
                     _how = (_how + " → " + _how3) if _how3 else _how
                     _win = ar_wait_new_window(_snap2, 6.0)
                 _artrace("窗口 %s · spawn 到出窗 %.2fs" % (("出现 " + str(_win)) if _win else "没出现", _t.time() - _t0))
@@ -1872,7 +1885,7 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 _say("🥽 页面已送出 (%s, %.1fs)%s · %s" % (
                     _how, _t.time() - _t0,
                     (" · 已搬到控制台这块屏并置最前" if _up else (" · ⚠️ 窗口没出现" if not _win else " · ⚠️ 没能抬到前面")),
-                    AR_PAGE_URL))
+                    ar_page_url()))
             if switch_scene:
                 try:
                     import subprocess as _sp0
@@ -1904,7 +1917,7 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 if _w:
                     ar_place_near_console(_w)      # 再抬一次(有些 WM 先在别处映射再搬)
                 if not _w:
-                    _say("⚠️ 浏览器没开新窗口 ⇒ 窗口可能被挡/开了标签页, 页面地址: %s" % AR_PAGE_URL)
+                    _say("⚠️ 浏览器没开新窗口 ⇒ 窗口可能被挡/开了标签页, 页面地址: %s" % ar_page_url())
             except Exception:                                                   # noqa: BLE001
                 pass
         finally:
@@ -3509,9 +3522,9 @@ class DreamView3D(QWidget):
             _say("⛔ 打开 AR 失败: %r" % (_e,))
             return None
         if not ok:
-            _say("🥽 AR 正在打开中(上一次还没跑完) · %s" % AR_PAGE_URL)
+            _say("🥽 AR 正在打开中(上一次还没跑完) · %s" % ar_page_url())
             return None
-        _say("🥽 正在打开 AR 页面 %s (后台: 服务/场景/相机实况)" % AR_PAGE_URL)
+        _say("🥽 正在打开 AR 页面 %s (后台: 服务/场景/相机实况)" % ar_page_url())
         return True
 
     def _open_force_scope(self):

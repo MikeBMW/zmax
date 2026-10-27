@@ -384,7 +384,18 @@ var HTML_VER="__HTMLVER__";</script>
               im.onerror=function(){ bad++; if(bad>3) cap.textContent='⚠️ Intel 渲染流取不到(查 zmax-intel-gsrender-tunnel / Intel 侧 gs_render_stream_intel.py)'; };
               im.src=u;
             }
-            setInterval(tick, 260); tick(); health();
+            // 🔴 2026-10-26 老倪「为什么响应很慢？应该1秒之内响应啊」
+            //    实测: 服务端 station.html 0.9ms、/station/status 16ms ⇒ 慢的**不是服务端**,
+            //    是浏览器对同一 host:port 只有 6 条连接, 而这里同刻被占满:
+            //    本块 260ms(3.8Hz) 拉 gs/live.jpg + 700ms 的 17KB status + 250ms 的 pose
+            //    + 2 条 mjpg 长连接(aoi_gold/aoi_surface, 常驻占 2 条) + 4 个快照 img
+            //    ⇒ 点「下降」的 POST 排在队尾, 现场体感就是"很慢/没反应"。
+            //    处置: 降到 1Hz, 且页面不可见时整个停掉(切标签/锁屏不再白占连接)。
+            var _gsTimer = null;
+            function _gsStart(){ if (_gsTimer) return; tick(); _gsTimer = setInterval(tick, 1000); }
+            function _gsStop(){ if (_gsTimer){ clearInterval(_gsTimer); _gsTimer = null; } }
+            document.addEventListener('visibilitychange', function(){ document.hidden ? _gsStop() : _gsStart(); });
+            _gsStart(); health();
           })();
           </script>
         </div>
@@ -611,6 +622,20 @@ var HTML_VER="__HTMLVER__";</script>
     <div class="panel" id="p_slots"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
       <span class="meta" id="m_slots">…</span></div>
       <div id="m_slots_auth" style="padding:6px 10px 0;font-size:14px"></div>
+      <!-- 🎯 2026-10-26 老倪「号位1～7 也要增加 标记模式 和 运动模式，我来自己标定」
+           与「🧭 空间1~7」「金手指/侧面点」同一套口径(不新开任何下发通道):
+             ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动); 点已记 = 8 秒内再点一次**覆盖**(号位不清除, 见下)
+             🚀运动模式(默认, = 原来的回点行为): 点已记 = 走过去(需先🔓授权真动)
+           ❗号位不做"清除": 服务端 /ctl/clear_point 明确不开放 slot1..7(产线 recipe 与多个技能在引用),
+             清掉会让在用的回点失效 ⇒ 这里只给"覆盖", 不给"清空"。 -->
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="slotmode">
+          <button data-m="mark" onclick="setSlotMode('mark')">✏️ 标记模式</button>
+          <button data-m="move" class="on" onclick="setSlotMode('move')">🚀 运动模式</button>
+        </span>
+        <span id="slot_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
       <div class="slotbar" id="slotbar"></div>
       <div class="row" style="padding:6px 10px 0">
         <span class="k">📝 记住此点(把当前 TCP 真值记成号位 · 零运动):</span>
@@ -1747,6 +1772,65 @@ async function recPoint(){
   }catch(e){ m.textContent='❌ 请求失败: '+e; m.className='bad'; }
   b.disabled=false;
 }
+/* 🚀 号位 1~7 的「标记模式 / 运动模式」(2026-10-26 老倪: 「号位1～7 也要增加 标记模式 和 运动模式，我来自己标定」)
+   口径照抄空间点/金手指那两套, 不新开任何通道:
+     ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止); 点已记 = 8 秒内再点一次确认**覆盖**
+     🚀运动模式(默认 = 原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动)
+   ❗号位**不做清除**: 服务端 /ctl/clear_point 明确不开放 slot1..7(产线 recipe 与多个技能在引用,
+     清掉会让在用的回点失效) ⇒ 标定=覆盖, 不提供清空。 */
+let SLOT_MODE='move', SLOT_BUSY=false, SLOT_OVER=0;
+function setSlotMode(m){
+  SLOT_MODE=m;
+  document.querySelectorAll('#slotmode button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  const h=$('#slot_mode_hint');
+  if(h) h.textContent = (m==='move')
+    ? '运动模式(默认): 点已记的号位 = 自动走过去(需先🔓授权真动); 点未记的会明确拒绝'
+    : '标记模式: 点未记的号位 = 把当前位姿记成该号位(零运动, 臂要停稳); 点已记的 = 8 秒内再点一次覆盖';
+  const bar=$('#slotbar'); if(bar) bar.dataset.sig='';
+  loadSlots();
+}
+async function clickSlot(n){
+  const bar=$('#slotbar'), m=$('#slot_msg');
+  const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
+  const btn=bar.querySelector('button[data-slot="'+n+'"]');
+  if(SLOT_MODE==='move'){                        // 🚀 运动模式: 不改记录, 只走过去
+    if(!rec){ m.innerHTML='⛔ <b>'+n+'号位 还没记</b> —— 运动模式需要先有目标位姿(切到 ✏️ 标记模式记一下)'; return; }
+    const skill=btn?btn.dataset.skill:'';
+    gotoSlot(n, skill, btn);
+    return;
+  }
+  if(SLOT_BUSY){ m.textContent='⏳ 上一次记录还在进行, 等它完'; return; }
+  if(rec){                                       // 已记 ⇒ 8 秒内再点 = **覆盖**
+    if(Date.now()-SLOT_OVER>8000){
+      SLOT_OVER=Date.now();
+      m.innerHTML='⚠️ <b>'+n+'号位 已有记录</b> —— 8 秒内再点一次就<b>用当前位姿覆盖</b>它(号位不提供清除)';
+      return;
+    }
+    SLOT_OVER=0;
+  }else{
+    SLOT_OVER=0;
+  }
+  SLOT_BUSY=true;
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 '+n+'号位…';
+  try{
+    const j=await post('/ctl/record_point',
+      {name:'slot'+n, note:'页面'+(rec?'覆盖':'标记')+n+'号位(8793 标记模式)'}, 45000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+n+'号位 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      bar.dataset.sig='';
+      await loadSlots();
+      if(typeof loadSpaces==='function') loadSpaces();
+    }else{
+      m.textContent='⛔ '+(j.msg||'记录失败');
+    }
+  }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  if(btn){ btn.disabled=false; }
+  SLOT_BUSY=false;
+}
 async function loadSlots(){
   try{
     const j=await getj('/ctl/points?t='+Date.now(),8000);
@@ -1757,7 +1841,6 @@ async function loadSlots(){
       bar.dataset.sig=sig;
       bar.innerHTML=j.slots.map(s=>
         '<button data-skill="'+s.skill+'" data-slot="'+s.no+'" class="'+(s.ready?'rec':'norec')+'"'
-        +(s.ready?'':' disabled')
         +' title="'+(s.ready
             ? (s.skill+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
                +' · 走 白名单→授权真动→限流→FIFO→执行器→安全裁决; 未授权时只算目标不动作')
@@ -1765,7 +1848,9 @@ async function loadSlots(){
                +' —— 要现场示教(工位总览『📍记住此点』/ python3 tools/record_l2_point.py --name '+s.point+')')
         +'">'+s.name+'<small>'+(s.ready?'✅ 有记录':'⛔ 未记录')+'</small></button>').join('');
       bar.querySelectorAll('button[data-slot]').forEach(b=>{
-        if(!b.disabled) b.onclick=()=>gotoSlot(parseInt(b.dataset.slot,10),b.dataset.skill,b);
+        // 2026-10-26: 点击统一交给 clickSlot —— 由当前 SLOT_MODE 决定"记录/覆盖"还是"走过去";
+        //   不再按 disabled 硬挡(标记模式下未记录的号位正是要点的)。
+        b.onclick=()=>clickSlot(parseInt(b.dataset.slot,10));
       });
     }
     $('#m_slots').textContent='绿 '+j.green+'/'+j.n+' · 判据 示教点库';

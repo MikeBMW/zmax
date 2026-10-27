@@ -324,6 +324,10 @@ def main() -> int:
     ct = float(os.environ.get("ZMAX_VL_CYCLE_TIMEOUT_S", "300"))
     while True:
         box = {}
+        # 本轮开始时的意图: 作为"已处理"基线。失败/超时时 seq_done 曾回落 0,
+        # 而 vl_intent.json 里的 seq 是几十上百 ⇒ 每轮都判"新意图"立刻重跑, 静默空转、
+        # vl_safety.json 永不更新(实测 2026-10-26 开机后 95 次空转)。基线取当前值即修。
+        seq_seen = _intent_now()[0]
 
         def _work(b=box):
             try:
@@ -340,6 +344,11 @@ def main() -> int:
                 _publish_degraded(*_intent_now(), "%.0fs" % ct)
                 time.sleep(15)
         seq_done = int((box.get("r") or {}).get("intent_seq") or 0)
+        # ⛔ 异常曾被静默吞掉(box["e"] 从不输出) ⇒ 现场只看到"一直在重跑", 不知道错在哪
+        if box.get("e"):
+            print("[%s] ⛔ 本轮异常: %s" % (time.strftime("%H:%M:%S"), box["e"]), flush=True)
+        if not seq_done:
+            seq_done = seq_seen   # 本轮失败 ⇒ 记作"这个 seq 已处理过", 不再立刻重跑(防空转)
         t0 = time.time()
         while time.time() - t0 < a.every:      # 睡满节拍; 但**意图一变立刻重跑**(执行层正等这个动作的裁决)
             time.sleep(2.0)

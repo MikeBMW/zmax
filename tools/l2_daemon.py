@@ -878,9 +878,14 @@ def run_j6_rot(sk, spec, sid, chan):
         % (deg, *q0, *q_new))
     sp = float(spec.get("speed", 8))
     _to = int(max(90, 20 + abs(deg) * 6))
-    call = ('timeout %d ros2 service call /move_pose interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
-            'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
-            % (_to, sp, p_new[0], p_new[1], p_new[2], *q_new))
+    # 🔩 2026-10-26 老倪「🔩 第 6 轴 (J6) 独立自转 · 关节自转 不好使，不是第6轴转动，现在是平动」
+    #   ⇒ 改走**关节通道**(MoveAbsJ 只改 J6 关节角), 不再走 /move_pose 笛卡尔。
+    #   为什么: 实测笛卡尔通道 1° 只转 0.1°(位置走满 0.42mm 小圆弧、姿态被丢在容差里),
+    #   再叠加 ZMAX_L2_MM_S=200 位置瞬间到点 ⇒ 现场看到的就是"平动, 没转"。
+    #   关节通道实测: sdk_j6.py --deg 5 → delta_deg=[0, 0.09, -0.09, 0, -0.02, **5.0**]
+    #   即 J6 精确 +5.0°、其余关节 ±0.09° 噪声、3.3s ⇒ 这才是真·第 6 轴独立自转。
+    #   通道由本机 SDK 直连控制器(不碰 Orin); 闸门仍在 chan_send 里(授权/VL/快层一个不少)。
+    call = "sdk_j6 --deg %+.2f --speed %.1f" % (deg, sp)
     if spec.get("dry"):
         log("DRY-RUN %s → %s" % (sid, call[:200]))
         return "DRY-RUN(未下发): %s" % call[:170]
@@ -2300,7 +2305,80 @@ def _bridge_url():
     return "http://127.0.0.1:39071"
 
 
-def _bridge_send(call, target=None, quat=None, speed=None):
+def _joint_leg_send(call):
+    """🔩 关节通道腿: 本机 SDK MoveAbsJ 只改指定关节角 (2026-10-26)。
+
+    call 形如 `sdk_j6 --deg +5.00 --speed 8.0` —— 由 l2_daemon.run_j6_rot 构造。
+    为什么单开一条腿: 笛卡尔 /move_pose 的到点判据只看**位置**, 姿态进了容差就算完成
+    (实测 1° 只转 0.1°), 现场表现就是"点了 J6 结果是平动"。关节语义下 J6 必须走到目标角。
+    通道: bash tools/rokae_sdk_run.sh --script sdk_j6.py --deg N —— 本机 SDK 直连控制器 192.168.23.160,
+    不读不写 Orin; 闸门(授权/VL/快层)在 chan_send 里已经过了才会到这里。
+    """
+    import subprocess as _sp
+    _argv = (call or "").split()[1:]
+    _cmd = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"), "--script", "sdk_j6.py"] + _argv
+    log("🔩 关节通道下发: sdk_j6.py %s" % " ".join(_argv))
+    try:
+        _r = _sp.run(_cmd, capture_output=True, text=True, timeout=150)
+    except Exception as _e:                                                  # noqa: BLE001
+        log("🛑 关节通道异常: %s" % str(_e)[:120])
+        _LEG_FAIL.update(t=time.time(), why="关节通道异常: %s" % str(_e)[:70])
+        return False
+    _j = None
+    for _ln in ((_r.stdout or "") + "\n" + (_r.stderr or "")).splitlines():
+        _ln = _ln.strip()
+        if _ln.startswith("{"):
+            try:
+                _j = json.loads(_ln)
+                break
+            except Exception:                                                # noqa: BLE001
+                continue
+    if _j and _j.get("ok"):
+        log("✅ 关节通道 OK · J%s %+.1f° · 实测 delta_deg=%s · %.1fs"
+            % (_j.get("joint", "6"), float(_j.get("req_deg") or 0),
+               _j.get("delta_deg"), float(_j.get("secs") or 0)))
+        return True
+    _tail = ((_r.stderr or "") or (_r.stdout or "")).strip()[-160:]
+    log("🛑 关节通道失败: %s" % (_tail or "无输出"))
+    _LEG_FAIL.update(t=time.time(), why="关节通道失败: %s" % (_tail or "无输出")[:70])
+    return False
+
+
+# 关节软限位(度) — 取自 zmax_data/rokae_sdk/urdf/xms5_r800_w4g3b4c.urdf 的 <limit>。
+# 现场口径: 到限位后控制器**静默不执行**(桥照样回 ok) ⇒ 看着像"点了没反应/队列残留",
+# 实际是这个方向已经走不动了, 换方向或先改姿态才行。
+_JOINT_LIM = {1: (-360.0, 360.0), 2: (-160.0, 150.0), 3: (-170.0, 140.0),
+              4: (-360.0, 360.0), 5: (-360.0, 360.0), 6: (-360.0, 360.0)}
+
+
+def _joint_at_limit(tol_deg=2.0):
+    """当前关节角是否已顶到软限位; 返回提示串或 None。
+
+    2026-10-26 老倪「点击左移，怎么第二下不动了」: 实测 J3=139.4°、上限 140°,
+      再往 +Y 走就超限, 控制器不执行而桥仍回 ok ⇒ 表面像"队列残留"。
+      这种不动**重发/moveReset 都是白费**, 必须如实报限位。
+    """
+    try:
+        with urllib.request.urlopen(_bridge_url() + "/status", timeout=4) as _f:
+            _q = ((json.loads(_f.read().decode()) or {}).get("status") or {}).get("jointPos") or []
+        if not _q:
+            return None
+        for _i, _v in enumerate(_q[:6], start=1):
+            _deg = float(_v) * 180.0 / 3.141592653589793
+            _lo, _hi = _JOINT_LIM.get(_i, (-360.0, 360.0))
+            if _deg >= _hi - tol_deg:
+                return "J%d 到上限 (%.1f° / %.0f°)" % (_i, _deg, _hi)
+            if _deg <= _lo + tol_deg:
+                return "J%d 到下限 (%.1f° / %.0f°)" % (_i, _deg, _lo)
+    except Exception:                                                        # noqa: BLE001
+        return None
+    return None
+
+
+_MM_S_HINT = {"v": 0.0}        # 🎚 页面速度档位(mm/s), 0=未指定 — 每条命令写入, _bridge_send 优先采用
+
+
+def _bridge_send(call, target=None, quat=None, speed=None, _no_split=False):
     """2026-10-25 第三条腿: 一条运动调用改走 **Orin SDK 桥 (HTTP /move_pose)**。
 
     为什么需要: ros 腿 = 每条动作一条 ssh → Orin `ros2 service call /move_line`; 实测经 ECS 跳板的
@@ -2322,13 +2400,57 @@ def _bridge_send(call, target=None, quat=None, speed=None):
         log("🚚 bridge 腿: 这条调用里找不到目标点 ⇒ 拒发")
         _LEG_FAIL.update(t=time.time(), why="bridge 腿: 无目标点")
         return False
+    # 🔴 2026-10-26 老倪「怎么没到位？没到达空间点7」
+    #   实况: 一段 Δ=(-131.6,-81.0,-16.8) = **155mm** 一次发给控制器 ⇒ `moveStart 报错` 被拒,
+    #   于是整条轨迹停在半路(83mm 外), 而受理行还甩一句"命令通道不可用"把人带偏。
+    #   控制器实测: 单段 >90mm 就拒(或当零位移丢弃) ⇒ 这里按 85mm 自动拆段、逐段发,
+    #   每段都落到同一条直线上(线性插值), 不改变路径形状。
+    try:
+        _tp = [float(v) for v in (target or [])][:3]
+        if (not _no_split) and len(_tp) == 3:
+            _cj0 = None
+            try:
+                _cj0 = json.load(open(os.path.join(REPO, "zmax_data", "rokae_sdk/tcp_out/latest.json"),
+                                      encoding="utf-8"))
+            except Exception:                                                # noqa: BLE001
+                _cj0 = None
+            if _cj0:
+                _c0 = [float(_cj0["x"]), float(_cj0["y"]), float(_cj0["z"])]
+                _dist = ((_tp[0] - _c0[0]) ** 2 + (_tp[1] - _c0[1]) ** 2 + (_tp[2] - _c0[2]) ** 2) ** 0.5
+                if _dist > 90.0:
+                    _n = int(_dist // 85.0) + 1
+                    log("✂️ 单段 %.1fmm 超控制器上限(90mm) ⇒ 自动拆 %d 段逐段走" % (_dist, _n))
+                    for _i in range(1, _n + 1):
+                        _r = float(_i) / _n
+                        _wp = [_c0[_k] + (_tp[_k] - _c0[_k]) * _r for _k in range(3)]
+                        if not _bridge_send(call, _wp, quat, speed, _no_split=True):
+                            log("🛑 拆段第 %d/%d 段被拒 ⇒ 停(不装到达)" % (_i, _n))
+                            return False
+                        time.sleep(0.4)
+                    log("✅ 拆段走完 %d 段 · 累计 %.1fmm" % (_n, _dist))
+                    return True
+    except Exception as _es:                                                 # noqa: BLE001
+        log("✂️ 拆段判断跳过(异常): %s" % str(_es)[:70])
     if (not quat) or max(abs(float(v)) for v in quat) < 1e-9:
         _q, _src, _age = _fresh_quat()
         quat = _q or [0.0, 0.0, 0.0, 1.0]
         log("🚚 bridge 腿: 姿态取现读 (%s, 龄 %.1fs)" % (_src, _age))
     _sp = float(speed or 60.0)
     _env_sp = (os.environ.get("ZMAX_L2_MM_S") or "").strip()
-    if _env_sp:                                        # 显式提速开关(留痕, 不静默改)
+    # 🎚 2026-10-26 老倪「在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位」
+    #    + 「ZMAX_L2_MM_S=200 忘了什么时候设置的了，改成10mm/s」
+    #   优先级改成: 页面档位 speed_mm_s > env ZMAX_L2_MM_S > 默认 10mm/s。
+    #   ❗改前是 env **无条件覆盖**段内请求(段内 60 被执行成 200) ⇒ 页面上调什么都没有,
+    #     现场只剩"太快"一个结果, 且看不出是 env 干的。
+    _hint = _MM_S_HINT.get("v")
+    if _hint:
+        try:
+            _sp = float(_hint)
+            log("🎚 bridge 腿: 速度按页面档位 %.0fmm/s 执行 (段内请求 %.0f)"
+                % (_sp, float(speed or 60.0)))
+        except (TypeError, ValueError):
+            _hint = None
+    if not _hint and _env_sp:                          # env 仅作兜底(留痕, 不静默改)
         try:
             _sp = float(_env_sp)
             log("🚚 bridge 腿: 速度按 ZMAX_L2_MM_S=%.0fmm/s 执行 (段内请求 %.0f)" % (_sp, float(speed or 60.0)))
@@ -2363,10 +2485,84 @@ def _bridge_send(call, target=None, quat=None, speed=None):
     if _ok:
         log("🚚 bridge 腿下发 OK · p=%s speed=%.0fmm/s · Δ=%smm" % (
             [round(v, 4) for v in body["p"]], _sp, (_res.get("sent") or {}).get("delta_mm")))
+        # 🔴 2026-10-26 老倪「点击左移，怎么第二下不动了」
+        #   真因: 控制器队列里卡着一条**残留 MoveL**(上一次动作被中止留下的), 新的 moveStart
+        #   只是排队不执行; 桥不校验"是否真的动了", 照样回 ok:true + delta_mm=20 ⇒
+        #   现场看到"指令已下发、位置一点没变", 而且怎么点都一样。
+        #   实测: 调一次 moveReset 清队列后同一条指令立刻正常(-96 → -86)。
+        #   ⇒ 这里做**到位校验**: 约 1.2s 内朝目标走的距离不足预期的 45%, 就清队列重发一次。
+        #   只在本机做, 不碰 Orin 任何代码; 重发还不行就如实报错(不装成功)。
+        try:
+            _tgt = [float(v) for v in (target or [])][:3]
+            _dm = (_res.get("sent") or {}).get("delta_mm") or []
+            _exp = sum(abs(float(v)) for v in _dm)          # 预期位移(三轴绝对值之和, mm)
+            if len(_tgt) == 3 and _exp > 0.5:
+                def _d3(a, b):
+                    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+
+                _cp = os.path.join(REPO, "zmax_data", "rokae_sdk/tcp_out/latest.json")
+                _p_start = None
+                try:
+                    _cj = json.load(open(_cp, encoding="utf-8"))
+                    _p_start = [float(_cj["x"]), float(_cj["y"]), float(_cj["z"])]
+                except Exception:                                                # noqa: BLE001
+                    _p_start = None
+                if _p_start:
+                    _d0 = _d3(_p_start, _tgt)
+                    _prog = 0.0
+                    # 🔴 校验窗口必须跟实际速度匹配: 2026-10-26 实测 10mm/s 走 70mm 要 7 秒,
+                    #   而这里原来固定只等 1.2 秒 ⇒ 每次都误判"没动"⇒ 每段都白跑一次
+                    #   moveReset 重发(动作看着一顿一顿的)。按"最慢 4mm/s"保守估时, 上限 15 秒。
+                    _win = max(2.0, min(_exp / 4.0, 15.0))
+                    for _i in range(max(4, int(_win / 0.15))):
+                        time.sleep(0.15)
+                        try:
+                            _cj = json.load(open(_cp, encoding="utf-8"))
+                            _prog = _d0 - _d3([float(_cj["x"]), float(_cj["y"]), float(_cj["z"])], _tgt)
+                        except Exception:                                        # noqa: BLE001
+                            continue
+                        if _prog >= 0.45 * _exp:
+                            break
+                    if _prog < 0.45 * _exp:
+                        # 🔴 先判关节限位: 限位导致的不动, 重发一百次也不会走。
+                        _lim = _joint_at_limit()
+                        if _lim:
+                            log("🛑 没动, 但不是队列问题: %s ⇒ 这个方向已到关节限位, 换方向或先改姿态"
+                                % _lim)
+                            _LEG_FAIL.update(t=time.time(), why="关节限位: %s" % _lim)
+                            return False
+                        log("🩹 下发后只走了 %.1f/%.1fmm(疑似控制器队列残留) ⇒ moveReset 清队列, 重发一次"
+                            % (_prog, _exp))
+                        try:
+                            _rq2 = urllib.request.Request(
+                                _bridge_url() + "/reset", data=b"{}",
+                                headers={"Content-Type": "application/json"}, method="POST")
+                            with urllib.request.urlopen(_rq2, timeout=12) as _r2:
+                                _r2.read()
+                        except Exception as _e2:                                 # noqa: BLE001
+                            log("🩹 moveReset 失败: %s" % str(_e2)[:80])
+                        try:
+                            with urllib.request.urlopen(_rq, timeout=25) as _r3:
+                                _d3r = json.loads(_r3.read().decode())
+                            if bool((_d3r or {}).get("ok")):
+                                log("✅ 清队列后重发成功 · p=%s" % [round(v, 4) for v in body["p"]])
+                            else:
+                                log("🛑 清队列后重发仍被拒: %s" % str((_d3r or {}).get("why"))[:80])
+                                _LEG_FAIL.update(t=time.time(), why="清队列后重发仍被拒")
+                                return False
+                        except Exception as _e3:                                 # noqa: BLE001
+                            log("🛑 清队列后重发异常: %s" % str(_e3)[:80])
+                            _LEG_FAIL.update(t=time.time(), why="清队列重发异常")
+                            return False
+        except Exception as _es:                                                 # noqa: BLE001
+            log("🚚 到位校验跳过(异常): %s" % str(_es)[:80])
     else:
         _why = _res.get("why") or _d.get("error") or "未知"
         log("🚚 bridge 腿拒发: %s" % str(_why)[:90])
         _LEG_FAIL.update(t=time.time(), why="bridge 腿拒发: %s" % str(_why)[:70])
+        # 2026-10-26: 拒发原因必须原样带到受理行 —— 否则界面读到兜底文案"命令通道不可用",
+        #   把"控制器拒绝这段"误导成"通道死了", 白查半天。
+        _note_block("bridge 腿", "控制器拒发: %s" % str(_why)[:60])
     return _ok
 
 
@@ -2429,6 +2625,10 @@ def chan_send(call, intent_desc=None, target=None, quat=None, speed=None):
     #      ros = ssh → Orin `ros2 service call /move_line`(产线原路)
     #      sdk = 本机 SDK 直连(tools/rokae/l2_transport_sdk.py → 常驻代理 → xCoreSDK → 控制器)
     #    默认 ros ⇒ 不改开关时行为与改前逐字节一致; 热切见 ~/zmax/zmax_data/move_transport.json。
+    # 🔩 关节通道腿 (2026-10-26 老倪「第6轴自转不好使, 现在是平动」): call 以 sdk_j6 开头 ⇒
+    #    本机 SDK MoveAbsJ 只改 J6 关节角。位置在**闸门之后**(授权/VL/快层都已过), 与 bridge 腿并列。
+    if (call or "").startswith("sdk_j6"):
+        return _joint_leg_send(call)
     if _move_leg() == "bridge":
         # 🚚 2026-10-25: 第三条腿 —— 直接 POST Orin SDK 桥 (本机 39071 → Orin 39061 常驻隧道)。
         #    叫停类仍走原有白名单路径, 不碰; 只有 /move_line|/move_pose 走桥。
@@ -2608,6 +2808,12 @@ def main():
                         log("🐛 调试实例: 命令已强制 dry (不下发) — skill=%s" % (spec.get("skill") or ""))
                 # 🔐 记下本条命令**签发时**的授权 epoch: 撤销会 +1 ⇒ 旧 epoch 的命令在执行层一律作废
                 _CUR.update({"epoch": spec.get("auth_epoch"), "skill": spec.get("skill") or "", "t": time.time()})
+                # 🎚 2026-10-26 页面速度档位: 段表里带 speed_mm_s(真实 mm/s) ⇒ 本条所有运动段按它走,
+                #   优先级高于 env ZMAX_L2_MM_S。不带(None) ⇒ 回落到 env。每条命令重新设, 防上一条的档位残留。
+                try:
+                    _MM_S_HINT["v"] = float(spec.get("speed_mm_s") or 0) or None
+                except (TypeError, ValueError):
+                    _MM_S_HINT["v"] = None
                 # ⚙️ 2026-10-18: 每条命令进来先把状态清成"新命令", 免得沿用上一条的段号/拦截原因
                 exec_state(phase="accepted", skill=spec.get("skill") or "", seg=0, n_seg=0,
                            blocked_by="", residual_mm=None, target=None,

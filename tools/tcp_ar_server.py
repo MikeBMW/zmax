@@ -26,7 +26,9 @@ tcp_ar_server.py — TCP 轨迹 AR/VR 可视化服务 (独立端口, 不碰在�
 from __future__ import annotations
 
 import json
+import math                # 路径长度/净空计算用 (2026-10-26 直线最短路径)
 import os
+import re                  # 号位名 slot1..slot7 → "N号位" 解析 (2026-10-26)
 import subprocess          # 🏃 Follow: 后台拉起 run_along_line.py
 import sys
 import threading
@@ -282,6 +284,63 @@ def _ar_points():
                     "mm": [round(x * 1000) for x in v],
                     "group": groups.get(nm + ".x") or "未分组"})
     out.sort(key=lambda r: (r["group"], r["name"]))
+    # 🔴 2026-10-26 老倪「我已经更新 空间点7 了，刚在 station 的标记模式改的，你看到了么？数据要保持一致」
+    #   实测: 标记模式(8793) → tools/record_l2_point.py 写 **data/skills/l2_atomic/space_points.json**
+    #   (space1..space8, 含 pos/quat/abc, mtime 就是刚改的时刻);
+    #   而本接口原来**只读** ar_aoi_live.json(工程配置台账, 停在 10-20) ⇒ 页面上还是旧点位,
+    #   station 改了、AR 页面不变 —— 两边各说各话。
+    #   口径: **标记模式是示教点真源**, 它写到的 spaceN 覆盖台账里同义的「空间点N」;
+    #   台账里有、示教里没有的点照旧保留(它们来自工程配置, 不是示教出来的)。
+    sp = os.path.join(REPO, "data", "skills", "l2_atomic", "space_points.json")
+    _ov = {}
+    try:
+        with open(sp, encoding="utf-8") as f:
+            _spd = json.load(f)
+        for _k, _v in (_spd.get("points") or {}).items():
+            _p = _v.get("pos") or []
+            if len(_p) >= 3:
+                _ov["空间点" + str(_k).replace("space", "").strip()] = [float(_p[0]), float(_p[1]), float(_p[2])]
+    except Exception:                                                         # noqa: BLE001
+        _ov = {}
+    if _ov:
+        _seen = set()
+        for row in out:
+            _v = _ov.get(row["name"])
+            if _v:
+                row.update({"x": _v[0], "y": _v[1], "z": _v[2],
+                            "mm": [round(x * 1000) for x in _v], "src": "space_points"})
+                _seen.add(row["name"])
+        for _n, _v in _ov.items():                       # 示教里有、台账里没有的, 补出来
+            if _n in _seen:
+                continue
+            out.append({"name": _n, "x": _v[0], "y": _v[1], "z": _v[2],
+                        "mm": [round(x * 1000) for x in _v],
+                        "group": "AR·空间点位 (基座系)", "src": "space_points"})
+        out.sort(key=lambda r: (r["group"], r["name"]))
+    # 📍 号位 1~7 (2026-10-26 老倪「号位 1～7 号示教点，也要在 ar3d 显示，怎么没有呢？工程配置没有么？」)
+    #   实测: 号位坐标一直在 data/skills/l2_atomic/taught_points.json 的 slot1..slot7
+    #   (8793 工位总览 /ctl/points 读的就是这个文件, 7/7 全绿有坐标), 但 ar3d 这个接口
+    #   从来只读 ar_aoi_live 台账 + space_points ⇒ 3D 里根本没有号位,
+    #   所以看着像"工程配置里没配"。口径: 号位与空间点并列, 单独分组, src=taught_points。
+    _tpp = os.path.join(REPO, "data", "skills", "l2_atomic", "taught_points.json")
+    try:
+        with open(_tpp, encoding="utf-8") as f:
+            _tp = (json.load(f) or {}).get("points") or {}
+        _nslot = 0
+        for _i in range(1, 8):
+            _v = _tp.get("slot%d" % _i) or {}
+            _p = _v.get("pos") or []
+            if len(_p) < 3:
+                continue
+            out.append({"name": "%d号位" % _i,
+                        "x": float(_p[0]), "y": float(_p[1]), "z": float(_p[2]),
+                        "mm": [round(float(x) * 1000) for x in _p[:3]],
+                        "group": "AR·号位 (基座系)", "src": "taught_points"})
+            _nslot += 1
+        if _nslot:
+            out.sort(key=lambda r: (r["group"], r["name"]))
+    except Exception:                                                         # noqa: BLE001
+        pass
     ts = d.get("ts")
     return {"ok": True, "n": len(out), "points": out, "ts": ts,
             "age_s": (round(time.time() - float(ts), 1) if ts else None),
@@ -357,6 +416,132 @@ def _cached_get(path: str, timeout: float = 6.0):
 #   ⚠️ 常数来源 = 现场 URDF; 离线自检: tools/test_j6_axis.py(与 FK 位置差 6e-14mm)。
 TOOL01_RPY = (0.03702517838719945, 0.6751675651256659, 2.375248653715161)   # URDF tool0→tool1 rpy
 TOOL01_XYZ = (-0.01588615307905028, 0.018348498948158043, 0.2586775713451509)  # URDF tool0→tool1 xyz
+
+
+def _box_covers_xy(it, p, margin=0.02):
+    """盒子在 x/y 平面是否真的盖住这个点(含 margin)。
+
+    🔴 2026-10-26 老倪「去7号位，要先到7号位的正上方」实测踩坑: 接近高度 z=307.7 被判成
+      "落进 检测设备(x 711~844 / y -91~302 / z 0~340) 的 z 区间" ⇒ 压到盒底 -20mm,
+      可 7号位在 x=647, x 根本不在盒子里 —— 只判 z 不判 x/y 就会把高度压到地下。
+      避让必须三维真重叠才算重叠。
+    """
+    try:
+        x0, x1 = sorted((float(it["p1"][0]), float(it["p2"][0])))
+        y0, y1 = sorted((float(it["p1"][1]), float(it["p2"][1])))
+        return (x0 - margin) <= float(p[0]) <= (x1 + margin) and (y0 - margin) <= float(p[1]) <= (y1 + margin)
+    except Exception:                                                        # noqa: BLE001
+        return True                     # 判不了就按"可能重叠"处理, 保守
+
+
+def _min_clear_mm(path_pts):
+    """一条路径到所有启用围栏(长方体/直线)的最小净空 mm; 负值=穿进围栏内部。
+
+    2026-10-26 老倪:「走直线是最近的」⇒ 直线要能自证安全, 不能只说"应该没问题"。
+    只读 FS 真源(_load), 轨迹点(type=points)不参与判定(否则自己的路把自己堵死)。
+    """
+    d = FS._load()
+    best_d, best_nm = 9e9, ""
+    for p in path_pts:
+        for it in d.get("items", []):
+            if not it.get("enabled", True) or it.get("type") == "points":
+                continue
+            if it["type"] == "box":
+                lo = [min(it["p1"][k], it["p2"][k]) for k in range(3)]
+                hi = [max(it["p1"][k], it["p2"][k]) for k in range(3)]
+                if all(lo[k] <= p[k] <= hi[k] for k in range(3)):
+                    dd = -min(min(p[k] - lo[k], hi[k] - p[k]) for k in range(3))
+                else:
+                    dd = math.dist(p, [min(max(p[k], lo[k]), hi[k]) for k in range(3)])
+            else:
+                dd = FS._pt_seg_dist(p, it["p1"], it["p2"])
+            if dd < best_d:
+                best_d, best_nm = dd, (it.get("name") or "")
+    return best_d * 1000.0, best_nm
+
+
+def _smooth_fillet(pts, radius=0.045, step=0.005):
+    """折线骨架 → 圆弧圆角过渡 + 等步长采样 ⇒ 切线连续(C1)的平滑路径。
+
+    2026-10-26 老倪: 「你应该规划一个平滑的, 从当前点到准备点的轨迹」
+      (原实现是 4 点直角折线: 原地升 → 平移 → 垂直落, 三段 90° 硬拐角, 画出来就是折线。)
+
+    口径:
+      · 首点/末点**原样保留** —— 起点闸按首点判 20mm, 末端必须精确落在目标点
+      · 每个内部拐角用半径 radius 的圆弧过渡; 段长不足时按 45% 段长自动缩半径
+      · ⚠ 圆角会在拐角处**向内切 radius**, 所以安全高的余量必须 > radius,
+        否则平滑后实际抬升余量被吃掉(调用方负责: zs = max(两端z) + 余量 + radius)
+      · 纯 math 实现, 不引 numpy
+    返回 [[x,y,z]m, ...]
+    """
+    import math as _m
+
+    def _sub(a, b): return [a[i] - b[i] for i in range(3)]
+    def _add(a, b): return [a[i] + b[i] for i in range(3)]
+    def _mul(a, s): return [a[i] * s for i in range(3)]
+    def _dot(a, b): return sum(a[i] * b[i] for i in range(3))
+    def _norm(a): return _m.sqrt(max(0.0, _dot(a, a)))
+
+    def _unit(a):
+        n = _norm(a)
+        return [x / n for x in a] if n > 1e-12 else [0.0, 0.0, 0.0]
+
+    def _spin(v, axis, th):
+        """Rodrigues: 把 v 绕单位轴 axis 转 th 弧度。"""
+        c, s = _m.cos(th), _m.sin(th)
+        cr = [axis[1] * v[2] - axis[2] * v[1],
+              axis[2] * v[0] - axis[0] * v[2],
+              axis[0] * v[1] - axis[1] * v[0]]
+        dd = _dot(axis, v)
+        return _add(_add(_mul(v, c), _mul(cr, s)), _mul(axis, dd * (1.0 - c)))
+
+    P = [[float(x) for x in p[:3]] for p in pts if p]
+    if len(P) < 2:
+        return P
+    if len(P) == 2:
+        n = max(2, int(_norm(_sub(P[1], P[0])) / step) + 1)
+        return [_add(P[0], _mul(_sub(P[1], P[0]), i / (n - 1))) for i in range(n)]
+
+    out = [P[0][:]]
+    tail = P[0][:]
+    for i in range(1, len(P) - 1):
+        A, B, C = P[i - 1], P[i], P[i + 1]
+        u1, u2 = _unit(_sub(B, A)), _unit(_sub(C, B))
+        l1, l2 = _norm(_sub(B, A)), _norm(_sub(C, B))
+        cosphi = max(-1.0, min(1.0, _dot(u1, u2)))
+        phi = _m.acos(cosphi)
+        if phi < 1e-3 or l1 < 1e-9 or l2 < 1e-9:          # 直行, 无拐角
+            n = max(2, int(_norm(_sub(B, tail)) / step) + 1)
+            out += [_add(tail, _mul(_sub(B, tail), k / (n - 1))) for k in range(1, n)]
+            tail = B[:]
+            continue
+        half_tan = _m.tan(phi / 2.0)
+        d = min(radius * half_tan, 0.45 * l1, 0.45 * l2)
+        r = d / half_tan if half_tan > 1e-9 else radius
+        T_in = _sub(B, _mul(u1, d))
+        T_out = _add(B, _mul(u2, d))
+        n = max(2, int(_norm(_sub(T_in, tail)) / step) + 1)
+        out += [_add(tail, _mul(_sub(T_in, tail), k / (n - 1))) for k in range(1, n)]
+        nvec = _unit(_sub(u2, _mul(u1, cosphi)))          # 垂直 u1, 指向转向内侧
+        Cc = _add(T_in, _mul(nvec, r))
+        v1, v2 = _sub(T_in, Cc), _sub(T_out, Cc)
+        a1 = _unit(v1)
+        ang = _m.acos(max(-1.0, min(1.0, _dot(_unit(v1), _unit(v2)))))
+        axis = [v1[1] * v2[2] - v1[2] * v2[1],
+                v1[2] * v2[0] - v1[0] * v2[2],
+                v1[0] * v2[1] - v1[1] * v2[0]]
+        ax = _unit(axis)
+        msteps = max(3, int(r * ang / step) + 1)
+        for j in range(1, msteps):
+            th = ang * j / (msteps - 1)
+            p = _add(Cc, _mul(_spin(a1, ax, th) if _norm(axis) > 1e-12 else a1, r))
+            out.append(p)
+        tail = T_out[:]
+    n = max(2, int(_norm(_sub(P[-1], tail)) / step) + 1)
+    out += [_add(tail, _mul(_sub(P[-1], tail), k / (n - 1))) for k in range(1, n)]
+    out[0] = P[0][:]
+    out[-1] = P[-1][:]                                     # 末端精确落在目标点
+    return out
 
 
 def _rpy_R(r: float, p: float, y: float):
@@ -1612,6 +1797,39 @@ class H(BaseHTTPRequestHandler):
                     cur = None
                 tname = (str(target or "").strip() or "安全点1")
                 tgt_p, names = None, []
+                # 🔴 2026-10-26 老倪「我已经更新 空间点7 了，刚在 station 的标记模式改的…数据要保持一致」
+                #   实测: 标记模式写 data/skills/l2_atomic/space_points.json(space1..8) 是**示教真源**,
+                #   而这段原来只查工程配置台账 ar_aoi_live.json(停在 10-20) ⇒
+                #   station 明明改了空间点7(522,-116,274), 这里规划还用旧值(679,-38,360), 差 195mm。
+                #   ⇒ 先按「空间点N ↔ spaceN」查 space_points, 命中就用它压过台账; 未命中才回落台账。
+                _spm = {}
+                try:
+                    _spf = os.path.join(REPO, "data", "skills", "l2_atomic", "space_points.json")
+                    with open(_spf, encoding="utf-8") as _f:
+                        for _k, _v in (json.load(_f).get("points") or {}).items():
+                            _pv = _v.get("pos") or []
+                            if len(_pv) >= 3:
+                                _spm["空间点" + str(_k).replace("space", "").strip()] = \
+                                    [float(_pv[0]), float(_pv[1]), float(_pv[2])]
+                except Exception:                                                  # noqa: BLE001
+                    _spm = {}
+                # 📍 号位 1~7 (2026-10-26 老倪「号位1～7 也要在 ar3d 显示」+「现在目标是7号位, 怎么不规划了」)
+                #   号位坐标在 data/skills/l2_atomic/taught_points.json 的 slot1..slot7 —— 8793 号位按钮
+                #   读的就是它, 但这段目标点解析原来只认台账 + space_points ⇒ 选「7号位」直接报
+                #   "点位台账里没有目标点", 页面上就是"不规划了"。这里同样按示教真源优先。
+                _slm = {}
+                try:
+                    _tpf = os.path.join(REPO, "data", "skills", "l2_atomic", "taught_points.json")
+                    with open(_tpf, encoding="utf-8") as _f:
+                        for _k, _v in ((json.load(_f) or {}).get("points") or {}).items():
+                            _mm = re.match(r"slot(\d+)$", str(_k))
+                            if not _mm:
+                                continue
+                            _pv = _v.get("pos") or []
+                            if len(_pv) >= 3:
+                                _slm[_mm.group(1) + "号位"] = [float(_pv[0]), float(_pv[1]), float(_pv[2])]
+                except Exception:                                                  # noqa: BLE001
+                    _slm = {}
                 try:
                     s = json.load(open(aq, encoding="utf-8")).get("s") or {}
                     names = sorted({str(n)[:-2] for n in s if str(n).endswith(".x")})
@@ -1620,6 +1838,14 @@ class H(BaseHTTPRequestHandler):
                         tgt_p = [float(x) for x in v]
                 except Exception:                                                  # noqa: BLE001
                     tgt_p = None
+                if tname in _spm:                                                  # 示教真源优先
+                    tgt_p = list(_spm[tname])
+                    if tname not in names:
+                        names = sorted(set(names) | set(_spm.keys()))
+                if tname in _slm:                                                  # 号位: 示教真源优先
+                    tgt_p = list(_slm[tname])
+                    if tname not in names:
+                        names = sorted(set(names) | set(_slm.keys()))
                 out["target"] = tname
                 if cur is None:
                     out["note"] = ("实时路径缺起点: 读不到当前 TCP (tcp_out/latest.json 全 0 或不存在)"
@@ -1629,17 +1855,96 @@ class H(BaseHTTPRequestHandler):
                     out["note"] = ("点位台账里没有目标点「%s」或坐标不全 · 可选: %s"
                                    % (tname, ", ".join(names[:8]) or "(台账为空)"))
                     return out
-                zs = max(cur[2], tgt_p[2]) + 0.05          # 安全高 = 两端高的那个再抬 50mm
-                pts = [list(cur),
-                       [cur[0], cur[1], zs],               # ① 原地升到安全高
-                       [tgt_p[0], tgt_p[1], zs],           # ② 在安全高平移
-                       list(tgt_p)]                        # ③ 垂直落点
+                # 🥽 2026-10-26 老倪:「从当前点去准备点, 走直线是最近的, 你却升高后又绕远; 改成直线」
+                #   ① 默认 **直线**: 两点连线, 最短(当前→准备点 260.8mm, 原来抬升绕行 448.7mm)
+                #   ② 直线仍要过 20mm 净空门槛 —— 用 _min_clear_mm 逐点算, 不达标才回退
+                #      「原地升→安全高平移→垂直落」, 并在 note 里写明绕行原因(不偷偷绕)
+                #   ③ 两种形状统一按 5mm 等步长采样, 首末点原样(起点闸/末端精度靠它)
+                _straight = _lerp(cur, tgt_p, 80)
+                _cmin, _cby = _min_clear_mm(_straight)
+                _Ldist = math.dist(cur, tgt_p) * 1000.0
+                # 📍 2026-10-26 老倪「去7号位，要先到7号位的正上方，再下降抓光模块」
+                #   号位 1~7 = 光模块插拔/抓取位, 目标 z≈108mm 就贴在台面上。
+                #   直接一路斜插过去 = 贴着台面/工件横切(净空 64mm 也照样是斜的落低处),
+                #   抓取位必须**先到正上方、再竖直下降** —— 这是现场工艺, 不是最短路径问题。
+                _grasp = bool(re.match(r"^\d+号位$", tname or ""))
+                if _grasp:
+                    # 🎯 2026-10-26 老倪「先到 7号位的正上方 5厘米的位置」
+                    #   接近高度 = 点位 z + **50mm**（不是 200mm），而且**终点就停在正上方 50mm**,
+                    #   最后一刀"下降 50mm 到抓取位"不编进这条 —— 现场自己走。
+                    #   路径仍是: 先在本高度横移到正上方 → 再竖直下降 (不在低位横切)。
+                    _app_h = 0.050
+                    _zt = float(tgt_p[2])
+                    _zap = _zt + _app_h
+                    _end = [float(tgt_p[0]), float(tgt_p[1]), _zap]
+                    _p1 = [float(tgt_p[0]), float(tgt_p[1]), max(_zap, float(cur[2]))]
+                    # 接近高度同样要避开头顶围栏盒(横梁/相机), 与绕行同一套 z 区间判据(三维真重叠)
+                    _cap2 = []
+                    for _it in (FS._load().get("items") or []):
+                        if not _it.get("enabled", True) or _it.get("type") != "box":
+                            continue
+                        _z0 = min(_it["p1"][2], _it["p2"][2])
+                        _z1 = max(_it["p1"][2], _it["p2"][2])
+                        if (_z0 - 0.02 <= _p1[2] <= _z1 + 0.02) and _box_covers_xy(_it, _p1):
+                            _p1[2] = _z0 - 0.02
+                            _cap2.append(str(_it.get("name") or "?"))
+                    if _p1[2] > _zap + 0.002:
+                        skel = [list(cur), _p1, _end]       # 高位横移 → 竖直降到正上方 50mm
+                        shape = ("两阶段(高位 z=%.0f 横移到正上方 → 竖直降到 z=%.0f)"
+                                 % (_p1[2] * 1000, _zap * 1000))
+                    else:
+                        skel = [list(cur), _end]            # 当前已在接近高度或更低 ⇒ 直接到正上方
+                        shape = "两阶段(到正上方 z=%.0f)" % (_zap * 1000)
+                    extra = " · 正上方 +%.0fmm · 停在抓取位上方, 未落到 z=%.0f" % (_app_h * 1000, _zt * 1000)
+                    if _cap2:
+                        extra += " · 受%s压到 %.0fmm" % ("、".join(_cap2), _p1[2] * 1000)
+                    _cmin, _cby = _min_clear_mm(_smooth_fillet(skel, radius=0.03, step=0.01))
+                elif _cmin >= 20.0:
+                    skel = [list(cur), list(tgt_p)]
+                    shape = "直线(最短)"
+                    extra = ""
+                else:
+                    _R = 0.045
+                    zs = max(cur[2], tgt_p[2]) + 0.05 + _R
+                    # 🔴 2026-10-26 老倪「你看你现在规划的轨迹，是先上升，穿过上横梁，又横向后退，又下降，不对」
+                    #   绕行的"安全高度"原来只算 最高点+95mm, **完全没看头顶的横梁(682~700)** ——
+                    #   目标点一高(例如末端 z=654)就得出 zs=749, 正好从横梁胸中间穿过去, 而且是
+                    #   「升→横移→降」三段, 现场一眼就是瞎绕。
+                    #   口径: 绕行高度必须避开每个围栏盒的 z 区间; 要穿进去就压到盒底下方 20mm,
+                    #   并在 note 里写明"受 <盒名> 限制压到 Xmm"(不偷偷压, 也不偷偷穿)。
+                    _cap = []
+                    _fd = FS._load()
+                    for _it in _fd.get("items", []):
+                        if not _it.get("enabled", True) or _it.get("type") != "box":
+                            continue
+                        _z0 = min(_it["p1"][2], _it["p2"][2])
+                        _z1 = max(_it["p1"][2], _it["p2"][2])
+                        if (_z0 - 0.02 <= zs <= _z1 + 0.02) and _box_covers_xy(_it, [tgt_p[0], tgt_p[1], zs]):
+                            zs = _z0 - 0.02
+                            _cap.append(str(_it.get("name") or "?"))
+                    # 压下来之后仍要高于两端点, 否则绕行没意义 ⇒ 如实说走不了, 不硬编
+                    if zs <= max(cur[2], tgt_p[2]) + 0.005:
+                        out["note"] = ("绕行高度被头顶围栏(%s)压到 %.0fmm, 已不高于两端点(%.0f/%.0f) "
+                                       "⇒ 这条不要绕, 请改目标点或先手动退开"
+                                       % ("、".join(_cap) or "?", zs * 1000, cur[2] * 1000, tgt_p[2] * 1000))
+                        return out
+                    skel = [list(cur),
+                            [cur[0], cur[1], zs],               # ① 原地升到安全高
+                            [tgt_p[0], tgt_p[1], zs],           # ② 在安全高平移
+                            list(tgt_p)]                        # ③ 垂直落点
+                    shape = "抬升绕行(直线净空仅 %.1fmm < 20mm)" % _cmin
+                    extra = " · 圆弧过渡 R=45mm · 抬升余量 50mm"
+                    _cmin, _cby = _min_clear_mm(_smooth_fillet(skel, radius=_R, step=0.01))
+                pts = _smooth_fillet(skel, radius=0.045, step=0.005)
+                _plen = sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1)) * 1000.0
                 out.update(ok=True, pts=pts,
-                           src="实时: 当前TCP→%s (升→平移→落点)" % tname,
-                           note=("当前 TCP %s → 🎯目标点「%s」%s mm · 先升到 z=%.0f 再平移再落点 · "
-                                 "骨架 %d 点 (执行时按轴拆段 ≤100mm)")
+                           src="实时: 当前TCP→%s (%s)" % (tname, shape),
+                           note=("当前 TCP %s → 🎯目标点「%s」%s · 直线距离 %.1fmm · 路径长 %.1fmm · "
+                                 "%d 点 @5mm · 最小净空 %.1fmm(%s)%s · 执行时按弧长拆段 ≤100mm")
                                 % ([round(x * 1000) for x in cur], tname,
-                                   [round(x * 1000) for x in tgt_p], zs * 1000, len(pts)))
+                                   [round(x * 1000) for x in tgt_p], _Ldist, _plen,
+                                   len(pts), _cmin, _cby or "—", extra))
+                out["skeleton"] = [[round(c, 6) for c in p] for p in skel]
 
             elif k == "real_gone":
                 rp = os.path.join(REPO, "zmax_data", "ss_live", "bridge_real_path.json")
@@ -1959,10 +2264,14 @@ class H(BaseHTTPRequestHandler):
         tot = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("总长")]
         return {"ok": True, "msg": tot[-1] if tot else "段表已生成", "k": k}
 
-    def _traj_exec_start(self):
+    def _traj_exec_start(self, speed_mm_s=None):
         """『▶ 执行轨迹』按钮的后端: 复核(规划新鲜/预检过/授权窗) → 后台起 traj_exec.py。
 
         命令**只进** l2_daemon 的 FIFO（唯一执行收口），本服务不直连 SDK、不自己下发。
+
+        🎚 2026-10-26 老倪「在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位」:
+          speed_mm_s(真实 mm/s) 一路透传: 本接口 → traj_exec.py --speed-mm-s → 每条 FIFO 行
+          → l2_daemon._bridge_send 优先采用(压过 env ZMAX_L2_MM_S)。缺省 None ⇒ 用 env(10mm/s)。
         """
         plan = self._traj_plan()
         if not plan.get("ok"):
@@ -1989,11 +2298,19 @@ class H(BaseHTTPRequestHandler):
         log = os.path.join(self.TRAJ_DIR, "exec_stdout.log")
         os.makedirs(self.TRAJ_DIR, exist_ok=True)
         f = open(log, "ab")
-        pr = subprocess.Popen([sys.executable, os.path.join(HERE, "traj_exec.py")], cwd=REPO,
+        _argv = [sys.executable, os.path.join(HERE, "traj_exec.py")]
+        try:
+            _sms = float(speed_mm_s) if speed_mm_s else 0.0
+        except (TypeError, ValueError):
+            _sms = 0.0
+        if _sms > 0:
+            _argv += ["--speed-mm-s", ("%.1f" % _sms)]
+        pr = subprocess.Popen(_argv, cwd=REPO,
                               stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
-        return {"ok": True, "pid": pr.pid, "n_seg": plan.get("n_seg"),
-                "msg": "已下发: %d 段 / %.0fmm (执行器 l2_daemon · FIFO 收口)" % (
-                    plan.get("n_seg") or 0, plan.get("total_mm") or 0)}
+        _sp_txt = ("%.0fmm/s(档位)" % _sms) if _sms > 0 else "env(默认10mm/s)"
+        return {"ok": True, "pid": pr.pid, "n_seg": plan.get("n_seg"), "speed_mm_s": (_sms or None),
+                "msg": "已下发: %d 段 / %.0fmm · 速度 %s (执行器 l2_daemon · FIFO 收口)" % (
+                    plan.get("n_seg") or 0, plan.get("total_mm") or 0, _sp_txt)}
 
     def _traj_state(self):
         st = TD.get_state()
@@ -2136,12 +2453,18 @@ class H(BaseHTTPRequestHandler):
             #   不带 k 保持老行为(执行当前规划航路)。
             _k = str((body or {}).get("k") or "").strip()
             _tg = str((body or {}).get("target") or "").strip()
+            # 🎚 2026-10-26 老倪「在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位」
+            #   页面把选中的档位以真实 mm/s 传上来, 一路透传到执行器; 缺省 ⇒ 用 env(10mm/s)。
+            try:
+                _sms = float((body or {}).get("speed_mm_s") or 0) or None
+            except (TypeError, ValueError):
+                _sms = None
             if _k:
                 _pr = self._traj_plan_from_named(_k, _tg)
                 if not _pr.get("ok"):
                     self._json(_pr)
                     return
-            r = self._traj_exec_start()
+            r = self._traj_exec_start(speed_mm_s=_sms)
             self._json(r)
         elif p == "/api/traj/clear":
             rec = 0

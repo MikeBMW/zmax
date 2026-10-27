@@ -71,7 +71,7 @@ def read_exec():
         return {}
 
 
-def run(dry=False):
+def run(dry=False, speed_mm_s=None):
     if not os.path.exists(PLAN):
         say("❌ 没有规划轨迹 planned_traj.json ⇒ 先规划")
         return 2
@@ -177,6 +177,10 @@ def run(dry=False):
                            #   后续段就会整体漂移 —— 实测出现"后退没走、前进照走 ⇒ 臂停在 +80mm 外"。
                            #   给了 abs_mm 之后, 每段都落到规划点上, 单段失败不会污染后面的点。
                            "abs_mm": [float(v) for v in (s.get("to_mm") or [])][:3] or None,
+                           # 🎚 2026-10-26 老倪「在 执行轨迹 按钮上边给出 5/10/50mm/s 三个档位」
+                           #   speed_mm_s = **真实 mm/s**(页面档位), 由 l2_daemon 的 _bridge_send 采用,
+                           #   优先级高于 env ZMAX_L2_MM_S。None ⇒ 回落 env(默认 10mm/s)。
+                           "speed_mm_s": (float(speed_mm_s) if speed_mm_s else None),
                            "note": "轨迹第 %d/%d 段 %s" % (int(s["i"]), len(segs), s.get("cn") or s["dir"])}
                     f.write(json.dumps(cmd, ensure_ascii=False) + "\n")
                     f.flush()
@@ -237,8 +241,10 @@ def run(dry=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--speed-mm-s", type=float, default=None,
+                    help="页面速度档位(真实 mm/s): 5 / 10 / 50。缺省=回落 env ZMAX_L2_MM_S")
     a = ap.parse_args()
-    return run(dry=a.dry_run)
+    return run(dry=a.dry_run, speed_mm_s=a.speed_mm_s)
 
 
 if __name__ == "__main__":

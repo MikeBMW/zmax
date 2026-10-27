@@ -38,8 +38,9 @@ print("① 入口: 画布工具栏 + 3D 场景同源")
 import ss_dreamview as SD                                                # noqa: E402
 _src_dv = open(os.path.join(ROOT, "tools", "gui", "ss_dreamview.py"), encoding="utf-8").read()
 _src_sm = open(os.path.join(ROOT, "tools", "gui", "simulink_module.py"), encoding="utf-8").read()
-ck("AR 页面地址 = 8793/ar(302→8797) 或 127.0.0.1:8797/ar",
-   SD.AR_PAGE_URL in ("http://10.163.146.78:8793/ar", "http://127.0.0.1:8797/ar"), SD.AR_PAGE_URL)
+ck("AR 页面地址 = 当前网卡 IP 的 8793/ar(302→8797) 或回环 8797/ar",
+   (SD.ar_page_url().endswith(":8793/ar") or SD.ar_page_url().endswith(":8797/ar"))
+   and "10.163.146.78" not in SD.ar_page_url(), SD.ar_page_url())
 ck("有非阻塞入口 ar_launch()", callable(getattr(SD, "ar_launch", None)))
 ck("有 ar_spawn_browser() 且不等窗口",
    callable(getattr(SD, "ar_spawn_browser", None))

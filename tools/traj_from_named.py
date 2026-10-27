@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import math
 import os
 import sys
 import time
@@ -160,7 +161,32 @@ def build_from_points(pts_m, k, tol, label_named, src, lead_in=False):
     cur = list(tcp)
     pts_walk = [list(cur)]
     i = 0
+    # 🥽 2026-10-26 老倪「从当前点去准备点，走直线是最近的，你却升高后又绕远；改成直线」
+    #   / 「不对，你怎么没有走直线？」
+    #   轨迹5「实时」= 两点直线, 必须**按弧长等分走斜线**, 不能用下面那条轴对齐拆段:
+    #     轴对齐 = 先 Z 再 X 再 Y ⇒ 画出来是直角阶梯, 而且实测 4 段 277mm 跑完 x/z 到位、
+    #     y 差 53mm 没走(某轴段被丢) —— 总长比直线长 54%。
+    #   斜线口径: 中间点严格落在起点→终点连线上, 每段 ≤90mm(>100mm 控制器会零位移静默丢弃),
+    #   一律用 L2.forward + abs_mm(build_move 末尾用 abs_mm 覆盖目标 ⇒ 真斜线 MoveL)。
+    if k == "real":
+        _end = [v * 1000.0 for v in pts_m[-1]]
+        _L = _dist(tcp, _end)
+        _n = max(1, int(math.ceil(_L / 90.0)))
+        for _j in range(1, _n + 1):
+            _u = _j / float(_n)
+            _nx = [tcp[_k2] + (_end[_k2] - tcp[_k2]) * _u for _k2 in range(3)]
+            i += 1
+            segs.append({"i": i, "skill": TP.SKILL["forward"], "dir": "forward",
+                         "axis": 0, "sign": 1, "cn": TP.CN["forward"],
+                         "d_mm": round(_dist(cur, _nx), 1), "line": True,
+                         "from_mm": [round(v, 1) for v in cur],
+                         "to_mm": [round(v, 1) for v in _nx],
+                         "abs_mm": [round(v, 1) for v in _nx]})
+            pts_walk.append(list(_nx))
+            cur = list(_nx)
     for a in anchors_mm:
+        if k == "real":
+            break                       # 斜线已生成(上面), 不再走轴对齐
         if _dist(cur, a) < 0.5:
             continue
         for s in axis_segs(cur, a):

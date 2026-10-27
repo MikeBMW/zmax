@@ -14983,7 +14983,7 @@ class SimulinkModule(QWidget):
                 self._ar_bus_wired = True
             except Exception:                                                   # noqa: BLE001
                 self._ar_bus_wired = False
-        self._log("🥽 正在打开 AR: %s" % _sd.AR_PAGE_URL)
+        self._log("🥽 正在打开 AR: %s" % _sd.ar_page_url())
         try:
             return _sd.ar_launch()
         except Exception as _e:                                                 # noqa: BLE001
@@ -15001,7 +15001,14 @@ class SimulinkModule(QWidget):
           · 8797 没起时后台 `ar_server_ctl.sh start` 起一次再开, 失败只在日志里说清。
         """
         import threading as _th
-        _url = "http://10.163.146.78:8797/autoLight"
+        # 🔴 2026-10-26: 原来写死 "http://10.163.146.78:8797/autoLight" —— 换网/换热点后必然打不开
+        #    (与 AR 按钮同一条坑)。主机按当前默认路由网卡现算, ZMAX_AR_URL 覆盖时取其 host。
+        try:
+            from ss_dreamview import ar_page_url as _ar_page_url
+            _host = _ar_page_url().split("//", 1)[-1].split("/", 1)[0].split(":")[0]
+        except Exception:                                                      # noqa: BLE001
+            _host = ""
+        _url = "http://%s:8797/autoLight" % (_host or "127.0.0.1")
 
         def _bg():
             try:

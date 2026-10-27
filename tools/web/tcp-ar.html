@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r25 · 轨迹5实时=当前位姿→🎯目标点(左栏单选) + 铝型材框架 + 实验桌750</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-26 r29 · 点位以标记模式(space_points.json)为真源 + 执行轨迹上方速度档 5/10/50mm/s(默认10) + 轨迹5=直线 + 段表不画 + 铝型材框架 + 实验桌750</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -154,6 +154,28 @@
          ⇒ 三维按钮全部收进这层 rail: 普通页面里照旧排在画布下方(display:block),
            /ar3d 里 CSS 把它摆到**左栏**(grid 左固定 300px, 画布占右边其余宽度)。 -->
     <div id="vrRail">
+    <!-- 🎚 2026-10-26 老倪「现在移动的速度太快了，在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位，你来设计」
+         设计口径:
+           · 三个档 = **真实末端速度**(mm/s), 不是控制器内部档位号 —— 现场说的"太快"是看得见的 mm/s。
+           · 默认 10mm/s: 5 太磨蹭(170mm 要 34s), 50 又回到"看不清走没走"的感觉。
+           · 选中值随 POST /api/traj/exec 的 speed_mm_s 一路透传到 l2_daemon, **真的改下发速度**,
+             不是只改显示(改前是 env ZMAX_L2_MM_S=200 无条件覆盖, 页面调什么都没用)。
+           · 档位记 localStorage, 刷新后还是上次选的。 -->
+    <div class="row" id="spdRow" style="margin-top:8px;gap:6px;align-items:center">
+      <span style="font-size:12.5px;color:#8b949e">速度</span>
+      <button class="sm spd" data-mm="5"  title="5 mm/s · 最慢 · 精密靠近、贴件、过窄处用">5</button>
+      <button class="sm spd on" data-mm="10" title="10 mm/s · 默认 · 常规走位">10</button>
+      <button class="sm spd" data-mm="50" title="50 mm/s · 快 · 空走、退回原点用">50</button>
+      <span style="font-size:12.5px;color:#8b949e">mm/s</span>
+      <span id="spdHint" style="font-size:11.5px;color:#6b7a8d"></span>
+    </div>
+    <!-- 👻 2026-10-26 老倪: 「在 执行轨迹 按钮上方, 增加一个 预览动作 的按钮; 点一下按钮变蓝,
+         右臂虚拟执行到目标点, 再点一次消失; 真机不动, 用眼睛能同时看到两条臂, 末端位姿不同;
+         用一个新颜色表达模拟动作的右臂」 -->
+    <div class="row" style="margin-top:8px">
+      <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
+      <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+    </div>
     <div class="row" style="margin-top:8px">
       <button id="bFit" class="sm" title="点击 = 把当前规划轨迹发给执行器(l2_daemon · 逐段走)· 双击 = 视角对准轨迹（原功能）">▶ 执行轨迹</button>
       <span id="bTrajMsg" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
@@ -218,6 +240,8 @@
          (停用后三维视图和 AR 叠加都不画, 但配置里还在, 再点一下就回来) -->
     <div class="row" style="margin-top:6px" id="rowBoxes"></div>
     <div class="row" style="margin-top:6px" id="rowLines"></div>
+    <!-- 📍 轨迹点序列行 (type=points): 不参与避让判定 ⇒ 画成粗实线也不会自我阻挡 -->
+    <div class="row" style="margin-top:6px" id="rowPts"></div>
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
     <pre id="pVr">—</pre>
     <!-- 📍 2026-10-26 老倪: 「也要显示 工程配置的所有点, 向下罗列显示出来; 点大一些, 方便用眼睛观察」
@@ -437,6 +461,8 @@ let CAMS={arm:{w:640,h:480,label:'🦾 机器人手臂 RealSense D405 (Orin 臂�
 const ARPURPLE='#8957e5';   // 🥽 与 3D 场景「🥽 AR」按钮同色(插拔 #2e8b57 绿 / 摆盘 #1f6feb 蓝 / AR 紫)
 const FOUR=['arm','gold','surface','rs'];   // 老倪点名的 4 台相机(同一场景 4 视角)
 let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运动学结果
+// 👻 预览动作(2026-10-26 老倪): 真机不动, 只多画一条**虚拟右臂**到目标点; 再点一次消失
+let PREV={on:false, M:null, q:null, err_mm:null, target:null};
 // 🧱 3D 围栏状态 (必须在这里声明: 初始化阶段 applyRot() 就会调 drawVR(), 晚声明会踩 TDZ 把整个脚本打死)
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
@@ -600,6 +626,29 @@ function drawTube(g, pts, opt){
 // 取不到 ⇒ 明确写出为什么取不到, 绝不画一条假线糊弄。
 const NAMED_COL = {xiaohong:'#ff4444', square:'#a855f7', map:'#22d3ee',
                    safe:'#4ade80', real:'#ff9f1c'};
+
+// 🔴 2026-10-26 老倪「为什么还显示粉色轨迹？」→「显示的是建图的轨迹」
+//   根因: 服务端 TRAJ.plan(洋红粗线 + 蓝色管) 的绘制闸原来是 `namedAnyOn()`
+//   —— 只要有**任何一条**命名轨迹亮着就画。而 TRAJ.plan 是**上一次规划结果**,
+//   当时 /api/traj 的 plan_label = 「命名轨迹 轨迹3 · 建图 (自主探索) · 20段/1333mm」
+//   ⇒ 点『轨迹5 实时』却看到建图那条洋红线, 用户当然以为轨迹5 画错了。
+//   定式: 按 plan_label 认归属, 只有**它自己那条**命名轨迹亮着才画。
+function planOwner(){
+  const lb = (TRAJ && TRAJ.planLabel) || '';
+  if(/建图|自主探索/.test(lb)) return 'map';
+  if(/安全/.test(lb))          return 'safe';
+  if(/实时/.test(lb))          return '_noplan';   // 见下: 轨迹5 不画执行段表
+  if(/小红/.test(lb))          return 'xiaohong';
+  return 'square';                 // 默认: 矩形/规划航路闭环
+}
+// 🔴 2026-10-26 老倪「现在有个粉色的直角轨迹，是什么？」
+//   = 轨迹5 的**执行段表**(plan_label「轨迹5 实时 · 6段/400mm」7 点) 被当成路径画了出来。
+//   它是轴对齐拆段的结果(x 拆2段 + y 拆3段 + z 1段), 所以画出来是**阶梯/直角**,
+//   总长 400mm 比真直线 260.8mm 长 54% —— 而轨迹5 的真路径是 /api/traj/named 那 53 点直线(橙色),
+//   两张叠在一起, 用户眼里就是「粉色直角轨迹压着一条橙线」, 分不清哪个才是要走的。
+//   定式: **执行段表不是路径形状** ⇒ 轨迹5 只画 named 点列, plan 一律不画。
+//   轨迹2「矩形」不同: 它的 plan 本身就是路径(4 段闭环), 所以照画。这也就是 planOwner 返 '_noplan'
+//   的原因 —— NAMED_ON['_noplan'] 恒为 undefined, 两处闸门(蓝管 nPl + 洋红粗线)自然都不画。
 
 // 🧭 2026-10-26 老倪: 「按钮怎么不切换，显示与不显示呢？轨迹1～轨迹5」
 //   以前是"单选": 点哪条就换哪条, 再点同一个**没反应**(已经选中的就那样了),
@@ -1196,6 +1245,7 @@ function paintFenceBtns(){
   };
   mk($('rowBoxes'), '围栏盒', FENCES.filter(i=>i.type==='box'));
   mk($('rowLines'), '直线', FENCES.filter(i=>i.type==='line'));
+  mk($('rowPts'), '轨迹点', FENCES.filter(i=>i.type==='points'));
 }
 function renderFenceList(){
   const box=$('fList'); if(!box) return;
@@ -1301,13 +1351,13 @@ function drawFences(g,pr){
     if(it.type==='points'){
       // 📍 轨迹点: 每个点一个小圆 (可数), 点间细连线表示顺序
       const P=(it.pts||[]).map(pr);
-      g.strokeStyle=it.color; g.globalAlpha=0.55; g.lineWidth=1.5;
+      g.strokeStyle=it.color; g.globalAlpha=0.95; g.lineWidth=3.2;   // 2026-10-26 老倪「没看到」: 原 1.5/0.55 太淡
       for(let i=1;i<P.length;i++){ const a=P[i-1],b=P[i]; if(!a||!b) continue;
         g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke(); }
       g.globalAlpha=1;
       let k=0; for(const q of P){ if(!q) continue; k++;
         g.fillStyle=it.color; g.beginPath();
-        g.arc(q.u,q.v, sel?3.4:2.6, 0, Math.PI*2); g.fill(); }
+        g.arc(q.u,q.v, sel?5.5:4, 0, Math.PI*2); g.fill(); }
       const q0=P[0];
       if(q0){ g.fillStyle=it.color; g.font='11px monospace';
         g.fillText(it.name+' '+(it.pts||[]).length+'点', q0.u+6, q0.v-6); }
@@ -1583,6 +1633,10 @@ async function loadCfgPts(){
     CFG_PTS=r.points||[]; CFG_AGE=(r.age_s==null?null:r.age_s);
     CFG_PTS.forEach(p=>{ if(!(p.name in CFG_ON)) CFG_ON[p.name]=true; });
     // 🎯 目标点(单选)必须在台账里; 默认 安全点1, 没有就取第一个点
+    // 🔴 2026-10-26: 支持 ?target=<点名> 直达 —— 手机/微信发一条链接就能把「目标点 + 轨迹5」定好
+    //    (只认首次: CFG_TARGET 有值后不再被 URL 覆盖, 免得 10s 轮询把用户手选的冲掉)
+    const _wantTgt = __USP.get('target');
+    if(!CFG_TARGET && _wantTgt && CFG_PTS.some(p=>p.name===_wantTgt)) CFG_TARGET = _wantTgt;
     if(!CFG_TARGET || !CFG_PTS.some(p=>p.name===CFG_TARGET)){
       CFG_TARGET = CFG_PTS.some(p=>p.name==='安全点1') ? '安全点1' : (CFG_PTS[0]?CFG_PTS[0].name:null);
     }
@@ -1604,8 +1658,22 @@ function paintCfgPts(){
              : a>=3600  ? ' · 台账 '+(a/3600).toFixed(1)+' h 前'
              : a>=60    ? ' · 台账 '+Math.round(a/60)+' min 前' : ' · 台账 '+Math.round(a)+' s 前';
     }
+    // 🔴 2026-10-26 老倪「数据要保持一致」: 空间点1~8 的真源是 **8793 标记模式**写的
+    //   data/skills/l2_atomic/space_points.json, 不是配置中心台账(可能落后好几天)。
+    //   之前这里一律显示"台账 5.8 天前" ⇒ 明明刚改的点位, 看着像 6 天前的旧数据, 会误导人。
+    //   现在: 有点位来自示教(带 src=space_points) ⇒ 标"示教实时", 台账年龄只作参考。
+    const taugh = CFG_PTS.filter(r=>r.src==='space_points').length;
+    const nslot = CFG_PTS.filter(r=>r.src==='taught_points').length;
+    if(taugh>0 || nslot>0){
+      const _bits=[];
+      if(nslot>0) _bits.push('号位 '+nslot+' 个');
+      if(taugh>0) _bits.push('空间点 '+taugh+' 个');
+      // 2026-10-26 老倪「号位 1～7 号示教点，也要在 ar3d 显示」: 号位来自 taught_points.json(slot1~7),
+      //   与空间点同样属于现场示教, 不是配置中心台账 ⇒ 文案要把两者分开说清, 别再只提空间点。
+      ageTxt = ' · 示教实时 '+_bits.join(' + ')+'（标记模式写入）' + (ageTxt? ' · 台账参考'+ageTxt.replace(' · 台账',''):'');
+    }
     t.textContent=CFG_PTS.length+' 个'+ageTxt;
-    t.title='真源: /api/points ← 配置中心点位台账 ar_aoi_live.json';
+    t.title='真源: /api/points ← 号位1~7 取 taught_points.json(slot1~slot7); 空间点1~8 取 8793 标记模式(space_points.json, 实时); 其余点位取配置中心台账 ar_aoi_live.json';
   }
   // 🎯 目标点横幅: 现在要去哪一个 (单选), 以及它跟轨迹5的关系
   const tb=document.createElement('div');
@@ -1805,6 +1873,17 @@ function drawVR(){
   if(URDF){
     if(VR.urdf) drawUrdf(g,pr);
   }
+  // 👻 预览动作: 紫色幽灵右臂 —— 与真实右臂同屏, 末端对着轨迹终点; 真机不动, 这条只是画上去的
+  if(PREV.on && PREV.M && URDF){
+    const I3=[[1,0,0],[0,1,0],[0,0,1]];
+    drawUrdf(g, pr, PREV.M, {R:I3, t:[0,0,0], fill:'#7c3aed', stroke:'#c4b5fd', alpha:0.55});
+    const e=pr(PREV.target||[0,0,0]);
+    if(e){
+      g.strokeStyle='#c4b5fd'; g.lineWidth=1.6; g.beginPath(); g.arc(e.u,e.v,7,0,Math.PI*2); g.stroke();
+      g.fillStyle='#c4b5fd'; g.font='bold 11px monospace';
+      g.fillText('👻 预览末端'+(PREV.err_mm!=null?' '+PREV.err_mm.toFixed(1)+'mm':''), e.u+9, e.v-7);
+    }
+  }
   // 🤖 左臂(仿真臂) —— 老倪 2026-10-26: 同一套 URDF/关节角, 原心在 base 系 Y=+500mm,
   //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
   if(LARM.show && URDF && LINKM){
@@ -1848,7 +1927,7 @@ function drawVR(){
       g.beginPath(); g.arc(q.u,q.v,Math.max(1.5,3.2*Math.min(1,1.2/q.z)),0,Math.PI*2); g.stroke(); }
     return idx.length;
   }
-  const nPl=namedAnyOn()?tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20):0;
+  const nPl=NAMED_ON[planOwner()]?tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20):0;
   const nTr=(TRAJ.trace&&TRAJ.trace.length>1)?tube(TRAJ.trace,(f)=>'rgba(140,230,120,.9)',7,0.6,8):0;
   // 🆕 真机实际走过的轨迹(实测 TCP) —— 橙色, 画在最上层
   const nReal=(TRAJ.real&&TRAJ.real.length>1)?tube(TRAJ.real,(f)=>'rgba(255,159,28,.95)',6,0.85,12):0;
@@ -1895,7 +1974,7 @@ function drawVR(){
   //    规划轨迹单独在最上层重画一遍。2026-10-25 二次迭代(视觉复核打回): 原来 5 个 r=7 的圆点挤在
   //    40×45px 的团里, 点把线盖死、编号 0/4 被压住 ⇒ 看着像"一坨点簇"不是线。改成:
   //    线粗(10px) + 小点(r=4) + 编号按屏幕间距决定画不画 + 起终点小标记 + 标签改琥珀色(不污染"洋红=路径"的判据)
-  if(namedAnyOn() && TRAJ.plan && TRAJ.plan.length>1){
+  if(NAMED_ON[planOwner()] && TRAJ.plan && TRAJ.plan.length>1){
     const P=TRAJ.plan.map(pr).filter(Boolean);
     if(P.length>1){
       g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
@@ -1963,6 +2042,107 @@ $('vr').addEventListener('pointerup',()=>{
   drag=null;});
 // 2026-10-25 老倪: 「将三维视图下面的 对准轨迹 按钮改名成 执行轨迹; 我点击后轨迹指令远程发给运动规划节点」
 // 单击 = 执行当前规划轨迹（先问一句，带段数/总长/预检结论）；双击 = 原「对准轨迹」视角功能，避免丢能力
+// 🎚 速度档位(真实 mm/s) — 2026-10-26 老倪「在 执行轨迹 按钮上边，给出速度 5/10/50 三个档位」
+//   选中值随执行指令下发(speed_mm_s), 一路到 l2_daemon 的 _bridge_send, 优先级高于 env ZMAX_L2_MM_S。
+let SPD_MM_S = (function(){
+  const v = parseFloat(localStorage.getItem('zmax_spd_mm_s') || '10');
+  return [5,10,50].indexOf(v) >= 0 ? v : 10;
+})();
+function spdPaint(){
+  document.querySelectorAll('#spdRow .spd').forEach(b=>{
+    b.classList.toggle('on', Math.abs(parseFloat(b.dataset.mm) - SPD_MM_S) < 0.01);
+  });
+  const h = document.getElementById('spdHint');
+  if (h) h.textContent = SPD_MM_S <= 5 ? '(最慢)' : (SPD_MM_S >= 50 ? '(快)' : '(默认)');
+}
+document.querySelectorAll('#spdRow .spd').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    SPD_MM_S = parseFloat(b.dataset.mm) || 10;
+    try{ localStorage.setItem('zmax_spd_mm_s', String(SPD_MM_S)); }catch(e){}
+    spdPaint();
+  });
+});
+spdPaint();
+
+// ══════════════════════════════════════════════════════════════════════════
+//  👻 预览动作 (2026-10-26 老倪:「在执行轨迹上方加一个预览动作按钮, 点一下按钮变蓝, 右臂虚拟
+//  执行到目标点, 再点一次预览的臂消失; 真机不动, 用眼睛能同时看到两条臂, 末端位姿不同」)
+//  做法: 浏览器内做**位置逆解** (阻尼最小二乘 DLS, 雅可比由 urdfFK 有限差分算),
+//        不依赖服务端 IK、不下发任何指令 ⇒ 真机绝对不会动。
+//        解出的 6 个关节角只喂给 drawUrdf 画一条紫色半透明幽灵臂。
+//  判据: 末端残差 < 2mm 才算解成; 不收敛就如实说"不可达", 不画假姿势糊人。
+// ══════════════════════════════════════════════════════════════════════════
+const PREV_TARGET=[0.647,0.206,0.168];    // 轨迹终点 = 7号位上方 50mm (base 系, 米)
+function _solve3(A,b){                     // 3x3 高斯消元 (带选主元)
+  const M=A.map((r,i)=>[r[0],r[1],r[2],b[i]]);
+  for(let i=0;i<3;i++){
+    let p=i; for(let k=i+1;k<3;k++) if(Math.abs(M[k][i])>Math.abs(M[p][i])) p=k;
+    if(Math.abs(M[p][i])<1e-12) return null;
+    const t=M[i]; M[i]=M[p]; M[p]=t;
+    for(let k=i+1;k<3;k++){ const f=M[k][i]/M[i][i]; for(let c=i;c<4;c++) M[k][c]-=f*M[i][c]; }
+  }
+  const x=[0,0,0];
+  for(let i=2;i>=0;i--){ let s=M[i][3]; for(let c=i+1;c<3;c++) s-=M[i][c]*x[c]; x[i]=s/M[i][i]; }
+  return x;
+}
+function ikTool1(target,q0){               // target:[x,y,z] 米 · q0: 6 关节角(弧度) → {q,err_mm}
+  if(!URDF) return null;
+  const NJ=6; let q=(q0||[]).slice(0,NJ);
+  while(q.length<NJ) q.push(0);
+  const leaf=(TCP&&TCP.link_leaf)||'tool1';
+  const fk=(qq)=>{ const M=urdfFK(qq); const m=M[leaf]||M['tool1']||M['tool0']; return m?m.t.slice():null; };
+  let best=q.slice(), bestE=1e9;
+  for(let it=0; it<140; it++){
+    const p=fk(q); if(!p) return null;
+    const e=[target[0]-p[0],target[1]-p[1],target[2]-p[2]];
+    const en=Math.sqrt(e[0]*e[0]+e[1]*e[1]+e[2]*e[2]);
+    if(en<bestE){ bestE=en; best=q.slice(); }
+    if(en<0.0005) break;                                  // 0.5mm 收敛
+    const D=1e-4, J=[[],[],[]];
+    for(let j=0;j<NJ;j++){
+      const qq=q.slice(); qq[j]+=D; const p2=fk(qq); if(!p2) return null;
+      J[0].push((p2[0]-p[0])/D); J[1].push((p2[1]-p[1])/D); J[2].push((p2[2]-p[2])/D);
+    }
+    const lam=0.03, A=[[0,0,0],[0,0,0],[0,0,0]];
+    for(let r=0;r<3;r++) for(let c=0;c<3;c++){
+      let s=0; for(let j=0;j<NJ;j++) s+=J[r][j]*J[c][j];
+      A[r][c]=s+(r===c?lam*lam:0);
+    }
+    const y=_solve3(A,e); if(!y) return null;
+    for(let j=0;j<NJ;j++){
+      let dq=0; for(let r=0;r<3;r++) dq+=J[r][j]*y[r];
+      q[j]+=Math.max(-0.2,Math.min(0.2,dq));               // 单步限幅, 防跳姿态
+    }
+  }
+  return {q:best, err_mm:bestE*1000};
+}
+function prevBtnState(){
+  const b=$('bPrev'); if(b){ b.classList.toggle('on', !!PREV.on);
+    b.textContent = PREV.on ? '👻 预览动作 ON' : '👻 预览动作'; }
+  const t=$('tPrev'); if(t){
+    if(PREV.on) t.textContent = '紫色幽灵臂 = 模拟走完的样子 · 末端残差 '
+      + (PREV.err_mm!=null?PREV.err_mm.toFixed(1):'?') + 'mm · 真机没动';
+    else t.textContent = '';
+  }
+}
+function prevToggle(){
+  if(PREV.on){ PREV={on:false,M:null,q:null,err_mm:null,target:null}; prevBtnState(); drawVR(); return; }
+  if(!URDF){ prevBtnState(); $('tPrev').textContent='先点 🦾 URDF 外形(要拿关节链才能逆解)'; return; }
+  const q0=(TCP&&TCP.ok&&TCP.joints)?TCP.joints.slice(0,6):null;
+  if(!q0){ $('tPrev').textContent='没有关节角真值(等 latest.json 更新)'; return; }
+  const r=ikTool1(PREV_TARGET,q0);
+  if(!r){ $('tPrev').textContent='逆解失败(URDF 链断了)'; return; }
+  if(r.err_mm>2.0){
+    $('tPrev').textContent='目标不可达: 最近只能到 '+r.err_mm.toFixed(0)+'mm, 不画假姿势';
+    return;
+  }
+  PREV={on:true, q:r.q, M:urdfFK(r.q), err_mm:r.err_mm, target:PREV_TARGET.slice()};
+  prevBtnState();
+  vrKeepCam(()=>{});            // 不重新取景(否则点一下画面就跳)
+  drawVR();
+  $('tPrev').textContent='紫色幽灵臂 = 模拟走完的样子 · 末端残差 '+r.err_mm.toFixed(1)+'mm · 真机没动';
+}
+if($('bPrev')) $('bPrev').addEventListener('click', prevToggle);
 $('bFit').addEventListener('dblclick',(e)=>{ e.preventDefault(); VR.auto=true; drawVR(); });
 $('bFit').addEventListener('click',async ()=>{
   const msg=$('bTrajMsg'); msg.style.color='#8b949e';
@@ -1990,12 +2170,14 @@ $('bFit').addEventListener('click',async ()=>{
     if(!plan||!plan.ok||!plan.ts){ msg.style.color='#e05252'; msg.textContent='还没有规划轨迹(也没选命名轨迹)'; return; }
     if(plan.stale){ msg.style.color='#e05252'; msg.textContent='规划已 '+(plan.age_s/60).toFixed(0)+' 分钟, 请重新规划'; return; }
     const pc=plan.precheck||{};
-    if(!confirm('执行这条轨迹？\n\n段数 '+plan.n_seg+' · 总长 '+ (plan.total_mm||0).toFixed(0) +'mm\n最差净空 '+(pc.worst_mm)+'mm ('+(pc.ok?'预检通过':'预检未通过')+')\n'+(plan.note||'')) ){ msg.textContent='已取消'; return; }
+    if(!confirm('执行这条轨迹？\n\n段数 '+plan.n_seg+' · 总长 '+ (plan.total_mm||0).toFixed(0) +'mm\n'
+      +'速度 '+SPD_MM_S+' mm/s (预计 '+(plan.total_mm? Math.ceil(plan.total_mm/SPD_MM_S):'?')+' 秒)\n'
+      +'最差净空 '+(pc.worst_mm)+'mm ('+(pc.ok?'预检通过':'预检未通过')+')\n'+(plan.note||'')) ){ msg.textContent='已取消'; return; }
   }
   msg.textContent='下发中…';
   try{
     const r=await (await fetch('/api/traj/exec',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(sel?{k:NAMED_SEL, target:(NAMED_SEL==='real'?(CFG_TARGET||null):null)}:{})})).json();
+      body:JSON.stringify(Object.assign(sel?{k:NAMED_SEL, target:(NAMED_SEL==='real'?(CFG_TARGET||null):null)}:{},{speed_mm_s:SPD_MM_S}))})).json();
     msg.style.color = r.ok ? '#3fb950' : '#e05252';
     msg.textContent = r.msg || (r.ok?'已下发':'失败');
     // 🔴 2026-10-26 「点击执行没反应」: 服务端其实回了原因(例如"起点已变 100mm"), 但只写在按钮旁边
@@ -2694,7 +2876,7 @@ async function refresh(){
     TRAJ={trace:t.trace||[],plan:t.plan||[],planLabel:t.plan_label||'',real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s};
     // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线」的真因: 线画了但在整机视角里只占 30×40 像素。
     //    规划一变就把视角框到这条轨迹上(只改 target/距离, 不动他手调的 yaw/pitch)。
-    if(namedAnyOn() && TRAJ.plan && TRAJ.plan.length>1){
+    if(NAMED_ON[planOwner()] && TRAJ.plan && TRAJ.plan.length>1){
       const sig=TRAJ.plan.map(p=>p.map(v=>Math.round(v*1000)).join(',')).join('|');
       if(sig!==(refresh._planSig||'')){
         refresh._planSig=sig;
@@ -2830,6 +3012,18 @@ async function robotTick(){
   // 🤖 机器人状态机 (老倪 2026-10-20: 「AR 场景需要接上机器人, 直接看到是否在插拔」)
   //   真源 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
   robotTick(); setInterval(robotTick,1000);
+  // 🥽 2026-10-26 老倪:「你现在没变啊？还得刷新？」—— 轨迹5「实时」依赖 live 当前 TCP + 页面上选的
+  //   目标点, 所以点亮之后服务端一改(或是臂动了), 页面必须**自己跟着重算**, 不能靠用户按 F5。
+  //   5s 一次: 页面已有 5~6 个高频轮询, Chromium 每 host 只开 6 条连接, 再密会让 named 请求排队十几秒;
+  //   只在 real 亮着时发, 没点亮就完全不打扰服务端; 上一轮没回来就跳过(不堆积)。
+  setInterval(async function(){
+    try{
+      if(!NAMED_ON['real']) return;
+      if(window.__realRefreshing) return;
+      window.__realRefreshing = true;
+      try{ await refreshNamed('real'); } finally{ window.__realRefreshing = false; }
+    }catch(e){ window.__realRefreshing = false; }
+  }, 5000);
   lockTick(); setInterval(lockTick,3000);
   peg2dTick(); setInterval(peg2dTick,600);          // 🆕 D435 专用 2D 头
   // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
@@ -2861,7 +3055,18 @@ async function loadCams(){
   //   (独立三维页 /ar3d 的版式已在脚本最前面定好, 这里只补"预置轨迹/自动环绕")
   if(__BARE && __USP.get('spin')==='1'){ try{ $('bSpin').click(); }catch(e){} }
   const _tq = __USP.get('traj');
-  if(_tq){ try{ await loadNamed(_tq); }catch(e){} }
+  if(_tq){ try{ await loadNamed(_tq); }catch(e){}
+    // 🔁 2026-10-26 老倪「规划的轨迹怎么不见了？」: 刷新页面(=服务重启后他按 Ctrl+Shift+R)时,
+    //   ?traj= 会调 loadNamed 把数据取回来, 但按钮的亮灭状态是内存变量, 刷新就清零 ——
+    //   loadNamed 的"已亮就关掉"逻辑 + 初始化时序有时会让它收尾没点亮 NAMED_ON,
+    //   于是数据在、画面上什么都没有, 看着就像"轨迹丢了"。
+    //   URL 带 ?traj=xxx 的语义就是"我要看这条" ⇒ 收尾幂等强点亮一次(不 toggle),
+    //   并同步按钮高亮; 手点按钮的行为不变(仍是独立开关)。
+    try{
+      if(!NAMED_ON[_tq]){ NAMED[_tq] = NAMED[_tq] || []; NAMED_ON[_tq] = true; NAMED_SEL = _tq; }
+      if(typeof paintNamedBtns==='function') paintNamedBtns();
+    }catch(e){}
+  }
 }
 
 // ═══ 取帧泵 (2026-10-18 老倪: 「怎么一会黑屏一下」「别总黑屏啊」) ═══
