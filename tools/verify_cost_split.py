@@ -62,6 +62,35 @@ def main():
             abs(sp["s3_hybrid"]["abs"]["sw"] - r["revenue_year"] * 0.20) < 1
             and abs(sp["s3_hybrid"]["abs"]["op"] - r["pieces_year"] * 0.02) < 1,
             "sw %.0f · op %.0f" % (sp["s3_hybrid"]["abs"]["sw"], sp["s3_hybrid"]["abs"]["op"]))
+    # ── 售价封顶 (老倪 2026-10-28: 基础≤30万 / 精细≤40万 / 专业≤55万)
+    CAPS = {"A": 30.0, "B": 40.0, "C": 55.0}
+    for k in "ABC":
+        r = by[k]
+        chk("① %s 售价 %.1f 万 ≤ 上限 %.0f 万" % (k, r["price_set"] / 1e4, CAPS[k]),
+            r["price_set"] / 1e4 <= CAPS[k] + 1e-6, "%.2f 万" % (r["price_set"] / 1e4))
+        chk("① %s 售价 = min(上限, 硬件+实施)" % k,
+            abs(r["price_set"] - min(CAPS[k] * 1e4, r["capex"] + r["nre_sum"])) < 1,
+            "%.0f" % r["price_set"])
+        chk("① %s 硬件毛利 = 售价 − 硬件成本 ≥ 0" % k,
+            abs(r["hw_gross"] - (r["price_set"] - r["capex"])) < 1 and r["hw_gross"] > 0,
+            "%.1f 万 (%.1f%%)" % (r["hw_gross"] / 1e4, r["hw_gross_pct"]))
+        chk("① %s 装不进设备价的实施 = (capex+NRE) − 售价" % k,
+            abs(r["gap_nre"] - max(0.0, r["capex"] + r["nre_sum"] - r["price_set"])) < 1,
+            "%.1f 万" % (r["gap_nre"] / 1e4))
+        recompute = (r["price_set"] / r["dep_years"] / r["pieces_year"]
+                     + r["license_per_piece"] + r["ops_fee_per_piece"])
+        chk("① %s 客户单件成本 = 折旧/产量 + 许可 + 运营" % k,
+            abs(recompute - r["client_unit_cost"]) < 0.002,
+            "%.4f vs %.4f" % (recompute, r["client_unit_cost"]))
+        chk("① %s 客户单件成本 < 人工折算 %.2f" % (k, r["labor_per_piece"]),
+            r["client_unit_cost"] < r["labor_per_piece"], "%.4f" % r["client_unit_cost"])
+        g = d["split"][k]["s4_priced"]
+        tot4 = sum(g["pct"].values())
+        chk("① %s 按毛利分成合计 100%%" % k, abs(tot4 - 100) < 0.6, "%.1f" % tot4)
+        chk("① %s 按毛利分成 三方都为正" % k, all(g["abs"][x] > 0 for x in ("hw", "sw", "op")),
+            "%.1f/%.1f/%.1f 万" % tuple(g["abs"][x] / 1e4 for x in ("hw", "sw", "op")))
+    chk("① 推荐分成已在模型里切到按毛利 (s4_priced)", d.get("split_recommend") == "s4_priced",
+        d.get("split_recommend"))
     chk("① 三档单件成本递增 (A<B<C)", by["A"]["unit_cost"] < by["B"]["unit_cost"] < by["C"]["unit_cost"],
         [round(by[k]["unit_cost"], 4) for k in "ABC"])
     chk("① 三档毛利率在 50~85%% 之间 (口径合理)", all(50 <= by[k]["gross_margin_pct"] <= 85 for k in "ABC"),
@@ -84,6 +113,10 @@ def main():
                 and abs(float(co.get("unit_cost") or 0) - r["unit_cost"]) < 0.002
                 and int(co.get("pieces_year") or 0) == r["pieces_year"],
                 "capex %s / unit %s / 年产 %s" % (co.get("capex"), co.get("unit_cost"), co.get("pieces_year")))
+            _tg = o.get("targets") or {}
+            chk("② %s 工单写了设备售价与上限" % no,
+                ("设备售价" in _tg) and ("上限" in str(_tg.get("设备售价", ""))),
+                str(_tg.get("设备售价", ""))[:40])
             chk("② %s 工单写了产能与单价" % no,
                 "件/h" in str((o.get("targets") or {}).get("产能 UPH", ""))
                 and "元/件" in str((o.get("targets") or {}).get("加工单价", "")),
@@ -148,12 +181,16 @@ def main():
     simT = 3600 * 60                                                        # tick(3600) @ x60 = 60 演练小时
     pieces = int(simT / d["tact_s"])
     chk("③ 演练 60h 产量与节拍一致", abs(pieces - 18914) <= 3, "%d 件 (期望 ≈18914)" % pieces)
-    chk("③ 演练产值 = 件数 × 单价", abs(pieces * by["A"]["price_per_piece"] - 6619.9) < 5,
-        "%.2f 元" % (pieces * by["A"]["price_per_piece"]))
+    _lpr = by["A"]["license_per_piece"] + by["A"]["ops_fee_per_piece"]
+    chk("③ 演练收入 = 设备售价 + 件数 × (许可+运营)",
+        abs((by["A"]["price_set"] + pieces * _lpr) - (278500.0 + 18914 * _lpr)) < 5,
+        "%.2f 元" % (by["A"]["price_set"] + pieces * _lpr))
+    chk("③ dock 显示售价/客户单件成本/软件回收期",
+        all(x in html for x in ("设备售价", "客户单件成本", "软件方回收")), "已核")
 
     # ── ④ PPT
     from pptx import Presentation
-    ppt = os.path.join(ROOT, "docs", "deliverables", "任务7_三档成本与三方分成.pptx")
+    ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
     chk("④ PPT 存在", os.path.exists(ppt), os.path.relpath(ppt, ROOT))
     if os.path.exists(ppt):
         prs = Presentation(ppt)
@@ -167,16 +204,35 @@ def main():
                     for row in sh.table.rows:
                         for c in row.cells:
                             txt.append(c.text)
+                if getattr(sh, "has_chart", False) and sh.has_chart:
+                    try:
+                        chp = sh.chart.plots[0]
+                        txt.extend([str(c) for c in chp.categories])
+                        for ser in chp.series:
+                            for v in ser.values:
+                                txt.append(str(v))
+                                txt.append("%.1f%%" % float(v))
+                    except Exception:
+                        pass
         allt = " ".join(txt)
-        for kw, why in (("%.4f" % by["A"]["unit_cost"], "A 单件成本"), ("%.4f" % by["C"]["unit_cost"], "C 单件成本"),
-                        ("315.2", "UPH"), ("三方分成", "三方分成页"),
-                        ("混合制", "推荐方案"), ("T1", "工单 T1"), ("T3", "工单 T3"),
-                        ("机器人本体硬件", "三方名")):
+        for kw, why in (("%.1f 万元" % (by["A"]["price_set"] / 1e4), "基础型售价"),
+                        ("%.1f 万元" % (by["C"]["price_set"] / 1e4), "专业型售价"),
+                        ("%.3f 元" % by["C"]["client_unit_cost"], "客户单件成本"),
+                        ("315", "UPH"), ("三方", "三方分成"),
+                        ("机器人本体硬件", "三方名"), ("封顶", "售价封顶口径")):
             chk("④ PPT 含 %s (%s)" % (kw, why), kw in allt, "有" if kw in allt else "缺")
         for k in "ABC":
-            pct = d["split"][k]["s3_hybrid"]["pct"]
-            chk("④ PPT 含 %s 档混合制比例 (%.1f/%.1f/%.1f)" % (k, pct["hw"], pct["sw"], pct["op"]),
+            pct = d["split"][k]["s4_priced"]["pct"]
+            chk("④ PPT 含 %s 档按毛利分成比例 (%.1f/%.1f/%.1f)" % (k, pct["hw"], pct["sw"], pct["op"]),
                 all(("%.1f%%" % pct[x]) in allt for x in ("hw", "sw", "op")), "已核")
+        chk("④ PPT 不出现 任务7 / T1 / T2 / T3 编号",
+            not any(bad in allt for bad in ("任务7", "任务 7", "T1 ", "T2 ", "T3 ")), "已核")
+        charts = 0
+        for sl in prs.slides:
+            for sh in sl.shapes:
+                if getattr(sh, "has_chart", False) and sh.has_chart:
+                    charts += 1
+        chk("④ PPT 图表数量 ≥6 (饼/柱/折线/环形/比例)", charts >= 6, "%d 个图表" % charts)
 
     print("\n=== %d PASS / %d FAIL ===" % (len(PASS), len(FAIL)))
     if FAIL:

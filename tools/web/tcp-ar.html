@@ -4832,6 +4832,11 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   }, 160);
 })();
 </script>
+
+
+
+
+
 <style id="mktDockCss">
 body{padding-bottom:196px}
 #mktDock{position:fixed;left:0;right:0;bottom:0;z-index:80;background:linear-gradient(180deg,#0b1117,#0d141c);
@@ -4875,13 +4880,13 @@ body{padding-bottom:196px}
     <div class="mK"><b id="mkPc">0</b><span>已生产 (件)</span></div>
     <div class="mK"><b id="mkHr">0.00</b><span>演练工时 (h)</span></div>
     <div class="mK"><b id="mkUph">—</b><span>实测 UPH</span></div>
-    <div class="mK"><b id="mkVal">0</b><span>累计产值 (元)</span></div>
+    <div class="mK"><b id="mkVal">0</b><span>累计收入 (元)</span></div>
     <div class="mK"><b id="mkBatch">0</b><span>完成批次 (8h/批)</span></div>
     <div class="mK"><b id="mkPy">—</b><span>年化产量 (件/年)</span></div>
-    <div class="mK"><b id="mkRev">—</b><span>年化收入 (万)</span></div>
-    <div class="mK"><b id="mkGross">—</b><span>年毛利 (万)</span></div>
-    <div class="mK"><b id="mkPb">—</b><span>回收期 (年)</span></div>
-    <div class="mK"><b id="mkUnit">—</b><span>单件成本 (元)</span></div>
+    <div class="mK"><b id="mkRev">—</b><span>设备售价 (万)</span></div>
+    <div class="mK"><b id="mkGross">—</b><span>三方年毛利 (万)</span></div>
+    <div class="mK"><b id="mkPb">—</b><span>软件方回收 (年)</span></div>
+    <div class="mK"><b id="mkUnit">—</b><span>客户单件成本 (元)</span></div>
   </div>
   <div class="mRow">
     <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一真源)</span></div>
@@ -4908,20 +4913,24 @@ body{padding-bottom:196px}
     $('mkPc').textContent=fmt(pieces);
     $('mkHr').textContent=hours.toFixed(2);
     $('mkUph').textContent=uph.toFixed(1);
-    $('mkVal').textContent=fmt(pieces*t.price_per_piece,2);
+    var lpr=(t.license_per_piece||0)+(t.ops_fee_per_piece||0);
+    $('mkVal').textContent=fmt((t.price_set||0)+pieces*lpr,2);
     $('mkBatch').textContent=fmt(Math.floor(hours/8));
     $('mkPy').textContent=fmt(t.pieces_year);
-    $('mkRev').textContent=wan(t.revenue_year);
-    $('mkGross').textContent=wan(t.gross_year);
-    $('mkPb').textContent=(t.payback_years==null?'—':t.payback_years.toFixed(2));
-    $('mkUnit').textContent=t.unit_cost.toFixed(4);
+    var g3=(t.gross_year_hw||0)+(t.gross_year_sw||0)+(t.gross_year_op||0);
+    $('mkRev').textContent=wan(t.price_set||0);
+    $('mkGross').textContent=wan(g3);
+    $('mkPb').textContent=(t.payback_sw_cash==null?'—':t.payback_sw_cash.toFixed(2));
+    $('mkUnit').textContent=(t.client_unit_cost||0).toFixed(4);
     var sp=(PROD.COST.split||{})[PROD.tier]||{};
-    var pct=((sp.s3_hybrid||{}).pct)||{};
+    var pct=((sp.s4_priced||{}).pct)||{};
     $('mkSplit').textContent='硬件 '+(pct.hw||0)+'% · 软件 '+(pct.sw||0)+'% · 运营 '+(pct.op||0)+'%'
-      +'　(混合制: 硬件一次性 + 软件许可20% + 运营0.02元/件)';
-    $('mkExpect').textContent='按工单 '+t.id+' · '+uph.toFixed(1)+' UPH · '+t.hours_per_year+'h/年 · OEE '+t.oee
-      +' ⇒ '+fmt(t.pieces_year)+' 件/年 · 收入 '+wan(t.revenue_year)+' 万 · 毛利 '+wan(t.gross_year)
-      +' 万 ('+t.gross_margin_pct+'%) · 单件成本 '+t.unit_cost.toFixed(4)+' 元 · 回收 '+t.payback_years+' 年';
+      +'　(售价封顶 '+wan(t.price_cap||0)+' 万 · 许可 '+(t.license_per_piece||0).toFixed(3)
+      +' 元/件 + 运营 '+(t.ops_fee_per_piece||0).toFixed(3)+' 元/件)';
+    $('mkExpect').textContent='按 '+t.id+' 配置 · 售价 '+wan(t.price_set||0)+' 万 (上限 '+wan(t.price_cap||0)
+      +' 万) · '+uph.toFixed(1)+' UPH · '+t.hours_per_year+'h/年 · OEE '+t.oee
+      +' ⇒ '+fmt(t.pieces_year)+' 件/年 · 客户单件 '+(t.client_unit_cost||0).toFixed(3)
+      +' 元 (人工 0.36 元, 省 '+(t.client_save_pct||0)+'%) · 三方年毛利 '+wan(g3)+' 万';
   }
   function setLed(on){ var l=$('mkLed'); if(l) l.className='mLed'+(on?' run':'');
     $('mkStat').textContent=on?'生产中 · 速率 x'+PROD.speed:'待机';
@@ -4956,6 +4965,71 @@ body{padding-bottom:196px}
     $('mkReset').addEventListener('click',function(){PROD.simT=0;PROD.pieces=0;render();});
     setInterval(function(){tick(0.25)},250);
   });
+})();
+</script>
+
+
+
+
+
+
+<style id="visBarCss">
+#visBar{position:fixed;left:0;right:0;bottom:140px;height:42px;z-index:59;
+  display:flex;align-items:center;gap:10px;padding:0 12px;font-size:12px;
+  background:linear-gradient(90deg,rgba(88,166,255,.10),rgba(11,15,20,.92) 40%,rgba(11,15,20,.92));
+  border-top:1px solid #21262d;border-bottom:1px solid #21262d;color:#c9d1d9;overflow:hidden}
+#visBar .vT{font-weight:700;color:#58a6ff;white-space:nowrap}
+#visBar .vSub{color:#8b949e;white-space:nowrap;font-size:11px}
+#visBar .vLoop{display:flex;align-items:center;gap:4px;white-space:nowrap}
+#visBar .vLoop b{font-weight:600;color:#8b949e;font-size:11px}
+#visBar .vDot{width:7px;height:7px;border-radius:50%;background:#30363d;display:inline-block}
+#visBar.run .vDot{background:#3fb950;animation:vp 1.4s infinite}
+#visBar.run .vDot:nth-child(2){animation-delay:.35s}
+#visBar.run .vDot:nth-child(3){animation-delay:.7s}
+#visBar.run .vDot:nth-child(4){animation-delay:1.05s}
+@keyframes vp{0%,100%{opacity:.35}50%{opacity:1}}
+#visBar .vK{color:#8b949e;white-space:nowrap}
+#visBar .vK b{color:#e6edf3;font-weight:700;font-variant-numeric:tabular-nums}
+#visBar .vPhys{margin-left:auto;color:#8b949e;white-space:nowrap;font-size:11px}
+#visBar .vPhys b{color:#d29922}
+@media (max-width:1200px){#visBar .vSub,#visBar .vPhys{display:none}}
+</style>
+
+<div id="visBar" title="产品愿景: 让工业机器人干精密活 —— 把工厂里最难的那一厘米交给设备自己完成">
+  <span class="vT">🎯 让工业机器人干精密活</span>
+  <span class="vSub">· 最后一厘米</span>
+  <span class="vLoop"><b>看</b><i class="vDot"></i><b>判</b><i class="vDot"></i><b>动</b><i class="vDot"></i><b>验</b><i class="vDot"></i></span>
+  <span class="vK">动作单元 <b id="vUnits">—</b> · 段 <b id="vSegs">—</b></span>
+  <span class="vK">完成 <b id="vPieces">0</b> 件</span>
+  <span class="vK">数据回流 <b id="vReflux">0</b> 条</span>
+  <span class="vPhys" id="vPhys">插入 — mm @ — mm/s · 力 ≤ — N · — mm/px · — s/件</span>
+</div>
+
+<script id="visBarJs">
+(function(){
+  var V=null, $=function(id){return document.getElementById(id)};
+  function fmt(n){return (n||0).toLocaleString('zh-CN')}
+  fetch('/api/ar/vision').then(function(r){return r.json()}).then(function(d){
+    if(!d||!d.ok) return;
+    V=d;
+    $('vUnits').textContent=fmt(d.units||0);
+    $('vSegs').textContent=fmt(d.segs||0);
+    var o=(d.ar&&d.ar.overlay)||{};
+    $('vPhys').innerHTML='插入 <b>'+(o.insert_mm||'—')+'</b> mm @ <b>'+(o.insert_mm_s||'—')
+      +'</b> mm/s · 力 ≤ <b>'+(o.force_limit_n||'—')+'</b> N · <b>'+(o.pixel_mm_at_300||'—')
+      +'</b> mm/px · <b>'+(o.tact_s||'—')+'</b> s/件 @ <b>'+(o.uph||'—')+'</b> UPH';
+    document.getElementById('visBar').title=(d.vision&&d.vision.subline||'')+'\n'+(d.vision&&d.vision.answer||'');
+  }).catch(function(){});
+  setInterval(function(){
+    var bar=$('visBar'); if(!bar) return;
+    var P=window.__PROD__; if(!P||!P.read) return;
+    var r=P.read(); var pieces=r.pieces||0;
+    $('vPieces').textContent=fmt(pieces);
+    $('vReflux').textContent=fmt(pieces*5);          // 每件 5 类采集项: 图像/力/关节/结果/干预
+    if(r.running) bar.classList.add('run'); else bar.classList.remove('run');
+  },400);
+  window.__VIS__={get:function(){return {units:$('vUnits').textContent,segs:$('vSegs').textContent,pieces:$('vPieces').textContent,
+    reflux:$('vReflux').textContent,phys:$('vPhys').textContent,on:document.getElementById('visBar').classList.contains('run')}}};
 })();
 </script>
 </body></html>

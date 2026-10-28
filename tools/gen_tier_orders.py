@@ -54,6 +54,13 @@ def main():
         tg = o.setdefault("targets", {})
         tg["产能 UPH"] = "%.1f 件/h (几何) · 年产量 %d 件 (%.0fh × OEE %.2f)" % (
             cm["uph_geo"], r["pieces_year"], meta["hours"], meta["oee"])
+        tg["设备售价"] = "%.1f 万元 (上限 %.0f 万元; 硬件成本 %.2f 万, 毛利 %.1f%%)" % (
+            r["price_set"] / 1e4, r["price_cap"] / 1e4, r["capex"] / 1e4, r["hw_gross_pct"])
+        tg["软件许可"] = "一次性 %.2f 万元 + %.4f 元/件 (5 年摊销实施投入, 40%% 毛利)" % (
+            r["license_upfront"] / 1e4, r["license_per_piece"])
+        tg["运营服务费"] = "%.4f 元/件 (覆盖运营支出 + 25%% 毛利)" % r["ops_fee_per_piece"]
+        tg["客户单件总成本"] = "%.4f 元/件 (人工折算 %.2f 元/件, 省 %.1f%%)" % (
+            r["client_unit_cost"], r["labor_per_piece"], r["client_save_pct"])
         tg["加工单价"] = "%.2f 元/件 (%s)" % (r["price_per_piece"], r["price_basis"])
         tg["班次"] = meta["shifts"]
         tg["交付周期"] = meta["deliver"]
@@ -64,7 +71,13 @@ def main():
             "unit_cost": r["unit_cost"], "unit_margin": r["unit_margin"],
             "revenue_year": r["revenue_year"], "gross_year": r["gross_year"],
             "gross_margin_pct": r["gross_margin_pct"], "payback_years": r["payback_years"],
+            "price_cap": r["price_cap"], "price_set": r["price_set"], "hw_gross": r["hw_gross"],
+            "hw_gross_pct": r["hw_gross_pct"], "gap_nre": r["gap_nre"],
+            "license_upfront": r["license_upfront"], "license_per_piece": r["license_per_piece"],
+            "ops_fee_per_piece": r["ops_fee_per_piece"], "client_unit_cost": r["client_unit_cost"],
+            "client_save_pct": r["client_save_pct"], "payback_sw_cash": r["payback_sw_cash"],
             "split_recommend": cm["split_recommend"],
+            "split_by_gross_pct": cm["split"][tid]["s4_priced"]["pct"],
             "split_hybrid_pct": cm["split"][tid]["s3_hybrid"]["pct"],
             "_src": "tools/cost_model.build_tiers() @ tools/spec/cost_model.json",
         }
@@ -77,7 +90,7 @@ def main():
         assert back["identity"]["order_no"] == ident["order_no"], p
         made.append((os.path.basename(p), r["pieces_year"], r["price_per_piece"], r["unit_cost"]))
     for n, pc, pr, uc in made:
-        print("写出 %-28s 年产 %8d 件 · 单价 %.2f · 单件成本 %.4f" % (n, pc, pr, uc))
+        print("写出 %-28s 年产 %8d 件 · 加工费 %.2f · 单件成本 %.4f" % (n, pc, pr, uc))
     return 0
 
 

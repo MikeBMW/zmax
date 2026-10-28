@@ -61,13 +61,13 @@ HTML = """
     <div class="mK"><b id="mkPc">0</b><span>已生产 (件)</span></div>
     <div class="mK"><b id="mkHr">0.00</b><span>演练工时 (h)</span></div>
     <div class="mK"><b id="mkUph">—</b><span>实测 UPH</span></div>
-    <div class="mK"><b id="mkVal">0</b><span>累计产值 (元)</span></div>
+    <div class="mK"><b id="mkVal">0</b><span>累计收入 (元)</span></div>
     <div class="mK"><b id="mkBatch">0</b><span>完成批次 (8h/批)</span></div>
     <div class="mK"><b id="mkPy">—</b><span>年化产量 (件/年)</span></div>
-    <div class="mK"><b id="mkRev">—</b><span>年化收入 (万)</span></div>
-    <div class="mK"><b id="mkGross">—</b><span>年毛利 (万)</span></div>
-    <div class="mK"><b id="mkPb">—</b><span>回收期 (年)</span></div>
-    <div class="mK"><b id="mkUnit">—</b><span>单件成本 (元)</span></div>
+    <div class="mK"><b id="mkRev">—</b><span>设备售价 (万)</span></div>
+    <div class="mK"><b id="mkGross">—</b><span>三方年毛利 (万)</span></div>
+    <div class="mK"><b id="mkPb">—</b><span>软件方回收 (年)</span></div>
+    <div class="mK"><b id="mkUnit">—</b><span>客户单件成本 (元)</span></div>
   </div>
   <div class="mRow">
     <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一真源)</span></div>
@@ -96,20 +96,24 @@ JS = """
     $('mkPc').textContent=fmt(pieces);
     $('mkHr').textContent=hours.toFixed(2);
     $('mkUph').textContent=uph.toFixed(1);
-    $('mkVal').textContent=fmt(pieces*t.price_per_piece,2);
+    var lpr=(t.license_per_piece||0)+(t.ops_fee_per_piece||0);
+    $('mkVal').textContent=fmt((t.price_set||0)+pieces*lpr,2);
     $('mkBatch').textContent=fmt(Math.floor(hours/8));
     $('mkPy').textContent=fmt(t.pieces_year);
-    $('mkRev').textContent=wan(t.revenue_year);
-    $('mkGross').textContent=wan(t.gross_year);
-    $('mkPb').textContent=(t.payback_years==null?'—':t.payback_years.toFixed(2));
-    $('mkUnit').textContent=t.unit_cost.toFixed(4);
+    var g3=(t.gross_year_hw||0)+(t.gross_year_sw||0)+(t.gross_year_op||0);
+    $('mkRev').textContent=wan(t.price_set||0);
+    $('mkGross').textContent=wan(g3);
+    $('mkPb').textContent=(t.payback_sw_cash==null?'—':t.payback_sw_cash.toFixed(2));
+    $('mkUnit').textContent=(t.client_unit_cost||0).toFixed(4);
     var sp=(PROD.COST.split||{})[PROD.tier]||{};
-    var pct=((sp.s3_hybrid||{}).pct)||{};
+    var pct=((sp.s4_priced||{}).pct)||{};
     $('mkSplit').textContent='硬件 '+(pct.hw||0)+'% · 软件 '+(pct.sw||0)+'% · 运营 '+(pct.op||0)+'%'
-      +'　(混合制: 硬件一次性 + 软件许可20% + 运营0.02元/件)';
-    $('mkExpect').textContent='按工单 '+t.id+' · '+uph.toFixed(1)+' UPH · '+t.hours_per_year+'h/年 · OEE '+t.oee
-      +' ⇒ '+fmt(t.pieces_year)+' 件/年 · 收入 '+wan(t.revenue_year)+' 万 · 毛利 '+wan(t.gross_year)
-      +' 万 ('+t.gross_margin_pct+'%) · 单件成本 '+t.unit_cost.toFixed(4)+' 元 · 回收 '+t.payback_years+' 年';
+      +'　(售价封顶 '+wan(t.price_cap||0)+' 万 · 许可 '+(t.license_per_piece||0).toFixed(3)
+      +' 元/件 + 运营 '+(t.ops_fee_per_piece||0).toFixed(3)+' 元/件)';
+    $('mkExpect').textContent='按 '+t.id+' 配置 · 售价 '+wan(t.price_set||0)+' 万 (上限 '+wan(t.price_cap||0)
+      +' 万) · '+uph.toFixed(1)+' UPH · '+t.hours_per_year+'h/年 · OEE '+t.oee
+      +' ⇒ '+fmt(t.pieces_year)+' 件/年 · 客户单件 '+(t.client_unit_cost||0).toFixed(3)
+      +' 元 (人工 0.36 元, 省 '+(t.client_save_pct||0)+'%) · 三方年毛利 '+wan(g3)+' 万';
   }
   function setLed(on){ var l=$('mkLed'); if(l) l.className='mLed'+(on?' run':'');
     $('mkStat').textContent=on?'生产中 · 速率 x'+PROD.speed:'待机';

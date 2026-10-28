@@ -935,6 +935,32 @@ def _cost_payload():
     return out
 
 
+def _ar_vision_payload():
+    """🎯 产品愿景 (老倪 2026-10-28: 「这个愿景, 一个在 AR 场景体现」)。
+
+    真源 tools/spec/vision.json; 只有计数是现算: 动作单元 = 元任务段数, 件数/回流由前端时钟给。
+    """
+    import json as _j
+    p = os.path.join(HERE, "..", "tools", "spec", "vision.json")
+    try:
+        spec = _j.load(open(p, encoding="utf-8"))
+    except Exception as e:                                                       # noqa: BLE001
+        return {"ok": False, "err": repr(e), "path": os.path.abspath(p)}
+    ar = spec.get("ar") or {}
+    units = 0        # 动作单元 = 元任务条数 (愿景口径: 7 个动作单元串一条工序)
+    segs = 0         # 段 = 每个动作单元拆出的轨迹段, 合计 40
+    try:
+        mt = _j.load(open(os.path.join(HERE, "..", "config", "tasks", "ar_meta_tasks.json"), encoding="utf-8"))
+        mts = mt.get("meta_tasks") or []
+        units = len(mts)
+        for m in mts:
+            segs += len(m.get("segs") or [])
+    except Exception:                                                            # noqa: BLE001
+        pass
+    return {"ok": True, "vision": spec.get("vision"), "pillars": spec.get("pillars"),
+            "spine": spec.get("spine"), "ar": ar, "units": units, "segs": segs}
+
+
 def _ar_meta_payload() -> dict:
     """🧩 AR 场景元任务组合 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json)
 
@@ -1390,6 +1416,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(_ar_cmd_payload())
             elif p == "/api/ar/meta":            # 🧩 AR 元任务组合(配置中心 TASK-07-AOI) + 当前执行到哪
                 self._json(_ar_meta_payload())
+            elif p == "/api/ar/vision":          # 🎯 产品愿景 (最后一厘米) + AR 计数口径
+                self._json(_ar_vision_payload())
             elif p == "/api/ar/cost":            # 💰 三档成本 + 三张工单 + 市场预期 + 三方分成
                 self._json(_cost_payload())
             elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)

@@ -196,6 +196,8 @@ def build_tiers(path=None):
             "capex": round(capex, 2), "nre_sum": round(nre, 2), "opex_year": round(opex, 2),
             "dep_year": round(dep, 2), "nre_amort": round(nre_amort, 2),
             "hours_per_year": hours, "oee": oee, "pieces_year": int(pieces),
+            "dep_years": float(t.get("dep_years") or 5), "nre_years": float(t.get("nre_years") or 3),
+            "price_cap": t.get("price_cap"), "price_cap_basis": t.get("price_cap_basis", ""),
             "price_per_piece": price, "price_basis": t.get("price_basis", ""),
             "revenue_year": round(revenue, 2), "cost_year": round(cost_year, 2),
             "unit_cost": round(unit_cost, 4), "unit_margin": round(price - unit_cost, 4),
@@ -208,6 +210,46 @@ def build_tiers(path=None):
     w2 = sp.get("value_weights") or {"hw": 0.45, "sw": 0.30, "op": 0.25}
     lic = float(sp.get("license_pct") or 0.20)
     fee = float(sp.get("op_fee_per_piece") or 0.02)
+    pr = spec.get("pricing") or {}
+    up_pct = float(pr.get("license_upfront_pct_of_price") or 0.06)
+    lic_years = float(pr.get("license_nre_amort_years") or 5)
+    lic_mrg = float(pr.get("license_margin") or 0.40)
+    ops_mrg = float(pr.get("ops_fee_margin") or 0.25)
+    labor = float(pr.get("labor_cost_per_piece") or 0.36)
+
+    # ── 定价上限约束下的真实商务结构 (老倪 2026-10-28 定价: A≤30万 / B≤40万 / C≤55万)
+    for r in out["tiers"]:
+        cap = float(r.get("price_cap") or 0) or None
+        price_set = min(cap, r["capex"] + r["nre_sum"]) if cap else (r["capex"] + r["nre_sum"])
+        if cap is None:
+            price_set = r["capex"] + r["nre_sum"]
+        pieces = max(1, r["pieces_year"])
+        hw_gross = price_set - r["capex"]
+        gap = (r["capex"] + r["nre_sum"]) - price_set          # 设备价装不下的实施投入 → 由许可/运营回收
+        lic_upfront = price_set * up_pct
+        lic_lpr = (r["nre_sum"] / lic_years / pieces) * (1.0 + lic_mrg)
+        ops_lpr = (r["opex_year"] / pieces) * (1.0 + ops_mrg)
+        client_unit = price_set / float(r["dep_years"]) / pieces + lic_lpr + ops_lpr
+        g_hw = hw_gross / float(r["dep_years"])
+        g_sw = lic_upfront / lic_years + pieces * lic_lpr - r["nre_sum"] / lic_years
+        g_op = pieces * ops_lpr - r["opex_year"]
+        r.update({
+            "price_cap": cap, "price_set": round(price_set, 2),
+            "price_basis": (r.get("price_basis") or "") + " ; 售价按上限 %.0f 万定价" % (price_set / 1e4),
+            "hw_gross": round(hw_gross, 2),
+            "hw_gross_pct": round(100.0 * hw_gross / price_set, 1) if price_set else 0,
+            "gap_nre": round(gap, 2),
+            "license_upfront": round(lic_upfront, 2),
+            "license_per_piece": round(lic_lpr, 4),
+            "ops_fee_per_piece": round(ops_lpr, 4),
+            "client_unit_cost": round(client_unit, 4),
+            "client_save_pct": round(100.0 * (1.0 - client_unit / labor), 1) if labor else 0,
+            "labor_per_piece": labor,
+            "gross_year_hw": round(g_hw, 2), "gross_year_sw": round(g_sw, 2), "gross_year_op": round(g_op, 2),
+            "sw_cash_year1": round(lic_upfront + pieces * lic_lpr, 2),
+            "payback_sw_cash": round(r["nre_sum"] / (lic_upfront + pieces * lic_lpr), 2) if (lic_upfront + pieces * lic_lpr) > 0 else None,
+        })
+
     for r in out["tiers"]:
         cash = r["revenue_year"] - r["opex_year"]
         tot = r["capex"] + r["nre_sum"] + r["opex_year"]
@@ -221,6 +263,8 @@ def build_tiers(path=None):
         sw3 = r["revenue_year"] * lic
         op3 = r["pieces_year"] * fee
         hw3 = max(0.0, cash - sw3 - op3)
+        s4 = {"hw": max(0.0, r["gross_year_hw"]), "sw": max(0.0, r["gross_year_sw"]),
+              "op": max(0.0, r["gross_year_op"])}
         out["split"][r["id"]] = {
             "cash_year": round(cash, 2),
             "s1_invest": {"abs": {k: round(v, 2) for k, v in s1.items()}, "pct": pct(s1)},
@@ -228,8 +272,10 @@ def build_tiers(path=None):
             "s3_hybrid": {"abs": {"hw": round(hw3, 2), "sw": round(sw3, 2), "op": round(op3, 2)},
                           "pct": pct({"hw": hw3, "sw": sw3, "op": op3}),
                           "rule": "硬件一次性 + 软件许可 %.0f%% 收益 + 运营 %.2f 元/件" % (lic * 100, fee)},
+            "s4_priced": {"abs": {k: round(v, 2) for k, v in s4.items()}, "pct": pct(s4),
+                          "rule": "售价受上限约束后按毛利贡献分配: 硬件(售价−硬件成本) / 软件(许可−实施摊销) / 运营(按件费−运营支出)"},
         }
-    out["split_recommend"] = sp.get("recommend") or "s3_hybrid"
+    out["split_recommend"] = "s4_priced"
     out["split_weights_basis"] = sp.get("value_weights_basis", "")
     return out
 

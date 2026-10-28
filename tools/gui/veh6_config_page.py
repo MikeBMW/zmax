@@ -4482,6 +4482,22 @@ class ConfigCenterPage(QWidget):
                           "工单 = 一次执行 (Build Sheet) · 真源 config/orders/BS_*.json · 点行看完整配置面"))
         l7.addWidget(getattr(self, "_w4_orders", QWidget()), 2)
         try:
+            l7.addWidget(_sec("第 7 步 · 成本组成（三档 · 硬件 / 实施 / 运营 / 售价 / 客户单件）",
+                              "唯一真源 tools/cost_model.build_tiers() ← tools/spec/cost_model.json (单价 + 售价上限)"))
+            l7.addWidget(self._tier_cost_block(th))
+        except Exception as _e7t:                                               # noqa: BLE001
+            _lb7t = QLabel("⛔ 成本组成块构造失败: %r" % (_e7t,))
+            _lb7t.setWordWrap(True)
+            l7.addWidget(_lb7t)
+        try:
+            l7.addWidget(_sec("第 8 步 · 市场分成（三方按毛利贡献 · 三种商务模式）",
+                              "硬件 = 售价 − 硬件成本 · 软件 = 许可 − 实施摊销 · 运营 = 按件费 − 运营支出"))
+            l7.addWidget(self._tier_split_block(th))
+        except Exception as _e8t:                                               # noqa: BLE001
+            _lb8t = QLabel("⛔ 市场分成块构造失败: %r" % (_e8t,))
+            _lb8t.setWordWrap(True)
+            l7.addWidget(_lb8t)
+        try:
             l7.addWidget(_sec("💰 成本/报价",
                               "算法真源 tools/cost_model.py · 参数真源 config/platform/zmax_cost_model.json"))
             l7.addWidget(self._cost_page(th))
@@ -4584,6 +4600,7 @@ class ConfigCenterPage(QWidget):
         #     二者都是**记录与导出** ⇒ 归第七阵 瑶光·定记录。原页构造器 _cost_page()/_biz_page() 一行没改,
         #     仍是唯一算法入口 (tools/cost_model.py / tools/business_model.py), 不存在第二套公式。
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
+        self._install_vision_bars(th)     # 🎯 2026-10-28 全局愿景统一: 每页顶部一条愿景带
         # 🆕 2026-10-21 老倪: 「配置中心 打开的时候, 应该先显示 产品配置」
         #   ⇒ 初始页**固定**为第一阵「🏷 产品配置」; 「记住上次那一页」不再回放
         #     (文件照旧随浏览写, 只是不再拿它决定打开哪一页 —— 否则回来会落在随便哪一页)。
@@ -5932,6 +5949,109 @@ class ConfigCenterPage(QWidget):
     #   的内容，都迁移到 文档配置里」⇒ 页签正好 = 北斗七星 (7 个), 没有非七星视图了。
     _TAB_ORDER = ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工程配置", "文档配置")
 
+    # ══════════════════════════════════════════════════════════════════
+    # 🎯 愿景带 (老倪 2026-10-28: 「根据产品愿景, 整体优化配置中心 … 达到全局愿景统一」)
+    #   真源 tools/spec/vision.json —— 配置中心 / ar3d / 市场分成 PPT 三处同一套话术。
+    #   做法: 不重建任何页面, 只往每个页签的页面顶部插一条 56px 的带子 ——
+    #    左: 愿景一句话; 中: 八步脊柱 (当前页高亮); 右: 本页回答的那一问。
+    #   为什么插在 top: 老倪要的是「一眼看出这一页在整体里的位置」, 不是再开一页讲愿景。
+    # ══════════════════════════════════════════════════════════════════
+    def _vision_spec(self):
+        try:
+            return _j(os.path.join(ROOT, "tools", "spec", "vision.json"), {}) or {}
+        except Exception:                                                       # noqa: BLE001
+            return {}
+
+    def _vision_bar(self, th, spec, keys, tab_title):
+        v = spec.get("vision") or {}
+        spine = spec.get("spine") or []
+        acc = th.get("C_ACCENT", "#58a6ff")
+        gray = th.get("C_GRAY", "#8b949e")
+        fg = th.get("C_FG", th.get("FG", "#e6edf3"))
+        line = th.get("C_LINE", th.get("LINE", "#30363d"))
+        bg2 = th.get("C_BG2", th.get("BG2", "#161b22"))
+
+        bar = QFrame()
+        bar.setObjectName("visionBar")
+        bar.setFixedHeight(58)
+        bar.setStyleSheet("QFrame#visionBar{background:%s;border:1px solid %s;border-radius:6px;}"
+                          % (bg2, line))
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(10, 4, 10, 4)
+        h.setSpacing(6)
+
+        lb = QLabel("🎯 %s" % (v.get("headline") or "产品愿景"))
+        lb.setStyleSheet("color:%s;background:transparent;font-weight:700;" % acc)
+        lb.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        lb.setFixedWidth(150)
+        lb.setToolTip("%s\n%s" % (v.get("subline", ""), v.get("problem", "")))
+        h.addWidget(lb)
+
+        chips = []
+        for st in spine:
+            on = st.get("key") in keys
+            c = QLabel(("%d %s" % (st.get("step", 0), st.get("title", ""))))
+            c.setAlignment(Qt.AlignCenter)
+            c.setFixedHeight(22)
+            c.setMinimumWidth(66)
+            if on:
+                c.setStyleSheet("color:#ffffff;background:%s;border-radius:11px;padding:0 7px;" % acc)
+                c.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
+            else:
+                c.setStyleSheet("color:%s;background:transparent;border:1px solid %s;"
+                                "border-radius:11px;padding:0 7px;" % (gray, line))
+                c.setFont(QFont("Microsoft YaHei", 9))
+            c.setToolTip("%s\n问: %s\n答: %s" % (st.get("title", ""), st.get("question", ""), st.get("answer", "")))
+            chips.append((st.get("key"), c))
+            h.addWidget(c)
+
+        h.addStretch(1)
+        me = next((st for st in spine if st.get("key") in keys), None)
+        txt = (me.get("question", "") + " → " + me.get("answer", "")) if me else ""
+        q = QLabel(txt)
+        q.setStyleSheet("color:%s;background:transparent;" % gray)
+        q.setFont(QFont("Microsoft YaHei", 8))
+        q.setWordWrap(True)
+        q.setMaximumWidth(430)
+        q.setToolTip(txt)
+        h.addWidget(q)
+
+        bar._vision_keys = keys          # 判据用 (真读, 不靠文案猜)
+        bar._vision_chips = chips
+        bar._vision_tab = tab_title
+        return bar
+
+    def _install_vision_bars(self, th):
+        """给每个页签顶部装愿景带 (幂等: 已装过就跳过)。"""
+        spec = self._vision_spec()
+        if not spec.get("spine"):
+            return []
+        if getattr(self, "_vision_bars", None):
+            return self._vision_bars
+        by_tab = {}
+        for st in spec["spine"]:
+            by_tab.setdefault(st.get("tab", ""), []).append(st.get("key"))
+        out = []
+        for i in range(self.tabs.count()):
+            title = self.tabs.tabText(i)
+            keys = []
+            for tab, ks in by_tab.items():
+                if tab and tab in title:
+                    keys.extend(ks)
+            page = self.tabs.widget(i)
+            inner = page.widget() if isinstance(page, QScrollArea) else page
+            lay = inner.layout() if inner is not None else None
+            if lay is None:
+                continue
+            if inner.findChild(QFrame, "visionBar") is not None:
+                continue
+            bar = self._vision_bar(th, spec, keys, title)
+            lay.insertWidget(0, bar)
+            out.append(bar)
+        self._vision_bars = out
+        self._vision_spec_d = spec
+        return out
+
     def _apply_tab_order(self):
         """按北斗次序重排页签 (moveTab, 不重建页、不动页内状态)。
 
@@ -5952,6 +6072,88 @@ class ConfigCenterPage(QWidget):
     #   算法: tools/cost_model.py (唯一公式) · 参数: config/platform/zmax_cost_model.json
     #   页面只做 改假设 → 现算 → 可写回/导出; 派生值 (合计/回本) 一律不落盘、不手填。
     # ══════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════
+    # 第 7 步 · 成本组成 / 第 8 步 · 市场分成 (老倪 2026-10-28 愿景链的最后两环)
+    #   数字唯一真源 = tools/cost_model.build_tiers() (读 tools/spec/cost_model.json 的单价与售价上限)。
+    #   页面上不写死任何一个结论数字; 改售价上限只改 json, 这里自动变。
+    # ══════════════════════════════════════════════════════════════════
+    def _tier_data(self):
+        if getattr(self, "_tier_d", None):
+            return self._tier_d
+        try:
+            import cost_model as _cm
+            self._tier_d = _cm.build_tiers()
+        except Exception as _e:                                                 # noqa: BLE001
+            self._tier_d = {"err": repr(_e), "tiers": [], "split": {}}
+        return self._tier_d
+
+    def _tier_cost_block(self, th):
+        d = self._tier_data()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 2)
+        if not d.get("tiers"):
+            lay.addWidget(QLabel("⛔ 成本模型不可用: %s" % d.get("err", "")))
+            return w
+        rows = []
+        for t in d["tiers"]:
+            rows.append([
+                t["id"], t.get("layers", ""), "≤%s TOPS" % t.get("tops"),
+                "%.1f" % (t["capex"] / 1e4), "%.1f" % (t["nre_sum"] / 1e4),
+                "%.1f" % (t["opex_year"] / 1e4), "%d" % t["pieces_year"],
+                "%.4f" % t["unit_cost"], "%.1f (≤%.0f)" % (t["price_set"] / 1e4, t["price_cap"] / 1e4),
+                "%.1f / %.1f%%" % (t["hw_gross"] / 1e4, t["hw_gross_pct"]),
+                "%.1f" % (t["gap_nre"] / 1e4),
+                "%.4f" % t["client_unit_cost"],
+                "%.0f%%" % t["client_save_pct"],
+            ])
+        tb = _mk_table(["档位", "层级", "算力", "硬件(万)", "实施(万)", "运营(万/年)", "年产量(件)",
+                        "单件成本(元)", "售价(万)", "硬件毛利", "装不下的实施(万)",
+                        "客户单件(元)", "比人工省"], rows, th)
+        tb.setMinimumHeight(41 + 34 * len(rows) + 8)
+        self.tier_cost_table = tb
+        lay.addWidget(tb)
+        msg = QLabel("口径: 单件成本 = (硬件折旧 + 年度运营 + 实施按三年摊销) ÷ 年产量 · "
+                     "售价 = min(上限, 硬件+实施) · 客户单件 = 折旧÷产量 + 许可 + 运营 · "
+                     "人工折算 %.2f 元/件" % d["tiers"][0]["labor_per_piece"])
+        msg.setWordWrap(True)
+        msg.setStyleSheet("color:%s;background:transparent;" % th.get("C_GRAY", "#8b949e"))
+        lay.addWidget(msg)
+        return w
+
+    def _tier_split_block(self, th):
+        d = self._tier_data()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 2)
+        if not d.get("split"):
+            lay.addWidget(QLabel("⛔ 分成模型不可用"))
+            return w
+        rows = []
+        for t in d["tiers"]:
+            sp = (d["split"].get(t["id"]) or {}).get("s4_priced") or {}
+            pct = sp.get("pct") or {}
+            ab = sp.get("abs") or {}
+            rows.append([
+                t["id"], "%.1f%%" % pct.get("hw", 0), "%.1f%%" % pct.get("sw", 0),
+                "%.1f%%" % pct.get("op", 0),
+                "%.1f" % ((ab.get("hw", 0) + ab.get("sw", 0) + ab.get("op", 0)) / 1e4),
+                "%.1f" % (ab.get("hw", 0) / 1e4), "%.1f" % (ab.get("sw", 0) / 1e4), "%.1f" % (ab.get("op", 0) / 1e4),
+                "%.2f" % (t.get("payback_sw_cash") or 0),
+                "%.4f + %.4f" % (t["license_per_piece"], t["ops_fee_per_piece"]),
+            ])
+        tb = _mk_table(["档位", "硬件", "软件", "运营", "三方年毛利(万)", "硬件(万)", "软件(万)", "运营(万)",
+                        "软件现金回收(年)", "许可+运营(元/件)"], rows, th)
+        tb.setMinimumHeight(41 + 34 * len(rows) + 8)
+        self.tier_split_table = tb
+        lay.addWidget(tb)
+        msg = QLabel("规则: 硬件拿「售价 − 硬件成本」; 软件拿「许可 − 实施摊销」; 运营拿「按件费 − 运营支出」。"
+                     "售价封顶后装不进设备价的实施投入, 必须靠许可与运营回收 —— 所以许可与运营要写进同一份合同。")
+        msg.setWordWrap(True)
+        msg.setStyleSheet("color:%s;background:transparent;" % th.get("C_GRAY", "#8b949e"))
+        lay.addWidget(msg)
+        return w
+
     def _cost_page(self, th):
         _w = QWidget()
         _lay = QVBoxLayout(_w)
