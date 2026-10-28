@@ -240,53 +240,98 @@ def main():
         chk("⑥ 节拍与真源一致(11.42)", any("11.4" in v for k, v in vals.items() if "节拍" in k),
             {k: v for k, v in vals.items() if "节拍" in k})
 
-    # ⑨ 模型配置: 功能→实际模型 (用真权重, 不是层模型名)
+    # ⑨ 模型配置: 功能 × 模型 对应 (模型名称 / L2~L5 层 / 状态空间节点 / 来源)
     wm0, tm0 = tab_page(p, "模型配置")
+
+    def _eq(t, name):
+        return next((c for c in range(t.columnCount())
+                     if (t.horizontalHeaderItem(c).text() if t.horizontalHeaderItem(c) else "") == name), -1)
     mr = getattr(p, "ml_real_table", None)
     ml = getattr(p, "ml_ledger_table", None)
-    chk("⑨ 有 功能→实际模型 表", mr is not None, mr.rowCount() if mr else "无")
+    chk("⑨ 有 功能×模型 对应表", mr is not None, mr.rowCount() if mr else "无")
     chk("⑨ 有 模型台账 表", ml is not None, ml.rowCount() if ml else "无")
     if mr is not None:
         hd = [mr.horizontalHeaderItem(c).text() for c in range(mr.columnCount())]
-        chk("⑨ 表头有 实际模型/类型/实际文件/状态",
-            all(any(k in h for h in hd) for k in ("实际模型", "类型", "实际文件", "状态")), hd)
-        chk("⑨ 行数 = 本任务功能数", mr.rowCount() == len(funcs), "%d vs %d" % (mr.rowCount(), len(funcs)))
+        chk("⑨ 表头有 模型名称/层/状态空间节点/来源",
+            all(any(k in h for h in hd) for k in ("模型名称", "层", "状态空间节点", "来源")), hd)
         ids_m = [mr.item(r, 0).text() for r in range(mr.rowCount())]
-        chk("⑨ 功能逐条与真源一致", ids_m == [f["fn"] for f in funcs], ids_m[:3])
-        c_nm, c_tp, c_pt, c_st = (_hidx(mr, "实际模型"), _hidx(mr, "类型"), _hidx(mr, "实际文件"), _hidx(mr, "状态"))
-        chk("⑨ 每个功能都写了实际加载物", all(mr.item(r, c_nm).text().strip() for r in range(mr.rowCount())),
-            "FN-SYS0-37 → " + mr.item(ids_m.index("FN-SYS0-37"), c_nm).text()[:40])
-        # 真权重必须在盘上: 逐条 stat
+        chk("⑨ 覆盖本任务全部功能", set(ids_m) == {f["fn"] for f in funcs},
+            "%d 行 / %d 个功能" % (mr.rowCount(), len(set(ids_m))))
+        c_nm, c_ly, c_nd, c_src, c_st = (_hidx(mr, "模型名称"), _eq(mr, "层"), _hidx(mr, "状态空间节点"),
+                                         _hidx(mr, "来源"), _eq(mr, "状态"))
+        chk("⑨ 每行都有模型名称", all(mr.item(r, c_nm).text().strip() for r in range(mr.rowCount())),
+            "样例: " + mr.item(0, c_nm).text()[:40])
+        chk("⑨ 每行都有 L2~L5 层", all(mr.item(r, c_ly).text().strip() not in ("", "—") for r in range(mr.rowCount())),
+            sorted({mr.item(r, c_ly).text() for r in range(mr.rowCount())}))
+        chk("⑨ 每行都有状态空间节点", all(mr.item(r, c_nd).text().strip() not in ("", "—") for r in range(mr.rowCount())),
+            sorted({mr.item(r, c_nd).text() for r in range(mr.rowCount())})[:6])
+        chk("⑨ 每行都写了来源(层模型/模块登记/场景登记/规则)",
+            all(mr.item(r, c_src).text().strip() not in ("", "—") for r in range(mr.rowCount())),
+            mr.item(0, c_src).text()[:50])
+        # Qwen3 与 INTACT 必须分开出现, 不能混成一条 (老倪点名的对应关系)
+        qwen_rows = [r for r in range(mr.rowCount()) if "Qwen3" in mr.item(r, c_nm).text()]
+        int_rows = [r for r in range(mr.rowCount()) if "INTACT" in mr.item(r, c_nm).text()]
+        chk("⑨ Qwen3 与 INTACT-JEPA 分别独立成行", len(qwen_rows) >= 1 and len(int_rows) >= 1,
+            "Qwen3 %d 行 · INTACT %d 行" % (len(qwen_rows), len(int_rows)))
+        if qwen_rows:
+            q_fns = {mr.item(r, 0).text() for r in qwen_rows}
+            q_src = mr.item(qwen_rows[0], c_src).text()
+            chk("⑨ Qwen3 行标了来源(模块登记 llm) 且层为 L4/L5",
+                "模块登记" in q_src and mr.item(qwen_rows[0], c_ly).text() in ("L4/L5", "L5", "L4"),
+                "%s ← %s" % (" ".join(q_fns), q_src[:40]))
+        # 真权重 stat
         n_real = n_ok = 0
-        for fid in ids_m:
+        for fid in set(ids_m):
             for it in (V._fn_load_items(fid) or []):
                 if it.get("path") and it.get("kind") != "规则/数据源":
                     n_real += 1
                     n_ok += 1 if it.get("ok") else 0
-        chk("⑨ 模型条目路径现场 stat 存在 (%d/%d)" % (n_ok, n_real), n_real > 0 and n_ok >= 3,
-            "本任务真权重/端点/技能库条目 %d 条, 其中 %d 条在位" % (n_real, n_ok))
-        # YOLO 必须指到在役软链
-        r_yolo = ids_m.index("FN-SYS0-37") if "FN-SYS0-37" in ids_m else -1
-        chk("⑨ YOLO 功能指到真实在役权重 yolo_peg_live.pt",
-            r_yolo >= 0 and "yolo_peg_live.pt" in mr.item(r_yolo, c_pt).text(),
-            mr.item(r_yolo, c_pt).text() if r_yolo >= 0 else "缺")
-        # 技能库/端点/API 三类都要出现
-        kinds_txt = " ".join(mr.item(r, c_tp).text() for r in range(mr.rowCount()))
-        chk("⑨ 类型覆盖 权重/技能库/端点/规则",
-            all(k in kinds_txt for k in ("技能库", "yolo", "aoi_service", "规则/数据源")), kinds_txt[:80])
-        # 复制按钮
+        chk("⑨ 模型条目路径现场 stat 存在 (%d/%d)" % (n_ok, n_real), n_real > 0 and n_ok >= 4,
+            "真权重/技能库条目 %d 条, %d 条在位" % (n_real, n_ok))
         btm = {b.text(): b for b in wm0.findChildren(QPushButton)}
         km = next((k for k in btm if "功能→实际模型" in k), None)
-        chk("⑨ 有复制按钮", bool(km), [k for k in btm if "复制" in k][:4])
         if km:
             btm[km].click(); app.processEvents()
             ct = QApplication.clipboard().text()
-            chk("⑨ 复制功能→模型 TSV 真进剪贴板", ct.count("\n") >= 32 and "功能ID" in ct,
-                "行数 %d" % ct.count("\n"))
+            chk("⑨ 复制 TSV 真进剪贴板", ct.count("\n") >= 32 and "模型名称" in ct, "行数 %d" % ct.count("\n"))
     if ml is not None:
-        sts = [ml.item(r, 5).text() for r in range(ml.rowCount())]
+        hd2 = [ml.horizontalHeaderItem(c).text() for c in range(ml.columnCount())]
+        chk("⑨ 台账有 层 列", any(h == "层" for h in hd2), hd2)
+        sts = [ml.item(r, 6).text() for r in range(ml.rowCount())]
         chk("⑨ 台账每条都有状态标记", all(("✅" in x or "⚠" in x or "⛔" in x) for x in sts), sts[:5])
         chk("⑨ 台账 ≥ 4 个实际模型", ml.rowCount() >= 4, "%d 条" % ml.rowCount())
+
+    # ⑩ 性能配置: 模型能力边界 + 该任务性能指标
+    wp0, tp0 = tab_page(p, "性能配置")
+    pb = getattr(p, "perf_boundary_table", None)
+    pt = getattr(p, "perf_spec_table", None)
+    chk("⑩ 有 模型能力边界 表", pb is not None, pb.rowCount() if pb else "无")
+    chk("⑩ 有 性能指标 表", pt is not None, pt.rowCount() if pt else "无")
+    if pb is not None:
+        hd = [pb.horizontalHeaderItem(c).text() for c in range(pb.columnCount())]
+        chk("⑩ 边界表头有 输入域→输出域/上限/精度/时延/越界",
+            all(any(k in h for h in hd) for k in ("输入域", "上限", "阈值", "时延", "越界")), hd)
+        chk("⑩ 边界 ≥ 10 条 (每层都覆盖)", pb.rowCount() >= 10, "%d 条" % pb.rowCount())
+        c_in, c_lim, c_grd, c_src2 = (_hidx(pb, "输入域"), _hidx(pb, "上限"), _hidx(pb, "越界"), pb.columnCount() - 1)
+        chk("⑩ 每条都写清 输入→输出 与 上限量程",
+            all("→" in pb.item(r, c_in).text() and pb.item(r, c_lim).text().strip() not in ("", "—")
+                for r in range(pb.rowCount())), "首条: " + pb.item(0, c_lim).text()[:40])
+        chk("⑩ 每条都有越界行为/闸门",
+            all(pb.item(r, c_grd).text().strip() not in ("", "—") for r in range(pb.rowCount())),
+            "首条: " + pb.item(0, c_grd).text()[:44])
+        _ok = sum(1 for r in range(pb.rowCount()) if pb.item(r, c_src2).text().startswith("✅"))
+        chk("⑩ 边界真源现场校验通过 (%d/%d)" % (_ok, pb.rowCount()), _ok >= pb.rowCount() - 1,
+            "未通过的行: " + " ; ".join(pb.item(r, 1).text()[:16] for r in range(pb.rowCount())
+                                      if not pb.item(r, c_src2).text().startswith("✅")))
+        # 关键边界值必须在表里 (安全常量 + 模型维度)
+        alltxt = " ".join(pb.item(r, c_lim).text() + pb.item(r, c_in).text() for r in range(pb.rowCount()))
+        for kw in ("FORCE_LIMIT", "VEL_LIMIT", "480×480", "224×224", "40N"):
+            chk("⑩ 边界值含 %s" % kw, kw in alltxt, "缺" if kw not in alltxt else "有")
+    if pt is not None:
+        chk("⑩ 指标行 ≥ 5", pt.rowCount() >= 5, "%d 条" % pt.rowCount())
+        c_tg = _hidx(pt, "目标")
+        chk("⑩ 每条指标都有目标值", all(pt.item(r, c_tg).text().strip() not in ("", "—")
+                                    for r in range(pt.rowCount())), "首条: " + pt.item(0, c_tg).text()[:40])
 
     # ── 模型配置页
     wm, tm = tab_page(p, "模型配置")

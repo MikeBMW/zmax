@@ -4103,6 +4103,10 @@ class ConfigCenterPage(QWidget):
         try:
             _v_perf["lay"].insertWidget(0, self._active_banner(th, "性能配置"))
             _v_perf["lay"].insertWidget(1, self._task_perf_block(th))
+            try:
+                _v_perf["lay"].insertWidget(2, self._perf_boundary_block(th))
+            except Exception as _eb:                                            # noqa: BLE001
+                _v_perf["lay"].insertWidget(2, QLabel("⛔ 能力边界块构建失败: %r" % (_eb,)))
         except Exception as _ep:                                                # noqa: BLE001
             _v_perf["lay"].insertWidget(0, QLabel("⛔ 性能横幅/指标块构建失败: %r" % (_ep,)))
         self.fpm_views["功能配置"] = _v_func
@@ -4763,58 +4767,85 @@ class ConfigCenterPage(QWidget):
             except Exception:                                                   # noqa: BLE001
                 its = []
             lmap[f["fn"]] = its
-            names = " / ".join(x["name"] for x in its) or "⛔ 未登记加载物"
-            kinds = " / ".join(x["kind"] for x in its) or "—"
-            def _pth(x):
-                if x.get("path"):
-                    return x["path"]
-                ep = x.get("endpoint")
-                if isinstance(ep, dict) and ep:
-                    return "端点 " + " , ".join("%s=%s" % (k, v) for k, v in ep.items())
-                return "—(可插拔/云端)"
-            def _sz(x):
-                if not x.get("mb"):
-                    return "—"
-                _v = ("%.0fKB" % (x["mb"] * 1000)) if x["mb"] < 1 else ("%.0fMB" % x["mb"])
-                return _v + ((" · " + _t.strftime("%m-%d", _t.localtime(x["mt"]))) if x["mt"] else "")
-            paths = " / ".join(_pth(x) for x in its) or "—"
-            siz = " / ".join(_sz(x) for x in its) or "—"
-            okall = [x["ok"] for x in its]
-            _soft = its and all(x["kind"] in ("api", "LLM", "llm") for x in its)
-            if not its:
-                st = "⛔ 未登记"
-            elif all(okall):
-                st = "✅ 在位"
-            elif any(okall):
-                st = "⚠ 部分"
-            elif _soft:
-                st = "⚠ 未配置(走规则)"
-            else:
-                st = "⛔ 缺"
-            basis = " / ".join(x["basis"] for x in its)[:70] or "—"
-            layer_model = ((fl.get(f["fn"]) or {}).get("model_text") or "—")
-            rows.append([f["fn"], f["name"], f["layer"] or "—", names, kinds, paths, siz, st, basis, layer_model])
-
+            node = f.get("node") or "—"
+            seen = set()
+            # (a) 层模型真源声明的模型 (function_layer_map → model_links)
+            for nm in ((fl.get(f["fn"]) or {}).get("models") or []):
+                for kk in ((_model_links().get("links") or {}).get(nm) or []):
+                    e = (_models_registry().get("ent") or {}).get(kk)
+                    if not e or kk in seen:
+                        continue
+                    seen.add(kk)
+                    ok, desc, sz, mt = _model_disk(e)
+                    act = next((x for x in its if x.get("name") == (e.get("name") or kk)), None)
+                    _src_basis = ("层模型 + " + (act or {}).get("basis", "")[:18]) if act else "层模型 (真源声明)"
+                    if not act and its:
+                        _first = next((x["name"] for x in its if x.get("kind") != "规则/数据源"), None)
+                        _src_basis += (" ⚠ 与本功能实际加载(%s)不一致" % (_first or "代码/规则"))[:38]
+                    rows.append([f["fn"], f["name"], e.get("layer") or f["layer"] or "—",
+                                 e.get("name") or kk, node, _src_basis,
+                                 e.get("path") or "—", ("%.0fMB" % (sz / 1e6)) if sz else "—",
+                                 "✅ 在位" if ok else "⛔ 缺"])
+            # (b) 实际加载物 (模块登记 / 场景登记 / 对齐 / 规则代码)
+            for x in its:
+                key = x.get("name") or ""
+                if x.get("kind") == "规则/数据源":
+                    rows.append([f["fn"], f["name"], f["layer"] or "—", "无权重 · 代码/规则实现", node,
+                                 x.get("basis") or "—", x.get("path") or "—", "—", "✅ 在位 (代码)"])
+                    continue
+                if any(r[3] == key for r in rows if r[0] == f["fn"]):
+                    continue
+                lyr = ""
+                e2 = next((e for k2, e in (_models_registry().get("ent") or {}).items()
+                           if (e.get("name") or k2) == key), None)
+                if e2:
+                    lyr = e2.get("layer") or ""
+                szx = ("%.0fKB" % (x["mb"] * 1000)) if (x.get("mb") and x["mb"] < 1) else \
+                      (("%.0fMB" % x["mb"]) if x.get("mb") else "—")
+                rows.append([f["fn"], f["name"], lyr or f["layer"] or "—", key, node,
+                             x.get("basis") or "—", x.get("path") or "—", szx,
+                             ("✅ 在位" if x["ok"] else ("⚠ 未配置" if x["kind"] in ("api", "LLM", "llm") else "⛔ 缺"))])
         self.ml_real_table = _mk_table(
-            ["功能ID", "功能名称", "层", "实际模型 / 加载物", "类型", "实际文件 / 端点", "大小 · 时间", "状态", "依据", "层模型(真源)"],
+            ["功能ID", "功能名称", "层", "模型名称", "状态空间节点", "来源 (凭什么这么对)", "实际文件 / 端点", "大小", "状态"],
             rows, th)
         self.ml_real_table.setWordWrap(False)
         self.ml_real_table.verticalHeader().setDefaultSectionSize(24)
-        for _c, _w2 in ((0, 96), (1, 190), (2, 50), (3, 210), (4, 118), (6, 118), (7, 74), (8, 172), (9, 118)):
+        for _c, _w2 in ((0, 92), (1, 176), (2, 52), (3, 208), (5, 168), (6, 168), (7, 66), (8, 86)):
             self.ml_real_table.setColumnWidth(_c, _w2)
-        self.ml_real_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
-        self.ml_real_table.setMinimumHeight(min(24 * 12 + 48, 24 * len(rows) + 48))
+        self.ml_real_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.ml_real_table.setMinimumHeight(24 * len(rows) + 48)   # 全部行撑开, 不留内滚
         for _r, _row in enumerate(rows):
-            for _c in (3, 5, 8, 9):
+            for _c in (3, 4, 5, 6):
                 _it = self.ml_real_table.item(_r, _c)
                 if _it is not None:
                     _it.setToolTip(_row[_c])
-            if "⛔" in _row[7]:
-                self.ml_real_table.item(_r, 7).setForeground(QBrush(QColor(th["C_RED"])))
-            elif "⚠" in _row[7]:
-                self.ml_real_table.item(_r, 7).setForeground(QBrush(QColor(th["C_YELLOW"])))
-        lay.addWidget(_hd("   ① 功能 → 实际模型 (%d 个功能逐条; 真源 = 工程库模块登记 + models/active_models.json 场景登记, 路径与大小现场 stat)"
-                          % len(rows)))
+            _st = self.ml_real_table.item(_r, 8)
+            if _st is not None and "⛔" in _row[8]:
+                _st.setForeground(QBrush(QColor(th["C_RED"])))
+            elif _st is not None and "⚠" in _row[8]:
+                _st.setForeground(QBrush(QColor(th["C_YELLOW"])))
+        _hdr1 = _hd("   ① 功能 × 模型 对应 (%d 行 = 层模型声明 + 模块/场景登记的实际加载物; 每行都有 层·状态空间节点·来源)"
+                    % len(rows))
+        lay.addWidget(_hdr1)
+        _frow = QHBoxLayout()
+
+        def _flt(mode):
+            for _r2 in range(self.ml_real_table.rowCount()):
+                _src = self.ml_real_table.item(_r2, 5).text() if self.ml_real_table.item(_r2, 5) else ""
+                _show = True
+                if mode == "act":
+                    _show = "层模型 (真源声明)" != _src.strip()
+                elif mode == "layer":
+                    _show = _src.startswith("层模型")
+                self.ml_real_table.setRowHidden(_r2, not _show)
+            _hdr1.setText("   ① 功能 × 模型 对应 (%d 行 · 过滤: %s)" %
+                          (self.ml_real_table.rowCount(), {"all": "全部", "act": "仅实际加载", "layer": "仅层模型声明"}[mode]))
+        for _lab, _md in (("全部", "all"), ("仅实际加载", "act"), ("仅层模型声明", "layer")):
+            _b3 = _btn(_lab, th)
+            _b3.clicked.connect(lambda _=False, m=_md: _flt(m))
+            _frow.addWidget(_b3)
+        _frow.addStretch()
+        lay.addLayout(_frow)
         lay.addWidget(self.ml_real_table)
 
         # ② 模型台账: 按实际条目聚合
@@ -4828,7 +4859,7 @@ class ConfigCenterPage(QWidget):
                 if x["kind"] == "规则/数据源":
                     continue
                 k = x.get("name") or x.get("path") or "?"
-                a = agg.setdefault(k, {"kind": x["kind"], "path": x.get("path") or "",
+                a = agg.setdefault(k, {"kind": x["kind"], "layer": x.get("layer") or "", "path": x.get("path") or "",
                                        "endpoint": x.get("endpoint"), "ok": x["ok"], "mb": x["mb"],
                                        "mt": x["mt"], "fns": []})
                 a["fns"].append(fid)
@@ -4856,11 +4887,15 @@ class ConfigCenterPage(QWidget):
                 st = "⚠ 未配置"
             else:
                 st = "⛔ 缺"
-            rows2.append([k, a["kind"], loc, siz, tm, st, "%d" % len(a["fns"]),
+            _lyr = (a.get("layer") or "")
+            _node = " ".join(sorted({(next((x.get("node") for x in (lmap.get(_f) or []) if x.get("node")), "") or
+                                     (f.get("node") or "")) for _f in a["fns"]}))[:60] or "—"
+            rows2.append([k, a["kind"], _lyr, loc, siz, tm, st, "%d" % len(a["fns"]),
                           " ".join(a["fns"][:6]) + (" …" if len(a["fns"]) > 6 else "")])
-        self.ml_ledger_table = _mk_table(["实际模型 / 加载物", "类型", "权重路径 / 端点", "大小", "时间", "状态", "服务功能数", "服务功能"],
-                                         rows2, th)
-        self.ml_ledger_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.ml_ledger_table = _mk_table(["实际模型 / 加载物", "类型", "层", "权重路径 / 端点", "大小", "时间", "状态",
+                                          "服务功能数", "服务功能"], rows2, th)
+        self.ml_ledger_table.setColumnWidth(2, 46)
+        self.ml_ledger_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.ml_ledger_table.setMinimumHeight(min(24 * 10 + 48, 24 * len(rows2) + 48))
         lay.addWidget(_hd("   ② 模型台账 (按实际模型聚合: 一个模型服务哪些功能 · 权重在不在盘上; 另有 %d 个功能没有权重, 是代码/规则实现, 见①表)"
                           % _n_code))
@@ -4892,11 +4927,11 @@ class ConfigCenterPage(QWidget):
         _bb = QHBoxLayout()
         _c1 = _btn("📋 复制 功能→实际模型 (TSV)", th)
         _c1.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["功能ID", "功能名称", "层", "实际模型", "类型", "实际文件/端点", "大小·时间", "状态", "依据", "层模型"]) + "\n"
+            "\t".join(["功能ID", "功能名称", "层", "模型名称", "状态空间节点", "来源", "实际文件/端点", "大小", "状态"]) + "\n"
             + "\n".join("\t".join(str(x) for x in r) for r in rows)))
         _c2 = _btn("📋 复制 模型台账 (TSV)", th)
         _c2.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["实际模型", "类型", "权重路径/端点", "大小", "时间", "状态", "服务功能数", "服务功能"]) + "\n"
+            "\t".join(["模型名称", "类型", "层", "权重路径/端点", "大小", "时间", "状态", "服务功能数", "服务功能"]) + "\n"
             + "\n".join("\t".join(str(x) for x in r) for r in rows2)))
         for _b in (_c1, _c2):
             _bb.addWidget(_b)
@@ -5137,6 +5172,144 @@ class ConfigCenterPage(QWidget):
         t.setMinimumHeight(min(300, 24 * (len(rows) + 2) + 8))
         lay.addWidget(t)
         self.perf_kpi_table = t
+        return w
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ⚡ 性能配置 · 模型能力边界 (老倪 2026-10-28: 「继续写性能配置, 要体现模型的能力边界」)
+    #   真源: tools/spec/capability_limits.json (每条带 src file:line, 页面现场校验)
+    #        + config/platform/zmax_perf_spec.json (指标定义/目标值/口径/标准, value 空 = 未实测)
+    # ══════════════════════════════════════════════════════════════════════════
+    def _perf_boundary_block(self, th):
+        CL = os.path.join(ROOT, "tools", "spec", "capability_limits.json")
+        try:
+            spec = json.load(open(CL, encoding="utf-8"))
+        except Exception:                                                       # noqa: BLE001
+            spec = {"rows": []}
+
+        def _chk(src):
+            """现场核对真源引用: path:line / path#key / path —— 存在且行号在界内才算 ✅"""
+            if not src:
+                return "⛔ 无真源"
+            pth = src.split("#")[0]
+            line = None
+            if ":" in pth and not pth.endswith(":"):
+                head, _, tail = pth.rpartition(":")
+                if tail.isdigit():
+                    pth, line = head, int(tail)
+            fp = pth if os.path.isabs(pth) else os.path.join(ROOT, pth)
+            if not os.path.exists(fp):
+                return "⛔ 文件不存在: %s" % pth
+            if line:
+                try:
+                    n = len(open(fp, encoding="utf-8", errors="replace").read().splitlines())
+                except Exception:                                               # noqa: BLE001
+                    n = 0
+                if n and line > n:
+                    return "⛔ 行号越界 %d/%d" % (line, n)
+                return "✅ %s" % src
+            if "#" in src:
+                key = src.split("#", 1)[1]
+                try:
+                    j = json.load(open(fp, encoding="utf-8"))
+                    cur = j
+                    for part in key.split("#"):
+                        cur = cur[part]
+                    return "✅ %s" % src
+                except Exception:                                               # noqa: BLE001
+                    return "⚠ 键取不到: %s" % src
+            return "✅ %s" % src
+
+        rows = []
+        for r in (spec.get("rows") or []):
+            rows.append([r.get("domain") or "—", r.get("model") or "—", r.get("layer") or "—",
+                         r.get("node") or "—",
+                         "%s → %s" % (r.get("input") or "—", r.get("output") or "—"),
+                         r.get("limit") or "—", r.get("precision") or "—", r.get("latency") or "—",
+                         r.get("guard") or "—", _chk(r.get("src"))])
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+        hd = QLabel()
+        hd.setTextFormat(Qt.RichText)
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>🧱 模型能力边界 (%d 条)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;输入域 → 输出域 · 量程上限 · 阈值精度 · 时延 · "
+                   "越界行为 —— 每条真源现场校验</span>" % (th["C_YELLOW"], len(rows), th["C_GRAY"]))
+        hd.setWordWrap(False)
+        lay.addWidget(hd)
+        t = _mk_table(["域", "模型 / 能力", "层", "状态空间节点", "输入域 → 输出域", "上限 / 量程",
+                       "阈值 / 精度", "时延", "越界行为 / 闸门", "真源校验"], rows, th)
+        t.setWordWrap(False)
+        t.verticalHeader().setDefaultSectionSize(24)
+        for _c, _w2 in ((0, 96), (1, 168), (2, 40), (3, 96), (5, 168), (6, 148), (7, 110), (9, 116)):
+            t.setColumnWidth(_c, _w2)
+        t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        t.horizontalHeader().setSectionResizeMode(8, QHeaderView.Interactive)
+        t.setColumnWidth(8, 220)
+        t.setMinimumHeight(min(24 * 14 + 48, 24 * len(rows) + 48))
+        for _i, _r in enumerate(rows):
+            for _c in (4, 5, 6, 7, 8):
+                _it = t.item(_i, _c)
+                if _it is not None:
+                    _it.setToolTip(_r[_c])
+            _s = t.item(_i, 9)
+            if _s is not None and _r[9].startswith("⛔"):
+                _s.setForeground(QBrush(QColor(th["C_RED"])))
+        self.perf_boundary_table = t
+        lay.addWidget(t)
+
+        # 指标定义 (zmax_perf_spec.json), 只留关联到本任务功能的
+        try:
+            ps = json.load(open(os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json"), encoding="utf-8"))
+        except Exception:                                                       # noqa: BLE001
+            ps = {}
+        tid = _active_bind()[0]
+        fids = {f["fn"] for f in _task_funcs(tid)}
+        mrows = []
+        for g in (ps.get("groups") or []):
+            for m in (g.get("metrics") or []):
+                links = [str(x) for x in (m.get("links") or [])]
+                if fids and not any(x in fids for x in links):
+                    continue
+                mrows.append([g.get("name") or "—", m.get("cn") or m.get("id") or "—", m.get("unit") or "—",
+                              m.get("target") or "—", (m.get("how") or "—"),
+                              m.get("std") or "—", m.get("stage") or "—",
+                              " ".join(links)[:40] or "—",
+                              (m.get("value") if m.get("value") not in (None, "") else "未实测")])
+        hd2 = QLabel()
+        hd2.setTextFormat(Qt.RichText)
+        hd2.setText("<span style='font-size:12px;font-weight:600;color:%s'>📏 该任务的性能指标 (%d 条, 真源 config/platform/zmax_perf_spec.json)</span>"
+                    "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;目标值 / 口径 / 标准 / 阶段; 实测列空 = 还没测, 不编</span>"
+                    % (th["C_YELLOW"], len(mrows), th["C_GRAY"]))
+        lay.addWidget(hd2)
+        t2 = _mk_table(["指标组", "指标", "单位", "目标", "口径 (怎么测)", "标准", "阶段", "关联功能", "实测"], mrows, th)
+        t2.setWordWrap(False)
+        t2.verticalHeader().setDefaultSectionSize(24)
+        for _c, _w2 in ((0, 150), (1, 170), (2, 48), (3, 150), (5, 90), (6, 44), (7, 110), (8, 66)):
+            t2.setColumnWidth(_c, _w2)
+        t2.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        t2.setMinimumHeight(min(24 * 14 + 48, 24 * len(mrows) + 48))
+        for _i, _r in enumerate(mrows):
+            for _c in (3, 4):
+                _it = t2.item(_i, _c)
+                if _it is not None:
+                    _it.setToolTip(_r[_c])
+        self.perf_spec_table = t2
+        lay.addWidget(t2)
+
+        _b = _btn("📋 复制能力边界 (TSV)", th)
+        _b.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["域", "模型/能力", "层", "状态空间节点", "输入→输出", "上限/量程", "阈值/精度", "时延", "越界行为", "真源"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in rows)))
+        _b2 = _btn("📋 复制性能指标 (TSV)", th)
+        _b2.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["指标组", "指标", "单位", "目标", "口径", "标准", "阶段", "关联功能", "实测"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in mrows)))
+        _br = QHBoxLayout()
+        _br.addWidget(_b)
+        _br.addWidget(_b2)
+        _br.addStretch()
+        lay.addLayout(_br)
         return w
 
     # ══════════════════════════════════════════════════════════════════════════
