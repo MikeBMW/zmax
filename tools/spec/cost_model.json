@@ -1,0 +1,129 @@
+{
+  "_meta": {
+    "schema": "zmax-cost-model-tiers/1.0",
+    "note": "老倪 2026-10-28 第十一轮: 「根据当前产品定义、任务7(摆盘/插拔/AOI)、功能配置、模型配置、性能配置、工程配置, 给出基础/精细/专业成本, 做成本分析, 出三种工单生产, 按产量与实现价值给销售建议与市场策略, 并定三方(机器人本体硬件/模型软件/运营数据)分成」。本文件只放**单价口径**, 所有结论(年产量/单件成本/毛利/回收期/分成比例)由 tools/cost_model.build_tiers() 计算得出, 不在这里写死。⚠ 单价均为市场参考口径, 未经供应商正式报价确认 (basis 字段已标注)。",
+    "author": "静静 (Hermes) 2026-10-28",
+    "price_basis_warning": "所有 unit 为 2026-10 市场参考/工程估算口径, 供应商未正式报价; 报价到手后只改本文件, 结论自动重算"
+  },
+  "production_assumptions": {
+    "hours_per_year": 4800,
+    "note": "4800h = 300 天 × 16h 两班; 三班/夜班自主 (C 档) 另在档位里覆盖",
+    "oee_basis": "A/B 0.85 (含换料/换型/小停机), C 0.88 (自主夜班 + 异常自恢复)"
+  },
+  "split": {
+    "value_weights": {"hw": 0.45, "sw": 0.30, "op": 0.25},
+    "value_weights_basis": "行业口径 (设备商:软件商:运营方 ≈ 45:30:25), 按客户可感知价值 (硬件占产能基础 / 软件占节拍与良率增益 / 运营占数据与运维) 估",
+    "license_pct": 0.20,
+    "op_fee_per_piece": 0.02,
+    "recommend": "s3_hybrid",
+    "note": "推荐混合制: 硬件一次性收款 (客户资产) + 软件按收益 20% 许可 (与良率/节拍挂钩) + 运营按件 0.02 元/件 (数据/运维/模型迭代)。三方风险共担: 产量不足时软件与运营少收, 硬件不退货。"
+  },
+  "tiers": [
+    {
+      "id": "A",
+      "name": "基础成本 · 基本性能 (L2 单任务)",
+      "layers": "L2",
+      "tops": 30,
+      "hours_per_year": 4800,
+      "oee": 0.85,
+      "price_per_piece": 0.35,
+      "price_basis": "加工费口径 0.35 元/件: 单工位替代 1 名操作工 (光模块插拔+AOI 复判), 人工 9 万/人·年 ÷ 25 万件/人·年 ≈ 0.36",
+      "dep_years": 5,
+      "nre_years": 3,
+      "bom": [
+        {"item": "关节臂 + 控制器 (6kg 级)", "qty": 1, "unit": 120000, "basis": "市场参考 10~15 万"},
+        {"item": "工控机 (≤30 TOPS 算力)", "qty": 1, "unit": 12000, "basis": "i7/32G 无独显"},
+        {"item": "腕部深度相机", "qty": 1, "unit": 3500, "basis": "RealSense D405 级"},
+        {"item": "侧视相机", "qty": 1, "unit": 2000, "basis": "D435 级"},
+        {"item": "夹爪 + 六维力传感器", "qty": 1, "unit": 18000, "basis": "电动夹爪+力控"},
+        {"item": "机架 / 工装夹具", "qty": 1, "unit": 25000, "basis": "单工位定制"},
+        {"item": "安全光栅 + 急停回路", "qty": 1, "unit": 8000, "basis": "单机安全"}
+      ],
+      "nre": [
+        {"item": "L2 技能库示教 (人机在环)", "qty": 1, "unit": 30000, "basis": "示教+标杆固化 15 人天"},
+        {"item": "集成调试 (标定/联调/验收)", "qty": 30, "unit": 2000, "basis": "30 人天 × 2000"}
+      ],
+      "opex": [
+        {"name": "电费", "qty": 1, "unit": 3000, "basis": "1.5kW × 4800h × 0.42 元"},
+        {"name": "维保 (备件/上门)", "pct_of_capex": 0.05},
+        {"name": "人工 (0.2 人 值守)", "qty": 1, "unit": 24000, "basis": "9 万/人·年 × 0.27"},
+        {"name": "耗材/工装磨损", "pct_of_capex": 0.02}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "精细成本 · 精细操作性能 (L2+L3 多任务编排)",
+      "layers": "L2+L3",
+      "tops": 80,
+      "hours_per_year": 4800,
+      "oee": 0.85,
+      "price_per_piece": 0.42,
+      "price_basis": "加工费口径 0.42 元/件: 多品种换型能力 + 少人化 (一条线 3 工位 1 人), 溢价 20%",
+      "dep_years": 5,
+      "nre_years": 3,
+      "bom": [
+        {"item": "关节臂 + 控制器 (6kg 级)", "qty": 1, "unit": 120000, "basis": "同 A"},
+        {"item": "工控机 + 推理算力卡 (≤80 TOPS 级)", "qty": 1, "unit": 47000, "basis": "工控机 12k + 40 系推理卡 35k"},
+        {"item": "腕部深度相机", "qty": 1, "unit": 3500, "basis": "同 A"},
+        {"item": "侧视相机", "qty": 1, "unit": 2000, "basis": "同 A"},
+        {"item": "夹爪 + 六维力传感器", "qty": 1, "unit": 18000, "basis": "同 A"},
+        {"item": "机架 / 工装夹具", "qty": 1, "unit": 25000, "basis": "同 A"},
+        {"item": "安全光栅 + 急停回路", "qty": 1, "unit": 8000, "basis": "同 A"},
+        {"item": "数据存储 (采集/训练集)", "qty": 1, "unit": 5000, "basis": "4TB NVMe"}
+      ],
+      "nre": [
+        {"item": "L2 技能库示教", "qty": 1, "unit": 30000, "basis": "同 A"},
+        {"item": "集成调试", "qty": 30, "unit": 2000, "basis": "同 A"},
+        {"item": "真机数据采集 (200 episode)", "qty": 200, "unit": 300, "basis": "示教+标注+质检 300 元/条"},
+        {"item": "L3 策略训练 + LoRA 合并", "qty": 1, "unit": 60000, "basis": "GPU 训练 3 轮 + 调参"}
+      ],
+      "opex": [
+        {"name": "电费", "qty": 1, "unit": 4500, "basis": "含 GPU 推理"},
+        {"name": "维保 (备件/上门)", "pct_of_capex": 0.05},
+        {"name": "人工 (0.2 人 值守)", "qty": 1, "unit": 24000, "basis": "同 A"},
+        {"name": "耗材/工装磨损", "pct_of_capex": 0.02},
+        {"name": "数据标注/回流标注", "qty": 1, "unit": 12000, "basis": "每月 1k 条回流"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "专业成本 · 专业性能 (L2+L3+L4 含 L5 安全分级)",
+      "layers": "L2+L3+L4(+L5)",
+      "tops": 300,
+      "hours_per_year": 6000,
+      "oee": 0.88,
+      "price_per_piece": 0.55,
+      "price_basis": "加工费口径 0.55 元/件: 无人夜班 + 质量担保 (良率 99.2%) + 自主异常恢复, 溢价 57%",
+      "dep_years": 5,
+      "nre_years": 3,
+      "bom": [
+        {"item": "关节臂 + 控制器 (6kg 级)", "qty": 1, "unit": 120000, "basis": "同 A"},
+        {"item": "工控机 + 推理算力 (≤300 TOPS 级)", "qty": 1, "unit": 47000, "basis": "工控机 + 40 系/边缘加速"},
+        {"item": "L5 运行算力 (本地 3B 显存 或 云)", "qty": 1, "unit": 20000, "basis": "16G 显存卡 或 API 首年"},
+        {"item": "腕部深度相机", "qty": 1, "unit": 3500, "basis": "同 A"},
+        {"item": "侧视相机", "qty": 1, "unit": 2000, "basis": "同 A"},
+        {"item": "夹爪 + 六维力传感器", "qty": 1, "unit": 18000, "basis": "同 A"},
+        {"item": "机架 / 工装夹具", "qty": 1, "unit": 25000, "basis": "同 A"},
+        {"item": "安全验证台架 (光栅/安全门/记录仪)", "qty": 1, "unit": 40000, "basis": "分级安全验证用"},
+        {"item": "数据存储 (采集/训练集)", "qty": 1, "unit": 5000, "basis": "同 B"}
+      ],
+      "nre": [
+        {"item": "L2 技能库示教", "qty": 1, "unit": 30000, "basis": "同 A"},
+        {"item": "集成调试", "qty": 30, "unit": 2000, "basis": "同 A"},
+        {"item": "真机数据采集 (200 episode)", "qty": 200, "unit": 300, "basis": "同 B"},
+        {"item": "L3 策略训练 + LoRA 合并", "qty": 1, "unit": 60000, "basis": "同 B"},
+        {"item": "L4 INTACT-JEPA 训练/合并", "qty": 1, "unit": 80000, "basis": "GPU 训练 + 权重合并"},
+        {"item": "L5 接入与提示工程", "qty": 1, "unit": 30000, "basis": "规划/VLM 接入"},
+        {"item": "安全案例与认证 (ISO 13849/9283)", "qty": 1, "unit": 150000, "basis": "第三方认证+验证报告"},
+        {"item": "安全文档与异常测试集", "qty": 1, "unit": 60000, "basis": "N≥30 次异常注入"}
+      ],
+      "opex": [
+        {"name": "电费", "qty": 1, "unit": 6000, "basis": "含 L4/L5 推理"},
+        {"name": "维保 (备件/上门)", "pct_of_capex": 0.05},
+        {"name": "人工 (0.1 人 巡检)", "qty": 1, "unit": 12000, "basis": "夜班无人值守"},
+        {"name": "耗材/工装磨损", "pct_of_capex": 0.02},
+        {"name": "L5 API / 模型迭代", "qty": 1, "unit": 12000, "basis": "云 API 或本地迭代"}
+      ]
+    }
+  ]
+}

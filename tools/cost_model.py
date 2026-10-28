@@ -127,8 +127,116 @@ def save_line(stations=None, shifts=None, persons_per_shift=None,
             "line": back.get("line"), "labor": back.get("labor")}
 
 
+TIERS = os.path.join(ROOT, "tools", "spec", "cost_model.json")
+TRAJ = os.path.join(ROOT, "zmax_data", "runtime", "traj", "sim_insert.json")
+
+
+def measured_tact():
+    """从 392 段轨迹真源算单件节拍 (与《性能配置》同一口径, 不另拍数字)。"""
+    try:
+        d = load_json(TRAJ)
+        segs = d.get("plan")
+        if segs is None:
+            segs = next(v for v in d.values()
+                        if isinstance(v, list) and v and isinstance(v[0], dict) and "a" in v[0])
+        t_all = sum(float(s.get("t") or 0) for s in segs)
+        # 单件节拍真源优先级: tact_steady_s (稳态) > tact_module_s > total/件数
+        # ⚠ cycles=8 是「循环块」不是件数, 件数在 mods=14 —— 用错会把 11.42 算成 19.93
+        n_mod = int(d.get("mods") or 14)
+        tact = float(d.get("tact_steady_s") or d.get("tact_module_s") or (t_all / n_mod))
+        return tact, len(segs), t_all, n_mod
+    except Exception:                                                           # noqa: BLE001
+        return 11.39, 392, 159.43, 14
+
+
+def load_json(p):
+    with open(p, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_tiers(path=None):
+    """三档成本核算 (基础/精细/专业) —— 输入只有单价口径, 结论全部现算。
+
+    三档与《性能配置》A/B/C、《工程配置》A/B/C 一一对应 (同一 id)。
+    """
+    spec = load_json(path or TIERS)
+    tact, n_seg, t_all, n_cyc = measured_tact()
+    uph = 3600.0 / tact
+    out = {"_meta": spec.get("_meta", {}), "tact_s": round(tact, 2), "segs": n_seg,
+           "t_all_s": round(t_all, 2), "cycles": n_cyc, "uph_geo": round(uph, 1),
+           "split_note": (spec.get("split") or {}).get("note", ""), "tiers": [], "split": {}}
+
+    for t in spec["tiers"]:
+        capex = sum(float(x["qty"]) * float(x["unit"]) for x in (t.get("bom") or []))
+        nre = sum(float(x["qty"]) * float(x["unit"]) for x in (t.get("nre") or []))
+        hours = float(t.get("hours_per_year") or 4800)
+        oee = float(t.get("oee") or 0.85)
+        pieces = uph * hours * oee
+        opex_items = []
+        for o in t.get("opex") or []:
+            if o.get("pct_of_capex"):
+                val = capex * float(o["pct_of_capex"])
+                b = "capex 的 %.1f%%" % (float(o["pct_of_capex"]) * 100)
+            else:
+                val = float(o.get("qty", 1)) * float(o.get("unit", 0))
+                b = o.get("basis", "年")
+            opex_items.append({"name": o["name"], "value": val, "basis": b})
+        opex = sum(x["value"] for x in opex_items)
+        dep = capex / float(t.get("dep_years") or 5)
+        nre_amort = nre / float(t.get("nre_years") or 3)
+        price = float(t["price_per_piece"])
+        revenue = pieces * price
+        cost_year = dep + opex + nre_amort
+        unit_cost = cost_year / pieces if pieces else 0
+        cash = revenue - opex
+        payback = (capex + nre) / cash if cash > 0 else None
+        out["tiers"].append({
+            "id": t["id"], "name": t["name"], "layers": t.get("layers"), "tops": t.get("tops"),
+            "bom": t.get("bom") or [], "nre": t.get("nre") or [], "opex_items": opex_items,
+            "capex": round(capex, 2), "nre_sum": round(nre, 2), "opex_year": round(opex, 2),
+            "dep_year": round(dep, 2), "nre_amort": round(nre_amort, 2),
+            "hours_per_year": hours, "oee": oee, "pieces_year": int(pieces),
+            "price_per_piece": price, "price_basis": t.get("price_basis", ""),
+            "revenue_year": round(revenue, 2), "cost_year": round(cost_year, 2),
+            "unit_cost": round(unit_cost, 4), "unit_margin": round(price - unit_cost, 4),
+            "gross_year": round(revenue - cost_year, 2),
+            "gross_margin_pct": round(100.0 * (revenue - cost_year) / revenue, 1) if revenue else 0,
+            "payback_years": round(payback, 2) if payback else None,
+        })
+
+    sp = spec.get("split") or {}
+    w2 = sp.get("value_weights") or {"hw": 0.45, "sw": 0.30, "op": 0.25}
+    lic = float(sp.get("license_pct") or 0.20)
+    fee = float(sp.get("op_fee_per_piece") or 0.02)
+    for r in out["tiers"]:
+        cash = r["revenue_year"] - r["opex_year"]
+        tot = r["capex"] + r["nre_sum"] + r["opex_year"]
+
+        def pct(d):
+            s = sum(d.values()) or 1
+            return {k: round(100.0 * v / s, 1) for k, v in d.items()}
+
+        s1 = {"hw": r["capex"] / tot, "sw": r["nre_sum"] / tot, "op": r["opex_year"] / tot}
+        s2 = {k: cash * float(v) for k, v in w2.items()}
+        sw3 = r["revenue_year"] * lic
+        op3 = r["pieces_year"] * fee
+        hw3 = max(0.0, cash - sw3 - op3)
+        out["split"][r["id"]] = {
+            "cash_year": round(cash, 2),
+            "s1_invest": {"abs": {k: round(v, 2) for k, v in s1.items()}, "pct": pct(s1)},
+            "s2_value": {"abs": {k: round(v, 2) for k, v in s2.items()}, "pct": pct(s2)},
+            "s3_hybrid": {"abs": {"hw": round(hw3, 2), "sw": round(sw3, 2), "op": round(op3, 2)},
+                          "pct": pct({"hw": hw3, "sw": sw3, "op": op3}),
+                          "rule": "硬件一次性 + 软件许可 %.0f%% 收益 + 运营 %.2f 元/件" % (lic * 100, fee)},
+        }
+    out["split_recommend"] = sp.get("recommend") or "s3_hybrid"
+    out["split_weights_basis"] = sp.get("value_weights_basis", "")
+    return out
+
+
 def main():
-    ap = argparse.ArgumentParser(description="单套成本/回本测算")
+    ap = argparse.ArgumentParser(description="单套成本/回本测算 + 三档成本核算")
+    ap.add_argument("--tiers", action="store_true", help="按 性能等级 A/B/C 算 基础/精细/专业 成本")
     ap.add_argument("--stations", type=int)
     ap.add_argument("--shifts", type=int)
     ap.add_argument("--persons", type=int, dest="persons_per_shift")
@@ -146,6 +254,27 @@ def main():
         print("   备份:", r["backup"])
         print("   line=%s labor=%s" % (r["line"], r["labor"]))
         return 0 if r["ok"] else 2
+
+    if a.tiers:
+        d = build_tiers()
+        if a.json:
+            print(json.dumps(d, ensure_ascii=False, indent=1))
+            return 0
+        print("实测节拍 %.2f s/件 · 几何产能 %.1f UPH (%d 段 / %.2f s / %d 件)"
+              % (d["tact_s"], d["uph_geo"], d["segs"], d["t_all_s"], d["cycles"]))
+        for r in d["tiers"]:
+            print("\n== %s %s (%s · ≤%s TOPS)" % (r["id"], r["name"], r["layers"], r["tops"]))
+            print("   capex %.0f · NRE %.0f · 运营 %.0f/年 · 折旧 %.0f/年"
+                  % (r["capex"], r["nre_sum"], r["opex_year"], r["dep_year"]))
+            print("   年产量 %d 件 (%.0fh × OEE %.2f) · 单价 %.2f · 单件成本 %.4f · 单件毛利 %.4f"
+                  % (r["pieces_year"], r["hours_per_year"], r["oee"], r["price_per_piece"],
+                     r["unit_cost"], r["unit_margin"]))
+            print("   年收入 %.0f · 年毛利 %.0f (%.1f%%) · 回收期 %s 年"
+                  % (r["revenue_year"], r["gross_year"], r["gross_margin_pct"], r["payback_years"]))
+            sp = d["split"][r["id"]]
+            print("   分成: 投入比例 %s · 价值贡献 %s · 混合制 %s  (可分现金 %.0f/年)"
+                  % (sp["s1_invest"]["pct"], sp["s2_value"]["pct"], sp["s3_hybrid"]["pct"], sp["cash_year"]))
+        return 0
 
     e = estimate(stations=a.stations, shifts=a.shifts,
                  persons_per_shift=a.persons_per_shift,

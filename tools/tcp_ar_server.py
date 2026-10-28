@@ -884,6 +884,57 @@ _MT_ARM = {"MT-01": "right", "MT-02": "right", "MT-03": "right", "MT-04": "right
 _HAND_ARM = {"L": "left", "R": "right", "BOTH": "both"}
 
 
+# ── 💰 成本/产量/三方分成 (真源: tools/spec/cost_model.json → tools/cost_model.build_tiers()) ──
+_COST_CACHE = {"t": 0.0, "d": None, "mt": 0.0}
+
+
+def _cost_payload():
+    """三档成本 + 三张工单 + 市场预期。缓存 60s 或真源 mtime 变化即重算。"""
+    import importlib.util
+    spec = os.path.join(REPO, "tools", "spec", "cost_model.json")
+    mt = os.path.getmtime(spec) if os.path.exists(spec) else 0
+    if _COST_CACHE["d"] is not None and (time.time() - _COST_CACHE["t"] < 60) and _COST_CACHE["mt"] == mt:
+        return _COST_CACHE["d"]
+    cm_path = os.path.join(REPO, "tools", "cost_model.py")
+    s = importlib.util.spec_from_file_location("_zmax_cost_model", cm_path)
+    m = importlib.util.module_from_spec(s)
+    s.loader.exec_module(m)
+    d = m.build_tiers()
+    # 工单: 三张档位工单
+    orders = []
+    for t in d.get("tiers") or []:
+        no = {"A": "T1", "B": "T2", "C": "T3"}.get(t["id"], t["id"])
+        fp = os.path.join(REPO, "config", "orders", "BS_SCN-07-AOI-%s.json" % no)
+        item = {"tier": t["id"], "order_no": "BS-SCN-07-AOI-%s-0001" % no,
+                "file": os.path.relpath(fp, REPO) if os.path.exists(fp) else None,
+                "exists": os.path.exists(fp), "name": t["name"],
+                "price": t["price_per_piece"], "pieces_year": t["pieces_year"],
+                "revenue_year": t["revenue_year"], "unit_cost": t["unit_cost"]}
+        if os.path.exists(fp):
+            o = json.load(open(fp, encoding="utf-8"))
+            item["identity"] = o.get("identity") or {}
+            item["targets"] = o.get("targets") or {}
+        orders.append(item)
+    # 市场预期: 按实测节拍 + 档位工时/OEE 的产量与价值 (与页面演练同一口径)
+    market = []
+    for t in d.get("tiers") or []:
+        uph = d["uph_geo"]
+        py = t["pieces_year"]
+        market.append({"tier": t["id"], "uph": round(uph, 1), "pieces_year": py,
+                       "revenue_year": t["revenue_year"], "gross_year": t["gross_year"],
+                       "payback_years": t["payback_years"],
+                       "value_per_hour": round(uph * t["price_per_piece"], 0),
+                       "pieces_per_shift8h": int(uph * 8 * t["oee"])})
+    out = {"ok": True, "tact_s": d["tact_s"], "uph_geo": d["uph_geo"], "segs": d["segs"],
+           "cycles": d["cycles"], "tiers": d["tiers"], "split": d["split"],
+           "split_recommend": d.get("split_recommend"), "split_note": d.get("split_note"),
+           "split_weights_basis": d.get("split_weights_basis"),
+           "orders": orders, "market": market,
+           "src": "tools/spec/cost_model.json → tools/cost_model.build_tiers()"}
+    _COST_CACHE.update({"t": time.time(), "d": out, "mt": mt})
+    return out
+
+
 def _ar_meta_payload() -> dict:
     """🧩 AR 场景元任务组合 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json)
 
@@ -1339,6 +1390,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(_ar_cmd_payload())
             elif p == "/api/ar/meta":            # 🧩 AR 元任务组合(配置中心 TASK-07-AOI) + 当前执行到哪
                 self._json(_ar_meta_payload())
+            elif p == "/api/ar/cost":            # 💰 三档成本 + 三张工单 + 市场预期 + 三方分成
+                self._json(_cost_payload())
             elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)
                 self._json(_cams_payload())
             elif p == "/api/ss_stats":          # 🥽 状态空间工程视频源(8791 cam_live_stream)原始实况
