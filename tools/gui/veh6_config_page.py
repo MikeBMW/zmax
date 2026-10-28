@@ -2041,7 +2041,11 @@ class ConfigCenterPage(QWidget):
         th = dict(DEFAULT_THEME)
         th.update(theme or {})
         self.th = th
-        self.setStyleSheet(f"background:{th['C_BG']};")
+        # 🎨 2026-10-28 老倪: 「字体现在是黑色, 看不到。背景也是黑色」
+        #   根因: 这一行原来只设 background, 没设前景 ⇒ 整页 WindowText 仍是系统默认 #000000,
+        #   而那些没手写 styleSheet 的 QLabel(文档配置页 16 处: 成本/分成/三阶段/回本说明、"工位数""班次"…)
+        #   就成了黑底黑字。QSS 的 color 会继承给所有子控件, 手写了 styleSheet 的控件仍然优先(不受影响)。
+        self.setStyleSheet(f"background:{th['C_BG']};color:{th.get('C_FG', '#e6edf3')};")
 
         root = QVBoxLayout()
         root.setContentsMargins(0, 0, 0, 0)
