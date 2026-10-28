@@ -75,13 +75,15 @@ def main():
     chk("左树七项都**没有子项** (老倪 2026-10-15 精简)", all(
         pg.tree.topLevelItem(i).childCount() == 0 for i in range(pg.tree.topLevelItemCount())),
         "子项数=%s" % [pg.tree.topLevelItem(i).childCount() for i in range(pg.tree.topLevelItemCount())])
-    # 明细挪到配置页: 任务配置页的任务表 = 7 行; 工单配置页的工单表行数 = 真源工单数
+    # 明细挪到配置页: 任务配置页的任务表行数 = 真源任务数 (2026-10 起 8 条); 工单表行数 = 真源工单数
     _tt = getattr(pg, "tasks_table", None)
     _ot = getattr(pg, "order_table", None)
+    _tk_n = len((_j(os.path.join(ROOT, "config", "tasks", "tasks.json")) or {}).get("tasks") or [])
     _ord_n = len([f for f in os.listdir(os.path.join(ROOT, "config", "orders")) if f.endswith(".json")]) \
         if os.path.isdir(os.path.join(ROOT, "config", "orders")) else -1
-    chk("任务明细在配置页: 任务表 7 行", _tt is not None and _tt.rowCount() == 7,
-        "行数=%s" % (getattr(_tt, "rowCount", lambda: "—")()))
+    chk("任务明细在配置页: 任务表 %d 行 (真源任务数)" % _tk_n,
+        _tt is not None and _tt.rowCount() == _tk_n,
+        "行数=%s 真源=%d" % (getattr(_tt, "rowCount", lambda: "—")(), _tk_n))
     chk("工单明细在配置页: 工单表 %d 行 (真源工单数)" % _ord_n,
         _ot is not None and _ot.rowCount() == _ord_n,
         "行数=%s" % (getattr(_ot, "rowCount", lambda: "—")()))

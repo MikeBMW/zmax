@@ -62,7 +62,7 @@ def main():
     tk = _j(os.path.join(ROOT, "config", "tasks", "tasks.json"))
     tasks = tk["tasks"]
     ids = [t["task_id"] for t in tasks]
-    ck("任务 7 条", len(tasks) == 7, ids)
+    ck("任务 ≥7 条 (2026-10 起真源 8 条: TASK-01..08)", len(tasks) >= 7, ids)
     aoi = next((t for t in tasks if t["task_id"] == "TASK-07-AOI"), None)
     ck("任务7 = TASK-07-AOI 存在", aoi is not None)
     if aoi:
@@ -100,7 +100,7 @@ def main():
         t = pg.tasks_table
         nrow, ncol = t.rowCount(), t.columnCount()
         head = [t.horizontalHeaderItem(c).text() for c in range(ncol)]
-        ck("任务表 7 行", nrow == 7, "行=%d 列=%d %s" % (nrow, ncol, head))
+        ck("任务表行数 = 真源任务数", nrow == len(tasks), "行=%d 真源=%d 列=%d %s" % (nrow, len(tasks), ncol, head))
         # v5.49.3 起「场景」列改名「3D场景」⇒ 按真列名查 (老写法 "场景" in head 是列表精确匹配, 会假 FAIL)
         _scene_col = "3D场景" if "3D场景" in head else "场景"
         ck("表头含「场景」与「模型」", _scene_col in head and "模型" in head, head)

@@ -151,6 +151,75 @@ def _meta_task_count():
             return "?"
 
 
+def _task_obj(tid):
+    """tasks.json 里的一条任务 (真源); 没有就 None。"""
+    return next((x for x in (_j(TASKS_J, {}) or {}).get("tasks", []) if x.get("task_id") == tid), None)
+
+
+_LAYER_ORD = {"L2": 0, "L3": 1, "L4": 2, "L4/L5": 2, "L5": 2, "PLAT": 3}
+
+
+def _task_level_meta(tid):
+    """该任务**自己的**元任务 (任务级元任务 = 它跑起来的那几个执行元任务)。
+
+    老倪 2026-10-28: 「配置中心 TASK-07-AOI 任务的元任务, 要有对应关系, 点击 TASK0-7 下面的元任务要对应变化」
+      功能级元任务 (FN-SYSx-N, 77 条) 是**全工程共用**的底座 —— 8 个任务里没有一个功能是只服务单个任务的,
+      所以只按"启用节点"过滤, 看到的就是 29 条底座 + 几条 7 任务共用, 与"这个任务"对不上。
+      任务真正的对应关系在 tasks.json:
+        ① TASK-07-AOI 有登记 meta_tasks (5 条执行元任务: 取料插入/拔出/AOI 五点检测/良品下料/NG 下料);
+        ② 其余任务没登记 ⇒ 用它自己的 steps (工艺步骤段) 派生, 并标明"派生" (不冒充登记元任务)。
+    返回 (rows, note, src); rows = [(编号, 名称, 层, 段数/时长, 出现/时刻, 动作要点/描述)]。
+    """
+    tk = _task_obj(tid) or {}
+    lh = tk.get("long_horizon") or {}
+    mts = tk.get("meta_tasks") or []
+    if mts:
+        rows = []
+        for i, m in enumerate(mts, 1):
+            occ = m.get("occurrences")
+            rows.append((m.get("id") or "MT-%02d" % i, m.get("name") or "—", m.get("layer") or "—",
+                         "%s 段" % (m.get("segments") or "—"),
+                         ("%d 次" % occ) if occ not in (None, "") else "—",
+                         " → ".join((m.get("actions") or [])[:3]) or (m.get("prompt") or "—")))
+        note = ("%s 的任务级元任务 %d 条 · 真源 tasks.json(%s.meta_tasks)"
+                " · 长程: 目标 %s UPH · 一轮 %s 段 / %s s · %s 种轮模板 · 元任务执行 %s 次/轮"
+                % (tid, len(rows), tid, lh.get("uph_target") or "—", lh.get("segments_total") or "—",
+                   lh.get("round_total_s") or "—", len(lh.get("rounds") or []), lh.get("meta_count") or "—"))
+        return rows, note, "tasks.json:meta_tasks"
+    steps = tk.get("steps") or []
+    rows = []
+    for i, s in enumerate(steps, 1):
+        if not isinstance(s, dict):
+            rows.append((("S%02d" % i), str(s), "L3", "—", "—", "—"))
+            continue
+        rows.append((("S%02d" % i), s.get("name") or "—", s.get("layer") or "L3",
+                     ("%ss" % s.get("dur")) if s.get("dur") not in (None, "") else "—",
+                     ("t=%ss" % s.get("t")) if s.get("t") not in (None, "") else "—",
+                     (s.get("desc") or "—")))
+    note = ("%s 的任务级元任务 %d 条 · **由 steps 派生** (该任务在 tasks.json 未登记 meta_tasks; "
+            "工艺步骤 t/dur 逐段摊开, 段源真取, 不是编的)" % (tid, len(rows)))
+    return rows, note, "tasks.json:steps(派生)"
+
+
+def _n_tasks():
+    """真源任务数 (tasks.json) —— 归属口径要用它, 不写死 8。"""
+    try:
+        return len((_j(TASKS_J, {}) or {}).get("tasks") or [])
+    except Exception:                                                           # noqa: BLE001
+        return 0
+
+
+def _owner_text(m):
+    """功能级元任务的服务范围 (归属): 全 N 任务共用 / N 任务共用 / 无任务接入。"""
+    n = len(m.get("tasks") or [])
+    tot = _n_tasks()
+    if not n:
+        return "— 无任务接入"
+    if tot and n >= tot:
+        return "全 %d 任务共用" % tot
+    return "%d 任务共用" % n
+
+
 def _orders_list():
     """工单实例真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
     out = []
@@ -2372,7 +2441,7 @@ class ConfigCenterPage(QWidget):
 
     # ── 📋 任务配置 / 🧾 工单配置 两项 (2026-10-14 老倪: 「拆解成 任务配置 和 工单配置 两项」) ──────
     # 元任务表列 = 老倪文档《元任务标准模板》七个字段 (功能名称/输入/输出/配置参数/依赖关系/验证方法/承载场景) + 编号/层/优先级
-    _MT_COLS = ("元任务", "功能名称", "层", "输入", "输出", "配置参数", "依赖关系", "验证方法", "承载场景", "优先")
+    _MT_COLS = ("元任务", "功能名称", "层", "输入", "输出", "配置参数", "依赖关系", "验证方法", "承载场景", "归属", "优先")
 
     def _show_tasks(self, txt=""):
         """📋 任务配置页 = **元任务粒度**。点具体任务 ID ⇒ 元任务表只留该任务承载的行。"""
@@ -2390,16 +2459,25 @@ class ConfigCenterPage(QWidget):
     def _meta_head_text(self, tid=None, shown=None):
         mt = _meta_tasks()
         if tid:
-            t = next((x for x in (_j(TASKS_J, {}) or {}).get("tasks", [])
-                      if x.get("task_id") == tid), {})
-            return ("元任务 (一个功能 + 该功能全部配置参数) · 承载任务 %s (%s) · %d/%d 条"
-                    " · 真源 config_meta.json" % (tid, (t.get("name") or "—")[:18],
-                                                 len(mt) if shown is None else shown, len(mt)))
-        return ("元任务 (一个功能 + 该功能全部配置参数) · 全部 %d 条 "
+            t = _task_obj(tid) or {}
+            vis = [m for m in mt if tid in (m.get("tasks") or [])]
+            _tot = _n_tasks() or 8
+            n_all = sum(1 for m in vis if len(m.get("tasks") or []) >= _tot)
+            n_one = sum(1 for m in vis if len(m.get("tasks") or []) <= 1)
+            return ("功能级元任务 (一个功能 + 该功能全部配置参数) · 承载任务 %s (%s)\n"
+                    "   ▸ 该任务启用 %d 条: 仅本任务 %d · 全 %d 任务共用底座 %d · 其余多任务共用 %d"
+                    "   (真源 config_meta.json + 画布连线 + tasks.json)"
+                    % (tid, (t.get("name") or "—")[:22], len(vis) if shown is None else shown,
+                       n_one, _tot, n_all, max(0, len(vis) - n_all - n_one)))
+        return ("功能级元任务 (一个功能 + 该功能全部配置参数) · 全部 %d 条 "
                 "· 真源 config_meta.json + 画布连线 + tasks.json" % len(mt))
 
     def _filter_meta_tasks(self, tid=None):
-        """元任务表按**承载任务**过滤 (tid=None = 全部)。返回可见条数; 表头同步口径。"""
+        """元任务表按**承载任务**过滤 (tid=None = 全部)。返回可见条数; 表头同步口径。
+
+        老倪 2026-10-28: 点任务行 ⇒ 上面「任务级元任务」换成该任务自己的执行元任务,
+        下面这张功能级表也只留该任务启用的行 (按"最专用优先"排, 底座在后)。
+        """
         t = getattr(self, "meta_table", None)
         if t is None:
             return 0
@@ -2416,7 +2494,45 @@ class ConfigCenterPage(QWidget):
             t.selectRow(first)
         if getattr(self, "meta_head", None) is not None:
             self.meta_head.setText(self._meta_head_text(tid, shown))
+        try:                                   # 任务级元任务表跟着切 (同一个 tid, 一处口径)
+            self._fill_task_level(tid)
+        except Exception:                                                       # noqa: BLE001
+            pass
         return shown
+
+    def _fill_task_level(self, tid=None):
+        """把「任务级元任务」表刷成 tid 的 (tid=None ⇒ 用绑定真源里的活跃任务)。返回条数。"""
+        t = getattr(self, "tl_table", None)
+        if t is None:
+            return 0
+        tk = _j(BIND_J, {}) or {}
+        tid = tid or tk.get("active_task") or (self._task_rows[0] if getattr(self, "_task_rows", None) else None)
+        rows, note, src = _task_level_meta(tid) if tid else ([], "无任务可选", "—")
+        t.setWordWrap(False)             # 一行一条 (开了换行 + resizeRowsToContents 会把 5 行撑成 665px)
+        t.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            for c, val in enumerate(row):
+                s = str(val)
+                cell = s if c < len(row) - 1 else (s[:70] + ("…" if len(s) > 70 else ""))
+                it = QTableWidgetItem(cell)
+                it.setToolTip(s)         # 完整文本走 tooltip (列里不截断口径, 只是显示短)
+                t.setItem(r, c, it)
+        try:                             # 行高按实际 (Consolas 10 实测 28px/行): 表高 = 表头 + 全部行, 5~9 条一屏装下
+            t.verticalHeader().setDefaultSectionSize(24)
+            for _r in range(t.rowCount()):
+                t.setRowHeight(_r, 24)
+            _need = (max(41, t.horizontalHeader().height())
+                     + sum(t.rowHeight(_r) for _r in range(t.rowCount())) + 6)
+            t.setMinimumHeight(min(_need, 340))
+            t.setMaximumHeight(min(_need, 340))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        if getattr(self, "tl_head", None) is not None:
+            self.tl_head.setText("🎯 任务级元任务 · %s  ← 点上面任一任务行, 这里立即换成该任务的元任务序列"
+                                 % (note if tid else "未选中任务"))
+        if getattr(self, "tl_src", None) is not None:
+            self.tl_src.setText("   真源: %s" % src)
+        return len(rows)
 
     def _meta_from_task_row(self, *_a):
         """点任务表某行 ⇒ 元任务表只留该任务的元任务 (两表联动, 一处口径)。"""
@@ -2451,7 +2567,7 @@ class ConfigCenterPage(QWidget):
         return ("元任务 %s · %s\n"
                 "  干什么活 : %s\n  卡在哪   : %s\n  当前状态 : %s\n"
                 "  功能名称 : %s\n  输入     : %s\n  输出     : %s\n  配置参数 : %s\n"
-                "  依赖关系 : %s\n  验证方法 : %s\n  承载场景 : %s\n"
+                "  依赖关系 : %s\n  验证方法 : %s\n  承载场景 : %s\n  归属     : %s\n"
                 "  画布节点 : %s · 层 %s · 优先级 %s · 计划 %s"
                 % (m.get("mt_id") or "—", m.get("fn_id") or "—",
                    nt.get("work") or "—(真源未登记)",
@@ -2465,6 +2581,7 @@ class ConfigCenterPage(QWidget):
                    " / ".join(m.get("deps_up") or []) or "—(画布无上游)",
                    " / ".join(m.get("verification") or []) or "—",
                    " / ".join(m.get("scenes") or []) or "—(未接入任务)",
+                   _owner_text(m),
                    m.get("node_id") or "—", m.get("layer") or "—", m.get("prio") or "—",
                    m.get("month") or "—"))
 
@@ -2475,15 +2592,51 @@ class ConfigCenterPage(QWidget):
         ⚠️ 加的是**一张新表**, 上面任务表的 14 列一列没动 (只增列/增表, 不换列)。
         """
         mt = _meta_tasks()
+        # 🔴 老倪 2026-10-28: 「点 TASK0-7, 下面的元任务要对应变化」—— 功能级元任务没有一条是单任务专属,
+        #   所以按"**最专用优先**"排: 服务任务数少的在前 (7 任务共用的 AOI 相关功能先露头),
+        #   全 8 任务共用的底座在后; 归属列把这件事写明白, 不再让人以为"点了没变"。
+        mt = sorted(mt, key=lambda m: (0 if (m.get("tasks") or []) else 9,
+                                       len(m.get("tasks") or []),
+                                       _LAYER_ORD.get(m.get("layer") or "", 9),
+                                       str(m.get("mt_id") or "")))
         self._meta_rows = mt
         rows = [[m.get("mt_id") or "—", (m.get("name") or "")[:30], m.get("layer") or "—",
                  _short(m.get("inputs")), _short(m.get("outputs")), "%d 条" % m.get("n_params", 0),
                  _short(m.get("deps_up")), _short(m.get("verification")), _short(m.get("scenes")),
-                 m.get("prio") or "—"] for m in mt]
+                 _owner_text(m), m.get("prio") or "—"] for m in mt]
+        # ── 🎯 任务级元任务 (该任务自己的执行元任务) —— 老倪 2026-10-28 ─────────────────────
+        #   这一张才是"任务 ↔ 元任务"的对应关系: 真源 tasks.json 的 meta_tasks (TASK-07-AOI 5 条),
+        #   没登记的用该任务 steps 派生并标明, 点哪个任务行就换成哪个任务的 (与下面功能级表同一触发)。
+        self.tl_head = QLabel("🎯 任务级元任务 · 正在加载…")
+        self.tl_head.setFont(QFont("Consolas", 10))
+        self.tl_head.setStyleSheet("color:%s;background:transparent;font-weight:bold;" % th["C_YELLOW"])
+        self.tl_head.setWordWrap(True)
+        # 🔴 2026-10-28 实测: QLabel(wordWrap=True) 默认垂直方向也 Expanding ⇒ 离屏量到 tl_head/tl_src/meta_head
+        #   各吃到 480px, 把两张表挤成 222/480px (老倪那句"元任务窗口太矮"的同类根因)。标签只许按内容占高。
+        self.tl_head.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.tl_head.setMaximumHeight(72)
+        layout.addWidget(self.tl_head)
+        self.tl_table = _mk_table(["元任务", "名称", "层", "段数/时长", "出现/时刻", "动作要点 / 描述"],
+                                  [], th)
+        try:
+            self.tl_table.verticalHeader().setDefaultSectionSize(24)
+            self.tl_table.setMinimumHeight(28 * 4 + 47)      # 4 条地板 (少于 4 条也按 4 条给高, 免得跳)
+            self.tl_table.setMaximumHeight(28 * 10 + 47)     # 10 条上限 (实测最多 9 条 steps, 一屏装下)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        layout.addWidget(self.tl_table)
+        self.tl_src = QLabel("   真源: —")
+        self.tl_src.setFont(QFont("Consolas", 9))
+        self.tl_src.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        self.tl_src.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        self.tl_src.setMaximumHeight(20)
+        layout.addWidget(self.tl_src)
         self.meta_head = QLabel(self._meta_head_text(None, len(mt)))
         self.meta_head.setFont(QFont("Consolas", 10))
         self.meta_head.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
         self.meta_head.setWordWrap(True)
+        self.meta_head.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.meta_head.setMaximumHeight(60)
         layout.addWidget(self.meta_head)
         rb = QHBoxLayout()
         for txt, fn in (("🔎 显示全部元任务", lambda: self._filter_meta_tasks(None)),
@@ -2522,6 +2675,10 @@ class ConfigCenterPage(QWidget):
         # 点任务表任意一行 ⇒ 元任务表跟着筛 (两表联动)
         try:
             self.tasks_table.itemSelectionChanged.connect(self._meta_from_task_row)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:                     # 首屏先按**活跃任务**把任务级元任务摊开 (不必先点)
+            self._fill_task_level(None)
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -3192,7 +3349,10 @@ class ConfigCenterPage(QWidget):
                 _tneed = max(300, int(self.tasks_table.minimumHeight()))
             except Exception:                                                   # noqa: BLE001
                 pass
-            _mneed = min(700, 22 * (len(getattr(self, "_meta_rows", []) or []) + 2) + 70 + 8)
+            _mneed = min(1000, 22 * (len(getattr(self, "_meta_rows", []) or []) + 2) + 70 + 8) + 130
+            #   +130 = 🎯 任务级元任务表 (2026-10-28 新增, 4~8 行 + 表头 + 两行说明) 必须一起装进下舱
+            #   上限 700→900 (2026-10-28): 按任务过滤后最多 53 行 (=1166px) 仍要滚, 但 AOI 的 33 行 / 
+            #   摆盘的 53 行都想尽量一屏看完 —— 页面整体可滚是老倪已接受的口径, 表内少滚一点更好。
             _mneed = max(360, _mneed)
             _upper.setMinimumHeight(_tneed + 48)
             _meta_box.setMinimumHeight(_mneed)

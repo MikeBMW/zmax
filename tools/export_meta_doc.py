@@ -47,6 +47,14 @@ DEFAULT_OUT = os.path.join(ROOT, "docs/deliverables")
 PRIORITY_TASKS = ["TASK-06-TRAY", "TASK-01-FW"]
 TASK_ORDER = ["TASK-06-TRAY", "TASK-01-FW", "TASK-02-HANDLE", "TASK-03-BI",
               "TASK-04-THERMAL", "TASK-05-ATS", "TASK-07-AOI"]
+
+
+def task_order(tasks):
+    """任务展示序: 老的固定序优先, **新加的任务自动追加在后面** (2026-10 起真源 8 条: 多了 TASK-08-AL1;
+    原来 TASK_ORDER 硬编码 7 个 ⇒ 文档/校验里第 8 个任务被静默漏掉)。"""
+    ids = [t["task_id"] for t in tasks]
+    out = [x for x in TASK_ORDER if x in ids]
+    return out + [x for x in ids if x not in out]
 LAYER_SEQ = {"L2": 0, "L3": 1, "L4/L5": 2, "PLAT": 3}
 # 2026-10 ~ 2027-12 共 15 个月，逐月配额（前 9 月压完摆盘/插拔所需的 51 个）
 QUOTA = [6, 6, 6, 6, 6, 6, 5, 5, 5, 4, 4, 4, 4, 4, 3]
@@ -163,13 +171,21 @@ def build_meta_tasks():
     MT.sort(key=lambda m: (m["prio_rank"], LAYER_SEQ.get(m["layer"], 9),
                            -m["n_params"], m["name"] or ""))
     months = months_2026_10_to_2027_12()
+    # 🔴 2026-10-28: 原来只给 sum(QUOTA)=74 条派 mt_id/month, 功能数涨到 77 后剩 3 条**没有 mt_id**
+    #   ⇒ 渲染 md 时 KeyError: 'mt_id', 配置中心「📄 元任务计划」按钮点了不出版 (老倪: 点了必出结果)。
+    #   改成: 全部派号; 月配额用完后统一落最后一个月 (如实标 "溢出", 不悄悄改排期表)。
+    for _i, _m in enumerate(MT):
+        _m["mt_id"] = "MT-%03d" % (_i + 1)
     i = 0
     for mi, mth in enumerate(months):
         for _ in range(QUOTA[mi]):
             if i < len(MT):
-                MT[i]["mt_id"] = "MT-%03d" % (i + 1)
                 MT[i]["month"] = mth
                 i += 1
+    while i < len(MT):                      # 超出配额的部分 (功能数增长) 落最后一个月并标溢出
+        MT[i]["month"] = months[-1]
+        MT[i]["month_overflow"] = True
+        i += 1
     ctx = {"cm": cm, "canvas": canvas, "tasks": tasks, "bad": bad,
            "months": months, "covered": len(node2tasks)}
     return MT, ctx
@@ -189,7 +205,7 @@ def consistency(MT, ctx):
 
     chk("元任务数 = 功能数", len(cm["functions"]), len(MT), len(MT) == len(cm["functions"]))
     hit = sum(1 for m in MT if m["node_id"])
-    chk("功能 module_ref → 画布节点", "74/74", f"{hit}/{len(MT)}", hit == len(MT))
+    chk("功能 module_ref → 画布节点", f"{len(MT)}/{len(MT)}", f"{hit}/{len(MT)}", hit == len(MT))
     miss = []
     for t in tasks:
         en = t.get("enabled_nodes") or []
@@ -204,8 +220,9 @@ def consistency(MT, ctx):
     per = {t["task_id"]: sum(1 for m in MT if t["task_id"] in m["tasks"]) for t in tasks}
     exp = {t["task_id"]: len(t.get("enabled_nodes") or []) for t in tasks}
     same = all(per[k] == exp[k] for k in exp)
-    chk("各任务元任务数 = 启用节点数", "/".join(str(exp[k]) for k in TASK_ORDER),
-        "/".join(str(per.get(k, 0)) for k in TASK_ORDER), same)
+    _to = task_order(tasks)
+    chk("各任务元任务数 = 启用节点数", "/".join(str(exp[k]) for k in _to),
+        "/".join(str(per.get(k, 0)) for k in _to), same)
     return rows, ok_all
 
 
@@ -231,9 +248,9 @@ def render_md(MT, ctx):
     A("数据真源（全部实读，不人工编造）：\n")
     A("| 真源 | 路径 | 内容 |")
     A("|---|---|---|")
-    A("| 功能元数据 | `data/database/zmax/config_meta.json` | 74 个功能的字段/范围/单位/默认值/依赖/验证 |")
+    A("| 功能元数据 | `data/database/zmax/config_meta.json` | %d 个功能的字段/范围/单位/默认值/依赖/验证 |" % len(MT))
     A("| 参数注册表 | `sources/config/mcd/param_registry.json` | 每个参数的当前值/默认/min/max/单位/档位 |")
-    A("| 任务配置 | `sources/config/tasks/tasks.json` | 7 个任务的工序/参数覆盖/触发循环 |")
+    A("| 任务配置 | `sources/config/tasks/tasks.json` | %d 个任务的工序/参数覆盖/触发循环 |" % len(tasks))
     A("| 任务绑定 | `sources/config/ss_task_binding.json` | 任务 × 节点 × 配方段 绑定 |")
     A("| 画布工程 | `src/lerobot/engineering/flows/state_space_obs.json` | 89 节点 / 184 连线 |")
     A("")
@@ -245,7 +262,7 @@ def render_md(MT, ctx):
     comp = sum(1 for m in MT if m["complete"])
     A(f"功能 {len(MT)} / 元数据完整 {comp} ({comp * 100 // max(len(MT), 1)}%) / 不完整 {len(MT) - comp}")
     A(f"参数 {sum(m['n_params'] for m in MT)} 条（含通用标定基线 + 功能专属）")
-    A("任务节点集：" + " · ".join(f"{k}={len(td[k].get('enabled_nodes') or [])}" for k in TASK_ORDER))
+    A("任务节点集：" + " · ".join(f"{k}={len(td[k].get('enabled_nodes') or [])}" for k in task_order(tasks)))
     A("```\n")
     allnodes = set()
     for t in tasks:
@@ -259,7 +276,7 @@ def render_md(MT, ctx):
     A("## 二、七个任务与元任务覆盖\n")
     A("| # | 任务 ID | 任务名称 | 配方类型 | 配方段 | 启用节点 | 元任务数 | 优先级 |")
     A("|---|---|---|---|---|---|---|---|")
-    for i, tid in enumerate(TASK_ORDER, 1):
+    for i, tid in enumerate(task_order(tasks), 1):
         t = td.get(tid)
         if not t:
             continue
@@ -333,7 +350,7 @@ def render_md(MT, ctx):
     vt = {"TASK-06-TRAY": "2027-06 ← 用户 P0", "TASK-01-FW": "2027-06 ← 用户 P0",
           "TASK-02-HANDLE": "2027-09", "TASK-03-BI": "2027-09",
           "TASK-04-THERMAL": "2027-11", "TASK-05-ATS": "2027-11", "TASK-07-AOI": "2027-12"}
-    for i, tid in enumerate(TASK_ORDER, 1):
+    for i, tid in enumerate(task_order(tasks), 1):
         t = td.get(tid)
         if not t:
             continue
@@ -435,7 +452,7 @@ def render_md(MT, ctx):
     A("## 九、验收标准\n")
     A("1. **元任务级**：每个元任务完成 = ① 功能在真实链路每帧被调用 ② 配置参数可在配置中心修改并生效 "
       "③ 验证方法（诊断轴）实跑通过；")
-    A("2. **任务级**：7 个任务各自全链闭环，按 4.5 顺序验收；")
+    A("2. **任务级**：%d 个任务各自全链闭环，按 4.5 顺序验收；" % len(tasks))
     A(f"3. **工程级**：{len(MT)}/{len(MT)} 元任务完成，数据一致性校验全绿，配置中心可导出 Word/PDF；")
     A("4. **证据级**：所有验收以**视频 / 数据实证**为准，不以“已实现”声明为准。\n")
     A("---\n")

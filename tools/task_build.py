@@ -288,6 +288,31 @@ def build(scene, calib, i):
     return out
 
 
+# 🔴 2026-10-28: 这些字段**不是** task_build 派生的 —— 它们由作者/别的生成器写入:
+#   meta_tasks / long_horizon / _meta_note ← tools/ss_meta_task_ar.py (TASK-07-AOI 的 5 条执行元任务)
+#   本脚本原来是"整份 tasks.json 重写", 一跑就把它们抹掉 (老倪看到的就是「TASK-07-AOI 的元任务没有对应关系」)。
+#   口径: 生成物字段重算, **作者字段原样搬过去** (同任务 ID 才搬), 不动别人写的东西。
+AUTHORED_KEYS = ("meta_tasks", "long_horizon", "_meta_note")
+
+
+def _carry_authored(tasks, out_path):
+    """把老 tasks.json 里每个任务的**作者字段**搬到新生成的任务上 (同 task_id 才搬)。返回搬了几条。"""
+    try:
+        old = json.load(open(out_path, encoding="utf-8"))
+    except Exception:                                                           # noqa: BLE001
+        return 0
+    prev = {t.get("task_id"): t for t in (old.get("tasks") or [])}
+    n = 0
+    for t in tasks:
+        p = prev.get(t.get("task_id")) or {}
+        hit = [k for k in AUTHORED_KEYS if k in p]
+        for k in hit:
+            t[k] = p[k]
+        if hit:
+            n += 1
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
@@ -305,6 +330,10 @@ def main():
     if skipped:
         print("⏭ 无配方计划(PLAN), 未入任务清单: " + " · ".join(skipped)
               + "  —— 要建任务请在 tools/task_build.py 的 PLAN 里加一条")
+    n_keep = _carry_authored(tasks, OUT)          # 作者字段 (meta_tasks/long_horizon) 不许被重算抹掉
+    if n_keep and not a.json:
+        print("🔒 已保留 %d 个任务的手写字段 (meta_tasks / long_horizon): %s"
+              % (n_keep, [t["task_id"] for t in tasks if any(k in t for k in AUTHORED_KEYS)]))
     doc = {"schema": "zmax-tasks/1.0",
            "note": "任务配置真源 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
            "sources": {"flows/scenes_5jobs.json": _sha16(SCENES),

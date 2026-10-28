@@ -10810,17 +10810,54 @@ class SimulinkModule(QWidget):
         """
         from PyQt5.QtCore import QTimer as _QT
         w = getattr(self, "_cfg_win", None)
+
+        def _src_mtime():
+            """配置页源码 mtime —— 源码改过就必须重建页面对象 (老对象里跑的永远是旧类)。"""
+            try:
+                return os.path.getmtime(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                     "veh6_config_page.py"))
+            except OSError:
+                return 0.0
         try:
             if w is not None and w.isVisible():
-                try:
-                    w._cfg_page.reload_from_source()
-                except Exception:                                               # noqa: BLE001
-                    pass
-                w.raise_()
-                w.activateWindow()
-                return w
+                _mt = _src_mtime()
+                if _mt and _mt > float(getattr(w, "_cfg_src_mtime", 0.0) or 0.0) + 0.5:
+                    # 🆕 2026-10-28: 老倪改的是配置中心界面本身 —— 复用旧窗口只会显示旧代码。
+                    #   源码变了 ⇒ 关掉重建这个页面 (只重建配置中心, 不动主控制台: 控制台禁反复重启)。
+                    self._log("♻️ 配置中心源码已更新 ⇒ 重建页面 (主控制台不动)")
+                    try:
+                        w.close()
+                        w.deleteLater()
+                    except Exception:                                           # noqa: BLE001
+                        pass
+                    self._cfg_win = None
+                    w = None
+                else:
+                    try:
+                        w._cfg_page.reload_from_source()
+                    except Exception:                                           # noqa: BLE001
+                        pass
+                    w.raise_()
+                    w.activateWindow()
+                    return w
         except Exception:                                                       # noqa: BLE001
             pass
+        try:
+            # 🆕 2026-10-28: 主控制台**不重启**也要能看到配置中心的新界面 ——
+            #   sys.modules 里是 import 那一刻的旧模块, 只 close/reopen 窗口还是旧类。
+            #   源码 mtime 变过 ⇒ importlib.reload 一次; 已实例化的老页面不受影响 (各用各的类)。
+            import importlib as _il_cfg
+            import veh6_config_page as _vcp_mod
+            _mt_cfg = _src_mtime()
+            if _mt_cfg and _mt_cfg > float(getattr(self, "_cfg_mod_mtime", 0.0) or 0.0) + 0.5:
+                _il_cfg.reload(_vcp_mod)
+                self._cfg_mod_mtime = _mt_cfg
+                self._log("♻️ 配置中心模块已重载 (源码 mtime %.0f)" % _mt_cfg)
+        except Exception as _erc:                                               # noqa: BLE001
+            try:
+                self._log("⚠️ 配置中心模块重载失败 (用已加载版本): %r" % (_erc,))
+            except Exception:                                                   # noqa: BLE001
+                pass
         try:
             from veh6_config_page import ConfigCenterPage
         except Exception as e:                                                  # noqa: BLE001
@@ -10869,6 +10906,7 @@ class SimulinkModule(QWidget):
             pass
         dlg._cfg_page = page
         dlg._cfg_fp0 = fp0
+        dlg._cfg_src_mtime = _src_mtime()          # 记住建这个页面时的源码 mtime (变了就重建, 见上)
 
         def _sync():                                 # 每 3s 与磁盘真源比对 (跨窗口一致性)
             try:

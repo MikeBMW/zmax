@@ -49,7 +49,9 @@ if tabs is None:
 tabtexts = [tabs.tabText(i) for i in range(tabs.count())]
 chk("「📋 任务配置」页存在", any("任务配置" in t for t in tabtexts), " | ".join(tabtexts))
 idx_task = next((i for i, t in enumerate(tabtexts) if "任务配置" in t), -1)
-chk("任务配置在首屏(tab 0)", idx_task == 0, f"index={idx_task}")
+# 2026-10 起「🏷 产品配置」被放到 tab 0 (档位卡首屏), 任务配置紧随其后 ⇒ 判据放宽到"前两屏", 别说成回归
+chk("任务配置在前两屏 (产品配置 tab0 之后)", 0 <= idx_task <= 1,
+    f"index={idx_task} | 页签={tabtexts}")
 
 print("\n=== ② 该页上的按钮 ===")
 task_w = tabs.widget(idx_task) if idx_task >= 0 else None
