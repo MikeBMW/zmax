@@ -6281,7 +6281,7 @@ class ConfigCenterPage(QWidget):
         bl = QHBoxLayout(btns)
         bl.setContentsMargins(0, 0, 0, 0)
         for txt, fn, tip in (
-            ("📊 导出成本分析 PPT (13 页)", self._export_deck_ppt,
+            ("📊 导出成本分析 PPT (14 页)", self._export_deck_ppt,
              "调 tools/build_market_deck.py 现算三档成本、建议利润空间、三方分成、三阶段回本, 写 zmax_data/deliverables"),
             ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
              "写出 docs/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
